@@ -67,7 +67,7 @@ namespace clpoly{
                 return *this;
             }
             const std::string & str() const {return this->name();}
-            friend std::ostream& operator<< (std::ostream& stream, const variable& v) {
+            friend std::ostream& operator<<  (std::ostream& stream, const variable& v) {
                 return stream<<v.str();
             }
     };

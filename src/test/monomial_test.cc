@@ -1,9 +1,10 @@
 #include <iostream>
 #include <vector>
-#include "atomic_polynomial.hh"
+#include "monomial.hh"
+#include "variable.hh"
 #include <functional>
-template<typename Tm,typename Tc>
-std::ostream& operator<<(std::ostream& s, const clpoly::atomic_polynomial<Tm,Tc>& p) 
+
+std::ostream& operator<<(std::ostream& s, const clpoly::monomial& p) 
 {
     s.put('[');
     char comma[3] = {'\0', ' ', '\0'};
@@ -14,15 +15,23 @@ std::ostream& operator<<(std::ostream& s, const clpoly::atomic_polynomial<Tm,Tc>
     return s << ']';
 }
 int main(){
-    clpoly::atomic_polynomial<int,int> p={{1,2},{3,4}};
-    clpoly::atomic_polynomial<int,int> p2=p;
+    clpoly::variable x0("x0");
+    clpoly::variable x1("x1");
+    clpoly::variable x2("x2");
+    clpoly::variable x3("x3");
+    
+    clpoly::monomial p={{x1,2},{x3,4}};
+    clpoly::monomial p2=p;
     std::cout<<"p:"<<p<<std::endl;
     std::cout<<"p2:"<<p2<<std::endl;
     
-    p.push_back({1,2});
-    p.push_back({0,2});
-    p2.push_back({2,5});
+    p.push_back({x1,2});
+    p.push_back({x0,2});
+    p2.push_back({x2,5});
+
     std::cout<<"p:"<<p<<std::endl;
+    std::cout<<"p.deg:"<<p.deg()<<std::endl;
+    
     std::cout<<"p2:"<<p2<<std::endl;
     
     auto ptr=p.begin();
@@ -31,8 +40,10 @@ int main(){
     p2.normalization();
     std::cout<<"p2:"<<p2<<std::endl;
     std::cout<<"p:"<<p<<std::endl;
-    clpoly::atomic_polynomial<int,int> p3(std::move(p));
-    clpoly::atomic_polynomial<int,int> p1=std::move(p3);
+    std::cout<<"p.deg:"<<p.deg()<<std::endl;
+    
+    clpoly::monomial p3(std::move(p));
+    clpoly::monomial p1=std::move(p3);
     
     std::cout<<"p:"<<p<<std::endl;
     std::cout<<"p1:"<<p1<<std::endl;
@@ -42,11 +53,11 @@ int main(){
     std::cout<<"p2+p1:"<<(p2+p1)<<std::endl;
     std::cout<<"p1-p2:"<<(p1-p2)<<std::endl;
     std::cout<<"p2-p1:"<<(p2-p1)<<std::endl;
-    p2.comp()=std::less<int>();
+    p2.comp()=std::greater<clpoly::variable>();
     std::cout<<"p2.is_normal:"<<p2.is_normal()<<std::endl;
     p2.normalization();
     std::cout<<"p2:"<<p2<<std::endl;
-    p1.comp()=std::less<int>();
+    p1.comp()=std::greater<clpoly::variable>();
     p1.normalization();
     std::cout<<"p1+p2:"<<(p1+p2)<<"p1+p2.is_normal:"<<(p1+p2).is_normal()<<std::endl;
 

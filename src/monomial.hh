@@ -18,44 +18,85 @@ namespace clpoly{
     {
         private:
             std::function<bool(const variable &,const variable &)> __comp=init_comp;
-            std::vector<std::pair<variable,Tc>> __data;        
+            std::vector<std::pair<variable,int64_t>> __data; 
+            int64_t __deg=0;       
         public:
             static const std::function<bool(const variable &,const variable &)> init_comp;
-            monomial():__data(){}
-            monomial(const monomial<variable,Tc> &m)
-            :__data(m.__data),__comp(m.__comp)
-            {}
-            monomial(monomial<variable,Tc> &&p)
-            :__data(std::move(p.__data)),__comp(std::move(p.__comp))
+            inline int64_t deg(){return this->__deg;}
+            inline int64_t re_deg()
             {
-                p.__comp=init_comp;
+                this->__deg=0;
+                for(auto &i:this->__data)
+                    this->__deg+=i.second;
+                return this->__deg;
             }
-            atomic_polynomial( std::initializer_list<std::pair<variable,Tc>> init)
+            inline bool is_normal()  const 
+            {
+                int64_t tmp_deg=0;
+                for(auto &i:this->__data)
+                    tmp_deg+=i.second;
+                return tmp_deg==this->__deg && pair_vec_normal_check(this->__data.begin(),this->__data.end(),this->__comp);
+            }
+            inline void normalization()
+            {
+                std::function<bool(const std::pair<variable,int64_t> &,const std::pair<variable,int64_t> &)> tmp_comp=
+                    [&](std::pair<variable,int64_t> a,std::pair<variable,int64_t> b){return (this->__comp(a.first,b.first));};
+                auto tmp_size=pair_vec_normalization(this->__data.begin(),this->__data.end(),tmp_comp);
+                this->__data.resize(tmp_size);
+                this->re_deg();
+            }
+            monomial():__data(),__deg(0){}
+            monomial(const monomial &m)
+            :__data(m.__data),__comp(m.__comp),__deg(m.__deg)
+            {}
+            monomial(monomial &&m)
+            :__data(std::move(m.__data)),__comp(std::move(m.__comp)),__deg(std::move(m.__deg))
+            {
+                m.__comp=init_comp;
+                m.__deg=0;
+
+            }
+            monomial( std::initializer_list<std::pair<variable,int64_t>> init)
             :__data(init)
-            {}
-            atomic_polynomial(const std::vector<std::pair<variable,Tc>> & v)
-            :__data(v)
-            {}
-            atomic_polynomial(std::vector<std::pair<variable,Tc>> && v)
-            :__data(std::move(v))
-            {}
+            {
+                this->normalization();
+            }
+            monomial(const std::vector<std::pair<variable,int64_t>> & v,const std::function<bool(const variable &,const variable &)>& comp=init_comp)
+            :__data(v),__comp(comp)
+            {
+                this->normalization();
+            }
+            monomial(std::vector<std::pair<variable,int64_t>> && v,const std::function<bool(const variable &,const variable &)>& comp=init_comp)
+            :__data(std::move(v)),__comp(comp)
+            {
+                this->normalization();
+            }
+            monomial(std::vector<std::pair<variable,int64_t>> && v,std::function<bool(const variable &,const variable &)>&& comp)
+            :__data(std::move(v)),__comp(std::move(comp))
+            {
+                this->normalization();
+            }
             
-            atomic_polynomial & operator=(const atomic_polynomial & p)
+            
+            monomial & operator=(const monomial & m)
             {
-                this->__comp=p.comp;
-                this->__data=p.__data;
+                this->__comp=m.__comp;
+                this->__data=m.__data;
+                this->__deg=m.__deg;
                 return *this;
             }
-            atomic_polynomial & operator=(atomic_polynomial && p)
+            monomial & operator=(monomial && m)
             {
-                this->__comp=std::move(p.comp);
-                this->__data=std::move(p.__data);
-                p.__comp=greater<variable>;
+                this->__comp=std::move(m.__comp);
+                this->__data=std::move(m.__data);
+                this->__deg=std::move(m.__deg);
+                m.__comp=init_comp;
                 return *this;
             }
-            atomic_polynomial & operator=( std::initializer_list<std::pair<variable,Tc>> init)
+            monomial & operator=( std::initializer_list<std::pair<variable,int64_t>> init)
             {
                 this->__data=init;
+                this->normalization();
                 return *this;
             }
             inline auto size() const {return this->__data.size();}
@@ -65,43 +106,41 @@ namespace clpoly{
             inline auto end() {return this->__data.end();}
             inline auto end() const {return this->__data.end();}
             
-            inline std::pair<variable,Tc>& back() {return this->__data.back();}
-            inline const std::pair<variable,Tc>& back() const {return this->__data.back();}
+            inline std::pair<variable,int64_t>& back() {return this->__data.back();}
+            inline const std::pair<variable,int64_t>& back() const {return this->__data.back();}
             inline void resize(std::size_t size){this->__data.resize(size);}
             inline void reserve(std::size_t size){this->__data.reserve(size);}
             inline void pop_back(){this->__data.pop_back();}
-            inline void push_back(const std::pair<variable,Tc>&  value ){this->__data.push_back(value);}
-            inline void push_back(std::pair<variable,Tc>&&  value){this->__data.push_back(std::move(value));}
-            inline std::pair<variable,Tc>& operator[](std::size_t pos){return this->__data[pos];}
-            inline const std::pair<variable,Tc>& operator[](std::size_t pos) const {return this->__data.at(pos);}
-            inline std::pair<variable,Tc>& at(std::size_t pos){return this->__data[pos];}
-            inline const std::pair<variable,Tc>& at(std::size_t pos) const {return this->__data.at(pos);}
+            inline void push_back(const std::pair<variable,int64_t>&  value ){
+                this->__deg+=value.second;
+                this->__data.push_back(value);
+            }
+            inline void push_back(std::pair<variable,int64_t>&&  value){
+                this->__deg+=value.second;
+                this->__data.push_back(std::move(value));
+            }
+            inline std::pair<variable,int64_t>& operator[](std::size_t pos){return this->__data[pos];}
+            inline const std::pair<variable,int64_t>& operator[](std::size_t pos) const {return this->__data.at(pos);}
+            inline std::pair<variable,int64_t>& at(std::size_t pos){return this->__data[pos];}
+            inline const std::pair<variable,int64_t>& at(std::size_t pos) const {return this->__data.at(pos);}
             inline bool empty()const{return this->__data.empty();} 
             inline void clear() 
             {
                 this->__data.clear();
-                this->__comp=greater<variable>;
+                this->__comp=init_comp;
+                this->__deg=0;
             }
-            inline void swap(atomic_polynomial<variable,Tc> &p)
+            inline void swap(monomial &m)
             {
-                this->__data.swap(p.__data);
-                this->__comp.swap(p.__comp);
+                this->__data.swap(m.__data);
+                this->__comp.swap(m.__comp);
+                std::swap(this->__deg,m.__deg);
             }
-
+            inline const std::function<bool(const variable &,const variable &)> & comp() const {return this->__comp;}
+            inline std::function<bool(const variable &,const variable &)> & comp()  {return this->__comp;}
             
             
-            inline bool is_normal()  const 
-            {
-                return pair_vec_normal_check(this->begin(),this->end(),this->__comp);
-            }
-            inline void normalization()
-            {
-                std::function<bool(const std::pair<variable,Tc> &,const std::pair<variable,Tc> &)> tmp_comp=
-                    [&](std::pair<variable,Tc> a,std::pair<variable,Tc> b){return (this->__comp(a.first,b.first));};
-                auto tmp_size=pair_vec_normalization(this->begin(),this->end(),tmp_comp);
-                this->resize(tmp_size);
-            }
-            inline atomic_polynomial<variable,Tc> operator+  (const atomic_polynomial<variable,Tc> &p)const
+            inline monomial operator+  (const monomial &p)const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
@@ -113,7 +152,7 @@ namespace clpoly{
                 new_p.__comp=this->__comp;
                 return new_p;
             }
-            inline atomic_polynomial<variable,Tc> operator-  (const atomic_polynomial<variable,Tc> &p)const
+            inline monomial operator-  (const monomial &p)const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
@@ -125,20 +164,20 @@ namespace clpoly{
                 new_p.__comp=this->__comp;
                 return new_p;
             } 
-            inline atomic_polynomial<variable,Tc> operator+  () const
+            inline monomial operator+  () const
             {
                 return *this;
             }   
-            inline atomic_polynomial<variable,Tc> operator- () const
+            inline monomial operator- () const
             {
-                atomic_polynomial<variable,Tc> new_p;
-                new_p.reserve(this->size());
+                monomial new_m;
+                new_m.reserve(this->size());
                 for (auto &i:*this)
                 {
-                    new_p.push_back({i.first,negate(i.second)});
+                    new_m.push_back({i.first,negate(i.second)});
                 }
-                new_p.__comp=this->__comp;
-                return new_p;
+                new_m.__comp=this->__comp;
+                return new_m;
             }   
     };
 }

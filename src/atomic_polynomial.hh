@@ -41,20 +41,20 @@ namespace clpoly{
             :__data(std::move(v))
             {}
             
-            atomic_polynomial & operator=(const atomic_polynomial & p)
+            atomic_polynomial<Tm,Tc> & operator=(const atomic_polynomial<Tm,Tc> & p)
             {
-                this->__comp=p.comp;
+                this->__comp=p.__comp;
                 this->__data=p.__data;
                 return *this;
             }
-            atomic_polynomial & operator=(atomic_polynomial && p)
+            atomic_polynomial<Tm,Tc> & operator=(atomic_polynomial<Tm,Tc> && p)
             {
-                this->__comp=std::move(p.comp);
+                this->__comp=std::move(p.__comp);
                 this->__data=std::move(p.__data);
                 p.__comp=init_comp;
                 return *this;
             }
-            atomic_polynomial & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
+            atomic_polynomial<Tm,Tc> & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
             {
                 this->__data=init;
                 return *this;

@@ -8,6 +8,7 @@ Author:
 Notes:
 */
 #include "monomial.hh"
+#include "variable.hh"
 #include <functional>
 namespace clpoly{
     const std::function<bool(const variable &,const variable &)> monomial::init_comp(less<variable>);

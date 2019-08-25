@@ -1,7 +1,13 @@
 CXX=g++
 IPATHS=-I./
 CFLAGS=-O3 -flto 
-objects= variable.o variable_test.o variable_test atomic_polynomial_test.o
+objects= variable.o variable_test.o variable_test atomic_polynomial_test.o atomic_polynomial_test monomial.o monomial_test.o monomial_test
+monomial_test:variable.o monomial.o monomial_test.o
+	$(CXX) $(CFLAGS) variable.o monomial.o monomial_test.o -o monomial_test
+monomial_test.o:test/monomial_test.cc monomial.hh basic.hh variable.hh
+	$(CXX) $(CFLAGS) $(IPATHS) test/monomial_test.cc -c
+monomial.o:monomial.cc monomial.hh basic.hh variable.hh
+	$(CXX) $(CFLAGS) $(IPATHS) monomial.cc -c
 atomic_polynomial_test:atomic_polynomial_test.o variable.o 
 	$(CXX) $(CFLAGS)   variable.o atomic_polynomial_test.o  -o atomic_polynomial_test
 atomic_polynomial_test.o:test/atomic_polynomial_test.cc atomic_polynomial.hh basic.hh

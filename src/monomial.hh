@@ -13,6 +13,8 @@ Notes:
 #include "basic.hh"
 #include <vector>
 #include <functional>
+#include <sstream>
+#include <string>
 namespace clpoly{
     class monomial
     {
@@ -26,14 +28,14 @@ namespace clpoly{
             inline int64_t re_deg()
             {
                 this->__deg=0;
-                for(auto &i:this->__data)
+                for(auto &&i:this->__data)
                     this->__deg+=i.second;
                 return this->__deg;
             }
             inline bool is_normal()  const 
             {
                 int64_t tmp_deg=0;
-                for(auto &i:this->__data)
+                for(auto &&i:this->__data)
                     tmp_deg+=i.second;
                 return tmp_deg==this->__deg && pair_vec_normal_check(this->__data.begin(),this->__data.end(),this->__comp);
             }
@@ -43,6 +45,11 @@ namespace clpoly{
                     [&](std::pair<variable,int64_t> a,std::pair<variable,int64_t> b){return (this->__comp(a.first,b.first));};
                 auto tmp_size=pair_vec_normalization(this->__data.begin(),this->__data.end(),tmp_comp);
                 this->__data.resize(tmp_size);
+                if (this->__data.size()*1.0/this->__data.capacity()<shrink_bound && this->__data.size()>shrink_bound_abs)
+                {
+                    std::cont<<"shrink_to_fit";
+                    this->__data.shrink_to_fit();
+                }
                 this->re_deg();
             }
             monomial():__data(),__deg(0){}
@@ -140,45 +147,111 @@ namespace clpoly{
             inline std::function<bool(const variable &,const variable &)> & comp()  {return this->__comp;}
             
             
-            inline monomial operator+  (const monomial &p)const
+            inline monomial operator*  (const monomial &p)const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
-                        throw std::invalid_argument("Left atomic_polynomial is not normal.");
+                        throw std::invalid_argument("Left monomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
-                        throw std::invalid_argument("Right atomic_polynomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
                 #endif
-                auto new_p=pair_vec_add(*this,p,this->__comp);
+                monomial new_p;
+                new_p.__data=pair_vec_add(this->__data,p.__data,this->__comp);
                 new_p.__comp=this->__comp;
+                new_p.__deg=this->__deg+p.__deg;
                 return new_p;
             }
-            inline monomial operator-  (const monomial &p)const
+            inline monomial operator/  (const monomial &p)const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
-                        throw std::invalid_argument("Left atomic_polynomial is not normal.");
+                        throw std::invalid_argument("Left monomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
-                        throw std::invalid_argument("Right atomic_polynomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
                 #endif
-                auto new_p=pair_vec_sub(*this,p,this->__comp);
+                monomial new_p;
+                new_p.__data=pair_vec_sub(this->__data,p.__data,this->__comp);
                 new_p.__comp=this->__comp;
+                new_p.__deg=this->__deg-p.__deg;
                 return new_p;
             } 
-            inline monomial operator+  () const
+            // inline monomial operator*  (const monomial &p)const {return *this+p;}
+            // inline monomial operator/  (const monomial &p)const {return *this-p;}
+            inline bool operator< (const monomial &p) const
             {
-                return *this;
-            }   
-            inline monomial operator- () const
+                #ifdef DEBUG
+                    if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
+                        throw std::invalid_argument("Left monomial is not normal.");
+                    if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
+                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
+                #endif
+                return pair_vec_comp(this->__data,p.__data,this->__comp,less<int64_t>);
+            }
+            inline bool operator> (const monomial &p) const
             {
-                monomial new_m;
-                new_m.reserve(this->size());
-                for (auto &i:*this)
-                {
-                    new_m.push_back({i.first,negate(i.second)});
-                }
-                new_m.__comp=this->__comp;
-                return new_m;
-            }   
+                #ifdef DEBUG
+                    if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
+                        throw std::invalid_argument("Left monomial is not normal.");
+                    if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
+                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
+                #endif
+                return pair_vec_comp(p.__data,this->__data,this->__comp,less<int64_t>);
+            }
+            inline bool operator== (const monomial &p) const
+            {
+                #ifdef DEBUG
+                    if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
+                        throw std::invalid_argument("Left monomial is not normal.");
+                    if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
+                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
+                #endif
+                return pair_vec_equal_to(p.__data,this->__data,this->__comp,less<int64_t>);
+            }
+            inline bool operator<=(const monomial &p) const
+            {
+                return !(*this>p);
+            }
+            inline bool operator>=(const monomial &p) const
+            {
+                return !(*this<p);
+            }
+            
+            
+            
+            // inline monomial operator-   () const
+            // {
+            //     return *this;
+            // }   
+            // inline monomial operator+ () const
+            // {
+            //     monomial new_m;
+            //     new_m.reserve(this->size());
+            //     for (auto &&i:*this)
+            //     {
+            //         new_m.push_back({i.first,negate(i.second)});
+            //     }
+            //     new_m.__comp=this->__comp;
+            //     return new_m;
+            // }   
+            std::string  str() const;
+            friend std::ostream& operator<<  (std::ostream& stream, const monomial& v) {
+                return stream<<v.str();
+            }
+    };
+    template<>
+    inline bool zore_check(const monomial& m)
+    {
+        return m.empty();
+    }
+}
+namespace std{
+    template<>
+    struct hash<clpoly::monomial>
+    {
+        std::size_t operator()(const clpoly::monomial & m) const
+        {
+            return (hash<std::string>()(m.str()));
+        }
     };
 }
 #endif

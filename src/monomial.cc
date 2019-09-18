@@ -7,12 +7,13 @@ Author:
     haokun li
 Notes:
 */
+#include "basic.hh"
 #include "monomial.hh"
 #include "variable.hh"
 #include <functional>
 #include <sstream>
 namespace clpoly{
-    const std::function<bool(const variable &,const variable &)> monomial::init_comp(less<variable>);
+    const std::function<bool(const variable &,const variable &)> monomial::init_comp=greater_s<variable>();
     std::string  monomial::str() const {
         if (this->empty())
             return "1";

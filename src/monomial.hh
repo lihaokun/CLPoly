@@ -13,6 +13,7 @@ Notes:
 #include "basic.hh"
 #include <vector>
 #include <functional>
+#include <iostream>
 #include <sstream>
 #include <string>
 namespace clpoly{
@@ -23,8 +24,10 @@ namespace clpoly{
             std::vector<std::pair<variable,int64_t>> __data; 
             int64_t __deg=0;       
         public:
+            typedef typename std::vector<std::pair<variable,int64_t>>::iterator iterator;
+            typedef typename std::vector<std::pair<variable,int64_t>>::const_iterator  const_iterator ;
             static const std::function<bool(const variable &,const variable &)> init_comp;
-            inline int64_t deg(){return this->__deg;}
+            inline int64_t deg() const {return this->__deg;}
             inline int64_t re_deg()
             {
                 this->__deg=0;
@@ -47,7 +50,7 @@ namespace clpoly{
                 this->__data.resize(tmp_size);
                 if (this->__data.size()*1.0/this->__data.capacity()<shrink_bound && this->__data.size()>shrink_bound_abs)
                 {
-                    std::cont<<"shrink_to_fit";
+                    //std::cout<<"shrink_to_fit";
                     this->__data.shrink_to_fit();
                 }
                 this->re_deg();
@@ -56,11 +59,15 @@ namespace clpoly{
             monomial(const monomial &m)
             :__data(m.__data),__comp(m.__comp),__deg(m.__deg)
             {}
+            monomial(const variable & v)
+            :__data({{v,1}}),__deg(1)
+            {}
             monomial(monomial &&m)
             :__data(std::move(m.__data)),__comp(std::move(m.__comp)),__deg(std::move(m.__deg))
             {
-                m.__comp=init_comp;
-                m.__deg=0;
+                // m.__comp=init_comp;
+                // m.__deg=0;
+                m.clear();
 
             }
             monomial( std::initializer_list<std::pair<variable,int64_t>> init)
@@ -97,7 +104,8 @@ namespace clpoly{
                 this->__comp=std::move(m.__comp);
                 this->__data=std::move(m.__data);
                 this->__deg=std::move(m.__deg);
-                m.__comp=init_comp;
+                m.clear();
+                //m.__comp=init_comp;
                 return *this;
             }
             monomial & operator=( std::initializer_list<std::pair<variable,int64_t>> init)
@@ -107,11 +115,11 @@ namespace clpoly{
                 return *this;
             }
             inline auto size() const {return this->__data.size();}
-            inline auto begin() {return this->__data.begin();}
-            inline auto begin() const {return this->__data.begin();}
+            inline iterator begin() {return this->__data.begin();}
+            inline const_iterator begin() const {return this->__data.begin();}
             
-            inline auto end() {return this->__data.end();}
-            inline auto end() const {return this->__data.end();}
+            inline iterator end() {return this->__data.end();}
+            inline const_iterator end() const {return this->__data.end();}
             
             inline std::pair<variable,int64_t>& back() {return this->__data.back();}
             inline const std::pair<variable,int64_t>& back() const {return this->__data.back();}
@@ -127,10 +135,12 @@ namespace clpoly{
                 this->__data.push_back(std::move(value));
             }
             inline std::pair<variable,int64_t>& operator[](std::size_t pos){return this->__data[pos];}
-            inline const std::pair<variable,int64_t>& operator[](std::size_t pos) const {return this->__data.at(pos);}
-            inline std::pair<variable,int64_t>& at(std::size_t pos){return this->__data[pos];}
+            inline const std::pair<variable,int64_t>& operator[](std::size_t pos) const {return this->__data[pos];}
+            inline std::pair<variable,int64_t>& at(std::size_t pos){return this->__data.at(pos);}
             inline const std::pair<variable,int64_t>& at(std::size_t pos) const {return this->__data.at(pos);}
             inline bool empty()const{return this->__data.empty();} 
+            inline std::vector<std::pair<variable,int64_t>> & data() {return this->__data;}
+            inline const std::vector<std::pair<variable,int64_t>> & data() const {return this->__data;}
             inline void clear() 
             {
                 this->__data.clear();
@@ -144,7 +154,8 @@ namespace clpoly{
                 std::swap(this->__deg,m.__deg);
             }
             inline const std::function<bool(const variable &,const variable &)> & comp() const {return this->__comp;}
-            inline std::function<bool(const variable &,const variable &)> & comp()  {return this->__comp;}
+            inline void comp(const std::function<bool(const variable &,const variable &)> & c)  {this->__comp=c;this->normalization();}
+            inline void comp(std::function<bool(const variable &,const variable &)> && c)  {this->__comp=std::move(c);this->normalization();}
             
             
             inline monomial operator*  (const monomial &p)const
@@ -177,16 +188,6 @@ namespace clpoly{
             } 
             // inline monomial operator*  (const monomial &p)const {return *this+p;}
             // inline monomial operator/  (const monomial &p)const {return *this-p;}
-            inline bool operator< (const monomial &p) const
-            {
-                #ifdef DEBUG
-                    if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
-                        throw std::invalid_argument("Left monomial is not normal.");
-                    if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
-                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
-                #endif
-                return pair_vec_comp(this->__data,p.__data,this->__comp,less<int64_t>);
-            }
             inline bool operator> (const monomial &p) const
             {
                 #ifdef DEBUG
@@ -195,7 +196,21 @@ namespace clpoly{
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
                         throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
                 #endif
-                return pair_vec_comp(p.__data,this->__data,this->__comp,less<int64_t>);
+                if (this->deg()==p.deg())
+                    return pair_vec_comp(this->__data,p.__data,this->__comp);
+                return this->deg()>p.deg();
+            }
+            inline bool operator< (const monomial &p) const
+            {
+                #ifdef DEBUG
+                    if (!pair_vec_normal_check(this->begin(),this->end(),this->__comp))
+                        throw std::invalid_argument("Left monomial is not normal.");
+                    if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
+                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
+                #endif
+                if (this->deg()==p.deg())
+                    return pair_vec_comp(p.__data,this->__data,this->__comp);
+                return this->deg()>p.deg();
             }
             inline bool operator== (const monomial &p) const
             {
@@ -205,7 +220,9 @@ namespace clpoly{
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->__comp))
                         throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
                 #endif
-                return pair_vec_equal_to(p.__data,this->__data,this->__comp,less<int64_t>);
+                if (this->deg()==p.deg())
+                    return pair_vec_equal_to(p.__data,this->__data);
+                return false;
             }
             inline bool operator<=(const monomial &p) const
             {
@@ -233,6 +250,26 @@ namespace clpoly{
             //     new_m.__comp=this->__comp;
             //     return new_m;
             // }   
+            inline const_iterator find(const variable & m) const
+            {
+                std::function<bool(const std::pair<variable,int16_t> &,const std::pair<variable,int16_t> &)> tmp_comp=
+                    [&](std::pair<variable,int16_t> a,std::pair<variable,int16_t> b){return (this->__comp(a.first,b.first));};
+                return pair_vec_find_first(this->begin(),this->end(),std::pair<variable,int16_t>(m,0),tmp_comp);
+            }
+            inline iterator find(const variable & m)
+            {
+                std::function<bool(const std::pair<variable,int16_t> &,const std::pair<variable,int16_t> &)> tmp_comp=
+                    [&](std::pair<variable,int16_t> a,std::pair<variable,int16_t> b){return (this->__comp(a.first,b.first));};
+                return pair_vec_find_first(this->begin(),this->end(),std::pair<variable,int16_t>(m,0),tmp_comp);
+            }
+            inline int64_t deg(const variable & m) const
+            {
+                auto l=this->find(m);
+                if (l!=this->end())
+                    return l->second;
+                else
+                    return 0;
+            }
             std::string  str() const;
             friend std::ostream& operator<<  (std::ostream& stream, const monomial& v) {
                 return stream<<v.str();

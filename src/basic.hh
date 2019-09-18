@@ -12,6 +12,7 @@ Notes:
 #include <vector>
 #include <algorithm>
 #include <functional>
+#include <iostream>
 #define shrink_bound 0.7
 #define shrink_bound_abs 100
 
@@ -21,15 +22,15 @@ namespace clpoly{
     {
         return c==0;
     }
-    template <class T1,class T2>
-    inline T1 plus(const T1 & op1,const T2&op2)
+    template <class T>
+    inline T plus(const T & op1,const T&op2)
     {
-        return op1+op2;
+        return std::plus<T>()(op1,op2);
     }
-    template <class T1,class T2>
-    inline T1 multiplies(const T1 & op1,const T2&op2)
+    template <class T>
+    inline T multiplies(const T & op1,const T&op2)
     {
-        return op1*op2;
+        return std::multiplies<T>()(op1,op2);
     }
     template<class T1,class T2>
     inline void add_assignment(T1 & x,const T2 & y)
@@ -56,20 +57,42 @@ namespace clpoly{
     {
         return -m;
     }
+    template<class T>
+    struct greater_s{
+        inline bool operator()(const T& m1,const T& m2)
+        {
+            return greater(m1,m2);
+        }
+    };
     template<class T1,class T2>
     inline bool greater(const T1 & m1,const T2 & m2)
     {
         return m1>m2;
+    }
+    template<class T>
+    inline bool greater(const T & m1,const T & m2)
+    {
+        return std::greater<T>()(m1,m2);
     }
     template<class T1,class T2>
     inline bool less(const T1 & m1,const T2 & m2)
     {
         return m1<m2;
     }
+    template<class T>
+    inline bool less(const T & m1,const T & m2)
+    {
+        return std::less<T>()(m1,m2);
+    }
     template<class T1,class T2>
     inline bool  equal_to(const T1 & m1,const T2 & m2)
     {
         return m1==m2;
+    }
+    template<class T>
+    inline bool  equal_to(const T & m1,const T & m2)
+    {
+        return std::equal_to<T>()(m1,m2);
     }
     template<class T>
     inline void set_zero(T & x)
@@ -87,7 +110,7 @@ namespace clpoly{
         {
             if (!comp(t1->first,t2->first) || zore_check(t2->second))
                 return false;
-            t2++;
+            ++t2;++t1;
         }
         return true;
     }
@@ -121,6 +144,13 @@ namespace clpoly{
                 }
         return tmp_size;
     }
+    template <class T,class Tv,class compare>
+    inline T pair_vec_find_first(const T & b,const T & e,const Tv & value,const compare & comp )
+    {
+        auto tmp_l = std::lower_bound(b, e, value, comp);
+        return (tmp_l!=e && equal_to(value.first, tmp_l->first)) ? tmp_l : e;
+    }
+    
     template <class T>
     T pair_vec_negate(const T & v1)
     {
@@ -152,9 +182,12 @@ namespace clpoly{
                 v.push_back(*(v2_ptr++));
             else
             {
+                
                 v.push_back(*(v1_ptr++));
+                //std::cout<<v.back().first<<" ";
                 if ( equal_to(v2_ptr->first,v.back().first))
                 {
+                    //std::cout<<"1 ";    
                     add_assignment(v.back().second,(v2_ptr++)->second);
                     if (zore_check(v.back().second))
                         v.pop_back();
@@ -168,7 +201,7 @@ namespace clpoly{
             v1_ptr=v2_ptr;
             v1_end=v2_end;
         }
-        v.reserve(v.size()+(v1_end-v1_ptr)+1);
+        v.reserve(v.size()+(v1_end-v1_ptr));
         while (v1_ptr!=v1_end)
         {
             v.push_back(*(v1_ptr++));
@@ -227,8 +260,8 @@ namespace clpoly{
         }
         return v;
     }
-    template <class T,class compare1,class compare2>
-    bool pair_vec_comp(const T & v1,const T & v2,const compare1 & comp1,const compare2 & comp2)
+    template <class T,class compare1>
+    bool pair_vec_comp(const T & v1,const T & v2,const compare1 & comp1)
     {
         auto v1_ptr=v1.begin();
         auto v1_end=v1.end();
@@ -239,15 +272,15 @@ namespace clpoly{
             if (!equal_to(v1_ptr->first,v2_ptr->first))
                 return comp1(v1_ptr->first,v2_ptr->first);
             if (!equal_to(v1_ptr->second,v2_ptr->second))
-                return comp2(v1_ptr->second,v2_ptr->second);
+                return greater(v1_ptr->second,v2_ptr->second);
         }
-        if (v1_ptr==v1_end && v2_ptr!=v2_end)
-            return true;
-        else
+        if (v1_ptr==v1_end)
             return false;
+        else
+            return true;
     }
-    template <class T,class compare1,class compare2>
-    bool pair_vec_equal_to(const T & v1,const T & v2,const compare1 & comp1,const compare2 & comp2)
+    template <class T>
+    bool pair_vec_equal_to(const T & v1,const T & v2)
     {
         if (v1.size()!=v2.size())
             return false;
@@ -340,7 +373,7 @@ namespace clpoly{
     )
     {
         std::vector<std::pair<T1,T2>> new_v;
-        const std::vector<std::pair<T1,T2>> * v1，*v2;
+        const std::vector<std::pair<T1,T2>> * v1,*v2;
         if (v1_.size()>v2_.size())
         {
             v1=&v2_;v2=&v1_;
@@ -356,23 +389,25 @@ namespace clpoly{
             new_v.reserve(v2->size());
             for(auto &&i:*v2)
             {
-                new_v.push_back(
+                new_v.push_back({
                     multiplies((*v1)[0].first,i.first),
-                    multiplies((*v1)[0].second,i.second));
+                    multiplies((*v1)[0].second,i.second)});
                 
             }
             return new_v;
         }
-        VHC<T1,std::pair<T1,T2>*,std::pair<T1,Type>*>* heap[v1->size()];
-        VHC<T1,std::pair<T1,T2>*,std::pair<T1,Type>*>* lin[v1->size()];
+        VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator,typename std::vector<std::pair<T1,T2>>::const_iterator > **heap=
+            new VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator,typename std::vector<std::pair<T1,T2>>::const_iterator >*[v1->size()];
+        VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator ,typename std::vector<std::pair<T1,T2>>::const_iterator > **lin=
+            new VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator,typename std::vector<std::pair<T1,T2>>::const_iterator >*[v1->size()];
         std::size_t reset=1;
-        VHC<T1,std::pair<T1,Type>*,std::pair<T1,Type>*> *lout;
+        VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator ,typename std::vector<std::pair<T1,T2>>::const_iterator > *lout;
         std::size_t lin_size=0;
         auto v1_ptr=v1->begin();
         auto v2_begin=v2->begin();
         auto v2_end=v2->end();
         for(std::size_t i=0;i!=v1->size();++i)
-            heap[i]=VHC_init(new VHC<T1,std::pair<T1,T2>*,std::pair<T1,T2>*>,v1_ptr++,v2_begin);
+            heap[i]=VHC_init(new VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator,typename std::vector<std::pair<T1,T2>>::const_iterator>,v1_ptr++,v2_begin);
         std::size_t heap_size=1;
         std::size_t i, j, s,i1;
         T1 m;
@@ -385,7 +420,7 @@ namespace clpoly{
             do{
                 while(heap[0]!=nullptr){
                     addmul(k,heap[0]->v1_ptr->second,heap[0]->v2_ptr->second);
-                    if (heap[0]->v2_ptr==v2_begin&& reset!=p1.size()){
+                    if (heap[0]->v2_ptr==v2_begin&& reset!=v1->size()){
                         lin[lin_size++]=heap[reset++];
                     }
                     if (++(heap[0]->v2_ptr)!=v2_end){
@@ -399,20 +434,24 @@ namespace clpoly{
                         heap[0]=heap[0]->next;
                     }
                 }
-                VHC_extract(heap,heap_size);
+                VHC_extract(heap,heap_size,comp);
                 //end:
             }while (heap_size>0 && equal_to(heap[0]->mono,m));
             if (k!=0){
                 new_v.push_back({std::move(m),std::move(k)});
             }
             while(lin_size>0)
-                VHC_insert(heap,heap_size,lin[--lin_size]);
+                VHC_insert(heap,heap_size,lin[--lin_size],comp);
         }
-        if (new_v.size()*1.0/new_v.capacity()<shrink_bound && new_v.size()>shrink_bound_abs)
-        {
-            std::cont<<"shrink_to_fit";
-            new_v.shrink_to_fit();
-        }
+        // if (new_v.size()*1.0/new_v.capacity()<shrink_bound && new_v.size()>shrink_bound_abs)
+        // {
+            
+        //     //std::cout<<"shrink_to_fit size:"<<new_v.size()<<" capacity:"<<new_v.capacity()
+        //     //        <<" v1 size:"<<v1->size()<<" v2 size:"<<v2->size()<<std::endl;
+        //     new_v.shrink_to_fit();
+        // }
+        delete [] heap;
+        delete [] lin;
         return new_v;  
     }
 }

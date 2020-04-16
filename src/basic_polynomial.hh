@@ -1,8 +1,8 @@
 /*
 Module Name:
-    atomic_polynomial.hh
+    basic_polynomial.hh
 Abstract:
-    定义类：atomic_polynomial
+    定义类：basic_polynomial
 Author:
     haokun li
 Notes:
@@ -11,12 +11,13 @@ Notes:
 #define CLPOLY_ATOMIC_POLYNOMIAL_HH
 #include "basic.hh"
 #include <vector>
+#include <list>
 #include <functional>
 #include <sstream>
 namespace clpoly{
 
-    template <class Tm,class Tc,class compare=greater<Tm>>
-    class atomic_polynomial
+    template <class Tm,class Tc,class compare=graded<Tm>>
+    class basic_polynomial
     {
         private:
             std::vector<std::pair<Tm,Tc>> __data;
@@ -33,56 +34,68 @@ namespace clpoly{
             
             static const compare comp;
             static const Tc Tc_zero;
-            atomic_polynomial():__data(){}
-            atomic_polynomial(const atomic_polynomial<Tm,Tc,compare> &p)
+            basic_polynomial():__data(){}
+            basic_polynomial(const basic_polynomial<Tm,Tc,compare> &p)
             :__data(p.__data)
             {}
-            atomic_polynomial(atomic_polynomial<Tm,Tc> &&p)
+            basic_polynomial(basic_polynomial<Tm,Tc,compare> &&p)
             :__data(std::move(p.__data))
             {}
-            atomic_polynomial( std::initializer_list<std::pair<Tm,Tc>> init)
+            basic_polynomial( std::initializer_list<std::pair<Tm,Tc>> init)
             :__data(init)
             {
                 this->normalization();
             }
-            atomic_polynomial(const std::vector<std::pair<Tm,Tc>> & v)
+            basic_polynomial(const std::vector<std::pair<Tm,Tc>> & v)
             :__data(v)
             {
                 this->normalization();
             }
-            atomic_polynomial(std::vector<std::pair<Tm,Tc>> && v)
+            basic_polynomial(std::vector<std::pair<Tm,Tc>> && v)
             :__data(std::move(v))
             {
                 this->normalization();
             }
-            
-            inline atomic_polynomial<Tm,Tc,compare> & operator=(const atomic_polynomial<Tm,Tc> & p)
+            basic_polynomial(const Tm& m)
+            :__data({{m,1}})
+            {}
+            basic_polynomial(Tm&& m)
+            :__data({std::pair<Tm,Tc>(std::move(m),1)})
+            {}
+            basic_polynomial(const Tc & c)
+            :__data({{{},c}})
+            {}
+            basic_polynomial(Tc && c)
+            :__data({{{},c}})
+            {}
+
+            inline basic_polynomial<Tm,Tc,compare> & operator=(const basic_polynomial<Tm,Tc,compare> & p)
             {
                 this->__data=p.__data;
                 return *this;
             }
             
-            inline atomic_polynomial<Tm,Tc,compare> & operator=(atomic_polynomial<Tm,Tc> && p)
+            inline basic_polynomial<Tm,Tc,compare> & operator=(basic_polynomial<Tm,Tc,compare> && p)
             {
                 this->__data=std::move(p.__data);
                 return *this;
             }
 
-            inline atomic_polynomial<Tm,Tc,compare> & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
+            inline basic_polynomial<Tm,Tc,compare> & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
             {
                 this->__data=init;
                 this->normalization();
                 return *this;
             }
             
-            inline atomic_polynomial<Tm,Tc,compare> & operator=(const std::vector<std::pair<Tm,Tc>> & init)
+            inline basic_polynomial<Tm,Tc,compare> & operator=(const std::vector<std::pair<Tm,Tc>> & init)
             {
                 this->__data=init;
                 this->normalization();
                 return *this;
             }
 
-            inline atomic_polynomial<Tm,Tc,compare> & operator=(std::vector<std::pair<Tm,Tc>> && init)
+            inline basic_polynomial<Tm,Tc,compare> & operator=(std::vector<std::pair<Tm,Tc>> && init)
             {
                 this->__data=std::move(init);
                 this->normalization();
@@ -118,7 +131,7 @@ namespace clpoly{
                 this->__data.clear();
             }
 
-            inline void swap(atomic_polynomial<Tm,Tc> &p)
+            inline void swap(basic_polynomial<Tm,Tc,compare> &p)
             {
                 this->__data.swap(p.__data);
             }
@@ -153,60 +166,75 @@ namespace clpoly{
 
             }
 
-            inline atomic_polynomial<Tm,Tc> operator+  (const atomic_polynomial<Tm,Tc> &p)const
+            inline basic_polynomial<Tm,Tc,compare> operator+  (const basic_polynomial<Tm,Tc,compare> &p)const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left atomic_polynomial is not normal.");
+                        throw std::invalid_argument("Left basic_polynomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right atomic_polynomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 #endif
                 auto new_p=pair_vec_add(this->__data,p.__data,this->comp);
                 return new_p;
             }
+            constexpr basic_polynomial<Tm,Tc,compare> operator+(const Tc & c) const
+            {
+                return (*this)+basic_polynomial<Tm,Tc,compare>(c);
+            }
 
-            inline atomic_polynomial<Tm,Tc> operator-  (const atomic_polynomial<Tm,Tc> &p)const
+            inline basic_polynomial<Tm,Tc,compare> operator-  (const basic_polynomial<Tm,Tc,compare> &p)const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left atomic_polynomial is not normal.");
+                        throw std::invalid_argument("Left basic_polynomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right atomic_polynomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 #endif
                 auto new_p=pair_vec_sub(this->__data,p.__data,this->comp);
                 return new_p;
             } 
             
-            inline atomic_polynomial<Tm,Tc> operator+  () const
+            inline basic_polynomial<Tm,Tc,compare> operator+  () const
             {
                 return *this;
             }   
 
-            inline atomic_polynomial<Tm,Tc> operator- () const
+            inline basic_polynomial<Tm,Tc,compare> operator- () const
             {
-                atomic_polynomial<Tm,Tc> new_p;
+                basic_polynomial<Tm,Tc,compare> new_p;
                 new_p.__data=pair_vec_negate(this->__data);
                 return new_p;
             } 
 
-            inline atomic_polynomial<Tm,Tc> operator*(const atomic_polynomial<Tm,Tc> & p) const
+            inline basic_polynomial<Tm,Tc,compare> operator*(const basic_polynomial<Tm,Tc,compare> & p) const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left atomic_polynomial is not normal.");
+                        throw std::invalid_argument("Left basic_polynomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right atomic_polynomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 #endif
-                atomic_polynomial<Tm,Tc> new_p;
+                basic_polynomial<Tm,Tc,compare> new_p;
                 new_p.__data= pair_vec_multiplies(this->__data,p.__data,this->comp);    
                 return new_p;
             }
-            inline atomic_polynomial<Tm,Tc>  power(unsigned i) const
+            inline basic_polynomial<Tm,Tc,compare> operator*(const Tc & p) const
             {
-                atomic_polynomial<Tm,Tc> newp;
+                basic_polynomial<Tm,Tc,compare> new_p;
+                if (zore_check<Tc>()(p)) 
+                    return new_p;
+                new_p=*this;
+                for (auto &i:new_p)
+                    i.second*=p;
+                return new_p;
+            }
+
+            inline basic_polynomial<Tm,Tc,compare>  power(unsigned i) const
+            {
+                basic_polynomial<Tm,Tc,compare> newp;
                 if (this->empty())
                     return newp; 
-                atomic_polynomial<Tm,Tc> p(*this);
+                basic_polynomial<Tm,Tc,compare> p(*this);
                 while (i!=0)
                 {
                     if (i%2!=0)
@@ -220,41 +248,41 @@ namespace clpoly{
                 }
                 return newp;
             }
-            inline bool operator> (const atomic_polynomial<Tm,Tc> &p) const
+            inline bool operator> (const basic_polynomial<Tm,Tc,compare> &p) const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left atomic_polynomial is not normal.");
+                        throw std::invalid_argument("Left basic_polynomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right atomic_polynomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 #endif
                 return pair_vec_comp(this->__data,p.__data,this->comp);
             }
-            inline bool operator< (const atomic_polynomial<Tm,Tc> &p) const
+            inline bool operator< (const basic_polynomial<Tm,Tc,compare> &p) const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left atomic_polynomial is not normal.");
+                        throw std::invalid_argument("Left basic_polynomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right atomic_polynomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 #endif
                 return pair_vec_comp(p.__data,this->__data,this->comp);
             }
-            inline bool operator== (const atomic_polynomial<Tm,Tc> &p) const
+            inline bool operator== (const basic_polynomial<Tm,Tc,compare> &p) const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left atomic_polynomial is not normal.");
+                        throw std::invalid_argument("Left basic_polynomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right atomic_polynomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 #endif
                 return pair_vec_equal_to(p.__data,this->__data);
             }
-            inline bool operator<=(const atomic_polynomial<Tm,Tc> &p) const
+            inline bool operator<=(const basic_polynomial<Tm,Tc,compare> &p) const
             {
                 return !(*this>p);
             }
-            inline bool operator>=(const atomic_polynomial<Tm,Tc> &p) const
+            inline bool operator>=(const basic_polynomial<Tm,Tc,compare> &p) const
             {
                 return !(*this<p);
             }
@@ -311,7 +339,7 @@ namespace clpoly{
                 }
                     
             }
-            friend std::ostream& operator<<  (std::ostream& stream, const atomic_polynomial<Tm,Tc>& v) 
+            friend std::ostream& operator<<  (std::ostream& stream, const basic_polynomial<Tm,Tc,compare>& v) 
             {
                 if (v.size()==0)
                     return stream<<'0';
@@ -341,15 +369,17 @@ namespace clpoly{
               
     };
 
-    template<class Tm,class Tc,class compare> const compare  atomic_polynomial<Tm, Tc, compare>::comp=compare();
-    template<class Tm,class Tc,class compare> const Tc  atomic_polynomial<Tm, Tc, compare>::Tc_zero=0;
-   
+    template<class Tm,class Tc,class compare> const compare  basic_polynomial<Tm, Tc, compare>::comp=compare();
+    template<class Tm,class Tc,class compare> const Tc  basic_polynomial<Tm, Tc, compare>::Tc_zero=0;
+    
+
+    
 }
 namespace std{
-    template<class Tm,class Tc>
-    struct hash<clpoly::atomic_polynomial<Tm,Tc>>
+    template<class Tm,class Tc,class compare>
+    struct hash<clpoly::basic_polynomial<Tm,Tc,compare>>
     {
-        std::size_t operator()(const clpoly::atomic_polynomial<Tm,Tc> & m) const
+        std::size_t operator()(const clpoly::basic_polynomial<Tm,Tc,compare> & m) const
         {
             return (hash<std::string>()(m.str()));
         }

@@ -11,7 +11,7 @@ Notes:
 #define CLPOLY_NUMBER_HH
 #include <gmpxx.h>
 namespace clpoly{
-    typedef mpz_class integer;
+    typedef mpz_class ZZ;
     template<>
     inline void addmul(mpz_class &op,const mpz_class &op1,const mpz_class&op2)
     {

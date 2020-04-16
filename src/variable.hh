@@ -117,6 +117,8 @@ namespace clpoly{
     {
         return variable(variable::init_variable(variable_name));
     }
+
+    using lex=less<variable>;
 }
 namespace std{
     template<>

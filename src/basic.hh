@@ -38,6 +38,10 @@ namespace clpoly{
     }
     using std::less;
     using std::greater;
+    template<class T>
+    using graded=greater<T>;
+
+    
     template <class T1>
     constexpr void set_zero(T1& op)
     {

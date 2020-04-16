@@ -1,6 +1,6 @@
 /*
 Module Name:
-    monomial.hh
+    basic_monomial.hh
 Abstract:
     定义类：monomial
 Author:
@@ -19,8 +19,8 @@ Notes:
 
 
 namespace clpoly{
-    template <class compare=less<variable>>
-    class monomial
+    template <class compare=lex>
+    class basic_monomial
     {
         private:
             std::vector<std::pair<variable,int64_t>> __data; 
@@ -60,60 +60,60 @@ namespace clpoly{
                 }
                 this->re_deg();
             }
-            monomial():__data(),__deg(0){}
-            monomial(const monomial<compare> &m)
+            basic_monomial():__data(),__deg(0){}
+            basic_monomial(const basic_monomial<compare> &m)
             :__data(m.__data),__deg(m.__deg)
             {}
-            monomial(const variable & v)
+            basic_monomial(const variable & v)
             :__data({{v,1}}),__deg(1)
             {}
-            monomial(monomial<compare> &&m)
+            basic_monomial(basic_monomial<compare> &&m)
             :__data(std::move(m.__data)),__deg(std::move(m.__deg))
             {
                 m.clear();
             }
-            monomial( std::initializer_list<std::pair<variable,int64_t>> init)
+            basic_monomial( std::initializer_list<std::pair<variable,int64_t>> init)
             :__data(init)
             {
                 this->normalization();
             }
-            monomial(const std::vector<std::pair<variable,int64_t>> & v)
+            basic_monomial(const std::vector<std::pair<variable,int64_t>> & v)
             :__data(v)
             {
                 this->normalization();
             }
-            monomial(std::vector<std::pair<variable,int64_t>> && v)
+            basic_monomial(std::vector<std::pair<variable,int64_t>> && v)
             :__data(std::move(v))
             {
                 this->normalization();
             }
             
-            monomial<compare> & operator=(const monomial<compare> & m)
+            basic_monomial<compare> & operator=(const basic_monomial<compare> & m)
             {
                 this->__data=m.__data;
                 this->__deg=m.__deg;
                 return *this;
             }
-            monomial<compare> & operator=(monomial<compare> && m)
+            basic_monomial<compare> & operator=(basic_monomial<compare> && m)
             {
                 this->__data=std::move(m.__data);
                 this->__deg=std::move(m.__deg);
                 m.clear();
                 return *this;
             }
-            monomial<compare> & operator=( std::initializer_list<std::pair<variable,int64_t>> init)
+            basic_monomial<compare> & operator=( std::initializer_list<std::pair<variable,int64_t>> init)
             {
                 this->__data=init;
                 this->normalization();
                 return *this;
             }
-            monomial<compare> & operator=(const std::vector<std::pair<variable,int64_t>> & init)
+            basic_monomial<compare> & operator=(const std::vector<std::pair<variable,int64_t>> & init)
             {
                 this->__data=init;
                 this->normalization();
                 return *this;
             }
-            monomial<compare> & operator=(std::vector<std::pair<variable,int64_t>> && init)
+            basic_monomial<compare> & operator=(std::vector<std::pair<variable,int64_t>> && init)
             {
                 this->__data=std::move(init);
                 this->normalization();
@@ -154,87 +154,87 @@ namespace clpoly{
                 this->__data.clear();
                 this->__deg=0;
             }
-            inline void swap(monomial<compare> &m)
+            inline void swap(basic_monomial<compare> &m)
             {
                 this->__data.swap(m.__data);
                 std::swap(this->__deg,m.__deg);
             }
 
-            inline monomial<compare> operator*  (const monomial<compare> &p)const
+            inline basic_monomial<compare> operator*  (const basic_monomial<compare> &p)const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left monomial is not normal.");
+                        throw std::invalid_argument("Left basic_monomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_monomial is not normal.(In left comparation.)");
                 #endif
-                monomial<compare> new_p;
+                basic_monomial<compare> new_p;
                 new_p.__data=pair_vec_add(this->__data,p.__data,this->comp);
                 new_p.__deg=this->__deg+p.__deg;
                 return new_p;
             }
-            inline monomial<compare> operator/  (const monomial<compare> &p)const
+            inline basic_monomial<compare> operator/  (const basic_monomial<compare> &p)const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left monomial is not normal.");
+                        throw std::invalid_argument("Left basic_monomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_monomial is not normal.(In left comparation.)");
                 #endif
-                monomial<compare> new_p;
+                basic_monomial<compare> new_p;
                 new_p.__data=pair_vec_sub(this->__data,p.__data,this->comp);
                 new_p.__deg=this->__deg-p.__deg;
                 return new_p;
             } 
-            inline bool operator> (const monomial<compare> &p) const
+            inline bool operator> (const basic_monomial<compare> &p) const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left monomial is not normal.");
+                        throw std::invalid_argument("Left basic_monomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_monomial is not normal.(In left comparation.)");
                 #endif
                 if (this->deg()==p.deg())
                     return pair_vec_comp(this->__data,p.__data,this->comp);
                 return this->deg()>p.deg();
             }
-            inline bool operator== (const monomial<compare> &p) const
+            inline bool operator== (const basic_monomial<compare> &p) const
             {
                 #ifdef DEBUG
                     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left monomial is not normal.");
+                        throw std::invalid_argument("Left basic_monomial is not normal.");
                     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right monomial is not normal.(In left comparation.)");
+                        throw std::invalid_argument("Right basic_monomial is not normal.(In left comparation.)");
                 #endif
                 if (this->deg()==p.deg())
                     return pair_vec_equal_to(p.__data,this->__data);
                 return false;
             }
-            constexpr bool operator< (const monomial<compare> &p) const
+            constexpr bool operator< (const basic_monomial<compare> &p) const
             {
                 return (p>*this);
             }
-            constexpr bool operator<=(const monomial<compare> &p) const
+            constexpr bool operator<=(const basic_monomial<compare> &p) const
             {
                 return !(*this>p);
             }
-            constexpr bool operator>=(const monomial<compare> &p) const
+            constexpr bool operator>=(const basic_monomial<compare> &p) const
             {
                 return !(p>*this);
             }
-            constexpr bool operator!=(const monomial<compare> &p) const
+            constexpr bool operator!=(const basic_monomial<compare> &p) const
             {
                 return !(*this==p);
             }
 
             
-            // inline monomial operator-   () const
+            // inline basic_monomial operator-   () const
             // {
             //     return *this;
             // }   
-            // inline monomial operator+ () const
+            // inline basic_monomial operator+ () const
             // {
-            //     monomial new_m;
+            //     basic_monomial new_m;
             //     new_m.reserve(this->size());
             //     for (auto &&i:*this)
             //     {
@@ -263,7 +263,7 @@ namespace clpoly{
                 else
                     return 0;
             }
-            friend std::ostream& operator<<  (std::ostream& stream, const monomial<compare>& v) {
+            friend std::ostream& operator<<  (std::ostream& stream, const basic_monomial<compare>& v) {
                 if (v.empty())
                     return stream<<'1';
                 bool is_print=false;
@@ -303,23 +303,28 @@ namespace clpoly{
             }
 
     };
-    template<class compare> const compare monomial<compare>::comp=compare();
+    template<class compare> const compare basic_monomial<compare>::comp=compare();
+
 
     template<class compare>
-    struct zore_check<monomial<compare>>: public std::unary_function<monomial<compare>, bool>
+    struct zore_check<basic_monomial<compare>>: public std::unary_function<basic_monomial<compare>, bool>
     {
-        constexpr bool operator()(const monomial<compare> & m)
+        constexpr bool operator()(const basic_monomial<compare> & m)
         {
             return m.empty();
         } 
     };
 
+
+    using monomial=basic_monomial<>;
+    using grlex=graded<basic_monomial<lex>>;
+
 }
 namespace std{
     template<class compare>
-    struct hash<clpoly::monomial<compare>>: public std::unary_function<clpoly::monomial<compare>, std::size_t>
+    struct hash<clpoly::basic_monomial<compare>>: public std::unary_function<clpoly::basic_monomial<compare>, std::size_t>
     {
-        std::size_t operator()(const clpoly::monomial<compare> & m) const
+        std::size_t operator()(const clpoly::basic_monomial<compare> & m) const
         {
             return (hash<std::string>()(m.str()));
         }

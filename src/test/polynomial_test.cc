@@ -4,9 +4,14 @@
 #include <iostream>
 int main(){
     clpoly::variable x("x");
-    clpoly::monomial m=x;
-    clpoly::polynomial p=std::move(m);
-    std::cout<<m<<std::endl;
-    std::cout<<p<<std::endl;
+    clpoly::variable y("y");
+    clpoly::variable z("z");
+    clpoly::polynomial_ZZ p=2*x+y+1;
+    std::cout<< p<<std::endl;
+    auto l=clpoly::get_var(p);
+    for (auto &i:l)
+        std::cout<<i.first<<":"<<i.second<<" ";
+    std::cout<<std::endl<<clpoly::get_deg(p)<<std::endl;
+    
     return 0;
 }

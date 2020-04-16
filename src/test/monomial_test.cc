@@ -11,11 +11,17 @@ int main(){
     clpoly::variable x1("x1");
     clpoly::variable x2("x2");
     clpoly::variable x3("x3");
-    clpoly::monomial<> px0=x0;
+    clpoly::monomial px0=x0;
     std::cout<<"x0:"<<px0<<std::endl;
     
-    clpoly::monomial<> p={{x1,2},{x3,4}};
-    clpoly::monomial<> p2=p;
+    clpoly::monomial p={{x1,2},{x3,4}};
+    std::vector<std::pair<clpoly::variable,int64_t>> v={{x0,1},{x1,2}};
+    clpoly::monomial px1(std::move(v));
+    std::cout<<"x0:"<<px0<<std::endl;
+    
+    std::cout<<"x0:"<<v.size()<<std::endl;
+    
+    clpoly::monomial p2=p;
     std::cout<<"p:"<<p<<std::endl;
     std::cout<<"p2:"<<p2.str()<<std::endl;
     
@@ -36,10 +42,10 @@ int main(){
     std::cout<<"p:"<<p<<std::endl;
     std::cout<<"p.deg:"<<p.deg()<<std::endl;
     std::cout<<"p.deg(x1):"<<p.deg(x1)<<std::endl;
-    clpoly::monomial<> p3(std::move(p));
-    clpoly::monomial<> p1=std::move(p3);
+    clpoly::monomial p3(std::move(p));
+    clpoly::monomial p1=std::move(p3);
     
-    std::cout<<"p:"<<p<<" zore_check:"<<clpoly::zore_check<clpoly::monomial<>>()(p)<<std::endl;
+    std::cout<<"p:"<<p<<" zore_check:"<<clpoly::zore_check<clpoly::monomial>()(p)<<std::endl;
     std::cout<<"p1:"<<p1<<std::endl;
     std::cout<<"p3:"<<p3<<std::endl;
     

@@ -1,3 +1,3 @@
 # CLPoly
 
-CSAL is a c++ library of polynomial.
+CLPoly is a c++ library of polynomial.

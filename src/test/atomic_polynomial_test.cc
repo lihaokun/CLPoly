@@ -12,21 +12,21 @@ int main(){
     clpoly::variable y("y");
     clpoly::variable z("z");
     clpoly::variable g("g");
-    //clpoly::monomial m1={{x,1}};
-    clpoly::atomic_polynomial<clpoly::monomial,clpoly::integer> p={{{{x,1}},1},{{{y,1}},1},{{{z,1}},1},{{{g,1}},1},{{},1}};
+    //clpoly::monomial<> m1={{x,1}};
+    clpoly::atomic_polynomial<clpoly::monomial<>,clpoly::integer> p={{{{x,1}},1},{{{y,1}},1},{{{z,1}},1},{{{g,1}},1},{{},1}};
     std::cout<<p<<" normal?"<<p.is_normal()<<std::endl;
     
     p.normalization();
     std::cout<<p<<std::endl;
-    clpoly::atomic_polynomial<clpoly::monomial,clpoly::integer> n1={{{},1}};
-    clpoly::atomic_polynomial<clpoly::monomial,clpoly::integer> n2={{{},2}};
+    clpoly::atomic_polynomial<clpoly::monomial<>,clpoly::integer> n1={{{},1}};
+    clpoly::atomic_polynomial<clpoly::monomial<>,clpoly::integer> n2={{{},2}};
     //std::cout<<"n1<n2?"<<(n1.begin()->first<n2.begin()->first)<<std::endl;
     // // clpoly::atomic_polynomial<int,int> p={{1,2},{3,4}};
     // clpoly::atomic_polynomial<int,int> p2=p;
     std::cout<<"p.power(2):"<<(p.power(2))<<std::endl;
     std::cout<<"(p+1)*(p+2):"<<((p+n1)*(p+n2))<<std::endl;
     std::cout<<"p.power(2).coef(x*y):"<<(p.power(2).coef({{x,1},{y,1}}))<<std::endl;
-    clpoly::atomic_polynomial<clpoly::monomial,clpoly::integer> p2=p.power(20);
+    clpoly::atomic_polynomial<clpoly::monomial<>,clpoly::integer> p2=p.power(20);
     auto t=clock();
     auto p3=(p2+n1)*(p2+n2);
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);

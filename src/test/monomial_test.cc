@@ -6,18 +6,18 @@
 
 
 int main(){
-    clpoly::variable x('x');
+    clpoly::variable x("x");
     clpoly::variable x0("x0");
     clpoly::variable x1("x1");
     clpoly::variable x2("x2");
     clpoly::variable x3("x3");
-    clpoly::monomial px0=x0;
+    clpoly::monomial<> px0=x0;
     std::cout<<"x0:"<<px0<<std::endl;
     
-    clpoly::monomial p={{x1,2},{x3,4}};
-    clpoly::monomial p2=p;
+    clpoly::monomial<> p={{x1,2},{x3,4}};
+    clpoly::monomial<> p2=p;
     std::cout<<"p:"<<p<<std::endl;
-    std::cout<<"p2:"<<p2<<std::endl;
+    std::cout<<"p2:"<<p2.str()<<std::endl;
     
     p.push_back({x1,2});
     p.push_back({x0,2});
@@ -35,11 +35,11 @@ int main(){
     std::cout<<"p2:"<<p2<<std::endl;
     std::cout<<"p:"<<p<<std::endl;
     std::cout<<"p.deg:"<<p.deg()<<std::endl;
+    std::cout<<"p.deg(x1):"<<p.deg(x1)<<std::endl;
+    clpoly::monomial<> p3(std::move(p));
+    clpoly::monomial<> p1=std::move(p3);
     
-    clpoly::monomial p3(std::move(p));
-    clpoly::monomial p1=std::move(p3);
-    
-    std::cout<<"p:"<<p<<std::endl;
+    std::cout<<"p:"<<p<<" zore_check:"<<clpoly::zore_check<clpoly::monomial<>>()(p)<<std::endl;
     std::cout<<"p1:"<<p1<<std::endl;
     std::cout<<"p3:"<<p3<<std::endl;
     
@@ -47,13 +47,13 @@ int main(){
     std::cout<<"p2*p1:"<<(p2*p1)<<std::endl;
     std::cout<<"p1/p2:"<<(p1/p2)<<std::endl;
     std::cout<<"p2/p1:"<<(p2/p1)<<std::endl;
-    p2.comp(std::less<clpoly::variable>());
-    std::cout<<"p2.is_normal:"<<p2.is_normal()<<std::endl;
-    p2.normalization();
-    std::cout<<"p2:"<<p2<<std::endl;
-    p1.comp(std::greater<clpoly::variable>());
-    p1.normalization();
-    std::cout<<"p1*p2:"<<(p1*p2)<<" p1*p2.is_normal:"<<(p1*p2).is_normal()<<std::endl;
-    std::cout<<"p1.deg(x1)="<<p1.deg(x1)<<std::endl;
+    // p2.comp(std::less<clpoly::variable>());
+    // std::cout<<"p2.is_normal:"<<p2.is_normal()<<std::endl;
+    // p2.normalization();
+    // std::cout<<"p2:"<<p2<<std::endl;
+    // p1.comp(std::greater<clpoly::variable>());
+    // p1.normalization();
+    // std::cout<<"p1*p2:"<<(p1*p2)<<" p1*p2.is_normal:"<<(p1*p2).is_normal()<<std::endl;
+    // std::cout<<"p1.deg(x1)="<<p1.deg(x1)<<std::endl;
     
 }

@@ -27,7 +27,11 @@ namespace clpoly{
             return monomial({{v1,1},{v2,1}});
         return monomial({{v2,1},{v1,1}});          
     }
-    
+    monomial operator* (const monomial & v1,const variable & v2)
+    {
+        return v1*monomial(v2);          
+    }
+
     polynomial_ZZ operator* (const ZZ & v1,const monomial & v2)
     {
         return polynomial_ZZ(v2)*v1;          
@@ -55,11 +59,11 @@ namespace clpoly{
     }
     polynomial_ZZ operator+ (const monomial & m,const polynomial_ZZ & p)
     {
-        return p+m;
+        return p+polynomial_ZZ(m);
     }
     polynomial_ZZ operator+ (const polynomial_ZZ & p,const monomial & m)
     {
-        return p+m;
+        return p+polynomial_ZZ(m);
     }
 
     polynomial_ZZ operator+ (const monomial & m,const ZZ & p)
@@ -73,7 +77,7 @@ namespace clpoly{
     }
 
     template<class Tc,class comp_v,class comp_m>
-    std::list<std::pair<variable,size_t>> get_var(const polynomial_<Tc,comp_v,comp_m>& p)
+    std::list<std::pair<variable,size_t>> get_variables(const polynomial_<Tc,comp_v,comp_m>& p)
     {
         std::list<std::pair<variable,size_t>> l;
         typename std::list<std::pair<variable,size_t>>::iterator l_ptr;
@@ -88,18 +92,22 @@ namespace clpoly{
                 {
                     l_ptr=l.begin();
                     for(;m_ptr!=i.first.end() && i.first.comp(m_ptr->first,l_ptr->first);l.push_front(*(m_ptr++)));
-                    ++l_ptr;
                     while(l_ptr!=l.end() && m_ptr!=i.first.end())
                     {
                         if (i.first.comp(m_ptr->first,l_ptr->first))
                         {
-                            l.insert(l_ptr,*m_ptr);
+                            l.insert(l_ptr,*(m_ptr++));
                         }
                         else
                         {
-                            if (m_ptr->first==l_ptr->first && m_ptr->second>l_ptr->second) //equal_to //greater
-                                l_ptr->second=(m_ptr++)->second;
-                            ++l_ptr;
+                            if (m_ptr->first==l_ptr->first)//equal_to 
+                            {
+                                if (m_ptr->second>l_ptr->second) //greater
+                                    l_ptr->second=m_ptr->second;
+                                ++l_ptr;++m_ptr;
+                            }    
+                            else
+                                ++l_ptr;
                         }
                         
                     } 

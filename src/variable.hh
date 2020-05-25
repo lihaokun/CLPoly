@@ -14,6 +14,7 @@ Notes:
 #include <vector>
 #include <string>
 #include <iostream>
+#include "basic.hh"
 #include <unordered_map>
 namespace clpoly{
 
@@ -62,6 +63,10 @@ namespace clpoly{
                 this->__serial=v.__serial;
             }
             
+            // constexpr operator std::size_t()const {return __serial;}
+            // constexpr operator int()const {return __serial;}
+            // constexpr operator long()const {return __serial;}
+            // constexpr operator uint()const {return __serial;}
             constexpr std::size_t serial() const {return this->__serial;}
             inline const std::string & name() const {return variables[this->__serial];} 
             constexpr bool operator==(const variable & v) const {return this->__serial==v.__serial;}
@@ -118,7 +123,9 @@ namespace clpoly{
         return variable(variable::init_variable(variable_name));
     }
 
-    using lex=less<variable>;
+    //using lex=less<variable>;
+
+
 }
 namespace std{
     template<>

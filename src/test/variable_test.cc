@@ -12,6 +12,8 @@ int main(){
     clpoly::variable v2("A");
     clpoly::variable v3=clpoly::variable::get_variable("A");
     std::cout<<"v2 "<<v2.serial()<<" "<<v2<<std::endl;
+    //std::cout<<"v2 "<<std::size_t(v2)<<" "<<v2<<std::endl;
+    
     std::cout<<"v3 "<<v3.serial()<<" "<<v3<<std::endl;
     clpoly::variable v4=clpoly::variable::get_variable(2);
     std::cout<<"v4 "<<v4.serial()<<" "<<v4<<std::endl;
@@ -30,7 +32,7 @@ int main(){
     {
         std::cout<<i.first<<":"<<i.second<<std::endl;
     }
-
+    
 
     
     

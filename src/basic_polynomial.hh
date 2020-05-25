@@ -11,27 +11,31 @@ Notes:
 #define CLPOLY_ATOMIC_POLYNOMIAL_HH
 #include "basic.hh"
 #include "variable.hh"
+#include "monomial_order.hh"
 #include <vector>
 #include <list>
 #include <functional>
 #include <algorithm>
 #include <sstream>
 namespace clpoly{
-        class basic_polynomial_status{
+    class basic_polynomial_status{
         public:
             bool is_var;
             bool is_deg;
-            std::list<std::pair<variable,size_t>>  variables;
+            std::list<std::pair<variable,std::size_t>>  variables;
             int64_t deg;
+
             basic_polynomial_status()
             :is_var(false),is_deg(false)
             {}
+
             basic_polynomial_status(const basic_polynomial_status & b)
             :is_var(b.is_var),is_deg(b.is_deg),deg(b.deg)
             {
                 if (is_var)
                     variables=b.variables;
             }
+
             basic_polynomial_status(basic_polynomial_status && b)
             :is_var(std::move(b.is_var)),is_deg(std::move(b.is_deg)),deg(std::move(b.deg))
             {
@@ -39,8 +43,11 @@ namespace clpoly{
                     variables=std::move(b.variables);
                 b.clear();
             }
+
             basic_polynomial_status & operator=(const basic_polynomial_status & b)
             {
+                if (&b==this)
+                    return *this;
                 this->is_var=b.is_var;
                 this->deg=b.deg;
                 this->is_deg=b.is_deg;
@@ -48,8 +55,11 @@ namespace clpoly{
                     this->variables=b.variables;
                 return *this;
             }
+
             basic_polynomial_status & operator=(basic_polynomial_status && b)
             {
+                if (&b==this)
+                    return *this;
                 this->is_var=b.is_var;
                 this->deg=b.deg;
                 this->is_deg=b.is_deg;
@@ -58,8 +68,11 @@ namespace clpoly{
                 b.clear();
                 return *this;
             }
+
             void swap(basic_polynomial_status & b)
             {
+                if (&b==this)
+                    return void();
                 std::swap(this->is_deg,b.is_deg);
                 std::swap(this->is_var,b.is_var);
                 std::swap(this->deg,b.deg);
@@ -71,13 +84,13 @@ namespace clpoly{
                 is_var=is_deg=false;
             }
     };
-
-    template <class Tm,class Tc,class compare=graded<Tm>>
+    template <class Tm,class Tc,class compare=grlex>
     class basic_polynomial
     {
         private:
             std::vector<std::pair<Tm,Tc>> __data;
             mutable basic_polynomial_status __status;
+            compare* __comp=&init_comp;
         public:
             typedef compare compare_type;
             typedef Tm momomial_type;
@@ -87,15 +100,16 @@ namespace clpoly{
 
             typedef typename std::vector<std::pair<Tm,Tc>>::iterator iterator;
             typedef typename std::vector<std::pair<Tm,Tc>>::const_iterator  const_iterator ;
-            
-            static const compare comp;
+
+            static compare init_comp;
             static const Tc Tc_zero;
             basic_polynomial():__data(){}
-            basic_polynomial(const basic_polynomial<Tm,Tc,compare> &p)
-            :__data(p.__data),__status(p.__status)
+            basic_polynomial(compare *p):__data(),__comp(p){}
+            basic_polynomial(const basic_polynomial &p)
+            :__data(p.__data),__status(p.__status),__comp(p.__comp)
             {}
-            basic_polynomial(basic_polynomial<Tm,Tc,compare> &&p)
-            :__data(std::move(p.__data)),__status(std::move(p.__status))
+            basic_polynomial(basic_polynomial &&p)
+            :__data(std::move(p.__data)),__status(std::move(p.__status)),__comp(p.__comp)
             {}
             basic_polynomial( std::initializer_list<std::pair<Tm,Tc>> init)
             :__data(init)
@@ -125,29 +139,27 @@ namespace clpoly{
             :__data({{{},c}})
             {}
 
-            inline basic_polynomial<Tm,Tc,compare> & operator=(const basic_polynomial<Tm,Tc,compare> & p)
+            inline basic_polynomial & operator=(const basic_polynomial & p)
             {
+                if (&p==this)
+                    return *this;
                 this->__data=p.__data;
                 this->__status=p.__status;
+                this->__comp=p.__comp;
                 return *this;
             }
-            
-            inline basic_polynomial<Tm,Tc,compare> & operator=(basic_polynomial<Tm,Tc,compare> && p)
+
+            inline basic_polynomial & operator=(basic_polynomial && p)
             {
+                if (&p==this)
+                    return *this;
                 this->__data=std::move(p.__data);
                 this->__status=std::move(p.__status);
+                this->__comp=p.__comp;
                 return *this;
             }
 
-            inline basic_polynomial<Tm,Tc,compare> & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
-            {
-                this->__data=init;
-                this->__status.clear();
-                this->normalization();
-                return *this;
-            }
-            
-            inline basic_polynomial<Tm,Tc,compare> & operator=(const std::vector<std::pair<Tm,Tc>> & init)
+            inline basic_polynomial & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
             {
                 this->__data=init;
                 this->__status.clear();
@@ -155,7 +167,15 @@ namespace clpoly{
                 return *this;
             }
 
-            inline basic_polynomial<Tm,Tc,compare> & operator=(std::vector<std::pair<Tm,Tc>> && init)
+            inline basic_polynomial & operator=(const std::vector<std::pair<Tm,Tc>> & init)
+            {
+                this->__data=init;
+                this->__status.clear();
+                this->normalization();
+                return *this;
+            }
+
+            inline basic_polynomial & operator=(std::vector<std::pair<Tm,Tc>> && init)
             {
                 this->__data=std::move(init);
                 this->__status.clear();
@@ -184,22 +204,30 @@ namespace clpoly{
             constexpr bool empty()const{return this->__data.empty();} 
             constexpr std::vector<std::pair<Tm,Tc>> & data() {return this->__data;}
             constexpr const std::vector<std::pair<Tm,Tc>> & data() const {return this->__data;}
-            
+            constexpr const compare & comp() const {return *(this->__comp);}
+            constexpr compare & comp() {return *(this->__comp);}
+            inline bool comp(const variable & a,const variable &b)const {return (*this->__comp)(a,b);}
+            constexpr void comp(const compare * c){this->__comp=c;}
+            constexpr compare * comp_ptr() const {return this->__comp;}
+
             constexpr void shrink_to_fit(){this->__data.shrink_to_fit();}
             constexpr std::size_t capacity(){return this->__data.capacity();}
             inline void clear() 
             {
                 this->__data.clear();
-                this->status.clear();
+                this->__status.clear();
             }
 
-            inline void swap(basic_polynomial<Tm,Tc,compare> &p)
+            inline void swap(basic_polynomial &p)
             {
+                if (&p==this)
+                    return void();
                 this->__data.swap(p.__data);
                 this->__status.swap(p.__swap);
+                std::swap(this->__comp,p.__comp);
             }
 
-            inline const std::list<std::pair<variable,size_t>> & variables()  const
+            inline const std::list<std::pair<variable,std::size_t>> & variables()  const
             {
                 if (!this->__status.is_var)
                 {
@@ -218,12 +246,11 @@ namespace clpoly{
                 }
                 return this->__status.deg;
             }
-            
-            
+
             inline bool is_normal()  const 
             {
                 this->__status.clear();
-                return pair_vec_normal_check(this->__data,this->comp);
+                return pair_vec_first_normal_check(this->__data,this->comp()) && pair_vec_normal_check(this->__data,this->comp());
                 // if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
                 //     return false
                 // for (auto && i:*this)
@@ -238,73 +265,79 @@ namespace clpoly{
                 this->__status.clear();
                 // for (auto && i:*this)
                 //     i.first.normalization());
-                static std::function<bool(const std::pair<Tm,Tc> &,const std::pair<Tm,Tc> &)> tmp_comp=
-                    [&](std::pair<Tm,Tc> a,std::pair<Tm,Tc> b){return (this->comp(a.first,b.first));};
-                auto tmp_size=pair_vec_normalization(this->__data,tmp_comp);
+                pair_vec_first_normalization(this->__data,this->comp());
+                auto tmp_size=pair_vec_normalization(this->__data,pair_compare<Tm,Tc,compare>(this->__comp));
                 this->resize(tmp_size);
-                if (this->__data.size()*1.0/this->__data.capacity()<CLPOLY_shrink_bound && this->__data.size()>CLPOLY_shrink_bound_abs)
-                {
-                    //std::cout<<"shrink_to_fit";
-                    this->__data.shrink_to_fit();
-                }
+                __auto_shrink(this->__data);
 
             }
 
-            inline basic_polynomial<Tm,Tc,compare> operator+  (const basic_polynomial<Tm,Tc,compare> &p)const
+            inline basic_polynomial operator+  (const basic_polynomial &p)const
             {
-                #ifdef DEBUG
-                    if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left basic_polynomial is not normal.");
-                    if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
-                #endif
-                auto new_p=pair_vec_add(this->__data,p.__data,this->comp);
+                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                // #ifdef DEBUG
+                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //         throw std::invalid_argument("Left basic_polynomial is not normal.");
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
+                // #endif
+                basic_polynomial new_p;
+                new_p.__comp=this->__comp;
+                new_p.__data=pair_vec_add(this->__data,p.__data,this->comp());
                 return new_p;
             }
-            constexpr basic_polynomial<Tm,Tc,compare> operator+(const Tc & c) const
+
+            constexpr basic_polynomial operator+(const Tc & c) const
             {
-                return (*this)+basic_polynomial<Tm,Tc,compare>(c);
+                return (*this)+basic_polynomial(c);
             }
 
-            inline basic_polynomial<Tm,Tc,compare> operator-  (const basic_polynomial<Tm,Tc,compare> &p)const
+            inline basic_polynomial operator-  (const basic_polynomial &p)const
             {
-                #ifdef DEBUG
-                    if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left basic_polynomial is not normal.");
-                    if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
-                #endif
-                auto new_p=pair_vec_sub(this->__data,p.__data,this->comp);
+                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                // #ifdef DEBUG
+                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //         throw std::invalid_argument("Left basic_polynomial is not normal.");
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
+                // #endif
+                basic_polynomial new_p;
+                new_p.__comp=this->__comp;
+                new_p.__data=pair_vec_sub(this->__data,p.__data,this->comp());
                 return new_p;
             } 
-            
-            inline basic_polynomial<Tm,Tc,compare> operator+  () const
+
+            inline basic_polynomial operator+  () const
             {
                 return *this;
             }   
 
-            inline basic_polynomial<Tm,Tc,compare> operator- () const
+            inline basic_polynomial operator- () const
             {
-                basic_polynomial<Tm,Tc,compare> new_p;
+                basic_polynomial new_p;
+                new_p.__comp=this->__comp;
                 new_p.__data=pair_vec_negate(this->__data);
                 return new_p;
             } 
 
-            inline basic_polynomial<Tm,Tc,compare> operator*(const basic_polynomial<Tm,Tc,compare> & p) const
+            inline basic_polynomial operator*(const basic_polynomial & p) const
             {
-                #ifdef DEBUG
-                    if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left basic_polynomial is not normal.");
-                    if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
-                #endif
-                basic_polynomial<Tm,Tc,compare> new_p;
-                new_p.__data= pair_vec_multiplies(this->__data,p.__data,this->comp);    
+                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                // #ifdef DEBUG
+                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //         throw std::invalid_argument("Left basic_polynomial is not normal.");
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
+                // #endif
+                basic_polynomial new_p;
+                new_p.__comp=this->__comp;
+                new_p.__data=pair_vec_multiplies(this->__data,p.__data,this->comp());    
                 return new_p;
             }
-            inline basic_polynomial<Tm,Tc,compare> operator*(const Tc & p) const
+
+            inline basic_polynomial operator*(const Tc & p) const
             {
-                basic_polynomial<Tm,Tc,compare> new_p;
+                basic_polynomial new_p;
                 if (zore_check<Tc>()(p) || this->empty()) 
                     return new_p;
                 new_p=*this;
@@ -313,12 +346,12 @@ namespace clpoly{
                 return new_p;
             }
 
-            inline basic_polynomial<Tm,Tc,compare>  power(unsigned i) const
+            inline basic_polynomial  power(unsigned i) const
             {
-                basic_polynomial<Tm,Tc,compare> newp;
+                basic_polynomial newp;
                 if (this->empty())
                     return newp; 
-                basic_polynomial<Tm,Tc,compare> p(*this);
+                basic_polynomial p(*this);
                 while (i!=0)
                 {
                     if (i%2!=0)
@@ -332,85 +365,77 @@ namespace clpoly{
                 }
                 return newp;
             }
-            inline bool operator> (const basic_polynomial<Tm,Tc,compare> &p) const
+
+            inline bool operator> (const basic_polynomial &p) const
             {
-                #ifdef DEBUG
-                    if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left basic_polynomial is not normal.");
-                    if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
-                #endif
-                return pair_vec_comp(this->__data,p.__data,this->comp);
+                assert(this->__comp==p.__comp || this->comp()==p.comp());
+               
+                // #ifdef DEBUG
+                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //         throw std::invalid_argument("Left basic_polynomial is not normal.");
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
+                // #endif
+                return pair_vec_comp(this->__data,p.__data,this->comp());
             }
-            inline bool operator< (const basic_polynomial<Tm,Tc,compare> &p) const
+
+            inline bool operator< (const basic_polynomial &p) const
             {
-                #ifdef DEBUG
-                    if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left basic_polynomial is not normal.");
-                    if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
-                #endif
-                return pair_vec_comp(p.__data,this->__data,this->comp);
+                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                // #ifdef DEBUG
+                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //         throw std::invalid_argument("Left basic_polynomial is not normal.");
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
+                // #endif
+                return pair_vec_comp(p.__data,this->__data,this->comp());
             }
-            inline bool operator== (const basic_polynomial<Tm,Tc,compare> &p) const
+
+            inline bool operator== (const basic_polynomial &p) const
             {
-                #ifdef DEBUG
-                    if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
-                        throw std::invalid_argument("Left basic_polynomial is not normal.");
-                    if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
-                        throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
-                #endif
+                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                // #ifdef DEBUG
+                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //         throw std::invalid_argument("Left basic_polynomial is not normal.");
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
+                // #endif
                 return pair_vec_equal_to(p.__data,this->__data);
             }
-            inline bool operator<=(const basic_polynomial<Tm,Tc,compare> &p) const
+
+            inline bool operator<=(const basic_polynomial &p) const
             {
                 return !(*this>p);
             }
-            inline bool operator>=(const basic_polynomial<Tm,Tc,compare> &p) const
+
+            inline bool operator>=(const basic_polynomial &p) const
             {
                 return !(*this<p);
             }
+
             std::string str() const
             {
                 if (this->size()==0)
                     return "0";
                 std::ostringstream ss;
-                // bool is_print=false;
-                // for(auto i=this->begin();i!=this->end();++i)
-                // {
-                //     if (!zore_check(i->first) && !zore_check(i->second)){
-                //         if (is_print && greater(i->second,Tc_zero))
-                //             ss<<"+";
-                //         is_print=true;
-                //         if (equal_to(i->second,-1))
-                //             ss<<"-";
-                //         else
-                //             if (!equal_to(i->second,1) )
-                //                 ss<< i->second<<"*";
-                //         ss<<i->first;
-                //         continue;
-                //     }
-                //     if (zore_check(i->first) && !zore_check(i->second))
-                //         if (is_print && greater(i->second,Tc_zero))
-                //             ss<<"+";
-                //         is_print=true;
-                //         ss<<i->second;
-                // }
                 ss<<(*this);
                 return ss.str();
             }
+
             inline const_iterator find(const Tm & m) const
             {
-                std::function<bool(const std::pair<Tm,Tc> &,const std::pair<Tm,Tc> &)> tmp_comp=
-                    [&](std::pair<Tm,Tc> a,std::pair<Tm,Tc> b){return (this->comp(a.first,b.first));};
-                return pair_vec_find_first(this->begin(),this->end(),std::pair<Tm,Tc>(m,0),tmp_comp);
+                // std::function<bool(const std::pair<Tm,Tc> &,const std::pair<Tm,Tc> &)> tmp_comp=
+                //     [&](std::pair<Tm,Tc> a,std::pair<Tm,Tc> b){return (this->comp(a.first,b.first));};
+                return pair_vec_find_first(this->begin(),this->end(),std::pair<Tm,Tc>(m,0),pair_compare<Tm,Tc,compare>(this->__comp));
             }
+
             inline iterator find(const Tm & m)
             {
-                std::function<bool(const std::pair<Tm,Tc> &,const std::pair<Tm,Tc> &)> tmp_comp=
-                    [&](std::pair<Tm,Tc> a,std::pair<Tm,Tc> b){return (this->comp(a.first,b.first));};
-                return pair_vec_find_first(this->begin(),this->end(),std::pair<Tm,Tc>(m,0),tmp_comp);
+                // std::function<bool(const std::pair<Tm,Tc> &,const std::pair<Tm,Tc> &)> tmp_comp=
+                //     [&](std::pair<Tm,Tc> a,std::pair<Tm,Tc> b){return (this->comp(a.first,b.first));};
+                return pair_vec_find_first(this->begin(),this->end(),std::pair<Tm,Tc>(m,0),pair_compare<Tm,Tc,compare>(this->__comp));
             }
+
             inline const Tc & coef(const Tm & m) const
             {
                 auto l=this->find(m);
@@ -423,7 +448,8 @@ namespace clpoly{
                 }
                     
             }
-            friend std::ostream& operator<<  (std::ostream& stream, const basic_polynomial<Tm,Tc,compare>& v) 
+
+            friend std::ostream& operator<<  (std::ostream& stream, const basic_polynomial& v) 
             {
                 if (v.size()==0)
                     return stream<<'0';
@@ -453,9 +479,18 @@ namespace clpoly{
               
     };
 
-    template<class Tm,class Tc,class compare> const compare  basic_polynomial<Tm, Tc, compare>::comp=compare();
+    template<class Tm,class Tc,class compare>  compare  basic_polynomial<Tm, Tc, compare>::init_comp=compare();
     template<class Tm,class Tc,class compare> const Tc  basic_polynomial<Tm, Tc, compare>::Tc_zero=0;
     
+    template<class Tm,class Tc,class compare>
+    struct zore_check<basic_polynomial<Tm, Tc, compare>>: public std::unary_function<basic_polynomial<Tm, Tc, compare>, bool>
+    {
+        constexpr bool operator()(const basic_polynomial<Tm, Tc, compare> & m)
+        {
+            return m.empty();
+        } 
+    };
+
 
 }
 namespace std{

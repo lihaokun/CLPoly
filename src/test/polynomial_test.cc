@@ -38,22 +38,29 @@ int main(){
     clpoly::variable d("d");
     clpoly::polynomial_ZZ p=2*x*z*x*x+d*y*z*z+1;
     std::cout<< p<<std::endl;
-    auto l=p.variables();
-    for (auto &i:l)
-        std::cout<<i.first<<":"<<i.second<<" ";
-    std::cout<<std::endl<<p.degree()<<std::endl;
-    auto t=clock();
-    auto PP=read_file("/home/ker/Documents/Bigpoly/j621_data.txt");
-    std::cout<<PP.size()<<std::endl;
-    std::cout<<"( "<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
-    t=clock();
-    auto ll=PP.variables();
-    for (auto &i:ll)
-        std::cout<<i.first<<":"<<i.second<<" ";
-    std::cout<<std::endl;
-    std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
-    t=clock();
-    std::cout<<PP.degree()<<std::endl;
-    std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+    clpoly::univariate_first_order comp_z(z);
+    clpoly::polynomial_<clpoly::ZZ,clpoly::univariate_first_order> p2(&comp_z);
+    clpoly::poly_convert(std::move(p),p2);
+    std::cout<<p2<<std::endl;
+    std::cout<< p<<std::endl;
+    // auto l=p.variables();
+    // for (auto &i:l)
+    //     std::cout<<i.first<<":"<<i.second<<" ";
+    // std::cout<<std::endl<<p.degree()<<std::endl;
+    // auto t=clock();
+    // auto PP=read_file("/home/ker/Documents/Bigpoly/j621_data.txt");
+    // std::cout<<PP.size()<<std::endl;
+    // std::cout<<"( "<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+    // t=clock();
+    // auto ll=PP.variables();
+    // for (auto &i:ll)
+    //     std::cout<<i.first<<":"<<i.second<<" ";
+    // std::cout<<std::endl;
+    // std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+    // t=clock();
+    // std::cout<<PP.degree()<<std::endl;
+    // std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+
+
     return 0;
 }

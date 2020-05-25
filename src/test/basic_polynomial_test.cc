@@ -24,8 +24,12 @@ int main(){
     // // clpoly::basic_polynomial<int,int> p={{1,2},{3,4}};
     // clpoly::basic_polynomial<int,int> p2=p;
     std::cout<<"p.power(2):"<<(p.power(2))<<std::endl;
+    std::cout<<"p.power(2):x^2+2*x*y+2*x*z+2*x*g+y^2+2*y*z+2*y*g+z^2+2*z*g+g^2+2*x+2*y+2*z+2*g+1\n";
     std::cout<<"(p+1)*(p+2):"<<((p+n1)*(p+n2))<<std::endl;
+    std::cout<<"(p+1)*(p+2):x^2+2*x*y+2*x*z+2*x*g+y^2+2*y*z+2*y*g+z^2+2*z*g+g^2+5*x+5*y+5*z+5*g+6\n";
     std::cout<<"p.power(2).coef(x*y):"<<(p.power(2).coef({{x,1},{y,1}}))<<std::endl;
+
+    
     clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=p.power(20);
     auto t=clock();
     auto p3=(p2+n1)*(p2+n2);

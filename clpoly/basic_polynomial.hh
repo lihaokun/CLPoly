@@ -133,10 +133,10 @@ namespace clpoly{
             :__data({std::pair<Tm,Tc>(std::move(m),1)})
             {}
             basic_polynomial(const Tc & c)
-            :__data({{{},c}})
+            :__data({{Tm(),c}})
             {}
             basic_polynomial(Tc && c)
-            :__data({{{},c}})
+            :__data({{Tm(),c}})
             {}
 
             inline basic_polynomial & operator=(const basic_polynomial & p)
@@ -338,6 +338,7 @@ namespace clpoly{
             inline basic_polynomial operator*(const Tc & p) const
             {
                 basic_polynomial new_p;
+                new_p.__comp=this->__comp;
                 if (zore_check<Tc>()(p) || this->empty()) 
                     return new_p;
                 new_p=*this;
@@ -349,16 +350,19 @@ namespace clpoly{
             inline basic_polynomial  power(unsigned i) const
             {
                 basic_polynomial newp;
-                if (this->empty())
+                newp.__comp=this->__comp;
+                if (this->empty() )
                     return newp; 
+                if (i==0)
+                {
+                    newp.push_back({Tm(),1});
+                    return newp;
+                }
                 basic_polynomial p(*this);
                 while (i!=0)
                 {
                     if (i%2!=0)
-                        if (newp.empty())
-                            newp=p;
-                        else
-                            newp=newp*p;
+                        newp=newp*p;
                     i>>=1;
                     if (i!=0)
                         p=p*p;

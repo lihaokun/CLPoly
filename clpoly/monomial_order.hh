@@ -45,6 +45,7 @@ namespace clpoly{
         }
         constexpr bool operator==(const univariate_first_order &g1)const {return v==g1.v;}
         constexpr bool operator!=(const univariate_first_order &g1)const {return v!=g1.v;}
+        constexpr const variable & var() const{return v;}
     };
     
 }

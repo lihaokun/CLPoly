@@ -209,6 +209,25 @@ namespace clpoly{
                 new_p.__deg=this->__deg-p.__deg;
                 return new_p;
             } 
+
+            inline basic_monomial  power(unsigned i) const
+            {
+                basic_monomial newp;
+                newp.comp(this->__comp);
+                if (this->empty() || i==0)
+                    return newp; 
+                basic_monomial p(*this);
+                while (i!=0)
+                {
+                    if (i%2!=0)
+                        newp=newp*p;
+                    i>>=1;
+                    if (i!=0)
+                        p=p*p;
+                }
+                return newp;
+            }
+
             inline bool operator> (const basic_monomial<compare> &p) const
             {
                 assert(this->__comp==p.__comp || this->comp()==p.comp());

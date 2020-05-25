@@ -16,11 +16,24 @@ Notes:
 #include "basic_polynomial.hh"
 #include <list>
 #include <string>
+
+//#define x**y pow(x,y)
 namespace clpoly{
     template <class Tc,class comp=grlex>
     using polynomial_=basic_polynomial<basic_monomial<comp>,Tc,comp>;
     using polynomial_ZZ=polynomial_<ZZ>;
 
+    // template <class T>
+    // monomial pow(const basic_monomial<T> & m,uint64_t n)
+    // {
+    //     return m.power(n);
+    // }
+    // template <class T1,class T2,class T3>
+    // monomial pow(const basic_polynomial<T1,T2,T3> & m,uint64_t n)
+    // {
+    //     return m.power(n);
+    // }
+    
     monomial operator* (const variable & v1,const variable & v2)
     {
         if (monomial::compare_type()(v1,v2))  
@@ -169,7 +182,7 @@ namespace clpoly{
     template <class Tc,class comp>
     inline polynomial_<Tc,comp> prem(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v)
     {
-        assert(G.comp_ptr()!=F.comp_ptr());
+        assert(G.comp_ptr()==F.comp_ptr());
         univariate_first_order comp_v(v);
         polynomial_<Tc,univariate_first_order>  G1(&comp_v);
         polynomial_<Tc,univariate_first_order>  F1(&comp_v);
@@ -180,51 +193,107 @@ namespace clpoly{
         poly_convert(std::move(O1),O);
         return O;
     }
-    // template <class Tc>
-    // void __onestep__prem(
-    //     std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> & G,
-    //     std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> & F,
-    //     std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> & O
-    // )
-    // {
-        
-    // }
-    // template <class Tc>
-    // void prem(const polynomial_<Tc,univariate_first_order>&G,
-    //           const polynomial_<Tc,univariate_first_order>&F,
-    //           polynomial_<Tc,univariate_first_order>&O
-    //         )
-    // {
-    //     O.clear();
-    //     if (F.empty() || get_first_deg(F.begin()->first)==0)
-    //         return void();
-        
-    //     const variable & var=G.comp().variable;
-    //     std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_G0;
-    //     //const std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> &tmp_G=G.data();
-    //     std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_F0;
-    //     std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_F_;
-    //     std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_S;
-    //     std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_M;
+    template <class Tc,class compare>
+    void __onestep__prem(
+        const std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> & G,
+        int64_t f_deg,
+        const std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> & F,
+        std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> & O,
+        std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> & F1,
+        std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> & G1,
+        compare comp 
 
-    //     while ()
-    //     {
-            
-    //     }
-        
-    // }
+    )
+    {
+
+        auto G_ptr=G.begin();
+        auto G_end=G.end();
+        int64_t g_deg=get_first_deg(G_ptr->first);
+        G1.clear();
+        G1.reserve(G.size());
+        while(G_ptr!=G.end() && get_first_deg(G_ptr->first)==g_deg)
+        {
+            G1.push_back(*(G_ptr++));
+            G1.back().first.begin()->second+=g_deg-f_deg;
+        }
+        O.clear();
+        if(G_ptr==G.end())
+        {
+            return void();
+        }
+        pair_vec_multiplies(F1,G1,F,comp);
+        auto F_ptr=F1.begin();
+        auto F_end=F1.end();
+        O.reserve((G_end-G_ptr)+F1.size());
+        Tc tmp;
+        while (G_ptr!=G.end() && F_ptr!=F_end)
+        {
+            if (comp(G_ptr->first,F_ptr->first))
+            {
+                O.push_back(*(G_ptr++));
+            }
+            else{
+                if ( G_ptr->first==F_ptr->first) //equal_to
+                {
+                    if (!zore_check<Tc>()(tmp=G_ptr->second-F_ptr->second)) //minus
+                        O.emplace_back(F_ptr->first,tmp);
+                    ++G_ptr;++F_ptr;
+                }
+                else
+                {
+                    O.emplace_back(F_ptr->first,-F_ptr->second); //negate
+                    ++F_ptr;
+                }
+            }
+        }
     
-
-    // template <std::size_t v,class Tc>
-    // polynomial_<Tc,vfvcomp<v>,vfmcomp<v>> prem(const polynomial_<Tc,vfvcomp<v>,vfmcomp<v>> &G,const polynomial_<Tc,vfvcomp<v>,vfmcomp<v>> & F)
-    // {
-    //     static variable var=get_variables(v);
-    //     std::vector<std::pair<basic_monomial<vfvcomp<v>>,Tc>> tmp_G0;
-    //     std::vector<std::pair<basic_monomial<vfvcomp<v>>,Tc>> tmp_G=G.data();
-    //     std::vector<std::pair<basic_monomial<vfvcomp<v>>,Tc>> tmp_F0;
-    //     std::vector<std::pair<basic_monomial<vfvcomp<v>>,Tc>> tmp_F_;
-    //     std::vector<std::pair<basic_monomial<vfvcomp<v>>,Tc>> tmp_S;
-    //     std::vector<std::pair<basic_monomial<vfvcomp<v>>,Tc>> tmp_M;
-    // }
+        while (F_ptr!=F_end)
+        {
+            O.emplace_back(F_ptr->first,-F_ptr->second);//negate
+            ++F_ptr;
+        }
+        while(G_ptr!=G.end())
+        {
+            O.push_back(*(G_ptr++));
+        }  
+    }
+    template <class Tc>
+    void prem(const polynomial_<Tc,univariate_first_order>&G,
+              const polynomial_<Tc,univariate_first_order>&F,
+              polynomial_<Tc,univariate_first_order>&O
+            )
+    {
+        O.data().clear();
+        const variable & var=G.comp().var();
+        int64_t f_deg;
+        int64_t g_deg;
+        if (G.empty()||  F.empty() ||
+            (f_deg=get_first_deg(F.begin()->first,var))==0 || 
+            (g_deg=get_first_deg(G.begin()->first,var))==0)
+            return void();
+        if (g_deg<f_deg)
+        {
+            O=G;
+            return void();
+        }
+        std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_G;
+        //tmp_G.reserve(G.size());
+        std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_G1;
+        tmp_G1.reserve(G.size());
+        std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_F_;
+        tmp_F_.reserve(F.size());
+        for (auto & i:F)
+            if (get_first_deg(i.first,var)!=f_deg)
+                tmp_F_.push_back(i);
+        std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_F1;
+        O.data().reserve(G.size());
+        __onestep__prem(G.data(),f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,G.comp());
+        while (get_first_deg(O.begin()->first,var)>=f_deg)
+        {
+            std::cout<<"prem_:"<<O<<std::endl;
+            tmp_G=std::move(O.data());
+            __onestep__prem(tmp_G,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,G.comp());    
+        }
+    }
 }
 #endif

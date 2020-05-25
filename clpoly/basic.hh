@@ -73,7 +73,7 @@ namespace clpoly{
     {
         auto t2=v.begin();++t2;
         auto t1=v.begin();
-        const auto & e=v.end();
+        auto e=v.end();
         if (zore_check<T2>()(t1->second))
             return false;
         while (t2!=e)
@@ -89,8 +89,8 @@ namespace clpoly{
     template <class T1,class T2,class compare>
     std::size_t pair_vec_normalization(std::vector<std::pair<T1,T2>> & v,const compare & comp )
     {
-        const auto &b=v.begin();
-        const auto &e=v.end();
+        auto b=v.begin();
+        auto e=v.end();
         if (!std::is_sorted(b,e,comp))
             std::sort(b,e,comp);
         auto t2=b;
@@ -158,8 +158,8 @@ namespace clpoly{
         v.reserve(v1.size()+v2.size());
         auto v1_ptr=v1.begin();
         auto v2_ptr=v2.begin();
-        const auto &v1_end=v1.end();
-        const auto &v2_end=v2.end();
+        auto v1_end=v1.end();
+        auto v2_end=v2.end();
         T2 tmp;
         while (v1_ptr!=v1_end && v2_ptr!=v2_end)
         {
@@ -210,8 +210,8 @@ namespace clpoly{
         v.reserve(v1.size()+v2.size());
         auto v1_ptr=v1.begin();
         auto v2_ptr=v2.begin();
-        const auto & v1_end=v1.end();
-        const auto & v2_end=v2.end();
+        auto v1_end=v1.end();
+        auto v2_end=v2.end();
         T2 tmp;
 
         while (v1_ptr!=v1_end && v2_ptr!=v2_end)
@@ -222,13 +222,6 @@ namespace clpoly{
                 ++v2_ptr;
             }
             else{
-                // v.push_back(*(v1_ptr++));
-                // if ( equal_to(v2_ptr->first,v.back().first))
-                // {
-                //     sub_assignment(v.back().second,(v2_ptr++)->second);
-                //     if (zore_check(v.back().second))
-                //         v.pop_back();
-                // }
                 if ( v2_ptr->first==v1_ptr->first) //equal_to
                 {
                     if (!zore_check<T2>()(tmp=v1_ptr->second-v2_ptr->second)) //minus
@@ -241,23 +234,15 @@ namespace clpoly{
             }
         }
     
-        if (v2_ptr!=v2_end)
+
+        while (v2_ptr!=v2_end)
         {
-            //v.reserve(v.size()+(v2_end-v2_ptr)+1);
-            
-            while (v2_ptr!=v2_end)
-            {
-                v.push_back({v2_ptr->first,-v2_ptr->second});//negate
-                ++v2_ptr;
-            }
+            v.push_back({v2_ptr->first,-v2_ptr->second});//negate
+            ++v2_ptr;
         }
-        else
+        while (v1_ptr!=v1_end)
         {
-            //v.reserve(v.size()+(v1_end-v1_ptr)+1);
-            while (v1_ptr!=v1_end)
-            {
-                v.push_back(*(v1_ptr++));
-            }
+            v.push_back(*(v1_ptr++));
         }
 
         __auto_shrink(v);
@@ -268,9 +253,9 @@ namespace clpoly{
     bool pair_vec_comp(const std::vector<std::pair<T1,T2>> & v1,const std::vector<std::pair<T1,T2>> & v2,const compare & comp)
     {
         auto v1_ptr=v1.begin();
-        const auto & v1_end=v1.end();
+        auto v1_end=v1.end();
         auto v2_ptr=v2.begin();
-        const auto & v2_end=v2.end();
+        auto v2_end=v2.end();
         for(;(v1_ptr!=v1_end && v2_ptr!=v2_end);++v1_ptr,++v2_ptr)
         {
             if (v1_ptr->first!=v2_ptr->first) //equal_to

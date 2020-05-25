@@ -43,6 +43,11 @@ int main(){
     clpoly::poly_convert(std::move(p),p2);
     std::cout<<p2<<std::endl;
     std::cout<< p<<std::endl;
+    clpoly::polynomial_ZZ f=x*y*y+1;
+    clpoly::polynomial_ZZ g=2*y*y*y-y*y+x*x*y;
+    std::cout<<f<<std::endl;
+    std::cout<<g<<std::endl;
+    std::cout<<prem(g,f,x)<<std::endl;
     // auto l=p.variables();
     // for (auto &i:l)
     //     std::cout<<i.first<<":"<<i.second<<" ";

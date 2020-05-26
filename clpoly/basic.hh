@@ -132,9 +132,21 @@ namespace clpoly{
         new_T.reserve(v1.size());
         for (auto &&i:v1)
         {
-            new_T.push_back(std::pair<T1,T2>(i.first,-i.second));//negate
+            new_T.emplace_back(i.first,-i.second);//negate
         }
         return new_T;
+    }
+    template <class T1,class T2>
+    void pair_vec_negate(
+        std::vector<std::pair<T1,T2>> & new_T,
+        const std::vector<std::pair<T1,T2>> & v1)
+    {
+        new_T.clear();
+        new_T.reserve(v1.size());
+        for (auto &&i:v1)
+        {
+            new_T.emplace_back(i.first,-i.second);//negate
+        }
     }
     template <class T1,class T2,class compare>
     void pair_vec_add(
@@ -143,7 +155,13 @@ namespace clpoly{
         const std::vector<std::pair<T1,T2>> & v2,
         const compare & comp)
     {
-        assert(&v!=&v1 && &v!=&v2);
+        if (&v==&v1 || &v==&v2)
+        {
+            std::vector<std::pair<T1,T2>> new_v_;
+            pair_vec_add(new_v_,v1,v2,comp);
+            v=new_v_;
+            return void();
+        }
         v.clear();
         if (v1.empty())
         {
@@ -187,26 +205,52 @@ namespace clpoly{
             v.push_back(*(v2_ptr++));
         }
     }
-    template <class T1,class T2,class compare>
-    std::vector<std::pair<T1,T2>> pair_vec_add(
-        const std::vector<std::pair<T1,T2>> & v1,const std::vector<std::pair<T1,T2>> & v2,const compare & comp)
-    {
+    // template <class T1,class T2,class compare>
+    // std::vector<std::pair<T1,T2>> pair_vec_add(
+    //     const std::vector<std::pair<T1,T2>> & v1,const std::vector<std::pair<T1,T2>> & v2,const compare & comp)
+    // {
 
-        std::vector<std::pair<T1,T2>> v;
-        pair_vec_add(v,v1,v2,comp);
-        __auto_shrink(v);
-        return v;
-    }
+    //     std::vector<std::pair<T1,T2>> v;
+    //     pair_vec_add(v,v1,v2,comp);
+    //     __auto_shrink(v);
+    //     return v;
+    // }
+    // template <class T1,class T2,class compare>
+    // std::vector<std::pair<T1,T2>> pair_vec_sub(
+    //     const std::vector<std::pair<T1,T2>> & v1,const std::vector<std::pair<T1,T2>> & v2,const compare & comp)
+    // {
+
+    //     std::vector<std::pair<T1,T2>> v;
+    //     pair_vec_sub(v,v1,v2,comp);
+    //     __auto_shrink(v);
+    //     return v;
+    // }
 
     template <class T1,class T2,class compare>
-    std::vector<std::pair<T1,T2>> pair_vec_sub(
-        const std::vector<std::pair<T1,T2>> & v1,const std::vector<std::pair<T1,T2>> & v2,const compare & comp)
+    void pair_vec_sub(
+        std::vector<std::pair<T1,T2>>& v,
+        const std::vector<std::pair<T1,T2>> & v1,
+        const std::vector<std::pair<T1,T2>> & v2,
+        const compare & comp)
     {
+        if (&v==&v1 || &v==&v2)
+        {
+            std::vector<std::pair<T1,T2>> new_v_;
+            pair_vec_sub(new_v_,v1,v2,comp);
+            v=new_v_;
+            return void();
+        }
+        v.clear();
         if (v1.empty())
-            return pair_vec_negate(v2);
+        {
+            pair_vec_negate(v,v2);
+            return void();
+        }
         if (v2.empty())
-            return v1;
-        std::vector<std::pair<T1,T2>> v;
+        {
+            v=v1;
+            return void();
+        }  
         v.reserve(v1.size()+v2.size());
         auto v1_ptr=v1.begin();
         auto v2_ptr=v2.begin();
@@ -237,7 +281,7 @@ namespace clpoly{
 
         while (v2_ptr!=v2_end)
         {
-            v.push_back({v2_ptr->first,-v2_ptr->second});//negate
+            v.emplace_back(v2_ptr->first,-v2_ptr->second);//negate
             ++v2_ptr;
         }
         while (v1_ptr!=v1_end)
@@ -245,9 +289,6 @@ namespace clpoly{
             v.push_back(*(v1_ptr++));
         }
 
-        __auto_shrink(v);
-
-        return v;
     }
     template <class T1,class T2,class compare>
     bool pair_vec_comp(const std::vector<std::pair<T1,T2>> & v1,const std::vector<std::pair<T1,T2>> & v2,const compare & comp)
@@ -359,19 +400,19 @@ namespace clpoly{
             }
     }
 
-    template <class T1,class T2,class compare>
-    inline std::vector<std::pair<T1,T2>> pair_vec_multiplies
-    (
-        const std::vector<std::pair<T1,T2>> & v1_,
-        const std::vector<std::pair<T1,T2>> & v2_,
-        const compare & comp
-    )
-    {
-        std::vector<std::pair<T1,T2>> new_v;
-        pair_vec_multiplies(new_v,v1_,v2_,comp);
-        __auto_shrink(new_v);
-        return new_v;  
-    }
+    // template <class T1,class T2,class compare>
+    // inline std::vector<std::pair<T1,T2>> pair_vec_multiplies
+    // (
+    //     const std::vector<std::pair<T1,T2>> & v1_,
+    //     const std::vector<std::pair<T1,T2>> & v2_,
+    //     const compare & comp
+    // )
+    // {
+    //     std::vector<std::pair<T1,T2>> new_v;
+    //     pair_vec_multiplies(new_v,v1_,v2_,comp);
+    //     __auto_shrink(new_v);
+    //     return new_v;  
+    // }
     template <class T1,class T2,class compare>
     void pair_vec_multiplies
     (
@@ -381,7 +422,13 @@ namespace clpoly{
         const compare & comp
     )
     {
-        assert(&new_v!=&v1_ && &new_v!=&v2_);
+        if (&new_v==&v1_ && &new_v==&v2_)
+        {
+            std::vector<std::pair<T1,T2>> new_v_;
+            pair_vec_multiplies(new_v_,v1_,v2_,comp);
+            new_v=new_v_;
+            return void();
+        }
         new_v.clear();
         const std::vector<std::pair<T1,T2>> * v1,*v2;
         if (v1_.size()>v2_.size())

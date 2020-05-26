@@ -191,7 +191,8 @@ namespace clpoly{
                 //     std::asser
                 // #endif
                 basic_monomial<compare> new_p(this->__comp);
-                new_p.__data=pair_vec_add(this->__data,p.__data,this->comp());
+                pair_vec_add(new_p.__data,this->__data,p.__data,this->comp());
+                __auto_shrink(new_p.__data);
                 new_p.__deg=this->__deg+p.__deg;
                 return new_p;
             }
@@ -205,7 +206,8 @@ namespace clpoly{
                 //         throw std::invalid_argument("Right basic_monomial is not normal.(In left comparation.)");
                 // #endif
                 basic_monomial<compare> new_p(this->__comp);
-                new_p.__data=pair_vec_sub(this->__data,p.__data,this->comp());
+                pair_vec_sub(new_p.__data,this->__data,p.__data,this->comp());
+                __auto_shrink(new_p.__data);
                 new_p.__deg=this->__deg-p.__deg;
                 return new_p;
             } 
@@ -393,7 +395,6 @@ namespace clpoly{
     {
         // if(&(op.data())==&(op1.data()) || &(op.data())==&(op2.data()))
         //     op=op1*op2;
-        assert(&op!=&op1 && &op!=&op2 && &op1.comp()==&op2.comp());
         //std::cout<<"__mono_mult___1";
         op.comp(op1.comp_ptr());
         pair_vec_add(op.data(),op1.data(),op2.data(),op1.comp());

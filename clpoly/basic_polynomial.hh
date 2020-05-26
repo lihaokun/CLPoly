@@ -22,7 +22,7 @@ namespace clpoly{
         public:
             bool is_var;
             bool is_deg;
-            std::list<std::pair<variable,std::size_t>>  variables;
+            std::list<std::pair<variable,std::int64_t>>  variables;
             int64_t deg;
 
             basic_polynomial_status()
@@ -227,7 +227,7 @@ namespace clpoly{
                 std::swap(this->__comp,p.__comp);
             }
 
-            inline const std::list<std::pair<variable,std::size_t>> & variables()  const
+            inline const std::list<std::pair<variable,int64_t>> & variables()  const
             {
                 if (!this->__status.is_var)
                 {
@@ -283,7 +283,8 @@ namespace clpoly{
                 // #endif
                 basic_polynomial new_p;
                 new_p.__comp=this->__comp;
-                new_p.__data=pair_vec_add(this->__data,p.__data,this->comp());
+                pair_vec_add(new_p.__data,this->__data,p.__data,this->comp());
+                __auto_shrink(new_p.__data);
                 return new_p;
             }
 
@@ -303,7 +304,8 @@ namespace clpoly{
                 // #endif
                 basic_polynomial new_p;
                 new_p.__comp=this->__comp;
-                new_p.__data=pair_vec_sub(this->__data,p.__data,this->comp());
+                pair_vec_sub(new_p.__data,this->__data,p.__data,this->comp());
+                __auto_shrink(new_p.__data);
                 return new_p;
             } 
 
@@ -331,7 +333,8 @@ namespace clpoly{
                 // #endif
                 basic_polynomial new_p;
                 new_p.__comp=this->__comp;
-                new_p.__data=pair_vec_multiplies(this->__data,p.__data,this->comp());    
+                pair_vec_multiplies(new_p.__data,this->__data,p.__data,this->comp());    
+                __auto_shrink(new_p.__data);
                 return new_p;
             }
 
@@ -353,14 +356,15 @@ namespace clpoly{
                 newp.__comp=this->__comp;
                 if (this->empty() )
                     return newp; 
+                newp.push_back({Tm(),1});
                 if (i==0)
                 {
-                    newp.push_back({Tm(),1});
                     return newp;
                 }
                 basic_polynomial p(*this);
                 while (i!=0)
                 {
+                    //std::cout<<"power:"<<p<<std::endl;
                     if (i%2!=0)
                         newp=newp*p;
                     i>>=1;

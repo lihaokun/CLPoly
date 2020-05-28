@@ -16,8 +16,8 @@ Notes:
 #include "basic_polynomial.hh"
 #include <list>
 #include <string>
+#include <random>
 
-//#define x**y pow(x,y)
 namespace clpoly{
     template <class Tc,class comp=grlex>
     using polynomial_=basic_polynomial<basic_monomial<comp>,Tc,comp>;
@@ -73,13 +73,16 @@ namespace clpoly{
         return polynomial_ZZ({{m2,1},{m1,1}});
     }
     
-    polynomial_ZZ operator+ (const monomial & m,const polynomial_ZZ & p)
+    template<class Tc>
+    polynomial_<Tc> operator+ (const monomial & m,const polynomial_<Tc> & p)
     {
-        return p+polynomial_ZZ(m);
+        return p+polynomial_<Tc>(m);
     }
-    polynomial_ZZ operator+ (const polynomial_ZZ & p,const monomial & m)
+
+    template<class Tc>
+    polynomial_<Tc> operator+ (const polynomial_<Tc> & p,const monomial & m)
     {
-        return p+polynomial_ZZ(m);
+        return p+polynomial_<Tc>(m);
     }
 
     polynomial_ZZ operator+ (const monomial & m,const ZZ & p)
@@ -87,11 +90,67 @@ namespace clpoly{
         return polynomial_ZZ({{m,1},{{},p}});
     }
 
-    polynomial_ZZ operator+ (const ZZ & m,const polynomial_ZZ & p)
+    template<class Tc>
+    polynomial_<Tc> operator+ (const ZZ & m,const polynomial_<Tc> & p)
     {
         return p+m;
     }
+    template<class Tc>
+    polynomial_<Tc> random_polynomial(const std::vector<variable> & v,uint64_t deg,double p,int up,int down)
+    {
+        std::vector<std::pair<monomial,Tc>> p1;
+        std::random_device rd; 
+        std::mt19937 gen(rd());
+        auto size=v.size();
+        std::bernoulli_distribution mp(p);
+        std::uniform_int_distribution<> dis(down, up);
+        std::vector<std::pair<variable,int64_t>>  m;
+        for (auto &i:v)
+            m.emplace_back(i,0);
+        for(int d=deg;d>=0;--d)
+        {
+            
+            if (d)
+            {
+                int64_t i0=0;
+                int64_t sum=d;
+                m.begin()->second=d;
+                while(1)
+                {
+                    if (mp(gen))
+                    {
+                        p1.emplace_back(monomial(m),Tc(dis(gen)));
+                    }
+                    while (i0>=0)
+                    {
+                        if (m[i0].second && i0<size-1)
+                        {
+                            --m[i0].second;
+                            ++i0;
+                            m[i0].second=d-sum+1;
+                            sum=d;
+                            break;
+                        }
+                        else
+                        {
+                            sum-=m[i0].second;
+                            m[i0].second=0;
+                            --i0;
+                        }
+                    }   
+                    if (i0<0)   
+                        break;
 
+                }
+            }
+            else
+            {
+                p1.push_back({{},Tc(dis(gen))});
+            }
+            
+        }
+        return polynomial_<Tc>(p1);
+    }
     template<class Tc,class comp>
     std::list<std::pair<variable,int64_t>> get_variables(const polynomial_<Tc,comp>& p)
     {
@@ -269,12 +328,12 @@ namespace clpoly{
         std::vector<std::pair<basic_monomial<univariate_first_order>,Tc>> tmp_F1;
         O.data().reserve(G.size());
         __onestep__prem(G.data(),tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());
+        //std::cout<<"prem_:"<<O<<std::endl;
         while (get_first_deg(O.begin()->first,var)>=f_deg)
         {
-            std::cout<<"prem_:"<<O<<std::endl;
             tmp_G=std::move(O.data());
             __onestep__prem(tmp_G,tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());    
-            std::cout<<"prem_:"<<O<<std::endl;
+            //std::cout<<"prem_:"<<O<<std::endl;
         }
     }
 }

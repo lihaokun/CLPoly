@@ -374,6 +374,7 @@ namespace clpoly{
                 return newp;
             }
 
+
             inline bool operator> (const basic_polynomial &p) const
             {
                 assert(this->__comp==p.__comp || this->comp()==p.comp());

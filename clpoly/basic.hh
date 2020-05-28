@@ -453,6 +453,7 @@ namespace clpoly{
             }
             return void();
         }
+        new_v.reserve(v1->size()*v2->size());
         VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator,typename std::vector<std::pair<T1,T2>>::const_iterator > **heap=
             new VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator,typename std::vector<std::pair<T1,T2>>::const_iterator >*[v1->size()];
         VHC<T1,typename std::vector<std::pair<T1,T2>>::const_iterator ,typename std::vector<std::pair<T1,T2>>::const_iterator > **lin=
@@ -469,7 +470,6 @@ namespace clpoly{
         std::size_t i, j, s,i1;
         T1 m;
         T2 k;
-        new_v.reserve(v1->size()*v2->size());
         while (heap_size!=0)
         {
             set_zero(k);

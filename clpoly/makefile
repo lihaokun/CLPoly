@@ -1,7 +1,7 @@
 CXX=g++ 
 IPATHS=-I./ 
-CFLAGS=-O3 -flto 
-Numberlib= -lgmpxx -lgmp -DNDEBUG
+CFLAGS=-O3 -flto -DNDEBUG  
+Numberlib= -lgmpxx -lgmp  
 objects= variable_test.o variable_test atomic_polynomial_test.o atomic_polynomial_test   monomial_test.o monomial_test polynomial_test.o polynomial_test
 polynomial_test:test/polynomial_test.cc polynomial.hh monomial.hh basic_monomial.hh  basic.hh variable.hh  basic_polynomial.hh number.hh
 	$(CXX) $(CFLAGS) $(IPATHS) test/polynomial_test.cc -o polynomial_test $(Numberlib)

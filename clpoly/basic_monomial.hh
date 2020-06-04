@@ -401,6 +401,17 @@ namespace clpoly{
         op.deg()=op1.deg()+op2.deg();
         //std::cout<<op<<"="<<op1<<"*"<<op2<<std::endl;
     }
+    template<class compare>
+    bool is_divexact(basic_monomial<compare> & op,const basic_monomial<compare>  & op1,const basic_monomial<compare>  & op2)
+    {
+        pair_vec_sub(op.data(),op1.data(),op2.data(),op1.comp());
+        op.deg()=op1.deg()-op2.deg();
+        if (op.deg()<0) return false;
+        for(auto &i : op)
+            if (i.second < 0)
+                return false;
+        return true;
+    }
 }
 namespace std{
     template<class compare>

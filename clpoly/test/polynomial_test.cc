@@ -43,13 +43,14 @@ int main(){
     clpoly::poly_convert(std::move(p),p2);
     std::cout<<p2<<std::endl;
     std::cout<< p<<std::endl;
-    clpoly::polynomial_ZZ f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},40,0.2,10,-10);
-    clpoly::polynomial_ZZ g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},40,0.2,10,-10);
+    clpoly::polynomial_ZZ f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},5,0.2,10,-10);
+    clpoly::polynomial_ZZ g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},5,0.2,10,-10);
     std::cout<<"f:="<<f<<";"<<std::endl;
     std::cout<<"g:="<<g<<";"<<std::endl;
     auto t=clock();
     std::cout<<"o1:="<<clpoly::prem(g,f,z)<<";"<<std::endl;
     std::cout<<"time:"<<(double(clock()-t)/CLOCKS_PER_SEC)<<std::endl;
+    
     //std::cout<<clpoly::random_polynomial<clpoly::ZZ>({x,y,z},5,0.2,10,-10)<<std::endl;
     // auto l=p.variables();
     // for (auto &i:l)

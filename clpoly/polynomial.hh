@@ -22,17 +22,7 @@ namespace clpoly{
     template <class Tc,class comp=grlex>
     using polynomial_=basic_polynomial<basic_monomial<comp>,Tc,comp>;
     using polynomial_ZZ=polynomial_<ZZ>;
-
-    // template <class T>
-    // monomial pow(const basic_monomial<T> & m,uint64_t n)
-    // {
-    //     return m.power(n);
-    // }
-    // template <class T1,class T2,class T3>
-    // monomial pow(const basic_polynomial<T1,T2,T3> & m,uint64_t n)
-    // {
-    //     return m.power(n);
-    // }
+    using polynomial_QQ=polynomial_<QQ>;
     
     monomial operator* (const variable & v1,const variable & v2)
     {
@@ -247,7 +237,7 @@ namespace clpoly{
         polynomial_<Tc,univariate_first_order>  F1(&comp_v);
         poly_convert(G,G1);poly_convert(F,F1);
         polynomial_<Tc,univariate_first_order>  O1(&comp_v);
-        prem(G1,F1,O1);
+        prem(O1,G1,F1);
         polynomial_<Tc,comp> O(G.comp_ptr());
         poly_convert(std::move(O1),O);
         return O;
@@ -292,12 +282,13 @@ namespace clpoly{
         pair_vec_sub(O,G1,F1,comp);
     }
     template <class Tc>
-    void prem(const polynomial_<Tc,univariate_first_order>&G,
-              const polynomial_<Tc,univariate_first_order>&F,
-              polynomial_<Tc,univariate_first_order>&O
+    void prem(
+            polynomial_<Tc,univariate_first_order>&O,
+            const polynomial_<Tc,univariate_first_order>&G,
+            const polynomial_<Tc,univariate_first_order>&F
             )
     {
-        O.data().clear();
+        O.clear();
         const variable & var=G.comp().var();
         int64_t f_deg;
         int64_t g_deg;
@@ -335,6 +326,45 @@ namespace clpoly{
             __onestep__prem(tmp_G,tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());    
             //std::cout<<"prem_:"<<O<<std::endl;
         }
+    }
+    
+    template <class Tc,class comp>
+    inline polynomial_<Tc,comp> resultant(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v)
+    {
+        assert(G.comp_ptr()==F.comp_ptr());
+        univariate_first_order comp_v(v);
+        polynomial_<Tc,univariate_first_order>  G1(&comp_v);
+        polynomial_<Tc,univariate_first_order>  F1(&comp_v);
+        poly_convert(G,G1);poly_convert(F,F1);
+        polynomial_<Tc,univariate_first_order>  O1(&comp_v);
+        resultant(O1,G1,F1);
+        polynomial_<Tc,comp> O(G.comp_ptr());
+        poly_convert(std::move(O1),O);
+        return O;
+    }
+    template <class Tc>
+    void resultant
+        (   
+            polynomial_<Tc,univariate_first_order>&O,
+            const polynomial_<Tc,univariate_first_order>&F,
+            const polynomial_<Tc,univariate_first_order>&G
+            
+        )
+    {
+        O.clear();
+        const variable & var=G.comp().var();
+        int64_t l;
+        int64_t m;
+        if (G.empty()||  F.empty() )
+            return void();
+        if ( (m=get_first_deg(F.begin()->first,var))<(l=get_first_deg(G.begin()->first,var)))
+        {
+            resultant(O1,G1,F1);
+            return void();
+        }
+        
+
+        
     }
 }
 #endif

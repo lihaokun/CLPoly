@@ -207,7 +207,7 @@ namespace clpoly{
             constexpr const compare & comp() const {return *(this->__comp);}
             constexpr compare & comp() {return *(this->__comp);}
             inline bool comp(const variable & a,const variable &b)const {return (*this->__comp)(a,b);}
-            constexpr void comp(const compare * c){this->__comp=c;}
+            constexpr void comp(compare * c){this->__comp=c;}
             constexpr compare * comp_ptr() const {return this->__comp;}
 
             constexpr void shrink_to_fit(){this->__data.shrink_to_fit();}
@@ -334,6 +334,16 @@ namespace clpoly{
                 basic_polynomial new_p;
                 new_p.__comp=this->__comp;
                 pair_vec_multiplies(new_p.__data,this->__data,p.__data,this->comp());    
+                __auto_shrink(new_p.__data);
+                return new_p;
+            }
+            
+            inline basic_polynomial operator/(const basic_polynomial & p) const
+            {
+                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                basic_polynomial new_p;
+                new_p.__comp=this->__comp;
+                pair_vec_div(new_p.__data,this->__data,p.__data,this->comp());    
                 __auto_shrink(new_p.__data);
                 return new_p;
             }
@@ -499,6 +509,14 @@ namespace clpoly{
             return m.empty();
         } 
     };
+    template<class T1,class T2,class T3,class T4,class comp>
+    inline void polynomial_div(basic_polynomial<T1,T2,comp> & p,const basic_polynomial<T1,T3,comp> & p1,const basic_polynomial<T1,T4,comp> & p2)
+    {
+        assert(p1.comp_ptr()==p2.comp_ptr() || p1.comp()==p2.comp());
+        p.comp(p1.comp_ptr());
+        pair_vec_div(p.data(),p1.data(),p2.data(),p1.comp());    
+        __auto_shrink(p.data());
+    }
 
 
 }

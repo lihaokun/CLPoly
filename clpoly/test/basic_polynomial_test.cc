@@ -24,34 +24,34 @@ int main(){
     //std::cout<<"n1<n2?"<<(n1.begin()->first<n2.begin()->first)<<std::endl;
     // // clpoly::basic_polynomial<int,int> p={{1,2},{3,4}};
     // clpoly::basic_polynomial<int,int> p2=p;
-    std::cout<<"p.power(2):"<<(p.power(2))<<std::endl;
+    std::cout<<"p.power(2):"<<pow(p,2)<<std::endl;
     std::cout<<"p.power(2):x^2+2*x*y+2*x*z+2*x*g+y^2+2*y*z+2*y*g+z^2+2*z*g+g^2+2*x+2*y+2*z+2*g+1\n";
     std::cout<<"(p+1)*(p+2):"<<((p+n1)*(p+n2))<<std::endl;
     std::cout<<"(p+1)*(p+2):x^2+2*x*y+2*x*z+2*x*g+y^2+2*y*z+2*y*g+z^2+2*z*g+g^2+5*x+5*y+5*z+5*g+6\n";
-    std::cout<<"p.power(2).coef(x*y):"<<(p.power(2).coef({{x,1},{y,1}}))<<std::endl;
+    //std::cout<<"p.power(2).coef(x*y):"<<pow(p,2).coef({{x,1},{y,1}}))<<std::endl;
     std::cout<<"(p+1)*(p+2)/(p+1):"<<((p+n1)*(p+n2))/(p+n1)<<std::endl;
-    clpoly::basic_polynomial<clpoly::monomial,clpoly::QQ> p4,p5;
-    //clpoly::pair_vec_div(p4.data(),((p+n1)*(p+n2)).data(),(p*2+n1).data(),(p+n1).comp());
-    clpoly::polynomial_div(p4,(p+1)*(p+2),(p*2+1));
-    std::cout<<"(p+1)*(p+2)/(2*p+1):"<<p4<<std::endl;
-    clpoly::poly_convert((p*2+1),p5);
-    std::cout<<p5<<std::endl;
-    std::cout<<p4*p5<<std::endl;
-    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=p.power(20);
+    // clpoly::basic_polynomial<clpoly::monomial,clpoly::QQ> p4,p5;
+    // //clpoly::pair_vec_div(p4.data(),((p+n1)*(p+n2)).data(),(p*2+n1).data(),(p+n1).comp());
+    // clpoly::polynomial_div(p4,(p+1)*(p+2),(p*2+1));
+    // std::cout<<"(p+1)*(p+2)/(2*p+1):"<<p4<<std::endl;
+    // clpoly::poly_convert((p*2+1),p5);
+    // std::cout<<p5<<std::endl;
+    // std::cout<<p4*p5<<std::endl;
+    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=pow(p,20);
     
-    // auto t=clock();
-    // auto p3=(p2+n1)*(p2+n2);
-    // printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
-    // std::cout<<112911876*1.0/p3.size()<<std::endl;//831.757
-    // auto k=p3.begin()->second;
-    // for(auto & i:p3)
-    //     if (k<i.second)
-    //         k=i.second;
-    // std::cout<<k<<std::endl;
-    // std::cout<<"7656714453153197981835000"<<std::endl;
-    // t=clock();
-    // std::cout<<((p2+n1)==(p3/(p2+n2)))<<std::endl;
-    // printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
+    auto t=clock();
+    auto p3=(p2+n1)*(p2+n2);
+    printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
+    std::cout<<112911876*1.0/p3.size()<<std::endl;//831.757
+    auto k=p3.begin()->second;
+    for(auto & i:p3)
+        if (k<i.second)
+            k=i.second;
+    std::cout<<k<<std::endl;
+    std::cout<<"7656714453153197981835000"<<std::endl;
+    t=clock();
+    std::cout<<((p2+n1)==(p3/(p2+n2)))<<std::endl;
+    printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
     
 
     // p.push_back({1,2});

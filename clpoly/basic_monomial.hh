@@ -25,7 +25,7 @@ namespace clpoly{
         private:
             std::vector<std::pair<variable,int64_t>> __data; 
             int64_t __deg=0;    
-            compare* __comp= &init_comp;
+            const compare* __comp= &init_comp;
         public:
             typedef compare compare_type;
             typedef variable first_type;
@@ -62,7 +62,7 @@ namespace clpoly{
                 this->re_deg();
             }
             basic_monomial():__data(),__deg(0){}
-            basic_monomial(compare * c):__data(),__deg(0),__comp(c){}
+            basic_monomial(const compare * c):__data(),__deg(0),__comp(c){}
             basic_monomial(const basic_monomial<compare> &m)
             :__data(m.__data),__deg(m.__deg),__comp(m.__comp)
             {}
@@ -147,7 +147,7 @@ namespace clpoly{
             constexpr const std::pair<variable,int64_t>& back() const {return this->__data.back();}
             constexpr void resize(std::size_t size){this->__data.resize(size);}
             constexpr void reserve(std::size_t size){this->__data.reserve(size);}
-            inline void pop_back(){this->__deg-=this.back().second;this->__data.pop_back();}
+            inline void pop_back(){this->__deg-=this->back().second;this->__data.pop_back();}
             inline void push_back(const std::pair<variable,int64_t>&  value ){
                 this->__deg+=value.second;
                 this->__data.push_back(value);
@@ -164,10 +164,10 @@ namespace clpoly{
             constexpr std::vector<std::pair<variable,int64_t>> & data() {return this->__data;}
             constexpr const std::vector<std::pair<variable,int64_t>> & data() const {return this->__data;}
             constexpr const compare & comp() const {return *(this->__comp);}
-            constexpr compare & comp() {return *(this->__comp);}
+            //constexpr compare & comp() {return *(this->__comp);}
             inline bool comp(const variable & a,const variable &b)const {return (*this->__comp)(a,b);}
-            constexpr void comp( compare * c){this->__comp=c;}
-            constexpr compare * comp_ptr() const {return this->__comp;}
+            constexpr void comp( const compare * c){this->__comp=c;}
+            constexpr const compare * comp_ptr() const {return this->__comp;}
             inline void clear() 
             {
                 this->__data.clear();
@@ -212,23 +212,23 @@ namespace clpoly{
                 return new_p;
             } 
 
-            inline basic_monomial  power(unsigned i) const
-            {
-                basic_monomial newp;
-                newp.comp(this->__comp);
-                if (this->empty() || i==0)
-                    return newp; 
-                basic_monomial p(*this);
-                while (i!=0)
-                {
-                    if (i%2!=0)
-                        newp=newp*p;
-                    i>>=1;
-                    if (i!=0)
-                        p=p*p;
-                }
-                return newp;
-            }
+            // inline basic_monomial  power(unsigned i) const
+            // {
+            //     basic_monomial newp;
+            //     newp.comp(this->__comp);
+            //     if (this->empty() || i==0)
+            //         return newp; 
+            //     basic_monomial p(*this);
+            //     while (i!=0)
+            //     {
+            //         if (i%2!=0)
+            //             newp=newp*p;
+            //         i>>=1;
+            //         if (i!=0)
+            //             p=p*p;
+            //     }
+            //     return newp;
+            // }
 
             inline bool operator> (const basic_monomial<compare> &p) const
             {
@@ -325,15 +325,15 @@ namespace clpoly{
                 bool is_print=false;
                 for (const auto &i:v.data())
                 { 
-                    if (i.second!=0)
-                    {
+                    // if (i.second!=0)
+                    // {
                         if (is_print)
                             stream<<"*";
                         stream<<i.first;
                         is_print=true;
                         if (i.second!=1)
                             stream<<"^"<<i.second;
-                    }
+                    // }
                 }
                 return stream;
             }
@@ -371,17 +371,19 @@ namespace clpoly{
         } 
     };
     template <class T,class compare>
-    inline void pair_vec_first_normalization(std::vector<std::pair<basic_monomial<compare>,T>> & v,compare * comp)
+    inline void pair_vec_first_normalization(std::vector<std::pair<basic_monomial<compare>,T>> & v,const compare * comp)
     {   
         for(auto &i:v)
-            if (i.first.comp_ptr()!=comp)
-            {
+        {
+            // if (i.first.comp_ptr()!=comp)
+            // {
                 i.first.comp(comp);
                 i.first.normalization();
-            }
+            // }
+        }
     }
     template <class T,class compare>
-    inline bool pair_vec_first_normal_check(std::vector<std::pair<basic_monomial<compare>,T>> & v, compare * comp)
+    inline bool pair_vec_first_normal_check(std::vector<std::pair<basic_monomial<compare>,T>> & v,const  compare * comp)
     {
         for(auto &i:v)
             if (i.first.comp_ptr()!=comp || i.is_normal())
@@ -404,6 +406,7 @@ namespace clpoly{
     template<class compare>
     bool is_divexact(basic_monomial<compare> & op,const basic_monomial<compare>  & op1,const basic_monomial<compare>  & op2)
     {
+        op.comp(op1.comp_ptr());
         pair_vec_sub(op.data(),op1.data(),op2.data(),op1.comp());
         op.deg()=op1.deg()-op2.deg();
         if (op.deg()<0) return false;

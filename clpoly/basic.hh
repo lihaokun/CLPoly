@@ -149,6 +149,15 @@ namespace clpoly{
             new_T.emplace_back(i.first,-i.second);//negate
         }
     }
+    template <class T1,class T2>
+    void pair_vec_negate(
+        std::vector<std::pair<T1,T2>> & v)
+    {
+        for (auto &&i:v)
+        {
+            i.second=-i.second;//negate
+        }
+    }
     template <class T1,class T2,class T3,class T4,class compare>
     void pair_vec_add(
         std::vector<std::pair<T1,T2>> & v,
@@ -423,6 +432,7 @@ namespace clpoly{
         {
             //v1=&v2_;v2=&v1_;
             pair_vec_multiplies(new_v,v2_,v1_,comp);
+            return void();
         }
         // else
         // {
@@ -522,13 +532,14 @@ namespace clpoly{
 #endif            
             return void();
         }
-        // if (&new_v==&v1_ && &new_v==&v2_)
-        // {
-        //     std::vector<std::pair<T1,T2>> new_v_;
-        //     pair_vec_multiplies(new_v_,v1_,v2_,comp);
-        //     new_v=new_v_;
-        //     return void();
-        // }
+
+        if ((void*)(&new_v)==(void*)(&v1_) && (void*)(&new_v)==(void*)(&v2_))
+        {
+            std::vector<std::pair<T1,T2>> new_v_;
+            pair_vec_div(new_v_,v1_,v2_,comp);
+            new_v=new_v_;
+            return void();
+        }
         new_v.clear();
         if (v1_.size()==0)
             return void();
@@ -632,6 +643,51 @@ namespace clpoly{
         delete [] heap;
         delete [] lin;
         delete [] node;
+    }
+
+    template <class T1,class T2,class compare>
+    void pair_vec_power(
+        std::vector<std::pair<T1,T2>>& init_v,
+        const std::vector<std::pair<T1,T2>> & v,
+        int64_t i,
+        const compare &comp
+    )
+    {
+        assert (&init_v != &v);
+        if (i==0)
+            return void();
+        std::vector<std::pair<T1,T2>> p;
+        std::vector<std::pair<T1,T2>> tmp;
+        int b=1;
+        if (i==1)
+        {
+            init_v=v;
+            return void();
+        }
+        p=v;
+        while (i!=0)
+        {
+            //std::cout<<"power:"<<p<<std::endl;
+            if (i%2!=0)
+            {
+                if (b)
+                {
+                    init_v=p;
+                    b=0;
+                }
+                else
+                {
+                    pair_vec_multiplies(tmp,init_v,p,comp);
+                    swap(tmp,init_v);    
+                }
+            }
+            i>>=1;
+            if (i!=0)
+            {
+                pair_vec_multiplies(tmp,p,p,comp);
+                swap(tmp,p);
+            }
+        }
     }
 }
 #endif

@@ -90,7 +90,7 @@ namespace clpoly{
         private:
             std::vector<std::pair<Tm,Tc>> __data;
             mutable basic_polynomial_status __status;
-            compare* __comp=&init_comp;
+            const compare* __comp=&init_comp;
         public:
             typedef compare compare_type;
             typedef Tm momomial_type;
@@ -102,9 +102,9 @@ namespace clpoly{
             typedef typename std::vector<std::pair<Tm,Tc>>::const_iterator  const_iterator ;
 
             static compare init_comp;
-            static const Tc Tc_zero;
+            // static const Tc Tc_zero;
             basic_polynomial():__data(){}
-            basic_polynomial(compare *p):__data(),__comp(p){}
+            basic_polynomial(const compare *p):__data(),__comp(p){}
             basic_polynomial(const basic_polynomial &p)
             :__data(p.__data),__status(p.__status),__comp(p.__comp)
             {}
@@ -126,18 +126,18 @@ namespace clpoly{
             {
                 this->normalization();
             }
-            basic_polynomial(const Tm& m)
-            :__data({{m,1}})
-            {}
-            basic_polynomial(Tm&& m)
-            :__data({std::pair<Tm,Tc>(std::move(m),1)})
-            {}
-            basic_polynomial(const Tc & c)
-            :__data({{Tm(),c}})
-            {}
-            basic_polynomial(Tc && c)
-            :__data({{Tm(),c}})
-            {}
+            // basic_polynomial(const Tm& m)
+            // :__data({{m,1}})
+            // {}
+            // basic_polynomial(Tm&& m)
+            // :__data({std::pair<Tm,Tc>(std::move(m),1)})
+            // {}
+            // basic_polynomial(const Tc & c)
+            // :__data({{Tm(),c}})
+            // {}
+            // basic_polynomial(Tc && c)
+            // :__data({{Tm(),c}})
+            // {}
 
             inline basic_polynomial & operator=(const basic_polynomial & p)
             {
@@ -205,10 +205,10 @@ namespace clpoly{
             constexpr std::vector<std::pair<Tm,Tc>> & data() {return this->__data;}
             constexpr const std::vector<std::pair<Tm,Tc>> & data() const {return this->__data;}
             constexpr const compare & comp() const {return *(this->__comp);}
-            constexpr compare & comp() {return *(this->__comp);}
+            //constexpr compare & comp() {return *(this->__comp);}
             inline bool comp(const variable & a,const variable &b)const {return (*this->__comp)(a,b);}
-            constexpr void comp(compare * c){this->__comp=c;}
-            constexpr compare * comp_ptr() const {return this->__comp;}
+            constexpr void comp(const compare * c){this->__comp=c;}
+            constexpr const compare * comp_ptr() const {return this->__comp;}
 
             constexpr void shrink_to_fit(){this->__data.shrink_to_fit();}
             constexpr std::size_t capacity(){return this->__data.capacity();}
@@ -288,10 +288,16 @@ namespace clpoly{
                 return new_p;
             }
 
-            constexpr basic_polynomial operator+(const Tc & c) const
-            {
-                return (*this)+basic_polynomial(c);
-            }
+            // constexpr basic_polynomial operator+(const Tc & c) const
+            // {
+            //     return (*this)+basic_polynomial(c);
+            // }
+
+            // constexpr basic_polynomial operator-(const Tc & c) const
+            // {
+            //     return (*this)-basic_polynomial(c);
+            // }
+
 
             inline basic_polynomial operator-  (const basic_polynomial &p)const
             {
@@ -360,29 +366,45 @@ namespace clpoly{
                 return new_p;
             }
 
-            inline basic_polynomial  power(unsigned i) const
+            inline basic_polynomial operator*(const Tm & m) const
             {
-                basic_polynomial newp;
-                newp.__comp=this->__comp;
-                if (this->empty() )
-                    return newp; 
-                newp.push_back({Tm(),1});
-                if (i==0)
+                basic_polynomial new_p;
+                if (zore_check<Tm>()(m)) 
                 {
-                    return newp;
+                    new_p=*this;
+                    return new_p;
                 }
-                basic_polynomial p(*this);
-                while (i!=0)
+                new_p.__comp=this->__comp;
+                for (auto &i:*this)
                 {
-                    //std::cout<<"power:"<<p<<std::endl;
-                    if (i%2!=0)
-                        newp=newp*p;
-                    i>>=1;
-                    if (i!=0)
-                        p=p*p;
+                    new_p.push_back({i.first*m,i.second});
                 }
-                return newp;
+                return new_p;
             }
+
+            // inline basic_polynomial  power(unsigned i) const
+            // {
+            //     basic_polynomial newp;
+            //     newp.__comp=this->__comp;
+            //     if (this->empty() )
+            //         return newp; 
+            //     newp.push_back({Tm(this->__comp),1});
+            //     if (i==0)
+            //     {
+            //         return newp;
+            //     }
+            //     basic_polynomial p(*this);
+            //     while (i!=0)
+            //     {
+            //         //std::cout<<"power:"<<p<<std::endl;
+            //         if (i%2!=0)
+            //             newp=newp*p;
+            //         i>>=1;
+            //         if (i!=0)
+            //             p=p*p;
+            //     }
+            //     return newp;
+            // }
 
 
             inline bool operator> (const basic_polynomial &p) const
@@ -455,18 +477,18 @@ namespace clpoly{
                 return pair_vec_find_first(this->begin(),this->end(),std::pair<Tm,Tc>(m,0),pair_compare<Tm,Tc,compare>(this->__comp));
             }
 
-            inline const Tc & coef(const Tm & m) const
-            {
-                auto l=this->find(m);
-                if (l!=this->end())
-                    return l->second;
-                else
-                {
-                    //Tc tmp_Tc=0;
-                    return Tc_zero;//tmp_Tc;
-                }
+            // inline const Tc & coef(const Tm & m) const
+            // {
+            //     auto l=this->find(m);
+            //     if (l!=this->end())
+            //         return l->second;
+            //     else
+            //     {
+            //         //Tc tmp_Tc=0;
+            //         return Tc_zero;//tmp_Tc;
+            //     }
                     
-            }
+            // }
 
             friend std::ostream& operator<<  (std::ostream& stream, const basic_polynomial& v) 
             {
@@ -475,8 +497,9 @@ namespace clpoly{
                 bool is_print=false;
                 for(auto i=v.begin();i!=v.end();++i)
                 {
-                    if (!zore_check<Tm>()(i->first) && !zore_check<Tc>()(i->second)){
-                        if (is_print && i->second>Tc_zero) //greater
+                    if (!zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
+                        ){
+                        if (is_print && i->second>0) //greater
                             stream<<"+";
                         is_print=true;
                         if (i->second==-1) //equal_to
@@ -487,8 +510,9 @@ namespace clpoly{
                         stream<<i->first;
                         continue;
                     }
-                    if (zore_check<Tm>()(i->first) && !zore_check<Tc>()(i->second))
-                        if (is_print && i->second>Tc_zero) //greater
+                    if (zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
+                        )
+                        if (is_print && i->second>0) //greater
                             stream<<"+";
                         is_print=true;
                         stream<<i->second;
@@ -499,7 +523,7 @@ namespace clpoly{
     };
 
     template<class Tm,class Tc,class compare>  compare  basic_polynomial<Tm, Tc, compare>::init_comp=compare();
-    template<class Tm,class Tc,class compare> const Tc  basic_polynomial<Tm, Tc, compare>::Tc_zero=0;
+    // template<class Tm,class Tc,class compare> const Tc  basic_polynomial<Tm, Tc, compare>::Tc_zero=0;
     
     template<class Tm,class Tc,class compare>
     struct zore_check<basic_polynomial<Tm, Tc, compare>>: public std::unary_function<basic_polynomial<Tm, Tc, compare>, bool>

@@ -26,27 +26,28 @@ namespace clpoly{
         constexpr bool operator==(const grevlex &g1)const {return true;}
         constexpr bool operator!=(const grevlex &g1)const {return false;}
     };
-    template <class comp>
-    constexpr const int64_t get_first_deg(const basic_monomial<comp>& m1){return m1.empty()?0:m1.begin()->second;}
-    template <class comp>
-    constexpr const int64_t get_first_deg(const basic_monomial<comp>& m1,const variable & v)
-    {return m1.empty() || m1.begin()->first!=v?0:m1.begin()->second;}
-    struct univariate_first_order
+    // template <class comp>
+    // constexpr const int64_t get_up_deg(const basic_monomial<comp>& m1){return m1.empty()?0:m1.back().second;}
+    struct univariate_priority_order;
+    constexpr const int64_t get_up_deg(const basic_monomial<univariate_priority_order>& m1);
+    struct univariate_priority_order
     {
         variable v;
-        univariate_first_order():v(){}
-        univariate_first_order(variable _v):v(_v){}
-        constexpr bool operator()(const variable & v1,const variable & v2) const {return(v1==v && v2!=v) || (v2!=v && v1<v2);;}
-        inline bool operator()(const basic_monomial<univariate_first_order> &m1,const basic_monomial<univariate_first_order> &m2)const 
+        univariate_priority_order():v(){}
+        univariate_priority_order(variable _v):v(_v){}
+        constexpr bool operator()(const variable & v1,const variable & v2) const {return(v1!=v && (v2==v || v1<v2));}
+        inline bool operator()(const basic_monomial<univariate_priority_order> &m1,const basic_monomial<univariate_priority_order> &m2)const 
         {
-            auto d1=get_first_deg(m1,v);
-            auto d2=get_first_deg(m2,v);
+            auto d1=get_up_deg(m1);
+            auto d2=get_up_deg(m2);
             return (d1>d2 || (d1==d2 && m1>m2));
         }
-        constexpr bool operator==(const univariate_first_order &g1)const {return v==g1.v;}
-        constexpr bool operator!=(const univariate_first_order &g1)const {return v!=g1.v;}
+        constexpr bool operator==(const univariate_priority_order &g1)const {return v==g1.v;}
+        constexpr bool operator!=(const univariate_priority_order &g1)const {return v!=g1.v;}
         constexpr const variable & var() const{return v;}
     };
+    constexpr const int64_t get_up_deg(const basic_monomial<univariate_priority_order>& m1)
+    {return (m1.empty() || m1.back().first!=m1.comp().var())?0:m1.back().second;}
     
 }
 #endif

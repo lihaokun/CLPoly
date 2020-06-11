@@ -16,6 +16,7 @@ Notes:
 namespace clpoly{
     typedef mpz_class ZZ;
     typedef mpq_class QQ;
+    
     // using ZZ=cln::cl_I;
     template<>
     inline void addmul(mpz_class &op,const mpz_class &op1,const mpz_class&op2)

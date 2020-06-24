@@ -409,7 +409,17 @@ namespace clpoly{
                 }
             }
     }
-
+    template <class T1,class T2,class T3,class T4,class compare>
+    constexpr bool __pair_vec_multiplies_compression
+    (
+        std::vector<std::pair<T1,T2>>& new_v,
+        const std::vector<std::pair<T1,T3>> & v1_,
+        const std::vector<std::pair<T1,T4>> & v2_,
+        const compare & comp
+    )
+    {
+        return false;
+    }
     template <class T1,class T2,class T3,class T4,class compare>
     void pair_vec_multiplies
     (
@@ -452,6 +462,8 @@ namespace clpoly{
             }
             return void();
         }
+        if ( __pair_vec_multiplies_compression(new_v,v1_,v2_,comp))
+            return void();
         new_v.reserve(v1_.size()*v2_.size());
         VHC<T1,typename std::vector<std::pair<T1,T3>>::const_iterator,typename std::vector<std::pair<T1,T4>>::const_iterator > **heap=
             new VHC<T1,typename std::vector<std::pair<T1,T3>>::const_iterator,typename std::vector<std::pair<T1,T4>>::const_iterator >*[v1_.size()];
@@ -586,7 +598,7 @@ namespace clpoly{
         std::size_t i, j, s,i1;
         while (heap_size!=0 || v1_ptr!=v1_end)
         {
-            if (v1_ptr!=v1_end && (heap_size==0 || v1_ptr->first>=heap[0]->mono))
+            if (v1_ptr!=v1_end && (heap_size==0 || !comp(heap[0]->mono,v1_ptr->first)))
             {
                 m=v1_ptr->first;
                 k=(v1_ptr++)->second;
@@ -596,7 +608,7 @@ namespace clpoly{
                 m=heap[0]->mono;
                 set_zero(k);
             }
-            //std::cout<<m<<std::endl;
+            //std::cout<<m<<" "<<k<<std::endl;
             while(heap_size>0 && heap[0]->mono==m){ //equal_to
                 while(heap[0]!=nullptr){
                     submul(k,new_v[heap[0]->v1_ptr].second,heap[0]->v2_ptr->second);
@@ -627,6 +639,7 @@ namespace clpoly{
                     //std::cout<<k<<" "<<v2_begin->second<<" "<<k1<<std::endl;    
                     if(!zore_check<T2>()(k1)){
                         ++v_size;
+                        //std::cout<<m1<<" "<<k1<<std::endl;
                         new_v.push_back({std::move(m1),std::move(k1)});
                         while(reset_h>0)
                         {

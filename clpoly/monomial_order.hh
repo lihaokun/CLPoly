@@ -12,9 +12,19 @@ Notes:
 #include <functional>
 #include "basic_monomial.hh"
 namespace clpoly{
+    struct lex
+    {
+        constexpr bool operator()(const variable & v1,const variable & v2) const {return v1<v2;}
+        //constexpr bool operator()(uint64_t v1,uint64_t v2) const {return v1<v2;}
+        inline bool operator()(const basic_monomial<lex> &m1,const basic_monomial<lex> &m2)const {return pair_vec_comp(m1.data(),m2.data(),m1.comp());}
+        constexpr bool operator==(const lex &g1)const {return true;}
+        constexpr bool operator!=(const lex &g1)const {return false;}
+        
+    };
     struct grlex
     {
         constexpr bool operator()(const variable & v1,const variable & v2) const {return v1<v2;}
+        //constexpr bool operator()(uint64_t v1,uint64_t v2) const {return v1>v2;}
         inline bool operator()(const basic_monomial<grlex> &m1,const basic_monomial<grlex> &m2)const {return m1>m2;}
         constexpr bool operator==(const grlex &g1)const {return true;}
         constexpr bool operator!=(const grlex &g1)const {return false;}

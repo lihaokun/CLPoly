@@ -45,8 +45,8 @@ int main(){
     // std::cout<< p<<std::endl;
     // clpoly::polynomial_ZZ f=x*pow(y,2)+1;
     // clpoly::polynomial_ZZ g=2*pow(y,3)-pow(y,2)+pow(x,2)*y;
-    clpoly::polynomial_ZZ f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},100,0.2,10,-10);
-    clpoly::polynomial_ZZ g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},100,0.2,10,-10);
+    clpoly::polynomial_ZZ f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.2,10,-10);
+    clpoly::polynomial_ZZ g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.2,10,-10);
     std::cout<<"g:="<<g<<":"<<std::endl;
     std::cout<<"f:="<<f<<":"<<std::endl;
     auto t=clock();
@@ -67,24 +67,25 @@ int main(){
     // t=clock();
     // std::cout<<"o:="<<resultant(f,g,x)<<":"<<std::endl;
     // std::cout<<"time:"<<(double(clock()-t)/CLOCKS_PER_SEC)<<std::endl;
-    //std::cout<<clpoly::random_polynomial<clpoly::ZZ>({x,y,z},5,0.2,10,-10)<<std::endl;
-    // auto l=p.variables();
-    // for (auto &i:l)
-    //     std::cout<<i.first<<":"<<i.second<<" ";
-    // std::cout<<std::endl<<p.degree()<<std::endl;
-    // auto t=clock();
-    // auto PP=read_file("/home/ker/Documents/Bigpoly/j621_data.txt");
-    // std::cout<<PP.size()<<std::endl;
-    // std::cout<<"( "<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
-    // t=clock();
-    // auto ll=PP.variables();
-    // for (auto &i:ll)
-    //     std::cout<<i.first<<":"<<i.second<<" ";
-    // std::cout<<std::endl;
-    // std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
-    // t=clock();
-    // std::cout<<PP.degree()<<std::endl;
-    // std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+    clpoly::polynomial_ZZ p=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},5,0.05,10,-10);
+    std::cout<<"p="<<p<<std::endl;
+    auto l=p.variables();
+    for (auto &i:l)
+        std::cout<<i.first<<":"<<i.second<<" ";
+    std::cout<<std::endl<<p.degree()<<std::endl;
+    t=clock();
+    auto PP=read_file("/home/ker/Documents/Bigpoly/j621_data.txt");
+    std::cout<<PP.size()<<std::endl;
+    std::cout<<"( "<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+    t=clock();
+    auto ll=PP.variables();
+    for (auto &i:ll)
+        std::cout<<i.first<<":"<<i.second<<" ";
+    std::cout<<std::endl;
+    std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+    t=clock();
+    std::cout<<PP.degree()<<std::endl;
+    std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
 
 
     return 0;

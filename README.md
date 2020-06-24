@@ -21,6 +21,10 @@ int main(int argc, char const *argv[])
     std::cout<<"prem(f,g,x)="<<prem(f,g,x)<<std::endl;
 }
 ```
+编译指令
+```
+g++ example.cc -o example -lgmpxx -lgmp  
+```
 结果
 ```
 f=-x*y^3*z-6*x^4-7*x^2*y-3*x*y-9

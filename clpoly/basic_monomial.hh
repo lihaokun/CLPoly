@@ -13,6 +13,7 @@ Notes:
 #include "basic.hh"
 #include <vector>
 #include <functional>
+#include <list>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -362,59 +363,7 @@ namespace clpoly{
     template<class compare>  compare basic_monomial<compare>::init_comp=compare();
 
 
-    template<class compare>
-    struct zore_check<basic_monomial<compare>>: public std::unary_function<basic_monomial<compare>, bool>
-    {
-        constexpr bool operator()(const basic_monomial<compare> & m)
-        {
-            return m.empty();
-        } 
-    };
-    template <class T,class compare>
-    inline void pair_vec_first_normalization(std::vector<std::pair<basic_monomial<compare>,T>> & v,const compare * comp)
-    {   
-        for(auto &i:v)
-        {
-            // if (i.first.comp_ptr()!=comp)
-            // {
-                i.first.comp(comp);
-                i.first.normalization();
-            // }
-        }
-    }
-    template <class T,class compare>
-    inline bool pair_vec_first_normal_check(std::vector<std::pair<basic_monomial<compare>,T>> & v,const  compare * comp)
-    {
-        for(auto &i:v)
-            if (i.first.comp_ptr()!=comp || i.is_normal())
-            {
-                return false;
-            }
-        return true;
-    }
-    template<class compare>
-    void __mono_mult__(basic_monomial<compare> & op,const basic_monomial<compare>  & op1,const basic_monomial<compare>  & op2)
-    {
-        // if(&(op.data())==&(op1.data()) || &(op.data())==&(op2.data()))
-        //     op=op1*op2;
-        //std::cout<<"__mono_mult___1";
-        op.comp(op1.comp_ptr());
-        pair_vec_add(op.data(),op1.data(),op2.data(),op1.comp());
-        op.deg()=op1.deg()+op2.deg();
-        //std::cout<<op<<"="<<op1<<"*"<<op2<<std::endl;
-    }
-    template<class compare>
-    bool is_divexact(basic_monomial<compare> & op,const basic_monomial<compare>  & op1,const basic_monomial<compare>  & op2)
-    {
-        op.comp(op1.comp_ptr());
-        pair_vec_sub(op.data(),op1.data(),op2.data(),op1.comp());
-        op.deg()=op1.deg()-op2.deg();
-        if (op.deg()<0) return false;
-        for(auto &i : op)
-            if (i.second < 0)
-                return false;
-        return true;
-    }
+   
 }
 namespace std{
     template<class compare>

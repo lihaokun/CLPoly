@@ -24,6 +24,10 @@ int main(){
     //std::cout<<"n1<n2?"<<(n1.begin()->first<n2.begin()->first)<<std::endl;
     // // clpoly::basic_polynomial<int,int> p={{1,2},{3,4}};
     // clpoly::basic_polynomial<int,int> p2=p;
+    clpoly::monomial m1={{x,1}};
+    std::cout<<clpoly::_monomial_compression(m1,{x,y,z,g})<<std::endl;
+    clpoly::_monomial_decompression(clpoly::_monomial_compression(m1,{x,y,z,g}),m1,{x,y,z,g});
+    std::cout<<m1.deg()<<std::endl;
     std::cout<<"p.power(2):"<<pow(p,2)<<std::endl;
     std::cout<<"p.power(2):x^2+2*x*y+2*x*z+2*x*g+y^2+2*y*z+2*y*g+z^2+2*z*g+g^2+2*x+2*y+2*z+2*g+1\n";
     std::cout<<"(p+1)*(p+2):"<<((p+n1)*(p+n2))<<std::endl;
@@ -37,8 +41,40 @@ int main(){
     // clpoly::poly_convert((p*2+1),p5);
     // std::cout<<p5<<std::endl;
     // std::cout<<p4*p5<<std::endl;
-    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=pow(p,20);
     
+    // clpoly::variable x1("x1");
+    // clpoly::variable x2("x2");
+    // clpoly::variable x3("x3");
+    // clpoly::variable x4("x4");
+    // clpoly::variable x5("x5");
+    // clpoly::variable x6("x6");
+    // clpoly::polynomial_ZZ f1;
+    // clpoly::polynomial_ZZ f2;
+    
+    // double t1=0,t2=0;
+    // auto t=clock();
+    // for(int i=0;i<1;++i)
+    // {
+    //     f1=clpoly::random_polynomial<clpoly::ZZ>({x1,x2,x3},5,0.1,10,-10);
+    //     f2=clpoly::random_polynomial<clpoly::ZZ>({x3,x2,x5},5,0.1,10,-10);
+    //     std::cout<<"f1.size:"<<f1.size()<<std::endl;
+    //     std::cout<<"f2.size:"<<f2.size()<<std::endl;
+    //     clpoly::__pair_vec_multiplies_compression_b=true;
+    //     t=clock();
+    //     std::cout<<(f1*f2)<<std::endl;
+    //     t1+=((double)clock()-t)/CLOCKS_PER_SEC;
+    //     printf ("(%f seconds).\n",((double)clock()-t)/CLOCKS_PER_SEC);
+    //     clpoly::__pair_vec_multiplies_compression_b=false;
+    //     t=clock();
+    //     std::cout<<(f1*f2)<<std::endl;
+    //     t2+=((double)clock()-t)/CLOCKS_PER_SEC;
+    //     printf ("(%f seconds).\n",((double)clock()-t)/CLOCKS_PER_SEC);
+    // }
+    // std::cout<<t1<<"\n"<<t2<<"\n"<<t2-t1<<std::endl;
+
+    // clpoly::__pair_vec_multiplies_compression_b=true;
+
+    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=pow(p,20);
     auto t=clock();
     auto p3=(p2+n1)*(p2+n2);
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);

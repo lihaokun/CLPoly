@@ -164,6 +164,7 @@ namespace clpoly{
     template<class Tc>
     polynomial_<Tc> random_polynomial(const std::vector<variable> & v,uint64_t deg,double p,int up,int down)
     {
+        if (down > up) std::swap(up,down);
         std::vector<std::pair<monomial,Tc>> p1;
         std::random_device rd; 
         std::mt19937 gen(rd());
@@ -221,41 +222,7 @@ namespace clpoly{
     std::list<std::pair<variable,int64_t>> get_variables(const polynomial_<Tc,comp>& p)
     {
         std::list<std::pair<variable,int64_t>> l;
-        typename std::list<std::pair<variable,int64_t>>::iterator l_ptr;
-        typename basic_monomial<comp>::const_iterator m_ptr;
-
-        for (const auto & i:p)
-        {
-            if (!i.first.empty())
-            {
-                m_ptr=i.first.begin();
-                if (!l.empty())
-                {
-                    l_ptr=l.begin();
-                    for(;m_ptr!=i.first.end() && i.first.comp(m_ptr->first,l_ptr->first);l.push_front(*(m_ptr++)));
-                    while(l_ptr!=l.end() && m_ptr!=i.first.end())
-                    {
-                        if (i.first.comp(m_ptr->first,l_ptr->first))
-                        {
-                            l.insert(l_ptr,*(m_ptr++));
-                        }
-                        else
-                        {
-                            if (m_ptr->first==l_ptr->first)//equal_to 
-                            {
-                                if (m_ptr->second>l_ptr->second) //greater
-                                    l_ptr->second=m_ptr->second;
-                                ++l_ptr;++m_ptr;
-                            }    
-                            else
-                                ++l_ptr;
-                        }
-                        
-                    } 
-                }
-                for(;m_ptr!=i.first.end();l.push_back(*(m_ptr++)));  
-            }
-        }
+        __pair_vec_variables(p.data(),l);
         return l;
     }
 

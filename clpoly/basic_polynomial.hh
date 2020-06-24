@@ -499,7 +499,7 @@ namespace clpoly{
                 {
                     if (!zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
                         ){
-                        if (is_print && i->second>0) //greater
+                        if (is_print && i->second>=0) //greater
                             stream<<"+";
                         is_print=true;
                         if (i->second==-1) //equal_to
@@ -512,7 +512,7 @@ namespace clpoly{
                     }
                     if (zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
                         )
-                        if (is_print && i->second>0) //greater
+                        if (is_print && i->second>=0) //greater
                             stream<<"+";
                         is_print=true;
                         stream<<i->second;

@@ -26,7 +26,7 @@ int main(){
     // clpoly::basic_polynomial<int,int> p2=p;
     clpoly::monomial m1={{x,1}};
     std::cout<<clpoly::_monomial_compression(m1,{x,y,z,g})<<std::endl;
-    clpoly::_monomial_decompression(clpoly::_monomial_compression(m1,{x,y,z,g}),m1,{x,y,z,g});
+    clpoly::_monomial_decompression(clpoly::_monomial_compression(m1,{x,y,z,g}),m1,{x,y,z,g},m1.comp_ptr());
     std::cout<<m1.deg()<<std::endl;
     std::cout<<"p.power(2):"<<pow(p,2)<<std::endl;
     std::cout<<"p.power(2):x^2+2*x*y+2*x*z+2*x*g+y^2+2*y*z+2*y*g+z^2+2*z*g+g^2+2*x+2*y+2*z+2*g+1\n";
@@ -55,8 +55,8 @@ int main(){
     // auto t=clock();
     // for(int i=0;i<1;++i)
     // {
-    //     f1=clpoly::random_polynomial<clpoly::ZZ>({x1,x2,x3},5,0.1,10,-10);
-    //     f2=clpoly::random_polynomial<clpoly::ZZ>({x3,x2,x5},5,0.1,10,-10);
+    //     f1=clpoly::random_polynomial<clpoly::ZZ>({x1},500,0.01,10,-10);
+    //     f2=clpoly::random_polynomial<clpoly::ZZ>({x1},500,0.01,10,-10);
     //     std::cout<<"f1.size:"<<f1.size()<<std::endl;
     //     std::cout<<"f2.size:"<<f2.size()<<std::endl;
     //     clpoly::__pair_vec_multiplies_compression_b=true;
@@ -70,8 +70,7 @@ int main(){
     //     t2+=((double)clock()-t)/CLOCKS_PER_SEC;
     //     printf ("(%f seconds).\n",((double)clock()-t)/CLOCKS_PER_SEC);
     // }
-    // std::cout<<t1<<"\n"<<t2<<"\n"<<t2-t1<<std::endl;
-
+    // //std::cout<<t1<<"\n"<<t2<<"\n"<<t2-t1<<std::endl;
     // clpoly::__pair_vec_multiplies_compression_b=true;
 
     clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=pow(p,20);

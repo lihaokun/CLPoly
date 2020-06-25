@@ -42,51 +42,57 @@ int main(){
     // std::cout<<p5<<std::endl;
     // std::cout<<p4*p5<<std::endl;
     
-    // clpoly::variable x1("x1");
-    // clpoly::variable x2("x2");
-    // clpoly::variable x3("x3");
-    // clpoly::variable x4("x4");
-    // clpoly::variable x5("x5");
-    // clpoly::variable x6("x6");
-    // clpoly::polynomial_ZZ f1;
-    // clpoly::polynomial_ZZ f2;
+    clpoly::variable x1("x1");
+    clpoly::variable x2("x2");
+    clpoly::variable x3("x3");
+    clpoly::variable x4("x4");
+    clpoly::variable x5("x5");
+    clpoly::variable x6("x6");
+    clpoly::polynomial_ZZ f1;
+    clpoly::polynomial_ZZ f2;
+    clpoly::univariate_priority_order comp_z(x1);
+    clpoly::polynomial_<clpoly::ZZ,clpoly::univariate_priority_order> f11(&comp_z);
+    clpoly::polynomial_<clpoly::ZZ,clpoly::univariate_priority_order> f22(&comp_z);
     
-    // double t1=0,t2=0;
-    // auto t=clock();
-    // for(int i=0;i<1;++i)
-    // {
-    //     f1=clpoly::random_polynomial<clpoly::ZZ>({x1},500,0.01,10,-10);
-    //     f2=clpoly::random_polynomial<clpoly::ZZ>({x1},500,0.01,10,-10);
-    //     std::cout<<"f1.size:"<<f1.size()<<std::endl;
-    //     std::cout<<"f2.size:"<<f2.size()<<std::endl;
-    //     clpoly::__pair_vec_multiplies_compression_b=true;
-    //     t=clock();
-    //     std::cout<<(f1*f2)<<std::endl;
-    //     t1+=((double)clock()-t)/CLOCKS_PER_SEC;
-    //     printf ("(%f seconds).\n",((double)clock()-t)/CLOCKS_PER_SEC);
-    //     clpoly::__pair_vec_multiplies_compression_b=false;
-    //     t=clock();
-    //     std::cout<<(f1*f2)<<std::endl;
-    //     t2+=((double)clock()-t)/CLOCKS_PER_SEC;
-    //     printf ("(%f seconds).\n",((double)clock()-t)/CLOCKS_PER_SEC);
-    // }
+    double t1=0,t2=0;
+    auto t=clock();
+    for(int i=0;i<1;++i)
+    {
+        f1=clpoly::random_polynomial<clpoly::ZZ>({x1,x2,x3,x4},20,0.1,10,-10);
+        f2=clpoly::random_polynomial<clpoly::ZZ>({x1,x2,x3,x4},20,0.1,10,-10);
+        clpoly::poly_convert(std::move(f1),f11);
+        clpoly::poly_convert(std::move(f2),f22);
+        
+        std::cout<<"f1.size:"<<f11.size()<<std::endl;
+        std::cout<<"f2.size:"<<f22.size()<<std::endl;
+        clpoly::__pair_vec_multiplies_compression_b=true;
+        t=clock();
+        std::cout<<(f11*f22).size()<<std::endl;
+        t1+=((double)clock()-t)/CLOCKS_PER_SEC;
+        printf ("(%f seconds).\n",((double)clock()-t)/CLOCKS_PER_SEC);
+        clpoly::__pair_vec_multiplies_compression_b=false;
+        t=clock();
+        std::cout<<(f11*f22).size()<<std::endl;
+        t2+=((double)clock()-t)/CLOCKS_PER_SEC;
+        printf ("(%f seconds).\n",((double)clock()-t)/CLOCKS_PER_SEC);
+    }
     // //std::cout<<t1<<"\n"<<t2<<"\n"<<t2-t1<<std::endl;
     // clpoly::__pair_vec_multiplies_compression_b=true;
 
-    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=pow(p,20);
-    auto t=clock();
-    auto p3=(p2+n1)*(p2+n2);
-    printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
-    std::cout<<112911876*1.0/p3.size()<<std::endl;//831.757
-    auto k=p3.begin()->second;
-    for(auto & i:p3)
-        if (k<i.second)
-            k=i.second;
-    std::cout<<k<<std::endl;
-    std::cout<<"7656714453153197981835000"<<std::endl;
-    t=clock();
-    std::cout<<((p2+n1)==(p3/(p2+n2)))<<std::endl;
-    printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
+    // clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=pow(p,20);
+    // auto t=clock();
+    // auto p3=(p2+n1)*(p2+n2);
+    // printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
+    // std::cout<<112911876*1.0/p3.size()<<std::endl;//831.757
+    // auto k=p3.begin()->second;
+    // for(auto & i:p3)
+    //     if (k<i.second)
+    //         k=i.second;
+    // std::cout<<k<<std::endl;
+    // std::cout<<"7656714453153197981835000"<<std::endl;
+    // t=clock();
+    // std::cout<<((p2+n1)==(p3/(p2+n2)))<<std::endl;
+    // printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
     
 
     // p.push_back({1,2});

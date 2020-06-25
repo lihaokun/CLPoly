@@ -69,8 +69,8 @@ int main(){
     // clpoly::variable r("r");
     // f=-pow(x,2)*pow(z,3) - pow(x,4) - pow(z,4) + pow(x,2) + 2*pow(z,2) - 1;
     // g=-pow(r,2)*pow(x,2) + pow(x,4) + pow(x,2)*pow(z,2) + pow(z,4) - 2*pow(z,2) + 1;
-    f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.1,10,-10);
-    g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.1,10,-10);
+    f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.05,10,-10);
+    g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.05,10,-10);
     std::cout<<"g="<<g<<";"<<std::endl;
     std::cout<<"f="<<f<<";"<<std::endl;
     // f=-6*pow(x,4)-7*pow(x,2)*y-x*pow(y,3)*z-3*x*y-9;

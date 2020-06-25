@@ -171,9 +171,9 @@ namespace clpoly
         if (v1_.empty() || v2_.empty()) return false;
         if (!__pair_vec_multiplies_compression_b) return false; 
         std::list<variable> vars;
-        std::cout<<"压缩乘法开始\n";
+        //std::cout<<"压缩乘法开始\n";
         if (!__is_monomial_multiplies_compression(v1_,v2_,comp,vars)) return false;
-        std::cout<<"准备完成\n";
+        //std::cout<<"准备完成\n";
         //std::cout<<"vars:"<<vars.size()<<std::endl;
         std::greater<uint64_t> gcomp;
         // std::vector<std::pair<uint64_t,const T3*>> v1_c;
@@ -246,7 +246,7 @@ namespace clpoly
         delete [] heap;
         delete [] lin;
         delete [] node;
-        std::cout<<"压缩乘法结束\n";
+        //std::cout<<"压缩乘法结束\n";
         return true;
     }
 }

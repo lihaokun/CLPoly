@@ -226,7 +226,11 @@ namespace clpoly{
         variable v=comp_ptr->v;
         uint l=64/(vars.size());
         uint ll=l*(vars.size()-1);
-        uint64_t mod=(uint64_t(1)<<(l*(vars.size())))-(uint64_t(1)<<ll);
+        uint64_t mod;
+        if (l==64)
+            mod=-1;
+        else
+            mod=(uint64_t(1)<<(l*(vars.size())))-(uint64_t(1)<<ll);
         uint64_t deg;
         if (vars.back()==v)
         {

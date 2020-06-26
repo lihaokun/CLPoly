@@ -49,7 +49,7 @@ namespace clpoly{
         return polynomial_ZZ({{m,-1}});
     }
 
-    polynomial_ZZ operator +(const monomial & m,int64_t i)
+    polynomial_ZZ operator+(const monomial & m,int64_t i)
     {
         return polynomial_ZZ({{m,1},{{},i}});
     }
@@ -111,7 +111,11 @@ namespace clpoly{
     {
         return p+polynomial_<Tc>({{m,1}});
     }
-
+    template<class Tc>
+    polynomial_<Tc> operator+ (const polynomial_<Tc> & p,const variable & m)
+    {
+        return p+polynomial_<Tc>({{{{m,1}},1}});
+    }
     template<class Tc>
     polynomial_<Tc> operator- (const polynomial_<Tc> & p,const monomial & m)
     {
@@ -492,7 +496,7 @@ namespace clpoly{
             {
                 prem(S_j,F,G);
                 --j;
-                //std::cout<<j<<":"<<S_j<<std::endl;
+                // std::cout<<j<<":"<<S_j<<std::endl;
                 S_j_1=G;
             }
             else{
@@ -504,7 +508,7 @@ namespace clpoly{
                     pair_vec_power(tmp1.data(),R_.data(),j-l,comp);
                     pair_vec_multiplies(S_r.data(),tmp1.data(),G.data(),comp);
                 }
-                //std::cout<<l<<":"<<S_r<<std::endl;
+                // std::cout<<l<<":"<<S_r<<std::endl;
                 prem(S_r_1,F,G);
                 //std::cout<<l-1<<":"<<S_r_1<<std::endl;
                 swap(S_j.data(),S_r_1.data());
@@ -517,7 +521,7 @@ namespace clpoly{
             j=m;
             prem(S_j,F,G);
             pair_vec_negate(S_j.data());
-            //std::cout<<j-1<<":"<<S_j<<std::endl;
+            // std::cout<<j-1<<":"<<S_j<<std::endl;
             if (!(--j))
             {
                 O.data()=std::move(S_j.data());
@@ -541,7 +545,7 @@ namespace clpoly{
                     }
                 }
                 
-                //std::cout<<r<<":"<<S_r<<std::endl;
+                // std::cout<<r<<":"<<S_r<<std::endl;
                 if (!r)
                 {
                     O.data()=std::move(S_r.data());
@@ -551,12 +555,12 @@ namespace clpoly{
                 //std::cout<<"G"<<":"<<G<<std::endl;
                 //std::cout<<"S_"<<j<<":"<<S_j<<std::endl;
                 
-                //std::cout<<r-1<<":"<<tmp1<<std::endl;
+                // std::cout<<r-1<<":"<<tmp1<<std::endl;
                 leadcoeff(R_,G);
                 pair_vec_div(S_r_1.data(),tmp1.data(),R_.data(),comp);
                 if ((j-r) & 1==1)
                     pair_vec_negate(S_r_1.data());
-                //std::cout<<r-1<<":"<<S_r_1<<std::endl;
+                // std::cout<<r-1<<":"<<S_r_1<<std::endl;
                 swap(S_j.data(),S_r_1.data());
                 swap(S_j_1.data(),S_r.data());
                 j=r-1;
@@ -566,7 +570,7 @@ namespace clpoly{
                 prem(tmp1,G,S_j);
                 leadcoeff(R_,G);
                 pair_vec_div(S_j_1.data(),tmp1.data(),R_.data(),comp);
-                //std::cout<<j-1<<":"<<S_j_1<<std::endl;
+                // std::cout<<j-1<<":"<<S_j_1<<std::endl;
                 --j;
                 swap(S_j.data(),S_j_1.data());
             }
@@ -603,7 +607,7 @@ namespace clpoly{
                     pair_vec_power(tmp1.data(),R_.data(),j-r,comp);
                 }
                 
-                //std::cout<<r<<":"<<S_r<<std::endl;
+                // std::cout<<r<<":"<<S_r<<std::endl;
                 if (!r)
                 {
                     O.data()=std::move(S_r.data());
@@ -615,7 +619,7 @@ namespace clpoly{
                 pair_vec_div(S_r_1.data(),tmp2.data(),R_.data(),comp);
                 if ((j-r) & 1==1)
                     pair_vec_negate(S_r_1.data());
-                //std::cout<<r-1<<":"<<S_r_1<<std::endl;
+                // std::cout<<r-1<<":"<<S_r_1<<std::endl;
                 swap(S_j.data(),S_r_1.data());
                 swap(S_j_1.data(),S_r.data());
                 j=r-1;
@@ -630,7 +634,7 @@ namespace clpoly{
                 // std::cout<<"tmp2:"<<tmp2<<std::endl;
                 pair_vec_div(S_j_1.data(),tmp1.data(),tmp2.data(),comp);
                 --j;
-                //std::cout<<j<<":"<<S_j_1<<std::endl;
+                // std::cout<<j<<":"<<S_j_1<<std::endl;
                 swap(S_j.data(),S_j_1.data());
             }
             

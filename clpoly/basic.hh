@@ -351,7 +351,8 @@ namespace clpoly{
     template<class T,class ptr1,class ptr2>
     inline VHC<T,ptr1,ptr2>* VHC_init(VHC<T,ptr1,ptr2>* H,ptr1 v1_ptr,ptr2 v2_ptr)
     {
-        H->mono=v1_ptr->first*v2_ptr->first; //multiplies
+        //H->mono=v1_ptr->first*v2_ptr->first; //multiplies
+        __mono_mult__(H->mono,v1_ptr->first,v2_ptr->first);
         H->v1_ptr=v1_ptr;
         H->v2_ptr=v2_ptr;
         H->next=nullptr;
@@ -572,6 +573,8 @@ namespace clpoly{
             }
             return void();
         }
+        if ( __pair_vec_div_compression(new_v,v1_,v2_,comp))
+            return void();
         new_v.reserve(v1_.size()+v2_.size());
         VHC<T1,std::size_t,typename std::vector<std::pair<T1,T4>>::const_iterator > **heap=
             new VHC<T1,std::size_t,typename std::vector<std::pair<T1,T4>>::const_iterator >*[v2_.size()-1];
@@ -584,14 +587,13 @@ namespace clpoly{
         
         std::size_t lin_size=0;
         auto v2_ptr=v2_.begin();
-        auto v2_begin=v2_.begin();
         auto v1_ptr=v1_.begin();
         auto v1_end=v1_.end();
-        for(std::size_t i=0;i!=v2_.size()-1;++i)
+        for(auto i=node;(++v2_ptr)!=v2_.end();++i)
         {
             //heap[i]=node+i;
-            node[i].v1_ptr=0;
-            node[i].v2_ptr=(++v2_ptr);
+            i->v1_ptr=0;
+            i->v2_ptr=v2_ptr;
         }
         std::size_t heap_size=0;
         std::size_t v_size=0;
@@ -633,9 +635,9 @@ namespace clpoly{
             }
             if (!zore_check<T2>()(k)){
                 // new_v.push_back({std::move(m),std::move(k)});
-                if (is_divexact(m1,m,v2_begin->first))
+                if (is_divexact(m1,m,v2_.begin()->first))
                 {
-                    __div(k1,k,v2_begin->second);
+                    __div(k1,k,v2_.begin()->second);
                     //std::cout<<k<<" "<<v2_begin->second<<" "<<k1<<std::endl;    
                     if(!zore_check<T2>()(k1)){
                         ++v_size;

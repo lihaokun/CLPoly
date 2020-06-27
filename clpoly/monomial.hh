@@ -158,7 +158,7 @@ namespace clpoly
     }
     
   
-    bool __pair_vec_multiplies_compression_b=false;
+    bool __is_monomial_compression=true;
     template <class T2,class T3,class T4,class compare>
     bool __pair_vec_multiplies_compression
     (
@@ -169,17 +169,20 @@ namespace clpoly
     )
     {
         if (v1_.empty() || v2_.empty()) return false;
-        if (!__pair_vec_multiplies_compression_b) return false; 
+        if (!__is_monomial_compression) return false; 
         std::list<variable> vars;
         //std::cout<<"压缩乘法开始\n";
-        if (!__is_monomial_multiplies_compression(v1_,v2_,comp,vars)) return false;
+        if (!__is_monomial_can_compression(v1_,v2_,comp,vars)) return false;
         //std::cout<<"准备完成\n";
         //std::cout<<"vars:"<<vars.size()<<std::endl;
         std::greater<uint64_t> gcomp;
-        // std::vector<std::pair<uint64_t,const T3*>> v1_c;
         std::vector<std::pair<uint64_t,const T4*>> v2_c;
+        for (auto &i:v2_)
+        {
+            v2_c.push_back({__monomial_compression(i.first,vars),&(i.second)});
+        }
         v2_c.reserve(v2_.size());
-        // std::vector<std::pair<uint64_t,T2*>> new_v_c;
+        new_v.clear();
         new_v.reserve(v1_.size()*v2_.size());
         const compare * comp_ptr=v1_.begin()->first.comp_ptr();
         VHC<uint64_t,std::pair<uint64_t,const T3*>,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **heap=
@@ -191,17 +194,14 @@ namespace clpoly
         std::size_t reset=1;
         std::size_t lin_size=0;
         auto v1_ptr=v1_.begin();
-        for (auto &i:v2_)
-        {
-            v2_c.push_back({_monomial_compression(i.first,vars),&(i.second)});
-        }
+
         auto v2_begin=v2_c.begin();
         auto v2_end=v2_c.end();
         for(std::size_t i=0;i!=v1_.size();++i,++v1_ptr)
         {
             heap[i]=node+i;
             node[i].v2_ptr=v2_begin;
-            node[i].v1_ptr.first=_monomial_compression(v1_ptr->first,vars);
+            node[i].v1_ptr.first=__monomial_compression(v1_ptr->first,vars);
             node[i].v1_ptr.second=&v1_ptr->second;
             node[i].mono=v2_begin->first+node[i].v1_ptr.first;
             //node[i].next=nullptr;
@@ -216,7 +216,7 @@ namespace clpoly
         {
             set_zero(k);
             m=heap[0]->mono;
-            // _monomial_decompression(m,m1,vars,comp_ptr);
+            // __monomial_decompression(m,m1,vars,comp_ptr);
             // std::cout<<m1<<std::endl;
             do{
                 while(heap[0]!=nullptr){
@@ -237,8 +237,130 @@ namespace clpoly
                 //end:
             }while (heap_size>0 && heap[0]->mono==m);  //equal_to
             if (!zore_check<T2>()(k)){
-                _monomial_decompression(m,m1,vars,comp_ptr);
+                __monomial_decompression(m,m1,vars,comp_ptr);
                 new_v.push_back({std::move(m1),std::move(k)});
+            }
+            while(lin_size>0)
+                VHC_insert(heap,heap_size,lin[--lin_size],gcomp);
+        }
+        delete [] heap;
+        delete [] lin;
+        delete [] node;
+        //std::cout<<"压缩乘法结束\n";
+        return true;
+    }
+
+    template <class T2,class T3,class T4,class compare>
+    bool __pair_vec_div_compression
+    (
+        std::vector<std::pair<basic_monomial<compare>,T2>>& new_v,
+        const std::vector<std::pair<basic_monomial<compare>,T3>> & v1_,
+        const std::vector<std::pair<basic_monomial<compare>,T4>> & v2_,
+        const compare & comp
+    )
+    {
+        if (v1_.empty() || v2_.empty()) return false;
+        if (!__is_monomial_compression) return false; 
+        std::list<variable> vars;
+        //std::cout<<"压缩除法开始\n";
+        if (!__is_monomial_can_compression(v1_,v2_,comp,vars,1)) return false;
+        //std::cout<<"准备完成\n";
+        //std::cout<<"vars:"<<vars.size()<<std::endl;
+        std::greater<uint64_t> gcomp;
+        std::vector<std::pair<uint64_t,const T3*>> v1_c;
+        v1_c.reserve(v1_.size());
+        std::vector<std::pair<uint64_t,const T4*>> v2_c;
+        v2_c.reserve(v2_.size());
+        for (auto &i:v1_)
+        {
+            v1_c.push_back({__monomial_compression(i.first,vars),&(i.second)});
+        }
+        for (auto &i:v2_)
+        {
+            v2_c.push_back({__monomial_compression(i.first,vars),&(i.second)});
+        }
+        std::list<std::pair<uint64_t,T2*>> new_v_c;
+        new_v.clear();
+        new_v.reserve(v1_.size()+v2_.size());
+        const compare * comp_ptr=v1_.begin()->first.comp_ptr();
+        uint64_t mold=__monomial_compression_div_mold(comp_ptr,vars.size());
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **heap=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()-1];
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > *node=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >[v2_.size()-1];    
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **lin=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()-1];
+        std::size_t reset=0;
+        std::size_t reset_h=v2_.size()-1;
+        std::size_t lin_size=0;
+        auto v2_ptr=v2_c.begin();
+        auto v1_ptr=v1_c.begin();
+        auto v1_end=v1_c.end();
+        typename std::list<std::pair<uint64_t,T2*>>::const_iterator new_c_ptr;
+        uint64_t m;
+        basic_monomial<compare> m1;
+        for(auto i=node;(++v2_ptr)!=v2_c.end();++i)
+        {
+            i->v2_ptr=v2_ptr;
+        }
+        std::size_t heap_size=0;
+        std::size_t v_size=0;
+        std::size_t i, j, s,i1;
+        T2 k;
+        T2 k1;
+        while (heap_size!=0 || v1_ptr!=v1_end)
+        {
+            if (v1_ptr!=v1_end && (heap_size==0 || !gcomp(heap[0]->mono,v1_ptr->first)))
+            {
+                m=v1_ptr->first;
+                k=*((v1_ptr++)->second);
+            }
+            else
+            {
+                m=heap[0]->mono;
+                set_zero(k);
+            }
+            __monomial_decompression(m,m1,vars,comp_ptr);
+            //std::cout<<m1<<std::endl;
+            while(heap_size>0 && heap[0]->mono==m){ //equal_to
+                while(heap[0]!=nullptr){
+                    submul(k,*(heap[0]->v1_ptr->second),*(heap[0]->v2_ptr->second));
+                    if (++(heap[0]->v1_ptr)!=new_v_c.end()){
+                        lin[lin_size++]=heap[0];
+                        heap[0]->mono=heap[0]->v1_ptr->first+heap[0]->v2_ptr->first;
+                        heap[0]=heap[0]->next;  
+                    }
+                    else{
+                        heap[0]=heap[0]->next;
+                        ++reset_h;
+                    }
+                }
+                VHC_extract(heap,heap_size,gcomp);
+            }
+            if (!zore_check<T2>()(k)){
+                // new_v.push_back({std::move(m),std::move(k)});
+                if (((m-v2_c.begin()->first)& mold)==0)
+                {
+                    __div(k1,k,v2_.begin()->second);
+                    //std::cout<<k<<" "<<v2_begin->second<<" "<<k1<<std::endl;    
+                    if(!zore_check<T2>()(k1)){
+                        ++v_size;
+                        m-=v2_c.begin()->first;
+                        __monomial_decompression(m,m1,vars,comp_ptr);
+                        //std::cout<<m1<<" "<<k1<<std::endl;
+                        new_v.push_back({std::move(m1),std::move(k1)});
+                        new_v_c.push_back({m,&(new_v.back().second)});
+                        new_c_ptr=new_v_c.end();
+                        --new_c_ptr;
+                        while(reset_h>0)
+                        {
+                            --reset_h;
+                            node[reset_h].v1_ptr=new_c_ptr;
+                            node[reset_h].mono=new_c_ptr->first+node[reset_h].v2_ptr->first;
+                            VHC_insert(heap,heap_size,node+reset_h,gcomp);
+                        }
+                    }
+                }
             }
             while(lin_size>0)
                 VHC_insert(heap,heap_size,lin[--lin_size],gcomp);

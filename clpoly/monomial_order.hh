@@ -65,30 +65,36 @@ namespace clpoly{
 /*compression*/
 
     template<class Tc1,class Tc2,class compare,class compare2>
-    constexpr bool __is_monomial_multiplies_compression(
+    constexpr bool __is_monomial_can_compression(
         const std::vector<std::pair<basic_monomial<compare>,Tc1>> & v1_,
         const std::vector<std::pair<basic_monomial<compare>,Tc2>> & v2_,
         const compare2 & comp,
-        std::list<variable>& vars
+        std::list<variable>& vars,
+        int delta=0
     )
     {
         return false;
     }
     template<class compare>
-    constexpr uint64_t _monomial_compression(const basic_monomial<compare> & m,const std::list<variable>& vars)
+    constexpr uint64_t __monomial_compression(const basic_monomial<compare> & m,const std::list<variable>& vars)
     {
         return 0;
     }
     template<class compare>
-    constexpr void _monomial_decompression(uint64_t mc,basic_monomial<compare> & m,const std::list<variable>& vars,const compare * comp)
+    constexpr void __monomial_decompression(uint64_t mc,basic_monomial<compare> & m,const std::list<variable>& vars,const compare * comp)
     {}
-
+    template<class compare>
+    constexpr uint64_t __monomial_compression_div_mold(const compare * m,size_t vars_size)
+    {
+        return 0;
+    }
     template<class Tc1,class Tc2>
-    bool __is_monomial_multiplies_compression(
+    bool __is_monomial_can_compression(
         const std::vector<std::pair<basic_monomial<grlex>,Tc1>> & v1_,
         const std::vector<std::pair<basic_monomial<grlex>,Tc2>> & v2_,
         const grlex & comp,
-        std::list<variable>& vars
+        std::list<variable>& vars,
+        int delta=0
     )
     {
         for (auto & i:v1_)
@@ -102,11 +108,14 @@ namespace clpoly{
         vars.clear();
         __pair_vec_variables(v1_,vars);
         __pair_vec_variables(v2_,vars);
-        if (vars.size()>1 && v1_.begin()->first.deg()+v2_.begin()->first.deg()>=(uint64_t(1)<<(64/(vars.size()+1)))) return false;
+        if (delta)
+            if (vars.size()>1 && std::max(v1_.begin()->first.deg(),v2_.begin()->first.deg())>=(uint64_t(1)<<(64/(vars.size()+1)-1))) return false;
+        else
+            if (vars.size()>1 && v1_.begin()->first.deg()+v2_.begin()->first.deg()>=(uint64_t(1)<<(64/(vars.size()+1)))) return false;
         return true;
     }
     template<>
-    inline uint64_t _monomial_compression(const basic_monomial<grlex> & m,const std::list<variable>& vars)
+    inline uint64_t __monomial_compression(const basic_monomial<grlex> & m,const std::list<variable>& vars)
     {
         uint64_t mc=0;
         if (m.empty() || vars.empty() )return mc;
@@ -134,7 +143,7 @@ namespace clpoly{
         return mc;
     }
     template<>
-    inline void _monomial_decompression(uint64_t mc,basic_monomial<grlex> & m,const std::list<variable>& vars,const grlex * comp_ptr)
+    inline void __monomial_decompression(uint64_t mc,basic_monomial<grlex> & m,const std::list<variable>& vars,const grlex * comp_ptr)
     {
         m.clear();
         m.comp(comp_ptr);
@@ -160,38 +169,54 @@ namespace clpoly{
             m.push_back({*vars.begin(),mc});
         }
     }
-
+    template<>
+    inline uint64_t __monomial_compression_div_mold(const grlex* m,size_t vars_size)
+    {
+        uint l=64/(vars_size+1);
+        uint64_t mold=0;
+        for (uint i=0;i<=vars_size;++i)
+        {
+            mold<<=1;
+            mold+=1;
+            mold<<=(l-1);
+        }
+        return mold;
+    }
     template<class Tc1,class Tc2>
-    bool __is_monomial_multiplies_compression(
+    bool __is_monomial_can_compression(
         const std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc1>> & v1_,
         const std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc2>> & v2_,
         const univariate_priority_order & comp,
-        std::list<variable>& vars
+        std::list<variable>& vars,
+        int delta=0
     )
     {
-        uint64_t deg=0;
+        uint64_t deg1=0,deg2=0;
         for (auto & i:v1_)
             for (auto & j:i.first)
                 if (j.second<0)
                     return false;
-                else if(j.second>deg)
-                    deg=j.second;
+                else if(j.second>deg1)
+                    deg1=j.second;
 
                 
         for (auto & i:v2_)
             for (auto & j:i.first)
                 if (j.second<0)
                     return false;
-                else if(j.second>deg)
-                    deg=j.second;
+                else if(j.second>deg2)
+                    deg2=j.second;
         vars.clear();
         __pair_vec_variables(v1_,vars);
         __pair_vec_variables(v2_,vars);
-        if (vars.size()>1  && deg>=(uint64_t(1)<<(64/vars.size()))) return false;
+        if (delta)
+            if (vars.size()>1  && std::max(deg1,deg2)>=(uint64_t(1)<<(64/vars.size()-1))) return false;
+        else    
+            if (vars.size()>1  && deg1+deg2>=(uint64_t(1)<<(64/vars.size()))) return false;
         return true;
     }
     template<>
-    inline uint64_t _monomial_compression(const basic_monomial<univariate_priority_order> & m,const std::list<variable>& vars)
+    inline uint64_t __monomial_compression(const basic_monomial<univariate_priority_order> & m,const std::list<variable>& vars)
     {
         uint64_t mc=0;
         if (m.empty() || vars.empty() )return mc;
@@ -217,7 +242,7 @@ namespace clpoly{
         return mc;
     }
     template<>
-    inline void _monomial_decompression(uint64_t mc,basic_monomial<univariate_priority_order> & m,const std::list<variable>& vars,const univariate_priority_order * comp_ptr)
+    inline void __monomial_decompression(uint64_t mc,basic_monomial<univariate_priority_order> & m,const std::list<variable>& vars,const univariate_priority_order * comp_ptr)
     {
         m.clear();
         m.comp(comp_ptr);
@@ -254,6 +279,19 @@ namespace clpoly{
             }   
         }
 
+    }
+    template<>
+    inline uint64_t __monomial_compression_div_mold(const univariate_priority_order* comp,size_t vars_size)
+    {
+        uint l=64/(vars_size);
+        uint64_t mold=0;
+        for (uint i=0;i<vars_size;++i)
+        {
+            mold<<=1;
+            mold+=1;
+            mold<<=(l-1);
+        }
+        return mold;
     }
 
 }

@@ -55,18 +55,18 @@ int main(){
     std::cout<<"p2/p1:"<<(p2/p1)<<std::endl;
     // clpoly::basic_monomial<clpoly::grevlex> m1=p1.data();
     // std::cout<<"m1:"<<m1<<std::endl;
-    clpoly::univariate_first_order x2f(x2);
-    std::cout<<"&x2f"<<&x2f<<std::endl;
-    clpoly::basic_monomial<clpoly::univariate_first_order> m1(&x2f);
-    m1=p1.data();
-    std::cout<<"m1:"<<m1<<std::endl;
-    clpoly::basic_monomial<clpoly::univariate_first_order> m2(&x2f);
-    m2=x2;
-    std::cout<<"m2:"<<m2<<std::endl;
-    clpoly::basic_monomial<clpoly::univariate_first_order> m3();
-    std::cout<<"m1*m2:"<<m1*m2<<std::endl;
-    std::cout<<"m1*m2?:"<<&((m1*m2).comp())<<std::endl;
-    std::cout<<"m1*m2?:"<<(m1*m2).is_normal()<<std::endl;
+    // clpoly::univariate_first_order x2f(x2);
+    // std::cout<<"&x2f"<<&x2f<<std::endl;
+    // clpoly::basic_monomial<clpoly::univariate_first_order> m1(&x2f);
+    // m1=p1.data();
+    // std::cout<<"m1:"<<m1<<std::endl;
+    // clpoly::basic_monomial<clpoly::univariate_first_order> m2(&x2f);
+    // m2=x2;
+    // std::cout<<"m2:"<<m2<<std::endl;
+    // clpoly::basic_monomial<clpoly::univariate_first_order> m3();
+    // std::cout<<"m1*m2:"<<m1*m2<<std::endl;
+    // std::cout<<"m1*m2?:"<<&((m1*m2).comp())<<std::endl;
+    // std::cout<<"m1*m2?:"<<(m1*m2).is_normal()<<std::endl;
     
     //clpoly::basic_monomial<>
     // p2.comp(std::less<clpoly::variable>());

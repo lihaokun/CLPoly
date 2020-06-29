@@ -465,7 +465,7 @@ namespace clpoly{
         }
         if ( __pair_vec_multiplies_compression(new_v,v1_,v2_,comp))
             return void();
-        new_v.reserve(v1_.size()*v2_.size());
+        new_v.reserve(v1_.size()+v2_.size());
         VHC<T1,typename std::vector<std::pair<T1,T3>>::const_iterator,typename std::vector<std::pair<T1,T4>>::const_iterator > **heap=
             new VHC<T1,typename std::vector<std::pair<T1,T3>>::const_iterator,typename std::vector<std::pair<T1,T4>>::const_iterator >*[v1_.size()];
         VHC<T1,typename std::vector<std::pair<T1,T3>>::const_iterator,typename std::vector<std::pair<T1,T4>>::const_iterator > *node=

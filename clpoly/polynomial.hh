@@ -331,20 +331,21 @@ namespace clpoly{
                 G1.back().first.pop_back();
             }
         }
-        
+
+        pair_vec_multiplies(F1,G1,F,comp);
         if(G_ptr==G_end)
         {
-            return void();
+            pair_vec_negate(F1);
+            std::swap(F1,O);
         }
-        pair_vec_multiplies(F1,G1,F,comp);
-        auto F_ptr=F1.begin();
-        auto F_end=F1.end();
-        G2.clear();
-        G2.reserve((G_end-G_ptr));
-        while(G_ptr!=G_end)
-            G2.push_back(*(G_ptr++));
-        pair_vec_multiplies(G1,G2,F0,comp);
-        pair_vec_sub(O,G1,F1,comp);
+        else{
+            G2.clear();
+            G2.reserve((G_end-G_ptr));
+            while(G_ptr!=G_end)
+                G2.push_back(*(G_ptr++));
+            pair_vec_multiplies(G1,G2,F0,comp);
+            pair_vec_sub(O,G1,F1,comp);
+        }
     }
     
     template <class Tc>
@@ -385,13 +386,13 @@ namespace clpoly{
         std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_F1;
         O.data().reserve(G.size());
         __onestep__prem(G.data(),tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());
-        //std::cout<<"prem_:"<<O<<std::endl;
+        // std::cout<<"prem_:"<<O<<std::endl;
         while (get_up_deg(O)>=f_deg)
         {
-            swap(tmp_G,O.data());
+            std::swap(tmp_G,O.data());
             __onestep__prem(tmp_G,tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());    
             --d;
-            //std::cout<<"prem_:"<<O<<std::endl;
+            // std::cout<<"prem_:"<<O<<std::endl;
         }
         if (is_L && d>0)
         {
@@ -464,6 +465,8 @@ namespace clpoly{
         if (m<l)
         {
             resultant(O,G,F);
+            if ((l&1) &&(m&1))
+                pair_vec_negate(O.data());
             return void();
         }
         if (m==0)
@@ -496,7 +499,7 @@ namespace clpoly{
             {
                 prem(S_j,F,G);
                 --j;
-                // std::cout<<j<<":"<<S_j<<std::endl;
+                //  std::cout<<j<<":"<<S_j<<std::endl;
                 S_j_1=G;
             }
             else{
@@ -508,9 +511,11 @@ namespace clpoly{
                     pair_vec_power(tmp1.data(),R_.data(),j-l,comp);
                     pair_vec_multiplies(S_r.data(),tmp1.data(),G.data(),comp);
                 }
-                // std::cout<<l<<":"<<S_r<<std::endl;
+                //  std::cout<<l<<":"<<S_r<<std::endl;
                 prem(S_r_1,F,G);
-                //std::cout<<l-1<<":"<<S_r_1<<std::endl;
+                if (j-l & 1)
+                    pair_vec_negate(S_r_1.data());
+                //  std::cout<<l-1<<":"<<S_r_1<<std::endl;
                 swap(S_j.data(),S_r_1.data());
                 swap(S_j_1.data(),S_r.data());
                 j=l-1;
@@ -521,7 +526,7 @@ namespace clpoly{
             j=m;
             prem(S_j,F,G);
             pair_vec_negate(S_j.data());
-            // std::cout<<j-1<<":"<<S_j<<std::endl;
+            //  std::cout<<j-1<<":"<<S_j<<std::endl;
             if (!(--j))
             {
                 O.data()=std::move(S_j.data());
@@ -545,7 +550,7 @@ namespace clpoly{
                     }
                 }
                 
-                // std::cout<<r<<":"<<S_r<<std::endl;
+                //  std::cout<<r<<":"<<S_r<<std::endl;
                 if (!r)
                 {
                     O.data()=std::move(S_r.data());
@@ -555,12 +560,12 @@ namespace clpoly{
                 //std::cout<<"G"<<":"<<G<<std::endl;
                 //std::cout<<"S_"<<j<<":"<<S_j<<std::endl;
                 
-                // std::cout<<r-1<<":"<<tmp1<<std::endl;
+                //  std::cout<<r-1<<":"<<tmp1<<std::endl;
                 leadcoeff(R_,G);
                 pair_vec_div(S_r_1.data(),tmp1.data(),R_.data(),comp);
                 if ((j-r) & 1==1)
                     pair_vec_negate(S_r_1.data());
-                // std::cout<<r-1<<":"<<S_r_1<<std::endl;
+                //  std::cout<<r-1<<":"<<S_r_1<<std::endl;
                 swap(S_j.data(),S_r_1.data());
                 swap(S_j_1.data(),S_r.data());
                 j=r-1;
@@ -570,12 +575,12 @@ namespace clpoly{
                 prem(tmp1,G,S_j);
                 leadcoeff(R_,G);
                 pair_vec_div(S_j_1.data(),tmp1.data(),R_.data(),comp);
-                // std::cout<<j-1<<":"<<S_j_1<<std::endl;
+                //  std::cout<<j-1<<":"<<S_j_1<<std::endl;
                 --j;
                 swap(S_j.data(),S_j_1.data());
             }
         }
-        while (j)
+        while (j>0)
         {
             r=get_up_deg(S_j);
             if (r<0)
@@ -607,19 +612,28 @@ namespace clpoly{
                     pair_vec_power(tmp1.data(),R_.data(),j-r,comp);
                 }
                 
-                // std::cout<<r<<":"<<S_r<<std::endl;
+                //  std::cout<<r<<":"<<S_r<<std::endl;
                 if (!r)
                 {
                     O.data()=std::move(S_r.data());
                     return void();
                 }
                 pair_vec_multiplies(tmp2.data(),R_.data(),R_.data(),comp);
-                pair_vec_multiplies(R_.data(),tmp2.data(),tmp1.data(),comp);
-                prem(tmp2,S_j_1,S_j);
-                pair_vec_div(S_r_1.data(),tmp2.data(),R_.data(),comp);
-                if ((j-r) & 1==1)
+                if (j-r<2)
+                {
+                    pair_vec_multiplies(tmp1.data(),R_.data(),tmp2.data(),comp);    
+                    prem(tmp2,S_j_1,S_j);
+                    pair_vec_div(S_r_1.data(),tmp2.data(),tmp1.data(),comp);    
+                }        
+                else
+                {
+                    pair_vec_multiplies(R_.data(),tmp2.data(),tmp1.data(),comp);
+                    prem(tmp2,S_j_1,S_j);
+                    pair_vec_div(S_r_1.data(),tmp2.data(),R_.data(),comp);
+                }
+                if ((j-r) & 1)
                     pair_vec_negate(S_r_1.data());
-                // std::cout<<r-1<<":"<<S_r_1<<std::endl;
+                //  std::cout<<r-1<<":"<<S_r_1<<std::endl;
                 swap(S_j.data(),S_r_1.data());
                 swap(S_j_1.data(),S_r.data());
                 j=r-1;
@@ -634,7 +648,7 @@ namespace clpoly{
                 // std::cout<<"tmp2:"<<tmp2<<std::endl;
                 pair_vec_div(S_j_1.data(),tmp1.data(),tmp2.data(),comp);
                 --j;
-                // std::cout<<j<<":"<<S_j_1<<std::endl;
+                //  std::cout<<j<<":"<<S_j_1<<std::endl;
                 swap(S_j.data(),S_j_1.data());
             }
             

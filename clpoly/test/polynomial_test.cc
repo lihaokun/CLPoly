@@ -36,20 +36,20 @@ int main(){
     clpoly::variable y("y");
     clpoly::variable z("z");
     clpoly::variable d("d");
-    clpoly::polynomial_ZZ p=2*y*z*x*x*z+d*d*d*y*z*z+1;
-    std::cout<< p<<std::endl;
-    auto l=p.variables();
-    for (auto &i:l)
-        std::cout<<i.first<<":"<<i.second<<" ";
-    std::cout<<std::endl;
-    clpoly::univariate_priority_order comp_z(z);
-    clpoly::polynomial_<clpoly::ZZ,clpoly::univariate_priority_order> p2(&comp_z);
-    clpoly::poly_convert(std::move(p),p2);
-    std::cout<<p2<<std::endl;
-    l=p2.variables();
-    for (auto &i:l)
-        std::cout<<i.first<<":"<<i.second<<" ";
-    std::cout<<std::endl;
+    // clpoly::polynomial_ZZ p=2*y*z*x*x*z+d*d*d*y*z*z+1;
+    // std::cout<< p<<std::endl;
+    // auto l=p.variables();
+    // for (auto &i:l)
+    //     std::cout<<i.first<<":"<<i.second<<" ";
+    // std::cout<<std::endl;
+    // clpoly::univariate_priority_order comp_z(z);
+    // clpoly::polynomial_<clpoly::ZZ,clpoly::univariate_priority_order> p2(&comp_z);
+    // clpoly::poly_convert(std::move(p),p2);
+    // std::cout<<p2<<std::endl;
+    // l=p2.variables();
+    // for (auto &i:l)
+    //     std::cout<<i.first<<":"<<i.second<<" ";
+    // std::cout<<std::endl;
     //clpoly::__is_monomial_compression=true;
     // std::cout<<pow(p2,2)<<std::endl;
     // std::cout<<"4*x^4*y^2*z^4+4*x^2*y^2*d^3*z^4+y^2*d^6*z^4+4*x^2*y*z^2+2*y*d^3*z^2+1\n";
@@ -80,10 +80,20 @@ int main(){
     // f=7*pow(x,2)*pow(y,3)+x*pow(y,4)-8*x*pow(z,4)+9*pow(y,5)-9*y*pow(z,4)+2*pow(x,4)-7*pow(x,2)*pow(y,2)-7*x*pow(y,3)+6*pow(y,4)-9*pow(y,2)*pow(z,2)-3*y*pow(z,3)+2*pow(z,4)+pow(x,2)*z+5*x*pow(y,2)-3*x*pow(z,2)-6*pow(y,3)+9*y*z+4;
     // f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.2,10,-10);
     // g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.2,10,-10);
-    for (int i=0;i<10;++i)
+    //g=-6*pow(x,3)*pow(z,2)+4*pow(x,2)*pow(z,3)-7*pow(z,5)+pow(x,3)*y+10*x*pow(y,3)+3*pow(y,4)+y*pow(z,3)+2*pow(z,2)+x-3*z-3;
+    //f=-6*pow(x,5)-10*pow(x,3)*pow(y,2)-9*pow(x,3)*y*z-8*pow(x,3)*pow(z,2)+4*pow(x,2)*pow(y,3)+5*pow(x,2)*y*pow(z,2)-7*x*y*pow(z,3)-3*pow(y,5)-9*pow(x,2)*pow(z,2)+9*y*pow(z,2)-3*pow(y,2)-7;
+    // g=5*pow(x,5)+9*pow(x,4)*y+pow(x,4)*z-10*pow(x,3)*y*z+10*pow(x,3)*pow(z,2)-8*pow(x,2)*y*pow(z,2)-9*x*pow(z,4)+2*pow(y,3)*pow(z,2)-5*pow(x,4)+7*pow(x,3)*y-pow(x,2)*z+6*x*pow(z,2)+6*pow(y,3)-8;
+    // f=-2*pow(x,3)*pow(z,2)+7*pow(x,2)*pow(y,2)*z+x*y*pow(z,3)+2*pow(y,5)-10*pow(z,5)-3*pow(x,3)*z-3*pow(y,3)*z+6*pow(x,3)-5*pow(y,3)-3*z+1;
+    // g=5*pow(x,5)*pow(y,5)+7*pow(x,6)*pow(y,2)+8*pow(x,5)*pow(y,3)-6*pow(y,8)-2*pow(x,4)*y+3*x*pow(y,2)-6*pow(y,3)-3;
+    // f=-4*pow(y,6)+7*pow(x,4)*y-10*pow(x,4)-4;
+    // g=-5*pow(x,7)*y-3*pow(x,6)*y-4*pow(x,6)+9*x*pow(y,3);
+    // f=3*pow(x,6)*pow(y,4)+pow(x,6)*pow(y,2)+3*pow(x,5)*pow(y,2)+7;
+
+    std::cout<<"t=Association[];t2=Association[];\n";
+    for (int i=0;i<1;++i)
     {
-        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.2,10,-10);
-        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.2,10,-10);
+        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},7,0.1,10,-10);
+        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},7,0.1,10,-10);
         std::cout<<"g="<<g<<";"<<std::endl;
         std::cout<<"f="<<f<<";"<<std::endl;
         // f=-6*pow(x,4)-7*pow(x,2)*y-x*pow(y,3)*z-3*x*y-9;
@@ -94,14 +104,16 @@ int main(){
         o=resultant(f,g,x);
         t1=(double(clock()-t)/CLOCKS_PER_SEC);
         std::cout<<"o="<<o<<";"<<std::endl;
-        std::cout<<"time:"<<t1<<std::endl;
+        std::cout<<"t["<<i<<"]=AbsoluteTiming[o1=o-Expand[Resultant[f,g,x]]];"<<std::endl;
+        printf("t2[%d]=%.6f;\n",i,t1);
+        // std::cout<<"t2["<<i<<"]="<<std::fixed<<setprecision(6)<<t1<<";"<<std::endl;
 
-        clpoly::__is_monomial_compression=false;
-        t=clock();
-        o1=resultant(f,g,x);
-        t1=(double(clock()-t)/CLOCKS_PER_SEC);
-        std::cout<<"o="<<(o1==o)<<";"<<std::endl;
-        std::cout<<"time:"<<t1<<std::endl;
+        // clpoly::__is_monomial_compression=false;
+        // t=clock();
+        // o1=resultant(f,g,x);
+        // t1=(double(clock()-t)/CLOCKS_PER_SEC);
+        // std::cout<<"o="<<(o1==o)<<";"<<std::endl;
+        // std::cout<<"time:"<<t1<<std::endl;
     }
 
     // clpoly::polynomial_ZZ p=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},5,0.05,10,-10);

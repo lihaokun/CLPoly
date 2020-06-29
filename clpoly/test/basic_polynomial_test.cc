@@ -83,8 +83,8 @@ int main(){
     //     printf ("(%f seconds).\n",((double)clock()-t)/CLOCKS_PER_SEC);
     // }
     // //std::cout<<t1<<"\n"<<t2<<"\n"<<t2-t1<<std::endl;
-
-    clpoly::__is_monomial_compression=true;
+    //clpoly::__is_monomial_compression=true;
+    
     clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=pow(p,20);
     auto t=clock();
     auto p3=(p2+n1)*(p2+n2);

@@ -183,7 +183,7 @@ namespace clpoly
         }
         v2_c.reserve(v2_.size());
         new_v.clear();
-        new_v.reserve(v1_.size()*v2_.size());
+        new_v.reserve(v1_.size()+v2_.size());
         const compare * comp_ptr=v1_.begin()->first.comp_ptr();
         VHC<uint64_t,std::pair<uint64_t,const T3*>,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **heap=
             new VHC<uint64_t,std::pair<uint64_t,const T3*>,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v1_.size()];

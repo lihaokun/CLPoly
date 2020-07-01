@@ -34,9 +34,20 @@ namespace clpoly{
         mpz_fdiv_q(op.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
     }
     template<>
+    inline void __div(mpz_class &op,mpz_class &op_r,const mpz_class &op1,const mpz_class&op2)
+    {
+        mpz_fdiv_qr(op.get_mpz_t(),op_r.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+    }
+    template<>
     inline void __div(mpq_class &op,const mpz_class &op1,const mpz_class&op2)
     {
         op=mpq_class(op1,op2);
+    }
+    template<>
+    inline void __div(mpq_class &op,mpq_class &op_r,const mpz_class &op1,const mpz_class&op2)
+    {
+        op=mpq_class(op1,op2);
+        op_r=0;
     }
     template <>
     void set_zero(mpz_class& op)
@@ -47,6 +58,14 @@ namespace clpoly{
     struct zore_check<mpz_class>: public std::unary_function<mpz_class, bool>
     {
         bool operator()(const mpz_class & op)
+        {
+            return !op;
+        } 
+    };
+    template<>
+    struct zore_check<mpq_class>: public std::unary_function<mpq_class, bool>
+    {
+        bool operator()(const mpq_class & op)
         {
             return !op;
         } 

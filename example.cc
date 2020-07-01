@@ -9,5 +9,6 @@ int main(int argc, char const *argv[])
     clpoly::polynomial_ZZ g=10*pow(x,4)*y+2*pow(x,4)-7*pow(x,3)*pow(y,2)+9*pow(x,2)+9*pow(z,4)-9*y+2*z;
     std::cout<<"f="<<f<<std::endl;
     std::cout<<"g="<<g<<std::endl;
-    std::cout<<"prem(f,g,x)="<<prem(f,g,x)<<std::endl;
+    std::cout<<"prem(f,g,x)="<<clpoly::prem(f,g,x)<<std::endl;
+    std::cout<<"resultant(f,g,x)="<<clpoly::resultant(f,g,x)<<std::endl;
 }

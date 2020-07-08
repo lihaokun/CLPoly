@@ -70,5 +70,88 @@ namespace clpoly{
             return !op;
         } 
     };
+
+    uint64_t inv_prime(uint64_t _i,uint32_t _p)
+    {
+        assert(_p!=0);
+        uint64_t a=_p,b=_i,c;
+        uint64_t s1=0,s2=1,s3;
+        while (c=(a%b))
+        {
+            s3=(s1+_p-(s2*(a/b))%_p)%_p;
+            a=b;b=c;
+            s1=s2;s2=s3;
+        }
+        return s2;
+    }
+    class Zp
+    {
+    private:
+        uint64_t _i;
+        uint32_t _p; 
+    public:
+        Zp():_i(0),_p(0){}
+        explicit  Zp(uint32_t p):_i(0),_p(p){}
+        Zp(uint64_t i,uint32_t p):_i(i%p),_p(p){}
+        Zp(int64_t i,uint32_t p):_i(i>0?i%p:p-(-i)%p),_p(p){}
+        Zp(int i,uint32_t p):_i(i>0?i%p:p-(-i)%p),_p(p){}
+        Zp(ZZ i,uint32_t p):_i(mpz_fdiv_ui(i.get_mpz_t(),p)),_p(p){}
+        inline Zp inv() const
+        {
+            assert(this->_p!=0);
+            Zp new_op(this->_p);
+            new_op._i=inv_prime(this->_i,this->_p);
+            return new_op;
+        }
+        constexpr Zp& operator=(int64_t i)
+        {
+            assert(this->_p!=0);
+            this->_i=i>0?i%this->_p:this->_p-(-i)%this->_p;
+            return *this;
+        }
+        constexpr operator std::uint64_t() const {return this->_i;}
+        constexpr uint32_t prime() const {return this->_p;}
+        constexpr void prime(uint32_t p) {this->_p=p;}
+        constexpr Zp & operator+()
+        { return *this;}
+        constexpr Zp & operator-()
+        {   this->_i=this->_p-this->_i;
+            return *this;}
+        
+        friend inline Zp operator+(Zp op1,const Zp & op2)
+        {
+            assert(op1._p==op2._p);
+            op1._i+=op2._i;
+            op1._i%=op1._p;
+            return op1;
+        }
+        friend inline Zp operator-(Zp op1,const Zp & op2)
+        {
+            assert(op1._p==op2._p);
+            op1._i+=op1._p-op2._i;
+            op1._i%=op1._p;
+            return op1;
+        }
+        friend inline Zp operator*(Zp op1,const Zp & op2)
+        {
+            assert(op1._p==op2._p);
+            op1._i*=op2._i;
+            op1._i%=op1._p;
+            return op1;
+        }
+        friend inline Zp operator/(Zp op1,const Zp & op2)
+        {
+            assert(op1._p==op2._p);
+            op1._i*=inv_prime(op2._i,op1._p);
+            op1._i%=op1._p;
+            return op1;
+        }
+        friend std::ostream& operator<<  (std::ostream& stream, const Zp& v) 
+        {
+            stream << v._i;
+            return stream;
+        }
+    };
+
 }
 #endif

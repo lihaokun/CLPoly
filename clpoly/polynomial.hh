@@ -656,5 +656,34 @@ namespace clpoly{
         O.data()=std::move(S_j.data());
         
     }
+    template <class compare>
+    polynomial_<Zp,compare> polynomial_mod(const polynomial_<ZZ,compare> & p, uint32_t prime)
+    {
+        polynomial_<Zp,compare> new_p;
+        for (auto & i:p)
+        {
+            new_p.push_back({i.first,Zp(i.second,prime)});
+        }
+        return new_p;
+    }
+    template <class compare>
+    polynomial_<Zp,compare> polynomial_mod(polynomial_<ZZ,compare> && p, uint32_t prime)
+    {
+        polynomial_<Zp,compare> new_p;
+        for (auto & i:p)
+        {
+            new_p.push_back({std::move(i.first),Zp(i.second,prime)});
+        }
+        p.clear();
+        return new_p;
+    }
+
+    // template <class Tc,class comp>
+    // inline polynomial_<Tc,comp> polynomial_GCD(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F)
+    // {
+        
+    // }
+    // polynomial_GCD
+
 }
 #endif

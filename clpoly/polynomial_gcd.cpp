@@ -13,6 +13,7 @@ Notes:
 #include <boost/math/special_functions/prime.hpp>
 
 namespace clpoly{    
+    
     template <class Tc,class comp>
     inline polynomial_<Tc,comp> polynomial_GCD(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F)
     {

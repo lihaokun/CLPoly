@@ -1,10 +1,10 @@
 #include <iostream>
 #include <vector>
-#include "basic_polynomial.hh"
-#include "monomial.hh"
-#include "variable.hh"
-#include "polynomial.hh"
-#include "number.hh"
+#include <clpoly/basic_polynomial.hh>
+#include <clpoly/monomial.hh>
+#include <clpoly/variable.hh>
+#include <clpoly/polynomial.hh>
+#include <clpoly/number.hh>
 #include <functional>
 #include <time.h>
 
@@ -14,13 +14,13 @@ int main(){
     clpoly::variable z("z");
     clpoly::variable g("g");
     //clpoly::monomial m1={{x,1}};
-    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p={{{{x,1}},1},{{{y,1}},1},{{{z,1}},1},{{{g,1}},1},{{},1}};
+    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ,clpoly::grlex> p={{{{x,1}},1},{{{y,1}},1},{{{z,1}},1},{{{g,1}},1},{{},1}};
     std::cout<<p<<" normal?"<<p.is_normal()<<std::endl;
     
     p.normalization();
     std::cout<<p<<std::endl;
-    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> n1={{{},1}};
-    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> n2={{{},2}};
+    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ,clpoly::grlex> n1={{{},1}};
+    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ,clpoly::grlex> n2={{{},2}};
     //std::cout<<"n1<n2?"<<(n1.begin()->first<n2.begin()->first)<<std::endl;
     // // clpoly::basic_polynomial<int,int> p={{1,2},{3,4}};
     // clpoly::basic_polynomial<int,int> p2=p;
@@ -85,7 +85,7 @@ int main(){
     // //std::cout<<t1<<"\n"<<t2<<"\n"<<t2-t1<<std::endl;
     //clpoly::__is_monomial_compression=true;
     
-    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ> p2=pow(p,20);
+    clpoly::basic_polynomial<clpoly::monomial,clpoly::ZZ,clpoly::grlex> p2=pow(p,20);
     auto t=clock();
     auto p3=(p2+n1)*(p2+n2);
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);

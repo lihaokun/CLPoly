@@ -1,4 +1,4 @@
-#include <clpoly/polynomial.hh>
+#include <clpoly.hh>
 #include <iostream>
 #include <fstream>
 #include <string>

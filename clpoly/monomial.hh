@@ -94,7 +94,7 @@ namespace clpoly
                 if (l_ptr==l.end()) break;
                 if (comp(b->first,l_ptr->first))
                 {
-                    l.insert(l_ptr,*m_ptr);
+                    l.insert(l_ptr,*b);
                 }
                 else 
                 {
@@ -102,7 +102,7 @@ namespace clpoly
                         l_ptr->second=b->second;
                     ++l_ptr;
                 }    
-                ++m_ptr;
+                ++b;
             }
         }
         for(;b!=e;l.push_back(*(b++))); 

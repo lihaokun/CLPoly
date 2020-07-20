@@ -14,6 +14,7 @@ Notes:
 #include <functional>
 #include <algorithm>
 #include <sstream>
+#include <clpoly/variable.hh>
 namespace clpoly{
     class basic_polynomial_status{
         public:

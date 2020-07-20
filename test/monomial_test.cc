@@ -1,7 +1,6 @@
 #include <iostream>
 #include <vector>
-#include "monomial.hh"
-#include "variable.hh"
+#include <clpoly.hh>
 #include <functional>
 
 

@@ -186,11 +186,11 @@ namespace clpoly{
         op.number()-=op1.number()*op2.number();
         op.number()%=op.prime();
     }
-    template<>
-    constexpr void __div(Zp &op,const Zp &op1,const Zp&op2)
-    {
-        op=op1/op2;
-    }
+    // template<>
+    // constexpr void __div(Zp &op,const Zp &op1,const Zp&op2)
+    // {
+    //     op=op1/op2;
+    // }
     template<>
     inline void __div(Zp &op,Zp &op_r,const Zp &op1,const Zp&op2)
     {

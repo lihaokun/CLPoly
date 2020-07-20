@@ -9,9 +9,6 @@ Notes:
 */
 #ifndef CLPOLY_ATOMIC_POLYNOMIAL_HH
 #define CLPOLY_ATOMIC_POLYNOMIAL_HH
-#include "basic.hh"
-#include "variable.hh"
-#include "monomial_order.hh"
 #include <vector>
 #include <list>
 #include <functional>
@@ -84,7 +81,7 @@ namespace clpoly{
                 is_var=is_deg=false;
             }
     };
-    template <class Tm,class Tc,class compare=grlex>
+    template <class Tm,class Tc,class compare>
     class basic_polynomial
     {
         private:

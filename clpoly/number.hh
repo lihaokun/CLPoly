@@ -10,13 +10,12 @@ Notes:
 #ifndef CLPOLY_NUMBER_HH
 #define CLPOLY_NUMBER_HH
 #include <gmpxx.h>
-#include "basic.hh"
-// #include <cln/integer.h>
-// #include <cln/integer_io.h>
+#include <clpoly/basic.hh>
+#include <cmath>
+#include <cassert>
 namespace clpoly{
     typedef mpz_class ZZ;
     typedef mpq_class QQ;
-    
     // using ZZ=cln::cl_I;
     template<>
     inline void addmul(mpz_class &op,const mpz_class &op1,const mpz_class&op2)
@@ -109,15 +108,26 @@ namespace clpoly{
             this->_i=i>0?i%this->_p:this->_p-(-i)%this->_p;
             return *this;
         }
+        inline Zp& operator=(const ZZ& i)
+        {
+            assert(this->_p!=0);
+            this->_i=mpz_fdiv_ui(i.get_mpz_t(),this->_p);
+            return *this;
+        }
         constexpr operator std::uint64_t() const {return this->_i;}
         constexpr uint32_t prime() const {return this->_p;}
+        constexpr uint32_t & prime() {return this->_p;}
+        constexpr uint64_t number() const {return this->_i;}
+        constexpr uint64_t & number() {return this->_i;}
+        constexpr void normalization(){assert(this->_p);this->_i%=this->_p;}
         constexpr void prime(uint32_t p) {this->_p=p;}
         constexpr Zp & operator+()
         { return *this;}
         constexpr Zp & operator-()
-        {   this->_i=this->_p-this->_i;
-            return *this;}
-        
+        {
+            this->_i=this->_p-this->_i;
+            return *this;
+        }
         friend inline Zp operator+(Zp op1,const Zp & op2)
         {
             assert(op1._p==op2._p);
@@ -152,6 +162,41 @@ namespace clpoly{
             return stream;
         }
     };
+    template<>
+    struct zore_check<Zp>: public std::unary_function<Zp, bool>
+    {
+        bool operator()(const Zp & op)
+        {
+            return !op;
+        } 
+    };
+    template<>
+    inline void addmul(Zp &op,const Zp &op1,const Zp&op2)
+    {
+        assert((op.prime()==op1.prime()|| op.prime()==0) && op1.prime()==op2.prime() && op1.prime());
+        op.prime()|=op1.prime();
+        op.number()+=op1.number()*op2.number();
+        op.number()%=op.prime();
+    }
+    template<>
+    inline void submul(Zp &op,const Zp &op1,const Zp&op2)
+    {
+        assert((op.prime()==op1.prime()|| op.prime()==0) && op1.prime()==op2.prime() && op1.prime());
+        op.prime()|=op1.prime();
+        op.number()-=op1.number()*op2.number();
+        op.number()%=op.prime();
+    }
+    template<>
+    constexpr void __div(Zp &op,const Zp &op1,const Zp&op2)
+    {
+        op=op1/op2;
+    }
+    template<>
+    inline void __div(Zp &op,Zp &op_r,const Zp &op1,const Zp&op2)
+    {
+        op=op1/op2;
+        op_r=0;
+    }
 
 }
 #endif

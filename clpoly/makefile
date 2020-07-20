@@ -1,5 +1,5 @@
 CXX=g++ 
-IPATHS=-I./ 
+IPATHS=-I../ 
 CFLAGS=-O3 -flto -DNDEBUG  
 Numberlib= -lgmpxx -lgmp  
 objects= variable_test basic_polynomial_test   monomial_test polynomial_test

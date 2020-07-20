@@ -1,4 +1,4 @@
-#include "polynomial.hh"
+#include <clpoly/polynomial.hh>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -145,5 +145,8 @@ int main(){
     g=-pow(r,2)*pow(x,2) + pow(x,4) + pow(x,2)*pow(z,2) + pow(z,4) - 2*pow(z,2) + 1;
     std::cout<<g<<std::endl;
     std::cout<<clpoly::polynomial_mod(std::move(g),7)<<std::endl;
+    a=std::move(b);
+    std::cout<<a<<b<<std::endl;
+    
     return 0;
 }

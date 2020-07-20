@@ -9,5 +9,5 @@ Notes:
 */
 #ifndef CLPOLY_HH
 #define CLPOLY_HH
-#include "clpoly/polynomial.hh"
+#include <clpoly/polynomial.hh>
 #endif

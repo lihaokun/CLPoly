@@ -9,8 +9,8 @@ Notes:
 */
 #ifndef CLPOLY_BASIC_MONOMIAL_HH
 #define CLPOLY_BASIC_MONOMIAL_HH
-#include "variable.hh"
-#include "basic.hh"
+#include <clpoly/variable.hh>
+#include <clpoly/basic.hh>
 #include <vector>
 #include <functional>
 #include <list>

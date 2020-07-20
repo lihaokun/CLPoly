@@ -11,7 +11,7 @@ Notes:
 #define CLPOLY_MONOMIAL_ORDER_HH
 #include <functional>
 #include <cassert>
-#include "basic_monomial.hh"
+#include <clpoly/basic_monomial.hh>
 namespace clpoly{
     struct lex
     {

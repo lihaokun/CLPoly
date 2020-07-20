@@ -10,16 +10,14 @@ Notes:
 */
 #ifndef CLPOLY_MONOMIAL_HH
 #define CLPOLY_MONOMIAL_HH
-#include "variable.hh"
-#include "basic.hh"
 #include <vector>
 #include <functional>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <cassert>
-#include "monomial_order.hh"
-#include "basic_monomial.hh"
+#include <clpoly/monomial_order.hh>
+#include <clpoly/basic_monomial.hh>
 namespace clpoly
 {
     using monomial=basic_monomial<grlex>;
@@ -81,7 +79,34 @@ namespace clpoly
                 return false;
         return true;
     }
-    
+    template<class ForwardIt ,class compare>
+    void _variables_pair_marge(ForwardIt b,ForwardIt e,std::list<std::pair<variable,int64_t>>& l,const compare & comp)
+    {
+        if (!l.empty())
+        {
+            auto l_ptr=l.begin();
+            while(b!=e)
+            {
+                while (l_ptr!=l.end() && comp(l_ptr->first,b->first))
+                {
+                    ++l_ptr;
+                }
+                if (l_ptr==l.end()) break;
+                if (comp(b->first,l_ptr->first))
+                {
+                    l.insert(l_ptr,*m_ptr);
+                }
+                else 
+                {
+                    if (b->second>l_ptr->second)
+                        l_ptr->second=b->second;
+                    ++l_ptr;
+                }    
+                ++m_ptr;
+            }
+        }
+        for(;b!=e;l.push_back(*(b++))); 
+    }
     template<class Tc,class compare>
     void __pair_vec_variables(const std::vector<std::pair<basic_monomial<compare>,Tc>> & p,std::list<std::pair<variable,int64_t>>& l)
     {

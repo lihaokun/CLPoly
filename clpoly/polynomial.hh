@@ -1,19 +1,18 @@
 /*
 Module Name:
-    atomic_polynomial.hh
+    polynomial.hh
 Abstract:
-    定义polynomial
+    定义polynomial上的运算
 Author:
     haokun li
 Notes:
 */
 #ifndef CLPOLY_POLYNOMIAL_HH
 #define CLPOLY_POLYNOMIAL_HH
-#include "basic.hh"
-#include "variable.hh"
-#include "monomial.hh"
-#include "number.hh"
-#include "basic_polynomial.hh"
+
+#include <clpoly/monomial.hh>
+#include <clpoly/number.hh>
+#include <clpoly/basic_polynomial.hh>
 #include <list>
 #include <string>
 #include <random>
@@ -660,9 +659,12 @@ namespace clpoly{
     polynomial_<Zp,compare> polynomial_mod(const polynomial_<ZZ,compare> & p, uint32_t prime)
     {
         polynomial_<Zp,compare> new_p;
+        Zp coeff(prime);
         for (auto & i:p)
         {
-            new_p.push_back({i.first,Zp(i.second,prime)});
+            coeff=i.second; 
+            if (coeff)
+                new_p.push_back({i.first,std::move(coeff)});
         }
         return new_p;
     }
@@ -670,20 +672,18 @@ namespace clpoly{
     polynomial_<Zp,compare> polynomial_mod(polynomial_<ZZ,compare> && p, uint32_t prime)
     {
         polynomial_<Zp,compare> new_p;
+        Zp coeff(prime);
         for (auto & i:p)
         {
-            new_p.push_back({std::move(i.first),Zp(i.second,prime)});
+            coeff=i.second; 
+            if (coeff)
+            new_p.push_back({std::move(i.first),std::move(coeff)});
         }
         p.clear();
         return new_p;
     }
 
-    // template <class Tc,class comp>
-    // inline polynomial_<Tc,comp> polynomial_GCD(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F)
-    // {
-        
-    // }
-    // polynomial_GCD
+
 
 }
 #endif

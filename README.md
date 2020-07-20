@@ -24,7 +24,7 @@ int main(int argc, char const *argv[])
 ```
 编译指令
 ```
-g++ example.cc -O3 -lgmpxx -lgmp  
+g++ example.cc -I./ -O3 -lgmpxx -lgmp  
 ```
 结果
 ```

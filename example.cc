@@ -1,4 +1,4 @@
-#include "clpoly.hh"
+#include <clpoly.hh>
 
 int main(int argc, char const *argv[])
 {

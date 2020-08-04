@@ -345,7 +345,7 @@ namespace clpoly
                 m=heap[0]->mono;
                 set_zero(k);
             }
-            __monomial_decompression(m,m1,vars,comp_ptr);
+            // __monomial_decompression(m,m1,vars,comp_ptr);
             //std::cout<<m1<<std::endl;
             while(heap_size>0 && heap[0]->mono==m){ //equal_to
                 while(heap[0]!=nullptr){
@@ -468,8 +468,8 @@ namespace clpoly
                 m=heap[0]->mono;
                 set_zero(k);
             }
-            __monomial_decompression(m,m1,vars,comp_ptr);
-            //std::cout<<m1<<std::endl;
+            // __monomial_decompression(m,m1,vars,comp_ptr);
+            // std::cout<<m1<<std::endl;
             while(heap_size>0 && heap[0]->mono==m){ //equal_to
                 while(heap[0]!=nullptr){
                     submul(k,*(heap[0]->v1_ptr->second),*(heap[0]->v2_ptr->second));

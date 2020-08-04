@@ -92,8 +92,8 @@ namespace clpoly{
         Zp():_i(0),_p(0){}
         explicit  Zp(uint32_t p):_i(0),_p(p){}
         Zp(uint64_t i,uint32_t p):_i(i%p),_p(p){}
-        Zp(int64_t i,uint32_t p):_i(i>0?i%p:p-(-i)%p),_p(p){}
-        Zp(int i,uint32_t p):_i(i>0?i%p:p-(-i)%p),_p(p){}
+        Zp(int64_t i,uint32_t p):_i(i>=0?i%p:p-(-i)%p),_p(p){}
+        Zp(int i,uint32_t p):_i(i>=0?i%p:p-(-i)%p),_p(p){}
         Zp(ZZ i,uint32_t p):_i(mpz_fdiv_ui(i.get_mpz_t(),p)),_p(p){}
         inline Zp inv() const
         {
@@ -105,7 +105,7 @@ namespace clpoly{
         constexpr Zp& operator=(int64_t i)
         {
             assert(this->_p!=0);
-            this->_i=i>0?i%this->_p:this->_p-(-i)%this->_p;
+            this->_i=i>=0?i%this->_p:this->_p-(-i)%this->_p;
             return *this;
         }
         inline Zp& operator=(const ZZ& i)
@@ -239,7 +239,7 @@ namespace clpoly{
     {
         assert((op.prime()==op1.prime()|| op.prime()==0) && op1.prime()==op2.prime() && op1.prime());
         op.prime()|=op1.prime();
-        op.number()-=op1.number()*op2.number();
+        op.number()+=op.prime()-(op1.number()*op2.number())%op.prime();
         op.number()%=op.prime();
     }
     Zp pow(const Zp & z,int64_t i)

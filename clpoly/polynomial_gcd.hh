@@ -61,11 +61,13 @@ namespace clpoly{
             //deg_=_upolynomial_GCD(Pout,F,G);
             Pout=G;
             pair_vec_div(Pout_2.data(),Pout_1.data(),F.data(),Pout.data(),comp);
+            //std::cout<<Pout_1<<std::endl;
             while(!Pout_1.empty())
             {
                 swap(Pout.data(),Pout_.data());
                 swap(Pout.data(),Pout_1.data());
                 pair_vec_div(Pout_2.data(),Pout_1.data(),Pout_.data(),Pout.data(),comp);
+                //std::cout<<Pout_1<<std::endl;
             }
             deg_=get_up_deg(Pout);
             if (deg_!=0 && deg_<=deg)
@@ -314,9 +316,9 @@ namespace clpoly{
         _variables_pair_marge(F_vars.begin(),F_vars.end(),vars,G.comp());
 
         std::uint32_t tmp_x=vars.size()*v_d;
-        std::int32_t p_index=tmp_x/std::log(tmp_x);
+        std::int32_t p_index=2;//tmp_x/std::log(tmp_x);
         std::uint32_t prime=boost::math::prime(p_index);
-        while (prime <=v_d)
+        while (prime <v_d)
         {
             prime=boost::math::prime(++p_index);
         }
@@ -327,11 +329,9 @@ namespace clpoly{
         std::int64_t Pout_d=INT64_MAX;
         std::int64_t tmp_Pout_d=INT64_MAX;
         polynomial_<Zp,univariate_priority_order> Pout_mod(&v_order);
+        polynomial_<Zp,univariate_priority_order> f_p(&v_order),g_p(&v_order);
         Zp tmp_inv;
 
-        auto f_p=polynomial_mod(F_,prime);
-        auto g_p=polynomial_mod(G_,prime);
-        
         while (1)
         {
             
@@ -339,14 +339,25 @@ namespace clpoly{
             {
                 prime=boost::math::prime(++p_index);
             }
-            while (tmp_Pout_d=_polynomial_GCD(Pout_mod,f_p,g_p,vars.begin(),v_,Pout_d))
+            f_p=polynomial_mod(F_,prime);
+            g_p=polynomial_mod(G_,prime);
+            std::cout<<f_p<<std::endl;
+            std::cout<<g_p<<std::endl;
+            while (!(tmp_Pout_d=_polynomial_GCD(Pout_mod,f_p,g_p,vars.begin(),v_,Pout_d)))
+            {
                 prime=boost::math::prime(++p_index);
-            
+                f_p=polynomial_mod(F_,prime);
+                g_p=polynomial_mod(G_,prime);
+                std::cout<<f_p<<std::endl;
+                std::cout<<g_p<<std::endl;
+            }
+            std::cout<<Pout_mod<<std::endl;
             if (tmp_Pout_d < Pout_d)
             {
                 Pout_d=tmp_Pout_d;
                 Pout_prime=prime;
                 poly_convert(Pout_mod,Pout_);
+                std::cout<<Pout_<<std::endl;
             }
             else
             {
@@ -362,14 +373,14 @@ namespace clpoly{
                 {
                     if (v_order(Pout_ptr->first,Pm_ptr->first))
                     {
-                        tmp_Pout_.push_back({std::move(Pout_ptr->first),Pout_ptr->second-Pout_ptr->second*tmp_inv.number()*Pout_prime});
+                        tmp_Pout_.push_back({Pout_ptr->first,Pout_ptr->second-Pout_ptr->second*tmp_inv.number()*Pout_prime});
                         ++Pout_ptr;
                     }
                     else
                     {
                         if (Pout_ptr->first==Pm_ptr->first)
                         {
-                            tmp_Pout_.push_back({std::move(Pout_ptr->first),Pout_ptr->second+
+                            tmp_Pout_.push_back({std::move(Pm_ptr->first),Pout_ptr->second+
                             (Pm_ptr->second.number()-Pout_ptr->second)*tmp_inv.number()*Pout_prime});
                             ++Pout_ptr;
                         }
@@ -392,8 +403,23 @@ namespace clpoly{
                     tmp_Pout_.push_back({std::move(Pm_ptr->first),Pm_ptr->second.number()*tmp_inv.number()*Pout_prime});
                     ++Pm_ptr;
                 }
+                Pout_prime*=prime; 
+                for (auto &i:tmp_Pout_)
+                {
+                    i.second%=Pout_prime;
+                }
+                std::cout<<tmp_Pout_<<std::endl;
                 if (tmp_Pout_==Pout_)
                 {
+                    for (auto &i:tmp_Pout_)
+                    {
+                        if (i.second>Pout_prime/2)
+                        {
+                            i.second-=Pout_prime;
+                            i.second%=Pout_prime;
+                        }
+                    }
+                    std::cout<<tmp_Pout_<<std::endl;
                     polynomial_<Tc,univariate_priority_order> R(&v_order);
                     pair_vec_div(tmp_Pout_.data(),R.data(),F_.data(),Pout_.data(),v_order);
                     if (R.empty())
@@ -408,7 +434,7 @@ namespace clpoly{
                     }
                 }
                 swap(tmp_Pout_.data(),Pout_.data());
-                Pout_prime*=prime;         
+                       
             }
             prime=boost::math::prime(++p_index);
         }  

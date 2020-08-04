@@ -72,7 +72,7 @@ namespace clpoly{
 
     uint64_t inv_prime(uint64_t _i,uint32_t _p)
     {
-        assert(_p!=0);
+        assert(_p!=0 && _i!=0);
         uint64_t a=_p,b=_i,c;
         uint64_t s1=0,s2=1,s3;
         while (c=(a%b))
@@ -97,7 +97,7 @@ namespace clpoly{
         Zp(ZZ i,uint32_t p):_i(mpz_fdiv_ui(i.get_mpz_t(),p)),_p(p){}
         inline Zp inv() const
         {
-            assert(this->_p!=0);
+            //assert(this->_p!=0 && this->_i!=0);
             Zp new_op(this->_p);
             new_op._i=inv_prime(this->_i,this->_p);
             return new_op;
@@ -128,33 +128,89 @@ namespace clpoly{
             this->_i=this->_p-this->_i;
             return *this;
         }
-        friend inline Zp operator+(Zp op1,const Zp & op2)
+        // friend inline Zp operator+(Zp op1,std::uint64_t op2)
+        // {
+        //     //assert(op1._p==op2._p);
+        //     op1._i+=op2;
+        //     op1._i%=op1._p;
+        //     return op1;
+        // }
+        // friend inline Zp operator-(Zp op1,std::uint64_t op2)
+        // {
+        //     //assert(op1._p==op2._p);
+        //     op1._i+=op1._p-op2;
+        //     op1._i%=op1._p;
+        //     return op1;
+        // }
+        // friend inline Zp operator*(Zp op1,std::uint64_t op2)
+        // {
+        //     //assert(op1._p==op2._p);
+        //     op1._i*=op2;
+        //     op1._i%=op1._p;
+        //     return op1;
+        // }
+        // inline Zp & operator*=(std::uint64_t op2)
+        // {
+        //     //assert(op1._p==op2._p);
+        //     this->_i*=op2;
+        //     this->_i%=this->_p;
+        //     return *this;
+        // }
+        // friend inline Zp operator/(Zp op1,std::uint64_t op2)
+        // {
+        //     //assert(op1._p==op2._p);
+        //     op1._i*=inv_prime(op2,op1._p);
+        //     op1._i%=op1._p;
+        //     return op1;
+        // }
+        friend inline Zp operator+(Zp op1,const Zp &  op2)
         {
             assert(op1._p==op2._p);
-            op1._i+=op2._i;
+            op1._i+=op2;
             op1._i%=op1._p;
             return op1;
         }
-        friend inline Zp operator-(Zp op1,const Zp & op2)
+        inline Zp & operator+=(const Zp &  op2)
+        {
+            assert(this->_p==op2._p);
+            this->_i+=op2;
+            this->_i%=this->_p;
+            return *this;
+        }
+        friend inline Zp operator-(Zp op1,const Zp &  op2)
         {
             assert(op1._p==op2._p);
-            op1._i+=op1._p-op2._i;
+            op1._i+=op1._p-op2;
             op1._i%=op1._p;
             return op1;
         }
-        friend inline Zp operator*(Zp op1,const Zp & op2)
+        friend inline Zp operator*(Zp op1,const Zp &  op2)
         {
             assert(op1._p==op2._p);
-            op1._i*=op2._i;
+            op1._i*=op2;
             op1._i%=op1._p;
             return op1;
+        }
+        inline Zp & operator*=(const Zp &  op2)
+        {
+            assert(this->_p==op2._p);
+            this->_i*=op2;
+            this->_i%=this->_p;
+            return *this;
         }
         friend inline Zp operator/(Zp op1,const Zp & op2)
         {
             assert(op1._p==op2._p);
-            op1._i*=inv_prime(op2._i,op1._p);
+            op1._i*=inv_prime(op2,op1._p);
             op1._i%=op1._p;
             return op1;
+        }
+        inline Zp & operator/=(const Zp & op2)
+        {
+            assert(this->_p==op2._p);
+            this->_i*=inv_prime(op2,this->_p);
+            this->_i%=this->_p;
+            return *this;
         }
         friend std::ostream& operator<<  (std::ostream& stream, const Zp& v) 
         {
@@ -186,16 +242,31 @@ namespace clpoly{
         op.number()-=op1.number()*op2.number();
         op.number()%=op.prime();
     }
-    // template<>
-    // constexpr void __div(Zp &op,const Zp &op1,const Zp&op2)
-    // {
-    //     op=op1/op2;
-    // }
+    Zp pow(const Zp & z,int64_t i)
+    {
+        Zp o(1,z.prime());
+        Zp z_=z;
+        while (i>0)
+        {
+            if (i %2)
+                o*=z_;
+            i>>=1;
+            if (i)
+                z_*=z_;
+        }
+        return o;
+    }
+    template<>
+    inline void __div(Zp &op,const Zp &op1,const Zp&op2)
+    {
+        op=op1/op2;
+    }
+
     template<>
     inline void __div(Zp &op,Zp &op_r,const Zp &op1,const Zp&op2)
     {
         op=op1/op2;
-        op_r=0;
+        op_r=Zp(0,op.prime());
     }
 
 }

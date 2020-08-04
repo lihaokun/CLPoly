@@ -23,14 +23,14 @@ namespace clpoly{
     using polynomial_ZZ=polynomial_<ZZ>;
     using polynomial_QQ=polynomial_<QQ>;
     
-    inline monomial pow(const variable & v,int64_t i)
+    inline monomial pow(const variable & v,uint64_t i)
     {
         return monomial({{v,i}});
     }
 
 
     template <class Tc,class compare>
-    inline polynomial_<Tc,compare> pow(const polynomial_<Tc,compare> & p,int64_t i)
+    inline polynomial_<Tc,compare> pow(const polynomial_<Tc,compare> & p,uint64_t i)
     {
         polynomial_<Tc,compare> o(p.comp_ptr());
         o={{{},1}};
@@ -249,29 +249,54 @@ namespace clpoly{
     }
 
     template<class T1,class T2,class comp1,class comp2>
-    void poly_convert(const polynomial_<T1,comp1>& p1,polynomial_<T2,comp2> & p2)
+    void poly_convert(const polynomial_<T1,comp1>& p_in,polynomial_<T2,comp2> & p_out)
     {
-        p2.clear();
-        basic_monomial<comp2> m(p2.comp_ptr());
-        for (auto &i:p1)
+        p_out.clear();
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
         {
             m=i.first.data();
-            p2.push_back({std::move(m),i.second});
+            p_out.push_back({std::move(m),i.second});
         }
-        p2.normalization();
+        p_out.normalization();
     }
     template<class T1,class T2,class comp1,class comp2>
-    void poly_convert(polynomial_<T1,comp1>&& p1,polynomial_<T2,comp2> & p2)
+    void poly_convert(polynomial_<T1,comp1>&& p_in,polynomial_<T2,comp2> & p_out)
     {
-        p2.clear();
-        basic_monomial<comp2> m(p2.comp_ptr());
-        for (auto &i:p1)
+        p_out.clear();
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
         {
             m=std::move(i.first.data());
-            p2.push_back({std::move(m),std::move(i.second)});
+            p_out.push_back({std::move(m),std::move(i.second)});
         }
-        p2.normalization();
-        p1.clear();
+        p_out.normalization();
+        p_in.clear();
+    }
+    template<class T2,class comp1,class comp2>
+    void poly_convert(const polynomial_<Zp,comp1>& p_in,polynomial_<T2,comp2> & p_out)
+    {
+        p_out.clear();
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
+        {
+            m=i.first.data();
+            p_out.push_back({std::move(m),uint64_t(i.second)});
+        }
+        p_out.normalization();
+    }
+    template<class T2,class comp1,class comp2>
+    void poly_convert(polynomial_<Zp,comp1>&& p_in,polynomial_<T2,comp2> & p_out)
+    {
+        p_out.clear();
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
+        {
+            m=std::move(i.first.data());
+            p_out.push_back({std::move(m),uint64_t(i.second)});
+        }
+        p_out.normalization();
+        p_in.clear();
     }
 
     template <class Tc>
@@ -655,33 +680,28 @@ namespace clpoly{
         O.data()=std::move(S_j.data());
         
     }
-    template <class compare>
-    polynomial_<Zp,compare> polynomial_mod(const polynomial_<ZZ,compare> & p, uint32_t prime)
+    template <class Tc, class To>
+    polynomial_<Tc,To> association(const polynomial_<Tc,To>& p,const variable & v,const Tc & c)
     {
-        polynomial_<Zp,compare> new_p;
-        Zp coeff(prime);
-        for (auto & i:p)
+        polynomial_<Tc,To> Pout(p.comp_ptr());
+        basic_monomial<To> m(p.comp_ptr());
+        Tc z;
+        for (auto &i:p)
         {
-            coeff=i.second; 
-            if (coeff)
-                new_p.push_back({i.first,std::move(coeff)});
+            m.clear();m.reserve(i.first.size());
+            z=i.second;
+            for (auto& j:i.first)
+                if (j.first==v)
+                {
+                    z*=pow(c,j.second);
+                }
+                else
+                    m.push_back(j);
+            Pout.push_back({std::move(m),std::move(z)});
         }
-        return new_p;
+        return Pout;
     }
-    template <class compare>
-    polynomial_<Zp,compare> polynomial_mod(polynomial_<ZZ,compare> && p, uint32_t prime)
-    {
-        polynomial_<Zp,compare> new_p;
-        Zp coeff(prime);
-        for (auto & i:p)
-        {
-            coeff=i.second; 
-            if (coeff)
-            new_p.push_back({std::move(i.first),std::move(coeff)});
-        }
-        p.clear();
-        return new_p;
-    }
+    
 
 
 

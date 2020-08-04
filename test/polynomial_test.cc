@@ -137,16 +137,19 @@ int main(){
     // std::cout<<PP.degree()<<std::endl;
     // std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
 
-    clpoly::Zp a(10,7);
-    clpoly::Zp b(-10,7);
-    a=-2;
-    std::cout<<a<<" "<<b<<" "<<a*b<<" "<<a/b<<" "<<-a<<std::endl;
+    // clpoly::Zp a(10,7);
+    // clpoly::Zp b(-10,7);
+    // a=-2;
+    // std::cout<<a<<" "<<b<<" "<<a*b<<" "<<a/b<<" "<<-a<<std::endl;
 
-    g=-pow(r,2)*pow(x,2) + pow(x,4) + pow(x,2)*pow(z,2) + pow(z,4) - 2*pow(z,2) + 1;
-    std::cout<<g<<std::endl;
-    std::cout<<clpoly::polynomial_mod(std::move(g),7)<<std::endl;
-    a=std::move(b);
-    std::cout<<a<<b<<std::endl;
+    // g=-pow(r,2)*pow(x,2) + pow(x,4) + pow(x,2)*pow(z,2) + pow(z,4) - 2*pow(z,2) + 1;
+    // std::cout<<g<<std::endl;
+    // std::cout<<clpoly::polynomial_mod(std::move(g),7)<<std::endl;
+    // a=std::move(b);
+    // std::cout<<a<<b<<std::endl;
+    f=pow(x,4)+25*pow(x,3)+145*pow(x,2)-171*x-360;
+    g=pow(x,5)+14*pow(x,4)+15*pow(x,3)-pow(x,2)-14*x-15;
+    std::cout<<clpoly::polynomial_GCD(f,g)<<std::endl;
     
     return 0;
 }

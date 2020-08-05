@@ -147,11 +147,10 @@ int main(){
     // std::cout<<clpoly::polynomial_mod(std::move(g),7)<<std::endl;
     // a=std::move(b);
     // std::cout<<a<<b<<std::endl;
-    // f=pow(x,4)+25*pow(x,3)+145*pow(x,2)-171*x-360;
-    // g=pow(x,5)+14*pow(x,4)+15*pow(x,3)-pow(x,2)-14*x-15;
-    f=2*pow(x,4)-7*pow(x,3)-4*pow(x,2)-4*x-15;
-    g=4*pow(x,5)+4*pow(x,3)-7*pow(x,2)-2*pow(x,4)+x-12;
+    f=pow(x,4)+25*pow(x,3)+145*pow(x,2)-171*x-360;
+    g=pow(x,5)+14*pow(x,4)+15*pow(x,3)-pow(x,2)-14*x-15;
+    // f=2*pow(x,4)-7*pow(x,3)-4*pow(x,2)-4*x-15;
+    // g=4*pow(x,5)+4*pow(x,3)-7*pow(x,2)-2*pow(x,4)+x-12;
     std::cout<<clpoly::polynomial_GCD(f,g)<<std::endl;
-    
     return 0;
 }

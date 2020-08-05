@@ -69,6 +69,9 @@ namespace clpoly{
                 pair_vec_div(Pout_2.data(),Pout_1.data(),Pout_.data(),Pout.data(),comp);
                 //std::cout<<Pout_1<<std::endl;
             }
+            Zp lc_inv=(Pout.begin()->second).inv();
+            for (auto &i:Pout)
+                i.second*=lc_inv;
             deg_=get_up_deg(Pout);
             if (deg_!=0 && deg_<=deg)
                 return deg_;
@@ -244,23 +247,15 @@ namespace clpoly{
         if (F.empty() || G.empty())
             return {};
         
-        Tc tmp;
-
+        Tc cont,cont_;
+        for (auto & i:F)
+            cont=gcd(i.second,cont);
+        for (auto & i:F)
+            cont=gcd(i.second,cont);
         //auto vars=G.variables();
-        if (G.size()==1 && G.begin()->first.empty())
+        if (G.size()==1 && G.begin()->first.empty() || F.size()==1 && F.begin()->first.empty())
         {
-            tmp=G.begin()->second;
-            for (auto & i:F)
-                tmp=gcd(i.second,tmp);
-            return {{{},tmp}};
-        }
-        //auto F_vars=F.variables();
-        if (F.size()==1 && F.begin()->first.empty())
-        {
-            tmp=F.begin()->second;
-            for (auto & i:G)
-                tmp=gcd(i.second,tmp);
-            return {{{},tmp}};
+            return {{{},cont}};
         }
         
         // _variables_pair_marge(F_vars.begin(),F_vars.end(),vars,G.comp());
@@ -289,28 +284,15 @@ namespace clpoly{
         polynomial_<Tc,univariate_priority_order> G_(&v_order);
         poly_convert(F,F_);
         poly_convert(G,G_);
-
-
-        // int64_t f_d=get_up_deg(F_);
-        // int64_t g_d=get_up_deg(G_);
-        // polynomial_<Tc,univariate_priority_order> F_lc(&v_order);
-        // polynomial_<Tc,univariate_priority_order> G_lc(&v_order);
-        // for(auto &i:F_)
-        //     if (get_up_deg(i.first)==f_d)
-        //     {
-        //         F_lc.push_back(i);
-        //         F_lc.first.pop_back();
-        //     }
-        //     else break;
-        // for(auto &i:G_)
-        //     if (get_up_deg(i.first)==g_d)
-        //     {
-        //         G_lc.push_back(i);
-        //         G_lc.first.pop_back();
-        //     }
-        //     else break;
+        // for (auto &i:F_)
+        // {
+        //     i.second/=cont;
+        // }
+        // for (auto &i:G_)
+        // {
+        //     i.second/=cont;
+        // }
         
-
         auto vars=G.variables();
         auto F_vars=F.variables();
         _variables_pair_marge(F_vars.begin(),F_vars.end(),vars,G.comp());
@@ -324,13 +306,18 @@ namespace clpoly{
         }
 
         polynomial_<Tc,univariate_priority_order> Pout_(&v_order);
+        polynomial_<Tc,univariate_priority_order> tmp(&v_order);
         polynomial_<Tc,univariate_priority_order> tmp_Pout_(&v_order);
+        polynomial_<Tc,univariate_priority_order> R(&v_order);
+        
         Tc Pout_prime;
         std::int64_t Pout_d=INT64_MAX;
         std::int64_t tmp_Pout_d=INT64_MAX;
         polynomial_<Zp,univariate_priority_order> Pout_mod(&v_order);
         polynomial_<Zp,univariate_priority_order> f_p(&v_order),g_p(&v_order);
-        Zp tmp_inv;
+
+
+        Tc lc_gcd=gcd(F_.begin()->second,G_.begin()->second);
 
         while (1)
         {
@@ -350,6 +337,14 @@ namespace clpoly{
                 g_p=polynomial_mod(G_,prime);
                 std::cout<<f_p<<std::endl;
                 std::cout<<g_p<<std::endl;
+            }
+            std::cout<<Pout_mod<<std::endl;
+            
+            
+            Zp lc_gcd_(lc_gcd,prime);
+            for(auto &i:Pout_mod)
+            {
+                i.second*=lc_gcd_;
             }
             std::cout<<Pout_mod<<std::endl;
             if (tmp_Pout_d < Pout_d)
@@ -407,28 +402,44 @@ namespace clpoly{
                 for (auto &i:tmp_Pout_)
                 {
                     i.second%=Pout_prime;
+                    if (i.second>Pout_prime/2)
+                    {
+                        i.second-=Pout_prime;
+                        i.second%=Pout_prime;
+                    }
+                    else if (i.second<-Pout_prime/2)
+                    {
+                        i.second+=Pout_prime;
+                        i.second%=Pout_prime;
+                    }
                 }
                 std::cout<<tmp_Pout_<<std::endl;
                 if (tmp_Pout_==Pout_)
                 {
+                    cont_=0;
                     for (auto &i:tmp_Pout_)
                     {
-                        if (i.second>Pout_prime/2)
-                        {
-                            i.second-=Pout_prime;
-                            i.second%=Pout_prime;
-                        }
+                        cont_=gcd(cont_,i.second);
+                    }
+                    for (auto &i:tmp_Pout_)
+                    {
+                        i.second/=cont_;
                     }
                     std::cout<<tmp_Pout_<<std::endl;
-                    polynomial_<Tc,univariate_priority_order> R(&v_order);
-                    pair_vec_div(tmp_Pout_.data(),R.data(),F_.data(),Pout_.data(),v_order);
+                    
+                
+                    pair_vec_div(tmp.data(),R.data(),F_.data(),tmp_Pout_.data(),v_order);
                     if (R.empty())
                     {
-                        pair_vec_div(tmp_Pout_.data(),R.data(),G_.data(),Pout_.data(),v_order);
+                        pair_vec_div(tmp.data(),R.data(),G_.data(),tmp_Pout_.data(),v_order);
                         if (R.empty())
                         {
                             polynomial_<Tc,comp> Pout(F.comp_ptr());
-                            poly_convert(Pout_,Pout);
+                            poly_convert(tmp_Pout_,Pout);
+                            for (auto &i:Pout)
+                            {
+                                i.second*=cont;
+                            }
                             return Pout;
                         }
                     }

@@ -298,7 +298,7 @@ namespace clpoly{
         _variables_pair_marge(F_vars.begin(),F_vars.end(),vars,G.comp());
 
         std::uint32_t tmp_x=vars.size()*v_d;
-        std::int32_t p_index=2;//tmp_x/std::log(tmp_x);
+        std::int32_t p_index=tmp_x/std::log(tmp_x);
         std::uint32_t prime=boost::math::prime(p_index);
         while (prime <v_d)
         {
@@ -328,8 +328,9 @@ namespace clpoly{
             }
             f_p=polynomial_mod(F_,prime);
             g_p=polynomial_mod(G_,prime);
-            std::cout<<f_p<<std::endl;
-            std::cout<<g_p<<std::endl;
+            std::cout<<"p:"<<prime<<std::endl;
+            std::cout<<"f_p:"<<f_p<<std::endl;
+            std::cout<<"g_p:"<<g_p<<std::endl;
             while (!(tmp_Pout_d=_polynomial_GCD(Pout_mod,f_p,g_p,vars.begin(),v_,Pout_d)))
             {
                 prime=boost::math::prime(++p_index);

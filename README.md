@@ -1,6 +1,6 @@
 # CLPoly
 
-CLPply 是一个开发中的多项式c++库，目标是一个高效易且的多项式库。
+CLPoly 是一个开发中的多项式c++库，目标是一个高效易且的多项式库。
 
 CLPoly is a c++ library of polynomial.
 

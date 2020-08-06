@@ -361,7 +361,11 @@ namespace clpoly{
 
     };
     template<class compare>  compare basic_monomial<compare>::init_comp=compare();
-
+    // template<class compare>
+    // void swap(basic_monomial<compare> & v1,basic_monomial<compare> & v2)
+    // {
+    //     v1.swap(v2);
+    // }
 
    
 }

@@ -680,14 +680,47 @@ namespace clpoly{
         O.data()=std::move(S_j.data());
         
     }
+
+    
+    template <class compare>
+    polynomial_<Zp,compare> polynomial_mod(const polynomial_<ZZ,compare> & p, uint32_t prime)
+    {
+        polynomial_<Zp,compare> new_p(p.comp_ptr());
+        Zp coeff(prime);
+        for (auto & i:p)
+        {
+            coeff=i.second; 
+            if (coeff)
+                new_p.push_back({i.first,std::move(coeff)});
+        }
+        return new_p;
+    }
+    template <class compare>
+    polynomial_<Zp,compare> polynomial_mod(polynomial_<ZZ,compare> && p, uint32_t prime)
+    {
+        polynomial_<Zp,compare> new_p(p.comp_ptr());
+        Zp coeff(prime);
+        for (auto & i:p)
+        {
+            coeff=i.second; 
+            if (coeff)
+            new_p.push_back({std::move(i.first),std::move(coeff)});
+        }
+        p.clear();
+        return new_p;
+    }
+
     template <class Tc, class To>
     polynomial_<Tc,To> association(const polynomial_<Tc,To>& p,const variable & v,const Tc & c)
     {
         polynomial_<Tc,To> Pout(p.comp_ptr());
         basic_monomial<To> m(p.comp_ptr());
-        Tc z;
+        basic_monomial<To> m1(p.comp_ptr());
+        bool f=true;
+        Tc z, z1;
         for (auto &i:p)
         {
+
             m.clear();m.reserve(i.first.size());
             z=i.second;
             for (auto& j:i.first)
@@ -697,8 +730,28 @@ namespace clpoly{
                 }
                 else
                     m.push_back(j);
-            Pout.push_back({std::move(m),std::move(z)});
+            if (!f && m!=m1)
+            {
+                if (z1)
+                    Pout.push_back({std::move(m1),std::move(z1)});
+                m1=std::move(m);
+                z1=std::move(z);
+            }
+            else if (f)
+            {
+                m1=std::move(m);
+                z1=std::move(z);
+                f=false;
+            }
+            else
+            {
+                z1+=z;
+            }
+
+            
         }
+        if (z1)
+            Pout.push_back({std::move(m1),std::move(z1)});
         return Pout;
     }
     

@@ -11,4 +11,5 @@ int main(int argc, char const *argv[])
     std::cout<<"g="<<g<<std::endl;
     std::cout<<"prem(f,g,x)="<<clpoly::prem(f,g,x)<<std::endl;
     std::cout<<"resultant(f,g,x)="<<clpoly::resultant(f,g,x)<<std::endl;
+    std::cout<<"gcd(f^2,g*f)="<<clpoly::polynomial_GCD(f*f,g*f)<<std::endl;
 }

@@ -149,8 +149,19 @@ int main(){
     // std::cout<<a<<b<<std::endl;
     // f=pow(x,4)+25*pow(x,3)+145*pow(x,2)-171*x-360;
     // g=pow(x,5)+14*pow(x,4)+15*pow(x,3)-pow(x,2)-14*x-15;
-    f=2*pow(x,4)-7*pow(x,3)-4*pow(x,2)-4*x-15;
-    g=4*pow(x,5)+4*pow(x,3)-7*pow(x,2)-2*pow(x,4)+x-12;
+    // f=2*pow(x,4)-7*pow(x,3)-4*pow(x,2)-4*x-15;
+    // g=4*pow(x,5)+4*pow(x,3)-7*pow(x,2)-2*pow(x,4)+x-12;
+    
+    f=9*pow(x,5)+2*pow(x,4)*y*z-189*pow(x,3)*pow(y,3)*z+117*pow(x,3)*y*pow(z,2)+3*pow(x,3)-42*pow(x,2)*pow(y,4)*pow(z,2)
+                    +26*pow(x,2)*pow(y,2)*pow(z,3)+18*pow(x,2)-63*x*pow(y,3)*z+39*x*y*pow(z,2)+4*x*y*z+6;
+    g=6*pow(x,6)-126*pow(x,4)*pow(y,3)*z+78*pow(x,4)*y*pow(z,2)+pow(x,4)*y+pow(x,4)*z+13*pow(x,3)
+        -21*pow(x,2)*pow(y,4)*z-21*pow(x,2)*pow(y,3)*pow(z,2)+13*pow(x,2)*pow(y,2)*pow(z,2)+13*pow(x,2)*y*pow(z,3)
+        -21*x*pow(y,3)*z+13*x*y*pow(z,2)+2*x*y+2*x*z+2;
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> f_,g_;
+    // clpoly::poly_convert(f,f_);
+    // clpoly::poly_convert(g,g_);
+    // std::cout<<"f:"<<f_<<std::endl;
+    // std::cout<<"g:"<<g_<<std::endl;
     std::cout<<clpoly::polynomial_GCD(f,g)<<std::endl;
     return 0;
 }

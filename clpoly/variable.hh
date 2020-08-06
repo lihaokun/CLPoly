@@ -84,6 +84,10 @@ namespace clpoly{
             friend inline std::ostream& operator<<  (std::ostream& stream, const variable& v) {
                 return stream<<v.name();
             }
+            inline void swap(variable & v)
+            {
+                std::swap(this->__serial,v.__serial);
+            }
     };
     
     std::vector<std::string> variable::variables={""};
@@ -124,9 +128,13 @@ namespace clpoly{
     }
 
     //using lex=less<variable>;
-
+    // void swap(variable & v1,variable & v2)
+    // {
+    //     v1.swap(v2);
+    // }
 
 }
+
 namespace std{
     template<>
     struct hash<clpoly::variable>
@@ -136,5 +144,6 @@ namespace std{
             return (hash<size_t>()(v.serial()));
         }
     };
+
 }
 #endif

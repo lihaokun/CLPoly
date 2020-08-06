@@ -539,6 +539,12 @@ namespace clpoly{
         pair_vec_div(p.data(),p1.data(),p2.data(),p1.comp());    
         __auto_shrink(p.data());
     }
+    
+    // template<class Tc,class Tm,class compare>
+    // void swap(basic_polynomial<Tm,Tc,compare> & v1,basic_polynomial<Tm,Tc,compare> & v2)
+    // {
+    //     v1.swap(v2);
+    // }
 
 
 }

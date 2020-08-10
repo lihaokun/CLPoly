@@ -430,11 +430,11 @@ namespace clpoly{
         const compare & comp
     )
     {
-        if ((void*)(&new_v)==(void*)(&v1_) && (void*)(&new_v)==(void*)(&v2_))
+        if ((void*)(&new_v)==(void*)(&v1_) || (void*)(&new_v)==(void*)(&v2_))
         {
             std::vector<std::pair<T1,T2>> new_v_;
             pair_vec_multiplies(new_v_,v1_,v2_,comp);
-            new_v=new_v_;
+            new_v=std::move(new_v_);
             return void();
         }
         new_v.clear();
@@ -554,11 +554,11 @@ namespace clpoly{
             return void();
         }
 
-        if ((void*)(&new_v)==(void*)(&v1_) && (void*)(&new_v)==(void*)(&v2_))
+        if ((void*)(&new_v)==(void*)(&v1_) || (void*)(&new_v)==(void*)(&v2_))
         {
             std::vector<std::pair<T1,T2>> new_v_;
             pair_vec_div(new_v_,v1_,v2_,comp);
-            new_v=new_v_;
+            new_v=std::move(new_v_);
             return void();
         }
         new_v.clear();
@@ -685,17 +685,22 @@ namespace clpoly{
             return void();
         }
 
-        if ((void*)(&new_v)==(void*)(&v1_) && (void*)(&new_v)==(void*)(&v2_))
+        if ((void*)(&new_v)==(void*)(&v1_) || (void*)(&new_v)==(void*)(&v2_)||(void*)(&R)==(void*)(&v1_) || (void*)(&R)==(void*)(&v2_))
         {
             std::vector<std::pair<T1,T2>> new_v_;
-            pair_vec_div(new_v_,v1_,v2_,comp);
-            new_v=new_v_;
+            std::vector<std::pair<T1,T2>> R_;
+            pair_vec_div(new_v_,R_,v1_,v2_,comp);
+            new_v=std::move(new_v_);
+            R=std::move(R_);
             return void();
         }
         new_v.clear();
         R.clear();
         if (v1_.size()==0)
+        {
+            R=v2_;
             return void();
+        }
         T1 m;
         T1 m1;
         T2 k;
@@ -708,9 +713,18 @@ namespace clpoly{
             {
                 if (is_divexact(m,i.first,v2_.begin()->first))
                 {
-                    __div(k,i.second,v2_.begin()->second);
-                    new_v.push_back({std::move(m),std::move(k)});
+                    __div(k,k1,i.second,v2_.begin()->second);
+                    if (k1)
+                        R.push_back({m,std::move(k1)});
+                    if (k)
+                        new_v.push_back({std::move(m),std::move(k)});
+
                 }
+                else
+                {
+                    R.push_back(i);
+                }
+                
             }
             return void();
         }

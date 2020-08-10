@@ -33,14 +33,15 @@ namespace clpoly{
         
         if (vars_==vars_end)
         {
-            //deg_=_upolynomial_GCD(Pout,F,G);
             Pout=G;
             pair_vec_div(Pout_2.data(),Pout_1.data(),F.data(),Pout.data(),comp);
+            //std::cout<<Pout_1<<std::endl;
             while(!Pout_1.empty())
             {
                 swap(Pout.data(),Pout_.data());
                 swap(Pout.data(),Pout_1.data());
                 pair_vec_div(Pout_2.data(),Pout_1.data(),Pout_.data(),Pout.data(),comp);
+                //std::cout<<Pout_1<<std::endl;
             }
             assert(lc.size()==1 && lc.begin()->first.empty());
             Zp lc_inv=(Pout.begin()->second).inv()*lc.begin()->second;
@@ -92,7 +93,6 @@ namespace clpoly{
                             {
                                 _Pout.push_back({std::move(i.first),{i.second}});
                             }
-                            //points.clear();
                             points={p_};
                         }
                         else
@@ -145,21 +145,21 @@ namespace clpoly{
                                 ++_P_ptr;
                             }  
                             swap(tmp_Pout,_Pout);
-                            //_Pout=std::move(tmp_Pout);
+                            
                         }
                         if (num_s==v_d)
                         {
-                            // for(auto &i:_Pout)
-                            // {
-                            //     std::cout<<"{";
-                            //     for(auto &j:i.second)
-                            //     {
-                            //         std::cout<<j<<",";
-                            //     }
-                            //     std::cout<<"}";                                
-                            //     std::cout<<i.first<<"+";
-                            // }
-                            // std::cout<<std::endl;
+                            for(auto &i:_Pout)
+                            {
+                                //std::cout<<"{";
+                                for(auto &j:i.second)
+                                {
+                                    //std::cout<<j<<",";
+                                }
+                                //std::cout<<"}";                                
+                                //std::cout<<i.first<<"+";
+                            }
+                            //std::cout<<std::endl;
                             std::vector<Zp> lag;
                             lag.resize(v_d*v_d);
                             Zp tmp_inv;
@@ -186,15 +186,6 @@ namespace clpoly{
                             basic_monomial<univariate_priority_order> m(&comp);
                             for (auto &i:_Pout)
                             {
-                                // m=i.first;
-                                // if (get_up_deg(m)!=0)
-                                // {
-                                //     auto m_ptr=m.end();
-                                //     --m_ptr;
-                                //     m.data().insert(m_ptr,{v,0});
-                                // }
-                                // else
-                                //     m. 
                                 m.clear();
                                 m.reserve(i.first.size());
                                 basic_monomial<univariate_priority_order>::iterator m_ptr;
@@ -324,7 +315,9 @@ namespace clpoly{
             else{
                 if (tmp_deg==deg)
                 {
+                    
                     lc_gcd=tmp;
+                    //std::cout<<"lc_gcd="<<lc_gcd<<std::endl;
                     cont=std::move(tmp);
                 }
                 else
@@ -361,7 +354,9 @@ namespace clpoly{
             else{
                 if (tmp_deg==deg)
                 {
+                    //std::cout<<"lc_gcd="<<lc_gcd<<std::endl;
                     lc_gcd=polynomial_GCD(lc_gcd,tmp);
+                    //std::cout<<"lc_gcd="<<lc_gcd<<std::endl;
                 }
                 cont=polynomial_GCD(cont,tmp);
                 tmp_deg=get_up_deg(i.first);
@@ -374,6 +369,7 @@ namespace clpoly{
         if (tmp_deg==deg)
         {
             lc_gcd=polynomial_GCD(lc_gcd,tmp);
+            
         }
         cont=polynomial_GCD(cont,tmp);
         if (!get_up_deg(F_) || !get_up_deg(G_))
@@ -430,7 +426,6 @@ namespace clpoly{
         }
 
         polynomial_<Tc,univariate_priority_order> Pout_(&v_order);
-        //polynomial_<Tc,univariate_priority_order> tmp(&v_order);
         polynomial_<Tc,univariate_priority_order> tmp_Pout_(&v_order);
         polynomial_<Tc,univariate_priority_order> R(&v_order);
         
@@ -451,26 +446,15 @@ namespace clpoly{
             }
             f_p=polynomial_mod(F_,prime);
             g_p=polynomial_mod(G_,prime);
-            //std::cout<<"p:"<<prime<<std::endl;
-            //std::cout<<"f_p:"<<f_p<<std::endl;
-            //std::cout<<"g_p:"<<g_p<<std::endl;
-            while ((tmp_Pout_d=_polynomial_GCD(Pout_mod,f_p,g_p,polynomial_mod(lc_gcd,prime),vars.rbegin(),vars.rend(),Pout_d))<0)
+            // std::cout<<"p:"<<prime<<std::endl;
+            // std::cout<<"f_p:"<<f_p<<std::endl;
+            // std::cout<<"g_p:"<<g_p<<std::endl;
+            tmp_Pout_d=_polynomial_GCD(Pout_mod,f_p,g_p,polynomial_mod(lc_gcd,prime),vars.rbegin(),vars.rend(),Pout_d);
+            if (tmp_Pout_d<0)
             {
                 prime=boost::math::prime(++p_index);
-                f_p=polynomial_mod(F_,prime);
-                g_p=polynomial_mod(G_,prime);
-                //std::cout<<f_p<<std::endl;
-                //std::cout<<g_p<<std::endl;
+                continue;
             }
-            // std::cout<<Pout_mod<<std::endl;
-            
-            
-            // Zp lc_gcd_(lc_gcd,prime);
-            // for(auto &i:Pout_mod)
-            // {
-            //     i.second*=lc_gcd_;
-            // }
-            //std::cout<<Pout_mod<<std::endl;
             if (tmp_Pout_d < Pout_d)
             {
                 Pout_d=tmp_Pout_d;
@@ -547,15 +531,6 @@ namespace clpoly{
                 //std::cout<<tmp_Pout_<<std::endl;
                 if (tmp_Pout_==Pout_)
                 {
-                    // cont_=0;
-                    // for (auto &i:tmp_Pout_)
-                    // {
-                    //     cont_=gcd(cont_,i.second);
-                    // }
-                    // for (auto &i:tmp_Pout_)
-                    // {
-                    //     i.second/=cont_;
-                    // }
                     cont_.clear();
                     tmp.clear();
                     tmp_deg=get_up_deg(tmp_Pout_);

@@ -2,7 +2,7 @@
 Module Name:
     polynomial.hh
 Abstract:
-    定义polynomial上的运算
+    定义polynomial和相关的运算
 Author:
     haokun li
 Notes:

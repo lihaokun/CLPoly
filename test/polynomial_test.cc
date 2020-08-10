@@ -93,8 +93,8 @@ int main(){
     // std::cout<<"t=Association[];t2=Association[];\n";
     // for (int i=0;i<1;++i)
     // {
-    //     f=clpoly::random_polynomial<clpoly::ZZ>({x,y,d},10,0.1,10,-10);
-    //     g=clpoly::random_polynomial<clpoly::ZZ>({x,y,d},10,0.1,10,-10);
+        // f=clpoly::random_polynomial<clpoly::ZZ>({x,y,d},10,0.1,10,-10);
+        // g=clpoly::random_polynomial<clpoly::ZZ>({x,y,d},10,0.1,10,-10);
     //     std::cout<<"g="<<g<<";"<<std::endl;
     //     std::cout<<"f="<<f<<";"<<std::endl;
     //     // f=-6*pow(x,4)-7*pow(x,2)*y-x*pow(y,3)*z-3*x*y-9;
@@ -152,16 +152,28 @@ int main(){
     // f=2*pow(x,4)-7*pow(x,3)-4*pow(x,2)-4*x-15;
     // g=4*pow(x,5)+4*pow(x,3)-7*pow(x,2)-2*pow(x,4)+x-12;
     
-    f=9*pow(x,5)+2*pow(x,4)*y*z-189*pow(x,3)*pow(y,3)*z+117*pow(x,3)*y*pow(z,2)+3*pow(x,3)-42*pow(x,2)*pow(y,4)*pow(z,2)
-                    +26*pow(x,2)*pow(y,2)*pow(z,3)+18*pow(x,2)-63*x*pow(y,3)*z+39*x*y*pow(z,2)+4*x*y*z+6;
-    g=6*pow(x,6)-126*pow(x,4)*pow(y,3)*z+78*pow(x,4)*y*pow(z,2)+pow(x,4)*y+pow(x,4)*z+13*pow(x,3)
-        -21*pow(x,2)*pow(y,4)*z-21*pow(x,2)*pow(y,3)*pow(z,2)+13*pow(x,2)*pow(y,2)*pow(z,2)+13*pow(x,2)*y*pow(z,3)
-        -21*x*pow(y,3)*z+13*x*y*pow(z,2)+2*x*y+2*x*z+2;
-    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> f_,g_;
+    // f=9*pow(x,5)+2*pow(x,4)*y*z-189*pow(x,3)*pow(y,3)*z+117*pow(x,3)*y*pow(z,2)+3*pow(x,3)-42*pow(x,2)*pow(y,4)*pow(z,2)
+    //                 +26*pow(x,2)*pow(y,2)*pow(z,3)+18*pow(x,2)-63*x*pow(y,3)*z+39*x*y*pow(z,2)+4*x*y*z+6;
+    // g=6*pow(x,6)-126*pow(x,4)*pow(y,3)*z+78*pow(x,4)*y*pow(z,2)+pow(x,4)*y+pow(x,4)*z+13*pow(x,3)
+    //     -21*pow(x,2)*pow(y,4)*z-21*pow(x,2)*pow(y,3)*pow(z,2)+13*pow(x,2)*pow(y,2)*pow(z,2)+13*pow(x,2)*y*pow(z,3)
+    //     -21*x*pow(y,3)*z+13*x*y*pow(z,2)+2*x*y+2*x*z+2;
+    // clpoly::polynomial_<clpoly::ZZ,clpoly::lex> f_,g_;
     // clpoly::poly_convert(f,f_);
     // clpoly::poly_convert(g,g_);
     // std::cout<<"f:"<<f_<<std::endl;
     // std::cout<<"g:"<<g_<<std::endl;
-    std::cout<<clpoly::polynomial_GCD(f,g)<<std::endl;
+    // std::cout<<clpoly::polynomial_GCD(f*g,g*g)<<std::endl;
+    for (int i=0;i<100;++i)
+    {
+        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.1,10,-10);
+        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.1,10,-10);
+        // g=-3*pow(y,8)*pow(d,2)-2*pow(y,5)*pow(d,5)-2*pow(d,10)+5*pow(y,8)*d+3*pow(y,5)*pow(d,4)
+        //     -7*pow(y,4)*pow(d,5)+5*pow(y,3)*pow(d,6)+10*pow(d,6)+pow(d,5)+3*pow(y,3)+4;
+        // f=-9*pow(x,8)*pow(z,2)+6*pow(x,5)*pow(z,5)+2*pow(x,4)*pow(z,6)+9*pow(x,2)*z-9;
+        std::cout<<"g="<<g<<";"<<std::endl; 
+        std::cout<<"f="<<f<<";"<<std::endl;
+        std::cout<<(clpoly::polynomial_GCD(f*f,g*f)==f || clpoly::polynomial_GCD(f*f,g*f)==-f)<<std::endl;
+
+    }
     return 0;
 }

@@ -165,27 +165,32 @@ int main(){
     // f=-7*pow(x,6)*y*pow(z,3)-8*pow(x,4)*pow(y,5)*z+10*pow(x,3)*pow(y,5)*pow(z,2)-3*pow(x,2)*pow(y,3)*pow(z,5)+pow(x,2)*pow(y,2)*pow(z,6)-2*x*y*pow(z,8)+10*pow(y,5)*pow(z,5)+pow(x,6)*y*pow(z,2)
     //    +8*pow(x,5)*pow(y,4)-9*pow(y,7)*pow(z,2)+pow(y,5)*pow(z,4)-pow(x,5)*y*pow(z,2)+10*pow(x,4)*pow(z,4)-5*pow(x,2)*pow(y,6)-3*x*pow(y,5)*pow(z,2)-6*pow(x,2)*pow(y,3)*pow(z,2)-x*pow(y,6)-5*pow(y,5)*pow(z,2)
     //   -9*pow(z,7)+2*pow(x,4)*pow(y,2)+6*pow(x,4)*y*z+7*x*pow(z,5)-pow(y,4)*pow(z,2)+9*pow(x,4)*z+4*pow(x,2)*pow(y,3)-9*x*pow(y,3)*z-3*x*y*pow(z,3)+9*y*pow(z,4)-10*pow(x,4)-6*x*pow(z,3)-9*y*pow(z,3)+6*x*y*z+8;
-    g=6*pow(x,10)+9*pow(x,8)*pow(y,2)-2*pow(y,4)*pow(z,6)-9*pow(x,4)*pow(z,5)+2*pow(x,3)*pow(y,4)*pow(z,2)+5*pow(x,8)+9*pow(x,6)*pow(z,2)+pow(x,3)*pow(y,5)-2*pow(x,3)*pow(y,2)*pow(z,3)+6*pow(x,2)*pow(z,6)+4*pow(y,6)*pow(z,2)+5*pow(y,4)*pow(z,4)-pow(x,7)-10*pow(x,6)*z+10*pow(x,3)*pow(y,2)*pow(z,2)+8*pow(y,6)*z-4*pow(y,5)*pow(z,2)+10*pow(y,2)*pow(z,5)-5*pow(x,2)*pow(y,2)*pow(z,2)+2*pow(x,2)*y*pow(z,3)-7*x*pow(y,3)*pow(z,2)-10*pow(x,4)+5*pow(y,4)+8;
-    f=-2*pow(x,5)*pow(y,2)*pow(z,3)-3*x*pow(y,7)*pow(z,2)+10*x*pow(y,5)*pow(z,4)-4*pow(y,10)+4*pow(y,6)*pow(z,4)+7*pow(x,8)*z-5*pow(x,5)*pow(y,4)+4*pow(x,4)*pow(z,5)+7*x*pow(y,2)*pow(z,6)-4*pow(y,5)*pow(z,4)+6*pow(x,6)*y*z+7*pow(x,5)*pow(y,2)*z+5*pow(x,5)*pow(z,3)-7*pow(x,4)*pow(y,3)*z-10*pow(x,2)*pow(z,6)+2*x*pow(y,5)*pow(z,2)-2*pow(x,5)*y*z-10*pow(x,3)*pow(y,3)*z+x*pow(y,4)*z-5*pow(y,4)*pow(z,2)+9*pow(y,3)*pow(z,2)+2*pow(y,2)*pow(z,3)+8*pow(x,3)*y-5*x*y*pow(z,2)+10;
-    // clpoly::polynomial_<clpoly::ZZ,clpoly::lex> f_,g_;
-    // clpoly::poly_convert(f,f_);
-    // clpoly::poly_convert(g,g_);
-    // std::cout<<"f:"<<f_<<std::endl;
-    // std::cout<<"g:"<<g_<<std::endl;
-    // std::cout<<clpoly::polynomial_GCD(f*g,g*g)<<std::endl;
+    // g=6*pow(x,10)+9*pow(x,8)*pow(y,2)-2*pow(y,4)*pow(z,6)-9*pow(x,4)*pow(z,5)+2*pow(x,3)*pow(y,4)*pow(z,2)+5*pow(x,8)+9*pow(x,6)*pow(z,2)+pow(x,3)*pow(y,5)-2*pow(x,3)*pow(y,2)*pow(z,3)+6*pow(x,2)*pow(z,6)+4*pow(y,6)*pow(z,2)+5*pow(y,4)*pow(z,4)-pow(x,7)-10*pow(x,6)*z+10*pow(x,3)*pow(y,2)*pow(z,2)+8*pow(y,6)*z-4*pow(y,5)*pow(z,2)+10*pow(y,2)*pow(z,5)-5*pow(x,2)*pow(y,2)*pow(z,2)+2*pow(x,2)*y*pow(z,3)-7*x*pow(y,3)*pow(z,2)-10*pow(x,4)+5*pow(y,4)+8;
+    // f=-2*pow(x,5)*pow(y,2)*pow(z,3)-3*x*pow(y,7)*pow(z,2)+10*x*pow(y,5)*pow(z,4)-4*pow(y,10)+4*pow(y,6)*pow(z,4)+7*pow(x,8)*z-5*pow(x,5)*pow(y,4)+4*pow(x,4)*pow(z,5)+7*x*pow(y,2)*pow(z,6)-4*pow(y,5)*pow(z,4)+6*pow(x,6)*y*z+7*pow(x,5)*pow(y,2)*z+5*pow(x,5)*pow(z,3)-7*pow(x,4)*pow(y,3)*z-10*pow(x,2)*pow(z,6)+2*x*pow(y,5)*pow(z,2)-2*pow(x,5)*y*z-10*pow(x,3)*pow(y,3)*z+x*pow(y,4)*z-5*pow(y,4)*pow(z,2)+9*pow(y,3)*pow(z,2)+2*pow(y,2)*pow(z,3)+8*pow(x,3)*y-5*x*y*pow(z,2)+10;
+    // // clpoly::polynomial_<clpoly::ZZ,clpoly::lex> f_,g_;
+    // // clpoly::poly_convert(f,f_);
+    // // clpoly::poly_convert(g,g_);
+    // // std::cout<<"f:"<<f_<<std::endl;
+    // // std::cout<<"g:"<<g_<<std::endl;
+    // // std::cout<<clpoly::polynomial_GCD(f*g,g*g)<<std::endl;
     
-    for (int i=0;i<100;++i)
-    {
-        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.1,10,-10);
-        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.1,10,-10);
-        std::cout<<"g="<<g<<";"<<std::endl; 
-        std::cout<<"f="<<f<<";"<<std::endl;
-        t=clock();
-        clpoly::polynomial_ZZ k=clpoly::polynomial_GCD(f*f,g*f);
-        std::cout<<"time:"<<double(clock()-t)/CLOCKS_PER_SEC<<std::endl;
-        std::cout<<k<<std::endl;
-        std::cout<<( k==f || k==-f)<<std::endl;
+    // for (int i=0;i<100;++i)
+    // {
+    //     f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.1,10,-10);
+    //     g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.1,10,-10);
+    //     std::cout<<"g="<<g<<";"<<std::endl; 
+    //     std::cout<<"f="<<f<<";"<<std::endl;
+    //     t=clock();
+    //     clpoly::polynomial_ZZ k=clpoly::polynomial_GCD(f*f,g*f);
+    //     std::cout<<"time:"<<double(clock()-t)/CLOCKS_PER_SEC<<std::endl;
+    //     std::cout<<k<<std::endl;
+    //     std::cout<<( k==f || k==-f)<<std::endl;
 
-    }
-    return 0;
+    // }
+    // return 0;
+    f=x*y*pow(z,5)-pow(d,6)*r;
+    g=pow(x,5)*pow(y,3)*pow(z,17)-pow(d,22)*pow(r,3);
+    std::cout<<"g="<<g<<";"<<std::endl; 
+    std::cout<<"f="<<f<<";"<<std::endl;
+    std::cout<<clpoly::resultant(f,g,z)<<std::endl;
 }

@@ -115,6 +115,12 @@ namespace clpoly{
     {
         return p+polynomial_<Tc>({{{{m,1}},1}});
     }
+    polynomial_ZZ operator- (const monomial & m1,const monomial & m2)
+    {
+        if (polynomial_ZZ::compare_type()(m1,m2))
+            return polynomial_ZZ({{m1,1},{m2,-1}});
+        return polynomial_ZZ({{m2,-1},{m1,1}});
+    }
     template<class Tc>
     polynomial_<Tc> operator- (const polynomial_<Tc> & p,const monomial & m)
     {

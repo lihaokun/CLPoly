@@ -272,7 +272,7 @@ namespace clpoly{
 
             inline basic_polynomial operator+  (const basic_polynomial &p)const
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(comp_consistent(this->comp(),p.comp()));
                 // #ifdef DEBUG
                 //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
                 //         throw std::invalid_argument("Left basic_polynomial is not normal.");
@@ -299,7 +299,7 @@ namespace clpoly{
 
             inline basic_polynomial operator-  (const basic_polynomial &p)const
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(comp_consistent(this->comp(),p.comp()));
                 // #ifdef DEBUG
                 //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
                 //         throw std::invalid_argument("Left basic_polynomial is not normal.");
@@ -328,7 +328,7 @@ namespace clpoly{
 
             inline basic_polynomial operator*(const basic_polynomial & p) const
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(comp_consistent(this->comp(),p.comp()));
                 // #ifdef DEBUG
                 //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
                 //         throw std::invalid_argument("Left basic_polynomial is not normal.");
@@ -344,7 +344,7 @@ namespace clpoly{
             
             inline basic_polynomial operator/(const basic_polynomial & p) const
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(comp_consistent(this->comp(),p.comp()));
                 basic_polynomial new_p;
                 new_p.__comp=this->__comp;
                 pair_vec_div(new_p.__data,this->__data,p.__data,this->comp());    
@@ -407,7 +407,7 @@ namespace clpoly{
 
             inline bool operator> (const basic_polynomial &p) const
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(comp_consistent(this->comp(),p.comp()));
                
                 // #ifdef DEBUG
                 //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
@@ -420,7 +420,7 @@ namespace clpoly{
 
             inline bool operator< (const basic_polynomial &p) const
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(comp_consistent(this->comp(),p.comp()));
                 // #ifdef DEBUG
                 //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
                 //         throw std::invalid_argument("Left basic_polynomial is not normal.");
@@ -432,7 +432,7 @@ namespace clpoly{
 
             inline bool operator== (const basic_polynomial &p) const
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(comp_consistent(this->comp(),p.comp()));
                 // #ifdef DEBUG
                 //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
                 //         throw std::invalid_argument("Left basic_polynomial is not normal.");
@@ -532,14 +532,61 @@ namespace clpoly{
         } 
     };
     template<class T1,class T2,class T3,class T4,class comp>
+    inline basic_polynomial<T1,T2,comp> polynomial_rem(const basic_polynomial<T1,T3,comp> & p1,const basic_polynomial<T1,T4,comp> & p2)
+    {
+        basic_polynomial<T1,T2,comp> p;
+        basic_polynomial<T1,T2,comp> R;
+        polynomial_div(p,R,p1,p2);
+        return R;
+        
+    }
+    template<class T1,class T2,class T3,class T4,class comp>
+    inline basic_polynomial<T1,T2,comp> polynomial_div(const basic_polynomial<T1,T3,comp> & p1,const basic_polynomial<T1,T4,comp> & p2)
+    {
+        basic_polynomial<T1,T2,comp> p;
+        polynomial_div(p,p1,p2);
+        return p;
+        
+    }
+    template<class T1,class T2,class T3,class comp>
+    inline basic_polynomial<T1,T2,comp> polynomial_rem(const basic_polynomial<T1,T2,comp> & p1,const basic_polynomial<T1,T3,comp> & p2)
+    {
+        basic_polynomial<T1,T2,comp> p;
+        basic_polynomial<T1,T2,comp> R;
+        polynomial_div(p,R,p1,p2);
+        return R;
+        
+    }
+    template<class T1,class T2,class T3,class T4,class comp>
+    inline basic_polynomial<T1,T2,comp> polynomial_div(const basic_polynomial<T1,T2,comp> & p1,const basic_polynomial<T1,T3,comp> & p2)
+    {
+        basic_polynomial<T1,T2,comp> p;
+        polynomial_div(p,p1,p2);
+        return p;
+        
+    }
+    
+    template<class T1,class T2,class T3,class T4,class comp>
     inline void polynomial_div(basic_polynomial<T1,T2,comp> & p,const basic_polynomial<T1,T3,comp> & p1,const basic_polynomial<T1,T4,comp> & p2)
     {
-        assert(p1.comp_ptr()==p2.comp_ptr() || p1.comp()==p2.comp());
+        assert(comp_consistent(p1.comp(),p2.comp()));
+        // assert((void*)&p!=(void*)&p1 && (void*)&p!=(void*)&p2);
         p.comp(p1.comp_ptr());
         pair_vec_div(p.data(),p1.data(),p2.data(),p1.comp());    
         __auto_shrink(p.data());
     }
-    
+    template<class T1,class T2,class T3,class T4,class comp>
+    inline void polynomial_div(basic_polynomial<T1,T2,comp> & p,basic_polynomial<T1,T2,comp> & R,const basic_polynomial<T1,T3,comp> & p1,const basic_polynomial<T1,T4,comp> & p2)
+    {
+        assert(comp_consistent(p1.comp(),p2.comp()));
+        // assert((void*)&p!=(void*)&p1 && (void*)&p!=(void*)&p2);
+        // assert((void*)&R!=(void*)&p1 && (void*)&R!=(void*)&p2);
+        
+        p.comp(p1.comp_ptr());
+        R.comp(p1.comp_ptr()); 
+        pair_vec_div(p.data(),R.data(),p1.data(),p2.data(),p1.comp());    
+        __auto_shrink(p.data());
+    }
     // template<class Tc,class Tm,class compare>
     // void swap(basic_polynomial<Tm,Tc,compare> & v1,basic_polynomial<Tm,Tc,compare> & v2)
     // {

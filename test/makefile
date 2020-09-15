@@ -4,6 +4,10 @@ CFLAGS=-O3 -flto -DNDEBUG
 Numberlib= -lgmpxx -lgmp  
 objects= variable_test basic_polynomial_test   monomial_test polynomial_test
 clpoly_hh=../clpoly/polynomial.hh ../clpoly/monomial.hh ../clpoly/basic_monomial.hh  ../clpoly/basic.hh ../clpoly/variable.hh  ../clpoly/basic_polynomial.hh ../clpoly/number.hh ../clpoly/monomial_order.hh
+polynomial_res_test:polynomial_res_test.cc $(clpoly_hh)
+	$(CXX) $(CFLAGS) $(IPATHS) polynomial_res_test.cc -o polynomial_res_test $(Numberlib)
+polynomial_prem_test:polynomial_prem_test.cc $(clpoly_hh)
+	$(CXX) $(CFLAGS) $(IPATHS) polynomial_prem_test.cc -o polynomial_prem_test $(Numberlib)
 polynomial_test:polynomial_test.cc $(clpoly_hh)
 	$(CXX) $(CFLAGS) $(IPATHS) polynomial_test.cc -o polynomial_test $(Numberlib)
 # polynomial_test.o:polynomial_test.cc polynomial.hh monomial.hh basic_monomial.hh  basic.hh variable.hh  basic_polynomial.hh number.hh

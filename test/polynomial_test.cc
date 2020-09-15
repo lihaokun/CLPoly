@@ -91,31 +91,7 @@ int main(){
     // f=3*pow(x,6)*pow(y,4)+pow(x,6)*pow(y,2)+3*pow(x,5)*pow(y,2)+7;
 
     // std::cout<<"t=Association[];t2=Association[];\n";
-    // for (int i=0;i<1;++i)
-    // {
-        // f=clpoly::random_polynomial<clpoly::ZZ>({x,y,d},10,0.1,10,-10);
-        // g=clpoly::random_polynomial<clpoly::ZZ>({x,y,d},10,0.1,10,-10);
-    //     std::cout<<"g="<<g<<";"<<std::endl;
-    //     std::cout<<"f="<<f<<";"<<std::endl;
-    //     // f=-6*pow(x,4)-7*pow(x,2)*y-x*pow(y,3)*z-3*x*y-9;
-    //     // g=10*pow(x,4)*y+2*pow(x,4)-7*pow(x,3)*pow(y,2)+9*pow(x,2)+9*pow(z,4)-9*y+2*z;
-    //     // std::cout<<prem(f,g,x)<<std::endl;
-    //     clpoly::__is_monomial_compression=true;
-    //     t=clock();
-    //     o=resultant(f,g,x);
-    //     t1=(double(clock()-t)/CLOCKS_PER_SEC);
-    //     std::cout<<"o="<<o<<";"<<std::endl;
-    //     std::cout<<"t["<<i<<"]=AbsoluteTiming[o1=o-Expand[Resultant[f,g,x]]];"<<std::endl;
-    //     printf("t2[%d]=%.6f;\n",i,t1);
-    //     // std::cout<<"t2["<<i<<"]="<<std::fixed<<setprecision(6)<<t1<<";"<<std::endl;
 
-    //     // clpoly::__is_monomial_compression=false;
-    //     // t=clock();
-    //     // o1=resultant(f,g,x);
-    //     // t1=(double(clock()-t)/CLOCKS_PER_SEC);
-    //     // std::cout<<"o="<<(o1==o)<<";"<<std::endl;
-    //     // std::cout<<"time:"<<t1<<std::endl;
-    // }
 
     // clpoly::polynomial_ZZ p=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},5,0.05,10,-10);
     // std::cout<<"p="<<p<<std::endl;
@@ -188,9 +164,11 @@ int main(){
 
     // }
     // return 0;
-    f=x*y*pow(z,5)-pow(d,6)*r;
-    g=pow(x,5)*pow(y,3)*pow(z,17)-pow(d,22)*pow(r,3);
-    std::cout<<"g="<<g<<";"<<std::endl; 
-    std::cout<<"f="<<f<<";"<<std::endl;
-    std::cout<<clpoly::resultant(f,g,z)<<std::endl;
+    // f=x*y*pow(z,5)-pow(d,6)*r;
+    // g=pow(x,5)*pow(y,3)*pow(z,17)-pow(d,22)*pow(r,3);
+    // std::cout<<"g="<<g<<";"<<std::endl; 
+    // std::cout<<"f="<<f<<";"<<std::endl;
+    // std::cout<<clpoly::resultant(f,g,z)<<std::endl;
+
+
 }

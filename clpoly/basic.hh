@@ -50,8 +50,11 @@ namespace clpoly{
             return (*this->comp)(a.first,b.first);
         }
     };
-    
-    
+    template <class comp>
+    inline bool comp_consistent(const comp &c1,const comp & c2)
+    {
+        return &c1==&c2 || c1==c2;
+    }
     template <class T1>
     constexpr void set_zero(T1& op)
     {

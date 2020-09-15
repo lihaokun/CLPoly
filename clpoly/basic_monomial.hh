@@ -294,15 +294,23 @@ namespace clpoly{
             {
                 // std::function<bool(const std::pair<variable,int16_t> &,const std::pair<variable,int16_t> &)> tmp_comp=
                 //     [&](std::pair<variable,int16_t> a,std::pair<variable,int16_t> b){return (this->comp(a.first,b.first));};
-                return pair_vec_find_first(this->begin(),this->end(),
-                    std::pair<variable,int16_t>(m,0),pair_compare<variable,int64_t,compare>(this->__comp));
+                // return pair_vec_find_first(this->begin(),this->end(),
+                //     std::pair<variable,int16_t>(m,0),pair_compare<variable,int64_t,compare>(this->__comp));
+                const_iterator i=this->begin();
+                while (i!=this->end() && i->first!=m)
+                    ++i;
+                return i;
             }
             inline iterator find(const variable & m)
             {
                 // std::function<bool(const std::pair<variable,int16_t> &,const std::pair<variable,int16_t> &)> tmp_comp=
                 //     [&](std::pair<variable,int16_t> a,std::pair<variable,int16_t> b){return (this->comp(a.first,b.first));};
-                return pair_vec_find_first(this->begin(),this->end(),
-                    std::pair<variable,int16_t>(m,0),pair_compare<variable,int64_t,compare>(this->__comp));
+                // return pair_vec_find_first(this->begin(),this->end(),
+                //     std::pair<variable,int16_t>(m,0),pair_compare<variable,int64_t,compare>(this->__comp));
+                iterator i=this->begin();
+                while (i!=this->end() && i->first!=m)
+                    ++i;
+                return i;
             }
             inline int64_t deg(const variable & m) const
             {

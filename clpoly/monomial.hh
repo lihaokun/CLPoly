@@ -32,23 +32,23 @@ namespace clpoly
     };
     
     template <class T,class compare>
-    inline void pair_vec_first_normalization(std::vector<std::pair<basic_monomial<compare>,T>> & v,const compare * comp)
+    inline void pair_vec_first_normalization(std::vector<std::pair<basic_monomial<compare>,T>> & v,const compare & comp)
     {   
         for(auto &i:v)
         {
             // if (i.first.comp_ptr()!=comp)
             // {
-                i.first.comp(comp);
+                i.first.comp(&comp);
                 i.first.normalization();
             // }
         }
     }
     
     template <class T,class compare>
-    inline bool pair_vec_first_normal_check(std::vector<std::pair<basic_monomial<compare>,T>> & v,const  compare * comp)
+    inline bool pair_vec_first_normal_check(std::vector<std::pair<basic_monomial<compare>,T>> & v,const  compare & comp)
     {
         for(auto &i:v)
-            if (i.first.comp_ptr()!=comp || i.is_normal())
+            if (i.first.comp_ptr()!=&comp || i.is_normal())
             {
                 return false;
             }
@@ -304,24 +304,24 @@ namespace clpoly
         {
             v2_c.push_back({__monomial_compression(i.first,vars),&(i.second)});
         }
-        std::list<std::pair<uint64_t,T2*>> new_v_c;
+        std::list<std::pair<uint64_t,uint64_t>> new_v_c;
         new_v.clear();
         new_v.reserve(v1_.size()+v2_.size());
         const compare * comp_ptr=v1_.begin()->first.comp_ptr();
         uint64_t mold=__monomial_compression_div_mold(comp_ptr,vars.size());
-        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **heap=
-            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()-1];
-        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > *node=
-            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >[v2_.size()-1];    
-        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **lin=
-            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()-1];
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **heap=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()];
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > *node=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >[v2_.size()];    
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **lin=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()];
         std::size_t reset=0;
         std::size_t reset_h=v2_.size()-1;
         std::size_t lin_size=0;
         auto v2_ptr=v2_c.begin();
         auto v1_ptr=v1_c.begin();
         auto v1_end=v1_c.end();
-        typename std::list<std::pair<uint64_t,T2*>>::const_iterator new_c_ptr;
+        typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator new_c_ptr;
         uint64_t m;
         basic_monomial<compare> m1;
         for(auto i=node;(++v2_ptr)!=v2_c.end();++i)
@@ -346,10 +346,12 @@ namespace clpoly
                 set_zero(k);
             }
             // __monomial_decompression(m,m1,vars,comp_ptr);
-            //std::cout<<m1<<std::endl;
+            // std::cout<<m1<<" "<<k<<std::endl;
             while(heap_size>0 && heap[0]->mono==m){ //equal_to
                 while(heap[0]!=nullptr){
-                    submul(k,*(heap[0]->v1_ptr->second),*(heap[0]->v2_ptr->second));
+                    //std::cout<<*(heap[0]->v1_ptr->second)<<" "<<*(heap[0]->v2_ptr->second)<<std::endl;
+
+                    submul(k,new_v[heap[0]->v1_ptr->second].second,*(heap[0]->v2_ptr->second));
                     if (++(heap[0]->v1_ptr)!=new_v_c.end()){
                         lin[lin_size++]=heap[0];
                         heap[0]->mono=heap[0]->v1_ptr->first+heap[0]->v2_ptr->first;
@@ -374,7 +376,7 @@ namespace clpoly
                         __monomial_decompression(m,m1,vars,comp_ptr);
                         //std::cout<<m1<<" "<<k1<<std::endl;
                         new_v.push_back({std::move(m1),std::move(k1)});
-                        new_v_c.push_back({m,&(new_v.back().second)});
+                        new_v_c.push_back({m,v_size-1});
                         new_c_ptr=new_v_c.end();
                         --new_c_ptr;
                         while(reset_h>0)
@@ -426,24 +428,24 @@ namespace clpoly
         {
             v2_c.push_back({__monomial_compression(i.first,vars),&(i.second)});
         }
-        std::list<std::pair<uint64_t,T2*>> new_v_c;
+        std::list<std::pair<uint64_t,uint64_t>> new_v_c;
         new_v.clear();
         new_v.reserve(v1_.size()+v2_.size());
         const compare * comp_ptr=v1_.begin()->first.comp_ptr();
         uint64_t mold=__monomial_compression_div_mold(comp_ptr,vars.size());
-        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **heap=
-            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()-1];
-        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > *node=
-            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >[v2_.size()-1];    
-        VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **lin=
-            new VHC<uint64_t,typename std::list<std::pair<uint64_t,T2*>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()-1];
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **heap=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()];
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > *node=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >[v2_.size()];    
+        VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator > **lin=
+            new VHC<uint64_t,typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator,typename std::vector<std::pair<uint64_t,const T4*>>::const_iterator >*[v2_.size()];
         std::size_t reset=0;
         std::size_t reset_h=v2_.size()-1;
         std::size_t lin_size=0;
         auto v2_ptr=v2_c.begin();
         auto v1_ptr=v1_c.begin();
         auto v1_end=v1_c.end();
-        typename std::list<std::pair<uint64_t,T2*>>::const_iterator new_c_ptr;
+        typename std::list<std::pair<uint64_t,uint64_t>>::const_iterator new_c_ptr;
         uint64_t m;
         basic_monomial<compare> m1;
         for(auto i=node;(++v2_ptr)!=v2_c.end();++i)
@@ -469,10 +471,12 @@ namespace clpoly
                 set_zero(k);
             }
             // __monomial_decompression(m,m1,vars,comp_ptr);
-            // std::cout<<m1<<std::endl;
+            // std::cout<<m1<<" "<<k<<std::endl;
             while(heap_size>0 && heap[0]->mono==m){ //equal_to
                 while(heap[0]!=nullptr){
-                    submul(k,*(heap[0]->v1_ptr->second),*(heap[0]->v2_ptr->second));
+                    //std::cout<<*(heap[0]->v1_ptr->second)<<" "<<*(heap[0]->v2_ptr->second)<<std::endl;
+
+                    submul(k,new_v[heap[0]->v1_ptr->second].second,*(heap[0]->v2_ptr->second));
                     if (++(heap[0]->v1_ptr)!=new_v_c.end()){
                         lin[lin_size++]=heap[0];
                         heap[0]->mono=heap[0]->v1_ptr->first+heap[0]->v2_ptr->first;
@@ -494,14 +498,14 @@ namespace clpoly
                         __monomial_decompression(m,m1,vars,comp_ptr);
                         R.push_back({std::move(m1),std::move(k2)});
                     }
-                    //std::cout<<k<<" "<<v2_begin->second<<" "<<k1<<std::endl;    
+                    //std::cout<<k<<" "<<v2_.begin()->second<<" "<<k1<<std::endl;    
                     if(!zore_check<T2>()(k1)){
                         ++v_size;
                         m-=v2_c.begin()->first;
                         __monomial_decompression(m,m1,vars,comp_ptr);
                         //std::cout<<m1<<" "<<k1<<std::endl;
                         new_v.push_back({std::move(m1),std::move(k1)});
-                        new_v_c.push_back({m,&(new_v.back().second)});
+                        new_v_c.push_back({m,v_size-1});
                         new_c_ptr=new_v_c.end();
                         --new_c_ptr;
                         while(reset_h>0)

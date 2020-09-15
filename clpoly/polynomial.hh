@@ -23,20 +23,73 @@ namespace clpoly{
     using polynomial_ZZ=polynomial_<ZZ>;
     using polynomial_QQ=polynomial_<QQ>;
     
-    inline monomial pow(const variable & v,uint64_t i)
+/*======================================主要函数=========================================*/
+    // template <class Tc,class comp>
+    // int64_t degree(const polynomial_<Tc,comp> & p);
+    // template <class Tc,class comp>
+    // int64_t degree(const polynomial_<Tc,comp> & p,const variable & v);
+    // template<class Tc>
+    // polynomial_<Tc> random_polynomial(const std::vector<variable> & v,uint64_t deg,double p,int up,int down);
+    // template<class T1,class T2,class comp1,class comp2>
+    // void poly_convert(const polynomial_<T1,comp1>& p_in,polynomial_<T2,comp2> & p_out);
+    // template <class Tc,class comp>
+    // inline polynomial_<Tc,comp> leadcoeff(const polynomial_<Tc,comp>&F);
+    // template <class Tc,class comp>
+    // inline polynomial_<Tc,comp> prem(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v);
+    // template <class Tc,class comp>
+    // inline polynomial_<Tc,comp> resultant(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v);
+    // template <class Tc, class To>
+    // polynomial_<Tc,To> association(const polynomial_<Tc,To>& p,const variable & v,const Tc & c);
+    // template <class compare>
+    // polynomial_<Zp,compare> polynomial_mod(polynomial_<ZZ,compare> && p, uint32_t prime)
+/*======================================实现===============================================*/
+    inline monomial pow(const variable & v,int64_t i)
     {
         return monomial({{v,i}});
+    }
+    template <class compare>
+    inline  basic_monomial<compare> pow(const basic_monomial<compare> & v,int64_t i)
+    {
+        basic_monomial<compare> m1(v.comp_ptr());
+        if (i)
+        {
+            m1=v;
+            for (auto & i:m1)
+            {
+                i.second*=i;
+            }
+        }
+        return m1;
     }
 
 
     template <class Tc,class compare>
-    inline polynomial_<Tc,compare> pow(const polynomial_<Tc,compare> & p,uint64_t i)
+    inline polynomial_<Tc,compare> pow(const polynomial_<Tc,compare> & p,int64_t i)
     {
+        assert(i>=0);
         polynomial_<Tc,compare> o(p.comp_ptr());
         o={{{},1}};
-        pair_vec_power(o.data(),p.data(),i,p.comp());
-        return o;
+        switch (i)
+        {
+        case 0:
+            return o;
+            break;
+        case 1:
+            return p;
+            break;
+        case 2:
+            return p*p;
+            break;
+        case 3:
+            return p*p*p;
+            break;         
+        default:
+            pair_vec_power(o.data(),p.data(),i,p.comp());
+            return o;
+            break;
+        }
     }
+
     monomial operator* (const variable & v1,const variable & v2)
     {
         if (monomial::compare_type()(v1,v2))  
@@ -154,6 +207,10 @@ namespace clpoly{
     {
         return p+Tc(m);
     }
+    polynomial_ZZ operator+ (const variable & p,int64_t m)
+    {
+        return {{{{p,1}},1},{{},ZZ(m)}};
+    }
     template<class Tc>
     polynomial_<Tc> operator- (const polynomial_<Tc> & p,const Tc & m)
     {
@@ -254,9 +311,49 @@ namespace clpoly{
         return deg;
     }
 
+
+    template <class Tc,class comp>
+    int64_t degree(const polynomial_<Tc,comp> & p)
+    {
+        return p.degree();
+    }
+    template <class Tc,class comp>
+    int64_t degree(const polynomial_<Tc,comp> & p,const variable & v)
+    {
+        // auto & l=p.variables();
+        // for (auto &i:l)
+        //     if (l.first==v)
+        //         return l.second;
+        // return 0;
+        int64_t deg=0,tmp;
+        for (auto &i:p)
+            if ((tmp=i.first.deg(v))>deg)
+                deg=tmp;
+        return deg;
+    }
+    
+    template <class Tc>
+    constexpr const int64_t get_up_deg(const polynomial_<Tc,univariate_priority_order>& p)
+    {
+        return p.empty()?-1:get_up_deg(p.begin()->first);
+    }
+    
+    template <class Tc>
+    int64_t degree(const polynomial_<Tc,univariate_priority_order> & p,const variable & v)
+    {
+        if (p.comp().v==v)
+            return get_up_deg(p);
+        int64_t deg=0,tmp;
+        for (auto &i:p)
+            if ((tmp=i.first.deg(v))>deg)
+                deg=tmp;
+        return deg;
+    }
+
     template<class T1,class T2,class comp1,class comp2>
     void poly_convert(const polynomial_<T1,comp1>& p_in,polynomial_<T2,comp2> & p_out)
     {
+        assert((void*)&p_in!=(void*)&p_out);
         p_out.clear();
         basic_monomial<comp2> m(p_out.comp_ptr());
         for (auto &i:p_in)
@@ -269,6 +366,7 @@ namespace clpoly{
     template<class T1,class T2,class comp1,class comp2>
     void poly_convert(polynomial_<T1,comp1>&& p_in,polynomial_<T2,comp2> & p_out)
     {
+        assert((void*)&p_in!=(void*)&p_out);
         p_out.clear();
         basic_monomial<comp2> m(p_out.comp_ptr());
         for (auto &i:p_in)
@@ -282,6 +380,7 @@ namespace clpoly{
     template<class T2,class comp1,class comp2>
     void poly_convert(const polynomial_<Zp,comp1>& p_in,polynomial_<T2,comp2> & p_out)
     {
+        assert(&p_in!=&p_out);
         p_out.clear();
         basic_monomial<comp2> m(p_out.comp_ptr());
         for (auto &i:p_in)
@@ -294,6 +393,7 @@ namespace clpoly{
     template<class T2,class comp1,class comp2>
     void poly_convert(polynomial_<Zp,comp1>&& p_in,polynomial_<T2,comp2> & p_out)
     {
+        assert(&p_in!=&p_out);
         p_out.clear();
         basic_monomial<comp2> m(p_out.comp_ptr());
         for (auto &i:p_in)
@@ -305,28 +405,134 @@ namespace clpoly{
         p_in.clear();
     }
 
+
+
     template <class Tc>
-    constexpr const int64_t get_up_deg(const polynomial_<Tc,univariate_priority_order>& p)
+    inline int64_t leadcoeff(polynomial_<Tc,univariate_priority_order>&O,const polynomial_<Tc,univariate_priority_order>&F)
     {
-        return p.empty()?-1:get_up_deg(p.begin()->first);
+        assert(&O!=&F);
+        int64_t d=get_up_deg(F);
+        if (d && !F.empty())
+        {
+            O.clear();
+            O.comp(F.comp_ptr());
+            for (auto & i:F)
+            {
+                if (get_up_deg(i.first)!=d)
+                    return d;
+                O.push_back(i);
+                O.back().first.pop_back();
+            }
+        }
+        else
+            O=F;
+        return d;
+    }
+    template <class Tc,class comp >
+    inline int64_t leadcoeff(polynomial_<Tc,comp>&O,const polynomial_<Tc,comp>&F,const variable & v)
+    {
+        assert(&O!=&F);
+        int64_t deg=0,tmp;
+        for (auto &i:F)
+            if ((tmp=i.first.deg(v))>deg)
+                deg=tmp;
+        if (deg)
+        {
+            O.clear();
+            O.comp(F.comp_ptr());
+            basic_monomial<comp> m(F.comp_ptr());
+            typename basic_monomial<comp>::const_iterator tmp_I;
+            for (auto &i:F)
+                if ((tmp_I=i.first.find(v))!=i.first.end() && tmp_I->second==deg)
+                {
+                    m=i.first;
+                    m[tmp_I-i.first.begin()].second=0;
+                    O.push_back({std::move(m),i.second});
+                }
+            O.normalization();
+        }
+        else 
+            O=F;
+        return deg;
+    }
+    
+    template <class Tc>
+    inline polynomial_<Tc,univariate_priority_order> leadcoeff(const polynomial_<Tc,univariate_priority_order>&F)
+    {
+        polynomial_<Tc,univariate_priority_order> O(F.comp_ptr());
+        leadcoeff(O,F);
+        return O;
+    }
+    
+    template <class Tc,class comp>
+    inline polynomial_<Tc,comp> leadcoeff(const polynomial_<Tc,comp>&F)
+    {
+        polynomial_<Tc,comp> O(F.comp_ptr());
+        leadcoeff(O,F);
+        return O;
     }
 
+    #define prem_v1 prem
+    
+    template <class Tc>
+    inline polynomial_<Tc,univariate_priority_order> prem(const polynomial_<Tc,univariate_priority_order> &G,const polynomial_<Tc,univariate_priority_order> & F)
+    {
+        polynomial_<Tc,univariate_priority_order>  O1(&G.comp_ptr());
+        prem(O1,G,F);
+        return O1;
+    }
     template <class Tc,class comp>
     inline polynomial_<Tc,comp> prem(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v)
     {
-        assert(G.comp_ptr()==F.comp_ptr());
+        if (F.size()==0)
+        {
+//#ifndef NDEBUG  
+            throw std::invalid_argument("Error:polynomial prem div 0.");
+//#endif            
+            return polynomial_<Tc,comp>();
+        }
+        polynomial_<Tc,comp> O(G.comp_ptr());
         univariate_priority_order comp_v(v);
         polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
         polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
         poly_convert(G,G1);poly_convert(F,F1);
         polynomial_<Tc,univariate_priority_order>  O1(&comp_v);
         prem(O1,G1,F1);
-        polynomial_<Tc,comp> O(G.comp_ptr());
         poly_convert(std::move(O1),O);
         return O;
     }
+
+    
+    template <class Tc>
+    inline void prem_v2(polynomial_<Tc,univariate_priority_order> &O,const polynomial_<Tc,univariate_priority_order> &G,const polynomial_<Tc,univariate_priority_order> & F)
+    {
+        if (F.size()==0)
+        {
+//#ifndef NDEBUG  
+            throw std::invalid_argument("Error:polynomial prem div 0.");
+//#endif            
+            return void();
+        }
+        assert(comp_consistent(G.comp(),F.comp()));
+        assert((void*)&O!=(void*)&G && (void*)&O!=(void*)&F);
+        // std::cout<<"G="<<G<<std::endl;
+        // std::cout<<"F="<<F<<std::endl;
+        polynomial_<Tc,univariate_priority_order>  Fl(F.comp_ptr());
+        int64_t F_deg=leadcoeff(Fl,F);
+        int64_t G_deg=get_up_deg(G);
+        if (F_deg>G_deg) 
+        {
+            O=G;
+            return void();
+        }
+        // std::cout<<"G_deg="<<G_deg<<" F_deg="<<F_deg<<std::endl;
+        // std::cout<<"Fl="<<Fl<<std::endl;
+        O=polynomial_rem(G*pow(Fl,G_deg-F_deg+1),F);
+    }
+
+
     template <class Tc,class compare>
-    void __onestep__prem(
+    void __onestep__prem_v1(
         const std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & G,
         const std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & F0,
         int64_t f_deg,
@@ -379,7 +585,7 @@ namespace clpoly{
     }
     
     template <class Tc>
-    void prem(
+    void prem_v1(
             polynomial_<Tc,univariate_priority_order>&O,
             //polynomial_<Tc,univariate_priority_order>&L,
             const polynomial_<Tc,univariate_priority_order>&G,
@@ -387,10 +593,17 @@ namespace clpoly{
             bool is_L=true
             )
     {
+        if (F.size()==0)
+        {
+//#ifndef NDEBUG  
+            throw std::invalid_argument("Error:polynomial prem div 0.");
+//#endif            
+            return void();
+        }
         O.clear();
         int64_t f_deg=get_up_deg(F);
         int64_t g_deg=get_up_deg(G);
-        if (f_deg<=0||g_deg<=0)
+        if (f_deg<=0)
             return void();
         if (g_deg<f_deg)
         {
@@ -415,14 +628,14 @@ namespace clpoly{
             }
         std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_F1;
         O.data().reserve(G.size());
-        __onestep__prem(G.data(),tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());
-        // std::cout<<"prem_:"<<O<<std::endl;
+        __onestep__prem_v1(G.data(),tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());
+        // std::cout<<"prem_v1_:"<<O<<std::endl;
         while (get_up_deg(O)>=f_deg)
         {
             std::swap(tmp_G,O.data());
-            __onestep__prem(tmp_G,tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());    
+            __onestep__prem_v1(tmp_G,tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());    
             --d;
-            // std::cout<<"prem_:"<<O<<std::endl;
+            // std::cout<<"prem_v1_:"<<O<<std::endl;
         }
         if (is_L && d>0)
         {
@@ -447,7 +660,7 @@ namespace clpoly{
     template <class Tc,class comp>
     inline polynomial_<Tc,comp> resultant(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v)
     {
-        assert(G.comp_ptr()==F.comp_ptr());
+        assert(comp_consistent(G.comp(),F.comp()));
         univariate_priority_order comp_v(v);
         polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
         polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
@@ -458,25 +671,8 @@ namespace clpoly{
         poly_convert(std::move(O1),O);
         return O;
     }
-    template <class Tc>
-    inline void leadcoeff(polynomial_<Tc,univariate_priority_order>&O,const polynomial_<Tc,univariate_priority_order>&F)
-    {
-        int64_t d=get_up_deg(F);
-        if (d && !F.empty())
-        {
-            O.clear();
-            for (auto & i:F)
-            {
-                if (get_up_deg(i.first)!=d)
-                    return void();
-                O.push_back(i);
-                O.back().first.pop_back();
-            }
-        }
-        else
-            O=F;
-        
-    }
+    
+    
     template <class Tc>
     void resultant
         (   

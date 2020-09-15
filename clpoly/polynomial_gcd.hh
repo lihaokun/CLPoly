@@ -256,7 +256,7 @@ namespace clpoly{
     template <class Tc,class comp>
     inline polynomial_<Tc,comp> polynomial_GCD(const polynomial_<Tc,comp> &F,const polynomial_<Tc,comp> & G)
     {
-        assert(G.comp_ptr()==G.comp_ptr() || G.comp()==F.comp());
+        assert(comp_consistent(G.comp(),F.comp()));
         if (F.empty())
             return G;
         if (G.empty())

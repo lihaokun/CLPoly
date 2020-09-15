@@ -89,13 +89,14 @@ int main(){
     auto t=clock();
     auto p3=(p2+n1)*(p2+n2);
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
-    std::cout<<112911876*1.0/p3.size()<<std::endl;//831.757
-    auto k=p3.begin()->second;
-    for(auto & i:p3)
-        if (k<i.second)
-            k=i.second;
-    std::cout<<k<<std::endl;
-    std::cout<<"7656714453153197981835000"<<std::endl;
+    std::cout<<p3<<std::endl;
+    // std::cout<<112911876*1.0/p3.size()<<std::endl;//831.757
+    // auto k=p3.begin()->second;
+    // for(auto & i:p3)
+    //     if (k<i.second)
+    //         k=i.second;
+    // std::cout<<k<<std::endl;
+    // std::cout<<"7656714453153197981835000"<<std::endl;
     t=clock();
     std::cout<<((p2+n1)==(p3/(p2+n2)))<<std::endl;
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);

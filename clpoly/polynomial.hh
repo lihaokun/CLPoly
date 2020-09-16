@@ -380,7 +380,7 @@ namespace clpoly{
     template<class T2,class comp1,class comp2>
     void poly_convert(const polynomial_<Zp,comp1>& p_in,polynomial_<T2,comp2> & p_out)
     {
-        assert(&p_in!=&p_out);
+        assert((void*)&p_in!=(void*)&p_out);
         p_out.clear();
         basic_monomial<comp2> m(p_out.comp_ptr());
         for (auto &i:p_in)

@@ -4,6 +4,11 @@ CLPoly 是一个开发中的多项式c++库，目标是一个高效易用的多�
 
 CLPoly is a c++ library of polynomial.
 
+## Dependencies
+
+* [GMP](https://gmplib.org/)
+* [boost](https://www.boost.org/)
+
 ## Example
 
 ```

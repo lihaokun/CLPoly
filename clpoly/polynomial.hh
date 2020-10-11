@@ -89,7 +89,7 @@ namespace clpoly{
             break;
         }
     }
-
+    
     monomial operator* (const variable & v1,const variable & v2)
     {
         if (monomial::compare_type()(v1,v2))  
@@ -104,6 +104,14 @@ namespace clpoly{
     polynomial_ZZ operator+(const monomial & m,int64_t i)
     {
         return polynomial_ZZ({{m,1},{{},i}});
+    }
+    // polynomial_ZZ operator+(const monomial & m,const variable & v)
+    // {
+    //     return polynomial_ZZ({{m,1},{{{v,1}},1}});
+    // }
+    polynomial_ZZ operator-(const monomial & m,int64_t i)
+    {
+        return polynomial_ZZ({{m,1},{{},-i}});
     }
 
     monomial operator* (const monomial & v1,const variable & v2)

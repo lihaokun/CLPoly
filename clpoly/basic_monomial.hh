@@ -67,7 +67,8 @@ namespace clpoly{
             basic_monomial(const basic_monomial<compare> &m)
             :__data(m.__data),__deg(m.__deg),__comp(m.__comp)
             {}
-            explicit basic_monomial(const variable & v)
+            // explicit 
+            basic_monomial(const variable & v)
             :__data({{v,1}}),__deg(1)
             {}
             basic_monomial(basic_monomial<compare> &&m)

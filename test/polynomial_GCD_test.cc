@@ -13,7 +13,11 @@ int main(int argc, char const *argv[])
     
     time_t t;
     double s1=0,s2=0;
-    for (int i=0;i<100;++i)
+    std::string s;
+    std::cout<<"Test round:";
+    std::cin>>s;
+    int n=std::stoi(s);
+    for (int i=0;i<n;++i)
     {
         //std::cout<<"test "<<i<<":\n";
         f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.5,10,-10);

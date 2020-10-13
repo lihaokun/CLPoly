@@ -37,6 +37,11 @@ namespace clpoly{
                 assert (search!=this->__mnode.end());
                 return this->__adjacency_list[search->second];
             }
+            constexpr uint64_t index(const node_type & v) const {
+                auto search=this->__mnode.find(v);
+                assert (search!=this->__mnode.end());
+                return search->second; 
+            }
 
             constexpr auto size() const {return this->__nodes.size();}
             
@@ -424,7 +429,35 @@ namespace clpoly{
 
 
 
-
+    template<class node_type>
+    graph<node_type> elimination_game(const graph<node_type>& g,const std::vector<node_type> & l)
+    {
+        graph<node_type>  gout=g;
+        std::vector<bool> h;
+        h.resize(g.size());
+        for(auto i=h.begin();i!=h.end();++i)
+            *i=true;
+        for (auto &i:l)
+        {
+            auto i1=gout.index(i);
+            h[i1]=false;
+            auto & l1=gout.adjacency_list()[i1];
+            for (auto j1=l1.begin();j1!=l1.end();++j1)
+                if (h[*j1])
+                {
+                    auto j2=j1;
+                    ++j2;
+                    for (;j2!=l1.end();++j2)
+                    {
+                        if (h[*j2])
+                        {
+                            gout.add_edge_index(*j1,*j2);
+                        }
+                    }
+                }
+        }
+        return gout;
+    }
 
 
 

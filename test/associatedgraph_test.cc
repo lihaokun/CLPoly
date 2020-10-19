@@ -5,7 +5,7 @@
 int main(int argc, char const *argv[])
 {
     
-    int n=10;
+    int n=5;
     std::vector<clpoly::polynomial_ZZ> F;
     for (int i=0;i<n;++i)
     {
@@ -20,6 +20,19 @@ int main(int argc, char const *argv[])
     auto G3=clpoly::associatedgraph(F);
     std::cout<<clpoly::graph_diff_score(chordal_completion(G3),G3)<<std::endl;
     std::cout<<clpoly::graph_diff_score(connected_branch_graph(G3),G3)<<std::endl; 
+    std::vector<clpoly::variable> l={
+       clpoly::variable("x1"),
+       clpoly::variable("x2"),
+       clpoly::variable("x3"),
+       clpoly::variable("x8"),
+       clpoly::variable("x7"),
+       clpoly::variable("x6"),
+       clpoly::variable("x4"),
+       clpoly::variable("x5")
+    };
 
+    std::cout<<clpoly::elimination_height(G3,l)<<std::endl;
+    auto md=__polynomial_m_d(F,l);
+    std::cout<<md.first<<" "<<md.second<<std::endl;
     return 0;
 }

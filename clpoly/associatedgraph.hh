@@ -458,6 +458,89 @@ namespace clpoly{
         }
         return gout;
     }
+    template<class node_type>
+    uint64_t elimination_height(const graph<node_type>& g,const std::vector<node_type> & l)
+    {
+        graph<node_type>  gout=g;
+        std::vector<bool> h;
+        h.resize(g.size());
+        std::vector<uint64_t> height;
+        std::map<uint64_t,uint64_t> lm;
+        height.resize(g.size());
+        uint64_t treeheight=0;
+        for (uint64_t i=0;i<g.size();++i)
+        {
+            lm[gout.index(l[i])]=i;
+            height[i]=0;
+            h[i]=true;
+        }
+        for (auto &i:l)
+        {
+            
+            auto i1=gout.index(i);
+            h[i1]=false;
+            if (height[i1]>treeheight)
+                treeheight=height[i1];
+            auto & l1=gout.adjacency_list()[i1];
+            uint64_t minc=g.size();
+            uint64_t minc_h=g.size()+1;
+            for (auto j1=l1.begin();j1!=l1.end();++j1)
+                if (h[*j1])
+                {
+                    if (lm[*j1]<minc_h)
+                    {
+                        minc=*j1;
+                        minc_h=lm[*j1];
+                    }
+                    auto j2=j1;
+                    ++j2;
+                    for (;j2!=l1.end();++j2)
+                    {
+                        if (h[*j2])
+                        {
+                            gout.add_edge_index(*j1,*j2);
+                        }
+                    }
+                }
+            if (minc!=g.size())
+                if (height[i1]>=height[minc])
+                    height[minc]=height[i1]+1;
+                
+        }
+        return treeheight;
+    }
+
+    template<class Tc>
+    std::pair<uint64_t,uint64_t> __polynomial_m_d(const std::vector<polynomial_<Tc>>& P,const std::vector<variable> & l)
+    {
+        std::vector<uint64_t> md;
+        md.resize(l.size());
+        for (auto &i:md)
+            i=0;
+        std::map<variable,uint64_t> ml;
+        for (uint64_t i=0;i<l.size();++i)
+            ml[l[i]]=i;
+        uint64_t d=0;
+        for(auto & p:P)
+        {
+            auto vs=p.variables();
+            uint64_t m=l.size();
+            for (auto i=vs.begin();i!=vs.end();++i)
+            {
+                if (ml[i->first]<m)
+                    m=ml[i->first];
+                if (i->second>d)
+                    d= i->second;
+            }
+            ++md[m];
+
+        }
+        uint64_t m=0;
+        for (auto &i:md)
+            if (i>m)
+                m=i;
+        return {m,d};
+    }
 
 
 

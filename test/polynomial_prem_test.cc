@@ -31,8 +31,8 @@ int main(int argc, char const *argv[])
         std::cout<<"test "<<i<<":\n";
         f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},200,0.1,10,-10);
         g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},200,0.1,10,-10);
-        // std::cout<<"f="<<f<<";"<<std::endl;
-        // std::cout<<"g="<<g<<";"<<std::endl; 
+        std::cout<<"f="<<f<<";"<<std::endl;
+        std::cout<<"g="<<g<<";"<<std::endl; 
         if (g.empty())
             continue;
         t=clock();

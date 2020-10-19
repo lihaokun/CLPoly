@@ -15,7 +15,6 @@ Notes:
 #include <clpoly/basic_polynomial.hh>
 #include <list>
 #include <string>
-#include <random>
 
 namespace clpoly{
     template <class Tc,class comp=grlex>
@@ -29,7 +28,6 @@ namespace clpoly{
     // template <class Tc,class comp>
     // int64_t degree(const polynomial_<Tc,comp> & p,const variable & v);
     // template<class Tc>
-    // polynomial_<Tc> random_polynomial(const std::vector<variable> & v,uint64_t deg,double p,int up,int down);
     // template<class T1,class T2,class comp1,class comp2>
     // void poly_convert(const polynomial_<T1,comp1>& p_in,polynomial_<T2,comp2> & p_out);
     // template <class Tc,class comp>
@@ -235,63 +233,7 @@ namespace clpoly{
     {
         return p-Tc(m);
     }
-    template<class Tc>
-    polynomial_<Tc> random_polynomial(const std::vector<variable> & v,uint64_t deg,double p,int up,int down)
-    {
-        if (down > up) std::swap(up,down);
-        std::vector<std::pair<monomial,Tc>> p1;
-        std::random_device rd; 
-        std::mt19937 gen(rd());
-        auto size=v.size();
-        std::bernoulli_distribution mp(p);
-        std::uniform_int_distribution<> dis(down, up);
-        std::vector<std::pair<variable,int64_t>>  m;
-        for (auto &i:v)
-            m.emplace_back(i,0);
-        for(int d=deg;d>=0;--d)
-        {
-            
-            if (d)
-            {
-                int64_t i0=0;
-                int64_t sum=d;
-                m.begin()->second=d;
-                while(1)
-                {
-                    if (mp(gen))
-                    {
-                        p1.emplace_back(monomial(m),Tc(dis(gen)));
-                    }
-                    while (i0>=0)
-                    {
-                        if (m[i0].second && i0<size-1)
-                        {
-                            --m[i0].second;
-                            ++i0;
-                            m[i0].second=d-sum+1;
-                            sum=d;
-                            break;
-                        }
-                        else
-                        {
-                            sum-=m[i0].second;
-                            m[i0].second=0;
-                            --i0;
-                        }
-                    }   
-                    if (i0<0)   
-                        break;
-
-                }
-            }
-            else
-            {
-                p1.push_back({{},Tc(dis(gen))});
-            }
-            
-        }
-        return polynomial_<Tc>(p1);
-    }
+ 
     template<class Tc,class comp>
     std::list<std::pair<variable,int64_t>> get_variables(const polynomial_<Tc,comp>& p)
     {

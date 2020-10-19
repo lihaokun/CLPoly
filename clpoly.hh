@@ -11,4 +11,6 @@ Notes:
 #define CLPOLY_HH
 #include <clpoly/polynomial.hh>
 #include <clpoly/polynomial_gcd.hh>
+#include <clpoly/random.hh>
+
 #endif

@@ -38,8 +38,13 @@ int main(){
     clpoly::variable d("d");
     clpoly::variable r("r");
     
-    // clpoly::polynomial_ZZ p=2*y*z*x*x*z+d*d*d*y*z*z+1;
-    // std::cout<< p<<std::endl;
+    clpoly::polynomial_ZZ p={{{{x,1}},1}};
+    clpoly::monomial m=pow(x,3);
+    p=z*z;
+
+    std::cout<< p<<std::endl;
+    
+    std::cout<< 2*x*x*y+1<<std::endl;
     // auto l=p.variables();
     // for (auto &i:l)
     //     std::cout<<i.first<<":"<<i.second<<" ";
@@ -56,17 +61,17 @@ int main(){
     // std::cout<<pow(p2,2)<<std::endl;
     // std::cout<<"4*pow(x,4)*pow(y,2)*pow(z,4)+4*pow(x,2)*pow(y,2)*d^3*pow(z,4)+pow(y,2)*d^6*pow(z,4)+4*pow(x,2)*y*pow(z,2)+2*y*d^3*pow(z,2)+1\n";
     // std::cout<< p<<std::endl;
-    // clpoly::polynomial_ZZ f=x*pow(y,2)+1;
-    // clpoly::polynomial_ZZ g=2*pow(y,3)-pow(y,2)+pow(x,2)*y;
-
-    clpoly::polynomial_ZZ f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.2,10,-10);
-    clpoly::polynomial_ZZ g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.2,10,-10);
+    clpoly::polynomial_ZZ f=x*pow(y,2);
+    clpoly::polynomial_ZZ g=2*pow(y,3)-pow(y,2)+pow(x,2)*y;
+       f=-pow(x,2)*pow(z,3) - pow(x,4) - pow(z,4) + pow(x,2) + 2*pow(z,2) - 1;
+    g=-pow(r,2)*pow(x,2) + pow(x,4) + pow(x,2)*pow(z,2) + pow(z,4) +x- 2*pow(z,2) + 1;
+    // clpoly::polynomial_ZZ f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.2,10,-10);
+    // clpoly::polynomial_ZZ g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.2,10,-10);
     clpoly::polynomial_ZZ o;
      clpoly::polynomial_ZZ o1;
-    // std::cout<<"g:="<<g<<":"<<std::endl;
-    // std::cout<<"f:="<<f<<":"<<std::endl;
-    auto t=clock();
-    double t1;
+    std::cout<<"f:="<<f<<":"<<std::endl;
+    std::cout<<"g:="<<g<<":"<<std::endl;
+
     // std::cout<<"o:="<<clpoly::prem(g,f,y)<<":"<<std::endl;
     // std::cout<<"t:="<<(double(clock()-t)/CLOCKS_PER_SEC)<<";"<<std::endl;
     // std::cout<<"st := time():o1:= expand(prem(g, f, y)):time() - st;o1-o;"<<std::endl;
@@ -129,8 +134,8 @@ int main(){
     // // clpoly::polynomial_<clpoly::ZZ,clpoly::lex> f_,g_;
     // // clpoly::poly_convert(f,f_);
     // // clpoly::poly_convert(g,g_);
-    // // std::cout<<"f:"<<f_<<std::endl;
-    // // std::cout<<"g:"<<g_<<std::endl;
+    // std::cout<<"f:"<<f<<std::endl;
+    // std::cout<<"g:"<<g<<std::endl;
     // // std::cout<<clpoly::polynomial_GCD(f*g,g*g)<<std::endl;
     
 

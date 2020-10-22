@@ -10,6 +10,7 @@ Notes:
 #ifndef CLPOLY_ATOMIC_POLYNOMIAL_HH
 #define CLPOLY_ATOMIC_POLYNOMIAL_HH
 #include <vector>
+#include <clpoly/monomial.hh>
 #include <list>
 #include <functional>
 #include <algorithm>
@@ -85,7 +86,7 @@ namespace clpoly{
     template <class Tm,class Tc,class compare>
     class basic_polynomial
     {
-        private:
+        protected:
             std::vector<std::pair<Tm,Tc>> __data;
             mutable basic_polynomial_status __status;
             const compare* __comp=&init_comp;
@@ -124,18 +125,15 @@ namespace clpoly{
             {
                 this->normalization();
             }
-            // basic_polynomial(const Tm& m)
-            // :__data({{m,1}})
-            // {}
-            // basic_polynomial(Tm&& m)
-            // :__data({std::pair<Tm,Tc>(std::move(m),1)})
-            // {}
-            // basic_polynomial(const Tc & c)
-            // :__data({{Tm(),c}})
-            // {}
-            // basic_polynomial(Tc && c)
-            // :__data({{Tm(),c}})
-            // {}
+            basic_polynomial(variable m)
+            {
+                convert(*this,m);
+            }
+            basic_polynomial(monomial m)
+            {
+                convert(*this,std::move(m));
+            }
+
 
             inline basic_polynomial & operator=(const basic_polynomial & p)
             {
@@ -205,6 +203,8 @@ namespace clpoly{
             constexpr const compare & comp() const {return *(this->__comp);}
             //constexpr compare & comp() {return *(this->__comp);}
             inline bool comp(const variable & a,const variable &b)const {return (*this->__comp)(a,b);}
+            inline bool comp(const monomial & a,const monomial &b)const {return (*this->__comp)(a,b);}
+            
             constexpr void comp(const compare * c){this->__comp=c;}
             constexpr const compare * comp_ptr() const {return this->__comp;}
 
@@ -270,9 +270,9 @@ namespace clpoly{
 
             }
 
-            inline basic_polynomial operator+  (const basic_polynomial &p)const
+            friend inline basic_polynomial operator+  (const basic_polynomial &p1,const basic_polynomial &p2)
             {
-                assert(comp_consistent(this->comp(),p.comp()));
+                assert(comp_consistent(p1.comp(),p2.comp()));
                 // #ifdef DEBUG
                 //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
                 //         throw std::invalid_argument("Left basic_polynomial is not normal.");
@@ -280,35 +280,24 @@ namespace clpoly{
                 //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 // #endif
                 basic_polynomial new_p;
-                new_p.__comp=this->__comp;
-                pair_vec_add(new_p.__data,this->__data,p.__data,this->comp());
+                new_p.__comp=p1.__comp;
+                pair_vec_add(new_p.__data,p1.__data,p2.__data,p1.comp());
                 __auto_shrink(new_p.__data);
                 return new_p;
             }
 
-            // constexpr basic_polynomial operator+(const Tc & c) const
-            // {
-            //     return (*this)+basic_polynomial(c);
-            // }
-
-            // constexpr basic_polynomial operator-(const Tc & c) const
-            // {
-            //     return (*this)-basic_polynomial(c);
-            // }
-
-
-            inline basic_polynomial operator-  (const basic_polynomial &p)const
+            friend inline basic_polynomial operator-  (const basic_polynomial &p1,const basic_polynomial &p)
             {
-                assert(comp_consistent(this->comp(),p.comp()));
+                assert(comp_consistent(p1.comp(),p.comp()));
                 // #ifdef DEBUG
-                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //     if (!pair_vec_normal_check(p1.begin(),p1.end(),p1.comp))
                 //         throw std::invalid_argument("Left basic_polynomial is not normal.");
-                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),p1.comp))
                 //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 // #endif
                 basic_polynomial new_p;
-                new_p.__comp=this->__comp;
-                pair_vec_sub(new_p.__data,this->__data,p.__data,this->comp());
+                new_p.__comp=p1.__comp;
+                pair_vec_sub(new_p.__data,p1.__data,p.__data,p1.comp());
                 __auto_shrink(new_p.__data);
                 return new_p;
             } 
@@ -326,59 +315,59 @@ namespace clpoly{
                 return new_p;
             } 
 
-            inline basic_polynomial operator*(const basic_polynomial & p) const
+            friend inline basic_polynomial operator*(const basic_polynomial & p1,const basic_polynomial & p) 
             {
-                assert(comp_consistent(this->comp(),p.comp()));
+                assert(comp_consistent(p1.comp(),p.comp()));
                 // #ifdef DEBUG
-                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //     if (!pair_vec_normal_check(p1.begin(),p1.end(),p1.comp))
                 //         throw std::invalid_argument("Left basic_polynomial is not normal.");
-                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),p1.comp))
                 //         throw std::invalid_argument("Right basic_polynomial is not normal.(In left comparation.)");
                 // #endif
                 basic_polynomial new_p;
-                new_p.__comp=this->__comp;
-                pair_vec_multiplies(new_p.__data,this->__data,p.__data,this->comp());    
+                new_p.__comp=p1.__comp;
+                pair_vec_multiplies(new_p.__data,p1.__data,p.__data,p1.comp());    
                 __auto_shrink(new_p.__data);
                 return new_p;
             }
             
-            inline basic_polynomial operator/(const basic_polynomial & p) const
+            friend inline basic_polynomial operator/(const basic_polynomial & p1,const basic_polynomial & p) 
             {
-                assert(comp_consistent(this->comp(),p.comp()));
+                assert(comp_consistent(p1.comp(),p.comp()));
                 basic_polynomial new_p;
-                new_p.__comp=this->__comp;
-                pair_vec_div(new_p.__data,this->__data,p.__data,this->comp());    
+                new_p.__comp=p1.__comp;
+                pair_vec_div(new_p.__data,p1.__data,p.__data,p1.comp());    
                 __auto_shrink(new_p.__data);
                 return new_p;
             }
 
-            inline basic_polynomial operator*(const Tc & p) const
-            {
-                basic_polynomial new_p;
-                new_p.__comp=this->__comp;
-                if (zore_check<Tc>()(p) || this->empty()) 
-                    return new_p;
-                new_p=*this;
-                for (auto &i:new_p)
-                    i.second*=p;
-                return new_p;
-            }
+            // inline basic_polynomial operator*(const Tc & p) const
+            // {
+            //     basic_polynomial new_p;
+            //     new_p.__comp=this->__comp;
+            //     if (zore_check<Tc>()(p) || this->empty()) 
+            //         return new_p;
+            //     new_p=*this;
+            //     for (auto &i:new_p)
+            //         i.second*=p;
+            //     return new_p;
+            // }
 
-            inline basic_polynomial operator*(const Tm & m) const
-            {
-                basic_polynomial new_p;
-                if (zore_check<Tm>()(m)) 
-                {
-                    new_p=*this;
-                    return new_p;
-                }
-                new_p.__comp=this->__comp;
-                for (auto &i:*this)
-                {
-                    new_p.push_back({i.first*m,i.second});
-                }
-                return new_p;
-            }
+            // inline basic_polynomial operator*(const Tm & m) const
+            // {
+            //     basic_polynomial new_p;
+            //     if (zore_check<Tm>()(m)) 
+            //     {
+            //         new_p=*this;
+            //         return new_p;
+            //     }
+            //     new_p.__comp=this->__comp;
+            //     for (auto &i:*this)
+            //     {
+            //         new_p.push_back({i.first*m,i.second});
+            //     }
+            //     return new_p;
+            // }
 
             // inline basic_polynomial  power(unsigned i) const
             // {

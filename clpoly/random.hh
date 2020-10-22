@@ -6,6 +6,10 @@ Author:
     haokun li
 Notes:
 */
+
+#ifndef CLPOLY_RANDOM_HH
+#define CLPOLY_RANDOM_HH
+
 #include <clpoly/polynomial.hh>
 #include <list>
 #include <string>
@@ -112,3 +116,4 @@ namespace clpoly{
         return lout;
     }
 }
+#endif

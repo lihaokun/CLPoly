@@ -181,36 +181,35 @@ namespace clpoly{
                 std::swap(this->__deg,m.__deg);
                 std::swap(this->__comp,m.__comp);
             }
-
-            inline basic_monomial<compare> operator*  (const basic_monomial<compare> &p)const
+            friend inline basic_monomial operator*  (const basic_monomial &p1,const basic_monomial &p)
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(p1.__comp==p.__comp || p1.comp()==p.comp());
                 // #ifdef DEBUG
-                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp()))
+                //     if (!pair_vec_normal_check(p1.begin(),p1.end(),p1.comp()))
                 //         throw std::invalid_argument("Left basic_monomial is not normal.");
-                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp()))
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),p1.comp()))
                 //         throw std::invalid_argument("Right basic_monomial is not normal.(In left comparation.)");
                 //     std::asser
                 // #endif
-                basic_monomial<compare> new_p(this->__comp);
-                pair_vec_add(new_p.__data,this->__data,p.__data,this->comp());
+                basic_monomial new_p(p1.__comp);
+                pair_vec_add(new_p.__data,p1.__data,p.__data,p1.comp());
                 __auto_shrink(new_p.__data);
-                new_p.__deg=this->__deg+p.__deg;
+                new_p.__deg=p1.__deg+p.__deg;
                 return new_p;
             }
-            inline basic_monomial<compare> operator/  (const basic_monomial<compare> &p)const
+            friend inline basic_monomial operator/  (const basic_monomial &p1,const basic_monomial &p)
             {
-                assert(this->__comp==p.__comp || this->comp()==p.comp());
+                assert(p1.__comp==p.__comp || p1.comp()==p.comp());
                 // #ifdef DEBUG
-                //     if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
+                //     if (!pair_vec_normal_check(p1.begin(),p1.end(),p1.comp))
                 //         throw std::invalid_argument("Left basic_monomial is not normal.");
-                //     if (!pair_vec_normal_check(p.begin(),p.end(),this->comp))
+                //     if (!pair_vec_normal_check(p.begin(),p.end(),p1.comp))
                 //         throw std::invalid_argument("Right basic_monomial is not normal.(In left comparation.)");
                 // #endif
-                basic_monomial<compare> new_p(this->__comp);
-                pair_vec_sub(new_p.__data,this->__data,p.__data,this->comp());
+                basic_monomial new_p(p1.__comp);
+                pair_vec_sub(new_p.__data,p1.__data,p.__data,p1.comp());
                 __auto_shrink(new_p.__data);
-                new_p.__deg=this->__deg-p.__deg;
+                new_p.__deg=p1.__deg-p.__deg;
                 return new_p;
             } 
 

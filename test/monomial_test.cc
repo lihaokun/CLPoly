@@ -1,6 +1,6 @@
 #include <iostream>
 #include <vector>
-#include <clpoly.hh>
+#include <clpoly/clpoly.hh>
 #include <functional>
 
 

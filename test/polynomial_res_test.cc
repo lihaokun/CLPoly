@@ -1,4 +1,4 @@
-#include <clpoly.hh>
+#include <clpoly/clpoly.hh>
 #include <iostream>
 #include <fstream>
 #include <string>

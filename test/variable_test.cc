@@ -1,4 +1,4 @@
-#include "variable.hh"
+#include <clpoly/variable.hh>
 #include <iostream>
 #include <map>
 #include <unordered_map>

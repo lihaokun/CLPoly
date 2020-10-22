@@ -1,5 +1,5 @@
 #include <clpoly/associatedgraph.hh>
-#include <clpoly.hh>
+#include <clpoly/clpoly.hh>
 #include <iostream>
 
 int main(int argc, char const *argv[])

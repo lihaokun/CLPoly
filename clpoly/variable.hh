@@ -62,7 +62,8 @@ namespace clpoly{
             {
                 this->__serial=v.__serial;
             }
-            
+
+            // constexpr operator bool() const {return __serial;}
             // constexpr operator std::size_t()const {return __serial;}
             // constexpr operator int()const {return __serial;}
             // constexpr operator long()const {return __serial;}

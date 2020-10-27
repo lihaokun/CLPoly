@@ -1,4 +1,4 @@
-#include <clpoly.hh>
+#include <clpoly/clpoly.hh>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -9,8 +9,8 @@ int main(int argc, char const *argv[])
     clpoly::variable y("y");
     clpoly::variable z("z");
     clpoly::polynomial_ZZ f1,f2,f3,f4,f,g,G;
-    f=4*pow(z,10)+6*pow(x,9)+6*pow(y,2)*pow(z,5)+2*pow(y,4)-5*x-6;
-    g=5*x*pow(y,5)*pow(z,4)+9*pow(y,2)*pow(z,8)-5*pow(x,2)*pow(y,5)*pow(z,2)+6*x*y*pow(z,4)-5;
+    // f=4*pow(z,10)+6*pow(x,9)+6*pow(y,2)*pow(z,5)+2*pow(y,4)-5*x-6;
+    // g=5*x*pow(y,5)*pow(z,4)+9*pow(y,2)*pow(z,8)-5*pow(x,2)*pow(y,5)*pow(z,2)+6*x*y*pow(z,4)-5;
     // std::cout<<"f="<<f<<std::endl;
     // std::cout<<"g="<<g<<std::endl;
     // // // // std::cout<<"prem(f,g,x)="<<prem(f,g,x)<<std::endl;

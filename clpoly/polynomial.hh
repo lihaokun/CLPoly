@@ -61,11 +61,42 @@ namespace clpoly{
     }
     
     template <class Tc>
-    constexpr const int64_t get_up_deg(const polynomial_<Tc,univariate_priority_order>& p)
+    constexpr int64_t get_up_deg(const polynomial_<Tc,univariate_priority_order>& p)
     {
         return p.empty()?-1:get_up_deg(p.begin()->first);
     }
-    
+    template <class Tc>
+    constexpr int64_t get_first_deg(const polynomial_<Tc,lex>& p)
+    {
+        return p.empty()?-1:(p.front().first.empty()?0:p.front().first.front().second);
+    }
+    template <class Tc>
+    constexpr variable get_first_var(const polynomial_<Tc,lex>& p)
+    {
+        return p.empty()?variable():(p.front().first.empty()?variable():p.front().first.front().first);
+    }
+    template <class Tc>
+    constexpr std::pair<variable,int64_t> get_last_var_deg(const polynomial_<Tc,lex>& p)
+    {
+        variable v=get_first_var(p);
+        int64_t d=get_first_deg(p);
+        for (auto &i:p)
+        {
+            if (!i.first.empty())
+            {
+                if (p.comp(v,i.first.back().first))
+                {
+                    v=i.first.back().first;
+                    d=i.first.back().second;
+                }
+                else if (v==i.first.back().first && d<i.first.back().second)
+                {
+                    d=i.first.back().second;
+                }
+            }
+        }
+        return {v,d};
+    }
     template <class Tc>
     int64_t degree(const polynomial_<Tc,univariate_priority_order> & p,const variable & v)
     {
@@ -631,6 +662,7 @@ namespace clpoly{
         }
         if (z1)
             Pout.push_back({std::move(m1),std::move(z1)});
+        Pout.normalization();
         return Pout;
     }
     

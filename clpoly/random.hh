@@ -74,7 +74,6 @@ namespace clpoly{
         }
         return polynomial_<Tc>(p1);
     }
-
     template <class T>
     std::vector<T> RandomSample(const  std::vector<T> & l,uint64_t n)
     {

@@ -203,7 +203,7 @@ namespace clpoly{
             constexpr const compare & comp() const {return *(this->__comp);}
             //constexpr compare & comp() {return *(this->__comp);}
             inline bool comp(const variable & a,const variable &b)const {return (*this->__comp)(a,b);}
-            inline bool comp(const monomial & a,const monomial &b)const {return (*this->__comp)(a,b);}
+            inline bool comp(const basic_monomial<compare> & a,const basic_monomial<compare> &b)const {return (*this->__comp)(a,b);}
             
             constexpr void comp(const compare * c){this->__comp=c;}
             constexpr const compare * comp_ptr() const {return this->__comp;}

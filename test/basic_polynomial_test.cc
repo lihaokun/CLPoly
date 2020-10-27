@@ -1,10 +1,6 @@
 #include <iostream>
 #include <vector>
-#include <clpoly/basic_polynomial.hh>
-#include <clpoly/monomial.hh>
-#include <clpoly/variable.hh>
-#include <clpoly/polynomial.hh>
-#include <clpoly/number.hh>
+#include <clpoly/clpoly.hh>
 #include <functional>
 #include <time.h>
 
@@ -89,8 +85,16 @@ int main(){
     auto t=clock();
     auto p3=(p2+n1)*(p2+n2);
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
-    std::cout<<p3<<std::endl;
-    // std::cout<<112911876*1.0/p3.size()<<std::endl;//831.757
+    //std::cout<<p3<<std::endl;
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> pl2;
+    clpoly::poly_convert(p2,pl2);
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> nl1={{{},1}};
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> nl2={{{},2}};
+    t=clock();
+    auto pl3=(pl2+nl1)*(pl2+nl2);
+    printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
+    //std::cout<<pl3<<std::endl;
+    std::cout<<112911876*1.0/pl3.size()<<std::endl;//831.757
     // auto k=p3.begin()->second;
     // for(auto & i:p3)
     //     if (k<i.second)
@@ -100,7 +104,9 @@ int main(){
     t=clock();
     std::cout<<((p2+n1)==(p3/(p2+n2)))<<std::endl;
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
-    
+    t=clock();
+    std::cout<<((pl2+nl1)==(pl3/(pl2+nl2)))<<std::endl;
+    printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
 
     // p.push_back({1,2});
     // p.push_back({0,2});

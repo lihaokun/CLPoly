@@ -56,7 +56,79 @@ namespace clpoly{
                             const polynomial_<Zp,lex> & G,
                             const polynomial_<Zp,lex> & Lc_gcd,
                             int64_t deg);
+    
+    polynomial_<ZZ,lex> polynomial_GCD(polynomial_<ZZ,lex>  F, polynomial_<ZZ,lex>  G);
+    template <class compare>
+    inline polynomial_<ZZ,compare> polynomial_GCD(const polynomial_<ZZ,compare>  &F, const polynomial_<ZZ,compare> & G)
+    {
+        polynomial_<ZZ,lex> F_,G_;
+        poly_convert(F,F_);
+        poly_convert(G,G_);
+        polynomial_<ZZ,compare>  Pout(F.comp_ptr());
+        poly_convert(polynomial_GCD(std::move(F_),std::move(G_)),Pout);
+        return Pout;
+    }
+    template <class comp>
+    inline polynomial_<ZZ,comp> gcd(const polynomial_<ZZ,comp> &F,const polynomial_<ZZ,comp> & G)
+    {
+        return polynomial_GCD(F,G);
+    }
 
+    std::vector<std::pair<polynomial_<ZZ,lex>,uint64_t>> squarefree (const polynomial_<ZZ,lex> &  F)
+    {
+        // std::cout<<"F:"<<F<<std::endl;
+        if (is_number(F))
+            return {{F,1}};
+        auto f_cont=cont(F);
+        auto F_=F/f_cont;
+        auto lst=squarefree(f_cont);
+        polynomial_<ZZ,lex> F_1,F_2,F_3;
+        for(uint64_t i=1;;++i)
+        {
+            // std::cout<<"F_:"<<F_<<std::endl;
+            // std::cout<<"D(F_):"<<derivative(F_)<<std::endl;
+            
+            F_1=polynomial_GCD(F_,derivative(F_));
+            // std::cout<<"F_1:"<<F_1<<std::endl;
+            if (is_number(F_1))
+            {
+                if (i>1 && F_!=F_3 )
+                {
+                    lst.push_back({F_3/F_,i-1});
+                }
+                lst.push_back({F_,i});
+                break;
+            }
+            F_2=F_/F_1;
+            // std::cout<<"F_2:"<<F_2<<std::endl;
+            if (F_2!=F_3)
+            {
+                if (i>1)
+                {
+                    lst.push_back({F_3/F_2,i-1});
+                }
+                F_3=std::move(F_2);
+                
+            }
+            F_=std::move(F_1);
+        }
+        return lst;
+    }
+    template <class comp>
+    std::vector<std::pair<polynomial_<ZZ,comp>,uint64_t>> squarefree (const polynomial_<ZZ,comp> &  F)
+    {
+        polynomial_<ZZ,lex> F_;
+        poly_convert(F,F_);
+        auto lst=squarefree(F_);
+        std::vector<std::pair<polynomial_<ZZ,comp>,uint64_t>> lst_(lst.size(),{polynomial_<ZZ,comp>(F.comp_ptr()),0});
+        for (uint64_t i=0;i<lst.size();++i)
+        {
+            poly_convert(lst[i].first,lst_[i].first);
+            lst_[i].second=lst[i].second;
+        }
+        return lst_;
+    }
+    
     // void __polynomial_GCD_get_var(
     //             variable& v,
     //             uint64_t& vd,
@@ -331,17 +403,13 @@ namespace clpoly{
         
 
     // }
-    polynomial_<ZZ,lex> polynomial_GCD(polynomial_<ZZ,lex>  F, polynomial_<ZZ,lex>  G);
-    template <class compare>
-    polynomial_<ZZ,compare> polynomial_GCD(const polynomial_<ZZ,compare>  &F, const polynomial_<ZZ,compare> & G)
-    {
-        polynomial_<ZZ,lex> F_,G_;
-        poly_convert(F,F_);
-        poly_convert(G,G_);
-        polynomial_<ZZ,compare>  Pout(F.comp_ptr());
-        poly_convert(polynomial_GCD(std::move(F_),std::move(G_)),Pout);
-        return Pout;
-    }
+
+
+
+
+
+
+
     polynomial_<ZZ,lex> polynomial_GCD(polynomial_<ZZ,lex>  F, polynomial_<ZZ,lex>  G)
     {
         if (F.empty())
@@ -1017,11 +1085,7 @@ namespace clpoly{
         }
         return cont;
     } 
-    template <class ZZ,class comp>
-    inline polynomial_<ZZ,comp> gcd(const polynomial_<ZZ,comp> &F,const polynomial_<ZZ,comp> & G)
-    {
-        return polynomial_GCD(F,G);
-    }
+    
 
     int64_t  __polynomial_GCD(       polynomial_<Zp,lex> & Pout,
                             const polynomial_<Zp,lex> & F,

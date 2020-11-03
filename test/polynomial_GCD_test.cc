@@ -28,6 +28,16 @@ int main(int argc, char const *argv[])
     // f=2*y;
     // g=10*pow(y,2)*pow(z,4)+6*pow(y,2)*pow(z,2)-20*y*pow(z,5)-6*y;
     // std::cout<<clpoly::polynomial_GCD(f,g)<<std::endl;
+    f=pow(x,5)-3*pow(x,4)+4*pow(x,3)-4*pow(x,2)+3*x-1;
+    // clpoly::polynomial_<clpoly::ZZ,clpoly::lex> f_; 
+    // clpoly::poly_convert(f,f_);
+    auto l=clpoly::squarefree(f);
+    std::cout<<f<<":";
+    for(auto &i:l)
+    {
+        std::cout<<"{"<<i.first<<","<<i.second<<"} ";
+    }
+    std::cout<<std::endl;
     time_t t;
     double s1=0,s2=0;
     std::string s;

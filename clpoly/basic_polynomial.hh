@@ -508,7 +508,11 @@ namespace clpoly{
             }
               
     };
-
+    template<class Tm,class Tc,class compare>
+    inline bool operator!=(const basic_polynomial<Tm, Tc, compare> & p1,const basic_polynomial<Tm, Tc, compare> & p2)
+    {
+        return !(p1==p2);
+    }
     template<class Tm,class Tc,class compare>  compare  basic_polynomial<Tm, Tc, compare>::init_comp=compare();
     // template<class Tm,class Tc,class compare> const Tc  basic_polynomial<Tm, Tc, compare>::Tc_zero=0;
     

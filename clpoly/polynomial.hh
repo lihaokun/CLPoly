@@ -666,8 +666,65 @@ namespace clpoly{
         return Pout;
     }
     
+    template <class Tc,class Tm>
+    polynomial_<Tc,Tm>  derivative(const polynomial_<Tc,Tm> & p,variable x)
+    {
+        polynomial_<Tc,Tm> Pout(p.comp_ptr());
+        basic_monomial<Tm> m(p.comp_ptr());
+        int64_t b;
+        for (auto &i:p)
+        {
+            m.clear();
+            b=0;
+            for (auto &j:i.first)
+            {
+                if (j.first==x)
+                {
+                    b=j.second;
+                    if (j.second-1)
+                        m.push_back({x,j.second-1});
+                }
+                else
+                {
+                    m.push_back(j);
+                }
+            }
+            if (b)
+            {
+                Pout.push_back({std::move(m),b*i.second});
+            }
+            
+        }
+        return Pout;
+    }
+    template <class Tc>
+    polynomial_<Tc,lex>  derivative(const polynomial_<Tc,lex> & p)
+    {
+        polynomial_<Tc,lex> Pout;
+        basic_monomial<lex> m;
+        auto x=get_first_var(p);
+        for (auto &i:p)
+        {
+            
+            if (!i.first.empty() && x==i.first.front().first)
+            {
+                auto ptr=i.first.begin();
+                m.clear();
+                if (ptr->second-1)
+                    m.push_back({x,ptr->second-1});
+                for (++ptr;ptr!=i.first.end();++ptr) m.push_back(*ptr);
+                Pout.push_back({std::move(m),i.first.front().second*i.second});
+            }
+            
+        }
+        return Pout;
+    }
 
-
+    template <class Tc,class Tm>
+    constexpr bool is_number(const polynomial_<Tc,Tm> & F)
+    {
+        return (F.empty() || F.size()==1 && F.front().first.empty());
+    }
 
 }
 #endif

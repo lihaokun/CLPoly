@@ -16,6 +16,7 @@ Notes:
 #include <iostream>
 #include "basic.hh"
 #include <unordered_map>
+#include <cassert>
 namespace clpoly{
 
     class variable
@@ -23,33 +24,32 @@ namespace clpoly{
         private:
 	        static std::vector<std::string> variables;
             static std::unordered_map<std::string,std::size_t> name_map;
+            static std::vector<std::size_t> free_serial;
             static std::size_t init_variable(const std::string & variable_name);
+            static std::size_t init_variable();
+            
         public:
             static variable get_variable(const std::string & variable_name);
             static variable get_variable(std::size_t serial);
             //static variable get_variable(char c) = delete;
-            //static variable new_variable();
+            static variable new_variable();
             static variable new_variable(const std::string & variable_name);
-            
+            static void del_variable(std::size_t serial);        
+            static void del_variable(const std::string & variable_name);        
 
         protected:
 	        std::size_t __serial; 
             explicit variable(std::size_t s):__serial(s)
-            {
-                
-                #ifdef DEBUG
-                    if (serial>=variable::variables.size()){
-                       throw std::invalid_argument("Serial of var not exist.");
-                    }
-                #endif 
+            {                
+                assert(s<variables.size());
+                // #ifdef DEBUG
+                //     if (serial>=variable::variables.size()){
+                //        throw std::invalid_argument("Serial of var not exist.");
+                //     }
+                // #endif 
             }
         public:
-            variable()
-            :__serial(0)
-            {
-                //std::cout<<"_init_  variable()";
-                //init_variable("var_"+ std::to_string(this->__serial));
-            }
+            variable():__serial(0) {}
             // variable(char c)
             // {
             //     this->__serial=get_variable(std::string(1,c)).__serial;
@@ -93,46 +93,98 @@ namespace clpoly{
     
     std::vector<std::string> variable::variables={""};
     std::unordered_map<std::string,std::size_t> variable::name_map={{"",0}};
+    std::vector<std::size_t>  variable::free_serial;
     std::size_t variable::init_variable(const std::string & variable_name)
     {
-        #ifdef DEBUG
-            if (variable::name_map.find(variable_name)!=variable::name_map.end())
-                std::cout<<"Warning: Duplicate variable name.";
-        #endif
-        variable::name_map[variable_name]=variable::variables.size();
-        variable::variables.push_back(variable_name);
-        return variable::variables.size()-1;
+        if (variable::free_serial.empty())
+        {
+            variable::name_map[variable_name]=variable::variables.size();
+            variable::variables.push_back(variable_name);
+            return variable::variables.size()-1;
+        }
+        else
+        {
+            std::size_t s=variable::free_serial.back();
+            variable::free_serial.pop_back();
+            variable::name_map[variable_name]=s;
+            variable::variables[s]=variable_name;
+            return s;
+        }
+        
+        
+    }
+    std::size_t variable::init_variable()
+    {
+        if (variable::free_serial.empty())
+        {
+            std::string variable_name="#var_"+ std::to_string(variable::variables.size());
+            variable::name_map[variable_name]=variable::variables.size();
+            variable::variables.push_back(variable_name);
+            return variable::variables.size()-1;
+        }
+        else
+        {
+            std::size_t s=variable::free_serial.back();
+            std::string variable_name="#var_"+ std::to_string(s);
+            variable::free_serial.pop_back();
+            variable::name_map[variable_name]=s;
+            variable::variables[s]=variable_name;
+            return s;
+        }
+        
+        
+    }
+    bool is_user_def_variable_name(const std::string & variable_name)
+    {
+        return !variable_name.empty() && ( ( 'a'<=variable_name[0]<='z') || ( 'A'<=variable_name[0]<='Z'));
     }
     variable variable::get_variable(const std::string & variable_name)
     {
         auto tmp=variable::name_map.find(variable_name);
         if (tmp==variable::name_map.end())
         {
+            assert(is_user_def_variable_name(variable_name));
             return variable(variable::init_variable(variable_name));
         }
         return variable(tmp->second);
     }
-    variable variable::get_variable(std::size_t serial)
-    {
-        if (serial>=variable::variables.size()){
-            throw std::invalid_argument("Serial of var not exist.");
-        }
-        return variable(serial);
-    }
-    // variable variable::new_variable()
-    // {
-    //     return variable(variable::init_variable("var_"+ std::to_string(variable::variables.size())));
-    // }
     variable variable::new_variable(const std::string & variable_name)
     {
+        assert(variable::name_map.find(variable_name)==variable::name_map.end());
+        assert(is_user_def_variable_name(variable_name));
         return variable(variable::init_variable(variable_name));
     }
 
-    //using lex=less<variable>;
-    // void swap(variable & v1,variable & v2)
-    // {
-    //     v1.swap(v2);
-    // }
+    void variable::del_variable(std::size_t serial)
+    {
+        if (serial<variable::variables.size() && !variable::variables[serial].empty())
+        {
+            variable::name_map.erase(variable::variables[serial]);
+            variable::variables[serial]="";
+            free_serial.push_back(serial);
+        }
+    }
+    void variable::del_variable(const std::string & variable_name)
+    {
+        auto tmp=variable::name_map.find(variable_name);
+        if (tmp!=variable::name_map.end())
+        {
+            variable::del_variable(tmp->second);
+        }
+    }
+
+
+    variable variable::get_variable(std::size_t serial)
+    {
+       assert(serial<variable::variables.size() && !variable::variables[serial].empty());
+       return variable(serial);
+    }
+
+    variable variable::new_variable()
+    {
+        return variable(variable::init_variable());
+    }
+
 
 }
 

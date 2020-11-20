@@ -128,7 +128,70 @@ namespace clpoly{
         }
         return lst_;
     }
+    std::vector<polynomial_<ZZ,lex>> squarefreebasis (std::vector<polynomial_<ZZ,lex>>  F)
+    {
+        std::vector<polynomial_<ZZ,lex>> lst,lst_;
+        for (auto &i:F)
+        {
+            lst_.clear();   
+            auto l_=squarefree(i);
+            auto l_ptr=l_.begin();
+            for (++l_ptr;l_ptr!=l_.end();++l_ptr)
+            {
+                i=std::move(l_ptr->first);
+                for (auto &j:lst)
+                {
+                    auto F1=polynomial_GCD(j,i);
+                    if (!is_number(F1))
+                    {
+                        i=i/F1;
+                        if (F1!=j)
+                        {
+                            j=j/F1;
+                            lst_.push_back(std::move(F1));
+                        }
+                        if (is_number(i))
+                            break;
+                    }
+                }
+                if (!is_number(i))
+                    lst_.push_back(std::move(i));
+            }
+            lst.reserve(lst.size()+lst_.size());
+            for (auto &j:lst_)
+            {
+                 lst.push_back(std::move(j));
+            }
+        }
+        return lst;
+    }
     
+    template <class comp>
+    std::vector<polynomial_<ZZ,comp>> squarefreebasis (const std::vector<polynomial_<ZZ,comp>> &  F)
+    {
+        std::vector<polynomial_<ZZ,comp>> L;
+        if (F.empty())
+            return L;
+        std::vector<polynomial_<ZZ,lex>> lst;
+        polynomial_<ZZ,lex> p;
+        lst.resize(F.size());
+        for (auto &i:F)
+        {
+            poly_convert(i,p);
+            lst.push_back(std::move(p));
+        }
+        lst=squarefreebasis(lst);
+        L.reserve(lst.size());
+        polynomial_<ZZ,comp> p1(F.front().comp_ptr());
+        for (auto &i:lst)
+        {
+            poly_convert(i,p1);
+            L.push_back(std::move(p1));
+        }
+        return L;
+    }
+    
+
     // void __polynomial_GCD_get_var(
     //             variable& v,
     //             uint64_t& vd,

@@ -13,6 +13,9 @@ Notes:
 #include <cassert>
 #include <clpoly/basic_monomial.hh>
 namespace clpoly{
+    // template <class var_comp>
+    // struct  
+    // struct lex
     struct lex
     {
         constexpr bool operator()(const variable & v1,const variable & v2) const {return v1<v2;}

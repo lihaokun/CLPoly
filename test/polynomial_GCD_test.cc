@@ -8,7 +8,7 @@ int main(int argc, char const *argv[])
     clpoly::variable x("x");
     clpoly::variable y("y");
     clpoly::variable z("z");
-    clpoly::polynomial_ZZ f1,f2,f3,f4,f,g,G;
+    clpoly::polynomial_ZZ f2,f3,f4,f,g,G;
 
     // f=pow(x,4)+25*pow(x,3)+145*pow(x,2)-171*x-360;
     // g=pow(x,5)+14*pow(x,4)+15*pow(x,3)-pow(x,2)-14*x-15;
@@ -29,7 +29,10 @@ int main(int argc, char const *argv[])
     // g=10*pow(y,2)*pow(z,4)+6*pow(y,2)*pow(z,2)-20*y*pow(z,5)-6*y;
     // std::cout<<clpoly::polynomial_GCD(f,g)<<std::endl;
     f=pow(x,5)-3*pow(x,4)+4*pow(x,3)-4*pow(x,2)+3*x-1;
-    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> f_; 
+    clpoly::lex_<clpoly::custom_var_order> mo(clpoly::custom_var_order({z,y,x}));
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> f_(&mo); 
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> g_(&mo);
+    
     clpoly::poly_convert(f,f_);
     auto l=clpoly::squarefree(f);
     std::cout<<f<<":";
@@ -58,10 +61,13 @@ int main(int argc, char const *argv[])
         //std::cout<<"test "<<i<<":\n";
         f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.5,10,-10);
         g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.5,10,-10);
-        std::cout<<"f["<<i+1<<"]="<<f<<";"<<std::endl;
-        std::cout<<"g["<<i+1<<"]="<<g<<";"<<std::endl; 
+        clpoly::poly_convert(f,f_);
+        clpoly::poly_convert(g,g_);
+        std::cout<<"f["<<i+1<<"]="<<f_<<";"<<std::endl;
+        std::cout<<"g["<<i+1<<"]="<<g_<<";"<<std::endl; 
         t=clock();
-        f1=clpoly::polynomial_GCD(f*f,g*f);
+        auto f1=clpoly::polynomial_GCD(f_*f_,g_*f_);
+        //  auto f1=clpoly::polynomial_GCD(f*f,g*f);
         s1+=double(clock()-t)/CLOCKS_PER_SEC;
         std::cout<<"o["<<i+1<<"]="<<f1<<";"<<std::endl; 
         std::cout<<"t["<<i+1<<"]="<<double(clock()-t)/CLOCKS_PER_SEC <<";"<<std::endl; 

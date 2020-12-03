@@ -86,10 +86,13 @@ int main(){
     auto p3=(p2+n1)*(p2+n2);
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);
     //std::cout<<p3<<std::endl;
-    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> pl2;
+    clpoly::lex_<clpoly::custom_var_order> md(clpoly::custom_var_order({g,z,y,x}));
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> pl2(&md);
     clpoly::poly_convert(p2,pl2);
-    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> nl1={{{},1}};
-    clpoly::polynomial_<clpoly::ZZ,clpoly::lex> nl2={{{},2}};
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> nl1(&md);
+    nl1={{{},1}};
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> nl2(&md);
+    nl2={{{},2}};
     t=clock();
     auto pl3=(pl2+nl1)*(pl2+nl2);
     printf ("(%f seconds).\n",((float)clock()-t)/CLOCKS_PER_SEC);

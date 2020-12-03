@@ -48,16 +48,18 @@ namespace clpoly{
         }
         return m;
     }
-    
-    polynomial_<ZZ,lex> cont(const polynomial_<ZZ,lex> &F_);
-    polynomial_<ZZ,lex> leadcoeff(const polynomial_<ZZ,lex> &F_);
-    int64_t  __polynomial_GCD(       polynomial_<Zp,lex> & Pout,
-                            const polynomial_<Zp,lex> & F,
-                            const polynomial_<Zp,lex> & G,
-                            const polynomial_<Zp,lex> & Lc_gcd,
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> cont(const polynomial_<ZZ,lex_<var_order>> &F_);
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> leadcoeff(const polynomial_<ZZ,lex_<var_order>> &F_);
+    template<class var_order>
+    int64_t  __polynomial_GCD(       polynomial_<Zp,lex_<var_order>> & Pout,
+                            const polynomial_<Zp,lex_<var_order>> & F,
+                            const polynomial_<Zp,lex_<var_order>> & G,
+                            const polynomial_<Zp,lex_<var_order>> & Lc_gcd,
                             int64_t deg);
-    
-    polynomial_<ZZ,lex> polynomial_GCD(polynomial_<ZZ,lex>  F, polynomial_<ZZ,lex>  G);
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> polynomial_GCD(polynomial_<ZZ,lex_<var_order>>  F, polynomial_<ZZ,lex_<var_order>>  G);
     template <class compare>
     inline polynomial_<ZZ,compare> polynomial_GCD(const polynomial_<ZZ,compare>  &F, const polynomial_<ZZ,compare> & G)
     {
@@ -73,8 +75,8 @@ namespace clpoly{
     {
         return polynomial_GCD(F,G);
     }
-
-    std::vector<std::pair<polynomial_<ZZ,lex>,uint64_t>> squarefree (const polynomial_<ZZ,lex> &  F)
+    template<class var_order>
+    std::vector<std::pair<polynomial_<ZZ,lex_<var_order>>,uint64_t>> squarefree (const polynomial_<ZZ,lex_<var_order>> &  F)
     {
         // std::cout<<"F:"<<F<<std::endl;
         if (is_number(F))
@@ -82,7 +84,7 @@ namespace clpoly{
         auto f_cont=cont(F);
         auto F_=F/f_cont;
         auto lst=squarefree(f_cont);
-        polynomial_<ZZ,lex> F_1,F_2,F_3;
+        polynomial_<ZZ,lex_<var_order>> F_1(F.comp_ptr()),F_2(F.comp_ptr()),F_3(F.comp_ptr());
         for(uint64_t i=1;;++i)
         {
             // std::cout<<"F_:"<<F_<<std::endl;
@@ -128,9 +130,10 @@ namespace clpoly{
         }
         return lst_;
     }
-    std::vector<polynomial_<ZZ,lex>> squarefreebasis (std::vector<polynomial_<ZZ,lex>>  F)
+    template<class var_order>
+    std::vector<polynomial_<ZZ,lex_<var_order>>> squarefreebasis (std::vector<polynomial_<ZZ,lex_<var_order>>>  F)
     {
-        std::vector<polynomial_<ZZ,lex>> lst,lst_;
+        std::vector<polynomial_<ZZ,lex_<var_order>>> lst,lst_;
         for (auto &i:F)
         {
             lst_.clear();   
@@ -472,8 +475,8 @@ namespace clpoly{
 
 
 
-
-    polynomial_<ZZ,lex> polynomial_GCD(polynomial_<ZZ,lex>  F, polynomial_<ZZ,lex>  G)
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> polynomial_GCD(polynomial_<ZZ,lex_<var_order>>  F, polynomial_<ZZ,lex_<var_order>>  G)
     {
         if (F.empty())
             return G;
@@ -494,8 +497,9 @@ namespace clpoly{
                 m=gcd(m,ptr->first);
                 c=gcd(c,ptr->second);
             }
-            
-            return {{m,c}};
+            polynomial_<ZZ,lex_<var_order>> Pout(F.comp_ptr());
+            Pout={{m,c}};
+            return Pout;
             
         }
         
@@ -509,8 +513,8 @@ namespace clpoly{
                     cont=gcd(cont,i.second);
                 for(auto &i:G)
                     cont=gcd(cont,i.second);
-                polynomial_<ZZ,lex> Pout;
-                Pout.push_back({basic_monomial<lex>(),cont});
+                polynomial_<ZZ,lex_<var_order>> Pout(F.comp_ptr());
+                Pout={{basic_monomial<lex_<var_order>>(F.comp_ptr()),cont}};
                 return Pout;    
             }
             if (F.comp(ffv,gfv))
@@ -522,12 +526,12 @@ namespace clpoly{
                 G=cont(G);
             }
         }
-        polynomial_<ZZ,lex> F_cont=cont(F);
-        polynomial_<ZZ,lex> G_cont=cont(G);
-        polynomial_<ZZ,lex> cont_gcd=polynomial_GCD(cont(F),cont(G));
+        polynomial_<ZZ,lex_<var_order>> F_cont=cont(F);
+        polynomial_<ZZ,lex_<var_order>> G_cont=cont(G);
+        polynomial_<ZZ,lex_<var_order>> cont_gcd=polynomial_GCD(cont(F),cont(G));
 
         F=F/F_cont;G=G/G_cont;
-        polynomial_<ZZ,lex> lc_gcd=polynomial_GCD(leadcoeff(F),leadcoeff(G));
+        polynomial_<ZZ,lex_<var_order>> lc_gcd=polynomial_GCD(leadcoeff(F),leadcoeff(G));
        
         
         // std::cout<<"F:"<<F<<std::endl;
@@ -544,9 +548,9 @@ namespace clpoly{
             prime=boost::math::prime(++p_index);
         }
 
-        polynomial_<ZZ,lex> Pout_,tmp_Pout_,R;
-        polynomial_<Zp,lex> Pout_mod,f_p,g_p,lc_gcd_p;
-        polynomial_<ZZ,lex> tmp;
+        polynomial_<ZZ,lex_<var_order>> Pout_(F.comp_ptr()),tmp_Pout_(F.comp_ptr()),R(F.comp_ptr());
+        polynomial_<Zp,lex_<var_order>> Pout_mod(F.comp_ptr()),f_p(F.comp_ptr()),g_p(F.comp_ptr()),lc_gcd_p(F.comp_ptr());
+        polynomial_<ZZ,lex_<var_order>> tmp(F.comp_ptr());
         ZZ Pout_prime;
         std::int64_t Pout_d=INT64_MAX;
         std::int64_t tmp_Pout_d=INT64_MAX;
@@ -1015,12 +1019,13 @@ namespace clpoly{
 
         
     // }
-    polynomial_<ZZ,lex> leadcoeff(const polynomial_<ZZ,lex> &F_)
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> leadcoeff(const polynomial_<ZZ,lex_<var_order>> &F_)
     {
-        polynomial_<ZZ,lex>  lc;
+        polynomial_<ZZ,lex_<var_order>>  lc(F_.comp_ptr());
         auto v=get_first_var(F_);
         int64_t deg=get_first_deg(F_);
-        basic_monomial<lex> m;
+        basic_monomial<lex_<var_order>> m(F_.comp_ptr());
         for (auto &i:F_)
         {
             if ((!i.first.empty() &&  i.first.front().first==v && i.first.front().second == deg))
@@ -1041,14 +1046,15 @@ namespace clpoly{
         }
         return lc;
     }
-    polynomial_<ZZ,lex> cont(const polynomial_<ZZ,lex> &F_)
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> cont(const polynomial_<ZZ,lex_<var_order>> &F_)
     {
         // std::cout<<F_<<std::endl;
-        polynomial_<ZZ,lex>  cont, tmp;
+        polynomial_<ZZ,lex_<var_order>>  cont(F_.comp_ptr()), tmp(F_.comp_ptr());
         auto v=get_first_var(F_);
         int64_t deg=get_first_deg(F_);
         int64_t tmp_deg=deg;
-        basic_monomial<lex> m;
+        basic_monomial<lex_<var_order>> m(F_.comp_ptr());
         for (auto &i:F_)
         {
             if ((!i.first.empty() &&  i.first.front().first==v && i.first.front().second == tmp_deg) ||  
@@ -1149,11 +1155,11 @@ namespace clpoly{
         return cont;
     } 
     
-
-    int64_t  __polynomial_GCD(       polynomial_<Zp,lex> & Pout,
-                            const polynomial_<Zp,lex> & F,
-                            const polynomial_<Zp,lex> & G,
-                            const polynomial_<Zp,lex> & Lc_gcd,
+    template<class var_order>
+    int64_t  __polynomial_GCD(       polynomial_<Zp,lex_<var_order>> & Pout,
+                            const polynomial_<Zp,lex_<var_order>> & F,
+                            const polynomial_<Zp,lex_<var_order>> & G,
+                            const polynomial_<Zp,lex_<var_order>> & Lc_gcd,
                             int64_t deg)
     {
         int64_t deg_;
@@ -1171,9 +1177,9 @@ namespace clpoly{
         }
         auto flvd=get_last_var_deg(F);
         auto glvd=get_last_var_deg(G);
-        polynomial_<Zp,lex> Pout_;
-        polynomial_<Zp,lex> Pout_1;
-        polynomial_<Zp,lex> Pout_2;
+        polynomial_<Zp,lex_<var_order>> Pout_;
+        polynomial_<Zp,lex_<var_order>> Pout_1;
+        polynomial_<Zp,lex_<var_order>> Pout_2;
         if (fvf==flvd.first && gvf==glvd.first)
         {
             Pout=G;
@@ -1203,9 +1209,9 @@ namespace clpoly{
             uint32_t prime=F.begin()->second.prime();
             Zp p_(prime);
             auto & comp=F.comp();
-            polynomial_<Zp,lex> F_v;
-            polynomial_<Zp,lex> G_v;
-            polynomial_<Zp,lex> lc_v;
+            polynomial_<Zp,lex_<var_order>> F_v(F.comp_ptr());
+            polynomial_<Zp,lex_<var_order>> G_v(F.comp_ptr());
+            polynomial_<Zp,lex_<var_order>> lc_v(F.comp_ptr());
             int64_t num_s=0;
             int64_t v_d;
             variable v;
@@ -1219,7 +1225,7 @@ namespace clpoly{
                 v=comp(flvd.first,glvd.first)?glvd.first:flvd.first;
                 v_d=1;
             }
-            std::vector<std::pair<basic_monomial<lex>,std::vector<Zp>>> _Pout,tmp_Pout;
+            std::vector<std::pair<basic_monomial<lex_<var_order>>,std::vector<Zp>>> _Pout,tmp_Pout;
             std::vector<Zp> points;
             std::vector<Zp> tmp_p;
             points.reserve(v_d);
@@ -1339,7 +1345,7 @@ namespace clpoly{
                             }
                             Pout.clear();
                             Pout.reserve(_Pout.size());
-                            basic_monomial<lex> m;
+                            basic_monomial<lex_<var_order>> m(F.comp_ptr());
                             for (auto &i:_Pout)
                             {
                                 m=i.first;

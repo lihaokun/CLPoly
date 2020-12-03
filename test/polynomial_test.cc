@@ -137,8 +137,10 @@ int main(){
     // std::cout<<"f:"<<f<<std::endl;
     // std::cout<<"g:"<<g<<std::endl;
     // // std::cout<<clpoly::polynomial_GCD(f*g,g*g)<<std::endl;
-    
-
+    clpoly::lex_<clpoly::custom_var_order> mo(clpoly::custom_var_order({z,y,x}));
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> p1(&mo);
+    clpoly::poly_convert(g,p1);
+    std::cout<< p1<<std::endl;
     return 0;
   
 

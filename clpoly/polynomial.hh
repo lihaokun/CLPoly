@@ -65,18 +65,18 @@ namespace clpoly{
     {
         return p.empty()?-1:get_up_deg(p.begin()->first);
     }
-    template <class Tc>
-    constexpr int64_t get_first_deg(const polynomial_<Tc,lex>& p)
+    template <class Tc,class var_order>
+    constexpr int64_t get_first_deg(const polynomial_<Tc,lex_<var_order>>& p)
     {
         return p.empty()?-1:(p.front().first.empty()?0:p.front().first.front().second);
     }
-    template <class Tc>
-    constexpr variable get_first_var(const polynomial_<Tc,lex>& p)
+    template <class Tc,class var_order>
+    constexpr variable get_first_var(const polynomial_<Tc,lex_<var_order>>& p)
     {
         return p.empty()?variable():(p.front().first.empty()?variable():p.front().first.front().first);
     }
-    template <class Tc>
-    constexpr std::pair<variable,int64_t> get_last_var_deg(const polynomial_<Tc,lex>& p)
+    template <class Tc,class var_order>
+    constexpr std::pair<variable,int64_t> get_last_var_deg(const polynomial_<Tc,lex_<var_order>>& p)
     {
         variable v=get_first_var(p);
         int64_t d=get_first_deg(p);
@@ -697,11 +697,11 @@ namespace clpoly{
         }
         return Pout;
     }
-    template <class Tc>
-    polynomial_<Tc,lex>  derivative(const polynomial_<Tc,lex> & p)
+    template <class Tc,class var_order>
+    polynomial_<Tc,lex_<var_order>>  derivative(const polynomial_<Tc,lex_<var_order>> & p)
     {
-        polynomial_<Tc,lex> Pout;
-        basic_monomial<lex> m;
+        polynomial_<Tc,lex_<var_order>> Pout(p.comp_ptr());
+        basic_monomial<lex_<var_order>> m(p.comp_ptr());
         auto x=get_first_var(p);
         for (auto &i:p)
         {

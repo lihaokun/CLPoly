@@ -100,7 +100,7 @@ namespace clpoly{
     template <class Tc>
     int64_t degree(const polynomial_<Tc,univariate_priority_order> & p,const variable & v)
     {
-        if (p.comp().v==v)
+        if (get_up_var(p.comp())==v)
             return get_up_deg(p);
         int64_t deg=0,tmp;
         for (auto &i:p)
@@ -110,7 +110,27 @@ namespace clpoly{
     }
 
 
-
+    basic_monomial<univariate_priority_order> __change_up_monomial_var_deg(const basic_monomial<univariate_priority_order> &m,uint64_t d)
+    {
+        basic_monomial<univariate_priority_order>  mout(m.comp_ptr());
+        auto ptr=m.begin();
+        if (d==0)
+        {
+            if (get_up_deg(m)==0)
+                return m;
+            
+            ++ptr;
+        }
+        else
+        {
+            mout.push_back({get_up_var(m.comp()),d});
+            if (get_up_deg(m)!=0)
+                ++ptr;
+        }
+        for(;ptr!=m.end();++ptr)
+            mout.push_back(*ptr);
+        return mout;
+    }
 
 
     template <class Tc>
@@ -126,8 +146,9 @@ namespace clpoly{
             {
                 if (get_up_deg(i.first)!=d)
                     return d;
-                O.push_back(i);
-                O.back().first.pop_back();
+                O.push_back({__change_up_monomial_var_deg(i.first,0),i.second});
+                // O.push_back(i);
+                // O.back().first.pop_back();
             }
         }
         else
@@ -178,7 +199,7 @@ namespace clpoly{
         return O;
     }
 
-    #define prem_v1 prem
+    // #define prem_v1 prem
     
     template <class Tc>
     inline polynomial_<Tc,univariate_priority_order> prem(const polynomial_<Tc,univariate_priority_order> &G,const polynomial_<Tc,univariate_priority_order> & F)
@@ -209,32 +230,6 @@ namespace clpoly{
     }
 
     
-    template <class Tc>
-    inline void prem_v2(polynomial_<Tc,univariate_priority_order> &O,const polynomial_<Tc,univariate_priority_order> &G,const polynomial_<Tc,univariate_priority_order> & F)
-    {
-        if (F.size()==0)
-        {
-//#ifndef NDEBUG  
-            throw std::invalid_argument("Error:polynomial prem div 0.");
-//#endif            
-            return void();
-        }
-        assert(comp_consistent(G.comp(),F.comp()));
-        assert((void*)&O!=(void*)&G && (void*)&O!=(void*)&F);
-        // std::cout<<"G="<<G<<std::endl;
-        // std::cout<<"F="<<F<<std::endl;
-        polynomial_<Tc,univariate_priority_order>  Fl(F.comp_ptr());
-        int64_t F_deg=leadcoeff(Fl,F);
-        int64_t G_deg=get_up_deg(G);
-        if (F_deg>G_deg) 
-        {
-            O=G;
-            return void();
-        }
-        // std::cout<<"G_deg="<<G_deg<<" F_deg="<<F_deg<<std::endl;
-        // std::cout<<"Fl="<<Fl<<std::endl;
-        O=polynomial_rem(G*pow(Fl,G_deg-F_deg+1),F);
-    }
 
 
     template <class Tc,class compare>
@@ -256,23 +251,28 @@ namespace clpoly{
         int64_t g_deg=get_up_deg(G_ptr->first);
         G1.clear();
         G1.reserve(G.size());
-        if (g_deg-f_deg)
+        while(G_ptr!=G_end && get_up_deg(G_ptr->first)==g_deg)
         {
-            while(G_ptr!=G_end && get_up_deg(G_ptr->first)==g_deg)
-            {
-                G1.push_back(*(G_ptr++));
-                G1.back().first.back().second=g_deg-f_deg;
-                G1.back().first.deg()-=f_deg;
-            }
+            G1.push_back({__change_up_monomial_var_deg(G_ptr->first,g_deg-f_deg),G_ptr->second});
+            ++G_ptr;
         }
-        else
-        {
-            while(G_ptr!=G_end && get_up_deg(G_ptr->first)==g_deg)
-            {
-                G1.push_back(*(G_ptr++));
-                G1.back().first.pop_back();
-            }
-        }
+        // if (g_deg-f_deg)
+        // {
+        //     while(G_ptr!=G_end && get_up_deg(G_ptr->first)==g_deg)
+        //     {
+        //         G1.push_back(*(G_ptr++));
+        //         G1.back().first.back().second=g_deg-f_deg;
+        //         G1.back().first.deg()-=f_deg;
+        //     }
+        // }
+        // else
+        // {
+        //     while(G_ptr!=G_end && get_up_deg(G_ptr->first)==g_deg)
+        //     {
+        //         G1.push_back(*(G_ptr++));
+        //         G1.back().first.pop_back();
+        //     }
+        // }
 
         pair_vec_multiplies(F1,G1,F,comp);
         if(G_ptr==G_end)
@@ -291,7 +291,7 @@ namespace clpoly{
     }
     
     template <class Tc>
-    void prem_v1(
+    void prem(
             polynomial_<Tc,univariate_priority_order>&O,
             //polynomial_<Tc,univariate_priority_order>&L,
             const polynomial_<Tc,univariate_priority_order>&G,
@@ -329,8 +329,9 @@ namespace clpoly{
                 tmp_F_.push_back(i);
             else
             {
-                tmp_F0.push_back(i);
-                tmp_F0.back().first.pop_back();
+                 tmp_F0.push_back({__change_up_monomial_var_deg(i.first,0),i.second});
+                // tmp_F0.push_back(i);
+                // tmp_F0.back().first.pop_back();
             }
         std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_F1;
         O.data().reserve(G.size());

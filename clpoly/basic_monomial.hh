@@ -26,14 +26,14 @@ namespace clpoly{
         private:
             std::vector<std::pair<variable,int64_t>> __data; 
             int64_t __deg=0;    
-            const compare* __comp= &init_comp;
+            const compare* __comp= &compare::init;
         public:
             typedef compare compare_type;
             typedef variable first_type;
             typedef int64_t second_type;
             typedef typename std::vector<std::pair<variable,int64_t>>::iterator iterator;
             typedef typename std::vector<std::pair<variable,int64_t>>::const_iterator  const_iterator ;
-            static compare init_comp;
+            // static compare init_comp;
             
             constexpr int64_t deg() const {return this->__deg;}
             constexpr int64_t & deg() {return this->__deg;}
@@ -368,7 +368,7 @@ namespace clpoly{
             }
 
     };
-    template<class compare>  compare basic_monomial<compare>::init_comp=compare();
+    // template<class compare>  compare basic_monomial<compare>::init_comp=compare();
     // template<class compare>
     // void swap(basic_monomial<compare> & v1,basic_monomial<compare> & v2)
     // {

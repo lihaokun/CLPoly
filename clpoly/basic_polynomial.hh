@@ -89,7 +89,7 @@ namespace clpoly{
         protected:
             std::vector<std::pair<Tm,Tc>> __data;
             mutable basic_polynomial_status __status;
-            const compare* __comp=&init_comp;
+            const compare* __comp=&(compare::init);
         public:
             typedef compare compare_type;
             typedef Tm momomial_type;
@@ -100,7 +100,7 @@ namespace clpoly{
             typedef typename std::vector<std::pair<Tm,Tc>>::iterator iterator;
             typedef typename std::vector<std::pair<Tm,Tc>>::const_iterator  const_iterator ;
 
-            static compare init_comp;
+            // static compare init_comp;
             // static const Tc Tc_zero;
             basic_polynomial():__data(){}
             basic_polynomial(const compare *p):__data(),__comp(p){}
@@ -513,7 +513,7 @@ namespace clpoly{
     {
         return !(p1==p2);
     }
-    template<class Tm,class Tc,class compare>  compare  basic_polynomial<Tm, Tc, compare>::init_comp=compare();
+    // template<class Tm,class Tc,class compare>  compare  basic_polynomial<Tm, Tc, compare>::init_comp=compare();
     // template<class Tm,class Tc,class compare> const Tc  basic_polynomial<Tm, Tc, compare>::Tc_zero=0;
     
     template<class Tm,class Tc,class compare>

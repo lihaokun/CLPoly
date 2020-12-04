@@ -18,13 +18,13 @@ int main(int argc, char const *argv[])
         //std::cout<<"test "<<i<<":\n";
         f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.02,10,-10);
         g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.02,10,-10);
-        std::cout<<"f["<<i<<"]="<<f<<";"<<std::endl;
-        std::cout<<"g["<<i<<"]="<<g<<";"<<std::endl; 
+        std::cout<<"f["<<i+1<<"]="<<f<<";"<<std::endl;
+        std::cout<<"g["<<i+1<<"]="<<g<<";"<<std::endl; 
         t=clock();
         f1=resultant(f,g,x);
         s1+=double(clock()-t)/CLOCKS_PER_SEC;
-        std::cout<<"o["<<i<<"]="<<f1<<";"<<std::endl; 
-        std::cout<<"t["<<i<<"]="<<double(clock()-t)/CLOCKS_PER_SEC <<";"<<std::endl; 
+        std::cout<<"o["<<i+1<<"]="<<f1<<";"<<std::endl; 
+        std::cout<<"t["<<i+1<<"]="<<double(clock()-t)/CLOCKS_PER_SEC <<";"<<std::endl; 
         //std::cout<<"resultant    time:"<<double(clock()-t)/CLOCKS_PER_SEC<<std::endl;
         // t=clock();
         // f2=resultant_v1(f,g,x);

@@ -12,7 +12,7 @@ CLPoly is a c++ library of polynomial.
 ## Example
 
 ```
-#include "clpoly.hh"
+#include <clpoly/clpoly.hh>
 
 int main(int argc, char const *argv[])
 {

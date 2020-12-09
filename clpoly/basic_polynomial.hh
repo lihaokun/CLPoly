@@ -202,7 +202,7 @@ namespace clpoly{
             constexpr const std::vector<std::pair<Tm,Tc>> & data() const {return this->__data;}
             constexpr const compare & comp() const {return *(this->__comp);}
             //constexpr compare & comp() {return *(this->__comp);}
-            inline bool comp(const variable & a,const variable &b)const {return (*this->__comp)(a,b);}
+            // inline bool comp(const variable & a,const variable &b)const {return (*this->__comp)(a,b);}
             inline bool comp(const basic_monomial<compare> & a,const basic_monomial<compare> &b)const {return (*this->__comp)(a,b);}
             
             constexpr void comp(const compare * c){this->__comp=c;}

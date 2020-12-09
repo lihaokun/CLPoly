@@ -105,11 +105,11 @@ namespace clpoly{
     }
 
 
-    template <class Tc,class compare>
-    inline polynomial_<Tc,compare> pow(const polynomial_<Tc,compare> & p,int64_t i)
+    template <class Tc,class Tm,class compare>
+    inline basic_polynomial<Tm,Tc,compare> pow(const  basic_polynomial<Tm,Tc,compare> & p,int64_t i)
     {
         assert(i>=0);
-        polynomial_<Tc,compare> o(p.comp_ptr());
+        basic_polynomial<Tm,Tc,compare> o(p.comp_ptr());
         o={{{},1}};
         switch (i)
         {

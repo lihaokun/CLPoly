@@ -69,6 +69,15 @@ namespace clpoly{
             return !op;
         } 
     };
+    mpz_class pow(mpz_class x,uint64_t i)
+    {
+        mpz_pow_ui(x.get_mpz_t(),x.get_mpz_t(),i);
+    }
+    mpq_class pow(mpq_class x,uint64_t i)
+    {
+        mpz_pow_ui(x.get_num_mpz_t(),x.get_num_mpz_t(),i);
+        mpz_pow_ui(x.get_den_mpz_t(),x.get_den_mpz_t(),i);
+    }
 
     uint64_t inv_prime(uint64_t _i,uint32_t _p)
     {

@@ -14,7 +14,7 @@ Notes:
 #include <clpoly/upolynomial.hh>
 #include <vector>
 namespace clpoly{
-    upolynomial_<ZZ> __upolynomial_x_plus_1={{1,1},{0,1}};
+    const upolynomial_<ZZ> __upolynomial_x_plus_1={{1,1},{0,1}};
     uint64_t coeffsignchanges(const upolynomial_<ZZ>& G)
     {
         if (G.size()<=1)
@@ -46,6 +46,18 @@ namespace clpoly{
             g=g+g_;
         }
         return g;
+
+    }
+    upolynomial_<ZZ> _upolynomial_Bto1(upolynomial_<ZZ> G,const ZZ &B)
+    {
+        if (G.empty())
+            return G;
+        auto m=G.front().first.deg();
+        for (auto &i:G)
+        {
+            i.second*=pow(B,i.first.deg());
+        }
+        return G;
 
     }
     upolynomial_<ZZ> _upolynomial_01to012(const upolynomial_<ZZ>& G)
@@ -115,8 +127,10 @@ namespace clpoly{
     
     void subuspensky(const upolynomial_<ZZ>& G, std::vector<std::pair<QQ,QQ>>& l,const QQ & B=0,const QQ & E=1,const  QQ&  width=0)
     {
+        // std::cout<<"G:"<<G<<std::endl;
         upolynomial_<ZZ> G_=_upolynomial_1toinf(G);
         uint64_t v=coeffsignchanges(G_);
+        // std::cout<<B<<" "<<E<<" "<<v<<std::endl;
         if (v==0)   return void();
         if (v==1 )
         {
@@ -142,8 +156,45 @@ namespace clpoly{
         subuspensky(_upolynomial_01to012(G),l,B,mid,width);
         subuspensky( _upolynomial_01to121(G),l,mid,E,width);
     } 
+
+    ZZ RealRootBound(const upolynomial_<ZZ>& G)
+    {
+        if (G.empty())
+            return 0;
+        auto ptr=G.begin();
+        ZZ B=abs(ptr->second);
+        ZZ c;
+        for (++ptr;ptr!=G.end();++ptr)
+        {
+            if((c=abs(ptr->second))>B)
+            {
+                B=c;
+            }
+        
+        }   
+        ++B;
+        ZZ C=pow(ZZ(2),sizeinbase(B,2)-1);
+        if (B==C)
+            return B;
+        return  2*C;
+    }
+    std::vector<std::pair<QQ,QQ>> uspensky(const upolynomial_<ZZ>& G)
+    {
+        std::vector<std::pair<QQ,QQ>> l,l1,l2;
+        if (G.empty()|| G.front().first.empty())
+            return l;
+        ZZ B=RealRootBound(G);
+        subuspensky(_upolynomial_Bto1(G,-B),l1,0,B);
+        subuspensky(_upolynomial_Bto1(G,B),l2,0,B);
+        l.reserve(l1.size()+l2.size());
+        for (auto i=l1.rbegin();i!=l1.rend();++i)
+            l.push_back({-i->second,-i->first});
+        for (auto &i:l2)
+            l.push_back(i);
+        
+        return l;
+    }
     
- 
 
 }
 #endif

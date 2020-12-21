@@ -265,7 +265,18 @@ namespace clpoly{
             O.push_back({std::move(m),-1});
         return O;
     }
+    template<class Tc,class comp>
+    polynomial_<Tc,comp> operator* (polynomial_<Tc,comp>  O,Tc c)
+    {
+        if (!c)
+            return polynomial_<Tc,comp>();
+        for (auto & i:O)
+            i.second*=c;
+        O.normalization();
+        return O;
+    }
 
+    
 
     template<class Tc,class comp>
     std::list<std::pair<variable,int64_t>> get_variables(const polynomial_<Tc,comp>& p)

@@ -15,10 +15,11 @@ namespace clpoly{
         private:
             int64_t __deg;
         public:
-            umonomial(){}
+            umonomial():__deg(0){}
             umonomial(int64_t d):__deg(d){}
             constexpr int64_t deg() const {return this->__deg;}
             constexpr int64_t & deg() {return this->__deg;}
+            constexpr bool empty() const  {return __deg==0;}
             constexpr operator int64_t () const{return this->__deg;}
             friend inline umonomial operator*  (umonomial p1,umonomial p2)
             {

@@ -76,9 +76,35 @@ namespace clpoly{
         return polynomial_GCD(F,G);
     }
     template<class var_order>
+    bool is_squarefree (const polynomial_<ZZ,lex_<var_order>> &  F)
+    {
+        if (F.empty())
+            return false;
+        if (is_number(F))
+            return true;
+        auto f_cont=cont(F);
+        if (is_squarefree(f_cont))
+        {
+            auto F_=F/f_cont;
+            auto F_1=polynomial_GCD(F_,derivative(F_));
+            if (is_number(F_1))
+                return true;
+        }
+        return false;
+    }
+    template<class comp>
+    bool is_squarefree (const polynomial_<ZZ,comp> &  F)
+    {
+        polynomial_<ZZ,lex> F_;
+        poly_convert(F,F_);
+        return is_squarefree(F_);
+    }
+    template<class var_order>
     std::vector<std::pair<polynomial_<ZZ,lex_<var_order>>,uint64_t>> squarefree (const polynomial_<ZZ,lex_<var_order>> &  F)
     {
         // std::cout<<"F:"<<F<<std::endl;
+        if (F.empty())
+            return {};
         if (is_number(F))
             return {{F,1}};
         auto f_cont=cont(F);
@@ -138,6 +164,8 @@ namespace clpoly{
         {
             lst_.clear();   
             auto l_=squarefree(i);
+            if (l_.empty())
+                continue;
             auto l_ptr=l_.begin();
             for (++l_ptr;l_ptr!=l_.end();++l_ptr)
             {

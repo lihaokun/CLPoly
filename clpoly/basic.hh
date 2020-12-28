@@ -425,6 +425,29 @@ namespace clpoly{
         return false;
     }
     template <class T1,class T2,class T3,class T4,class compare>
+    constexpr bool __pair_vec_div_compression
+    (
+        std::vector<std::pair<T1,T2>>& new_v,
+        const std::vector<std::pair<T1,T3>> & v1_,
+        const std::vector<std::pair<T1,T4>> & v2_,
+        const compare & comp
+    )
+    {
+        return false;
+    }
+    template <class T1,class T2,class T3,class T4,class compare>
+    constexpr bool __pair_vec_div_compression
+    (
+        std::vector<std::pair<T1,T2>>& new_v,
+        std::vector<std::pair<T1,T2>>& R,
+        const std::vector<std::pair<T1,T3>> & v1_,
+        const std::vector<std::pair<T1,T4>> & v2_,
+        const compare & comp
+    )
+    {
+        return false;
+    }
+    template <class T1,class T2,class T3,class T4,class compare>
     void pair_vec_multiplies
     (
         std::vector<std::pair<T1,T2>>& new_v,

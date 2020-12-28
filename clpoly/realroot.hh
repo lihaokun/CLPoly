@@ -172,7 +172,9 @@ namespace clpoly{
             }
         
         }   
-        ++B;
+        
+        B=B/abs(G.front().second)+3;
+        // ++B;
         ZZ C=pow(ZZ(2),sizeinbase(B,2)-1);
         if (B==C)
             return B;
@@ -184,6 +186,7 @@ namespace clpoly{
         if (G.empty()|| G.front().first.empty())
             return l;
         ZZ B=RealRootBound(G);
+        std::cout<<B<<std::endl;
         subuspensky(_upolynomial_Bto1(G,-B),l1,0,B);
         subuspensky(_upolynomial_Bto1(G,B),l2,0,B);
         l.reserve(l1.size()+l2.size());

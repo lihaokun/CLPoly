@@ -69,6 +69,11 @@ namespace clpoly{
     template <class coeff>
     using upolynomial_=basic_polynomial<umonomial,coeff,uless>;
 
+    bool is_divexact(umonomial & op,const umonomial & op1,const umonomial & op2)
+    {
+        op=umonomial(op1.deg()-op2.deg());
+        return op.deg()>=0;    
+    }
     template<class Tc>
     Tc association(const upolynomial_<Tc> &P,const Tc & a)
     {
@@ -89,6 +94,27 @@ namespace clpoly{
         }
         return O;
     }
-    
+    template<class Tc>
+    inline int64_t get_deg(const upolynomial_<Tc> &p)
+    {
+        return p.empty()?0:p.front().first.deg();
+    }
+    template <class Tc>
+    int64_t degree(const upolynomial_<Tc> & p)
+    {
+        return p.degree();
+    }
+    upolynomial_<Zp> polynomial_mod(const upolynomial_<ZZ> & p, uint32_t prime)
+    {
+        upolynomial_<Zp> new_p;
+        Zp coeff(prime);
+        for (auto & i:p)
+        {
+            coeff=i.second; 
+            if (coeff)
+            new_p.push_back({i.first,std::move(coeff)});
+        }
+        return new_p;
+    }
 }
 #endif

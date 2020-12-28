@@ -53,9 +53,12 @@ namespace clpoly{
         //     if (l.first==v)
         //         return l.second;
         // return 0;
-        int64_t deg=0,tmp;
-        for (auto &i:p)
-            if ((tmp=i.first.deg(v))>deg)
+        if (p.empty())
+            return 0;
+        auto ptr=p.begin();
+        int64_t deg=(ptr++)->first.deg(v),tmp;
+        for (;ptr!=ptr.end();++ptr)
+            if ((tmp=ptr->first.deg(v))>deg)
                 deg=tmp;
         return deg;
     }
@@ -63,12 +66,12 @@ namespace clpoly{
     template <class Tc>
     constexpr int64_t get_up_deg(const polynomial_<Tc,univariate_priority_order>& p)
     {
-        return p.empty()?-1:get_up_deg(p.begin()->first);
+        return p.empty()?0:get_up_deg(p.begin()->first);
     }
     template <class Tc,class var_order>
     constexpr int64_t get_first_deg(const polynomial_<Tc,lex_<var_order>>& p)
     {
-        return p.empty()?-1:(p.front().first.empty()?0:p.front().first.front().second);
+        return p.empty()?0:(p.front().first.empty()?0:p.front().first.front().second);
     }
     template <class Tc,class var_order>
     constexpr variable get_first_var(const polynomial_<Tc,lex_<var_order>>& p)
@@ -102,9 +105,12 @@ namespace clpoly{
     {
         if (get_up_var(p.comp())==v)
             return get_up_deg(p);
-        int64_t deg=0,tmp;
-        for (auto &i:p)
-            if ((tmp=i.first.deg(v))>deg)
+        if (p.empty())
+            return 0;
+        auto ptr=p.begin();
+        int64_t deg=(ptr++)->first.deg(v),tmp;
+        for (;ptr!=ptr.end();++ptr)
+            if ((tmp=ptr->first.deg(v))>deg)
                 deg=tmp;
         return deg;
     }
@@ -393,7 +399,7 @@ namespace clpoly{
         const univariate_priority_order &comp=G.comp();
         int64_t l=get_up_deg(G);
         int64_t m=get_up_deg(F);
-        if (m<0 || l<0)
+        if (m<0 || l<0 || G.empty()||F.empty())
             return void();
         if (m<l)
         {

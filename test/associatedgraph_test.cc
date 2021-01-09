@@ -1,4 +1,3 @@
-#include <clpoly/associatedgraph.hh>
 #include <clpoly/clpoly.hh>
 #include <iostream>
 
@@ -34,5 +33,20 @@ int main(int argc, char const *argv[])
     std::cout<<clpoly::elimination_height(G3,l)<<std::endl;
     auto md=__polynomial_m_d(F,l);
     std::cout<<md.first<<" "<<md.second<<std::endl;
+
+    
+    l=std::vector<clpoly::variable>();
+    for (auto index=1;index<=20;++index)
+        l.push_back(clpoly::variable("x"+std::to_string(index)));
+    std::cout<<l<<std::endl;
+    F=clpoly::random_polynomials<clpoly::ZZ>(l,10,0.2,0.2,10,-10);
+    std::cout<<F<<std::endl;
+    auto G=clpoly::associatedgraph(F);
+    std::cout<<chordal_completion(G)<<std::endl;
+    l=clpoly::chordal_completion(G3,G);
+    std::cout<<l<<std::endl;
+    std::cout<<G3<<std::endl;
+    std::cout<<clpoly::graph_diff_score(G3,G)<<std::endl;
+    
     return 0;
 }

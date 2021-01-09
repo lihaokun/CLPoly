@@ -90,7 +90,19 @@ namespace clpoly{
                 std::swap(this->__serial,v.__serial);
             }
     };
-    
+    std::ostream& operator<<  (std::ostream& stream, const std::vector<variable>& v) 
+    {
+        stream<<"[ ";
+        for (auto ptr=v.begin();ptr!=v.end();++ptr)
+        {
+            if (ptr!=v.begin())
+                stream<<" , ";
+            stream<<*ptr;
+
+        }
+        stream<<" ]";
+        return stream;
+    }
     std::vector<std::string> variable::variables={""};
     std::unordered_map<std::string,std::size_t> variable::name_map={{"",0}};
     std::vector<std::size_t>  variable::free_serial;

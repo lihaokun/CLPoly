@@ -11,6 +11,7 @@ Notes:
 #define CLPOLY_ASSOCIATEDGRAPH_HH
 #include <clpoly/polynomial.hh>
 #include <vector>
+#include <random>
 #include <list>
 #include <map>
 #include <set>
@@ -18,6 +19,20 @@ Notes:
 #include <ctime>
 #include <cassert>
 namespace clpoly{ 
+    /**
+     * graph<node_type> 类是一个稀疏图类 
+     * 内部有基本储存结构是将node_type映射到 index（uint64_t），以及一个基于index的连接表
+     * index是从0到node的size-1
+     * 构造方法只有 默认构造
+     * 通过 add_node 增加节点
+     * 通过 add_edge 增加边
+     * nodes  mnode  adjacency_list 可以访问基本结构但不能修改
+     * node 可以获取对应index的node
+     * index 可以获取对应node的index
+     * neighborhood_index 可以获取 node 相邻的 node 的 index
+     * is_edge 可以查看边是否存在
+     * size 可以查看图节点大小,同时也是图节点index上界
+     **/
     template<class node_type>
     class graph
     {
@@ -28,6 +43,7 @@ namespace clpoly{
         public:
             typedef node_type nodetype;
 
+            
             constexpr const std::vector<node_type> & nodes() const {return this->__nodes;}
             constexpr const std::map<node_type,uint64_t> & mnode() const {return this->__mnode;}
             constexpr const std::vector<std::set<uint64_t>> & adjacency_list() const {return this->__adjacency_list;}  
@@ -47,9 +63,13 @@ namespace clpoly{
             
             inline void add_node(node_type c)
             {
-                this->__nodes.push_back(std::move(c));
-                this->__mnode[c]=this->__nodes.size()-1;
-                this->__adjacency_list.push_back({});
+                auto search=this->__mnode.find(c);
+                if (search==this->__mnode.end())
+                {
+                    this->__nodes.push_back(std::move(c));
+                    this->__mnode[c]=this->__nodes.size()-1;
+                    this->__adjacency_list.push_back({});
+                }
             }
 
             void add_edge(const node_type &a,const node_type &b,bool directed=false)
@@ -81,6 +101,11 @@ namespace clpoly{
             }
             void add_edge_index(uint64_t na,uint64_t nb,bool directed=false)
             {
+                this->add_edge(na,nb,directed);
+            }
+
+            void add_edge(uint64_t na,uint64_t nb,bool directed=false)
+            {
                 assert(na<__nodes.size() && nb<__nodes.size());
                 this->__adjacency_list[na].insert(nb);
                 if (!directed)
@@ -89,6 +114,14 @@ namespace clpoly{
                 }
             }
 
+            bool is_edge(uint64_t na,uint64_t nb) const
+            {
+                assert(na<__nodes.size() && nb<__nodes.size());
+                auto search1=this->__adjacency_list[na].find(nb);
+                if (search1==this->__adjacency_list[na].end())
+                    return false;
+                return true;
+            }
             bool is_edge(const node_type &a,const node_type &b) const
             {
                 uint64_t na,nb;
@@ -541,11 +574,6 @@ namespace clpoly{
                 m=i;
         return {m,d};
     }
-
-
-
-    
-    
 
 }
 #endif

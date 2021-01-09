@@ -509,6 +509,20 @@ namespace clpoly{
               
     };
     template<class Tm,class Tc,class compare>
+    std::ostream& operator<<  (std::ostream& stream, const std::vector<basic_polynomial<Tm,Tc,compare>>& v) 
+    {
+        stream<<"[ ";
+        for (auto ptr=v.begin();ptr!=v.end();++ptr)
+        {
+            if (ptr!=v.begin())
+                stream<<" , ";
+            stream<<*ptr;
+
+        }
+        stream<<" ]";
+        return stream;
+    }
+    template<class Tm,class Tc,class compare>
     inline bool operator!=(const basic_polynomial<Tm, Tc, compare> & p1,const basic_polynomial<Tm, Tc, compare> & p2)
     {
         return !(p1==p2);

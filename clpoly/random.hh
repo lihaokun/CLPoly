@@ -11,6 +11,7 @@ Notes:
 #define CLPOLY_RANDOM_HH
 
 #include <clpoly/polynomial.hh>
+#include <clpoly/associatedgraph.hh>
 #include <list>
 #include <string>
 #include <random>
@@ -74,6 +75,7 @@ namespace clpoly{
         }
         return polynomial_<Tc>(p1);
     }
+
     template <class T>
     std::vector<T> RandomSample(const  std::vector<T> & l,uint64_t n)
     {
@@ -113,6 +115,73 @@ namespace clpoly{
             }
         }
         return lout;
+    }
+
+    template <class node>
+    graph<node> random_graph(const std::vector<node> & nodes,double p)
+    {
+        graph<node> G;
+        for (auto & i:nodes)
+            G.add_node(i);
+        size_t n=G.size();
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::bernoulli_distribution d(p);
+        for (size_t i=0;i<n;++i)
+        {
+            for (size_t j=i+1;j<n;++j)
+                if (d(gen))
+                    G.add_edge_index(i,j);
+        }
+        return G;
+    }
+    /**
+     * random_polynomials<Tc>
+     * 生成一组多项式
+     * 变量相关图的稀疏性是 p1
+     * 项稀疏性是 p2^std::max(n-1,1) n为这个多项式变量数
+    **/
+    template<class Tc>
+    std::vector<polynomial_<Tc>> random_polynomials(const std::vector<variable> & vars,uint64_t deg,double p1,double p2,int up,int down)
+    {
+        auto G=random_graph<variable>(vars,p1);
+        // std::cout<<G<<std::endl;
+        std::vector<polynomial_<Tc>> l;
+        std::vector<variable> v_l;
+        
+        for (auto &v:G.nodes())
+        {
+            v_l.clear();
+            v_l.push_back(v);
+            auto i=G.index(v);
+            double p=1;
+            for (auto &j:G.adjacency_list()[i])
+            {
+                if (j!=i)
+                {
+                    bool b=true;
+                    auto node_j=G.node(j);
+                    for (auto &k:v_l)
+                    {
+                        if (!G.is_edge(k,node_j))
+                        {
+                            b=false;
+                            break;
+                        }
+                    }
+                    if (b)
+                    {
+                        v_l.push_back(node_j);
+                        p*=p2;
+                    }
+                }
+            }
+            if (p>=1-1e-10)
+                p=p2;
+            // std::cout<<v_l<<std::endl;
+            l.push_back(random_polynomial<clpoly::ZZ>(v_l,deg,p,up,down));
+        }
+        return l;
     }
 }
 #endif

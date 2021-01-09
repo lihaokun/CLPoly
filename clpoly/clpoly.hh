@@ -13,5 +13,7 @@ Notes:
 #include <clpoly/polynomial_gcd.hh>
 #include <clpoly/upolynomial.hh>
 #include <clpoly/random.hh>
+#include <clpoly/associatedgraph.hh>
+
 
 #endif

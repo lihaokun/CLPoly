@@ -1,12 +1,9 @@
-/*
-Module Name:
-    clpoly.hh
-Abstract:
-    总启动文件
-Author:
-    haokun li
-Notes:
-*/
+/**
+ * @file clpoly.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 总启动文件
+ * 
+ */
 #ifndef CLPOLY_HH
 #define CLPOLY_HH
 #include <clpoly/polynomial.hh>

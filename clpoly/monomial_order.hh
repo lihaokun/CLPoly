@@ -1,12 +1,9 @@
-/*
-Module Name:
-    monomial_order.hh
-Abstract:
-    定义类：单项序和单项压缩算法
-Author:
-    haokun li
-Notes:
-*/
+/**
+ * @file monomial_order.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 定义类：单项序和单项压缩算法
+ * 
+ */
 #ifndef CLPOLY_MONOMIAL_ORDER_HH
 #define CLPOLY_MONOMIAL_ORDER_HH
 #include <functional>

@@ -1,11 +1,9 @@
-/*
-Module Name:
-    random.hh
-Abstract:
-Author:
-    haokun li
-Notes:
-*/
+/**
+ * @file random.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 
+ * 
+ */
 
 #ifndef CLPOLY_RANDOM_HH
 #define CLPOLY_RANDOM_HH

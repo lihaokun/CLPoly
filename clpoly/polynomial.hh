@@ -1,11 +1,7 @@
-/*
-Module Name:
-    polynomial.hh
-Abstract:
-    定义polynomial和相关的运算
-Author:
-    haokun li
-Notes:
+/**
+ * @file polynomial.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 定义polynomial和相关的运算
 */
 #ifndef CLPOLY_POLYNOMIAL_HH
 #define CLPOLY_POLYNOMIAL_HH

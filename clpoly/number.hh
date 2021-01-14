@@ -1,12 +1,9 @@
-/*
-Module Name:
-    number.hh
-Abstract:
-    关于高精度的定义
-Author:
-    haokun li
-Notes:
-*/
+/**
+ * @file number.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 关于数域的定义
+ * 
+ */
 #ifndef CLPOLY_NUMBER_HH
 #define CLPOLY_NUMBER_HH
 #include <gmpxx.h>

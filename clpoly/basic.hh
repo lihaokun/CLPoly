@@ -1,12 +1,13 @@
-/*
-Module Name:
-    basic.hh
-Abstract:
-    这里定义一些基础元素
-Author:
-    haokun li
-Notes:
-*/
+/**
+ * @file basic.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 这里定义一些基础元素
+ * @version 0.1
+ * @date 2021-01-14
+ * 
+ * @copyright Copyright (c) 2021
+ * 
+ */
 #ifndef CLPOLY_BASIC_HH
 #define CLPOLY_BASIC_HH
 #include <vector>

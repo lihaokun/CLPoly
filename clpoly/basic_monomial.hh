@@ -1,12 +1,10 @@
-/*
-Module Name:
-    basic_monomial.hh
-Abstract:
-    定义类：basic_monomial
-Author:
-    haokun li
-Notes:
-*/
+/**
+ * @file basic_monomial.hh
+ * @author  李昊坤 (ker@pm.me)
+ * @brief 定义类：basic_monomial
+ * 
+ */
+
 #ifndef CLPOLY_BASIC_MONOMIAL_HH
 #define CLPOLY_BASIC_MONOMIAL_HH
 #include <clpoly/variable.hh>

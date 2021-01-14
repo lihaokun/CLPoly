@@ -1,11 +1,7 @@
-/*
-Module Name:
-    realroot.hh
-Abstract:
-    实根隔离
-Author:
-    haokun li
-Notes:
+/**
+ * @file realroot.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 实根隔离
 */
 
 #ifndef CLPOLY_REALROOT_HH

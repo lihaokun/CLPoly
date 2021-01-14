@@ -1,11 +1,7 @@
-/*
-Module Name:
-    polynomial_gcd.hh
-Abstract:
-    定义polynomial_gcd
-Author:
-    haokun li
-Notes:
+/**
+ * @file polynomial_gcd.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 定义polynomial_gcd
 */
 #ifndef CLPOLY_POLYNOMIAL_GCD_HH
 #define CLPOLY_POLYNOMIAL_GCD_HH

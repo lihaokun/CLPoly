@@ -1,12 +1,10 @@
-/*
-Module Name:
-    basic_polynomial.hh
-Abstract:
-    定义类：basic_polynomial
-Author:
-    haokun li
-Notes:
-*/
+/**
+ * @file basic_polynomial.hh
+ * @author  李昊坤 (ker@pm.me)
+ * @brief 定义类：basic_polynomial
+ * 
+ */
+
 #ifndef CLPOLY_ATOMIC_POLYNOMIAL_HH
 #define CLPOLY_ATOMIC_POLYNOMIAL_HH
 #include <vector>

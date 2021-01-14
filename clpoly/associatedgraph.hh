@@ -1,12 +1,10 @@
-/*
-Module Name:
-    associatedgraph.hh
-Abstract:
-    对多项式集合生成associatedgraph, 以及求相关弦性操作等。
-Author:
-    haokun li
-Notes:
-*/
+/**
+ * @file associatedgraph.hh
+ * @author  李昊坤 (ker@pm.me)
+ * @brief 对多项式集合生成associatedgraph, 以及求相关弦性操作等。
+ * 
+ */
+
 #ifndef CLPOLY_ASSOCIATEDGRAPH_HH
 #define CLPOLY_ASSOCIATEDGRAPH_HH
 #include <clpoly/polynomial.hh>

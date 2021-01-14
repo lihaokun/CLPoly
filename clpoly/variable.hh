@@ -1,14 +1,10 @@
-/*
-Module Name:
-    variable.hh
-Abstract:
-    定义类：variable
-Author:
-    haokun li
-Notes:
-    variable::new_variable
-    variable::get_variable
-*/
+/**
+ * @file variable.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 定义类：variable
+ * 
+ * 
+ */
 #ifndef CLPOLY_VARIABLE_HH
 #define CLPOLY_VARIABLE_HH
 #include <vector>

@@ -1,10 +1,7 @@
-/*
-Module Name:
-    upolynomial.hh
-Abstract:
-    定义upolynomial
-Author:
-    haokun li
+/**
+ * @file upolynomial.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 定义upolynomial
 */
 #ifndef CLPOLY_UPOLYNOMIAL_HH
 #define CLPOLY_UPOLYNOMIAL_HH

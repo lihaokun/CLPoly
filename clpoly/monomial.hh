@@ -1,13 +1,10 @@
-/*
-Module Name:
-    monomial.hh
-Abstract:
-    定义类：monomial
+/**
+ * @file monomial.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief  定义类：monomial
     monomial有关得操作实现
-Author:
-    haokun li
-Notes:
-*/
+ * 
+ */
 #ifndef CLPOLY_MONOMIAL_HH
 #define CLPOLY_MONOMIAL_HH
 #include <vector>

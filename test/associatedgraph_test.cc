@@ -36,7 +36,7 @@ int main(int argc, char const *argv[])
 
     
     l=std::vector<clpoly::variable>();
-    for (auto index=1;index<=20;++index)
+    for (auto index=1;index<=15;++index)
         l.push_back(clpoly::variable("x"+std::to_string(index)));
     std::cout<<l<<std::endl;
     F=clpoly::random_polynomials<clpoly::ZZ>(l,10,0.2,0.2,10,-10);
@@ -47,6 +47,6 @@ int main(int argc, char const *argv[])
     std::cout<<l<<std::endl;
     std::cout<<G3<<std::endl;
     std::cout<<clpoly::graph_diff_score(G3,G)<<std::endl;
-    
+    std::cout<<clpoly::graph_diff_score(clpoly::connected_branch_graph(G),G)<<std::endl;
     return 0;
 }

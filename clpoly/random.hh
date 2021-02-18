@@ -174,10 +174,8 @@ namespace clpoly{
                     }
                 }
             }
-            if (p>=1-1e-10)
-                p=p2;
-            // std::cout<<v_l<<std::endl;
-            l.push_back(random_polynomial<clpoly::ZZ>(v_l,deg,p,up,down));
+            if(v_l.size()>1)
+                l.push_back(random_polynomial<clpoly::ZZ>(v_l,deg,p,up,down));
         }
         return l;
     }

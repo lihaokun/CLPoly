@@ -53,7 +53,7 @@ namespace clpoly{
             return 0;
         auto ptr=p.begin();
         int64_t deg=(ptr++)->first.deg(v),tmp;
-        for (;ptr!=ptr.end();++ptr)
+        for (;ptr!=p.end();++ptr)
             if ((tmp=ptr->first.deg(v))>deg)
                 deg=tmp;
         return deg;

@@ -92,36 +92,36 @@ namespace clpoly{
 
     }
     
-    void subcontraction_root_interval(upolynomial_<ZZ> G,QQ& B,QQ & E,const  QQ&  width=0)
-    {
-        assert(E>B && width>=0);
-        if (!width || (E-B<=width))
-            return void();
-        upolynomial_<ZZ> G_,G1;
-        while (E-B>width)
-        {
-            QQ mid=(B+E)/2;
-            if (!association<QQ,ZZ,QQ>(G,mid))
-            {
-                B=E=mid;
-                return void();
-            }
-            G1=_upolynomial_01to012(G);
-            G_=_upolynomial_1toinf(G1);
-            if (coeffsignchanges(G_))
-            {
-                E=mid;
-                G=G1;
-                continue;
-            }
-            G1=_upolynomial_01to121(G);
-            B=mid;
-        }
+    // void subcontraction_root_interval(upolynomial_<ZZ> G,QQ& B,QQ & E,const  QQ&  width=0)
+    // {
+    //     assert(E>B && width>=0);
+    //     if (!width || (E-B<=width))
+    //         return void();
+    //     upolynomial_<ZZ> G_,G1;
+    //     while (E-B>width)
+    //     {
+    //         QQ mid=(B+E)/2;
+    //         if (!association<QQ,ZZ,QQ>(G,mid))
+    //         {
+    //             B=E=mid;
+    //             return void();
+    //         }
+    //         G1=_upolynomial_01to012(G);
+    //         G_=_upolynomial_1toinf(G1);
+    //         if (coeffsignchanges(G_))
+    //         {
+    //             E=mid;
+    //             G=G1;
+    //             continue;
+    //         }
+    //         G1=_upolynomial_01to121(G);
+    //         B=mid;
+    //     }
         
         
-    } 
+    // } 
     
-    void subuspensky(const upolynomial_<ZZ>& G, std::vector<std::pair<QQ,QQ>>& l,const QQ & B=0,const QQ & E=1,const  QQ&  width=0)
+    void subuspensky(const upolynomial_<ZZ>& G, std::vector<std::pair<QQ,QQ>>& l,const QQ & B=0,const QQ & E=1)
     {
         // std::cout<<"G:"<<G<<std::endl;
         upolynomial_<ZZ> G_=_upolynomial_1toinf(G);
@@ -130,27 +130,16 @@ namespace clpoly{
         if (v==0)   return void();
         if (v==1 )
         {
-            if (!width || (E-B<=width))
-            {
-                l.push_back({B,E});
-                return void();
-            }
-            else{
-                auto B1=B;
-                auto E1=E;
-                subcontraction_root_interval(G,B1, E1,width);
-                l.push_back({B1,E1});
-                return void();
-            }
-            
+            l.push_back({B,E});
+            return void();
         }
         QQ mid=(B+E)/2;
         if (!association<QQ,ZZ,QQ>(G,mid))
         {
             l.push_back({mid,mid});
         }
-        subuspensky(_upolynomial_01to012(G),l,B,mid,width);
-        subuspensky( _upolynomial_01to121(G),l,mid,E,width);
+        subuspensky(_upolynomial_01to012(G),l,B,mid);
+        subuspensky( _upolynomial_01to121(G),l,mid,E);
     } 
 
     ZZ RealRootBound(const upolynomial_<ZZ>& G)
@@ -193,6 +182,8 @@ namespace clpoly{
         
         return l;
     }
+
+
     
 
 }

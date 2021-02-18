@@ -36,10 +36,10 @@ int main(int argc, char const *argv[])
 
     
     l=std::vector<clpoly::variable>();
-    for (auto index=1;index<=15;++index)
+    for (auto index=1;index<=10;++index)
         l.push_back(clpoly::variable("x"+std::to_string(index)));
     std::cout<<l<<std::endl;
-    F=clpoly::random_polynomials<clpoly::ZZ>(l,10,0.2,0.2,10,-10);
+    F=clpoly::random_polynomials<clpoly::ZZ>(l,2,0.2,0.5,10,-10);
     std::cout<<F<<std::endl;
     auto G=clpoly::associatedgraph(F);
     std::cout<<chordal_completion(G)<<std::endl;

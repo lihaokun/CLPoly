@@ -176,6 +176,7 @@ namespace clpoly{
             auto vs=p.variables();
             for (auto i=vs.begin();i!=vs.end();++i)
             {
+                G.add_node(i->first);
                 for (auto j=vs.begin();j!=i;++j)
                     G.add_edge(i->first,j->first);
             }

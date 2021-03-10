@@ -8,6 +8,8 @@ int main(int argc, char const *argv[])
     clpoly::variable x("x");
     clpoly::variable y("y");
     clpoly::variable z("z");
+    clpoly::variable d("d");
+        clpoly::variable r("r");
     clpoly::polynomial_ZZ f1,f2,f3,f4,f,g,G;
 
     
@@ -16,8 +18,8 @@ int main(int argc, char const *argv[])
     for (int i=0;i<100;++i)
     {
         //std::cout<<"test "<<i<<":\n";
-        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.02,10,-10);
-        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.02,10,-10);
+        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.01,10,-10);
+        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.01,10,-10);
         std::cout<<"f["<<i+1<<"]="<<f<<";"<<std::endl;
         std::cout<<"g["<<i+1<<"]="<<g<<";"<<std::endl; 
         t=clock();
@@ -65,7 +67,7 @@ int main(int argc, char const *argv[])
     // f=-4*pow(y,6)+7*pow(x,4)*y-10*pow(x,4)-4;
     // g=-5*pow(x,7)*y-3*pow(x,6)*y-4*pow(x,6)+9*x*pow(y,3);
     // f=3*pow(x,6)*pow(y,4)+pow(x,6)*pow(y,2)+3*pow(x,5)*pow(y,2)+7;
-      // f=x*y*pow(z,5)-pow(d,6)*r;
+    //   f=x*y*pow(z,5)-pow(d,6)*r;
     // g=pow(x,5)*pow(y,3)*pow(z,17)-pow(d,22)*pow(r,3);
     // std::cout<<"g="<<g<<";"<<std::endl; 
     // std::cout<<"f="<<f<<";"<<std::endl;

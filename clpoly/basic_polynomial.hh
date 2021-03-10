@@ -15,78 +15,78 @@
 #include <sstream>
 #include <clpoly/variable.hh>
 namespace clpoly{
-    class basic_polynomial_status{
-        public:
-            bool is_var;
-            bool is_deg;
-            std::list<std::pair<variable,std::int64_t>>  variables;
-            int64_t deg;
+    // class basic_polynomial_status{
+    //     public:
+    //         bool is_var;
+    //         bool is_deg;
+    //         std::list<std::pair<variable,std::int64_t>>  variables;
+    //         int64_t deg;
 
-            basic_polynomial_status()
-            :is_var(false),is_deg(false)
-            {}
+    //         basic_polynomial_status()
+    //         :is_var(false),is_deg(false)
+    //         {}
 
-            basic_polynomial_status(const basic_polynomial_status & b)
-            :is_var(b.is_var),is_deg(b.is_deg),deg(b.deg)
-            {
-                if (is_var)
-                    variables=b.variables;
-            }
+    //         basic_polynomial_status(const basic_polynomial_status & b)
+    //         :is_var(b.is_var),is_deg(b.is_deg),deg(b.deg)
+    //         {
+    //             if (is_var)
+    //                 variables=b.variables;
+    //         }
 
-            basic_polynomial_status(basic_polynomial_status && b)
-            :is_var(std::move(b.is_var)),is_deg(std::move(b.is_deg)),deg(std::move(b.deg))
-            {
-                if (is_var)
-                    variables=std::move(b.variables);
-                b.clear();
-            }
+    //         basic_polynomial_status(basic_polynomial_status && b)
+    //         :is_var(std::move(b.is_var)),is_deg(std::move(b.is_deg)),deg(std::move(b.deg))
+    //         {
+    //             if (is_var)
+    //                 variables=std::move(b.variables);
+    //             b.clear();
+    //         }
 
-            basic_polynomial_status & operator=(const basic_polynomial_status & b)
-            {
-                if (&b==this)
-                    return *this;
-                this->is_var=b.is_var;
-                this->deg=b.deg;
-                this->is_deg=b.is_deg;
-                if (this->is_var)
-                    this->variables=b.variables;
-                return *this;
-            }
+    //         basic_polynomial_status & operator=(const basic_polynomial_status & b)
+    //         {
+    //             if (&b==this)
+    //                 return *this;
+    //             this->is_var=b.is_var;
+    //             this->deg=b.deg;
+    //             this->is_deg=b.is_deg;
+    //             if (this->is_var)
+    //                 this->variables=b.variables;
+    //             return *this;
+    //         }
 
-            basic_polynomial_status & operator=(basic_polynomial_status && b)
-            {
-                if (&b==this)
-                    return *this;
-                this->is_var=b.is_var;
-                this->deg=b.deg;
-                this->is_deg=b.is_deg;
-                if (this->is_var)
-                    this->variables=std::move(b.variables);
-                b.clear();
-                return *this;
-            }
+    //         basic_polynomial_status & operator=(basic_polynomial_status && b)
+    //         {
+    //             if (&b==this)
+    //                 return *this;
+    //             this->is_var=b.is_var;
+    //             this->deg=b.deg;
+    //             this->is_deg=b.is_deg;
+    //             if (this->is_var)
+    //                 this->variables=std::move(b.variables);
+    //             b.clear();
+    //             return *this;
+    //         }
 
-            void swap(basic_polynomial_status & b)
-            {
-                if (&b==this)
-                    return void();
-                std::swap(this->is_deg,b.is_deg);
-                std::swap(this->is_var,b.is_var);
-                std::swap(this->deg,b.deg);
-                if (this->is_var || b.is_var)
-                    std::swap(this->variables,b.variables);
-            }
-            void clear()
-            {
-                is_var=is_deg=false;
-            }
-    };
+    //         void swap(basic_polynomial_status & b)
+    //         {
+    //             if (&b==this)
+    //                 return void();
+    //             std::swap(this->is_deg,b.is_deg);
+    //             std::swap(this->is_var,b.is_var);
+    //             std::swap(this->deg,b.deg);
+    //             if (this->is_var || b.is_var)
+    //                 std::swap(this->variables,b.variables);
+    //         }
+    //         void clear()
+    //         {
+    //             is_var=is_deg=false;
+    //         }
+    // };
     template <class Tm,class Tc,class compare>
     class basic_polynomial
     {
         protected:
             std::vector<std::pair<Tm,Tc>> __data;
-            mutable basic_polynomial_status __status;
+            // mutable basic_polynomial_status __status;
             const compare* __comp=&(compare::init);
         public:
             typedef compare compare_type;
@@ -103,10 +103,14 @@ namespace clpoly{
             basic_polynomial():__data(){}
             basic_polynomial(const compare *p):__data(),__comp(p){}
             basic_polynomial(const basic_polynomial &p)
-            :__data(p.__data),__status(p.__status),__comp(p.__comp)
+            :__data(p.__data),
+            // __status(p.__status),
+            __comp(p.__comp)
             {}
             basic_polynomial(basic_polynomial &&p)
-            :__data(std::move(p.__data)),__status(std::move(p.__status)),__comp(p.__comp)
+            :__data(std::move(p.__data)),
+            // __status(std::move(p.__status)),
+            __comp(p.__comp)
             {}
             basic_polynomial( std::initializer_list<std::pair<Tm,Tc>> init)
             :__data(init)
@@ -138,7 +142,7 @@ namespace clpoly{
                 if (&p==this)
                     return *this;
                 this->__data=p.__data;
-                this->__status=p.__status;
+                // this->__status=p.__status;
                 this->__comp=p.__comp;
                 return *this;
             }
@@ -148,7 +152,7 @@ namespace clpoly{
                 if (&p==this)
                     return *this;
                 this->__data=std::move(p.__data);
-                this->__status=std::move(p.__status);
+                // this->__status=std::move(p.__status);
                 this->__comp=p.__comp;
                 return *this;
             }
@@ -156,7 +160,7 @@ namespace clpoly{
             inline basic_polynomial & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
             {
                 this->__data=init;
-                this->__status.clear();
+                // this->__status.clear();
                 this->normalization();
                 return *this;
             }
@@ -164,7 +168,7 @@ namespace clpoly{
             inline basic_polynomial & operator=(const std::vector<std::pair<Tm,Tc>> & init)
             {
                 this->__data=init;
-                this->__status.clear();
+                // this->__status.clear();
                 this->normalization();
                 return *this;
             }
@@ -172,7 +176,7 @@ namespace clpoly{
             inline basic_polynomial & operator=(std::vector<std::pair<Tm,Tc>> && init)
             {
                 this->__data=std::move(init);
-                this->__status.clear();
+                // this->__status.clear();
                 this->normalization();
                 return *this;
             }
@@ -211,7 +215,7 @@ namespace clpoly{
             inline void clear() 
             {
                 this->__data.clear();
-                this->__status.clear();
+                // this->__status.clear();
             }
 
             inline void swap(basic_polynomial &p)
@@ -219,33 +223,35 @@ namespace clpoly{
                 if (&p==this)
                     return void();
                 this->__data.swap(p.__data);
-                this->__status.swap(p.__swap);
+                // this->__status.swap(p.__swap);
                 std::swap(this->__comp,p.__comp);
             }
 
             inline const std::list<std::pair<variable,int64_t>> & variables()  const
             {
-                if (!this->__status.is_var)
-                {
-                    this->__status.is_var=true;
-                    this->__status.variables=get_variables(*this);
-                }
-                return this->__status.variables;
+                // if (!this->__status.is_var)
+                // {
+                //     this->__status.is_var=true;
+                //     this->__status.variables=get_variables(*this);
+                // }
+                // return this->__status.variables;
+                return get_variables(*this);
             }
 
             inline int64_t degree() const
             {
-                if (!this->__status.is_deg)
-                {
-                    this->__status.is_deg=true;
-                    this->__status.deg=get_deg(*this);
-                }
-                return this->__status.deg;
+                // if (!this->__status.is_deg)
+                // {
+                //     this->__status.is_deg=true;
+                //     this->__status.deg=get_deg(*this);
+                // }
+                // return this->__status.deg;
+                return get_deg(*this);
             }
 
             inline bool is_normal()  const 
             {
-                this->__status.clear();
+                // this->__status.clear();
                 return pair_vec_first_normal_check(this->__data,this->comp()) && pair_vec_normal_check(this->__data,this->comp());
                 // if (!pair_vec_normal_check(this->begin(),this->end(),this->comp))
                 //     return false
@@ -258,7 +264,7 @@ namespace clpoly{
 
             inline void normalization()
             {
-                this->__status.clear();
+                // this->__status.clear();
                 // for (auto && i:*this)
                 //     i.first.normalization());
                 pair_vec_first_normalization(this->__data,this->comp());

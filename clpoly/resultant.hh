@@ -1,6 +1,6 @@
 /**
  * @file resultant.hh
- * @author 李昊坤(ker@pm.me)  ntimesp
+ * @author 李昊坤(ker@pm.me)  ntimesp(nxp@mail.ustc.edu.cn)
  * @brief  定义结式运算 在变量小于4时用子子结式链 大于时用 Bezout 矩阵
  * 
  * 

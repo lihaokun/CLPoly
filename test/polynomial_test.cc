@@ -41,7 +41,7 @@ int main(){
     clpoly::polynomial_ZZ p={{{{x,1}},1}};
     clpoly::monomial m=pow(x,3);
     p=z*z;
-
+    time_t t;
     std::cout<< p<<std::endl;
     
     std::cout<< 2*x*x*y+1<<std::endl;
@@ -87,16 +87,16 @@ int main(){
     // for (auto &i:l)
     //     std::cout<<i.first<<":"<<i.second<<" ";
     // std::cout<<std::endl<<p.degree()<<std::endl;
-    // t=clock();
-    // auto PP=read_file("/home/ker/Documents/Bigpoly/j621_data.txt");
-    // std::cout<<PP.size()<<std::endl;
-    // std::cout<<"( "<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
-    // t=clock();
-    // auto ll=PP.variables();
-    // for (auto &i:ll)
-    //     std::cout<<i.first<<":"<<i.second<<" ";
-    // std::cout<<std::endl;
-    // std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+    t=clock();
+    auto PP=read_file("/home/ker/Documents/Bigpoly/j621_data.txt");
+    std::cout<<PP.size()<<std::endl;
+    std::cout<<"( "<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+    t=clock();
+    auto ll=PP.variables();
+    for (auto &i:ll)
+        std::cout<<i.first<<":"<<i.second<<" ";
+    std::cout<<std::endl;
+    std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
     // t=clock();
     // std::cout<<PP.degree()<<std::endl;
     // std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
@@ -137,10 +137,10 @@ int main(){
     // std::cout<<"f:"<<f<<std::endl;
     // std::cout<<"g:"<<g<<std::endl;
     // // std::cout<<clpoly::polynomial_GCD(f*g,g*g)<<std::endl;
-    clpoly::lex_<clpoly::custom_var_order> mo(std::vector<clpoly::variable>({z,y,x}));
-    clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> p1(&mo);
-    clpoly::poly_convert(g,p1);
-    std::cout<< p1<<std::endl;
+    // clpoly::lex_<clpoly::custom_var_order> mo(std::vector<clpoly::variable>({z,y,x}));
+    // clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> p1(&mo);
+    // clpoly::poly_convert(g,p1);
+    // std::cout<< p1<<std::endl;
     return 0;
   
 

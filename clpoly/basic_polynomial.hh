@@ -227,7 +227,7 @@ namespace clpoly{
                 std::swap(this->__comp,p.__comp);
             }
 
-            inline const std::list<std::pair<variable,int64_t>> & variables()  const
+            inline  std::list<std::pair<variable,int64_t>>  variables()  const
             {
                 // if (!this->__status.is_var)
                 // {

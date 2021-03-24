@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <cassert>
+#include <boost/container_hash/hash.hpp>
 
 namespace clpoly{   
     template <class compare>
@@ -364,6 +365,7 @@ namespace clpoly{
                 ss<<(*this);
                 return ss.str();
             }
+         
 
     };
     // template<class compare>  compare basic_monomial<compare>::init_comp=compare();
@@ -372,8 +374,13 @@ namespace clpoly{
     // {
     //     v1.swap(v2);
     // }
+    template<class compare>
+    std::size_t hash_value(const basic_monomial<compare>& b)
+    {
+        boost::hash<std::vector<std::pair<variable,int64_t>>> hasher;
+        return hasher(b.data());
+    }
 
-   
 }
 namespace std{
     template<class compare>
@@ -381,7 +388,7 @@ namespace std{
     {
         std::size_t operator()(const clpoly::basic_monomial<compare> & m) const
         {
-            return (hash<std::string>()(m.str()));
+            return clpoly::hash_value(m);
         }
     };
 }

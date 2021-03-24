@@ -13,6 +13,7 @@
 #include "basic.hh"
 #include <unordered_map>
 #include <cassert>
+#include <boost/container_hash/hash.hpp>
 namespace clpoly{
 
     class variable
@@ -192,6 +193,12 @@ namespace clpoly{
     {
         return variable(variable::init_variable());
     }
+    std::size_t hash_value(const variable& b)
+    {
+        boost::hash<std::size_t> hasher;
+        return hasher(b.serial());
+    }
+
 
 
 }
@@ -202,7 +209,7 @@ namespace std{
     {
         std::size_t operator()(const clpoly::variable& v) const
         {
-            return (hash<size_t>()(v.serial()));
+            return clpoly::hash_value(v);
         }
     };
 

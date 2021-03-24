@@ -1,4 +1,5 @@
 #include <clpoly/clpoly.hh>
+#include <boost/container_hash/hash.hpp>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -96,6 +97,9 @@ int main(){
     for (auto &i:ll)
         std::cout<<i.first<<":"<<i.second<<" ";
     std::cout<<std::endl;
+    std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
+     t=clock();
+    std::cout<<std::hash<clpoly::polynomial_ZZ>()(PP)<<std::endl;
     std::cout<<"("<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
     // t=clock();
     // std::cout<<PP.degree()<<std::endl;

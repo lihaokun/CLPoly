@@ -603,7 +603,12 @@ namespace clpoly{
     // {
     //     v1.swap(v2);
     // }
-
+    template<class Tc,class Tm,class compare>
+    std::size_t hash_value(const basic_polynomial<Tm,Tc,compare> & b)
+    {
+        boost::hash<std::vector<std::pair<Tm,Tc>>> hasher;
+        return hasher(b.data());
+    }
 
 }
 namespace std{
@@ -612,7 +617,7 @@ namespace std{
     {
         std::size_t operator()(const clpoly::basic_polynomial<Tm,Tc,compare> & m) const
         {
-            return (hash<std::string>()(m.str()));
+            return clpoly::hash_value(m);
         }
     };
 }

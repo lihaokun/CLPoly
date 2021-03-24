@@ -10,6 +10,29 @@
 #include <clpoly/basic.hh>
 #include <cmath>
 #include <cassert>
+
+std::size_t hash_value(const mpz_class& p) 
+{
+
+    // std::size_t h = 0;
+    // // Fowler, Noll and Vo hashing
+
+    // for(int i = 0U; i < p.get_mpz_t()->_mp_size; ++i) {
+
+    //     h *= 16777619U;
+    //     h ^= p.get_mpz_t()->_mp_d[i];
+    // }
+    std::size_t seed=boost::hash_range(p.get_mpz_t()->_mp_d,p.get_mpz_t()->_mp_d+abs(p.get_mpz_t()->_mp_size));
+    boost::hash_combine(seed, p.get_mpz_t()->_mp_size);
+    return seed;
+}
+std::size_t hash_value(mpq_class const& v)
+{
+    std::size_t seed = 0;
+    boost::hash_combine(seed, v.get_num());
+    boost::hash_combine(seed, v.get_den());
+    return seed;
+}
 namespace clpoly{
     typedef mpz_class ZZ;
     typedef mpq_class QQ;
@@ -229,6 +252,13 @@ namespace clpoly{
             return stream;
         }
     };
+    std::size_t hash_value(Zp  const& v)
+    {
+        std::size_t seed = 0;
+        boost::hash_combine(seed, v.number());
+        boost::hash_combine(seed, v.prime());
+        return seed;
+    }
     template<>
     struct zore_check<Zp>: public std::unary_function<Zp, bool>
     {

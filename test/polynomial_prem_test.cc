@@ -25,7 +25,6 @@ int main(int argc, char const *argv[])
     std::cin>>s;
     n=std::stoi(s);
     
-    
     for (int i=0;i<n;++i)
     {
         std::cout<<"test "<<i<<":\n";

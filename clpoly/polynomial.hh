@@ -64,6 +64,16 @@ namespace clpoly{
     {
         return p.empty()?0:get_up_deg(p.begin()->first);
     }
+    template <class var_order>
+    constexpr int64_t get_first_deg(const basic_monomial<lex_<var_order>>& m)
+    {
+        return m.empty()?0:m.front().second;
+    }
+    template <class var_order>
+    constexpr variable get_first_var(const basic_monomial<lex_<var_order>>& m)
+    {
+        return m.empty()?variable():m.front().first;
+    }
     template <class Tc,class var_order>
     constexpr int64_t get_first_deg(const polynomial_<Tc,lex_<var_order>>& p)
     {
@@ -74,6 +84,7 @@ namespace clpoly{
     {
         return p.empty()?variable():(p.front().first.empty()?variable():p.front().first.front().first);
     }
+
     template <class Tc,class var_order>
     constexpr std::pair<variable,int64_t> get_last_var_deg(const polynomial_<Tc,lex_<var_order>>& p)
     {
@@ -96,21 +107,54 @@ namespace clpoly{
         }
         return {v,d};
     }
-    template <class Tc>
-    int64_t degree(const polynomial_<Tc,univariate_priority_order> & p,const variable & v)
+    template <class Tc,class var_order>
+    int64_t degree(const polynomial_<Tc,lex_<var_order>> & p,const variable & v)
     {
-        if (get_up_var(p.comp())==v)
-            return get_up_deg(p);
         if (p.empty())
+            return 0;
+        if (get_first_var(p)==v)
+            return get_first_deg(p);
+        if (p.comp()(v,get_first_var(p)))
             return 0;
         auto ptr=p.begin();
         int64_t deg=(ptr++)->first.deg(v),tmp;
-        for (;ptr!=ptr.end();++ptr)
+        for (;ptr!=p.end();++ptr)
             if ((tmp=ptr->first.deg(v))>deg)
                 deg=tmp;
         return deg;
     }
 
+    template<class comp>
+    basic_monomial<comp> __change_monomial_var_deg(const basic_monomial<comp> &m,variable v,uint64_t d)
+    {
+        basic_monomial<comp>  mout(m.comp_ptr());
+        auto ptr=m.begin();
+        bool s=true;
+        for (;ptr!=m.end();++ptr)
+        {
+            if (v==ptr->first)
+            {
+                if (d!=0)
+                    mout.push_back({v,d});
+                ++ptr;
+                s=false;
+                break;
+            }
+            if (m.comp(v,ptr->first))
+            {
+                if (d!=0)
+                    mout.push_back({v,d});
+                s=false;
+                break;
+            }
+            mout.push_back(*ptr);
+        }
+        for(;ptr!=m.end();++ptr)
+            mout.push_back(*ptr);
+        if (s && d!=0)
+            mout.push_back({v,d});
+        return mout;
+    }
 
     basic_monomial<univariate_priority_order> __change_up_monomial_var_deg(const basic_monomial<univariate_priority_order> &m,uint64_t d)
     {
@@ -219,17 +263,9 @@ namespace clpoly{
         return O;
     }
 
-    // #define prem_v1 prem
-    
-    template <class Tc>
-    inline polynomial_<Tc,univariate_priority_order> prem(const polynomial_<Tc,univariate_priority_order> &G,const polynomial_<Tc,univariate_priority_order> & F)
-    {
-        polynomial_<Tc,univariate_priority_order>  O1(&G.comp_ptr());
-        prem(O1,G,F);
-        return O1;
-    }
+
     template <class Tc,class comp>
-    inline polynomial_<Tc,comp> prem(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v)
+    inline polynomial_<Tc,comp> prem(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v,bool is_L=true)
     {
         if (F.size()==0)
         {
@@ -238,61 +274,72 @@ namespace clpoly{
 //#endif            
             return polynomial_<Tc,comp>();
         }
+        if (is_number(F))
+            return  polynomial_<Tc,comp>();
         polynomial_<Tc,comp> O(G.comp_ptr());
         univariate_priority_order comp_v(v);
         polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
         polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
         poly_convert(G,G1);poly_convert(F,F1);
         polynomial_<Tc,univariate_priority_order>  O1(&comp_v);
-        prem(O1,G1,F1);
+        prem(O1,G1,F1,v,is_L);
         poly_convert(std::move(O1),O);
         return O;
     }
-
+    template <class Tc,class var_order>
+    inline polynomial_<Tc,lex_<var_order>> prem(const polynomial_<Tc,lex_<var_order>> &G,const polynomial_<Tc,lex_<var_order>> & F,const variable & v,bool is_L=true)
+    {
+        if (F.size()==0)
+        {
+//#ifndef NDEBUG  
+            throw std::invalid_argument("Error:polynomial prem div 0.");
+//#endif            
+            return polynomial_<Tc,lex_<var_order>>();
+        }
+        if (is_number(F))
+            return polynomial_<Tc,lex_<var_order>>();
+        polynomial_<Tc,lex_<var_order>> O(G.comp_ptr());
+        if (comp_consistent(F.comp(),G.comp()) && (v==get_first_var(F) || F.comp()(v,get_first_var(F)))&& (is_number(G) || v==get_first_var(G) || F.comp()(v,get_first_var(G))))
+        {
+            prem(O,G,F,v,is_L);
+            return O;
+        }
+        univariate_priority_order comp_v(v);
+        polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
+        polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
+        poly_convert(G,G1);poly_convert(F,F1);
+        polynomial_<Tc,univariate_priority_order>  O1(&comp_v);
+        prem(O1,G1,F1,v,is_L);
+        poly_convert(std::move(O1),O);
+        return O;
+    }
     
 
 
-    template <class Tc,class compare>
+    template <class Tc,class var_order>
     void __onestep__prem_v1(
-        const std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & G,
-        const std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & F0,
+        const std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> & G,
+        const std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> & F0,
         int64_t f_deg,
-        const std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & F,
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & O,
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & F1,
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & G1,
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> & G2,
-        compare comp 
+        const std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> & F,
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> & O,
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> & F1,
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> & G1,
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> & G2,
+        variable v,
+        const lex_<var_order> & comp 
     )
     {
-
         auto G_ptr=G.begin();
         auto G_end=G.end();
-        int64_t g_deg=get_up_deg(G_ptr->first);
+        int64_t g_deg=get_first_deg(G_ptr->first);
         G1.clear();
         G1.reserve(G.size());
-        while(G_ptr!=G_end && get_up_deg(G_ptr->first)==g_deg)
+        while(G_ptr!=G_end && get_first_deg(G_ptr->first)==g_deg && get_first_var(G_ptr->first)==v)
         {
-            G1.push_back({__change_up_monomial_var_deg(G_ptr->first,g_deg-f_deg),G_ptr->second});
+            G1.push_back({__change_monomial_var_deg(G_ptr->first,v,g_deg-f_deg),G_ptr->second});
             ++G_ptr;
         }
-        // if (g_deg-f_deg)
-        // {
-        //     while(G_ptr!=G_end && get_up_deg(G_ptr->first)==g_deg)
-        //     {
-        //         G1.push_back(*(G_ptr++));
-        //         G1.back().first.back().second=g_deg-f_deg;
-        //         G1.back().first.deg()-=f_deg;
-        //     }
-        // }
-        // else
-        // {
-        //     while(G_ptr!=G_end && get_up_deg(G_ptr->first)==g_deg)
-        //     {
-        //         G1.push_back(*(G_ptr++));
-        //         G1.back().first.pop_back();
-        //     }
-        // }
 
         pair_vec_multiplies(F1,G1,F,comp);
         if(G_ptr==G_end)
@@ -310,15 +357,18 @@ namespace clpoly{
         }
     }
     
-    template <class Tc>
+    template <class Tc,class var_order>
     void prem(
-            polynomial_<Tc,univariate_priority_order>&O,
+            polynomial_<Tc,lex_<var_order>>&O,
             //polynomial_<Tc,univariate_priority_order>&L,
-            const polynomial_<Tc,univariate_priority_order>&G,
-            const polynomial_<Tc,univariate_priority_order>&F,
+            const polynomial_<Tc,lex_<var_order>>&G,
+            const polynomial_<Tc,lex_<var_order>>&F,
+            variable v,
             bool is_L=true
             )
     {
+        const lex_<var_order> &  comp=F.comp();
+        
         if (F.size()==0)
         {
 //#ifndef NDEBUG  
@@ -327,40 +377,48 @@ namespace clpoly{
             return void();
         }
         O.clear();
-        int64_t f_deg=get_up_deg(F);
-        int64_t g_deg=get_up_deg(G);
-        if (f_deg<=0)
+        if (is_number(F))
             return void();
-        if (g_deg<f_deg)
+        // std::cout<< F<<std::endl;
+        // std::cout<< G<<std::endl;
+        // std::cout<< v<<std::endl;
+        
+        assert((v==get_first_var(F) || comp(v,get_first_var(F)))&& (is_number(G) || v==get_first_var(G) || comp(v,get_first_var(G))));
+        int64_t f_deg=get_first_deg(F);
+        int64_t g_deg=get_first_deg(G);
+        if (get_first_var(F)!=v)
+            return void();
+        if (get_first_var(G)!=v ||g_deg<f_deg)
         {
             O=G;
             return void();
         }
         int64_t d=g_deg-f_deg;
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_G;
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_G1;
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_G2;
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_F0;
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_G;
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_G1;
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_G2;
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_F0;
         tmp_F0.reserve(F.size());
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_F_;
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_F_;
         tmp_F_.reserve(F.size());
-        for (auto & i:F)
-            if (get_up_deg(i.first)!=f_deg)
-                tmp_F_.push_back(i);
-            else
+        auto ptr=F.begin();
+        for (;ptr!=F.end();++ptr)
+            if (get_first_var(ptr->first)==v &&get_first_deg(ptr->first)==f_deg)
             {
-                 tmp_F0.push_back({__change_up_monomial_var_deg(i.first,0),i.second});
-                // tmp_F0.push_back(i);
-                // tmp_F0.back().first.pop_back();
+                 tmp_F0.push_back({__change_monomial_var_deg(ptr->first,v,0),ptr->second});
             }
-        std::vector<std::pair<basic_monomial<univariate_priority_order>,Tc>> tmp_F1;
+            else
+                break;
+        for (;ptr!=F.end();++ptr)
+            tmp_F_.push_back(*ptr);    
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_F1;
         O.data().reserve(G.size());
-        __onestep__prem_v1(G.data(),tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());
+        __onestep__prem_v1(G.data(),tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,v,comp);
         // std::cout<<"prem_v1_:"<<O<<std::endl;
-        while (get_up_deg(O)>=f_deg)
+        while (get_first_var(O)==v && get_first_deg(O)>=f_deg)
         {
             std::swap(tmp_G,O.data());
-            __onestep__prem_v1(tmp_G,tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,G.comp());    
+            __onestep__prem_v1(tmp_G,tmp_F0,f_deg,tmp_F_,O.data(),tmp_F1,tmp_G1,tmp_G2,v,comp);    
             --d;
             // std::cout<<"prem_v1_:"<<O<<std::endl;
         }
@@ -368,13 +426,13 @@ namespace clpoly{
         {
             if (d==1)
             {
-                pair_vec_multiplies(tmp_G,O.data(),tmp_F0,G.comp());
+                pair_vec_multiplies(tmp_G,O.data(),tmp_F0,comp);
                 std::swap(tmp_G,O.data());
             }
             else
             {
-                pair_vec_power(tmp_G1,tmp_F0,d,G.comp());
-                pair_vec_multiplies(tmp_G,O.data(),tmp_G1,G.comp());
+                pair_vec_power(tmp_G1,tmp_F0,d,comp);
+                pair_vec_multiplies(tmp_G,O.data(),tmp_G1,comp);
                 std::swap(tmp_G,O.data());
             }
             

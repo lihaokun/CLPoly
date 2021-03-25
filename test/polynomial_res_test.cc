@@ -18,8 +18,8 @@ int main(int argc, char const *argv[])
     for (int i=0;i<100;++i)
     {
         //std::cout<<"test "<<i<<":\n";
-        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.01,10,-10);
-        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.01,10,-10);
+        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.01,10,-10);
+        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.01,10,-10);
         std::cout<<"f["<<i+1<<"]="<<f<<";"<<std::endl;
         std::cout<<"g["<<i+1<<"]="<<g<<";"<<std::endl; 
         t=clock();

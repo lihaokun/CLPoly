@@ -83,7 +83,7 @@ namespace clpoly{
         {
             R.clear();
             C=BasSet<Tc>(F.begin(),F.end());
-            std::cout<<"C="<<C<<std::endl;
+            //std::cout<<"C="<<C<<std::endl;
             // SHOW(C)
             if(is_number(C[0])) return C;
             for(auto f:F)
@@ -99,12 +99,12 @@ namespace clpoly{
                 }
             }
 
-            std::cout<<"R="<<R<<std::endl;
+            //std::cout<<"R="<<R<<std::endl;
             // SHOW(R)
             if (R.empty()) break;
             for (auto &i:R)
                 F.insert(std::move(i));
-            std::cout<<"F="<<F<<std::endl;
+            //std::cout<<"F="<<F<<std::endl;
             
         }
         return C;

@@ -13,5 +13,7 @@
 #include <clpoly/random.hh>
 #include <clpoly/associatedgraph.hh>
 #include <clpoly/realroot.hh>
+#include <clpoly/charset.hh>
+
 
 #endif

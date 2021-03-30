@@ -17,7 +17,7 @@ int main(int argc, char const *argv[])
         
     time_t t;
     double s1=0,s2=0;
-    for (int i=0;i<100;++i)
+    for (int i=0;i<1;++i)
     {
         f=clpoly::random_polynomial<clpoly::ZZ>({x,y},10,0.1,10,-10);
         g=clpoly::random_polynomial<clpoly::ZZ>({x,y},10,0.1,10,-10);

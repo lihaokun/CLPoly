@@ -254,6 +254,17 @@ namespace clpoly{
         
     }
 
+     
+/**
+ * @brief  计算f和g的子结式链 要求degree(f,x)>=degree(g,x)>0 ，返回下标与子结式链下标一致
+ *  
+ * @tparam Tc 
+ * @param F 
+ * @param G 
+ * @param v 
+ * @param is_list 
+ * @return std::vector<polynomial_<Tc,univariate_priority_order>> 
+ */
     template <class Tc>
     std::vector<polynomial_<Tc,univariate_priority_order>> subresultant
         (   

@@ -219,6 +219,34 @@ namespace clpoly{
             O=F;
         return d;
     }
+
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> leadcoeff(const polynomial_<ZZ,lex_<var_order>> &F_)
+    {
+        polynomial_<ZZ,lex_<var_order>>  lc(F_.comp_ptr());
+        auto v=get_first_var(F_);
+        int64_t deg=get_first_deg(F_);
+        basic_monomial<lex_<var_order>> m(F_.comp_ptr());
+        for (auto &i:F_)
+        {
+            if ((!i.first.empty() &&  i.first.front().first==v && i.first.front().second == deg))
+            {
+                m.clear();
+                m.reserve(i.first.size());
+                auto ptr=i.first.begin();
+                ++ptr;
+                for (;ptr!=i.first.end();++ptr)
+                {
+                    m.push_back(*ptr);
+                }
+                lc.push_back({std::move(m),i.second});
+            }
+            else{
+                break;
+             }
+        }
+        return lc;
+    }
     template <class Tc,class comp >
     inline int64_t leadcoeff(polynomial_<Tc,comp>&O,const polynomial_<Tc,comp>&F,const variable & v)
     {
@@ -247,21 +275,14 @@ namespace clpoly{
         return deg;
     }
     
-    template <class Tc>
-    inline polynomial_<Tc,univariate_priority_order> leadcoeff(const polynomial_<Tc,univariate_priority_order>&F)
-    {
-        polynomial_<Tc,univariate_priority_order> O(F.comp_ptr());
-        leadcoeff(O,F);
-        return O;
-    }
+    // template <class Tc>
+    // inline polynomial_<Tc,univariate_priority_order> leadcoeff(const polynomial_<Tc,univariate_priority_order>&F)
+    // {
+    //     polynomial_<Tc,univariate_priority_order> O(F.comp_ptr());
+    //     leadcoeff(O,F);
+    //     return O;
+    // }
     
-    template <class Tc,class comp>
-    inline polynomial_<Tc,comp> leadcoeff(const polynomial_<Tc,comp>&F)
-    {
-        polynomial_<Tc,comp> O(F.comp_ptr());
-        leadcoeff(O,F);
-        return O;
-    }
 
 
     template <class Tc,class comp>

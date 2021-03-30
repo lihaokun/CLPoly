@@ -534,6 +534,28 @@ namespace clpoly{
         return O;
     }
 
+    template <class Tc,class comp>
+    polynomial_<Tc,comp> discriminant(const polynomial_<Tc,comp> &G,const variable & v)
+    {
+        univariate_priority_order comp_v(v);
+        polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
+        polynomial_<Tc,comp> O(G.comp_ptr());
+        poly_convert(G,G1);
+        auto m=get_up_deg(G1);
+        if (m==0)
+            return O;
+        auto F1=derivative(G1);
+        polynomial_<Tc,univariate_priority_order>  O1(&comp_v);
+        resultant(O1,G1,F1,v);
+        
+        if ((m*(m-1)) & 3)
+            O1=-O1;
+        O1=O1/leadcoeff(G1);
+        poly_convert(std::move(O1),O);
+        return O;
+    }
+
+
     template<class Tc>
     std::vector<polynomial_<Tc,univariate_priority_order>> BezoutMatrix
     (const polynomial_<Tc,univariate_priority_order> &F,
@@ -628,5 +650,9 @@ namespace clpoly{
         }
         return sum;
     }
+
+
+
+    
 }
 #endif

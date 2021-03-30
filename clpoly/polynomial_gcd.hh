@@ -445,33 +445,7 @@ namespace clpoly{
 
     
 
-    template<class var_order>
-    polynomial_<ZZ,lex_<var_order>> leadcoeff(const polynomial_<ZZ,lex_<var_order>> &F_)
-    {
-        polynomial_<ZZ,lex_<var_order>>  lc(F_.comp_ptr());
-        auto v=get_first_var(F_);
-        int64_t deg=get_first_deg(F_);
-        basic_monomial<lex_<var_order>> m(F_.comp_ptr());
-        for (auto &i:F_)
-        {
-            if ((!i.first.empty() &&  i.first.front().first==v && i.first.front().second == deg))
-            {
-                m.clear();
-                m.reserve(i.first.size());
-                auto ptr=i.first.begin();
-                ++ptr;
-                for (;ptr!=i.first.end();++ptr)
-                {
-                    m.push_back(*ptr);
-                }
-                lc.push_back({std::move(m),i.second});
-            }
-            else{
-                break;
-             }
-        }
-        return lc;
-    }
+   
     template<class var_order>
     polynomial_<ZZ,lex_<var_order>> cont(const polynomial_<ZZ,lex_<var_order>> &F_)
     {

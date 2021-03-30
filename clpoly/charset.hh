@@ -50,7 +50,7 @@ namespace clpoly{
     }
 
     template <class Tc,class InputIt>
-    std::vector<polynomial_<Tc,lex_<custom_var_order>>> BasSet
+    std::vector<polynomial_<Tc,lex_<custom_var_order>>> basset
     (InputIt first,InputIt second)
     {
         if(first==second) return {};
@@ -73,7 +73,7 @@ namespace clpoly{
     }
 
     template <class Tc>
-    std::vector<polynomial_<Tc,lex_<custom_var_order>>> CharSet
+    std::vector<polynomial_<Tc,lex_<custom_var_order>>> charset
     (const std::vector<polynomial_<Tc,lex_<custom_var_order>>>& P)
     {
         if(P.size()==0) return P;
@@ -82,7 +82,7 @@ namespace clpoly{
         while(true)
         {
             R.clear();
-            C=BasSet<Tc>(F.begin(),F.end());
+            C=basset<Tc>(F.begin(),F.end());
             //std::cout<<"C="<<C<<std::endl;
             // SHOW(C)
             if(is_number(C[0])) return C;

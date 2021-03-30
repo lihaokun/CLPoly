@@ -34,7 +34,7 @@ int main(int argc, char const *argv[])
     P.push_back(p3_);
     // P.push_back(p4_);
     // P.push_back(p5_);
-    auto C=clpoly::CharSet(P); 
+    auto C=clpoly::charset(P); 
     std::cout<<C<<std::endl;
     return 0;
     return 0;

@@ -253,6 +253,275 @@ namespace clpoly{
         
     }
 
+    template <class Tc>
+    std::vector<polynomial_<Tc,univariate_priority_order>> subresultant
+        (   
+            const polynomial_<Tc,univariate_priority_order>&F,
+            const polynomial_<Tc,univariate_priority_order>&G,
+            variable v,
+            bool is_list=true 
+        )
+    {
+        polynomial_<Tc,univariate_priority_order> O;
+        std::vector<polynomial_<Tc,univariate_priority_order>>  L;
+        O.clear();
+        const univariate_priority_order &comp=G.comp();
+       
+        int64_t m=get_up_deg(F);
+        int64_t l=get_up_deg(G);
+        assert(m>=l && l>0);
+        
+        polynomial_<Tc,univariate_priority_order> S_j_1(&comp);
+        polynomial_<Tc,univariate_priority_order> S_j(&comp);
+        polynomial_<Tc,univariate_priority_order> S_r_1(&comp);
+        polynomial_<Tc,univariate_priority_order> S_r(&comp);
+        
+        polynomial_<Tc,univariate_priority_order> R_(&comp);
+        polynomial_<Tc,univariate_priority_order> tmp1(&comp);
+        polynomial_<Tc,univariate_priority_order> tmp2(&comp);
+        int64_t j,r,u;
+        // std::cout<<"F="<<F<<std::endl;
+        // std::cout<<"G="<<G<<std::endl;
+        if (l<m)
+            u=m;
+        else
+            u=m+1;
+        if (is_list)
+        {
+            L.resize(u+1,tmp1);
+            L[u]=F;
+            L[u-1]=G;
+        }
+        else
+            L.resize(1,tmp1);
+        if (l<m)
+        {
+            j=m-1;
+            if(j==l)
+            {
+                prem(S_j,F,G,v);
+                --j;
+                //  std::cout<<j<<":"<<S_j<<std::endl;
+                S_j_1=G;
+            }
+            else{
+                leadcoeff(R_,G);
+                if (j-l<2)
+                    pair_vec_multiplies(S_r.data(),R_.data(),G.data(),comp);
+                else 
+                {
+                    pair_vec_power(tmp1.data(),R_.data(),j-l,comp);
+                    pair_vec_multiplies(S_r.data(),tmp1.data(),G.data(),comp);
+                }
+                //  std::cout<<l<<":"<<S_r<<std::endl;
+                prem(S_r_1,F,G,v);
+                if (j-l & 1)
+                    pair_vec_negate(S_r_1.data());
+                //  std::cout<<l-1<<":"<<S_r_1<<std::endl;
+                swap(S_j.data(),S_r_1.data());
+                swap(S_j_1.data(),S_r.data());
+                j=l-1;
+            }
+
+        }else
+        {
+            j=m;
+            prem(S_j,F,G,v);
+            pair_vec_negate(S_j.data());
+            //  std::cout<<j-1<<":"<<S_j<<std::endl;
+            if (!(--j))
+            {
+                L[0]=std::move(S_j);
+                return L;
+            }
+            if (S_j.empty())
+            {
+                if (is_list)
+                {
+                    L[m-1]=std::move(S_j);
+                }
+                return L;
+            }
+            r=get_up_deg(S_j);
+            if (r<j)
+            {
+                
+                if (r!=1)
+                {
+                    leadcoeff(R_,S_j);
+                    if (j-r<2)
+                        pair_vec_multiplies(S_r.data(),R_.data(),S_j.data(),comp);
+                    else 
+                    {
+                        pair_vec_power(tmp1.data(),R_.data(),j-r,comp);
+                        pair_vec_multiplies(S_r.data(),tmp1.data(),S_j.data(),comp);
+                    }
+                }
+                
+                //  std::cout<<r<<":"<<S_r<<std::endl;
+                if (!r)
+                {
+                    if (is_list)
+                    {
+                        L[m-1]=std::move(S_j);
+                    }
+                    L[0]=std::move(S_r);
+                    return L;
+                }
+                prem(tmp1,G,S_j,v);
+                //std::cout<<"G"<<":"<<G<<std::endl;
+                //std::cout<<"S_"<<j<<":"<<S_j<<std::endl;
+                
+                //  std::cout<<r-1<<":"<<tmp1<<std::endl;
+                leadcoeff(R_,G);
+                pair_vec_div(S_r_1.data(),tmp1.data(),R_.data(),comp);
+                if ((j-r) & 1==1)
+                    pair_vec_negate(S_r_1.data());
+                //  std::cout<<r-1<<":"<<S_r_1<<std::endl;
+                j=r-1;
+                if (is_list)
+                {
+                    L[m-1]=std::move(S_j);
+                }
+                swap(S_j.data(),S_r_1.data());
+                swap(S_j_1.data(),S_r.data());
+            }
+            else
+            {
+                prem(tmp1,G,S_j,v);
+                leadcoeff(R_,G);
+                pair_vec_div(S_j_1.data(),tmp1.data(),R_.data(),comp);
+                //  std::cout<<j-1<<":"<<S_j_1<<std::endl;
+                --j;
+                swap(S_j.data(),S_j_1.data());
+            }
+        }
+        while (j>0)
+        {
+            if (S_j.empty())
+            {
+                if (is_list)
+                {
+                    L[j+1]=std::move(S_j_1);
+                    L[j]=std::move(S_j);
+                }
+                return L;
+            }
+            r=get_up_deg(S_j);
+            if (r<j)
+            {
+                
+                //std::cout<<"R_j"<<":"<<tmp1<<std::endl;
+                leadcoeff(R_,S_j_1);
+                //std::cout<<"R_j+1"<<":"<<R_<<std::endl;
+                if (r!=1)
+                {
+                    leadcoeff(tmp1,S_j);
+                    if (j-r<2)
+                    {
+                        pair_vec_multiplies(tmp2.data(),tmp1.data(),S_j.data(),comp);
+                        pair_vec_div(S_r.data(),tmp2.data(),R_.data(),comp);
+                    }
+                    else 
+                    {
+                        pair_vec_power(S_r.data(),tmp1.data(),j-r,comp);
+                        pair_vec_multiplies(tmp2.data(),S_r.data(),S_j.data(),comp);
+                        pair_vec_power(tmp1.data(),R_.data(),j-r,comp);
+                        pair_vec_div(S_r.data(),tmp2.data(),tmp1.data(),comp);
+                    }
+                }
+                else
+                {
+                    pair_vec_power(tmp1.data(),R_.data(),j-r,comp);
+                }
+                
+                //  std::cout<<r<<":"<<S_r<<std::endl;
+                if (!r)
+                {
+                    if (is_list)
+                    {
+                        L[j+1]=std::move(S_j_1);
+                        L[j]=std::move(S_j);
+                    }
+                    L[0]=std::move(S_r);
+                    return L;
+                }
+                pair_vec_multiplies(tmp2.data(),R_.data(),R_.data(),comp);
+                if (j-r<2)
+                {
+                    pair_vec_multiplies(tmp1.data(),R_.data(),tmp2.data(),comp);    
+                    prem(tmp2,S_j_1,S_j,v);
+                    pair_vec_div(S_r_1.data(),tmp2.data(),tmp1.data(),comp);    
+                }        
+                else
+                {
+                    pair_vec_multiplies(R_.data(),tmp2.data(),tmp1.data(),comp);
+                    prem(tmp2,S_j_1,S_j,v);
+                    pair_vec_div(S_r_1.data(),tmp2.data(),R_.data(),comp);
+                }
+                if ((j-r) & 1)
+                    pair_vec_negate(S_r_1.data());
+                //  std::cout<<r-1<<":"<<S_r_1<<std::endl;
+                if (is_list)
+                {
+                    L[j+1]=std::move(S_j_1);
+                    L[j]=std::move(S_j);
+                    
+                }
+                j=r-1;
+                swap(S_j.data(),S_r_1.data());
+                swap(S_j_1.data(),S_r.data());
+                
+            }
+            else
+            {
+                prem(tmp1,S_j_1,S_j,v);
+                // std::cout<<"tmp1:"<<tmp1<<std::endl;
+                leadcoeff(R_,S_j_1);
+                // std::cout<<"R_:"<<R_<<std::endl;
+                pair_vec_multiplies(tmp2.data(),R_.data(),R_.data(),comp);
+                // std::cout<<"tmp2:"<<tmp2<<std::endl;
+                if (is_list)
+                {
+                    L[j+1]=std::move(S_j_1);
+                }
+                pair_vec_div(S_j_1.data(),tmp1.data(),tmp2.data(),comp);
+                --j;
+                //  std::cout<<j<<":"<<S_j_1<<std::endl;
+              
+                swap(S_j.data(),S_j_1.data());
+            }
+            
+        }
+        if (is_list)
+        {
+            L[j+1]=std::move(S_j_1);
+            L[j]=std::move(S_j);
+        }
+        else{
+            L[0]=std::move(S_j);
+        }
+        return L;   
+    }
+
+
+    template <class Tc,class comp>
+    inline std::vector<polynomial_<Tc,comp>> subresultant(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v,bool is_list=true)
+    {
+        assert(comp_consistent(G.comp(),F.comp()));
+        univariate_priority_order comp_v(v);
+        polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
+        polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
+        poly_convert(G,G1);poly_convert(F,F1);
+        auto O1=subresultant(G1,F1,v,is_list);
+        std::vector<polynomial_<Tc,comp>> O(O1.size());
+        for (auto i=0;i<O.size();++i)
+        {
+            poly_convert(std::move(O1[i]),O[i]);
+        }
+        return O;
+    }
+
     template<class Tc>
     std::vector<polynomial_<Tc,univariate_priority_order>> BezoutMatrix
     (const polynomial_<Tc,univariate_priority_order> &F,

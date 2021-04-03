@@ -274,14 +274,13 @@ namespace clpoly{
             O=F;
         return deg;
     }
-    
-    // template <class Tc>
-    // inline polynomial_<Tc,univariate_priority_order> leadcoeff(const polynomial_<Tc,univariate_priority_order>&F)
-    // {
-    //     polynomial_<Tc,univariate_priority_order> O(F.comp_ptr());
-    //     leadcoeff(O,F);
-    //     return O;
-    // }
+    template <class Tc,class comp >
+    inline polynomial_<Tc,comp> leadcoeff(const polynomial_<Tc,comp>&F,const variable & v)
+    {
+        polynomial_<Tc,comp> O(F.comp_ptr());
+        leadcoeff(O,F,v);
+        return O;
+    }
     
 
 
@@ -295,9 +294,9 @@ namespace clpoly{
 //#endif            
             return polynomial_<Tc,comp>();
         }
-        if (is_number(F))
-            return  polynomial_<Tc,comp>();
         polynomial_<Tc,comp> O(G.comp_ptr());
+        if (is_number(F))
+            return  O;
         univariate_priority_order comp_v(v);
         polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
         polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
@@ -317,9 +316,9 @@ namespace clpoly{
 //#endif            
             return polynomial_<Tc,lex_<var_order>>();
         }
-        if (is_number(F))
-            return polynomial_<Tc,lex_<var_order>>();
         polynomial_<Tc,lex_<var_order>> O(G.comp_ptr());
+        if (is_number(F))
+            return O;
         if (comp_consistent(F.comp(),G.comp()) && (v==get_first_var(F) || F.comp()(v,get_first_var(F)))&& (is_number(G) || v==get_first_var(G) || F.comp()(v,get_first_var(G))))
         {
             prem(O,G,F,v,is_L);
@@ -373,15 +372,15 @@ namespace clpoly{
             G2.reserve((G_end-G_ptr));
             while(G_ptr!=G_end)
                 G2.push_back(*(G_ptr++));
-            pair_vec_multiplies(G1,G2,F0,comp);
-            pair_vec_sub(O,G1,F1,comp);
+            pair_vec_multiplies(O,G2,F0,comp);
+            pair_vec_sub(G2,O,F1,comp);
+            std::swap(G2,O);
         }
     }
     
     template <class Tc,class var_order>
     void prem(
             polynomial_<Tc,lex_<var_order>>&O,
-            //polynomial_<Tc,univariate_priority_order>&L,
             const polynomial_<Tc,lex_<var_order>>&G,
             const polynomial_<Tc,lex_<var_order>>&F,
             variable v,
@@ -397,6 +396,7 @@ namespace clpoly{
 //#endif            
             return void();
         }
+        O.comp(&comp);
         O.clear();
         if (is_number(F))
             return void();
@@ -462,10 +462,204 @@ namespace clpoly{
         //L.data()=std::move(tmp_F0);
         // L=pow(L,d);
     }
+
+
+    template <class Tc,class var_order>
+    void pquo(
+            polynomial_<Tc,lex_<var_order>>&Q,
+            polynomial_<Tc,lex_<var_order>>&R,
+            const polynomial_<Tc,lex_<var_order>>&G,
+            const polynomial_<Tc,lex_<var_order>>&F,
+            variable v,
+            bool is_L=true
+            )
+    {
+        const lex_<var_order> &  comp=F.comp();
+        
+        if (F.size()==0)
+        {
+//#ifndef NDEBUG  
+            throw std::invalid_argument("Error:polynomial prem div 0.");
+//#endif            
+            return void();
+        }
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_G;
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_G1;
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_G2;
+        R.comp(&comp);
+        R.clear();
+        Q.comp(&comp);
+        Q.clear();
+       
+        if (is_number(F)||get_first_var(F)!=v)
+        {
+            int64_t d=(v==get_first_var(G))?get_first_deg(G):0;
+            if (d)
+            {
+                if(d==1)
+                {
+                    pair_vec_multiplies(Q.data(),G.data(),F.data(),comp);
+                }
+                else
+                {
+                    pair_vec_power(tmp_G1,F.data(),d,comp);
+                    pair_vec_multiplies(Q.data(),G.data(),tmp_G1,comp);
+                }
+            }
+            else
+                Q=G;
+            return void();
+        }
+        // std::cout<< F<<std::endl;
+        // std::cout<< G<<std::endl;
+        // std::cout<< v<<std::endl;
+        
+        assert((v==get_first_var(F) || comp(v,get_first_var(F)))&& (is_number(G) || v==get_first_var(G) || comp(v,get_first_var(G))));
+        int64_t f_deg=get_first_deg(F);
+        int64_t g_deg=get_first_deg(G);
+        int64_t d=g_deg-f_deg;  
+        if (get_first_var(G)!=v ||g_deg<f_deg)
+        {
+            R=G;
+            return void();
+        }
+
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_F0;
+        tmp_F0.reserve(F.size());
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_F_;
+        tmp_F_.reserve(F.size());
+        auto ptr=F.begin();
+        for (;ptr!=F.end();++ptr)
+            if (get_first_var(ptr->first)==v &&get_first_deg(ptr->first)==f_deg)
+            {
+                 tmp_F0.push_back({__change_monomial_var_deg(ptr->first,v,0),ptr->second});
+            }
+            else
+                break;
+        for (;ptr!=F.end();++ptr)
+            tmp_F_.push_back(*ptr);    
+        std::vector<std::pair<basic_monomial<lex_<var_order>>,Tc>> tmp_F1;
+        R.data().reserve(G.size());
+        __onestep__prem_v1(G.data(),tmp_F0,f_deg,tmp_F_,R.data(),tmp_F1,tmp_G1,tmp_G2,v,comp);
+        std::swap(tmp_G1,Q.data());
+        // std::cout<<"prem_v1_:"<<R<<std::endl;
+        while (get_first_var(R)==v && get_first_deg(R)>=f_deg)
+        {
+            std::swap(tmp_G,R.data());
+            __onestep__prem_v1(tmp_G,tmp_F0,f_deg,tmp_F_,R.data(),tmp_F1,tmp_G1,tmp_G2,v,comp);  
+            pair_vec_multiplies(tmp_G2,tmp_F0,Q.data(),comp);
+            tmp_G2.reserve(tmp_G2.size()+tmp_G1.size());
+            for (auto &i:tmp_G1)
+                tmp_G2.push_back(std::move(i));
+            std::swap(tmp_G2,Q.data());
+            --d;
+            // std::cout<<"prem_v1_:"<<R<<std::endl;
+        }
+        if (is_L && d>0)
+        {
+            if (d==1)
+            {
+                pair_vec_multiplies(tmp_G,R.data(),tmp_F0,comp);
+                std::swap(tmp_G,R.data());
+                pair_vec_multiplies(tmp_G,Q.data(),tmp_F0,comp);
+                std::swap(tmp_G,Q.data());
+            }
+            else
+            {
+                pair_vec_power(tmp_G1,tmp_F0,d,comp);
+                pair_vec_multiplies(tmp_G,R.data(),tmp_G1,comp);
+                std::swap(tmp_G,R.data());
+                pair_vec_multiplies(tmp_G,Q.data(),tmp_G1,comp);
+                std::swap(tmp_G,Q.data());
+            }
+            
+        }
+        
+        //L.data()=std::move(tmp_F0);
+        // L=pow(L,d);
+    }
     
  
+    template <class Tc,class comp>
+    inline polynomial_<Tc,comp> pquo(polynomial_<Tc,comp> &R,const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v,bool is_L=true)
+    {
+        if (F.size()==0)
+        {
+//#ifndef NDEBUG  
+            throw std::invalid_argument("Error:polynomial prem div 0.");
+//#endif            
+            return polynomial_<Tc,comp>();
+        }
+        polynomial_<Tc,comp> Q(G.comp_ptr());
+        R.clear();
+        R.comp(G.comp_ptr());
+        if (is_number(F))
+        {
+            auto d=degree(G,v);
+            if (d)
+                Q=G*pow(F,d);
+            else
+                Q=G;
+            return Q;
 
-    
+        }
+        univariate_priority_order comp_v(v);
+        polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
+        polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
+        poly_convert(G,G1);poly_convert(F,F1);
+        polynomial_<Tc,univariate_priority_order>  Q1(&comp_v);
+        polynomial_<Tc,univariate_priority_order>  R1(&comp_v);
+        pquo(Q1,R1,G1,F1,v,is_L);
+        poly_convert(std::move(Q1),Q);
+        poly_convert(std::move(R1),R);
+        return Q;
+    }
+    template <class Tc,class var_order>
+    inline polynomial_<Tc,lex_<var_order>> pquo(polynomial_<Tc,lex_<var_order>> &R,const polynomial_<Tc,lex_<var_order>> &G,const polynomial_<Tc,lex_<var_order>> & F,const variable & v,bool is_L=true)
+    {
+        if (F.size()==0)
+        {
+//#ifndef NDEBUG  
+            throw std::invalid_argument("Error:polynomial prem div 0.");
+//#endif            
+            return polynomial_<Tc,lex_<var_order>>();
+        }
+        polynomial_<Tc,lex_<var_order>> Q(G.comp_ptr());
+        R.clear();
+        R.comp(G.comp_ptr());
+        if (is_number(F))
+        {
+            auto d=degree(G,v);
+            if (d)
+                Q=G*pow(F,d);
+            else
+                Q=G;
+            return Q;
+
+        }
+        if (comp_consistent(F.comp(),G.comp()) && (v==get_first_var(F) || F.comp()(v,get_first_var(F)))&& (is_number(G) || v==get_first_var(G) || F.comp()(v,get_first_var(G))))
+        {
+            prem(Q,R,G,F,v,is_L);
+            return Q;
+        }
+        univariate_priority_order comp_v(v);
+        polynomial_<Tc,univariate_priority_order>  G1(&comp_v);
+        polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
+        poly_convert(G,G1);poly_convert(F,F1);
+        polynomial_<Tc,univariate_priority_order>  Q1(&comp_v);
+        polynomial_<Tc,univariate_priority_order>  R1(&comp_v);
+        pquo(Q1,R1,G1,F1,v,is_L);
+        poly_convert(std::move(Q1),Q);
+        poly_convert(std::move(R1),R);
+        return Q;
+    }
+    template <class Tc,class comp>
+    inline polynomial_<Tc,comp> pquo(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v,bool is_L=true)
+    {
+        polynomial_<Tc,comp> R(G.comp_ptr());
+        return  pquo(R,G,F,v,is_L);
+    }
+
     template <class compare>
     polynomial_<Zp,compare> polynomial_mod(const polynomial_<ZZ,compare> & p, uint32_t prime)
     {

@@ -639,7 +639,8 @@ namespace clpoly{
         }
         if (comp_consistent(F.comp(),G.comp()) && (v==get_first_var(F) || F.comp()(v,get_first_var(F)))&& (is_number(G) || v==get_first_var(G) || F.comp()(v,get_first_var(G))))
         {
-            prem(Q,R,G,F,v,is_L);
+            pquo(Q,R,G,F,v,is_L);
+            std::cout<<1<<std::endl;
             return Q;
         }
         univariate_priority_order comp_v(v);

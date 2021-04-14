@@ -526,7 +526,7 @@ namespace clpoly{
         polynomial_<Tc,univariate_priority_order>  F1(&comp_v);
         poly_convert(G,G1);poly_convert(F,F1);
         auto O1=subresultant(G1,F1,v,is_list);
-        std::vector<polynomial_<Tc,comp>> O(O1.size());
+        std::vector<polynomial_<Tc,comp>> O(O1.size(),polynomial_<Tc,comp>(G.comp_ptr()));
         for (auto i=0;i<O.size();++i)
         {
             poly_convert(std::move(O1[i]),O[i]);

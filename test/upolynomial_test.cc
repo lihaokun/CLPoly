@@ -25,12 +25,26 @@ int main(int argc, char const *argv[])
         std::cout<<"{"<<i.first<<","<<i.second<<"}"<<" ";
     }
     std::cout<<std::endl;
-
-    clpoly::upolynomial_<clpoly::ZZ> f1={{4,2},{3,-7},{2,-4},{1,-4},{0,-15}};
-    clpoly::upolynomial_<clpoly::ZZ> g1={{5,4},{3,4},{2,-7},{4,-2},{1,1},{0,-12}};
-    std::cout<<f1<<std::endl;
-    std::cout<<g1<<std::endl;
-    std::cout<<clpoly::polynomial_GCD(f1,g1)<<std::endl;
-
+    auto x=clpoly::variable("x");
+     auto Rp1=clpoly::random_polynomial<clpoly::ZZ>({x},100,0.1,10,-10);
+     clpoly::upolynomial_<clpoly::ZZ> f1(Rp1);
+     f1=Rp1;
+    // auto x=clpoly::variable("x");
+    // for (auto  i=1;i<=100;++i)
+    // {
+    //     auto Rp1=clpoly::random_polynomial<clpoly::ZZ>({x},100,0.1,10,-10);
+    //     auto Rp2=clpoly::random_polynomial<clpoly::ZZ>({x},100,0.1,10,-10);
+    //     // std::cout<<Rp1<<std::endl;
+    //     // std::cout<<Rp2<<std::endl;
+        
+    //     clpoly::upolynomial_<clpoly::ZZ> f1;
+    //     clpoly::upolynomial_<clpoly::ZZ> g1;
+    //     clpoly::poly_convert(Rp1,f1);
+    //     clpoly::poly_convert(Rp2,g1);
+        
+    //     std::cout<<"f["<<i<<"]="<<f1<<std::endl;
+    //     std::cout<<"g["<<i<<"]="<<g1<<std::endl;
+    //     std::cout<<"o["<<i<<"]="<<clpoly::polynomial_GCD(f1*f1,g1*f1)<<std::endl;
+    // }
     return 0;
 }

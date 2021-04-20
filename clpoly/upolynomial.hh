@@ -113,5 +113,18 @@ namespace clpoly{
         }
         return new_p;
     }
+    template<class T1,class T2,class comp1>
+    void poly_convert(const polynomial_<T1,comp1>& p_in,upolynomial_<T2> & p_out)
+    {
+        p_out.clear();
+        p_out.reserve(p_in.size());
+        for(auto &i:p_in)
+        {
+            p_out.push_back(std::pair<umonomial,T2>(i.first.deg(),i.second));
+        }
+        p_out.normalization();
+    }
+    // using convert=poly_convert;
+
 }
 #endif

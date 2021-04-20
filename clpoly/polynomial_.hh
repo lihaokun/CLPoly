@@ -17,12 +17,12 @@ namespace clpoly{
     using polynomial_QQ=polynomial_<QQ>;
 
     template<class Tc,class comp>
-    void  convert(polynomial_<Tc,comp> & p,variable v)
+    void  poly_convert(variable v,polynomial_<Tc,comp> & p)
     {
         p={{monomial(v),1}};
     }
     template<class Tc,class comp>
-    void  convert(polynomial_<Tc,comp> & p,monomial m)
+    void  poly_convert(monomial m,polynomial_<Tc,comp> & p)
     {
         p={{std::move(m),1}};
     }

@@ -102,6 +102,7 @@ namespace clpoly{
             // static const Tc Tc_zero;
             basic_polynomial():__data(){}
             basic_polynomial(const compare *p):__data(),__comp(p){}
+            basic_polynomial(compare *p):__data(),__comp(p){}
             basic_polynomial(const basic_polynomial &p)
             :__data(p.__data),
             // __status(p.__status),
@@ -127,13 +128,20 @@ namespace clpoly{
             {
                 this->normalization();
             }
-            basic_polynomial(variable m)
+            // basic_polynomial(variable m)
+            // {
+            //     convert(*this,m);
+            // }
+            // basic_polynomial(monomial m)
+            // {
+            //     convert(*this,std::move(m));
+            // }
+            template <class type>
+            basic_polynomial(const type & in)
             {
-                convert(*this,m);
-            }
-            basic_polynomial(monomial m)
-            {
-                convert(*this,std::move(m));
+                
+                poly_convert(in,*this);
+                // std::cout<<"new init="<<in<<"\n";
             }
 
 
@@ -157,29 +165,37 @@ namespace clpoly{
                 return *this;
             }
 
-            inline basic_polynomial & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
-            {
-                this->__data=init;
-                // this->__status.clear();
-                this->normalization();
-                return *this;
-            }
+            // inline basic_polynomial & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
+            // {
+            //     this->__data=init;
+            //     // this->__status.clear();
+            //     this->normalization();
+            //     return *this;
+            // }
 
-            inline basic_polynomial & operator=(const std::vector<std::pair<Tm,Tc>> & init)
-            {
-                this->__data=init;
-                // this->__status.clear();
-                this->normalization();
-                return *this;
-            }
+            // inline basic_polynomial & operator=(const std::vector<std::pair<Tm,Tc>> & init)
+            // {
+            //     this->__data=init;
+            //     // this->__status.clear();
+            //     this->normalization();
+            //     return *this;
+            // }
 
-            inline basic_polynomial & operator=(std::vector<std::pair<Tm,Tc>> && init)
-            {
-                this->__data=std::move(init);
-                // this->__status.clear();
-                this->normalization();
-                return *this;
-            }
+            // inline basic_polynomial & operator=(std::vector<std::pair<Tm,Tc>> && init)
+            // {
+            //     this->__data=std::move(init);
+            //     // this->__status.clear();
+            //     this->normalization();
+            //     return *this;
+            // }
+
+            // template <class type>
+            // inline basic_polynomial & operator=(const type &in)
+            // {
+            //     std::cout<<"new operator=\n";
+            //     poly_convert(in,*this);
+            //     return *this;
+            // }
 
             constexpr auto size() const {return this->__data.size();}
             constexpr iterator begin() {return this->__data.begin();}

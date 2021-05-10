@@ -65,7 +65,7 @@ namespace clpoly{
     uless uless::init;
     template <class coeff>
     using upolynomial_=basic_polynomial<umonomial,coeff,uless>;
-    using upolynomial_ZZ=upolynomial_<clpoly::ZZ>;
+    using upolynomial_ZZ=upolynomial_<ZZ>;
     bool is_divexact(umonomial & op,const umonomial & op1,const umonomial & op2)
     {
         op=umonomial(op1.deg()-op2.deg());
@@ -124,7 +124,10 @@ namespace clpoly{
         }
         p_out.normalization();
     }
-    // using convert=poly_convert;
+
+    
+    
+
 
 }
 #endif

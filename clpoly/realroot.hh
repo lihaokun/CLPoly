@@ -8,6 +8,7 @@
 #define CLPOLY_REALROOT_HH
 #include <clpoly/polynomial.hh>
 #include <clpoly/upolynomial.hh>
+#include <clpoly/polynomial_gcd.hh>
 #include <vector>
 namespace clpoly{
     const upolynomial_<ZZ> __upolynomial_x_plus_1={{1,1},{0,1}};
@@ -183,7 +184,167 @@ namespace clpoly{
         return l;
     }
 
+    class uroot
+    {
+        public:
+            std::vector<upolynomial_ZZ>* upolys;
+            std::map<upolynomial_ZZ,size_t>* upolymap;
+            size_t poly_index;
+            QQ left;
+            QQ right;
+            uroot(size_t _poly_index,QQ _l,QQ _r,std::vector<upolynomial_ZZ>* _upolys,std::map<upolynomial_ZZ,size_t>* _upolymap)
+            :poly_index(_poly_index),left(_l),right(_r),upolys(_upolys),upolymap(_upolymap){}
+            const upolynomial_ZZ & poly()
+            {
+                return (*upolys)[poly_index];
+            }
+            int64_t add_poly(clpoly::upolynomial_ZZ  p)
+            {
+                assert(!p.empty());
+                int64_t s=1;
+                if (p.front().second<0)
+                {
+                    p=-p;
+                    s=-1;
+                }
+                auto it=this->upolymap->find(p);
+                size_t index;
+                if (it==this->upolymap->end())
+                {
+                    index=upolys->size();
+                    (*upolymap)[p]=upolys->size();
+                    upolys->push_back(std::move(p));
+                }
+                else
+                    index=it->second;
+                return index*s;
+            }
+            
+    };
+    upolynomial_<ZZ> _upolynomial_Rtoab(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b)
+    {
+        if (G.empty())
+            return G;
+        ZZ den=lcm(a.get_den(),b.get_den());
+        ZZ _gcd=gcd(a.get_den(),b.get_den());
+        
+        ZZ a1=a.get_num()*b.get_den()/_gcd;
+        ZZ b1=b.get_num()*a.get_den()/_gcd;
+        auto m=G.front().first.deg();
+        upolynomial_<ZZ>  pnum={{1,a1},{0,b1}};
+        upolynomial_<ZZ>  pden={{1,den},{0,den}};
+        upolynomial_<ZZ> g,g_,g_1;
+        for (auto &i:G)
+        {
+            g_=pow(pden,m-i.first.deg())*pow(pnum,i.first.deg());
+            for (auto &j:g_)
+            {
+                j.second*=i.second;
+            }
+            g=g+g_;
+        }
+        return g;
 
+    }
+    void _uroot_check(uroot* r,const QQ & mid)
+    {
+        if (mid>=r->left || mid <=r->right)
+            return void();
+        QQ rig_ass=association<QQ,ZZ,QQ>(r->poly(),r->right);
+        QQ mid_ass=association<QQ,ZZ,QQ>(r->poly(),mid);
+        QQ left_ass=association<QQ,ZZ,QQ>(r->poly(),r->left);
+        if (mid_ass==0)
+        {
+            r->left=r->right=mid;
+            return void();
+        }
+        if (rig_ass==0)
+        {
+            if (left_ass==0)
+            {
+                auto p=_upolynomial_Rtoab(r->poly(),r->left,mid);
+                uint64_t v=coeffsignchanges(p);
+                if (v==0)
+                {
+                    r->left=mid;return void();
+                }
+                r->right=mid;return void();
+            }
+            else
+            {
+                if (sgn(mid_ass)==sgn(left_ass))
+                {
+                    r->right=mid;return void();
+                }
+                r->left=mid;return void();
+            }
+        }
+        if (sgn(mid_ass)==sgn(rig_ass))
+        {
+            r->left=mid;return void();  
+        }
+        r->right=mid;return void();
+    }
+    bool _uroot_check(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b)
+    {
+        QQ rig_ass=association<QQ,ZZ,QQ>(G,b);
+        if (a==b && rig_ass==0)
+            return true;
+        QQ left_ass=association<QQ,ZZ,QQ>(G,a);
+        if (sgn(rig_ass)*sgn(left_ass)<0)
+            return true;
+        if (sgn(rig_ass)*sgn(left_ass)>0)
+            return false;
+        auto p=_upolynomial_Rtoab(G,a,b);
+        uint64_t v=coeffsignchanges(p);
+        if (v==0)
+        {
+            return false;
+        }
+        return true;    
+    }
+    int comp(uroot * r1,uroot* r2)
+    {
+        assert(r1->upolymap==r2->upolymap && r1->upolys==r2->upolys);
+        int status=1;
+        if (r1->left<r2->left)
+        {
+            std::swap(r1,r2);status=-1;
+        }
+        if (r1->right>r2->left)
+            return status;
+        if (r1->left!=r2->left || r1->right!=r2->right)
+        {
+            _uroot_check(r1,r2->left);
+            _uroot_check(r2,r1->right);
+        }
+        if (r1->left!=r2->left || r1->right!=r2->right)
+            return status;
+        if (r1->poly_index==r2->poly_index)
+            return 0;
+        auto p=polynomial_GCD(r1->poly(),r2->poly());
+        if (_uroot_check(p,r1->left,r1->right))
+        {
+            auto index=r1->add_poly(p);
+            r1->poly_index=abs(index);
+            r2->poly_index=abs(index);
+            return 0;
+        }
+        else{
+            auto index=r1->add_poly(r1->poly()/p);
+            r1->poly_index=abs(index);
+            index=r2->add_poly(r2->poly()/p);
+            r2->poly_index=abs(index);
+        }
+        while (r1->left!=r2->left || r1->right!=r2->right)
+        {
+            _uroot_check(r1,(r1->left+r1->right)/2);
+            _uroot_check(r2,(r2->left+r2->right)/2);
+        }
+        if (r1->left>=r2->left)
+            return status;
+        return -status;
+    }
     
 
 }

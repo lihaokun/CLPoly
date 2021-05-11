@@ -260,7 +260,7 @@ namespace clpoly{
         }
         if (rig_ass==0)
         {
-            if (left_ass==0)
+            if (left_ass==0) // 不应该进入
             {
                 auto p=_upolynomial_Rtoab(r->poly(),r->left,mid);
                 uint64_t v=coeffsignchanges(p);

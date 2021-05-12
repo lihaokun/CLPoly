@@ -304,9 +304,10 @@ namespace clpoly{
         }
         return true;    
     }
-    int comp(uroot * r1,uroot* r2) // 1:r1<r2;0:r1=r2;-1:r1>r2
+    int comp(uroot * r1,uroot* r2) // 1:r1<r2;0:r1=r2;-1:r1>r2 如果upolymap和upolys不一致 返回没有意义(默认3)
     {
-        assert(r1->upolymap==r2->upolymap && r1->upolys==r2->upolys);
+        if (r1->upolymap!=r2->upolymap && r1->upolys!=r2->upolys)
+            return 3;
         int status=1;
         if (r1->left>r2->left)
         {

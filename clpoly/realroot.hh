@@ -192,6 +192,7 @@ namespace clpoly{
             size_t poly_index;
             QQ left;
             QQ right;
+            uroot(){}
             uroot(size_t _poly_index,QQ _l,QQ _r,std::vector<upolynomial_ZZ>* _upolys,std::map<upolynomial_ZZ,size_t>* _upolymap)
             :poly_index(_poly_index),left(_l),right(_r),upolys(_upolys),upolymap(_upolymap){}
             const upolynomial_ZZ & poly()

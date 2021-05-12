@@ -303,15 +303,15 @@ namespace clpoly{
         }
         return true;    
     }
-    int comp(uroot * r1,uroot* r2)
+    int comp(uroot * r1,uroot* r2) // 1:r1<r2;0:r1=r2;-1:r1>r2
     {
         assert(r1->upolymap==r2->upolymap && r1->upolys==r2->upolys);
         int status=1;
-        if (r1->left<r2->left)
+        if (r1->left>r2->left)
         {
             std::swap(r1,r2);status=-1;
         }
-        if (r1->right>r2->left)
+        if (r1->right<r2->left)
             return status;
         if (r1->left!=r2->left || r1->right!=r2->right)
         {
@@ -341,7 +341,7 @@ namespace clpoly{
             _uroot_check(r1,(r1->left+r1->right)/2);
             _uroot_check(r2,(r2->left+r2->right)/2);
         }
-        if (r1->left>=r2->left)
+        if (r1->left<=r2->left)
             return status;
         return -status;
     }

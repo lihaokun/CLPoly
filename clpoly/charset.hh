@@ -222,7 +222,7 @@ namespace clpoly{
                         g.erase(g.end());
                         g.push_back(q);
                         W=wrsd(g,f);
-                        G.insert(Gii.end(),W.second.begin(),W.second.end());
+                        G.insert(G.end(),W.second.begin(),W.second.end());
                     }
                 }
                 Hi=Hii;

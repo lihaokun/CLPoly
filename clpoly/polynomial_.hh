@@ -15,14 +15,22 @@ namespace clpoly{
     using polynomial_=basic_polynomial<basic_monomial<comp>,Tc,comp>;
     using polynomial_ZZ=polynomial_<ZZ>;
     using polynomial_QQ=polynomial_<QQ>;
-
+    template<class Tc,class comp>
+    void  poly_convert(int a,polynomial_<Tc,comp> & p)
+    {
+        basic_monomial<comp> m(p.comp_ptr());
+        
+        p={{std::move(m),a}};
+    }
     template<class Tc,class comp>
     void  poly_convert(variable v,polynomial_<Tc,comp> & p)
     {
-        p={{monomial(v),1}};
+        basic_monomial<comp> m(p.comp_ptr());
+        m.push_back({v,1});
+        p={{std::move(m),1}};
     }
     template<class Tc,class comp>
-    void  poly_convert(monomial m,polynomial_<Tc,comp> & p)
+    void  poly_convert(basic_monomial<comp> m,polynomial_<Tc,comp> & p)
     {
         p={{std::move(m),1}};
     }

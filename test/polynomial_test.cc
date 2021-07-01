@@ -64,7 +64,10 @@ int main(){
     // std::cout<< p<<std::endl;
     clpoly::polynomial_ZZ f=x*pow(y,2);
     clpoly::polynomial_ZZ g=2*pow(y,3)-pow(y,2)+pow(x,2)*y;
-       f=-pow(x,2)*pow(z,3) - pow(x,4) - pow(z,4) + pow(x,2) + 2*pow(z,2) - 1;
+    clpoly::variable x1("x1"),x2("x2"),x3("x3");
+    f=2*(2-7*x1+pow(x1,2)*x2)-(x3-x1);
+    std::cout<<"f:="<<f<<":"<<std::endl;
+    f=-pow(x,2)*pow(z,3) - pow(x,4) - pow(z,4) + pow(x,2) + 2*pow(z,2) - 1;
     g=-pow(r,2)*pow(x,2) + pow(x,4) + pow(x,2)*pow(z,2) + pow(z,4) +x- 2*pow(z,2) + 1;
     // clpoly::polynomial_ZZ f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.2,10,-10);
     // clpoly::polynomial_ZZ g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z,d},10,0.2,10,-10);

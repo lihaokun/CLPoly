@@ -12,14 +12,14 @@ int main(int argc, char const *argv[])
         clpoly::variable r("r");
     clpoly::polynomial_ZZ f1,f2,f3,f4,f,g,G;
 
-    
+    std::vector<clpoly::variable> vars={x,y,z};
     time_t t;
     double s1=0,s2=0;
-    for (int i=0;i<100;++i)
+    for (int i=0;i<10;++i)
     {
         //std::cout<<"test "<<i<<":\n";
-        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.05,10,-10);
-        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.05,10,-10);
+        f=clpoly::random_polynomial<clpoly::ZZ>(vars,10,0.01,10,-10);
+        g=clpoly::random_polynomial<clpoly::ZZ>(vars,10,0.01,10,-10);
         std::cout<<"f["<<i+1<<"]="<<f<<";"<<std::endl;
         std::cout<<"g["<<i+1<<"]="<<g<<";"<<std::endl; 
         t=clock();

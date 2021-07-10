@@ -189,13 +189,13 @@ namespace clpoly{
                 return *this;
             }
 
-            // template <class type>
-            // inline basic_polynomial & operator=(const type &in)
-            // {
-            //     std::cout<<"new operator=\n";
-            //     poly_convert(in,*this);
-            //     return *this;
-            // }
+            template <class type>
+            inline basic_polynomial & operator=(const type &in)
+            {
+                // std::cout<<"new operator=\n";
+                poly_convert(in,*this);
+                return *this;
+            }
 
             constexpr auto size() const {return this->__data.size();}
             constexpr iterator begin() {return this->__data.begin();}

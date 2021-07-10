@@ -40,6 +40,10 @@ int main(){
     clpoly::variable r("r");
     
     clpoly::polynomial_ZZ p={{{{x,1}},1}};
+    std::cout<<"p="<< p<<std::endl;
+    p=1;
+    std::cout<<"p="<< p<<std::endl;
+    
     clpoly::monomial m=pow(x,3);
     p=z*z;
     time_t t;

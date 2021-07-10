@@ -118,12 +118,12 @@ namespace clpoly{
             {
                 this->normalization();
             }
-            basic_polynomial(const std::vector<std::pair<Tm,Tc>> & v)
-            :__data(v)
-            {
-                this->normalization();
-            }
-            basic_polynomial(std::vector<std::pair<Tm,Tc>> && v)
+            // basic_polynomial(const std::vector<std::pair<Tm,Tc>> & v)
+            // :__data(v)
+            // {
+            //     this->normalization();
+            // }
+            basic_polynomial(std::vector<std::pair<Tm,Tc>>  v)
             :__data(std::move(v))
             {
                 this->normalization();
@@ -165,13 +165,13 @@ namespace clpoly{
                 return *this;
             }
 
-            // inline basic_polynomial & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
-            // {
-            //     this->__data=init;
-            //     // this->__status.clear();
-            //     this->normalization();
-            //     return *this;
-            // }
+            inline basic_polynomial & operator=( std::initializer_list<std::pair<Tm,Tc>> init)
+            {
+                this->__data=init;
+                // this->__status.clear();
+                this->normalization();
+                return *this;
+            }
 
             // inline basic_polynomial & operator=(const std::vector<std::pair<Tm,Tc>> & init)
             // {
@@ -181,13 +181,13 @@ namespace clpoly{
             //     return *this;
             // }
 
-            // inline basic_polynomial & operator=(std::vector<std::pair<Tm,Tc>> && init)
-            // {
-            //     this->__data=std::move(init);
-            //     // this->__status.clear();
-            //     this->normalization();
-            //     return *this;
-            // }
+            inline basic_polynomial & operator=(std::vector<std::pair<Tm,Tc>>  init)
+            {
+                this->__data=std::move(init);
+                // this->__status.clear();
+                this->normalization();
+                return *this;
+            }
 
             // template <class type>
             // inline basic_polynomial & operator=(const type &in)

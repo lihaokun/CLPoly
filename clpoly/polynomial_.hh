@@ -183,7 +183,7 @@ namespace clpoly{
     
     polynomial_ZZ operator-(int64_t i,monomial  m)
     {
-        return polynomial_ZZ({{std::move(m),1},{{},-i}});
+        return polynomial_ZZ({{std::move(m),-1},{{},i}});
     }
     
     polynomial_ZZ operator*( monomial  m,int64_t i)

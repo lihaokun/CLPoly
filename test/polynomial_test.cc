@@ -38,10 +38,12 @@ int main(){
     clpoly::variable z("z");
     clpoly::variable d("d");
     clpoly::variable r("r");
-    
+    clpoly::variable x1("x1"),x2("x2"),x3("x3");
+    clpoly::variable x7("x7"),x8("x8");
     clpoly::polynomial_ZZ p={{{{x,1}},1}};
     std::cout<<"p="<< p<<std::endl;
     p=1;
+    p=2*(2-x1)*x8+x7-2;
     std::cout<<"p="<< p<<std::endl;
     
     clpoly::monomial m=pow(x,3);
@@ -68,7 +70,7 @@ int main(){
     // std::cout<< p<<std::endl;
     clpoly::polynomial_ZZ f=x*pow(y,2);
     clpoly::polynomial_ZZ g=2*pow(y,3)-pow(y,2)+pow(x,2)*y;
-    clpoly::variable x1("x1"),x2("x2"),x3("x3");
+    
     f=2*(2-7*x1+pow(x1,2)*x2)-(x3-x1);
     std::cout<<"f:="<<f<<":"<<std::endl;
     f=-pow(x,2)*pow(z,3) - pow(x,4) - pow(z,4) + pow(x,2) + 2*pow(z,2) - 1;

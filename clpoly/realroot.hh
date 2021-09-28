@@ -188,6 +188,7 @@ namespace clpoly{
     //     public
 
     // };
+   
     class uroot
     {
         public:
@@ -214,6 +215,7 @@ namespace clpoly{
                 u.is_inf=-1;
                 return u;
             }
+            int static comp(uroot * r1,uroot* r2);
             inline bool operator==(uroot & u)
             {
                 return comp(this,&u)==0;
@@ -317,7 +319,7 @@ namespace clpoly{
         }
         return true;    
     }
-    int comp(uroot * r1,uroot* r2) // 1:r1<r2;0:r1=r2;-1:r1>r2
+    int  uroot::comp(uroot * r1,uroot* r2) // 1:r1<r2;0:r1=r2;-1:r1>r2
     {
         if (r1->is_inf=-1)
             return int(r2->is_inf!=-1);

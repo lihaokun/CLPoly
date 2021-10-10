@@ -8,6 +8,7 @@
 
 #include <clpoly/polynomial_.hh>
 #include <list>
+#include <map>
 #include <string>
 
 namespace clpoly{
@@ -86,7 +87,7 @@ namespace clpoly{
     }
 
     template <class Tc,class var_order>
-    constexpr std::pair<variable,int64_t> get_last_var_deg(const polynomial_<Tc,lex_<var_order>>& p)
+    std::pair<variable,int64_t> get_last_var_deg(const polynomial_<Tc,lex_<var_order>>& p)
     {
         variable v=get_first_var(p);
         int64_t d=get_first_deg(p);
@@ -707,6 +708,54 @@ namespace clpoly{
                 if (j.first==v)
                 {
                     z*=pow(c,j.second);
+                }
+                else
+                    m.push_back(j);
+            if (!f && m!=m1)
+            {
+                if (z1)
+                    Pout.push_back({std::move(m1),std::move(z1)});
+                m1=std::move(m);
+                z1=std::move(z);
+            }
+            else if (f)
+            {
+                m1=std::move(m);
+                z1=std::move(z);
+                f=false;
+            }
+            else
+            {
+                z1+=z;
+            }
+
+            
+        }
+        if (z1)
+            Pout.push_back({std::move(m1),std::move(z1)});
+        Pout.normalization();
+        return Pout;
+    }
+    
+    template <class Tc, class To>
+    polynomial_<Tc,To> association(const polynomial_<Tc,To>& p,const std::map<variable,Tc> & ass_list)
+    {
+        polynomial_<Tc,To> Pout(p.comp_ptr());
+        basic_monomial<To> m(p.comp_ptr());
+        basic_monomial<To> m1(p.comp_ptr());
+        bool f=true;
+        Tc z, z1;
+        for (auto &i:p)
+        {
+
+            m.clear();m.reserve(i.first.size());
+            z=i.second;
+            for (auto& j:i.first)
+            {
+                auto ptr=ass_list.find(j.first);
+                if (ptr!=ass_list.end())
+                {
+                    z*=pow(ptr->second,j.second);
                 }
                 else
                     m.push_back(j);

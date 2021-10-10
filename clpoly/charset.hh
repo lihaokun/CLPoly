@@ -63,7 +63,7 @@ namespace clpoly{
         return G;
     }
 
-    template <class comp>
+    template <class comp> //重复功能 应该换成squarefreebasis
     std::vector<polynomial_<ZZ,comp>> sqrfree(const std::vector<polynomial_<ZZ,comp>> & F)
     {
         //去掉多项式组中每个多项式系数公因子，去平方

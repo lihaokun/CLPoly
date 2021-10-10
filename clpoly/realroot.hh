@@ -183,11 +183,14 @@ namespace clpoly{
         
         return l;
     }
-    // class QQ_assignment
-    // {
-    //     public
+    template <class comp>
+    std::vector<std::pair<QQ,QQ>> realroot(const upolynomial_<ZZ>& f)
+    {
+        upolynomial_<ZZ> G=f/polynomial_GCD(f,derivative(f))
+        return uspensky(G);
+    }
 
-    // };
+
    
     class uroot
     {

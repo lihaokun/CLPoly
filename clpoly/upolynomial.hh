@@ -124,7 +124,20 @@ namespace clpoly{
         }
         p_out.normalization();
     }
-
+    template <class T>
+    upolynomial_<T>  derivative(const upolynomial_<T> & p)
+    {
+        upolynomial_<T> Pout;
+        int64_t b;
+        for (auto &i:p)
+        {
+            if (i.first.deg())
+            {
+                Pout.push_back({umonomial(i.first.deg()-1),i.second*i.first.deg()});
+            }    
+        }
+        return Pout;
+    }
     
     
 

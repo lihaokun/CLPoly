@@ -107,15 +107,18 @@ namespace clpoly{
         {
             R.clear();
             C=basset<Tc>(F.begin(),F.end());
-            //std::cout<<"C="<<C<<std::endl;
+            // std::cout<<"C="<<C<<std::endl;
             // SHOW(C)
             if(is_number(C[0])) return C;
             for(auto f:F)
             {
+                // std::cout<<"f1="<<f<<std::endl;
                 for(auto c=C.rbegin();c<C.rend();c++)
                 {
                     f=prem(f,*c,get_first_var(*c),false);
                 }
+                // std::cout<<"f2="<<f<<std::endl;
+                
                 if(!f.empty()) 
                 {   
                     R.push_back(f);
@@ -123,7 +126,7 @@ namespace clpoly{
                 }
             }
 
-            //std::cout<<"R="<<R<<std::endl;
+            // std::cout<<"R="<<R<<std::endl;
             // SHOW(R)
             if (R.empty()) break;
             for (auto &i:R)

@@ -186,7 +186,7 @@ namespace clpoly{
     template <class comp>
     std::vector<std::pair<QQ,QQ>> realroot(const upolynomial_<ZZ>& f)
     {
-        upolynomial_<ZZ> G=f/polynomial_GCD(f,derivative(f))
+        upolynomial_<ZZ> G=f/polynomial_GCD(f,derivative(f));
         return uspensky(G);
     }
 

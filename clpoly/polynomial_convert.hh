@@ -1,0 +1,107 @@
+/**
+ * @file polynomial_convert.hh
+ * @author 李昊坤 (ker@pm.me)
+ * @brief 定义poly_convert
+ * 
+ */
+#ifndef CLPOLY_POLYNOMIAL_CONVERT__HH
+#define CLPOLY_POLYNOMIAL_CONVERT__HH
+#include <clpoly/monomial.hh>
+#include <clpoly/number.hh>
+#include <clpoly/basic_polynomial.hh>
+#include <clpoly/polynomial_type.hh>
+namespace clpoly{
+    template<class Tc,class comp>
+    void  poly_convert(int a,polynomial_<Tc,comp> & p)
+    {
+        basic_monomial<comp> m(p.comp_ptr());
+        
+        p={{std::move(m),a}};
+    }
+    template<class Tc,class comp>
+    void  poly_convert(variable v,polynomial_<Tc,comp> & p)
+    {
+        basic_monomial<comp> m(p.comp_ptr());
+        m.push_back({v,1});
+        p={{std::move(m),1}};
+    }
+    template<class Tc,class comp>
+    void  poly_convert(basic_monomial<comp> m,polynomial_<Tc,comp> & p)
+    {
+        p={{std::move(m),1}};
+    }
+
+    template<class T1,class T2,class comp1,class comp2>
+    void poly_convert(const polynomial_<T1,comp1>& p_in,polynomial_<T2,comp2> & p_out)
+    {
+        assert((void*)&p_in!=(void*)&p_out);
+        p_out.clear();
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
+        {
+            m=i.first.data();
+            p_out.push_back({std::move(m),i.second});
+        }
+        p_out.normalization();
+    }
+    template<class T1,class T2,class comp1,class comp2>
+    void poly_convert(polynomial_<T1,comp1>&& p_in,polynomial_<T2,comp2> & p_out)
+    {
+        assert((void*)&p_in!=(void*)&p_out);
+        p_out.clear();
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
+        {
+            m=std::move(i.first.data());
+            p_out.push_back({std::move(m),std::move(i.second)});
+        }
+        p_out.normalization();
+        p_in.clear();
+    }
+    template<class T2,class comp1,class comp2>
+    void poly_convert(const polynomial_<Zp,comp1>& p_in,polynomial_<T2,comp2> & p_out)
+    {
+        assert((void*)&p_in!=(void*)&p_out);
+        p_out.clear();
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
+        {
+            m=i.first.data();
+            p_out.push_back({std::move(m),uint64_t(i.second)});
+        }
+        p_out.normalization();
+    }
+    template<class T2,class comp1,class comp2>
+    void poly_convert(polynomial_<Zp,comp1>&& p_in,polynomial_<T2,comp2> & p_out)
+    {
+        assert((void*)&p_in!=(void*)&p_out);
+        p_out.clear();
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
+        {
+            m=std::move(i.first.data());
+            p_out.push_back({std::move(m),uint64_t(i.second)});
+        }
+        p_out.normalization();
+        p_in.clear();
+    }
+    template<class comp1,class comp2>
+    void poly_convert(const polynomial_<QQ,comp1>& p_in,polynomial_<ZZ,comp2> & p_out)
+    {
+        assert((void*)&p_in!=(void*)&p_out);
+        p_out.clear();
+        ZZ den=1;
+        for (auto &i:p_in)
+        {
+            den=lcm(den,i.second.get_den());
+        }
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
+        {
+            m=i.first.data();
+            p_out.push_back({std::move(m),i.second.get_num()*(den/i.second.get_den())});
+        }
+        p_out.normalization();
+    }
+}
+#endif

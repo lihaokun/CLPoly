@@ -759,6 +759,7 @@ namespace clpoly{
                 }
                 else
                     m.push_back(j);
+            }
             if (!f && m!=m1)
             {
                 if (z1)

@@ -10,6 +10,7 @@
 #include <boost/math/special_functions/prime.hpp>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 #include <cassert>
 #include <random>
 

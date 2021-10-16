@@ -102,7 +102,7 @@ namespace clpoly{
     //     while (E-B>width)
     //     {
     //         QQ mid=(B+E)/2;
-    //         if (!association<QQ,ZZ,QQ>(G,mid))
+    //         if (!assign<QQ,ZZ,QQ>(G,mid))
     //         {
     //             B=E=mid;
     //             return void();
@@ -135,7 +135,7 @@ namespace clpoly{
             return void();
         }
         QQ mid=(B+E)/2;
-        if (!association<QQ,ZZ,QQ>(G,mid))
+        if (!assign<QQ,ZZ,QQ>(G,mid))
         {
             l.push_back({mid,mid});
         }
@@ -269,9 +269,9 @@ namespace clpoly{
     {
         if (mid>=r->left || mid <=r->right)
             return void();
-        QQ rig_ass=association<QQ,ZZ,QQ>(r->poly,r->right);
-        QQ mid_ass=association<QQ,ZZ,QQ>(r->poly,mid);
-        QQ left_ass=association<QQ,ZZ,QQ>(r->poly,r->left);
+        QQ rig_ass=assign<QQ,ZZ,QQ>(r->poly,r->right);
+        QQ mid_ass=assign<QQ,ZZ,QQ>(r->poly,mid);
+        QQ left_ass=assign<QQ,ZZ,QQ>(r->poly,r->left);
         if (mid_ass==0)
         {
             r->left=r->right=mid;
@@ -306,10 +306,10 @@ namespace clpoly{
     }
     bool _uroot_check(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b)
     {
-        QQ rig_ass=association<QQ,ZZ,QQ>(G,b);
+        QQ rig_ass=assign<QQ,ZZ,QQ>(G,b);
         if (a==b && rig_ass==0)
             return true;
-        QQ left_ass=association<QQ,ZZ,QQ>(G,a);
+        QQ left_ass=assign<QQ,ZZ,QQ>(G,a);
         if (sgn(rig_ass)*sgn(left_ass)<0)
             return true;
         if (sgn(rig_ass)*sgn(left_ass)>0)

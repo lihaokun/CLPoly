@@ -72,7 +72,7 @@ namespace clpoly{
         return op.deg()>=0;    
     }
     template<class Tc>
-    Tc association(const upolynomial_<Tc> &P,const Tc & a)
+    Tc assign(const upolynomial_<Tc> &P,const Tc & a)
     {
         Tc O=0;
         for (auto &i:P)
@@ -82,7 +82,7 @@ namespace clpoly{
         return O;
     }
     template<class Tc,class Tc2,class Tc3>
-    Tc association(const upolynomial_<Tc2> &P,const Tc3 & a)
+    Tc assign(const upolynomial_<Tc2> &P,const Tc3 & a)
     {
         Tc O=0;
         for (auto &i:P)

@@ -642,9 +642,9 @@ namespace clpoly{
                 for (;p_tmp>0;p_tmp-=v_bool[j_tmp],++j_tmp);
                 v_bool[j_tmp-1]=0;p_.number()=j_tmp-1;
 
-                F_v=association(F,v,p_);
-                G_v=association(G,v,p_);
-                lc_v=association(Lc_gcd,v,p_);
+                F_v=assign(F,v,p_);
+                G_v=assign(G,v,p_);
+                lc_v=assign(Lc_gcd,v,p_);
                 //std::cout<<v<<"->"<<p_<<std::endl;
                 //std::cout<<"F_v:"<<F_v<<std::endl;
                 //std::cout<<"G_v:"<<G_v<<std::endl;

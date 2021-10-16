@@ -29,7 +29,7 @@ namespace clpoly{
     // template <class Tc,class comp>
     // inline polynomial_<Tc,comp> resultant(const polynomial_<Tc,comp> &G,const polynomial_<Tc,comp> & F,const variable & v);
     // template <class Tc, class To>
-    // polynomial_<Tc,To> association(const polynomial_<Tc,To>& p,const variable & v,const Tc & c);
+    // polynomial_<Tc,To> assign(const polynomial_<Tc,To>& p,const variable & v,const Tc & c);
     // template <class compare>
     // polynomial_<Zp,compare> polynomial_mod(polynomial_<ZZ,compare> && p, uint32_t prime)
 /*======================================实现===============================================*/
@@ -692,7 +692,7 @@ namespace clpoly{
     }
 
     template <class Tc, class To>
-    polynomial_<Tc,To> association(const polynomial_<Tc,To>& p,const variable & v,const Tc & c)
+    polynomial_<Tc,To> assign(const polynomial_<Tc,To>& p,const variable & v,const Tc & c)
     {
         polynomial_<Tc,To> Pout(p.comp_ptr());
         basic_monomial<To> m(p.comp_ptr());
@@ -738,7 +738,7 @@ namespace clpoly{
     }
     
     template <class Tc, class To>
-    polynomial_<Tc,To> association(const polynomial_<Tc,To>& p,const std::map<variable,Tc> & ass_list)
+    polynomial_<Tc,To> assign(const polynomial_<Tc,To>& p,const std::map<variable,Tc> & ass_list)
     {
         polynomial_<Tc,To> Pout(p.comp_ptr());
         basic_monomial<To> m(p.comp_ptr());

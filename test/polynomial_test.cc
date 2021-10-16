@@ -8,6 +8,11 @@ clpoly::polynomial_ZZ read_file(std::string s)
 {
     long numn,numv;
     std::ifstream fin(s);
+    if (!fin)
+    {
+        // std::cout<<"无法读取文件!\n";
+        throw "无法读取文件!";
+    }
     fin>>numn>>numv;
     std::vector<clpoly::variable> var;
     var.reserve(numv);
@@ -98,7 +103,16 @@ int main(){
     //     std::cout<<i.first<<":"<<i.second<<" ";
     // std::cout<<std::endl<<p.degree()<<std::endl;
     t=clock();
-    auto PP=read_file("/home/ker/Documents/Bigpoly/j621_data.txt");
+    clpoly::polynomial_ZZ PP;
+    try
+    {   
+        PP=read_file("j621_data.txt");
+    }
+    catch(const char* msg)
+    {
+        std::cout<<msg<<std::endl;
+        return 1;
+    }
     std::cout<<PP.size()<<std::endl;
     std::cout<<"( "<<double(clock()-t)/CLOCKS_PER_SEC<<"s)\n";
     t=clock();

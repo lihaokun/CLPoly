@@ -98,7 +98,7 @@ namespace clpoly{
         return is_squarefree(F_);
     }
     template<class var_order>
-    std::vector<std::pair<polynomial_<ZZ,lex_<var_order>>,uint64_t>> squarefree (const polynomial_<ZZ,lex_<var_order>> &  F)
+    std::vector<std::pair<polynomial_<ZZ,lex_<var_order>>,uint64_t>> squarefreefactorize (const polynomial_<ZZ,lex_<var_order>> &  F)
     {
         // std::cout<<"F:"<<F<<std::endl;
         if (F.empty())
@@ -107,7 +107,7 @@ namespace clpoly{
             return {{F,1}};
         auto f_cont=cont(F);
         auto F_=F/f_cont;
-        auto lst=squarefree(f_cont);
+        auto lst=squarefreefactorize(f_cont);
         polynomial_<ZZ,lex_<var_order>> F_1(F.comp_ptr()),F_2(F.comp_ptr()),F_3(F.comp_ptr());
         for(uint64_t i=1;;++i)
         {
@@ -141,11 +141,11 @@ namespace clpoly{
         return lst;
     }
     template <class comp>
-    std::vector<std::pair<polynomial_<ZZ,comp>,uint64_t>> squarefree (const polynomial_<ZZ,comp> &  F)
+    std::vector<std::pair<polynomial_<ZZ,comp>,uint64_t>> squarefreefactorize (const polynomial_<ZZ,comp> &  F)
     {
         polynomial_<ZZ,lex> F_;
         poly_convert(F,F_);
-        auto lst=squarefree(F_);
+        auto lst=squarefreefactorize(F_);
         std::vector<std::pair<polynomial_<ZZ,comp>,uint64_t>> lst_(lst.size(),{polynomial_<ZZ,comp>(F.comp_ptr()),0});
         for (uint64_t i=0;i<lst.size();++i)
         {
@@ -155,61 +155,78 @@ namespace clpoly{
         return lst_;
     }
     template<class var_order>
-    std::vector<polynomial_<ZZ,lex_<var_order>>> squarefreebasis (std::vector<polynomial_<ZZ,lex_<var_order>>>  F)
+    std::pair<std::vector<polynomial_<ZZ,lex_<var_order>>>,
+              std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>  
+    squarefreebasis (const std::vector<polynomial_<ZZ,lex_<var_order>>>&  F)
     {
         std::vector<polynomial_<ZZ,lex_<var_order>>> lst,lst_;
-        for (auto &i:F)
+        std::vector<std::vector<std::pair<uint64_t,uint64_t>>> I,I_;
+        for (size_t i=0;i<F.size();++i)
         {
-            lst_.clear();   
-            auto l_=squarefree(i);
+            lst_.clear(); 
+            I_.clear(); 
+            std::vector<std::pair<polynomial_<ZZ,lex_<var_order>>,uint64_t>>  l_=squarefreefactorize(F[i]);
             if (l_.empty())
                 continue;
             auto l_ptr=l_.begin();
             for (++l_ptr;l_ptr!=l_.end();++l_ptr)
             {
-                i=std::move(l_ptr->first);
-                for (auto &j:lst)
+                auto tmp=std::move(l_ptr->first);
+                for (size_t j=0;j<lst.size();++j)
                 {
-                    auto F1=polynomial_GCD(j,i);
+                    auto F1=polynomial_GCD(lst[j],tmp);
                     if (!is_number(F1))
                     {
-                        i=i/F1;
-                        if (F1!=j)
+                        tmp=tmp/F1;
+                        if (F1!=lst[j])
                         {
-                            j=j/F1;
+                            lst[j]=lst[j]/F1;
                             lst_.push_back(std::move(F1));
+                            I_.push_back(I[j]);
+                            I_.back().push_back({i,l_ptr->second});
                         }
-                        if (is_number(i))
+                        else{
+                            I[j].push_back({i,l_ptr->second});
+                        }
+                        if (is_number(tmp))
                             break;
                     }
                 }
-                if (!is_number(i))
-                    lst_.push_back(std::move(i));
+                if (!is_number(tmp))
+                {
+                    lst_.push_back(std::move(tmp));
+                    I_.push_back({{i,l_ptr->second}});
+                }
             }
-            lst.reserve(lst.size()+lst_.size());
-            for (auto &j:lst_)
-            {
-                 lst.push_back(std::move(j));
-            }
+            // lst.reserve(lst.size()+lst_.size());
+            lst.insert(lst.end(),lst_.begin(),lst_.end());
+            I.insert(I.end(),I_.begin(),I_.end());
+            // for (auto &j:lst_)
+            // {
+            //      lst.push_back(std::move(j));
+            // }
         }
-        return lst;
+        return {std::move(lst),std::move(I)};
     }
     
     template <class comp>
-    std::vector<polynomial_<ZZ,comp>> squarefreebasis (const std::vector<polynomial_<ZZ,comp>> &  F)
+    std::pair<std::vector<polynomial_<ZZ,comp>>,
+              std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>      
+    squarefreebasis (const std::vector<polynomial_<ZZ,comp>> &  F)
     {
         std::vector<polynomial_<ZZ,comp>> L;
         if (F.empty())
-            return L;
+            return {{},{}};
         std::vector<polynomial_<ZZ,lex>> lst;
         polynomial_<ZZ,lex> p;
-        lst.resize(F.size());
+        lst.reserve(F.size());
         for (auto &i:F)
         {
             poly_convert(i,p);
             lst.push_back(std::move(p));
         }
-        lst=squarefreebasis(lst);
+        auto l_=squarefreebasis(lst);
+        lst=std::move(l_.first);
         L.reserve(lst.size());
         polynomial_<ZZ,comp> p1(F.front().comp_ptr());
         for (auto &i:lst)
@@ -217,7 +234,7 @@ namespace clpoly{
             poly_convert(i,p1);
             L.push_back(std::move(p1));
         }
-        return L;
+        return {std::move(L),std::move(l_.second)};
     }
     
 

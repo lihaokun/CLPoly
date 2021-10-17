@@ -34,7 +34,7 @@ int main(int argc, char const *argv[])
     clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> g_(&mo);
     
     clpoly::poly_convert(f,f_);
-    auto l=clpoly::squarefree(f);
+    auto l=clpoly::squarefreefactorize(f);
     std::cout<<f<<":";
     for(auto &i:l)
     {
@@ -43,37 +43,44 @@ int main(int argc, char const *argv[])
     std::cout<<std::endl;
 
     auto l1=clpoly::squarefreebasis(std::vector<clpoly::polynomial_ZZ>({f,f}));
-    std::cout<<f<<":";
-    for(auto &i:l1)
+    std::cout<<f<<","<<f<<":";
+    for(auto &i:l1.first)
     {
         std::cout<<i<<" ";
     }
-    std::cout<<std::endl;
-    
-    time_t t;
-    double s1=0,s2=0;
-    std::string s;
-    std::cout<<"Test round:";
-    std::cin>>s;
-    int n=std::stoi(s);
-    for (int i=0;i<n;++i)
+    std::cout<<" | ";
+    for(auto &i:l1.second)
     {
-        //std::cout<<"test "<<i<<":\n";
-        f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.5,10,-10);
-        g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.5,10,-10);
-        // clpoly::poly_convert(f,f_);
-        // clpoly::poly_convert(g,g_);
-        std::cout<<"f["<<i+1<<"]="<<f<<";"<<std::endl;
-        std::cout<<"g["<<i+1<<"]="<<g<<";"<<std::endl; 
-        t=clock();
-        // auto f1=clpoly::polynomial_GCD(f_*f_,g_*f_);
-         auto f1=clpoly::polynomial_GCD(f*f,g*f);
-        s1+=double(clock()-t)/CLOCKS_PER_SEC;
-        std::cout<<"o["<<i+1<<"]="<<f1<<";"<<std::endl; 
-        std::cout<<"t["<<i+1<<"]="<<double(clock()-t)/CLOCKS_PER_SEC <<";"<<std::endl; 
-        
+        std::cout<<"{";
+        for(auto &j:i)
+            std::cout<<j.first<<"*"<<j.second<<" ";
+        std::cout<<"} ";
     }
-    std::cout<<"(*GCD    total time:"<<s1<<"*)\n";
+    std::cout<<std::endl;
+    // time_t t;
+    // double s1=0,s2=0;
+    // std::string s;
+    // std::cout<<"Test round:";
+    // std::cin>>s;
+    // int n=std::stoi(s);
+    // for (int i=0;i<n;++i)
+    // {
+    //     //std::cout<<"test "<<i<<":\n";
+    //     f=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.5,10,-10);
+    //     g=clpoly::random_polynomial<clpoly::ZZ>({x,y,z},10,0.5,10,-10);
+    //     // clpoly::poly_convert(f,f_);
+    //     // clpoly::poly_convert(g,g_);
+    //     std::cout<<"f["<<i+1<<"]="<<f<<";"<<std::endl;
+    //     std::cout<<"g["<<i+1<<"]="<<g<<";"<<std::endl; 
+    //     t=clock();
+    //     // auto f1=clpoly::polynomial_GCD(f_*f_,g_*f_);
+    //      auto f1=clpoly::polynomial_GCD(f*f,g*f);
+    //     s1+=double(clock()-t)/CLOCKS_PER_SEC;
+    //     std::cout<<"o["<<i+1<<"]="<<f1<<";"<<std::endl; 
+    //     std::cout<<"t["<<i+1<<"]="<<double(clock()-t)/CLOCKS_PER_SEC <<";"<<std::endl; 
+        
+    // }
+    // std::cout<<"(*GCD    total time:"<<s1<<"*)\n";
     // std::cout<<"resultant_v1 total time:"<<s2<<std::endl;
     return 0;
 }

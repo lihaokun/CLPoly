@@ -10,6 +10,7 @@
 #include <clpoly/upolynomial.hh>
 #include <clpoly/polynomial_gcd.hh>
 #include <vector>
+#include <stdexcept>
 namespace clpoly{
     const upolynomial_<ZZ> __upolynomial_x_plus_1={{1,1},{0,1}};
     uint64_t coeffsignchanges(const upolynomial_<ZZ>& G)
@@ -49,7 +50,7 @@ namespace clpoly{
     {
         if (G.empty())
             return G;
-        auto m=G.front().first.deg();
+        // auto m=G.front().first.deg();
         for (auto &i:G)
         {
             i.second*=pow(B,i.first.deg());
@@ -172,7 +173,7 @@ namespace clpoly{
         if (G.empty()|| G.front().first.empty())
             return l;
         ZZ B=RealRootBound(G);
-        std::cout<<B<<std::endl;
+        // std::cout<<B<<std::endl;
         subuspensky(_upolynomial_Bto1(G,-B),l1,0,B);
         subuspensky(_upolynomial_Bto1(G,B),l2,0,B);
         l.reserve(l1.size()+l2.size());
@@ -183,12 +184,182 @@ namespace clpoly{
         
         return l;
     }
-    template <class comp>
-    std::vector<std::pair<QQ,QQ>> realroot(const upolynomial_<ZZ>& f)
+
+    std::vector<upolynomial_<ZZ>> _upolynomial_1toinf(const std::vector<upolynomial_<ZZ>> &Gs)
     {
-        upolynomial_<ZZ> G=f/polynomial_GCD(f,derivative(f));
-        return uspensky(G);
+        std::vector<upolynomial_<ZZ>> Gout;
+        Gout.reserve(Gs.size());
+        for (auto & G:Gs)
+        {
+            if (G.empty())
+            {
+                Gout.push_back(G);
+                continue;
+            }
+            auto m=G.front().first.deg();
+            upolynomial_<ZZ> g,g_;
+            for (auto &i:G)
+            {
+                g_=pow(__upolynomial_x_plus_1,m-i.first.deg());
+                for (auto &j:g_)
+                {
+                    j.second*=i.second;
+                }
+                g=g+g_;
+            }
+            Gout.push_back(g);
+        }
+        return Gout;
     }
+    std::vector<upolynomial_<ZZ>>  _upolynomial_Bto1(std::vector<upolynomial_<ZZ>> Gs,const ZZ &B)
+    {
+        for (auto &G:Gs)
+        {
+            if (G.empty())
+                continue;
+            // auto m=G.front().first.deg();
+            for (auto &i:G)
+            {
+                i.second*=pow(B,i.first.deg());
+            }
+        }
+        return Gs;
+
+    }
+    void subuspensky(const std::vector<upolynomial_<ZZ>>& G,const std::vector<size_t>& I, std::vector<std::pair<QQ,QQ>>& l,std::vector<size_t>& index,const QQ & B=0,const QQ & E=1)
+    {
+        // std::cout<<"G:"<<G<<std::endl;
+        auto G_=_upolynomial_1toinf(G);
+        
+        std::vector<uint64_t> v;v.reserve(G_.size());
+        uint64_t v0=0;
+        uint64_t v1=0;
+        uint64_t v2=0;
+        size_t i_=0;
+        for (size_t i=0;i<G_.size();++i)
+        {
+            v.push_back(coeffsignchanges(G_[i]));
+            switch (v.back())
+            {
+            case 0:
+                ++v0;
+                break;
+            case 1:
+                i_=i;
+                ++v1;
+                break;
+
+            }
+        }
+        // uint64_t v=coeffsignchanges(G_);
+        // std::cout<<B<<" "<<E<<" "<<v<<std::endl;
+        if (v0==G.size())   return void();
+        if (v1==1 && v0==G.size()-1)
+        {
+            l.push_back({B,E});
+            index.push_back(I[i_]);
+            return void();
+        }
+        
+        QQ mid=(B+E)/2;
+        std::vector<upolynomial_<ZZ>> G_1;
+        std::vector<size_t> I_1;
+        G_1.reserve(G.size());
+        I_1.reserve(G.size());
+        for (size_t i=0;i<G_.size();++i)
+        {
+            if (!assign<QQ,ZZ,QQ>(G[i],mid))
+            {
+                l.push_back({mid,mid});
+                index.push_back(I[i]);
+                if (v[i]==1)
+                {
+                    v[i]=0;
+                }
+            }
+        }
+        for (size_t i=0;i<G.size();++i)
+        {
+            if (v[i]>0)
+            {
+                G_1.push_back(_upolynomial_01to012(G[i]));
+                I_1.push_back(I[i]);
+            }
+        }
+        subuspensky(G_1,I_1,l,index,B,mid);
+        G_1.clear();
+        for (size_t i=0;i<G.size();++i)
+        {
+            if (v[i]>0)
+            {
+                G_1.push_back(_upolynomial_01to121(G[i]));
+            }
+        }
+        subuspensky(G_1,I_1,l,index,mid,E);
+    } 
+
+    std::pair<std::vector<std::pair<QQ,QQ>>,std::vector<size_t>> uspensky(std::vector<upolynomial_<ZZ>> G)//输入无平方基
+    {
+        std::vector<std::pair<QQ,QQ>> l,l1,l2;
+        std::vector<size_t> I;
+        I.reserve(G.size());
+        std::vector<size_t> index1,index2;
+        {
+            size_t tmp=0;
+            for (size_t i=0;i<G.size();++i)
+            {
+                if (!is_number(G[i]))
+                {
+                    I.push_back(i);
+                    if (i!=tmp)
+                        G[tmp]=std::move(G[i]);
+                    ++tmp;
+
+                }
+            }
+            if (tmp==0)
+                return {{},{}};
+            G.resize(tmp);
+        }
+
+        ZZ B=0;
+        for (auto &i:G)
+        {
+            auto tmp=RealRootBound(i);
+            if (tmp>B)
+                B=std::move(tmp);
+        }
+        // std::cout<<B<<std::endl;
+        
+        subuspensky(_upolynomial_Bto1(G,-B),I,l1,index1,0,B);
+        subuspensky(_upolynomial_Bto1(G,B),I,l2,index2,0,B);
+        l.reserve(l1.size()+l2.size());
+        index1.insert(index1.end(),index2.begin(),index2.end());
+        for (auto i=l1.rbegin();i!=l1.rend();++i)
+            l.push_back({-i->second,-i->first});
+        for (auto &i:l2)
+            l.push_back(i);
+        
+        return {l,index1};
+    }
+
+
+    // template <class comp>
+    // std::vector<std::pair<QQ,QQ>> realroot(const polynomial_ZZ& f)
+    // {
+    //     if (is_number(f))
+    //         return {};
+    //     if (get_variables(f).size()!=1)
+    //         throw std::invalid_argument("realroot:f不是单变量的.");
+    //     auto L=squarefreebasis(f);
+    //     return uspensky(G);
+    // }
+    // template <class comp>
+    // std::vector<std::pair<QQ,QQ>> realroot(const upolynomial_<ZZ>& f)
+    // {
+    //     upolynomial_<ZZ> G=f/polynomial_GCD(f,derivative(f));
+    //     return uspensky(G);
+    // }
 
 
    

@@ -138,7 +138,24 @@ namespace clpoly{
         }
         return Pout;
     }
-    
+    template <class Tc>
+    constexpr bool is_number(const upolynomial_<Tc> & F)
+    {
+        return (F.empty() || F.size()==1 && F.front().first.empty());
+    }
+    template <class Tc>
+    Tc cont(const upolynomial_<Tc> & F)
+    {
+        if (F.empty())
+            return 1;
+        auto ptr=F.begin();
+        auto I=(ptr++).second;
+        for (;ptr!=F.end();++ptr)
+        {
+            I=gcd(I,ptr->second);
+        }
+        return I;
+    }
     
 
 

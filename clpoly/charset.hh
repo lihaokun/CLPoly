@@ -56,7 +56,7 @@ namespace clpoly{
         polynomial_<ZZ,comp> G(F.comp_ptr());
         G=1;
         if(F.empty()) return F;
-        auto lst=squarefree(F);
+        auto lst=squarefreefactorize(F);
         
         for(auto i=lst.begin()+1;i<lst.end();i++)
             G=G*(*i).first;

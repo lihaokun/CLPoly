@@ -228,13 +228,12 @@ namespace clpoly{
     }
     void subuspensky(const std::vector<upolynomial_<ZZ>>& G,const std::vector<size_t>& I, std::vector<std::pair<QQ,QQ>>& l,std::vector<size_t>& index,const QQ & B=0,const QQ & E=1)
     {
-        // std::cout<<"G:"<<G<<std::endl;
+        // std::cout<<B<<" "<<E<<std::endl;
         auto G_=_upolynomial_1toinf(G);
         
         std::vector<uint64_t> v;v.reserve(G_.size());
         uint64_t v0=0;
         uint64_t v1=0;
-        uint64_t v2=0;
         size_t i_=0;
         for (size_t i=0;i<G_.size();++i)
         {
@@ -276,6 +275,7 @@ namespace clpoly{
                 {
                     v[i]=0;
                 }
+                break;
             }
         }
         for (size_t i=0;i<G.size();++i)
@@ -334,26 +334,60 @@ namespace clpoly{
         subuspensky(_upolynomial_Bto1(G,-B),I,l1,index1,0,B);
         subuspensky(_upolynomial_Bto1(G,B),I,l2,index2,0,B);
         l.reserve(l1.size()+l2.size());
-        index1.insert(index1.end(),index2.begin(),index2.end());
-        for (auto i=l1.rbegin();i!=l1.rend();++i)
-            l.push_back({-i->second,-i->first});
-        for (auto &i:l2)
-            l.push_back(i);
+        std::vector<size_t> index(index1.rbegin(),index1.rend());
         
-        return {l,index1};
+        for (auto i=l1.rbegin();i!=l1.rend();++i)
+        {
+            l.push_back({-i->second,-i->first});
+        }
+        for (size_t i=0;i<G.size();++i)
+        {
+            if (!assign<QQ,ZZ,QQ>(G[i],0))
+            {
+                l.push_back({0,0});
+                index.push_back(I[i]);
+                break;
+            }
+        }
+        index.insert(index.end(),index2.begin(),index2.end());
+        l.insert(l.end(),l2.begin(),l2.end());
+        
+        return {l,index};
     }
 
 
-    // template <class comp>
-    // std::vector<std::pair<QQ,QQ>> realroot(const polynomial_ZZ& f)
-    // {
-    //     if (is_number(f))
-    //         return {};
-    //     if (get_variables(f).size()!=1)
-    //         throw std::invalid_argument("realroot:f不是单变量的.");
-    //     auto L=squarefreebasis(f);
-    //     return uspensky(G);
-    // }
+    template <class comp>
+    std::pair<std::vector<std::pair<QQ,QQ>>,
+    std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>
+     realroot(const std::vector<polynomial_<ZZ,comp>> & F)
+    {
+        if (F.empty())
+            return {{},{}};
+        
+        if (get_variables(F).size()>1)
+            throw std::invalid_argument("realroot:不是单变量的.");
+        auto L=squarefreebasis(F);
+        // std::cout<<L.first<<std::endl;
+        std::vector<upolynomial_<ZZ>> G;
+        G.reserve(L.first.size());
+        for (auto &i:L.first)
+        {
+            G.push_back(i);
+        }
+        auto root=uspensky(G);
+        // for (size_t i=0;i<root.first.size();++i)
+        // {
+        //     std::cout<<root.second[i]<<" ";
+        // }
+        // std::cout<<std::endl;
+        std::vector<std::vector<std::pair<uint64_t,uint64_t>>> I;
+        I.reserve(root.first.size());
+        for (size_t i=0;i<root.first.size();++i)
+        {
+            I.push_back(L.second[root.second[i]]);
+        }
+        return {std::move(root.first),std::move(I)};
+    }
     // template <class comp>
     // std::vector<std::pair<QQ,QQ>> realroot(const upolynomial_<ZZ>& f)
     // {

@@ -33,7 +33,7 @@ int main(int argc, char const *argv[])
     clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> f_(&mo); 
     clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> g_(&mo);
     
-    clpoly::poly_convert(f,f_);
+    // clpoly::poly_convert(f,f_);
     auto l=clpoly::squarefreefactorize(f);
     std::cout<<f<<":";
     for(auto &i:l)

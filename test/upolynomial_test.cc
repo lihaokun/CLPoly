@@ -26,9 +26,30 @@ int main(int argc, char const *argv[])
     }
     std::cout<<std::endl;
     auto x=clpoly::variable("x");
-     auto Rp1=clpoly::random_polynomial<clpoly::ZZ>({x},100,0.1,10,-10);
-     clpoly::upolynomial_<clpoly::ZZ> f1(Rp1);
-     f1=Rp1;
+    clpoly::polynomial_ZZ Fx;
+    for(auto &i:f)
+    {
+        Fx.push_back({clpoly::monomial({{x,i.first.deg()}}),i.second});
+    }
+    // Fx.normalization();
+    std::cout<<Fx<<std::endl;
+    auto roots=clpoly::realroot<clpoly::grlex>({Fx,Fx*Fx,x*x-2,x*x});
+    for (auto &i:roots.first)
+    {
+        std::cout<<"{"<<i.first<<","<<i.second<<"}"<<" ";
+    }
+    std::cout<<std::endl;
+    for(auto &i:roots.second)
+    {
+        std::cout<<"{";
+        for(auto &j:i)
+            std::cout<<j.first<<"*"<<j.second<<" ";
+        std::cout<<"} ";
+    }
+    std::cout<<std::endl;
+    // auto Rp1=clpoly::random_polynomial<clpoly::ZZ>({x},100,0.1,10,-10);
+    //  clpoly::upolynomial_<clpoly::ZZ> f1(Rp1);
+    //  f1=Rp1;
     // auto x=clpoly::variable("x");
     // for (auto  i=1;i<=100;++i)
     // {

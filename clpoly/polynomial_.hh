@@ -213,6 +213,14 @@ namespace clpoly{
         __pair_vec_variables(p.data(),l);
         return l;
     }
+    template<class Tc,class comp>
+    std::list<std::pair<variable,int64_t>> get_variables(const std::vector<polynomial_<Tc,comp>>& P)
+    {
+        std::list<std::pair<variable,int64_t>> l;
+        for (auto &p:P)
+            __pair_vec_variables(p.data(),l);
+        return l;
+    }
 
     template <class Tc>
     int64_t get_deg(const polynomial_<Tc> & p)

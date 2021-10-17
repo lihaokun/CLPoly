@@ -849,8 +849,8 @@ namespace clpoly{
         //std::cout<<Pout_1<<std::endl;
         while(!Pout_1.empty())
         {
-            swap(Pout.data(),Pout_.data());
-            swap(Pout.data(),Pout_1.data());
+            std::swap(Pout.data(),Pout_.data());
+            std::swap(Pout.data(),Pout_1.data());
             pair_vec_div(Pout_2.data(),Pout_1.data(),Pout_.data(),Pout.data(),Pout.comp());
             //std::cout<<Pout_1<<std::endl;
         }
@@ -1043,7 +1043,7 @@ namespace clpoly{
                         return {{0,cont_gcd}};
                     }
                 }
-                swap(tmp_Pout_.data(),Pout_.data());
+                std::swap(tmp_Pout_.data(),Pout_.data());
                        
             }
             prime=boost::math::prime(++p_index);

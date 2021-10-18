@@ -87,7 +87,7 @@ namespace clpoly{
                 std::swap(this->__serial,v.__serial);
             }
     };
-    std::ostream& operator<<  (std::ostream& stream, const std::vector<variable>& v) 
+    inline std::ostream& operator<<  (std::ostream& stream, const std::vector<variable>& v) 
     {
         stream<<"[ ";
         for (auto ptr=v.begin();ptr!=v.end();++ptr)
@@ -103,7 +103,7 @@ namespace clpoly{
     std::vector<std::string> variable::variables={""};
     std::unordered_map<std::string,std::size_t> variable::name_map={{"",0}};
     std::vector<std::size_t>  variable::free_serial;
-    std::size_t variable::init_variable(const std::string & variable_name)
+    inline std::size_t variable::init_variable(const std::string & variable_name)
     {
         if (variable::free_serial.empty())
         {
@@ -122,7 +122,7 @@ namespace clpoly{
         
         
     }
-    std::size_t variable::init_variable()
+    inline std::size_t variable::init_variable()
     {
         if (variable::free_serial.empty())
         {
@@ -143,11 +143,11 @@ namespace clpoly{
         
         
     }
-    bool is_user_def_variable_name(const std::string & variable_name)
+    inline bool is_user_def_variable_name(const std::string & variable_name)
     {
         return !variable_name.empty() && ( ( 'a'<=variable_name[0]<='z') || ( 'A'<=variable_name[0]<='Z'));
     }
-    variable variable::get_variable(const std::string & variable_name)
+    inline variable variable::get_variable(const std::string & variable_name)
     {
         auto tmp=variable::name_map.find(variable_name);
         if (tmp==variable::name_map.end())
@@ -157,14 +157,14 @@ namespace clpoly{
         }
         return variable(tmp->second);
     }
-    variable variable::new_variable(const std::string & variable_name)
+    inline variable variable::new_variable(const std::string & variable_name)
     {
         assert(variable::name_map.find(variable_name)==variable::name_map.end());
         assert(is_user_def_variable_name(variable_name));
         return variable(variable::init_variable(variable_name));
     }
 
-    void variable::del_variable(std::size_t serial)
+    inline void variable::del_variable(std::size_t serial)
     {
         if (serial<variable::variables.size() && !variable::variables[serial].empty())
         {
@@ -173,7 +173,7 @@ namespace clpoly{
             free_serial.push_back(serial);
         }
     }
-    void variable::del_variable(const std::string & variable_name)
+    inline void variable::del_variable(const std::string & variable_name)
     {
         auto tmp=variable::name_map.find(variable_name);
         if (tmp!=variable::name_map.end())
@@ -183,17 +183,17 @@ namespace clpoly{
     }
 
 
-    variable variable::get_variable(std::size_t serial)
+    inline variable variable::get_variable(std::size_t serial)
     {
        assert(serial<variable::variables.size() && !variable::variables[serial].empty());
        return variable(serial);
     }
 
-    variable variable::new_variable()
+    inline variable variable::new_variable()
     {
         return variable(variable::init_variable());
     }
-    std::size_t hash_value(const variable& b)
+    inline std::size_t hash_value(const variable& b)
     {
         boost::hash<std::size_t> hasher;
         return hasher(b.serial());

@@ -11,7 +11,7 @@
 #include <cmath>
 #include <cassert>
 
-std::size_t hash_value(const mpz_class& p) 
+inline std::size_t hash_value(const mpz_class& p) 
 {
 
     // std::size_t h = 0;
@@ -26,7 +26,7 @@ std::size_t hash_value(const mpz_class& p)
     boost::hash_combine(seed, p.get_mpz_t()->_mp_size);
     return seed;
 }
-std::size_t hash_value(mpq_class const& v)
+inline std::size_t hash_value(mpq_class const& v)
 {
     std::size_t seed = 0;
     boost::hash_combine(seed, v.get_num());
@@ -89,22 +89,22 @@ namespace clpoly{
             return !op;
         } 
     };
-    mpz_class pow(mpz_class  x,uint64_t i)
+    inline mpz_class pow(mpz_class  x,uint64_t i)
     {
         mpz_pow_ui(x.get_mpz_t(),x.get_mpz_t(),i);
         return x;
     }
-    mpq_class pow(mpq_class  x,uint64_t i)
+    inline mpq_class pow(mpq_class  x,uint64_t i)
     {
         mpz_pow_ui(x.get_num_mpz_t(),x.get_num_mpz_t(),i);
         mpz_pow_ui(x.get_den_mpz_t(),x.get_den_mpz_t(),i);
         return x;
     }
-    size_t sizeinbase(mpz_class x,int i)
+    inline size_t sizeinbase(mpz_class x,int i)
     {
       return mpz_sizeinbase(x.get_mpz_t(),i);
     }
-    uint64_t inv_prime(uint64_t _i,uint32_t _p)
+    inline uint64_t inv_prime(uint64_t _i,uint32_t _p)
     {
         assert(_p!=0 && _i!=0);
         uint64_t a=_p,b=_i,c;
@@ -252,7 +252,7 @@ namespace clpoly{
             return stream;
         }
     };
-    std::size_t hash_value(Zp  const& v)
+    inline std::size_t hash_value(Zp  const& v)
     {
         std::size_t seed = 0;
         boost::hash_combine(seed, v.number());
@@ -283,7 +283,7 @@ namespace clpoly{
         op.number()+=op.prime()-(op1.number()*op2.number())%op.prime();
         op.number()%=op.prime();
     }
-    Zp pow(const Zp & z,int64_t i)
+    inline Zp pow(const Zp & z,int64_t i)
     {
         Zp o(1,z.prime());
         Zp z_=z;

@@ -66,7 +66,7 @@ namespace clpoly{
     template <class coeff>
     using upolynomial_=basic_polynomial<umonomial,coeff,uless>;
     using upolynomial_ZZ=upolynomial_<ZZ>;
-    bool is_divexact(umonomial & op,const umonomial & op1,const umonomial & op2)
+    inline bool is_divexact(umonomial & op,const umonomial & op1,const umonomial & op2)
     {
         op=umonomial(op1.deg()-op2.deg());
         return op.deg()>=0;    
@@ -101,7 +101,7 @@ namespace clpoly{
     {
         return p.degree();
     }
-    upolynomial_<Zp> polynomial_mod(const upolynomial_<ZZ> & p, uint32_t prime)
+    inline upolynomial_<Zp> polynomial_mod(const upolynomial_<ZZ> & p, uint32_t prime)
     {
         upolynomial_<Zp> new_p;
         Zp coeff(prime);

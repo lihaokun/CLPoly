@@ -10,7 +10,7 @@ int main(int argc, char const *argv[])
     clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> f_(&mo),g_(&mo);
     clpoly::poly_convert(f,f_);
     //clpoly::poly_convert(g,g_);
-    auto s=clpoly::squarefree(f_);
+    auto s=clpoly::squarefreefactorize(f_);
     std::cout<<f_<<std::endl;
     for(auto i:s)
     {

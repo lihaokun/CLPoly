@@ -12,70 +12,73 @@
 #include <clpoly/basic_monomial.hh>
 namespace clpoly{
     
-    struct less
+    class less
     {
-        constexpr bool operator()(const variable & v1,const variable & v2) const 
-        {
-            return  v1<v2; 
-        }
-        constexpr bool operator==(const less &g1)const {return true;}
-        constexpr bool operator!=(const less &g1)const {return false;}
-    };
-    struct custom_var_order
-    {
-        std::map<variable,int64_t> v_map;
-        custom_var_order(){
-            // v_map[variable()]=0;
+        public:
+            constexpr bool operator()(const variable & v1,const variable & v2) const 
+            {
+                return  v1<v2; 
             }
-        custom_var_order(const std::vector<variable> &v)
-        {
-            // v_map[variable()]=0;
-            for (int64_t i=0;i<v.size();++i)
-                v_map[v[i]]=i+1;
-        }
-        int64_t order(variable v) const
-        {
-            // if (v.serial()==0) return 0;
-            auto ptr=v_map.find(v);
-            if (ptr==v_map.end())
-                return v_map.size()+1;
-            else
-                return ptr->second;
-        }
-        inline bool operator()(const variable & v1,const variable & v2) const 
-        {
-            auto v1_= this->order(v1);
-            auto v2_=this->order(v2);
-            return  (v1_<v2_ || (v1_==v2_ && v1<v2)); 
-        }
-        inline bool operator==(const custom_var_order &g1)const {return v_map==g1.v_map;}
-        inline bool operator!=(const custom_var_order &g1)const {return v_map!=g1.v_map;}
+            constexpr bool operator==(const less &g1)const {return true;}
+            constexpr bool operator!=(const less &g1)const {return false;}  
     };
-    struct univariate_order
+    class custom_var_order
     {
-        
-        variable v;
-        univariate_order(){}
-        univariate_order(variable _v):v(_v){}
-        constexpr bool operator()(const variable & v1,const variable & v2) const 
-        {
-            return  (v2!=v && (v1==v || v1<v2)); 
-        }
-        constexpr bool operator==(const univariate_order &g1)const {return v==g1.v;}
-        constexpr bool operator!=(const univariate_order &g1)const {return v!=g1.v;}
+        public:
+            std::map<variable,int64_t> v_map;
+            custom_var_order(){
+                // v_map[variable()]=0;
+                }
+            custom_var_order(const std::vector<variable> &v)
+            {
+                // v_map[variable()]=0;
+                for (int64_t i=0;i<v.size();++i)
+                    v_map[v[i]]=i+1;
+            }
+            int64_t order(variable v) const
+            {
+                // if (v.serial()==0) return 0;
+                auto ptr=v_map.find(v);
+                if (ptr==v_map.end())
+                    return v_map.size()+1;
+                else
+                    return ptr->second;
+            }
+            inline bool operator()(const variable & v1,const variable & v2) const 
+            {
+                auto v1_= this->order(v1);
+                auto v2_=this->order(v2);
+                return  (v1_<v2_ || (v1_==v2_ && v1<v2)); 
+            }
+            inline bool operator==(const custom_var_order &g1)const {return v_map==g1.v_map;}
+            inline bool operator!=(const custom_var_order &g1)const {return v_map!=g1.v_map;}
+    };
+    class univariate_order
+    {
+        public:     
+            variable v;
+            univariate_order(){}
+            univariate_order(variable _v):v(_v){}
+            constexpr bool operator()(const variable & v1,const variable & v2) const 
+            {
+                return  (v2!=v && (v1==v || v1<v2)); 
+            }
+            constexpr bool operator==(const univariate_order &g1)const {return v==g1.v;}
+            constexpr bool operator!=(const univariate_order &g1)const {return v!=g1.v;}
     };
 
     template<class var_comp>
-    struct lex_
+    class lex_
     {
-        var_comp comp;
-        static lex_ init;
-        lex_():comp(){}
-        lex_(var_comp c):comp(std::move(c)){}
-        constexpr bool operator()(const variable & v1,const variable & v2) const {return comp(v1,v2);}
-        inline bool operator()(const basic_monomial<lex_> &m1,const basic_monomial<lex_> &m2)const {return pair_vec_comp(m1.data(),m2.data(),*this);}
-        inline bool operator==(const lex_ &g1)const {return comp==g1.comp;}
-        inline bool operator!=(const lex_ &g1)const {return comp!=g1.comp;}
+        public:
+            var_comp comp;
+            static lex_ init;
+            lex_():comp(){}
+            lex_(var_comp c):comp(std::move(c)){}
+            constexpr bool operator()(const variable & v1,const variable & v2) const {return comp(v1,v2);}
+            inline bool operator()(const basic_monomial<lex_> &m1,const basic_monomial<lex_> &m2)const {return pair_vec_comp(m1.data(),m2.data(),*this);}
+            inline bool operator==(const lex_ &g1)const {return comp==g1.comp;}
+            inline bool operator!=(const lex_ &g1)const {return comp!=g1.comp;}
     };
      template<class var_comp>
     lex_<var_comp> lex_<var_comp>::init;
@@ -90,19 +93,20 @@ namespace clpoly{
         
     // };
     template<class var_comp>
-    struct grlex_
+    class grlex_
     {
-        var_comp comp;
-        static grlex_ init;
-        grlex_():comp(){}
-        grlex_(var_comp c):comp(std::move(c)){}
-        // template<class T>
-        // grlex_(const T& c):comp(c){}
-        
-        constexpr bool operator()(const variable & v1,const variable & v2) const {return comp(v1,v2);}
-        inline bool operator()(const basic_monomial<grlex_> &m1,const basic_monomial<grlex_> &m2)const {return m1.deg()>m2.deg() || (m1.deg()==m2.deg() && pair_vec_comp(m1.data(),m2.data(),*this));}
-        inline bool operator==(const grlex_ &g1)const {return comp==g1.comp;}
-        inline bool operator!=(const grlex_ &g1)const {return comp!=g1.comp;}
+        public:
+            var_comp comp;
+            static grlex_ init;
+            grlex_():comp(){}
+            grlex_(var_comp c):comp(std::move(c)){}
+            // template<class T>
+            // grlex_(const T& c):comp(c){}
+            
+            constexpr bool operator()(const variable & v1,const variable & v2) const {return comp(v1,v2);}
+            inline bool operator()(const basic_monomial<grlex_> &m1,const basic_monomial<grlex_> &m2)const {return m1.deg()>m2.deg() || (m1.deg()==m2.deg() && pair_vec_comp(m1.data(),m2.data(),*this));}
+            inline bool operator==(const grlex_ &g1)const {return comp==g1.comp;}
+            inline bool operator!=(const grlex_ &g1)const {return comp!=g1.comp;}
     };
     template<class var_comp>
     grlex_<var_comp> grlex_<var_comp>::init;

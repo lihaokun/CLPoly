@@ -46,10 +46,15 @@ int main(){
     clpoly::variable x1("x1"),x2("x2"),x3("x3");
     clpoly::variable x7("x7"),x8("x8");
     clpoly::polynomial_ZZ p={{{{x,1}},1}};
+    clpoly::lex_<clpoly::custom_var_order> mo;
+    mo=clpoly::lex_<clpoly::custom_var_order>(clpoly::custom_var_order({x8,x7,x1}));
+    clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> p_1(&mo);
     std::cout<<"p="<< p<<std::endl;
     p=1;
     p=2*(2-x1)*x8+x7-2;
     std::cout<<"p="<< p<<std::endl;
+    p_1=p;
+    std::cout<<"p_1="<< p_1<<std::endl;
     
     clpoly::monomial m=pow(x,3);
     p=z*z;

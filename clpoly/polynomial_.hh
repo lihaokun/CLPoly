@@ -60,27 +60,27 @@ namespace clpoly{
         }
     }
     
-    monomial operator* (const variable & v1,const variable & v2)
+    inline monomial operator* (const variable & v1,const variable & v2)
     {
         if (monomial::compare_type()(v1,v2))  
             return monomial({{v1,1},{v2,1}});
         return monomial({{v2,1},{v1,1}});          
     }
-    monomial operator +(monomial  m)
+    inline monomial operator +(monomial  m)
     {
         return m;
     }
-    polynomial_ZZ operator -(monomial  m)
+    inline polynomial_ZZ operator -(monomial  m)
     {
         return polynomial_ZZ({{std::move(m),-1}});
     }
-    polynomial_ZZ operator+ (monomial m1,monomial m2)
+    inline polynomial_ZZ operator+ (monomial m1,monomial m2)
     {
         if (polynomial_ZZ::compare_type()(m1,m2))
             return polynomial_ZZ({{std::move(m1),1},{std::move(m2),1}});
         return polynomial_ZZ({{std::move(m2),1},{std::move(m1),1}});
     }
-    polynomial_ZZ operator- (monomial m1,monomial m2)
+    inline polynomial_ZZ operator- (monomial m1,monomial m2)
     {
         if (polynomial_ZZ::compare_type()(m1,m2))
             return polynomial_ZZ({{std::move(m1),1},{std::move(m2),-1}});
@@ -89,31 +89,31 @@ namespace clpoly{
 
  
     
-    polynomial_ZZ operator+(monomial m,int64_t i)
+    inline polynomial_ZZ operator+(monomial m,int64_t i)
     {
         return polynomial_ZZ({{std::move(m),1},{{},i}});
     }
     
-    polynomial_ZZ operator-(monomial  m,int64_t i)
+    inline polynomial_ZZ operator-(monomial  m,int64_t i)
     {
         return polynomial_ZZ({{std::move(m),1},{{},-i}});
     }
 
-    polynomial_ZZ operator+(int64_t i,monomial  m)
+    inline polynomial_ZZ operator+(int64_t i,monomial  m)
     {
         return polynomial_ZZ({{std::move(m),1},{{},i}});
     }
     
-    polynomial_ZZ operator-(int64_t i,monomial  m)
+    inline polynomial_ZZ operator-(int64_t i,monomial  m)
     {
         return polynomial_ZZ({{std::move(m),-1},{{},i}});
     }
     
-    polynomial_ZZ operator*( monomial  m,int64_t i)
+    inline polynomial_ZZ operator*( monomial  m,int64_t i)
     {
         return polynomial_ZZ({{std::move(m),i}});
     }
-    polynomial_ZZ operator*(int64_t i, monomial  m)
+    inline polynomial_ZZ operator*(int64_t i, monomial  m)
     {
         return polynomial_ZZ({{std::move(m),i}});
     }

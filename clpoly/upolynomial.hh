@@ -46,7 +46,7 @@ namespace clpoly{
                 return stream;
             }
     };
-    umonomial pow(umonomial m,int64_t i)
+    inline umonomial pow(umonomial m,int64_t i)
     {return umonomial(m.deg()*i);}
     struct uless
     {
@@ -62,7 +62,7 @@ namespace clpoly{
         constexpr bool operator==( uless g1)const {return true;}
         constexpr bool operator!=(uless g1)const {return false;}
     };
-    uless uless::init;
+    // uless uless::init;
     template <class coeff>
     using upolynomial_=basic_polynomial<umonomial,coeff,uless>;
     using upolynomial_ZZ=upolynomial_<ZZ>;

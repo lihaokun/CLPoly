@@ -157,7 +157,7 @@ namespace clpoly{
         return mout;
     }
 
-    basic_monomial<univariate_priority_order> __change_up_monomial_var_deg(const basic_monomial<univariate_priority_order> &m,uint64_t d)
+    inline basic_monomial<univariate_priority_order> __change_up_monomial_var_deg(const basic_monomial<univariate_priority_order> &m,uint64_t d)
     {
         basic_monomial<univariate_priority_order>  mout(m.comp_ptr());
         auto ptr=m.begin();

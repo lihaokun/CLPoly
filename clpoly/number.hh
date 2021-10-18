@@ -69,7 +69,7 @@ namespace clpoly{
         op_r=0;
     }
     template <>
-    void set_zero(mpz_class& op)
+    inline void set_zero(mpz_class& op)
     {
         mpz_set_si(op.get_mpz_t(),0);
     }

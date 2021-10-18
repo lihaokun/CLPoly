@@ -180,7 +180,7 @@ namespace clpoly
     }
     
   
-    bool __is_monomial_compression=true;
+    // bool __is_monomial_compression=true;
     template <class T2,class T3,class T4,class compare>
     bool __pair_vec_multiplies_compression
     (
@@ -191,7 +191,7 @@ namespace clpoly
     )
     {
         if (v1_.empty() || v2_.empty()) return false;
-        if (!__is_monomial_compression) return false; 
+        // if (!__is_monomial_compression) return false; 
         std::list<variable> vars;
         //std::cout<<"压缩乘法开始\n";
         if (!__is_monomial_can_compression(v1_,v2_,comp,vars)) return false;
@@ -282,7 +282,7 @@ namespace clpoly
     )
     {
         if (v1_.empty() || v2_.empty()) return false;
-        if (!__is_monomial_compression) return false; 
+        // if (!__is_monomial_compression) return false; 
         std::list<variable> vars;
         //std::cout<<"压缩除法开始\n";
         if (!__is_monomial_can_compression(v1_,v2_,comp,vars,1)) return false;
@@ -406,7 +406,7 @@ namespace clpoly
     )
     {
         if (v1_.empty() || v2_.empty()) return false;
-        if (!__is_monomial_compression) return false; 
+        // if (!__is_monomial_compression) return false; 
         std::list<variable> vars;
         //std::cout<<"压缩除法开始\n";
         if (!__is_monomial_can_compression(v1_,v2_,comp,vars,1)) return false;

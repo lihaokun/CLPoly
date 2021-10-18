@@ -100,9 +100,9 @@ namespace clpoly{
         stream<<" ]";
         return stream;
     }
-    std::vector<std::string> variable::variables={""};
-    std::unordered_map<std::string,std::size_t> variable::name_map={{"",0}};
-    std::vector<std::size_t>  variable::free_serial;
+    // std::vector<std::string> variable::variables={""};
+    // std::unordered_map<std::string,std::size_t> variable::name_map={{"",0}};
+    // std::vector<std::size_t>  variable::free_serial;
     inline std::size_t variable::init_variable(const std::string & variable_name)
     {
         if (variable::free_serial.empty())

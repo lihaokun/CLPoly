@@ -30,7 +30,24 @@ namespace clpoly{
     {
         p={{std::move(m),1}};
     }
-
+    template<class comp>
+    void  poly_convert(QQ c,polynomial_<QQ,comp> & p)
+    {
+        basic_monomial<comp> m(p.comp_ptr());
+        p={{std::move(m),c}};
+    }
+    template<class comp>
+    void  poly_convert(ZZ c,polynomial_<ZZ,comp> & p)
+    {
+        basic_monomial<comp> m(p.comp_ptr());
+        p={{std::move(m),c}};
+    }
+    template<class comp>
+    void  poly_convert(ZZ c,polynomial_<QQ,comp> & p)
+    {
+        basic_monomial<comp> m(p.comp_ptr());
+        p={{std::move(m),c}};
+    }
     template<class T1,class T2,class comp1,class comp2>
     void poly_convert(const polynomial_<T1,comp1>& p_in,polynomial_<T2,comp2> & p_out)
     {

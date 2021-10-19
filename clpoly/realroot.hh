@@ -125,6 +125,15 @@ namespace clpoly{
                 u.is_inf=-1;
                 return u;
             }
+            bool isinf()
+            {
+            return is_inf==1;
+            }
+            bool isneginf()
+            {
+            return is_inf==-1;
+            }
+            
             int static comp(uroot * r1,uroot* r2);
             inline bool operator==(uroot & u)
             {
@@ -145,7 +154,11 @@ namespace clpoly{
             inline bool operator>=(uroot & u)
             {
                 return comp(this,&u)<=0;
-            }            
+            } 
+            inline bool operator!=(uroot & u)
+            {
+                return comp(this,&u)!=0;
+            }           
     };
     upolynomial_<ZZ> _upolynomial_Rtoab(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b);
 

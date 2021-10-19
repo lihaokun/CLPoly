@@ -158,7 +158,17 @@ namespace clpoly{
             inline bool operator!=(uroot & u)
             {
                 return comp(this,&u)!=0;
-            }           
+            }   
+            friend std::ostream& operator<<  (std::ostream& stream, const uroot& c) 
+            {
+                // if (c.isinf)
+                stream<<"{";
+                stream<<c.left;
+                stream<<",";
+                stream<<c.right;
+                stream<<"}";
+                return stream;
+            }         
     };
     upolynomial_<ZZ> _upolynomial_Rtoab(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b);
 

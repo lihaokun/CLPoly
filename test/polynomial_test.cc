@@ -91,7 +91,7 @@ int main(){
      clpoly::polynomial_ZZ o1;
     std::cout<<"f:="<<f<<":"<<std::endl;
     std::cout<<"g:="<<g<<":"<<std::endl;
-
+    std::cout<<clpoly::coeff(g,z)<<std::endl;
     // std::cout<<"o:="<<clpoly::prem(g,f,y)<<":"<<std::endl;
     // std::cout<<"t:="<<(double(clock()-t)/CLOCKS_PER_SEC)<<";"<<std::endl;
     // std::cout<<"st := time():o1:= expand(prem(g, f, y)):time() - st;o1-o;"<<std::endl;

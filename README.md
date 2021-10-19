@@ -30,7 +30,7 @@ int main(int argc, char const *argv[])
 ```
 编译指令
 ```
-g++ example.cc -I./ -O3 -lgmpxx -lgmp  
+make example 
 ```
 结果
 ```

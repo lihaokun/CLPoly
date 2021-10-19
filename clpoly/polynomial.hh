@@ -197,6 +197,21 @@ namespace clpoly{
         coF[m]=std::move(tmp);
         return coF;
     }
+    
+    template<class Tc>
+    std::vector<polynomial_<Tc,lex_<custom_var_order>>>  coeff(const polynomial_<Tc,lex_<custom_var_order>> &F, variable v)
+    {
+        univariate_priority_order comp_v(v)
+        polynomial_<Tc,univariate_priority_order> F_(&comp_v);
+        F_=F;
+        auto coeff_l=coeff(F_);
+        std::vector<polynomial_<Tc,lex_<custom_var_order>>>  coF(coeff_l.size(),polynomial_<Tc,lex_<custom_var_order>>(F.comp_ptr()));
+        for (size_t i=0;i<coeff_l.size();++i)
+        {
+            coF[i]=coeff_l[i];
+        }
+        return coF;
+    }
 
     template <class Tc>
     inline int64_t leadcoeff(polynomial_<Tc,univariate_priority_order>&O,const polynomial_<Tc,univariate_priority_order>&F)

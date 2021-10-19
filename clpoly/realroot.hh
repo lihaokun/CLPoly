@@ -60,7 +60,7 @@ namespace clpoly{
 
     template <class comp>
     std::pair<std::vector<std::pair<QQ,QQ>>,
-    std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>
+    std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>  //{poly,multiple}
      realroot(const std::vector<polynomial_<ZZ,comp>> & F)
     {
         if (F.empty())
@@ -125,11 +125,11 @@ namespace clpoly{
                 u.is_inf=-1;
                 return u;
             }
-            bool isinf()
+            bool isinf()const 
             {
             return is_inf==1;
             }
-            bool isneginf()
+            bool isneginf()const
             {
             return is_inf==-1;
             }
@@ -161,7 +161,18 @@ namespace clpoly{
             }   
             friend std::ostream& operator<<  (std::ostream& stream, const uroot& c) 
             {
-                // if (c.isinf)
+                if (c.isinf())
+                {
+                stream<<"inf";
+                return stream;
+                }
+                if (c.isneginf())
+                {
+                stream<<"-inf";
+                return stream;
+                }
+                
+                
                 stream<<"{";
                 stream<<c.left;
                 stream<<",";

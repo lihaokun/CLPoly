@@ -59,9 +59,9 @@ $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/debug/libclpo
 	mkdir -p $(CLPoly_LIB_DIR)/debug/clpoly
 	cp $(CLPoly_BUILD_DIR)/lib/debug/libclpoly.a $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a
 
-$(CLPoly_LIB_DIR)/release/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/release/libclpoly.a
-	mkdir -p $(CLPoly_LIB_DIR)/release/clpoly
-	cp $(CLPoly_BUILD_DIR)/lib/release/libclpoly.a $(CLPoly_LIB_DIR)/release/clpoly/libclpoly.a
+$(CLPoly_LIB_DIR)/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/release/libclpoly.a
+	mkdir -p $(CLPoly_LIB_DIR)/clpoly
+	cp $(CLPoly_BUILD_DIR)/lib/release/libclpoly.a $(CLPoly_LIB_DIR)/clpoly/libclpoly.a
 %:%.cc $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a $(clpoly_hh)
 	$(CXX) $(CLPoly_DEB) $(IPATHS)  $< -o $@ $(Numberlib)  -L$(CLPoly_LIB_DIR)/debug/clpoly -lclpoly
 

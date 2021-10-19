@@ -36,7 +36,7 @@ int main(int argc, char const *argv[])
     auto roots=clpoly::realroot<clpoly::grlex>({Fx,Fx*Fx,x*x-2,x*x});
     for (auto &i:roots.first)
     {
-        std::cout<<"{"<<i.first<<","<<i.second<<"}"<<" ";
+        std::cout<<i<<" ";
     }
     std::cout<<std::endl;
     for(auto &i:roots.second)

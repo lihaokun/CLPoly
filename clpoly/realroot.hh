@@ -57,9 +57,9 @@ namespace clpoly{
     (const std::vector<upolynomial_<ZZ>>& G,const std::vector<size_t>& I, std::vector<std::pair<QQ,QQ>>& l,std::vector<size_t>& index,const QQ & B=0,const QQ & E=1);
     std::pair<std::vector<std::pair<QQ,QQ>>,std::vector<size_t>> uspensky(std::vector<upolynomial_<ZZ>> G);//输入无平方基
 
-
+    class uroot;
     template <class comp>
-    std::pair<std::vector<std::pair<QQ,QQ>>,
+    std::pair<std::vector<uroot>,
     std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>  //{poly,multiple}
      realroot(const std::vector<polynomial_<ZZ,comp>> & F)
     {
@@ -82,13 +82,16 @@ namespace clpoly{
         //     std::cout<<root.second[i]<<" ";
         // }
         // std::cout<<std::endl;
+        std::vector<uroot> uroots;
         std::vector<std::vector<std::pair<uint64_t,uint64_t>>> I;
+        uroots.reserve(root.first.size());
         I.reserve(root.first.size());
         for (size_t i=0;i<root.first.size();++i)
         {
+            uroots.push_back(uroot(std::move(G[root.second[i]]),std::move(root.first[i].first),std::move(root.first[i].second)));
             I.push_back(L.second[root.second[i]]);
         }
-        return {std::move(root.first),std::move(I)};
+        return {std::move(uroots),std::move(I)};
     }
     // template <class comp>
     // std::vector<std::pair<QQ,QQ>> realroot(const upolynomial_<ZZ>& f)
@@ -111,7 +114,7 @@ namespace clpoly{
             int is_inf=0;
             uroot(){}
             uroot(upolynomial_ZZ p,QQ _l,QQ _r)
-            :poly(p),left(_l),right(_r),is_inf(0)
+            :poly(std::move(p)),left(std::move(_l)),right(std::move(_r)),is_inf(0)
             {}
             uroot static inf()
             {

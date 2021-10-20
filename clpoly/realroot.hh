@@ -104,25 +104,25 @@ namespace clpoly{
    
     class uroot
     {
-        public:
-            // std::vector<upolynomial_ZZ>* upolys;
-            // std::map<upolynomial_ZZ,size_t>* upolymap;
+        private:
+            int is_inf=0;
             upolynomial_ZZ poly;
-            // size_t poly_index;
+        public:
+
             QQ left;
             QQ right;
-            int is_inf=0;
+            
             uroot(){}
             uroot(upolynomial_ZZ p,QQ _l,QQ _r)
             :poly(std::move(p)),left(std::move(_l)),right(std::move(_r)),is_inf(0)
             {}
-            uroot static inf()
+            static uroot inf()
             {
                 uroot u;
                 u.is_inf=1;
                 return u;
             }
-            uroot static neginf()
+            static uroot neginf()
             {
                 uroot u;
                 u.is_inf=-1;
@@ -136,8 +136,18 @@ namespace clpoly{
             {
             return is_inf==-1;
             }
-            
+
+            const upolynomial_ZZ &  get_poly() const
+            {
+                return this->poly;
+            }
+            upolynomial_ZZ &  get_poly() 
+            {
+                return this->poly;
+            }
             int static comp(uroot * r1,uroot* r2);
+            int static comp(uroot * r,const QQ  & q);
+            
             inline bool operator==(uroot & u)
             {
                 return comp(this,&u)==0;
@@ -184,6 +194,54 @@ namespace clpoly{
                 return stream;
             }         
     };
+    inline bool operator!=(uroot & u,const QQ & q)
+    {
+        return uroot::comp(&u,q)!=0;
+    }
+    inline bool operator!=(const QQ & q,uroot & u)
+    {
+        return uroot::comp(&u,q)!=0;
+    }  
+    inline bool operator==(uroot & u,const QQ & q)
+    {
+        return uroot::comp(&u,q)==0;
+    }
+    inline bool operator==(const QQ & q,uroot & u)
+    {
+        return uroot::comp(&u,q)==0;
+    }   
+    inline bool operator>(uroot & u,const QQ & q)
+    {
+        return uroot::comp(&u,q)==-1;
+    }
+    inline bool operator<(const QQ & q,uroot & u)
+    {
+        return uroot::comp(&u,q)==-1;
+    }
+    inline bool operator<(uroot & u,const QQ & q)
+    {
+        return uroot::comp(&u,q)==1;
+    }
+    inline bool operator>(const QQ & q,uroot & u)
+    {
+        return uroot::comp(&u,q)==1;
+    }  
+    inline bool operator>=(uroot & u,const QQ & q)
+    {
+        return uroot::comp(&u,q)!=1;
+    }
+    inline bool operator<=(const QQ & q,uroot & u)
+    {
+        return uroot::comp(&u,q)!=1;
+    } 
+    inline bool operator<=(uroot & u,const QQ & q)
+    {
+        return uroot::comp(&u,q)!=-1;
+    }
+    inline bool operator>=(const QQ & q,uroot & u)
+    {
+        return uroot::comp(&u,q)!=-1;
+    } 
     upolynomial_<ZZ> _upolynomial_Rtoab(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b);
 
 }

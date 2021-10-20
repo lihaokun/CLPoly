@@ -347,9 +347,9 @@ namespace clpoly{
     {
         if (mid>=r->left || mid <=r->right)
             return void();
-        QQ rig_ass=assign<QQ,ZZ,QQ>(r->poly,r->right);
-        QQ mid_ass=assign<QQ,ZZ,QQ>(r->poly,mid);
-        QQ left_ass=assign<QQ,ZZ,QQ>(r->poly,r->left);
+        QQ rig_ass=assign<QQ,ZZ,QQ>(r->get_poly(),r->right);
+        QQ mid_ass=assign<QQ,ZZ,QQ>(r->get_poly(),mid);
+        QQ left_ass=assign<QQ,ZZ,QQ>(r->get_poly(),r->left);
         if (mid_ass==0)
         {
             r->left=r->right=mid;
@@ -359,7 +359,7 @@ namespace clpoly{
         {
             if (left_ass==0) // 不应该进入
             {
-                auto p=_upolynomial_Rtoab(r->poly,r->left,mid);
+                auto p=_upolynomial_Rtoab(r->get_poly(),r->left,mid);
                 uint64_t v=coeffsignchanges(p);
                 if (v==0)
                 {
@@ -402,12 +402,14 @@ namespace clpoly{
     }
     int  uroot::comp(uroot * r1,uroot* r2) // 1:r1<r2;0:r1=r2;-1:r1>r2
     {
-        if (r1->is_inf=-1)
-            return int(r2->is_inf!=-1);
-        if (r1->is_inf=1)
-            return -int(r2->is_inf!=1);
-        if (r2->is_inf)
-            return r2->is_inf;    
+        if (r1->isneginf())
+            return int(!r2->isneginf());
+        if (r1->isinf())
+            return -int(!r2->isinf());
+        if (r2->isinf())
+            return 1;
+        if (r2->isneginf())
+            return -1;  
         // if (r1->upolymap!=r2->upolymap && r1->upolys!=r2->upolys)
         //     return 3;
         int status=1;
@@ -424,18 +426,18 @@ namespace clpoly{
         }
         if (r1->left!=r2->left || r1->right!=r2->right)
             return status;
-        if (r1->poly==r2->poly)
+        if (r1->get_poly()==r2->get_poly())
             return 0;
-        auto p=polynomial_GCD(r1->poly,r2->poly);
+        auto p=polynomial_GCD(r1->get_poly(),r2->get_poly());
         if (_uroot_check(p,r1->left,r1->right))
         {
-            r1->poly=p;
-            r2->poly=p;
+            r1->get_poly()=p;
+            r2->get_poly()=p;
             return 0;
         }
         else{
-            r1->poly=r1->poly/p;
-            r2->poly=r2->poly/p;
+            r1->get_poly()=r1->get_poly()/p;
+            r2->get_poly()=r2->get_poly()/p;
         }
         while (r1->left!=r2->left || r1->right!=r2->right)
         {
@@ -446,5 +448,27 @@ namespace clpoly{
             return status;
         return -status;
     }
-    
+
+    int uroot::comp(uroot * r,const QQ  & q) // 1:r<q;0:r=q;-1:r>q
+    {
+        if (r->isneginf())
+            return 1;
+        if (r->isinf())
+            return -1;
+        
+        if (q==r->left && r->left==r->right )
+            return 0;
+        
+        if (q<=r->left)
+            return -1;
+        if (q>=r->right)
+            return 1;
+        
+        if (assign<QQ,ZZ,QQ>(r->get_poly(),q)==0)
+            return 0;
+        _uroot_check(r,q);
+        if (q<=r->left)
+            return -1;
+        return 1;
+    }
 }

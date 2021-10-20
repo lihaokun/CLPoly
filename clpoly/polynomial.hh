@@ -800,7 +800,54 @@ namespace clpoly{
         Pout.normalization();
         return Pout;
     }
-    
+    template <class Tc1,class Tc2,class Tc3, class To>
+    polynomial_<Tc1,To> assign(const polynomial_<Tc2,To>& p,const std::map<variable,Tc3> & ass_list)
+    {
+        polynomial_<Tc1,To> Pout(p.comp_ptr());
+        basic_monomial<To> m(p.comp_ptr());
+        basic_monomial<To> m1(p.comp_ptr());
+        bool f=true;
+        Tc1 z, z1;
+        for (auto &i:p)
+        {
+
+            m.clear();m.reserve(i.first.size());
+            z=i.second;
+            for (auto& j:i.first)
+            {
+                auto ptr=ass_list.find(j.first);
+                if (ptr!=ass_list.end())
+                {
+                    z*=pow(ptr->second,j.second);
+                }
+                else
+                    m.push_back(j);
+            }
+            if (!f && m!=m1)
+            {
+                if (z1)
+                    Pout.push_back({std::move(m1),std::move(z1)});
+                m1=std::move(m);
+                z1=std::move(z);
+            }
+            else if (f)
+            {
+                m1=std::move(m);
+                z1=std::move(z);
+                f=false;
+            }
+            else
+            {
+                z1+=z;
+            }
+
+            
+        }
+        if (z1)
+            Pout.push_back({std::move(m1),std::move(z1)});
+        Pout.normalization();
+        return Pout;
+    }
     template <class Tc,class Tm>
     polynomial_<Tc,Tm>  derivative(const polynomial_<Tc,Tm> & p,variable x)
     {

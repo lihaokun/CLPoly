@@ -124,6 +124,8 @@ namespace clpoly{
         }
         p_out.normalization();
     }
+    void poly_convert(const upolynomial_<ZZ>& p_in,upolynomial_<QQ> & p_out);
+    void poly_convert(const upolynomial_<QQ>& p_in,upolynomial_<ZZ> & p_out);
     template <class T>
     upolynomial_<T>  derivative(const upolynomial_<T> & p)
     {

@@ -5,6 +5,9 @@
 */
 #include <clpoly/realroot.hh>
 namespace clpoly{
+    const upolynomial_<ZZ> __upolynomial_x_plus_1={{1,1},{0,1}};
+    const QQ __QQ_1_2=QQ(1,2);
+    
     uint64_t coeffsignchanges(const upolynomial_<ZZ>& G)
     {
         if (G.size()<=1)
@@ -98,11 +101,11 @@ namespace clpoly{
             return void();
         }
         QQ mid=(B+E)/2;
-        if (!assign<QQ,ZZ,QQ>(G,mid))
+        subuspensky(_upolynomial_01to012(G),l,B,mid);
+        if (!assign<QQ,ZZ,QQ>(G,__QQ_1_2))
         {
             l.push_back({mid,mid});
         }
-        subuspensky(_upolynomial_01to012(G),l,B,mid);
         subuspensky( _upolynomial_01to121(G),l,mid,E);
     } 
 
@@ -227,12 +230,16 @@ namespace clpoly{
         std::vector<size_t> I_1;
         G_1.reserve(G.size());
         I_1.reserve(G.size());
+        // std::cout<<mid<<" " <<__QQ_1_2<<std::endl;
+        std::vector<std::pair<QQ,QQ>> _l;
+        std::vector<size_t> _index;
         for (size_t i=0;i<G_.size();++i)
         {
-            if (!assign<QQ,ZZ,QQ>(G[i],mid))
+            // std::cout<<G[i]<<":"<<assign<QQ,ZZ,QQ>(G[i],__QQ_1_2)<<std::endl;
+            if (!assign<QQ,ZZ,QQ>(G[i],__QQ_1_2))
             {
-                l.push_back({mid,mid});
-                index.push_back(I[i]);
+                _l.push_back({mid,mid});
+                _index.push_back(I[i]);
                 if (v[i]==1)
                 {
                     v[i]=0;
@@ -249,6 +256,9 @@ namespace clpoly{
             }
         }
         subuspensky(G_1,I_1,l,index,B,mid);
+        l.insert(l.end(),_l.begin(),_l.end());
+        index.insert(index.end(),_index.begin(),_index.end());
+        
         G_1.clear();
         for (size_t i=0;i<G.size();++i)
         {

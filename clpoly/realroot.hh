@@ -12,7 +12,7 @@
 #include <vector>
 #include <stdexcept>
 namespace clpoly{
-    const upolynomial_<ZZ> __upolynomial_x_plus_1={{1,1},{0,1}};
+    
     uint64_t coeffsignchanges(const upolynomial_<ZZ>& G);
     upolynomial_<ZZ> _upolynomial_1toinf(const upolynomial_<ZZ>& G);
     upolynomial_<ZZ> _upolynomial_Bto1(upolynomial_<ZZ> G,const ZZ &B);

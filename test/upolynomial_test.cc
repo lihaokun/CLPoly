@@ -1,5 +1,3 @@
-#include<clpoly/upolynomial.hh>
-#include <clpoly/realroot.hh>
 #include <clpoly/clpoly.hh>
 int main(int argc, char const *argv[])
 {
@@ -33,7 +31,8 @@ int main(int argc, char const *argv[])
     }
     // Fx.normalization();
     std::cout<<Fx<<std::endl;
-    auto roots=clpoly::realroot<clpoly::grlex>({Fx,Fx*Fx,x*x-2,x*x});
+    auto x4=clpoly::variable("x4");
+    auto roots=clpoly::realroot<clpoly::grlex>({ x4 , x4*x4-6*x4+5 , x4-2});
     for (auto &i:roots.first)
     {
         std::cout<<i<<" ";

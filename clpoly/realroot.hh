@@ -100,8 +100,8 @@ namespace clpoly{
     //     return uspensky(G);
     // }
 
-
-   
+    class uroot;
+    void _uroot_check(uroot* r,const QQ & mid);
     class uroot
     {
         private:
@@ -189,6 +189,15 @@ namespace clpoly{
             {
                 return comp(this,&u)!=0;
             }   
+            void shrinkinterval()
+            {
+                if (left()!=right())
+                    _uroot_check(this,(left()+right())/2);
+            }
+            bool is_single() const
+            {
+                return left()==right();
+            }
             friend std::ostream& operator<<  (std::ostream& stream, const uroot& c) 
             {
                 if (c.isinf())

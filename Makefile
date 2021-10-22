@@ -67,4 +67,4 @@ $(CLPoly_LIB_DIR)/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/release/libclpoly.a
 
 
 clean:
-	rm -r $(clpoly_o) $(CLPoly_BUILD_DIR)/lib/libclpoly.a $(CLPoly_LIB_DIR)/clpoly/libclpoly.a
+	rm -r $(clpoly_d_o) $(clpoly_r_o) $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a $(CLPoly_LIB_DIR)/clpoly/libclpoly.a

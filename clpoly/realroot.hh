@@ -105,45 +105,62 @@ namespace clpoly{
     class uroot
     {
         private:
-            int is_inf=0;
-            upolynomial_ZZ poly;
+            int _is_inf=0;
+            upolynomial_ZZ _poly;
+            QQ _left;
+            QQ _right;
         public:
 
-            QQ left;
-            QQ right;
+
             
             uroot(){}
             uroot(upolynomial_ZZ p,QQ _l,QQ _r)
-            :poly(std::move(p)),left(std::move(_l)),right(std::move(_r)),is_inf(0)
+            :_poly(std::move(p)),_left(std::move(_l)),_right(std::move(_r)),_is_inf(0)
             {}
             static uroot inf()
             {
                 uroot u;
-                u.is_inf=1;
+                u._is_inf=1;
                 return u;
             }
             static uroot neginf()
             {
                 uroot u;
-                u.is_inf=-1;
+                u._is_inf=-1;
                 return u;
             }
             bool isinf()const 
             {
-            return is_inf==1;
+            return _is_inf==1;
             }
             bool isneginf()const
             {
-            return is_inf==-1;
+            return _is_inf==-1;
             }
 
-            const upolynomial_ZZ &  get_poly() const
+            const upolynomial_ZZ &  poly() const
             {
-                return this->poly;
+                return this->_poly;
             }
-            upolynomial_ZZ &  get_poly() 
+            upolynomial_ZZ &  poly() 
             {
-                return this->poly;
+                return this->_poly;
+            }
+            const QQ &  right() const
+            {
+                return this->_right;
+            }
+            QQ &  right() 
+            {
+                return this->_right;
+            }
+             const QQ &  left() const
+            {
+                return this->_left;
+            }
+            QQ &  left() 
+            {
+                return this->_left;
             }
             int static comp(uroot * r1,uroot* r2);
             int static comp(uroot * r,const QQ  & q);
@@ -187,9 +204,9 @@ namespace clpoly{
                 
                 
                 stream<<"{";
-                stream<<c.left;
+                stream<<c._left;
                 stream<<",";
-                stream<<c.right;
+                stream<<c._right;
                 stream<<"}";
                 return stream;
             }         

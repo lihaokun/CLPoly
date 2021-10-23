@@ -191,6 +191,30 @@ namespace clpoly{
         return Gs;
 
     }
+    bool uspensky_shrink(const upolynomial_<ZZ>& G,QQ & B,QQ & E)
+    {
+        auto G_=_upolynomial_1toinf(G);
+        auto v=coeffsignchanges(G_);
+        if (v==0)
+            return false;
+        if (E-B<1)
+            return true;
+        QQ m=(E+B)/2;
+        if (!assign<QQ,ZZ,QQ>(G,__QQ_1_2))
+        {
+            B=m;E=m;return true;
+        }
+        if (uspensky_shrink(_upolynomial_01to012(G),B,m))
+        {
+            E=m;
+            return true;   
+        }
+        
+        uspensky_shrink(_upolynomial_01to121(G),m,E);
+        B=m;
+        return true;
+
+    }
     void subuspensky(const std::vector<upolynomial_<ZZ>>& G,const std::vector<size_t>& I, std::vector<std::pair<QQ,QQ>>& l,std::vector<size_t>& index,const QQ & B,const QQ & E)
     {
         // std::cout<<B<<" "<<E<<std::endl;
@@ -220,7 +244,10 @@ namespace clpoly{
         if (v0==G.size())   return void();
         if (v1==1 && v0==G.size()-1)
         {
-            l.push_back({B,E});
+            auto B1=B;
+            auto E1=E;
+            uspensky_shrink(G[i_],B1,E1);
+            l.push_back({B1,E1});
             index.push_back(I[i_]);
             return void();
         }

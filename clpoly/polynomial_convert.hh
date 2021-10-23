@@ -11,6 +11,8 @@
 #include <clpoly/basic_polynomial.hh>
 #include <clpoly/polynomial_type.hh>
 namespace clpoly{
+    template<class Tc,class Tb>
+    void  poly_convert(Tc a,Tb p)= delete;
     template<class Tc,class comp>
     void  poly_convert(int a,polynomial_<Tc,comp> & p)
     {

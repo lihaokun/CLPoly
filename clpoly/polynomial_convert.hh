@@ -11,6 +11,16 @@
 #include <clpoly/basic_polynomial.hh>
 #include <clpoly/polynomial_type.hh>
 namespace clpoly{
+    template<class Tc,class comp>
+    Tc tonum(const polynomial_<Tc,comp> & p)
+    {
+        if (!is_number(p))
+            throw std::invalid_argument("clpoly::tonum::not num.");
+        if (p.empty())
+            return 0;
+        return p.front().second;
+    }
+
     template<class Tc,class Tb>
     void  poly_convert(Tc a,Tb p)= delete;
     template<class Tc,class comp>

@@ -382,7 +382,7 @@ namespace clpoly{
     }
     void _uroot_check(uroot* r,const QQ & mid)
     {
-        if (mid>=r->left() || mid <=r->right())
+        if (mid<r->left() || mid >r->right() ||r->left()==r->right() )
             return void();
         QQ rig_ass=assign<QQ,ZZ,QQ>(r->poly(),r->right());
         QQ mid_ass=assign<QQ,ZZ,QQ>(r->poly(),mid);
@@ -408,16 +408,16 @@ namespace clpoly{
             {
                 if (sgn(mid_ass)==sgn(left_ass))
                 {
-                    r->right()=mid;return void();
+                    r->left()=mid;return void();
                 }
-                r->left()=mid;return void();
+                r->right()=mid;return void();
             }
         }
         if (sgn(mid_ass)==sgn(rig_ass))
         {
-            r->left()=mid;return void();  
+            r->right()=mid;return void();  
         }
-        r->right()=mid;return void();
+        r->left()=mid;return void();
     }
     bool _uroot_check(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b)
     {
@@ -449,17 +449,25 @@ namespace clpoly{
             return -1;  
         // if (r1->upolymap!=r2->upolymap && r1->upolys!=r2->upolys)
         //     return 3;
+        //  std::cout<<*r1<<*r2<<std::endl;
         int status=1;
         if (r1->left()>r2->left())
         {
-            std::swap(r1,r2);status=-1;
+            std::swap(r1,r2);status*=-1;
         }
         if (r1->right()<r2->left())
             return status;
+        //  std::cout<<*r1<<*r2<<std::endl;
         if (r1->left()!=r2->left() || r1->right()!=r2->right())
         {
             _uroot_check(r1,r2->left());
+            _uroot_check(r1,r2->right());
             _uroot_check(r2,r1->right());
+        }
+        //  std::cout<<*r1<<*r2<<std::endl;
+        if (r1->left()>r2->left())
+        {
+            std::swap(r1,r2);status*=-1;
         }
         if (r1->left()!=r2->left() || r1->right()!=r2->right())
             return status;
@@ -476,8 +484,10 @@ namespace clpoly{
             r1->poly()=r1->poly()/p;
             r2->poly()=r2->poly()/p;
         }
-        while (r1->left()!=r2->left() || r1->right()!=r2->right())
+        // std::cout<<r1->poly()<<" "<<r2->poly()<<std::endl;
+        while (r1->left()==r2->left()  && r1->right()==r2->right())
         {
+            // std::cout<<*r1<<*r2<<std::endl;
             _uroot_check(r1,(r1->left()+r1->right())/2);
             _uroot_check(r2,(r2->left()+r2->right())/2);
         }

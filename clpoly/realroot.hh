@@ -88,7 +88,7 @@ namespace clpoly{
         I.reserve(root.first.size());
         for (size_t i=0;i<root.first.size();++i)
         {
-            uroots.push_back(uroot(std::move(G[root.second[i]]),std::move(root.first[i].first),std::move(root.first[i].second)));
+            uroots.push_back(uroot(G[root.second[i]],std::move(root.first[i].first),std::move(root.first[i].second)));
             I.push_back(L.second[root.second[i]]);
         }
         return {std::move(uroots),std::move(I)};

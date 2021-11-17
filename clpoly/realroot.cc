@@ -447,6 +447,14 @@ namespace clpoly{
             return 1;
         if (r2->isneginf())
             return -1;  
+        if (r1->left()==r1->right())
+        {
+            return -uroot::comp(r2,r1->left());
+        }
+        if (r2->left()==r2->right())
+        {
+            return uroot::comp(r1,r2->left());
+        }
         // if (r1->upolymap!=r2->upolymap && r1->upolys!=r2->upolys)
         //     return 3;
         //  std::cout<<*r1<<*r2<<std::endl;
@@ -512,7 +520,10 @@ namespace clpoly{
             return 1;
         
         if (assign<QQ,ZZ,QQ>(r->poly(),q)==0)
+        {
+            r->left()=r->right()=q;
             return 0;
+        }
         _uroot_check(r,q);
         if (q<=r->left())
             return -1;

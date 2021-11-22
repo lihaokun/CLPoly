@@ -420,109 +420,155 @@ namespace clpoly{
         return {m,d};
     }
 
-    // template<class Tc,class comp>
-    // std::vector<variable> peo(const std::vector<polynomial_<Tc,comp>> & polys)
-    // {
-    //     auto G=associatedgraph(polys);
-    //     auto vars=G.nodes();
-    //     auto N=G.size();
-    //     auto & adj_list=G.adjacency_list();
-    //     std::vector<variable> ans(N);
-    //     std::vector<size_t> PD(N,0);
-    //     std::vector<size_t> S1(N,0);
-    //     std::vector<size_t> S2(N,0);
-    //     std::vector<size_t> S3(N,0);
-    //     std::vector<size_t> deep(N,0);
-    //     for (size_t i=0;i<N;++i)
-    //     {
-    //         PD[i]=DFV(G,i);
-    //     }
-    //     for (auto &p:polys)
-    //     {
-    //         for (auto &t:p)
-    //         {
-    //             auto &m=t.first;
-    //             auto m_deg=m.deg();
-    //             for (auto &v_:m)
-    //             {
-    //                 auto &v=v_.first;
-    //                 auto v_i=G.index(v);
-    //                 if (v_->second>S1[v_i])
-    //                     S1[v_i]=v_->second;
-    //                 if (m_deg>S2[v_i])
-    //                     S2[v_i]=m_deg;
-    //                 ++S3[v_i];
-    //             }
-    //         }
-    //     }
-    //     std::vector<uint64_t> w(N,0);
-    //     std::vector<bool> is_choose(N,false);
-    //     // uint64_t wmax,windex;
-    //     for (uint64_t i=N;i>0;--i)
-    //     {
-    //         if (i!=N)
-    //         {
-    //             for (uint64_t v=0;v<N;++v)
-    //             {
-    //                 if(!is_choose[v])
-    //                 {
-    //                     PD[v]=0;
-    //                     for (auto &u:adj_list[v])
-    //                     {
-    //                         if (deep[u]+1>PD[v])
-    //                             PD[v]=deep[u]+1;
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         size_t v=N+1;
-    //         for (uint64_t u=0;u<N;++u)
-    //             if(!is_choose[u])
-    //             {
-    //                 if (v>N)
-    //                     v=u；
-    //                 else
-    //                 if (w[u]>w[v])
-    //                     v=u;
-    //                 else
-    //                 if (w[u]==w[v] && )
-    //             }
-    //     }
+    template<class Tc,class comp>
+    std::vector<variable> peo(const std::vector<polynomial_<Tc,comp>> & polys)
+    {
+        auto G=associatedgraph(polys);
+        auto vars=G.nodes();
+        auto N=G.size();
+        auto & adj_list=G.adjacency_list();
+        std::vector<variable> ans(N);
+        std::vector<size_t> PD(N,0);
+        std::vector<size_t> S1(N,0);
+        std::vector<size_t> S2(N,0);
+        std::vector<size_t> S3(N,0);
+        std::vector<size_t> deep(N,0);
+        for (size_t i=0;i<N;++i)
+        {
+            PD[i]=DFV(G,i);
+        }
+        for (auto &p:polys)
+        {
+            for (auto &t:p)
+            {
+                auto &m=t.first;
+                auto m_deg=m.deg();
+                for (auto &v_:m)
+                {
+                    auto &v=v_.first;
+                    auto v_i=G.index(v);
+                    if (v_.second>S1[v_i])
+                        S1[v_i]=v_.second;
+                    if (m_deg>S2[v_i])
+                        S2[v_i]=m_deg;
+                    ++S3[v_i];
+                }
+            }
+        }
+        std::vector<int> w(N,0);
+        std::vector<int> is_choose(N,0);
+        // uint64_t wmax,windex;
+        for (uint64_t i=N;i>0;--i)
+        {
+            if (i!=N)
+            {
+                for (uint64_t v=0;v<N;++v)
+                {
+                    if(!is_choose[v])
+                    {
+                        PD[v]=0;
+                        for (auto &u:adj_list[v])
+                        {
+                            if (deep[u]+1>PD[v])
+                                PD[v]=deep[u]+1;
+                        }
+                    }
+                }
+            }
+            size_t v=N+1;
+            for (uint64_t u=0;u<N;++u)
+                if(!is_choose[u])
+                {
+                    if (v>N)
+                        v=u;
+                    else if (w[u]>w[v])
+                        v=u;
+                    else if (w[u]==w[v])
+                        if (PD[u]<PD[v])
+                            v=u;
+                        else if (PD[u]==PD[v])
+                            if (S1[u]>S1[v])
+                                v=u;
+                            else if (S1[u]=S1[v])
+                                if (S2[u]>S2[v])
+                                    v=u;
+                                else if (S2[u]==S2[v])
+                                    if (S3[u]>S3[v])
+                                        v=u;
+                 
+                }
+            ans[i-1]=vars[v];
+            is_choose[v]=i;
+            for (auto &u:adj_list[v])
+            {
+                if (deep[u]+1>deep[v])
+                    deep[v]=deep[u]+1;
+            }
+            if (i>1)
+            {
+                std::vector<int> tmp_w(N,-1);
+                std::set<int> tmp_l,tmp_l_;
+                tmp_l.insert(v);
+                tmp_w[v]=0;
+                while (!tmp_l.empty())
+                {
+                    tmp_l_.clear();
+                    for (auto u:tmp_l)
+                        for (auto &j:adj_list[u])
+                            if (tmp_w[j]<0 || tmp_w[u]>std::max(tmp_w[u],w[j]))
+                            {
+                                tmp_w[j]=std::max(tmp_w[u],w[j]);
+                                tmp_l_.insert(j);
+                            }
+                    tmp_l=std::move(tmp_l_);
+                }
+                for (size_t u=0;u<N;++u)
+                {
+                    if (tmp_w[u]==w[u])
+                    {
+                        ++w[u];
+                        G.add_edge(u,v);
+                    }
+                }
+                
+            }
+        }
+        return ans;
 
-    // }
-    // template<class node_type>
-    // size_t DFV(const graph<node_type> &G,const node_type & v)
-    // {
-    //     return DFV(G,G.index(v));
-    // }
-    // template<class node_type>
-    // size_t DFV(const graph<node_type> &G,size_t v_i)
-    // {
-    //     auto N=G.size();
-    //     std::vector<size_t> h(N,0);
-    //     h[v_i]=1;
-    //     auto & adj_list=G.adjacency_list();
-    //     std::list<uint64_t> l;
-    //     l.push_back(v_i);
-    //     size_t m=1;
-    //     while(!l.empty())
-    //     {
-    //         auto i=l.front();
-    //         l.pop_front();
-    //         for (auto &j:adj_list[i])
-    //         {
-    //             if (h[j]==0)
-    //             {
-    //                 l.push_back(j);
-    //                 h[j]=h[i]+1;
-    //                 if (h[j]>m)
-    //                 {
-    //                     m=h[j];
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     return m-1;
-    // }
+    }
+    template<class node_type>
+    size_t DFV(const graph<node_type> &G,const node_type & v)
+    {
+        return DFV(G,G.index(v));
+    }
+    template<class node_type>
+    size_t DFV(const graph<node_type> &G,size_t v_i)
+    {
+        auto N=G.size();
+        std::vector<size_t> h(N,0);
+        h[v_i]=1;
+        auto & adj_list=G.adjacency_list();
+        std::list<uint64_t> l;
+        l.push_back(v_i);
+        size_t m=1;
+        while(!l.empty())
+        {
+            auto i=l.front();
+            l.pop_front();
+            for (auto &j:adj_list[i])
+            {
+                if (h[j]==0)
+                {
+                    l.push_back(j);
+                    h[j]=h[i]+1;
+                    if (h[j]>m)
+                    {
+                        m=h[j];
+                    }
+                }
+            }
+        }
+        return m-1;
+    }
 }
 #endif

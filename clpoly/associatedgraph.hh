@@ -425,8 +425,8 @@ namespace clpoly{
     {
         auto G=associatedgraph(polys);
         auto vars=G.nodes();
-        std::cout<<vars<<std::endl;
-        std::cout<<G<<std::endl;
+        // std::cout<<vars<<std::endl;
+        // std::cout<<G<<std::endl;
         
         auto N=G.size();
         auto & adj_list=G.adjacency_list();

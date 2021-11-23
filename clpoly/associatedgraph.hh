@@ -489,7 +489,7 @@ namespace clpoly{
                         else if (PD[u]==PD[v])
                             if (S1[u]>S1[v])
                                 v=u;
-                            else if (S1[u]=S1[v])
+                            else if (S1[u]==S1[v])
                                 if (S2[u]>S2[v])
                                     v=u;
                                 else if (S2[u]==S2[v])

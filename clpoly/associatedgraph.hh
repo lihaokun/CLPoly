@@ -425,6 +425,9 @@ namespace clpoly{
     {
         auto G=associatedgraph(polys);
         auto vars=G.nodes();
+        std::cout<<vars<<std::endl;
+        std::cout<<G<<std::endl;
+        
         auto N=G.size();
         auto & adj_list=G.adjacency_list();
         std::vector<variable> ans(N);
@@ -499,35 +502,36 @@ namespace clpoly{
                 }
             ans[i-1]=vars[v];
             is_choose[v]=i;
-            for (auto &u:adj_list[v])
-            {
-                if (deep[u]+1>deep[v])
-                    deep[v]=deep[u]+1;
-            }
+         
             if (i>1)
             {
-                std::vector<int> tmp_w(N,-1);
+                for (auto &u:adj_list[v])
+                {
+                    if (deep[u]+1>deep[v])
+                        deep[v]=deep[u]+1;
+                }
+                std::vector<int> tmp_w(N,N+1);
                 std::set<int> tmp_l,tmp_l_;
                 tmp_l.insert(v);
-                tmp_w[v]=0;
+                tmp_w[v]=-1;
                 while (!tmp_l.empty())
                 {
                     tmp_l_.clear();
                     for (auto u:tmp_l)
                         for (auto &j:adj_list[u])
-                            if (tmp_w[j]<0 || tmp_w[u]>std::max(tmp_w[u],w[j]))
+                            if (!is_choose[j] && tmp_w[j]>std::max(tmp_w[u],u==v?-1:w[u]))
                             {
-                                tmp_w[j]=std::max(tmp_w[u],w[j]);
+                                tmp_w[j]=std::max(tmp_w[u],u==v?-1:w[u]);
                                 tmp_l_.insert(j);
                             }
                     tmp_l=std::move(tmp_l_);
                 }
                 for (size_t u=0;u<N;++u)
                 {
-                    if (tmp_w[u]==w[u])
+                    if (tmp_w[u]<w[u] && !is_choose[u])
                     {
                         ++w[u];
-                        G.add_edge(u,v);
+                        // G.add_edge(u,v);
                     }
                 }
                 

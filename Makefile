@@ -65,7 +65,7 @@ $(CLPoly_LIB_DIR)/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/release/libclpoly.a
 	
 ifndef debug
 %:%.cc $(CLPoly_LIB_DIR)/clpoly/libclpoly.a $(clpoly_hh)
-	$(CXX) $(CLPoly_REL) $(IPATHS)  $< -o $@ $(Numberlib)  -L$(CLPoly_LIB_DIR)/debug/clpoly -lclpoly
+	$(CXX) $(CLPoly_REL) $(IPATHS)  $< -o $@ $(Numberlib)  -L$(CLPoly_LIB_DIR)/clpoly -lclpoly
 else
 %:%.cc $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a $(clpoly_hh)
 	$(CXX) $(CLPoly_DEB) $(IPATHS)  $< -o $@ $(Numberlib)  -L$(CLPoly_LIB_DIR)/debug/clpoly -lclpoly

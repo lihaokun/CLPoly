@@ -2,3 +2,4 @@
 build/
 lib/
 test/associatedgraph_test
+test/polynomial_test

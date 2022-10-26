@@ -86,45 +86,45 @@ int main(int argc, char const *argv[])
     // auto G3=clpoly::associatedgraph(F);
     // std::cout<<G3;
     
-    // int n=9;
-    // auto l=std::vector<clpoly::variable>();
-    // for (auto index=1;index<=n;++index)
-    //     l.push_back(clpoly::variable("x["+std::to_string(index)+"]"));
-    // std::cout<<l<<std::endl;
-    // auto F=std::vector<clpoly::polynomial_ZZ>();
-    // for(auto index=0;index<n-3;++index)
-    //     F.push_back(l[index]*l[index+3]-l[index+1]*l[index+2]);
-    // std::cout<<F<<std::endl;
+    int n=14;
+    auto l=std::vector<clpoly::variable>();
+    for (auto index=1;index<=n;++index)
+        l.push_back(clpoly::variable("x["+std::to_string(index)+"]"));
+    std::cout<<l<<std::endl;
+    auto F=std::vector<clpoly::polynomial_ZZ>();
+    for(auto index=0;index<n-3;++index)
+        F.push_back(l[index]*l[index+3]-l[index+1]*l[index+2]);
+    std::cout<<F<<std::endl;
     // auto p=clpoly::peo(F);
     // std::cout<<p<<std::endl;
 
-    auto F=std::vector<clpoly::polynomial_ZZ>();
-    int n1=2,n2=1;
-    for (size_t i = 0; i < n1; i++)
-        for (size_t j = 0; j < n2; j++)
-        {
-            clpoly::variable Uij("U["+std::to_string(i)+","+std::to_string(j)+"]");
-            clpoly::variable Ui1j("U["+std::to_string(i+1)+","+std::to_string(j)+"]");
+    // auto F=std::vector<clpoly::polynomial_ZZ>();
+    // int n1=2,n2=1;
+    // for (size_t i = 0; i < n1; i++)
+    //     for (size_t j = 0; j < n2; j++)
+    //     {
+    //         clpoly::variable Uij("VU["+std::to_string(i)+","+std::to_string(j)+"]");
+    //         clpoly::variable Ui1j("VU["+std::to_string(i+1)+","+std::to_string(j)+"]");
             
-            clpoly::variable Rij("R["+std::to_string(i)+","+std::to_string(j)+"]");
-            clpoly::variable Rij1("R["+std::to_string(i)+","+std::to_string(j+1)+"]");
+    //         clpoly::variable Rij("VR["+std::to_string(i)+","+std::to_string(j)+"]");
+    //         clpoly::variable Rij1("VR["+std::to_string(i)+","+std::to_string(j+1)+"]");
             
-            clpoly::variable Dij("D["+std::to_string(i)+","+std::to_string(j)+"]");
-            clpoly::variable Dij1("D["+std::to_string(i)+","+std::to_string(j+1)+"]");
-            clpoly::variable Di1j1("D["+std::to_string(i+1)+","+std::to_string(j+1)+"]");
+    //         clpoly::variable Dij("VD["+std::to_string(i)+","+std::to_string(j)+"]");
+    //         clpoly::variable Dij1("VD["+std::to_string(i)+","+std::to_string(j+1)+"]");
+    //         clpoly::variable Di1j1("VD["+std::to_string(i+1)+","+std::to_string(j+1)+"]");
             
-            clpoly::variable Lij("L["+std::to_string(i)+","+std::to_string(j)+"]");
-            clpoly::variable Lij1("L["+std::to_string(i)+","+std::to_string(j+1)+"]");
-            clpoly::variable Li1j("L["+std::to_string(i+1)+","+std::to_string(j)+"]");
-            clpoly::variable Li1j1("L["+std::to_string(i+1)+","+std::to_string(j+1)+"]");
+    //         clpoly::variable Lij("VL["+std::to_string(i)+","+std::to_string(j)+"]");
+    //         clpoly::variable Lij1("VL["+std::to_string(i)+","+std::to_string(j+1)+"]");
+    //         clpoly::variable Li1j("VL["+std::to_string(i+1)+","+std::to_string(j)+"]");
+    //         clpoly::variable Li1j1("VL["+std::to_string(i+1)+","+std::to_string(j+1)+"]");
             
-            F.push_back(Uij*Rij1-Rij*Ui1j);
-            F.push_back(Dij1*Rij-Rij1*Di1j1);
-            F.push_back(Di1j1*Li1j-Li1j1*Dij1);
-            F.push_back(Ui1j*Li1j1-Li1j*Uij);
+    //         F.push_back(Uij*Rij1-Rij*Ui1j);
+    //         F.push_back(Dij1*Rij-Rij1*Di1j1);
+    //         F.push_back(Di1j1*Li1j-Li1j1*Dij1);
+    //         F.push_back(Ui1j*Li1j1-Li1j*Uij);
 
-        }
-    std::cout<<F<<std::endl;   
+    //     }
+    // std::cout<<F<<std::endl;   
      auto p=clpoly::peo(F);
      std::cout<<p<<std::endl; 
       auto G=clpoly::associatedgraph(F);

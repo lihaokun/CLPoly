@@ -67,7 +67,10 @@ namespace clpoly{
             }
             else
             {
-                p1.push_back({{},Tc(dis(gen))});
+                if (mp(gen))
+                {
+                    p1.push_back({{},Tc(dis(gen))});
+                }
             }
             
         }

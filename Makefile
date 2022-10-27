@@ -1,5 +1,5 @@
 .PHONY: clean
-all:
+all:make_lib_a
 ## Load Previous Configuration ####################################################################
 
 -include config.mk
@@ -54,6 +54,8 @@ $(CLPoly_BUILD_DIR)/debug/%.o:%.cc $(clpoly_hh)
 %/lib/release/libclpoly.a:$(clpoly_r_o)
 	mkdir -p $(dir $@)
 	ar -rsv $@ $(clpoly_r_o)
+
+make_lib_a:$(CLPoly_LIB_DIR)/clpoly/libclpoly.a  $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a
 
 $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/debug/libclpoly.a
 	mkdir -p $(CLPoly_LIB_DIR)/debug/clpoly

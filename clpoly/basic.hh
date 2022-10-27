@@ -21,7 +21,7 @@
 
 namespace clpoly{
     template<class T>
-    struct zore_check: public std::unary_function<T, bool>
+    struct zore_check
     {
         constexpr bool operator()(const T & c)
         {

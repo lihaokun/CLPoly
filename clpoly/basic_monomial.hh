@@ -384,7 +384,7 @@ namespace clpoly{
 }
 namespace std{
     template<class compare>
-    struct hash<clpoly::basic_monomial<compare>>: public std::unary_function<clpoly::basic_monomial<compare>, std::size_t>
+    struct hash<clpoly::basic_monomial<compare>>
     {
         std::size_t operator()(const clpoly::basic_monomial<compare> & m) const
         {

@@ -497,7 +497,7 @@ namespace clpoly{
     // template<class Tm,class Tc,class compare> const Tc  basic_polynomial<Tm, Tc, compare>::Tc_zero=0;
     
     template<class Tm,class Tc,class compare>
-    struct zore_check<basic_polynomial<Tm, Tc, compare>>: public std::unary_function<basic_polynomial<Tm, Tc, compare>, bool>
+    struct zore_check<basic_polynomial<Tm, Tc, compare>>
     {
         constexpr bool operator()(const basic_polynomial<Tm, Tc, compare> & m)
         {

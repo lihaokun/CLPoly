@@ -74,7 +74,7 @@ namespace clpoly{
         mpz_set_si(op.get_mpz_t(),0);
     }
     template<>
-    struct zore_check<mpz_class>: public std::unary_function<mpz_class, bool>
+    struct zore_check<mpz_class>
     {
         bool operator()(const mpz_class & op)
         {
@@ -82,7 +82,7 @@ namespace clpoly{
         } 
     };
     template<>
-    struct zore_check<mpq_class>: public std::unary_function<mpq_class, bool>
+    struct zore_check<mpq_class>
     {
         bool operator()(const mpq_class & op)
         {
@@ -260,7 +260,7 @@ namespace clpoly{
         return seed;
     }
     template<>
-    struct zore_check<Zp>: public std::unary_function<Zp, bool>
+    struct zore_check<Zp>
     {
         bool operator()(const Zp & op)
         {

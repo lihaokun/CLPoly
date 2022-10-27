@@ -20,7 +20,7 @@ namespace clpoly
     using monomial=basic_monomial<grlex>;
     
     template<class compare>
-    struct zore_check<basic_monomial<compare>>: public std::unary_function<basic_monomial<compare>, bool>
+    struct zore_check<basic_monomial<compare>>
     {
         constexpr bool operator()(const basic_monomial<compare> & m)
         {

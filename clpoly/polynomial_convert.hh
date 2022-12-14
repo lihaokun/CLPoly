@@ -132,5 +132,24 @@ namespace clpoly{
         }
         p_out.normalization();
     }
+    template<class comp1,class comp2>
+    void poly_convert(polynomial_<QQ,comp1>&& p_in,polynomial_<ZZ,comp2> & p_out)
+    {
+        assert((void*)&p_in!=(void*)&p_out);
+        p_out.clear();
+        ZZ den=1;
+        for (auto &i:p_in)
+        {
+            den=lcm(den,i.second.get_den());
+        }
+        basic_monomial<comp2> m(p_out.comp_ptr());
+        for (auto &i:p_in)
+        {
+            m=std::move(i.first.data());
+            p_out.push_back({std::move(m),i.second.get_num()*(den/i.second.get_den())});
+        }
+        p_out.normalization();
+        p_in.clear();
+    }
 }
 #endif

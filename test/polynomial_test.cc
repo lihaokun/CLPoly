@@ -173,6 +173,9 @@ int main(){
     // clpoly::polynomial_<clpoly::ZZ,clpoly::lex_<clpoly::custom_var_order>> p1(&mo);
     // clpoly::poly_convert(g,p1);
     // std::cout<< p1<<std::endl;
+    clpoly::polynomial_QQ pq_1(1);
+    clpoly::polynomial_QQ pq_2(2);
+    std::cout<<pq_1<<" "<<pq_2<<" "<<pq_1/pq_2<<std::endl;
     return 0;
   
 

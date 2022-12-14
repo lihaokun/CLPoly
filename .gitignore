@@ -37,3 +37,4 @@ test/associatedgraph_test.cc
 1.txt
 伪代码.cpp
 test/polynomial_test
+test/interval_test

@@ -429,37 +429,40 @@ namespace clpoly{
                     
             // }
 
-            friend std::ostream& operator<<  (std::ostream& stream, const basic_polynomial& v) 
-            {
-                if (v.size()==0)
-                    return stream<<'0';
-                bool is_print=false;
-                for(auto i=v.begin();i!=v.end();++i)
-                {
-                    if (!zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
-                        ){
-                        if (is_print && i->second>=0) //greater
-                            stream<<"+";
-                        is_print=true;
-                        if (i->second==-1) //equal_to
-                            stream<<"-";
-                        else
-                            if (i->second!=1) //equal_to
-                                stream<< i->second<<"*";
-                        stream<<i->first;
-                        continue;
-                    }
-                    if (zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
-                        )
-                        if (is_print && i->second>=0) //greater
-                            stream<<"+";
-                        is_print=true;
-                        stream<<i->second;
-                }
-                return stream;
-            }
+            
               
     };
+
+    template <class Tm,class Tc,class compare>
+    std::ostream& operator<<  (std::ostream& stream, const basic_polynomial<Tm,Tc,compare>& v) 
+    {
+        if (v.size()==0)
+            return stream<<'0';
+        bool is_print=false;
+        for(auto i=v.begin();i!=v.end();++i)
+        {
+            if (!zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
+                ){
+                if (is_print && i->second>=0) //greater
+                    stream<<"+";
+                is_print=true;
+                if (i->second==-1) //equal_to
+                    stream<<"-";
+                else
+                    if (i->second!=1) //equal_to
+                        stream<< i->second<<"*";
+                stream<<i->first;
+                continue;
+            }
+            if (zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
+                )
+                if (is_print && i->second>=0) //greater
+                    stream<<"+";
+                is_print=true;
+                stream<<i->second;
+        }
+        return stream;
+    }
     template<class Tm,class Tc,class compare>
     std::ostream& operator<<  (std::ostream& stream, const std::vector<basic_polynomial<Tm,Tc,compare>>& v) 
     {

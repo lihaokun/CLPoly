@@ -61,14 +61,16 @@ namespace clpoly{
     template <class comp>
     std::pair<std::vector<uroot>,
     std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>  //{poly,multiple}
-     realroot(const std::vector<polynomial_<ZZ,comp>> & F)
+    realroot(const std::vector<polynomial_<ZZ,comp>> & F)
     {
         if (F.empty())
             return {{},{}};
         
         if (get_variables(F).size()>1)
             throw std::invalid_argument("realroot:不是单变量的.");
+        // auto t=clock();
         auto L=squarefreebasis(F);
+        // std::cout<<"sf time="<<double(clock()-t)/CLOCKS_PER_SEC<<"s\n";
         // std::cout<<L.first<<std::endl;
         std::vector<upolynomial_<ZZ>> G;
         G.reserve(L.first.size());
@@ -76,12 +78,16 @@ namespace clpoly{
         {
             G.push_back(i);
         }
+        // t=clock();
         auto root=uspensky(G);
+        // std::cout<<"uspensky time="<<double(clock()-t)/CLOCKS_PER_SEC<<"s\n";
+    
         // for (size_t i=0;i<root.first.size();++i)
         // {
         //     std::cout<<root.second[i]<<" ";
         // }
         // std::cout<<std::endl;
+        // t=clock();
         std::vector<uroot> uroots;
         std::vector<std::vector<std::pair<uint64_t,uint64_t>>> I;
         uroots.reserve(root.first.size());
@@ -91,6 +97,7 @@ namespace clpoly{
             uroots.push_back(uroot(G[root.second[i]],std::move(root.first[i].first),std::move(root.first[i].second)));
             I.push_back(L.second[root.second[i]]);
         }
+        // std::cout<<"uspensky time="<<double(clock()-t)/CLOCKS_PER_SEC<<"s\n";
         return {std::move(uroots),std::move(I)};
     }
     // template <class comp>

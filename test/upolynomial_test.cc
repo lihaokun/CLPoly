@@ -46,6 +46,39 @@ int main(int argc, char const *argv[])
         std::cout<<"} ";
     }
     std::cout<<std::endl;
+    {
+        clpoly::ZZ a5("42372");
+        clpoly::ZZ a4("748077684");
+        clpoly::ZZ a3("7043899924480");
+        clpoly::ZZ a2("37308019540272768");
+        clpoly::ZZ a1("105387707118778076928");
+        clpoly::ZZ a0("124041351170778054248704");
+        clpoly::variable v("var1");
+        auto t=clock();
+        clpoly::polynomial_ZZ p=clpoly::pow(v,6)+a5*clpoly::pow(v,5)+a4*clpoly::pow(v,4)+a3*clpoly::pow(v,3)+a2*clpoly::pow(v,2)+a1*clpoly::pow(v,1)+a0;
+        auto roots=clpoly::realroot<clpoly::grlex>({p});
+        std::cout<< p<<std::endl; 
+        std::cout<< "{{"; 
+        for (auto &i:roots.first)
+        {
+            std::cout<<i<<" ";
+        }
+        std::cout<< "},{";
+        for(auto &i:roots.second)
+        {
+            std::cout<<"{";
+            for(auto &j:i)
+                std::cout<<"("<<j.first<<","<<j.second<<") ";
+            std::cout<<"}, ";
+        }
+        std::cout<< "}}\n"; 
+        std::cout<<"time="<<double(clock()-t)/CLOCKS_PER_SEC<<"s\n";
+    }
+    
+    
+    
+    
+    
     // auto Rp1=clpoly::random_polynomial<clpoly::ZZ>({x},100,0.1,10,-10);
     //  clpoly::upolynomial_<clpoly::ZZ> f1(Rp1);
     //  f1=Rp1;

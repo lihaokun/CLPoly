@@ -109,6 +109,11 @@ namespace clpoly{
         return polynomial_ZZ({{std::move(m),-1},{{},i}});
     }
     
+    inline polynomial_ZZ operator*( monomial  m,ZZ i)
+    {
+        return polynomial_ZZ({{std::move(m),std::move(i)}});
+    }
+    
     inline polynomial_ZZ operator*( monomial  m,int64_t i)
     {
         return polynomial_ZZ({{std::move(m),i}});
@@ -117,7 +122,10 @@ namespace clpoly{
     {
         return polynomial_ZZ({{std::move(m),i}});
     }
-
+    inline polynomial_ZZ operator*(ZZ i, monomial  m)
+    {
+        return polynomial_ZZ({{std::move(m),std::move(i)}});
+    }
     
     template<class Tc>
     polynomial_<Tc> operator- (polynomial_<Tc> O,const Tc & m)

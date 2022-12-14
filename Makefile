@@ -36,7 +36,7 @@ CXX=g++
 IPATHS=-I./ 
 CFLAGS=-O3 -flto -DNDEBUG  
 
-Numberlib= -lgmpxx -lgmp  
+Numberlib= -lgmpxx -lmpria -lgmp  
 clpoly_hh=$(wildcard clpoly/*.hh)
 clpoly_cc=$(wildcard clpoly/*.cc)
 clpoly_d_o=$(clpoly_cc:clpoly/%.cc=$(CLPoly_BUILD_DIR)/debug/clpoly/%.o)

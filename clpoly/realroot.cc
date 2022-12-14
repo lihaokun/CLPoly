@@ -329,9 +329,11 @@ namespace clpoly{
                 B=std::move(tmp);
         }
         // std::cout<<B<<std::endl;
-        
+        auto t=clock();
         subuspensky(_upolynomial_Bto1(G,-B),I,l1,index1,0,B);
         subuspensky(_upolynomial_Bto1(G,B),I,l2,index2,0,B);
+        std::cout<<"subuspensky time="<<double(clock()-t)/CLOCKS_PER_SEC<<"s\n";
+    
         l.reserve(l1.size()+l2.size());
         std::vector<size_t> index(index1.rbegin(),index1.rend());
         

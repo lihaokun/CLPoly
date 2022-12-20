@@ -215,6 +215,164 @@ namespace clpoly{
         return true;
 
     }
+    upolynomial_<ZZ> _upolynomial_Rtoab(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b)
+    {
+        if (G.empty() || is_number(G))
+            return G;
+        ZZ den=lcm(a.get_den(),b.get_den());
+        ZZ _gcd=gcd(a.get_den(),b.get_den());
+        
+        ZZ a1=a.get_num()*b.get_den()/_gcd;
+        ZZ b1=b.get_num()*a.get_den()/_gcd;
+        auto m=G.front().first.deg();
+        upolynomial_<ZZ>  pnum={{1,a1},{0,b1}};
+        upolynomial_<ZZ>  pden={{1,den},{0,den}};
+        upolynomial_<ZZ> g,g_,g_1;
+        for (auto &i:G)
+        {
+            g_=pow(pden,m-i.first.deg())*pow(pnum,i.first.deg());
+            for (auto &j:g_)
+            {
+                j.second*=i.second;
+            }
+            g=g+g_;
+        }
+        return g;
+
+    }
+    
+    void uspensky_shrink_(const upolynomial_<ZZ>&p,  QQ & B, QQ & E)
+    {
+        bool l,r;
+        QQ ml=(B+E)/2;
+        QQ mr=ml;
+        int msl=sgn(assign<QQ,ZZ,QQ>(p,ml));
+        int msr=msl;
+        if (msl==0)
+        {
+            B=E=ml;
+            return;
+        }
+        
+        while (1)
+        {
+            auto ml1=(ml+B)/2;
+            int msl1=sgn(assign<QQ,ZZ,QQ>(p,ml1));
+            if (msl1==0)
+            {
+                B=E=ml1;
+                return;
+            }
+            if (msl1!=msl)
+            {
+                B=ml1;
+                E=ml;
+                msr=msl;
+                msl=msl1;
+                break;
+            }
+            ml=ml1;msl=msl1;
+            auto mr1=(mr+E)/2;
+            int msr1=sgn(assign<QQ,ZZ,QQ>(p,mr1));
+            if (msr1==0)
+            {
+                B=E=ml1;
+                return;
+            }
+            if (msr1!=msr)
+            {
+                B=mr;E=mr1;
+                msl=msr;msr=msr1;
+                break;
+            }
+            mr=mr1;msr=msr1;
+        }
+        assert(B<E);
+        while (E-B<1)
+        {
+            QQ m=(B+E)/2;
+            int ms=sgn(assign<QQ,ZZ,QQ>(p,m));
+            if (ms!=msr)
+            {
+                B=m;
+                msl=ms;
+            }
+            else{
+                E=m;
+                msr=ms;    
+            }
+        }
+    }
+
+    // void subuspensky(const std::vector<upolynomial_<ZZ>>& G,const QQ & B,const QQ & E,std::vector<std::pair<QQ,QQ>>& l,std::vector<size_t>& index)
+    // {
+    //     std::list<std::pair<std::pair<QQ,QQ>,std::vector<size_t>>> queue;
+    //     {
+    //         std::vector<size_t> tmp;
+    //         for (size_t i=0;i!=G.size();++i)
+    //         {
+    //             tmp.push_back(i);
+    //         }
+    //         queue.push_back({{B,E},tmp});
+    //     }
+    //     std::vector<uint64_t> v;v.resize(G.size());
+    //     while (!queue.empty())
+    //     {
+    //         QQ a=std::move(queue.front().first.first);
+    //         QQ b=std::move(queue.front().first.second);
+    //         std::vector<size_t> p_s=std::move(queue.front().second);
+    //         queue.pop_front();
+    //         uint64_t v0=0;
+    //         uint64_t v1=0;
+    //         size_t i_=0;
+    //         QQ mid=(B+E)/2;
+    //         for (auto  i:p_s)
+    //         {
+    //             v.push_back(coeffsignchanges(_upolynomial_Rtoab(G[i],a,b)));
+
+    //             switch (v.back())
+    //             {
+    //             case 0:
+    //                 ++v0;
+    //                 break;
+    //             case 1:
+    //                 i_=i;
+    //                 ++v1;
+    //                 break;
+
+    //             }
+    //         }
+
+    //         if (v0==G.size())  continue;
+    //         if (v1==1 && v0==G.size()-1)
+    //         {
+    //             uspensky_shrink_(G[i_],a,b);
+    //             l.push_back({a,b});
+    //             index.push_back(i_);
+    //             return void();
+    //         }
+    //         QQ mid=(B+E)/2;
+    //         bool is_mid=false;
+    //         for (auto i=0;i!=p_s.size();++i)
+    //         {
+    //             if (!assign<QQ,ZZ,QQ>(G[p_s[i]],mid))
+    //             {
+    //                 is_mid=true;
+    //                 if (v[i]==1)
+    //                 {
+    //                     v[i]=0;
+    //                 }
+    //                 break;
+    //             }
+    //         }
+    //         std::vector<size_t> p_s_1;p_s_1.reserve(p_s.size());
+    //         for (auto i=0;i!=p_s.size();++i)
+    //         {
+    //             if (v[i])
+    //                 p_s_1.push_back(p_s[i]);
+    //         }
+    //     }
+    // }
     void subuspensky(const std::vector<upolynomial_<ZZ>>& G,const std::vector<size_t>& I, std::vector<std::pair<QQ,QQ>>& l,std::vector<size_t>& index,const QQ & B,const QQ & E)
     {
         // std::cout<<B<<" "<<E<<std::endl;
@@ -357,31 +515,7 @@ namespace clpoly{
     }
     
     
-    upolynomial_<ZZ> _upolynomial_Rtoab(const upolynomial_<ZZ>& G,const QQ &a,const QQ& b)
-    {
-        if (G.empty())
-            return G;
-        ZZ den=lcm(a.get_den(),b.get_den());
-        ZZ _gcd=gcd(a.get_den(),b.get_den());
-        
-        ZZ a1=a.get_num()*b.get_den()/_gcd;
-        ZZ b1=b.get_num()*a.get_den()/_gcd;
-        auto m=G.front().first.deg();
-        upolynomial_<ZZ>  pnum={{1,a1},{0,b1}};
-        upolynomial_<ZZ>  pden={{1,den},{0,den}};
-        upolynomial_<ZZ> g,g_,g_1;
-        for (auto &i:G)
-        {
-            g_=pow(pden,m-i.first.deg())*pow(pnum,i.first.deg());
-            for (auto &j:g_)
-            {
-                j.second*=i.second;
-            }
-            g=g+g_;
-        }
-        return g;
 
-    }
     void _uroot_check(uroot* r,const QQ & mid)
     {
         if (mid<r->left() || mid >r->right() ||r->left()==r->right() )

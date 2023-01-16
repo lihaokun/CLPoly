@@ -116,12 +116,23 @@ namespace clpoly{
     template<class T1,class T2,class comp1>
     void poly_convert(const polynomial_<T1,comp1>& p_in,upolynomial_<T2> & p_out)
     {
+        // std::cout<<"poly_convert(const polynomial_<T1,comp1>& p_in,upolynomial_<T2> & p_out)"<<std::endl;
+        // std::cout<<p_in<<std::endl;
+        // std::cout<<p_out<<std::endl;
+        
         p_out.clear();
         p_out.reserve(p_in.size());
         for(auto &i:p_in)
         {
+            // std::cout<<i.first.deg()<<" "<<i.second<<std::endl;
+        
             p_out.push_back(std::pair<umonomial,T2>(i.first.deg(),i.second));
+            // std::cout<<p_out.back().first.deg()<<" "<<p_out.back().second<<std::endl;
+        
         }
+        // std::cout<<p_out<<std::endl;
+        
+        // std::cout<<"p_out:"<<p_out<<std::end;
         p_out.normalization();
     }
     void poly_convert(const upolynomial_<ZZ>& p_in,upolynomial_<QQ> & p_out);

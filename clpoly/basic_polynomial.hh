@@ -73,9 +73,11 @@ namespace clpoly{
             template <class type>
             basic_polynomial(const type & in)
             {
+                // std::cout<<"new init="<<in<<"\n";
                 
                 poly_convert(in,*this);
-                // std::cout<<"new init="<<in<<"\n";
+                // std::cout<<"out init="<<*this<<"\n";
+                
             }
 
 

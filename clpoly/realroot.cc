@@ -255,20 +255,20 @@ namespace clpoly{
             B=ml;E=ml;
             return;
         }
-        std::cout<<"uspensky_shrink_ "<<B<<" "<<E<<std::endl;
+        // std::cout<<"uspensky_shrink_ "<<B<<" "<<E<<std::endl;
         while (1)
         {
-            std::cout<<"ml,mr:"<<ml<<" "<<mr<<std::endl;
+            // std::cout<<"ml,mr:"<<ml<<" "<<mr<<std::endl;
         
             if (BS!=msl)
             {
                 QQ ml1=(ml+B)/2;
-                std::cout<<"ml1:"<<ml1<<std::endl;
+                // std::cout<<"ml1:"<<ml1<<std::endl;
                 int msl1=sgn(assign<QQ,ZZ,QQ>(p,ml1));
                 if (msl1==0)
                 {
                     B=ml1;E=ml1;
-                    std::cout<<"new B E "<<B<<" "<<E<<std::endl;
+                    // std::cout<<"new B E "<<B<<" "<<E<<std::endl;
                     
        
                     return;
@@ -288,7 +288,7 @@ namespace clpoly{
                 if (msr1==0)
                 {
                     B=mr1;E=mr1;
-                    std::cout<<"new B E "<<B<<" "<<E<<std::endl;
+                    // std::cout<<"new B E "<<B<<" "<<E<<std::endl;
        
                     return;
                 }
@@ -302,7 +302,7 @@ namespace clpoly{
             }
         }
         assert(B<=E);
-        std::cout<<"new B E "<<B<<" "<<E<<std::endl;
+        // std::cout<<"new B E "<<B<<" "<<E<<std::endl;
        
         while (E-B>1)
         {
@@ -540,10 +540,10 @@ namespace clpoly{
                 B=std::move(tmp);
         }
         // std::cout<<B<<std::endl;
-        auto t=clock();
+        // auto t=clock();
         subuspensky(_upolynomial_Bto1(G,-B),I,l1,index1,0,B);
         subuspensky(_upolynomial_Bto1(G,B),I,l2,index2,0,B);
-        std::cout<<"subuspensky time="<<double(clock()-t)/CLOCKS_PER_SEC<<"s\n";
+        // std::cout<<"subuspensky time="<<double(clock()-t)/CLOCKS_PER_SEC<<"s\n";
     
         l.reserve(l1.size()+l2.size());
         std::vector<size_t> index(index1.rbegin(),index1.rend());

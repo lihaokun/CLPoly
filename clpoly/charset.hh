@@ -655,7 +655,7 @@ namespace clpoly{
                 }
                 else 
                 {
-                    std::cout<<"BPh!=0"<<std::endl;
+                    // std::cout<<"BPh!=0"<<std::endl;
                     OO.push_back(T);
                 }
             }

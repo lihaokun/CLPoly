@@ -11,6 +11,7 @@
 #include <iostream>
 #include <clpoly/number.hh>
 #include <clpoly/polynomial_.hh>
+#include <clpoly/realroot.hh>
 namespace clpoly{
     class interval
     {
@@ -34,10 +35,11 @@ namespace clpoly{
                 return stream;
             }
         public:
+
             inline interval(){
                 mpri_init(_I);
-                MPRIA_MPQ_SET_NEG_INF(mpri_lepref(_I));
-                MPRIA_MPQ_SET_POS_INF(mpri_repref(_I));
+                // MPRIA_MPQ_SET_NEG_INF(mpri_lepref(_I));
+                // MPRIA_MPQ_SET_POS_INF(mpri_repref(_I));
             }
 
             inline interval(const interval& I){
@@ -48,9 +50,33 @@ namespace clpoly{
                 mpri_init(_I);
                 mpri_swap(this->_I,I._I);
             }
+            inline interval(const int& i)
+            {
+                mpri_init(_I);
+                mpq_set_si(mpri_lepref(this->_I),i,1);
+                mpq_set_si(mpri_repref(this->_I),i,1);
+            }
+            inline interval(const ZZ& z)
+            {
+                mpri_init(_I);
+                mpq_set_z(mpri_lepref(this->_I),z.get_mpz_t());
+                mpq_set_z(mpri_repref(this->_I),z.get_mpz_t());
+            }
+            
             inline interval(const QQ& q){
                 mpri_init(_I);
                 MPRI_SET_Q(_I,q.get_mpq_t());
+            }
+            inline interval(const QQ& l,const QQ& r){
+                mpri_init(_I);
+                if (l>r)
+                {
+                    MPRI_SET_NAN(_I)
+                    return;
+                }
+                this->set_l(l);
+                this->set_r(r);
+                // MPRI_SET_Q(_I,q.get_mpq_t());
             }
 
             inline  virtual ~interval(){
@@ -62,11 +88,11 @@ namespace clpoly{
                     mpri_swap(this->_I,I._I);
                 return *this;
             }
-            inline  interval& operator=(const QQ& q)
-            {
-                MPRI_SET_Q(_I,q.get_mpq_t());
-                return *this;
-            }
+            // inline  interval& operator=(const QQ& q)
+            // {
+            //     MPRI_SET_Q(_I,q.get_mpq_t());
+            //     return *this;
+            // }
         
             inline void set_l(const QQ&q)
             {
@@ -77,6 +103,20 @@ namespace clpoly{
                 mpq_set(mpri_repref(this->_I),q.get_mpq_t());
             }
 
+            inline QQ get_l() const
+            {
+                QQ ans;
+                mpri_get_left(ans.get_mpq_t(),this->_I);
+                return ans;
+            }
+            inline QQ get_r() const
+            {
+                QQ ans;
+                mpri_get_right(ans.get_mpq_t(),this->_I);                
+                return ans;
+            }
+
+
             inline bool is_zero() const
             {
                 return mpri_is_zero(_I);
@@ -84,6 +124,10 @@ namespace clpoly{
             inline bool is_notzero() const
             {
                 return mpri_is_nonzero(_I);
+            }
+            inline bool is_nan() const
+            {
+                return mpria_mpq_is_nan(mpri_lepref(_I)) ||mpria_mpq_is_nan(mpri_repref(_I)); 
             }
             
             inline operator bool() const
@@ -93,7 +137,24 @@ namespace clpoly{
 
             inline  bool operator==(const interval& I) const
             {
+                // std::cout<<I<<std::endl;
                 return mpri_equal(this->_I,I._I);
+            }
+            inline  bool operator==(int i) const
+            {
+                // std::cout<<I<<std::endl;
+                // return mpri_equal(this->_I,I._I);
+                return (mpq_cmp_si(mpri_lepref(this->_I),i,1)==0) &&
+                       (mpq_cmp_si(mpri_repref(this->_I),i,1)==0) ;
+
+            }
+            inline  bool operator!=(int i) const
+            {
+                return !(*this==i);
+            }
+            inline  bool operator!=(const interval& I) const
+            {
+                return !(*this==I);
             }
             inline  interval operator+(const interval& I) const
             {
@@ -114,6 +175,28 @@ namespace clpoly{
             {
                 interval ans;
                 mpri_sub(ans._I,this->_I,I._I);
+                return ans;
+            }
+            inline interval operator&&(const interval& I) const
+            {
+                if (this->is_nan() || I.is_nan())
+                    return interval::NAN_interval();
+
+                return interval(std::max(this->get_l(),I.get_l()),std::min(this->get_r(),I.get_r()));   
+            }
+            inline interval operator||(const interval& I) const
+            {
+                if (this->is_nan())
+                    return I;
+                if (I.is_nan())
+                    return *this;
+                return interval(std::min(this->get_l(),I.get_l()),std::max(this->get_r(),I.get_r()));           
+            }
+            
+            inline interval operator-() const
+            {
+                interval ans;
+                mpri_neg(ans._I,this->_I);
                 return ans;
             }
 
@@ -139,8 +222,7 @@ namespace clpoly{
                 *this=std::move(ans);
                 return *this;
             }
-
-
+            
             inline  interval operator/(const interval& I) const
             {
                 interval ans;
@@ -154,7 +236,8 @@ namespace clpoly{
                 *this=std::move(ans);
                 return *this;
             }
-
+            
+            
             inline interval sqr() const
             {
                 interval ans;
@@ -188,13 +271,34 @@ namespace clpoly{
                 return ans;
             }
             
-
+            void swap(interval & I)
+            {   
+                if (I._I!=this->_I)
+                    mpri_swap(this->_I,I._I);
+            }
 
             friend std::ostream& operator<<(std::ostream& stream, const interval& I)
             {
                 _to_stream(_to_stream(stream<<"[",mpri_lepref(I._I))<<",",mpri_repref(I._I))<<"]";
                 return stream;
             }
+
+    
+
+            static interval  inf_interval()
+            {
+                interval i;
+                MPRIA_MPQ_SET_NEG_INF(mpri_lepref(i._I));
+                MPRIA_MPQ_SET_POS_INF(mpri_repref(i._I));
+                return i;
+            } 
+            static interval  NAN_interval()
+            {
+                interval i;
+                MPRI_SET_NAN(i._I)
+                return i;
+            }
+            
 
             
             
@@ -203,6 +307,7 @@ namespace clpoly{
     template <class comp=grlex>
     using interval_poly=polynomial_<interval,comp>;
 
+    using interval_upoly=upolynomial_<interval>;
 
     template <class Tc, class To>
     interval_poly<To> assign(const polynomial_<Tc,To>& p,const std::map<variable,interval> & ass_list)
@@ -249,11 +354,122 @@ namespace clpoly{
         }
         if (z1)
             Pout.push_back({std::move(m1),std::move(z1)});
-        std::cout<<Pout<<std::endl;
+        // std::cout<<Pout<<std::endl;
         Pout.normalization();
         return Pout;
     }
 
+
+
+    template<class op_c>
+    interval good_range(const upolynomial_<QQ> &p,const op_c& op) // op > || < >= <=
+    {
+        const QQ zero=0;
+        upolynomial_<ZZ> tmp_p;
+        poly_convert(p,tmp_p);
+        upolynomial_<ZZ> G=tmp_p/polynomial_GCD(tmp_p,derivative(tmp_p));
+        if (G.empty() ||  G.front().first.empty() && !op(G.front().second))
+        {
+            return interval::NAN_interval();
+        }       
+        if (G.front().first.empty())
+        {
+            interval I=interval::inf_interval();
+            I.set_l(0);
+            return I;
+        }
+        std::vector<std::pair<QQ,QQ>> l;
+        ZZ B=RealRootBound(G);
+        // std::cout<<B<<std::endl;
+        subuspensky(_upolynomial_Bto1(G,B),l,0,B);
+        if (l.empty())
+        {
+            if (!op(assign<QQ,ZZ,QQ>(p,1)))
+            {
+                return interval::NAN_interval();                
+            }
+            interval I=interval::inf_interval();
+            I.set_l(0);
+            return I;    
+        }
+        interval I=interval::inf_interval();
+        I.set_l(0);
+        QQ tmp_al,tmp_ar;
+        tmp_al=assign<QQ,ZZ,QQ>(p,l.back().second);
+        if (!(op(tmp_al) && (tmp_al!=0 ||  op(assign<QQ,ZZ,QQ>(p,l.back().second+1)))))
+        {
+            bool tmp=true;
+            auto ptr=l.rbegin();
+            for(;ptr!=l.rend();)
+            {
+                tmp_ar=std::move(tmp_al);
+                tmp_al=assign<QQ,ZZ,QQ>(p,ptr->first);
+                if (op(tmp_al) || op(zero) || op(tmp_ar)) 
+                {
+                    tmp=false;
+                    I.set_r(ptr->second);
+                    break;
+                }
+                auto ptr1=ptr;++ptr1;
+                tmp_ar=std::move(tmp_al);
+                if (ptr1!=l.rend())
+                    tmp_al=assign<QQ,ZZ,QQ>(p,ptr->second);
+                else 
+                    tmp_al=assign<QQ,ZZ,QQ>(p,0);
+                if (ptr1!=l.rend() && ( op(assign<QQ,ZZ,QQ>(p,(ptr1->second+ptr->first)/2))))
+                {
+                    tmp=false;
+                    I.set_r(ptr->first);    
+                    break;
+                }
+                ptr=ptr1;
+            }
+            if (tmp)
+            {
+                if (op(tmp_al)){
+                    if (tmp_al==0 && !op(assign<QQ,ZZ,QQ>(p,l.front().first/2)))
+                    {
+                        I.set_r(0);
+                        return I;    
+                    }
+                    I.set_r(l.front().first);
+                    return I;
+                }
+                else
+                    return  interval::NAN_interval();
+            }
+        }
+        tmp_ar=assign<QQ,ZZ,QQ>(p,l.front().first);
+        if (op(assign<QQ,ZZ,QQ>(p,0)) || op(assign<QQ,ZZ,QQ>(p,l.front().first)) || op(assign<QQ,ZZ,QQ>(p,l.front().first/2)))
+            I.set_l(0);
+        else{
+            for(auto ptr=l.begin();ptr!=l.end();)
+            {
+                tmp_al=std::move(tmp_ar);
+                tmp_ar=assign<QQ,ZZ,QQ>(p,ptr->second);
+                if (op(tmp_al)|| op(tmp_ar) || op(zero))
+                {
+                    I.set_l(ptr->first);
+                    break;
+                }
+                auto ptr1=ptr;++ptr1;
+                tmp_al=std::move(tmp_ar);
+                if (ptr1!=l.end())
+                    tmp_ar=assign<QQ,ZZ,QQ>(p,ptr1->first);
+                if (ptr1!=l.end() && op(assign<QQ,ZZ,QQ>(p,(ptr1->first+ptr->second)/2)))
+                {
+                    I.set_l(ptr->second);    
+                    break;
+                }
+                ptr=ptr1;
+            }
+        }
+        return I;
+    
+    }
+    interval feasible_range(const interval_upoly &p,char op);
+    // {
+    
 
     template <> 
     struct zore_check<interval>
@@ -264,15 +480,15 @@ namespace clpoly{
         } 
     };
 
-    template <class To>
-    std::ostream& operator<<  (std::ostream& stream, const interval_poly<To>& v) 
+    template <class Tm,class To>
+    std::ostream& operator<<  (std::ostream& stream, const basic_polynomial<Tm,interval,To>& v) 
     {
         if (v.size()==0)
             return stream<<'0';
         bool is_print=false;
         for(auto i=v.begin();i!=v.end();++i)
         {
-            if (!zore_check<basic_monomial<To>>()(i->first) //&& !zore_check<Tc>()(i->second)
+            if (!zore_check<Tm>()(i->first) //&& !zore_check<Tc>()(i->second)
                 ){
                 if (is_print) //greater
                     stream<<"+";

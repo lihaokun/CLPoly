@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <clpoly/clpoly.hh>
+#include <clpoly/interval.hh>
 #include <functional>
 
 int main(int argc, char const *argv[])
@@ -24,10 +25,19 @@ int main(int argc, char const *argv[])
     clpoly::variable x("x");
     clpoly::variable y("y");
     clpoly::variable z("z");
-    
+    // {
+    //     clpoly::interval I(0,10);
+    //     std::cout<<I<<std::endl;
+    //     std::cout<<bool(I)<<std::endl;
+    //     std::cout<<(I==0)<<std::endl;
+    //     std::cout<<(I==1)<<std::endl;
+    //     std::cout<<(I!=1)<<std::endl;
+        
+    // }
     clpoly::polynomial_ZZ  p=y*x+pow(y,3);
     std::cout<<"p="<<p<<std::endl;
-    std::cout<<"p="<<clpoly::assign(p,{std::make_pair(y,I1)})<<std::endl;
-    
+    clpoly::interval_poly<> p1=clpoly::assign(p,{std::make_pair(y,I1)});
+    std::cout<<"p="<<p1<<std::endl;
+    std::cout<< feasible_range(p1,'>') <<std::endl;
     return 0;
 }

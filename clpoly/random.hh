@@ -13,9 +13,79 @@
 #include <list>
 #include <string>
 #include <random>
+#include <algorithm>
 
 
-namespace clpoly{   
+namespace clpoly{
+    inline std::vector<size_t> random_select(size_t m,size_t n,bool no_repeat=true) // 0,..,m-1 中选 n 个
+    {
+        std::vector<size_t> v;
+        if (no_repeat && n>=m)
+        {
+            n=m;
+            for(size_t i=0;i!=n;++i)
+                v.push_back(i);
+            return v;
+        
+        }
+        std::random_device rd; 
+        std::mt19937 gen(rd());
+        size_t tmp=no_repeat?m-n:m-1;
+        std::uniform_int_distribution<> dis(0, tmp);
+        for (size_t i=0;i!=n;++i)
+        {
+            v.push_back(dis(gen));
+        }
+        std::sort(v.begin(),v.end());
+        if (no_repeat)
+        {
+            for (size_t i=0;i!=n;++i)
+            {
+                v[i]+=i;
+            }
+        }
+        return v;
+    }
+    
+    template<class Tc>
+    polynomial_<Tc> random_polynomial(const std::vector<variable> & v,uint64_t deg,uint64_t len,std::pair<int,int>  coeff,bool is_add_num=false)
+    {
+        if (coeff.first > coeff.second) std::swap(coeff.first,coeff.second);
+        std::vector<std::pair<monomial,Tc>> p1;
+        std::random_device rd; 
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(coeff.first, coeff.second);
+        std::uniform_int_distribution<> deg_r(0, deg);
+        std::vector<std::pair<variable,int64_t>>  m;
+        for (auto &i:v)
+            m.emplace_back(i,0);
+        {
+            auto tmp=random_select(deg+1,v.size()-1,false);
+            tmp.push_back(deg);
+            size_t deg_=0;
+            for (size_t i=0;i!=v.size();++i)
+            {
+                m[i].second=tmp[i]-deg_;
+                deg_=tmp[i];
+            }
+            p1.emplace_back(monomial(m),Tc(dis(gen)));
+        }
+        for (size_t i=0;i<len-1;++i)
+        {
+            auto tmp=random_select(deg+1,v.size(),false);
+            size_t deg_=0;
+            for (size_t i=0;i!=v.size();++i)
+            {
+                m[i].second=tmp[i]-deg_;
+                deg_=tmp[i];
+            }
+            p1.emplace_back(monomial(m),Tc(dis(gen)));
+        }
+        if (is_add_num)
+            p1.push_back({{},Tc(dis(gen))});
+        return polynomial_<Tc>(p1);
+    }
+
     template<class Tc>
     polynomial_<Tc> random_polynomial(const std::vector<variable> & v,uint64_t deg,double p,int up,int down)
     {

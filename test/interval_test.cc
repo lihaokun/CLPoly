@@ -34,10 +34,37 @@ int main(int argc, char const *argv[])
     //     std::cout<<(I!=1)<<std::endl;
         
     // }
-    clpoly::polynomial_ZZ  p=y*x+pow(y,3);
+
+    clpoly::polynomial_ZZ  p=-y*pow(x,1)+2*y*pow(x,2)+pow(y,3)+3*z*y*pow(x,3);
     std::cout<<"p="<<p<<std::endl;
-    clpoly::interval_poly<> p1=clpoly::assign(p,{std::make_pair(y,I1)});
-    std::cout<<"p="<<p1<<std::endl;
-    std::cout<< feasible_range(p1,'>') <<std::endl;
+    {
+        std::map<clpoly::variable,clpoly::interval> tmp;
+        tmp[y]=I1;tmp[z]=I1;
+        clpoly::interval_poly<> p1=clpoly::assign(p,tmp);
+        std::cout<<"p="<<p1<<std::endl;
+        // {
+        // clpoly::QQ l1=p1.back().second.get_l();
+        // clpoly::QQ l2=p1.front().second.get_r();
+        // std::cout<<"l1/l2="<<l1<<" "<<l2<<" "<<l1/l2<<std::endl;
+        // } 
+        std::cout<< feasible_range(p1,'=') <<std::endl;
+        std::cout<< feasible_range(p1,'<') <<std::endl;
+        std::cout<< feasible_range(p1,'>') <<std::endl;
+    }
+    {
+        std::map<clpoly::variable,clpoly::interval> tmp;
+        tmp[y]=I1;tmp[z]=I1;
+        clpoly::interval_poly<> p1=clpoly::assign(p,tmp);
+        std::cout<<"p="<<p1<<std::endl;
+        // {
+        // clpoly::QQ l1=p1.back().second.get_l();
+        // clpoly::QQ l2=p1.front().second.get_r();
+        // std::cout<<"l1/l2="<<l1<<" "<<l2<<" "<<l1/l2<<std::endl;
+        // } 
+        std::cout<< feasible_range(p1,'=') <<std::endl;
+        std::cout<< feasible_range(p1,'<') <<std::endl;
+        std::cout<< feasible_range(p1,'>') <<std::endl;
+    }
+    
     return 0;
 }

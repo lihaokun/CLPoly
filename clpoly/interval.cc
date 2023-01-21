@@ -19,6 +19,10 @@ namespace clpoly{
         {
             return i>0;
         }
+        static std::string str() 
+        {
+            return ">0";
+        }
     };
     
     class ge_z{
@@ -27,6 +31,11 @@ namespace clpoly{
         {
             return i>=0;
         }
+        static std::string str() 
+        {
+            return ">=0";
+        }
+
     };
     class l_z{
         public:
@@ -34,6 +43,11 @@ namespace clpoly{
         {
             return i<0;
         }
+        static std::string str() 
+        {
+            return "<0";
+        }
+
     };
     class le_z{
         public:
@@ -41,12 +55,16 @@ namespace clpoly{
         {
             return i<=0;
         }
+        static std::string str() 
+        {
+            return "<=0";
+        }
     };
     
     interval feasible_range(const interval_upoly &p,char op)
     {
-
-        std::cout << p<<std::endl;
+        // std::cout << "feasible_range"<<std::endl;
+        // std::cout << p<<std::endl;
         upolynomial_<QQ> p_up;
         upolynomial_<QQ> p_down;
         upolynomial_<QQ> n_up;
@@ -56,7 +74,7 @@ namespace clpoly{
             for (auto &i:p)
             {
                 p_up.push_back({i.first,i.second.get_r()});
-                if (i.first.deg() % 1 )
+                if (!(i.first.deg() & 1 ))
                 {
                     n_up.push_back({i.first,i.second.get_r()});
                 }
@@ -73,7 +91,7 @@ namespace clpoly{
             for (auto &i:p)
             {
                 p_down.push_back({i.first,i.second.get_l()});
-                if (i.first.deg() % 1 )
+                if (!(i.first.deg() & 1 ))
                 {
                     n_down.push_back({i.first,i.second.get_l()});
                 }
@@ -83,6 +101,9 @@ namespace clpoly{
 
 
             }    
+            // std::cout<<good_range(p_down,l_z())<<std::endl;
+            // std::cout<<good_range(n_down,l_z())<<std::endl;
+            
             return good_range(p_down,l_z()) || (-good_range(n_down,l_z()));
         }
         if (op=='=')
@@ -92,7 +113,7 @@ namespace clpoly{
                 p_down.push_back({i.first,i.second.get_l()});
                 p_up.push_back({i.first,i.second.get_r()});
 
-                if (i.first.deg() % 1 )
+                if (!(i.first.deg() & 1 ))
                 {
                     n_up.push_back({i.first,i.second.get_r()});
                     n_down.push_back({i.first,i.second.get_l()});
@@ -102,6 +123,8 @@ namespace clpoly{
                     n_down.push_back({i.first,-i.second.get_r()});
                 }
             } 
+            // std::cout<<good_range(n_up,ge_z())<<std::endl;
+            // std::cout<<good_range(n_down,le_z())<<std::endl;
             
             return (good_range(p_up,ge_z())&& good_range(p_down,le_z())) || -(good_range(n_up,ge_z())&& good_range(n_down,le_z())); 
         }

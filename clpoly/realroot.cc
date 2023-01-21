@@ -88,6 +88,7 @@ namespace clpoly{
         return g;
 
     }
+    bool uspensky_shrink(const upolynomial_<ZZ>& G,QQ & B,QQ & E,bool lb=false,bool rb=false);
     void subuspensky(const upolynomial_<ZZ>& G, std::vector<std::pair<QQ,QQ>>& l,const QQ & B,const QQ & E)
     {
         // std::cout<<"G:"<<G<<std::endl;
@@ -97,7 +98,10 @@ namespace clpoly{
         if (v==0)   return void();
         if (v==1 )
         {
-            l.push_back({B,E});
+            QQ B1=B;
+            QQ E1=E;
+            uspensky_shrink(G,B1,E1);
+            l.push_back({std::move(B1),std::move(E1)});
             return void();
         }
         QQ mid=(B+E)/2;
@@ -191,7 +195,7 @@ namespace clpoly{
         return Gs;
 
     }
-    bool uspensky_shrink(const upolynomial_<ZZ>& G,QQ & B,QQ & E,bool lb=false,bool rb=false)
+    bool uspensky_shrink(const upolynomial_<ZZ>& G,QQ & B,QQ & E,bool lb,bool rb)
     {
         auto G_=_upolynomial_1toinf(G);
         auto v=coeffsignchanges(G_);

@@ -43,10 +43,12 @@ clpoly_d_o=$(clpoly_cc:clpoly/%.cc=$(CLPoly_BUILD_DIR)/debug/clpoly/%.o)
 clpoly_r_o=$(clpoly_cc:clpoly/%.cc=$(CLPoly_BUILD_DIR)/release/clpoly/%.o)
 $(CLPoly_BUILD_DIR)/release/%.o:%.cc $(clpoly_hh)
 	mkdir -p $(CLPoly_BUILD_DIR)/release/clpoly
-	$(CXX) $(CLPoly_REL) $(CLPoly_FPIC) $(IPATHS) -c $< -o $@ $(Numberlib)
+	$(CXX) $(CLPoly_REL) $(CLPoly_FPIC) $(IPATHS) -c $< -o $@ 
+#$(Numberlib)
 $(CLPoly_BUILD_DIR)/debug/%.o:%.cc $(clpoly_hh)
 	mkdir -p $(CLPoly_BUILD_DIR)/debug/clpoly
-	$(CXX) $(CLPoly_DEB) $(CLPoly_FPIC) $(IPATHS) -c $< -o $@ $(Numberlib)
+	$(CXX) $(CLPoly_DEB) $(CLPoly_FPIC) $(IPATHS) -c $< -o $@
+#$(Numberlib)
 %/lib/debug/libclpoly.a:$(clpoly_d_o)
 	mkdir -p $(dir $@)
 	ar -rsv $@ $(clpoly_d_o)

@@ -69,7 +69,7 @@ namespace clpoly{
             }
             inline interval(const QQ& l,const QQ& r){
                 mpri_init(_I);
-                if (l>r)
+                if (QQ_cmp(l,r)>0)
                 {
                     MPRI_SET_NAN(_I)
                     return;
@@ -181,8 +181,31 @@ namespace clpoly{
             {
                 if (this->is_nan() || I.is_nan())
                     return interval::NAN_interval();
+                // std::cout<<*this<<I<<std::endl;
+                interval ans;
+                {
 
-                return interval(std::max(this->get_l(),I.get_l()),std::min(this->get_r(),I.get_r()));   
+                    if (QQ_cmp(mpri_lepref(this->_I),mpri_lepref(I._I))>=0)
+                    {
+                        mpq_set(mpri_lepref(ans._I),mpri_lepref(this->_I));
+                    }
+                    else{
+                        mpq_set(mpri_lepref(ans._I),mpri_lepref(I._I));    
+                    }
+                    if (QQ_cmp(mpri_repref(this->_I),mpri_repref(I._I))<=0)
+                    {
+                        mpq_set(mpri_repref(ans._I),mpri_repref(this->_I));
+                    }
+                    else{
+                        mpq_set(mpri_repref(ans._I),mpri_repref(I._I));    
+                    }
+                    if (QQ_cmp(mpri_lepref(ans._I),mpri_repref(ans._I))>0)
+                    {
+                        return interval::NAN_interval();
+                    }
+
+                }
+                return ans; 
             }
             inline interval operator||(const interval& I) const
             {
@@ -190,9 +213,71 @@ namespace clpoly{
                     return I;
                 if (I.is_nan())
                     return *this;
-                return interval(std::min(this->get_l(),I.get_l()),std::max(this->get_r(),I.get_r()));           
+                interval ans;
+                {
+
+                    if (QQ_cmp(mpri_lepref(this->_I),mpri_lepref(I._I))<=0)
+                    {
+                        mpq_set(mpri_lepref(ans._I),mpri_lepref(this->_I));
+                    }
+                    else{
+                        mpq_set(mpri_lepref(ans._I),mpri_lepref(I._I));    
+                    }
+                    if (QQ_cmp(mpri_repref(this->_I),mpri_repref(I._I))>=0)
+                    {
+                        mpq_set(mpri_repref(ans._I),mpri_repref(this->_I));
+                    }
+                    else{
+                        mpq_set(mpri_repref(ans._I),mpri_repref(I._I));    
+                    }
+                    
+
+                }
+                return ans;
+                // inline int QQ_cmp
+                // return interval(std::min(this->get_l(),I.get_l()),std::max(this->get_r(),I.get_r()));           
             }
-            
+            inline static int QQ_cmp(const QQ& q1,const QQ& q2)// 0:q1=q2 1:q1>q2 -1:q1<q2
+            {
+                // int q1i=is_inf(q1);
+                // int q2i=is_inf(q2);
+                // if (q1i && q2i)
+                // {
+                //     if (q1i==q2i)
+                //         return 0;
+                //     if (q1i>q2i)
+                //         return 1;
+                //     return -1;
+                // }
+                // if (q1i)
+                //     return q1i;
+                // if (q2i)
+                //     return -q2i;
+                // return mpq_cmp(q1.get_mpq_t(),q2.get_mpq_t());
+                return QQ_cmp(q1.get_mpq_t(),q2.get_mpq_t());
+            }
+            inline static int QQ_cmp(mpq_srcptr q1,mpq_srcptr q2)// 0:q1=q2 1:q1>q2 -1:q1<q2
+            {
+                int q1i=mpria_mpq_is_infinite(q1);
+                int q2i=mpria_mpq_is_infinite(q2);
+                if (q1i && q2i)
+                {
+                    if (q1i==q2i)
+                        return 0;
+                    if (q1i>q2i)
+                        return 1;
+                    return -1;
+                }
+                if (q1i)
+                    return q1i;
+                if (q2i)
+                    return -q2i;
+                return mpq_cmp(q1,q2);
+            }
+            inline  static int is_inf(const QQ & q)
+            {
+                return mpria_mpq_is_infinite(q.get_mpq_t());
+            }
             inline interval operator-() const
             {
                 interval ans;
@@ -285,18 +370,30 @@ namespace clpoly{
 
     
 
-            static interval  inf_interval()
+            inline static interval  inf_interval()
             {
                 interval i;
                 MPRIA_MPQ_SET_NEG_INF(mpri_lepref(i._I));
                 MPRIA_MPQ_SET_POS_INF(mpri_repref(i._I));
                 return i;
             } 
-            static interval  NAN_interval()
+            inline static interval  NAN_interval()
             {
                 interval i;
                 MPRI_SET_NAN(i._I)
                 return i;
+            }
+            inline static interval QQ_inf()
+            {
+                QQ q;
+                MPRIA_MPQ_SET_POS_INF(q.get_mpq_t());
+                return q;
+            }
+            inline static interval QQ_ninf()
+            {
+                QQ q;
+                MPRIA_MPQ_SET_NEG_INF(q.get_mpq_t());
+                return q;
             }
             
 
@@ -364,10 +461,13 @@ namespace clpoly{
     template<class op_c>
     interval good_range(const upolynomial_<QQ> &p,const op_c& op) // op > || < >= <=
     {
+        // std::cout<<"good_range:"<<p<<op.str()<<std::endl;
         const QQ zero=0;
         upolynomial_<ZZ> tmp_p;
         poly_convert(p,tmp_p);
+        // std::cout<<"tmp_p:"<<tmp_p<<std::endl;
         upolynomial_<ZZ> G=tmp_p/polynomial_GCD(tmp_p,derivative(tmp_p));
+        
         if (G.empty() ||  G.front().first.empty() && !op(G.front().second))
         {
             return interval::NAN_interval();
@@ -379,9 +479,26 @@ namespace clpoly{
             return I;
         }
         std::vector<std::pair<QQ,QQ>> l;
-        ZZ B=RealRootBound(G);
         // std::cout<<B<<std::endl;
-        subuspensky(_upolynomial_Bto1(G,B),l,0,B);
+        
+        if (G.degree()==1)
+        {
+            
+            // std::cout<<"G.degree()==1"<<std::endl;
+            if (G.size()!=1)
+            {
+                QQ tmp=G.back().second;
+                tmp=-tmp/G.front().second;
+                // std::cout<<"tmp:"<<tmp<<std::endl;
+                if (tmp>0)
+                    l.push_back({tmp,tmp});
+            }
+        }
+        else
+        {
+            ZZ B=RealRootBound(G);
+            subuspensky(_upolynomial_Bto1(G,B),l,0,B);
+        }
         if (l.empty())
         {
             if (!op(assign<QQ,ZZ,QQ>(p,1)))
@@ -396,7 +513,9 @@ namespace clpoly{
         I.set_l(0);
         QQ tmp_al,tmp_ar;
         tmp_al=assign<QQ,ZZ,QQ>(p,l.back().second);
-        if (!(op(tmp_al) && (tmp_al!=0 ||  op(assign<QQ,ZZ,QQ>(p,l.back().second+1)))))
+        // std::cout<< l.back().second+1<<" "<< assign<QQ,ZZ,QQ>(p,l.back().second+1)<<" "<< op(assign<QQ,ZZ,QQ>(p,l.back().second+1))<<std::endl;
+        
+        if (!( op(assign<QQ,ZZ,QQ>(p,l.back().second+1))))
         {
             bool tmp=true;
             auto ptr=l.rbegin();
@@ -440,30 +559,41 @@ namespace clpoly{
             }
         }
         tmp_ar=assign<QQ,ZZ,QQ>(p,l.front().first);
-        if (op(assign<QQ,ZZ,QQ>(p,0)) || op(assign<QQ,ZZ,QQ>(p,l.front().first)) || op(assign<QQ,ZZ,QQ>(p,l.front().first/2)))
+        if (op(assign<QQ,ZZ,QQ>(p,0)) || op(assign<QQ,ZZ,QQ>(p,l.front().first/2)))
             I.set_l(0);
         else{
-            for(auto ptr=l.begin();ptr!=l.end();)
-            {
-                tmp_al=std::move(tmp_ar);
-                tmp_ar=assign<QQ,ZZ,QQ>(p,ptr->second);
-                if (op(tmp_al)|| op(tmp_ar) || op(zero))
+            bool tmp=true;
+            
+                for(auto ptr=l.begin();ptr!=l.end();)
                 {
-                    I.set_l(ptr->first);
-                    break;
+                    tmp_al=std::move(tmp_ar);
+                    tmp_ar=assign<QQ,ZZ,QQ>(p,ptr->second);
+                    if (op(tmp_al)|| op(tmp_ar) || op(zero))
+                    {
+                        tmp=false;
+                    
+                        I.set_l(ptr->first);
+                        break;
+                    }
+                    auto ptr1=ptr;++ptr1;
+                    tmp_al=std::move(tmp_ar);
+                    if (ptr1!=l.end())
+                        tmp_ar=assign<QQ,ZZ,QQ>(p,ptr1->first);
+                    if (ptr1!=l.end() && op(assign<QQ,ZZ,QQ>(p,(ptr1->first+ptr->second)/2)))
+                    {
+                        tmp=false;
+                    
+                        I.set_l(ptr->second);    
+                        break;
+                    }
+                    ptr=ptr1;
                 }
-                auto ptr1=ptr;++ptr1;
-                tmp_al=std::move(tmp_ar);
-                if (ptr1!=l.end())
-                    tmp_ar=assign<QQ,ZZ,QQ>(p,ptr1->first);
-                if (ptr1!=l.end() && op(assign<QQ,ZZ,QQ>(p,(ptr1->first+ptr->second)/2)))
+                if (tmp)
                 {
-                    I.set_l(ptr->second);    
-                    break;
+                    I.set_l(l.back().second);
                 }
-                ptr=ptr1;
-            }
         }
+        // std::cout<<I<<std::endl;
         return I;
     
     }

@@ -26,7 +26,8 @@ int main(int argc, char const *argv[])
         // std::vector<clpoly::variable> l1(l.begin(),j);
         // std::cout<<l1<<","<<*p<<std::endl;
         // auto f1=clpoly::random_polynomial<clpoly::ZZ>(l1,10,*p,10,-10);
-        auto f=clpoly::random_polynomial<clpoly::ZZ>(l,10,0.1,10,-10);
+        // auto f=clpoly::random_polynomial<clpoly::ZZ>(l,10,0.1,10,-10);
+        auto f=clpoly::random_polynomial<clpoly::ZZ>(l,10,10,{-10,10},true);
         std::cout<<f<<","<<std::endl;
         // ++p;
     }

@@ -31,19 +31,24 @@ config:
 	   echo 'CLPoly_FPIC?=$(CLPoly_FPIC)'     ; \
 	   echo 'CLPoly_prefix?=$(CLPoly_prefix)'                 ) > config.mk
 
-clpoly_hh=$(wildcard clpoly/*.hh)
 CXX=g++ 
 IPATHS=-I./ 
 CFLAGS=-O3 -flto -DNDEBUG  
 
-Numberlib= -lgmpxx -lmpria -lgmp  
-clpoly_hh=$(wildcard clpoly/*.hh)
-clpoly_cc=$(wildcard clpoly/*.cc)
+Numberlib= -lgmpxx  -lgmp 
+interval_lib=-lmpria 
+clpoly_interval_hh=$(wildcard clpoly/*.hh)
+interval_hh=src/interval.hh
+clpoly_hh=$(filter-out $(interval_hh),$(clpoly_interval_hh))
+clpoly_interval_cc=$(wildcard clpoly/*.cc)
+interval_cc=src/interval.cc
+clpoly_cc=$(filter-out $(interval_cc),$(clpoly_interval_cc))
 clpoly_d_o=$(clpoly_cc:clpoly/%.cc=$(CLPoly_BUILD_DIR)/debug/clpoly/%.o)
 clpoly_r_o=$(clpoly_cc:clpoly/%.cc=$(CLPoly_BUILD_DIR)/release/clpoly/%.o)
 $(CLPoly_BUILD_DIR)/release/%.o:%.cc $(clpoly_hh)
 	mkdir -p $(CLPoly_BUILD_DIR)/release/clpoly
 	$(CXX) $(CLPoly_REL) $(CLPoly_FPIC) $(IPATHS) -c $< -o $@ 
+
 #$(Numberlib)
 $(CLPoly_BUILD_DIR)/debug/%.o:%.cc $(clpoly_hh)
 	mkdir -p $(CLPoly_BUILD_DIR)/debug/clpoly

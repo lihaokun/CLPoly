@@ -14,7 +14,7 @@
 #include <clpoly/associatedgraph.hh>
 #include <clpoly/realroot.hh>
 #include <clpoly/charset.hh>
-#include <clpoly/interval.hh>
+// #include <clpoly/interval.hh>
 
 
 #endif

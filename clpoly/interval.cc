@@ -1,5 +1,5 @@
 /**
- * @file interval.hh
+ * @file interval.cc
  * @author 李昊坤 (ker@pm.me)
  * @brief 定义interval class
 */

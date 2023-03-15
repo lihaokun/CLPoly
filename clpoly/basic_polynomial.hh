@@ -13,6 +13,7 @@
 #include <functional>
 #include <algorithm>
 #include <sstream>
+#include <set>
 #include <clpoly/variable.hh>
 namespace clpoly{
     template <class Tm,class Tc,class compare>

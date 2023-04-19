@@ -18,15 +18,15 @@ namespace clpoly{
         return monomial({{v,i}});
     }
     template <class compare>
-    inline  basic_monomial<compare> pow(const basic_monomial<compare> & v,int64_t i)
+    inline  basic_monomial<compare> pow(const basic_monomial<compare> & v,int64_t n)
     {
         basic_monomial<compare> m1(v.comp_ptr());
-        if (i)
+        if (n)
         {
             m1=v;
             for (auto & i:m1)
             {
-                i.second*=i;
+                i.second*=n;
             }
         }
         return m1;

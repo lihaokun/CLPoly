@@ -56,7 +56,8 @@ int main(){
     p_1=p;
     std::cout<<"p_1="<< p_1<<std::endl;
     
-    clpoly::monomial m=pow(x,3);
+    clpoly::monomial m=pow(x,3)*y;
+    std::cout<<"m="<<m<<" "<<pow(m,4)<<std::endl;
     p=z*z;
     time_t t;
     std::cout<< p<<std::endl;

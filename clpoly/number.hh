@@ -9,6 +9,7 @@
 #include <gmpxx.h>
 #include <clpoly/basic.hh>
 #include <cmath>
+#include <cstdint>
 #include <cassert>
 #include <boost/container_hash/hash.hpp>
 inline std::size_t hash_value(const mpz_class& p) 

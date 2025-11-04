@@ -13,9 +13,7 @@
 ```cpp
 enum class projection_method {
     MCCALLUM,    // McCallum 投影算子（默认）
-    HONG,        // Hong 改进投影算子
-    LAZARD,      // Lazard 投影算子
-    BROWN        // Brown 改进投影算子
+    LAZARD      // Lazard 投影算子
 };
 
 std::vector<clpoly::polynomial_ZZ> project(

@@ -28,6 +28,7 @@ namespace clpoly{
             {
                 i.second*=n;
             }
+            m1.re_deg();
         }
         return m1;
     }

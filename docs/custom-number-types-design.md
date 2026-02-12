@@ -25,11 +25,11 @@ typedef mpq_class QQ;
 
 ### 1.2 FLINT 的 fmpz 方案
 
-FLINT 用单个 `slong` 实现双模式存储：
+FLINT 用单个 `long`（64 位平台上 8 字节）实现双模式存储：
 
 | 模式 | 条件 | 存储 | 开销 |
 |------|------|------|------|
-| 小整数 | 高 2 位 ≠ `01` | 直接存值（62 位范围） | 8 字节，零堆分配 |
+| 小整数 | 高 2 位 ≠ `01` | 直接存值（范围 `[-2^62, 2^62-1]`） | 8 字节，零堆分配 |
 | 大整数 | 高 2 位 = `01` | 编码后的 mpz_t 指针 | 8 字节 + mpz 堆内存 |
 
 小整数场景下比 `mpz_class` 快约 3 倍。
@@ -40,17 +40,25 @@ FLINT 用单个 `slong` 实现双模式存储：
 
 ### 2.1 新 ZZ 类
 
+> **GMP 隔离策略**：头文件仍需 `#include <gmp.h>`（因为私有成员的 inline 方法需要访问
+> `mpz_t`），但**公共 API 中不暴露任何 GMP 类型**。用户代码不需要 include GMP 头文件。
+
 ```cpp
+// 类型定义（替代 FLINT 的 slong，CLPoly 自行定义）
+using slong = long;  // 64 位平台上为 64 位有符号整数
+
 class ZZ {
 private:
     slong _val;  // 小整数直接存值；大整数为编码后的 mpz_t 指针
 
-    // ---- 内部辅助 ----
+    // ---- 内部辅助（私有，仅实现文件使用） ----
     static constexpr bool _is_mpz(slong v);
     mpz_ptr _promote();          // 小 → 大
     void    _demote_if_small();  // 大 → 小（值缩回时）
-    mpz_ptr _mpz_ref();          // 大整数时获取内部 mpz（仅内部使用）
+    mpz_ptr _mpz_ref();          // 大整数时获取内部 mpz
     mpz_srcptr _mpz_cref() const;
+    // 注：mpz_ptr/mpz_srcptr 出现在 private 区域，头文件需 #include <gmp.h>，
+    // 但这些类型不出现在任何 public 接口中。
 
 public:
     // ---- 构造/析构 ----
@@ -82,6 +90,7 @@ public:
     ZZ& operator-=(const ZZ&);
     ZZ& operator*=(const ZZ&);
     ZZ& operator/=(const ZZ&);
+    ZZ& operator%=(const ZZ&);
 
     // ---- 比较 ----
     friend bool operator==(const ZZ&, const ZZ&);
@@ -132,6 +141,7 @@ namespace std {
 - 公共接口中**不暴露任何 GMP 类型**（`mpz_t`、`mpz_class`、`mpz_srcptr` 等）
 - GMP 仅作为内部实现细节，处理溢出到大整数的情况
 - 所有 `int64_t` / `long long` 构造原生支持，彻底解决 issue #3
+- `slong` 定义为 `long`（非 FLINT 依赖），64 位平台上与 `int64_t` 等宽
 
 ### 2.2 新 QQ 类
 
@@ -147,6 +157,7 @@ private:
 
 public:
     QQ();                        // = 0/1
+    QQ(int v);
     QQ(long v);
     QQ(long long v);
     QQ(const ZZ& v);             // 整数 → 有理数
@@ -181,6 +192,8 @@ public:
     friend bool operator!=(const QQ&, const QQ&);
     friend bool operator<(const QQ&, const QQ&);
     friend bool operator>(const QQ&, const QQ&);
+    friend bool operator<=(const QQ&, const QQ&);
+    friend bool operator>=(const QQ&, const QQ&);
 
     // ---- 状态 ----
     explicit operator bool() const;
@@ -197,11 +210,16 @@ public:
 
 ### 2.3 Zp 类适配
 
-Zp 当前的 GMP 依赖仅有一处：
+Zp 当前有**两处** GMP 依赖：
 
 ```cpp
+// 构造函数（number.hh:132）
 // 旧：Zp(ZZ i, uint32_t p) : _i(mpz_fdiv_ui(i.get_mpz_t(), p)) {}
 // 新：Zp(ZZ i, uint32_t p) : _i(i.fdiv_ui(p)) {}
+
+// 赋值运算符（number.hh:149）
+// 旧：this->_i = mpz_fdiv_ui(i.get_mpz_t(), this->_p);
+// 新：this->_i = i.fdiv_ui(this->_p);
 ```
 
 改动极小。
@@ -210,13 +228,68 @@ Zp 当前的 GMP 依赖仅有一处：
 
 ## 3. 影响范围
 
-### 3.1 需要修改的文件
+### 3.1 当前 GMP 直接访问清单
+
+GMP 内部结构访问**高度集中**于 `number.hh` 和 `interval.hh`：
+
+#### `number.hh`（需完全重写）
+
+| 行号 | 代码 | 访问类型 |
+|------|------|----------|
+| 9 | `#include <gmpxx.h>` | 头文件依赖 |
+| 26 | `p.get_mpz_t()->_mp_d` | 深层内部结构 — 直接读取 limb 数组 |
+| 26-27 | `p.get_mpz_t()->_mp_size` | 深层内部结构 — 直接读取 size 字段 |
+| 38-39 | `typedef mpz_class ZZ / mpq_class QQ` | 类型别名 |
+| 44 | `mpz_addmul(op.get_mpz_t(), ...)` | GMP C API |
+| 49 | `mpz_submul(op.get_mpz_t(), ...)` | GMP C API |
+| 54 | `mpz_fdiv_q(op.get_mpz_t(), ...)` | GMP C API |
+| 59 | `mpz_fdiv_qr(op.get_mpz_t(), ...)` | GMP C API |
+| 64, 69 | `mpq_class(op1, op2)` | GMP C++ 构造 |
+| 75 | `mpz_set_si(op.get_mpz_t(), 0)` | GMP C API |
+| 95 | `mpz_pow_ui(x.get_mpz_t(), ...)` | GMP C API |
+| 100-101 | `mpz_pow_ui(x.get_num_mpz_t(), ...)` | GMP C API (QQ 内部) |
+| 106 | `mpz_sizeinbase(x.get_mpz_t(), i)` | GMP C API |
+| 132 | `mpz_fdiv_ui(i.get_mpz_t(), p)` | GMP C API (Zp 构造) |
+| 149 | `mpz_fdiv_ui(i.get_mpz_t(), this->_p)` | GMP C API (Zp 赋值) |
+
+#### `polynomial_convert.hh`（4 处 — QQ 访问器改名）
+
+| 行号 | 代码 | 迁移方式 |
+|------|------|----------|
+| 125 | `i.second.get_den()` | → `.den()` |
+| 131 | `i.second.get_num()` / `.get_den()` | → `.num()` / `.den()` |
+| 143 | `i.second.get_den()` | → `.den()` |
+| 149 | `i.second.get_num()` / `.get_den()` | → `.num()` / `.den()` |
+
+#### `realroot.cc`（4 处 — QQ 访问器改名）
+
+| 行号 | 代码 | 迁移方式 |
+|------|------|----------|
+| 226 | `a.get_den()`, `b.get_den()` | → `.den()` |
+| 227 | `a.get_den()`, `b.get_den()` | → `.den()` |
+| 229 | `a.get_num()`, `b.get_den()` | → `.num()` / `.den()` |
+| 230 | `b.get_num()`, `a.get_den()` | → `.num()` / `.den()` |
+
+#### `upolynomial.cc`（2 处 — QQ 访问器改名）
+
+| 行号 | 代码 | 迁移方式 |
+|------|------|----------|
+| 29 | `i.second.get_den()` | → `.den()` |
+| 33 | `i.second.get_num()` / `.get_den()` | → `.num()` / `.den()` |
+
+#### `interval.hh`（~30 处 — 暂缓）
+
+深度耦合 `mpq_t`/`mpq_srcptr`/`mpria_*` C API，暂缓处理。
+
+### 3.2 需要修改的文件
 
 | 文件 | 改动量 | 说明 |
 |------|--------|------|
 | `number.hh` | **重写** | typedef → class 定义；template 特化改为 ZZ 成员方法或新特化 |
 | `polynomial_.hh` | **简化** | int64_t→ZZ 的 operator 重载自动工作，可能可以删减 |
-| `polynomial_convert.hh` | 中等 | `.get_num()` → `.num()`，`.get_den()` → `.den()` |
+| `polynomial_convert.hh` | 少量 | `.get_num()` → `.num()`，`.get_den()` → `.den()`（4 处） |
+| `realroot.cc` | 少量 | `.get_num()` → `.num()`，`.get_den()` → `.den()`（4 处） |
+| `upolynomial.cc` | 少量 | `.get_num()` → `.num()`，`.get_den()` → `.den()`（2 处） |
 | `polynomial_gcd.hh` | 少量 | ZZ 作为模板参数透明传递 |
 | `resultant.hh` | 少量 | 同上 |
 | `realroot.hh` | 中等 | QQ 作为区间端点 |
@@ -224,7 +297,7 @@ Zp 当前的 GMP 依赖仅有一处：
 | `interval.hh/cc` | 暂缓 | 深度耦合 mpria（当前不可用），待后续单独处理 |
 | 测试文件 | 几乎无 | `ZZ(42)` 等构造自动兼容 |
 
-### 3.2 不需要改的
+### 3.3 不需要改的
 
 - `basic_monomial.hh` — 不涉及系数类型
 - `basic_polynomial.hh` — 纯模板，系数类型透明
@@ -232,7 +305,7 @@ Zp 当前的 GMP 依赖仅有一处：
 - `associatedgraph.hh` — 不涉及
 - `charset.hh` — 不涉及（通过模板参数使用）
 
-### 3.3 template 特化迁移
+### 3.4 template 特化迁移
 
 旧代码中的 template 特化：
 
@@ -262,26 +335,30 @@ template<> struct zore_check<ZZ> {
 
 ```
 Phase 1: 实现 ZZ 类
-         ├── small integer 存储 + mpz_t 大整数后备
-         ├── 全套运算符和比较
-         ├── addmul / submul / pow / gcd / fdiv_ui
-         ├── hash
+         ├── slong 类型定义 + small integer 编码/解码
+         ├── mpz_t 大整数后备（promote/demote）
+         ├── 全套运算符和比较（含 %=）
+         ├── addmul / submul / pow / gcd / lcm / fdiv_ui / sizeinbase
+         ├── hash（小整数: 直接哈希值；大整数: 哈希 limb 数组）
          └── 单元测试
 
 Phase 2: 替换 number.hh
          ├── 删除 typedef mpz_class ZZ
-         ├── 更新所有 template 特化
-         ├── 更新 Zp 构造
+         ├── 更新所有 template 特化（addmul, submul, __div, set_zero, zore_check）
+         ├── 更新 Zp 构造函数和赋值运算符（2 处）
          └── 编译测试
 
 Phase 3: 实现 QQ 类
-         ├── 两个 ZZ 存储 + 自动约分
+         ├── 两个 ZZ 存储 + _canonicalize() 自动约分
          ├── num() / den() 接口
+         ├── 完整比较运算符（含 <=, >=）
+         ├── pow(QQ, uint64_t)
          └── 单元测试
 
 Phase 4: 替换 QQ 相关代码
-         ├── polynomial_convert.hh 接口适配
-         ├── realroot.hh 适配
+         ├── polynomial_convert.hh: .get_num() → .num(), .get_den() → .den()（4 处）
+         ├── realroot.cc: 同上（4 处）
+         ├── upolynomial.cc: 同上（2 处）
          └── 编译测试
 
 Phase 5: 全量回归测试

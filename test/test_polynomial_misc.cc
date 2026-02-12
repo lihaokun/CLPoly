@@ -213,5 +213,39 @@ int main() {
         CLPOLY_ASSERT_EQ(f, g);
     }
 
+    // ======== poly_convert: ordering ========
+    CLPOLY_TEST("poly_convert_ordering");
+    {
+        polynomial_ZZ f = pow(x,2)*y + x*pow(z,2) + y*z + 1;
+        lex_<custom_var_order> mo(custom_var_order({z, y, x}));
+        polynomial_<ZZ, lex_<custom_var_order>> f_lex(&mo);
+        poly_convert(f, f_lex);
+        CLPOLY_ASSERT_EQ((int)f_lex.size(), (int)f.size());
+        // Convert back and check equality
+        polynomial_ZZ f_back;
+        poly_convert(f_lex, f_back);
+        CLPOLY_ASSERT_EQ(f_back, f);
+    }
+
+    // ======== polynomial_QQ ========
+    CLPOLY_TEST("polynomial_QQ_division");
+    {
+        polynomial_QQ p1(1);
+        polynomial_QQ p2(2);
+        auto result = p1 / p2;
+        CLPOLY_ASSERT_TRUE(is_number(result));
+        CLPOLY_ASSERT_FALSE(result.empty());
+    }
+
+    // ======== Hash ========
+    CLPOLY_TEST("polynomial_hash");
+    {
+        polynomial_ZZ f = pow(x,2) + 2*x + 1;
+        polynomial_ZZ g = pow(x,2) + 2*x + 1;
+        auto hf = std::hash<polynomial_ZZ>()(f);
+        auto hg = std::hash<polynomial_ZZ>()(g);
+        CLPOLY_ASSERT_EQ(hf, hg);
+    }
+
     return clpoly_test::test_summary();
 }

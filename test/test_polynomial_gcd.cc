@@ -152,5 +152,20 @@ int main() {
         }
     }
 
+    // ======== Squarefree basis ========
+    CLPOLY_TEST("squarefreebasis");
+    {
+        polynomial_ZZ f = pow(x,5) - 3*pow(x,4) + 4*pow(x,3) - 4*pow(x,2) + 3*x - 1;
+        auto result = squarefreebasis(std::vector<polynomial_ZZ>({f, f}));
+        CLPOLY_ASSERT_TRUE(result.first.size() > 0);
+        CLPOLY_ASSERT_EQ((int)result.second.size(), 2);
+        // Each element of the basis should be squarefree
+        for (auto& b : result.first) {
+            if (!is_number(b)) {
+                CLPOLY_ASSERT_TRUE(is_squarefree(b));
+            }
+        }
+    }
+
     return clpoly_test::test_summary();
 }

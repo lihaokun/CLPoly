@@ -117,6 +117,58 @@ int main() {
         CLPOLY_ASSERT_TRUE(comp(m3v_p2, small));  // deg 12 > deg 2
     }
 
+    // ======== Push_back and normalization ========
+    CLPOLY_TEST("monomial_push_back_normalization");
+    {
+        monomial m;
+        m.push_back({x, 2});
+        m.push_back({y, 3});
+        CLPOLY_ASSERT_TRUE(m.is_normal());
+        CLPOLY_ASSERT_EQ(m.deg(), (int64_t)5);
+
+        // push_back out of order -> not normal
+        monomial m2;
+        m2.push_back({y, 3});
+        m2.push_back({x, 2});
+        CLPOLY_ASSERT_FALSE(m2.is_normal());
+        m2.normalization();
+        CLPOLY_ASSERT_TRUE(m2.is_normal());
+        CLPOLY_ASSERT_EQ(m, m2);
+    }
+
+    // ======== str() ========
+    CLPOLY_TEST("monomial_str");
+    {
+        monomial m = pow(x, 2) * y;
+        std::string s = m.str();
+        CLPOLY_ASSERT_FALSE(s.empty());
+    }
+
+    // ======== Move semantics ========
+    CLPOLY_TEST("monomial_move");
+    {
+        monomial m1 = pow(x, 3) * pow(y, 2);
+        int64_t orig_deg = m1.deg();
+        monomial m2(std::move(m1));
+        CLPOLY_ASSERT_EQ(m2.deg(), orig_deg);
+        CLPOLY_ASSERT_TRUE(m1.empty());
+
+        monomial m3;
+        m3 = std::move(m2);
+        CLPOLY_ASSERT_EQ(m3.deg(), orig_deg);
+        CLPOLY_ASSERT_TRUE(m2.empty());
+    }
+
+    // ======== Construction from vector ========
+    CLPOLY_TEST("monomial_from_vector");
+    {
+        std::vector<std::pair<variable, int64_t>> v = {{x, 1}, {y, 2}};
+        monomial m(std::move(v));
+        CLPOLY_ASSERT_EQ(m.deg(x), (int64_t)1);
+        CLPOLY_ASSERT_EQ(m.deg(y), (int64_t)2);
+        CLPOLY_ASSERT_EQ(m.deg(), (int64_t)3);
+    }
+
     // ======== Equality ========
     CLPOLY_TEST("monomial_equality");
     {

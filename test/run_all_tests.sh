@@ -16,6 +16,8 @@ TESTS=(
     test/test_polynomial_resultant
     test/test_polynomial_misc
     test/test_realroot
+    test/test_charset
+    test/test_graph
 )
 
 TOTAL_PASS=0

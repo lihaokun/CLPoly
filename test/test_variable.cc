@@ -103,5 +103,22 @@ int main() {
         variable::del_variable("testvar_del2");
     }
 
+    // ======== new_variable: auto-named ========
+    CLPOLY_TEST("variable_new_unnamed");
+    {
+        auto v = variable::new_variable();
+        CLPOLY_ASSERT(v.serial() > 0);
+        variable::del_variable(v.name());
+    }
+
+    // ======== new_variable: explicit name ========
+    CLPOLY_TEST("variable_new_named");
+    {
+        auto v = variable::new_variable("testvar_newnamed");
+        CLPOLY_ASSERT_EQ(v, variable::get_variable("testvar_newnamed"));
+        CLPOLY_ASSERT_EQ(v.name(), std::string("testvar_newnamed"));
+        variable::del_variable("testvar_newnamed");
+    }
+
     return clpoly_test::test_summary();
 }

@@ -23,16 +23,26 @@ typedef mpq_class QQ;
   `int64_t → ZZ` 隐式转换歧义（issue #3）
 - **缓存效率**：多项式系数数组中每个 `mpz_class` 都是独立的堆对象，缓存不友好
 
-### 1.2 FLINT 的 fmpz 方案
+### 1.2 参考：FLINT 的 fmpz 方案
 
-FLINT 用单个 `long`（64 位平台上 8 字节）实现双模式存储：
+FLINT 用单个 `slong`（8 字节）实现双模式存储，通过位编码区分小整数和 mpz 指针。
+小整数场景下比 `mpz_class` 快约 3 倍，但依赖平台地址空间布局假设，编码复杂。
 
-| 模式 | 条件 | 存储 | 开销 |
-|------|------|------|------|
-| 小整数 | 高 2 位 ≠ `01` | 直接存值（范围 `[-2^62, 2^62-1]`） | 8 字节，零堆分配 |
-| 大整数 | 高 2 位 = `01` | 编码后的 mpz_t 指针 | 8 字节 + mpz 堆内存 |
+### 1.3 CLPoly 的方案选择
 
-小整数场景下比 `mpz_class` 快约 3 倍。
+采用 16 字节双字段方案：`int64_t` 存值 + `mpz_ptr` 做判别（`nullptr` = 小整数）。
+
+| | FLINT 8B 位编码 | CLPoly 16B 双字段 |
+|---|---|---|
+| 大小 | 8 字节 | 16 字节 |
+| 小整数范围 | 62 位 | **完整 64 位** |
+| 平台假设 | 依赖指针高位为 0 | **无** |
+| 判别方式 | 位移 + 比较 | 指针判空 |
+| 小整数运算速度 | 相同 | 相同 |
+| 代码复杂度 | 高 | **低** |
+
+对于 CLPoly 的符号计算场景（多项式项数通常 <10000），16B 与 8B 的缓存差异可忽略。
+如果未来性能成为瓶颈，可仅改 ZZ 内部实现切换到 8B，公共 API 不变。
 
 ---
 
@@ -40,29 +50,23 @@ FLINT 用单个 `long`（64 位平台上 8 字节）实现双模式存储：
 
 ### 2.1 新 ZZ 类
 
-> **GMP 隔离策略**：头文件仍需 `#include <gmp.h>`（因为私有成员的 inline 方法需要访问
-> `mpz_t`），但**公共 API 中不暴露任何 GMP 类型**。用户代码不需要 include GMP 头文件。
+> **GMP 隔离策略**：头文件需 `#include <gmp.h>`（私有成员 `mpz_ptr` 需要），
+> 但**公共 API 中不暴露任何 GMP 类型**。用户代码不需要直接使用 GMP。
 
 ```cpp
-// 类型定义（替代 FLINT 的 slong，CLPoly 自行定义）
-using slong = long;  // 64 位平台上为 64 位有符号整数
-
 class ZZ {
 private:
-    slong _val;  // 小整数直接存值；大整数为编码后的 mpz_t 指针
+    int64_t _val;     // 小整数时存值；大整数时未使用
+    mpz_ptr _mpz;     // nullptr = 小整数模式；非空 = 大整数模式
 
-    // ---- 内部辅助（私有，仅实现文件使用） ----
-    static constexpr bool _is_mpz(slong v);
-    mpz_ptr _promote();          // 小 → 大
-    void    _demote_if_small();  // 大 → 小（值缩回时）
-    mpz_ptr _mpz_ref();          // 大整数时获取内部 mpz
-    mpz_srcptr _mpz_cref() const;
-    // 注：mpz_ptr/mpz_srcptr 出现在 private 区域，头文件需 #include <gmp.h>，
-    // 但这些类型不出现在任何 public 接口中。
+    // ---- 内部辅助 ----
+    bool _is_small() const { return _mpz == nullptr; }
+    void _promote();             // 小 → 大：分配 mpz，拷贝 _val
+    void _demote_if_small();     // 大 → 小：若值在 int64_t 范围内，释放 mpz
 
 public:
     // ---- 构造/析构 ----
-    ZZ();                        // = 0，无堆分配
+    ZZ();                        // = 0，_mpz = nullptr，无堆分配
     ZZ(int v);
     ZZ(long v);
     ZZ(long long v);             // 解决 issue #3
@@ -136,12 +140,20 @@ namespace std {
 }
 ```
 
+**存储布局**（16 字节 / 个）：
+
+```
+小整数模式：[ _val: int64_t (8B) | _mpz: nullptr (8B) ]  → 零堆分配
+大整数模式：[ _val: unused  (8B) | _mpz: mpz_ptr (8B) ]  → _mpz 指向堆上的 mpz_t
+```
+
 **关键设计原则**：
 
-- 公共接口中**不暴露任何 GMP 类型**（`mpz_t`、`mpz_class`、`mpz_srcptr` 等）
+- 小/大判别：`_mpz == nullptr`，无位编码，无平台假设
+- 小整数范围：完整 64 位（`int64_t`）
+- 公共接口中**不暴露任何 GMP 类型**
 - GMP 仅作为内部实现细节，处理溢出到大整数的情况
 - 所有 `int64_t` / `long long` 构造原生支持，彻底解决 issue #3
-- `slong` 定义为 `long`（非 FLINT 依赖），64 位平台上与 `int64_t` 等宽
 
 ### 2.2 新 QQ 类
 
@@ -335,11 +347,11 @@ template<> struct zore_check<ZZ> {
 
 ```
 Phase 1: 实现 ZZ 类
-         ├── slong 类型定义 + small integer 编码/解码
-         ├── mpz_t 大整数后备（promote/demote）
+         ├── int64_t + mpz_ptr 双字段存储（16 字节）
+         ├── promote（小→大）/ demote_if_small（大→小）
          ├── 全套运算符和比较（含 %=）
          ├── addmul / submul / pow / gcd / lcm / fdiv_ui / sizeinbase
-         ├── hash（小整数: 直接哈希值；大整数: 哈希 limb 数组）
+         ├── hash（小整数: 直接哈希 _val；大整数: 哈希 mpz limb 数组）
          └── 单元测试
 
 Phase 2: 替换 number.hh
@@ -374,7 +386,7 @@ Phase 1-2 完成后即可解决 issue #3 并获得 ZZ 性能提升。
 |------|-----------------|-----------------|
 | 小整数构造 | 堆分配 | 零分配，直接赋值 |
 | 小整数加法 | GMP 函数调用 | 一条 ADD 指令 + 溢出检查 |
-| 多项式系数存储 | 每系数 ~24 字节 + 堆 | 小系数仅 8 字节 |
+| 多项式系数存储 | 每系数 ~24 字节 + 堆 | 小系数 16 字节，零堆分配 |
 | 缓存命中率 | 低（指针追踪） | 高（连续内存） |
 | macOS 编译 | 失败 (issue #3) | 正常 |
 

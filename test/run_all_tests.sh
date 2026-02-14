@@ -18,6 +18,9 @@ TESTS=(
     test/test_realroot
     test/test_charset
     test/test_graph
+    test/test_number
+    test/test_random
+    test/test_parse
 )
 
 TOTAL_PASS=0

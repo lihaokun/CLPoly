@@ -2,109 +2,73 @@
  * @file number.hh
  * @author 李昊坤 (ker@pm.me)
  * @brief 关于数域的定义
- * 
+ *
  */
 #ifndef CLPOLY_NUMBER_HH
 #define CLPOLY_NUMBER_HH
-#include <gmpxx.h>
+#include <clpoly/number/ZZ.hh>
+#include <clpoly/number/QQ.hh>
 #include <clpoly/basic.hh>
 #include <cmath>
 #include <cstdint>
 #include <cassert>
-#include <boost/container_hash/hash.hpp>
-inline std::size_t hash_value(const mpz_class& p) 
-{
 
-    // std::size_t h = 0;
-    // // Fowler, Noll and Vo hashing
-
-    // for(int i = 0U; i < p.get_mpz_t()->_mp_size; ++i) {
-
-    //     h *= 16777619U;
-    //     h ^= p.get_mpz_t()->_mp_d[i];
-    // }
-    std::size_t seed=boost::hash_range(p.get_mpz_t()->_mp_d,p.get_mpz_t()->_mp_d+abs(p.get_mpz_t()->_mp_size));
-    boost::hash_combine(seed, p.get_mpz_t()->_mp_size);
-    return seed;
-}
-inline std::size_t hash_value(mpq_class const& v)
-{
-    std::size_t seed = 0;
-    boost::hash_combine(seed, v.get_num());
-    boost::hash_combine(seed, v.get_den());
-    return seed;
-}
 namespace clpoly{
-    typedef mpz_class ZZ;
-    typedef mpq_class QQ;
-    // using ZZ=cln::cl_I;
+    // ---- ZZ template specializations ----
     template<>
-    inline void addmul(mpz_class &op,const mpz_class &op1,const mpz_class&op2)
+    inline void addmul(ZZ &op,const ZZ &op1,const ZZ&op2)
     {
-        mpz_addmul(op.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+        op.addmul(op1, op2);
     }
     template<>
-    inline void submul(mpz_class &op,const mpz_class &op1,const mpz_class&op2)
+    inline void submul(ZZ &op,const ZZ &op1,const ZZ&op2)
     {
-        mpz_submul(op.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+        op.submul(op1, op2);
     }
     template<>
-    inline void __div(mpz_class &op,const mpz_class &op1,const mpz_class&op2)
+    inline void __div(ZZ &op,const ZZ &op1,const ZZ&op2)
     {
-        mpz_fdiv_q(op.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+        ZZ::fdiv_q(op, op1, op2);
     }
     template<>
-    inline void __div(mpz_class &op,mpz_class &op_r,const mpz_class &op1,const mpz_class&op2)
+    inline void __div(ZZ &op,ZZ &op_r,const ZZ &op1,const ZZ&op2)
     {
-        mpz_fdiv_qr(op.get_mpz_t(),op_r.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+        ZZ::fdiv_qr(op, op_r, op1, op2);
     }
     template<>
-    inline void __div(mpq_class &op,const mpz_class &op1,const mpz_class&op2)
+    inline void __div(QQ &op,const ZZ &op1,const ZZ&op2)
     {
-        op=mpq_class(op1,op2);
+        op=QQ(op1,op2);
     }
     template<>
-    inline void __div(mpq_class &op,mpq_class &op_r,const mpz_class &op1,const mpz_class&op2)
+    inline void __div(QQ &op,QQ &op_r,const ZZ &op1,const ZZ&op2)
     {
-        op=mpq_class(op1,op2);
-        op_r=0;
+        op=QQ(op1,op2);
+        op_r=QQ(0);
     }
     template <>
-    inline void set_zero(mpz_class& op)
+    inline void set_zero(ZZ& op)
     {
-        mpz_set_si(op.get_mpz_t(),0);
+        op=0LL;
     }
     template<>
-    struct zore_check<mpz_class>
+    struct zore_check<ZZ>
     {
-        bool operator()(const mpz_class & op)
+        bool operator()(const ZZ & op)
         {
             return !op;
-        } 
+        }
     };
     template<>
-    struct zore_check<mpq_class>
+    struct zore_check<QQ>
     {
-        bool operator()(const mpq_class & op)
+        bool operator()(const QQ & op)
         {
             return !op;
-        } 
+        }
     };
-    inline mpz_class pow(mpz_class  x,uint64_t i)
-    {
-        mpz_pow_ui(x.get_mpz_t(),x.get_mpz_t(),i);
-        return x;
-    }
-    inline mpq_class pow(mpq_class  x,uint64_t i)
-    {
-        mpz_pow_ui(x.get_num_mpz_t(),x.get_num_mpz_t(),i);
-        mpz_pow_ui(x.get_den_mpz_t(),x.get_den_mpz_t(),i);
-        return x;
-    }
-    inline size_t sizeinbase(mpz_class x,int i)
-    {
-      return mpz_sizeinbase(x.get_mpz_t(),i);
-    }
+
+    // ---- Zp ----
     inline uint64_t inv_prime(uint64_t _i,uint32_t _p)
     {
         assert(_p!=0 && _i!=0);
@@ -122,14 +86,14 @@ namespace clpoly{
     {
     private:
         uint64_t _i;
-        uint32_t _p; 
+        uint32_t _p;
     public:
         Zp():_i(0),_p(0){}
         explicit  Zp(uint32_t p):_i(0),_p(p){}
         Zp(uint64_t i,uint32_t p):_i(i%p),_p(p){}
         Zp(int64_t i,uint32_t p):_i(i>=0?i%p:p-(-i)%p),_p(p){}
         Zp(int i,uint32_t p):_i(i>=0?i%p:p-(-i)%p),_p(p){}
-        Zp(ZZ i,uint32_t p):_i(mpz_fdiv_ui(i.get_mpz_t(),p)),_p(p){}
+        Zp(const ZZ& i,uint32_t p):_i(i.fdiv_ui(p)),_p(p){}
         inline Zp inv() const
         {
             //assert(this->_p!=0 && this->_i!=0);
@@ -146,7 +110,7 @@ namespace clpoly{
         inline Zp& operator=(const ZZ& i)
         {
             assert(this->_p!=0);
-            this->_i=mpz_fdiv_ui(i.get_mpz_t(),this->_p);
+            this->_i=i.fdiv_ui(this->_p);
             return *this;
         }
         constexpr operator std::uint64_t() const {return this->_i;}
@@ -163,41 +127,6 @@ namespace clpoly{
             this->_i=this->_p-this->_i;
             return *this;
         }
-        // friend inline Zp operator+(Zp op1,std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     op1._i+=op2;
-        //     op1._i%=op1._p;
-        //     return op1;
-        // }
-        // friend inline Zp operator-(Zp op1,std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     op1._i+=op1._p-op2;
-        //     op1._i%=op1._p;
-        //     return op1;
-        // }
-        // friend inline Zp operator*(Zp op1,std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     op1._i*=op2;
-        //     op1._i%=op1._p;
-        //     return op1;
-        // }
-        // inline Zp & operator*=(std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     this->_i*=op2;
-        //     this->_i%=this->_p;
-        //     return *this;
-        // }
-        // friend inline Zp operator/(Zp op1,std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     op1._i*=inv_prime(op2,op1._p);
-        //     op1._i%=op1._p;
-        //     return op1;
-        // }
         friend inline Zp operator+(Zp op1,const Zp &  op2)
         {
             assert(op1._p==op2._p);
@@ -247,7 +176,7 @@ namespace clpoly{
             this->_i%=this->_p;
             return *this;
         }
-        friend std::ostream& operator<<  (std::ostream& stream, const Zp& v) 
+        friend std::ostream& operator<<  (std::ostream& stream, const Zp& v)
         {
             stream << v._i;
             return stream;
@@ -266,7 +195,7 @@ namespace clpoly{
         bool operator()(const Zp & op)
         {
             return !op;
-        } 
+        }
     };
     template<>
     inline void addmul(Zp &op,const Zp &op1,const Zp&op2)

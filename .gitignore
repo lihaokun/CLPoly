@@ -51,6 +51,10 @@ test/test_realroot
 test/test_upolynomial
 test/test_variable
 
+# Cross-library test binaries (optional, require libflint-dev / libntl-dev)
+test/test_crosscheck_flint
+test/test_crosscheck_ntl
+
 # Test data/temp files
 test/1.txt
 test/2.txt

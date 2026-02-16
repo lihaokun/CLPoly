@@ -167,5 +167,54 @@ int main() {
         }
     }
 
+    // ======== Content extraction (multivariate, lex ordering) ========
+    CLPOLY_TEST("gcd_content");
+    {
+        lex_<custom_var_order> od(custom_var_order({x, y, z}));
+        polynomial_<ZZ, lex_<custom_var_order>> f(&od);
+        // f = 2*x^2*y + 4*x*y + 6*y = 2y * (x^2 + 2x + 3)
+        f = 2*pow(x,2)*y + 4*x*y + 6*y;
+        auto c = cont(f);
+        // content should be 2*y (or associate)
+        polynomial_<ZZ, lex_<custom_var_order>> expected_cont(&od);
+        expected_cont = 2*y;
+        // The content should divide f
+        auto q = f / c;
+        CLPOLY_ASSERT_EQ(q * c, f);
+        // Content of a primitive polynomial should be a constant
+        auto c2 = cont(q);
+        CLPOLY_ASSERT_TRUE(is_number(c2));
+    }
+
+    // ======== GCD of univariate polynomials ========
+    CLPOLY_TEST("gcd_univariate");
+    {
+        // gcd(x^3 - x, x^2 - 1) = x - 1 or x + 1 (up to sign)
+        // x^3 - x = x(x-1)(x+1), x^2 - 1 = (x-1)(x+1)
+        polynomial_ZZ f = pow(x,3) - x;
+        polynomial_ZZ g = pow(x,2) - 1;
+        auto result = gcd(f, g);
+        // gcd should be (x-1)(x+1) = x^2-1, up to constant
+        CLPOLY_ASSERT(divides(result, f));
+        CLPOLY_ASSERT(divides(result, g));
+        CLPOLY_ASSERT_EQ(degree(result, x), (int64_t)2);
+
+        // gcd of polynomial with its derivative
+        // f = (x-1)^3 => f' = 3(x-1)^2
+        // gcd(f, f') = (x-1)^2
+        polynomial_ZZ h = pow(x-1, 3);
+        auto dh = derivative(h, x);
+        auto g2 = gcd(h, dh);
+        CLPOLY_ASSERT(divides(g2, h));
+        CLPOLY_ASSERT(divides(g2, dh));
+        CLPOLY_ASSERT_EQ(degree(g2, x), (int64_t)2);
+
+        // gcd of linear polynomials (coprime)
+        polynomial_ZZ l1 = x + 1;
+        polynomial_ZZ l2 = x + 2;
+        auto g3 = gcd(l1, l2);
+        CLPOLY_ASSERT_TRUE(is_number(g3));
+    }
+
     return clpoly_test::test_summary();
 }

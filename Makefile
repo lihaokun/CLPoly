@@ -71,7 +71,22 @@ $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/debug/libclpo
 $(CLPoly_LIB_DIR)/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/release/libclpoly.a
 	mkdir -p $(CLPoly_LIB_DIR)/clpoly
 	cp $(CLPoly_BUILD_DIR)/lib/release/libclpoly.a $(CLPoly_LIB_DIR)/clpoly/libclpoly.a
-	
+
+# ---- Optional: cross-library correctness tests ----
+FLINT_LIBS = -lflint
+NTL_LIBS   = -lntl -lm -lpthread
+
+test/test_crosscheck_flint: test/test_crosscheck_flint.cc $(CLPoly_LIB_DIR)/clpoly/libclpoly.a $(clpoly_hh)
+	$(CXX) $(CLPoly_REL) $(IPATHS) $< -o $@ $(Numberlib) $(FLINT_LIBS) -L$(CLPoly_LIB_DIR)/clpoly -lclpoly
+
+test/test_crosscheck_ntl: test/test_crosscheck_ntl.cc $(CLPoly_LIB_DIR)/clpoly/libclpoly.a $(clpoly_hh)
+	$(CXX) $(CLPoly_REL) $(IPATHS) $< -o $@ $(Numberlib) $(NTL_LIBS) -L$(CLPoly_LIB_DIR)/clpoly -lclpoly
+
+.PHONY: crosscheck
+crosscheck: test/test_crosscheck_flint test/test_crosscheck_ntl
+	./test/test_crosscheck_flint
+	./test/test_crosscheck_ntl
+
 ifndef debug
 %:%.cc $(CLPoly_LIB_DIR)/clpoly/libclpoly.a $(clpoly_hh)
 	$(CXX) $(CLPoly_REL) $(IPATHS)  $< -o $@ $(Numberlib)  -L$(CLPoly_LIB_DIR)/clpoly -lclpoly

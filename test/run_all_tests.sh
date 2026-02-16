@@ -21,6 +21,10 @@ TESTS=(
     test/test_number
     test/test_random
     test/test_parse
+    test/test_factorize_zp
+    test/test_hensel
+    test/test_recombine
+    test/test_factorize
 )
 
 TOTAL_PASS=0

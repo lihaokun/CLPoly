@@ -141,13 +141,14 @@ namespace clpoly{
     upolynomial_<T>  derivative(const upolynomial_<T> & p)
     {
         upolynomial_<T> Pout;
-        int64_t b;
         for (auto &i:p)
         {
             if (i.first.deg())
             {
-                Pout.push_back({umonomial(i.first.deg()-1),i.second*i.first.deg()});
-            }    
+                T c = i.second * i.first.deg();
+                if (!zore_check<T>()(c))
+                    Pout.push_back(std::make_pair(umonomial(i.first.deg()-1), c));
+            }
         }
         return Pout;
     }

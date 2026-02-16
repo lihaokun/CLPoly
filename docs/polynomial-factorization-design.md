@@ -195,7 +195,53 @@ inline void __upoly_divmod(
 }
 ```
 
-#### 4.1.4 `__upoly_gcd_extended` — 扩展 GCD (Bézout 系数)
+#### 4.1.4 `__upoly_divmod_mod` — ZZ 系数的模除法
+
+```cpp
+// 在 Z_m[x] 中计算 f = q·g + r，即所有系数运算都 mod m
+// 前置: g 非零, lc(g) 与 m 互素 (即 lc(g) mod m 可逆)
+//       m > 0
+// 后置: f ≡ q·g + r (mod m), deg(r) < deg(g)
+//       q, r 的系数 ∈ [0, m)
+// 用途: M2 (Hensel 提升 __hensel_step 中 divmod(s·e, h) in Z_m[x])
+//       Hensel 提升到高精度时 m = p^{2^j} 远超 uint32_t，
+//       无法使用 Zp 类，因此需要直接在 ZZ 系数上做模运算
+// 实现: 与 pair_vec_div 类似的长除法，但每步系数用 ZZ 模逆
+//       lc_inv ← lc(g) 的模逆 (通过扩展 GCD 或 ZZ::invert 计算)
+//       每次消去首项后对所有系数 mod m
+inline void __upoly_divmod_mod(
+    upolynomial_<ZZ>& q,
+    upolynomial_<ZZ>& r,
+    const upolynomial_<ZZ>& f,
+    const upolynomial_<ZZ>& g,
+    const ZZ& m)
+```
+
+#### 4.1.5 `__upoly_gcd_Zp` — Zₚ 上简单 GCD 包装
+
+```cpp
+// 简化的 Zₚ GCD 接口: 计算 gcd(a, b) in Zₚ[x]，返回首一结果
+// 前置: a 或 b 非零
+// 后置: 返回 g = gcd(a, b)，首一化
+// 说明: 内部调用已有 __polynomial_GCD(Pout, G, F, Lc_gcd, deg)，
+//       自动设置 Lc_gcd = Zp(1, p) 和 deg = min(deg(a), deg(b))
+// 用途: M1 (DDF/EDF 中频繁需要 gcd 计算)
+inline upolynomial_<Zp> __upoly_gcd_Zp(
+    const upolynomial_<Zp>& a,
+    const upolynomial_<Zp>& b)
+{
+    if (a.empty()) return b;
+    if (b.empty()) return a;
+    upolynomial_<Zp> g;
+    Zp lc_gcd(1, a.front().second.prime());
+    int64_t deg = std::min(get_deg(a), get_deg(b));
+    __polynomial_GCD(g, a, b, lc_gcd, deg);
+    __upoly_make_monic(g);
+    return g;
+}
+```
+
+#### 4.1.6 `__upoly_gcd_extended` — 扩展 GCD (Bézout 系数)
 
 ```cpp
 // 扩展欧几里得算法: 求 s, t 使得 s·a + t·b = gcd(a, b) in Zₚ[x]
@@ -228,7 +274,7 @@ s ← c · s₀
 t ← c · t₀
 ```
 
-#### 4.1.5 `__upoly_powmod` — 模幂运算
+#### 4.1.7 `__upoly_powmod` — 模幂运算
 
 ```cpp
 // 计算 base^exp mod modpoly in Zₚ[x]
@@ -258,7 +304,7 @@ return result
 
 **复杂度：** O(log(exp) · M(n))，其中 M(n) = O(n²) 为度数 n 多项式乘法。
 
-#### 4.1.6 `__upoly_random` — 生成随机 Zₚ 多项式
+#### 4.1.8 `__upoly_random` — 生成随机 Zₚ 多项式
 
 ```cpp
 // 生成度数 < max_deg 的随机 Zₚ[x] 多项式
@@ -285,7 +331,9 @@ inline upolynomial_<Zp> __upoly_random(
 // 用途: M3 (Zassenhaus 重组中将提升系数映射回 Z)
 inline ZZ __symmetric_mod(const ZZ& a, const ZZ& m)
 {
-    ZZ r = a % m;            // r ∈ [0, m)   (使用 ZZ::fdiv_r 语义)
+    ZZ r;
+    ZZ::fdiv_r(r, a, m);    // r ∈ [0, m)   (必须用 fdiv_r, 不能用 operator%
+                             //               后者对负数 a 返回负余数)
     if (r > m / 2)
         r -= m;
     return r;
@@ -333,6 +381,8 @@ inline ZZ __mignotte_bound(const upolynomial_<ZZ>& f)
 ```
 
 **实现：** 使用简化界 B = C(n, ⌊n/2⌋) · ‖f‖₂，其中 C(n,k) 用 ZZ 精确计算。
+完整的 Mignotte 界为 C(n-1, ⌊(n-1)/2⌋) · ‖f‖₂ + C(n-1, ⌊(n-1)/2⌋-1) · |lc(f)|，
+此处使用的简化版可能略大，但不影响正确性（只是多提升若干步）。
 
 ### 4.5 本原化
 
@@ -367,16 +417,16 @@ inline std::pair<ZZ, upolynomial_<ZZ>> __upoly_primitive(upolynomial_<ZZ> f)
 __factor_Zp                    M1 顶层入口
   ├── __upoly_make_monic       首一化 (§4.1.1)
   ├── __squarefree_Zp          无平方分解
-  │     ├── __polynomial_GCD   Euclidean GCD (已有)
+  │     ├── __upoly_gcd_Zp     GCD 包装 (§4.1.5)
   │     ├── derivative         求导 (已有)
   │     └── __extract_pth_root p 次根提取
   ├── __ddf_Zp                 按度数分组
-  │     ├── __upoly_powmod     模幂 (§4.1.5)
-  │     └── __polynomial_GCD   GCD (已有)
+  │     ├── __upoly_powmod     模幂 (§4.1.7)
+  │     └── __upoly_gcd_Zp     GCD 包装 (§4.1.5)
   └── __edf_Zp                 等度分裂 (Cantor-Zassenhaus)
-        ├── __upoly_random     随机多项式 (§4.1.6)
-        ├── __upoly_powmod     模幂 (§4.1.5)
-        └── __polynomial_GCD   GCD (已有)
+        ├── __upoly_random     随机多项式 (§4.1.8)
+        ├── __upoly_powmod     模幂 (§4.1.7)
+        └── __upoly_gcd_Zp     GCD 包装 (§4.1.5)
 ```
 
 ### 5.3 `__squarefree_Zp` — Zₚ 上的无平方分解
@@ -406,13 +456,13 @@ __squarefree_Zp(const upolynomial_<Zp>& f)
             输出 (sᵢ, eᵢ · p)
         return
 
-3.  c ← gcd(f, f')       // 使用已有 __polynomial_GCD
+3.  c ← __upoly_gcd_Zp(f, f')
     w ← f / c
     i ← 1
     result ← []
 
 4.  while w ≠ 1:
-        y ← gcd(w, c)
+        y ← __upoly_gcd_Zp(w, c)
         z ← w / y          // z 是 exactly multiplicity i 的因子之积
         if z ≠ 1:
             __upoly_make_monic(z)
@@ -430,7 +480,7 @@ __squarefree_Zp(const upolynomial_<Zp>& f)
 6.  return result
 ```
 
-#### `__extract_pth_root` — p 次根提取
+#### 5.3.1 `__extract_pth_root` — p 次根提取
 
 ```cpp
 // 提取 f(x) = g(x^p) 中的 g
@@ -478,12 +528,12 @@ __ddf_Zp(const upolynomial_<Zp>& f)
 
 2.  for d = 1, 2, ... :
         if deg(f*) < 2·d:
-            break                      // 剩余部分整个是一个 d 次不可约因子
+            break                      // deg(f*) < 2d 意味着 f* 本身不可约
         h ← __upoly_powmod(h, ZZ(p), f*)   // h = x^{p^d} mod f*
         // 构造 (h - x) mod f*
         h_minus_x ← h
         h_minus_x 的 x^1 项系数减 1     // h - x
-        gd ← gcd(h_minus_x, f*)       // __polynomial_GCD
+        gd ← __upoly_gcd_Zp(h_minus_x, f*)
 
         if gd ≠ 1 (即 deg(gd) > 0):
             __upoly_make_monic(gd)
@@ -543,20 +593,22 @@ void __edf_Zp(
             g ← r
             for i = 1 to d-1:
                 g ← __upoly_mod(g * g + r, f)   // g = g² + r mod f
-            g ← gcd(g, f)
+            g ← __upoly_gcd_Zp(g, f)
         else:
             // 奇特征: 计算 g = gcd(r^{(p^d-1)/2} - 1, f)
             exp ← (ZZ::pow(p, d) - 1) / 2
             g_pow ← __upoly_powmod(r, exp, f)
             // g_pow - 1
             g_pow 的常数项减 1
-            g ← gcd(g_pow, f)
+            g ← __upoly_gcd_Zp(g_pow, f)
 
         if 0 < deg(g) < deg(f):
             // 成功分裂
+            h ← f / g
+            __upoly_make_monic(g)
+            __upoly_make_monic(h)
             __edf_Zp(result, g, d, rng)
-            __upoly_make_monic(f / g)           // 另一半
-            __edf_Zp(result, f / g, d, rng)
+            __edf_Zp(result, h, d, rng)
             return
     // repeat 直到成功（期望 O(1) 次）
 ```
@@ -602,6 +654,10 @@ __factor_Zp(upolynomial_<Zp> f)
 
 **参数传递说明：** f 按值传入（与 `polynomial_GCD` 的风格一致），内部会修改。
 
+**优化提示：** 当 `__factor_Zp` 被 `__select_prime` 调用时，`__select_prime` 已
+确认 `f mod p` 无平方，此时步骤 3 的 `__squarefree_Zp` 会直接返回 `{(f, 1)}`，
+开销很小。如需进一步优化，可增加 `bool already_squarefree = false` 参数跳过此步。
+
 ---
 
 ## 6. 模块 M2：Hensel 提升
@@ -613,12 +669,12 @@ __factor_Zp(upolynomial_<Zp> f)
 ### 6.2 函数总览
 
 ```
-__hensel_lift                  M2 顶层入口
+__hensel_lift                  M2 顶层入口 (返回 pair<factors, modulus>)
   ├── __mignotte_bound         系数界 (§4.4)
   ├── __hensel_tree_build      构建二叉树 + 初始 Bézout 系数
-  │     └── __upoly_gcd_extended   扩展 GCD (§4.1.4)
+  │     └── __upoly_gcd_extended   扩展 GCD (§4.1.6)
   └── __hensel_step            单步二次提升
-        ├── __upoly_divmod     除法 (§4.1.3)
+        ├── __upoly_divmod_mod ZZ 系数模除法 (§4.1.4)
         └── __symmetric_mod    对称模 (§4.2.1)
 ```
 
@@ -632,6 +688,10 @@ struct __hensel_node {
     upolynomial_<ZZ> h;     // 右子树因子之积
     upolynomial_<ZZ> s;     // Bézout 系数: s·g + t·h ≡ 1
     upolynomial_<ZZ> t;     // Bézout 系数
+    int left;               // 左子节点索引 (-1 = 叶子)
+    int right;              // 右子节点索引 (-1 = 叶子)
+    int leaf_start;         // 对应的叶子范围起始
+    int leaf_end;           // 对应的叶子范围结束
 };
 ```
 
@@ -657,7 +717,9 @@ std::vector<__hensel_node> __hensel_tree_build(
 - 递归分割直到叶子
 
 每个内部节点的 Bézout 系数 s, t 通过 `__upoly_gcd_extended(g, h)` 计算
-（在 mod p 下），然后转存为 ZZ 系数（`[0, p)` 范围）供后续提升使用。
+（在 mod p 下，类型为 `upolynomial_<Zp>`），然后逐项将系数从 Zp 转为 ZZ
+（即 `ZZ(term.second.number())`，值在 `[0, p)` 范围），存入 `__hensel_node`
+的 `upolynomial_<ZZ>` 字段供后续提升使用。g, h 同理做 Zp→ZZ 转换。
 
 ### 6.5 `__hensel_step` — 单步二次 Hensel 提升
 
@@ -692,7 +754,7 @@ void __hensel_step(
 
 2. // 解 σ·g + τ·h ≡ e (mod m), 其中 σ = s·e mod h, τ 相应
    se ← s · e                          // Z[x] 乘法
-   q, r ← divmod(se, h) in Z_m[x]     // r = s·e mod h (mod m)
+   __upoly_divmod_mod(q, r, se, h, m)  // r = s·e mod h (mod m)
 
 3. g ← g + m · (t·e + q·g)            // 对每个系数 mod m²
    h ← h + m · r                      // 对每个系数 mod m²
@@ -703,7 +765,7 @@ void __hensel_step(
    对 e' 的每个系数: e'ᵢ ← e'ᵢ / m    // 精确整除
    对 e' 的每个系数: e'ᵢ ← e'ᵢ mod m
 
-5. q', r' ← divmod(s · e', h) in Z_m[x]
+5. __upoly_divmod_mod(q', r', s · e', h, m)
    s ← s + m · r'                     // mod m²
    t ← t + m · (t·e' + q'·g)         // mod m²
 ```
@@ -717,13 +779,15 @@ void __hensel_step(
 //       lc(f) mod p ≠ 0
 //       ∏ factors ≡ (f / lc(f)) (mod p)
 //       |factors| ≥ 2
-// 后置: 返回 Z[x] 上的因子列表 (系数 ∈ [0, p^k))
-//       ∏ Fᵢ ≡ f (mod p^k)
-//       每个 Fᵢ 的首项系数 ≡ lc(f) 的对应分配 (mod p^k)
-//       k 自动由 __mignotte_bound(f) 确定: p^k > 2·B
-// 说明: 返回的因子系数在 [0, p^k) 范围，调用方需做 __upoly_symmetric_mod
+// 后置: 返回 (lifted_factors, modulus) 其中:
+//       lifted_factors 是 Z[x] 上的因子列表 (系数 ∈ [0, modulus))
+//       modulus = p^{2^j} ≥ p^k (二次提升的实际精度)
+//       ∏ Fᵢ ≡ f (mod modulus)
+//       每个 Fᵢ 的首项系数 ≡ lc(f) 的对应分配 (mod modulus)
+//       k 自动由 __mignotte_bound(f) 确定: p^k > 2·|lc(f)|·B
+// 说明: 返回的因子系数在 [0, modulus) 范围，调用方需做 __upoly_symmetric_mod
 //       才能得到 Z 上的真实系数
-std::vector<upolynomial_<ZZ>>
+std::pair<std::vector<upolynomial_<ZZ>>, ZZ>
 __hensel_lift(
     const upolynomial_<ZZ>& f,
     const std::vector<upolynomial_<Zp>>& factors,
@@ -734,26 +798,38 @@ __hensel_lift(
 
 ```
 1.  B ← __mignotte_bound(f)
-    确定 k 使得 p^k > 2 · |lc(f)| · B
+    target ← 2 · |lc(f)| · B
 
-2.  // 处理首项系数: 将 f 乘以 lc(f)^{r-1} 使其首一化
-    //   或者: 将 lc(f) 分配到各因子的首项
-    // 这里采用标准策略: 将 lc(f) 分配到 factors[0]
-    factors_zz ← 将 factors 的系数从 Zp 转换到 ZZ ([0,p) 范围)
-    factors_zz[0] 的首项系数设为 lc(f) mod p (而非 1)
+2.  // 处理首项系数: 将 lc(f) 分配到 factors[0] 的全部系数
+    // 这保证 factors[0]·factors[1]·...·factors[r-1] ≡ f (mod p)
+    // (原始的首一因子满足 lc(f)·f₁·...·fᵣ ≡ f mod p，
+    //  乘 lc(f) 到 f₁ 后积变为 f 本身)
+    factors_adj ← factors 的副本
+    factors_adj[0] 的每个系数乘以 lc(f) mod p
+    // 注: 是乘以全部系数，不是仅设置首项系数
 
-3.  nodes ← __hensel_tree_build(factors, p)
+3.  nodes ← __hensel_tree_build(factors_adj, p)
+    // 此时 nodes[0].g · nodes[0].h ≡ f (mod p)
 
 4.  m ← p
-    while m < p^k:                      // 等价: 重复 ⌈log₂ k⌉ 次
-        对 nodes 中每个节点:
-            __hensel_step(node, f, m)
-        m ← m²                          // 如果 m² > p^k, 最后一步精度会超出
-                                         // 但不影响正确性 (多余位无害)
+    while m ≤ target:
+        __hensel_lift_recursive(nodes, 0, f, m)  // 自顶向下递归提升
+        m ← m²
+
+    // __hensel_lift_recursive 的递归逻辑:
+    //   def __hensel_lift_recursive(nodes, idx, target, m):
+    //       __hensel_step(nodes[idx], target, m)
+    //       if nodes[idx].left ≠ -1:
+    //           __hensel_lift_recursive(nodes, left, nodes[idx].g, m)
+    //       if nodes[idx].right ≠ -1:
+    //           __hensel_lift_recursive(nodes, right, nodes[idx].h, m)
+    //
+    // 关键: 根节点以 f 为目标，子节点以父节点更新后的 g/h 为目标。
+    // 不能用扁平循环 (所有节点共用 f)，否则 >2 因子时结果错误。
 
 5.  从 nodes 的叶子中提取最终因子 (mod m)
 
-6.  return 因子列表
+6.  return (因子列表, m)              // m 是最终模数，调用方需要它
 ```
 
 ---
@@ -846,12 +922,6 @@ __factor_recombine(
             g ← __subset_product_mod(lifted, S, lc(f*), m)
             // g = lc(f*) · ∏_{i∈S} Fᵢ mod m, 系数已对称约化
 
-            // 剪枝 3: 范数检查
-            T_comp ← T \ S
-            h ← __subset_product_mod(lifted, T_comp, lc(f*), m)
-            if __upoly_norm_l1(g) · __upoly_norm_l1(h) > __upoly_norm_l1(lc(f*) · f*):
-                continue
-
             // 试除: g | lc(f*)·f* in Z[x]?
             lc_f_star ← lc(f*)
             f_scaled ← lc_f_star · f*
@@ -876,6 +946,9 @@ __factor_recombine(
 **子集枚举实现：** 使用位掩码枚举所有大小为 s 的子集：
 ```cpp
 // Gosper's hack: 枚举 n 位中恰好 s 个 1 的所有位掩码
+// 限制: r ≤ 64 (uint64_t 位宽)
+// 对于 r > 64 的极端情况 (如 Swinnerton-Dyer 多项式)，
+// 应切换到 van Hoeij 算法 (Phase 6)
 uint64_t mask = (1ULL << s) - 1;
 while (mask < (1ULL << r)):
     // 处理 mask
@@ -884,7 +957,64 @@ while (mask < (1ULL << r)):
     mask = (((r_ ^ mask) >> 2) / c) | r_;
 ```
 
-### 7.6 van Hoeij 重组（远期增强）
+### 7.6 剪枝优化方向
+
+当前实现仅使用剪枝 1（首项系数整除）和剪枝 2（常数项整除）。
+
+> **注：** 原设计中的"剪枝 3: 范数检查"（`||g||₁·||h||₁ > ||lc(f*)·f*||₁`）
+> 已移除。L1 范数满足次可乘性 `||g·h||₁ ≤ ||g||₁·||h||₁`，对真因子也几乎
+> 总有严格不等式（因乘法展开时正负消去），导致有效分解被错误剪掉。
+
+以下是主流代数库的做法，按性价比排序，可作为后续增强参考：
+
+**1. Newton 迹检查（PARI/GP, NTL）— 推荐优先实现**
+
+从提升因子的前 1-2 个系数预计算 Newton 迹（trace）：
+- 1 阶迹：`t₁(S) = Σ_{i∈S} coeff_{n-1}(Fᵢ)` （对应根之和）
+- 2 阶迹：`t₂(S) = Σ_{i∈S} coeff_{n-2}(Fᵢ)` （对应根平方和相关量）
+
+对真因子 g（deg = k），有 `|t₁| ≤ k·||g||∞`，可用 Mignotte bound 给出阈值。
+仅需 ulong 算术，O(|S|) 计算量，能淘汰绝大多数假子集。
+
+**2. 试除时逐系数 bound 检查（PARI/GP）**
+
+在执行多项式长除法的同时，每算出一个商系数就与 Mignotte bound 比较，
+超限立即中止。无需额外计算，只需修改试除函数增加 bound 参数。
+PARI 的 `ZX_divides_i(f, g, bound)` 即是此做法。
+
+**3. 多素数度数可行性（FLINT, NTL）**
+
+对 f 分别 mod p₁, p₂, ... 做 Zp 分解，收集各素数下因子度数的并集。
+真因子的度数必须是所有素数下因子度数子集和的交集中的元素。
+用位掩码 DP 实现，setup 开销较大但对 r 大时效果显著。
+- FLINT 使用 3 个素数
+- NTL 动态添加最多 50 个素数
+
+**4. Beauzamy bound 替代 Mignotte bound（PARI/GP）**
+
+PARI 同时计算 Mignotte bound 和 Beauzamy bound 并取较小者：
+```
+B_beauzamy = |lc(f)| · √(3^(3/2+n) · [f]₂² / (4nπ))
+```
+其中 `[f]₂² = Σ aᵢ²/C(n,i)` 为加权 L2 范数。实际中往往比 Mignotte 更紧。
+
+**5. Meet-in-the-middle 查表（NTL）**
+
+对 r 中最后 t 个因子（`ZZXFac_MaxPrune=10`），预建大小 ~t·2^(t-1) 的
+查表。枚举子集时查表判断 trace 值是否可行。运行时间缩减约 2^t 倍。
+仅在 r 较大时有收益。
+
+**各库剪枝策略总结：**
+
+| 库 | 度数 | 常数项 | Newton 迹 | 系数 bound | 查表 |
+|---|---|---|---|---|---|
+| Singular | ✓ | | | | |
+| FLINT | ✓(多素数) | | | | |
+| SymPy | | ✓ | | | |
+| PARI/GP | | ✓ | ✓(1+2 阶) | ✓(试除时) | |
+| NTL | ✓(多素数) | ✓ | ✓(1+2 阶) | ✓ | ✓ |
+
+### 7.7 van Hoeij 重组（远期增强）
 
 当模因子数 r 较大时（例如 r > 15-20），Zassenhaus 可能过慢。
 van Hoeij 算法通过格约化在多项式时间内完成重组：
@@ -1012,9 +1142,9 @@ __factor_squarefree_ZZ(const upolynomial_<ZZ>& f)
 3.  // 提取首一因子 (去掉 __factor_Zp 返回的 lc)
     factors_monic ← mod_factors 中每个 pair 的 .first
 
-4.  lifted ← __hensel_lift(f, factors_monic, p)   // M2
+4.  (lifted, modulus) ← __hensel_lift(f, factors_monic, p)   // M2
 
-5.  result ← __factor_recombine(f, lifted, p^k)   // M3 (k 由 __hensel_lift 确定)
+5.  result ← __factor_recombine(f, lifted, modulus)          // M3
 
 6.  return result
 ```
@@ -1055,8 +1185,12 @@ factorize(const polynomial_<ZZ, lex_<var_order>>& f)
     if uf.front().second < 0: c = -c
     uf ← uf / c                         // 本原化, lc > 0
 
-6.  sqf ← squarefreefactorize_upoly(uf) // 对 upolynomial 的无平方分解
-    // 注: 需要适配或新写单变量版本
+6.  // 方案 A (§8.7): 转为 polynomial_<ZZ,lex> 调用已有 squarefreefactorize
+    polynomial_<ZZ, lex> f_lex;
+    poly_convert_back(uf, f_lex, var)     // upolynomial → polynomial (带回变量)
+    sqf_lex ← squarefreefactorize(f_lex)  // 已有，成熟且有测试覆盖
+    // 将各因子转回 upolynomial_<ZZ>
+    sqf ← [(poly_convert(gᵢ_lex) → upolynomial, eᵢ) for (gᵢ_lex, eᵢ) in sqf_lex]
 
 7.  result ← factorization<...>{c, {}}
 
@@ -1104,7 +1238,34 @@ factorize(const polynomial_<ZZ, comp>& f)
 }
 ```
 
-### 8.7 无平方分解的 upolynomial 适配
+### 8.7 QQ[x] 因式分解入口
+
+```cpp
+// QQ[x] 因式分解: 约化为 ZZ[x] 分解
+// 前置: f ∈ QQ[x], 非零
+// 后置: 返回 factorization 满足 content · ∏ fᵢ^eᵢ = f
+//       content ∈ QQ, 每个 fᵢ ∈ QQ[x] 首一不可约
+// 算法: (1) 提取有理内容并乘以 LCD 得 g ∈ ZZ[x]
+//       (2) 分解 g
+//       (3) 将因子转为 QQ[x] 首一多项式，吸收 lc 到 content
+template<class comp>
+factorization<polynomial_<QQ, comp>>
+factorize(const polynomial_<QQ, comp>& f)
+```
+
+**算法：**
+
+```
+1.  若 f = 0: return {QQ(0), {}}
+2.  lcd ← f 所有系数分母的 LCM
+3.  g ← lcd · f ∈ ZZ[x]
+4.  result_zz ← factorize(g)              // ZZ[x] 分解
+5.  // 构造 QQ 结果: content = result_zz.content / lcd
+    // 每个 ZZ 因子 → QQ 首一因子 (除以 lc), lc 吸收到 content
+6.  return QQ 格式的 factorization
+```
+
+### 8.8 无平方分解的 upolynomial 适配
 
 已有的 `squarefreefactorize` 工作在 `polynomial_<ZZ, lex>` 上。对于单变量
 流程需要在 `upolynomial_<ZZ>` 上操作。两个方案：
@@ -1139,7 +1300,7 @@ __factor_multivar(polynomial_<ZZ,lex>)     M5 入口
   ├── factorize(f₀)                        单变量分解 (M4)
   ├── __wang_leading_coeff                 首项系数分配
   └── __multivar_hensel_lift               多变量 Hensel 提升
-        └── __upoly_gcd_extended           扩展 GCD (§4.1.4)
+        └── __upoly_gcd_extended           扩展 GCD (§4.1.6)
 ```
 
 ### 9.3 `__select_eval_point` — 选取值点
@@ -1287,8 +1448,8 @@ struct factorization {
 
 | 阶段 | 内容 | 新增函数 | 依赖 |
 |---|---|---|---|
-| **Phase 1** | M1: Zₚ 上分解 | `__squarefree_Zp`, `__extract_pth_root`, `__ddf_Zp`, `__edf_Zp`, `__factor_Zp` + 辅助函数 (§4.1) | Zp 类, upolynomial |
-| **Phase 2** | M2: Hensel 提升 | `__hensel_step`, `__hensel_tree_build`, `__hensel_lift` + `__mignotte_bound`, `__upoly_gcd_extended` | M1 |
+| **Phase 1** | M1: Zₚ 上分解 | `__squarefree_Zp`, `__extract_pth_root`, `__ddf_Zp`, `__edf_Zp`, `__factor_Zp` + 辅助函数 (§4.1: `__upoly_make_monic`, `__upoly_mod`, `__upoly_divmod`, `__upoly_gcd_Zp`, `__upoly_powmod`, `__upoly_random`) | Zp 类, upolynomial |
+| **Phase 2** | M2: Hensel 提升 | `__hensel_step`, `__hensel_tree_build`, `__hensel_lift` + `__mignotte_bound`, `__upoly_gcd_extended`, `__upoly_divmod_mod` | M1 |
 | **Phase 3** | M3: Zassenhaus 重组 | `__factor_recombine`, `__subset_product_mod` + `__symmetric_mod`, `__upoly_symmetric_mod`, 范数函数 | M2 |
 | **Phase 4** | M4: 单变量集成 | `__select_prime`, `__factor_squarefree_ZZ`, `factorize` (用户入口) + `factorization<>` 结构体 | M1+M2+M3 |
 | **Phase 5** | M5: 多变量 Wang | `__select_eval_point`, `__wang_leading_coeff`, `__multivar_hensel_lift`, `__factor_multivar` | M4 |
@@ -1361,17 +1522,27 @@ inline void __upoly_divmod(
     upolynomial_<Zp>& q, upolynomial_<Zp>& r,
     const upolynomial_<Zp>& f, const upolynomial_<Zp>& g);
 
-// §4.1.4 扩展 GCD
+// §4.1.4 ZZ 系数模除法
+inline void __upoly_divmod_mod(
+    upolynomial_<ZZ>& q, upolynomial_<ZZ>& r,
+    const upolynomial_<ZZ>& f, const upolynomial_<ZZ>& g,
+    const ZZ& m);
+
+// §4.1.5 Zₚ 上简单 GCD 包装
+inline upolynomial_<Zp> __upoly_gcd_Zp(
+    const upolynomial_<Zp>& a, const upolynomial_<Zp>& b);
+
+// §4.1.6 扩展 GCD
 inline void __upoly_gcd_extended(
     upolynomial_<Zp>& s, upolynomial_<Zp>& t,
     const upolynomial_<Zp>& a, const upolynomial_<Zp>& b);
 
-// §4.1.5 模幂
+// §4.1.7 模幂
 inline upolynomial_<Zp> __upoly_powmod(
     const upolynomial_<Zp>& base, const ZZ& exp,
     const upolynomial_<Zp>& modpoly);
 
-// §4.1.6 随机多项式
+// §4.1.8 随机多项式
 inline upolynomial_<Zp> __upoly_random(
     int64_t max_deg, uint32_t p, std::mt19937& rng);
 
@@ -1433,7 +1604,7 @@ void __hensel_step(
     __hensel_node& node, const upolynomial_<ZZ>& f, const ZZ& m);
 
 // 多因子提升入口
-std::vector<upolynomial_<ZZ>> __hensel_lift(
+std::pair<std::vector<upolynomial_<ZZ>>, ZZ> __hensel_lift(
     const upolynomial_<ZZ>& f,
     const std::vector<upolynomial_<Zp>>& factors, uint32_t p);
 ```
@@ -1472,6 +1643,11 @@ factorize(const polynomial_<ZZ, lex_<var_order>>& f);
 template<class comp>
 factorization<polynomial_<ZZ, comp>>
 factorize(const polynomial_<ZZ, comp>& f);
+
+// 用户入口 (QQ, §8.7)
+template<class comp>
+factorization<polynomial_<QQ, comp>>
+factorize(const polynomial_<QQ, comp>& f);
 ```
 
 ### A.6 M5: 多变量分解 (§9, 远期)

@@ -1184,7 +1184,7 @@ namespace clpoly{
     }
 
     // ================================================================
-    // §8.2 upolynomial → polynomial 转换辅助
+    // §8.2 upolynomial → polynomial 转换辅助（委托 poly_convert）
     // ================================================================
 
     template<class var_order>
@@ -1194,14 +1194,7 @@ namespace clpoly{
         const lex_<var_order>* comp_ptr)
     {
         polynomial_<ZZ,lex_<var_order>> result(comp_ptr);
-        basic_monomial<lex_<var_order>> m(comp_ptr);
-        for (auto& term : up)
-        {
-            m.clear();
-            if (term.first.deg() > 0)
-                m.push_back({var, term.first.deg()});
-            result.push_back({std::move(m), term.second});
-        }
+        poly_convert(up, result, var);
         return result;
     }
 
@@ -1498,6 +1491,81 @@ namespace clpoly{
 
             result.factors.push_back({std::move(fac_qq), mult});
         }
+
+        return result;
+    }
+
+    // ================================================================
+    // §8.8 factorize: upolynomial_ZZ
+    // ================================================================
+
+    inline factorization<upolynomial_<ZZ>>
+    factorize(const upolynomial_<ZZ>& F)
+    {
+        factorization<upolynomial_<ZZ>> result;
+        result.content = ZZ(1);
+
+        if (F.empty())
+        {
+            result.content = ZZ(0);
+            return result;
+        }
+
+        if (is_number(F))
+        {
+            result.content = F.front().second;
+            return result;
+        }
+
+        // 提取内容，本原化
+        auto [ct, uf_prim] = __upoly_primitive(upolynomial_<ZZ>(F));
+        result.content = ct;
+
+        if (get_deg(uf_prim) <= 1)
+        {
+            result.factors.push_back({std::move(uf_prim), 1});
+            return result;
+        }
+
+        // 转 polynomial_ZZ 做无平方分解（squarefreefactorize 仅定义在 polynomial 上）
+        variable __x("x");
+        polynomial_<ZZ,lex> poly_prim;
+        poly_convert(uf_prim, poly_prim, __x);
+        auto sqf = squarefreefactorize(poly_prim);
+
+        for (auto& [sqf_factor, mult] : sqf)
+        {
+            if (is_number(sqf_factor))
+            {
+                result.content *= sqf_factor.front().second;
+                continue;
+            }
+
+            upolynomial_<ZZ> usqf;
+            poly_convert(sqf_factor, usqf);
+
+            if (get_deg(usqf) <= 1)
+            {
+                result.factors.push_back({std::move(usqf), mult});
+                continue;
+            }
+
+            auto irr_factors = __factor_squarefree_primitive_ZZ(usqf);
+            for (auto& irr : irr_factors)
+            {
+                if (irr.front().second < ZZ(0))
+                {
+                    for (auto& term : irr)
+                        term.second = -term.second;
+                }
+                result.factors.push_back({std::move(irr), mult});
+            }
+        }
+
+        std::sort(result.factors.begin(), result.factors.end(),
+            [](const auto& a, const auto& b) {
+                return degree(a.first) < degree(b.first);
+            });
 
         return result;
     }

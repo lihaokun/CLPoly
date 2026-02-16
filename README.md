@@ -1,42 +1,178 @@
 # CLPoly
 
-CLPoly 是一个开发中的多项式c++库，目标是一个高效易用的多项式库。
+CLPoly 是一个 C++ 多项式计算库，提供多变量多项式的算术运算、GCD、因式分解、结式、特征列、实根隔离等功能。
 
-CLPoly is a c++ library of polynomial.
+CLPoly is a C++ library for polynomial computation, supporting multivariate polynomial arithmetic, GCD, factorization, resultants, characteristic sets, and real root isolation.
 
-## Dependencies
+## 功能
 
-* [GMP](https://gmplib.org/)
-* [boost](https://www.boost.org/)
+### 多项式算术
 
-## Example
+支持 Z[x₁,...,xₙ] 和 Q[x₁,...,xₙ] 上的多项式运算，提供自然的运算符重载：
 
-```
+```cpp
 #include <clpoly/clpoly.hh>
+using namespace clpoly;
 
-int main(int argc, char const *argv[])
-{
-    clpoly::variable x("x");
-    clpoly::variable y("y");
-    clpoly::variable z("z");
-    clpoly::polynomial_ZZ f=-6*pow(x,4)-7*pow(x,2)*y-x*pow(y,3)*z-3*x*y-9;
-    clpoly::polynomial_ZZ g=10*pow(x,4)*y+2*pow(x,4)-7*pow(x,3)*pow(y,2)+9*pow(x,2)+9*pow(z,4)-9*y+2*z;
-    std::cout<<"f="<<f<<std::endl;
-    std::cout<<"g="<<g<<std::endl;
-    std::cout<<"prem(f,g,x)="<<clpoly::prem(f,g,x)<<std::endl;
-    std::cout<<"resultant(f,g,x)="<<clpoly::resultant(f,g,x)<<std::endl;
-    std::cout<<"gcd(f^2,g*f)="<<clpoly::polynomial_GCD(f*f,g*f)<<std::endl;
+variable x("x"), y("y");
+polynomial_ZZ f = pow(x,3) - 2*x*y + 1;
+polynomial_ZZ g = pow(x,2) + y;
+
+auto h = f * g;              // 乘法
+auto r = prem(f, g, x);      // 伪余式
+auto lc = leadcoeff(f, x);   // 首项系数
+auto d = derivative(f, x);   // 导数
+auto v = assign(f, x, ZZ(3)); // 代入求值
+```
+
+### GCD 与无平方分解
+
+```cpp
+auto g = gcd(f1, f2);                  // 多项式 GCD
+auto sqf = squarefreefactorize(f);     // 无平方分解: [(因子, 重数), ...]
+auto basis = squarefreebasis({f1, f2}); // 无平方基
+```
+
+### 因式分解
+
+Z[x] 和 Q[x] 上的单变量不可约分解（Hensel 提升 + Zassenhaus 重组）：
+
+```cpp
+polynomial_ZZ f = pow(x,6) - 1;
+auto fac = factorize(f);
+// fac.content = 1
+// fac.factors = [(x-1,1), (x+1,1), (x²-x+1,1), (x²+x+1,1)]
+
+// 也支持 upolynomial_ZZ 和 polynomial_QQ
+auto fac_u = factorize(uf);
+auto fac_q = factorize(fq);
+```
+
+### 结式与判别式
+
+```cpp
+auto res  = resultant(f, g, x);       // 结式
+auto disc = discriminant(f, x);        // 判别式
+auto src  = subresultant(f, g, x);     // 子结式链
+```
+
+### 特征列
+
+基于吴方法的特征列与正则三角分解：
+
+```cpp
+auto cs = charset(polys);              // 基本特征列
+auto wcs = Wucharset(polys);           // 吴特征列
+auto rcs = GRDforZD(polys);            // 正则三角分解
+```
+
+### 实根隔离
+
+基于 Uspensky 算法的实数根隔离：
+
+```cpp
+upolynomial_ZZ f = ...;
+auto intervals = uspensky(f);          // 返回隔离区间 [(left,right), ...]
+auto roots = realroot({f1, f2, f3});   // 多多项式联合实根隔离
+```
+
+### 数值类型
+
+| 类型 | 说明 |
+|------|------|
+| `ZZ` | 任意精度整数（基于 GMP，小整数内联优化） |
+| `QQ` | 有理数 |
+| `Zp` | 素域 Z/pZ 元素 |
+
+### 单项式序
+
+| 序 | 类型 | 说明 |
+|----|------|------|
+| grlex | `grlex` | 分次字典序（默认） |
+| lex | `lex` | 字典序 |
+| 自定义 | `lex_<custom_var_order>` | 自定义变量优先级 |
+
+## 依赖
+
+- [GMP](https://gmplib.org/)（含 gmpxx）
+- [Boost](https://www.boost.org/)（math/prime）
+
+## 构建与测试
+
+```bash
+# 构建库
+make
+
+# 编译并运行单个测试
+make test/test_factorize && test/test_factorize
+
+# 运行全部测试（18 个测试文件，~1000 assertions）
+bash test/run_all_tests.sh
+
+# 交叉验证测试（需要 FLINT 和 NTL）
+make crosscheck
+```
+
+### 在项目中使用
+
+```bash
+# 编译
+g++ -O3 -I/path/to/CLPoly your_code.cc -lgmpxx -lgmp -Llib/clpoly -lclpoly
+
+# 单头文件引入
+#include <clpoly/clpoly.hh>
+```
+
+## 示例
+
+```cpp
+#include <clpoly/clpoly.hh>
+using namespace clpoly;
+
+int main() {
+    variable x("x"), y("y"), z("z");
+    polynomial_ZZ f = -6*pow(x,4) - 7*pow(x,2)*y - x*pow(y,3)*z - 3*x*y - 9;
+    polynomial_ZZ g = 10*pow(x,4)*y + 2*pow(x,4) - 7*pow(x,3)*pow(y,2)
+                      + 9*pow(x,2) + 9*pow(z,4) - 9*y + 2*z;
+
+    std::cout << "f = " << f << std::endl;
+    std::cout << "g = " << g << std::endl;
+    std::cout << "prem(f,g,x) = " << prem(f, g, x) << std::endl;
+    std::cout << "resultant(f,g,x) = " << resultant(f, g, x) << std::endl;
+    std::cout << "gcd(f^2, g*f) = " << polynomial_GCD(f*f, g*f) << std::endl;
+
+    // 因式分解
+    polynomial_ZZ h = pow(x,6) - 1;
+    auto fac = factorize(h);
+    std::cout << "factorize(x^6-1): content=" << fac.content << std::endl;
+    for (auto& [fi, ei] : fac.factors)
+        std::cout << "  (" << fi << ")^" << ei << std::endl;
 }
 ```
-编译指令
+
+```bash
+make example
 ```
-make example 
-```
-结果
-```
-f=-x*y^3*z-6*x^4-7*x^2*y-3*x*y-9
-g=10*x^4*y-7*x^3*y^2+2*x^4+9*z^4+9*x^2-9*y+2*z
-prem(f,g,x)=-10*x*y^4*z-42*x^3*y^2-2*x*y^3*z-70*x^2*y^2+54*z^4-14*x^2*y-30*x*y^2+54*x^2-6*x*y-144*y+12*z-18
-resultant(f,g,x)=9000*y^15*z^8+18522*y^15*z^7+5400*y^14*z^8+44100*y^14*z^7+1080*y^13*z^8-9000*y^16*z^4+2000*y^15*z^5+125640*y^13*z^7+72*y^12*z^8+428652*y^10*z^10-18522*y^16*z^3-1284*y^15*z^4+1200*y^14*z^5+166698*y^13*z^6-35496*y^12*z^7+1360800*y^9*z^10-44100*y^15*z^3+8720*y^14*z^4+240*y^13*z^5+396900*y^12*z^6-7452*y^11*z^7+544320*y^8*z^10+3306744*y^5*z^13-125640*y^14*z^3+27848*y^13*z^4+16*y^12*z^5-283986*y^11*z^6+191376*y^10*z^7+904932*y^8*z^9-732888*y^7*z^10-166698*y^14*z^2+72540*y^13*z^3-7888*y^12*z^4+500094*y^11*z^5-5251392*y^10*z^6+604800*y^9*z^7+7831404*y^7*z^9-157464*y^6*z^10+8503056*z^16-396900*y^13*z^2+95652*y^12*z^3-1656*y^11*z^4-2309958*y^10*z^5-2416068*y^9*z^6+241920*y^8*z^7+8168202*y^7*z^8-17125668*y^6*z^9+2204496*y^5*z^10+35639352*y^3*z^12-144666*y^12*z^2-63972*y^11*z^3+21360*y^10*z^4-9125136*y^9*z^5+1878012*y^8*z^6-325728*y^7*z^7+18305028*y^6*z^8-6234408*y^5*z^9+5143824*y^2*z^12-500094*y^12*z+4001724*y^11*z^2-1166976*y^10*z^3+567294*y^9*z^4-32633928*y^8*z^5+4004856*y^7*z^6-69984*y^6*z^7-7978824*y^5*z^8-944784*y^4*z^9-110539728*y*z^12+7558272*z^13+2309958*y^11*z+1358424*y^10*z^2-536904*y^9*z^3-25620798*y^8*z^4+40189176*y^7*z^5-7340220*y^6*z^6+489888*y^5*z^7-248391360*y^4*z^8+23759568*y^3*z^9-11337408*z^12+8220204*y^10*z-2041740*y^9*z^2+372648*y^8*z^3-61088646*y^7*z^4+25303032*y^6*z^5-2770848*y^5*z^6-67831992*y^3*z^8+3429216*y^2*z^9-500094*y^10+26413938*y^9*z-7181352*y^8*z^2+503232*y^7*z^3-4589460*y^6*z^4-1931652*y^5*z^5-419904*y^4*z^6+462113100*y^2*z^8-73693152*y*z^9+2519424*z^10+17479476*y^9-19764324*y^8*z+8343852*y^7*z^2-785448*y^6*z^3+465676128*y^5*z^4-108769032*y^4*z^5+5279904*y^3*z^6+97312752*y*z^8-7558272*z^9+53249400*y^8-15635628*y^7*z+4724776*y^6*z^2-307872*y^5*z^3+203411412*y^4*z^4-30147552*y^3*z^5+762048*y^2*z^6+31177872*z^8+42066054*y^7-6575076*y^6*z-35240*y^5*z^2-46656*y^4*z^3-647949780*y^3*z^4+205383600*y^2*z^5-16376256*y*z^6+373248*z^7-216860652*y^6+100760724*y^5*z-11904656*y^4*z^2+391104*y^3*z^3-214603020*y^2*z^4+43250112*y*z^5-1679616*z^6-183344958*y^5+45237528*y^4*z-3349728*y^3*z^2+56448*y^2*z^3-193838184*y*z^4+13856832*z^5+259748532*y^4-143988840*y^3*z+22820400*y^2*z^2-1213056*y*z^3-18245088*z^4+134812512*y^3-47689560*y^2*z+4805568*y*z^2-124416*z^3+189980316*y^2-43075152*y*z+1539648*z^2+38053800*y-4059072*z+22071204
-gcd(f^2,g*f)=x*y^3*z+6*x^4+7*x^2*y+3*x*y+9
-```
+
+## 与其他库的对比
+
+| | CLPoly | FLINT | NTL | Singular |
+|--|--------|-------|-----|----------|
+| 语言 | C++ | C | C++ | C/C++ |
+| 多变量多项式 | 支持 | 支持 | 不支持 | 支持 |
+| 单项式序 | grlex/lex/自定义 | deglex/degrevlex | — | dp/lp/Dp 等 |
+| 系数域 | Z, Q, Z/pZ | Z, Q, Z/pZ, Z/nZ, Fq | Z, Z/pZ, GF(p^k) | Z, Q, Z/pZ, GF(p^k) |
+| 因式分解 | 单变量 Z/Q | 单变量+多变量 | 单变量 Z | 单变量+多变量 |
+| GCD | 多变量 | 多变量 | 单变量 | 多变量 |
+| 结式/子结式 | 多变量 | 单变量 | 不支持 | 不支持 |
+| 特征列 | 支持 | 不支持 | 不支持 | 不支持 |
+| 实根隔离 | 支持 | 不支持 | 不支持 | 不支持 |
+| Gröbner 基 | 不支持 | 支持 | 不支持 | 支持 |
+| 内存布局 | AoS（交织） | SoA（分离） | 稠密数组 | AoS |
+| 设计取向 | 泛型模板 | 极致性能 | 数论专用 | 交换代数 |
+
+**CLPoly 的特点**：特征列方法与实根隔离的组合在开源 C++ 库中较为少见。泛型模板设计使得同一代码可工作于不同单项式序和系数域。因式分解目前限于单变量，多变量因式分解是后续工作。
+
+## 许可证
+
+MIT License

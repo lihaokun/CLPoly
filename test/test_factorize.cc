@@ -9,7 +9,7 @@ template<class Poly>
 bool verify_factorization(const Poly& f, const factorization<Poly>& fac)
 {
     Poly product(f.comp_ptr());
-    product.push_back({typename Poly::momomial_type(f.comp_ptr()), fac.content});
+    product.push_back({typename Poly::monomial_type(f.comp_ptr()), fac.content});
     for (auto& [fi, ei] : fac.factors)
         product = product * pow(fi, (int64_t)ei);
     product.normalization();

@@ -14,6 +14,7 @@
 #include <clpoly/clpoly.hh>
 #include <NTL/ZZX.h>
 #include <NTL/ZZ.h>
+#include <NTL/ZZXFactoring.h>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -79,6 +80,22 @@ inline NTL::ZZ ntl_eval(const NTL::ZZX& f, const NTL::ZZ& a) {
 
 inline NTL::ZZX ntl_diff(const NTL::ZZX& f) {
     return NTL::diff(f);
+}
+
+// ---- NTL factorization ----
+
+struct NTLFactorResult {
+    NTL::ZZ content;
+    std::vector<std::pair<NTL::ZZX, long>> factors;  // (factor, exponent)
+};
+
+inline NTLFactorResult ntl_factor(const NTL::ZZX& f) {
+    NTLFactorResult result;
+    NTL::vec_pair_ZZX_long facs;
+    NTL::factor(result.content, facs, f);
+    for (long i = 0; i < facs.length(); ++i)
+        result.factors.push_back({facs[i].a, facs[i].b});
+    return result;
 }
 
 } // namespace crosscheck

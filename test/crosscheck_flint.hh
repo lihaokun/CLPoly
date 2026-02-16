@@ -317,6 +317,74 @@ inline std::vector<clpoly::variable> collect_vars_qq(
     return result;
 }
 
+// ---- fmpz_poly_t (univariate) for factorization crosscheck ----
+
+#include <flint/fmpz_poly.h>
+#include <flint/fmpz_poly_factor.h>
+
+struct FlintUPoly {
+    fmpz_poly_t poly;
+    bool _owns;
+    FlintUPoly() : _owns(true) { fmpz_poly_init(poly); }
+    ~FlintUPoly() { if (_owns) fmpz_poly_clear(poly); }
+    FlintUPoly(FlintUPoly&& other) noexcept : _owns(other._owns) {
+        std::memcpy(poly, other.poly, sizeof(fmpz_poly_t));
+        other._owns = false;
+    }
+    FlintUPoly(const FlintUPoly&) = delete;
+    FlintUPoly& operator=(const FlintUPoly&) = delete;
+    FlintUPoly& operator=(FlintUPoly&&) = delete;
+};
+
+inline FlintUPoly clpoly_upoly_to_flint(const clpoly::upolynomial_ZZ& p) {
+    FlintUPoly fp;
+    fmpz_t coeff;
+    fmpz_init(coeff);
+    for (auto& term : p) {
+        clpoly_zz_to_fmpz(coeff, term.second);
+        fmpz_poly_set_coeff_fmpz(fp.poly, static_cast<slong>(term.first.deg()), coeff);
+    }
+    fmpz_clear(coeff);
+    return fp;
+}
+
+inline clpoly::upolynomial_ZZ flint_to_clpoly_upoly(const fmpz_poly_t p) {
+    std::vector<std::pair<clpoly::umonomial, clpoly::ZZ>> terms;
+    slong len = fmpz_poly_length(p);
+    fmpz_t coeff;
+    fmpz_init(coeff);
+    for (slong i = len - 1; i >= 0; --i) {
+        fmpz_poly_get_coeff_fmpz(coeff, p, i);
+        if (!fmpz_is_zero(coeff))
+            terms.emplace_back(clpoly::umonomial(i), fmpz_to_clpoly_zz(coeff));
+    }
+    fmpz_clear(coeff);
+    return clpoly::upolynomial_ZZ(terms);
+}
+
+struct FlintFactorResult {
+    clpoly::ZZ content;
+    std::vector<std::pair<clpoly::upolynomial_ZZ, long>> factors;
+};
+
+inline FlintFactorResult flint_factor_upoly(const clpoly::upolynomial_ZZ& p) {
+    FlintUPoly fp = clpoly_upoly_to_flint(p);
+
+    fmpz_poly_factor_t fac;
+    fmpz_poly_factor_init(fac);
+    fmpz_poly_factor(fac, fp.poly);
+
+    FlintFactorResult result;
+    result.content = fmpz_to_clpoly_zz(&fac->c);
+    for (slong i = 0; i < fac->num; ++i) {
+        auto fi = flint_to_clpoly_upoly(fac->p + i);
+        result.factors.push_back({std::move(fi), fac->exp[i]});
+    }
+
+    fmpz_poly_factor_clear(fac);
+    return result;
+}
+
 } // namespace crosscheck
 
 #endif // CROSSCHECK_FLINT_HH

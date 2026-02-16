@@ -279,5 +279,97 @@ int main() {
         CLPOLY_ASSERT_EQ(clpoly_val, ntl_val);
     }
 
+    // ======== Factorization: CLPoly vs NTL ========
+
+    // Helper: NTL 因子转成排序后的 (upolynomial_ZZ, uint64_t) 列表（lc > 0）
+    auto normalize_ntl_factors = [](const crosscheck::NTLFactorResult& fac) {
+        std::vector<std::pair<upolynomial_ZZ, uint64_t>> result;
+        for (auto& [fi, ei] : fac.factors) {
+            auto f = crosscheck::ntl_to_clpoly_upoly(fi);
+            if (!f.empty() && f.front().second < 0) f = -f;
+            result.push_back({std::move(f), (uint64_t)ei});
+        }
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+    auto normalize_cl_factors = [](const factorization<upolynomial_<ZZ>>& fac) {
+        std::vector<std::pair<upolynomial_ZZ, uint64_t>> result;
+        for (auto& [fi, ei] : fac.factors) {
+            auto f = fi;
+            if (!f.empty() && f.front().second < 0) f = -f;
+            result.push_back({std::move(f), ei});
+        }
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+
+    // 固定多项式: x^6 - 1 = (x-1)(x+1)(x^2-x+1)(x^2+x+1)
+    CLPOLY_TEST("crosscheck_ntl_factor_x6m1");
+    {
+        upolynomial_ZZ uf({
+            {umonomial(6), ZZ(1)},
+            {umonomial(0), ZZ(-1)}
+        });
+        auto cl_fac = factorize(uf);
+
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 含重因子: (x+1)^2 * (x-2)^3
+    CLPOLY_TEST("crosscheck_ntl_factor_with_mult");
+    {
+        upolynomial_ZZ xp1({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(1)}});
+        upolynomial_ZZ xm2({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-2)}});
+        upolynomial_ZZ uf = pow(xp1, 2) * pow(xm2, 3);
+
+        auto cl_fac = factorize(uf);
+
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 随机多项式: 构造 f = f1 * f2, 排序后逐因子比较
+    CLPOLY_TEST("crosscheck_ntl_factor_random");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 不可约: x^4 + 1
+    CLPOLY_TEST("crosscheck_ntl_factor_irreducible");
+    {
+        upolynomial_ZZ uf({{umonomial(4), ZZ(1)}, {umonomial(0), ZZ(1)}});
+        auto cl_fac = factorize(uf);
+
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
     return clpoly_test::test_summary();
 }

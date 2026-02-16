@@ -135,6 +135,21 @@ namespace clpoly{
         // std::cout<<"p_out:"<<p_out<<std::end;
         p_out.normalization();
     }
+    template<class T, class comp>
+    void poly_convert(const upolynomial_<T>& p_in, polynomial_<T,comp>& p_out, const variable& var)
+    {
+        p_out.clear();
+        p_out.reserve(p_in.size());
+        basic_monomial<comp> m(p_out.comp_ptr());
+        for (auto& term : p_in)
+        {
+            m.clear();
+            if (term.first.deg() > 0)
+                m.push_back({var, term.first.deg()});
+            p_out.push_back({m, term.second});
+        }
+    }
+
     void poly_convert(const upolynomial_<ZZ>& p_in,upolynomial_<QQ> & p_out);
     void poly_convert(const upolynomial_<QQ>& p_in,upolynomial_<ZZ> & p_out);
     template <class T>

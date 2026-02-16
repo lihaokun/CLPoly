@@ -336,5 +336,105 @@ int main() {
         CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
     }
 
+    // ======== Factorization: CLPoly vs FLINT (univariate) ========
+
+    // Helper: 将 FLINT 因子列表转成排序后的 (upolynomial_ZZ, uint64_t) 列表（lc > 0）
+    auto normalize_flint_factors = [](const crosscheck::FlintFactorResult& fac) {
+        std::vector<std::pair<upolynomial_ZZ, uint64_t>> result;
+        for (auto& [fi, ei] : fac.factors) {
+            auto f = fi;
+            if (!f.empty() && f.front().second < 0) f = -f;
+            result.push_back({std::move(f), (uint64_t)ei});
+        }
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+    auto normalize_cl_factors = [](const factorization<upolynomial_<ZZ>>& fac) {
+        std::vector<std::pair<upolynomial_ZZ, uint64_t>> result;
+        for (auto& [fi, ei] : fac.factors) {
+            auto f = fi;
+            if (!f.empty() && f.front().second < 0) f = -f;
+            result.push_back({std::move(f), ei});
+        }
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+
+    // 固定多项式: x^6 - 1
+    CLPOLY_TEST("crosscheck_flint_factor_x6m1");
+    {
+        upolynomial_ZZ uf({
+            {umonomial(6), ZZ(1)},
+            {umonomial(0), ZZ(-1)}
+        });
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 含重因子: (x+1)^2 * (x-2)^3
+    CLPOLY_TEST("crosscheck_flint_factor_with_mult");
+    {
+        upolynomial_ZZ xp1({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(1)}});
+        upolynomial_ZZ xm2({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-2)}});
+        upolynomial_ZZ uf = pow(xp1, 2) * pow(xm2, 3);
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 随机多项式: f = f1 * f2
+    CLPOLY_TEST("crosscheck_flint_factor_random");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto uf1 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+        auto uf2 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+        if (uf1.empty() || uf2.empty()) continue;
+        auto uf = uf1 * uf2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 不可约: x^4 + 1
+    CLPOLY_TEST("crosscheck_flint_factor_irreducible");
+    {
+        upolynomial_ZZ uf({{umonomial(4), ZZ(1)}, {umonomial(0), ZZ(1)}});
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 非首一: 6x^2 + 5x + 1 = (2x+1)(3x+1)
+    CLPOLY_TEST("crosscheck_flint_factor_nonmonic");
+    {
+        upolynomial_ZZ uf({
+            {umonomial(2), ZZ(6)},
+            {umonomial(1), ZZ(5)},
+            {umonomial(0), ZZ(1)}
+        });
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
     return clpoly_test::test_summary();
 }

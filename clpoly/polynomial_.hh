@@ -135,6 +135,14 @@ namespace clpoly{
     {
         return polynomial_ZZ({{std::move(m),std::move(i)}});
     }
+    inline polynomial_QQ operator*( monomial  m, QQ i)
+    {
+        return polynomial_QQ({{std::move(m),std::move(i)}});
+    }
+    inline polynomial_QQ operator*(QQ i, monomial  m)
+    {
+        return polynomial_QQ({{std::move(m),std::move(i)}});
+    }
     
     template<class Tc>
     polynomial_<Tc> operator- (polynomial_<Tc> O,const Tc & m)

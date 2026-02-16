@@ -94,5 +94,110 @@ int main() {
         CLPOLY_ASSERT_EQ(c, ZZ(2));
     }
 
+    // ======== Subtraction ========
+    CLPOLY_TEST("upoly_subtraction");
+    {
+        upolynomial_ZZ p({{umonomial(2), ZZ(3)}, {umonomial(0), ZZ(1)}});   // 3x^2 + 1
+        upolynomial_ZZ q({{umonomial(2), ZZ(1)}, {umonomial(1), ZZ(2)}});   // x^2 + 2x
+        auto diff = p - q;
+        // 2x^2 - 2x + 1
+        upolynomial_ZZ expected({{umonomial(2), ZZ(2)}, {umonomial(1), ZZ(-2)}, {umonomial(0), ZZ(1)}});
+        CLPOLY_ASSERT_EQ(diff, expected);
+
+        // p - p == 0
+        auto zero_result = p - p;
+        upolynomial_ZZ zero;
+        CLPOLY_ASSERT_EQ(zero_result, zero);
+
+        // p - 0 == p
+        CLPOLY_ASSERT_EQ(p - zero, p);
+    }
+
+    // ======== Division ========
+    CLPOLY_TEST("upoly_division");
+    {
+        // (x^2 - 1) / (x + 1) = x - 1
+        upolynomial_ZZ p({{umonomial(2), ZZ(1)}, {umonomial(0), ZZ(-1)}});   // x^2 - 1
+        upolynomial_ZZ q({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(1)}});    // x + 1
+        auto quotient = p / q;
+        upolynomial_ZZ expected({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-1)}});  // x - 1
+        CLPOLY_ASSERT_EQ(quotient, expected);
+
+        // Verify: quotient * divisor == dividend
+        CLPOLY_ASSERT_EQ(quotient * q, p);
+
+        // Division of (x^3 + 1) by (x + 1) = x^2 - x + 1
+        upolynomial_ZZ p2({{umonomial(3), ZZ(1)}, {umonomial(0), ZZ(1)}});
+        auto q2 = p2 / q;
+        CLPOLY_ASSERT_EQ(q2 * q, p2);
+    }
+
+    // ======== is_number ========
+    CLPOLY_TEST("upoly_is_number");
+    {
+        // Constant polynomial
+        upolynomial_ZZ c({{umonomial(0), ZZ(42)}});
+        CLPOLY_ASSERT_TRUE(is_number(c));
+
+        // Zero polynomial
+        upolynomial_ZZ zero;
+        CLPOLY_ASSERT_TRUE(is_number(zero));
+
+        // Non-constant polynomial
+        upolynomial_ZZ p({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(1)}});
+        CLPOLY_ASSERT_FALSE(is_number(p));
+
+        // Higher degree
+        upolynomial_ZZ p2({{umonomial(3), ZZ(2)}, {umonomial(0), ZZ(1)}});
+        CLPOLY_ASSERT_FALSE(is_number(p2));
+    }
+
+    // ======== Reverse conversion: univariate -> multivariate ========
+    CLPOLY_TEST("upoly_reverse_convert");
+    {
+        variable x("x");
+        // Create a multivariate polynomial with single variable
+        polynomial_ZZ f = 3*pow(x,3) - 2*pow(x,2) + x - 5;
+        // Convert to univariate
+        upolynomial_ZZ uf;
+        poly_convert(f, uf);
+        CLPOLY_ASSERT_EQ(degree(uf), (int64_t)3);
+
+        // Evaluate both at same point and compare
+        ZZ val_u = assign(uf, ZZ(4));
+        auto val_m = assign(f, x, ZZ(4));
+        // 3*64 - 2*16 + 4 - 5 = 192 - 32 + 4 - 5 = 159
+        CLPOLY_ASSERT_EQ(val_u, ZZ(159));
+        CLPOLY_ASSERT_TRUE(is_number(val_m));
+        CLPOLY_ASSERT_EQ(val_m.front().second, ZZ(159));
+
+        // Convert between ZZ and QQ univariate
+        upolynomial_<QQ> uq;
+        poly_convert(uf, uq);
+        CLPOLY_ASSERT_EQ(degree(uq), degree(uf));
+        // Convert back
+        upolynomial_ZZ uf2;
+        poly_convert(uq, uf2);
+        CLPOLY_ASSERT_EQ(uf2, uf);
+    }
+
+    // ======== Scalar multiplication ========
+    CLPOLY_TEST("upoly_scalar_mul");
+    {
+        upolynomial_ZZ p({{umonomial(2), ZZ(3)}, {umonomial(1), ZZ(-2)}, {umonomial(0), ZZ(1)}});
+        // p * 5
+        auto r = p * ZZ(5);
+        upolynomial_ZZ expected({{umonomial(2), ZZ(15)}, {umonomial(1), ZZ(-10)}, {umonomial(0), ZZ(5)}});
+        CLPOLY_ASSERT_EQ(r, expected);
+        // 5 * p (commutative)
+        CLPOLY_ASSERT_EQ(ZZ(5) * p, expected);
+        // p * 0 == 0
+        CLPOLY_ASSERT_EQ(p * ZZ(0), upolynomial_ZZ());
+        // p * 1 == p
+        CLPOLY_ASSERT_EQ(p * ZZ(1), p);
+        // p * (-1) == -p
+        CLPOLY_ASSERT_EQ(p * ZZ(-1), -p);
+    }
+
     return clpoly_test::test_summary();
 }

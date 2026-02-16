@@ -9,6 +9,7 @@
 #define CLPOLY_RANDOM_HH
 
 #include <clpoly/polynomial.hh>
+#include <clpoly/upolynomial.hh>
 #include <clpoly/associatedgraph.hh>
 #include <list>
 #include <string>
@@ -295,6 +296,32 @@ namespace clpoly{
             }
         }
         return lout;
+    }
+
+    template<class Tc>
+    upolynomial_<Tc> random_upolynomial(
+        uint64_t deg, uint64_t len, std::pair<int,int> coeff)
+    {
+        variable _t("_t");
+        auto p = random_polynomial<Tc>({_t}, deg, len, coeff);
+        upolynomial_<Tc> u;
+        poly_convert(p, u);
+        return u;
+    }
+
+    inline polynomial_QQ random_polynomial_QQ(
+        const std::vector<variable>& v, uint64_t deg, uint64_t len,
+        std::pair<int,int> coeff, int den_max = 10, bool is_add_num = false)
+    {
+        auto p_zz = random_polynomial<ZZ>(v, deg, len, coeff, is_add_num);
+        std::vector<std::pair<monomial, QQ>> terms;
+        terms.reserve(p_zz.size());
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> den_dis(1, den_max);
+        for (auto& t : p_zz)
+            terms.emplace_back(t.first, QQ(t.second, ZZ(den_dis(gen))));
+        return polynomial_QQ(terms);
     }
 
     template <class node>

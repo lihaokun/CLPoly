@@ -156,6 +156,22 @@ namespace clpoly{
     {
         return (F.empty() || F.size()==1 && F.front().first.empty());
     }
+    // 标量乘法：upolynomial * scalar
+    template<class Tc>
+    upolynomial_<Tc> operator*(upolynomial_<Tc> O, const Tc& c) {
+        if (!c) return upolynomial_<Tc>();
+        for (auto& i : O)
+            i.second *= c;
+        O.normalization();
+        return O;
+    }
+
+    // 标量乘法：scalar * upolynomial
+    template<class Tc>
+    upolynomial_<Tc> operator*(const Tc& c, upolynomial_<Tc> O) {
+        return O * c;
+    }
+
     template <class Tc>
     Tc cont(const upolynomial_<Tc> & F)
     {

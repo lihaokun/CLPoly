@@ -138,5 +138,55 @@ int main() {
         CLPOLY_ASSERT_EQ(sres[0], res);
     }
 
+    // ======== Resultant edge cases ========
+    CLPOLY_TEST("resultant_edge_cases");
+    {
+        // Resultant with a constant polynomial
+        polynomial_ZZ f = pow(x,2) + x + 1;
+        polynomial_ZZ c({{monomial(), ZZ(5)}});
+        auto res = resultant(f, c, x);
+        // res(f, 5, x) = 5^deg(f) = 25
+        CLPOLY_ASSERT_TRUE(is_number(res));
+        CLPOLY_ASSERT_EQ(res.front().second, ZZ(25));
+
+        // Resultant of two linear polynomials
+        polynomial_ZZ l1 = x + 3;
+        polynomial_ZZ l2 = x - 7;
+        auto res2 = resultant(l1, l2, x);
+        // res(x+3, x-7, x) = (-7) - (-3) = ...
+        // Actually: res = l1(7) = 10 or l2(-3) = -10
+        // Sylvester: |1 3; 1 -7| = -7-3 = -10
+        CLPOLY_ASSERT_TRUE(is_number(res2));
+        CLPOLY_ASSERT_EQ(res2.front().second, ZZ(-10));
+
+        // Resultant with zero polynomial
+        polynomial_ZZ zero;
+        auto res3 = resultant(f, zero, x);
+        CLPOLY_ASSERT_EQ(res3, zero);
+    }
+
+    // ======== Subresultant with is_list parameter ========
+    CLPOLY_TEST("subresultant_list_mode");
+    {
+        polynomial_ZZ f = pow(x,3) + x + 1;
+        polynomial_ZZ g = pow(x,2) + x + 1;
+
+        // is_list=true (default)
+        auto sres_list = subresultant(f, g, x, true);
+        // is_list=false
+        auto sres_nolist = subresultant(f, g, x, false);
+
+        // Both should be non-empty
+        CLPOLY_ASSERT_TRUE(sres_list.size() > 0);
+        CLPOLY_ASSERT_TRUE(sres_nolist.size() > 0);
+
+        // S_0 should be the same (resultant) in both modes
+        CLPOLY_ASSERT_EQ(sres_list[0], sres_nolist[0]);
+
+        // S_0 should equal resultant
+        auto res = resultant(f, g, x);
+        CLPOLY_ASSERT_EQ(sres_list[0], res);
+    }
+
     return clpoly_test::test_summary();
 }

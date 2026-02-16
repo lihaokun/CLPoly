@@ -179,5 +179,92 @@ int main() {
         CLPOLY_ASSERT_TRUE(m1 != m3);
     }
 
+    // ======== Comparison operators: <, >, <=, >= (grlex order) ========
+    CLPOLY_TEST("monomial_comparison");
+    {
+        monomial m1 = pow(x, 3);           // deg 3
+        monomial m2 = pow(x, 2) * y;       // deg 3
+        monomial m3 = pow(x, 2);           // deg 2
+        monomial m4 = pow(x, 3);           // same as m1
+
+        // Higher total degree should be "greater" in grlex
+        CLPOLY_ASSERT_TRUE(m1 > m3);
+        CLPOLY_ASSERT_TRUE(m3 < m1);
+        CLPOLY_ASSERT_TRUE(m3 <= m1);
+        CLPOLY_ASSERT_TRUE(m1 >= m3);
+
+        // Same monomial: equal
+        CLPOLY_ASSERT_TRUE(m1 <= m4);
+        CLPOLY_ASSERT_TRUE(m1 >= m4);
+        CLPOLY_ASSERT_FALSE(m1 < m4);
+        CLPOLY_ASSERT_FALSE(m1 > m4);
+
+        // Same degree, different structure: one must be < other
+        bool m1_lt_m2 = (m1 < m2);
+        CLPOLY_ASSERT_TRUE(m1_lt_m2 || m1 > m2);  // not equal
+        if (m1_lt_m2) {
+            CLPOLY_ASSERT_TRUE(m2 > m1);
+            CLPOLY_ASSERT_TRUE(m1 <= m2);
+        } else {
+            CLPOLY_ASSERT_TRUE(m1 > m2);
+            CLPOLY_ASSERT_TRUE(m2 <= m1);
+        }
+
+        // Empty monomial (deg 0) is smallest
+        monomial m_empty;
+        CLPOLY_ASSERT_TRUE(m_empty < m1);
+        CLPOLY_ASSERT_TRUE(m_empty <= m1);
+        CLPOLY_ASSERT_TRUE(m1 > m_empty);
+        CLPOLY_ASSERT_TRUE(m1 >= m_empty);
+    }
+
+    // ======== LCM of monomials (via m1*m2/gcd) ========
+    CLPOLY_TEST("monomial_lcm");
+    {
+        monomial m1({{x, 3}, {y, 2}});
+        monomial m2({{x, 1}, {y, 4}, {z, 2}});
+        auto g = gcd(m1, m2);
+        auto l = m1 * m2 / g;   // lcm = m1*m2 / gcd(m1,m2)
+        CLPOLY_ASSERT_EQ(l.deg(x), (int64_t)3);  // max(3,1)
+        CLPOLY_ASSERT_EQ(l.deg(y), (int64_t)4);  // max(2,4)
+        CLPOLY_ASSERT_EQ(l.deg(z), (int64_t)2);  // max(0,2)
+
+        // lcm should be divisible by both m1 and m2
+        auto q1 = l / m1;
+        auto q2 = l / m2;
+        CLPOLY_ASSERT_EQ(q1 * m1, l);
+        CLPOLY_ASSERT_EQ(q2 * m2, l);
+
+        // lcm(m, m) == m
+        auto self_lcm = m1 * m1 / gcd(m1, m1);
+        CLPOLY_ASSERT_EQ(self_lcm, m1);
+    }
+
+    // ======== Iterators ========
+    CLPOLY_TEST("monomial_iterators");
+    {
+        monomial m = pow(x, 2) * pow(y, 3) * z;
+        int count = 0;
+        int64_t total_deg = 0;
+        for (auto it = m.begin(); it != m.end(); ++it) {
+            count++;
+            total_deg += it->second;
+        }
+        CLPOLY_ASSERT_EQ(count, 3);
+        CLPOLY_ASSERT_EQ(total_deg, (int64_t)6);
+
+        // Range-based for
+        int count2 = 0;
+        for (auto& pair : m) {
+            count2++;
+            CLPOLY_ASSERT_TRUE(pair.second > 0);
+        }
+        CLPOLY_ASSERT_EQ(count2, 3);
+
+        // Empty monomial: begin == end
+        monomial m_empty;
+        CLPOLY_ASSERT_TRUE(m_empty.begin() == m_empty.end());
+    }
+
     return clpoly_test::test_summary();
 }

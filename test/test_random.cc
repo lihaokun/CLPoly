@@ -200,5 +200,74 @@ int main() {
         }
     }
 
+    // ================================================================
+    //  random_polynomial: single variable
+    // ================================================================
+
+    CLPOLY_TEST("random_polynomial_single_var");
+    {
+        variable x("rpsv_x");
+        std::vector<variable> vars = {x};
+        // With single variable, degree d => at most d+1 monomials
+        auto p = random_polynomial<ZZ>(vars, 4, 3, {-10, 10});
+        CLPOLY_ASSERT_FALSE(p.empty());
+        CLPOLY_ASSERT_TRUE(p.degree() <= 4);
+        CLPOLY_ASSERT_TRUE(p.size() <= 3);
+
+        // Probability version with single variable
+        auto p2 = random_polynomial<ZZ>(vars, 3, 1.0, 1, 100);
+        CLPOLY_ASSERT_FALSE(p2.empty());
+        CLPOLY_ASSERT_TRUE(p2.degree() <= 3);
+    }
+
+    // ================================================================
+    //  random_polynomial: len clamping
+    // ================================================================
+
+    CLPOLY_TEST("random_polynomial_len_clamp");
+    {
+        variable x("rplc_x"), y("rplc_y");
+        std::vector<variable> vars = {x, y};
+        // degree=2, 2 vars => total monomials = C(2+2,2) = 6
+        // Request len=100 (much more than possible)
+        auto p = random_polynomial<ZZ>(vars, 2, 100, {1, 10});
+        // Should clamp: at most 6 monomials
+        CLPOLY_ASSERT_TRUE(p.size() <= 6);
+        CLPOLY_ASSERT_TRUE(p.degree() <= 2);
+
+        // degree=1, 2 vars => monomials: 1, x, y => 3
+        auto p2 = random_polynomial<ZZ>(vars, 1, 50, {1, 10});
+        CLPOLY_ASSERT_TRUE(p2.size() <= 3);
+    }
+
+    // ================================================================
+    //  random_upolynomial
+    // ================================================================
+
+    CLPOLY_TEST("random_upolynomial_basic");
+    {
+        auto p = random_upolynomial<ZZ>(5, 4, {-10, 10});
+        CLPOLY_ASSERT_EQ(degree(p), (int64_t)5);
+        CLPOLY_ASSERT_TRUE(p.size() >= 1 && p.size() <= 6);
+        for (auto& t : p)
+            CLPOLY_ASSERT_TRUE(bool(t.second));
+    }
+
+    // ================================================================
+    //  random_polynomial_QQ
+    // ================================================================
+
+    CLPOLY_TEST("random_polynomial_QQ_basic");
+    {
+        variable x("rpqq_x"), y("rpqq_y");
+        auto p = random_polynomial_QQ({x, y}, 3, 4, {-10, 10}, 8);
+        CLPOLY_ASSERT_EQ(degree(p), (int64_t)3);
+        CLPOLY_ASSERT_TRUE(p.size() >= 1 && p.size() <= 5);
+        for (auto& t : p) {
+            CLPOLY_ASSERT_TRUE(bool(t.second));
+            CLPOLY_ASSERT_TRUE(t.second.den() > ZZ(0));
+        }
+    }
+
     return clpoly_test::test_summary();
 }

@@ -247,5 +247,67 @@ int main() {
         CLPOLY_ASSERT_EQ(hf, hg);
     }
 
+    // ======== get_variables for vector of polynomials ========
+    CLPOLY_TEST("get_variables_vector");
+    {
+        polynomial_ZZ f1 = pow(x,2) + y;
+        polynomial_ZZ f2 = pow(z,3) + 1;
+        polynomial_ZZ f3 = x*y;
+        std::vector<polynomial_ZZ> polys = {f1, f2, f3};
+        auto vars = get_variables(polys);
+        CLPOLY_ASSERT_EQ((int)vars.size(), 3);  // x, y, z
+
+        // Single-polynomial vector
+        std::vector<polynomial_ZZ> single = {f1};
+        auto vars1 = get_variables(single);
+        CLPOLY_ASSERT_EQ((int)vars1.size(), 2);  // x, y
+
+        // Empty vector
+        std::vector<polynomial_ZZ> empty_vec;
+        auto vars_empty = get_variables(empty_vec);
+        CLPOLY_ASSERT_EQ((int)vars_empty.size(), 0);
+    }
+
+    // ======== assign with map (multi-variable substitution) ========
+    CLPOLY_TEST("assign_multi");
+    {
+        polynomial_ZZ f = pow(x,2)*y + x*z + y*z + 1;
+        std::map<variable, ZZ> subs;
+        subs[x] = ZZ(2);
+        subs[y] = ZZ(3);
+        auto result = assign(f, subs);
+        // x=2, y=3: 4*3 + 2*z + 3*z + 1 = 12 + 5*z + 1 = 5*z + 13
+        polynomial_ZZ expected = 5*z + 13;
+        CLPOLY_ASSERT_EQ(result, expected);
+
+        // Substitute all variables
+        subs[z] = ZZ(-1);
+        auto full_result = assign(f, subs);
+        // x=2, y=3, z=-1: 12 - 2 - 3 + 1 = 8
+        CLPOLY_ASSERT_TRUE(is_number(full_result));
+        CLPOLY_ASSERT_EQ(full_result.front().second, ZZ(8));
+
+        // Empty map: no substitution
+        std::map<variable, ZZ> empty_map;
+        auto unchanged = assign(f, empty_map);
+        CLPOLY_ASSERT_EQ(unchanged, f);
+    }
+
+    // ======== coeff: univariate coefficient extraction ========
+    CLPOLY_TEST("coeff_univariate");
+    {
+        // f = 5x^3 - 2x^2 + 3x + 7
+        polynomial_ZZ f = 5*pow(x,3) - 2*pow(x,2) + 3*x + 7;
+        auto coeffs = coeff(f, x);
+        // coeffs should have 4 entries: coeff of x^0 through x^3
+        CLPOLY_ASSERT_EQ((int)coeffs.size(), 4);
+
+        // Verify each coefficient
+        CLPOLY_ASSERT_EQ(coeffs[0].front().second, ZZ(7));   // x^0
+        CLPOLY_ASSERT_EQ(coeffs[1].front().second, ZZ(3));   // x^1
+        CLPOLY_ASSERT_EQ(coeffs[2].front().second, ZZ(-2));  // x^2
+        CLPOLY_ASSERT_EQ(coeffs[3].front().second, ZZ(5));   // x^3
+    }
+
     return clpoly_test::test_summary();
 }

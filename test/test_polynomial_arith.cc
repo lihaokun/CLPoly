@@ -149,5 +149,89 @@ int main() {
         CLPOLY_ASSERT_EQ(pow(f, 3), f * f * f);
     }
 
+    // ======== Scalar reverse operations: scalar op polynomial ========
+    CLPOLY_TEST("polynomial_scalar_reverse");
+    {
+        polynomial_ZZ f = pow(x,2) + x + 1;
+
+        // scalar - polynomial
+        auto diff = 10 - f;
+        polynomial_ZZ expected_diff = -pow(x,2) - x + 9;
+        CLPOLY_ASSERT_EQ(diff, expected_diff);
+
+        // scalar * polynomial
+        auto prod = ZZ(3) * f;
+        polynomial_ZZ expected_prod = 3*pow(x,2) + 3*x + 3;
+        CLPOLY_ASSERT_EQ(prod, expected_prod);
+
+        // scalar + polynomial
+        auto sum = 5 + f;
+        polynomial_ZZ expected_sum = pow(x,2) + x + 6;
+        CLPOLY_ASSERT_EQ(sum, expected_sum);
+
+        // Commutativity: scalar*f == f*scalar
+        CLPOLY_ASSERT_EQ(ZZ(3) * f, f * ZZ(3));
+        CLPOLY_ASSERT_EQ(5 + f, f + 5);
+    }
+
+    // ======== Unary operators ========
+    CLPOLY_TEST("polynomial_unary");
+    {
+        polynomial_ZZ f = pow(x,3) - 2*x + 1;
+
+        // Unary +
+        polynomial_ZZ pos_f = +f;
+        CLPOLY_ASSERT_EQ(pos_f, f);
+
+        // Unary -
+        polynomial_ZZ neg_f = -f;
+        polynomial_ZZ expected_neg = -pow(x,3) + 2*x - 1;
+        CLPOLY_ASSERT_EQ(neg_f, expected_neg);
+
+        // +(-f) == -f
+        CLPOLY_ASSERT_EQ(+neg_f, neg_f);
+
+        // Unary on zero
+        polynomial_ZZ zero;
+        CLPOLY_ASSERT_EQ(+zero, zero);
+        CLPOLY_ASSERT_EQ(-zero, zero);
+
+        // Unary on constant
+        polynomial_ZZ c({{monomial(), ZZ(5)}});
+        polynomial_ZZ neg_c({{monomial(), ZZ(-5)}});
+        CLPOLY_ASSERT_EQ(-c, neg_c);
+    }
+
+    // ======== pow(variable, n) to construct polynomial ========
+    CLPOLY_TEST("polynomial_variable_pow");
+    {
+        // pow(x, n) creates a monomial, usable in polynomial expressions
+        auto p1 = pow(x, 5);
+        CLPOLY_ASSERT_EQ(p1.deg(), (int64_t)5);
+        CLPOLY_ASSERT_EQ(p1.deg(x), (int64_t)5);
+
+        // pow(x, 0) = empty monomial (constant 1 in monomial context)
+        auto p0 = pow(x, 0);
+        CLPOLY_ASSERT_TRUE(p0.empty());
+        CLPOLY_ASSERT_EQ(p0.deg(), (int64_t)0);
+
+        // pow(x, 1)
+        auto p1x = pow(x, 1);
+        CLPOLY_ASSERT_EQ(p1x.deg(), (int64_t)1);
+
+        // Use in polynomial arithmetic
+        polynomial_ZZ f = pow(x, 4) + pow(x, 2) + 1;
+        polynomial_ZZ g = pow(x, 2) + 1;
+        auto product = f - g;
+        polynomial_ZZ expected = pow(x, 4);
+        CLPOLY_ASSERT_EQ(product, expected);
+
+        // Multi-variable pow
+        polynomial_ZZ h = pow(x, 2) * pow(y, 3) + pow(z, 4);
+        CLPOLY_ASSERT_EQ(degree(h, x), (int64_t)2);
+        CLPOLY_ASSERT_EQ(degree(h, y), (int64_t)3);
+        CLPOLY_ASSERT_EQ(degree(h, z), (int64_t)4);
+    }
+
     return clpoly_test::test_summary();
 }

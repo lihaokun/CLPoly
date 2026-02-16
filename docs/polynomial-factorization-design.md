@@ -1044,17 +1044,20 @@ van Hoeij 算法通过格约化在多项式时间内完成重组：
 ### 8.2 函数总览
 
 ```
-factorize(polynomial_<ZZ,comp>)      用户入口 (任意 ordering)
-  └── factorize(polynomial_<ZZ,lex>) lex 特化版本
-        ├── cont / pp                内容提取 (已有)
-        ├── squarefreefactorize      无平方分解 (已有)
-        └── __factor_squarefree_ZZ   对单个无平方因子分解
-              ├── __select_prime     素数选择
-              │     ├── polynomial_mod    模约化 (已有)
-              │     ├── __squarefree_Zp   Zp 无平方检测
-              │     └── __factor_Zp       M1 入口
-              ├── __hensel_lift      M2 入口
-              └── __factor_recombine M3 入口
+factorize(polynomial_<ZZ,comp>)              用户入口 (任意 ordering)
+  └── factorize(polynomial_<ZZ,lex>)         lex 特化版本
+        ├── cont / pp                        内容提取 (已有)
+        ├── squarefreefactorize              无平方分解 (已有)
+        └── __factor_squarefree_primitive_ZZ 对单个无平方本原因子分解
+              ├── __select_prime             素数选择
+              │     ├── polynomial_mod       模约化 (已有)
+              │     ├── __upoly_gcd_Zp       gcd(fp,fp') 无平方检测
+              │     ├── __ddf_Zp             DDF (直接调用，跳过 __factor_Zp)
+              │     └── __edf_Zp             EDF
+              ├── __hensel_lift              M2 入口
+              └── __factor_recombine         M3 入口
+
+factorize(upolynomial_<ZZ>)                  upolynomial 直接入口 (§8.8)
 ```
 
 ### 8.3 `__select_prime` — 素数选择
@@ -1062,17 +1065,26 @@ factorize(polynomial_<ZZ,comp>)      用户入口 (任意 ordering)
 ```cpp
 // 选择最优素数用于因式分解
 // 前置: f 本原, 无平方, lc(f) > 0, deg(f) ≥ 2
-// 后置: 返回 (best_p, best_factors)
-//       best_p 是素数, lc(f) mod best_p ≠ 0, f mod best_p 无平方
-//       best_factors 是 f mod best_p 的不可约因子列表 (不含 lc)
-//       best_factors.size() 在所有候选素数中最小
-//       如果某个素数下只有 1 个因子, 则 best_factors.size() = 1
-//       (表示 f 不可约, 调用方据此直接返回)
+// 后置: 返回 __prime_selection_result{prime, factors, irreducible}
+//       prime 是素数, lc(f) mod prime ≠ 0, f mod prime 无平方
+//       factors 是 f mod prime 的首一不可约因子列表
+//       factors.size() 在所有候选素数中最小
+//       irreducible = true 表示 factors.size() ≤ 1 (f 不可约)
 //
 // 常量:
 //   INIT_NUM_PRIMES = 5   初始尝试素数个数
 //   MAX_NUM_PRIMES = 20   最大尝试素数个数
-std::pair<uint32_t, std::vector<std::pair<upolynomial_<Zp>, uint64_t>>>
+//
+// 实现说明: 已知 fp 无平方后，直接调用 __ddf_Zp + __edf_Zp，
+//           跳过 __factor_Zp 中的冗余 __squarefree_Zp 步骤 (Approach B 优化)
+
+struct __prime_selection_result {
+    uint32_t prime;
+    std::vector<upolynomial_<Zp>> factors;  // 首一不可约因子 (不含 lc, 不含重数)
+    bool irreducible;
+};
+
+__prime_selection_result
 __select_prime(const upolynomial_<ZZ>& f)
 ```
 
@@ -1094,59 +1106,67 @@ __select_prime(const upolynomial_<ZZ>& f)
         if lc_f mod p = 0: continue
 
         f_p ← polynomial_mod(f, p)      // 已有: upolynomial.hh
-        f_p ← f_p / lc(f_p)             // 首一化
+        if deg(f_p) ≠ deg(f): continue   // 度数下降，跳过
 
-        // 检查 f mod p 是否无平方
+        // 检查 f mod p 是否无平方: gcd(fp, fp') = 1
         f_p_deriv ← derivative(f_p)
-        g ← gcd(f_p, f_p_deriv)         // __polynomial_GCD for Zp
+        if f_p_deriv = 0: continue
+        g ← __upoly_gcd_Zp(f_p, f_p_deriv)
         if deg(g) > 0: continue          // f mod p 不无平方，跳过
-
-        // 分解
-        factors_p ← __factor_Zp(f_p)
-
-        // 不可约快速路径
-        if factors_p.second.size() = 1:
-            return (p, factors_p.second)
-
-        // 记录最优
-        if factors_p.second.size() < best_count:
-            best_p ← p
-            best_count ← factors_p.second.size()
-            best_factors ← factors_p.second
 
         i++
 
-4.  return (best_p, best_factors)
+        // Approach B: 已知无平方，直接 DDF + EDF，跳过 __factor_Zp
+        __upoly_make_monic(f_p)
+        ddf_result ← __ddf_Zp(f_p)
+        irr_factors ← []
+        for (gk, dk) in ddf_result:
+            __edf_Zp(irr_factors, gk, dk, rng)
+
+        // 不可约快速路径
+        if irr_factors.size() ≤ 1:
+            return {p, irr_factors, irreducible=true}
+
+        // 记录最优
+        if irr_factors.size() < best_count:
+            best_p ← p
+            best_count ← irr_factors.size()
+            best_factors ← irr_factors
+
+        // 因子数 > deg/2 时扩展到 20 个
+        if best_count > deg(f)/2 and i = 5:
+            MAX_TRIES ← 20
+
+4.  return {best_p, best_factors, irreducible=false}
 ```
 
-### 8.4 `__factor_squarefree_ZZ` — 分解单个无平方因子
+### 8.4 `__factor_squarefree_primitive_ZZ` — 分解单个无平方本原因子
 
 ```cpp
 // 分解一个无平方本原多项式
 // 前置: f 本原, 无平方, lc(f) > 0, deg(f) ≥ 2
+//       (函数名中包含 "primitive" 以明确文档化此前置条件)
 // 后置: 返回 f 的不可约因子列表
 //       ∏(因子) = f
 //       每个因子本原, lc > 0
 std::vector<upolynomial_<ZZ>>
-__factor_squarefree_ZZ(const upolynomial_<ZZ>& f)
+__factor_squarefree_primitive_ZZ(const upolynomial_<ZZ>& f)
 ```
 
 **算法：**
 
 ```
-1.  (p, mod_factors) ← __select_prime(f)
+1.  sel ← __select_prime(f)
 
-2.  if mod_factors.size() = 1:
+2.  if sel.irreducible or sel.factors.size() ≤ 1:
         return {f}                       // f 不可约
 
-3.  // 提取首一因子 (去掉 __factor_Zp 返回的 lc)
-    factors_monic ← mod_factors 中每个 pair 的 .first
+3.  // sel.factors 已是首一不可约因子 (不含 lc/重数)
+    (lifted, modulus) ← __hensel_lift(f, sel.factors, sel.prime)   // M2
 
-4.  (lifted, modulus) ← __hensel_lift(f, factors_monic, p)   // M2
+4.  result ← __factor_recombine(f, lifted, modulus)                // M3
 
-5.  result ← __factor_recombine(f, lifted, modulus)          // M3
-
-6.  return result
+5.  return result
 ```
 
 ### 8.5 `factorize` — 用户入口（lex 特化）
@@ -1202,7 +1222,7 @@ factorize(const polynomial_<ZZ, lex_<var_order>>& f)
             result.factors.push_back({convert_to_poly(gᵢ), eᵢ})
             continue
 
-        irr_factors ← __factor_squarefree_ZZ(gᵢ)
+        irr_factors ← __factor_squarefree_primitive_ZZ(gᵢ)
         for h in irr_factors:
             result.factors.push_back({convert_to_poly(h), eᵢ})
 
@@ -1270,11 +1290,28 @@ factorize(const polynomial_<QQ, comp>& f)
 已有的 `squarefreefactorize` 工作在 `polynomial_<ZZ, lex>` 上。对于单变量
 流程需要在 `upolynomial_<ZZ>` 上操作。两个方案：
 
-- **方案 A（推荐）：** 在 `factorize` 内部先用 `poly_convert` 转为
+- **方案 A（已采用）：** 在 `factorize` 内部先用 `poly_convert` 转为
   `polynomial_<ZZ, lex>` 做无平方分解，再转回 `upolynomial_<ZZ>` 做后续
 - **方案 B：** 新写 `__squarefree_ZZ_upoly`
 
 选择方案 A，因为 `squarefreefactorize` 已经成熟且有测试覆盖，无需重复实现。
+
+### 8.9 `factorize(upolynomial_<ZZ>)` — upolynomial 直接入口
+
+```cpp
+// upolynomial_<ZZ> 的直接分解入口
+// 前置: F ∈ ZZ[x] (upolynomial 表示)
+// 后置: 返回 factorization<upolynomial_<ZZ>>
+// 算法: 内部使用临时变量 __x("x") 转为 polynomial_<ZZ,lex>
+//       调用 squarefreefactorize 后，对 deg≥2 因子调用
+//       __factor_squarefree_primitive_ZZ
+factorization<upolynomial_<ZZ>>
+factorize(const upolynomial_<ZZ>& F)
+```
+
+**说明：** 此入口允许用户直接对 `upolynomial_<ZZ>` 做因式分解，无需先手动
+转为 `polynomial_<ZZ>` 再传入。内部流程与 §8.5 基本相同，区别在于输入输出
+均为 `upolynomial` 类型。
 
 ---
 
@@ -1423,14 +1460,14 @@ struct factorization {
 
     // 规范化保证:
     // - 每个因子本原（primitive），首项系数为正
-    // - 因子按 (degree asc, then polynomial < operator) 排列
+    // - 因子按 degree 升序排列
     // - 重数 > 0
     // - content 可以是负数（吸收符号）
     // - 若 f = 0, 则 content = 0, factors 为空
 
-    // 便利方法
-    bool is_irreducible() const { return factors.size() == 1 && factors[0].second == 1; }
-    Poly expand() const;                                 // 重建原多项式 (用于验证)
+    // 注: 不提供 is_irreducible() / expand() 等便利方法，
+    //     用户可直接检查 factors.size() 或遍历重组，避免额外性能开销。
+    //     排序也由用户按需调用 std::sort 完成。
 };
 ```
 
@@ -1451,7 +1488,7 @@ struct factorization {
 | **Phase 1** | M1: Zₚ 上分解 | `__squarefree_Zp`, `__extract_pth_root`, `__ddf_Zp`, `__edf_Zp`, `__factor_Zp` + 辅助函数 (§4.1: `__upoly_make_monic`, `__upoly_mod`, `__upoly_divmod`, `__upoly_gcd_Zp`, `__upoly_powmod`, `__upoly_random`) | Zp 类, upolynomial |
 | **Phase 2** | M2: Hensel 提升 | `__hensel_step`, `__hensel_tree_build`, `__hensel_lift` + `__mignotte_bound`, `__upoly_gcd_extended`, `__upoly_divmod_mod` | M1 |
 | **Phase 3** | M3: Zassenhaus 重组 | `__factor_recombine`, `__subset_product_mod` + `__symmetric_mod`, `__upoly_symmetric_mod`, 范数函数 | M2 |
-| **Phase 4** | M4: 单变量集成 | `__select_prime`, `__factor_squarefree_ZZ`, `factorize` (用户入口) + `factorization<>` 结构体 | M1+M2+M3 |
+| **Phase 4** | M4: 单变量集成 | `__select_prime`, `__factor_squarefree_primitive_ZZ`, `factorize` (ZZ/QQ/upolynomial 入口) + `factorization<>` 结构体 | M1+M2+M3 |
 | **Phase 5** | M5: 多变量 Wang | `__select_eval_point`, `__wang_leading_coeff`, `__multivar_hensel_lift`, `__factor_multivar` | M4 |
 | **Phase 6** | 增强：van Hoeij | `__factor_recombine_van_hoeij` + LLL 实现 | M3 替换 |
 
@@ -1497,6 +1534,9 @@ struct factorization {
 | 文件组织 | 单文件 `polynomial_factorize.hh` | 与 `polynomial_gcd.hh` 风格一致 |
 | 结果类型 | `factorization<Poly>` 模板结构体 | 通用，类型安全，可扩展到 QQ 等 |
 | 素数选择 | 多素数竞选，选模因子数最少的 | NTL/FLINT 验证过的策略 |
+| 素数选择内部分解 | gcd(fp,fp') + 直接 DDF/EDF (Approach B) | 跳过 `__factor_Zp` 中冗余的 `__squarefree_Zp` |
+| 无平方分解函数命名 | `__factor_squarefree_primitive_ZZ` | 名称包含 "primitive" 明确文档化前置条件 |
+| `factorization<>` 便利方法 | 不提供 | 排序/判断由用户按需完成，避免额外开销 |
 | 重数类型 | `uint64_t` | 与已有 `squarefreefactorize` 一致 |
 | 内部函数命名 | `__` 前缀 | 与 `__polynomial_GCD` 风格一致 |
 | 参数传递 | 值传入可修改的，const ref 传入只读的 | 与 `polynomial_GCD(F, G)` 风格一致 |
@@ -1626,20 +1666,24 @@ std::vector<upolynomial_<ZZ>> __factor_recombine(
 ### A.5 M4: 单变量集成 (§8)
 
 ```cpp
-// 素数选择
-std::pair<uint32_t, std::vector<std::pair<upolynomial_<Zp>, uint64_t>>>
-__select_prime(const upolynomial_<ZZ>& f);
+// 素数选择 (§8.3)
+struct __prime_selection_result {
+    uint32_t prime;
+    std::vector<upolynomial_<Zp>> factors;
+    bool irreducible;
+};
+__prime_selection_result __select_prime(const upolynomial_<ZZ>& f);
 
-// 无平方因子分解
+// 无平方本原因子分解 (§8.4)
 std::vector<upolynomial_<ZZ>>
-__factor_squarefree_ZZ(const upolynomial_<ZZ>& f);
+__factor_squarefree_primitive_ZZ(const upolynomial_<ZZ>& f);
 
-// 用户入口 (lex 特化)
+// 用户入口 (lex 特化, §8.5)
 template<class var_order>
 factorization<polynomial_<ZZ, lex_<var_order>>>
 factorize(const polynomial_<ZZ, lex_<var_order>>& f);
 
-// 用户入口 (generic ordering)
+// 用户入口 (generic ordering, §8.6)
 template<class comp>
 factorization<polynomial_<ZZ, comp>>
 factorize(const polynomial_<ZZ, comp>& f);
@@ -1648,6 +1692,10 @@ factorize(const polynomial_<ZZ, comp>& f);
 template<class comp>
 factorization<polynomial_<QQ, comp>>
 factorize(const polynomial_<QQ, comp>& f);
+
+// 用户入口 (upolynomial, §8.9)
+factorization<upolynomial_<ZZ>>
+factorize(const upolynomial_<ZZ>& F);
 ```
 
 ### A.6 M5: 多变量分解 (§9, 远期)
@@ -1716,7 +1764,8 @@ CLPoly 已有 `squarefreefactorize` 的风格一致。
 | `cont(F)` | `polynomial_gcd.hh:468`, `upolynomial.hh:160` | 内容提取 |
 | `derivative(f)` | `upolynomial.hh:141` | 求导 |
 | `pair_vec_div(q, r, f, g, comp)` | `basic.hh:568,698` | 多项式除法 (商+余) |
-| `poly_convert(in, out)` | `upolynomial.hh:117` | polynomial ↔ upolynomial 转换 |
+| `poly_convert(in, out)` | `upolynomial.hh:117` | polynomial → upolynomial 转换 |
+| `poly_convert(in, out, var)` | `upolynomial.hh:138` | upolynomial → polynomial 转换 (带变量) |
 | `get_variables(f)` | `polynomial_.hh:219` | 获取变量列表 |
 | `assign(f, v, c)` | `polynomial.hh:707` | 变量代入 |
 | `is_number(f)` | `upolynomial.hh:155` | 常数检测 |

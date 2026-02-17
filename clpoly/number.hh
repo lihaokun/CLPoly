@@ -104,13 +104,13 @@ namespace clpoly{
         }
         constexpr Zp& operator=(int64_t i)
         {
-            assert(this->_p!=0);
+            if (this->_p==0) { assert(i==0); this->_i=0; return *this; }
             this->_i=i>=0?i%this->_p:this->_p-(-i)%this->_p;
             return *this;
         }
         inline Zp& operator=(const ZZ& i)
         {
-            assert(this->_p!=0);
+            if (this->_p==0) { assert(!i); this->_i=0; return *this; }
             this->_i=i.fdiv_ui(this->_p);
             return *this;
         }

@@ -71,7 +71,8 @@ __factor_multivar(polynomial_<ZZ,lex>)     M5 入口
   ├── factorize(f₀)                        单变量分解 (M4, 已实现)
   ├── __wang_leading_coeff                 首项系数分配
   └── __multivar_hensel_lift               多变量 Hensel 提升
-        └── __upoly_gcd_extended           扩展 GCD (已实现)
+        ├── __upoly_gcd_extended_QQ        Q[x₁] 扩展 GCD (新增)
+        └── __upoly_gcd_extended           Zₚ 扩展 GCD (已实现)
 ```
 
 ### 2.1 数据流与缩放不变量
@@ -160,10 +161,47 @@ ZZ __poly_coeff_l1_norm(const polynomial_<ZZ, lex_<var_order>>& f);
 > 实现时，先对 `lc(f, x₁)` 做因式分解（可递归调用 `factorize`），
 > 再检查各因子求值后两两 `gcd = 1`。
 
-### 4.2 搜索策略
+### 4.2 算法
 
-从小整数开始尝试 `αᵢ ∈ {0, 1, -1, 2, -2, ...}`。
-每个候选点检查条件 (a)-(d)，找到第一个满足的即返回。
+```
+__select_eval_point(f, x₁):
+    vars ← get_variables(f) \ {x₁}      // n-1 个需要赋值的变量
+    L ← lc(f, x₁)                       // ∈ Z[x₂,...,xₙ]
+
+    // 预处理: 若 L 非常数，分解 L 用于条件 (d)
+    lc_irr_factors ← []
+    if !is_number(L):
+        lc_fac ← factorize(L)           // 递归调用（变量数更少）
+        lc_irr_factors ← [lⱼ for (lⱼ, eⱼ) in lc_fac.factors]
+
+    // 枚举候选点（按 L∞ 范数递增）
+    for bound = 0, 1, 2, ...:
+        for each α ∈ {v → a : v ∈ vars, a ∈ [-bound..bound]}:
+            // 跳过已检查过的更小范数的点
+            if max(|αᵢ|) < bound: continue
+
+            // 条件 (b): lc 非零
+            δ ← L(α)                    // assign(L, α) 若 L 是多项式，否则 δ = L
+            if δ == 0: continue
+
+            // 条件 (a): 无平方
+            f₀ ← assign(f, α)           // f₀ ∈ Z[x₁]
+            if !is_squarefree(f₀): continue
+
+            // 条件 (d): lc 因子求值两两互素（仅当 L 非常数）
+            if lc_irr_factors 非空:
+                vals ← [|lⱼ(α)| for lⱼ in lc_irr_factors]
+                if 存在 i ≠ j 使得 gcd(vals[i], vals[j]) > 1:
+                    continue
+
+            return α
+
+    // 不可达（Z 无限域保证终止）
+```
+
+> **实现注意：** 对 n-1 个变量枚举所有 `[-bound, bound]` 组合是指数级的。
+> 实践中绝大多数情况在 bound ≤ 2 内找到合法点。
+> 可优化为：先尝试全零，再逐个变量非零，最后才尝试多变量非零组合。
 
 **保证终止：** Z 是无限域，不满足条件的 α 构成一个代数集合（零测集），
 因此有限步内必然找到合法点。实践中几乎总在 |αᵢ| ≤ 5 内找到。
@@ -215,44 +253,41 @@ __wang_leading_coeff(f, u₁,...,uᵣ, α, x₁):
     // lc_fac = {γ, [(l₁,e₁), (l₂,e₂), ...]}
     // γ ∈ Z 是整数内容，每个 lⱼ ∈ Z[x₂,...,xₙ] 不可约本原
 
-3.  // 在求值点处计算各 lc 因子的值
-    for each (lⱼ, eⱼ):
-        vⱼ ← lⱼ(α) ^ eⱼ                   // ∈ Z
-
-4.  // 初始化: 每个单变量因子分配到的 lc 多项式
-    lcᵢ ← lc(uᵢ) · (δ / ∏ lc(uⱼ))^...    // 先记录各因子的数值 lc
-    // 实际做法: 逐个分配 lⱼ^eⱼ
-
-5.  // 将 lc 因子分配到单变量因子
+3.  // 分配 lc 因子到单变量因子
     for i = 1 to r:
-        σᵢ ← 1                              // 累积分配给 uᵢ 的 lc ∈ Z[x₂,...,xₙ]
-        wᵢ ← lc(uᵢ)                         // 待分配的数值部分
+        σᵢ ← 1                              // 累积: 分配给 uᵢ 的 lc 多项式 ∈ Z[x₂,...,xₙ]
+        wᵢ ← lc(uᵢ)                         // 数值跟踪: uᵢ 的 lc 中尚未被解释的部分
 
-    // 按 eⱼ 从大到小排序（高次幂优先分配，减少歧义）
+    // 按 eⱼ 从大到小排序（高次幂优先，减少歧义）
     sort (lⱼ, eⱼ) by eⱼ descending
 
     for each (lⱼ, eⱼ):
-        vⱼ ← lⱼ(α) ^ eⱼ                   // 该因子求值后的值
+        vⱼ ← lⱼ(α) ^ eⱼ                   // 该 lc 因子求值后的整数值
         // 找唯一的 uᵢ 使得 vⱼ | wᵢ
         candidates ← {i : vⱼ | wᵢ}
-        if |candidates| = 0:
-            return FAIL                      // 分配失败
-        if |candidates| > 1:
-            return FAIL                      // 不唯一（条件 (d) 应已排除此情况，
-                                             //   但仍需防御性检查）
+        if |candidates| ≠ 1:
+            return FAIL                      // 无法唯一分配 → 换求值点
         i ← candidates 中唯一的元素
         σᵢ ← σᵢ · lⱼ^eⱼ
         wᵢ ← wᵢ / vⱼ
 
-    // 分配完成后，wᵢ 应为 ±1 · γ 的某种分配
-    // 将剩余整数部分 (γ 和各 wᵢ) 乘入 σ 和 δ
-    // 简化处理: 将 γ 乘入 σ₁
+    // 吸收整数内容 γ 到 σ₁
+    σ₁ ← γ · σ₁
+    // 现在: ∏ σᵢ = γ · ∏ lⱼ^eⱼ = L (精确等式，作为多项式)
+    //       ∏ σᵢ(α) = L(α) = δ
 
-6.  // 缩放
-    f_scaled ← δ^(r-1) · f                  // 乘 lc(f,x₁)(α)^(r-1)
+    // wᵢ 的剩余值: ∏wᵢ = ∏lc(uᵢ) / ∏(分配的 vⱼ) = ∏lc(uᵢ) / (δ/γ)
+    // 这些剩余量不影响算法——σᵢ 用于 Hensel LC 校正，vᵢ 用统一缩放
+
+4.  // 缩放: 统一的 δ^(r-1) 方案
+    f_scaled ← δ^(r-1) · f
+    // 将单变量因子首一化后乘以 δ
     for i = 1 to r:
-        vᵢ ← (σᵢ(α) / lc(uᵢ)) · uᵢ       // 替换 lc: 现在 lc(vᵢ) = σᵢ(α)
-    // 验证: ∏ vᵢ = f_scaled(x₁, α)
+        ūᵢ ← uᵢ / lc(uᵢ)                  // 首一化
+        vᵢ ← δ · ūᵢ                        // 所有因子 lc = δ (整数!)
+    // 验证:
+    //   ∏ vᵢ = δ^r · ∏ ūᵢ = δ^r · f₀/δ = δ^(r-1) · f₀ = f_scaled(x₁, α) ✓
+    //   （σᵢ 不参与 vᵢ 构造——它们传给 Hensel lifting 的 LC 校正步骤 E）
     return SUCCESS, f_scaled, σ₁,...,σᵣ, v₁,...,vᵣ
 ```
 
@@ -343,9 +378,20 @@ for i = 2 to r:
     g_acc ← g_acc · ĝᵢ
 ```
 
-> **注：** 当前 `__upoly_gcd_extended` 实现在 Zₚ[x] 上。
-> 多变量 Hensel 中需要在 **Z[x₁]** 上做 XGCD（系数是整数，非 Zp）。
-> 实现时需要补充 ZZ 版本的 XGCD，或先对 lc 做模逆后在 Q[x₁] 上操作。
+> **XGCD 实现决策：在 Q[x₁] 上计算。**
+>
+> Z[x₁] 上两两互素的多项式不一定有整系数 Bézout 系数
+> （例：`s(2x+1) + t(2x+3) = 1` 要求 `t = 1/2`）。
+> 因此在 Q[x₁]（即 `upolynomial_<QQ>`）上计算 XGCD。
+>
+> **关键保证：** 虽然 sᵢ ∈ Q[x₁]，但最终的 Hensel 校正量
+> `δᵢ = (sᵢ · eⱼ) rem ĝᵢ` 必然有整系数。
+> 理由：偏分式分解 `eⱼ = Σ δᵢ · Ûᵢ`（`Ûᵢ = ∏_{j≠i} ĝⱼ`）
+> 的解是唯一的（deg(δᵢ, x₁) < deg(ĝᵢ)），而 eⱼ 和 Ûᵢ 都有整系数，
+> 所以唯一解 δᵢ 也必然是整系数的。
+>
+> 实现方式：复用已有 `__upoly_gcd_extended` 的算法框架，
+> 将 `Zp` 替换为 `QQ`（`mpq_class`），无需结构性改动。
 
 这些 sᵢ 和 ĝᵢ 在所有变量的提升过程中保持不变——它们只依赖求值点处的单变量因子。
 
@@ -391,10 +437,17 @@ __hensel_lift_one_var(f_curr, G₁,...,Gᵣ, ĝ₁,...,ĝᵣ, s₁,...,sᵣ, σ�
             Gᵢ ← Gᵢ + δᵢ · (xₖ - αₖ)^j
 
         // 步骤 E: LC 校正（Wang 核心创新）
-        //   提升可能扰动 Gᵢ 的首项系数。强制恢复:
+        //   提升可能扰动 Gᵢ 的首项系数。强制替换为已知的正确值:
         for i = 1 to r:
-            lc_target ← σᵢ(x₂,...,xₖ, αₖ₊₁,...,αₙ)  // 部分求值的 lc 分配
-            replace lc(Gᵢ, x₁) with lc_target
+            d ← deg(Gᵢ, x₁)
+            lc_target ← assign(σᵢ, {xₖ₊₁→αₖ₊₁,...,xₙ→αₙ})  // σᵢ 的部分求值
+            lc_current ← coeff(Gᵢ, x₁, d)                     // 当前首项系数
+            Gᵢ ← Gᵢ + (lc_target - lc_current) · x₁^d
+            //
+            // 实现: lex 序下 x₁ 最高的项在 pair_vec 前端,
+            // 找到所有 deg(x₁)=d 的项, 替换为 lc_target·x₁^d 的各项。
+            // lc_target ∈ Z[x₂,...,xₖ], lc_current ∈ Z[x₂,...,xₖ],
+            // 两者之差乘以 x₁^d 后做 pair_vec 加法即可。
 
     // 不变量: 提升结束后 G₁·...·Gᵣ = f_curr (精确等式，非模)
 ```
@@ -447,9 +500,12 @@ __taylor_coeff(f, xₖ, αₖ, j):
 这等价于"逐系数"操作：对 eⱼ 的每个关于 x₂,...,xₖ₋₁ 的单项式，
 分别与 sᵢ 相乘后 mod ĝᵢ。
 
-> **实现注意：** 这里需要的是 Z[x₁] 上的精确多项式除法（系数可能很大），
-> 而非 Zp[x₁] 上的。需要确保 `pair_vec_div` 能正确处理
-> 除数为单变量、被除数为多变量的情况（它可以，见 §附录 C）。
+> **实现注意：**
+> - 这里需要的是 Z[x₁] 上的精确多项式除法（系数可能很大），而非 Zp[x₁] 上的。
+> - `pair_vec_div` 能正确处理除数为单变量、被除数为多变量的情况（见附录 C），
+>   **前提是 x₁ 在 lex 序中是最高变量**。lex 序下 x₁ 的幂最优先比较，
+>   因此 `pair_vec_div` 会以 x₁ 为主变量做长除法，Z[x₂,...,xₖ₋₁] 系数不参与除法判断。
+>   CLPoly 的 `cont()` 和 `squarefreefactorize` 也依赖此 lex 首变量约定，设计一致。
 
 ### 6.6 终止条件
 
@@ -461,15 +517,30 @@ __taylor_coeff(f, xₖ, αₖ, j):
 ### 6.7 函数签名
 
 ```cpp
-// 多变量 Hensel 提升
+// 单变量提升步（内部函数）
+// 前置: Gᵢ ∈ Z[x₁,...,xₖ₋₁], f_curr ∈ Z[x₁,...,xₖ]
+//       ∏ Gᵢ = f_curr |_{xₖ=αₖ}
+//       ĝᵢ ∈ Z[x₁] 是求值点处的单变量因子（不随提升变化）
+//       sᵢ ∈ Q[x₁] 是 Bézout 系数（不随提升变化）
+//       σᵢ ∈ Z[x₂,...,xₙ] 是 LC 分配（不随提升变化）
+// 后置: Gᵢ 扩展为 Z[x₁,...,xₖ]，∏ Gᵢ = f_curr
+// 修改: Gᵢ 原地更新
+template<class var_order>
+void __hensel_lift_one_var(
+    const polynomial_<ZZ, lex_<var_order>>& f_curr,
+    std::vector<polynomial_<ZZ, lex_<var_order>>>& G,        // 因子（原地更新）
+    const std::vector<upolynomial_<QQ>>& bezout_s,           // Bézout sᵢ ∈ Q[x₁]
+    const std::vector<upolynomial_<ZZ>>& g_hat,              // ĝᵢ ∈ Z[x₁]（首一）
+    const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_sigma,  // σᵢ
+    const variable& xk, const ZZ& alpha_k, int dk);
+
+// 多变量 Hensel 提升（外层入口）
 // 前置: f_scaled = δ^(r-1)·f_prim
-//       scaled_factors = v₁,...,vᵣ (lc 已校正的单变量因子)
-//       lc_assignments = σ₁,...,σᵣ (各因子的多变量 lc)
-//       ∏ vᵢ = f_scaled(x₁, α)  (eval_point 处乘积等于 f_scaled)
-// 后置: 返回 G₁,...,Gᵣ ∈ Z[x₁,...,xₙ] 使得 ∏ Gᵢ = f_scaled
-//       lc(Gᵢ, x₁) = σᵢ
-//       Gᵢ(x₁,...,α) = vᵢ
-//       调用方需对 pp(Gᵢ) 做试除验证
+//       scaled_factors = v₁,...,vᵣ (所有 lc = δ 的单变量因子)
+//       lc_assignments = σ₁,...,σᵣ (各因子的多变量 lc, ∏σᵢ = L)
+//       ∏ vᵢ = f_scaled(x₁, α)
+// 后置: 返回 G₁,...,Gᵣ ∈ Z[x₁,...,xₙ]
+//       lc(Gᵢ, x₁) = σᵢ, 调用方需对 pp(Gᵢ) 做试除验证
 template<class var_order>
 std::vector<polynomial_<ZZ, lex_<var_order>>>
 __multivar_hensel_lift(
@@ -485,8 +556,8 @@ __multivar_hensel_lift(
 | 函数 | 用途 | 实现依赖 |
 |---|---|---|
 | `__taylor_coeff(f, xₖ, αₖ, j)` | 提取 Taylor 系数 | `pair_vec_div` + `assign` |
-| `__upoly_gcd_extended_ZZ(s, t, a, b)` | Z[x₁] 上扩展 GCD | 已有 Zp 版本，需 ZZ 适配 |
-| `__poly_mod_univar(f, g, x₁)` | 多变量 f 对单变量 g 关于 x₁ 取模 | `pair_vec_div` |
+| `__upoly_gcd_extended_QQ(s, t, a, b)` | Q[x₁] 上扩展 GCD | 复用 Zp 版本框架，将 Zp→QQ |
+| `__poly_mod_univar(f, g, x₁)` | 多变量 f 对单变量 g 关于 x₁ 取模 | `pair_vec_div`（lex 首变量） |
 
 ---
 
@@ -559,13 +630,16 @@ __factor_multivar(f_input):
         if r = 0:
             verified.push(g)
             f_remaining ← q
-    if deg(f_remaining) > 0:
-        verified.push(pp(f_remaining, x₁))         // 剩余部分也是因子
+        // else: 该候选因子不整除，跳过（可能被其他因子合并了）
+    if deg(f_remaining, x₁) > 0:
+        // f_remaining 可能是若干提升因子合并后的不可约因子
+        verified.push(pp(f_remaining, x₁))
 
-    if verified is empty:
-        // 提升失败（数值问题），换求值点重试
+    // 验证: verified 中所有因子的乘积应还原 f_prim
+    if ∏ verified ≠ f_prim / (整数常数):
+        // 提升结果不自洽，换求值点重试
         retry_count++
-        if retry_count ≥ MAX_RETRY: throw
+        if retry_count ≥ MAX_RETRY: throw "Wang factorization failed"
         goto 3
 
 9.  // 合并内容因子 + 排序
@@ -644,7 +718,7 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 
 | 阶段 | 内容 | 新增函数 | 依赖 |
 |---|---|---|---|
-| **Phase 5** | M5: 多变量 Wang | `pp`, `__taylor_coeff`, `__upoly_gcd_extended_ZZ`, `__poly_mod_univar`, `__select_eval_point`, `__wang_leading_coeff` (含 `__wang_lc_result`), `__multivar_hensel_lift` (含 `__hensel_lift_one_var`), `__factor_multivar`, `factorize` 多变量 dispatch | M4 (已实现) |
+| **Phase 5** | M5: 多变量 Wang | `pp`, `__taylor_coeff`, `__upoly_gcd_extended_QQ`, `__poly_mod_univar`, `__select_eval_point`, `__wang_leading_coeff` (含 `__wang_lc_result`), `__multivar_hensel_lift` (含 `__hensel_lift_one_var`), `__factor_multivar`, `factorize` 多变量 dispatch | M4 (已实现) |
 | **Phase 6** | 增强：van Hoeij 重组 | `__factor_recombine_van_hoeij` + LLL 实现 | M3 替换 |
 | **Phase 7** | 增强：Zippel 后备 | 稀疏插值模块 + Zippel 算法 | Phase 5 后备 |
 | **Phase 8** | 终极：MTSHL | 二变量 Hensel 提升 + 稀疏插值驱动的多变量分解 | 替换 Phase 5 |
@@ -655,7 +729,7 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 |---|---|
 | `pp(f)` | 验证 `cont(f) · pp(f) == f` |
 | `__taylor_coeff(f, xₖ, αₖ, j)` | 验证 `Σ coeff_j · (xₖ-αₖ)^j == f` |
-| `__upoly_gcd_extended_ZZ` | 验证 `s·a + t·b = gcd`，与 Zp 版本结果一致 |
+| `__upoly_gcd_extended_QQ` | 验证 `s·a + t·b = gcd`，sᵢ ∈ Q[x₁] 且 δᵢ = sᵢ·∏ĝⱼ 为整系数 |
 | `__poly_mod_univar(f, g, x₁)` | 验证 `f = q·g + r`，`deg(r,x₁) < deg(g)` |
 | `__select_eval_point` | 验证条件 (a)-(d)：无平方、lc 非零、度数守恒、lc 因子可分辨 |
 | `__wang_leading_coeff` | 构造已知分解的多项式，验证 `∏σᵢ(α) = δ`，`∏vᵢ = f_scaled(x₁,α)` |
@@ -778,9 +852,9 @@ polynomial_<ZZ, lex_<var_order>> __taylor_coeff(
     const polynomial_<ZZ, lex_<var_order>>& f,
     const variable& xk, const ZZ& alpha_k, int j);
 
-// §6.8 Z[x] 上扩展 GCD
-inline void __upoly_gcd_extended_ZZ(
-    upolynomial_<ZZ>& s, upolynomial_<ZZ>& t,
+// §6.8 Q[x₁] 上扩展 GCD (Bézout 系数)
+inline void __upoly_gcd_extended_QQ(
+    upolynomial_<QQ>& s, upolynomial_<QQ>& t,
     const upolynomial_<ZZ>& a, const upolynomial_<ZZ>& b);
 
 // §6.8 多变量 f 对单变量 g 关于 x₁ 取模
@@ -814,7 +888,17 @@ __wang_lc_result<var_order> __wang_leading_coeff(
     const std::vector<upolynomial_<ZZ>>& univar_factors,
     const std::map<variable, ZZ>& eval_point, const variable& main_var);
 
-// §6 多变量 Hensel 提升
+// §6 单变量 Hensel 提升步 (内层循环)
+template<class var_order>
+void __hensel_lift_one_var(
+    const polynomial_<ZZ, lex_<var_order>>& f_curr,
+    std::vector<polynomial_<ZZ, lex_<var_order>>>& G,
+    const std::vector<upolynomial_<QQ>>& bezout_s,
+    const std::vector<upolynomial_<ZZ>>& g_hat,
+    const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_sigma,
+    const variable& xk, const ZZ& alpha_k, int dk);
+
+// §6 多变量 Hensel 提升 (外层入口)
 template<class var_order>
 std::vector<polynomial_<ZZ, lex_<var_order>>> __multivar_hensel_lift(
     const polynomial_<ZZ, lex_<var_order>>& f_scaled,
@@ -854,6 +938,6 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 | `is_squarefree(f)` | `polynomial_gcd.hh` | 无平方检测 | 支持多变量 |
 | `get_variables(f)` | `polynomial_.hh` | 获取变量列表 | 返回 `list<pair<variable, int64_t>>` |
 | `pair_vec_div(q, r, f, g, comp)` | `basic.hh` | 多项式除法 | 支持多变量精确除法 |
-| `__upoly_gcd_extended(s, t, a, b)` | `polynomial_factorize.hh` | Zₚ 上扩展 GCD | 需补充 ZZ 版本 |
+| `__upoly_gcd_extended(s, t, a, b)` | `polynomial_factorize.hh` | Zₚ 上扩展 GCD | 需补充 QQ 版本 (`__upoly_gcd_extended_QQ`) |
 | `is_number(f)` | `upolynomial.hh` | 常数检测 | |
 | `poly_convert(in, out)` | `upolynomial.hh` | polynomial ↔ upolynomial | |

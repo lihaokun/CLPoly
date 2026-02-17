@@ -765,5 +765,95 @@ int main() {
         CLPOLY_ASSERT(cl_sorted == fl_sorted);
     }
 
+    // 4 个因子
+    CLPOLY_TEST("crosscheck_flint_factor_4_factors");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f3 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f4 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        if (f1.empty() || f2.empty() || f3.empty() || f4.empty()) continue;
+        auto uf = f1 * f2 * f3 * f4;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 高次: deg 15+ (7+8=15)
+    CLPOLY_TEST("crosscheck_flint_factor_very_high_deg");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(7, 5, {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(8, 5, {-10, 10});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 含重因子: 随机 f1^2 * f2
+    CLPOLY_TEST("crosscheck_flint_factor_random_mult");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = pow(f1, 2) * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 显式含因子 x: x * f1 * f2
+    CLPOLY_TEST("crosscheck_flint_factor_with_x");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(3, 3, {-20, 20});
+        auto f2 = random_upolynomial<ZZ>(3, 3, {-20, 20});
+        if (f1.empty() || f2.empty()) continue;
+        upolynomial_ZZ x_mono({{umonomial(1), ZZ(1)}});
+        auto uf = x_mono * f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 自然大系数: 10^20 级
+    CLPOLY_TEST("crosscheck_flint_factor_huge_coeff");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        ZZ base = pow(ZZ(10), 20);
+        ZZ a1 = base + ZZ(trial * 7 + 3);
+        ZZ a0 = base - ZZ(trial * 13 + 1);
+        // (a1*x + a0) * (x^2 + trial+1)
+        upolynomial_ZZ f1({{umonomial(1), a1}, {umonomial(0), a0}});
+        upolynomial_ZZ f2({{umonomial(2), ZZ(1)}, {umonomial(0), ZZ(trial + 1)}});
+        auto uf = f1 * f2;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
     return clpoly_test::test_summary();
 }

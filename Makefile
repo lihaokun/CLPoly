@@ -76,24 +76,19 @@ $(CLPoly_LIB_DIR)/clpoly/libclpoly.a:$(CLPoly_BUILD_DIR)/lib/release/libclpoly.a
 FLINT_LIBS = -lflint
 NTL_LIBS   = -lntl -lm -lpthread
 
-test/test_crosscheck_flint: test/test_crosscheck_flint.cc $(CLPoly_LIB_DIR)/clpoly/libclpoly.a $(clpoly_hh)
-	$(CXX) $(CLPoly_REL) $(IPATHS) $< -o $@ $(Numberlib) $(FLINT_LIBS) -L$(CLPoly_LIB_DIR)/clpoly -lclpoly
+test/test_crosscheck_flint: test/test_crosscheck_flint.cc $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a $(clpoly_hh)
+	$(CXX) $(CLPoly_DEB) $(IPATHS) $< -o $@ $(Numberlib) $(FLINT_LIBS) -L$(CLPoly_LIB_DIR)/debug/clpoly -lclpoly
 
-test/test_crosscheck_ntl: test/test_crosscheck_ntl.cc $(CLPoly_LIB_DIR)/clpoly/libclpoly.a $(clpoly_hh)
-	$(CXX) $(CLPoly_REL) $(IPATHS) $< -o $@ $(Numberlib) $(NTL_LIBS) -L$(CLPoly_LIB_DIR)/clpoly -lclpoly
+test/test_crosscheck_ntl: test/test_crosscheck_ntl.cc $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a $(clpoly_hh)
+	$(CXX) $(CLPoly_DEB) $(IPATHS) $< -o $@ $(Numberlib) $(NTL_LIBS) -L$(CLPoly_LIB_DIR)/debug/clpoly -lclpoly
 
 .PHONY: crosscheck
 crosscheck: test/test_crosscheck_flint test/test_crosscheck_ntl
 	./test/test_crosscheck_flint
 	./test/test_crosscheck_ntl
 
-ifndef debug
-%:%.cc $(CLPoly_LIB_DIR)/clpoly/libclpoly.a $(clpoly_hh)
-	$(CXX) $(CLPoly_REL) $(IPATHS)  $< -o $@ $(Numberlib)  -L$(CLPoly_LIB_DIR)/clpoly -lclpoly
-else
 %:%.cc $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a $(clpoly_hh)
 	$(CXX) $(CLPoly_DEB) $(IPATHS)  $< -o $@ $(Numberlib)  -L$(CLPoly_LIB_DIR)/debug/clpoly -lclpoly
-endif
 
 clean:
 	rm -r $(clpoly_d_o) $(clpoly_r_o) $(CLPoly_LIB_DIR)/debug/clpoly/libclpoly.a $(CLPoly_LIB_DIR)/clpoly/libclpoly.a

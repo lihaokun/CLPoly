@@ -699,7 +699,62 @@ struct __prime_selection_result {
 
 ---
 
-## 8. 完整函数签名索引
+## 8. 已知问题与改进方向
+
+### 8.1 M2 Hensel 提升性能
+
+当前实现算法正确，所有测试通过，但存在以下性能问题：
+
+#### 临时对象过多
+
+`__hensel_step` 每步创建约 12 个临时 `upolynomial_<ZZ>` 对象：
+
+```cpp
+// 当前: 每步大量临时分配
+upolynomial_<ZZ> gh = node.g * node.h;       // 临时 1
+upolynomial_<ZZ> e = f - gh;                  // 临时 2
+upolynomial_<ZZ> se = node.s * e;             // 临时 3
+// ... 共约 12 个
+```
+
+改进：引入 `__hensel_workspace` 结构体，在多步提升间复用缓冲区。
+
+#### `__upoly_divmod_mod` 非原地
+
+每步长除法重建 `new_r` 向量。可改为原地减法 + 尾部清理。
+
+#### GMP 调用未合并
+
+`fdiv_q` + `fdiv_r` 可合并为单次 `fdiv_qr`。
+
+#### 缺少提前终止
+
+FLINT 和 Singular 都有自适应提升界和提前因子检测：
+
+- FLINT: `_hlift_quartic` 在每步后检查是否已有因子可提取
+- Singular: `earlyFactorDetect()` + `liftBoundAdaption()`
+
+CLPoly 固定提升到 `m > target`，可在精度过半后尝试提取线性因子。
+
+### 8.2 M3 因子重组
+
+- 当前 Zassenhaus 限制 r ≤ 64（位掩码宽度）
+- 远期应增加 van Hoeij (LLL) 重组作为 r 较大时的后备
+
+### 8.3 其他库 Hensel 实现对比
+
+| | CLPoly | FLINT | NTL | Singular |
+|---|---|---|---|---|
+| **树结构** | 平衡二叉树 | 扁平数组 | 递归分组 | 逐变量 |
+| **提升方式** | 二次 | 二次 | 二次 | 线性/二次 |
+| **Bézout 管理** | 树节点 s,t | 偏分式结构 | MultiLift 递归 | 逐对 XGCD |
+| **内存管理** | 临时对象 | 原地操作 | 中等 | 中等 |
+| **提前终止** | 无 | 有 | 有 | 有 |
+| **r>2 优化** | 统一二叉树 | 按 r 选算法 | 统一递归 | 统一 |
+
+---
+
+## 9. 完整函数签名索引
 
 ### 辅助函数
 

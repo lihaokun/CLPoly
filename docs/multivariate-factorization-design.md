@@ -601,6 +601,22 @@ __factor_multivar(f_input):
     if !is_number(c):
         cont_factors ← factorize(c)               // 递归调用（变量数递减）
 
+    // 无平方分解（复用已有 squarefreefactorize）
+    sqf ← squarefreefactorize(f_prim)             // [(g₁,m₁), (g₂,m₂), ...]
+    if |sqf| > 1 or sqf[0].second > 1:
+        // f_prim 有重因子，对每个无平方部分分别分解
+        result_factors ← cont_factors
+        for (gₖ, mₖ) in sqf:
+            if deg(gₖ, x₁) == 0:
+                // gₖ 是常数或仅含 x₂,...,xₙ 的多项式
+                cont_factors ← cont_factors ∪ factorize(gₖ) × mₖ
+            else:
+                sub_fac ← __factor_multivar(gₖ)   // 递归: gₖ 无平方，变量数不减但度数降
+                for (fᵢ, eᵢ) in sub_fac.factors:
+                    result_factors.push(fᵢ, eᵢ · mₖ)
+        return {content, result_factors}
+
+    // f_prim 已无平方，进入 Wang 主流程
     retry_count ← 0
 
 3.  // 选取值点
@@ -666,10 +682,12 @@ __factor_multivar(f_input):
 
 1. **步骤 2**：`factorize(c)` 其中 `c = cont(f, x₁) ∈ Z[x₂,...,xₙ]`，
    变量数严格递减（c 不含 x₁）。
-2. **步骤 6**：`factorize(L)` 其中 `L = lc(f, x₁) ∈ Z[x₂,...,xₙ]`，
+2. **步骤 2（sqf）**：`__factor_multivar(gₖ)` 其中 gₖ 是 f_prim 的无平方因子，
+   变量数不减但 `deg(gₖ, x₁) < deg(f_prim, x₁)`（度数严格递减）。
+3. **步骤 6**：`factorize(L)` 其中 `L = lc(f, x₁) ∈ Z[x₂,...,xₙ]`，
    变量数同样严格递减。
 
-因此递归以变量数为序数函数，基础情况是 n = 1（由 M4 处理）或 n = 0（常数）。
+递归以 `(变量数, deg(f, x₁))` 的字典序为序数函数，基础情况是 n = 1（由 M4 处理）或 n = 0（常数）。
 
 ---
 

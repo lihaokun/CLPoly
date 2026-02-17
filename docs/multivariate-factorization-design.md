@@ -389,11 +389,12 @@ Bézout 系数 `s₁,...,sᵣ ∈ Z[x₁]` 满足偏分式恒等式：
 ```
 g_acc ← ĝ₁
 s[1] ← 1
+denom ← 1
 for i = 2 to r:
     (α, β, c_k) ← XGCD_ZZ(g_acc, ĝᵢ)  // α·g_acc + β·ĝᵢ = c_k ∈ Z
     for j = 1 to i-1:
-        s[j] ← s[j] · α mod ĝⱼ           // 已有系数乘以 α
-    s[i] ← β mod ĝᵢ
+        s[j] ← s[j] · β mod ĝⱼ           // 已有系数乘以 β（ĝᵢ 侧系数）
+    s[i] ← denom · α mod ĝᵢ              // denom_old · α（g_acc 侧系数）
     denom ← denom · c_k                    // 公分母累积
     g_acc ← g_acc · ĝᵢ
 // 最终: Σ s[i]·Û_i = denom   (而非 = 1)

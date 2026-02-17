@@ -63,24 +63,26 @@ f = content · ∏ fᵢ^eᵢ
 
 ```
 __factor_multivar(polynomial_<ZZ,lex>)     M5 入口
-  ├── cont(f, x₁)                         内容提取 (已有)
-  ├── factorize(cont)                      递归分解内容 (已有)
-  ├── squarefreefactorize(f_prim)          无平方分解 (已有)
-  │     └── __factor_multivar(gₖ)         对每个无平方因子递归
   │
-  │  ── 以下仅当 f_prim 已无平方 ──
+  ├── squarefreefactorize(f)               无平方分解 (已有, 内部自动提取 content)
+  │     返回 [(g₁,m₁), (g₂,m₂), ...]
+  │     对每个 gₖ：
+  │       不含 x₁ → factorize(gₖ) 递归（变量数递减）
+  │       含 x₁, 单变量 → factorize(gₖ) (M4)
+  │       含 x₁, 多变量 → __wang_core(gₖ)   ← gₖ 已本原且无平方
   │
-  ├── __select_eval_point                  选取值点
-  │     ├── assign(f, v, c)               代入求值 (已有)
-  │     ├── is_squarefree                 无平方检测 (已有)
-  │     └── factorize(lc)                 lc 因子分解 (条件 d, 已有)
-  ├── factorize(f₀)                        单变量分解 (M4, 已实现)
-  ├── __wang_leading_coeff                 首项系数分配
-  ├── __multivar_hensel_lift               多变量 Hensel 提升
-  │     ├── __upoly_gcd_extended_ZZ        Z[x₁] pseudo-XGCD (新增)
-  │     ├── __taylor_coeff                 Taylor 系数提取 (新增)
-  │     └── __poly_mod_univar             多变量 mod 单变量 (新增)
-  └── 试除验证: pp(Gᵢ) | f_prim           pair_vec_div (已有)
+  └── __wang_core(g)                       Wang 算法核心（输入须本原无平方）
+        ├── __select_eval_point            选取值点
+        │     ├── assign(f, v, c)         代入求值 (已有)
+        │     ├── is_squarefree           无平方检测 (已有)
+        │     └── factorize(lc)           lc 因子分解 (条件 d, 已有)
+        ├── factorize(f₀)                  单变量分解 (M4, 已实现)
+        ├── __wang_leading_coeff           首项系数分配
+        ├── __multivar_hensel_lift         多变量 Hensel 提升
+        │     ├── __upoly_gcd_extended_ZZ  Z[x₁] pseudo-XGCD (新增)
+        │     ├── __taylor_coeff           Taylor 系数提取 (新增)
+        │     └── __poly_mod_univar       多变量 mod 单变量 (新增)
+        └── 试除验证: pp(Gᵢ) | g          pair_vec_div (已有)
 ```
 
 ### 2.1 数据流与缩放不变量
@@ -90,44 +92,49 @@ Wang 算法中 `f` 经历多次变换，各模块操作的对象不同，必须�
 ```
 f_input                              用户输入
   │
-  ├─ c = cont(f, x₁)                内容 ∈ Z[x₂,...,xₙ]
-  ├─ factorize(c)                    递归分解内容（变量数递减）
   ▼
-f_prim = pp(f, x₁)                  本原部分
+squarefreefactorize(f_input)         无平方分解（内部自动 cont 提取 + Yun）
   │
-  ├─ squarefreefactorize(f_prim)     无平方分解
-  │   若有重因子 → 对每个 gₖ 递归 __factor_multivar(gₖ)，合并重数，返回
-  │   若已无平方 → 进入 Wang 主流程 ↓
+  ├─ 返回 [(g₁,m₁), (g₂,m₂), ...]
+  │   每个 gₖ 是不可约因子的无平方积
   │
-  ├─ α = __select_eval_point         选求值点，满足 (a)-(d)
-  ├─ f₀ = f_prim(x₁, α)             单变量像 ∈ Z[x₁]
-  ├─ u₁,...,uᵣ = factorize(f₀)      单变量因子（本原, lc>0, 非首一）
-  │   若 r ≤ 1 → f_prim 不可约，直接返回
+  │   分类处理每个 gₖ：
+  │     常数 / 单变量       → factorize(gₖ) (M4)，重数 ×mₖ
+  │     多变量但不含 x₁     → factorize(gₖ) 递归（变量数递减），重数 ×mₖ
+  │     多变量且含 x₁       → __wang_core(gₖ)，重数 ×mₖ
+  │                           ↓
+  ▼ ════════════════════════════════════════
+  __wang_core(g)               g 已本原、无平方、多变量
+  │
+  ├─ α = __select_eval_point   选求值点，满足 (a)-(d)
+  ├─ f₀ = g(x₁, α)            单变量像 ∈ Z[x₁]
+  ├─ u₁,...,uᵣ = factorize(f₀) 单变量因子（本原, lc>0, 非首一）
+  │   若 r ≤ 1 → g 不可约，直接返回
   ▼
-__wang_leading_coeff
-  ├─ 输入:  f_prim, u₁,...,uᵣ, α
-  ├─ 输出:  f_scaled = δ^(r-1) · f_prim       ← 缩放后的多项式
-  │         σ₁,...,σᵣ ∈ Z[x₂,...,xₙ]          ← 各因子的 lc 分配
-  │         v₁,...,vᵣ ∈ Z[x₁]                  ← lc 统一为 δ 的单变量因子
+  __wang_leading_coeff
+  ├─ 输入:  g, u₁,...,uᵣ, α
+  ├─ 输出:  f_scaled = δ^(r-1) · g              ← 缩放后的多项式
+  │         σ₁,...,σᵣ ∈ Z[x₂,...,xₙ]            ← 各因子的 lc 分配
+  │         v₁,...,vᵣ ∈ Z[x₁]                    ← lc 统一为 δ 的单变量因子
   │           (vᵢ = δ · ūᵢ, 满足 ∏vᵢ = f_scaled(x₁,α))
   │   失败 → 换求值点重试
   ▼
-__multivar_hensel_lift
+  __multivar_hensel_lift
   ├─ 输入:  f_scaled, v₁,...,vᵣ, σ₁,...,σᵣ, α
-  ├─ Bézout: sᵢ ∈ Z[x₁], Σ sᵢ·Ûᵢ = denom   （计算一次）
+  ├─ Bézout: sᵢ ∈ Z[x₁], Σ sᵢ·Ûᵢ = denom     （计算一次）
   ├─ 逐变量 x₂,...,xₙ 线性提升（步骤 A-E）
-  ├─ 输出:  G₁,...,Gᵣ ∈ Z[x₁,...,xₙ]          ← 候选因子
+  ├─ 输出:  G₁,...,Gᵣ ∈ Z[x₁,...,xₙ]            ← 候选因子
   ▼
-试除验证
-  ├─ 对 f_prim（非 f_scaled!）做试除: pp(Gᵢ) | f_prim ?
+  试除验证
+  ├─ 对 g（非 f_scaled!）做试除: pp(Gᵢ) | g ?
   ├─ 自洽性检查，失败 → 换求值点重试
-  └─ 输出: 不可约因子列表
+  └─ 输出: g 的不可约因子列表
 ```
 
 **关键不变量：**
-- `f_scaled = δ^(r-1) · f_prim`，其中 `δ = lc(f_prim, x₁)(α)`
+- `f_scaled = δ^(r-1) · g`，其中 `δ = lc(g, x₁)(α)`
 - Hensel 提升在 `f_scaled` 上进行，因为缩放保证各因子首项系数为多变量多项式
-- 试除在 `f_prim` 上进行：`pp(Gᵢ)` 消去了缩放因子 `δ`，结果整除 `f_prim`
+- 试除在 `g`（原始本原无平方多项式）上进行：`pp(Gᵢ)` 消去缩放因子 `δ`
 - 这与单变量 M3 的 `pp(g) | f*` 试除逻辑一致（见 univariate §6.4）
 
 ---
@@ -603,108 +610,99 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 
 ### 7.1 完整算法
 
+算法分两层：外层做无平方分解 + 分派，内层是 Wang 核心。
+
 ```
 __factor_multivar(f_input):
 
-1.  // 选主变量 + 内容提取
-    x₁ ← get_variables(f_input).front().first    // lex 首变量
-    c ← cont(f_input, x₁)                        // ∈ Z[x₂,...,xₙ]
-    f_prim ← f_input / c                          // 本原部分 (pair_vec_div, 精确)
+1.  // 无平方分解（内部自动提取 content + Yun）
+    sqf ← squarefreefactorize(f_input)           // [(g₁,m₁), (g₂,m₂), ...]
+    // 每个 gₖ 无平方；来自 content 的因子不含 x₁，来自 Yun 的因子关于 x₁ 本原
 
-2.  // 递归分解内容
-    //   递归终止: c 的变量数 < f 的变量数（cont 消去了 x₁）
-    //   若 c ∈ Z（常数），直接作为 content
-    cont_factors ← {}
-    if !is_number(c):
-        cont_factors ← factorize(c)               // 递归调用（变量数递减）
+    all_factors ← []
+    content ← 1
 
-    // 无平方分解（复用已有 squarefreefactorize）
-    sqf ← squarefreefactorize(f_prim)             // [(g₁,m₁), (g₂,m₂), ...]
-    if |sqf| > 1 or sqf[0].second > 1:
-        // f_prim 有重因子，对每个无平方部分分别分解
-        result_factors ← cont_factors
-        for (gₖ, mₖ) in sqf:
-            if deg(gₖ, x₁) == 0:
-                // gₖ 是常数或仅含 x₂,...,xₙ 的多项式
-                cont_factors ← cont_factors ∪ factorize(gₖ) × mₖ
-            else:
-                sub_fac ← __factor_multivar(gₖ)   // 递归: gₖ 无平方，变量数不减但度数降
-                for (fᵢ, eᵢ) in sub_fac.factors:
-                    result_factors.push(fᵢ, eᵢ · mₖ)
-        return {content, result_factors}
+    for (gₖ, mₖ) in sqf:
+        if is_number(gₖ):
+            content ← content · gₖ^mₖ
+        else if get_variables(gₖ).size() == 1 or !contains(gₖ, x₁):
+            // 单变量 或 不含 x₁ 的多变量 → 递归 factorize（变量数递减）
+            sub ← factorize(gₖ)
+            content ← content · sub.content^mₖ
+            for (fᵢ, eᵢ) in sub.factors:
+                all_factors.push(fᵢ, eᵢ · mₖ)
+        else:
+            // 多变量 + 含 x₁ + 无平方 + 本原 → Wang 核心
+            wang_factors ← __wang_core(gₖ)
+            for (fᵢ, eᵢ) in wang_factors:
+                all_factors.push(fᵢ, eᵢ · mₖ)  // eᵢ = 1（gₖ 无平方）
 
-    // f_prim 已无平方，进入 Wang 主流程
+    return {content, all_factors}
+```
+
+```
+__wang_core(g):
+    // 前置: g ∈ Z[x₁,...,xₙ], n ≥ 2, g 本原无平方
+    x₁ ← get_variables(g).front().first
+
     retry_count ← 0
 
-3.  // 选取值点
-    eval ← __select_eval_point(f_prim, x₁)        // 满足条件 (a)-(d)
+1.  // 选取值点
+    eval ← __select_eval_point(g, x₁)             // 满足条件 (a)-(d)
 
-4.  // 单变量分解
-    f₀ ← assign(f_prim, eval)                     // f₀ ∈ Z[x₁]
+2.  // 单变量分解
+    f₀ ← assign(g, eval)                          // f₀ ∈ Z[x₁]
     uni_fac ← factorize(f₀)                       // 单变量 M4
-    u₁,...,uᵣ ← uni_fac.factors              // 本原, lc>0（非首一! 首一化在 §5.2 step 4 内部做）
+    u₁,...,uᵣ ← uni_fac.factors                   // 本原, lc>0（非首一）
 
-5.  if r ≤ 1:
-        // 单变量像不可约 ⇒ f_prim 不可约
-        // 理由: f_prim 本原 + eval 满足条件 (a)(b)(c)
-        //   若 f_prim = g·h 非平凡分解，则 f₀ = g(x₁,α)·h(x₁,α) 也非平凡
-        return {content(c), [(f_prim, 1)] ∪ cont_factors}
+3.  if r ≤ 1:
+        return [(g, 1)]                            // g 不可约
 
-6.  // 首项系数校正 (§5)
-    lc_result ← __wang_leading_coeff(f_prim, [u₁,...,uᵣ], eval, x₁)
+4.  // 首项系数校正 (§5)
+    lc_result ← __wang_leading_coeff(g, [u₁,...,uᵣ], eval, x₁)
     if !lc_result.success:
         retry_count++
-        if retry_count ≥ MAX_RETRY (=10):
-            throw "Wang LC distribution failed"
-        goto 3                                     // 换求值点
+        if retry_count ≥ MAX_RETRY (=10): throw "Wang LC distribution failed"
+        goto 1
 
-7.  // 多变量 Hensel 提升 (§6)
+5.  // 多变量 Hensel 提升 (§6)
     mv_factors ← __multivar_hensel_lift(
-        lc_result.f_scaled,                        // δ^(r-1) · f_prim
-        lc_result.scaled_factors,                  // v₁,...,vᵣ (lc 已校正)
+        lc_result.f_scaled,                        // δ^(r-1) · g
+        lc_result.scaled_factors,                  // v₁,...,vᵣ
         lc_result.lc_assignments,                  // σ₁,...,σᵣ
         eval, x₁)
 
-8.  // 试除验证 + 去缩放
-    //   不变量: pp(Gᵢ) | f_prim（因为 Gᵢ 包含缩放因子 δ 的贡献）
+6.  // 试除验证 + 去缩放
     verified ← []
-    f_remaining ← f_prim
+    g_remaining ← g
     for G in mv_factors:
-        g ← pp(G, x₁)                             // 取本原部分，消去缩放
-        q, r ← divmod(f_remaining, g)              // 对 f_prim (非 f_scaled!) 试除
+        h ← pp(G, x₁)                             // 取本原部分，消去缩放
+        q, r ← divmod(g_remaining, h)              // 对 g（非 f_scaled!）试除
         if r = 0:
-            verified.push(g)
-            f_remaining ← q
-        // else: 该候选因子不整除，跳过（可能被其他因子合并了）
-    if deg(f_remaining, x₁) > 0:
-        // f_remaining 可能是若干提升因子合并后的不可约因子
-        verified.push(pp(f_remaining, x₁))
+            verified.push(h)
+            g_remaining ← q
 
-    // 验证: verified 中所有因子的乘积应还原 f_prim
-    if ∏ verified ≠ f_prim / (整数常数):
-        // 提升结果不自洽，换求值点重试
+    if deg(g_remaining, x₁) > 0:
+        verified.push(pp(g_remaining, x₁))
+
+    // 自洽性检查
+    if ∏ verified ≠ g / (整数常数):
         retry_count++
         if retry_count ≥ MAX_RETRY: throw "Wang factorization failed"
-        goto 3
+        goto 1
 
-9.  // 合并内容因子 + 排序
-    all_factors ← cont_factors ∪ {(g, 1) : g ∈ verified}
-    content ← (c 的整数部分) · (f_remaining 若为常数)
-    return {content, all_factors}  // 按 (degree, 字典序) 排序
+    return [(h, 1) for h in verified]
 ```
 
 ### 7.2 递归终止性
 
 `__factor_multivar` 的递归调用路径：
 
-1. **步骤 2**：`factorize(c)` 其中 `c = cont(f, x₁) ∈ Z[x₂,...,xₙ]`，
-   变量数严格递减（c 不含 x₁）。
-2. **步骤 2（sqf）**：`__factor_multivar(gₖ)` 其中 gₖ 是 f_prim 的无平方因子，
-   变量数不减但 `deg(gₖ, x₁) < deg(f_prim, x₁)`（度数严格递减）。
-3. **步骤 6**：`factorize(L)` 其中 `L = lc(f, x₁) ∈ Z[x₂,...,xₙ]`，
-   变量数同样严格递减。
+1. **步骤 1**：`squarefreefactorize` 内部调用 `factorize(cont)`，变量数严格递减。
+2. **步骤 1**：不含 x₁ 的因子调用 `factorize(gₖ)`，变量数严格递减。
+3. **__wang_core 步骤 4**：`factorize(L)` 其中 `L = lc(g, x₁) ∈ Z[x₂,...,xₙ]`，变量数严格递减。
 
-递归以 `(变量数, deg(f, x₁))` 的字典序为序数函数，基础情况是 n = 1（由 M4 处理）或 n = 0（常数）。
+所有递归都以变量数严格递减，基础情况是 n = 1（由 M4 处理）或 n = 0（常数）。
 
 ---
 
@@ -757,8 +755,9 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 这两步组合可以检测**所有方向**的重因子——不含 x₁ 的在步骤 1 处理，
 含 x₁ 的在步骤 2 处理（因为 g² | F_ 且 g 含 x₁ ⇒ g | derivative(F_, x₁)）。
 
-§7.1 步骤 2 已在 Wang 主流程前调用 `squarefreefactorize`，确保传入 Wang 的
-多项式是无平方的——这是 `__select_eval_point` 条件 (a) 可满足的前提。
+`__factor_multivar` 以 `squarefreefactorize` 作为第一步（§7.1），
+其返回的因子自动分为 content 部分（不含 x₁）和本原无平方部分（含 x₁）。
+后者直接传入 `__wang_core`，满足 Wang 的无平方前置条件。
 
 ---
 

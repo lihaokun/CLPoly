@@ -79,10 +79,10 @@ __factor_multivar(polynomial_<ZZ,lex>)     M5 入口
         ├── factorize(f₀)                  单变量分解 (M4, 已实现)
         ├── __wang_leading_coeff           首项系数分配
         ├── __multivar_hensel_lift         多变量 Hensel 提升
-        │     ├── __upoly_gcd_extended_ZZ  Z[x₁] pseudo-XGCD (新增)
+        │     ├── __upoly_gcd_extended     Z[x₁] pseudo-XGCD (ZZ 重载，新增)
         │     ├── __taylor_coeff           Taylor 系数提取 (新增)
         │     └── __poly_mod_univar       多变量 mod 单变量 (新增)
-        └── 试除验证: pp(Gᵢ) | g          pair_vec_div (已有)
+        └── 试除验证: Gᵢ/cont(Gᵢ) | g     cont (已有) + pair_vec_div (已有)
 ```
 
 ### 2.1 数据流与缩放不变量
@@ -126,7 +126,7 @@ squarefreefactorize(f_input)         无平方分解（内部自动 cont 提取 
   ├─ 输出:  G₁,...,Gᵣ ∈ Z[x₁,...,xₙ]            ← 候选因子
   ▼
   试除验证
-  ├─ 对 g（非 f_scaled!）做试除: pp(Gᵢ) | g ?
+  ├─ 对 g（非 f_scaled!）做试除: Gᵢ/cont(Gᵢ) | g ?
   ├─ 自洽性检查，失败 → 换求值点重试
   └─ 输出: g 的不可约因子列表
 ```
@@ -134,27 +134,10 @@ squarefreefactorize(f_input)         无平方分解（内部自动 cont 提取 
 **关键不变量：**
 - `f_scaled = δ^(r-1) · g`，其中 `δ = lc(g, x₁)(α)`
 - Hensel 提升在 `f_scaled` 上进行，因为缩放保证各因子首项系数为多变量多项式
-- 试除在 `g`（原始本原无平方多项式）上进行：`pp(Gᵢ)` 消去缩放因子 `δ`
-- 这与单变量 M3 的 `pp(g) | f*` 试除逻辑一致（见 univariate §6.4）
+- 试除在 `g`（原始本原无平方多项式）上进行：`Gᵢ/cont(Gᵢ)` 消去缩放因子 `δ`
+- 这与单变量 M3 的试除逻辑一致（见 univariate §6.4）
 
 ---
-
-## 3. 需要新增的辅助函数
-
-### 3.1 `pp` — 多变量本原部分
-
-```cpp
-// 多变量本原部分: f / cont(f)
-// 前置: f ∈ Z[x₁,...,xₙ], lex 排序
-// 后置: 返回 f 除以其关于首变量的内容后的本原部分
-template<class var_order>
-polynomial_<ZZ, lex_<var_order>>
-pp(const polynomial_<ZZ, lex_<var_order>>& f);
-```
-
-实现方式：`pp(f) = f / cont(f)`，使用多项式除法 `pair_vec_div`。
-
-> **注：** `cont()` 已存在（`polynomial_gcd.hh:468`），只需补充对应的 `pp()`。
 
 ---
 
@@ -309,7 +292,7 @@ __wang_leading_coeff(f, u₁,...,uᵣ, α, x₁):
 
 > **与单变量 M3 的类比：** 单变量 Hensel 提升也将 `lc(f)` 乘到 `factors[0]`。
 > 多变量版本的缩放 `δ^(r-1)` 起类似作用，但更系统化——每个因子有明确的 lc 分配。
-> 试除时同样用 `pp()` 消去缩放因子（见 §2.1 数据流）。
+> 试除时同样用 `f/cont(f)` 消去缩放因子（见 §2.1 数据流）。
 
 ### 5.3 正确性条件
 
@@ -402,7 +385,7 @@ for i = 2 to r:
 > 中间步骤会产生分数。但无需引入 `upolynomial_<QQ>`，
 > 而是使用 pseudo-XGCD（类似 subresultant PRS）保持整系数：
 >
-> `__upoly_gcd_extended_ZZ(s, t, c, a, b)` 满足 `s·a + t·b = c`，
+> `__upoly_gcd_extended(s, t, c, a, b)` (ZZ 重载) 满足 `s·a + t·b = c`，
 > 其中 `s, t ∈ Z[x₁]`，`c ∈ Z \ {0}`。
 >
 > 对 r 个因子的 Bézout 构造累积公分母 `denom = ∏ cₖ`，
@@ -570,7 +553,7 @@ void __hensel_lift_one_var(
 //       lc_assignments = σ₁,...,σᵣ (各因子的多变量 lc, ∏σᵢ = L)
 //       ∏ vᵢ = f_scaled(x₁, α)
 // 后置: 返回 G₁,...,Gᵣ ∈ Z[x₁,...,xₙ]
-//       lc(Gᵢ, x₁) = σᵢ, 调用方需对 pp(Gᵢ) 做试除验证
+//       lc(Gᵢ, x₁) = σᵢ, 调用方需对 Gᵢ/cont(Gᵢ) 做试除验证
 template<class var_order>
 std::vector<polynomial_<ZZ, lex_<var_order>>>
 __multivar_hensel_lift(
@@ -586,7 +569,7 @@ __multivar_hensel_lift(
 | 函数 | 用途 | 实现依赖 |
 |---|---|---|
 | `__taylor_coeff(f, xₖ, αₖ, j)` | 提取 Taylor 系数 | `pair_vec_div` + `assign` |
-| `__upoly_gcd_extended_ZZ(s, t, c, a, b)` | Z[x₁] pseudo-XGCD: s·a+t·b=c | 复用 Zp 版本框架，pseudo-division 保持整系数 |
+| `__upoly_gcd_extended(s, t, c, a, b)` | Z[x₁] pseudo-XGCD: s·a+t·b=c (ZZ 重载) | 复用 Zp 版本框架，pseudo-division 保持整系数 |
 | `__poly_mod_univar(f, g, x₁)` | 多变量 f 对单变量 g 关于 x₁ 取模 | `pair_vec_div` 的薄封装（lex 首变量，取余数部分；见 §6.5 说明） |
 
 ---
@@ -670,14 +653,14 @@ __wang_core(g):
     verified ← []
     g_remaining ← g
     for G in mv_factors:
-        h ← pp(G, x₁)                             // 取本原部分，消去缩放
+        h ← G / cont(G)                             // 本原化，消去缩放因子 δ
         q, r ← divmod(g_remaining, h)              // 对 g（非 f_scaled!）试除
         if r = 0:
             verified.push(h)
             g_remaining ← q
 
     if deg(g_remaining, x₁) > 0:
-        verified.push(pp(g_remaining, x₁))
+        verified.push(g_remaining / cont(g_remaining))
 
     // 自洽性检查
     if ∏ verified ≠ g / (整数常数):
@@ -759,7 +742,7 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 
 | 阶段 | 内容 | 新增函数 | 依赖 |
 |---|---|---|---|
-| **Phase 5** | M5: 多变量 Wang | `pp`, `__taylor_coeff`, `__upoly_gcd_extended_ZZ`, `__poly_mod_univar`, `__select_eval_point`, `__wang_leading_coeff` (含 `__wang_lc_result`), `__multivar_hensel_lift` (含 `__hensel_lift_one_var`), `__factor_multivar`, `factorize` 多变量 dispatch | M4 (已实现) |
+| **Phase 5** | M5: 多变量 Wang | `__taylor_coeff`, `__upoly_gcd_extended` (ZZ 重载), `__poly_mod_univar`, `__select_eval_point`, `__wang_leading_coeff` (含 `__wang_lc_result`), `__multivar_hensel_lift` (含 `__hensel_lift_one_var`), `__factor_multivar`, `factorize` 多变量 dispatch | M4 (已实现) |
 | **Phase 6** | 增强：van Hoeij 重组 | `__factor_recombine_van_hoeij` + LLL 实现 | M3 替换 |
 | **Phase 7** | 增强：Zippel 后备 | 稀疏插值模块 + Zippel 算法 | Phase 5 后备 |
 | **Phase 8** | 终极：MTSHL | 二变量 Hensel 提升 + 稀疏插值驱动的多变量分解 | 替换 Phase 5 |
@@ -768,13 +751,12 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 
 | 可独立测试的函数 | 验证方法 |
 |---|---|
-| `pp(f)` | 验证 `cont(f) · pp(f) == f` |
 | `__taylor_coeff(f, xₖ, αₖ, j)` | 验证 `Σ coeff_j · (xₖ-αₖ)^j == f` |
-| `__upoly_gcd_extended_ZZ` | 验证 `s·a + t·b = c`（c ∈ Z），s, t ∈ Z[x₁]，`Σ sᵢ·Ûᵢ = denom` |
+| `__upoly_gcd_extended` (ZZ 重载) | 验证 `s·a + t·b = c`（c ∈ Z），s, t ∈ Z[x₁]，`Σ sᵢ·Ûᵢ = denom` |
 | `__poly_mod_univar(f, g, x₁)` | 验证 `f = q·g + r`，`deg(r,x₁) < deg(g)` |
 | `__select_eval_point` | 验证条件 (a)-(d)：无平方、lc 非零、度数守恒、lc 因子可分辨 |
 | `__wang_leading_coeff` | 构造已知分解的多项式，验证 `∏σᵢ(α) = δ`，`∏vᵢ = f_scaled(x₁,α)` |
-| `__multivar_hensel_lift` | 二变量多项式提升后 `∏Gᵢ = f_scaled`，`pp(Gᵢ) \| f_prim` |
+| `__multivar_hensel_lift` | 二变量多项式提升后 `∏Gᵢ = f_scaled`，`Gᵢ/cont(Gᵢ) \| g` |
 | `__factor_multivar` | 与 Mathematica `Factor[f]` 对比 |
 | `factorize` (多变量入口) | 与 Mathematica `FactorList[f]` 对比；`verify_factorization` 重组检查 |
 
@@ -875,14 +857,9 @@ MTSHL 积累基础设施。
 
 ## 附录 A: 完整函数签名索引
 
-### 辅助函数（§3, §6）
+### 辅助函数（§6）
 
 ```cpp
-// §3.1 多变量本原部分
-template<class var_order>
-polynomial_<ZZ, lex_<var_order>>
-pp(const polynomial_<ZZ, lex_<var_order>>& f);
-
 // §6.4 Taylor 系数提取
 template<class var_order>
 polynomial_<ZZ, lex_<var_order>> __taylor_coeff(
@@ -890,7 +867,10 @@ polynomial_<ZZ, lex_<var_order>> __taylor_coeff(
     const variable& xk, const ZZ& alpha_k, int j);
 
 // §6.8 Z[x₁] pseudo-XGCD: s·a + t·b = c (c ∈ Z)
-inline void __upoly_gcd_extended_ZZ(
+// 与 Zp 版本同名，通过参数类型 (upolynomial_<ZZ>) 重载区分
+// Zp 版本: __upoly_gcd_extended(s, t, a, b)       → s·a + t·b = 1
+// ZZ 版本: __upoly_gcd_extended(s, t, c, a, b)    → s·a + t·b = c, c ∈ Z
+inline void __upoly_gcd_extended(
     upolynomial_<ZZ>& s, upolynomial_<ZZ>& t, ZZ& c,
     const upolynomial_<ZZ>& a, const upolynomial_<ZZ>& b);
 
@@ -976,6 +956,6 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 | `is_squarefree(f)` | `polynomial_gcd.hh` | 无平方检测 | 支持多变量 |
 | `get_variables(f)` | `polynomial_.hh` | 获取变量列表 | 返回 `list<pair<variable, int64_t>>` |
 | `pair_vec_div(q, r, f, g, comp)` | `basic.hh` | 多项式除法 | 支持多变量精确除法 |
-| `__upoly_gcd_extended(s, t, a, b)` | `polynomial_factorize.hh` | Zₚ 上扩展 GCD | 需补充 ZZ 版本 (`__upoly_gcd_extended_ZZ`) |
+| `__upoly_gcd_extended(s, t, a, b)` | `polynomial_factorize.hh` | Zₚ 上扩展 GCD | ZZ 重载 `(s, t, c, a, b)` 作为新增函数，同文件 |
 | `is_number(f)` | `upolynomial.hh` | 常数检测 | |
-| `poly_convert(in, out)` | `upolynomial.hh` | polynomial ↔ upolynomial | |
+| `poly_convert(in, out [, var])` | `upolynomial.hh` | polynomial ↔ upolynomial 双向转换 | upolynomial→polynomial 需传 `variable` 参数 |

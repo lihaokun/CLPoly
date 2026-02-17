@@ -64,15 +64,23 @@ f = content · ∏ fᵢ^eᵢ
 ```
 __factor_multivar(polynomial_<ZZ,lex>)     M5 入口
   ├── cont(f, x₁)                         内容提取 (已有)
-  ├── factorize(cont)                      递归分解内容 (M4, 已实现)
+  ├── factorize(cont)                      递归分解内容 (已有)
+  ├── squarefreefactorize(f_prim)          无平方分解 (已有)
+  │     └── __factor_multivar(gₖ)         对每个无平方因子递归
+  │
+  │  ── 以下仅当 f_prim 已无平方 ──
+  │
   ├── __select_eval_point                  选取值点
   │     ├── assign(f, v, c)               代入求值 (已有)
-  │     └── is_squarefree                 无平方检测 (已有)
+  │     ├── is_squarefree                 无平方检测 (已有)
+  │     └── factorize(lc)                 lc 因子分解 (条件 d, 已有)
   ├── factorize(f₀)                        单变量分解 (M4, 已实现)
   ├── __wang_leading_coeff                 首项系数分配
-  └── __multivar_hensel_lift               多变量 Hensel 提升
-        ├── __upoly_gcd_extended_ZZ        Z[x₁] pseudo-XGCD (新增)
-        └── __upoly_gcd_extended           Zₚ 扩展 GCD (已实现)
+  ├── __multivar_hensel_lift               多变量 Hensel 提升
+  │     ├── __upoly_gcd_extended_ZZ        Z[x₁] pseudo-XGCD (新增)
+  │     ├── __taylor_coeff                 Taylor 系数提取 (新增)
+  │     └── __poly_mod_univar             多变量 mod 单变量 (新增)
+  └── 试除验证: pp(Gᵢ) | f_prim           pair_vec_div (已有)
 ```
 
 ### 2.1 数据流与缩放不变量
@@ -80,30 +88,39 @@ __factor_multivar(polynomial_<ZZ,lex>)     M5 入口
 Wang 算法中 `f` 经历多次变换，各模块操作的对象不同，必须严格区分：
 
 ```
-f_input                          用户输入
+f_input                              用户输入
   │
-  ├─ c = cont(f, x₁)            内容 ∈ Z[x₂,...,xₙ]
+  ├─ c = cont(f, x₁)                内容 ∈ Z[x₂,...,xₙ]
+  ├─ factorize(c)                    递归分解内容（变量数递减）
   ▼
-f_prim = pp(f, x₁)              本原部分，后续所有操作基于此
+f_prim = pp(f, x₁)                  本原部分
   │
-  ├─ f₀ = f_prim(x₁,α)         单变量像 ∈ Z[x₁]
-  ├─ u₁,...,uᵣ = factorize(f₀)  单变量因子（本原, lc>0, 非首一）
+  ├─ squarefreefactorize(f_prim)     无平方分解
+  │   若有重因子 → 对每个 gₖ 递归 __factor_multivar(gₖ)，合并重数，返回
+  │   若已无平方 → 进入 Wang 主流程 ↓
+  │
+  ├─ α = __select_eval_point         选求值点，满足 (a)-(d)
+  ├─ f₀ = f_prim(x₁, α)             单变量像 ∈ Z[x₁]
+  ├─ u₁,...,uᵣ = factorize(f₀)      单变量因子（本原, lc>0, 非首一）
+  │   若 r ≤ 1 → f_prim 不可约，直接返回
   ▼
 __wang_leading_coeff
   ├─ 输入:  f_prim, u₁,...,uᵣ, α
   ├─ 输出:  f_scaled = δ^(r-1) · f_prim       ← 缩放后的多项式
   │         σ₁,...,σᵣ ∈ Z[x₂,...,xₙ]          ← 各因子的 lc 分配
-  │         v₁,...,vᵣ ∈ Z[x₁]                  ← 修改后的单变量因子
-  │           (vᵢ 首项系数 = σᵢ(α), 满足 ∏vᵢ = f_scaled(x₁,α))
+  │         v₁,...,vᵣ ∈ Z[x₁]                  ← lc 统一为 δ 的单变量因子
+  │           (vᵢ = δ · ūᵢ, 满足 ∏vᵢ = f_scaled(x₁,α))
+  │   失败 → 换求值点重试
   ▼
 __multivar_hensel_lift
   ├─ 输入:  f_scaled, v₁,...,vᵣ, σ₁,...,σᵣ, α
-  ├─ 不变量: ∏ Gᵢ ≡ f_scaled (mod 提升理想)
+  ├─ Bézout: sᵢ ∈ Z[x₁], Σ sᵢ·Ûᵢ = denom   （计算一次）
+  ├─ 逐变量 x₂,...,xₙ 线性提升（步骤 A-E）
   ├─ 输出:  G₁,...,Gᵣ ∈ Z[x₁,...,xₙ]          ← 候选因子
   ▼
 试除验证
-  ├─ 对 f_prim（非 f_scaled！）做试除
-  ├─ pp(Gᵢ) | f_prim ?
+  ├─ 对 f_prim（非 f_scaled!）做试除: pp(Gᵢ) | f_prim ?
+  ├─ 自洽性检查，失败 → 换求值点重试
   └─ 输出: 不可约因子列表
 ```
 

@@ -356,6 +356,8 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 |---|---|---|---|
 | **Phase 5** | M5: 多变量 Wang | `pp`, `__select_eval_point`, `__wang_leading_coeff` (含 `__wang_lc_result`), `__multivar_hensel_lift`, `__factor_multivar`, `factorize` 多变量 dispatch | M4 (已实现) |
 | **Phase 6** | 增强：van Hoeij 重组 | `__factor_recombine_van_hoeij` + LLL 实现 | M3 替换 |
+| **Phase 7** | 增强：Zippel 后备 | 稀疏插值模块 + Zippel 算法 | Phase 5 后备 |
+| **Phase 8** | 终极：MTSHL | 二变量 Hensel 提升 + 稀疏插值驱动的多变量分解 | 替换 Phase 5 |
 
 ### 10.1 测试计划
 
@@ -441,12 +443,83 @@ factorization<polynomial_<ZZ, lex_<var_order>>>
 __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 ```
 
+## 11. 远期目标：MTSHL（Maple 路线）
+
+### 11.1 动机
+
+Wang 算法有两个根本性瓶颈：
+
+1. **LC 分配问题**：将 lc(f, x₁) 的因子正确分配给各模因子，分配可能失败或不唯一，
+   需要换求值点重试。Singular 为此实现了 4 级级联启发式，FLINT 维护了 Wang + Kaltofen
+   两条路径。
+
+2. **多变量丢番图问题 (MDP)**：每步 Hensel 提升需要解
+   Σ sᵢ·δᵢ ≡ e mod ∏gⱼ，对稀疏多项式可能退化为指数级复杂度。
+
+Maple 在 2019 年引入的 MTSHL（Monagan-Tuncer Sparse Hensel Lifting）算法
+从根本上绕过了这两个问题。
+
+### 11.2 核心思想
+
+MTSHL 用**稀疏插值**替代经典 MDP：
+
+```
+经典 Wang:
+  单变量像 → 逐变量 Hensel 提升 (每步解 MDP) → 试除验证
+
+MTSHL:
+  多个二变量像 → 二变量 Hensel 提升 (BHL) → 稀疏插值恢复因子 → 试除验证
+```
+
+关键优势：
+- **不需要 LC 预分配**——稀疏插值自然恢复每个因子的首项系数
+- **不需要解 MDP**——用 Vandermonde 系统替代
+- **复杂度取决于项数而非变量数**——对稀疏多项式（实际中绝大多数情况）优势巨大
+
+### 11.3 所需基础设施
+
+| 组件 | 状态 | 说明 |
+|---|---|---|
+| 稀疏插值 (Ben-Or/Tiwari 或 Zippel) | 未实现 | MTSHL 的核心依赖 |
+| 二变量 Hensel 提升 (BHL) | 未实现 | 从 `f(x₁, α₂+t·x₂)` 提升为 `f(x₁, x₂)` 的因子 |
+| Hilbert 点选取 | 未实现 | 概率框架，保证失败概率可控 |
+| 非首一二变量提升 | 未实现 | 处理 lc(f, x₁) 非常数的情况 |
+
+### 11.4 演进路线
+
+```
+Phase 5 (Wang)  ──→  Phase 7 (Zippel 后备)  ──→  Phase 8 (MTSHL)
+     │                      │                          │
+     │                      ▼                          ▼
+     │               稀疏插值模块               完整替换 Wang
+     │               (可独立使用)              (保留 Wang 作后备)
+     ▼
+  多变量分解可用
+```
+
+Phase 7（Zippel 后备）是过渡步骤：它引入稀疏插值模块，先作为 Wang 失败时的后备
+路径（FLINT 的做法：Wang → Zippel → Zassenhaus 三级级联），同时为 Phase 8 的
+MTSHL 积累基础设施。
+
+### 11.5 参考文献
+
+- Monagan & Tuncer, "Using Sparse Interpolation in Hensel Lifting", CASC 2016
+- Monagan & Tuncer, "Polynomial Factorization in Maple 2019", MACIS 2019
+- Tian Chen, "Sparse Hensel Lifting Algorithms for Multivariate Polynomial
+  Factorization", SFU Master's Thesis, 2019
+  (https://www.cecm.sfu.ca/CAG/theses/tian.pdf)
+
+---
+
 ## 附录 B: 参考文献
 
 - **Wang**: Wang, "An Improved Multivariate Polynomial Factoring Algorithm", Math. Comp. 1978
 - **Kaltofen-Shoup**: Kaltofen & Shoup, "Subquadratic-Time Factoring of Polynomials over Finite Fields", Math. Comp. 1998
 - **GCL**: Geddes, Czapor & Labahn, "Algorithms for Computer Algebra", Kluwer 1992 (§16)
 - **MCA**: von zur Gathen & Gerhard, "Modern Computer Algebra", Cambridge 2013 (§16)
+- **MTSHL**: Monagan & Tuncer, "Using Sparse Interpolation in Hensel Lifting", CASC 2016
+- **FLINT**: Hart et al., FLINT: Fast Library for Number Theory, https://flintlib.org
+- **Singular/Factory**: Singular Team, Factory Library, https://www.singular.uni-kl.de
 
 ## 附录 C: 已有函数依赖清单
 

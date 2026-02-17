@@ -732,15 +732,16 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 
 ### 9.1 与 `squarefreefactorize` 的兼容性
 
-现有 `squarefreefactorize`（`polynomial_gcd.hh:101`）对 lex 首变量求导，
-递归处理内容。对多变量多项式，它能正确检测**关于首变量**的重因子。
+现有 `squarefreefactorize`（`polynomial_gcd.hh:101`）能正确处理多变量多项式：
 
-**已知限制：** 如果 f 关于非首变量有重因子，`squarefreefactorize` 可能将其视为无平方。
-但这对 Wang 算法不构成问题——Wang 的前置条件只要求**单变量像** `f(x₁, α...)` 无平方，
-这在 `__select_eval_point` 中已保证。
+1. 先提取 `cont(F, x₁)` 并递归调用自身（变量数递减，处理不含 x₁ 的重因子）
+2. 对本原部分做 Yun 算法：`gcd(F_, derivative(F_, x₁))`
 
-`__factor_multivar` 仍应在开头调用 `squarefreefactorize`，因为它能检测
-首变量方向的重因子并降低后续提升的规模。
+这两步组合可以检测**所有方向**的重因子——不含 x₁ 的在步骤 1 处理，
+含 x₁ 的在步骤 2 处理（因为 g² | F_ 且 g 含 x₁ ⇒ g | derivative(F_, x₁)）。
+
+§7.1 步骤 2 已在 Wang 主流程前调用 `squarefreefactorize`，确保传入 Wang 的
+多项式是无平方的——这是 `__select_eval_point` 条件 (a) 可满足的前提。
 
 ---
 

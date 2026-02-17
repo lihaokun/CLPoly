@@ -1092,13 +1092,18 @@ namespace clpoly{
 
                 ZZ lc_fstar = f_star.front().second;
 
+                // Hensel 提升将 lc(f) 分配给了 lifted[0]。
+                // 当子集包含 index 0 时，子集乘积已自带 lc，
+                // 无需额外乘 lc_fstar。
+                bool subset_has_lc = (S_bits & 1ULL) != 0;
+                ZZ lc_mult = subset_has_lc ? ZZ(1) : lc_fstar;
+
                 // === 剪枝 1: 首项系数检查 ===
-                ZZ lc_prod = lc_fstar;
+                ZZ lc_prod = lc_mult;
                 for (size_t idx : S_idx)
                     lc_prod *= lifted[idx].front().second;
                 lc_prod = __symmetric_mod(lc_prod, m);
                 ZZ lc_sq = lc_fstar * lc_fstar;
-                // lc_prod 是否整除 lc(f*)²?
                 if (lc_prod != ZZ(0))
                 {
                     ZZ rem;
@@ -1109,7 +1114,7 @@ namespace clpoly{
 
                 {
                     // === 剪枝 2: 常数项检查 ===
-                    ZZ c_prod = lc_fstar;
+                    ZZ c_prod = lc_mult;
                     for (size_t idx : S_idx)
                         c_prod *= __upoly_const_term(lifted[idx]);
                     c_prod = __symmetric_mod(c_prod, m);
@@ -1124,23 +1129,19 @@ namespace clpoly{
 
                     {
                         // === 完整验证: 试除 ===
-                        auto g = __subset_product_mod(lifted, S_idx, lc_fstar, m);
+                        auto g = __subset_product_mod(lifted, S_idx, lc_mult, m);
 
-                        // lc(f*) * f*
-                        upolynomial_<ZZ> lc_f_star_poly = f_star;
-                        for (auto& term : lc_f_star_poly)
-                            term.second *= lc_fstar;
-                        lc_f_star_poly.normalization();
+                        // 取 primitive part 消除提升残留的 lc 因子
+                        auto [c_g, pp_g] = __upoly_primitive(std::move(g));
 
-                        // 试除: g | lc(f*)*f* in Z[x]?
+                        // 试除: pp(g) | f* in Z[x]?
                         upolynomial_<ZZ> q_trial, r_trial;
                         pair_vec_div(q_trial.data(), r_trial.data(),
-                                     lc_f_star_poly.data(), g.data(), f_star.comp());
+                                     f_star.data(), pp_g.data(), f_star.comp());
 
                         if (r_trial.empty())
                         {
                             // 找到真因子
-                            auto [c_g, pp_g] = __upoly_primitive(std::move(g));
                             result.push_back(std::move(pp_g));
 
                             auto [c_q, pp_q] = __upoly_primitive(std::move(q_trial));

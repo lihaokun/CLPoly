@@ -279,6 +279,140 @@ int main() {
         CLPOLY_ASSERT_EQ(clpoly_val, ntl_val);
     }
 
+    // ======== Exact Division: f*g / g == f ========
+    CLPOLY_TEST("crosscheck_ntl_exact_div");
+    for (int trial = 0; trial < 10; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_upolynomial<ZZ>(5, 4, {-50, 50});
+        auto g = random_upolynomial<ZZ>(3, 3, {-50, 50});
+        if (f.empty() || g.empty()) continue;
+        auto product = f * g;
+
+        auto clpoly_quot = product / g;
+
+        NTL::ZZX np = crosscheck::clpoly_upoly_to_ntl(product);
+        NTL::ZZX ng = crosscheck::clpoly_upoly_to_ntl(g);
+        NTL::ZZX nq;
+        NTL::divide(nq, np, ng);
+        auto ntl_quot = crosscheck::ntl_to_clpoly_upoly(nq);
+
+        CLPOLY_ASSERT_EQ(clpoly_quot, f);
+        CLPOLY_ASSERT_EQ(ntl_quot, f);
+    }
+
+    // ======== Exact Division: large coefficients ========
+    CLPOLY_TEST("crosscheck_ntl_exact_div_large_coeff");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_upolynomial<ZZ>(4, 4, {-50, 50});
+        auto g = random_upolynomial<ZZ>(3, 3, {-50, 50});
+        if (f.empty() || g.empty()) continue;
+        ZZ scale = pow(ZZ(10), 18);
+        auto f_big = f * scale;
+        auto product = f_big * g;
+
+        auto clpoly_quot = product / g;
+
+        NTL::ZZX np = crosscheck::clpoly_upoly_to_ntl(product);
+        NTL::ZZX ng = crosscheck::clpoly_upoly_to_ntl(g);
+        NTL::ZZX nq;
+        NTL::divide(nq, np, ng);
+        auto ntl_quot = crosscheck::ntl_to_clpoly_upoly(nq);
+
+        CLPOLY_ASSERT_EQ(clpoly_quot, f_big);
+        CLPOLY_ASSERT_EQ(ntl_quot, f_big);
+    }
+
+    // ======== Dense polynomial multiplication ========
+    CLPOLY_TEST("crosscheck_ntl_dense_mul");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        // Dense: len close to deg+1 (all coefficients present)
+        auto f = random_upolynomial<ZZ>(8, 9, {-50, 50});
+        auto g = random_upolynomial<ZZ>(8, 9, {-50, 50});
+
+        auto clpoly_result = f * g;
+
+        NTL::ZZX nf = crosscheck::clpoly_upoly_to_ntl(f);
+        NTL::ZZX ng = crosscheck::clpoly_upoly_to_ntl(g);
+        NTL::ZZX nr = nf * ng;
+        auto ntl_result = crosscheck::ntl_to_clpoly_upoly(nr);
+
+        CLPOLY_ASSERT_EQ(clpoly_result, ntl_result);
+    }
+
+    // ======== Dense polynomial with large coefficients ========
+    CLPOLY_TEST("crosscheck_ntl_dense_large_coeff");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_upolynomial<ZZ>(6, 7, {-50, 50});
+        auto g = random_upolynomial<ZZ>(6, 7, {-50, 50});
+        ZZ scale = pow(ZZ(10), 20);
+        auto f_big = f * scale;
+        auto g_big = g * scale;
+
+        auto clpoly_result = f_big * g_big;
+
+        NTL::ZZX nf = crosscheck::clpoly_upoly_to_ntl(f_big);
+        NTL::ZZX ng = crosscheck::clpoly_upoly_to_ntl(g_big);
+        NTL::ZZX nr = nf * ng;
+        auto ntl_result = crosscheck::ntl_to_clpoly_upoly(nr);
+
+        CLPOLY_ASSERT_EQ(clpoly_result, ntl_result);
+    }
+
+    // ======== Large coefficients: GCD ========
+    CLPOLY_TEST("crosscheck_ntl_large_coeff_gcd");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto h = random_upolynomial<ZZ>(2, 3, {-20, 20});
+        auto a = random_upolynomial<ZZ>(2, 3, {-20, 20});
+        auto b = random_upolynomial<ZZ>(2, 3, {-20, 20});
+        if (h.empty() || a.empty() || b.empty()) continue;
+        ZZ scale = pow(ZZ(10), 15);
+        auto f = (h * a) * scale;
+        auto g = (h * b) * scale;
+
+        auto clpoly_gcd = polynomial_GCD(f, g);
+
+        NTL::ZZX nf = crosscheck::clpoly_upoly_to_ntl(f);
+        NTL::ZZX ng = crosscheck::clpoly_upoly_to_ntl(g);
+        NTL::ZZX ngcd = NTL::GCD(nf, ng);
+        auto ntl_gcd = crosscheck::ntl_to_clpoly_upoly(ngcd);
+
+        CLPOLY_ASSERT_EQ(degree(clpoly_gcd), degree(ntl_gcd));
+        if (!clpoly_gcd.empty() && !ntl_gcd.empty()) {
+            CLPOLY_ASSERT(clpoly_gcd == ntl_gcd || clpoly_gcd == -ntl_gcd);
+        }
+    }
+
+    // ======== Large coefficients: exact division + GCD combined ========
+    CLPOLY_TEST("crosscheck_ntl_large_coeff_div_gcd");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_upolynomial<ZZ>(4, 4, {-30, 30});
+        auto g = random_upolynomial<ZZ>(3, 3, {-30, 30});
+        if (f.empty() || g.empty()) continue;
+        ZZ scale = pow(ZZ(10), 20);
+        auto f_big = f * scale;
+        auto product = f_big * g;
+
+        // Division
+        auto clpoly_quot = product / g;
+        NTL::ZZX np = crosscheck::clpoly_upoly_to_ntl(product);
+        NTL::ZZX ng = crosscheck::clpoly_upoly_to_ntl(g);
+        NTL::ZZX nq;
+        NTL::divide(nq, np, ng);
+        auto ntl_quot = crosscheck::ntl_to_clpoly_upoly(nq);
+        CLPOLY_ASSERT_EQ(clpoly_quot, ntl_quot);
+
+        // GCD of product and g should divide g
+        auto clpoly_gcd = polynomial_GCD(product, g);
+        NTL::ZZX ngcd = NTL::GCD(np, ng);
+        auto ntl_gcd = crosscheck::ntl_to_clpoly_upoly(ngcd);
+        CLPOLY_ASSERT_EQ(degree(clpoly_gcd), degree(ntl_gcd));
+    }
+
     // ======== Factorization: CLPoly vs NTL ========
 
     // Helper: NTL 因子转成排序后的 (upolynomial_ZZ, uint64_t) 列表（lc > 0）
@@ -366,6 +500,97 @@ int main() {
         auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
         auto ntl_fac = crosscheck::ntl_factor(ntl_f);
 
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 随机多项式: 高次因子 (deg 5+4=9)
+    CLPOLY_TEST("crosscheck_ntl_factor_random_high_deg");
+    for (int trial = 0; trial < 10; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(5, 4, {-20, 20});
+        auto f2 = random_upolynomial<ZZ>(4, 3, {-20, 20});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 大系数因式分解: 因子 ×10^12 后乘积
+    CLPOLY_TEST("crosscheck_ntl_factor_large_coeff");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(3, 3, {-50, 50});
+        auto f2 = random_upolynomial<ZZ>(3, 3, {-50, 50});
+        if (f1.empty() || f2.empty()) continue;
+        ZZ scale = pow(ZZ(10), 12);
+        auto uf = (f1 * scale) * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 3 个随机因子
+    CLPOLY_TEST("crosscheck_ntl_factor_3_factors");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f3 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        if (f1.empty() || f2.empty() || f3.empty()) continue;
+        auto uf = f1 * f2 * f3;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 稠密因子: deg=4 len=5 (几乎全项)
+    CLPOLY_TEST("crosscheck_ntl_factor_dense");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(4, 5, {-20, 20});
+        auto f2 = random_upolynomial<ZZ>(3, 4, {-20, 20});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 非首一 + 大系数: 手动构造
+    CLPOLY_TEST("crosscheck_ntl_factor_nonmonic_large");
+    {
+        ZZ big("100000000000000000");  // 10^17
+        // (big*x + 1)(x^2 - big)
+        upolynomial_ZZ f1({{umonomial(1), big}, {umonomial(0), ZZ(1)}});
+        upolynomial_ZZ f2({{umonomial(2), ZZ(1)}, {umonomial(0), -big}});
+        auto uf = f1 * f2;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
         auto cl_sorted = normalize_cl_factors(cl_fac);
         auto ntl_sorted = normalize_ntl_factors(ntl_fac);
         CLPOLY_ASSERT(cl_sorted == ntl_sorted);

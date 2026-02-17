@@ -20,9 +20,10 @@ static bool divides(const polynomial_ZZ& a, const polynomial_ZZ& b) {
 }
 
 int main() {
-    variable x("x"), y("y"), z("z");
+    variable x("x"), y("y"), z("z"), w("w");
     std::vector<variable> vars2 = {x, y};
     std::vector<variable> vars3 = {x, y, z};
+    std::vector<variable> vars4 = {x, y, z, w};
 
     // ======== Round-trip: CLPoly -> FLINT -> CLPoly ========
     CLPOLY_TEST("crosscheck_flint_roundtrip");
@@ -268,6 +269,145 @@ int main() {
         CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
     }
 
+    // ======== Exact Division: f*g / g == f ========
+    CLPOLY_TEST("crosscheck_flint_exact_div");
+    for (int trial = 0; trial < 10; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto& vars = (trial < 5) ? vars2 : vars3;
+        auto f = random_polynomial<ZZ>(vars, 3, 4, {-50, 50});
+        auto g = random_polynomial<ZZ>(vars, 2, 3, {-50, 50});
+        if (f.empty() || g.empty()) continue;
+        auto product = f * g;
+
+        auto clpoly_quot = product / g;
+
+        auto all_vars = crosscheck::collect_vars(product, g);
+        auto fp = crosscheck::clpoly_to_flint(product, all_vars);
+        auto fg = crosscheck::clpoly_to_flint(g, all_vars);
+        crosscheck::FlintPoly fq(all_vars);
+        int ok = fmpz_mpoly_divides(fq.poly, fp.poly, fg.poly, fq.ctx);
+        CLPOLY_ASSERT(ok);
+        auto flint_quot = crosscheck::flint_to_clpoly(fq);
+
+        CLPOLY_ASSERT_EQ(clpoly_quot, f);
+        CLPOLY_ASSERT_EQ(flint_quot, f);
+    }
+
+    // ======== Exact Division: large coefficients ========
+    CLPOLY_TEST("crosscheck_flint_exact_div_large_coeff");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_polynomial<ZZ>(vars2, 3, 4, {-50, 50});
+        auto g = random_polynomial<ZZ>(vars2, 2, 3, {-50, 50});
+        if (f.empty() || g.empty()) continue;
+        ZZ scale = pow(ZZ(10), 18);
+        auto f_big = f * scale;
+        auto product = f_big * g;
+
+        auto clpoly_quot = product / g;
+
+        auto all_vars = crosscheck::collect_vars(product, g);
+        auto fp = crosscheck::clpoly_to_flint(product, all_vars);
+        auto fg = crosscheck::clpoly_to_flint(g, all_vars);
+        crosscheck::FlintPoly fq(all_vars);
+        int ok = fmpz_mpoly_divides(fq.poly, fp.poly, fg.poly, fq.ctx);
+        CLPOLY_ASSERT(ok);
+        auto flint_quot = crosscheck::flint_to_clpoly(fq);
+
+        CLPOLY_ASSERT_EQ(clpoly_quot, f_big);
+        CLPOLY_ASSERT_EQ(flint_quot, f_big);
+    }
+
+    // ======== 4-variable multiplication ========
+    CLPOLY_TEST("crosscheck_flint_4var_mul");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_polynomial<ZZ>(vars4, 3, 6, {-30, 30});
+        auto g = random_polynomial<ZZ>(vars4, 3, 6, {-30, 30});
+
+        auto clpoly_result = f * g;
+
+        auto all_vars = crosscheck::collect_vars(f, g);
+        auto ff = crosscheck::clpoly_to_flint(f, all_vars);
+        auto fg = crosscheck::clpoly_to_flint(g, all_vars);
+        crosscheck::FlintPoly fr(all_vars);
+        fmpz_mpoly_mul(fr.poly, ff.poly, fg.poly, fr.ctx);
+        auto flint_result = crosscheck::flint_to_clpoly(fr);
+
+        CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
+    }
+
+    // ======== 4-variable large coeff ========
+    CLPOLY_TEST("crosscheck_flint_4var_large_coeff");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_polynomial<ZZ>(vars4, 2, 5, {-30, 30});
+        auto g = random_polynomial<ZZ>(vars4, 2, 5, {-30, 30});
+        ZZ scale = pow(ZZ(10), 18);
+        auto f_big = f * scale;
+        auto g_big = g * scale;
+
+        auto clpoly_result = f_big * g_big;
+
+        auto all_vars = crosscheck::collect_vars(f_big, g_big);
+        auto ff = crosscheck::clpoly_to_flint(f_big, all_vars);
+        auto fg = crosscheck::clpoly_to_flint(g_big, all_vars);
+        crosscheck::FlintPoly fr(all_vars);
+        fmpz_mpoly_mul(fr.poly, ff.poly, fg.poly, fr.ctx);
+        auto flint_result = crosscheck::flint_to_clpoly(fr);
+
+        CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
+    }
+
+    // ======== Dense polynomial multiplication ========
+    CLPOLY_TEST("crosscheck_flint_dense_mul");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        // Dense: 2 vars, deg=3 => C(5,2)=10 monomials
+        auto f = random_polynomial<ZZ>(vars2, 3, 10, {-30, 30});
+        auto g = random_polynomial<ZZ>(vars2, 3, 10, {-30, 30});
+
+        auto clpoly_result = f * g;
+
+        auto all_vars = crosscheck::collect_vars(f, g);
+        auto ff = crosscheck::clpoly_to_flint(f, all_vars);
+        auto fg = crosscheck::clpoly_to_flint(g, all_vars);
+        crosscheck::FlintPoly fr(all_vars);
+        fmpz_mpoly_mul(fr.poly, ff.poly, fg.poly, fr.ctx);
+        auto flint_result = crosscheck::flint_to_clpoly(fr);
+
+        CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
+    }
+
+    // ======== Large coefficients: GCD ========
+    CLPOLY_TEST("crosscheck_flint_large_coeff_gcd");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto h = random_polynomial<ZZ>(vars2, 2, 3, {-10, 10});
+        auto a = random_polynomial<ZZ>(vars2, 2, 3, {-10, 10});
+        auto b = random_polynomial<ZZ>(vars2, 2, 3, {-10, 10});
+        if (h.empty() || a.empty() || b.empty()) continue;
+        ZZ scale = pow(ZZ(10), 15);
+        auto f = (h * a) * scale;
+        auto g = (h * b) * scale;
+
+        auto clpoly_gcd = gcd(f, g);
+
+        auto all_vars = crosscheck::collect_vars(f, g);
+        auto ff = crosscheck::clpoly_to_flint(f, all_vars);
+        auto fg = crosscheck::clpoly_to_flint(g, all_vars);
+        crosscheck::FlintPoly fgcd(all_vars);
+        int ok = fmpz_mpoly_gcd(fgcd.poly, ff.poly, fg.poly, fgcd.ctx);
+        CLPOLY_ASSERT(ok);
+        auto flint_gcd_poly = crosscheck::flint_to_clpoly(fgcd);
+
+        CLPOLY_ASSERT_EQ(degree(clpoly_gcd), degree(flint_gcd_poly));
+        if (!clpoly_gcd.empty() && !flint_gcd_poly.empty()) {
+            CLPOLY_ASSERT(divides(clpoly_gcd, flint_gcd_poly)
+                       || divides(flint_gcd_poly, clpoly_gcd));
+        }
+    }
+
     // ======== QQ: round-trip ========
     CLPOLY_TEST("crosscheck_flint_qq_roundtrip");
     for (int trial = 0; trial < 5; ++trial) {
@@ -334,6 +474,110 @@ int main() {
         auto flint_result = crosscheck::flint_qq_to_clpoly(fr);
 
         CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
+    }
+
+    // ======== QQ: power ========
+    CLPOLY_TEST("crosscheck_flint_qq_pow");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_polynomial_QQ(vars2, 2, 3, {-10, 10}, 8);
+        unsigned long k = (trial % 2 == 0) ? 2 : 3;
+
+        auto clpoly_result = pow(f, k);
+
+        auto all_vars = crosscheck::collect_vars_qq(f);
+        auto ff = crosscheck::clpoly_qq_to_flint(f, all_vars);
+        crosscheck::FlintQPoly fr(all_vars);
+        fmpq_mpoly_pow_ui(fr.poly, ff.poly, k, fr.ctx);
+        auto flint_result = crosscheck::flint_qq_to_clpoly(fr);
+
+        CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
+    }
+
+    // ======== QQ: exact division ========
+    CLPOLY_TEST("crosscheck_flint_qq_exact_div");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_polynomial_QQ(vars2, 3, 4, {-30, 30}, 8);
+        auto g = random_polynomial_QQ(vars2, 2, 3, {-20, 20}, 6);
+        if (f.empty() || g.empty()) continue;
+        auto product = f * g;
+
+        auto clpoly_quot = product / g;
+
+        auto all_vars = crosscheck::collect_vars_qq(product, g);
+        auto fp = crosscheck::clpoly_qq_to_flint(product, all_vars);
+        auto fg = crosscheck::clpoly_qq_to_flint(g, all_vars);
+        crosscheck::FlintQPoly fq(all_vars);
+        fmpq_mpoly_div(fq.poly, fp.poly, fg.poly, fq.ctx);
+        auto flint_quot = crosscheck::flint_qq_to_clpoly(fq);
+
+        CLPOLY_ASSERT_EQ(clpoly_quot, f);
+        CLPOLY_ASSERT_EQ(flint_quot, f);
+    }
+
+    // ======== QQ: 4-variable multiplication ========
+    CLPOLY_TEST("crosscheck_flint_qq_4var_mul");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_polynomial_QQ(vars4, 2, 5, {-20, 20}, 8);
+        auto g = random_polynomial_QQ(vars4, 2, 5, {-20, 20}, 8);
+
+        auto clpoly_result = f * g;
+
+        auto all_vars = crosscheck::collect_vars_qq(f, g);
+        auto ff = crosscheck::clpoly_qq_to_flint(f, all_vars);
+        auto fg = crosscheck::clpoly_qq_to_flint(g, all_vars);
+        crosscheck::FlintQPoly fr(all_vars);
+        fmpq_mpoly_mul(fr.poly, ff.poly, fg.poly, fr.ctx);
+        auto flint_result = crosscheck::flint_qq_to_clpoly(fr);
+
+        CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
+    }
+
+    // ======== QQ: large denominators ========
+    CLPOLY_TEST("crosscheck_flint_qq_large_denom");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f = random_polynomial_QQ(vars2, 3, 4, {-50, 50}, 100);
+        auto g = random_polynomial_QQ(vars2, 3, 4, {-50, 50}, 100);
+
+        auto clpoly_result = f * g;
+
+        auto all_vars = crosscheck::collect_vars_qq(f, g);
+        auto ff = crosscheck::clpoly_qq_to_flint(f, all_vars);
+        auto fg = crosscheck::clpoly_qq_to_flint(g, all_vars);
+        crosscheck::FlintQPoly fr(all_vars);
+        fmpq_mpoly_mul(fr.poly, ff.poly, fg.poly, fr.ctx);
+        auto flint_result = crosscheck::flint_qq_to_clpoly(fr);
+
+        CLPOLY_ASSERT_EQ(clpoly_result, flint_result);
+    }
+
+    // ======== QQ: large numerators + denominators combined ========
+    CLPOLY_TEST("crosscheck_flint_qq_large_num_denom");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        // Large numerators via scaling, large denominators via den_max
+        auto f = random_polynomial_QQ(vars2, 2, 4, {-50, 50}, 50);
+        auto g = random_polynomial_QQ(vars2, 2, 4, {-50, 50}, 50);
+
+        // Also test addition (exercises common-denominator logic)
+        auto clpoly_sum = f + g;
+        auto all_vars = crosscheck::collect_vars_qq(f, g);
+        auto ff = crosscheck::clpoly_qq_to_flint(f, all_vars);
+        auto fg = crosscheck::clpoly_qq_to_flint(g, all_vars);
+        crosscheck::FlintQPoly fr(all_vars);
+        fmpq_mpoly_add(fr.poly, ff.poly, fg.poly, fr.ctx);
+        auto flint_sum = crosscheck::flint_qq_to_clpoly(fr);
+        CLPOLY_ASSERT_EQ(clpoly_sum, flint_sum);
+
+        // And subtraction
+        auto clpoly_diff = f - g;
+        crosscheck::FlintQPoly fr2(all_vars);
+        fmpq_mpoly_sub(fr2.poly, ff.poly, fg.poly, fr2.ctx);
+        auto flint_diff = crosscheck::flint_qq_to_clpoly(fr2);
+        CLPOLY_ASSERT_EQ(clpoly_diff, flint_diff);
     }
 
     // ======== Factorization: CLPoly vs FLINT (univariate) ========
@@ -431,6 +675,91 @@ int main() {
         auto cl_fac = factorize(uf);
         auto fl_fac = crosscheck::flint_factor_upoly(uf);
 
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 随机高次: deg 5+4=9, 10 trials — 精确比较因子列表
+    CLPOLY_TEST("crosscheck_flint_factor_random_high_deg");
+    for (int trial = 0; trial < 10; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(5, 4, {-20, 20});
+        auto f2 = random_upolynomial<ZZ>(4, 3, {-20, 20});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 大系数因式分解: 因子 ×10^12
+    CLPOLY_TEST("crosscheck_flint_factor_large_coeff");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(3, 3, {-50, 50});
+        auto f2 = random_upolynomial<ZZ>(3, 3, {-50, 50});
+        if (f1.empty() || f2.empty()) continue;
+        ZZ scale = pow(ZZ(10), 12);
+        auto uf = (f1 * scale) * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 3 个随机因子
+    CLPOLY_TEST("crosscheck_flint_factor_3_factors");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f3 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        if (f1.empty() || f2.empty() || f3.empty()) continue;
+        auto uf = f1 * f2 * f3;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 稠密因子
+    CLPOLY_TEST("crosscheck_flint_factor_dense");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(4, 5, {-20, 20});
+        auto f2 = random_upolynomial<ZZ>(3, 4, {-20, 20});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto fl_sorted = normalize_flint_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // 非首一 + 大系数: 手动构造
+    CLPOLY_TEST("crosscheck_flint_factor_nonmonic_large");
+    {
+        ZZ big("100000000000000000");  // 10^17
+        upolynomial_ZZ f1({{umonomial(1), big}, {umonomial(0), ZZ(1)}});
+        upolynomial_ZZ f2({{umonomial(2), ZZ(1)}, {umonomial(0), -big}});
+        auto uf = f1 * f2;
+
+        auto cl_fac = factorize(uf);
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
         auto cl_sorted = normalize_cl_factors(cl_fac);
         auto fl_sorted = normalize_flint_factors(fl_fac);
         CLPOLY_ASSERT(cl_sorted == fl_sorted);

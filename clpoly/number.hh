@@ -242,6 +242,11 @@ namespace clpoly{
         }
     };
     template<>
+    inline void set_zero(Zp& op)
+    {
+        op.number() = 0;
+    }
+    template<>
     inline void addmul(Zp &op,const Zp &op1,const Zp&op2)
     {
         assert((op.prime()==op1.prime()|| op.prime()==0) && op1.prime()==op2.prime() && op1.prime());

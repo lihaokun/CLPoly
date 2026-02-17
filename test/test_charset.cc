@@ -53,6 +53,10 @@ int main() {
         T2 = x2;
         f = x1 + x2;
 
+        poly_convert(T1, T1);
+        poly_convert(T2, T2);
+        poly_convert(f, f);
+
         std::vector<polynomial_<ZZ, lex_<custom_var_order>>> T = {T1, T2};
         auto W = wrsd(T, f);
 

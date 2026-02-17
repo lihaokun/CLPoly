@@ -555,11 +555,22 @@ __factor_recombine                  M3 入口 (Zassenhaus)
 
 > 代码: `polynomial_factorize.hh:990-1005`
 
-计算 lc_f · ∏_{i∈subset} factors[i] (mod m)，经过对称约化。
+计算 lc_mult · ∏_{i∈subset} factors[i] (mod m)，经过对称约化。
+其中 `lc_mult` 由调用方根据子集是否包含 index 0 决定（见 §6.4）。
 
 ### 6.4 `__factor_recombine` — Zassenhaus 因子重组
 
 > 代码: `polynomial_factorize.hh:1016-1184`
+
+**lc 处理关键细节：** `__hensel_lift` 在提升前将 `lc(f)` 乘到 `factors[0]` 上
+（见 §5.6 步骤 2），因此提升结果中 `lifted[0]` 已携带 `lc(f)` 因子。
+重组时，若子集 S 包含 index 0，子集乘积已自带 lc，不能再额外乘 `lc(f*)`，
+否则会导致双重 lc 乘法（lc²），使试除失败或得到错误因子。
+
+```
+subset_has_lc ← (S_bits & 1) ≠ 0
+lc_mult ← subset_has_lc ? 1 : lc(f*)
+```
 
 算法：
 
@@ -567,11 +578,13 @@ __factor_recombine                  M3 入口 (Zassenhaus)
 1. T ← {0,...,r-1} (位掩码), f* ← f
 2. for s = 1 to ⌊|T|/2⌋:
 3.   for S ⊆ T, |S| = s:    // Gosper's hack 枚举
-       // 剪枝 1: lc 整除检查
+       // 剪枝 1: lc 整除检查 (lc_mult · ∏ lc(lifted[i]) | lc(f*)²?)
        // 剪枝 2: 常数项整除检查
-       // 完整验证: 计算子集积，试除 lc(f*)·f*
-       if r = 0:
-           pp(g) → result, f* ← pp(q), T ← T\S
+       // 完整验证:
+       //   g ← lc_mult · ∏_{i∈S} lifted[i] (mod m, 对称约化)
+       //   pp(g) | f* ?  (Z[x] 上精确除法)
+       if 整除成功:
+           pp(g) → result, f* ← pp(商), T ← T\S
            重新从 s=1 开始
 4. 剩余 f* 不可约, 加入 result
 5. 排序
@@ -579,11 +592,15 @@ __factor_recombine                  M3 入口 (Zassenhaus)
 
 子集枚举使用 Gosper's hack（限制 r ≤ 64）。
 
+> **注：** 早期实现使用 `g | lc(f*)·f*` 做试除，再对商取 `pp`。
+> 修正后改为先取 `pp(g)`，再直接做 `pp(g) | f*`，避免了双重 lc 乘法问题，
+> 逻辑更清晰——因子的本原部分整除原多项式本身。
+
 ### 6.5 剪枝策略
 
-当前实现使用两种剪枝：
-1. **首项系数检查**：lc_prod 是否整除 lc(f*)²
-2. **常数项检查**：c_prod 是否整除 lc(f*)·f*(0)
+当前实现使用两种剪枝（均使用 `lc_mult` 而非 `lc(f*)`）：
+1. **首项系数检查**：`lc_mult · ∏ lc(lifted[i])` 是否整除 `lc(f*)²`
+2. **常数项检查**：`lc_mult · ∏ const_term(lifted[i])` 是否整除 `lc(f*)·f*(0)`
 
 > **注：** L1 范数剪枝已移除——L1 范数次可乘性导致有效分解被错误剪掉。
 
@@ -751,6 +768,16 @@ CLPoly 固定提升到 `m > target`，可在精度过半后尝试提取线性因
 | **内存管理** | 临时对象 | 原地操作 | 中等 | 中等 |
 | **提前终止** | 无 | 有 | 有 | 有 |
 | **r>2 优化** | 统一二叉树 | 按 r 选算法 | 统一递归 | 统一 |
+
+### 8.4 已修复的 Bug（test/comprehensive-coverage 分支）
+
+| Bug | 位置 | 修复 |
+|---|---|---|
+| **Zassenhaus 双重 lc 乘法** | `__factor_recombine` | 子集含 index 0 时跳过额外 lc 乘法；试除改为 `pp(g) \| f*`（见 §6.4） |
+| **Zp set_zero 崩溃** | `number.hh` | `set_zero<Zp>` 特化：默认构造的 Zp（_p=0）调用 `set_zero` 触发 assert |
+| **Zp operator= 除零 UB** | `number.hh` | `_p==0` 时 `i%_p` 未定义行为；添加 `_p==0` 守卫 |
+| **poly_convert 自转换** | `polynomial_convert.hh` | `&p_in == &p_out` 时 `clear()` 先于迭代；改为先复制到临时对象 |
+| **upolynomial assign Zp** | `upolynomial.hh` | `Tc O=0` 对 Zp 不可编译；改为 `Tc O=a-a` |
 
 ---
 

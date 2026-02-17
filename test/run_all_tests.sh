@@ -25,6 +25,10 @@ TESTS=(
     test/test_hensel
     test/test_recombine
     test/test_factorize
+    test/test_multivar_helpers
+    test/test_wang_lc
+    test/test_multivar_hensel
+    test/test_factorize_multivar
 )
 
 TOTAL_PASS=0

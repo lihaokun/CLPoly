@@ -65,64 +65,611 @@ namespace clpoly{
         pair_vec_div(q.data(), r.data(), f.data(), g.data(), f.comp());
     }
 
-    // §4.1.5 Zp 上简单 GCD 包装
-    inline upolynomial_<Zp> __upoly_gcd_Zp(
-        const upolynomial_<Zp>& a,
-        const upolynomial_<Zp>& b)
+    // §4.1.5-6 polynomial_GCD (普通+扩展) 已迁移到 polynomial_gcd.hh
+
+    // Taylor 系数提取: f 在 xk = alpha_k 处的第 j 阶 Taylor 系数
+    // 将 f 写成 Σ cⱼ·(xk - alpha_k)^j，返回 cⱼ
+    template<class var_order>
+    polynomial_<ZZ, lex_<var_order>> __taylor_coeff(
+        const polynomial_<ZZ, lex_<var_order>>& f,
+        const variable& xk, const ZZ& alpha_k, int j)
     {
-        if (a.empty()) { auto r = b; if (!r.empty()) __upoly_make_monic(r); return r; }
-        if (b.empty()) { auto r = a; if (!r.empty()) __upoly_make_monic(r); return r; }
-        upolynomial_<Zp> g;
-        Zp lc_gcd = __make_zp(1, a.front().second.prime());
-        int64_t deg = std::min(get_deg(a), get_deg(b));
-        __polynomial_GCD(g, a, b, lc_gcd, deg);
-        __upoly_make_monic(g);
-        return g;
-    }
-
-    // §4.1.6 扩展 GCD: s*a + t*b = 1 in Zp[x]
-    inline void __upoly_gcd_extended(
-        upolynomial_<Zp>& s,
-        upolynomial_<Zp>& t,
-        const upolynomial_<Zp>& a,
-        const upolynomial_<Zp>& b)
-    {
-        assert(!a.empty() && !b.empty());
-        uint32_t p = a.front().second.prime();
-        Zp one = __make_zp(1, p);
-
-        upolynomial_<Zp> r0 = a, r1 = b;
-        upolynomial_<Zp> s0({std::make_pair(umonomial(0), one)});
-        upolynomial_<Zp> s1;
-        upolynomial_<Zp> t0;
-        upolynomial_<Zp> t1({std::make_pair(umonomial(0), one)});
-
-        upolynomial_<Zp> q, r2, tmp;
-        while (!r1.empty())
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        Poly g = f;
+        // 构造 (xk - alpha_k) 作为 polynomial
+        Poly divisor(f.comp_ptr());
         {
-            __upoly_divmod(q, r2, r0, r1);
-            tmp = q * s1;
-            auto s2 = s0 - tmp;
-            s2.normalization();
-            tmp = q * t1;
-            auto t2 = t0 - tmp;
-            t2.normalization();
-
-            r0 = std::move(r1); r1 = std::move(r2);
-            s0 = std::move(s1); s1 = std::move(s2);
-            t0 = std::move(t1); t1 = std::move(t2);
+            basic_monomial<lex_<var_order>> m_xk(f.comp_ptr());
+            m_xk.push_back({xk, 1});
+            divisor.push_back({m_xk, ZZ(1)});
+            if (alpha_k != 0)
+            {
+                basic_monomial<lex_<var_order>> m_const(f.comp_ptr());
+                divisor.push_back({m_const, -alpha_k});
+            }
+            divisor.normalization();
         }
-        assert(!r0.empty());
-        Zp c_inv = r0.front().second.inv();
-        for (auto& term : s0)
-            term.second *= c_inv;
-        s0.normalization();
-        for (auto& term : t0)
-            term.second *= c_inv;
-        t0.normalization();
-        s = std::move(s0);
-        t = std::move(t0);
+        // 反复精确除以 (xk - alpha_k) j 次
+        for (int t = 0; t < j; ++t)
+        {
+            Poly q(f.comp_ptr()), r(f.comp_ptr());
+            pair_vec_div(q.data(), r.data(), g.data(), divisor.data(), f.comp());
+            g = std::move(q);
+        }
+        // 代入 xk = alpha_k
+        return assign(g, xk, alpha_k);
     }
+
+    // ================================================================
+    // §M5 多变量因式分解辅助
+    // ================================================================
+
+    // §4.2 选取值点: 返回 α = {x₂→α₂,...,xₙ→αₙ}
+    // 满足 (a) f(x₁,α) 无平方 (b) lc(f,x₁)(α)≠0 (d) lc 因子求值两两互素
+    template<class var_order>
+    std::map<variable, ZZ>
+    __select_eval_point(
+        const polynomial_<ZZ, lex_<var_order>>& f,
+        const variable& main_var)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+
+        // 收集除主变量外的变量
+        auto all_vars = get_variables(f);
+        std::vector<variable> vars;
+        for (auto& [v, d] : all_vars)
+            if (v != main_var)
+                vars.push_back(v);
+        assert(!vars.empty());
+        size_t n = vars.size();
+
+        // L = lc(f, x₁)
+        Poly L = leadcoeff(f, main_var);
+
+        // 预处理: 若 L 非常数，分解 L 用于条件 (d)
+        std::vector<Poly> lc_irr_factors;
+        if (!is_number(L))
+        {
+            auto lc_fac = factorize(L);
+            for (auto& [lj, ej] : lc_fac.factors)
+                lc_irr_factors.push_back(lj);
+        }
+
+        // 枚举候选点
+        for (int bound = 0; ; ++bound)
+        {
+            // 生成所有 n 维向量, 各分量在 [-bound, bound], max(|αᵢ|) == bound
+            // 总数 (2*bound+1)^n - (2*(bound-1)+1)^n (排除内层)
+            int range = 2 * bound + 1;
+            int total = 1;
+            for (size_t i = 0; i < n; ++i) total *= range;
+
+            for (int idx = 0; idx < total; ++idx)
+            {
+                // 解码 idx 为各分量值
+                std::map<variable, ZZ> alpha;
+                int tmp = idx;
+                int max_abs = 0;
+                for (size_t i = 0; i < n; ++i)
+                {
+                    int val = (tmp % range) - bound;
+                    tmp /= range;
+                    alpha[vars[i]] = ZZ(val);
+                    if (std::abs(val) > max_abs) max_abs = std::abs(val);
+                }
+                // 跳过已在更小 bound 检查过的点
+                if (max_abs < bound) continue;
+
+                // 条件 (b): lc 非零
+                ZZ delta;
+                if (is_number(L))
+                    delta = L.front().second;
+                else
+                {
+                    auto L_eval = assign(L, alpha);
+                    if (L_eval.empty()) continue;
+                    if (!is_number(L_eval)) continue;
+                    delta = L_eval.front().second;
+                }
+                if (delta == 0) continue;
+
+                // 条件 (a): f(x₁, α) 无平方
+                auto f0 = assign(f, alpha);
+                if (!is_squarefree(f0)) continue;
+
+                // 条件 (d): lc 因子求值两两互素
+                if (!lc_irr_factors.empty())
+                {
+                    std::vector<ZZ> vals;
+                    bool skip = false;
+                    for (auto& lj : lc_irr_factors)
+                    {
+                        auto lj_eval = assign(lj, alpha);
+                        if (lj_eval.empty()) { skip = true; break; }
+                        ZZ v = is_number(lj_eval) ? lj_eval.front().second : ZZ(0);
+                        if (v == 0) { skip = true; break; }
+                        vals.push_back(abs(v));
+                    }
+                    if (skip) continue;
+                    // 条件 (d'): |lⱼ(α)| ≥ 2, 避免退化赋值
+                    for (auto& v : vals)
+                        if (v <= ZZ(1)) { skip = true; break; }
+                    if (skip) continue;
+                    // 两两互素
+                    bool pairwise_coprime = true;
+                    for (size_t i = 0; i < vals.size() && pairwise_coprime; ++i)
+                        for (size_t j = i + 1; j < vals.size() && pairwise_coprime; ++j)
+                            if (gcd(vals[i], vals[j]) != ZZ(1))
+                                pairwise_coprime = false;
+                    if (!pairwise_coprime) continue;
+                }
+
+                return alpha;
+            }
+        }
+        // 不可达
+        return {};
+    }
+
+    // §5.4 首项系数校正结果
+    template<class var_order>
+    struct __wang_lc_result {
+        bool success;
+        polynomial_<ZZ, lex_<var_order>> f_scaled;
+        std::vector<polynomial_<ZZ, lex_<var_order>>> lc_assignments;  // σᵢ
+        std::vector<polynomial_<ZZ, lex_<var_order>>> lc_targets;      // τᵢ
+        std::vector<upolynomial_<ZZ>> scaled_factors;                  // vᵢ
+    };
+
+    // §5.2 首项系数校正
+    template<class var_order>
+    __wang_lc_result<var_order> __wang_leading_coeff(
+        const polynomial_<ZZ, lex_<var_order>>& f,
+        const std::vector<upolynomial_<ZZ>>& univar_factors,
+        const std::map<variable, ZZ>& eval_point,
+        const variable& main_var)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        auto comp_ptr = f.comp_ptr();
+
+        auto make_const = [&](const ZZ& val) -> Poly {
+            Poly p(comp_ptr);
+            if (val != 0)
+                p.push_back({basic_monomial<lex_<var_order>>(comp_ptr), val});
+            return p;
+        };
+
+        size_t r = univar_factors.size();
+        __wang_lc_result<var_order> result;
+        result.success = false;
+
+        // Step 1: L = lc(f, x₁), δ = L(α)
+        Poly L = leadcoeff(f, main_var);
+        ZZ delta;
+        if (is_number(L))
+            delta = L.front().second;
+        else
+        {
+            auto L_eval = assign(L, eval_point);
+            if (L_eval.empty() || !is_number(L_eval)) return result;
+            delta = L_eval.front().second;
+        }
+        if (delta == 0) return result;
+
+        // σᵢ 初始化
+        std::vector<Poly> sigma(r, make_const(ZZ(1)));
+
+        if (!is_number(L))
+        {
+            // Step 2: 递归分解 L
+            auto lc_fac = factorize(L);
+            ZZ gamma = lc_fac.content;
+
+            // Step 3: 分配 lc 因子
+            // 收集 (lⱼ, eⱼ) 并按 eⱼ 降序排序
+            auto& lc_factors = lc_fac.factors;
+            std::sort(lc_factors.begin(), lc_factors.end(),
+                [](const auto& a, const auto& b) { return a.second > b.second; });
+
+            // wᵢ = lc(uᵢ) — 数值跟踪
+            std::vector<ZZ> w(r);
+            for (size_t i = 0; i < r; ++i)
+                w[i] = univar_factors[i].front().second;
+
+            for (auto& [lj, ej] : lc_factors)
+            {
+                // zⱼ = |lⱼ(α)|^eⱼ
+                auto lj_eval = assign(lj, eval_point);
+                ZZ lj_val = is_number(lj_eval) ? lj_eval.front().second : ZZ(0);
+                if (lj_val == 0) return result;  // 不应发生（条件 d 保证）
+                ZZ zj(1);
+                for (uint64_t e = 0; e < ej; ++e)
+                    zj *= lj_val;
+
+                // 找唯一的 uᵢ 使得 zⱼ | wᵢ
+                std::vector<size_t> candidates;
+                for (size_t i = 0; i < r; ++i)
+                    if (w[i] % zj == ZZ(0))
+                        candidates.push_back(i);
+
+                if (candidates.size() != 1) return result;  // FAIL
+
+                size_t idx = candidates[0];
+                // σᵢ *= lⱼ^eⱼ
+                Poly lj_power = lj;
+                for (uint64_t e = 1; e < ej; ++e)
+                {
+                    lj_power = lj_power * lj;
+                    lj_power.normalization();
+                }
+                sigma[idx] = sigma[idx] * lj_power;
+                sigma[idx].normalization();
+                w[idx] /= zj;
+            }
+
+            // 吸收整数内容 γ 到 σ₀
+            sigma[0] = sigma[0] * make_const(gamma);
+            sigma[0].normalization();
+        }
+        else
+        {
+            // L 是常数 → σ₁ = L, 其余 = 1
+            sigma[0] = L;
+        }
+
+        // Step 4: 缩放
+        // f_scaled = δ^(r-1) * f
+        ZZ delta_pow(1);
+        for (size_t i = 1; i < r; ++i)
+            delta_pow *= delta;
+        result.f_scaled = f * make_const(delta_pow);
+        result.f_scaled.normalization();
+
+        // vᵢ = δ * (uᵢ / lc(uᵢ))
+        result.scaled_factors.resize(r);
+        for (size_t i = 0; i < r; ++i)
+        {
+            ZZ lc_ui = univar_factors[i].front().second;
+            // 首一化: uᵢ / lc(uᵢ) 在 Z[x] 上不精确 → 用 δ/lc(uᵢ) * uᵢ
+            // vᵢ = δ * ūᵢ = (δ / lc(uᵢ)) * uᵢ
+            // 注: δ / lc(uᵢ) 不一定整除，所以分两步:
+            // vᵢ 的每项系数 = δ * coeff / lc(uᵢ)
+            upolynomial_<ZZ> vi;
+            vi.reserve(univar_factors[i].size());
+            for (auto& term : univar_factors[i])
+            {
+                ZZ new_coeff = delta * term.second / lc_ui;
+                if (new_coeff != 0)
+                    vi.push_back({term.first, new_coeff});
+            }
+            vi.normalization();
+            result.scaled_factors[i] = std::move(vi);
+        }
+
+        // Step 5: τᵢ = (δ / σᵢ(α)) * σᵢ
+        result.lc_assignments = sigma;
+        result.lc_targets.resize(r);
+        for (size_t i = 0; i < r; ++i)
+        {
+            auto sigma_eval = assign(sigma[i], eval_point);
+            ZZ sigma_val = is_number(sigma_eval) ? sigma_eval.front().second : ZZ(0);
+            if (sigma_val == 0) return result;  // 不应发生
+            ZZ scale = delta / sigma_val;
+            result.lc_targets[i] = sigma[i] * make_const(scale);
+            result.lc_targets[i].normalization();
+        }
+
+        result.success = true;
+        return result;
+    }
+
+    // ================================================================
+    // §6 多变量 Hensel 提升
+    // ================================================================
+
+    // §6.5 辅助: 多项式每个系数除以整数 d (精确整除)
+    template<class var_order>
+    polynomial_<ZZ, lex_<var_order>> __poly_exact_div_zz(
+        const polynomial_<ZZ, lex_<var_order>>& f,
+        const ZZ& d)
+    {
+        if (d == ZZ(1)) return f;
+        polynomial_<ZZ, lex_<var_order>> result(f.comp_ptr());
+        result.reserve(f.size());
+        for (auto& term : f)
+        {
+            ZZ q = term.second / d;
+            if (q != 0)
+                result.push_back({term.first, q});
+        }
+        return result;
+    }
+
+    // §6.3 LC 校正: 将 G[i] 关于 main_var 的首项系数替换为 lc_target
+    template<class var_order>
+    void __hensel_lc_correct(
+        polynomial_<ZZ, lex_<var_order>>& Gi,
+        const polynomial_<ZZ, lex_<var_order>>& lc_target,
+        const variable& main_var)
+    {
+        if (Gi.empty()) return;
+        auto lc_current = leadcoeff(Gi, main_var);
+        auto diff = lc_target - lc_current;
+        diff.normalization();
+        if (diff.empty()) return;
+
+        int64_t d = degree(Gi, main_var);
+        // 构造 main_var^d
+        polynomial_<ZZ, lex_<var_order>> x1d(Gi.comp_ptr());
+        basic_monomial<lex_<var_order>> m_x1d(Gi.comp_ptr());
+        m_x1d.push_back({main_var, (uint64_t)d});
+        x1d.push_back({m_x1d, ZZ(1)});
+
+        auto correction = diff * x1d;
+        correction.normalization();
+        Gi = Gi + correction;
+        Gi.normalization();
+    }
+
+    // §6.3 单变量 Hensel 提升步
+    // Pre:  ∏ Gᵢ|_{xk=αk} = f_curr|_{xk=αk} (LC 校正后)
+    //       Σ sᵢ·V̂ᵢ = bezout_denom, V̂ᵢ = ∏_{j≠i} vⱼ
+    // Post: Gᵢ 扩展到包含 xk, ∏ Gᵢ = f_curr
+    // prev_eval: 前序已提升变量的求值点 {x₂→α₂,...,x_{k-1}→α_{k-1}}
+    template<class var_order>
+    void __hensel_lift_one_var(
+        const polynomial_<ZZ, lex_<var_order>>& f_curr,
+        std::vector<polynomial_<ZZ, lex_<var_order>>>& G,
+        const std::vector<upolynomial_<ZZ>>& bezout_s,
+        const ZZ& bezout_denom,
+        const std::vector<upolynomial_<ZZ>>& v_factors,
+        const ZZ& delta,
+        const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_tau,
+        const variable& main_var,
+        const variable& xk, const ZZ& alpha_k, int dk,
+        const std::map<variable, ZZ>& prev_eval)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        auto comp_ptr = f_curr.comp_ptr();
+        size_t r = G.size();
+
+        // 构造 (xk - αk)
+        Poly xk_minus_alpha(comp_ptr);
+        {
+            basic_monomial<lex_<var_order>> m_xk(comp_ptr);
+            m_xk.push_back({xk, 1});
+            xk_minus_alpha.push_back({m_xk, ZZ(1)});
+            if (alpha_k != 0)
+            {
+                basic_monomial<lex_<var_order>> m0(comp_ptr);
+                xk_minus_alpha.push_back({m0, -alpha_k});
+            }
+            xk_minus_alpha.normalization();
+        }
+
+        // Step E (pre-step): LC 校正
+        for (size_t i = 0; i < r; ++i)
+            __hensel_lc_correct(G[i], lc_tau[i], main_var);
+
+        // (xk - αk)^j, 从 j=1 开始
+        Poly xk_pow = xk_minus_alpha;  // (xk - αk)^1
+
+        for (int j = 1; j <= dk; ++j)
+        {
+            // Step A: e = f_curr - ∏Gᵢ
+            Poly prod = G[0];
+            for (size_t i = 1; i < r; ++i)
+            {
+                prod = prod * G[i];
+                prod.normalization();
+            }
+            Poly e = f_curr - prod;
+            e.normalization();
+
+            if (e.empty()) break;  // 提前终止
+
+            // Step B: eⱼ = __taylor_coeff(e, xk, αk, j)
+            auto ej = __taylor_coeff(e, xk, alpha_k, j);
+            if (ej.empty())
+            {
+                if (j < dk)
+                {
+                    xk_pow = xk_pow * xk_minus_alpha;
+                    xk_pow.normalization();
+                }
+                continue;
+            }
+
+            // Step C: MDP — 先将 eⱼ 求值到单变量，再用 Bézout 求解
+            // eⱼ ∈ Z[x₁,...,x_{k-1}], 求值前序变量 → ē_j ∈ Z[x₁]
+            Poly ej_eval = ej;
+            if (!prev_eval.empty())
+                ej_eval = assign(ej, prev_eval);
+
+            // 转为 upolynomial 进行单变量 MDP
+            upolynomial_<ZZ> ej_upoly;
+            poly_convert(ej_eval, ej_upoly);
+
+            for (size_t i = 0; i < r; ++i)
+            {
+                auto si_ej = bezout_s[i] * ej_upoly;
+                si_ej.normalization();
+
+                int64_t deg_si_ej = get_deg(si_ej);
+                int64_t deg_vi = get_deg(v_factors[i]);
+                int64_t ki = std::max(deg_si_ej - deg_vi + 1, (int64_t)0);
+
+                // prem 在 upolynomial 上: lc(vi)^ki · si_ej = Q·vi + prem
+                // 因为 upolynomial 没有 prem, 用 pair_vec_div 乘以 lc^ki 后除
+                ZZ lc_vi = v_factors[i].front().second;  // = δ
+                ZZ lc_pow(1);
+                for (int64_t e = 0; e < ki; ++e)
+                    lc_pow *= lc_vi;
+
+                // scaled = lc^ki · si_ej
+                upolynomial_<ZZ> scaled;
+                if (lc_pow != ZZ(1))
+                {
+                    upolynomial_<ZZ> lc_poly({{umonomial(0), lc_pow}});
+                    scaled = lc_poly * si_ej;
+                    scaled.normalization();
+                }
+                else
+                    scaled = si_ej;
+
+                // pair_vec_div: scaled = Q · vi + rem
+                upolynomial_<ZZ> q_upoly, rem_upoly;
+                pair_vec_div(q_upoly.data(), rem_upoly.data(),
+                             scaled.data(), v_factors[i].data(), v_factors[i].comp());
+
+                // δ̄ᵢ = rem / (δ^kᵢ · denom)
+                ZZ divisor = bezout_denom * lc_pow;
+                upolynomial_<ZZ> delta_i_upoly;
+                delta_i_upoly.reserve(rem_upoly.size());
+                for (auto& term : rem_upoly)
+                {
+                    ZZ coeff = term.second / divisor;
+                    if (coeff != 0)
+                        delta_i_upoly.push_back({term.first, coeff});
+                }
+
+                // 转为 multivariate polynomial
+                Poly delta_i(comp_ptr);
+                poly_convert(delta_i_upoly, delta_i, main_var);
+
+                // Step D: Gᵢ += δ̄ᵢ · (xk - αk)^j
+                auto update = delta_i * xk_pow;
+                update.normalization();
+                G[i] = G[i] + update;
+                G[i].normalization();
+            }
+
+            // Step E (post-step): LC 校正
+            for (size_t i = 0; i < r; ++i)
+                __hensel_lc_correct(G[i], lc_tau[i], main_var);
+
+            // 推进 (xk - αk)^j
+            if (j < dk)
+            {
+                xk_pow = xk_pow * xk_minus_alpha;
+                xk_pow.normalization();
+            }
+        }
+    }
+
+    // §6.2 + §6.7 多变量 Hensel 提升入口
+    // 构造 Bézout 链, 初始化 Gᵢ, 逐变量提升
+    template<class var_order>
+    std::vector<polynomial_<ZZ, lex_<var_order>>>
+    __multivar_hensel_lift(
+        const polynomial_<ZZ, lex_<var_order>>& f_scaled,
+        const std::vector<upolynomial_<ZZ>>& scaled_factors,
+        const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_targets,
+        const std::map<variable, ZZ>& eval_point,
+        const variable& main_var)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        auto comp_ptr = f_scaled.comp_ptr();
+        size_t r = scaled_factors.size();
+
+        // ————————————————————————————————————————
+        // §6.2 Bézout 链构造: Σ sᵢ·V̂ᵢ = denom
+        // ————————————————————————————————————————
+        std::vector<upolynomial_<ZZ>> bezout_s(r);
+        ZZ denom(1);
+        upolynomial_<ZZ> g_acc = scaled_factors[0];
+        bezout_s[0] = upolynomial_<ZZ>({{umonomial(0), ZZ(1)}});  // s[0] = 1
+
+        for (size_t i = 1; i < r; ++i)
+        {
+            upolynomial_<ZZ> alpha, beta;
+            auto c_poly = polynomial_GCD(g_acc, scaled_factors[i], alpha, beta);
+            // c_poly 应为常数 (pairwise coprime)
+            assert(c_poly.size() == 1 && c_poly.front().first.deg() == 0);
+            ZZ c_k = c_poly.front().second;
+
+            // s[0..i-1] *= beta (无模约减)
+            for (size_t j = 0; j < i; ++j)
+            {
+                bezout_s[j] = bezout_s[j] * beta;
+                bezout_s[j].normalization();
+            }
+            // s[i] = denom * alpha
+            auto denom_upoly = upolynomial_<ZZ>({{umonomial(0), denom}});
+            bezout_s[i] = denom_upoly * alpha;
+            bezout_s[i].normalization();
+
+            denom *= c_k;
+            g_acc = g_acc * scaled_factors[i];
+            g_acc.normalization();
+        }
+
+        // ————————————————————————————————————————
+        // 初始化 Gᵢ: 将 vᵢ 转为 polynomial (仅含 main_var)
+        // ————————————————————————————————————————
+        std::vector<Poly> G(r, Poly(comp_ptr));
+        for (size_t i = 0; i < r; ++i)
+            poly_convert(scaled_factors[i], G[i], main_var);
+
+        // δ = lc(vᵢ) (所有 vᵢ 的 lc 相同)
+        ZZ delta = scaled_factors[0].front().second;
+
+        // ————————————————————————————————————————
+        // 确定提升变量顺序: x₂, x₃, ..., xₙ
+        // ————————————————————————————————————————
+        auto all_vars = get_variables(f_scaled);
+        std::vector<variable> lift_vars;
+        for (auto& [v, d] : all_vars)
+            if (v != main_var)
+                lift_vars.push_back(v);
+
+        // ————————————————————————————————————————
+        // 逐变量提升
+        // ————————————————————————————————————————
+        for (size_t k_idx = 0; k_idx < lift_vars.size(); ++k_idx)
+        {
+            variable xk = lift_vars[k_idx];
+            ZZ alpha_k = eval_point.at(xk);
+
+            // f_curr = f_scaled 代入 xk+1, ..., xn → α
+            std::map<variable, ZZ> remaining_subs;
+            for (size_t j = k_idx + 1; j < lift_vars.size(); ++j)
+                remaining_subs[lift_vars[j]] = eval_point.at(lift_vars[j]);
+
+            Poly f_curr = f_scaled;
+            if (!remaining_subs.empty())
+                f_curr = assign(f_curr, remaining_subs);
+
+            int dk = degree(f_curr, xk);
+            if (dk == 0) continue;
+
+            // τᵢ 部分求值 (代入 xk+1, ..., xn)
+            std::vector<Poly> lc_tau_curr(r, Poly(comp_ptr));
+            for (size_t i = 0; i < r; ++i)
+            {
+                if (!remaining_subs.empty())
+                    lc_tau_curr[i] = assign(lc_targets[i], remaining_subs);
+                else
+                    lc_tau_curr[i] = lc_targets[i];
+            }
+
+            // prev_eval: 前序已提升变量的求值点 {x₂→α₂,...,x_{k-1}→α_{k-1}}
+            std::map<variable, ZZ> prev_eval;
+            for (size_t j = 0; j < k_idx; ++j)
+                prev_eval[lift_vars[j]] = eval_point.at(lift_vars[j]);
+
+            __hensel_lift_one_var(
+                f_curr, G, bezout_s, denom, scaled_factors,
+                delta, lc_tau_curr, main_var, xk, alpha_k, dk, prev_eval);
+        }
+
+        return G;
+    }
+
+    // §7 前向声明
+    template<class var_order>
+    factorization<polynomial_<ZZ, lex_<var_order>>>
+    __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f_input);
 
     // §4.1.7 模幂: base^exp mod modpoly in Zp[x]
     inline upolynomial_<Zp> __upoly_powmod(
@@ -208,7 +755,7 @@ namespace clpoly{
             return result;
         }
 
-        auto c = __upoly_gcd_Zp(f, f_deriv);
+        auto c = polynomial_GCD(f, f_deriv);
         // w = f / c
         upolynomial_<Zp> w;
         pair_vec_div(w.data(), f.data(), c.data(), f.comp());
@@ -217,7 +764,7 @@ namespace clpoly{
         uint64_t i = 1;
         while (!w.empty() && get_deg(w) > 0)
         {
-            auto y = __upoly_gcd_Zp(w, c);
+            auto y = polynomial_GCD(w, c);
             // z = w / y
             upolynomial_<Zp> z;
             pair_vec_div(z.data(), w.data(), y.data(), w.comp());
@@ -334,7 +881,7 @@ namespace clpoly{
             // h - x
             auto h_minus_x = __upoly_subtract_x(h, p);
 
-            auto gd = __upoly_gcd_Zp(h_minus_x, f_star);
+            auto gd = polynomial_GCD(h_minus_x, f_star);
 
             if (!gd.empty() && get_deg(gd) > 0)
             {
@@ -395,7 +942,7 @@ namespace clpoly{
                     g = g * g + r;
                     g = __upoly_mod(g, f);
                 }
-                g = __upoly_gcd_Zp(g, f);
+                g = polynomial_GCD(g, f);
             }
             else
             {
@@ -403,7 +950,7 @@ namespace clpoly{
                 ZZ exp = (pow(ZZ(p), d) - 1) / 2;
                 auto g_pow = __upoly_powmod(r, exp, f);
                 auto g_pow_minus_1 = __upoly_subtract_one(g_pow, p);
-                g = __upoly_gcd_Zp(g_pow_minus_1, f);
+                g = polynomial_GCD(g_pow_minus_1, f);
             }
 
             if (get_deg(g) > 0 && get_deg(g) < get_deg(f))
@@ -735,9 +1282,9 @@ namespace clpoly{
         for (int i = mid + 1; i < end; ++i)
             h_zp = h_zp * factors[i];
 
-        // 扩展 GCD: s·g + t·h = 1 mod p
+        // 扩展 GCD: s·g + t·h = gcd mod p
         upolynomial_<Zp> s_zp, t_zp;
-        __upoly_gcd_extended(s_zp, t_zp, g_zp, h_zp);
+        polynomial_GCD(g_zp, h_zp, s_zp, t_zp);
 
         // Zp → ZZ
         nodes[parent_idx].g = __upoly_Zp_to_ZZ(g_zp);
@@ -1240,7 +1787,7 @@ namespace clpoly{
             // 检查 f mod p 是否无平方: gcd(fp, fp') == 1
             auto fp_deriv = derivative(fp);
             if (fp_deriv.empty()) continue;
-            auto g = __upoly_gcd_Zp(fp, fp_deriv);
+            auto g = polynomial_GCD(fp, fp_deriv);
             if (get_deg(g) > 0) continue;
 
             ++tried;
@@ -1336,10 +1883,10 @@ namespace clpoly{
             return result;
         }
 
-        // 检查单变量
+        // 多变量 → dispatch 到 __factor_multivar
         auto vars = get_variables(F);
         if (vars.size() > 1)
-            throw std::invalid_argument("factorize: multivariate polynomials not yet supported");
+            return __factor_multivar(F);
 
         variable var = vars.front().first;
 
@@ -1560,6 +2107,161 @@ namespace clpoly{
                         term.second = -term.second;
                 }
                 result.factors.push_back({std::move(irr), mult});
+            }
+        }
+
+        std::sort(result.factors.begin(), result.factors.end(),
+            [](const auto& a, const auto& b) {
+                return degree(a.first) < degree(b.first);
+            });
+
+        return result;
+    }
+
+    // ================================================================
+    // §7. 多变量因式分解
+    // ================================================================
+
+    // §7.1 Wang 核心: 对无平方本原多变量多项式执行 Wang 算法
+    template<class var_order>
+    std::vector<std::pair<polynomial_<ZZ, lex_<var_order>>, uint64_t>>
+    __wang_core(const polynomial_<ZZ, lex_<var_order>>& g)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        auto comp_ptr = g.comp_ptr();
+
+        auto all_vars = get_variables(g);
+        variable x1 = all_vars.front().first;
+
+        const int MAX_RETRY = 10;
+
+        for (int retry = 0; retry < MAX_RETRY; ++retry)
+        {
+            auto eval = __select_eval_point(g, x1);
+
+            auto f0 = assign(g, eval);
+            upolynomial_<ZZ> f0_upoly;
+            poly_convert(f0, f0_upoly);
+            auto uni_fac = factorize(f0_upoly);
+
+            std::vector<upolynomial_<ZZ>> uni_factors;
+            for (auto& [fi, ei] : uni_fac.factors)
+                uni_factors.push_back(fi);
+
+            if (uni_factors.size() <= 1)
+                return {{g, 1}};
+
+            auto lc_result = __wang_leading_coeff(g, uni_factors, eval, x1);
+            if (!lc_result.success)
+                continue;
+
+            auto mv_factors = __multivar_hensel_lift(
+                lc_result.f_scaled, lc_result.scaled_factors,
+                lc_result.lc_targets, eval, x1);
+
+            // 试除验证 + 去缩放
+            std::vector<std::pair<Poly, uint64_t>> verified;
+            Poly g_remaining = g;
+
+            for (auto& Gi : mv_factors)
+            {
+                auto h = pp(Gi);
+                if (!h.empty() && h.front().second < 0)
+                {
+                    for (auto& term : h.data())
+                        term.second = -term.second;
+                }
+
+                Poly q(comp_ptr), rem(comp_ptr);
+                pair_vec_div(q.data(), rem.data(),
+                             g_remaining.data(), h.data(), g.comp());
+                if (rem.empty() && !q.empty())
+                {
+                    verified.push_back({std::move(h), 1});
+                    g_remaining = std::move(q);
+                }
+            }
+
+            if (!g_remaining.empty() && !is_number(g_remaining))
+            {
+                auto h = pp(g_remaining);
+                if (!h.empty() && h.front().second < 0)
+                {
+                    for (auto& term : h.data())
+                        term.second = -term.second;
+                }
+                if (!is_number(h))
+                    verified.push_back({std::move(h), 1});
+            }
+
+            if (!verified.empty())
+                return verified;
+        }
+
+        return {{g, 1}};
+    }
+
+    // §7.1 多变量因式分解入口
+    template<class var_order>
+    factorization<polynomial_<ZZ, lex_<var_order>>>
+    __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f_input)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        factorization<Poly> result;
+        result.content = ZZ(1);
+
+        auto sqf = squarefreefactorize(f_input);
+
+        for (auto& [gk, mk] : sqf)
+        {
+            if (is_number(gk))
+            {
+                ZZ c = gk.front().second;
+                for (uint64_t e = 0; e < mk; ++e)
+                    result.content *= c;
+                continue;
+            }
+
+            auto gk_vars = get_variables(gk);
+            if (gk_vars.size() <= 1)
+            {
+                auto sub = factorize(gk);
+                for (uint64_t e = 0; e < mk; ++e)
+                    result.content *= sub.content;
+                for (auto& [fi, ei] : sub.factors)
+                    result.factors.push_back({fi, ei * mk});
+            }
+            else
+            {
+                // 确保传给 __wang_core 的多项式 lc > 0
+                Poly gk_pos = gk;
+                bool negated = false;
+                if (!gk_pos.empty() && gk_pos.front().second < 0)
+                {
+                    for (auto& term : gk_pos.data())
+                        term.second = -term.second;
+                    negated = true;
+                }
+                auto wang_factors = __wang_core(gk_pos);
+                for (auto& [fi, ei] : wang_factors)
+                    result.factors.push_back({fi, ei * mk});
+                if (negated)
+                {
+                    // (-1)^mk 吸收到 content
+                    if (mk % 2 == 1)
+                        result.content = -result.content;
+                }
+            }
+        }
+
+        // 确保所有因子 lc > 0
+        for (auto& [fac, mult] : result.factors)
+        {
+            if (!fac.empty() && fac.front().second < 0)
+            {
+                for (auto& term : fac.data())
+                    term.second = -term.second;
+                result.content = -result.content;
             }
         }
 

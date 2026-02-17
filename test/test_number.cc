@@ -1103,6 +1103,12 @@ int main() {
         CLPOLY_ASSERT_EQ(c.front().second.number(), (uint64_t)3);   // lc = 3
         CLPOLY_ASSERT_EQ(c.back().second.number(), (uint64_t)5);    // 常数项 = 5
         CLPOLY_ASSERT_EQ(c.size(), (size_t)3);  // 只有 x^4, x^2, x^0 项非零
+        // assign 求值验证: a(2)*b(2) == c(2)
+        Zp pt(2, p);
+        Zp va = assign(a, pt);
+        Zp vb = assign(b, pt);
+        Zp vc = assign(c, pt);
+        CLPOLY_ASSERT_EQ(vc.number(), (va * vb).number());
     }
 
     return clpoly_test::test_summary();

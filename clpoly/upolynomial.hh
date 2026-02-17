@@ -74,7 +74,7 @@ namespace clpoly{
     template<class Tc>
     Tc assign(const upolynomial_<Tc> &P,const Tc & a)
     {
-        Tc O=0;
+        Tc O=a-a;
         for (auto &i:P)
         {
             O+=i.second*pow(a,i.first.deg());

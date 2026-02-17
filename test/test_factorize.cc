@@ -239,5 +239,60 @@ int main()
         CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
     }
 
+    // ========================================
+    // 回归: 高次非首一多项式 (双 lc 乘法 bug)
+    // 108x^9+138x^8-36x^7+165x^6+170x^5-120x^4-130x^3-50x
+    // = x * (12x^3+18x^2+5) * (9x^5-2x^4+10x^2-10)
+    // 之前 recombination 中 lc(f) 被重复乘导致因子无法分离
+    // ========================================
+    CLPOLY_TEST("factorize_nonmonic_high_deg");
+    {
+        f = 108*pow(x,9) + 138*pow(x,8) - 36*pow(x,7) + 165*pow(x,6)
+            + 170*pow(x,5) - 120*pow(x,4) - 130*pow(x,3) - 50*x;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        // 应分出 3 个不可约因子: x, (12x^3+18x^2+5), (9x^5-2x^4+10x^2-10)
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
+    }
+
+    // ========================================
+    // 回归: 另一个高次非首一用例
+    // 224x^7 - 238x^6 + ... = (16x^2-17x+7)(14x^5-7x^3+6x+4)
+    // ========================================
+    CLPOLY_TEST("factorize_nonmonic_deg7");
+    {
+        // (16x^2 - 17x + 7)(14x^5 - 7x^3 + 6x + 4)
+        polynomial_ZZ f1 = 16*pow(x,2) - 17*x + 7;
+        polynomial_ZZ f2 = 14*pow(x,5) - 7*pow(x,3) + 6*x + 4;
+        f = f1 * f2;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
+    }
+
+    // ========================================
+    // 非首一含因子 x (常数项为零)
+    // ========================================
+    CLPOLY_TEST("factorize_nonmonic_with_x_factor");
+    {
+        // x * (6x^2 + 5x + 1) = x * (2x+1)(3x+1)
+        f = 6*pow(x,3) + 5*pow(x,2) + x;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
+    }
+
+    // ========================================
+    // 非首一大系数
+    // ========================================
+    CLPOLY_TEST("factorize_nonmonic_large_lc");
+    {
+        // (100x + 3)(100x - 7) = 10000x^2 - 400x - 21
+        f = 10000*pow(x,2) - 400*x - 21;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
+    }
+
     return clpoly_test::test_summary();
 }

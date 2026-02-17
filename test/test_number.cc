@@ -930,5 +930,180 @@ int main() {
         CLPOLY_ASSERT_EQ(ss.str(), std::string("5"));
     }
 
+    // ================================================================
+    //  Zp: set_zero (回归: pair_vec_multiplies 默认构造 Zp 后调 set_zero 崩溃)
+    // ================================================================
+
+    CLPOLY_TEST("Zp_set_zero");
+    {
+        // 正常 Zp
+        Zp a(5, 7);
+        set_zero(a);
+        CLPOLY_ASSERT_EQ(a.number(), (uint64_t)0);
+        CLPOLY_ASSERT_EQ(a.prime(), (uint32_t)7);
+
+        // _p==0 的默认构造 Zp (回归: 之前 set_zero 触发 assert/_p==0 除零 UB)
+        Zp b;
+        CLPOLY_ASSERT_EQ(b.prime(), (uint32_t)0);
+        set_zero(b);
+        CLPOLY_ASSERT_EQ(b.number(), (uint64_t)0);
+    }
+
+    CLPOLY_TEST("Zp_zore_check");
+    {
+        zore_check<Zp> chk;
+        CLPOLY_ASSERT_TRUE(chk(Zp(0, 7)));
+        CLPOLY_ASSERT_TRUE(!chk(Zp(3, 7)));
+    }
+
+    // ================================================================
+    //  Zp: operator= _p==0 时赋零 (回归: 消除除零 UB)
+    // ================================================================
+
+    CLPOLY_TEST("Zp_assign_zero_uninitialized");
+    {
+        Zp a;  // _p==0
+        a = (int64_t)0;
+        CLPOLY_ASSERT_EQ(a.number(), (uint64_t)0);
+        CLPOLY_ASSERT_EQ(a.prime(), (uint32_t)0);
+
+        Zp b;
+        b = ZZ(0);
+        CLPOLY_ASSERT_EQ(b.number(), (uint64_t)0);
+    }
+
+    // ================================================================
+    //  Zp: addmul/submul 从 _p==0 累加器开始 (pair_vec_multiplies 场景)
+    // ================================================================
+
+    CLPOLY_TEST("Zp_addmul_from_default");
+    {
+        // 模拟 pair_vec_multiplies 的使用模式:
+        // T2 k; set_zero(k); addmul(k, a, b);
+        Zp k;
+        set_zero(k);
+        Zp a(3, 7), b(5, 7);
+        addmul(k, a, b);
+        CLPOLY_ASSERT_EQ(k.prime(), (uint32_t)7);
+        CLPOLY_ASSERT_EQ(k.number(), (uint64_t)(15 % 7));  // 3*5=15, 15%7=1
+
+        // 再累加一次
+        Zp c(4, 7), d(2, 7);
+        addmul(k, c, d);
+        CLPOLY_ASSERT_EQ(k.number(), (uint64_t)((1 + 8) % 7));  // 1+4*2=9, 9%7=2
+    }
+
+    CLPOLY_TEST("Zp_submul_from_default");
+    {
+        Zp k;
+        set_zero(k);
+        Zp a(3, 7), b(5, 7);
+        addmul(k, a, b);  // k=1
+        Zp c(2, 7), d(3, 7);
+        submul(k, c, d);
+        // 1 + 7 - (2*3)%7 = 1 + 7 - 6 = 2
+        CLPOLY_ASSERT_EQ(k.number(), (uint64_t)2);
+    }
+
+    // ================================================================
+    //  Zp: 复合运算、边界值
+    // ================================================================
+
+    CLPOLY_TEST("Zp_compound_assignment");
+    {
+        Zp a(3, 7);
+        a += Zp(5, 7);
+        CLPOLY_ASSERT_EQ(a.number(), (uint64_t)1);  // (3+5)%7=1
+
+        a *= Zp(4, 7);
+        CLPOLY_ASSERT_EQ(a.number(), (uint64_t)4);  // (1*4)%7=4
+
+        a /= Zp(2, 7);
+        // 4 * inv(2,7) = 4 * 4 = 16 % 7 = 2
+        CLPOLY_ASSERT_EQ(a.number(), (uint64_t)2);
+    }
+
+    CLPOLY_TEST("Zp_negation");
+    {
+        Zp a(3, 7);
+        Zp neg = -a;
+        CLPOLY_ASSERT_EQ(neg.number(), (uint64_t)4);  // 7-3=4
+        Zp sum = a + neg;
+        CLPOLY_ASSERT_EQ(sum.number(), (uint64_t)0);
+
+        // -0 == 0
+        Zp z(0, 7);
+        CLPOLY_ASSERT_EQ((-z).number(), (uint64_t)0);
+    }
+
+    CLPOLY_TEST("Zp_comparison_with_int");
+    {
+        Zp a(3, 7);
+        CLPOLY_ASSERT_TRUE(a == 3);
+        CLPOLY_ASSERT_TRUE(3 == a);
+        CLPOLY_ASSERT_TRUE(a != 4);
+        CLPOLY_ASSERT_TRUE(4 != a);
+        CLPOLY_ASSERT_TRUE(a == 10);  // 10 % 7 == 3
+        CLPOLY_ASSERT_TRUE(a >= 0);
+        CLPOLY_ASSERT_TRUE(a >= 3);
+        CLPOLY_ASSERT_TRUE(!(a >= 4));
+    }
+
+    CLPOLY_TEST("Zp_scalar_mul");
+    {
+        Zp a(3, 7);
+        Zp r1 = a * (int64_t)5;
+        CLPOLY_ASSERT_EQ(r1.number(), (uint64_t)1);  // (3*5)%7=1
+        Zp r2 = (int64_t)5 * a;
+        CLPOLY_ASSERT_EQ(r2.number(), (uint64_t)1);
+
+        // 负标量
+        Zp r3 = a * (int64_t)(-1);
+        CLPOLY_ASSERT_EQ(r3.number(), (uint64_t)4);  // 3*(-1) -> 3*(7-1)=3*6=18%7=4
+    }
+
+    CLPOLY_TEST("Zp_bool_conversion");
+    {
+        Zp a(0, 7);
+        CLPOLY_ASSERT_TRUE(!bool(a));
+        Zp b(3, 7);
+        CLPOLY_ASSERT_TRUE(bool(b));
+    }
+
+    CLPOLY_TEST("Zp_uint64_conversion");
+    {
+        Zp a(5, 7);
+        uint64_t v = (uint64_t)a;
+        CLPOLY_ASSERT_EQ(v, (uint64_t)5);
+    }
+
+    // ================================================================
+    //  Zp 多项式乘法 (回归: pair_vec_multiplies 堆路径)
+    // ================================================================
+
+    CLPOLY_TEST("Zp_upoly_mul_heap_path");
+    {
+        // 两个 ≥2 项的 Zp 多项式相乘，触发堆乘法路径
+        // 之前在此路径上 set_zero 导致崩溃
+        uint32_t p = 7;
+        upolynomial_<Zp> a({
+            {umonomial(2), Zp(3, p)},
+            {umonomial(1), Zp(2, p)},
+            {umonomial(0), Zp(1, p)}
+        });  // 3x^2 + 2x + 1
+        upolynomial_<Zp> b({
+            {umonomial(2), Zp(1, p)},
+            {umonomial(1), Zp(4, p)},
+            {umonomial(0), Zp(5, p)}
+        });  // x^2 + 4x + 5
+        auto c = a * b;
+        // (3x^2+2x+1)(x^2+4x+5) = 3x^4+14x^3+24x^2+14x+5
+        // mod 7: 3x^4 + 0x^3 + 3x^2 + 0x + 5
+        CLPOLY_ASSERT_EQ(get_deg(c), (int64_t)4);
+        CLPOLY_ASSERT_EQ(c.front().second.number(), (uint64_t)3);   // lc = 3
+        CLPOLY_ASSERT_EQ(c.back().second.number(), (uint64_t)5);    // 常数项 = 5
+        CLPOLY_ASSERT_EQ(c.size(), (size_t)3);  // 只有 x^4, x^2, x^0 项非零
+    }
+
     return clpoly_test::test_summary();
 }

@@ -71,7 +71,7 @@ __factor_multivar(polynomial_<ZZ,lex>)     M5 入口
   ├── factorize(f₀)                        单变量分解 (M4, 已实现)
   ├── __wang_leading_coeff                 首项系数分配
   └── __multivar_hensel_lift               多变量 Hensel 提升
-        ├── __upoly_gcd_extended_QQ        Q[x₁] 扩展 GCD (新增)
+        ├── __upoly_gcd_extended_ZZ        Z[x₁] pseudo-XGCD (新增)
         └── __upoly_gcd_extended           Zₚ 扩展 GCD (已实现)
 ```
 
@@ -371,27 +371,35 @@ Bézout 系数 `s₁,...,sᵣ ∈ Z[x₁]` 满足偏分式恒等式：
 g_acc ← ĝ₁
 s[1] ← 1
 for i = 2 to r:
-    (α, β) ← XGCD(g_acc, ĝᵢ)      // α·g_acc + β·ĝᵢ = 1 in Z[x₁]
+    (α, β, c_k) ← XGCD_ZZ(g_acc, ĝᵢ)  // α·g_acc + β·ĝᵢ = c_k ∈ Z
     for j = 1 to i-1:
-        s[j] ← s[j] · α mod ĝⱼ     // 已有系数乘以 α
+        s[j] ← s[j] · α mod ĝⱼ           // 已有系数乘以 α
     s[i] ← β mod ĝᵢ
+    denom ← denom · c_k                    // 公分母累积
     g_acc ← g_acc · ĝᵢ
+// 最终: Σ s[i]·Û_i = denom   (而非 = 1)
 ```
 
-> **XGCD 实现决策：在 Q[x₁] 上计算。**
+> **XGCD 实现决策：在 Z[x₁] 上计算，显式跟踪公分母。**
 >
-> Z[x₁] 上两两互素的多项式不一定有整系数 Bézout 系数
-> （例：`s(2x+1) + t(2x+3) = 1` 要求 `t = 1/2`）。
-> 因此在 Q[x₁]（即 `upolynomial_<QQ>`）上计算 XGCD。
+> Z[x₁] 上两两互素（monic）的多项式做 Euclidean 算法时，
+> 中间步骤会产生分数。但无需引入 `upolynomial_<QQ>`，
+> 而是使用 pseudo-XGCD（类似 subresultant PRS）保持整系数：
 >
-> **关键保证：** 虽然 sᵢ ∈ Q[x₁]，但最终的 Hensel 校正量
-> `δᵢ = (sᵢ · eⱼ) rem ĝᵢ` 必然有整系数。
-> 理由：偏分式分解 `eⱼ = Σ δᵢ · Ûᵢ`（`Ûᵢ = ∏_{j≠i} ĝⱼ`）
-> 的解是唯一的（deg(δᵢ, x₁) < deg(ĝᵢ)），而 eⱼ 和 Ûᵢ 都有整系数，
-> 所以唯一解 δᵢ 也必然是整系数的。
+> `__upoly_gcd_extended_ZZ(s, t, c, a, b)` 满足 `s·a + t·b = c`，
+> 其中 `s, t ∈ Z[x₁]`，`c ∈ Z \ {0}`。
 >
-> 实现方式：复用已有 `__upoly_gcd_extended` 的算法框架，
-> 将 `Zp` 替换为 `QQ`（`mpq_class`），无需结构性改动。
+> 对 r 个因子的 Bézout 构造累积公分母 `denom = ∏ cₖ`，
+> 使得 `Σ sᵢ·Ûᵢ = denom`（Ûᵢ = ∏_{j≠i} ĝⱼ）。
+>
+> **MDP 中的使用：** `δᵢ = (sᵢ · eⱼ) rem ĝᵢ / denom`。
+> 由于 ĝᵢ 首一，`rem ĝᵢ` 在 Z[x₁,...] 上精确；
+> 又由偏分式分解唯一性，`δᵢ` 必为整系数，所以除以 `denom` 也是精确的。
+>
+> **优势：** 全程使用 `mpz_class`，避免 `mpq_class` 每次运算的 GCD 规约开销。
+> 实现方式：复用已有 `__upoly_gcd_extended` 的 Euclidean 框架，
+> 改为在每步做 pseudo-division（乘以 lc 后除）以保持整系数，
+> 或直接在 Q[x₁] 上做 XGCD 后统一通分清分母。
 
 这些 sᵢ 和 ĝᵢ 在所有变量的提升过程中保持不变——它们只依赖求值点处的单变量因子。
 
@@ -430,7 +438,7 @@ __hensel_lift_one_var(f_curr, G₁,...,Gᵣ, ĝ₁,...,ĝᵣ, s₁,...,sᵣ, σ�
         //   "rem ĝᵢ" 指的是 以 x₁ 为主变量 做多项式取余，
         //   Z[x₂,...,xₖ₋₁] 部分作为系数环不参与除法。
         for i = 1 to r:
-            δᵢ ← (sᵢ · eⱼ) rem ĝᵢ         // in Z[x₁,...,xₖ₋₁], mod ĝᵢ(x₁)
+            δᵢ ← (sᵢ · eⱼ) rem ĝᵢ / denom  // ZZ 精确除; rem 在 Z[x₁,...,xₖ₋₁] 上, ĝᵢ 首一
 
         // 步骤 D: 更新因子
         for i = 1 to r:
@@ -488,17 +496,20 @@ __taylor_coeff(f, xₖ, αₖ, j):
 
 ### 6.5 步骤 C 的多变量模运算详解
 
-步骤 C 中 `(sᵢ · eⱼ) rem ĝᵢ` 的含义需要精确说明：
+步骤 C 中 `δᵢ = (sᵢ · eⱼ) rem ĝᵢ / denom` 的含义需要精确说明：
 
-- `sᵢ ∈ Z[x₁]`（单变量，由 §6.2 Bézout 计算得到）
+- `sᵢ ∈ Z[x₁]`（单变量，由 §6.2 Bézout 计算得到，满足 `Σ sᵢ·Ûᵢ = denom`）
 - `eⱼ ∈ Z[x₁,...,xₖ₋₁]`（多变量）
-- `ĝᵢ ∈ Z[x₁]`（单变量）
+- `ĝᵢ ∈ Z[x₁]`（单变量，首一）
+- `denom ∈ Z`（公分母）
 
 将 `eⱼ` 视为 `(Z[x₂,...,xₖ₋₁])[x₁]` 中的多项式（x₁ 为主变量，
 其他变量的多项式作为系数），然后与 `sᵢ` 相乘后对 `ĝᵢ(x₁)` 取余。
+因为 ĝᵢ 首一，rem 运算在 Z[x₁,...,xₖ₋₁] 上精确（无需分数）。
+最后除以 `denom` 也是精确的（由偏分式唯一性保证 δᵢ 为整系数）。
 
 这等价于"逐系数"操作：对 eⱼ 的每个关于 x₂,...,xₖ₋₁ 的单项式，
-分别与 sᵢ 相乘后 mod ĝᵢ。
+分别与 sᵢ 相乘后 mod ĝᵢ，再整体除以 denom。
 
 > **实现注意：**
 > - 这里需要的是 Z[x₁] 上的精确多项式除法（系数可能很大），而非 Zp[x₁] 上的。
@@ -520,8 +531,8 @@ __taylor_coeff(f, xₖ, αₖ, j):
 // 单变量提升步（内部函数）
 // 前置: Gᵢ ∈ Z[x₁,...,xₖ₋₁], f_curr ∈ Z[x₁,...,xₖ]
 //       ∏ Gᵢ = f_curr |_{xₖ=αₖ}
-//       ĝᵢ ∈ Z[x₁] 是求值点处的单变量因子（不随提升变化）
-//       sᵢ ∈ Q[x₁] 是 Bézout 系数（不随提升变化）
+//       ĝᵢ ∈ Z[x₁] 是求值点处的单变量因子（首一，不随提升变化）
+//       sᵢ ∈ Z[x₁] 是 Bézout 系数，满足 Σ sᵢ·Ûᵢ = bezout_denom
 //       σᵢ ∈ Z[x₂,...,xₙ] 是 LC 分配（不随提升变化）
 // 后置: Gᵢ 扩展为 Z[x₁,...,xₖ]，∏ Gᵢ = f_curr
 // 修改: Gᵢ 原地更新
@@ -529,7 +540,8 @@ template<class var_order>
 void __hensel_lift_one_var(
     const polynomial_<ZZ, lex_<var_order>>& f_curr,
     std::vector<polynomial_<ZZ, lex_<var_order>>>& G,        // 因子（原地更新）
-    const std::vector<upolynomial_<QQ>>& bezout_s,           // Bézout sᵢ ∈ Q[x₁]
+    const std::vector<upolynomial_<ZZ>>& bezout_s,           // Bézout sᵢ ∈ Z[x₁]
+    const ZZ& bezout_denom,                                   // 公分母 denom
     const std::vector<upolynomial_<ZZ>>& g_hat,              // ĝᵢ ∈ Z[x₁]（首一）
     const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_sigma,  // σᵢ
     const variable& xk, const ZZ& alpha_k, int dk);
@@ -556,7 +568,7 @@ __multivar_hensel_lift(
 | 函数 | 用途 | 实现依赖 |
 |---|---|---|
 | `__taylor_coeff(f, xₖ, αₖ, j)` | 提取 Taylor 系数 | `pair_vec_div` + `assign` |
-| `__upoly_gcd_extended_QQ(s, t, a, b)` | Q[x₁] 上扩展 GCD | 复用 Zp 版本框架，将 Zp→QQ |
+| `__upoly_gcd_extended_ZZ(s, t, c, a, b)` | Z[x₁] pseudo-XGCD: s·a+t·b=c | 复用 Zp 版本框架，pseudo-division 保持整系数 |
 | `__poly_mod_univar(f, g, x₁)` | 多变量 f 对单变量 g 关于 x₁ 取模 | `pair_vec_div`（lex 首变量） |
 
 ---
@@ -718,7 +730,7 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 
 | 阶段 | 内容 | 新增函数 | 依赖 |
 |---|---|---|---|
-| **Phase 5** | M5: 多变量 Wang | `pp`, `__taylor_coeff`, `__upoly_gcd_extended_QQ`, `__poly_mod_univar`, `__select_eval_point`, `__wang_leading_coeff` (含 `__wang_lc_result`), `__multivar_hensel_lift` (含 `__hensel_lift_one_var`), `__factor_multivar`, `factorize` 多变量 dispatch | M4 (已实现) |
+| **Phase 5** | M5: 多变量 Wang | `pp`, `__taylor_coeff`, `__upoly_gcd_extended_ZZ`, `__poly_mod_univar`, `__select_eval_point`, `__wang_leading_coeff` (含 `__wang_lc_result`), `__multivar_hensel_lift` (含 `__hensel_lift_one_var`), `__factor_multivar`, `factorize` 多变量 dispatch | M4 (已实现) |
 | **Phase 6** | 增强：van Hoeij 重组 | `__factor_recombine_van_hoeij` + LLL 实现 | M3 替换 |
 | **Phase 7** | 增强：Zippel 后备 | 稀疏插值模块 + Zippel 算法 | Phase 5 后备 |
 | **Phase 8** | 终极：MTSHL | 二变量 Hensel 提升 + 稀疏插值驱动的多变量分解 | 替换 Phase 5 |
@@ -729,7 +741,7 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 |---|---|
 | `pp(f)` | 验证 `cont(f) · pp(f) == f` |
 | `__taylor_coeff(f, xₖ, αₖ, j)` | 验证 `Σ coeff_j · (xₖ-αₖ)^j == f` |
-| `__upoly_gcd_extended_QQ` | 验证 `s·a + t·b = gcd`，sᵢ ∈ Q[x₁] 且 δᵢ = sᵢ·∏ĝⱼ 为整系数 |
+| `__upoly_gcd_extended_ZZ` | 验证 `s·a + t·b = c`（c ∈ Z），s, t ∈ Z[x₁]，`Σ sᵢ·Ûᵢ = denom` |
 | `__poly_mod_univar(f, g, x₁)` | 验证 `f = q·g + r`，`deg(r,x₁) < deg(g)` |
 | `__select_eval_point` | 验证条件 (a)-(d)：无平方、lc 非零、度数守恒、lc 因子可分辨 |
 | `__wang_leading_coeff` | 构造已知分解的多项式，验证 `∏σᵢ(α) = δ`，`∏vᵢ = f_scaled(x₁,α)` |
@@ -852,9 +864,9 @@ polynomial_<ZZ, lex_<var_order>> __taylor_coeff(
     const polynomial_<ZZ, lex_<var_order>>& f,
     const variable& xk, const ZZ& alpha_k, int j);
 
-// §6.8 Q[x₁] 上扩展 GCD (Bézout 系数)
-inline void __upoly_gcd_extended_QQ(
-    upolynomial_<QQ>& s, upolynomial_<QQ>& t,
+// §6.8 Z[x₁] pseudo-XGCD: s·a + t·b = c (c ∈ Z)
+inline void __upoly_gcd_extended_ZZ(
+    upolynomial_<ZZ>& s, upolynomial_<ZZ>& t, ZZ& c,
     const upolynomial_<ZZ>& a, const upolynomial_<ZZ>& b);
 
 // §6.8 多变量 f 对单变量 g 关于 x₁ 取模
@@ -893,7 +905,8 @@ template<class var_order>
 void __hensel_lift_one_var(
     const polynomial_<ZZ, lex_<var_order>>& f_curr,
     std::vector<polynomial_<ZZ, lex_<var_order>>>& G,
-    const std::vector<upolynomial_<QQ>>& bezout_s,
+    const std::vector<upolynomial_<ZZ>>& bezout_s,
+    const ZZ& bezout_denom,
     const std::vector<upolynomial_<ZZ>>& g_hat,
     const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_sigma,
     const variable& xk, const ZZ& alpha_k, int dk);
@@ -938,6 +951,6 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 | `is_squarefree(f)` | `polynomial_gcd.hh` | 无平方检测 | 支持多变量 |
 | `get_variables(f)` | `polynomial_.hh` | 获取变量列表 | 返回 `list<pair<variable, int64_t>>` |
 | `pair_vec_div(q, r, f, g, comp)` | `basic.hh` | 多项式除法 | 支持多变量精确除法 |
-| `__upoly_gcd_extended(s, t, a, b)` | `polynomial_factorize.hh` | Zₚ 上扩展 GCD | 需补充 QQ 版本 (`__upoly_gcd_extended_QQ`) |
+| `__upoly_gcd_extended(s, t, a, b)` | `polynomial_factorize.hh` | Zₚ 上扩展 GCD | 需补充 ZZ 版本 (`__upoly_gcd_extended_ZZ`) |
 | `is_number(f)` | `upolynomial.hh` | 常数检测 | |
 | `poly_convert(in, out)` | `upolynomial.hh` | polynomial ↔ upolynomial | |

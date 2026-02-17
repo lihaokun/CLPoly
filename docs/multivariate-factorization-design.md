@@ -1073,3 +1073,51 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 | `__upoly_gcd_extended(s, t, a, b)` | `polynomial_gcd.hh` | Zₚ 上扩展 GCD | 从 polynomial_factorize.hh 迁入；ZZ 重载 `(s, t, c, a, b)` 新增 |
 | `is_number(f)` | `upolynomial.hh` | 常数检测 | |
 | `poly_convert(in, out [, var])` | `upolynomial.hh` | polynomial ↔ upolynomial 双向转换 | upolynomial→polynomial 需传 `variable` 参数 |
+
+---
+
+## 附录：实现中发现的设计问题
+
+### D1. §4.2 求值点选择缺少条件 (d')：|lⱼ(α)| ≥ 2
+
+**阶段：** Phase 2
+
+**原文：** 条件 (d) 仅要求 lc 不可约因子求值两两互素。
+
+**问题：** 当某个 lⱼ(α) = ±1 时，zⱼ = |lⱼ(α)|^eⱼ = 1，在 §5.2 贪心分配中 1 整除所有 wᵢ，无法唯一确定 lⱼ^eⱼ 应分配给哪个因子，导致 `__wang_leading_coeff` 返回失败。
+
+**例：** f = ((y+1)x + y)(x + 1)，lc(f,x) = y+1。取 α = {y→0} 时 δ = 1，因子 (x, x+1) 的 lc 均为 1，zⱼ = 1 整除两者。
+
+**修复：** 在 `__select_eval_point` 中增加条件 (d')：对每个 lc 不可约因子 lⱼ，要求 |lⱼ(α)| ≥ 2。这保证 zⱼ ≥ 2，贪心匹配有区分度。
+
+### D2. §6.3 MDP 不能直接用单变量 V̂ᵢ 求解多变量 eⱼ
+
+**阶段：** Phase 3
+
+**原文：** Step C 求解 Σ δᵢ · V̂ᵢ = eⱼ，其中 V̂ᵢ = ∏_{j≠i} vⱼ（原始单变量互补积），eⱼ ∈ Z[x₁,...,x_{k-1}]（多变量）。
+
+**问题：** 提升第 k 个变量时（k ≥ 3），Gᵢ 已包含前序变量（x₂,...,x_{k-1}）的提升项，∏_{l≠i} G_l ≠ V̂ᵢ。但 Hensel 收敛要求的方程是 Σ δᵢ · ∏_{l≠i} G_l = eⱼ，与设计文档的方程不同。用 V̂ᵢ 求解的 δᵢ 包含多余的前序变量项，导致提升后 ∏Gᵢ ≠ f_curr。
+
+**例：** f = (x+y)(x+z)，α = {y→0, z→-1}。提升 z 时 e₁ = x+y，用 V̂ᵢ 求解得 δ₁ = y+1（正确应为 1），导致 G₁ = x+yz+y+z（正确应为 x+z）。
+
+**修复：** MDP 前将 eⱼ 求值到前序变量的点：ē_j = eⱼ|_{x₂=α₂,...,x_{k-1}=α_{k-1}} ∈ Z[x₁]，再用单变量 Bézout 求解 δ̄ᵢ ∈ Z[x₁]。这利用了 G_l|_{前序变量=α} = v_l 的性质，使单变量 MDP 给出正确的修正。
+
+### D3. §7 模板前向引用循环：`factorize` ↔ `__factor_multivar`
+
+**阶段：** Phase 4
+
+**问题：** `factorize(polynomial_<ZZ, lex>)` 在 `vars.size() > 1` 时需要调用 `__factor_multivar`；而 `__wang_core`（由 `__factor_multivar` 调用）内部需要调用 `factorize(upolynomial_<ZZ>)` 对单变量像做分解。两者在同一头文件中形成循环依赖。
+
+此外，`__wang_core` 中的 `factorize(f0_upoly)` 调用参数类型 `upolynomial_<ZZ>` 不依赖模板参数 `var_order`，编译器要求在模板定义点（非实例化点）就能找到声明（GCC `-Wtemplate-body`）。
+
+**修复：** 在文件前部放置 `__factor_multivar` 的前向声明（仅声明，无定义），将 `__wang_core` 和 `__factor_multivar` 的定义移到文件末尾（所有 `factorize` 重载之后）。这样 `__wang_core` 在实例化时所有 `factorize` 重载都已可见，`factorize(lex)` 也能通过前向声明调用 `__factor_multivar`。
+
+### D4. §7 `squarefreefactorize` 不翻转负首项系数
+
+**阶段：** Phase 4
+
+**问题：** `squarefreefactorize(f)` 对 lc(f) < 0 的多项式返回原样因子（不提取 -1 到 content），导致 `__factor_multivar` 将负 lc 多项式传入 `__wang_core`。Wang 算法各步（`__select_eval_point`、`__wang_leading_coeff` 的 δ 符号、Hensel 提升的 LC 校正）均假设输入 lc > 0。
+
+**例：** f = -x² + y² = -(x+y)(x-y)。`squarefreefactorize` 返回 content=1, factor=(-x²+y²)^1。`__wang_core(-x²+y²)` 内部各步可能产出正确因子 (x+y)(x-y)，但试除 pp(Gᵢ) | g_remaining 失败（因 g_remaining = -x²+y² 而因子 lc > 0）。
+
+**修复：** 在 `__factor_multivar` 中，将 gk 传给 `__wang_core` 之前翻转符号使 lc > 0，将 (-1)^mₖ 吸收到 result.content。

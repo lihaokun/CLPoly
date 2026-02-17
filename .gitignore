@@ -51,6 +51,16 @@ test/test_realroot
 test/test_upolynomial
 test/test_variable
 
+# Factorization test binaries
+test/test_factorize
+test/test_factorize_zp
+test/test_hensel
+test/test_recombine
+test/test_multivar_helpers
+test/test_wang_lc
+test/test_multivar_hensel
+test/test_factorize_multivar
+
 # Cross-library test binaries (optional, require libflint-dev / libntl-dev)
 test/test_crosscheck_flint
 test/test_crosscheck_ntl

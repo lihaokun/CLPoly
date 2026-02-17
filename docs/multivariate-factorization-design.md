@@ -156,15 +156,6 @@ pp(const polynomial_<ZZ, lex_<var_order>>& f);
 
 > **注：** `cont()` 已存在（`polynomial_gcd.hh:468`），只需补充对应的 `pp()`。
 
-### 3.2 `__poly_coeff_l1_norm` — 多变量系数 L1 范数
-
-```cpp
-// 多变量多项式系数绝对值之和
-// 用于试除验证时的快速剪枝
-template<class var_order>
-ZZ __poly_coeff_l1_norm(const polynomial_<ZZ, lex_<var_order>>& f);
-```
-
 ---
 
 ## 4. `__select_eval_point` — 选取值点
@@ -268,9 +259,9 @@ __wang_leading_coeff(f, u₁,...,uᵣ, α, x₁):
 1.  L ← lc(f, x₁)                          // ∈ Z[x₂,...,xₙ]
     δ ← L(α)                               // ∈ Z (非零，由条件 (b) 保证)
     if is_number(L):
-        // 首项系数为常数，无需校正，也无需缩放
-        σᵢ ← L  for all i (仅 σ₁=L, 其余 σᵢ=1 亦可)
-        return SUCCESS, f_scaled = f, σ₁,...,σᵣ
+        // 首项系数为常数，无需 lc 因子分配，直接进入步骤 4 缩放
+        σᵢ ← 1 for all i; σ₁ ← L
+        // 跳过步骤 2-3，进入步骤 4
 
 2.  // 递归分解首项系数
     lc_fac ← factorize(L)                  // 递归调用 factorize
@@ -310,7 +301,8 @@ __wang_leading_coeff(f, u₁,...,uᵣ, α, x₁):
         ūᵢ ← uᵢ / lc(uᵢ)                  // 首一化
         vᵢ ← δ · ūᵢ                        // 所有因子 lc = δ (整数!)
     // 验证:
-    //   ∏ vᵢ = δ^r · ∏ ūᵢ = δ^r · f₀/δ = δ^(r-1) · f₀ = f_scaled(x₁, α) ✓
+    //   由 f₀ = c₀·∏uᵢ 和 lc(f₀) = c₀·∏lc(uᵢ) = δ，得 ∏ūᵢ = ∏(uᵢ/lc(uᵢ)) = f₀/δ
+    //   ∴ ∏ vᵢ = δ^r · ∏ ūᵢ = δ^r · (f₀/δ) = δ^(r-1) · f₀ = f_scaled(x₁, α) ✓
     //   （σᵢ 不参与 vᵢ 构造——它们传给 Hensel lifting 的 LC 校正步骤 E）
     return SUCCESS, f_scaled, σ₁,...,σᵣ, v₁,...,vᵣ
 ```
@@ -341,7 +333,7 @@ struct __wang_lc_result {
 };
 
 // 首项系数校正
-// 前置: f 关于 x₁ 本原, univar_factors = [u₁,...,uᵣ] 是 f(x₁,α) 的首一因子
+// 前置: f 关于 x₁ 本原, univar_factors = [u₁,...,uᵣ] 是 f(x₁,α) 的本原因子（lc>0，非首一）
 //       eval_point 满足条件 (a)-(d)
 // 后置: success=true 时，f_scaled/lc_assignments/scaled_factors 已填充
 //       success=false 时，需换求值点重试
@@ -455,7 +447,9 @@ __hensel_lift_one_var(f_curr, G₁,...,Gᵣ, ĝ₁,...,ĝᵣ, s₁,...,sᵣ, σ�
 
         // 步骤 C: 解多变量丢番图方程
         //   求 δ₁,...,δᵣ 使得 Σ δᵢ·(∏_{j≠i} ĝⱼ) = eⱼ
-        //   解: δᵢ = (sᵢ · eⱼ) rem ĝᵢ
+        //   解: δᵢ = (sᵢ · eⱼ) rem ĝᵢ / denom
+        //   推导: Σ sᵢ·Ûᵢ = denom ⟹ Σ (sᵢ·eⱼ rem ĝᵢ)·Ûᵢ = eⱼ·denom
+        //         两边除以 denom 得 Σ δᵢ·Ûᵢ = eⱼ（精确整除，由偏分式唯一性保证）
         //
         //   注意: eⱼ ∈ Z[x₁,...,xₖ₋₁] 是多变量的，
         //   但 sᵢ, ĝᵢ ∈ Z[x₁] 是单变量的。
@@ -593,7 +587,7 @@ __multivar_hensel_lift(
 |---|---|---|
 | `__taylor_coeff(f, xₖ, αₖ, j)` | 提取 Taylor 系数 | `pair_vec_div` + `assign` |
 | `__upoly_gcd_extended_ZZ(s, t, c, a, b)` | Z[x₁] pseudo-XGCD: s·a+t·b=c | 复用 Zp 版本框架，pseudo-division 保持整系数 |
-| `__poly_mod_univar(f, g, x₁)` | 多变量 f 对单变量 g 关于 x₁ 取模 | `pair_vec_div`（lex 首变量） |
+| `__poly_mod_univar(f, g, x₁)` | 多变量 f 对单变量 g 关于 x₁ 取模 | `pair_vec_div` 的薄封装（lex 首变量，取余数部分；见 §6.5 说明） |
 
 ---
 
@@ -889,10 +883,6 @@ template<class var_order>
 polynomial_<ZZ, lex_<var_order>>
 pp(const polynomial_<ZZ, lex_<var_order>>& f);
 
-// §3.2 多变量系数 L1 范数
-template<class var_order>
-ZZ __poly_coeff_l1_norm(const polynomial_<ZZ, lex_<var_order>>& f);
-
 // §6.4 Taylor 系数提取
 template<class var_order>
 polynomial_<ZZ, lex_<var_order>> __taylor_coeff(
@@ -904,7 +894,7 @@ inline void __upoly_gcd_extended_ZZ(
     upolynomial_<ZZ>& s, upolynomial_<ZZ>& t, ZZ& c,
     const upolynomial_<ZZ>& a, const upolynomial_<ZZ>& b);
 
-// §6.8 多变量 f 对单变量 g 关于 x₁ 取模
+// §6.8 多变量 f 对单变量 g 关于 x₁ 取模（pair_vec_div 的薄封装，取余数部分）
 template<class var_order>
 polynomial_<ZZ, lex_<var_order>> __poly_mod_univar(
     const polynomial_<ZZ, lex_<var_order>>& f,

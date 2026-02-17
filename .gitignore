@@ -55,6 +55,19 @@ test/test_variable
 test/test_crosscheck_flint
 test/test_crosscheck_ntl
 
+# New test binaries
+test/test_factorize
+test/test_factorize_zp
+test/test_hensel
+test/test_recombine
+
+# Benchmark binaries
+test/bench_clpoly
+test/bench_comparative
+
+# Auto-generated dependency files
+test/*.d
+
 # Test data/temp files
 test/1.txt
 test/2.txt

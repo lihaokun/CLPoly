@@ -801,21 +801,25 @@ int main() {
         CLPOLY_ASSERT(cl_sorted == fl_sorted);
     }
 
-    // 含重因子: 随机 f1^2 * f2
+    // 含重因子: f1^e1 * f2^e2, 随机重数
     CLPOLY_TEST("crosscheck_flint_factor_random_mult");
-    for (int trial = 0; trial < 5; ++trial) {
-        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
-        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-        auto f2 = random_upolynomial<ZZ>(3, 3, {-10, 10});
-        if (f1.empty() || f2.empty()) continue;
-        auto uf = pow(f1, 2) * f2;
-        if (uf.empty() || get_deg(uf) < 2) continue;
+    {
+        int exps[][2] = {{2,1}, {3,1}, {2,2}, {1,3}, {2,3}};
+        for (int trial = 0; trial < 5; ++trial) {
+            CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+            auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+            auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+            if (f1.empty() || f2.empty()) continue;
+            int e1 = exps[trial][0], e2 = exps[trial][1];
+            auto uf = pow(f1, e1) * pow(f2, e2);
+            if (uf.empty() || get_deg(uf) < 2) continue;
 
-        auto cl_fac = factorize(uf);
-        auto fl_fac = crosscheck::flint_factor_upoly(uf);
-        auto cl_sorted = normalize_cl_factors(cl_fac);
-        auto fl_sorted = normalize_flint_factors(fl_fac);
-        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+            auto cl_fac = factorize(uf);
+            auto fl_fac = crosscheck::flint_factor_upoly(uf);
+            auto cl_sorted = normalize_cl_factors(cl_fac);
+            auto fl_sorted = normalize_flint_factors(fl_fac);
+            CLPOLY_ASSERT(cl_sorted == fl_sorted);
+        }
     }
 
     // 显式含因子 x: x * f1 * f2

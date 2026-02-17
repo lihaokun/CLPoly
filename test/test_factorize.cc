@@ -294,5 +294,300 @@ int main()
         CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
     }
 
+    // ========================================
+    // 退化输入补全
+    // ========================================
+    CLPOLY_TEST("factorize_negative_constant");
+    {
+        polynomial_ZZ c = polynomial_ZZ(ZZ(-42));
+        auto fac = factorize(c);
+        CLPOLY_ASSERT_EQ(fac.content, ZZ(-42));
+        CLPOLY_ASSERT(fac.factors.empty());
+    }
+
+    CLPOLY_TEST("factorize_one");
+    {
+        polynomial_ZZ c = polynomial_ZZ(ZZ(1));
+        auto fac = factorize(c);
+        CLPOLY_ASSERT_EQ(fac.content, ZZ(1));
+        CLPOLY_ASSERT(fac.factors.empty());
+    }
+
+    CLPOLY_TEST("factorize_minus_one");
+    {
+        polynomial_ZZ c = polynomial_ZZ(ZZ(-1));
+        auto fac = factorize(c);
+        CLPOLY_ASSERT_EQ(fac.content, ZZ(-1));
+        CLPOLY_ASSERT(fac.factors.empty());
+    }
+
+    CLPOLY_TEST("factorize_x_alone");
+    {
+        // x 本身：content=1, 因子 x mult=1
+        f = x;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.content, ZZ(1));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)1);
+    }
+
+    // ========================================
+    // 纯单项式 x^n
+    // ========================================
+    CLPOLY_TEST("factorize_monomial_x5");
+    {
+        // x^5 → content=1, 因子 x, 重数 5
+        f = pow(x, 5);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.content, ZZ(1));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)5);
+    }
+
+    CLPOLY_TEST("factorize_monomial_with_content");
+    {
+        // 6x^3 → content=6, 因子 x, 重数 3
+        f = 6 * pow(x, 3);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)3);
+    }
+
+    CLPOLY_TEST("factorize_negative_monomial");
+    {
+        // -5x^4 → content=-5, 因子 x, 重数 4
+        f = -5 * pow(x, 4);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)4);
+    }
+
+    // ========================================
+    // 高重数
+    // ========================================
+    CLPOLY_TEST("factorize_high_mult_10");
+    {
+        // (x+1)^10
+        f = pow(x + 1, 10);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)10);
+    }
+
+    CLPOLY_TEST("factorize_high_mult_nonmonic");
+    {
+        // (2x-3)^6
+        f = pow(2*x - 3, 6);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)6);
+    }
+
+    // ========================================
+    // 完全幂 (不可约多项式的幂)
+    // ========================================
+    CLPOLY_TEST("factorize_perfect_power_irreducible");
+    {
+        // (x²+1)^4 — squarefree 分解应直接处理，不进 Hensel
+        f = pow(pow(x, 2) + 1, 4);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)4);
+    }
+
+    CLPOLY_TEST("factorize_perfect_power_x3m2");
+    {
+        // (x³-2)^3 — 不可约三次方的三次幂
+        f = pow(pow(x, 3) - 2, 3);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)3);
+    }
+
+    // ========================================
+    // 混合 squarefree 分量
+    // ========================================
+    CLPOLY_TEST("factorize_mixed_squarefree_3_components");
+    {
+        // (x+1)¹ * (x-1)² * (x²+1)³ — 3 个独立 squarefree 分量
+        f = (x + 1) * pow(x - 1, 2) * pow(pow(x, 2) + 1, 3);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
+        std::set<uint64_t> mults;
+        for (auto& [fi, ei] : fac.factors)
+            mults.insert(ei);
+        CLPOLY_ASSERT(mults.count(1));
+        CLPOLY_ASSERT(mults.count(2));
+        CLPOLY_ASSERT(mults.count(3));
+    }
+
+    CLPOLY_TEST("factorize_mixed_squarefree_with_content");
+    {
+        // 6 * (x+1)² * (x²-x+1)³
+        f = 6 * pow(x + 1, 2) * pow(pow(x, 2) - x + 1, 3);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
+    }
+
+    CLPOLY_TEST("factorize_mixed_squarefree_with_x");
+    {
+        // x² * (x+1)³ * (x²+1)
+        f = pow(x, 2) * pow(x + 1, 3) * (pow(x, 2) + 1);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
+    }
+
+    // ========================================
+    // 5+ 个不可约因子 (Hensel 树 depth≥3 + recombination)
+    // ========================================
+    CLPOLY_TEST("factorize_5_linear_factors");
+    {
+        // (x-1)(x-2)(x-3)(x-4)(x-5)
+        f = (x - 1) * (x - 2) * (x - 3) * (x - 4) * (x - 5);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)5);
+        for (auto& [fi, ei] : fac.factors)
+            CLPOLY_ASSERT_EQ(ei, (uint64_t)1);
+    }
+
+    CLPOLY_TEST("factorize_6_factors_mixed_deg");
+    {
+        // (x-1)(x+1)(x-2)(x+2)(x²+1)(x²+x+1) — 6 因子，含二次
+        f = (x - 1) * (x + 1) * (x - 2) * (x + 2)
+            * (pow(x, 2) + 1) * (pow(x, 2) + x + 1);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)6);
+    }
+
+    CLPOLY_TEST("factorize_x10m1");
+    {
+        // x^10-1 = (x-1)(x+1)(x⁴+x³+x²+x+1)(x⁴-x³+x²-x+1) — 4 因子
+        f = pow(x, 10) - 1;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)4);
+    }
+
+    CLPOLY_TEST("factorize_x12m1");
+    {
+        // x^12-1 有 6 个不可约因子
+        // (x-1)(x+1)(x²+1)(x²+x+1)(x²-x+1)(x⁴-x²+1)
+        f = pow(x, 12) - 1;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)6);
+    }
+
+    // ========================================
+    // QQ 深度测试
+    // ========================================
+    CLPOLY_TEST("factorize_QQ_large_denom");
+    {
+        // (x²-1) / 7700 = (1/7700)(x-1)(x+1)
+        polynomial_ZZ fz = pow(x, 2) - 1;
+        polynomial_QQ fq;
+        poly_convert(fz, fq);
+        fq = fq * QQ(1, 7700);
+        auto fac = factorize(fq);
+        CLPOLY_ASSERT(verify_factorization(fq, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
+        // 因子应首一
+        for (auto& [fi, ei] : fac.factors)
+            CLPOLY_ASSERT_EQ(fi.front().second, QQ(1));
+    }
+
+    CLPOLY_TEST("factorize_QQ_multifactor");
+    {
+        // (x-1)(x+1)(x²+1) over QQ, 乘以 QQ(3,7)
+        polynomial_ZZ fz = pow(x, 4) - 1;
+        polynomial_QQ fq;
+        poly_convert(fz, fq);
+        fq = fq * QQ(3, 7);
+        auto fac = factorize(fq);
+        CLPOLY_ASSERT(verify_factorization(fq, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
+    }
+
+    CLPOLY_TEST("factorize_QQ_high_mult");
+    {
+        // QQ: (x+1)^5 * (1/6)
+        polynomial_ZZ fz = pow(x + 1, 5);
+        polynomial_QQ fq;
+        poly_convert(fz, fq);
+        fq = fq * QQ(1, 6);
+        auto fac = factorize(fq);
+        CLPOLY_ASSERT(verify_factorization(fq, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)5);
+    }
+
+    // ========================================
+    // 全负系数
+    // ========================================
+    CLPOLY_TEST("factorize_all_negative_coeffs");
+    {
+        // -(x²+x+1) — 不可约，全负后 content=-1
+        f = -(pow(x, 2) + x + 1);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+    }
+
+    // ========================================
+    // upolynomial 空输入
+    // ========================================
+    CLPOLY_TEST("factorize_upoly_zero");
+    {
+        upolynomial_ZZ uz;
+        auto fac = factorize(uz);
+        CLPOLY_ASSERT_EQ(fac.content, ZZ(0));
+        CLPOLY_ASSERT(fac.factors.empty());
+    }
+
+    CLPOLY_TEST("factorize_upoly_constant");
+    {
+        upolynomial_ZZ uc({{umonomial(0), ZZ(7)}});
+        auto fac = factorize(uc);
+        CLPOLY_ASSERT_EQ(fac.content, ZZ(7));
+        CLPOLY_ASSERT(fac.factors.empty());
+    }
+
+    CLPOLY_TEST("factorize_upoly_linear");
+    {
+        upolynomial_ZZ ul({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-3)}});
+        auto fac = factorize(ul);
+        CLPOLY_ASSERT_EQ(fac.content, ZZ(1));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)1);
+    }
+
+    CLPOLY_TEST("factorize_upoly_monomial");
+    {
+        // upolynomial: 3x^4
+        upolynomial_ZZ um({{umonomial(4), ZZ(3)}});
+        auto fac = factorize(um);
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)4);
+        // 验证重组
+        upolynomial_ZZ product({{umonomial(0), fac.content}});
+        for (auto& [fi, ei] : fac.factors)
+            product = product * pow(fi, (int64_t)ei);
+        product.normalization();
+        CLPOLY_ASSERT_EQ(product, um);
+    }
+
     return clpoly_test::test_summary();
 }

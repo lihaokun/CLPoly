@@ -542,13 +542,18 @@ int main() {
         CLPOLY_ASSERT(cl_sorted == ntl_sorted);
     }
 
-    // 3 个随机因子
+    // 3 个随机因子, 随机次数/项数
     CLPOLY_TEST("crosscheck_ntl_factor_3_factors");
+    {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> deg_dis(2, 4);
+    std::uniform_int_distribution<int> len_dis(2, 4);
     for (int trial = 0; trial < 5; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
-        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-        auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-        auto f3 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f1 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f3 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
         if (f1.empty() || f2.empty() || f3.empty()) continue;
         auto uf = f1 * f2 * f3;
         if (uf.empty() || get_deg(uf) < 2) continue;
@@ -559,6 +564,7 @@ int main() {
         auto cl_sorted = normalize_cl_factors(cl_fac);
         auto ntl_sorted = normalize_ntl_factors(ntl_fac);
         CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
     }
 
     // 稠密因子: deg=4 len=5 (几乎全项)
@@ -596,14 +602,19 @@ int main() {
         CLPOLY_ASSERT(cl_sorted == ntl_sorted);
     }
 
-    // 4 个因子
+    // 4 个因子, 随机次数/项数
     CLPOLY_TEST("crosscheck_ntl_factor_4_factors");
+    {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> deg_dis(2, 3);
+    std::uniform_int_distribution<int> len_dis(2, 3);
     for (int trial = 0; trial < 5; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
-        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-        auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-        auto f3 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-        auto f4 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f1 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f3 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f4 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
         if (f1.empty() || f2.empty() || f3.empty() || f4.empty()) continue;
         auto uf = f1 * f2 * f3 * f4;
         if (uf.empty() || get_deg(uf) < 2) continue;
@@ -614,6 +625,7 @@ int main() {
         auto cl_sorted = normalize_cl_factors(cl_fac);
         auto ntl_sorted = normalize_ntl_factors(ntl_fac);
         CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
     }
 
     // 高次: deg 15+ (7+8=15)
@@ -634,16 +646,21 @@ int main() {
         CLPOLY_ASSERT(cl_sorted == ntl_sorted);
     }
 
-    // 含重因子: f1^e1 * f2^e2, 随机重数
+    // 含重因子: f1^e1 * f2^e2, 随机重数/次数/项数
     CLPOLY_TEST("crosscheck_ntl_factor_random_mult");
     {
-        int exps[][2] = {{2,1}, {3,1}, {2,2}, {1,3}, {2,3}};
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> exp_dis(1, 3);
+        std::uniform_int_distribution<int> deg_dis(2, 4);
+        std::uniform_int_distribution<int> len_dis(2, 4);
         for (int trial = 0; trial < 5; ++trial) {
             CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
-            auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-            auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+            int d1 = deg_dis(gen), d2 = deg_dis(gen);
+            auto f1 = random_upolynomial<ZZ>(d1, len_dis(gen), {-30, 30});
+            auto f2 = random_upolynomial<ZZ>(d2, len_dis(gen), {-30, 30});
             if (f1.empty() || f2.empty()) continue;
-            int e1 = exps[trial][0], e2 = exps[trial][1];
+            int e1 = exp_dis(gen), e2 = exp_dis(gen);
             auto uf = pow(f1, e1) * pow(f2, e2);
             if (uf.empty() || get_deg(uf) < 2) continue;
 
@@ -656,17 +673,22 @@ int main() {
         }
     }
 
-    // 含重因子: 3 个因子 f1^e1 * f2^e2 * f3^e3
+    // 含重因子: 3 个因子 f1^e1 * f2^e2 * f3^e3, 随机重数/次数/项数
     CLPOLY_TEST("crosscheck_ntl_factor_random_mult_3");
     {
-        int exps[][3] = {{2,1,1}, {1,2,1}, {1,1,2}, {2,2,1}, {2,1,3}};
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> exp_dis(1, 3);
+        std::uniform_int_distribution<int> deg_dis(2, 4);
+        std::uniform_int_distribution<int> len_dis(2, 4);
         for (int trial = 0; trial < 5; ++trial) {
             CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
-            auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-            auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
-            auto f3 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+            int d1 = deg_dis(gen), d2 = deg_dis(gen), d3 = deg_dis(gen);
+            auto f1 = random_upolynomial<ZZ>(d1, len_dis(gen), {-30, 30});
+            auto f2 = random_upolynomial<ZZ>(d2, len_dis(gen), {-30, 30});
+            auto f3 = random_upolynomial<ZZ>(d3, len_dis(gen), {-30, 30});
             if (f1.empty() || f2.empty() || f3.empty()) continue;
-            int e1 = exps[trial][0], e2 = exps[trial][1], e3 = exps[trial][2];
+            int e1 = exp_dis(gen), e2 = exp_dis(gen), e3 = exp_dis(gen);
             auto uf = pow(f1, e1) * pow(f2, e2) * pow(f3, e3);
             if (uf.empty() || get_deg(uf) < 2) continue;
 
@@ -696,6 +718,124 @@ int main() {
         auto cl_sorted = normalize_cl_factors(cl_fac);
         auto ntl_sorted = normalize_ntl_factors(ntl_fac);
         CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 5+ 因子
+    CLPOLY_TEST("crosscheck_ntl_factor_5_factors");
+    {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> deg_dis(1, 3);
+    std::uniform_int_distribution<int> len_dis(2, 3);
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f3 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f4 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        auto f5 = random_upolynomial<ZZ>(deg_dis(gen), len_dis(gen), {-10, 10});
+        if (f1.empty() || f2.empty() || f3.empty() || f4.empty() || f5.empty()) continue;
+        auto uf = f1 * f2 * f3 * f4 * f5;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+    }
+
+    // 高重数: (随机因子)^e, e∈[4,8]
+    CLPOLY_TEST("crosscheck_ntl_factor_high_mult");
+    {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> exp_dis(4, 8);
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        if (f1.empty()) continue;
+        int e = exp_dis(gen);
+        auto uf = pow(f1, e);
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+    }
+
+    // 完全幂: (不可约二次)^n
+    CLPOLY_TEST("crosscheck_ntl_factor_perfect_power");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        upolynomial_ZZ irr({{umonomial(2), ZZ(1)}, {umonomial(0), ZZ(trial + 1)}});
+        int e = trial + 2;
+        auto uf = pow(irr, e);
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 混合 squarefree 分量: f1^1 * f2^2 * f3^3
+    CLPOLY_TEST("crosscheck_ntl_factor_mixed_squarefree");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        auto f3 = random_upolynomial<ZZ>(2, 2, {-10, 10});
+        if (f1.empty() || f2.empty() || f3.empty()) continue;
+        auto uf = f1 * pow(f2, 2) * pow(f3, 3);
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 退化输入: 零、常数、线性、单项式
+    CLPOLY_TEST("crosscheck_ntl_factor_zero");
+    {
+        upolynomial_ZZ uz;
+        auto cl_fac = factorize(uz);
+        CLPOLY_ASSERT_EQ(cl_fac.content, ZZ(0));
+        CLPOLY_ASSERT(cl_fac.factors.empty());
+    }
+
+    CLPOLY_TEST("crosscheck_ntl_factor_constant");
+    {
+        upolynomial_ZZ uc({{umonomial(0), ZZ(42)}});
+        auto cl_fac = factorize(uc);
+        CLPOLY_ASSERT_EQ(cl_fac.content, ZZ(42));
+        CLPOLY_ASSERT(cl_fac.factors.empty());
+    }
+
+    CLPOLY_TEST("crosscheck_ntl_factor_linear");
+    {
+        upolynomial_ZZ ul({{umonomial(1), ZZ(3)}, {umonomial(0), ZZ(5)}});
+        auto cl_fac = factorize(ul);
+        CLPOLY_ASSERT_EQ(cl_fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(cl_fac.factors[0].second, (uint64_t)1);
+    }
+
+    CLPOLY_TEST("crosscheck_ntl_factor_monomial");
+    {
+        upolynomial_ZZ um({{umonomial(7), ZZ(1)}});
+        auto cl_fac = factorize(um);
+        CLPOLY_ASSERT_EQ(cl_fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(cl_fac.factors[0].second, (uint64_t)7);
     }
 
     // 自然大系数: 10^20 级

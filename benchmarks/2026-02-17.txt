@@ -1,0 +1,175 @@
+==== System Info ====
+OS:        Linux 6.6.87.2-microsoft-standard-WSL2 x86_64
+CPU:       12th Gen Intel(R) Core(TM) i9-12900KF
+RAM:              65749112 kB
+Compiler:  g++ 13.3.0
+Build:     Release (-O3 -DNDEBUG)
+======================================================================
+
+==== Multivariate polynomial_ZZ (2 variables) ====
+----------------------------------------------------------------------
+add  deg20 len15                                     0.001 ms
+add  deg40 len30                                     0.001 ms
+add  deg80 len60                                     0.002 ms
+mul  deg10 len8                                      0.003 ms
+mul  deg20 len15                                     0.012 ms
+mul  deg40 len30                                     0.062 ms
+pow  deg3^5                                          0.006 ms
+pow  deg3^10                                         0.028 ms
+pow  deg3^15                                         0.085 ms
+gcd  deg8+common4                                    0.418 ms
+gcd  deg15+common8                                   0.809 ms
+gcd  deg25+common12                                  2.769 ms
+deriv  deg20                                         0.001 ms
+deriv  deg40                                         0.001 ms
+deriv  deg80                                         0.003 ms
+prem  deg8/5                                         0.005 ms
+prem  deg15/8                                        0.042 ms
+prem  deg25/12                                       0.500 ms
+resultant  deg4                                      0.008 ms
+resultant  deg6                                      0.354 ms
+resultant  deg8                                      1.756 ms
+
+==== Univariate upolynomial_ZZ ====
+----------------------------------------------------------------------
+add  deg50                                           0.000 ms
+add  deg200                                          0.001 ms
+add  deg500                                          0.002 ms
+mul  deg50                                           0.007 ms
+mul  deg200                                          0.142 ms
+mul  deg500                                          0.801 ms
+gcd  deg30+common15                                  0.059 ms
+gcd  deg80+common40                                  0.517 ms
+gcd  deg200+common100                                4.511 ms
+deriv  deg50                                         0.000 ms
+deriv  deg200                                        0.001 ms
+deriv  deg500                                        0.002 ms
+eval  deg50                                          0.003 ms
+eval  deg200                                         0.017 ms
+eval  deg500                                         0.077 ms
+cont  deg50                                          0.000 ms
+cont  deg200                                         0.001 ms
+cont  deg500                                         0.002 ms
+factorize  ~deg15 (3 factors)                        0.693 ms
+factorize  ~deg21 (4 factors)                        1.524 ms
+factorize  ~deg29 (5 factors)                        2.457 ms
+squarefree  ~deg21                                   0.088 ms
+squarefree  ~deg42                                   0.402 ms
+
+==== Multivariate polynomial_QQ (2 variables) ====
+----------------------------------------------------------------------
+add  deg15                                           0.001 ms
+add  deg30                                           0.001 ms
+mul  deg10                                           0.008 ms
+mul  deg20                                           0.026 ms
+pow  deg3^5                                          0.019 ms
+pow  deg3^8                                          0.042 ms
+
+==== Real root isolation (uspensky) ====
+----------------------------------------------------------------------
+uspensky  deg10 (10 roots)                           1.046 ms
+uspensky  deg20 (20 roots)                          10.533 ms
+uspensky  deg30 (30 roots)                          50.403 ms
+
+==== Memory Profile: per-polynomial representation size ====
+----------------------------------------------------------------------
+Polynomial                               Terms     KB/poly    Bytes/term
+------------------------------------------------------------------------
+polynomial_ZZ deg20 len15                   15        1.49           102
+polynomial_ZZ deg40 len30                   30        3.03           104
+polynomial_ZZ deg80 len60                   60        6.11           104
+upolynomial_ZZ deg50                        40        0.97            25
+upolynomial_ZZ deg200                      150        3.56            24
+upolynomial_ZZ deg500                      400        9.42            24
+polynomial_QQ deg15                         12        1.41           121
+polynomial_QQ deg30                         25        2.91           119
+
+---- Process Memory ----
+  At exit:      8352 KB  (8.2 MB)
+  Peak:        10752 KB  (10.5 MB)
+
+Done. Total benchmarks: 53
+========================================
+==== System Info ====
+OS:        Linux 6.6.87.2-microsoft-standard-WSL2 x86_64
+CPU:       12th Gen Intel(R) Core(TM) i9-12900KF
+RAM:              65749112 kB
+Compiler:  g++ 13.3.0
+Build:     Release (-O3 -DNDEBUG)
+======================================================================
+
+==== Multivariate ZZ: CLPoly vs FLINT ====
+Operation                                   CLPoly     FLINT   Ratio
+--------------------------------------------------------------------
+add  deg20 len15                             0.001 ms     0.001 ms    0.68x
+add  deg40 len30                             0.001 ms     0.001 ms    1.27x
+mul  deg10 len8                              0.003 ms     0.002 ms    1.89x
+mul  deg20 len15                             0.013 ms     0.004 ms    3.07x
+gcd  deg8+common4                            0.254 ms     0.054 ms    4.71x
+gcd  deg15+common8                           1.568 ms     0.097 ms   16.22x
+pow  deg3^5                                  0.007 ms     0.002 ms    3.21x
+pow  deg3^10                                 0.034 ms     0.014 ms    2.37x
+
+==== Multivariate QQ: CLPoly vs FLINT ====
+Operation                                   CLPoly     FLINT   Ratio
+--------------------------------------------------------------------
+mul  deg10                                   0.004 ms     0.002 ms    2.46x
+mul  deg20                                   0.019 ms     0.005 ms    4.04x
+
+==== Univariate ZZ: CLPoly vs NTL ====
+Operation                                   CLPoly       NTL   Ratio
+--------------------------------------------------------------------
+add  deg100                                  0.000 ms     0.002 ms    0.30x
+add  deg500                                  0.002 ms     0.009 ms    0.20x
+mul  deg100                                  0.031 ms     0.108 ms    0.29x
+mul  deg500                                  0.899 ms     0.094 ms    9.59x
+gcd  deg50+common25                          0.278 ms     0.062 ms    4.49x
+gcd  deg200+common100                        4.611 ms     0.406 ms   11.36x
+deriv  deg100                                0.001 ms     0.001 ms    0.70x
+deriv  deg500                                0.002 ms     0.009 ms    0.20x
+eval  deg100                                 0.007 ms     0.003 ms    2.14x
+eval  deg500                                 0.083 ms     0.025 ms    3.29x
+
+==== Factorization: CLPoly vs FLINT ====
+Operation                                   CLPoly     FLINT   Ratio
+--------------------------------------------------------------------
+factor  ~deg15 (3 fac)                       0.436 ms     0.094 ms    4.64x
+factor  ~deg21 (4 fac)                       0.866 ms     0.144 ms    6.04x
+factor  ~deg29 (5 fac)                       1.801 ms     0.315 ms    5.71x
+
+==== Factorization: CLPoly vs NTL ====
+Operation                                   CLPoly       NTL   Ratio
+--------------------------------------------------------------------
+factor  ~deg15 (3 fac)                       0.400 ms     0.412 ms    0.97x
+factor  ~deg21 (4 fac)                       0.847 ms     0.576 ms    1.47x
+factor  ~deg29 (5 fac)                       2.252 ms     1.113 ms    2.02x
+
+==== Memory: CLPoly polynomial_ZZ vs FLINT fmpz_mpoly ====
+----------------------------------------------------------------------
+Polynomial                       Terms      CLPoly       FLINT   Ratio
+----------------------------------------------------------------------
+mpoly_ZZ deg20 len15                15        1.53 KB        0.29 KB    5.30x
+mpoly_ZZ deg40 len30                30        3.06 KB        0.54 KB    5.71x
+mpoly_ZZ deg80 len60                60        6.09 KB        1.00 KB    6.08x
+
+==== Memory: CLPoly upolynomial_ZZ vs FLINT fmpz_poly ====
+----------------------------------------------------------------------
+Polynomial                       Terms      CLPoly       FLINT   Ratio
+----------------------------------------------------------------------
+upoly_ZZ deg50                      40        0.97 KB        0.43 KB    2.26x
+upoly_ZZ deg200                    150        3.56 KB        1.60 KB    2.22x
+upoly_ZZ deg500                    400        9.42 KB        3.95 KB    2.39x
+
+==== Memory: CLPoly upolynomial_ZZ vs NTL ZZX ====
+----------------------------------------------------------------------
+Polynomial                       Terms      CLPoly         NTL   Ratio
+----------------------------------------------------------------------
+upoly_ZZ deg50                      40        0.97 KB        2.96 KB    0.33x
+upoly_ZZ deg200                    150        3.56 KB       11.02 KB    0.32x
+upoly_ZZ deg500                    400        9.42 KB       28.99 KB    0.32x
+
+---- Process Memory ----
+  At exit:     25220 KB  (24.6 MB)
+  Peak:        25220 KB  (24.6 MB)
+
+Done. Total benchmarks: 0

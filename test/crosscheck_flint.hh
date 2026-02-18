@@ -317,6 +317,189 @@ inline std::vector<clpoly::variable> collect_vars_qq(
     return result;
 }
 
+// ---- collect_vars for multiple QQ polynomials ----
+
+inline std::vector<clpoly::variable> collect_vars_qq_multi(
+    const std::vector<clpoly::polynomial_QQ>& polys)
+{
+    std::set<clpoly::variable> vset;
+    for (auto& p : polys) {
+        auto vlist = clpoly::get_variables(p);
+        for (auto& v : vlist)
+            vset.insert(v.first);
+    }
+    return std::vector<clpoly::variable>(vset.begin(), vset.end());
+}
+
+// ---- FLINT-based multi-divisor normal form (independent arithmetic) ----
+// Computes NF(f, G) using only FLINT fmpq_mpoly operations.
+// Used as an independent oracle to verify CLPoly's Gröbner basis.
+
+inline FlintQPoly flint_qq_normal_form(
+    const FlintQPoly& f,
+    const std::vector<FlintQPoly>& G)
+{
+    slong nvars = fmpq_mpoly_ctx_nvars(f.ctx);
+    FlintQPoly h(f.vars);
+    fmpq_mpoly_set(h.poly, f.poly, h.ctx);
+
+    FlintQPoly r(f.vars);  // remainder
+
+    std::vector<ulong> h_exp(nvars), g_exp(nvars), q_exp(nvars);
+    fmpq_t h_coeff, g_coeff, q_coeff;
+    fmpq_init(h_coeff); fmpq_init(g_coeff); fmpq_init(q_coeff);
+
+    while (!fmpq_mpoly_is_zero(h.poly, h.ctx)) {
+        fmpq_mpoly_get_term_coeff_fmpq(h_coeff, h.poly, 0, h.ctx);
+        fmpq_mpoly_get_term_exp_ui(h_exp.data(), h.poly, 0, h.ctx);
+
+        bool divided = false;
+        for (auto& gi : G) {
+            if (fmpq_mpoly_is_zero(gi.poly, gi.ctx)) continue;
+            fmpq_mpoly_get_term_exp_ui(g_exp.data(), gi.poly, 0, gi.ctx);
+
+            // Check LM(gi) | LM(h)
+            bool divides = true;
+            for (slong k = 0; k < nvars; k++) {
+                if (h_exp[k] < g_exp[k]) { divides = false; break; }
+            }
+            if (!divides) continue;
+
+            // quotient exponent and coefficient
+            for (slong k = 0; k < nvars; k++)
+                q_exp[k] = h_exp[k] - g_exp[k];
+            fmpq_mpoly_get_term_coeff_fmpq(g_coeff, gi.poly, 0, gi.ctx);
+            fmpq_div(q_coeff, h_coeff, g_coeff);
+
+            // h -= (q_coeff * x^q_exp) * gi
+            FlintQPoly mono(f.vars);
+            fmpq_mpoly_push_term_fmpq_ui(mono.poly, q_coeff, q_exp.data(), mono.ctx);
+            FlintQPoly temp(f.vars);
+            fmpq_mpoly_mul(temp.poly, mono.poly, gi.poly, temp.ctx);
+            fmpq_mpoly_sub(h.poly, h.poly, temp.poly, h.ctx);
+
+            divided = true;
+            break;
+        }
+
+        if (!divided) {
+            // Move LT(h) to remainder
+            FlintQPoly lt(f.vars);
+            fmpq_mpoly_push_term_fmpq_ui(lt.poly, h_coeff, h_exp.data(), lt.ctx);
+            fmpq_mpoly_add(r.poly, r.poly, lt.poly, r.ctx);
+            fmpq_mpoly_sub(h.poly, h.poly, lt.poly, h.ctx);
+        }
+    }
+
+    fmpq_clear(h_coeff); fmpq_clear(g_coeff); fmpq_clear(q_coeff);
+    return r;
+}
+
+// ---- Gröbner 基: FLINT fmpz_mpoly_vec API ----
+
+// RAII wrapper for fmpz_mpoly_vec_t
+struct FlintPolyVec {
+    fmpz_mpoly_vec_t vec;
+    fmpz_mpoly_ctx_t ctx;
+    std::vector<clpoly::variable> vars;
+    bool _owns;
+
+    FlintPolyVec(const std::vector<clpoly::variable>& v)
+        : vars(v), _owns(true)
+    {
+        fmpz_mpoly_ctx_init(ctx, static_cast<slong>(v.size()), ORD_DEGLEX);
+        fmpz_mpoly_vec_init(vec, 0, ctx);
+    }
+
+    ~FlintPolyVec() {
+        if (_owns) {
+            fmpz_mpoly_vec_clear(vec, ctx);
+            fmpz_mpoly_ctx_clear(ctx);
+        }
+    }
+
+    void append(const FlintPoly& fp) {
+        fmpz_mpoly_vec_append(vec, fp.poly, ctx);
+    }
+
+    slong length() const { return vec->length; }
+
+    FlintPolyVec(FlintPolyVec&& other) noexcept
+        : vars(std::move(other.vars)), _owns(other._owns)
+    {
+        std::memcpy(ctx, other.ctx, sizeof(fmpz_mpoly_ctx_t));
+        std::memcpy(vec, other.vec, sizeof(fmpz_mpoly_vec_t));
+        other._owns = false;
+    }
+
+    FlintPolyVec(const FlintPolyVec&) = delete;
+    FlintPolyVec& operator=(const FlintPolyVec&) = delete;
+    FlintPolyVec& operator=(FlintPolyVec&&) = delete;
+};
+
+// 将 CLPoly polynomial_ZZ 列表转为 FlintPolyVec
+inline FlintPolyVec clpoly_to_flint_vec(
+    const std::vector<clpoly::polynomial_ZZ>& polys,
+    const std::vector<clpoly::variable>& vars)
+{
+    FlintPolyVec fv(vars);
+    for (auto& p : polys) {
+        auto fp = clpoly_to_flint(p, vars);
+        fmpz_mpoly_vec_append(fv.vec, fp.poly, fv.ctx);
+    }
+    return fv;
+}
+
+// 将 FlintPolyVec 转为 CLPoly polynomial_ZZ 列表
+inline std::vector<clpoly::polynomial_ZZ> flint_vec_to_clpoly(
+    const FlintPolyVec& fv)
+{
+    std::vector<clpoly::polynomial_ZZ> result;
+    for (slong i = 0; i < fv.length(); i++) {
+        FlintPoly tmp(fv.vars);
+        fmpz_mpoly_set(tmp.poly, fmpz_mpoly_vec_entry(fv.vec, i), tmp.ctx);
+        result.push_back(flint_to_clpoly(tmp));
+    }
+    return result;
+}
+
+// FLINT Buchberger + autoreduction → 约化 Gröbner 基
+inline std::vector<clpoly::polynomial_ZZ> flint_groebner_basis(
+    const std::vector<clpoly::polynomial_ZZ>& gens,
+    const std::vector<clpoly::variable>& vars)
+{
+    auto fv_in = clpoly_to_flint_vec(gens, vars);
+    FlintPolyVec fv_gb(vars);
+    fmpz_mpoly_buchberger_naive(fv_gb.vec, fv_in.vec, fv_gb.ctx);
+    FlintPolyVec fv_reduced(vars);
+    fmpz_mpoly_vec_autoreduction_groebner(fv_reduced.vec, fv_gb.vec, fv_reduced.ctx);
+    return flint_vec_to_clpoly(fv_reduced);
+}
+
+// FLINT 验证: G 是否为 F 的 Gröbner 基
+inline bool flint_is_groebner(
+    const std::vector<clpoly::polynomial_ZZ>& gb,
+    const std::vector<clpoly::polynomial_ZZ>& gens,
+    const std::vector<clpoly::variable>& vars)
+{
+    auto fv_gb = clpoly_to_flint_vec(gb, vars);
+    auto fv_gens = clpoly_to_flint_vec(gens, vars);
+    return fmpz_mpoly_vec_is_groebner(fv_gb.vec, fv_gens.vec, fv_gb.ctx) != 0;
+}
+
+// collect_vars for multiple ZZ polynomials
+inline std::vector<clpoly::variable> collect_vars_multi(
+    const std::vector<clpoly::polynomial_ZZ>& polys)
+{
+    std::set<clpoly::variable> vset;
+    for (auto& p : polys) {
+        auto vlist = clpoly::get_variables(p);
+        for (auto& v : vlist)
+            vset.insert(v.first);
+    }
+    return std::vector<clpoly::variable>(vset.begin(), vset.end());
+}
+
 // ---- fmpz_poly_t (univariate) for factorization crosscheck ----
 
 #include <flint/fmpz_poly.h>

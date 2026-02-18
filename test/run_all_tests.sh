@@ -29,6 +29,7 @@ TESTS=(
     test/test_wang_lc
     test/test_multivar_hensel
     test/test_factorize_multivar
+    test/test_groebner
 )
 
 TOTAL_PASS=0

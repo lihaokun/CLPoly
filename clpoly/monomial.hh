@@ -76,6 +76,42 @@ namespace clpoly
                 return false;
         return true;
     }
+    template <class compare>
+    basic_monomial<compare> lcm(const basic_monomial<compare> &m1,const basic_monomial<compare> &m2)
+    {
+        assert(comp_consistent(m1.comp(),m2.comp()));
+        basic_monomial<compare> m(m1.comp_ptr());
+        if (m1.empty()) { m = m2; return m; }
+        if (m2.empty()) { m = m1; return m; }
+        m.reserve(m1.size()+m2.size());
+        auto m1_ptr=m1.begin();
+        auto m2_ptr=m2.begin();
+        while (m1_ptr!=m1.end() && m2_ptr!=m2.end())
+        {
+            if (m1.comp(m1_ptr->first,m2_ptr->first))
+            {
+                m.push_back(*m1_ptr);
+                ++m1_ptr;
+            }
+            else if (m1_ptr->first==m2_ptr->first)
+            {
+                m.push_back({m1_ptr->first,std::max(m1_ptr->second,m2_ptr->second)});
+                ++m1_ptr;
+                ++m2_ptr;
+            }
+            else
+            {
+                m.push_back(*m2_ptr);
+                ++m2_ptr;
+            }
+        }
+        for (;m1_ptr!=m1.end();++m1_ptr)
+            m.push_back(*m1_ptr);
+        for (;m2_ptr!=m2.end();++m2_ptr)
+            m.push_back(*m2_ptr);
+        return m;
+    }
+
     template<class ForwardIt ,class compare>
     void _variables_pair_marge(ForwardIt b,ForwardIt e,std::list<std::pair<variable,int64_t>>& l,const compare & comp)
     {

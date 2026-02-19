@@ -13,6 +13,7 @@
 #include <boost/math/special_functions/prime.hpp>
 #include <random>
 #include <algorithm>
+#include <numeric>
 #include <stdexcept>
 
 namespace clpoly{
@@ -566,35 +567,22 @@ namespace clpoly{
                 si_h.normalization();
                 if (si_h.empty()) continue;
 
-                int64_t deg_si_h = get_deg(si_h);
-                int64_t deg_vi = get_deg(v_factors[i]);
-                int64_t ki = std::max(deg_si_h - deg_vi + 1, (int64_t)0);
+                // 伪除法: lc(vi)^k * (si*h) = q * vi + rem, k = deg(si_h)-deg(vi)+1
+                int64_t k = std::max(get_deg(si_h) - get_deg(v_factors[i]) + 1, (int64_t)0);
+
+                upolynomial_<ZZ> rem_upoly;
+                upoly_prem(rem_upoly, si_h, v_factors[i], main_var);
 
                 ZZ lc_vi = v_factors[i].front().second;
                 ZZ lc_pow(1);
-                for (int64_t e = 0; e < ki; ++e)
+                for (int64_t e = 0; e < k; ++e)
                     lc_pow *= lc_vi;
 
-                upolynomial_<ZZ> scaled;
-                if (lc_pow != ZZ(1))
-                {
-                    upolynomial_<ZZ> lc_upoly({{umonomial(0), lc_pow}});
-                    scaled = lc_upoly * si_h;
-                    scaled.normalization();
-                }
-                else
-                    scaled = si_h;
-
-                upolynomial_<ZZ> q_upoly, rem_upoly;
-                pair_vec_div(q_upoly.data(), rem_upoly.data(),
-                             scaled.data(), v_factors[i].data(),
-                             v_factors[i].comp());
-
+                // 总缩放因子 = bezout_denom * lc_pow
                 ZZ divisor = bezout_denom * lc_pow;
                 upolynomial_<ZZ> delta_i_upoly;
                 for (auto& term : rem_upoly)
                 {
-                    // TODO P1: 此处整除不总是精确的, 需要调查 Bézout 链 + 伪除法的关系
                     ZZ coeff = term.second / divisor;
                     if (coeff != ZZ(0))
                         delta_i_upoly.push_back({term.first, coeff});
@@ -808,14 +796,27 @@ namespace clpoly{
         // (xk - αk)^j, 从 j=1 开始
         Poly xk_pow = xk_minus_alpha;  // (xk - αk)^1
 
+        // 缓存 ∏Gᵢ, 仅在 G 实际更新后重算
+        Poly prod = G[0];
+        for (size_t i = 1; i < r; ++i)
+        {
+            prod = prod * G[i];
+            prod.normalization();
+        }
+        bool prod_dirty = false;
+
         for (int j = 1; j <= dk; ++j)
         {
             // Step A: e = f_curr - ∏Gᵢ
-            Poly prod = G[0];
-            for (size_t i = 1; i < r; ++i)
+            if (prod_dirty)
             {
-                prod = prod * G[i];
-                prod.normalization();
+                prod = G[0];
+                for (size_t i = 1; i < r; ++i)
+                {
+                    prod = prod * G[i];
+                    prod.normalization();
+                }
+                prod_dirty = false;
             }
             Poly e = f_curr - prod;
             e.normalization();
@@ -849,6 +850,7 @@ namespace clpoly{
                 G[i] = G[i] + update;
                 G[i].normalization();
             }
+            prod_dirty = true;  // G 已更新, 下次迭代需重算 ∏Gᵢ
 
             // Step E (post-step): LC 校正
             for (size_t i = 0; i < r; ++i)
@@ -909,6 +911,9 @@ namespace clpoly{
             g_acc = g_acc * scaled_factors[i];
             g_acc.normalization();
         }
+        // 注: denom = ∏ c_k, 其中 c_k 是各步扩展 GCD 的内容
+        // 对于整数多项式, denom 不一定为 ±1
+        // Diophantine 求解器通过除以 (bezout_denom * lc_pow) 补偿此缩放
 
         // ————————————————————————————————————————
         // 初始化 Gᵢ: 将 vᵢ 转为 polynomial (仅含 main_var)
@@ -1880,81 +1885,59 @@ namespace clpoly{
         }
 
         size_t r = lifted.size();
-        assert(r <= 64);  // 位掩码限制
 
-        // T: 可用因子位掩码 (第 i 位 = 1 表示 lifted[i] 可用)
-        uint64_t T = (r == 64) ? ~0ULL : ((1ULL << r) - 1);
+        // T: 可用因子索引集合
+        std::vector<int> T(r);
+        std::iota(T.begin(), T.end(), 0);  // {0, 1, ..., r-1}
         upolynomial_<ZZ> f_star = f;
         std::vector<upolynomial_<ZZ>> result;
 
-        // popcount helper
-        auto popcount = [](uint64_t x) -> int {
-            int c = 0;
-            while (x) { c += x & 1; x >>= 1; }
-            return c;
-        };
-
-        // 从位掩码提取子集下标
-        auto mask_to_subset = [](uint64_t mask) -> std::vector<size_t> {
-            std::vector<size_t> sub;
-            for (size_t i = 0; i < 64; ++i)
-                if (mask & (1ULL << i)) sub.push_back(i);
-            return sub;
-        };
-
-        // T 中的因子数
-        auto T_count = [&popcount](uint64_t mask) -> int {
-            return popcount(mask);
+        // 字典序下一组合: idx[0..s-1] 是 [0, n) 中的 s 个下标
+        // 返回 false 表示已穷举
+        auto next_combination = [](std::vector<int>& idx, int n) -> bool {
+            int s = (int)idx.size();
+            int i = s - 1;
+            while (i >= 0 && idx[i] == n - s + i)
+                --i;
+            if (i < 0) return false;
+            ++idx[i];
+            for (int j = i + 1; j < s; ++j)
+                idx[j] = idx[j - 1] + 1;
+            return true;
         };
 
         bool found;
         int s = 1;
-        while (2 * s <= T_count(T))
+        while (2 * s <= (int)T.size())
         {
             found = false;
-
-            // Gosper's hack: 枚举 T 中大小为 s 的子集
-            // 先枚举 r 位中恰好 s 个 1 的所有掩码, 再过滤只含 T 中的位
-            // 更简单: 枚举 T 的子集中大小为 s 的
-
-            // 收集 T 中的活跃位
-            std::vector<size_t> active;
-            for (size_t i = 0; i < r; ++i)
-                if (T & (1ULL << i)) active.push_back(i);
-            int n_active = (int)active.size();
-
+            int n_active = (int)T.size();
             if (s > n_active / 2) break;
 
-            // 枚举 active 的大小为 s 的子集 (用 Gosper's hack on n_active 位)
-            uint64_t sub_mask = (1ULL << s) - 1;
-            uint64_t sub_limit = (1ULL << n_active);
+            // idx[0..s-1]: 当前子集在 T 中的下标
+            std::vector<int> idx(s);
+            std::iota(idx.begin(), idx.end(), 0);  // {0, 1, ..., s-1}
 
-            while (sub_mask < sub_limit)
-            {
-                // 将 sub_mask 映射回原始因子索引
-                std::vector<size_t> S_idx;
-                uint64_t S_bits = 0;
-                for (int j = 0; j < n_active; ++j)
-                {
-                    if (sub_mask & (1ULL << j))
-                    {
-                        S_idx.push_back(active[j]);
-                        S_bits |= (1ULL << active[j]);
-                    }
-                }
+            do {
+                // 映射回原始因子索引
+                std::vector<size_t> S_idx(s);
+                for (int j = 0; j < s; ++j)
+                    S_idx[j] = T[idx[j]];
 
                 ZZ lc_fstar = f_star.front().second;
 
                 // Hensel 提升将 lc(f) 分配给了 lifted[0]。
                 // 当子集包含 index 0 时，子集乘积已自带 lc，
                 // 无需额外乘 lc_fstar。
-                bool subset_has_lc = (S_bits & 1ULL) != 0;
+                bool subset_has_lc = false;
+                for (size_t i : S_idx)
+                    if (i == 0) { subset_has_lc = true; break; }
                 ZZ lc_mult = subset_has_lc ? ZZ(1) : lc_fstar;
 
                 // === 剪枝 1: 首项系数检查 ===
                 ZZ lc_prod = lc_mult;
-                for (size_t idx : S_idx)
-                    lc_prod *= lifted[idx].front().second;
+                for (size_t i : S_idx)
+                    lc_prod *= lifted[i].front().second;
                 lc_prod = __symmetric_mod(lc_prod, m);
                 ZZ lc_sq = lc_fstar * lc_fstar;
                 if (lc_prod != ZZ(0))
@@ -1962,14 +1945,14 @@ namespace clpoly{
                     ZZ rem;
                     ZZ::fdiv_r(rem, lc_sq, lc_prod);
                     if (rem != ZZ(0))
-                        goto next_subset;
+                        continue;
                 }
 
                 {
                     // === 剪枝 2: 常数项检查 ===
                     ZZ c_prod = lc_mult;
-                    for (size_t idx : S_idx)
-                        c_prod *= __upoly_const_term(lifted[idx]);
+                    for (size_t i : S_idx)
+                        c_prod *= __upoly_const_term(lifted[i]);
                     c_prod = __symmetric_mod(c_prod, m);
                     ZZ fstar_const = lc_fstar * __upoly_const_term(f_star);
                     if (c_prod != ZZ(0))
@@ -1977,44 +1960,32 @@ namespace clpoly{
                         ZZ rem2;
                         ZZ::fdiv_r(rem2, fstar_const, c_prod);
                         if (rem2 != ZZ(0))
-                            goto next_subset;
+                            continue;
                     }
 
+                    // === 完整验证: 试除 ===
+                    auto g = __subset_product_mod(lifted, S_idx, lc_mult, m);
+                    auto [c_g, pp_g] = __upoly_primitive(std::move(g));
+
+                    upolynomial_<ZZ> q_trial, r_trial;
+                    pair_vec_div(q_trial.data(), r_trial.data(),
+                                 f_star.data(), pp_g.data(), f_star.comp());
+
+                    if (r_trial.empty())
                     {
-                        // === 完整验证: 试除 ===
-                        auto g = __subset_product_mod(lifted, S_idx, lc_mult, m);
+                        // 找到真因子
+                        result.push_back(std::move(pp_g));
+                        auto [c_q, pp_q] = __upoly_primitive(std::move(q_trial));
+                        f_star = std::move(pp_q);
 
-                        // 取 primitive part 消除提升残留的 lc 因子
-                        auto [c_g, pp_g] = __upoly_primitive(std::move(g));
-
-                        // 试除: pp(g) | f* in Z[x]?
-                        upolynomial_<ZZ> q_trial, r_trial;
-                        pair_vec_div(q_trial.data(), r_trial.data(),
-                                     f_star.data(), pp_g.data(), f_star.comp());
-
-                        if (r_trial.empty())
-                        {
-                            // 找到真因子
-                            result.push_back(std::move(pp_g));
-
-                            auto [c_q, pp_q] = __upoly_primitive(std::move(q_trial));
-                            f_star = std::move(pp_q);
-
-                            uint64_t T_comp_bits = T & ~S_bits;
-                            T = T_comp_bits;
-                            found = true;
-                            break;
-                        }
+                        // 从 T 中删除已用因子 (逆序删除保持下标有效)
+                        for (int j = s - 1; j >= 0; --j)
+                            T.erase(T.begin() + idx[j]);
+                        found = true;
+                        break;
                     }
                 }
-
-                next_subset:
-                // Gosper's hack: 下一个同样 popcount 的掩码
-                if (sub_mask == 0) break;
-                uint64_t c_ = sub_mask & (-sub_mask);
-                uint64_t r_ = sub_mask + c_;
-                sub_mask = (((r_ ^ sub_mask) >> 2) / c_) | r_;
-            }
+            } while (next_combination(idx, n_active));
 
             if (found)
             {
@@ -2073,13 +2044,15 @@ namespace clpoly{
         size_t best_count = SIZE_MAX;
 
         int64_t deg_f = get_deg(f);
-        size_t max_tries = 5;
+        size_t max_tries = 30;
+        constexpr size_t PRIME_TABLE_SIZE = 9999;  // boost::math::prime 表上限
         std::mt19937 rng(42);
 
         for (size_t idx = 0, tried = 0; tried < max_tries; ++idx)
         {
-            // boost::math::prime 表最多 ~9999 个素数
-            if (idx >= 9999) break;
+            if (idx >= PRIME_TABLE_SIZE)
+                throw std::runtime_error(
+                    "factorize: exhausted prime table without finding a suitable prime");
             uint32_t p = boost::math::prime((unsigned)idx);
 
             // 跳过 lc(f) mod p == 0 的素数
@@ -2133,9 +2106,9 @@ namespace clpoly{
                 best.factors = std::move(irr_factors);
             }
 
-            // 因子数 > deg/2 时扩展尝试到 20 个
-            if (best_count > (size_t)(deg_f / 2) && tried == 5)
-                max_tries = 20;
+            // 因子数 > deg/2 时扩展尝试到 50 个
+            if (best_count > (size_t)(deg_f / 2) && tried == 30)
+                max_tries = 50;
         }
 
         best.irreducible = false;
@@ -2528,8 +2501,8 @@ namespace clpoly{
         // 交错轮换主变量: 每个主变量分配 BATCH_SIZE 个求值点,
         // 用完后换下一个主变量, 一轮结束后扩展配额继续.
         // 避免在某个"坏"主变量上浪费过多时间.
+        // 循环直到所有主变量都被标记为 dead (不可约启发式).
         const int BATCH_SIZE = 200;
-        const int MAX_ROUNDS = 3;
 
         // 筛选可用主变量 (deg > 1)
         std::vector<variable> main_vars;
@@ -2542,8 +2515,7 @@ namespace clpoly{
 
         // 每个主变量的状态
         std::vector<int> var_skip(main_vars.size(), 0);         // 当前 skip 位置
-        std::vector<int> var_irred(main_vars.size(), 0);        // 连续不可约计数
-        std::vector<bool> var_dead(main_vars.size(), false);    // 已判定不可约
+        std::vector<bool> var_dead(main_vars.size(), false);    // 已证明不可约
 
         // 辅助 lambda: 规范化原始部分 (pp + 正首项)
         auto normalize_factor = [](Poly& h)
@@ -2554,7 +2526,7 @@ namespace clpoly{
                     term.second = -term.second;
         };
 
-        for (int round = 0; round < MAX_ROUNDS; ++round)
+        for (;;)
         {
             for (size_t vi = 0; vi < main_vars.size(); ++vi)
             {
@@ -2576,18 +2548,12 @@ namespace clpoly{
 
                     if (uni_factors.size() <= 1)
                     {
-                        ++var_irred[vi];
-                        // 不可约启发式: 3 个连续求值点都给出 1 个因子
-                        // 仅标记该主变量为 dead, 不直接 return.
-                        // 原因: 某因子不含 x₁ 时, 特化后变常数, 但 g 仍可约.
-                        if (var_irred[vi] >= 3)
-                        {
-                            var_dead[vi] = true;
-                            break;
-                        }
-                        continue;
+                        // f(x₁, α) 在满足条件 (a)(b) 的 α 处不可约
+                        // → 数学上证明 g 关于 x₁ 无正次因子分解
+                        // 标记此主变量已证明不可约, 换下一个主变量
+                        var_dead[vi] = true;
+                        break;
                     }
-                    var_irred[vi] = 0;
 
                     auto lc_result = __wang_leading_coeff(
                         g, uni_factors, eval, x1, uni_fac.content);
@@ -2598,60 +2564,88 @@ namespace clpoly{
                         lc_result.f_scaled, lc_result.scaled_factors,
                         lc_result.lc_targets, eval, x1);
 
-                    // 试除验证 + 去缩放 + 因子重组
+                    // 试除验证 + 去缩放 + 因子重组 (子集枚举)
+                    // 预处理: 规范化所有 Hensel 因子
+                    std::vector<Poly> normed(mv_factors.size(), Poly(comp_ptr));
+                    std::vector<size_t> active_idx;
+                    for (size_t fi = 0; fi < mv_factors.size(); ++fi)
+                    {
+                        normed[fi] = mv_factors[fi];
+                        normalize_factor(normed[fi]);
+                        if (!normed[fi].empty() && !is_number(normed[fi]))
+                            active_idx.push_back(fi);
+                    }
+
                     std::vector<std::pair<Poly, uint64_t>> verified;
                     Poly g_remaining = g;
 
-                    // Step 1: 尝试单因子试除
-                    std::vector<size_t> unmatched;
-                    for (size_t fi = 0; fi < mv_factors.size(); ++fi)
+                    // T: 可用因子在 active_idx 中的下标
+                    std::vector<int> mv_T(active_idx.size());
+                    std::iota(mv_T.begin(), mv_T.end(), 0);
+
+                    auto mv_next_combination = [](std::vector<int>& idx, int n) -> bool {
+                        int sz = (int)idx.size();
+                        int i = sz - 1;
+                        while (i >= 0 && idx[i] == n - sz + i)
+                            --i;
+                        if (i < 0) return false;
+                        ++idx[i];
+                        for (int j = i + 1; j < sz; ++j)
+                            idx[j] = idx[j - 1] + 1;
+                        return true;
+                    };
+
+                    if (!mv_T.empty())
                     {
-                        auto h = mv_factors[fi];
-                        normalize_factor(h);
-                        if (h.empty() || is_number(h)) continue;
-
-                        Poly q(comp_ptr), rem(comp_ptr);
-                        pair_vec_div(q.data(), rem.data(),
-                                     g_remaining.data(), h.data(), g.comp());
-                        if (rem.empty() && !q.empty())
+                        bool found;
+                        int s = 1;
+                        while (2 * s <= (int)mv_T.size())
                         {
-                            verified.push_back({std::move(h), 1});
-                            g_remaining = std::move(q);
-                        }
-                        else
-                            unmatched.push_back(fi);
-                    }
+                            found = false;
+                            int n_cur = (int)mv_T.size();
+                            if (s > n_cur / 2) break;
 
-                    // Step 2: 因子重组 — 若单因子试除不完整, 尝试配对
-                    if (!unmatched.empty() && !g_remaining.empty()
-                        && !is_number(g_remaining) && unmatched.size() >= 2)
-                    {
-                        for (size_t i = 0; i < unmatched.size() && !is_number(g_remaining); ++i)
-                        {
-                            for (size_t j = i + 1; j < unmatched.size(); ++j)
-                            {
-                                auto prod = mv_factors[unmatched[i]] * mv_factors[unmatched[j]];
-                                prod.normalization();
-                                normalize_factor(prod);
-                                if (prod.empty() || is_number(prod)) continue;
+                            std::vector<int> idx(s);
+                            std::iota(idx.begin(), idx.end(), 0);
 
-                                Poly q(comp_ptr), rem(comp_ptr);
-                                pair_vec_div(q.data(), rem.data(),
-                                             g_remaining.data(), prod.data(), g.comp());
-                                if (rem.empty() && !q.empty())
+                            do {
+                                // 计算子集乘积
+                                Poly prod = normed[active_idx[mv_T[idx[0]]]];
+                                for (int k = 1; k < s; ++k)
                                 {
-                                    verified.push_back({std::move(prod), 1});
-                                    g_remaining = std::move(q);
-                                    unmatched.erase(unmatched.begin() + j);
-                                    unmatched.erase(unmatched.begin() + i);
-                                    --i;
-                                    break;
+                                    prod = prod * normed[active_idx[mv_T[idx[k]]]];
+                                    prod.normalization();
                                 }
+                                normalize_factor(prod);
+
+                                if (!prod.empty() && !is_number(prod))
+                                {
+                                    Poly q(comp_ptr), rem(comp_ptr);
+                                    pair_vec_div(q.data(), rem.data(),
+                                                 g_remaining.data(), prod.data(), g.comp());
+                                    if (rem.empty() && !q.empty())
+                                    {
+                                        verified.push_back({std::move(prod), 1});
+                                        g_remaining = std::move(q);
+                                        normalize_factor(g_remaining);
+                                        for (int j = s - 1; j >= 0; --j)
+                                            mv_T.erase(mv_T.begin() + idx[j]);
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            } while (mv_next_combination(idx, n_cur));
+
+                            if (found)
+                            {
+                                s = 1;
+                                continue;
                             }
+                            ++s;
                         }
                     }
 
-                    // Step 3: 剩余部分作为最后一个因子
+                    // 剩余部分作为最后一个因子
                     if (!g_remaining.empty() && !is_number(g_remaining))
                     {
                         auto h = g_remaining;

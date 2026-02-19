@@ -152,6 +152,26 @@ namespace clpoly{
 
     void poly_convert(const upolynomial_<ZZ>& p_in,upolynomial_<QQ> & p_out);
     void poly_convert(const upolynomial_<QQ>& p_in,upolynomial_<ZZ> & p_out);
+
+    // 单变量伪余式: lc(G)^k * F ≡ R (mod G), k = max(deg(F)-deg(G)+1, 0)
+    // 桥接 upolynomial_<ZZ> → polynomial_ → prem → upolynomial_<ZZ>
+    // 后续可模板化 prem 直接支持 upolynomial, 届时替换此函数
+    inline void upoly_prem(
+        upolynomial_<ZZ>& R,
+        const upolynomial_<ZZ>& F,
+        const upolynomial_<ZZ>& G,
+        const variable& var,
+        bool is_L = true)
+    {
+        using Poly = polynomial_<ZZ, univariate_priority_order>;
+        univariate_priority_order comp(var);
+        Poly F_poly(&comp), G_poly(&comp), R_poly(&comp);
+        poly_convert(F, F_poly, var);
+        poly_convert(G, G_poly, var);
+        prem(R_poly, F_poly, G_poly, var, is_L);
+        poly_convert(R_poly, R);
+    }
+
     template <class T>
     upolynomial_<T>  derivative(const upolynomial_<T> & p)
     {

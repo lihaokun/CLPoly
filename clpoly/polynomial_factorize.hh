@@ -110,7 +110,8 @@ namespace clpoly{
     std::map<variable, ZZ>
     __select_eval_point(
         const polynomial_<ZZ, lex_<var_order>>& f,
-        const variable& main_var)
+        const variable& main_var,
+        int skip = 0)
     {
         using Poly = polynomial_<ZZ, lex_<var_order>>;
 
@@ -174,27 +175,37 @@ namespace clpoly{
                 if (delta == 0) continue;
 
                 // 条件 (a): f(x₁, α) 无平方
+                // 注: f0 是单变量多项式, 用 upolynomial GCD 避免多变量 GCD 的开销
                 auto f0 = assign(f, alpha);
-                if (!is_squarefree(f0)) continue;
+                {
+                    upolynomial_<ZZ> f0_u;
+                    poly_convert(f0, f0_u);
+                    auto f0_d = derivative(f0_u);
+                    if (!f0_d.empty())
+                    {
+                        auto g = polynomial_GCD(f0_u, f0_d);
+                        if (!g.empty() && get_deg(g) > 0) continue;
+                    }
+                }
 
                 // 条件 (d): lc 因子求值两两互素
                 if (!lc_irr_factors.empty())
                 {
                     std::vector<ZZ> vals;
-                    bool skip = false;
+                    bool bad_point = false;
                     for (auto& lj : lc_irr_factors)
                     {
                         auto lj_eval = assign(lj, alpha);
-                        if (lj_eval.empty()) { skip = true; break; }
+                        if (lj_eval.empty()) { bad_point = true; break; }
                         ZZ v = is_number(lj_eval) ? lj_eval.front().second : ZZ(0);
-                        if (v == 0) { skip = true; break; }
+                        if (v == 0) { bad_point = true; break; }
                         vals.push_back(abs(v));
                     }
-                    if (skip) continue;
+                    if (bad_point) continue;
                     // 条件 (d'): |lⱼ(α)| ≥ 2, 避免退化赋值
                     for (auto& v : vals)
-                        if (v <= ZZ(1)) { skip = true; break; }
-                    if (skip) continue;
+                        if (v <= ZZ(1)) { bad_point = true; break; }
+                    if (bad_point) continue;
                     // 两两互素
                     bool pairwise_coprime = true;
                     for (size_t i = 0; i < vals.size() && pairwise_coprime; ++i)
@@ -204,6 +215,7 @@ namespace clpoly{
                     if (!pairwise_coprime) continue;
                 }
 
+                if (skip > 0) { --skip; continue; }
                 return alpha;
             }
         }
@@ -227,7 +239,8 @@ namespace clpoly{
         const polynomial_<ZZ, lex_<var_order>>& f,
         const std::vector<upolynomial_<ZZ>>& univar_factors,
         const std::map<variable, ZZ>& eval_point,
-        const variable& main_var)
+        const variable& main_var,
+        const ZZ& uni_content = ZZ(1))
     {
         using Poly = polynomial_<ZZ, lex_<var_order>>;
         auto comp_ptr = f.comp_ptr();
@@ -271,40 +284,94 @@ namespace clpoly{
             std::sort(lc_factors.begin(), lc_factors.end(),
                 [](const auto& a, const auto& b) { return a.second > b.second; });
 
-            // wᵢ = lc(uᵢ) — 数值跟踪
+            // wᵢ = lc(uᵢ) * cs — 数值跟踪 (cs = content(f₀))
             std::vector<ZZ> w(r);
             for (size_t i = 0; i < r; ++i)
-                w[i] = univar_factors[i].front().second;
+                w[i] = univar_factors[i].front().second * uni_content;
+
+            // P2: 验证恒等式 δ = γ·∏lⱼ(α)^eⱼ = cs·∏lc(uᵢ)
+            {
+                ZZ prod_z = gamma;
+                for (auto& [lj2, ej2] : lc_factors)
+                {
+                    auto lj2_eval = assign(lj2, eval_point);
+                    ZZ v = is_number(lj2_eval) ? lj2_eval.front().second : ZZ(0);
+                    for (uint64_t e = 0; e < ej2; ++e)
+                        prod_z *= v;
+                }
+                ZZ prod_lc(uni_content);
+                for (size_t i = 0; i < r; ++i)
+                    prod_lc *= univar_factors[i].front().second;
+                if (abs(prod_z) != abs(prod_lc))
+                    return result;  // 数据不一致，换点
+            }
+
+            // non-divisors 预过滤 (SymPy dmp_zz_wang_non_divisors)
+            // 确保每个 lⱼ(α) 在剥离 γ·cs 共享因子后仍有足够独立性
+            // 仅当 |γ| > 1 时检查: γ=±1 时无污染, 提取总是正确的
+            if (abs(gamma) > ZZ(1))
+            {
+                std::vector<ZZ> checked_vals;
+                bool non_div_ok = true;
+                for (auto& [lj2, ej2] : lc_factors)
+                {
+                    auto lj2_eval = assign(lj2, eval_point);
+                    ZZ lj2_val = is_number(lj2_eval) ? lj2_eval.front().second : ZZ(0);
+                    if (lj2_val == 0 || abs(lj2_val) == ZZ(1))
+                        { non_div_ok = false; break; }
+
+                    ZZ q = uni_content * gamma;
+                    for (auto& prev : checked_vals)
+                        while (q % prev == ZZ(0))
+                            q /= prev;
+                    while (q % lj2_val == ZZ(0))
+                        q /= lj2_val;
+                    if (abs(lj2_val) > abs(q))
+                        { non_div_ok = false; break; }
+
+                    checked_vals.push_back(lj2_val);
+                }
+                if (!non_div_ok)
+                    return result;
+            }
 
             for (auto& [lj, ej] : lc_factors)
             {
-                // zⱼ = |lⱼ(α)|^eⱼ
                 auto lj_eval = assign(lj, eval_point);
                 ZZ lj_val = is_number(lj_eval) ? lj_eval.front().second : ZZ(0);
-                if (lj_val == 0) return result;  // 不应发生（条件 d 保证）
-                ZZ zj(1);
-                for (uint64_t e = 0; e < ej; ++e)
-                    zj *= lj_val;
+                // |lⱼ(α)| ≤ 1 时无法从数值区分分配，拒绝该点
+                if (lj_val == 0 || abs(lj_val) == ZZ(1)) return result;
 
-                // 找唯一的 uᵢ 使得 zⱼ | wᵢ
-                std::vector<size_t> candidates;
+                // 对每个 uᵢ 提取 lⱼ(α) 的最大幂次 (各取所需)
+                std::vector<int> ki(r, 0);
+                int total_k = 0;
                 for (size_t i = 0; i < r; ++i)
-                    if (w[i] % zj == ZZ(0))
-                        candidates.push_back(i);
-
-                if (candidates.size() != 1) return result;  // FAIL
-
-                size_t idx = candidates[0];
-                // σᵢ *= lⱼ^eⱼ
-                Poly lj_power = lj;
-                for (uint64_t e = 1; e < ej; ++e)
                 {
-                    lj_power = lj_power * lj;
-                    lj_power.normalization();
+                    while (w[i] % lj_val == ZZ(0))
+                    {
+                        w[i] /= lj_val;
+                        ++ki[i];
+                    }
+                    total_k += ki[i];
                 }
-                sigma[idx] = sigma[idx] * lj_power;
-                sigma[idx].normalization();
-                w[idx] /= zj;
+
+                // 验证总幂次守恒 (不等说明 content 污染，拒绝该求值点)
+                if (total_k != (int)ej)
+                    return result;
+
+                // σᵢ *= lⱼ^kᵢ
+                for (size_t i = 0; i < r; ++i)
+                {
+                    if (ki[i] == 0) continue;
+                    Poly lj_power = lj;
+                    for (int e = 1; e < ki[i]; ++e)
+                    {
+                        lj_power = lj_power * lj;
+                        lj_power.normalization();
+                    }
+                    sigma[i] = sigma[i] * lj_power;
+                    sigma[i].normalization();
+                }
             }
 
             // 吸收整数内容 γ 到 σ₀
@@ -338,6 +405,7 @@ namespace clpoly{
             vi.reserve(univar_factors[i].size());
             for (auto& term : univar_factors[i])
             {
+                assert(delta * term.second % lc_ui == ZZ(0));
                 ZZ new_coeff = delta * term.second / lc_ui;
                 if (new_coeff != 0)
                     vi.push_back({term.first, new_coeff});
@@ -354,6 +422,7 @@ namespace clpoly{
             auto sigma_eval = assign(sigma[i], eval_point);
             ZZ sigma_val = is_number(sigma_eval) ? sigma_eval.front().second : ZZ(0);
             if (sigma_val == 0) return result;  // 不应发生
+            assert(delta % sigma_val == ZZ(0));
             ZZ scale = delta / sigma_val;
             result.lc_targets[i] = sigma[i] * make_const(scale);
             result.lc_targets[i].normalization();
@@ -366,6 +435,106 @@ namespace clpoly{
     // ================================================================
     // §6 多变量 Hensel 提升
     // ================================================================
+
+    // §6.0 辅助: 多变量多项式对 main_var 做伪除法
+    // 将 f ∈ Z[x₁,...,xₙ] 视为 R[x₁] 其中 R = Z[x₂,...,xₙ]
+    // 对 g ∈ Z[x₁] (单变量) 做伪除法:  lc(g)^ki · f = q·g + rem
+    // 返回 (rem, lc(g)^ki), 其中 ki = max(deg_x₁(f) - deg_x₁(g) + 1, 0)
+    template<class var_order>
+    std::pair<polynomial_<ZZ, lex_<var_order>>, ZZ>
+    __pseudo_remainder_x1(
+        const polynomial_<ZZ, lex_<var_order>>& f,
+        const upolynomial_<ZZ>& g,
+        const variable& main_var)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        using BMono = basic_monomial<lex_<var_order>>;
+        auto comp_ptr = f.comp_ptr();
+
+        int64_t m = get_deg(g);
+        ZZ lc_g = g.front().second;
+        ZZ scale(1);
+
+        // 按 main_var 的次数分组: coeffs[d] ∈ Z[其他变量]
+        std::map<int64_t, Poly> coeffs;
+        for (auto& term : f)
+        {
+            int64_t x1_deg = 0;
+            BMono rest_mono(comp_ptr);
+            for (auto& [var, deg] : term.first)
+            {
+                if (var == main_var)
+                    x1_deg = deg;
+                else
+                    rest_mono.push_back({var, (uint64_t)deg});
+            }
+            rest_mono.normalization();
+            if (coeffs.find(x1_deg) == coeffs.end())
+                coeffs[x1_deg] = Poly(comp_ptr);
+            coeffs[x1_deg].push_back({rest_mono, term.second});
+        }
+        for (auto& [d, p] : coeffs)
+            p.normalization();
+
+        // 伪除法主循环
+        while (true)
+        {
+            // 找最高非空 x₁ 次数
+            int64_t d = -1;
+            for (auto it = coeffs.rbegin(); it != coeffs.rend(); ++it)
+                if (!it->second.empty()) { d = it->first; break; }
+            if (d < m) break;
+
+            Poly c_d = coeffs[d];
+
+            // 缩放所有系数乘以 lc(g)
+            for (auto& [deg, p] : coeffs)
+            {
+                for (auto& term : p.data())
+                    term.second *= lc_g;
+                p.normalization();
+            }
+            scale *= lc_g;
+
+            // 减去 c_d · x₁^(d-m) · g
+            for (auto& g_term : g)
+            {
+                int64_t g_deg = g_term.first.deg();
+                ZZ g_coeff = g_term.second;
+                int64_t target_deg = d - m + g_deg;
+                // coeffs[target_deg] -= c_d * g_coeff
+                Poly subtrahend(comp_ptr);
+                for (auto& [mono, coeff] : c_d)
+                    subtrahend.push_back({mono, coeff * g_coeff});
+                subtrahend.normalization();
+
+                if (coeffs.find(target_deg) == coeffs.end())
+                    coeffs[target_deg] = Poly(comp_ptr);
+                coeffs[target_deg] = coeffs[target_deg] - subtrahend;
+                coeffs[target_deg].normalization();
+            }
+        }
+
+        // 重组余式
+        Poly rem(comp_ptr);
+        for (auto& [d, p] : coeffs)
+        {
+            for (auto& [mono, coeff] : p)
+            {
+                if (coeff == ZZ(0)) continue;
+                BMono full_mono(comp_ptr);
+                if (d > 0)
+                    full_mono.push_back({main_var, (uint64_t)d});
+                for (auto& [var, deg] : mono)
+                    full_mono.push_back({var, (uint64_t)deg});
+                full_mono.normalization();
+                rem.push_back({full_mono, coeff});
+            }
+        }
+        rem.normalization();
+
+        return {rem, scale};
+    }
 
     // §6.5 辅助: 多项式每个系数除以整数 d (精确整除)
     template<class var_order>
@@ -383,6 +552,197 @@ namespace clpoly{
                 result.push_back({term.first, q});
         }
         return result;
+    }
+
+    // §6.2 递归多变量 Diophantine 求解器 (GCL Algorithm 6.3)
+    // 求解: h = Σ δᵢ · Ĝᵢ, 其中 Ĝᵢ = ∏_{j≠i} G[j]
+    // eval_vars: 已提升的变量及其求值点 [(x₂,α₂),...,(x_{k-1},α_{k-1})]
+    // depth: 当前递归深度 (从 0 开始剥离 eval_vars)
+    template<class var_order>
+    std::vector<polynomial_<ZZ, lex_<var_order>>>
+    __multivar_diophantine(
+        const polynomial_<ZZ, lex_<var_order>>& h,
+        const std::vector<polynomial_<ZZ, lex_<var_order>>>& G,
+        const std::vector<upolynomial_<ZZ>>& bezout_s,
+        const ZZ& bezout_denom,
+        const std::vector<upolynomial_<ZZ>>& v_factors,
+        const variable& main_var,
+        const std::vector<std::pair<variable, ZZ>>& eval_vars,
+        size_t depth)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        auto comp_ptr = h.comp_ptr();
+        size_t r = G.size();
+
+        if (depth >= eval_vars.size())
+        {
+            // 基本情形: h 是单变量 (只含 main_var), 用 Bézout 链
+            std::vector<Poly> result(r, Poly(comp_ptr));
+            upolynomial_<ZZ> h_upoly;
+            poly_convert(h, h_upoly);
+
+            for (size_t i = 0; i < r; ++i)
+            {
+                auto si_h = bezout_s[i] * h_upoly;
+                si_h.normalization();
+                if (si_h.empty()) continue;
+
+                int64_t deg_si_h = get_deg(si_h);
+                int64_t deg_vi = get_deg(v_factors[i]);
+                int64_t ki = std::max(deg_si_h - deg_vi + 1, (int64_t)0);
+
+                ZZ lc_vi = v_factors[i].front().second;
+                ZZ lc_pow(1);
+                for (int64_t e = 0; e < ki; ++e)
+                    lc_pow *= lc_vi;
+
+                upolynomial_<ZZ> scaled;
+                if (lc_pow != ZZ(1))
+                {
+                    upolynomial_<ZZ> lc_upoly({{umonomial(0), lc_pow}});
+                    scaled = lc_upoly * si_h;
+                    scaled.normalization();
+                }
+                else
+                    scaled = si_h;
+
+                upolynomial_<ZZ> q_upoly, rem_upoly;
+                pair_vec_div(q_upoly.data(), rem_upoly.data(),
+                             scaled.data(), v_factors[i].data(),
+                             v_factors[i].comp());
+
+                ZZ divisor = bezout_denom * lc_pow;
+                upolynomial_<ZZ> delta_i_upoly;
+                for (auto& term : rem_upoly)
+                {
+                    // TODO P1: 此处整除不总是精确的, 需要调查 Bézout 链 + 伪除法的关系
+                    ZZ coeff = term.second / divisor;
+                    if (coeff != ZZ(0))
+                        delta_i_upoly.push_back({term.first, coeff});
+                }
+
+                poly_convert(delta_i_upoly, result[i], main_var);
+            }
+            return result;
+        }
+
+        // 递归情形: 剥离 eval_vars[depth] 对应的变量
+        auto [xk, alpha_k] = eval_vars[depth];
+
+        // Step 1: 求值 h → h_bar (少一个变量)
+        std::map<variable, ZZ> sub = {{xk, alpha_k}};
+        Poly h_bar = assign(h, sub);
+
+        // Step 2: 递归求解 (少一个变量)
+        // 传入求值后的 G (但注意：递归传同样的 G，因为内层只用到 Bézout 链)
+        auto delta = __multivar_diophantine(
+            h_bar, G, bezout_s, bezout_denom, v_factors,
+            main_var, eval_vars, depth + 1);
+
+        // Step 3: 计算误差 e = h - Σ δᵢ · Ĝᵢ
+        // Ĝᵢ = ∏_{j≠i} G[j] (多变量乘积)
+        Poly correction(comp_ptr);
+        for (size_t i = 0; i < r; ++i)
+        {
+            if (delta[i].empty()) continue;
+            // 计算 Ĝᵢ = ∏_{j≠i} G[j]
+            Poly G_hat_i(comp_ptr);
+            bool first = true;
+            for (size_t j = 0; j < r; ++j)
+            {
+                if (j == i) continue;
+                if (first)
+                {
+                    G_hat_i = G[j];
+                    first = false;
+                }
+                else
+                {
+                    G_hat_i = G_hat_i * G[j];
+                    G_hat_i.normalization();
+                }
+            }
+            auto term = delta[i] * G_hat_i;
+            term.normalization();
+            correction = correction + term;
+            correction.normalization();
+        }
+        Poly error = h - correction;
+        error.normalization();
+
+        if (error.empty()) return delta;
+
+        // Step 4: 对 error 按 (xk - αk) 的 Taylor 展开, 逐阶求解
+        int dk = degree(error, xk);
+        Poly xk_minus_alpha(comp_ptr);
+        {
+            basic_monomial<lex_<var_order>> m_xk(comp_ptr);
+            m_xk.push_back({xk, 1});
+            xk_minus_alpha.push_back({m_xk, ZZ(1)});
+            if (alpha_k != 0)
+            {
+                basic_monomial<lex_<var_order>> m0(comp_ptr);
+                xk_minus_alpha.push_back({m0, -alpha_k});
+            }
+            xk_minus_alpha.normalization();
+        }
+        Poly xk_pow = xk_minus_alpha;  // (xk - αk)^1
+
+        for (int j = 1; j <= dk; ++j)
+        {
+            auto cj = __taylor_coeff(error, xk, alpha_k, j);
+            if (cj.empty())
+            {
+                if (j < dk)
+                {
+                    xk_pow = xk_pow * xk_minus_alpha;
+                    xk_pow.normalization();
+                }
+                continue;
+            }
+
+            // 递归求解 cj (cj 已不含 xk)
+            auto tau = __multivar_diophantine(
+                cj, G, bezout_s, bezout_denom, v_factors,
+                main_var, eval_vars, depth + 1);
+
+            for (size_t i = 0; i < r; ++i)
+            {
+                if (tau[i].empty()) continue;
+                auto update = tau[i] * xk_pow;
+                update.normalization();
+                delta[i] = delta[i] + update;
+                delta[i].normalization();
+            }
+
+            // GCL §6.3: 更新误差 (多变量余因子产生交叉项, 影响后续阶系数)
+            // error -= Σ τᵢ · (xk-αk)^j · Ĝᵢ
+            for (size_t i = 0; i < r; ++i)
+            {
+                if (tau[i].empty()) continue;
+                Poly G_hat_i(comp_ptr);
+                bool first = true;
+                for (size_t l = 0; l < r; ++l)
+                {
+                    if (l == i) continue;
+                    if (first) { G_hat_i = G[l]; first = false; }
+                    else { G_hat_i = G_hat_i * G[l]; G_hat_i.normalization(); }
+                }
+                auto sub = tau[i] * xk_pow * G_hat_i;
+                sub.normalization();
+                error = error - sub;
+                error.normalization();
+            }
+            if (error.empty()) break;
+
+            if (j < dk)
+            {
+                xk_pow = xk_pow * xk_minus_alpha;
+                xk_pow.normalization();
+            }
+        }
+
+        return delta;
     }
 
     // §6.3 LC 校正: 将 G[i] 关于 main_var 的首项系数替换为 lc_target
@@ -451,6 +811,21 @@ namespace clpoly{
         for (size_t i = 0; i < r; ++i)
             __hensel_lc_correct(G[i], lc_tau[i], main_var);
 
+        // G_base = G|_{xk=αk}: Diophantine 求解器用的因子
+        // 方程 ej = Σ δᵢ · ∏_{l≠i} Gₗ|_{xk=αk} 中需要去掉 xk 方向的贡献
+        // (xk 修正 ∝ (xk-αk)^m 在 xk=αk 处为零, 故 G_base 在循环中不变)
+        std::vector<Poly> G_base(r, Poly(comp_ptr));
+        {
+            std::map<variable, ZZ> xk_sub = {{xk, alpha_k}};
+            for (size_t i = 0; i < r; ++i)
+                G_base[i] = assign(G[i], xk_sub);
+        }
+
+        // 构建 eval_vars: 已提升变量的求值点列表 (循环中不变)
+        std::vector<std::pair<variable, ZZ>> eval_vars;
+        for (auto& [v, val] : prev_eval)
+            eval_vars.push_back({v, val});
+
         // (xk - αk)^j, 从 j=1 开始
         Poly xk_pow = xk_minus_alpha;  // (xk - αk)^1
 
@@ -480,65 +855,17 @@ namespace clpoly{
                 continue;
             }
 
-            // Step C: MDP — 先将 eⱼ 求值到单变量，再用 Bézout 求解
-            // eⱼ ∈ Z[x₁,...,x_{k-1}], 求值前序变量 → ē_j ∈ Z[x₁]
-            Poly ej_eval = ej;
-            if (!prev_eval.empty())
-                ej_eval = assign(ej, prev_eval);
-
-            // 转为 upolynomial 进行单变量 MDP
-            upolynomial_<ZZ> ej_upoly;
-            poly_convert(ej_eval, ej_upoly);
+            // Step C: 递归多变量 Diophantine 求解 (GCL Algorithm 6.3)
+            // eⱼ ∈ Z[x₁,...,x_{k-1}], 求 δᵢ 使得 eⱼ = Σ δᵢ · Ĝᵢ|_{xk=αk}
+            auto deltas = __multivar_diophantine(
+                ej, G_base, bezout_s, bezout_denom, v_factors,
+                main_var, eval_vars, 0);
 
             for (size_t i = 0; i < r; ++i)
             {
-                auto si_ej = bezout_s[i] * ej_upoly;
-                si_ej.normalization();
-
-                int64_t deg_si_ej = get_deg(si_ej);
-                int64_t deg_vi = get_deg(v_factors[i]);
-                int64_t ki = std::max(deg_si_ej - deg_vi + 1, (int64_t)0);
-
-                // prem 在 upolynomial 上: lc(vi)^ki · si_ej = Q·vi + prem
-                // 因为 upolynomial 没有 prem, 用 pair_vec_div 乘以 lc^ki 后除
-                ZZ lc_vi = v_factors[i].front().second;  // = δ
-                ZZ lc_pow(1);
-                for (int64_t e = 0; e < ki; ++e)
-                    lc_pow *= lc_vi;
-
-                // scaled = lc^ki · si_ej
-                upolynomial_<ZZ> scaled;
-                if (lc_pow != ZZ(1))
-                {
-                    upolynomial_<ZZ> lc_poly({{umonomial(0), lc_pow}});
-                    scaled = lc_poly * si_ej;
-                    scaled.normalization();
-                }
-                else
-                    scaled = si_ej;
-
-                // pair_vec_div: scaled = Q · vi + rem
-                upolynomial_<ZZ> q_upoly, rem_upoly;
-                pair_vec_div(q_upoly.data(), rem_upoly.data(),
-                             scaled.data(), v_factors[i].data(), v_factors[i].comp());
-
-                // δ̄ᵢ = rem / (δ^kᵢ · denom)
-                ZZ divisor = bezout_denom * lc_pow;
-                upolynomial_<ZZ> delta_i_upoly;
-                delta_i_upoly.reserve(rem_upoly.size());
-                for (auto& term : rem_upoly)
-                {
-                    ZZ coeff = term.second / divisor;
-                    if (coeff != 0)
-                        delta_i_upoly.push_back({term.first, coeff});
-                }
-
-                // 转为 multivariate polynomial
-                Poly delta_i(comp_ptr);
-                poly_convert(delta_i_upoly, delta_i, main_var);
-
-                // Step D: Gᵢ += δ̄ᵢ · (xk - αk)^j
-                auto update = delta_i * xk_pow;
+                if (deltas[i].empty()) continue;
+                // Step D: Gᵢ += δᵢ · (xk - αk)^j
+                auto update = deltas[i] * xk_pow;
                 update.normalization();
                 G[i] = G[i] + update;
                 G[i].normalization();
@@ -1772,6 +2099,8 @@ namespace clpoly{
 
         for (size_t idx = 0, tried = 0; tried < max_tries; ++idx)
         {
+            // boost::math::prime 表最多 ~9999 个素数
+            if (idx >= 9999) break;
             uint32_t p = boost::math::prime((unsigned)idx);
 
             // 跳过 lc(f) mod p == 0 的素数
@@ -2122,6 +2451,89 @@ namespace clpoly{
     // §7. 多变量因式分解
     // ================================================================
 
+    // §7.0 单项式 content 提取: 对每个变量计算所有项中的最小幂次，
+    // 将公共变量幂次作为因子提取，返回除去公共幂次后的多项式。
+    // 例：f = x²yz + x³y²z = x²yz(1 + xy)
+    //   → var_factors = [(x, 2), (y, 1), (z, 1)], 返回 1 + xy
+    template<class var_order>
+    polynomial_<ZZ, lex_<var_order>>
+    __extract_monomial_content(
+        const polynomial_<ZZ, lex_<var_order>>& f,
+        std::vector<std::pair<variable, int64_t>>& var_factors)
+    {
+        using Poly = polynomial_<ZZ, lex_<var_order>>;
+        var_factors.clear();
+
+        if (f.empty()) return f;
+
+        // Step 1: 各变量取所有项中的最小幂次
+        std::map<variable, int64_t> min_deg;
+        bool first_term = true;
+
+        for (const auto& [mono, coeff] : f)
+        {
+            if (first_term)
+            {
+                for (const auto& [var, deg] : mono)
+                    min_deg[var] = deg;
+                first_term = false;
+            }
+            else
+            {
+                std::set<variable> present;
+                for (const auto& [var, deg] : mono)
+                {
+                    present.insert(var);
+                    auto it = min_deg.find(var);
+                    if (it != min_deg.end())
+                        it->second = std::min(it->second, deg);
+                }
+                // 不在本项中的变量 → min 降为 0 → 移除
+                auto it = min_deg.begin();
+                while (it != min_deg.end())
+                {
+                    if (present.find(it->first) == present.end())
+                        it = min_deg.erase(it);
+                    else
+                        ++it;
+                }
+            }
+        }
+
+        // Step 2: 移除 min_deg 为 0 的变量
+        for (auto it = min_deg.begin(); it != min_deg.end(); )
+        {
+            if (it->second == 0)
+                it = min_deg.erase(it);
+            else
+                ++it;
+        }
+
+        if (min_deg.empty()) return f;  // 无公共变量幂
+
+        // Step 3: 构造提取后的多项式（每项的单项式减去 min_deg）
+        Poly result(f.comp_ptr());
+        for (const auto& [mono, coeff] : f)
+        {
+            typename Poly::monomial_type new_mono;
+            for (const auto& [var, deg] : mono)
+            {
+                auto it = min_deg.find(var);
+                int64_t subtract = (it != min_deg.end()) ? it->second : 0;
+                if (deg > subtract)
+                    new_mono.push_back({var, deg - subtract});
+            }
+            result.data().push_back({std::move(new_mono), coeff});
+        }
+        result.normalization();
+
+        // Step 4: 记录提取的变量因子
+        for (const auto& [var, deg] : min_deg)
+            var_factors.push_back({var, deg});
+
+        return result;
+    }
+
     // §7.1 Wang 核心: 对无平方本原多变量多项式执行 Wang 算法
     template<class var_order>
     std::vector<std::pair<polynomial_<ZZ, lex_<var_order>>, uint64_t>>
@@ -2130,72 +2542,156 @@ namespace clpoly{
         using Poly = polynomial_<ZZ, lex_<var_order>>;
         auto comp_ptr = g.comp_ptr();
 
-        auto all_vars = get_variables(g);
-        variable x1 = all_vars.front().first;
+        auto all_vars_list = get_variables(g);
+        std::vector<std::pair<variable, int64_t>> all_vars(
+            all_vars_list.begin(), all_vars_list.end());
 
-        const int MAX_RETRY = 10;
+        // 交错轮换主变量: 每个主变量分配 BATCH_SIZE 个求值点,
+        // 用完后换下一个主变量, 一轮结束后扩展配额继续.
+        // 避免在某个"坏"主变量上浪费过多时间.
+        const int BATCH_SIZE = 200;
+        const int MAX_ROUNDS = 3;
 
-        for (int retry = 0; retry < MAX_RETRY; ++retry)
+        // 筛选可用主变量 (deg > 1)
+        std::vector<variable> main_vars;
+        for (auto& [v, d] : all_vars)
+            if (degree(g, v) > 1)
+                main_vars.push_back(v);
+
+        if (main_vars.empty())
+            return {{g, 1}};
+
+        // 每个主变量的状态
+        std::vector<int> var_skip(main_vars.size(), 0);         // 当前 skip 位置
+        std::vector<int> var_irred(main_vars.size(), 0);        // 连续不可约计数
+        std::vector<bool> var_dead(main_vars.size(), false);    // 已判定不可约
+
+        // 辅助 lambda: 规范化原始部分 (pp + 正首项)
+        auto normalize_factor = [](Poly& h)
         {
-            auto eval = __select_eval_point(g, x1);
+            h = pp(h);
+            if (!h.empty() && h.front().second < 0)
+                for (auto& term : h.data())
+                    term.second = -term.second;
+        };
 
-            auto f0 = assign(g, eval);
-            upolynomial_<ZZ> f0_upoly;
-            poly_convert(f0, f0_upoly);
-            auto uni_fac = factorize(f0_upoly);
-
-            std::vector<upolynomial_<ZZ>> uni_factors;
-            for (auto& [fi, ei] : uni_fac.factors)
-                uni_factors.push_back(fi);
-
-            if (uni_factors.size() <= 1)
-                return {{g, 1}};
-
-            auto lc_result = __wang_leading_coeff(g, uni_factors, eval, x1);
-            if (!lc_result.success)
-                continue;
-
-            auto mv_factors = __multivar_hensel_lift(
-                lc_result.f_scaled, lc_result.scaled_factors,
-                lc_result.lc_targets, eval, x1);
-
-            // 试除验证 + 去缩放
-            std::vector<std::pair<Poly, uint64_t>> verified;
-            Poly g_remaining = g;
-
-            for (auto& Gi : mv_factors)
+        for (int round = 0; round < MAX_ROUNDS; ++round)
+        {
+            for (size_t vi = 0; vi < main_vars.size(); ++vi)
             {
-                auto h = pp(Gi);
-                if (!h.empty() && h.front().second < 0)
-                {
-                    for (auto& term : h.data())
-                        term.second = -term.second;
-                }
+                if (var_dead[vi]) continue;
+                variable x1 = main_vars[vi];
+                int batch_end = var_skip[vi] + BATCH_SIZE;
 
-                Poly q(comp_ptr), rem(comp_ptr);
-                pair_vec_div(q.data(), rem.data(),
-                             g_remaining.data(), h.data(), g.comp());
-                if (rem.empty() && !q.empty())
+                for (int skip = var_skip[vi]; skip < batch_end; ++skip)
                 {
-                    verified.push_back({std::move(h), 1});
-                    g_remaining = std::move(q);
+                    auto eval = __select_eval_point(g, x1, skip);
+                    auto f0 = assign(g, eval);
+                    upolynomial_<ZZ> f0_upoly;
+                    poly_convert(f0, f0_upoly);
+                    auto uni_fac = factorize(f0_upoly);
+
+                    std::vector<upolynomial_<ZZ>> uni_factors;
+                    for (auto& [fi, ei] : uni_fac.factors)
+                        uni_factors.push_back(fi);
+
+                    if (uni_factors.size() <= 1)
+                    {
+                        ++var_irred[vi];
+                        // 不可约启发式: 3 个连续求值点都给出 1 个因子
+                        // 仅标记该主变量为 dead, 不直接 return.
+                        // 原因: 某因子不含 x₁ 时, 特化后变常数, 但 g 仍可约.
+                        if (var_irred[vi] >= 3)
+                        {
+                            var_dead[vi] = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    var_irred[vi] = 0;
+
+                    auto lc_result = __wang_leading_coeff(
+                        g, uni_factors, eval, x1, uni_fac.content);
+                    if (!lc_result.success)
+                        continue;
+
+                    auto mv_factors = __multivar_hensel_lift(
+                        lc_result.f_scaled, lc_result.scaled_factors,
+                        lc_result.lc_targets, eval, x1);
+
+                    // 试除验证 + 去缩放 + 因子重组
+                    std::vector<std::pair<Poly, uint64_t>> verified;
+                    Poly g_remaining = g;
+
+                    // Step 1: 尝试单因子试除
+                    std::vector<size_t> unmatched;
+                    for (size_t fi = 0; fi < mv_factors.size(); ++fi)
+                    {
+                        auto h = mv_factors[fi];
+                        normalize_factor(h);
+                        if (h.empty() || is_number(h)) continue;
+
+                        Poly q(comp_ptr), rem(comp_ptr);
+                        pair_vec_div(q.data(), rem.data(),
+                                     g_remaining.data(), h.data(), g.comp());
+                        if (rem.empty() && !q.empty())
+                        {
+                            verified.push_back({std::move(h), 1});
+                            g_remaining = std::move(q);
+                        }
+                        else
+                            unmatched.push_back(fi);
+                    }
+
+                    // Step 2: 因子重组 — 若单因子试除不完整, 尝试配对
+                    if (!unmatched.empty() && !g_remaining.empty()
+                        && !is_number(g_remaining) && unmatched.size() >= 2)
+                    {
+                        for (size_t i = 0; i < unmatched.size() && !is_number(g_remaining); ++i)
+                        {
+                            for (size_t j = i + 1; j < unmatched.size(); ++j)
+                            {
+                                auto prod = mv_factors[unmatched[i]] * mv_factors[unmatched[j]];
+                                prod.normalization();
+                                normalize_factor(prod);
+                                if (prod.empty() || is_number(prod)) continue;
+
+                                Poly q(comp_ptr), rem(comp_ptr);
+                                pair_vec_div(q.data(), rem.data(),
+                                             g_remaining.data(), prod.data(), g.comp());
+                                if (rem.empty() && !q.empty())
+                                {
+                                    verified.push_back({std::move(prod), 1});
+                                    g_remaining = std::move(q);
+                                    unmatched.erase(unmatched.begin() + j);
+                                    unmatched.erase(unmatched.begin() + i);
+                                    --i;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Step 3: 剩余部分作为最后一个因子
+                    if (!g_remaining.empty() && !is_number(g_remaining))
+                    {
+                        auto h = g_remaining;
+                        normalize_factor(h);
+                        if (!is_number(h))
+                            verified.push_back({std::move(h), 1});
+                    }
+
+                    if (verified.size() >= 2)
+                        return verified;
                 }
+                var_skip[vi] = batch_end;
             }
 
-            if (!g_remaining.empty() && !is_number(g_remaining))
-            {
-                auto h = pp(g_remaining);
-                if (!h.empty() && h.front().second < 0)
-                {
-                    for (auto& term : h.data())
-                        term.second = -term.second;
-                }
-                if (!is_number(h))
-                    verified.push_back({std::move(h), 1});
-            }
-
-            if (!verified.empty())
-                return verified;
+            // 检查是否所有主变量都已 dead
+            bool all_dead = true;
+            for (size_t vi = 0; vi < main_vars.size(); ++vi)
+                if (!var_dead[vi]) { all_dead = false; break; }
+            if (all_dead) break;
         }
 
         return {{g, 1}};
@@ -2233,23 +2729,52 @@ namespace clpoly{
             }
             else
             {
-                // 确保传给 __wang_core 的多项式 lc > 0
-                Poly gk_pos = gk;
-                bool negated = false;
-                if (!gk_pos.empty() && gk_pos.front().second < 0)
+                // 预处理：提取单项式 content（公共变量幂次）
+                std::vector<std::pair<variable, int64_t>> mono_factors;
+                Poly gk_reduced = __extract_monomial_content(gk, mono_factors);
+
+                // 将提取的变量幂次作为因子加入结果
+                for (auto& [var, vdeg] : mono_factors)
                 {
-                    for (auto& term : gk_pos.data())
-                        term.second = -term.second;
-                    negated = true;
+                    Poly var_poly(gk.comp_ptr());
+                    typename Poly::monomial_type mono;
+                    mono.push_back({var, 1});
+                    var_poly.data().push_back({std::move(mono), ZZ(1)});
+                    var_poly.normalization();
+                    result.factors.push_back({std::move(var_poly), static_cast<uint64_t>(vdeg) * mk});
                 }
-                auto wang_factors = __wang_core(gk_pos);
-                for (auto& [fi, ei] : wang_factors)
-                    result.factors.push_back({fi, ei * mk});
-                if (negated)
+
+                // 检查提取后是否还需要多变量分解
+                auto reduced_vars = get_variables(gk_reduced);
+                if (reduced_vars.size() <= 1)
                 {
-                    // (-1)^mk 吸收到 content
-                    if (mk % 2 == 1)
-                        result.content = -result.content;
+                    // 降为单变量或常数
+                    auto sub = factorize(gk_reduced);
+                    for (uint64_t e = 0; e < mk; ++e)
+                        result.content *= sub.content;
+                    for (auto& [fi, ei] : sub.factors)
+                        result.factors.push_back({fi, ei * mk});
+                }
+                else
+                {
+                    // 确保传给 __wang_core 的多项式 lc > 0
+                    Poly gk_pos = gk_reduced;
+                    bool negated = false;
+                    if (!gk_pos.empty() && gk_pos.front().second < 0)
+                    {
+                        for (auto& term : gk_pos.data())
+                            term.second = -term.second;
+                        negated = true;
+                    }
+                    auto wang_factors = __wang_core(gk_pos);
+                    for (auto& [fi, ei] : wang_factors)
+                        result.factors.push_back({fi, ei * mk});
+                    if (negated)
+                    {
+                        // (-1)^mk 吸收到 content
+                        if (mk % 2 == 1)
+                            result.content = -result.content;
+                    }
                 }
             }
         }

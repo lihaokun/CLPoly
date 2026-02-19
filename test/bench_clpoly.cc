@@ -6,6 +6,7 @@
  * Uses release flags (-O3 -DNDEBUG) for meaningful timings.
  */
 #include <clpoly/clpoly.hh>
+#include <clpoly/polynomial_factorize.hh>
 #include "bench_utils.hh"
 
 using namespace clpoly;
@@ -140,6 +141,63 @@ int main() {
     BENCH("resultant  deg8", 3, {
         volatile auto r = resultant(mz_res_f_l, mz_res_g_l, x); (void)r;
     });
+
+    // ================================================================
+    // Multivariate factorize (lex ordering)
+    // ================================================================
+    bench_header("Multivariate factorize (lex)");
+    {
+        using PolyLex = polynomial_<ZZ, lex>;
+        auto to_lex = [](const polynomial_ZZ& p) {
+            PolyLex r; poly_convert(p, r); return r;
+        };
+
+        // Bivariate: (f1)(f2), small factors
+        auto mfac_f1_s = to_lex(random_polynomial<ZZ>({x, y}, 3, 4, {-5, 5}));
+        auto mfac_f2_s = to_lex(random_polynomial<ZZ>({x, y}, 3, 4, {-5, 5}));
+        auto mfac_s = mfac_f1_s * mfac_f2_s;
+        mfac_s.normalization();
+
+        auto mfac_f1_m = to_lex(random_polynomial<ZZ>({x, y}, 5, 6, {-5, 5}));
+        auto mfac_f2_m = to_lex(random_polynomial<ZZ>({x, y}, 5, 6, {-5, 5}));
+        auto mfac_m = mfac_f1_m * mfac_f2_m;
+        mfac_m.normalization();
+
+        // Known factorable: x^2 - y^2 = (x+y)(x-y)
+        auto mfac_known = to_lex(pow(x,2) - pow(y,2));
+
+        BENCH("factorize  x^2-y^2", 10, {
+            volatile auto r = factorize(mfac_known); (void)r;
+        });
+        BENCH("factorize  bivar deg3*deg3", 5, {
+            volatile auto r = factorize(mfac_s); (void)r;
+        });
+        BENCH("factorize  bivar deg5*deg5", 3, {
+            volatile auto r = factorize(mfac_m); (void)r;
+        });
+
+        // Trivariate
+        variable z("z");
+        auto mfac_tri_f1 = to_lex(random_polynomial<ZZ>({x, y, z}, 2, 4, {-3, 3}));
+        auto mfac_tri_f2 = to_lex(random_polynomial<ZZ>({x, y, z}, 2, 4, {-3, 3}));
+        auto mfac_tri = mfac_tri_f1 * mfac_tri_f2;
+        mfac_tri.normalization();
+
+        auto mfac_tri_known = to_lex(pow(x,2) + 2*x*z + pow(z,2) - pow(y,2));  // (x+y+z)(x-y+z)
+
+        BENCH("factorize  trivar known", 5, {
+            volatile auto r = factorize(mfac_tri_known); (void)r;
+        });
+        BENCH("factorize  trivar deg2*deg2", 3, {
+            volatile auto r = factorize(mfac_tri); (void)r;
+        });
+
+        // With multiplicity: (x+y)^2 * (x-y)
+        auto mfac_mult = to_lex(pow(x,3) + pow(x,2)*y - x*pow(y,2) - pow(y,3));
+        BENCH("factorize  (x+y)^2*(x-y)", 10, {
+            volatile auto r = factorize(mfac_mult); (void)r;
+        });
+    }
 
     // ================================================================
     // Univariate upolynomial_ZZ

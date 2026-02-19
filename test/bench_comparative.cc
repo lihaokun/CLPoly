@@ -6,7 +6,9 @@
  * Uses release flags (-O3 -DNDEBUG) for meaningful timings.
  */
 #include <clpoly/clpoly.hh>
+#include <clpoly/polynomial_factorize.hh>
 #include <flint/fmpz_poly.h>
+#include <flint/fmpz_mpoly_factor.h>
 #include "crosscheck_flint.hh"
 #include "crosscheck_ntl.hh"
 #include "bench_utils.hh"
@@ -439,6 +441,92 @@ int main() {
             { volatile auto r = factorize(p_l); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(nl); (void)r; }
         );
+    }
+
+    // ================================================================
+    // Multivariate Factorization: CLPoly vs FLINT
+    // ================================================================
+    bench_cmp_header("Multivariate Factorize: CLPoly vs FLINT", "FLINT");
+    {
+        using PolyLex = polynomial_<ZZ, lex>;
+        auto to_lex = [](const polynomial_ZZ& p) {
+            PolyLex r; poly_convert(p, r); return r;
+        };
+
+        std::vector<variable> vars = {x, y};
+
+        // Known: x^2 - y^2
+        {
+            auto f_lex = to_lex(pow(x,2) - pow(y,2));
+            auto ff = crosscheck::clpoly_to_flint(pow(x,2) - pow(y,2), vars);
+
+            BENCH_CMP("factor  x^2-y^2", 10,
+                { volatile auto r = factorize(f_lex); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+
+        // Bivariate: product of two random deg3 factors
+        {
+            auto f1_gr = random_polynomial<ZZ>(vars, 3, 4, {-5, 5});
+            auto f2_gr = random_polynomial<ZZ>(vars, 3, 4, {-5, 5});
+            auto f_gr = f1_gr * f2_gr;
+            auto f_lex = to_lex(f_gr);
+            auto ff = crosscheck::clpoly_to_flint(f_gr, vars);
+
+            BENCH_CMP("factor  bivar deg3*deg3", 5,
+                { volatile auto r = factorize(f_lex); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+
+        // Bivariate: product of two random deg5 factors
+        {
+            auto f1_gr = random_polynomial<ZZ>(vars, 5, 6, {-5, 5});
+            auto f2_gr = random_polynomial<ZZ>(vars, 5, 6, {-5, 5});
+            auto f_gr = f1_gr * f2_gr;
+            auto f_lex = to_lex(f_gr);
+            auto ff = crosscheck::clpoly_to_flint(f_gr, vars);
+
+            BENCH_CMP("factor  bivar deg5*deg5", 3,
+                { volatile auto r = factorize(f_lex); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+
+        // Trivariate: known (x+y+z)(x-y+z)
+        {
+            variable z("z");
+            std::vector<variable> vars3 = {x, y, z};
+            auto f_gr = pow(x,2) + 2*x*z + pow(z,2) - pow(y,2);
+            auto f_lex = to_lex(f_gr);
+            auto ff = crosscheck::clpoly_to_flint(f_gr, vars3);
+
+            BENCH_CMP("factor  trivar known", 5,
+                { volatile auto r = factorize(f_lex); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
     }
 
     // ================================================================

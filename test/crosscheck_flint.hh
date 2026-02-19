@@ -385,6 +385,72 @@ inline FlintFactorResult flint_factor_upoly(const clpoly::upolynomial_ZZ& p) {
     return result;
 }
 
+// ---- Multivariate factorization via fmpz_mpoly_factor ----
+
+#include <flint/fmpz_mpoly_factor.h>
+
+struct FlintMPolyFactorResult {
+    clpoly::ZZ content;
+    std::vector<std::pair<clpoly::polynomial_ZZ, long>> factors; // (factor, exponent)
+};
+
+inline FlintMPolyFactorResult flint_factor_mpoly(
+    const clpoly::polynomial_ZZ& p,
+    const std::vector<clpoly::variable>& vars)
+{
+    auto fp = clpoly_to_flint(p, vars);
+
+    fmpz_mpoly_factor_t fac;
+    fmpz_mpoly_factor_init(fac, fp.ctx);
+    int ok = fmpz_mpoly_factor(fac, fp.poly, fp.ctx);
+    if (!ok)
+        throw std::runtime_error("fmpz_mpoly_factor failed");
+
+    FlintMPolyFactorResult result;
+    // Content
+    fmpz_t c;
+    fmpz_init(c);
+    fmpz_mpoly_factor_get_constant_fmpz(c, fac, fp.ctx);
+    result.content = fmpz_to_clpoly_zz(c);
+    fmpz_clear(c);
+
+    // Factors
+    slong nfac = fmpz_mpoly_factor_length(fac, fp.ctx);
+    for (slong i = 0; i < nfac; ++i) {
+        fmpz_mpoly_t base;
+        fmpz_mpoly_init(base, fp.ctx);
+        fmpz_mpoly_factor_get_base(base, fac, i, fp.ctx);
+
+        // Convert back to CLPoly via a temporary FlintPoly wrapper
+        // (manual conversion since we can't easily construct FlintPoly from existing data)
+        slong len = fmpz_mpoly_length(base, fp.ctx);
+        slong nvars = static_cast<slong>(vars.size());
+        std::vector<std::pair<clpoly::monomial, clpoly::ZZ>> terms;
+        terms.reserve(len);
+        std::vector<ulong> exp(nvars);
+        fmpz_t coeff;
+        fmpz_init(coeff);
+        for (slong j = 0; j < len; ++j) {
+            fmpz_mpoly_get_term_coeff_fmpz(coeff, base, j, fp.ctx);
+            fmpz_mpoly_get_term_exp_ui(exp.data(), base, j, fp.ctx);
+            clpoly::ZZ cz = fmpz_to_clpoly_zz(coeff);
+            std::vector<std::pair<clpoly::variable, int64_t>> mono_data;
+            for (slong k = 0; k < nvars; ++k)
+                if (exp[k] != 0)
+                    mono_data.push_back({vars[k], static_cast<int64_t>(exp[k])});
+            terms.emplace_back(clpoly::monomial(mono_data), std::move(cz));
+        }
+        fmpz_clear(coeff);
+        fmpz_mpoly_clear(base, fp.ctx);
+
+        long e = fmpz_mpoly_factor_get_exp_si(fac, i, fp.ctx);
+        result.factors.push_back({clpoly::polynomial_ZZ(terms), e});
+    }
+
+    fmpz_mpoly_factor_clear(fac, fp.ctx);
+    return result;
+}
+
 } // namespace crosscheck
 
 #endif // CROSSCHECK_FLINT_HH

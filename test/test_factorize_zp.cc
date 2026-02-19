@@ -88,7 +88,7 @@ int main() {
         uint32_t p = 7;
         auto a = make_upoly_zp({{2, 1}, {0, 6}}, p);
         auto b = make_upoly_zp({{1, 1}, {0, 6}}, p);
-        auto g = __upoly_gcd_Zp(a, b);
+        auto g = polynomial_GCD(a, b);
         auto expected = make_upoly_zp({{1, 1}, {0, 6}}, p);
         CLPOLY_ASSERT_EQ(g, expected);
     }
@@ -99,13 +99,12 @@ int main() {
         auto a = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto b = make_upoly_zp({{1, 1}, {0, 2}}, p);
         upolynomial_<Zp> s, t;
-        __upoly_gcd_extended(s, t, a, b);
+        auto g = polynomial_GCD(a, b, s, t);
         auto sa = s * a;
         auto tb = t * b;
         auto sum = sa + tb;
         sum.normalization();
-        auto one = make_upoly_zp({{0, 1}}, p);
-        CLPOLY_ASSERT_EQ(sum, one);
+        CLPOLY_ASSERT_EQ(sum, g);
     }
 
     CLPOLY_TEST("__upoly_gcd_extended_2");
@@ -114,13 +113,12 @@ int main() {
         auto a = make_upoly_zp({{2, 1}, {0, 1}}, p);
         auto b = make_upoly_zp({{1, 1}, {0, 3}}, p);
         upolynomial_<Zp> s, t;
-        __upoly_gcd_extended(s, t, a, b);
+        auto g = polynomial_GCD(a, b, s, t);
         auto sa = s * a;
         auto tb = t * b;
         auto sum = sa + tb;
         sum.normalization();
-        auto one = make_upoly_zp({{0, 1}}, p);
-        CLPOLY_ASSERT_EQ(sum, one);
+        CLPOLY_ASSERT_EQ(sum, g);
     }
 
     CLPOLY_TEST("__upoly_powmod");

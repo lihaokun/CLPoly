@@ -310,10 +310,12 @@ namespace clpoly{
         std::uint32_t tmp_x=std::max(degree(F),degree(G));
         if (tmp_x<2) tmp_x=2;
         std::uint32_t p_index=tmp_x/std::log(tmp_x);
+        if (p_index >= 9999) p_index = 9998;
         std::uint32_t prime=boost::math::prime(p_index);
         while (prime <tmp_x)
         {
-            prime=boost::math::prime(++p_index);
+            if (++p_index >= 9999) break;
+            prime=boost::math::prime(p_index);
         }
 
         polynomial_<ZZ,lex_<var_order>> Pout_(F.comp_ptr()),tmp_Pout_(F.comp_ptr()),R(F.comp_ptr());
@@ -328,8 +330,10 @@ namespace clpoly{
             
             while (F.begin()->second % prime ==0 || G.begin()->second % prime ==0)
             {
-                prime=boost::math::prime(++p_index);
+                if (++p_index >= 9999) break;
+                prime=boost::math::prime(p_index);
             }
+            if (p_index >= 9999) break;
             f_p=polynomial_mod(F,prime);
             g_p=polynomial_mod(G,prime);
             lc_gcd_p=polynomial_mod(lc_gcd,prime);
@@ -342,7 +346,8 @@ namespace clpoly{
             tmp_Pout_d=__polynomial_GCD(Pout_mod,f_p,g_p,lc_gcd_p,Pout_d);
             if (tmp_Pout_d==-1)
             {
-                prime=boost::math::prime(++p_index);
+                if (++p_index >= 9999) break;
+                prime=boost::math::prime(p_index);
                 continue;
             }
             
@@ -455,10 +460,11 @@ namespace clpoly{
                 swap(tmp_Pout_.data(),Pout_.data());
                        
             }
-            prime=boost::math::prime(++p_index);
-        }  
-
-        
+            if (++p_index >= 9999) break;
+            prime=boost::math::prime(p_index);
+        }
+        // 素数表耗尽: 保守返回 content GCD
+        return cont_gcd;
     }
 
     // 扩展 GCD (多变量 ZZ): c = polynomial_GCD(F, G, s, t), 满足 s*F + t*G = c

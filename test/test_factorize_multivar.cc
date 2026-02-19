@@ -316,6 +316,33 @@ int main()
     }
 
     // ============================================================
+    // Diophantine 模逆回归测试 (非首一因子, Bézout denom ≠ ±1)
+    // ============================================================
+
+    CLPOLY_TEST("factorize: non-monic Diophantine modular inverse");
+    {
+        // 非首一因子: lc(f1)=4, lc(f2)=5 → Bézout denom ≠ ±1
+        // 此前因截断除法而失败 (D5 bivar regression 1 的根因)
+        auto f1 = make_lex(4*pow(x,3) + pow(y,3) + 3*x*y - 3*pow(y,2));
+        auto f2 = make_lex(5*pow(x,3) + 5*x*y - 2*x - 2*y);
+        auto f = f1 * f2; f.normalization();
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "non-monic Diophantine");
+        CLPOLY_ASSERT(fac.factors.size() == 2);
+    }
+
+    CLPOLY_TEST("factorize: non-monic trivar Diophantine modular inverse");
+    {
+        // 三变量非首一因子
+        auto f1 = make_lex(3*pow(x,2)*y - 2*x*z + y*z + polynomial_ZZ(ZZ(1)));
+        auto f2 = make_lex(2*pow(x,2) + x*y - 3*y*z + polynomial_ZZ(ZZ(2)));
+        auto f = f1 * f2; f.normalization();
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "non-monic trivar Diophantine");
+        CLPOLY_ASSERT(fac.factors.size() >= 2);
+    }
+
+    // ============================================================
     // 单项式 content 提取回归测试
     // ============================================================
 

@@ -516,23 +516,9 @@ namespace clpoly{
         return {rem, scale};
     }
 
-    // §6.5 辅助: 多项式每个系数除以整数 d (精确整除)
-    template<class var_order>
-    polynomial_<ZZ, lex_<var_order>> __poly_exact_div_zz(
-        const polynomial_<ZZ, lex_<var_order>>& f,
-        const ZZ& d)
-    {
-        if (d == ZZ(1)) return f;
-        polynomial_<ZZ, lex_<var_order>> result(f.comp_ptr());
-        result.reserve(f.size());
-        for (auto& term : f)
-        {
-            ZZ q = term.second / d;
-            if (q != 0)
-                result.push_back({term.first, q});
-        }
-        return result;
-    }
+    // §4.2.1 标量对称模: 将 a 约化到 (-m/2, m/2]
+    // (前置声明, 供 Diophantine 基本情形使用)
+    inline ZZ __symmetric_mod(const ZZ& a, const ZZ& m);
 
     // §6.2 递归多变量 Diophantine 求解器 (GCL Algorithm 6.3)
     // 求解: h = Σ δᵢ · Ĝᵢ, 其中 Ĝᵢ = ∏_{j≠i} G[j]
@@ -548,6 +534,7 @@ namespace clpoly{
         const std::vector<upolynomial_<ZZ>>& v_factors,
         const variable& main_var,
         const std::vector<std::pair<variable, ZZ>>& eval_vars,
+        const ZZ& pa,
         size_t depth)
     {
         using Poly = polynomial_<ZZ, lex_<var_order>>;
@@ -581,11 +568,29 @@ namespace clpoly{
                 // 总缩放因子 = bezout_denom * lc_pow
                 ZZ divisor = bezout_denom * lc_pow;
                 upolynomial_<ZZ> delta_i_upoly;
-                for (auto& term : rem_upoly)
+
+                if (pa > ZZ(0))
                 {
-                    ZZ coeff = term.second / divisor;
-                    if (coeff != ZZ(0))
-                        delta_i_upoly.push_back({term.first, coeff});
+                    // 模逆路径: divisor⁻¹ mod pa, 然后对称模约化
+                    ZZ divisor_inv;
+                    bool ok = ZZ::invert(divisor_inv, divisor, pa);
+                    assert(ok);  // gcd(p, divisor) = 1 由选素数保证
+                    for (auto& term : rem_upoly)
+                    {
+                        ZZ coeff = __symmetric_mod(term.second * divisor_inv, pa);
+                        if (coeff != ZZ(0))
+                            delta_i_upoly.push_back({term.first, coeff});
+                    }
+                }
+                else
+                {
+                    // 精确除法路径 (denom == ±1)
+                    for (auto& term : rem_upoly)
+                    {
+                        ZZ coeff = term.second / divisor;
+                        if (coeff != ZZ(0))
+                            delta_i_upoly.push_back({term.first, coeff});
+                    }
                 }
 
                 poly_convert(delta_i_upoly, result[i], main_var);
@@ -604,7 +609,7 @@ namespace clpoly{
         // 传入求值后的 G (但注意：递归传同样的 G，因为内层只用到 Bézout 链)
         auto delta = __multivar_diophantine(
             h_bar, G, bezout_s, bezout_denom, v_factors,
-            main_var, eval_vars, depth + 1);
+            main_var, eval_vars, pa, depth + 1);
 
         // Step 3: 计算误差 e = h - Σ δᵢ · Ĝᵢ
         // Ĝᵢ = ∏_{j≠i} G[j] (多变量乘积)
@@ -671,7 +676,7 @@ namespace clpoly{
             // 递归求解 cj (cj 已不含 xk)
             auto tau = __multivar_diophantine(
                 cj, G, bezout_s, bezout_denom, v_factors,
-                main_var, eval_vars, depth + 1);
+                main_var, eval_vars, pa, depth + 1);
 
             for (size_t i = 0; i < r; ++i)
             {
@@ -749,6 +754,7 @@ namespace clpoly{
         std::vector<polynomial_<ZZ, lex_<var_order>>>& G,
         const std::vector<upolynomial_<ZZ>>& bezout_s,
         const ZZ& bezout_denom,
+        const ZZ& pa,
         const std::vector<upolynomial_<ZZ>>& v_factors,
         const ZZ& delta,
         const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_tau,
@@ -839,7 +845,7 @@ namespace clpoly{
             // eⱼ ∈ Z[x₁,...,x_{k-1}], 求 δᵢ 使得 eⱼ = Σ δᵢ · Ĝᵢ|_{xk=αk}
             auto deltas = __multivar_diophantine(
                 ej, G_base, bezout_s, bezout_denom, v_factors,
-                main_var, eval_vars, 0);
+                main_var, eval_vars, pa, 0);
 
             for (size_t i = 0; i < r; ++i)
             {
@@ -913,7 +919,48 @@ namespace clpoly{
         }
         // 注: denom = ∏ c_k, 其中 c_k 是各步扩展 GCD 的内容
         // 对于整数多项式, denom 不一定为 ±1
-        // Diophantine 求解器通过除以 (bezout_denom * lc_pow) 补偿此缩放
+        // 当 denom ≠ ±1 时, Diophantine 基本情形用模逆替代截断除法
+
+        // ————————————————————————————————————————
+        // §6.2.1 计算 p^a 模数 (仅当 denom ≠ ±1)
+        // ————————————————————————————————————————
+        ZZ pa(0);  // 哨兵: 0 = 精确除法 (denom == ±1)
+        if (abs(denom) != ZZ(1))
+        {
+            // 系数界: ∏(||vi||₁ + 1) × |denom|
+            ZZ B(1);
+            for (auto& vi : scaled_factors)
+            {
+                ZZ vi_norm(0);
+                for (auto& t : vi) vi_norm += abs(t.second);
+                B *= vi_norm + ZZ(1);
+            }
+            B *= abs(denom);
+
+            // 选素数 p 与 denom 和所有 lc(vi) 互素
+            uint32_t p = 0;
+            ZZ abs_denom = abs(denom);
+            for (unsigned idx = 0; ; ++idx)
+            {
+                uint32_t candidate = boost::math::prime(idx);
+                ZZ mod_d; ZZ::fdiv_r(mod_d, abs_denom, ZZ(candidate));
+                if (mod_d == ZZ(0)) continue;
+                bool bad = false;
+                for (size_t i = 0; i < r; ++i)
+                {
+                    ZZ mod_lc; ZZ::fdiv_r(mod_lc, scaled_factors[i].front().second, ZZ(candidate));
+                    if (mod_lc == ZZ(0)) { bad = true; break; }
+                }
+                if (bad) continue;
+                p = candidate;
+                break;
+            }
+
+            // pa = p^a > 2B
+            pa = ZZ(1);
+            ZZ two_B = ZZ(2) * B;
+            while (pa <= two_B) pa *= ZZ(p);
+        }
 
         // ————————————————————————————————————————
         // 初始化 Gᵢ: 将 vᵢ 转为 polynomial (仅含 main_var)
@@ -970,7 +1017,7 @@ namespace clpoly{
                 prev_eval[lift_vars[j]] = eval_point.at(lift_vars[j]);
 
             __hensel_lift_one_var(
-                f_curr, G, bezout_s, denom, scaled_factors,
+                f_curr, G, bezout_s, denom, pa, scaled_factors,
                 delta, lc_tau_curr, main_var, xk, alpha_k, dk, prev_eval);
         }
 

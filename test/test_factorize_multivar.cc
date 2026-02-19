@@ -377,6 +377,20 @@ int main()
         CLPOLY_ASSERT(fac.factors.size() >= 2);
     }
 
+    CLPOLY_TEST("factorize: gamma shares prime with lc factor (L=-4y²+4y)");
+    {
+        // gamma=-4, lc_factors=[(y,1),(y-1,1)]
+        // For any integer y, one of {y, y-1} is even → gcd(4, ·) > 1
+        // Power extraction can't handle this; GCD matching can
+        auto f = make_lex(
+            polynomial_ZZ(ZZ(2)*x*y - ZZ(2)*x + ZZ(3)) *
+            polynomial_ZZ(x*y + ZZ(3)*y - ZZ(3)) *
+            polynomial_ZZ(ZZ(2)*x*x - ZZ(2)*x*y + y*y));
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "gamma shares prime");
+        CLPOLY_ASSERT(fac.factors.size() >= 3);
+    }
+
     // ============================================================
     // 随机二变量因式分解
     // ============================================================

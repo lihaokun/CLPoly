@@ -306,72 +306,51 @@ namespace clpoly{
                     return result;  // 数据不一致，换点
             }
 
-            // non-divisors 预过滤 (SymPy dmp_zz_wang_non_divisors)
-            // 确保每个 lⱼ(α) 在剥离 γ·cs 共享因子后仍有足够独立性
-            // 仅当 |γ| > 1 时检查: γ=±1 时无污染, 提取总是正确的
-            if (abs(gamma) > ZZ(1))
-            {
-                std::vector<ZZ> checked_vals;
-                bool non_div_ok = true;
-                for (auto& [lj2, ej2] : lc_factors)
-                {
-                    auto lj2_eval = assign(lj2, eval_point);
-                    ZZ lj2_val = is_number(lj2_eval) ? lj2_eval.front().second : ZZ(0);
-                    if (lj2_val == 0 || abs(lj2_val) == ZZ(1))
-                        { non_div_ok = false; break; }
-
-                    ZZ q = uni_content * gamma;
-                    for (auto& prev : checked_vals)
-                        while (q % prev == ZZ(0))
-                            q /= prev;
-                    while (q % lj2_val == ZZ(0))
-                        q /= lj2_val;
-                    if (abs(lj2_val) > abs(q))
-                        { non_div_ok = false; break; }
-
-                    checked_vals.push_back(lj2_val);
-                }
-                if (!non_div_ok)
-                    return result;
-            }
-
+            // GCD 匹配 LC 因子 (SymPy dmp_zz_wang_lead_coeffs 风格)
+            // 对每个 LC 因子 lⱼ^eⱼ, 找 gcd(|w[i]|, |lⱼ(α)|^eⱼ) 最大的唯一 i
             for (auto& [lj, ej] : lc_factors)
             {
                 auto lj_eval = assign(lj, eval_point);
                 ZZ lj_val = is_number(lj_eval) ? lj_eval.front().second : ZZ(0);
-                // |lⱼ(α)| ≤ 1 时无法从数值区分分配，拒绝该点
                 if (lj_val == 0 || abs(lj_val) == ZZ(1)) return result;
 
-                // 对每个 uᵢ 提取 lⱼ(α) 的最大幂次 (各取所需)
-                std::vector<int> ki(r, 0);
-                int total_k = 0;
+                ZZ lj_pow(1);
+                for (uint64_t e = 0; e < ej; ++e)
+                    lj_pow = lj_pow * abs(lj_val);
+
+                // 找唯一最佳匹配
+                size_t best_i = r;
+                ZZ best_g(0);
+                bool ambiguous = false;
                 for (size_t i = 0; i < r; ++i)
                 {
-                    while (w[i] % lj_val == ZZ(0))
+                    ZZ g = gcd(abs(w[i]), lj_pow);
+                    if (g > best_g)
                     {
-                        w[i] /= lj_val;
-                        ++ki[i];
+                        best_g = g;
+                        best_i = i;
+                        ambiguous = false;
                     }
-                    total_k += ki[i];
+                    else if (g == best_g && g > ZZ(1))
+                    {
+                        ambiguous = true;
+                    }
                 }
-
-                // 验证总幂次守恒 (不等说明 content 污染，拒绝该求值点)
-                if (total_k != (int)ej)
+                if (best_i >= r || ambiguous || best_g <= ZZ(1))
                     return result;
 
-                // σᵢ *= lⱼ^kᵢ
-                for (size_t i = 0; i < r; ++i)
+                // σ[best_i] *= lⱼ^eⱼ
+                Poly lj_power = lj;
+                for (uint64_t e = 1; e < ej; ++e)
                 {
-                    if (ki[i] == 0) continue;
-                    Poly lj_power = lj;
-                    for (int e = 1; e < ki[i]; ++e)
-                    {
-                        lj_power = lj_power * lj;
-                        lj_power.normalization();
-                    }
-                    sigma[i] = sigma[i] * lj_power;
-                    sigma[i].normalization();
+                    lj_power = lj_power * lj;
+                    lj_power.normalization();
                 }
+                sigma[best_i] = sigma[best_i] * lj_power;
+                sigma[best_i].normalization();
+
+                // 从 w 中移除已匹配的部分
+                w[best_i] /= best_g;
             }
 
             // 吸收整数内容 γ 到 σ₀

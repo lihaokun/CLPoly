@@ -2,11 +2,14 @@
 .vscode/
 
 # Build artifacts
-build/
+_build/
 lib/
-a.out
 
-# Example binaries
+# Legacy build directories
+build/
+
+# Binaries
+a.out
 example
 
 # Temp/scratch files
@@ -18,60 +21,6 @@ clpoly/3.txt
 clpoly/4.txt
 clpoly/Bres
 clpoly/Bres1
-
-# Test binaries (legacy)
-test/associatedgraph_test
-test/interval_test
-test/monomial_test
-test/polynomial_charset_test
-test/polynomial_disc_test
-test/polynomial_GCD_test
-test/polynomial_pquo_test
-test/polynomial_prem_test
-test/polynomial_res_test
-test/polynomial_squarefree_test
-test/polynomial_subres_test
-test/polynomial_test
-test/randompoly_test
-test/upolynomial_test
-
-# Test binaries (current)
-test/test_charset
-test/test_graph
-test/test_monomial
-test/test_number
-test/test_parse
-test/test_polynomial_arith
-test/test_polynomial_div
-test/test_polynomial_gcd
-test/test_polynomial_misc
-test/test_polynomial_resultant
-test/test_random
-test/test_realroot
-test/test_upolynomial
-test/test_variable
-
-# Factorization test binaries
-test/test_factorize
-test/test_factorize_zp
-test/test_hensel
-test/test_recombine
-test/test_multivar_helpers
-test/test_wang_lc
-test/test_multivar_hensel
-test/test_factorize_multivar
-test/test_stress_factorize
-
-# Cross-library test binaries (optional, require libflint-dev / libntl-dev)
-test/test_crosscheck_flint
-test/test_crosscheck_ntl
-
-# Benchmark binaries
-test/bench_clpoly
-test/bench_comparative
-
-# Auto-generated dependency files
-test/*.d
 
 # Test data/temp files
 test/1.txt

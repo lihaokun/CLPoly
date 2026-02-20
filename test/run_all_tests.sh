@@ -6,29 +6,31 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+BIN_DIR=_build/debug/bin
+
 TESTS=(
-    test/test_variable
-    test/test_monomial
-    test/test_upolynomial
-    test/test_polynomial_arith
-    test/test_polynomial_div
-    test/test_polynomial_gcd
-    test/test_polynomial_resultant
-    test/test_polynomial_misc
-    test/test_realroot
-    test/test_charset
-    test/test_graph
-    test/test_number
-    test/test_random
-    test/test_parse
-    test/test_factorize_zp
-    test/test_hensel
-    test/test_recombine
-    test/test_factorize
-    test/test_multivar_helpers
-    test/test_wang_lc
-    test/test_multivar_hensel
-    test/test_factorize_multivar
+    test_variable
+    test_monomial
+    test_upolynomial
+    test_polynomial_arith
+    test_polynomial_div
+    test_polynomial_gcd
+    test_polynomial_resultant
+    test_polynomial_misc
+    test_realroot
+    test_charset
+    test_graph
+    test_number
+    test_random
+    test_parse
+    test_factorize_zp
+    test_hensel
+    test_recombine
+    test_factorize
+    test_multivar_helpers
+    test_wang_lc
+    test_multivar_hensel
+    test_factorize_multivar
 )
 
 TOTAL_PASS=0
@@ -44,7 +46,7 @@ echo ""
 echo "Building tests..."
 for t in "${TESTS[@]}"; do
     echo "  Building $t..."
-    if ! make "$t" 2>&1 | tail -3; then
+    if ! make "test/$t" 2>&1 | tail -3; then
         echo "  FAILED to build $t"
         FAILED_TESTS+=("$t (build failed)")
         TOTAL_FAIL=$((TOTAL_FAIL + 1))
@@ -57,13 +59,13 @@ echo "Running tests..."
 echo "----------------------------------------"
 
 for t in "${TESTS[@]}"; do
-    if [ ! -f "$t" ]; then
+    if [ ! -f "$BIN_DIR/$t" ]; then
         echo "SKIP $t (not built)"
         continue
     fi
     echo ""
     echo ">>> $t"
-    if ./"$t"; then
+    if "$BIN_DIR/$t"; then
         TOTAL_PASS=$((TOTAL_PASS + 1))
     else
         TOTAL_FAIL=$((TOTAL_FAIL + 1))

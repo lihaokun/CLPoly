@@ -123,6 +123,14 @@ $(BIN_REL)/bench_comparative: test/bench_comparative.cc $(CLPoly_LIB_DIR)/libclp
 	mkdir -p $(BIN_REL)
 	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(Numberlib) $(FLINT_LIBS) $(NTL_LIBS)
 
+$(BIN_REL)/test_stress_factorize: test/test_stress_factorize.cc $(CLPoly_LIB_DIR)/libclpoly.a
+	mkdir -p $(BIN_REL)
+	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(Numberlib)
+
+.PHONY: stress
+stress: $(BIN_REL)/test_stress_factorize
+	$(BIN_REL)/test_stress_factorize
+
 .PHONY: bench bench-clpoly bench-comparative
 bench-clpoly: $(BIN_REL)/bench_clpoly
 	$(BIN_REL)/bench_clpoly

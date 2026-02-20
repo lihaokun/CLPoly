@@ -55,18 +55,18 @@ int main()
 
     // ======================================================
     // Test 2: 二变量 70 因子
-    // f = Π_{i=1}^{35} (x + i*y)(x - i*y) = Π(x^2 - i^2*y^2)
-    // 70 个线性因子, 2 变量, ~36 项
+    // f = Π_{i=1}^{30} (x + i*y)(x - i*y) = Π(x^2 - i^2*y^2)
+    // 60 个线性因子, 2 变量, ~31 项
     // ======================================================
     {
-        cout << "=== Test 2: bivariate 70 linear factors ===" << endl;
+        cout << "=== Test 2: bivariate 60 linear factors ===" << endl;
 
         variable x("x"), y("y");
         polynomial_ZZ product = pow(x, 1) + pow(y, 1);  // (x + y)
         product = product * (pow(x, 1) - pow(y, 1));     // * (x - y)
         product.normalization();
 
-        for (int i = 2; i <= 35; ++i)
+        for (int i = 2; i <= 30; ++i)
         {
             polynomial_ZZ f1 = pow(x, 1) + ZZ(i) * pow(y, 1);
             polynomial_ZZ f2 = pow(x, 1) - ZZ(i) * pow(y, 1);

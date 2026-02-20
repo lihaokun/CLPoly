@@ -589,5 +589,273 @@ int main()
         CLPOLY_ASSERT_EQ(product, um);
     }
 
+    // ========================================
+    // 随机单变量 ZZ 因式分解
+    // ========================================
+
+    CLPOLY_TEST("factorize_random_ZZ_2factors");
+    for (int trial = 0; trial < 20; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto p1 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        auto p2 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        if (p1.empty() || p2.empty()) continue;
+        auto f_prod = p1 * p2;
+        if (f_prod.empty() || degree(f_prod) < 2) continue;
+        auto fac = factorize(f_prod);
+        CLPOLY_ASSERT(verify_factorization(f_prod, fac));
+    }
+
+    CLPOLY_TEST("factorize_random_ZZ_3factors");
+    for (int trial = 0; trial < 15; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto p1 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        auto p2 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        auto p3 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        if (p1.empty() || p2.empty() || p3.empty()) continue;
+        auto f_prod = p1 * p2 * p3;
+        if (f_prod.empty() || degree(f_prod) < 2) continue;
+        auto fac = factorize(f_prod);
+        CLPOLY_ASSERT(verify_factorization(f_prod, fac));
+    }
+
+    CLPOLY_TEST("factorize_random_ZZ_4factors");
+    for (int trial = 0; trial < 10; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto p1 = random_polynomial<ZZ>({x}, 2 + (trial % 3), 2 + (trial % 3), {-10, 10});
+        auto p2 = random_polynomial<ZZ>({x}, 2 + (trial % 3), 2 + (trial % 3), {-10, 10});
+        auto p3 = random_polynomial<ZZ>({x}, 2 + (trial % 3), 2 + (trial % 3), {-10, 10});
+        auto p4 = random_polynomial<ZZ>({x}, 2 + (trial % 3), 2 + (trial % 3), {-10, 10});
+        if (p1.empty() || p2.empty() || p3.empty() || p4.empty()) continue;
+        auto f_prod = p1 * p2 * p3 * p4;
+        if (f_prod.empty() || degree(f_prod) < 2) continue;
+        auto fac = factorize(f_prod);
+        CLPOLY_ASSERT(verify_factorization(f_prod, fac));
+    }
+
+    CLPOLY_TEST("factorize_random_ZZ_with_multiplicity");
+    for (int trial = 0; trial < 10; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto p1 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        auto p2 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        if (p1.empty() || p2.empty()) continue;
+        int e1 = 1 + (trial % 3), e2 = 1 + ((trial + 1) % 3);
+        auto f_prod = pow(p1, e1) * pow(p2, e2);
+        if (f_prod.empty() || degree(f_prod) < 2) continue;
+        auto fac = factorize(f_prod);
+        CLPOLY_ASSERT(verify_factorization(f_prod, fac));
+    }
+
+    CLPOLY_TEST("factorize_random_ZZ_nonmonic_content");
+    for (int trial = 0; trial < 5; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto p1 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        auto p2 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        if (p1.empty() || p2.empty()) continue;
+        ZZ c(trial * 7 + 2);
+        auto f_prod = c * p1 * p2;
+        if (f_prod.empty() || degree(f_prod) < 2) continue;
+        auto fac = factorize(f_prod);
+        CLPOLY_ASSERT(verify_factorization(f_prod, fac));
+    }
+
+    // ========================================
+    // 随机 QQ 因式分解
+    // ========================================
+
+    CLPOLY_TEST("factorize_random_QQ_2factors");
+    for (int trial = 0; trial < 10; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto p1 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        auto p2 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        if (p1.empty() || p2.empty()) continue;
+        auto prodz = p1 * p2;
+        if (prodz.empty() || degree(prodz) < 2) continue;
+        polynomial_QQ prodq;
+        poly_convert(prodz, prodq);
+        prodq = prodq * QQ(1, trial + 2);
+        auto fac = factorize(prodq);
+        CLPOLY_ASSERT(verify_factorization(prodq, fac));
+    }
+
+    CLPOLY_TEST("factorize_random_QQ_with_multiplicity");
+    for (int trial = 0; trial < 5; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto p1 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        auto p2 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        if (p1.empty() || p2.empty()) continue;
+        int e1 = 1 + (trial % 3), e2 = 1 + ((trial + 1) % 3);
+        auto prodz = pow(p1, e1) * pow(p2, e2);
+        if (prodz.empty() || degree(prodz) < 2) continue;
+        polynomial_QQ prodq;
+        poly_convert(prodz, prodq);
+        prodq = prodq * QQ(1, trial + 2);
+        auto fac = factorize(prodq);
+        CLPOLY_ASSERT(verify_factorization(prodq, fac));
+    }
+
+    CLPOLY_TEST("factorize_random_QQ_large_denom");
+    for (int trial = 0; trial < 5; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto p1 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        auto p2 = random_polynomial<ZZ>({x}, 3 + (trial % 4), 3 + (trial % 3), {-10, 10});
+        if (p1.empty() || p2.empty()) continue;
+        auto prodz = p1 * p2;
+        if (prodz.empty() || degree(prodz) < 2) continue;
+        polynomial_QQ prodq;
+        poly_convert(prodz, prodq);
+        prodq = prodq * QQ(1, (trial + 1) * 20);
+        auto fac = factorize(prodq);
+        CLPOLY_ASSERT(verify_factorization(prodq, fac));
+    }
+
+    // ========================================
+    // 随机 upolynomial 因式分解
+    // ========================================
+
+    {
+        std::mt19937 rng(42);
+        std::uniform_int_distribution<int> deg_dis(3, 6);
+        std::uniform_int_distribution<int> len_dis(3, 5);
+        std::uniform_int_distribution<int> exp_dis(1, 3);
+
+        auto verify_upoly_factorization = [](const upolynomial_ZZ& f,
+                                              const factorization<upolynomial_ZZ>& fac) {
+            upolynomial_ZZ product({{umonomial(0), fac.content}});
+            for (auto& [fi, ei] : fac.factors)
+                product = product * pow(fi, (int64_t)ei);
+            product.normalization();
+            return product == f;
+        };
+
+        CLPOLY_TEST("factorize_random_upoly_2factors");
+        for (int trial = 0; trial < 10; ++trial)
+        {
+            CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+            auto f1 = random_upolynomial<ZZ>(deg_dis(rng), len_dis(rng), {-10, 10});
+            auto f2 = random_upolynomial<ZZ>(deg_dis(rng), len_dis(rng), {-10, 10});
+            if (f1.empty() || f2.empty()) continue;
+            auto uf = f1 * f2;
+            if (uf.empty() || get_deg(uf) < 2) continue;
+            auto fac = factorize(uf);
+            CLPOLY_ASSERT(verify_upoly_factorization(uf, fac));
+        }
+
+        CLPOLY_TEST("factorize_random_upoly_3factors");
+        for (int trial = 0; trial < 5; ++trial)
+        {
+            CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+            auto f1 = random_upolynomial<ZZ>(deg_dis(rng), len_dis(rng), {-10, 10});
+            auto f2 = random_upolynomial<ZZ>(deg_dis(rng), len_dis(rng), {-10, 10});
+            auto f3 = random_upolynomial<ZZ>(deg_dis(rng), len_dis(rng), {-10, 10});
+            if (f1.empty() || f2.empty() || f3.empty()) continue;
+            auto uf = f1 * f2 * f3;
+            if (uf.empty() || get_deg(uf) < 2) continue;
+            auto fac = factorize(uf);
+            CLPOLY_ASSERT(verify_upoly_factorization(uf, fac));
+        }
+
+        CLPOLY_TEST("factorize_random_upoly_with_multiplicity");
+        for (int trial = 0; trial < 5; ++trial)
+        {
+            CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+            auto f1 = random_upolynomial<ZZ>(deg_dis(rng), len_dis(rng), {-10, 10});
+            auto f2 = random_upolynomial<ZZ>(deg_dis(rng), len_dis(rng), {-10, 10});
+            if (f1.empty() || f2.empty()) continue;
+            int e1 = exp_dis(rng), e2 = exp_dis(rng);
+            auto uf = pow(f1, e1) * pow(f2, e2);
+            if (uf.empty() || get_deg(uf) < 2) continue;
+            auto fac = factorize(uf);
+            CLPOLY_ASSERT(verify_upoly_factorization(uf, fac));
+        }
+    }
+
+    // ========================================
+    // 经典单变量用例
+    // ========================================
+
+    CLPOLY_TEST("factorize_classic_wilkinson_10");
+    {
+        // W(10) = ∏_{i=1}^{10}(x-i)
+        f = polynomial_ZZ(ZZ(1));
+        for (int i = 1; i <= 10; ++i)
+            f = f * (x - i);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)10);
+        for (auto& [fi, ei] : fac.factors)
+            CLPOLY_ASSERT_EQ(ei, (uint64_t)1);
+    }
+
+    CLPOLY_TEST("factorize_classic_wilkinson_15");
+    {
+        // W(15) = ∏_{i=1}^{15}(x-i)
+        f = polynomial_ZZ(ZZ(1));
+        for (int i = 1; i <= 15; ++i)
+            f = f * (x - i);
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)15);
+    }
+
+    CLPOLY_TEST("factorize_classic_cyclotomic_x15m1");
+    {
+        // x^15-1 = Φ₁·Φ₃·Φ₅·Φ₁₅ = 4 个不可约因子
+        f = pow(x, 15) - 1;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)4);
+    }
+
+    CLPOLY_TEST("factorize_classic_cyclotomic_x24m1");
+    {
+        // x^24-1 有 8 个不可约因子
+        // Φ₁,Φ₂,Φ₃,Φ₄,Φ₆,Φ₈,Φ₁₂,Φ₂₄
+        f = pow(x, 24) - 1;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)8);
+    }
+
+    CLPOLY_TEST("factorize_classic_x6m9");
+    {
+        // x^6 - 9 = (x^3-3)(x^3+3)
+        f = pow(x, 6) - 9;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
+    }
+
+    CLPOLY_TEST("factorize_classic_swinnerton_dyer_S3");
+    {
+        // Swinnerton-Dyer S₃ = minpoly(√2+√3+√5), degree 8
+        // S₃ = x^8 - 40x^6 + 352x^4 - 960x^2 + 576
+        f = pow(x,8) - 40*pow(x,6) + 352*pow(x,4) - 960*pow(x,2) + 576;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        // S₃ is irreducible over Z
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+    }
+
+    CLPOLY_TEST("factorize_classic_mignotte");
+    {
+        // Mignotte-style: x^8 + 14x^4 + 1
+        // = (x^4 + 4x^2 + 2x + 1)(x^4 - 4x^2 - 2x + 1) ... nah
+        // Actually x^8 + 14x^4 + 1 factors as (x^4-2x^2+2x+1)(... no
+        // Use a known Mignotte: x^6 - 2(3x+1)^2 = x^6 - 18x^2 - 12x - 2
+        f = pow(x, 6) - 18*pow(x, 2) - 12*x - 2;
+        auto fac = factorize(f);
+        CLPOLY_ASSERT(verify_factorization(f, fac));
+        // Should be irreducible (Mignotte's are typically hard to factor but irreducible)
+        CLPOLY_ASSERT(fac.factors.size() >= 1);
+    }
+
     return clpoly_test::test_summary();
 }

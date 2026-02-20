@@ -1141,12 +1141,33 @@ int main() {
         CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
     }
 
-    // Random bivariate: f1 * f2, verify FLINT product reconstruction
-    // NOTE: CLPoly Wang algorithm has known incomplete factorization issues
-    //       (~25% bivar, ~65% trivar failure rate). Factor count comparison
-    //       is a soft warning, not a hard assertion.
+    // Helper: normalize CLPoly multivariate factors for comparison
+    auto normalize_cl_mpoly_factors = [](const factorization<polynomial_ZZ>& fac) {
+        std::vector<std::pair<polynomial_ZZ, uint64_t>> result;
+        for (auto& [fi, ei] : fac.factors) {
+            auto f = fi;
+            if (!f.empty() && f.front().second < 0) f = -f;
+            result.push_back({std::move(f), ei});
+        }
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+
+    // Helper: normalize FLINT multivariate factors for comparison
+    auto normalize_fl_mpoly_factors = [](const crosscheck::FlintMPolyFactorResult& fac) {
+        std::vector<std::pair<polynomial_ZZ, uint64_t>> result;
+        for (auto& [fi, ei] : fac.factors) {
+            auto f = fi;
+            if (!f.empty() && f.front().second < 0) f = -f;
+            result.push_back({std::move(f), (uint64_t)ei});
+        }
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+
+    // Random bivariate 2 factors (increased from 5 to 20 rounds)
     CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_bivar");
-    for (int trial = 0; trial < 5; ++trial) {
+    for (int trial = 0; trial < 20; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
         auto f1 = random_polynomial<ZZ>({x, y}, 3, 4, {-5, 5});
         auto f2 = random_polynomial<ZZ>({x, y}, 3, 4, {-5, 5});
@@ -1158,34 +1179,115 @@ int main() {
         auto cl_fac = factorize(f);
         auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
 
-        // Both must reconstruct the original polynomial
         CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
 
-        // Factor count must match (Wang LC + eval point bugs fixed)
-        CLPOLY_ASSERT(cl_fac.factors.size() == fl_fac.factors.size());
+        // Exact factor list comparison
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
     }
 
-    // Random trivariate
+    // Random bivariate 4 factors
+    CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_bivar_4fac");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        auto f2 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        auto f3 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        auto f4 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        if (f1.empty() || f2.empty() || f3.empty() || f4.empty()) continue;
+        polynomial_ZZ f = f1 * f2 * f3 * f4;
+        if (f.empty()) continue;
+        auto vars = crosscheck::collect_vars(f);
+
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // Random trivariate 2 factors (increased from 3 to 10)
     CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_trivar");
-    {
-        variable z("z");
-        for (int trial = 0; trial < 3; ++trial) {
-            CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
-            auto f1 = random_polynomial<ZZ>({x, y, z}, 2, 4, {-3, 3});
-            auto f2 = random_polynomial<ZZ>({x, y, z}, 2, 4, {-3, 3});
-            if (f1.empty() || f2.empty()) continue;
-            polynomial_ZZ f = f1 * f2;
-            if (f.empty()) continue;
-            auto vars = crosscheck::collect_vars(f);
+    for (int trial = 0; trial < 10; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_polynomial<ZZ>({x, y, z}, 2, 4, {-3, 3});
+        auto f2 = random_polynomial<ZZ>({x, y, z}, 2, 4, {-3, 3});
+        if (f1.empty() || f2.empty()) continue;
+        polynomial_ZZ f = f1 * f2;
+        if (f.empty()) continue;
+        auto vars = crosscheck::collect_vars(f);
 
-            auto cl_fac = factorize(f);
-            auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
 
-            CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
 
-            // Factor count must match (Wang LC + eval point bugs fixed)
-            CLPOLY_ASSERT(cl_fac.factors.size() == fl_fac.factors.size());
-        }
+    // Random trivariate 3 factors
+    CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_trivar_3fac");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_polynomial<ZZ>({x, y, z}, 2, 3, {-3, 3});
+        auto f2 = random_polynomial<ZZ>({x, y, z}, 2, 3, {-3, 3});
+        auto f3 = random_polynomial<ZZ>({x, y, z}, 2, 3, {-3, 3});
+        if (f1.empty() || f2.empty() || f3.empty()) continue;
+        polynomial_ZZ f = f1 * f2 * f3;
+        if (f.empty()) continue;
+        auto vars = crosscheck::collect_vars(f);
+
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // Random 4-variable 2 factors (reduced rounds — slow in debug mode)
+    CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_4var");
+    for (int trial = 0; trial < 2; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_polynomial<ZZ>({x, y, z, w}, 2, 3, {-3, 3});
+        auto f2 = random_polynomial<ZZ>({x, y, z, w}, 2, 3, {-3, 3});
+        if (f1.empty() || f2.empty()) continue;
+        polynomial_ZZ f = f1 * f2;
+        if (f.empty()) continue;
+        auto vars = crosscheck::collect_vars(f);
+
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    // Random bivariate with multiplicity
+    CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_bivar_mult");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        auto f2 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        if (f1.empty() || f2.empty()) continue;
+        polynomial_ZZ f = pow(f1, 2) * f2;
+        if (f.empty()) continue;
+        auto vars = crosscheck::collect_vars(f);
+
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
     }
 
     // Irreducible
@@ -1199,6 +1301,107 @@ int main() {
 
         CLPOLY_ASSERT(cl_fac.factors.size() == 1);
         CLPOLY_ASSERT(fl_fac.factors.size() == 1);
+    }
+
+    // ======== QQ univariate factorization crosscheck ========
+    CLPOLY_TEST("crosscheck_flint_qq_factor_univar");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        // Generate random ZZ upoly, factor with FLINT
+        auto uf1 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+        auto uf2 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+        if (uf1.empty() || uf2.empty()) continue;
+        auto uf = uf1 * uf2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto fl_fac = crosscheck::flint_factor_upoly(uf);
+
+        // Build polynomial_ZZ from upoly using variable x
+        polynomial_ZZ pz;
+        for (auto& [m, c] : uf)
+            pz.push_back({pow(x, m.deg()), c});
+        pz.normalization();
+
+        // Convert to QQ with a rational scale
+        polynomial_QQ pq;
+        poly_convert(pz, pq);
+        pq = pq * QQ(1, (trial + 2));
+
+        auto qq_fac = factorize(pq);
+        // Verify QQ factorization reconstructs
+        polynomial_QQ qq_prod;
+        basic_monomial<grlex> m0;
+        qq_prod.push_back({m0, qq_fac.content});
+        for (auto& [fi, ei] : qq_fac.factors) {
+            polynomial_QQ fi_pow = fi;
+            for (uint64_t e = 1; e < ei; ++e) {
+                fi_pow = fi_pow * fi;
+                fi_pow.normalization();
+            }
+            qq_prod = qq_prod * fi_pow;
+            qq_prod.normalization();
+        }
+        CLPOLY_ASSERT_EQ(qq_prod, pq);
+
+        // Factor count should match FLINT (ignoring content differences)
+        CLPOLY_ASSERT_EQ(qq_fac.factors.size(), (size_t)fl_fac.factors.size());
+    }
+
+    // ======== Classic multivariate crosscheck ========
+
+    CLPOLY_TEST("crosscheck_flint_mpoly_classic_sympy_f1");
+    {
+        // (x+yz+20)(xy+z+10)(xz+y+30)
+        polynomial_ZZ f = (x + y*z + polynomial_ZZ(ZZ(20)))
+                        * (x*y + z + polynomial_ZZ(ZZ(10)))
+                        * (x*z + y + polynomial_ZZ(ZZ(30)));
+        auto vars = crosscheck::collect_vars(f);
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    CLPOLY_TEST("crosscheck_flint_mpoly_classic_x4_y4");
+    {
+        // x^4 - y^4 = (x-y)(x+y)(x^2+y^2)
+        polynomial_ZZ f = pow(x,4) - pow(y,4);
+        auto vars = crosscheck::collect_vars(f);
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    CLPOLY_TEST("crosscheck_flint_mpoly_classic_cube");
+    {
+        // (x+y-z)^3
+        polynomial_ZZ f = pow(x + y - z, 3);
+        auto vars = crosscheck::collect_vars(f);
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+    }
+
+    CLPOLY_TEST("crosscheck_flint_mpoly_classic_sum_cube_minus_sum");
+    {
+        // (x+y+z)^3 - (x+y+z) = (x+y+z)(x+y+z-1)(x+y+z+1)
+        auto s = x + y + z;
+        polynomial_ZZ f = pow(s, 3) - s;
+        auto vars = crosscheck::collect_vars(f);
+        auto cl_fac = factorize(f);
+        auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
+        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
+        auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        CLPOLY_ASSERT(cl_sorted == fl_sorted);
     }
 
     return clpoly_test::test_summary();

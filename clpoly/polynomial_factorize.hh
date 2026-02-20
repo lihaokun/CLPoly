@@ -2383,6 +2383,21 @@ namespace clpoly{
             result.factors.push_back({std::move(fac_qq), mult});
         }
 
+#ifndef NDEBUG
+        {
+            PolyQQ check(F.comp_ptr());
+            check.data().push_back({{}, result.content});
+            check.normalization();
+            for (const auto& [fi, ei] : result.factors)
+                for (uint64_t e = 0; e < ei; ++e)
+                {
+                    check = check * fi;
+                    check.normalization();
+                }
+            assert(check == F);
+        }
+#endif
+
         return result;
     }
 
@@ -2457,6 +2472,30 @@ namespace clpoly{
             [](const auto& a, const auto& b) {
                 return degree(a.first) < degree(b.first);
             });
+
+#ifndef NDEBUG
+        {
+            // 转换为 polynomial_<ZZ,lex> 验证乘积 == 原多项式
+            variable __xdbg("x");
+            polynomial_<ZZ,lex> check_poly;
+            polynomial_<ZZ,lex> f_poly;
+            poly_convert(F, f_poly, __xdbg);
+
+            check_poly.data().push_back({{}, result.content});
+            check_poly.normalization();
+            for (const auto& [fi, ei] : result.factors)
+            {
+                polynomial_<ZZ,lex> fi_poly;
+                poly_convert(fi, fi_poly, __xdbg);
+                for (uint64_t e = 0; e < ei; ++e)
+                {
+                    check_poly = check_poly * fi_poly;
+                    check_poly.normalization();
+                }
+            }
+            assert(check_poly == f_poly);
+        }
+#endif
 
         return result;
     }

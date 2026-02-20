@@ -414,6 +414,53 @@ int main() {
         );
     }
 
+    // Classic univariate: CLPoly vs FLINT
+    bench_cmp_header("Classic Factorization: CLPoly vs FLINT", "FLINT");
+    {
+        // Wilkinson W(10)
+        upolynomial_ZZ wilk10({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 10; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk10 = wilk10 * lin;
+        }
+        BENCH_CMP("factor  Wilkinson W(10)", 5,
+            { volatile auto r = factorize(wilk10); (void)r; },
+            { volatile auto r = crosscheck::flint_factor_upoly(wilk10); (void)r; }
+        );
+
+        // Wilkinson W(15)
+        upolynomial_ZZ wilk15({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 15; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk15 = wilk15 * lin;
+        }
+        BENCH_CMP("factor  Wilkinson W(15)", 3,
+            { volatile auto r = factorize(wilk15); (void)r; },
+            { volatile auto r = crosscheck::flint_factor_upoly(wilk15); (void)r; }
+        );
+
+        // Cyclotomic x^15-1
+        upolynomial_ZZ cyc15({{15, ZZ(1)}, {0, ZZ(-1)}});
+        BENCH_CMP("factor  x^15-1 (cyclotomic)", 5,
+            { volatile auto r = factorize(cyc15); (void)r; },
+            { volatile auto r = crosscheck::flint_factor_upoly(cyc15); (void)r; }
+        );
+
+        // Cyclotomic x^24-1
+        upolynomial_ZZ cyc24({{24, ZZ(1)}, {0, ZZ(-1)}});
+        BENCH_CMP("factor  x^24-1 (cyclotomic)", 3,
+            { volatile auto r = factorize(cyc24); (void)r; },
+            { volatile auto r = crosscheck::flint_factor_upoly(cyc24); (void)r; }
+        );
+
+        // Swinnerton-Dyer S3
+        upolynomial_ZZ sd3({{8,ZZ(1)},{6,ZZ(-40)},{4,ZZ(352)},{2,ZZ(-960)},{0,ZZ(576)}});
+        BENCH_CMP("factor  Swinnerton-Dyer S3", 5,
+            { volatile auto r = factorize(sd3); (void)r; },
+            { volatile auto r = crosscheck::flint_factor_upoly(sd3); (void)r; }
+        );
+    }
+
     bench_cmp_header("Factorization: CLPoly vs NTL", "NTL");
     {
         auto f1 = random_upolynomial<ZZ>(5, 4, {-10, 10});
@@ -440,6 +487,35 @@ int main() {
         BENCH_CMP("factor  ~deg29 (5 fac)", 3,
             { volatile auto r = factorize(p_l); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(nl); (void)r; }
+        );
+    }
+
+    // Classic univariate: CLPoly vs NTL
+    bench_cmp_header("Classic Factorization: CLPoly vs NTL", "NTL");
+    {
+        upolynomial_ZZ wilk10({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 10; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk10 = wilk10 * lin;
+        }
+        auto nw10 = crosscheck::clpoly_upoly_to_ntl(wilk10);
+        BENCH_CMP("factor  Wilkinson W(10)", 5,
+            { volatile auto r = factorize(wilk10); (void)r; },
+            { volatile auto r = crosscheck::ntl_factor(nw10); (void)r; }
+        );
+
+        upolynomial_ZZ cyc15({{15, ZZ(1)}, {0, ZZ(-1)}});
+        auto nc15 = crosscheck::clpoly_upoly_to_ntl(cyc15);
+        BENCH_CMP("factor  x^15-1 (cyclotomic)", 5,
+            { volatile auto r = factorize(cyc15); (void)r; },
+            { volatile auto r = crosscheck::ntl_factor(nc15); (void)r; }
+        );
+
+        upolynomial_ZZ sd3({{8,ZZ(1)},{6,ZZ(-40)},{4,ZZ(352)},{2,ZZ(-960)},{0,ZZ(576)}});
+        auto nsd3 = crosscheck::clpoly_upoly_to_ntl(sd3);
+        BENCH_CMP("factor  Swinnerton-Dyer S3", 5,
+            { volatile auto r = factorize(sd3); (void)r; },
+            { volatile auto r = crosscheck::ntl_factor(nsd3); (void)r; }
         );
     }
 
@@ -519,6 +595,179 @@ int main() {
 
             BENCH_CMP("factor  trivar known", 5,
                 { volatile auto r = factorize(f_lex); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+
+        // Classic: x^4 - y^4 = (x-y)(x+y)(x^2+y^2)
+        {
+            auto f_gr = pow(x,4) - pow(y,4);
+            auto f_lex = to_lex(f_gr);
+            auto ff = crosscheck::clpoly_to_flint(f_gr, vars);
+
+            BENCH_CMP("factor  x^4-y^4", 10,
+                { volatile auto r = factorize(f_lex); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+
+        // Classic: SymPy f_1 = (x+yz+20)(xy+z+10)(xz+y+30)
+        {
+            variable z("z");
+            std::vector<variable> vars3 = {x, y, z};
+            auto f_gr = (x + y*z + polynomial_ZZ(ZZ(20)))
+                      * (x*y + z + polynomial_ZZ(ZZ(10)))
+                      * (x*z + y + polynomial_ZZ(ZZ(30)));
+            auto f_lex = to_lex(f_gr);
+            auto ff = crosscheck::clpoly_to_flint(f_gr, vars3);
+
+            BENCH_CMP("factor  SymPy f_1 (3var)", 3,
+                { volatile auto r = factorize(f_lex); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+
+        // Classic: (x+y+z)^3 - (x+y+z)
+        {
+            variable z("z");
+            std::vector<variable> vars3 = {x, y, z};
+            auto s = x + y + z;
+            auto f_gr = pow(s, 3) - s;
+            auto f_lex = to_lex(f_gr);
+            auto ff = crosscheck::clpoly_to_flint(f_gr, vars3);
+
+            BENCH_CMP("factor  (x+y+z)^3-(x+y+z)", 5,
+                { volatile auto r = factorize(f_lex); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+    }
+
+    // ================================================================
+    // Factorize stress: CLPoly vs FLINT
+    // ================================================================
+    bench_cmp_header("Factorize stress: CLPoly vs FLINT", "FLINT");
+    {
+        using PolyLex = polynomial_<ZZ, lex>;
+        auto to_lex = [](const polynomial_ZZ& p) {
+            PolyLex r; poly_convert(p, r); return r;
+        };
+
+        // Stress 1: univariate 70 linear factors — (x-1)(x-2)...(x-70)
+        {
+            upolynomial_ZZ stress_uni({{1, ZZ(1)}, {0, ZZ(-1)}});
+            for (int k = 2; k <= 70; ++k) {
+                upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+                stress_uni = stress_uni * lin;
+            }
+            BENCH_CMP("factor  uni 70 factors (deg70)", 1,
+                { volatile auto r = factorize(stress_uni); (void)r; },
+                { volatile auto r = crosscheck::flint_factor_upoly(stress_uni); (void)r; }
+            );
+        }
+
+        // Stress 2: bivariate 70 linear factors — Π_{i=1}^{35} (x+iy)(x-iy)
+        {
+            auto stress_bi_gr = (pow(x,1) + pow(y,1)) * (pow(x,1) - pow(y,1));
+            stress_bi_gr.normalization();
+            for (int i = 2; i <= 35; ++i) {
+                auto f1 = pow(x,1) + ZZ(i) * pow(y,1);
+                auto f2 = pow(x,1) - ZZ(i) * pow(y,1);
+                stress_bi_gr = stress_bi_gr * f1;
+                stress_bi_gr.normalization();
+                stress_bi_gr = stress_bi_gr * f2;
+                stress_bi_gr.normalization();
+            }
+            auto stress_bi = to_lex(stress_bi_gr);
+            std::vector<variable> vars2 = {x, y};
+            auto ff = crosscheck::clpoly_to_flint(stress_bi_gr, vars2);
+
+            BENCH_CMP("factor  bivar 70 factors (deg70)", 1,
+                { volatile auto r = factorize(stress_bi); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+
+        // Stress 3: trivariate 60 linear factors — Π(x±iy, x±iz, y±iz), i=1..10
+        {
+            variable z("z");
+            polynomial_ZZ stress_tri_gr = polynomial_ZZ(ZZ(1));
+            for (int i = 1; i <= 10; ++i) {
+                stress_tri_gr = stress_tri_gr
+                    * (pow(x,1) + ZZ(i) * pow(y,1))
+                    * (pow(x,1) - ZZ(i) * pow(y,1));
+                stress_tri_gr.normalization();
+            }
+            for (int i = 1; i <= 10; ++i) {
+                stress_tri_gr = stress_tri_gr
+                    * (pow(x,1) + ZZ(i) * pow(z,1))
+                    * (pow(x,1) - ZZ(i) * pow(z,1));
+                stress_tri_gr.normalization();
+            }
+            for (int i = 1; i <= 10; ++i) {
+                stress_tri_gr = stress_tri_gr
+                    * (pow(y,1) + ZZ(i) * pow(z,1))
+                    * (pow(y,1) - ZZ(i) * pow(z,1));
+                stress_tri_gr.normalization();
+            }
+            auto stress_tri = to_lex(stress_tri_gr);
+            std::vector<variable> vars3 = {x, y, z};
+            auto ff = crosscheck::clpoly_to_flint(stress_tri_gr, vars3);
+
+            BENCH_CMP("factor  trivar 60 factors (deg60)", 1,
+                { volatile auto r = factorize(stress_tri); (void)r; },
+                {
+                    fmpz_mpoly_factor_t fac;
+                    fmpz_mpoly_factor_init(fac, ff.ctx);
+                    fmpz_mpoly_factor(fac, ff.poly, ff.ctx);
+                    fmpz_mpoly_factor_clear(fac, ff.ctx);
+                }
+            );
+        }
+
+        // Stress 4: disjoint pairs — (x1+x2)(x1-x2)*...*(x9+x10)(x9-x10)
+        {
+            std::vector<variable> xvars;
+            for (int i = 1; i <= 10; ++i)
+                xvars.push_back(variable("x" + std::to_string(i)));
+
+            polynomial_ZZ stress_dis_gr = polynomial_ZZ(ZZ(1));
+            for (int i = 0; i < 5; ++i) {
+                stress_dis_gr = stress_dis_gr
+                    * (pow(xvars[2*i],1) + pow(xvars[2*i+1],1))
+                    * (pow(xvars[2*i],1) - pow(xvars[2*i+1],1));
+                stress_dis_gr.normalization();
+            }
+            auto stress_dis = to_lex(stress_dis_gr);
+            auto ff = crosscheck::clpoly_to_flint(stress_dis_gr, xvars);
+
+            BENCH_CMP("factor  10var disjoint 10 factors", 1,
+                { volatile auto r = factorize(stress_dis); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
                     fmpz_mpoly_factor_init(fac, ff.ctx);

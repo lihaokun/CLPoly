@@ -384,5 +384,89 @@ int main() {
             CLPOLY_ASSERT(is_irreducible_Zp(fac.first));
     }
 
+    // ========================================
+    // 随机 Zp 完整因式分解
+    // ========================================
+
+    {
+        std::mt19937 rng(42);
+        uint32_t primes[] = {5, 13, 101};
+
+        for (uint32_t p : primes)
+        {
+            // 2 因子乘积
+            CLPOLY_TEST(("__factor_Zp_random_2fac_p" + std::to_string(p)).c_str());
+            for (int trial = 0; trial < 5; ++trial)
+            {
+                CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+                std::uniform_int_distribution<int> deg_dis(2, 5);
+                std::uniform_int_distribution<int> len_dis(2, 4);
+                std::uniform_int_distribution<uint64_t> coeff_dis(1, p - 1);
+
+                // Generate random Zp polynomial by building terms
+                auto make_random_zp = [&](int deg, int len) {
+                    upolynomial_<Zp> poly;
+                    // Ensure leading term
+                    poly.push_back({umonomial(deg), Zp((int64_t)coeff_dis(rng), p)});
+                    std::uniform_int_distribution<int> inner_deg(0, deg - 1);
+                    for (int i = 1; i < len; ++i) {
+                        int d = inner_deg(rng);
+                        poly.push_back({umonomial(d), Zp((int64_t)coeff_dis(rng), p)});
+                    }
+                    poly.normalization();
+                    return poly;
+                };
+
+                auto f1 = make_random_zp(deg_dis(rng), len_dis(rng));
+                auto f2 = make_random_zp(deg_dis(rng), len_dis(rng));
+                if (f1.empty() || f2.empty()) continue;
+                auto f = f1 * f2;
+                f.normalization();
+                if (f.empty() || get_deg(f) < 2) continue;
+
+                auto result = __factor_Zp(f);
+                CLPOLY_ASSERT(verify_factorization_Zp(f, result.first, result.second));
+                // Each factor should be irreducible
+                for (auto& fac : result.second)
+                    CLPOLY_ASSERT(is_irreducible_Zp(fac.first));
+            }
+
+            // 3 因子乘积
+            CLPOLY_TEST(("__factor_Zp_random_3fac_p" + std::to_string(p)).c_str());
+            for (int trial = 0; trial < 5; ++trial)
+            {
+                CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+                std::uniform_int_distribution<int> deg_dis(2, 4);
+                std::uniform_int_distribution<int> len_dis(2, 3);
+                std::uniform_int_distribution<uint64_t> coeff_dis(1, p - 1);
+
+                auto make_random_zp = [&](int deg, int len) {
+                    upolynomial_<Zp> poly;
+                    poly.push_back({umonomial(deg), Zp((int64_t)coeff_dis(rng), p)});
+                    std::uniform_int_distribution<int> inner_deg(0, deg - 1);
+                    for (int i = 1; i < len; ++i) {
+                        int d = inner_deg(rng);
+                        poly.push_back({umonomial(d), Zp((int64_t)coeff_dis(rng), p)});
+                    }
+                    poly.normalization();
+                    return poly;
+                };
+
+                auto f1 = make_random_zp(deg_dis(rng), len_dis(rng));
+                auto f2 = make_random_zp(deg_dis(rng), len_dis(rng));
+                auto f3 = make_random_zp(deg_dis(rng), len_dis(rng));
+                if (f1.empty() || f2.empty() || f3.empty()) continue;
+                auto f = f1 * f2 * f3;
+                f.normalization();
+                if (f.empty() || get_deg(f) < 2) continue;
+
+                auto result = __factor_Zp(f);
+                CLPOLY_ASSERT(verify_factorization_Zp(f, result.first, result.second));
+                for (auto& fac : result.second)
+                    CLPOLY_ASSERT(is_irreducible_Zp(fac.first));
+            }
+        }
+    }
+
     return clpoly_test::test_summary();
 }

@@ -197,6 +197,34 @@ int main() {
         BENCH("factorize  (x+y)^2*(x-y)", 10, {
             volatile auto r = factorize(mfac_mult); (void)r;
         });
+
+        // Classic: x^4 - y^4 = (x-y)(x+y)(x^2+y^2)
+        auto mfac_x4y4 = to_lex(pow(x,4) - pow(y,4));
+        BENCH("factorize  x^4-y^4", 10, {
+            volatile auto r = factorize(mfac_x4y4); (void)r;
+        });
+
+        // Classic: SymPy f_1 = (x+yz+20)(xy+z+10)(xz+y+30)
+        {
+            variable z("z");
+            auto sympy_f1 = to_lex(
+                (x + y*z + polynomial_ZZ(ZZ(20)))
+              * (x*y + z + polynomial_ZZ(ZZ(10)))
+              * (x*z + y + polynomial_ZZ(ZZ(30))));
+            BENCH("factorize  SymPy f_1 (3var 3fac)", 3, {
+                volatile auto r = factorize(sympy_f1); (void)r;
+            });
+        }
+
+        // Classic: (x+y+z)^3 - (x+y+z) = (x+y+z)(x+y+z-1)(x+y+z+1)
+        {
+            variable z("z");
+            auto s = x + y + z;
+            auto cube_minus = to_lex(pow(s, 3) - s);
+            BENCH("factorize  (x+y+z)^3-(x+y+z)", 5, {
+                volatile auto r = factorize(cube_minus); (void)r;
+            });
+        }
     }
 
     // ================================================================
@@ -314,6 +342,57 @@ int main() {
     BENCH("factorize  ~deg29 (5 factors)", 3, {
         volatile auto r = factorize(uz_fac_l); (void)r;
     });
+
+    // -- classic univariate factorization --
+
+    // Wilkinson W(10): (x-1)(x-2)...(x-10)
+    {
+        upolynomial_ZZ wilk10({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 10; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk10 = wilk10 * lin;
+        }
+        BENCH("factorize  Wilkinson W(10)", 5, {
+            volatile auto r = factorize(wilk10); (void)r;
+        });
+    }
+
+    // Wilkinson W(15): (x-1)(x-2)...(x-15)
+    {
+        upolynomial_ZZ wilk15({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 15; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk15 = wilk15 * lin;
+        }
+        BENCH("factorize  Wilkinson W(15)", 3, {
+            volatile auto r = factorize(wilk15); (void)r;
+        });
+    }
+
+    // Cyclotomic x^15-1 (4 irreducible factors)
+    {
+        upolynomial_ZZ cyc15({{15, ZZ(1)}, {0, ZZ(-1)}});
+        BENCH("factorize  x^15-1 (cyclotomic)", 5, {
+            volatile auto r = factorize(cyc15); (void)r;
+        });
+    }
+
+    // Cyclotomic x^24-1 (8 irreducible factors)
+    {
+        upolynomial_ZZ cyc24({{24, ZZ(1)}, {0, ZZ(-1)}});
+        BENCH("factorize  x^24-1 (cyclotomic)", 3, {
+            volatile auto r = factorize(cyc24); (void)r;
+        });
+    }
+
+    // Swinnerton-Dyer S3 (deg 8, minpoly of sqrt2+sqrt3+sqrt5)
+    {
+        // S3 = x^8 - 40x^6 + 352x^4 - 960x^2 + 576
+        upolynomial_ZZ sd3({{8,ZZ(1)},{6,ZZ(-40)},{4,ZZ(352)},{2,ZZ(-960)},{0,ZZ(576)}});
+        BENCH("factorize  Swinnerton-Dyer S3", 5, {
+            volatile auto r = factorize(sd3); (void)r;
+        });
+    }
 
     // -- squarefree factorization --
     // Build polynomial with repeated factors: f1^1 * f2^2 * f3^3

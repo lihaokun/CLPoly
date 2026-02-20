@@ -858,5 +858,64 @@ int main() {
         CLPOLY_ASSERT(cl_sorted == ntl_sorted);
     }
 
+    // ======== 密集多项式因式分解 ========
+    CLPOLY_TEST("crosscheck_ntl_factor_dense_extra");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(4 + (trial % 2), 4 + (trial % 2), {-20, 20});
+        auto f2 = random_upolynomial<ZZ>(4 + (trial % 2), 4 + (trial % 2), {-20, 20});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // ======== 高次因式分解: deg∈[7,8] 的 2 因子 ========
+    CLPOLY_TEST("crosscheck_ntl_factor_high_deg_extra");
+    for (int trial = 0; trial < 5; ++trial) {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1 = random_upolynomial<ZZ>(7 + (trial % 2), 5, {-10, 10});
+        auto f2 = random_upolynomial<ZZ>(7 + (trial % 2), 5, {-10, 10});
+        if (f1.empty() || f2.empty()) continue;
+        auto uf = f1 * f2;
+        if (uf.empty() || get_deg(uf) < 2) continue;
+
+        auto cl_fac = factorize(uf);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // ======== 非 monic 大 leading coeff ========
+    CLPOLY_TEST("crosscheck_ntl_factor_nonmonic_large_lc");
+    {
+        std::mt19937 rng(42);
+        std::uniform_int_distribution<int> content_dis(2, 50);
+        for (int trial = 0; trial < 5; ++trial) {
+            CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+            auto f1 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+            auto f2 = random_upolynomial<ZZ>(3, 3, {-10, 10});
+            if (f1.empty() || f2.empty()) continue;
+            ZZ c(content_dis(rng));
+            auto uf = c * f1 * f2;
+            if (uf.empty() || get_deg(uf) < 2) continue;
+
+            auto cl_fac = factorize(uf);
+            auto ntl_f = crosscheck::clpoly_upoly_to_ntl(uf);
+            auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+            auto cl_sorted = normalize_cl_factors(cl_fac);
+            auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+            CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+        }
+    }
+
     return clpoly_test::test_summary();
 }

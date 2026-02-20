@@ -536,5 +536,171 @@ int main()
         verify_factorization(f, fac, "random bivar mult");
     }
 
+    // ============================================================
+    // 增加随机覆盖：高次双变量 2 因子
+    // ============================================================
+
+    CLPOLY_TEST("factorize: random bivar high-deg 2 factors");
+    for (int trial = 0; trial < 10; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1_gr = random_polynomial<ZZ>({x, y}, 4 + (trial % 2), 5 + (trial % 2), {-10, 10});
+        auto f2_gr = random_polynomial<ZZ>({x, y}, 4 + (trial % 2), 5 + (trial % 2), {-10, 10});
+        if (f1_gr.empty() || f2_gr.empty()) continue;
+        auto f_gr = f1_gr * f2_gr;
+        if (f_gr.empty()) continue;
+        auto f = make_lex(f_gr);
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "random bivar hi-deg");
+    }
+
+    // ============================================================
+    // 双变量 4 因子
+    // ============================================================
+
+    CLPOLY_TEST("factorize: random bivar 4 factors");
+    for (int trial = 0; trial < 5; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1_gr = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        auto f2_gr = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        auto f3_gr = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        auto f4_gr = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
+        if (f1_gr.empty() || f2_gr.empty() || f3_gr.empty() || f4_gr.empty()) continue;
+        auto f_gr = f1_gr * f2_gr * f3_gr * f4_gr;
+        if (f_gr.empty()) continue;
+        auto f = make_lex(f_gr);
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "random bivar 4fac");
+    }
+
+    // ============================================================
+    // 三变量 3 因子
+    // ============================================================
+
+    CLPOLY_TEST("factorize: random trivar 3 factors");
+    for (int trial = 0; trial < 5; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1_gr = random_polynomial<ZZ>({x, y, z}, 2, 3, {-3, 3});
+        auto f2_gr = random_polynomial<ZZ>({x, y, z}, 2, 3, {-3, 3});
+        auto f3_gr = random_polynomial<ZZ>({x, y, z}, 2, 3, {-3, 3});
+        if (f1_gr.empty() || f2_gr.empty() || f3_gr.empty()) continue;
+        auto f_gr = f1_gr * f2_gr * f3_gr;
+        if (f_gr.empty()) continue;
+        auto f = make_lex(f_gr);
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "random trivar 3fac");
+    }
+
+    // ============================================================
+    // 四变量 2 因子
+    // ============================================================
+
+    CLPOLY_TEST("factorize: random 4-var 2 factors");
+    for (int trial = 0; trial < 3; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1_gr = random_polynomial<ZZ>({x, y, z, w}, 2, 3, {-3, 3});
+        auto f2_gr = random_polynomial<ZZ>({x, y, z, w}, 2, 3, {-3, 3});
+        if (f1_gr.empty() || f2_gr.empty()) continue;
+        auto f_gr = f1_gr * f2_gr;
+        if (f_gr.empty()) continue;
+        auto f = make_lex(f_gr);
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "random 4var 2fac");
+    }
+
+    // ============================================================
+    // 随机大系数
+    // ============================================================
+
+    CLPOLY_TEST("factorize: random bivar large coeff");
+    for (int trial = 0; trial < 5; ++trial)
+    {
+        CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
+        auto f1_gr = random_polynomial<ZZ>({x, y}, 3, 4, {-100, 100});
+        auto f2_gr = random_polynomial<ZZ>({x, y}, 3, 4, {-100, 100});
+        if (f1_gr.empty() || f2_gr.empty()) continue;
+        auto f_gr = f1_gr * f2_gr;
+        if (f_gr.empty()) continue;
+        auto f = make_lex(f_gr);
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "random bivar large coeff");
+    }
+
+    // ============================================================
+    // 经典多变量用例
+    // ============================================================
+
+    CLPOLY_TEST("factorize: classic SymPy f_1 (x+yz+20)(xy+z+10)(xz+y+30)");
+    {
+        auto f = make_lex(
+            (x + y*z + polynomial_ZZ(ZZ(20))) *
+            (x*y + z + polynomial_ZZ(ZZ(10))) *
+            (x*z + y + polynomial_ZZ(ZZ(30))));
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "SymPy f_1");
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
+    }
+
+    CLPOLY_TEST("factorize: classic SymPy f_2");
+    {
+        // (x²y²+x²z²+y+90)(x³y+x³z+z-11)
+        auto g1 = pow(x,2)*pow(y,2) + pow(x,2)*pow(z,2) + y + polynomial_ZZ(ZZ(90));
+        auto g2 = pow(x,3)*y + pow(x,3)*z + z - polynomial_ZZ(ZZ(11));
+        auto f = make_lex(g1 * g2);
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "SymPy f_2");
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
+    }
+
+    CLPOLY_TEST("factorize: classic (x+y-z)^3");
+    {
+        auto f = make_lex(pow(x + y - z, 3));
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "(x+y-z)^3");
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(fac.factors[0].second, (uint64_t)3);
+    }
+
+    CLPOLY_TEST("factorize: classic x^4-y^4");
+    {
+        // (x-y)(x+y)(x²+y²)
+        auto f = make_lex(pow(x,4) - pow(y,4));
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "x^4-y^4");
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
+    }
+
+    CLPOLY_TEST("factorize: classic x^2*y - x*y^2 = xy(x-y)");
+    {
+        auto f = make_lex(pow(x,2)*y - x*pow(y,2));
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "x^2y-xy^2");
+        // x, y, (x-y) → 3 因子 (x and y from monomial content)
+        CLPOLY_ASSERT(fac.factors.size() >= 3);
+    }
+
+    CLPOLY_TEST("factorize: classic (xy+1)(xz+1)");
+    {
+        auto f = make_lex(
+            (x*y + polynomial_ZZ(ZZ(1))) *
+            (x*z + polynomial_ZZ(ZZ(1))));
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "(xy+1)(xz+1)");
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)2);
+    }
+
+    CLPOLY_TEST("factorize: classic (x+y+z)^3 - (x+y+z)");
+    {
+        // = (x+y+z)(x+y+z-1)(x+y+z+1)
+        auto s = x + y + z;
+        auto f = make_lex(pow(s, 3) - s);
+        auto fac = factorize(f);
+        verify_factorization(f, fac, "(x+y+z)^3-(x+y+z)");
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
+    }
+
     return clpoly_test::test_summary();
 }

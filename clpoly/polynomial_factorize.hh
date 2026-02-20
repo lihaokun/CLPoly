@@ -2279,6 +2279,21 @@ namespace clpoly{
                 return degree(a.first) < degree(b.first);
             });
 
+#ifndef NDEBUG
+        {
+            Poly check(F.comp_ptr());
+            check.data().push_back({{}, result.content});
+            check.normalization();
+            for (const auto& [fi, ei] : result.factors)
+                for (uint64_t e = 0; e < ei; ++e)
+                {
+                    check = check * fi;
+                    check.normalization();
+                }
+            assert(check == F);
+        }
+#endif
+
         return result;
     }
 
@@ -2573,6 +2588,8 @@ namespace clpoly{
                     term.second = -term.second;
         };
 
+        // 终止性: 可约多项式至少存在一个好求值点使 Hensel 提升成功 (→ return verified);
+        // 不可约多项式的所有主变量最终被标记为 dead (→ break via all_dead).
         for (;;)
         {
             for (size_t vi = 0; vi < main_vars.size(); ++vi)
@@ -2611,7 +2628,11 @@ namespace clpoly{
                         lc_result.f_scaled, lc_result.scaled_factors,
                         lc_result.lc_targets, eval, x1);
 
-                    // 试除验证 + 去缩放 + 因子重组 (子集枚举)
+                    // 因子重组 (Zassenhaus 子集枚举, 同 §7.5 单变量版本)
+                    // 从 s=1 递增枚举 Hensel 因子子集，找最小整除子集。
+                    // 不可约性保证: 若返回因子 F 可约 (F=A·B)，则 A,B 各对应
+                    // Hensel 因子的真子集 (模求值回到不可约单变量因子，唯一分解)，
+                    // 即存在更小的 s 使子集乘积整除 g，与 F 在 s 处被找到矛盾。
                     // 预处理: 规范化所有 Hensel 因子
                     std::vector<Poly> normed(mv_factors.size(), Poly(comp_ptr));
                     std::vector<size_t> active_idx;
@@ -2806,7 +2827,8 @@ namespace clpoly{
             {
                 for (auto& term : fac.data())
                     term.second = -term.second;
-                result.content = -result.content;
+                if (mult % 2 != 0)
+                    result.content = -result.content;
             }
         }
 
@@ -2814,6 +2836,21 @@ namespace clpoly{
             [](const auto& a, const auto& b) {
                 return degree(a.first) < degree(b.first);
             });
+
+#ifndef NDEBUG
+        {
+            Poly check(f_input.comp_ptr());
+            check.data().push_back({{}, result.content});
+            check.normalization();
+            for (const auto& [fi, ei] : result.factors)
+                for (uint64_t e = 0; e < ei; ++e)
+                {
+                    check = check * fi;
+                    check.normalization();
+                }
+            assert(check == f_input);
+        }
+#endif
 
         return result;
     }

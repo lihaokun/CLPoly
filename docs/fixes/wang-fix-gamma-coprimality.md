@@ -1,5 +1,8 @@
 # 修正方案：LC 分配 gamma 互素性问题
 
+> **状态：已完成。** 最终采用 GCD 匹配替代幂次提取 + skip 参数 + 交错主变量轮换。
+> 本文档保留为历史记录，权威描述见 [multivariate-factorization-design.md](../design/multivariate-factorization-design.md)。
+>
 > 对应 workflow.md §5.1 修正方案文档
 
 ---

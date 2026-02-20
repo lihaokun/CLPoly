@@ -1,8 +1,8 @@
 # CLPoly 多变量因式分解设计方案
 
-> **状态：设计阶段，尚未实现。**
+> **状态：已实现。**
 >
-> 本文档描述 CLPoly 多变量因式分解（M5）的设计方案，基于 Wang 算法。
+> 本文档描述 CLPoly 多变量因式分解（M5）的设计与实现，基于 Wang 算法。
 > 单变量因式分解（M1-M4）已实现，详见 [univariate-factorization.md](univariate-factorization.md)。
 
 ---
@@ -23,7 +23,7 @@
 | 主变量选择 | 轮换遍历所有变量 | 不同主变量 LC 复杂度不同，轮换提供失败后的重试机会；CLPoly 无 Kaltofen/域扩展兜底 |
 | Wang lc 校正返回值 | `__wang_lc_result` 结构体 | 需返回成功标志 + 缩放后的 f + lc 分配列表 |
 | Hensel 提升方式 | 逐变量线性提升 | 标准 Wang 方式，每变量提升到 `deg(f,xₖ)` 阶 |
-| 失败处理 | 50 求值点扫描 + 主变量轮换 | Phase 1 扫描收集候选，Phase 2 逐候选尝试完整流程 |
+| 失败处理 | 单遍 BATCH_SIZE=200 + 主变量轮换 | 每个主变量每轮尝试 200 个求值点，交错轮换 |
 
 ### 1.2 范围与正确性保证
 
@@ -47,7 +47,7 @@ f = content · ∏ fᵢ^eᵢ
 - 不追求大规模性能，留给远期 MTSHL
 
 **已知限制：**
-- LC 分配使用 per-factor 幂次提取（参照 SymPy/FLINT），content 污染时自动拒绝换点
+- LC 分配使用 GCD 匹配（参照 SymPy `dmp_zz_wang_lead_coeffs`），歧义时自动拒绝换点
 - 无 EEZ-Wang 后备
 - 主变量轮换按自然变量序，未按度数排序优化（后续可参照 Lucks 1986 启发式）
 
@@ -247,7 +247,8 @@ template<class var_order>
 std::map<variable, ZZ>
 __select_eval_point(
     const polynomial_<ZZ, lex_<var_order>>& f,
-    const variable& main_var);
+    const variable& main_var,
+    int skip = 0);              // 跳过前 skip 个候选点，用于换点重试
 ```
 
 ---
@@ -292,14 +293,14 @@ __wang_leading_coeff(f, u₁,...,uᵣ, α, x₁):
     sort (lⱼ, eⱼ) by eⱼ descending
 
     for each (lⱼ, eⱼ):
-        zⱼ ← lⱼ(α) ^ eⱼ                   // 该 lc 因子求值后的整数值
-        // 找唯一的 uᵢ 使得 zⱼ | wᵢ
-        candidates ← {i : zⱼ | wᵢ}
-        if |candidates| ≠ 1:
+        // GCD 匹配 (参照 SymPy dmp_zz_wang_lead_coeffs):
+        // 对每个 wᵢ 计算 gcd(|wᵢ|, |lⱼ(α)|^eⱼ)，选 GCD 最大的 uᵢ
+        lj_pow ← |lⱼ(α)|^eⱼ
+        best_i ← argmax_i { gcd(|wᵢ|, lj_pow) }
+        if 存在歧义 (多个 i 有相同最大 GCD > 1):
             return FAIL                      // 无法唯一分配 → 换求值点
-        i ← candidates 中唯一的元素
-        σᵢ ← σᵢ · lⱼ^eⱼ
-        wᵢ ← wᵢ / zⱼ
+        σ_{best_i} ← σ_{best_i} · lⱼ^eⱼ
+        w_{best_i} ← w_{best_i} / gcd(|w_{best_i}|, lj_pow)
 
     // 吸收整数内容 γ 到 σ₁
     σ₁ ← γ · σ₁
@@ -377,7 +378,8 @@ __wang_lc_result<var_order> __wang_leading_coeff(
     const polynomial_<ZZ, lex_<var_order>>& f,
     const std::vector<upolynomial_<ZZ>>& univar_factors,
     const std::map<variable, ZZ>& eval_point,
-    const variable& main_var);
+    const variable& main_var,
+    const ZZ& uni_content = ZZ(1));   // 单变量分解的整数内容
 ```
 
 > **接口设计说明：** `lc_assignments`（σᵢ）保留用于调试和验证，
@@ -518,20 +520,20 @@ __hensel_lift_one_var(f_curr, G₁,...,Gᵣ, v₁,...,vᵣ, s₁,...,sᵣ, τ₁
         // 步骤 C: 解多变量丢番图方程 (MDP)
         //   求 δ₁,...,δᵣ 使得 Σ δᵢ·V̂ᵢ = eⱼ  (V̂ᵢ = ∏_{j≠i} vⱼ)
         //
-        //   因为 vᵢ 非首一（lc = δ），对 vᵢ 做 rem 需要 pseudo-remainder：
-        //   prem(f, vᵢ) 满足 δ^k · f = q·vᵢ + prem(f, vᵢ)，k = deg(f) - deg(vᵢ) + 1
+        //   使用递归多变量 Diophantine 求解器 (__multivar_diophantine, GCL §6.3):
+        //   递归地逐变量剥离，直到退化为单变量基本情形。
         //
-        //   解法: δᵢ = prem(sᵢ · eⱼ, vᵢ) / (δ^k · denom)
-        //   其中 δ^k 来自 prem 引入的 lc 系数幂，denom 来自 Bézout 公分母。
-        //   由偏分式唯一性，此除法为精确整除。
+        //   基本情形 (eⱼ ∈ Z[x₁]):
+        //     δᵢ = prem(sᵢ · eⱼ, vᵢ) / divisor
+        //     当 |denom| == 1 时，divisor = δ^k (精确整除)
+        //     当 |denom| != 1 时，使用模逆: divisor⁻¹ mod p^a，再对称模
+        //     (p^a 由 Hensel 提升界预先计算，通过 pa 参数传入)
         //
-        //   注意: eⱼ ∈ Z[x₁,...,xₖ₋₁] 是多变量的，
-        //   但 sᵢ, vᵢ ∈ Z[x₁] 是单变量的。
-        //   "prem vᵢ" 指的是 以 x₁ 为主变量 做伪除法取余，
-        //   Z[x₂,...,xₖ₋₁] 部分作为系数环不参与除法。
-        for i = 1 to r:
-            kᵢ ← max(deg(sᵢ·eⱼ, x₁) - deg(vᵢ) + 1, 0)
-            δᵢ ← prem(sᵢ · eⱼ, vᵢ) / (δ^kᵢ · denom)  // 精确整除，kᵢ 依赖具体 i
+        //   递归情形 (eⱼ ∈ Z[x₁,...,xₖ₋₁]):
+        //     对 eⱼ 做 Taylor 展开: eⱼ = Σ cₜ·(xₖ₋₁-αₖ₋₁)^t
+        //     逐阶递归求解 __multivar_diophantine(cₜ, ...)，累积修正
+        //     每阶修正后更新误差 (交叉项来自多变量余因子)
+        δ₁,...,δᵣ ← __multivar_diophantine(eⱼ, G_base, v_factors, bezout_s, denom, pa, ...)
 
         // 步骤 D: 更新因子
         for i = 1 to r:
@@ -596,38 +598,59 @@ __taylor_coeff(f, xₖ, αₖ, j):
 > 可以用增量更新：`e_new = e_old - (∏Gᵢ_new - ∏Gᵢ_old)`。
 > 初始实现使用直接计算，性能优化留给后续。
 
-### 6.5 步骤 C 的多变量模运算详解
+### 6.5 多变量 Diophantine 求解器 (`__multivar_diophantine`)
 
-步骤 C 中 `δᵢ = prem(sᵢ · eⱼ, vᵢ) / (δ^k · denom)` 的含义需要精确说明：
+步骤 C 使用递归多变量 Diophantine 求解器（GCL Algorithm 6.3）。
 
-- `sᵢ ∈ Z[x₁]`（单变量，由 §6.2 Bézout 计算得到，满足 `Σ sᵢ·V̂ᵢ = denom`）
-- `eⱼ ∈ Z[x₁,...,xₖ₋₁]`（多变量）
-- `vᵢ ∈ Z[x₁]`（单变量，lc = δ，**非首一**）
-- `denom ∈ Z`（Bézout 公分母）
-- `δ = lc(g, x₁)(α) ∈ Z`（缩放常数）
+**输入：**
+- `c ∈ Z[x₁,...,xₖ₋₁]` — 待求解的右侧
+- `G_base` — G 在当前提升变量处求值后的因子 (`G|_{xk=αk}`)，**非**完整 G
+- `v_factors` — 单变量因子 vᵢ ∈ Z[x₁]
+- `bezout_s, denom` — Bézout 系数和公分母
+- `pa` — 模逆用模数 (仅 denom ≠ ±1 时使用)
 
-将 `eⱼ` 视为 `(Z[x₂,...,xₖ₋₁])[x₁]` 中的多项式（x₁ 为主变量，
-其他变量的多项式作为系数），然后与 `sᵢ` 相乘后对 `vᵢ(x₁)` 做伪除法取余。
+**递归结构：**
 
-因为 vᵢ 非首一（lc = δ），普通 rem 在 Z 上不精确。使用 pseudo-remainder：
 ```
-prem(f, vᵢ): δ^k · f = q · vᵢ + prem(f, vᵢ),  k = max(deg(f,x₁) - deg(vᵢ) + 1, 0)
+__multivar_diophantine(c, G_base, v_factors, bezout_s, denom, pa, ...):
+
+    基本情形 (c ∈ Z[x₁], 单变量):
+        for i = 1 to r:
+            product ← sᵢ · c
+            _, δᵢ ← prem(product, vᵢ)      // 伪余式
+            if |denom| == 1:
+                δᵢ ← δᵢ / δ^k              // 精确整除
+            else:
+                δᵢ ← δᵢ · (divisor⁻¹ mod pa) // 模逆 + 对称模
+                δᵢ ← symmetric_mod(δᵢ, pa)
+                // divisor = δ^k · denom
+        return δ₁,...,δᵣ
+
+    递归情形 (c 含多个变量):
+        // 剥离最内层变量 xₖ₋₁
+        c₀ ← c |_{xₖ₋₁ = αₖ₋₁}
+        δ₁,...,δᵣ ← __multivar_diophantine(c₀, ...)   // 递归
+
+        // Taylor 展开逐阶修正
+        for t = 1 to deg(c, xₖ₋₁):
+            // 计算误差: error ← c - Σ δᵢ · Ĝ_base_i
+            // 提取第 t 阶 Taylor 系数
+            cₜ ← taylor_coeff(error, xₖ₋₁, αₖ₋₁, t)
+            if cₜ = 0: continue
+            Δ₁,...,Δᵣ ← __multivar_diophantine(cₜ, ...)
+            for i = 1 to r:
+                δᵢ ← δᵢ + Δᵢ · (xₖ₋₁ - αₖ₋₁)^t
+            // 关键: 更新误差 (交叉项来自多变量余因子)
 ```
-prem 在 Z[x₁,...,xₖ₋₁] 上精确（无需分数）。
-最后除以 `δ^k · denom` 也是精确的（由偏分式唯一性保证 δᵢ 为整系数）。
 
-这等价于"逐系数"操作：对 eⱼ 的每个关于 x₂,...,xₖ₋₁ 的单项式，
-分别与 sᵢ 相乘后 prem vᵢ，再整体除以 `δ^k · denom`。
-
-> **实现注意：**
-> - 使用 `prem`（CLPoly 已有）而非 `pair_vec_div`，因为 vᵢ 非首一。
-> - 也可以先将 eⱼ 乘以 δ^k "预乘法"，然后用 `pair_vec_div`（lex 首变量长除法），
->   效果等价。`pair_vec_div` 能正确处理除数为单变量、被除数为多变量的情况，
->   **前提是 x₁ 在 lex 序中是最高变量**。
-> - CLPoly 的 `cont()` 和 `squarefreefactorize` 也依赖此 lex 首变量约定，设计一致。
+> **Bézout denom 处理：** Z[x₁] 上的 XGCD 给出 `Σ sᵢ·V̂ᵢ = denom`，
+> 其中 denom 一般不为 ±1。当 |denom| == 1 时基本情形用精确除法；
+> 当 |denom| ≠ 1 时用模逆 (`ZZ::invert`)。模数 `pa` 由 Hensel 提升界
+> 预先计算: `pa = ∏(‖vᵢ‖₁+1) × |denom|` 的合适素数幂。
 >
-> **优化提示：** 实践中可以在 Bézout 构造阶段将 denom 和 δ 的幂合并跟踪，
-> 避免 MDP 中每次重新计算 δ^k。
+> **G_base vs G：** Diophantine 使用 `G_base = G|_{xk=αk}`（剥离当前提升变量），
+> 而非完整的 G。这是因为偏分式方程 `Σ δᵢ·Ĝ_base_i = c` 中的余因子
+> 必须与 Bézout 系数对应的因子一致。
 
 ### 6.6 终止条件
 
@@ -653,10 +676,13 @@ void __hensel_lift_one_var(
     std::vector<polynomial_<ZZ, lex_<var_order>>>& G,        // 因子（原地更新）
     const std::vector<upolynomial_<ZZ>>& bezout_s,           // Bézout sᵢ ∈ Z[x₁]
     const ZZ& bezout_denom,                                   // Bézout 公分母
+    const ZZ& pa,                                             // Diophantine 模逆用模数 (denom≠±1 时)
     const std::vector<upolynomial_<ZZ>>& v_factors,           // vᵢ ∈ Z[x₁]（lc=δ, 非首一）
     const ZZ& delta,                                          // δ = lc(g, x₁)(α)
     const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_tau,    // τᵢ (LC 目标)
-    const variable& xk, const ZZ& alpha_k, int dk);
+    const variable& main_var,                                 // 主变量 x₁
+    const variable& xk, const ZZ& alpha_k, int dk,
+    const std::map<variable, ZZ>& prev_eval);                 // 已提升变量的求值点
 
 // 多变量 Hensel 提升（外层入口）
 // 前置: f_scaled = δ^(r-1)·g
@@ -745,61 +771,66 @@ __factor_multivar(f_input):
 ```
 __wang_core(g):
     // 前置: g ∈ Z[x₁,...,xₙ], n ≥ 2, g 本原无平方, 无公共变量幂
-    all_vars ← get_variables(g)
+    main_vars ← [v for v in get_variables(g) if degree(g, v) ≥ 2]
+    var_skip[vi] ← 0 for all vi        // 每个主变量的 skip 位置
+    var_dead[vi] ← false for all vi     // 是否已证明关于该变量不可约
+    BATCH_SIZE ← 200
 
-    // 主变量轮换: 不同主变量 LC 结构不同, 轮换提供重试机会
-    for var_idx in 0..all_vars.size():
-        x₁ ← all_vars[var_idx]
-        if degree(g, x₁) ≤ 1: continue    // 度数 ≤ 1 无法揭示分解
+    // 交错轮换: 每轮每个主变量尝试 BATCH_SIZE 个求值点
+    // 终止性: 可约多项式至少存在一个好求值点使 Hensel 提升成功 (→ return);
+    // 不可约多项式的所有主变量最终被标记为 dead (→ break).
+    for (;;):
+        for vi in 0..main_vars.size():
+            if var_dead[vi]: continue
+            x₁ ← main_vars[vi]
+            batch_end ← var_skip[vi] + BATCH_SIZE
 
-        // Phase 1: 扫描 50 个求值点, 收集候选
-        candidates ← []
-        for skip in 0..SCAN_SIZE(=50):
-            eval ← __select_eval_point(g, x₁, skip)
-            f₀ ← assign(g, eval)
-            uni_fac ← factorize(f₀)
-            if uni_fac.factors.size() ≤ 1:
-                irred_count++; if irred_count ≥ 3: irred_detected; break
-            else:
-                candidates.push({eval, uni_fac})
+            for skip in var_skip[vi]..batch_end:
+                eval ← __select_eval_point(g, x₁, skip)
+                f₀ ← assign(g, eval)
+                uni_fac ← factorize(f₀)
 
-        if irred_detected && candidates.empty():
-            continue    // 仅跳过该主变量, 不宣告整体不可约
+                if uni_fac.factors.size() ≤ 1:
+                    // 好求值点处单变量像不可约 → g 关于 x₁ 不可约
+                    var_dead[vi] ← true; break
 
-        // 按因子数排序 (优先选因子最少的)
-        sort candidates by nfactors ascending
+                lc_result ← __wang_leading_coeff(g, uni_fac.factors, eval, x₁, uni_fac.content)
+                if !lc_result.success: continue
 
-        // Phase 2: 逐候选尝试完整流程
-        for cand in candidates:
-            lc_result ← __wang_leading_coeff(g, cand.uni_factors, cand.eval, x₁, cand.content)
-            if !lc_result.success: continue
+                mv_factors ← __multivar_hensel_lift(...)
 
-            mv_factors ← __multivar_hensel_lift(...)
+                // 因子重组 (Zassenhaus 子集枚举, 同单变量 §6.4)
+                verified ← trial_divide_and_recombine(g, mv_factors)
+                if verified.size() ≥ 2: return verified
 
-            // 试除验证 + 因子重组
-            verified ← trial_divide_and_recombine(g, mv_factors)
-            if verified.size() ≥ 2: return verified
+            var_skip[vi] ← batch_end
 
-    // 所有主变量都失败 → g 不可约
+        if all var_dead: break
+
+    // 所有主变量都证明不可约 → g 不可约
     return [(g, 1)]
 
-    // 试除验证内部:
+    // 因子重组内部 (Zassenhaus 子集枚举):
+    // 对 Hensel 因子集合 T = {H₁,...,Hₖ}，从 s=1 递增枚举大小为 s 的子集，
+    // 计算子集乘积 pp(∏ Hᵢ)，若精确整除 g_remaining 则提取为一个因子。
+    //
+    // 不可约性保证: 若返回因子 F 可约 (F=A·B)，则 A,B 各对应 Hensel 因子的
+    // 真子集——因为模求值后 Hᵢ 回到不可约单变量因子 uᵢ (唯一分解)。
+    // 这意味着存在更小的 s 使子集乘积整除 g，与 F 在当前 s 被找到矛盾。
+    // 因此每个返回因子都是不可约的，无需递归验证。
     g_remaining ← g
-    for G in mv_factors:
-        h ← pp(G)                                    // 本原化, 消去缩放因子 δ
-        q, r ← divmod(g_remaining, h)              // 对 g（非 f_scaled!）试除
-        if r = 0:
-            verified.push(h)
-            g_remaining ← q
+    for s = 1, 2, ..., |T|/2:
+        for each size-s subset S ⊂ T:
+            prod ← pp(∏_{i∈S} Hᵢ)
+            q, r ← divmod(g_remaining, prod)
+            if r = 0:
+                verified.push(prod)
+                g_remaining ← q
+                T ← T \ S
+                s ← 1; break  // 重新从 s=1 开始
 
     if deg(g_remaining, x₁) > 0:
         verified.push(pp(g_remaining))
-
-    // 自洽性检查
-    if ∏ verified ≠ g / (整数常数):
-        retry_count++
-        if retry_count ≥ MAX_RETRY: throw "Wang factorization failed"
-        goto 1
 
     return [(h, 1) for h in verified]
 ```
@@ -826,17 +857,17 @@ Wang 算法可能在以下情况失败：
 | `__wang_leading_coeff` | lc 因子分配不唯一 | 换求值点重试 |
 | 试除全部失败 | 提升精度不足或数值问题 | 换求值点重试 |
 
-最大重试次数建议 `MAX_RETRY = 10`。超过后抛出异常。
+重试通过交错轮换自动进行（§7.1 `__wang_core`），无硬编码最大重试次数。
+每个主变量每轮尝试 BATCH_SIZE=200 个求值点，轮换直到成功或所有主变量证明不可约。
 
 > **注：** 远期可考虑实现 EEZ-Wang (Extended Zassenhaus for Wang) 变体，
-> 在 lc 分配困难时使用"延迟 lc 分配"策略，但初始实现不需要。
+> 在 lc 分配困难时使用"延迟 lc 分配"策略。
 
 ---
 
 ## 9. `factorize` 入口集成
 
-当前 `factorize`（`polynomial_factorize.hh:1340-1341`）在 `vars.size() > 1` 时
-抛异常。M5 完成后，应修改为：
+`factorize` 在 `vars.size() > 1` 时 dispatch 到 `__factor_multivar`：
 
 ```cpp
 template<class var_order>
@@ -875,7 +906,7 @@ QQ[x₁,...,xₙ] 入口无需修改——其内部先转换为 ZZ 多项式再�
 
 | 阶段 | 内容 | 新增函数 | 依赖 |
 |---|---|---|---|
-| **Phase 5** | M5: 多变量 Wang | `pp` (polynomial_gcd.hh), `__upoly_gcd_extended` (ZZ 重载, polynomial_gcd.hh), `__taylor_coeff`, `__poly_prem_univar`, `__select_eval_point`, `__wang_leading_coeff` (含 `__wang_lc_result` + τᵢ), `__multivar_hensel_lift` (含 `__hensel_lift_one_var`), `__factor_multivar`, `factorize` 多变量 dispatch | M4 (已实现) |
+| **Phase 5** ✅ | M5: 多变量 Wang | `pp`, `__upoly_gcd_extended` (ZZ), `__taylor_coeff`, `__select_eval_point`, `__wang_leading_coeff`, `__multivar_hensel_lift` (含 `__hensel_lift_one_var`, `__multivar_diophantine`), `__extract_monomial_content`, `__factor_multivar`, `factorize` dispatch | M4 |
 | **Phase 6** | 增强：van Hoeij 重组 | `__factor_recombine_van_hoeij` + LLL 实现 | M3 替换 |
 | **Phase 7** | 增强：Zippel 后备 | 稀疏插值模块 + Zippel 算法 | Phase 5 后备 |
 | **Phase 8** | 终极：MTSHL | 二变量 Hensel 提升 + 稀疏插值驱动的多变量分解 | 替换 Phase 5 |
@@ -1026,7 +1057,8 @@ polynomial_<ZZ, lex_<var_order>> __poly_prem_univar(
 // §4 选取值点
 template<class var_order>
 std::map<variable, ZZ> __select_eval_point(
-    const polynomial_<ZZ, lex_<var_order>>& f, const variable& main_var);
+    const polynomial_<ZZ, lex_<var_order>>& f, const variable& main_var,
+    int skip = 0);
 
 // §5 首项系数校正结果
 template<class var_order>
@@ -1043,7 +1075,8 @@ template<class var_order>
 __wang_lc_result<var_order> __wang_leading_coeff(
     const polynomial_<ZZ, lex_<var_order>>& f,
     const std::vector<upolynomial_<ZZ>>& univar_factors,
-    const std::map<variable, ZZ>& eval_point, const variable& main_var);
+    const std::map<variable, ZZ>& eval_point, const variable& main_var,
+    const ZZ& uni_content = ZZ(1));
 
 // §6 单变量 Hensel 提升步 (内层循环)
 template<class var_order>
@@ -1052,10 +1085,13 @@ void __hensel_lift_one_var(
     std::vector<polynomial_<ZZ, lex_<var_order>>>& G,
     const std::vector<upolynomial_<ZZ>>& bezout_s,
     const ZZ& bezout_denom,
+    const ZZ& pa,                                             // Diophantine 模逆用模数
     const std::vector<upolynomial_<ZZ>>& v_factors,          // vᵢ (lc=δ, 非首一)
     const ZZ& delta,                                          // δ
     const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_tau,    // τᵢ
-    const variable& xk, const ZZ& alpha_k, int dk);
+    const variable& main_var,                                 // 主变量 x₁
+    const variable& xk, const ZZ& alpha_k, int dk,
+    const std::map<variable, ZZ>& prev_eval);                 // 已提升变量的求值点
 
 // §6 多变量 Hensel 提升 (外层入口)
 template<class var_order>
@@ -1106,7 +1142,7 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 
 ## 附录：实现中发现的设计问题
 
-### D1. §4.2 求值点选择缺少条件 (d')：|lⱼ(α)| ≥ 2
+### D1. §4.2 求值点选择缺少条件 (d')：|lⱼ(α)| ≥ 2 ✅ 已修复
 
 **阶段：** Phase 2
 
@@ -1118,7 +1154,7 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 
 **修复：** 在 `__select_eval_point` 中增加条件 (d')：对每个 lc 不可约因子 lⱼ，要求 |lⱼ(α)| ≥ 2。这保证 zⱼ ≥ 2，贪心匹配有区分度。
 
-### D2. §6.3 MDP 不能直接用单变量 V̂ᵢ 求解多变量 eⱼ
+### D2. §6.3 MDP 不能直接用单变量 V̂ᵢ 求解多变量 eⱼ ✅ 已修复（递归 Diophantine）
 
 **阶段：** Phase 3
 
@@ -1130,7 +1166,7 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 
 **修复：** MDP 前将 eⱼ 求值到前序变量的点：ē_j = eⱼ|_{x₂=α₂,...,x_{k-1}=α_{k-1}} ∈ Z[x₁]，再用单变量 Bézout 求解 δ̄ᵢ ∈ Z[x₁]。这利用了 G_l|_{前序变量=α} = v_l 的性质，使单变量 MDP 给出正确的修正。
 
-### D3. §7 模板前向引用循环：`factorize` ↔ `__factor_multivar`
+### D3. §7 模板前向引用循环：`factorize` ↔ `__factor_multivar` ✅ 已修复
 
 **阶段：** Phase 4
 
@@ -1140,7 +1176,7 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 
 **修复：** 在文件前部放置 `__factor_multivar` 的前向声明（仅声明，无定义），将 `__wang_core` 和 `__factor_multivar` 的定义移到文件末尾（所有 `factorize` 重载之后）。这样 `__wang_core` 在实例化时所有 `factorize` 重载都已可见，`factorize(lex)` 也能通过前向声明调用 `__factor_multivar`。
 
-### D4. §7 `squarefreefactorize` 不翻转负首项系数
+### D4. §7 `squarefreefactorize` 不翻转负首项系数 ✅ 已修复（`__factor_multivar` 预翻转）
 
 **阶段：** Phase 4
 
@@ -1150,7 +1186,7 @@ __factor_multivar(const polynomial_<ZZ, lex_<var_order>>& f);
 
 **修复：** 在 `__factor_multivar` 中，将 gk 传给 `__wang_core` 之前翻转符号使 lc > 0，将 (-1)^mₖ 吸收到 result.content。
 
-### D5. Wang 算法对随机多变量多项式不完全因式分解
+### D5. Wang 算法对随机多变量多项式不完全因式分解 ✅ 已修复（skip 参数 + GCD 匹配 + 交错轮换）
 
 **阶段：** Phase 4 测试
 
@@ -1296,16 +1332,14 @@ FLINT 采用两级策略：
 
 | 特性 | SymPy | FLINT | CLPoly |
 |------|-------|-------|--------|
-| 匹配时 w_i 补偿 content | `w_i * cs` | `d[0] = Auc * γ` | ❌ raw `w_i` |
-| 除法方式 | `fmpz_remove`（最大幂次） | `fmpz_remove` | ❌ 精确整除 `%` |
-| 求值点预过滤 content 兼容性 | `non_divisors` 检查 | 验证 `dtilde` 整除 | ❌ 无 |
-| 匹配后 content 修正 | 两阶段 gcd + cs^{r-1} 缩放 | 验证+缩放 | ❌ 无 |
-| 匹配失败回退 | `ExtraneousFactors` → 换点 | Kaltofen 方法 | ❌ 直接 return false |
-| 求值点随机化 | 递增 `mod` 参数 | `alpha_modulus` 递增 | ❌ 纯确定性 |
+| 匹配方式 | `w_i * cs` + `fmpz_remove` | `d[0] = Auc * γ` + `fmpz_remove` | ✅ GCD 匹配 `gcd(\|wᵢ\|, \|lⱼ(α)\|^eⱼ)` |
+| 求值点预过滤 content 兼容性 | `non_divisors` 检查 | 验证 `dtilde` 整除 | ❌ 无 (GCD 匹配减少必要性) |
+| 匹配失败回退 | `ExtraneousFactors` → 换点 | Kaltofen 方法 | ✅ 交错轮换换点 |
+| 求值点多样性 | 递增 `mod` 参数 | `alpha_modulus` 递增 | ✅ `skip` 参数 + BATCH_SIZE=200 |
 
 **修复方向（按优先级）：**
 
-1. **（P0 必要）随机化求值点选择：** 给 `__select_eval_point` 添加 `skip` 参数或随机起点，使重试能选到不同有效点。这是最小改动、最大收益的修复（二变量 37%/点 → 10 次重试 ~98.5% 成功率）。
-2. **（P1 推荐）content 补偿匹配（SymPy 方案）：** 将 `w[i] = lc(u_i)` 改为 `w[i] = lc(u_i) * content(f₀)`，匹配后添加修正阶段。这是根本修复，使单次匹配成功率接近 100%。
-3. **（P2 可选）non-divisors 预过滤：** 在 `__select_eval_point` 中增加 content 兼容性检查，拒绝会导致匹配歧义的求值点。
+1. ✅ **（P0）`skip` 参数 + 交错主变量轮换：** `__select_eval_point` 添加 `skip` 参数，`__wang_core` 使用交错轮换每变量每轮 BATCH_SIZE=200 个点。
+2. ✅ **（P1）GCD 匹配替代精确整除：** `__wang_leading_coeff` 使用 `gcd(|wᵢ|, |lⱼ(α)|^eⱼ)` 匹配，免疫 gamma/content 污染。
+3. **（P2 可选）non-divisors 预过滤：** 在 `__select_eval_point` 中增加 content 兼容性检查。GCD 匹配已大幅减少其必要性。
 4. **（P3 远期）Kaltofen 回退 / EEZ-Wang：** 作为终极保底策略。

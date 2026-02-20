@@ -725,7 +725,6 @@ namespace clpoly{
         R.clear();
         if (v1_.size()==0)
         {
-            R=v2_;
             return void();
         }
         T1 m;

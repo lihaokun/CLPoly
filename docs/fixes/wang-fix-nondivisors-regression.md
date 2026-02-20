@@ -1,5 +1,8 @@
 # 修正方案：non-divisors 预过滤回归 + 因式分解模块全面审查
 
+> **状态：已完成。** Diophantine 模逆修复 + 因式分解模块审计修复已合入。
+> 本文档保留为历史记录，权威描述见 [multivariate-factorization-design.md](../design/multivariate-factorization-design.md)。
+>
 > 对应 workflow.md §5.1 修正方案文档
 
 ---

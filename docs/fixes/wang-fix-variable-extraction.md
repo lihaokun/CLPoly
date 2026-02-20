@@ -1,5 +1,8 @@
 # 修正方案：变量幂次提取预处理 + 不可约启发式修正
 
+> **状态：已完成。** `__extract_monomial_content` 已实现，不可约启发式改为单次求值证明。
+> 本文档保留为历史记录，权威描述见 [multivariate-factorization-design.md](../design/multivariate-factorization-design.md)。
+>
 > 对应 workflow.md §5.1 修正方案文档
 
 ---

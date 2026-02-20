@@ -1,5 +1,8 @@
 # 修正方案：Wang LC 分配幂次拆分
 
+> **状态：已完成（已被取代）。** 本文档描述的 per-factor 幂次提取方案已被 GCD 匹配方案取代。
+> 本文档保留为历史记录，权威描述见 [multivariate-factorization-design.md](../design/multivariate-factorization-design.md)。
+>
 > 对应 workflow.md §5.1 修正方案文档
 
 ---

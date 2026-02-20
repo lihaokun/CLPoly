@@ -1404,5 +1404,141 @@ int main() {
         CLPOLY_ASSERT(cl_sorted == fl_sorted);
     }
 
+    // ======== Gröbner 基: FLINT 交叉验证 ========
+    //
+    // 三重验证策略:
+    //   1. fmpz_mpoly_vec_is_groebner(CLPoly_GB, F) — FLINT 直接验证 CLPoly 输出
+    //   2. fmpz_mpoly_buchberger_naive + autoreduction — FLINT 独立计算 GB
+    //   3. 比较 CLPoly 与 FLINT 的约化 GB（ZZ 上比较到 associate）
+
+    // 辅助: 本原化 ZZ 多项式 (lc > 0, 系数 GCD = 1)
+    auto zz_primitive = [](polynomial_ZZ f) -> polynomial_ZZ {
+        if (f.empty()) return f;
+        ZZ c = abs(f.front().second);
+        for (auto& term : f) c = gcd(c, abs(term.second));
+        if (f.front().second < 0) c = -c;
+        for (auto& term : f.data()) term.second = term.second / c;
+        return f;
+    };
+
+    // 辅助: 比较两个 ZZ GB 集合 (up to sign/content, 即 associate)
+    auto gb_zz_set_eq = [&](const std::vector<polynomial_ZZ>& gb1,
+                            const std::vector<polynomial_ZZ>& gb2) -> bool {
+        if (gb1.size() != gb2.size()) return false;
+        // 本原化后比较集合
+        std::vector<polynomial_ZZ> a, b;
+        for (auto& g : gb1) a.push_back(zz_primitive(g));
+        for (auto& g : gb2) b.push_back(zz_primitive(g));
+        for (auto& ga : a) {
+            bool found = false;
+            for (auto& gb : b)
+                if (ga == gb) { found = true; break; }
+            if (!found) return false;
+        }
+        return true;
+    };
+
+    // 固定测试用例
+
+    CLPOLY_TEST("crosscheck_flint_gb_linear");
+    {
+        polynomial_ZZ f1 = x + y - 1;
+        polynomial_ZZ f2 = x - y;
+        std::vector<polynomial_ZZ> gens = {f1, f2};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        // FLINT 验证: CLPoly 的结果是 Gröbner 基
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        // FLINT 独立计算 GB 并比较
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    CLPOLY_TEST("crosscheck_flint_gb_circle_hyperbola");
+    {
+        polynomial_ZZ f1 = pow(x,2) + pow(y,2) - 1;
+        polynomial_ZZ f2 = x*y - 1;
+        std::vector<polynomial_ZZ> gens = {f1, f2};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    CLPOLY_TEST("crosscheck_flint_gb_symmetric_3var");
+    {
+        polynomial_ZZ f1 = x + y + z;
+        polynomial_ZZ f2 = x*y + y*z + z*x;
+        polynomial_ZZ f3 = x*y*z - 1;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    CLPOLY_TEST("crosscheck_flint_gb_katsura2");
+    {
+        polynomial_ZZ f1 = x + 2*y + 2*z - 1;
+        polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) - x;
+        polynomial_ZZ f3 = 2*x*y + 2*y*z - y;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    // 随机测试: 2 变量 ZZ
+    CLPOLY_TEST("crosscheck_flint_gb_random_2var");
+    for (int round = 0; round < 15; round++) {
+        CLPOLY_TEST_SECTION("round_" + std::to_string(round));
+        auto f1 = random_polynomial<ZZ>({x, y}, 3, 3, {-10, 10});
+        auto f2 = random_polynomial<ZZ>({x, y}, 3, 3, {-10, 10});
+        if (f1.empty() && f2.empty()) continue;
+        std::vector<polynomial_ZZ> gens = {f1, f2};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        // FLINT 验证
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        // FLINT 独立计算 + 比较
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    // 随机测试: 3 变量 ZZ
+    CLPOLY_TEST("crosscheck_flint_gb_random_3var");
+    for (int round = 0; round < 8; round++) {
+        CLPOLY_TEST_SECTION("round_" + std::to_string(round));
+        auto f1 = random_polynomial<ZZ>({x, y, z}, 2, 3, {-5, 5});
+        auto f2 = random_polynomial<ZZ>({x, y, z}, 2, 3, {-5, 5});
+        if (f1.empty() && f2.empty()) continue;
+        std::vector<polynomial_ZZ> gens = {f1, f2};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    // 随机测试: 3 个生成元
+    CLPOLY_TEST("crosscheck_flint_gb_random_3gen");
+    for (int round = 0; round < 5; round++) {
+        CLPOLY_TEST_SECTION("round_" + std::to_string(round));
+        auto f1 = random_polynomial<ZZ>({x, y}, 2, 3, {-5, 5});
+        auto f2 = random_polynomial<ZZ>({x, y}, 2, 3, {-5, 5});
+        auto f3 = random_polynomial<ZZ>({x, y}, 2, 2, {-5, 5});
+        if (f1.empty() && f2.empty() && f3.empty()) continue;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
     return clpoly_test::test_summary();
 }

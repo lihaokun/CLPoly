@@ -22,6 +22,8 @@ clpoly/4.txt
 clpoly/Bres
 clpoly/Bres1
 
+# Groebner test binary
+test/test_groebner
 # Test data/temp files
 test/1.txt
 test/2.txt

@@ -368,6 +368,106 @@ int main() {
     });
 
     // ================================================================
+    // Factorize stress tests (many factors)
+    // ================================================================
+    bench_header("Factorize stress tests");
+
+    // Stress 1: univariate 70 linear factors — (x-1)(x-2)...(x-70)
+    {
+        upolynomial_ZZ stress_uni({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 70; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            stress_uni = stress_uni * lin;
+        }
+        BENCH("factorize  uni 70 factors (deg70)", 1, {
+            volatile auto r = factorize(stress_uni); (void)r;
+        });
+    }
+
+    // Stress 2: bivariate 70 linear factors — Π_{i=1}^{35} (x+iy)(x-iy)
+    {
+        using PolyLex = polynomial_<ZZ, lex>;
+        auto to_lex = [](const polynomial_ZZ& p) {
+            PolyLex r; poly_convert(p, r); return r;
+        };
+        auto stress_bi = to_lex(
+            (pow(x,1) + pow(y,1)) * (pow(x,1) - pow(y,1)));
+        stress_bi.normalization();
+        for (int i = 2; i <= 35; ++i) {
+            auto f1 = to_lex(pow(x,1) + ZZ(i) * pow(y,1));
+            auto f2 = to_lex(pow(x,1) - ZZ(i) * pow(y,1));
+            stress_bi = stress_bi * f1;
+            stress_bi.normalization();
+            stress_bi = stress_bi * f2;
+            stress_bi.normalization();
+        }
+        BENCH("factorize  bivar 70 factors (deg70)", 1, {
+            volatile auto r = factorize(stress_bi); (void)r;
+        });
+    }
+
+    // Stress 3: trivariate 60 linear factors — Π(x±iy, x±iz, y±iz), i=1..10
+    {
+        variable z("z");
+        using PolyLex = polynomial_<ZZ, lex>;
+        auto to_lex = [](const polynomial_ZZ& p) {
+            PolyLex r; poly_convert(p, r); return r;
+        };
+        PolyLex stress_tri;
+        {
+            basic_monomial<lex> m0;
+            stress_tri.push_back(std::make_pair(m0, ZZ(1)));
+        }
+        for (int i = 1; i <= 10; ++i) {
+            auto f1 = to_lex(pow(x,1) + ZZ(i) * pow(y,1));
+            auto f2 = to_lex(pow(x,1) - ZZ(i) * pow(y,1));
+            stress_tri = stress_tri * f1 * f2;
+            stress_tri.normalization();
+        }
+        for (int i = 1; i <= 10; ++i) {
+            auto f1 = to_lex(pow(x,1) + ZZ(i) * pow(z,1));
+            auto f2 = to_lex(pow(x,1) - ZZ(i) * pow(z,1));
+            stress_tri = stress_tri * f1 * f2;
+            stress_tri.normalization();
+        }
+        for (int i = 1; i <= 10; ++i) {
+            auto f1 = to_lex(pow(y,1) + ZZ(i) * pow(z,1));
+            auto f2 = to_lex(pow(y,1) - ZZ(i) * pow(z,1));
+            stress_tri = stress_tri * f1 * f2;
+            stress_tri.normalization();
+        }
+        BENCH("factorize  trivar 60 factors (deg60)", 1, {
+            volatile auto r = factorize(stress_tri); (void)r;
+        });
+    }
+
+    // Stress 4: disjoint pairs — (x1+x2)(x1-x2)*...*(x9+x10)(x9-x10)
+    {
+        using PolyLex = polynomial_<ZZ, lex>;
+        auto to_lex = [](const polynomial_ZZ& p) {
+            PolyLex r; poly_convert(p, r); return r;
+        };
+        std::vector<variable> xvars;
+        for (int i = 1; i <= 10; ++i)
+            xvars.push_back(variable("x" + std::to_string(i)));
+
+        PolyLex stress_dis;
+        {
+            basic_monomial<lex> m0;
+            stress_dis.push_back(std::make_pair(m0, ZZ(1)));
+        }
+        for (int i = 0; i < 5; ++i) {
+            auto f1 = to_lex(pow(xvars[2*i],1) + pow(xvars[2*i+1],1));
+            auto f2 = to_lex(pow(xvars[2*i],1) - pow(xvars[2*i+1],1));
+            stress_dis = stress_dis * f1 * f2;
+            stress_dis.normalization();
+        }
+        BENCH("factorize  10var disjoint 10 factors", 1, {
+            volatile auto r = factorize(stress_dis); (void)r;
+        });
+    }
+
+    // ================================================================
     // Real root isolation (uspensky)
     // ================================================================
     bench_header("Real root isolation (uspensky)");

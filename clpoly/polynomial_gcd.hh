@@ -310,10 +310,12 @@ namespace clpoly{
         std::uint32_t tmp_x=std::max(degree(F),degree(G));
         if (tmp_x<2) tmp_x=2;
         std::uint32_t p_index=tmp_x/std::log(tmp_x);
+        if (p_index >= 9999) p_index = 9998;
         std::uint32_t prime=boost::math::prime(p_index);
         while (prime <tmp_x)
         {
-            prime=boost::math::prime(++p_index);
+            if (++p_index >= 9999) break;
+            prime=boost::math::prime(p_index);
         }
 
         polynomial_<ZZ,lex_<var_order>> Pout_(F.comp_ptr()),tmp_Pout_(F.comp_ptr()),R(F.comp_ptr());
@@ -328,8 +330,10 @@ namespace clpoly{
             
             while (F.begin()->second % prime ==0 || G.begin()->second % prime ==0)
             {
-                prime=boost::math::prime(++p_index);
+                if (++p_index >= 9999) break;
+                prime=boost::math::prime(p_index);
             }
+            if (p_index >= 9999) break;
             f_p=polynomial_mod(F,prime);
             g_p=polynomial_mod(G,prime);
             lc_gcd_p=polynomial_mod(lc_gcd,prime);
@@ -342,7 +346,8 @@ namespace clpoly{
             tmp_Pout_d=__polynomial_GCD(Pout_mod,f_p,g_p,lc_gcd_p,Pout_d);
             if (tmp_Pout_d==-1)
             {
-                prime=boost::math::prime(++p_index);
+                if (++p_index >= 9999) break;
+                prime=boost::math::prime(p_index);
                 continue;
             }
             
@@ -455,15 +460,134 @@ namespace clpoly{
                 swap(tmp_Pout_.data(),Pout_.data());
                        
             }
-            prime=boost::math::prime(++p_index);
-        }  
-
-        
+            if (++p_index >= 9999) break;
+            prime=boost::math::prime(p_index);
+        }
+        // 素数表耗尽: 保守返回 content GCD
+        return cont_gcd;
     }
 
-    
+    // 扩展 GCD (多变量 ZZ): c = polynomial_GCD(F, G, s, t), 满足 s*F + t*G = c
+    // 使用 pseudo-Euclidean 算法 (关于 lex 首变量做 prem/pquo)
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> polynomial_GCD(
+        const polynomial_<ZZ,lex_<var_order>>& F,
+        const polynomial_<ZZ,lex_<var_order>>& G,
+        polynomial_<ZZ,lex_<var_order>>& s,
+        polynomial_<ZZ,lex_<var_order>>& t)
+    {
+        using Poly = polynomial_<ZZ,lex_<var_order>>;
+        assert(comp_consistent(F.comp(), G.comp()));
+        auto comp_ptr = F.comp_ptr();
 
-   
+        auto make_const = [&](const ZZ& val) -> Poly {
+            Poly p(comp_ptr);
+            if (val != 0)
+                p.push_back({basic_monomial<lex_<var_order>>(comp_ptr), val});
+            return p;
+        };
+
+        // 边界情况
+        if (F.empty()) { s = make_const(ZZ(0)); t = make_const(ZZ(1)); return G; }
+        if (G.empty()) { s = make_const(ZZ(1)); t = make_const(ZZ(0)); return F; }
+        if (is_number(F) && is_number(G))
+        {
+            ZZ g = gcd(abs(F.front().second), abs(G.front().second));
+            // s*F + t*G = g
+            // 对整数，简单返回：s = sign(F)*g/|F| 等太复杂，用 trivial 解
+            // s = 0, t = 0 不行。用半扩展：若 F|g 则 s=g/F, t=0
+            if (g == abs(F.front().second)) {
+                s = make_const(F.front().second > 0 ? ZZ(1) : ZZ(-1));
+                t = make_const(ZZ(0));
+            } else if (g == abs(G.front().second)) {
+                s = make_const(ZZ(0));
+                t = make_const(G.front().second > 0 ? ZZ(1) : ZZ(-1));
+            } else {
+                // 用 mpz 的扩展 gcd
+                ZZ sv, tv;
+                ZZ af = F.front().second, ag = G.front().second;
+                // 手动扩展 Euclidean
+                ZZ r0 = af, r1 = ag;
+                ZZ s0(1), s1(0), t0(0), t1(1);
+                while (r1 != 0) {
+                    ZZ q = r0 / r1;
+                    ZZ r2 = r0 - q * r1; r0 = r1; r1 = r2;
+                    ZZ s2 = s0 - q * s1; s0 = s1; s1 = s2;
+                    ZZ t2 = t0 - q * t1; t0 = t1; t1 = t2;
+                }
+                if (r0 < 0) { r0 = -r0; s0 = -s0; t0 = -t0; }
+                s = make_const(s0);
+                t = make_const(t0);
+                g = r0;
+            }
+            return make_const(g);
+        }
+
+        // 确定主变量
+        variable v = get_first_var(F);
+        if (!v.serial() || (get_first_var(G).serial() && F.comp()(v, get_first_var(G))))
+            v = get_first_var(G);
+        if (!v.serial()) {
+            // 都是常数情况已处理
+            s = make_const(ZZ(1)); t = make_const(ZZ(0)); return F;
+        }
+
+        // pseudo-Euclidean: pquo/prem 关于主变量 v
+        Poly r0 = F, r1 = G;
+        Poly s0 = make_const(ZZ(1));
+        Poly s1 = make_const(ZZ(0));
+        Poly t0 = make_const(ZZ(0));
+        Poly t1 = make_const(ZZ(1));
+
+        while (!r1.empty())
+        {
+            // lc(r1,v)^k * r0 = q * r1 + rem
+            Poly rem(comp_ptr);
+            Poly q = pquo(rem, r0, r1, v);
+            // lc_pow = leadcoeff(r1,v)^k, k = max(deg(r0,v)-deg(r1,v)+1, 0)
+            auto lc_r1 = leadcoeff(r1, v);
+            int64_t k = degree(r0, v) - degree(r1, v) + 1;
+            if (k < 0) k = 0;
+            Poly lc_pow = make_const(ZZ(1));
+            for (int64_t i = 0; i < k; ++i)
+            {
+                lc_pow = lc_pow * lc_r1;
+                lc_pow.normalization();
+            }
+
+            // s2 = lc_pow * s0 - q * s1
+            Poly s2 = lc_pow * s0 - q * s1;
+            s2.normalization();
+            Poly t2 = lc_pow * t0 - q * t1;
+            t2.normalization();
+
+            r0 = std::move(r1); r1 = std::move(rem);
+            s0 = std::move(s1); s1 = std::move(s2);
+            t0 = std::move(t1); t1 = std::move(t2);
+        }
+
+        // 保证 lc > 0
+        if (!r0.empty() && r0.front().second < 0)
+        {
+            r0 = r0 * make_const(ZZ(-1)); r0.normalization();
+            s0 = s0 * make_const(ZZ(-1)); s0.normalization();
+            t0 = t0 * make_const(ZZ(-1)); t0.normalization();
+        }
+
+        s = std::move(s0);
+        t = std::move(t0);
+        return r0;
+    }
+
+    // gcd 便捷包装 (扩展版)
+    template <class comp>
+    inline polynomial_<ZZ,comp> gcd(
+        const polynomial_<ZZ,comp>& F, const polynomial_<ZZ,comp>& G,
+        polynomial_<ZZ,comp>& s, polynomial_<ZZ,comp>& t)
+    {
+        return polynomial_GCD(F, G, s, t);
+    }
+
     template<class var_order>
     polynomial_<ZZ,lex_<var_order>> cont(const polynomial_<ZZ,lex_<var_order>> &F_)
     {
@@ -571,8 +695,141 @@ namespace clpoly{
     //         cont=polynomial_GCD(cont,tmp);
     //     }
     //     return cont;
-    // } 
-    
+    // }
+
+    // pp(f) — 多变量本原部分: f / cont(f)
+    template<class var_order>
+    polynomial_<ZZ,lex_<var_order>> pp(const polynomial_<ZZ,lex_<var_order>>& f)
+    {
+        if (f.empty()) return polynomial_<ZZ,lex_<var_order>>(f.comp_ptr());
+        if (is_number(f))
+        {
+            polynomial_<ZZ,lex_<var_order>> one(f.comp_ptr());
+            one.push_back({basic_monomial<lex_<var_order>>(f.comp_ptr()), ZZ(1)});
+            return one;
+        }
+        auto c = cont(f);
+        polynomial_<ZZ,lex_<var_order>> q(f.comp_ptr()), r(f.comp_ptr());
+        pair_vec_div(q.data(), r.data(), f.data(), c.data(), f.comp());
+        return q;
+    }
+
+    // 扩展 GCD (Zp): c = polynomial_GCD(F, G, s, t), 满足 s*F + t*G = c
+    // 返回首一 GCD
+    inline upolynomial_<Zp> polynomial_GCD(
+        const upolynomial_<Zp>& F, const upolynomial_<Zp>& G,
+        upolynomial_<Zp>& s, upolynomial_<Zp>& t)
+    {
+        assert(!F.empty() && !G.empty());
+        uint32_t p = F.front().second.prime();
+        Zp one(1, p);
+
+        upolynomial_<Zp> r0 = F, r1 = G;
+        upolynomial_<Zp> s0({std::make_pair(umonomial(0), one)});
+        upolynomial_<Zp> s1;
+        upolynomial_<Zp> t0;
+        upolynomial_<Zp> t1({std::make_pair(umonomial(0), one)});
+
+        upolynomial_<Zp> q, r2, tmp;
+        while (!r1.empty())
+        {
+            pair_vec_div(q.data(), r2.data(), r0.data(), r1.data(), r0.comp());
+            tmp = q * s1;
+            auto s2 = s0 - tmp;
+            s2.normalization();
+            tmp = q * t1;
+            auto t2 = t0 - tmp;
+            t2.normalization();
+
+            r0 = std::move(r1); r1 = std::move(r2);
+            s0 = std::move(s1); s1 = std::move(s2);
+            t0 = std::move(t1); t1 = std::move(t2);
+        }
+        // 首一化: r0, s0, t0 同时除以 lc(r0)
+        assert(!r0.empty());
+        Zp c_inv = r0.front().second.inv();
+        for (auto& term : r0)  term.second *= c_inv;
+        r0.normalization();
+        for (auto& term : s0)  term.second *= c_inv;
+        s0.normalization();
+        for (auto& term : t0)  term.second *= c_inv;
+        t0.normalization();
+
+        s = std::move(s0);
+        t = std::move(t0);
+        return r0;
+    }
+
+    // 扩展 GCD (ZZ): c = polynomial_GCD(F, G, s, t), 满足 s*F + t*G = c
+    // 返回 GCD（lc > 0），使用 pseudo-Euclidean 算法保持整系数
+    inline upolynomial_<ZZ> polynomial_GCD(
+        const upolynomial_<ZZ>& F, const upolynomial_<ZZ>& G,
+        upolynomial_<ZZ>& s, upolynomial_<ZZ>& t)
+    {
+        assert(!F.empty() && !G.empty());
+
+        upolynomial_<ZZ> r0 = F, r1 = G;
+        upolynomial_<ZZ> s0({{umonomial(0), ZZ(1)}});
+        upolynomial_<ZZ> s1;
+        upolynomial_<ZZ> t0;
+        upolynomial_<ZZ> t1({{umonomial(0), ZZ(1)}});
+
+        upolynomial_<ZZ> q, r2;
+        while (!r1.empty())
+        {
+            ZZ lc_r1 = r1.front().second;
+            int64_t deg_diff = get_deg(r0) - get_deg(r1) + 1;
+            if (deg_diff < 0) deg_diff = 0;
+            ZZ lc_pow(1);
+            for (int64_t i = 0; i < deg_diff; ++i)
+                lc_pow *= lc_r1;
+
+            // pseudo-division: lc_pow * r0 = q * r1 + r2
+            upolynomial_<ZZ> r0_scaled = r0;
+            for (auto& term : r0_scaled)
+                term.second *= lc_pow;
+            r0_scaled.normalization();
+            pair_vec_div(q.data(), r2.data(), r0_scaled.data(), r1.data(), r0.comp());
+
+            // Bézout 更新: s2 = lc_pow * s0 - q * s1, t2 同理
+            upolynomial_<ZZ> s2, t2;
+            {
+                upolynomial_<ZZ> scaled_s0 = s0;
+                for (auto& term : scaled_s0) term.second *= lc_pow;
+                scaled_s0.normalization();
+                s2 = scaled_s0 - q * s1;
+                s2.normalization();
+            }
+            {
+                upolynomial_<ZZ> scaled_t0 = t0;
+                for (auto& term : scaled_t0) term.second *= lc_pow;
+                scaled_t0.normalization();
+                t2 = scaled_t0 - q * t1;
+                t2.normalization();
+            }
+
+            r0 = std::move(r1); r1 = std::move(r2);
+            s0 = std::move(s1); s1 = std::move(s2);
+            t0 = std::move(t1); t1 = std::move(t2);
+        }
+
+        // 保证 lc(r0) > 0
+        assert(!r0.empty());
+        if (r0.front().second < 0)
+        {
+            for (auto& term : r0) term.second = -term.second;
+            r0.normalization();
+            for (auto& term : s0) term.second = -term.second;
+            s0.normalization();
+            for (auto& term : t0) term.second = -term.second;
+            t0.normalization();
+        }
+
+        s = std::move(s0);
+        t = std::move(t0);
+        return r0;
+    }
+
     template<class var_order>
     int64_t  __polynomial_GCD(       polynomial_<Zp,lex_<var_order>> & Pout,
                             const polynomial_<Zp,lex_<var_order>> & F,
@@ -864,6 +1121,45 @@ namespace clpoly{
             return -1;
     }
     upolynomial_<ZZ>  polynomial_GCD(upolynomial_<ZZ> G,upolynomial_<ZZ> F);
-   
+
+    // 标准 GCD (Zp): 返回首一 GCD
+    inline upolynomial_<Zp> polynomial_GCD(
+        const upolynomial_<Zp>& F, const upolynomial_<Zp>& G)
+    {
+        if (F.empty()) {
+            auto r = G;
+            if (!r.empty()) {
+                Zp lc_inv = r.front().second.inv();
+                for (auto& term : r) term.second *= lc_inv;
+            }
+            return r;
+        }
+        if (G.empty()) {
+            auto r = F;
+            if (!r.empty()) {
+                Zp lc_inv = r.front().second.inv();
+                for (auto& term : r) term.second *= lc_inv;
+            }
+            return r;
+        }
+        upolynomial_<Zp> g;
+        Zp lc_gcd(1, F.front().second.prime());
+        int64_t deg = std::min(get_deg(F), get_deg(G));
+        __polynomial_GCD(g, F, G, lc_gcd, deg);
+        // 首一化
+        Zp lc_inv = g.front().second.inv();
+        for (auto& term : g) term.second *= lc_inv;
+        return g;
+    }
+
+    // gcd 便捷包装 (扩展版, upolynomial)
+    template<class T>
+    inline upolynomial_<T> gcd(
+        const upolynomial_<T>& F, const upolynomial_<T>& G,
+        upolynomial_<T>& s, upolynomial_<T>& t)
+    {
+        return polynomial_GCD(F, G, s, t);
+    }
+
 }
 #endif

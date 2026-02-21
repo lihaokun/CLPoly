@@ -63,7 +63,12 @@ namespace clpoly{
     template<class T1,class T2,class comp1,class comp2>
     void poly_convert(const polynomial_<T1,comp1>& p_in,polynomial_<T2,comp2> & p_out)
     {
-        assert((void*)&p_in!=(void*)&p_out);
+        if ((void*)&p_in==(void*)&p_out)
+        {
+            polynomial_<T1,comp1> tmp(p_in);
+            poly_convert(tmp, p_out);
+            return;
+        }
         p_out.clear();
         basic_monomial<comp2> m(p_out.comp_ptr());
         for (auto &i:p_in)
@@ -76,7 +81,12 @@ namespace clpoly{
     template<class T1,class T2,class comp1,class comp2>
     void poly_convert(polynomial_<T1,comp1>&& p_in,polynomial_<T2,comp2> & p_out)
     {
-        assert((void*)&p_in!=(void*)&p_out);
+        if ((void*)&p_in==(void*)&p_out)
+        {
+            polynomial_<T1,comp1> tmp(std::move(p_in));
+            poly_convert(std::move(tmp), p_out);
+            return;
+        }
         p_out.clear();
         basic_monomial<comp2> m(p_out.comp_ptr());
         for (auto &i:p_in)

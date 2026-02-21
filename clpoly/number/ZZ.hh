@@ -250,6 +250,10 @@ public:
         if (_is_small()) return _val == 1;
         return mpz_cmp_si(_mpz, 1) == 0;
     }
+    bool is_odd() const {
+        if (_is_small()) return (_val & 1) != 0;
+        return mpz_odd_p(_mpz) != 0;
+    }
     int sgn() const {
         if (_is_small()) return (_val > 0) ? 1 : ((_val < 0) ? -1 : 0);
         return mpz_sgn(_mpz);
@@ -498,6 +502,22 @@ public:
 
     ZZ& operator/=(const ZZ& b) { *this = *this / b; return *this; }
     ZZ& operator%=(const ZZ& b) { *this = *this % b; return *this; }
+    ZZ& operator>>=(unsigned long n) {
+        if (_is_small()) {
+            if (n >= 63) { _val = (_val < 0) ? -1 : 0; }
+            else { _val >>= n; }
+        } else {
+            mpz_fdiv_q_2exp(_mpz, _mpz, n);
+            _demote_if_small();
+        }
+        return *this;
+    }
+    ZZ& operator<<=(unsigned long n) {
+        _ensure_mpz();
+        mpz_mul_2exp(_mpz, _mpz, n);
+        _demote_if_small();
+        return *this;
+    }
 
     // ---- special: addmul / submul ----
     void addmul(const ZZ& a, const ZZ& b) {
@@ -686,6 +706,51 @@ public:
         }
         q._demote_if_small();
         r._demote_if_small();
+    }
+
+    // ---- floor remainder (static) ----
+    static void fdiv_r(ZZ& r, const ZZ& a, const ZZ& b) {
+        if (a._is_small() && b._is_small()) {
+            if (b._val == 0) throw std::domain_error("ZZ: division by zero");
+            int64_t rem = a._val % b._val;
+            if (rem != 0 && ((rem ^ b._val) < 0))
+                rem += b._val;
+            if (r._mpz) { _mpz_del(r._mpz); r._mpz = nullptr; }
+            r._val = rem;
+            return;
+        }
+        r._ensure_mpz();
+        if (a._is_small()) {
+            mpz_t ta;
+            mpz_init_set_si(ta, a._val);
+            mpz_fdiv_r(r._mpz, ta, b._mpz);
+            mpz_clear(ta);
+        } else if (b._is_small()) {
+            mpz_t tb;
+            mpz_init_set_si(tb, b._val);
+            mpz_fdiv_r(r._mpz, a._mpz, tb);
+            mpz_clear(tb);
+        } else {
+            mpz_fdiv_r(r._mpz, a._mpz, b._mpz);
+        }
+        r._demote_if_small();
+    }
+
+    // ---- modular inverse (static) ----
+    // Computes result = a^{-1} mod m. Returns true if inverse exists.
+    static bool invert(ZZ& result, const ZZ& a, const ZZ& m) {
+        result._ensure_mpz();
+        mpz_t ta, tm;
+        bool need_clear_a = a._is_small(), need_clear_m = m._is_small();
+        if (need_clear_a) { mpz_init_set_si(ta, a._val); }
+        if (need_clear_m) { mpz_init_set_si(tm, m._val); }
+        const mpz_ptr pa = need_clear_a ? ta : a._mpz;
+        const mpz_ptr pm = need_clear_m ? tm : m._mpz;
+        int ok = mpz_invert(result._mpz, pa, pm);
+        if (need_clear_a) mpz_clear(ta);
+        if (need_clear_m) mpz_clear(tm);
+        result._demote_if_small();
+        return ok != 0;
     }
 
     // ---- IO ----

@@ -9,6 +9,7 @@
 
 #include <clpoly/monomial.hh>
 #include <clpoly/number.hh>
+#include <type_traits>
 #include <clpoly/basic_polynomial.hh>
 #include <clpoly/polynomial_type.hh>
 #include <clpoly/polynomial_convert.hh>
@@ -39,25 +40,32 @@ namespace clpoly{
     {
         assert(i>=0);
         basic_polynomial<Tm,Tc,compare> o(p.comp_ptr());
-        o={{{},1}};
+        if (p.empty()) {
+            if (i == 0) {
+                if constexpr (std::is_constructible_v<Tc, int>) {
+                    o.data().push_back(std::make_pair(Tm(), Tc(1)));
+                } else {
+                    assert(false && "pow(empty polynomial, 0): no coefficient context");
+                }
+            }
+            return o;
+        }
+        Tc one = p.front().second;
+        one = 1;
+        o.data().push_back(std::make_pair(Tm(), one));
         switch (i)
         {
         case 0:
             return o;
-            break;
         case 1:
             return p;
-            break;
         case 2:
             return p*p;
-            break;
         case 3:
             return p*p*p;
-            break;         
         default:
             pair_vec_power(o.data(),p.data(),i,p.comp());
             return o;
-            break;
         }
     }
     
@@ -126,6 +134,14 @@ namespace clpoly{
     inline polynomial_ZZ operator*(ZZ i, monomial  m)
     {
         return polynomial_ZZ({{std::move(m),std::move(i)}});
+    }
+    inline polynomial_QQ operator*( monomial  m, QQ i)
+    {
+        return polynomial_QQ({{std::move(m),std::move(i)}});
+    }
+    inline polynomial_QQ operator*(QQ i, monomial  m)
+    {
+        return polynomial_QQ({{std::move(m),std::move(i)}});
     }
     
     template<class Tc>

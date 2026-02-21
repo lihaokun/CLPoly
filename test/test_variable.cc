@@ -120,5 +120,48 @@ int main() {
         variable::del_variable("testvar_newnamed");
     }
 
+    // ======== Full comparison operators ========
+    CLPOLY_TEST("variable_comparison_full");
+    {
+        variable v1("testvar_cmp1");
+        variable v2("testvar_cmp2");
+        // v1 and v2 have different serials; one is less than the other
+        bool v1_lt_v2 = (v1 < v2);
+        if (v1_lt_v2) {
+            CLPOLY_ASSERT_TRUE(v2 > v1);
+            CLPOLY_ASSERT_TRUE(v1 <= v2);
+            CLPOLY_ASSERT_TRUE(v2 >= v1);
+            CLPOLY_ASSERT_FALSE(v1 > v2);
+            CLPOLY_ASSERT_FALSE(v2 < v1);
+            CLPOLY_ASSERT_FALSE(v1 >= v2);
+            CLPOLY_ASSERT_FALSE(v2 <= v1);
+        } else {
+            CLPOLY_ASSERT_TRUE(v1 > v2);
+            CLPOLY_ASSERT_TRUE(v2 <= v1);
+            CLPOLY_ASSERT_TRUE(v1 >= v2);
+            CLPOLY_ASSERT_FALSE(v2 > v1);
+            CLPOLY_ASSERT_FALSE(v1 < v2);
+            CLPOLY_ASSERT_FALSE(v2 >= v1);
+            CLPOLY_ASSERT_FALSE(v1 <= v2);
+        }
+        // Self-comparison
+        CLPOLY_ASSERT_TRUE(v1 <= v1);
+        CLPOLY_ASSERT_TRUE(v1 >= v1);
+    }
+
+    // ======== swap ========
+    CLPOLY_TEST("variable_swap");
+    {
+        variable v1("testvar_sw1");
+        variable v2("testvar_sw2");
+        auto s1 = v1.serial();
+        auto s2 = v2.serial();
+        v1.swap(v2);
+        CLPOLY_ASSERT_EQ(v1.serial(), s2);
+        CLPOLY_ASSERT_EQ(v2.serial(), s1);
+        CLPOLY_ASSERT_EQ(v1.name(), std::string("testvar_sw2"));
+        CLPOLY_ASSERT_EQ(v2.name(), std::string("testvar_sw1"));
+    }
+
     return clpoly_test::test_summary();
 }

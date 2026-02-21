@@ -681,8 +681,8 @@ namespace clpoly{
         Zp coeff(prime);
         for (auto & i:p)
         {
-            coeff=i.second; 
-            if (coeff)
+            coeff=i.second;
+            if (coeff.number() != 0)
                 new_p.push_back({i.first,std::move(coeff)});
         }
         // std::cout<<" ="<<new_p<<std::endl;
@@ -695,8 +695,8 @@ namespace clpoly{
         Zp coeff(prime);
         for (auto & i:p)
         {
-            coeff=i.second; 
-            if (coeff)
+            coeff=i.second;
+            if (coeff.number() != 0)
             new_p.push_back({std::move(i.first),std::move(coeff)});
         }
         p.clear();

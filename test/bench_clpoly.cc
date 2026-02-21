@@ -547,6 +547,103 @@ int main() {
     }
 
     // ================================================================
+    // Gröbner basis (grlex)
+    // ================================================================
+    bench_header("Groebner basis (grlex)");
+
+    // Katsura-3 (3 vars, 4 solutions) — spin glass system
+    {
+        variable z("z");
+        polynomial_ZZ f1 = x + 2*y + 2*z - 1;
+        polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) - x;
+        polynomial_ZZ f3 = 2*x*y + 2*y*z - y;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3};
+        BENCH("groebner  Katsura-3 (3var)", 10, {
+            volatile auto r = groebner_basis(gens); (void)r;
+        });
+    }
+
+    // Katsura-4 (4 vars, 8 solutions)
+    {
+        variable z("z"), t("t");
+        polynomial_ZZ f1 = x + 2*y + 2*z + 2*t - 1;
+        polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) + 2*pow(t,2) - x;
+        polynomial_ZZ f3 = 2*x*y + 2*y*z + 2*z*t - y;
+        polynomial_ZZ f4 = 2*x*z + pow(y,2) + 2*y*t - z;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4};
+        BENCH("groebner  Katsura-4 (4var)", 5, {
+            volatile auto r = groebner_basis(gens); (void)r;
+        });
+    }
+
+    // Cyclic-4 (4 vars, 16 solutions) — cyclic roots problem
+    {
+        variable z("z"), t("t");
+        polynomial_ZZ f1 = x + y + z + t;
+        polynomial_ZZ f2 = x*y + y*z + z*t + t*x;
+        polynomial_ZZ f3 = x*y*z + y*z*t + z*t*x + t*x*y;
+        polynomial_ZZ f4 = x*y*z*t - 1;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4};
+        BENCH("groebner  Cyclic-4 (4var)", 5, {
+            volatile auto r = groebner_basis(gens); (void)r;
+        });
+    }
+
+    // Noon-3 (3 vars, 21 solutions, scaled ×10 to ZZ) — neural network / Lotka-Volterra
+    {
+        variable z("z");
+        polynomial_ZZ f1 = 10*x*pow(y,2) + 10*x*pow(z,2) - 11*x + 10;
+        polynomial_ZZ f2 = 10*y*pow(x,2) + 10*y*pow(z,2) - 11*y + 10;
+        polynomial_ZZ f3 = 10*z*pow(x,2) + 10*z*pow(y,2) - 11*z + 10;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3};
+        BENCH("groebner  Noon-3 (3var)", 3, {
+            volatile auto r = groebner_basis(gens); (void)r;
+        });
+    }
+
+    // Eco-5 (5 vars, 8 solutions) — economic equilibrium
+    {
+        variable x1("x1"), x2("x2"), x3("x3"), x4("x4"), x5("x5");
+        polynomial_ZZ f1 = x1*x5 + x1*x2*x5 + x2*x3*x5 + x3*x4*x5 - 1;
+        polynomial_ZZ f2 = x2*x5 + x1*x3*x5 + x2*x4*x5 - 2;
+        polynomial_ZZ f3 = x3*x5 + x1*x4*x5 - 3;
+        polynomial_ZZ f4 = x4*x5 - 4;
+        polynomial_ZZ f5 = x1 + x2 + x3 + x4 + 1;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+        BENCH("groebner  Eco-5 (5var)", 3, {
+            volatile auto r = groebner_basis(gens); (void)r;
+        });
+    }
+
+    // Katsura-5 (5 vars, 16 solutions)
+    {
+        variable z("z"), t("t"), u("u");
+        polynomial_ZZ f1 = x + 2*y + 2*z + 2*t + 2*u - 1;
+        polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) + 2*pow(t,2) + 2*pow(u,2) - x;
+        polynomial_ZZ f3 = 2*x*y + 2*y*z + 2*z*t + 2*t*u - y;
+        polynomial_ZZ f4 = 2*x*z + pow(y,2) + 2*y*t + 2*z*u - z;
+        polynomial_ZZ f5 = 2*x*t + 2*y*z + 2*y*u + pow(z,2) - t;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+        BENCH("groebner  Katsura-5 (5var)", 1, {
+            volatile auto r = groebner_basis(gens); (void)r;
+        });
+    }
+
+    // Cyclic-5 (5 vars, 70 solutions)
+    {
+        variable z("z"), t("t"), u("u");
+        polynomial_ZZ f1 = x + y + z + t + u;
+        polynomial_ZZ f2 = x*y + y*z + z*t + t*u + u*x;
+        polynomial_ZZ f3 = x*y*z + y*z*t + z*t*u + t*u*x + u*x*y;
+        polynomial_ZZ f4 = x*y*z*t + y*z*t*u + z*t*u*x + t*u*x*y + u*x*y*z;
+        polynomial_ZZ f5 = x*y*z*t*u - 1;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+        BENCH("groebner  Cyclic-5 (5var)", 1, {
+            volatile auto r = groebner_basis(gens); (void)r;
+        });
+    }
+
+    // ================================================================
     // Real root isolation (uspensky)
     // ================================================================
     bench_header("Real root isolation (uspensky)");
@@ -587,58 +684,59 @@ int main() {
     // ================================================================
     // Memory Profile: per-polynomial representation size
     // ================================================================
-    bench_header("Memory Profile: per-polynomial representation size");
-    mem_profile_header();
+    {
+        std::cout << "\n==== Memory Profile: per-polynomial representation size ====" << std::endl;
+        _bench_mem_header_once();
 
-    const int MEM_N = 500;
+        const int MEM_N = 500;
 
-    // -- polynomial_ZZ (multivariate) --
-    {
-        auto p = random_polynomial<ZZ>({x, y}, 20, 15, {-50, 50});
-        double kb = measure_per_object_kb(MEM_N, [&]() { return polynomial_ZZ(p); });
-        mem_profile_row("polynomial_ZZ deg20 len15", p.size(), kb);
-    }
-    {
-        auto p = random_polynomial<ZZ>({x, y}, 40, 30, {-50, 50});
-        double kb = measure_per_object_kb(MEM_N, [&]() { return polynomial_ZZ(p); });
-        mem_profile_row("polynomial_ZZ deg40 len30", p.size(), kb);
-    }
-    {
-        auto p = random_polynomial<ZZ>({x, y}, 80, 60, {-50, 50});
-        double kb = measure_per_object_kb(MEM_N, [&]() { return polynomial_ZZ(p); });
-        mem_profile_row("polynomial_ZZ deg80 len60", p.size(), kb);
+        // -- polynomial_ZZ (multivariate) --
+        {
+            auto p = random_polynomial<ZZ>({x, y}, 20, 15, {-50, 50});
+            BENCH_MEM("polynomial_ZZ deg20 len15", p.size(), MEM_N,
+                      polynomial_ZZ(p));
+        }
+        {
+            auto p = random_polynomial<ZZ>({x, y}, 40, 30, {-50, 50});
+            BENCH_MEM("polynomial_ZZ deg40 len30", p.size(), MEM_N,
+                      polynomial_ZZ(p));
+        }
+        {
+            auto p = random_polynomial<ZZ>({x, y}, 80, 60, {-50, 50});
+            BENCH_MEM("polynomial_ZZ deg80 len60", p.size(), MEM_N,
+                      polynomial_ZZ(p));
+        }
+
+        // -- upolynomial_ZZ (univariate) --
+        {
+            auto p = random_upolynomial<ZZ>(50, 40, {-100, 100});
+            BENCH_MEM("upolynomial_ZZ deg50", p.size(), MEM_N,
+                      upolynomial_ZZ(p));
+        }
+        {
+            auto p = random_upolynomial<ZZ>(200, 150, {-100, 100});
+            BENCH_MEM("upolynomial_ZZ deg200", p.size(), MEM_N,
+                      upolynomial_ZZ(p));
+        }
+        {
+            auto p = random_upolynomial<ZZ>(500, 400, {-100, 100});
+            BENCH_MEM("upolynomial_ZZ deg500", p.size(), MEM_N,
+                      upolynomial_ZZ(p));
+        }
+
+        // -- polynomial_QQ (multivariate) --
+        {
+            auto p = random_polynomial_QQ({x, y}, 15, 12, {-30, 30}, 10);
+            BENCH_MEM("polynomial_QQ deg15", p.size(), MEM_N,
+                      polynomial_QQ(p));
+        }
+        {
+            auto p = random_polynomial_QQ({x, y}, 30, 25, {-30, 30}, 10);
+            BENCH_MEM("polynomial_QQ deg30", p.size(), MEM_N,
+                      polynomial_QQ(p));
+        }
     }
 
-    // -- upolynomial_ZZ (univariate) --
-    {
-        auto p = random_upolynomial<ZZ>(50, 40, {-100, 100});
-        double kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-        mem_profile_row("upolynomial_ZZ deg50", p.size(), kb);
-    }
-    {
-        auto p = random_upolynomial<ZZ>(200, 150, {-100, 100});
-        double kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-        mem_profile_row("upolynomial_ZZ deg200", p.size(), kb);
-    }
-    {
-        auto p = random_upolynomial<ZZ>(500, 400, {-100, 100});
-        double kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-        mem_profile_row("upolynomial_ZZ deg500", p.size(), kb);
-    }
-
-    // -- polynomial_QQ (multivariate) --
-    {
-        auto p = random_polynomial_QQ({x, y}, 15, 12, {-30, 30}, 10);
-        double kb = measure_per_object_kb(MEM_N, [&]() { return polynomial_QQ(p); });
-        mem_profile_row("polynomial_QQ deg15", p.size(), kb);
-    }
-    {
-        auto p = random_polynomial_QQ({x, y}, 30, 25, {-30, 30}, 10);
-        double kb = measure_per_object_kb(MEM_N, [&]() { return polynomial_QQ(p); });
-        mem_profile_row("polynomial_QQ deg30", p.size(), kb);
-    }
-
-    print_process_memory();
     std::cout << "\nDone. Total benchmarks: " << _bench_results.size() << std::endl;
     return 0;
 }

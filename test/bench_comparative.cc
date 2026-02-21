@@ -7,6 +7,7 @@
  */
 #include <clpoly/clpoly.hh>
 #include <clpoly/polynomial_factorize.hh>
+#include <clpoly/groebner.hh>
 #include <flint/fmpz_poly.h>
 #include <flint/fmpz_mpoly_factor.h>
 #include "crosscheck_flint.hh"
@@ -15,92 +16,11 @@
 
 using namespace clpoly;
 
-// ---- Memory measurement helpers for FLINT / NTL ----
-
-// Measure per-polynomial memory for fmpz_mpoly (shared context, N copies)
-inline double measure_flint_mpoly_kb(int N, const polynomial_ZZ& p,
-                                     const std::vector<variable>& vars)
-{
-    slong nvars = static_cast<slong>(vars.size());
-    std::map<variable, slong> var_idx;
-    for (slong i = 0; i < nvars; ++i)
-        var_idx[vars[i]] = i;
-
-    // Build reference polynomial in shared context
-    fmpz_mpoly_ctx_t ctx;
-    fmpz_mpoly_ctx_init(ctx, nvars, ORD_DEGLEX);
-    fmpz_mpoly_t ref;
-    fmpz_mpoly_init(ref, ctx);
-
-    fmpz_t coeff;
-    fmpz_init(coeff);
-    std::vector<ulong> exp(nvars, 0);
-    for (auto& term : p) {
-        std::fill(exp.begin(), exp.end(), 0);
-        for (auto& ve : term.first) {
-            auto it = var_idx.find(ve.first);
-            if (it != var_idx.end())
-                exp[it->second] = static_cast<ulong>(ve.second);
-        }
-        crosscheck::clpoly_zz_to_fmpz(coeff, term.second);
-        fmpz_mpoly_push_term_fmpz_ui(ref, coeff, exp.data(), ctx);
-    }
-    fmpz_clear(coeff);
-    fmpz_mpoly_sort_terms(ref, ctx);
-
-    // Measure N copies
-    long mem0 = get_heap_bytes();
-    auto* copies = new fmpz_mpoly_struct[N];
-    for (int i = 0; i < N; ++i) {
-        fmpz_mpoly_init(&copies[i], ctx);
-        fmpz_mpoly_set(&copies[i], ref, ctx);
-    }
-    long mem1 = get_heap_bytes();
-    double kb = (mem1 - mem0) / (1024.0 * N);
-
-    for (int i = 0; i < N; ++i)
-        fmpz_mpoly_clear(&copies[i], ctx);
-    delete[] copies;
-    fmpz_mpoly_clear(ref, ctx);
-    fmpz_mpoly_ctx_clear(ctx);
-    return kb;
-}
-
-// Measure per-polynomial memory for fmpz_poly (univariate, N copies)
-inline double measure_flint_upoly_kb(int N, const upolynomial_ZZ& p)
-{
-    auto fp = crosscheck::clpoly_upoly_to_flint(p);
-
-    long mem0 = get_heap_bytes();
-    auto* copies = new fmpz_poly_struct[N];
-    for (int i = 0; i < N; ++i) {
-        fmpz_poly_init(&copies[i]);
-        fmpz_poly_set(&copies[i], fp.poly);
-    }
-    long mem1 = get_heap_bytes();
-    double kb = (mem1 - mem0) / (1024.0 * N);
-
-    for (int i = 0; i < N; ++i)
-        fmpz_poly_clear(&copies[i]);
-    delete[] copies;
-    return kb;
-}
-
-// Measure per-polynomial memory for NTL::ZZX (N copies)
-inline double measure_ntl_zzx_kb(int N, const NTL::ZZX& p)
-{
-    long mem0 = get_heap_bytes();
-    std::vector<NTL::ZZX> copies;
-    copies.reserve(N);
-    for (int i = 0; i < N; ++i)
-        copies.push_back(p);
-    long mem1 = get_heap_bytes();
-    return (mem1 - mem0) / (1024.0 * N);
-}
-
 int main() {
     print_sysinfo();
     variable x("x"), y("y");
+
+    const double T = 300.0;  // default timeout (seconds)
 
     // ================================================================
     // FLINT comparison: Multivariate ZZ
@@ -116,7 +36,7 @@ int main() {
             auto fa = crosscheck::clpoly_to_flint(a, vars);
             auto fb = crosscheck::clpoly_to_flint(b, vars);
 
-            BENCH_CMP("add  deg20 len15", 100,
+            BENCH_CMP("add  deg20 len15", 100, T,
                 { volatile auto r = a + b; (void)r; },
                 {
                     crosscheck::FlintPoly fr(vars);
@@ -130,7 +50,7 @@ int main() {
             auto fa = crosscheck::clpoly_to_flint(a, vars);
             auto fb = crosscheck::clpoly_to_flint(b, vars);
 
-            BENCH_CMP("add  deg40 len30", 100,
+            BENCH_CMP("add  deg40 len30", 100, T,
                 { volatile auto r = a + b; (void)r; },
                 {
                     crosscheck::FlintPoly fr(vars);
@@ -146,7 +66,7 @@ int main() {
             auto fa = crosscheck::clpoly_to_flint(a, vars);
             auto fb = crosscheck::clpoly_to_flint(b, vars);
 
-            BENCH_CMP("mul  deg10 len8", 50,
+            BENCH_CMP("mul  deg10 len8", 50, T,
                 { volatile auto r = a * b; (void)r; },
                 {
                     crosscheck::FlintPoly fr(vars);
@@ -160,7 +80,7 @@ int main() {
             auto fa = crosscheck::clpoly_to_flint(a, vars);
             auto fb = crosscheck::clpoly_to_flint(b, vars);
 
-            BENCH_CMP("mul  deg20 len15", 20,
+            BENCH_CMP("mul  deg20 len15", 20, T,
                 { volatile auto r = a * b; (void)r; },
                 {
                     crosscheck::FlintPoly fr(vars);
@@ -178,7 +98,7 @@ int main() {
             auto fa = crosscheck::clpoly_to_flint(a, va);
             auto fb = crosscheck::clpoly_to_flint(b, va);
 
-            BENCH_CMP("gcd  deg8+common4", 10,
+            BENCH_CMP("gcd  deg8+common4", 10, T,
                 { volatile auto r = gcd(a, b); (void)r; },
                 {
                     crosscheck::FlintPoly fr(va);
@@ -194,7 +114,7 @@ int main() {
             auto fa = crosscheck::clpoly_to_flint(a, va);
             auto fb = crosscheck::clpoly_to_flint(b, va);
 
-            BENCH_CMP("gcd  deg15+common8", 5,
+            BENCH_CMP("gcd  deg15+common8", 5, T,
                 { volatile auto r = gcd(a, b); (void)r; },
                 {
                     crosscheck::FlintPoly fr(va);
@@ -208,14 +128,14 @@ int main() {
             auto base = random_polynomial<ZZ>(vars, 3, 4, {-5, 5});
             auto fbase = crosscheck::clpoly_to_flint(base, vars);
 
-            BENCH_CMP("pow  deg3^5", 20,
+            BENCH_CMP("pow  deg3^5", 20, T,
                 { volatile auto r = pow(base, 5); (void)r; },
                 {
                     crosscheck::FlintPoly fr(vars);
                     fmpz_mpoly_pow_ui(fr.poly, fbase.poly, 5, fbase.ctx);
                 }
             );
-            BENCH_CMP("pow  deg3^10", 5,
+            BENCH_CMP("pow  deg3^10", 5, T,
                 { volatile auto r = pow(base, 10); (void)r; },
                 {
                     crosscheck::FlintPoly fr(vars);
@@ -237,7 +157,7 @@ int main() {
             auto fa = crosscheck::clpoly_qq_to_flint(a, vars);
             auto fb = crosscheck::clpoly_qq_to_flint(b, vars);
 
-            BENCH_CMP("mul  deg10", 50,
+            BENCH_CMP("mul  deg10", 50, T,
                 { volatile auto r = a * b; (void)r; },
                 {
                     crosscheck::FlintQPoly fr(vars);
@@ -251,7 +171,7 @@ int main() {
             auto fa = crosscheck::clpoly_qq_to_flint(a, vars);
             auto fb = crosscheck::clpoly_qq_to_flint(b, vars);
 
-            BENCH_CMP("mul  deg20", 10,
+            BENCH_CMP("mul  deg20", 10, T,
                 { volatile auto r = a * b; (void)r; },
                 {
                     crosscheck::FlintQPoly fr(vars);
@@ -273,7 +193,7 @@ int main() {
             auto na = crosscheck::clpoly_upoly_to_ntl(a);
             auto nb = crosscheck::clpoly_upoly_to_ntl(b);
 
-            BENCH_CMP("add  deg100", 100,
+            BENCH_CMP("add  deg100", 100, T,
                 { volatile auto r = a + b; (void)r; },
                 { volatile auto r = na + nb; (void)r; }
             );
@@ -284,7 +204,7 @@ int main() {
             auto na = crosscheck::clpoly_upoly_to_ntl(a);
             auto nb = crosscheck::clpoly_upoly_to_ntl(b);
 
-            BENCH_CMP("add  deg500", 100,
+            BENCH_CMP("add  deg500", 100, T,
                 { volatile auto r = a + b; (void)r; },
                 { volatile auto r = na + nb; (void)r; }
             );
@@ -297,7 +217,7 @@ int main() {
             auto na = crosscheck::clpoly_upoly_to_ntl(a);
             auto nb = crosscheck::clpoly_upoly_to_ntl(b);
 
-            BENCH_CMP("mul  deg100", 50,
+            BENCH_CMP("mul  deg100", 50, T,
                 { volatile auto r = a * b; (void)r; },
                 { volatile auto r = na * nb; (void)r; }
             );
@@ -308,7 +228,7 @@ int main() {
             auto na = crosscheck::clpoly_upoly_to_ntl(a);
             auto nb = crosscheck::clpoly_upoly_to_ntl(b);
 
-            BENCH_CMP("mul  deg500", 10,
+            BENCH_CMP("mul  deg500", 10, T,
                 { volatile auto r = a * b; (void)r; },
                 { volatile auto r = na * nb; (void)r; }
             );
@@ -322,7 +242,7 @@ int main() {
             auto na = crosscheck::clpoly_upoly_to_ntl(a);
             auto nb = crosscheck::clpoly_upoly_to_ntl(b);
 
-            BENCH_CMP("gcd  deg50+common25", 10,
+            BENCH_CMP("gcd  deg50+common25", 10, T,
                 { volatile auto r = polynomial_GCD(a, b); (void)r; },
                 { volatile auto r = NTL::GCD(na, nb); (void)r; }
             );
@@ -334,7 +254,7 @@ int main() {
             auto na = crosscheck::clpoly_upoly_to_ntl(a);
             auto nb = crosscheck::clpoly_upoly_to_ntl(b);
 
-            BENCH_CMP("gcd  deg200+common100", 3,
+            BENCH_CMP("gcd  deg200+common100", 3, T,
                 { volatile auto r = polynomial_GCD(a, b); (void)r; },
                 { volatile auto r = NTL::GCD(na, nb); (void)r; }
             );
@@ -345,7 +265,7 @@ int main() {
             auto a = random_upolynomial<ZZ>(100, 80, {-100, 100});
             auto na = crosscheck::clpoly_upoly_to_ntl(a);
 
-            BENCH_CMP("deriv  deg100", 100,
+            BENCH_CMP("deriv  deg100", 100, T,
                 { volatile auto r = derivative(a); (void)r; },
                 { volatile auto r = crosscheck::ntl_diff(na); (void)r; }
             );
@@ -354,7 +274,7 @@ int main() {
             auto a = random_upolynomial<ZZ>(500, 400, {-100, 100});
             auto na = crosscheck::clpoly_upoly_to_ntl(a);
 
-            BENCH_CMP("deriv  deg500", 100,
+            BENCH_CMP("deriv  deg500", 100, T,
                 { volatile auto r = derivative(a); (void)r; },
                 { volatile auto r = crosscheck::ntl_diff(na); (void)r; }
             );
@@ -367,7 +287,7 @@ int main() {
             ZZ pt(42);
             NTL::ZZ npt = crosscheck::clpoly_zz_to_ntl(pt);
 
-            BENCH_CMP("eval  deg100", 100,
+            BENCH_CMP("eval  deg100", 100, T,
                 { volatile auto r = assign(a, pt); (void)r; },
                 { volatile auto r = crosscheck::ntl_eval(na, npt); (void)r; }
             );
@@ -378,7 +298,7 @@ int main() {
             ZZ pt(42);
             NTL::ZZ npt = crosscheck::clpoly_zz_to_ntl(pt);
 
-            BENCH_CMP("eval  deg500", 50,
+            BENCH_CMP("eval  deg500", 50, T,
                 { volatile auto r = assign(a, pt); (void)r; },
                 { volatile auto r = crosscheck::ntl_eval(na, npt); (void)r; }
             );
@@ -400,15 +320,15 @@ int main() {
         auto p_m = f1 * f2 * f3 * f4;
         auto p_l = f1 * f2 * f3 * f4 * f5;
 
-        BENCH_CMP("factor  ~deg15 (3 fac)", 5,
+        BENCH_CMP("factor  ~deg15 (3 fac)", 5, T,
             { volatile auto r = factorize(p_s); (void)r; },
             { volatile auto r = crosscheck::flint_factor_upoly(p_s); (void)r; }
         );
-        BENCH_CMP("factor  ~deg21 (4 fac)", 3,
+        BENCH_CMP("factor  ~deg21 (4 fac)", 3, T,
             { volatile auto r = factorize(p_m); (void)r; },
             { volatile auto r = crosscheck::flint_factor_upoly(p_m); (void)r; }
         );
-        BENCH_CMP("factor  ~deg29 (5 fac)", 3,
+        BENCH_CMP("factor  ~deg29 (5 fac)", 3, T,
             { volatile auto r = factorize(p_l); (void)r; },
             { volatile auto r = crosscheck::flint_factor_upoly(p_l); (void)r; }
         );
@@ -423,7 +343,7 @@ int main() {
             upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
             wilk10 = wilk10 * lin;
         }
-        BENCH_CMP("factor  Wilkinson W(10)", 5,
+        BENCH_CMP("factor  Wilkinson W(10)", 5, T,
             { volatile auto r = factorize(wilk10); (void)r; },
             { volatile auto r = crosscheck::flint_factor_upoly(wilk10); (void)r; }
         );
@@ -434,28 +354,28 @@ int main() {
             upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
             wilk15 = wilk15 * lin;
         }
-        BENCH_CMP("factor  Wilkinson W(15)", 3,
+        BENCH_CMP("factor  Wilkinson W(15)", 3, T,
             { volatile auto r = factorize(wilk15); (void)r; },
             { volatile auto r = crosscheck::flint_factor_upoly(wilk15); (void)r; }
         );
 
         // Cyclotomic x^15-1
         upolynomial_ZZ cyc15({{15, ZZ(1)}, {0, ZZ(-1)}});
-        BENCH_CMP("factor  x^15-1 (cyclotomic)", 5,
+        BENCH_CMP("factor  x^15-1 (cyclotomic)", 5, T,
             { volatile auto r = factorize(cyc15); (void)r; },
             { volatile auto r = crosscheck::flint_factor_upoly(cyc15); (void)r; }
         );
 
         // Cyclotomic x^24-1
         upolynomial_ZZ cyc24({{24, ZZ(1)}, {0, ZZ(-1)}});
-        BENCH_CMP("factor  x^24-1 (cyclotomic)", 3,
+        BENCH_CMP("factor  x^24-1 (cyclotomic)", 3, T,
             { volatile auto r = factorize(cyc24); (void)r; },
             { volatile auto r = crosscheck::flint_factor_upoly(cyc24); (void)r; }
         );
 
         // Swinnerton-Dyer S3
         upolynomial_ZZ sd3({{8,ZZ(1)},{6,ZZ(-40)},{4,ZZ(352)},{2,ZZ(-960)},{0,ZZ(576)}});
-        BENCH_CMP("factor  Swinnerton-Dyer S3", 5,
+        BENCH_CMP("factor  Swinnerton-Dyer S3", 5, T,
             { volatile auto r = factorize(sd3); (void)r; },
             { volatile auto r = crosscheck::flint_factor_upoly(sd3); (void)r; }
         );
@@ -476,15 +396,15 @@ int main() {
         auto nm = crosscheck::clpoly_upoly_to_ntl(p_m);
         auto nl = crosscheck::clpoly_upoly_to_ntl(p_l);
 
-        BENCH_CMP("factor  ~deg15 (3 fac)", 5,
+        BENCH_CMP("factor  ~deg15 (3 fac)", 5, T,
             { volatile auto r = factorize(p_s); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(ns); (void)r; }
         );
-        BENCH_CMP("factor  ~deg21 (4 fac)", 3,
+        BENCH_CMP("factor  ~deg21 (4 fac)", 3, T,
             { volatile auto r = factorize(p_m); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(nm); (void)r; }
         );
-        BENCH_CMP("factor  ~deg29 (5 fac)", 3,
+        BENCH_CMP("factor  ~deg29 (5 fac)", 3, T,
             { volatile auto r = factorize(p_l); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(nl); (void)r; }
         );
@@ -499,21 +419,21 @@ int main() {
             wilk10 = wilk10 * lin;
         }
         auto nw10 = crosscheck::clpoly_upoly_to_ntl(wilk10);
-        BENCH_CMP("factor  Wilkinson W(10)", 5,
+        BENCH_CMP("factor  Wilkinson W(10)", 5, T,
             { volatile auto r = factorize(wilk10); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(nw10); (void)r; }
         );
 
         upolynomial_ZZ cyc15({{15, ZZ(1)}, {0, ZZ(-1)}});
         auto nc15 = crosscheck::clpoly_upoly_to_ntl(cyc15);
-        BENCH_CMP("factor  x^15-1 (cyclotomic)", 5,
+        BENCH_CMP("factor  x^15-1 (cyclotomic)", 5, T,
             { volatile auto r = factorize(cyc15); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(nc15); (void)r; }
         );
 
         upolynomial_ZZ sd3({{8,ZZ(1)},{6,ZZ(-40)},{4,ZZ(352)},{2,ZZ(-960)},{0,ZZ(576)}});
         auto nsd3 = crosscheck::clpoly_upoly_to_ntl(sd3);
-        BENCH_CMP("factor  Swinnerton-Dyer S3", 5,
+        BENCH_CMP("factor  Swinnerton-Dyer S3", 5, T,
             { volatile auto r = factorize(sd3); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(nsd3); (void)r; }
         );
@@ -536,7 +456,7 @@ int main() {
             auto f_lex = to_lex(pow(x,2) - pow(y,2));
             auto ff = crosscheck::clpoly_to_flint(pow(x,2) - pow(y,2), vars);
 
-            BENCH_CMP("factor  x^2-y^2", 10,
+            BENCH_CMP("factor  x^2-y^2", 10, T,
                 { volatile auto r = factorize(f_lex); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -555,7 +475,7 @@ int main() {
             auto f_lex = to_lex(f_gr);
             auto ff = crosscheck::clpoly_to_flint(f_gr, vars);
 
-            BENCH_CMP("factor  bivar deg3*deg3", 5,
+            BENCH_CMP("factor  bivar deg3*deg3", 5, T,
                 { volatile auto r = factorize(f_lex); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -574,7 +494,7 @@ int main() {
             auto f_lex = to_lex(f_gr);
             auto ff = crosscheck::clpoly_to_flint(f_gr, vars);
 
-            BENCH_CMP("factor  bivar deg5*deg5", 3,
+            BENCH_CMP("factor  bivar deg5*deg5", 3, T,
                 { volatile auto r = factorize(f_lex); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -593,7 +513,7 @@ int main() {
             auto f_lex = to_lex(f_gr);
             auto ff = crosscheck::clpoly_to_flint(f_gr, vars3);
 
-            BENCH_CMP("factor  trivar known", 5,
+            BENCH_CMP("factor  trivar known", 5, T,
                 { volatile auto r = factorize(f_lex); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -610,7 +530,7 @@ int main() {
             auto f_lex = to_lex(f_gr);
             auto ff = crosscheck::clpoly_to_flint(f_gr, vars);
 
-            BENCH_CMP("factor  x^4-y^4", 10,
+            BENCH_CMP("factor  x^4-y^4", 10, T,
                 { volatile auto r = factorize(f_lex); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -631,7 +551,7 @@ int main() {
             auto f_lex = to_lex(f_gr);
             auto ff = crosscheck::clpoly_to_flint(f_gr, vars3);
 
-            BENCH_CMP("factor  SymPy f_1 (3var)", 3,
+            BENCH_CMP("factor  SymPy f_1 (3var)", 3, T,
                 { volatile auto r = factorize(f_lex); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -651,7 +571,7 @@ int main() {
             auto f_lex = to_lex(f_gr);
             auto ff = crosscheck::clpoly_to_flint(f_gr, vars3);
 
-            BENCH_CMP("factor  (x+y+z)^3-(x+y+z)", 5,
+            BENCH_CMP("factor  (x+y+z)^3-(x+y+z)", 5, T,
                 { volatile auto r = factorize(f_lex); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -680,7 +600,7 @@ int main() {
                 upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
                 stress_uni = stress_uni * lin;
             }
-            BENCH_CMP("factor  uni 70 factors (deg70)", 1,
+            BENCH_CMP("factor  uni 70 factors (deg70)", 1, T,
                 { volatile auto r = factorize(stress_uni); (void)r; },
                 { volatile auto r = crosscheck::flint_factor_upoly(stress_uni); (void)r; }
             );
@@ -702,7 +622,7 @@ int main() {
             std::vector<variable> vars2 = {x, y};
             auto ff = crosscheck::clpoly_to_flint(stress_bi_gr, vars2);
 
-            BENCH_CMP("factor  bivar 70 factors (deg70)", 1,
+            BENCH_CMP("factor  bivar 70 factors (deg70)", 1, T,
                 { volatile auto r = factorize(stress_bi); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -739,7 +659,7 @@ int main() {
             std::vector<variable> vars3 = {x, y, z};
             auto ff = crosscheck::clpoly_to_flint(stress_tri_gr, vars3);
 
-            BENCH_CMP("factor  trivar 60 factors (deg60)", 1,
+            BENCH_CMP("factor  trivar 60 factors (deg60)", 1, T,
                 { volatile auto r = factorize(stress_tri); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -766,7 +686,7 @@ int main() {
             auto stress_dis = to_lex(stress_dis_gr);
             auto ff = crosscheck::clpoly_to_flint(stress_dis_gr, xvars);
 
-            BENCH_CMP("factor  10var disjoint 10 factors", 1,
+            BENCH_CMP("factor  10var disjoint 10 factors", 1, T,
                 { volatile auto r = factorize(stress_dis); (void)r; },
                 {
                     fmpz_mpoly_factor_t fac;
@@ -784,82 +704,283 @@ int main() {
     const int MEM_N = 500;
 
     // -- Multivariate ZZ: CLPoly vs FLINT --
-    bench_header("Memory: CLPoly polynomial_ZZ vs FLINT fmpz_mpoly");
-    mem_cmp_header("FLINT");
     {
+        std::cout << "\n==== Memory: CLPoly polynomial_ZZ vs FLINT fmpz_mpoly ====" << std::endl;
+        _bench_mem_cmp_header_once("FLINT");
         std::vector<variable> vars = {x, y};
         {
             auto p = random_polynomial<ZZ>(vars, 20, 15, {-50, 50});
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return polynomial_ZZ(p); });
-            double fl_kb = measure_flint_mpoly_kb(MEM_N, p, vars);
-            mem_cmp_row("mpoly_ZZ deg20 len15", p.size(), cl_kb, fl_kb);
+            auto va = vars;
+            BENCH_MEM_CMP("mpoly_ZZ deg20 len15", p.size(), MEM_N,
+                polynomial_ZZ(p),
+                {
+                    auto fp_ref = crosscheck::clpoly_to_flint(p, va);
+                    auto* copies = new fmpz_mpoly_struct[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i) {
+                        fmpz_mpoly_init(&copies[i], fp_ref.ctx);
+                        fmpz_mpoly_set(&copies[i], fp_ref.poly, fp_ref.ctx);
+                    }
+                    // leak intentionally — child exits
+                }
+            );
         }
         {
             auto p = random_polynomial<ZZ>(vars, 40, 30, {-50, 50});
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return polynomial_ZZ(p); });
-            double fl_kb = measure_flint_mpoly_kb(MEM_N, p, vars);
-            mem_cmp_row("mpoly_ZZ deg40 len30", p.size(), cl_kb, fl_kb);
+            auto va = vars;
+            BENCH_MEM_CMP("mpoly_ZZ deg40 len30", p.size(), MEM_N,
+                polynomial_ZZ(p),
+                {
+                    auto fp_ref = crosscheck::clpoly_to_flint(p, va);
+                    auto* copies = new fmpz_mpoly_struct[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i) {
+                        fmpz_mpoly_init(&copies[i], fp_ref.ctx);
+                        fmpz_mpoly_set(&copies[i], fp_ref.poly, fp_ref.ctx);
+                    }
+                }
+            );
         }
         {
             auto p = random_polynomial<ZZ>(vars, 80, 60, {-50, 50});
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return polynomial_ZZ(p); });
-            double fl_kb = measure_flint_mpoly_kb(MEM_N, p, vars);
-            mem_cmp_row("mpoly_ZZ deg80 len60", p.size(), cl_kb, fl_kb);
+            auto va = vars;
+            BENCH_MEM_CMP("mpoly_ZZ deg80 len60", p.size(), MEM_N,
+                polynomial_ZZ(p),
+                {
+                    auto fp_ref = crosscheck::clpoly_to_flint(p, va);
+                    auto* copies = new fmpz_mpoly_struct[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i) {
+                        fmpz_mpoly_init(&copies[i], fp_ref.ctx);
+                        fmpz_mpoly_set(&copies[i], fp_ref.poly, fp_ref.ctx);
+                    }
+                }
+            );
         }
     }
 
     // -- Univariate ZZ: CLPoly vs FLINT --
-    bench_header("Memory: CLPoly upolynomial_ZZ vs FLINT fmpz_poly");
-    mem_cmp_header("FLINT");
     {
+        std::cout << "\n==== Memory: CLPoly upolynomial_ZZ vs FLINT fmpz_poly ====" << std::endl;
+        // Reset static flag for new section — use inline function directly
+        std::cout << std::left << std::setw(30) << "Polynomial"
+                  << std::right << std::setw(8) << "Terms"
+                  << std::setw(12) << "CLPoly"
+                  << std::setw(12) << "FLINT"
+                  << std::setw(8) << "Ratio" << std::endl;
+        std::cout << std::string(70, '-') << std::endl;
         {
             auto p = random_upolynomial<ZZ>(50, 40, {-100, 100});
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-            double fl_kb = measure_flint_upoly_kb(MEM_N, p);
-            mem_cmp_row("upoly_ZZ deg50", p.size(), cl_kb, fl_kb);
+            BENCH_MEM_CMP("upoly_ZZ deg50", p.size(), MEM_N,
+                upolynomial_ZZ(p),
+                {
+                    auto fp = crosscheck::clpoly_upoly_to_flint(p);
+                    auto* copies = new fmpz_poly_struct[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i) {
+                        fmpz_poly_init(&copies[i]);
+                        fmpz_poly_set(&copies[i], fp.poly);
+                    }
+                }
+            );
         }
         {
             auto p = random_upolynomial<ZZ>(200, 150, {-100, 100});
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-            double fl_kb = measure_flint_upoly_kb(MEM_N, p);
-            mem_cmp_row("upoly_ZZ deg200", p.size(), cl_kb, fl_kb);
+            BENCH_MEM_CMP("upoly_ZZ deg200", p.size(), MEM_N,
+                upolynomial_ZZ(p),
+                {
+                    auto fp = crosscheck::clpoly_upoly_to_flint(p);
+                    auto* copies = new fmpz_poly_struct[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i) {
+                        fmpz_poly_init(&copies[i]);
+                        fmpz_poly_set(&copies[i], fp.poly);
+                    }
+                }
+            );
         }
         {
             auto p = random_upolynomial<ZZ>(500, 400, {-100, 100});
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-            double fl_kb = measure_flint_upoly_kb(MEM_N, p);
-            mem_cmp_row("upoly_ZZ deg500", p.size(), cl_kb, fl_kb);
+            BENCH_MEM_CMP("upoly_ZZ deg500", p.size(), MEM_N,
+                upolynomial_ZZ(p),
+                {
+                    auto fp = crosscheck::clpoly_upoly_to_flint(p);
+                    auto* copies = new fmpz_poly_struct[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i) {
+                        fmpz_poly_init(&copies[i]);
+                        fmpz_poly_set(&copies[i], fp.poly);
+                    }
+                }
+            );
         }
     }
 
     // -- Univariate ZZ: CLPoly vs NTL --
-    bench_header("Memory: CLPoly upolynomial_ZZ vs NTL ZZX");
-    mem_cmp_header("NTL");
     {
+        std::cout << "\n==== Memory: CLPoly upolynomial_ZZ vs NTL ZZX ====" << std::endl;
+        std::cout << std::left << std::setw(30) << "Polynomial"
+                  << std::right << std::setw(8) << "Terms"
+                  << std::setw(12) << "CLPoly"
+                  << std::setw(12) << "NTL"
+                  << std::setw(8) << "Ratio" << std::endl;
+        std::cout << std::string(70, '-') << std::endl;
         {
             auto p = random_upolynomial<ZZ>(50, 40, {-100, 100});
             auto np = crosscheck::clpoly_upoly_to_ntl(p);
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-            double ntl_kb = measure_ntl_zzx_kb(MEM_N, np);
-            mem_cmp_row("upoly_ZZ deg50", p.size(), cl_kb, ntl_kb);
+            BENCH_MEM_CMP("upoly_ZZ deg50", p.size(), MEM_N,
+                upolynomial_ZZ(p),
+                {
+                    auto* copies = new NTL::ZZX[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i)
+                        copies[i] = np;
+                }
+            );
         }
         {
             auto p = random_upolynomial<ZZ>(200, 150, {-100, 100});
             auto np = crosscheck::clpoly_upoly_to_ntl(p);
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-            double ntl_kb = measure_ntl_zzx_kb(MEM_N, np);
-            mem_cmp_row("upoly_ZZ deg200", p.size(), cl_kb, ntl_kb);
+            BENCH_MEM_CMP("upoly_ZZ deg200", p.size(), MEM_N,
+                upolynomial_ZZ(p),
+                {
+                    auto* copies = new NTL::ZZX[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i)
+                        copies[i] = np;
+                }
+            );
         }
         {
             auto p = random_upolynomial<ZZ>(500, 400, {-100, 100});
             auto np = crosscheck::clpoly_upoly_to_ntl(p);
-            double cl_kb = measure_per_object_kb(MEM_N, [&]() { return upolynomial_ZZ(p); });
-            double ntl_kb = measure_ntl_zzx_kb(MEM_N, np);
-            mem_cmp_row("upoly_ZZ deg500", p.size(), cl_kb, ntl_kb);
+            BENCH_MEM_CMP("upoly_ZZ deg500", p.size(), MEM_N,
+                upolynomial_ZZ(p),
+                {
+                    auto* copies = new NTL::ZZX[MEM_N];
+                    for (int i = 0; i < MEM_N; ++i)
+                        copies[i] = np;
+                }
+            );
         }
     }
 
-    print_process_memory();
+    // ================================================================
+    // Groebner Basis: CLPoly vs FLINT (with timeout)
+    // FLINT uses fmpz_mpoly_buchberger_naive (no Sugar / no GM criteria).
+    // CLPoly uses Buchberger + Sugar + Gebauer-Moller.
+    // Timeout = 30s per benchmark for FLINT's naive algorithm.
+    // ================================================================
+    bench_cmp_header("Groebner Basis: CLPoly vs FLINT (naive)", "FLINT");
+    {
+        const double TIMEOUT = 30.0; // seconds
+
+        // Katsura-3 (3 vars)
+        {
+            variable z("z");
+            polynomial_ZZ f1 = x + 2*y + 2*z - 1;
+            polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) - x;
+            polynomial_ZZ f3 = 2*x*y + 2*y*z - y;
+            std::vector<polynomial_ZZ> gens = {f1, f2, f3};
+            auto vars = crosscheck::collect_vars_multi(gens);
+
+            BENCH_CMP("groebner  Katsura-3 (3var)", 10, TIMEOUT,
+                { volatile auto r = groebner_basis(gens); (void)r; },
+                { volatile auto r = crosscheck::flint_groebner_basis(gens, vars); (void)r; }
+            );
+        }
+
+        // Katsura-4 (4 vars)
+        {
+            variable z("z"), t("t");
+            polynomial_ZZ f1 = x + 2*y + 2*z + 2*t - 1;
+            polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) + 2*pow(t,2) - x;
+            polynomial_ZZ f3 = 2*x*y + 2*y*z + 2*z*t - y;
+            polynomial_ZZ f4 = 2*x*z + pow(y,2) + 2*y*t - z;
+            std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4};
+            auto vars = crosscheck::collect_vars_multi(gens);
+
+            BENCH_CMP("groebner  Katsura-4 (4var)", 5, TIMEOUT,
+                { volatile auto r = groebner_basis(gens); (void)r; },
+                { volatile auto r = crosscheck::flint_groebner_basis(gens, vars); (void)r; }
+            );
+        }
+
+        // Cyclic-4 (4 vars)
+        {
+            variable z("z"), t("t");
+            polynomial_ZZ f1 = x + y + z + t;
+            polynomial_ZZ f2 = x*y + y*z + z*t + t*x;
+            polynomial_ZZ f3 = x*y*z + y*z*t + z*t*x + t*x*y;
+            polynomial_ZZ f4 = x*y*z*t - 1;
+            std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4};
+            auto vars = crosscheck::collect_vars_multi(gens);
+
+            BENCH_CMP("groebner  Cyclic-4 (4var)", 5, TIMEOUT,
+                { volatile auto r = groebner_basis(gens); (void)r; },
+                { volatile auto r = crosscheck::flint_groebner_basis(gens, vars); (void)r; }
+            );
+        }
+
+        // Noon-3 (3 vars, scaled x10 to ZZ)
+        {
+            variable z("z");
+            polynomial_ZZ f1 = 10*x*pow(y,2) + 10*x*pow(z,2) - 11*x + 10;
+            polynomial_ZZ f2 = 10*y*pow(x,2) + 10*y*pow(z,2) - 11*y + 10;
+            polynomial_ZZ f3 = 10*z*pow(x,2) + 10*z*pow(y,2) - 11*z + 10;
+            std::vector<polynomial_ZZ> gens = {f1, f2, f3};
+            auto vars = crosscheck::collect_vars_multi(gens);
+
+            BENCH_CMP("groebner  Noon-3 (3var)", 3, TIMEOUT,
+                { volatile auto r = groebner_basis(gens); (void)r; },
+                { volatile auto r = crosscheck::flint_groebner_basis(gens, vars); (void)r; }
+            );
+        }
+
+        // Eco-5 (5 vars)
+        {
+            variable x1("x1"), x2("x2"), x3("x3"), x4("x4"), x5("x5");
+            polynomial_ZZ f1 = x1*x2*x5 + x1*x5 - 3*x2*x5;
+            polynomial_ZZ f2 = 2*x1*x3*x5 - x1*x5 + x3*x5;
+            polynomial_ZZ f3 = 3*x1*x4*x5 - x1*x5 - 4*x4*x5;
+            polynomial_ZZ f4 = 4*x1*x5 - x1 + 2*x5;
+            polynomial_ZZ f5 = x1 + x2 + x3 + x4 + x5 + 1;
+            std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+            auto vars = crosscheck::collect_vars_multi(gens);
+
+            BENCH_CMP("groebner  Eco-5 (5var)", 3, TIMEOUT,
+                { volatile auto r = groebner_basis(gens); (void)r; },
+                { volatile auto r = crosscheck::flint_groebner_basis(gens, vars); (void)r; }
+            );
+        }
+
+        // Katsura-5 (5 vars) — FLINT naive likely to timeout
+        {
+            variable z("z"), t("t"), u("u");
+            polynomial_ZZ f1 = x + 2*y + 2*z + 2*t + 2*u - 1;
+            polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) + 2*pow(t,2) + 2*pow(u,2) - x;
+            polynomial_ZZ f3 = 2*x*y + 2*y*z + 2*z*t + 2*t*u - y;
+            polynomial_ZZ f4 = 2*x*z + pow(y,2) + 2*y*t + 2*z*u - z;
+            polynomial_ZZ f5 = 2*x*t + 2*y*z + 2*y*u + pow(z,2) - t;
+            std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+            auto vars = crosscheck::collect_vars_multi(gens);
+
+            BENCH_CMP("groebner  Katsura-5 (5var)", 1, TIMEOUT,
+                { volatile auto r = groebner_basis(gens); (void)r; },
+                { volatile auto r = crosscheck::flint_groebner_basis(gens, vars); (void)r; }
+            );
+        }
+
+        // Cyclic-5 (5 vars) — FLINT naive likely to timeout
+        {
+            variable z("z"), t("t"), u("u");
+            polynomial_ZZ f1 = x + y + z + t + u;
+            polynomial_ZZ f2 = x*y + y*z + z*t + t*u + u*x;
+            polynomial_ZZ f3 = x*y*z + y*z*t + z*t*u + t*u*x + u*x*y;
+            polynomial_ZZ f4 = x*y*z*t + y*z*t*u + z*t*u*x + t*u*x*y + u*x*y*z;
+            polynomial_ZZ f5 = x*y*z*t*u - 1;
+            std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+            auto vars = crosscheck::collect_vars_multi(gens);
+
+            BENCH_CMP("groebner  Cyclic-5 (5var)", 1, TIMEOUT,
+                { volatile auto r = groebner_basis(gens); (void)r; },
+                { volatile auto r = crosscheck::flint_groebner_basis(gens, vars); (void)r; }
+            );
+        }
+    }
+
     std::cout << "\nDone. Total benchmarks: " << _bench_results.size() << std::endl;
     return 0;
 }

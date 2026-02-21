@@ -615,6 +615,86 @@ int main() {
         CLPOLY_ASSERT_TRUE(gb_set_eq(gb, expected));
     }
 
+    // ======== 经典基准系统 ========
+
+    CLPOLY_TEST("gb_katsura4");
+    {
+        variable t("t");
+        polynomial_QQ f1 = x + 2*y + 2*z + 2*t - 1;
+        polynomial_QQ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) + 2*pow(t,2) - x;
+        polynomial_QQ f3 = 2*x*y + 2*y*z + 2*z*t - y;
+        polynomial_QQ f4 = 2*x*z + pow(y,2) + 2*y*t - z;
+        std::vector<polynomial_QQ> gens = {f1, f2, f3, f4};
+        auto gb = groebner_basis(gens);
+        CLPOLY_ASSERT_TRUE(check_gb(gb, gens, "katsura4"));
+    }
+
+    CLPOLY_TEST("gb_katsura5");
+    {
+        variable t("t"), u("u");
+        polynomial_QQ f1 = x + 2*y + 2*z + 2*t + 2*u - 1;
+        polynomial_QQ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) + 2*pow(t,2) + 2*pow(u,2) - x;
+        polynomial_QQ f3 = 2*x*y + 2*y*z + 2*z*t + 2*t*u - y;
+        polynomial_QQ f4 = 2*x*z + pow(y,2) + 2*y*t + 2*z*u - z;
+        polynomial_QQ f5 = 2*x*t + 2*y*z + 2*y*u + pow(z,2) - t;
+        std::vector<polynomial_QQ> gens = {f1, f2, f3, f4, f5};
+        auto gb = groebner_basis(gens);
+        CLPOLY_ASSERT_TRUE(check_gb(gb, gens, "katsura5"));
+    }
+
+    CLPOLY_TEST("gb_cyclic4");
+    {
+        variable t("t");
+        polynomial_QQ f1 = x + y + z + t;
+        polynomial_QQ f2 = x*y + y*z + z*t + t*x;
+        polynomial_QQ f3 = x*y*z + y*z*t + z*t*x + t*x*y;
+        polynomial_QQ f4 = x*y*z*t - 1;
+        std::vector<polynomial_QQ> gens = {f1, f2, f3, f4};
+        auto gb = groebner_basis(gens);
+        CLPOLY_ASSERT_TRUE(check_gb(gb, gens, "cyclic4"));
+    }
+
+    CLPOLY_TEST("gb_cyclic5");
+    {
+        variable t("t"), u("u");
+        polynomial_QQ f1 = x + y + z + t + u;
+        polynomial_QQ f2 = x*y + y*z + z*t + t*u + u*x;
+        polynomial_QQ f3 = x*y*z + y*z*t + z*t*u + t*u*x + u*x*y;
+        polynomial_QQ f4 = x*y*z*t + y*z*t*u + z*t*u*x + t*u*x*y + u*x*y*z;
+        polynomial_QQ f5 = x*y*z*t*u - 1;
+        std::vector<polynomial_QQ> gens = {f1, f2, f3, f4, f5};
+        auto gb = groebner_basis(gens);
+        CLPOLY_ASSERT_TRUE(check_gb(gb, gens, "cyclic5"));
+    }
+
+    CLPOLY_TEST("gb_noon3");
+    {
+        // Noon-3: f_i = x_i*(sum_{j!=i} x_j^2) - 11/10*x_i + 1
+        // Use QQ(11,10) for the rational coefficient
+        polynomial_QQ qx = x, qy = y;
+        variable zz("z");
+        polynomial_QQ qz = zz;
+        polynomial_QQ f1 = qx*pow(qy,2) + qx*pow(qz,2) - QQ(11,10)*qx + QQ(1);
+        polynomial_QQ f2 = qy*pow(qx,2) + qy*pow(qz,2) - QQ(11,10)*qy + QQ(1);
+        polynomial_QQ f3 = qz*pow(qx,2) + qz*pow(qy,2) - QQ(11,10)*qz + QQ(1);
+        std::vector<polynomial_QQ> gens = {f1, f2, f3};
+        auto gb = groebner_basis(gens);
+        CLPOLY_ASSERT_TRUE(check_gb(gb, gens, "noon3"));
+    }
+
+    CLPOLY_TEST("gb_eco5");
+    {
+        variable x1("x1"), x2("x2"), x3("x3"), x4("x4"), x5("x5");
+        polynomial_QQ f1 = x1*x5 + x1*x2*x5 + x2*x3*x5 + x3*x4*x5 - 1;
+        polynomial_QQ f2 = x2*x5 + x1*x3*x5 + x2*x4*x5 - 2;
+        polynomial_QQ f3 = x3*x5 + x1*x4*x5 - 3;
+        polynomial_QQ f4 = x4*x5 - 4;
+        polynomial_QQ f5 = x1 + x2 + x3 + x4 + 1;
+        std::vector<polynomial_QQ> gens = {f1, f2, f3, f4, f5};
+        auto gb = groebner_basis(gens);
+        CLPOLY_ASSERT_TRUE(check_gb(gb, gens, "eco5"));
+    }
+
     // ======== 随机性质测试 ========
 
     // 验证 GB 性质的辅助函数

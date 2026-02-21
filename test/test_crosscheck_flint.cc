@@ -1492,6 +1492,98 @@ int main() {
         CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
     }
 
+    // 经典基准系统
+
+    CLPOLY_TEST("crosscheck_flint_gb_katsura4");
+    {
+        variable t("t");
+        polynomial_ZZ f1 = x + 2*y + 2*z + 2*t - 1;
+        polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) + 2*pow(t,2) - x;
+        polynomial_ZZ f3 = 2*x*y + 2*y*z + 2*z*t - y;
+        polynomial_ZZ f4 = 2*x*z + pow(y,2) + 2*y*t - z;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    CLPOLY_TEST("crosscheck_flint_gb_katsura5");
+    {
+        // 5 变量系统: FLINT 的 buchberger_naive 太慢，只用 is_groebner 验证
+        variable t("t"), u("u");
+        polynomial_ZZ f1 = x + 2*y + 2*z + 2*t + 2*u - 1;
+        polynomial_ZZ f2 = pow(x,2) + 2*pow(y,2) + 2*pow(z,2) + 2*pow(t,2) + 2*pow(u,2) - x;
+        polynomial_ZZ f3 = 2*x*y + 2*y*z + 2*z*t + 2*t*u - y;
+        polynomial_ZZ f4 = 2*x*z + pow(y,2) + 2*y*t + 2*z*u - z;
+        polynomial_ZZ f5 = 2*x*t + 2*y*z + 2*y*u + pow(z,2) - t;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+    }
+
+    CLPOLY_TEST("crosscheck_flint_gb_cyclic4");
+    {
+        variable t("t");
+        polynomial_ZZ f1 = x + y + z + t;
+        polynomial_ZZ f2 = x*y + y*z + z*t + t*x;
+        polynomial_ZZ f3 = x*y*z + y*z*t + z*t*x + t*x*y;
+        polynomial_ZZ f4 = x*y*z*t - 1;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    CLPOLY_TEST("crosscheck_flint_gb_cyclic5");
+    {
+        // 5 变量系统: FLINT 的 buchberger_naive 太慢，只用 is_groebner 验证
+        variable t("t"), u("u");
+        polynomial_ZZ f1 = x + y + z + t + u;
+        polynomial_ZZ f2 = x*y + y*z + z*t + t*u + u*x;
+        polynomial_ZZ f3 = x*y*z + y*z*t + z*t*u + t*u*x + u*x*y;
+        polynomial_ZZ f4 = x*y*z*t + y*z*t*u + z*t*u*x + t*u*x*y + u*x*y*z;
+        polynomial_ZZ f5 = x*y*z*t*u - 1;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+    }
+
+    CLPOLY_TEST("crosscheck_flint_gb_noon3");
+    {
+        // Noon-3 scaled ×10 to ZZ
+        polynomial_ZZ f1 = 10*x*pow(y,2) + 10*x*pow(z,2) - 11*x + 10;
+        polynomial_ZZ f2 = 10*y*pow(x,2) + 10*y*pow(z,2) - 11*y + 10;
+        polynomial_ZZ f3 = 10*z*pow(x,2) + 10*z*pow(y,2) - 11*z + 10;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
+    CLPOLY_TEST("crosscheck_flint_gb_eco5");
+    {
+        variable x1("x1"), x2("x2"), x3("x3"), x4("x4"), x5("x5");
+        polynomial_ZZ f1 = x1*x5 + x1*x2*x5 + x2*x3*x5 + x3*x4*x5 - 1;
+        polynomial_ZZ f2 = x2*x5 + x1*x3*x5 + x2*x4*x5 - 2;
+        polynomial_ZZ f3 = x3*x5 + x1*x4*x5 - 3;
+        polynomial_ZZ f4 = x4*x5 - 4;
+        polynomial_ZZ f5 = x1 + x2 + x3 + x4 + 1;
+        std::vector<polynomial_ZZ> gens = {f1, f2, f3, f4, f5};
+        auto gb = groebner_basis(gens);
+        auto all_vars = crosscheck::collect_vars_multi(gens);
+        CLPOLY_ASSERT_TRUE(crosscheck::flint_is_groebner(gb, gens, all_vars));
+        auto flint_gb = crosscheck::flint_groebner_basis(gens, all_vars);
+        CLPOLY_ASSERT_TRUE(gb_zz_set_eq(gb, flint_gb));
+    }
+
     // 随机测试: 2 变量 ZZ
     CLPOLY_TEST("crosscheck_flint_gb_random_2var");
     for (int round = 0; round < 15; round++) {

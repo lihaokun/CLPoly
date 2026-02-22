@@ -2,24 +2,44 @@
 
 ## 性能优化
 
-### P1: van Hoeij LLL 重组（单变量因式分解）
+### P1: 单变量因式分解优化
 
-当前单变量 `__factor_recombine` 使用 Zassenhaus 子集枚举，O(2^r) 复杂度。
-所有主流 CAS（FLINT、NTL、Maple、Magma）均已采用 van Hoeij LLL 方案，复杂度 O(poly(r))。
+#### P1a: van Hoeij LLL 重组（**已完成**）
 
-当前差距（多因子场景）：
+**实现结果**（2026-02-22 benchmark）：
 
-| 用例 | CLPoly | FLINT | 比率 |
-|------|--------|-------|------|
-| 单变量 70 因子 | 80 ms | 3.6 ms | 22x |
-| Wilkinson W(15) | 4.5 ms | 0.4 ms | 10x |
+| 用例 | 实现前 | 实现后 | 提升 |
+|------|--------|--------|------|
+| 单变量 70 因子 | 80 ms | 77 ms | 无回退 ✓ |
+| Wilkinson W(15) | 13.9 ms | 4.4 ms | 3.2x |
+| x^24-1 (cyclotomic) | 24.6 ms | 9.2 ms | 2.7x |
 
-- [ ] 实现或引入 LLL 格规约（可用 fplll 库或基于 GMP 自写）
-- [ ] Newton 幂和迹计算（从模因子）
-- [ ] 格矩阵构造 + 短向量提取 → 因子分组
-- [ ] 替换 `__factor_recombine`
+架构文档：`docs/design/vanhoeij/architecture.md`
+调研报告：`docs/research/vanhoeij-lll-research.md`
 
-参考：van Hoeij 2002, Hart-van Hoeij-Novocin 2011
+实现任务（全部在 `clpoly/polynomial_factorize_univar.hh`）：
+
+- [x] **M1** `__cld_polys`：CLD 多项式 C_i = (f/h_i)·h_i' mod m
+- [x] **M2** `__build_cld_matrix`：内螺旋列喂入格矩阵（初版无列过滤）
+- [x] **M3** `__lll_reduce`：整数 LLL（Cohen §2.6，QQ Gram-Schmidt）
+- [x] **M4** `__extract_candidates`：U_short 列等价类分组
+- [x] **M5** `__vanhoeij_recombine`：主控循环（批量提取 + 对角 LLL 预通道）
+- [x] `__lll_factorize`：入口函数（二次 Hensel 提升 + van Hoeij LLL，全 r 路由）
+
+**关键设计**：
+- 初始 J_target=0（对角 LLL）免费执行 s=1 单因子检验，避免全分裂多项式触发昂贵 CLD 计算
+- 批量提取：单次 LLL 调用中处理所有候选，将 r 次重复 LLL 降为 O(1) 次
+
+#### P1b: 线性 Hensel 提升（调研完成，实现保留为基础设施）
+
+调研与设计（Monagan 2019）已完成：`docs/research/linear-hensel-research.md`、`docs/design/vanhoeij/detailed-design-p1b.md`
+
+- [x] 线性 Hensel 基础设施：`__hensel_step_linear`、`__hensel_lift_linear_recursive`（保留供未来真正线性交织优化）
+- [x] `__heuristic_starting_precision`：FLINT 启发式精度估算
+
+**结论**：van Hoeij LLL 需在满精度（Mignotte 界）下运行才能高效收敛；低精度 LLL 导致 O(n^4) 规约退化。P1a 的二次 Hensel + van Hoeij LLL 已达到实用性能，P1b 完整实现（精度自适应 + 早期因子检测）可作为后续优化项。
+
+参考：van Hoeij 2002, Belabas 2009, Hart 2011（P1a）；Monagan 2019（P1b）
 
 ### P2: 多变量因式分解算法选择与稀疏路径
 

@@ -533,6 +533,100 @@ namespace clpoly{
     }
 
     // ================================================================
+    // §6.7 线性 Hensel 提升辅助 (P1b)
+    // ================================================================
+
+    // M4: 启发式起始精度（FLINT 公式 + Mignotte 上限）
+    inline int __heuristic_starting_precision(
+        const upolynomial_<ZZ>& f,
+        int                     r,
+        uint32_t                p)
+    {
+        // 1. FLINT 启发式 a_h（double 精度）
+        double logp  = std::log((double)p);
+        int    min_b = (int)ZZ(p).sizeinbase(2);
+        int    N     = (int)f.size() - 1;
+        double a_h_d = std::ceil(
+            (2.5 * r + min_b) * std::log(2.0) / logp
+            + std::log((double)(N + 1)) / (2.0 * logp));
+        int a_h = std::max(1, (int)a_h_d);
+
+        // 2. Mignotte 精度 a_mig（循环逼近）
+        ZZ B_mig = __mignotte_bound(f);
+        ZZ lc_f  = f.front().second;
+        if (lc_f < ZZ(0)) lc_f = -lc_f;
+        ZZ target = ZZ(2) * lc_f * B_mig;
+        int a_mig = 0;
+        ZZ  pa(1);
+        while (pa <= target) { pa *= ZZ(p); ++a_mig; }
+
+        return std::min(a_mig, a_h);
+    }
+
+    // M1: 二叉树单步线性 Hensel 提升（m → m·p）
+    // 前置条件：node.g * node.h ≡ f (mod m)；node.s, node.t 固定 mod p
+    // 后置条件：node.g * node.h ≡ f (mod m·p)；s, t 不变
+    inline void __hensel_step_linear(
+        __hensel_node&          node,
+        const upolynomial_<ZZ>& f,
+        const ZZ&               m,   // 当前模数 p^a
+        uint32_t                p)   // 素数
+    {
+        ZZ p_zz(p);
+        ZZ mp = m * p_zz;    // 新模数 p^(a+1)
+
+        // 1. e = (f - g*h) / m  mod p
+        upolynomial_<ZZ> gh = node.g * node.h;
+        upolynomial_<ZZ> e  = f - gh;
+        {
+            auto it = e.data().begin(), out = it;
+            for (; it != e.data().end(); ++it)
+            {
+                ZZ::fdiv_q(it->second, it->second, m);    // 精确整除
+                ZZ::fdiv_r(it->second, it->second, p_zz); // mod p
+                if (it->second) { if (out != it) *out = std::move(*it); ++out; }
+            }
+            e.data().erase(out, e.data().end());
+        }
+        if (e.empty()) return;  // 已满足精度，无需修正
+
+        // 2. se = s * e，divmod by h (mod p) → σ = remainder
+        upolynomial_<ZZ> se = node.s * e;
+        upolynomial_<ZZ> q_se, sigma;
+        __upoly_divmod_mod(q_se, sigma, se, node.h, p_zz);
+
+        // 3. τ = t*e + q_se*g  (mod p)（包含商项，保证任意度 e 正确）
+        upolynomial_<ZZ> tau = node.t * e + q_se * node.g;
+        __upoly_mod_coeff(tau, p_zz);
+
+        // 4. g' = g + m*τ (mod mp)
+        for (auto& term : tau.data()) term.second *= m;
+        node.g = node.g + tau;
+        __upoly_mod_coeff(node.g, mp);
+
+        // 5. h' = h + m*σ (mod mp)
+        for (auto& term : sigma.data()) term.second *= m;
+        node.h = node.h + sigma;
+        __upoly_mod_coeff(node.h, mp);
+        // 注：s, t 不更新（线性提升固定 Bézout 于 mod p）
+    }
+
+    // 线性 Hensel 树提升（单步，m → m·p，递归从顶向下）
+    inline void __hensel_lift_linear_recursive(
+        std::vector<__hensel_node>& nodes,
+        int                         idx,
+        const upolynomial_<ZZ>&     f,   // 当前节点目标
+        const ZZ&                   m,
+        uint32_t                    p)
+    {
+        __hensel_step_linear(nodes[idx], f, m, p);
+        if (nodes[idx].left >= 0)
+            __hensel_lift_linear_recursive(nodes, nodes[idx].left, nodes[idx].g, m, p);
+        if (nodes[idx].right >= 0)
+            __hensel_lift_linear_recursive(nodes, nodes[idx].right, nodes[idx].h, m, p);
+    }
+
+    // ================================================================
     // §7. M3: 因子重组 (Zassenhaus)
     // ================================================================
 
@@ -588,7 +682,7 @@ namespace clpoly{
 
     // §7.5 Zassenhaus 因子重组
     inline std::vector<upolynomial_<ZZ>>
-    __factor_recombine(
+    __zassenhaus_recombine(
         const upolynomial_<ZZ>& f,
         const std::vector<upolynomial_<ZZ>>& lifted,
         const ZZ& m)
@@ -725,6 +819,483 @@ namespace clpoly{
     }
 
     // ================================================================
+    // §7.6 van Hoeij LLL 重组：辅助常量与类型
+    // ================================================================
+
+    // r ≤ ZASSENHAUS_THRESHOLD 时使用 Zassenhaus，否则用 van Hoeij LLL
+    static constexpr int ZASSENHAUS_THRESHOLD = 10;
+
+    // 格矩阵：行主序，M[i] 是第 i 个格基向量（ZZ 整数坐标）
+    using LLLMatrix = std::vector<std::vector<ZZ>>;
+
+    // ================================================================
+    // §7.7 M1: __cld_polys
+    //   计算 CLD 多项式：C_i = (f_star / h_i) · h_i'  mod m，对称约化
+    //   前置条件：每个 h_i 首一且精确整除 f_star (mod m)
+    // ================================================================
+
+    inline std::vector<upolynomial_<ZZ>>
+    __cld_polys(
+        const upolynomial_<ZZ>&              f_star,
+        const std::vector<upolynomial_<ZZ>>& active_factors,
+        const ZZ&                            m)
+    {
+        std::vector<upolynomial_<ZZ>> result;
+        result.reserve(active_factors.size());
+
+        for (const auto& h_i : active_factors)
+        {
+            // 步骤 1：精确除法 q_i = f_star / h_i  in Z_m[x]
+            upolynomial_<ZZ> q_i, r_i;
+            __upoly_divmod_mod(q_i, r_i, f_star, h_i, m);
+            assert(r_i.empty());  // Hensel 提升保证 h_i | f_star (mod m)
+
+            // 步骤 2：形式导数 h_i'，系数 mod m
+            auto h_prime = derivative(h_i);
+            __upoly_mod_coeff(h_prime, m);
+
+            // 步骤 3：C_i = q_i · h_i'  mod m，再对称约化到 (-m/2, m/2]
+            auto C_i = __upoly_mul_mod(q_i, h_prime, m);
+            C_i      = __upoly_symmetric_mod(C_i, m);
+
+            result.push_back(std::move(C_i));
+        }
+        return result;
+    }
+
+    // ================================================================
+    // §7.8 M2: __build_cld_matrix
+    //   按内螺旋顺序将 CLD 系数列喂入格矩阵 M，扩展 M 直到加入 J_target 新列。
+    //   前置条件：M 已是 (r+J_cur)×(r+J_cur) 的整数方阵（行主序）
+    //   后置条件：M 扩展为 (r+J_cur+J_new)×(r+J_cur+J_new)
+    //   注：初版不做列过滤，所有螺旋位置均接受，后续可加过滤条件优化
+    // ================================================================
+
+    inline int __build_cld_matrix(
+        LLLMatrix&                           M,
+        const std::vector<upolynomial_<ZZ>>& cld,
+        int                                  J_cur,
+        int                                  J_target,
+        const ZZ&                            /*m*/)
+    {
+        int r = (int)cld.size();
+
+        // 辅助：按次数取 CLD 多项式的系数（upolynomial_ 不支持下标索引）
+        auto upoly_coeff = [](const upolynomial_<ZZ>& p, int deg) -> ZZ {
+            for (const auto& term : p)
+                if ((int)term.first.deg() == deg) return term.second;
+            return ZZ(0);
+        };
+
+        // N = 螺旋总位置数 = max(deg(C_i)) + 1（CLD 次数 ≤ deg(f)-1，故 N ≤ deg(f)）
+        int N = 0;
+        for (const auto& c : cld)
+            if (!c.empty())
+                N = std::max(N, (int)c.front().first.deg() + 1);
+
+        int J_new = 0;
+        for (int k = J_cur; J_new < J_target && k < N; ++k)
+        {
+            // 螺旋位置 k → CLD 系数次数 col_idx
+            int col_idx = (k % 2 == 0) ? (k / 2) : (N - 1 - (k - 1) / 2);
+
+            // j = 加入本列前 M 中已有的 J 列数（J_cur + J_new）
+            int j = J_cur + J_new;
+
+            // 步骤 1：扩展现有行，各追加一个 0
+            for (auto& row : M)
+                row.push_back(ZZ(0));
+
+            // 步骤 2：新增数据行，长度 r + j + 1
+            //   前 r 项 = cld[i][col_idx]，中间 j 项 = 0，末项 = 1（对角 identity）
+            std::vector<ZZ> new_row(r + j + 1, ZZ(0));
+            for (int i = 0; i < r; ++i)
+                new_row[i] = upoly_coeff(cld[i], col_idx);
+            new_row[r + j] = ZZ(1);
+
+            M.push_back(std::move(new_row));
+            ++J_new;
+        }
+        return J_new;
+    }
+
+    // ================================================================
+    // §7.9 M3: __lll_reduce
+    //   整数 LLL 基规约（Cohen §2.6 算法 2.6.3，δ=3/4），记录幺模变换矩阵 U。
+    //   前置条件：M 是 n×n 整数方阵（n ≥ 1）
+    //   后置条件：M 已 LLL 规约；U 满足 M_new = U · M_old；返回 ‖M[i]‖² ≤ B 的行下标
+    // ================================================================
+
+    inline std::vector<int>
+    __lll_reduce(
+        LLLMatrix& M,
+        LLLMatrix& U,
+        const ZZ&  B)
+    {
+        int n = (int)M.size();
+
+        // Gram-Schmidt 系数 mu[i][j] (i > j) 和平方范数 B_gs[i] = ‖b_i^*‖²
+        std::vector<std::vector<QQ>> mu(n, std::vector<QQ>(n, QQ(0)));
+        std::vector<QQ>              B_gs(n, QQ(0));
+
+        // U 初始化为单位矩阵
+        U.assign(n, std::vector<ZZ>(n, ZZ(0)));
+        for (int i = 0; i < n; ++i)
+            U[i][i] = ZZ(1);
+
+        // 辅助：ZZ 精确内积（行向量）
+        auto dot = [&](const std::vector<ZZ>& a, const std::vector<ZZ>& b) -> ZZ {
+            ZZ s(0);
+            for (int k = 0; k < (int)a.size(); ++k)
+                s += a[k] * b[k];
+            return s;
+        };
+
+        // 辅助：四舍五入到最近整数（ties 向上）：floor(q + 1/2)
+        // = floor((2*num + den) / (2*den))（den > 0 保证）
+        auto round_qq = [](const QQ& q) -> ZZ {
+            ZZ a = q.get_num() * ZZ(2) + q.get_den();
+            ZZ b = q.get_den() * ZZ(2);
+            ZZ result;
+            ZZ::fdiv_q(result, a, b);
+            return result;
+        };
+
+        // 辅助：行操作（同步作用于 M 和 U）：M[i] -= c * M[j], U[i] -= c * U[j]
+        auto row_sub = [&](int i, int j, const ZZ& c) {
+            for (int k = 0; k < n; ++k) {
+                M[i][k] -= c * M[j][k];
+                U[i][k] -= c * U[j][k];
+            }
+        };
+        auto row_swap = [&](int i, int j) {
+            std::swap(M[i], M[j]);
+            std::swap(U[i], U[j]);
+        };
+
+        // 初始化 Gram-Schmidt
+        B_gs[0] = QQ(dot(M[0], M[0]), ZZ(1));
+        for (int i = 1; i < n; ++i)
+        {
+            for (int j = 0; j < i; ++j)
+            {
+                // num = <b_i, b_j> - sum_{l<j} mu[i][l] * mu[j][l] * B_gs[l]
+                //     = <b_i, b_j^*>
+                QQ num(dot(M[i], M[j]), ZZ(1));
+                for (int l = 0; l < j; ++l)
+                    num -= mu[i][l] * mu[j][l] * B_gs[l];
+                mu[i][j] = (B_gs[j] == QQ(0)) ? QQ(0) : num / B_gs[j];
+            }
+            // B_gs[i] = ‖b_i‖² - sum_{j<i} mu[i][j]² * B_gs[j] = ‖b_i^*‖²
+            B_gs[i] = QQ(dot(M[i], M[i]), ZZ(1));
+            for (int j = 0; j < i; ++j)
+                B_gs[i] -= mu[i][j] * mu[i][j] * B_gs[j];
+        }
+
+        // LLL 主循环（Cohen §2.6 算法 2.6.3）
+        int k = 1;
+        while (k < n)
+        {
+            // 大小规约（j = k-1）
+            ZZ q = round_qq(mu[k][k - 1]);
+            if (q != ZZ(0))
+            {
+                row_sub(k, k - 1, q);
+                for (int j = 0; j < k - 1; ++j)
+                    mu[k][j] -= QQ(q, ZZ(1)) * mu[k - 1][j];
+                mu[k][k - 1] -= QQ(q, ZZ(1));
+            }
+
+            // Lovász 条件：B_gs[k] >= (3/4 - mu[k][k-1]^2) * B_gs[k-1]
+            QQ lhs = B_gs[k];
+            QQ rhs = (QQ(3, 4) - mu[k][k - 1] * mu[k][k - 1]) * B_gs[k - 1];
+
+            if (lhs >= rhs)
+            {
+                // 额外大小规约（j = k-2 down to 0）
+                for (int j = k - 2; j >= 0; --j)
+                {
+                    ZZ q2 = round_qq(mu[k][j]);
+                    if (q2 != ZZ(0))
+                    {
+                        row_sub(k, j, q2);
+                        for (int l = 0; l < j; ++l)
+                            mu[k][l] -= QQ(q2, ZZ(1)) * mu[j][l];
+                        mu[k][j] -= QQ(q2, ZZ(1));
+                    }
+                }
+                ++k;
+            }
+            else
+            {
+                // Lovász 条件失败：交换 M[k] 和 M[k-1]，更新 Gram-Schmidt
+                QQ mu_old = mu[k][k - 1];
+                QQ B_new  = B_gs[k] + mu_old * mu_old * B_gs[k - 1];
+                QQ mu_new = (B_new != QQ(0)) ? mu_old * B_gs[k - 1] / B_new : QQ(0);
+                if (B_new != QQ(0))
+                {
+                    B_gs[k]     = B_gs[k] * B_gs[k - 1] / B_new;
+                    B_gs[k - 1] = B_new;
+                }
+                row_swap(k, k - 1);
+                std::swap(mu[k], mu[k - 1]);
+                // swap 后 mu[k][k-1] 为 0（来自原 mu[k-1][k-1]），显式写入
+                mu[k][k - 1] = mu_new;
+                // 修正 j > k 行的 mu[j][k] 和 mu[j][k-1]
+                for (int j = k + 1; j < n; ++j)
+                {
+                    QQ t        = mu[j][k];
+                    mu[j][k]    = mu[j][k - 1] - mu_old * t;
+                    mu[j][k - 1] = t + mu_new * mu[j][k];  // mu[j][k] 已是更新后的值
+                }
+                k = std::max(k - 1, 1);
+            }
+        }
+
+        // 收集满足 ‖M[i]‖² ≤ B 的行，按范数²升序返回
+        std::vector<int> short_rows;
+        for (int i = 0; i < n; ++i)
+        {
+            ZZ norm_sq = dot(M[i], M[i]);
+            if (norm_sq <= B)
+                short_rows.push_back(i);
+        }
+        std::sort(short_rows.begin(), short_rows.end(),
+            [&](int a, int b) { return dot(M[a], M[a]) < dot(M[b], M[b]); });
+        return short_rows;
+    }
+
+    // ================================================================
+    // §7.10 M4: __extract_candidates
+    //   从 LLL 幺模矩阵 U 的短向量行中提取候选因子子集（列等价类分组）。
+    //   前置条件：short_rows 均为 U 的有效行下标；r ≤ n（U 为 n×n）
+    //   后置条件：返回 active 因子下标的等价类分组（每类下标集合）
+    // ================================================================
+
+    inline std::vector<std::vector<int>>
+    __extract_candidates(
+        const std::vector<int>& short_rows,
+        const LLLMatrix&        U,
+        int                     r)
+    {
+        if (short_rows.empty()) return {};
+
+        int s = (int)short_rows.size();
+
+        // U_short[k][j] = U[short_rows[k]][j]，仅取前 r 列
+        std::vector<std::vector<ZZ>> U_short(s, std::vector<ZZ>(r));
+        for (int k = 0; k < s; ++k)
+            for (int j = 0; j < r; ++j)
+                U_short[k][j] = U[short_rows[k]][j];
+
+        // 列等价类分组：part[j] = j 所在等价类编号
+        // 两列相等 ⟺ 对所有 k：U_short[k][j1] == U_short[k][j2]
+        std::vector<int> part(r, -1);
+        int num_classes = 0;
+        for (int j = 0; j < r; ++j)
+        {
+            if (part[j] != -1) continue;
+            part[j] = num_classes;
+            for (int j2 = j + 1; j2 < r; ++j2)
+            {
+                if (part[j2] != -1) continue;
+                bool equal = true;
+                for (int k = 0; k < s; ++k)
+                    if (U_short[k][j] != U_short[k][j2]) { equal = false; break; }
+                if (equal)
+                    part[j2] = num_classes;
+            }
+            ++num_classes;
+        }
+
+        // 按等价类编号收集候选子集
+        std::vector<std::vector<int>> candidates(num_classes);
+        for (int j = 0; j < r; ++j)
+            candidates[part[j]].push_back(j);
+
+        return candidates;
+    }
+
+    // ================================================================
+    // §7.11 M5: __vanhoeij_recombine
+    //   van Hoeij LLL 因子重组主控循环。
+    //   前置条件：f 本原，deg(f)≥2，lc(f)>0；|lifted|≥2；m > 2·lc(f)·B_Mig(f)
+    // ================================================================
+
+    inline std::vector<upolynomial_<ZZ>>
+    __vanhoeij_recombine(
+        const upolynomial_<ZZ>&              f,
+        const std::vector<upolynomial_<ZZ>>& lifted,
+        const ZZ&                            m)
+    {
+        int r = (int)lifted.size();
+        int N = (int)get_deg(f);
+
+        // === 初始化参数 ===
+        int U_exp = (int)ZZ(r > 20 ? r : 20).sizeinbase(2);
+        ZZ  B     = ZZ(r + 1) * (ZZ(1) << (2 * U_exp));
+        int J_max = (N + 1) / 2;
+        int J0    = (3 * r > N + 1) ? 30 : 10;
+        J0        = std::min(J0, J_max);
+
+        // 活跃因子下标集合：active[k] = lifted 中的原始下标
+        std::vector<int> active(r);
+        std::iota(active.begin(), active.end(), 0);
+
+        upolynomial_<ZZ>              f_star = f;
+        std::vector<upolynomial_<ZZ>> result;
+
+        // 构造初始格矩阵辅助 lambda
+        auto make_initial_M = [](int rr, int U_exp_) -> LLLMatrix {
+            LLLMatrix M(rr, std::vector<ZZ>(rr, ZZ(0)));
+            ZZ scale = ZZ(1) << U_exp_;
+            for (int i = 0; i < rr; ++i)
+                M[i][i] = scale;
+            return M;
+        };
+
+        LLLMatrix M = make_initial_M(r, U_exp);
+        int J_cur    = 0;
+        // 先以 J_target=0 做一次对角 LLL（等价于 s=1 Zassenhaus，近零开销）：
+        // 若所有模因子已各自对应真因子，可在不建 CLD 列的情况下提取所有因子；
+        // 若对角 LLL 未提取全部因子，再增加 CLD 列重试（J_target → J0 → 2·J0 → …）。
+        int J_target = 0;
+
+        while ((int)active.size() > 1)
+        {
+            // [M1] 计算当前活跃因子的 CLD 多项式（仅在需要添加列时才计算）
+            std::vector<upolynomial_<ZZ>> active_lifted;
+            for (int k : active)
+                active_lifted.push_back(lifted[k]);
+            std::vector<upolynomial_<ZZ>> cld;
+            if (J_target > 0)
+                cld = __cld_polys(f_star, active_lifted, m);
+
+            // [M2] 喂入 CLD 列（J_target=0 时跳过，矩阵保持纯对角）
+            int J_new = 0;
+            if (J_target > 0)
+            {
+                J_new = __build_cld_matrix(M, cld, J_cur, J_target, m);
+                J_cur += J_new;
+            }
+
+            // [M3] LLL 规约
+            LLLMatrix U;
+            auto short_rows = __lll_reduce(M, U, B);
+
+            // [M4] 提取候选子集
+            auto candidates = __extract_candidates(short_rows, U, (int)active.size());
+
+            // === 候选子集验证（本轮内批量提取所有因子）===
+            // consumed[j] = true 表示 active_lifted[j] 已在本轮被某候选消耗
+            bool found_any = false;
+            std::vector<bool> consumed((int)active.size(), false);
+            int remaining_active = (int)active.size();
+
+            for (auto& cand : candidates)
+            {
+                if (cand.empty()) continue;
+                // 跳过覆盖全部剩余活跃因子的候选（等价于平凡分割）
+                if ((int)cand.size() >= remaining_active) continue;
+                // 跳过已被前一候选消耗的因子
+                bool any_consumed = false;
+                for (int k : cand)
+                    if (consumed[k]) { any_consumed = true; break; }
+                if (any_consumed) continue;
+
+                // 构造候选乘积：lc(f_star) × ∏ active_lifted[k]，逐步 normalization + mod
+                ZZ lc_fstar = f_star.front().second;
+                upolynomial_<ZZ> g_trial;
+                g_trial.push_back({umonomial(0), lc_fstar});
+                for (int k : cand)
+                {
+                    g_trial = g_trial * active_lifted[k];
+                    g_trial.normalization();
+                    __upoly_mod_coeff(g_trial, m);
+                }
+                g_trial = __upoly_symmetric_mod(g_trial, m);
+
+                auto [c_g, pp_g] = __upoly_primitive(std::move(g_trial));
+
+                // 试除（针对当前 f_star，已从前一成功候选中约去）
+                upolynomial_<ZZ> q_trial, r_trial;
+                pair_vec_div(q_trial.data(), r_trial.data(),
+                             f_star.data(), pp_g.data(), f_star.comp());
+
+                if (!r_trial.empty()) continue;
+
+                // 成功：记录因子，更新 f_star 和消耗标记
+                result.push_back(std::move(pp_g));
+                auto [c_q, pp_q] = __upoly_primitive(std::move(q_trial));
+                f_star = std::move(pp_q);
+
+                for (int k : cand) consumed[k] = true;
+                remaining_active -= (int)cand.size();
+                found_any = true;
+            }
+
+            if (found_any)
+            {
+                // 按逆序从 active 中移除本轮消耗的所有因子
+                for (int j = (int)active.size() - 1; j >= 0; --j)
+                    if (consumed[j]) active.erase(active.begin() + j);
+
+                // 重建格矩阵参数
+                int r_new   = (int)active.size();
+                int U_exp_n = (int)ZZ(r_new > 20 ? r_new : 20).sizeinbase(2);
+                B           = ZZ(r_new + 1) * (ZZ(1) << (2 * U_exp_n));
+                M           = make_initial_M(r_new, U_exp_n);
+                J_cur       = 0;
+                J_target    = 0;  // 找到因子后重置：新子问题先尝试对角 LLL
+                continue;
+            }
+
+            // 本轮无新因子：
+            //   J_target == 0 时（对角 LLL 失败）：升至 J0，开始加入 CLD 列
+            //   J_target > 0 时：翻倍 J_target，超出 J_max 则回退 Zassenhaus
+            if (J_target == 0)
+                J_target = J0;
+            else
+                J_target *= 2;
+            if (J_target > J_max)
+            {
+                auto zass = __zassenhaus_recombine(f_star, active_lifted, m);
+                for (auto& g : zass)
+                    result.push_back(std::move(g));
+                return result;
+            }
+        }
+
+        // active 剩余 ≤ 1：若 f_star 仍有正次数则加入结果
+        if (!f_star.empty() && get_deg(f_star) > 0)
+            result.push_back(std::move(f_star));
+
+        std::sort(result.begin(), result.end(),
+            [](const upolynomial_<ZZ>& a, const upolynomial_<ZZ>& b) {
+                return get_deg(a) < get_deg(b);
+            });
+        return result;
+    }
+
+    // ================================================================
+    // §7.12 路由层 __factor_recombine
+    //   lifted.size() ≤ ZASSENHAUS_THRESHOLD → Zassenhaus（O(2^r) 但 r 小）
+    //   lifted.size() >  ZASSENHAUS_THRESHOLD → van Hoeij LLL（多项式复杂度）
+    // ================================================================
+
+    inline std::vector<upolynomial_<ZZ>>
+    __factor_recombine(
+        const upolynomial_<ZZ>&              f,
+        const std::vector<upolynomial_<ZZ>>& lifted,
+        const ZZ&                            m)
+    {
+        if ((int)lifted.size() <= ZASSENHAUS_THRESHOLD)
+            return __zassenhaus_recombine(f, lifted, m);
+        else
+            return __vanhoeij_recombine(f, lifted, m);
+    }
+
+    // ================================================================
     // §8.2 upolynomial → polynomial 转换辅助（委托 poly_convert）
     // ================================================================
 
@@ -832,6 +1403,29 @@ namespace clpoly{
     }
 
     // ================================================================
+    // §8.3 van Hoeij LLL 因子重组（P1a+P1b 统一入口）
+    // 初始提升：二次 Hensel（快速到达完整精度）
+    // 重组：van Hoeij LLL（所有 r，移除 Zassenhaus 阈值）
+    // 安全网：Zassenhaus（当 LLL 列耗尽时）
+    //
+    // 注：线性 Hensel 基础设施（__hensel_step_linear、__hensel_lift_linear_recursive）
+    //   已在 §6.7 实现，保留供未来真正的线性交织优化使用（P1b 完整版）。
+    //   Van Hoeij LLL 需要在满精度（a_mig 或 a_h）下运行才能高效收敛；
+    //   低精度下运行 LLL 会导致格基规约需 O(n^4) 次迭代而非 O(n)，性能急剧下降。
+    // ================================================================
+
+    inline std::vector<upolynomial_<ZZ>>
+    __lll_factorize(
+        const upolynomial_<ZZ>&              f,
+        const std::vector<upolynomial_<Zp>>& factors,
+        uint32_t                             p)
+    {
+        // A. 初始化：二次 Hensel 提升到完整 Mignotte 精度
+        auto [lifted, m] = __hensel_lift(f, factors, p);
+        return __vanhoeij_recombine(f, lifted, m);
+    }
+
+    // ================================================================
     // §8.4 无平方 ZZ 因式分解
     // ================================================================
 
@@ -847,11 +1441,8 @@ namespace clpoly{
         if (sel.irreducible || sel.factors.size() <= 1)
             return {f};
 
-        // Hensel 提升
-        auto [lifted, modulus] = __hensel_lift(f, sel.factors, sel.prime);
-
-        // 因子重组
-        return __factor_recombine(f, lifted, modulus);
+        // 二次 Hensel 提升 + van Hoeij LLL（移除 Zassenhaus 阈值，全 r 走 LLL）
+        return __lll_factorize(f, sel.factors, sel.prime);
     }
 
     // ================================================================

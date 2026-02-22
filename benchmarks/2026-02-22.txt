@@ -1,0 +1,127 @@
+==== System Info ====
+OS:        Linux 6.6.87.2-microsoft-standard-WSL2 x86_64
+CPU:       12th Gen Intel(R) Core(TM) i9-12900KF
+RAM:              65749112 kB
+Compiler:  g++ 13.3.0
+Build:     Release (-O3 -DNDEBUG)
+======================================================================
+
+==== Multivariate polynomial_ZZ (2 variables) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+add  deg20 len15                                     0.001ms       0.2KB
+add  deg40 len30                                     0.002ms       0.4KB
+add  deg80 len60                                     0.003ms       0.4KB
+mul  deg10 len8                                      0.004ms       1.4KB
+mul  deg20 len15                                     0.015ms       1.5KB
+mul  deg40 len30                                     0.068ms       0.8KB
+pow  deg3^5                                          0.020ms       2.2KB
+pow  deg3^10                                         0.045ms       4.1KB
+pow  deg3^15                                         0.132ms       6.8KB
+gcd  deg8+common4                                    0.354ms      13.2KB
+gcd  deg15+common8                                   1.290ms      22.3KB
+gcd  deg25+common12                                  3.643ms      51.8KB
+deriv  deg20                                         0.001ms       1.0KB
+deriv  deg40                                         0.003ms       1.0KB
+deriv  deg80                                         0.003ms       1.1KB
+prem  deg8/5                                         0.016ms       8.7KB
+prem  deg15/8                                        0.101ms       6.6KB
+prem  deg25/12                                       0.758ms       5.5KB
+resultant  deg4                                      0.019ms       8.7KB
+resultant  deg6                                      0.309ms      15.4KB
+resultant  deg8                                      1.574ms      15.0KB
+
+==== Multivariate factorize (lex) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+factorize  x^2-y^2                                   0.236ms       3.0KB
+factorize  bivar deg3*deg3                           0.616ms      23.9KB
+factorize  bivar deg5*deg5                           2.278ms      38.9KB
+factorize  trivar known                              0.355ms       4.2KB
+factorize  trivar deg2*deg2                        134.634ms     196.7KB
+factorize  (x+y)^2*(x-y)                             0.033ms       3.4KB
+factorize  x^4-y^4                                   0.368ms       5.5KB
+factorize  SymPy f_1 (3var 3fac)                     0.986ms      12.7KB
+factorize  (x+y+z)^3-(x+y+z)                         0.559ms      15.9KB
+
+==== Univariate upolynomial_ZZ ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+add  deg50                                           0.001ms       0.0KB
+add  deg200                                          0.001ms       0.0KB
+add  deg500                                          0.004ms       0.0KB
+mul  deg50                                           0.006ms       0.7KB
+mul  deg200                                          0.130ms       0.0KB
+mul  deg500                                          0.788ms       0.0KB
+gcd  deg30+common15                                  0.082ms      13.3KB
+gcd  deg80+common40                                  0.647ms      41.8KB
+gcd  deg200+common100                                4.589ms      34.8KB
+deriv  deg50                                         0.001ms       0.8KB
+deriv  deg200                                        0.001ms       0.8KB
+deriv  deg500                                        0.002ms       0.8KB
+eval  deg50                                          0.004ms       0.9KB
+eval  deg200                                         0.018ms       4.3KB
+eval  deg500                                         0.079ms      25.8KB
+cont  deg50                                          0.000ms       0.0KB
+cont  deg200                                         0.001ms       0.0KB
+cont  deg500                                         0.003ms       0.0KB
+factorize  ~deg15 (3 factors)                        2.603ms      40.5KB
+factorize  ~deg21 (4 factors)                        6.156ms      60.0KB
+factorize  ~deg29 (5 factors)                       11.241ms      93.8KB
+factorize  Wilkinson W(10)                           2.351ms      28.5KB
+factorize  Wilkinson W(15)                           4.544ms      46.3KB
+factorize  x^15-1 (cyclotomic)                       2.787ms      28.9KB
+factorize  x^24-1 (cyclotomic)                       9.061ms      61.1KB
+factorize  Swinnerton-Dyer S3                        1.190ms      10.9KB
+squarefree  ~deg21                                   0.128ms       4.6KB
+squarefree  ~deg42                                   0.430ms      20.0KB
+
+==== Multivariate polynomial_QQ (2 variables) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+add  deg15                                           0.001ms       0.0KB
+add  deg30                                           0.002ms       0.0KB
+mul  deg10                                           0.006ms       0.4KB
+mul  deg20                                           0.025ms       0.0KB
+pow  deg3^5                                          0.016ms       0.3KB
+pow  deg3^8                                          0.100ms       0.1KB
+
+==== Factorize stress tests ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+factorize  uni 70 factors (deg70)                   77.868ms     155.0KB
+factorize  bivar 70 factors (deg70)              66911.430ms     194.2KB
+factorize  trivar 60 factors (deg60)              6417.281ms     194.2KB
+factorize  10var disjoint 10 factors                 3.745ms       7.1KB
+
+==== Groebner basis (grlex) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+groebner  Katsura-3 (3var)                           0.030ms       3.0KB
+groebner  Katsura-4 (4var)                           0.305ms      12.2KB
+groebner  Cyclic-4 (4var)                            0.085ms       7.4KB
+groebner  Noon-3 (3var)                              0.223ms      12.2KB
+groebner  Eco-5 (5var)                               0.560ms      26.1KB
+groebner  Katsura-5 (5var)                          13.045ms      19.6KB
+groebner  Cyclic-5 (5var)                           16.629ms      33.4KB
+
+==== Real root isolation (uspensky) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+uspensky  deg10 (10 roots)                           1.008ms      16.0KB
+uspensky  deg20 (20 roots)                          10.202ms     188.0KB
+uspensky  deg30 (30 roots)                          50.414ms     188.2KB
+
+==== Memory Profile: per-polynomial representation size ====
+Polynomial                               Terms     KB/poly    Bytes/term
+------------------------------------------------------------------------
+polynomial_ZZ deg20 len15                   15        1.56           107
+polynomial_ZZ deg40 len30                   30        3.09           106
+polynomial_ZZ deg80 len60                   60        6.08           104
+upolynomial_ZZ deg50                        40        0.98            25
+upolynomial_ZZ deg200                      150        3.56            24
+upolynomial_ZZ deg500                      400        9.42            24
+polynomial_QQ deg15                         12        1.42           121
+polynomial_QQ deg30                         25        2.92           120
+
+Done. Total benchmarks: 78

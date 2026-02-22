@@ -8,10 +8,10 @@
 
 | 组件 | 目标函数 | 当前实现 | 目标实现 | 状态 |
 |------|---------|---------|---------|------|
-| **P1a** van Hoeij LLL 重组 | `__factor_recombine` | Zassenhaus O(2^r) | CLD + LLL（Belabas 2009） | **架构完成** |
-| **P1b** 线性 Hensel 提升 | `__linear_hensel_lift_with_lll` | 二叉树二次提升 → Mignotte 精度 | **n 因子直接**线性提升 + van Hoeij LLL 交织 + 早期因子检测 | **架构完成** |
+| **P1a** van Hoeij LLL 重组 | `__vanhoeij_recombine` | CLD + LLL（Belabas 2009） | — | **✓ 实现完成** |
+| **P1b** 线性 Hensel 提升 | `__lll_factorize` | 两阶段精度（启发式 a_h + Mignotte fallback） | 完整线性交织 + 早期因子检测 | **基础设施完成，完整交织未实现** |
 
-> P1a 和 P1b 初版实现相互独立，可按序进行。P1a 是当前主要瓶颈（70因子 80ms 的直接原因），优先实现。P1b 详细设计在 P1a 完成后展开（完整形态下两者交织）。
+> **[更新 2026-02-23]** P1a 已实现。Profiling 显示 recombine 仅占 1-15%，**真正瓶颈是 `__select_prime`（38-60%）和 hensel_lift（31-52%）**，不是重组。P1b 完整交织（`__linear_hensel_lift_with_lll`）尚未实现，详见 P1c/P1d（TODO.md）。
 
 ---
 

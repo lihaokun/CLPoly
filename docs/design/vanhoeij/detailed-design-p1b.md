@@ -4,6 +4,8 @@
 > 基础文档：`docs/design/vanhoeij/architecture.md` Part B
 > 目标文件：`clpoly/polynomial_factorize_univar.hh`
 > 方案：**两阶段精度提前终止**（先试 a_h，再 fallback a_mig）
+>
+> ✅ **[已实现 2026-02-23]** §1–§2 描述的所有代码变更已完成并通过测试。`__hensel_lift` 支持 `a_target` 参数，`__lll_factorize` 实现两阶段逻辑 + CLPOLY_PROFILE 计时。
 
 ---
 

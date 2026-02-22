@@ -87,7 +87,7 @@ __select_prime(f):
   return best（最小-r 策略）
 ```
 
-**关键参数**：固定尝试 30-50 个通过无平方检查的素数，每次做完整 DDF+EDF。
+**关键参数**：~~固定尝试 30-50 个通过无平方检查的素数~~ → **[已改为 max_tries=3，2026-02-23]**，每次做完整 DDF+EDF。
 
 ### 3.2 最小-r 策略的历史背景
 
@@ -251,9 +251,11 @@ FLINT 3 trials × 0.009ms ≈ 0.027ms，加 Hensel+recombine ≈ 0.633ms（FLINT
 
 ### P2a：减少素数试验次数（极低难度，中等收益）
 
+> ✅ **[已实现 2026-02-23]** `max_tries` 已从 30-50 改为 3，移除了 `> deg/2` 时扩展到 50 的逻辑。与 FLINT 对齐。
+
 **方案**：参照 FLINT，将 `max_tries` 从 30-50 降到 3-5。仍保留最小-r（在少量试验中选最优）。
 
-**预期收益**：
+**预期收益**（实现前预估）：
 - `sel_prime` 时间减少约 **85-90%**（30次→3次 DDF+EDF）
 - 总时间减少约 **65-75%**
 - CLPoly vs FLINT 差距：从 8-16x 缩小到约 **2-4x**（剩余差距来自 Zp 算术，即根因 A/B/C）
@@ -261,6 +263,8 @@ FLINT 3 trials × 0.009ms ≈ 0.027ms，加 Hensel+recombine ≈ 0.633ms（FLINT
 **实施难度**：极低——`max_tries = 30` 改为 `max_tries = 3`，约 2 行改动。
 
 **风险**：r 可能略大于全局最优，但 recombine 只占 1-15%，FLINT 实践验证 3 次足够。
+
+> **[后续 profiling 待做]**：P2a 实施后应重新 profiling 确认剩余差距，以决定是否推进 P2b。（当前 §1.2 profiling 数据对应 max_tries=30，P2a 后数据将显著不同。）
 
 ### P2b：原生 Zp 多项式算术（中等难度，大收益）
 
@@ -293,7 +297,7 @@ FLINT 3 trials × 0.009ms ≈ 0.027ms，加 Hensel+recombine ≈ 0.633ms（FLINT
 
 | 根因 | 具体表现 | 对应差距 | 修复方案 | 难度 |
 |------|----------|----------|----------|------|
-| 试验次数过多 | 30-50 次 DDF+EDF vs FLINT 3 次 | **~10x** 浪费 | P2a：max_tries=3 | 极低 |
+| 试验次数过多 | ~~30-50 次~~ → **已修复（max_tries=3）** | **~10x** 浪费 | ✅ P2a：max_tries=3 | 极低 |
 | 标量模乘使用 `div` 指令 | `%` ≈ 25 cycles vs Barrett ≈ 7 cycles | **3-4x** per 乘法 | P2b A：Barrett 归约 | 中 |
 | 稀疏 pair-vector 数据结构 | 24 bytes/coeff vs 8 bytes/coeff | **1.5-2x** cache 效率 | P2b B：密集 `uint64_t[]` | 中 |
 | 通用 `pair_vec_div` 做 poly mod | 非 Zp 专用，含冗余开销 | **~1.5x** per 操作 | P2b C：专用 poly mod | 中 |

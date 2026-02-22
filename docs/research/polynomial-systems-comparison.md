@@ -343,14 +343,16 @@ Maple 溢出时回退到 Sum-of-Products；FLINT 则在位压缩框架内解决�
 
 ### 7.2 缺失能力
 
+> ⚠️ **[部分过时 2026-02-23]** 因式分解和 Hensel 提升已实现，见下表更新。
+
 | 能力 | 状态 | 对标系统 |
 |------|------|---------|
-| **因式分解** | 缺失 | Maple `factor()`, Mathematica `Factor[]` |
+| **因式分解** | ✅ **已实现**（单变量 van Hoeij LLL + 多变量 Wang EEZ） | Maple `factor()`, Mathematica `Factor[]` |
 | **完整多项式除法** | 仅单项式除法 | Maple/FLINT 的堆除法 |
 | **密集乘法路径** | 缺失 | Kronecker 替换 |
 | **位压缩默认存储** | 仅临时使用 | Maple POLY, FLINT |
 | **并行运算** | 缺失 | Maple 多线程堆乘法 |
-| **Hensel 提升** | 缺失 | 因式分解核心组件 |
+| **Hensel 提升** | ✅ **已实现**（二次提升 + 两阶段精度方案） | 因式分解核心组件 |
 
 ### 7.3 与 Maple 演进的类比
 

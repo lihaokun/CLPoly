@@ -4,6 +4,13 @@
 > 目标：替换 `__factor_recombine` 中的 Zassenhaus O(2^r) 子集枚举
 > **一手资料状态**：§2.2–§2.4 已基于 FLINT 源码（`factor_van_hoeij.c`、`CLD_mat.c`）核实并修正；van Hoeij 2002 原文 PDF 未能直接获取，算法逻辑以 FLINT 实现为准。
 
+> ⚠️ **[过时声明 2026-02-23]** 本文档以下内容已过时：
+> - §1.1 描述 `__select_prime` 试 30-50 个素数 → **已改为 max_tries=3**（与 FLINT 一致）
+> - §8.3 节"预期改善 80ms → <5ms（~16x）"的预测 → **实测 P1a 对典型用例无显著加速**（recombine 仅占 1-15%）
+> - "P1a 是主要瓶颈"的判断 → **Profiling（2026-02-23）显示真正瓶颈是 `__select_prime`（38-60%）和 `hensel_lift`（31-52%）**
+>
+> **实现状态**：P1a 已完整实现（`__vanhoeij_recombine`）。算法描述部分仍有效，性能预测和优先级判断参见 `docs/research/factorize-profiling.md`。
+
 ---
 
 ## 1. 现有基础设施

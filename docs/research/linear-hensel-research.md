@@ -4,6 +4,14 @@
 > 目标：实现增量 Hensel 提升 + 早期因子检测（Monagan 2019）
 > 状态：基于 FLINT 源码分析、Monagan 2019 论文摘要、已有 CLPoly 代码阅读完成
 
+> ⚠️ **[过时声明 2026-02-23]** 本文档以下内容已过时：
+> - §1.1 描述 `__select_prime` 选 30-50 个素数 → **已改为 max_tries=3**
+> - §1 中"性能差距"表格（uni-70 83ms）→ **当前实测约 12-21ms**（P1a 已实现）
+> - §5.2 中对 P1b 全局影响的评估需结合最新 profiling：hensel_lift 占 31-52%（W(20) 为 52%），**P1b 完整实现对高次多项式有实质意义**
+> - §8 末尾性能预测（80ms → <10ms）→ **P1a 已使 uni-70 降至 ~12ms**，P1b 对此用例影响有限
+>
+> **实现状态**：P1b 基础设施（`__hensel_step_linear`、`__hensel_lift_linear_recursive`、`__heuristic_starting_precision`、两阶段 Phase2 fallback）已实现。完整线性交织循环（`__linear_hensel_lift_with_lll`，§5 M0-M3）**尚未实现**。详细设计见 `docs/design/vanhoeij/detailed-design-p1b.md`。
+
 ---
 
 ## 1. 背景与动机

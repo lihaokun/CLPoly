@@ -515,6 +515,52 @@ int main() {
         CLPOLY_ASSERT_EQ(ZZ(21).fdiv_ui(7), (uint64_t)0);
     }
 
+    CLPOLY_TEST("ZZ_shift");
+    {
+        // --- operator<<= / operator>>= (compound, small integers) ---
+        ZZ a(1);
+        a <<= 4;
+        CLPOLY_ASSERT_EQ(a, ZZ(16));
+        a >>= 2;
+        CLPOLY_ASSERT_EQ(a, ZZ(4));
+
+        // --- binary operator<< / operator>> (non-modifying) ---
+        // lvalue path (const ZZ&)
+        ZZ x(3);
+        CLPOLY_ASSERT_EQ(x << 3,  ZZ(24));
+        CLPOLY_ASSERT_EQ(x >> 1,  ZZ(1));
+        CLPOLY_ASSERT_EQ(x,       ZZ(3));       // x 不变
+
+        // rvalue path (ZZ&&) — 典型用例：临时对象直接位移，无拷贝
+        CLPOLY_ASSERT_EQ(ZZ(1) << 10, ZZ(1024));
+        CLPOLY_ASSERT_EQ(ZZ(128) >> 3, ZZ(16));
+
+        // --- 大整数路径（超出 int64 小整数范围）---
+        // 1 << 64 → 需要 mpz 路径
+        ZZ big = ZZ(1) << 64;
+        CLPOLY_ASSERT_EQ(big, ZZ("18446744073709551616"));
+        // 再右移回来
+        CLPOLY_ASSERT_EQ(big >> 64, ZZ(1));
+
+        // --- 负数右移（算术移位 / floor toward -∞）---
+        CLPOLY_ASSERT_EQ(ZZ(-8) >> 1, ZZ(-4));
+        CLPOLY_ASSERT_EQ(ZZ(-1) >> 1, ZZ(-1));  // floor(-0.5) = -1
+
+        // --- 边界：移位量 >= 63（小整数路径特殊处理）---
+        CLPOLY_ASSERT_EQ(ZZ(1)  >> 63, ZZ(0));
+        CLPOLY_ASSERT_EQ(ZZ(-1) >> 63, ZZ(-1));
+        CLPOLY_ASSERT_EQ(ZZ(1)  >> 100, ZZ(0));  // 大移位量走 mpz 路径
+
+        // --- 零移位 ---
+        CLPOLY_ASSERT_EQ(ZZ(42) << 0, ZZ(42));
+        CLPOLY_ASSERT_EQ(ZZ(42) >> 0, ZZ(42));
+
+        // --- 模拟 M5 中的 van Hoeij bound 计算：ZZ(r+1) * (ZZ(1) << (2*U_exp)) ---
+        int r = 10, U_exp = 4;
+        ZZ B = ZZ(r + 1) * (ZZ(1) << (2 * U_exp));
+        CLPOLY_ASSERT_EQ(B, ZZ(11) * ZZ(256));   // 11 * 2^8
+    }
+
     // ================================================================
     //  QQ construction
     // ================================================================

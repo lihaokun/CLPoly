@@ -20,8 +20,63 @@
 #include <numeric>
 #include <stdexcept>
 #include <cassert>
+#ifdef CLPOLY_PROFILE
+#include <chrono>
+#include <cstdio>
+#include <atomic>
+#endif
 
 namespace clpoly{
+
+#ifdef CLPOLY_PROFILE
+    // ================================================================
+    // Profiling accumulators (enabled only when -DCLPOLY_PROFILE)
+    // ================================================================
+    struct __profile_stats {
+        std::atomic<long long> select_prime_ns{0};
+        std::atomic<long long> hensel_lift_ns{0};
+        std::atomic<long long> recombine_ns{0};
+        std::atomic<long long> phase2_hensel_ns{0};
+        std::atomic<long long> phase2_recombine_ns{0};
+        std::atomic<long long> calls{0};
+        std::atomic<long long> phase2_triggers{0};
+    };
+    inline __profile_stats __g_profile;
+
+    inline void print_factorize_profile() {
+        long long calls     = __g_profile.calls.load();
+        long long sel_ns    = __g_profile.select_prime_ns.load();
+        long long hen_ns    = __g_profile.hensel_lift_ns.load();
+        long long rec_ns    = __g_profile.recombine_ns.load();
+        long long h2_ns     = __g_profile.phase2_hensel_ns.load();
+        long long r2_ns     = __g_profile.phase2_recombine_ns.load();
+        long long total_ns  = sel_ns + hen_ns + rec_ns + h2_ns + r2_ns;
+        long long ph2       = __g_profile.phase2_triggers.load();
+        if (calls == 0 || total_ns == 0) { printf("[profile] no data\n"); return; }
+        auto pct = [&](long long x) { return 100.0 * x / total_ns; };
+        auto us  = [](long long ns) { return ns / 1000.0; };
+        printf("\n===== factorize profile (%lld calls, %lld phase-2 triggers) =====\n", calls, ph2);
+        printf("  select_prime       %9.1f us  %5.1f%%\n", us(sel_ns), pct(sel_ns));
+        printf("  hensel_lift P1     %9.1f us  %5.1f%%\n", us(hen_ns), pct(hen_ns));
+        printf("  recombine   P1     %9.1f us  %5.1f%%\n", us(rec_ns), pct(rec_ns));
+        printf("  hensel_lift P2     %9.1f us  %5.1f%%\n", us(h2_ns),  pct(h2_ns));
+        printf("  recombine   P2     %9.1f us  %5.1f%%\n", us(r2_ns),  pct(r2_ns));
+        printf("  total              %9.1f us\n",           us(total_ns));
+        printf("  avg per call       %9.1f us\n",           us(total_ns / calls));
+        printf("================================================================\n\n");
+    }
+    inline void reset_factorize_profile() {
+        __g_profile.select_prime_ns = 0;
+        __g_profile.hensel_lift_ns  = 0;
+        __g_profile.recombine_ns    = 0;
+        __g_profile.phase2_hensel_ns= 0;
+        __g_profile.phase2_recombine_ns = 0;
+        __g_profile.calls           = 0;
+        __g_profile.phase2_triggers = 0;
+    }
+    #define _PROF_NOW() std::chrono::steady_clock::now()
+    #define _PROF_NS(a,b) std::chrono::duration_cast<std::chrono::nanoseconds>((b)-(a)).count()
+#endif // CLPOLY_PROFILE
 
     // ================================================================
     // §8.1 factorization 返回类型
@@ -491,20 +546,32 @@ namespace clpoly{
     }
 
     // §6.6 多因子 Hensel 提升 (M2 入口)
+    // a_target == 0：提升到完整 Mignotte 精度（默认）
+    // a_target >  0：提升到 p^a_target（停止条件 m > p^a_target - 1）
     inline std::pair<std::vector<upolynomial_<ZZ>>, ZZ>
     __hensel_lift(
         const upolynomial_<ZZ>& f,
         const std::vector<upolynomial_<Zp>>& factors,
-        uint32_t p)
+        uint32_t p,
+        int a_target = 0)
     {
         assert(factors.size() >= 2);
         assert(!f.empty());
 
         // 1. 确定提升精度
-        ZZ B = __mignotte_bound(f);
-        ZZ lc_f = f.front().second;
-        if (lc_f < ZZ(0)) lc_f = -lc_f;
-        ZZ target = ZZ(2) * lc_f * B;  // 需要 p^k > target
+        ZZ target;
+        if (a_target == 0) {
+            ZZ B = __mignotte_bound(f);
+            ZZ lc_f = f.front().second;
+            if (lc_f < ZZ(0)) lc_f = -lc_f;
+            target = ZZ(2) * lc_f * B;  // 需要 p^k > target
+        } else {
+            // target = p^a_target - 1：使 while(m <= target) 等价于 while(m < p^a_target)
+            target = ZZ(1);
+            for (int i = 0; i < a_target; ++i)
+                target *= ZZ(p);
+            target -= ZZ(1);
+        }
 
         // 2. 处理首项系数: 将 lc(f) 分配到 factor[0]
         //    修改 factor[0]: 乘以 lc(f) mod p
@@ -1331,7 +1398,7 @@ namespace clpoly{
         size_t best_count = SIZE_MAX;
 
         int64_t deg_f = get_deg(f);
-        size_t max_tries = 30;
+        size_t max_tries = 3;
         constexpr size_t PRIME_TABLE_SIZE = 9999;  // boost::math::prime 表上限
         std::mt19937 rng(42);
 
@@ -1393,9 +1460,6 @@ namespace clpoly{
                 best.factors = std::move(irr_factors);
             }
 
-            // 因子数 > deg/2 时扩展尝试到 50 个
-            if (best_count > (size_t)(deg_f / 2) && tried == 30)
-                max_tries = 50;
         }
 
         best.irreducible = false;
@@ -1420,9 +1484,44 @@ namespace clpoly{
         const std::vector<upolynomial_<Zp>>& factors,
         uint32_t                             p)
     {
-        // A. 初始化：二次 Hensel 提升到完整 Mignotte 精度
-        auto [lifted, m] = __hensel_lift(f, factors, p);
-        return __vanhoeij_recombine(f, lifted, m);
+        int r   = (int)factors.size();
+        int a_h = __heuristic_starting_precision(f, r, p);
+
+        // Phase 1：提升到启发式精度 a_h（当 a_h < a_mig 时节省提升代价）
+#ifdef CLPOLY_PROFILE
+        auto _t0 = _PROF_NOW();
+#endif
+        auto [lifted_h, m_h] = __hensel_lift(f, factors, p, a_h);
+#ifdef CLPOLY_PROFILE
+        auto _t1 = _PROF_NOW();
+#endif
+        auto result = __vanhoeij_recombine(f, lifted_h, m_h);
+#ifdef CLPOLY_PROFILE
+        auto _t2 = _PROF_NOW();
+        __g_profile.hensel_lift_ns += _PROF_NS(_t0, _t1);
+        __g_profile.recombine_ns   += _PROF_NS(_t1, _t2);
+#endif
+
+        // Phase 1 返回单个因子且 r > 1，说明精度不足（Mignotte 条件未满足）。
+        // Phase 2：提升到完整 Mignotte 精度，保证正确性。
+        if ((int)result.size() == 1 && r > 1) {
+#ifdef CLPOLY_PROFILE
+            auto _t3 = _PROF_NOW();
+#endif
+            auto [lifted_mig, m_mig] = __hensel_lift(f, factors, p);
+#ifdef CLPOLY_PROFILE
+            auto _t4 = _PROF_NOW();
+#endif
+            auto result2 = __vanhoeij_recombine(f, lifted_mig, m_mig);
+#ifdef CLPOLY_PROFILE
+            auto _t5 = _PROF_NOW();
+            __g_profile.phase2_hensel_ns    += _PROF_NS(_t3, _t4);
+            __g_profile.phase2_recombine_ns += _PROF_NS(_t4, _t5);
+            __g_profile.phase2_triggers++;
+#endif
+            return result2;
+        }
+        return result;
     }
 
     // ================================================================
@@ -1435,8 +1534,15 @@ namespace clpoly{
     {
         assert(!f.empty() && get_deg(f) >= 2);
 
+#ifdef CLPOLY_PROFILE
+        __g_profile.calls++;
+        auto _ts0 = _PROF_NOW();
+#endif
         // 选择素数
         auto sel = __select_prime(f);
+#ifdef CLPOLY_PROFILE
+        __g_profile.select_prime_ns += _PROF_NS(_ts0, _PROF_NOW());
+#endif
 
         if (sel.irreducible || sel.factors.size() <= 1)
             return {f};

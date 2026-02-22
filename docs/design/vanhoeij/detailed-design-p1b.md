@@ -1,564 +1,271 @@
-# P1b 线性 Hensel 提升：细化设计文档
+# P1b 启发式精度提前终止：细化设计文档
 
 > 阶段：细化（workflow.md §2.3）
 > 基础文档：`docs/design/vanhoeij/architecture.md` Part B
-> 调研报告：`docs/research/linear-hensel-research.md`
 > 目标文件：`clpoly/polynomial_factorize_univar.hh`
-> 方案：**n 因子直接线性步**（Monagan 2022 路线，无二叉树）
+> 方案：**两阶段精度提前终止**（先试 a_h，再 fallback a_mig）
 
 ---
 
-## 0. 实现顺序
+## 0. 旧设计失败原因分析
 
-按依赖从底向上：
+旧设计（"n 因子直接线性步交织循环"）在实现后产生性能回退，根本原因有两点：
 
-```
-M4 __heuristic_starting_precision   ← 无依赖，纯计算
-M0 __linear_bezout_chain            ← 依赖 Zp 多项式 GCD（现有）
-M1 __hensel_step_linear_nfactor     ← 依赖 __upoly_divmod_mod 等（现有）
-M3 __linear_hensel_lift_with_lll    ← 调用 M0/M1/M4 + P1a 全部模块
-接口修改                             ← 改 __factor_squarefree_primitive_ZZ
-```
+### 原因 1：在不充足精度下运行 LLL → O(n⁴) 迭代
 
-每个模块完成后独立测试再进入下一个（workflow.md §4.1）。
+旧设计每提升 k=5 步就运行一次 LLL。当 Hensel 精度 a < a_h 时，CLD 多项式的系数界远大于提升精度，LLL 格基无法快速收敛——每次 LLL 调用需 O(n⁴) 次 Gram-Schmidt 迭代，而非 O(n)。结果：运行了数十次低效 LLL，累积代价远超直接提升到 a_h 再运行一次 LLL 的代价。
+
+代码中已有注释（§8.3 前）：
+> "Van Hoeij LLL 需要在满精度（a_mig 或 a_h）下运行才能高效收敛；低精度下运行 LLL 会导致格基规约需 O(n⁴) 次迭代而非 O(n)，性能急剧下降。"
+
+### 原因 2：旧 M3 初始化 J_target = J₀（跳过对角 LLL）
+
+旧设计在 `__linear_hensel_lift_with_lll` 中初始化 `J_target = J0`，跳过了对角 LLL（即先以纯 2^U_exp·I_r 对角矩阵运行一次 LLL 的步骤）。
+
+当前 `__vanhoeij_recombine` 已正确实现对角 LLL（第 1162 行 `J_target = 0`），旧设计重新实现主循环时丢失了这一优化。
+
+### 正确结论
+
+**LLL 必须在充足精度（a_h 或 a_mig）下运行**，且每个精度级别只运行一次。不应交织多次低精度 LLL。
 
 ---
 
-## 1. M4：`__heuristic_starting_precision`
+## 1. 正确设计概述
 
-### 函数签名
+用最少的代码变更实现"启发式精度提前终止"：
+
+```
+__lll_factorize(f, factors, p)
+    │
+    ├── 计算 a_h = __heuristic_starting_precision(f, r, p)   ← 已存在 §6.7
+    │
+    ├── [阶段 1] __hensel_lift(f, factors, p, a_h)  → lifted_h, m_h
+    │       __vanhoeij_recombine(f, lifted_h, m_h, &zass_triggered)
+    │       if !zass_triggered → return（快速路径，大多数情况）
+    │
+    └── [阶段 2] __hensel_lift(f, factors, p)        → lifted_mig, m_mig（全 Mignotte）
+                __vanhoeij_recombine(f, lifted_mig, m_mig)  → return
+```
+
+**阶段 1 快速路径** 适用条件：
+- `a_heuristic < a_mig`（启发式精度更小，才有节省）
+- LLL 在 a_h 精度下收敛（不触发 Zassenhaus fallback）
+
+典型用例 `(x-1)...(x-70)`（p=71, r=70）：
+- a_h = 31，a_mig = 66
+- 因子 x-i 的系数最大为 70，而 71^31 ≈ 10^56 >> 70，LLL 在 a_h=31 必然收敛
+- 阶段 1 即返回，Hensel 步数从 7 步（p^64 ≥ Mignotte）降至 5 步（p^32 ≥ p^31）
+
+**阶段 2 fallback** 仅在 a_h 精度不足时触发（罕见）。
+
+---
+
+## 2. 代码变更
+
+所有变更均在 `clpoly/polynomial_factorize_univar.hh`，共 2 处修改：
+
+### 2.1 `__hensel_lift`：增加 `a_target` 参数
+
+**位置**：§6.6，line 494
+
+**签名变更**：
 
 ```cpp
-inline int __heuristic_starting_precision(
+// 改前：
+inline std::pair<std::vector<upolynomial_<ZZ>>, ZZ>
+__hensel_lift(
     const upolynomial_<ZZ>& f,
-    int                     r,
-    uint32_t                p);
-```
-
-### 参数语义
-
-| 参数 | 含义 |
-|------|------|
-| `f` | 待分解多项式（用于取 `f.size()` = 项数） |
-| `r` | 模因子数 |
-| `p` | 素数（Hensel 底） |
-
-### 算法步骤
-
-```cpp
-// 1. 用 double 计算 FLINT 启发式 a_h
-double logp = std::log((double)p);
-int    min_b = (int)ZZ(p).sizeinbase(2);          // ≈ log₂(p)
-int    N     = (int)f.size() - 1;                  // 项数 - 1 ≈ deg(f)
-double a_h_d = std::ceil(
-    (2.5 * r + min_b) * std::log(2.0) / logp
-    + std::log((double)(N + 1)) / (2.0 * logp));
-int a_h = std::max(1, (int)a_h_d);
-
-// 2. 计算 Mignotte 精度 a_mig（循环逼近）
-ZZ B_mig = __mignotte_bound(f);
-ZZ lc_f  = f.front().second;
-if (lc_f < ZZ(0)) lc_f = -lc_f;
-ZZ target = ZZ(2) * lc_f * B_mig;
-int a_mig = 0;
-ZZ  pa(1);
-while (pa <= target) { pa *= ZZ(p); ++a_mig; }
-
-// 3. 取较小值（保证不超出 Mignotte 精度）
-return std::min(a_mig, a_h);
-```
-
-### 复用点
-
-- `__mignotte_bound(f)`（line 122）
-- `ZZ::sizeinbase(2)`（GMP `mpz_sizeinbase`，bit 宽度）
-
----
-
-## 2. M0：`__linear_bezout_chain`
-
-### 函数签名
-
-```cpp
-inline std::vector<upolynomial_<ZZ>>
-__linear_bezout_chain(
     const std::vector<upolynomial_<Zp>>& factors,
-    uint32_t                             p);
-```
+    uint32_t p)
 
-### 参数语义
-
-| 参数 | 含义 |
-|------|------|
-| `factors` | lc_f 调整后的 r 个 Zp 因子（首一或 lc_f·首一） |
-| `p` | 素数 |
-
-### 返回值
-
-`vector<upolynomial_<ZZ>>`：r 个 Bézout 系数 s_i，系数以 ZZ 存储（值在 `[0, p)`），满足：
-
-```
-Σᵢ s[i] · ∏_{j≠i} factors[j] ≡ 1  (mod p)
-deg s[i] < deg factors[i]
-```
-
-### 算法步骤
-
-```cpp
-int r = (int)factors.size();
-
-// 步骤 1：计算全积 P = ∏ factors[i]  (mod p)
-upolynomial_<Zp> P = factors[0];
-for (int i = 1; i < r; ++i)
-    P = P * factors[i];   // Zp 多项式乘法，结果自动 mod p
-
-// 步骤 2：对每个 i 计算 s[i]
-std::vector<upolynomial_<ZZ>> result;
-result.reserve(r);
-for (int i = 0; i < r; ++i) {
-    // 2a. 计算余积 P_i = P / factors[i]  (mod p 精确除法)
-    upolynomial_<Zp> P_i = poly_exact_div_zp(P, factors[i]);
-    //    poly_exact_div_zp：__upoly_divmod_mod 的 Zp 版本，余式应为空
-
-    // 2b. 扩展 GCD：找 a_i 使 a_i * P_i ≡ 1 (mod factors[i], mod p)
-    //     使用现有 polynomial_GCD(P_i, factors[i], s_i, t_i)
-    //     其返回值满足 s_i * P_i + t_i * factors[i] = gcd = 1（因互素）
-    upolynomial_<Zp> s_i_zp, t_i_zp;
-    polynomial_GCD(P_i, factors[i], s_i_zp, t_i_zp);
-    // s_i_zp 已满足 deg s_i_zp < deg factors[i]（扩展 GCD 的标准输出）
-
-    // 2c. 转为 ZZ（系数 ∈ [0, p)）
-    result.push_back(__upoly_Zp_to_ZZ(s_i_zp));
-}
-return result;
-```
-
-**关键说明**：
-- `polynomial_GCD(g, h, s, t)` 是 CLPoly 现有 Zp 扩展 GCD（`__hensel_tree_build_recursive` line 314 已使用）。
-- 返回值满足 `s·g + t·h = gcd`，当 gcd = 1（因子互素）时即 `s·P_i + t·factors[i] = 1`，故 `s_i_zp = s`。
-- 无需再做 `s_i mod factors[i]`——扩展 GCD 已保证 `deg s_i < deg h`（即 `deg factors[i]`）。
-
-### 复用点
-
-- `polynomial_GCD`（已有，Zp 扩展 GCD，`__hensel_tree_build_recursive` line 314 已用）
-- `__upoly_Zp_to_ZZ`（已有）
-- Zp 多项式乘法（`*` 运算符，已有）
-
-### 错误处理
-
-- 若 gcd ≠ 1（因子不互素）：`polynomial_GCD` 返回非平凡 gcd，此时 `s_i_zp` 不满足需求，后续提升将产生错误结果。由 `__select_prime` 保证不发生，调用方无需额外检查。
-
----
-
-## 3. M1：`__hensel_step_linear_nfactor`
-
-### 函数签名
-
-```cpp
-inline void __hensel_step_linear_nfactor(
-    std::vector<upolynomial_<ZZ>>&       h,
-    const std::vector<upolynomial_<ZZ>>& s,
-    const upolynomial_<ZZ>&              f,
-    uint32_t                             p,
-    const ZZ&                            p_a);
-```
-
-### 参数语义
-
-| 参数 | 含义 |
-|------|------|
-| `h` | r 个提升因子（原地更新），系数 ∈ `[0, p^a)` |
-| `s` | r 个 Bézout 系数（只读），系数 ∈ `[0, p)` |
-| `f` | 目标多项式（ZZ，完整） |
-| `p` | 素数 |
-| `p_a` | 当前模数 p^a |
-
-### 算法步骤
-
-```cpp
-ZZ p_zz(p);
-ZZ p_a1 = p_a * p_zz;    // p^(a+1)
-
-// ── 步骤 1：计算 ∏ h[i]  (mod p^(a+1))，然后算误差 e ────────────
-// 为避免全精度大整数乘法，只需 mod p^(a+1) 精度
-upolynomial_<ZZ> prod = h[0];
-__upoly_mod_coeff(prod, p_a1);
-for (int i = 1; i < (int)h.size(); ++i) {
-    prod = prod * h[i];
-    __upoly_mod_coeff(prod, p_a1);   // 每步截断，控制系数增长
-}
-
-// e = (f - prod) / p_a  mod p
-upolynomial_<ZZ> err = f - prod;
-for (auto& term : err.data()) {
-    ZZ::fdiv_q(term.second, term.second, p_a);   // 精确整除（Hensel 不变式）
-    ZZ::fdiv_r(term.second, term.second, p_zz);  // mod p → [0, p)
-}
-// 去零项
-{ auto it = err.data().begin(), out = it;
-  for (; it != err.data().end(); ++it)
-      if (it->second) { if (out != it) *out = std::move(*it); ++out; }
-  err.data().erase(out, err.data().end()); }
-
-if (err.empty()) return;    // f ≡ ∏ h[i]  (mod p^(a+1))，无需修正
-
-// ── 步骤 2：对每个 i 独立计算 σ[i] 并更新 h[i] ──────────────────
-for (int i = 0; i < (int)h.size(); ++i) {
-    // σ[i] = s[i] * e  mod h[i]  (mod p)
-    upolynomial_<ZZ> se = s[i] * err;
-    // h[i] 系数 ∈ [0, p^a)，divmod 内部会先 mod p 处理被除式和除式首项
-    upolynomial_<ZZ> q, sigma;
-    __upoly_divmod_mod(q, sigma, se, h[i], p_zz);
-
-    // h'[i] = h[i] + p_a * σ[i]  (mod p^(a+1))
-    for (auto& term : sigma.data())
-        term.second *= p_a;
-    h[i] = h[i] + sigma;
-    __upoly_mod_coeff(h[i], p_a1);
-}
-```
-
-### 关键实现说明
-
-**产品截断（步骤 1）**：每次中间乘积后立即 mod p^(a+1)，使系数不超过 p^(a+1)。这是正确的，因为：
-- 我们只需要 `prod mod p^(a+1)` 来计算误差 `(f - prod) / p_a mod p`
-- `(f - prod) mod p^(a+1)` 的每个系数都被 p^a 整除（Hensel 不变式），mod p^(a+1) 后再除以 p^a 才得到 e
-
-**`__upoly_divmod_mod(q, sigma, se, h[i], p_zz)` 中 `h[i]` 的首项**：
-- `h[i]` 的系数 ∈ `[0, p^a)`，首项系数 mod p = 原始 Zp 因子的首项系数（= 1 对于首一因子，或 = lc_f·1 对于 factors_adj[0]）
-- `__upoly_divmod_mod` 内部计算 `ZZ::invert(lc_inv, h[i].front().second, p_zz)`，由 `__select_prime` 保证可逆
-
-**s[i] 系数小**：s[i] 系数 ∈ `[0, p)`，err 系数 ∈ `[0, p)`，故 `se = s[i] * err` 的系数 ∈ `[0, p²)`，不溢出 int64_t（p < 2^30，p² < 2^60 < 2^63）。
-
-### 复用点
-
-- `__upoly_mod_coeff`（line 137）：非对称系数取模
-- `__upoly_divmod_mod`（line 155）：模 p 带余除法（已处理大系数除式）
-- `ZZ::fdiv_q`, `ZZ::fdiv_r`（ZZ.hh）
-
----
-
-## 4. M3：`__linear_hensel_lift_with_lll`
-
-### 函数签名
-
-```cpp
-inline std::vector<upolynomial_<ZZ>>
-__linear_hensel_lift_with_lll(
-    const upolynomial_<ZZ>&              f,
+// 改后：
+inline std::pair<std::vector<upolynomial_<ZZ>>, ZZ>
+__hensel_lift(
+    const upolynomial_<ZZ>& f,
     const std::vector<upolynomial_<Zp>>& factors,
-    uint32_t                             p);
+    uint32_t p,
+    int a_target = 0)   // 0 = 全 Mignotte；> 0 = 停在 p^a >= p^a_target
 ```
 
-### 算法步骤（分段）
-
-#### 段 A：初始化
+**循环停止条件变更**：
 
 ```cpp
-assert(factors.size() >= 2 && !f.empty());
-int r = (int)factors.size();
-
-// A1. 首项系数处理（与现有 __hensel_lift line 511-515 相同）
+// 改前：
+ZZ B = __mignotte_bound(f);
 ZZ lc_f = f.front().second;
 if (lc_f < ZZ(0)) lc_f = -lc_f;
-std::vector<upolynomial_<Zp>> factors_adj = factors;
-Zp lc_mod_p(f.front().second, p);
-for (auto& term : factors_adj[0])
-    term.second *= lc_mod_p;
-factors_adj[0].normalization();
-
-// A2. 预计算 Bézout 链（一次性，固定 mod p）
-auto s = __linear_bezout_chain(factors_adj, p);    // [M0]
-
-// A3. 初始提升基：Zp → ZZ
-std::vector<upolynomial_<ZZ>> h;
-h.reserve(r);
-for (auto& fi : factors_adj)
-    h.push_back(__upoly_Zp_to_ZZ(fi));
-
-// A4. 精度参数
-int a0    = __heuristic_starting_precision(f, r, p);  // [M4]
-int a_mig = 0;
-{ ZZ pa(1), tgt = ZZ(2) * lc_f * __mignotte_bound(f);
-  while (pa <= tgt) { pa *= ZZ(p); ++a_mig; } }
-
-// A5. van Hoeij LLL 状态（与 __vanhoeij_recombine 相同）
-int N     = (int)get_deg(f);
-int U_exp = (int)ZZ(r > 20 ? r : 20).sizeinbase(2);
-ZZ  B     = ZZ(r + 1) * (ZZ(1) << (2 * U_exp));
-int J_max = (N + 1) / 2;
-int J0    = std::min((3 * r > N + 1) ? 30 : 10, J_max);
-
-std::vector<int>              active(r);
-std::iota(active.begin(), active.end(), 0);
-upolynomial_<ZZ>              f_star = f;
-std::vector<upolynomial_<ZZ>> result;
-
-auto make_initial_M = [](int rr, int u_exp) -> LLLMatrix {
-    LLLMatrix M(rr, std::vector<ZZ>(rr, ZZ(0)));
-    ZZ scale = ZZ(1) << u_exp;
-    for (int i = 0; i < rr; ++i) M[i][i] = scale;
-    return M;
-};
-
-LLLMatrix M      = make_initial_M(r, U_exp);
-int       J_cur  = 0, J_target = J0;
-```
-
-#### 段 B：初始线性提升（a0 步）
-
-```cpp
-ZZ p_a(p);      // 开始时 p^1（第一步的 "当前模数 p^a" 是 p^1，提升后到 p^2）
-int a_cur = 1;
-
-for (int step = 1; step <= a0; ++step) {
-    __hensel_step_linear_nfactor(h, s, f, p, p_a);   // [M1]
-    p_a   *= ZZ(p);    // p_a → p^(step+1)
-    a_cur  = step + 1;
-}
-// 段 B 结束：h[i] 系数 mod p^a0，p_a = p^a0，a_cur = a0
-```
-
-**注**：第一次调用 M1 时 `p_a = p^1`，步骤完成后 `h[i]` 升至 mod p^2，然后 `p_a *= p` 变为 p^2，为下一步做准备。
-
-#### 段 C：主交织循环
-
-```cpp
-while ((int)active.size() > 1) {
-
-    // C1. 收集当前活跃因子（对称约化供 P1a 模块使用）
-    std::vector<upolynomial_<ZZ>> active_h;
-    for (int k : active) {
-        auto hi = __upoly_symmetric_mod(h[k], p_a);
-        active_h.push_back(std::move(hi));
-    }
-
-    // C2. P1a 模块调用（与 __vanhoeij_recombine 完全相同）
-    auto cld        = __cld_polys(f_star, active_h, p_a);
-    int  J_new      = __build_cld_matrix(M, cld, J_cur, J_target, p_a);
-    J_cur          += J_new;
-    LLLMatrix U;
-    auto short_rows = __lll_reduce(M, U, B);
-    auto candidates = __extract_candidates(short_rows, U, (int)active.size());
-
-    // C3. 因子验证（与 __vanhoeij_recombine line 1086-1133 完全相同）
-    bool found_any = false;
-    for (auto& cand : candidates) {
-        if (cand.empty() || (int)cand.size() >= (int)active.size()) continue;
-        ZZ lc_fstar = f_star.front().second;
-        upolynomial_<ZZ> g_trial;
-        g_trial.push_back({umonomial(0), lc_fstar});
-        for (int k : cand) {
-            g_trial = g_trial * active_h[k];
-            g_trial.normalization();
-            __upoly_mod_coeff(g_trial, p_a);
-        }
-        g_trial = __upoly_symmetric_mod(g_trial, p_a);
-        auto [c_g, pp_g] = __upoly_primitive(std::move(g_trial));
-        upolynomial_<ZZ> q_trial, r_trial;
-        pair_vec_div(q_trial.data(), r_trial.data(),
-                     f_star.data(), pp_g.data(), f_star.comp());
-        if (!r_trial.empty()) continue;
-        // 成功
-        result.push_back(std::move(pp_g));
-        auto [c_q, pp_q] = __upoly_primitive(std::move(q_trial));
-        f_star = std::move(pp_q);
-        std::vector<int> cand_desc = cand;
-        std::sort(cand_desc.rbegin(), cand_desc.rend());
-        for (int j : cand_desc) active.erase(active.begin() + j);
-        int r_new   = (int)active.size();
-        int U_exp_n = (int)ZZ(r_new > 20 ? r_new : 20).sizeinbase(2);
-        B           = ZZ(r_new + 1) * (ZZ(1) << (2 * U_exp_n));
-        M           = make_initial_M(r_new, U_exp_n);
-        J_cur       = 0; J_target = J0;
-        found_any   = true;
-        break;
-    }
-    if (found_any) continue;
-
-    // C4. 本轮无进展：先倍增 J_target
-    if (J_new > 0) {
-        J_target *= 2;
-        if (J_target > J_max) {
-            // 安全网：fallback Zassenhaus
-            std::vector<upolynomial_<ZZ>> active_h_sym;
-            for (int k : active)
-                active_h_sym.push_back(__upoly_symmetric_mod(h[k], p_a));
-            auto zass = __zassenhaus_recombine(f_star, active_h_sym, p_a);
-            for (auto& g : zass) result.push_back(std::move(g));
-            goto sort_and_return;
-        }
-        continue;
-    }
-
-    // C5. 列已耗尽：增量提升 k 步
-    {
-        static constexpr int LIFT_STEP_K = 5;
-        for (int step = 0; step < LIFT_STEP_K && a_cur <= a_mig; ++step) {
-            __hensel_step_linear_nfactor(h, s, f, p, p_a);
-            p_a   *= ZZ(p);
-            a_cur += 1;
-        }
-        if (a_cur > a_mig) {
-            // 安全网：fallback Zassenhaus
-            std::vector<upolynomial_<ZZ>> active_h_sym;
-            for (int k : active)
-                active_h_sym.push_back(__upoly_symmetric_mod(h[k], p_a));
-            auto zass = __zassenhaus_recombine(f_star, active_h_sym, p_a);
-            for (auto& g : zass) result.push_back(std::move(g));
-            goto sort_and_return;
-        }
-        // 重置格矩阵（精度改变，CLD 需重新计算）
-        J_cur    = 0;
-        J_target = J0;
-        M        = make_initial_M((int)active.size(), U_exp);
-    }
+ZZ target = ZZ(2) * lc_f * B;
+// ...
+ZZ m(p);
+while (m <= target)
+{
+    __hensel_lift_recursive(nodes, 0, f, m);
+    m = m * m;
 }
 
-// D. 最后一个因子
-if (!f_star.empty() && get_deg(f_star) > 0)
-    result.push_back(std::move(f_star));
-
-sort_and_return:
-std::sort(result.begin(), result.end(),
-    [](const upolynomial_<ZZ>& a, const upolynomial_<ZZ>& b) {
-        return get_deg(a) < get_deg(b); });
-return result;
+// 改后：
+ZZ target;
+if (a_target == 0) {
+    ZZ B = __mignotte_bound(f);
+    ZZ lc_f_abs = f.front().second;
+    if (lc_f_abs < ZZ(0)) lc_f_abs = -lc_f_abs;
+    target = ZZ(2) * lc_f_abs * B;  // Mignotte 停止条件
+} else {
+    target = ZZ(1);
+    for (int i = 0; i < a_target; ++i)
+        target *= ZZ(p);              // 目标 = p^a_target
+    target -= ZZ(1);                 // while(m <= p^a_target-1) ↔ while(m < p^a_target)
+}
+// ... (lc_f、因子调整代码保持不变，但 lc_f 已在 target 分支内计算)
+// 二次提升循环不变：
+ZZ m(p);
+while (m <= target)
+{
+    __hensel_lift_recursive(nodes, 0, f, m);
+    m = m * m;
+}
 ```
 
-**关于 `goto`**：两个安全网出口处使用 `goto sort_and_return` 以避免代码重复。若风格偏好不用 goto，可改用辅助函数或 lambda 封装排序+返回逻辑。
+> **注**：`a_target > 0` 时停止条件为 `m <= p^a_target - 1`，即 `m < p^a_target`。循环退出后 m ≥ p^a_target（通常为某个 p^(2^k)，二次提升不能精确命中 a_target）。这是正确的：LLL 只需 m > Mignotte 界，精度略超 p^a_target 不影响正确性。
 
-### 调用关系
+### 2.2 `__vanhoeij_recombine`：无变更
 
-```
-__linear_hensel_lift_with_lll (M3)
-  ├── __linear_bezout_chain (M0)
-  ├── __heuristic_starting_precision (M4)
-  ├── __upoly_Zp_to_ZZ                    ← 现有
-  ├── __hensel_step_linear_nfactor (M1)   ← 段 B 初始提升 + 段 C5 增量提升
-  ├── __upoly_symmetric_mod               ← 现有
-  ├── __cld_polys         (P1a M1)
-  ├── __build_cld_matrix  (P1a M2)
-  ├── __lll_reduce        (P1a M3)
-  ├── __extract_candidates (P1a M4)
-  ├── __upoly_primitive                   ← 现有
-  ├── pair_vec_div                        ← 现有
-  └── __zassenhaus_recombine              ← 现有（安全网）
-```
+`__vanhoeij_recombine` 签名保持不变。
 
----
+> **实现说明**：初始设计考虑增加 `bool* zassenhaus_triggered` 输出参数来检测 Phase 1 失败，
+> 但最终实现采用了更简洁的方案（见 2.3），无需修改本函数。
 
-## 5. 接口修改：`__factor_squarefree_primitive_ZZ`
+### 2.3 `__lll_factorize`：两阶段逻辑
 
-### 修改位置
+**位置**：§8.3，line 1428
 
-`polynomial_factorize_univar.hh` line 1302-1305。
-
-### 修改前
+**完整替换**：
 
 ```cpp
-auto [lifted, modulus] = __hensel_lift(f, sel.factors, sel.prime);
-return __factor_recombine(f, lifted, modulus);
+// 改前：
+inline std::vector<upolynomial_<ZZ>>
+__lll_factorize(
+    const upolynomial_<ZZ>&              f,
+    const std::vector<upolynomial_<Zp>>& factors,
+    uint32_t                             p)
+{
+    auto [lifted, m] = __hensel_lift(f, factors, p);
+    return __vanhoeij_recombine(f, lifted, m);
+}
+
+// 改后：
+inline std::vector<upolynomial_<ZZ>>
+__lll_factorize(
+    const upolynomial_<ZZ>&              f,
+    const std::vector<upolynomial_<Zp>>& factors,
+    uint32_t                             p)
+{
+    int r   = (int)factors.size();
+    int a_h = __heuristic_starting_precision(f, r, p);
+
+    // Phase 1：提升到启发式精度 a_h
+    auto [lifted_h, m_h] = __hensel_lift(f, factors, p, a_h);
+    auto result = __vanhoeij_recombine(f, lifted_h, m_h);
+
+    // Phase 1 返回单个因子且 r > 1，说明精度不足（Mignotte 条件未满足）。
+    // Phase 2：提升到完整 Mignotte 精度，保证正确性。
+    if ((int)result.size() == 1 && r > 1) {
+        auto [lifted_mig, m_mig] = __hensel_lift(f, factors, p);
+        return __vanhoeij_recombine(f, lifted_mig, m_mig);
+    }
+    return result;
+}
 ```
 
-### 修改后
+**Phase 2 触发条件说明**：
 
-```cpp
-return __linear_hensel_lift_with_lll(f, sel.factors, sel.prime);
-```
+原设计用 `zassenhaus_triggered` 检测 LLL 是否触发了 Zassenhaus fallback。
+但实测发现更可靠的触发条件是 `result.size() == 1 && r > 1`：
 
-### 保留原函数
-
-`__hensel_lift`, `__factor_recombine`, `__hensel_tree_build`, `__hensel_step` 均保留不删除（调试对比和 fallback 路径备用）。
+- `result.size() == 1` 说明所有子集试除均失败，f 被误判为不可约
+- `r > 1` 确认存在多个模因子，f 应当可分解
+- **根本原因**：二次提升会"超调"——以 `a_target=k` 停止时，实际精度为某个 `p^(2^j) > p^k`，
+  但该精度仍可能小于真正的 Mignotte 界（`a_mig`）。例如：`lc_f=10000, r=2, a_h=3, a_mig=5`
+  时，二次提升到 `p^4 < Mignotte`，Zassenhaus 全部失败返回 `{f}`（而非触发 zassenhaus_triggered）。
+- `zassenhaus_triggered` 方案下，LLL→Zassenhaus→{f} 也会设置标志，但等价于检查 `result.size()==1`，
+  更直接简洁。
 
 ---
 
-## 6. 复用点汇总
+## 3. 不变部分
 
-| 复用函数 | 所在位置 | P1b 使用方式 |
-|---------|---------|------------|
-| `polynomial_GCD`（Zp 扩展 GCD）| 已有 | M0：计算 Bézout 系数 sᵢ |
-| `__upoly_Zp_to_ZZ` | 已有 | M0 输出转换；M3 段 A 初始化 h |
-| `__mignotte_bound` | line 122 | M4 + M3 段 A：精度计算 |
-| `__upoly_mod_coeff` | line 137 | M1：积截断、h 更新 |
-| `__upoly_divmod_mod` | line 155 | M1：mod-p 带余除法（计算 σ） |
-| `ZZ::fdiv_q`, `ZZ::fdiv_r` | ZZ.hh | M1 步骤 1：精确除再 mod p |
-| `__upoly_symmetric_mod` | 已有 | M3 段 C1：对称约化供 CLD |
-| `__upoly_primitive` | 已有 | M3 段 C3：本原化 |
-| `pair_vec_div` | 已有 | M3 段 C3：试除 |
-| `__cld_polys` | P1a M1 | M3 段 C2 |
-| `__build_cld_matrix` | P1a M2 | M3 段 C2 |
-| `__lll_reduce` | P1a M3 | M3 段 C2 |
-| `__extract_candidates` | P1a M4 | M3 段 C2 |
-| `__zassenhaus_recombine` | 已有 | M3 安全网 |
-| `ZZ(1) << u_exp` | ZZ.hh | M3 格矩阵初始化 |
+| 模块 | 变更 |
+|------|------|
+| `__heuristic_starting_precision` | **不变**（§6.7，已实现） |
+| `__vanhoeij_recombine` 主循环逻辑 | **不变**（J_target=0 对角 LLL 等已正确实现） |
+| `__hensel_lift` 二次提升结构 | **不变**（仅添加停止条件参数） |
+| `__hensel_tree_build` / `__hensel_step` | **不变**（二叉树结构完整保留） |
+| `__zassenhaus_recombine` | **不变** |
+| `__factor_recombine` | **不变**（现有调用兼容默认参数） |
+| `__factor_squarefree_primitive_ZZ` | **不变** |
 
-**不再依赖**：`__hensel_tree_build`, `__hensel_node`, `__hensel_step`, `__hensel_lift_recursive`, `__hensel_extract_factors`（二叉树结构全部从 P1b 路径中移除）。
+**不实现**：`__linear_bezout_chain`、`__hensel_step_linear_nfactor`、`__linear_hensel_lift_with_lll`（旧 M0/M1/M3）。这些是"完整线性交织"路线的组件，已确认其会导致性能回退，不在本次范围内。
 
 ---
 
-## 7. 测试策略
+## 4. 预期性能
 
-### T1. M0 单元测试
+| 用例 | 当前 (a_mig) | P1b 后 (a_h) | Hensel 步数 | 预期 total |
+|------|------------|-------------|-----------|----------|
+| uni-70 | 16ms | ~8ms | 5 vs 7 步 | ~13ms |
+| W(15) | <1ms | <1ms | a_h=a_mig | 不变 |
+| W(20) | ~1ms | ~1ms | a_h=a_mig | 不变 |
+| deg25-5fac | ~2ms | ~2ms | a_h≈a_mig | 不变 |
 
-```
-输入：factors = [(x-1) mod 5, (x+1) mod 5, (x-2) mod 5]，p = 5
-手动验证：Σ s[i] * ∏_{j≠i} factors[j] ≡ 1 (mod 5)
-代码检查：打印每个 s[i]，手动计算乘积之和
-```
-
-### T2. M1 单元测试
-
-```
-选取小例子：f = (x-1)(x+1)(x-2) = x³-2x²-x+2，p = 5
-初始因子 mod 5：h = [(x-1),(x+1),(x-2)]，s = M0 的输出
-手动计算一步线性提升，验证 ∏ h'[i] ≡ f (mod 25)
-```
-
-### T3. M3 正确性测试（与 P1a 结果比对）
-
-```
-策略：对同一组多项式，分别运行
-  - 旧路径：__hensel_lift + __factor_recombine
-  - 新路径：__linear_hensel_lift_with_lll
-比较因子集合是否相同（多重集合）
-测试集：test_factorize.cc 全部 256 个用例
-命令：make test/test_factorize
-```
-
-### T4. 性能目标
-
-```
-目标：(x-1)...(x-70) < 20 ms（P1a+P1b 合计，对比 P1a 前的 83 ms）
-命令：make bench-clpoly
-```
-
-### T5. 压力与回归测试
-
-```
-make stress    ← release 模式全部通过
-make crosscheck ← FLINT/NTL 交叉验证
-```
+> uni-70 中 a_h=31 < a_mig=66，Hensel 从 7 步（到 p^64）减至 5 步（到 p^32）。
+> 其他用例 a_h ≥ a_mig（启发式无收益），行为与当前完全一致。
 
 ---
 
-## 8. 错误处理策略
+## 5. 测试策略
 
-| 情形 | 处理方式 |
-|------|---------|
-| `factors.size() <= 1` 或 `irreducible` | 由 `__factor_squarefree_primitive_ZZ` 在调用前拦截（不变） |
-| M0 中因子不互素（gcd ≠ 1）| `__select_prime` 保证不发生；如发生，后续 s[i] 不满足 Diophantine，提升失败，安全网 fallback |
-| M1 中 `fdiv_q` 非精确整除 | 仅通过 assert 发现（Hensel 不变式由调用方保证） |
-| M1 中 `__upoly_divmod_mod` 首项不可逆 | `__select_prime` 保证素数不整除各因子首项；如触发断言，属于 prime 选取 bug |
-| a_cur > a_mig | fallback Zassenhaus（正确性保底，理论上不触发） |
-| J_target > J_max | fallback Zassenhaus（正确性保底） |
+### T1. 回归测试
+
+```
+bash test/run_all_tests.sh
+```
+
+全部通过（277 个测试）。a_target=0 路径（默认参数）与改前完全一致。
+
+### T2. 性能验证
+
+```bash
+g++ -O3 -DNDEBUG -std=c++20 -I. test/profile_factorize.cc lib/libclpoly.a -lgmpxx -lgmp -o /tmp/pf && /tmp/pf
+```
+
+确认 `uni 70 fac` 的 `total` 列时间降低（实测 ~13ms，原约 21ms）。
+注：profile 中 `hensel` 列仍测量全 Mignotte 提升（非 P1b 路径），该列无意义；请看 `total` 列。
+
+### T3. 压力测试
+
+```
+make stress
+```
+
+确认 uni-70 因子分解结果正确性（尤其 a_h 路径不触发 Zassenhaus 时的因子数 = 70）。
+
+### T4. 交叉验证（可选）
+
+```
+make crosscheck
+```
+
+确认 FLINT/NTL 交叉验证无新失败。
 
 ---
 
-## 9. TODO：Monagan 2022 矩阵优化（v2）
+## 6. 关键设计决策
 
-当前 M1 对每步 a → a+1 独立计算 σ[i]，总代价为 O(a_stop · r · n²/p)。
-
-Monagan 2022 通过将全部 D 步的修正序列 {σ[i]^(1), ..., σ[i]^(D)} 组织为**多项式矩阵乘法**，把总 Bézout 更新代价从 O(r · n² · D) 降至 O(r · n · D²/r) = O(n · D²)（"立方代价"）。
-
-此优化与早期终止结合后（a_stop ≪ D_Mig），收益有限。建议在 P1b v1 性能验证后，若 uni-70 仍有 >2x 差距再考虑实施。
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 提升方式 | 保留**二次提升**（非线性逐步） | 二次提升总步数更少（O(log a) vs O(a)）；线性交织方案已确认回退 |
+| 阶段 2 重新提升 | **从头提升**（非从 a_h 树继续） | 实现简单；Phase 2 罕见，重新提升代价可接受；避免维护中间 Hensel 树 |
+| J_target 初始化 | 由 `__vanhoeij_recombine` 内部管理（J_target=0） | 对角 LLL 已在现有代码中正确实现，不在调用方重新实现 |
+| 参数类型 | `a_target: int`（步数，非 ZZ 精度值） | 与 `__heuristic_starting_precision` 返回类型一致；避免 ZZ 大整数 |
+| Phase 2 触发条件 | `result.size()==1 && r>1` | 直接检测失败结果（精度不足 → 全部试除失败 → 返回 {f}）；比 `zassenhaus_triggered` 更简洁且覆盖相同场景 |
+| 阶段 2 后不再检查 | 不需要 | m_mig > 2·lc(f)·B_Mig 保证 LLL 必然收敛（理论保证）；Zassenhaus fallback 仍作为安全网保留 |

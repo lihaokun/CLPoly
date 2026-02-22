@@ -1,0 +1,427 @@
+# CLPoly Benchmark — 2026-02-23-043839
+# Format: fork-based (time + memory per benchmark)
+
+
+=== Crosscheck: CLPoly vs FLINT ===
+[ TEST ] crosscheck_flint_roundtrip
+[ TEST ] crosscheck_flint_add
+[ TEST ] crosscheck_flint_sub
+[ TEST ] crosscheck_flint_mul
+[ TEST ] crosscheck_flint_pow
+[ TEST ] crosscheck_flint_gcd
+[ TEST ] crosscheck_flint_pow20
+[ TEST ] crosscheck_flint_large_coeff
+[ TEST ] crosscheck_flint_large_coeff_random
+[ TEST ] crosscheck_flint_high_degree
+[ TEST ] crosscheck_flint_exact_div
+[ TEST ] crosscheck_flint_exact_div_large_coeff
+[ TEST ] crosscheck_flint_4var_mul
+[ TEST ] crosscheck_flint_4var_large_coeff
+[ TEST ] crosscheck_flint_dense_mul
+[ TEST ] crosscheck_flint_large_coeff_gcd
+[ TEST ] crosscheck_flint_qq_roundtrip
+[ TEST ] crosscheck_flint_qq_add
+[ TEST ] crosscheck_flint_qq_sub
+[ TEST ] crosscheck_flint_qq_mul
+[ TEST ] crosscheck_flint_qq_pow
+[ TEST ] crosscheck_flint_qq_exact_div
+[ TEST ] crosscheck_flint_qq_4var_mul
+[ TEST ] crosscheck_flint_qq_large_denom
+[ TEST ] crosscheck_flint_qq_large_num_denom
+[ TEST ] crosscheck_flint_factor_x6m1
+[ TEST ] crosscheck_flint_factor_with_mult
+[ TEST ] crosscheck_flint_factor_random
+[ TEST ] crosscheck_flint_factor_irreducible
+[ TEST ] crosscheck_flint_factor_nonmonic
+[ TEST ] crosscheck_flint_factor_random_high_deg
+[ TEST ] crosscheck_flint_factor_large_coeff
+[ TEST ] crosscheck_flint_factor_3_factors
+[ TEST ] crosscheck_flint_factor_dense
+[ TEST ] crosscheck_flint_factor_nonmonic_large
+[ TEST ] crosscheck_flint_factor_4_factors
+[ TEST ] crosscheck_flint_factor_very_high_deg
+[ TEST ] crosscheck_flint_factor_random_mult
+[ TEST ] crosscheck_flint_factor_random_mult_3
+[ TEST ] crosscheck_flint_factor_with_x
+[ TEST ] crosscheck_flint_factor_5_factors
+[ TEST ] crosscheck_flint_factor_high_mult
+[ TEST ] crosscheck_flint_factor_perfect_power
+[ TEST ] crosscheck_flint_factor_mixed_squarefree
+[ TEST ] crosscheck_flint_factor_zero
+[ TEST ] crosscheck_flint_factor_constant
+[ TEST ] crosscheck_flint_factor_linear
+[ TEST ] crosscheck_flint_factor_monomial
+[ TEST ] crosscheck_flint_factor_huge_coeff
+[ TEST ] crosscheck_flint_factor_wilkinson_w10
+[ TEST ] crosscheck_flint_factor_wilkinson_w15
+[ TEST ] crosscheck_flint_factor_wilkinson_w20
+[ TEST ] crosscheck_flint_factor_cyclotomic_x24m1
+[ TEST ] crosscheck_flint_factor_swinnerton_dyer_s3
+[ TEST ] crosscheck_flint_mpoly_factor_x2_y2
+[ TEST ] crosscheck_flint_mpoly_factor_x3_y3
+[ TEST ] crosscheck_flint_mpoly_factor_3fac
+[ TEST ] crosscheck_flint_mpoly_factor_repeated
+[ TEST ] crosscheck_flint_mpoly_factor_trivar
+[ TEST ] crosscheck_flint_mpoly_factor_content
+[ TEST ] crosscheck_flint_mpoly_factor_random_bivar
+[ TEST ] crosscheck_flint_mpoly_factor_random_bivar_4fac
+[ TEST ] crosscheck_flint_mpoly_factor_random_trivar
+[ TEST ] crosscheck_flint_mpoly_factor_random_trivar_3fac
+[ TEST ] crosscheck_flint_mpoly_factor_random_4var
+[ TEST ] crosscheck_flint_mpoly_factor_random_bivar_mult
+[ TEST ] crosscheck_flint_mpoly_factor_irreducible
+[ TEST ] crosscheck_flint_qq_factor_univar
+[ TEST ] crosscheck_flint_mpoly_classic_sympy_f1
+[ TEST ] crosscheck_flint_mpoly_classic_x4_y4
+[ TEST ] crosscheck_flint_mpoly_classic_cube
+[ TEST ] crosscheck_flint_mpoly_classic_sum_cube_minus_sum
+[ TEST ] crosscheck_flint_gb_linear
+[ TEST ] crosscheck_flint_gb_circle_hyperbola
+[ TEST ] crosscheck_flint_gb_symmetric_3var
+[ TEST ] crosscheck_flint_gb_katsura2
+[ TEST ] crosscheck_flint_gb_katsura4
+[ TEST ] crosscheck_flint_gb_katsura5
+[ TEST ] crosscheck_flint_gb_cyclic4
+[ TEST ] crosscheck_flint_gb_cyclic5
+[ TEST ] crosscheck_flint_gb_noon3
+[ TEST ] crosscheck_flint_gb_eco5
+[ TEST ] crosscheck_flint_gb_random_2var
+[ TEST ] crosscheck_flint_gb_random_3var
+[ TEST ] crosscheck_flint_gb_random_3gen
+
+========================================
+  Total: 512  Passed: 512  Failed: 0
+========================================
+
+=== Crosscheck: CLPoly vs NTL ===
+[ TEST ] crosscheck_ntl_roundtrip
+[ TEST ] crosscheck_ntl_add
+[ TEST ] crosscheck_ntl_sub
+[ TEST ] crosscheck_ntl_mul
+[ TEST ] crosscheck_ntl_gcd
+[ TEST ] crosscheck_ntl_derivative
+[ TEST ] crosscheck_ntl_eval
+[ TEST ] crosscheck_ntl_pow20
+[ TEST ] crosscheck_ntl_large_coeff
+[ TEST ] crosscheck_ntl_large_coeff_random
+[ TEST ] crosscheck_ntl_high_degree_mul
+[ TEST ] crosscheck_ntl_high_degree_derivative
+[ TEST ] crosscheck_ntl_high_degree_eval
+[ TEST ] crosscheck_ntl_exact_div
+[ TEST ] crosscheck_ntl_exact_div_large_coeff
+[ TEST ] crosscheck_ntl_dense_mul
+[ TEST ] crosscheck_ntl_dense_large_coeff
+[ TEST ] crosscheck_ntl_large_coeff_gcd
+[ TEST ] crosscheck_ntl_large_coeff_div_gcd
+[ TEST ] crosscheck_ntl_factor_x6m1
+[ TEST ] crosscheck_ntl_factor_with_mult
+[ TEST ] crosscheck_ntl_factor_random
+[ TEST ] crosscheck_ntl_factor_irreducible
+[ TEST ] crosscheck_ntl_factor_random_high_deg
+[ TEST ] crosscheck_ntl_factor_large_coeff
+[ TEST ] crosscheck_ntl_factor_3_factors
+[ TEST ] crosscheck_ntl_factor_dense
+[ TEST ] crosscheck_ntl_factor_nonmonic_large
+[ TEST ] crosscheck_ntl_factor_4_factors
+[ TEST ] crosscheck_ntl_factor_very_high_deg
+[ TEST ] crosscheck_ntl_factor_random_mult
+[ TEST ] crosscheck_ntl_factor_random_mult_3
+[ TEST ] crosscheck_ntl_factor_with_x
+[ TEST ] crosscheck_ntl_factor_5_factors
+[ TEST ] crosscheck_ntl_factor_high_mult
+[ TEST ] crosscheck_ntl_factor_perfect_power
+[ TEST ] crosscheck_ntl_factor_mixed_squarefree
+[ TEST ] crosscheck_ntl_factor_zero
+[ TEST ] crosscheck_ntl_factor_constant
+[ TEST ] crosscheck_ntl_factor_linear
+[ TEST ] crosscheck_ntl_factor_monomial
+[ TEST ] crosscheck_ntl_factor_huge_coeff
+[ TEST ] crosscheck_ntl_factor_dense_extra
+[ TEST ] crosscheck_ntl_factor_high_deg_extra
+[ TEST ] crosscheck_ntl_factor_nonmonic_large_lc
+[ TEST ] crosscheck_ntl_factor_wilkinson_w10
+[ TEST ] crosscheck_ntl_factor_wilkinson_w15
+[ TEST ] crosscheck_ntl_factor_wilkinson_w20
+[ TEST ] crosscheck_ntl_factor_cyclotomic_x24m1
+[ TEST ] crosscheck_ntl_factor_swinnerton_dyer_s3
+
+========================================
+  Total: 258  Passed: 258  Failed: 0
+========================================
+
+
+========================================
+  bench_clpoly (pure CLPoly)
+========================================
+
+==== System Info ====
+OS:        Linux 6.6.87.2-microsoft-standard-WSL2 x86_64
+CPU:       12th Gen Intel(R) Core(TM) i9-12900KF
+RAM:              65749112 kB
+Compiler:  g++ 13.3.0
+Build:     Release (-O3 -DNDEBUG)
+======================================================================
+
+==== Multivariate polynomial_ZZ (2 variables) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+add  deg20 len15                                     0.001ms       0.2KB
+add  deg40 len30                                     0.002ms       0.2KB
+add  deg80 len60                                     0.005ms       0.0KB
+mul  deg10 len8                                      0.003ms       1.4KB
+mul  deg20 len15                                     0.024ms       1.1KB
+mul  deg40 len30                                     0.070ms       0.8KB
+pow  deg3^5                                          0.010ms       3.1KB
+pow  deg3^10                                         0.056ms       3.9KB
+pow  deg3^15                                         0.192ms       6.2KB
+gcd  deg8+common4                                    0.327ms      15.7KB
+gcd  deg15+common8                                   0.977ms      21.6KB
+gcd  deg25+common12                                  2.453ms      44.3KB
+deriv  deg20                                         0.001ms       1.0KB
+deriv  deg40                                         0.002ms       1.1KB
+deriv  deg80                                         0.003ms       1.0KB
+prem  deg8/5                                         0.008ms       8.6KB
+prem  deg15/8                                        0.023ms       8.7KB
+prem  deg25/12                                       0.468ms       6.4KB
+resultant  deg4                                      0.019ms       7.4KB
+resultant  deg6                                      0.291ms      16.6KB
+resultant  deg8                                      1.391ms      20.0KB
+
+==== Multivariate factorize (lex) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+factorize  x^2-y^2                                   0.037ms       2.9KB
+factorize  bivar deg3*deg3                           0.613ms      51.2KB
+factorize  bivar deg5*deg5                           1.317ms      50.6KB
+factorize  trivar known                              0.094ms       4.5KB
+factorize  trivar deg2*deg2                          0.751ms      27.6KB
+factorize  (x+y)^2*(x-y)                             0.029ms       3.3KB
+factorize  x^4-y^4                                   0.053ms       5.4KB
+factorize  SymPy f_1 (3var 3fac)                     0.391ms      12.3KB
+factorize  (x+y+z)^3-(x+y+z)                         0.183ms      16.1KB
+
+==== Univariate upolynomial_ZZ ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+add  deg50                                           0.000ms       0.0KB
+add  deg200                                          0.003ms       0.0KB
+add  deg500                                          0.002ms       0.0KB
+mul  deg50                                           0.006ms       0.3KB
+mul  deg200                                          0.129ms       0.0KB
+mul  deg500                                          0.699ms       0.0KB
+gcd  deg30+common15                                  0.077ms      13.2KB
+gcd  deg80+common40                                  0.594ms      39.4KB
+gcd  deg200+common100                                3.849ms      40.4KB
+deriv  deg50                                         0.000ms       0.8KB
+deriv  deg200                                        0.005ms       0.8KB
+deriv  deg500                                        0.002ms       0.8KB
+eval  deg50                                          0.004ms       0.8KB
+eval  deg200                                         0.034ms       4.6KB
+eval  deg500                                         0.074ms      25.4KB
+cont  deg50                                          0.000ms       0.0KB
+cont  deg200                                         0.001ms       0.0KB
+cont  deg500                                         0.002ms       0.0KB
+factorize  ~deg15 (3 factors)                        0.478ms      38.6KB
+factorize  ~deg21 (4 factors)                        0.708ms      39.9KB
+factorize  ~deg29 (5 factors)                        1.442ms      61.0KB
+factorize  Wilkinson W(10)                           0.225ms      24.8KB
+factorize  Wilkinson W(15)                           0.556ms      42.1KB
+factorize  Wilkinson W(20)                           0.938ms      51.4KB
+factorize  Wilkinson W(25)                           1.311ms      60.1KB
+factorize  x^15-1 (cyclotomic)                       0.263ms      18.0KB
+factorize  x^24-1 (cyclotomic)                       1.800ms      55.8KB
+factorize  Swinnerton-Dyer S3                        0.283ms       9.9KB
+squarefree  ~deg21                                   0.114ms       2.7KB
+squarefree  ~deg42                                   0.391ms      16.2KB
+
+==== Multivariate polynomial_QQ (2 variables) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+add  deg15                                           0.002ms       0.0KB
+add  deg30                                           0.002ms       0.0KB
+mul  deg10                                           0.005ms       0.0KB
+mul  deg20                                           0.024ms       0.0KB
+pow  deg3^5                                          0.015ms       0.8KB
+pow  deg3^8                                          0.070ms       1.8KB
+
+==== Factorize stress tests ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+factorize  uni 70 factors (deg70)                   12.398ms     104.0KB
+factorize  bivar 70 factors (deg70)              65262.769ms     193.3KB
+factorize  trivar 60 factors (deg60)              5890.885ms     193.3KB
+factorize  10var disjoint 10 factors                 2.642ms       6.7KB
+
+==== Groebner basis (grlex) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+groebner  Katsura-3 (3var)                           0.048ms       3.2KB
+groebner  Katsura-4 (4var)                           0.293ms      12.5KB
+groebner  Cyclic-4 (4var)                            0.075ms       7.3KB
+groebner  Noon-3 (3var)                              0.209ms      13.1KB
+groebner  Eco-5 (5var)                               0.537ms      27.6KB
+groebner  Katsura-5 (5var)                          12.829ms      19.2KB
+groebner  Cyclic-5 (5var)                           16.067ms      33.9KB
+
+==== Real root isolation (uspensky) ====
+Operation                                               Time         Mem
+------------------------------------------------------------------------
+uspensky  deg10 (10 roots)                           0.906ms      16.7KB
+uspensky  deg20 (20 roots)                           9.843ms     187.3KB
+uspensky  deg30 (30 roots)                          45.996ms     187.6KB
+
+==== Memory Profile: per-polynomial representation size ====
+Polynomial                               Terms     KB/poly    Bytes/term
+------------------------------------------------------------------------
+polynomial_ZZ deg20 len15                   15        1.54           105
+polynomial_ZZ deg40 len30                   30        3.03           103
+polynomial_ZZ deg80 len60                   60        6.08           104
+upolynomial_ZZ deg50                        40        0.98            25
+upolynomial_ZZ deg200                      150        3.56            24
+upolynomial_ZZ deg500                      400        9.42            24
+polynomial_QQ deg15                         12        1.42           121
+polynomial_QQ deg30                         25        2.94           120
+
+Done. Total benchmarks: 80
+
+
+========================================
+  bench_comparative (CLPoly vs FLINT/NTL)
+========================================
+
+==== System Info ====
+OS:        Linux 6.6.87.2-microsoft-standard-WSL2 x86_64
+CPU:       12th Gen Intel(R) Core(TM) i9-12900KF
+RAM:              65749112 kB
+Compiler:  g++ 13.3.0
+Build:     Release (-O3 -DNDEBUG)
+======================================================================
+
+==== Multivariate ZZ: CLPoly vs FLINT ====
+Operation                       CLPoly       Mem     FLINT       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+add  deg20 len15               0.001ms     0.1KB   0.001ms     0.5KB   0.93x   0.19x
+add  deg40 len30               0.002ms     0.1KB   0.001ms     1.0KB   1.50x   0.06x
+mul  deg10 len8                0.003ms     1.3KB   0.003ms     4.1KB   1.15x   0.31x
+mul  deg20 len15               0.012ms     0.9KB   0.009ms    10.7KB   1.40x   0.08x
+gcd  deg8+common4              0.282ms    15.5KB   0.073ms   246.8KB   3.87x   0.06x
+gcd  deg15+common8             0.889ms    15.7KB   0.161ms   275.2KB   5.52x   0.06x
+pow  deg3^5                    0.011ms     2.2KB   0.011ms     6.0KB   0.99x   0.36x
+pow  deg3^10                   0.067ms     2.4KB   0.085ms   242.5KB   0.78x   0.01x
+
+==== Multivariate QQ: CLPoly vs FLINT ====
+Operation                       CLPoly       Mem     FLINT       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+mul  deg10                     0.005ms     0.0KB   0.003ms     0.0KB   1.63x     —
+mul  deg20                     0.044ms     2.1KB   0.019ms    10.6KB   2.35x   0.20x
+
+==== Univariate ZZ: CLPoly vs NTL ====
+Operation                       CLPoly       Mem       NTL       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+add  deg100                    0.001ms     0.0KB   0.003ms     1.2KB   0.30x   0.00x
+add  deg500                    0.003ms     0.0KB   0.010ms     0.4KB   0.33x   0.00x
+mul  deg100                    0.035ms     0.6KB   0.096ms     0.4KB   0.37x   1.71x
+mul  deg500                    0.745ms     0.0KB   0.139ms   179.1KB   5.37x   0.00x
+gcd  deg50+common25            0.170ms    21.4KB   0.096ms   169.5KB   1.78x   0.13x
+gcd  deg200+common100          5.093ms    43.4KB   0.478ms   166.2KB  10.65x   0.26x
+deriv  deg100                  0.001ms     1.2KB   0.001ms     0.4KB   0.59x   3.08x
+deriv  deg500                  0.002ms     1.2KB   0.009ms     0.4KB   0.24x   3.08x
+eval  deg100                   0.008ms     1.4KB   0.003ms     0.6KB   2.28x   2.44x
+eval  deg500                   0.071ms    25.7KB   0.021ms     6.7KB   3.33x   3.86x
+
+==== Factorization: CLPoly vs FLINT ====
+Operation                       CLPoly       Mem     FLINT       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+factor  ~deg15 (3 fac)         0.708ms    42.7KB   0.187ms   242.6KB   3.78x   0.18x
+factor  ~deg21 (4 fac)         2.415ms    55.0KB   0.353ms   258.1KB   6.84x   0.21x
+factor  ~deg29 (5 fac)        11.177ms    85.3KB   0.790ms   299.8KB  14.14x   0.28x
+
+==== Classic Factorization: CLPoly vs FLINT ====
+Operation                       CLPoly       Mem     FLINT       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+factor  Wilkinson W(10)        0.246ms    24.9KB   0.152ms    20.4KB   1.62x   1.22x
+factor  Wilkinson W(15)        0.583ms    40.8KB   0.500ms   253.3KB   1.17x   0.16x
+factor  Wilkinson W(20)        0.963ms    47.1KB   0.415ms   275.6KB   2.32x   0.17x
+factor  Wilkinson W(25)        1.379ms    55.7KB   0.790ms   271.2KB   1.74x   0.21x
+factor  x^15-1 (cyclotomic)    0.298ms    14.5KB   0.189ms   245.2KB   1.58x   0.06x
+factor  x^24-1 (cyclotomic)    1.898ms    47.6KB   0.686ms   272.4KB   2.77x   0.17x
+factor  Swinnerton-Dyer S3     0.318ms     8.3KB   0.114ms     5.5KB   2.80x   1.52x
+
+==== Factorization: CLPoly vs NTL ====
+Operation                       CLPoly       Mem       NTL       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+factor  ~deg15 (3 fac)         0.437ms    22.8KB   0.318ms   192.6KB   1.38x   0.12x
+factor  ~deg21 (4 fac)         1.397ms    43.3KB   0.611ms   195.5KB   2.29x   0.22x
+factor  ~deg29 (5 fac)         1.102ms    50.4KB   1.067ms   206.0KB   1.03x   0.24x
+
+==== Classic Factorization: CLPoly vs NTL ====
+Operation                       CLPoly       Mem       NTL       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+factor  Wilkinson W(10)        0.256ms    21.1KB   0.326ms   186.5KB   0.79x   0.11x
+factor  Wilkinson W(15)        0.632ms    38.4KB   0.536ms   189.7KB   1.18x   0.20x
+factor  Wilkinson W(20)        1.068ms    44.4KB   0.902ms   198.7KB   1.18x   0.22x
+factor  x^15-1 (cyclotomic)    0.284ms    15.5KB   0.328ms   189.6KB   0.86x   0.08x
+factor  Swinnerton-Dyer S3     0.301ms     8.9KB   0.299ms   185.5KB   1.01x   0.05x
+
+==== Multivariate Factorize: CLPoly vs FLINT ====
+Operation                       CLPoly       Mem     FLINT       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+factor  x^2-y^2                0.038ms     1.5KB   0.023ms     0.8KB   1.67x   1.94x
+factor  bivar deg3*deg3        0.293ms    16.3KB   0.160ms   235.7KB   1.83x   0.07x
+factor  bivar deg5*deg5        0.834ms    27.2KB   0.325ms   258.5KB   2.56x   0.11x
+factor  trivar known           0.130ms     3.1KB   0.109ms     0.8KB   1.20x   4.00x
+factor  x^4-y^4                0.074ms     3.4KB   0.052ms     2.7KB   1.42x   1.26x
+factor  SymPy f_1 (3var)       0.645ms     6.7KB   0.471ms   244.4KB   1.37x   0.03x
+factor  (x+y+z)^3-(x+y+z)      0.210ms    12.5KB   0.173ms    13.1KB   1.22x   0.95x
+
+==== Factorize stress: CLPoly vs FLINT ====
+Operation                       CLPoly       Mem     FLINT       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+factor  uni 70 factors (deg70)  14.010ms    97.9KB   3.375ms   328.2KB   4.15x   0.30x
+factor  bivar 70 factors (deg70)65104.282ms   181.0KB   9.238ms   107.4KB7047.33x   1.69x
+factor  trivar 60 factors (deg60)6151.253ms   180.0KB   1.496ms    30.5KB4110.53x   5.90x
+factor  10var disjoint 10 factors   2.499ms     7.6KB   0.343ms     3.2KB   7.28x   2.37x
+
+==== Memory: CLPoly polynomial_ZZ vs FLINT fmpz_mpoly ====
+Polynomial                       Terms      CLPoly       FLINT   Ratio
+----------------------------------------------------------------------
+mpoly_ZZ deg20 len15                15      1.54KB      0.29KB    5.36x
+mpoly_ZZ deg40 len30                30      3.03KB      0.54KB    5.62x
+mpoly_ZZ deg80 len60                60      6.09KB      1.01KB    6.04x
+
+==== Memory: CLPoly upolynomial_ZZ vs FLINT fmpz_poly ====
+Polynomial                       Terms      CLPoly       FLINT   Ratio
+----------------------------------------------------------------------
+upoly_ZZ deg50                      40      0.98KB      0.43KB    2.28x
+upoly_ZZ deg200                    150      3.56KB      1.60KB    2.22x
+upoly_ZZ deg500                    400      9.42KB      3.95KB    2.39x
+
+==== Memory: CLPoly upolynomial_ZZ vs NTL ZZX ====
+Polynomial                       Terms      CLPoly         NTL   Ratio
+----------------------------------------------------------------------
+upoly_ZZ deg50                      40      0.98KB      2.96KB    0.33x
+upoly_ZZ deg200                    150      3.56KB     11.02KB    0.32x
+upoly_ZZ deg500                    400      9.42KB     28.99KB    0.32x
+
+==== Groebner Basis: CLPoly vs FLINT (naive) ====
+Operation                       CLPoly       Mem     FLINT       Mem    Time     Mem
+                                  Time                Time             Ratio   Ratio
+----------------------------------------------------------------------------------
+groebner  Katsura-3 (3var)     0.030ms     2.6KB   0.064ms     5.3KB   0.47x   0.48x
+groebner  Katsura-4 (4var)     0.304ms    10.9KB   7.308ms    32.0KB   0.04x   0.34x
+groebner  Cyclic-4 (4var)      0.086ms     6.0KB   0.206ms     8.4KB   0.42x   0.71x
+groebner  Noon-3 (3var)        0.209ms    11.3KB   0.586ms    16.2KB   0.36x   0.69x
+groebner  Eco-5 (5var)         0.391ms    14.1KB   7.528ms    29.5KB   0.05x   0.48x
+groebner  Katsura-5 (5var)    12.551ms    15.8KB   TIMEOUT       —     —     —
+groebner  Cyclic-5 (5var)     16.522ms    27.8KB   TIMEOUT       —     —     —
+
+Done. Total benchmarks: 0

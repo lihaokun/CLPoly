@@ -38,17 +38,20 @@ NTL_LIBS   = -lntl -lm -lpthread
 
 ## Internal path shorthands #######################################################################
 
-B       = $(CLPoly_BUILD_DIR)
-OBJ_DEB = $(B)/debug/obj
-OBJ_REL = $(B)/release/obj
-BIN_DEB = $(B)/debug/bin
-BIN_REL = $(B)/release/bin
+B        = $(CLPoly_BUILD_DIR)
+OBJ_DEB  = $(B)/debug/obj
+OBJ_REL  = $(B)/release/obj
+OBJ_PROF = $(B)/profile/obj
+BIN_DEB  = $(B)/debug/bin
+BIN_REL  = $(B)/release/bin
+BIN_PROF = $(B)/profile/bin
 
 ## Library source files (excluding deprecated interval.cc) ########################################
 
-clpoly_cc  = $(filter-out clpoly/interval.cc,$(wildcard clpoly/*.cc))
-clpoly_d_o = $(clpoly_cc:clpoly/%.cc=$(OBJ_DEB)/clpoly/%.o)
-clpoly_r_o = $(clpoly_cc:clpoly/%.cc=$(OBJ_REL)/clpoly/%.o)
+clpoly_cc   = $(filter-out clpoly/interval.cc,$(wildcard clpoly/*.cc))
+clpoly_d_o  = $(clpoly_cc:clpoly/%.cc=$(OBJ_DEB)/clpoly/%.o)
+clpoly_r_o  = $(clpoly_cc:clpoly/%.cc=$(OBJ_REL)/clpoly/%.o)
+clpoly_pr_o = $(clpoly_cc:clpoly/%.cc=$(OBJ_PROF)/clpoly/%.o)
 
 ## Library object compilation #####################################################################
 
@@ -60,8 +63,12 @@ $(OBJ_DEB)/clpoly/%.o: clpoly/%.cc
 	mkdir -p $(dir $@)
 	$(CXX) $(CLPoly_DEB) $(CLPoly_FPIC) $(DEPFLAGS) $(IPATHS) -c $< -o $@
 
+$(OBJ_PROF)/clpoly/%.o: clpoly/%.cc
+	mkdir -p $(dir $@)
+	$(CXX) -O2 -DCLPOLY_PROFILE $(CLPoly_FPIC) $(DEPFLAGS) $(IPATHS) -c $< -o $@
+
 # Prevent Make from deleting .o as intermediate files
-.PRECIOUS: $(OBJ_REL)/clpoly/%.o $(OBJ_DEB)/clpoly/%.o
+.PRECIOUS: $(OBJ_REL)/clpoly/%.o $(OBJ_DEB)/clpoly/%.o $(OBJ_PROF)/clpoly/%.o
 
 ## Static libraries → lib/ #######################################################################
 
@@ -70,6 +77,10 @@ $(CLPoly_LIB_DIR)/libclpoly.a: $(clpoly_r_o)
 	ar -rsv $@ $^
 
 $(CLPoly_LIB_DIR)/debug/libclpoly.a: $(clpoly_d_o)
+	mkdir -p $(dir $@)
+	ar -rsv $@ $^
+
+$(CLPoly_LIB_DIR)/profile/libclpoly.a: $(clpoly_pr_o)
 	mkdir -p $(dir $@)
 	ar -rsv $@ $^
 
@@ -131,7 +142,7 @@ $(BIN_REL)/test_stress_factorize: test/test_stress_factorize.cc $(CLPoly_LIB_DIR
 stress: $(BIN_REL)/test_stress_factorize
 	$(BIN_REL)/test_stress_factorize
 
-.PHONY: bench bench-clpoly bench-comparative
+.PHONY: bench bench-clpoly bench-comparative bench-save bench-all
 bench-clpoly: $(BIN_REL)/bench_clpoly
 	$(BIN_REL)/bench_clpoly
 
@@ -139,6 +150,24 @@ bench-comparative: $(BIN_REL)/bench_comparative
 	$(BIN_REL)/bench_comparative
 
 bench: bench-clpoly bench-comparative
+
+## Profiling (gprof) — build with -O2 -pg, run, then print flat profile
+$(BIN_PROF)/bench_profile: test/bench_profile.cc $(CLPoly_LIB_DIR)/profile/libclpoly.a
+	mkdir -p $(BIN_PROF)
+	$(CXX) -O2 -DCLPOLY_PROFILE $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/profile/libclpoly.a $(Numberlib)
+
+.PHONY: profile
+profile: $(BIN_PROF)/bench_profile
+	$(BIN_PROF)/bench_profile
+
+## Save bench_clpoly + bench_comparative output to benchmarks/YYYY-MM-DD-HHMMSS.txt
+bench-save: $(BIN_REL)/bench_clpoly $(BIN_REL)/bench_comparative
+	bash test/run_bench.sh
+
+## Full suite: correctness crosscheck + performance — saves everything to benchmarks/YYYY-MM-DD-HHMMSS.txt
+bench-all: $(BIN_REL)/bench_clpoly $(BIN_REL)/bench_comparative \
+           $(BIN_DEB)/test_crosscheck_flint $(BIN_DEB)/test_crosscheck_ntl
+	bash test/run_bench.sh
 
 ## Auto-generated dependencies ####################################################################
 

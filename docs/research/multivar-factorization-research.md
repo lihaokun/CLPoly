@@ -188,19 +188,19 @@ NTL 仅支持单变量因式分解，无多变量实现（此对比不适用）�
 | **模 Diophantine 修复** | 将 Bézout 链移到 F_{p^a} | 中（局部修改 `__multivar_diophantine`） | 所有情形 | bivar-70: ~7000x → ~100x（Zassenhaus s=1 仍可接受） |
 | **MTSHL** | 稀疏 Diophantine（Zippel in-Hensel） | 高（重写 Diophantine，需双变量基底） | 稀疏多项式，保留 Hensel 框架 | 类似 Zippel，实现更复杂 |
 
-**关键结论：两者均需解决**
+**关键结论：优先级排序**
 
-1. **系数爆炸**（根因 A）必须修复，否则大 r 情形不可用
-2. **Zassenhaus O(2^r)**（根因 B）对大 r 也是指数，必须替换
-3. **算法选择**（根因 C）需要加 density-based 分流
+1. **系数爆炸**（根因 A）必须修复，否则大 r 情形不可用——Phase 1 解决
+2. **算法选择**（根因 C）需要加 density-based 分流——Phase 2 解决
+3. **Zassenhaus O(2^r)**（根因 B）对大 r 是潜在瓶颈，但 Phase 2 Zippel 路径对稀疏输入会完全绕开（非替换），稠密大-r 场景暂不处理
 
 ---
 
 ## 5. 推荐优化路线
 
-### Phase 1（优先，中等难度）：模 Diophantine + van Hoeij 重组
+### Phase 1（优先，中等难度）：模 Bézout 链改造
 
-**目标**：修复系数爆炸，并将 Zassenhaus 替换为 LLL 重组。
+**目标**：修复系数爆炸，Zassenhaus 重组保持不变。
 
 **具体改动**：
 
@@ -221,8 +221,7 @@ P2a: __multivar_hensel_lift 改为模提升
 - 稠密通用情形（r 小）：同比例加速，Zassenhaus O(2^r) 对小 r 无影响
 
 **已有基础**：
-- `pa` 参数已在 `__multivar_diophantine` 中支持（见 lines 518-529），但当前仅在 `denom ≠ ±1` 时激活
-- `__vanhoeij_recombine` 已实现（单变量），接口需适配多变量 Hensel 因子
+- `pa` 参数已在 `__multivar_diophantine` 中支持（见 lines 518-529），但当前仅在 `denom ≠ ±1` 时激活，改造目标是令其成为默认路径
 
 ### Phase 2（长期，高难度）：Zippel 稀疏插值路径
 
@@ -315,4 +314,4 @@ CLPoly 多变量因式分解 7000x 差距的**主要根因**是：
 
 2. **算法选择不匹配**（根因 C）：对稀疏输入（bivar-70 密度 0.7%），CLPoly 仍走稠密 Wang EEZ，FLINT 走 Zippel 稀疏插值。**修复**：Phase 2 实现 Zippel + 密度分流。
 
-**推荐下一步**：按 workflow 进入架构阶段，重点设计 Phase 1（模 Diophantine + 模 Bézout 链改造），以最小代码变更获取最大收益。
+**下一步**：架构文档已完成（`docs/design/multivar-opt/architecture.md`），按 workflow 进入细化 → 实施阶段，从 Phase 1 M1（模 Bézout 链）开始。

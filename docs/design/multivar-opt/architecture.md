@@ -2,7 +2,7 @@
 
 > 阶段：架构（workflow.md §2.2）
 > 基础调研：`docs/research/multivar-factorization-research.md`
-> 目标：复现 Maple 2019 双路径架构（Dense Wang + Sparse MTSHL）
+> 目标：实现双路径架构（Dense Wang + Sparse Zippel），参考 Maple 2019 / FLINT
 > 目标文件：`clpoly/polynomial_factorize_wang.hh`
 
 ---
@@ -109,10 +109,12 @@ Zassenhaus 重组：保持不变（bivar-70 中 s=1，不构成瓶颈）
 
 ---
 
-## Phase 2：稀疏路径（MTSHL）
+## Phase 2：稀疏路径（Zippel 插值）
 
 > 对应调研 §5 "Phase 2（长期，高难度）"
 > 依赖：Phase 1 完成且稳定
+> 核心目标：P2-Sparse-D（FLINT 风格纯 Zippel 路径）+ P2-Sparse-C（密度分流）
+> 可选增强：P2-Sparse-B（MTSHL Diophantine，进一步优化稠密路径）
 > 预期收益：bivar-70 <1s → ~5ms（对标 FLINT ~9ms）
 
 ### P2-Sparse-A：Zippel 稀疏插值基础设施
@@ -226,17 +228,18 @@ __factor_zippel_core(const Poly& f);
 
 ```
 P2-Sparse-A（Zippel 插值基础设施）
-        ↓
+         ↙                         ↘
 P2-Sparse-B（MTSHL Diophantine）   P2-Sparse-D（Zippel 主控）
-        ↓                                   ↓
-        └──────────────┬────────────────────┘
-                       ↓
-              P2-Sparse-C（密度分流）
-                       ↓
-               __wang_core（分流入口）
+【可选：增强稠密 Hensel 路径】      【核心目标：全新稀疏路径】
+         ↓                                   ↓
+  __multivar_diophantine          P2-Sparse-C（密度分流）
+  （稠密路径内部增强）                         ↓
+                                    __wang_core（分流入口）
 
-注：P2-Sparse-B 和 P2-Sparse-D 可并行开发（不互相依赖）
-    P2-Sparse-C 最后集成
+注：P2-Sparse-C 的两个目标：
+    ≥ THRESHOLD → 现有稠密路径（Phase 1 已改造，可选再由 P2-Sparse-B 进一步增强）
+    < THRESHOLD → P2-Sparse-D（Zippel 主控）
+    P2-Sparse-D + P2-Sparse-C 是 Phase 2 最小交付目标；P2-Sparse-B 独立可选
 ```
 
 ---
@@ -270,15 +273,16 @@ M1: 模 Bézout 链（P2-Dense-A）
 ### Phase 2 里程碑
 
 ```
-M3: Zippel 基础设施（P2-Sparse-A）
+M2: Zippel 基础设施（P2-Sparse-A）
     验收：单元测试通过（给定点值能正确重建稀疏多项式）
 
-M4: MTSHL Diophantine（P2-Sparse-B）
-    验收：crosscheck 通过，对稀疏用例加速可观
-
-M5: Zippel 主控 + 密度分流（P2-Sparse-C/D）
+M3: Zippel 主控 + 密度分流（P2-Sparse-C/D）【最小交付目标】
     验收：bivar-70 接近 FLINT（<20ms）；稠密用例不退化
-    测试：make bench-all（对比 2026-02-23 基线）
+    测试：make crosscheck + make bench-all（对比 2026-02-23 基线）
+
+M4: MTSHL Diophantine（P2-Sparse-B，可选增强）
+    验收：crosscheck 通过，稠密大-r 用例进一步加速
+    依赖：M3 完成后按需实施
 ```
 
 ---

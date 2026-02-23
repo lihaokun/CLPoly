@@ -157,6 +157,11 @@ namespace clpoly{
                 this->__deg+=value.second;
                 this->__data.push_back(std::move(value));
             }
+            // 增加 erase()
+            inline iterator erase(iterator pos){
+                this->__deg -= pos->second;
+                return this->__data.erase(pos);
+            }
             constexpr std::pair<variable,int64_t>& operator[](std::size_t pos){return this->__data[pos];}
             constexpr const std::pair<variable,int64_t>& operator[](std::size_t pos) const {return this->__data[pos];}
             constexpr std::pair<variable,int64_t>& at(std::size_t pos){return this->__data.at(pos);}

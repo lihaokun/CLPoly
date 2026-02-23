@@ -37,3 +37,6 @@ test/randommtp
 
 # Generated source (legacy)
 test/associatedgraph_test.cc
+reference/
+CMakeLists.txt
+build.sh

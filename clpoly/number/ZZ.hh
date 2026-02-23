@@ -518,6 +518,10 @@ public:
         _demote_if_small();
         return *this;
     }
+    friend ZZ operator>>(ZZ&& a,       unsigned long n) { a >>= n; return std::move(a); }
+    friend ZZ operator>>(const ZZ& a,  unsigned long n) { ZZ r(a); r >>= n; return r; }
+    friend ZZ operator<<(ZZ&& a,       unsigned long n) { a <<= n; return std::move(a); }
+    friend ZZ operator<<(const ZZ& a,  unsigned long n) { ZZ r(a); r <<= n; return r; }
 
     // ---- special: addmul / submul ----
     void addmul(const ZZ& a, const ZZ& b) {

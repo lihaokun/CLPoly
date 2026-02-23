@@ -917,5 +917,87 @@ int main() {
         }
     }
 
+    // ======== 经典多项式：Wilkinson W(n), 旋轮, Swinnerton-Dyer ========
+
+    // Wilkinson W(10): (x-1)(x-2)...(x-10)
+    CLPOLY_TEST("crosscheck_ntl_factor_wilkinson_w10");
+    {
+        upolynomial_ZZ w10({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-1)}});
+        for (int k = 2; k <= 10; ++k) {
+            upolynomial_ZZ lin({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-k)}});
+            w10 = w10 * lin;
+        }
+        auto cl_fac = factorize(w10);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(w10);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        CLPOLY_ASSERT_EQ(cl_fac.factors.size(), (size_t)10);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // Wilkinson W(15): (x-1)(x-2)...(x-15)
+    CLPOLY_TEST("crosscheck_ntl_factor_wilkinson_w15");
+    {
+        upolynomial_ZZ w15({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-1)}});
+        for (int k = 2; k <= 15; ++k) {
+            upolynomial_ZZ lin({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-k)}});
+            w15 = w15 * lin;
+        }
+        auto cl_fac = factorize(w15);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(w15);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        CLPOLY_ASSERT_EQ(cl_fac.factors.size(), (size_t)15);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // Wilkinson W(20): (x-1)(x-2)...(x-20)  — 覆盖 P1b 启发式精度路径
+    CLPOLY_TEST("crosscheck_ntl_factor_wilkinson_w20");
+    {
+        upolynomial_ZZ w20({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-1)}});
+        for (int k = 2; k <= 20; ++k) {
+            upolynomial_ZZ lin({{umonomial(1), ZZ(1)}, {umonomial(0), ZZ(-k)}});
+            w20 = w20 * lin;
+        }
+        auto cl_fac = factorize(w20);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(w20);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        CLPOLY_ASSERT_EQ(cl_fac.factors.size(), (size_t)20);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // 旋轮 x^24 - 1
+    CLPOLY_TEST("crosscheck_ntl_factor_cyclotomic_x24m1");
+    {
+        upolynomial_ZZ cyc24({{umonomial(24), ZZ(1)}, {umonomial(0), ZZ(-1)}});
+        auto cl_fac = factorize(cyc24);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(cyc24);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
+    // Swinnerton-Dyer S3: x^8-40x^6+352x^4-960x^2+576 (irreducible over ZZ)
+    CLPOLY_TEST("crosscheck_ntl_factor_swinnerton_dyer_s3");
+    {
+        upolynomial_ZZ sd3({
+            {umonomial(8), ZZ(1)},   {umonomial(6), ZZ(-40)},
+            {umonomial(4), ZZ(352)}, {umonomial(2), ZZ(-960)},
+            {umonomial(0), ZZ(576)}
+        });
+        auto cl_fac = factorize(sd3);
+        auto ntl_f = crosscheck::clpoly_upoly_to_ntl(sd3);
+        auto ntl_fac = crosscheck::ntl_factor(ntl_f);
+        CLPOLY_ASSERT_EQ(cl_fac.factors.size(), (size_t)1);  // irreducible over ZZ
+        auto cl_sorted = normalize_cl_factors(cl_fac);
+        auto ntl_sorted = normalize_ntl_factors(ntl_fac);
+        CLPOLY_ASSERT(cl_sorted == ntl_sorted);
+    }
+
     return clpoly_test::test_summary();
 }

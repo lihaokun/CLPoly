@@ -359,6 +359,32 @@ int main() {
             { volatile auto r = crosscheck::flint_factor_upoly(wilk15); (void)r; }
         );
 
+        // Wilkinson W(20): (x-1)(x-2)...(x-20)
+        {
+            upolynomial_ZZ wilk20({{1, ZZ(1)}, {0, ZZ(-1)}});
+            for (int k = 2; k <= 20; ++k) {
+                upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+                wilk20 = wilk20 * lin;
+            }
+            BENCH_CMP("factor  Wilkinson W(20)", 3, T,
+                { volatile auto r = factorize(wilk20); (void)r; },
+                { volatile auto r = crosscheck::flint_factor_upoly(wilk20); (void)r; }
+            );
+        }
+
+        // Wilkinson W(25): (x-1)(x-2)...(x-25)
+        {
+            upolynomial_ZZ wilk25({{1, ZZ(1)}, {0, ZZ(-1)}});
+            for (int k = 2; k <= 25; ++k) {
+                upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+                wilk25 = wilk25 * lin;
+            }
+            BENCH_CMP("factor  Wilkinson W(25)", 2, T,
+                { volatile auto r = factorize(wilk25); (void)r; },
+                { volatile auto r = crosscheck::flint_factor_upoly(wilk25); (void)r; }
+            );
+        }
+
         // Cyclotomic x^15-1
         upolynomial_ZZ cyc15({{15, ZZ(1)}, {0, ZZ(-1)}});
         BENCH_CMP("factor  x^15-1 (cyclotomic)", 5, T,
@@ -422,6 +448,28 @@ int main() {
         BENCH_CMP("factor  Wilkinson W(10)", 5, T,
             { volatile auto r = factorize(wilk10); (void)r; },
             { volatile auto r = crosscheck::ntl_factor(nw10); (void)r; }
+        );
+
+        upolynomial_ZZ wilk15_n({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 15; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk15_n = wilk15_n * lin;
+        }
+        auto nw15 = crosscheck::clpoly_upoly_to_ntl(wilk15_n);
+        BENCH_CMP("factor  Wilkinson W(15)", 3, T,
+            { volatile auto r = factorize(wilk15_n); (void)r; },
+            { volatile auto r = crosscheck::ntl_factor(nw15); (void)r; }
+        );
+
+        upolynomial_ZZ wilk20_n({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 20; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk20_n = wilk20_n * lin;
+        }
+        auto nw20 = crosscheck::clpoly_upoly_to_ntl(wilk20_n);
+        BENCH_CMP("factor  Wilkinson W(20)", 3, T,
+            { volatile auto r = factorize(wilk20_n); (void)r; },
+            { volatile auto r = crosscheck::ntl_factor(nw20); (void)r; }
         );
 
         upolynomial_ZZ cyc15({{15, ZZ(1)}, {0, ZZ(-1)}});

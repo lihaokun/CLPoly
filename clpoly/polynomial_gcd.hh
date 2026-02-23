@@ -915,7 +915,7 @@ namespace clpoly{
                 p_tmp=dis(gen);
                 uint64_t j_tmp=0;
                 for (;p_tmp>0;p_tmp-=v_bool[j_tmp],++j_tmp);
-                v_bool[j_tmp-1]=0;p_.number()=j_tmp-1;
+                v_bool[j_tmp-1]=0;p_.number()=(uint32_t)(j_tmp-1);
 
                 F_v=assign(F,v,p_);
                 G_v=assign(G,v,p_);
@@ -1028,7 +1028,7 @@ namespace clpoly{
                                 
                                 for (int64_t j=v_d-1;j>=0;--j)
                                 {
-                                    p_.number()=0;
+                                    p_.number()=0u;
                                    
                                     for (int64_t k=0;k<v_d;++k)
                                     {

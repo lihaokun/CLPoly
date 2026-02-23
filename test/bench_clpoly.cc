@@ -369,6 +369,30 @@ int main() {
         });
     }
 
+    // Wilkinson W(20): (x-1)(x-2)...(x-20)
+    {
+        upolynomial_ZZ wilk20({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 20; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk20 = wilk20 * lin;
+        }
+        BENCH("factorize  Wilkinson W(20)", 3, {
+            volatile auto r = factorize(wilk20); (void)r;
+        });
+    }
+
+    // Wilkinson W(25): (x-1)(x-2)...(x-25)
+    {
+        upolynomial_ZZ wilk25({{1, ZZ(1)}, {0, ZZ(-1)}});
+        for (int k = 2; k <= 25; ++k) {
+            upolynomial_ZZ lin({{1, ZZ(1)}, {0, ZZ(-k)}});
+            wilk25 = wilk25 * lin;
+        }
+        BENCH("factorize  Wilkinson W(25)", 2, {
+            volatile auto r = factorize(wilk25); (void)r;
+        });
+    }
+
     // Cyclotomic x^15-1 (4 irreducible factors)
     {
         upolynomial_ZZ cyc15({{15, ZZ(1)}, {0, ZZ(-1)}});

@@ -150,7 +150,7 @@ return true
 
 **注**：`forms[i]` 为模块内部状态，在入口处初始化为 `Supp(F[i])`，不作为参数暴露给调用方。
 
-**注（j=2 路径）**：当 j=2 时，F[i] ∈ Zp[x1]，MDP 为单变量 Diophantine，直接用 EEA 求解（不调用 `__sparse_int`）；`forms[i]` 在 j=2 时不使用。
+**注（j=2 路径）**：当 j=2 时，F[i] ∈ Zp[x1]，MDP 为单变量多因子 Diophantine，直接在 Zp[x1] 中求解（不调用 `__sparse_int`）：r=2 用单次 EEA；r>2 用 r-1 次 EEA 逐对归约（CASC 2018 §3 multi-BDP 基础情形）。`forms[i]` 在 j=2 时不使用。
 
 ---
 
@@ -158,10 +158,15 @@ return true
 
 **功能描述**：用稀疏插值求解多因子 MDP：在 Zp[x1,...,x_{j-1}] 中求 `{σi}` 使 `Σ σi·bi = c`，`bi = ∏_{l≠i}F[l]`。
 
-每次调用时在 Zp 中**内部随机生成** `sparse_betas = (β2,...,β_{j-1})`（βk ≠ 0，各变量独立，每次 MDP 独立选取），用于 θ-array 求值与 Vandermonde 恢复，与 ideal_alphas 无关。
+内部三步（CASC 2018 Algorithm 3）：
+1. **θ-array 批量求值**：在 s 个几何点 `(x2=β2^l,...,x_{j-1}=β_{j-1}^l)`（l=1,...,s）处，用 `__theta_array_eval` 对 `c` 和所有 `F[i]` 求值，得 s 个单变量像。
+2. **逐点单变量 MDP**：在每个求值点 l 处，解 Zp[x1] 多因子 Diophantine：`Σ σi(x1,β^l)·bi(x1,β^l) = c(x1,β^l)`（r=2 用 EEA，r>2 用 r-1 次 EEA 归约），得 s 个单变量解 `{σi(x1,β^l)}`。
+3. **Vandermonde 恢复**：对每个因子 i，从 `|forms[i]|` 个点值用 `__vandermonde_solve` 恢复 σi 的系数。
+
+每次调用时在 Zp 中**内部随机生成** `sparse_betas = (β2,...,β_{j-1})`（βk ≠ 0，各变量独立，每次 MDP 独立选取），与 ideal_alphas 无关。
 
 **前置条件（Requires）**：
-- `F[i]` ∈ Zp[x1,...,x_{j-1}]，j ≥ 3（j=2 时 `__mtshl_step_j` 直接用 EEA，不调用本模块），两两互素 mod p
+- `F[i]` ∈ Zp[x1,...,x_{j-1}]，j ≥ 3（j=2 时 `__mtshl_step_j` 直接用多因子 Zp[x1] Diophantine，不调用本模块），两两互素 mod p
 - `c` ∈ Zp[x1,...,x_{j-1}]，`deg(c, x1) < Σ_i deg(F[i], x1)`
 - `forms[i]` = 期望 `Supp(σi)`：k=1 时为 `Supp(F[i])`（步入口初始化），k>1 时为 `Supp(σ_{k-1,i})`（前一 Taylor 迭代更新）
 
@@ -227,7 +232,7 @@ return true
 这里的 `β2,...,β_{j-1}` 是 `__sparse_int` 内部为本次 MDP 新选的随机基（**sparse_betas**），与 eval_point 中的 `α2,...,α_{j-1}`（**ideal_alphas**）无关。
 
 **前置条件（Requires）**：
-- `f` ∈ Zp[x1,...,x_{j-1}]，j ≥ 3（j=2 时 θ_t ≡ 1 导致 Vandermonde 奇异，本模块不适用；j=2 由 `__mtshl_step_j` 直接用 EEA 处理）
+- `f` ∈ Zp[x1,...,x_{j-1}]，j ≥ 3（j=2 时 θ_t ≡ 1 导致 Vandermonde 奇异，本模块不适用；j=2 由 `__mtshl_step_j` 直接用多因子 Zp[x1] Diophantine 处理）
 - `sparse_betas = (β2,...,β_{j-1})`，`βk ≠ 0` in Zp，j-2 个独立非零随机基（由 `__sparse_int` 生成后作为参数传入，与 ideal_alphas 无关）
 - `s = max_i(|forms[i]|)`，`s ≥ 1`（由 `__sparse_int` 根据各因子骨架大小计算后作为参数传入）
 
@@ -394,7 +399,7 @@ return true
 - `images[]`: UPZp[]，s 个单变量像
 
 **协议约定**：
-- 调用方（`__sparse_int`）责任：`sparse_betas = (β2,...,β_{j-1})` 为本次内部新选随机值（各变量独立基），`s = max_i(|forms[i]|)`；仅在 j≥3 时调用（j=2 路径由 `__mtshl_step_j` 直接用 EEA 处理，不经过 `__sparse_int`）
+- 调用方（`__sparse_int`）责任：`sparse_betas = (β2,...,β_{j-1})` 为本次内部新选随机值（各变量独立基），`s = max_i(|forms[i]|)`；仅在 j≥3 时调用（j=2 路径由 `__mtshl_step_j` 直接用多因子 Zp[x1] Diophantine 处理，不经过 `__sparse_int`）
 - 被调用方（`__theta_array_eval`）责任：`images[l] = f(x1, β2^l,...,β_{j-1}^l)` ∈ Zp[x1]，l=1,...,s
 
 ---
@@ -558,6 +563,6 @@ return true
 | 文献 | 对应模块 | 关键贡献 |
 |------|---------|---------|
 | Monagan-Tuncer CASC 2016 | `__sparse_int`（r=2）；`__theta_array_eval` | 2-因子 SparseInt；θ-array 批量求值 |
-| Monagan-Tuncer ICMS 2018 | `__mtshl_step_j`（j=2 EEA 路径） | HenselLift1；误差增量更新；sparse_betas 独立于 ideal_alphas |
+| Monagan-Tuncer ICMS 2018 | `__mtshl_step_j`（j=2 多因子 Diophantine 路径） | HenselLift1；误差增量更新；sparse_betas 独立于 ideal_alphas |
 | Monagan-Tuncer CASC 2018 | `__sparse_int`（r>2）；`__mtshl_lift`；`__multi_bdp` | Algorithm 3 多因子 SparseInt；MTSHL-d；multi-BDP；j=2 多因子 Diophantine |
 | Monagan-Tuncer JSC 2020 | 验收标准；`__wmds` 回退策略 | Theorem 19；forms[] 生命周期；WMDS 回退层次；循环终止条件 |

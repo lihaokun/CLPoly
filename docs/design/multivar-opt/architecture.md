@@ -62,15 +62,18 @@ __wang_core(f)
 
 error ← aj - ∏F[i]
 
-for k = 1, 2, ..., deg(aj, xj):
-    ck ← Taylor 系数：[（xj - αj)^k] in error   ∈ Zp[x1,...,x_{j-1}]
+for k = 1, 2, ... while error ≠ 0:    （JSC 2020 Alg.5；CASC 2016 Algorithm 4；上界 deg(aj,xj) 由 Hensel 提升终止定理保证）
+    ck ← Taylor 系数：[(xj - αj)^k] in error   ∈ Zp[x1,...,x_{j-1}]
     if ck == 0: continue
 
-    【j=2 路径】若 j==2：F[i] ∈ Zp[x1]，ck ∈ Zp[x1]，为单变量 MDP。
+    【j=2 路径】若 j==2：F[i] ∈ Zp[x1]，ck ∈ Zp[x1]，为单变量多因子 Diophantine。
                θ-array/Vandermonde 框架在此退化（无辅助变量，θ_t ≡ 空乘积 = 1，
                Vandermonde v[l] = Σ c_t·1^l = Σ c_t 为常数，矩阵奇异，无法恢复各项系数）。
-               必须直接用 EEA 求解（ICMS 2018 HenselLift1 Algorithm 2 第 1 步）：
-               success ← EEA 解 Σ σi·bi = ck in Zp[x1]（复用现有单变量 Diophantine 代码）
+               必须直接在 Zp[x1] 中求解多因子 Diophantine（CASC 2018 §3 multi-BDP 基础情形）：
+               - r=2：单次 EEA（ICMS 2018 HenselLift1 Algorithm 2 第 1 步）
+               - r>2：r-1 次 EEA 逐对归约（先将 r 因子问题归约为 2 因子，再递归求解），
+                       代价 O(r·d1²)，与 multi-BDP 在 j=2 时的基础情形一致
+               success ← 多因子 Zp[x1] Diophantine（复用现有单变量 Diophantine 代码，支持 r≥2）
 
     【j≥3 主路径】若 j≥3：
         【主路径】success ← __sparse_int(F, ck, forms, p, σk)
@@ -554,7 +557,7 @@ return true
 
 | 文献 | 对应模块 | 关键贡献 |
 |------|---------|---------|
-| Monagan-Tuncer CASC 2016 | `__sparse_int`（2 因子） | SparseInt + θ-array |
-| Monagan-Tuncer ICMS 2018 | `__mtshl_step_j` | 误差增量更新；sparse_betas 独立于 ideal_alphas |
-| Monagan-Tuncer CASC 2018 | `__mtshl_lift` + `__multi_bdp` | MTSHL-d（直接多因子）；multi-BDP；单机器素数方案 |
-| Monagan-Tuncer JSC 2020 | 验收标准；`__wmds` 回退策略 | Theorem 19；forms[] 生命周期；WMDS 回退层次 |
+| Monagan-Tuncer CASC 2016 | `__sparse_int`（r=2）；`__theta_array_eval` | 2-因子 SparseInt；θ-array 批量求值 |
+| Monagan-Tuncer ICMS 2018 | `__mtshl_step_j`（j=2 EEA 路径） | HenselLift1；误差增量更新；sparse_betas 独立于 ideal_alphas |
+| Monagan-Tuncer CASC 2018 | `__sparse_int`（r>2）；`__mtshl_lift`；`__multi_bdp` | Algorithm 3 多因子 SparseInt；MTSHL-d；multi-BDP；j=2 多因子 Diophantine |
+| Monagan-Tuncer JSC 2020 | 验收标准；`__wmds` 回退策略 | Theorem 19；forms[] 生命周期；WMDS 回退层次；循环终止条件 |

@@ -56,8 +56,10 @@ namespace clpoly{
             
             while (F.begin()->second % prime ==0 || G.begin()->second % prime ==0)
             {
-                prime=boost::math::prime(++p_index);
+                if (++p_index >= 9999) break;
+                prime=boost::math::prime(p_index);
             }
+            if (p_index >= 9999) break;
             f_p=polynomial_mod(F,prime);
             g_p=polynomial_mod(G,prime);
             lc_gcd_p=Zp(lc_gcd,prime);
@@ -70,7 +72,8 @@ namespace clpoly{
             tmp_Pout_d=__polynomial_GCD(Pout_mod,f_p,g_p,lc_gcd_p,Pout_d);
             if (tmp_Pout_d==-1)
             {
-                prime=boost::math::prime(++p_index);
+                if (++p_index >= 9999) break;
+                prime=boost::math::prime(p_index);
                 continue;
             }
             
@@ -188,8 +191,10 @@ namespace clpoly{
                 std::swap(tmp_Pout_.data(),Pout_.data());
                        
             }
-            prime=boost::math::prime(++p_index);
-        }  
-
+            if (++p_index >= 9999) break;
+            prime=boost::math::prime(p_index);
+        }
+        // 素数表耗尽: 保守返回 content GCD
+        return {{umonomial(0), cont_gcd}};
     }
 }

@@ -1,0 +1,639 @@
+/**
+ * @file crosscheck_flint.hh
+ * @brief CLPoly <-> FLINT conversion utilities for cross-library testing.
+ *
+ * Conversions use string round-trip (no performance requirement in tests).
+ * Requires: libflint-dev (FLINT 3.x)
+ */
+#ifndef CROSSCHECK_FLINT_HH
+#define CROSSCHECK_FLINT_HH
+
+#include <clpoly/clpoly.hh>
+#include <flint/fmpz.h>
+#include <flint/fmpq.h>
+#include <flint/fmpz_mpoly.h>
+#include <flint/fmpq_mpoly.h>
+#include <sstream>
+#include <string>
+#include <cstring>
+#include <vector>
+#include <map>
+#include <stdexcept>
+
+namespace crosscheck {
+
+// ---- ZZ <-> fmpz_t conversion (string round-trip) ----
+
+inline void clpoly_zz_to_fmpz(fmpz_t out, const clpoly::ZZ& z) {
+    std::ostringstream ss;
+    ss << z;
+    std::string s = ss.str();
+    if (fmpz_set_str(out, s.c_str(), 10) != 0)
+        throw std::runtime_error("fmpz_set_str failed for: " + s);
+}
+
+inline clpoly::ZZ fmpz_to_clpoly_zz(const fmpz_t z) {
+    char* str = fmpz_get_str(nullptr, 10, z);
+    clpoly::ZZ result(str);
+    flint_free(str);
+    return result;
+}
+
+// ---- RAII wrapper for fmpz_mpoly_t + fmpz_mpoly_ctx_t ----
+
+struct FlintPoly {
+    fmpz_mpoly_ctx_t ctx;
+    fmpz_mpoly_t poly;
+    std::vector<clpoly::variable> vars;  // variable ordering
+    bool _owns;  // true if this instance owns ctx/poly
+
+    FlintPoly(const std::vector<clpoly::variable>& v)
+        : vars(v), _owns(true)
+    {
+        fmpz_mpoly_ctx_init(ctx, static_cast<slong>(v.size()), ORD_DEGLEX);
+        fmpz_mpoly_init(poly, ctx);
+    }
+
+    ~FlintPoly() {
+        if (_owns) {
+            fmpz_mpoly_clear(poly, ctx);
+            fmpz_mpoly_ctx_clear(ctx);
+        }
+    }
+
+    // Move constructor
+    FlintPoly(FlintPoly&& other) noexcept
+        : vars(std::move(other.vars)), _owns(other._owns)
+    {
+        std::memcpy(ctx, other.ctx, sizeof(fmpz_mpoly_ctx_t));
+        std::memcpy(poly, other.poly, sizeof(fmpz_mpoly_t));
+        other._owns = false;
+    }
+
+    FlintPoly(const FlintPoly&) = delete;
+    FlintPoly& operator=(const FlintPoly&) = delete;
+    FlintPoly& operator=(FlintPoly&&) = delete;
+
+    slong length() const { return fmpz_mpoly_length(poly, ctx); }
+};
+
+// ---- polynomial_ZZ -> FlintPoly ----
+
+inline FlintPoly clpoly_to_flint(
+    const clpoly::polynomial_ZZ& p,
+    const std::vector<clpoly::variable>& vars)
+{
+    // Build variable -> index map
+    std::map<clpoly::variable, slong> var_idx;
+    for (slong i = 0; i < static_cast<slong>(vars.size()); ++i)
+        var_idx[vars[i]] = i;
+
+    FlintPoly fp(vars);
+    slong nvars = static_cast<slong>(vars.size());
+    std::vector<ulong> exp(nvars, 0);
+    fmpz_t coeff;
+    fmpz_init(coeff);
+
+    for (auto& term : p) {
+        // Build exponent vector
+        std::fill(exp.begin(), exp.end(), 0);
+        for (auto& ve : term.first) {
+            auto it = var_idx.find(ve.first);
+            if (it != var_idx.end())
+                exp[it->second] = static_cast<ulong>(ve.second);
+        }
+        // Convert coefficient
+        clpoly_zz_to_fmpz(coeff, term.second);
+        fmpz_mpoly_push_term_fmpz_ui(fp.poly, coeff, exp.data(), fp.ctx);
+    }
+
+    fmpz_clear(coeff);
+    fmpz_mpoly_sort_terms(fp.poly, fp.ctx);
+    fmpz_mpoly_combine_like_terms(fp.poly, fp.ctx);
+    return fp;
+}
+
+// ---- FlintPoly -> polynomial_ZZ ----
+
+inline clpoly::polynomial_ZZ flint_to_clpoly(const FlintPoly& fp) {
+    slong nvars = static_cast<slong>(fp.vars.size());
+    slong len = fp.length();
+
+    std::vector<std::pair<clpoly::monomial, clpoly::ZZ>> terms;
+    terms.reserve(len);
+
+    std::vector<ulong> exp(nvars);
+    fmpz_t coeff;
+    fmpz_init(coeff);
+
+    for (slong i = 0; i < len; ++i) {
+        fmpz_mpoly_get_term_coeff_fmpz(coeff, fp.poly, i, fp.ctx);
+        fmpz_mpoly_get_term_exp_ui(exp.data(), fp.poly, i, fp.ctx);
+
+        clpoly::ZZ c = fmpz_to_clpoly_zz(coeff);
+        std::vector<std::pair<clpoly::variable, int64_t>> mono_data;
+        for (slong j = 0; j < nvars; ++j) {
+            if (exp[j] != 0)
+                mono_data.push_back({fp.vars[j], static_cast<int64_t>(exp[j])});
+        }
+        terms.emplace_back(clpoly::monomial(mono_data), std::move(c));
+    }
+
+    fmpz_clear(coeff);
+    return clpoly::polynomial_ZZ(terms);
+}
+
+// ---- Collect variables from one or two polynomials ----
+
+inline std::vector<clpoly::variable> collect_vars(
+    const clpoly::polynomial_ZZ& f,
+    const clpoly::polynomial_ZZ& g = clpoly::polynomial_ZZ())
+{
+    auto vlist = clpoly::get_variables(f);
+    if (!g.empty()) {
+        auto vlist2 = clpoly::get_variables(g);
+        for (auto& v : vlist2) {
+            bool found = false;
+            for (auto& u : vlist)
+                if (u.first == v.first) { found = true; break; }
+            if (!found)
+                vlist.push_back(v);
+        }
+    }
+    // Sort by variable serial for deterministic ordering
+    vlist.sort([](const std::pair<clpoly::variable, int64_t>& a,
+                  const std::pair<clpoly::variable, int64_t>& b) {
+        return a.first < b.first;
+    });
+    std::vector<clpoly::variable> result;
+    for (auto& v : vlist)
+        result.push_back(v.first);
+    return result;
+}
+
+// ======== QQ <-> fmpq_t conversion ========
+
+inline void clpoly_qq_to_fmpq(fmpq_t out, const clpoly::QQ& q) {
+    fmpz_t num, den;
+    fmpz_init(num);
+    fmpz_init(den);
+    clpoly_zz_to_fmpz(num, q.get_num());
+    clpoly_zz_to_fmpz(den, q.get_den());
+    fmpq_set_fmpz_frac(out, num, den);
+    fmpz_clear(num);
+    fmpz_clear(den);
+}
+
+inline clpoly::QQ fmpq_to_clpoly_qq(const fmpq_t q) {
+    clpoly::ZZ num = fmpz_to_clpoly_zz(fmpq_numref(q));
+    clpoly::ZZ den = fmpz_to_clpoly_zz(fmpq_denref(q));
+    return clpoly::QQ(num, den);
+}
+
+// ---- RAII wrapper for fmpq_mpoly_t + fmpq_mpoly_ctx_t ----
+
+struct FlintQPoly {
+    fmpq_mpoly_ctx_t ctx;
+    fmpq_mpoly_t poly;
+    std::vector<clpoly::variable> vars;
+    bool _owns;
+
+    FlintQPoly(const std::vector<clpoly::variable>& v)
+        : vars(v), _owns(true)
+    {
+        fmpq_mpoly_ctx_init(ctx, static_cast<slong>(v.size()), ORD_DEGLEX);
+        fmpq_mpoly_init(poly, ctx);
+    }
+
+    ~FlintQPoly() {
+        if (_owns) {
+            fmpq_mpoly_clear(poly, ctx);
+            fmpq_mpoly_ctx_clear(ctx);
+        }
+    }
+
+    FlintQPoly(FlintQPoly&& other) noexcept
+        : vars(std::move(other.vars)), _owns(other._owns)
+    {
+        std::memcpy(ctx, other.ctx, sizeof(fmpq_mpoly_ctx_t));
+        std::memcpy(poly, other.poly, sizeof(fmpq_mpoly_t));
+        other._owns = false;
+    }
+
+    FlintQPoly(const FlintQPoly&) = delete;
+    FlintQPoly& operator=(const FlintQPoly&) = delete;
+    FlintQPoly& operator=(FlintQPoly&&) = delete;
+
+    slong length() const { return fmpq_mpoly_length(poly, ctx); }
+};
+
+// ---- polynomial_QQ -> FlintQPoly ----
+
+inline FlintQPoly clpoly_qq_to_flint(
+    const clpoly::polynomial_QQ& p,
+    const std::vector<clpoly::variable>& vars)
+{
+    std::map<clpoly::variable, slong> var_idx;
+    for (slong i = 0; i < static_cast<slong>(vars.size()); ++i)
+        var_idx[vars[i]] = i;
+
+    FlintQPoly fp(vars);
+    slong nvars = static_cast<slong>(vars.size());
+    std::vector<ulong> exp(nvars, 0);
+    fmpq_t coeff;
+    fmpq_init(coeff);
+
+    for (auto& term : p) {
+        std::fill(exp.begin(), exp.end(), 0);
+        for (auto& ve : term.first) {
+            auto it = var_idx.find(ve.first);
+            if (it != var_idx.end())
+                exp[it->second] = static_cast<ulong>(ve.second);
+        }
+        clpoly_qq_to_fmpq(coeff, term.second);
+        fmpq_mpoly_push_term_fmpq_ui(fp.poly, coeff, exp.data(), fp.ctx);
+    }
+
+    fmpq_clear(coeff);
+    fmpq_mpoly_sort_terms(fp.poly, fp.ctx);
+    fmpq_mpoly_reduce(fp.poly, fp.ctx);
+    return fp;
+}
+
+// ---- FlintQPoly -> polynomial_QQ ----
+
+inline clpoly::polynomial_QQ flint_qq_to_clpoly(const FlintQPoly& fp) {
+    slong nvars = static_cast<slong>(fp.vars.size());
+    slong len = fp.length();
+
+    std::vector<std::pair<clpoly::monomial, clpoly::QQ>> terms;
+    terms.reserve(len);
+
+    std::vector<ulong> exp(nvars);
+    fmpq_t coeff;
+    fmpq_init(coeff);
+
+    for (slong i = 0; i < len; ++i) {
+        fmpq_mpoly_get_term_coeff_fmpq(coeff, fp.poly, i, fp.ctx);
+        fmpq_mpoly_get_term_exp_ui(exp.data(), fp.poly, i, fp.ctx);
+
+        clpoly::QQ c = fmpq_to_clpoly_qq(coeff);
+        std::vector<std::pair<clpoly::variable, int64_t>> mono_data;
+        for (slong j = 0; j < nvars; ++j) {
+            if (exp[j] != 0)
+                mono_data.push_back({fp.vars[j], static_cast<int64_t>(exp[j])});
+        }
+        terms.emplace_back(clpoly::monomial(mono_data), std::move(c));
+    }
+
+    fmpq_clear(coeff);
+    return clpoly::polynomial_QQ(terms);
+}
+
+// ---- collect_vars overload for polynomial_QQ ----
+
+inline std::vector<clpoly::variable> collect_vars_qq(
+    const clpoly::polynomial_QQ& f,
+    const clpoly::polynomial_QQ& g = clpoly::polynomial_QQ())
+{
+    auto vlist = clpoly::get_variables(f);
+    if (!g.empty()) {
+        auto vlist2 = clpoly::get_variables(g);
+        for (auto& v : vlist2) {
+            bool found = false;
+            for (auto& u : vlist)
+                if (u.first == v.first) { found = true; break; }
+            if (!found)
+                vlist.push_back(v);
+        }
+    }
+    vlist.sort([](const std::pair<clpoly::variable, int64_t>& a,
+                  const std::pair<clpoly::variable, int64_t>& b) {
+        return a.first < b.first;
+    });
+    std::vector<clpoly::variable> result;
+    for (auto& v : vlist)
+        result.push_back(v.first);
+    return result;
+}
+
+// ---- collect_vars for multiple QQ polynomials ----
+
+inline std::vector<clpoly::variable> collect_vars_qq_multi(
+    const std::vector<clpoly::polynomial_QQ>& polys)
+{
+    std::set<clpoly::variable> vset;
+    for (auto& p : polys) {
+        auto vlist = clpoly::get_variables(p);
+        for (auto& v : vlist)
+            vset.insert(v.first);
+    }
+    return std::vector<clpoly::variable>(vset.begin(), vset.end());
+}
+
+// ---- FLINT-based multi-divisor normal form (independent arithmetic) ----
+// Computes NF(f, G) using only FLINT fmpq_mpoly operations.
+// Used as an independent oracle to verify CLPoly's Gröbner basis.
+
+inline FlintQPoly flint_qq_normal_form(
+    const FlintQPoly& f,
+    const std::vector<FlintQPoly>& G)
+{
+    slong nvars = fmpq_mpoly_ctx_nvars(f.ctx);
+    FlintQPoly h(f.vars);
+    fmpq_mpoly_set(h.poly, f.poly, h.ctx);
+
+    FlintQPoly r(f.vars);  // remainder
+
+    std::vector<ulong> h_exp(nvars), g_exp(nvars), q_exp(nvars);
+    fmpq_t h_coeff, g_coeff, q_coeff;
+    fmpq_init(h_coeff); fmpq_init(g_coeff); fmpq_init(q_coeff);
+
+    while (!fmpq_mpoly_is_zero(h.poly, h.ctx)) {
+        fmpq_mpoly_get_term_coeff_fmpq(h_coeff, h.poly, 0, h.ctx);
+        fmpq_mpoly_get_term_exp_ui(h_exp.data(), h.poly, 0, h.ctx);
+
+        bool divided = false;
+        for (auto& gi : G) {
+            if (fmpq_mpoly_is_zero(gi.poly, gi.ctx)) continue;
+            fmpq_mpoly_get_term_exp_ui(g_exp.data(), gi.poly, 0, gi.ctx);
+
+            // Check LM(gi) | LM(h)
+            bool divides = true;
+            for (slong k = 0; k < nvars; k++) {
+                if (h_exp[k] < g_exp[k]) { divides = false; break; }
+            }
+            if (!divides) continue;
+
+            // quotient exponent and coefficient
+            for (slong k = 0; k < nvars; k++)
+                q_exp[k] = h_exp[k] - g_exp[k];
+            fmpq_mpoly_get_term_coeff_fmpq(g_coeff, gi.poly, 0, gi.ctx);
+            fmpq_div(q_coeff, h_coeff, g_coeff);
+
+            // h -= (q_coeff * x^q_exp) * gi
+            FlintQPoly mono(f.vars);
+            fmpq_mpoly_push_term_fmpq_ui(mono.poly, q_coeff, q_exp.data(), mono.ctx);
+            FlintQPoly temp(f.vars);
+            fmpq_mpoly_mul(temp.poly, mono.poly, gi.poly, temp.ctx);
+            fmpq_mpoly_sub(h.poly, h.poly, temp.poly, h.ctx);
+
+            divided = true;
+            break;
+        }
+
+        if (!divided) {
+            // Move LT(h) to remainder
+            FlintQPoly lt(f.vars);
+            fmpq_mpoly_push_term_fmpq_ui(lt.poly, h_coeff, h_exp.data(), lt.ctx);
+            fmpq_mpoly_add(r.poly, r.poly, lt.poly, r.ctx);
+            fmpq_mpoly_sub(h.poly, h.poly, lt.poly, h.ctx);
+        }
+    }
+
+    fmpq_clear(h_coeff); fmpq_clear(g_coeff); fmpq_clear(q_coeff);
+    return r;
+}
+
+// ---- Gröbner 基: FLINT fmpz_mpoly_vec API ----
+
+// RAII wrapper for fmpz_mpoly_vec_t
+struct FlintPolyVec {
+    fmpz_mpoly_vec_t vec;
+    fmpz_mpoly_ctx_t ctx;
+    std::vector<clpoly::variable> vars;
+    bool _owns;
+
+    FlintPolyVec(const std::vector<clpoly::variable>& v)
+        : vars(v), _owns(true)
+    {
+        fmpz_mpoly_ctx_init(ctx, static_cast<slong>(v.size()), ORD_DEGLEX);
+        fmpz_mpoly_vec_init(vec, 0, ctx);
+    }
+
+    ~FlintPolyVec() {
+        if (_owns) {
+            fmpz_mpoly_vec_clear(vec, ctx);
+            fmpz_mpoly_ctx_clear(ctx);
+        }
+    }
+
+    void append(const FlintPoly& fp) {
+        fmpz_mpoly_vec_append(vec, fp.poly, ctx);
+    }
+
+    slong length() const { return vec->length; }
+
+    FlintPolyVec(FlintPolyVec&& other) noexcept
+        : vars(std::move(other.vars)), _owns(other._owns)
+    {
+        std::memcpy(ctx, other.ctx, sizeof(fmpz_mpoly_ctx_t));
+        std::memcpy(vec, other.vec, sizeof(fmpz_mpoly_vec_t));
+        other._owns = false;
+    }
+
+    FlintPolyVec(const FlintPolyVec&) = delete;
+    FlintPolyVec& operator=(const FlintPolyVec&) = delete;
+    FlintPolyVec& operator=(FlintPolyVec&&) = delete;
+};
+
+// 将 CLPoly polynomial_ZZ 列表转为 FlintPolyVec
+inline FlintPolyVec clpoly_to_flint_vec(
+    const std::vector<clpoly::polynomial_ZZ>& polys,
+    const std::vector<clpoly::variable>& vars)
+{
+    FlintPolyVec fv(vars);
+    for (auto& p : polys) {
+        auto fp = clpoly_to_flint(p, vars);
+        fmpz_mpoly_vec_append(fv.vec, fp.poly, fv.ctx);
+    }
+    return fv;
+}
+
+// 将 FlintPolyVec 转为 CLPoly polynomial_ZZ 列表
+inline std::vector<clpoly::polynomial_ZZ> flint_vec_to_clpoly(
+    const FlintPolyVec& fv)
+{
+    std::vector<clpoly::polynomial_ZZ> result;
+    for (slong i = 0; i < fv.length(); i++) {
+        FlintPoly tmp(fv.vars);
+        fmpz_mpoly_set(tmp.poly, fmpz_mpoly_vec_entry(fv.vec, i), tmp.ctx);
+        result.push_back(flint_to_clpoly(tmp));
+    }
+    return result;
+}
+
+// FLINT Buchberger + autoreduction → 约化 Gröbner 基
+inline std::vector<clpoly::polynomial_ZZ> flint_groebner_basis(
+    const std::vector<clpoly::polynomial_ZZ>& gens,
+    const std::vector<clpoly::variable>& vars)
+{
+    auto fv_in = clpoly_to_flint_vec(gens, vars);
+    FlintPolyVec fv_gb(vars);
+    fmpz_mpoly_buchberger_naive(fv_gb.vec, fv_in.vec, fv_gb.ctx);
+    FlintPolyVec fv_reduced(vars);
+    fmpz_mpoly_vec_autoreduction_groebner(fv_reduced.vec, fv_gb.vec, fv_reduced.ctx);
+    return flint_vec_to_clpoly(fv_reduced);
+}
+
+// FLINT 验证: G 是否为 F 的 Gröbner 基
+inline bool flint_is_groebner(
+    const std::vector<clpoly::polynomial_ZZ>& gb,
+    const std::vector<clpoly::polynomial_ZZ>& gens,
+    const std::vector<clpoly::variable>& vars)
+{
+    auto fv_gb = clpoly_to_flint_vec(gb, vars);
+    auto fv_gens = clpoly_to_flint_vec(gens, vars);
+    return fmpz_mpoly_vec_is_groebner(fv_gb.vec, fv_gens.vec, fv_gb.ctx) != 0;
+}
+
+// collect_vars for multiple ZZ polynomials
+inline std::vector<clpoly::variable> collect_vars_multi(
+    const std::vector<clpoly::polynomial_ZZ>& polys)
+{
+    std::set<clpoly::variable> vset;
+    for (auto& p : polys) {
+        auto vlist = clpoly::get_variables(p);
+        for (auto& v : vlist)
+            vset.insert(v.first);
+    }
+    return std::vector<clpoly::variable>(vset.begin(), vset.end());
+}
+
+// ---- fmpz_poly_t (univariate) for factorization crosscheck ----
+
+#include <flint/fmpz_poly.h>
+#include <flint/fmpz_poly_factor.h>
+
+struct FlintUPoly {
+    fmpz_poly_t poly;
+    bool _owns;
+    FlintUPoly() : _owns(true) { fmpz_poly_init(poly); }
+    ~FlintUPoly() { if (_owns) fmpz_poly_clear(poly); }
+    FlintUPoly(FlintUPoly&& other) noexcept : _owns(other._owns) {
+        std::memcpy(poly, other.poly, sizeof(fmpz_poly_t));
+        other._owns = false;
+    }
+    FlintUPoly(const FlintUPoly&) = delete;
+    FlintUPoly& operator=(const FlintUPoly&) = delete;
+    FlintUPoly& operator=(FlintUPoly&&) = delete;
+};
+
+inline FlintUPoly clpoly_upoly_to_flint(const clpoly::upolynomial_ZZ& p) {
+    FlintUPoly fp;
+    fmpz_t coeff;
+    fmpz_init(coeff);
+    for (auto& term : p) {
+        clpoly_zz_to_fmpz(coeff, term.second);
+        fmpz_poly_set_coeff_fmpz(fp.poly, static_cast<slong>(term.first.deg()), coeff);
+    }
+    fmpz_clear(coeff);
+    return fp;
+}
+
+inline clpoly::upolynomial_ZZ flint_to_clpoly_upoly(const fmpz_poly_t p) {
+    std::vector<std::pair<clpoly::umonomial, clpoly::ZZ>> terms;
+    slong len = fmpz_poly_length(p);
+    fmpz_t coeff;
+    fmpz_init(coeff);
+    for (slong i = len - 1; i >= 0; --i) {
+        fmpz_poly_get_coeff_fmpz(coeff, p, i);
+        if (!fmpz_is_zero(coeff))
+            terms.emplace_back(clpoly::umonomial(i), fmpz_to_clpoly_zz(coeff));
+    }
+    fmpz_clear(coeff);
+    return clpoly::upolynomial_ZZ(terms);
+}
+
+struct FlintFactorResult {
+    clpoly::ZZ content;
+    std::vector<std::pair<clpoly::upolynomial_ZZ, long>> factors;
+};
+
+inline FlintFactorResult flint_factor_upoly(const clpoly::upolynomial_ZZ& p) {
+    FlintUPoly fp = clpoly_upoly_to_flint(p);
+
+    fmpz_poly_factor_t fac;
+    fmpz_poly_factor_init(fac);
+    fmpz_poly_factor(fac, fp.poly);
+
+    FlintFactorResult result;
+    result.content = fmpz_to_clpoly_zz(&fac->c);
+    for (slong i = 0; i < fac->num; ++i) {
+        auto fi = flint_to_clpoly_upoly(fac->p + i);
+        result.factors.push_back({std::move(fi), fac->exp[i]});
+    }
+
+    fmpz_poly_factor_clear(fac);
+    return result;
+}
+
+// ---- Multivariate factorization via fmpz_mpoly_factor ----
+
+#include <flint/fmpz_mpoly_factor.h>
+
+struct FlintMPolyFactorResult {
+    clpoly::ZZ content;
+    std::vector<std::pair<clpoly::polynomial_ZZ, long>> factors; // (factor, exponent)
+};
+
+inline FlintMPolyFactorResult flint_factor_mpoly(
+    const clpoly::polynomial_ZZ& p,
+    const std::vector<clpoly::variable>& vars)
+{
+    auto fp = clpoly_to_flint(p, vars);
+
+    fmpz_mpoly_factor_t fac;
+    fmpz_mpoly_factor_init(fac, fp.ctx);
+    int ok = fmpz_mpoly_factor(fac, fp.poly, fp.ctx);
+    if (!ok)
+        throw std::runtime_error("fmpz_mpoly_factor failed");
+
+    FlintMPolyFactorResult result;
+    // Content
+    fmpz_t c;
+    fmpz_init(c);
+    fmpz_mpoly_factor_get_constant_fmpz(c, fac, fp.ctx);
+    result.content = fmpz_to_clpoly_zz(c);
+    fmpz_clear(c);
+
+    // Factors
+    slong nfac = fmpz_mpoly_factor_length(fac, fp.ctx);
+    for (slong i = 0; i < nfac; ++i) {
+        fmpz_mpoly_t base;
+        fmpz_mpoly_init(base, fp.ctx);
+        fmpz_mpoly_factor_get_base(base, fac, i, fp.ctx);
+
+        // Convert back to CLPoly via a temporary FlintPoly wrapper
+        // (manual conversion since we can't easily construct FlintPoly from existing data)
+        slong len = fmpz_mpoly_length(base, fp.ctx);
+        slong nvars = static_cast<slong>(vars.size());
+        std::vector<std::pair<clpoly::monomial, clpoly::ZZ>> terms;
+        terms.reserve(len);
+        std::vector<ulong> exp(nvars);
+        fmpz_t coeff;
+        fmpz_init(coeff);
+        for (slong j = 0; j < len; ++j) {
+            fmpz_mpoly_get_term_coeff_fmpz(coeff, base, j, fp.ctx);
+            fmpz_mpoly_get_term_exp_ui(exp.data(), base, j, fp.ctx);
+            clpoly::ZZ cz = fmpz_to_clpoly_zz(coeff);
+            std::vector<std::pair<clpoly::variable, int64_t>> mono_data;
+            for (slong k = 0; k < nvars; ++k)
+                if (exp[k] != 0)
+                    mono_data.push_back({vars[k], static_cast<int64_t>(exp[k])});
+            terms.emplace_back(clpoly::monomial(mono_data), std::move(cz));
+        }
+        fmpz_clear(coeff);
+        fmpz_mpoly_clear(base, fp.ctx);
+
+        long e = fmpz_mpoly_factor_get_exp_si(fac, i, fp.ctx);
+        result.factors.push_back({clpoly::polynomial_ZZ(terms), e});
+    }
+
+    fmpz_mpoly_factor_clear(fac, fp.ctx);
+    return result;
+}
+
+} // namespace crosscheck
+
+#endif // CROSSCHECK_FLINT_HH

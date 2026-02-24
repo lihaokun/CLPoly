@@ -275,14 +275,11 @@ namespace clpoly{
         {
             O.clear();
             O.comp(F.comp_ptr());
-            basic_monomial<comp> m(F.comp_ptr());
             typename basic_monomial<comp>::const_iterator tmp_I;
             for (auto &i:F)
                 if ((tmp_I=i.first.find(v))!=i.first.end() && tmp_I->second==deg)
                 {
-                    m=i.first;
-                    m[tmp_I-i.first.begin()].second=0;
-                    O.push_back({std::move(m),i.second});
+                    O.push_back({__change_monomial_var_deg(i.first,v,0),i.second});
                 }
             O.normalization();
         }
@@ -684,8 +681,8 @@ namespace clpoly{
         Zp coeff(prime);
         for (auto & i:p)
         {
-            coeff=i.second; 
-            if (coeff)
+            coeff=i.second;
+            if (coeff.number() != 0)
                 new_p.push_back({i.first,std::move(coeff)});
         }
         // std::cout<<" ="<<new_p<<std::endl;
@@ -698,8 +695,8 @@ namespace clpoly{
         Zp coeff(prime);
         for (auto & i:p)
         {
-            coeff=i.second; 
-            if (coeff)
+            coeff=i.second;
+            if (coeff.number() != 0)
             new_p.push_back({std::move(i.first),std::move(coeff)});
         }
         p.clear();

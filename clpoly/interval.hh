@@ -2,6 +2,7 @@
  * @file interval.hh
  * @author 李昊坤 (ker@pm.me)
  * @brief 定义interval class
+ * @deprecated 此文件已废弃，不再维护。
 */
 
 #ifndef CLPOLY_INTERVAL_HH

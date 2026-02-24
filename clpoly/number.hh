@@ -2,109 +2,73 @@
  * @file number.hh
  * @author 李昊坤 (ker@pm.me)
  * @brief 关于数域的定义
- * 
+ *
  */
 #ifndef CLPOLY_NUMBER_HH
 #define CLPOLY_NUMBER_HH
-#include <gmpxx.h>
+#include <clpoly/number/ZZ.hh>
+#include <clpoly/number/QQ.hh>
 #include <clpoly/basic.hh>
 #include <cmath>
 #include <cstdint>
 #include <cassert>
-#include <boost/container_hash/hash.hpp>
-inline std::size_t hash_value(const mpz_class& p) 
-{
 
-    // std::size_t h = 0;
-    // // Fowler, Noll and Vo hashing
-
-    // for(int i = 0U; i < p.get_mpz_t()->_mp_size; ++i) {
-
-    //     h *= 16777619U;
-    //     h ^= p.get_mpz_t()->_mp_d[i];
-    // }
-    std::size_t seed=boost::hash_range(p.get_mpz_t()->_mp_d,p.get_mpz_t()->_mp_d+abs(p.get_mpz_t()->_mp_size));
-    boost::hash_combine(seed, p.get_mpz_t()->_mp_size);
-    return seed;
-}
-inline std::size_t hash_value(mpq_class const& v)
-{
-    std::size_t seed = 0;
-    boost::hash_combine(seed, v.get_num());
-    boost::hash_combine(seed, v.get_den());
-    return seed;
-}
 namespace clpoly{
-    typedef mpz_class ZZ;
-    typedef mpq_class QQ;
-    // using ZZ=cln::cl_I;
+    // ---- ZZ template specializations ----
     template<>
-    inline void addmul(mpz_class &op,const mpz_class &op1,const mpz_class&op2)
+    inline void addmul(ZZ &op,const ZZ &op1,const ZZ&op2)
     {
-        mpz_addmul(op.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+        op.addmul(op1, op2);
     }
     template<>
-    inline void submul(mpz_class &op,const mpz_class &op1,const mpz_class&op2)
+    inline void submul(ZZ &op,const ZZ &op1,const ZZ&op2)
     {
-        mpz_submul(op.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+        op.submul(op1, op2);
     }
     template<>
-    inline void __div(mpz_class &op,const mpz_class &op1,const mpz_class&op2)
+    inline void __div(ZZ &op,const ZZ &op1,const ZZ&op2)
     {
-        mpz_fdiv_q(op.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+        ZZ::fdiv_q(op, op1, op2);
     }
     template<>
-    inline void __div(mpz_class &op,mpz_class &op_r,const mpz_class &op1,const mpz_class&op2)
+    inline void __div(ZZ &op,ZZ &op_r,const ZZ &op1,const ZZ&op2)
     {
-        mpz_fdiv_qr(op.get_mpz_t(),op_r.get_mpz_t(),op1.get_mpz_t(),op2.get_mpz_t());
+        ZZ::fdiv_qr(op, op_r, op1, op2);
     }
     template<>
-    inline void __div(mpq_class &op,const mpz_class &op1,const mpz_class&op2)
+    inline void __div(QQ &op,const ZZ &op1,const ZZ&op2)
     {
-        op=mpq_class(op1,op2);
+        op=QQ(op1,op2);
     }
     template<>
-    inline void __div(mpq_class &op,mpq_class &op_r,const mpz_class &op1,const mpz_class&op2)
+    inline void __div(QQ &op,QQ &op_r,const ZZ &op1,const ZZ&op2)
     {
-        op=mpq_class(op1,op2);
-        op_r=0;
+        op=QQ(op1,op2);
+        op_r=QQ(0);
     }
     template <>
-    inline void set_zero(mpz_class& op)
+    inline void set_zero(ZZ& op)
     {
-        mpz_set_si(op.get_mpz_t(),0);
+        op=0LL;
     }
     template<>
-    struct zore_check<mpz_class>
+    struct zore_check<ZZ>
     {
-        bool operator()(const mpz_class & op)
+        bool operator()(const ZZ & op)
         {
             return !op;
-        } 
+        }
     };
     template<>
-    struct zore_check<mpq_class>
+    struct zore_check<QQ>
     {
-        bool operator()(const mpq_class & op)
+        bool operator()(const QQ & op)
         {
             return !op;
-        } 
+        }
     };
-    inline mpz_class pow(mpz_class  x,uint64_t i)
-    {
-        mpz_pow_ui(x.get_mpz_t(),x.get_mpz_t(),i);
-        return x;
-    }
-    inline mpq_class pow(mpq_class  x,uint64_t i)
-    {
-        mpz_pow_ui(x.get_num_mpz_t(),x.get_num_mpz_t(),i);
-        mpz_pow_ui(x.get_den_mpz_t(),x.get_den_mpz_t(),i);
-        return x;
-    }
-    inline size_t sizeinbase(mpz_class x,int i)
-    {
-      return mpz_sizeinbase(x.get_mpz_t(),i);
-    }
+
+    // ---- Zp ----
     inline uint64_t inv_prime(uint64_t _i,uint32_t _p)
     {
         assert(_p!=0 && _i!=0);
@@ -121,139 +85,182 @@ namespace clpoly{
     class Zp
     {
     private:
-        uint64_t _i;
-        uint32_t _p; 
+        uint32_t _i;     // 值 ∈ [0, p)
+        uint32_t _p;     // 素数 p（0 = 未初始化哨兵）
+        uint64_t _ninv;  // Barrett 常数：UINT64_MAX / p（0 = 未初始化）
+
+        inline static uint32_t _s_prime = 0;  // 类级别当前素数，默认 0（未设置）
+
+        // 预计算 Barrett 常数
+        // p==0：保持旧 Zp() 未初始化哨兵行为，addmul/submul 延迟初始化依赖此语义
+        // p>=2：UINT64_MAX/p 等价于 floor(2^64/p)（product < p² < 2^64，整数误差=0）
+        static uint64_t __barrett_ninv(uint32_t p)
+        {
+            if (p == 0) return 0;
+            assert(p >= 2 && p < (1u << 31));  // p < 2^31：保证加法 _i+_i 不溢出 uint32_t
+            return UINT64_MAX / p;
+        }
+
+        // Barrett 归约：将 product（< p²，即 < 2^64）归约到 [0, p)
+        uint32_t __barrett_reduce(uint64_t product) const
+        {
+            assert(_p != 0);
+            uint64_t q = (unsigned __int128)product * _ninv >> 64;
+            uint64_t r = product - q * _p;
+            return (uint32_t)(r >= _p ? r - _p : r);
+        }
+
     public:
-        Zp():_i(0),_p(0){}
-        explicit  Zp(uint32_t p):_i(0),_p(p){}
-        Zp(uint64_t i,uint32_t p):_i(i%p),_p(p){}
-        Zp(int64_t i,uint32_t p):_i(i>=0?i%p:p-(-i)%p),_p(p){}
-        Zp(int i,uint32_t p):_i(i>=0?i%p:p-(-i)%p),_p(p){}
-        Zp(ZZ i,uint32_t p):_i(mpz_fdiv_ui(i.get_mpz_t(),p)),_p(p){}
+        // 类级别素数管理
+        static void     set_prime(uint32_t p) { assert(p >= 2 && p < (1u << 31)); _s_prime = p; }
+        static uint32_t cur_prime()           { return _s_prime; }
+
+        Zp() : _i(0), _p(_s_prime), _ninv(__barrett_ninv(_s_prime)) {}
+        explicit Zp(uint32_t p) : _i(0), _p(p), _ninv(__barrett_ninv(p)) {}
+        Zp(uint64_t i, uint32_t p) : _p(p), _ninv(__barrett_ninv(p)) { _i = (uint32_t)(i % p); }
+        Zp(uint32_t i, uint32_t p) : _p(p), _ninv(__barrett_ninv(p)) { _i = i % p; }
+        Zp(int64_t i, uint32_t p) : _p(p), _ninv(__barrett_ninv(p))
+        {
+            // 修复原始 bug：i=-p 时 p - (-p)%p = p - 0 = p（越界）
+            int64_t r = i % (int64_t)p;
+            _i = (uint32_t)(r >= 0 ? r : r + (int64_t)p);
+        }
+        Zp(int i, uint32_t p) : _p(p), _ninv(__barrett_ninv(p))
+        {
+            int64_t r = (int64_t)i % (int64_t)p;
+            _i = (uint32_t)(r >= 0 ? r : r + (int64_t)p);
+        }
+        Zp(const ZZ& i, uint32_t p) : _p(p), _ninv(__barrett_ninv(p)) { _i = (uint32_t)i.fdiv_ui(p); }
+
         inline Zp inv() const
         {
-            //assert(this->_p!=0 && this->_i!=0);
             Zp new_op(this->_p);
-            new_op._i=inv_prime(this->_i,this->_p);
+            new_op._i = (uint32_t)inv_prime(this->_i, this->_p);
             return new_op;
         }
         constexpr Zp& operator=(int64_t i)
         {
-            assert(this->_p!=0);
-            this->_i=i>=0?i%this->_p:this->_p-(-i)%this->_p;
+            if (this->_p == 0) { assert(i == 0); this->_i = 0; return *this; }
+            int64_t r = i % (int64_t)this->_p;
+            this->_i = (uint32_t)(r >= 0 ? r : r + (int64_t)this->_p);
             return *this;
         }
         inline Zp& operator=(const ZZ& i)
         {
-            assert(this->_p!=0);
-            this->_i=mpz_fdiv_ui(i.get_mpz_t(),this->_p);
+            if (this->_p == 0) { assert(!i); this->_i = 0; return *this; }
+            this->_i = (uint32_t)i.fdiv_ui(this->_p);
             return *this;
         }
-        constexpr operator std::uint64_t() const {return this->_i;}
-        constexpr uint32_t prime() const {return this->_p;}
-        constexpr uint32_t & prime() {return this->_p;}
-        constexpr uint64_t number() const {return this->_i;}
-        constexpr uint64_t & number() {return this->_i;}
-        constexpr void normalization(){assert(this->_p);this->_i%=this->_p;}
-        constexpr void prime(uint32_t p) {this->_p=p;}
-        constexpr Zp & operator+()
-        { return *this;}
-        constexpr Zp & operator-()
+        explicit constexpr operator std::uint64_t() const { return this->_i; }
+        explicit constexpr operator bool() const { return this->_i != 0; }
+        constexpr uint32_t prime() const { return this->_p; }
+        // uint32_t& prime() 删除：_p 和 _ninv 必须同步，不能暴露可变引用
+        constexpr uint32_t  number() const { return this->_i; }
+        constexpr uint32_t& number()       { return this->_i; }
+        constexpr void normalization() { assert(this->_p); this->_i %= this->_p; }
+        void prime(uint32_t p) { this->_p = p; this->_ninv = __barrett_ninv(p); }
+
+        constexpr Zp& operator+() { return *this; }
+        Zp operator-() const
         {
-            this->_i=this->_p-this->_i;
-            return *this;
+            return Zp(_i == 0 ? 0u : _p - _i, _p);
         }
-        // friend inline Zp operator+(Zp op1,std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     op1._i+=op2;
-        //     op1._i%=op1._p;
-        //     return op1;
-        // }
-        // friend inline Zp operator-(Zp op1,std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     op1._i+=op1._p-op2;
-        //     op1._i%=op1._p;
-        //     return op1;
-        // }
-        // friend inline Zp operator*(Zp op1,std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     op1._i*=op2;
-        //     op1._i%=op1._p;
-        //     return op1;
-        // }
-        // inline Zp & operator*=(std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     this->_i*=op2;
-        //     this->_i%=this->_p;
-        //     return *this;
-        // }
-        // friend inline Zp operator/(Zp op1,std::uint64_t op2)
-        // {
-        //     //assert(op1._p==op2._p);
-        //     op1._i*=inv_prime(op2,op1._p);
-        //     op1._i%=op1._p;
-        //     return op1;
-        // }
-        friend inline Zp operator+(Zp op1,const Zp &  op2)
+
+        friend inline Zp operator+(Zp op1, const Zp& op2)
         {
-            assert(op1._p==op2._p);
-            op1._i+=op2;
-            op1._i%=op1._p;
+            assert(op1._p == op2._p);
+            uint32_t r = op1._i + op2._i;
+            op1._i = (r >= op1._p) ? r - op1._p : r;
             return op1;
         }
-        inline Zp & operator+=(const Zp &  op2)
+        inline Zp& operator+=(const Zp& op2)
         {
-            assert(this->_p==op2._p);
-            this->_i+=op2;
-            this->_i%=this->_p;
+            assert(this->_p == op2._p);
+            uint32_t r = this->_i + op2._i;
+            this->_i = (r >= this->_p) ? r - this->_p : r;
             return *this;
         }
-        friend inline Zp operator-(Zp op1,const Zp &  op2)
+        friend inline Zp operator-(Zp op1, const Zp& op2)
         {
-            assert(op1._p==op2._p);
-            op1._i+=op1._p-op2;
-            op1._i%=op1._p;
+            assert(op1._p == op2._p);
+            op1._i = op1._i >= op2._i ? op1._i - op2._i : op1._p - op2._i + op1._i;
             return op1;
         }
-        friend inline Zp operator*(Zp op1,const Zp &  op2)
+        inline Zp& operator-=(const Zp& op2)
         {
-            assert(op1._p==op2._p);
-            op1._i*=op2;
-            op1._i%=op1._p;
-            return op1;
-        }
-        inline Zp & operator*=(const Zp &  op2)
-        {
-            assert(this->_p==op2._p);
-            this->_i*=op2;
-            this->_i%=this->_p;
+            assert(this->_p == op2._p);
+            this->_i = this->_i >= op2._i ? this->_i - op2._i : this->_p - op2._i + this->_i;
             return *this;
         }
-        friend inline Zp operator/(Zp op1,const Zp & op2)
+        friend inline Zp operator*(Zp op1, const Zp& op2)
         {
-            assert(op1._p==op2._p);
-            op1._i*=inv_prime(op2,op1._p);
-            op1._i%=op1._p;
+            assert(op1._p == op2._p);
+            op1._i = op1.__barrett_reduce((uint64_t)op1._i * op2._i);
             return op1;
         }
-        inline Zp & operator/=(const Zp & op2)
+        friend inline Zp operator*(Zp op1, int64_t op2)
         {
-            assert(this->_p==op2._p);
-            this->_i*=inv_prime(op2,this->_p);
-            this->_i%=this->_p;
+            op1._i = op1.__barrett_reduce((uint64_t)op1._i * Zp(op2, op1._p)._i);
+            return op1;
+        }
+        friend inline Zp operator*(int64_t op1, const Zp& op2) { return op2 * op1; }
+        inline Zp& operator*=(const Zp& op2)
+        {
+            assert(this->_p == op2._p);
+            this->_i = this->__barrett_reduce((uint64_t)this->_i * op2._i);
             return *this;
         }
-        friend std::ostream& operator<<  (std::ostream& stream, const Zp& v) 
+        friend inline Zp operator/(Zp op1, const Zp& op2)
+        {
+            assert(op1._p == op2._p);
+            op1._i = op1.__barrett_reduce((uint64_t)op1._i * inv_prime(op2._i, op1._p));
+            return op1;
+        }
+        inline Zp& operator/=(const Zp& op2)
+        {
+            assert(this->_p == op2._p);
+            this->_i = this->__barrett_reduce((uint64_t)this->_i * inv_prime(op2._i, this->_p));
+            return *this;
+        }
+        friend inline bool operator==(const Zp& op1, const Zp& op2)
+        {
+            assert(op1._p == op2._p);
+            return op1._i == op2._i;
+        }
+        friend inline bool operator!=(const Zp& op1, const Zp& op2)
+        {
+            assert(op1._p == op2._p);
+            return op1._i != op2._i;
+        }
+        friend inline bool operator==(const Zp& op1, int64_t op2)
+        {
+            Zp tmp(op2, op1._p);
+            return op1._i == tmp._i;
+        }
+        friend inline bool operator==(int64_t op1, const Zp& op2)
+        {
+            return op2 == op1;
+        }
+        friend inline bool operator!=(const Zp& op1, int64_t op2)
+        {
+            return !(op1 == op2);
+        }
+        friend inline bool operator!=(int64_t op1, const Zp& op2)
+        {
+            return !(op2 == op1);
+        }
+        friend inline bool operator>=(const Zp& op1, int64_t op2)
+        {
+            if (op2 <= 0) return true;
+            return op1._i >= (uint32_t)op2;
+        }
+        friend std::ostream& operator<<(std::ostream& stream, const Zp& v)
         {
             stream << v._i;
             return stream;
         }
     };
-    inline std::size_t hash_value(Zp  const& v)
+    inline std::size_t hash_value(Zp const& v)
     {
         std::size_t seed = 0;
         boost::hash_combine(seed, v.number());
@@ -263,26 +270,27 @@ namespace clpoly{
     template<>
     struct zore_check<Zp>
     {
-        bool operator()(const Zp & op)
+        bool operator()(const Zp& op)
         {
-            return !op;
-        } 
+            return op.number() == 0;
+        }
     };
+    // set_zero<Zp>: 使用泛型模板（op = 0，即 operator=(int64_t)），无需特化
     template<>
-    inline void addmul(Zp &op,const Zp &op1,const Zp&op2)
+    inline void addmul(Zp& op, const Zp& op1, const Zp& op2)
     {
-        assert((op.prime()==op1.prime()|| op.prime()==0) && op1.prime()==op2.prime() && op1.prime());
-        op.prime()|=op1.prime();
-        op.number()+=op1.number()*op2.number();
-        op.number()%=op.prime();
+        assert((op.prime() == op1.prime() || op.prime() == 0)
+               && op1.prime() == op2.prime() && op1.prime());
+        if (op.prime() == 0) op.prime(op1.prime());  // setter 同步更新 _p 和 _ninv
+        op += op1 * op2;
     }
     template<>
-    inline void submul(Zp &op,const Zp &op1,const Zp&op2)
+    inline void submul(Zp& op, const Zp& op1, const Zp& op2)
     {
-        assert((op.prime()==op1.prime()|| op.prime()==0) && op1.prime()==op2.prime() && op1.prime());
-        op.prime()|=op1.prime();
-        op.number()+=op.prime()-(op1.number()*op2.number())%op.prime();
-        op.number()%=op.prime();
+        assert((op.prime() == op1.prime() || op.prime() == 0)
+               && op1.prime() == op2.prime() && op1.prime());
+        if (op.prime() == 0) op.prime(op1.prime());  // setter 同步更新 _p 和 _ninv
+        op -= op1 * op2;
     }
     inline Zp pow(const Zp & z,int64_t i)
     {

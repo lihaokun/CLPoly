@@ -11,6 +11,9 @@
 #ifndef CLPOLY_PARSE_BASIC_HH
 #define CLPOLY_PARSE_BASIC_HH
 
+#include <string>
+#include <set>
+
 namespace clpoly{
     namespace parse{
     
@@ -53,71 +56,6 @@ namespace clpoly{
         return chars.find(c)!=chars.end();
     }
 
-    std::string get_word()
-    {
-        // std::stringstream sstr;
-        std::string ss;
-        char c= 0;
-        this->get(c);
-        if (this->eof())
-            return "";
-        while (is_blank(c) || is_note(c))
-        {
-            while (is_blank(c))
-            {
-                this->get(c);
-                if (this->eof())
-                {
-                    // std::cout<<""<<std::endl;
-                    return "";
-                }
-            }
-            if (is_note(c))
-            while (c!='\n')
-            {
-                this->get(c);
-                if (this->eof())
-                {
-                    // std::cout<<""<<std::endl;
-                    return "";
-                }
-            }
-            
-        }
-        if (is_parentheses(c))
-        {
-            // std::cout<<c<<std::endl;
-            return std::string(1,c);
-        }
-        if (is_quoted(c))
-        {
-            while (1)
-            {
-                c=this->peek();
-                if (this->eof())
-                    this->get_throw();
-                this->get(c);
-                if (is_quoted(c))
-                    break;
-                ss.push_back(c);
-            }
-            return  ss;
-        }
-        
-        while  (1)
-        {
-            ss.push_back(c);
-            c=this->peek();
-            if (this->eof() || is_parentheses(c) || 
-                is_note(c) || is_blank(c) || is_quoted(c))
-                break;
-            this->get(c);
-            
-        }
-        // std::cout<<sstr.str()<<std::endl;
-        return  ss;
-    }
-   
     }
 }
 #endif

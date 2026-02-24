@@ -25,7 +25,7 @@ namespace clpoly{
             const compare* __comp=&(compare::init);
         public:
             typedef compare compare_type;
-            typedef Tm momomial_type;
+            typedef Tm monomial_type;
             typedef Tc coeff_type;
             typedef Tm first_type;
             typedef Tc second_type;

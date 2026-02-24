@@ -172,9 +172,10 @@ return true
 
 **后置条件（Ensures）**：
 - 若返回 `true`：`Σ result[i]·bi = c` in Zp[x1,...,x_{j-1}]，`Supp(result[i]) ⊆ forms[i]`，且 `deg(result[i], x1) < deg(F[i], x1)`
-- 若返回 `false`（两种情形，均不保证 result 内容）：
-  1. 真实 `Supp(σi) ⊄ forms[i]`（骨架假设不成立）
-  2. Vandermonde 矩阵奇异（存在 θ_t 值碰撞，sparse_betas 随机选取恰好不当）
+- 若返回 `false`（由验证步骤检测，均不保证 result 内容）：
+  - **检测机制**：Vandermonde 恢复后，验证 `Σ result[i]·bi = c`（CASC 2018 Algorithm 3 step 5）。验证失败则返回 false；不做验证则情形 1 会静默返回错误答案。
+  - 情形 1：真实 `Supp(σi) ⊄ forms[i]`（骨架假设不成立）——Vandermonde 解出错误系数，验证失败
+  - 情形 2：Vandermonde 矩阵奇异（存在 θ_t 值碰撞，sparse_betas 随机选取恰好不当）——线性系统无解或解不唯一
 
 **副作用**：无（`result` 为输出参数）。
 

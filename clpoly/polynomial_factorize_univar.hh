@@ -305,19 +305,6 @@ namespace clpoly{
     }
 
     // ================================================================
-    // §4.5 Zp→ZZ 多项式转换
-    // ================================================================
-
-    inline upolynomial_<ZZ> __upoly_Zp_to_ZZ(const upolynomial_<Zp>& f)
-    {
-        upolynomial_<ZZ> result;
-        result.reserve(f.size());
-        for (auto& term : f)
-            result.push_back(std::make_pair(term.first, ZZ(static_cast<int64_t>(term.second.number()))));
-        return result;
-    }
-
-    // ================================================================
     // §6. M2: Hensel 提升
     // ================================================================
 
@@ -369,10 +356,10 @@ namespace clpoly{
         polynomial_GCD(g_zp, h_zp, s_zp, t_zp);
 
         // Zp → ZZ
-        nodes[parent_idx].g = __upoly_Zp_to_ZZ(g_zp);
-        nodes[parent_idx].h = __upoly_Zp_to_ZZ(h_zp);
-        nodes[parent_idx].s = __upoly_Zp_to_ZZ(s_zp);
-        nodes[parent_idx].t = __upoly_Zp_to_ZZ(t_zp);
+        poly_convert(g_zp, nodes[parent_idx].g);
+        poly_convert(h_zp, nodes[parent_idx].h);
+        poly_convert(s_zp, nodes[parent_idx].s);
+        poly_convert(t_zp, nodes[parent_idx].t);
         nodes[parent_idx].leaf_start = start;
         nodes[parent_idx].leaf_end = end;
 

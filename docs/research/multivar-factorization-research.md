@@ -4,6 +4,8 @@
 > 目标：定位 CLPoly 多变量因式分解与 FLINT 7000x 性能差距的根因，确定优化方向
 > 参考实现：FLINT `fmpz_mpoly_factor.c`（`factor_zippel.c` / `factor_zassenhaus.c`）；Maple 2019 MTSHL
 > 当前代码：`clpoly/polynomial_factorize_wang.hh`（`__wang_core`、`__multivar_hensel_lift`、`__multivar_diophantine`）
+>
+> **⚠ 后续报告**：`multivar-mtshl-research.md`（2026-02-24）整合了 5 篇 Monagan-Tuncer 论文全貌，包含完整算法描述、复杂度证明和更新后的实施路线。本报告作为根因分析基础仍有效，但算法细节请以新报告为准。
 
 ---
 

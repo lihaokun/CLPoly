@@ -113,6 +113,13 @@ namespace clpoly{
         }
         return new_p;
     }
+    inline void poly_convert(const upolynomial_<Zp>& p_in, upolynomial_<ZZ>& p_out)
+    {
+        p_out.clear();
+        p_out.reserve(p_in.size());
+        for (auto& term : p_in)
+            p_out.push_back({term.first, ZZ(static_cast<int64_t>(term.second.number()))});
+    }
     template<class T1,class T2,class comp1>
     void poly_convert(const polynomial_<T1,comp1>& p_in,upolynomial_<T2> & p_out)
     {

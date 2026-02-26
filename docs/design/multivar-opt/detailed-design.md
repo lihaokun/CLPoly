@@ -71,8 +71,9 @@ v[l] = Σ_t d_t · θ_t^{l-1}
 
 实际实现用 **带主元 Gaussian 消元**（O(s²)，s 小时更稳定）：
 ```
-1. 构造增广矩阵 A[l,t] = θ_t^{l-1}（l=0..s-1，t=0..s-1），右端 b[l] = v[l+1]
-   （注意：这里用标准 Vandermonde W，即从 θ^0 开始）
+1. 构造增广矩阵 A[l,t] = θ_t^l（l=0..s-1，t=0..s-1），右端 b[l] = v[l+1]
+   （0-indexed：l=0 对应方程 v[1] = Σ d_t·θ_t^0，首行全为 1）
+   推导：v[l'] = Σ_t d_t·θ_t^{l'-1}（1-indexed l'）→ 0-indexed l=l'-1 → A[l,t]=θ_t^l
 2. 前向消元 + 回代，在 Zp 中（利用 Zp::inv()）
 3. 得到 d_t
 4. c_t = d_t / θ_t（若 θ_t = 0 则矩阵奇异，但 Requires 保证 βk ≠ 0 → θ_t ≠ 0）
@@ -161,7 +162,7 @@ c0    = c|_{x2=alpha2}       ∈ Zp[x1]
 
 // 解基础 r-因子单变量 Diophantine：Σ σ0[i]·b0[i] = c0
 // b0[i] = ∏_{l≠i} F0[l]
-success ← __mtshl_zp_univar_mdp(F0, c0, x1, sigma0)
+success ← __mtshl_zp_univar_mdp(F0, c0, sigma0)
 if !success: return false
 
 // 初始化结果：σ[i] 从常数项（在 x2 方向）开始
@@ -175,7 +176,7 @@ for k = 1, 2, ..., deg(c, x2):
 
     // 修正项：Σ δk[i]·b0[i] = ck - (来自前序修正与 F[i] 高阶项的交叉项)
     // 简化：delta_rhs = ck（精确到 O((x2-alpha2)^{k+1}) 误差无影响）
-    success ← __mtshl_zp_univar_mdp(F0, ck, x1, delta_k)
+    success ← __mtshl_zp_univar_mdp(F0, ck, delta_k)
     if !success: return false
 
     for i: result[i] += delta_k[i] · (x2-alpha2)^k
@@ -184,7 +185,26 @@ for k = 1, 2, ..., deg(c, x2):
 return true
 ```
 
-**依赖**：`__mtshl_zp_univar_mdp`（内部辅助，见下）。
+**依赖**：`__mtshl_zp_univar_mdp`（内部辅助，见下）；`__taylor_coeff_zp`（Zp 版 Taylor 系数提取，见下）。
+
+---
+
+### 辅助：`__taylor_coeff_zp`
+
+**功能**：Zp 版 Taylor 系数提取。将 `f ∈ Zp[x1,...,xn]` 在 `(xk - αk)` 方向展开，
+返回第 j 项系数 `cj ∈ Zp[x1,...,xn \ {xk}]`。
+
+```cpp
+// 将 f 展开为 Σ cⱼ·(xk - alpha_k)^j，返回 cⱼ
+// 算法：除以 (xk - αk) j 次，然后求值 xk = αk
+template<class var_order>
+PolyZp<var_order> __taylor_coeff_zp(
+    const PolyZp<var_order>& f,
+    const variable& xk, const Zp& alpha_k, int j);
+```
+
+注：与现有 `__taylor_coeff`（ZZ 版，`polynomial_factorize_wang.hh`）算法相同，
+仅系数域为 Zp（`pair_vec_div` + `assign` 均已支持 Zp）。
 
 ---
 
@@ -212,23 +232,18 @@ r>2 时：逐对归约（O(r·d²)）：
 // 实际：sigma[i] = s[i]·c mod F[i]（逐步归约）
 // 步骤（从 CASC 2016 Algorithm 2 单变量基础情形）：
 1. g0 = F[0]
+   s[0] = 1   // 初始化：循环不变量 k=0 时要求 s[0]·1 = 1
 2. for i = 1..r-1:
-     EEA: alpha·g_{i-1} + beta·F[i] = gcd  →  gcd ∈ Zp（常数，因为 F[i] 两两互素）
-     s[0..i-1] *= beta / gcd
-     s[i] = alpha / gcd
+     EEA: alpha·g_{i-1} + beta·F[i] = gcd  →  gcd = 1（monic，因为 F[i] 两两互素）
+     s[0..i-1] *= beta
+     s[i] = alpha
      g_i = g_{i-1} · F[i]
 3. for i in 0..r-1:
      sigma[i] = (s[i] · c) rem F[i]    （保证 deg < deg(F[i])）
 ```
 
-注：`polynomial_GCD` 已有单变量 ZZ 版本（`polynomial_factorize_univar.hh`）；
-需用 Zp 版本或调用现有 `gcd(UPZp, UPZp)` （待确认是否已有 Zp EEA）。
-
-**M2 新增辅助**：`__si_zp_eea`（若现有 EEA 不支持 UPZp，新增约 20 行）：
-```cpp
-// Zp[x1] 扩展 Euclidean：返回 gcd，输出 s·a + t·b = gcd
-Zp __si_zp_eea(const UPZp& a, const UPZp& b, UPZp& s, UPZp& t);
-```
+注：使用现有 `polynomial_GCD(UPZp, UPZp, s, t)`（`polynomial_gcd.hh:719`），
+返回 monic gcd + Bézout 系数 s, t。无需新增 EEA。
 
 ---
 
@@ -365,10 +380,11 @@ bool __mtshl_wmds(
 **算法**（从现有 `__multivar_diophantine` 演化，改为 Zp）：
 
 ```
-if aux_vars 只含 x2（即 j=3）:
-    // 单变量基础情形：调用 __mtshl_multi_bdp（j=3 专用，见 M2）
-    // 但此分支不应被调用（j=3 时直接走 multi_bdp，j>3 才走 wmds）
-    internal error
+// 基础情形：所有辅助变量已归约，F[i], c ∈ Zp[x1]
+// 注：虽然外部仅在 j>3 时调用 wmds，但递归会自然产生 aux_vars=[] 的情形
+//   e.g. step_j(j=4) → wmds([x2,x3]) → wmds([x2]) → wmds([]) ← 此处
+if aux_vars.empty():
+    return __mtshl_zp_univar_mdp(F_as_upoly, c_as_upoly, result)
 
 // 递归情形：归约到一维更少的 MDP
 xj_prev = aux_vars.back()          // x_{j-1}
@@ -401,7 +417,8 @@ for k = 1 to deg(c, xj_prev):
 return true
 ```
 
-**注**：基础情形（`|aux_vars| == 1`，即 j=3 时的基础求值层）直接调用 `__mtshl_zp_univar_mdp`（单变量）。
+**注**：基础情形（`aux_vars.empty()`）直接调用 `__mtshl_zp_univar_mdp`（单变量）。
+递归深度 = |aux_vars| 初始长度（j-2 层）；最深一层 aux_vars=[] 时终止。
 
 ---
 
@@ -412,6 +429,7 @@ return true
 ```cpp
 // MTSHL-d 第 j 步（j=2..n）
 // F[i]：in-place 从 Zp[x1,...,x_{j-1}] 更新为 Zp[x1,...,xj]
+// lc_tau[i]：因子 i 的目标首项系数（lc_targets[i] 代入 {x_{j+1},...} 后的 Zp 像）
 // aux_vars = [x2,...,x_{j-1}]（当 j=2 时为空）
 // ideal_alphas_zp[k] = αk+2 mod p（与 aux_vars 等长）
 // 返回 false = 求值点不适用，__mtshl_lift 须换求值点重试
@@ -419,6 +437,7 @@ template<class var_order>
 bool __mtshl_step_j(
     const PolyZp<var_order>& aj,               // f_scaled 代入 {x_{j+1},...} 后的 Zp 像
     std::vector<PolyZp<var_order>>& F,         // in-place 更新
+    const std::vector<PolyZp<var_order>>& lc_tau,  // 各因子的目标 lc(x1) ∈ Zp[x2,...,xj]
     const variable& xj,
     const Zp& alpha_j,                         // ideal αj mod p
     const variable& x1,
@@ -427,10 +446,26 @@ bool __mtshl_step_j(
     uint32_t p);
 ```
 
-**算法**（§1.3 伪代码的 C++ 直译）：
+**算法**：
 
 ```
 r = F.size()
+
+// ————————————————————————————
+//  LC 校正（关键：保证 MDP 可解）
+// ————————————————————————————
+// 论文假设 LC 已由 Wang 框架正确分配。非平凡 LC 时，若不校正，
+// 误差的 x1 领项不为零 → deg(ck) = deg(∏F_base) → MDP 无解 → 死循环。
+// 实现：复用 __hensel_lc_correct 的逻辑（Zp 版），将 F[i] 的 lc(x1) 替换为 lc_tau[i]。
+for i: lc_correct(F[i], lc_tau[i])   // lc(F[i], x1) ← lc_tau[i]
+
+// ————————————————————————————
+//  保存基础因子（MDP 不变量）
+// ————————————————————————————
+// MDP 求解始终使用 step 开始时的因子 f_{j-1,i}（论文: b_i = ∏_{l≠i} f_{j-1,l}），
+// 不随提升更新。LC 校正后 F[i] 可能含 xj 项，eval 后恢复为 (j-1) 变量基础因子。
+F_base[i] = assign(F[i], xj, alpha_j)    // 回到 Zp[x1,...,x_{j-1}]
+// j=2 时预转: F_base_up[i] = poly_convert(F_base[i]) → UPZp
 
 // 入口：初始化 forms[i] = Supp(F[i])
 forms[i] = {m for (m,c) in F[i]}   for each i
@@ -450,30 +485,29 @@ for k = 1; error 不为零; ++k:
     //  j = 2 路径：直接单变量 MDP
     // ————————————————————————————
     if j == 2:
-        // F[i] ∈ Zp[x1]，ck ∈ Zp[x1]
-        success ← __mtshl_zp_univar_mdp(F_as_upoly, ck_as_upoly, sigma_k_upoly)
-        // F_as_upoly[i]：从 PolyZp 转为 UPZp（x1 是主变量，F[i] 不含其他变量）
+        // ck ∈ Zp[x1]；使用预存的 F_base_up（单变量基础因子）
+        success ← __mtshl_zp_univar_mdp(F_base_up, ck_as_upoly, sigma_k_upoly)
         if !success: return false
         // 将 sigma_k_upoly 转回 PolyZp
         ...
 
     // ————————————————————————————
-    //  j ≥ 3 路径：SparseInt + 回退
+    //  j ≥ 3 路径：SparseInt + 回退（使用 F_base）
     // ————————————————————————————
     else:
         // 主路径：SparseInt
-        success ← __mtshl_sparse_int(F, ck, forms, x1, aux_vars, p, sigma_k)
+        success ← __mtshl_sparse_int(F_base, ck, forms, x1, aux_vars, p, sigma_k)
 
         // 重试一次（换 sparse_betas，失败多因随机碰撞）
         if !success:
-            success ← __mtshl_sparse_int(F, ck, forms, x1, aux_vars, p, sigma_k)
+            success ← __mtshl_sparse_int(F_base, ck, forms, x1, aux_vars, p, sigma_k)
 
         // 回退
         if !success:
             if j == 3:
-                success ← __mtshl_multi_bdp(F, ck, x1, aux_vars[0], ideal_alphas_zp[0], sigma_k)
+                success ← __mtshl_multi_bdp(F_base, ck, x1, aux_vars[0], ideal_alphas_zp[0], sigma_k)
             else:   // j > 3
-                success ← __mtshl_wmds(F, ck, x1, aux_vars, ideal_alphas_zp, sigma_k)
+                success ← __mtshl_wmds(F_base, ck, x1, aux_vars, ideal_alphas_zp, sigma_k)
 
         if !success: return false
 
@@ -482,19 +516,28 @@ for k = 1; error 不为零; ++k:
         F[i] += sigma_k[i] * (xj - alpha_j)^k   // PolyZp 多项式更新
         forms[i] = Supp(sigma_k[i])              // 更新骨架
 
+    // LC 校正：每步校正后重新强制首项系数
+    for i: lc_correct(F[i], lc_tau[i])
+
     // 全量重算误差
     error = aj - product(F)
 
 return true
 ```
 
+**关键设计决策**：
+
+1. **LC 校正**（`lc_correct`）：MTSHL 论文将 LC 处理视为 Wang 框架职责，不在
+   提升循环内讨论。但实现中必须在循环前/后强制 F[i] 的 lc(x1) = lc_tau[i]，
+   否则非平凡 LC 时 MDP 无解。逻辑复用自 `__hensel_lc_correct`（L1663）。
+
+2. **F_base vs F**：MDP 求解（Bézout 链 / SparseInt / WMDS）始终使用 step 开始时的
+   基础因子 F_base = F|_{xj=αj}（论文: b_i = ∏_{l≠i} f_{j-1,l}）。
+   不可使用更新后的 F（含 xj 高次项 → poly_convert 到单变量时丢失信息 → MDP 错误）。
+
 **辅助操作**：
 - `product(F)`：计算 `∏F[i]`（PolyZp 乘法，r-1 次）
-- `make_monomial(xj, k, alpha_j, comp_ptr)`：构造 `(xj - alpha_j)^k` 的 PolyZp 表示
-
-**j=2 路径的类型转换**：
-- `PolyZp → UPZp`：F[i] 只含 x1，遍历每项 `(m, c)` 取 `x1` 的指数，构造 `UPZp`
-- `UPZp → PolyZp`：反向，每项 `(x1^d, c)` 转为 `({x1→d}, c)` 的 PolyZp
+- `lc_correct(Gi, lc_target)`：将 `lc(Gi, x1)` 替换为 `lc_target`，即 `Gi += (lc_target - lc(Gi, x1)) · x1^deg(Gi, x1)`
 
 ---
 
@@ -504,12 +547,14 @@ return true
 
 ```cpp
 // MTSHL-d 顶层提升
+// lc_targets[i] ∈ Z[x2,...,xn]：因子 i 的真实首项系数（来自 __wang_leading_coeff）
 // 返回空 vector 表示提升失败（__wang_core 须重新选求值点）
 template<class var_order>
 std::vector<polynomial_<ZZ, lex_<var_order>>>
 __mtshl_lift(
     const polynomial_<ZZ, lex_<var_order>>& f_scaled,
     const std::vector<upolynomial_<ZZ>>& scaled_factors,
+    const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_targets,
     const std::map<variable, ZZ>& eval_point,
     const variable& main_var,
     uint32_t p);
@@ -542,10 +587,13 @@ for j = 2 to n:
     // aj = f_scaled 在 {x_{j+1}=α_{j+1},...,xn=αn} 处的 Zp 像
     aj = assign_partial_zp(f_scaled, aux_var_list[j-1..], ideal_alphas_zp[j-1..], p)
 
+    // lc_tau_zp[i] = lc_targets[i] 代入 {x_{j+1},...,xn}→α 后的 Zp 像
+    lc_tau_zp[i] = assign_partial_zp(lc_targets[i], aux_var_list[j-1..], ideal_alphas_zp[j-1..], p)
+
     aux_sub = aux_var_list[0..j-3]                  // x2,...,x_{j-1}
     alphas_sub = ideal_alphas_zp[0..j-3]
 
-    success ← __mtshl_step_j(aj, F, xj, alpha_j, main_var, aux_sub, alphas_sub, p)
+    success ← __mtshl_step_j(aj, F, lc_tau_zp, xj, alpha_j, main_var, aux_sub, alphas_sub, p)
     if !success: return {}                           // 提升失败
 
 // 阶段 C：系数恢复（对称约化）
@@ -555,9 +603,9 @@ return result
 ```
 
 **辅助**：
-- `polynomial_mod_zp(upoly, p, comp_ptr)` — 将 `upolynomial_<ZZ>` 转为仅含 `x1` 的 `PolyZp`
-- `assign_partial_zp(f, vars, alphas, p)` — 将 `f ∈ Z[x1,...,xn]` 代入部分变量，返回 `PolyZp`
-- `symmetric_mod_poly(poly_zp, p)` — 逐系数调用 `__symmetric_mod`，返回 `Poly`
+- `polynomial_mod_zp(upoly, p, comp_ptr)` — 将 `upolynomial_<ZZ>` 转为仅含 `x1` 的 `PolyZp`（实现: `__polynomial_to_zp`）
+- `assign_partial_zp(f, vars, alphas, p)` — 将 `f ∈ Z[x1,...,xn]` 代入部分变量并 mod p，返回 `PolyZp`（实现: `__assign_partial_zp`）
+- `symmetric_mod_poly(poly_zp, p)` — 逐系数调用 `__symmetric_mod`，返回 `Poly`（实现: `__symmetric_mod_poly`）
 
 ---
 
@@ -567,11 +615,15 @@ return result
 
 **改动位置**：`__wang_core`（L1062–1248），约 20 行：
 
-**改动 1**：在调用 `__wang_leading_coeff` 之前，计算 Mignotte 界并选取素数 p：
+**改动 1**：在调用 `__wang_leading_coeff` 之后，检查现有素数 p 是否满足 Mignotte 界：
 ```cpp
-// 新增：计算 Mignotte_bound(g) 并选 p > 2 * bound
-uint32_t mtshl_p = __select_mtshl_prime(g);
-if (mtshl_p == 0) continue;   // 找不到合适素数（罕见，换求值点）
+// 改动 1：LC 校正（产生 f_scaled；scaled_factors 基于现有素数 p）
+auto lc_result = __wang_leading_coeff(...);
+
+// 改动 1b：验证 p > 2·Mignotte_bound(f_scaled)
+// 重要：不能另选新素数——scaled_factors 已经是 f_scaled mod p 的因子分解，
+//        MTSHL 必须在同一个 p 下工作。若 p 不满足条件，换求值点（重新选 p）。
+if (!__mtshl_mignotte_check(p, lc_result.f_scaled)) continue;
 ```
 
 **改动 2**：替换 `__multivar_hensel_lift` 调用（L1136–1138）：
@@ -581,29 +633,44 @@ if (mtshl_p == 0) continue;   // 找不到合适素数（罕见，换求值点�
 //     lc_result.f_scaled, lc_result.scaled_factors,
 //     lc_result.lc_targets, eval, x1);
 
-// 新代码：
+// 新代码（使用同一个 p）：
 auto mv_factors = __mtshl_lift(
     lc_result.f_scaled, lc_result.scaled_factors,
-    eval, x1, mtshl_p);
+    eval, x1, p);   // p 与 scaled_factors 一致
 ```
 
-**改动 3**：新增辅助 `__select_mtshl_prime`（约 20 行）：
+**改动 3**：新增辅助 `__mtshl_mignotte_check`（约 15 行）：
 ```cpp
-// 计算 Mignotte_bound(f) 并返回满足 p > 2*bound 的最小机器素数
-// 若 uint32_t 范围内无合适素数则返回 0
+// 检查 p > 2·Mignotte_bound(f_scaled)
+// 返回 true = p 满足；false = p 太小（调用方换求值点，重新通过 __select_prime 得到新 p）
 template<class var_order>
-uint32_t __select_mtshl_prime(
-    const polynomial_<ZZ, lex_<var_order>>& f);
+bool __mtshl_mignotte_check(
+    uint32_t p,
+    const polynomial_<ZZ, lex_<var_order>>& f_scaled);
 ```
 
 **Mignotte 界计算**（标准公式）：
-```
-B(f) = 2^n · ||f||_2 · ∏ max(1, ||fi||_2)  （n = deg(f)）
-     ≈ 2^deg · ||f||_inf · r   （简化估计，保守版）
-```
 
-实际实现参考：`Mignotte_bound = (n+1)^{1/2} · 2^n · ||f||_inf`（GCL §6.1）。
-选 p：从预定义素数表（31-bit 素数，如 `p = 2147483647` 开始往下找）中选满足条件的第一个。
+GCL §6.1：对于 degree-d（按 main_var）的整系数多项式 f，其因子的系数绝对值满足：
+```
+B(f) ≤ 2^d · ||f||_2
+```
+其中 `||f||_2 = sqrt(Σ a_m²)`（所有单项式系数的 2-范数）。
+
+用 `||f||_inf`（最大系数绝对值）替代：`||f||_2 ≤ sqrt(N) · ||f||_inf`，其中 N = f_scaled.size()（单项式总数）。
+
+**注意**：N 必须使用 `f_scaled.size()`，而非 `(deg+1)`。后者仅适用于单变量多项式（N ≤ deg+1），对多变量多项式会严重低估（例如 bivar-70：N ≈ 350，而 deg+1 ≈ 6）。
+
+实际实现：
+```cpp
+int64_t d = deg(f_scaled, main_var);
+ZZ f_inf = max_abs_coeff(f_scaled);   // max |a_m|
+int64_t N = f_scaled.size();
+// B = sqrt(N) * 2^d * f_inf（取整上界）
+ZZ B = ZZ(ceil(sqrt((double)N))) * pow2(d) * f_inf;
+// 检查：p > 2 * B
+return (ZZ(p) > 2 * B);
+```
 
 ---
 
@@ -619,6 +686,7 @@ B(f) = 2^n · ||f||_2 · ∏ max(1, ||fi||_2)  （n = deg(f)）
 | `__mtshl_wmds` | `bool` | 递归 MDP 失败 | `__mtshl_step_j` 返回 false |
 | `__mtshl_step_j` | `bool` | 任意 MDP 失败 | `__mtshl_lift` 返回 {} |
 | `__mtshl_lift` | `vector<Poly>` | 空=失败 | `__wang_core` 换求值点继续 |
+| `__mtshl_mignotte_check` | `bool` | p 不满足 Mignotte 界 | `__wang_core` 换求值点（重选 p） |
 
 ---
 

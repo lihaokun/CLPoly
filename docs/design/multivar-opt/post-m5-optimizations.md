@@ -1,137 +1,309 @@
-# MTSHL-d 后续优化方向（M5 之后）
+# M6：MTSHL-d 论文对齐 & 优化
 
-> 创建日期：2026-02-25
-> 关联文档：`architecture.md`（MTSHL-d 架构，M1–M5 范围）
-> 依据：Maple 2019 完整框架 vs 当前架构的三项差距（见下）
+> 创建日期：2026-02-27
+> 前置：M5 完成（`__mtshl_lift` 已接入 `__wang_core`，全量测试通过）
+> 关联文档：`detailed-design.md`（M1–M5）、`architecture.md`
+> 论文：CASC 2016、CASC 2018、ICMS 2018（`docs/research/papers/`）
 
 ---
 
 ## 背景
 
-架构文档（M1–M5）实现了 Maple 2019 的 MTSHL-d 核心算法
-（CASC 2016 + CASC 2018 + JSC 2020），正确性完整覆盖。
-
-Maple 2019 的完整框架还包含三项额外特性，当前均不在 M1–M5 范围内，
-记录如下，供后续性能调优参考。
+M5 集成测试中发现两个 bug 并修复。修复后与论文全文对照，确认了 3 处
+实现与设计文档/论文的差异。三处差异均不影响正确性（全量测试通过），
+但偏离了论文的最优设计。M6 目标：逐项对齐论文，消除技术债。
 
 ---
 
-## 优化 1：HenselLift1 + 双变量归约（ICMS 2018）
+## 差异 1：Taylor 循环终止条件
 
-**论文**：Monagan & Tuncer, ICMS 2018, LNCS 10931:378–387
+### 现状
 
-**Maple 2019 的做法**（r=2 情形）：
-
-```
-提升 xj（j≥3）时，不将 x2,...,xj-1 同等处理，而是分层：
-  1. 将 x3,...,xj-1 稀疏求值到 s 个双变量像 aj(x1,x2,βk,xj)
-  2. 对每个双变量像，将 x2 稠密求值到 deg(aj,x2)+1 个点
-  3. 对每个单变量像，调用 HenselLift1（可并行）
-  4. 稠密插值恢复 x2 系数
-  5. 稀疏插值恢复 x3,...,xj-1 系数
+```cpp
+// __mtshl_step_j, wang.hh L859-862
+int64_t D_j = degree(aj, xj);
+for (int k = 1; k <= D_j; ++k)
 ```
 
-**HenselLift1**（Algorithm 2, ICMS 2018）：
-- 输入：Zp[x1,xj] 双变量问题（已求值到单变量）
-- 输出：fj, gj ∈ Zp[x1,xj]
-- 优化：σk 在 x1 = 0,...,d1 处的值缓存复用，Σ 代价从 O(id1²) → O(d1²)
-- 复杂度：O(d1²·dj + d1·dj²)
-- 可并行：每个 HenselLift1 实例独立，用 Cilk spawn 并行
+### 论文
 
-**当前架构的做法**（CASC 2016/CASC 2018 风格）：
-- x2,...,xj-1 均用 θ-array 几何点一次性求值到单变量
-- 逐点解 Zp[x1] MDP，再 Vandermonde 恢复所有辅助变量
+**CASC 2018 Algorithm 4, Line 3**（多因子，r ≥ 2）：
+```
+for k = 1, 2, 3, ... while error ≠ 0 and ∑ᵢ deg(fj,i, xj) < deg(aj, xj) do
+```
 
-**差距影响**：
-- 正确性：无影响
-- 性能：对 r=2、低维（j=3,4）情形，ICMS 2018 实现约快 2–3x
-- 对主要基准（bivar-70，r=70）：瓶颈在多因子 MDP，HenselLift1 无显著影响
+双终止条件：
+1. `error = 0` → 提前退出（分解已精确完成）
+2. `∑ deg(fj,i, xj) ≥ deg(aj, xj)` → 度数上界（保证终止）
 
-**实现思路**（M6 参考）：
-1. 新增 `__hensellift1(aj_bivar, f0, g0, αj, p)` → Zp[x1,xj] 双变量提升
-2. 修改 `__mtshl_step_j`（j≥3）：将 j=3 情形重构为 HenselLift1 + x2 稠密插值路径
-3. 并行化：`cilk_spawn` 或 C++17 `std::for_each` 并行调用
+**ICMS 2018 Algorithm 2, Line 2**（2 因子特化）：
+```
+for i = 1, 2, ... while df + dg < da do
+```
+
+### 分析
+
+| 属性 | 当前实现 `k <= D_j` | 论文双条件 |
+|------|-------------------|-----------|
+| 正确性 | 正确 | 正确 |
+| 终止保证 | 有（固定上界） | 有（度数上界） |
+| 提前退出 | 无（但 `if (ck.empty()) continue` 使空迭代代价极低） | 有（`error = 0` 时立即退出） |
+| 等价性 | `k <= D_j` 是度数上界的充分条件：当 k = D_j 时 ∑deg ≥ D_j | 完全匹配 |
+
+**M5 bug 回顾**：原代码 `while (!error.empty())` 只有条件 1（无度数上界），
+r ≥ 3 时交叉项导致 error 永不为零 → 死循环。修复为 `k <= D_j` 即条件 2 的等价形式。
+
+### M6 改动
+
+**优先级**：低（性能收益可忽略，空迭代代价 ≈ 0）
+
+可选改进：在循环体内加提前退出，完全匹配论文双条件：
+
+```cpp
+int64_t D_j = degree(aj, xj);
+for (int k = 1; k <= D_j; ++k)
+{
+    // ... 现有代码 ...
+
+    // 论文条件 1：提前退出
+    if (error.empty()) break;
+}
+```
 
 ---
 
-## 优化 2：双变量基底（Bivariate Base）
+## 差异 2：Mignotte 界检查
 
-**出处**：multivar-mtshl-research.md §7.4；MC 2019 隐含；Maple 2019 实现
+### 现状
 
-**问题背景**：
-
-当前架构使用单变量基底：
-```
-factorize(f|_{x2=α2,...,xn=αn})  → r 个 Zp[x1] 因子
-```
-
-Maple 2019 使用双变量基底：
-```
-factorize(f|_{x3=α3,...,xn=αn})  → r 个 Zp[x1,x2] 因子（保留 x2）
+```cpp
+// __wang_core, wang.hh L2161-2164
+// MTSHL prime: 使用最大 31-bit 素数
+// 不做 Mignotte 界检查——依靠 trial division 验证因子正确性。
+static constexpr uint32_t mtshl_p = 2147483629;
 ```
 
-**双变量基底的优势**：
-- Zp[x1,x2] 因式分解比 Zp[x1] 更能保留因子结构
-- 好的求值点下，每个 Zp[x1,x2] 因子以高概率对应唯一真因子（s=1）
-- s=1 时 Zassenhaus 重组代价降为 O(r)（无指数爆炸）
+设计文档 M5 规定了 `__mtshl_mignotte_check`（已删除），要求 `p > 2·B(f_scaled)`。
 
-**当前影响**：
-- 对"所有因子在单变量层面分离"的基准（如 bivar-70）：无影响，
-  `__select_eval_point` 已保证单变量层面的因子分离性
-- 潜在问题：某些多项式单变量层面 s>1，Zassenhaus 重组指数退化；
-  双变量基底可消除此退化
+### 论文
 
-**实现思路**（M6 参考）：
-1. 修改 `__wang_core`：将求值从 `f|_{x2=α2,...}` 改为 `f|_{x3=α3,...}` 保留 x2
-2. 改 `factorize` 基底为双变量因式分解（调用现有 `__factor_bivar` 或新增）
-3. 改 `__wang_leading_coeff` 以处理双变量 LC 分配
-4. 改 Zassenhaus 重组以处理双变量因子的重组（取代单变量 Zassenhaus）
+**CASC 2018 不要求 Mignotte 检查**。
 
-注：此优化改动范围较大（涉及 `__wang_core` 主流程），建议在 M5 验收且
-    基准测试显示重组步骤是瓶颈时再启动。
+论文使用 p-adic 提升（Algorithm 5）：选单个机器素数 p，迭代提升到 p^l > 2B。
+不需要 `p > 2B`——多次迭代自然处理大系数。
+
+### 分析
+
+| 方案 | Mignotte 检查 | 系数恢复 | 大系数处理 |
+|------|-------------|---------|-----------|
+| 设计文档（已废弃） | `p > 2B` 检查 | 单次对称约化 | p 不满足时 continue |
+| 当前实现 | 无 | 单次对称约化 | trial division 兜底 |
+| 论文 Alg.5 | 无 | p-adic 多次迭代 | 自然处理 |
+
+**M5 bug 回顾**：LC 缩放后 `f_scaled` 系数可达 10⁷+，Mignotte 界 `2^(d+1)·√N·‖f‖∞`
+经常超过 31-bit 素数上限 (~2×10⁹) → 几乎所有求值点被拒绝 → 死循环。
+
+**当前策略的正确性**：
+- 若 p 不足以恢复真实系数 → 对称约化给出错误系数 → trial division 拒绝
+  → `__wang_core` 换求值点重试
+- 理论风险：错误因子恰好整除原多项式（概率极低，实测未发生）
+
+**根本解法**：实现论文的 p-adic 提升（差异 3 的一部分），消除对单次对称约化的依赖。
+
+### M6 改动
+
+**优先级**：中（随差异 3 一并解决）
+
+1. 实现 p-adic 提升后，Mignotte 检查不再需要
+2. 更新设计文档 M5 节：删除 `__mtshl_mignotte_check` 相关内容
+3. 更新错误处理策略汇总表：删除 `__mtshl_mignotte_check` 行
 
 ---
 
-## 优化 3：p-adic 大系数提升（CASC 2018 Algorithm 5）
+## 差异 3：素数选择 & 系数恢复
 
-**论文**：Monagan & Tuncer, CASC 2018 §4, Algorithm 5
+### 现状
 
-**问题背景**：
-
-当前架构（决策 1）使用单机器素数 p（uint32_t），要求 `p > 2·Mignotte_bound(f_scaled)`。
-若 Mignotte 界超过约 2×10⁹（uint32_t 极限），则无合适的机器素数，当前直接报告失败。
-
-**CASC 2018 Algorithm 5 方案**：
-```
-1. 选 63-bit 机器素数 p（uint64_t），在 Zp 中完整运行 MTSHL-d
-   → 得 f1,...,fr mod p（机器精度因子）
-2. for k = 1, 2, ..., l（l = ⌈log_p(2B)⌉）:
-   dk = (a - Π fi) / p^k       ← p-adic 差商，Zp 运算
-   SparseInt 解 Σ σk,i·bi = dk  ← 强支撑假设：Supp(σk,i) ⊆ Supp(σk-1,i) w.h.p.
-   fi += σk,i·p^k
-3. 最终 Π fi = a over Z         ← p-adic 恢复
+```cpp
+// __wang_core, wang.hh L2165
+static constexpr uint32_t mtshl_p = 2147483629;  // 最大 31-bit 素数
 ```
 
-**性能优势**（CASC 2018 §4）：
-- 99%+ 运算在 64-bit 模运算下完成，无大数开销
-- 对大系数多项式（Swinnerton-Dyer 等），比传统 p^l 方案快 3–10x
+- 固定 31-bit 素数，独立于 `__wang_core` 的原始素数
+- 系数恢复：单次对称约化 `mods(coeff, p)`
+- `scaled_factors` 是精确 Z[x1] 多项式 → 约化到任意素数均有效
 
-**实现条件**：
-- 需将 `Zp` 类从 uint32_t 扩展到 uint64_t（Zp 乘法用 `__int128`）
-- `__mtshl_lift` 增加 p-adic 外循环（l 步修正）
-- `SparseInt` 保持不变（仍在 Zp 中工作）
+### 论文
 
-**实现思路**（M6 参考）：
-1. 新增 `Zp64` 类（uint64_t 系数，乘法用 `__int128`）
-2. 修改 `__mtshl_lift`：增加 p-adic 提升外循环
-3. 修改 `__wang_core`：选 p 时优先选 63-bit 机器素数
+**CASC 2018 Algorithm 5**：
+```
+1. 选 p 为 (m+1)-bit 随机机器素数（64 位机器上 m=62 → 63-bit 素数）
+2. 在 Zp 中完整运行 MTSHL-d（Algorithm 4）→ 得 f1,...,fr mod p
+3. p-adic 提升：
+   for k = 1, 2, ..., l（l = ⌈log_p(2B)⌉）:
+     dk = (a - ∏ fi) / p^k       ← 差商，Zp 运算
+     SparseInt 解 MDP → σk,i      ← 强支撑假设 (Theorem 1)
+     fi += σk,i · p^k
+4. 最终 ∏ fi = a over Z
+```
+
+**Theorem 1（p-adic 支撑保持）**：
+```
+Pr(Supp{uj} ⊆ Supp{uj-1} ∀ 1 ≤ j ≤ l) > 1 − tl/((π(2^(m+1)) − π(2^m)) − l)
+```
+对 m=62, l=5, t=500：概率 > 1 − 10⁻¹⁵（几乎确定）。
+
+### 分析
+
+| 属性 | 当前实现 | 论文 Algorithm 5 |
+|------|---------|-----------------|
+| 素数大小 | 31-bit (uint32_t) | 63-bit (uint64_t) |
+| 素数选择 | 固定 2147483629 | 随机 (m+1)-bit |
+| 系数恢复 | 单次 mods(c, p)，p/2 ≈ 10⁹ | p-adic 迭代，上限 p^l |
+| 可恢复系数范围 | |c| < 10⁹ | |c| < p^l/2 ≈ 10^(19l) |
+| Theorem 1 保证 | 固定素数无概率保证 | 随机素数有高概率保证 |
+| 失败后果 | trial division 拒绝，换求值点 | 极低概率失败 |
+
+**核心限制**：31-bit 素数 + 单次约化只能恢复绝对值 < 10⁹ 的系数。
+对 LC 缩放后的大系数多项式（如 Swinnerton-Dyer），系数可达 10¹⁰+，
+此时当前实现必然失败（靠 trial division 兜底不断重试，直到换到系数更小的求值点）。
+
+63-bit 素数 + p-adic 提升从根本上解决此问题。
+
+### M6 改动
+
+**优先级**：高（63-bit 素数是 M6 核心任务）
+
+分两步实施：
+
+#### M6a：63-bit 素数支持（Zp64 类）
+
+扩展 `Zp` 类支持 64-bit 模数，或新增 `Zp64` 类。
+
+**方案对比**：
+
+| 方案 | 改动范围 | 优势 | 劣势 |
+|------|---------|------|------|
+| A: 扩展 `Zp` 为 `uint64_t` | 全局（所有 Zp 用户） | 统一类型，无模板分支 | 单变量因式分解不需要 64-bit，乘法开销增加 |
+| B: 新增 `Zp64` 类 | 仅 MTSHL 模块 | 不影响现有代码 | 需在 MTSHL 中参数化类型或硬编码 Zp64 |
+| C: 模板化 `Zp<W>` | 全局（模板化） | 灵活，编译期选择 | 改动大，需重构所有 Zp 使用点 |
+
+**建议方案 A**：将 `Zp` 内部从 `uint32_t` 扩展到 `uint64_t`。
+
+关键改动点：
+1. **`Zp` 存储**：`int _number` → `int64_t _number`，`int _p` → `uint64_t _p`
+2. **乘法**：`a * b % p` 需 128-bit 中间值 → 用 `__int128` 或 `_mulmod`
+3. **逆元**：扩展 GCD 改为 64-bit 版本
+4. **接口兼容**：`number()` 返回类型从 `int` → `int64_t`；所有 `(int, int)` 构造需兼容
+
+影响评估：
+- `Zp` 在 MTSHL、`__select_prime`、GCD 模块中使用
+- 单变量因式分解的 `__berlekamp_small_p` 等仅用小素数（p < 10⁶），uint64_t 无性能差异
+- 乘法热路径需基准测试确认（`__int128` 在 x86-64 上编译为 `mul` + `div`，约 4ns）
+
+#### M6b：p-adic 提升（Algorithm 5 外循环）
+
+在 63-bit 素数基础上，为 `__mtshl_lift` 增加 p-adic 提升外循环。
+
+**改动函数**：`__mtshl_lift`
+
+```cpp
+// 当前：单次 Zp 计算 + 对称约化
+auto mv_factors = __mtshl_lift(f_scaled, scaled_factors, lc_targets, eval, x1, p);
+
+// M6b 后：单次 Zp 计算 + p-adic 迭代
+// __mtshl_lift 内部：
+// 1. Zp 中运行 __mtshl_step_j (j=2..n) → F[i] mod p
+// 2. error = (f_scaled_zz - ∏ sym_mod(F[i], p)) / p
+// 3. while error ≠ 0:
+//      c = error mod p                      ← Zp 运算
+//      SparseInt 解 MDP → σk,i              ← 复用 __mtshl_sparse_int
+//      F[i] += σk,i · p^k                   ← 大整数加法
+//      error = (error - Σ σk,i·bi) / p
+// 4. return sym_mod(F[i], p^l)
+```
+
+注意：p-adic 提升的 SparseInt 使用**强支撑假设**（Theorem 1）：
+`Supp(σk,i) ⊆ Supp(σk-1,i)`，即每一步的支撑只会缩小。
+63-bit 随机素数下概率 > 1 − 10⁻¹⁵。
+
+**提升界**：
+```
+B = Mignotte_bound(f_scaled)
+l = ⌈log_p(2B)⌉
+```
+对 63-bit 素数 p ≈ 2⁶³，大多数情况 l = 1（单次约化即可），
+极端大系数情况 l = 2–3（如 Swinnerton-Dyer deg-128：系数约 10³⁸ → l ≈ 2）。
 
 ---
 
-## 优先级建议
+## 改动汇总
 
-| 优化 | 影响范围 | 实现复杂度 | 建议时机 |
-|------|---------|-----------|---------|
-| HenselLift1（优化 1） | r=2 情形，低维性能 | 中（新增双变量提升单元）| M5 后，如 r=2 用例性能不达标 |
-| p-adic（优化 3） | 大系数多项式 | 中（新增 Zp64 + 外循环） | M5 后，如 Mignotte 界溢出报告多 |
-| 双变量基底（优化 2） | 重组步骤（边界情形） | 大（改动 wang_core 主流程）| M5 后，如 stress 测试中重组成为瓶颈 |
+### M6a：63-bit 素数（核心前置）
+
+| 文件 | 改动 |
+|------|------|
+| `clpoly/number.hh` | `Zp` 类：uint32→uint64，乘法用 `__int128`，逆元 64-bit |
+| `clpoly/polynomial_factorize_wang.hh` | `mtshl_p` 改为 63-bit 素数 |
+| 全局 | `Zp` 接口返回类型 int→int64_t，调用点适配 |
+
+验收：
+- 全量测试通过（`bash test/run_all_tests.sh`）
+- `make bench-all` 无性能退化（基准测试对比）
+
+### M6b：p-adic 提升（可选，M6a 后）
+
+| 文件 | 改动 |
+|------|------|
+| `clpoly/polynomial_factorize_wang.hh` | `__mtshl_lift` 增加 p-adic 外循环 |
+| `clpoly/polynomial_factorize_wang.hh` | 新增 `__mtshl_padic_step`（单步 p-adic 修正） |
+| `clpoly/polynomial_factorize_wang.hh` | `__wang_core`：删除 `mtshl_p` 固定值，改为随机 63-bit 素数 |
+| `test/test_mtshl_m6.cc` | p-adic 提升单元测试（大系数恢复验证） |
+
+验收：
+- 大系数测试用例通过（Swinnerton-Dyer、SymPy f_1 等）
+- crosscheck 通过
+- 性能对比：bench-all 与 M5 基线持平或更优
+
+### 差异 1 修复（可选，低优先级）
+
+| 文件 | 改动 |
+|------|------|
+| `clpoly/polynomial_factorize_wang.hh` | `__mtshl_step_j` Taylor 循环加 `if (error.empty()) break;` |
+
+---
+
+## 设计文档同步更新
+
+M6 实施后需同步更新以下设计文档内容：
+
+1. **`detailed-design.md` M5 节**：
+   - 删除 `__mtshl_mignotte_check` 相关内容（改动 3、Mignotte 界计算）
+   - 更新 `__wang_core` 调用示例（63-bit 素数）
+   - 更新错误处理策略汇总表（删除 mignotte 行）
+
+2. **`detailed-design.md` 新增 M6 节引用**：指向本文档
+
+3. **`architecture.md`**：更新素数策略描述
+
+---
+
+## 附录：M5 后其他优化方向（参考）
+
+以下优化不在 M6 范围内，记录供后续参考。
+
+### HenselLift1 + 双变量归约（ICMS 2018）
+
+r=2 时的 j-th step 优化：将多变量问题分层为双变量 HenselLift1 调用。
+对 r=2、低维（j=3,4）情形约快 2–3x。对 bivar-70（r=70）无显著影响。
+
+详见 ICMS 2018 Algorithm 2。实现思路：
+1. 新增 `__hensellift1(aj_bivar, f0, g0, αj, p)`
+2. 修改 `__mtshl_step_j`（j≥3, r=2）：重构为 HenselLift1 + 插值路径
+3. 并行化
+
+### 双变量基底（Bivariate Base）
+
+改 `__wang_core` 基底从 Zp[x1] 到 Zp[x1,x2]。
+对 s>1 情形（单变量层面因子合并）有显著收益，消除 Zassenhaus 指数退化。
+改动范围大，需改 `__wang_core` 主流程 + LC 分配 + 重组。

@@ -12,9 +12,9 @@
 ### Algorithm 5（p-adic 提升）
 
 ```
-论文流程：
+论文流程（CASC 2018 Algorithm 5）：
 1. 选 p 为 63-bit 机器素数
-2. 在 Zp 中运行 MTSHL-d（Algorithm 4）→ F_zp[i] mod p
+2. 在 Zp 中运行 MTSHL-d（Algorithm 4）→ F_zp[i] mod p（多变量）
 3. F_zz[i] = symmetric_mod(F_zp[i], p)
 4. 计算 B = Mignotte 界, M = p
 5. while M ≤ 2B:
@@ -22,17 +22,16 @@
      if error = 0: break
      dk = error / M                          ← Z 精确整除（p-adic 保证）
      dk_zp = dk mod p                        ← 投影到 Zp
-     SparseInt 解: Σ σi · bi = dk_zp         ← bi = ∏_{j≠i} F_base[j]
+     SparseInt 解: Σ σi · bi = dk_zp         ← bi = ∏_{j≠i} F_zp[j]（多变量！）
      F_zz[i] += symmetric_mod(σi, p) · M
      M ← M · p
 6. return F_zz[i]
 
-当前实现：
-1. ✓ mtshl_p = 63-bit 素数（M6a 完成）
-2. ✓ Zp 中运行 MTSHL-d（__mtshl_lift 阶段 A+B）
-3. ✓ symmetric_mod（阶段 C）
-4-5. ✗ 无 p-adic 迭代——单次 symmetric_mod 后直接返回
-6. ✗ 若系数 |c| > p/2，对称约化错误 → trial division 拒绝 → 重试求值点
+注意：Algorithm 5 的余因子 bi = ∏_{j≠i} F_zp[j] 是 MTSHL-d 完成后的完整多变量因子，
+NOT 单变量 F_base。SparseInt 在 θ-array 求值点将 F_zp[j] 求值为不同的单变量因子，
+自然处理多变量余因子。
+
+实现状态：✓ 全部完成（M6b）
 ```
 
 ### Algorithm 4 Line 3（Taylor 循环终止）
@@ -46,26 +45,27 @@
 
 ## MDP 求解器复用分析
 
-p-adic 的 MDP 与 MTSHL step_j 中的 MDP 结构相同：
+p-adic 的 MDP 与 MTSHL step_j 的 MDP **结构相似但余因子不同**：
 
 ```
-给定: dk_zp ∈ Zp[x1,...,xn], F_base[i] ∈ Zp[x1]（单变量基础因子）
-求解: Σ σi · (∏_{j≠i} F_base[j]) = dk_zp
+MTSHL step_j: Σ σi · (∏_{j≠i} F_base[j]) = ck   ← F_base 单变量，所有求值点相同
+Algorithm 5:  Σ σi · (∏_{j≠i} F[j])      = dk_zp ← F[j] 多变量，每个求值点不同
 ```
 
-`__mtshl_sparse_int` 已能处理此问题：
-- 输入 `F_base`（单变量 Zp[x1]）+ `ck`（多变量 Zp[x1,...,xn]）+ `forms`（骨架）
-- 通过 θ-array 求值将多变量 ck 归约到单变量
-- 逐点调用 `__mtshl_zp_univar_mdp` 求解
+**关键区别**：Algorithm 5 的余因子 bi = ∏_{l≠i} fi 是 MTSHL-d 完成后的**完整多变量因子**
+（非单变量 F_base）。`__mtshl_sparse_int` 的 θ-array 求值机制自然处理这一差异：
+- 传入多变量 `F[i]`（MTSHL-d 结果）
+- θ-array 在每个求值点将 F[i] 求值为**不同的单变量因子**
+- `__mtshl_zp_univar_mdp` 每次重新计算 Bézout（适配变化的余因子）
 - Vandermonde 恢复多变量系数
 
 p-adic 调用时：
-- `F_base` = scaled_factors mod p（与 MTSHL step j=2 的基础因子相同）
+- `F` = MTSHL-d 结果（多变量 Zp[x1,...,xn] 因子，非单变量 F_base）
 - `ck` = dk_zp（全变量误差 mod p）
 - `forms` = F[i] 的当前骨架（Theorem 1：逐步缩小）
 - `aux_vars` = [x2,...,xn]（全部辅助变量）
 
-**结论：可以直接复用 `__mtshl_sparse_int` + 回退链，无需新增 MDP 求解器。**
+**结论：直接复用 `__mtshl_sparse_int`，传入多变量 F 而非 F_base。**
 
 ---
 
@@ -145,23 +145,10 @@ ZZ M((int64_t)p);   // 当前已约化到 mod p
 if (M > ZZ(2) * B)
     return result;   // 单次约化足够
 
-// C.3: 保存基础因子和骨架（p-adic MDP 复用）
-// F_base_zp = scaled_factors mod p → Zp[x1]（单变量，与 step j=2 相同）
-std::vector<PolyZp> F_base_zp(r, PolyZp(comp_ptr));
-for (int i = 0; i < r; i++)
-{
-    for (const auto& term : scaled_factors[i])
-    {
-        Zp coeff(term.second, p);
-        if (coeff.number() == 0) continue;
-        basic_monomial<lex_<var_order>> m(comp_ptr);
-        if (term.first.deg() > 0)
-            m.push_back({main_var, term.first.deg()});
-        m.normalization();
-        F_base_zp[i].push_back({m, coeff});
-    }
-    F_base_zp[i].normalization();
-}
+// C.3: p-adic MDP 使用完整多变量 F（MTSHL-d 结果）作为余因子
+// 注意：不能使用单变量 F_base，因为 p-adic MDP 的余因子 ∏_{j≠i} F[j]
+// 是多变量的。__mtshl_sparse_int 会在 θ-array 点求值 F[i]，每个点得到
+// 不同的单变量因子，从而正确求解多变量 MDP。
 
 // forms = 当前因子骨架（从 MTSHL-d 结果 F[i] 提取）
 std::vector<std::vector<basic_monomial<lex_<var_order>>>> forms(r);
@@ -198,31 +185,24 @@ for (int l = 1; l < l_max && M <= ZZ(2) * B; l++)
     dk_zp.normalization();
     if (dk_zp.empty()) break;
 
-    // C.4.3: MDP 求解（复用现有求解链）
+    // C.4.3: MDP 求解（使用完整多变量 F 作为余因子）
     std::vector<PolyZp> sigma_k;
 
     bool success = __mtshl_sparse_int(
-        F_base_zp, dk_zp, forms, main_var, aux_var_list, p, sigma_k);
+        F, dk_zp, forms, main_var, aux_var_list, p, sigma_k);
     if (!success)
         success = __mtshl_sparse_int(
-            F_base_zp, dk_zp, forms, main_var, aux_var_list, p, sigma_k);
-    if (!success)
-    {
-        if (aux_var_list.size() == 1)
-            success = __mtshl_multi_bdp(
-                F_base_zp, dk_zp, main_var, aux_var_list[0],
-                ideal_alphas_zp[0], sigma_k);
-        else
-            success = __mtshl_wmds(
-                F_base_zp, dk_zp, main_var, aux_var_list,
-                ideal_alphas_zp, sigma_k);
-    }
+            F, dk_zp, forms, main_var, aux_var_list, p, sigma_k);
     if (!success) break;  // MDP 失败 → 放弃 p-adic，走 trial division
 
     // C.4.4: 修正 result[i] += symmetric_mod(σi, p) · M
     for (int i = 0; i < r; i++)
     {
-        if (i >= (int)sigma_k.size() || sigma_k[i].empty()) continue;
+        if (i >= (int)sigma_k.size() || sigma_k[i].empty())
+        {
+            forms[i].clear();  // 无修正 → 该因子已精确
+            continue;
+        }
         Poly correction = __symmetric_mod_poly(sigma_k[i], p);
         for (auto& term : correction)
             term.second *= M;
@@ -235,7 +215,7 @@ for (int l = 1; l < l_max && M <= ZZ(2) * B; l++)
             forms[i].push_back(term.first);
     }
 
-    M *= ZZ((int64_t)p);
+    M *= ZZ((unsigned long long)p);
 }
 
 return result;

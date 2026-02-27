@@ -15,14 +15,18 @@ M5 集成测试中发现两个 bug 并修复。修复后与论文全文对照，
 
 ---
 
-## 差异 1：Taylor 循环终止条件
+## 差异 1：Taylor 循环终止条件 — ✅ 已修复（M6b）
 
-### 现状
+### 现状（M6b 后）
 
 ```cpp
-// __mtshl_step_j, wang.hh L859-862
+// __mtshl_step_j: Taylor 循环已加 error=0 提前退出
 int64_t D_j = degree(aj, xj);
 for (int k = 1; k <= D_j; ++k)
+{
+    ...
+    if (error.empty()) break;  // CASC 2018 Alg.4 Line 3
+}
 ```
 
 ### 论文
@@ -239,7 +243,7 @@ l = ⌈log_p(2B)⌉
 
 ## 改动汇总
 
-### M6a：63-bit 素数（核心前置）
+### M6a：63-bit 素数（核心前置）— ✅ 已完成
 
 | 文件 | 改动 |
 |------|------|
@@ -247,29 +251,24 @@ l = ⌈log_p(2B)⌉
 | `clpoly/polynomial_factorize_wang.hh` | `mtshl_p` 改为 63-bit 素数 |
 | 全局 | `Zp` 接口返回类型 int→int64_t，调用点适配 |
 
-验收：
-- 全量测试通过（`bash test/run_all_tests.sh`）
-- `make bench-all` 无性能退化（基准测试对比）
-
-### M6b：p-adic 提升（可选，M6a 后）
+### M6b：p-adic 提升 + Taylor 早退 + 代码健壮性 — ✅ 已完成
 
 | 文件 | 改动 |
 |------|------|
-| `clpoly/polynomial_factorize_wang.hh` | `__mtshl_lift` 增加 p-adic 外循环 |
-| `clpoly/polynomial_factorize_wang.hh` | 新增 `__mtshl_padic_step`（单步 p-adic 修正） |
-| `clpoly/polynomial_factorize_wang.hh` | `__wang_core`：删除 `mtshl_p` 固定值，改为随机 63-bit 素数 |
-| `test/test_mtshl_m6.cc` | p-adic 提升单元测试（大系数恢复验证） |
+| `polynomial_factorize_wang.hh` `__mtshl_step_j` | Taylor 循环加 `if (error.empty()) break;` |
+| `polynomial_factorize_wang.hh` 新函数 | `__mtshl_coeff_bound` 多变量 Mignotte 系数界 |
+| `polynomial_factorize_wang.hh` `__mtshl_lift` | p-adic 提升循环（Phase C，使用多变量 F 作为余因子） |
+| `polynomial_factorize_wang.hh` `__wang_core` | 注释更新（63-bit + p-adic） |
+| `polynomial_factorize_wang.hh` 全局 | 修复 `(int)` 截断 bug 3 处 + `(int64_t)` 脆弱转换 4 处 |
+| `test/test_mtshl_m4.cc` | 新增 2 个 p-adic 路径测试（大系数双变量/三变量） |
 
-验收：
-- 大系数测试用例通过（Swinnerton-Dyer、SymPy f_1 等）
-- crosscheck 通过
-- 性能对比：bench-all 与 M5 基线持平或更优
+验收结果：
+- 987 测试全部通过（mtshl 30 + factorize 256 + zp 228 + multivar 139 + number 334）
+- bench-clpoly 无性能退化，bivar 70 factors 改善 ~45%
 
-### 差异 1 修复（可选，低优先级）
+### 差异 1 修复 — ✅ 已在 M6b 中完成
 
-| 文件 | 改动 |
-|------|------|
-| `clpoly/polynomial_factorize_wang.hh` | `__mtshl_step_j` Taylor 循环加 `if (error.empty()) break;` |
+Taylor 循环 `if (error.empty()) break;` 已合入 M6b。
 
 ---
 

@@ -485,7 +485,7 @@ namespace clpoly{
         std::uniform_int_distribution<uint64_t> dist(1, p - 1);
         std::vector<Zp> sparse_betas(aux_vars.size(), Zp(0, p));
         for (size_t k = 0; k < aux_vars.size(); k++)
-            sparse_betas[k] = Zp((int)dist(gen), p);
+            sparse_betas[k] = Zp(dist(gen), p);
 
         // Step 1: θ-array 批量求值
         // 对 c 求值: images_c[l] = c(x1, β^{l+1}) ∈ Zp[x1], l=0..s-1
@@ -928,9 +928,30 @@ namespace clpoly{
             // 全量重算误差
             error = aj - product_F();
             error.normalization();
+
+            // CASC 2018 Alg.4 Line 3: error = 0 时提前退出
+            if (error.empty()) break;
         }
 
         return true;
+    }
+
+    // M6b: 多变量 Mignotte 系数界（CASC 2018 Algorithm 5）
+    // 返回 B = ‖f‖∞ · 2^(deg(f,x1)+1)，因子系数的保守上界
+    template<class var_order>
+    ZZ __mtshl_coeff_bound(const polynomial_<ZZ, lex_<var_order>>& f)
+    {
+        ZZ max_coeff(0);
+        for (const auto& term : f)
+        {
+            ZZ a = abs(term.second);
+            if (a > max_coeff) max_coeff = a;
+        }
+        int64_t d = get_first_deg(f);
+        ZZ bound = max_coeff;
+        for (int64_t i = 0; i <= d; i++)
+            bound *= ZZ(2);
+        return bound;
     }
 
     // M4-D 辅助: Z[x] 多项式 mod p → Zp[x1,...] 多项式
@@ -942,7 +963,7 @@ namespace clpoly{
         PolyZp result(f.comp_ptr());
         for (const auto& term : f)
         {
-            Zp coeff((int)term.second.fdiv_ui(p), p);
+            Zp coeff(term.second, p);
             if (coeff.number() != 0)
                 result.push_back({term.first, coeff});
         }
@@ -977,10 +998,10 @@ namespace clpoly{
     {
         using Poly = polynomial_<ZZ, lex_<var_order>>;
         Poly result(f.comp_ptr());
-        ZZ m((int64_t)p);
+        ZZ m((unsigned long long)p);
         for (const auto& term : f)
         {
-            ZZ coeff = __symmetric_mod(ZZ((int64_t)term.second.number()), m);
+            ZZ coeff = __symmetric_mod(ZZ((unsigned long long)term.second.number()), m);
             if (coeff != 0)
                 result.push_back({term.first, coeff});
         }
@@ -1018,7 +1039,7 @@ namespace clpoly{
         for (const auto& v : aux_var_list)
         {
             ZZ a = eval_point.at(v);
-            ideal_alphas_zp.push_back(Zp((int)a.fdiv_ui(p), p));
+            ideal_alphas_zp.push_back(Zp(a, p));
         }
 
         // 阶段 A: 将单变量因子转为 PolyZp（仅含 x1）
@@ -1028,7 +1049,7 @@ namespace clpoly{
             F[i] = PolyZp(comp_ptr);
             for (const auto& term : scaled_factors[i])
             {
-                Zp coeff((int)term.second.fdiv_ui(p), p);
+                Zp coeff(term.second, p);
                 if (coeff.number() == 0) continue;
                 basic_monomial<lex_<var_order>> m(comp_ptr);
                 if (term.first.deg() > 0)
@@ -1067,10 +1088,97 @@ namespace clpoly{
                 return {};
         }
 
-        // 阶段 C: 系数恢复（对称约化）
+        // 阶段 C: 系数恢复 — 初始对称约化 + p-adic 提升（CASC 2018 Algorithm 5）
+
+        // C.1: 初始对称约化
         std::vector<Poly> result(r, Poly(comp_ptr));
         for (int i = 0; i < r; i++)
             result[i] = __symmetric_mod_poly(F[i], p);
+
+        // C.2: 检查是否需要 p-adic 提升
+        ZZ B = __mtshl_coeff_bound(f_scaled);
+        ZZ M((unsigned long long)p);
+
+        if (M > ZZ(2) * B)
+            return result;   // 单次约化足够
+
+        // C.3: p-adic MDP 使用完整多变量 F（MTSHL-d 结果）作为余因子
+        // 注意：不能使用单变量 F_base，因为 p-adic MDP 的余因子 ∏_{j≠i} F[j]
+        // 是多变量的。__mtshl_sparse_int 会在 θ-array 点求值 F[i]，每个点得到
+        // 不同的单变量因子，从而正确求解多变量 MDP。
+
+        // forms = 当前因子骨架（从 MTSHL-d 结果 F[i] 提取）
+        std::vector<std::vector<basic_monomial<lex_<var_order>>>> forms(r);
+        for (int i = 0; i < r; i++)
+            for (const auto& term : F[i])
+                forms[i].push_back(term.first);
+
+        // C.4: p-adic 提升循环
+        // 63-bit 素数: l_max=5 → 可恢复 ~(2^63)^5 ≈ 10^95 范围的系数
+        constexpr int l_max = 5;
+
+        for (int l = 1; l < l_max && M <= ZZ(2) * B; l++)
+        {
+            // C.4.1: 计算 Z 上精确误差
+            Poly product = result[0];
+            for (int i = 1; i < r; i++)
+            {
+                product = product * result[i];
+                product.normalization();
+            }
+            Poly error_zz = f_scaled - product;
+            error_zz.normalization();
+            if (error_zz.empty()) break;  // 已精确恢复
+
+            // C.4.2: dk = error / M, dk_zp = dk mod p
+            PolyZp dk_zp(comp_ptr);
+            for (const auto& term : error_zz)
+            {
+                ZZ q;
+                ZZ::fdiv_q(q, term.second, M);  // 精确整除（p-adic 保证）
+                Zp coeff_zp(q, p);
+                if (coeff_zp.number() != 0)
+                    dk_zp.push_back({term.first, coeff_zp});
+            }
+            dk_zp.normalization();
+            if (dk_zp.empty()) break;
+
+            // C.4.3: MDP 求解（使用完整多变量 F 作为余因子）
+            // 必须用 __mtshl_sparse_int（不能用直接单变量 MDP），因为 dk_zp 是多变量的，
+            // 且余因子 ∏_{j≠i} F[j] 也是多变量的。θ-array 求值会在每个插值点
+            // 将 F[j] 求值为不同的单变量因子。
+            std::vector<PolyZp> sigma_k;
+
+            bool success = __mtshl_sparse_int(
+                F, dk_zp, forms, main_var, aux_var_list, p, sigma_k);
+            if (!success)
+                success = __mtshl_sparse_int(
+                    F, dk_zp, forms, main_var, aux_var_list, p, sigma_k);
+            if (!success) break;  // MDP 失败 → 放弃 p-adic，走 trial division 兜底
+
+            // C.4.4: 修正 result[i] += symmetric_mod(σi, p) · M
+            for (int i = 0; i < r; i++)
+            {
+                if (i >= (int)sigma_k.size() || sigma_k[i].empty())
+                {
+                    // 无修正 → 该因子已精确，清空骨架（Theorem 1 单调性）
+                    forms[i].clear();
+                    continue;
+                }
+                Poly correction = __symmetric_mod_poly(sigma_k[i], p);
+                for (auto& term : correction)
+                    term.second *= M;
+                result[i] = result[i] + correction;
+                result[i].normalization();
+
+                // 更新骨架（Theorem 1：Supp(σk) ⊆ Supp(σk-1)）
+                forms[i].clear();
+                for (const auto& term : sigma_k[i])
+                    forms[i].push_back(term.first);
+            }
+
+            M *= ZZ((unsigned long long)p);
+        }
 
         return result;
     }
@@ -2158,10 +2266,9 @@ namespace clpoly{
                     if (!lc_result.success)
                         continue;
 
-                    // MTSHL prime: 使用最大 31-bit 素数
-                    // 不做 Mignotte 界检查——依靠 trial division 验证因子正确性。
-                    // 若 p 不足以恢复真实系数，对称约化给出错误因子，
-                    // trial division 会拒绝并让 __wang_core 重试其他求值点。
+                    // MTSHL prime: 63-bit 机器素数（CASC 2018 Algorithm 5）
+                    // 系数恢复: symmetric_mod + p-adic 提升（|c| > p/2 时自动迭代）
+                    // 极端情况由 trial division 兜底。
                     static constexpr uint64_t mtshl_p = 9223372036854775783ULL;
 
                     auto mv_factors = __mtshl_lift(

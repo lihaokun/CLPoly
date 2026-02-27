@@ -302,8 +302,8 @@ r=2 时的 j-th step 优化：将多变量问题分层为双变量 HenselLift1 �
 2. 修改 `__mtshl_step_j`（j≥3, r=2）：重构为 HenselLift1 + 插值路径
 3. 并行化
 
-### 双变量基底（Bivariate Base）
+### ~~双变量基底（Bivariate Base）~~ [已废弃]
 
-改 `__wang_core` 基底从 Zp[x1] 到 Zp[x1,x2]。
-对 s>1 情形（单变量层面因子合并）有显著收益，消除 Zassenhaus 指数退化。
-改动范围大，需改 `__wang_core` 主流程 + LC 分配 + 重组。
+> **勘误**：经核实论文原文（MC 2019, ICMS 2018 等），Monagan & Tuncer 全部论文
+> 均使用**单变量基底 Zp[x₁]**，不存在"双变量基底"算法。
+> CLPoly 的单变量基底与 Maple MTSHL 完全一致，此优化方向已取消。

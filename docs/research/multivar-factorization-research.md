@@ -138,39 +138,26 @@ fmpz_mpoly_factor(f):
 
 ### 3.2 Maple 2019 双框架
 
-Maple 2019 的多变量因式分解（Monagan-Tuncer 2019 ISSAC）是**双路径框架**，两条路径共享同一个前置步骤：
+Maple 2019 的多变量因式分解（Monagan-Tuncer, MC 2019 Extended Abstract）使用 MTSHL 算法：
 
 ```
 Maple factor(f ∈ Z[x₁,...,xₙ]):
 
-  【关键差异：双变量基底（bivariate base）】
-  不直接评估到单变量，而是保留一个变量，评估到双变量像：
-    f_bi = f(x₁, x₂, α₃,...,αₙ) ∈ Z[x₁, x₂]
-  在 Z_p[x₁,x₂] 上做双变量因式分解（Monagan 2019 线性 Hensel）
-  → 双变量因子 w₁,...,wᵣ ∈ Z_p[x₁,x₂]
-
-  路径选择（按密度分流）：
-  ┌─────────────────────────────┐   ┌────────────────────────────────┐
-  │       稠密路径（Dense）       │   │       稀疏路径（Sparse/MTSHL）   │
-  │ 逐变量 Wang Hensel 提升      │   │ Zippel 插值恢复 x₃,...,xₙ 方向  │
-  │ 模 Diophantine（无系数爆炸）  │   │ 全程 F_p，无 Hensel，无 Bézout   │
-  │ Zassenhaus s=1 重组          │   │ 插值直接给出真因子，无需重组      │
-  └─────────────────────────────┘   └────────────────────────────────┘
+  1. 选择求值点 α₂,...,αₙ（随机，满足 squarefree + coprime 条件）
+  2. 单变量因式分解：a₁ = f(x₁,α₂,...,αₙ) → f₁·g₁ ∈ Z[x₁]
+  3. 逐变量 Hensel 提升（MTSHL-d）：
+     - 每步用 SparseInt（稀疏插值 + Vandermonde）求解 MDP
+     - 骨架收缩（Theorem 1）保证求解高效
+  4. p-adic 提升恢复 Z 系数
+  5. Trial division 验证
 ```
 
-**双变量基底的关键作用**：
-- 双变量像比单变量像保留更多因子结构信息
-- 好的求值点（α₃,...,αₙ）使双变量因子个数 = 真因子个数
-- 从而保证两条路径的 Zassenhaus 均在 s=1 层成功（无指数组合）
-
-**CLPoly 与 Maple 的基底差异**：
-
-| | CLPoly（当前） | Maple 2019 |
-|--|--------------|-----------|
-| 基底 | **单变量**：评估所有非主变量 | **双变量**：保留一个额外变量 |
-| 内层因式分解 | `factorize(upolynomial)` | 双变量 Z_p[x₁,x₂] 因式分解 |
-| 提升变量数 | n-1 个 | n-2 个 |
-| 重组 | Zassenhaus（s=1..r） | Zassenhaus s=1（有双变量保证） |
+> **勘误**：此前文档声称 Maple 使用"双变量基底 Zp[x₁,x₂]"（保留一个额外变量做双变量因式分解），
+> 经核实 Monagan & Tuncer 全部 5 篇论文（CASC 2016/2018, ICMS 2018, MC 2019, JSC 2020），
+> **均使用单变量基底 Zp[x₁]**。MC 2019 原文明确写道：
+> "MHL first chooses integers α₂,...,αₙ ... and factors the univariate image a₁ in Z[x₁]."
+> ICMS 2018 的"双变量归约"是指 MDP 求解策略（Algorithm 3 将多变量 MDP 归约为
+> 双变量 HenselLift1 调用），而非使用双变量因式分解作为基底。该错误推断已修正。
 
 **MTSHL 复杂度**（Monagan-Tuncer 2020, JSC 99:189-230）：
 - 稀疏路径（T 项）：O(r·n·d·T²) — 多项式时间
@@ -188,7 +175,7 @@ NTL 仅支持单变量因式分解，无多变量实现（此对比不适用）�
 |------|------|----------|----------|----------|
 | **Zippel 稀疏插值** | F_p 上求值+Vandermonde 插值 | 高（需要稀疏插值基础设施） | 稀疏多项式（T << d^n） | bivar-70: ~7000x → <2x |
 | **模 Diophantine 修复** | 将 Bézout 链移到 F_{p^a} | 中（局部修改 `__multivar_diophantine`） | 所有情形 | bivar-70: ~7000x → ~100x（Zassenhaus s=1 仍可接受） |
-| **MTSHL** | 稀疏 Diophantine（Zippel in-Hensel） | 高（重写 Diophantine，需双变量基底） | 稀疏多项式，保留 Hensel 框架 | 类似 Zippel，实现更复杂 |
+| **MTSHL** | 稀疏 Diophantine（Zippel in-Hensel） | 高（重写 Diophantine 为 SparseInt） | 稀疏多项式，保留 Hensel 框架 | 类似 Zippel，实现更复杂 |
 
 **关键结论：优先级排序**
 
@@ -214,9 +201,9 @@ P2a: __multivar_hensel_lift 改为模提升
 ```
 
 **说明**：van Hoeij LLL 的 CLD 方法是单变量专有的（CLD = f'/f 只在单变量情形下定义），
-没有文献提出将其直接推广到 Z[x₁,...,xₙ]。Maple 通过双变量基底保证 Zassenhaus s=1 成功，
-而非用 LLL 重组。此阶段 Zassenhaus 保持不变；若未来出现 s>1 爆炸场景，
-可在稀疏路径（Phase 2 Zippel）中一并解决。
+没有文献提出将其直接推广到 Z[x₁,...,xₙ]。Maple/MTSHL 使用单变量基底 Zp[x₁]，
+随机求值点使 s=1 以高概率成立，无需 LLL 重组。此阶段 Zassenhaus 保持不变；
+若未来出现 s>1 爆炸场景，可在稀疏路径中一并解决。
 
 **预期收益**：
 - bivar-70: 65s → <1s（系数爆炸消除 → 约 1000x 改善；bivar-70 中 Zassenhaus s=1 足矣）
@@ -269,19 +256,11 @@ P2a: __multivar_hensel_lift 改为模提升
 
 **是**。Phase 1（模 Bézout 链）改动局部（主要在 `__multivar_diophantine` 和 Bézout 链构建），风险低，收益巨大：bivar-70 从 65s 降至 <1s。相比 Phase 2（完全重写），性价比极高。
 
-### 决策 2：双变量基底是否要做？
+### 决策 2：~~双变量基底是否要做？~~ [已废弃]
 
-**暂缓（Phase 2 之后评估）**。
-
-CLPoly 当前使用**单变量基底**：`assign(g, eval)` 将所有非主变量代入，得到单变量 f₀ 再做单变量因式分解。Maple 使用**双变量基底**：保留一个额外变量，得到双变量像 f_bi ∈ Z_p[x₁,x₂]，在双变量上做内层因式分解。
-
-双变量基底的优势：保证好求值点下双变量因子数 = 真因子数，从而 Zassenhaus s=1 一定成功（无指数重组）。这是 Maple MTSHL 稠密路径的基础。
-
-但我们的 Phase 1 和 Phase 2 均无需双变量基底：
-- **Phase 1**（模 Bézout）：在当前单变量基底下即可工作
-- **Phase 2**（Zippel 路径）：仿 FLINT，全程在 F_p 上通过点值+插值重建因子，完全绕开 Hensel 提升，也不依赖双变量基底
-
-双变量基底仅在实现完整 Maple MTSHL 稠密路径时才需要，列为**未来工作**。
+> **勘误**：经核实论文原文，Monagan & Tuncer 全部论文均使用**单变量基底 Zp[x₁]**，
+> 不存在"双变量基底"算法。此决策基于错误推断，已废弃。
+> CLPoly 的单变量基底与 Maple MTSHL 完全一致。
 
 ### 决策 3：Zippel 是否现在做？
 
@@ -289,7 +268,9 @@ CLPoly 当前使用**单变量基底**：`assign(g, eval)` 将所有非主变量
 
 ### 决策 4：MTSHL 与 Phase 1 的关系
 
-MTSHL 本质上是模 Bézout（Phase 1）+ Zippel Diophantine（Phase 2）的组合——Hensel 框架保留，但 Diophantine 求解器换成 Zippel 稀疏插值。Phase 1 先实现简化的模 Bézout；MTSHL 完整实现是 Phase 1 + Phase 2 的交织，并额外需要双变量基底。可将 Phase 1 视为通往 MTSHL 的第一步。
+MTSHL 本质上是 Hensel 框架 + SparseInt Diophantine（稀疏插值求解 MDP）的组合。
+CLPoly M5 已实现完整 MTSHL-d（CASC 2018 全部 5 个算法），M6 补齐 p-adic 提升和 Zp 64-bit。
+与 Maple MTSHL 算法完全一致（均使用单变量基底 Zp[x₁]）。
 
 ---
 

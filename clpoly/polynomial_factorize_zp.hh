@@ -16,8 +16,8 @@
 
 namespace clpoly{
 
-    // Helper: 构造 Zp(int64_t, uint32_t) 避免重载歧义
-    inline Zp __make_zp(int64_t val, uint32_t p) { return Zp(val, p); }
+    // Helper: 构造 Zp(int64_t, uint64_t) 避免重载歧义
+    inline Zp __make_zp(int64_t val, uint64_t p) { return Zp(val, p); }
 
     // ================================================================
     // §4. 辅助函数层
@@ -62,7 +62,7 @@ namespace clpoly{
         const upolynomial_<Zp>& modpoly)
     {
         assert(!modpoly.empty());
-        uint32_t p = modpoly.front().second.prime();
+        uint64_t p = modpoly.front().second.prime();
         Zp one = __make_zp(1, p);
         upolynomial_<Zp> result({std::make_pair(umonomial(0), one)});
         upolynomial_<Zp> b = __upoly_mod(base, modpoly);
@@ -87,7 +87,7 @@ namespace clpoly{
     // §4.1.8 随机多项式: 度数 < max_deg 的随机 Zp[x] 多项式
     inline upolynomial_<Zp> __upoly_random(
         int64_t max_deg,
-        uint32_t p,
+        uint64_t p,
         std::mt19937& rng)
     {
         std::uniform_int_distribution<uint64_t> dist(0, (uint64_t)(p - 1));
@@ -108,7 +108,7 @@ namespace clpoly{
     // §5.3.1 p 次根提取: f(x) = g(x^p) => g
     inline upolynomial_<Zp> __extract_pth_root(const upolynomial_<Zp>& f)
     {
-        uint32_t p = f.front().second.prime();
+        uint64_t p = f.front().second.prime();
         upolynomial_<Zp> g;
         g.reserve(f.size());
         for (auto& term : f)
@@ -125,7 +125,7 @@ namespace clpoly{
     {
         assert(!f.empty());
         std::vector<std::pair<upolynomial_<Zp>, uint64_t>> result;
-        uint32_t p = f.front().second.prime();
+        uint64_t p = f.front().second.prime();
 
         auto f_deriv = derivative(f);
 
@@ -180,7 +180,7 @@ namespace clpoly{
     }
 
     // 减去 x 的辅助函数: 从多项式中减去 monomial x
-    inline upolynomial_<Zp> __upoly_subtract_x(const upolynomial_<Zp>& h, uint32_t p)
+    inline upolynomial_<Zp> __upoly_subtract_x(const upolynomial_<Zp>& h, uint64_t p)
     {
         upolynomial_<Zp> result;
         result.reserve(h.size() + 1);
@@ -214,7 +214,7 @@ namespace clpoly{
     }
 
     // 减去常数 1 的辅助函数
-    inline upolynomial_<Zp> __upoly_subtract_one(const upolynomial_<Zp>& h, uint32_t p)
+    inline upolynomial_<Zp> __upoly_subtract_one(const upolynomial_<Zp>& h, uint64_t p)
     {
         upolynomial_<Zp> result;
         result.reserve(h.size() + 1);
@@ -247,7 +247,7 @@ namespace clpoly{
     __ddf_Zp(const upolynomial_<Zp>& f)
     {
         assert(!f.empty());
-        uint32_t p = f.front().second.prime();
+        uint64_t p = f.front().second.prime();
         std::vector<std::pair<upolynomial_<Zp>, uint64_t>> result;
 
         // h = x
@@ -307,7 +307,7 @@ namespace clpoly{
         if (get_deg(f) <= 0)
             return;
 
-        uint32_t p = f.front().second.prime();
+        uint64_t p = f.front().second.prime();
         int64_t n = get_deg(f);
 
         while (true)
@@ -357,7 +357,7 @@ namespace clpoly{
     __factor_Zp(upolynomial_<Zp> f)
     {
         assert(!f.empty());
-        uint32_t p = f.front().second.prime();
+        uint64_t p = f.front().second.prime();
 
         if (get_deg(f) <= 0)
             return {f.front().second, {}};

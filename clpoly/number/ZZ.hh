@@ -596,7 +596,7 @@ public:
     }
 
     // ---- fdiv_ui: floor-mod for Zp ----
-    uint64_t fdiv_ui(uint32_t d) const {
+    uint64_t fdiv_ui(uint64_t d) const {
         if (_is_small()) {
             if (_val >= 0) return static_cast<uint64_t>(_val) % d;
             // negative: floor mod = d - ((-val) % d), but 0 if divides evenly

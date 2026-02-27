@@ -41,7 +41,7 @@ namespace clpoly{
             i.second/=g_cont;
             
         std::uint32_t p_index=0;
-        std::uint32_t prime=boost::math::prime(p_index);
+        std::uint64_t prime=boost::math::prime(p_index);
         upolynomial_<ZZ> Pout_,tmp_Pout_,R;
         upolynomial_<Zp> Pout_mod,f_p,g_p;
         upolynomial_<ZZ> tmp;

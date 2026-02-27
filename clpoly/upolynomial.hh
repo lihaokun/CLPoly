@@ -101,7 +101,7 @@ namespace clpoly{
     {
         return p.degree();
     }
-    inline upolynomial_<Zp> polynomial_mod(const upolynomial_<ZZ> & p, uint32_t prime)
+    inline upolynomial_<Zp> polynomial_mod(const upolynomial_<ZZ> & p, uint64_t prime)
     {
         upolynomial_<Zp> new_p;
         Zp coeff(prime);
@@ -112,6 +112,14 @@ namespace clpoly{
             new_p.push_back({i.first,std::move(coeff)});
         }
         return new_p;
+    }
+    inline void poly_convert(const upolynomial_<Zp>& p_in, upolynomial_<ZZ>& p_out)
+    {
+        p_out.clear();
+        p_out.reserve(p_in.size());
+        for (auto& term : p_in)
+            p_out.push_back({term.first, ZZ(static_cast<int64_t>(term.second.number()))});
+        p_out.normalization();
     }
     template<class T1,class T2,class comp1>
     void poly_convert(const polynomial_<T1,comp1>& p_in,upolynomial_<T2> & p_out)

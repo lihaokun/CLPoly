@@ -12,6 +12,10 @@ build/
 a.out
 example
 
+# Profiling artifacts
+gmon.out
+test/profile_factorize.cc
+
 # Temp/scratch files
 1.txt
 clpoly/1.out

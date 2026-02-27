@@ -4,7 +4,7 @@
 using namespace clpoly;
 
 // Helper: 构造 upolynomial_<Zp> from {(deg, coeff), ...} 降序
-upolynomial_<Zp> make_upoly_zp(std::initializer_list<std::pair<int64_t, uint64_t>> terms, uint32_t p)
+upolynomial_<Zp> make_upoly_zp(std::initializer_list<std::pair<int64_t, uint64_t>> terms, uint64_t p)
 {
     upolynomial_<Zp> poly;
     for (auto& t : terms)
@@ -21,7 +21,7 @@ bool verify_factorization_Zp(
     Zp lc,
     const std::vector<std::pair<upolynomial_<Zp>, uint64_t>>& factors)
 {
-    uint32_t p = f.front().second.prime();
+    uint64_t p = f.front().second.prime();
     upolynomial_<Zp> product({std::make_pair(umonomial(0), lc)});
     for (auto& fac : factors)
     {
@@ -50,7 +50,7 @@ int main() {
 
     CLPOLY_TEST("__upoly_make_monic");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto f = make_upoly_zp({{2, 3}, {1, 2}, {0, 5}}, p);
         Zp lc = __upoly_make_monic(f);
         CLPOLY_ASSERT_EQ(lc.number(), (uint64_t)3);
@@ -63,7 +63,7 @@ int main() {
 
     CLPOLY_TEST("__upoly_mod");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto f = make_upoly_zp({{3, 1}, {1, 2}, {0, 1}}, p);
         auto g = make_upoly_zp({{2, 1}, {0, 1}}, p);
         auto r = __upoly_mod(f, g);
@@ -73,7 +73,7 @@ int main() {
 
     CLPOLY_TEST("__upoly_divmod");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f = make_upoly_zp({{3, 1}, {0, 1}}, p);
         auto g = make_upoly_zp({{1, 1}, {0, 1}}, p);
         upolynomial_<Zp> q, r;
@@ -85,7 +85,7 @@ int main() {
 
     CLPOLY_TEST("__upoly_gcd_Zp");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto a = make_upoly_zp({{2, 1}, {0, 6}}, p);
         auto b = make_upoly_zp({{1, 1}, {0, 6}}, p);
         auto g = polynomial_GCD(a, b);
@@ -95,7 +95,7 @@ int main() {
 
     CLPOLY_TEST("__upoly_gcd_extended");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto a = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto b = make_upoly_zp({{1, 1}, {0, 2}}, p);
         upolynomial_<Zp> s, t;
@@ -109,7 +109,7 @@ int main() {
 
     CLPOLY_TEST("__upoly_gcd_extended_2");
     {
-        uint32_t p = 13;
+        uint64_t p = 13;
         auto a = make_upoly_zp({{2, 1}, {0, 1}}, p);
         auto b = make_upoly_zp({{1, 1}, {0, 3}}, p);
         upolynomial_<Zp> s, t;
@@ -123,7 +123,7 @@ int main() {
 
     CLPOLY_TEST("__upoly_powmod");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto base = make_upoly_zp({{1, 1}}, p);
         auto mod = make_upoly_zp({{2, 1}, {0, 1}}, p);
         auto result = __upoly_powmod(base, ZZ(5), mod);
@@ -133,7 +133,7 @@ int main() {
 
     CLPOLY_TEST("__upoly_powmod_large");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto base = make_upoly_zp({{1, 1}}, p);
         auto mod = make_upoly_zp({{3, 1}, {1, 1}, {0, 1}}, p);
         auto result = __upoly_powmod(base, ZZ(7), mod);
@@ -148,7 +148,7 @@ int main() {
 
     CLPOLY_TEST("__squarefree_Zp_already_squarefree");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto f = make_upoly_zp({{2, 1}, {1, 1}, {0, 1}}, p);
         __upoly_make_monic(f);
         auto sqf = __squarefree_Zp(f);
@@ -158,7 +158,7 @@ int main() {
 
     CLPOLY_TEST("__squarefree_Zp_with_square");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto xp1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto xp2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
         auto f = xp1 * xp1 * xp2;
@@ -166,7 +166,7 @@ int main() {
         __upoly_make_monic(f);
         auto sqf = __squarefree_Zp(f);
         // 验证乘积
-        uint32_t pp = p;
+        uint64_t pp = p;
         upolynomial_<Zp> product({std::make_pair(umonomial(0), Zp((int64_t)1, pp))});
         for (auto& si_ei : sqf)
         {
@@ -179,7 +179,7 @@ int main() {
 
     CLPOLY_TEST("__squarefree_Zp_pth_power");
     {
-        uint32_t p = 3;
+        uint64_t p = 3;
         auto xp1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f = pow(xp1, 3);
         __upoly_make_monic(f);
@@ -195,7 +195,7 @@ int main() {
 
     CLPOLY_TEST("__ddf_Zp_all_linear");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
         auto f3 = make_upoly_zp({{1, 1}, {0, 3}}, p);
@@ -210,7 +210,7 @@ int main() {
 
     CLPOLY_TEST("__ddf_Zp_irreducible_deg2");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f = make_upoly_zp({{2, 1}, {0, 2}}, p);
         auto ddf = __ddf_Zp(f);
         CLPOLY_ASSERT_EQ((int)ddf.size(), 1);
@@ -219,7 +219,7 @@ int main() {
 
     CLPOLY_TEST("__ddf_Zp_mixed_degrees");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{2, 1}, {0, 2}}, p);
         auto f = f1 * f2;
@@ -239,7 +239,7 @@ int main() {
 
     CLPOLY_TEST("__edf_Zp_split_linear");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
         auto f3 = make_upoly_zp({{1, 1}, {0, 3}}, p);
@@ -263,7 +263,7 @@ int main() {
 
     CLPOLY_TEST("__edf_Zp_split_deg2");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f1 = make_upoly_zp({{2, 1}, {0, 2}}, p);
         auto f2 = make_upoly_zp({{2, 1}, {0, 3}}, p);
         auto f = f1 * f2;
@@ -290,7 +290,7 @@ int main() {
 
     CLPOLY_TEST("__factor_Zp_irreducible");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f = make_upoly_zp({{2, 1}, {0, 2}}, p);
         auto result = __factor_Zp(f);
         CLPOLY_ASSERT_EQ(result.first.number(), (uint64_t)1);
@@ -301,7 +301,7 @@ int main() {
 
     CLPOLY_TEST("__factor_Zp_linear_factors");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
         auto f3 = make_upoly_zp({{1, 1}, {0, 4}}, p);
@@ -319,7 +319,7 @@ int main() {
 
     CLPOLY_TEST("__factor_Zp_with_multiplicity");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto xp1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto xp2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
         auto f = pow(xp1, 3) * xp2;
@@ -332,7 +332,7 @@ int main() {
 
     CLPOLY_TEST("__factor_Zp_mixed");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{2, 1}, {0, 2}}, p);
         auto f = f1 * f2;
@@ -347,7 +347,7 @@ int main() {
 
     CLPOLY_TEST("__factor_Zp_constant");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f = make_upoly_zp({{0, 3}}, p);
         auto result = __factor_Zp(f);
         CLPOLY_ASSERT_EQ(result.first.number(), (uint64_t)3);
@@ -356,7 +356,7 @@ int main() {
 
     CLPOLY_TEST("__factor_Zp_complete_split");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         // x^5 - x = x^5 + 4x in Z5
         auto f = make_upoly_zp({{5, 1}, {1, 4}}, p);
         auto result = __factor_Zp(f);
@@ -371,7 +371,7 @@ int main() {
 
     CLPOLY_TEST("__factor_Zp_larger_prime");
     {
-        uint32_t p = 101;
+        uint64_t p = 101;
         auto f1 = make_upoly_zp({{1, 1}, {0, 50}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 99}}, p);
         auto f3 = make_upoly_zp({{2, 1}, {1, 1}, {0, 1}}, p);
@@ -390,9 +390,9 @@ int main() {
 
     {
         std::mt19937 rng(42);
-        uint32_t primes[] = {5, 13, 101};
+        uint64_t primes[] = {5, 13, 101};
 
-        for (uint32_t p : primes)
+        for (uint64_t p : primes)
         {
             // 2 因子乘积
             CLPOLY_TEST(("__factor_Zp_random_2fac_p" + std::to_string(p)).c_str());

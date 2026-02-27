@@ -14,7 +14,7 @@ upolynomial_<ZZ> make_upoly_zz(std::initializer_list<std::pair<int64_t, int64_t>
 }
 
 // Helper: 构造 upolynomial_<Zp>
-upolynomial_<Zp> make_upoly_zp(std::initializer_list<std::pair<int64_t, uint64_t>> terms, uint32_t p)
+upolynomial_<Zp> make_upoly_zp(std::initializer_list<std::pair<int64_t, uint64_t>> terms, uint64_t p)
 {
     upolynomial_<Zp> poly;
     for (auto& t : terms)
@@ -159,7 +159,7 @@ int main() {
 
     CLPOLY_TEST("__hensel_tree_build (2 factors)");
     {
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);  // x+1
         auto f2 = make_upoly_zp({{1, 1}, {0, 2}}, p);  // x+2
         std::vector<upolynomial_<Zp>> factors = {f1, f2};
@@ -179,7 +179,7 @@ int main() {
 
     CLPOLY_TEST("__hensel_tree_build (3 factors)");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
         auto f3 = make_upoly_zp({{1, 1}, {0, 3}}, p);
@@ -205,7 +205,7 @@ int main() {
     CLPOLY_TEST("__hensel_step (x+1)(x+2)");
     {
         auto f = make_upoly_zz({{2, 1}, {1, 3}, {0, 2}});
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
         std::vector<upolynomial_<Zp>> factors = {f1, f2};
@@ -235,7 +235,7 @@ int main() {
     {
         // f = x^2 - 2x - 15
         auto f = make_upoly_zz({{2, 1}, {1, -2}, {0, -15}});
-        uint32_t p = 7;
+        uint64_t p = 7;
         // mod 7: (x+3)(x+2)
         auto f1 = make_upoly_zp({{1, 1}, {0, 3}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
@@ -260,7 +260,7 @@ int main() {
     CLPOLY_TEST("__hensel_lift (x+1)(x+2)");
     {
         auto f = make_upoly_zz({{2, 1}, {1, 3}, {0, 2}});
-        uint32_t p = 5;
+        uint64_t p = 5;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 2}}, p);
         std::vector<upolynomial_<Zp>> factors = {f1, f2};
@@ -286,7 +286,7 @@ int main() {
     {
         // f = x^3 + 2x^2 - 5x - 6
         auto f = make_upoly_zz({{3, 1}, {2, 2}, {1, -5}, {0, -6}});
-        uint32_t p = 7;
+        uint64_t p = 7;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);  // x+1
         auto f2 = make_upoly_zp({{1, 1}, {0, 5}}, p);  // x-2 mod 7
         auto f3 = make_upoly_zp({{1, 1}, {0, 3}}, p);  // x+3
@@ -317,7 +317,7 @@ int main() {
     {
         // f = 2x^2 + 5x + 3
         auto f = make_upoly_zz({{2, 2}, {1, 5}, {0, 3}});
-        uint32_t p = 7;
+        uint64_t p = 7;
         // mod 7 首一: (x+5)(x+1)
         auto f1 = make_upoly_zp({{1, 1}, {0, 5}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 1}}, p);
@@ -337,7 +337,7 @@ int main() {
     {
         // f = (x+1)(x-1)(x+2)(x-3) = x^4 - x^3 - 7x^2 + x + 6
         auto f = make_upoly_zz({{4, 1}, {3, -1}, {2, -7}, {1, 1}, {0, 6}});
-        uint32_t p = 11;
+        uint64_t p = 11;
         auto f1 = make_upoly_zp({{1, 1}, {0, 1}}, p);
         auto f2 = make_upoly_zp({{1, 1}, {0, 10}}, p); // x-1
         auto f3 = make_upoly_zp({{1, 1}, {0, 2}}, p);
@@ -363,7 +363,7 @@ int main() {
     {
         // f = (x+100)(x-200) = x^2 - 100x - 20000
         auto f = make_upoly_zz({{2, 1}, {1, -100}, {0, -20000}});
-        uint32_t p = 11;
+        uint64_t p = 11;
         // mod 11: -100 mod 11 = 10, -20000 mod 11 = 9
         // f ≡ x^2 + 10x + 9 = (x+1)(x+9) mod 11
         auto g1 = make_upoly_zp({{1, 1}, {0, 1}}, p);

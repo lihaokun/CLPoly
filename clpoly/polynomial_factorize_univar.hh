@@ -305,19 +305,6 @@ namespace clpoly{
     }
 
     // ================================================================
-    // §4.5 Zp→ZZ 多项式转换
-    // ================================================================
-
-    inline upolynomial_<ZZ> __upoly_Zp_to_ZZ(const upolynomial_<Zp>& f)
-    {
-        upolynomial_<ZZ> result;
-        result.reserve(f.size());
-        for (auto& term : f)
-            result.push_back(std::make_pair(term.first, ZZ(static_cast<int64_t>(term.second.number()))));
-        return result;
-    }
-
-    // ================================================================
     // §6. M2: Hensel 提升
     // ================================================================
 
@@ -348,7 +335,7 @@ namespace clpoly{
     inline void __hensel_tree_build_recursive(
         std::vector<__hensel_node>& nodes,
         const std::vector<upolynomial_<Zp>>& factors,
-        uint32_t p,
+        uint64_t p,
         int start, int end,   // factors[start..end)
         int parent_idx)       // 在 nodes 中的索引
     {
@@ -369,10 +356,10 @@ namespace clpoly{
         polynomial_GCD(g_zp, h_zp, s_zp, t_zp);
 
         // Zp → ZZ
-        nodes[parent_idx].g = __upoly_Zp_to_ZZ(g_zp);
-        nodes[parent_idx].h = __upoly_Zp_to_ZZ(h_zp);
-        nodes[parent_idx].s = __upoly_Zp_to_ZZ(s_zp);
-        nodes[parent_idx].t = __upoly_Zp_to_ZZ(t_zp);
+        poly_convert(g_zp, nodes[parent_idx].g);
+        poly_convert(h_zp, nodes[parent_idx].h);
+        poly_convert(s_zp, nodes[parent_idx].s);
+        poly_convert(t_zp, nodes[parent_idx].t);
         nodes[parent_idx].leaf_start = start;
         nodes[parent_idx].leaf_end = end;
 
@@ -405,7 +392,7 @@ namespace clpoly{
 
     inline std::vector<__hensel_node> __hensel_tree_build(
         const std::vector<upolynomial_<Zp>>& factors,
-        uint32_t p)
+        uint64_t p)
     {
         assert(factors.size() >= 2);
         std::vector<__hensel_node> nodes;
@@ -552,7 +539,7 @@ namespace clpoly{
     __hensel_lift(
         const upolynomial_<ZZ>& f,
         const std::vector<upolynomial_<Zp>>& factors,
-        uint32_t p,
+        uint64_t p,
         int a_target = 0)
     {
         assert(factors.size() >= 2);
@@ -607,7 +594,7 @@ namespace clpoly{
     inline int __heuristic_starting_precision(
         const upolynomial_<ZZ>& f,
         int                     r,
-        uint32_t                p)
+        uint64_t                p)
     {
         // 1. FLINT 启发式 a_h（double 精度）
         double logp  = std::log((double)p);
@@ -637,7 +624,7 @@ namespace clpoly{
         __hensel_node&          node,
         const upolynomial_<ZZ>& f,
         const ZZ&               m,   // 当前模数 p^a
-        uint32_t                p)   // 素数
+        uint64_t                p)   // 素数
     {
         ZZ p_zz(p);
         ZZ mp = m * p_zz;    // 新模数 p^(a+1)
@@ -684,7 +671,7 @@ namespace clpoly{
         int                         idx,
         const upolynomial_<ZZ>&     f,   // 当前节点目标
         const ZZ&                   m,
-        uint32_t                    p)
+        uint64_t                    p)
     {
         __hensel_step_linear(nodes[idx], f, m, p);
         if (nodes[idx].left >= 0)
@@ -1382,7 +1369,7 @@ namespace clpoly{
     // ================================================================
 
     struct __prime_selection_result {
-        uint32_t prime;
+        uint64_t prime;
         std::vector<upolynomial_<Zp>> factors;
         bool irreducible;
     };
@@ -1407,7 +1394,7 @@ namespace clpoly{
             if (idx >= PRIME_TABLE_SIZE)
                 throw std::runtime_error(
                     "factorize: exhausted prime table without finding a suitable prime");
-            uint32_t p = boost::math::prime((unsigned)idx);
+            uint64_t p = boost::math::prime((unsigned)idx);
 
             // 跳过 lc(f) mod p == 0 的素数
             ZZ lc_mod;
@@ -1482,7 +1469,7 @@ namespace clpoly{
     __lll_factorize(
         const upolynomial_<ZZ>&              f,
         const std::vector<upolynomial_<Zp>>& factors,
-        uint32_t                             p)
+        uint64_t                             p)
     {
         int r   = (int)factors.size();
         int a_h = __heuristic_starting_precision(f, r, p);

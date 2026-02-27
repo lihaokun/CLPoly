@@ -119,7 +119,7 @@ int main()
     CLPOLY_TEST("polynomial_GCD(Zp): coprime");
     {
         // a = x^2 + 1, b = x + 1 in Z/7Z[x]
-        uint32_t p = 7;
+        uint64_t p = 7;
         upolynomial_<Zp> a({{umonomial(2), Zp(1,p)}, {umonomial(0), Zp(1,p)}});
         upolynomial_<Zp> b({{umonomial(1), Zp(1,p)}, {umonomial(0), Zp(1,p)}});
         upolynomial_<Zp> s, t;
@@ -134,7 +134,7 @@ int main()
     CLPOLY_TEST("polynomial_GCD(Zp): non-coprime");
     {
         // a = x^2 - 1, b = x - 1 in Z/7Z, gcd = x - 1
-        uint32_t p = 7;
+        uint64_t p = 7;
         upolynomial_<Zp> a({{umonomial(2), Zp(1,p)}, {umonomial(0), Zp(-1,p)}});
         upolynomial_<Zp> b({{umonomial(1), Zp(1,p)}, {umonomial(0), Zp(-1,p)}});
         upolynomial_<Zp> s, t;

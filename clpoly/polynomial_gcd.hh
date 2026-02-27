@@ -311,7 +311,7 @@ namespace clpoly{
         if (tmp_x<2) tmp_x=2;
         std::uint32_t p_index=tmp_x/std::log(tmp_x);
         if (p_index >= 9999) p_index = 9998;
-        std::uint32_t prime=boost::math::prime(p_index);
+        std::uint64_t prime=boost::math::prime(p_index);
         while (prime <tmp_x)
         {
             if (++p_index >= 9999) break;
@@ -721,7 +721,7 @@ namespace clpoly{
         upolynomial_<Zp>& s, upolynomial_<Zp>& t)
     {
         assert(!F.empty() && !G.empty());
-        uint32_t p = F.front().second.prime();
+        uint64_t p = F.front().second.prime();
         Zp one(1, p);
 
         upolynomial_<Zp> r0 = F, r1 = G;
@@ -881,7 +881,7 @@ namespace clpoly{
         {
             int64_t f_d=get_first_deg(F);
             int64_t g_d=get_first_deg(G);
-            uint32_t prime=F.begin()->second.prime();
+            uint64_t prime=F.begin()->second.prime();
             Zp p_(prime);
             auto & comp=F.comp();
             polynomial_<Zp,lex_<var_order>> F_v(F.comp_ptr());

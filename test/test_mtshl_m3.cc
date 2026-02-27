@@ -9,7 +9,7 @@ template<class Comp>
 static polynomial_<Zp, Comp> make_bivar_zp(
     const Comp* comp_ptr,
     const variable& x1, const variable& x2,
-    std::initializer_list<std::tuple<int,int,int>> terms, uint32_t p)
+    std::initializer_list<std::tuple<int,int,int>> terms, uint64_t p)
 {
     polynomial_<Zp, Comp> poly(comp_ptr);
     for (auto& [e1, e2, c] : terms)
@@ -31,7 +31,7 @@ template<class Comp>
 static polynomial_<Zp, Comp> make_trivar_zp(
     const Comp* comp_ptr,
     const variable& x1, const variable& x2, const variable& x3,
-    std::initializer_list<std::tuple<int,int,int,int>> terms, uint32_t p)
+    std::initializer_list<std::tuple<int,int,int,int>> terms, uint64_t p)
 {
     polynomial_<Zp, Comp> poly(comp_ptr);
     for (auto& [e1, e2, e3, c] : terms)
@@ -90,7 +90,7 @@ int main()
         // p=101, F1=x1+x2, F2=x1-x2+1
         // 已知解: σ1=x2, σ2=3
         // forms[0] = {x2}, forms[1] = {1}（常数项）
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 
@@ -127,7 +127,7 @@ int main()
     CLPOLY_TEST("sparse_int_r2_bivar_multi_term");
     {
         // σ0 = 2*x2 + 5, σ1 = x2 + 1（多项解）
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 
@@ -167,7 +167,7 @@ int main()
         // r=3, p=97
         // F1=x1+1, F2=x1+x2, F3=x1+2*x2+3
         // σ0=2, σ1=x2+1, σ2=3
-        uint32_t p = 97;
+        uint64_t p = 97;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 
@@ -211,7 +211,7 @@ int main()
 
     CLPOLY_TEST("sparse_int_zero_c");
     {
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 
@@ -237,7 +237,7 @@ int main()
     CLPOLY_TEST("sparse_int_empty_forms");
     {
         // forms 全空 → 直接返回全零
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 
@@ -261,7 +261,7 @@ int main()
         // 三变量: F[i] ∈ Zp[x1,x2,x3]
         // F1 = x1+x2+x3, F2 = x1-x2+1
         // σ0 = x2+2*x3, σ1 = x3+5
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2"), x3("x3");
         lex comp_lex;
 
@@ -303,7 +303,7 @@ int main()
     // 交叉验证：sparse_int 与 multi_bdp 在双变量情形结果一致
     CLPOLY_TEST("sparse_int_vs_multi_bdp_crosscheck");
     {
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 

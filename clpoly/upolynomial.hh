@@ -101,7 +101,7 @@ namespace clpoly{
     {
         return p.degree();
     }
-    inline upolynomial_<Zp> polynomial_mod(const upolynomial_<ZZ> & p, uint32_t prime)
+    inline upolynomial_<Zp> polynomial_mod(const upolynomial_<ZZ> & p, uint64_t prime)
     {
         upolynomial_<Zp> new_p;
         Zp coeff(prime);

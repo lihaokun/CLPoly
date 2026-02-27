@@ -20,7 +20,7 @@ upolynomial_<ZZ> to_upoly(const PolyZZ& f)
 }
 
 // 选择一个满足 Mignotte 界的素数
-static uint32_t pick_prime(const PolyZZ& f_scaled)
+static uint64_t pick_prime(const PolyZZ& f_scaled)
 {
     // 计算 max |coeff|
     ZZ max_coeff(0);
@@ -31,7 +31,7 @@ static uint32_t pick_prime(const PolyZZ& f_scaled)
     }
     // p 需要 > 2 * max_coeff * C(d, d/2)（简化：取 >> max_coeff 的素数）
     // 对于测试用的小多项式，10007 足够
-    uint32_t candidates[] = {10007, 100003, 1000003};
+    uint64_t candidates[] = {10007, 100003, 1000003};
     for (auto p : candidates)
         if (ZZ((int64_t)p) > 2 * max_coeff)
             return p;
@@ -63,7 +63,7 @@ int main()
         auto lc_result = __wang_leading_coeff(f, uni_factors, alpha, x);
         CLPOLY_ASSERT(lc_result.success);
 
-        uint32_t p = pick_prime(lc_result.f_scaled);
+        uint64_t p = pick_prime(lc_result.f_scaled);
         auto G = __mtshl_lift(lc_result.f_scaled, lc_result.scaled_factors, lc_result.lc_targets, alpha, x, p);
         CLPOLY_ASSERT(G.size() == 2);
 
@@ -89,7 +89,7 @@ int main()
         auto lc_result = __wang_leading_coeff(f, uni_factors, alpha, x);
         CLPOLY_ASSERT(lc_result.success);
 
-        uint32_t p = pick_prime(lc_result.f_scaled);
+        uint64_t p = pick_prime(lc_result.f_scaled);
         auto G = __mtshl_lift(lc_result.f_scaled, lc_result.scaled_factors, lc_result.lc_targets, alpha, x, p);
 
         auto prod = G[0] * G[1];
@@ -114,7 +114,7 @@ int main()
         auto lc_result = __wang_leading_coeff(f, uni_factors, alpha, x);
         CLPOLY_ASSERT(lc_result.success);
 
-        uint32_t p = pick_prime(lc_result.f_scaled);
+        uint64_t p = pick_prime(lc_result.f_scaled);
         auto G = __mtshl_lift(lc_result.f_scaled, lc_result.scaled_factors, lc_result.lc_targets, alpha, x, p);
         CLPOLY_ASSERT(G.size() == 2);
 
@@ -140,7 +140,7 @@ int main()
         auto lc_result = __wang_leading_coeff(f, uni_factors, alpha, x);
         CLPOLY_ASSERT(lc_result.success);
 
-        uint32_t p = pick_prime(lc_result.f_scaled);
+        uint64_t p = pick_prime(lc_result.f_scaled);
         auto G = __mtshl_lift(lc_result.f_scaled, lc_result.scaled_factors, lc_result.lc_targets, alpha, x, p);
         CLPOLY_ASSERT(G.size() == 3);
 
@@ -174,7 +174,7 @@ int main()
             auto lc_result = __wang_leading_coeff(f, uni_factors, alpha, x);
             CLPOLY_ASSERT(lc_result.success);
 
-            uint32_t p = pick_prime(lc_result.f_scaled);
+            uint64_t p = pick_prime(lc_result.f_scaled);
             auto G = __mtshl_lift(lc_result.f_scaled, lc_result.scaled_factors, lc_result.lc_targets, alpha, x, p);
 
             auto prod = G[0] * G[1];
@@ -206,7 +206,7 @@ int main()
             auto lc_result = __wang_leading_coeff(f, uni_factors, alpha, x);
             CLPOLY_ASSERT(lc_result.success);
 
-            uint32_t p = pick_prime(lc_result.f_scaled);
+            uint64_t p = pick_prime(lc_result.f_scaled);
             auto G = __mtshl_lift(lc_result.f_scaled, lc_result.scaled_factors, lc_result.lc_targets, alpha, x, p);
 
             auto prod = G[0] * G[1];
@@ -237,7 +237,7 @@ int main()
             auto lc_result = __wang_leading_coeff(f, uni_factors, alpha, x);
             if (lc_result.success)
             {
-                uint32_t p = pick_prime(lc_result.f_scaled);
+                uint64_t p = pick_prime(lc_result.f_scaled);
                 auto G = __mtshl_lift(lc_result.f_scaled, lc_result.scaled_factors, lc_result.lc_targets, alpha, x, p);
 
                 auto prod = G[0] * G[1];

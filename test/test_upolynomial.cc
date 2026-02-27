@@ -184,7 +184,7 @@ int main() {
     // ======== poly_convert: Zp -> ZZ ========
     CLPOLY_TEST("poly_convert_zp_to_zz_basic");
     {
-        uint32_t p = 97;
+        uint64_t p = 97;
         // 3x^2 + 5x + 7（系数均小于 p，直接恢复）
         upolynomial_<Zp> zp_poly;
         zp_poly.push_back({umonomial(2), Zp(3, p)});
@@ -203,7 +203,7 @@ int main() {
 
     CLPOLY_TEST("poly_convert_zp_to_zz_zero");
     {
-        uint32_t p = 101;
+        uint64_t p = 101;
         upolynomial_<Zp> zp_poly;  // 零多项式
         upolynomial_ZZ zz_poly;
         poly_convert(zp_poly, zz_poly);
@@ -212,7 +212,7 @@ int main() {
 
     CLPOLY_TEST("poly_convert_zp_to_zz_constant");
     {
-        uint32_t p = 101;
+        uint64_t p = 101;
         upolynomial_<Zp> zp_poly;
         zp_poly.push_back({umonomial(0), Zp(42, p)});
         upolynomial_ZZ zz_poly;
@@ -224,7 +224,7 @@ int main() {
     CLPOLY_TEST("poly_convert_zp_to_zz_roundtrip");
     {
         // ZZ -> Zp (polynomial_mod) -> ZZ (poly_convert)，系数在 [0, p-1] 内时为恒等
-        uint32_t p = 97;
+        uint64_t p = 97;
         upolynomial_ZZ orig({{umonomial(3), ZZ(10)}, {umonomial(1), ZZ(3)}, {umonomial(0), ZZ(1)}});
         auto zp = polynomial_mod(orig, p);
         upolynomial_ZZ recovered;
@@ -235,7 +235,7 @@ int main() {
     CLPOLY_TEST("poly_convert_zp_to_zz_zero_coeff_dropped");
     {
         // 系数恰好为 p 的倍数，polynomial_mod 应丢弃该项
-        uint32_t p = 7;
+        uint64_t p = 7;
         // 7x^2 + 3x + 1 → mod 7 → 3x + 1
         upolynomial_ZZ orig({{umonomial(2), ZZ(7)}, {umonomial(1), ZZ(3)}, {umonomial(0), ZZ(1)}});
         auto zp = polynomial_mod(orig, p);

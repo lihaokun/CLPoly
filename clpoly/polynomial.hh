@@ -674,7 +674,7 @@ namespace clpoly{
     }
 
     template <class compare>
-    polynomial_<Zp,compare> polynomial_mod(const polynomial_<ZZ,compare> & p, uint32_t prime)
+    polynomial_<Zp,compare> polynomial_mod(const polynomial_<ZZ,compare> & p, uint64_t prime)
     {
         polynomial_<Zp,compare> new_p(p.comp_ptr());
         // std::cout<<p<<" mod "<<prime;
@@ -689,7 +689,7 @@ namespace clpoly{
         return new_p;
     }
     template <class compare>
-    polynomial_<Zp,compare> polynomial_mod(polynomial_<ZZ,compare> && p, uint32_t prime)
+    polynomial_<Zp,compare> polynomial_mod(polynomial_<ZZ,compare> && p, uint64_t prime)
     {
         polynomial_<Zp,compare> new_p(p.comp_ptr());
         Zp coeff(prime);

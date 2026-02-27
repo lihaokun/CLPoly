@@ -5,7 +5,7 @@ using namespace clpoly;
 
 // 辅助：构建 Zp 单变量多项式 from {(deg, coeff)} pairs
 static upolynomial_<Zp> make_upzp(
-    std::initializer_list<std::pair<int64_t, int>> terms, uint32_t p)
+    std::initializer_list<std::pair<int64_t, int>> terms, uint64_t p)
 {
     upolynomial_<Zp> poly;
     for (auto& [d, c] : terms)
@@ -83,7 +83,7 @@ template<class Comp>
 static polynomial_<Zp, Comp> make_bivar_zp(
     const Comp* comp_ptr,
     const variable& x1, const variable& x2,
-    std::initializer_list<std::tuple<int,int,int>> terms, uint32_t p)
+    std::initializer_list<std::tuple<int,int,int>> terms, uint64_t p)
 {
     polynomial_<Zp, Comp> poly(comp_ptr);
     for (auto& [e1, e2, c] : terms)
@@ -108,7 +108,7 @@ int main()
     CLPOLY_TEST("univar_mdp_r2");
     {
         // p=101, F = [x+2, x+3], c = 1（deg(c)=0 < deg(∏F)=2）
-        uint32_t p = 101;
+        uint64_t p = 101;
         std::vector<upolynomial_<Zp>> F = {
             make_upzp({{1, 1}, {0, 2}}, p),  // x + 2
             make_upzp({{1, 1}, {0, 3}}, p),  // x + 3
@@ -124,7 +124,7 @@ int main()
     CLPOLY_TEST("univar_mdp_r2_linear_c");
     {
         // p=101, F = [x+1, x+100], c = 5x + 3（deg(c)=1 < deg(∏F)=2）
-        uint32_t p = 101;
+        uint64_t p = 101;
         std::vector<upolynomial_<Zp>> F = {
             make_upzp({{1, 1}, {0, 1}}, p),    // x + 1
             make_upzp({{1, 1}, {0, 100}}, p),  // x - 1
@@ -143,7 +143,7 @@ int main()
     CLPOLY_TEST("univar_mdp_r3");
     {
         // p=101, F = [x+1, x+2, x+3], c = x^2 + 1（deg=2 < deg(∏F)=3）
-        uint32_t p = 101;
+        uint64_t p = 101;
         std::vector<upolynomial_<Zp>> F = {
             make_upzp({{1, 1}, {0, 1}}, p),
             make_upzp({{1, 1}, {0, 2}}, p),
@@ -160,7 +160,7 @@ int main()
     CLPOLY_TEST("univar_mdp_r4");
     {
         // p=97, F = [x+1, x+2, x+3, x+4], c = 2x^3 + x + 5（deg=3 < deg(∏F)=4）
-        uint32_t p = 97;
+        uint64_t p = 97;
         std::vector<upolynomial_<Zp>> F = {
             make_upzp({{1, 1}, {0, 1}}, p),
             make_upzp({{1, 1}, {0, 2}}, p),
@@ -177,7 +177,7 @@ int main()
 
     CLPOLY_TEST("univar_mdp_zero_c");
     {
-        uint32_t p = 101;
+        uint64_t p = 101;
         std::vector<upolynomial_<Zp>> F = {
             make_upzp({{1, 1}, {0, 1}}, p),
             make_upzp({{1, 1}, {0, 2}}, p),
@@ -202,7 +202,7 @@ int main()
         // 已知解: σ1 = x2, σ2 = 3（deg < deg(F[i],x1)=1, 均为 x2 多项式）
         // c = σ1*b1 + σ2*b2 = x2*(x1-x2+1) + 3*(x1+x2)
         //   = x1*x2-x2^2+x2 + 3*x1+3*x2 = x1*x2+3*x1-x2^2+4*x2
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 
@@ -227,7 +227,7 @@ int main()
         // F1 = x1+1, F2 = x1+2（无 x2 项，纯单变量情形）
         // c = 5x1 + 3（deg < deg(∏F)=2）
         // multi_bdp 退化为纯单变量 MDP（Taylor 提升无事可做）
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 
@@ -253,7 +253,7 @@ int main()
         // 已知解: σ1 = 2, σ2 = x2+1, σ3 = 3
         // b1 = F2*F3, b2 = F1*F3, b3 = F1*F2
         // 构造 c = Σ σi*bi
-        uint32_t p = 97;
+        uint64_t p = 97;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 
@@ -291,7 +291,7 @@ int main()
 
     CLPOLY_TEST("multi_bdp_zero_c");
     {
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;
 

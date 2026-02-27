@@ -70,7 +70,7 @@ namespace clpoly{
     {
         int s = (int)values.size();
         assert(s > 0 && (int)thetas.size() == s);
-        uint32_t p = thetas[0].prime();
+        uint64_t p = thetas[0].prime();
 
         // 预计算幂次: pow_theta[t][l] = θ_t^l (l=0..s-1)
         std::vector<std::vector<Zp>> pow_theta(s, std::vector<Zp>(s, Zp(1, p)));
@@ -141,7 +141,7 @@ namespace clpoly{
         assert(aux_vars.size() == sparse_betas.size());
         int nterms   = (int)f.size();
         int nauxvars = (int)aux_vars.size();
-        uint32_t p   = (nterms > 0) ? f[0].second.prime()
+        uint64_t p   = (nterms > 0) ? f[0].second.prime()
                                      : (!sparse_betas.empty() ? sparse_betas[0].prime() : 2u);
 
         // 预处理每个 term：提取 e1（x1 次数）、系数、θ_m（aux 变量贡献）
@@ -215,7 +215,7 @@ namespace clpoly{
         using Poly = polynomial_<Zp, lex_<var_order>>;
         Poly g = f;
         if (g.empty()) return g;
-        uint32_t p = alpha_k.prime();
+        uint64_t p = alpha_k.prime();
         // 构造 (xk - alpha_k)
         Poly divisor(f.comp_ptr());
         {
@@ -248,7 +248,7 @@ namespace clpoly{
     {
         int r = (int)F.size();
         assert(r >= 2);
-        uint32_t p = F[0].front().second.prime();
+        uint64_t p = F[0].front().second.prime();
 
         // c = 0 → 全零解
         if (c.empty())
@@ -316,7 +316,7 @@ namespace clpoly{
         using UPZp   = upolynomial_<Zp>;
         auto comp_ptr = c.comp_ptr();
         int r = (int)F.size();
-        uint32_t p = alpha2.prime();
+        uint64_t p = alpha2.prime();
 
         // Step 1: 求值 x2=alpha2，得到单变量 F0[i], c0 ∈ Zp[x1]
         std::vector<UPZp> F0(r);
@@ -452,7 +452,7 @@ namespace clpoly{
         const std::vector<std::vector<basic_monomial<lex_<var_order>>>>& forms,
         const variable& x1,
         const std::vector<variable>& aux_vars,
-        uint32_t p,
+        uint64_t p,
         std::vector<polynomial_<Zp, lex_<var_order>>>& result)
     {
         using PolyZp = polynomial_<Zp, lex_<var_order>>;
@@ -482,7 +482,7 @@ namespace clpoly{
         // Step 0: 随机选取 sparse_betas（非零 Zp 元素）
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<uint32_t> dist(1, p - 1);
+        std::uniform_int_distribution<uint64_t> dist(1, p - 1);
         std::vector<Zp> sparse_betas(aux_vars.size(), Zp(0, p));
         for (size_t k = 0; k < aux_vars.size(); k++)
             sparse_betas[k] = Zp((int)dist(gen), p);
@@ -624,7 +624,7 @@ namespace clpoly{
         using UPZp   = upolynomial_<Zp>;
         auto comp_ptr = c.comp_ptr();
         int r = (int)F.size();
-        uint32_t p = (!F.empty() && !F[0].empty()) ? F[0][0].second.prime()
+        uint64_t p = (!F.empty() && !F[0].empty()) ? F[0][0].second.prime()
                    : (!ideal_alphas_zp.empty() ? ideal_alphas_zp[0].prime() : 2u);
 
         // 基础情形: aux_vars 空 → 单变量 MDP
@@ -769,7 +769,7 @@ namespace clpoly{
         const variable& x1,
         const std::vector<variable>& aux_vars,
         const std::vector<Zp>& ideal_alphas_zp,
-        uint32_t p)
+        uint64_t p)
     {
         using PolyZp = polynomial_<Zp, lex_<var_order>>;
         using UPZp   = upolynomial_<Zp>;
@@ -936,7 +936,7 @@ namespace clpoly{
     // M4-D 辅助: Z[x] 多项式 mod p → Zp[x1,...] 多项式
     template<class var_order>
     polynomial_<Zp, lex_<var_order>> __polynomial_to_zp(
-        const polynomial_<ZZ, lex_<var_order>>& f, uint32_t p)
+        const polynomial_<ZZ, lex_<var_order>>& f, uint64_t p)
     {
         using PolyZp = polynomial_<Zp, lex_<var_order>>;
         PolyZp result(f.comp_ptr());
@@ -957,7 +957,7 @@ namespace clpoly{
         const polynomial_<ZZ, lex_<var_order>>& f,
         const std::vector<variable>& vars,
         const std::vector<Zp>& alphas,
-        uint32_t p)
+        uint64_t p)
     {
         using PolyZp = polynomial_<Zp, lex_<var_order>>;
         // 先 mod p，再逐变量求值
@@ -973,7 +973,7 @@ namespace clpoly{
     // M4-D 辅助: Zp 多项式 → Z 多项式（对称约化）
     template<class var_order>
     polynomial_<ZZ, lex_<var_order>> __symmetric_mod_poly(
-        const polynomial_<Zp, lex_<var_order>>& f, uint32_t p)
+        const polynomial_<Zp, lex_<var_order>>& f, uint64_t p)
     {
         using Poly = polynomial_<ZZ, lex_<var_order>>;
         Poly result(f.comp_ptr());
@@ -1000,7 +1000,7 @@ namespace clpoly{
         const std::vector<polynomial_<ZZ, lex_<var_order>>>& lc_targets,
         const std::map<variable, ZZ>& eval_point,
         const variable& main_var,
-        uint32_t p)
+        uint64_t p)
     {
         using Poly   = polynomial_<ZZ, lex_<var_order>>;
         using PolyZp = polynomial_<Zp, lex_<var_order>>;
@@ -1909,11 +1909,11 @@ namespace clpoly{
             B *= abs(denom);
 
             // 选素数 p 与 denom 和所有 lc(vi) 互素
-            uint32_t p = 0;
+            uint64_t p = 0;
             ZZ abs_denom = abs(denom);
             for (unsigned idx = 0; ; ++idx)
             {
-                uint32_t candidate = boost::math::prime(idx);
+                uint64_t candidate = boost::math::prime(idx);
                 ZZ mod_d; ZZ::fdiv_r(mod_d, abs_denom, ZZ(candidate));
                 if (mod_d == ZZ(0)) continue;
                 bool bad = false;
@@ -2162,7 +2162,7 @@ namespace clpoly{
                     // 不做 Mignotte 界检查——依靠 trial division 验证因子正确性。
                     // 若 p 不足以恢复真实系数，对称约化给出错误因子，
                     // trial division 会拒绝并让 __wang_core 重试其他求值点。
-                    static constexpr uint32_t mtshl_p = 2147483629;
+                    static constexpr uint64_t mtshl_p = 9223372036854775783ULL;
 
                     auto mv_factors = __mtshl_lift(
                         lc_result.f_scaled, lc_result.scaled_factors,

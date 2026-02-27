@@ -909,7 +909,7 @@ int main() {
 
     CLPOLY_TEST("Zp_inv");
     {
-        uint32_t p = 7;
+        uint64_t p = 7;
         for (uint64_t i = 1; i < p; ++i) {
             Zp a(i, p);
             Zp ai = a.inv();
@@ -920,7 +920,7 @@ int main() {
 
     CLPOLY_TEST("Zp_pow_fermat");
     {
-        uint32_t p = 13;
+        uint64_t p = 13;
         for (uint64_t i = 1; i < p; ++i) {
             Zp a(i, p);
             Zp result = pow(a, (int64_t)(p - 1));
@@ -1131,7 +1131,7 @@ int main() {
     {
         // 两个 ≥2 项的 Zp 多项式相乘，触发堆乘法路径
         // 之前在此路径上 set_zero 导致崩溃
-        uint32_t p = 7;
+        uint64_t p = 7;
         upolynomial_<Zp> a({
             {umonomial(2), Zp(3, p)},
             {umonomial(1), Zp(2, p)},
@@ -1155,6 +1155,103 @@ int main() {
         Zp vb = assign(b, pt);
         Zp vc = assign(c, pt);
         CLPOLY_ASSERT_EQ(vc.number(), (va * vb).number());
+    }
+
+    // ================================================================
+    // 63-bit 素数测试
+    // ================================================================
+
+    CLPOLY_TEST("Zp 63-bit prime basic arithmetic");
+    {
+        uint64_t p = (uint64_t)9223372036854775783ULL;  // 最大 < 2^63 的素数
+        uint64_t va = 12345678901234567ULL, vb = 98765432109876543ULL;
+        Zp a(va, p);
+        Zp b(vb, p);
+
+        // 加法
+        Zp c = a + b;
+        CLPOLY_ASSERT_EQ(c.number(), a.number() + b.number());  // 和 < p，无需归约
+
+        // 乘法 (与 __int128 直接计算对比)
+        Zp d = a * b;
+        uint64_t expected = (unsigned __int128)a.number() * b.number() % p;
+        CLPOLY_ASSERT_EQ(d.number(), expected);
+
+        // 逆元
+        Zp e = a.inv();
+        CLPOLY_ASSERT_EQ((a * e).number(), (uint64_t)1);
+
+        // 负值构造
+        Zp f(-1, p);
+        CLPOLY_ASSERT_EQ(f.number(), p - 1);
+
+        // ZZ 构造
+        Zp g(ZZ("123456789012345678901234567890"), p);
+        uint64_t expected_g = ZZ("123456789012345678901234567890").fdiv_ui(p);
+        CLPOLY_ASSERT_EQ(g.number(), expected_g);
+    }
+
+    CLPOLY_TEST("Zp 63-bit prime mul stress");
+    {
+        uint64_t p = (uint64_t)9223372036854775783ULL;
+        // 测试边界值乘法
+        Zp a(p - 1, p);  // 最大值
+        Zp b(p - 1, p);
+        Zp c = a * b;
+        uint64_t expected = (unsigned __int128)(p - 1) * (p - 1) % p;
+        CLPOLY_ASSERT_EQ(c.number(), expected);
+
+        // 0 和 1 边界
+        Zp zero(0, p);
+        Zp one(1, p);
+        CLPOLY_ASSERT_EQ((a * zero).number(), (uint64_t)0);
+        CLPOLY_ASSERT_EQ((a * one).number(), a.number());
+
+        // 多次乘法累积
+        Zp acc(1, p);
+        uint64_t bval = 123456789ULL;
+        Zp base(bval, p);
+        for (int i = 0; i < 100; i++)
+            acc *= base;
+        // 验证 acc * base^{-100} == 1
+        Zp base_inv = base.inv();
+        Zp dec = acc;
+        for (int i = 0; i < 100; i++)
+            dec *= base_inv;
+        CLPOLY_ASSERT_EQ(dec.number(), (uint64_t)1);
+    }
+
+    CLPOLY_TEST("Zp 63-bit prime division and pow");
+    {
+        uint64_t p = (uint64_t)9223372036854775783ULL;
+        Zp a(42, p);
+        Zp b(7, p);
+        Zp c = a / b;
+        CLPOLY_ASSERT_EQ((c * b).number(), a.number());
+
+        // Fermat 小定理：a^(p-1) = 1
+        // p-1 太大，用 pow(a, p-2) == a.inv() 代替
+        Zp a_inv = a.inv();
+        Zp a_inv2 = pow(a, (int64_t)(p - 2));
+        CLPOLY_ASSERT_EQ(a_inv.number(), a_inv2.number());
+    }
+
+    CLPOLY_TEST("Zp 63-bit prime add/sub boundary");
+    {
+        uint64_t p = (uint64_t)9223372036854775783ULL;
+        Zp a(p - 1, p);
+        Zp b(1, p);
+
+        // (p-1) + 1 = 0 mod p
+        CLPOLY_ASSERT_EQ((a + b).number(), (uint64_t)0);
+
+        // 0 - 1 = p - 1
+        Zp zero(0, p);
+        CLPOLY_ASSERT_EQ((zero - b).number(), p - 1);
+
+        // 取负
+        CLPOLY_ASSERT_EQ((-a).number(), (uint64_t)1);
+        CLPOLY_ASSERT_EQ((-zero).number(), (uint64_t)0);
     }
 
     return clpoly_test::test_summary();

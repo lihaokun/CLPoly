@@ -24,7 +24,7 @@ int main()
     CLPOLY_TEST("vandermonde_s1");
     {
         // v[1] = c1 * θ1^1；设 p=101, θ1=5, c1=3 → v[1]=15
-        uint32_t p = 101;
+        uint64_t p = 101;
         std::vector<Zp> values = { Zp(15, p) };
         std::vector<Zp> thetas = { Zp(5,  p) };
         std::vector<Zp> coeffs;
@@ -41,7 +41,7 @@ int main()
         // p=101, θ=(5,7), c=(3,4)
         // v[1] = 3*5 + 4*7 = 15+28 = 43
         // v[2] = 3*25 + 4*49 = 75+196 = 271 ≡ 69 (mod 101)
-        uint32_t p = 101;
+        uint64_t p = 101;
         std::vector<Zp> values = { Zp(43, p), Zp(69, p) };
         std::vector<Zp> thetas = { Zp(5,  p), Zp(7,  p) };
         std::vector<Zp> coeffs;
@@ -60,7 +60,7 @@ int main()
         // v[1] = 2 + 6 + 15 = 23
         // v[2] = 4 + 18 + 75 = 97
         // v[3] = 8 + 54 + 375 = 437 ≡ 437-4*101=33 (mod 101)
-        uint32_t p = 101;
+        uint64_t p = 101;
         std::vector<Zp> values = { Zp(23, p), Zp(97, p), Zp(33, p) };
         std::vector<Zp> thetas = { Zp(2,  p), Zp(3,  p), Zp(5,  p) };
         std::vector<Zp> coeffs;
@@ -76,7 +76,7 @@ int main()
     CLPOLY_TEST("vandermonde_collision");
     {
         // θ = (5, 5)：矩阵行 [1,1] 和 [5,5] 线性相关 → 奇异
-        uint32_t p = 101;
+        uint64_t p = 101;
         std::vector<Zp> values = { Zp(10, p), Zp(50, p) };
         std::vector<Zp> thetas = { Zp(5,  p), Zp(5,  p) };
         std::vector<Zp> coeffs;
@@ -89,7 +89,7 @@ int main()
     {
         // p=97, s=4, c=(2,5,7,3), θ=(3,4,6,8)
         // 先正向计算 v[l]，再用 vandermonde_solve 恢复 c
-        uint32_t p = 97;
+        uint64_t p = 97;
         std::vector<Zp> thetas = { Zp(3,p), Zp(4,p), Zp(6,p), Zp(8,p) };
         std::vector<Zp> c_orig = { Zp(2,p), Zp(5,p), Zp(7,p), Zp(3,p) };
         int s = 4;
@@ -117,7 +117,7 @@ int main()
     {
         // f = 3*x^2 + 2*x + 1 ∈ Zp[x]（无 aux 变量）
         // θ-array 退化：θ_m=1 (乘积为空), running_m=1^l=1, images[l-1]=f(x)
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x("x");
         univariate_priority_order comp(x);
         polynomial_<Zp, univariate_priority_order> f(&comp);
@@ -161,7 +161,7 @@ int main()
         // l=2: 3*9*x1^2 + 2*1*x1 + 1*81 = 27*x1^2 + 2*x1 + 81
         // l=3: 3*27*x1^2 + 2*1*x1 + 1*729 = 81*x1^2 + 2*x1 + 22
         //       (729 mod 101 = 729 - 7*101 = 22)
-        uint32_t p = 101;
+        uint64_t p = 101;
         variable x1("x1"), x2("x2");
         lex comp_lex;  // lex = lex_<less>
         polynomial_<Zp, lex> f(&comp_lex);
@@ -223,7 +223,7 @@ int main()
         //   = 100*x1 + (16+25)
         //   100 mod 97 = 3, 41 mod 97 = 41
         //   = 3*x1 + 41
-        uint32_t p = 97;
+        uint64_t p = 97;
         variable x1("x1"), x2("x2"), x3("x3");
         lex comp_lex;
         polynomial_<Zp, lex> f(&comp_lex);

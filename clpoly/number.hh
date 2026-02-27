@@ -114,6 +114,7 @@ namespace clpoly{
         // FLINT 归一化 Barrett 乘法归约（替换 __barrett_reduce）
         uint64_t __nmod_mul(uint64_t a, uint64_t b) const
         {
+            assert(_p != 0);
             uint64_t pn = _p << _norm;
             uint64_t a_shifted = a << _norm;
             unsigned __int128 prod = (unsigned __int128)a_shifted * b;

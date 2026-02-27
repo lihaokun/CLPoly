@@ -1161,7 +1161,7 @@ int main() {
     // 63-bit 素数测试
     // ================================================================
 
-    CLPOLY_TEST("Zp 63-bit prime basic arithmetic");
+    CLPOLY_TEST("Zp_63bit_prime_basic_arithmetic");
     {
         uint64_t p = (uint64_t)9223372036854775783ULL;  // 最大 < 2^63 的素数
         uint64_t va = 12345678901234567ULL, vb = 98765432109876543ULL;
@@ -1191,7 +1191,7 @@ int main() {
         CLPOLY_ASSERT_EQ(g.number(), expected_g);
     }
 
-    CLPOLY_TEST("Zp 63-bit prime mul stress");
+    CLPOLY_TEST("Zp_63bit_prime_mul_stress");
     {
         uint64_t p = (uint64_t)9223372036854775783ULL;
         // 测试边界值乘法
@@ -1221,7 +1221,7 @@ int main() {
         CLPOLY_ASSERT_EQ(dec.number(), (uint64_t)1);
     }
 
-    CLPOLY_TEST("Zp 63-bit prime division and pow");
+    CLPOLY_TEST("Zp_63bit_prime_division_and_pow");
     {
         uint64_t p = (uint64_t)9223372036854775783ULL;
         Zp a(42, p);
@@ -1236,7 +1236,7 @@ int main() {
         CLPOLY_ASSERT_EQ(a_inv.number(), a_inv2.number());
     }
 
-    CLPOLY_TEST("Zp 63-bit prime add/sub boundary");
+    CLPOLY_TEST("Zp_63bit_prime_add_sub_boundary");
     {
         uint64_t p = (uint64_t)9223372036854775783ULL;
         Zp a(p - 1, p);

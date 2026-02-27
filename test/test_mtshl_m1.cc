@@ -6,7 +6,7 @@ using namespace clpoly;
 // ================================================================
 // 辅助：从 UPZp 中按次数提取系数
 // ================================================================
-static uint32_t get_coeff(const upolynomial_<Zp>& p, int64_t deg)
+static uint64_t get_coeff(const upolynomial_<Zp>& p, int64_t deg)
 {
     for (const auto& term : p)
         if (term.first.deg() == deg)

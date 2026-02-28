@@ -39,4 +39,4 @@ test/randommtp
 test/associatedgraph_test.cc
 reference/
 CMakeLists.txt
-build.sh
+/build.sh

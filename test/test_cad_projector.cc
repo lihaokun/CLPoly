@@ -1,5 +1,5 @@
 /**
- * @file test_projection.cc
+ * @file test_cad_projector.cc
  * @brief Test projection operators (MCCALLUM and LAZARD)
  *
  * This test verifies that projection computations run without errors.
@@ -83,19 +83,19 @@ pow(x1,8)-pow(x1,7)+2*pow(x1,5)-2*pow(x1,4)+10*pow(x1,3)-7*pow(x1,2)-1\
     // ----- LAZARD projection -----
     CLPOLY_TEST("LAZARD Projection operators");
     {
-        auto laward_res = polys;   // intentionally keeping the typo
+        auto lazard_res = polys;   // intentionally keeping the typo
         std::vector<polynomial_ZZ> expected_res;
         // Project x3
-        laward_res = project(laward_res, x3, projection_method::LAZARD);
+        lazard_res = project(lazard_res, x3, projection_method::LAZARD);
         expected_res = {x1-1, pow(x2,2)+polynomial_ZZ({{{},2}}), x1, pow(x1,2)+x2, \
 -pow(x2,2)+4*x1+polynomial_ZZ({{{},-4}}), \
 pow(x2,4)+pow(x2,3)*x1+pow(x1,3)+4*pow(x2,2)+2*x2*x1-pow(x1,2)+polynom\
 ial_ZZ({{{},4}}), pow(x1,4)+3*x2*pow(x1,2)+2*pow(x2,2)+x1-1, \
 -pow(x1,3)+pow(x2,2)-x2*x1+polynomial_ZZ({{{},2}})};
-        verify_proj_eq(laward_res,expected_res);
+        verify_proj_eq(lazard_res,expected_res);
 
         // Project x2
-        laward_res = project(laward_res, x2, projection_method::LAZARD);
+        lazard_res = project(lazard_res, x2, projection_method::LAZARD);
         expected_res = {x1-1, x1, polynomial_ZZ({{{},2}}), polynomial_ZZ({{{},4}}), \
 pow(x1,3)-pow(x1,2)+polynomial_ZZ({{{},4}}), pow(x1,4)+x1-1, \
 pow(x1,3)+polynomial_ZZ({{{},-2}}), polynomial_ZZ({{{},-8}}), \
@@ -115,7 +115,7 @@ pow(x1,8)-2*pow(x1,7)+2*pow(x1,5)+15*pow(x1,4)-9*pow(x1,3)-pow(x1,2)-1\
 0*x1+polynomial_ZZ({{{},25}}), \
 pow(x1,8)-pow(x1,7)+2*pow(x1,5)-2*pow(x1,4)+10*pow(x1,3)-7*pow(x1,2)-1\
 0*x1+polynomial_ZZ({{{},25}})};
-        verify_proj_eq(laward_res,expected_res);
+        verify_proj_eq(lazard_res,expected_res);
     }
 
     return clpoly_test::test_summary();

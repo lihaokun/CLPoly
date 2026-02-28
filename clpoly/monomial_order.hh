@@ -35,6 +35,9 @@ namespace clpoly{
                 for (int64_t i=0;i<v.size();++i)
                     v_map[v[i]]=i+1;
             }
+            // 允许用初始化列表构造
+            custom_var_order(std::initializer_list<variable> lst)
+                : custom_var_order(std::vector<variable>(lst)) {}
             int64_t order(variable v) const
             {
                 // if (v.serial()==0) return 0;

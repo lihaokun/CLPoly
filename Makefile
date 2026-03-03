@@ -167,7 +167,7 @@ bench-save: $(BIN_REL)/bench_clpoly $(BIN_REL)/bench_comparative
 ## Full suite: correctness crosscheck + performance — saves everything to benchmarks/YYYY-MM-DD-HHMMSS.txt
 bench-all: $(BIN_REL)/bench_clpoly $(BIN_REL)/bench_comparative \
            $(BIN_DEB)/test_crosscheck_flint $(BIN_DEB)/test_crosscheck_ntl
-	bash test/run_bench.sh
+	bash test/run_bench.sh --crosscheck
 
 ## Auto-generated dependencies ####################################################################
 

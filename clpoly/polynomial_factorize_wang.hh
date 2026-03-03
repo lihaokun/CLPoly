@@ -1404,13 +1404,26 @@ namespace clpoly{
                 lc_evals[j] = abs(lj_val);
             }
 
-            // 互素前置检查: gcd(Eⱼ, cs·γ) == 1
-            // 防止 content/γ 污染导致 valuation 过度提取
-            ZZ cs_gamma = abs(uni_content * gamma);
-            for (size_t j = 0; j < m; ++j)
+            // Non-divisor 检查 (GCL §8.7 condition 3 / SymPy non_divisors / FLINT lcc_wang)
+            // 每个 Eⱼ 在剥离与 cs·γ 及之前 E 值的共享素因子后，必须有残余 > 1（identifying prime）
             {
-                if (gcd(lc_evals[j], cs_gamma) != ZZ(1))
-                    return result;  // Eⱼ 与 cs·γ 共享素因子，换点
+                std::vector<ZZ> d = { abs(uni_content * gamma) };
+                for (size_t j = 0; j < m; ++j)
+                {
+                    ZZ q = lc_evals[j];
+                    for (int k = (int)j; k >= 0; --k)
+                    {
+                        ZZ r = d[k];
+                        while (r != ZZ(1))
+                        {
+                            r = gcd(r, q);
+                            q = q / r;
+                            if (q == ZZ(1))
+                                return result;  // Eⱼ 无独有素因子 → 换点
+                        }
+                    }
+                    d.push_back(q);
+                }
             }
 
             // 对每个单变量因子，逐个提取各 LC 因子的 valuation

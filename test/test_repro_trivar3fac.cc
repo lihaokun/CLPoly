@@ -39,8 +39,10 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
+        std::cerr << "trial " << trial << " ..." << std::flush;
+
         if (verbose) {
-            std::cerr << "trial " << trial << std::endl;
+            std::cerr << std::endl;
             std::cerr << "  f1 = " << f1 << std::endl;
             std::cerr << "  f2 = " << f2 << std::endl;
             std::cerr << "  f3 = " << f3 << std::endl;
@@ -58,14 +60,14 @@ int main(int argc, char* argv[]) {
         bool ok = (product == f || product == -f);
 
         if (!ok) {
-            std::cerr << "FAIL trial " << trial << std::endl;
+            std::cerr << " FAIL" << std::endl;
             std::cerr << "  f1 = " << f1 << std::endl;
             std::cerr << "  f2 = " << f2 << std::endl;
             std::cerr << "  f3 = " << f3 << std::endl;
             fail++;
             if (fail >= 3) break;
         } else {
-            if (verbose) std::cerr << "  PASS" << std::endl;
+            std::cerr << " ok" << std::endl;
             pass++;
         }
     }

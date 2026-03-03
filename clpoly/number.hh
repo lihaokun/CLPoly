@@ -106,7 +106,7 @@ namespace clpoly{
         static void __precompute(uint64_t p, uint64_t& ninv, uint32_t& norm)
         {
             if (p == 0) { ninv = 0; norm = 0; return; }
-            assert(p >= 2 && p < (1ULL << 63));
+            assert(p >= 2);
             norm = (uint32_t)__builtin_clzll(p);
             ninv = __preinvert_limb(p << norm);
         }
@@ -133,7 +133,7 @@ namespace clpoly{
 
     public:
         // 类级别素数管理
-        static void     set_prime(uint64_t p) { assert(p >= 2 && p < (1ULL << 63)); _s_prime = p; }
+        static void     set_prime(uint64_t p) { assert(p >= 2); _s_prime = p; }
         static uint64_t cur_prime()           { return _s_prime; }
 
         Zp() : _i(0), _p(_s_prime) { __precompute(_p, _ninv, _norm); }
@@ -142,8 +142,9 @@ namespace clpoly{
         Zp(int64_t i, uint64_t p) : _p(p)
         {
             __precompute(p, _ninv, _norm);
-            int64_t r = i % (int64_t)p;
-            _i = (uint64_t)(r >= 0 ? r : r + (int64_t)p);
+            uint64_t abs_i = (i >= 0) ? (uint64_t)i : -(uint64_t)i;
+            uint64_t r = abs_i % p;
+            _i = (r == 0 || i > 0) ? r : p - r;
         }
         Zp(int i, uint64_t p) : Zp((int64_t)i, p) {}
         Zp(const ZZ& i, uint64_t p) : _p(p)
@@ -161,8 +162,9 @@ namespace clpoly{
         constexpr Zp& operator=(int64_t i)
         {
             if (this->_p == 0) { assert(i == 0); this->_i = 0; return *this; }
-            int64_t r = i % (int64_t)this->_p;
-            this->_i = (uint64_t)(r >= 0 ? r : r + (int64_t)this->_p);
+            uint64_t abs_i = (i >= 0) ? (uint64_t)i : -(uint64_t)i;
+            uint64_t r = abs_i % this->_p;
+            this->_i = (r == 0 || i > 0) ? r : this->_p - r;
             return *this;
         }
         inline Zp& operator=(const ZZ& i)
@@ -190,15 +192,21 @@ namespace clpoly{
         friend inline Zp operator+(Zp op1, const Zp& op2)
         {
             assert(op1._p == op2._p);
-            uint64_t r = op1._i + op2._i;
-            op1._i = (r >= op1._p) ? r - op1._p : r;
+            const uint64_t neg = op1._p - op1._i;
+            if (neg > op2._i)
+                op1._i = op1._i + op2._i;
+            else
+                op1._i = op2._i - neg;
             return op1;
         }
         inline Zp& operator+=(const Zp& op2)
         {
             assert(this->_p == op2._p);
-            uint64_t r = this->_i + op2._i;
-            this->_i = (r >= this->_p) ? r - this->_p : r;
+            const uint64_t neg = this->_p - this->_i;
+            if (neg > op2._i)
+                this->_i = this->_i + op2._i;
+            else
+                this->_i = op2._i - neg;
             return *this;
         }
         friend inline Zp operator-(Zp op1, const Zp& op2)

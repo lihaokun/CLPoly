@@ -76,5 +76,28 @@ int main(int argc, char* argv[]) {
     std::cout << "Trials: " << (pass + fail) << "  Pass: " << pass << "  Fail: " << fail << std::endl;
     CLPOLY_ASSERT_EQ(fail, 0);
 
+    // Deterministic reproducer: Wang LCC non-divisor hang (trial 387)
+    // L = lc(f,x) = -6y²(3y+1), γ=-6. CLPoly 旧 coprime 检查
+    // gcd(Eⱼ, cs·γ)==1 对此多项式数学上不可满足，导致无限循环。
+    // 修复：non-divisor 累积素因子剥离（GCL §8.7 condition 3）
+    CLPOLY_TEST("repro_trivar3fac_nondivisor_hang");
+    {
+        polynomial_ZZ one({{{},(ZZ)1}});
+        polynomial_ZZ two({{{},(ZZ)2}});
+        polynomial_ZZ three({{{},(ZZ)3}});
+        polynomial_ZZ f1 = -three*x*y - x + two;
+        polynomial_ZZ f2 = three*x*y + three*y*z - y;
+        polynomial_ZZ f3 = two*x*y - three*y*z - three;
+        polynomial_ZZ f = f1 * f2 * f3;
+        auto fac = factorize(f);
+        polynomial_ZZ product({{{},(ZZ)fac.content}});
+        for (auto& [fi, ei] : fac.factors)
+            for (uint64_t e = 0; e < ei; e++) {
+                product = product * fi;
+                product.normalization();
+            }
+        CLPOLY_ASSERT(product == f || product == -f);
+    }
+
     return clpoly_test::test_summary();
 }

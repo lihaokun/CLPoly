@@ -856,10 +856,14 @@ namespace clpoly{
         xk_pow.data().push_back({{}, Zp(1, p)});
         xk_pow.normalization();
 
-        // CASC 2018 Alg.3: 循环上界 = deg(aj, xj)
+        // CASC 2018 Alg.4 Taylor 循环。
+        // 注: 论文假设 monic in x1，此时循环在 D_j 步内收敛。
+        // 非 monic 情形下 LC 部分无法由 MDP 捕获（deg 约束），
+        // 循环不保证收敛，但提升结果经后续 symmetric mod + trial
+        // division 仍可恢复正确因子。
         int64_t D_j = degree(aj, xj);
 
-        for (int k = 1; k <= D_j; ++k)
+        for (int k = 1; k <= (int)D_j; ++k)
         {
             xk_pow = xk_pow * xj_minus_alpha;
             xk_pow.normalization();
@@ -921,15 +925,10 @@ namespace clpoly{
                     forms[i].push_back(term.first);
             }
 
-            // LC 校正: 每步校正后重新强制首项系数
-            for (int i = 0; i < r; i++)
-                lc_correct(F[i], lc_tau[i]);
-
             // 全量重算误差
             error = aj - product_F();
             error.normalization();
 
-            // CASC 2018 Alg.4 Line 3: error = 0 时提前退出
             if (error.empty()) break;
         }
 
@@ -1194,7 +1193,8 @@ namespace clpoly{
     __select_eval_point(
         const polynomial_<ZZ, lex_<var_order>>& f,
         const variable& main_var,
-        int skip = 0)
+        int skip = 0,
+        uint64_t lc_coprime_mod = 0)
     {
         using Poly = polynomial_<ZZ, lex_<var_order>>;
 
@@ -1256,6 +1256,9 @@ namespace clpoly{
                     delta = L_eval.front().second;
                 }
                 if (delta == 0) continue;
+
+                // 条件 (b'): lc(f)(α) 不被 MTSHL 素数整除
+                if (lc_coprime_mod != 0 && delta.fdiv_ui(lc_coprime_mod) == 0) continue;
 
                 // 条件 (a): f(x₁, α) 无平方
                 // 注: f0 是单变量多项式, 用 upolynomial GCD 避免多变量 GCD 的开销
@@ -1389,51 +1392,66 @@ namespace clpoly{
                     return result;  // 数据不一致，换点
             }
 
-            // GCD 匹配 LC 因子 (SymPy dmp_zz_wang_lead_coeffs 风格)
-            // 对每个 LC 因子 lⱼ^eⱼ, 找 gcd(|w[i]|, |lⱼ(α)|^eⱼ) 最大的唯一 i
-            for (auto& [lj, ej] : lc_factors)
+            // Valuation 提取 (GCL §8.7 / SymPy dmp_zz_wang_lead_coeffs / FLINT lcc_wang)
+            // 预计算各 LC 因子的求值值 Eⱼ = |lⱼ(α)|
+            size_t m = lc_factors.size();
+            std::vector<ZZ> lc_evals(m);
+            for (size_t j = 0; j < m; ++j)
             {
-                auto lj_eval = assign(lj, eval_point);
+                auto lj_eval = assign(lc_factors[j].first, eval_point);
                 ZZ lj_val = is_number(lj_eval) ? lj_eval.front().second : ZZ(0);
-                if (lj_val == 0 || abs(lj_val) == ZZ(1)) return result;
+                if (lj_val == 0 || abs(lj_val) <= ZZ(1)) return result;
+                lc_evals[j] = abs(lj_val);
+            }
 
-                ZZ lj_pow(1);
-                for (uint64_t e = 0; e < ej; ++e)
-                    lj_pow = lj_pow * abs(lj_val);
+            // 互素前置检查: gcd(Eⱼ, cs·γ) == 1
+            // 防止 content/γ 污染导致 valuation 过度提取
+            ZZ cs_gamma = abs(uni_content * gamma);
+            for (size_t j = 0; j < m; ++j)
+            {
+                if (gcd(lc_evals[j], cs_gamma) != ZZ(1))
+                    return result;  // Eⱼ 与 cs·γ 共享素因子，换点
+            }
 
-                // 找唯一最佳匹配
-                size_t best_i = r;
-                ZZ best_g(0);
-                bool ambiguous = false;
+            // 对每个单变量因子，逐个提取各 LC 因子的 valuation
+            std::vector<std::vector<int>> k_matrix(r, std::vector<int>(m, 0));
+            for (size_t i = 0; i < r; ++i)
+            {
+                ZZ R = abs(w[i]);
+
+                for (int j = (int)m - 1; j >= 0; --j)  // 逆序 (同 SymPy/FLINT)
+                {
+                    ZZ Ej = lc_evals[j];
+                    int k = 0;
+                    while (R % Ej == ZZ(0))
+                    {
+                        R = R / Ej;
+                        k++;
+                    }
+                    k_matrix[i][j] = k;
+                    if (k > 0)
+                    {
+                        Poly lj_power = lc_factors[j].first;
+                        for (int e = 1; e < k; ++e)
+                        {
+                            lj_power = lj_power * lc_factors[j].first;
+                            lj_power.normalization();
+                        }
+                        sigma[i] = sigma[i] * lj_power;
+                        sigma[i].normalization();
+                    }
+                }
+                // R 中的剩余整数因子不吸收到 sigma — Step 5 的 (δ/σᵢ(α)) 自动处理
+            }
+
+            // 守恒验证: Σᵢ kᵢⱼ = eⱼ（捕获合数 Eⱼ 导致的提取不精确）
+            for (size_t j = 0; j < m; ++j)
+            {
+                int total_k = 0;
                 for (size_t i = 0; i < r; ++i)
-                {
-                    ZZ g = gcd(abs(w[i]), lj_pow);
-                    if (g > best_g)
-                    {
-                        best_g = g;
-                        best_i = i;
-                        ambiguous = false;
-                    }
-                    else if (g == best_g && g > ZZ(1))
-                    {
-                        ambiguous = true;
-                    }
-                }
-                if (best_i >= r || ambiguous || best_g <= ZZ(1))
-                    return result;
-
-                // σ[best_i] *= lⱼ^eⱼ
-                Poly lj_power = lj;
-                for (uint64_t e = 1; e < ej; ++e)
-                {
-                    lj_power = lj_power * lj;
-                    lj_power.normalization();
-                }
-                sigma[best_i] = sigma[best_i] * lj_power;
-                sigma[best_i].normalization();
-
-                // 从 w 中移除已匹配的部分
-                w[best_i] /= best_g;
+                    total_k += k_matrix[i][j];
+                if (total_k != (int)lc_factors[j].second)
+                    return result;  // 幂次不守恒，换点
             }
 
             // 吸收整数内容 γ 到 σ₀
@@ -2019,9 +2037,8 @@ namespace clpoly{
             // 选素数 p 与 denom 和所有 lc(vi) 互素
             uint64_t p = 0;
             ZZ abs_denom = abs(denom);
-            for (unsigned idx = 0; ; ++idx)
+            for (uint64_t candidate = 2; ; candidate = next_prime_64(candidate))
             {
-                uint64_t candidate = boost::math::prime(idx);
                 ZZ mod_d; ZZ::fdiv_r(mod_d, abs_denom, ZZ(candidate));
                 if (mod_d == ZZ(0)) continue;
                 bool bad = false;
@@ -2230,6 +2247,9 @@ namespace clpoly{
                     term.second = -term.second;
         };
 
+        // per-variable MTSHL 素数缓存 (0 = 未初始化)
+        std::vector<uint64_t> var_mtshl_p(main_vars.size(), 0);
+
         // 终止性: 可约多项式至少存在一个好求值点使 Hensel 提升成功 (→ return verified);
         // 不可约多项式的所有主变量最终被标记为 dead (→ break via all_dead).
         for (;;)
@@ -2238,11 +2258,27 @@ namespace clpoly{
             {
                 if (var_dead[vi]) continue;
                 variable x1 = main_vars[vi];
+
+                // 首次访问此变量时，选择安全的 mtshl_p
+                if (var_mtshl_p[vi] == 0) {
+                    var_mtshl_p[vi] = UINT64_C(18446744073709551557);  // 2^64 - 59
+                    auto L = leadcoeff(g, x1);
+                    // 检查 lc 的所有系数是否都被 p 整除 (即 p | content(lc))
+                    auto all_div = [&](uint64_t p) {
+                        for (const auto& term : L)
+                            if (term.second.fdiv_ui(p) != 0) return false;
+                        return true;
+                    };
+                    while (all_div(var_mtshl_p[vi]))
+                        var_mtshl_p[vi] = prev_prime_64(var_mtshl_p[vi]);
+                }
+                uint64_t mtshl_p = var_mtshl_p[vi];
+
                 int batch_end = var_skip[vi] + BATCH_SIZE;
 
                 for (int skip = var_skip[vi]; skip < batch_end; ++skip)
                 {
-                    auto eval = __select_eval_point(g, x1, skip);
+                    auto eval = __select_eval_point(g, x1, skip, mtshl_p);
                     auto f0 = assign(g, eval);
                     upolynomial_<ZZ> f0_upoly;
                     poly_convert(f0, f0_upoly);
@@ -2265,11 +2301,6 @@ namespace clpoly{
                         g, uni_factors, eval, x1, uni_fac.content);
                     if (!lc_result.success)
                         continue;
-
-                    // MTSHL prime: 63-bit 机器素数（CASC 2018 Algorithm 5）
-                    // 系数恢复: symmetric_mod + p-adic 提升（|c| > p/2 时自动迭代）
-                    // 极端情况由 trial division 兜底。
-                    static constexpr uint64_t mtshl_p = 9223372036854775783ULL;
 
                     auto mv_factors = __mtshl_lift(
                         lc_result.f_scaled, lc_result.scaled_factors,

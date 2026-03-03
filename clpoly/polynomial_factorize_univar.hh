@@ -14,7 +14,6 @@
 #include <clpoly/polynomial_factorize_zp.hh>
 #include <clpoly/polynomial.hh>
 #include <clpoly/polynomial_gcd.hh>
-#include <boost/math/special_functions/prime.hpp>
 #include <vector>
 #include <algorithm>
 #include <numeric>
@@ -1386,15 +1385,10 @@ namespace clpoly{
 
         int64_t deg_f = get_deg(f);
         size_t max_tries = 3;
-        constexpr size_t PRIME_TABLE_SIZE = 9999;  // boost::math::prime 表上限
         std::mt19937 rng(42);
 
-        for (size_t idx = 0, tried = 0; tried < max_tries; ++idx)
+        for (uint64_t p = 2, tried = 0; tried < max_tries; p = next_prime_64(p))
         {
-            if (idx >= PRIME_TABLE_SIZE)
-                throw std::runtime_error(
-                    "factorize: exhausted prime table without finding a suitable prime");
-            uint64_t p = boost::math::prime((unsigned)idx);
 
             // 跳过 lc(f) mod p == 0 的素数
             ZZ lc_mod;

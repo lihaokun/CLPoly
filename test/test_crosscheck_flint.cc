@@ -8,6 +8,7 @@
 #include <clpoly/clpoly.hh>
 #include "clpoly_test.hh"
 #include "crosscheck_flint.hh"
+#include <cstdlib>
 
 using namespace clpoly;
 
@@ -19,7 +20,11 @@ static bool divides(const polynomial_ZZ& a, const polynomial_ZZ& b) {
     return q * a == b;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    int trial_scale = 1;  // multiplier for random trial counts
+    for (int i = 1; i < argc; i++)
+        trial_scale = atoi(argv[i]);
+
     variable x("x"), y("y"), z("z"), w("w");
     std::vector<variable> vars2 = {x, y};
     std::vector<variable> vars3 = {x, y, z};
@@ -1242,9 +1247,9 @@ int main() {
         return result;
     };
 
-    // Random bivariate 2 factors (increased from 5 to 20 rounds)
+    // Random bivariate 2 factors
     CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_bivar");
-    for (int trial = 0; trial < 20; ++trial) {
+    for (int trial = 0; trial < 20 * trial_scale; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
         auto f1 = random_polynomial<ZZ>({x, y}, 3, 4, {-5, 5});
         auto f2 = random_polynomial<ZZ>({x, y}, 3, 4, {-5, 5});
@@ -1256,17 +1261,21 @@ int main() {
         auto cl_fac = factorize(f);
         auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
 
-        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
-
-        // Exact factor list comparison
+        bool ok = verify_factor_product(f, fl_fac.content, fl_fac.factors);
         auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
         auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
-        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+        ok = ok && (cl_sorted == fl_sorted);
+        if (!ok) {
+            std::cerr << "FAIL trial " << trial << std::endl;
+            std::cerr << "  f1 = " << f1 << std::endl;
+            std::cerr << "  f2 = " << f2 << std::endl;
+        }
+        CLPOLY_ASSERT(ok);
     }
 
     // Random bivariate 4 factors
     CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_bivar_4fac");
-    for (int trial = 0; trial < 5; ++trial) {
+    for (int trial = 0; trial < 5 * trial_scale; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
         auto f1 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
         auto f2 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
@@ -1280,15 +1289,23 @@ int main() {
         auto cl_fac = factorize(f);
         auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
 
-        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        bool ok = verify_factor_product(f, fl_fac.content, fl_fac.factors);
         auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
         auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
-        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+        ok = ok && (cl_sorted == fl_sorted);
+        if (!ok) {
+            std::cerr << "FAIL trial " << trial << std::endl;
+            std::cerr << "  f1 = " << f1 << std::endl;
+            std::cerr << "  f2 = " << f2 << std::endl;
+            std::cerr << "  f3 = " << f3 << std::endl;
+            std::cerr << "  f4 = " << f4 << std::endl;
+        }
+        CLPOLY_ASSERT(ok);
     }
 
-    // Random trivariate 2 factors (increased from 3 to 10)
+    // Random trivariate 2 factors
     CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_trivar");
-    for (int trial = 0; trial < 10; ++trial) {
+    for (int trial = 0; trial < 10 * trial_scale; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
         auto f1 = random_polynomial<ZZ>({x, y, z}, 2, 4, {-3, 3});
         auto f2 = random_polynomial<ZZ>({x, y, z}, 2, 4, {-3, 3});
@@ -1300,15 +1317,21 @@ int main() {
         auto cl_fac = factorize(f);
         auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
 
-        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        bool ok = verify_factor_product(f, fl_fac.content, fl_fac.factors);
         auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
         auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
-        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+        ok = ok && (cl_sorted == fl_sorted);
+        if (!ok) {
+            std::cerr << "FAIL trial " << trial << std::endl;
+            std::cerr << "  f1 = " << f1 << std::endl;
+            std::cerr << "  f2 = " << f2 << std::endl;
+        }
+        CLPOLY_ASSERT(ok);
     }
 
     // Random trivariate 3 factors
     CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_trivar_3fac");
-    for (int trial = 0; trial < 5; ++trial) {
+    for (int trial = 0; trial < 5 * trial_scale; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
         auto f1 = random_polynomial<ZZ>({x, y, z}, 2, 3, {-3, 3});
         auto f2 = random_polynomial<ZZ>({x, y, z}, 2, 3, {-3, 3});
@@ -1321,15 +1344,22 @@ int main() {
         auto cl_fac = factorize(f);
         auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
 
-        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        bool ok = verify_factor_product(f, fl_fac.content, fl_fac.factors);
         auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
         auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
-        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+        ok = ok && (cl_sorted == fl_sorted);
+        if (!ok) {
+            std::cerr << "FAIL trial " << trial << std::endl;
+            std::cerr << "  f1 = " << f1 << std::endl;
+            std::cerr << "  f2 = " << f2 << std::endl;
+            std::cerr << "  f3 = " << f3 << std::endl;
+        }
+        CLPOLY_ASSERT(ok);
     }
 
-    // Random 4-variable 2 factors (reduced rounds — slow in debug mode)
+    // Random 4-variable 2 factors
     CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_4var");
-    for (int trial = 0; trial < 2; ++trial) {
+    for (int trial = 0; trial < 2 * trial_scale; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
         auto f1 = random_polynomial<ZZ>({x, y, z, w}, 2, 3, {-3, 3});
         auto f2 = random_polynomial<ZZ>({x, y, z, w}, 2, 3, {-3, 3});
@@ -1341,15 +1371,21 @@ int main() {
         auto cl_fac = factorize(f);
         auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
 
-        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        bool ok = verify_factor_product(f, fl_fac.content, fl_fac.factors);
         auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
         auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
-        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+        ok = ok && (cl_sorted == fl_sorted);
+        if (!ok) {
+            std::cerr << "FAIL trial " << trial << std::endl;
+            std::cerr << "  f1 = " << f1 << std::endl;
+            std::cerr << "  f2 = " << f2 << std::endl;
+        }
+        CLPOLY_ASSERT(ok);
     }
 
     // Random bivariate with multiplicity
     CLPOLY_TEST("crosscheck_flint_mpoly_factor_random_bivar_mult");
-    for (int trial = 0; trial < 5; ++trial) {
+    for (int trial = 0; trial < 5 * trial_scale; ++trial) {
         CLPOLY_TEST_SECTION("trial_" + std::to_string(trial));
         auto f1 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
         auto f2 = random_polynomial<ZZ>({x, y}, 2, 3, {-3, 3});
@@ -1361,9 +1397,15 @@ int main() {
         auto cl_fac = factorize(f);
         auto fl_fac = crosscheck::flint_factor_mpoly(f, vars);
 
-        CLPOLY_ASSERT(verify_factor_product(f, fl_fac.content, fl_fac.factors));
+        bool ok = verify_factor_product(f, fl_fac.content, fl_fac.factors);
         auto cl_sorted = normalize_cl_mpoly_factors(cl_fac);
         auto fl_sorted = normalize_fl_mpoly_factors(fl_fac);
+        ok = ok && (cl_sorted == fl_sorted);
+        if (!ok) {
+            std::cerr << "FAIL trial " << trial << std::endl;
+            std::cerr << "  f1 = " << f1 << std::endl;
+            std::cerr << "  f2 = " << f2 << std::endl;
+        }
         CLPOLY_ASSERT(cl_sorted == fl_sorted);
     }
 

@@ -94,8 +94,8 @@ namespace clpoly{
             mpz_tdiv_q_2exp(g_int, g_int, pack_bits);
             // 对称表示: 若 r > ξ/2，则 r -= ξ 并向高位进位 +1
             if (mpz_cmp(coeff_mpz, half_xi) > 0) {
-                mpz_sub(coeff_mpz, coeff_mpz, mask);
-                mpz_sub_ui(coeff_mpz, coeff_mpz, 1);   // r -= ξ
+                mpz_sub(coeff_mpz, coeff_mpz, mask);   // r -= (ξ-1)
+                mpz_sub_ui(coeff_mpz, coeff_mpz, 1);   // 合计 r -= ξ（mask = ξ-1）
                 mpz_add_ui(g_int, g_int, 1);            // 进位
             }
 

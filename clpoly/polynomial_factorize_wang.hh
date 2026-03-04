@@ -1432,7 +1432,8 @@ namespace clpoly{
             {
                 ZZ R = abs(w[i]);
 
-                for (int j = (int)m - 1; j >= 0; --j)  // 逆序 (同 SymPy/FLINT)
+                // 遍历顺序不影响正确性（Eⱼ 已 pairwise coprime），逆序与 SymPy/FLINT 一致便于对比
+                for (int j = (int)m - 1; j >= 0; --j)
                 {
                     ZZ Ej = lc_evals[j];
                     int k = 0;

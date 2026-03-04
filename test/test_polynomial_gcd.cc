@@ -216,5 +216,76 @@ int main() {
         CLPOLY_ASSERT_TRUE(is_number(g3));
     }
 
+    // Regression: GCDHEU INT64_MIN coefficient (H1 UB fix)
+    // (uint64_t)(-v) when v==INT64_MIN was undefined behavior
+    CLPOLY_TEST("gcd_gcdheu_int64min_coeff");
+    {
+        ZZ minval(INT64_MIN);
+        upolynomial_ZZ f = {{2, ZZ(1)}, {1, minval}, {0, ZZ(1)}};
+        upolynomial_ZZ g = {{1, minval}, {0, ZZ(2)}};
+        auto result = polynomial_GCD(f, g);
+        CLPOLY_ASSERT(!result.empty());
+        CLPOLY_ASSERT(f.size() > 0);
+    }
+
+    // M1: GCDHEU INT64_MAX coefficient boundary
+    CLPOLY_TEST("gcd_gcdheu_int64max_coeff");
+    {
+        ZZ maxval(INT64_MAX);
+        upolynomial_ZZ f = {{2, ZZ(1)}, {1, maxval}, {0, ZZ(1)}};
+        upolynomial_ZZ g = {{1, maxval}, {0, ZZ(3)}};
+        auto result = polynomial_GCD(f, g);
+        CLPOLY_ASSERT(!result.empty());
+        // result 应整除 f 和 g
+        upolynomial_<ZZ> Q, R;
+        pair_vec_div(Q.data(), R.data(), f.data(), result.data(), f.comp());
+        CLPOLY_ASSERT(R.empty());
+        pair_vec_div(Q.data(), R.data(), g.data(), result.data(), g.comp());
+        CLPOLY_ASSERT(R.empty());
+    }
+
+    // M1: GCDHEU failure → fallback to modular GCD (bits_f + bits_g >= 128)
+    CLPOLY_TEST("gcd_gcdheu_fallback_large_coeff");
+    {
+        // 系数 ~2^70，bits_f + bits_g ≈ 140 > 128 → GCDHEU 拒绝，走模 GCD
+        ZZ big("1180591620717411303424");  // 2^70
+        upolynomial_ZZ f = {{3, ZZ(1)}, {1, big}, {0, ZZ(1)}};
+        upolynomial_ZZ g = {{2, big}, {1, ZZ(1)}, {0, ZZ(1)}};
+        auto result = polynomial_GCD(f, g);
+        CLPOLY_ASSERT(!result.empty());
+        // 互素多项式，GCD 应为常数
+        CLPOLY_ASSERT_EQ(result.size(), (size_t)1);
+        CLPOLY_ASSERT_EQ(get_deg(result), (int64_t)0);
+    }
+
+    // M1: 互素小系数多项式 (GCDHEU 成功路径)
+    CLPOLY_TEST("gcd_gcdheu_coprime_small");
+    {
+        // x^3 + 2x + 1 和 x^2 + 3x + 7，互素
+        upolynomial_ZZ f = {{3, ZZ(1)}, {1, ZZ(2)}, {0, ZZ(1)}};
+        upolynomial_ZZ g = {{2, ZZ(1)}, {1, ZZ(3)}, {0, ZZ(7)}};
+        auto result = polynomial_GCD(f, g);
+        CLPOLY_ASSERT(!result.empty());
+        CLPOLY_ASSERT_EQ(get_deg(result), (int64_t)0);
+    }
+
+    // M1: GCDHEU 有非平凡公因子的小系数多项式
+    CLPOLY_TEST("gcd_gcdheu_common_factor_small");
+    {
+        // f = (x+1)(x+2) = x^2 + 3x + 2
+        // g = (x+1)(x-3) = x^2 - 2x - 3
+        // gcd = x+1
+        upolynomial_ZZ f = {{2, ZZ(1)}, {1, ZZ(3)}, {0, ZZ(2)}};
+        upolynomial_ZZ g = {{2, ZZ(1)}, {1, ZZ(-2)}, {0, ZZ(-3)}};
+        auto result = polynomial_GCD(f, g);
+        CLPOLY_ASSERT_EQ(get_deg(result), (int64_t)1);
+        // result 应整除两者
+        upolynomial_<ZZ> Q, R;
+        pair_vec_div(Q.data(), R.data(), f.data(), result.data(), f.comp());
+        CLPOLY_ASSERT(R.empty());
+        pair_vec_div(Q.data(), R.data(), g.data(), result.data(), g.comp());
+        CLPOLY_ASSERT(R.empty());
+    }
+
     return clpoly_test::test_summary();
 }

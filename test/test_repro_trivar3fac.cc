@@ -100,5 +100,71 @@ int main(int argc, char* argv[]) {
         CLPOLY_ASSERT(product == f || product == -f);
     }
 
+    // M2: 纯变量 LC 因子 + 小素数 γ（valuation 提取测试）
+    // lc(f,x) 含 y^k 因子，需要拆分到多个提升因子
+    CLPOLY_TEST("repro_trivar3fac_pure_var_lc");
+    {
+        polynomial_ZZ one({{{},(ZZ)1}});
+        polynomial_ZZ two({{{},(ZZ)2}});
+        // f1 = y*x + z, f2 = y*x - 1, f3 = 2*x + y + z
+        // lc(f,x) = 2*y^2，γ=2，LC 因子含 y^2 需拆分为 y*y
+        polynomial_ZZ f1 = y*x + z;
+        polynomial_ZZ f2 = y*x - one;
+        polynomial_ZZ f3 = two*x + y + z;
+        polynomial_ZZ f = f1 * f2 * f3;
+        auto fac = factorize(f);
+        polynomial_ZZ product({{{},(ZZ)fac.content}});
+        for (auto& [fi, ei] : fac.factors)
+            for (uint64_t e = 0; e < ei; e++) {
+                product = product * fi;
+                product.normalization();
+            }
+        CLPOLY_ASSERT(product == f || product == -f);
+    }
+
+    // M2: LC 含多个不可约因子需分配到不同提升因子
+    CLPOLY_TEST("repro_trivar3fac_multi_lc_factors");
+    {
+        polynomial_ZZ one({{{},(ZZ)1}});
+        polynomial_ZZ two({{{},(ZZ)2}});
+        polynomial_ZZ three({{{},(ZZ)3}});
+        // f1 = y*x + 1, f2 = (y+z)*x - 2, f3 = 3*x + z - 1
+        // lc(f,x) = 3*y*(y+z)，不可约因子 {y, y+z} 需分配到不同因子
+        polynomial_ZZ f1 = y*x + one;
+        polynomial_ZZ f2 = (y+z)*x - two;
+        polynomial_ZZ f3 = three*x + z - one;
+        polynomial_ZZ f = f1 * f2 * f3;
+        auto fac = factorize(f);
+        polynomial_ZZ product({{{},(ZZ)fac.content}});
+        for (auto& [fi, ei] : fac.factors)
+            for (uint64_t e = 0; e < ei; e++) {
+                product = product * fi;
+                product.normalization();
+            }
+        CLPOLY_ASSERT(product == f || product == -f);
+    }
+
+    // M2: 常数 LC（q==1 提前退出路径）
+    // 所有因子的 lc(fi, x) 均为常数 → LC 分配平凡
+    CLPOLY_TEST("repro_trivar3fac_const_lc");
+    {
+        polynomial_ZZ one({{{},(ZZ)1}});
+        polynomial_ZZ two({{{},(ZZ)2}});
+        // f1 = x + y + z, f2 = x - y + 1, f3 = x + 2z - 1
+        // lc(f,x) = 1，LC 分配平凡
+        polynomial_ZZ f1 = x + y + z;
+        polynomial_ZZ f2 = x - y + one;
+        polynomial_ZZ f3 = x + two*z - one;
+        polynomial_ZZ f = f1 * f2 * f3;
+        auto fac = factorize(f);
+        polynomial_ZZ product({{{},(ZZ)fac.content}});
+        for (auto& [fi, ei] : fac.factors)
+            for (uint64_t e = 0; e < ei; e++) {
+                product = product * fi;
+                product.normalization();
+            }
+        CLPOLY_ASSERT(product == f || product == -f);
+    }
+
     return clpoly_test::test_summary();
 }

@@ -134,6 +134,19 @@ W(20) 等高次多项式中 `hensel_lift` 占 52%。这与 **P1b（线性 Hensel
 - [ ] 调研 FLINT 的模 GCD 实现
 - [ ] 考虑稀疏模 GCD（SPMOD）或 Zippel GCD
 
+## Bug 修复
+
+### H1: GCDHEU `(uint64_t)(-v)` 有符号溢出（UB）
+
+`clpoly/polynomial_gcd.cc:57`：当 `v == INT64_MIN` 时，`-v` 在 `int64_t` 域溢出，是 C++ 未定义行为。
+
+**快速修复**：用 `clpoly_zz_to_mpz` 替代手动 small/large 分支，避免有符号取负。
+
+**长期方案**：给 ZZ 补上位操作（`mul_2exp`/`tdiv_q_2exp`/`tdiv_r_2exp`），GCDHEU 直接用 ZZ，参考 FLINT fmpz 接口。
+
+- [ ] 快速修复：GCDHEU 系数加法改用 `clpoly_zz_to_mpz`
+- [ ] 长期：ZZ 补充位操作接口（`mul_2exp`, `tdiv_q_2exp`, `tdiv_r_2exp`）
+
 ## 文档完善
 
 - [ ] API 文档：为核心头文件添加 Doxygen 注释

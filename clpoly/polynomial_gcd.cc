@@ -53,8 +53,8 @@ namespace clpoly{
             mpz_mul_2exp(f_val, f_val, pack_bits);       // f_val <<= pack_bits (×ξ)
             if (fc[i].is_small()) {
                 int64_t v = fc[i].get_val();
-                if (v >= 0) mpz_add_ui(f_val, f_val, (uint64_t)v);
-                else        mpz_sub_ui(f_val, f_val, (uint64_t)(-v));
+                if (v >= 0) mpz_add_ui(f_val, f_val, static_cast<uint64_t>(v));
+                else        mpz_sub_ui(f_val, f_val, static_cast<uint64_t>(-(v + 1)) + 1);
             } else {
                 mpz_add(f_val, f_val, fc[i].get_mpz_v());
             }
@@ -66,8 +66,8 @@ namespace clpoly{
             mpz_mul_2exp(g_val, g_val, pack_bits);
             if (gc[i].is_small()) {
                 int64_t v = gc[i].get_val();
-                if (v >= 0) mpz_add_ui(g_val, g_val, (uint64_t)v);
-                else        mpz_sub_ui(g_val, g_val, (uint64_t)(-v));
+                if (v >= 0) mpz_add_ui(g_val, g_val, static_cast<uint64_t>(v));
+                else        mpz_sub_ui(g_val, g_val, static_cast<uint64_t>(-(v + 1)) + 1);
             } else {
                 mpz_add(g_val, g_val, gc[i].get_mpz_v());
             }

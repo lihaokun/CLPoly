@@ -185,10 +185,14 @@ namespace clpoly{
         ZZ Pout_prime;
         std::int64_t Pout_d=INT64_MAX;
         std::int64_t tmp_Pout_d=INT64_MAX;
-        
+
+        // CRT 循环：每轮用一个素数计算 modular GCD，然后合并。
+        // 素数从 2^64-59 开始递减，所需素数个数由 Mignotte bound 决定：
+        // O(d*h/64)（d=度数, h=系数 bit-length），远小于可用素数总数（≈2^58）。
+        // 与 GCL Algorithm 7.1 的 while(true) 结构一致。
         while (1)
         {
-            
+
             while (F.begin()->second % prime ==0 || G.begin()->second % prime ==0)
             {
                 prime = prev_prime_64(prime);

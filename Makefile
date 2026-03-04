@@ -32,6 +32,16 @@ CXX      = g++
 IPATHS   = -I./
 DEPFLAGS = -MMD -MP
 
+## GMP version check (>= 6.3.0 required for mpz_prevprime) ########################################
+
+GMP_VERSION := $(shell echo '__GNU_MP_VERSION __GNU_MP_VERSION_MINOR __GNU_MP_VERSION_PATCHLEVEL' \
+                 | $(CXX) -include gmp.h -E -x c++ - 2>/dev/null | tail -1 | tr -s ' ')
+GMP_OK := $(shell echo '$(GMP_VERSION)' | awk '{ if ($$1>6||($$1==6&&$$2>3)||($$1==6&&$$2==3&&$$3>=0)) print "yes"; else print "no" }')
+
+ifneq ($(GMP_OK),yes)
+$(error CLPoly requires GMP >= 6.3.0 (mpz_prevprime). Detected: $(GMP_VERSION))
+endif
+
 Numberlib  = -lgmpxx -lgmp
 FLINT_LIBS = -lflint
 NTL_LIBS   = -lntl -lm -lpthread

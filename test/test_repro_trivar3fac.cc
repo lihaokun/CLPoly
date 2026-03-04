@@ -9,6 +9,7 @@
 #include "clpoly_test.hh"
 #include <iostream>
 #include <cstring>
+#include <cstdlib>
 
 using namespace clpoly;
 

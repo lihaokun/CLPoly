@@ -10,6 +10,7 @@
 #include <iostream>
 #include <random>
 #include <cstring>
+#include <cstdlib>
 
 using namespace clpoly;
 

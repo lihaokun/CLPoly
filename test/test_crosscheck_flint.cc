@@ -23,7 +23,7 @@ static bool divides(const polynomial_ZZ& a, const polynomial_ZZ& b) {
 int main(int argc, char* argv[]) {
     int trial_scale = 1;  // multiplier for random trial counts
     for (int i = 1; i < argc; i++)
-        trial_scale = atoi(argv[i]);
+        trial_scale = std::max(1, atoi(argv[i]));
 
     variable x("x"), y("y"), z("z"), w("w");
     std::vector<variable> vars2 = {x, y};
@@ -1406,7 +1406,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "  f1 = " << f1 << std::endl;
             std::cerr << "  f2 = " << f2 << std::endl;
         }
-        CLPOLY_ASSERT(cl_sorted == fl_sorted);
+        CLPOLY_ASSERT(ok);
     }
 
     // Irreducible

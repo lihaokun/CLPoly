@@ -884,6 +884,11 @@ namespace clpoly{
             std::mt19937_64 gen(rd());
             std::uniform_int_distribution<uint64_t> dis(0, prime-1);
             std::unordered_set<uint64_t> used_points;
+            // 上界 prime 看似巨大（≈2^64），但循环总在 O(v_d + deg) 次内通过
+            // line 971 的 return 退出：坏点（leading coeff 为零）最多 max(f_d,g_d) 个，
+            // 好点只需 v_d 个。line 1038 的 early exit 处理 prime < v_d 的极端情况。
+            // 参考：GCL Algorithm 7.2 用 while(true)，FLINT 用 while(alpha>=2)，
+            // SymPy 用 for a in range(p) + break——本质逻辑相同。
             for (uint64_t i=0;i<prime;++i)
             {
                 uint64_t pt;

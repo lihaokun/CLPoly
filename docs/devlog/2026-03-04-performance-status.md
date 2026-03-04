@@ -39,16 +39,36 @@
 
 ## 2. 当前性能数据
 
-### 2.1 单变量 GCD — CLPoly vs NTL
+### 2.1 单变量 GCD — CLPoly vs FLINT（综合对比 2026-03-04）
 
-| 用例 | CLPoly | NTL | ratio | 结论 |
+| 用例 | CLPoly | FLINT | ratio | 备注 |
+|------|--------|-------|-------|------|
+| gcd deg80+common40 | 0.065ms | 0.038ms | **1.73x** | 标准用例 |
+| gcd deg80+common40 (large coeff) | 0.111ms | 0.136ms | **0.81x** | ✅ CLPoly 更快 |
+| gcd deg80 coprime | 0.022ms | 0.022ms | **1.02x** | 持平 |
+| gcd deg200+common100 | 0.264ms | 0.089ms | **2.97x** | 中等差距 |
+| gcd deg500+common250 | 1.184ms | 0.214ms | **5.52x** | ❌ 高阶差距最大 |
+| gcd deg200+common5 | 0.072ms | 0.068ms | **1.06x** | 持平 |
+
+### 2.2 单变量 GCD — CLPoly vs NTL（综合对比 2026-03-04）
+
+| 用例 | CLPoly | NTL | ratio | 备注 |
 |------|--------|-----|-------|------|
-| gcd deg50+common25 | 0.031ms | 0.083ms | **0.37x** | ✅ 已反超 |
-| gcd deg200+common100 | 0.270ms | 0.569ms | **0.47x** | ✅ 已反超 |
+| gcd deg50+common25 | 0.030ms | 0.087ms | **0.34x** | ✅ CLPoly 3x 更快 |
+| gcd deg200+common100 | 0.316ms | 0.529ms | **0.60x** | ✅ CLPoly 1.7x 更快 |
+| gcd deg80+common40 (large coeff) | 0.422ms | 0.204ms | **2.07x** | ❌ NTL 更快 |
+| gcd deg80 coprime | 0.025ms | 0.088ms | **0.29x** | ✅ CLPoly 3.4x 更快 |
+| gcd deg500+common250 | 1.920ms | 1.674ms | **1.15x** | 接近 |
+| gcd deg200+common5 | 0.073ms | 0.343ms | **0.21x** | ✅ CLPoly 4.7x 更快 |
 
-**优化前（02-23）**: gcd deg200+common100 = 3.849ms → **现在 0.270ms（14.3x 加速）**
+**优化前（02-23）**: gcd deg200+common100 = 3.849ms → **现在 0.264ms（14.6x 加速）**
 
-### 2.2 多变量 GCD — CLPoly vs FLINT
+**关键发现**:
+- **vs FLINT**: 小/中等度数持平或略慢(1-1.7x)，高阶(deg500) 差距最大(5.5x)，大系数 CLPoly 反超(0.81x)
+- **vs NTL**: 大部分场景 CLPoly 已反超(0.21-0.60x)，大系数场景 NTL 更快(2.07x)
+- **优化重点**: 高阶 → P3 HGCD；大系数 → P1 GCDHEU
+
+### 2.3 多变量 GCD — CLPoly vs FLINT
 
 | 用例 | CLPoly | FLINT | ratio | 结论 |
 |------|--------|-------|-------|------|
@@ -57,7 +77,7 @@
 
 **P0 对多变量 GCD 基本无效**——瓶颈不在 CRT 素数个数，而在递归求值 + Lagrange 插值。
 
-### 2.3 单变量因式分解 — CLPoly vs FLINT
+### 2.4 单变量因式分解 — CLPoly vs FLINT
 
 | 用例 | CLPoly | FLINT | ratio |
 |------|--------|-------|-------|
@@ -72,7 +92,7 @@
 
 注：~deg21/~deg29 为随机生成多项式，波动大（历史范围 1.2-14.7ms），Wilkinson 系列更稳定。
 
-### 2.4 单变量因式分解 — CLPoly vs NTL
+### 2.5 单变量因式分解 — CLPoly vs NTL
 
 | 用例 | CLPoly | NTL | ratio |
 |------|--------|-----|-------|
@@ -87,7 +107,7 @@
 
 经典多项式（Wilkinson/cyclotomic/SD）基本持平或反超 NTL；随机多因子多项式有 1.4-4.4x 差距。
 
-### 2.5 多变量因式分解 — CLPoly vs FLINT
+### 2.6 多变量因式分解 — CLPoly vs FLINT
 
 | 用例 | CLPoly | FLINT | ratio |
 |------|--------|-------|-------|
@@ -99,7 +119,7 @@
 | trivar 60 fac (stress) | 184.1ms | 1.1ms | **166.3x** |
 | 10var disjoint | 1.601ms | 0.377ms | 4.25x |
 
-### 2.6 其他算子 — CLPoly vs FLINT/NTL
+### 2.7 其他算子 — CLPoly vs FLINT/NTL
 
 | 算子 | CLPoly vs FLINT | CLPoly vs NTL | 结论 |
 |------|----------------|---------------|------|

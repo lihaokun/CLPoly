@@ -118,7 +118,7 @@ namespace clpoly{
         p_out.clear();
         p_out.reserve(p_in.size());
         for (auto& term : p_in)
-            p_out.push_back({term.first, ZZ(static_cast<int64_t>(term.second.number()))});
+            p_out.push_back({term.first, ZZ((unsigned long long)term.second.number())});
         p_out.normalization();
     }
     template<class T1,class T2,class comp1>

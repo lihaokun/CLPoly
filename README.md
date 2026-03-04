@@ -44,8 +44,7 @@ int main() {
 
 ## 依赖
 
-- [GMP](https://gmplib.org/)（含 gmpxx）
-- [Boost](https://www.boost.org/)（math/prime）
+- [GMP](https://gmplib.org/) >= 6.3.0（含 gmpxx；需要 `mpz_prevprime`）
 
 ## 构建与测试
 

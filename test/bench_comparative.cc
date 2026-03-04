@@ -259,6 +259,57 @@ int main() {
                 { volatile auto r = NTL::GCD(na, nb); (void)r; }
             );
         }
+        // -- gcd: large coefficients --
+        {
+            auto common = random_upolynomial<ZZ>(40, 30, {-1000000000000000LL, 1000000000000000LL});
+            auto a = random_upolynomial<ZZ>(80, 60, {-1000000000000000LL, 1000000000000000LL}) * common;
+            auto b = random_upolynomial<ZZ>(80, 60, {-1000000000000000LL, 1000000000000000LL}) * common;
+            auto na = crosscheck::clpoly_upoly_to_ntl(a);
+            auto nb = crosscheck::clpoly_upoly_to_ntl(b);
+
+            BENCH_CMP("gcd  deg80+common40 (large)", 5, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                { volatile auto r = NTL::GCD(na, nb); (void)r; }
+            );
+        }
+        // -- gcd: coprime --
+        {
+            auto a = random_upolynomial<ZZ>(80, 60, {-20, 20});
+            auto b = random_upolynomial<ZZ>(80, 60, {-20, 20});
+            auto na = crosscheck::clpoly_upoly_to_ntl(a);
+            auto nb = crosscheck::clpoly_upoly_to_ntl(b);
+
+            BENCH_CMP("gcd  deg80 coprime", 5, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                { volatile auto r = NTL::GCD(na, nb); (void)r; }
+            );
+        }
+        // -- gcd: high degree --
+        {
+            auto common = random_upolynomial<ZZ>(250, 200, {-20, 20});
+            auto a = random_upolynomial<ZZ>(500, 400, {-20, 20}) * common;
+            auto b = random_upolynomial<ZZ>(500, 400, {-20, 20}) * common;
+            auto na = crosscheck::clpoly_upoly_to_ntl(a);
+            auto nb = crosscheck::clpoly_upoly_to_ntl(b);
+
+            BENCH_CMP("gcd  deg500+common250", 2, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                { volatile auto r = NTL::GCD(na, nb); (void)r; }
+            );
+        }
+        // -- gcd: trivial common factor --
+        {
+            auto common = random_upolynomial<ZZ>(5, 4, {-20, 20});
+            auto a = random_upolynomial<ZZ>(200, 150, {-20, 20}) * common;
+            auto b = random_upolynomial<ZZ>(200, 150, {-20, 20}) * common;
+            auto na = crosscheck::clpoly_upoly_to_ntl(a);
+            auto nb = crosscheck::clpoly_upoly_to_ntl(b);
+
+            BENCH_CMP("gcd  deg200+common5", 3, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                { volatile auto r = NTL::GCD(na, nb); (void)r; }
+            );
+        }
 
         // -- derivative --
         {
@@ -301,6 +352,108 @@ int main() {
             BENCH_CMP("eval  deg500", 50, T,
                 { volatile auto r = assign(a, pt); (void)r; },
                 { volatile auto r = crosscheck::ntl_eval(na, npt); (void)r; }
+            );
+        }
+    }
+
+    // ================================================================
+    // FLINT comparison: Univariate ZZ GCD
+    // ================================================================
+    bench_cmp_header("Univariate ZZ GCD: CLPoly vs FLINT", "FLINT");
+    {
+        // -- gcd: standard --
+        {
+            auto common = random_upolynomial<ZZ>(40, 30, {-20, 20});
+            auto a = random_upolynomial<ZZ>(80, 60, {-20, 20}) * common;
+            auto b = random_upolynomial<ZZ>(80, 60, {-20, 20}) * common;
+            auto fa = crosscheck::clpoly_upoly_to_flint(a);
+            auto fb = crosscheck::clpoly_upoly_to_flint(b);
+
+            BENCH_CMP("gcd  deg80+common40", 5, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                {
+                    crosscheck::FlintUPoly fr;
+                    fmpz_poly_gcd(fr.poly, fa.poly, fb.poly);
+                }
+            );
+        }
+        // -- gcd: large coefficients --
+        {
+            auto common = random_upolynomial<ZZ>(40, 30, {-1000000000000000LL, 1000000000000000LL});
+            auto a = random_upolynomial<ZZ>(80, 60, {-1000000000000000LL, 1000000000000000LL}) * common;
+            auto b = random_upolynomial<ZZ>(80, 60, {-1000000000000000LL, 1000000000000000LL}) * common;
+            auto fa = crosscheck::clpoly_upoly_to_flint(a);
+            auto fb = crosscheck::clpoly_upoly_to_flint(b);
+
+            BENCH_CMP("gcd  deg80+common40 (large)", 5, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                {
+                    crosscheck::FlintUPoly fr;
+                    fmpz_poly_gcd(fr.poly, fa.poly, fb.poly);
+                }
+            );
+        }
+        // -- gcd: coprime --
+        {
+            auto a = random_upolynomial<ZZ>(80, 60, {-20, 20});
+            auto b = random_upolynomial<ZZ>(80, 60, {-20, 20});
+            auto fa = crosscheck::clpoly_upoly_to_flint(a);
+            auto fb = crosscheck::clpoly_upoly_to_flint(b);
+
+            BENCH_CMP("gcd  deg80 coprime", 5, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                {
+                    crosscheck::FlintUPoly fr;
+                    fmpz_poly_gcd(fr.poly, fa.poly, fb.poly);
+                }
+            );
+        }
+        // -- gcd: high degree --
+        {
+            auto common = random_upolynomial<ZZ>(250, 200, {-20, 20});
+            auto a = random_upolynomial<ZZ>(500, 400, {-20, 20}) * common;
+            auto b = random_upolynomial<ZZ>(500, 400, {-20, 20}) * common;
+            auto fa = crosscheck::clpoly_upoly_to_flint(a);
+            auto fb = crosscheck::clpoly_upoly_to_flint(b);
+
+            BENCH_CMP("gcd  deg500+common250", 2, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                {
+                    crosscheck::FlintUPoly fr;
+                    fmpz_poly_gcd(fr.poly, fa.poly, fb.poly);
+                }
+            );
+        }
+        // -- gcd: trivial common factor --
+        {
+            auto common = random_upolynomial<ZZ>(5, 4, {-20, 20});
+            auto a = random_upolynomial<ZZ>(200, 150, {-20, 20}) * common;
+            auto b = random_upolynomial<ZZ>(200, 150, {-20, 20}) * common;
+            auto fa = crosscheck::clpoly_upoly_to_flint(a);
+            auto fb = crosscheck::clpoly_upoly_to_flint(b);
+
+            BENCH_CMP("gcd  deg200+common5", 3, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                {
+                    crosscheck::FlintUPoly fr;
+                    fmpz_poly_gcd(fr.poly, fa.poly, fb.poly);
+                }
+            );
+        }
+        // -- gcd: existing comparison point (deg200+common100) --
+        {
+            auto common = random_upolynomial<ZZ>(100, 80, {-20, 20});
+            auto a = random_upolynomial<ZZ>(200, 150, {-20, 20}) * common;
+            auto b = random_upolynomial<ZZ>(200, 150, {-20, 20}) * common;
+            auto fa = crosscheck::clpoly_upoly_to_flint(a);
+            auto fb = crosscheck::clpoly_upoly_to_flint(b);
+
+            BENCH_CMP("gcd  deg200+common100", 3, T,
+                { volatile auto r = polynomial_GCD(a, b); (void)r; },
+                {
+                    crosscheck::FlintUPoly fr;
+                    fmpz_poly_gcd(fr.poly, fa.poly, fb.poly);
+                }
             );
         }
     }

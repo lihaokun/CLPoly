@@ -261,7 +261,7 @@ int main() {
         volatile auto r = uz_a_l * uz_b_l; (void)r;
     });
 
-    // -- gcd --
+    // -- gcd: small coefficients [-20,20] --
     auto uz_common_s = random_upolynomial<ZZ>(15, 12, {-20, 20});
     auto uz_gcd_f1_s = random_upolynomial<ZZ>(30, 25, {-20, 20}) * uz_common_s;
     auto uz_gcd_f2_s = random_upolynomial<ZZ>(30, 25, {-20, 20}) * uz_common_s;
@@ -282,6 +282,41 @@ int main() {
     });
     BENCH("gcd  deg200+common100", 3, {
         volatile auto r = polynomial_GCD(uz_gcd_f1_l, uz_gcd_f2_l); (void)r;
+    });
+
+    // -- gcd: large coefficients [-10^15, 10^15] --
+    auto uz_lc_common = random_upolynomial<ZZ>(40, 30, {-1000000000000000LL, 1000000000000000LL});
+    auto uz_lc_f1 = random_upolynomial<ZZ>(80, 60, {-1000000000000000LL, 1000000000000000LL}) * uz_lc_common;
+    auto uz_lc_f2 = random_upolynomial<ZZ>(80, 60, {-1000000000000000LL, 1000000000000000LL}) * uz_lc_common;
+
+    BENCH("gcd  deg80+common40 (large coeff)", 5, {
+        volatile auto r = polynomial_GCD(uz_lc_f1, uz_lc_f2); (void)r;
+    });
+
+    // -- gcd: coprime (GCD=1) --
+    auto uz_coprime_a = random_upolynomial<ZZ>(80, 60, {-20, 20});
+    auto uz_coprime_b = random_upolynomial<ZZ>(80, 60, {-20, 20});
+
+    BENCH("gcd  deg80 coprime", 5, {
+        volatile auto r = polynomial_GCD(uz_coprime_a, uz_coprime_b); (void)r;
+    });
+
+    // -- gcd: high degree --
+    auto uz_hd_common = random_upolynomial<ZZ>(250, 200, {-20, 20});
+    auto uz_hd_f1 = random_upolynomial<ZZ>(500, 400, {-20, 20}) * uz_hd_common;
+    auto uz_hd_f2 = random_upolynomial<ZZ>(500, 400, {-20, 20}) * uz_hd_common;
+
+    BENCH("gcd  deg500+common250", 2, {
+        volatile auto r = polynomial_GCD(uz_hd_f1, uz_hd_f2); (void)r;
+    });
+
+    // -- gcd: trivial common factor --
+    auto uz_tc_common = random_upolynomial<ZZ>(5, 4, {-20, 20});
+    auto uz_tc_f1 = random_upolynomial<ZZ>(200, 150, {-20, 20}) * uz_tc_common;
+    auto uz_tc_f2 = random_upolynomial<ZZ>(200, 150, {-20, 20}) * uz_tc_common;
+
+    BENCH("gcd  deg200+common5", 3, {
+        volatile auto r = polynomial_GCD(uz_tc_f1, uz_tc_f2); (void)r;
     });
 
     // -- derivative --

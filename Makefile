@@ -32,6 +32,16 @@ CXX      = g++
 IPATHS   = -I./
 DEPFLAGS = -MMD -MP
 
+## GMP version check (>= 6.3.0 required for mpz_prevprime) ########################################
+
+GMP_VERSION := $(shell echo '__GNU_MP_VERSION __GNU_MP_VERSION_MINOR __GNU_MP_VERSION_PATCHLEVEL' \
+                 | $(CXX) -include gmp.h -E -x c++ - 2>/dev/null | tail -1 | tr -s ' ')
+GMP_OK := $(shell echo '$(GMP_VERSION)' | awk '{ if ($$1>6||($$1==6&&$$2>3)||($$1==6&&$$2==3&&$$3>=0)) print "yes"; else print "no" }')
+
+ifneq ($(GMP_OK),yes)
+$(error CLPoly requires GMP >= 6.3.0 (mpz_prevprime). Detected: $(GMP_VERSION))
+endif
+
 Numberlib  = -lgmpxx -lgmp
 FLINT_LIBS = -lflint
 NTL_LIBS   = -lntl -lm -lpthread
@@ -167,7 +177,7 @@ bench-save: $(BIN_REL)/bench_clpoly $(BIN_REL)/bench_comparative
 ## Full suite: correctness crosscheck + performance — saves everything to benchmarks/YYYY-MM-DD-HHMMSS.txt
 bench-all: $(BIN_REL)/bench_clpoly $(BIN_REL)/bench_comparative \
            $(BIN_DEB)/test_crosscheck_flint $(BIN_DEB)/test_crosscheck_ntl
-	bash test/run_bench.sh
+	bash test/run_bench.sh --crosscheck
 
 ## Auto-generated dependencies ####################################################################
 

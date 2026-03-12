@@ -319,6 +319,23 @@ int main() {
         volatile auto r = polynomial_GCD(uz_tc_f1, uz_tc_f2); (void)r;
     });
 
+    // -- gcd: high degree + large coefficients --
+    auto uz_hdlc_common = random_upolynomial<ZZ>(100, 80, {-1000000000000000LL, 1000000000000000LL});
+    auto uz_hdlc_f1 = random_upolynomial<ZZ>(200, 150, {-1000000000000000LL, 1000000000000000LL}) * uz_hdlc_common;
+    auto uz_hdlc_f2 = random_upolynomial<ZZ>(200, 150, {-1000000000000000LL, 1000000000000000LL}) * uz_hdlc_common;
+
+    BENCH("gcd  deg200+common100 (large coeff)", 3, {
+        volatile auto r = polynomial_GCD(uz_hdlc_f1, uz_hdlc_f2); (void)r;
+    });
+
+    auto uz_hdlc2_common = random_upolynomial<ZZ>(250, 200, {-1000000000000000LL, 1000000000000000LL});
+    auto uz_hdlc2_f1 = random_upolynomial<ZZ>(500, 400, {-1000000000000000LL, 1000000000000000LL}) * uz_hdlc2_common;
+    auto uz_hdlc2_f2 = random_upolynomial<ZZ>(500, 400, {-1000000000000000LL, 1000000000000000LL}) * uz_hdlc2_common;
+
+    BENCH("gcd  deg500+common250 (large coeff)", 2, {
+        volatile auto r = polynomial_GCD(uz_hdlc2_f1, uz_hdlc2_f2); (void)r;
+    });
+
     // -- derivative --
     BENCH("deriv  deg50", 100, {
         volatile auto r = derivative(uz_a_s); (void)r;
@@ -467,6 +484,195 @@ int main() {
     BENCH("squarefree  ~deg42", 5, {
         volatile auto r = squarefreefactorize(sqf_m); (void)r;
     });
+
+    // ================================================================
+    // Univariate Zp GCD (dense_upoly_zp, direct Zp Euclid)
+    // ================================================================
+    bench_header("Univariate Zp GCD (dense, p=2^64-59)");
+    {
+        uint64_t zp_prime = UINT64_C(18446744073709551557); // 2^64 - 59
+        std::mt19937_64 zp_rng(12345);
+        std::uniform_int_distribution<uint64_t> zp_dist(1, zp_prime - 1);
+
+        // 生成随机稠密 Zp 多项式
+        auto make_zp_poly = [&](int64_t deg) {
+            upolynomial_<Zp> p;
+            for (int64_t i = deg; i >= 0; --i)
+                p.push_back({umonomial(i), Zp(zp_dist(zp_rng), zp_prime)});
+            return p;
+        };
+
+        // 用稠密乘法生成有公因子的测试用例
+        auto make_zp_gcd_pair = [&](int64_t deg_a, int64_t deg_common) {
+            auto H = make_zp_poly(deg_common);
+            auto A = make_zp_poly(deg_a);
+            auto B = make_zp_poly(deg_a);
+            dense_upoly_zp h_d(H, zp_prime), a_d(A, zp_prime), b_d(B, zp_prime);
+            dense_upoly_zp f_d, g_d;
+            dense_upoly_zp::mul(f_d, h_d, a_d);
+            dense_upoly_zp::mul(g_d, h_d, b_d);
+            return std::make_pair(f_d.to_upoly(), g_d.to_upoly());
+        };
+
+        {
+            auto [f, g] = make_zp_gcd_pair(100, 100);
+            BENCH("gcd  Zp deg200+common100", 50, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto [f, g] = make_zp_gcd_pair(250, 250);
+            BENCH("gcd  Zp deg500+common250", 10, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto [f, g] = make_zp_gcd_pair(500, 500);
+            BENCH("gcd  Zp deg1000+common500", 5, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto f = make_zp_poly(200);
+            auto g = make_zp_poly(200);
+            BENCH("gcd  Zp deg200 coprime", 100, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto f = make_zp_poly(500);
+            auto g = make_zp_poly(500);
+            BENCH("gcd  Zp deg500 coprime", 20, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto f = make_zp_poly(1000);
+            auto g = make_zp_poly(1000);
+            BENCH("gcd  Zp deg1000 coprime", 5, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+
+        // 高次 GCD（HGCD 回归基准）
+        {
+            auto [f, g] = make_zp_gcd_pair(1500, 1500);
+            BENCH("gcd  Zp deg3000+common1500", 3, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto [f, g] = make_zp_gcd_pair(2500, 2500);
+            BENCH("gcd  Zp deg5000+common2500", 3, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto [f, g] = make_zp_gcd_pair(5000, 5000);
+            BENCH("gcd  Zp deg10000+common5000", 3, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto f = make_zp_poly(3000);
+            auto g = make_zp_poly(3000);
+            BENCH("gcd  Zp deg3000 coprime", 3, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+        {
+            auto f = make_zp_poly(5000);
+            auto g = make_zp_poly(5000);
+            BENCH("gcd  Zp deg5000 coprime", 3, {
+                volatile auto r = polynomial_GCD(f, g); (void)r;
+            });
+        }
+    }
+
+    // ================================================================
+    // Univariate Zp mul/divrem (dense_upoly_zp 基本操作)
+    // ================================================================
+    bench_header("Univariate Zp mul/divrem (dense, p=2^64-59)");
+    {
+        uint64_t zp_prime = UINT64_C(18446744073709551557);
+        std::mt19937_64 zp_rng2(54321);
+        std::uniform_int_distribution<uint64_t> zp_dist2(1, zp_prime - 1);
+
+        auto make_dense = [&](int64_t deg) {
+            dense_upoly_zp p(zp_prime);
+            upolynomial_<Zp> sp;
+            for (int64_t i = deg; i >= 0; --i)
+                sp.push_back({umonomial(i), Zp(zp_dist2(zp_rng2), zp_prime)});
+            return dense_upoly_zp(sp, zp_prime);
+        };
+
+        // -- mul --
+        {
+            auto a = make_dense(50), b = make_dense(50);
+            BENCH("mul  Zp deg50*deg50", 500, {
+                dense_upoly_zp c;
+                dense_upoly_zp::mul(c, a, b);
+            });
+        }
+        {
+            auto a = make_dense(100), b = make_dense(100);
+            BENCH("mul  Zp deg100*deg100", 200, {
+                dense_upoly_zp c;
+                dense_upoly_zp::mul(c, a, b);
+            });
+        }
+        {
+            auto a = make_dense(200), b = make_dense(200);
+            BENCH("mul  Zp deg200*deg200", 50, {
+                dense_upoly_zp c;
+                dense_upoly_zp::mul(c, a, b);
+            });
+        }
+        {
+            auto a = make_dense(500), b = make_dense(500);
+            BENCH("mul  Zp deg500*deg500", 10, {
+                dense_upoly_zp c;
+                dense_upoly_zp::mul(c, a, b);
+            });
+        }
+        {
+            auto a = make_dense(1000), b = make_dense(1000);
+            BENCH("mul  Zp deg1000*deg1000", 3, {
+                dense_upoly_zp c;
+                dense_upoly_zp::mul(c, a, b);
+            });
+        }
+
+        // -- divrem --
+        {
+            auto a = make_dense(100), b = make_dense(50);
+            BENCH("divrem  Zp deg100/deg50", 500, {
+                dense_upoly_zp q; dense_upoly_zp r;
+                dense_upoly_zp::divrem(q, r, a, b);
+            });
+        }
+        {
+            auto a = make_dense(200), b = make_dense(100);
+            BENCH("divrem  Zp deg200/deg100", 200, {
+                dense_upoly_zp q; dense_upoly_zp r;
+                dense_upoly_zp::divrem(q, r, a, b);
+            });
+        }
+        {
+            auto a = make_dense(500), b = make_dense(250);
+            BENCH("divrem  Zp deg500/deg250", 20, {
+                dense_upoly_zp q; dense_upoly_zp r;
+                dense_upoly_zp::divrem(q, r, a, b);
+            });
+        }
+        {
+            auto a = make_dense(1000), b = make_dense(500);
+            BENCH("divrem  Zp deg1000/deg500", 5, {
+                dense_upoly_zp q; dense_upoly_zp r;
+                dense_upoly_zp::divrem(q, r, a, b);
+            });
+        }
+    }
 
     // ================================================================
     // Multivariate polynomial_QQ (2 variables)

@@ -7,6 +7,7 @@
 #define CLPOLY_POLYNOMIAL_GCD_HH
 #include <clpoly/polynomial.hh>
 #include <clpoly/upolynomial.hh>
+#include <clpoly/dense_upoly_zp.hh>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -1079,29 +1080,27 @@ namespace clpoly{
                             const Zp & Lc_gcd,
                             int64_t deg)
     {
-        int64_t deg_;
-        assert(!F.empty() && !G.empty() );
-        upolynomial_<Zp> Pout_;
-        upolynomial_<Zp> Pout_1;
-        upolynomial_<Zp> Pout_2;
-        Pout=G;
-        pair_vec_div(Pout_2.data(),Pout_1.data(),F.data(),Pout.data(),Pout.comp());
-        //std::cout<<Pout_1<<std::endl;
-        while(!Pout_1.empty())
-        {
-            std::swap(Pout.data(),Pout_.data());
-            std::swap(Pout.data(),Pout_1.data());
-            pair_vec_div(Pout_2.data(),Pout_1.data(),Pout_.data(),Pout.data(),Pout.comp());
-            //std::cout<<Pout_1<<std::endl;
-        }
-        Zp lc_inv=Pout.front().second.inv()*Lc_gcd;
-        for (auto &i:Pout)
-            i.second*=lc_inv;
-        deg_=Pout.front().first.deg();
-        if (deg_<=deg)
-            return deg_;
-        else
-            return -1;
+        assert(!F.empty() && !G.empty());
+        uint64_t p = F.front().second.prime();
+
+        // sparse → dense
+        dense_upoly_zp f_d(F, p), g_d(G, p);
+
+        // 稠密 Euclid GCD
+        dense_upoly_zp result;
+        dense_upoly_zp::gcd(result, f_d, g_d);
+
+        // LC 归一化：result *= Lc_gcd / lc(result)
+        uint64_t scale = result.nmod_mul(
+            result.nmod_inv(result.lead()), Lc_gcd.number());
+        result.scalar_mul(scale);
+
+        int64_t d = result.deg();
+        if (d > deg) return -1;
+
+        // dense → sparse
+        Pout = result.to_upoly();
+        return d;
     }
     upolynomial_<ZZ>  polynomial_GCD(upolynomial_<ZZ> G,upolynomial_<ZZ> F);
 

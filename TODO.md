@@ -122,10 +122,54 @@ W(20) 等高次多项式中 `hensel_lift` 占 52%。这与 **P1b（线性 Hensel
 
 详见：`docs/research/polynomial-systems-comparison.md` §4, `docs/design/multivariate-factorization-design.md`
 
-### P3: 多项式乘法优化
+### P3: 多项式乘法与除法优化
 
-- [ ] FFT / Karatsuba 大次数单变量乘法
+#### P3-mul: NTT 乘法（基础设施）
+
+- [ ] FFT / NTT 大次数单变量乘法
 - [ ] 多变量乘法堆排序优化
+
+#### P3-div: Newton 快速除法（依赖 P3-mul）
+
+当前 `_poly_divrem` 是 schoolbook O(n²)，是 HGCD 无法达到理论复杂度的瓶颈。
+
+**原理**：Newton 迭代除法将 divrem 转化为模逆 + 两次乘法，代价 O(M(n))。
+- Q = A · rev(B)^{-1} mod x^{deg(Q)+1}（模逆用 Newton 迭代，底层为 NTT 乘法）
+- R = A - Q·B
+
+**依赖**：P3-mul（NTT 乘法）。用 Karatsuba 做 Newton 除法可得 O(n^1.585)，用 NTT 可得 O(n log n)。
+
+**预期效果**：
+
+| 组合 | divrem | HGCD 总复杂度 | 预估 α |
+|------|--------|--------------|--------|
+| 当前（schoolbook divrem） | O(n²) | O(n²) | 2.0 |
+| Newton + Karatsuba | O(n^1.585) | O(n^1.585 · log n) | ~1.7 |
+| Newton + NTT | O(n log n) | O(n log² n) | ~1.2 |
+
+参考：FLINT `nmod_poly_div_newton`，GCL §3.1，Modern Computer Algebra §9.1
+
+- [ ] 实现 `_poly_inv_series`（多项式模逆，Newton 迭代）
+- [ ] 实现 `_poly_divrem_newton`（基于模逆的快速除法）
+- [ ] 在 `_hgcd_recursive` 和 `_gcd_hgcd` 中按次数阈值分派 schoolbook vs Newton
+
+#### P3b: HGCD（已完成）
+
+**实现结果**（2026-03-09 benchmark）：
+
+| 用例 | Euclid (改前) | HGCD (现在) | FLINT | 改前 ratio | 现在 ratio |
+|------|--------------|-------------|-------|-----------|-----------|
+| deg500+common250 | 0.57ms | 0.43ms | 0.40ms | 1.44x | 1.01x |
+| deg1000+common500 | 2.27ms | 1.53ms | 0.85ms | 2.67x | 1.31x |
+| deg3000+common1500 | 20.0ms | 13.5ms | 4.70ms | 4.28x | 2.36x |
+| deg5000+common2500 | 55.5ms | 37.8ms | 10.5ms | 5.28x | 3.27x |
+| deg10000+common5000 | 221ms | 148ms | 32.2ms | 6.87x | 4.61x |
+
+HGCD 给出常数因子加速（~1.5x），但有效指数 α ≈ 2.0（与 Euclid 相同），未达到理论 α ≈ 1.6。根因：`_poly_divrem` schoolbook O(n²) 主导了 HGCD 的 O(M(n) log n) 乘法贡献。需 P3-div（Newton 快速除法）解决。
+
+- [x] 三层架构：`gcd` → `_gcd_hgcd` → `_hgcd_recursive` / `_hgcd_iter`
+- [x] 矩阵指针稳定化修复（`_hgcd_iter` 后两阶段暂存+拷回）
+- [x] 单元测试：`test/test_dense_upoly_hgcd.cc`（10 用例，含 2000 组随机扫描）
 
 ### P4: GCD 性能
 
@@ -135,6 +179,51 @@ W(20) 等高次多项式中 `hensel_lift` 占 52%。这与 **P1b（线性 Hensel
 - [ ] 考虑稀疏模 GCD（SPMOD）或 Zippel GCD
 
 ## Bug 修复
+
+### B1: 多变量因式分解 over-splitting（**已修复**）
+
+**根因**：Wang 小整数 eval point + MTSHL Zp 提升的架构不兼容。小整数 eval point 高概率导致 over-splitting → MTSHL 产出垃圾 → Zassenhaus trial division 不完全 → `verified.size() >= 2` 无条件返回。
+
+**修复**（方向 2 + 方向 5）：
+- 方向 2：`__wang_core` 返回前检查 `mv_T.size() <= 1`，拒绝 over-splitting 的 eval point
+- 方向 5：`__select_eval_point` 从 `[-B, B]^{n-1}` 随机采样（暂用 B=50，待 B2 修复后可增大）
+- 设计文档：`docs/design/factorization/fix-oversplit.md`
+
+**测试**：B1 回归用例改为正常断言，全量 + 压力测试通过。
+
+### B2: 单变量因式分解大系数不完全分解（**未修复**）
+
+**发现于**：B1 修复过程中，方向 5 使用 B=1000 随机 eval point 暴露。`crosscheck_flint_mpoly_factor_random_bivar` trial 8 和 `crosscheck_flint_mpoly_factor_random_trivar_3fac` trial 2 失败。
+
+**复现**：
+```
+f = 96000*x^4 + 38464001*x^3 - 61401631999*x^2 - 24616960640000*x - 24555520640000
+# 真因子: (x+1)(x-800)(x+800)(96000*x+38368001)
+factorize(f) → content=1, 2 factors: (x+1), (96000x^3 + ...)  # 错误：cubic 未继续分解
+```
+
+**根因**：`__lll_factorize` (polynomial_factorize_univar.hh:1488) Phase 2 触发条件过严。
+- `__select_prime` 正确找到 p=7，r=4 个 Zp 因子
+- Phase 1：启发式精度 a_h=6（模 7^6 ≈ 2^17），van Hoeij 返回 **2 因子**（精度不足）
+- Phase 2 触发条件 `result.size() == 1 && r > 1`：Phase 1 返回 2 ≠ 1，**未触发**
+- Phase 2（Mignotte 精度 2^90）能正确返回 4 因子
+
+**修复方案**：将 Phase 2 触发条件改为 `result.size() < r`（或更精确的条件）。需要注意 x^4+1 等"mod p 多分裂但 Z 上不可约"的情况——对这些多项式 Phase 2 应直接返回单因子而非无限重试。
+
+**B1 修复的临时规避**：方向 5 的 B 暂设为 50（避免大系数触发 B2），待 B2 修复后可增大到 100-1000。
+
+- [ ] 修改 `__lll_factorize` Phase 2 触发条件
+- [ ] 补充大系数单变量因式分解回归测试
+
+### 方向 5 进一步测试（待 B2 修复后）
+
+方向 5（`__select_eval_point` 随机化）当前使用 B=50 作为临时安全值。B2 修复后：
+
+- [ ] 将 B 恢复到 `max(100, 2*tdeg_sum)` 或更大
+- [ ] 重新运行 crosscheck（`make crosscheck`）验证无回归
+- [ ] 运行压力测试（`make stress`）
+- [ ] 运行随机复现测试（`test_repro_bivar4fac 100`、`test_repro_trivar3fac 100`）
+- [ ] 考虑对 B 做参数化，支持用户配置或根据系数大小自适应
 
 ### H1: GCDHEU `(uint64_t)(-v)` 有符号溢出（UB）
 

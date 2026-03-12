@@ -129,6 +129,10 @@ $(BIN_DEB)/test_crosscheck_ntl: test/test_crosscheck_ntl.cc $(CLPoly_LIB_DIR)/de
 	mkdir -p $(BIN_DEB)
 	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(Numberlib) $(NTL_LIBS)
 
+$(BIN_DEB)/test_factorize_stress: test/test_factorize_stress.cc $(CLPoly_LIB_DIR)/debug/libclpoly.a
+	mkdir -p $(BIN_DEB)
+	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(Numberlib) $(FLINT_LIBS)
+
 .PHONY: crosscheck
 crosscheck: $(BIN_DEB)/test_crosscheck_flint $(BIN_DEB)/test_crosscheck_ntl
 	$(BIN_DEB)/test_crosscheck_flint

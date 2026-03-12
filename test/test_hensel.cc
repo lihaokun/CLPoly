@@ -326,8 +326,15 @@ int main() {
         auto [lifted, modulus] = __hensel_lift(f, factors, p);
         CLPOLY_ASSERT_EQ(lifted.size(), (size_t)2);
 
-        // ∏ lifted ≡ f (mod modulus)
+        // 首一归一化后：所有 lifted 均首一
+        CLPOLY_ASSERT_EQ(lifted[0].front().second, ZZ(1));
+        CLPOLY_ASSERT_EQ(lifted[1].front().second, ZZ(1));
+
+        // 首一归一化后：lc(f) * ∏ lifted ≡ f (mod m) (定理 6.1 I'1)
         auto prod = product_mod(lifted, modulus);
+        ZZ lc_f = f.front().second;
+        for (auto& term : prod) term.second *= lc_f;
+        mod_coeff(prod, modulus);
         auto f_mod = f;
         mod_coeff(f_mod, modulus);
         CLPOLY_ASSERT_EQ(prod, f_mod);

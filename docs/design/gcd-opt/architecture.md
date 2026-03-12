@@ -269,13 +269,9 @@ int gcdheu(upolynomial_<ZZ>& result, const upolynomial_<ZZ>& F, const upolynomia
 
 ---
 
-### P2: CRT 优化
+### P2: CRT 优化 — ❌ 废弃
 
-**依赖 P0 完成后实施**。进一步优化 CRT 循环的常数因子：
-
-- **增量 content 检测**：不需要完整求 content，只需检测 `gcd(所有系数)` 是否为 1（若为 1 则 pp = 自身）
-- **稳定性检测优化**：当前用 `tmp_Pout_ == Pout_` 逐项比较。可改为先比较首项系数（cheap check），再做完整比较
-- **Brown 的 `n̄ ≤ 4l + 2` bound**：预计算所需素数上界，避免过多无用素数
+**结论（2026-03-05）**：经 A/B 测试验证，P2 的三项优化（P2a 稳定检测合并、P2b content early exit + lc_gcd 快速路径、P2c trial division 预检查）均无可测量的性能差异。根因：CRT 循环瓶颈在 Zp 多项式 Euclid GCD（O(n²)），bookkeeping 开销（content、比较、trial division）占比 <1%，优化无意义。详见 `p2-crt-optimization.md`。
 
 ---
 
@@ -323,7 +319,7 @@ P1（GCDHEU）是特定场景优化（小系数），提速 2-5x 但不适用大
 | M0 | 无直接提速（修复 Zp 后可用更大素数） | 无 | 低（接口扩展 + bug fix） |
 | P0 | 20-30x（大系数）| M0 | 低（FLINT 已验证路线） |
 | P1 | 2-5x（小系数）| M0 | 低（FLINT gcdheu 成熟） |
-| P2 | 1.2-1.5x | P0 | 低（常数优化） |
+| P2 | ~~1.2-1.5x~~ 废弃（实测无效） | P0 | — |
 | P3 | 高次多项式 | P0 | 中（实现复杂度高） |
 
 目标：P0 完成后，CLPoly GCD 与 FLINT 的差距从 4-200x 缩小到 2-5x。

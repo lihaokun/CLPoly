@@ -702,5 +702,75 @@ int main()
         CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)3);
     }
 
+    // ============================================================
+    // B1 回归测试: 双变量 4 因子 → 5 个不可约因子
+    //
+    // f1 = y^2-y-2 = (y-2)(y+1),  f2 = -2x^2+xy-y,
+    // f3 = -2x^2-2y^2+3,          f4 = x^2-3y^2+y
+    // f = f1*f2*f3*f4
+    //
+    // f1 本身可约, 完全分解应得 5 个不可约因子:
+    //   (y-2), (y+1), (-2x^2+xy-y), (-2x^2-2y^2+3), (x^2-3y^2+y)
+    // ============================================================
+
+    CLPOLY_TEST("factorize: B1 bivar 5 irreducible factors");
+    {
+        auto f1 = make_lex(pow(y,2) - y - polynomial_ZZ(ZZ(2)));
+        auto f2 = make_lex(-ZZ(2)*pow(x,2) + x*y - y);
+        auto f3 = make_lex(-ZZ(2)*pow(x,2) - ZZ(2)*pow(y,2) + polynomial_ZZ(ZZ(3)));
+        auto f4 = make_lex(pow(x,2) - ZZ(3)*pow(y,2) + y);
+
+        auto f = f1 * f2; f.normalization();
+        f = f * f3; f.normalization();
+        f = f * f4; f.normalization();
+
+        auto fac = factorize(f);
+
+        // 乘积正确性
+        verify_factorization(f, fac, "B1 bivar 5-factor");
+
+        // 因子数量: 期望 5 个不可约因子
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)5);
+    }
+
+    // ============================================================
+    // B2 回归测试: 单变量大系数多项式因式分解
+    //
+    // f = 96000x^4 + 38464001x^3 - 61401631999x^2
+    //     - 24616960640000x - 24555520640000
+    //   = 96000 * (x+1)(x-800)(x+800)(x + 38368001/96000)
+    //   即 (x+1)(x-800)(x+800)(96000x + 38368001)
+    //
+    // 旧代码 Phase 2 触发条件 result.size()==1 过严，
+    // 导致 Phase 1 启发式精度不足时返回 2 因子（不完全分解）。
+    // ============================================================
+
+    CLPOLY_TEST("factorize: B2 univar large coefficients 4 factors");
+    {
+        // 构造为单变量多项式再转为 polynomial
+        upolynomial_<ZZ> uf;
+        uf.push_back({umonomial(4), ZZ(96000)});
+        uf.push_back({umonomial(3), ZZ("38464001")});
+        uf.push_back({umonomial(2), ZZ("-61401631999")});
+        uf.push_back({umonomial(1), ZZ("-24616960640000")});
+        uf.push_back({umonomial(0), ZZ("-24555520640000")});
+
+        auto fac = factorize(uf);
+
+        // 乘积正确性
+        upolynomial_<ZZ> product;
+        product.push_back({umonomial(0), fac.content});
+        for (auto& [fi, ei] : fac.factors)
+            for (uint64_t e = 0; e < ei; ++e)
+            {
+                product = product * fi;
+                product.normalization();
+            }
+        CLPOLY_ASSERT_EQ(product, uf);
+
+        // 期望 4 个不可约因子
+        CLPOLY_ASSERT_EQ(fac.factors.size(), (size_t)4);
+    }
+
     return clpoly_test::test_summary();
 }

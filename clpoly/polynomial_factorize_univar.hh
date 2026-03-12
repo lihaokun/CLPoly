@@ -582,6 +582,19 @@ namespace clpoly{
         std::vector<upolynomial_<ZZ>> result;
         __hensel_extract_factors(nodes, 0, result);
 
+        // 6. 首一归一化: lc-baking 使 result[0] 的 lc = lc(f)，
+        //    将其归一化为首一以统一后续重组逻辑 (定理 6.1)
+        if (!result.empty() && result[0].front().second != ZZ(1))
+        {
+            ZZ lc_inv;
+            bool ok = ZZ::invert(lc_inv, result[0].front().second, m);
+            assert(ok); // gcd(lc(f), m) = 1 由 p ∤ lc(f) 保证
+            (void)ok;
+            for (auto& term : result[0])
+                term.second *= lc_inv;
+            __upoly_mod_coeff(result[0], m);  // 约化到 [0, m) 并移除零项
+        }
+
         return {std::move(result), std::move(m)};
     }
 
@@ -590,7 +603,8 @@ namespace clpoly{
     // ================================================================
 
     // M4: 启发式起始精度（FLINT 公式 + Mignotte 上限）
-    inline int __heuristic_starting_precision(
+    // 返回 {实际使用的精度, Mignotte 完整精度}
+    inline std::pair<int, int> __heuristic_starting_precision(
         const upolynomial_<ZZ>& f,
         int                     r,
         uint64_t                p)
@@ -613,7 +627,7 @@ namespace clpoly{
         ZZ  pa(1);
         while (pa <= target) { pa *= ZZ(p); ++a_mig; }
 
-        return std::min(a_mig, a_h);
+        return {std::min(a_mig, a_h), a_mig};
     }
 
     // M1: 二叉树单步线性 Hensel 提升（m → m·p）
@@ -789,13 +803,9 @@ namespace clpoly{
 
                 ZZ lc_fstar = f_star.front().second;
 
-                // Hensel 提升将 lc(f) 分配给了 lifted[0]。
-                // 当子集包含 index 0 时，子集乘积已自带 lc，
-                // 无需额外乘 lc_fstar。
-                bool subset_has_lc = false;
-                for (size_t i : S_idx)
-                    if (i == 0) { subset_has_lc = true; break; }
-                ZZ lc_mult = subset_has_lc ? ZZ(1) : lc_fstar;
+                // 首一归一化后所有 Hensel 因子均首一，
+                // 统一乘以 lc(f*) 恢复真因子 (定理 6.2)
+                ZZ lc_mult = lc_fstar;
 
                 // === 剪枝 1: 首项系数检查 ===
                 ZZ lc_prod = lc_mult;
@@ -1466,7 +1476,7 @@ namespace clpoly{
         uint64_t                             p)
     {
         int r   = (int)factors.size();
-        int a_h = __heuristic_starting_precision(f, r, p);
+        auto [a_h, a_mig] = __heuristic_starting_precision(f, r, p);
 
         // Phase 1：提升到启发式精度 a_h（当 a_h < a_mig 时节省提升代价）
 #ifdef CLPOLY_PROFILE
@@ -1483,9 +1493,9 @@ namespace clpoly{
         __g_profile.recombine_ns   += _PROF_NS(_t1, _t2);
 #endif
 
-        // Phase 1 返回单个因子且 r > 1，说明精度不足（Mignotte 条件未满足）。
-        // Phase 2：提升到完整 Mignotte 精度，保证正确性。
-        if ((int)result.size() == 1 && r > 1) {
+        // Phase 2：启发式精度不足以完全分解时，提升到满 Mignotte 精度（命题 7.3）。
+        // 触发条件：(1) 未找到所有因子 (2) 使用了低于 Mignotte 的精度
+        if ((int)result.size() < r && a_h < a_mig) {
 #ifdef CLPOLY_PROFILE
             auto _t3 = _PROF_NOW();
 #endif

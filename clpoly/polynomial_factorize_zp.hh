@@ -190,8 +190,8 @@ namespace clpoly{
             if (!inserted && term.first.deg() < 1)
             {
                 // 插入 -x 项 (即 (p-1)*x)
-                Zp neg_one = __make_zp((int64_t)(p - 1), p);
-                result.push_back(std::make_pair(umonomial(1), neg_one));
+                // p-1 ≡ -1 mod p; 不可用 (int64_t)(p-1)，p > 2^63 时溢出
+                result.push_back(std::make_pair(umonomial(1), Zp(p - 1, p)));
                 inserted = true;
             }
             if (term.first.deg() == 1)
@@ -206,8 +206,8 @@ namespace clpoly{
         }
         if (!inserted)
         {
-            Zp neg_one = __make_zp((int64_t)(p - 1), p);
-            result.push_back(std::make_pair(umonomial(1), neg_one));
+            // p-1 ≡ -1 mod p; 不可用 (int64_t)(p-1)，p > 2^63 时溢出
+            result.push_back(std::make_pair(umonomial(1), Zp(p - 1, p)));
         }
         result.normalization();
         return result;
@@ -236,7 +236,8 @@ namespace clpoly{
         if (!found)
         {
             // 加入 -1 = p-1
-            result.push_back(std::make_pair(umonomial(0), __make_zp((int64_t)(p - 1), p)));
+            // p-1 ≡ -1 mod p; 不可用 (int64_t)(p-1)，p > 2^63 时溢出
+            result.push_back(std::make_pair(umonomial(0), Zp(p - 1, p)));
             result.normalization();
         }
         return result;

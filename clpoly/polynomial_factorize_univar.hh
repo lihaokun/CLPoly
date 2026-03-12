@@ -1383,7 +1383,10 @@ namespace clpoly{
         bool irreducible;
     };
 
-    inline __prime_selection_result __select_prime(const upolynomial_<ZZ>& f)
+    // use_large_prime = false: 从 p=2 向上枚举（小系数多项式最优）
+    // use_large_prime = true:  从 p=2^64-59 向下枚举（大系数多项式避免 Phase 2）
+    inline __prime_selection_result __select_prime(const upolynomial_<ZZ>& f,
+                                                   bool use_large_prime = false)
     {
         assert(!f.empty() && get_deg(f) >= 2);
         ZZ lc_f = f.front().second;
@@ -1397,7 +1400,16 @@ namespace clpoly{
         size_t max_tries = 3;
         std::mt19937 rng(42);
 
-        for (uint64_t p = 2, tried = 0; tried < max_tries; p = next_prime_64(p))
+        // 素数迭代器：小素数从 2 向上，大素数从 2^64-59 向下
+        uint64_t p = use_large_prime ? (uint64_t(-1) - 58) : 2;  // 2^64-59
+        auto next_p = [use_large_prime](uint64_t cur) -> uint64_t {
+            if (use_large_prime)
+                return prev_prime_64(cur);
+            else
+                return next_prime_64(cur);
+        };
+
+        for (size_t tried = 0; tried < max_tries; p = next_p(p))
         {
 
             // 跳过 lc(f) mod p == 0 的素数
@@ -1519,6 +1531,9 @@ namespace clpoly{
     // §8.4 无平方 ZZ 因式分解
     // ================================================================
 
+    // 全局素数选择模式开关（benchmark 用，默认 false = 小素数）
+    inline bool __g_use_large_prime = false;
+
     // 前置条件: f 是无平方、本原、deg >= 2 的 ZZ[x] 多项式
     inline std::vector<upolynomial_<ZZ>>
     __factor_squarefree_primitive_ZZ(const upolynomial_<ZZ>& f)
@@ -1530,7 +1545,7 @@ namespace clpoly{
         auto _ts0 = _PROF_NOW();
 #endif
         // 选择素数
-        auto sel = __select_prime(f);
+        auto sel = __select_prime(f, __g_use_large_prime);
 #ifdef CLPOLY_PROFILE
         __g_profile.select_prime_ns += _PROF_NS(_ts0, _PROF_NOW());
 #endif

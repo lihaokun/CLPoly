@@ -1,6 +1,9 @@
 # IDE
 .vscode/
 
+# PDFs
+*.pdf
+
 # Build artifacts
 _build/
 lib/

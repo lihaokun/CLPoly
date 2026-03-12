@@ -84,7 +84,18 @@
 
 **相关文件**：`clpoly/polynomial_factorize_zp.hh`（`__ddf_Zp`, `__edf_Zp`），`clpoly/polynomial_factorize_univar.hh`（`__select_prime`）
 
+**关于增大 `max_tries` 的分析**（2026-03-13）：
+
+曾考虑增大 `max_tries`（从 3 到 10+）以获取更优 r 值。实验（`bench_prime_mode.cc`、`debug_r_scan.cc`）发现：
+- Chebotarev 密度定理保证因子数分布与素数大小无关（~15% 的素数给出最优 r=true_factors）
+- max_tries=3 只采样 3 个素数，可能错过最优 r
+- **但** profiling 显示单次 DDF+EDF 约 0.09ms/prime（deg15），增大 max_tries 直接线性增加 `select_prime` 开销
+- `select_prime` 已占总耗时 50-60%，增大 max_tries 在 DDF 未稠密化前是**反优化**
+
+**结论**：增大 max_tries 应在 P1c DDF 稠密化完成后进行。稠密化后单次 DDF 成本预计降 3-5x，届时增大 max_tries 的边际成本可忽略。
+
 - [ ] 选定方案并实现 Zp DDF/EDF 稠密化
+- [ ] （P1c 完成后）增大 `max_tries` 以更充分采样最优 r 值
 
 #### P1d: Hensel lift 优化（第二大瓶颈）
 
@@ -184,46 +195,59 @@ HGCD 给出常数因子加速（~1.5x），但有效指数 α ≈ 2.0（与 Eucl
 
 **根因**：Wang 小整数 eval point + MTSHL Zp 提升的架构不兼容。小整数 eval point 高概率导致 over-splitting → MTSHL 产出垃圾 → Zassenhaus trial division 不完全 → `verified.size() >= 2` 无条件返回。
 
-**修复**（方向 2 + 方向 5）：
+**修复**（方向 2）：
 - 方向 2：`__wang_core` 返回前检查 `mv_T.size() <= 1`，拒绝 over-splitting 的 eval point
-- 方向 5：`__select_eval_point` 从 `[-B, B]^{n-1}` 随机采样（暂用 B=50，待 B2 修复后可增大）
+- 方向 5（随机化求值点）：设计完成但未实现，见下方"方向 5"条目
 - 设计文档：`docs/design/factorization/fix-oversplit.md`
 
 **测试**：B1 回归用例改为正常断言，全量 + 压力测试通过。
 
-### B2: 单变量因式分解大系数不完全分解（**未修复**）
+### B2: 单变量因式分解大系数不完全分解（**已修复**）
 
-**发现于**：B1 修复过程中，方向 5 使用 B=1000 随机 eval point 暴露。`crosscheck_flint_mpoly_factor_random_bivar` trial 8 和 `crosscheck_flint_mpoly_factor_random_trivar_3fac` trial 2 失败。
+**发现于**：B1 修复过程中，方向 5 使用 B=1000 随机 eval point 暴露。
 
-**复现**：
-```
-f = 96000*x^4 + 38464001*x^3 - 61401631999*x^2 - 24616960640000*x - 24555520640000
-# 真因子: (x+1)(x-800)(x+800)(96000*x+38368001)
-factorize(f) → content=1, 2 factors: (x+1), (96000x^3 + ...)  # 错误：cubic 未继续分解
-```
+**根因**：两个问题叠加——
+1. **lc-baking 不对称性**：`__hensel_lift` 将 `lc(f)` 烘入 `factors[0]`，使其非首一，导致 Zassenhaus 重组中 lc 乘子逻辑不一致
+2. **Phase 2 触发条件过严**：`result.size() == 1 && r > 1` 无法检测部分提取（Phase 1 返回 2 因子但真实有 4 因子）
 
-**根因**：`__lll_factorize` (polynomial_factorize_univar.hh:1488) Phase 2 触发条件过严。
-- `__select_prime` 正确找到 p=7，r=4 个 Zp 因子
-- Phase 1：启发式精度 a_h=6（模 7^6 ≈ 2^17），van Hoeij 返回 **2 因子**（精度不足）
-- Phase 2 触发条件 `result.size() == 1 && r > 1`：Phase 1 返回 2 ≠ 1，**未触发**
-- Phase 2（Mignotte 精度 2^90）能正确返回 4 因子
+**修复**（2026-03-12，形式化证明驱动）：
+- Hensel 提升后首一归一化：消除 lc-baking 不对称性（定理 6.1）
+- Zassenhaus 统一恢复公式：`pp(sym_m(ℓ* · ∏ H_i)) = g_j`（定理 6.2）
+- Phase 2 触发：`result.size() < r && a_h < a_mig`（命题 7.3）
+- `__heuristic_starting_precision` 返回 `pair<int,int>` 同时提供 a_h 和 a_mig
 
-**修复方案**：将 Phase 2 触发条件改为 `result.size() < r`（或更精确的条件）。需要注意 x^4+1 等"mod p 多分裂但 Z 上不可约"的情况——对这些多项式 Phase 2 应直接返回单因子而非无限重试。
+**验证**：1410 随机用例 FLINT 交叉对比全部通过，24 个测试文件 + 258 组 crosscheck 通过。
 
-**B1 修复的临时规避**：方向 5 的 B 暂设为 50（避免大系数触发 B2），待 B2 修复后可增大到 100-1000。
+**设计文档**：`docs/design/factorization/formal-proof-univar-factorization.md`
 
-- [ ] 修改 `__lll_factorize` Phase 2 触发条件
-- [ ] 补充大系数单变量因式分解回归测试
+- [x] 修改 `__lll_factorize` Phase 2 触发条件
+- [x] 补充大系数单变量因式分解回归测试（`test/test_factorize_bugfix.cc`）
 
-### 方向 5 进一步测试（待 B2 修复后）
+### B3: DDF/EDF 大素数 `(int64_t)(p-1)` 溢出（**已修复**）
 
-方向 5（`__select_eval_point` 随机化）当前使用 B=50 作为临时安全值。B2 修复后：
+**发现于**：大素数模式实验（`bench_prime_mode.cc`），EDF 在 p=2^64-59 时死循环。
 
-- [ ] 将 B 恢复到 `max(100, 2*tdeg_sum)` 或更大
-- [ ] 重新运行 crosscheck（`make crosscheck`）验证无回归
-- [ ] 运行压力测试（`make stress`）
-- [ ] 运行随机复现测试（`test_repro_bivar4fac 100`、`test_repro_trivar3fac 100`）
-- [ ] 考虑对 B 做参数化，支持用户配置或根据系数大小自适应
+**根因**：`__upoly_subtract_x` 和 `__upoly_subtract_one` 中 `__make_zp((int64_t)(p - 1), p)` 对 p > 2^63 溢出。`(int64_t)(2^64 - 60)` 回绕为 -60，`Zp(-60, p)` 计算 `p - 60` 而非 `p - 1`。
+
+- DDF：`gcd(h - x, f*)` 中 `h - x` 计算错误 → 因子分组错误
+- EDF：`gcd(g - 1, f)` 中 `g - 1` 计算错误 → 分裂始终失败 → 死循环
+
+**修复**（2026-03-13）：3 处 `__make_zp((int64_t)(p-1), p)` 替换为 `Zp(p-1, p)`（uint64_t 构造函数，`_i = i % p` 对任意 p 正确）。
+
+**形式化证明**：`docs/design/factorization/formal-proof-ddf-edf.md`（DDF 循环不变量、EDF Cantor-Zassenhaus 正确性、bug 数学根因分析）
+
+**测试**：`test/test_factorize_zp.cc` 新增 5 个大素数回归测试。
+
+**大素数模式实验结论**（废弃）：修复后对 8 类用例的 A/B 实验（`bench_prime_mode.cc`）表明小素数模式在所有场景下均优于或持平大素数模式。此前观察到的"大素数优势"源于 max_tries=3 的采样偏差（Chebotarev 密度定理保证因子数分布与素数大小无关）。`__g_use_large_prime` 开关保留但默认 false。
+
+### 方向 5: `__select_eval_point` 随机化（低优先级）
+
+**现状**（2026-03-13）：`__select_eval_point` 仍使用 shell 枚举（bound=0,1,2,...），方向 5 随机化因 B2 阻塞未实现。B2 已修复，技术上可实现。
+
+**优先级评估**：方向 2（`mv_T.size() <= 1` 检查）已作为安全网，shell 枚举的 over-splitting 会被拒绝并 retry。当前 crosscheck + stress 在 shell 枚举下全部通过。随机化的剩余价值仅为减少 retry 次数（效率优化），不涉及正确性。
+
+- [ ] （低优先级）实现随机采样 `α ∈ [-B, B]^{n-1}`，`B = max(100, 2*tdeg_sum)`
+- [ ] 设计文档：`docs/design/factorization/fix-oversplit.md` §4
 
 ### H1: GCDHEU `(uint64_t)(-v)` 有符号溢出（UB）
 

@@ -10,9 +10,11 @@
 #include <clpoly/groebner.hh>
 #include <flint/fmpz_poly.h>
 #include <flint/fmpz_mpoly_factor.h>
+#include <flint/nmod_poly.h>
 #include "crosscheck_flint.hh"
 #include "crosscheck_ntl.hh"
 #include "bench_utils.hh"
+#include <random>
 
 using namespace clpoly;
 
@@ -456,6 +458,311 @@ int main() {
                 }
             );
         }
+    }
+
+    // ================================================================
+    // Univariate Zp GCD: CLPoly vs FLINT (nmod_poly)
+    // ================================================================
+    bench_cmp_header("Univariate Zp GCD: CLPoly vs FLINT", "FLINT");
+    {
+        uint64_t zp_prime = UINT64_C(18446744073709551557); // 2^64 - 59
+        std::mt19937_64 zp_rng(12345);
+        std::uniform_int_distribution<uint64_t> zp_dist(1, zp_prime - 1);
+
+        // CLPoly: 生成随机 Zp 多项式
+        auto make_cl_zp = [&](int64_t deg) {
+            upolynomial_<Zp> p;
+            for (int64_t i = deg; i >= 0; --i)
+                p.push_back({umonomial(i), Zp(zp_dist(zp_rng), zp_prime)});
+            return p;
+        };
+
+        // CLPoly Zp → FLINT nmod_poly 转换（输出参数）
+        auto cl_to_flint_nmod = [&](nmod_poly_t fp, const upolynomial_<Zp>& p) {
+            nmod_poly_init(fp, zp_prime);
+            for (auto& term : p)
+                nmod_poly_set_coeff_ui(fp, term.first.deg(), term.second.number());
+        };
+
+        // 生成有公因子的测试对
+        auto make_zp_bench = [&](int64_t deg_a, int64_t deg_common) {
+            auto H = make_cl_zp(deg_common);
+            auto A = make_cl_zp(deg_a);
+            auto B = make_cl_zp(deg_a);
+            dense_upoly_zp h_d(H, zp_prime), a_d(A, zp_prime), b_d(B, zp_prime);
+            dense_upoly_zp f_d, g_d;
+            dense_upoly_zp::mul(f_d, h_d, a_d);
+            dense_upoly_zp::mul(g_d, h_d, b_d);
+            return std::make_pair(f_d.to_upoly(), g_d.to_upoly());
+        };
+
+        // deg200+common100
+        {
+            auto [cf, cg] = make_zp_bench(100, 100);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg200+common100", 50, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg500+common250
+        {
+            auto [cf, cg] = make_zp_bench(250, 250);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg500+common250", 10, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg1000+common500
+        {
+            auto [cf, cg] = make_zp_bench(500, 500);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg1000+common500", 5, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg200 coprime
+        {
+            auto cf = make_cl_zp(200);
+            auto cg = make_cl_zp(200);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg200 coprime", 100, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg1000 coprime
+        {
+            auto cf = make_cl_zp(1000);
+            auto cg = make_cl_zp(1000);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg1000 coprime", 5, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg3000+common1500
+        {
+            auto [cf, cg] = make_zp_bench(1500, 1500);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg3000+common1500", 3, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg5000+common2500
+        {
+            auto [cf, cg] = make_zp_bench(2500, 2500);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg5000+common2500", 3, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg10000+common5000
+        {
+            auto [cf, cg] = make_zp_bench(5000, 5000);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg10000+common5000", 3, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg3000 coprime
+        {
+            auto cf = make_cl_zp(3000);
+            auto cg = make_cl_zp(3000);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg3000 coprime", 3, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+        // deg5000 coprime
+        {
+            auto cf = make_cl_zp(5000);
+            auto cg = make_cl_zp(5000);
+            nmod_poly_t ff, fg;
+            cl_to_flint_nmod(ff, cf);
+            cl_to_flint_nmod(fg, cg);
+            BENCH_CMP("gcd  Zp deg5000 coprime", 3, T,
+                { volatile auto r = polynomial_GCD(cf, cg); (void)r; },
+                {
+                    nmod_poly_t gr;
+                    nmod_poly_init(gr, zp_prime);
+                    nmod_poly_gcd(gr, ff, fg);
+                    nmod_poly_clear(gr);
+                }
+            );
+            nmod_poly_clear(ff);
+            nmod_poly_clear(fg);
+        }
+    }
+
+    // ================================================================
+    // Univariate Zp mul: CLPoly vs FLINT (nmod_poly)
+    // ================================================================
+    bench_cmp_header("Univariate Zp mul: CLPoly vs FLINT", "FLINT");
+    {
+        uint64_t zp_prime = UINT64_C(18446744073709551557);
+        std::mt19937_64 zp_rng(12345);
+
+        // CLPoly Zp → FLINT nmod_poly 转换
+        auto cl_to_flint_nmod = [&](nmod_poly_t fp, const upolynomial_<Zp>& p) {
+            nmod_poly_init(fp, zp_prime);
+            for (auto& term : p)
+                nmod_poly_set_coeff_ui(fp, term.first.deg(), term.second.number());
+        };
+
+        auto make_cl_zp_mul = [&](int64_t deg) {
+            upolynomial_<Zp> p;
+            std::uniform_int_distribution<uint64_t> d(1, zp_prime - 1);
+            for (int64_t i = deg; i >= 0; --i)
+                p.push_back({umonomial(i), Zp(d(zp_rng), zp_prime)});
+            return p;
+        };
+
+        auto bench_mul = [&](const char* name, int64_t deg, int repeats) {
+            auto ca = make_cl_zp_mul(deg);
+            auto cb = make_cl_zp_mul(deg);
+            dense_upoly_zp da(ca, zp_prime), db(cb, zp_prime);
+            nmod_poly_t fa, fb;
+            cl_to_flint_nmod(fa, ca);
+            cl_to_flint_nmod(fb, cb);
+            BENCH_CMP(name, repeats, T,
+                {
+                    dense_upoly_zp dc;
+                    dense_upoly_zp::mul(dc, da, db);
+                },
+                {
+                    nmod_poly_t fc;
+                    nmod_poly_init(fc, zp_prime);
+                    nmod_poly_mul(fc, fa, fb);
+                    nmod_poly_clear(fc);
+                }
+            );
+            nmod_poly_clear(fa);
+            nmod_poly_clear(fb);
+        };
+
+        bench_mul("mul  Zp deg50*deg50", 50, 500);
+        bench_mul("mul  Zp deg100*deg100", 100, 200);
+        bench_mul("mul  Zp deg200*deg200", 200, 50);
+        bench_mul("mul  Zp deg500*deg500", 500, 10);
+        bench_mul("mul  Zp deg1000*deg1000", 1000, 3);
+
+        // divrem 对比
+        auto bench_divrem = [&](const char* name, int64_t deg_a, int64_t deg_b, int repeats) {
+            auto ca = make_cl_zp_mul(deg_a);
+            auto cb = make_cl_zp_mul(deg_b);
+            dense_upoly_zp da(ca, zp_prime), db(cb, zp_prime);
+            nmod_poly_t fa, fb;
+            cl_to_flint_nmod(fa, ca);
+            cl_to_flint_nmod(fb, cb);
+            BENCH_CMP(name, repeats, T,
+                {
+                    dense_upoly_zp dq; dense_upoly_zp dr;
+                    dense_upoly_zp::divrem(dq, dr, da, db);
+                },
+                {
+                    nmod_poly_t fq; nmod_poly_t fr;
+                    nmod_poly_init(fq, zp_prime);
+                    nmod_poly_init(fr, zp_prime);
+                    nmod_poly_divrem(fq, fr, fa, fb);
+                    nmod_poly_clear(fq);
+                    nmod_poly_clear(fr);
+                }
+            );
+            nmod_poly_clear(fa);
+            nmod_poly_clear(fb);
+        };
+
+        bench_divrem("divrem  Zp deg200/deg100", 200, 100, 200);
+        bench_divrem("divrem  Zp deg500/deg250", 500, 250, 20);
+        bench_divrem("divrem  Zp deg1000/deg500", 1000, 500, 5);
     }
 
     // ================================================================

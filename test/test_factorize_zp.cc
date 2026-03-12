@@ -468,5 +468,80 @@ int main() {
         }
     }
 
+    // --- 大素数 (p > 2^63) 的 DDF/EDF 回归测试 ---
+    // 此 bug 修复: __upoly_subtract_x/one 中 (int64_t)(p-1) 对 p > 2^63 溢出
+    {
+        uint64_t big_p = (uint64_t)(-1) - 58;  // 2^64 - 59
+
+        // §1: 大素数下 subtract_one 正确性
+        CLPOLY_TEST("__subtract_one_large_prime") {
+            // h = cx (无常数项)，h-1 应得 cx + (p-1)
+            upolynomial_<Zp> h;
+            h.push_back(std::make_pair(umonomial(1), Zp(42, big_p)));
+            auto hm1 = __upoly_subtract_one(h, big_p);
+            CLPOLY_ASSERT(hm1.size() == 2);
+            CLPOLY_ASSERT(hm1.back().first.deg() == 0);
+            CLPOLY_ASSERT(hm1.back().second.number() == big_p - 1);
+        }
+
+        // §2: 大素数下 subtract_x 正确性
+        CLPOLY_TEST("__subtract_x_large_prime") {
+            // h = c (常数)，h-x 应得 (p-1)*x + c
+            upolynomial_<Zp> h;
+            h.push_back(std::make_pair(umonomial(0), Zp(7, big_p)));
+            auto hmx = __upoly_subtract_x(h, big_p);
+            CLPOLY_ASSERT(hmx.size() == 2);
+            CLPOLY_ASSERT(hmx.front().first.deg() == 1);
+            CLPOLY_ASSERT(hmx.front().second.number() == big_p - 1);
+        }
+
+        // §3: 大素数下 EDF 可终止
+        CLPOLY_TEST("__edf_large_prime_terminates") {
+            // f = x^2 - 2500 mod big_p = (x-50)(x+50)，必须可分裂
+            upolynomial_<Zp> f;
+            f.push_back(std::make_pair(umonomial(2), Zp(1, big_p)));
+            f.push_back(std::make_pair(umonomial(0), Zp(big_p - 2500, big_p)));
+            std::mt19937 rng(42);
+            std::vector<upolynomial_<Zp>> factors;
+            __edf_Zp(factors, f, 1, rng);
+            CLPOLY_ASSERT(factors.size() == 2);
+        }
+
+        // §4: 大素数下完整因式分解
+        CLPOLY_TEST("__factor_Zp_large_prime") {
+            // f = x^3 - x = x(x-1)(x+1) mod big_p
+            upolynomial_<Zp> f;
+            f.push_back(std::make_pair(umonomial(3), Zp(1, big_p)));
+            f.push_back(std::make_pair(umonomial(1), Zp(big_p - 1, big_p)));
+            auto result = __factor_Zp(f);
+            CLPOLY_ASSERT(result.second.size() == 3);
+            CLPOLY_ASSERT(verify_factorization_Zp(f, result.first, result.second));
+        }
+
+        // §5: 大素数下随机因式分解 (5 轮)
+        CLPOLY_TEST("__factor_Zp_large_prime_random") {
+            std::mt19937 rng(12345);
+            int ok = 0;
+            for (int trial = 0; trial < 5; ++trial) {
+                // 生成两个随机线性因子，相乘
+                uint64_t a = rng() % 1000 + 1;
+                uint64_t b = rng() % 1000 + 1;
+                if (a == b) b += 1;
+                upolynomial_<Zp> f1, f2;
+                f1.push_back(std::make_pair(umonomial(1), Zp(1, big_p)));
+                f1.push_back(std::make_pair(umonomial(0), Zp(a, big_p)));
+                f2.push_back(std::make_pair(umonomial(1), Zp(1, big_p)));
+                f2.push_back(std::make_pair(umonomial(0), Zp(b, big_p)));
+                auto f = f1 * f2;
+                f.normalization();
+                auto result = __factor_Zp(f);
+                CLPOLY_ASSERT(result.second.size() == 2);
+                CLPOLY_ASSERT(verify_factorization_Zp(f, result.first, result.second));
+                ++ok;
+            }
+            CLPOLY_ASSERT(ok == 5);
+        }
+    }
+
     return clpoly_test::test_summary();
 }

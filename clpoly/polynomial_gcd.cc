@@ -282,7 +282,7 @@ namespace clpoly{
                     tmp_Pout_.push_back({std::move(Pm_ptr->first),Pm_ptr->second.number()*tmp_inv.number()*Pout_prime});
                     ++Pm_ptr;
                 }
-                Pout_prime*=prime; 
+                Pout_prime*=prime;
                 for (auto &i:tmp_Pout_)
                 {
                     i.second%=Pout_prime;
@@ -295,9 +295,9 @@ namespace clpoly{
                         i.second+=Pout_prime;
                     }
                 }
-                
+
                 // std::cout<<"Pout_:"<<tmp_Pout_<<std::endl;
-                
+
                 if (tmp_Pout_==Pout_)
                 {
                     if (Pout_d>0)

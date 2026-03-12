@@ -1219,11 +1219,12 @@ namespace clpoly{
                 lc_irr_factors.push_back(lj);
         }
 
-        // 枚举候选点
+        // 枚举候选点（shell 枚举：从小整数开始逐步扩大）
+        // 注: 方向 5（随机化）被 B2 阻塞——单变量因式分解对大系数不完全分解。
+        // B2 修复后可改为随机采样。当前仅靠方向 2（mv_T 检查）保证正确性。
         for (int bound = 0; ; ++bound)
         {
             // 生成所有 n 维向量, 各分量在 [-bound, bound], max(|αᵢ|) == bound
-            // 总数 (2*bound+1)^n - (2*(bound-1)+1)^n (排除内层)
             int range = 2 * bound + 1;
             int total = 1;
             for (size_t i = 0; i < n; ++i) total *= range;
@@ -1244,65 +1245,65 @@ namespace clpoly{
                 // 跳过已在更小 bound 检查过的点
                 if (max_abs < bound) continue;
 
-                // 条件 (b): lc 非零
-                ZZ delta;
-                if (is_number(L))
-                    delta = L.front().second;
-                else
+            // 条件 (b): lc 非零
+            ZZ delta;
+            if (is_number(L))
+                delta = L.front().second;
+            else
+            {
+                auto L_eval = assign(L, alpha);
+                if (L_eval.empty()) continue;
+                if (!is_number(L_eval)) continue;
+                delta = L_eval.front().second;
+            }
+            if (delta == 0) continue;
+
+            // 条件 (b'): lc(f)(α) 不被 MTSHL 素数整除
+            if (lc_coprime_mod != 0 && delta.fdiv_ui(lc_coprime_mod) == 0) continue;
+
+            // 条件 (a): f(x₁, α) 无平方
+            // 注: f0 是单变量多项式, 用 upolynomial GCD 避免多变量 GCD 的开销
+            auto f0 = assign(f, alpha);
+            {
+                upolynomial_<ZZ> f0_u;
+                poly_convert(f0, f0_u);
+                auto f0_d = derivative(f0_u);
+                if (!f0_d.empty())
                 {
-                    auto L_eval = assign(L, alpha);
-                    if (L_eval.empty()) continue;
-                    if (!is_number(L_eval)) continue;
-                    delta = L_eval.front().second;
+                    auto g = polynomial_GCD(f0_u, f0_d);
+                    if (!g.empty() && get_deg(g) > 0) continue;
                 }
-                if (delta == 0) continue;
+            }
 
-                // 条件 (b'): lc(f)(α) 不被 MTSHL 素数整除
-                if (lc_coprime_mod != 0 && delta.fdiv_ui(lc_coprime_mod) == 0) continue;
-
-                // 条件 (a): f(x₁, α) 无平方
-                // 注: f0 是单变量多项式, 用 upolynomial GCD 避免多变量 GCD 的开销
-                auto f0 = assign(f, alpha);
+            // 条件 (d): lc 因子求值两两互素
+            if (!lc_irr_factors.empty())
+            {
+                std::vector<ZZ> vals;
+                bool bad_point = false;
+                for (auto& lj : lc_irr_factors)
                 {
-                    upolynomial_<ZZ> f0_u;
-                    poly_convert(f0, f0_u);
-                    auto f0_d = derivative(f0_u);
-                    if (!f0_d.empty())
-                    {
-                        auto g = polynomial_GCD(f0_u, f0_d);
-                        if (!g.empty() && get_deg(g) > 0) continue;
-                    }
+                    auto lj_eval = assign(lj, alpha);
+                    if (lj_eval.empty()) { bad_point = true; break; }
+                    ZZ v = is_number(lj_eval) ? lj_eval.front().second : ZZ(0);
+                    if (v == 0) { bad_point = true; break; }
+                    vals.push_back(abs(v));
                 }
+                if (bad_point) continue;
+                // 条件 (d'): |lⱼ(α)| ≥ 2, 避免退化赋值
+                for (auto& v : vals)
+                    if (v <= ZZ(1)) { bad_point = true; break; }
+                if (bad_point) continue;
+                // 两两互素
+                bool pairwise_coprime = true;
+                for (size_t i = 0; i < vals.size() && pairwise_coprime; ++i)
+                    for (size_t j = i + 1; j < vals.size() && pairwise_coprime; ++j)
+                        if (gcd(vals[i], vals[j]) != ZZ(1))
+                            pairwise_coprime = false;
+                if (!pairwise_coprime) continue;
+            }
 
-                // 条件 (d): lc 因子求值两两互素
-                if (!lc_irr_factors.empty())
-                {
-                    std::vector<ZZ> vals;
-                    bool bad_point = false;
-                    for (auto& lj : lc_irr_factors)
-                    {
-                        auto lj_eval = assign(lj, alpha);
-                        if (lj_eval.empty()) { bad_point = true; break; }
-                        ZZ v = is_number(lj_eval) ? lj_eval.front().second : ZZ(0);
-                        if (v == 0) { bad_point = true; break; }
-                        vals.push_back(abs(v));
-                    }
-                    if (bad_point) continue;
-                    // 条件 (d'): |lⱼ(α)| ≥ 2, 避免退化赋值
-                    for (auto& v : vals)
-                        if (v <= ZZ(1)) { bad_point = true; break; }
-                    if (bad_point) continue;
-                    // 两两互素
-                    bool pairwise_coprime = true;
-                    for (size_t i = 0; i < vals.size() && pairwise_coprime; ++i)
-                        for (size_t j = i + 1; j < vals.size() && pairwise_coprime; ++j)
-                            if (gcd(vals[i], vals[j]) != ZZ(1))
-                                pairwise_coprime = false;
-                    if (!pairwise_coprime) continue;
-                }
-
-                if (skip > 0) { --skip; continue; }
-                return alpha;
+            if (skip > 0) { --skip; continue; }
+            return alpha;
             }
         }
         // 不可达
@@ -2407,17 +2408,22 @@ namespace clpoly{
                         }
                     }
 
-                    // 剩余部分作为最后一个因子
-                    if (!g_remaining.empty() && !is_number(g_remaining))
+                    // 接受条件：mv_T ≤ 1（所有 Hensel 因子已被 trial division 消耗，
+                    // 最多剩 1 个作为 Zassenhaus 互补因子）
+                    // mv_T > 1 → over-splitting 或 Hensel 提升失败 → 换下一个求值点
+                    if (mv_T.size() <= 1)
                     {
-                        auto h = g_remaining;
-                        normalize_factor(h);
-                        if (!is_number(h))
-                            verified.push_back({std::move(h), 1});
-                    }
+                        if (!g_remaining.empty() && !is_number(g_remaining))
+                        {
+                            auto h = g_remaining;
+                            normalize_factor(h);
+                            if (!is_number(h))
+                                verified.push_back({std::move(h), 1});
+                        }
 
-                    if (verified.size() >= 2)
-                        return verified;
+                        if (verified.size() >= 2)
+                            return verified;
+                    }
                 }
                 var_skip[vi] = batch_end;
             }

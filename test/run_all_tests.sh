@@ -32,6 +32,7 @@ TESTS=(
     test_multivar_hensel
     test_factorize_multivar
     test_groebner
+    test_dense_upoly_hgcd
 )
 
 TOTAL_PASS=0

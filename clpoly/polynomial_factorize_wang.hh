@@ -1302,8 +1302,8 @@ namespace clpoly{
                 if (!pairwise_coprime) continue;
             }
 
-                if (skip > 0) { --skip; continue; }
-                return alpha;
+            if (skip > 0) { --skip; continue; }
+            return alpha;
             }
         }
         // 不可达

@@ -42,5 +42,8 @@ test/GCD_1.txt
 test/j621_data.txt
 test/randommtp
 
+# Debug/scratch source files
+test/debug_*.cc
+
 # Generated source (legacy)
 test/associatedgraph_test.cc

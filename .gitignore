@@ -8,6 +8,10 @@
 _build/
 lib/
 
+# Lean 4
+lean/.lake/
+lean/.build/
+
 # Legacy build directories
 build/
 

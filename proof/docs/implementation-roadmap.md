@@ -305,7 +305,7 @@ T3.4 Zp 管线组装：消除 factor_Zp_correct 的 sorry
 
 **文件**：`CLPoly/Algorithm/DDF.lean`
 
-1:1 对应 C++ `__ddf_Zp`，建模为顶层递归函数：
+对应 C++ `__ddf_Zp` 的算法逻辑，操作 Mathlib 多项式类型，建模为顶层递归函数：
 
 ```lean
 def ddfLoop (h f_star : Polynomial (ZMod p)) (d : ℕ)
@@ -333,7 +333,7 @@ termination_by f_star.natDeg + 1 - 2 * d
 
 **文件**：`CLPoly/Algorithm/SquarefreeZp.lean`
 
-1:1 对应 C++ `__squarefree_Zp`。递归结构（char p 下提取 p-th root）。
+对应 C++ `__squarefree_Zp` 的算法逻辑。递归结构（char p 下提取 p-th root）。
 
 证明 `SquarefreeDecomp f (squarefree_Zp f)` 成立。
 
@@ -341,7 +341,7 @@ termination_by f_star.natDeg + 1 - 2 * d
 
 **文件**：`CLPoly/Algorithm/EDF.lean`
 
-1:1 对应 C++ `__edf_Zp`。用 `partial def`（概率终止）。
+对应 C++ `__edf_Zp` 的算法逻辑。用 `partial def`（概率终止）。
 
 证明义务是**条件化的**：假设随机选取找到非平凡因子，则分裂正确。
 
@@ -365,13 +365,13 @@ theorem factor_Zp_correct (f : Polynomial (ZMod p)) (hf : f ≠ 0) :
 
 | 步骤 | 操作 | 产出 |
 |------|------|------|
-| Step 1: 提取 | C++ 源码添加标注 | `lean/CLPoly/Annotated/` |
-| Step 2: 翻译 | 标注版 → Lean 4 `def`（1:1 对应） | `lean/CLPoly/Algorithm/` |
+| Step 1: 提取 | C++ 源码添加标注 | `CLPoly/Annotated/` |
+| Step 2: L2 建模 | 提取算法逻辑 → Lean 4 `def`（Mathlib 类型） | `CLPoly/Algorithm/` |
 | Step 3: 陈述 | 写 `theorem ... := by sorry` | 同上 |
 | Step 4: 证明 | 替换 `sorry`，利用 Phase 2 的 L3 定理 | 同上 |
-| Step 5: 审查 | 逐行对照 Lean ↔ C++ | `lean/CLPoly/Review/` |
+| Step 5: 审查 | 对照 Lean 算法模型 ↔ C++ 算法逻辑 | `CLPoly/Review/` |
 
-**1:1 对应原则**：Lean 函数的控制流结构必须与 C++ 一一对应。
+**算法建模原则**：Lean 函数捕获 C++ 的算法逻辑（循环结构、分支条件），但操作 Mathlib 数学类型，抽象掉实现细节。1:1 控制流对应在 Phase 5（L1 实现模型）中处理。
 
 ### 4.5 Phase 3 验收标准
 
@@ -434,13 +434,13 @@ theorem hensel_uniqueness
 
 ---
 
-## 6. Phase 5：L1 表示层 + LLL（可选）
+## 6. Phase 5：L1 实现模型 + LLL
 
-### 6.1 L1 表示层
+### 6.1 L1 实现模型
 
-建模 C++ 的表示细节：U64/I64 补码语义、Vec 越界安全、Move 语义。
+1:1 对应 C++ 实现：U64/I64 补码语义、Vec 越界安全、Move 语义。控制流必须与 C++ 一一对应，操作对象是 C++ 语义模型类型。
 
-**优先级低**：L2 正确性是核心价值，L1 是锦上添花。
+**依赖 L2 完成**：L1 精化证明证明 L1 行为与 L2 算法模型一致，因此排在 L2 之后。
 
 #### B3 Bug 形式化证明
 
@@ -484,7 +484,7 @@ lean/
     │   ├── HenselLift.lean             -- __hensel_lift
     │   ├── Recombine.lean              -- __zassenhaus_recombine
     │   └── LLLFactorize.lean           -- __lll_factorize
-    ├── Repr/                            -- L1 表示层（Phase 5，可选）
+    ├── Impl/                            -- L1 实现模型（Phase 5）
     │   ├── UInt64.lean
     │   ├── Vector.lean
     │   └── Ownership.lean
@@ -507,7 +507,7 @@ lean/
 | **M2** Phase 2 | L3 数学基石 | 5 个数学定理无 `sorry` |
 | **M3** Phase 3 | L2 Zp[x] 管线 | `factor_Zp_correct` 无 `sorry` |
 | **M4** Phase 4 | L2 Z[x] 管线 | `factor_ZZ_correct` 无 `sorry`（Hensel 可 `axiom`） |
-| **M5** Phase 5 | L1 + 补全 | 消除所有 `sorry` 和 `axiom` |
+| **M5** Phase 5 | L1 实现模型 + 补全 | L1 精化证明完成，消除所有 `sorry` 和 `axiom` |
 
 ---
 

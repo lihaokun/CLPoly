@@ -17,14 +17,14 @@
 ┌─────────────────────────────────────────────────┐
 │               Lean 4 定理证明器                    │
 │                                                   │
-│  L3: 数学基础层                                    │
+│  L3: 数学基石                                      │
 │      有限域理论、多项式环、不可约性、Hensel 引理       │
 │      ↕ 正确性证明                                  │
-│  L2: 算法层                                       │
-│      DDF/EDF/SQF/Hensel/LLL 的 1:1 函数模型        │
+│  L2: 算法模型                                      │
+│      DDF/EDF/SQF/Hensel/LLL 的算法逻辑（Mathlib 类型）│
 │      ↕ 精化证明                                    │
-│  L1: 表示层                                       │
-│      uint64_t 语义、vector 模型、move 追踪           │
+│  L1: 实现模型                                      │
+│      1:1 对应 C++（uint64 语义、数组越界、move）      │
 │                                                   │
 └───────────────────┬─────────────────────────────┘
                     │ 人工审查：Lean 模型 ↔ C++ 代码对应
@@ -34,7 +34,7 @@
 
 **信任假设 (TCB)**：
 - Lean 4 核心 + Mathlib 正确
-- L1 模型忠实反映 C++ 语义（人工审查保证，可通过 crosscheck 增强信心）
+- L1 实现模型忠实反映 C++ 语义（人工审查保证，可通过 crosscheck 增强信心）
 - 编译器 + 硬件正确
 
 ## 3. L3：数学基础层
@@ -76,11 +76,11 @@ Mathlib: ZMod p 是域
   → 无平方 + UFD → 精确分解
 ```
 
-## 4. L2：算法层
+## 4. L2：算法模型
 
 ### 4.1 需要建模的函数
 
-按 `polynomial_factorize_zp.hh` 的结构 1:1 建模：
+建模 `polynomial_factorize_zp.hh` 的算法逻辑，操作 Mathlib 数学类型（`Polynomial (ZMod p)` 等），抽象掉 C++ 实现细节（整数表示、数组布局、内存管理）：
 
 #### 4.1.1 `__squarefree_Zp`（无平方分解）
 
@@ -174,7 +174,7 @@ theorem factor_Zp_correct (f : ZpPoly) (hf : f ≠ 0) :
 | `__zassenhaus_recombine` | 子集乘积 = 真因子（mod → Z 的提升） |
 | `__lll_factorize` | Phase 1 + Phase 2 的完整性：不丢因子 |
 
-## 5. L1：表示层
+## 5. L1：实现模型
 
 ### 5.1 uint64_t 模型
 
@@ -271,48 +271,18 @@ def Vec.deref (v : Vec α) (ref : VecRef α)
 
 ## 6. 实施计划
 
-### Phase 0：环境搭建（1 周）
+实施计划的权威版本在 `proof/docs/implementation-roadmap.md`（v2 自顶向下）。以下仅列出 Phase 划分概览，详细任务清单和验收标准见路线图。
 
-- [ ] 创建 `lean/` 子目录，初始化 Lean 4 + Mathlib 项目
-- [ ] 确认 Mathlib 的 `Polynomial (ZMod p)` API 可用性
-- [ ] 定义 `ZpPoly` 类型别名和基本操作封装
+| Phase | 内容 | 对应层 |
+|-------|------|--------|
+| Phase 0 | 环境搭建 + Mathlib API 验证 | — |
+| Phase 1 | 顶层正确性骨架 + 接口规约锁定 | Spec + Pipeline |
+| Phase 2 | L3 数学基石（Thm 2.1、Cor 2.2、CRT、概率分析） | L3 Math |
+| Phase 3 | L2 算法模型 — Zp[x] 管线（SQF/DDF/EDF） | L2 Algorithm |
+| Phase 4 | L2 算法模型 — Z[x] 管线（Hensel/重组/LLL） | L2 Algorithm + L3 Math |
+| Phase 5 | L1 实现模型（U64/Vec/Move，1:1 对应 C++，精化 L2） | L1 Impl |
 
-### Phase 1：DDF 概念验证（2-3 周）
-
-目标：端到端验证 `__ddf_Zp` 的正确性。
-
-- [ ] L3: 形式化定理 2.1（或在 Mathlib 中找到等价结论）
-- [ ] L3: 形式化推论 2.2
-- [ ] L2: 建模 `upoly_powmod`，证明 `result ≡ base^exp (mod m)`
-- [ ] L2: 建模 `upoly_subtract_x`，证明 `result = h - X`
-- [ ] L2: 建模 `ddf_Zp`，证明循环不变量（引理 3.1）
-- [ ] L2: 证明 DDF 分裂正确性（定理 3.2）
-- [ ] L2: 证明提前终止正确性（命题 3.3）
-- [ ] L1: 建模 `U64`/`I64`，证明 B3 bug 的 old-wrong/new-correct
-- [ ] 评估报告：Mathlib 缺口、证明难度、后续工作量估算
-
-### Phase 2：Zp 完整管线（3-4 周）
-
-- [ ] L2: 建模 `squarefree_Zp`，证明输出无平方 + 乘积还原
-- [ ] L2: 建模 `edf_Zp`，证明分裂概率下界
-- [ ] L2: 建模 `factor_Zp`，证明顶层正确性定理
-- [ ] L1: 完成 Vec/Move/迭代器模型
-- [ ] L1: 对所有函数验证数组越界安全
-
-### Phase 3：Z[x] Hensel + 重组（4-6 周）
-
-- [ ] L3: 形式化 Hensel 引理（多项式 p-adic 提升）
-- [ ] L3: 形式化 Mignotte 界
-- [ ] L2: 建模 `__hensel_lift`
-- [ ] L2: 建模 `__zassenhaus_recombine`
-- [ ] L2: 建模 `__lll_factorize`，证明 Phase 1 + Phase 2 完整性
-- [ ] L2: 顶层定理：`factor_ZZ_correct`
-
-### Phase 4：LLL 验证（可选，高难度）
-
-- [ ] L3: 形式化 LLL 算法正确性（格基约化保证）
-- [ ] L2: 建模 `__lll_reduce`
-- [ ] L2: 证明 van Hoeij 重组的因子绑定正确性
+**Phase 0 已完成**：E1-E4 实验通过，Mathlib Gap Report 完成。
 
 ## 7. Path C 执行流程
 
@@ -322,16 +292,16 @@ def Vec.deref (v : Vec α) (ref : VecRef α)
 
 ```
 Step 1: 提取           C++ 源码 → 标注版 C++（标记控制流 + 变量生命期）
-Step 2: 翻译           标注版 C++ → Lean 4 函数定义（1:1 对应）
+Step 2: L2 建模        提取算法逻辑 → Lean 4 函数定义（Mathlib 类型，抽象实现细节）
 Step 3: 陈述           写出正确性定理（前条件 + 后条件 + 不变量）
-Step 4: 证明（L2）     证明算法正确性（假设底层操作正确）
-Step 5: 证明（L1）     证明表示层安全（整数溢出、数组越界、move）
-Step 6: 审查           人工核对 Lean 模型 ↔ C++ 代码的逐行对应
+Step 4: 证明（L2）     证明算法正确性（利用 L3 数学定理）
+Step 5: L1 建模+证明   1:1 对应 C++ 控制流（U64/Vec/Ownership），精化证明 L1 行为 = L2
+Step 6: 审查           人工核对 L1 模型 ↔ C++ 代码的逐行对应
 ```
 
 ### 7.2 Step 1：提取（C++ → 标注版 C++）
 
-在原始 C++ 代码上标注，不改动代码本身。标注内容：
+在原始 C++ 代码上标注，不改动代码本身。标注内容为 L1（1:1 对应）所需的信息：
 
 ```cpp
 // [LEAN: loop_var h, f_star, d]
@@ -361,60 +331,45 @@ for (uint64_t d = 1; ; ++d)
 - 标记每个数组访问的越界条件
 - 为 Step 2 翻译提供精确映射
 
-### 7.3 Step 2：翻译（标注版 C++ → Lean 4）
+### 7.3 Step 2：L2 建模（C++ 算法逻辑 → Lean 4 算法模型）
 
-翻译规则表：
+L2 建模提取 C++ 的算法逻辑，操作 Mathlib 数学类型，抽象掉实现细节：
 
-| C++ 构造 | Lean 4 对应 | 注意事项 |
-|---------|------------|---------|
-| `for (init; cond; step) { body }` | `let rec loop (vars) := if cond then body; loop (step vars) else vars` | 需 well-founded 递减证明 |
-| `while (true) { ... break; }` | `partial def` 或 `loop` + 燃料参数 | EDF 用 `partial` |
-| `uint64_t x = expr;` | `let x : U64 := expr` | 模 2^64 语义 |
-| `(int64_t)(p - 1)` | `cast_u64_to_i64 (p - 1)` | 显式转换，可证明溢出 |
-| `vec.push_back(x)` | `let vec' := vec.push_back x` | 旧 `vec` 不再使用 |
-| `vec[i]` | `vec.get i (by ...)` | 需提供 `i < vec.size` 证明 |
-| `auto x = std::move(y)` | `let (x, y') := Ownership.move_from y (by ...)` | `y'` 标记为 moved |
-| `pair_vec_div(q, f, g, ...)` | `let (q, r) := poly_divmod f g` | 精确整除时 `r = 0` |
-| `polynomial_GCD(a, b)` | `Polynomial.gcd a b` | 对接 Mathlib 或自定义 |
+| C++ 构造 | L2 算法模型 | L1 实现模型（Phase 5） |
+|---------|------------|---------------------|
+| `for` 循环 | 数学归纳 / 递归 | 顶层递归 + `termination_by`（1:1 控制流） |
+| `while(true)` | 存在性论证 | `partial def` 或 fuel 参数 |
+| `polynomial_GCD(a, b)` | `GCDMonoid.gcd a b` | 调用 Euclid GCD 的 L1 模型 |
+| `(int64_t)(p - 1)` | `p - 1`（自然数） | `cast_u64_to_i64 (p - 1)`（显式溢出语义） |
+| `vec[i]` | `list.get i` | `Vec.get i (proof : i < size)` |
+| `std::move(v)` | 无对应（纯函数式） | `Ownership.move_from v (proof : ¬moved)` |
 
-**1:1 对应原则**：Lean 函数的控制流结构必须与 C++ 一一对应。不允许"重写为更优雅的 Lean 风格"——否则 Step 6 的审查无法进行。
+**L2 建模原则**：Lean 函数捕获 C++ 的算法逻辑（DDF 循环、EDF 随机分裂、Hensel 提升），但操作 Mathlib 的 `Polynomial (ZMod p)` 等数学类型，抽象掉整数表示、数组布局、内存管理。
 
-DDF 的翻译结果：
+DDF 的 L2 算法模型：
 
 ```lean
-/-- __ddf_Zp 的 1:1 Lean 模型 -/
-def ddf_Zp (f : ZpPoly) (p : U64) : List (ZpPoly × Nat) :=
-  let h₀ : ZpPoly := X                       -- h = x
-  let f_star₀ : ZpPoly := f
-  let rec loop (h : ZpPoly) (f_star : ZpPoly) (d : Nat)
-               (acc : List (ZpPoly × Nat))
-               (h_deg_bound : f_star.deg ≥ 0 → h.deg < f_star.deg)
-               : List (ZpPoly × Nat) :=
-    if h_exit : f_star.deg < 2 * d then
-      -- 提前终止：f_star 本身是不可约（或为 1）
-      if f_star.deg > 0 then acc ++ [(f_star.monic, f_star.natDeg)]
-      else acc
+/-- __ddf_Zp 的算法模型（L2）：操作 Mathlib Polynomial (ZMod p) -/
+def ddfLoop (h f_star : Polynomial (ZMod p)) (d : ℕ)
+    (acc : List (Polynomial (ZMod p) × ℕ))
+    : List (Polynomial (ZMod p) × ℕ) :=
+  if f_star.natDeg < 2 * d then
+    if 0 < f_star.natDeg then acc ++ [(f_star, f_star.natDeg)] else acc
+  else
+    let h' := (h ^ p) %ₘ f_star           -- powmod
+    let gd := gcd (h' - X) f_star          -- gcd 步
+    if 0 < gd.natDeg then
+      ddfLoop (h' %ₘ (f_star /ₘ gd)) (f_star /ₘ gd) (d + 1) (acc ++ [(gd, d)])
     else
-      let h' := upoly_powmod h p f_star       -- h = h^p mod f*
-      let h_minus_x := upoly_subtract_x h' p  -- h - x
-      let gd := poly_gcd h_minus_x f_star     -- gcd(h-x, f*)
-      if gd.deg > 0 then
-        let f_star' := poly_exact_div f_star gd  -- f* / gd
-        let h'' := upoly_mod h' f_star'           -- h mod new_f*
-        loop h'' f_star' (d + 1) (acc ++ [(gd.monic, d)])
-             (by ...)   -- 证明 h''.deg < f_star'.deg
-      else
-        loop h' f_star (d + 1) acc
-             (by ...)   -- 不变量保持
-  termination_by f_star.natDeg - 2 * d   -- well-founded: gap 递减或 d 递增
-  loop h₀ f_star₀ 1 [] (by ...)
+      ddfLoop h' f_star (d + 1) acc
+termination_by f_star.natDeg + 1 - 2 * d
 ```
 
 ### 7.4 Step 3：陈述（写正确性定理）
 
-对每个函数，陈述三类定理：
+对每个函数，陈述两类定理（L2 和 L1 分别陈述）：
 
-**A. 功能正确性**（L2 层）
+**A. 功能正确性**（L2 算法模型）
 ```lean
 theorem ddf_Zp_correct (f : ZpPoly) (hm : Monic f) (hsq : Squarefree f) :
     let result := ddf_Zp f p
@@ -429,7 +384,7 @@ theorem ddf_Zp_correct (f : ZpPoly) (hm : Monic f) (hsq : Squarefree f) :
   sorry
 ```
 
-**B. 循环不变量**（L2 层，辅助引理）
+**B. 循环不变量**（L2 算法模型，辅助引理）
 ```lean
 theorem ddf_loop_invariant (h f_star : ZpPoly) (d : Nat) :
     -- 在第 d 次迭代开始时（powmod 之后）
@@ -439,14 +394,15 @@ theorem ddf_loop_invariant (h f_star : ZpPoly) (d : Nat) :
   sorry
 ```
 
-**C. 表示层安全**（L1 层）
+**C. 实现模型安全**（L1 实现模型，Phase 5）
 ```lean
-theorem ddf_Zp_no_overflow (f : ZpPoly) (p : U64) (hp : p.val ≥ 2) :
-    -- subtract_x 中的 p-1 不溢出
-    ∀ h encountered in ddf_Zp execution,
-      upoly_subtract_x h p 计算中无 U64 溢出
-    -- 所有数组访问都在界内
-    ∧ all_array_accesses_in_bounds (ddf_Zp f p) := by
+/-- L1 精化：实现模型行为 = L2 算法模型 -/
+theorem ddf_Zp_impl_refines (f : ZpPoly) (p : U64) (hp : p.val ≥ 2) :
+    -- L1 实现模型的输出与 L2 算法模型一致
+    ddf_Zp_impl f p = ddf_Zp_algo f p
+    -- 且所有 U64 运算无溢出、数组访问在界内
+    ∧ no_overflow (ddf_Zp_impl f p)
+    ∧ all_array_accesses_in_bounds (ddf_Zp_impl f p) := by
   sorry
 ```
 
@@ -471,24 +427,34 @@ L2 证明策略：
 - 归纳步的核心是定理 3.2（`gcd(h-x, f*) = 全部 d 次因子`）
 - 终止性用 `f_star.natDeg` 的严格递减（提取非平凡 gd 时）或 `2d` 超过 `deg f_star`
 
-L1 证明策略：
+L1 精化证明策略（Phase 5）：
+- 精化关系：证明 L1（U64/Vec 操作）的输出与 L2（Mathlib 类型操作）一致
 - `p - 1` 不溢出：`p ≥ 2 → p - 1 ≥ 1`，U64 减法安全
 - 数组越界：追踪 `_coeffs.size()` = `deg + 1`，每次访问的 index ≤ deg
 
 ### 7.6 Step 6：人工审查
 
-审查清单（每个函数必须通过）：
+审查分两层进行：
+
+**L2 审查**（Phase 3-4）：确认算法模型正确捕获了 C++ 的算法逻辑
 
 | # | 检查项 | 方法 |
 |---|--------|------|
-| 1 | Lean 函数与 C++ 函数的**控制流同构** | 逐行对照，确认分支/循环结构一致 |
-| 2 | 每个 C++ 变量在 Lean 中有**同名对应** | 变量映射表 |
-| 3 | 每个 C++ 函数调用在 Lean 中有**对应调用** | 调用图比对 |
-| 4 | C++ 的隐式转换在 Lean 中**显式建模** | 检查所有 int/uint 赋值 |
-| 5 | `std::move` 在 Lean 中有 `Ownership.move_from` 对应 | move 点列表比对 |
-| 6 | 数组访问的越界证明的**前提条件**与 C++ 的**运行时保证**一致 | 逐个检查 |
+| 1 | Lean 算法模型的**逻辑结构**与 C++ 算法一致 | 对照算法分支/循环/递归结构 |
+| 2 | 数学操作（gcd、divByMonic 等）正确对应 C++ 调用 | 调用映射表 |
+| 3 | 边界条件（提前终止、空输入等）处理一致 | 逐条对比 |
 
-审查产物：`lean/CLPoly/Review/DDF_review.md`，记录每个检查项的结论。
+**L1 审查**（Phase 5）：确认实现模型 1:1 对应 C++ 代码
+
+| # | 检查项 | 方法 |
+|---|--------|------|
+| 1 | L1 Lean 函数与 C++ 函数的**控制流同构** | 逐行对照 |
+| 2 | 每个 C++ 变量在 L1 中有**同名对应** | 变量映射表 |
+| 3 | C++ 的隐式转换在 L1 中**显式建模** | 检查所有 int/uint 赋值 |
+| 4 | `std::move` 在 L1 中有 `Ownership.move_from` 对应 | move 点列表比对 |
+| 5 | 数组访问的越界证明的**前提条件**与 C++ 的**运行时保证**一致 | 逐个检查 |
+
+审查产物：`CLPoly/Review/DDF_review.md`，记录每个检查项的结论。
 
 ### 7.7 持续同步机制
 
@@ -523,7 +489,7 @@ lean/
 │   │   ├── FactorZp.lean          -- factor_Zp 编排
 │   │   ├── HenselLift.lean        -- Hensel 提升
 │   │   └── LLLFactorize.lean      -- Z[x] 完整流程
-│   └── Repr/                      -- L1: 表示层
+│   └── Impl/                      -- L1: 实现模型（1:1 对应 C++）
 │       ├── UInt64.lean            -- U64/I64 模型 + 转换语义
 │       ├── Barrett.lean           -- Barrett 模乘正确性
 │       ├── Vector.lean            -- Vec 模型 + 越界安全

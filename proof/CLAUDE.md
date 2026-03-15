@@ -10,6 +10,7 @@ CLPoly 因式分解模块的 Lean 4 机器检查证明。验证目标是 C++ 实
 
 ```bash
 export PATH="$HOME/.elan/bin:$PATH"
+cd proof/lean
 lake build              # 编译全部
 lake env lean FILE.lean # 单文件检查
 ```
@@ -17,12 +18,12 @@ lake env lean FILE.lean # 单文件检查
 ## 验证架构：三层自顶向下
 
 ```
-L3  数学基石    CLPoly/Math/         Mathlib 定理组合，纯数学
-L2  算法模型    CLPoly/Algorithm/    1:1 对应 C++，证明满足 Spec
-L1  表示层      CLPoly/Repr/         uint64 溢出、数组越界（可选）
+L3  数学基石    CLPoly/Math/         Mathlib 定理组合，纯数学定义与性质
+L2  算法模型    CLPoly/Algorithm/    CLPoly 算法逻辑，抽象掉实现细节，证明满足 L3 Spec
+L1  实现模型    CLPoly/Impl/         1:1 对应 C++（uint64 语义、数组越界、move），精化 L2
 ```
 
-**工作顺序**：Spec（接口规约）→ Pipeline（顶层骨架）→ Math（L3）→ Algorithm（L2）→ Repr（L1）
+**工作顺序**：Spec（接口规约）→ Pipeline（顶层骨架）→ Math（L3）→ Algorithm（L2）→ Impl（L1）
 
 详见 `proof/docs/implementation-roadmap.md`
 
@@ -38,23 +39,30 @@ L1  表示层      CLPoly/Repr/         uint64 溢出、数组越界（可选）
 - `CLPoly/Spec.lean` — 子过程接口规约（Prop 定义）
 - `CLPoly/Pipeline/` — 顶层正确性定理
 - `CLPoly/Math/` — L3 纯数学定理
-- `CLPoly/Algorithm/` — L2 算法模型（1:1 对应 C++）
+- `CLPoly/Algorithm/` — L2 算法模型（抽象算法逻辑）
+- `CLPoly/Impl/` — L1 实现模型（1:1 对应 C++）
 - `CLPoly/Experiment/` — Phase 0 实验（保留参考）
 
 ### 命名
 - 规约 Prop：`SquarefreeDecomp`、`DDFCorrect`、`EDFCorrect`
 - 数学定理：`irreducible_dvd_X_pow_sub_X`、`gcd_X_pow_sub_X_factors`
-- 算法函数：`ddfLoop`、`squarefree_Zp`（对应 C++ 函数名）
+- L2 算法函数：`ddfLoop`、`squarefree_Zp`（对应 CLPoly 算法）
+- L1 实现函数：`ddfLoop_impl`、`subtract_x_impl`（1:1 对应 C++ 函数名 + 控制流）
 
-### 1:1 对应原则
-Lean 算法函数的控制流必须与 C++ 一一对应，不允许重写为"更优雅的 Lean 风格"。
+### L2 算法模型原则
+算法模型捕获 CLPoly 的算法逻辑（DDF 循环、EDF 随机分裂、Hensel 提升），但抽象掉 C++ 实现细节（整数表示、数组布局、内存管理）。操作对象是 Mathlib 的 `Polynomial (ZMod p)` 等数学类型。
 
-| C++ 构造 | Lean 4 对应 |
-|---------|------------|
-| `for` 循环 | 顶层递归 + `termination_by` |
-| `while(true)` | `partial def` 或 fuel 参数 |
-| `gcd(a, b)` | `GCDMonoid.gcd a b`（非 `Polynomial.gcd`） |
-| `f /ₘ g` | `divByMonic`（需 `Monic g` 或 `Ring` 即可） |
+### L1 实现模型：1:1 对应原则
+实现模型的控制流必须与 C++ 一一对应，不允许重写为"更优雅的 Lean 风格"。操作对象是 `U64`、`Vec` 等 C++ 语义模型。精化证明证明 L1 行为与 L2 算法一致。
+
+| C++ 构造 | L2 算法模型 | L1 实现模型 |
+|---------|-----------|-----------|
+| `for` 循环 | 数学归纳 / 递归 | 顶层递归 + `termination_by`（1:1 控制流） |
+| `while(true)` | 存在性论证 | `partial def` 或 fuel 参数 |
+| `polynomial_GCD(a, b)` | `GCDMonoid.gcd a b` | 调用 Euclid GCD 的 L1 模型 |
+| `(int64_t)(p - 1)` | `p - 1`（自然数） | `cast_u64_to_i64 (p - 1)`（显式溢出语义） |
+| `vec[i]` | `list.get i` | `Vec.get i (proof : i < size)` |
+| `std::move(v)` | 无对应（纯函数式） | `Ownership.move_from v (proof : ¬moved)` |
 
 ## Mathlib API 速查
 

@@ -62,6 +62,8 @@ def DDFCorrect (f : Polynomial (ZMod p))
       ∃ pr ∈ result, q ∣ pr.1)
   -- 4. 乘积还原
   ∧ Associated f (result.map (fun pr => pr.1)).prod
+  -- 5. 每个 gd 首一（域上 gcd 的自然性质，显式声明以衔接 EDF 前置条件）
+  ∧ (∀ pr ∈ result, Monic pr.1)
 
 /-- EDF 规约：输入等度多项式（所有不可约因子度 = d）→ 输出不可约因子列表
 

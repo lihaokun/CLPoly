@@ -3,6 +3,8 @@
 
 -- Phase 1: 接口规约 + 顶层骨架
 import CLPoly.Spec
+import CLPoly.Pipeline.FactorZp
+import CLPoly.Pipeline.FactorZZ
 
 -- Phase 0: 实验（保留参考）
 import CLPoly.Experiment.E1_ZpPolyAPI

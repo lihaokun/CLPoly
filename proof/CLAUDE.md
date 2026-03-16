@@ -27,6 +27,10 @@ L1  实现模型    CLPoly/Impl/         1:1 对应 C++（uint64 语义、数组
 
 详见 `proof/docs/implementation-roadmap.md`
 
+## 证明工作流
+
+对每个需要证明的定理或 sorry，必须先写**自然语言证明草稿**（关键步骤、依赖引理、Mathlib 路径），确认后再形式化为 Lean 代码。禁止跳过草稿直接写 tactic proof。
+
 ## 编码约定
 
 ### Lean 风格

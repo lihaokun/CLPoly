@@ -96,6 +96,13 @@ SQF: f ≈ ∏ gᵢ^eᵢ
 - `let` 绑定在证明 goal 中会被 `rw` 穿透——避免在引理声明中使用 `let`，或用 `exact ... .trans ...` 代替 `rw`
 - `Squarefree.squarefree_of_dvd : x ∣ y → Squarefree y → Squarefree x` 已在 Mathlib 中
 
+## 度量
+- 耗时：~8 小时（组合证明设计 ~2h、5 个辅助引理 ~3h、主定理组装 ~2h、调试 ~1h）
+- 迭代：~8 轮编译-修复循环（`let` 绑定 rw 穿透问题反复出现；`List.bind` → `List.flatMap` API 迁移）
+- Lean 新增行数：~195 行（FactorZp.lean 从 37 行扩展到 232 行）
+- 对应 C++ 行数：N/A（框架组合证明无对应实现）
+- 放弃的方案：最初尝试直接 `simp` 消除 flatMap 乘积，失败后改为手写 `list_prod_flatMap` 列表归纳引理
+
 ## 5. 涉及文件
 
 | 文件 | 操作 |

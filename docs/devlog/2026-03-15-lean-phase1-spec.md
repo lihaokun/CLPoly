@@ -65,6 +65,13 @@
 - `List.Forall₂` 替代 `Fin` 索引：避免 `omega` 无法跨假设推导长度相等的问题
 - `Associated` 用于乘积还原（允许单位差异，比精确等号更合理）
 
+## 度量
+- 耗时：~4 小时（文档审计 ~1.5h、Phase 0 重现 ~0.5h、Spec.lean 编写 ~2h）
+- 迭代：3 轮编译-修复循环（Spec.lean 的 typeclass / 签名调整）
+- Lean 新增行数：133 行（Spec.lean）
+- 对应 C++ 行数：N/A（纯规约，无对应实现）
+- 放弃的方案：最初用 `Fin n → Polynomial` 索引因子列表，改为 `List.Forall₂` 避免长度推导困难
+
 ## 4. 下一步
 
 - **T1.2**：`CLPoly/Pipeline/FactorZp.lean` — Zp[x] 顶层正确性骨架

@@ -10,8 +10,8 @@ import CLPoly.Pipeline.FactorZZ
 import CLPoly.Algorithm.DDF
 import CLPoly.Algorithm.SquarefreeZp
 
--- Phase 0: 实验（保留参考）
+-- Phase 0: 实验（保留参考，E4 被 Algorithm.DDF 取代）
 import CLPoly.Experiment.E1_ZpPolyAPI
 import CLPoly.Experiment.E2_TheoremBridge
 import CLPoly.Experiment.E3_ZModPkDiv
-import CLPoly.Experiment.E4_Termination
+-- import CLPoly.Experiment.E4_Termination  -- 与 Algorithm.DDF 冲突（ddfLoop 重定义）

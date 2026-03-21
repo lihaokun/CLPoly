@@ -1,6 +1,6 @@
 # T3.2: SQF 算法建模与正确性
 
-> 状态：nl-proof v3（审核修正版）
+> 状态：nl-proof v4（§3.2 修正完成，废弃 emultiplicity 方案，改用纯 dvd 方案 steps 2a-2i）
 > 对应 C++：`polynomial_factorize_zp.hh:108-180` `__squarefree_Zp` + `__extract_pth_root`
 
 ---
@@ -435,196 +435,15 @@ Step (f): f ~ w₀ * c₀, q prime → q | w₀ 或 q | c₀。
 |------|------|--------|
 | `squarefree_div_gcd_derivative` | ✅ 已证 | — |
 | `not_pow_dvd_derivative_of_separable` | ✅ 已证 | — |
-| `yunLoop_preserves_irred_mult` | ❌ 未证 | ~15 行 yunLoop 归纳 |
+| `yunLoop_preserves_pow_dvd` | ✅ 已证 | — |
+| `yunLoop_crem_dvd_c` | 需新增 | ~10 行 yunLoop 归纳 |
 | `yunLoop_extracts_factor` | ✅ 已证 | — |
 | `pow_dvd_derivative_of_pow_succ_dvd` | ✅ 已证 | — |
 
 **关键**：整个证明**不使用 `emultiplicity`**。用 `q^k ∣` 和 `¬(q^{k+1} ∣)` 替代所有 valuation 操作。避免 ℕ∞ 算术。
 
-**自需引理仅 1 个**：`yunLoop_preserves_irred_mult`（yunLoop 归纳，同结构已用 3 次）。
-(b) WfDvdMonoid.exists_irreducible_factor: ∃ 不可约 q, q | w'。
-(c) q | c_rem（因 w' | c_rem）。
-(d) IsCoprime P c_rem (Step 1) → q ∤ P。
-(e) q | w₀ — 关键步骤，见下。
-(f) yunLoop_extracts_factor → q | P。
-(g) 矛盾：(d) 和 (f)。
-```
-
-**步骤 (e) "q | w₀" 的证明（需要 emultiplicity）**：
-
-这是唯一需要 emultiplicity 的地方。纯 dvd 论证无法推出 `q | w₀`。
-
-```
-设 v = emultiplicity q c_rem。（v ≥ 1，因 q | c_rem）
-由 IsCoprime P c_rem：emultiplicity q P = 0。
-由 f ~ P * c_rem：emultiplicity q f = 0 + v = v。
-```
-
-**子引理（核心）**：`q | w'` → `emultiplicity q (derivative c_rem) = v - 1`（精确）。
-
-```
-q | w' = c_rem / gcd(c_rem, c_rem')
-→ emultiplicity q w' ≥ 1
-→ emultiplicity q c_rem - emultiplicity q (gcd(c_rem, c_rem')) ≥ 1
-  （用 emultiplicity_mul: emultiplicity q (a*b) = emultiplicity q a + emultiplicity q b）
-→ emultiplicity q (gcd(c_rem, c_rem')) ≤ v - 1
-但 emultiplicity q (gcd) = min(v, emultiplicity q (c_rem'))
-且 pow_dvd_derivative: emultiplicity q c_rem' ≥ v - 1
-所以 min(v, ≥v-1) = v - 1（当 v ≥ 1）
-且 emultiplicity q w' = v - (v-1) = 1。✓
-```
-
-**然后**：
-```
-emultiplicity q f' ≥ v - 1（pow_dvd_derivative_of_pow_succ_dvd）。
-但实际上 emultiplicity q f' = v - 1 精确？
-  f = P * c_rem ~ products。
-  f' = P' * c_rem + P * c_rem'。
-  emultiplicity q (P' * c_rem) = emultiplicity q P' + v ≥ v（因 q ∤ P → q ∤ P'? 不一定！P' 可能被 q 整除）
-
-这条路很复杂。换一种更直接的方式：
-
-直接用 f = w₀ * c₀ 的 valuation。
-emultiplicity q f = v。
-emultiplicity q c₀ = emultiplicity q (gcd(f, f'))。
-emultiplicity q f' ≥ v - 1（pow_dvd_derivative）。
-emultiplicity q c₀ = min(v, emultiplicity q f') ≥ min(v, v-1) = v - 1。
-emultiplicity q w₀ = v - emultiplicity q c₀ ≤ v - (v-1) = 1。
-
-但 emultiplicity q w₀ ≥ 1 吗？不一定！可能 emultiplicity q c₀ = v（当 emultiplicity q f' ≥ v），则 emultiplicity q w₀ = 0。
-
-这正是不可分因子的情况：q' = 0 → emultiplicity q f' ≥ v → emultiplicity q c₀ = v → q ∤ w₀。
-
-所以需要区分：
-- q 可分（q' ≠ 0）且 p ∤ v → emultiplicity q f' = v - 1（精确）→ q | w₀
-- q 不可分 或 p | v → emultiplicity q f' ≥ v → q ∤ w₀
-
-从 q | w'（c_rem 的 squarefree-part），我们推出 emultiplicity q (derivative c_rem) < emultiplicity q c_rem。这意味着 q 在 c_rem 中的行为像"可分因子"。具体：
-
-emultiplicity q c_rem' = v - 1（从 emultiplicity q w' = 1 推出，见上）。
-pow_dvd_derivative 给 emultiplicity q c_rem' ≥ v - 1。结合得精确 = v - 1。
-
-这意味着 c_rem 的导数在 q 位置"精确下降 1"。在 char p 中，这等价于 q 可分（q' ≠ 0）且 p ∤ v。
-
-但实际上我不需要推导出"q 可分"——我只需要 q | w₀：
-
-从 emultiplicity q c_rem' = v - 1 < v = emultiplicity q c_rem：
-  → emultiplicity q (gcd(c_rem, c_rem')) = v - 1
-  → emultiplicity q w' = 1
-
-但这给的是 c_rem 层面的信息，不是 f 层面的。需要转到 f：
-
-emultiplicity q f = v（从 q ∤ P）。
-emultiplicity q f'：
-  f ~ P * c_rem。f' = P' * c_rem + P * c_rem'（导数的乘积规则不对 Associated 直接适用...）
-
-这里有一个微妙问题：f ~ P * c_rem 是 Associated（差一个 unit），不是精确等式。导数不保持 Associated。
-
-**修正**：f = u * P * c_rem 对某 unit u。f' = u * (P' * c_rem + P * c_rem')（u 是常数，u' = 0）。
-```
-
----
-
-### 3.2.2 正确且完整的 Lean 路径（审核修正版）
-
-**整体策略**：反证法。假设 `derivative(c_rem) ≠ 0`，推出矛盾。
-
-**核心依赖**：`squarefree_div_gcd_derivative`（已证）、`yunLoop_extracts_factor`（已证）、`pow_dvd_derivative_of_pow_succ_dvd`（已证）、`emultiplicity_mul`（Mathlib）。
-
-```
-假设 derivative(c_rem) ≠ 0。
-
-(a) squarefree_div_gcd_derivative(c_rem):
-    w' := c_rem / gcd(c_rem, c_rem') 是 Squarefree。
-    deg(c_rem') ≤ deg(c_rem) - 1 < deg(c_rem)（导数度严格更小）。
-    derivative(c_rem) ≠ 0 → c_rem ∤ c_rem' → gcd ≠ c_rem → deg(w') ≥ 1。
-
-(b) WfDvdMonoid.exists_irreducible_factor: ∃ 不可约 q, q | w'。
-
-(c) q | c_rem（因 w' | c_rem：c_rem = w' * gcd）。
-
-(d) IsCoprime P c_rem (yunLoop_correct Y10 + Y5) → q ∤ P。
-
-(e) q | f（f ~ P * c_rem，q | c_rem → q | P * c_rem ~ f）。
-
-(f) f ~ w₀ * c₀。q 不可约 → q prime → q | w₀ 或 q | c₀。
-
-分两种情况：
-
-**Case 1: q | w₀**
-→ yunLoop_extracts_factor → q | P → 矛盾（d）。✓
-
-**Case 2: q ∤ w₀**（需证矛盾）
-
-关键推导链（需要 emultiplicity）：
-
-设 v = emultiplicity q c_rem ≥ 1（从 q | c_rem）。
-设 v_f = emultiplicity q f。
-
-Step 2a: v_f = v。
-  IsCoprime P c_rem → emultiplicity q P = 0。
-  f = u * P * c_rem（u 是 unit 常数，从 Associated）。
-  emultiplicity q f = emultiplicity q P + emultiplicity q c_rem = 0 + v = v。
-  （用 emultiplicity_mul for Prime q + emultiplicity_eq_zero.mpr(q ∤ P)）
-
-Step 2b: q | w' → emultiplicity q c_rem' = v - 1（精确）。
-  w' * gcd(c_rem, c_rem') = c_rem → emultiplicity q w' + emultiplicity q gcd = v。
-  q | w' → emultiplicity q w' ≥ 1。
-  pow_dvd_derivative: emultiplicity q c_rem' ≥ v - 1。
-  emultiplicity q gcd = min(v, emultiplicity q c_rem')
-    ≥ min(v, v-1) = v - 1（当 v ≥ 1）。
-  从 emultiplicity q w' + emultiplicity q gcd = v 和 emultiplicity q w' ≥ 1：
-    emultiplicity q gcd ≤ v - 1。
-  结合 ≥ v-1 和 ≤ v-1：emultiplicity q gcd = v - 1。
-  emultiplicity q w' = v - (v-1) = 1。
-
-Step 2c: emultiplicity q c_rem' = v - 1 → q 可分（q' ≠ 0）且 p ∤ v。
-  c_rem = q^v * g（gcd(q,g) = 1，from UFD/emultiplicity definition）。
-  c_rem' = q^{v-1} * (C(v) * q' * g + q * g')。
-  若 p | v 或 q' = 0：C(v)*q' = 0 → c_rem' = q^v * g' → emultiplicity q c_rem' ≥ v。
-  但 emultiplicity q c_rem' = v - 1 < v。矛盾。
-  故 p ∤ v 且 q' ≠ 0。
-
-Step 2d: 对 f 做同样的 valuation 论证 → v_q(w₀) = 1 → 矛盾。
-  v_f = v（Step 2a），p ∤ v（Step 2c），q' ≠ 0（Step 2c）。
-  f = q^v * h（gcd(q,h) = 1）。
-  f' = q^{v-1} * (C(v) * q' * h + q * h')。
-  q ∤ (C(v) * q' * h)：
-    - q ∤ q'：deg(q') < deg(q)，q 不可约 → q ∤ q'。
-    - q ∤ h：gcd(q, h) = 1。
-    - C(v) ≠ 0：p ∤ v → v ≠ 0 in F_p → C(v) ≠ 0。
-    - 故 C(v) * q' * h ≠ 0 且 q ∤ 之。
-  q | (q * h')。
-  两加数的 q-emultiplicity 不同（0 vs ≥1）→ 和的 emultiplicity = min = 0。
-  （Mathlib: emultiplicity_add_eq_min when emultiplicities differ）
-  emultiplicity q f' = (v-1) + 0 = v - 1。
-
-  emultiplicity q c₀ = emultiplicity q gcd(f, f'):
-    q^{v-1} | f（v-1 < v）且 q^{v-1} | f'（emultiplicity = v-1）→ q^{v-1} | gcd。
-    q^v ∤ f'（emultiplicity = v-1 < v）→ q^v ∤ gcd（gcd | f'）。
-    故 emultiplicity q c₀ = v - 1。
-    （用 pow_dvd_iff_le_emultiplicity + EuclideanDomain.dvd_gcd）
-
-  emultiplicity q w₀ = emultiplicity q f - emultiplicity q c₀ = v - (v-1) = 1。
-  （从 f = w₀ * c₀ + emultiplicity_mul）
-  emultiplicity q w₀ ≥ 1 → q | w₀。
-  **矛盾**：Case 2 假设 q ∤ w₀。✓
-```
-
-**两种情况都矛盾** → 假设 derivative(c_rem) ≠ 0 不成立 → derivative(c_rem) = 0。✓
-
-**Mathlib API 需求**：
-- `emultiplicity_mul` (Prime q): `emultiplicity q (a*b) = emultiplicity q a + emultiplicity q b`
-- `emultiplicity_add_eq_min` (当两加数 emultiplicity 不同): `emultiplicity q (a+b) = min(...)`
-- `pow_dvd_iff_le_emultiplicity`: `q^k ∣ a ↔ k ≤ emultiplicity q a`
-- `emultiplicity_eq_zero`: `emultiplicity q a = 0 ↔ ¬(q ∣ a)`
-- `dvd_of_emultiplicity_pos`: `0 < emultiplicity q a → q ∣ a`
-- `emultiplicity_eq_of_dvd_of_not_dvd`: `q^k ∣ a ∧ q^{k+1} ∤ a → emultiplicity q a = k`
-
-**自证引理**：
-- 不需要 `emultiplicity_gcd`——用 `pow_dvd + dvd_gcd + gcd_dvd` 替代
-- 不需要 `normalizedFactors` 展开——反证法完全避免了 Step 5
-- `emultiplicity_derivative_of_separable_irred`（Step 2d 的核心）：~15 行
+**自需新增引理仅 1 个**：`yunLoop_crem_dvd_c`（yunLoop 归纳，证 c_rem | c₀）。
+其余前置引理已全部在 Lean 中证明完毕。
 
 ---
 

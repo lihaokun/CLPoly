@@ -9,6 +9,10 @@ import CLPoly.Pipeline.FactorZZ
 -- Phase 3: L2 算法模型
 import CLPoly.Algorithm.DDF
 import CLPoly.Algorithm.SquarefreeZp
+import CLPoly.Algorithm.EDF
+
+-- 端到端实例化
+import CLPoly.Pipeline.FactorZpInstantiate
 
 -- Phase 0: 实验（保留参考，E4 被 Algorithm.DDF 取代）
 import CLPoly.Experiment.E1_ZpPolyAPI

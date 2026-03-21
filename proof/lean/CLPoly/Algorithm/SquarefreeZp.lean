@@ -538,6 +538,26 @@ private lemma squarefree_div_gcd_derivative
     le_trans (Nat.le_mul_of_pos_right _ hd_deg) hdeg
   omega
 
+/-- Yun 残余的导数为零 (nl-proof §3.2.2)。
+    证明核心：反证法 — derivative ≠ 0 → squarefree part 有 irred factor q
+    → q | P (via yunLoop_extracts_factor) → 矛盾 IsCoprime P c_rem。
+    Case 2 (q ∤ w₀) 需要 emultiplicity 论证，暂 sorry。 -/
+private lemma derivative_yunLoop_remainder_eq_zero
+    (f : Polynomial (ZMod p)) (hf_ne : f ≠ 0)
+    (w₀ : Polynomial (ZMod p)) (hw₀_sqf : Squarefree w₀)
+    (result : List (Polynomial (ZMod p) × ℕ) × Polynomial (ZMod p))
+    (hcrem_ne : result.2 ≠ 0)
+    (hY1 : Associated f ((result.1.map (fun pr => pr.1 ^ pr.2)).prod * result.2))
+    (hY10 : ∀ pr ∈ result.1, IsCoprime pr.1 result.2)
+    (hextract : ∀ q : Polynomial (ZMod p), Irreducible q → q ∣ w₀ →
+        ∃ pr ∈ result.1, q ∣ pr.1)
+    (hf_eq : Associated f (w₀ * (normalize (EuclideanDomain.gcd f (derivative f)))))
+    : derivative result.2 = 0 := by
+  -- Full proof: nl-proof §3.2.2 反证法 + emultiplicity
+  -- All sub-lemmas available: squarefree_div_gcd_derivative, yunLoop_extracts_factor
+  -- Remaining: emultiplicity chain for Case 2 (q ∤ w₀)
+  sorry
+
 /-- 列表积的幂 = 各元素幂的积 -/
 private lemma list_prod_pow
     (l : List (Polynomial (ZMod p))) (n : ℕ) :
@@ -980,9 +1000,20 @@ theorem sqf_correct
           rename_i hcrem_pos
           -- derivative(c_rem) = 0 (nl-proof §3.2: Y10 + valuation argument)
           -- This is the one remaining mathematical claim not yet formalized
-          have hcrem_deriv : derivative (yunLoop
+          -- Abbreviate c_rem for readability
+          set crem := (yunLoop
               (normalize (f /ₘ normalize (EuclideanDomain.gcd f (derivative f))))
-              (normalize (EuclideanDomain.gcd f (derivative f))) 1 [] hc_ne').2 = 0 := by
+              (normalize (EuclideanDomain.gcd f (derivative f))) 1 [] hc_ne').2
+            with hcrem_def
+          have hcrem_ne := yunLoop_c_ne_zero
+            (normalize (f /ₘ normalize (EuclideanDomain.gcd f (derivative f))))
+            (normalize (EuclideanDomain.gcd f (derivative f))) 1 [] hc_ne'
+          -- derivative(c_rem) = 0: by contradiction (nl-proof §3.2.2)
+          -- If derivative ≠ 0, crem/gcd(crem,crem') has an irred factor q.
+          -- q | crem, q ∤ P (IsCoprime). Either q | w₀ (→ q | P, contradiction)
+          -- or q ∤ w₀ (→ emultiplicity argument → q | w₀, contradiction).
+          -- Full proof requires emultiplicity API (~40 lines). See nl-proof §3.2.2.
+          have hcrem_deriv : derivative crem = 0 := by
             sorry
           -- c_rem = (contract p c_rem)^p (Frobenius + expand_contract)
           have hcrem_ne := yunLoop_c_ne_zero
@@ -1022,21 +1053,23 @@ theorem sqf_correct
             -- c_rem = g^p ~ pth_prod. Chain: f ~ yun * c_rem ~ yun * pth_prod
             sorry
           · -- Squarefree + Monic
-            intro pr hpr; simp [List.mem_append] at hpr
-            rcases hpr with h | h
+            intro pr hpr
+            rcases List.mem_append.mp hpr with h | h
             · exact ⟨(hyun4 pr h).1, (hyun4 pr h).2.1⟩
             · exact hpth.2.1 pr h
           · -- Multiplicity ≥ 1
-            intro pr hpr; simp [List.mem_append] at hpr
-            rcases hpr with h | h
+            intro pr hpr
+            rcases List.mem_append.mp hpr with h | h
             · exact (hyun4 pr h).2.2.2
             · exact hpth.2.2.1 pr h
           · -- Pairwise coprime
             intro pr₁ hpr₁ pr₂ hpr₂ hne
-            simp [List.mem_append] at hpr₁ hpr₂
-            rcases hpr₁ with h₁ | h₁ <;> rcases hpr₂ with h₂ | h₂
+            rcases List.mem_append.mp hpr₁ with h₁ | h₁ <;>
+              rcases List.mem_append.mp hpr₂ with h₂ | h₂
             · exact hyun5 pr₁ h₁ pr₂ h₂ hne
-            · -- Cross: yun coprime with pth via Y10 (pr₁ coprime c_rem, pr₂ | c_rem)
+            · -- Cross coprime: yun entry (coprime c_rem via Y10) vs pth entry (divides c_rem)
+              -- pr₂ from pth: pr₂.1 | (contract p c_rem)^p = c_rem
+              -- hyun10: IsCoprime pr₁.1 c_rem → IsCoprime pr₁.1 pr₂.1
               sorry
             · sorry
             · exact hpth.2.2.2 pr₁ h₁ pr₂ h₂ hne

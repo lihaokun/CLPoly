@@ -1,0 +1,441 @@
+# T3.2: SQF 算法建模与正确性
+
+> 状态：nl-proof v3（审核修正版）
+> 对应 C++：`polynomial_factorize_zp.hh:108-180` `__squarefree_Zp` + `__extract_pth_root`
+
+---
+
+## 0. 数学背景
+
+设 `f ∈ F_p[x]` 非零，不可约分解 `f ~ u · ∏ qⱼ^{eⱼ}`（qⱼ monic 不可约，两两不同）。
+
+**char p 导数性质**：
+
+对 `f = r^v · g`（`r` 不可约，`gcd(r, g) = 1`，即 `v = v_r(f)`）：
+```
+f' = v · r^{v-1} · r' · g + r^v · g'
+   = r^{v-1} · (v · r' · g + r · g')
+```
+故 **`v_r(f') ≥ v_r(f) - 1`**（关键不等式，对任意不可约 r 成立）。
+
+**GCD 结构**：
+- `v_r(gcd(f, f')) = min(v_r(f), v_r(f'))`
+- 结合上式：`v_r(gcd(f, f')) ≥ min(v, v-1) = v - 1`
+- `w₀ := f / gcd(f, f')`：`v_r(w₀) = v - v_r(gcd(f, f')) ≤ v - (v-1) = 1`
+- **∀ 不可约 r，`v_r(w₀) ≤ 1` → `Squarefree w₀`** ✓
+
+**Yun 迭代模式**（第 i 步）：
+- `zᵢ = ∏_{eⱼ=i} qⱼ`（恰好 i 次出现且 p∤i 的不可约因子之积）
+- `wᵢ = ∏_{eⱼ>i, p∤eⱼ} qⱼ`
+- `cᵢ = ∏_{eⱼ>i, p∤eⱼ} qⱼ^{eⱼ-i-1} · ∏_{p|eⱼ} qⱼ^{eⱼ}`
+
+**循环终止后**：`c_rem = ∏_{p|eⱼ} qⱼ^{eⱼ}`，满足 `c_rem' = 0`。
+
+**Frobenius 关键等式**：在 `F_p[X]` 中 `expand p f = f ^ p`。
+证明：`map_frobenius_expand` 给出 `map (frobenius (ZMod p) p) (expand p f) = f^p`。
+在 `ZMod p` 中 `frobenius` 是恒等映射（`a^p = a`），故 `map id (expand p f) = expand p f = f^p`。
+
+---
+
+## 1. 算法模型
+
+### 1.1 Yun 内循环
+
+```lean
+noncomputable def yunLoop
+    (w c : Polynomial (ZMod p)) (i : ℕ)
+    (acc : List (Polynomial (ZMod p) × ℕ))
+    : List (Polynomial (ZMod p) × ℕ) × Polynomial (ZMod p) :=
+  if hw : w.natDegree = 0 then
+    (acc, c)
+  else
+    let y := normalize (EuclideanDomain.gcd w c)
+    let z := normalize (w /ₘ y)
+    let acc' := if 0 < z.natDegree then acc ++ [(z, i)] else acc
+    let c' := normalize (c /ₘ y)
+    yunLoop y c' (i + 1) acc'
+termination_by w.natDegree + c.natDegree
+```
+
+**返回值**：`(extracted_factors, c_remainder)`
+
+**操作说明**：
+- `y = normalize(gcd(w, c))` → Monic（因 `w ≠ 0` 从循环条件得 `gcd ≠ 0`）
+- `/ₘ` 是 monic 除法，`y | w` 且 `y | c`（gcd 性质）保证精确
+- `normalize` 保证输出 Monic
+
+**终止性**（度量 `w.natDegree + c.natDegree`）：
+
+**Case A**：`deg(y) ≥ 1`（gcd 非平凡）
+- `y | w` → `deg(y) ≤ deg(w)`
+- `c = y · (c/y)` → `deg(c/y) = deg(c) - deg(y)`（整环 + `c ≠ 0`）
+- 新度量 = `deg(y) + deg(c) - deg(y)` = `deg(c)`
+- 旧度量 = `deg(w) + deg(c)` ≥ `1 + deg(c)` > `deg(c)` ✓
+
+**Case B**：`deg(y) = 0`（gcd 是单位，w 与 c 互素）
+- `y` 是 monic + deg 0 → `y = 1`
+- `z = w / 1 = w`（deg > 0，输出此因子）
+- `w_new = 1`（deg = 0）
+- 新度量 = `0 + deg(c)` < `deg(w) + deg(c)` ✓（因 `deg(w) ≥ 1`）
+
+**终止性前提**：需要 `c ≠ 0`（见不变量 Y7）。
+
+### 1.2 顶层 sqfZp
+
+```lean
+noncomputable def sqfZp (f : Polynomial (ZMod p)) :
+    List (Polynomial (ZMod p) × ℕ) :=
+  if hf : f.natDegree = 0 then []
+  else if hderiv : derivative f = 0 then
+    let g := Polynomial.contract p f
+    (sqfZp g).map (fun pr => (pr.1, pr.2 * p))
+  else
+    let c := normalize (EuclideanDomain.gcd f (derivative f))
+    let w := normalize (f /ₘ c)
+    let (yun_result, c_rem) := yunLoop w c 1 []
+    if 0 < c_rem.natDegree then
+      let g := Polynomial.contract p c_rem
+      yun_result ++ (sqfZp g).map (fun pr => (pr.1, pr.2 * p))
+    else
+      yun_result
+termination_by f.natDegree
+```
+
+**终止性**：
+
+**Branch 1**（`f' = 0`）：
+- `deg(contract p f) = deg(f) / p`（由 `natDegree_expand` + `expand_contract`）
+- `p ≥ 2` 且 `deg(f) ≥ 1` → `deg(f) / p ≤ deg(f) / 2 < deg(f)` ✓
+
+**Branch 2**（`c_rem` 递归）：
+- 需要 `deg(contract p c_rem) < deg(f)`
+- 先证 `deg(c_rem) ≤ deg(f) - 1`：
+  - `c₀ = gcd(f, f')`，`w₀ = f / c₀`
+  - `f' ≠ 0` → `∃ qⱼ with p ∤ eⱼ` → `v_{qⱼ}(w₀) = 1`（≥ 1） → `deg(w₀) ≥ 1`
+  - `deg(f) = deg(w₀) + deg(c₀)` → `deg(c₀) = deg(f) - deg(w₀) ≤ deg(f) - 1`
+  - Yun 循环只缩小 c（每步 `c_new = c / y`，`deg(c_new) ≤ deg(c)`）
+  - 故 `deg(c_rem) ≤ deg(c₀) ≤ deg(f) - 1`
+- 则 `deg(contract p c_rem) = deg(c_rem) / p ≤ (deg(f) - 1) / p < deg(f)` ✓
+  - （p ≥ 2 且 deg(f) ≥ 1 → `(deg(f) - 1) / p < deg(f)` → 严格 `<`，需 `deg(f) ≥ 1`，由 `hf` 保证）
+
+**注**：此终止性**不依赖** `derivative(c_rem) = 0`，避免循环依赖。
+
+---
+
+## 2. Yun 循环不变量
+
+在 `yunLoop w c i acc` 每次调用入口处，设 `f_orig` 为原始输入多项式：
+
+| 标号 | 不变量 | 含义 |
+|------|--------|------|
+| Y1 | `Associated f_orig ((acc.map (fun (s,e) => s^e)).prod * w^i * c)` | 乘积还原 |
+| Y2 | `Squarefree w` | w 无平方 |
+| Y3 | `i ≥ 1` | 计数器 ≥ 1 |
+| Y4 | `∀ (s,e) ∈ acc, Monic s ∧ Squarefree s ∧ 0 < s.natDegree ∧ e ≥ 1` | acc 条目正确 |
+| Y5 | `∀ (s₁,e₁) (s₂,e₂) ∈ acc, (s₁,e₁) ≠ (s₂,e₂) → IsCoprime s₁ s₂` | acc 两两互素 |
+| Y6 | `∀ (s,e) ∈ acc, IsCoprime s w` | acc 与 w 互素 |
+| Y7 | `c ≠ 0` | c 非零（终止性前提） |
+| Y8 | `Monic w ∨ w = 1` | w 是 monic 或 1 |
+| Y10 | `∀ (s,e) ∈ acc, IsCoprime s c` | acc 与 c 互素（关键！推导 c_rem' = 0） |
+
+### 初始调用满足不变量
+
+`yunLoop w₀ c₀ 1 []`，其中 `c₀ = normalize(gcd(f, f'))`，`w₀ = normalize(f /ₘ c₀)`。
+
+- **Y1**: `1 * w₀^1 * c₀ = w₀ * c₀`。由 `gcd(f, f') | f` 知 `f = c₀_raw * w₀_raw`（精确除法），normalize 引入单位，`w₀ * c₀ ~ f` ✓
+- **Y2**: `Squarefree w₀`
+
+  **证明**（valuation 论证）：
+
+  对任意不可约 r，设 `v = v_r(f)` = `emultiplicity r f`。
+  1. `f = r^v · g`，`gcd(r, g) = 1`
+  2. `f' = r^{v-1} · (v · r' · g + r · g')`，故 `v_r(f') ≥ v - 1`
+  3. `v_r(c₀) = v_r(gcd(f, f')) = min(v_r(f), v_r(f')) ≥ min(v, v-1) = v - 1`
+  4. `v_r(w₀) = v_r(f) - v_r(c₀) ≤ v - (v-1) = 1`
+  5. 由 `squarefree_iff_emultiplicity_le_one`：∀ 不可约 r，`v_r(w₀) ≤ 1` → `Squarefree w₀` ✓
+
+  **Mathlib 路径**：`squarefree_iff_emultiplicity_le_one` + 自定义引理 `emultiplicity_derivative_ge`。
+
+  **备选（更直接）**：假设 `r · r | w₀`（r 非单位），推矛盾：
+  - `r² | w₀ | f` → `r² | f` → `r | f'`（导数中 `r^{v-1}` 因子）→ `r | gcd(f, f') = c₀`
+  - `r | w₀` 且 `r | c₀` → `r² | w₀ · c₀ = f` → `r³ | f`
+  - 递归：`r^n | f` → `r^{n-1} | f'` → `r^{n-1} | c₀` → `r^n | f` 且 `r^{n-1} | c₀` → `v_r(w₀) ≤ v - (v-1) = 1`
+
+- **Y3**: `1 ≥ 1` ✓
+- **Y4**: `[]` 空真 ✓
+- **Y5**: `[]` 空真 ✓
+- **Y6**: `[]` 空真 ✓
+- **Y7**: `c₀ = normalize(gcd(f, f')) ≠ 0`（因 `f ≠ 0` → `gcd(f, f') ≠ 0`）✓
+- **Y8**: `w₀ = normalize(...)` → Monic ✓
+
+### Y1 保持
+
+设 `y = gcd(w, c)`，`z = w / y`，`w_new = y`，`c_new = c / y`。
+
+旧 Y1: `P * w^i * c ~ f`（P = acc_prod）
+
+**Case: deg(z) > 0**（`acc_new = acc ++ [(z, i)]`）
+```
+P * z^i * y^{i+1} * (c/y)
+= P * z^i * y^i * c
+= P * (z · y)^i * c        [交换律：(ab)^n = a^n · b^n]
+= P * w^i * c               [w = z · y]
+~ f ✓
+```
+
+**Case: deg(z) = 0**（`acc_new = acc`，z 是非零常数）
+```
+P * y^{i+1} * (c/y)
+= P * y^i * c
+```
+`z = w / y` 非零常数 → `w = y · z`（Associated）→ `w^i ~ y^i` → `P * y^i * c ~ P * w^i * c ~ f` ✓
+
+### Y2 保持
+
+`y = gcd(w, c)` 整除 `w`。`Squarefree w`（Y2 旧）+ `Squarefree.squarefree_of_dvd (y ∣ w)` → `Squarefree y` ✓
+
+### Y7 保持
+
+`c_new = c / y`。`c ≠ 0`（Y7 旧）且 `y ≠ 0`（因 `y | w`，`w ≠ 0`）→ 整环中 `c/y ≠ 0` ✓
+
+### Y4 保持（新条目 (z, i)）
+
+- `Monic z`：normalize 保证 ✓
+- `Squarefree z`：`z | w`（`w = z · y`）+ `Squarefree w` → `Squarefree z` ✓
+- `0 < z.natDegree`：条件检查保证 ✓
+- `i ≥ 1`：由 Y3 ✓
+
+### Y5/Y6 保持（coprimality）
+
+**Y6**（新 z 与 w_new = y 互素）：
+- `w = z · y`，`Squarefree w`（Y2）→ `IsRelPrime z y`（由 `squarefree_mul_iff`）✓
+
+**Y5**（新 z 与旧 acc 条目互素）：
+- 旧条目 `s` 满足 `IsCoprime s w`（Y6 旧），`z | w` → `IsCoprime s z` ✓
+
+**Y6 更新**（旧 acc 条目与 w_new = y 互素）：
+- 旧 `IsCoprime s w`（Y6 旧），`y | w` → `IsCoprime s y` ✓
+
+### Y10 保持（acc 与 c 互素）— 关键新不变量
+
+**新条目 z 与 c_new = c/y 互素**：
+
+设 r 是 z 和 c/y 的公共不可约因子（反证法）。
+1. `r | z` → `r | w`（因 `z | w`，即 `w = z · y`）
+2. `r | z` 且 `IsRelPrime z y`（Y6 上面刚证）→ `r ∤ y`
+3. `r | (c/y)` → 由 `c = y · (c/y)` 得 `r | c`
+4. `r | w` 且 `r | c` → `r | gcd(w, c) = y`
+5. **矛盾**：步骤 2 说 `r ∤ y`，步骤 4 说 `r | y`。
+
+故 `IsCoprime z (c/y)` ✓
+
+**旧条目 s 与 c_new = c/y 互素**：
+- `IsCoprime s c`（Y10 旧）→ `IsCoprime s (y · (c/y))`
+- `IsCoprime a (b · c) → IsCoprime a c`（标准引理）
+- 故 `IsCoprime s (c/y)` ✓
+
+---
+
+## 3. 终止情况正确性
+
+### 3.1 Yun 循环终止后（w.natDegree = 0）
+
+返回 `(acc, c_rem)`。`w` 是常数（Monic + deg 0 → `w = 1`）。
+
+Y1：`P * 1^i * c_rem ~ f`，即 `P * c_rem ~ f`。
+
+### 3.2 `derivative(c_rem) = 0` 的完整证明
+
+**定理**：Yun 循环终止后（`w = 1`），残余 c_rem 满足 `derivative c_rem = 0`。
+
+**证明**：
+
+使用不变量 Y10（`∀ (s,e) ∈ acc, IsCoprime s c`）和 Y2（`Squarefree w₀`）。
+
+**Step 1**：`IsCoprime P c_rem`（P = acc_prod）
+
+由 Y10 终止时：∀ (s, e) ∈ acc，`IsCoprime s c_rem`。
+由 Y5：acc 条目两两互素。
+标准引理：两两互素的因子之积与每个因子互素的元素互素。
+故 `IsCoprime P c_rem` ✓
+
+**Step 2**：对任意不可约 q 满足 `q | c_rem`，证明：**q 可分（q' ≠ 0）→ p | v_q(c_rem)**。
+
+反证法：假设 q 可分（`q' ≠ 0`），`q | c_rem`，`p ∤ v_q(c_rem)`。
+
+设 `v = v_q(c_rem)`。由 `IsCoprime P c_rem`：`v_q(P) = 0`（q 不整除 P）。
+
+由 Y1 终止时：`P · c_rem ~ f`。故 `v_q(f) = v_q(P) + v_q(c_rem) = 0 + v = v`。
+
+由 `p ∤ v`、`q' ≠ 0` 和 §0 的 valuation 论证：
+- `f = q^v · g`，`gcd(q, g) = 1`
+- `f' = q^{v-1} · (v · q' · g + q · g')`
+- **q' ≠ 0 且 gcd(q, g) = 1 → q ∤ (v · q' · g)**（因 q 不可约，q ∤ q'（deg q' < deg q），q ∤ g）
+- 又 `p ∤ v` → `v ≠ 0` in F_p → `v · q' · g ≠ 0`
+- 故 `v_q(v · q' · g + q · g') = 0`（首项 v_q = 0，次项 v_q ≥ 1，和的 v_q = 0）
+- `v_q(f') = v - 1`（精确）
+- `v_q(gcd(f, f')) = min(v, v-1) = v - 1`
+- `v_q(w₀) = v - (v-1) = 1`
+
+所以 `q | w₀`（初始 w 包含 q）。
+
+**Step 3**：q 必然进入某个 acc 条目（此步不依赖 q 可分/不可分）。
+
+Yun 循环终止时 `w = 1`，故 `q ∤ w_final`。
+但初始 `q | w₀`。在循环过程中 w 的值变化为：`w₀, y₁, y₂, ...`。
+由于 `yᵢ | wᵢ₋₁`（gcd 整除性），`v_q` 只可能下降或保持。
+∃ 最小 k 使得 `q | w_{k-1}` 但 `q ∤ w_k = gcd(w_{k-1}, c_{k-1})`。
+
+`q | w_{k-1}` 且 `q ∤ gcd(w_{k-1}, c_{k-1})` → `q ∤ c_{k-1}`（否则 `q | gcd`）。
+
+此时 `z_k = w_{k-1} / gcd(w_{k-1}, c_{k-1})`。
+由 `Squarefree w_{k-1}`（Y2）：`v_q(w_{k-1}) = 1`。
+`v_q(gcd) = 0`（因 q ∤ gcd）→ `v_q(z_k) = 1 - 0 = 1`。
+
+故 `q | z_k`，z_k 被输出到 acc（`deg(z_k) ≥ 1`）。故 `q | P`。
+
+**Step 4**：矛盾。
+
+`q | P`（Step 3）且 `q | c_rem`（假设）→ `q | gcd(P, c_rem)`。
+但 `IsCoprime P c_rem`（Step 1）→ `IsUnit q`。矛盾（q 不可约）。 ✓
+
+故假设不成立：q 可分且 `q | c_rem` → `p | v_q(c_rem)`。
+
+**Step 5**：结论——分两种情况。
+
+写 `c_rem = ∏ qⱼ^{mⱼ}`（不可约分解）。导数：
+```
+derivative(c_rem) = ∑_j mⱼ · qⱼ^{mⱼ-1} · qⱼ' · ∏_{k≠j} qₖ^{mₖ}
+```
+
+对每个 j，第 j 项中的因子 `mⱼ · qⱼ'` 为零——分两种情况：
+- **qⱼ 可分**（`qⱼ' ≠ 0`）：由 Step 2-4，`p | mⱼ` → `mⱼ ≡ 0 (mod p)` → 系数 `mⱼ = 0` in F_p → 项为 0
+- **qⱼ 不可分**（`qⱼ' = 0`）：直接 `qⱼ' = 0` → 项为 0
+
+每项为 0 → 和为 0 → `derivative(c_rem) = 0` ✓
+
+**形式化说明**：Step 5 的"按不可约分解展开求导"在 Lean 中需要 UFD 的因式分解 + `derivative_prod`/`derivative_pow`。但上述二分逻辑（可分 vs 不可分）可改为不依赖显式分解的等价论证：直接用 `expand_contract`（若能证 `∀ 不可约 q | c_rem, v_q(c_rem) · q' = 0 in F_p`，则等价于 `c_rem' = 0`）。具体形式化路径待 Lean 实现时确定。
+
+---
+
+## 4. p-th root 正确性
+
+### 4.1 `expand p f = f^p` in F_p[X]
+
+**证明**：
+1. `map_frobenius_expand` (Mathlib): `map (frobenius (ZMod p) p) (expand (ZMod p) p f) = f ^ p`
+2. 在 `ZMod p` 中：`frobenius (ZMod p) p = RingHom.id (ZMod p)`
+   - 因为 `∀ a : ZMod p, a^p = a`（Fermat/`ZMod.pow_card`）
+   - `frobenius` 定义为 `x ↦ x^p`，在 F_p 上是恒等
+3. `map (RingHom.id) g = g`，故 `expand (ZMod p) p f = f^p` ✓
+
+**Mathlib 路径**：
+- `ZMod.frobenius_zmod` 或 `frobenius_one`... 需确认确切引理名
+- 备选：`Polynomial.map_id`
+
+### 4.2 递归正确性
+
+设 `SquarefreeDecomp g sub`（递归结果）：`g ~ ∏ sⱼ^{eⱼ}`。
+
+`c_rem = expand p (contract p c_rem) = (contract p c_rem)^p = g^p`... 不对，`contract p c_rem = g`，但 `expand p g = g^p`。
+
+所以 `c_rem = expand p g = g^p`（Frobenius）。
+
+`g ~ ∏ sⱼ^{eⱼ}` → `c_rem = g^p ~ (∏ sⱼ^{eⱼ})^p = ∏ sⱼ^{eⱼ·p}` ✓
+
+输出 `(sⱼ, eⱼ * p)` 正确编码了 `c_rem ~ ∏ sⱼ^{eⱼ·p}`。
+
+验证 SquarefreeDecomp 四条：
+1. **乘积还原**：`c_rem ~ ∏ sⱼ^{eⱼ·p}` ✓
+2. **Squarefree + Monic**：从递归保证 ✓
+3. **重数 ≥ 1**：`eⱼ * p ≥ 1 * 2 = 2 ≥ 1` ✓
+4. **两两互素**：从递归保证 ✓
+
+---
+
+## 5. 顶层组合
+
+### Case A: `f' = 0`
+- `f = expand p (contract p f)` by `expand_contract`
+- `g = contract p f`，递归得 `sub = sqfZp g`
+- result = `sub.map (fun (s,e) => (s, e*p))`
+- 正确性同 §4.2 ✓
+
+### Case B: `f' ≠ 0`，`deg(c_rem) = 0`
+- result = yun_result
+- Y1 给 `P * c_rem ~ f`。`c_rem` deg 0，Monic 或单位 → 常数 ✓
+- `P ~ f`（Associated）→ SquarefreeDecomp 条件 1
+- Y4 → 条件 2 (Squarefree + Monic)，条件 3 (mult ≥ 1)
+- Y5 → 条件 4 (coprimality)
+
+### Case C: `f' ≠ 0`，`deg(c_rem) > 0`
+- result = yun_result ++ pth_root_result
+- **条件 1**（乘积还原）：
+  - Y1：`P * c_rem ~ f`
+  - 递归：`c_rem ~ ∏ sⱼ^{eⱼ·p}`（依赖 `c_rem' = 0` + §4.2）
+  - 合并：`P * ∏ sⱼ^{eⱼ·p} ~ f` ✓
+- **条件 2, 3**：从 Y4 + 递归保证 ✓
+- **条件 4**（coprimality）：
+  - Yun 因子间互素：Y5 ✓
+  - p-th root 因子间互素：递归保证 ✓
+  - **跨组互素**（Yun 因子 sᵢ vs p-th root 因子 tₖ）：
+
+    **证明**：
+    1. Y10 终止时：`IsCoprime sᵢ c_rem`（每个 Yun 因子与 c_rem 互素）
+    2. p-th root 因子来源：`tₖ` 来自 `sqfZp(contract p c_rem)`。
+       `tₖ | contract(p, c_rem) = g`。
+       `g | g^p = expand(p, g) = c_rem`（Frobenius：`expand p g = g^p`，且 `g | g^p`）。
+       故 `tₖ | g | c_rem`。
+    3. `tₖ | c_rem` 且 `IsCoprime sᵢ c_rem`
+       → 任何 sᵢ 与 tₖ 的公共不可约因子 r 满足 `r | sᵢ` 且 `r | tₖ | c_rem`
+       → `r | gcd(sᵢ, c_rem)`
+       → `IsUnit r`（由 IsCoprime）
+       → 矛盾（r 不可约 → ¬ IsUnit）
+    4. 故 `IsCoprime sᵢ tₖ` ✓
+
+---
+
+## 6. 辅助引理清单
+
+| 引理 | 内容 | 难度 | Mathlib | nl-proof 状态 |
+|------|------|------|---------|--------------|
+| `emultiplicity_derivative_ge` | `v_r(f') ≥ v_r(f) - 1` | 中高 | 无（需自证） | §0 ✓ |
+| `squarefree_div_gcd_derivative` | `f' ≠ 0 → Squarefree(f / gcd(f, f'))` | 高 | 无 | §2 Y2 ✓ |
+| `expand_eq_pow_zmod` | `expand (ZMod p) p f = f^p` | 中 | `map_frobenius_expand` + frobenius=id | §4.1 ✓ |
+| `frobenius_zmod_eq_id` | `frobenius (ZMod p) p = RingHom.id` | 低 | 可能已有 | §4.1 ✓ |
+| `squarefree_mul_coprime` | `Squarefree (a*b) → IsRelPrime a b` | 低 | `squarefree_mul_iff` | ✓ |
+| `derivative_c_rem_eq_zero` | Yun 终止后 `c_rem' = 0` | 高 | 无 | §3.2 ✓（5 步完整证明） |
+| `yun_pthroot_coprime` | Yun 因子与 p-th root 因子互素 | 中 | 无 | §5 Case C ✓（Y10 推导） |
+| `coprime_prod_of_pairwise` | 两两互素因子之积与互素元素互素 | 低 | 可能已有 | §3.2 Step 1 |
+
+**所有引理的数学论证已完成（nl-proof 内 0 sorry）。**
+
+---
+
+## 7. 形式化策略
+
+所有数学论证已在 nl-proof 中完成。形式化的难度在于将论证翻译为 Lean tactic proof。
+
+### Step 1: 函数定义 + 终止性（~100 行）
+- `yunLoop` 定义 + 终止度量 `w.natDegree + c.natDegree`
+- `sqfZp` 定义 + 终止度量 `f.natDegree`
+- **预期 sorry: 0**
+
+### Step 2: Yun 不变量 Y1-Y8, Y10（~120 行）
+- Y1 (product) — 代数恒等式
+- Y2 (squarefree w₀) — 依赖 `emultiplicity_derivative_ge`（~30 行自证）
+- Y5/Y6 (coprime with w) — 从 `squarefree_mul_iff`
+- Y10 (coprime with c) — §2 的 gcd 论证
+- **预期 sorry: 0-1**（`emultiplicity_derivative_ge` 可能需要 sorry）
+
+### Step 3: `derivative(c_rem) = 0`（~40 行）
+- 依赖 Y10 + valuation 论证 (§3.2)
+- **预期 sorry: 0-1**（依赖 Step 2 的 valuation 引理）
+
+### Step 4: SquarefreeDecomp 四条（~80 行）
+- 条件 1: Y1 + p-th root 递归 + `expand_contract` + Frobenius
+- 条件 2, 3: 直接
+- 条件 4: Y5 + 递归 + Y10 跨组互素
+- **预期 sorry: 0**
+
+### 总计：~340 行，预期 0-1 个 sorry（仅可能在 `emultiplicity_derivative_ge`）

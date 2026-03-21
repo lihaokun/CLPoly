@@ -104,6 +104,76 @@ L1  实现模型    CLPoly/Impl/         1:1 对应 C++（uint64 语义、数组
 - `let rec` 内的 `termination_by` 语法受限，改用顶层递归函数
 - `modByMonic_add_div` 的顺序是 `f %ₘ g + g * (f /ₘ g) = f`，注意加法顺序
 
+## Lean 形式化经验教训（Phase 3 总结）
+
+### normalize 和 Associated 的系统性摩擦
+
+`EuclideanDomain.gcd` 返回的不是 monic 多项式。`normalize` 使其 monic，但引入 `Associated`（非精确等式）。**所有涉及 gcd 的 dvd/乘积证明都需要 `normalize_dvd_iff`、`normalize_associated`、`Associated.trans` 等桥接**。这是 SQF 证明最大的时间消耗源。
+
+**规则**：
+- 精确除法用 `modByMonic_add_div`（需要 `Monic` 前提）
+- `normalize a ∣ b ↔ a ∣ b`：用 `normalize_dvd_iff`
+- `Associated (normalize a) a`：用 `normalize_associated`（注意方向！`.dvd` 给 `normalize a ∣ a`）
+- **绝不对含 `sqfZp`/`yunLoop` 递归调用的目标用 `rw [h]`**——会无限展开或替换内部的 `f`。用 isolated `have` + `rw` 代替
+
+### `let (a, b) := e` 不产生 definitional equality
+
+`let (a, b) := e` 编译为 `match`，`a` 和 `e.1` 不是 definitionally equal。**在递归函数中，始终用 `.1`/`.2` 显式投影**：
+```lean
+-- 错误：let (result, c_rem) := yunLoop w c 1 [] hc
+-- 正确：
+let output := yunLoop w c 1 [] hc
+let result := output.1
+let c_rem := output.2
+```
+
+### `decreasing_by` 中的 bound 应放入函数体
+
+若终止性需要中间结果的 bound（如 `yunLoop` 输出的 `c_rem.natDegree ≤ c.natDegree`），在函数体中 `have hbound := ...` 比在 `decreasing_by` 中重新推导更可靠。`decreasing_by` 的 context 受 let/match 影响，变量名不可预测。
+
+### functional induction (`f.induct`) vs `Nat.strongRecOn`
+
+- `f.induct`：自动匹配函数分支，但 inaccessible name 数量不可预测（let 绑定也算），需要 `rename_i` 逐个试
+- `Nat.strongRecOn`：完全掌控命名，但需要手动 `rw [f]` + `split` 展开函数。**推荐用于不变量较多的递归证明**
+
+### `rename_i` 计数经验
+
+| 函数结构 | inaccessible 数量 |
+|---------|-----------------|
+| 4 个参数 + 1 个 `if` guard | 5 |
+| 4 个参数 + 1 guard + 2 let + 1 inner guard | 8-9 |
+| 加 `hc : Prop` 参数 | +1 |
+| 有 `let f_new :=` 在 split 内 | +1（仅该分支） |
+
+### 非线性 omega 的处理
+
+`omega` 不处理 `a * b` 形式（非线性）。`a < a * p`（`a ≥ 1, p ≥ 2`）需要：
+```lean
+have key := Nat.mul_lt_mul_of_pos_left (show 1 < p from hp.out.one_lt) ha_pos
+simp only [Nat.mul_one] at key
+```
+
+### 优先攻克关键瓶颈
+
+nl-proof 完成后，**先识别 Lean 形式化的关键瓶颈**（通常是最深的数学引理 + 最复杂的 Associated 链），从那里开始，而不是自底向上。DDF 成功（0 sorry）因为结构简单；SQF 的 `derivative(c_rem) = 0` 和 Associated 拼接应该最先攻克。
+
+### Mathlib API 补充速查
+
+| 需要 | 正确路径 |
+|------|---------|
+| `normalize a ∣ b ↔ a ∣ b` | `normalize_dvd_iff` |
+| `a ∣ normalize b ↔ a ∣ b` | `dvd_normalize_iff` |
+| `Associated (normalize a) a` | `normalize_associated` |
+| `degree(normalize f) = degree(f)` | `degree_eq_degree_of_associated (normalize_associated _)` |
+| `natDegree(normalize f) = natDegree(f)` | 自定义 `natDegree_normalize_eq`（Mathlib 无） |
+| `expand p f = f^p` in F_p[X] | `map_frobenius_expand` + `frobenius (ZMod p) p = id`（`ZMod.pow_card`） |
+| `expand_contract` (f' = 0 → f = expand p (contract p f)) | `@expand_contract _ _ p _ _ f hderiv hp.ne_zero` |
+| `Squarefree (a*b) → IsRelPrime a b` | `squarefree_mul_iff` + `.1` |
+| `IsRelPrime → IsCoprime` | `IsRelPrime.isCoprime`（需 PID/Bezout） |
+| `IsCoprime a b, c ∣ b → IsCoprime a c` | `IsCoprime.of_isCoprime_of_dvd_right` |
+| 非零非 unit 多项式有不可约因子 | `WfDvdMonoid.exists_irreducible_factor` |
+| `d^k ∣ f → d^{k-1} ∣ f'` | 自定义 `pow_dvd_derivative_of_pow_succ_dvd`（`derivative_pow` + `dvd_add`） |
+
 ## 参考文档
 
 - `proof/docs/implementation-roadmap.md` — 实施路线（自顶向下）

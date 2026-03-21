@@ -553,9 +553,40 @@ private lemma derivative_yunLoop_remainder_eq_zero
         ∃ pr ∈ result.1, q ∣ pr.1)
     (hf_eq : Associated f (w₀ * (normalize (EuclideanDomain.gcd f (derivative f)))))
     : derivative result.2 = 0 := by
-  -- Full proof: nl-proof §3.2.2 反证法 + emultiplicity
-  -- All sub-lemmas available: squarefree_div_gcd_derivative, yunLoop_extracts_factor
-  -- Remaining: emultiplicity chain for Case 2 (q ∤ w₀)
+  -- §3.2.2 反证法：derivative ≠ 0 → ∃ irred q in sqf part → q | P → contradiction
+  by_contra hderiv_ne
+  set crem := result.2 with hcrem_eq
+  set P := (result.1.map (fun pr => pr.1 ^ pr.2)).prod with hP_eq
+  -- (a) crem's squarefree part w' has deg ≥ 1 (derivative ≠ 0 → gcd is proper)
+  set crem_gcd := normalize (EuclideanDomain.gcd crem (derivative crem))
+  have hcrem_gcd_monic : Monic crem_gcd := Polynomial.monic_normalize (by
+    intro h; exact hcrem_ne (zero_dvd_iff.mp ((normalize_eq_zero.mpr h) ▸
+      normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left _ _))))
+  have hcrem_gcd_dvd : crem_gcd ∣ crem :=
+    normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left _ _)
+  set w' := normalize (crem /ₘ crem_gcd) with hw'_eq
+  have hw'_sqf := squarefree_div_gcd_derivative crem hcrem_ne
+  -- w' has deg ≥ 1 (otherwise crem_gcd = crem → crem | crem' → crem' = 0 since deg drops)
+  have hw'_ne : w' ≠ 0 := normalize_ne_zero_iff.mpr
+    (divByMonic_ne_zero_of_ne_zero crem crem_gcd hcrem_gcd_monic hcrem_gcd_dvd hcrem_ne)
+  have hw'_nu : ¬IsUnit w' := by
+    intro hu
+    -- w' unit → crem ~ crem_gcd → crem | crem'. But deg(crem') < deg(crem), crem' ≠ 0.
+    sorry
+  -- (b) ∃ irreducible q | w'
+  obtain ⟨q, hq_irr, hq_w'⟩ := WfDvdMonoid.exists_irreducible_factor hw'_nu hw'_ne
+  -- (c) q | crem
+  have hq_crem : q ∣ crem := dvd_trans hq_w' (dvd_trans (normalize_associated _).dvd
+    ⟨crem_gcd, by rw [mul_comm]; exact (modByMonic_add_div crem hcrem_gcd_monic |>.symm |>.trans
+      (by rw [(modByMonic_eq_zero_iff_dvd hcrem_gcd_monic).mpr hcrem_gcd_dvd, zero_add]))⟩)
+  -- (d) IsCoprime P crem → q ∤ P
+  -- IsCoprime from Y10: each acc entry coprime with crem → product coprime with crem
+  have hcop : IsCoprime P crem := by
+    rw [hP_eq]; sorry -- product of pairwise coprime elements each coprime with crem
+  have hq_notP : ¬(q ∣ P) := fun h => hq_irr.1 (hcop.isUnit_of_dvd' h hq_crem)
+  -- (e-g) q | crem | f, q | w₀ (Case 1 direct, Case 2 by emultiplicity), q | P → contradiction
+  -- All steps are plumbing (dvd chains + Associated manipulation)
+  -- Case 2 (q ∤ w₀ → q | w₀ via emultiplicity) is the last mathematical piece
   sorry
 
 /-- 列表积的幂 = 各元素幂的积 -/

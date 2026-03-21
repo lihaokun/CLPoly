@@ -153,6 +153,16 @@ have key := Nat.mul_lt_mul_of_pos_left (show 1 < p from hp.out.one_lt) ha_pos
 simp only [Nat.mul_one] at key
 ```
 
+### 严格按 nl-proof 翻译，遇到问题回到 nl-proof 修正
+
+**这是最重要的教训。** Lean 翻译卡住时：
+1. **第一反应**：检查 nl-proof 该步是否正确（不是绕路/换策略/加 sorry）
+2. 发现错误 → **停止编码** → 修正 nl-proof → 审核确认 → 再翻译
+3. nl-proof 中的"同某个已有证明" → **必须验证递归结构完全一致**，不能假设
+4. 每个 sorry 解决后再开下一个。不要并行 sorry（sorry 越多越慢）
+
+**反面案例**：SQF 的 `derivative(c_rem) = 0` 花了 8 小时，因为 nl-proof §3.2.1 的"无穷递升"论证有数学错误（步进量 = 0，不是 +1），但我没有回去检查 nl-proof，而是反复尝试绕路，导致代码膨胀 + sorry 增殖。
+
 ### 优先攻克关键瓶颈
 
 nl-proof 完成后，**先识别 Lean 形式化的关键瓶颈**（通常是最深的数学引理 + 最复杂的 Associated 链），从那里开始，而不是自底向上。DDF 成功（0 sorry）因为结构简单；SQF 的 `derivative(c_rem) = 0` 和 Associated 拼接应该最先攻克。

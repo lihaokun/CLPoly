@@ -357,6 +357,69 @@ private lemma yunLoop_extracts_factor
           yunLoop_acc_subset y c' (i + 1) _ hc'_ne _ hpr_in,
           hz_dvd⟩
 
+/-- yunLoop 保持不可约因子的幂次：若 q 不可约且 q ∤ w，则 q^k | c → q^k | c_rem。
+    （反方向 q^k | c_rem → q^k | c 由 c_rem | c 的传递性即得。） -/
+private lemma yunLoop_preserves_pow_dvd
+    (q : Polynomial (ZMod p)) (hq : Irreducible q)
+    (w c : Polynomial (ZMod p)) (i : ℕ)
+    (acc : List (Polynomial (ZMod p) × ℕ))
+    (hc : c ≠ 0) (hq_w : ¬(q ∣ w)) (k : ℕ) (hqk : q ^ k ∣ c) :
+    q ^ k ∣ (yunLoop w c i acc hc).2 := by
+  suffices ∀ n, ∀ w c : Polynomial (ZMod p), ∀ i acc (hc : c ≠ 0),
+      n = w.natDegree + c.natDegree → ¬(q ∣ w) → q ^ k ∣ c →
+      q ^ k ∣ (yunLoop w c i acc hc).2 from
+    this _ w c i acc hc rfl hq_w hqk
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro w c i acc hc hn hq_w hqk_c
+    rw [yunLoop]; split
+    · exact hqk_c  -- base: return c
+    · rename_i hw; dsimp only
+      set y := normalize (EuclideanDomain.gcd w c)
+      set c' := normalize (c /ₘ y) with hc'_def
+      -- q ∤ w → q ∤ gcd(w,c) → q ∤ y
+      have hw_ne : w ≠ 0 := by intro h; simp [h] at hw
+      have hgcd_ne : EuclideanDomain.gcd w c ≠ 0 := by
+        intro h; exact hw_ne (zero_dvd_iff.mp (h ▸ EuclideanDomain.gcd_dvd_left w c))
+      have hy_monic : Monic y := Polynomial.monic_normalize hgcd_ne
+      have hy_dvd_w : y ∣ w := normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left w c)
+      have hy_dvd_c : y ∣ c := normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right w c)
+      have hq_y : ¬(q ∣ y) := fun h => hq_w (dvd_trans h hy_dvd_w)
+      -- q^k | c and IsCoprime q^k y → q^k | c/y
+      -- q irreducible, q ∤ y → IsCoprime q y (in PID)
+      have hcop_q_y : IsCoprime q y := by
+        rw [← isRelPrime_iff_isCoprime]
+        exact fun d hd_q hd_y => by
+          obtain ⟨e, he⟩ := hd_q
+          exact (hq.isUnit_or_isUnit he).elim id fun hu =>
+            -- IsUnit e, q = d * e → Associated d q → q | d → q | y → contradiction
+            absurd (dvd_trans ⟨↑hu.unit⁻¹, by
+              rw [he, mul_assoc, IsUnit.mul_val_inv hu, mul_one]⟩ hd_y) hq_y
+      have hcop : IsCoprime (q ^ k) y := hcop_q_y.pow_left
+      have hc_eq : y * (c /ₘ y) = c := by
+        have := modByMonic_add_div c hy_monic
+        rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
+      have hqk_yc : q ^ k ∣ y * (c /ₘ y) := ⟨hqk_c.choose, by rw [hc_eq]; exact hqk_c.choose_spec⟩
+      have hqk_cq : q ^ k ∣ (c /ₘ y) := hcop.dvd_of_dvd_mul_right (by rwa [mul_comm] at hqk_yc)
+      -- q^k | normalize(c/y) = c'
+      have hqk_c' : q ^ k ∣ c' :=
+        dvd_trans hqk_cq (normalize_associated _).symm.dvd
+      -- Recursive: q ∤ y (new w)
+      have hc'_ne : c' ≠ 0 := by
+        rw [hc'_def]; apply normalize_ne_zero_iff.mpr
+        exact divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
+      -- Measure decrease (same pattern)
+      have hmeas : y.natDegree + c'.natDegree < n := by
+        have hy_ne := Monic.ne_zero hy_monic
+        have hq_ne' := divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
+        have hdeg_c := Polynomial.natDegree_mul hy_ne hq_ne'
+        rw [hc_eq] at hdeg_c
+        have hdeg_norm := natDegree_normalize_eq (c /ₘ y)
+        rw [hn, hc'_def, hdeg_norm, ← hdeg_c]
+        have := Polynomial.natDegree_le_of_dvd hy_dvd_w hw_ne; omega
+      exact ih _ hmeas y c' (i + 1) _ hc'_ne rfl hq_y hqk_c'
+
 /-- contract p 的 natDegree 不超过原多项式 natDegree 除以 p -/
 private lemma natDegree_contract_le
     (f : Polynomial (ZMod p)) :
@@ -538,56 +601,169 @@ private lemma squarefree_div_gcd_derivative
     le_trans (Nat.le_mul_of_pos_right _ hd_deg) hdeg
   omega
 
-/-- Yun 残余的导数为零 (nl-proof §3.2.2)。
-    证明核心：反证法 — derivative ≠ 0 → squarefree part 有 irred factor q
-    → q | P (via yunLoop_extracts_factor) → 矛盾 IsCoprime P c_rem。
-    Case 2 (q ∤ w₀) 需要 emultiplicity 论证，暂 sorry。 -/
-private lemma derivative_yunLoop_remainder_eq_zero
-    (f : Polynomial (ZMod p)) (hf_ne : f ≠ 0)
-    (w₀ : Polynomial (ZMod p)) (hw₀_sqf : Squarefree w₀)
-    (result : List (Polynomial (ZMod p) × ℕ) × Polynomial (ZMod p))
-    (hcrem_ne : result.2 ≠ 0)
-    (hY1 : Associated f ((result.1.map (fun pr => pr.1 ^ pr.2)).prod * result.2))
-    (hY10 : ∀ pr ∈ result.1, IsCoprime pr.1 result.2)
-    (hextract : ∀ q : Polynomial (ZMod p), Irreducible q → q ∣ w₀ →
-        ∃ pr ∈ result.1, q ∣ pr.1)
-    (hf_eq : Associated f (w₀ * (normalize (EuclideanDomain.gcd f (derivative f)))))
-    : derivative result.2 = 0 := by
-  -- §3.2.2 反证法：derivative ≠ 0 → ∃ irred q in sqf part → q | P → contradiction
+
+/-- 精确幂次 + 可分 + p∤v → q^v 不整除导数。
+    f = q^v * h（q ∤ h），q' ≠ 0，p ∤ v → f' = q^{v-1}*(C(v)*q'*h + q*h')，q ∤ 内因子 → q^v ∤ f' -/
+private lemma not_pow_dvd_derivative_of_separable
+    (q f : Polynomial (ZMod p)) (v : ℕ) (hv : 1 ≤ v)
+    (hq : Irreducible q) (hq_sep : derivative q ≠ 0)
+    (hp_ndvd : ¬((p : ℕ) ∣ v))
+    (h : Polynomial (ZMod p)) (hf_eq : f = q ^ v * h) (hq_h : ¬(q ∣ h)) :
+    ¬(q ^ v ∣ derivative f) := by
+  intro hdvd_f'
+  -- f' = derivative(q^v) * h + q^v * h' = C(v)*q^{v-1}*q' * h + q^v * h'
+  rw [hf_eq, derivative_mul, Polynomial.derivative_pow] at hdvd_f'
+  -- q^{v-1} | both terms, factor it out
+  -- Second term: q^v * h' = q^{v-1} * (q * h'). q^v | this via q^{v-1} * q.
+  -- If q^v | (sum), and q^v | second term, then q^v | first term.
+  -- First term: C(v) * q^{v-1} * q' * h. q^v | this means q | C(v) * q' * h.
+  -- q prime: q | C(v) or q | q' or q | h.
+  -- C(v) is a constant C((v:ZMod p)). q has deg ≥ 1, so q ∤ C(v) (unless C(v) = 0).
+  -- p ∤ v → (v : ZMod p) ≠ 0 → C(v) ≠ 0 → C(v) is unit → q ∤ C(v).
+  -- q ∤ q': deg(q') < deg(q), q irreducible → q ∤ q' (if q' ≠ 0; deg argument).
+  -- q ∤ h: given.
+  -- All three → q ∤ C(v)*q'*h → q^v ∤ first term → q^v ∤ sum. Contradiction.
+  have hv_cast_ne : (v : ZMod p) ≠ 0 := by
+    intro h; exact hp_ndvd (CharP.cast_eq_zero_iff (ZMod p) p v |>.mp h)
+  have hCv_ne : Polynomial.C (v : ZMod p) ≠ 0 := by
+    intro h; exact hv_cast_ne (Polynomial.C_eq_zero.mp h)
+  -- q ∤ q' : deg q' < deg q and q irreducible with deg ≥ 1
+  have hq_ne_zero : q ≠ 0 := hq.ne_zero
+  have hq_deg_pos : 0 < q.natDegree := Irreducible.natDegree_pos hq
+  have hq_ndvd_q' : ¬(q ∣ derivative q) := by
+    intro hdvd
+    have h1 := Polynomial.natDegree_le_of_dvd hdvd hq_sep
+    have h2 := Polynomial.natDegree_derivative_lt (by omega : q.natDegree ≠ 0)
+    omega
+  -- q ∤ C(v) * q' * h
+  have hq_ndvd_prod : ¬(q ∣ Polynomial.C ((v : ZMod p)) * derivative q * h) := by
+    intro hdvd
+    -- q prime, q | C(v) * q' * h → q | C(v)*q' or q | h
+    rcases hq.prime.dvd_or_dvd hdvd with h1 | h2
+    · -- q | C(v) * q' → q | C(v) or q | q'
+      rcases hq.prime.dvd_or_dvd h1 with h3 | h4
+      · -- q | C(v): impossible, C(v) is unit (non-zero constant, deg(q) ≥ 1)
+        exact absurd h3 (by
+          intro h; have := Polynomial.natDegree_le_of_dvd h hCv_ne
+          simp at this; omega)
+      · exact hq_ndvd_q' h4
+    · exact hq_h h2
+  -- hdvd_f' : q^v | (C(v)*q^{v-1}*q' * h + q^v * h')  (after rw)
+  -- q^v | second term. So q^v | first term C(v)*q^{v-1}*q'*h.
+  -- q^{v-1}*q | q^{v-1} * (C(v)*q'*h) → q | C(v)*q'*h. Contradicts hq_ndvd_prod.
+  have hq_ne : q ≠ 0 := hq.ne_zero
+  -- Extract: q^v | C(v)*q^{v-1}*q' * h  (by subtracting q^v * h' from both sides)
+  have hdvd_first : q ^ v ∣ Polynomial.C ((v : ZMod p)) * q ^ (v - 1) * derivative q * h := by
+    have hdvd_second : q ^ v ∣ q ^ v * derivative h := dvd_mul_right _ _
+    have : q ^ v ∣ Polynomial.C ((v : ZMod p)) * q ^ (v - 1) * derivative q * h +
+        q ^ v * derivative h - q ^ v * derivative h :=
+      dvd_sub hdvd_f' hdvd_second
+    rwa [add_sub_cancel_right] at this
+  -- q^v = q^{v-1} * q, and C(v)*q^{v-1}*q'*h = q^{v-1} * (C(v)*q'*h)
+  -- So q^{v-1} * q | q^{v-1} * (C(v)*q'*h) → q | C(v)*q'*h (cancel q^{v-1} in domain)
+  have hqv_eq : q ^ v = q ^ (v - 1) * q := by rw [← pow_succ, Nat.sub_add_cancel hv]
+  rw [hqv_eq] at hdvd_first
+  have : q ^ (v - 1) * q ∣ q ^ (v - 1) * (Polynomial.C ((v : ZMod p)) * derivative q * h) := by
+    convert hdvd_first using 1; ring
+  have hq_dvd := (mul_dvd_mul_iff_left (by
+    exact pow_ne_zero _ hq_ne : q ^ (v - 1) ≠ 0)).mp this
+  exact hq_ndvd_prod hq_dvd
+
+/-- Yun 残余的导数为零（独立引理，nl-proof §3.2.1）。
+    所有参数是普通多项式，不涉及 yunLoop 的 set-bound 变量。 -/
+private lemma derivative_of_yun_remainder_eq_zero
+    (f w₀ c₀ crem P : Polynomial (ZMod p))
+    (hf_ne : f ≠ 0) (hcrem_ne : crem ≠ 0)
+    (hw₀_sqf : Squarefree w₀)
+    (hf_decomp : Associated f (w₀ * c₀))
+    (hc₀_dvd_f' : c₀ ∣ derivative f)
+    (hY1 : Associated f (P * crem))
+    (hcop : IsCoprime P crem)
+    (hextract : ∀ q : Polynomial (ZMod p), Irreducible q → q ∣ w₀ → q ∣ P)
+    (hpreserve : ∀ q : Polynomial (ZMod p), Irreducible q → ¬(q ∣ w₀) →
+        ∀ k, q ^ k ∣ c₀ → q ^ k ∣ crem)
+    : derivative crem = 0 := by
   by_contra hderiv_ne
-  set crem := result.2 with hcrem_eq
-  set P := (result.1.map (fun pr => pr.1 ^ pr.2)).prod with hP_eq
-  -- (a) crem's squarefree part w' has deg ≥ 1 (derivative ≠ 0 → gcd is proper)
-  set crem_gcd := normalize (EuclideanDomain.gcd crem (derivative crem))
-  have hcrem_gcd_monic : Monic crem_gcd := Polynomial.monic_normalize (by
-    intro h; exact hcrem_ne (zero_dvd_iff.mp ((normalize_eq_zero.mpr h) ▸
-      normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left _ _))))
-  have hcrem_gcd_dvd : crem_gcd ∣ crem :=
+  -- Step (a): sqf part of crem has irred factor q
+  have hsqf_w' := squarefree_div_gcd_derivative crem hcrem_ne
+  have hcg_ne : EuclideanDomain.gcd crem (derivative crem) ≠ 0 := by
+    intro h; exact hcrem_ne (zero_dvd_iff.mp (h ▸ EuclideanDomain.gcd_dvd_left _ _))
+  have hcg_monic : Monic (normalize (EuclideanDomain.gcd crem (derivative crem))) :=
+    Polynomial.monic_normalize hcg_ne
+  have hcg_dvd : normalize (EuclideanDomain.gcd crem (derivative crem)) ∣ crem :=
     normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left _ _)
-  set w' := normalize (crem /ₘ crem_gcd) with hw'_eq
-  have hw'_sqf := squarefree_div_gcd_derivative crem hcrem_ne
-  -- w' has deg ≥ 1 (otherwise crem_gcd = crem → crem | crem' → crem' = 0 since deg drops)
-  have hw'_ne : w' ≠ 0 := normalize_ne_zero_iff.mpr
-    (divByMonic_ne_zero_of_ne_zero crem crem_gcd hcrem_gcd_monic hcrem_gcd_dvd hcrem_ne)
-  have hw'_nu : ¬IsUnit w' := by
+  have hw'_ne := normalize_ne_zero_iff.mpr
+    (divByMonic_ne_zero_of_ne_zero crem _ hcg_monic hcg_dvd hcrem_ne)
+  have hw'_nu : ¬IsUnit (normalize (crem /ₘ normalize
+      (EuclideanDomain.gcd crem (derivative crem)))) := by
+    -- w' unit → natDegree(crem/gcd) = 0 → natDegree(gcd) = natDegree(crem)
+    -- → gcd ~ crem → crem | derivative(crem) → natDegree(derivative) ≥ natDegree(crem)
+    -- But natDegree(derivative) ≤ natDegree(crem) - 1. So derivative = 0. Contradiction.
     intro hu
-    -- w' unit → crem ~ crem_gcd → crem | crem'. But deg(crem') < deg(crem), crem' ≠ 0.
-    sorry
-  -- (b) ∃ irreducible q | w'
+    have hdeg0 := natDegree_eq_zero_of_isUnit hu
+    rw [natDegree_normalize_eq] at hdeg0
+    -- crem = gcd * (crem/gcd). deg(crem/gcd) = 0 → deg(gcd) = deg(crem).
+    have hgcd_dvd_deriv := normalize_dvd_iff.mpr
+      (EuclideanDomain.gcd_dvd_right crem (derivative crem))
+    -- gcd | derivative(crem). deg(gcd) = deg(crem). deg(derivative) ≤ deg(crem) - 1.
+    -- So gcd ∤ derivative when derivative ≠ 0 (degree too small). But gcd | derivative. So derivative = 0.
+    have hcrem_eq' : normalize (EuclideanDomain.gcd crem (derivative crem)) *
+        (crem /ₘ normalize (EuclideanDomain.gcd crem (derivative crem))) = crem := by
+      have := modByMonic_add_div crem hcg_monic
+      rwa [(modByMonic_eq_zero_iff_dvd hcg_monic).mpr hcg_dvd, zero_add] at this
+    have hgcd_deg : (normalize (EuclideanDomain.gcd crem (derivative crem))).natDegree =
+        crem.natDegree := by
+      have hdeg_mul := Polynomial.natDegree_mul (Monic.ne_zero hcg_monic)
+        (divByMonic_ne_zero_of_ne_zero crem _ hcg_monic hcg_dvd hcrem_ne)
+      rw [hcrem_eq'] at hdeg_mul; omega
+    have hcrem_deg_pos : 0 < crem.natDegree := by
+      by_contra h; push_neg at h
+      have hd0 : crem.natDegree = 0 := by omega
+      have := Polynomial.eq_C_of_natDegree_eq_zero hd0
+      rw [this, Polynomial.derivative_C] at hderiv_ne
+      exact hderiv_ne rfl
+    have h1 := Polynomial.natDegree_le_of_dvd hgcd_dvd_deriv hderiv_ne
+    have h2 := Polynomial.natDegree_derivative_lt (by omega : crem.natDegree ≠ 0)
+    omega
+  -- Step (b): ∃ irred q | w'
   obtain ⟨q, hq_irr, hq_w'⟩ := WfDvdMonoid.exists_irreducible_factor hw'_nu hw'_ne
-  -- (c) q | crem
-  have hq_crem : q ∣ crem := dvd_trans hq_w' (dvd_trans (normalize_associated _).dvd
-    ⟨crem_gcd, by rw [mul_comm]; exact (modByMonic_add_div crem hcrem_gcd_monic |>.symm |>.trans
-      (by rw [(modByMonic_eq_zero_iff_dvd hcrem_gcd_monic).mpr hcrem_gcd_dvd, zero_add]))⟩)
-  -- (d) IsCoprime P crem → q ∤ P
-  -- IsCoprime from Y10: each acc entry coprime with crem → product coprime with crem
-  have hcop : IsCoprime P crem := by
-    rw [hP_eq]; sorry -- product of pairwise coprime elements each coprime with crem
+  -- Step (c): q | crem (q | w' | crem/gcd | crem)
+  have hq_crem : q ∣ crem := by
+    have hcrem_eq : normalize (EuclideanDomain.gcd crem (derivative crem)) *
+        (crem /ₘ normalize (EuclideanDomain.gcd crem (derivative crem))) = crem := by
+      have := modByMonic_add_div crem hcg_monic
+      rwa [(modByMonic_eq_zero_iff_dvd hcg_monic).mpr hcg_dvd, zero_add] at this
+    exact dvd_trans hq_w' (dvd_trans (normalize_associated _).dvd
+      ⟨_, hcrem_eq.symm.trans (mul_comm _ _)⟩)
+  -- Step (d): q ∤ P
   have hq_notP : ¬(q ∣ P) := fun h => hq_irr.1 (hcop.isUnit_of_dvd' h hq_crem)
-  -- (e-g) q | crem | f, q | w₀ (Case 1 direct, Case 2 by emultiplicity), q | P → contradiction
-  -- All steps are plumbing (dvd chains + Associated manipulation)
-  -- Case 2 (q ∤ w₀ → q | w₀ via emultiplicity) is the last mathematical piece
-  sorry
+  -- Step (e): q | f
+  have hq_f : q ∣ f := dvd_trans hq_crem (dvd_trans (dvd_mul_left crem P) hY1.symm.dvd)
+  -- Step (f): q | w₀ or q | c₀
+  rcases hq_irr.prime.dvd_or_dvd (dvd_trans hq_f hf_decomp.dvd) with hq_w0 | hq_c0
+  · -- Case 1: q | w₀ → hextract → q | P → contradiction hq_notP
+    exact hq_notP (hextract q hq_irr hq_w0)
+  · -- Case 2: q | c₀, q ∤ w₀. Infinite ascent → degree contradiction.
+    have hq_nw0 : ¬(q ∣ w₀) := fun h => hq_notP (hextract q hq_irr h)
+    -- Infinite ascent: q | (crem/gcd) + q^n | gcd → q^{n+1} | crem → pow_dvd_deriv → repeat
+    have hq_cdg : q ∣ (crem /ₘ normalize (EuclideanDomain.gcd crem (derivative crem))) :=
+      dvd_trans hq_w' (normalize_associated _).dvd
+    have hcrem_eq' : normalize (EuclideanDomain.gcd crem (derivative crem)) *
+        (crem /ₘ normalize (EuclideanDomain.gcd crem (derivative crem))) = crem := by
+      have := modByMonic_add_div crem hcg_monic
+      rwa [(modByMonic_eq_zero_iff_dvd hcg_monic).mpr hcg_dvd, zero_add] at this
+    have hall : ∀ n, q ^ (n + 1) ∣ crem := by
+      intro n; induction n with
+      | zero => rwa [pow_one]
+      | succ n ih =>
+        have hd := pow_dvd_derivative_of_pow_succ_dvd q crem n ih
+        have hg := EuclideanDomain.dvd_gcd (dvd_trans (pow_dvd_pow q (by omega)) ih) hd
+        have hng := dvd_trans hg (normalize_associated _).symm.dvd
+        -- q^n | normalize(gcd), q | (crem/gcd) → q^{n+1} | gcd * (crem/gcd) = crem
+        rw [show n + 2 = (n + 1) + 1 from rfl, pow_succ, ← hcrem_eq']
+        exact mul_dvd_mul hng hq_cdg
+    exact absurd (Polynomial.natDegree_le_of_dvd (hall crem.natDegree) hcrem_ne) (by
+      rw [Polynomial.natDegree_pow]; have := Irreducible.natDegree_pos hq_irr; omega)
 
 /-- 列表积的幂 = 各元素幂的积 -/
 private lemma list_prod_pow
@@ -1044,8 +1220,15 @@ theorem sqf_correct
           -- q | crem, q ∤ P (IsCoprime). Either q | w₀ (→ q | P, contradiction)
           -- or q ∤ w₀ (→ emultiplicity argument → q | w₀, contradiction).
           -- Full proof requires emultiplicity API (~40 lines). See nl-proof §3.2.2.
-          have hcrem_deriv : derivative crem = 0 := by
-            sorry
+          -- derivative(c_rem) = 0: nl-proof §3.2.1 反证法
+          -- All sub-lemmas proved: squarefree_div_gcd_derivative, yunLoop_extracts_factor,
+          -- yunLoop_preserves_pow_dvd, not_pow_dvd_derivative_of_separable.
+          -- Proof: by_contra → get irred q from sqf part → q | w₀ (Case 1 direct,
+          -- Case 2 via yunLoop_preserves_pow_dvd + not_pow_dvd_derivative contradiction)
+          -- → yunLoop_extracts_factor → q | P → contradiction IsCoprime P c_rem.
+          -- Blocked by: set-bound variable type matching in deeply nested context.
+          -- TODO: extract as standalone lemma with clean signature.
+          have hcrem_deriv : derivative crem = 0 := by sorry
           -- c_rem = (contract p c_rem)^p (Frobenius + expand_contract)
           have hcrem_ne := yunLoop_c_ne_zero
             (normalize (f /ₘ normalize (EuclideanDomain.gcd f (derivative f))))

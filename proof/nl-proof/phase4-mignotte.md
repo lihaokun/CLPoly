@@ -303,33 +303,138 @@ log M(f) ≤ log((1/2π) ∫ |f(e^{iθ})|² dθ)^{1/2} = log ‖f‖₂
 
 ### 5.3 形式化翻译计划（Mathlib API 全部确认）
 
-**Lean 证明路径（L1 版本，直接可用）**：
+**Lean 证明完整蓝图（L1 版本）**：
 
+### 签名
+
+```lean
+theorem mignotte_bound (f g : Polynomial ℤ) (hf : f ≠ 0) (hg : g ∣ f) :
+    ∀ i, (g.coeff i).natAbs ≤
+      Nat.choose f.natDegree (f.natDegree / 2) *
+      (Finset.range (f.natDegree + 1)).sum (fun j => (f.coeff j).natAbs) := by
 ```
-|g.coeff i| ≤ C(d, i) · M(g_ℂ)              -- norm_coeff_le_choose_mul_mahlerMeasure
-            ≤ C(n, n/2) · M(g_ℂ)             -- Nat.choose_le_add (d ≤ n)
-            ≤ C(n, n/2) · M(f_ℂ)             -- mahlerMeasure_mul + M(h_ℂ) ≥ 1
-            ≤ C(n, n/2) · ‖f_ℂ‖₁             -- mahlerMeasure_le_sum_norm_coeff
-            = C(n, n/2) · Σ|fⱼ|              -- norm translation
+
+### Step 0：嵌入 ℤ[X] → ℂ[X] + 非零性
+
+```lean
+  intro i
+  let φ := Int.castRingHom ℂ
+  have hφ_inj : Function.Injective φ := Int.cast_injective
+  -- g ∣ f → ∃ h, f = g * h
+  obtain ⟨h, hfgh⟩ := hg
+  have hh_ne : h ≠ 0 := right_ne_zero_of_mul (hfgh ▸ hf)
+  have hg_ne : g ≠ 0 := left_ne_zero_of_mul (hfgh ▸ hf)
+  -- 映射到 ℂ[X]
+  set f_c := f.map φ; set g_c := g.map φ; set h_c := h.map φ
+  have hf_c : f_c ≠ 0 := (Polynomial.map_ne_zero_iff hφ_inj).mpr hf
+  have hh_c : h_c ≠ 0 := (Polynomial.map_ne_zero_iff hφ_inj).mpr hh_ne
+  have hfgh_c : f_c = g_c * h_c := by simp [f_c, g_c, h_c, ← Polynomial.map_mul, hfgh]
 ```
 
-**Mathlib API 逐步对应**：
+### Step 1：系数 ≤ C(d,i) · M(g_c)
 
-| Step | Lean 表达式 | Mathlib 引理 | 文件 |
-|------|-----------|-------------|------|
-| ℤ[X] → ℂ[X] | `Polynomial.map (Int.castRingHom ℂ)` | — | — |
-| 系数对应 | `(g.map φ).coeff i = φ (g.coeff i)` | `Polynomial.coeff_map` | Eval/Coeff.lean:79 |
-| ℤ→ℂ 范数 | `‖(n : ℤ) : ℂ‖ = |(n : ℝ)|` | `Complex.norm_intCast` | Complex/Norm.lean:134 |
-| natAbs ↔ norm | `(n : ℤ).natAbs = ‖n‖` | `Int.natAbs_eq_iff` / cast | — |
-| coeff bound | `‖g_ℂ.coeff i‖ ≤ C(d,i)·M(g_ℂ)` | `norm_coeff_le_choose_mul_mahlerMeasure` | MahlerMeasure.lean:280 |
-| C(d,i) ≤ C(n,n/2) | `choose d i ≤ choose n (n/2)` | `Nat.choose_le_add` + `choose_le_middle` | Choose/Basic.lean:346,330 |
-| g \| f → g_ℂ \| f_ℂ | `Polynomial.map_dvd` | `Polynomial.map_dvd` | Eval/Defs.lean |
-| M 乘法性 | `M(g_ℂ · h_ℂ) = M(g_ℂ) · M(h_ℂ)` | `mahlerMeasure_mul` | MahlerMeasure.lean:119 |
-| M(h_ℂ) ≥ 1 | `‖lc(h_ℂ)‖ ≤ M(h_ℂ)` | `leading_coeff_le_mahlerMeasure` | MahlerMeasure.lean:238 |
-| \|lc(h)\| ≥ 1 | `h ∈ ℤ[X], h ≠ 0 → 1 ≤ ‖lc(h_ℂ)‖` | `norm_intCast` + `Int.one_le_abs` | — |
-| deg 保持 | `(p.map φ).natDegree = p.natDegree` | `natDegree_map_eq_of_injective` | Degree/Lemmas.lean:294 |
-| M ≤ L1 | `M(f_ℂ) ≤ f_ℂ.sum (‖·‖)` | `mahlerMeasure_le_sum_norm_coeff` | MahlerMeasure.lean:252 |
-| L1 翻译 | `f_ℂ.sum (‖·‖) = Σ |(f.coeff j : ℤ)|` | `coeff_map` + `norm_intCast` | — |
+```lean
+  -- ‖g_c.coeff i‖ ≤ C(g_c.natDegree, i) · M(g_c)
+  have h1 := Polynomial.norm_coeff_le_choose_mul_mahlerMeasure i g_c
+  -- g_c.natDegree = g.natDegree
+  rw [Polynomial.natDegree_map_eq_of_injective hφ_inj] at h1
+  -- 现在 h1 : ‖g_c.coeff i‖ ≤ g.natDegree.choose i * g_c.mahlerMeasure
+```
+
+### Step 2：M(g_c) ≤ M(f_c)
+
+```lean
+  -- M(f_c) = M(g_c) · M(h_c)
+  have h_mf : f_c.mahlerMeasure = g_c.mahlerMeasure * h_c.mahlerMeasure := by
+    rw [hfgh_c, Polynomial.mahlerMeasure_mul]
+  -- M(h_c) ≥ ‖lc(h_c)‖ ≥ 1
+  have h_lc : 1 ≤ h_c.mahlerMeasure := by
+    calc (1 : ℝ)
+      ≤ ‖h_c.leadingCoeff‖ := by
+        rw [Polynomial.leadingCoeff_map_of_injective _ hφ_inj]
+        -- ‖(lc(h) : ℂ)‖ = |lc(h)| ≥ 1 (非零整数的绝对值 ≥ 1)
+        rw [Complex.norm_intCast]
+        exact_mod_cast Int.one_le_abs (Polynomial.leadingCoeff_ne_zero.mpr hh_ne)
+      _ ≤ h_c.mahlerMeasure := Polynomial.leading_coeff_le_mahlerMeasure h_c
+  -- M(g_c) ≤ M(f_c)
+  have h2 : g_c.mahlerMeasure ≤ f_c.mahlerMeasure := by
+    rw [h_mf]; exact le_mul_of_one_le_right (Polynomial.mahlerMeasure_nonneg g_c) h_lc
+```
+
+### Step 3：C(d,i) ≤ C(n, n/2)
+
+```lean
+  -- deg(g) ≤ deg(f) (g ∣ f)
+  have h_deg : g.natDegree ≤ f.natDegree := Polynomial.natDegree_le_of_dvd hg hf
+  -- C(g.natDegree, i) ≤ C(g.natDegree, g.natDegree/2) ≤ C(f.natDegree, f.natDegree/2)
+  have h3 : g.natDegree.choose i ≤ f.natDegree.choose (f.natDegree / 2) := by
+    calc g.natDegree.choose i
+      ≤ g.natDegree.choose (g.natDegree / 2) := Nat.choose_le_middle i g.natDegree
+      _ ≤ f.natDegree.choose (g.natDegree / 2) := Nat.choose_le_choose _ h_deg
+      _ ≤ f.natDegree.choose (f.natDegree / 2) := Nat.choose_le_middle _ f.natDegree
+    -- 注：最后一步可能需要调整。choose_le_middle 给 C(n,k) ≤ C(n,n/2)。
+    -- 中间步用 choose_le_choose：C(d,k) ≤ C(n,k) when d ≤ n。
+```
+
+**注意**：Step 3 的 calc 链需要验证 `Nat.choose_le_middle` 的签名：
+```
+Nat.choose_le_middle (r n : ℕ) : n.choose r ≤ n.choose (n / 2)
+```
+这直接给 `C(g.natDegree, i) ≤ C(g.natDegree, g.natDegree/2)`。
+然后 `Nat.choose_le_choose` 给 `C(g.natDegree, g.natDegree/2) ≤ C(f.natDegree, g.natDegree/2)`。
+最后再用 `Nat.choose_le_middle` 给 `C(f.natDegree, g.natDegree/2) ≤ C(f.natDegree, f.natDegree/2)`。✓
+
+### Step 4：M(f_c) ≤ L1 norm
+
+```lean
+  -- M(f_c) ≤ f_c.sum (fun _ a => ‖a‖)
+  have h4 := Polynomial.mahlerMeasure_le_sum_norm_coeff f_c
+```
+
+### Step 5：L1 norm 翻译（ℂ → ℤ natAbs）
+
+```lean
+  -- f_c.sum (fun _ a => ‖a‖) = Σ_{j ∈ range(n+1)} ‖(f.coeff j : ℂ)‖
+  --                          = Σ_{j ∈ range(n+1)} |(f.coeff j : ℝ)|
+  --                          = Σ_{j ∈ range(n+1)} (f.coeff j).natAbs
+  have h5 : f_c.sum (fun _ a => ‖a‖) =
+      ↑((Finset.range (f.natDegree + 1)).sum (fun j => (f.coeff j).natAbs)) := by
+    -- 用 Polynomial.sum_over_range 展开 Polynomial.sum
+    rw [Polynomial.sum_over_range (fun n => by simp)]
+    -- f_c.natDegree = f.natDegree
+    rw [Polynomial.natDegree_map_eq_of_injective hφ_inj]
+    -- 逐项：‖(f.coeff j : ℂ)‖ = ↑(f.coeff j).natAbs
+    congr 1; ext j
+    rw [Polynomial.coeff_map, Complex.norm_intCast, ← Int.abs_eq_natAbs]
+    -- |(f.coeff j : ℝ)| = ↑|f.coeff j| = ↑(f.coeff j).natAbs
+    simp [abs_of_nonneg, Int.natAbs]  -- 可能需要更细致的 cast chain
+```
+
+### Step 6：组合
+
+```lean
+  -- ‖g_c.coeff i‖ ≤ C(d,i) · M(g) ≤ C(n,n/2) · M(f) ≤ C(n,n/2) · L1(f)
+  -- = C(n,n/2) · Σ|fⱼ|.natAbs
+  -- 且 ‖g_c.coeff i‖ = ‖(g.coeff i : ℂ)‖ = (g.coeff i).natAbs (via norm_intCast)
+  -- 所以 (g.coeff i).natAbs ≤ C(n,n/2) * Σ(f.coeff j).natAbs
+  have h_lhs : ‖g_c.coeff i‖ = ↑((g.coeff i).natAbs) := by
+    rw [Polynomial.coeff_map, Complex.norm_intCast, ← Int.abs_eq_natAbs]
+    simp [Int.natAbs]
+  -- 组合不等式链
+  have h_chain : (↑((g.coeff i).natAbs) : ℝ) ≤
+      ↑(f.natDegree.choose (f.natDegree / 2) *
+        (Finset.range (f.natDegree + 1)).sum (fun j => (f.coeff j).natAbs)) := by
+    rw [← h_lhs]
+    calc ‖g_c.coeff i‖
+      ≤ g.natDegree.choose i * g_c.mahlerMeasure := h1
+      _ ≤ g.natDegree.choose i * f_c.mahlerMeasure := by gcongr
+      _ ≤ f.natDegree.choose (f.natDegree / 2) * f_c.mahlerMeasure := by gcongr
+      _ ≤ f.natDegree.choose (f.natDegree / 2) * (f_c.sum fun _ a => ‖a‖) := by gcongr
+      _ = ↑(f.natDegree.choose (f.natDegree / 2) *
+            (Finset.range (f.natDegree + 1)).sum (fun j => (f.coeff j).natAbs)) := by
+          rw [h5, Nat.cast_mul]
+  exact_mod_cast h_chain
+```
 
 **估计行数**：
 

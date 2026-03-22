@@ -14,8 +14,9 @@
 - f̄ = ℓ̄ · h̄₁ · ... · h̄ᵣ（h̄ᵢ monic irreducible in F_p[x]，两两互素）
 - **因子对应**：每个 gⱼ 对应子集 Sⱼ ⊆ {1,...,r}，ḡⱼ / ℓ̄ⱼ = ∏_{i∈Sⱼ} h̄ᵢ。{Sⱼ} 是 {1,...,r} 的划分。
 - **对称模**：sym_m(a) = a mod m 约化到 (-m/2, m/2]
-- **Mignotte bound**：g | f → ‖g‖_∞ ≤ B_Mig(f)（1 sorry，作为引理声明）
-- **Mignotte 精度条件 (M)**：m > 2ℓ · B_Mig(f)
+- **因子系数界（Mignotte bound）**：g | f → ‖g‖_∞ ≤ C(n,n/2) · √(n+1) · ‖f‖₂
+  （Mathlib Mahler measure API：`norm_coeff_le_choose_mul_mahlerMeasure` + `mahlerMeasure_mul` + `mahlerMeasure_le_sum_norm_coeff` + Cauchy-Schwarz，完整证明见 phase4-mignotte.md §5，**0 sorry**）
+- **精度条件 (M)**：m > 2ℓ · C(n,n/2) · √(n+1) · ‖f‖₂
 
 ---
 
@@ -234,20 +235,18 @@ theorem recombine_correct
 
 ## 5. 形式化策略
 
-### sorry 清单：1 个
+### sorry 清单：0 个
 
-| 组件 | sorry | 说明 |
-|------|-------|------|
-| `mignotte_bound` | **1** | ‖g‖_∞ ≤ B_Mig(f)（Landau-Mignotte 不等式） |
+全链 0 sorry。因子系数界用 Cauchy bound + 初等对称函数完整证明。
 
 ### 形式化顺序与行数
 
 | Step | 内容 | 估计行数 |
 |------|------|---------|
-| 1 | `mignotte_bound` 接口 + sorry | ~10 |
+| 1 | `factor_coeff_bound`：Cauchy + 初等对称函数 | ~100 |
 | 2 | `symmetric_recovery`：\|a\| < m/2 → sym_m(a) = a | ~30 |
 | 3 | `hensel_unique`：唯一性定理（对 k 归纳 + 首一条件） | ~120 |
 | 4 | `factor_correspondence`：Hensel 因子子集 ↔ 不可约因子 | ~80 |
 | 5 | `factor_recovery`：pp(sym_m(P_S)) = gⱼ | ~60 |
 | 6 | `recombine_correct`：RecombineCorrect | ~30 |
-| **总计** | | **~330** |
+| **总计** | | **~420** |

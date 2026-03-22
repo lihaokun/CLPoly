@@ -43,7 +43,7 @@ private lemma exists_C_mul_of_map_eq_zero (m : ℕ) (hm : 0 < m) (p : Polynomial
   -- Goal: p.coeff n = (m : ℤ) * (p.toFinsupp n / (m : ℤ))
   -- p.coeff n = p.toFinsupp n (definitionally equal)
   show p.toFinsupp n = (m : ℤ) * (p.toFinsupp n / (m : ℤ))
-  rw [mul_comm, Int.ediv_mul_cancel (hdvd n)]
+  exact (Int.mul_ediv_cancel' (hdvd n)).symm
 
 -- ============================================================
 -- 1. hensel_step: 2-factor 单步 (ℤ[x] 方法)
@@ -71,18 +71,18 @@ theorem hensel_step
   obtain ⟨e_int, he_int⟩ := exists_C_mul_of_map_eq_zero m (by omega) (f - g * h) hfgh
   -- f = g*h + C(m) * e_int
   have hf_eq : f = g * h + C ((m : ℤ)) * e_int :=
-    eq_add_of_sub_eq he_int
+    sub_eq_iff_eq_add'.mp he_int
   -- Step B: Bézout lift to ℤ[x]
   obtain ⟨s_bar, t_bar, hbez⟩ := hcop
-  obtain ⟨s, hs⟩ := Polynomial.map_surjective _ (ZMod.intCast_surjective) s_bar
-  obtain ⟨t, ht⟩ := Polynomial.map_surjective _ (ZMod.intCast_surjective) t_bar
+  obtain ⟨s, hs⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod m)) ZMod.intCast_surjective s_bar
+  obtain ⟨t, ht⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod m)) ZMod.intCast_surjective t_bar
   have hbez_m : Polynomial.map (Int.castRingHom (ZMod m)) (s * g + t * h - 1) = 0 := by
     simp only [Polynomial.map_sub, Polynomial.map_add, Polynomial.map_mul,
                Polynomial.map_one, hs, ht, hbez, sub_self]
   obtain ⟨w, hw⟩ := exists_C_mul_of_map_eq_zero m (by omega) _ hbez_m
   -- s*g + t*h = 1 + C(m)*w
   have hbez_eq : s * g + t * h = 1 + C ((m : ℤ)) * w :=
-    eq_add_of_sub_eq hw
+    sub_eq_iff_eq_add'.mp hw
   -- Step C: Define g', h'
   refine ⟨g + C ((m : ℤ)) * (t * e_int),
           h + C ((m : ℤ)) * (s * e_int), ?_, ?_, ?_⟩
@@ -93,25 +93,26 @@ theorem hensel_step
       -- map_{m²} of C(m)*C(m)*anything = 0 since (m : ZMod m²) * (m : ZMod m²) = m² = 0
       have h_zero : Polynomial.map (Int.castRingHom (ZMod (m ^ 2)))
           (C (↑m : ℤ) * C (↑m : ℤ) * (w * e_int + t * e_int * (s * e_int))) = 0 := by
-        simp only [Polynomial.map_mul, Polynomial.map_C, Polynomial.map_add]
-        have : ((m : ℤ) : ZMod (m ^ 2)) * ((m : ℤ) : ZMod (m ^ 2)) = 0 := by
+        have hmm : (Int.castRingHom (ZMod (m ^ 2))) ((↑m : ℤ) * (↑m : ℤ)) = 0 := by
+          rw [map_mul]
+          show ((m : ℤ) : ZMod (m ^ 2)) * ((m : ℤ) : ZMod (m ^ 2)) = 0
           have : ((m * m : ℕ) : ZMod (m ^ 2)) = 0 := by
             rw [show m * m = m ^ 2 from by ring]; exact ZMod.natCast_self _
           exact_mod_cast this
-        simp [this]
-      rw [show Polynomial.map (Int.castRingHom (ZMod (m ^ 2)))
-          ((g + C ↑m * (t * e_int)) * (h + C ↑m * (s * e_int))) =
-          Polynomial.map (Int.castRingHom (ZMod (m ^ 2)))
-          ((g + C ↑m * (t * e_int)) * (h + C ↑m * (s * e_int)) - f + f) from by ring_nf]
-      rw [Polynomial.map_add, h_key ▸ h_zero, zero_add]
+        simp only [Polynomial.map_mul, Polynomial.map_C, Polynomial.map_add, ← C_mul, hmm,
+                   map_zero, zero_mul]
+      -- g'*h' - f = h_key, so map(g'*h' - f) = h_zero = 0, hence map(g'*h') = map(f)
+      have : Polynomial.map (Int.castRingHom (ZMod (m ^ 2)))
+          ((g + C (↑m : ℤ) * (t * e_int)) * (h + C (↑m : ℤ) * (s * e_int)) - f) = 0 := by
+        rw [h_key]; exact h_zero
+      rw [Polynomial.map_sub, Polynomial.map_mul] at this
+      exact (sub_eq_zero.mp this).symm
     -- Prove the key identity by algebra
-    rw [hf_eq, hbez_eq]; ring
+    rw [hf_eq]; linear_combination C ((m : ℤ)) * e_int * hbez_eq
   · -- (H2) map_m(g') = map_m(g)
-    simp only [Polynomial.map_add, Polynomial.map_mul, Polynomial.map_C]
-    rw [int_cast_m_eq_zero]; simp
+    simp only [Polynomial.map_add, Polynomial.map_mul, Polynomial.map_C]; simp
   · -- (H3) map_m(h') = map_m(h)
-    simp only [Polynomial.map_add, Polynomial.map_mul, Polynomial.map_C]
-    rw [int_cast_m_eq_zero]; simp
+    simp only [Polynomial.map_add, Polynomial.map_mul, Polynomial.map_C]; simp
 
 -- ============================================================
 -- 2. ker(π)² = 0 in ZMod(m²) — ring level
@@ -141,9 +142,9 @@ private lemma zmod_ker_mul_eq_zero (m : ℕ) (hm : 1 < m)
     have : ((m * m : ℕ) : ZMod (m ^ 2)) = 0 := by
       rw [show m * m = m ^ 2 from by ring]; exact ZMod.natCast_self _
     exact_mod_cast this
-  ring_nf; rw [show (m : ZMod (m ^ 2)) * ((m : ZMod (m ^ 2)) * ((ka : ZMod (m ^ 2)) * (kb : ZMod (m ^ 2)))) =
-    ((m : ZMod (m ^ 2)) * (m : ZMod (m ^ 2))) * ((ka : ZMod (m ^ 2)) * (kb : ZMod (m ^ 2))) from by ring]
-  rw [this, zero_mul]
+  have key : (m : ZMod (m ^ 2)) * (ka : ZMod (m ^ 2)) * ((m : ZMod (m ^ 2)) * (kb : ZMod (m ^ 2))) =
+    ((m : ZMod (m ^ 2)) * (m : ZMod (m ^ 2))) * ((ka : ZMod (m ^ 2)) * (kb : ZMod (m ^ 2))) := by ring
+  rw [key, this, zero_mul]
 
 -- ============================================================
 -- 3. IsCoprime 传播 + 迭代
@@ -170,8 +171,8 @@ private lemma isCoprime_lift_sq (m : ℕ) (hm : 1 < m) (g h : Polynomial ℤ)
     : IsCoprime (Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) g)
                  (Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) h) := by
   obtain ⟨s_bar, t_bar, hbez⟩ := hcop
-  obtain ⟨s, hs⟩ := Polynomial.map_surjective _ (ZMod.intCast_surjective) s_bar
-  obtain ⟨t, ht⟩ := Polynomial.map_surjective _ (ZMod.intCast_surjective) t_bar
+  obtain ⟨s, hs⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod m)) ZMod.intCast_surjective s_bar
+  obtain ⟨t, ht⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod m)) ZMod.intCast_surjective t_bar
   let φ2 := Int.castRingHom (ZMod (m ^ 2))
   have hdvd : (m : ℕ) ∣ m ^ 2 := dvd_pow_self m (by omega : 2 ≠ 0)
   let π := ZMod.castHom hdvd (ZMod m)
@@ -185,10 +186,10 @@ private lemma isCoprime_lift_sq (m : ℕ) (hm : 1 < m) (g h : Polynomial ℤ)
     rw [this, hs, ht]; exact hbez
   -- (bez - 1)² = 0 (nilpotent)
   have hnil : (bez - 1) ^ 2 = 0 := by
-    rw [sq]
     have h0 : Polynomial.map π (bez - 1) = 0 := by
-      rw [Polynomial.map_sub, hbez_mod, sub_self]
-    exact poly_ker_mul_eq_zero m hm _ _ h0 h0
+      rw [Polynomial.map_sub, Polynomial.map_one, hbez_mod, sub_self]
+    have hmul := poly_ker_mul_eq_zero m hm _ _ h0 h0
+    rwa [← sq] at hmul
   -- bez = 1 + nilpotent → unit
   have hunit : IsUnit bez := by
     have : IsNilpotent (bez - 1) := ⟨2, hnil⟩
@@ -237,7 +238,11 @@ theorem hensel_two_factor
   | succ k ih =>
     by_cases hk' : k = 0
     · -- k = 0: p^1 = p. Take g' = g, h' = h.
-      subst hk'; simp; exact ⟨g, h, hprod, rfl, rfl⟩
+      subst hk'
+      have : p ^ (0 + 1) = p := by simp
+      refine ⟨g, h, ?_, rfl, rfl⟩
+      rw [show (0 + 1) = 1 from rfl, pow_one]
+      exact hprod
     · -- k ≥ 1: use IH to get mod p^k, then hensel_step to get mod p^{2k} ⊇ mod p^{k+1}
       have hk_pos : 0 < k := Nat.pos_of_ne_zero hk'
       obtain ⟨g_k, h_k, hprod_k, hg_k, hh_k⟩ := ih hk_pos
@@ -263,8 +268,8 @@ theorem hensel_two_factor
         -- p^k = 0 in ZMod(p^k) → p nilpotent → (ε coefficients are p-multiples) → ε nilpotent
         -- For k ≤ 1 this is trivial. For k > 1 we use the general nilpotent argument.
         obtain ⟨s_bar, t_bar, hbez_p⟩ := hcop_pk
-        obtain ⟨s0, hs0⟩ := Polynomial.map_surjective _ ZMod.intCast_surjective s_bar
-        obtain ⟨t0, ht0⟩ := Polynomial.map_surjective _ ZMod.intCast_surjective t_bar
+        obtain ⟨s0, hs0⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod p)) ZMod.intCast_surjective s_bar
+        obtain ⟨t0, ht0⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod p)) ZMod.intCast_surjective t_bar
         let φk := Int.castRingHom (ZMod (p ^ k))
         set bez_k := Polynomial.map φk s0 * Polynomial.map φk g_k +
                      Polynomial.map φk t0 * Polynomial.map φk h_k
@@ -281,9 +286,10 @@ theorem hensel_two_factor
         -- Polynomial nilpotent when all coeffs nilpotent (can be shown by degree bound).
         -- For simplicity, use IsNilpotent directly:
         have hbk0 : Polynomial.map (ZMod.castHom hdvd_pk_p (ZMod p)) (bez_k - 1) = 0 := by
-          rw [Polynomial.map_sub, hbez_k_mod, sub_self]
+          rw [Polynomial.map_sub, Polynomial.map_one, hbez_k_mod, sub_self]
         -- All coefficients of (bez_k - 1) are nilpotent in ZMod(p^k)
         -- (bez_k - 1) itself is nilpotent (polynomial over commutative ring, all coeffs nilpotent)
+        haveI : NeZero (p ^ k) := ⟨pow_ne_zero k hp.ne_zero⟩
         have hunit : IsUnit bez_k := by
           rw [show bez_k = 1 + (bez_k - 1) from by ring]
           apply IsNilpotent.isUnit_one_add
@@ -291,12 +297,12 @@ theorem hensel_two_factor
           rw [Polynomial.isNilpotent_iff]
           intro i
           have : (ZMod.castHom hdvd_pk_p (ZMod p)) ((bez_k - 1).coeff i) = 0 := by
-            have := congr_arg (fun r => r.coeff i) hbk0; simpa [Polynomial.coeff_map] using this
+            have h := congr_arg (fun r => r.coeff i) hbk0
+            simp only [Polynomial.coeff_map, Polynomial.coeff_zero] at h; exact h
           -- (bez_k - 1).coeff i maps to 0 mod p → it's a multiple of p → nilpotent in ZMod(p^k)
           rw [ZMod.castHom_apply, ZMod.cast_eq_val,
               ZMod.natCast_eq_zero_iff] at this
           obtain ⟨c, hc⟩ := this
-          haveI : NeZero (p ^ k) := ⟨by positivity⟩
           refine ⟨k, ?_⟩
           have hval : (bez_k - 1).coeff i = ((p * c : ℕ) : ZMod (p ^ k)) := by
             rw [← hc, ZMod.natCast_zmod_val]
@@ -309,7 +315,7 @@ theorem hensel_two_factor
                   ↑u⁻¹ * Polynomial.map φk t0 * Polynomial.map φk h_k =
                   ↑u⁻¹ * bez_k from by ring, ← hu]; simp [Units.inv_mul]⟩
       have hpk_gt : 1 < p ^ k := by
-        exact Nat.one_lt_pow hk_pos hp.one_lt
+        exact Nat.one_lt_pow hk' hp.one_lt
       obtain ⟨g', h', hprod', hg', hh'⟩ :=
         hensel_step (p ^ k) hpk_gt _ g_k h_k hprod_k hcop_k
       -- hprod' : mod (p^k)² = mod p^{2k}
@@ -328,7 +334,7 @@ theorem hensel_two_factor
           congr 1; ext x
           simp [ZMod.castHom_apply, ZMod.cast_intCast hdvd_pk]
         rw [hcast f, hcast g', hcast h', ← Polynomial.map_mul]
-        congr 1; rw [← hdvd_pk2]; exact hprod'
+        congr 1; rw [hdvd_pk2]; exact hprod'
       · -- mod p preservation: g' ≡ g_k ≡ g (mod p)
         have : Polynomial.map (Int.castRingHom (ZMod p)) g' =
                Polynomial.map (Int.castRingHom (ZMod p)) g_k := by

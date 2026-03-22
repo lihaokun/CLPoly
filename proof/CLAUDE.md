@@ -40,6 +40,17 @@ L1  实现模型    CLPoly/Impl/         1:1 对应 C++（uint64 语义、数组
 - **简化允许**：可以不建模 C++ 的控制流细节（循环、剪枝优化），但核心数学链必须完整。
 - **目标**：L2 证明应能说明"若 C++ 的每步操作在数学上正确，则最终结果满足 spec"。
 
+### 禁止未调研就声明 sorry 或"不可证"
+
+**反面案例**：Mignotte bound 被声称"需要复分析，Lean 中很难"，直接声明 sorry。实际上 Mathlib 已有完整的 Mahler measure API（`Analysis.Polynomial.MahlerMeasure`）和 Jensen 公式（`Analysis.Complex.JensenFormula`），0 sorry 可证。
+
+**规则**：
+1. 遇到"看起来很难"的引理时，**先搜索 Mathlib**（用 Grep 或 Agent 搜索 `.lake/packages/mathlib/`），确认是否已有
+2. 搜索关键词包括：定理名（英文）、关键概念（Mahler, Jensen, Cauchy bound 等）、相关文件路径
+3. 只有在**确认 Mathlib 没有且初等证明不可行**后，才允许声明 sorry
+4. sorry 的声明必须附带**精确的数学陈述**和**未来填充路径**
+5. **不要因为"证起来麻烦"就放弃**——Mathlib 有大量基础设施，很多"深层"定理已经形式化
+
 ### nl-proof 审核标准（形式化前必须通过）
 
 nl-proof 审核必须逐条验证以下 5 项，全部通过才可形式化：

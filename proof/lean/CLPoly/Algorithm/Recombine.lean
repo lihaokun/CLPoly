@@ -36,14 +36,59 @@ theorem mignotte_bound (f g : Polynomial ℤ) (hf : f ≠ 0) (hg : g ∣ f) :
     ∀ i, (g.coeff i).natAbs ≤
       Nat.choose f.natDegree (f.natDegree / 2) *
       (Finset.range (f.natDegree + 1)).sum (fun j => (f.coeff j).natAbs) := by
-  sorry -- TODO: Mahler measure proof (~95 lines)
-  -- Proof sketch:
-  -- 1. Embed g, f to ℂ[X] via Int.castRingHom
-  -- 2. norm_coeff_le_choose_mul_mahlerMeasure: ‖g_ℂ.coeff i‖ ≤ C(d,i)·M(g_ℂ)
-  -- 3. mahlerMeasure_mul: M(f_ℂ) = M(g_ℂ)·M(h_ℂ), M(h_ℂ) ≥ |lc(h)| ≥ 1
-  -- 4. mahlerMeasure_le_sum_norm_coeff: M(f_ℂ) ≤ ‖f_ℂ‖₁
-  -- 5. Translate ℂ norms to ℤ natAbs
-  -- Blocked by: M(h_ℂ) ≥ 1 (need |lc of integer poly| ≥ 1 in ℂ) + norm translation
+  intro i
+  -- Embed Z[X] → ℂ[X]
+  have hφ_inj : Function.Injective (Int.castRingHom ℂ) := Int.cast_injective
+  set f_c := f.map (Int.castRingHom ℂ)
+  set g_c := g.map (Int.castRingHom ℂ)
+  obtain ⟨h, hfgh⟩ := hg
+  set h_c := h.map (Int.castRingHom ℂ)
+  -- f_c = g_c * h_c
+  have hfgh_c : f_c = g_c * h_c := by
+    simp only [f_c, g_c, h_c, ← Polynomial.map_mul, hfgh]
+  -- Nonzero in ℂ[X]
+  have hf_c : f_c ≠ 0 := by
+    simp only [f_c]; exact Polynomial.map_ne_zero (hφ_inj.ne (by simp [hf]))
+  have hh_ne : h ≠ 0 := right_ne_zero_of_mul (hfgh ▸ hf)
+  have hh_c : h_c ≠ 0 := by
+    simp only [h_c]; exact Polynomial.map_ne_zero (hφ_inj.ne (by simp [hh_ne]))
+  -- Step 1: ‖g_c.coeff i‖ ≤ C(natDegree g_c, i) · M(g_c)
+  have h1 := Polynomial.norm_coeff_le_choose_mul_mahlerMeasure i g_c
+  -- natDegree g_c = natDegree g
+  rw [Polynomial.natDegree_map_eq_of_injective hφ_inj] at h1
+  -- Step 2: M(g_c) ≤ M(f_c)
+  have h_mf : f_c.mahlerMeasure = g_c.mahlerMeasure * h_c.mahlerMeasure := by
+    rw [hfgh_c, Polynomial.mahlerMeasure_mul]
+  -- M(h_c) ≥ ‖lc(h_c)‖ ≥ 1
+  have h_lc_bound : 1 ≤ h_c.mahlerMeasure := by
+    calc (1 : ℝ)
+      ≤ ‖h_c.leadingCoeff‖ := by
+        rw [Polynomial.leadingCoeff_map_of_injective _ hφ_inj, Complex.norm_intCast]
+        exact_mod_cast Int.one_le_abs (Polynomial.leadingCoeff_ne_zero.mpr hh_ne)
+      _ ≤ h_c.mahlerMeasure := Polynomial.leading_coeff_le_mahlerMeasure h_c
+  have h2 : g_c.mahlerMeasure ≤ f_c.mahlerMeasure :=
+    le_mul_of_one_le_right (Polynomial.mahlerMeasure_nonneg g_c) h_lc_bound |>.trans
+      (by rw [← h_mf])
+  -- Step 3: M(f_c) ≤ L1 norm
+  have h3 := Polynomial.mahlerMeasure_le_sum_norm_coeff f_c
+  -- Step 4: Combine
+  -- ‖g_c.coeff i‖ ≤ C(deg g, i) · M(g_c) ≤ C(deg g, i) · M(f_c) ≤ C(deg g, i) · L1(f_c)
+  have h_chain : ‖g_c.coeff i‖ ≤ g.natDegree.choose i * (f_c.sum fun _ a => ‖a‖) :=
+    h1.trans (by gcongr)
+  -- Step 5: C(deg g, i) ≤ C(deg f, deg f / 2)
+  -- deg g ≤ deg f (g ∣ f)
+  have hg_ne : g ≠ 0 := by intro h; rw [h, zero_mul] at hfgh; exact hf hfgh.symm
+  have h_deg : g.natDegree ≤ f.natDegree :=
+    Polynomial.natDegree_le_of_dvd hg hf
+  -- C(d, i) ≤ C(d, d/2) ≤ C(n, n/2)
+  have h_choose : g.natDegree.choose i ≤ f.natDegree.choose (f.natDegree / 2) := by
+    calc g.natDegree.choose i
+        ≤ g.natDegree.choose (g.natDegree / 2) := Nat.choose_le_middle i g.natDegree
+      _ ≤ f.natDegree.choose (f.natDegree / 2) := by
+          sorry -- C(d, d/2) ≤ C(n, n/2) when d ≤ n. Needs monotonicity of central binomial.
+  -- Step 6: Translate L1 norm from ℂ to ℤ
+  -- f_c.sum (‖·‖) = Σ ‖(f.coeff j : ℂ)‖ = Σ |f.coeff j| = Σ (f.coeff j).natAbs
+  sorry -- TODO: norm translation + final combination (~20 lines)
 
 -- ============================================================
 -- 2. Hensel 唯一性

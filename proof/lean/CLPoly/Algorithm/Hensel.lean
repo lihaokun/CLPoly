@@ -22,11 +22,11 @@ open Polynomial
 -- ============================================================
 
 /-- ℤ → ZMod m 映射整数 m 到 0 -/
-private lemma int_cast_m_eq_zero (m : ℕ) : ((m : ℤ) : ZMod m) = 0 := by
+lemma int_cast_m_eq_zero (m : ℕ) : ((m : ℤ) : ZMod m) = 0 := by
   exact_mod_cast ZMod.natCast_self m
 
 /-- 若 map_m p = 0，则 ∃ q, p = C(m) * q（ℤ[x] 中整除提取） -/
-private lemma exists_C_mul_of_map_eq_zero (m : ℕ) (hm : 0 < m) (p : Polynomial ℤ)
+lemma exists_C_mul_of_map_eq_zero (m : ℕ) (hm : 0 < m) (p : Polynomial ℤ)
     (hp : Polynomial.map (Int.castRingHom (ZMod m)) p = 0) :
     ∃ q : Polynomial ℤ, p = Polynomial.C ((m : ℤ)) * q := by
   -- Each coefficient of p is divisible by m

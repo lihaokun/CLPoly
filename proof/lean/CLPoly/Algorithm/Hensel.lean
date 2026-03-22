@@ -364,3 +364,7 @@ theorem hensel_two_factor
 -- ============================================================
 
 -- TODO: hensel_multifactor (induction on list length) + HenselCorrect
+-- NOTE: Degree preservation (natDegree(map_{p^k} h') = natDegree(map_p h))
+-- requires h' to have controlled degree (e.g., via divByMonic in hensel_step).
+-- Current hensel_step doesn't control degree of the Z[x] lift.
+-- This is needed for HenselCorrect condition 3 but not for recombine_correct.

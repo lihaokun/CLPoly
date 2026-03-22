@@ -10,6 +10,7 @@ import CLPoly.Pipeline.FactorZZ
 import CLPoly.Algorithm.DDF
 import CLPoly.Algorithm.SquarefreeZp
 import CLPoly.Algorithm.EDF
+import CLPoly.Algorithm.Hensel
 
 -- 端到端实例化
 import CLPoly.Pipeline.FactorZpInstantiate

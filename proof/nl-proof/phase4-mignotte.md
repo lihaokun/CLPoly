@@ -335,13 +335,16 @@ log M(f) ≤ log((1/2π) ∫ |f(e^{iθ})|² dθ)^{1/2} = log ‖f‖₂
 
 | Step | 行数 |
 |------|------|
-| 嵌入 + 系数对应 | ~10 |
-| coeff bound (Mathlib 直接) | ~5 |
-| C(d,i) ≤ C(n,n/2) | ~10 |
-| M(g) ≤ M(f) (乘法性 + M(h)≥1) | ~25 |
-| M(f) ≤ L1 + norm 翻译 | ~20 |
-| 组合 + natAbs 最终转换 | ~15 |
-| **总计** | **~85** |
+| 嵌入 + 非零 | `Polynomial.map_ne_zero_iff hφ_inj` (Coeff.lean:124) | ~5 |
+| coeff bound | `norm_coeff_le_choose_mul_mahlerMeasure` 直接引用 | ~3 |
+| deg 保持 | `natDegree_map_eq_of_injective hφ_inj` | ~2 |
+| M(h)≥1 | `leading_coeff_le_mahlerMeasure` + `leadingCoeff_map_of_injective` + `Complex.norm_intCast` + `Int.one_le_abs` | ~15 |
+| M(g)≤M(f) | `mahlerMeasure_mul` + `le_mul_of_one_le_right` | ~8 |
+| C(d,i)≤C(n,n/2) | `Nat.choose_le_middle` + `Nat.choose_le_choose` | ~8 |
+| M(f)≤L1 | `mahlerMeasure_le_sum_norm_coeff` 直接引用 | ~3 |
+| L1 翻译 | `sum_over_range` + `coeff_map` + `Complex.norm_intCast` + `Int.natAbs` 转换 | ~20 |
+| 组合 | `calc` chain + `Nat.cast` 转换 | ~15 |
+| **总计** | | **~80** |
 
 **注**：L1 版本（M(f) ≤ ‖f‖₁）全部用 Mathlib 直接引理，0 sorry。
 L2 版本（M(f) ≤ ‖f‖₂，匹配 C++）需要额外 Jensen 公式推导（~30 行），可后续加。

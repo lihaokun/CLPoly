@@ -301,20 +301,50 @@ log M(f) ≤ log((1/2π) ∫ |f(e^{iθ})|² dθ)^{1/2} = log ‖f‖₂
 
 **精确匹配 C++ 的 `__mignotte_bound`：`B = C(n, n/2) · ‖f‖₂`。**
 
-### 5.3 形式化估计
+### 5.3 形式化翻译计划（Mathlib API 全部确认）
 
-| Step | Mathlib API | 自证 | 行数 |
-|------|------------|------|------|
-| coeff ≤ C(d,k)·M | `norm_coeff_le_choose_mul_mahlerMeasure` | — | ~5 |
-| M(g) ≤ M(f) | `mahlerMeasure_mul` | M(h)≥1 | ~15 |
-| log M(f) = 圆上积分 | `JensenFormula.lean` | 连接 | ~20 |
-| Parseval | ∫\|f(e^{iθ})\|²dθ = 2π·‖f‖₂² | 有限正交 | ~20 |
-| Jensen 不等式 | E[log X] ≤ log E[X] | Mathlib `ConcaveOn` | ~15 |
-| 组合 M(f) ≤ ‖f‖₂ | — | ~5 | ~10 |
-| 最终 bound | — | ~5 | ~10 |
-| **总计** | | | **~95** |
+**Lean 证明路径（L1 版本，直接可用）**：
 
-**0 sorry。** 精确匹配 C++ 的 `__mignotte_bound`。
+```
+|g.coeff i| ≤ C(d, i) · M(g_ℂ)              -- norm_coeff_le_choose_mul_mahlerMeasure
+            ≤ C(n, n/2) · M(g_ℂ)             -- Nat.choose_le_add (d ≤ n)
+            ≤ C(n, n/2) · M(f_ℂ)             -- mahlerMeasure_mul + M(h_ℂ) ≥ 1
+            ≤ C(n, n/2) · ‖f_ℂ‖₁             -- mahlerMeasure_le_sum_norm_coeff
+            = C(n, n/2) · Σ|fⱼ|              -- norm translation
+```
+
+**Mathlib API 逐步对应**：
+
+| Step | Lean 表达式 | Mathlib 引理 | 文件 |
+|------|-----------|-------------|------|
+| ℤ[X] → ℂ[X] | `Polynomial.map (Int.castRingHom ℂ)` | — | — |
+| 系数对应 | `(g.map φ).coeff i = φ (g.coeff i)` | `Polynomial.coeff_map` | Eval/Coeff.lean:79 |
+| ℤ→ℂ 范数 | `‖(n : ℤ) : ℂ‖ = |(n : ℝ)|` | `Complex.norm_intCast` | Complex/Norm.lean:134 |
+| natAbs ↔ norm | `(n : ℤ).natAbs = ‖n‖` | `Int.natAbs_eq_iff` / cast | — |
+| coeff bound | `‖g_ℂ.coeff i‖ ≤ C(d,i)·M(g_ℂ)` | `norm_coeff_le_choose_mul_mahlerMeasure` | MahlerMeasure.lean:280 |
+| C(d,i) ≤ C(n,n/2) | `choose d i ≤ choose n (n/2)` | `Nat.choose_le_add` + `choose_le_middle` | Choose/Basic.lean:346,330 |
+| g \| f → g_ℂ \| f_ℂ | `Polynomial.map_dvd` | `Polynomial.map_dvd` | Eval/Defs.lean |
+| M 乘法性 | `M(g_ℂ · h_ℂ) = M(g_ℂ) · M(h_ℂ)` | `mahlerMeasure_mul` | MahlerMeasure.lean:119 |
+| M(h_ℂ) ≥ 1 | `‖lc(h_ℂ)‖ ≤ M(h_ℂ)` | `leading_coeff_le_mahlerMeasure` | MahlerMeasure.lean:238 |
+| \|lc(h)\| ≥ 1 | `h ∈ ℤ[X], h ≠ 0 → 1 ≤ ‖lc(h_ℂ)‖` | `norm_intCast` + `Int.one_le_abs` | — |
+| deg 保持 | `(p.map φ).natDegree = p.natDegree` | `natDegree_map_eq_of_injective` | Degree/Lemmas.lean:294 |
+| M ≤ L1 | `M(f_ℂ) ≤ f_ℂ.sum (‖·‖)` | `mahlerMeasure_le_sum_norm_coeff` | MahlerMeasure.lean:252 |
+| L1 翻译 | `f_ℂ.sum (‖·‖) = Σ |(f.coeff j : ℤ)|` | `coeff_map` + `norm_intCast` | — |
+
+**估计行数**：
+
+| Step | 行数 |
+|------|------|
+| 嵌入 + 系数对应 | ~10 |
+| coeff bound (Mathlib 直接) | ~5 |
+| C(d,i) ≤ C(n,n/2) | ~10 |
+| M(g) ≤ M(f) (乘法性 + M(h)≥1) | ~25 |
+| M(f) ≤ L1 + norm 翻译 | ~20 |
+| 组合 + natAbs 最终转换 | ~15 |
+| **总计** | **~85** |
+
+**注**：L1 版本（M(f) ≤ ‖f‖₁）全部用 Mathlib 直接引理，0 sorry。
+L2 版本（M(f) ≤ ‖f‖₂，匹配 C++）需要额外 Jensen 公式推导（~30 行），可后续加。
 
 ---
 

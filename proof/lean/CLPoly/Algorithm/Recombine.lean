@@ -92,6 +92,8 @@ theorem mignotte_bound (f g : Polynomial ℤ) (hf : f ≠ 0) (hg : g ∣ f) :
 -- 2. Hensel uniqueness (sorry)
 -- ============================================================
 
+/-- Hensel uniqueness: if two factorizations agree mod p with coprime + B monic,
+    they agree mod p^k. Proof by induction on k. -/
 theorem hensel_unique
     (p : ℕ) (hp : Nat.Prime p) (k : ℕ) (hk : 0 < k)
     (F : Polynomial ℤ)
@@ -111,7 +113,12 @@ theorem hensel_unique
       Polynomial.map (Int.castRingHom (ZMod (p ^ k))) A₂
     ∧ Polynomial.map (Int.castRingHom (ZMod (p ^ k))) B₁ =
       Polynomial.map (Int.castRingHom (ZMod (p ^ k))) B₂ := by
-  sorry
+  sorry -- TODO: induction on k (~120 lines)
+  -- Proof sketch (nl-proof §2.2):
+  -- Base k=1: direct from hA, hB
+  -- Step k→k+1: A₁-A₂ = p^k·E, B₁-B₂ = p^k·F
+  --   p|(E·B₂+A₂·F) → Ā|Ē, B̄|F̄ → Ē=c·Ā, F̄=-c·B̄
+  --   B₁ monic → lc(B₁)=1 → p|c → c=0 → p|E,F → p^{k+1}|A₁-A₂
 
 -- ============================================================
 -- 3. RecombineCorrect

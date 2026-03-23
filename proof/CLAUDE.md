@@ -17,11 +17,11 @@ CLPoly 因式分解模块的 Lean 4 机器检查证明。验证目标是 C++ 实
 ### L2 与 C++ 的差距（需逐个修正）
 | 差距 | 当前 L2 | C++ 实际 | 状态 |
 |------|---------|---------|------|
-| Mignotte 界 | M(f) ≤ ‖f‖₁ | M(f) ≤ ‖f‖₂ | nl-proof v3 通过，待形式化 |
-| Hensel 构造 | 存在性证明 | 构造性 (divmod + Bézout) | 待修正 |
-| Hensel lc-baking | 无 | H₁ 携带 lc(f), Hᵢ monic | 待修正 |
-| Hensel 度数保持 | 无 | deg(Hᵢ) = deg(h̄ᵢ) | 待修正 |
-| Recombination | UFD 存在性 | Zassenhaus 子集枚举 | 待修正 |
+| Mignotte 界 | ~~M(f) ≤ ‖f‖₁~~ | M(f) ≤ ‖f‖₂ | ✅ 已修正（Landau 不等式，Parseval+Jensen） |
+| Hensel 构造 | ~~存在性证明~~ | 构造性 (divmod + Bézout) | ✅ 已修正（canonical_lift + modByMonic） |
+| Hensel lc-baking | 无 | H₁ 携带 lc(f), Hᵢ monic | 多因子 Hensel 属性，待补 |
+| Hensel 度数保持 | ~~无~~ | deg(Hᵢ) = deg(h̄ᵢ) | ✅ 已修正（hensel_step_with_degree） |
+| Recombination | UFD 存在性 | Zassenhaus 子集枚举 | 数学基础已有（hensel_unique+mignotte），显式组装待定 |
 | GCD 算法 | Mathlib 抽象 | Euclidean / HGCD | 待 L2 验证 |
 | 多项式算术 | Mathlib 抽象 | pair_vec_div / multiplies | 待 L2 验证 |
 

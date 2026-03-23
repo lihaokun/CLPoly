@@ -40,67 +40,91 @@ CLPoly/Impl/
 
 ## 1. C++ 类型 → Lean L1 类型
 
-### 1.1 Zp 类（number.hh:87-200）
+### 1.1 设计决策
 
-C++:
-```cpp
-class Zp {
-    uint64_t _i;      // 值 ∈ [0, p)
-    uint64_t _p;      // 素数
-    uint64_t _ninv;   // Barrett 预计算
-    uint32_t _norm;   // clz(p)
-};
-```
+**简化**：不单独建模 `Zp` 类。C++ 的 `Zp` 包含值 + 素数 + Barrett 预计算，但每个多项式的所有系数共享同一个素数。在 L1 中，素数由 `SparsePolyZp` 统一管理，系数用裸 `UInt64` 值表示。
 
-Lean L1:
-```lean
-structure ZpImpl where
-  val : UInt64       -- 值 ∈ [0, p)
-  prime : UInt64     -- 素数 p
-  -- Barrett 预计算省略（不影响数学正确性）
-  h_val_lt : val.toNat < prime.toNat  -- 不变量
-```
+**度数表示**：C++ 用 `uint64_t`（通过 `umonomial`），L1 用 `Nat`。简化理由：CLPoly 不处理度数 > 2^64 的多项式，用 `Nat` 避免溢出证明的复杂性。此简化不影响算法正确性验证。
 
-精化关系：`ZpImpl` 对应 `ZMod p` 中的元素。
-```lean
-def ZpImpl.toZMod (z : ZpImpl) : ZMod z.prime.toNat :=
-  (z.val.toNat : ZMod z.prime.toNat)
-```
+**Barrett 预计算**：省略。L1 只建模模运算的数学语义（`a * b % p`），不验证 Barrett 算法内部。精化时只需证 `impl_mul(a, b, p) = (a * b) % p`。
 
-### 1.2 upolynomial_<Zp>（稀疏多项式）
+### 1.2 SparsePolyZp（核心类型）
 
 C++:
 ```cpp
 // upolynomial_<Zp> = vector<pair<umonomial, Zp>>
 // 降幂排列，(degree, coefficient) 对
-// 不变量：度数严格递减，系数非零
+// Zp 包含 _i (值), _p (素数), _ninv, _norm
+// 不变量：度数严格递减，系数非零，所有系数共享同一素数
 ```
 
 Lean L1:
 ```lean
+/-- 稀疏多项式 over Z/pZ，1:1 对应 C++ 的 upolynomial_<Zp>。
+    系数用裸 UInt64 值（∈ [0, p)），素数在结构级共享。 -/
 structure SparsePolyZp where
-  terms : List (Nat × ZpImpl)  -- (度数, 系数) 对
-  prime : UInt64
-  -- 不变量
-  h_sorted : terms.Chain' (fun a b => a.1 > b.1)  -- 严格降序
-  h_nonzero : ∀ t ∈ terms, t.2.val ≠ 0             -- 系数非零
+  terms : List (Nat × UInt64)  -- (度数, 系数值) 降序排列
+  prime : Nat                   -- 素数 p
+  h_prime : Nat.Prime prime     -- p 是素数
+  h_sorted : terms.Chain' (fun a b => a.1 > b.1)  -- 度数严格降序
+  h_nonzero : ∀ t ∈ terms, t.2.toNat ≠ 0           -- 系数值非零
+  h_range : ∀ t ∈ terms, t.2.toNat < prime          -- 系数值 ∈ [0, p)
 ```
 
-精化关系：`SparsePolyZp` 对应 `Polynomial (ZMod p)`。
+**便利方法**：
 ```lean
-def SparsePolyZp.toPoly (sp : SparsePolyZp) : Polynomial (ZMod sp.prime.toNat) :=
-  sp.terms.foldl (fun acc (d, c) => acc + Polynomial.C c.toZMod * Polynomial.X ^ d) 0
+def SparsePolyZp.deg (sp : SparsePolyZp) : Nat :=
+  sp.terms.head?.map Prod.fst |>.getD 0
+
+def SparsePolyZp.isEmpty (sp : SparsePolyZp) : Bool :=
+  sp.terms.isEmpty
+
+def SparsePolyZp.leadCoeff (sp : SparsePolyZp) : UInt64 :=
+  sp.terms.head?.map Prod.snd |>.getD 0
 ```
 
-### 1.3 精化定理模板
+### 1.3 精化关系
 
-对每个 L1 函数 `f_impl`，证明：
 ```lean
-theorem refine_f (input : L1_type) (h_inv : L1_invariant input) :
-    f_impl(input).toPoly = f_l2(input.toPoly)
+/-- 将 L1 稀疏多项式转换为 L2 数学多项式 -/
+noncomputable def SparsePolyZp.toPoly (sp : SparsePolyZp) :
+    Polynomial (ZMod sp.prime) :=
+  sp.terms.foldl
+    (fun acc (d, c) => acc + Polynomial.C (c.toNat : ZMod sp.prime) * Polynomial.X ^ d)
+    0
 ```
 
-即：L1 函数的结果转换为数学对象 = L2 函数的结果。
+**精化定理模板**：对每个 L1 函数 `f_impl`，证明：
+```lean
+theorem refine_f (input : SparsePolyZp) (h_inv : input.isValid) :
+    (f_impl input).toPoly = f_l2 input.toPoly
+```
+
+### 1.4 Zp 算术（内联操作）
+
+不单独定义 `ZpImpl` 类型。Zp 算术作为 `SparsePolyZp` 上操作的内部步骤：
+
+```lean
+/-- 模加（对应 C++ Zp::operator+） -/
+def zp_add (a b p : Nat) (ha : a < p) (hb : b < p) : Nat :=
+  if a + b < p then a + b else a + b - p
+
+/-- 模乘（对应 C++ Zp::__nmod_mul，Barrett 省略） -/
+def zp_mul (a b p : Nat) (ha : a < p) (hb : b < p) : Nat :=
+  (a * b) % p
+
+/-- 模逆（对应 C++ inv_prime，扩展欧几里得） -/
+def zp_inv (a p : Nat) (ha : a ≠ 0) (hp : Nat.Prime p) : Nat :=
+  -- 扩展欧几里得算法
+  sorry -- 定义在 ZpArith.lean 中
+```
+
+**精化定理**：
+```lean
+theorem refine_zp_add : (zp_add a b p ha hb : Nat) = (a + b : ZMod p).val
+theorem refine_zp_mul : (zp_mul a b p ha hb : Nat) = (a * b : ZMod p).val
+theorem refine_zp_inv : (zp_inv a p ha hp : Nat) = (a⁻¹ : ZMod p).val
+```
 
 ---
 
@@ -197,45 +221,90 @@ theorem refine_squarefree (f : SparsePolyZp) (hf : f.isValid) :
 ```
 refine_squarefree
   ← refine_yunLoop
-  ← refine_gcd         ← refine_mul, refine_divmod
+  ← refine_gcd         ← refine_divmod
   ← refine_div          ← refine_divmod
-  ← refine_derivative   ← refine_sub, refine_scalar_mul
-  ← refine_extractPthRoot ← 直接构造
-  ← refine_makeMonic    ← refine_scalar_mul, refine_inv
+  ← refine_derivative   ← 直接系数操作
+  ← refine_extractPthRoot ← 直接系数操作
+  ← refine_makeMonic    ← refine_zp_inv
 ```
 
-### 3.2 最底层：Zp 算术精化
+### 3.2 GCD 实现与精化（关键难点）
 
+**C++ GCD**（polynomial_gcd.hh）：标准 Euclidean 算法 + normalize（首一化）。
+
+**L1 GCD**：
 ```lean
--- Zp 加法
-theorem refine_zp_add (a b : ZpImpl) :
-    (zp_add_impl a b).toZMod = a.toZMod + b.toZMod
-
--- Zp 乘法（Barrett 模乘）
-theorem refine_zp_mul (a b : ZpImpl) :
-    (zp_mul_impl a b).toZMod = a.toZMod * b.toZMod
-
--- Zp 逆元
-theorem refine_zp_inv (a : ZpImpl) (ha : a.val ≠ 0) :
-    (zp_inv_impl a).toZMod = (a.toZMod)⁻¹
+/-- Euclidean GCD for sparse polynomials over Zp.
+    1:1 对应 C++ polynomial_GCD。 -/
+def poly_gcd_impl (a b : SparsePolyZp) : SparsePolyZp :=
+  if b.isEmpty then a.makeMonic
+  else
+    let (_, r) := poly_divmod_impl a b
+    poly_gcd_impl b r
+termination_by b.deg
 ```
 
-### 3.3 多项式算术精化
+**精化难点**：Mathlib 的 `EuclideanDomain.gcd` 是**抽象定义**（通过 well-founded recursion），
+不直接等于 Euclidean 算法的具体执行。
 
+**解决路径**：不直接证 `gcd_impl.toPoly = EuclideanDomain.gcd a.toPoly b.toPoly`。
+而是证 GCD 的**特征性质**：
 ```lean
--- 稀疏多项式乘法
-theorem refine_poly_mul (a b : SparsePolyZp) :
-    (poly_mul_impl a b).toPoly = a.toPoly * b.toPoly
-
--- 稀疏多项式除法（带余）
-theorem refine_poly_divmod (a b : SparsePolyZp) (hb : b.isMonic) :
-    (poly_div_impl a b).toPoly = a.toPoly /ₘ b.toPoly ∧
-    (poly_mod_impl a b).toPoly = a.toPoly %ₘ b.toPoly
-
--- Euclidean GCD
 theorem refine_poly_gcd (a b : SparsePolyZp) :
-    (poly_gcd_impl a b).toPoly = normalize (EuclideanDomain.gcd a.toPoly b.toPoly)
+    let g := poly_gcd_impl a b
+    -- g 整除 a 和 b
+    g.toPoly ∣ a.toPoly ∧ g.toPoly ∣ b.toPoly
+    -- g 是最大公因子
+    ∧ ∀ d : Polynomial (ZMod p), d ∣ a.toPoly → d ∣ b.toPoly → d ∣ g.toPoly
+    -- g 是 monic（normalize 后）
+    ∧ Monic g.toPoly
 ```
+
+这避免了与 Mathlib 抽象 GCD 的精确匹配问题。L2 证明中使用 GCD 的地方只依赖
+整除性和互素性，不依赖 GCD 的具体值（`normalize` 保证唯一到 unit）。
+
+### 3.3 多项式除法
+
+**L1 实现**（对应 C++ `pair_vec_div`）：
+```lean
+/-- 多项式带余除法。b 必须 monic（或首项系数可逆）。
+    返回 (商, 余式)。 -/
+def poly_divmod_impl (a b : SparsePolyZp) :
+    SparsePolyZp × SparsePolyZp :=
+  -- 标准多项式长除法：
+  -- 每步：q_coeff = lc(remainder) / lc(b)
+  --       remainder -= q_coeff * x^(deg(r)-deg(b)) * b
+  sorry -- 具体实现在 PolyArith.lean
+```
+
+**精化定理**：
+```lean
+theorem refine_poly_divmod (a b : SparsePolyZp) (hb : b.leadCoeff ≠ 0) :
+    let (q, r) := poly_divmod_impl a b
+    a.toPoly = b.toPoly * q.toPoly + r.toPoly
+    ∧ r.deg < b.deg
+```
+
+### 3.4 导数和 p 次根
+
+**导数**（直接系数操作）：
+```lean
+/-- 形式导数：对每项 (d, c) 映射为 (d-1, d*c mod p)，去掉 d=0 项。 -/
+def derivative_impl (f : SparsePolyZp) : SparsePolyZp :=
+  { terms := f.terms.filterMap (fun (d, c) =>
+      if d = 0 then none else some (d - 1, zp_mul d.toUInt64 c f.prime ...))
+    ... }
+```
+
+**p 次根提取**（直接系数操作）：
+```lean
+/-- 提取 p 次根：f(x) = g(x^p) → g。对每项 (d, c) 映射为 (d/p, c)。 -/
+def extractPthRoot_impl (f : SparsePolyZp) : SparsePolyZp :=
+  { terms := f.terms.map (fun (d, c) => (d / f.prime, c))
+    ... }
+```
+
+这两个的精化比较直接：逐系数对应 Mathlib 的 `Polynomial.derivative` 和 `Polynomial.contract p`。
 
 ---
 
@@ -271,36 +340,40 @@ theorem refine_poly_gcd (a b : SparsePolyZp) :
 
 ---
 
-## 5. 从 Phase L1.0 开始
+## 5. Phase L1.0 内容（Types.lean）
 
-### 5.1 Types.lean 内容
+与 §1.2 一致的最终定义：
 
 ```lean
--- U64 语义（Lean 的 UInt64 已提供）
-
--- Zp 实现类型
-structure ZpImpl where
-  val : UInt64
-  prime : UInt64
-  h_prime : Nat.Prime prime.toNat
-  h_val_lt : val.toNat < prime.toNat
-
--- 精化到 ZMod
-def ZpImpl.toZMod (z : ZpImpl) : ZMod z.prime.toNat :=
-  (z.val.toNat : ZMod z.prime.toNat)
-
--- 稀疏多项式
+/-- 稀疏多项式 over Z/pZ。1:1 对应 C++ upolynomial_<Zp>。
+    系数用 UInt64 值（∈ [0, p)），素数在结构级共享。
+    不变量：度数严格降序 + 系数非零 + 系数在范围内。 -/
 structure SparsePolyZp where
-  terms : List (Nat × UInt64)  -- (度数, 系数值) 降序
-  prime : UInt64
-  h_prime : Nat.Prime prime.toNat
-  h_sorted : List.Chain' (fun a b => a.1 > b.1) terms
-  h_nonzero : ∀ t ∈ terms, t.2 ≠ 0
+  terms : List (Nat × UInt64)
+  prime : Nat
+  h_prime : Nat.Prime prime
+  h_sorted : terms.Chain' (fun a b => a.1 > b.1)
+  h_nonzero : ∀ t ∈ terms, t.2.toNat ≠ 0
+  h_range : ∀ t ∈ terms, t.2.toNat < prime
+
+-- 便利方法
+def SparsePolyZp.deg (sp : SparsePolyZp) : Nat :=
+  sp.terms.head?.map Prod.fst |>.getD 0
+
+def SparsePolyZp.isEmpty (sp : SparsePolyZp) : Bool :=
+  sp.terms.isEmpty
+
+def SparsePolyZp.leadCoeff (sp : SparsePolyZp) : UInt64 :=
+  sp.terms.head?.map Prod.snd |>.getD 0
 
 -- 精化到 Polynomial (ZMod p)
 noncomputable def SparsePolyZp.toPoly (sp : SparsePolyZp) :
-    Polynomial (ZMod sp.prime.toNat) :=
+    Polynomial (ZMod sp.prime) :=
   sp.terms.foldl
-    (fun acc (d, c) => acc + Polynomial.C (c.toNat : ZMod sp.prime.toNat) * Polynomial.X ^ d)
+    (fun acc (d, c) => acc + Polynomial.C (c.toNat : ZMod sp.prime) * Polynomial.X ^ d)
     0
+
+-- Zp 算术（内联辅助）
+def zp_add (a b p : Nat) : Nat := if a + b < p then a + b else a + b - p
+def zp_mul (a b p : Nat) : Nat := (a * b) % p
 ```

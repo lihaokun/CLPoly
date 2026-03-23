@@ -6,6 +6,32 @@ CLPoly 因式分解模块的 Lean 4 机器检查证明。验证目标是 C++ 实
 
 依赖：Mathlib4 (stable)，Lean 4.28.0+
 
+## 当前状态与目标
+
+### 已完成（3257 行 Lean，0 sorry）
+- L3 数学基石：Phase 1-2 全部完成
+- L2 算法模型：SQF, DDF, EDF, Hensel, Mignotte(L1范数), Hensel 唯一性, Recombination(UFD)
+- Pipeline：FactorZp, FactorZZ 框架 + 端到端实例化
+- lake build 3027 jobs 全通过
+
+### L2 与 C++ 的差距（需逐个修正）
+| 差距 | 当前 L2 | C++ 实际 | 状态 |
+|------|---------|---------|------|
+| Mignotte 界 | M(f) ≤ ‖f‖₁ | M(f) ≤ ‖f‖₂ | nl-proof v3 通过，待形式化 |
+| Hensel 构造 | 存在性证明 | 构造性 (divmod + Bézout) | 待修正 |
+| Hensel lc-baking | 无 | H₁ 携带 lc(f), Hᵢ monic | 待修正 |
+| Hensel 度数保持 | 无 | deg(Hᵢ) = deg(h̄ᵢ) | 待修正 |
+| Recombination | UFD 存在性 | Zassenhaus 子集枚举 | 待修正 |
+| GCD 算法 | Mathlib 抽象 | Euclidean / HGCD | 待 L2 验证 |
+| 多项式算术 | Mathlib 抽象 | pair_vec_div / multiplies | 待 L2 验证 |
+
+### 下一步计划（按依赖顺序）
+1. **Mignotte L2 范数**：自证 Parseval + Jensen → M(f) ≤ ‖f‖₂（~100 行）
+2. **Hensel 构造性 + lc-baking + 度数保持**：改 hensel_step（~200 行）
+3. **Recombination 算法验证**：用 Hensel 因子恢复替代 UFD（~150 行）
+4. **GCD L2 验证**：Euclidean 算法正确性（~200 行）
+5. **L1 实现模型**：1:1 对应 C++ 控制流（大工程，~1400 行）
+
 ## 构建指令
 
 ```bash

@@ -1,6 +1,6 @@
 # Hensel 构造性修正：lc-baking + 度数保持
 
-> 状态：nl-proof v1
+> 状态：nl-proof v2（审核修正：新增 hh_deg 假设 + 度数保持完整推导链）
 > 目标：修改 hensel_step 使其输出 (H4) 度数保持，匹配 C++ __hensel_step
 
 ---
@@ -26,7 +26,14 @@ h_new = h + m * r_se;   // deg(r_se) < deg(h) → deg(h_new) = deg(h)
 
 ### 1.1 新增假设
 
-`hensel_step` 新增 `Monic (map_m h)` 假设。这保证在 ZMod m[x] 中可以做 `modByMonic`。
+`hensel_step_with_degree` 新增两个假设：
+1. `Monic (map_m h)` — 保证在 ZMod m[x] 中可以做 `modByMonic`
+2. `natDegree h = natDegree (map_m h)` — h 没有多余高次项（lc 不被 m 整除）
+
+假设 2 的合理性：
+- 初始 h 用 canonical lift（ZMod.val 逐系数），natDegree 精确
+- 迭代中 h' = h + C(m)·σ_int（deg(σ_int) < natDegree(h)）→ natDegree(h') = natDegree(h) 不变
+- 所以假设 2 在每步迭代中自动保持
 
 ### 1.2 新构造
 
@@ -127,12 +134,14 @@ theorem hensel_step_with_degree
     (f g h : Polynomial ℤ)
     (hprod : map_m f = map_m g * map_m h)
     (hcop : IsCoprime (map_m g) (map_m h))
-    (hh_monic : Monic (map_m h))  -- 新增
+    (hh_monic : Monic (map_m h))           -- 新增：modByMonic 需要
+    (hh_deg : h.natDegree = (map_m h).natDegree)  -- 新增：h 无多余高次项
     : ∃ g' h' : Polynomial ℤ,
         map_{m²} f = map_{m²} g' * map_{m²} h'
         ∧ map_m g' = map_m g
         ∧ map_m h' = map_m h
-        ∧ natDegree (map_{m²} h') = natDegree (map_m h)  -- 新增 H4
+        ∧ (map_{m²} h').natDegree = (map_m h).natDegree  -- 新增 H4
+        ∧ h'.natDegree = h.natDegree  -- 新增 H5：迭代时保持 hh_deg
 ```
 
 **构造**（匹配 C++）：
@@ -168,43 +177,48 @@ map_m(σ_int·g + τ_int·h) = σ_bar·map_m(g) + τ_bar·map_m(h) = map_m(e_int
 → g'·h' - f = C(m²)·(d + σ_int·τ_int)。
 → map_{m²}(g'·h' - f) = 0。✓
 
-**度数保持**：
-map_m(h') = map_m(h) + C(0)·σ_bar = map_m(h)。✓
+**mod m 保持（H3）**：
+map_m(h') = map_m(h) + C(0)·map_m(σ_int) = map_m(h)。✓
 （因 C(m : ZMod m) = C(0) = 0。）
 
-对于 map_{m²} h' 的度数：
+**度数保持（H4 + H5）**：
+
 h' = h + C(m)·σ_int。
-在 ZMod(m²) 中：map_{m²}(h') = map_{m²}(h) + C(m_m2)·map_{m²}(σ_int)。
 
-deg(C(m_m2)·map_{m²}(σ_int)) ≤ deg(map_{m²} σ_int) ≤ deg(σ_int)。
+**Step D1**：σ_int 的度数控制。
 
-**关键**：σ_int 是 σ_bar 的 ℤ[x] 提升。σ_bar = (map_m s · map_m e_int) %ₘ (map_m h)。
-deg(σ_bar) < deg(map_m h)。
-
-如果 σ_int 的度数 = deg(σ_bar)（精确提升）：
-deg(C(m_m2)·map_{m²}(σ_int)) ≤ deg(σ_bar) < deg(map_m h) = deg(map_{m²} h)
-（后者因 h monic mod m → p ∤ lc(h) → natDegree_map 保持）。
-
-所以 map_{m²}(h') = map_{m²}(h) + 低次项 → natDegree(map_{m²} h') = natDegree(map_{m²} h) = natDegree(map_m h)。✓
-
-**但**：`Polynomial.map_surjective` 不保证 deg(σ_int) = deg(σ_bar)。
-如何得到精确度数的提升？
-
-**方案**：不用 map_surjective。构造 σ_int 为 σ_bar 的 canonical lift（用 ZMod.val 逐系数提升）：
-
-```lean
--- σ_int.coeff i = ZMod.val (σ_bar.coeff i) for i < deg(σ_bar), 0 otherwise
-```
-
-这保证 deg(σ_int) ≤ deg(σ_bar) < deg(map_m h)。✓
-
-**Lean 构造**（~20 行）：
+使用 canonical lift（不用 map_surjective）：
 ```lean
 let σ_int := ∑ i in Finset.range (σ_bar.natDegree + 1),
     C (ZMod.val (σ_bar.coeff i) : ℤ) * X ^ i
 ```
 
-验证 map_m σ_int = σ_bar（用 ZMod.natCast_zmod_val）。
+性质：
+- map_m σ_int = σ_bar（每个系数：`(ZMod.val c : ℤ) mod m = c`，by `ZMod.natCast_zmod_val`）
+- natDegree(σ_int) ≤ natDegree(σ_bar)（构造只在 range(natDegree+1) 内）
+- natDegree(σ_bar) < natDegree(map_m h)（modByMonic 保证）
+
+所以 **natDegree(σ_int) < natDegree(map_m h) = natDegree(h)**（后者由假设 hh_deg）。
+
+**Step D2**：h' 的 natDegree。
+
+h' = h + C(m)·σ_int。natDegree(C(m)·σ_int) ≤ natDegree(σ_int) < natDegree(h)。
+加一个严格更低度数的多项式不改变 natDegree 和 leading coefficient：
+**natDegree(h') = natDegree(h)**。✓ （H5）
+**lc(h') = lc(h)**（未被修改）。
+
+**Step D3**：map_{m²}(h') 的 natDegree。
+
+lc(h') = lc(h)。由 hh_monic：map_m(h) monic → lc(map_m h) = 1 → (lc(h) : ZMod m) = 1。
+故 m ∤ lc(h)。进而 m² ∤ lc(h)（因 m | m² 且 m ∤ lc(h)）。
+natDegree_map_of_leadingCoeff_ne_zero：(lc(h') : ZMod(m²)) ≠ 0 →
+**natDegree(map_{m²} h') = natDegree(h') = natDegree(h) = natDegree(map_m h)**。✓ （H4）
+
+**Lean 路径**：
+- canonical lift：`Finset.sum` + `C` + `X^i`（~20 行）
+- map_m σ_int = σ_bar：`ZMod.natCast_zmod_val` + `Polynomial.ext`（~10 行）
+- natDegree(h') = natDegree(h)：`natDegree_add_of_natDegree_lt` + `natDegree_C_mul_le`（~5 行）
+- natDegree(map_{m²} h')：`natDegree_map_of_leadingCoeff_ne_zero`（~10 行）
 
 ---
 

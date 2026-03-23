@@ -115,6 +115,323 @@ theorem hensel_step
     simp only [Polynomial.map_add, Polynomial.map_mul, Polynomial.map_C]; simp
 
 -- ============================================================
+-- 1b. canonical_lift: ZMod m[x] → ℤ[x] with degree control
+-- ============================================================
+
+/-- Canonical lift from ZMod m[x] to ℤ[x] via ZMod.val coefficients.
+    Key property: natDegree(canonical_lift m p) ≤ natDegree(p). -/
+noncomputable def canonical_lift (m : ℕ) (p : Polynomial (ZMod m)) : Polynomial ℤ :=
+  (Finset.range (p.natDegree + 1)).sum (fun i => C ((ZMod.val (p.coeff i) : ℤ)) * X ^ i)
+
+/-- The canonical lift maps back to the original polynomial under map_m. -/
+lemma canonical_lift_map (m : ℕ) (_hm : 1 < m) (p : Polynomial (ZMod m)) :
+    Polynomial.map (Int.castRingHom (ZMod m)) (canonical_lift m p) = p := by
+  haveI : NeZero m := ⟨by omega⟩
+  -- map distributes over Finset.sum
+  simp only [canonical_lift, Polynomial.map_sum, Polynomial.map_mul, Polynomial.map_pow,
+             Polynomial.map_C, Polynomial.map_X]
+  ext i
+  rw [Polynomial.finset_sum_coeff]
+  by_cases hi : i ≤ p.natDegree
+  · -- i in range: the sum picks out exactly the i-th term
+    have hi_mem : i ∈ Finset.range (p.natDegree + 1) := Finset.mem_range.mpr (by omega)
+    rw [Finset.sum_eq_single i]
+    · simp only [coeff_C_mul, coeff_X_pow, ite_true, mul_one]
+      -- Goal: (Int.castRingHom (ZMod m)) ↑(p.coeff i).val = p.coeff i
+      change ((ZMod.val (p.coeff i) : ℤ) : ZMod m) = p.coeff i
+      rw [Int.cast_natCast, ZMod.natCast_zmod_val]
+    · intro j _ hji
+      simp only [coeff_C_mul, coeff_X_pow, if_neg (Ne.symm hji), mul_zero]
+    · intro hi_nmem; exact absurd hi_mem hi_nmem
+  · -- i out of range: sum is zero, and p.coeff i = 0 by natDegree bound
+    push_neg at hi
+    have hcoeff_zero : p.coeff i = 0 :=
+      Polynomial.coeff_eq_zero_of_natDegree_lt hi
+    rw [hcoeff_zero]
+    apply Finset.sum_eq_zero
+    intro j hj
+    have hji : j ≠ i := by
+      intro heq; subst heq
+      exact absurd (Finset.mem_range.mp hj) (by omega)
+    simp only [coeff_C_mul, coeff_X_pow, if_neg (Ne.symm hji), mul_zero]
+
+/-- The canonical lift has controlled natDegree: natDegree ≤ natDegree of the input. -/
+lemma canonical_lift_natDegree_le (m : ℕ) (p : Polynomial (ZMod m)) :
+    (canonical_lift m p).natDegree ≤ p.natDegree := by
+  unfold canonical_lift
+  calc ((Finset.range (p.natDegree + 1)).sum
+          (fun i => C ((ZMod.val (p.coeff i) : ℤ)) * X ^ i)).natDegree
+      ≤ (Finset.range (p.natDegree + 1)).sup
+          (fun i => (C ((ZMod.val (p.coeff i) : ℤ)) * X ^ i).natDegree) :=
+        natDegree_sum_le _ _
+    _ ≤ p.natDegree := by
+        apply Finset.sup_le
+        intro i hi
+        have hi_lt := Finset.mem_range.mp hi
+        calc (C ((ZMod.val (p.coeff i) : ℤ)) * X ^ i).natDegree
+            ≤ (C ((ZMod.val (p.coeff i) : ℤ))).natDegree + (X ^ i).natDegree := natDegree_mul_le
+          _ ≤ 0 + i := by
+              apply Nat.add_le_add
+              · exact (natDegree_C _).le
+              · exact natDegree_X_pow_le i
+          _ = i := Nat.zero_add i
+          _ ≤ p.natDegree := by omega
+
+-- ============================================================
+-- 1c. hensel_step_with_degree: 2-factor with degree preservation
+-- ============================================================
+
+theorem hensel_step_with_degree
+    (m : ℕ) (hm : 1 < m)
+    (f g h : Polynomial ℤ)
+    (hprod : Polynomial.map (Int.castRingHom (ZMod m)) f =
+             Polynomial.map (Int.castRingHom (ZMod m)) g *
+             Polynomial.map (Int.castRingHom (ZMod m)) h)
+    (hcop : IsCoprime (Polynomial.map (Int.castRingHom (ZMod m)) g)
+                       (Polynomial.map (Int.castRingHom (ZMod m)) h))
+    (hh_monic : Monic (Polynomial.map (Int.castRingHom (ZMod m)) h))
+    (hh_deg : h.natDegree = (Polynomial.map (Int.castRingHom (ZMod m)) h).natDegree)
+    : ∃ g' h' : Polynomial ℤ,
+        -- H1: product mod m²
+        Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) f =
+        Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) g' *
+        Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) h'
+        -- H2: g' ≡ g (mod m)
+        ∧ Polynomial.map (Int.castRingHom (ZMod m)) g' =
+          Polynomial.map (Int.castRingHom (ZMod m)) g
+        -- H3: h' ≡ h (mod m)
+        ∧ Polynomial.map (Int.castRingHom (ZMod m)) h' =
+          Polynomial.map (Int.castRingHom (ZMod m)) h
+        -- H4: degree preservation (ZMod(m²) side)
+        ∧ (Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) h').natDegree =
+          (Polynomial.map (Int.castRingHom (ZMod m)) h).natDegree
+        -- H5: degree preservation (Z[x] side, for iteration)
+        ∧ h'.natDegree = h.natDegree := by
+  -- Notation abbreviations
+  set map_m := Polynomial.map (Int.castRingHom (ZMod m)) with hmap_m_def
+  set map_m2 := Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) with hmap_m2_def
+  -- Step A: extract error — f - g*h = C(m) * e_int
+  have hfgh : map_m (f - g * h) = 0 := by
+    simp only [map_m, Polynomial.map_sub, Polynomial.map_mul, hprod, sub_self]
+  obtain ⟨e_int, he_int⟩ := exists_C_mul_of_map_eq_zero m (by omega) (f - g * h) hfgh
+  have hf_eq : f = g * h + C ((m : ℤ)) * e_int :=
+    sub_eq_iff_eq_add'.mp he_int
+  -- Step B: Bézout coefficients
+  obtain ⟨s_bar, t_bar, hbez⟩ := hcop
+  obtain ⟨s, hs⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod m)) ZMod.intCast_surjective s_bar
+  obtain ⟨t, ht⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod m)) ZMod.intCast_surjective t_bar
+  have hbez_m : map_m (s * g + t * h - 1) = 0 := by
+    simp only [map_m, Polynomial.map_sub, Polynomial.map_add, Polynomial.map_mul,
+               Polynomial.map_one, hs, ht, hbez, sub_self]
+  obtain ⟨w, hw⟩ := exists_C_mul_of_map_eq_zero m (by omega) _ hbez_m
+  have hbez_eq : s * g + t * h = 1 + C ((m : ℤ)) * w :=
+    sub_eq_iff_eq_add'.mp hw
+  -- Step C: modByMonic in ZMod m[x]
+  haveI : Fact (1 < m) := ⟨hm⟩
+  haveI : NeZero m := ⟨by omega⟩
+  haveI : Nontrivial (ZMod m) := ZMod.nontrivial m
+  set se_bar := map_m s * map_m e_int with hse_bar_def
+  set σ_bar := se_bar %ₘ map_m h with hσ_bar_def
+  set q_bar := se_bar /ₘ map_m h with hq_bar_def
+  -- Euclidean division: se_bar = (map_m h) * q_bar + σ_bar
+  have hse_div : σ_bar + map_m h * q_bar = se_bar :=
+    modByMonic_add_div se_bar hh_monic
+  -- τ_bar = (map_m t) * (map_m e_int) + q_bar * (map_m g)
+  set τ_bar := map_m t * map_m e_int + q_bar * map_m g with hτ_bar_def
+  -- Key Bézout identity in ZMod m[x]:
+  -- σ_bar * map_m g + τ_bar * map_m h = map_m e_int
+  have hbez_bar : σ_bar * map_m g + τ_bar * map_m h = map_m e_int := by
+    -- Rewrite τ_bar and use se_bar = σ_bar + (map_m h) * q_bar
+    have hq_eq : map_m h * q_bar = se_bar - σ_bar := by
+      have := hse_div  -- σ_bar + map_m h * q_bar = se_bar
+      linear_combination this
+    -- Expand step by step using calc
+    calc σ_bar * map_m g + τ_bar * map_m h
+        = σ_bar * map_m g + (map_m t * map_m e_int + q_bar * map_m g) * map_m h := by
+          rfl
+      _ = σ_bar * map_m g + map_m t * map_m e_int * map_m h +
+          q_bar * map_m g * map_m h := by ring
+      _ = σ_bar * map_m g + map_m t * map_m e_int * map_m h +
+          (map_m h * q_bar) * map_m g := by ring
+      _ = σ_bar * map_m g + map_m t * map_m e_int * map_m h +
+          (se_bar - σ_bar) * map_m g := by rw [hq_eq]
+      _ = map_m t * map_m e_int * map_m h + se_bar * map_m g := by ring
+      _ = map_m t * map_m e_int * map_m h +
+          (map_m s * map_m e_int) * map_m g := by rfl
+      _ = (map_m s * map_m g + map_m t * map_m h) * map_m e_int := by ring
+      _ = _ := by
+          have hs' : map_m s = s_bar := hs
+          have ht' : map_m t = t_bar := ht
+          rw [hs', ht', hbez, one_mul]
+  -- Step D: lift σ_bar and τ_bar back to ℤ[x] via canonical_lift
+  set σ_int := canonical_lift m σ_bar with hσ_int_def
+  -- For τ, we can use map_surjective (degree control not needed for g')
+  obtain ⟨τ_int, hτ_int⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod m)) ZMod.intCast_surjective τ_bar
+  -- σ_int maps back to σ_bar
+  have hσ_map : map_m σ_int = σ_bar := canonical_lift_map m hm σ_bar
+  -- σ_int has controlled degree
+  have hσ_deg_le : σ_int.natDegree ≤ σ_bar.natDegree :=
+    canonical_lift_natDegree_le m σ_bar
+  -- σ_bar has degree < natDegree(map_m h) by modByMonic
+  -- Need: map_m h ≠ 1 (follows from monic + degree consideration... actually just need natDegree > 0)
+  -- We'll handle the edge case h=1 separately if needed. For now:
+  -- Step E: define g', h'
+  set g' := g + C ((m : ℤ)) * τ_int with hg'_def
+  set h' := h + C ((m : ℤ)) * σ_int with hh'_def
+  refine ⟨g', h', ?_, ?_, ?_, ?_⟩
+  · -- (H1) map_{m²}(g'*h') = map_{m²}(f)
+    -- Algebra: g'·h' - f = C(m)·(σ_int·g + τ_int·h + C(m)·σ_int·τ_int - e_int)
+    -- map_m(σ_int·g + τ_int·h - e_int) = σ_bar·map_m(g) + τ_bar·map_m(h) - map_m(e_int) = 0
+    -- So σ_int·g + τ_int·h - e_int = C(m)·d for some d
+    -- g'·h' - f = C(m²)·(d + σ_int·τ_int) → map_{m²} = 0
+    have hmod_zero : map_m (σ_int * g + τ_int * h - e_int) = 0 := by
+      simp only [map_m, Polynomial.map_sub, Polynomial.map_add, Polynomial.map_mul,
+                 hσ_map, hτ_int, hbez_bar, sub_self]
+    obtain ⟨d, hd⟩ := exists_C_mul_of_map_eq_zero m (by omega) _ hmod_zero
+    have hd_eq : σ_int * g + τ_int * h = e_int + C ((m : ℤ)) * d :=
+      sub_eq_iff_eq_add'.mp hd
+    -- Key identity: g'*h' - f = C(m²) * (d + σ_int * τ_int)
+    suffices h_key : g' * h' - f =
+        C (↑m : ℤ) * C (↑m : ℤ) * (d + σ_int * τ_int) by
+      have h_zero : map_m2 (C (↑m : ℤ) * C (↑m : ℤ) * (d + σ_int * τ_int)) = 0 := by
+        have hmm : (Int.castRingHom (ZMod (m ^ 2))) ((↑m : ℤ) * (↑m : ℤ)) = 0 := by
+          rw [map_mul]
+          show ((m : ℤ) : ZMod (m ^ 2)) * ((m : ℤ) : ZMod (m ^ 2)) = 0
+          have : ((m * m : ℕ) : ZMod (m ^ 2)) = 0 := by
+            rw [show m * m = m ^ 2 from by ring]; exact ZMod.natCast_self _
+          exact_mod_cast this
+        simp only [map_m2, Polynomial.map_mul, Polynomial.map_add, Polynomial.map_C,
+                   ← C_mul, hmm, map_zero, zero_mul]
+      have : map_m2 (g' * h' - f) = 0 := by rw [h_key]; exact h_zero
+      -- map_m2 is definitionally Polynomial.map (...)
+      simp only [hmap_m2_def, Polynomial.map_sub, Polynomial.map_mul] at this
+      exact (sub_eq_zero.mp this).symm
+    -- Prove the key identity
+    simp only [hg'_def, hh'_def]
+    rw [hf_eq]
+    -- g' * h' = (g + C m * τ)(h + C m * σ)
+    --         = g*h + C(m)*(σ*g + τ*h) + C(m)²*σ*τ
+    -- f = g*h + C(m)*e
+    -- g'*h' - f = C(m)*(σ*g + τ*h - e) + C(m)²*σ*τ
+    --           = C(m)*C(m)*d + C(m)²*σ*τ = C(m)²*(d + σ*τ)
+    linear_combination C ((m : ℤ)) * hd_eq
+  · -- (H2) map_m(g') = map_m(g)
+    show map_m (g + C ((m : ℤ)) * τ_int) = map_m g
+    change Polynomial.map (Int.castRingHom (ZMod m)) (g + C ((m : ℤ)) * τ_int) =
+           Polynomial.map (Int.castRingHom (ZMod m)) g
+    simp only [Polynomial.map_add, Polynomial.map_mul, Polynomial.map_C]
+    have : (Int.castRingHom (ZMod m)) ((m : ℤ)) = 0 := int_cast_m_eq_zero m
+    rw [this]; simp
+  · -- (H3) map_m(h') = map_m(h)
+    show map_m (h + C ((m : ℤ)) * σ_int) = map_m h
+    change Polynomial.map (Int.castRingHom (ZMod m)) (h + C ((m : ℤ)) * σ_int) =
+           Polynomial.map (Int.castRingHom (ZMod m)) h
+    simp only [Polynomial.map_add, Polynomial.map_mul, Polynomial.map_C]
+    have : (Int.castRingHom (ZMod m)) ((m : ℤ)) = 0 := int_cast_m_eq_zero m
+    rw [this]; simp
+  · -- (H4) natDegree(map_{m²} h') = natDegree(map_m h)
+    -- and (H5) h'.natDegree = h.natDegree — proved together
+    -- Case split: if map_m h = 1, then σ_bar = 0 so h' = h trivially
+    -- If map_m h ≠ 1, use modByMonic degree bound
+    -- First establish that σ_int = 0 or has small degree
+    by_cases hh_one : map_m h = 1
+    · -- Trivial case: map_m h = 1 means h.natDegree = 0
+      -- σ_bar = se_bar %ₘ 1 = 0, so σ_int = canonical_lift m 0
+      have hσ_bar_zero : σ_bar = 0 := by
+        simp only [hσ_bar_def, hh_one, Polynomial.modByMonic_one]
+      have hσ_int_zero : σ_int = 0 := by
+        rw [hσ_int_def, hσ_bar_zero]
+        simp only [canonical_lift, natDegree_zero, Nat.zero_add, Finset.range_one,
+                   Finset.sum_singleton, coeff_zero, ZMod.val_zero, Nat.cast_zero,
+                   map_zero, zero_mul]
+      have hh'_eq_h : h' = h := by rw [hh'_def, hσ_int_zero, mul_zero, add_zero]
+      constructor
+      · -- H4
+        rw [hh'_eq_h, hh_one]
+        simp only [natDegree_one]
+        -- Need: natDegree(map_{m²} h) = 0
+        -- h.natDegree = 0 from hh_deg + hh_one
+        have hh_deg0 : h.natDegree = 0 := by rw [hh_deg, hh_one, natDegree_one]
+        -- leadingCoeff(h) maps to nonzero mod m² (since it's 1 mod m)
+        have hlc_ne : (Int.castRingHom (ZMod (m ^ 2))) h.leadingCoeff ≠ 0 := by
+          rw [Polynomial.leadingCoeff, hh_deg0]
+          intro h_abs
+          -- m² | h.coeff 0
+          have h1 : (m ^ 2 : ℤ) ∣ h.coeff 0 :=
+            (ZMod.intCast_zmod_eq_zero_iff_dvd _ _).mp h_abs
+          -- m | m² | h.coeff 0 → m | h.coeff 0
+          have h2 : (m : ℤ) ∣ h.coeff 0 :=
+            dvd_trans (dvd_pow_self (m : ℤ) (by omega : 2 ≠ 0)) h1
+          -- But h.coeff 0 ≡ 1 (mod m) from hh_monic
+          have hmonic := hh_monic
+          rw [Polynomial.Monic, Polynomial.leadingCoeff] at hmonic
+          rw [hmap_m_def, Polynomial.coeff_map, ← hh_deg, hh_deg0] at hmonic
+          -- hmonic : (Int.castRingHom (ZMod m)) (h.coeff 0) = 1
+          have h3 : (Int.castRingHom (ZMod m)) (h.coeff 0) = 0 :=
+            (ZMod.intCast_zmod_eq_zero_iff_dvd _ _).mpr h2
+          exact one_ne_zero (hmonic ▸ h3)
+        have := (Polynomial.natDegree_map_of_leadingCoeff_ne_zero
+            (Int.castRingHom (ZMod (m ^ 2))) hlc_ne).symm
+        rw [hh_deg0] at this
+        rw [hmap_m2_def]; exact this.symm
+      · -- H5
+        rw [hh'_eq_h]
+    · -- Main case: map_m h ≠ 1, use modByMonic
+      have hσ_bar_deg : σ_bar.natDegree < (map_m h).natDegree :=
+        natDegree_modByMonic_lt se_bar hh_monic hh_one
+      have hσ_deg_lt_h : σ_int.natDegree < h.natDegree := by
+        calc σ_int.natDegree ≤ σ_bar.natDegree := hσ_deg_le
+          _ < (map_m h).natDegree := hσ_bar_deg
+          _ = h.natDegree := hh_deg.symm
+      have hCm_σ_deg : (C ((m : ℤ)) * σ_int).natDegree < h.natDegree :=
+        calc (C ((m : ℤ)) * σ_int).natDegree
+            ≤ σ_int.natDegree := natDegree_C_mul_le _ _
+          _ < h.natDegree := hσ_deg_lt_h
+      have hh'_deg : h'.natDegree = h.natDegree := by
+        show (h + C ((m : ℤ)) * σ_int).natDegree = h.natDegree
+        exact natDegree_add_eq_left_of_natDegree_lt hCm_σ_deg
+      -- leadingCoeff(h') = leadingCoeff(h)
+      have hlc_h' : h'.leadingCoeff = h.leadingCoeff := by
+        simp only [Polynomial.leadingCoeff, hh'_deg]
+        show (h + C ((m : ℤ)) * σ_int).coeff h.natDegree = h.coeff h.natDegree
+        rw [coeff_add]
+        have : (C ((m : ℤ)) * σ_int).coeff h.natDegree = 0 :=
+          Polynomial.coeff_eq_zero_of_natDegree_lt hCm_σ_deg
+        rw [this, add_zero]
+      -- leadingCoeff(h) maps to 1 under map_m (by hh_monic)
+      have hlc_mod_m : (Int.castRingHom (ZMod m)) h.leadingCoeff = 1 := by
+        have hmonic := hh_monic
+        rw [Polynomial.Monic, Polynomial.leadingCoeff] at hmonic
+        rw [hmap_m_def, Polynomial.coeff_map, ← hh_deg] at hmonic
+        rw [Polynomial.leadingCoeff]; exact hmonic
+      -- So m ∤ leadingCoeff(h), hence m² ∤ leadingCoeff(h')
+      have hlc_ne_zero_m2 : (Int.castRingHom (ZMod (m ^ 2))) h'.leadingCoeff ≠ 0 := by
+        rw [hlc_h']
+        intro h_abs
+        have h1 : (m ^ 2 : ℤ) ∣ h.leadingCoeff :=
+          (ZMod.intCast_zmod_eq_zero_iff_dvd _ _).mp h_abs
+        have h2 : (m : ℤ) ∣ h.leadingCoeff :=
+          dvd_trans (dvd_pow_self (m : ℤ) (by omega : 2 ≠ 0)) h1
+        have h3 : (Int.castRingHom (ZMod m)) h.leadingCoeff = 0 :=
+          (ZMod.intCast_zmod_eq_zero_iff_dvd _ _).mpr h2
+        exact one_ne_zero (hlc_mod_m ▸ h3)
+      constructor
+      · -- H4: natDegree(map_{m²} h') = natDegree(map_m h)
+        -- natDegree_map_of_leadingCoeff_ne_zero gives:
+        -- natDegree(Polynomial.map f h') = natDegree(h')
+        have h_natdeg_map := Polynomial.natDegree_map_of_leadingCoeff_ne_zero
+            (Int.castRingHom (ZMod (m ^ 2))) hlc_ne_zero_m2
+        -- h_natdeg_map : (map (Int.castRingHom (ZMod (m^2))) h').natDegree = h'.natDegree
+        -- map_m2 h' is definitionally map (Int.castRingHom (ZMod (m^2))) h'
+        -- map_m h is definitionally map (Int.castRingHom (ZMod m)) h
+        show (map_m2 h').natDegree = (map_m h).natDegree
+        change (Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) h').natDegree =
+               (Polynomial.map (Int.castRingHom (ZMod m)) h).natDegree
+        rw [h_natdeg_map, hh'_deg, hh_deg]
+      · -- H5: h'.natDegree = h.natDegree
+        exact hh'_deg
+
+-- ============================================================
 -- 2. ker(π)² = 0 in ZMod(m²) — ring level
 -- ============================================================
 

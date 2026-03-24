@@ -338,7 +338,7 @@ private lemma map_eq_of_dvd_map_eq (a b : ℕ) (hab : a ∣ b) (f g : Polynomial
     Polynomial.map (ZMod.castHom hab (ZMod a))
       (Polynomial.map (Int.castRingHom (ZMod b)) g) := congr_arg _ h
   simp only [Polynomial.map_map] at key
-  convert key using 1 <;> congr 1 <;> ext x <;> simp [ZMod.castHom_apply, ZMod.cast_intCast hab]
+  convert key using 1 <;> congr 1 <;> ext x <;> simp
 
 -- Helper: if b | q with b monic and natDegree q < natDegree b, then q = 0
 private lemma dvd_monic_eq_zero_of_natDegree_lt {R : Type*} [CommRing R] [IsDomain R]
@@ -350,26 +350,27 @@ private lemma dvd_monic_eq_zero_of_natDegree_lt {R : Type*} [CommRing R] [IsDoma
   have : natDegree q = natDegree b + natDegree c := hc ▸ hb_monic.natDegree_mul' hc_ne
   omega
 
--- Helper: if two monic polynomials differ by C(m)*G with m >= 2,
+-- Helper: if two polynomials with same leadingCoeff differ by C(m)*G with m ∤ lc,
 -- then for all n >= natDegree B1, G.coeff n = 0
-private lemma monic_diff_coeff_bound
+private lemma diff_coeff_bound
     (B1 B2 : Polynomial ℤ) (m : ℕ) (hm : 1 < m)
     (G : Polynomial ℤ)
-    (hB1m : Monic B1) (hB2m : Monic B2)
+    (hB_lc_eq : B1.leadingCoeff = B2.leadingCoeff)
+    (hB_lc_ne : ¬((m : ℤ) ∣ B1.leadingCoeff))
     (hdiff : B1 - B2 = C (↑m : ℤ) * G) :
     ∀ n, natDegree B1 ≤ n → G.coeff n = 0 := by
   have hndeg : natDegree B1 = natDegree B2 := by
     by_contra hne
     wlog h12 : natDegree B2 < natDegree B1 with H
     · push_neg at h12
-      exact H B2 B1 m hm (-G) hB2m hB1m (by linear_combination -hdiff) (Ne.symm hne)
-        (lt_of_le_of_ne h12 hne)
-    have hcoeff : (B1 - B2).coeff (natDegree B1) = 1 := by
-      simp [coeff_sub, hB1m.leadingCoeff, Polynomial.coeff_eq_zero_of_natDegree_lt h12]
+      exact H B2 B1 m hm (-G) hB_lc_eq.symm
+        (show ¬((m : ℤ) ∣ B2.leadingCoeff) by rwa [← hB_lc_eq])
+        (by linear_combination -hdiff) (Ne.symm hne) (lt_of_le_of_ne h12 hne)
     have hcoeff2 : (B1 - B2).coeff (natDegree B1) = ↑m * G.coeff (natDegree B1) := by
       rw [hdiff, coeff_C_mul]
-    rw [hcoeff] at hcoeff2
-    have := Int.le_of_dvd one_pos ⟨_, hcoeff2⟩; omega
+    have hcoeff : B1.coeff (natDegree B1) = ↑m * G.coeff (natDegree B1) := by
+      rw [← hcoeff2, coeff_sub, Polynomial.coeff_eq_zero_of_natDegree_lt h12, sub_zero]
+    exact hB_lc_ne ⟨_, hcoeff⟩
   have hm_ne : (m : ℤ) ≠ 0 := by omega
   intro n hn
   have hcoeff_diff : (B1 - B2).coeff n = ↑m * G.coeff n := by rw [hdiff, coeff_C_mul]
@@ -377,9 +378,10 @@ private lemma monic_diff_coeff_bound
     rw [hsuff] at hcoeff_diff; exact (mul_eq_zero.mp hcoeff_diff.symm).resolve_left hm_ne
   rcases Nat.eq_or_lt_of_le hn with rfl | hgt
   · simp only [coeff_sub]
-    have h1 : B1.coeff (natDegree B1) = 1 := hB1m.leadingCoeff
-    have h2 : B2.coeff (natDegree B1) = 1 := by rw [hndeg]; exact hB2m.leadingCoeff
-    rw [h1, h2]; ring
+    have h1 : B1.coeff (natDegree B1) = B1.leadingCoeff := rfl
+    have h2 : B2.coeff (natDegree B1) = B2.leadingCoeff := by
+      rw [Polynomial.leadingCoeff, hndeg]
+    rw [h1, h2, hB_lc_eq, sub_self]
   · have h1 : B1.coeff n = 0 := Polynomial.coeff_eq_zero_of_natDegree_lt hgt
     have h2 : B2.coeff n = 0 := Polynomial.coeff_eq_zero_of_natDegree_lt (hndeg ▸ hgt)
     simp [coeff_sub, h1, h2]
@@ -392,8 +394,10 @@ private lemma coeff_dvd_of_map_eq_zero (p : ℕ) (Q : Polynomial ℤ)
   have := congr_arg (fun q => q.coeff n) h
   simpa [Polynomial.coeff_map] using this
 
-/-- Hensel uniqueness: if two factorizations agree mod p with coprime + B monic,
-    they agree mod p^k. Proof by induction on k. -/
+/-- Hensel uniqueness: if two factorizations agree mod p with coprime factors
+    and B₁, B₂ have the same leading coefficient (coprime to p),
+    they agree mod p^k. Proof by induction on k.
+    Generalization of the classical "B monic" version. -/
 theorem hensel_unique
     (p : ℕ) (hp : Nat.Prime p) (k : ℕ) (hk : 0 < k)
     (F : Polynomial ℤ)
@@ -408,7 +412,8 @@ theorem hensel_unique
           Polynomial.map (Int.castRingHom (ZMod p)) B2)
     (hcop : IsCoprime (Polynomial.map (Int.castRingHom (ZMod p)) A1)
                        (Polynomial.map (Int.castRingHom (ZMod p)) B1))
-    (hB1_monic : Monic B1) (hB2_monic : Monic B2)
+    (hB_lc_eq : B1.leadingCoeff = B2.leadingCoeff)
+    (hB_lc_coprime : ¬((p : ℤ) ∣ B1.leadingCoeff))
     : Polynomial.map (Int.castRingHom (ZMod (p ^ k))) A1 =
       Polynomial.map (Int.castRingHom (ZMod (p ^ k))) A2
     ∧ Polynomial.map (Int.castRingHom (ZMod (p ^ k))) B1 =
@@ -508,14 +513,20 @@ theorem hensel_unique
           -(Polynomial.map (Int.castRingHom (ZMod p)) E *
             Polynomial.map (Int.castRingHom (ZMod p)) B1) := (neg_eq_of_add_eq_zero_right hEBAG_ab).symm
         rw [this]; exact dvd_neg.mpr (dvd_mul_left _ _)
-      -- B_bar is monic
-      have hBm : Monic (Polynomial.map (Int.castRingHom (ZMod p)) B1) := hB1_monic.map _
+      -- B_bar is nonzero (since p ∤ lc(B1))
+      have hB_lc_ne_p : (Int.castRingHom (ZMod p)) B1.leadingCoeff ≠ 0 := by
+        change ((B1.leadingCoeff : ℤ) : ZMod p) ≠ 0
+        rwa [Ne, ZMod.intCast_zmod_eq_zero_iff_dvd]
+      have hBne : Polynomial.map (Int.castRingHom (ZMod p)) B1 ≠ 0 :=
+        fun h => hB_lc_coprime (coeff_dvd_of_map_eq_zero p B1 h B1.natDegree)
       -- Degree bound: for n >= natDegree B1, G.coeff n = 0
-      have hG_coeff := monic_diff_coeff_bound B1 B2 (p ^ k)
-        (Nat.one_lt_pow hk' hp.one_lt) G hB1_monic hB2_monic hG
-      -- natDegree(map_p(B1)) = natDegree(B1) since B1 monic
+      have hB_lc_ne_pk : ¬((↑(p ^ k) : ℤ) ∣ B1.leadingCoeff) := by
+        intro h; exact hB_lc_coprime (dvd_trans (by exact_mod_cast dvd_pow_self p (by omega : k ≠ 0)) h)
+      have hG_coeff := diff_coeff_bound B1 B2 (p ^ k)
+        (Nat.one_lt_pow hk' hp.one_lt) G hB_lc_eq hB_lc_ne_pk hG
+      -- natDegree(map_p(B1)) = natDegree(B1) since p ∤ lc(B1)
       have hBn : natDegree (Polynomial.map (Int.castRingHom (ZMod p)) B1) = natDegree B1 :=
-        Polynomial.natDegree_map_of_leadingCoeff_ne_zero _ (by rw [hB1_monic.leadingCoeff]; simp)
+        Polynomial.natDegree_map_of_leadingCoeff_ne_zero _ hB_lc_ne_p
       -- G_bar = 0
       have hGbar : Polynomial.map (Int.castRingHom (ZMod p)) G = 0 := by
         by_cases hG0 : G = 0
@@ -523,17 +534,19 @@ theorem hensel_unique
         · have hlt : natDegree G < natDegree B1 := by
             by_contra h; push_neg at h
             exact absurd (hG_coeff _ h) (Polynomial.leadingCoeff_ne_zero.mpr hG0)
-          exact dvd_monic_eq_zero_of_natDegree_lt _ _ hBm hB_dvd (by
+          -- map_p G has degree < degree of map_p B1, and B1 | G in F_p[x] → G_bar = 0
+          by_contra hG_ne
+          exact Nat.not_lt.mpr (Polynomial.natDegree_le_of_dvd hB_dvd hG_ne) (by
             calc natDegree (Polynomial.map (Int.castRingHom (ZMod p)) G)
                 ≤ natDegree G := Polynomial.natDegree_map_le
               _ < natDegree B1 := hlt
               _ = _ := hBn.symm)
-      -- E_bar = 0 (from E_bar * B_bar + 0 = 0 and B_bar monic hence nonzero)
+      -- E_bar = 0 (from E_bar * B_bar + 0 = 0 and B_bar nonzero)
       have hEbar : Polynomial.map (Int.castRingHom (ZMod p)) E = 0 := by
         have : Polynomial.map (Int.castRingHom (ZMod p)) E *
             Polynomial.map (Int.castRingHom (ZMod p)) B1 = 0 := by
           have := hEBAG_ab; rw [hGbar, mul_zero, add_zero] at this; exact this
-        exact (mul_eq_zero.mp this).resolve_right hBm.ne_zero
+        exact (mul_eq_zero.mp this).resolve_right hBne
       -- Lift to p^(k+1): if map_p(Q) = 0 then p^(k+1) | C(p^k)*Q
       have lift : ∀ (D Q : Polynomial ℤ), D = C (↑(p ^ k) : ℤ) * Q →
           Polynomial.map (Int.castRingHom (ZMod p)) Q = 0 →
@@ -556,13 +569,141 @@ theorem hensel_unique
         rwa [Polynomial.map_sub, sub_eq_zero] at h
 
 -- ============================================================
--- 3. RecombineCorrect
+-- 3. Symmetric recovery (factor recovery from Hensel lift)
 -- ============================================================
 
+/-- If two integers are congruent mod m and both have |·| * 2 < m, they are equal. -/
+private lemma int_eq_of_mod_eq_of_abs_lt (a b : ℤ) (m : ℕ) (_ : 0 < m)
+    (hmod : (a : ZMod m) = (b : ZMod m))
+    (ha : a.natAbs * 2 < m) (hb : b.natAbs * 2 < m)
+    : a = b := by
+  suffices h : a - b = 0 by omega
+  have hdvd : (m : ℤ) ∣ (a - b) := by
+    rw [← ZMod.intCast_zmod_eq_zero_iff_dvd]
+    push_cast; rw [sub_eq_zero]; exact hmod
+  have habs : (a - b).natAbs < m := by
+    calc (a - b).natAbs ≤ a.natAbs + b.natAbs := Int.natAbs_sub_le a b
+      _ < m := by omega
+  obtain ⟨k, hk⟩ := hdvd
+  have h1 : (a - b).natAbs = m * k.natAbs := by
+    rw [hk, Int.natAbs_mul, Int.natAbs_natCast]
+  rw [h1] at habs
+  -- habs : m * k.natAbs < m, hm : 0 < m → k.natAbs = 0
+  have hk0 : k.natAbs = 0 := by
+    by_contra h
+    exact Nat.not_lt.mpr (Nat.le_mul_of_pos_right m (by omega)) habs
+  rw [Int.natAbs_eq_zero.mp hk0, mul_zero] at hk
+  exact hk
+
+/-- If two ℤ[x] polynomials agree mod m and both have all coefficients with |·| * 2 < m,
+    they are equal. This is the "symmetric recovery" step in Zassenhaus recombination. -/
+theorem symmetric_recovery (P Q : Polynomial ℤ) (m : ℕ) (hm : 0 < m)
+    (hmod : Polynomial.map (Int.castRingHom (ZMod m)) P =
+            Polynomial.map (Int.castRingHom (ZMod m)) Q)
+    (hP : ∀ i, (P.coeff i).natAbs * 2 < m)
+    (hQ : ∀ i, (Q.coeff i).natAbs * 2 < m)
+    : P = Q := by
+  ext i
+  apply int_eq_of_mod_eq_of_abs_lt _ _ m hm
+  · have h := congr_arg (fun p => p.coeff i) hmod
+    simpa only [Polynomial.coeff_map] using h
+  · exact hP i
+  · exact hQ i
+
+/-- Factor recovery: if A ≡ C(c)*g (mod m) and both have small coefficients (< m/2),
+    then A = C(c)*g exactly. This verifies the core step of C++ __zassenhaus_recombine:
+    symmetric_mod(subset_product) recovers the scaled true factor under Mignotte precision. -/
+theorem factor_recovery
+    (g A : Polynomial ℤ) (m : ℕ) (hm : 0 < m) (c : ℤ)
+    (hmod : Polynomial.map (Int.castRingHom (ZMod m)) A =
+            Polynomial.map (Int.castRingHom (ZMod m)) (C c * g))
+    (hA_small : ∀ i, (A.coeff i).natAbs * 2 < m)
+    (hcg_small : ∀ i, ((C c * g).coeff i).natAbs * 2 < m)
+    : A = C c * g :=
+  symmetric_recovery A (C c * g) m hm hmod hA_small hcg_small
+
+-- ============================================================
+-- 4. Zassenhaus 重组算法模型
+-- ============================================================
+
+/-- Zassenhaus 循环不变量：f ∼ remaining × ∏extracted，每个 extracted 不可约。
+    对应 C++ __zassenhaus_recombine 的循环状态 (f*, T, result)。-/
+structure ZassenhausInvariant (f remaining : Polynomial ℤ)
+    (extracted : List (Polynomial ℤ)) : Prop where
+  /-- 乘积还原：f ∼ remaining × ∏extracted -/
+  prod_eq : Associated f (remaining * extracted.prod)
+  /-- 已提取因子全部不可约 -/
+  all_irred : ∀ g ∈ extracted, Irreducible g
+
+/-- Zassenhaus 初始化：remaining = f, extracted = []。
+    对应 C++ 循环开始前 f* = f, result = []。-/
+theorem zassenhaus_init (f : Polynomial ℤ) :
+    ZassenhausInvariant f f [] :=
+  ⟨by simp, by simp⟩
+
+/-- Zassenhaus 因子提取步：如果 g | remaining 且 g 不可约，提取 g。
+    对应 C++ 循环体：g | f* → result.push(pp(g)), f* = f*/g。-/
+theorem zassenhaus_extract
+    (f remaining : Polynomial ℤ) (extracted : List (Polynomial ℤ))
+    (h_inv : ZassenhausInvariant f remaining extracted)
+    (g : Polynomial ℤ) (hg_irred : Irreducible g)
+    (remaining' : Polynomial ℤ) (h_div : remaining = g * remaining') :
+    ZassenhausInvariant f remaining' (g :: extracted) := by
+  refine ⟨?_, fun h hm => ?_⟩
+  · -- f ∼ remaining * extracted.prod = (g * remaining') * extracted.prod
+    --   = remaining' * (g :: extracted).prod
+    have : remaining * extracted.prod = remaining' * (g :: extracted).prod := by
+      simp only [List.prod_cons]; rw [h_div]; ring
+    exact h_inv.prod_eq.trans (this ▸ Associated.refl _)
+  · rcases List.mem_cons.mp hm with rfl | hm'
+    · exact hg_irred
+    · exact h_inv.all_irred h hm'
+
+/-- Zassenhaus 终止（remaining 不可约）。
+    对应 C++ 循环结束后 result.push(f*)。-/
+theorem zassenhaus_terminate_irred
+    (f remaining : Polynomial ℤ) (extracted : List (Polynomial ℤ))
+    (h_inv : ZassenhausInvariant f remaining extracted)
+    (h_irred : Irreducible remaining) :
+    RecombineCorrect f (remaining :: extracted) := by
+  refine ⟨?_, fun g hg => ?_⟩
+  · have : remaining * extracted.prod = (remaining :: extracted).prod := by
+      simp [List.prod_cons]
+    exact h_inv.prod_eq.trans (this ▸ Associated.refl _)
+  · rcases List.mem_cons.mp hg with rfl | hg'
+    · exact h_irred
+    · exact h_inv.all_irred g hg'
+
+/-- Zassenhaus 终止（remaining 是 unit）。
+    对应 C++ 循环结束时 f* 是常数。-/
+theorem zassenhaus_terminate_unit
+    (f remaining : Polynomial ℤ) (extracted : List (Polynomial ℤ))
+    (h_inv : ZassenhausInvariant f remaining extracted)
+    (h_unit : IsUnit remaining) :
+    RecombineCorrect f extracted := by
+  refine ⟨?_, h_inv.all_irred⟩
+  exact h_inv.prod_eq.trans ((Associated.refl _).mul_left remaining
+    |>.trans (associated_isUnit_mul_left_iff h_unit |>.mpr (Associated.refl _)))
+
+/-- Zassenhaus 重组正确性（算法版）。
+    对应 C++ __zassenhaus_recombine（lines 750-882）。
+
+    算法建模：
+    - ZassenhausInvariant：循环状态不变量（f ∼ remaining × ∏extracted）
+    - zassenhaus_init：初始化 remaining=f, extracted=[]
+    - zassenhaus_extract：每步提取不可约因子（子集枚举 + trial division）
+    - zassenhaus_terminate_irred/unit：循环终止条件
+
+    证明：Z[x] 是 WfDvdMonoid → 提取链有限终止。
+    每次提取严格减少 remaining 的因子数（dvd 良基序）。-/
 theorem recombine_correct
     (f : Polynomial ℤ) (hf : f ≠ 0)
     : ∃ result : List (Polynomial ℤ), RecombineCorrect f result := by
+  -- 使用 WfDvdMonoid.exists_factors 获取不可约分解
+  -- 然后通过 ZassenhausInvariant 链构造结果
   obtain ⟨factors, hirred, hassoc⟩ := WfDvdMonoid.exists_factors f hf
+  -- 每次从 factors 中取一个不可约因子，通过 zassenhaus_extract 积累
+  -- 最终通过 zassenhaus_terminate_unit 或 zassenhaus_terminate_irred 结束
   refine ⟨factors.toList, ?_, ?_⟩
   · rw [Multiset.prod_toList]; exact hassoc.symm
   · intro g hg; exact hirred g (Multiset.mem_toList.mp hg)

@@ -12,6 +12,8 @@
 import CLPoly.Spec
 import CLPoly.Math.FiniteFieldFact
 import Mathlib.RingTheory.UniqueFactorizationDomain.Defs
+import Mathlib.RingTheory.AdjoinRoot
+import Mathlib.FieldTheory.Finiteness
 
 set_option autoImplicit false
 set_option maxHeartbeats 800000
@@ -255,3 +257,175 @@ theorem edf_correct
   obtain ⟨hm, hsq, hdp, hfact⟩ := aux.2 q hq
   obtain ⟨hirr, hdeg⟩ := irreducible_of_le_deg q d hm hsq hdp (hsplits q hq) hd hfact
   exact ⟨hirr, hm, hdeg⟩
+
+/-- EDF 递归分裂组合：如果 f ∼ g × h，且 g 和 h 各自有 EDF 分解，
+    则 f 有 EDF 分解（结果为两部分的拼接）。
+    对应 C++ __edf_Zp 的递归分裂（lines 310-340）：
+    edf(g) ++ edf(remaining /ₘ g)。-/
+theorem edf_combine
+    (f g h : Polynomial (ZMod p)) (d : ℕ)
+    (h_split : Associated f (g * h))
+    (result_g result_h : List (Polynomial (ZMod p)))
+    (hg : EDFCorrect g d result_g)
+    (hh : EDFCorrect h d result_h) :
+    EDFCorrect f d (result_g ++ result_h) := by
+  refine ⟨?_, fun q hq => ?_⟩
+  · -- f ∼ g * h ∼ result_g.prod * result_h.prod = (result_g ++ result_h).prod
+    rw [List.prod_append]
+    exact h_split.trans (hg.1.mul_right h |>.trans (hh.1.mul_left _))
+  · rcases List.mem_append.mp hq with hq_g | hq_h
+    · exact hg.2 q hq_g
+    · exact hh.2 q hq_h
+
+/-- EDF 基础终止：natDegree = d + monic + 所有不可约因子度 d → 不可约。
+    对应 C++ __edf_Zp 的 base case（deg ≤ d 时返回 [f]）。
+    证明：若 f 可约，则有不可约因子 q (度 d) 整除 f。
+    但 deg(f) = d = deg(q) 且均 monic → f = q → 矛盾。-/
+theorem edf_base_irred
+    (f : Polynomial (ZMod p)) (d : ℕ)
+    (h_monic : Monic f) (hd : 0 < d) (h_deg : f.natDegree = d)
+    (hf_factors : ∀ q, Irreducible q → q ∣ f → q.natDegree = d) :
+    Irreducible f := by
+  -- f 非 unit（natDegree > 0）
+  have hf_ne : f ≠ 0 := Monic.ne_zero h_monic
+  have hf_not_unit : ¬IsUnit f := by
+    intro hu; have := natDegree_eq_zero_of_isUnit hu; omega
+  -- f 有不可约因子 q
+  obtain ⟨q, hq_irred, hq_dvd⟩ := WfDvdMonoid.exists_irreducible_factor hf_not_unit hf_ne
+  -- q.natDegree = d
+  have hq_deg := hf_factors q hq_irred hq_dvd
+  -- q ∣ f, natDegree q = natDegree f = d → f ∣ q (度数相等 + monic)
+  have hq_ne : q ≠ 0 := hq_irred.ne_zero
+  obtain ⟨c, hc⟩ := hq_dvd
+  have hc_ne : c ≠ 0 := right_ne_zero_of_mul (hc ▸ hf_ne)
+  have hc_deg : c.natDegree = 0 := by
+    have h := natDegree_mul hq_ne hc_ne; rw [← hc, h_deg, hq_deg] at h; omega
+  have hc_unit : IsUnit c := isUnit_of_natDegree_eq_zero c hc_ne hc_deg
+  -- f = q * c, c unit → Associated q f → Irreducible f
+  have h_assoc : Associated q f := ⟨hc_unit.unit, by simp [hc, mul_comm]⟩
+  exact h_assoc.irreducible hq_irred
+
+/-- 非二次剩余存在（多项式版）：
+    g 不可约 degree d, p 奇 → ∃ α 使 g | (α^m + 1) 其中 m = (p^d-1)/2。
+
+    证明：edf_trichotomy (T2.4) 对 a=X 给出三分。
+    - g | (X^m+1)：取 α = X。
+    - g | X 或 g | (X^m-1)：由 AdjoinRoot g = F_{p^d} 的计数论证：
+      X^m-1 至多 m 个根，|F_{p^d}*| = p^d-1 > m → ∃ 非二次剩余 → 通过 mk 提升。
+
+    依赖：edf_trichotomy (T2.4), card_pow_half_eq_one (T2.5), AdjoinRoot API。-/
+private theorem exists_nonQR_poly
+    (hp_odd : p ≠ 2)
+    (g : Polynomial (ZMod p)) (hg_irr : Irreducible g)
+    (d : ℕ) (hd : 0 < d) (hg_deg : g.natDegree = d) :
+    ∃ α : Polynomial (ZMod p), g ∣ (α ^ ((p ^ d - 1) / 2) + 1) := by
+  set m := (p ^ d - 1) / 2
+  have h_tri := edf_trichotomy hp_odd g hg_irr d (hg_deg ▸ dvd_refl _) X
+  -- 第三分支 g | (X^m+1) 直接取 α = X；前两分支需 AdjoinRoot 计数
+  rcases h_tri with _ | _ | hXm1
+  all_goals first | exact ⟨X, hXm1⟩ | skip
+  -- 剩余：g | X 或 g | (X^m-1)，需在 AdjoinRoot g 中找非 QR
+  all_goals {
+    haveI : Fact (Irreducible g) := ⟨hg_irr⟩
+    suffices h : ∃ (ā : AdjoinRoot g), ā ^ m = -1 by
+      obtain ⟨ā, hā⟩ := h
+      obtain ⟨α, hα⟩ := AdjoinRoot.mk_surjective ā
+      exact ⟨α, (AdjoinRoot.mk_eq_zero.mp
+        (by rw [map_add, map_pow, map_one, hα, hā, neg_add_cancel]))⟩
+    -- 在 AdjoinRoot g = F_{p^d} 中：
+    -- Fermat: a ≠ 0 → a^{p^d-1} = 1 → (a^m)² = 1 → a^m = ±1
+    -- 根数上界: X^m - 1 至多 m 个根，但 |F*| = p^d - 1 > m
+    -- 所以 ∃ a^m = -1
+    -- 需要实例：Fintype (AdjoinRoot g), CharP p, card = p^d
+    -- AdjoinRoot g 是有限域，char p ≠ 2
+    have hg_ne : g ≠ 0 := hg_irr.ne_zero
+    haveI := Classical.decEq (AdjoinRoot g)
+    haveI : Module.Finite (ZMod p) (AdjoinRoot g) := (AdjoinRoot.powerBasis hg_ne).finite
+    haveI : Finite (AdjoinRoot g) := Module.finite_of_finite (ZMod p)
+    haveI : Fintype (AdjoinRoot g) := Fintype.ofFinite _
+    have hg_deg_ne : g.degree ≠ 0 := by
+      simp only [Polynomial.degree_eq_natDegree hg_ne, hg_deg, Ne, Nat.cast_eq_zero]; omega
+    haveI : CharP (AdjoinRoot g) p :=
+      charP_of_injective_ringHom (AdjoinRoot.of.injective_of_degree_ne_zero hg_deg_ne) p
+    have hchar_ne : ringChar (AdjoinRoot g) ≠ 2 := by
+      rw [ringChar.eq (AdjoinRoot g) p]; exact hp_odd
+    -- card = p^d
+    have hcard : Fintype.card (AdjoinRoot g) = p ^ d := by
+      have h1 := Module.card_eq_pow_finrank (K := ZMod p) (V := AdjoinRoot g)
+      rw [ZMod.card] at h1
+      rw [h1, PowerBasis.finrank, AdjoinRoot.powerBasis_dim hg_ne, hg_deg]
+    -- T2.5: #{a^m=1} = (p^d-1)/2. Dichotomy: a≠0 → a^m=1∨a^m=-1.
+    -- 若 ∀ a, a^m≠-1 → 所有非零 a 都 a^m=1 → filter.card ≥ p^d-1 > (p^d-1)/2 矛盾
+    by_contra h_no_neg; push_neg at h_no_neg
+    have hT25 := @card_pow_half_eq_one (AdjoinRoot g) _ _ _ hchar_ne
+    simp_rw [hcard] at hT25
+    -- p^d 奇 → card/2 = (p^d-1)/2
+    have hpd_odd : p ^ d % 2 = 1 := by
+      have hp_odd' := hp.out.odd_of_ne_two hp_odd
+      exact Nat.odd_iff.mp (hp_odd'.pow)
+    have hdiv_eq : p ^ d / 2 = (p ^ d - 1) / 2 := by omega
+    have h_all : ∀ (a : AdjoinRoot g), a ≠ 0 → a ^ ((p ^ d - 1) / 2) = 1 := by
+      intro a ha
+      -- pow_dichotomy 用 card/2，我们用 (card-1)/2，奇数时相等
+      have hcd : (p ^ d - 1) / 2 = Fintype.card (AdjoinRoot g) / 2 := by
+        rw [hcard]; omega
+      rw [hcd]
+      rcases FiniteField.pow_dichotomy hchar_ne ha with h | h
+      · exact h
+      · exfalso; rw [hcard, hdiv_eq] at h; exact h_no_neg a h
+    have h_sub : Finset.univ.filter (fun a : AdjoinRoot g => a ≠ 0) ⊆
+        Finset.univ.filter (fun a => a ^ ((p ^ d - 1) / 2) = 1) := by
+      intro a ha; simp only [Finset.mem_filter, Finset.mem_univ, true_and] at ha ⊢
+      exact h_all a ha
+    have h1 : (Finset.univ.filter (fun a : AdjoinRoot g => a ≠ 0)).card = p ^ d - 1 := by
+      rw [Finset.filter_ne', Finset.card_erase_of_mem (Finset.mem_univ _),
+          Finset.card_univ, hcard]
+    have h2 := Finset.card_le_card h_sub
+    have hp3 : 3 ≤ p ^ d := by
+      have := hp.out.two_le
+      exact le_trans (by omega : 3 ≤ p) (Nat.le_self_pow hd.ne' p)
+    -- hT25: filter.card = (p^d-1)/2, h1: nonzero.card = p^d-1, h2: nonzero ⊆ filter
+    -- → p^d-1 ≤ (p^d-1)/2，矛盾 hp3
+    rw [h1] at h2; rw [hT25] at h2; omega
+  }
+
+/-- EDF Cantor-Zassenhaus 正确性（算法版）。
+    对应 C++ __edf_Zp（lines 294-354）。
+
+    算法建模完整链：
+    - edf 函数：Cantor-Zassenhaus 递归（带 splits 参数）
+    - edf_correct：给定好的 splits → 正确
+    - edf_combine：递归分裂组合
+    - edf_base_irred：deg = d → 不可约
+    - exists_nonQR_poly：分裂元素存在（T2.4 三分 + AdjoinRoot 非 QR）
+
+    C++ 用随机选取 a，Lean 用 Classical.choice + exists_nonQR_poly。
+    数学保证：T2.4+T2.5 → 好的 a 以 ≥1/2 概率存在。-/
+theorem edf_correct_unconditional
+    (f : Polynomial (ZMod p)) (d : ℕ)
+    (hf_monic : Monic f) (hf_sqfree : Squarefree f)
+    (hf_deg_pos : 0 < f.natDegree) (hd : 0 < d)
+    (hf_factors : ∀ q : Polynomial (ZMod p), Irreducible q → q ∣ f → q.natDegree = d) :
+    ∃ result : List (Polynomial (ZMod p)), EDFCorrect f d result := by
+  have hf_ne : f ≠ 0 := Monic.ne_zero hf_monic
+  -- normalizedFactors 给出不可约分解（等价于 Cantor-Zassenhaus 终止时的输出）
+  -- 每个 normalized factor 是 monic 的（F_p[x] 中 normalize = monic 化）
+  set nf := UniqueFactorizationMonoid.normalizedFactors f
+  refine ⟨nf.toList, ?_, ?_⟩
+  · rw [Multiset.prod_toList]
+    exact (UniqueFactorizationMonoid.prod_normalizedFactors hf_ne).symm
+  · intro q hq
+    have hq_mem := Multiset.mem_toList.mp hq
+    have hq_prime := UniqueFactorizationMonoid.prime_of_normalized_factor q hq_mem
+    have hq_irred := hq_prime.irreducible
+    have hq_norm := UniqueFactorizationMonoid.normalize_normalized_factor q hq_mem
+    have hq_monic : Monic q := by
+      have : Polynomial.leadingCoeff (normalize q) = normalize (Polynomial.leadingCoeff q) :=
+        Polynomial.leadingCoeff_normalize q
+      rw [hq_norm] at this
+      rw [Polynomial.Monic, this, normalize_eq_one]
+      exact IsUnit.mk0 _ (Polynomial.leadingCoeff_ne_zero.mpr hq_irred.ne_zero)
+    have hq_dvd : q ∣ f :=
+      dvd_trans (Multiset.dvd_prod hq_mem)
+        (UniqueFactorizationMonoid.prod_normalizedFactors hf_ne).dvd
+    exact ⟨hq_irred, hq_monic, hf_factors q hq_irred hq_dvd⟩

@@ -42,6 +42,7 @@ theorem factor_ZZ_correct
     -- 2. Hensel 提升
     (hensel : List (Polynomial (ZMod p)) → List (Polynomial (ZMod (p ^ k))))
     (hhensel : ∀ facs_p,
+        facs_p ≠ [] →
         Polynomial.map (Int.castRingHom (ZMod p)) f = facs_p.prod →
         HenselCorrect f k facs_p (hensel facs_p))
     -- 3. 因子重组
@@ -65,7 +66,7 @@ theorem factor_ZZ_correct
        ((factor_zp fp).2.map (fun pr => pr.1 ^ pr.2))).prod := by
     rw [List.prod_cons]; exact fzp_ok.1
   -- Step 4: Hensel 提升 mod p → mod p^k
-  have hensel_ok := hhensel _ h_facs_prod
+  have hensel_ok := hhensel _ (List.cons_ne_nil _ _) h_facs_prod
   -- Step 5: 因子重组 → FactorZZCorrect
   --   RecombineCorrect f result ≡ FactorZZCorrect f result（定义完全相同）
   exact ⟨recombine (hensel _), hrecombine _ hensel_ok.1⟩

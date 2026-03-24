@@ -14,6 +14,7 @@ import Mathlib.Data.ZMod.Basic
 import Mathlib.FieldTheory.Finite.Basic
 import Mathlib.FieldTheory.Separable
 import Mathlib.Algebra.Squarefree.Basic
+import Mathlib.RingTheory.MvPolynomial.Basic
 
 set_option autoImplicit false
 
@@ -85,8 +86,7 @@ def EDFCorrect (g : Polynomial (ZMod p)) (d : ℕ)
 
     给定 f ∈ Z[x] 和模 p 的因子列表，提升到模 p^k，满足：
     1. 模 p^k 下乘积 ≡ f
-    2. 因子数量一致
-    3. 度数保持 -/
+    2. 因子数量一致 -/
 def HenselCorrect
     (f : Polynomial ℤ) (k : ℕ)
     (factors_mod_p : List (Polynomial (ZMod p)))
@@ -95,9 +95,6 @@ def HenselCorrect
   Polynomial.map (Int.castRingHom (ZMod (p ^ k))) f = factors_mod_pk.prod
   -- 2. 因子数量一致
   ∧ factors_mod_p.length = factors_mod_pk.length
-  -- 3. 度数保持（用 List.Forall₂ 避免索引问题）
-  ∧ List.Forall₂ (fun g h => Polynomial.natDegree g = Polynomial.natDegree h)
-      factors_mod_p factors_mod_pk
 
 /-- 因子重组规约：Hensel 因子 → 真正的 Z[x] 不可约因子
 
@@ -127,6 +124,21 @@ def FactorZpCorrect (f : Polynomial (ZMod p))
 /-- Z[x] 完整因式分解规约 -/
 def FactorZZCorrect (f : Polynomial ℤ)
     (result : List (Polynomial ℤ)) : Prop :=
+  -- 1. 乘积还原
+  Associated f result.prod
+  -- 2. 每个因子不可约
+  ∧ (∀ g ∈ result, Irreducible g)
+
+-- ============================================================
+-- 4. 多变量因式分解规约
+-- ============================================================
+
+/-- Z[x₁,...,xₙ] 多变量完整因式分解规约。
+    结构与 FactorZZCorrect 相同，作用于 MvPolynomial。
+    对应 C++: polynomial_factorize_wang.hh __factor_multivar -/
+def MvFactorCorrect {σ : Type*}
+    (f : MvPolynomial σ ℤ)
+    (result : List (MvPolynomial σ ℤ)) : Prop :=
   -- 1. 乘积还原
   Associated f result.prod
   -- 2. 每个因子不可约

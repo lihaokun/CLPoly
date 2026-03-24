@@ -206,7 +206,9 @@ theorem hensel_step_with_degree
         ∧ (Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) h').natDegree =
           (Polynomial.map (Int.castRingHom (ZMod m)) h).natDegree
         -- H5: degree preservation (Z[x] side, for iteration)
-        ∧ h'.natDegree = h.natDegree := by
+        ∧ h'.natDegree = h.natDegree
+        -- H6: leading coefficient preservation
+        ∧ h'.leadingCoeff = h.leadingCoeff := by
   -- Notation abbreviations
   set map_m := Polynomial.map (Int.castRingHom (ZMod m)) with hmap_m_def
   set map_m2 := Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) with hmap_m2_def
@@ -374,8 +376,8 @@ theorem hensel_step_with_degree
             (Int.castRingHom (ZMod (m ^ 2))) hlc_ne).symm
         rw [hh_deg0] at this
         rw [hmap_m2_def]; exact this.symm
-      · -- H5
-        rw [hh'_eq_h]
+      · -- H5 ∧ H6
+        exact ⟨by rw [hh'_eq_h], by rw [hh'_eq_h]⟩
     · -- Main case: map_m h ≠ 1, use modByMonic
       have hσ_bar_deg : σ_bar.natDegree < (map_m h).natDegree :=
         natDegree_modByMonic_lt se_bar hh_monic hh_one
@@ -428,8 +430,8 @@ theorem hensel_step_with_degree
         change (Polynomial.map (Int.castRingHom (ZMod (m ^ 2))) h').natDegree =
                (Polynomial.map (Int.castRingHom (ZMod m)) h).natDegree
         rw [h_natdeg_map, hh'_deg, hh_deg]
-      · -- H5: h'.natDegree = h.natDegree
-        exact hh'_deg
+      · -- H5 ∧ H6
+        exact ⟨hh'_deg, hlc_h'⟩
 
 -- ============================================================
 -- 2. ker(π)² = 0 in ZMod(m²) — ring level
@@ -677,11 +679,209 @@ theorem hensel_two_factor
         rw [this, hh_k]
 
 -- ============================================================
--- 5. hensel_multifactor + hensel_correct
+-- 4b. IsCoprime from mod p to mod p^k (extracted for reuse)
 -- ============================================================
 
--- TODO: hensel_multifactor (induction on list length) + HenselCorrect
--- NOTE: Degree preservation (natDegree(map_{p^k} h') = natDegree(map_p h))
--- requires h' to have controlled degree (e.g., via divByMonic in hensel_step).
--- Current hensel_step doesn't control degree of the Z[x] lift.
--- This is needed for HenselCorrect condition 3 but not for recombine_correct.
+/-- IsCoprime lifts from mod p to mod p^k via nilpotent argument. -/
+theorem isCoprime_lift_pk (p : ℕ) (hp : Nat.Prime p) (k : ℕ) (hk : k ≠ 0)
+    (g h : Polynomial ℤ)
+    (hcop : IsCoprime (Polynomial.map (Int.castRingHom (ZMod p)) g)
+                       (Polynomial.map (Int.castRingHom (ZMod p)) h))
+    : IsCoprime (Polynomial.map (Int.castRingHom (ZMod (p ^ k))) g)
+                 (Polynomial.map (Int.castRingHom (ZMod (p ^ k))) h) := by
+  obtain ⟨s_bar, t_bar, hbez_p⟩ := hcop
+  obtain ⟨s0, hs0⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod p)) ZMod.intCast_surjective s_bar
+  obtain ⟨t0, ht0⟩ := Polynomial.map_surjective (Int.castRingHom (ZMod p)) ZMod.intCast_surjective t_bar
+  let φk := Int.castRingHom (ZMod (p ^ k))
+  set bez_k := Polynomial.map φk s0 * Polynomial.map φk g +
+               Polynomial.map φk t0 * Polynomial.map φk h
+  have hdvd_pk_p : p ∣ p ^ k := dvd_pow_self p hk
+  have hbez_k_mod : Polynomial.map (ZMod.castHom hdvd_pk_p (ZMod p)) bez_k = 1 := by
+    simp only [bez_k, Polynomial.map_add, Polynomial.map_mul, Polynomial.map_map]
+    have : (ZMod.castHom hdvd_pk_p (ZMod p)).comp φk = Int.castRingHom (ZMod p) := by
+      ext x; simp [ZMod.castHom_apply, ZMod.cast_intCast hdvd_pk_p]
+    rw [this, hs0, ht0]; exact hbez_p
+  haveI : NeZero (p ^ k) := ⟨pow_ne_zero k hp.ne_zero⟩
+  have hunit : IsUnit bez_k := by
+    rw [show bez_k = 1 + (bez_k - 1) from by ring]
+    apply IsNilpotent.isUnit_one_add
+    rw [Polynomial.isNilpotent_iff]
+    intro i
+    have hbk0 : Polynomial.map (ZMod.castHom hdvd_pk_p (ZMod p)) (bez_k - 1) = 0 := by
+      rw [Polynomial.map_sub, Polynomial.map_one, hbez_k_mod, sub_self]
+    have : (ZMod.castHom hdvd_pk_p (ZMod p)) ((bez_k - 1).coeff i) = 0 := by
+      have h := congr_arg (fun r => r.coeff i) hbk0
+      simpa only [Polynomial.coeff_map, Polynomial.coeff_zero] using h
+    rw [ZMod.castHom_apply, ZMod.cast_eq_val, ZMod.natCast_eq_zero_iff] at this
+    obtain ⟨c, hc⟩ := this
+    refine ⟨k, ?_⟩
+    rw [show (bez_k - 1).coeff i = ((p * c : ℕ) : ZMod (p ^ k)) from by
+      rw [← hc, ZMod.natCast_zmod_val]]
+    push_cast; rw [mul_pow]
+    have : (p : ZMod (p ^ k)) ^ k = 0 := by exact_mod_cast ZMod.natCast_self (p ^ k)
+    rw [this, zero_mul]
+  obtain ⟨u, hu⟩ := hunit
+  exact ⟨↑u⁻¹ * Polynomial.map φk s0, ↑u⁻¹ * Polynomial.map φk t0, by
+    rw [show ↑u⁻¹ * Polynomial.map φk s0 * Polynomial.map φk g +
+            ↑u⁻¹ * Polynomial.map φk t0 * Polynomial.map φk h =
+            ↑u⁻¹ * bez_k from by ring, ← hu]; simp [Units.inv_mul]⟩
+
+-- ============================================================
+-- 4c. hensel_two_factor_deg: 2-factor with degree preservation
+-- ============================================================
+
+/-- 2-factor Hensel lifting with degree preservation.
+    Requires h monic in ℤ[x]. Outputs include Monic h' and natDegree preservation. -/
+theorem hensel_two_factor_deg
+    (p : ℕ) (hp : Nat.Prime p) (k : ℕ) (hk : 0 < k)
+    (f g h : Polynomial ℤ)
+    (hprod : Polynomial.map (Int.castRingHom (ZMod p)) f =
+             Polynomial.map (Int.castRingHom (ZMod p)) g *
+             Polynomial.map (Int.castRingHom (ZMod p)) h)
+    (hcop : IsCoprime (Polynomial.map (Int.castRingHom (ZMod p)) g)
+                       (Polynomial.map (Int.castRingHom (ZMod p)) h))
+    (hh_monic : Monic h)
+    : ∃ g' h' : Polynomial ℤ,
+        Polynomial.map (Int.castRingHom (ZMod (p ^ k))) f =
+        Polynomial.map (Int.castRingHom (ZMod (p ^ k))) g' *
+        Polynomial.map (Int.castRingHom (ZMod (p ^ k))) h'
+        ∧ Polynomial.map (Int.castRingHom (ZMod p)) g' =
+          Polynomial.map (Int.castRingHom (ZMod p)) g
+        ∧ Polynomial.map (Int.castRingHom (ZMod p)) h' =
+          Polynomial.map (Int.castRingHom (ZMod p)) h
+        ∧ Monic h'
+        ∧ h'.natDegree = h.natDegree := by
+  induction k with
+  | zero => omega
+  | succ k ih =>
+    by_cases hk' : k = 0
+    · subst hk'; exact ⟨g, h, by rwa [pow_one], rfl, rfl, hh_monic, rfl⟩
+    · have hk_pos : 0 < k := Nat.pos_of_ne_zero hk'
+      obtain ⟨g_k, h_k, hprod_k, hg_k, hh_k, hh_k_monic, hh_k_deg⟩ := ih hk_pos
+      -- Coprimality in ZMod(p^k)
+      have hcop_k : IsCoprime (Polynomial.map (Int.castRingHom (ZMod (p ^ k))) g_k)
+                               (Polynomial.map (Int.castRingHom (ZMod (p ^ k))) h_k) :=
+        isCoprime_lift_pk p hp k hk' g_k h_k (by rw [hg_k, hh_k]; exact hcop)
+      -- Monic and degree hypotheses for hensel_step_with_degree
+      have hpk_gt : 1 < p ^ k := Nat.one_lt_pow hk' hp.one_lt
+      have hh_monic_mk : Monic (Polynomial.map (Int.castRingHom (ZMod (p ^ k))) h_k) :=
+        hh_k_monic.map _
+      haveI : Fact (1 < p ^ k) := ⟨hpk_gt⟩
+      haveI : Nontrivial (ZMod (p ^ k)) := ZMod.nontrivial (p ^ k)
+      have hh_deg_mk : h_k.natDegree =
+          (Polynomial.map (Int.castRingHom (ZMod (p ^ k))) h_k).natDegree :=
+        (Polynomial.natDegree_map_of_leadingCoeff_ne_zero _ (by
+          rw [hh_k_monic.leadingCoeff, map_one]; exact one_ne_zero)).symm
+      -- Apply hensel_step_with_degree
+      obtain ⟨g', h', hprod', hg', hh', hh'_deg_m2, hh'_deg, hh'_lc⟩ :=
+        hensel_step_with_degree (p ^ k) hpk_gt _ g_k h_k hprod_k hcop_k hh_monic_mk hh_deg_mk
+      -- h' is monic (from H6 + h_k monic)
+      have hh'_monic : Monic h' := by
+        rwa [Polynomial.Monic, hh'_lc, ← Polynomial.Monic]
+      -- Project from p^{2k} to p^{k+1}
+      have h_le : k + 1 ≤ 2 * k := by omega
+      have hdvd_pk : p ^ (k + 1) ∣ p ^ (2 * k) := Nat.pow_dvd_pow p h_le
+      have hdvd_pk2 : p ^ (2 * k) = (p ^ k) ^ 2 := by ring
+      refine ⟨g', h', ?_, ?_, ?_, hh'_monic, by omega⟩
+      · -- Product mod p^{k+1}: project from mod p^{2k}
+        have hcast : ∀ q : Polynomial ℤ,
+            Polynomial.map (Int.castRingHom (ZMod (p ^ (k + 1)))) q =
+            Polynomial.map (ZMod.castHom hdvd_pk (ZMod (p ^ (k + 1))))
+              (Polynomial.map (Int.castRingHom (ZMod (p ^ (2 * k)))) q) := by
+          intro q; rw [Polynomial.map_map]; congr 1; ext x
+          simp [ZMod.castHom_apply, ZMod.cast_intCast hdvd_pk]
+        rw [hcast f, hcast g', hcast h', ← Polynomial.map_mul]; congr 1; rw [hdvd_pk2]; exact hprod'
+      · -- mod p: g' ≡ g (via g' ≡ g_k mod p^k → g' ≡ g_k mod p → g' ≡ g mod p)
+        have hcast : ∀ q : Polynomial ℤ,
+            Polynomial.map (Int.castRingHom (ZMod p)) q =
+            Polynomial.map (ZMod.castHom (dvd_pow_self p hk') (ZMod p))
+              (Polynomial.map (Int.castRingHom (ZMod (p ^ k))) q) := by
+          intro q; rw [Polynomial.map_map]; congr 1; ext x
+          simp [ZMod.castHom_apply, ZMod.cast_intCast (dvd_pow_self p hk')]
+        have : Polynomial.map (Int.castRingHom (ZMod p)) g' =
+               Polynomial.map (Int.castRingHom (ZMod p)) g_k := by
+          rw [hcast g', hcast g_k, hg']
+        rw [this, hg_k]
+      · -- mod p: h' ≡ h
+        have hcast : ∀ q : Polynomial ℤ,
+            Polynomial.map (Int.castRingHom (ZMod p)) q =
+            Polynomial.map (ZMod.castHom (dvd_pow_self p hk') (ZMod p))
+              (Polynomial.map (Int.castRingHom (ZMod (p ^ k))) q) := by
+          intro q; rw [Polynomial.map_map]; congr 1; ext x
+          simp [ZMod.castHom_apply, ZMod.cast_intCast (dvd_pow_self p hk')]
+        have : Polynomial.map (Int.castRingHom (ZMod p)) h' =
+               Polynomial.map (Int.castRingHom (ZMod p)) h_k := by
+          rw [hcast h', hcast h_k, hh']
+        rw [this, hh_k]
+
+-- ============================================================
+-- 5. hensel_multifactor: multi-factor Hensel lifting
+-- ============================================================
+
+/-- Helper: IsCoprime with a list product (right side). -/
+private lemma isCoprime_list_prod_right
+    {R : Type*} [CommSemiring R]
+    (a : R) (l : List R) (h : ∀ b ∈ l, IsCoprime a b) : IsCoprime a l.prod := by
+  induction l with
+  | nil => exact isCoprime_one_right
+  | cons b rest ih =>
+    rw [List.prod_cons]
+    exact (h b (.head ..)).mul_right (ih (fun c hc => h c (.tail _ hc)))
+
+/-- Multi-factor Hensel lifting: given pairwise coprime factors of f mod p,
+    there exist ℤ[x] lifts whose images mod p^k multiply to map_{p^k}(f)
+    and agree with the originals mod p. -/
+theorem hensel_multifactor
+    (p : ℕ) (hp : Nat.Prime p) (k : ℕ) (hk : 0 < k)
+    (f : Polynomial ℤ) (factors : List (Polynomial ℤ))
+    (hne : factors ≠ [])
+    (hprod : Polynomial.map (Int.castRingHom (ZMod p)) f =
+             (factors.map (Polynomial.map (Int.castRingHom (ZMod p)))).prod)
+    (hcop : factors.Pairwise (fun a b =>
+        IsCoprime (Polynomial.map (Int.castRingHom (ZMod p)) a)
+                  (Polynomial.map (Int.castRingHom (ZMod p)) b)))
+    : ∃ lifted : List (Polynomial ℤ),
+        lifted.length = factors.length
+        ∧ Polynomial.map (Int.castRingHom (ZMod (p ^ k))) f =
+          (lifted.map (Polynomial.map (Int.castRingHom (ZMod (p ^ k))))).prod
+        ∧ List.Forall₂ (fun g h => Polynomial.map (Int.castRingHom (ZMod p)) g =
+                                     Polynomial.map (Int.castRingHom (ZMod p)) h)
+            factors lifted := by
+  induction factors generalizing f with
+  | nil => exact absurd rfl hne
+  | cons g rest ih =>
+    by_cases hrest : rest = []
+    · -- Singleton: factors = [g]. Take lifted = [f].
+      subst hrest; simp only [List.map_cons, List.map_nil, List.prod_cons, List.prod_nil,
+        mul_one] at hprod
+      exact ⟨[f], rfl, by simp, .cons hprod.symm .nil⟩
+    · -- Split: g :: rest with rest nonempty
+      simp only [List.map_cons, List.prod_cons] at hprod
+      have hcop1 := (List.pairwise_cons.mp hcop).1
+      have hcop2 := (List.pairwise_cons.mp hcop).2
+      -- Coprimality with product of rest
+      have hcop_gr : IsCoprime
+          (Polynomial.map (Int.castRingHom (ZMod p)) g)
+          (Polynomial.map (Int.castRingHom (ZMod p)) rest.prod) := by
+        rw [Polynomial.map_list_prod]
+        exact isCoprime_list_prod_right _ _ (fun b hb => by
+          obtain ⟨x, hx_mem, hx_eq⟩ := List.mem_map.mp hb
+          rw [← hx_eq]; exact hcop1 x hx_mem)
+      -- Product condition for hensel_two_factor
+      have hprod_2 : Polynomial.map (Int.castRingHom (ZMod p)) f =
+          Polynomial.map (Int.castRingHom (ZMod p)) g *
+          Polynomial.map (Int.castRingHom (ZMod p)) rest.prod := by
+        rw [Polynomial.map_list_prod]; exact hprod
+      -- Apply hensel_two_factor
+      obtain ⟨g', h', hprod_k, hg'_p, hh'_p⟩ :=
+        hensel_two_factor p hp k hk f g rest.prod hprod_2 hcop_gr
+      -- Recurse on rest with h'
+      have hprod_rest : Polynomial.map (Int.castRingHom (ZMod p)) h' =
+          (rest.map (Polynomial.map (Int.castRingHom (ZMod p)))).prod := by
+        rw [hh'_p, Polynomial.map_list_prod]
+      obtain ⟨lifted_rest, hlen, hprod_rest_k, hforall⟩ :=
+        ih h' hrest hprod_rest hcop2
+      -- Combine: g' :: lifted_rest
+      refine ⟨g' :: lifted_rest, by simp [hlen], ?_, .cons hg'_p.symm hforall⟩
+      simp only [List.map_cons, List.prod_cons]
+      rw [← hprod_rest_k]; exact hprod_k

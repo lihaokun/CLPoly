@@ -8,29 +8,46 @@ CLPoly 因式分解模块的 Lean 4 机器检查证明。验证目标是 C++ 实
 
 ## 当前状态与目标
 
-### 已完成（3257 行 Lean，0 sorry）
-- L3 数学基石：Phase 1-2 全部完成
-- L2 算法模型：SQF, DDF, EDF, Hensel, Mignotte(L1范数), Hensel 唯一性, Recombination(UFD)
-- Pipeline：FactorZp, FactorZZ 框架 + 端到端实例化
-- lake build 3027 jobs 全通过
+### 已完成（5745 行 Lean，0 sorry）
+- L3 数学基石：Phase 1-2 全部完成（有限域性质、不可约刻画、EDF 三分性、半幂根计数）
+- L2 单变量：SQF(Yun), DDF, EDF, Hensel(单步+多步+多因子), Mignotte(L1范数), Hensel 唯一性, 因子恢复, Recombination
+- L2 多变量：Wang/EEZ 全流程（eval → LC 分配 → conservation check → trial division → MTSHL Newton 迭代 → MDP → Vandermonde → 稀疏插值）
+- Pipeline：FactorZp + FactorZZ + FactorMv 框架 + 端到端实例化
+- lake build 3071 jobs 全通过
 
-### L2 与 C++ 的差距（需逐个修正）
-| 差距 | 当前 L2 | C++ 实际 | 状态 |
-|------|---------|---------|------|
-| Mignotte 界 | ~~M(f) ≤ ‖f‖₁~~ | M(f) ≤ ‖f‖₂ | ✅ 已修正（Landau 不等式，Parseval+Jensen） |
-| Hensel 构造 | ~~存在性证明~~ | 构造性 (divmod + Bézout) | ✅ 已修正（canonical_lift + modByMonic） |
-| Hensel lc-baking | 无 | H₁ 携带 lc(f), Hᵢ monic | 多因子 Hensel 属性，待补 |
-| Hensel 度数保持 | ~~无~~ | deg(Hᵢ) = deg(h̄ᵢ) | ✅ 已修正（hensel_step_with_degree） |
-| Recombination | UFD 存在性 | Zassenhaus 子集枚举 | 数学基础已有（hensel_unique+mignotte），显式组装待定 |
-| GCD 算法 | Mathlib 抽象 | Euclidean / HGCD | 待 L2 验证 |
-| 多项式算术 | Mathlib 抽象 | pair_vec_div / multiplies | 待 L2 验证 |
+### L2 与 C++ 1:1 一致性评估
 
-### 下一步计划（按依赖顺序）
-1. **Mignotte L2 范数**：自证 Parseval + Jensen → M(f) ≤ ‖f‖₂（~100 行）
-2. **Hensel 构造性 + lc-baking + 度数保持**：改 hensel_step（~200 行）
-3. **Recombination 算法验证**：用 Hensel 因子恢复替代 UFD（~150 行）
-4. **GCD L2 验证**：Euclidean 算法正确性（~200 行）
-5. **L1 实现模型**：1:1 对应 C++ 控制流（大工程，~1400 行）
+#### 完全 1:1 的模块
+| 模块 | 行数 | 说明 |
+|------|------|------|
+| SQF (Yun) | 1501 | yunLoop 递归 + expand/contract + 导数为零 |
+| DDF | 435 | ddfLoop 递归 + 6 不变量 + 终止条件 |
+| Hensel 提升 | 887 | 单步 + 度数/LC 保持 + 互素传播 + 多因子归纳 |
+| Hensel 唯一性 + 因子恢复 | 635 | 归纳 on k + 对称约化 + Mignotte 精度 |
+| MTSHL Newton 迭代 | ~160 | 不变量初始化 → Leibniz+MDP+因子定理 → 终止 |
+| MDP 存在性 (Bézout) | ~25 | 归纳 Bézout 构造 |
+| Vandermonde 可逆性 | ~30 | det ≠ 0 → 唯一解 |
+
+#### 规约/简化的模块（已知债务）
+| 模块 | 简化方式 | 应补充 |
+|------|---------|--------|
+| sparse_int / multi_bdp / wmds | 归结 `mdp_exists` | 各自算法逻辑 |
+| EDF unconditional | UFD `normalizedFactors` | Cantor-Zassenhaus |
+| Recombination top-level | UFD 存在性 | Zassenhaus 子集穷举 |
+| Trial division | 后置条件规约 | Gosper's hack 枚举 |
+
+#### 按设计不覆盖
+| 内容 | 理由 |
+|------|------|
+| GCD 算法 | 独立模块，后续处理 |
+| 多项式算术 (*/div) | 独立模块，后续处理 |
+| L1 实现模型 | 大工程，需 uint64/Vec 语义 |
+| 随机性 | Lean/Mathlib 无原生概率论 |
+
+### 下一步
+1. **MDP 求解器细化**：补充 sparse_int / multi_bdp / wmds 各自算法模型
+2. **GCD L2 验证**：Euclidean 算法正确性
+3. **L1 实现模型**：1:1 对应 C++ 控制流
 
 ## 构建指令
 
@@ -59,12 +76,30 @@ L1  实现模型    CLPoly/Impl/         1:1 对应 C++（uint64 语义、数组
 
 ### L2 算法模型原则
 
-**L2 模型必须对应 C++ 算法逻辑**，不允许用纯数学存在性证明替代算法验证。
+**L2 模型必须 1:1 对应 C++ 算法逻辑**，不允许用纯数学存在性证明替代算法验证。这是本项目的核心目标——我们要验证 CLPoly 的**算法**正确性，不是证明因式分解**存在**。
 
 - **禁止**：用 UFD 存在性直接得出 RecombineCorrect（"因为 Z[x] 是 UFD 所以有不可约分解"）。这不验证算法。
+- **禁止**：将多个不同的 C++ 算法（如 sparse_int / multi_bdp / wmds）归结为同一个数学存在性引理。每个算法有独立的计算逻辑，必须分别建模。
+- **禁止**：声称"数学上等价所以不需要建模"——等价性本身需要证明，而且不同算法的前提条件和失败模式不同。
 - **要求**：证明 C++ 算法的每个关键步骤数学正确（Hensel lift → 因子对应 → 对称恢复 → trial division → 提取因子）。
+- **要求**：当 C++ 有 3 种 MDP 求解器（稀疏插值、二变量 BDP、递归 WMDS）时，Lean 也应有 3 个定理分别建模它们各自的算法逻辑——不是 3 个 copy-paste 调用同一个 `mdp_exists`。
 - **简化允许**：可以不建模 C++ 的控制流细节（循环、剪枝优化），但核心数学链必须完整。
+- **简化允许**：Gauss-Jordan 消元、随机数生成等通用子程序可以规约为数学性质（可逆矩阵有唯一解、存在满足条件的随机元素）。
 - **目标**：L2 证明应能说明"若 C++ 的每步操作在数学上正确，则最终结果满足 spec"。
+
+#### 已知的简化/债务（2026-03-24 评估）
+
+以下 L2 模型使用了数学存在性而非算法建模，是**已知债务**，后续应补充：
+
+| 模块 | 当前状态 | 应做到 |
+|------|---------|--------|
+| `sparse_int_correct` | 归结到 `mdp_exists` | 建模 θ-array 求值 + Vandermonde 恢复 |
+| `multi_bdp_correct` | 归结到 `mdp_exists` | 建模二变量 Taylor 循环 |
+| `wmds_correct` | 归结到 `mdp_exists` | 建模递归 WMDS 结构 |
+| `mdp_cascade_correct` | 归结到 `mdp_exists` | 建模级联控制流 |
+| `edf_correct_unconditional` | 用 UFD `normalizedFactors` | 建模 Cantor-Zassenhaus 随机分裂（需解决 Lean 随机性） |
+| `recombine_correct` | 用 UFD 存在性 | 建模 Zassenhaus 子集穷举 + trial division |
+| `TrialDivResult` | 纯后置条件规约 | 建模 Gosper's hack 子集枚举 |
 
 ### 禁止未调研就声明 sorry 或"不可证"
 

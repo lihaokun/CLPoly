@@ -7,7 +7,7 @@
   证明结构：
   1. yunLoop: Yun 内循环（迭代 gcd 分离不同重数因子）
   2. sqfZp: 顶层 SQF（Yun + p-th root 递归）
-  3. 正确性证明（TODO）
+  3. 正确性证明（sqf_correct, 0 sorry）
 -/
 import CLPoly.Spec
 import CLPoly.Math.FiniteFieldFact

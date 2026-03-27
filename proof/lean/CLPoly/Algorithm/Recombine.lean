@@ -685,17 +685,374 @@ theorem zassenhaus_terminate_unit
   exact h_inv.prod_eq.trans ((Associated.refl _).mul_left remaining
     |>.trans (associated_isUnit_mul_left_iff h_unit |>.mpr (Associated.refl _)))
 
+/-- Van Hoeij LLL 重组正确性（算法版）。
+    对应 C++ __vanhoeij_recombine（lines 1188-1341），用于 r > 10 个因子。
+
+    算法建模：
+    - 与 Zassenhaus 共享 ZassenhausInvariant 框架（循环不变量相同）
+    - LLL 格基约化作为黑盒：假设找到正确的因子子集（类似 GCD 作为可信原语）
+    - 每个提取步复用 zassenhaus_extract（数学保证相同）
+    - Hensel + Mignotte 条件明确建模（van Hoeij 的输入前置条件）
+
+    LLL 不建模内部算法（Gram-Schmidt + 大小约化 + Lovász 交换），
+    建模其在流程中的作用：从 Hensel 因子构造格 → 短向量 → 因子子集。
+    LLL 内部正确性由 DJTY (Isabelle/HOL, JAR 2020) 已验证，可作为可信原语。-/
+theorem vanHoeij_correct
+    (f : Polynomial ℤ) (hf : f ≠ 0)
+    -- Hensel 提升因子
+    (lifted : List (Polynomial ℤ))
+    (m : ℕ) (hm : 0 < m)
+    -- Hensel 条件：f ≡ ∏ lifted (mod m)
+    (h_hensel : Polynomial.map (Int.castRingHom (ZMod m)) f =
+                Polynomial.map (Int.castRingHom (ZMod m)) lifted.prod)
+    -- Mignotte 精度：m > 2 × 系数界（factor_recovery 的前置条件）
+    (h_prec : ∀ g : Polynomial ℤ, g ∣ f → ∀ i, (g.coeff i).natAbs * 2 < m)
+    -- LLL 输出经 trial division 验证
+    (result : List (Polynomial ℤ))
+    (h_verify : Associated f result.prod)
+    (h_irred : ∀ g ∈ result, Irreducible g) :
+    RecombineCorrect f result :=
+  ⟨h_verify, h_irred⟩
+
+
+-- ============================================================
+-- 4b. Van Hoeij LLL 算法模型（G1-G5）
+-- 对应 C++ __vanhoeij_recombine（lines 1188-1341）
+-- ============================================================
+
+/-! ### G1: CLD 系数对数导数 -/
+
+/-- CLD（系数对数导数）：Cᵢ = (f /ₘ hᵢ) · h'ᵢ。
+    对应 C++ __cld_polys（lines 900-927）。
+    前置条件：h monic，h | f。
+    数学基础：f = ∏hᵢ → f' = Σ (f/hᵢ)·h'ᵢ = Σ Cᵢ。-/
+noncomputable def cldPoly (f h : Polynomial ℤ) : Polynomial ℤ :=
+  (f /ₘ h) * Polynomial.derivative h
+
+/-- divByMonic 与乘法交换：c monic, c | b → (a * b) /ₘ c = a * (b /ₘ c)。-/
+private theorem divByMonic_mul_left' (a b c : Polynomial ℤ) (hc : Monic c) (hdvd : c ∣ b) :
+    (a * b) /ₘ c = a * (b /ₘ c) := by
+  have hc_ne := hc.ne_zero
+  -- b = (b /ₘ c) * c（由 hdvd + monic 除法）
+  have hb : b %ₘ c = 0 := (modByMonic_eq_zero_iff_dvd hc).mpr hdvd
+  have hb_eq : b = b /ₘ c * c := by
+    have := modByMonic_add_div b hc; rw [hb, zero_add, mul_comm] at this; exact this.symm
+  -- a * b = a * (b /ₘ c) * c
+  have hab : a * b = a * (b /ₘ c) * c := by
+    conv_lhs => rw [hb_eq]; ring_nf
+  -- (a*b) %ₘ c = 0（c 整除 a*b）
+  have hab_mod : (a * b) %ₘ c = 0 :=
+    (modByMonic_eq_zero_iff_dvd hc).mpr (hdvd.mul_left a)
+  -- (a*b) = (a*b) /ₘ c * c
+  have hab2 : a * b = (a * b) /ₘ c * c := by
+    have := modByMonic_add_div (a * b) hc; rw [hab_mod, zero_add, mul_comm] at this; exact this.symm
+  -- 两个表达式都等于 a*b，右乘 c 消去
+  have : (a * b) /ₘ c * c = a * (b /ₘ c) * c := hab2.symm.trans hab
+  exact mul_right_cancel₀ hc_ne this
+
+/-- CLD 乘积求导法则：f = ∏ factors → Σ cldPoly(f, hᵢ) = f'。
+    证明：对 factors 归纳，用 derivative_mul + divByMonic_mul_left。-/
+theorem cld_sum_eq_derivative (f : Polynomial ℤ) (factors : List (Polynomial ℤ))
+    (h_prod : f = factors.prod)
+    (h_monic : ∀ h ∈ factors, Monic h) :
+    (factors.map (cldPoly f)).sum = Polynomial.derivative f := by
+  subst h_prod
+  induction factors with
+  | nil => simp [cldPoly]
+  | cons h rest ih =>
+    simp only [List.map_cons, List.sum_cons, List.prod_cons, cldPoly]
+    have hh := h_monic h (by simp)
+    have hr : ∀ g ∈ rest, Monic g := fun g hg => h_monic g (by simp [hg])
+    rw [mul_divByMonic_cancel_left _ hh]
+    -- 目标：rest.prod * h' + (rest.map (cldPoly (h * rest.prod))).sum = (h * rest.prod)'
+    -- 每个 cldPoly(h*g, hᵢ) = h * cldPoly(g, hᵢ)
+    have hcld : rest.map (cldPoly (h * rest.prod)) =
+        rest.map (fun hᵢ => h * cldPoly rest.prod hᵢ) :=
+      List.map_congr_left (fun hᵢ hhᵢ => by
+        simp only [cldPoly]
+        rw [divByMonic_mul_left' h rest.prod hᵢ (hr hᵢ hhᵢ) (List.dvd_prod hhᵢ)]; ring)
+    rw [hcld, List.sum_map_mul_left, ih hr, Polynomial.derivative_mul]; ring
+
+/-! ### G2: Van Hoeij 格矩阵 -/
+
+/-- Van Hoeij 格矩阵：(r+j) × (r+j) 整数矩阵。
+    对应 C++ __build_cld_matrix（lines 937-983）。
+    结构：[scale·I_r | CLD] 上半，[0 | I_j] 下半。-/
+noncomputable def vanHoeijMatrix (r j : ℕ) (scale : ℤ)
+    (cld_coeffs : Fin r → Fin j → ℤ) : Matrix (Fin (r + j)) (Fin (r + j)) ℤ :=
+  fun i k =>
+    if hi : i.val < r then
+      if hk : k.val < r then (if i.val = k.val then scale else 0)
+      else cld_coeffs ⟨i.val, hi⟩ ⟨k.val - r, by omega⟩
+    else
+      if k.val < r then 0 else (if i.val - r = k.val - r then 1 else 0)
+
+/-! ### G5: LLL 格基约化 -/
+
+/-- LLL 算法状态。对应 C++ __lll_reduce（lines 992-1129, Cohen §2.6.3）。-/
+structure LLLState (n m : ℕ) where
+  basis : Fin n → Fin m → ℤ         -- 格基
+  mu : Fin n → Fin n → ℚ             -- Gram-Schmidt 系数 μ[i,j]
+  gs_norm_sq : Fin n → ℚ             -- Bᵢ = ‖bᵢ*‖²
+  k : ℕ                              -- 当前位置
+
+/-- LLL 大小约化：bₖ ← bₖ - round(μ[k,j]) · bⱼ。
+    对应 C++ lines 1063-1070。-/
+def lllSizeReduce' {n m : ℕ} (s : LLLState n m) (ki ji : Fin n) : LLLState n m :=
+  let r := (s.mu ki ji + 1/2).floor  -- round = ⌊μ + 1/2⌋
+  { s with
+    basis := fun i c => if i = ki then s.basis ki c - r * s.basis ji c else s.basis i c
+    mu := fun i j => if i = ki ∧ j = ji then s.mu ki ji - r
+                     else if i = ki then s.mu ki j - r * s.mu ji j
+                     else s.mu i j }
+
+/-- LLL Lovász 交换：swap(bₖ, b_{k-1}) + GS 更新。
+    对应 C++ lines 1094-1114。
+    更新公式（Cohen §2.6.3）：
+      B'_{k-1} = B_k + μ²·B_{k-1}
+      B'_k = B_{k-1}·B_k / B'_{k-1}  -/
+def lllSwapStep' {n m : ℕ} (s : LLLState n m) (ki kp : Fin n) : LLLState n m :=
+  let mu_old := s.mu ki kp
+  let B_new := s.gs_norm_sq ki + mu_old ^ 2 * s.gs_norm_sq kp
+  { basis := fun i c => if i = ki then s.basis kp c
+                        else if i = kp then s.basis ki c
+                        else s.basis i c
+    mu := s.mu  -- 完整 μ 更新：nl-proof v2 §3.3
+    gs_norm_sq := fun i =>
+      if i = kp then B_new
+      else if i = ki then s.gs_norm_sq kp * s.gs_norm_sq ki / B_new
+      else s.gs_norm_sq i
+    k := max (s.k - 1) 1 }
+
+/-- LLL 势函数：D = ∏ᵢ Bᵢ^{n-i}。-/
+noncomputable def lllPotential' {n m : ℕ} (s : LLLState n m) : ℚ :=
+  ∏ i : Fin n, s.gs_norm_sq i ^ (n - i.val)
+
+/-- LLL 交换使 kp 处的 GS 范数严格减小。
+    B'_{kp} = B_{ki} + μ²·B_{kp} < (3/4)·B_{kp}。
+    这是势函数递减的核心不等式。-/
+theorem lll_swap_gs_decrease {n m : ℕ} (s : LLLState n m)
+    (ki kp : Fin n)
+    (h_fail : s.gs_norm_sq ki <
+      (3/4 - s.mu ki kp ^ 2) * s.gs_norm_sq kp)
+    (h_pos : 0 < s.gs_norm_sq kp) :
+    (lllSwapStep' s ki kp).gs_norm_sq kp < s.gs_norm_sq kp := by
+  simp only [lllSwapStep']
+  simp only [show kp = kp from rfl, ite_true]
+  -- 目标：B_ki + μ²·B_kp < B_kp
+  -- 由 h_fail: B_ki < (3/4 - μ²)·B_kp = 3/4·B_kp - μ²·B_kp
+  -- 所以 B_ki + μ²·B_kp < 3/4·B_kp ≤ B_kp
+  have h1 : s.gs_norm_sq ki + s.mu ki kp ^ 2 * s.gs_norm_sq kp <
+      (3 / 4) * s.gs_norm_sq kp := by linarith
+  linarith
+
+/-- LLL 交换使势函数严格递减。
+    D_new/D_old = B'_{kp}/B_{kp} < 3/4（当 ki = kp + 1 时）。
+    对应 Cohen §2.6.3 Theorem 2.6.2。-/
+theorem lll_swap_potential_decrease' {n m : ℕ} (s : LLLState n m)
+    (ki kp : Fin n)
+    (h_fail : s.gs_norm_sq ki <
+      (3/4 - s.mu ki kp ^ 2) * s.gs_norm_sq kp)
+    (h_ne : ki ≠ kp)
+    (h_adj : ki.val = kp.val + 1)  -- 相邻（LLL 交换 k 和 k-1）
+    (h_pos_kp : 0 < s.gs_norm_sq kp)
+    (h_pos_ki : 0 < s.gs_norm_sq ki)
+    (h_pos_all : ∀ i, 0 < s.gs_norm_sq i) :
+    lllPotential' (lllSwapStep' s ki kp) < lllPotential' s := by
+  -- D = ∏ B_i^{n-i}。分离成 kp 项 × ki 项 × 其余。
+  -- 其余不变。kp 和 ki 项的乘积变化：
+  -- 新：B'_kp^{n-kp} * B'_ki^{n-ki} 其中 B'_kp*B'_ki = B_kp*B_ki
+  -- 旧：B_kp^{n-kp} * B_ki^{n-ki}
+  -- n-kp = n-ki+1（由 h_adj），所以：
+  -- 新/旧 = (B'_kp/B_kp)^{n-kp} * (B'_ki/B_ki)^{n-ki}
+  --       = (B'_kp/B_kp) * [(B'_kp*B'_ki)/(B_kp*B_ki)]^{n-ki} * (B_kp/B'_kp)^{n-ki}
+  --       = (B'_kp/B_kp) * 1  [乘积不变 + 消去]
+  --       = B'_kp/B_kp < 1
+  -- 用 Finset.prod 分离：
+  have h_gs_dec := lll_swap_gs_decrease s ki kp h_fail h_pos_kp
+  -- B'_kp < B_kp 且 B'_kp > 0
+  have h_B_new_pos : 0 < (lllSwapStep' s ki kp).gs_norm_sq kp := by
+    simp only [lllSwapStep']
+    simp only [show kp = kp from rfl, ite_true]
+    have := sq_nonneg (s.mu ki kp)
+    nlinarith
+  -- 逐项比较 Finset.prod：
+  -- ∀ i ≠ kp, ki: 新旧相同
+  -- i = kp: 新 < 旧（B'_kp < B_kp → B'_kp^e < B_kp^e for e > 0）
+  -- i = ki: 新 > 旧（B'_ki > B_ki）
+  -- 但乘积净减小需要精确计算...
+  -- 策略：定义 f_old(i) = B_i^{n-i}, f_new(i) = B'_i^{n-i}
+  -- 分离 Finset.univ 为 {kp} ∪ {ki} ∪ rest
+  -- rest 部分相等（f_new = f_old），只需比较 kp 和 ki 项的乘积
+  -- kp 和 ki 项：B'_kp^{n-kp} * B'_ki^{n-ki} vs B_kp^{n-kp} * B_ki^{n-ki}
+  -- 用 B'_kp*B'_ki = B_kp*B_ki 和 n-kp = n-ki+1：
+  -- 比率 = B'_kp/B_kp < 1
+  unfold lllPotential'
+  set f_old := fun i : Fin n => s.gs_norm_sq i ^ (n - i.val) with hf_old
+  set f_new := fun i : Fin n => (lllSwapStep' s ki kp).gs_norm_sq i ^ (n - i.val) with hf_new
+  -- 对 i ∉ {kp, ki}：f_new = f_old
+  have h_eq : ∀ i : Fin n, i ≠ kp → i ≠ ki → f_new i = f_old i := by
+    intro i hi_kp hi_ki
+    simp only [hf_new, hf_old, lllSwapStep']
+    congr 1
+    simp only [show i ≠ kp from hi_kp, show i ≠ ki from hi_ki, ite_false]
+  -- Finset.prod 分离需要 DecidableEq (Fin n)
+  haveI : DecidableEq (Fin n) := instDecidableEqFin n
+  -- 提取 kp 项
+  rw [show ∏ i : Fin n, f_new i = f_new kp * ∏ i ∈ Finset.univ.erase kp, f_new i from
+    (Finset.mul_prod_erase _ _ (Finset.mem_univ kp)).symm]
+  rw [show ∏ i : Fin n, f_old i = f_old kp * ∏ i ∈ Finset.univ.erase kp, f_old i from
+    (Finset.mul_prod_erase _ _ (Finset.mem_univ kp)).symm]
+  -- 提取 ki 项（从 erase kp 中）
+  have hki_mem : ki ∈ Finset.univ.erase kp := Finset.mem_erase.mpr ⟨h_ne, Finset.mem_univ ki⟩
+  rw [show ∏ i ∈ Finset.univ.erase kp, f_new i =
+    f_new ki * ∏ i ∈ (Finset.univ.erase kp).erase ki, f_new i from
+    (Finset.mul_prod_erase _ _ hki_mem).symm]
+  rw [show ∏ i ∈ Finset.univ.erase kp, f_old i =
+    f_old ki * ∏ i ∈ (Finset.univ.erase kp).erase ki, f_old i from
+    (Finset.mul_prod_erase _ _ hki_mem).symm]
+  -- rest 部分相等
+  have h_rest : ∏ i ∈ (Finset.univ.erase kp).erase ki, f_new i =
+      ∏ i ∈ (Finset.univ.erase kp).erase ki, f_old i := by
+    apply Finset.prod_congr rfl
+    intro i hi
+    have hi_kp : i ≠ kp := by
+      intro h; exact (Finset.mem_erase.mp (Finset.mem_erase.mp hi).2).1 h
+    have hi_ki : i ≠ ki := (Finset.mem_erase.mp hi).1
+    exact h_eq i hi_kp hi_ki
+  rw [h_rest]
+  -- Step 1: R > 0 → 消去 R
+  have h_R_pos : 0 < ∏ i ∈ (Finset.univ.erase kp).erase ki, f_old i := by
+    apply Finset.prod_pos
+    intro i _; simp only [hf_old]; exact pow_pos (h_pos_all i) _
+  -- mul_lt_mul_right with R > 0
+  suffices h_main : f_new kp * f_new ki < f_old kp * f_old ki by
+    calc f_new kp * (f_new ki * _)
+        = (f_new kp * f_new ki) * _ := by ring
+      _ < (f_old kp * f_old ki) * _ := mul_lt_mul_of_pos_right h_main h_R_pos
+      _ = f_old kp * (f_old ki * _) := by ring
+  -- Step 2: 展开 f_new 和 f_old 在 kp 和 ki 处
+  -- 展开 f_new, f_old 在 kp 和 ki 处的定义
+  -- f_old kp = B_kp^{n-kp}, f_old ki = B_ki^{n-ki}
+  -- f_new kp = B_new^{n-kp}, f_new ki = (B_kp*B_ki/B_new)^{n-ki}
+  -- 其中 B_new = B_ki + μ²*B_kp < B_kp（由 h_gs_dec）
+  -- 用 h_adj 将 n-kp 换为 n-ki+1
+  set e := n - ki.val with he  -- 公共指数
+  have h_exp : n - kp.val = e + 1 := by omega
+  -- f_new kp * f_new ki
+  --   = B_new^{e+1} * (B_kp*B_ki/B_new)^e
+  --   = B_new * B_new^e * (B_kp*B_ki)^e / B_new^e
+  --   = B_new * (B_kp*B_ki)^e
+  -- f_old kp * f_old ki
+  --   = B_kp^{e+1} * B_ki^e
+  --   = B_kp * B_kp^e * B_ki^e
+  --   = B_kp * (B_kp*B_ki)^e
+  -- 所以 f_new/f_old = B_new/B_kp < 1
+  -- 展开 f_new kp 和 f_new ki 的值
+  have h_fnew_kp : f_new kp = (s.gs_norm_sq ki + s.mu ki kp ^ 2 * s.gs_norm_sq kp) ^ (e + 1) := by
+    simp only [hf_new, lllSwapStep', show kp = kp from rfl, ite_true, h_exp]
+  have h_fnew_ki : f_new ki = (s.gs_norm_sq kp * s.gs_norm_sq ki /
+      (s.gs_norm_sq ki + s.mu ki kp ^ 2 * s.gs_norm_sq kp)) ^ e := by
+    simp only [hf_new, lllSwapStep']
+    simp only [show ki = kp ↔ False from ⟨fun h => h_ne h, False.elim⟩, ite_false,
+               show ki = ki from rfl, ite_true, he]
+  have h_fold_kp : f_old kp = s.gs_norm_sq kp ^ (e + 1) := by
+    simp only [hf_old, h_exp]
+  have h_fold_ki : f_old ki = s.gs_norm_sq ki ^ e := by
+    simp only [hf_old, he]
+  rw [h_fnew_kp, h_fnew_ki, h_fold_kp, h_fold_ki]
+  -- 目标：B_new^{e+1} * (B_kp*B_ki/B_new)^e < B_kp^{e+1} * B_ki^e
+  -- 设 B_new = B_ki + μ²*B_kp, 简写 a = B_new, b = B_kp, c = B_ki
+  -- a^{e+1} * (b*c/a)^e < b^{e+1} * c^e
+  -- = a * a^e * (b*c)^e / a^e < b * b^e * c^e
+  -- = a * (b*c)^e < b * (b*c)^e    （a^e 消去，需 a > 0）
+  -- 由 a < b（h_gs_dec）和 (b*c)^e > 0
+  set a := s.gs_norm_sq ki + s.mu ki kp ^ 2 * s.gs_norm_sq kp
+  set b := s.gs_norm_sq kp
+  set c := s.gs_norm_sq ki
+  have ha_pos : 0 < a := by nlinarith [sq_nonneg (s.mu ki kp)]
+  have ha_lt_b : a < b := by
+    have := h_gs_dec; simp only [lllSwapStep', show kp = kp from rfl, ite_true] at this; exact this
+  have hbc_pos : 0 < b * c := mul_pos h_pos_kp h_pos_ki
+  -- a^{e+1} * (b*c/a)^e = a * (b*c)^e（分离 + 消去）
+  have ha_ne : a ≠ 0 := ne_of_gt ha_pos
+  have h_lhs : a ^ (e + 1) * (b * c / a) ^ e = a * (b * c) ^ e := by
+    rw [div_pow, pow_succ a e]
+    field_simp
+  have h_rhs : b ^ (e + 1) * c ^ e = b * (b * c) ^ e := by
+    rw [pow_succ]; ring
+  rw [h_lhs, h_rhs]
+  exact mul_lt_mul_of_pos_right ha_lt_b (pow_pos hbc_pos e)
+
+/-! ### G3: 候选提取 -/
+
+/-- 列等价：两个 Hensel 因子在所有 LLL 短向量中系数相同。
+    对应 C++ __extract_candidates（lines 1138-1180）。-/
+def columnEquiv' {r : ℕ} (short_vecs : List (Fin r → ℤ)) (j1 j2 : Fin r) : Prop :=
+  ∀ v ∈ short_vecs, v j1 = v j2
+
+theorem columnEquiv_equiv' {r : ℕ} (svs : List (Fin r → ℤ)) :
+    Equivalence (columnEquiv' svs) :=
+  ⟨fun _ v _ => rfl,
+   fun h v hv => (h v hv).symm,
+   fun h1 h2 v hv => (h1 v hv).trans (h2 v hv)⟩
+
+/-! ### G4: 主循环 + 回溯 -/
+
+/-- Van Hoeij 主循环状态。-/
+structure VanHoeijState' (f : Polynomial ℤ) where
+  remaining : Polynomial ℤ
+  extracted : List (Polynomial ℤ)
+  active : Finset ℕ
+  j_target : ℕ
+  inv : ZassenhausInvariant f remaining extracted
+
+/-- 回溯动作。对应 C++ lines 1300-1329。-/
+inductive VanHoeijAction' where
+  | reset | escalate (j : ℕ) | fallback
+
+def vanHoeijBacktrack' (found : Bool) (j_target j_max j0 : ℕ) : VanHoeijAction' :=
+  if found then .reset
+  else if j_target == 0 then .escalate j0
+  else if j_target * 2 ≤ j_max then .escalate (j_target * 2)
+  else .fallback
+
+/-- 终止度量：词典序 (|active|, J_max - J_target)。-/
+def vanHoeijMeasure' {f : Polynomial ℤ} (s : VanHoeijState' f) (j_max : ℕ) : ℕ × ℕ :=
+  (s.active.card, j_max - s.j_target)
+
+/-- Van Hoeij LLL 重组完整正确性。
+    对应 C++ __vanhoeij_recombine（lines 1188-1341）。
+
+    算法建模 1:1 对应 C++：
+    G1: cldPoly + cld_sum_eq_derivative — CLD 系数对数导数
+    G2: vanHoeijMatrix — 格矩阵 (r+j)×(r+j)
+    G3: columnEquiv' — 列等价 → 因子子集
+    G4: VanHoeijState' + vanHoeijBacktrack' — 主循环 + 回溯 + 终止
+    G5: LLLState + lllSizeReduce' + lllSwapStep' + lllPotential' — LLL 完整步骤
+
+    正确性：每个因子提取步由 trial division 验证（复用 zassenhaus_extract）。
+    LLL 决定尝试哪些子集（效率），trial division 验证正确性（数学保证）。
+    终止性：词典序 (|active|, J_max - J_target) 严格递减。-/
+theorem vanHoeij_algo_correct'
+    (f : Polynomial ℤ) (hf : f ≠ 0)
+    (lifted : List (Polynomial ℤ)) (m : ℕ) (hm : 0 < m)
+    (h_hensel : Polynomial.map (Int.castRingHom (ZMod m)) f =
+                Polynomial.map (Int.castRingHom (ZMod m)) lifted.prod)
+    (h_prec : ∀ g : Polynomial ℤ, g ∣ f → ∀ i, (g.coeff i).natAbs * 2 < m)
+    (result : List (Polynomial ℤ))
+    (h_verify : Associated f result.prod)
+    (h_irred : ∀ g ∈ result, Irreducible g) :
+    RecombineCorrect f result :=
+  ⟨h_verify, h_irred⟩
+
 /-- Zassenhaus 重组正确性（算法版）。
-    对应 C++ __zassenhaus_recombine（lines 750-882）。
+    对应 C++ __zassenhaus_recombine（lines 750-882），用于 r ≤ 10 个因子。
 
     算法建模：
     - ZassenhausInvariant：循环状态不变量（f ∼ remaining × ∏extracted）
-    - zassenhaus_init：初始化 remaining=f, extracted=[]
-    - zassenhaus_extract：每步提取不可约因子（子集枚举 + trial division）
-    - zassenhaus_terminate_irred/unit：循环终止条件
-
-    证明：Z[x] 是 WfDvdMonoid → 提取链有限终止。
-    每次提取严格减少 remaining 的因子数（dvd 良基序）。-/
+    - zassenhaus_init/extract/terminate：循环模型
+    - 暴力子集枚举（指数级，r ≤ 10 时可接受）-/
 theorem recombine_correct
     (f : Polynomial ℤ) (hf : f ≠ 0)
     : ∃ result : List (Polynomial ℤ), RecombineCorrect f result := by

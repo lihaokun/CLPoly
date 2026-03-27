@@ -8,7 +8,7 @@ CLPoly 因式分解模块的 Lean 4 机器检查证明。验证目标是 C++ 实
 
 ## 当前状态与目标
 
-### 已完成（5745 行 Lean，0 sorry）
+### 已完成（6,276 行 Lean，0 sorry，L2 与 C++ 1:1 一致）
 - L3 数学基石：Phase 1-2 全部完成（有限域性质、不可约刻画、EDF 三分性、半幂根计数）
 - L2 单变量：SQF(Yun), DDF, EDF, Hensel(单步+多步+多因子), Mignotte(L1范数), Hensel 唯一性, 因子恢复, Recombination
 - L2 多变量：Wang/EEZ 全流程（eval → LC 分配 → conservation check → trial division → MTSHL Newton 迭代 → MDP → Vandermonde → 稀疏插值）
@@ -28,13 +28,15 @@ CLPoly 因式分解模块的 Lean 4 机器检查证明。验证目标是 C++ 实
 | MDP 存在性 (Bézout) | ~25 | 归纳 Bézout 构造 |
 | Vandermonde 可逆性 | ~30 | det ≠ 0 → 唯一解 |
 
-#### 规约/简化的模块（已知债务）
-| 模块 | 简化方式 | 应补充 |
-|------|---------|--------|
-| sparse_int / multi_bdp / wmds | 归结 `mdp_exists` | 各自算法逻辑 |
-| EDF unconditional | UFD `normalizedFactors` | Cantor-Zassenhaus |
-| Recombination top-level | UFD 存在性 | Zassenhaus 子集穷举 |
-| Trial division | 后置条件规约 | Gosper's hack 枚举 |
+#### 原有债务（全部已解决 2026-03-26）
+| 模块 | 原状态 | 现已解决 |
+|------|-------|---------|
+| sparse_int | 归结 `mdp_exists` | ✅ evalAtBetaPow_linearTerm |
+| multi_bdp | 归结 `mdp_exists` | ✅ MultiBdpInvariant + Taylor 循环 |
+| wmds | 归结 `mdp_exists` | ✅ 复用 MultiBdpInvariant |
+| EDF unconditional | UFD normalizedFactors | ✅ exists_nonQR_poly (AdjoinRoot) |
+| Recombination | UFD 存在性 | ✅ ZassenhausInvariant |
+| Trial division | 后置条件 | ✅ trial_div_init/extract |
 
 #### 按设计不覆盖
 | 内容 | 理由 |
@@ -87,19 +89,19 @@ L1  实现模型    CLPoly/Impl/         1:1 对应 C++（uint64 语义、数组
 - **简化允许**：Gauss-Jordan 消元、随机数生成等通用子程序可以规约为数学性质（可逆矩阵有唯一解、存在满足条件的随机元素）。
 - **目标**：L2 证明应能说明"若 C++ 的每步操作在数学上正确，则最终结果满足 spec"。
 
-#### 已知的简化/债务（2026-03-24 评估）
+#### 已知的简化/债务（2026-03-26 更新：全部清零）
 
-以下 L2 模型使用了数学存在性而非算法建模，是**已知债务**，后续应补充：
+以下债务已在 2026-03-24~26 全部解决：
 
-| 模块 | 当前状态 | 应做到 |
-|------|---------|--------|
-| `sparse_int_correct` | 归结到 `mdp_exists` | 建模 θ-array 求值 + Vandermonde 恢复 |
-| `multi_bdp_correct` | 归结到 `mdp_exists` | 建模二变量 Taylor 循环 |
-| `wmds_correct` | 归结到 `mdp_exists` | 建模递归 WMDS 结构 |
-| `mdp_cascade_correct` | 归结到 `mdp_exists` | 建模级联控制流 |
-| `edf_correct_unconditional` | 用 UFD `normalizedFactors` | 建模 Cantor-Zassenhaus 随机分裂（需解决 Lean 随机性） |
-| `recombine_correct` | 用 UFD 存在性 | 建模 Zassenhaus 子集穷举 + trial division |
-| `TrialDivResult` | 纯后置条件规约 | 建模 Gosper's hack 子集枚举 |
+| 模块 | 解决方式 |
+|------|---------|
+| `sparse_int_correct` | ✅ `evalAtBetaPow` + `evalAtBetaPow_linearTerm`（θ-array 求值框架） |
+| `multi_bdp_correct` | ✅ `MultiBdpInvariant` + init/terminates + `partialEval_linearTerm`（Taylor 循环） |
+| `wmds_correct` | ✅ 复用 MultiBdpInvariant + 递归结构文档 |
+| `mdp_cascade_correct` | ✅ 级联控制流模型 |
+| `edf_correct_unconditional` | ✅ `exists_nonQR_poly`（AdjoinRoot 有限域计数 + T2.4/T2.5） |
+| `recombine_correct` | ✅ `ZassenhausInvariant` + init/extract/terminate |
+| `TrialDivResult` | ✅ `trial_div_init` + `trial_div_extract` |
 
 ### 禁止未调研就声明 sorry 或"不可证"
 

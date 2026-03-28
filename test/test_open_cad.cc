@@ -68,6 +68,58 @@ int main() {
         ASSERT_SECTOR(tree.node(0, 0), SIZE_MAX, (0));
     }
 
+    CLPOLY_TEST("open_cad multiple root");
+    {
+        // f = (x - 1)^2，重根 x = 1（重数 2）
+        // realroot 返回 1 个不同的实根，预期 2 个 Sector
+        //   [0] (-∞, 1)  sample=0
+        //   [1] (1, +∞)  sample=2
+        variable x("x");
+        using poly_t = polynomial_<ZZ, grlex>;
+        poly_t f = (poly_t(x) - poly_t(1)) * (poly_t(x) - poly_t(1));
+        std::vector<poly_t> polys = {f};
+        std::vector<variable> vars = {x};
+
+        auto tree = open_cad(polys, vars);
+
+        CLPOLY_ASSERT_EQ(tree.num_levels(), size_t(1));
+        CLPOLY_ASSERT_EQ(tree.level_size(0), size_t(2));
+        ASSERT_SECTOR(tree.node(0, 0), SIZE_MAX, (0));
+        ASSERT_SECTOR(tree.node(0, 1), SIZE_MAX, (2));
+    }
+
+    CLPOLY_TEST("open_cad empty polys");
+    {
+        // 空多项式列表，预期 1 层，1 个 Sector (-∞, +∞)
+        variable x("x");
+        using poly_t = polynomial_<ZZ, grlex>;
+        std::vector<poly_t> polys = {};
+        std::vector<variable> vars = {x};
+
+        auto tree = open_cad(polys, vars);
+
+        CLPOLY_ASSERT_EQ(tree.num_levels(), size_t(1));
+        CLPOLY_ASSERT_EQ(tree.level_size(0), size_t(1));
+        ASSERT_SECTOR(tree.node(0, 0), SIZE_MAX, (0));
+    }
+
+    CLPOLY_TEST("open_cad zero polynomial");
+    {
+        // 零多项式应被 __conts_prims_polys_var 中的 is_number 过滤掉
+        // 等价于空多项式列表，预期 1 层，1 个 Sector (-∞, +∞)
+        variable x("x");
+        using poly_t = polynomial_<ZZ, grlex>;
+        poly_t zero;  // 零多项式
+        std::vector<poly_t> polys = {zero};
+        std::vector<variable> vars = {x};
+
+        auto tree = open_cad(polys, vars);
+
+        CLPOLY_ASSERT_EQ(tree.num_levels(), size_t(1));
+        CLPOLY_ASSERT_EQ(tree.level_size(0), size_t(1));
+        ASSERT_SECTOR(tree.node(0, 0), SIZE_MAX, (0));
+    }
+
     CLPOLY_TEST("open_cad bivariate");
     {
         // f = x^2 + y^2 - 1（单位圆），vars = {x, y}（lex 序 x < y）

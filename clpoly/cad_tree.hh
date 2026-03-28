@@ -1,6 +1,15 @@
 /**
  * @file cad_tree.hh
  * @brief CAD 树形数据结构：cad_root, cad_node, cad_tree
+ *
+ * cad_root — 代数根的索引引用，标识某层某多项式的第几个不同实根（或 ±∞）。
+ *            纯值类型，不持有实际代数数值，仅用于标注 cad_node 的边界。
+ * cad_node — CAD 树的节点，表示一维胞腔片段（Sector 或 Section）。
+ *            记录 parent 索引、children 范围、边界根引用和采样点。
+ * cad_tree — 整棵 CAD 分解树的容器，按层（level）存储节点。
+ *            持有提升序的变量列表、各层投影多项式和节点数组。
+ *            目前构建完成后为只读结构（children 用 child_begin + child_count
+ *            连续存储，要求同一 parent 的子节点按顺序插入）。
  */
 #ifndef CLPOLY_CAD_TREE_HH
 #define CLPOLY_CAD_TREE_HH

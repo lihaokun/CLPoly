@@ -350,25 +350,6 @@ namespace clpoly{
         return allprojs; 
     }
 
-    // // 字典序的 open cad
-    // // 保证 vars 符合多项式的 var_order
-    // // 输入: 多项式集, 变量序
-    // // 输出: 全部开胞腔，每个胞腔中一个有理样本点
-    // // 然后提升
-    // template <class var_order>
-    // std::pair<std::vector<cell<ZZ,lex_<var_order>>>,std::vector<std::vector<QQ>>>
-    // __open_cad(
-    //     const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
-    //     const std::vector<variable>& vars
-    // )
-    // {
-    //     // 先计算完整的投影, 使用默认的lazard投影算子
-    //     auto allprojs=__project_full(polys,vars);
-
-    //     // 提升
-
-    // }
-
     //一般序，先转化为字典序 lex_<custom_var_order>，其中custom_var_order md({x})
     // 然后调用字典序方法
     template <class comp>
@@ -556,6 +537,7 @@ namespace clpoly{
 
     // 一般序的 open_cad，先转为字典序 lex_<custom_var_order> 再调用 __open_cad
     // vars 按 lex 序排列（vars[0] 最小）
+    // 边界情况：vars 不能为空；polys 可以为空（返回整条实数线的 1 个 Sector）
     template <class comp>
     cad_tree<custom_var_order> open_cad(
         const std::vector<polynomial_<ZZ, comp>>& polys,

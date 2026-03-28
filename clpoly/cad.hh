@@ -9,8 +9,11 @@
 #include <clpoly/resultant.hh>
 #include <clpoly/polynomial_gcd.hh>
 #include <clpoly/realroot.hh>
-// todo: 设计好cell类后添加
-// #include <clpoly/cell.hh>
+#include <clpoly/cad_tree.hh>
+#include <clpoly/polynomial_convert.hh>
+#include <map>
+#include <set>
+#include <stdexcept>
 
 namespace clpoly{
     enum class projection_method {
@@ -347,53 +350,6 @@ namespace clpoly{
         return allprojs; 
     }
 
-    // 计算一维多项式没两个根之间的一个有理数
-    template <class comp>
-    std::vector<clpoly::QQ> sample_open_intervals(
-        const std::vector<polynomial_<ZZ,comp>>& polys
-    )
-    {
-        // 计算开区间样本点
-        std::vector<clpoly::QQ> sample_points;
-
-        // 调用 一般序 接口，内部会先全转成单变元多项式类型
-        auto [roots,_] = realroot(polys);
-        // 可能没有根
-        if (roots.empty()) return {};
-        
-        auto root=roots.begin();
-        sample_points.push_back(root->left() - 1);
-        auto preright=root->right();
-        root++;
-        for (; root != roots.end(); ++root) {
-            assert(preright < root->left());
-            sample_points.push_back((preright + root->left()) / 2);
-            preright = root->right();
-        }
-        sample_points.push_back(preright + 1);
-        
-        return sample_points;    
-    }
-
-    // // 字典序的 open cad
-    // // 保证 vars 符合多项式的 var_order
-    // // 输入: 多项式集, 变量序
-    // // 输出: 全部开胞腔，每个胞腔中一个有理样本点
-    // // 然后提升
-    // template <class var_order>
-    // std::pair<std::vector<cell<ZZ,lex_<var_order>>>,std::vector<std::vector<QQ>>>
-    // __open_cad(
-    //     const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
-    //     const std::vector<variable>& vars
-    // )
-    // {
-    //     // 先计算完整的投影, 使用默认的lazard投影算子
-    //     auto allprojs=__project_full(polys,vars);
-
-    //     // 提升
-
-    // }
-
     //一般序，先转化为字典序 lex_<custom_var_order>，其中custom_var_order md({x})
     // 然后调用字典序方法
     template <class comp>
@@ -428,6 +384,191 @@ namespace clpoly{
             projs.push_back(std::move(p1));
         }
         return projs;
+    }
+
+    // ========== Open CAD ==========
+
+    // 一次性将 realroot 输出的全局根索引映射为 cad_root
+    // poly_mult_info: realroot 返回的第二个元素，poly_mult_info[i] = {(poly_idx, multiplicity), ...}
+    // num_polys: 该层的多项式个数
+    inline std::vector<cad_root> __make_cad_roots(
+        const std::vector<std::vector<std::pair<uint64_t,uint64_t>>>& poly_mult_info,
+        size_t num_polys
+    )
+    {
+        // poly_root_count[p] = 多项式 p 已出现的不同实根数（不计重数）
+        std::vector<size_t> poly_root_count(num_polys, 0);
+        std::vector<cad_root> result(poly_mult_info.size());
+
+        for (size_t i = 0; i < poly_mult_info.size(); ++i)
+        {
+            assert(!poly_mult_info[i].empty());
+            // 选第一个多项式作为 cad_root 的标识
+            size_t pidx = poly_mult_info[i][0].first;
+            assert(pidx < num_polys);
+            size_t local_idx = poly_root_count[pidx];
+            result[i] = cad_root(pidx, local_idx);
+
+            // 对该根所属的所有多项式递增计数，保证后续根的局部索引正确
+            for (auto& pr : poly_mult_info[i])
+            {
+                assert(pr.first < num_polys);
+                poly_root_count[pr.first]++;
+            }
+        }
+        return result;
+    }
+
+    // 在指定 level 的 parent 下根据实根创建所有 Sector 节点
+    // Level 0 时 parent_idx = SIZE_MAX（无 parent）
+    template <class var_order>
+    void __lift_open_level(
+        cad_tree<var_order>& tree,
+        size_t level,
+        size_t parent_idx,
+        const std::vector<uroot>& roots,
+        const std::vector<std::vector<std::pair<uint64_t,uint64_t>>>& poly_mult_info
+    )
+    {
+        // 根数为 0: 整条实数线是一个 Sector (-∞, +∞)
+        if (roots.empty())
+        {
+            tree.add_sector(level, parent_idx, cad_root::neginf(), cad_root::inf(), QQ(0));
+            return;
+        }
+
+        // 预计算所有根对应的 cad_root
+        std::vector<cad_root> cad_roots = __make_cad_roots(poly_mult_info, tree.level_polys(level).size());
+        assert(cad_roots.size() == roots.size());
+
+        // (-∞, roots[0])
+        tree.add_sector(level, parent_idx, cad_root::neginf(), cad_roots[0],
+                        roots[0].left() - 1);
+
+        // (roots[i], roots[i+1]) for i = 0..m-2
+        for (size_t i = 0; i + 1 < roots.size(); ++i)
+        {
+            assert(roots[i].right() < roots[i+1].left());  // 隔离区间不重叠
+            tree.add_sector(level, parent_idx, cad_roots[i], cad_roots[i+1],
+                            (roots[i].right() + roots[i+1].left()) / 2);
+        }
+
+        // (roots[m-1], +∞)
+        tree.add_sector(level, parent_idx, cad_roots.back(), cad_root::inf(),
+                        roots.back().right() + 1);
+    }
+
+    // 将 _level_polys[level] 代入采样点，得到低维 ZZ 多项式
+    // sample_path[k] 对应 level k 的变量（提升序）
+    template <class var_order>
+    std::vector<polynomial_<ZZ, lex_<var_order>>> __eval_level_polys(
+        const cad_tree<var_order>& tree,
+        size_t level,
+        const std::vector<QQ>& sample_path
+    )
+    {
+        using poly_type = polynomial_<ZZ, lex_<var_order>>;
+        assert(sample_path.size() == level);
+
+        // 构造代入映射: sample_path[k] 对应 level k 的变量
+        std::map<variable, QQ> subst_map;
+        for (size_t k = 0; k < sample_path.size(); ++k)
+            subst_map[tree.level_var(k)] = sample_path[k];
+
+        std::vector<poly_type> result;
+        result.reserve(tree.level_polys(level).size());
+
+        for (const auto& poly : tree.level_polys(level))
+        {
+            // ZZ 多项式代入 QQ 值 → QQ 多项式
+            auto p_qq = assign<QQ, ZZ, QQ>(poly, subst_map);
+
+            // QQ 多项式转 ZZ 多项式（乘公分母，不影响实根）
+            poly_type p_zz(poly.comp_ptr());
+            poly_convert(p_qq, p_zz);
+
+            // 检测 nullification: 多项式在采样点处恒为零
+            // 目前不处理此退化情况，直接报错
+            if (p_zz.empty())
+                throw std::runtime_error(
+                    "__eval_level_polys: nullification detected at level " + std::to_string(level)
+                    + " (polynomial vanishes identically at sample point)");
+
+            result.push_back(std::move(p_zz));
+        }
+        return result;
+    }
+
+    // 计算 Open CAD（仅 Sector 节点）
+    // 要求输入多项式为 lex_<var_order> 字典序
+    template <class var_order>
+    cad_tree<var_order> __open_cad(
+        const std::vector<polynomial_<ZZ, lex_<var_order>>>& polys,
+        const std::vector<variable>& vars,
+        projection_method method = projection_method::LAZARD
+    )
+    {
+        assert(!vars.empty());
+
+        // 1. 投影
+        auto allprojs = __project_full(polys, vars, method);
+
+        // 2. 构造树（构造函数内部反转为提升序）
+        cad_tree<var_order> tree(vars, std::move(allprojs));
+        size_t n = tree.num_levels();
+
+        // 3. Level 0: _level_polys[0] 为一元多项式，无需代入
+        auto [roots_0, info_0] = realroot(tree.level_polys(0));
+        __lift_open_level(tree, 0, SIZE_MAX, roots_0, info_0);
+
+        // 4. Level 1 到 Level n-1: 逐层提升
+        for (size_t level = 1; level < n; ++level)
+        {
+            for (size_t parent_idx = 0; parent_idx < tree.level_size(level - 1); ++parent_idx)
+            {
+                auto eval_polys = __eval_level_polys(tree, level, tree.get_sample_point(level - 1, parent_idx));
+                auto [roots_k, info_k] = realroot(eval_polys);
+                __lift_open_level(tree, level, parent_idx, roots_k, info_k);
+            }
+        }
+
+        return tree;
+    }
+
+    // 一般序的 open_cad，先转为字典序 lex_<custom_var_order> 再调用 __open_cad
+    // vars 按 lex 序排列（vars[0] 最小）
+    // 边界情况：vars 不能为空；polys 可以为空（返回整条实数线的 1 个 Sector）
+    template <class comp>
+    cad_tree<custom_var_order> open_cad(
+        const std::vector<polynomial_<ZZ, comp>>& polys,
+        const std::vector<variable>& vars,
+        projection_method method = projection_method::LAZARD
+    )
+    {
+        if (vars.empty())
+            throw std::invalid_argument("open_cad: vars must not be empty");
+
+        // 检查 polys 中的变量必须全部出现在 vars 中
+        {
+            std::set<variable> var_set(vars.begin(), vars.end());
+            for (const auto& vp : get_variables(polys))
+                if (var_set.find(vp.first) == var_set.end())
+                    throw std::invalid_argument(
+                        "open_cad: polynomial contains variable '"
+                        + vp.first.name() + "' not in vars");
+        }
+
+        // 构造字典序并转换
+        lex_<custom_var_order> md(vars);
+        polynomial_<ZZ, lex_<custom_var_order>> p(&md);
+        std::vector<polynomial_<ZZ, lex_<custom_var_order>>> polys_lex;
+        polys_lex.reserve(polys.size());
+        for (const auto& i : polys)
+        {
+            poly_convert(i, p);
+            polys_lex.push_back(std::move(p));
+        }
+        return __open_cad(polys_lex, vars, method);
     }
 
 }

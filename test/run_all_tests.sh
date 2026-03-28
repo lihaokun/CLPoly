@@ -34,6 +34,8 @@ TESTS=(
     test_groebner
     test_coeff
     test_cad_projector
+    test_cad_tree
+    test_open_cad
 )
 
 TOTAL_PASS=0

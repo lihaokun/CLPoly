@@ -1,0 +1,14 @@
+# Local build configuration (copy to config.mk and edit)
+# This file overrides Makefile defaults; config.mk is git-ignored.
+#
+# Use this if GMP/Boost are in non-standard paths (e.g., macOS Homebrew).
+#
+# Usage:
+#   cp config.mk.example config.mk
+#   # Edit config.mk to uncomment and adjust the lines below
+#   make
+
+# Example for macOS with Homebrew (adjust paths as needed):
+# CXX = g++-13
+# IPATHS = -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include
+# LDFLAGS = -L/opt/homebrew/opt/gmp/lib

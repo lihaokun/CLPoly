@@ -2,7 +2,7 @@
 # Run all CLPoly automated tests
 # Usage: bash test/run_all_tests.sh
 
-set -e
+set -e -o pipefail
 
 cd "$(dirname "$0")/.."
 

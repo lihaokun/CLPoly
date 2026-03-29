@@ -8,7 +8,9 @@
 #   # Edit config.mk to uncomment and adjust the lines below
 #   make
 
+# IMPORTANT: Always keep -I./ in CLPoly_IPATHS so CLPoly headers are found
+
 # Example for macOS with Homebrew (adjust paths as needed):
 # CXX = g++-13
-# IPATHS = -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include
-# LDFLAGS = -L/opt/homebrew/opt/gmp/lib
+# CLPoly_IPATHS = -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include
+# CLPoly_LDFLAGS = -L/opt/homebrew/opt/gmp/lib

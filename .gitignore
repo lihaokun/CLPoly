@@ -1,6 +1,9 @@
 # IDE
 .vscode/
 
+# User configuration (local build settings)
+config.mk
+
 # PDFs
 *.pdf
 

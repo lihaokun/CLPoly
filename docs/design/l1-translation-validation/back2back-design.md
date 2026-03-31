@@ -10,31 +10,36 @@
 
 ### 2.1 被测函数
 
-`polynomial_factorize_zp.hh` 中的 13 个函数。
+`polynomial_factorize_zp.hh` 中的**全部 13 个函数**。
 
 ### 2.2 外部依赖处理
 
-依赖的外部函数（`derivative`、`polynomial_GCD` 等）用**测试桩**替代：
+依赖的外部函数（`derivative`、`polynomial_GCD` 等）是**可信原语**——C++ 端使用真实 CLPoly 实现，Lean 端提供**正确的可执行实现**（非 opaque）。
 
-| 外部函数 | 测试桩策略 | 理由 |
-|---------|----------|------|
-| `derivative` | 朴素求导（度数×系数，度数-1） | 简单正确 |
-| `polynomial_GCD` | 返回第二个参数（假 GCD） | 只需类型匹配 + 可执行 |
-| `pair_vec_div` | no-op（不修改输出） | 除法是外部原语 |
-| `normalize` | identity（返回自身） | 简化 |
-| `get_deg` | 取首项度数 | 简单正确 |
-| `comp` | 返回 0 | 比较函数不影响逻辑 |
+| 外部函数 | C++ 端 | Lean 端 | 正确性保证 |
+|---------|--------|---------|----------|
+| `derivative` | 真实 CLPoly | Lean 朴素求导实现 | 数学定义直接实现 |
+| `polynomial_GCD` | 真实 CLPoly | Lean 欧几里得 GCD | Mathlib `EuclideanDomain.gcd` |
+| `pair_vec_div` | 真实 CLPoly | Lean 多项式除法 | 数学定义直接实现 |
+| `normalize` | 真实 CLPoly | 除以首项系数 | 数学定义 |
+| `get_deg` | 真实 CLPoly | 取首项度数 | 一行实现 |
+| `comp` | 真实 CLPoly | 返回比较函数 | CLPoly 内部约定 |
+| `inv` | 真实 CLPoly | 模逆（扩展欧几里得） | 数学定义 |
+| `number` | 真实 CLPoly | `Zp.mk (a % p) p` | 数学定义 |
 
-**关键**：C++ 端和 Lean 端必须使用**相同的桩**。否则比较无意义。
+**关键原则**：
+- C++ 端跑**真实代码**（可信基）
+- Lean 端跑**翻译代码 + 正确的原语实现**（可信基）
+- 两端的原语都是正确的 → 如果结果一致 → 翻译忠实
+- 不使用假桩（arbitrary stub），所有实现基于数学定义
 
-实现方式：
-- C++ 端：编译一个特殊的测试程序，用桩替代真实函数
-- Lean 端：在生成的 .lean 文件中用 `def` 替代 `opaque`
+### 2.3 Lean 端原语实现来源
 
-### 2.3 不测试的
-
-- 依赖外部函数结果才能产生有意义输出的函数（如 `__squarefree_Zp` 的 while 循环依赖 `polynomial_GCD` 的正确性）
-- 这些函数的背靠背测试只能验证**控制流翻译**是否正确（分支、循环结构），不能验证**最终结果**
+| 来源 | 适用 |
+|------|------|
+| Mathlib | `EuclideanDomain.gcd`（需要 SparsePolyZp → Polynomial 桥接） |
+| 手写正确实现 | derivative, normalize, get_deg（简单，几行） |
+| CLPoly 对应的数学定义 | pair_vec_div（多项式长除法） |
 
 ## 3. 测试流程
 
@@ -80,6 +85,10 @@
 | `__extract_pth_root` | 度数全是 p 的倍数的小多项式 |
 | `__upoly_subtract_x` | 小多项式 ± 含/不含 degree-1 项 |
 | `__upoly_subtract_one` | 小多项式 ± 含/不含常数项 |
+| `__squarefree_Zp` | 小无平方多项式（deg ≤ 10，p ∈ {3, 5, 7}） |
+| `__ddf_Zp` | 无平方多项式（deg ≤ 15） |
+| `__edf_Zp` | 等度无平方多项式（deg = k*d，d ∈ {1,2,3}） |
+| `__factor_Zp` | 小多项式（deg ≤ 10）完整因式分解 |
 
 ### 4.3 require 参数
 
@@ -114,29 +123,37 @@ Lean 函数有 `require` 参数（UB 证明目标）。对具体测试值，用 
 ### 6.2 Lean 端
 
 生成 `eval_back2back.lean`：
-- include 翻译后的 IR 文件（桩版本，非 opaque）
+- include 翻译后的 IR 文件（原语用正确实现替代 `opaque`）
 - 对每个测试向量生成 `#eval` 调用
-- require 参数用 `by decide` / `by omega`
+- require 参数用 `by decide` / `by omega` / `by native_decide`
 
 ### 6.3 限制
 
 - `partial def` 可以 `#eval`，但如果函数实际不终止（死循环），`#eval` 会挂起。测试时加超时。
-- 桩函数可能导致被测函数进入非预期路径（如 `polynomial_GCD` 返回错误结果导致 `__squarefree_Zp` 的 while 循环行为异常）。这不是翻译错误，是桩的限制。
+- Lean 端的原语实现是**独立正确实现**（非 CLPoly 翻译），与 C++ 端的实现**算法可能不同但结果相同**。如果两端原语实现有差异导致结果不同，需要排查是原语差异还是翻译错误。
 - `Zp` 构造函数 `Zp.mk val prime` 在 Lean 中不检查 `val < prime`。测试向量应保证合法。
 
 ## 7. 预期产出
 
 ```
 back2back test report:
-  __make_zp: 8/8 PASS
-  __extract_pth_root: 4/4 PASS
-  __upoly_subtract_x: 6/6 PASS
+  __make_zp:            8/8 PASS
+  __upoly_make_monic:   5/5 PASS
+  __extract_pth_root:   4/4 PASS
+  __squarefree_Zp:      3/3 PASS
+  __upoly_subtract_x:   6/6 PASS
   __upoly_subtract_one: 6/6 PASS
-  __upoly_make_monic: 5/5 PASS
-  total: 29/29 PASS
+  __ddf_Zp:             4/4 PASS
+  __edf_Zp:             3/3 PASS
+  __factor_Zp:          3/3 PASS
+  ...
+  total: 50+/50+ PASS
 ```
 
-如果有 FAIL，说明翻译器有 bug——C++ 和 Lean 的行为不一致。
+FAIL 的含义：
+- **翻译器 bug**：C++ 和 Lean 对同一输入产出不同结果
+- **原语实现差异**：Lean 端原语与 CLPoly 实现行为不完全一致（需排查）
+- **不是算法 bug**：算法正确性由 L2 证明保证
 
 ## 8. 实施步骤
 

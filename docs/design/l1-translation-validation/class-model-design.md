@@ -12,21 +12,34 @@
 ### 2.1 三步走
 
 **步骤 1**：在 Lean 中定义可信基类的**完整模型**（类型 + 所有公共操作）
-**步骤 2**：构建 C++ → Lean **映射表**（每个 C++ 操作对应哪个 Lean 函数）
+**步骤 2**：构建 C++ → Lean **映射表**（类操作 + 独立函数，每个 C++ 操作对应哪个 Lean 函数）
 **步骤 3**：翻译器**只查表**。在表中 → 翻译；不在表中 → sorry
 
-### 2.2 可信基类清单
+### 2.2 可信基清单
 
-CLPoly 因式分解模块依赖的类：
+CLPoly 因式分解模块依赖的：
 
-| C++ 类 | 用途 | 头文件 |
-|-------|------|--------|
-| `Zp` | Z/pZ 系数 | `number.hh` |
-| `ZZ` | 大整数 | `number.hh` |
-| `umonomial` | 单变量单项式 | `monomial.hh` |
-| `upolynomial_<Zp>` | Z/pZ 上稀疏多项式 | `upolynomial.hh` |
-| `std::vector<T>` | 动态数组 | 标准库 |
-| `std::pair<A,B>` | 二元组 | 标准库 |
+**类**：
+
+| C++ 类 | 用途 |
+|-------|------|
+| `Zp` | Z/pZ 系数 |
+| `ZZ` | 大整数（仅 `__upoly_powmod` 和 `__edf_Zp` 使用） |
+| `umonomial` | 单变量单项式 |
+| `upolynomial_<Zp>` | Z/pZ 上稀疏多项式 |
+| `std::vector<T>` | 动态数组 |
+| `std::pair<A,B>` | 二元组 |
+
+**独立函数**（非类方法）：
+
+| C++ 函数 | 用途 |
+|---------|------|
+| `derivative(f)` | 多项式求导 |
+| `polynomial_GCD(f, g)` | 多项式 GCD |
+| `pair_vec_div(q, r, f, g, comp)` | 多项式除法（5 参数，前 2 个是输出） |
+| `get_deg(f)` | 取多项式首项度数 |
+| `std::move(x)` | 移动语义（纯函数式中 = identity） |
+| `std::make_pair(a, b)` | 构造 pair |
 
 ## 3. Lean 类模型
 
@@ -39,11 +52,17 @@ structure Zp where
 deriving Repr, Inhabited, BEq
 
 namespace Zp
--- 构造
-def ofInt (v : Int) (p : UInt64) : Zp := ⟨(v.toNat % p.toNat).toUInt64, p⟩
+-- 构造函数
+-- C++ Zp(int64_t val, uint64_t p)：val 可能为负
+def ofInt (v : Int) (p : UInt64) : Zp :=
+  let r := v % (p.toNat : Int)
+  let r := if r < 0 then r + p.toNat else r
+  ⟨r.toNat.toUInt64, p⟩
+
+-- C++ Zp(uint64_t val, uint64_t p)
 def ofUInt64 (v p : UInt64) : Zp := ⟨v % p, p⟩
 
--- getter（对应 C++ .number(), .prime()）
+-- getter（.number() → .val, .prime() → .prime）
 -- val 和 prime 是结构体字段，自动有 accessor
 
 -- 算术（mod p）
@@ -52,16 +71,35 @@ instance : Sub Zp where sub a b := ⟨(a.val + a.prime - b.val) % a.prime, a.pri
 instance : Mul Zp where mul a b := ⟨(a.val * b.val) % a.prime, a.prime⟩
 instance : Neg Zp where neg a := ⟨(a.prime - a.val) % a.prime, a.prime⟩
 
--- 模逆
-partial def modInv (a p : UInt64) : UInt64 := sorry -- 扩展欧几里得
-def inv (a : Zp) : Zp := ⟨modInv a.val a.prime, a.prime⟩
+-- 模逆（扩展欧几里得）
+partial def modInvAux (a b x0 x1 : Int) : Int :=
+  if a <= 1 then x1
+  else modInvAux b (a % b) (x1 - (a / b) * x0) x0
 
--- 比较
-instance : BEq Zp where beq a b := a.val == b.val && a.prime == b.prime
+def modInv (a p : UInt64) : UInt64 :=
+  let r := modInvAux (a.toNat : Int) (p.toNat : Int) 0 1
+  let r := if r < 0 then r + p.toNat else r
+  r.toNat.toUInt64
+
+def inv (a : Zp) : Zp := ⟨modInv a.val a.prime, a.prime⟩
+def div (a b : Zp) : Zp := a * b.inv
 end Zp
 ```
 
-### 3.2 UMonomial
+### 3.2 ZZ
+
+```lean
+-- CLPoly 的 ZZ 是 GMP 大整数。Lean 的 Int 是任意精度。
+-- 因式分解中 ZZ 仅用于 __upoly_powmod 的指数和 __edf_Zp 的幂计算。
+abbrev ZZ := Int
+
+namespace ZZ
+def ofInt (v : Int) : ZZ := v
+def div (a b : ZZ) : ZZ := a / b
+end ZZ
+```
+
+### 3.3 UMonomial
 
 ```lean
 structure UMonomial where
@@ -70,11 +108,10 @@ deriving Repr, Inhabited, BEq
 
 namespace UMonomial
 def mk (d : UInt64) : UMonomial := ⟨d⟩
--- deg 是结构体字段
 end UMonomial
 ```
 
-### 3.3 SparsePolyZp
+### 3.4 SparsePolyZp
 
 ```lean
 abbrev SparsePolyZp := Array (UMonomial × Zp)
@@ -90,78 +127,117 @@ def back! (f : SparsePolyZp) : UMonomial × Zp := f[f.size - 1]!
 def getDeg (f : SparsePolyZp) : UInt64 := if f.isEmpty then 0 else f[0]!.fst.deg
 def size_u64 (f : SparsePolyZp) : UInt64 := f.size.toUInt64
 
--- 修改（返回新数组）
+-- 修改（返回新数组——纯函数式）
 def pushBack (f : SparsePolyZp) (t : UMonomial × Zp) : SparsePolyZp := f.push t
-def normalization (f : SparsePolyZp) : SparsePolyZp := f -- 移除零项+排序
-def reserve (f : SparsePolyZp) (_n : UInt64) : SparsePolyZp := f -- no-op
 
--- .data() → identity（C++ 返回裸指针，Lean 中无意义）
-def data (f : SparsePolyZp) : SparsePolyZp := f
+-- normalization：移除零系数项（C++ 原地修改，Lean 返回新数组）
+def normalization (f : SparsePolyZp) : SparsePolyZp :=
+  f.filter (fun (_, c) => c.val != 0)
 
--- .comp() → 比较函数（CLPoly 内部）
-def comp (_f : SparsePolyZp) : UInt64 := 0
+-- no-op 操作
+def reserve (f : SparsePolyZp) (_n : UInt64) : SparsePolyZp := f
+def data (f : SparsePolyZp) : SparsePolyZp := f  -- .data() → identity
+
+-- comp：比较函数（CLPoly 内部使用，翻译中不传递）
+-- C++ 中 f.comp() 返回比较函数对象，在 pair_vec_div 中使用
+-- Lean 中不需要——pair_vec_div 的 Lean 实现不使用比较函数
 end SparsePolyZp
 ```
 
-### 3.4 std::pair
+### 3.5 std::pair
 
 ```lean
--- Lean 的 Prod (α × β) 已有 .fst / .snd
+-- Lean Prod (α × β) 已有 .fst / .snd
 -- C++ .first → .fst, .second → .snd
--- std::make_pair(a, b) → (a, b) 或 Prod.mk a b
+-- std::make_pair(a, b) → Prod.mk a b
 ```
 
-### 3.5 std::vector
+### 3.6 std::vector
 
 ```lean
--- Lean 的 Array α 已有所有操作
--- .empty() → .isEmpty
--- .front() → 自定义 Array.front!
--- .push_back(x) → .push x
--- .size() → .size_u64（返回 UInt64 而非 Nat）
--- operator[] → arr[i.toNat]!
+-- Lean Array α 已有所有操作
+-- C++ 操作通过 CLASS_MAP 映射到 Lean Array 方法
 ```
 
-## 4. C++ → Lean 映射表
+## 4. 独立函数模型（FUNC_MAP）
+
+CLASS_MAP 覆盖类方法。独立函数用 **FUNC_MAP** 覆盖。
+
+```python
+FUNC_MAP = {
+    # C++ 函数名 → (Lean 函数名, 参数处理规则)
+    # 参数处理：
+    #   "direct" = 直接传参
+    #   "out_param(n)" = 第 n 个参数是输出参数，变为返回值
+    #   "drop(n)" = 丢弃第 n 个参数（如 comp）
+
+    "derivative": ("SparsePolyZp.derivative", "direct"),
+    "polynomial_GCD": ("SparsePolyZp.gcd", "direct"),
+    "pair_vec_div": ("SparsePolyZp.divmod", "out_param(0,1),drop(4)"),
+    # C++: pair_vec_div(q, r, f, g, comp) → Lean: SparsePolyZp.divmod f g
+    # 返回 (q, r)，丢弃 comp 参数
+
+    "get_deg": ("SparsePolyZp.getDeg", "direct"),
+    "std::move": ("identity", "pass_through"),  # move(x) → x
+    "std::make_pair": ("Prod.mk", "direct"),
+}
+```
+
+### 4.1 pair_vec_div 的特殊处理
+
+C++ 签名：`pair_vec_div(q.data(), r.data(), f.data(), g.data(), f.comp())`
+- 参数 0, 1 是输出（q, r）
+- 参数 2, 3 是输入（f, g）
+- 参数 4 是比较函数（Lean 中不需要）
+
+Lean 翻译：
+```lean
+let (q, r) := SparsePolyZp.divmod f g
+```
+
+翻译器规则：遇到 `pair_vec_div` → 提取参数 2,3 作为输入 → 生成 `let (out0, out1) := divmod arg2 arg3` → SSA 更新 out0, out1 的版本。
+
+## 5. C++ → Lean 映射表（CLASS_MAP）
 
 翻译器使用此表。**不在表中的操作 → sorry。**
 
+映射表的 key 使用 `TypeIR`（不是字符串），与翻译器内部类型一致。
+
+Clang 的 `type.qualType` 可能包含命名空间和 const/引用（如 `"const clpoly::Zp &"`）。`parse_type` 已经负责清理这些 → 得到 `TypeIR`。映射表基于清理后的 `TypeIR`。
+
 ```python
+from ir_types import BaseType, StructType
+
 CLASS_MAP = {
-    # ============================================================
-    # Zp
-    # ============================================================
+    # key = StructType.name（parse_type 的输出）
+
     "Zp": {
-        "lean_type": StructType("Zp"),
+        "lean_type": StructType("Zp", []),
         "constructors": {
-            # (参数类型列表) → Lean 构造函数名
-            ("int64_t", "uint64_t"): "Zp.ofInt",
-            ("uint64_t", "uint64_t"): "Zp.ofUInt64",
-            (): "default",  # Zp() → ⟨0, 0⟩
+            # key = 参数类型 tuple
+            (BaseType.INT64, BaseType.UINT64): "Zp.ofInt",
+            (BaseType.UINT64, BaseType.UINT64): "Zp.ofUInt64",
+            (): "default",
         },
         "methods": {
-            # 方法名 → (类别, Lean 名)
-            # 类别: field=字段访问, method=函数调用, mutate=返回新值, noop=忽略
-            "number": ("field", "val"),
-            "prime": ("field", "prime"),
+            "number": ("field", "val"),       # .number() → .val
+            "prime": ("field", "prime"),       # .prime() → .prime
+            "val": ("field", "val"),           # .val 直接访问
         },
         "operators": {
-            "+": "HAdd.hAdd",
-            "-": "HSub.hSub",
-            "*": "HMul.hMul",
+            "+": None,   # Lean Add instance 处理
+            "-": None,   # Lean Sub instance 处理
+            "*": None,   # Lean Mul instance 处理
             "/": "Zp.div",
-            "==": "BEq.beq",
-            "!=": "bne",
+            "==": None,  # Lean BEq instance 处理
+            "!=": None,
         },
     },
 
-    # ============================================================
-    # umonomial
-    # ============================================================
-    "umonomial": {
-        "lean_type": StructType("UMonomial"),
+    "UMonomial": {
+        "lean_type": StructType("UMonomial", []),
         "constructors": {
-            ("uint64_t",): "UMonomial.mk",
+            (BaseType.UINT64,): "UMonomial.mk",
             (): "default",
         },
         "methods": {
@@ -169,15 +245,19 @@ CLASS_MAP = {
         },
     },
 
-    # ============================================================
-    # upolynomial_<Zp> (= SparsePolyZp)
-    # ============================================================
-    "upolynomial_<Zp>": {
-        "lean_type": StructType("SparsePolyZp"),
+    "SparsePolyZp": {
+        "lean_type": StructType("SparsePolyZp", []),
         "constructors": {
-            (): "SparsePolyZp.empty",  # 默认构造 → #[]
+            (): "SparsePolyZp.empty",
         },
         "methods": {
+            # (类别, Lean 名)
+            # field: 字段访问 → obj.lean_name
+            # method: 函数调用 → lean_name obj
+            # mutate: 返回新值 → let obj' := lean_name obj（SSA 新版本）
+            # mutate_push: push → let obj' := obj.push elem
+            # noop: 忽略 → obj
+            # identity: 透传 → obj
             "empty": ("method", "SparsePolyZp.isEmpty"),
             "front": ("method", "SparsePolyZp.front!"),
             "back": ("method", "SparsePolyZp.back!"),
@@ -186,113 +266,50 @@ CLASS_MAP = {
             "normalization": ("mutate", "SparsePolyZp.normalization"),
             "reserve": ("noop", None),
             "data": ("identity", None),
-            "comp": ("method", "SparsePolyZp.comp"),
-        },
-    },
-
-    # ============================================================
-    # std::vector<T>
-    # ============================================================
-    "std::vector": {
-        "methods": {
-            "empty": ("method", "Array.isEmpty"),
-            "front": ("method", "Array.front!"),
-            "back": ("method", "Array.back!"),
-            "size": ("method", "Array.size_u64"),
-            "push_back": ("mutate_push", "Array.push"),
-            "reserve": ("noop", None),
-        },
-    },
-
-    # ============================================================
-    # std::pair<A,B>
-    # ============================================================
-    "std::pair": {
-        "constructors": {
-            2: "Prod.mk",  # make_pair(a, b)
-        },
-        "fields": {
-            "first": "fst",
-            "second": "snd",
         },
     },
 }
 ```
 
-## 5. 翻译器改造
+### 5.1 类别说明
 
-### 5.1 parse_expr 改造
+| 类别 | 含义 | Lean 生成 | SSA 处理 |
+|------|------|----------|---------|
+| `field` | 字段访问 | `obj.field_name` | 无（纯读取） |
+| `method` | 无副作用方法调用 | `lean_name obj` | 无 |
+| `mutate` | 修改对象的方法 | `lean_name obj` | 生成 SSA 新版本 `let obj' := lean_name obj` |
+| `mutate_push` | push_back | `obj.push elem` | 生成 SSA 新版本 |
+| `noop` | 无操作（如 reserve） | `obj`（透传） | 无 |
+| `identity` | 返回自身（如 .data()） | `obj` | 无 |
 
-当前：每种方法都是 if/elif 特判。
+`mutate` 类别的处理在 `ssa_transform.py` 中：当翻译器通过 CLASS_MAP 识别出 `mutate` 方法时，自动生成 SSA 新版本。这替代了当前 ssa_transform 中的硬编码特判（`_mutate_normalize`、`__upoly_make_monic` 等）。
 
-改后：查 `CLASS_MAP`。
+## 6. 未知操作处理
 
-```python
-def parse_member_call(node):
-    obj_type = get_type(obj_node)  # 从 Clang AST 获取 this 对象类型
-    method_name = member.get("name")
+翻译器遇到的每个操作，按以下顺序查找：
 
-    class_info = CLASS_MAP.get(obj_type)
-    if class_info is None:
-        return sorry("unknown class")
+1. **CLASS_MAP**：`obj_type.name → methods[method_name]`
+2. **FUNC_MAP**：`func_name → (lean_name, param_rule)`
+3. **LEAN_STDLIB**：`func_name → lean_name`（Prod.mk, Array.empty 等）
+4. **CAST_TABLE**：`(source, target) → lean_expr`
+5. **都不匹配 → `sorry`** + 注释标注 C++ 原始操作
 
-    method_info = class_info["methods"].get(method_name)
-    if method_info is None:
-        return sorry(f"unknown method {obj_type}.{method_name}")
+## 7. 实施步骤
 
-    category, lean_name = method_info
-    if category == "field":
-        return FieldAccess(obj, lean_name)
-    elif category == "method":
-        return Call(lean_name, [obj])
-    elif category == "mutate":
-        ...  # 返回新 SSA 版本
-    elif category == "noop":
-        return obj  # 透传
-    elif category == "identity":
-        return obj
-```
+1. **`clpoly_model.lean`**：Lean 类模型文件（§3 的全部定义）→ 先编译验证
+2. **`class_map.py`**：CLASS_MAP + FUNC_MAP 字典
+3. **改造 `clang_ast.py`**：`CXXMemberCallExpr`、`CXXConstructExpr`、`CXXOperatorCallExpr`、`MemberExpr` → 查 CLASS_MAP
+4. **改造 `ssa_transform.py`**：`mutate` 类别统一处理 → 删除 `_mutate_normalize` 等特判
+5. **改造 `gen_full.py`**：prelude 用 `clpoly_model.lean` 替代手写 header
+6. **删除硬编码**：`CLPOLY_TYPE_MAP`、`METHOD_MAP`、`LEAN_STDLIB`、`NOOP_FUNCS` → 全部合并入 CLASS_MAP/FUNC_MAP
+7. **验证**：重新翻译 13 函数 → 编译通过 → 背靠背测试
 
-### 5.2 CXXConstructExpr 改造
+## 8. 前提条件
 
-```python
-def parse_construct(node):
-    target_type = get_type(node)
-    class_info = CLASS_MAP.get(target_type)
-    if class_info is None:
-        return sorry("unknown constructor")
-
-    arg_types = tuple(get_type(arg) for arg in args)
-    ctor = class_info["constructors"].get(arg_types)
-    if ctor is None:
-        return sorry(f"unknown constructor {target_type}({arg_types})")
-
-    return Call(ctor, args)
-```
-
-### 5.3 未知操作 → sorry
-
-任何不在 `CLASS_MAP` 中的操作：
-
-```python
-return UnknownExpr(f"unmapped: {class_name}.{method_name}")
-# gen_expr 输出: /- unmapped: Zp.some_method -/ sorry
-```
-
-这比当前的行为（静默错误翻译）安全得多。
-
-## 6. 实施步骤
-
-1. **Lean 类模型文件** `tools/cpp2lean/clpoly_model.lean`：所有类型定义 + 方法实现
-2. **映射表** `tools/cpp2lean/class_map.py`：CLASS_MAP 字典
-3. **翻译器改造**：`clang_ast.py` 的 `CXXMemberCallExpr`、`CXXConstructExpr`、`CXXOperatorCallExpr`、`MemberExpr` 全部改为查表
-4. **删除硬编码**：`CLPOLY_TYPE_MAP`、`METHOD_MAP`、所有 if/elif 特判
-5. **验证**：重新翻译 13 函数，对比结果
-
-## 7. 预期效果
-
-- 翻译器代码大幅简化（删除 ~100 行特判代码）
-- 新增类只需扩展 CLASS_MAP（不改翻译器）
-- 未知操作显式 sorry（而非静默错误）
-- Lean 类模型可独立编译验证
-- 背靠背测试中，类模型就是原语的正确实现
+| 前提 | 验证方式 |
+|------|---------|
+| `clpoly_model.lean` 编译通过 | `lake env lean clpoly_model.lean` |
+| CLASS_MAP 覆盖因式分解模块用到的所有类操作 | 对 13 函数翻译，sorry 数 = 0 |
+| FUNC_MAP 覆盖所有独立函数 | 同上 |
+| Zp.ofInt 对负数正确 | 单元测试 `Zp.ofInt (-1) 5 = ⟨4, 5⟩` |
+| SparsePolyZp.normalization 行为与 C++ 一致 | 背靠背测试 |

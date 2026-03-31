@@ -203,13 +203,10 @@ def transform_stmt(stmt: StmtIR, env: VarEnv) -> StmtIR | list[StmtIR]:
             new_var = env.bump(expr.arr.name)
             typ = env.get_type(expr.arr.name)
             return LetStmt(new_var, typ, ArrayPush(old, rename_expr(expr.elem, env)))
-        # field = expr（成员赋值）→ 在 range-for 中对应 Array.set
+        # field = expr（成员赋值）→ functional update + Array.set
         if isinstance(expr, BinOp) and expr.op == "=":
             if isinstance(expr.lhs, FieldAccess):
-                # 尝试追踪到被修改的数组元素
-                renamed_rhs = rename_expr(expr.rhs, env)
-                renamed_lhs = rename_expr(expr.lhs, env)
-                return ExprStmt(BinOp(":=", renamed_lhs, renamed_rhs))
+                return transform_member_assign(expr.lhs, expr.rhs, env)
         return ExprStmt(rename_expr(expr, env))
 
     if isinstance(stmt, UnknownStmt):
@@ -488,16 +485,10 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv) -> list[StmtIR]:
     # 识别 body 中被修改的变量
     body_vars = identify_loop_vars(body_stmt)
 
-    # 索引变量
     idx_name = "__idx"
     env.versions[idx_name] = 0
     env.set_type(idx_name, BaseType.UINT64)
     idx_var = env.bump(idx_name)
-
-    # 循环参数 = idx + body 中修改的变量
-    params = [(idx_var, BaseType.UINT64)]
-    for name in sorted(body_vars):
-        params.append((env.current(name), env.get_type(name)))
 
     # 给集合一个 SSA 名称（避免 UNKNOWN）
     coll_var = Var("__coll")
@@ -509,9 +500,25 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv) -> list[StmtIR]:
                         ArrayAccess(coll_var, idx_var))
     env.set_type(loop_var_name, loop_var_type)
 
+    # __coll 类型
+    coll_type = env.get_type(collection.name) if isinstance(collection, Var) else "auto"
+    env.set_type("__coll", coll_type if coll_type != "auto" else BaseType.UINT64)
+
+    # 循环体 SSA 变换（可能修改 __coll）
     loop_env = env.fork()
     loop_env.versions[loop_var_name] = 1
     body_stmts = [elem_let] + transform_body(flatten_stmts(body_stmt), loop_env)
+
+    # 循环参数 = idx + body 中修改的变量（含 __coll 如果被 Array.set 修改）
+    all_loop_vars = set(body_vars)
+    # 扫描 body_stmts 中实际产生的 LetStmt 变量
+    for s in body_stmts:
+        if isinstance(s, LetStmt) and s.var.name in ("__coll",):
+            all_loop_vars.add(s.var.name)
+
+    params = [(idx_var, BaseType.UINT64)]
+    for name in sorted(all_loop_vars):
+        params.append((env.current(name), env.get_type(name)))
 
     func_name = f"range_{abs(hash(str(stmt))) % 100000}"
 
@@ -525,11 +532,79 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv) -> list[StmtIR]:
                        BinOp("+", idx_var, Lit(1)))],
     )
 
-    # __coll 类型 = collection 变量的类型
-    coll_type = env.get_type(collection.name) if isinstance(collection, Var) else "auto"
     coll_init = LetStmt(coll_var, coll_type, collection_renamed)
     idx_init = LetStmt(idx_var, BaseType.UINT64, Lit(0))
     return [coll_init, idx_init, tailrec]
+
+
+def transform_member_assign(lhs: FieldAccess, rhs: ExprIR, env: VarEnv) -> StmtIR | list[StmtIR]:
+    """成员赋值 elem.field1.field2 = expr → functional update。
+
+    检测模式：
+    - term.second.val = expr → { term with snd := { term.snd with val := expr } }
+    - term.field = expr → { term with field := expr }
+
+    如果 term 来自 __coll[__idx]（range-for），追加 Array.set。
+    """
+    renamed_rhs = rename_expr(rhs, env)
+
+    # 收集字段路径：term.second.val → [("second","snd"), ("val","val")]
+    path = []
+    node = lhs
+    while isinstance(node, FieldAccess):
+        # C++ field → Lean field 映射
+        lean_field = {
+            "first": "fst", "second": "snd",
+            "val": "val", "deg": "deg", "p": "p",
+        }.get(node.field_name, node.field_name)
+        path.append((node.field_name, lean_field))
+        node = node.obj
+    path.reverse()
+
+    # node 现在是根变量（如 term）
+    root_var = rename_expr(node, env) if isinstance(node, Var) else node
+    root_name = node.name if isinstance(node, Var) else None
+
+    if not root_name or not path:
+        return ExprStmt(BinOp(":=", rename_expr(lhs, env), renamed_rhs))
+
+    # 构建 functional update 表达式
+    update_expr = _build_functional_update(root_var, path, renamed_rhs)
+
+    # 创建新版本的 root 变量
+    new_root = env.bump(root_name)
+    typ = env.get_type(root_name)
+    result = [LetStmt(new_root, typ, update_expr)]
+
+    # 如果 root 来自 __coll[__idx]（range-for 模式），更新数组
+    if "__coll" in env.versions and "__idx" in env.versions:
+        coll_var = env.current("__coll")
+        idx_var = env.current("__idx")
+        new_coll = env.bump("__coll")
+        coll_typ = env.get_type("__coll")
+        set_expr = Call("Array.set!", [coll_var, idx_var, new_root])
+        result.append(LetStmt(new_coll, coll_typ, set_expr))
+
+    return result
+
+
+def _build_functional_update(root: ExprIR, path: list[tuple[str, str]], value: ExprIR) -> ExprIR:
+    """构建嵌套的 functional update。
+
+    path = [("second", "snd"), ("val", "val")]
+    → Call("struct_update", [root, "snd", Call("struct_update", [root.snd, "val", value])])
+
+    在 Lean 中表示为 { root with snd := { root.snd with val := value } }
+    用 Call("_with", ...) 表示，gen_expr 特殊处理。
+    """
+    if len(path) == 1:
+        _, lean_field = path[0]
+        return Call("_with", [root, Var(lean_field), value])
+    else:
+        _, lean_field = path[0]
+        inner_obj = FieldAccess(root, lean_field)
+        inner_update = _build_functional_update(inner_obj, path[1:], value)
+        return Call("_with", [root, Var(lean_field), inner_update])
 
 
 def _infer_types_from_body(stmt: StmtIR, env: VarEnv):

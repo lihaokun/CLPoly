@@ -77,6 +77,7 @@ LEAN_STDLIB = {
     "Prod.mk": "Prod.mk",
     "Array.empty": "#[]",
     "Array.mk": "Array.mk",
+    "Array.set!": "Array.set!",
 }
 
 # no-op 函数（C++ 内存管理等，翻译时丢弃）
@@ -120,6 +121,12 @@ def gen_expr(expr: ExprIR) -> str:
     if isinstance(expr, Call):
         func_name = expr.func
         args = " ".join(gen_expr(a) for a in expr.args)
+        # functional update: { obj with field := value }
+        if func_name == "_with" and len(expr.args) == 3:
+            obj = gen_expr(expr.args[0])
+            field = expr.args[1].name if isinstance(expr.args[1], Var) else gen_expr(expr.args[1])
+            val = gen_expr(expr.args[2])
+            return f"{{ {obj} with {field} := {val} }}"
         # Lean 标准库函数 → 不加 _ir
         if func_name in LEAN_STDLIB:
             return f"({LEAN_STDLIB[func_name]} {args})" if args else LEAN_STDLIB[func_name]

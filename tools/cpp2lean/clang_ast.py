@@ -496,9 +496,8 @@ def parse_expr(node: dict) -> ExprIR:
             lean_method = METHOD_MAP.get(method_name, method_name)
             if method_name == "push_back" and len(inner) > 1:
                 return ArrayPush(obj, parse_expr(inner[1]))
-            if method_name in ("empty", "size"):
-                return FieldAccess(obj, lean_method)
-            if method_name in ("front", "back"):
+            # 无参 getter → 字段访问
+            if method_name in ("empty", "size", "front", "back", "deg", "prime", "val"):
                 return FieldAccess(obj, lean_method)
             if method_name in ("reserve", "normalization"):
                 # reserve 是 no-op；normalization 映射为 normalize

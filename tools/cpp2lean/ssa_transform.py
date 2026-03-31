@@ -232,6 +232,8 @@ def transform_stmt(stmt: StmtIR, env: VarEnv) -> StmtIR | list[StmtIR]:
             return transform_range_for(stmt, env)
         if stmt.kind == "CompoundStmt":
             return transform_body(stmt.children, env)
+        if stmt.kind == "MultiDecl":
+            return transform_body(stmt.children, env)
         if stmt.kind == "BreakStmt":
             return stmt  # 由 transform_for_loop 处理
         if stmt.kind == "ContinueStmt":

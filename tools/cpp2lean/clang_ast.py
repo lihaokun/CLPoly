@@ -154,6 +154,9 @@ CLPOLY_TYPE_MAP = {
     "umonomial": StructType("UMonomial", []),
     "basic_monomial": StructType("UMonomial", []),
     "Zp": StructType("Zp", []),
+    "ZZ": BaseType.INT64,              # CLPoly 大整数 → Int（Lean 任意精度）
+    "std::mt19937": BaseType.UINT64,   # 随机数生成器 → 参数化种子
+    "std::uniform_int_distribution": BaseType.UINT64,
 }
 
 # CLPoly 方法调用映射
@@ -397,7 +400,8 @@ def parse_range_for(node: dict) -> StmtIR:
                         loop_var_type = parse_type(decl.get("type", {}).get("qualType", "auto"))
         elif k == "CompoundStmt":
             body_stmt = parse_stmt(child)
-        elif k == "ExprWithCleanups":
+        elif k in ("ExprWithCleanups", "CXXOperatorCallExpr", "BinaryOperator",
+                   "CXXMemberCallExpr", "CallExpr", "UnaryOperator"):
             # 单语句 range-for body（无 CompoundStmt 包裹）
             body_stmt = parse_stmt(child)
 
@@ -423,6 +427,9 @@ def parse_expr(node: dict) -> ExprIR:
 
     if kind == "IntegerLiteral":
         return Lit(int(node.get("value", "0")))
+
+    if kind == "CXXBoolLiteralExpr":
+        return Lit(1 if node.get("value", False) else 0, BaseType.BOOL)
 
     if kind == "DeclRefExpr":
         ref = node.get("referencedDecl", {})
@@ -550,6 +557,32 @@ def parse_expr(node: dict) -> ExprIR:
                 return Call("Prod.mk", [parse_expr(inner[1]), parse_expr(inner[2])])
             args = [parse_expr(a) for a in inner[1:]]
             return Call(func_name, args)
+
+    if kind == "CXXOperatorCallExpr":
+        # 非赋值的运算符调用（如 ZZ::operator/, operator==）
+        if inner:
+            callee = inner[0]
+            ref_name = callee.get("referencedDecl", {}).get("name", "")
+            if "operator/" in ref_name and len(inner) >= 3:
+                return BinOp("/", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator*" in ref_name and len(inner) >= 3:
+                return BinOp("*", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator+" in ref_name and len(inner) >= 3:
+                return BinOp("+", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator-" in ref_name and len(inner) >= 3:
+                return BinOp("-", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator==" in ref_name and len(inner) >= 3:
+                return BinOp("==", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator!=" in ref_name and len(inner) >= 3:
+                return BinOp("!=", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator<" in ref_name and len(inner) >= 3:
+                return BinOp("<", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator>" in ref_name and len(inner) >= 3:
+                return BinOp(">", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator<<" in ref_name and len(inner) >= 3:
+                return BinOp("<<", parse_expr(inner[1]), parse_expr(inner[2]))
+            if "operator>>" in ref_name and len(inner) >= 3:
+                return BinOp(">>", parse_expr(inner[1]), parse_expr(inner[2]))
 
     if kind == "CompoundAssignOperator":
         op = node.get("opcode", "?=").replace("=", "")

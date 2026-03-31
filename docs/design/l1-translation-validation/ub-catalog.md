@@ -28,7 +28,17 @@
 | Lean 证明目标 | `idx < arr.size` |
 | 示例 | `poly[i].coeff` → `require hi : i < poly.size` |
 
-### UB-3: 移位量越界
+### UB-3: 空容器 front/back
+
+| 项目 | 内容 |
+|------|------|
+| C++ 标准 | [sequence.reqmts]/2: "The expression a.front() is well-defined only if a is not empty" |
+| 触发 | `v.front()`, `v.back()` 当容器为空时 |
+| 检测规则 | `FieldAccess(obj, "front!")` 或 `FieldAccess(obj, "back!")` → 对 `obj` 生成目标 |
+| Lean 证明目标 | `¬ obj.isEmpty` |
+| 示例 | `f.front().second.prime()` → `require hf : ¬ f.isEmpty` |
+
+### UB-4: 移位量越界
 
 | 项目 | 内容 |
 |------|------|
@@ -39,7 +49,7 @@
 | 示例 | `p << norm` → `require h_shift : norm < 64` |
 | 注意 | 当前统一按 64 位处理。如果操作数是 32 位，需要检查 Clang AST 中的类型信息调整位宽。 |
 
-### UB-4: assert 失败
+### UB-5: assert 失败
 
 | 项目 | 内容 |
 |------|------|
@@ -104,8 +114,9 @@ CLPoly C++ 子集（blueprint §5a.1）的全部 UB 源：
 |-------|-------|------|
 | 整数除以零 | ✅ | UB-1 |
 | 数组越界 | ✅ | UB-2 |
-| 移位越界 | ✅ | UB-3 |
-| assert 失败 | ✅ | UB-4（SSA 阶段） |
+| 空容器 front/back | ✅ | UB-3 |
+| 移位越界 | ✅ | UB-4 |
+| assert 失败 | ✅ | UB-5（SSA 阶段） |
 | unsigned 溢出 | 不需要 | 不检测-1 |
 | signed 溢出 | 暂不检测 | 不检测-2 |
 | 空指针 | 不适用 | 不检测-3 |

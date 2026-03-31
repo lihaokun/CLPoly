@@ -107,6 +107,19 @@ def _scan_expr(expr: ExprIR, func_name: str,
             context=list(context),
         ))
 
+    elif isinstance(expr, FieldAccess):
+        _scan_expr(expr.obj, func_name, obligations, context)
+        # .front! / .back! 在空容器上是 UB
+        if expr.field_name in ("front!", "back!"):
+            obj_str = gen_expr(expr.obj)
+            obligations.append(UBObligation(
+                func_name=func_name,
+                source_line=0,
+                ub_type=UBType.ARRAY_OOB,
+                lean_prop=f"¬ {obj_str}.isEmpty",
+                context=list(context),
+            ))
+
     elif isinstance(expr, Call):
         for arg in expr.args:
             _scan_expr(arg, func_name, obligations, context)

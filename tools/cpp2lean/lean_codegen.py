@@ -72,6 +72,16 @@ CAST_TABLE = {
     (BaseType.INT64, BaseType.BOOL):     "({e} != 0)",
 }
 
+# Lean 标准库函数（不加 _ir 后缀）
+LEAN_STDLIB = {
+    "Prod.mk": "Prod.mk",
+    "Array.empty": "#[]",
+    "Array.mk": "Array.mk",
+}
+
+# no-op 函数（C++ 内存管理等，翻译时丢弃）
+NOOP_FUNCS = {"reserve"}
+
 BINOP_MAP = {
     "+": "+", "-": "-", "*": "*", "/": "/", "%": "%",
     "<<": "<<<", ">>": ">>>",
@@ -91,7 +101,9 @@ def gen_expr(expr: ExprIR) -> str:
         return f"({expr.value} : {expr.typ.value})"
 
     if isinstance(expr, BinOp):
-        # 纯翻译：不做类型推断。UInt128 乘法/移位由 Clang Cast 节点在外层处理。
+        # 成员赋值 := → Lean 注释（纯函数式中需要 Array.set，暂标注）
+        if expr.op == ":=":
+            return f"/- {gen_expr(expr.lhs)} := {gen_expr(expr.rhs)} -/ sorry"
         lean_op = BINOP_MAP.get(expr.op, f"/- {expr.op} -/ sorry")
         return f"({gen_expr(expr.lhs)} {lean_op} {gen_expr(expr.rhs)})"
 
@@ -106,12 +118,15 @@ def gen_expr(expr: ExprIR) -> str:
         return f"(if {gen_expr(expr.cond)} then {gen_expr(expr.then_e)} else {gen_expr(expr.else_e)})"
 
     if isinstance(expr, Call):
-        # func 可能是字符串或 Var
         func_name = expr.func
-        if isinstance(func_name, str) and "Cast" in func_name:
-            # 函数指针 Cast 残留 → 提取函数名
-            func_name = func_name.split("name='")[1].split("'")[0] if "name='" in func_name else func_name
         args = " ".join(gen_expr(a) for a in expr.args)
+        # Lean 标准库函数 → 不加 _ir
+        if func_name in LEAN_STDLIB:
+            return f"({LEAN_STDLIB[func_name]} {args})" if args else LEAN_STDLIB[func_name]
+        # no-op 函数 → 丢弃
+        if func_name in NOOP_FUNCS:
+            return args.split()[0] if args else "()"  # 返回第一个参数（this）
+        # 翻译的 C++ 函数 → 加 _ir
         return f"({func_name}_ir {args})" if args else f"{func_name}_ir"
 
     if isinstance(expr, ArrayAccess):
@@ -121,17 +136,24 @@ def gen_expr(expr: ExprIR) -> str:
         return f"{gen_expr(expr.obj)}.{expr.field_name}"
 
     if isinstance(expr, Cast):
-        inner_str = gen_expr(expr.expr)
         source = expr.source_type
         target = expr.target_type
         # 同类型 → 跳过
         if source == target:
-            return inner_str
-        # 查转换表
-        key = (source, target)
-        if key in CAST_TABLE:
-            return CAST_TABLE[key].format(e=inner_str)
-        # 未知转换 → sorry
+            return gen_expr(expr.expr)
+        # 字面量 Cast → 直接生成目标类型的字面量
+        if isinstance(expr.expr, Lit) and isinstance(target, BaseType):
+            return f"({expr.expr.value} : {target.value})"
+        inner_str = gen_expr(expr.expr)
+        # 只有 BaseType 可查表（StructType/ArrayType 等不可哈希）
+        if isinstance(source, BaseType) and isinstance(target, BaseType):
+            key = (source, target)
+            if key in CAST_TABLE:
+                return CAST_TABLE[key].format(e=inner_str)
+        # StructType/str 等非基本类型 → 直接类型标注
+        if isinstance(target, (BaseType, StructType)):
+            return f"({inner_str} : {gen_type(target)})"
+        # 未知转换
         return f"/- CAST: {source} → {target} -/ {inner_str}"
 
     if isinstance(expr, ArrayPush):

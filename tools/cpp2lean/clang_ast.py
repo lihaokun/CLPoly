@@ -11,6 +11,17 @@ import re
 from ir_types import *
 
 
+def _extract_root_var(expr) -> Var | None:
+    """从 Cast/FieldAccess 链中提取根变量。"""
+    if isinstance(expr, Var):
+        return expr
+    if isinstance(expr, Cast):
+        return _extract_root_var(expr.expr)
+    if isinstance(expr, FieldAccess):
+        return _extract_root_var(expr.obj)
+    return None
+
+
 def _extract_func_name(expr) -> str:
     """从表达式中提取函数名。处理 Var、Cast(Var)、等。"""
     if isinstance(expr, Var):
@@ -259,14 +270,30 @@ def parse_stmt(node: dict) -> StmtIR:
             return parse_stmt(inner[0])
 
     if kind == "CXXOperatorCallExpr":
-        # operator= → AssignStmt
         inner = node.get("inner", [])
-        opcode = node.get("name", "")
-        if len(inner) >= 3 and "operator=" in str(inner[0]):
-            lhs = parse_expr(inner[1])
-            rhs = parse_expr(inner[2])
-            if isinstance(lhs, Var):
-                return AssignStmt(lhs, rhs)
+        # 检测 operator=（赋值/move 赋值）
+        if len(inner) >= 3:
+            callee = inner[0]
+            callee_name = callee.get("referencedDecl", {}).get("name", "")
+            if "operator=" in callee_name or callee.get("kind") == "ImplicitCastExpr":
+                # inner[1] = LHS, inner[2] = RHS
+                # 跳过 RHS 的 ImplicitCastExpr 链（move 语义无关紧要）
+                rhs_node = inner[2]
+                while rhs_node.get("kind") in ("ImplicitCastExpr", "CStyleCastExpr", "MaterializeTemporaryExpr", "CXXBindTemporaryExpr"):
+                    sub = rhs_node.get("inner", [])
+                    if sub:
+                        rhs_node = sub[0]
+                    else:
+                        break
+                lhs = parse_expr(inner[1])
+                rhs = parse_expr(rhs_node)
+                if isinstance(lhs, Var):
+                    return AssignStmt(lhs, rhs)
+                # LHS 是 field access（如 c = expr）→ 也当赋值
+                if isinstance(lhs, (FieldAccess, Cast)):
+                    lhs_var = _extract_root_var(lhs)
+                    if lhs_var:
+                        return AssignStmt(lhs_var, rhs)
         return ExprStmt(parse_expr(node))
 
     # 表达式语句
@@ -349,6 +376,7 @@ def parse_range_for(node: dict) -> StmtIR:
     inner = node.get("inner", [])
     # 找循环变量和 body
     loop_var_name = "elem"
+    loop_var_type = "auto"
     collection = UnknownExpr("collection")
     body_stmt = UnknownStmt("empty")
 
@@ -366,6 +394,7 @@ def parse_range_for(node: dict) -> StmtIR:
                     elif not vname.startswith("__"):
                         # 用户的循环变量（如 term）
                         loop_var_name = vname
+                        loop_var_type = parse_type(decl.get("type", {}).get("qualType", "auto"))
         elif k == "CompoundStmt":
             body_stmt = parse_stmt(child)
 
@@ -373,7 +402,7 @@ def parse_range_for(node: dict) -> StmtIR:
     idx_var = Var("__idx")
     return UnknownStmt("RangeForLoop", [
         ExprStmt(collection),                    # 被遍历的集合
-        ExprStmt(Var(loop_var_name)),            # 循环变量名
+        LetStmt(Var(loop_var_name), loop_var_type, Lit(0)),  # 循环变量名+类型
         body_stmt,                               # 循环体
     ])
 
@@ -454,7 +483,15 @@ def parse_expr(node: dict) -> ExprIR:
         if inner:
             member = inner[0]
             method_name = member.get("name", "?")
-            obj = parse_expr(member.get("inner", [{}])[0]) if member.get("inner") else UnknownExpr("no_obj")
+            # 提取 this 对象：跳过 ImplicitCastExpr 链到最内层
+            obj_node = member.get("inner", [{}])[0] if member.get("inner") else {}
+            while obj_node.get("kind") in ("ImplicitCastExpr", "CStyleCastExpr"):
+                sub = obj_node.get("inner", [])
+                if sub:
+                    obj_node = sub[0]
+                else:
+                    break
+            obj = parse_expr(obj_node) if obj_node else UnknownExpr("no_obj")
             # 方法名映射
             lean_method = METHOD_MAP.get(method_name, method_name)
             if method_name == "push_back" and len(inner) > 1:
@@ -470,14 +507,16 @@ def parse_expr(node: dict) -> ExprIR:
             return Call(lean_method, [obj] + args)
 
     if kind == "CXXConstructExpr":
-        # 默认构造 → 空值
         qual_type = node.get("type", {}).get("qualType", "")
         typ = parse_type(qual_type)
         if isinstance(typ, StructType) and typ.name == "SparsePolyZp":
-            return Call("Array.empty", [])  # SparsePolyZp() → #[]
+            return Call("Array.empty", [])
         if isinstance(typ, ArrayType):
             return Call("Array.empty", [])
-        return Lit(0)  # 其他默认构造
+        # 单参数构造（如 umonomial(deg)）
+        if inner and len(inner) == 1:
+            return parse_expr(inner[0])
+        return Lit(0)
 
     if kind == "CXXStdInitializerListExpr":
         # {a, b} 初始化列表

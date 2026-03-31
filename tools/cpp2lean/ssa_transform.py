@@ -144,8 +144,13 @@ def transform_body(stmts: list[StmtIR], env: VarEnv) -> list[StmtIR]:
         transformed = transform_stmt(stmt, env)
         if isinstance(transformed, list):
             result.extend(transformed)
+            # 如果最后生成的是 TailRec，后面的 return 被循环替代
+            if any(isinstance(t, TailRec) for t in transformed):
+                break  # 循环返回值就是函数返回值
         else:
             result.append(transformed)
+            if isinstance(transformed, TailRec):
+                break
         i += 1
     return result
 
@@ -192,6 +197,19 @@ def transform_stmt(stmt: StmtIR, env: VarEnv) -> StmtIR | list[StmtIR]:
             new_var = env.bump(expr.operand.name)
             typ = env.get_type(expr.operand.name)
             return LetStmt(new_var, typ, BinOp("-", old, Lit(1)))
+        # arr.push(x) → let arr_{n+1} := arr_n.push(x)
+        if isinstance(expr, ArrayPush) and isinstance(expr.arr, Var):
+            old = env.current(expr.arr.name)
+            new_var = env.bump(expr.arr.name)
+            typ = env.get_type(expr.arr.name)
+            return LetStmt(new_var, typ, ArrayPush(old, rename_expr(expr.elem, env)))
+        # field = expr（成员赋值）→ 在 range-for 中对应 Array.set
+        if isinstance(expr, BinOp) and expr.op == "=":
+            if isinstance(expr.lhs, FieldAccess):
+                # 尝试追踪到被修改的数组元素
+                renamed_rhs = rename_expr(expr.rhs, env)
+                renamed_lhs = rename_expr(expr.lhs, env)
+                return ExprStmt(BinOp(":=", renamed_lhs, renamed_rhs))
         return ExprStmt(rename_expr(expr, env))
 
     if isinstance(stmt, UnknownStmt):
@@ -456,11 +474,16 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv) -> list[StmtIR]:
         return [stmt]
 
     collection = children[0].expr if isinstance(children[0], ExprStmt) else UnknownExpr("?")
-    loop_var = children[1].expr if isinstance(children[1], ExprStmt) else Var("elem")
+    # children[1] 是 LetStmt(var, type, _) — 循环变量名+类型
+    if isinstance(children[1], LetStmt):
+        loop_var_name = children[1].var.name
+        loop_var_type = children[1].typ
+    else:
+        loop_var_name = "elem"
+        loop_var_type = "auto"
     body_stmt = children[2]
 
     collection_renamed = rename_expr(collection, env)
-    loop_var_name = loop_var.name if isinstance(loop_var, Var) else "elem"
 
     # 识别 body 中被修改的变量
     body_vars = identify_loop_vars(body_stmt)
@@ -482,8 +505,9 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv) -> list[StmtIR]:
     coll_var = env.bump("__coll")
 
     # 循环体前添加 let elem := __coll[idx]
-    elem_let = LetStmt(Var(loop_var_name), "auto",
+    elem_let = LetStmt(Var(loop_var_name), loop_var_type,
                         ArrayAccess(coll_var, idx_var))
+    env.set_type(loop_var_name, loop_var_type)
 
     loop_env = env.fork()
     loop_env.versions[loop_var_name] = 1
@@ -501,8 +525,9 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv) -> list[StmtIR]:
                        BinOp("+", idx_var, Lit(1)))],
     )
 
-    # 初始化：let __coll := collection; let __idx := 0
-    coll_init = LetStmt(coll_var, "auto", collection_renamed)
+    # __coll 类型 = collection 变量的类型
+    coll_type = env.get_type(collection.name) if isinstance(collection, Var) else "auto"
+    coll_init = LetStmt(coll_var, coll_type, collection_renamed)
     idx_init = LetStmt(idx_var, BaseType.UINT64, Lit(0))
     return [coll_init, idx_init, tailrec]
 
@@ -565,6 +590,14 @@ def identify_loop_vars(stmt: StmtIR) -> set[str]:
         if isinstance(expr, UnaryOp) and expr.op in ("++", "--"):
             if isinstance(expr.operand, Var):
                 result.add(expr.operand.name)
+        # arr.push(x) → arr 被修改
+        if isinstance(expr, ArrayPush) and isinstance(expr.arr, Var):
+            result.add(expr.arr.name)
+        # method call 可能修改 this 对象
+        if isinstance(expr, Call) and expr.args and isinstance(expr.args[0], Var):
+            # normalize, reserve 等方法修改第一个参数
+            if expr.func in ("normalize", "reserve", "normalization"):
+                result.add(expr.args[0].name)
     return result
 
 

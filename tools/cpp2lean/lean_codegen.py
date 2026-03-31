@@ -33,6 +33,33 @@ def gen_type(t: TypeIR) -> str:
 # 表达式生成
 # ============================================================
 
+def gen_coercion(expr_str: str, source, target) -> str:
+    """统一类型转换：source 类型表达式 → target 类型。"""
+    if source == target:
+        return expr_str
+    # BaseType → BaseType
+    if isinstance(source, BaseType) and isinstance(target, BaseType):
+        key = (source, target)
+        if key in CAST_TABLE:
+            return CAST_TABLE[key].format(e=expr_str)
+    # StructType → BaseType
+    if isinstance(source, StructType) and isinstance(target, BaseType):
+        if source.name == "Zp" and target == BaseType.UINT64:
+            return f"{expr_str}.val"
+        if source.name == "Zp" and target == BaseType.INT64:
+            return f"({expr_str}.val.toNat : Int)"
+        if source.name == "UMonomial" and target == BaseType.UINT64:
+            return f"{expr_str}.deg"
+    # BaseType → StructType
+    if isinstance(source, BaseType) and isinstance(target, StructType):
+        return f"({expr_str} : {gen_type(target)})"
+    # str types (unrecognized)
+    if isinstance(source, str) or isinstance(target, str):
+        return f"({expr_str} : {gen_type(target)})"
+    # fallback
+    return f"({expr_str} : {gen_type(target)})"
+
+
 def gen_require_prop(req) -> str:
     """Require → Lean Prop。"""
     cond = req.cond
@@ -81,6 +108,8 @@ LEAN_STDLIB = {
     "Array.empty": "#[]",
     "Array.mk": "Array.mk",
     "Array.set!": "Array.set!",
+    "Zp.mk": "Zp.mk",
+    "UMonomial.mk": "UMonomial.mk",
 }
 
 # no-op 函数（C++ 内存管理等，翻译时丢弃）
@@ -155,15 +184,25 @@ def gen_expr(expr: ExprIR) -> str:
         if isinstance(expr.expr, Lit) and isinstance(target, BaseType):
             return f"({expr.expr.value} : {target.value})"
         inner_str = gen_expr(expr.expr)
-        # 只有 BaseType 可查表（StructType/ArrayType 等不可哈希）
+        # BaseType 查表
         if isinstance(source, BaseType) and isinstance(target, BaseType):
             key = (source, target)
             if key in CAST_TABLE:
                 return CAST_TABLE[key].format(e=inner_str)
-        # StructType/str 等非基本类型 → 直接类型标注
+        # StructType → BaseType（如 Zp → UInt64：取 .val）
+        if isinstance(source, StructType) and isinstance(target, BaseType):
+            if source.name == "Zp" and target == BaseType.UINT64:
+                return f"{inner_str}.val"
+            return f"({inner_str} : {gen_type(target)})"
+        # BaseType → StructType（如 Int → Zp：构造）
+        if isinstance(source, BaseType) and isinstance(target, StructType):
+            return f"({inner_str} : {gen_type(target)})"
+        # Nat → UInt64（Array.size 返回 Nat）
+        if source == "unsigned long" or (isinstance(source, str) and "size" in str(source)):
+            return f"({inner_str} : {gen_type(target)})"
+        # 同类型或兼容 → 类型标注
         if isinstance(target, (BaseType, StructType)):
             return f"({inner_str} : {gen_type(target)})"
-        # 未知转换
         return f"/- CAST: {source} → {target} -/ {inner_str}"
 
     if isinstance(expr, ArrayPush):
@@ -186,6 +225,10 @@ def gen_stmt(stmt: StmtIR, indent: int = 1) -> list[str]:
     if isinstance(stmt, LetStmt):
         typ = gen_type(stmt.typ)
         val = gen_expr(stmt.value)
+        # 自动 coercion：如果表达式类型和声明类型不同，插入转换
+        actual = getattr(stmt.value, '_ast_type', None)
+        if actual and actual != stmt.typ:
+            val = gen_coercion(val, actual, stmt.typ)
         lines.append(f"{pad}let {stmt.var.lean_name()} : {typ} := {val}")
 
     elif isinstance(stmt, AssignStmt):
@@ -203,7 +246,12 @@ def gen_stmt(stmt: StmtIR, indent: int = 1) -> list[str]:
 
     elif isinstance(stmt, ReturnStmt):
         if stmt.value is not None:
-            lines.append(f"{pad}{gen_expr(stmt.value)}")
+            val = gen_expr(stmt.value)
+            # 返回值如有 _ast_type 则标注类型
+            actual = getattr(stmt.value, '_ast_type', None)
+            if actual:
+                val = f"({val} : {gen_type(actual)})"
+            lines.append(f"{pad}{val}")
         else:
             lines.append(f"{pad}()")
 

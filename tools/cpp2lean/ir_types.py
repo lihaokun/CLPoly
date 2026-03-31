@@ -49,6 +49,7 @@ TypeIR = Union[BaseType, ArrayType, PairType, StructType, ExceptType, str]
 class Var:
     name: str
     version: int = 0
+    _ast_type: object = None  # TypeIR from Clang AST
 
     def lean_name(self) -> str:
         if self.version == 0:
@@ -59,55 +60,65 @@ class Var:
 class Lit:
     value: int
     typ: BaseType = BaseType.UINT64
+    _ast_type: object = None
 
 @dataclass
 class BinOp:
     op: str
     lhs: ExprIR
     rhs: ExprIR
+    _ast_type: object = None
 
 @dataclass
 class UnaryOp:
     op: str
     operand: ExprIR
+    _ast_type: object = None
 
 @dataclass
 class CondExpr:
     cond: ExprIR
     then_e: ExprIR
     else_e: ExprIR
+    _ast_type: object = None
 
 @dataclass
 class Call:
     func: str
     args: list[ExprIR]
+    _ast_type: object = None
 
 @dataclass
 class ArrayAccess:
     arr: ExprIR
     idx: ExprIR
+    _ast_type: object = None
 
 @dataclass
 class FieldAccess:
     obj: ExprIR
     field_name: str
+    _ast_type: object = None
 
 @dataclass
 class Cast:
     expr: ExprIR
     target_type: TypeIR
-    source_type: TypeIR = None  # 原始类型（如果已知）
+    source_type: TypeIR = None
+    _ast_type: object = None
 
 @dataclass
 class ArrayPush:
     arr: ExprIR
     elem: ExprIR
+    _ast_type: object = None
 
 @dataclass
 class UnknownExpr:
     kind: str
     children: list[ExprIR] = field(default_factory=list)
     raw: str = ""
+    _ast_type: object = None
 
 ExprIR = Union[Var, Lit, BinOp, UnaryOp, CondExpr, Call, ArrayAccess,
                FieldAccess, Cast, ArrayPush, UnknownExpr]

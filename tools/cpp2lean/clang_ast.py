@@ -422,6 +422,15 @@ def parse_while(node: dict) -> StmtIR:
 
 
 def parse_expr(node: dict) -> ExprIR:
+    result = _parse_expr_inner(node)
+    # 附加 Clang AST 类型（P1 原则：所有类型从 AST 传播）
+    ast_qual = node.get("type", {}).get("qualType", "")
+    if ast_qual:
+        result._ast_type = parse_type(ast_qual)
+    return result
+
+
+def _parse_expr_inner(node: dict) -> ExprIR:
     kind = node.get("kind", "")
     inner = node.get("inner", [])
 
@@ -469,21 +478,12 @@ def parse_expr(node: dict) -> ExprIR:
 
     if kind in ("CStyleCastExpr", "ImplicitCastExpr"):
         if inner:
-            # 提取目标类型
             target_qual = node.get("type", {}).get("qualType", "")
             target_type = parse_type(target_qual)
-            # 追踪到最内层找真正的源类型（跳过中间的 ImplicitCastExpr 链）
-            source_node = inner[0]
-            while source_node.get("kind") in ("ImplicitCastExpr", "CStyleCastExpr"):
-                sub = source_node.get("inner", [])
-                if sub:
-                    source_node = sub[0]
-                else:
-                    break
-            source_qual = source_node.get("type", {}).get("qualType", "")
+            # 直接取子节点（不追踪链），保留每一层 Cast
+            source_qual = inner[0].get("type", {}).get("qualType", "")
             source_type = parse_type(source_qual)
-            child_expr = parse_expr(source_node)
-            # 如果源和目标不同 → 保留 Cast
+            child_expr = parse_expr(inner[0])
             if target_type != source_type:
                 return Cast(child_expr, target_type, source_type)
             return child_expr
@@ -522,20 +522,25 @@ def parse_expr(node: dict) -> ExprIR:
             args = [parse_expr(a) for a in inner[1:]]
             return Call(lean_method, [obj] + args)
 
-    if kind == "CXXConstructExpr":
+    if kind in ("CXXConstructExpr", "CXXTemporaryObjectExpr"):
         qual_type = node.get("type", {}).get("qualType", "")
         typ = parse_type(qual_type)
+        # 按目标类型区分构造函数
         if isinstance(typ, StructType) and typ.name == "SparsePolyZp":
             return Call("Array.empty", [])
         if isinstance(typ, ArrayType):
             return Call("Array.empty", [])
-        # 双参数构造（pair(a, b)）
+        if isinstance(typ, StructType) and typ.name == "Zp" and len(inner) == 2:
+            return Call("Zp.mk", [parse_expr(inner[0]), parse_expr(inner[1])])
+        if isinstance(typ, StructType) and typ.name == "UMonomial" and len(inner) == 1:
+            return Call("UMonomial.mk", [parse_expr(inner[0])])
+        if isinstance(typ, PairType) and len(inner) == 2:
+            return Call("Prod.mk", [parse_expr(inner[0]), parse_expr(inner[1])])
+        # 双参数（其他类型）
         if inner and len(inner) == 2:
             return Call("Prod.mk", [parse_expr(inner[0]), parse_expr(inner[1])])
-        # 单参数构造（如 umonomial(deg)）
         if inner and len(inner) == 1:
             return parse_expr(inner[0])
-        # 零参数（默认构造）
         return Lit(0)
 
     if kind == "CXXStdInitializerListExpr":

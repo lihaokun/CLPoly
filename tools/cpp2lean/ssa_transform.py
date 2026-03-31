@@ -729,27 +729,47 @@ def extract_break_cond(stmt: StmtIR) -> ExprIR | None:
 # ============================================================
 
 def rename_expr(expr: ExprIR, env: VarEnv) -> ExprIR:
-    """将表达式中的变量引用替换为当前版本。"""
+    """将表达式中的变量引用替换为当前版本。传播 _ast_type。"""
+    t = getattr(expr, '_ast_type', None)
+
     if isinstance(expr, Var):
-        return env.current(expr.name)
+        r = env.current(expr.name)
+        r._ast_type = t or expr._ast_type
+        return r
     if isinstance(expr, BinOp):
-        return BinOp(expr.op, rename_expr(expr.lhs, env), rename_expr(expr.rhs, env))
+        r = BinOp(expr.op, rename_expr(expr.lhs, env), rename_expr(expr.rhs, env))
+        r._ast_type = t
+        return r
     if isinstance(expr, UnaryOp):
-        return UnaryOp(expr.op, rename_expr(expr.operand, env))
+        r = UnaryOp(expr.op, rename_expr(expr.operand, env))
+        r._ast_type = t
+        return r
     if isinstance(expr, CondExpr):
-        return CondExpr(rename_expr(expr.cond, env),
-                        rename_expr(expr.then_e, env),
-                        rename_expr(expr.else_e, env))
+        r = CondExpr(rename_expr(expr.cond, env),
+                     rename_expr(expr.then_e, env),
+                     rename_expr(expr.else_e, env))
+        r._ast_type = t
+        return r
     if isinstance(expr, Call):
-        return Call(expr.func, [rename_expr(a, env) for a in expr.args])
+        r = Call(expr.func, [rename_expr(a, env) for a in expr.args])
+        r._ast_type = t
+        return r
     if isinstance(expr, ArrayAccess):
-        return ArrayAccess(rename_expr(expr.arr, env), rename_expr(expr.idx, env))
+        r = ArrayAccess(rename_expr(expr.arr, env), rename_expr(expr.idx, env))
+        r._ast_type = t
+        return r
     if isinstance(expr, FieldAccess):
-        return FieldAccess(rename_expr(expr.obj, env), expr.field_name)
+        r = FieldAccess(rename_expr(expr.obj, env), expr.field_name)
+        r._ast_type = t
+        return r
     if isinstance(expr, Cast):
-        return Cast(rename_expr(expr.expr, env), expr.target_type, expr.source_type)
+        r = Cast(rename_expr(expr.expr, env), expr.target_type, expr.source_type)
+        r._ast_type = t
+        return r
     if isinstance(expr, ArrayPush):
-        return ArrayPush(rename_expr(expr.arr, env), rename_expr(expr.elem, env))
+        r = ArrayPush(rename_expr(expr.arr, env), rename_expr(expr.elem, env))
+        r._ast_type = t
+        return r
     return expr
 
 

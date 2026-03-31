@@ -31,6 +31,14 @@ make bench-clpoly           # 构建并运行性能基准 (release)
 make clean                  # 清除所有构建产物
 ```
 
+## cpp2lean 翻译器原则
+
+翻译器设计详见 `docs/design/l1-translation-validation/blueprint.md` §2a。核心原则：
+
+1. **翻译器不做类型推断——所有类型信息从 Clang AST 传播。** Clang 的 `ImplicitCastExpr` 已经标注了每一个隐式转换（含源类型和目标类型）。翻译器直接使用，不自己猜。违反此原则的代码是 bug。
+2. **翻译规则与 C++ 构造一一对应，不合并不拆分。** 生成的 Lean 可能冗余但忠实。
+3. **未知构造保留为 sorry，不丢弃不猜测。**
+
 ## 工作流程
 
 遵循 [通用开发工作流程规范](docs/workflow.md)，涵盖设计三阶段、实现流程、修复迭代的完整规范。

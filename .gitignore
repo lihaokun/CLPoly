@@ -51,3 +51,4 @@ test/debug_*.cc
 
 # Generated source (legacy)
 test/associatedgraph_test.cc
+tools/cpp2lean/__pycache__/

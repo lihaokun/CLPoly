@@ -90,9 +90,22 @@ def _scan_expr(expr: ExprIR, func_name: str,
                 context=list(context),
             ))
 
-        # 有符号溢出：int +, -, *
-        # 注：unsigned 无 UB（mod 2^64）。只有 signed 操作需要检查。
-        # 需要知道操作数类型才能判断。当前简化：不生成（CLPoly 极少用 signed 算术）
+        # 有符号溢出：signed int 的 +, -, *
+        # unsigned 无 UB（mod 2^64），不检查。
+        # signed 溢出是 UB（C++ [expr]/4），必须检查。
+        # 检测方法：从 Clang AST 的类型信息判断操作数是否 signed。
+        # 当前简化：检查表达式中是否有 Cast 到 INT64 的操作数。
+        if expr.op in ("+", "-", "*"):
+            if _is_signed_context(expr):
+                lhs_str = gen_expr(expr.lhs)
+                rhs_str = gen_expr(expr.rhs)
+                obligations.append(UBObligation(
+                    func_name=func_name,
+                    source_line=0,
+                    ub_type=UBType.SIGNED_OVERFLOW,
+                    lean_prop=f"Int.noOverflow ({lhs_str} {expr.op} {rhs_str})",
+                    context=list(context),
+                ))
 
     elif isinstance(expr, ArrayAccess):
         _scan_expr(expr.arr, func_name, obligations, context)
@@ -126,6 +139,33 @@ def _scan_expr(expr: ExprIR, func_name: str,
 
     elif isinstance(expr, Cast):
         _scan_expr(expr.expr, func_name, obligations, context)
+        # unsigned → signed 转换：值可能超出 signed 范围
+        # C++17: 实现定义（非 UB），但 C++20 前可能导致错误行为
+        # 保守处理：生成证明目标
+        if (isinstance(expr.source_type, BaseType) and
+            isinstance(expr.target_type, BaseType)):
+            # UINT64 → INT64：值 > INT64_MAX 时行为实现定义
+            if (expr.source_type == BaseType.UINT64 and
+                expr.target_type == BaseType.INT64):
+                inner_str = gen_expr(expr.expr)
+                obligations.append(UBObligation(
+                    func_name=func_name,
+                    source_line=0,
+                    ub_type=UBType.SIGNED_OVERFLOW,
+                    lean_prop=f"{inner_str}.val ≤ Int64.max",
+                    context=list(context),
+                ))
+            # UINT128 → INT64 同理
+            if (expr.source_type == BaseType.UINT128 and
+                expr.target_type == BaseType.INT64):
+                inner_str = gen_expr(expr.expr)
+                obligations.append(UBObligation(
+                    func_name=func_name,
+                    source_line=0,
+                    ub_type=UBType.SIGNED_OVERFLOW,
+                    lean_prop=f"{inner_str} ≤ Int64.max",
+                    context=list(context),
+                ))
 
     elif isinstance(expr, CondExpr):
         _scan_expr(expr.cond, func_name, obligations, context)
@@ -150,6 +190,22 @@ def _scan_expr(expr: ExprIR, func_name: str,
 # ============================================================
 # 输出格式化
 # ============================================================
+
+def _is_signed_context(expr: BinOp) -> bool:
+    """判断二元运算是否在 signed 上下文中。
+
+    检测方法：操作数中是否有 INT64 类型的 Cast 或 Lit。
+    """
+    def _has_signed(e: ExprIR) -> bool:
+        if isinstance(e, Cast) and e.target_type == BaseType.INT64:
+            return True
+        if isinstance(e, Lit) and e.typ == BaseType.INT64:
+            return True
+        if isinstance(e, Cast) and e.source_type == BaseType.INT64:
+            return True
+        return False
+    return _has_signed(expr.lhs) or _has_signed(expr.rhs)
+
 
 def format_obligations(obligations: list[UBObligation]) -> str:
     """格式化为 Lean 注释 + theorem 骨架。"""

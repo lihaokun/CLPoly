@@ -49,7 +49,29 @@
 | 示例 | `p << norm` → `require h_shift : norm < 64` |
 | 注意 | 当前统一按 64 位处理。如果操作数是 32 位，需要检查 Clang AST 中的类型信息调整位宽。 |
 
-### UB-5: assert 失败
+### UB-6: 有符号整数溢出
+
+| 项目 | 内容 |
+|------|------|
+| C++ 标准 | [expr]/4: "If during the evaluation of an expression, the result is not mathematically defined or not in the range of representable values for its type, the behavior is undefined" |
+| 触发 | `a + b`, `a - b`, `a * b` 当操作数为 signed int 且结果超出 `[INT_MIN, INT_MAX]` |
+| 检测规则 | `BinOp("+"/"-"/"*", lhs, rhs)` 且操作数含 `INT64` 类型 Cast → 生成目标 |
+| Lean 证明目标 | `Int.noOverflow (lhs op rhs)` |
+| 示例 | `int i = a + b;`（signed）→ `require h : Int.noOverflow (a + b)` |
+| 注意 | CLPoly 因式分解代码极少用 signed 算术，预期此类目标数量为 0 或极少 |
+
+### UB-7: unsigned → signed 类型转换溢出
+
+| 项目 | 内容 |
+|------|------|
+| C++ 标准 | [conv.integral]/3: C++17 前为 UB，C++17 起为实现定义（通常为 mod 2^N 截断）。保守处理。 |
+| 触发 | `(int64_t)x` 当 `x` 是 `uint64_t` 且值 > `INT64_MAX` |
+| 检测规则 | `Cast(expr, INT64, UINT64)` 或 `Cast(expr, INT64, UINT128)` |
+| Lean 证明目标 | `expr.val ≤ Int64.max` |
+| 示例 | `int64_t y = (int64_t)big_uint;` → `require h : big_uint.val ≤ Int64.max` |
+| 背景 | CLPoly DDF/EDF 的 64 位溢出 bug 就是此类问题（p^d 接近 2^64 时） |
+
+### UB-8: assert 失败
 
 | 项目 | 内容 |
 |------|------|
@@ -71,13 +93,9 @@
 | 原因 | **不是 UB。** C++ 标准明确规定 unsigned 运算是 mod 2^N。Lean `UInt64` 有相同语义。 |
 | 涉及运算 | `uint64_t` 的 `+`, `-`, `*` |
 
-### 不检测-2: 有符号整数溢出
+### ~~不检测-2: 有符号整数溢出~~ → 已改为检测（UB-6）
 
-| 项目 | 内容 |
-|------|------|
-| C++ 标准 | [expr]/4: "If during the evaluation of an expression, the result is not mathematically defined or not in the range of representable values for its type, the behavior is undefined" |
-| 原因 | CLPoly 因式分解代码**几乎不使用 signed 算术**。循环变量 `int i` 的范围远小于 INT_MAX。暂不生成，避免大量无意义的目标。 |
-| 未来 | 如果翻译 signed 算术密集的代码，需要启用。 |
+**已补充为 UB-6。**
 
 ### 不检测-3: 空指针解引用
 
@@ -117,6 +135,8 @@ CLPoly C++ 子集（blueprint §5a.1）的全部 UB 源：
 | 空容器 front/back | ✅ | UB-3 |
 | 移位越界 | ✅ | UB-4 |
 | assert 失败 | ✅ | UB-5（SSA 阶段） |
+| 有符号溢出 | ✅ | UB-6 |
+| unsigned→signed 转换溢出 | ✅ | UB-7 |
 | unsigned 溢出 | 不需要 | 不检测-1 |
 | signed 溢出 | 暂不检测 | 不检测-2 |
 | 空指针 | 不适用 | 不检测-3 |

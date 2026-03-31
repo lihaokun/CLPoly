@@ -397,6 +397,9 @@ def parse_range_for(node: dict) -> StmtIR:
                         loop_var_type = parse_type(decl.get("type", {}).get("qualType", "auto"))
         elif k == "CompoundStmt":
             body_stmt = parse_stmt(child)
+        elif k == "ExprWithCleanups":
+            # 单语句 range-for body（无 CompoundStmt 包裹）
+            body_stmt = parse_stmt(child)
 
     # 翻译为 ForLoop
     idx_var = Var("__idx")
@@ -495,13 +498,17 @@ def parse_expr(node: dict) -> ExprIR:
             # 方法名映射
             lean_method = METHOD_MAP.get(method_name, method_name)
             if method_name == "push_back" and len(inner) > 1:
-                return ArrayPush(obj, parse_expr(inner[1]))
+                elem = parse_expr(inner[1])
+                return ArrayPush(obj, elem)
             # 无参 getter → 字段访问
             if method_name in ("empty", "size", "front", "back", "deg", "prime", "val"):
                 return FieldAccess(obj, lean_method)
-            if method_name in ("reserve", "normalization"):
-                # reserve 是 no-op；normalization 映射为 normalize
-                return Call(lean_method, [obj])
+            if method_name in ("reserve",):
+                return Call("reserve", [obj])  # no-op
+            if method_name in ("normalization", "normalize"):
+                return Call("_mutate_normalize", [obj])  # mutation method
+            if method_name == "data":
+                return obj  # .data() → 返回 self（Array 本身）
             args = [parse_expr(a) for a in inner[1:]]
             return Call(lean_method, [obj] + args)
 
@@ -512,15 +519,24 @@ def parse_expr(node: dict) -> ExprIR:
             return Call("Array.empty", [])
         if isinstance(typ, ArrayType):
             return Call("Array.empty", [])
+        # 双参数构造（pair(a, b)）
+        if inner and len(inner) == 2:
+            return Call("Prod.mk", [parse_expr(inner[0]), parse_expr(inner[1])])
         # 单参数构造（如 umonomial(deg)）
         if inner and len(inner) == 1:
             return parse_expr(inner[0])
+        # 零参数（默认构造）
         return Lit(0)
 
     if kind == "CXXStdInitializerListExpr":
-        # {a, b} 初始化列表
         if inner:
             return Call("Array.mk", [parse_expr(c) for c in inner])
+
+    if kind == "InitListExpr":
+        # {a, b} → Prod.mk a b (pair) 或 Array.mk [a, b] (array)
+        if len(inner) == 2:
+            return Call("Prod.mk", [parse_expr(inner[0]), parse_expr(inner[1])])
+        return Call("Array.mk", [parse_expr(c) for c in inner])
 
     if kind == "CallExpr":
         if inner:

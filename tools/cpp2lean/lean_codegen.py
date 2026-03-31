@@ -245,9 +245,9 @@ def gen_tailrec(tr: TailRec, indent: int) -> list[str]:
 
     # 退出条件
     lines.append(f"{inner_pad}if {gen_expr(tr.exit_cond)} then")
-    # 返回累积状态（第一个参数或最后一个参数）
+    # 返回累积状态：优先选名为 result/acc/sum 的参数，否则最后一个
     if tr.params:
-        acc_name = tr.params[-1][0].lean_name()
+        acc_name = _pick_accumulator(tr.params)
         lines.append(f"{inner_pad}  {acc_name}")
     else:
         lines.append(f"{inner_pad}  ()")
@@ -320,6 +320,17 @@ def gen_tailrec(tr: TailRec, indent: int) -> list[str]:
         lines.append(f"{pad}{tr.func_name} {init_args}")
 
     return lines
+
+
+def _pick_accumulator(params: list) -> str:
+    """选择循环的累积变量作为退出返回值。"""
+    # 优先选名字含 result/acc/sum/out 的
+    for v, _ in params:
+        name = v.lean_name()
+        if any(kw in v.name for kw in ("result", "acc", "sum", "out", "coll")):
+            return name
+    # 否则返回最后一个参数
+    return params[-1][0].lean_name()
 
 
 def _is_break_if(stmt: IfStmt) -> bool:

@@ -197,6 +197,20 @@ def transform_stmt(stmt: StmtIR, env: VarEnv) -> StmtIR | list[StmtIR]:
             new_var = env.bump(expr.operand.name)
             typ = env.get_type(expr.operand.name)
             return LetStmt(new_var, typ, BinOp("-", old, Lit(1)))
+        # _mutate_normalize(obj) → let obj_{n+1} := normalize obj_n
+        if isinstance(expr, Call) and expr.func == "_mutate_normalize" and expr.args:
+            if isinstance(expr.args[0], Var):
+                old = env.current(expr.args[0].name)
+                new_var = env.bump(expr.args[0].name)
+                typ = env.get_type(expr.args[0].name)
+                return LetStmt(new_var, typ, Call("normalize", [old]))
+        # __upoly_make_monic(obj) → let obj_{n+1} := upoly_make_monic obj_n
+        if isinstance(expr, Call) and expr.func == "__upoly_make_monic" and expr.args:
+            if isinstance(expr.args[0], Var):
+                old = env.current(expr.args[0].name)
+                new_var = env.bump(expr.args[0].name)
+                typ = env.get_type(expr.args[0].name)
+                return LetStmt(new_var, typ, Call("__upoly_make_monic", [old]))
         # arr.push(x) → let arr_{n+1} := arr_n.push(x)
         if isinstance(expr, ArrayPush) and isinstance(expr.arr, Var):
             old = env.current(expr.arr.name)
@@ -267,19 +281,38 @@ def transform_if(stmt: IfStmt, env: VarEnv) -> list[StmtIR]:
         return [IfStmt(cond, then_body, else_body)]
 
     # 有变量分歧 → 提取各分支对变量的赋值表达式，生成 phi
-    # 从 then_body/else_body 中找每个 diff 变量最后一次赋值的 RHS
     then_exprs = _extract_last_assigns(then_body)
     else_exprs = _extract_last_assigns(else_body)
 
+    # 按依赖顺序排列 phi 节点：如果 A 的表达式引用了 B，B 先输出
     result: list[StmtIR] = []
-    for name, (then_var, else_var) in diff.items():
+    remaining = dict(diff)
+    emitted = set()
+    max_iter = len(remaining) + 1
+    while remaining and max_iter > 0:
+        max_iter -= 1
+        for name in list(remaining.keys()):
+            then_var, else_var = remaining[name]
+            then_expr = then_exprs.get(name, then_var)
+            else_expr = else_exprs.get(name, else_var)
+            # 检查依赖：表达式中引用的 diff 变量是否已 emit
+            deps = _extract_vars(then_expr) | _extract_vars(else_expr)
+            unresolved = deps & set(remaining.keys()) - {name} - emitted
+            if not unresolved:
+                new_var = env.bump(name)
+                typ = env.get_type(name)
+                phi_expr = CondExpr(cond, then_expr, else_expr)
+                result.append(LetStmt(new_var, typ, phi_expr))
+                emitted.add(name)
+                del remaining[name]
+
+    # 剩余的（循环依赖）直接输出
+    for name, (then_var, else_var) in remaining.items():
         new_var = env.bump(name)
         typ = env.get_type(name)
-        # 有赋值 → 用 RHS 表达式；无赋值 → 用该分支的变量版本（进入 if 前的值）
         then_expr = then_exprs.get(name, then_var)
         else_expr = else_exprs.get(name, else_var)
-        phi_expr = CondExpr(cond, then_expr, else_expr)
-        result.append(LetStmt(new_var, typ, phi_expr))
+        result.append(LetStmt(new_var, typ, CondExpr(cond, then_expr, else_expr)))
 
     return result
 
@@ -644,12 +677,14 @@ def _extract_vars(expr: ExprIR) -> set[str]:
 
 
 def identify_loop_vars(stmt: StmtIR) -> set[str]:
-    """识别语句中被赋值的变量名。"""
+    """识别语句中被**修改**（而非新声明）的变量名。
+
+    AssignStmt = 修改已有变量 → 加入
+    LetStmt = 新声明 → 不加入（循环体内的局部变量不是循环参数）
+    """
     result = set()
     if isinstance(stmt, AssignStmt):
         result.add(stmt.target.name)
-    elif isinstance(stmt, LetStmt):
-        result.add(stmt.var.name)
     elif isinstance(stmt, (IfStmt,)):
         for s in stmt.then_body + stmt.else_body:
             result |= identify_loop_vars(s)

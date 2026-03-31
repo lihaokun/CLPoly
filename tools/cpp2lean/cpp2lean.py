@@ -27,9 +27,13 @@ def main():
 
     if use_ssa:
         from lean_codegen import PRELUDE, _uses_uint128
+        from ub_collector import collect_all, inject_obligations
         ssa_funcs = [transform_func(f) for f in funcs]
+        # UB 证明目标注入到函数签名
+        for sf in ssa_funcs:
+            obs = collect_all(sf)
+            inject_obligations(sf, obs)
         parts = ["-- Auto-generated Lean IR from C++ via cpp2lean (SSA mode)", ""]
-        # prelude if needed
         if any(_uses_uint128(f) for f in funcs):
             parts.append(PRELUDE)
         for sf in ssa_funcs:

@@ -36,6 +36,9 @@ def gen_type(t: TypeIR) -> str:
 def gen_require_prop(req) -> str:
     """Require → Lean Prop。"""
     cond = req.cond
+    # UB obligations 注入的 Var：lean_prop 字符串直接作为 Prop
+    if isinstance(cond, Var) and any(c in cond.name for c in ("≠", "<", "≤", "¬", "noOverflow")):
+        return cond.name
     if isinstance(cond, BinOp) and cond.op == "!=":
         return f"{gen_expr(cond.lhs)} ≠ {gen_expr(cond.rhs)}"
     if isinstance(cond, BinOp) and cond.op == "==":

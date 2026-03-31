@@ -191,20 +191,68 @@ def _scan_expr(expr: ExprIR, func_name: str,
 # 输出格式化
 # ============================================================
 
+def _is_trivial(ob: UBObligation) -> bool:
+    """过滤明显无意义的 UB 目标。"""
+    # 常数移位量：如果 RHS 是字面量且 < 64，不需要证明
+    if ob.ub_type == UBType.SHIFT_OOB:
+        # "(64 : UInt64) < 64" 这种是 UInt128 >>> 64 产生的，不是真 UB
+        if "64) < 64" in ob.lean_prop or "(0 : " in ob.lean_prop:
+            return True
+    # signed overflow 对 unsigned 运算的误报
+    if ob.ub_type == UBType.SIGNED_OVERFLOW:
+        # 如果 prop 中只有 UInt64 字面量，说明是 unsigned 运算
+        if ".toNat.toUInt64" in ob.lean_prop:
+            return True
+    return False
+
+
 def _is_signed_context(expr: BinOp) -> bool:
     """判断二元运算是否在 signed 上下文中。
 
-    检测方法：操作数中是否有 INT64 类型的 Cast 或 Lit。
+    只有当**两个操作数的最终类型都是 signed**时才算 signed 运算。
+    如果任一操作数是 UInt64（或 Cast 到 UInt64），则是 unsigned 运算。
     """
-    def _has_signed(e: ExprIR) -> bool:
-        if isinstance(e, Cast) and e.target_type == BaseType.INT64:
-            return True
-        if isinstance(e, Lit) and e.typ == BaseType.INT64:
-            return True
-        if isinstance(e, Cast) and e.source_type == BaseType.INT64:
-            return True
-        return False
-    return _has_signed(expr.lhs) or _has_signed(expr.rhs)
+    def _final_type(e: ExprIR) -> BaseType | None:
+        if isinstance(e, Cast):
+            return e.target_type if isinstance(e.target_type, BaseType) else None
+        if isinstance(e, Lit):
+            return e.typ
+        return None
+
+    lhs_type = _final_type(expr.lhs)
+    rhs_type = _final_type(expr.rhs)
+
+    # 只有两边都明确是 INT64 才算 signed
+    if lhs_type == BaseType.INT64 and rhs_type == BaseType.INT64:
+        return True
+    # 一边是 INT64 且另一边未知（Var 等），保守认为 signed
+    if (lhs_type == BaseType.INT64 and rhs_type is None) or \
+       (rhs_type == BaseType.INT64 and lhs_type is None):
+        return True
+    return False
+
+
+def inject_obligations(func: SSAFunc, obligations: list[UBObligation]):
+    """将 UB 证明目标注入到函数的 requires 列表中。"""
+    seen = set()
+    for ob in obligations:
+        # 过滤明显无意义的目标
+        if _is_trivial(ob):
+            continue
+        if ob.lean_prop in seen:
+            continue
+        seen.add(ob.lean_prop)
+        # 生成 require 名称
+        tag = ob.ub_type.name.lower()
+        idx = len(func.requires) + 1
+        name = f"h_{tag}_{idx}"
+        # 构造 Require 节点（cond 用 Var 包装 lean_prop 字符串）
+        req = Require(
+            cond=Var(ob.lean_prop),  # lean_prop 作为 Prop 表达式
+            name=name,
+            source=tag,
+        )
+        func.requires.append(req)
 
 
 def format_obligations(obligations: list[UBObligation]) -> str:

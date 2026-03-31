@@ -461,8 +461,11 @@ def parse_expr(node: dict) -> ExprIR:
 
     if kind == "MemberExpr":
         fname = node.get("name", "?")
+        # C++ pair .first/.second → Lean .fst/.snd
+        field_map = {"first": "fst", "second": "snd"}
+        lean_fname = field_map.get(fname, fname)
         if inner:
-            return FieldAccess(parse_expr(inner[0]), fname)
+            return FieldAccess(parse_expr(inner[0]), lean_fname)
 
     if kind in ("CStyleCastExpr", "ImplicitCastExpr"):
         if inner:

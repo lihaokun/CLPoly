@@ -103,17 +103,18 @@ def parse_function_json(filename: str, func_name: str,
 def parse_file(filename: str, args: list[str] = None,
                target_file: str = None) -> list[FuncIR]:
     """混合解析：libclang 列函数 + JSON dump 逐个翻译。"""
+    import sys as _sys
     func_names = list_functions(filename, args, target_file)
-    print(f"Found {len(func_names)} functions in {filename}")
+    print(f"Found {len(func_names)} functions in {filename}", file=_sys.stderr)
 
     funcs = []
     for name in func_names:
-        print(f"  Translating {name}...", end=" ", flush=True)
+        print(f"  Translating {name}...", end=" ", flush=True, file=_sys.stderr)
         func = parse_function_json(filename, name, args)
         if func:
             funcs.append(func)
-            print(f"OK ({len(func.body)} stmts)")
+            print(f"OK ({len(func.body)} stmts)", file=_sys.stderr)
         else:
-            print("FAILED")
+            print("FAILED", file=_sys.stderr)
 
     return funcs

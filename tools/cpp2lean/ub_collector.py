@@ -236,8 +236,11 @@ def inject_obligations(func: SSAFunc, obligations: list[UBObligation]):
     """将 UB 证明目标注入到函数的 requires 列表中。"""
     seen = set()
     for ob in obligations:
-        # 过滤明显无意义的目标
+        # 过滤无意义/不可用的目标
         if _is_trivial(ob):
+            continue
+        # 引用循环内部变量（__idx, __coll）的目标不能提升到函数签名
+        if "__idx" in ob.lean_prop or "__coll" in ob.lean_prop:
             continue
         if ob.lean_prop in seen:
             continue

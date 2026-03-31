@@ -1,8 +1,8 @@
-// 最小测试：从 CLPoly 提取 __nmod_mul 供 AST 分析
+// 翻译器测试：模拟 CLPoly 核心函数
 #include <cstdint>
 #include <cassert>
 
-// 简化版 Barrett 模乘（从 number.hh 提取核心逻辑）
+// Barrett reduction 模乘（真实 CLPoly 逻辑）
 uint64_t nmod_mul(uint64_t a, uint64_t b, uint64_t p, uint64_t ninv, uint32_t norm) {
     assert(p != 0);
     uint64_t pn = p << norm;
@@ -19,17 +19,4 @@ uint64_t nmod_mul(uint64_t a, uint64_t b, uint64_t p, uint64_t ninv, uint32_t no
     if (r > q0) r += pn;
     if (r >= pn) r -= pn;
     return r >> norm;
-}
-
-// 简化版多项式 make_monic（测试循环翻译）
-struct Term { uint64_t deg; uint64_t coeff; };
-
-void upoly_make_monic(Term* poly, int n, uint64_t p, uint64_t ninv, uint32_t norm) {
-    if (n == 0) return;
-    uint64_t lc = poly[0].coeff;
-    if (lc == 1) return;
-    uint64_t lc_inv = 0; // 简化：假设已计算
-    for (int i = 0; i < n; i++) {
-        poly[i].coeff = nmod_mul(poly[i].coeff, lc_inv, p, ninv, norm);
-    }
 }

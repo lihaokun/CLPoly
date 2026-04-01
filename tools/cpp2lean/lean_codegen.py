@@ -163,18 +163,20 @@ def gen_expr(expr: ExprIR) -> str:
             field = expr.args[1].name if isinstance(expr.args[1], Var) else gen_expr(expr.args[1])
             val = gen_expr(expr.args[2])
             return f"{{ {obj} with {field} := {val} }}"
-        # Lean 标准库/model 函数 → 不加 _ir
-        from class_map import LEAN_BUILTINS
+        # 查找顺序：LEAN_BUILTINS → LEAN_STDLIB → NOOP → TRANSLATION_SCOPE → sorry
+        from class_map import LEAN_BUILTINS, TRANSLATION_SCOPE
         if func_name in LEAN_BUILTINS:
             return f"({func_name} {args})" if args else func_name
         if func_name in LEAN_STDLIB:
             lean_name = LEAN_STDLIB[func_name]
             return f"({lean_name} {args})" if args else lean_name
-        # no-op 函数 → 丢弃
         if func_name in NOOP_FUNCS:
-            return args.split()[0] if args else "()"  # 返回第一个参数（this）
-        # 翻译的 C++ 函数 → 加 _ir
-        return f"({func_name}_ir {args})" if args else f"{func_name}_ir"
+            return args.split()[0] if args else "()"
+        # 翻译范围内的函数 → 加 _ir
+        if func_name in TRANSLATION_SCOPE:
+            return f"({func_name}_ir {args})" if args else f"{func_name}_ir"
+        # 都不在 → sorry
+        return f"/- unknown func: {func_name} -/ sorry"
 
     if isinstance(expr, ArrayAccess):
         idx = gen_expr(expr.idx)

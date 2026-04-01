@@ -130,3 +130,24 @@ LEAN_BUILTINS = {
 # ============================================================
 
 NOOP_METHODS = {"reserve", "data"}
+
+# ============================================================
+# 翻译范围：本次翻译的 C++ 函数
+# 范围内函数互相调用加 _ir 后缀
+# ============================================================
+
+TRANSLATION_SCOPE = {
+    "__make_zp",
+    "__upoly_make_monic",
+    "__upoly_mod",
+    "__upoly_divmod",
+    "__upoly_powmod",
+    "__upoly_random",
+    "__extract_pth_root",
+    "__squarefree_Zp",
+    "__upoly_subtract_x",
+    "__upoly_subtract_one",
+    "__ddf_Zp",
+    "__edf_Zp",
+    "__factor_Zp",
+}

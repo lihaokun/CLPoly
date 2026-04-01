@@ -185,26 +185,24 @@ METHOD_MAP = {
 
 def parse_type(qual: str) -> TypeIR:
     qual = qual.strip()
-    # 去掉 const 和引用
     clean = qual.replace("const", "").replace("&", "").replace("*", "").strip()
+
+    # 1. 基本类型（精确匹配）
     if clean in TYPE_MAP:
         return TYPE_MAP[clean]
-    # CLPoly 类型
-    for key, val in CLPOLY_TYPE_MAP.items():
-        if key in clean:
-            return val
-    # vector<T> — 需要匹配嵌套 <>
-    m = re.match(r"(?:std::)?vector<(.+)>$", clean)
-    if m:
-        inner_str = m.group(1)
-        # 检查嵌套 <>：只在最外层的 > 处截断
-        inner_str = _extract_template_arg(clean, "vector")
-        if inner_str:
-            return ArrayType(parse_type(inner_str))
-    # pair<A,B>
+
+    # 2. 复合类型先解析（pair/vector），避免子串匹配抢先
     pair_args = _extract_pair_args(clean)
     if pair_args:
         return PairType(parse_type(pair_args[0]), parse_type(pair_args[1]))
+    inner_str = _extract_template_arg(clean, "vector")
+    if inner_str:
+        return ArrayType(parse_type(inner_str))
+
+    # 3. CLPoly 叶子类型（子串匹配，只在复合类型解析后）
+    for key, val in CLPOLY_TYPE_MAP.items():
+        if key in clean:
+            return val
     return qual  # 未知类型保留原始字符串
 
 

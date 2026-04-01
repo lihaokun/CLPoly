@@ -27,6 +27,10 @@ structure Zp where
   prime : UInt64
 deriving Repr, Inhabited
 
+-- Zp 从 Int 构造（CLPoly 的 Zp(int64_t, uint64_t)）
+def Zp.ofInt (v : Int) (p : UInt64) : Zp :=
+  ⟨(v % p.toNat).toNat.toUInt64, p⟩
+
 structure UMonomial where
   deg : UInt64
 deriving Repr, Inhabited
@@ -35,6 +39,15 @@ abbrev SparsePolyZp := Array (UMonomial × Zp)
 
 -- Array 辅助
 def Array.front! {α : Type} [Inhabited α] (a : Array α) : α := a[0]!
+
+-- UInt64 / Nat 互操作（C++ 用 uint64_t 索引，Lean Array 用 Nat）
+instance : LT UInt64 where lt a b := a.toNat < b.toNat
+instance : LE UInt64 where le a b := a.toNat ≤ b.toNat
+instance : DecidableEq UInt64 := inferInstance
+instance {α : Type} : GetElem (Array α) UInt64 α (fun a i => i.toNat < a.size) where
+  getElem a i h := a[i.toNat]
+
+@[inline] def Array.size_u64 (a : Array α) : UInt64 := a.size.toUInt64
 
 -- ============================================================
 -- 外部函数声明（CLPoly 其他模块提供，此处为 opaque）

@@ -197,20 +197,15 @@ def transform_stmt(stmt: StmtIR, env: VarEnv) -> StmtIR | list[StmtIR]:
             new_var = env.bump(expr.operand.name)
             typ = env.get_type(expr.operand.name)
             return LetStmt(new_var, typ, BinOp("-", old, Lit(1)))
-        # _mutate_normalize(obj) → let obj_{n+1} := normalize obj_n
-        if isinstance(expr, Call) and expr.func == "_mutate_normalize" and expr.args:
+        # _mutate_* 方法（来自 CLASS_MAP 的 mutate 类别）
+        # _mutate_X(obj) → let obj_{n+1} := X obj_n
+        if isinstance(expr, Call) and expr.func.startswith("_mutate_") and expr.args:
+            lean_name = expr.func[len("_mutate_"):]
             if isinstance(expr.args[0], Var):
                 old = env.current(expr.args[0].name)
                 new_var = env.bump(expr.args[0].name)
                 typ = env.get_type(expr.args[0].name)
-                return LetStmt(new_var, typ, Call("normalize", [old]))
-        # __upoly_make_monic(obj) → let obj_{n+1} := upoly_make_monic obj_n
-        if isinstance(expr, Call) and expr.func == "__upoly_make_monic" and expr.args:
-            if isinstance(expr.args[0], Var):
-                old = env.current(expr.args[0].name)
-                new_var = env.bump(expr.args[0].name)
-                typ = env.get_type(expr.args[0].name)
-                return LetStmt(new_var, typ, Call("__upoly_make_monic", [old]))
+                return LetStmt(new_var, typ, Call(lean_name, [old]))
         # arr.push(x) → let arr_{n+1} := arr_n.push(x)
         if isinstance(expr, ArrayPush) and isinstance(expr.arr, Var):
             old = env.current(expr.arr.name)
@@ -560,7 +555,7 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv) -> list[StmtIR]:
     tailrec = TailRec(
         func_name=func_name,
         params=params,
-        exit_cond=BinOp(">=", idx_var, FieldAccess(coll_var, "size")),
+        exit_cond=BinOp(">=", idx_var, Call("Array.size_u64", [coll_var])),
         break_cond=None,
         body=body_stmts,
         step=[LetStmt(Var(idx_name, idx_var.version + 1), BaseType.UINT64,

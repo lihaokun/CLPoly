@@ -108,6 +108,7 @@ LEAN_STDLIB = {
     "Array.empty": "#[]",
     "Array.mk": "Array.mk",
     "Array.set!": "Array.set!",
+    "Array.size_u64": "Array.size_u64",
     "Zp.mk": "Zp.mk",
     "UMonomial.mk": "UMonomial.mk",
 }
@@ -153,15 +154,22 @@ def gen_expr(expr: ExprIR) -> str:
     if isinstance(expr, Call):
         func_name = expr.func
         args = " ".join(gen_expr(a) for a in expr.args)
+        # _mutate_ 前缀 → 去掉前缀（SSA 处理在 ssa_transform）
+        if func_name.startswith("_mutate_"):
+            func_name = func_name[len("_mutate_"):]
         # functional update: { obj with field := value }
         if func_name == "_with" and len(expr.args) == 3:
             obj = gen_expr(expr.args[0])
             field = expr.args[1].name if isinstance(expr.args[1], Var) else gen_expr(expr.args[1])
             val = gen_expr(expr.args[2])
             return f"{{ {obj} with {field} := {val} }}"
-        # Lean 标准库函数 → 不加 _ir
+        # Lean 标准库/model 函数 → 不加 _ir
+        from class_map import LEAN_BUILTINS
+        if func_name in LEAN_BUILTINS:
+            return f"({func_name} {args})" if args else func_name
         if func_name in LEAN_STDLIB:
-            return f"({LEAN_STDLIB[func_name]} {args})" if args else LEAN_STDLIB[func_name]
+            lean_name = LEAN_STDLIB[func_name]
+            return f"({lean_name} {args})" if args else lean_name
         # no-op 函数 → 丢弃
         if func_name in NOOP_FUNCS:
             return args.split()[0] if args else "()"  # 返回第一个参数（this）
@@ -169,7 +177,8 @@ def gen_expr(expr: ExprIR) -> str:
         return f"({func_name}_ir {args})" if args else f"{func_name}_ir"
 
     if isinstance(expr, ArrayAccess):
-        return f"({gen_expr(expr.arr)}[{gen_expr(expr.idx)}]!)"
+        idx = gen_expr(expr.idx)
+        return f"({gen_expr(expr.arr)}[{idx}.toNat]!)"
 
     if isinstance(expr, FieldAccess):
         return f"{gen_expr(expr.obj)}.{expr.field_name}"

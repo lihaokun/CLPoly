@@ -11,6 +11,15 @@ import re
 from ir_types import *
 
 
+def _get_class_name(node: dict) -> str | None:
+    """从 Clang AST 节点提取 CLPoly 类名。"""
+    qual = node.get("type", {}).get("qualType", "")
+    typ = parse_type(qual)
+    if isinstance(typ, StructType):
+        return typ.name
+    return None
+
+
 def _extract_root_var(expr) -> Var | None:
     """从 Cast/FieldAccess 链中提取根变量。"""
     if isinstance(expr, Var):
@@ -470,9 +479,8 @@ def _parse_expr_inner(node: dict) -> ExprIR:
 
     if kind == "MemberExpr":
         fname = node.get("name", "?")
-        # C++ pair .first/.second → Lean .fst/.snd
-        field_map = {"first": "fst", "second": "snd"}
-        lean_fname = field_map.get(fname, fname)
+        from class_map import FIELD_MAP
+        lean_fname = FIELD_MAP.get(fname, fname)
         if inner:
             return FieldAccess(parse_expr(inner[0]), lean_fname)
 
@@ -496,7 +504,7 @@ def _parse_expr_inner(node: dict) -> ExprIR:
         if inner:
             member = inner[0]
             method_name = member.get("name", "?")
-            # 提取 this 对象：跳过 ImplicitCastExpr 链到最内层
+            # 提取 this 对象：跳过 ImplicitCastExpr 链
             obj_node = member.get("inner", [{}])[0] if member.get("inner") else {}
             while obj_node.get("kind") in ("ImplicitCastExpr", "CStyleCastExpr"):
                 sub = obj_node.get("inner", [])
@@ -505,38 +513,59 @@ def _parse_expr_inner(node: dict) -> ExprIR:
                 else:
                     break
             obj = parse_expr(obj_node) if obj_node else UnknownExpr("no_obj")
-            # 方法名映射
-            lean_method = METHOD_MAP.get(method_name, method_name)
-            if method_name == "push_back" and len(inner) > 1:
-                elem = parse_expr(inner[1])
-                return ArrayPush(obj, elem)
-            # 无参 getter → 字段访问
-            if method_name in ("empty", "size", "front", "back", "deg", "prime", "val"):
-                return FieldAccess(obj, lean_method)
-            if method_name in ("reserve",):
-                return Call("reserve", [obj])  # no-op
-            if method_name in ("normalization", "normalize"):
-                return Call("_mutate_normalize", [obj])  # mutation method
-            if method_name == "data":
-                return obj  # .data() → 返回 self（Array 本身）
+            # 查 CLASS_MAP
+            from class_map import CLASS_MAP, FIELD_MAP
+            obj_type = _get_class_name(obj_node)
+            class_info = CLASS_MAP.get(obj_type)
+            if class_info and method_name in class_info.get("methods", {}):
+                category, lean_name = class_info["methods"][method_name]
+                if category == "field":
+                    return FieldAccess(obj, lean_name)
+                elif category == "method":
+                    return Call(lean_name, [obj])
+                elif category == "mutate":
+                    return Call("_mutate_" + lean_name, [obj])
+                elif category == "mutate_push":
+                    elem = parse_expr(inner[1]) if len(inner) > 1 else UnknownExpr("no_elem")
+                    return ArrayPush(obj, elem)
+                elif category == "noop":
+                    return obj
+                elif category == "identity":
+                    return obj
+            # 不在 CLASS_MAP → sorry
             args = [parse_expr(a) for a in inner[1:]]
-            return Call(lean_method, [obj] + args)
+            return UnknownExpr(f"unmapped:{obj_type}.{method_name}")
 
     if kind in ("CXXConstructExpr", "CXXTemporaryObjectExpr"):
         qual_type = node.get("type", {}).get("qualType", "")
         typ = parse_type(qual_type)
-        # 按目标类型区分构造函数
-        if isinstance(typ, StructType) and typ.name == "SparsePolyZp":
-            return Call("Array.empty", [])
-        if isinstance(typ, ArrayType):
-            return Call("Array.empty", [])
-        if isinstance(typ, StructType) and typ.name == "Zp" and len(inner) == 2:
-            return Call("Zp.mk", [parse_expr(inner[0]), parse_expr(inner[1])])
-        if isinstance(typ, StructType) and typ.name == "UMonomial" and len(inner) == 1:
-            return Call("UMonomial.mk", [parse_expr(inner[0])])
+        from class_map import CLASS_MAP
+        # 查 CLASS_MAP 构造函数
+        class_name = typ.name if isinstance(typ, StructType) else None
+        class_info = CLASS_MAP.get(class_name) if class_name else None
+        if class_info:
+            arg_types = tuple(parse_type(a.get("type", {}).get("qualType", ""))
+                              for a in inner if a.get("type"))
+            ctors = class_info.get("constructors", {})
+            # 按参数数量匹配
+            ctor = None
+            for key, val in ctors.items():
+                if isinstance(key, tuple) and len(key) == len(inner):
+                    ctor = val
+                    break
+            if ctor is None and () in ctors and len(inner) == 0:
+                ctor = ctors[()]
+            if ctor == "default":
+                return Lit(0)
+            if ctor:
+                args = [parse_expr(a) for a in inner]
+                return Call(ctor, args)
+        # pair
         if isinstance(typ, PairType) and len(inner) == 2:
             return Call("Prod.mk", [parse_expr(inner[0]), parse_expr(inner[1])])
-        # 双参数（其他类型）
+        if isinstance(typ, ArrayType) or (isinstance(typ, StructType) and typ.name == "SparsePolyZp"):
+            return Call("SparsePolyZp.empty", [])
+        # fallback
         if inner and len(inner) == 2:
             return Call("Prod.mk", [parse_expr(inner[0]), parse_expr(inner[1])])
         if inner and len(inner) == 1:

@@ -77,7 +77,32 @@ def SparsePolyZp.toPoly (s : SparsePolyZp) (p : Nat) :
     Polynomial (ZMod p) := ...
 ```
 
-## 2a. 核心设计原则
+## 2a. 翻译器输入
+
+翻译器有四个输入：
+
+| 输入 | 性质 | 内容 |
+|------|------|------|
+| C++ 源码文件 | 翻译对象 | `polynomial_factorize_zp.hh` 等 |
+| `clpoly_model.lean` | 可信基定义 | 类型+方法的 Lean 模型（手写，Lean 编译验证） |
+| `class_map.py` | 操作映射（固定） | C++ 类操作 → Lean 函数名 |
+| 翻译范围配置 | 每次翻译的输入 | 本次翻译哪些函数 |
+
+**翻译范围**：显式列出被翻译的 C++ 函数集合。翻译器据此决定函数调用的链接方式：
+
+```
+调用 f()：
+  f 在翻译范围内 → f_ir（调用翻译后的版本）
+  f 在 FUNC_MAP 中 → 映射到 clpoly_model.lean 的函数
+  f 在 LEAN_BUILTINS 中 → 直接使用 Lean 标准库
+  都不在 → sorry
+```
+
+翻译范围是配置（每次可变），不是 class_map 的一部分（class_map 是固定知识）。
+
+## 2b. 核心设计原则
+
+**P0: 翻译器只查表，不硬编码。** 类操作查 CLASS_MAP，独立函数查 FUNC_MAP，函数链接查翻译范围。不在表中 → sorry。
 
 **P1: 翻译器不做类型推断——所有类型信息从 Clang AST 传播。**
 

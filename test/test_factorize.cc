@@ -857,5 +857,190 @@ int main()
         CLPOLY_ASSERT(fac.factors.size() >= 1);
     }
 
+    // ========================================
+    // factorbasis 测试（一般序）
+    // ========================================
+
+    variable y("y");
+
+    // Helper: 验证 factorbasis 的核心性质
+    // 1) 每个基元素不可约  2) 两两互素  3) 来源信息长度匹配
+    auto verify_factorbasis = [](
+        const std::vector<polynomial_ZZ>& input,
+        const std::pair<std::vector<polynomial_ZZ>,
+                        std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>& result)
+    {
+        auto& [basis, info] = result;
+        if (basis.size() != info.size()) return false;
+
+        for (auto& b : basis)
+        {
+            if (is_number(b)) return false;
+            auto fac = factorize(b);
+            if (fac.factors.size() != 1 || fac.factors[0].second != 1) return false;
+        }
+
+        for (size_t i = 0; i < basis.size(); ++i)
+            for (size_t j = i + 1; j < basis.size(); ++j)
+            {
+                auto g = polynomial_GCD(basis[i], basis[j]);
+                if (!is_number(g)) return false;
+            }
+
+        for (auto& sources : info)
+            for (auto& [idx, mult] : sources)
+                if (idx >= input.size()) return false;
+
+        return true;
+    };
+
+    // Helper: 验证基覆盖所有输入的非常数因子
+    auto verify_coverage = [](
+        const std::vector<polynomial_ZZ>& input,
+        const std::vector<polynomial_ZZ>& basis)
+    {
+        for (auto& f : input)
+        {
+            if (is_number(f)) continue;
+            auto fac = factorize(f);
+            for (auto& [fi, ei] : fac.factors)
+            {
+                if (is_number(fi)) continue;
+                bool found = false;
+                for (auto& b : basis)
+                    if (b == fi) { found = true; break; }
+                if (!found) return false;
+            }
+        }
+        return true;
+    };
+
+    CLPOLY_TEST("factorbasis_single_irreducible");
+    {
+        std::vector<polynomial_ZZ> input = { pow(x,2) + 1 };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(verify_factorbasis(input, result));
+        CLPOLY_ASSERT_EQ(result.first.size(), (size_t)1);
+        CLPOLY_ASSERT(verify_coverage(input, result.first));
+    }
+
+    CLPOLY_TEST("factorbasis_single_reducible");
+    {
+        std::vector<polynomial_ZZ> input = { pow(x,2) - 1 };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(verify_factorbasis(input, result));
+        CLPOLY_ASSERT_EQ(result.first.size(), (size_t)2);
+        CLPOLY_ASSERT(verify_coverage(input, result.first));
+    }
+
+    CLPOLY_TEST("factorbasis_duplicate_input");
+    {
+        polynomial_ZZ f1 = pow(x,2) - 1;
+        std::vector<polynomial_ZZ> input = { f1, f1 };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(verify_factorbasis(input, result));
+        CLPOLY_ASSERT_EQ(result.first.size(), (size_t)2);
+        for (auto& sources : result.second)
+            CLPOLY_ASSERT_EQ(sources.size(), (size_t)2);
+        CLPOLY_ASSERT(verify_coverage(input, result.first));
+    }
+
+    CLPOLY_TEST("factorbasis_shared_factor");
+    {
+        std::vector<polynomial_ZZ> input = {
+            (x - 1) * (x + 1),
+            (x - 1) * (pow(x,2) + 1)
+        };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(verify_factorbasis(input, result));
+        CLPOLY_ASSERT_EQ(result.first.size(), (size_t)3);
+        CLPOLY_ASSERT(verify_coverage(input, result.first));
+    }
+
+    CLPOLY_TEST("factorbasis_with_multiplicity");
+    {
+        std::vector<polynomial_ZZ> input = { pow(x + 1, 2) * pow(x - 2, 3) };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(verify_factorbasis(input, result));
+        CLPOLY_ASSERT_EQ(result.first.size(), (size_t)2);
+        for (auto& sources : result.second)
+        {
+            CLPOLY_ASSERT_EQ(sources.size(), (size_t)1);
+            CLPOLY_ASSERT_EQ(sources[0].first, (uint64_t)0);
+        }
+        CLPOLY_ASSERT(verify_coverage(input, result.first));
+    }
+
+    CLPOLY_TEST("factorbasis_empty_input");
+    {
+        std::vector<polynomial_ZZ> input;
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(result.first.empty());
+        CLPOLY_ASSERT(result.second.empty());
+    }
+
+    CLPOLY_TEST("factorbasis_constant_input");
+    {
+        std::vector<polynomial_ZZ> input = { polynomial_ZZ(ZZ(42)) };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(result.first.empty());
+    }
+
+    CLPOLY_TEST("factorbasis_zero_input");
+    {
+        polynomial_ZZ zero;
+        std::vector<polynomial_ZZ> input = { zero };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(result.first.empty());
+    }
+
+    CLPOLY_TEST("factorbasis_multivar");
+    {
+        std::vector<polynomial_ZZ> input = {
+            (x - 1) * (y + 1),
+            (x - 1) * (x + y)
+        };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(verify_factorbasis(input, result));
+        CLPOLY_ASSERT_EQ(result.first.size(), (size_t)3);
+        CLPOLY_ASSERT(verify_coverage(input, result.first));
+    }
+
+    CLPOLY_TEST("factorbasis_many_polys");
+    {
+        std::vector<polynomial_ZZ> input = {
+            (x - 1) * (x + 1),
+            (x + 1) * (pow(x,2) + 1),
+            pow(x - 1, 3),
+            (pow(x,2) + 1) * (x - 2),
+            x * (x + 1)
+        };
+        auto result = factorbasis(input);
+        CLPOLY_ASSERT(verify_factorbasis(input, result));
+        CLPOLY_ASSERT_EQ(result.first.size(), (size_t)5);
+        CLPOLY_ASSERT(verify_coverage(input, result.first));
+    }
+
+    CLPOLY_TEST("factorbasis_vs_squarefreebasis_coverage");
+    {
+        std::vector<polynomial_ZZ> input = {
+            (x - 1) * (x + 1) * pow(x,2),
+            (x + 1) * (pow(x,2) + 1)
+        };
+        auto [sfb, _sf] = squarefreebasis(input);
+        auto [fb, _fb] = factorbasis(input);
+
+        for (auto& fi : fb)
+        {
+            bool divides_some = false;
+            for (auto& si : sfb)
+            {
+                auto q = si / fi;
+                if (q * fi == si) { divides_some = true; break; }
+            }
+            CLPOLY_ASSERT_TRUE(divides_some);
+        }
+    }
+
     return clpoly_test::test_summary();
 }

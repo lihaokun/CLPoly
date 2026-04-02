@@ -84,7 +84,18 @@
 
 **相关文件**：`clpoly/polynomial_factorize_zp.hh`（`__ddf_Zp`, `__edf_Zp`），`clpoly/polynomial_factorize_univar.hh`（`__select_prime`）
 
+**关于增大 `max_tries` 的分析**（2026-03-13）：
+
+曾考虑增大 `max_tries`（从 3 到 10+）以获取更优 r 值。实验（`bench_prime_mode.cc`、`debug_r_scan.cc`）发现：
+- Chebotarev 密度定理保证因子数分布与素数大小无关（~15% 的素数给出最优 r=true_factors）
+- max_tries=3 只采样 3 个素数，可能错过最优 r
+- **但** profiling 显示单次 DDF+EDF 约 0.09ms/prime（deg15），增大 max_tries 直接线性增加 `select_prime` 开销
+- `select_prime` 已占总耗时 50-60%，增大 max_tries 在 DDF 未稠密化前是**反优化**
+
+**结论**：增大 max_tries 应在 P1c DDF 稠密化完成后进行。稠密化后单次 DDF 成本预计降 3-5x，届时增大 max_tries 的边际成本可忽略。
+
 - [ ] 选定方案并实现 Zp DDF/EDF 稠密化
+- [ ] （P1c 完成后）增大 `max_tries` 以更充分采样最优 r 值
 
 #### P1d: Hensel lift 优化（第二大瓶颈）
 
@@ -122,10 +133,54 @@ W(20) 等高次多项式中 `hensel_lift` 占 52%。这与 **P1b（线性 Hensel
 
 详见：`docs/research/polynomial-systems-comparison.md` §4, `docs/design/multivariate-factorization-design.md`
 
-### P3: 多项式乘法优化
+### P3: 多项式乘法与除法优化
 
-- [ ] FFT / Karatsuba 大次数单变量乘法
+#### P3-mul: NTT 乘法（基础设施）
+
+- [ ] FFT / NTT 大次数单变量乘法
 - [ ] 多变量乘法堆排序优化
+
+#### P3-div: Newton 快速除法（依赖 P3-mul）
+
+当前 `_poly_divrem` 是 schoolbook O(n²)，是 HGCD 无法达到理论复杂度的瓶颈。
+
+**原理**：Newton 迭代除法将 divrem 转化为模逆 + 两次乘法，代价 O(M(n))。
+- Q = A · rev(B)^{-1} mod x^{deg(Q)+1}（模逆用 Newton 迭代，底层为 NTT 乘法）
+- R = A - Q·B
+
+**依赖**：P3-mul（NTT 乘法）。用 Karatsuba 做 Newton 除法可得 O(n^1.585)，用 NTT 可得 O(n log n)。
+
+**预期效果**：
+
+| 组合 | divrem | HGCD 总复杂度 | 预估 α |
+|------|--------|--------------|--------|
+| 当前（schoolbook divrem） | O(n²) | O(n²) | 2.0 |
+| Newton + Karatsuba | O(n^1.585) | O(n^1.585 · log n) | ~1.7 |
+| Newton + NTT | O(n log n) | O(n log² n) | ~1.2 |
+
+参考：FLINT `nmod_poly_div_newton`，GCL §3.1，Modern Computer Algebra §9.1
+
+- [ ] 实现 `_poly_inv_series`（多项式模逆，Newton 迭代）
+- [ ] 实现 `_poly_divrem_newton`（基于模逆的快速除法）
+- [ ] 在 `_hgcd_recursive` 和 `_gcd_hgcd` 中按次数阈值分派 schoolbook vs Newton
+
+#### P3b: HGCD（已完成）
+
+**实现结果**（2026-03-09 benchmark）：
+
+| 用例 | Euclid (改前) | HGCD (现在) | FLINT | 改前 ratio | 现在 ratio |
+|------|--------------|-------------|-------|-----------|-----------|
+| deg500+common250 | 0.57ms | 0.43ms | 0.40ms | 1.44x | 1.01x |
+| deg1000+common500 | 2.27ms | 1.53ms | 0.85ms | 2.67x | 1.31x |
+| deg3000+common1500 | 20.0ms | 13.5ms | 4.70ms | 4.28x | 2.36x |
+| deg5000+common2500 | 55.5ms | 37.8ms | 10.5ms | 5.28x | 3.27x |
+| deg10000+common5000 | 221ms | 148ms | 32.2ms | 6.87x | 4.61x |
+
+HGCD 给出常数因子加速（~1.5x），但有效指数 α ≈ 2.0（与 Euclid 相同），未达到理论 α ≈ 1.6。根因：`_poly_divrem` schoolbook O(n²) 主导了 HGCD 的 O(M(n) log n) 乘法贡献。需 P3-div（Newton 快速除法）解决。
+
+- [x] 三层架构：`gcd` → `_gcd_hgcd` → `_hgcd_recursive` / `_hgcd_iter`
+- [x] 矩阵指针稳定化修复（`_hgcd_iter` 后两阶段暂存+拷回）
+- [x] 单元测试：`test/test_dense_upoly_hgcd.cc`（10 用例，含 2000 组随机扫描）
 
 ### P4: GCD 性能
 
@@ -133,6 +188,77 @@ W(20) 等高次多项式中 `hensel_lift` 占 52%。这与 **P1b（线性 Hensel
 
 - [ ] 调研 FLINT 的模 GCD 实现
 - [ ] 考虑稀疏模 GCD（SPMOD）或 Zippel GCD
+
+## Bug 修复
+
+### B1: 多变量因式分解 over-splitting（**已修复**）
+
+**根因**：Wang 小整数 eval point + MTSHL Zp 提升的架构不兼容。小整数 eval point 高概率导致 over-splitting → MTSHL 产出垃圾 → Zassenhaus trial division 不完全 → `verified.size() >= 2` 无条件返回。
+
+**修复**（方向 2）：
+- 方向 2：`__wang_core` 返回前检查 `mv_T.size() <= 1`，拒绝 over-splitting 的 eval point
+- 方向 5（随机化求值点）：设计完成但未实现，见下方"方向 5"条目
+- 设计文档：`docs/design/factorization/fix-oversplit.md`
+
+**测试**：B1 回归用例改为正常断言，全量 + 压力测试通过。
+
+### B2: 单变量因式分解大系数不完全分解（**已修复**）
+
+**发现于**：B1 修复过程中，方向 5 使用 B=1000 随机 eval point 暴露。
+
+**根因**：两个问题叠加——
+1. **lc-baking 不对称性**：`__hensel_lift` 将 `lc(f)` 烘入 `factors[0]`，使其非首一，导致 Zassenhaus 重组中 lc 乘子逻辑不一致
+2. **Phase 2 触发条件过严**：`result.size() == 1 && r > 1` 无法检测部分提取（Phase 1 返回 2 因子但真实有 4 因子）
+
+**修复**（2026-03-12，形式化证明驱动）：
+- Hensel 提升后首一归一化：消除 lc-baking 不对称性（定理 6.1）
+- Zassenhaus 统一恢复公式：`pp(sym_m(ℓ* · ∏ H_i)) = g_j`（定理 6.2）
+- Phase 2 触发：`result.size() < r && a_h < a_mig`（命题 7.3）
+- `__heuristic_starting_precision` 返回 `pair<int,int>` 同时提供 a_h 和 a_mig
+
+**验证**：1410 随机用例 FLINT 交叉对比全部通过，24 个测试文件 + 258 组 crosscheck 通过。
+
+**设计文档**：`docs/design/factorization/formal-proof-univar-factorization.md`
+
+- [x] 修改 `__lll_factorize` Phase 2 触发条件
+- [x] 补充大系数单变量因式分解回归测试（`test/test_factorize_bugfix.cc`）
+
+### B3: DDF/EDF 大素数 `(int64_t)(p-1)` 溢出（**已修复**）
+
+**发现于**：大素数模式实验（`bench_prime_mode.cc`），EDF 在 p=2^64-59 时死循环。
+
+**根因**：`__upoly_subtract_x` 和 `__upoly_subtract_one` 中 `__make_zp((int64_t)(p - 1), p)` 对 p > 2^63 溢出。`(int64_t)(2^64 - 60)` 回绕为 -60，`Zp(-60, p)` 计算 `p - 60` 而非 `p - 1`。
+
+- DDF：`gcd(h - x, f*)` 中 `h - x` 计算错误 → 因子分组错误
+- EDF：`gcd(g - 1, f)` 中 `g - 1` 计算错误 → 分裂始终失败 → 死循环
+
+**修复**（2026-03-13）：3 处 `__make_zp((int64_t)(p-1), p)` 替换为 `Zp(p-1, p)`（uint64_t 构造函数，`_i = i % p` 对任意 p 正确）。
+
+**形式化证明**：`docs/design/factorization/formal-proof-ddf-edf.md`（DDF 循环不变量、EDF Cantor-Zassenhaus 正确性、bug 数学根因分析）
+
+**测试**：`test/test_factorize_zp.cc` 新增 5 个大素数回归测试。
+
+**大素数模式实验结论**（废弃）：修复后对 8 类用例的 A/B 实验（`bench_prime_mode.cc`）表明小素数模式在所有场景下均优于或持平大素数模式。此前观察到的"大素数优势"源于 max_tries=3 的采样偏差（Chebotarev 密度定理保证因子数分布与素数大小无关）。`__g_use_large_prime` 开关保留但默认 false。
+
+### 方向 5: `__select_eval_point` 随机化（低优先级）
+
+**现状**（2026-03-13）：`__select_eval_point` 仍使用 shell 枚举（bound=0,1,2,...），方向 5 随机化因 B2 阻塞未实现。B2 已修复，技术上可实现。
+
+**优先级评估**：方向 2（`mv_T.size() <= 1` 检查）已作为安全网，shell 枚举的 over-splitting 会被拒绝并 retry。当前 crosscheck + stress 在 shell 枚举下全部通过。随机化的剩余价值仅为减少 retry 次数（效率优化），不涉及正确性。
+
+- [ ] （低优先级）实现随机采样 `α ∈ [-B, B]^{n-1}`，`B = max(100, 2*tdeg_sum)`
+- [ ] 设计文档：`docs/design/factorization/fix-oversplit.md` §4
+
+### H1: GCDHEU `(uint64_t)(-v)` 有符号溢出（UB）
+
+`clpoly/polynomial_gcd.cc:57`：当 `v == INT64_MIN` 时，`-v` 在 `int64_t` 域溢出，是 C++ 未定义行为。
+
+**快速修复**：用 `clpoly_zz_to_mpz` 替代手动 small/large 分支，避免有符号取负。
+
+**长期方案**：给 ZZ 补上位操作（`mul_2exp`/`tdiv_q_2exp`/`tdiv_r_2exp`），GCDHEU 直接用 ZZ，参考 FLINT fmpz 接口。
+
+- [ ] 快速修复：GCDHEU 系数加法改用 `clpoly_zz_to_mpz`
+- [ ] 长期：ZZ 补充位操作接口（`mul_2exp`, `tdiv_q_2exp`, `tdiv_r_2exp`）
 
 ## 文档完善
 

@@ -237,7 +237,7 @@ namespace clpoly{
         if (m.empty() || vars.empty() )return mc;
         if (vars.size()>1)
         {
-            uint l=64/(vars.size()+1);
+            unsigned int l=64/(vars.size()+1);
             mc=m.deg();
             auto m_ptr=m.begin();
             for (auto &i:vars)
@@ -267,8 +267,8 @@ namespace clpoly{
         m.reserve(vars.size());
         if (vars.size()>1)
         {
-            uint l=64/(vars.size()+1);
-            uint ll=l*vars.size();
+            unsigned int l=64/(vars.size()+1);
+            unsigned int ll=l*vars.size();
             uint64_t mod=(uint64_t(1)<<(l*(vars.size()+1)))-(uint64_t(1)<<ll);
             m.deg()=(mc & mod)>>ll;
             uint64_t part;
@@ -288,9 +288,9 @@ namespace clpoly{
     template<class var_comp>
     inline uint64_t __monomial_compression_div_mold(const grlex_<var_comp>* m,size_t vars_size)
     {
-        uint l=64/(vars_size+1);
+        unsigned int l=64/(vars_size+1);
         uint64_t mold=0;
-        for (uint i=0;i<=vars_size;++i)
+        for (unsigned int i=0;i<=vars_size;++i)
         {
             mold<<=1;
             mold+=1;
@@ -341,7 +341,7 @@ namespace clpoly{
     // {
     //     uint64_t mc=0;
     //     if (m.empty() || vars.empty() )return mc;
-    //     uint l=64/(vars.size());
+    //     unsigned int l=64/(vars.size());
     //     variable v=m.comp().v;
     //     auto m_ptr=m.begin();
     //     if (vars.back()==v)
@@ -370,8 +370,8 @@ namespace clpoly{
     //     if (!mc || vars.empty()) return void();
     //     m.reserve(vars.size());
     //     variable v=comp_ptr->v;
-    //     uint l=64/(vars.size());
-    //     uint ll=l*(vars.size()-1);
+    //     unsigned int l=64/(vars.size());
+    //     unsigned int ll=l*(vars.size()-1);
     //     uint64_t mod;
     //     if (l==64)
     //         mod=-1;
@@ -404,9 +404,9 @@ namespace clpoly{
     // template<>
     // inline uint64_t __monomial_compression_div_mold(const univariate_priority_order* comp,size_t vars_size)
     // {
-    //     uint l=64/(vars_size);
+    //     unsigned int l=64/(vars_size);
     //     uint64_t mold=0;
-    //     for (uint i=0;i<vars_size;++i)
+    //     for (unsigned int i=0;i<vars_size;++i)
     //     {
     //         mold<<=1;
     //         mold+=1;
@@ -457,7 +457,7 @@ namespace clpoly{
     {
         uint64_t mc=0;
         if (m.empty() || vars.empty() )return mc;
-        uint l=64/(vars.size());
+        unsigned int l=64/(vars.size());
         auto m_ptr=m.begin();
         for (auto &i:vars)
         {
@@ -477,8 +477,8 @@ namespace clpoly{
         m.comp(comp_ptr);
         if (!mc || vars.empty()) return void();
         m.reserve(vars.size());
-        uint l=64/(vars.size());
-        uint ll=l*(vars.size()-1);
+        unsigned int l=64/(vars.size());
+        unsigned int ll=l*(vars.size()-1);
         uint64_t mod;
         if (l==64)
             mod=-1;
@@ -499,9 +499,9 @@ namespace clpoly{
     template<class var_order>
     inline uint64_t __monomial_compression_div_mold(const lex_<var_order>* comp,size_t vars_size)
     {
-        uint l=64/(vars_size);
+        unsigned int l=64/(vars_size);
         uint64_t mold=0;
-        for (uint i=0;i<vars_size;++i)
+        for (unsigned int i=0;i<vars_size;++i)
         {
             mold<<=1;
             mold+=1;

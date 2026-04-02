@@ -7,12 +7,13 @@
 #define CLPOLY_POLYNOMIAL_GCD_HH
 #include <clpoly/polynomial.hh>
 #include <clpoly/upolynomial.hh>
-#include <boost/math/special_functions/prime.hpp>
+#include <clpoly/dense_upoly_zp.hh>
 #include <cmath>
 #include <cstdint>
 #include <vector>
 #include <cassert>
 #include <random>
+#include <unordered_set>
 
 namespace clpoly{ 
 
@@ -296,7 +297,7 @@ namespace clpoly{
         }
         polynomial_<ZZ,lex_<var_order>> F_cont=cont(F);
         polynomial_<ZZ,lex_<var_order>> G_cont=cont(G);
-        polynomial_<ZZ,lex_<var_order>> cont_gcd=polynomial_GCD(cont(F),cont(G));
+        polynomial_<ZZ,lex_<var_order>> cont_gcd=polynomial_GCD(F_cont,G_cont);
 
         F=F/F_cont;G=G/G_cont;
         polynomial_<ZZ,lex_<var_order>> lc_gcd=polynomial_GCD(leadcoeff(F),leadcoeff(G));
@@ -307,16 +308,7 @@ namespace clpoly{
         // std::cout<<"cont_gcd:"<<cont_gcd<<std::endl;
         // std::cout<<"lc_gcd:"<<lc_gcd<<std::endl;
         
-        std::uint32_t tmp_x=std::max(degree(F),degree(G));
-        if (tmp_x<2) tmp_x=2;
-        std::uint32_t p_index=tmp_x/std::log(tmp_x);
-        if (p_index >= 9999) p_index = 9998;
-        std::uint32_t prime=boost::math::prime(p_index);
-        while (prime <tmp_x)
-        {
-            if (++p_index >= 9999) break;
-            prime=boost::math::prime(p_index);
-        }
+        uint64_t prime = UINT64_C(18446744073709551557);  // 2^64 - 59
 
         polynomial_<ZZ,lex_<var_order>> Pout_(F.comp_ptr()),tmp_Pout_(F.comp_ptr()),R(F.comp_ptr());
         polynomial_<Zp,lex_<var_order>> Pout_mod(F.comp_ptr()),f_p(F.comp_ptr()),g_p(F.comp_ptr()),lc_gcd_p(F.comp_ptr());
@@ -324,35 +316,29 @@ namespace clpoly{
         ZZ Pout_prime;
         std::int64_t Pout_d=INT64_MAX;
         std::int64_t tmp_Pout_d=INT64_MAX;
-        
+
+        // CRT 循环：每轮用一个素数计算 modular GCD，然后合并。
+        // 素数从 2^64-59 开始递减，所需素数个数由 Mignotte bound 决定：
+        // O(d*h/64)（d=度数, h=系数 bit-length），远小于可用素数总数（≈2^58）。
+        // 与 GCL Algorithm 7.1 的 while(true) 结构一致。
         while (1)
         {
-            
+
             while (F.begin()->second % prime ==0 || G.begin()->second % prime ==0)
             {
-                if (++p_index >= 9999) break;
-                prime=boost::math::prime(p_index);
+                prime = prev_prime_64(prime);
             }
-            if (p_index >= 9999) break;
             f_p=polynomial_mod(F,prime);
             g_p=polynomial_mod(G,prime);
             lc_gcd_p=polynomial_mod(lc_gcd,prime);
 
-            // std::cout<<"p:"<<prime<<std::endl;
-            // std::cout<<"f_p:"<<f_p<<std::endl;
-            // std::cout<<"g_p:"<<g_p<<std::endl;
-            // std::cout<<"lc_gcd_p:"<<lc_gcd_p<<std::endl;
-
             tmp_Pout_d=__polynomial_GCD(Pout_mod,f_p,g_p,lc_gcd_p,Pout_d);
             if (tmp_Pout_d==-1)
             {
-                if (++p_index >= 9999) break;
-                prime=boost::math::prime(p_index);
+                prime = prev_prime_64(prime);
                 continue;
             }
-            
-            // std::cout<<"poly_mod:"<<Pout_mod<<std::endl;
-            
+
             if (tmp_Pout_d < Pout_d)
             {
                 Pout_d=tmp_Pout_d;
@@ -428,8 +414,6 @@ namespace clpoly{
                     }
                 }
                 
-                // std::cout<<"Pout_:"<<tmp_Pout_<<std::endl;
-                
                 if (tmp_Pout_==Pout_)
                 {
                     if (get_first_var(Pout_)==get_first_var(F))
@@ -460,11 +444,8 @@ namespace clpoly{
                 swap(tmp_Pout_.data(),Pout_.data());
                        
             }
-            if (++p_index >= 9999) break;
-            prime=boost::math::prime(p_index);
+            prime = prev_prime_64(prime);
         }
-        // 素数表耗尽: 保守返回 content GCD
-        return cont_gcd;
     }
 
     // 扩展 GCD (多变量 ZZ): c = polynomial_GCD(F, G, s, t), 满足 s*F + t*G = c
@@ -721,7 +702,7 @@ namespace clpoly{
         upolynomial_<Zp>& s, upolynomial_<Zp>& t)
     {
         assert(!F.empty() && !G.empty());
-        uint32_t p = F.front().second.prime();
+        uint64_t p = F.front().second.prime();
         Zp one(1, p);
 
         upolynomial_<Zp> r0 = F, r1 = G;
@@ -881,7 +862,7 @@ namespace clpoly{
         {
             int64_t f_d=get_first_deg(F);
             int64_t g_d=get_first_deg(G);
-            uint32_t prime=F.begin()->second.prime();
+            uint64_t prime=F.begin()->second.prime();
             Zp p_(prime);
             auto & comp=F.comp();
             polynomial_<Zp,lex_<var_order>> F_v(F.comp_ptr());
@@ -904,18 +885,21 @@ namespace clpoly{
             std::vector<Zp> points;
             std::vector<Zp> tmp_p;
             points.reserve(v_d);
-            std::random_device rd; 
-            std::mt19937 gen(rd());  
-            std::vector<int> v_bool(prime,1);  
-            uint32_t p_tmp;
-            for (int32_t i=0;i<prime;++i)
+            std::random_device rd;
+            std::mt19937_64 gen(rd());
+            std::uniform_int_distribution<uint64_t> dis(0, prime-1);
+            std::unordered_set<uint64_t> used_points;
+            // 上界 prime 看似巨大（≈2^64），但循环总在 O(v_d + deg) 次内通过
+            // line 971 的 return 退出：坏点（leading coeff 为零）最多 max(f_d,g_d) 个，
+            // 好点只需 v_d 个。line 1038 的 early exit 处理 prime < v_d 的极端情况。
+            // 参考：GCL Algorithm 7.2 用 while(true)，FLINT 用 while(alpha>=2)，
+            // SymPy 用 for a in range(p) + break——本质逻辑相同。
+            for (uint64_t i=0;i<prime;++i)
             {
-                // p_.number()=i;
-                std::uniform_int_distribution<uint64_t> dis(1, prime-i);
-                p_tmp=dis(gen);
-                uint64_t j_tmp=0;
-                for (;p_tmp>0;p_tmp-=v_bool[j_tmp],++j_tmp);
-                v_bool[j_tmp-1]=0;p_.number()=(uint32_t)(j_tmp-1);
+                uint64_t pt;
+                do { pt = dis(gen); } while (used_points.count(pt));
+                used_points.insert(pt);
+                p_.number()=pt;
 
                 F_v=assign(F,v,p_);
                 G_v=assign(G,v,p_);
@@ -1096,29 +1080,27 @@ namespace clpoly{
                             const Zp & Lc_gcd,
                             int64_t deg)
     {
-        int64_t deg_;
-        assert(!F.empty() && !G.empty() );
-        upolynomial_<Zp> Pout_;
-        upolynomial_<Zp> Pout_1;
-        upolynomial_<Zp> Pout_2;
-        Pout=G;
-        pair_vec_div(Pout_2.data(),Pout_1.data(),F.data(),Pout.data(),Pout.comp());
-        //std::cout<<Pout_1<<std::endl;
-        while(!Pout_1.empty())
-        {
-            std::swap(Pout.data(),Pout_.data());
-            std::swap(Pout.data(),Pout_1.data());
-            pair_vec_div(Pout_2.data(),Pout_1.data(),Pout_.data(),Pout.data(),Pout.comp());
-            //std::cout<<Pout_1<<std::endl;
-        }
-        Zp lc_inv=Pout.front().second.inv()*Lc_gcd;
-        for (auto &i:Pout)
-            i.second*=lc_inv;
-        deg_=Pout.front().first.deg();
-        if (deg_<=deg)
-            return deg_;
-        else
-            return -1;
+        assert(!F.empty() && !G.empty());
+        uint64_t p = F.front().second.prime();
+
+        // sparse → dense
+        dense_upoly_zp f_d(F, p), g_d(G, p);
+
+        // 稠密 Euclid GCD
+        dense_upoly_zp result;
+        dense_upoly_zp::gcd(result, f_d, g_d);
+
+        // LC 归一化：result *= Lc_gcd / lc(result)
+        uint64_t scale = result.nmod_mul(
+            result.nmod_inv(result.lead()), Lc_gcd.number());
+        result.scalar_mul(scale);
+
+        int64_t d = result.deg();
+        if (d > deg) return -1;
+
+        // dense → sparse
+        Pout = result.to_upoly();
+        return d;
     }
     upolynomial_<ZZ>  polynomial_GCD(upolynomial_<ZZ> G,upolynomial_<ZZ> F);
 

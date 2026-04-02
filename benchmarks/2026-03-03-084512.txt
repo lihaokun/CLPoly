@@ -1,4 +1,4 @@
-# CLPoly Benchmark — 2026-02-23
+# CLPoly Benchmark — 2026-03-03-084512
 # Format: fork-based (time + memory per benchmark)
 
 
@@ -65,6 +65,3 @@
 [ TEST ] crosscheck_flint_mpoly_factor_content
 [ TEST ] crosscheck_flint_mpoly_factor_random_bivar
 [ TEST ] crosscheck_flint_mpoly_factor_random_bivar_4fac
-[ TEST ] crosscheck_flint_mpoly_factor_random_trivar
-[ TEST ] crosscheck_flint_mpoly_factor_random_trivar_3fac
-[ TEST ] crosscheck_flint_mpoly_factor_random_4var

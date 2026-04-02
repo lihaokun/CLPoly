@@ -265,13 +265,13 @@ namespace clpoly{
         std::mt19937 gen(rd());
         auto size=l.size();
         std::vector<T>  lout;
-        lout.reserve(std::min(n,size));
+        lout.reserve(std::min<uint64_t>(n,size));
         std::vector<bool> bl;
         bl.reserve(size);
         uint64_t select;
         for (uint64_t i=size;i>0;--i)
             bl.push_back(true);
-        for (uint64_t i=std::min(n,size);i>0;--i)
+        for (uint64_t i=std::min<uint64_t>(n,size);i>0;--i)
         {
             if (i==1)
             {

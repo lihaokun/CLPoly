@@ -42,7 +42,11 @@ variable (p : ℕ) [hp : Fact (Nat.Prime p)]
 -- 尝试证明 X^{p^d} - X 是 Separable 的
 example (d : ℕ) (hd : 0 < d) :
     Separable (X ^ (p ^ d) - X : Polynomial (ZMod p)) := by
-  sorry -- TODO: 尝试 simp + ring 或手动展开
+  rw [separable_def, derivative_sub, derivative_X_pow, derivative_X]
+  have hp : (↑(p ^ d) : ZMod p) = 0 := by
+    rw [Nat.cast_pow, CharP.cast_eq_zero, zero_pow (by omega : d ≠ 0)]
+  rw [hp, map_zero, zero_mul, zero_sub]
+  exact ⟨0, -1, by ring⟩
 
 -- ============================================================
 -- 步骤 3：UFD 中 Squarefree 与 normalizedFactors 的关系

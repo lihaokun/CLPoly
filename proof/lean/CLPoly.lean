@@ -6,6 +6,10 @@ import CLPoly.Spec
 import CLPoly.Pipeline.FactorZp
 import CLPoly.Pipeline.FactorZZ
 
+-- Phase 2: L3 数学基础
+import CLPoly.Math.FiniteFieldFact
+import CLPoly.Math.MvBasics
+
 -- Phase 3: L2 算法模型
 import CLPoly.Algorithm.DDF
 import CLPoly.Algorithm.SquarefreeZp

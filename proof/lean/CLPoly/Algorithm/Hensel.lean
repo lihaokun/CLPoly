@@ -237,7 +237,7 @@ theorem hensel_step_with_degree
   set q_bar := se_bar /ₘ map_m h with hq_bar_def
   -- Euclidean division: se_bar = (map_m h) * q_bar + σ_bar
   have hse_div : σ_bar + map_m h * q_bar = se_bar :=
-    modByMonic_add_div se_bar hh_monic
+    modByMonic_add_div se_bar (map_m h)
   -- τ_bar = (map_m t) * (map_m e_int) + q_bar * (map_m g)
   set τ_bar := map_m t * map_m e_int + q_bar * map_m g with hτ_bar_def
   -- Key Bézout identity in ZMod m[x]:

@@ -736,7 +736,7 @@ private theorem divByMonic_mul_left' (a b c : Polynomial ℤ) (hc : Monic c) (hd
   -- b = (b /ₘ c) * c（由 hdvd + monic 除法）
   have hb : b %ₘ c = 0 := (modByMonic_eq_zero_iff_dvd hc).mpr hdvd
   have hb_eq : b = b /ₘ c * c := by
-    have := modByMonic_add_div b hc; rw [hb, zero_add, mul_comm] at this; exact this.symm
+    have := modByMonic_add_div b c; rw [hb, zero_add, mul_comm] at this; exact this.symm
   -- a * b = a * (b /ₘ c) * c
   have hab : a * b = a * (b /ₘ c) * c := by
     conv_lhs => rw [hb_eq]; ring_nf
@@ -745,7 +745,7 @@ private theorem divByMonic_mul_left' (a b c : Polynomial ℤ) (hc : Monic c) (hd
     (modByMonic_eq_zero_iff_dvd hc).mpr (hdvd.mul_left a)
   -- (a*b) = (a*b) /ₘ c * c
   have hab2 : a * b = (a * b) /ₘ c * c := by
-    have := modByMonic_add_div (a * b) hc; rw [hab_mod, zero_add, mul_comm] at this; exact this.symm
+    have := modByMonic_add_div (a * b) c; rw [hab_mod, zero_add, mul_comm] at this; exact this.symm
   -- 两个表达式都等于 a*b，右乘 c 消去
   have : (a * b) /ₘ c * c = a * (b /ₘ c) * c := hab2.symm.trans hab
   exact mul_right_cancel₀ hc_ne this

@@ -87,8 +87,10 @@ namespace clpoly{
         }
     }
 
-    // McCallum 投影算子核心实现
-    // 输入 prims 必须已经过 basis 计算，且每个多项式都含 x
+    // McCallum 投影算子核心实现（不含 basis 计算）
+    // 输入 prims 必须满足：
+    //   1. 已经过 basis 计算（SQUAREFREE 或 FACTOR）
+    //   2. 每个多项式都含 x（get_first_var(poly) == x）
     // 结果直接追加到 projs
     template <class var_order>
     void __project_mccallum_prims_to(
@@ -211,9 +213,13 @@ namespace clpoly{
         return tc;
     }
 
-    // Lazard 投影算子核心实现
-    // 输入 prims 必须已经过 basis 计算，且每个多项式都含 x
-    // 前置条件：如果 basis 是 SQUAREFREE，调用方必须先处理 x 因子
+    // Lazard 投影算子核心实现（不含 basis 计算）
+    // 输入 prims 必须满足：
+    //   1. 已经过 basis 计算（SQUAREFREE 或 FACTOR）
+    //   2. 每个多项式都含 x（get_first_var(poly) == x）
+    //   3. 若 basis 为 SQUAREFREE，调用方必须已处理 x 因子（将 x 单独提取为 prim）
+    // 
+    // 此函数仅计算投影多项式（lc, tc, disc, resultant），不处理 basis 或 x-factor。
     template <class var_order>
     void __project_lazard_prims_to(
         const std::vector<polynomial_<ZZ,lex_<var_order>>>& prims,
@@ -287,8 +293,14 @@ namespace clpoly{
                 continue;
 
             if (get_first_var(poly) == x) {
-                // 当使用 SQUAREFREE 时，如果有因子x, 需要手动分解
-                // 当使用 FACTOR 时，factorbasis 已经分解了 x 因子
+                // Lazard 投影算子要求：若多项式含 x 因子（如 x*(x+1)），
+                // 需将 x 单独作为一个 prim 加入投影集，以处理 tangent at infinity。
+                // 
+                // 当使用 SQUAREFREE 时，squarefreebasis 不会分解 x 因子，需手动处理。
+                // 当使用 FACTOR 时，factorbasis 已完全分解，x 因子已单独成项。
+                // 
+                // 注意：此逻辑等价于原 __project_lazard 中的 x-factor splitting，
+                // 在 __project_full 中提前处理，避免在 _prims_to 函数中重复计算。
                 if (basis_method == basis_computation_method::SQUAREFREE && 
                     __has_factor_first_var(poly))
                 {
@@ -373,7 +385,9 @@ namespace clpoly{
                     continue;
 
                 if (get_first_var(poly) == x) {
-                    // Lazard + SQUAREFREE 模式：处理 x 因子
+                    // Lazard 投影算子要求：若多项式含 x 因子，需将 x 单独作为一个 prim。
+                    // 此逻辑等价于 __project_lazard 中的 x-factor splitting，
+                    // 在调用 _prims_to 前完成，确保投影集完整性。
                     if (method == projection_method::LAZARD && 
                         basis_method == basis_computation_method::SQUAREFREE &&
                         __has_factor_first_var(poly))

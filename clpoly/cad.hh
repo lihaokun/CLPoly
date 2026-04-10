@@ -8,6 +8,7 @@
 
 #include <clpoly/resultant.hh>
 #include <clpoly/polynomial_gcd.hh>
+#include <clpoly/polynomial_factorize.hh>
 #include <clpoly/realroot.hh>
 #include <clpoly/cad_tree.hh>
 #include <clpoly/polynomial_convert.hh>
@@ -18,7 +19,13 @@
 namespace clpoly{
     enum class projection_method {
         MCCALLUM,    // McCallum 投影算子（默认）
-        LAZARD      // Lazard 投影算子
+        LAZARD       // Lazard 投影算子
+    };
+
+    // 投影多项式基的生成方法
+    enum class basis_computation_method {
+        SQUAREFREE,  // 无平方基（默认，目前更快）
+        FACTOR       // 不可约因子基（目前更慢）
     };
 
     // 计算多项式集合 F 关于 x 的 conts 集和 prims 集
@@ -64,45 +71,52 @@ namespace clpoly{
     std::vector<polynomial_<ZZ,lex_<var_order>>> __project(
         const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
         const clpoly::variable& x, 
-        projection_method method = projection_method::LAZARD
+        projection_method method = projection_method::LAZARD,
+        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
     )
     {
         if (polys.empty())
             return {};
         if (method == projection_method::MCCALLUM) 
         {
-            return __project_mccallum(polys, x);
+            return __project_mccallum(polys, x, basis_method);
         }
         else 
         {
-            return __project_lazard(polys, x);
+            return __project_lazard(polys, x, basis_method);
         }
     }
 
     // 字典序的投影算子
     // 需要传入x, 因为某些多项式可能不含x
     // 假设x是多项式包含的所有变量中 var_order 最小的变量
-    // 新版本：先算 cont, prim 再算 squarefreebasis
+    // 新版本：先算 cont, prim 再算 basis
     // todo: 用一个开关确定, polys是不是本身已经是 prims 并且 square free
     template <class var_order>
     std::vector<polynomial_<ZZ,lex_<var_order>>> __project_mccallum(
         const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
-        const clpoly::variable& x
+        const clpoly::variable& x,
+        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
     )
     {
-        
         // 计算cont和prim
-        // std::vector<polynomial_<ZZ,lex_<var_order>>> projs,prims_raw;
         auto [projs,prims_raw]=__conts_prims_polys_var(polys,x);
 
-        // 用 squarefreebasis 计算无平方的基，调用 字典序 的实现
-        auto [sqfree_prims, _] = squarefreebasis(prims_raw);
+        // 根据 basis_method 选择使用 squarefreebasis 或 factorbasis，调用 字典序 的实现
+        std::vector<polynomial_<ZZ,lex_<var_order>>> basis_prims;
+        if (basis_method == basis_computation_method::FACTOR) {
+            auto [irr_prims, _] = factorbasis(prims_raw);
+            basis_prims = std::move(irr_prims);
+        } else {
+            auto [sqfree_prims, _] = squarefreebasis(prims_raw);
+            basis_prims = std::move(sqfree_prims);
+        }
 
-        // 注意sqfree_prims 可能 不含 x, 过滤掉不含 x 的多项式
+        // 注意 basis_prims 可能 不含 x, 过滤掉不含 x 的多项式
         std::vector<polynomial_<ZZ,lex_<var_order>>> prims;
-        prims.reserve(sqfree_prims.size());
+        prims.reserve(basis_prims.size());
 
-        for (auto& poly : sqfree_prims) {
+        for (auto& poly : basis_prims) {
             if (is_number(poly))
                 continue;
 
@@ -186,33 +200,41 @@ namespace clpoly{
     // 字典序的投影算子，只能被CAD调用
     // 需要传入x, 因为某些多项式可能不含x
     // 假设x是多项式包含的所有变量中 var_order 最小的变量
-    // 新版本：先算 cont, prim 再算 squarefreebasis
+    // 新版本：先算 cont, prim 再算 basis
     // todo: 用一个开关确定, polys是不是本身已经是 prims 并且 square free
     template <class var_order>
     std::vector<polynomial_<ZZ,lex_<var_order>>> __project_lazard(
         const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
-        const clpoly::variable& x
+        const clpoly::variable& x,
+        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
     )
     {
         // 计算cont和prim
-        // std::vector<polynomial_<ZZ,lex_<var_order>>> projs,prims_raw;
         auto [projs,prims_raw]=__conts_prims_polys_var(polys,x);
 
-        // 用 squarefreebasis 计算无平方的基，调用 字典序 的实现
-        auto [sqfree_prims, _] = squarefreebasis(prims_raw);
+        // 根据 basis_method 选择使用 squarefreebasis 或 factorbasis，调用 字典序 的实现
+        std::vector<polynomial_<ZZ,lex_<var_order>>> basis_prims;
+        if (basis_method == basis_computation_method::FACTOR) {
+            auto [irr_prims, _] = factorbasis(prims_raw);
+            basis_prims = std::move(irr_prims);
+        } else {
+            auto [sqfree_prims, _] = squarefreebasis(prims_raw);
+            basis_prims = std::move(sqfree_prims);
+        }
 
-        // 注意sqfree_prims 可能 不含 x, 过滤掉不含 x 的多项式
-        // 如果有因子x, 需要分解   
+        // 注意 basis_prims 可能 不含 x, 过滤掉不含 x 的多项式
         std::vector<polynomial_<ZZ,lex_<var_order>>> prims;
-        prims.reserve(sqfree_prims.size());
+        prims.reserve(basis_prims.size());
 
-        for (auto& poly : sqfree_prims) {
+        for (auto& poly : basis_prims) {
             if (is_number(poly))
                 continue;
 
             if (get_first_var(poly) == x) {
-                // 如果有因子x, 需要分解
-                if (__has_factor_first_var(poly))
+                // 当使用 SQUAREFREE 时，如果有因子x, 需要手动分解
+                // 当使用 FACTOR 时，factorbasis 已经分解了 x 因子
+                if (basis_method == basis_computation_method::SQUAREFREE && 
+                    __has_factor_first_var(poly))
                 {
                     // 强制类型转换 x
                     polynomial_<ZZ,lex_<var_order>> x_factor(poly.comp_ptr());
@@ -291,7 +313,8 @@ namespace clpoly{
     std::vector<std::vector<polynomial_<ZZ,lex_<var_order>>>> __project_full(
         const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
         const std::vector<clpoly::variable>& vars, 
-        projection_method method = projection_method::LAZARD
+        projection_method method = projection_method::LAZARD,
+        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
     )
     {
         // 没有变量，说明全是常数，返回空
@@ -309,14 +332,21 @@ namespace clpoly{
             auto tmp=__conts_prims_polys_var(current_set,x);
             auto conts = std::move(tmp.first);
             auto prims_raw = std::move(tmp.second);
-            // step2: 用 squarefreebasis 计算无平方的基，调用 字典序 的实现
-            auto [sqfree_prims, _] = squarefreebasis(prims_raw);
+            // step2: 根据 basis_method 选择使用 squarefreebasis 或 factorbasis, 调用 字典序 的实现
+            std::vector<polynomial_<ZZ,lex_<var_order>>> basis_prims;
+            if (basis_method == basis_computation_method::FACTOR) {
+                auto [irr_prims, _] = factorbasis(prims_raw);
+                basis_prims = std::move(irr_prims);
+            } else {
+                auto [sqfree_prims, _] = squarefreebasis(prims_raw);
+                basis_prims = std::move(sqfree_prims);
+            }
             // 过滤掉不含 x_l 的多项式, 作为第l层的投影多项式
             std::vector<polynomial_<ZZ,lex_<var_order>>> prims;
-            prims.reserve(sqfree_prims.size());
-            conts.reserve(conts.size()+sqfree_prims.size());
+            prims.reserve(basis_prims.size());
+            conts.reserve(conts.size()+basis_prims.size());
 
-            for (auto& poly : sqfree_prims) {
+            for (auto& poly : basis_prims) {
                 if (is_number(poly))
                     continue;
 
@@ -338,7 +368,7 @@ namespace clpoly{
             }
 
             // 计算投影
-            current_set=__project(allprojs.back(), x, method);
+            current_set=__project(allprojs.back(), x, method, basis_method);
 
             // 合并投影和conts, 作为下一层的current_set
             current_set.reserve(current_set.size() + conts.size());
@@ -505,13 +535,14 @@ namespace clpoly{
     cad_tree<var_order> __open_cad(
         const std::vector<polynomial_<ZZ, lex_<var_order>>>& polys,
         const std::vector<variable>& vars,
-        projection_method method = projection_method::LAZARD
+        projection_method method = projection_method::LAZARD,
+        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
     )
     {
         assert(!vars.empty());
 
         // 1. 投影
-        auto allprojs = __project_full(polys, vars, method);
+        auto allprojs = __project_full(polys, vars, method, basis_method);
 
         // 2. 构造树（构造函数内部反转为提升序）
         cad_tree<var_order> tree(vars, std::move(allprojs));
@@ -542,7 +573,8 @@ namespace clpoly{
     cad_tree<custom_var_order> open_cad(
         const std::vector<polynomial_<ZZ, comp>>& polys,
         const std::vector<variable>& vars,
-        projection_method method = projection_method::LAZARD
+        projection_method method = projection_method::LAZARD,
+        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
     )
     {
         if (vars.empty())
@@ -568,7 +600,7 @@ namespace clpoly{
             poly_convert(i, p);
             polys_lex.push_back(std::move(p));
         }
-        return __open_cad(polys_lex, vars, method);
+        return __open_cad(polys_lex, vars, method, basis_method);
     }
 
 }

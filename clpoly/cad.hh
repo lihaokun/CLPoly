@@ -293,14 +293,13 @@ namespace clpoly{
                 continue;
 
             if (get_first_var(poly) == x) {
-                // Lazard 投影算子要求：若多项式含 x 因子（如 x*(x+1)），
-                // 需将 x 单独作为一个 prim 加入投影集，以处理 tangent at infinity。
+                // Lazard 投影算子要求：若多项式含 x 因子（如 x*(x+1), 需将 x 单独作为一个 prim 加入投影集。
                 // 
                 // 当使用 SQUAREFREE 时，squarefreebasis 不会分解 x 因子，需手动处理。
                 // 当使用 FACTOR 时，factorbasis 已完全分解，x 因子已单独成项。
                 // 
                 // 注意：此逻辑等价于原 __project_lazard 中的 x-factor splitting，
-                // 在 __project_full 中提前处理，避免在 _prims_to 函数中重复计算。
+                // 在调用 _prims_to 前完成，确保满足前条件。
                 if (basis_method == basis_computation_method::SQUAREFREE && 
                     __has_factor_first_var(poly))
                 {
@@ -385,9 +384,9 @@ namespace clpoly{
                     continue;
 
                 if (get_first_var(poly) == x) {
-                    // Lazard 投影算子要求：若多项式含 x 因子，需将 x 单独作为一个 prim。
+                    // Lazard 投影算子要求：若多项式含 x 因子（如 x*(x+1), 需将 x 单独作为一个 prim 加入投影集。
                     // 此逻辑等价于 __project_lazard 中的 x-factor splitting，
-                    // 在调用 _prims_to 前完成，确保投影集完整性。
+                    // 在调用 _prims_to 前完成，确保满足前条件。
                     if (method == projection_method::LAZARD && 
                         basis_method == basis_computation_method::SQUAREFREE &&
                         __has_factor_first_var(poly))
@@ -400,11 +399,14 @@ namespace clpoly{
                         // 原地做除法 poly /= x
                         for (auto& term : poly) {
                             if (term.first.front().second > 1) {
+                                // 下面是一段危险操作！
                                 term.first.front().second -= 1;
-                                term.first.deg() -= 1;
+                                term.first.deg() -= 1;      // 同时维护总次数
                             } else {
+                                // erase 里已维护 __deg
                                 term.first.erase(term.first.begin());
                             }
+                            // 确保修改没有问题
                             assert(term.first.is_normal());
                         }
                     }

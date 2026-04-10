@@ -1,5 +1,6 @@
 /**
  * @file cad_tree.hh
+ * @author ntimesp(nxp@mail.ustc.edu.cn)
  * @brief CAD 树形数据结构：cad_root, cad_node, cad_tree
  *
  * cad_root — 代数根的索引引用，标识某层某多项式的第几个不同实根（或 ±∞）。

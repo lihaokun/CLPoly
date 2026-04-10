@@ -191,6 +191,25 @@ namespace clpoly{
         // 只需要检查最后一项的 first_var 是否为x
         return !is_number(poly) && get_first_var(poly.back().first) == x;
     }
+
+    // 原地除以首变量：poly = x * g 变为 g
+    // 前置条件：__has_factor_first_var(poly) 为 true
+    // 注意：直接操作 monomial 内部字段，绕过正常 API（危险！）
+    template <class var_order>
+    void __divide_by_first_var(polynomial_<ZZ,lex_<var_order>>& poly)
+    {
+        assert(__has_factor_first_var(poly));
+        
+        for (auto& term : poly) {
+            if (term.first.front().second > 1) {
+                term.first.front().second -= 1;
+                term.first.deg() -= 1;
+            } else {
+                term.first.erase(term.first.begin());
+            }
+            assert(term.first.is_normal());
+        }
+    }
     
     // 计算末尾项系数，只有lazard投影算子会用到
     // 如果整除x，则 tailcoeff 为0
@@ -303,24 +322,13 @@ namespace clpoly{
                 if (basis_method == basis_computation_method::SQUAREFREE && 
                     __has_factor_first_var(poly))
                 {
-                    // 强制类型转换 x
+                    // 提取 x 作为独立 prim
                     polynomial_<ZZ,lex_<var_order>> x_factor(poly.comp_ptr());
-                    x_factor.push_back({{{x,1}},1});
+                    x_factor.push_back({{{x, 1}}, 1});
                     prims.push_back(std::move(x_factor));
-
-                    // 原地做除法 poly /= x, 把首变量的次数减1, 如果次数为1则删除该变量
-                    for (auto& term : poly) {
-                        if (term.first.front().second > 1) {
-                            // 下面是一段危险操作！
-                            term.first.front().second -= 1;
-                            term.first.deg() -= 1;   // 同时维护总次数
-                        } else {
-                            // erase 里已维护 __deg
-                            term.first.erase(term.first.begin());
-                        }
-                        // 确保修改没有问题
-                        assert(term.first.is_normal());
-                    }
+                    
+                    // poly 除以 x
+                    __divide_by_first_var(poly);
                 }
                 if (!is_number(poly))
                     prims.push_back(std::move(poly));
@@ -391,24 +399,13 @@ namespace clpoly{
                         basis_method == basis_computation_method::SQUAREFREE &&
                         __has_factor_first_var(poly))
                     {
-                        // 强制类型转换 x
+                        // 提取 x 作为独立 prim
                         polynomial_<ZZ,lex_<var_order>> x_factor(poly.comp_ptr());
-                        x_factor.push_back({{{x,1}},1});
+                        x_factor.push_back({{{x, 1}}, 1});
                         prims.push_back(std::move(x_factor));
-
-                        // 原地做除法 poly /= x
-                        for (auto& term : poly) {
-                            if (term.first.front().second > 1) {
-                                // 下面是一段危险操作！
-                                term.first.front().second -= 1;
-                                term.first.deg() -= 1;      // 同时维护总次数
-                            } else {
-                                // erase 里已维护 __deg
-                                term.first.erase(term.first.begin());
-                            }
-                            // 确保修改没有问题
-                            assert(term.first.is_normal());
-                        }
+                        
+                        // poly 除以 x
+                        __divide_by_first_var(poly);
                     }
                     if (!is_number(poly))
                         prims.push_back(std::move(poly));

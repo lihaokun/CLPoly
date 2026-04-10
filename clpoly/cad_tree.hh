@@ -194,6 +194,8 @@ namespace clpoly{
             if (level > 0)
             {
                 auto& p = _levels[level-1][parent_idx];
+                // CSR-style 连续存储要求：同一 parent 的子节点必须连续插入
+                assert(p.child_count() == 0 || p.child_begin() + p.child_count() == idx);
                 if (p.child_count() == 0)
                     p.child_begin() = idx;
                 p.child_count()++;
@@ -211,6 +213,8 @@ namespace clpoly{
             if (level > 0)
             {
                 auto& p = _levels[level-1][parent_idx];
+                // CSR-style 连续存储要求：同一 parent 的子节点必须连续插入
+                assert(p.child_count() == 0 || p.child_begin() + p.child_count() == idx);
                 if (p.child_count() == 0)
                     p.child_begin() = idx;
                 p.child_count()++;

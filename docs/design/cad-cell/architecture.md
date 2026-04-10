@@ -65,7 +65,7 @@ Phase 2: 提升（本次实现）
   用 (level, idx) 对标识节点，level 为层号，idx 为 levels[level] 内的下标
   不设虚根节点，levels[0] 直接为第 0 层节点
   cad_node 的 parent 字段为 idx（上一层内的下标），Level 0 节点无 parent
-  cad_node 的 children 字段为 vector<size_t>（下一层内的下标列表）
+  cad_node 的 children 用 child_begin + child_count 表示（CSR-style 连续存储，下一层内的子节点范围）
 
 单个 cell 的表示:
   vector<size_t> path，path[k] = levels[k] 中的下标
@@ -100,7 +100,8 @@ Phase 2: 提升（本次实现）
 存储:
   type            : enum { SECTION, SECTOR }
   parent          : size_t              — 上一层内的下标（Level 0 节点无 parent）
-  children        : vector<size_t>      — 下一层内的子节点下标列表
+  child_begin     : size_t              — 下一层内子节点的起始下标（CSR-style 连续存储）
+  child_count     : size_t              — 子节点数量
 
   // 根描述（Section 用 1 个，Sector 用 2 个）
   roots           : vector<cad_root>    — Section: size()=1, Sector: size()=2

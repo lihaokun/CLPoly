@@ -1,6 +1,12 @@
 # IDE
 .vscode/
 
+# User configuration (local build settings)
+config.mk
+
+# PDFs
+*.pdf
+
 # Build artifacts
 _build/
 lib/
@@ -11,6 +17,10 @@ build/
 # Binaries
 a.out
 example
+
+# Profiling artifacts
+gmon.out
+test/profile_factorize.cc
 
 # Temp/scratch files
 1.txt
@@ -34,6 +44,9 @@ test/GBP_test_gen
 test/GCD_1.txt
 test/j621_data.txt
 test/randommtp
+
+# Debug/scratch source files
+test/debug_*.cc
 
 # Generated source (legacy)
 test/associatedgraph_test.cc

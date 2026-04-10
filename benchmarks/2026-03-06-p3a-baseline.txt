@@ -1,0 +1,22 @@
+# P3a 基线 benchmark (2026-03-06)
+# 用于实现后 A/B 对比
+
+## 单变量 GCD (目标问题)
+gcd deg30+common15:              0.024ms
+gcd deg80+common40:              0.078ms
+gcd deg200+common100:            0.269ms
+gcd deg500+common250:            1.122ms
+gcd deg80 coprime:               0.026ms
+gcd deg200+common5:              0.075ms
+gcd deg80+common40 (large coeff): 0.410ms
+
+## 因式分解 (间接受益)
+factorize ~deg15 (3 fac):        0.446ms
+factorize ~deg21 (4 fac):        0.724ms
+factorize ~deg29 (5 fac):        2.224ms
+factorize Wilkinson W(20):       1.135ms
+factorize uni 70 fac:           14.164ms
+
+## 多变量 GCD (间接受益)
+gcd deg8+common4 (2var):         0.426ms
+gcd deg15+common8 (2var):        1.176ms

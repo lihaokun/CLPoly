@@ -15,10 +15,62 @@
 #include <climits>
 #include <iostream>
 #include <string>
+#include <stdexcept>
 #include <functional>
 #include <boost/container_hash/hash.hpp>
 
 namespace clpoly {
+
+// ---- GMP 64-bit helpers ----
+// mpz_set_si/mpz_get_si/mpz_set_ui/mpz_get_ui use 'long'/'unsigned long',
+// which is 32-bit on LLP64 (Windows). These helpers ensure correct 64-bit
+// round-trip on all platforms.
+
+inline void _mpz_set_u64(mpz_ptr z, uint64_t v) {
+    if constexpr (sizeof(unsigned long) == 8) {
+        mpz_set_ui(z, v);
+    } else {
+        mpz_import(z, 1, 1, sizeof(uint64_t), 0, 0, &v);
+    }
+}
+
+inline uint64_t _mpz_get_u64(mpz_srcptr z) {
+    if constexpr (sizeof(unsigned long) == 8) {
+        return mpz_get_ui(z);
+    } else {
+        uint64_t result = 0;
+        mpz_export(&result, NULL, 1, sizeof(uint64_t), 0, 0, z);
+        return result;
+    }
+}
+
+inline void _mpz_set_s64(mpz_ptr z, int64_t v) {
+    if constexpr (sizeof(long) == 8) {
+        mpz_set_si(z, v);
+    } else {
+        uint64_t abs_v = (v >= 0) ? static_cast<uint64_t>(v)
+                                  : static_cast<uint64_t>(-(v + 1)) + 1;
+        mpz_import(z, 1, 1, sizeof(uint64_t), 0, 0, &abs_v);
+        if (v < 0) mpz_neg(z, z);
+    }
+}
+
+inline int64_t _mpz_get_s64(mpz_srcptr z) {
+    if constexpr (sizeof(long) == 8) {
+        return mpz_get_si(z);
+    } else {
+        uint64_t abs_val = 0;
+        mpz_t tmp;
+        mpz_init(tmp);
+        mpz_abs(tmp, z);
+        mpz_export(&abs_val, NULL, 1, sizeof(uint64_t), 0, 0, tmp);
+        mpz_clear(tmp);
+        if (mpz_sgn(z) >= 0)
+            return static_cast<int64_t>(abs_val);
+        else
+            return static_cast<int64_t>(-(abs_val - 1) - 1);
+    }
+}
 
 class ZZ {
 private:
@@ -40,7 +92,7 @@ private:
 
     void _promote() {
         _mpz = _mpz_new();
-        mpz_set_si(_mpz, _val);
+        _mpz_set_s64(_mpz, _val);
     }
 
     // Returns true if mpz value fits int64_t
@@ -58,27 +110,20 @@ private:
         // bits == 63: could be INT64_MIN .. INT64_MAX
         // Compare against limits
         if (mpz_sgn(z) >= 0) {
-            // check z <= INT64_MAX
             static mpz_t max_val;
             static bool init = false;
             if (!init) {
                 mpz_init(max_val);
-                mpz_set_si(max_val, INT64_MAX);
+                _mpz_set_s64(max_val, INT64_MAX);
                 init = true;
             }
             return mpz_cmp(z, max_val) <= 0;
         } else {
-            // check z >= INT64_MIN
             static mpz_t min_val;
             static bool init = false;
             if (!init) {
                 mpz_init(min_val);
-                mpz_set_si(min_val, INT64_MIN);
-                // On LLP64 where long is 32-bit, INT64_MIN can't be set by mpz_set_si.
-                // Use string fallback.
-                if (sizeof(long) < 8) {
-                    mpz_set_str(min_val, "-9223372036854775808", 10);
-                }
+                _mpz_set_s64(min_val, INT64_MIN);
                 init = true;
             }
             return mpz_cmp(z, min_val) >= 0;
@@ -87,7 +132,7 @@ private:
 
     void _demote_if_small() {
         if (_mpz && _fits_si(_mpz)) {
-            _val = mpz_get_si(_mpz);
+            _val = _mpz_get_s64(_mpz);
             _mpz_del(_mpz);
             _mpz = nullptr;
         }
@@ -140,7 +185,7 @@ public:
             throw std::invalid_argument(std::string("ZZ: invalid string: ") + str);
         }
         if (_fits_si(tmp)) {
-            _val = mpz_get_si(tmp);
+            _val = _mpz_get_s64(tmp);
             _mpz_del(tmp);
         } else {
             _mpz = tmp;
@@ -148,6 +193,15 @@ public:
     }
 
     ZZ(const std::string& str, int base = 10) : ZZ(str.c_str(), base) {}
+
+    ZZ(mpz_srcptr z) : _val(0), _mpz(nullptr) {
+        if (_fits_si(z)) {
+            _val = _mpz_get_s64(z);
+        } else {
+            _mpz = _mpz_new();
+            mpz_set(_mpz, z);
+        }
+    }
 
     // copy
     ZZ(const ZZ& o) : _val(o._val), _mpz(nullptr) {
@@ -194,9 +248,44 @@ public:
         return *this;
     }
 
+    ZZ& operator=(int v) {
+        if (_mpz) { _mpz_del(_mpz); _mpz = nullptr; }
+        _val = v;
+        return *this;
+    }
+    ZZ& operator=(long v) {
+        if (_mpz) { _mpz_del(_mpz); _mpz = nullptr; }
+        _val = v;
+        return *this;
+    }
     ZZ& operator=(long long v) {
         if (_mpz) { _mpz_del(_mpz); _mpz = nullptr; }
         _val = v;
+        return *this;
+    }
+    ZZ& operator=(unsigned int v) {
+        if (_mpz) { _mpz_del(_mpz); _mpz = nullptr; }
+        _val = static_cast<int64_t>(v);
+        return *this;
+    }
+    ZZ& operator=(unsigned long v) {
+        if (v <= static_cast<unsigned long>(INT64_MAX)) {
+            if (_mpz) { _mpz_del(_mpz); _mpz = nullptr; }
+            _val = static_cast<int64_t>(v);
+        } else {
+            if (!_mpz) { _val = 0; _mpz = _mpz_new(); }
+            mpz_set_ui(_mpz, v);
+        }
+        return *this;
+    }
+    ZZ& operator=(unsigned long long v) {
+        if (v <= static_cast<unsigned long long>(INT64_MAX)) {
+            if (_mpz) { _mpz_del(_mpz); _mpz = nullptr; }
+            _val = static_cast<int64_t>(v);
+        } else {
+            if (!_mpz) { _val = 0; _mpz = _mpz_new(); }
+            _mpz_set_u64(_mpz, static_cast<uint64_t>(v));
+        }
         return *this;
     }
 
@@ -212,11 +301,11 @@ public:
         if (a._is_small()) {
             // a small, b big
             return mpz_cmp_si(b._mpz, static_cast<long>(a._val)) == 0
-                   || (sizeof(long) < 8 && _fits_si(b._mpz) && mpz_get_si(b._mpz) == a._val);
+                   || (sizeof(long) < 8 && _fits_si(b._mpz) && _mpz_get_s64(b._mpz) == a._val);
         }
         if (b._is_small()) {
             return mpz_cmp_si(a._mpz, static_cast<long>(b._val)) == 0
-                   || (sizeof(long) < 8 && _fits_si(a._mpz) && mpz_get_si(a._mpz) == b._val);
+                   || (sizeof(long) < 8 && _fits_si(a._mpz) && _mpz_get_s64(a._mpz) == b._val);
         }
         return mpz_cmp(a._mpz, b._mpz) == 0;
     }
@@ -236,6 +325,11 @@ public:
     friend bool operator>(const ZZ& a, const ZZ& b)  { return b < a; }
     friend bool operator<=(const ZZ& a, const ZZ& b) { return !(b < a); }
     friend bool operator>=(const ZZ& a, const ZZ& b) { return !(a < b); }
+
+    // ---- accessors for internal representation ----
+    bool       is_small()  const { return _is_small(); }
+    int64_t    get_val()   const { return _val; }
+    mpz_srcptr get_mpz_v() const { return _mpz; }
 
     // ---- state query ----
     explicit operator bool() const {
@@ -266,7 +360,7 @@ public:
                 // overflow: promote
                 ZZ r;
                 r._mpz = _mpz_new();
-                mpz_set_si(r._mpz, INT64_MIN);
+                _mpz_set_s64(r._mpz, INT64_MIN);
                 mpz_neg(r._mpz, r._mpz);
                 return r;
             }
@@ -290,7 +384,7 @@ public:
         res._mpz = _mpz_new();
         if (a._is_small() && b._is_small()) {
             // overflow case
-            mpz_set_si(res._mpz, a._val);
+            _mpz_set_s64(res._mpz, a._val);
             if (b._val >= 0)
                 mpz_add_ui(res._mpz, res._mpz, static_cast<unsigned long>(b._val));
             else
@@ -323,13 +417,13 @@ public:
         ZZ res;
         res._mpz = _mpz_new();
         if (a._is_small() && b._is_small()) {
-            mpz_set_si(res._mpz, a._val);
+            _mpz_set_s64(res._mpz, a._val);
             if (b._val >= 0)
                 mpz_sub_ui(res._mpz, res._mpz, static_cast<unsigned long>(b._val));
             else
                 mpz_add_ui(res._mpz, res._mpz, static_cast<unsigned long>(-b._val));
         } else if (a._is_small()) {
-            mpz_set_si(res._mpz, a._val);
+            _mpz_set_s64(res._mpz, a._val);
             mpz_sub(res._mpz, res._mpz, b._mpz);
         } else if (b._is_small()) {
             if (b._val >= 0)
@@ -359,7 +453,7 @@ public:
         ZZ res;
         res._mpz = _mpz_new();
         if (a._is_small() && b._is_small()) {
-            mpz_set_si(res._mpz, a._val);
+            _mpz_set_s64(res._mpz, a._val);
             mpz_mul_si(res._mpz, res._mpz, b._val);
         } else if (a._is_small()) {
             mpz_mul_si(res._mpz, b._mpz, a._val);
@@ -380,7 +474,7 @@ public:
             if (a._val == INT64_MIN && b._val == -1) {
                 ZZ r;
                 r._mpz = _mpz_new();
-                mpz_set_si(r._mpz, INT64_MIN);
+                _mpz_set_s64(r._mpz, INT64_MIN);
                 mpz_neg(r._mpz, r._mpz);
                 return r;
             }
@@ -390,12 +484,12 @@ public:
         res._mpz = _mpz_new();
         if (a._is_small()) {
             mpz_t tmp;
-            mpz_init_set_si(tmp, a._val);
+            mpz_init(tmp); _mpz_set_s64(tmp, a._val);
             mpz_tdiv_q(res._mpz, tmp, b._mpz);
             mpz_clear(tmp);
         } else if (b._is_small()) {
             mpz_t tmp;
-            mpz_init_set_si(tmp, b._val);
+            mpz_init(tmp); _mpz_set_s64(tmp, b._val);
             mpz_tdiv_q(res._mpz, a._mpz, tmp);
             mpz_clear(tmp);
         } else {
@@ -416,12 +510,12 @@ public:
         res._mpz = _mpz_new();
         if (a._is_small()) {
             mpz_t tmp;
-            mpz_init_set_si(tmp, a._val);
+            mpz_init(tmp); _mpz_set_s64(tmp, a._val);
             mpz_tdiv_r(res._mpz, tmp, b._mpz);
             mpz_clear(tmp);
         } else if (b._is_small()) {
             mpz_t tmp;
-            mpz_init_set_si(tmp, b._val);
+            mpz_init(tmp); _mpz_set_s64(tmp, b._val);
             mpz_tdiv_r(res._mpz, a._mpz, tmp);
             mpz_clear(tmp);
         } else {
@@ -539,19 +633,19 @@ public:
         if (a._is_small() && b._is_small()) {
             // promote both to mpz temporaries for mpz_addmul
             mpz_t ta, tb;
-            mpz_init_set_si(ta, a._val);
-            mpz_init_set_si(tb, b._val);
+            mpz_init(ta); _mpz_set_s64(ta, a._val);
+            mpz_init(tb); _mpz_set_s64(tb, b._val);
             mpz_addmul(_mpz, ta, tb);
             mpz_clear(ta);
             mpz_clear(tb);
         } else if (a._is_small()) {
             mpz_t ta;
-            mpz_init_set_si(ta, a._val);
+            mpz_init(ta); _mpz_set_s64(ta, a._val);
             mpz_addmul(_mpz, ta, b._mpz);
             mpz_clear(ta);
         } else if (b._is_small()) {
             mpz_t tb;
-            mpz_init_set_si(tb, b._val);
+            mpz_init(tb); _mpz_set_s64(tb, b._val);
             mpz_addmul(_mpz, a._mpz, tb);
             mpz_clear(tb);
         } else {
@@ -574,19 +668,19 @@ public:
         _ensure_mpz();
         if (a._is_small() && b._is_small()) {
             mpz_t ta, tb;
-            mpz_init_set_si(ta, a._val);
-            mpz_init_set_si(tb, b._val);
+            mpz_init(ta); _mpz_set_s64(ta, a._val);
+            mpz_init(tb); _mpz_set_s64(tb, b._val);
             mpz_submul(_mpz, ta, tb);
             mpz_clear(ta);
             mpz_clear(tb);
         } else if (a._is_small()) {
             mpz_t ta;
-            mpz_init_set_si(ta, a._val);
+            mpz_init(ta); _mpz_set_s64(ta, a._val);
             mpz_submul(_mpz, ta, b._mpz);
             mpz_clear(ta);
         } else if (b._is_small()) {
             mpz_t tb;
-            mpz_init_set_si(tb, b._val);
+            mpz_init(tb); _mpz_set_s64(tb, b._val);
             mpz_submul(_mpz, a._mpz, tb);
             mpz_clear(tb);
         } else {
@@ -596,7 +690,7 @@ public:
     }
 
     // ---- fdiv_ui: floor-mod for Zp ----
-    uint64_t fdiv_ui(uint32_t d) const {
+    uint64_t fdiv_ui(uint64_t d) const {
         if (_is_small()) {
             if (_val >= 0) return static_cast<uint64_t>(_val) % d;
             // negative: floor mod = d - ((-val) % d), but 0 if divides evenly
@@ -614,7 +708,7 @@ public:
             // Special case: _val == INT64_MIN, -_val overflows
             if (_val == INT64_MIN) {
                 mpz_t tmp;
-                mpz_init_set_si(tmp, INT64_MIN);
+                mpz_init(tmp); _mpz_set_s64(tmp, INT64_MIN);
                 mpz_neg(tmp, tmp);
                 size_t r = mpz_sizeinbase(tmp, base);
                 mpz_clear(tmp);
@@ -630,7 +724,7 @@ public:
     // ---- get_si: extract as long long ----
     long long get_si() const {
         if (_is_small()) return _val;
-        return static_cast<long long>(mpz_get_si(_mpz));
+        return static_cast<long long>(_mpz_get_s64(_mpz));
     }
 
     // ---- floor division (static, for number.hh template specialization) ----
@@ -639,7 +733,7 @@ public:
             if (b._val == 0) throw std::domain_error("ZZ: division by zero");
             if (a._val == INT64_MIN && b._val == -1) {
                 q._ensure_mpz();
-                mpz_set_si(q._mpz, INT64_MIN);
+                _mpz_set_s64(q._mpz, INT64_MIN);
                 mpz_neg(q._mpz, q._mpz);
                 return;
             }
@@ -656,12 +750,12 @@ public:
         q._ensure_mpz();
         if (a._is_small()) {
             mpz_t ta;
-            mpz_init_set_si(ta, a._val);
+            mpz_init(ta); _mpz_set_s64(ta, a._val);
             mpz_fdiv_q(q._mpz, ta, b._mpz);
             mpz_clear(ta);
         } else if (b._is_small()) {
             mpz_t tb;
-            mpz_init_set_si(tb, b._val);
+            mpz_init(tb); _mpz_set_s64(tb, b._val);
             mpz_fdiv_q(q._mpz, a._mpz, tb);
             mpz_clear(tb);
         } else {
@@ -675,7 +769,7 @@ public:
             if (b._val == 0) throw std::domain_error("ZZ: division by zero");
             if (a._val == INT64_MIN && b._val == -1) {
                 q._ensure_mpz();
-                mpz_set_si(q._mpz, INT64_MIN);
+                _mpz_set_s64(q._mpz, INT64_MIN);
                 mpz_neg(q._mpz, q._mpz);
                 if (r._mpz) { _mpz_del(r._mpz); r._mpz = nullptr; }
                 r._val = 0;
@@ -697,12 +791,12 @@ public:
         r._ensure_mpz();
         if (a._is_small()) {
             mpz_t ta;
-            mpz_init_set_si(ta, a._val);
+            mpz_init(ta); _mpz_set_s64(ta, a._val);
             mpz_fdiv_qr(q._mpz, r._mpz, ta, b._mpz);
             mpz_clear(ta);
         } else if (b._is_small()) {
             mpz_t tb;
-            mpz_init_set_si(tb, b._val);
+            mpz_init(tb); _mpz_set_s64(tb, b._val);
             mpz_fdiv_qr(q._mpz, r._mpz, a._mpz, tb);
             mpz_clear(tb);
         } else {
@@ -726,12 +820,12 @@ public:
         r._ensure_mpz();
         if (a._is_small()) {
             mpz_t ta;
-            mpz_init_set_si(ta, a._val);
+            mpz_init(ta); _mpz_set_s64(ta, a._val);
             mpz_fdiv_r(r._mpz, ta, b._mpz);
             mpz_clear(ta);
         } else if (b._is_small()) {
             mpz_t tb;
-            mpz_init_set_si(tb, b._val);
+            mpz_init(tb); _mpz_set_s64(tb, b._val);
             mpz_fdiv_r(r._mpz, a._mpz, tb);
             mpz_clear(tb);
         } else {
@@ -746,8 +840,8 @@ public:
         result._ensure_mpz();
         mpz_t ta, tm;
         bool need_clear_a = a._is_small(), need_clear_m = m._is_small();
-        if (need_clear_a) { mpz_init_set_si(ta, a._val); }
-        if (need_clear_m) { mpz_init_set_si(tm, m._val); }
+        if (need_clear_a) { mpz_init(ta); _mpz_set_s64(ta, a._val); }
+        if (need_clear_m) { mpz_init(tm); _mpz_set_s64(tm, m._val); }
         const mpz_ptr pa = need_clear_a ? ta : a._mpz;
         const mpz_ptr pm = need_clear_m ? tm : m._mpz;
         int ok = mpz_invert(result._mpz, pa, pm);
@@ -814,7 +908,7 @@ inline ZZ pow(const ZZ& base, uint64_t exp) {
     ZZ r;
     r._mpz = ZZ::_mpz_new();
     if (base._is_small()) {
-        mpz_set_si(r._mpz, base._val);
+        _mpz_set_s64(r._mpz, base._val);
     } else {
         mpz_set(r._mpz, base._mpz);
     }
@@ -840,18 +934,18 @@ inline ZZ gcd(const ZZ& a, const ZZ& b) {
     r._mpz = ZZ::_mpz_new();
     if (a._is_small() && b._is_small()) {
         mpz_t ta, tb;
-        mpz_init_set_si(ta, a._val);
-        mpz_init_set_si(tb, b._val);
+        mpz_init(ta); _mpz_set_s64(ta, a._val);
+        mpz_init(tb); _mpz_set_s64(tb, b._val);
         mpz_gcd(r._mpz, ta, tb);
         mpz_clear(ta); mpz_clear(tb);
     } else if (a._is_small()) {
         mpz_t ta;
-        mpz_init_set_si(ta, a._val);
+        mpz_init(ta); _mpz_set_s64(ta, a._val);
         mpz_gcd(r._mpz, ta, b._mpz);
         mpz_clear(ta);
     } else if (b._is_small()) {
         mpz_t tb;
-        mpz_init_set_si(tb, b._val);
+        mpz_init(tb); _mpz_set_s64(tb, b._val);
         mpz_gcd(r._mpz, a._mpz, tb);
         mpz_clear(tb);
     } else {
@@ -880,18 +974,18 @@ inline ZZ lcm(const ZZ& a, const ZZ& b) {
     r._mpz = ZZ::_mpz_new();
     if (a._is_small() && b._is_small()) {
         mpz_t ta, tb;
-        mpz_init_set_si(ta, a._val);
-        mpz_init_set_si(tb, b._val);
+        mpz_init(ta); _mpz_set_s64(ta, a._val);
+        mpz_init(tb); _mpz_set_s64(tb, b._val);
         mpz_lcm(r._mpz, ta, tb);
         mpz_clear(ta); mpz_clear(tb);
     } else if (a._is_small()) {
         mpz_t ta;
-        mpz_init_set_si(ta, a._val);
+        mpz_init(ta); _mpz_set_s64(ta, a._val);
         mpz_lcm(r._mpz, ta, b._mpz);
         mpz_clear(ta);
     } else if (b._is_small()) {
         mpz_t tb;
-        mpz_init_set_si(tb, b._val);
+        mpz_init(tb); _mpz_set_s64(tb, b._val);
         mpz_lcm(r._mpz, a._mpz, tb);
         mpz_clear(tb);
     } else {
@@ -906,7 +1000,7 @@ inline ZZ abs(const ZZ& a) {
         if (a._val == INT64_MIN) {
             ZZ r;
             r._mpz = ZZ::_mpz_new();
-            mpz_set_si(r._mpz, INT64_MIN);
+            _mpz_set_s64(r._mpz, INT64_MIN);
             mpz_abs(r._mpz, r._mpz);
             return r;
         }
@@ -933,6 +1027,53 @@ inline std::size_t hash_value(const ZZ& v) {
 
 inline void swap(ZZ& a, ZZ& b) noexcept {
     a.swap(b);
+}
+
+// ---- prime generation (GMP-based) ----
+
+/// Returns the smallest prime p > n.
+/// Throws std::overflow_error if p exceeds uint64_t.
+inline uint64_t next_prime_64(uint64_t n) {
+    mpz_t z;
+    mpz_init(z);
+    _mpz_set_u64(z, n);
+    mpz_nextprime(z, z);
+    if (mpz_sizeinbase(z, 2) > 64) {
+        mpz_clear(z);
+        throw std::overflow_error("next_prime_64: result exceeds uint64_t");
+    }
+    uint64_t result = _mpz_get_u64(z);
+    mpz_clear(z);
+    return result;
+}
+
+/// Returns the largest prime p < n.  Requires n >= 3.
+/// Requires GMP >= 6.3.0 (mpz_prevprime).
+inline uint64_t prev_prime_64(uint64_t n) {
+    if (n <= 2)
+        throw std::domain_error("prev_prime_64: no prime less than 2");
+    mpz_t z;
+    mpz_init(z);
+    _mpz_set_u64(z, n);
+    mpz_prevprime(z, z);
+    uint64_t result = _mpz_get_u64(z);
+    mpz_clear(z);
+    return result;
+}
+
+/// Returns the smallest prime p > n (arbitrary precision).
+inline ZZ next_prime(const ZZ& n) {
+    mpz_t z;
+    mpz_init(z);
+    if (n.is_small()) {
+        _mpz_set_s64(z, n.get_val());
+    } else {
+        mpz_set(z, n.get_mpz_v());
+    }
+    mpz_nextprime(z, z);
+    ZZ result(static_cast<mpz_srcptr>(z));
+    mpz_clear(z);
+    return result;
 }
 
 } // namespace clpoly

@@ -1,6 +1,6 @@
 # P2a 架构文档：素数试验次数优化
 
-> 状态：待确认
+> 状态：已实现
 > 调研依据：`docs/research/factorize-profiling.md` §3.3
 
 ---

@@ -14,7 +14,7 @@ upolynomial_<ZZ> make_upoly_zz(std::initializer_list<std::pair<int64_t, int64_t>
 }
 
 // Helper: 构造 upolynomial_<Zp>
-upolynomial_<Zp> make_upoly_zp(std::initializer_list<std::pair<int64_t, uint64_t>> terms, uint32_t p)
+upolynomial_<Zp> make_upoly_zp(std::initializer_list<std::pair<int64_t, uint64_t>> terms, uint64_t p)
 {
     upolynomial_<Zp> poly;
     for (auto& t : terms)
@@ -39,7 +39,7 @@ bool verify_ZZ_factorization(const upolynomial_<ZZ>& f,
 
 // 端到端测试辅助: 从 f 出发, 做 Zp 分解 → Hensel 提升 → van Hoeij LLL 重组
 std::vector<upolynomial_<ZZ>> full_vanhoeij_pipeline(
-    const upolynomial_<ZZ>& f, uint32_t p)
+    const upolynomial_<ZZ>& f, uint64_t p)
 {
     auto f_zp = polynomial_mod(f, p);
     auto [lc_zp, factors_zp] = __factor_Zp(f_zp);
@@ -57,7 +57,7 @@ std::vector<upolynomial_<ZZ>> full_vanhoeij_pipeline(
 
 // 端到端测试辅助: 从 f 出发, 做 Zp 分解 → Hensel 提升 → 因子重组
 std::vector<upolynomial_<ZZ>> full_factor_pipeline(
-    const upolynomial_<ZZ>& f, uint32_t p)
+    const upolynomial_<ZZ>& f, uint64_t p)
 {
     // 1. 转换到 Zp 并分解
     auto f_zp = polynomial_mod(f, p);

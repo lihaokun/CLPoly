@@ -25,7 +25,7 @@ namespace clpoly{
     // 投影多项式基的生成方法
     enum class basis_computation_method {
         SQUAREFREE,  // 无平方基（默认，目前更快）
-        FACTOR       // 不可约因子基（目前更慢）
+        FACTOR       // 不可约因子基（更彻底，目前更慢）
     };
 
     // 计算多项式集合 F 关于 x 的 conts 集和 prims 集
@@ -87,47 +87,16 @@ namespace clpoly{
         }
     }
 
-    // 字典序的投影算子
-    // 需要传入x, 因为某些多项式可能不含x
-    // 假设x是多项式包含的所有变量中 var_order 最小的变量
-    // 新版本：先算 cont, prim 再算 basis
-    // todo: 用一个开关确定, polys是不是本身已经是 prims 并且 square free
+    // McCallum 投影算子核心实现
+    // 输入 prims 必须已经过 basis 计算，且每个多项式都含 x
+    // 结果直接追加到 projs
     template <class var_order>
-    std::vector<polynomial_<ZZ,lex_<var_order>>> __project_mccallum(
-        const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
+    void __project_mccallum_prims_to(
+        const std::vector<polynomial_<ZZ,lex_<var_order>>>& prims,
         const clpoly::variable& x,
-        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
+        std::vector<polynomial_<ZZ,lex_<var_order>>>& projs  // 直接追加
     )
     {
-        // 计算cont和prim
-        auto [projs,prims_raw]=__conts_prims_polys_var(polys,x);
-
-        // 根据 basis_method 选择使用 squarefreebasis 或 factorbasis，调用 字典序 的实现
-        std::vector<polynomial_<ZZ,lex_<var_order>>> basis_prims;
-        if (basis_method == basis_computation_method::FACTOR) {
-            auto [irr_prims, _] = factorbasis(prims_raw);
-            basis_prims = std::move(irr_prims);
-        } else {
-            auto [sqfree_prims, _] = squarefreebasis(prims_raw);
-            basis_prims = std::move(sqfree_prims);
-        }
-
-        // 注意 basis_prims 可能 不含 x, 过滤掉不含 x 的多项式
-        std::vector<polynomial_<ZZ,lex_<var_order>>> prims;
-        prims.reserve(basis_prims.size());
-
-        for (auto& poly : basis_prims) {
-            if (is_number(poly))
-                continue;
-
-            if (get_first_var(poly) == x) {
-                prims.push_back(std::move(poly));
-            } else {
-                // 例如 (x-1)*g(y) 拆出来的 g(y)，只含低维变量，下传
-                projs.push_back(std::move(poly));
-            }
-        }
-
         // 计算 coeff 和 discriminant, 保证每个多项式都含x
         for (const auto& poly : prims) {
             // 保证每个多项式都含x
@@ -157,6 +126,51 @@ namespace clpoly{
                     projs.push_back(std::move(res));
             }
         }
+    }
+
+    // 字典序的投影算子
+    // 需要传入x, 因为某些多项式可能不含x
+    // 假设x是多项式包含的所有变量中 var_order 最小的变量
+    // 新版本：先算 cont, prim 再算 basis
+    template <class var_order>
+    std::vector<polynomial_<ZZ,lex_<var_order>>> __project_mccallum(
+        const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
+        const clpoly::variable& x,
+        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
+    )
+    {
+        // 计算cont和prim
+        auto [projs, prims_raw] = __conts_prims_polys_var(polys, x);
+
+        // 根据 basis_method 选择使用 squarefreebasis 或 factorbasis，调用 字典序 的实现
+        std::vector<polynomial_<ZZ,lex_<var_order>>> basis_prims;
+        if (basis_method == basis_computation_method::FACTOR) {
+            // 用 factorbasis 计算不可约互素基
+            auto [irr_prims, _] = factorbasis(prims_raw);
+            basis_prims = std::move(irr_prims);
+        } else {
+            // 用 squarefreebasis 计算无平方的基（默认）
+            auto [sqfree_prims, _] = squarefreebasis(prims_raw);
+            basis_prims = std::move(sqfree_prims);
+        }
+
+        // 注意 basis_prims 可能 不含 x, 过滤掉不含 x 的多项式
+        std::vector<polynomial_<ZZ,lex_<var_order>>> prims;
+        prims.reserve(basis_prims.size());
+
+        for (auto& poly : basis_prims) {
+            if (is_number(poly))
+                continue;
+
+            if (get_first_var(poly) == x) {
+                prims.push_back(std::move(poly));
+            } else {
+                // 例如 (x-1)*g(y) 拆出来的 g(y)，只含低维变量，下传
+                projs.push_back(std::move(poly));
+            }
+        }
+
+        __project_mccallum_prims_to(prims, x, projs);
         return projs;
     }
 
@@ -197,11 +211,50 @@ namespace clpoly{
         return tc;
     }
 
+    // Lazard 投影算子核心实现
+    // 输入 prims 必须已经过 basis 计算，且每个多项式都含 x
+    // 前置条件：如果 basis 是 SQUAREFREE，调用方必须先处理 x 因子
+    template <class var_order>
+    void __project_lazard_prims_to(
+        const std::vector<polynomial_<ZZ,lex_<var_order>>>& prims,
+        const clpoly::variable& x,
+        std::vector<polynomial_<ZZ,lex_<var_order>>>& projs
+    )
+    {
+        // 计算 leadcoeff, tailcoeff 和 discriminant, 保证每个多项式都含x
+        for (const auto& poly : prims) {
+            assert(get_first_var(poly)==x);
+
+            // 调用 字典序 的 leadcoeff
+            auto lc = leadcoeff(poly);
+            if (!is_number(lc))
+                projs.push_back(std::move(lc));
+            // 调用 字典序 的 tailcoeff
+            auto tc = __tailcoeff_lazard(poly);
+            if (!is_number(tc))
+                projs.push_back(std::move(tc));
+            // discriminant 只有 一般序 和 univariate_priority_order 的实现，调用一般序的实现
+            auto disc = discriminant(poly, x);
+            assert(!disc.empty());
+            if (!is_number(disc))
+                projs.push_back(std::move(disc));
+        }
+
+        //计算每对多项式的 resultant
+        for (size_t i = 0; i < prims.size(); ++i) {
+            for (size_t j = i + 1; j < prims.size(); ++j) {
+                auto res = resultant(prims[i], prims[j], x);
+                assert(!res.empty());
+                if (!is_number(res))
+                    projs.push_back(std::move(res));
+            }
+        }
+    }
+
     // 字典序的投影算子，只能被CAD调用
     // 需要传入x, 因为某些多项式可能不含x
     // 假设x是多项式包含的所有变量中 var_order 最小的变量
     // 新版本：先算 cont, prim 再算 basis
-    // todo: 用一个开关确定, polys是不是本身已经是 prims 并且 square free
     template <class var_order>
     std::vector<polynomial_<ZZ,lex_<var_order>>> __project_lazard(
         const std::vector<polynomial_<ZZ,lex_<var_order>>>& polys, 
@@ -210,19 +263,22 @@ namespace clpoly{
     )
     {
         // 计算cont和prim
-        auto [projs,prims_raw]=__conts_prims_polys_var(polys,x);
+        auto [projs, prims_raw] = __conts_prims_polys_var(polys, x);
 
         // 根据 basis_method 选择使用 squarefreebasis 或 factorbasis，调用 字典序 的实现
         std::vector<polynomial_<ZZ,lex_<var_order>>> basis_prims;
         if (basis_method == basis_computation_method::FACTOR) {
+            // 用 factorbasis 计算不可约互素基
             auto [irr_prims, _] = factorbasis(prims_raw);
             basis_prims = std::move(irr_prims);
         } else {
+            // 用 squarefreebasis 计算无平方的基（默认）
             auto [sqfree_prims, _] = squarefreebasis(prims_raw);
             basis_prims = std::move(sqfree_prims);
         }
 
         // 注意 basis_prims 可能 不含 x, 过滤掉不含 x 的多项式
+        // 如果有因子x, 需要分解（SQUAREFREE 模式时）
         std::vector<polynomial_<ZZ,lex_<var_order>>> prims;
         prims.reserve(basis_prims.size());
 
@@ -247,9 +303,7 @@ namespace clpoly{
                             // 下面是一段危险操作！
                             term.first.front().second -= 1;
                             term.first.deg() -= 1;   // 同时维护总次数
-                        } 
-                        else 
-                        {
+                        } else {
                             // erase 里已维护 __deg
                             term.first.erase(term.first.begin());
                         }
@@ -259,46 +313,13 @@ namespace clpoly{
                 }
                 if (!is_number(poly))
                     prims.push_back(std::move(poly));
-            } 
-            else 
-            {
+            } else {
                 // 例如 (x-1)*g(y) 拆出来的 g(y)，只含低维变量，下传
                 projs.push_back(std::move(poly));
             }
         }
 
-        // 计算 leadcoeff, tailcoeff 和 discriminant, 保证每个多项式都含x
-        for (const auto& poly : prims) {
-            // 保证每个多项式都含x
-            assert(get_first_var(poly)==x);
-
-            // 调用 字典序 的 leadcoeff
-            auto lc = leadcoeff(poly);
-            if (!is_number(lc))
-                projs.push_back(std::move(lc));
-            // 调用 字典序 的 tailcoeff
-            auto tc = __tailcoeff_lazard(poly);
-            if (!is_number(tc))
-                projs.push_back(std::move(tc));
-            // discriminant 只有 一般序 和 univariate_priority_order 的实现，调用一般序的实现
-            // todo: 以后可以添加 字典序 的 discriminant 实现
-            auto disc = discriminant(poly, x);
-            assert(!disc.empty());
-            if (!is_number(disc))
-                projs.push_back(std::move(disc));
-        }
-
-        //计算每对多项式的 resultant
-        for (size_t i = 0; i < prims.size(); ++i) {
-            for (size_t j = i + 1; j < prims.size(); ++j) {
-                // resultant 只有 一般序 和 univariate_priority_order 的实现，调用一般序的实现
-                // todo: 以后可以添加 字典序 的 resultant 实现
-                auto res = resultant(prims[i], prims[j], x);
-                assert(!res.empty());
-                if (!is_number(res))
-                    projs.push_back(std::move(res));
-            }
-        }
+        __project_lazard_prims_to(prims, x, projs);
         return projs;
     }
 
@@ -306,8 +327,8 @@ namespace clpoly{
     // 保证 vars 符合多项式的 var_order
     // 计算第i层的投影的步骤
     // step1 计算 cont 和 prim
-    // step2 计算 prim 的 squarefreebasis, 过滤掉不含 x_i 的多项式, 作为第l层的投影多项式
-    // step3 只把过滤后的 squarefreebasis 传给 __project, 计算单次投影
+    // step2 计算 prim 的 basis, 过滤掉不含 x_i 的多项式, 作为第l层的投影多项式
+    // step3 只把过滤后的 basis 传给 __project, 计算单次投影
     // 输出: 每层的投影多项式，确保第i层所有多项式都包含vars[i]
     template <class var_order>
     std::vector<std::vector<polynomial_<ZZ,lex_<var_order>>>> __project_full(
@@ -342,6 +363,7 @@ namespace clpoly{
                 basis_prims = std::move(sqfree_prims);
             }
             // 过滤掉不含 x_l 的多项式, 作为第l层的投影多项式
+            // 同时处理 x 因子（Lazard + SQUAREFREE 模式时）
             std::vector<polynomial_<ZZ,lex_<var_order>>> prims;
             prims.reserve(basis_prims.size());
             conts.reserve(conts.size()+basis_prims.size());
@@ -351,7 +373,29 @@ namespace clpoly{
                     continue;
 
                 if (get_first_var(poly) == x) {
-                    prims.push_back(std::move(poly));
+                    // Lazard + SQUAREFREE 模式：处理 x 因子
+                    if (method == projection_method::LAZARD && 
+                        basis_method == basis_computation_method::SQUAREFREE &&
+                        __has_factor_first_var(poly))
+                    {
+                        // 强制类型转换 x
+                        polynomial_<ZZ,lex_<var_order>> x_factor(poly.comp_ptr());
+                        x_factor.push_back({{{x,1}},1});
+                        prims.push_back(std::move(x_factor));
+
+                        // 原地做除法 poly /= x
+                        for (auto& term : poly) {
+                            if (term.first.front().second > 1) {
+                                term.first.front().second -= 1;
+                                term.first.deg() -= 1;
+                            } else {
+                                term.first.erase(term.first.begin());
+                            }
+                            assert(term.first.is_normal());
+                        }
+                    }
+                    if (!is_number(poly))
+                        prims.push_back(std::move(poly));
                 } 
                 else 
                 {
@@ -367,14 +411,14 @@ namespace clpoly{
                 break;
             }
 
-            // 计算投影
-            current_set=__project(allprojs.back(), x, method, basis_method);
-
-            // 合并投影和conts, 作为下一层的current_set
-            current_set.reserve(current_set.size() + conts.size());
-            current_set.insert(current_set.end(),
-                                std::make_move_iterator(conts.begin()),
-                                std::make_move_iterator(conts.end()));
+            // 计算投影：prims 已经是 basis 且只含 x，直接调用核心实现避免重复计算 basis
+            // conts 包含不含 x 的多项式，直接追加到投影结果
+            current_set = std::move(conts);
+            if (method == projection_method::MCCALLUM) {
+                __project_mccallum_prims_to(allprojs.back(), x, current_set);
+            } else {
+                __project_lazard_prims_to(allprojs.back(), x, current_set);
+            }
         }
         
         return allprojs; 
@@ -386,7 +430,8 @@ namespace clpoly{
     std::vector<polynomial_<ZZ,comp>> project(
         const std::vector<polynomial_<ZZ,comp>>& polys, 
         const clpoly::variable& x, 
-        projection_method method = projection_method::LAZARD
+        projection_method method = projection_method::LAZARD,
+        basis_computation_method basis_method = basis_computation_method::SQUAREFREE
     )
     {
         std::vector<polynomial_<ZZ,comp>> projs;
@@ -404,7 +449,7 @@ namespace clpoly{
             polys_lex.push_back(std::move(p));
         }
         // 计算字典序的投影
-        auto projs_lex=__project(polys_lex,x,method);
+        auto projs_lex=__project(polys_lex,x,method,basis_method);
         // 转化回原序
         projs.reserve(projs_lex.size());
         polynomial_<ZZ,comp> p1(polys.front().comp_ptr());

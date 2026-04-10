@@ -1,0 +1,54 @@
+mkdir -p _build/release/obj/clpoly/
+g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/associatedgraph.cc -o _build/release/obj/clpoly/associatedgraph.o
+clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
+mkdir -p _build/release/obj/clpoly/
+g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/polynomial_gcd.cc -o _build/release/obj/clpoly/polynomial_gcd.o
+clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
+mkdir -p _build/release/obj/clpoly/
+g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/realroot.cc -o _build/release/obj/clpoly/realroot.o
+clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
+mkdir -p _build/release/obj/clpoly/
+g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/upolynomial.cc -o _build/release/obj/clpoly/upolynomial.o
+clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
+mkdir -p _build/release/obj/clpoly/
+g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/variable.cc -o _build/release/obj/clpoly/variable.o
+clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
+mkdir -p lib/
+ar -rsv lib/libclpoly.a _build/release/obj/clpoly/associatedgraph.o _build/release/obj/clpoly/polynomial_gcd.o _build/release/obj/clpoly/realroot.o _build/release/obj/clpoly/upolynomial.o _build/release/obj/clpoly/variable.o
+ar: creating archive lib/libclpoly.a
+a - _build/release/obj/clpoly/associatedgraph.o
+a - _build/release/obj/clpoly/polynomial_gcd.o
+a - _build/release/obj/clpoly/realroot.o
+a - _build/release/obj/clpoly/upolynomial.o
+a - _build/release/obj/clpoly/variable.o
+mkdir -p _build/release/bin
+g++-13 -O3 -D NDEBUG -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include test/bench_sqfbasis_vs_factbasis.cc -o _build/release/bin/bench_sqfbasis_vs_factbasis lib/libclpoly.a -L/opt/homebrew/opt/gmp/lib -lgmpxx -lgmp
+clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
+_build/release/bin/bench_sqfbasis_vs_factbasis
+=== CAD: squarefreebasis vs factorbasis ===
+Build: Release
+
+用例                          -- project_full --            --- open_cad ---
+                                  sqf      fac   ratio      sqf      fac   ratio
+--------------------------------------------------------------------------------------
+circle x^2+y^2-1                 0.03     0.21   0.12x     0.04     0.24   0.16x
+ellipse x^2+2y^2-1               0.02     0.10   0.19x     0.04     0.13   0.33x
+{x^2+y^2-1, x-y}                 0.10     0.22   0.44x     0.30     0.45   0.66x
+shared factors 2var              0.06     0.05   1.25x     0.13     0.12   1.12x
+x^4-y^4                          0.01     0.11   0.12x     0.03     0.19   0.18x
+sphere x^2+y^2+z^2-1             0.05     0.79   0.07x     0.09     0.83   0.11x
+{sphere, plane}                  0.60     0.94   0.64x     2.25     2.63   0.86x
+shared factors 3var              0.17     0.08   2.15x     0.31     0.21   1.48x
+{x^3+y^3+z^3-1, xyz-1}           1.05     2.17   0.48x     2.38     3.46   0.69x
+--------------------------------------------------------------------------------------
+rand 2var 1p deg3                0.13     0.27   0.49x     0.28     0.43   0.64x
+rand 2var 2p deg4                0.80     3.53   0.23x     2.65     5.28   0.50x
+rand 2var 3p deg5                3.79    10.43   0.36x    24.33    30.60   0.79x
+rand 2var 3p deg8               25.52   160.93   0.16x   441.12   563.38   0.78x
+rand 2var 5p deg6               28.43    58.67   0.48x   487.47   505.95   0.96x
+--------------------------------------------------------------------------------------
+rand 3var 1p deg3                0.53     0.79   0.67x     0.90     1.14   0.79x
+rand 3var 2p deg3                4.93     3.24   1.52x    43.44    41.58   1.04x
+rand 3var 2p deg4              174.45   732.06   0.24x  3740.71  4325.72   0.86x
+rand 3var 3p deg3               87.53   240.39   0.36x  2456.43  2554.97   0.96x
+

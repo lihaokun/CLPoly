@@ -76,11 +76,15 @@ namespace clpoly{
     template <class T1,class T2,class compare>
     inline bool pair_vec_normal_check(const std::vector<std::pair<T1,T2>> & v,const compare & comp )
     {
-        auto t2=v.begin();++t2;
+        if (v.empty())
+            return true;  // 空单项式（常数项）是正常的
+        
         auto t1=v.begin();
-        auto e=v.end();
         if (zore_check<T2>()(t1->second))
             return false;
+        
+        auto t2=t1; ++t2;
+        auto e=v.end();
         while (t2!=e)
         {
             if (!comp(t1->first,t2->first) || zore_check<T2>()(t2->second))

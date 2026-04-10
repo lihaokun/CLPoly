@@ -576,11 +576,12 @@ namespace clpoly{
             poly_convert(p_qq, p_zz);
 
             // 检测 nullification: 多项式在采样点处恒为零
-            // 目前不处理此退化情况，直接报错
+            // 这是 McCallum 投影的已知退化情况，Lazard 投影可处理
             if (p_zz.empty())
                 throw std::runtime_error(
                     "__eval_level_polys: nullification detected at level " + std::to_string(level)
-                    + " (polynomial vanishes identically at sample point)");
+                    + " (polynomial vanishes identically at sample point). "
+                    + "Try using projection_method::LAZARD instead.");
 
             result.push_back(std::move(p_zz));
         }
@@ -627,6 +628,8 @@ namespace clpoly{
     // 一般序的 open_cad，先转为字典序 lex_<custom_var_order> 再调用 __open_cad
     // vars 按 lex 序排列（vars[0] 最小）
     // 边界情况：vars 不能为空；polys 可以为空（返回整条实数线的 1 个 Sector）
+    // 限制：McCallum 投影在 nullification（多项式在采样点恒为零）时会抛出异常，
+    //       此时建议改用 LAZARD 投影
     template <class comp>
     cad_tree<custom_var_order> open_cad(
         const std::vector<polynomial_<ZZ, comp>>& polys,

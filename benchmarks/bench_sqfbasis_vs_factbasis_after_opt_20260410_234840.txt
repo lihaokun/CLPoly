@@ -1,30 +1,3 @@
-mkdir -p _build/release/obj/clpoly/
-g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/associatedgraph.cc -o _build/release/obj/clpoly/associatedgraph.o
-clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
-mkdir -p _build/release/obj/clpoly/
-g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/polynomial_gcd.cc -o _build/release/obj/clpoly/polynomial_gcd.o
-clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
-mkdir -p _build/release/obj/clpoly/
-g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/realroot.cc -o _build/release/obj/clpoly/realroot.o
-clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
-mkdir -p _build/release/obj/clpoly/
-g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/upolynomial.cc -o _build/release/obj/clpoly/upolynomial.o
-clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
-mkdir -p _build/release/obj/clpoly/
-g++-13 -O3 -D NDEBUG -fpic -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include -c clpoly/variable.cc -o _build/release/obj/clpoly/variable.o
-clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
-mkdir -p lib/
-ar -rsv lib/libclpoly.a _build/release/obj/clpoly/associatedgraph.o _build/release/obj/clpoly/polynomial_gcd.o _build/release/obj/clpoly/realroot.o _build/release/obj/clpoly/upolynomial.o _build/release/obj/clpoly/variable.o
-ar: creating archive lib/libclpoly.a
-a - _build/release/obj/clpoly/associatedgraph.o
-a - _build/release/obj/clpoly/polynomial_gcd.o
-a - _build/release/obj/clpoly/realroot.o
-a - _build/release/obj/clpoly/upolynomial.o
-a - _build/release/obj/clpoly/variable.o
-mkdir -p _build/release/bin
-g++-13 -O3 -D NDEBUG -MMD -MP -I./ -I/opt/homebrew/opt/gmp/include -I/opt/homebrew/opt/boost/include test/bench_sqfbasis_vs_factbasis.cc -o _build/release/bin/bench_sqfbasis_vs_factbasis lib/libclpoly.a -L/opt/homebrew/opt/gmp/lib -lgmpxx -lgmp
-clang: warning: overriding deployment version from '16.0' to '26.0' [-Woverriding-deployment-version]
-_build/release/bin/bench_sqfbasis_vs_factbasis
 === CAD: squarefreebasis vs factorbasis ===
 Build: Release
 

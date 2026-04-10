@@ -18,6 +18,10 @@ namespace clpoly{
     // ================================================================
     // §8.5 factorize: ZZ[x] lex 特化
     // ================================================================
+    // 输出不变式（保证因子可用 == 直接比较）：
+    //   - 非常数（is_number(factor) == false）
+    //   - 首项系数 lc > 0（符号规范化）
+    //   - 本原（content == 1，即系数互素）
 
     template<class var_order>
     factorization<polynomial_<ZZ,lex_<var_order>>>

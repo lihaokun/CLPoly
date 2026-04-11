@@ -12,6 +12,7 @@ int main() {
         monomial m;
         CLPOLY_ASSERT_TRUE(m.empty());
         CLPOLY_ASSERT_EQ(m.deg(), (int64_t)0);
+        CLPOLY_ASSERT_TRUE(m.is_normal());  // 空 monomial（常数项）应该是 normal 的
     }
 
     CLPOLY_TEST("monomial_from_variable");

@@ -18,6 +18,10 @@ namespace clpoly{
     // ================================================================
     // §8.5 factorize: ZZ[x] lex 特化
     // ================================================================
+    // 输出不变式（保证因子可用 == 直接比较）：
+    //   - 非常数（is_number(factor) == false）
+    //   - 首项系数 lc > 0（符号规范化）
+    //   - 本原（content == 1，即系数互素）
 
     template<class var_order>
     factorization<polynomial_<ZZ,lex_<var_order>>>
@@ -230,6 +234,86 @@ namespace clpoly{
 
         return result;
     }
+    // ================================================================
+    // factorbasis: 用不可约分解构造互素基
+    // 接口与 squarefreebasis 一致
+    // 返回: (基多项式列表, 每个基元素的来源 {(输入下标, 重数), ...})
+    // ================================================================
+
+    // 字典序核心实现
+    template<class var_order>
+    std::pair<std::vector<polynomial_<ZZ,lex_<var_order>>>,
+              std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>
+    factorbasis(const std::vector<polynomial_<ZZ,lex_<var_order>>>& F)
+    {
+        using Poly = polynomial_<ZZ,lex_<var_order>>;
+        std::vector<Poly> lst;
+        std::vector<std::vector<std::pair<uint64_t,uint64_t>>> I;
+
+        for (size_t i = 0; i < F.size(); ++i)
+        {
+            auto fac = factorize(F[i]);
+
+            for (auto& [factor, mult] : fac.factors)
+            {
+                // factorize 保证 ZZ 因子非常数、lc > 0 且本原，直接用 == 比较
+                assert(!is_number(factor));
+                bool found = false;
+                for (size_t j = 0; j < lst.size(); ++j)
+                {
+                    if (lst[j] == factor)
+                    {
+                        I[j].push_back({i, mult});
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    lst.push_back(std::move(factor));
+                    I.push_back({{i, mult}});
+                }
+            }
+        }
+
+        return {std::move(lst), std::move(I)};
+    }
+
+    // 一般序包装：转 lex → 调核心 → 转回
+    template<class comp>
+    std::pair<std::vector<polynomial_<ZZ,comp>>,
+              std::vector<std::vector<std::pair<uint64_t,uint64_t>>>>
+    factorbasis(const std::vector<polynomial_<ZZ,comp>>& F)
+    {
+        if (F.empty())
+            return {{}, {}};
+
+        // 转字典序
+        std::vector<polynomial_<ZZ,lex>> lst;
+        polynomial_<ZZ,lex> p;
+        lst.reserve(F.size());
+        for (const auto& i : F)
+        {
+            poly_convert(i, p);
+            lst.push_back(std::move(p));
+        }
+
+        auto [basis_lex, info] = factorbasis(lst);
+
+        // 转回原序
+        std::vector<polynomial_<ZZ,comp>> basis;
+        basis.reserve(basis_lex.size());
+        polynomial_<ZZ,comp> p1(F.front().comp_ptr());
+        for (auto& i : basis_lex)
+        {
+            poly_convert(i, p1);
+            basis.push_back(std::move(p1));
+        }
+
+        return {std::move(basis), std::move(info)};
+    }
+
 } // namespace clpoly
 
 #endif // CLPOLY_POLYNOMIAL_FACTORIZE_HH

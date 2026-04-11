@@ -118,5 +118,26 @@ pow(x1,8)-pow(x1,7)+2*pow(x1,5)-2*pow(x1,4)+10*pow(x1,3)-7*pow(x1,2)-1\
         verify_proj_eq(lazard_res,expected_res);
     }
 
+    // ----- LAZARD projection with x factor (covers __divide_by_first_var) -----
+    CLPOLY_TEST("LAZARD projection with x factor");
+    {
+        // f = x * (x + y - 1) = x^2 + xy - x
+        // 在 SQUAREFREE 模式下，squarefreebasis 后仍是 x*(x+y-1)
+        // Lazard 投影需要提取 x 因子，触发 __divide_by_first_var
+        variable x("x"), y("y");
+        polynomial_ZZ f = x * (x + y - 1);  // x^2 + xy - x
+        
+        std::vector<polynomial_ZZ> polys = {f};
+        
+        // Project x (消去 x)，使用 LAZARD + SQUAREFREE（默认）
+        // 这会触发 __divide_by_first_var 代码路径
+        auto proj_res = project(polys, x, projection_method::LAZARD);
+        
+        // 验证投影结果与预期等价（使用 squarefreebasis prod 比较）
+        // x*(x+y-1) 的 Lazard 投影应包含：tc=y-1（来自 x+y-1 的 tailcoeff，判别式）
+        std::vector<polynomial_ZZ> expected_res = {y-1};
+        verify_proj_eq(proj_res, expected_res);
+    }
+
     return clpoly_test::test_summary();
 }

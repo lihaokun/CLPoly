@@ -159,6 +159,14 @@ $(BIN_REL)/test_stress_factorize: test/test_stress_factorize.cc $(CLPoly_LIB_DIR
 stress: $(BIN_REL)/test_stress_factorize
 	$(BIN_REL)/test_stress_factorize
 
+$(BIN_REL)/bench_sqfbasis_vs_factbasis: test/bench_sqfbasis_vs_factbasis.cc $(CLPoly_LIB_DIR)/libclpoly.a
+	mkdir -p $(BIN_REL)
+	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib)
+
+.PHONY: bench-sqfbasis-vs-factbasis 
+bench-sqfbasis-vs-factbasis: $(BIN_REL)/bench_sqfbasis_vs_factbasis
+	$(BIN_REL)/bench_sqfbasis_vs_factbasis
+
 .PHONY: bench bench-clpoly bench-comparative bench-save bench-all
 bench-clpoly: $(BIN_REL)/bench_clpoly
 	$(BIN_REL)/bench_clpoly

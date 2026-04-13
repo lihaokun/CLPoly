@@ -17,7 +17,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <signal.h>
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#elif defined(__linux__) || defined(__GLIBC__)
 #include <malloc.h>
+#endif
 
 struct BenchResult { std::string name; double ms; };
 static std::vector<BenchResult> _bench_results;
@@ -68,8 +72,15 @@ inline void print_sysinfo() {
 // ---- Heap measurement ----
 
 inline long get_heap_bytes() {
+#if defined(__APPLE__)
+    struct mstats ms = mstats();
+    return static_cast<long>(ms.bytes_used);
+#elif defined(__linux__) || defined(__GLIBC__)
     struct mallinfo2 mi = mallinfo2();
     return static_cast<long>(mi.uordblks) + static_cast<long>(mi.hblkhd);
+#else
+#error "Unsupported platform for heap measurement"
+#endif
 }
 
 // ---- Fork-based execution core ----

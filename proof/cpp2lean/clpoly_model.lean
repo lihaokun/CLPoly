@@ -52,6 +52,10 @@ def div (a b : Zp) : Zp := a * b.inv
 
 end Zp
 
+-- Zp 隐式转换（对应 C++ 的 implicit conversion operators）
+instance : Coe Zp UInt64 where coe z := z.val
+instance : Coe Zp Int where coe z := z.val.toNat
+
 -- ============================================================
 -- §2. ZZ：大整数
 -- ============================================================
@@ -106,6 +110,10 @@ partial def gcd (f g : SparsePolyZp) : SparsePolyZp :=
 def divmod (f _g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
   (f, #[])  -- TODO: 实现多项式长除法
 
+-- 比较器：单变量多项式的单项式序（降幂排列）
+-- 在 Lean 模型中不需要显式比较器（约定高次在前），返回 0 占位
+def comp (_f : SparsePolyZp) : UInt64 := 0
+
 end SparsePolyZp
 
 -- ============================================================
@@ -114,6 +122,102 @@ end SparsePolyZp
 
 def Array.front! {α : Type} [Inhabited α] (a : Array α) : α := a[0]!
 def Array.size_u64 {α : Type} (a : Array α) : UInt64 := a.size.toUInt64
+
+-- ============================================================
+-- §5a. Rng：伪随机数生成器模型
+-- ============================================================
+
+-- 对应 C++ 的 std::mt19937 + std::uniform_int_distribution。
+-- 状态 = UInt64 种子。next 返回 [0, upper) 的伪随机值。
+-- 简化实现（xorshift64）：足够背靠背测试的确定性，不求密码学安全。
+
+namespace Rng
+
+def next (seed upper : UInt64) : UInt64 :=
+  if upper == 0 then 0
+  else
+    -- xorshift64 步进
+    let s := seed ^^^ (seed <<< 13)
+    let s := s ^^^ (s >>> 7)
+    let s := s ^^^ (s <<< 17)
+    s % upper
+
+def step (seed : UInt64) : UInt64 :=
+  let s := seed ^^^ (seed <<< 13)
+  let s := s ^^^ (s >>> 7)
+  s ^^^ (s <<< 17)
+
+end Rng
+
+-- ============================================================
+-- §5a2. 迭代器压缩模式的函数式等价（设计 §6）
+-- ============================================================
+
+-- __upoly_mod_coeff(f, m) 的语义：对每个系数做 fdiv_r，过滤掉零
+def SparsePolyZZ.modCoeff (f : SparsePolyZZ) (m : Int) : SparsePolyZZ :=
+  f.filterMap (fun (mono, coeff) =>
+    let c := coeff % m
+    if c != 0 then some (mono, c) else none)
+
+-- __hensel_step 中的零压缩：只过滤零系数项
+def SparsePolyZZ.compactNonzero (f : SparsePolyZZ) : SparsePolyZZ :=
+  f.filter (fun (_, coeff) => coeff != 0)
+
+-- ============================================================
+-- §5b. StdMap：有序映射模型
+-- ============================================================
+
+-- 对应 C++ 的 std::map<K, V>。
+-- 实现为 List (K × V)（有序对列表）。
+-- 语义正确（find/insert/erase），性能 O(n)（翻译目标是正确性不是性能）。
+
+abbrev StdMap (K V : Type) := List (K × V)
+
+namespace StdMap
+
+def empty : StdMap K V := []
+
+def find? [BEq K] (m : StdMap K V) (k : K) : Option V :=
+  match m.find? (fun (k', _) => k == k') with
+  | some (_, v) => some v
+  | none => none
+
+def find! [BEq K] [Inhabited V] (m : StdMap K V) (k : K) : V :=
+  match find? m k with
+  | some v => v
+  | none => default
+
+def insert [BEq K] (m : StdMap K V) (k : K) (v : V) : StdMap K V :=
+  (k, v) :: m.filter (fun (k', _) => !(k == k'))
+
+def erase [BEq K] (m : StdMap K V) (k : K) : StdMap K V :=
+  m.filter (fun (k', _) => !(k == k'))
+
+def size (m : StdMap K V) : Nat := m.length
+
+def isEmpty (m : StdMap K V) : Bool := m.isEmpty
+
+-- end/begin 占位（迭代器语义，翻译中用 List 遍历替代）
+def end_ (m : StdMap K V) : Nat := m.length
+def begin_ (m : StdMap K V) : Nat := 0
+
+end StdMap
+
+-- ============================================================
+-- §5c. 其他辅助类型
+-- ============================================================
+
+-- 多变量多项式（占位）
+abbrev MvPolyZZ := Array (Array (UInt64 × UInt64) × Int)
+abbrev MvPolyZp := Array (Array (UInt64 × UInt64) × Zp)
+abbrev MvMonomial := Array (UInt64 × UInt64)
+abbrev Variable := Array (String × Int)
+abbrev SparsePolyZZ := Array (UMonomial × Int)
+abbrev LLLMatrix := Array (Array Int)
+abbrev HenselNode := Array Int  -- 占位
+abbrev Factorization := Array Int  -- 占位
+abbrev PrimeSelectionResult := Array Int  -- 占位
+abbrev WangLcResult := Array Int  -- 占位
 
 -- ============================================================
 -- §6. 验证测试

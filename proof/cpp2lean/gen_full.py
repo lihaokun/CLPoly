@@ -86,10 +86,29 @@ opaque number_ir (a : UInt64) (p : UInt64) : Zp
 
 
 def main():
-    filename = sys.argv[1] if len(sys.argv) > 1 else "../../clpoly/polynomial_factorize_zp.hh"
+    # 默认模式：instantiate.cc 一次性实例化全部模板
+    # 用法：python3 gen_full.py                    → 全量翻译（zp + univar + wang）
+    #       python3 gen_full.py --zp-only           → 仅 Zp 模块（快速测试）
+    #       python3 gen_full.py somefile.hh          → 指定文件
+    if len(sys.argv) > 1 and sys.argv[1] == "--zp-only":
+        filename = "../../clpoly/polynomial_factorize_zp.hh"
+        target_file = "factorize_zp"
+    elif len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        filename = sys.argv[1]
+        target_file = "factorize"
+    else:
+        filename = "instantiate.cc"
+        target_file = "factorize_zp,factorize_univar,factorize_wang"
     args = ["-std=c++17", "-I../../"]
 
-    funcs = parse_file(filename, args=args, target_file="factorize_zp")
+    all_funcs = parse_file(filename, args=args, target_file=target_file)
+
+    # 按 TRANSLATION_SCOPE 过滤（排除死代码函数）
+    from class_map import TRANSLATION_SCOPE
+    funcs = [f for f in all_funcs if f.name in TRANSLATION_SCOPE]
+    skipped = len(all_funcs) - len(funcs)
+    if skipped:
+        print(f"Filtered: {len(funcs)} in scope, {skipped} skipped", file=sys.stderr)
 
     # 翻译 + UB 注入
     ssa_funcs = []

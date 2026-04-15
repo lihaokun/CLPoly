@@ -1,0 +1,529 @@
+"""
+C++ → Lean 映射表
+
+翻译器查此表。不在表中 → sorry。
+"""
+
+from ir_types import BaseType, StructType
+
+# ============================================================
+# CLASS_MAP: 类方法映射
+# ============================================================
+
+CLASS_MAP = {
+    "Zp": {
+        "lean_type": StructType("Zp", []),
+        "constructors": {
+            (BaseType.INT64, BaseType.UINT64): "Zp.ofInt",
+            (BaseType.UINT64, BaseType.UINT64): "Zp.ofUInt64",
+            (BaseType.INT64,): "Zp.ofInt",  # 单参数时用默认 prime
+            (): "default",
+        },
+        "methods": {
+            "number": ("field", "val"),
+            "prime": ("field", "prime"),
+            "val": ("field", "val"),
+            "inv": ("method", "Zp.inv"),
+        },
+        "operators": {
+            "+": None, "-": None, "*": None,
+            "/": "Zp.div",
+            "==": None, "!=": None,
+        },
+    },
+
+    "ZZ": {
+        "lean_type": StructType("ZZ", []),
+        "constructors": {
+            (BaseType.INT64,): "id",
+            (BaseType.UINT64,): "Int.ofNat",
+            (): "((0 : Int))",
+        },
+        "methods": {
+            "sizeinbase": ("method", "ZZ.sizeinbase"),
+            "fdiv_ui": ("method", "ZZ.fdiv_ui"),
+        },
+        "operators": {
+            "+": None, "-": None, "*": None,
+            "/": None, "%": None,
+            "==": None, "!=": None, "<": None, ">": None,
+            "<=": None, ">=": None,
+            "bool": "ZZ.toBool",  # operator bool: ZZ → Bool (nonzero check)
+        },
+        "static_methods": {
+            "fdiv_q": "ZZ.fdiv_q",
+            "fdiv_r": "ZZ.fdiv_r",
+            "invert": "ZZ.invert",
+        },
+    },
+
+    "UMonomial": {
+        "lean_type": StructType("UMonomial", []),
+        "constructors": {
+            (BaseType.UINT64,): "UMonomial.mk",
+            (): "default",
+        },
+        "methods": {
+            "deg": ("field", "deg"),
+            "empty": ("method", "UMonomial.isEmpty"),
+            "normalization": ("noop", None),
+        },
+    },
+
+    "SparsePolyZp": {
+        "lean_type": StructType("SparsePolyZp", []),
+        "constructors": {
+            (): "SparsePolyZp.empty",
+        },
+        "methods": {
+            "empty": ("method", "Array.isEmpty"),
+            "front": ("method", "SparsePolyZp.front!"),
+            "back": ("method", "SparsePolyZp.back!"),
+            "size": ("method", "SparsePolyZp.size_u64"),
+            "push_back": ("mutate_push", "Array.push"),
+            "normalization": ("mutate", "SparsePolyZp.normalization"),
+            "reserve": ("noop", None),
+            "data": ("identity", None),
+            "comp": ("method", "SparsePolyZp.comp"),
+            "begin": ("method", "SparsePolyZp.toList"),
+            "end": ("method", "SparsePolyZp.toList"),
+            "clear": ("mutate", "Array.empty"),
+            "assign": ("mutate", "id"),
+            "resize": ("noop", None),
+            "erase": ("mutate", "Array.pop"),
+            "at": ("method", "Array.get!"),
+        },
+    },
+    "SparsePolyZZ": {
+        "lean_type": StructType("SparsePolyZZ", []),
+        "constructors": {
+            (): "SparsePolyZZ.empty",
+        },
+        "methods": {
+            "empty": ("method", "Array.isEmpty"),
+            "front": ("method", "SparsePolyZZ.front!"),
+            "back": ("method", "SparsePolyZZ.back!"),
+            "size": ("method", "SparsePolyZZ.size_u64"),
+            "push_back": ("mutate_push", "Array.push"),
+            "normalization": ("mutate", "SparsePolyZZ.normalization"),
+            "reserve": ("noop", None),
+            "data": ("identity", None),
+            "comp": ("method", "SparsePolyZZ.comp"),
+            "begin": ("method", "SparsePolyZZ.toList"),
+            "end": ("method", "SparsePolyZZ.toList"),
+            "clear": ("mutate", "Array.empty"),
+            "assign": ("mutate", "id"),
+        },
+    },
+
+    "QQ": {
+        "lean_type": StructType("QQ", []),
+        "constructors": {
+            (BaseType.INT64,): "QQ.ofInt",
+            (BaseType.INT64, BaseType.INT64): "QQ.mk",
+            (): "((0 : Rat))",
+        },
+        "methods": {
+            "get_num": ("method", "QQ.num"),
+            "get_den": ("method", "QQ.den"),
+        },
+        "operators": {
+            "+": None, "-": None, "*": None, "/": None,
+            "==": None, "!=": None, "<": None, ">": None,
+            "<=": None, ">=": None,
+        },
+    },
+
+    "MvPolyZZ": {
+        "lean_type": StructType("MvPolyZZ", []),
+        "constructors": {
+            (): "MvPolyZZ.empty",
+        },
+        "methods": {
+            "empty": ("method", "MvPolyZZ.isEmpty"),
+            "front": ("method", "MvPolyZZ.front!"),
+            "back": ("method", "MvPolyZZ.back!"),
+            "size": ("method", "MvPolyZZ.size_u64"),
+            "push_back": ("mutate_push", "Array.push"),
+            "normalization": ("mutate", "MvPolyZZ.normalization"),
+            "reserve": ("noop", None),
+            "data": ("identity", None),
+            "comp": ("method", "MvPolyZZ.comp"),
+            "comp_ptr": ("method", "MvPolyZZ.comp"),
+            "begin": ("method", "MvPolyZZ.toList"),
+            "end": ("method", "MvPolyZZ.toList"),
+            "clear": ("mutate", "Array.empty"),
+        },
+    },
+
+    "MvPolyZp": {
+        "lean_type": StructType("MvPolyZp", []),
+        "constructors": {
+            (): "MvPolyZp.empty",
+        },
+        "methods": {
+            "empty": ("method", "MvPolyZp.isEmpty"),
+            "front": ("method", "MvPolyZp.front!"),
+            "back": ("method", "MvPolyZp.back!"),
+            "size": ("method", "MvPolyZp.size_u64"),
+            "push_back": ("mutate_push", "Array.push"),
+            "normalization": ("mutate", "MvPolyZp.normalization"),
+            "reserve": ("noop", None),
+            "data": ("identity", None),
+            "comp": ("method", "MvPolyZp.comp"),
+            "comp_ptr": ("method", "MvPolyZp.comp"),
+        },
+    },
+
+    "MvMonomial": {
+        "lean_type": StructType("MvMonomial", []),
+        "constructors": {
+            (): "MvMonomial.empty",
+        },
+        "methods": {
+            "deg": ("field", "deg"),
+            "empty": ("method", "MvMonomial.isEmpty"),
+            "push_back": ("mutate_push", "Array.push"),
+            "begin": ("method", "MvMonomial.toList"),
+            "end": ("method", "MvMonomial.toList"),
+        },
+    },
+
+    "Variable": {
+        "lean_type": StructType("Variable", []),
+        "constructors": {},
+        "methods": {
+            "insert": ("mutate", "Variable.insert"),
+            "find": ("method", "Variable.find"),
+            "end": ("method", "Variable.end"),
+            "begin": ("method", "Variable.begin"),
+            "size": ("method", "Variable.size"),
+            "empty": ("method", "Variable.isEmpty"),
+            "at": ("method", "Variable.get!"),
+            "erase": ("mutate", "Variable.erase"),
+        },
+    },
+
+    "LLLMatrix": {
+        "lean_type": StructType("LLLMatrix", []),
+        "constructors": {
+            (): "LLLMatrix.empty",
+        },
+        "methods": {
+            "size": ("method", "LLLMatrix.size"),
+            "assign": ("mutate", "id"),
+            "push_back": ("mutate_push", "Array.push"),
+            "reserve": ("noop", None),
+            "swap": ("mutate", "LLLMatrix.swap"),
+        },
+    },
+
+    "HenselNode": {
+        "lean_type": StructType("HenselNode", []),
+        "constructors": {
+            (): "HenselNode.default",
+        },
+        "methods": {},
+    },
+
+    "PrimeSelectionResult": {
+        "lean_type": StructType("PrimeSelectionResult", []),
+        "constructors": {},
+        "methods": {},
+    },
+
+    "WangLcResult": {
+        "lean_type": StructType("WangLcResult", []),
+        "constructors": {},
+        "methods": {},
+    },
+
+    "StdMap": {
+        "lean_type": StructType("StdMap", []),
+        "constructors": {
+            (): "StdMap.empty",
+        },
+        "methods": {
+            "find": ("method", "StdMap.find"),
+            "end": ("method", "StdMap.end"),
+            "begin": ("method", "StdMap.begin"),
+            "at": ("method", "StdMap.get!"),
+            "erase": ("mutate", "StdMap.erase"),
+            "insert": ("mutate", "StdMap.insert"),
+            "size": ("method", "StdMap.size"),
+            "empty": ("method", "StdMap.isEmpty"),
+        },
+    },
+
+    "Factorization": {
+        "lean_type": StructType("Factorization", []),
+        "constructors": {
+            (): "Factorization.empty",
+        },
+        "methods": {
+            "content": ("field", "content"),
+            "factors": ("field", "factors"),
+        },
+    },
+}
+
+# ============================================================
+# FUNC_MAP: 独立函数映射
+# ============================================================
+
+FUNC_MAP = {
+    # 函数名 → (Lean 函数名, 参数规则, 输出参数索引)
+    # 参数规则:
+    #   "direct" = 直接传参
+    #   "identity" = 返回第一个实参（如 std::move）
+    #   "make_pair" = Prod.mk
+    #   "output" = 输出参数模式：output_indices 指定的参数从 args 移到返回值
+    # 输出参数索引：从 0 开始的参数位置列表（C++ 调用中的位置）
+
+    "derivative": ("SparsePolyZp.derivative", "direct"),
+    "polynomial_GCD": ("polynomial_GCD", "direct"),
+    "pair_vec_div": ("pair_vec_div", "direct"),
+    "pair_vec_multiplies": ("pair_vec_multiplies", "direct"),
+    "get_deg": ("get_deg", "direct"),
+    "move": ("id", "identity"),
+    "make_pair": ("Prod.mk", "make_pair"),
+    "pow": ("HPow.hPow", "direct"),
+    # 素数
+    "next_prime_64": ("next_prime_64", "direct"),
+    "prev_prime_64": ("prev_prime_64", "direct"),
+    # 多项式转换
+    "poly_convert": ("poly_convert", "direct"),
+    "squarefreefactorize": ("squarefreefactorize", "direct"),
+    "degree": ("degree", "direct"),
+    "is_number": ("is_number", "direct"),
+    # 排序（翻译为 identity，排序不影响正确性）
+    "sort": ("id", "identity"),
+    # swap
+    "swap": ("swap", "direct"),
+    # abs
+    "abs": ("Int.natAbs", "direct"),
+    # ZZ 静态方法
+    "fdiv_q": ("ZZ.fdiv_q", "direct"),
+    "fdiv_r": ("ZZ.fdiv_r", "direct"),
+    "invert": ("ZZ.invert", "direct"),
+    # std 函数
+    "max": ("max", "direct"),
+    "min": ("min", "direct"),
+    "iota": ("List.range", "direct"),
+    # 多项式操作
+    "get_variables": ("get_variables", "direct"),
+    "assign": ("id", "identity"),
+    # 多项式查询
+    "leadcoeff": ("leadcoeff", "direct"),
+    "get_variables": ("get_variables", "direct"),
+    "content": ("content", "direct"),
+    "upoly_prem": ("upoly_prem", "direct"),
+    "polynomial_mod": ("polynomial_mod", "direct"),
+    "cont": ("cont", "direct"),
+    "log": ("Nat.log", "direct"),
+    "ceil": ("Int.toNat", "direct"),
+    "floor": ("Int.toNat", "direct"),
+    "get_first_deg": ("get_first_deg", "direct"),
+    "gcd": ("gcd", "direct"),
+    "pp": ("pp", "direct"),
+}
+
+# ============================================================
+# FIELD_MAP: 成员字段映射（C++ → Lean）
+# ============================================================
+
+FIELD_MAP = {
+    "first": "fst",
+    "second": "snd",
+    "val": "val",
+    "deg": "deg",
+    "prime": "prime",
+}
+
+# ============================================================
+# LEAN_BUILTINS: Lean 标准库函数（不加 _ir 后缀）
+# ============================================================
+
+LEAN_BUILTINS = {
+    "Prod.mk", "Array.empty", "Array.mk", "Array.set!",
+    "Array.push", "Array.size_u64", "Array.isEmpty",
+    "Zp.ofInt", "Zp.ofUInt64", "Zp.div", "Zp.inv",
+    "UMonomial.mk",
+    "SparsePolyZp.empty", "SparsePolyZp.front!",
+    "SparsePolyZp.back!", "SparsePolyZp.getDeg",
+    "SparsePolyZp.size_u64", "SparsePolyZp.normalization",
+    "SparsePolyZp.derivative", "SparsePolyZp.gcd",
+    "SparsePolyZp.divmod", "SparsePolyZp.comp",
+    "Int.ofNat", "id",
+    "Rng.next", "Rng.step",
+    "#[]", "default",
+    "HPow.hPow",
+}
+
+# ============================================================
+# NOOP_METHODS: 调用后返回 self（无操作）
+# ============================================================
+
+# ============================================================
+# NOOP_METHODS / MUTATING_METHODS：从 CLASS_MAP 自动派生
+# ============================================================
+
+def _derive_method_sets():
+    """从 CLASS_MAP 派生 noop/identity/mutate 方法集合。"""
+    noop = set()
+    mutating = set()
+    for cls_info in CLASS_MAP.values():
+        for method_name, (category, _lean_name) in cls_info.get("methods", {}).items():
+            if category in ("noop", "identity"):
+                noop.add(method_name)
+            elif category in ("mutate", "mutate_push"):
+                mutating.add(method_name)
+    return noop, mutating
+
+NOOP_METHODS, MUTATING_METHODS = _derive_method_sets()
+
+# ============================================================
+# OPERATOR_MAP: C++ operator overload → Lean 运算符
+# key = C++ operator 名（Clang referencedDecl.name 中的子串）
+# value = (最少参数数, Lean 运算符字符串)
+# ============================================================
+
+OPERATOR_MAP = {
+    "operator/":  (3, "/"),
+    "operator*":  (3, "*"),
+    "operator+":  (3, "+"),
+    "operator-":  (3, "-"),
+    "operator==": (3, "=="),
+    "operator!=": (3, "!="),
+    "operator<":  (3, "<"),
+    "operator>":  (3, ">"),
+    "operator<=": (3, "<="),
+    "operator>=": (3, ">="),
+    "operator%":  (3, "%"),
+    "operator<<": (3, "<<"),
+    "operator>>": (3, ">>"),
+}
+
+# ============================================================
+# STRUCT_COERCE_MAP: StructType → BaseType 隐式转换
+# key = (struct_name, BaseType)
+# value = 字段访问表达式模板，{e} 是内部表达式
+# ============================================================
+
+STRUCT_COERCE_MAP = {
+    ("Zp", BaseType.UINT64): "{e}.val",
+    ("Zp", BaseType.INT64):  "({e}.val.toNat : Int)",
+    ("UMonomial", BaseType.UINT64): "{e}.deg",
+    ("ZZ", BaseType.INT64): "{e}",           # ZZ = Int，同类型
+    ("ZZ", BaseType.UINT64): "{e}.toNat.toUInt64",
+    ("MvMonomial", BaseType.UINT64): "{e}.deg",
+}
+
+# ============================================================
+# UNSAFE_CAST_PAIRS: unsigned→signed 转换需要证明值在范围内
+# (source_type, target_type) → lean_prop 模板，{e} 是内部表达式
+# ============================================================
+
+UNSAFE_CAST_PAIRS = {
+    (BaseType.UINT64, BaseType.INT64):  "{e}.val ≤ Int64.max",
+    (BaseType.UINT128, BaseType.INT64): "{e} ≤ Int64.max",
+}
+
+# ============================================================
+# EMPTY_CONTAINER_METHODS: 空容器上调用是 UB 的方法
+# 从 CLASS_MAP 中 method 名含 "!" 的自动派生
+# ============================================================
+
+def _derive_empty_container_methods():
+    """从 CLASS_MAP 派生需要非空检查的方法。"""
+    result = set()
+    for cls_info in CLASS_MAP.values():
+        for _method_name, (category, lean_name) in cls_info.get("methods", {}).items():
+            if lean_name and "!" in lean_name:
+                result.add(lean_name)
+    return result
+
+EMPTY_CONTAINER_METHODS = _derive_empty_container_methods()
+
+# ============================================================
+# ASSERT_FAIL_NAMES: assert 宏展开后的函数名
+# ============================================================
+
+ASSERT_FAIL_NAMES = {"__assert_fail", "__assert_rtn", "__assert"}
+
+# ============================================================
+# CALL_OPERATOR_MAP: C++ 函数调用运算符 operator() → Lean 函数
+# 用于 std::uniform_int_distribution(rng) 等模式
+# value = (lean_func, arg_order)
+#   arg_order: "reverse" = operator()(this, arg) → lean_func arg this
+#              "direct"  = operator()(this, arg) → lean_func this arg
+# ============================================================
+
+CALL_OPERATOR_MAP = {
+    "operator()": ("Rng.next", "reverse"),  # dist(rng) → Rng.next rng dist
+}
+
+# ============================================================
+# 翻译范围：本次翻译的 C++ 函数
+# 范围内函数互相调用加 _ir 后缀
+# ============================================================
+
+# M2：TRANSLATION_SCOPE 中函数的输出参数（从 C++ 源码扫描）
+# func_name → [输出参数索引]（非 const 引用参数位置）
+TRANSLATION_SCOPE_OUTPUT_PARAMS = {
+    "__upoly_make_monic": [0],           # f
+    "__upoly_mod_coeff": [0],            # f
+    "__upoly_divmod_mod": [0, 1],        # q, r
+    "__edf_Zp": [0, 3],                  # result, rng
+    "__hensel_tree_build_recursive": [0], # nodes
+    "__hensel_step": [0],                # node
+    "__hensel_extract_factors": [2],      # factors
+    "__hensel_lift_recursive": [0],       # nodes
+    "__hensel_step_linear": [0],         # node
+    "__hensel_lift_linear_recursive": [0], # nodes
+    "__build_cld_matrix": [0],           # M
+    "__lll_reduce": [0, 1],              # M, U
+    "__si_vandermonde_solve": [2],       # coeffs
+    "__si_theta_array_eval": [6],        # images
+    "__mtshl_zp_univar_mdp": [2],        # sigma
+    "__mtshl_multi_bdp": [3, 8],         # c, result
+    "__mtshl_sparse_int": [3, 9],        # c, result
+    "__mtshl_wmds": [3, 8],              # c, result
+    "__mtshl_step_j": [3, 5],            # F, lc_tau
+}
+
+TRANSLATION_SCOPE = {
+    # Zp 模块 (13)
+    "__make_zp", "__upoly_make_monic", "__upoly_mod", "__upoly_divmod",
+    "__upoly_powmod", "__upoly_random", "__extract_pth_root",
+    "__squarefree_Zp", "__upoly_subtract_x", "__upoly_subtract_one",
+    "__ddf_Zp", "__edf_Zp", "__factor_Zp",
+    # Univar 模块 (33)
+    "__symmetric_mod", "__upoly_symmetric_mod", "__upoly_norm_l2_sq",
+    "__binomial", "__isqrt_ceil", "__mignotte_bound",
+    "__upoly_mod_coeff", "__upoly_divmod_mod", "__upoly_mul_mod",
+    "__hensel_tree_build_recursive", "__hensel_tree_build",
+    "__hensel_step", "__hensel_extract_factors",
+    "__hensel_lift_recursive", "__hensel_lift",
+    "__heuristic_starting_precision", "__hensel_step_linear",
+    "__hensel_lift_linear_recursive", "__upoly_norm_l1",
+    "__upoly_primitive", "__subset_product_mod", "__upoly_const_term",
+    "__zassenhaus_recombine", "__cld_polys", "__build_cld_matrix",
+    "__lll_reduce", "__extract_candidates", "__vanhoeij_recombine",
+    "__factor_recombine", "__select_prime", "__lll_factorize",
+    "__factor_squarefree_primitive_ZZ", "__upoly_to_poly",
+    "factorize",
+    # Wang 模块 (19) — 不含经典 Wang Hensel 死代码
+    # 已移除：__multivar_hensel_lift, __hensel_lift_one_var,
+    #         __hensel_lc_correct, __multivar_diophantine, __pseudo_remainder_x1
+    #   （经典 Wang Hensel 路线，已被 MTSHL 替代，无调用者）
+    "__si_vandermonde_solve", "__mtshl_zp_univar_mdp",
+    "__assign_partial_zp", "__extract_monomial_content",
+    "__factor_multivar",
+    "__mtshl_coeff_bound", "__mtshl_lift", "__mtshl_multi_bdp",
+    "__mtshl_sparse_int", "__mtshl_step_j", "__mtshl_wmds",
+    "__polynomial_to_zp",
+    "__select_eval_point", "__si_theta_array_eval",
+    "__symmetric_mod_poly", "__taylor_coeff", "__taylor_coeff_zp",
+    "__wang_core", "__wang_leading_coeff",
+}

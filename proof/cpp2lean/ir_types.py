@@ -114,6 +114,14 @@ class ArrayPush:
     _ast_type: object = None
 
 @dataclass
+class BlockExpr:
+    """语句块表达式：let x := ...; let y := ...; value。
+    用于 phi 节点：if/else 分支内有多条 let，最终值作为分支返回值。"""
+    stmts: list  # list[StmtIR] — 前置 let 绑定
+    value: object  # ExprIR — 最终值
+    _ast_type: object = None
+
+@dataclass
 class UnknownExpr:
     kind: str
     children: list[ExprIR] = field(default_factory=list)
@@ -121,7 +129,7 @@ class UnknownExpr:
     _ast_type: object = None
 
 ExprIR = Union[Var, Lit, BinOp, UnaryOp, CondExpr, Call, ArrayAccess,
-               FieldAccess, Cast, ArrayPush, UnknownExpr]
+               FieldAccess, Cast, ArrayPush, BlockExpr, UnknownExpr]
 
 # ============================================================
 # 语句
@@ -208,6 +216,7 @@ class SSAFunc:
     requires: list[Require]
     body: list[StmtIR]
     has_throw: bool = False
+    aux_defs: list['SSAFunc'] = field(default_factory=list)  # 提取的循环函数
 
 # ============================================================
 # UB 证明目标

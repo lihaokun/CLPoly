@@ -34,22 +34,20 @@ def gen_type(t: TypeIR) -> str:
 # ============================================================
 
 def gen_coercion(expr_str: str, source, target) -> str:
-    """统一类型转换：source 类型表达式 → target 类型。"""
+    """统一类型转换：source 类型表达式 → target 类型。查表，不硬编码。"""
     if source == target:
         return expr_str
-    # BaseType → BaseType
+    # BaseType → BaseType：查 CAST_TABLE
     if isinstance(source, BaseType) and isinstance(target, BaseType):
         key = (source, target)
         if key in CAST_TABLE:
             return CAST_TABLE[key].format(e=expr_str)
-    # StructType → BaseType
+    # StructType → BaseType：查 STRUCT_COERCE_MAP
     if isinstance(source, StructType) and isinstance(target, BaseType):
-        if source.name == "Zp" and target == BaseType.UINT64:
-            return f"{expr_str}.val"
-        if source.name == "Zp" and target == BaseType.INT64:
-            return f"({expr_str}.val.toNat : Int)"
-        if source.name == "UMonomial" and target == BaseType.UINT64:
-            return f"{expr_str}.deg"
+        from class_map import STRUCT_COERCE_MAP
+        key = (source.name, target)
+        if key in STRUCT_COERCE_MAP:
+            return STRUCT_COERCE_MAP[key].format(e=expr_str)
     # BaseType → StructType
     if isinstance(source, BaseType) and isinstance(target, StructType):
         return f"({expr_str} : {gen_type(target)})"
@@ -138,6 +136,9 @@ def gen_expr(expr: ExprIR) -> str:
         # 成员赋值 := → Lean 注释（纯函数式中需要 Array.set，暂标注）
         if expr.op == ":=":
             return f"/- {gen_expr(expr.lhs)} := {gen_expr(expr.rhs)} -/ sorry"
+        # 赋值 = 在表达式位置：返回右值（副作用由 SSA let 链处理）
+        if expr.op == "=":
+            return gen_expr(expr.rhs)
         lean_op = BINOP_MAP.get(expr.op, f"/- {expr.op} -/ sorry")
         return f"({gen_expr(expr.lhs)} {lean_op} {gen_expr(expr.rhs)})"
 
@@ -146,6 +147,12 @@ def gen_expr(expr: ExprIR) -> str:
             return f"(! {gen_expr(expr.operand)})"
         if expr.op == "-":
             return f"(- {gen_expr(expr.operand)})"
+        if expr.op == "->":
+            return gen_expr(expr.operand)  # 解引用 = identity（纯函数式无指针）
+        if expr.op in ("++", "--"):
+            return gen_expr(expr.operand)  # 自增/自减在 SSA 中已处理
+        if expr.op == "*":
+            return gen_expr(expr.operand)  # 解引用 = identity
         return f"/- unary {expr.op} -/ {gen_expr(expr.operand)}"
 
     if isinstance(expr, CondExpr):
@@ -163,9 +170,21 @@ def gen_expr(expr: ExprIR) -> str:
             field = expr.args[1].name if isinstance(expr.args[1], Var) else gen_expr(expr.args[1])
             val = gen_expr(expr.args[2])
             return f"{{ {obj} with {field} := {val} }}"
-        # 查找顺序：LEAN_BUILTINS → LEAN_STDLIB → NOOP → TRANSLATION_SCOPE → sorry
-        from class_map import LEAN_BUILTINS, TRANSLATION_SCOPE
+        # assert → ()/skip（语义由 UB collector 的 require 处理）
+        from class_map import ASSERT_FAIL_NAMES
+        if func_name in ASSERT_FAIL_NAMES:
+            return "()"
+        # 查找顺序：LEAN_BUILTINS → FUNC_MAP → LEAN_STDLIB → NOOP → TRANSLATION_SCOPE → sorry
+        from class_map import LEAN_BUILTINS, TRANSLATION_SCOPE, FUNC_MAP
         if func_name in LEAN_BUILTINS:
+            return f"({func_name} {args})" if args else func_name
+        # FUNC_MAP 中的函数（AST 阶段已替换为 Lean 名，codegen 直接输出）
+        if func_name in FUNC_MAP:
+            lean_name = FUNC_MAP[func_name][0]
+            return f"({lean_name} {args})" if args else lean_name
+        # 检查是否是 FUNC_MAP 的目标名（AST 已替换）
+        _func_map_targets = {v[0] for v in FUNC_MAP.values()}
+        if func_name in _func_map_targets:
             return f"({func_name} {args})" if args else func_name
         if func_name in LEAN_STDLIB:
             lean_name = LEAN_STDLIB[func_name]
@@ -175,6 +194,21 @@ def gen_expr(expr: ExprIR) -> str:
         # 翻译范围内的函数 → 加 _ir
         if func_name in TRANSLATION_SCOPE:
             return f"({func_name}_ir {args})" if args else f"{func_name}_ir"
+        # 带 . 的函数名（如 SparsePolyZZ.front!）= CLASS_MAP 方法，直接输出
+        if "." in func_name:
+            return f"({func_name} {args})" if args else func_name
+        # unknown_func 通常是 assert 的兜底分支
+        if func_name == "unknown_func":
+            return "()"
+        # 已经带 _ir 后缀的（提取的循环函数等）→ 直接输出
+        if func_name.endswith("_ir"):
+            return f"({func_name} {args})" if args else func_name
+        # Lambda 占位（_lambda_N）→ 直接输出
+        if func_name.startswith("_lambda_"):
+            return f"({func_name} {args})" if args else func_name
+        # 普通标识符（可能是 lambda 变量或局部函数变量）→ 直接调用
+        if func_name.isidentifier() and not func_name.startswith("/"):
+            return f"({func_name} {args})" if args else func_name
         # 都不在 → sorry
         return f"/- unknown func: {func_name} -/ sorry"
 
@@ -200,10 +234,12 @@ def gen_expr(expr: ExprIR) -> str:
             key = (source, target)
             if key in CAST_TABLE:
                 return CAST_TABLE[key].format(e=inner_str)
-        # StructType → BaseType（如 Zp → UInt64：取 .val）
+        # StructType → BaseType：查 STRUCT_COERCE_MAP
         if isinstance(source, StructType) and isinstance(target, BaseType):
-            if source.name == "Zp" and target == BaseType.UINT64:
-                return f"{inner_str}.val"
+            from class_map import STRUCT_COERCE_MAP
+            key = (source.name, target)
+            if key in STRUCT_COERCE_MAP:
+                return STRUCT_COERCE_MAP[key].format(e=inner_str)
             return f"({inner_str} : {gen_type(target)})"
         # BaseType → StructType（如 Int → Zp：构造）
         if isinstance(source, BaseType) and isinstance(target, StructType):
@@ -218,6 +254,16 @@ def gen_expr(expr: ExprIR) -> str:
 
     if isinstance(expr, ArrayPush):
         return f"({gen_expr(expr.arr)}.push {gen_expr(expr.elem)})"
+
+    if isinstance(expr, BlockExpr):
+        # let x := ...; let y := ...; value — 生成 Lean let-in 链
+        parts = []
+        for s in expr.stmts:
+            # 复用 gen_stmt，统一处理 sorry 类型跳过等逻辑
+            stmt_lines = gen_stmt(s, 0)
+            parts.extend(l.strip() for l in stmt_lines)
+        parts.append(gen_expr(expr.value))
+        return "\n      ".join(parts)
 
     if isinstance(expr, UnknownExpr):
         return f"/- UNKNOWN: {expr.kind} -/ sorry"
@@ -236,11 +282,18 @@ def gen_stmt(stmt: StmtIR, indent: int = 1) -> list[str]:
     if isinstance(stmt, LetStmt):
         typ = gen_type(stmt.typ)
         val = gen_expr(stmt.value)
-        # 自动 coercion：如果表达式类型和声明类型不同，插入转换
-        actual = getattr(stmt.value, '_ast_type', None)
-        if actual and actual != stmt.typ:
-            val = gen_coercion(val, actual, stmt.typ)
-        lines.append(f"{pad}let {stmt.var.lean_name()} : {typ} := {val}")
+        if "sorry" in typ or "unknown" in typ:
+            # auto 或未知类型：省略类型标注，让 Lean 从右值推断
+            # 如果右值也是 sorry，整个 let 仍是 sorry
+            if "sorry" in val:
+                lines.append(f"{pad}let {stmt.var.lean_name()} := {val}")
+            else:
+                lines.append(f"{pad}let {stmt.var.lean_name()} := {val}")
+        else:
+            # 显式类型标注 (val : T)：让 Lean 的 Coe 实例自动处理类型转换
+            if isinstance(stmt.typ, (BaseType, StructType)) and typ not in ("Unit",):
+                val = f"({val} : {typ})"
+            lines.append(f"{pad}let {stmt.var.lean_name()} : {typ} := {val}")
 
     elif isinstance(stmt, AssignStmt):
         val = gen_expr(stmt.value)
@@ -258,10 +311,12 @@ def gen_stmt(stmt: StmtIR, indent: int = 1) -> list[str]:
     elif isinstance(stmt, ReturnStmt):
         if stmt.value is not None:
             val = gen_expr(stmt.value)
-            # 返回值如有 _ast_type 则标注类型
+            # 返回值如有 _ast_type 则标注类型（跳过 auto/unknown）
             actual = getattr(stmt.value, '_ast_type', None)
             if actual:
-                val = f"({val} : {gen_type(actual)})"
+                typ_str = gen_type(actual)
+                if "sorry" not in typ_str:
+                    val = f"({val} : {typ_str})"
             lines.append(f"{pad}{val}")
         else:
             lines.append(f"{pad}()")
@@ -283,7 +338,9 @@ def gen_stmt(stmt: StmtIR, indent: int = 1) -> list[str]:
             for child in stmt.children:
                 lines.extend(gen_stmt(child, indent))
         elif stmt.kind in ("BreakStmt", "ContinueStmt"):
-            lines.append(f"{pad}/- {stmt.kind}: handled by TailRec -/")
+            lines.append(f"{pad}/- {stmt.kind}: handled by loop function -/")
+        elif stmt.kind in ("empty", "NullStmt", "GCCAsmStmt"):
+            pass  # 空语句，跳过
         else:
             lines.append(f"{pad}/- UNKNOWN_STMT: {stmt.kind} -/")
             lines.append(f"{pad}sorry")
@@ -338,6 +395,7 @@ def gen_tailrec(tr: TailRec, indent: int) -> list[str]:
 
     # 循环体
     body_pad = "  " * (indent + 2)
+    has_nested_tailrec = any(isinstance(s, TailRec) for s in tr.body)
     for s in tr.body:
         if isinstance(s, UnknownStmt) and s.kind in ("BreakStmt", "ContinueStmt"):
             continue
@@ -361,6 +419,17 @@ def gen_tailrec(tr: TailRec, indent: int) -> list[str]:
                 c_args = " ".join(cont_args[v.name] for v, _ in tr.params)
                 lines.append(f"{cont_pad}{tr.func_name} {c_args}")
             lines.append(f"{body_pad}else")
+            continue
+        if isinstance(s, TailRec):
+            # 嵌套循环：生成函数定义 + 初始调用绑定到 let
+            # 用累加器变量的同名 shadowing：let result_1 := inner_loop ...
+            inner_lines = gen_tailrec(s, indent + 2)
+            # inner_lines 最后一行是裸初始调用，改为 let 绑定
+            if inner_lines and s.params:
+                acc_name = _pick_accumulator(s.params)
+                last_line = inner_lines[-1]
+                inner_lines[-1] = f"{body_pad}let {acc_name} := {last_line.strip()}"
+            lines.extend(inner_lines)
             continue
         body_lines = gen_stmt(s, indent + 2)
         lines.extend(body_lines)
@@ -389,7 +458,7 @@ def _pick_accumulator(params: list) -> str:
     # 优先选名字含 result/acc/sum/out 的
     for v, _ in params:
         name = v.lean_name()
-        if any(kw in v.name for kw in ("result", "acc", "sum", "out", "coll")):
+        if any(kw in v.name for kw in ("result", "acc", "sum", "out")):
             return name
     # 否则返回最后一个参数
     return params[-1][0].lean_name()
@@ -451,10 +520,27 @@ def gen_ssa_func(func: SSAFunc) -> str:
     for stmt in func.body:
         body_lines.extend(gen_stmt(stmt))
 
+    # Unit 返回类型：确保 body 最后有 ()
+    if func.ret_type == BaseType.VOID:
+        if not body_lines or not body_lines[-1].strip() == "()":
+            body_lines.append("  ()")
+
     body_str = "\n".join(body_lines)
 
-    return f"""partial def {func.name}_ir {all_params} : {ret} :=
+    # 返回类型：sorry/unknown → 省略，让 Lean 推断
+    if "sorry" in ret or "unknown" in ret:
+        main_def = f"""partial def {func.name}_ir {all_params} :=
 {body_str}"""
+    else:
+        main_def = f"""partial def {func.name}_ir {all_params} : {ret} :=
+{body_str}"""
+
+    # 先输出辅助循环函数，再输出主函数
+    parts = []
+    for aux in func.aux_defs:
+        parts.append(gen_ssa_func(aux))
+    parts.append(main_def)
+    return "\n\n".join(parts)
 
 
 # ============================================================

@@ -122,9 +122,14 @@ def _scan_expr(expr: ExprIR, func_name: str,
 
     elif isinstance(expr, FieldAccess):
         _scan_expr(expr.obj, func_name, obligations, context)
-        # .front! / .back! 在空容器上是 UB
-        if expr.field_name in ("front!", "back!"):
-            obj_str = gen_expr(expr.obj)
+
+    elif isinstance(expr, Call):
+        for arg in expr.args:
+            _scan_expr(arg, func_name, obligations, context)
+        # 需要非空检查的方法（如 front!, back!）：查 EMPTY_CONTAINER_METHODS
+        from class_map import EMPTY_CONTAINER_METHODS
+        if expr.func in EMPTY_CONTAINER_METHODS and expr.args:
+            obj_str = gen_expr(expr.args[0])
             obligations.append(UBObligation(
                 func_name=func_name,
                 source_line=0,
@@ -133,37 +138,21 @@ def _scan_expr(expr: ExprIR, func_name: str,
                 context=list(context),
             ))
 
-    elif isinstance(expr, Call):
-        for arg in expr.args:
-            _scan_expr(arg, func_name, obligations, context)
-
     elif isinstance(expr, Cast):
         _scan_expr(expr.expr, func_name, obligations, context)
-        # unsigned → signed 转换：值可能超出 signed 范围
-        # C++17: 实现定义（非 UB），但 C++20 前可能导致错误行为
-        # 保守处理：生成证明目标
+        # unsigned → signed 转换：查 UNSAFE_CAST_PAIRS
         if (isinstance(expr.source_type, BaseType) and
             isinstance(expr.target_type, BaseType)):
-            # UINT64 → INT64：值 > INT64_MAX 时行为实现定义
-            if (expr.source_type == BaseType.UINT64 and
-                expr.target_type == BaseType.INT64):
+            from class_map import UNSAFE_CAST_PAIRS
+            key = (expr.source_type, expr.target_type)
+            if key in UNSAFE_CAST_PAIRS:
                 inner_str = gen_expr(expr.expr)
+                prop_template = UNSAFE_CAST_PAIRS[key]
                 obligations.append(UBObligation(
                     func_name=func_name,
                     source_line=0,
                     ub_type=UBType.SIGNED_OVERFLOW,
-                    lean_prop=f"{inner_str}.val ≤ Int64.max",
-                    context=list(context),
-                ))
-            # UINT128 → INT64 同理
-            if (expr.source_type == BaseType.UINT128 and
-                expr.target_type == BaseType.INT64):
-                inner_str = gen_expr(expr.expr)
-                obligations.append(UBObligation(
-                    func_name=func_name,
-                    source_line=0,
-                    ub_type=UBType.SIGNED_OVERFLOW,
-                    lean_prop=f"{inner_str} ≤ Int64.max",
+                    lean_prop=prop_template.format(e=inner_str),
                     context=list(context),
                 ))
 
@@ -190,6 +179,23 @@ def _scan_expr(expr: ExprIR, func_name: str,
 # ============================================================
 # 输出格式化
 # ============================================================
+
+def _all_vars_in_scope(lean_prop: str, param_names: set[str]) -> bool:
+    """检查 lean_prop 中引用的变量是否都在参数作用域内。"""
+    import re
+    # 提取标识符（排除 Lean 关键字和数字字面量）
+    keywords = {"true", "false", "if", "then", "else", "let", "Int64", "max",
+                "UInt64", "Int", "Bool", "Array", "Prod", "noOverflow"}
+    idents = set(re.findall(r'\b([a-zA-Z_]\w*)\b', lean_prop))
+    for ident in idents:
+        if ident in keywords:
+            continue
+        # 去掉版本号后缀 _1, _2 等
+        base = re.sub(r'_\d+$', '', ident)
+        if base not in param_names and ident not in param_names:
+            return False
+    return True
+
 
 def _is_trivial(ob: UBObligation) -> bool:
     """过滤明显无意义的 UB 目标。"""
@@ -234,13 +240,14 @@ def _is_signed_context(expr: BinOp) -> bool:
 
 def inject_obligations(func: SSAFunc, obligations: list[UBObligation]):
     """将 UB 证明目标注入到函数的 requires 列表中。"""
+    # 只有引用参数名的 obligation 才能提升到函数签名
+    param_names = {p.name for p in func.params}
     seen = set()
     for ob in obligations:
-        # 过滤无意义/不可用的目标
         if _is_trivial(ob):
             continue
-        # 引用循环内部变量（__idx, __coll）的目标不能提升到函数签名
-        if "__idx" in ob.lean_prop or "__coll" in ob.lean_prop:
+        # 检查 lean_prop 中的所有标识符是否都是参数或字面量
+        if not _all_vars_in_scope(ob.lean_prop, param_names):
             continue
         if ob.lean_prop in seen:
             continue

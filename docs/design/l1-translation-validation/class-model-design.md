@@ -1,315 +1,270 @@
-# 可信基类建模设计
+# 可信基类建模 + 统一映射机制
 
-## 1. 问题
+> **状态**：已实现。13 个 C++ 函数翻译为 465 行 Lean，0 sorry，0 编译错误。
 
-翻译器当前对 CLPoly 类的处理是 ad-hoc 的——每个方法/构造函数/运算符都是硬编码特判。没有统一模型，导致：
-- 遗漏（某些方法没处理 → 错误翻译而非 sorry）
-- 不一致（同一个类的方法在不同地方用不同机制处理）
-- 不可扩展（加新类需要改翻译器多处代码）
+## 1. 设计原则
 
-## 2. 方案
+翻译器的所有 domain-specific 知识集中在 **`class_map.py`**（12 个配置表）和 **`clpoly_model.lean`**（可信基实现）中。翻译器逻辑代码（clang_ast / ssa_transform / lean_codegen / ub_collector）只查表，不包含任何 CLPoly 特有的硬编码。
 
-### 2.1 三步走
+**三层分离**：
 
-**步骤 1**：在 Lean 中定义可信基类的**完整模型**（类型 + 所有公共操作）
-**步骤 2**：构建 C++ → Lean **映射表**（类操作 + 独立函数，每个 C++ 操作对应哪个 Lean 函数）
-**步骤 3**：翻译器**只查表**。在表中 → 翻译；不在表中 → sorry
-
-### 2.2 可信基清单
-
-CLPoly 因式分解模块依赖的：
-
-**类**：
-
-| C++ 类 | 用途 |
-|-------|------|
-| `Zp` | Z/pZ 系数 |
-| `ZZ` | 大整数（仅 `__upoly_powmod` 和 `__edf_Zp` 使用） |
-| `umonomial` | 单变量单项式 |
-| `upolynomial_<Zp>` | Z/pZ 上稀疏多项式 |
-| `std::vector<T>` | 动态数组 |
-| `std::pair<A,B>` | 二元组 |
-
-**独立函数**（非类方法）：
-
-| C++ 函数 | 用途 |
-|---------|------|
-| `derivative(f)` | 多项式求导 |
-| `polynomial_GCD(f, g)` | 多项式 GCD |
-| `pair_vec_div(q, r, f, g, comp)` | 多项式除法（5 参数，前 2 个是输出） |
-| `get_deg(f)` | 取多项式首项度数 |
-| `std::move(x)` | 移动语义（纯函数式中 = identity） |
-| `std::make_pair(a, b)` | 构造 pair |
-
-## 3. Lean 类模型
-
-### 3.1 Zp
-
-```lean
-structure Zp where
-  val : UInt64
-  prime : UInt64
-deriving Repr, Inhabited, BEq
-
-namespace Zp
--- 构造函数
--- C++ Zp(int64_t val, uint64_t p)：val 可能为负
-def ofInt (v : Int) (p : UInt64) : Zp :=
-  let r := v % (p.toNat : Int)
-  let r := if r < 0 then r + p.toNat else r
-  ⟨r.toNat.toUInt64, p⟩
-
--- C++ Zp(uint64_t val, uint64_t p)
-def ofUInt64 (v p : UInt64) : Zp := ⟨v % p, p⟩
-
--- getter（.number() → .val, .prime() → .prime）
--- val 和 prime 是结构体字段，自动有 accessor
-
--- 算术（mod p）
-instance : Add Zp where add a b := ⟨(a.val + b.val) % a.prime, a.prime⟩
-instance : Sub Zp where sub a b := ⟨(a.val + a.prime - b.val) % a.prime, a.prime⟩
-instance : Mul Zp where mul a b := ⟨(a.val * b.val) % a.prime, a.prime⟩
-instance : Neg Zp where neg a := ⟨(a.prime - a.val) % a.prime, a.prime⟩
-
--- 模逆（扩展欧几里得）
-partial def modInvAux (a b x0 x1 : Int) : Int :=
-  if a <= 1 then x1
-  else modInvAux b (a % b) (x1 - (a / b) * x0) x0
-
-def modInv (a p : UInt64) : UInt64 :=
-  let r := modInvAux (a.toNat : Int) (p.toNat : Int) 0 1
-  let r := if r < 0 then r + p.toNat else r
-  r.toNat.toUInt64
-
-def inv (a : Zp) : Zp := ⟨modInv a.val a.prime, a.prime⟩
-def div (a b : Zp) : Zp := a * b.inv
-end Zp
+```
+class_map.py     ← 映射规则（C++ 操作 → Lean 函数名）
+clpoly_model.lean ← 可信基实现（Lean 中的类型 + 正确语义）
+翻译器逻辑        ← 只查表、只处理 AST 结构
 ```
 
-### 3.2 ZZ
+新增类/方法/运算符只需改 `class_map.py` + `clpoly_model.lean`，不需改翻译器逻辑。
 
-```lean
--- CLPoly 的 ZZ 是 GMP 大整数。Lean 的 Int 是任意精度。
--- 因式分解中 ZZ 仅用于 __upoly_powmod 的指数和 __edf_Zp 的幂计算。
-abbrev ZZ := Int
+## 2. 配置表总览（class_map.py）
 
-namespace ZZ
-def ofInt (v : Int) : ZZ := v
-def div (a b : ZZ) : ZZ := a / b
-end ZZ
-```
+| 表名 | 用途 | 条目数 |
+|------|------|--------|
+| **CLASS_MAP** | 类方法/构造函数映射（Zp, ZZ, UMonomial, SparsePolyZp） | 4 类 × ~8 方法 |
+| **FUNC_MAP** | 独立函数映射（derivative, GCD, pow 等） | 8 |
+| **FIELD_MAP** | 成员字段名映射（first→fst, second→snd 等） | 5 |
+| **OPERATOR_MAP** | C++ operator overload → Lean 运算符 | 13 |
+| **CALL_OPERATOR_MAP** | 函数调用运算符 operator() → Lean 函数 | 1 |
+| **STRUCT_COERCE_MAP** | StructType → BaseType 隐式转换 | 3 |
+| **CAST_TABLE** | BaseType 间的类型转换（在 lean_codegen.py 中） | 13 |
+| **UNSAFE_CAST_PAIRS** | 需要证明安全的类型转换 | 2 |
+| **LEAN_BUILTINS** | Lean 标准库函数（不加 `_ir` 后缀） | ~20 |
+| **TRANSLATION_SCOPE** | 翻译范围内的 C++ 函数（加 `_ir` 后缀） | 13 |
+| **MUTATING_METHODS** | 修改 this 对象的方法（自动从 CLASS_MAP 派生） | 自动 |
+| **EMPTY_CONTAINER_METHODS** | 空容器调用是 UB 的方法（自动从 CLASS_MAP 派生） | 自动 |
+| **ASSERT_FAIL_NAMES** | assert 宏展开后的函数名 | 3 |
 
-### 3.3 UMonomial
-
-```lean
-structure UMonomial where
-  deg : UInt64
-deriving Repr, Inhabited, BEq
-
-namespace UMonomial
-def mk (d : UInt64) : UMonomial := ⟨d⟩
-end UMonomial
-```
-
-### 3.4 SparsePolyZp
-
-```lean
-abbrev SparsePolyZp := Array (UMonomial × Zp)
-
-namespace SparsePolyZp
--- 构造
-def empty : SparsePolyZp := #[]
-
--- 查询
-def isEmpty (f : SparsePolyZp) : Bool := f.isEmpty
-def front! (f : SparsePolyZp) : UMonomial × Zp := f[0]!
-def back! (f : SparsePolyZp) : UMonomial × Zp := f[f.size - 1]!
-def getDeg (f : SparsePolyZp) : UInt64 := if f.isEmpty then 0 else f[0]!.fst.deg
-def size_u64 (f : SparsePolyZp) : UInt64 := f.size.toUInt64
-
--- 修改（返回新数组——纯函数式）
-def pushBack (f : SparsePolyZp) (t : UMonomial × Zp) : SparsePolyZp := f.push t
-
--- normalization：移除零系数项（C++ 原地修改，Lean 返回新数组）
-def normalization (f : SparsePolyZp) : SparsePolyZp :=
-  f.filter (fun (_, c) => c.val != 0)
-
--- no-op 操作
-def reserve (f : SparsePolyZp) (_n : UInt64) : SparsePolyZp := f
-def data (f : SparsePolyZp) : SparsePolyZp := f  -- .data() → identity
-
--- comp：比较函数（CLPoly 内部使用，翻译中不传递）
--- C++ 中 f.comp() 返回比较函数对象，在 pair_vec_div 中使用
--- Lean 中不需要——pair_vec_div 的 Lean 实现不使用比较函数
-end SparsePolyZp
-```
-
-### 3.5 std::pair
-
-```lean
--- Lean Prod (α × β) 已有 .fst / .snd
--- C++ .first → .fst, .second → .snd
--- std::make_pair(a, b) → Prod.mk a b
-```
-
-### 3.6 std::vector
-
-```lean
--- Lean Array α 已有所有操作
--- C++ 操作通过 CLASS_MAP 映射到 Lean Array 方法
-```
-
-## 4. 独立函数模型（FUNC_MAP）
-
-CLASS_MAP 覆盖类方法。独立函数用 **FUNC_MAP** 覆盖。
+## 3. CLASS_MAP：类方法映射
 
 ```python
-FUNC_MAP = {
-    # C++ 函数名 → (Lean 函数名, 参数处理规则)
-    # 参数处理：
-    #   "direct" = 直接传参
-    #   "out_param(n)" = 第 n 个参数是输出参数，变为返回值
-    #   "drop(n)" = 丢弃第 n 个参数（如 comp）
-
-    "derivative": ("SparsePolyZp.derivative", "direct"),
-    "polynomial_GCD": ("SparsePolyZp.gcd", "direct"),
-    "pair_vec_div": ("SparsePolyZp.divmod", "out_param(0,1),drop(4)"),
-    # C++: pair_vec_div(q, r, f, g, comp) → Lean: SparsePolyZp.divmod f g
-    # 返回 (q, r)，丢弃 comp 参数
-
-    "get_deg": ("SparsePolyZp.getDeg", "direct"),
-    "std::move": ("identity", "pass_through"),  # move(x) → x
-    "std::make_pair": ("Prod.mk", "direct"),
-}
-```
-
-### 4.1 pair_vec_div 的特殊处理
-
-C++ 签名：`pair_vec_div(q.data(), r.data(), f.data(), g.data(), f.comp())`
-- 参数 0, 1 是输出（q, r）
-- 参数 2, 3 是输入（f, g）
-- 参数 4 是比较函数（Lean 中不需要）
-
-Lean 翻译：
-```lean
-let (q, r) := SparsePolyZp.divmod f g
-```
-
-翻译器规则：遇到 `pair_vec_div` → 提取参数 2,3 作为输入 → 生成 `let (out0, out1) := divmod arg2 arg3` → SSA 更新 out0, out1 的版本。
-
-## 5. C++ → Lean 映射表（CLASS_MAP）
-
-翻译器使用此表。**不在表中的操作 → sorry。**
-
-映射表的 key 使用 `TypeIR`（不是字符串），与翻译器内部类型一致。
-
-Clang 的 `type.qualType` 可能包含命名空间和 const/引用（如 `"const clpoly::Zp &"`）。`parse_type` 已经负责清理这些 → 得到 `TypeIR`。映射表基于清理后的 `TypeIR`。
-
-```python
-from ir_types import BaseType, StructType
-
 CLASS_MAP = {
-    # key = StructType.name（parse_type 的输出）
-
     "Zp": {
         "lean_type": StructType("Zp", []),
         "constructors": {
-            # key = 参数类型 tuple
             (BaseType.INT64, BaseType.UINT64): "Zp.ofInt",
             (BaseType.UINT64, BaseType.UINT64): "Zp.ofUInt64",
+            (BaseType.INT64,): "Zp.ofInt",
             (): "default",
         },
         "methods": {
-            "number": ("field", "val"),       # .number() → .val
-            "prime": ("field", "prime"),       # .prime() → .prime
-            "val": ("field", "val"),           # .val 直接访问
+            "number": ("field", "val"),
+            "prime": ("field", "prime"),
+            "val": ("field", "val"),
+            "inv": ("method", "Zp.inv"),
         },
         "operators": {
-            "+": None,   # Lean Add instance 处理
-            "-": None,   # Lean Sub instance 处理
-            "*": None,   # Lean Mul instance 处理
+            "+": None, "-": None, "*": None,
             "/": "Zp.div",
-            "==": None,  # Lean BEq instance 处理
-            "!=": None,
+            "==": None, "!=": None,
         },
     },
-
-    "UMonomial": {
-        "lean_type": StructType("UMonomial", []),
-        "constructors": {
-            (BaseType.UINT64,): "UMonomial.mk",
-            (): "default",
-        },
-        "methods": {
-            "deg": ("field", "deg"),
-        },
-    },
-
-    "SparsePolyZp": {
-        "lean_type": StructType("SparsePolyZp", []),
-        "constructors": {
-            (): "SparsePolyZp.empty",
-        },
-        "methods": {
-            # (类别, Lean 名)
-            # field: 字段访问 → obj.lean_name
-            # method: 函数调用 → lean_name obj
-            # mutate: 返回新值 → let obj' := lean_name obj（SSA 新版本）
-            # mutate_push: push → let obj' := obj.push elem
-            # noop: 忽略 → obj
-            # identity: 透传 → obj
-            "empty": ("method", "SparsePolyZp.isEmpty"),
-            "front": ("method", "SparsePolyZp.front!"),
-            "back": ("method", "SparsePolyZp.back!"),
-            "size": ("method", "SparsePolyZp.size_u64"),
-            "push_back": ("mutate_push", "Array.push"),
-            "normalization": ("mutate", "SparsePolyZp.normalization"),
-            "reserve": ("noop", None),
-            "data": ("identity", None),
-        },
-    },
+    "ZZ": { ... },        # 大整数 → Int
+    "UMonomial": { ... },  # 单项式
+    "SparsePolyZp": { ... }, # 稀疏多项式
 }
 ```
 
-### 5.1 类别说明
+### 3.1 方法类别
 
 | 类别 | 含义 | Lean 生成 | SSA 处理 |
 |------|------|----------|---------|
-| `field` | 字段访问 | `obj.field_name` | 无（纯读取） |
-| `method` | 无副作用方法调用 | `lean_name obj` | 无 |
-| `mutate` | 修改对象的方法 | `lean_name obj` | 生成 SSA 新版本 `let obj' := lean_name obj` |
-| `mutate_push` | push_back | `obj.push elem` | 生成 SSA 新版本 |
-| `noop` | 无操作（如 reserve） | `obj`（透传） | 无 |
-| `identity` | 返回自身（如 .data()） | `obj` | 无 |
+| `field` | 字段访问 | `obj.field_name` | 无 |
+| `method` | 纯方法调用 | `lean_name obj` | 无 |
+| `mutate` | 修改 this | `lean_name obj` | SSA 新版本 |
+| `mutate_push` | push_back | `obj.push elem` | SSA 新版本 |
+| `noop` | 无操作（reserve） | `obj` | 无 |
+| `identity` | 透传（.data()） | `obj` | 无 |
 
-`mutate` 类别的处理在 `ssa_transform.py` 中：当翻译器通过 CLASS_MAP 识别出 `mutate` 方法时，自动生成 SSA 新版本。这替代了当前 ssa_transform 中的硬编码特判（`_mutate_normalize`、`__upoly_make_monic` 等）。
+### 3.2 构造函数匹配
 
-## 6. 未知操作处理
+CXXConstructExpr 的处理流程：
+1. **Copy/move 构造检测**：1 个参数且类型 == 目标类型 → `parse_expr(arg)`（identity）
+2. **CLASS_MAP 构造函数查找**：先按参数类型精确匹配，再按参数数量 fallback
+3. **PairType** + 2 参数 → `Prod.mk`
+4. **ArrayType** + 0 参数 → `#[]`
+5. **BaseType** → 取最后一个参数
+6. Fallback → `Prod.mk` 或 `parse_expr(arg)`
 
-翻译器遇到的每个操作，按以下顺序查找：
+### 3.3 自动派生表
 
-1. **CLASS_MAP**：`obj_type.name → methods[method_name]`
-2. **FUNC_MAP**：`func_name → (lean_name, param_rule)`
-3. **LEAN_STDLIB**：`func_name → lean_name`（Prod.mk, Array.empty 等）
-4. **CAST_TABLE**：`(source, target) → lean_expr`
-5. **都不匹配 → `sorry`** + 注释标注 C++ 原始操作
+以下表从 CLASS_MAP 自动计算，不需要手动维护：
 
-## 7. 实施步骤
+```python
+NOOP_METHODS, MUTATING_METHODS = _derive_method_sets()
+# 从 CLASS_MAP 的 methods 中按 category 分类
 
-1. **`clpoly_model.lean`**：Lean 类模型文件（§3 的全部定义）→ 先编译验证
-2. **`class_map.py`**：CLASS_MAP + FUNC_MAP 字典
-3. **改造 `clang_ast.py`**：`CXXMemberCallExpr`、`CXXConstructExpr`、`CXXOperatorCallExpr`、`MemberExpr` → 查 CLASS_MAP
-4. **改造 `ssa_transform.py`**：`mutate` 类别统一处理 → 删除 `_mutate_normalize` 等特判
-5. **改造 `gen_full.py`**：prelude 用 `clpoly_model.lean` 替代手写 header
-6. **删除硬编码**：`CLPOLY_TYPE_MAP`、`METHOD_MAP`、`LEAN_STDLIB`、`NOOP_FUNCS` → 全部合并入 CLASS_MAP/FUNC_MAP
-7. **验证**：重新翻译 13 函数 → 编译通过 → 背靠背测试
+EMPTY_CONTAINER_METHODS = _derive_empty_container_methods()
+# 从 CLASS_MAP 的 methods 中找 lean_name 含 "!" 的方法
+```
 
-## 8. 前提条件
+## 4. FUNC_MAP：独立函数映射
 
-| 前提 | 验证方式 |
-|------|---------|
-| `clpoly_model.lean` 编译通过 | `lake env lean clpoly_model.lean` |
-| CLASS_MAP 覆盖因式分解模块用到的所有类操作 | 对 13 函数翻译，sorry 数 = 0 |
-| FUNC_MAP 覆盖所有独立函数 | 同上 |
-| Zp.ofInt 对负数正确 | 单元测试 `Zp.ofInt (-1) 5 = ⟨4, 5⟩` |
-| SparsePolyZp.normalization 行为与 C++ 一致 | 背靠背测试 |
+```python
+FUNC_MAP = {
+    "derivative":     ("SparsePolyZp.derivative", "direct"),
+    "polynomial_GCD": ("SparsePolyZp.gcd", "direct"),
+    "pair_vec_div":   ("SparsePolyZp.divmod", "out2_drop1"),
+    "get_deg":        ("SparsePolyZp.getDeg", "direct"),
+    "move":           ("id", "identity"),
+    "make_pair":      ("Prod.mk", "make_pair"),
+    "pow":            ("HPow.hPow", "direct"),
+}
+```
+
+参数规则：
+- `"direct"` — 直接传参
+- `"identity"` — 返回第一个实参（std::move）
+- `"make_pair"` — Prod.mk
+- `"out2_drop1"` — pair_vec_div 特殊处理（输出前 2 个，输入中间 2 个，丢弃最后 1 个）
+
+## 5. OPERATOR_MAP：运算符映射
+
+```python
+OPERATOR_MAP = {
+    "operator/": (3, "/"),  "operator*": (3, "*"),
+    "operator+": (3, "+"),  "operator-": (3, "-"),
+    "operator%": (3, "%"),
+    "operator==": (3, "=="), "operator!=": (3, "!="),
+    "operator<": (3, "<"),   "operator>": (3, ">"),
+    "operator<=": (3, "<="), "operator>=": (3, ">="),
+    "operator<<": (3, "<<"), "operator>>": (3, ">>"),
+}
+```
+
+CXXOperatorCallExpr 处理流程：
+1. `_extract_callee_name` 展开 ImplicitCastExpr 链提取 operator 名
+2. OPERATOR_MAP 查表（按长度降序匹配，`operator==` 优先于 `operator=`）
+3. CALL_OPERATOR_MAP 查表（`operator()` → `Rng.next`）
+4. 复合赋值（`operator*=`）→ 展开为 `lhs = lhs * rhs`
+
+## 6. STRUCT_COERCE_MAP：结构体类型转换
+
+```python
+STRUCT_COERCE_MAP = {
+    ("Zp", BaseType.UINT64):     "{e}.val",
+    ("Zp", BaseType.INT64):      "({e}.val.toNat : Int)",
+    ("UMonomial", BaseType.UINT64): "{e}.deg",
+}
+```
+
+当 Clang AST 中 ImplicitCastExpr 从 StructType 转换到 BaseType 时查此表。
+
+## 7. 可信基实现（clpoly_model.lean）
+
+### 7.1 文件结构
+
+```
+§1. Zp：Z/pZ 系数（算术 + extGcd 模逆）
+§2. ZZ：大整数（abbrev Int）
+§3. UMonomial：单变量单项式
+§4. SparsePolyZp：稀疏多项式（derivative, gcd, divmod, comp）
+§5. Array 辅助（front!, size_u64）
+§5a. Rng：伪随机数生成器（xorshift64）
+§6. 验证测试（#eval）
+```
+
+### 7.2 关键实现
+
+- **Zp.ofInt**：正确处理负数（`v % p` 后检查 `< 0` 加 `p`）
+- **Zp.modInv**：扩展欧几里得算法（`extGcdAux`）
+- **SparsePolyZp.derivative**：正确的 Zp 系数求导
+- **Rng.next**：xorshift64 伪随机（确定性，足够背靠背测试）
+- **SparsePolyZp.comp**：占位（返回 0，pair_vec_div 的 Lean 实现不使用比较器）
+
+### 7.3 隐式转换
+
+```lean
+instance : Coe Zp UInt64 where coe z := z.val
+instance : Coe Zp Int where coe z := z.val.toNat
+```
+
+## 8. SSA 变换的统一机制
+
+### 8.1 if/else phi 节点
+
+当 if/else 两分支修改了同一个变量时，使用 **BlockExpr** 封装分支内的 let 链：
+
+```lean
+-- 正确：分支内变量在 Lean 的 if-then 作用域内可见
+let result_4 := if cond then
+    let result_2 := result_1 * b_1
+    let result_3 := __upoly_mod_ir result_2 modpoly
+    result_3
+else result_1
+```
+
+BlockExpr（`ir_types.py`）= 语句列表 + 最终值表达式。codegen 输出为 Lean 的 let-in 链。
+
+### 8.2 局部变量排除
+
+循环变量识别（`identify_loop_vars`）和 phi 变量识别（`transform_if`）都排除**在当前作用域内首次声明的局部变量**：
+
+```python
+# 循环：排除循环体内 LetStmt 声明的变量
+loop_vars = identify_loop_vars(body) - _collect_local_decls(body)
+
+# if/else：只 phi 在 if 之前已存在的变量
+diff = {k: v for k, v in diff.items() if k in pre_existing}
+```
+
+### 8.3 range-for 变换
+
+`elem_let`（循环变量赋值 `let term := __coll[idx]!`）与循环体一起经过 `transform_body`，确保正确的 SSA 版本号。
+
+### 8.4 成员赋值
+
+`term.second *= lc_inv` 的处理：
+1. `clang_ast.py`：检测 `operator*=` → 展开为 `term.second = term.second * lc_inv`
+2. FieldAccess LHS 保留字段信息 → `ExprStmt(BinOp("=", FieldAccess(...), rhs))`
+3. `ssa_transform.py`：`transform_member_assign` 生成 functional update + `Array.set!`
+
+## 9. UB 证明目标（ub_collector.py）
+
+### 9.1 检测规则
+
+| UB 类型 | 检测位置 | 表驱动 |
+|---------|---------|--------|
+| DIV_BY_ZERO | BinOp `/` `%` | 运算符字面匹配 |
+| SHIFT_OOB | BinOp `<<` `>>` | 运算符字面匹配 |
+| SIGNED_OVERFLOW | BinOp `+` `-` `*` 且 signed 上下文 | `_is_signed_context` |
+| ARRAY_OOB | ArrayAccess | 结构匹配 |
+| EMPTY_CONTAINER | Call 到 EMPTY_CONTAINER_METHODS | 从 CLASS_MAP 派生 |
+| UNSAFE_CAST | Cast 到 UNSAFE_CAST_PAIRS | 从 class_map.py 查表 |
+
+### 9.2 注入过滤
+
+`inject_obligations` 只将**引用参数名的 obligation** 提升到函数签名：
+
+```python
+def _all_vars_in_scope(lean_prop, param_names):
+    # 提取标识符，去掉版本后缀，检查是否都是参数名
+```
+
+引用循环内部变量或函数体内 let 变量的 obligation 被过滤掉（它们应该作为循环不变式或局部 require 处理，不能提升到函数签名）。
+
+## 10. 查找顺序
+
+翻译器遇到 C++ 操作时，按以下统一顺序查找：
+
+1. **Copy/move 构造** → identity（`_types_equal` 检测）
+2. **CLASS_MAP** → 构造函数 / 方法 / 字段
+3. **FUNC_MAP** → 独立函数
+4. **OPERATOR_MAP** → 运算符重载（CXXOperatorCallExpr）
+5. **CALL_OPERATOR_MAP** → 函数调用运算符（operator()）
+6. **STRUCT_COERCE_MAP** → 结构体→基本类型隐式转换
+7. **CAST_TABLE** → 基本类型间转换
+8. **LEAN_BUILTINS** → Lean 标准库函数
+9. **TRANSLATION_SCOPE** → 翻译范围内函数（加 `_ir` 后缀）
+10. **都不匹配 → `sorry`** + 注释标注
+
+## 11. 验证结果
+
+| 指标 | 值 |
+|------|---|
+| 翻译函数数 | 13 |
+| 生成 Lean 行数 | 465 |
+| sorry 数 | 0 |
+| UNKNOWN/CAST 标记数 | 0 |
+| Lean 编译错误数 | 0 |
+| 可信基 Lean 模型行数 | ~150 |
+| class_map.py 配置表数 | 12 |

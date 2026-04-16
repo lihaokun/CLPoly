@@ -312,7 +312,7 @@ FUNC_MAP = {
     "iota": ("List.range", "direct"),
     # 多项式操作
     "get_variables": ("get_variables", "direct"),
-    "assign": ("id", "identity"),
+    "assign": ("assign", "direct"),
     # 多项式查询
     "leadcoeff": ("leadcoeff", "direct"),
     "get_variables": ("get_variables", "direct"),

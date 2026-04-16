@@ -219,6 +219,10 @@ abbrev Factorization := Array Int  -- 占位
 abbrev PrimeSelectionResult := Array Int  -- 占位
 abbrev WangLcResult := Array Int  -- 占位
 
+-- assign：多项式变量代入 poly[var := val]
+-- C++ assign(poly, var, val) = 用 val 替代 poly 中的变量 var
+opaque assign (poly : α) (var : Variable) (val : β) : α := poly
+
 -- ============================================================
 -- §6. 验证测试
 -- ============================================================

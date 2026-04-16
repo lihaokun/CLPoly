@@ -609,6 +609,7 @@ def parse_range_for(node: dict) -> StmtIR:
     collection = UnknownExpr("collection")
     body_stmt = UnknownStmt("empty")
 
+    decomp_bindings = []  # 结构化绑定名列表（如 ["var", "deg"]）
     for child in inner:
         k = child.get("kind", "")
         if k == "DeclStmt":
@@ -620,24 +621,44 @@ def parse_range_for(node: dict) -> StmtIR:
                         range_inner = decl.get("inner", [])
                         if range_inner:
                             collection = parse_expr(range_inner[0])
+                    elif vname.startswith("__begin") or vname.startswith("__end"):
+                        pass  # 跳过 range-for 内部迭代器变量
                     elif not vname.startswith("__"):
                         # 用户的循环变量（如 term）
                         loop_var_name = vname
                         loop_var_type = parse_type(decl.get("type", {}).get("qualType", "auto"))
+                elif decl.get("kind") == "DecompositionDecl":
+                    # C++17 structured binding: auto& [a, b] = *__begin
+                    loop_var_name = "_decomp"
+                    loop_var_type = parse_type(decl.get("type", {}).get("qualType", "auto"))
+                    for bd in decl.get("inner", []):
+                        if bd.get("kind") == "BindingDecl":
+                            decomp_bindings.append(bd.get("name", "?"))
         elif k == "CompoundStmt":
             body_stmt = parse_stmt(child)
-        elif k in ("ExprWithCleanups", "CXXOperatorCallExpr", "BinaryOperator",
-                   "CXXMemberCallExpr", "CallExpr", "UnaryOperator"):
-            # 单语句 range-for body（无 CompoundStmt 包裹）
+        elif k in ("BinaryOperator", "UnaryOperator", "CXXOperatorCallExpr"):
+            # 跳过 range-for 内部操作（__begin != __end, ++__begin）
+            # 判断：如果子树引用了 __begin/__end 则是 STL 内部操作
+            child_str = json.dumps(child)
+            if "__begin" not in child_str and "__end" not in child_str:
+                body_stmt = parse_stmt(child)
+        elif k in ("IfStmt", "ExprWithCleanups",
+                   "CXXMemberCallExpr", "CallExpr", "ForStmt",
+                   "CXXForRangeStmt", "WhileStmt"):
+            # 单语句 range-for body（CompoundStmt 以外的语句类型）
             body_stmt = parse_stmt(child)
 
     # 翻译为 ForLoop
     idx_var = Var("__idx")
-    return UnknownStmt("RangeForLoop", [
+    children = [
         ExprStmt(collection),                    # 被遍历的集合
         LetStmt(Var(loop_var_name), loop_var_type, Lit(0)),  # 循环变量名+类型
         body_stmt,                               # 循环体
-    ])
+    ]
+    # 结构化绑定信息作为额外 children 传递
+    if decomp_bindings:
+        children.append(ExprStmt(Lit(decomp_bindings)))  # 绑定名列表
+    return UnknownStmt("RangeForLoop", children)
 
 
 def parse_while(node: dict) -> StmtIR:

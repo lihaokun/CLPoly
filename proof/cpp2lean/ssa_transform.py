@@ -87,8 +87,11 @@ def finalize_loop_func(loop_func: 'SSAFunc', outer_env: 'VarEnv',
     同时更新 call_stmts 中的调用（添加对应参数）。
     检测并替换含迭代器操作的循环体。
     """
-    # 迭代器检测：如果 body 含 operator-> 等，替换为 filter/filterMap
-    if _has_iterator_ops(loop_func.body):
+    # 迭代器检测：仅当参数名含 it/out 双指针模式时替换为 compactNonzero
+    # 更保守的检测：避免误替换非 compact 循环（如 __hensel_step Part 2）
+    param_name_set = {p.name.split("_")[0] for p in loop_func.params}
+    is_dual_pointer = ("it" in param_name_set and "out" in param_name_set)
+    if is_dual_pointer and _has_iterator_ops(loop_func.body):
         _replace_iterator_body(loop_func, outer_env)
         return  # 替换后不需要闭包检测
 
@@ -502,13 +505,21 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
             except ValueError:
                 lambda_id = None
             if lambda_id is not None and lambda_id in _LAMBDA_REGISTRY:
-                _, lam_params, lam_body = _LAMBDA_REGISTRY[lambda_id]
+                captures_from_ast, lam_params, lam_body = _LAMBDA_REGISTRY[lambda_id]
                 func_name = f"_lambda_{lambda_id}"
-                # 从原始 body 中提取 capture（SSA 前，变量名未 rename）
-                raw_free = collect_free_vars(lam_body)
+                # 用 clang_ast 提供的 capture 列表作为 primary source
+                # 再用 collect_free_vars 补充遗漏
                 param_names = {lp.name for lp in lam_params}
                 capture_names = []
                 seen = set()
+                for cname in captures_from_ast:
+                    if cname in param_names or cname in seen:
+                        continue
+                    if cname in env.versions:
+                        seen.add(cname)
+                        capture_names.append(cname)
+                # fallback: collect_free_vars 补充 AST 未捕获的变量
+                raw_free = collect_free_vars(lam_body)
                 for vname, vver in sorted(raw_free):
                     if vname in param_names or vname in seen:
                         continue
@@ -627,6 +638,27 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
             new_var = env.bump(expr.arr.name)
             typ = env.get_type(expr.arr.name)
             return LetStmt(new_var, typ, ArrayPush(old, rename_expr(expr.elem, env)))
+        # obj.field.push(x) → let obj_{n+1} := obj_n.push x（Factorization 等容器字段）
+        if isinstance(expr, ArrayPush) and isinstance(expr.arr, FieldAccess):
+            fa = expr.arr
+            if isinstance(fa.obj, Var):
+                old = env.current(fa.obj.name)
+                new_var = env.bump(fa.obj.name)
+                typ = env.get_type(fa.obj.name)
+                elem = rename_expr(expr.elem, env)
+                return LetStmt(new_var, typ, ArrayPush(old, elem))
+        # arr[i].push(x) → let arr_{n+1} := Array.set! arr_n i (arr_n[i]!.push x)
+        if isinstance(expr, ArrayPush) and isinstance(expr.arr, ArrayAccess):
+            aa = expr.arr
+            if isinstance(aa.arr, Var):
+                arr_old = env.current(aa.arr.name)
+                idx = rename_expr(aa.idx, env)
+                elem = rename_expr(expr.elem, env)
+                row = ArrayAccess(arr_old, idx)
+                pushed = ArrayPush(row, elem)
+                new_arr = env.bump(aa.arr.name)
+                return LetStmt(new_arr, env.get_type(aa.arr.name),
+                               Call("Array.set!", [arr_old, idx, pushed]))
         # x = expr（变量赋值）→ let x_{n+1} := expr
         if isinstance(expr, BinOp) and expr.op == "=":
             if isinstance(expr.lhs, Var):
@@ -751,12 +783,21 @@ def transform_if(stmt: IfStmt, env: VarEnv, ctx: FuncCtx = None,
     if then_returns and else_returns:
         return [IfStmt(cond, then_body, else_body)]
 
-    # 两分支都不 return → 需要 phi
+    # 两分支都不 return → 需要 phi（或同步版本）
     diff = env_then.merge(env_else)
 
-    # 只 phi 在 if 之前已存在的变量（排除 if 内首次声明的局部变量）
+    # 只处理在 if 之前已存在的变量（排除 if 内首次声明的局部变量）
     pre_existing = set(env.versions.keys())
     diff = {k: v for k, v in diff.items() if k in pre_existing}
+
+    # 同步两分支一致推进的变量版本到外层 env
+    # 例：两分支都设 delta_2 → env 也推进到 delta_2
+    for name in pre_existing:
+        v_then = env_then.versions.get(name, 0)
+        v_else = env_else.versions.get(name, 0)
+        v_outer = env.versions.get(name, 0)
+        if v_then == v_else and v_then > v_outer:
+            env.versions[name] = v_then
 
     if not diff:
         return [IfStmt(cond, then_body, else_body)]
@@ -901,6 +942,9 @@ def transform_for_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> l
             seen_closure.add(vname)
             closure_vars.append(env.current(vname))
 
+    # 更新 LoopCtx 参数列表（闭包变量在 body 变换之后才可知）
+    lctx.all_param_names = list(modified_names) + [cv.name for cv in closure_vars]
+
     # 循环函数参数
     loop_params = []
     for name in modified_names:
@@ -987,7 +1031,7 @@ def transform_for_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> l
 
 
 def identify_loop_vars_from_step(step_stmt: StmtIR) -> set[str]:
-    """从步进语句（如 i++）中提取变量。"""
+    """从步进语句（如 i++, p = next_p(p)）中提取变量。"""
     result = set()
     if isinstance(step_stmt, ExprStmt):
         expr = step_stmt.expr
@@ -999,6 +1043,9 @@ def identify_loop_vars_from_step(step_stmt: StmtIR) -> set[str]:
         if isinstance(expr, BinOp) and expr.op in ("+", "-"):
             if isinstance(expr.lhs, Var):
                 result.add(expr.lhs.name)
+        # p = next_p(p) 赋值形式
+        if isinstance(expr, BinOp) and expr.op == "=":
+            result |= _extract_all_root_var_names(expr.lhs)
     if isinstance(step_stmt, AssignStmt):
         result.add(step_stmt.target.name)
     return result
@@ -1073,6 +1120,9 @@ def transform_while_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) ->
         if vname in env.versions:
             seen_closure.add(vname)
             closure_vars.append(env.current(vname))
+
+    # 更新 LoopCtx 参数列表（闭包变量在 body 变换之后才可知）
+    lctx.all_param_names = list(modified_names) + [cv.name for cv in closure_vars]
 
     # 循环函数参数
     loop_params = []
@@ -1243,6 +1293,14 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> 
         loop_var_type = "auto"
     body_stmt = children[2]
 
+    # 结构化绑定（children[3] 存绑定名列表）
+    decomp_bindings = []
+    if len(children) > 3 and isinstance(children[3], ExprStmt):
+        lit = children[3].expr
+        if isinstance(lit, Lit) and isinstance(lit.value, list):
+            decomp_bindings = lit.value
+            loop_var_name = "elem"  # 统一用 elem，然后解构
+
     collection_renamed = rename_expr(collection, env)
 
     # auto 类型推导（从集合类型）
@@ -1287,6 +1345,35 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> 
     loop_env.set_type(loop_var_name, loop_var_type)
     loop_env.versions[loop_var_name] = 0
 
+    # 结构化绑定解构：在 elem_let 之后插入 let var := elem.fst, let deg := elem.snd
+    decomp_stmts = []
+    if decomp_bindings:
+        elem_var = Var(loop_var_name)
+        if len(decomp_bindings) == 2:
+            decomp_stmts.append(LetStmt(Var(decomp_bindings[0]), "auto",
+                                         FieldAccess(elem_var, "fst")))
+            decomp_stmts.append(LetStmt(Var(decomp_bindings[1]), "auto",
+                                         FieldAccess(elem_var, "snd")))
+        else:
+            # 3+ 绑定：嵌套 Prod 投影
+            for i, bname in enumerate(decomp_bindings):
+                if i < len(decomp_bindings) - 1:
+                    accessor = FieldAccess(elem_var, "fst") if i == 0 else \
+                               FieldAccess(Var(f"_decomp_{i}"), "fst")
+                    decomp_stmts.append(LetStmt(Var(bname), "auto", accessor))
+                    if i + 1 < len(decomp_bindings) - 1:
+                        rest = FieldAccess(elem_var, "snd") if i == 0 else \
+                               FieldAccess(Var(f"_decomp_{i}"), "snd")
+                        decomp_stmts.append(LetStmt(Var(f"_decomp_{i+1}"), "auto", rest))
+                else:
+                    accessor = FieldAccess(elem_var, "snd") if len(decomp_bindings) == 2 else \
+                               FieldAccess(Var(f"_decomp_{i-1}"), "snd")
+                    decomp_stmts.append(LetStmt(Var(bname), "auto", accessor))
+        # 注册解构变量到环境
+        for bname in decomp_bindings:
+            loop_env.versions[bname] = 0
+            loop_env.set_type(bname, "auto")
+
     # 修改变量列表（循环携带的状态）
     modified_names = sorted(body_vars)
 
@@ -1295,7 +1382,7 @@ def transform_range_for(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> 
     all_loop_params = [idx_name, coll_name] + modified_names
     lctx = LoopCtx(func_name, modified_names, step_stmts=[], env=loop_env,
                     all_param_names=all_loop_params)
-    all_body_raw = [elem_let] + flatten_stmts(body_stmt)
+    all_body_raw = [elem_let] + decomp_stmts + flatten_stmts(body_stmt)
     body_stmts = transform_body(all_body_raw, loop_env, ctx, loop_ctx=lctx)
 
     # 引用写回：如果循环变量（elem/term）被修改了，追加 Array.set! 写回集合
@@ -1705,9 +1792,9 @@ def identify_loop_vars(stmt: StmtIR) -> set[str]:
         if isinstance(expr, UnaryOp) and expr.op in ("++", "--"):
             if isinstance(expr.operand, Var):
                 result.add(expr.operand.name)
-        # arr.push(x) → arr 被修改
-        if isinstance(expr, ArrayPush) and isinstance(expr.arr, Var):
-            result.add(expr.arr.name)
+        # arr.push(x) → arr 被修改（含嵌套 arr[i].push / arr.field.push）
+        if isinstance(expr, ArrayPush):
+            result |= _extract_all_root_var_names(expr.arr)
         # method call 可能修改 this 对象
         if isinstance(expr, Call) and expr.args and isinstance(expr.args[0], Var):
             from class_map import MUTATING_METHODS, NOOP_METHODS

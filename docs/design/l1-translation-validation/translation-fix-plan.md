@@ -205,39 +205,166 @@ if isinstance(step_stmt, ExprStmt):
 
 ---
 
-### S4. Lambda 调用结果未写回宿主变量（~5 函数）
+### S4. Lambda 引用捕获写回（~5 函数）
 
-**现象**：`lc_correct(F[i])` 修改了 `F[i]` 但结果未写回到 `F`。
+**现象**：`lc_correct(F[i])` 修改了 `F[i]` 但结果未写回到 `F`。`row_sub(M, U, i, j, c)` 修改了 `M` 和 `U` 但结果丢弃。
 
-**根因**：Lambda 调用在 SSA 中被翻译为 `Call("_lambda_N_ir", [...])` 并作为 `ExprStmt`，结果被丢弃。C++ 中 lambda 通过引用捕获修改 host 变量，但翻译器没有模型。
+**根因**：C++ lambda 通过 `[&]` 引用捕获外层变量，lambda 内部修改直接反映到外层。翻译器把 lambda 提取为独立函数，捕获变量作为参数传入。但调用方把 lambda 调用作为 `ExprStmt`（`let _ := _lambda_N_ir ...`），修改后的值没有写回到外层变量。
 
-**修复**：
-方案 A（精确）：分析 lambda body 确定哪些 capture 被修改，生成对应的写回语句。
-方案 B（保守）：对 `__lll_reduce` 和 `__mtshl_step_j` 使用 FUNC_BODY_OVERRIDE。
+**C++ 语义**：
+```cpp
+auto row_sub = [&](int i, int j, ZZ c) {
+    for (k = 0; k < n; k++) {
+        M[i][k] -= c * M[j][k];  // 修改 M
+        U[i][k] -= c * U[j][k];  // 修改 U
+    }
+};
+row_sub(k, k-1, mu_kk1);  // 调用后 M, U 已被修改
+```
 
-**推荐方案 B**：只有 2-3 个函数，手写 override 更可靠。
+**Lean 当前翻译**：
+```lean
+partial def _lambda_5_ir (M : LLLMatrix) (U : LLLMatrix) (i j : Int) (c : ZZ) : LLLMatrix :=
+  -- ... 内部修改 M, U ...
+
+let _ := (_lambda_5_ir M_1 U_1 k_1 (k_1 - 1) mu_kk1)  -- 结果丢弃！
+-- 后续仍用 M_1, U_1（未修改版本）
+```
+
+**修复方案**：在 `ssa_transform.py` 的 ExprStmt 处理中，当检测到 lambda 调用（函数名含 `_lambda_`）且 lambda body 修改了捕获变量时，将 `ExprStmt` 转换为 `LetStmt`，捕获返回的修改值。
+
+具体实现：
+1. 在 lambda 提取阶段（line 507-541），记录哪些 capture 在 lambda body 中被修改（通过检查 lambda body 的 `identify_loop_vars`）。存入 `_LAMBDA_REGISTRY` 的第 4 个元素。
+2. 在 ExprStmt 处理中（line 578+），如果调用的是 lambda 且有 modified captures，将结果拆包写回对应变量：
+```python
+# ExprStmt(Call("_lambda_5_ir", [M, U, i, j, c]))
+# → let _lam_result := _lambda_5_ir M_1 U_1 i j c
+#   let M_2 := _lam_result.1
+#   let U_2 := _lam_result.2
+```
+3. Lambda 函数的返回值从 `auto` 改为修改后的 capture 变量 tuple。
+
+**正确性论证**：
+
+设 lambda 函数 $\lambda(c_1, ..., c_k, p_1, ..., p_m)$ 中，$c_1, ..., c_k$ 是捕获变量，$p_1, ..., p_m$ 是形式参数。设 lambda body 修改了 $c_i, c_j$（$\{i, j\} \subseteq \{1, ..., k\}$）。
+
+C++ 语义：调用 $\lambda$ 后，外层的 $c_i, c_j$ 被原地修改为 $c_i', c_j'$。
+
+Lean 翻译：$\lambda$ 返回 $(c_i', c_j')$，调用方将返回值拆包写回 $c_i, c_j$。
+
+等价性：纯函数语义下，显式返回+写回 $\equiv$ 引用捕获修改。因为：
+- $\lambda$ 内部对 $c_i$ 的所有读写都作用于参数 $c_i$（SSA 保证无别名）
+- 返回的 $c_i'$ 是 $\lambda$ 执行完毕后的最终值
+- 写回后，外层的 $c_i$ 被更新为 $c_i'$，等同于 C++ 的引用修改
+
+**前置条件**：lambda 的捕获变量在调用期间无其他别名访问（C++ 中 `[&]` 捕获在单线程下满足）。
+
+**影响函数**：`__lll_reduce`（`row_sub`, `row_swap`）、`__mtshl_step_j`（`lc_correct`, `product_F`）、`__mtshl_multi_bdp`（`compute_error`）。
 
 ---
 
-### S5. 函数返回默认值（~4 函数）
+### S5. 循环内 return 传播到父函数（~4 函数）
 
-**现象**：`__select_eval_point` 返回 `StdMap.empty`，`__wang_core` 返回 `{(g,1)}`。
+**现象**：`__select_eval_point` 的 while(true) 循环内 `return alpha` 被翻译为循环函数的 return，但调用方把循环结果按 `modified_vars` tuple 拆包，忽略了 alpha。最终函数返回 `StdMap.empty`（循环后的默认值）。
 
-**根因**：这些函数有复杂控制流（嵌套 while + return），最终的 return 语句使用的是循环之前的变量版本。循环内部通过 `return alpha` 提前返回，但循环提取后 return 变成了循环函数的 break，主函数的最终 return 用的是循环未修改过的旧值。
+**根因**：loop-as-function 架构不区分"循环正常退出（break/条件不满足）"和"从父函数 return"。两者都被翻译为循环函数的 `ReturnStmt`，但语义完全不同。
 
-**修复**：与 S2 同源——循环函数的 break 返回值需要正确传播到主函数。检查 `_make_loop_return` 和循环调用后的变量拆包是否正确将循环内 return 的值传递给主函数的最终 return。
+**C++ 模式**：
+```cpp
+Result func(...) {
+    while (true) {
+        ...
+        if (found) return result;  // 退出 func，不只是循环
+        ...
+    }
+    return default_value;  // 循环耗尽后的 fallback
+}
+```
+
+**当前翻译（错误）**：
+```lean
+partial def loop_N_ir (vars...) :=
+  ...
+  if found then return result  -- 返回 result 而非 modified_vars tuple！
+  ...
+
+partial def func_ir (...) :=
+  let _loop := loop_N_ir(vars...)
+  let var1 := _loop.1    -- 错误拆包：result 不是 tuple
+  let var2 := _loop.2
+  ...
+  default_value           -- 总是返回默认值
+```
+
+**修复方案：return → break + 标志位**
+
+核心思想：将循环内的 `return val` 转换为 `_ret = true; _ret_val = val; break`。循环函数照常返回 `modified_vars` tuple（含标志位和返回值），调用方检查标志位决定是继续执行还是直接返回。
+
+**实现步骤**：
+
+1. **检测**：在 `transform_for_loop` / `transform_while_loop` 的循环体变换之前，扫描原始 body 是否含 `ReturnStmt`（排除 break/continue 产生的 ReturnStmt）。
+
+2. **注入标志变量**：如果含 ReturnStmt，在循环参数中添加两个合成变量：
+   - `_ret_flag : Bool`（初始 `false`）
+   - `_ret_val : ReturnType`（初始 `default`）
+   加入 `modified_names`。
+
+3. **变换 ReturnStmt**：循环体内的 `ReturnStmt(val)` 替换为：
+   ```
+   let _ret_flag := true
+   let _ret_val := val
+   break  // → return modified_vars tuple（含 _ret_flag = true）
+   ```
+
+4. **调用方检查**：循环调用后，拆包 `_ret_flag`：
+   ```lean
+   let _loop := loop_N_ir(...)
+   let _ret_flag := _loop.ret_flag_accessor
+   let _ret_val := _loop.ret_val_accessor
+   if _ret_flag then return _ret_val
+   else
+     let var1 := _loop.var1_accessor
+     ... 后续代码 ...
+   ```
+
+**正确性论证**：
+
+设 C++ 函数 $f$ 含循环 $L$，$L$ 内有 $\texttt{return}\ e$。
+
+C++ 语义：执行 $L$ 时，若到达 $\texttt{return}\ e$，则 $f$ 立即返回 $e$，不执行循环后代码。
+
+Lean 翻译后语义：
+- 循环函数 $L_{ir}$ 执行到原 return 点时，设 $\texttt{\_ret\_flag} := \texttt{true}$，$\texttt{\_ret\_val} := e'$（$e$ 的 SSA 翻译），然后 break（返回状态 tuple）。
+- 调用方检查：$\texttt{\_ret\_flag} = \texttt{true}$，直接 return $\texttt{\_ret\_val}$。
+- 循环后的代码不执行（被 `if _ret_flag then return` 短路）。
+
+等价性证明：
+- **return 路径**：C++ 返回 $e$ ↔ Lean 返回 $e'$（$e' = \text{rename}(e)$，SSA 等价）。循环后代码在两种语义下都不执行。✓
+- **非 return 路径**：C++ 循环正常退出后执行后续代码 ↔ Lean $\texttt{\_ret\_flag} = \texttt{false}$，跳过 return，执行后续代码。变量通过 `modified_vars` tuple 正确传播。✓
+- **不变量**：$\texttt{\_ret\_flag}$ 初始为 false，仅在原 return 点被设为 true。一旦设为 true 则立即 break，不会被后续迭代重置。✓
+
+**边界情况**：
+- 循环无 return（只有 break）：不注入标志变量，行为不变。✓
+- 循环有多个 return：每个 return 点都设 flag + val + break，flag 语义一致。✓
+- 嵌套循环内 return：外层循环提取时，内层循环的 return 已被内层处理转换为 flag+break，外层看到的是 `if _ret_flag then break`（传播 flag 到外层）。需要递归处理。
+
+**影响函数**：`__select_eval_point`、`__wang_core`、`__edf_Zp`、`__zassenhaus_recombine`。
 
 ---
+
+## S1-S3 已修复状态
+
+| 根因 | 状态 | 修复方式 |
+|------|------|---------|
+| S1 | ✅ 已修复 | `transform_if` 两分支一致版本同步到外层 env |
+| S2 | ✅ 已修复 | `identify_loop_vars_from_step` 添加 `BinOp("=")` |
+| S3 | ✅ 已修复 | `identify_loop_vars` 扩展 `_extract_all_root_var_names(expr.arr)` |
 
 ## 修复优先级
 
-| 优先级 | 根因 | 修复 | 预计影响 |
-|--------|------|------|---------|
-| **P0** | S2 step 赋值漏检 | `identify_loop_vars_from_step` +1 行 | ~10 函数 |
-| **P0** | S1 phi pre_existing | `transform_if` 去掉过滤 | ~8 函数 |
-| **P1** | S3 bi 数组 | `identify_loop_vars` 递归检测 | 3 函数 |
-| **P1** | S5 return 传播 | 循环 break→return 传播检查 | ~4 函数 |
-| **P2** | S4 lambda 写回 | FUNC_BODY_OVERRIDE | 2-3 函数 |
+| 优先级 | 根因 | 修复复杂度 | 预计影响 |
+|--------|------|-----------|---------|
+| **P0** | S5 return→break+flag | 高（~50 行） | ~4 函数，解决 return 传播 |
+| **P1** | S4 lambda 写回 | 中（~30 行） | ~5 函数，解决引用捕获 |
 
-修复 S1+S2 预计 PASS 率从 28/66 (42%) 提升至 ~45/66 (68%)。
-全部修复后预计 ~55/66 (83%)。
+修复 S4+S5 预计 PASS 率从 ~28/66 提升至 ~40-45/66。

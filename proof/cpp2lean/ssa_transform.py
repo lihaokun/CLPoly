@@ -160,12 +160,14 @@ class LoopCtx:
     """循环函数内部上下文：break/continue 语义替换用。"""
     def __init__(self, func_name: str, modified_vars: list[str],
                  step_stmts: list = None, env: 'VarEnv' = None,
-                 all_param_names: list[str] = None):
+                 all_param_names: list[str] = None,
+                 has_parent_return: bool = False):
         self.func_name = func_name
         self.modified_vars = modified_vars
         self.step_stmts = step_stmts or []
         self.env = env
         self.all_param_names = all_param_names or []  # 全部参数名（含 idx、coll、闭包）
+        self.has_parent_return = has_parent_return  # 循环体含父函数 return
 
 
 class VarEnv:
@@ -174,6 +176,7 @@ class VarEnv:
     def __init__(self):
         self.versions: dict[str, int] = {}
         self.types: dict[str, TypeIR] = {}    # 变量名 → 类型
+        self.lambda_modified: dict[str, list[str]] = {}  # S4: lambda 变量名 → 修改的 capture 列表
 
     def current(self, name: str) -> Var:
         return Var(name, self.versions.get(name, 0))
@@ -194,6 +197,7 @@ class VarEnv:
         new = VarEnv()
         new.versions = dict(self.versions)
         new.types = dict(self.types)
+        new.lambda_modified = dict(self.lambda_modified)
         return new
 
     def merge(self, other: VarEnv) -> dict[str, tuple[Var, Var]]:
@@ -538,6 +542,18 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                     capture_params.append(ParamIR(env.current(cn).lean_name(),
                                                    env.get_type(cn)))
                 all_params = capture_params + list(lam_params)
+                # S4: 如果 lambda 修改了 capture，追加返回修改后的值
+                lam_modified = identify_loop_vars(UnknownStmt("CompoundStmt", lam_body))
+                modified_caps = [c for c in capture_names if c in lam_modified]
+                if modified_caps and not any(isinstance(s, ReturnStmt) for s in lam_body_ssa):
+                    if len(modified_caps) == 1:
+                        lam_body_ssa.append(ReturnStmt(lam_env.current(modified_caps[0])))
+                    else:
+                        lam_body_ssa.append(ReturnStmt(
+                            Call("Prod.mk", [lam_env.current(c) for c in modified_caps])))
+                # 记录 lambda 变量名 → 修改的 capture 列表
+                if modified_caps:
+                    env.lambda_modified[stmt.var.name] = modified_caps
                 lam_func = SSAFunc(
                     name=func_name,
                     params=all_params,
@@ -565,6 +581,18 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
         return transform_if(stmt, env, ctx, loop_ctx)
 
     if isinstance(stmt, ReturnStmt):
+        # 循环体内的 ReturnStmt：转换为 _ret_flag=true + _ret_val=val + break
+        if loop_ctx and loop_ctx.has_parent_return and stmt.value is not None:
+            stmts = []
+            ret_val = rename_expr(stmt.value, env)
+            flag_var = env.bump("_ret_flag")
+            stmts.append(LetStmt(flag_var, BaseType.BOOL, Lit(True)))
+            val_var = env.bump("_ret_val")
+            stmts.append(LetStmt(val_var, "auto", ret_val))
+            # break → return modified_vars tuple
+            exit_expr = _make_loop_return(loop_ctx.modified_vars, env)
+            stmts.append(ReturnStmt(exit_expr))
+            return stmts
         if stmt.value is not None:
             return ReturnStmt(rename_expr(stmt.value, env))
         return stmt
@@ -725,6 +753,39 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                     return stmts
             if isinstance(expr.lhs, FieldAccess):
                 return transform_member_assign(expr.lhs, expr.rhs, env)
+        # S4: Lambda 调用结果写回 — lambda 修改了 capture 变量
+        # 检测：Call 的函数名是一个 Var，且该 Var 在 env.lambda_modified 中
+        func_name_raw = ""
+        if isinstance(expr, Call):
+            func_name_raw = expr.func if isinstance(expr.func, str) else \
+                            (expr.func.name if isinstance(expr.func, Var) else "")
+        if func_name_raw in env.lambda_modified:
+            modified_captures = env.lambda_modified[func_name_raw]
+            call_renamed = rename_expr(expr, env)
+            stmts = []
+            if len(modified_captures) == 1:
+                new_var = env.bump(modified_captures[0])
+                stmts.append(LetStmt(new_var, env.get_type(modified_captures[0]),
+                                     call_renamed))
+            else:
+                pair_var = env.bump("_lam_out")
+                env.set_type("_lam_out", "auto")
+                stmts.append(LetStmt(pair_var, "auto", call_renamed))
+                for i, cname in enumerate(modified_captures):
+                    new_var = env.bump(cname)
+                    if i == 0:
+                        accessor = FieldAccess(pair_var, "1")
+                    elif i == len(modified_captures) - 1:
+                        accessor = pair_var
+                        for _ in range(i):
+                            accessor = FieldAccess(accessor, "2")
+                    else:
+                        accessor = pair_var
+                        for _ in range(i):
+                            accessor = FieldAccess(accessor, "2")
+                        accessor = FieldAccess(accessor, "1")
+                    stmts.append(LetStmt(new_var, env.get_type(cname), accessor))
+            return stmts
         return ExprStmt(rename_expr(expr, env))
 
     if isinstance(stmt, UnknownStmt):
@@ -921,10 +982,26 @@ def transform_for_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> l
     loop_id = abs(hash(str(stmt))) % 100000
     func_name = f"loop_{loop_id}"
 
+    # S5: 检测循环体内是否有父函数 return
+    has_parent_ret = _body_has_return(body_stmt)
+    if has_parent_ret:
+        # 注入 _ret_flag, _ret_val 作为循环状态
+        if "_ret_flag" not in modified_names:
+            modified_names.append("_ret_flag")
+        if "_ret_val" not in modified_names:
+            modified_names.append("_ret_val")
+        modified_names = sorted(modified_names)
+        # 在 env 中初始化
+        env.versions["_ret_flag"] = 0
+        env.set_type("_ret_flag", BaseType.BOOL)
+        env.versions["_ret_val"] = 0
+        env.set_type("_ret_val", "auto")
+
     # SSA 变换循环体 + 步进（传入 loop_ctx 支持 break/continue）
     loop_env = env.fork()
     lctx = LoopCtx(func_name, modified_names, env=loop_env,
-                    all_param_names=list(modified_names))
+                    all_param_names=list(modified_names),
+                    has_parent_return=has_parent_ret)
     body_stmts = transform_body(flatten_stmts(body_stmt), loop_env, ctx, loop_ctx=lctx)
     step_stmts = transform_step(step_stmt, loop_env)
     lctx.step_stmts = step_stmts
@@ -1001,6 +1078,12 @@ def transform_for_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> l
     call_expr = Call(func_name + "_ir", call_args)
 
     result_stmts = list(init_stmts)
+    # S5: 初始化 _ret_flag/_ret_val
+    if has_parent_ret:
+        flag_init = env.bump("_ret_flag") if env.versions.get("_ret_flag", 0) == 0 else env.current("_ret_flag")
+        if env.versions.get("_ret_flag", 0) <= 1:
+            result_stmts.append(LetStmt(env.current("_ret_flag"), BaseType.BOOL, Lit(False)))
+            result_stmts.append(LetStmt(env.current("_ret_val"), "auto", Lit(0)))
     if len(modified_names) == 0:
         result_stmts.append(ExprStmt(call_expr))
     elif len(modified_names) == 1:
@@ -1026,6 +1109,12 @@ def transform_for_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> l
             result_stmts.append(LetStmt(new_var, env.get_type(name), accessor))
 
     finalize_loop_func(loop_func, env, result_stmts)
+
+    # S5: 循环后检查 _ret_flag → 提前 return _ret_val
+    if has_parent_ret:
+        ret_flag = env.current("_ret_flag")
+        ret_val = env.current("_ret_val")
+        result_stmts.append(IfStmt(ret_flag, [ReturnStmt(ret_val)], []))
 
     return result_stmts
 
@@ -1100,13 +1189,27 @@ def transform_while_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) ->
     loop_id = abs(hash(str(stmt))) % 100000
     func_name = f"while_{loop_id}"
 
+    # S5: 检测循环体内是否有父函数 return
+    has_parent_ret = _body_has_return(body_stmt)
+    if has_parent_ret:
+        if "_ret_flag" not in modified_names:
+            modified_names.append("_ret_flag")
+        if "_ret_val" not in modified_names:
+            modified_names.append("_ret_val")
+        modified_names = sorted(modified_names)
+        env.versions["_ret_flag"] = 0
+        env.set_type("_ret_flag", BaseType.BOOL)
+        env.versions["_ret_val"] = 0
+        env.set_type("_ret_val", "auto")
+
     # 从循环体推断类型
     _infer_types_from_body(body_stmt, env)
 
     # SSA 变换循环体（传入 loop_ctx 支持 break/continue）
     loop_env = env.fork()
     lctx = LoopCtx(func_name, modified_names, env=loop_env,
-                    all_param_names=list(modified_names))
+                    all_param_names=list(modified_names),
+                    has_parent_return=has_parent_ret)
     body_stmts = transform_body(flatten_stmts(body_stmt), loop_env, ctx, loop_ctx=lctx)
 
     # 闭包变量
@@ -1205,6 +1308,12 @@ def transform_while_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) ->
             result_stmts.append(LetStmt(new_var, env.get_type(name), accessor))
 
     finalize_loop_func(loop_func, env, result_stmts)
+
+    # S5: 循环后检查 _ret_flag → 提前 return _ret_val
+    if has_parent_ret:
+        ret_flag = env.current("_ret_flag")
+        ret_val = env.current("_ret_val")
+        result_stmts.append(IfStmt(ret_flag, [ReturnStmt(ret_val)], []))
 
     return result_stmts
 
@@ -1804,6 +1913,21 @@ def identify_loop_vars(stmt: StmtIR) -> set[str]:
             elif func in MUTATING_METHODS or func in NOOP_METHODS:
                 result.add(expr.args[0].name)
     return result
+
+
+def _body_has_return(stmt: StmtIR) -> bool:
+    """检测循环体中是否含 ReturnStmt（含嵌套循环内的 return）。
+
+    嵌套循环内的 return 也需要外层循环传播 _ret_flag，
+    因为内层循环设置 flag 后外层需要检查并 break。
+    """
+    if isinstance(stmt, ReturnStmt):
+        return True
+    if isinstance(stmt, IfStmt):
+        return any(_body_has_return(s) for s in stmt.then_body + stmt.else_body)
+    if isinstance(stmt, UnknownStmt):
+        return any(_body_has_return(c) for c in stmt.children)
+    return False
 
 
 def extract_break_cond(stmt: StmtIR) -> ExprIR | None:

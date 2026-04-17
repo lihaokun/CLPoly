@@ -215,9 +215,24 @@ abbrev Variable := Array (String × Int)
 abbrev SparsePolyZZ := Array (UMonomial × Int)
 abbrev LLLMatrix := Array (Array Int)
 abbrev HenselNode := Array Int  -- 占位
-abbrev Factorization := Array Int  -- 占位
-abbrev PrimeSelectionResult := Array Int  -- 占位
-abbrev WangLcResult := Array Int  -- 占位
+
+structure Factorization where
+  content : ZZ
+  factors : Array (SparsePolyZZ × UInt64)
+deriving Inhabited
+
+structure PrimeSelectionResult where
+  p : UInt64
+  factors : Array SparsePolyZp
+  nfactors : UInt64
+deriving Inhabited
+
+structure WangLcResult where
+  success : Bool
+  scaled_factors : Array MvPolyZZ
+  lc_targets : Array MvPolyZZ
+  delta : ZZ
+deriving Inhabited
 
 -- assign：多项式变量代入 poly[var := val]
 -- C++ assign(poly, var, val) = 用 val 替代 poly 中的变量 var

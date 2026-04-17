@@ -16,6 +16,41 @@ class FuncCtx:
         self.aux_defs: list[SSAFunc] = []
 
 
+# === ExprStmt 黑名单：已知无副作用的表达式 ===
+_KNOWN_NOOP_FUNCS = {
+    # CLASS_MAP noop 方法
+    "normalization", "comp_ptr", "reserve", "comp",
+    "MvPolyZp.normalization", "MvPolyZZ.normalization",
+    "MvMonomial.normalization", "SparsePolyZp.normalization",
+    "SparsePolyZZ.normalization",
+    # sort 占位
+    "SparsePolyZp.toList", "SparsePolyZZ.toList",
+    # 副作用已由其他机制处理
+    "poly_convert", "SparsePolyZZ.compactNonzero",
+    # iota init → result 不需要（初始化数组已由构造函数处理）
+    "List.range",
+}
+
+def _is_known_noop(expr) -> bool:
+    """判断 ExprStmt 中的表达式是否已知无副作用。"""
+    if isinstance(expr, (Var, Lit)):
+        return True
+    if isinstance(expr, CondExpr):
+        return True  # assert 检查
+    if isinstance(expr, (FieldAccess, ArrayAccess, Cast)):
+        return True  # 纯读取
+    if isinstance(expr, Call):
+        func = expr.func if isinstance(expr.func, str) else ""
+        if func in _KNOWN_NOOP_FUNCS:
+            return True
+        # identity 函数（如 id, std::move 的翻译结果）
+        if func == "id":
+            return True
+    if isinstance(expr, UnaryOp) and expr.op in ("*", "->"):
+        return True  # 指针解引用作为语句 = noop
+    return False
+
+
 def _has_iterator_ops(stmts: list) -> bool:
     """检测语句列表中是否含迭代器模式标志。
 
@@ -578,6 +613,48 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                 finalize_loop_func(lam_func, env, [])
                 ctx.aux_defs.append(lam_func)
 
+        # N1: LetStmt 中的 output-param 函数调用 → 解构返回值
+        # 解包 Cast 层（type annotation）
+        call_value = stmt.value
+        if isinstance(call_value, Cast):
+            call_value = call_value.expr
+        if isinstance(call_value, Call):
+            func_base = call_value.func.replace("_ir", "") if isinstance(call_value.func, str) and call_value.func.endswith("_ir") else (call_value.func if isinstance(call_value.func, str) else "")
+            from class_map import TRANSLATION_SCOPE_OUTPUT_PARAMS
+            if func_base in TRANSLATION_SCOPE_OUTPUT_PARAMS:
+                out_indices = TRANSLATION_SCOPE_OUTPUT_PARAMS[func_base]
+                out_vars_orig = [call_value.args[i] for i in out_indices if i < len(call_value.args)]
+                new_value = rename_expr(call_value, env)
+                stmts = []
+                # _out := call(...)
+                pair_var = env.bump("_out")
+                env.set_type("_out", "auto")
+                stmts.append(LetStmt(pair_var, "auto", new_value))
+                # ret_val := _out.1 (原返回值，绑定到 stmt.var)
+                ret_var = env.bump(stmt.var.name) if stmt.var.name != "_" else Var("_")
+                env.set_type(stmt.var.name, stmt.typ)
+                stmts.append(LetStmt(ret_var, stmt.typ, FieldAccess(pair_var, "1")))
+                # 输出参数 := _out.2, _out.2.2, ...
+                for i, ov in enumerate(out_vars_orig):
+                    if isinstance(ov, Var):
+                        new_var = env.bump(ov.name)
+                        if i == 0 and len(out_vars_orig) == 1:
+                            accessor = FieldAccess(pair_var, "2")
+                        elif i == 0:
+                            accessor = FieldAccess(pair_var, "2")
+                            accessor = FieldAccess(accessor, "1")
+                        elif i == len(out_vars_orig) - 1:
+                            accessor = FieldAccess(pair_var, "2")
+                            for _ in range(i):
+                                accessor = FieldAccess(accessor, "2")
+                        else:
+                            accessor = FieldAccess(pair_var, "2")
+                            for _ in range(i):
+                                accessor = FieldAccess(accessor, "2")
+                            accessor = FieldAccess(accessor, "1")
+                        stmts.append(LetStmt(new_var, env.get_type(ov.name), accessor))
+                return stmts
+
         # let x : T := e → let x_1 : T := rename(e)
         new_value = rename_expr(stmt.value, env)
         var = env.bump(stmt.var.name) if stmt.var.name != "_" else stmt.var
@@ -667,13 +744,19 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
             return LetStmt(new_var, typ, BinOp("-", old, Lit(1)))
         # _mutate_* 方法（来自 CLASS_MAP 的 mutate 类别）
         # _mutate_X(obj) → let obj_{n+1} := X obj_n
-        if isinstance(expr, Call) and expr.func.startswith("_mutate_") and expr.args:
+        if isinstance(expr, Call) and isinstance(expr.func, str) and expr.func.startswith("_mutate_") and expr.args:
             lean_name = expr.func[len("_mutate_"):]
             if isinstance(expr.args[0], Var):
                 old = env.current(expr.args[0].name)
                 new_var = env.bump(expr.args[0].name)
                 typ = env.get_type(expr.args[0].name)
                 return LetStmt(new_var, typ, Call(lean_name, [old]))
+            # _mutate_X(arr[i]) → noop（normalization 等对数组元素原地操作，
+            # 在 Lean 模型中 normalization 是 noop）
+            if lean_name in ("MvPolyZp.normalization", "MvPolyZZ.normalization",
+                             "MvMonomial.normalization", "SparsePolyZp.normalization",
+                             "SparsePolyZZ.normalization", "Array.empty"):
+                return ExprStmt(rename_expr(expr.args[0], env))
         # arr.push(x) → let arr_{n+1} := arr_n.push(x)
         if isinstance(expr, ArrayPush) and isinstance(expr.arr, Var):
             old = env.current(expr.arr.name)
@@ -704,6 +787,39 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
         # x = expr（变量赋值）→ let x_{n+1} := expr
         if isinstance(expr, BinOp) and expr.op == "=":
             if isinstance(expr.lhs, Var):
+                # N1: x = f(args) 且 f 有 output params → 解构
+                rhs = expr.rhs
+                if isinstance(rhs, Cast):
+                    rhs = rhs.expr
+                if isinstance(rhs, Call) and isinstance(rhs.func, str):
+                    func_base = rhs.func.replace("_ir", "") if rhs.func.endswith("_ir") else rhs.func
+                    from class_map import TRANSLATION_SCOPE_OUTPUT_PARAMS
+                    if func_base in TRANSLATION_SCOPE_OUTPUT_PARAMS:
+                        out_indices = TRANSLATION_SCOPE_OUTPUT_PARAMS[func_base]
+                        out_vars_orig = [rhs.args[i] for i in out_indices if i < len(rhs.args)]
+                        call_renamed = rename_expr(rhs, env)
+                        stmts = []
+                        pair_var = env.bump("_out")
+                        env.set_type("_out", "auto")
+                        stmts.append(LetStmt(pair_var, "auto", call_renamed))
+                        # x := _out.1 (原返回值)
+                        new_var = env.bump(expr.lhs.name)
+                        stmts.append(LetStmt(new_var, env.get_type(expr.lhs.name),
+                                             FieldAccess(pair_var, "1")))
+                        # 输出参数 := _out.2
+                        for i, ov in enumerate(out_vars_orig):
+                            if isinstance(ov, Var):
+                                new_ov = env.bump(ov.name)
+                                accessor = FieldAccess(pair_var, "2")
+                                if len(out_vars_orig) > 1 and i < len(out_vars_orig) - 1:
+                                    for _ in range(i):
+                                        accessor = FieldAccess(accessor, "2")
+                                    accessor = FieldAccess(accessor, "1")
+                                elif len(out_vars_orig) > 1:
+                                    for _ in range(i):
+                                        accessor = FieldAccess(accessor, "2")
+                                stmts.append(LetStmt(new_ov, env.get_type(ov.name), accessor))
+                        return stmts
                 new_value = rename_expr(expr.rhs, env)
                 typ = env.get_type(expr.lhs.name)
                 new_var = env.bump(expr.lhs.name)
@@ -800,7 +916,22 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                         accessor = FieldAccess(accessor, "1")
                     stmts.append(LetStmt(new_var, env.get_type(cname), accessor))
             return stmts
-        return ExprStmt(rename_expr(expr, env))
+        # === 黑名单策略：分类 ExprStmt，拒绝静默丢弃未知变异 ===
+        renamed = rename_expr(expr, env)
+        if _is_known_noop(expr):
+            return ExprStmt(renamed)
+        # 未识别的 ExprStmt → 报警（不再静默 let _ :=）
+        import sys
+        func_desc = ""
+        if isinstance(expr, Call):
+            func_desc = expr.func if isinstance(expr.func, str) else str(expr.func)
+        elif isinstance(expr, BinOp):
+            func_desc = f"BinOp({expr.op})"
+        else:
+            func_desc = type(expr).__name__
+        print(f"WARNING: unhandled ExprStmt (possible mutation lost): {func_desc}",
+              file=sys.stderr)
+        return ExprStmt(renamed)
 
     if isinstance(stmt, UnknownStmt):
         if stmt.kind == "ForLoop":
@@ -1011,14 +1142,18 @@ def transform_for_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) -> l
         env.versions["_ret_val"] = 0
         env.set_type("_ret_val", "auto")
 
-    # SSA 变换循环体 + 步进（传入 loop_ctx 支持 break/continue）
+    # N2: 先用 fork env 计算 step（给 continue 用），再变换 body
     loop_env = env.fork()
+    step_env = loop_env.fork()
+    pre_step_stmts = transform_step(step_stmt, step_env)
+
     lctx = LoopCtx(func_name, modified_names, env=loop_env,
                     all_param_names=list(modified_names),
-                    has_parent_return=has_parent_ret)
+                    has_parent_return=has_parent_ret,
+                    step_stmts=pre_step_stmts)  # continue 时可用
     body_stmts = transform_body(flatten_stmts(body_stmt), loop_env, ctx, loop_ctx=lctx)
-    step_stmts = transform_step(step_stmt, loop_env)
-    lctx.step_stmts = step_stmts
+    step_stmts = transform_step(step_stmt, loop_env)  # 正常路径的 step
+    lctx.step_stmts = step_stmts  # 更新为 body 后版本
 
     # 闭包变量
     all_loop_stmts = body_stmts + step_stmts
@@ -1922,10 +2057,15 @@ def identify_loop_vars(stmt: StmtIR) -> set[str]:
         # arr.push(x) → arr 被修改（含嵌套 arr[i].push / arr.field.push）
         if isinstance(expr, ArrayPush):
             result |= _extract_all_root_var_names(expr.arr)
+        # N3: compound assignment operator (operator-=, +=, *=)
+        if isinstance(expr, Call) and isinstance(expr.func, str):
+            if any(op in expr.func for op in ["-=", "+=", "*=", "/=", "%="]):
+                if expr.args:
+                    result |= _extract_all_root_var_names(expr.args[0])
         # method call 可能修改 this 对象
         if isinstance(expr, Call) and expr.args and isinstance(expr.args[0], Var):
             from class_map import MUTATING_METHODS, NOOP_METHODS
-            func = expr.func
+            func = expr.func if isinstance(expr.func, str) else ""
             if func.startswith("_mutate_"):
                 result.add(expr.args[0].name)
             elif func in MUTATING_METHODS or func in NOOP_METHODS:

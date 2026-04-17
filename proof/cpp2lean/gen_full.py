@@ -128,8 +128,35 @@ def main():
     print("-- 翻译函数（由 cpp2lean 自动生成）")
     print("-- ============================================================")
     print()
+    # N4: 按函数名去重（模板实例化可能产生重复 helper）
+    seen_defs = set()
     for sf in ordered:
-        print(gen_ssa_func(sf))
+        code = gen_ssa_func(sf)
+        # 提取所有 partial def 名
+        import re as _re
+        def_names = _re.findall(r'partial def (\S+)', code)
+        # 去除已输出的重复定义
+        lines = code.split('\n')
+        filtered = []
+        skip_until_next = False
+        for line in lines:
+            m = _re.match(r'partial def (\S+)', line)
+            if m:
+                name = m.group(1)
+                if name in seen_defs:
+                    skip_until_next = True
+                    continue
+                else:
+                    seen_defs.add(name)
+                    skip_until_next = False
+            if skip_until_next and line.strip() and not line.startswith('partial def'):
+                continue
+            if skip_until_next and (not line.strip() or line.startswith('partial def')):
+                skip_until_next = False
+                if not line.strip():
+                    continue
+            filtered.append(line)
+        print('\n'.join(filtered))
         print()
 
 

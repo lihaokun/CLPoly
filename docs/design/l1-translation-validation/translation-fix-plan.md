@@ -604,3 +604,269 @@ modified_caps = list(capture_names)
 | **P2** | M5a-d 逐个排查 | 各 ~10 行 | +5-7 |
 
 **预期**：M1+M2+M3 修复后 PASS 从 42/66 → ~52/66 (79%)。全部修复后 ~57-59/66 (87-89%)。
+
+---
+
+## M1-M4 修复后状态（v4 审计）
+
+v3: 42 PASS → v4: 35 PASS（**回归 7 个**）。M1 引入调用方不兼容。
+
+---
+
+## 第四轮机制缺陷（N1-N5）
+
+### N1. 输出参数调用方未自动解构（~8 函数，最高优先级）
+
+**现象**：M1 修复了 `__upoly_make_monic` 的返回值（`Prod.mk(lc, f)`），但所有调用者仍写 `let g := __upoly_make_monic_ir g`，把 `(lc, f)` pair 当作多项式使用。级联破坏 `__squarefree_Zp`、`__ddf_Zp`、`__edf_Zp`、`__factor_Zp`。
+
+**根因**：`TRANSLATION_SCOPE_OUTPUT_PARAMS` 的调用方适配代码只处理 `ExprStmt(Call(...))` 位置（`transform_stmt` line 592-628）。但 `__upoly_make_monic` 的调用全是 `LetStmt(var, typ, Call(...))` 形式——调用结果被绑定到变量，不是独立的语句。LetStmt 的 Call 不经过 ExprStmt handler，所以 output param 解构被跳过。
+
+**修复方案**：在 `transform_stmt` 的 LetStmt handler 中，检测 Call 目标是否在 `TRANSLATION_SCOPE_OUTPUT_PARAMS` 中。如果是，自动解构返回值：
+
+```python
+# LetStmt: let g := __upoly_make_monic_ir(g)
+# → let _out := __upoly_make_monic_ir(g)
+#   let lc := _out.1    (原返回值)
+#   let g := _out.2     (输出参数)
+if isinstance(stmt, LetStmt) and isinstance(stmt.value, Call):
+    func_base = stmt.value.func.replace("_ir", "")
+    if func_base in TRANSLATION_SCOPE_OUTPUT_PARAMS:
+        out_indices = TRANSLATION_SCOPE_OUTPUT_PARAMS[func_base]
+        # stmt.var 绑定原返回值（如 lc）
+        # 输出参数从 pair.2, pair.2.2, ... 提取并写回 env
+        ...
+```
+
+**正确性论证**：
+
+设 C++ 函数 $g = f(\text{out1}, \text{out2}, ...)$ 有返回值 $g$ 和输出参数 $\text{out}_i$。
+
+M1 将函数返回类型改为 $(g, \text{out}_1, \text{out}_2, ...)$。
+
+N1 在调用方自动解构：
+- `let _out := f(out1, out2, ...)`
+- `let ret_val := _out.1` （原来 `let g := f(...)` 的语义）
+- `let out1_new := _out.2` （输出参数新值）
+
+调用方原来写 `let g := f(args)`，假设 $f$ 返回单值。修复后 `g` 绑定 `_out.1`（仍是原返回值），`out1` 通过 `_out.2` 更新。语义一致。✓
+
+**影响函数**：`__squarefree_Zp`（2 处）、`__ddf_Zp`（6 处）、`__edf_Zp`（3 处）、`__factor_Zp`（1 处）、`__upoly_make_monic` 自身的 early-return `f_1` 引用
+
+---
+
+### N2. step_stmts 在 continue 处理时仍为空（~2 函数）
+
+**现象**：M2 修复在 `ContinueStmt` 处插入 `loop_ctx.step_stmts`，但 `__select_prime` 的 continue 路径仍传 `p_1`（step 未执行）。
+
+**根因**：`transform_for_loop` 中的执行顺序：
+
+```python
+lctx = LoopCtx(func_name, ...)         # step_stmts 默认 = []
+body_stmts = transform_body(..., lctx)  # continue 在这里处理
+                                        # 此时 lctx.step_stmts = [] ← 空！
+step_stmts = transform_step(step, env)  # 这里才计算 step
+lctx.step_stmts = step_stmts           # 太晚
+```
+
+`transform_body` 在 `transform_step` 之前执行。body 中遇到 `ContinueStmt` 时，`loop_ctx.step_stmts` 还是空列表。
+
+**修复方案**：在 body 变换之前计算 step_stmts，但用 fork 的 env 避免 step 的副作用影响 body：
+
+```python
+# 先计算 step（用 fork env，不影响 body 的变量版本）
+step_env = loop_env.fork()
+step_stmts = transform_step(step_stmt, step_env)
+lctx.step_stmts = step_stmts
+
+# 再变换 body（body 中的 continue 可以正确使用 step_stmts）
+body_stmts = transform_body(flatten_stmts(body_stmt), loop_env, ctx, loop_ctx=lctx)
+
+# body 后再次计算 step（用 body 结束后的 loop_env，给正常路径用）
+step_stmts_final = transform_step(step_stmt, loop_env)
+```
+
+**正确性论证**：
+
+- continue 路径：使用 `step_stmts`（fork env 计算），step 变量版本 = 循环参数的初始版本。对于 `p = next_p(p)` 类型的 step，`p` 在 body 中未修改，初始版本 = 任意 continue 点的版本。✓
+- 正常路径：使用 `step_stmts_final`（body 结束后的 env 计算），step 变量版本 = body 执行后的最新版本。✓
+- 已验证 66 个函数中 0 个 conflict（step 变量不在 body 中被修改），两者版本一致。✓
+
+**影响函数**：`__select_prime`（`p = next_p(p)` step 在 continue 时跳过）
+
+---
+
+### N3. Lambda 内部循环的数组 mutation 不在 modified_names（~2 函数）
+
+**现象**：`_lambda_5_ir`（`__lll_reduce` 的 `row_sub`）body 有 `loop_9048_ir` 循环修改 `M[i][k]` 和 `U[i][k]`，但循环返回值只有 `k`（循环计数器），M 和 U 不在循环的 `modified_names` 中。Lambda 返回 `(Prod.mk M U_2 n_1)` — M 和 U 是原始输入值。
+
+**根因**：C++ 中 `M[i][k] -= c * M[j][k]` 是 `CXXOperatorCallExpr(operator-=, ...)`。Clang AST 翻译可能产生：
+1. `BinOp("=", ArrayAccess(...), BinOp("-", ...))` — `identify_loop_vars` 能检测
+2. `ExprStmt(Call("operator-=", [ArrayAccess(...), ...]))` — `identify_loop_vars` **不能**检测
+
+如果走的是路径 2，`M` 不会被加入 `modified_names`。
+
+**修复方案**：在 `identify_loop_vars` 中扩展 compound assignment operator 检测：
+
+```python
+# operator-=, operator+=, operator*= 等 compound assignment
+if isinstance(expr, Call) and expr.func.startswith("operator"):
+    if any(op in expr.func for op in ["-=", "+=", "*=", "/=", "%=", "|=", "&="]):
+        if expr.args:
+            result |= _extract_all_root_var_names(expr.args[0])
+```
+
+**正确性论证**：`operator-=(M[i][k], val)` 等价于 `M[i][k] = M[i][k] - val`，即 `M` 被修改。将 `M` 加入 `modified_names` 确保循环函数返回修改后的 `M`。✓
+
+**影响函数**：`__lll_reduce`（`row_sub` lambda 的内部 for 循环）
+
+---
+
+### N4. 重复函数定义（编译错误）
+
+**现象**：模板实例化（`grlex` + `lex` 两个特化）产生同名的 helper 函数（如 `range_90057_ir` 出现 4 次）。Lean 不允许同名 `partial def`。
+
+**根因**：`gen_full.py` 收集所有翻译函数并按依赖排序输出，但不去重。同一个 C++ 模板函数被 `grlex` 和 `lex` 各实例化一次，loop hash 可能相同。
+
+**修复方案**：在 `gen_full.py` 的输出阶段去重——按函数名去重，保留第一个：
+
+```python
+seen_names = set()
+for sf in ordered:
+    code = gen_ssa_func(sf)
+    # 提取所有 partial def 名
+    names = re.findall(r'partial def (\S+)', code)
+    # 去重
+    if all(n not in seen_names for n in names):
+        print(code)
+        seen_names.update(names)
+```
+
+或更简单：在 aux_defs 收集阶段，按名称去重。
+
+**影响**：全局，修复后可编译。
+
+---
+
+### N5. 类型别名缺少 struct 字段（~5 函数）
+
+**现象**：`Factorization.factors`、`Factorization.content`、`PrimeSelectionResult.factors`、`WangLcResult.success` 等字段在 Lean 中不存在。`clpoly_model.lean` 将这些定义为 `Array Int` 别名。
+
+**根因**：`clpoly_model.lean` 的 Factorization 等类型用 `abbrev` 定义为 `Array Int`（占位），没有真正的 struct 字段。但 C++ 中这些是 `struct` 类型有 `.factors()`、`.content()` 等方法。
+
+**修复方案**：将 `Factorization`、`PrimeSelectionResult`、`WangLcResult` 从 `abbrev` 改为 `structure`：
+
+```lean
+structure Factorization where
+  content : ZZ
+  factors : Array (SparsePolyZZ × UInt64)
+deriving Inhabited
+
+structure PrimeSelectionResult where
+  p : UInt64
+  factors : Array SparsePolyZp
+  nfactors : UInt64
+deriving Inhabited
+
+structure WangLcResult where
+  success : Bool
+  scaled_factors : Array MvPolyZZ
+  lc_targets : Array MvPolyZZ
+  delta : ZZ
+deriving Inhabited
+```
+
+并在 `CLASS_MAP` 中更新对应的 method 映射为 field access。
+
+**影响函数**：`factorize`、`__factor_Zp`、`__select_prime`、`__wang_leading_coeff`、`__factor_multivar`
+
+---
+
+## 修复优先级
+
+| 优先级 | 缺陷 | 修复量 | 预计新增 PASS |
+|--------|------|--------|-------------|
+| **P0** | N1 调用方解构 | ~20 行 | +7（M1 回归恢复 + 级联） |
+| **P0** | N2 step_stmts 时序 | ~5 行 | +2 |
+| **P1** | N3 operator-= 检测 | ~5 行 | +2 |
+| **P1** | N4 去重 | ~10 行 | 编译通过 |
+| **P1** | N5 struct 定义 | ~30 行 model + ~10 行 map | +3-5 |
+
+**预期**：N1+N2 修复后恢复到 v3 水平（42 PASS）并超过。全部修复后预计 ~50-55/66 (76-83%)。
+
+---
+
+## 架构重构：ExprStmt 黑名单策略
+
+### 问题
+
+4 轮 20 个 fix 中 7 个是变异检测遗漏。根源：`transform_stmt(ExprStmt)` 的 fallthrough（line 803）默认 `return ExprStmt(rename_expr(expr, env))` → `let _ := expr`，静默丢弃任何未识别的变异。
+
+### 重构方案
+
+将 fallthrough 从**静默通过**改为**分类检查**：
+
+```python
+# === 已知 noop（无副作用，可安全丢弃） ===
+KNOWN_NOOP_METHODS = {
+    "normalization", "comp_ptr", "reserve", "toList", "data",
+    "MvPolyZp.normalization", "MvPolyZZ.normalization",
+    "MvMonomial.normalization", "SparsePolyZp.normalization",
+    "SparsePolyZZ.normalization",
+    "SparsePolyZp.toList", "SparsePolyZZ.toList",
+}
+
+KNOWN_NOOP_EXPRS = (Var, Lit)  # 变量/字面量作为语句 = noop
+
+def _classify_expr_stmt(expr) -> str:
+    """分类 ExprStmt 中的表达式。返回 "noop"/"mutation"/"unknown"。"""
+    # 1. 字面量、变量引用 → noop
+    if isinstance(expr, (Var, Lit)):
+        return "noop"
+    # 2. CondExpr 作为语句 → noop（assert 检查）
+    if isinstance(expr, CondExpr):
+        return "noop"
+    # 3. 已知 noop 方法调用
+    if isinstance(expr, Call):
+        func = expr.func if isinstance(expr.func, str) else ""
+        if func in KNOWN_NOOP_METHODS:
+            return "noop"
+        if func in ("poly_convert", "SparsePolyZZ.compactNonzero"):
+            return "noop"  # 副作用已由其他机制处理
+    # 4. FieldAccess 作为语句 → noop（读取但不赋值）
+    if isinstance(expr, FieldAccess):
+        return "noop"
+    # 5. ArrayAccess 作为语句 → noop
+    if isinstance(expr, ArrayAccess):
+        return "noop"
+    # 6. Cast 作为语句 → noop
+    if isinstance(expr, Cast):
+        return "noop"
+    # 7. 其他 → unknown（应报警）
+    return "unknown"
+```
+
+在 `transform_stmt` 的 ExprStmt fallthrough 处：
+
+```python
+# 旧代码：
+return ExprStmt(rename_expr(expr, env))
+
+# 新代码：
+classification = _classify_expr_stmt(expr)
+if classification == "noop":
+    return ExprStmt(rename_expr(expr, env))  # 安全丢弃
+else:
+    import sys
+    print(f"WARNING: unhandled mutation in ExprStmt: {expr}", file=sys.stderr)
+    return ExprStmt(rename_expr(expr, env))  # 仍生成，但报警
+```
+
+### 同步修复 N1-N5
+
+在重构的同时修复 N1-N5：
+
+1. **N1**（调用方解构）：在 LetStmt handler 中也检测 `TRANSLATION_SCOPE_OUTPUT_PARAMS`
+2. **N2**（step 时序）：`transform_for_loop` 中用 fork env 提前计算 step
+3. **N3**（operator-=）：在 mutation handler 中加 compound assignment 检测
+4. **N4**（去重）：`gen_full.py` 按函数名去重
+5. **N5**（struct 字段）：`clpoly_model.lean` 中 Factorization 等改为 structure

@@ -368,3 +368,239 @@ Lean 翻译后语义：
 | **P1** | S4 lambda 写回 | 中（~30 行） | ~5 函数，解决引用捕获 |
 
 修复 S4+S5 预计 PASS 率从 ~28/66 提升至 ~40-45/66。
+
+---
+
+## R1-R6 + S1-S5 修复后状态（v3 审计）
+
+42 PASS / 24 FAIL (64%)。暴露第三层机制缺陷 M1-M5。
+
+---
+
+## 第三轮机制缺陷（M1-M5）
+
+### M1. 输出参数只包装最后一条 ReturnStmt（4 函数）
+
+**现象**：`__upoly_make_monic` 有两条 return 路径（early return + 正常 return）。输出参数 `f` 的修改后值只出现在函数末尾的死代码 `Prod.mk(0, f_1)` 中，实际 return 都只返回 `lc`。级联影响所有调用者。
+
+**根因**：`transform_func` line 292 只检查 `clean_body[-1]`：
+```python
+if clean_body and isinstance(clean_body[-1], ReturnStmt) and clean_body[-1].value:
+    orig_ret = clean_body[-1].value
+    clean_body[-1] = ReturnStmt(Call("Prod.mk", [orig_ret] + out_vars))
+```
+当函数体最后一条语句是 `IfStmt`（含两条 return 路径）时，`isinstance(clean_body[-1], ReturnStmt)` 为 False，走 else 分支追加死代码。
+
+**修复方案**：遍历 clean_body 中所有 ReturnStmt（含 IfStmt 嵌套），全部包装：
+
+```python
+def _wrap_all_returns(stmts, out_vars):
+    """将所有 ReturnStmt(val) 替换为 ReturnStmt(Prod.mk(val, out_vars...))。"""
+    result = []
+    for s in stmts:
+        if isinstance(s, ReturnStmt) and s.value:
+            result.append(ReturnStmt(Call("Prod.mk", [s.value] + out_vars)))
+        elif isinstance(s, IfStmt):
+            new_then = _wrap_all_returns(s.then_body, out_vars)
+            new_else = _wrap_all_returns(s.else_body, out_vars)
+            result.append(IfStmt(s.cond, new_then, new_else))
+        else:
+            result.append(s)
+    return result
+```
+
+然后在 `transform_func` 的输出参数处理中：
+```python
+if func.ret_type != BaseType.VOID:
+    clean_body = _wrap_all_returns(clean_body, out_vars)
+```
+
+**正确性论证**：
+
+设 C++ 函数 $f$ 有返回类型 $R$ 和输出参数 $o_1, ..., o_k$。任意 return 路径 $p$ 返回值 $r_p$，此时 $o_1, ..., o_k$ 的值分别为 $o_1^p, ..., o_k^p$。
+
+C++ 语义：调用方收到 $r_p$，同时 $o_i$ 通过引用被修改为 $o_i^p$。
+
+修复后 Lean：每条路径 $p$ 返回 $(r_p, o_1^p, ..., o_k^p)$。调用方拆包获得全部值。
+
+等价性：$\forall p$，返回值包含同一组 $(r_p, o_1^p, ..., o_k^p)$ ✓。递归包装确保嵌套 if/else 内的 return 不遗漏。
+
+**影响函数**：`__upoly_make_monic` → `__squarefree_Zp`、`__ddf_Zp`、`__factor_Zp`
+
+---
+
+### M2. for-loop continue 不执行 step（~3 函数）
+
+**现象**：C++ `for (tried = 0; tried < max; p = next_p(p))` 的 continue 应先执行 step `p = next_p(p)` 再进入下一次迭代。翻译器的 continue 直接递归循环函数，跳过 step。
+
+**根因**：`transform_body` line 442-446 的 `ContinueStmt` 处理：
+```python
+if stmt.kind == "ContinueStmt":
+    recurse = _make_loop_recurse(loop_ctx, env)
+    result.append(ReturnStmt(recurse))
+    return result
+```
+
+`_make_loop_recurse` 只用当前 env 的变量版本构造递归调用，不包含 step 语句。但 C++ for-loop 的 continue 语义是：**step → condition → body**，step 不可跳过。
+
+**修复方案**：在 `ContinueStmt` 处理中，如果 `loop_ctx.step_stmts` 非空（for-loop），先执行 step 再递归：
+
+```python
+if stmt.kind == "ContinueStmt":
+    # for-loop: continue 必须先执行 step
+    if loop_ctx.step_stmts:
+        for step_s in loop_ctx.step_stmts:
+            result.append(step_s)
+    recurse = _make_loop_recurse(loop_ctx, env)
+    result.append(ReturnStmt(recurse))
+    return result
+```
+
+**注意**：`step_stmts` 是在循环体变换结束后才 SSA 变换的（`transform_step` 用 `loop_env`）。在 continue 点，env 可能与 step 期望的版本不同。但对于简单的 step（如 `p = next_p(p)`、`i++`），step 只依赖自身变量的当前版本，不依赖 body 中的其他变量。
+
+对于更复杂的 step，需要在 continue 点重新变换 step 表达式。安全方案：在 continue 时，用当前 env 重新 transform 原始 step_stmt：
+
+```python
+if stmt.kind == "ContinueStmt":
+    if loop_ctx.step_stmts:
+        # 用当前 env 重新变换 step（确保变量版本正确）
+        fresh_step = transform_step(loop_ctx.raw_step, env)
+        result.extend(fresh_step)
+    recurse = _make_loop_recurse(loop_ctx, env)
+    result.append(ReturnStmt(recurse))
+    return result
+```
+
+这需要在 LoopCtx 中保存 `raw_step`（原始 step 语句，SSA 前）。
+
+**正确性论证**：
+
+C++ for-loop: `for (init; cond; step) { body }`
+
+语义：$\text{init}; \text{while}(\text{cond}) \{ \text{body}; \text{step}; \}$
+
+continue 语义：跳过 body 剩余部分，执行 step，重新检查 cond。
+
+修复后 Lean：continue 点插入 step 的 SSA 变换，然后递归。递归时变量已包含 step 的修改（如 `p_2 = next_p(p_1)`）。等价于 C++ 的 step 执行。✓
+
+while-loop 的 continue 不需要 step（while 没有 step 表达式），保持原逻辑。✓
+
+**影响函数**：`__select_prime`（`p = next_p(p)` step 被 continue 跳过）、`__upoly_subtract_x`
+
+---
+
+### M3. while-loop _ret_flag 初始化缺失（~3 函数）
+
+**现象**：`__edf_Zp` 的 while 循环调用 `while_67466_ir _ret_flag _ret_val ...`，但 `_ret_flag` 和 `_ret_val` 从未声明/初始化。
+
+**根因**：S5 实现中，_ret_flag 初始化代码只加在了 `transform_for_loop` 的 `result_stmts` 组装处。`transform_while_loop` 虽然注入了 `_ret_flag`/`_ret_val` 到 `env.versions` 和 `modified_names`，但**没有在 `result_stmts` 中追加初始化 LetStmt**。
+
+**修复方案**：在 `transform_while_loop` 的 `result_stmts` 组装处，与 `transform_for_loop` 对称地加初始化：
+
+```python
+result_stmts = []
+# S5/M3: 初始化 _ret_flag/_ret_val
+if has_parent_ret:
+    result_stmts.append(LetStmt(env.current("_ret_flag"), BaseType.BOOL, Lit(False)))
+    result_stmts.append(LetStmt(env.current("_ret_val"), "auto", Lit(0)))
+```
+
+**正确性论证**：
+
+_ret_flag 初始值为 false（无 return 发生）。循环函数接收此初始值作为参数。循环体内 return 时设为 true。循环退出后检查 flag。初始化确保 flag 在循环调用前有定义。✓
+
+**影响函数**：`__edf_Zp`、`__vanhoeij_recombine`
+
+---
+
+### M4. Lambda 写回检测不完整（~2 函数）
+
+**现象**：S4 修复让 `row_swap` 的 M/U 写回生效（4 处 `_lam_out`），但 `row_sub` 的 M/U 修改仍为 `let _` 丢弃。
+
+**根因**：S4 通过 `identify_loop_vars` 检测 lambda body 中的 modified captures。`row_swap` 的 body 直接用 `BinOp("=")` 赋值，被检测到。但 `row_sub` 的 body 通过嵌套 for-loop 修改 M/U（`M[i][k] -= c * M[j][k]`），`identify_loop_vars` 对 `CompoundStmt` 递归但不深入 `ForLoop`/`WhileLoop` 的 children。
+
+具体来说，`identify_loop_vars` line 1783-1785：
+```python
+elif isinstance(stmt, UnknownStmt):
+    for c in stmt.children:
+        result |= identify_loop_vars(c)
+```
+`ForLoop` 是 `UnknownStmt(kind="ForLoop")`，其 children 包含 `[init, cond, step, body]`。递归会检测 body 中的赋值，所以**应该能检测到**。
+
+实际问题可能是：`M[i][k] -= c * M[j][k]` 在 AST 中被解析为 `CXXOperatorCallExpr(operator-=, ArrayAccess(ArrayAccess(M, i), k), ...)` → 翻译为 `BinOp("=", ArrayAccess(ArrayAccess(M,i),k), BinOp("-", ...))` 。`_extract_all_root_var_names` 对 `ArrayAccess(ArrayAccess(M,i),k)` 应该能提取出 `M`。
+
+如果检测确实遗漏，**保守修复**：对所有 `[&]` capture 的 lambda，假设所有 capture 都可能被修改（`modified_caps = capture_names`）。这会产生一些多余的写回（noop captures 也被返回），但不会错误。
+
+```python
+# 保守策略：[&] capture = 所有 capture 都可能被修改
+modified_caps = list(capture_names)
+```
+
+**正确性论证**：
+
+保守策略：返回所有 capture 值。如果某个 capture 未被修改，返回值 == 输入值，写回后变量不变。语义等价。✓
+
+精确策略需要完善 `identify_loop_vars` 对所有嵌套结构的递归，且正确解析所有赋值模式（`-=`、`*=`、`[]`、`.field` 等）。
+
+**影响函数**：`__lll_reduce`（row_sub）、`__mtshl_step_j`（lc_correct、product_F）
+
+---
+
+### M5. 复杂循环体逻辑丢失（~7 函数，个别排查）
+
+这些不是单一机制缺陷，需要逐个排查 AST 解析链路。按子类分：
+
+#### M5a. range-for body 内 if/push 逻辑丢失（2 函数）
+
+**函数**：`__upoly_subtract_one`、`__upoly_subtract_x`
+
+**现象**：range-for body 内的 `if (deg==0) { compute; push } else { push }` 逻辑部分丢失。
+
+**可能根因**：
+1. `parse_range_for` 的 body 提取可能遗漏某些 CompoundStmt 子节点
+2. range-for body 内的 continue 使后续 push 未执行
+3. SSA 变换中 if/else 分支的变量作用域不正确
+
+**排查方法**：dump `__upoly_subtract_one` 的原始 IR（parse 后、SSA 前），检查 RangeForLoop 的 body 是否包含完整的 if/else + push 逻辑。如果 IR 完整则问题在 SSA；如果 IR 缺失则问题在 AST parser。
+
+#### M5b. do-while 内层循环空壳（1 函数）
+
+**函数**：`__zassenhaus_recombine`
+
+**现象**：`do { ... } while (next_combination)` 的 body 只包含 `next_combination` 调用但无 subset-product / trial-division 逻辑。
+
+**可能根因**：do-while 翻译为 while-loop 时，body 内容可能被 `parse_while` 或 `parse_stmt` 的 do-while 分支丢弃。
+
+**排查方法**：检查 Clang AST 中 do-while 的 kind（`DoStmt`），确认 `parse_stmt` 是否有 DoStmt handler。
+
+#### M5c. 迭代器 compact 模式（2 函数）
+
+**函数**：`__hensel_step`（Part 2）、`__hensel_step_linear`
+
+**现象**：双指针 compact 循环被错误简化或留为空壳。
+
+**根因**：S5 修改后 `_has_iterator_ops` 更保守（只检测 it/out 双指针名），这两个函数的迭代器循环不再被 compactNonzero 覆盖，但原始翻译仍不完整。
+
+**修复方案**：对这两个函数使用 `FUNC_BODY_OVERRIDE`，手写 Lean 等价体。迭代器 Part 2 的语义是 `Array.filterMap (fun term => let c = fdiv_r(fdiv_q(term.snd, m), p); if c != 0 then some (term.fst, c) else none)`。
+
+#### M5d. array element write-back（2 函数）
+
+**函数**：`__hensel_lift`（factors_adj[0] 修改未写回）、`__build_cld_matrix`（row extend 未写回）
+
+**现象**：对数组元素的遍历修改（`for (auto& row : M) row.push_back(0)`）通过 range-for 的 `__coll` 参数传递，但 write-back 机制（R1 修复的 `coll_needs_writeback`）未正确检测到修改。
+
+**排查方法**：检查 `loop_var_ver > 0`（write-back 触发条件）是否满足。如果 loop body 修改了 `row`（通过 push），`loop_var_ver` 应该 > 0。
+
+---
+
+## 修复优先级
+
+| 优先级 | 机制 | 修复量 | 预计新增 PASS |
+|--------|------|--------|-------------|
+| **P0** | M1 输出参数全包装 | ~15 行 | +4（含级联） |
+| **P0** | M2 continue 执行 step | ~10 行 + LoopCtx 扩展 | +3 |
+| **P0** | M3 while-loop _ret_flag init | ~3 行 | +3 |
+| **P1** | M4 lambda 保守写回 | ~3 行（改 1 行策略） | +2 |
+| **P2** | M5a-d 逐个排查 | 各 ~10 行 | +5-7 |
+
+**预期**：M1+M2+M3 修复后 PASS 从 42/66 → ~52/66 (79%)。全部修复后 ~57-59/66 (87-89%)。

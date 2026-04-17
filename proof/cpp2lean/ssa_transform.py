@@ -287,12 +287,23 @@ def transform_func(func: FuncIR) -> SSAFunc:
                 ret_type = env.get_type(out_names[0])  # codegen 用 auto
                 clean_body.append(ReturnStmt(Call("Prod.mk", out_vars)))
         else:
-            # 非 void + 输出参数 → Prod(原返回值, 输出参数...)
-            # 检查 body 末尾是否已有 ReturnStmt
-            if clean_body and isinstance(clean_body[-1], ReturnStmt) and clean_body[-1].value:
-                orig_ret = clean_body[-1].value
-                clean_body[-1] = ReturnStmt(Call("Prod.mk", [orig_ret] + out_vars))
-            else:
+            # 非 void + 输出参数 → 包装所有 return 路径为 Prod(原返回值, 输出参数...)
+            def _wrap_all_returns(stmts, ovs):
+                result = []
+                for s in stmts:
+                    if isinstance(s, ReturnStmt) and s.value:
+                        result.append(ReturnStmt(Call("Prod.mk", [s.value] + ovs)))
+                    elif isinstance(s, IfStmt):
+                        result.append(IfStmt(s.cond,
+                                             _wrap_all_returns(s.then_body, ovs),
+                                             _wrap_all_returns(s.else_body, ovs)))
+                    else:
+                        result.append(s)
+                return result
+            clean_body = _wrap_all_returns(clean_body, out_vars)
+            # 如果没有任何 return 被包装，追加 fallback
+            has_any_return = any(isinstance(s, ReturnStmt) for s in clean_body)
+            if not has_any_return:
                 clean_body.append(ReturnStmt(Call("Prod.mk", [Lit(0)] + out_vars)))
             ret_type = env.get_type(out_names[0])  # codegen 用 auto
 
@@ -440,7 +451,9 @@ def transform_body(stmts: list[StmtIR], env: VarEnv, ctx: FuncCtx = None,
                 result.append(ReturnStmt(exit_expr))
                 return result  # break 后的代码不可达
             if stmt.kind == "ContinueStmt":
-                # continue → return 递归调用（含 step）
+                # continue → 先执行 step（for-loop），再递归
+                if loop_ctx.step_stmts:
+                    result.extend(loop_ctx.step_stmts)
                 recurse = _make_loop_recurse(loop_ctx, env)
                 result.append(ReturnStmt(recurse))
                 return result  # continue 后的代码不可达
@@ -543,8 +556,9 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                                                    env.get_type(cn)))
                 all_params = capture_params + list(lam_params)
                 # S4: 如果 lambda 修改了 capture，追加返回修改后的值
-                lam_modified = identify_loop_vars(UnknownStmt("CompoundStmt", lam_body))
-                modified_caps = [c for c in capture_names if c in lam_modified]
+                # M4: 保守策略 — 所有 capture 都假设可能被修改
+                # 未修改的 capture 写回 = noop，语义安全
+                modified_caps = list(capture_names)
                 if modified_caps and not any(isinstance(s, ReturnStmt) for s in lam_body_ssa):
                     if len(modified_caps) == 1:
                         lam_body_ssa.append(ReturnStmt(lam_env.current(modified_caps[0])))
@@ -1283,6 +1297,10 @@ def transform_while_loop(stmt: UnknownStmt, env: VarEnv, ctx: FuncCtx = None) ->
     call_expr = Call(func_name + "_ir", call_args)
 
     result_stmts = []
+    # M3: while-loop 的 _ret_flag/_ret_val 初始化
+    if has_parent_ret:
+        result_stmts.append(LetStmt(env.current("_ret_flag"), BaseType.BOOL, Lit(False)))
+        result_stmts.append(LetStmt(env.current("_ret_val"), "auto", Lit(0)))
     if len(modified_names) == 0:
         result_stmts.append(ExprStmt(call_expr))
     elif len(modified_names) == 1:

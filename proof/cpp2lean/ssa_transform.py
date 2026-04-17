@@ -757,6 +757,48 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                              "MvMonomial.normalization", "SparsePolyZp.normalization",
                              "SparsePolyZZ.normalization", "Array.empty"):
                 return ExprStmt(rename_expr(expr.args[0], env))
+        # compound assignment: BinOp("+"/"-"/"*", ArrayAccess/Var, rhs) as ExprStmt
+        # = operator-=, +=, *= 翻译结果（AST 只保留运算，丢失赋值）
+        # 还原为：lhs = lhs op rhs
+        if isinstance(expr, BinOp) and expr.op in ("+", "-", "*", "/", "%"):
+            lhs = expr.lhs
+            # 1D: arr[i] -= val → arr[i] = arr[i] - val → Array.set!
+            if isinstance(lhs, ArrayAccess) and isinstance(lhs.arr, Var):
+                arr_var = env.current(lhs.arr.name)
+                idx = rename_expr(lhs.idx, env)
+                rhs = rename_expr(expr.rhs, env)
+                old_val = ArrayAccess(arr_var, idx)
+                new_val = BinOp(expr.op, old_val, rhs)
+                new_arr = env.bump(lhs.arr.name)
+                return LetStmt(new_arr, env.get_type(lhs.arr.name),
+                               Call("Array.set!", [arr_var, idx, new_val]))
+            # 2D: arr[i][k] -= val → 取行、改元素、放回
+            if isinstance(lhs, ArrayAccess) and isinstance(lhs.arr, ArrayAccess):
+                outer = lhs.arr
+                if isinstance(outer.arr, Var):
+                    arr_var = env.current(outer.arr.name)
+                    i_idx = rename_expr(outer.idx, env)
+                    k_idx = rename_expr(lhs.idx, env)
+                    rhs = rename_expr(expr.rhs, env)
+                    row = ArrayAccess(arr_var, i_idx)
+                    old_val = ArrayAccess(row, k_idx)
+                    new_val = BinOp(expr.op, old_val, rhs)
+                    row_var = Var("_row")
+                    row_upd = Var("_row_upd")
+                    stmts = [
+                        LetStmt(row_var, "auto", row),
+                        LetStmt(row_upd, "auto", Call("Array.set!", [row_var, k_idx, new_val])),
+                    ]
+                    new_arr = env.bump(outer.arr.name)
+                    stmts.append(LetStmt(new_arr, env.get_type(outer.arr.name),
+                                         Call("Array.set!", [arr_var, i_idx, row_upd])))
+                    return stmts
+            # x -= val → x = x - val
+            if isinstance(lhs, Var):
+                old = env.current(lhs.name)
+                rhs = rename_expr(expr.rhs, env)
+                new_var = env.bump(lhs.name)
+                return LetStmt(new_var, env.get_type(lhs.name), BinOp(expr.op, old, rhs))
         # arr.push(x) → let arr_{n+1} := arr_n.push(x)
         if isinstance(expr, ArrayPush) and isinstance(expr.arr, Var):
             old = env.current(expr.arr.name)

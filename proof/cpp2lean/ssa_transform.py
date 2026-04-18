@@ -1106,16 +1106,17 @@ def transform_if(stmt: IfStmt, env: VarEnv, ctx: FuncCtx = None,
     pre_existing = set(env.versions.keys())
     diff = {k: v for k, v in diff.items() if k in pre_existing}
 
-    # 收集两分支一致推进的变量（版本相同但高于外层）
-    agreed = {}
+    # 同步两分支一致推进的变量版本到外层 env
+    # 例：两分支都设 delta_2 → env 也推进到 delta_2
+    # 注意：不生成 CondExpr phi（_extract_stmts_for_var 对复杂分支不完整）
     for name in pre_existing:
         v_then = env_then.versions.get(name, 0)
         v_else = env_else.versions.get(name, 0)
         v_outer = env.versions.get(name, 0)
         if v_then == v_else and v_then > v_outer:
-            agreed[name] = (Var(name, v_then), Var(name, v_then))
+            env.versions[name] = v_then
 
-    if not diff and not agreed:
+    if not diff:
         return [IfStmt(cond, then_body, else_body)]
 
     # 有变量分歧 → 用 BlockExpr 封装分支内的 let 链 + 最终值
@@ -1162,12 +1163,8 @@ def transform_if(stmt: IfStmt, env: VarEnv, ctx: FuncCtx = None,
 
         return relevant, final_stmt.var
 
-    # 合并 diff（版本不同）和 agreed（版本一致但需 phi）
-    all_phi = {}
-    all_phi.update(diff)
-    all_phi.update(agreed)
-    for name in sorted(all_phi.keys()):
-        then_var, else_var = all_phi[name]
+    for name in sorted(diff.keys()):
+        then_var, else_var = diff[name]
         # then 分支：提取相关 let 链
         then_stmts, then_final = _extract_stmts_for_var(then_body, name)
         # else 分支：提取相关 let 链

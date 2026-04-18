@@ -614,10 +614,15 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                 ctx.aux_defs.append(lam_func)
 
         # N1: LetStmt 中的 output-param 函数调用 → 解构返回值
-        # 解包 Cast 层（type annotation）
+        # 解包 Cast 层（type annotation）和 BinOp("=") 层（引用参数赋值）
         call_value = stmt.value
         if isinstance(call_value, Cast):
             call_value = call_value.expr
+        # BinOp("=", Var("f"), Call("make_monic", [f])) → 解包到 Call
+        if isinstance(call_value, BinOp) and call_value.op == "=" and isinstance(call_value.rhs, (Call, Cast)):
+            call_value = call_value.rhs
+            if isinstance(call_value, Cast):
+                call_value = call_value.expr
         if isinstance(call_value, Call):
             func_base = call_value.func.replace("_ir", "") if isinstance(call_value.func, str) and call_value.func.endswith("_ir") else (call_value.func if isinstance(call_value.func, str) else "")
             from class_map import TRANSLATION_SCOPE_OUTPUT_PARAMS
@@ -1101,16 +1106,16 @@ def transform_if(stmt: IfStmt, env: VarEnv, ctx: FuncCtx = None,
     pre_existing = set(env.versions.keys())
     diff = {k: v for k, v in diff.items() if k in pre_existing}
 
-    # 同步两分支一致推进的变量版本到外层 env
-    # 例：两分支都设 delta_2 → env 也推进到 delta_2
+    # 收集两分支一致推进的变量（版本相同但高于外层）
+    agreed = {}
     for name in pre_existing:
         v_then = env_then.versions.get(name, 0)
         v_else = env_else.versions.get(name, 0)
         v_outer = env.versions.get(name, 0)
         if v_then == v_else and v_then > v_outer:
-            env.versions[name] = v_then
+            agreed[name] = (Var(name, v_then), Var(name, v_then))
 
-    if not diff:
+    if not diff and not agreed:
         return [IfStmt(cond, then_body, else_body)]
 
     # 有变量分歧 → 用 BlockExpr 封装分支内的 let 链 + 最终值
@@ -1157,8 +1162,12 @@ def transform_if(stmt: IfStmt, env: VarEnv, ctx: FuncCtx = None,
 
         return relevant, final_stmt.var
 
-    for name in sorted(diff.keys()):
-        then_var, else_var = diff[name]
+    # 合并 diff（版本不同）和 agreed（版本一致但需 phi）
+    all_phi = {}
+    all_phi.update(diff)
+    all_phi.update(agreed)
+    for name in sorted(all_phi.keys()):
+        then_var, else_var = all_phi[name]
         # then 分支：提取相关 let 链
         then_stmts, then_final = _extract_stmts_for_var(then_body, name)
         # else 分支：提取相关 let 链

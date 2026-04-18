@@ -795,6 +795,167 @@ deriving Inhabited
 
 ---
 
+## N1-N5 + 黑名单重构后状态（v5 审计）
+
+60 PASS / 6 FAIL (91%)。0 sorry, 0 WARNING。
+
+---
+
+## 第五轮残留缺陷（P1-P3，6 函数）
+
+### P1. S1 版本同步只更新 env 不生成代码（2 函数）
+
+**现象**：`__wang_leading_coeff` 的 `delta_2` 在 if/else 两分支内各定义，但外部 `if (delta_2 == 0)` 引用时 `delta_2` 不在作用域。`__extract_monomial_content` 的 `var_factors_2` 在 early-return 路径引用了后面才定义的变量。
+
+**根因**：S1 修复只做了 `env.versions[name] = v_then`（更新 env），没有生成 `LetStmt`。Lean 的 `let` 在 `if` 分支内是局部作用域——即使两分支都 `let delta_2 := ...`，外部也看不到 `delta_2`。
+
+需要生成 phi-node CondExpr：
+```lean
+let delta_2 := if cond then
+  let delta_2 := ... -- then branch computation
+  delta_2
+else
+  let delta_2 := ... -- else branch computation  
+  delta_2
+```
+
+**修复**：在 S1 同步逻辑中，不仅更新 env，还用 `_extract_stmts_for_var` 提取两分支的值并生成 `LetStmt(new_var, typ, CondExpr(cond, then_expr, else_expr))`。这与 diff 非空时的 phi 逻辑（line 898-912）完全相同。
+
+```python
+# 当前（只同步 env）：
+if v_then == v_else and v_then > v_outer:
+    env.versions[name] = v_then
+
+# 修复（同步 env + 生成 phi）：
+if v_then == v_else and v_then > v_outer:
+    then_stmts, then_final = _extract_stmts_for_var(then_body, name)
+    else_stmts, else_final = _extract_stmts_for_var(else_body, name)
+    then_expr = BlockExpr(then_stmts, then_final) if then_stmts and then_final else Var(name, v_then)
+    else_expr = BlockExpr(else_stmts, else_final) if else_stmts and else_final else Var(name, v_then)
+    new_var = env.bump(name)
+    result.append(LetStmt(new_var, env.get_type(name), CondExpr(cond, then_expr, else_expr)))
+```
+
+**正确性**：与 diff 非空时的 phi 逻辑一致——提取分支值、CondExpr 合并。区别是两分支版本相同（而非不同），但生成 phi 的方式完全一样。✓
+
+**影响函数**：`__wang_leading_coeff`（delta）、`__extract_monomial_content`（var_factors）
+
+---
+
+### P2. 循环体逻辑缺失（2 函数）
+
+**`__upoly_subtract_one`**：range-for body 只跟踪 `found` 标志，不做 `result.push_back(term)`（非 deg-0 项）和减法后 push（deg-0 项）。可能是 AST 解析阶段循环体的 if/else 内容丢失。
+
+**`__edf_Zp`**：base case 和 deg≤0 case 返回 `()` 而非 `(result, rng)`。这些是 output-param 函数的非主路径 return，`_wrap_all_returns` 没覆盖到——因为它们是 if/else 表达式的值（不是 ReturnStmt）。
+
+**排查方向**：
+1. `__upoly_subtract_one`：dump raw IR 确认循环体内容是否完整
+2. `__edf_Zp`：`()` 值来源——可能是 `return` 被翻译为 bare `()`（void return → Unit）
+
+---
+
+### P3. N1 调用方解构遗漏（2 函数）
+
+**`__upoly_make_monic`**：自身 early-return 用 `f_1`（else 分支才定义），应用 `f`。同时 loop helper 传了未绑定的 `__coll`/`term`。
+
+**`__factor_Zp`**：`let lc_1 := __upoly_make_monic_ir f` 没有 N1 解构。检查：该调用是 `ExprStmt(BinOp("="))` 还是 `LetStmt`？如果是 BinOp 赋值，N1 BinOp handler 应匹配。如果是 LetStmt + Cast，N1 LetStmt handler 应匹配。两者都没生效——需要 debug 具体原因。
+
+---
+
+## 修复优先级
+
+| 优先级 | 缺陷 | 修复量 | 影响 |
+|--------|------|--------|------|
+| **P0** | P1 phi 生成代码 | ~10 行 | +2 函数 |
+| **P1** | P3 N1 解构 debug | ~5 行 | +2 函数 |
+| **P2** | P2 循环体排查 | 逐个 | +2 函数 |
+
+修复 P1+P3 预计 PASS 从 60 → 64/66 (97%)。
+
+### 调研结论：6 FAIL 只有 2 个根因
+
+**根因 A: S1 phi 同步只改 env 不生成代码（5 函数）**
+
+`transform_if` 的 S1 逻辑在两分支版本一致时做 `env.versions[name] = v_then` 但不生成 `LetStmt`。Lean 的 `let` 在 if 分支内是局部作用域——即使两分支都 `let delta_2 := ...`，外部也看不到。
+
+影响函数：
+- `__wang_leading_coeff`（delta_2 不可见）
+- `__extract_monomial_content`（var_factors_2 不可见）
+- `__upoly_subtract_one`（result push 在两分支都做了但外部看不到）
+- `__upoly_make_monic`（f_1 在 else 分支定义但 early return 引用）
+- `__edf_Zp`（result_1 在 if 分支定义但外部 Prod.mk 引用）
+
+**修复**：S1 同步逻辑中，对版本一致的变量也生成 CondExpr phi——与 diff 非空时的逻辑（line 898-912）完全相同：
+
+```python
+# 当前（只同步 env）：
+for name in pre_existing:
+    v_then = env_then.versions.get(name, 0)
+    v_else = env_else.versions.get(name, 0)
+    v_outer = env.versions.get(name, 0)
+    if v_then == v_else and v_then > v_outer:
+        env.versions[name] = v_then  # ← 只更新 env
+
+# 修复（同步 env + 生成 phi）：
+agreed = {}
+for name in pre_existing:
+    v_then = env_then.versions.get(name, 0)
+    v_else = env_else.versions.get(name, 0)
+    v_outer = env.versions.get(name, 0)
+    if v_then == v_else and v_then > v_outer:
+        agreed[name] = (Var(name, v_then), Var(name, v_then))
+
+# 与 diff 变量一起处理（共用 _extract_stmts_for_var + CondExpr 生成）
+for name in sorted(set(diff.keys()) | set(agreed.keys())):
+    if name in diff:
+        then_var, else_var = diff[name]
+    else:
+        then_var, else_var = agreed[name]
+    then_stmts, then_final = _extract_stmts_for_var(then_body, name)
+    else_stmts, else_final = _extract_stmts_for_var(else_body, name)
+    then_expr = BlockExpr(then_stmts, then_final) if then_stmts and then_final else then_var
+    else_expr = BlockExpr(else_stmts, else_final) if else_stmts and else_final else else_var
+    new_var = env.bump(name)
+    result.append(LetStmt(new_var, env.get_type(name), CondExpr(cond, then_expr, else_expr)))
+```
+
+**正确性论证**：
+
+两分支版本一致（都是 `v`）意味着两分支都定义了 `name_v`。在 Lean 的作用域模型中，分支内的 `let name_v := ...` 只在分支内可见。生成 `let name_{v+1} := if cond then <then_value> else <else_value>` 将两分支的值合并到外部作用域。
+
+语义：$\text{name}_{v+1} = \begin{cases} e_{\text{then}} & \text{if cond} \\ e_{\text{else}} & \text{otherwise} \end{cases}$
+
+两分支独立计算 `name_v`，phi 取正确的那个。等价于 C++ 的 if/else 赋值。✓
+
+---
+
+**根因 B: N1 LetStmt handler 未匹配 BinOp 包裹的 Call（1 函数）**
+
+`__factor_Zp` 的 IR：`LetStmt(lc, Zp, BinOp("=", Var("f"), Call("__upoly_make_monic", [f])))`
+
+C++ 是 `Zp lc = __upoly_make_monic(f)`——Clang 把引用参数调用翻译为赋值表达式 `f = __upoly_make_monic(f)`，然后赋值表达式的值作为 `lc` 的初始化器。
+
+N1 LetStmt handler 检查 `isinstance(call_value, Call)` 但 `call_value` 是 `BinOp("=", ...)`，不匹配。
+
+**修复**：在 N1 LetStmt handler 中增加 BinOp("=") 解包：
+
+```python
+call_value = stmt.value
+if isinstance(call_value, Cast):
+    call_value = call_value.expr
+# 新增：BinOp("=") 包裹的 Call（引用参数调用）
+if isinstance(call_value, BinOp) and call_value.op == "=" and isinstance(call_value.rhs, Call):
+    call_value = call_value.rhs
+if isinstance(call_value, Call):
+    ...  # N1 解构逻辑
+```
+
+同时，`BinOp("=")` 的 LHS `Var("f")` 表示 `f` 被修改——这已经由 output-param 机制处理（`f` 是 index 0 output param），所以解构时 `_out.2` 就是修改后的 `f`。
+
+**正确性**：`BinOp("=", Var("f"), Call("__upoly_make_monic", [f]))` 的语义是：调用 `__upoly_make_monic(f)` 修改 `f` 并返回 `lc`。解构后：`lc := _out.1`（返回值），`f := _out.2`（修改后的 f）。与 C++ 语义一致。✓
+
+---
+
 ## 架构重构：ExprStmt 黑名单策略
 
 ### 问题

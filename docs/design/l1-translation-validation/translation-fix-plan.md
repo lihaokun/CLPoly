@@ -956,6 +956,140 @@ if isinstance(call_value, Call):
 
 ---
 
+## P1 第一次尝试：失败复盘
+
+**方案**：把 `agreed` 变量与 `diff` 合并，统一调用 `_extract_stmts_for_var` + CondExpr。
+
+**失败原因**：`_extract_stmts_for_var` 只从**顶层 LetStmt 列表**中提取变量值。但 if/else 分支可能有：
+- 嵌套 if（early return 后才定义变量）
+- 多条语句（变量定义在中间，后面还有其他逻辑）
+- 依赖链跨越了提取器不理解的结构（IfStmt、ReturnStmt）
+
+对 `diff` 变量（版本不同）偶尔有效，对 `agreed` 变量（版本相同）普遍失效。引入 7 个回归。
+
+**已回退**。
+
+---
+
+## P1 新设计：pop-and-return 方案
+
+### 问题本质
+
+Lean 的 `let x := ...` 在 `if` 分支内是局部的：
+
+```lean
+if cond then
+  let delta_2 := expr1    -- 局部于 then
+else
+  let delta_2 := expr2    -- 局部于 else
+delta_2                    -- 编译错误：delta_2 不在作用域
+```
+
+### 方案
+
+**不提取值，而是把 LetStmt 从分支中弹出，让 if/else 表达式返回该值：**
+
+```lean
+-- 修复后：
+let delta_2 := if cond then
+  expr1                    -- delta 的值直接作为 then 表达式的结果
+else
+  let L_eval := ...        -- 保留分支内的其他逻辑
+  expr2                    -- delta 的值作为 else 表达式的结果
+```
+
+### 实现：`_pop_last_assign`
+
+```python
+def _pop_last_assign(stmts: list[StmtIR], var_name: str) -> tuple[ExprIR, list[StmtIR]]:
+    """从语句列表中弹出变量的最后一次赋值，返回 (赋值右值, 剩余语句)。
+    
+    如果变量在顶层 LetStmt 中 → 弹出，返回 RHS
+    如果变量在嵌套结构中（IfStmt 等）→ 返回 (None, stmts)，放弃 phi
+    """
+    # 从后往前找顶层 LetStmt
+    for i in range(len(stmts) - 1, -1, -1):
+        s = stmts[i]
+        if isinstance(s, LetStmt) and s.var.name == var_name:
+            remaining = stmts[:i] + stmts[i+1:]
+            return (s.value, remaining)
+    return (None, stmts)
+```
+
+### 在 `transform_if` 中使用
+
+```python
+# 收集 agreed 变量
+agreed = {}
+for name in pre_existing:
+    v_then = env_then.versions.get(name, 0)
+    v_else = env_else.versions.get(name, 0)
+    v_outer = env.versions.get(name, 0)
+    if v_then == v_else and v_then > v_outer:
+        agreed[name] = True
+
+if not diff and not agreed:
+    return [IfStmt(cond, then_body, else_body)]
+
+result = []
+
+# 处理 agreed 变量：pop-and-return
+for name in sorted(agreed.keys()):
+    then_val, then_body = _pop_last_assign(then_body, name)
+    else_val, else_body = _pop_last_assign(else_body, name)
+    
+    if then_val is not None and else_val is not None:
+        # 两分支都能弹出 → 生成 CondExpr
+        then_expr = BlockExpr(then_body, then_val) if then_body else then_val
+        else_expr = BlockExpr(else_body, else_val) if else_body else else_val
+        new_var = env.bump(name)
+        result.append(LetStmt(new_var, env.get_type(name),
+                               CondExpr(cond, then_expr, else_expr)))
+    else:
+        # 无法弹出（嵌套结构）→ 退回 env 同步（不生成 phi）
+        env.versions[name] = env_then.versions.get(name, 0)
+
+# 处理 diff 变量（已有逻辑，不变）
+for name in sorted(diff.keys()):
+    ...（原有逻辑）
+```
+
+### 与旧方案的区别
+
+| | 旧方案（_extract_stmts_for_var） | 新方案（_pop_last_assign） |
+|---|---|---|
+| **策略** | 从分支中提取值 + 依赖链 | 从分支中弹出 LetStmt |
+| **分支处理** | 提取最小依赖子集 → 失败时丢失表达式 | 保留全部分支逻辑，只移除最后赋值 |
+| **复杂分支** | 失败（嵌套 if、early return） | 优雅退化：弹不出 → 不生成 phi |
+| **安全性** | 可能生成错误代码（回归） | 不生成 phi = 保持 v5 行为（无回归） |
+
+### 正确性论证
+
+设 if/else 的 then 分支最后一条语句是 `let delta_2 := e_then`。
+
+**Pop 后**：
+- then 分支变为 `[...前面的语句...]`（不含 delta 赋值）
+- BlockExpr = `{...前面的语句...; e_then}`
+- CondExpr = `if cond then {...; e_then} else {...; e_else}`
+- 外部 `let delta_3 := CondExpr(...)` 在作用域内
+
+**语义等价**：
+- C++：`if (cond) { ...; delta = e_then; } else { ...; delta = e_else; }`
+- Lean：`let delta_3 := if cond then (...; e_then) else (...; e_else)`
+- 两者等价：delta 的值取决于 cond，其他副作用（前面的语句）在对应分支内执行。✓
+
+**退化安全**：当 LetStmt 在嵌套结构内（非顶层），`_pop_last_assign` 返回 `None`，回退到 v5 的 env 同步行为（不生成 phi）。不引入回归。✓
+
+### 影响函数
+
+- `__wang_leading_coeff`（delta）：then 分支是简单赋值 → pop 成功；else 分支在嵌套 if 后赋值 → pop 可能失败（需检查变换后结构）
+- `__extract_monomial_content`（var_factors）：类似
+- `__upoly_subtract_one`（result）：range-for 内 push → 可能不适用
+- `__upoly_make_monic`（f）：early return 路径 → 需检查
+- `__edf_Zp`（result）：output param → 需检查
+
+---
+
 ## 架构重构：ExprStmt 黑名单策略
 
 ### 问题

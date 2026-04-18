@@ -1106,22 +1106,65 @@ def transform_if(stmt: IfStmt, env: VarEnv, ctx: FuncCtx = None,
     pre_existing = set(env.versions.keys())
     diff = {k: v for k, v in diff.items() if k in pre_existing}
 
-    # 同步两分支一致推进的变量版本到外层 env
-    # 例：两分支都设 delta_2 → env 也推进到 delta_2
-    # 注意：不生成 CondExpr phi（_extract_stmts_for_var 对复杂分支不完整）
-    for name in pre_existing:
+    # 收集 agreed 变量（两分支版本一致但高于外层）
+    agreed = []
+    for name in sorted(pre_existing):
         v_then = env_then.versions.get(name, 0)
         v_else = env_else.versions.get(name, 0)
         v_outer = env.versions.get(name, 0)
         if v_then == v_else and v_then > v_outer:
-            env.versions[name] = v_then
+            agreed.append(name)
 
-    if not diff:
+    if not diff and not agreed:
         return [IfStmt(cond, then_body, else_body)]
 
-    # 有变量分歧 → 用 BlockExpr 封装分支内的 let 链 + 最终值
-    # 这确保分支内的中间变量在 Lean 的 if-then 作用域内可见
+    # pop-and-return：从分支末尾弹出 LetStmt，让 if/else 表达式返回该值
+    def _pop_last_assign(stmts, var_name):
+        """弹出语句列表中变量的最后一次顶层 LetStmt。
+        返回 (赋值右值, 剩余语句)。找不到返回 (None, stmts)。"""
+        for i in range(len(stmts) - 1, -1, -1):
+            s = stmts[i]
+            if isinstance(s, LetStmt) and s.var.name == var_name:
+                remaining = stmts[:i] + stmts[i+1:]
+                return (s.value, remaining)
+        return (None, stmts)
+
     result: list[StmtIR] = []
+
+    # 处理 agreed 变量：先试探弹出，两边都成功才真正修改
+    then_body_work = list(then_body)
+    else_body_work = list(else_body)
+    phi_generated = False
+    for name in agreed:
+        # 试探弹出（不修改原列表）
+        then_val, then_remaining = _pop_last_assign(then_body_work, name)
+        else_val, else_remaining = _pop_last_assign(else_body_work, name)
+        if then_val is not None and else_val is not None:
+            # 两边都能弹出 → 生成 CondExpr
+            then_body_work = then_remaining
+            else_body_work = else_remaining
+            then_expr = BlockExpr(then_body_work, then_val) if then_body_work else then_val
+            else_expr = BlockExpr(else_body_work, else_val) if else_body_work else else_val
+            new_var = env.bump(name)
+            result.append(LetStmt(new_var, env.get_type(name),
+                                   CondExpr(cond, then_expr, else_expr)))
+            then_body_work = []
+            else_body_work = []
+            phi_generated = True
+        else:
+            # 无法弹出 → 退回 env 同步（不修改分支，安全退化）
+            env.versions[name] = env_then.versions.get(name, 0)
+
+    # 如果有剩余分支语句或有未 phi 的 agreed 变量，保留 IfStmt
+    if not phi_generated:
+        result.insert(0, IfStmt(cond, then_body, else_body))
+    elif then_body_work or else_body_work:
+        result.insert(0, IfStmt(cond, then_body_work, else_body_work))
+
+    if not diff:
+        return result if result else [IfStmt(cond, then_body, else_body)]
+
+    # 有变量分歧 → 用 BlockExpr 封装分支内的 let 链 + 最终值
 
     # 收集分支中与特定变量相关的所有 let 语句链 + 最终值
     def _extract_stmts_for_var(stmts: list[StmtIR], var_name: str) -> tuple[list[StmtIR], ExprIR]:

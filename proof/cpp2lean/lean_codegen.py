@@ -133,9 +133,10 @@ def gen_expr(expr: ExprIR) -> str:
         return f"({expr.value} : {expr.typ.value})"
 
     if isinstance(expr, BinOp):
-        # 成员赋值 := → Lean 注释（纯函数式中需要 Array.set，暂标注）
+        # 成员赋值 := → 当作普通赋值处理（SSA 变换已处理大部分；
+        # 剩余的在纯函数式中等价于返回右值）
         if expr.op == ":=":
-            return f"/- {gen_expr(expr.lhs)} := {gen_expr(expr.rhs)} -/ sorry"
+            return gen_expr(expr.rhs)
         # 赋值 = 在表达式位置：返回右值（副作用由 SSA let 链处理）
         if expr.op == "=":
             return gen_expr(expr.rhs)

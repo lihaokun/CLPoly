@@ -696,6 +696,9 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
 
     if isinstance(stmt, ExprStmt):
         expr = stmt.expr
+        # 解包 Cast 层（type annotation 不影响语义）
+        while isinstance(expr, Cast):
+            expr = expr.expr
         # M2：TRANSLATION_SCOPE 函数调用的输出参数捕获
         if isinstance(expr, Call):
             func_base = expr.func.replace("_ir", "") if expr.func.endswith("_ir") else expr.func
@@ -833,7 +836,8 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                 return LetStmt(new_arr, env.get_type(aa.arr.name),
                                Call("Array.set!", [arr_old, idx, pushed]))
         # x = expr（变量赋值）→ let x_{n+1} := expr
-        if isinstance(expr, BinOp) and expr.op == "=":
+        # ":=" 是迭代器赋值（it->second = val），语义与 "=" 相同
+        if isinstance(expr, BinOp) and expr.op in ("=", ":="):
             if isinstance(expr.lhs, Var):
                 # N1: x = f(args) 且 f 有 output params → 解构
                 rhs = expr.rhs
@@ -931,6 +935,12 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                     return stmts
             if isinstance(expr.lhs, FieldAccess):
                 return transform_member_assign(expr.lhs, expr.rhs, env)
+            # 解包 Cast 层再检查 FieldAccess（迭代器 it->second = val）
+            lhs_unwrap = expr.lhs
+            while isinstance(lhs_unwrap, Cast):
+                lhs_unwrap = lhs_unwrap.expr
+            if isinstance(lhs_unwrap, FieldAccess):
+                return transform_member_assign(lhs_unwrap, expr.rhs, env)
             # catch-all: 未识别的 BinOp(=) lhs → 尝试提取根变量
             root_vars = _extract_all_root_var_names(expr.lhs)
             if root_vars:

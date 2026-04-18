@@ -732,16 +732,22 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                             stmts.append(LetStmt(new_var, env.get_type(ov.name), accessor))
                     return stmts
         # i++ / ++i → let i_{n+1} := i_n + 1
-        if isinstance(expr, UnaryOp) and expr.op == "++" and isinstance(expr.operand, Var):
-            old = env.current(expr.operand.name)
-            new_var = env.bump(expr.operand.name)
-            typ = env.get_type(expr.operand.name)
-            return LetStmt(new_var, typ, BinOp("+", old, Lit(1)))
-        if isinstance(expr, UnaryOp) and expr.op == "--" and isinstance(expr.operand, Var):
-            old = env.current(expr.operand.name)
-            new_var = env.bump(expr.operand.name)
-            typ = env.get_type(expr.operand.name)
-            return LetStmt(new_var, typ, BinOp("-", old, Lit(1)))
+        if isinstance(expr, UnaryOp) and expr.op in ("++", "--"):
+            delta = Lit(1) if expr.op == "++" else Lit(-1)
+            op = "+" if expr.op == "++" else "-"
+            if isinstance(expr.operand, Var):
+                old = env.current(expr.operand.name)
+                new_var = env.bump(expr.operand.name)
+                typ = env.get_type(expr.operand.name)
+                return LetStmt(new_var, typ, BinOp(op, old, Lit(1)))
+            # arr[i]++ → Array.set! arr i (arr[i] + 1)
+            if isinstance(expr.operand, ArrayAccess) and isinstance(expr.operand.arr, Var):
+                arr_var = env.current(expr.operand.arr.name)
+                idx = rename_expr(expr.operand.idx, env)
+                old_val = ArrayAccess(arr_var, idx)
+                new_arr = env.bump(expr.operand.arr.name)
+                return LetStmt(new_arr, env.get_type(expr.operand.arr.name),
+                               Call("Array.set!", [arr_var, idx, BinOp(op, old_val, Lit(1))]))
         # _mutate_* 方法（来自 CLASS_MAP 的 mutate 类别）
         # _mutate_X(obj) → let obj_{n+1} := X obj_n
         if isinstance(expr, Call) and isinstance(expr.func, str) and expr.func.startswith("_mutate_") and expr.args:
@@ -925,6 +931,14 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                     return stmts
             if isinstance(expr.lhs, FieldAccess):
                 return transform_member_assign(expr.lhs, expr.rhs, env)
+            # catch-all: 未识别的 BinOp(=) lhs → 尝试提取根变量
+            root_vars = _extract_all_root_var_names(expr.lhs)
+            if root_vars:
+                # 有可识别的根变量 → 当作变量赋值
+                var_name = sorted(root_vars)[0]
+                new_value = rename_expr(expr.rhs, env)
+                new_var = env.bump(var_name)
+                return LetStmt(new_var, env.get_type(var_name), new_value)
         # S4: Lambda 调用结果写回 — lambda 修改了 capture 变量
         # 检测：Call 的函数名是一个 Var，且该 Var 在 env.lambda_modified 中
         func_name_raw = ""
@@ -958,6 +972,45 @@ def transform_stmt(stmt: StmtIR, env: VarEnv, ctx: FuncCtx = None,
                         accessor = FieldAccess(accessor, "1")
                     stmts.append(LetStmt(new_var, env.get_type(cname), accessor))
             return stmts
+        # 通用 Call fallback：未被上面 handler 匹配的函数调用
+        # 如果在 lambda_modified 中 → M4 已处理（上面）
+        # 否则：丢弃返回值但保留调用（可能有副作用通过其他机制传播）
+        if isinstance(expr, Call) and isinstance(expr.func, str):
+            func = expr.func
+            # pair_vec_div 在 ExprStmt 位置 = 输出参数已由 M2 handler 处理
+            # next_combination / mv_next_combination / normalize_factor = 副作用通过循环机制传播
+            if func in ("pair_vec_div", "next_combination", "mv_next_combination",
+                        "normalize_factor", "all_div", "lift_vars"):
+                return ExprStmt(rename_expr(expr, env))  # 保留调用，副作用由其他机制处理
+        # BinOp(=) lhs=Call → operator[] 赋值（如 map[key] = val）
+        # 排除 Prod.mk（已由 line 876 处理，如果到这里说明是嵌套场景）
+        if isinstance(expr, BinOp) and expr.op == "=" and isinstance(expr.lhs, Call):
+            if isinstance(expr.lhs.func, str) and expr.lhs.func != "Prod.mk":
+                return ExprStmt(rename_expr(expr, env))
+            # Prod.mk 赋值 fallback：解构
+            if isinstance(expr.lhs.func, str) and expr.lhs.func == "Prod.mk":
+                out_vars = expr.lhs.args
+                new_value = rename_expr(expr.rhs, env)
+                stmts = []
+                pair_var = env.bump("_out")
+                env.set_type("_out", "auto")
+                stmts.append(LetStmt(pair_var, "auto", new_value))
+                for i, ov in enumerate(out_vars):
+                    if isinstance(ov, Var):
+                        new_var = env.bump(ov.name)
+                        if i == 0:
+                            accessor = FieldAccess(pair_var, "1")
+                        elif i == len(out_vars) - 1:
+                            accessor = pair_var
+                            for _ in range(i):
+                                accessor = FieldAccess(accessor, "2")
+                        else:
+                            accessor = pair_var
+                            for _ in range(i):
+                                accessor = FieldAccess(accessor, "2")
+                            accessor = FieldAccess(accessor, "1")
+                        stmts.append(LetStmt(new_var, env.get_type(ov.name), accessor))
+                return stmts if stmts else ExprStmt(rename_expr(expr, env))
         # === 黑名单策略：分类 ExprStmt，拒绝静默丢弃未知变异 ===
         renamed = rename_expr(expr, env)
         if _is_known_noop(expr):

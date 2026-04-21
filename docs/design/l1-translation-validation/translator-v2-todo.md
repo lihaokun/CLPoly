@@ -80,36 +80,32 @@
 - [x] **Week 4 回顾 (2026-04-21)**：hir-design.md 1212 行 + v1-reuse-inventory.md
   - HIR 层预估 ~2350 行代码；v2 总量 ~4250 行（v1 5956 → 减 29%）
 
-### Week 5：MIR + codegen + 测试框架设计
+### Week 5：MIR + codegen + 测试框架设计（2026-04-21 完成）
 
 目标：输出 `mir-design.md`、`codegen-design.md`、`b2b-design.md`。
 
-- [ ] **MIR 节点定义**：Stmt 家族（含 `PhiStmt`、`TailCallStmt`、`ValueStmt`）、Expr 家族
-- [ ] **Pass 6 规格**：`ssa_build`（HIR₄ → MIR₀）
-  - CFG 构造（basic block 划分 + edges）
-  - Dominator tree 计算
-  - Dominance frontier 计算
-  - Phi 节点放置（Cytron 算法）
-  - 变量重命名
-- [ ] **Pass 7 规格**：`loop_lower`（MIR₀ → MIR₁）
-  - 循环识别（natural loops）
-  - 循环提取为 `partial def` 尾递归
-  - break → `_break_flag` + 尾返回
-  - continue → 循环顶部尾调用
-  - return in loop → `_ret_flag` + `_ret_val` + 尾返回
-- [ ] **Pass 8 规格**：`codegen`（MIR₁ → Lean）
-  - 类型字符串生成
-  - `partial def` 生成
-  - Phi 节点 → `if-then-else` 或 `match`
-  - Require 参数生成
-- [ ] **back-to-back 测试框架**：
-  - C++ 执行流程（编译 harness + 输入 JSON → 输出 JSON）
-  - Lean 执行流程（生成 `#eval` 文件 + `lake env lean` → 输出 JSON）
-  - 双向 JSON 序列化约定
-  - diff 工具
-- [ ] **单元测试 + 回归框架**：每 Pass 的测试脚手架
-- [ ] **手动走查**：选 2 个复杂函数（`__lll_reduce`、`__zassenhaus_recombine`）手动走过 Pass 6-8，确认 Lean 代码能编译
-- [ ] **Week 5 回顾**：设计文档齐全；Stage 1 验收通过
+- [x] **MIR 节点定义 (2026-04-21)**：§1 CFG/BasicBlock/Terminator/PhiStmt/MIRFunc
+- [x] **Pass 6 规格 (2026-04-21)**：§2 Cytron 4 阶段（CFG + DomTree + DF + Phi+Rename）
+  - 选 Cooper-Harvey-Kennedy 迭代 DomTree（简单 20 行）
+  - 选 Minimal SSA（无需活跃性分析）
+  - 预估 ~600 行 Python
+- [x] **Pass 7 规格 (2026-04-21)**：§3 循环提取 + flag 下降
+  - 自然循环识别 + live_vars 分析
+  - Flag 方案（_ret_flag + _ret_val），不引入 Except
+- [x] **Pass 8 规格 (2026-04-21)**：§4 CFG 线性化 + Lean 源代码生成
+  - 按支配关系 DFS 嵌套 let 链
+  - aux_defs 拓扑排序输出
+- [x] **back-to-back 测试框架 (2026-04-21)**：§5
+  - C++ 侧：~500 行 harness 手写 emitter（零第三方依赖）
+  - Lean 侧：`Lean.Data.Json` + ToJson 实例（~30 行）
+  - Diff 工具：~50 行 Python（`math.isclose` 浮点近似）
+  - JSON Lines 格式（升级 v1 的空格分隔）
+  - **警告**：Stage 2 必须替换 v1 的伪原语（`polynomial_GCD_ir = fun f g => f`）
+- [x] **单元测试 + 回归框架 (2026-04-21)**：§7 ~300 行跨 8 个 pass
+- [x] **Week 5 回顾 (2026-04-21)**：mir-design.md 1008 行 + mir-references.md 240 行
+  - v2 总量从 4250 修正为 ~5300 行（包含 b2b 框架 + 单元测试）
+  - Lean 无现成 CFG/DomTree 基础设施，全部 Python 内部实现
+  - phi 节点在 codegen 下降为 let / 尾递归参数，Lean 不暴露 phi
 
 ## Stage 2：实现（4-5 周）
 

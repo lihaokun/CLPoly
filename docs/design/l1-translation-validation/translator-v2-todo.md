@@ -8,24 +8,22 @@
 
 目标：输出 `cpp-construct-catalog.md`，列出 67 函数用到的所有 C++ 构造 + 出现位置。
 
-- [ ] **Day 1**：写调研脚本 `scripts/survey_ast.py`
+- [x] **Day 1 (2026-04-21)**：写调研脚本 `scripts/survey_ast.py`
   - 输入：`proof/cpp2lean/instantiate.cc` 的 Clang AST JSON
-  - 输出：
-    - 所有 `kind` 字段的直方图（哪些 AST 节点出现过、各出现多少次）
-    - 每个 `kind` 列出首次出现的函数名 + 行号（便于查看样例）
-    - 所有 `operator*` 类型的直方图（一元/二元/赋值/下标/调用）
-    - 所有模板实例化类型的清单
-- [ ] **Day 2-3**：人工补全调研（脚本抓不到的语义细节）
-  - Lambda capture 类型（`[&]`、`[=]`、混合捕获）
-  - 迭代器模式（`for (auto it = c.begin(); it != c.end(); ++it)`、range-for、双指针 compact）
-  - 结构化绑定（`for (auto& [k, v] : m)`）
-  - STL 依赖列表（`std::sort`、`std::swap`、`std::max/min`、`std::random_device`、`std::mt19937`、`std::uniform_int_distribution`、`std::map`、`std::pair`、`std::vector`）
-  - 模板实例化策略（`upolynomial_<T>` 各实例）
-  - 引用参数模式（const ref、non-const ref、output-only）
-- [ ] **Day 4-5**：起草 `cpp-construct-catalog.md`
-  - 按类别组织：控制流、类型、运算符、STL、Lambda、迭代器、模板
-  - 每构造列出：语义、出现函数、典型 AST 样例
-- [ ] **Week 1 回顾**：与用户对齐调研覆盖完整
+  - 输出：`survey/ast-kinds.md` / `operators.md` / `types.md` / `summary.md`
+  - 发现并修：脚本挑错版本（诊断 B）+ `__taylor_coeff` 死代码（诊断 A）+ 4 处 generic lambda（诊断 C）
+  - 结果：AST 完全单态化（101 dependent 节点 → 0），24 测试全通过
+- [x] **Day 2 (2026-04-21)**：5 个专题扫描脚本
+  - `scan_lambdas.py` → `lambdas.md`：26 in-scope lambda，0 generic
+  - `scan_iterators.py` → `iterators.md`：92 range-for、4 compact-erase 关键模式
+  - `scan_stl.py` → `stl.md`：std::vector 2066、pair 685、map 94、RNG 三件套
+  - `scan_decomposition.py` → `decompositions.md`：30 处 DecompositionDecl，全 std::pair
+  - `scan_ref_params.py` → `ref_params.md`：26 个输出参数，**8 函数配置错位**
+  - 附带发现：补漏第 5 个 generic lambda（`polynomial_factorize.hh:108`）
+- [x] **Day 3 (2026-04-21)**：整合 `cpp-construct-catalog.md`
+  - 16 节 397 行：范围、类型、控制流、Lambda、迭代器、STL、运算符、Cast、内存、模板、函数调用、字面量、Pass 覆盖表、设计决策、缺口、衔接
+  - 每 AST kind 有对应翻译策略；每 Pass 列出必须处理的 kind
+- [x] **Week 1 回顾 (2026-04-21)**：调研完成 — 65 函数 + 3 实例 = 67 Lean 定义，62 AST kind，45 种运算符，1201 类型，全部登记
 
 ### Week 2：类型系统清查
 

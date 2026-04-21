@@ -52,3 +52,9 @@ test/debug_*.cc
 # Generated source (legacy)
 test/associatedgraph_test.cc
 tools/cpp2lean/__pycache__/
+
+# cpp2lean v2 AST cache (transient)
+proof/cpp2lean/_ast_cache/
+proof/cpp2lean/__pycache__/
+proof/cpp2lean/scripts/__pycache__/
+stderr.log

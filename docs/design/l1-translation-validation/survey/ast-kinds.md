@@ -1,6 +1,6 @@
 # AST Kind 直方图
 
-> 生成时间：2026-04-21 10:12
+> 生成时间：2026-04-21 11:07
 > 覆盖 65 个函数
 
 按出现次数降序。每 kind 列首次出现的函数名（样例）。
@@ -71,11 +71,11 @@
 ### `DoStmt` （2 次，首现 `__wang_core`）
 
 ```json
-{"id": "0x7a615d738f60", "kind": "DoStmt", "range": {"line": 2375, "col": 29}}
+{"id": "0x7abbf71ccde0", "kind": "DoStmt", "range": {"line": 2375, "col": 29}}
 ```
 
 ### `FloatingLiteral` （3 次，首现 `__heuristic_starting_precision`）
 
 ```json
-{"id": "0x7534bb6daa40", "kind": "FloatingLiteral", "range": {"line": null, "col": 14}, "type": {"qualType": "double"}, "valueCategory": "prvalue", "value": "2.5"}
+{"id": "0x74e61b3f1a40", "kind": "FloatingLiteral", "range": {"line": null, "col": 14}, "type": {"qualType": "double"}, "valueCategory": "prvalue", "value": "2.5"}
 ```

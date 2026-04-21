@@ -69,15 +69,16 @@
 
 目标：输出 `hir-design.md`，包含 HIR 数据结构定义 + Pass 1-5 规格。
 
-- [ ] **HIR 节点定义**：Stmt 家族、Expr 家族的 dataclass
-- [ ] **不变量阶梯**：HIR₀ → HIR₁ → HIR₂ → HIR₃ → HIR₄ 每阶段的不变量
-- [ ] **Pass 1 规格**：`parse`（AST → HIR₀）的输入输出契约 + 特殊 case 处理
-- [ ] **Pass 2 规格**：`ref_elim`（HIR₀ → HIR₁）的重写规则 + 输出参数 tuple 约定
-- [ ] **Pass 3 规格**：`lambda_lift`（HIR₁ → HIR₂）的 capture 处理 + modified capture 写回
-- [ ] **Pass 4 规格**：`iter_recognize`（HIR₂ → HIR₃）支持的迭代器模式枚举
-- [ ] **Pass 5 规格**：`operator_resolve`（HIR₃ → HIR₄）的运算符解析查表
-- [ ] **手动走查**：选 3 个复杂函数（`__lll_reduce`、`__mtshl_step_j`、`__zassenhaus_recombine`）手动走过 Pass 1-5，确认 HIR₄ 形式正确
-- [ ] **Week 4 回顾**：HIR 能完整表达 67 函数所有构造
+- [x] **HIR 节点定义 (2026-04-21)**：§1 Stmt/Expr/Type/HIRFunc 完整 dataclass
+- [x] **不变量阶梯 (2026-04-21)**：§2 HIR₀-HIR₄ 阶梯 + runtime assert 函数
+- [x] **Pass 1 规格 (2026-04-21)**：§3 AST kind → HIR 节点映射表（覆盖 62 种 kind）
+- [x] **Pass 2 规格 (2026-04-21)**：§4 ref_elim 算法 + 从 AST 自动推导（废弃 v1 OUTPUT_PARAMS 手工表）
+- [x] **Pass 3 规格 (2026-04-21)**：§5 lambda_lift + modified capture 写回（保守策略 [&] 全部返回）
+- [x] **Pass 4 规格 (2026-04-21)**：§6 iter_recognize 4 种模式（range-for 92、compact-erase 4、classic 1、parallel 1）
+- [x] **Pass 5 规格 (2026-04-21)**：§7 operator_resolve + CAST_TABLE 查表 + UB require 生成
+- [x] **手动走查 (2026-04-21)**：§8 __lll_reduce / __mtshl_step_j / __zassenhaus_recombine 三函数走过 Pass 1-5
+- [x] **Week 4 回顾 (2026-04-21)**：hir-design.md 1212 行 + v1-reuse-inventory.md
+  - HIR 层预估 ~2350 行代码；v2 总量 ~4250 行（v1 5956 → 减 29%）
 
 ### Week 5：MIR + codegen + 测试框架设计
 

@@ -29,13 +29,25 @@
 
 目标：输出 `type-system.md`，包含完整 C++ → Lean 类型映射表。
 
-- [ ] **基本类型映射**：`uint64_t` / `int64_t` / `int` / `bool` / `double` / `size_t`
-- [ ] **复合类型映射**：`std::vector<T>` / `std::pair<A,B>` / `std::map<K,V>` / `std::tuple`
-- [ ] **CLPoly 类型**：`ZZ` / `QQ` / `Zp` / `upolynomial_<T>` / `polynomial_<T, Order>` / `basic_monomial` / `Variable` 等
-- [ ] **模板实例化策略**：每个实例化生成独立 Lean 类型别名还是共用
-- [ ] **引用/指针处理**：`T&`、`const T&`、`T*`、`T**` 的映射约定
-- [ ] **STL 原语 Lean 端 shim**：`std::sort` → `Array.qsortWith`、`std::map` → `StdMap`（如何实现）等
-- [ ] **Week 2 回顾**：类型表能覆盖调研出的全部类型
+- [x] **Day 1 (2026-04-21)**：§1 基础数值类型映射 + §2 UB 分析（685 UB 站点枚举）
+  - 新增脚本：`scan_numeric_types.py`、`scan_casts.py`、`scan_ub_sites.py`
+  - Agent 调研：`clpoly-model-inventory.md`（380 行）、`lean-stdlib-catalog.md`（622 行）
+- [x] **Day 2 (2026-04-21)**：§3 CLPoly 核心类型（ZZ/QQ/Zp/Variable/Monomial/SparsePoly/MvPoly/Factorization + 辅助 struct）
+  - Agent 调研：`mathlib-poly-types.md`（511 行）
+  - Gap 分析：clpoly_model.lean 需新增 MonomialOrder enum、3 辅助 struct、补齐 Zp.inv
+- [x] **Day 3 (2026-04-21)**：§4 STL 容器 shim
+  - vector→Array、pair→Prod、map→StdMap（60 行完整实现）
+  - sort→Array.qsort（stdlib 直接对应）+ Agent `lean-sort-api.md`
+  - RNG 公理化、move/swap/iota/max/min 映射
+- [x] **Day 4 (2026-04-21)**：§5 模板实例化 + §6（并入 §3.3.9）
+  - `factorize` 3 实例本质是 3 个独立源函数（非同模板不同类型）
+  - 命名方案：factorize_{upoly, lex, grlex}_ir
+  - HIR 节点扩展：base_name + instance_suffix + mangled_name
+- [x] **Day 5 (2026-04-21)**：§7 引用指针消除 + §8 CAST_TABLE
+  - 26 non-const ref → tuple 返回；1 pointer 个案；ref_elim Pass 从 AST 自动推导
+  - 5670 cast 全覆盖：709 显式查表、4803 noop、158 FUNC_MAP
+  - CAST_TABLE Python 结构 + IntegralCast 源/目对完整枚举
+- [x] **Week 2 回顾 (2026-04-21)**：type-system.md 1286 行完成所有 8 节
 
 ### Week 3：C++ 子集形式语义
 

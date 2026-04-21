@@ -928,9 +928,337 @@ axiom Rng.seed : UInt64
 
 ---
 
-## §5 模板实例化策略（Day 4）
+## §5 模板实例化策略
 
-*（计划：`factorize` 3 实例命名与 HIR 处理）*
+### §5.1 规模
+
+65 TRANSLATION_SCOPE 函数中：
+- **64 个** 恰好 1 个 mangled 实例化 → 1 Lean 定义
+- **1 个**（`factorize`）有 3 个 mangled 实例化 → 3 Lean 定义
+
+**总计 67 个 Lean `_ir` 定义。**
+
+### §5.2 `factorize` 3 实例的本质：**3 个独立源函数**
+
+关键认识：**"factorize 有 3 个实例"不是"一个模板被 3 种类型具体化"**，而是**同一函数名 `factorize` 有 3 个互相独立的 C++ 源定义**（C++ 函数重载）：
+
+| 实例 | 源位置 | 源形式 | Lean 命名 |
+|---|---|---|---|
+| `factorize<upolynomial_<ZZ>>` | `polynomial_factorize_univar.hh:1564` | **非模板**（重载） | `factorize_upoly_ir` |
+| `factorize<polynomial_<ZZ, lex_<less>>>` | `polynomial_factorize.hh:22` | `template<class var_order>`（具体化到 `var_order=less`） | `factorize_lex_ir` |
+| `factorize<polynomial_<ZZ, grlex_<less>>>` | `polynomial_factorize.hh:133`（§8.6） | `template<class comp>`（具体化到 `comp=grlex_<less>`） | `factorize_grlex_ir` |
+
+**3 个源 body 结构不同**：
+- `factorize_upoly_ir`：直接处理单变量 ZZ
+- `factorize_lex_ir`：多变量 lex 序的完整 pipeline（sqf → primitive → 若单变量则 delegate 给 upoly，否则调 `__factor_multivar`）
+- `factorize_grlex_ir`：**转换器**——把输入从 `grlex` 转到 `lex`，调用 `factorize_lex_ir`，再把结果转回 `grlex`
+
+### §5.3 其他 64 函数的单实例化
+
+**都是因为其他函数只被 1 个具体的类型路径调用**。示例（均 1 实例）：
+
+| 函数 | 仅存在的实例 | 实例化原因 |
+|---|---|---|
+| `__factor_multivar` | `<less>`（即 lex_<less>）| 仅被 `factorize_lex_ir` 调用 |
+| `__wang_core` | `<less>` | 仅被 `__factor_multivar<less>` 调用 |
+| `__mtshl_lift` | `<less>` | 同上链 |
+| `__factor_squarefree_primitive_ZZ` | 非模板 | 单变量 ZZ 专用 |
+| `__hensel_lift` | `<less>` | |
+| `__ddf_Zp`、`__squarefree_Zp`、`__factor_Zp` | 非模板 | Zp 专用 |
+
+**`factorize_grlex_ir` 不创建新的 `__factor_multivar<grlex>` 实例**，因为它**先把 grlex 转 lex**，然后才调 `__factor_multivar<lex>`。所以没有 `grlex` 版本的下游链。
+
+### §5.4 HIR 处理方案
+
+#### §5.4.1 实例识别
+
+`parse` Pass 对每个函数：
+1. 从 Clang AST JSON 找所有 mangledName 非空的 `FunctionDecl`（`enumerate_instances.py` 已示范）
+2. 对 TRANSLATION_SCOPE 的每个函数名：
+   - 若恰 1 个实例 → 生成 1 个 `_ir` Lean def
+   - 若多个实例（仅 `factorize` 一例）→ 按实例的 qualType 签名生成多个 `_ir`，命名用类型后缀
+
+#### §5.4.2 命名后缀规则
+
+```python
+def instance_suffix(qualType: str) -> str:
+    """根据实例的 C++ 类型签名生成 Lean 名称后缀。"""
+    # factorize<upolynomial_<ZZ>>
+    if "upolynomial_" in qualType: return "upoly"
+    # factorize<polynomial_<ZZ, lex_<less>>>
+    if "lex_<less>" in qualType: return "lex"
+    # factorize<polynomial_<ZZ, grlex_<less>>>
+    if "grlex_<less>" in qualType: return "grlex"
+    # 其他情况（当前未出现）
+    return hash_suffix(qualType)
+```
+
+生成 Lean 定义名：`{base_name}_ir` 若单实例，`{base_name}_{suffix}_ir` 若多实例。
+
+#### §5.4.3 子调用解析
+
+在实例化版本的 AST 里，所有子函数调用**已经指向具体的实例化版本**（Clang 完成名字查找 + 实例化）。HIR 的 `parse` Pass 直接用：
+
+```python
+# 在 factorize_lex_ir 的 body 里，Clang AST 的 CallExpr 指向 __factor_multivar<less>
+# mangledName: _ZN6clpoly17__factor_multivarINS_4lessEE...
+# parse Pass 根据 mangledName 映射到 Lean 名 __factor_multivar_ir
+# （因为只有 1 个实例，不用后缀）
+
+# 在 factorize_grlex_ir 的 body 里，AST 的 CallExpr 指向 factorize<less>
+# （即 lex 版本的递归调用）
+# parse Pass 映射到 factorize_lex_ir
+```
+
+**关键机制**：翻译器用 **mangledName → Lean 名** 的 dict，构建时一次性填充，查找一次 O(1)。
+
+#### §5.4.4 HIR 节点扩展
+
+`HIRFunc` 增加一个字段：
+
+```python
+@dataclass
+class HIRFunc:
+    base_name: str          # 如 "factorize"
+    instance_suffix: str     # 如 "lex" / "grlex" / "upoly" / ""
+    mangled_name: str
+    qual_type: str          # 完整签名字符串（用于 debug / 保留）
+    lean_name: str          # 最终生成 "factorize_lex_ir"
+    params: list[HIRParam]
+    body: HIRBlock
+```
+
+#### §5.4.5 实例列表生成
+
+翻译器**运行前**用 `enumerate_instances.py` 脚本产出完整实例表：
+
+```
+TRANSLATION_INSTANCES = {
+    "factorize": [
+        {"suffix": "upoly",  "mangled": "_Z...", "qualType": "..."},
+        {"suffix": "lex",    "mangled": "_Z...", "qualType": "..."},
+        {"suffix": "grlex",  "mangled": "_Z...", "qualType": "..."},
+    ],
+    "__factor_multivar": [
+        {"suffix": "", "mangled": "_Z...", "qualType": "..."},
+    ],
+    # ... 其他 63 个 ...
+}
+```
+
+这张表由调研脚本生成，翻译器查表确定每个函数的实例数与 Lean 名。
+
+### §5.5 Mathlib 精化映射（§8.5-8.8 对齐）
+
+| C++ 实例 | L1 Lean | L2 精化目标 |
+|---|---|---|
+| `factorize<upolynomial_<ZZ>>` | `factorize_upoly_ir` | 单变量 `Polynomial ℤ` 的 Mathlib 因式分解 |
+| `factorize<polynomial_<ZZ, lex>>` | `factorize_lex_ir` | `MvPolynomial (Fin n) ℤ` with `lex` 序 |
+| `factorize<polynomial_<ZZ, grlex>>` | `factorize_grlex_ir` | `MvPolynomial (Fin n) ℤ` with `grlex` 序 |
+
+但 L2 模型（已完成 6276 行 0 sorry）**只关心数学正确性**（不可约因子的乘积等于输入），与 monomial order 无关。因此：
+- L2 的 `factorize_correct` 定理对 `factorize_lex_ir` / `factorize_grlex_ir` **通用**
+- 精化证明需要证明 "grlex 版本 = lex 版本 ∘ 转换" 即可直接继承正确性
+
+---
+
+## §6 辅助 struct（已在 §3.3.9 覆盖）
+
+见 §3.3.9：`PrimeSelectionResult`、`WangLcResult`、`HenselNode`、`Factorization` 的 Lean struct 定义。
+
+这 4 个结构是算法内部状态容器，由 `parse` Pass 直接生成对应 Lean struct。不需要精化到 Mathlib 类型（L2 直接用相同 struct 或拆解字段）。
+
+---
+
+## §7 引用与指针消除
+
+### §7.1 参数模式统计（`ref_params.md`）
+
+| 传递方式 | 数量 | 比例 | v2 策略 |
+|---|---|---|---|
+| `T` (value) | 40 | 21% | 保留（Lean 值传递） |
+| `const T&` | 125 | 65% | 保留为值参数（Lean 值语义，引用透明） |
+| **`T&`** (non-const ref) | **26** | **14%** | **`ref_elim` Pass：提升为返回值 tuple** |
+| `T*` (pointer) | 1 | 0.5% | 个案处理 |
+| `T&&` (rvalue ref) | 0 | — | 不使用 |
+
+### §7.2 `ref_elim` Pass 规则
+
+对每个 C++ 函数：
+1. 扫描参数表，识别所有 `T&`（含 `const T&` 排除）
+2. 对每个 ref 参数，将其从参数列表**移到返回值 tuple**
+3. 在函数体末尾自动追加该变量的最终 SSA 版本
+
+**转换前**：
+```cpp
+void foo(ZZ& result, SparsePoly& work, int n) {
+    // 修改 result 和 work
+    result = 42;
+    work.push_back(ZZ(1));
+}
+```
+
+**转换后**（HIR₁）：
+```
+def foo_ir (result_0 : ZZ) (work_0 : SparsePoly) (n : Int) : ZZ × SparsePoly :=
+    let result_1 := 42
+    let work_1 := work_0.push (ZZ.ofInt 1)
+    (result_1, work_1)
+```
+
+### §7.3 自动推导 vs 配置表
+
+**v1 问题**：`TRANSLATION_SCOPE_OUTPUT_PARAMS` 是手工维护的 dict，8 个函数配置错位（`ref_params.md` §4 发现）。
+
+**v2 方案**：`ref_elim` Pass 从 AST 的 `ParmVarDecl.type.qualType` **直接读取**是否带 `&`，不再依赖配置。零手工维护错误源。
+
+### §7.4 调用方重写
+
+对调用 `foo(result, work, n)` 的每个调用点：
+
+**转换前**（C++）：
+```cpp
+ZZ result;
+SparsePoly work;
+foo(result, work, n);
+use(result, work);
+```
+
+**转换后**（HIR₁）：
+```
+let result_0 : ZZ := default
+let work_0 : SparsePoly := #[]
+let (result_1, work_1) := foo_ir result_0 work_0 n
+use(result_1, work_1)
+```
+
+注意：调用方必须初始化 ref 参数的初值（或用 `default`）。
+
+### §7.5 1 个指针参数的特殊处理
+
+唯一的 `T*` 参数位于（需 AST 精确定位）：
+
+从 `ref_params.md` 数据推断，最可能是：
+- `__factor_squarefree_primitive_ZZ` 的内部某个 `mpz_t*` 传参（GMP 原生）
+- 或 `poly_convert` 的 `comp_ptr()`（类型参数）
+
+**策略**：把 `T*` 当作 `T`（Lean 值传递，ptr 语义不翻译）。如果实际行为依赖于指针别名，手工在 `clpoly_model.lean` 里用 opaque 函数包装。
+
+### §7.6 `std::move` 的交互
+
+CLPoly 代码常写 `foo(std::move(x), ...)`，但对**输出参数**（ref）不会 move（move 是对 rvalue 的优化）。对**输入 const ref 参数**的 `std::move` 在 Lean 中等同于 `id`。
+
+---
+
+## §8 CAST_TABLE：完整类型转换表
+
+### §8.1 Cast 种类分布（`casts.md`）
+
+| castKind | 次数 | 说明 | Lean 处理 |
+|---|---|---|---|
+| `FunctionToPointerDecay` | 1786 | `func → &func` | **noop**（Lean 不区分函数和函数指针）|
+| `NoOp` | 1630 | 类型同质 | **noop** |
+| `LValueToRValue` | 1263 | 读取左值 | **noop**（Lean 值语义）|
+| **`IntegralCast`** | **704** | **整数 ↔ 整数** | **查表** |
+| `ConstructorConversion` | 142 | 构造函数转换 | 映射到 Lean 构造器 |
+| `BuiltinFnToFnPtr` | 53 | builtin 到 fn ptr | noop |
+| `ArrayToPointerDecay` | 46 | 数组到指针 | noop（CLPoly 不用指针算术）|
+| `ToVoid` | 25 | 丢弃值 | `let _ := ...` |
+| `UserDefinedConversion` | 16 | 用户定义 | 映射到 Lean 函数 |
+| `IntegralToFloating` | 4 | 整数 → 浮点 | `Float.ofNat` / `Int.toFloat` |
+| `FloatingToIntegral` | 1 | 浮点 → 整数 | `Float.toInt` / `Float.floor.toInt` |
+| **合计** | **5670** | | |
+
+**实际需要 CAST_TABLE 查表的只有**：`IntegralCast` (704) + `IntegralToFloating` (4) + `FloatingToIntegral` (1) + `UserDefinedConversion` (16) + `ConstructorConversion` (142，但多数是 `T(x)` 格式平凡) = **~870 处**。
+
+其余 ~4800 处 cast 在 HIR 阶段**整体消除**（翻译为恒等映射）。
+
+### §8.2 IntegralCast 完整映射表
+
+基于 `casts.md` 的前 80 三元组，IntegralCast 的主要源/目对：
+
+| Source | Target | 次数 | Lean 表达式 | UB 义务 |
+|---|---|---|---|---|
+| `int` | `size_type` (unsigned long) | 465 | `i.toNat.toUInt64` | `require i ≥ 0` |
+| `int` | `int64_t` | 61 | `i.toInt64` | 无（int64 容纳 int）|
+| `size_type` | `int` | 44 | `s.toInt32` | `require s ≤ INT_MAX` |
+| `int` | `uint64_t` | 37 | `i.toNat.toUInt64` | `require i ≥ 0` |
+| `int` | `size_t` | 26 | `i.toNat.toUInt` | `require i ≥ 0` |
+| `uint64_t` | `int` | ~20 | `u.toInt32` | `require u ≤ INT_MAX`（UB-7）|
+| `uint64_t` | `int64_t` | ~15 | `u.toInt64` | `require u ≤ INT64_MAX`（UB-7）|
+| `int64_t` | `int` | ~10 | `i.toInt32` | `require -2^31 ≤ i < 2^31` |
+| `int64_t` | `uint64_t` | ~5 | `i.toNat.toUInt64` | `require i ≥ 0` |
+| `bool` | `int` | ~5 | `if b then 1 else 0` | 无 |
+| `int` | `bool` | ~5 | `i ≠ 0` | 无 |
+
+### §8.3 CAST_TABLE Python 结构
+
+```python
+CAST_TABLE: dict[tuple[str, str], str] = {
+    # (source_type, target_type) → Lean 表达式模板
+    #   "{x}" 是源值占位符
+    #   (需前置条件 require)
+    ("int", "size_type"):     "({x}).toNat.toUInt64",      # require x ≥ 0
+    ("int", "int64_t"):       "({x}).toInt64",             # 无 UB
+    ("size_type", "int"):     "({x}).toInt32",             # require x ≤ INT_MAX
+    ("int", "uint64_t"):      "({x}).toNat.toUInt64",      # require x ≥ 0
+    ("int", "size_t"):        "({x}).toNat.toUInt",        # require x ≥ 0
+    ("uint64_t", "int"):      "({x}).toInt32",             # UB-7 require
+    ("uint64_t", "int64_t"):  "({x}).toInt64",             # UB-7 require
+    ("int64_t", "int"):       "({x}).toInt32",             # UB-6 require
+    ("int64_t", "uint64_t"):  "({x}).toNat.toUInt64",      # require x ≥ 0
+    ("bool", "int"):          "(if {x} then 1 else 0)",
+    ("int", "bool"):          "({x} ≠ 0)",
+
+    # IntegralToFloating (4 处，全在 __heuristic_starting_precision)
+    ("int", "double"):        "Int.toFloat ({x})",
+    ("uint64_t", "double"):   "Nat.toFloat ({x}).toNat",
+
+    # FloatingToIntegral (1 处)
+    ("double", "int"):        "({x}).toInt",  # 截断（C++ 是 truncate 不是 floor）
+
+    # NoOp 类（映射恒等）
+    ("int", "int"):           "{x}",
+    ("uint64_t", "uint64_t"): "{x}",
+    # ... 所有同型对 ...
+}
+```
+
+### §8.4 UserDefinedConversion（16 处）
+
+从 `casts.md` 的前 80 看，UserDefinedConversion 主要是：
+- `ZZ(int literal)` — `ZZ` 构造函数：`Int.ofNat` / 直接字面量
+- `Zp(val, prime)` — `Zp` 构造函数：`⟨val, prime⟩`
+- `QQ(int)` — `Rat` 构造函数
+
+**处理**：映射到 `FUNC_MAP`（CLASS_MAP）里的 Lean 构造器名。不需专门 CAST_TABLE 条目。
+
+### §8.5 ConstructorConversion（142 处）
+
+绝大多数是 `T(x)` 的显式构造，本质是 function call。映射同 UserDefinedConversion：查 `CLASS_MAP` → Lean 构造器。
+
+### §8.6 CAST_TABLE 完整性验证
+
+**covered**：IntegralCast（704）+ IntegralToFloating（4）+ FloatingToIntegral（1）= 709 处显式整数/浮点 cast，全部覆盖。
+
+**noop**：FunctionToPointerDecay + NoOp + LValueToRValue + BuiltinFnToFnPtr + ArrayToPointerDecay + ToVoid = 4803 处 自动归零。
+
+**查表**（`FUNC_MAP`）：ConstructorConversion + UserDefinedConversion = 158 处。
+
+**总计 5670 cast 全部覆盖**。
+
+### §8.7 v1 翻译器的不足
+
+v1 的 `ssa_transform.py` 对 cast 处理分散在多处：
+- `ImplicitCastExpr` 在 `clang_ast.py` 里 unwrap（大部分情况 OK）
+- `CStyleCastExpr` / `CXXStaticCastExpr` 零散处理
+- 没有 CAST_TABLE，整数类型转换靠运行时字符串拼接
+
+**v2 改为统一 CAST_TABLE**，`operator_resolve` Pass 查表一次完成。消除"不同 cast kind 在不同代码路径被处理"的混乱。
+
+---
+
+## 当前进度（Week 2 完成）
 
 ---
 
@@ -940,22 +1268,19 @@ axiom Rng.seed : UInt64
 
 ---
 
-## §7 引用与指针（Day 5）
+## 当前进度（Week 2 完成）
 
-*（计划：`T&` → tuple 返回；`T*` 的 1 处特殊处理）*
+- [x] **Day 1 (2026-04-21)**：§1 基础数值 + §2 UB 分析
+- [x] **Day 2 (2026-04-21)**：§3 CLPoly 核心类型
+- [x] **Day 3 (2026-04-21)**：§4 STL 容器 shim
+- [x] **Day 4 (2026-04-21)**：§5 模板实例化 + §6（已并入 §3.3.9）
+- [x] **Day 5 (2026-04-21)**：§7 引用指针消除 + §8 CAST_TABLE
 
----
+## Week 2 验收
 
-## §8 CAST_TABLE 完整枚举（Day 5）
+**本文件（`type-system.md`）作为 Week 2 的硬性产出**，覆盖：
+- §1 所有基础数值类型 + §2 685 UB 站点 + §3 所有 CLPoly 核心类型（14 个）
+- §4 全部 STL 容器 shim + §5 模板实例化方案 + §6 辅助 struct
+- §7 引用/指针消除 + §8 CAST_TABLE 覆盖 5670 cast 全部
 
-*（计划：所有 263 unique cast 三元组 → Lean 表达式映射）*
-
----
-
-## 当前进度
-
-- [x] **Day 1 (2026-04-21)**：§1 基础数值 + §2 UB 分析 完成
-- [x] **Day 2 (2026-04-21)**：§3 CLPoly 核心类型完成
-- [x] **Day 3 (2026-04-21)**：§4 STL 容器 shim 完成
-- [ ] **Day 4**：§5 模板实例化（§6 已在 §3.3.9 覆盖，可并入 Day 4）
-- [ ] **Day 5**：§7 + §8 引用指针 + CAST_TABLE
+**给 Week 3（语义）/ Week 4-5（HIR/MIR 设计）提供完整输入**。

@@ -58,3 +58,5 @@ proof/cpp2lean/_ast_cache/
 proof/cpp2lean/__pycache__/
 proof/cpp2lean/scripts/__pycache__/
 stderr.log
+proof/cpp2lean_v2/__pycache__/
+proof/cpp2lean_v2/*/__pycache__/

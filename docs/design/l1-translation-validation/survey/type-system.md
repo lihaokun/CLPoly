@@ -276,9 +276,402 @@ signature: (value_params) (require_params) → (ret_tuple)
 
 ---
 
-## §3 CLPoly 核心类型（Day 2 起草）
+## §3 CLPoly 核心类型
 
-*（本节留到 Week 2 Day 2 完成。计划覆盖 `ZZ`、`QQ`、`Zp`、`Variable`、`basic_monomial`、`polynomial_`、`upolynomial_`、`factorization`）*
+### §3.1 使用频次（实测，from `types.md`）
+
+| C++ 类型（简化）| 带 const 出现 | 无 const 出现 | 合计 | 宿主数 |
+|---|---|---|---|---|
+| `upolynomial_<Zp>` | 112 | 340 | **452** | Zp 模块主导 |
+| `upolynomial_<ZZ>` | 103 | 325 | **428** | Univar 模块主导 |
+| `Zp` | 81 | 243 | **324** | 22 个函数 |
+| `basic_polynomial<...Zp...>` | 79 | 207 | **286** | polynomial_<Zp,...> 底层 |
+| `PolyZp`（typedef 别名）| — | 255 | **255** | Wang 模块内部 |
+| `polynomial_<ZZ, lex_<less>>` | 79 | 115 | **194** | 多变量 ZZ |
+| `basic_monomial<lex_<less>>` | — | 79 | **79** | 16 函数 |
+| `polynomial_<Zp, lex_<less>>` | 66 | 80 | **146** | 多变量 Zp 中间 |
+| `basic_polynomial<umonomial,Zp,uless>` | — | 79 | **79** | upolynomial_<Zp> 底层 |
+| `clpoly::ZZ` | — | 107 | **107** | 25 函数 |
+| `std::vector<upolynomial_<ZZ>>` | — | 99 | **99** | 因子列表 |
+| `std::vector<PolyZp>` | — | 81 | **81** | — |
+| `std::vector<Zp>` | — | 68 | **68** | 系数序列 |
+
+### §3.2 类型映射决策表（总览）
+
+来自 `mathlib-poly-types.md` 调研结论：
+
+| CLPoly C++ 类型 | L1 映射 | L2 精化 | 决策理由 |
+|---|---|---|---|
+| `ZZ`（GMP 封装）| `ZZ : structure { val : Int }` 或直接 `Int` | `Int` | L1 可完全用 `Int`（GMP 精确到 Int 一致）|
+| `QQ`（有理数）| 直接 `Rat` | `Rat` | Mathlib 已完整 |
+| `Zp`（运行时素数）| **自定义** `Zp { val : UInt64, prime : UInt64 }` | `ZMod p.toNat` | `ZMod p` 要求 p 编译时，CLPoly 是运行时 |
+| `variable` | `Variable = Nat` 或 `Fin n`（简化）| `Fin n`（严格）| L1 直接用 UInt64 作索引 |
+| `basic_monomial<order>` | **自定义** `Monomial { exps : Array UInt64, order : MonomialOrder }` | `Finsupp (Fin n) ℕ` | order 信息必须保留于 L1 |
+| `umonomial`（单变量单项式）| **自定义** `UMonomial { deg : UInt64 }` | `ℕ` | 只需一个度数 |
+| `upolynomial_<T>` | **自定义** `SparsePoly T = Array (UMonomial × T)` | `Polynomial T`（经 `toPoly`）| 稀疏 + 降序，和 C++ 一致 |
+| `polynomial_<T, order>` | **自定义** `MvPoly T = Array (Monomial × T)` | `MvPolynomial σ T` | 稀疏 + 单调序 |
+| `factorization<Poly>` | **自定义** `Factorization Poly = { content : T, factors : Array (Poly × UInt64) }` | `Multiset (Poly × ℕ)`（L2 已用）| 结构直接对应 |
+
+### §3.3 每个类型的详细 Lean 定义
+
+#### §3.3.1 `ZZ`
+
+**C++**：GMP `mpz_t` 封装，`clpoly::ZZ` struct 带 `int64_t _val` + `mpz_ptr _mpz`（小整数路径 + mpz 任意精度路径）。
+
+**L1 Lean**：
+
+```lean
+/-- L1 精确模型：保留双路径可能但简化为 Int -/
+abbrev ZZ := Int
+
+-- 关键操作（映射到 Int stdlib）
+-- ZZ.abs : ZZ → ZZ := Int.natAbs |> Int.ofNat
+-- ZZ.add, ZZ.sub, ZZ.mul, ZZ.div, ZZ.mod : 已在 Int
+-- ZZ.gcd : ZZ → ZZ → ZZ := Int.gcd (Nat)
+```
+
+**AST 实测调用**（from `clpoly-types-usage.md`）：
+- `.operator bool()`（12 次）—— 判零：`ZZ != 0` → `x ≠ 0`
+- `.sizeinbase(base)`（3 次）—— 位数估计：`Int.log2 x + 1` 或 Mathlib `Nat.log`
+- `.fdiv_ui(d)`（3 次）—— 向下除以 unsigned：`Int.fdiv x d`
+
+**L2 精化**：`Int`。映射函数：`toInt : ZZ → Int := id`。
+
+#### §3.3.2 `QQ`
+
+**C++**：两个 `ZZ`（分子 + 分母），自动化简。
+
+**L1 Lean**：
+
+```lean
+abbrev QQ := Rat
+
+-- QQ.num, QQ.den : 已在 Rat
+-- 自动化简：Rat.mk 默认 reduce
+```
+
+**实测使用**：极少（0 次 as variable / parameter type）。仅 `__lll_reduce` 和 `__heuristic_starting_precision` 间接用（通过 `std::vector<QQ>`）。
+
+**L2 精化**：`Rat` 直接。
+
+#### §3.3.3 `Zp`
+
+**C++**：
+```cpp
+struct Zp {
+  int64_t _val;
+  uint64_t _p;
+  // ... Barrett reduction 辅助字段 ...
+};
+```
+
+**L1 Lean**（已在 `clpoly_model.lean` 部分定义）：
+
+```lean
+structure Zp where
+  val : UInt64
+  prime : UInt64
+deriving Repr, Inhabited
+
+def Zp.mk (v : Int) (p : UInt64) : Zp :=
+  let n := (v % p.toNat).toNat
+  ⟨n.toUInt64, p⟩
+
+/-- 加/减/乘：Barrett 简化为 `val_x op val_y mod prime` -/
+def Zp.add (a b : Zp) : Zp := ⟨(a.val + b.val) % a.prime, a.prime⟩
+def Zp.sub (a b : Zp) : Zp := ⟨(a.val + a.prime - b.val) % a.prime, a.prime⟩
+def Zp.mul (a b : Zp) : Zp := ⟨(a.val * b.val) % a.prime, a.prime⟩
+def Zp.neg (a : Zp) : Zp := ⟨(a.prime - a.val) % a.prime, a.prime⟩
+def Zp.inv (a : Zp) : Zp := sorry  -- 扩展欧几里得
+
+/-- 相等仅比较值；prime 必须相同（若不同是 bug）-/
+instance : BEq Zp where
+  beq a b := a.val == b.val && a.prime == b.prime
+```
+
+**AST 实测方法**（from `clpoly-types-usage.md`）：
+- `.prime()`（9 次）—— 返回 `prime` 字段
+- `.inv()`（2 次）—— 模乘逆元
+- `.number()`（1 次）—— 返回值字段
+
+**L2 精化**：
+```lean
+def Zp.toZMod : (z : Zp) → ZMod z.prime.toNat :=
+  fun z => ZMod.mk z.prime.toNat z.val.toNat
+```
+**需前置条件** `Fact (z.prime.toNat.Prime)`，由 `__select_prime` 建立。
+
+#### §3.3.4 `Variable`
+
+**C++**：`clpoly::variable` — 简单封装（可能带 name string）。
+
+**L1 Lean**：
+
+```lean
+abbrev Variable := UInt64  -- 变量索引
+```
+
+**实测**：13 次出现，仅作索引。不访问字符串名字段。
+
+#### §3.3.5 `basic_monomial<order>` 与 `umonomial`
+
+**C++**：
+```cpp
+template<class order_> struct basic_monomial {
+  std::vector<std::pair<variable, uint32_t>> _data;
+  // order_ 是 tag 类型，决定 operator< 的实现
+};
+
+struct umonomial {
+  uint32_t deg;
+};
+```
+
+**L1 Lean**：
+
+```lean
+/-- 多变量单项式：变量→指数 的数组，保持 order 不变量 -/
+structure Monomial where
+  /-- 按变量 id 排序的 (var, exp) 对；exp > 0 -/
+  data : Array (Variable × UInt32)
+deriving Repr, Inhabited
+
+/-- Monomial order 作为参数传递（lex / grlex / etc.）-/
+inductive MonomialOrder where
+  | lex
+  | grlex
+  | degrevlex
+
+/-- 单变量单项式 -/
+structure UMonomial where
+  deg : UInt64
+deriving Repr, Inhabited
+```
+
+**AST 方法**：
+- `basic_monomial.begin()`/`.end()`（各 4 次）—— range-for 触发的迭代器
+- `umonomial.deg`（1 次显式访问）—— 度数字段
+
+**L2 精化**：
+- `Monomial.toFinsupp : Monomial → (Fin n →₀ ℕ)`
+- `UMonomial.toNat : UMonomial → ℕ := .deg.toNat`
+
+#### §3.3.6 `upolynomial_<T>`
+
+**C++**：
+```cpp
+template<class T> using upolynomial_ = basic_polynomial<umonomial, T, uless>;
+// basic_polynomial 是 std::vector<std::pair<Mon, T>>
+```
+
+**L1 Lean**：
+
+```lean
+/-- 单变量稀疏多项式：降序 (UMonomial, coeff) 对列表 -/
+abbrev SparsePoly (T : Type) := Array (UMonomial × T)
+
+abbrev SparsePolyZZ := SparsePoly Int
+abbrev SparsePolyZp := SparsePoly Zp
+
+-- 不变量：degrees 严格降序，coeffs 非零
+-- 这些不变量在 L1 不强制（partial def 不验证），
+-- 在 L2 精化中作为 `toPoly` 的前置条件
+```
+
+**L2 精化**：
+
+```lean
+def SparsePoly.toPolyZp (p : SparsePolyZp) : Polynomial (ZMod p_val) :=
+  p.foldl (fun acc (u, c) => acc + Polynomial.C c.toZMod * Polynomial.X ^ u.deg.toNat) 0
+```
+
+#### §3.3.7 `polynomial_<T, order>`
+
+**C++**：
+```cpp
+template<class T, class order> using polynomial_ =
+  basic_polynomial<basic_monomial<order>, T, order>;
+```
+
+**L1 Lean**：
+
+```lean
+/-- 多变量稀疏多项式：按 order 排序的 (Monomial, coeff) 对列表 -/
+structure MvPoly (T : Type) where
+  terms : Array (Monomial × T)
+  order : MonomialOrder
+deriving Repr, Inhabited
+
+abbrev MvPolyZZ := MvPoly Int
+abbrev MvPolyZp := MvPoly Zp
+```
+
+**L2 精化**：`MvPolynomial (Fin n) T`，通过 `toMvPolynomial` 折叠。
+
+#### §3.3.8 `factorization<Poly>`
+
+**C++**：
+```cpp
+template<class Poly> struct factorization {
+  typename Poly::coeff_type content;
+  std::vector<std::pair<Poly, uint64_t>> factors;
+};
+```
+
+**L1 Lean**：
+
+```lean
+structure Factorization (Poly : Type) (Coeff : Type) where
+  content : Coeff
+  factors : Array (Poly × UInt64)
+deriving Repr, Inhabited
+```
+
+**实例化**：
+- `Factorization SparsePolyZZ Int`（`factorize(upolynomial_<ZZ>)` 返回）
+- `Factorization MvPolyZZ Int`（多变量）
+- `Factorization SparsePolyZp Zp`（Zp 因式分解）
+
+**L2 精化**：`Multiset (Poly × ℕ)`（数学乘积）。
+
+#### §3.3.9 辅助 struct（`__prime_selection_result`、`__wang_lc_result`、`__hensel_node`）
+
+从 C++ 源：
+
+```cpp
+struct __prime_selection_result {
+  uint64_t prime;
+  std::vector<upolynomial_<Zp>> factors;
+  bool irreducible;
+};
+
+struct __wang_lc_result {
+  bool success;
+  std::vector<polynomial_<ZZ, lex>> scaled_factors;
+  std::vector<polynomial_<ZZ, lex>> lc_targets;
+  ZZ delta;
+};
+
+struct __hensel_node {
+  /* 树节点：g, h, s, t, parent_idx, children ... */
+};
+```
+
+**L1 Lean**：
+
+```lean
+structure PrimeSelectionResult where
+  prime : UInt64
+  factors : Array SparsePolyZp
+  irreducible : Bool
+
+structure WangLcResult where
+  success : Bool
+  scaled_factors : Array MvPolyZZ
+  lc_targets : Array MvPolyZZ
+  delta : Int
+
+structure HenselNode where
+  g : SparsePolyZZ
+  h : SparsePolyZZ
+  s : SparsePolyZZ
+  t : SparsePolyZZ
+  parent_idx : Int
+  left_idx : Int
+  right_idx : Int
+```
+
+**L2 精化**：这些是算法内部结构，L2 不直接建模；精化证明时"解包"成每个字段。
+
+### §3.4 Gap 分析：`clpoly_model.lean` 现状 vs 需要
+
+基于 `clpoly-model-inventory.md`（380 行，14 types、1 axiom、~40 functions、6 TODOs）：
+
+| 需要 | 已有 | 状态 |
+|---|---|---|
+| `ZZ`（别名 `Int`）| ✓ 已定义 `abbrev ZZ := Int` | OK |
+| `QQ`（别名 `Rat`）| ✓ 已定义 | OK |
+| `Zp` 结构体 | ✓ 已定义 `Zp { val, prime }` + `Zp.add/sub/mul/neg` | OK |
+| `Zp.inv` | ❌ **TODO**（扩展欧几里得未写）| 补齐 |
+| `Variable` | ✓ `abbrev Variable := UInt64` | OK |
+| `Monomial` | ❌ 简化为"指数向量数组"，缺 `MonomialOrder` 标记 | **重做** |
+| `UMonomial` | ✓ 已定义 | OK |
+| `SparsePoly` / `SparsePolyZZ` / `SparsePolyZp` | ✓ 已定义 | OK |
+| `MvPoly` / `MvPolyZZ` / `MvPolyZp` | ✓ 基础结构，缺 order 字段 | **重做** |
+| `Factorization` | ✓ 已定义 | OK |
+| `PrimeSelectionResult` / `WangLcResult` / `HenselNode` | ❌ 未定义 | **新增** |
+| `StdMap` | ✓ 基础，但迭代器 `.end/.begin` 是占位 | 翻译时改用 filter/find，不依赖裸迭代器 |
+| `Rng`（公理化）| ✓ 已定义 | OK |
+| `__upoly_divmod_mod` Lean 实现 | ❌ TODO（占位 `(f, #[])`）| 补齐 |
+| `__upoly_gcd` Lean 实现 | ❌ TODO | 补齐或用 `EuclideanDomain.gcd` |
+
+### §3.5 需要 `clpoly_model.lean` 新增的内容
+
+```lean
+-- §3.5.1 MonomialOrder 枚举
+inductive MonomialOrder where
+  | lex
+  | grlex
+deriving Repr, Inhabited, BEq
+
+-- §3.5.2 MvPoly 改版（加 order 字段）
+structure MvPoly (T : Type) where
+  terms : Array (Monomial × T)
+  order : MonomialOrder
+deriving Repr, Inhabited
+
+-- §3.5.3 辅助 struct
+structure PrimeSelectionResult where
+  prime : UInt64
+  factors : Array SparsePolyZp
+  irreducible : Bool
+deriving Repr, Inhabited
+
+structure WangLcResult where
+  success : Bool
+  scaled_factors : Array MvPolyZZ
+  lc_targets : Array MvPolyZZ
+  delta : Int
+deriving Repr, Inhabited
+
+structure HenselNode where
+  g : SparsePolyZZ
+  h : SparsePolyZZ
+  s : SparsePolyZZ
+  t : SparsePolyZZ
+  parent_idx : Int
+  left_idx : Int
+  right_idx : Int
+deriving Repr, Inhabited
+
+-- §3.5.4 Zp.inv（扩展欧几里得）
+partial def Zp.inv (a : Zp) : Zp :=
+  -- 扩展欧几里得：a * inv_a ≡ 1 mod prime
+  sorry  -- Week 2 Day 3 补齐，或用 Mathlib 的 ZMod.inv 的公理对应
+```
+
+### §3.6 命名约定
+
+从 `clpoly_model.lean` 现状 + `cpp-construct-catalog.md` 的实例化发现：
+
+| C++ 类型族 | L1 命名约定 | 示例 |
+|---|---|---|
+| 有具体类型参数 | `<Family><TypeSuffix>` | `SparsePolyZp`, `MvPolyZZ` |
+| 泛型多项式族 | `<Family>` | `SparsePoly`, `MvPoly` |
+| 辅助 struct | `<C++Name 驼峰>` | `PrimeSelectionResult`, `WangLcResult` |
+| 枚举 | `<Family><Kind>` | `MonomialOrder` |
+
+### §3.7 与 `factorize` 3 实例的对接
+
+`factorize` 3 实例对应 3 种输入类型：
+
+| 实例 | 输入类型 | Lean 命名 | 返回类型 |
+|---|---|---|---|
+| `factorize<upolynomial_<ZZ>>` | 单变量 ZZ | `factorize_upoly_ir` | `Factorization SparsePolyZZ Int` |
+| `factorize<polynomial_<ZZ, lex>>` | 多变量 lex | `factorize_lex_ir` | `Factorization MvPolyZZ Int` |
+| `factorize<polynomial_<ZZ, grlex>>` | 多变量 grlex | `factorize_grlex_ir` | `Factorization MvPolyZZ Int` |
+
+多变量的 `lex` vs `grlex` 仅在 `MvPoly.order` 字段区分，其他逻辑共享。
 
 ---
 
@@ -315,7 +708,7 @@ signature: (value_params) (require_params) → (ret_tuple)
 ## 当前进度
 
 - [x] **Day 1 (2026-04-21)**：§1 基础数值 + §2 UB 分析 完成
-- [ ] **Day 2**：§3 CLPoly 核心类型
+- [x] **Day 2 (2026-04-21)**：§3 CLPoly 核心类型完成
 - [ ] **Day 3**：§4 STL 容器 shim
-- [ ] **Day 4**：§5 + §6 模板实例化 + struct 定义
+- [ ] **Day 4**：§5 + §6 模板实例化 + struct 定义（§6 已在 §3.3.9 部分覆盖）
 - [ ] **Day 5**：§7 + §8 引用指针 + CAST_TABLE

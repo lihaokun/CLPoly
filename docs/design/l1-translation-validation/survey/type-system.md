@@ -675,9 +675,256 @@ partial def Zp.inv (a : Zp) : Zp :=
 
 ---
 
-## §4 STL 容器 shim（Day 3）
+## §4 STL 容器 shim
 
-*（计划覆盖 `vector` → `Array`、`pair` → `×`、`map` → `StdMap`、`sort` → `qsortWith`、RNG 三件套公理化）*
+### §4.1 `std::vector<T>` → `Array T`
+
+**使用频次**：2066 次（`stl.md` 数据），最常见容器。
+
+**操作映射表**：
+
+| C++ 操作 | Lean 对应 | 注意事项 |
+|---|---|---|
+| `v.push_back(x)` | `v.push x` | 返回新 Array（SSA 化） |
+| `v.pop_back()` | `v.pop` | 返回新 Array，**空 Array 时 no-op** |
+| `v.back()` | `v.back!` | 空 Array 时 `default` — 需 `require v.size > 0` |
+| `v.front()` | `v.front!` | 同上 |
+| `v[i]` 读 | `v[i]!` / `v.get! i` | 越界 `default` — 需 `require i < v.size` |
+| `v[i] = x` | `v.set! i x` | 越界 silent no-op — 需 `require i < v.size` |
+| `v.size()` | `v.size` | 返回 `Nat` |
+| `v.empty()` | `v.isEmpty` | `v.size == 0` |
+| `v.reserve(n)` | `id`（noop） | Lean Array 无容量预留 |
+| `v.clear()` | `Array.empty` | 新建空 Array |
+| `v.begin()`, `v.end()` | 不直接翻译 | 迭代器模式由 `iter_recognize` 处理 |
+| `v.erase(it, v.end())` | `v.take k`（k 由 it 推导） | compact 模式专用 |
+| `v.erase(v.begin() + i)` | `v.eraseIdx! i`（自定义） | 删除指定位置 |
+| `v.insert(v.begin() + i, x)` | `v.insertAt! i x`（自定义） | 插入 |
+| `std::vector<T>(n)` | `Array.mkArray n default` | 大小 n 默认值 |
+| `std::vector<T>(n, v)` | `Array.mkArray n v` | 大小 n 值 v |
+
+**注**：Lean `Array.pop` 对空 Array 返回空 Array（safe），但 C++ `pop_back` 是 UB — 翻译器应在 `require ¬v.isEmpty` 保证。
+
+### §4.2 `std::pair<A, B>` → `A × B`
+
+**使用频次**：685 次。
+
+**操作映射**：
+
+| C++ 操作 | Lean 对应 |
+|---|---|
+| `std::pair<A, B>(a, b)` | `(a, b)` 或 `Prod.mk a b` |
+| `p.first` | `p.1` 或 `p.fst` |
+| `p.second` | `p.2` 或 `p.snd` |
+| `std::make_pair(a, b)` | `(a, b)` |
+| 结构化绑定 `auto [x, y] = p` | `let (x, y) := p` |
+
+**Lean 4 语法**：Prod 直接使用元组语法 `(a, b) : α × β`。
+
+### §4.3 `std::map<K, V>` → 自定义 `StdMap K V`
+
+**使用频次**：94 次（主要在 `__extract_monomial_content`、`__mtshl_sparse_int`、`__select_eval_point` 等 7 处）。
+
+**C++ 语义**：有序关联容器，按 key 排序，支持 `O(log n)` find/insert/erase。
+
+**Lean 端设计：按 key 排序的 Array**
+
+```lean
+/-- StdMap：按 key 严格升序的 Array；仿 std::map 语义 -/
+structure StdMap (K V : Type) where
+  entries : Array (K × V)
+  -- 不变量（不强制）：entries[i].1 < entries[i+1].1
+deriving Repr, Inhabited
+
+namespace StdMap
+
+/-- 空 map -/
+def empty {K V : Type} : StdMap K V := ⟨#[]⟩
+
+/-- 查找 key，返回 Option V（CLPoly 用 `.find` 返回迭代器，shim 用 Option） -/
+def find [BEq K] [Ord K] (m : StdMap K V) (k : K) : Option V :=
+  -- 二分查找或线性（CLPoly 的 map size 很小，线性足够）
+  m.entries.findSome? (fun (k', v) => if k' == k then some v else none)
+
+/-- 插入或更新 -/
+def insert [BEq K] [Ord K] (m : StdMap K V) (k : K) (v : V) : StdMap K V :=
+  -- 线性扫描插入点（保持有序）
+  go m.entries 0
+where
+  go (arr : Array (K × V)) (i : Nat) : StdMap K V :=
+    if h : i < arr.size then
+      let (k', _) := arr[i]
+      if k' == k then ⟨arr.set! i (k, v)⟩
+      else if compare k k' = .lt then ⟨arr.insertAt! i (k, v)⟩  -- 需自定义 insertAt!
+      else go arr (i + 1)
+    else ⟨arr.push (k, v)⟩
+
+/-- 删除 key -/
+def erase [BEq K] (m : StdMap K V) (k : K) : StdMap K V :=
+  ⟨m.entries.filter (fun (k', _) => !(k' == k))⟩
+
+/-- 是否包含 key -/
+def contains [BEq K] (m : StdMap K V) (k : K) : Bool :=
+  m.entries.any (fun (k', _) => k' == k)
+
+/-- 大小 -/
+def size (m : StdMap K V) : Nat := m.entries.size
+
+/-- 转 List 方便 foldl/遍历 -/
+def toList (m : StdMap K V) : List (K × V) := m.entries.toList
+
+/-- 从 Array 构造（假设已排序） -/
+def fromSortedArray (arr : Array (K × V)) : StdMap K V := ⟨arr⟩
+
+end StdMap
+```
+
+**为什么用 Array 而非红黑树**：
+- CLPoly 的 map 都是小尺寸（度数 0..n 作 key，n < 1000）
+- Array + 二分查找 O(log n)，性能足够
+- 实现简单，`#eval` 可执行
+- 精化证明时只关心"key→value 映射"语义，实现细节无所谓
+
+**已知的 C++ `std::map` 操作及其 Lean 对应**：
+
+| C++ | Lean | 备注 |
+|---|---|---|
+| `m[k]` 读 | `(m.find k).getD default` | 键不存在返回 default |
+| `m[k] = v` | `m.insert k v` | 插入或更新 |
+| `m.find(k)` → 迭代器 | `m.find k : Option V` | 简化为 Option |
+| `m.erase(k)` | `m.erase k` | |
+| `m.erase(it)` | `m.erase key_of_it` | shim：先从 it 拿 key |
+| `m.empty()` | `m.size == 0` | |
+| `m.size()` | `m.size` | |
+| `for (auto& [k, v] : m)` | `m.toList.forM (fun (k, v) => ...)` | 结构化绑定对应 §4.2 |
+| `m.begin()` / `m.end()` | 由 range-for 吸收 | 裸迭代器不翻译 |
+
+### §4.4 `std::sort` → `Array.qsort`
+
+**使用频次**：8 处。详见 `lean-sort-api.md`（Agent 调研）。
+
+**直接对应**：Lean 4 stdlib `Array.qsort` 签名
+
+```
+Array.qsort : {α : Type} → Array α → (α → α → Bool) → Array α
+```
+
+- 比较器风格：**Bool less-than**（返回 `true` 表示 `a < b`），与 C++ `std::sort` 完全一致
+- Computable ✅（可 `#eval`）
+- 非稳定排序（quicksort）；CLPoly 对稳定性无要求
+- 最坏 O(n²)，平均 O(n log n)
+
+CLPoly 的 5 处 std::sort 的比较器都已改为显式类型（Day 1 修复）：
+
+```cpp
+std::sort(v.begin(), v.end(),
+    [](const Pair& a, const Pair& b) { return a.first.deg() < b.first.deg(); });
+```
+
+**Lean 翻译**：
+
+```lean
+v.qsort (fun a b => a.fst.deg < b.fst.deg)
+```
+
+一行对应，无需自实现。Lean 4 stdlib 无 `qsortWith`/`sortBy` 变体，但用 Bool 比较器可表达所有情况。
+
+### §4.5 RNG 三件套
+
+**使用频次**：`std::mt19937` 27、`std::uniform_int_distribution` 6、`std::random_device` 3。
+**宿主函数**：`__upoly_random`、`__edf_Zp`、`__factor_Zp`、`__mtshl_sparse_int`。
+
+**Lean 端公理化**（已在 `clpoly_model.lean` 部分定义）：
+
+```lean
+/-- Rng: 伪随机数生成器状态，公理化（类似 State monad）-/
+axiom Rng : Type
+axiom Rng.mk : UInt64 → Rng
+axiom Rng.next : Rng → UInt64 → (UInt64 × Rng)
+-- 语义：Rng.next rng max 返回 ((rand in [0, max]), new_rng)
+
+/-- std::random_device shim -/
+axiom Rng.seed : UInt64 := default  -- 或由 __mtshl_sparse_int 直接用
+```
+
+**C++ → Lean 映射**：
+
+| C++ | Lean | 备注 |
+|---|---|---|
+| `std::mt19937 rng(seed)` | `let rng := Rng.mk seed` | |
+| `std::mt19937 rng(rd())` | `let rng := Rng.mk Rng.seed` | `rd()` 公理化 seed |
+| `std::uniform_int_distribution<uint64_t> dist(0, n-1)` | 融入 `Rng.next` | dist 不是独立对象 |
+| `dist(rng)` | `let (r, rng') := Rng.next rng n` | 返回 `(sample, new_rng)` |
+
+**约束**：`Rng` 是 opaque；精化证明不展开，只证"分裂函数返回合法因子"的概率性质。这与 L2 的 `exists_nonQR_poly`（EDF 中 AdjoinRoot 的有限域计数）对接。
+
+### §4.6 其他 STL 工具
+
+| C++ | 次数 | Lean 对应 | 备注 |
+|---|---|---|---|
+| `std::move(x)` | **63** | `x`（id） | Lean 值语义，move 无实际效果 |
+| `std::swap(a, b)` | 4 | `let (a', b') := (b, a); ...` | Lean 无 in-place swap，用 let-rebind；SSA 化 |
+| `std::iota(begin, end, v)` | 5 | `Array.range n \| >.map (fun i => i + v)` | 生成 `[v, v+1, ..., v+n-1]` |
+| `std::max(a, b)` | 7 | `max a b` | 原生 |
+| `std::min(a, b)` | 3 | `min a b` | 原生 |
+
+**用例示例 — `std::iota`**：
+
+```cpp
+std::vector<int> T(r);
+std::iota(T.begin(), T.end(), 0);  // T = [0, 1, ..., r-1]
+```
+
+```lean
+let T := Array.range r  -- 返回 #[0, 1, ..., r-1]
+-- 若 std::iota 起始值非 0：
+-- let T := (Array.range r).map (· + start)
+```
+
+### §4.7 `initializer_list`
+
+**使用频次**：3 处（`__ddf_Zp`、`__mtshl_zp_univar_mdp`、`__upoly_powmod`）。
+
+**C++ 用法**：`std::vector<int>{1, 2, 3}` 或 `func({a, b, c})`。
+
+**Lean 对应**：`#[a, b, c]`（Array 字面量）或 `[a, b, c]`（List 字面量）。
+
+### §4.8 不使用的 STL
+
+根据 `stl.md`，CLPoly 因式分解**不使用**以下 STL（全 0 次）：
+
+- `std::unique_ptr` / `std::shared_ptr` / `std::weak_ptr`（智能指针）
+- `std::thread` / `std::mutex` / `std::atomic`（并发）
+- `std::exception` / `std::runtime_error`（异常类）
+- `std::cout` / `std::cerr`（IO）
+- `std::string` / `std::string_view`（仅字符串字面量用于 assert 消息，翻译时忽略）
+
+简化 HIR：不用定义对应的 Lean shim。
+
+### §4.9 总结：需要在 `clpoly_model.lean` 新增的容器 shim
+
+```lean
+-- §4.9.1 StdMap（见 §4.3 完整实现）
+structure StdMap (K V : Type) where ... deriving ...
+namespace StdMap
+  def empty, find, insert, erase, contains, size, toList, fromSortedArray
+end StdMap
+
+-- §4.9.2 Array 辅助（CLPoly 专用）
+def Array.eraseIdx! {α : Type} [Inhabited α] (a : Array α) (i : Nat) : Array α :=
+  -- 删除位置 i 的元素（无 copy 原生性能差，但语义清晰）
+  (a.toList.eraseIdx i).toArray  -- 占位实现
+
+def Array.insertAt! {α : Type} (a : Array α) (i : Nat) (x : α) : Array α :=
+  (a.toList.insertIdx i x).toArray  -- 占位实现
+
+-- §4.9.3 Rng（已公理化，保持）
+axiom Rng : Type
+axiom Rng.mk : UInt64 → Rng
+axiom Rng.next : Rng → UInt64 → (UInt64 × Rng)
+axiom Rng.seed : UInt64
+```
+
+需要新增的代码量约 **60-80 行 Lean**，主要是 `StdMap` 的 8 个方法 + Array 辅助 + RNG 的 seed 公理。
 
 ---
 
@@ -709,6 +956,6 @@ partial def Zp.inv (a : Zp) : Zp :=
 
 - [x] **Day 1 (2026-04-21)**：§1 基础数值 + §2 UB 分析 完成
 - [x] **Day 2 (2026-04-21)**：§3 CLPoly 核心类型完成
-- [ ] **Day 3**：§4 STL 容器 shim
-- [ ] **Day 4**：§5 + §6 模板实例化 + struct 定义（§6 已在 §3.3.9 部分覆盖）
+- [x] **Day 3 (2026-04-21)**：§4 STL 容器 shim 完成
+- [ ] **Day 4**：§5 模板实例化（§6 已在 §3.3.9 覆盖，可并入 Day 4）
 - [ ] **Day 5**：§7 + §8 引用指针 + CAST_TABLE

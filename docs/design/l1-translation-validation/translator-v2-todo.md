@@ -53,15 +53,17 @@
 
 目标：输出 `cpp-subset-semantics.md`，覆盖调研清查出的所有构造的 denotational semantics。
 
-- [ ] **基本运算语义**：整数算术（含 UB）、布尔、比较
-- [ ] **控制流语义**：if/else、while、for、range-for、break、continue、return
-- [ ] **变量/赋值语义**：声明、mutation、作用域
-- [ ] **函数调用语义**：值传递、引用传递、输出参数
-- [ ] **Lambda 语义**：闭包、capture-by-value、capture-by-reference
-- [ ] **迭代器语义**：`begin/end/++/*` 的抽象模型
-- [ ] **assert / throw 语义**：require / Except.error 的映射理由
-- [ ] **UB 催化点**：除零、数组越界、移位越界、有符号溢出等
-- [ ] **Week 3 回顾**：每构造语义都能追踪到 Lean 层
+- [x] **基本运算语义 (2026-04-21)**：§1 整数算术 UB + bool 短路 + 引理 L1.1/L1.2
+- [x] **控制流语义 (2026-04-21)**：§2 if/while/for/range-for/break/continue/return/do-while + L2.1-L2.3
+- [x] **变量/赋值语义 (2026-04-21)**：§3 SSA 变换 + L3.1（引用 Appel 1998）
+- [x] **函数调用语义 (2026-04-21)**：§4 值/const ref/ref_elim + L4.1/L4.2（引用 Leroy 2009）
+- [x] **Lambda 语义 (2026-04-21)**：§5 闭包/capture/lifting + L5.1
+- [x] **迭代器语义 (2026-04-21)**：§6 Range-for/compact-erase/classic + L6.1
+- [x] **assert / throw 语义 (2026-04-21)**：§7 require 映射（throw 已确认不使用）
+- [x] **UB 催化点 (2026-04-21)**：§8 685 站点 → require 精确对应 + L8.1/L8.2
+- [x] **Week 3 回顾 (2026-04-21)**：cpp-subset-semantics.md 630 行 + semantic-references.md 167 行（Agent）
+  - 主定理 L9.1 + 8 个引理分别对应 8 个 HIR/MIR Pass
+  - 引用基础：Appel 1998 / Aeneas ICFP 2022 / Winskel 1993 / Leroy 2009
 
 ### Week 4：HIR 设计
 

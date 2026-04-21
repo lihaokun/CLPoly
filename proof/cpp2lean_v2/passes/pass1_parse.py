@@ -45,24 +45,37 @@ def parse_type(qt: str) -> TypeIR:
         return UnknownType("")
     qt = qt.strip()
 
-    # 剥离 const / volatile 修饰
+    # 剥离 const / volatile 修饰（前导或后置）
     is_const = False
     if qt.startswith("const "):
         is_const = True
-        qt = qt[len("const "):]
-    qt = qt.strip()
+        qt = qt[len("const "):].strip()
+    if qt.endswith(" const"):
+        is_const = True
+        qt = qt[:-len(" const")].strip()
+    if qt.startswith("volatile "):
+        qt = qt[len("volatile "):].strip()
 
     # 引用 / 指针
     if qt.endswith("&&"):
-        inner = parse_type(qt[:-2])
+        inner = parse_type(qt[:-2].strip())
         return RefType(inner, is_const, is_rvalue=True)
     if qt.endswith("&"):
-        inner = parse_type(qt[:-1])
-        return RefType(inner, is_const, is_rvalue=False)
-    if qt.endswith("*"):
-        # 指针暂不区分 const；CLPoly 仅 1 处
         inner = parse_type(qt[:-1].strip())
         return RefType(inner, is_const, is_rvalue=False)
+    if qt.endswith("*"):
+        # 指针（如 `const lex_<var_order>* comp_ptr`，CLPoly 仅 1 处）
+        inner = parse_type(qt[:-1].strip())
+        return RefType(inner, is_const, is_rvalue=False, is_pointer=True)
+
+    # C 数组 char[N]（字符串字面量）
+    import re as _re
+    m = _re.match(r"^(.+)\[(\d+)\]$", qt)
+    if m:
+        elem_qt = m.group(1).strip()
+        if elem_qt in ("char", "const char"):
+            return NamedType("String")
+        return ArrayType(parse_type(elem_qt))
 
     # 基础数值
     _BASE_MAP = {
@@ -109,6 +122,29 @@ def parse_type(qt: str) -> TypeIR:
     if qt.startswith("std::list<") and qt.endswith(">"):
         # list → Array（CLPoly 不需要 linked list）
         elem = parse_type(_extract_template_arg(qt, "std::list<"))
+        return ArrayType(elem)
+    if qt.startswith("std::set<") and qt.endswith(">"):
+        # set → Array（CLPoly 仅 __extract_monomial_content 用）
+        elem = parse_type(_extract_template_arg(qt, "std::set<"))
+        return ArrayType(elem)
+    if qt.startswith("std::unordered_map<") and qt.endswith(">"):
+        args = _extract_template_args(qt, "std::unordered_map<")
+        if len(args) >= 2:
+            return StdMapType(parse_type(args[0]), parse_type(args[1]))
+    if qt.startswith("std::unordered_set<") and qt.endswith(">"):
+        elem = parse_type(_extract_template_arg(qt, "std::unordered_set<"))
+        return ArrayType(elem)
+
+    # vector<...> / pair<...> / map<...> 无 std:: 前缀的情况（已去除 clpoly:: 后）
+    if qt.startswith("vector<") and qt.endswith(">"):
+        elem = parse_type(_extract_template_arg(qt, "vector<"))
+        return ArrayType(elem)
+    if qt.startswith("map<") and qt.endswith(">"):
+        args = _extract_template_args(qt, "map<")
+        if len(args) >= 2:
+            return StdMapType(parse_type(args[0]), parse_type(args[1]))
+    if qt.startswith("set<") and qt.endswith(">"):
+        elem = parse_type(_extract_template_arg(qt, "set<"))
         return ArrayType(elem)
 
     # CLPoly 类型
@@ -167,6 +203,119 @@ def parse_type(qt: str) -> TypeIR:
     if qt.startswith("grlex_<"):
         return NamedType("Grlex")
 
+    # CLPoly 辅助 struct（type-system.md §3.3.9）—— 含模板版本
+    _CLPOLY_STRUCTS_PREFIX = {
+        "__prime_selection_result": NamedType("PrimeSelectionResult"),
+        "__wang_lc_result": NamedType("WangLcResult"),
+        "__hensel_node": NamedType("HenselNode"),
+        "__profile_stats": NamedType("ProfileStats"),
+    }
+    for prefix, ty in _CLPOLY_STRUCTS_PREFIX.items():
+        if qt == prefix or qt.startswith(prefix + "<"):
+            return ty
+
+    # CLPoly 常用 typedef（出现在函数体内的 `using Poly = ...`）
+    _TYPEDEF_ALIASES = {
+        "Poly": NamedType("Poly"),          # 上下文依赖：通常是 polynomial_<ZZ, lex_<...>>
+        "PolyZp": NamedType("PolyZp"),      # polynomial_<Zp, ...>
+        "PolyQQ": NamedType("PolyQQ"),
+        "PolyZZ": NamedType("PolyZZ"),
+        "UPZp": NamedType("SparsePolyZp"),  # upolynomial_<Zp>
+        "UPZZ": NamedType("SparsePolyZZ"),
+        "LLLMatrix": NamedType("LLLMatrix"),
+        "Matrix": NamedType("Matrix"),
+    }
+    if qt in _TYPEDEF_ALIASES:
+        return _TYPEDEF_ALIASES[qt]
+
+    # STL 迭代器 typedef（嵌套在容器内：value_type / size_type / iterator / const_iterator）
+    _STL_NESTED_TYPES = {
+        "size_type": BaseType.NAT,
+        "difference_type": BaseType.INT64,
+        "value_type": NamedType("ValueType"),       # 依容器具体化；HIR 阶段用占位
+        "reference": NamedType("Reference"),
+        "const_reference": NamedType("Reference"),
+        "pointer": NamedType("Pointer"),
+        "const_pointer": NamedType("Pointer"),
+        "iterator": NamedType("Iterator"),
+        "const_iterator": NamedType("Iterator"),
+        "reverse_iterator": NamedType("ReverseIterator"),
+        "allocator_type": NamedType("Allocator"),
+        "allocator": NamedType("Allocator"),
+        "mapped_type": NamedType("ValueType"),
+        "key_type": NamedType("KeyType"),
+        "result_type": NamedType("ResultType"),
+        "argument_type": NamedType("ArgType"),
+    }
+    if qt in _STL_NESTED_TYPES:
+        return _STL_NESTED_TYPES[qt]
+
+    # STL 随机数三件套
+    if qt in ("std::mt19937", "std::mersenne_twister_engine", "std::minstd_rand",
+              "std::mt19937_64", "std::random_device"):
+        return NamedType("Rng")
+    if qt.startswith("std::uniform_int_distribution<"):
+        return NamedType("UniformIntDist")
+    if qt.startswith("std::uniform_real_distribution<"):
+        return NamedType("UniformRealDist")
+    if qt.startswith("std::bernoulli_distribution") or \
+       qt.startswith("std::normal_distribution") or \
+       qt.startswith("std::discrete_distribution"):
+        return NamedType("Distribution")
+
+    # std::pair<...> / std::tuple_element<...> 等 SFINAE 元编程的剩余物
+    # 这些 qualType 带 typename / ::__type 后缀，统一归为 DependentType
+    if (qt.startswith("std::pair<")) and ("typename" in qt or "::" in qt[-20:]):
+        return NamedType("DependentPair")
+    if qt.startswith("std::tuple_element<"):
+        return NamedType("DependentType")
+    if qt.startswith("pair<") and not qt.startswith("pair<std::"):  # 去前缀后的 pair<umonomial, ZZ>
+        # 尝试解析两个参数
+        args = _extract_template_args(qt, "pair<")
+        if len(args) == 2:
+            return PairType(parse_type(args[0]), parse_type(args[1]))
+
+    # basic_monomial / basic_polynomial 的裸名（templates 已剥离的情况）
+    if qt.startswith("basic_polynomial<basic_monomial<"):
+        args = _extract_template_args(qt, "basic_polynomial<")
+        if len(args) >= 2 and args[1] == "Zp":
+            return NamedType("MvPolyZp")
+        if len(args) >= 2 and args[1] == "ZZ":
+            return NamedType("MvPolyZZ")
+        return NamedType("MvPoly")
+
+    # umonomial 裸名
+    if qt == "umonomial":
+        return NamedType("UMonomial")
+
+    # 空 qualType — Clang JSON 偶尔产出，作为 unknown 默认
+    if qt == "":
+        return UnknownType("")
+
+    # Lambda closure 类型：`(lambda at .../file.hh:NNN:CC)` — 匿名
+    if qt.startswith("(lambda at ") and qt.endswith(")"):
+        return NamedType("Lambda")
+
+    # __int128
+    if qt in ("__int128", "unsigned __int128"):
+        return BaseType.UINT128
+
+    # basic_string 等（仅 assert 消息用）
+    if qt.startswith("std::basic_string") or qt.startswith("const char"):
+        return NamedType("String")
+
+    # typename T::... 形式（SFINAE 元编程剩余物）
+    if qt.startswith("typename "):
+        return NamedType("DependentType")
+
+    # __gnu_cxx::__normal_iterator / std::__normal_iterator — C++ STL 内部实现
+    if "__normal_iterator" in qt or "_Rb_tree" in qt or "_List_iterator" in qt:
+        return NamedType("Iterator")
+
+    # STL 内部 typedef（_Self / _Bit_reference / _Node_ptr 等实现细节）
+    if qt.startswith("_") and len(qt) > 1:
+        return NamedType("StlInternal")
+
     # STL 具体类型已在上面处理；其他未识别
     return UnknownType(qt)
 
@@ -209,11 +358,14 @@ def parse_param(parm_json: dict) -> HIRParam:
          parm_json.get("type", {}).get("desugaredQualType", "")
     ty = parse_type(qt)
 
-    # is_ref / is_const_ref 判断
+    # is_ref / is_const_ref 判断（指针单独处理）
     is_const_ref = False
     is_ref = False
+    is_pointer = False
     if isinstance(ty, RefType):
-        if ty.is_const:
+        if ty.is_pointer:
+            is_pointer = True
+        elif ty.is_const:
             is_const_ref = True
         else:
             is_ref = True
@@ -224,7 +376,7 @@ def parse_param(parm_json: dict) -> HIRParam:
         ty=ty,
         is_ref=is_ref,
         is_const_ref=is_const_ref,
-        is_output=is_ref,  # 初始猜测；Pass 2 ref_elim 不再用
+        is_output=is_ref,  # 指针不视作 output（1 处是 const 指针）
     )
 
 
@@ -378,13 +530,21 @@ def parse_expr(node: Any) -> ExprIR:
         target_ty = ty if ty else UnknownType("")
         return Cast(expr=sub, source_ty=source_ty, target_ty=target_ty, cast_kind=cast_kind)
 
-    if kind == "CXXConstructExpr":
-        # T(args...) 形式
-        ctor_name = (node.get("ctorType") or node.get("type", {})).get("qualType", "") if isinstance(node.get("ctorType"), dict) else qt
+    if kind in ("CXXConstructExpr", "CXXTemporaryObjectExpr"):
+        # T(args...) 形式（临时对象用 CXXTemporaryObjectExpr）
         args = [parse_expr(c) for c in node.get("inner", [])]
         return Call(
             callee=UnresolvedOp(op_name=f"construct_{qt}", receiver_ty=ty),
             args=args,
+            ty=ty,
+        )
+
+    if kind == "ImplicitValueInitExpr":
+        # 默认初始化：T() 隐式
+        # 返回 Lit(0) 或 Call(construct)，依上下文；简化为 construct 调用
+        return Call(
+            callee=UnresolvedOp(op_name=f"default_init_{qt}", receiver_ty=ty),
+            args=[],
             ty=ty,
         )
 
@@ -405,18 +565,52 @@ def parse_expr(node: Any) -> ExprIR:
         return Var(name="this", version=0, ty=ty)
 
     if kind == "CXXDefaultArgExpr":
+        # 默认参数：inner[0] 是原表达式，若无则用类型默认值
         inner = node.get("inner", [])
         if inner:
             return parse_expr(inner[0])
-        return UnknownExpr(kind)
+        # 无 inner：回退为 default_init
+        return Call(
+            callee=UnresolvedOp(op_name=f"default_init_{qt}", receiver_ty=ty),
+            args=[],
+            ty=ty,
+        )
 
     if kind == "LambdaExpr":
-        # Clang JSON 对 LambdaExpr 简化，captures 需从别处提取
-        # 这里只记录形式，详细处理在 Pass 3 lambda_lift
+        # Clang JSON LambdaExpr 的 inner：
+        #   [0] CXXRecordDecl (closure class) — 包含 operator() CXXMethodDecl
+        #   [1] CompoundStmt (lambda body)
+        # captures 字段 Clang JSON 略过，由 Pass 3 lambda_lift 从源码/AST 上下文推导
+        lam_params: list[HIRParam] = []
+        lam_body: list[StmtIR] = []
+        for c in node.get("inner", []):
+            if not isinstance(c, dict):
+                continue
+            if c.get("kind") == "CXXRecordDecl":
+                # 找 operator() 方法
+                for cc in c.get("inner", []):
+                    if not isinstance(cc, dict):
+                        continue
+                    cc_kind = cc.get("kind")
+                    # 具体 operator()
+                    if cc_kind == "CXXMethodDecl" and cc.get("name") == "operator()":
+                        for ccc in cc.get("inner", []):
+                            if isinstance(ccc, dict) and ccc.get("kind") == "ParmVarDecl":
+                                lam_params.append(parse_param(ccc))
+                    # 模板 operator()（generic lambda，CLPoly 已消除；兜底）
+                    elif cc_kind == "FunctionTemplateDecl":
+                        for ccc in cc.get("inner", []):
+                            if isinstance(ccc, dict) and ccc.get("kind") == "CXXMethodDecl" \
+                                    and ccc.get("name") == "operator()":
+                                for cccc in ccc.get("inner", []):
+                                    if isinstance(cccc, dict) and cccc.get("kind") == "ParmVarDecl":
+                                        lam_params.append(parse_param(cccc))
+            elif c.get("kind") == "CompoundStmt":
+                lam_body = _parse_stmts(c)
         return LambdaExpr(
-            captures=[],  # TODO: 从源码正则提取（scan_lambdas.py 已示范）
-            params=[],
-            body=[],
+            captures=[],  # 由 Pass 3 lambda_lift 从源码正则 + 自由变量分析推导
+            params=lam_params,
+            body=lam_body,
             ty=ty,
         )
 
@@ -510,22 +704,91 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
     if kind == "DeclStmt":
         result = []
         for c in node.get("inner", []):
-            if isinstance(c, dict) and c.get("kind") == "VarDecl":
+            if not isinstance(c, dict):
+                continue
+            child_kind = c.get("kind")
+            if child_kind == "VarDecl":
                 name = c.get("name", "")
                 qt = c.get("type", {}).get("qualType", "") or \
                      c.get("type", {}).get("desugaredQualType", "")
                 ty = parse_type(qt)
-                # 初始值：inner[0] if present
+                # 初始值：inner[0] if present（跳过 TypeLoc 等元信息）
                 init = None
                 for cc in c.get("inner", []):
-                    if isinstance(cc, dict):
+                    if isinstance(cc, dict) and cc.get("kind") not in ("TypeLoc",):
                         init = parse_expr(cc)
                         break
                 if init is None:
-                    init = UnknownExpr("uninit", raw=name)
+                    # 无初始化：用 default_init
+                    init = Call(
+                        callee=UnresolvedOp(op_name=f"default_init_{qt}", receiver_ty=ty),
+                        args=[],
+                        ty=ty,
+                    )
                 result.append(LetStmt(var=Var(name), ty=ty, value=init))
+            elif child_kind == "DecompositionDecl":
+                # 结构化绑定：auto [a, b] = pair_expr;
+                # 拆为：let _dec := expr; let a := _dec.fst; let b := _dec.snd
+                qt = c.get("type", {}).get("qualType", "")
+                ty = parse_type(qt)
+
+                # 推导 binding 类型（从 pair/tuple 的 template 参数拆出）
+                binding_types: list[TypeIR] = []
+                if isinstance(ty, PairType):
+                    binding_types = [ty.fst, ty.snd]
+                elif isinstance(ty, TupleType):
+                    binding_types = list(ty.elems)
+                # RefType(PairType) 也要剥一层
+                elif isinstance(ty, RefType) and isinstance(ty.inner, PairType):
+                    binding_types = [ty.inner.fst, ty.inner.snd]
+                elif isinstance(ty, RefType) and isinstance(ty.inner, TupleType):
+                    binding_types = list(ty.inner.elems)
+
+                init = None
+                bindings = []  # list[(name, TypeIR)]
+                idx = 0
+                for cc in c.get("inner", []):
+                    if isinstance(cc, dict):
+                        if cc.get("kind") == "BindingDecl":
+                            bname = cc.get("name", "")
+                            btype_qt = ""
+                            t_node = cc.get("type")
+                            if isinstance(t_node, dict):
+                                btype_qt = t_node.get("qualType", "") or t_node.get("desugaredQualType", "")
+                            if btype_qt:
+                                bty = parse_type(btype_qt)
+                            elif idx < len(binding_types):
+                                bty = binding_types[idx]
+                            else:
+                                bty = UnknownType("")
+                            bindings.append((bname, bty))
+                            idx += 1
+                        elif init is None and cc.get("kind") not in ("TypeLoc",):
+                            init = parse_expr(cc)
+                if init is None:
+                    init = UnknownExpr("decomp_uninit")
+                # 先 let 整个解构目标
+                decomp_var = f"__decomp_{id(c) & 0xfffff}"
+                result.append(LetStmt(
+                    var=Var(decomp_var),
+                    ty=ty,
+                    value=init,
+                ))
+                # 再按 binding 序分别 let
+                for i, (bname, bty) in enumerate(bindings):
+                    result.append(LetStmt(
+                        var=Var(bname),
+                        ty=bty,
+                        value=FieldAccess(
+                            obj=Var(decomp_var),
+                            field_name=f"fst" if i == 0 else f"snd" if i == 1 else f"_{i}",
+                        ),
+                    ))
+            elif child_kind in ("UsingDecl", "TypeAliasDecl"):
+                # 忽略：这些在翻译阶段不产生运行时代码
+                pass
             else:
-                result.append(UnknownStmt("decl_non_vardecl"))
+                result.append(UnknownStmt(f"decl_{child_kind}"))
         return result if len(result) != 1 else result[0]
 
     if kind == "IfStmt":
@@ -566,45 +829,70 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
         return ForStmt(init=init, cond=cond, step=step, body=body)
 
     if kind == "CXXForRangeStmt":
+        # Clang AST inner 约定：
+        #   [0] init stmt（通常是 null placeholder）
+        #   [1] DeclStmt __range1（container init）
+        #   [2] DeclStmt __begin1
+        #   [3] DeclStmt __end1
+        #   [4] 循环条件（__begin1 != __end1）
+        #   [5] 循环步进（++__begin1）
+        #   [6] DeclStmt 循环变量 var（或 DecompositionDecl 结构化绑定）
+        #   [7] body（可能是 CompoundStmt 或 单个表达式/语句）
         inner = node.get("inner", [])
-        # inner 包含 range-init、body 等。简化处理：找 DeclStmt 的循环变量和 body
         var = Var("__range_var")
         var_ty: TypeIR = UnknownType("")
         container: ExprIR = UnknownExpr("container")
-        body = []
-        decomposition = None
+        body: list[StmtIR] = []
+        decomposition: list[Var] | None = None
 
-        # 第一个 DeclStmt/VarDecl 是 "__range"（容器），下一个 DeclStmt 是"__begin / __end"，
-        # 最后一个 DeclStmt 是循环变量
-        # CompoundStmt 是 body
-        for c in inner:
-            if not isinstance(c, dict):
-                continue
-            k = c.get("kind")
-            if k == "DeclStmt":
-                # 检查是否结构化绑定
-                for cc in c.get("inner", []):
-                    if isinstance(cc, dict):
-                        if cc.get("kind") == "DecompositionDecl":
-                            decomposition = [
-                                Var(b.get("name", ""))
-                                for b in cc.get("inner", [])
-                                if isinstance(b, dict) and b.get("kind") == "BindingDecl"
-                            ]
-                        elif cc.get("kind") == "VarDecl":
-                            nm = cc.get("name", "")
-                            qt = cc.get("type", {}).get("qualType", "")
-                            if nm and nm not in ("__range1", "__begin1", "__end1"):
-                                var = Var(nm)
-                                var_ty = parse_type(qt)
-                            # 从 __range1 的 init 提取 container
-                            if nm == "__range1":
-                                for ccc in cc.get("inner", []):
-                                    if isinstance(ccc, dict):
-                                        container = parse_expr(ccc)
-                                        break
-            elif k == "CompoundStmt":
-                body = _parse_stmts(c)
+        def extract_varDecl_or_decomp(declstmt: dict):
+            """从 DeclStmt 里找 VarDecl 或 DecompositionDecl。"""
+            for cc in declstmt.get("inner", []):
+                if isinstance(cc, dict) and cc.get("kind") in ("VarDecl", "DecompositionDecl"):
+                    return cc
+            return None
+
+        def find_init_expr(vardecl: dict):
+            """从 VarDecl 的 inner 里找初始化表达式（第一个非 child Decl）。"""
+            for ccc in vardecl.get("inner", []):
+                if isinstance(ccc, dict):
+                    # 跳过 TypeLoc 等元信息
+                    if ccc.get("kind") not in ("TypeLoc", "NamespaceSpec"):
+                        return ccc
+            return None
+
+        # inner[1]: __range1 DeclStmt → container
+        if len(inner) > 1 and isinstance(inner[1], dict) and inner[1].get("kind") == "DeclStmt":
+            vd = extract_varDecl_or_decomp(inner[1])
+            if vd and vd.get("kind") == "VarDecl":
+                init = find_init_expr(vd)
+                if init:
+                    container = parse_expr(init)
+
+        # inner[6]: 循环变量或结构化绑定
+        if len(inner) > 6 and isinstance(inner[6], dict) and inner[6].get("kind") == "DeclStmt":
+            vd = extract_varDecl_or_decomp(inner[6])
+            if vd:
+                if vd.get("kind") == "DecompositionDecl":
+                    decomposition = [
+                        Var(b.get("name", ""))
+                        for b in vd.get("inner", [])
+                        if isinstance(b, dict) and b.get("kind") == "BindingDecl"
+                    ]
+                    # DecompositionDecl 自身的 qualType 是 pair 类型
+                    qt = vd.get("type", {}).get("qualType", "")
+                    var_ty = parse_type(qt)
+                    var = Var("__decomp")  # 占位，解构由 Pass 4 完成
+                elif vd.get("kind") == "VarDecl":
+                    nm = vd.get("name", "")
+                    qt = vd.get("type", {}).get("qualType", "")
+                    var = Var(nm)
+                    var_ty = parse_type(qt)
+
+        # inner[7]: body（可能是 CompoundStmt 或单语句）
+        if len(inner) > 7 and isinstance(inner[7], dict):
+            body = _parse_stmts(inner[7])
+
         return RangeForStmt(
             var=var, var_ty=var_ty,
             container=container, body=body,
@@ -632,6 +920,16 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
 
     if kind == "NullStmt":
         return BlockStmt(stmts=[])
+
+    # assert 的三元表达式形式：
+    #   (cond ? (void)0 : __assert_fail(...))
+    # Clang 预处理把 `assert(cond)` 展开成这种形式，作为 ExprStmt 出现。
+    # 可能被 CStyleCastExpr(void) / ExprWithCleanups / CXXBindTemporaryExpr / ParenExpr 等包裹。
+    unwrapped = _unwrap_expr(node)
+    if isinstance(unwrapped, dict) and unwrapped.get("kind") == "ConditionalOperator":
+        assert_req = _try_parse_assert_ternary(unwrapped)
+        if assert_req is not None:
+            return assert_req
 
     # 表达式语句
     if kind in ("BinaryOperator", "UnaryOperator", "CallExpr",
@@ -738,12 +1036,62 @@ def _find_assert_fail_call(node: Any) -> dict | None:
             callee_name = _extract_callee_name(inner[0])
             if callee_name == "__assert_fail":
                 return node
-    if kind == "CompoundStmt" or kind == "BlockStmt":
+    if kind in ("CompoundStmt", "BlockStmt",
+                # 经常包装 __assert_fail 的节点
+                "ImplicitCastExpr", "CStyleCastExpr",
+                "ExprWithCleanups", "CXXBindTemporaryExpr",
+                "MaterializeTemporaryExpr", "ParenExpr"):
         for c in node.get("inner", []):
             found = _find_assert_fail_call(c)
             if found:
                 return found
     return None
+
+
+_UNWRAP_KINDS = {
+    "CStyleCastExpr", "CXXBindTemporaryExpr", "MaterializeTemporaryExpr",
+    "ExprWithCleanups", "ParenExpr", "ImplicitCastExpr",
+}
+
+
+def _unwrap_expr(node: Any) -> Any:
+    """剥离对语义无贡献的 wrapper（cast 到 void、临时对象绑定等），
+    返回最内层的有意义节点。用于识别嵌套 wrapper 下的 assert 三元。"""
+    current = node
+    while isinstance(current, dict) and current.get("kind") in _UNWRAP_KINDS:
+        inner = current.get("inner", [])
+        if not inner:
+            break
+        current = inner[0]
+    return current
+
+
+def _try_parse_assert_ternary(cond_op_node: dict) -> RequireStmt | None:
+    """识别 `cond ? (void)0 : __assert_fail(...)` ConditionalOperator
+    作为 assert 展开的等价形式 → RequireStmt(cond)。
+
+    ConditionalOperator 的 inner 有 3 个子节点：[cond, then_e, else_e]。
+    模式：else_e 含 `__assert_fail(...)` 调用。
+    """
+    if not isinstance(cond_op_node, dict):
+        return None
+    if cond_op_node.get("kind") != "ConditionalOperator":
+        return None
+    inner = cond_op_node.get("inner", [])
+    if len(inner) < 3:
+        return None
+    # else 分支递归查 __assert_fail
+    else_branch = inner[2]
+    assert_call = _find_assert_fail_call(else_branch)
+    if assert_call is None:
+        return None
+    # then 分支应该是 (void)0 或类似 void 操作；不强制检查
+    cond_expr = parse_expr(inner[0])
+    return RequireStmt(
+        cond=cond_expr,
+        name="h_assert",
+        source="assert",
+    )
 
 
 # ============================================================

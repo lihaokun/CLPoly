@@ -22,10 +22,11 @@ class BaseType(Enum):
     INT64 = "Int64"
     INT32 = "Int32"
     UINT32 = "UInt32"
-    NAT = "Nat"              # size_t → Nat
+    UINT128 = "UInt128"       # 为 v1 class_map.py 的 CAST_TABLE 保留；CLPoly 因式分解不实际使用
+    NAT = "Nat"               # size_t → Nat
     BOOL = "Bool"
-    FLOAT = "Float"           # double
-    UNIT = "Unit"             # void
+    FLOAT = "Float"            # double
+    UNIT = "Unit"              # void
 
 
 @dataclass(frozen=True)
@@ -64,16 +65,40 @@ class StdMapType:
 
 @dataclass(frozen=True)
 class RefType:
-    """C++ T& / T&&（仅 HIR₀ 允许）。"""
+    """C++ T& / T&& / T*（仅 HIR₀ 允许）。"""
     inner: 'TypeIR'
     is_const: bool = False
     is_rvalue: bool = False
+    is_pointer: bool = False  # 区分 T* 和 T&
 
 
 @dataclass(frozen=True)
 class UnknownType:
     """parse Pass 偶尔产出；后续 Pass 不允许。"""
     raw: str
+
+
+# 兼容 v1 class_map.py 的别名：v1 用 StructType(name, fields) 表示命名类型
+# v2 改用 NamedType(name)；但保留 StructType 作为 alias 让 class_map.py 照搬复用
+class StructType:
+    """[v1 兼容] 等价于 NamedType；fields 参数保留但忽略。"""
+
+    __slots__ = ("name", "fields")
+
+    def __init__(self, name: str, fields: list | None = None):
+        self.name = name
+        self.fields = fields or []
+
+    def __eq__(self, other):
+        if isinstance(other, (StructType, NamedType)):
+            return self.name == other.name
+        return False
+
+    def __hash__(self):
+        return hash(("StructType", self.name))
+
+    def __repr__(self):
+        return f"StructType({self.name!r})"
 
 
 TypeIR = Union[

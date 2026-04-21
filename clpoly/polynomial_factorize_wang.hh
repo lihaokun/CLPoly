@@ -1369,7 +1369,8 @@ namespace clpoly{
             // 收集 (lⱼ, eⱼ) 并按 eⱼ 降序排序
             auto& lc_factors = lc_fac.factors;
             std::sort(lc_factors.begin(), lc_factors.end(),
-                [](const auto& a, const auto& b) { return a.second > b.second; });
+                [](const std::pair<Poly, uint64_t>& a,
+                   const std::pair<Poly, uint64_t>& b) { return a.second > b.second; });
 
             // wᵢ = lc(uᵢ) * cs — 数值跟踪 (cs = content(f₀))
             std::vector<ZZ> w(r);
@@ -2533,7 +2534,8 @@ namespace clpoly{
         }
 
         std::sort(result.factors.begin(), result.factors.end(),
-            [](const auto& a, const auto& b) {
+            [](const std::pair<Poly, uint64_t>& a,
+               const std::pair<Poly, uint64_t>& b) {
                 return degree(a.first) < degree(b.first);
             });
 

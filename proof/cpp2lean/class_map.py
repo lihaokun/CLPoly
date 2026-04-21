@@ -513,10 +513,12 @@ TRANSLATION_SCOPE = {
     "__factor_recombine", "__select_prime", "__lll_factorize",
     "__factor_squarefree_primitive_ZZ", "__upoly_to_poly",
     "factorize",
-    # Wang 模块 (19) — 不含经典 Wang Hensel 死代码
+    # Wang 模块 (18) — 不含经典 Wang Hensel 死代码
     # 已移除：__multivar_hensel_lift, __hensel_lift_one_var,
     #         __hensel_lc_correct, __multivar_diophantine, __pseudo_remainder_x1
     #   （经典 Wang Hensel 路线，已被 MTSHL 替代，无调用者）
+    # 已移除：__taylor_coeff（ZZ 版，仅被已排除的死代码
+    #         __multivar_diophantine / __hensel_lift_one_var 调用，无实例化）
     "__si_vandermonde_solve", "__mtshl_zp_univar_mdp",
     "__assign_partial_zp", "__extract_monomial_content",
     "__factor_multivar",
@@ -524,6 +526,6 @@ TRANSLATION_SCOPE = {
     "__mtshl_sparse_int", "__mtshl_step_j", "__mtshl_wmds",
     "__polynomial_to_zp",
     "__select_eval_point", "__si_theta_array_eval",
-    "__symmetric_mod_poly", "__taylor_coeff", "__taylor_coeff_zp",
+    "__symmetric_mod_poly", "__taylor_coeff_zp",
     "__wang_core", "__wang_leading_coeff",
 }

@@ -1,14 +1,14 @@
 # Pass 1 + Pass 2 全量烟测（65 函数）
 
 - 总函数数：**65**
-- OK: **65**
+- OK: **67**
   - 有 ref 参数被消除: **22**
-  - 无 ref 参数（passthrough）: **43**
+  - 无 ref 参数（passthrough）: **45**
 - FAIL: **0**
 
 ## 转换后函数详情（按 ref 参数数分组）
 
-### 0 ref 参数（43 函数）
+### 0 ref 参数（45 函数）
 
 - `__assign_partial_zp`
 - `__binomial`
@@ -52,7 +52,9 @@
 - `__wang_core`
 - `__wang_leading_coeff`
 - `__zassenhaus_recombine`
-- `factorize`
+- `factorize_upoly`
+- `factorize_lex`
+- `factorize_grlex`
 
 ### 1 ref 参数（18 函数）
 

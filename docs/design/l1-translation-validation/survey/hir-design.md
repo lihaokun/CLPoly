@@ -703,64 +703,74 @@ OUTPUT_PARAMS = {
 
 ### §5.3 算法
 
+**当前 Pass 3 实现**（精简到实际做的事；caller 改写、tuple 返回等留给下游 Pass，见 §5.5）：
+
 ```
 lambda_lift(func):
-    lambda_counter = 0
-    def lift(lambda_expr: LambdaExpr, parent_name: str) -> tuple[Call, HIRFunc]:
-        nonlocal lambda_counter
-        lambda_counter += 1
-        lam_name = f"_lambda_{parent_name}_{lambda_counter}"
-        
-        # 1. 分析 Lambda body：哪些 captures 被修改？
-        modified_caps = find_modified_captures(lambda_expr.body, lambda_expr.captures)
-        
-        # 2. 构造新 HIRFunc
-        #    参数 = captures + lambda 原参数
-        new_params = [
-            HIRParam(c.name, lookup_type(c.name, func), is_const_ref=not c.by_ref)
-            for c in lambda_expr.captures
-        ] + lambda_expr.params
-        
-        # 3. 返回类型：若无 modified capture → 原 Lambda 返回
-        #           若有 → (原返回, 修改后 capture1, ..., 修改后 capN) tuple
-        if modified_caps:
-            ret_ty = TupleType([lambda_expr.body_ret_ty] + [lookup_type(c) for c in modified_caps])
-            # 改写 body 末尾：追加修改后的 capture 值
-            new_body = append_modified_caps_to_return(lambda_expr.body, modified_caps)
-        else:
-            ret_ty = lambda_expr.body_ret_ty
-            new_body = lambda_expr.body
-        
+    counter = [0]
+    aux_list = []
+    # 外层可见变量 → 类型的映射，走 func.body 的 LetStmt 增量构建
+    typectx = { p.name: p.ty for p in func.params }
+
+    def lift(lam: LambdaExpr, host_name: str) -> (Var, HIRFunc):
+        counter[0] += 1
+        lam_name = f"_lambda_{host_name}_{counter[0]}"
+
+        # 1. 自由变量 = body 用到但不是 lambda 自身 param 的标识符
+        free_vars = collect_free_vars(lam.body, {p.name for p in lam.params})
+
+        # 2. 过滤到 "外层可见" 的那一部分（过滤掉类名、方法名等）
+        capture_names = sorted(free_vars & set(typectx.keys()))
+
+        # 3. 按 §5.4 检测 body 中被修改的变量
+        modified = collect_modified(lam.body)
+
+        # 4. capture → HIRParam：修改的 is_ref=True；只读的 is_const_ref=True
+        cap_params = [
+            HIRParam(
+                name=cn,
+                ty=typectx[cn],
+                is_ref=(cn in modified),
+                is_const_ref=(cn not in modified),
+                is_output=False,
+            )
+            for cn in capture_names
+        ]
+
+        # 5. 构造 aux HIRFunc（ret_ty 沿用 lambda 原类型；body 原样保留）
+        qual = f"lambda in {host_name}"
+        if set(capture_names) & modified:
+            qual += f" | modified_captures={sorted(set(capture_names) & modified)}"
+
         aux = HIRFunc(
-            base_name=lam_name,
-            instance_suffix="",
-            mangled_name="",
-            qual_type="<lifted lambda>",
-            params=new_params,
-            ret_ty=ret_ty,
-            body=new_body,
+            base_name=lam_name, instance_suffix="", mangled_name="",
+            qual_type=qual,
+            params=cap_params + lam.params,
+            ret_ty=lam.ty or UnknownType(""),
+            body=lam.body,                # 原样；不追加 tuple 返回
+            requires=[], aux_lambdas=[],
         )
-        
-        # 4. 构造调用点替换
-        call_args = [Var(c.name) for c in lambda_expr.captures] + \
-                    [Var(p.name) for p in lambda_expr.params]
-        call = Call(lam_name, call_args)
-        
-        return call, aux
-    
-    def walk_replace(node, parent_name):
-        if isinstance(node, LambdaExpr):
-            call, aux = lift(node, parent_name)
-            func.aux_lambdas.append(aux)
-            return call
-        # 递归处理 children
-        for field in node.__dict__:
-            ...  # 递归替换
-        return node
-    
-    func.body = [walk_replace(s, func.base_name) for s in func.body]
+        # 6. 调用点替换：Var(lam_name) — 不重建 Call
+        return Var(lam_name), aux
+
+    def walk(stmts):
+        for s in stmts:
+            if isinstance(s, LetStmt): typectx[s.var.name] = s.ty
+            # 显式 switch StmtIR 每种类型，递归替换 body 内的 LambdaExpr
+            ...
+
+    func = replace(func, body=walk(func.body), aux_lambdas=aux_list)
     return func
+# 调用方（smoke / 测试）自行调 assert_hir2_invariant(func)
 ```
+
+**不做的事（留给下游）**：
+- aux.ret_ty 不改为 tuple（即便有 modified capture）
+- aux.body 的 return 不追加 captures
+- 调用点不重建为 `Call(lam_name, [cap..., arg...])`，只替换为 `Var(lam_name)`
+- 宿主 body 不注入 `LetStmt + AssignStmt` 写回
+
+理由见 §5.5。这些改写涉及表达式语境（函数调用上下文、sort 回调等），Pass 3 未做完整的调用点分析，交给 Pass 5/6。
 
 ### §5.4 `modified_captures` 检测
 
@@ -828,7 +838,7 @@ aux `HIRFunc.ret_ty` 不改写为 tuple；`modified_captures` 只保存在 `qual
 
 ### §5.8 实现规模
 
-~300 行 Python。
+`proof/cpp2lean_v2/passes/pass3_lambda_lift.py`：540 行 Python（含 `_collect_free_vars`、`_collect_modified`、`_lift_lambda`、`_walk_and_lift`、`lambda_lift_pass`、`assert_hir2_invariant`）。
 
 ---
 

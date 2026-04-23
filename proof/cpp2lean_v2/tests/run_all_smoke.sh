@@ -18,6 +18,10 @@ echo ""
 echo "--- Pass 2 单元测试 ---"
 python3 tests/test_pass2_ref_elim.py
 
+echo ""
+echo "--- Pass 3 单元测试 ---"
+python3 tests/test_pass3_lambda_lift.py
+
 # 烟测（全 65 函数）
 echo ""
 echo "--- Pass 1 烟测（65 函数）---"
@@ -27,11 +31,14 @@ echo ""
 echo "--- Pass 2 烟测（65 函数）---"
 python3 tests/smoke_pass2_full.py 2>&1 | tail -8
 
+echo ""
+echo "--- Pass 3 烟测（65 函数, factorize x3）---"
+python3 tests/smoke_pass3_full.py 2>&1 | tail -8
+
 # 未来 Pass 会在此添加：
 # echo ""
-# echo "--- Pass 3 烟测 ---"
-# python3 tests/smoke_pass3_full.py 2>&1 | tail -8
-# ...
+# echo "--- Pass 4 烟测 ---"
+# python3 tests/smoke_pass4_full.py 2>&1 | tail -8
 
 echo ""
 echo "========================================="

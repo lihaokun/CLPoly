@@ -176,6 +176,13 @@ def _collect_modified(stmts: list[StmtIR]) -> set[str]:
             return target_root(expr.obj)
         if isinstance(expr, Cast):
             return target_root(expr.expr)
+        # Pass 1 对 a[i] 可能生成 Call(UnresolvedOp("operator[]"), [arr, idx])
+        # 而非 ArrayAccess，需要递归到 arr 上。
+        if (isinstance(expr, Call)
+                and isinstance(expr.callee, UnresolvedOp)
+                and expr.callee.op_name == "operator[]"
+                and expr.args):
+            return target_root(expr.args[0])
         return None
 
     def walk(s: StmtIR):
@@ -200,18 +207,24 @@ def _collect_modified(stmts: list[StmtIR]) -> set[str]:
             for t in s.body: walk(t)
         elif isinstance(s, BlockStmt):
             for t in s.stmts: walk(t)
-        # UnresolvedOp("operator++/--/+=/-=/*=/ 等") 作为 ExprStmt 也是修改
+        # UnresolvedOp("operator++/--/+=/-=/*=/ 等") 作为 ExprStmt 也是修改；
+        # `swap(a, b)` / `std::swap(a, b)` 修改两个参数。
         elif isinstance(s, ExprStmt):
-            # 检查是否是 `<operator++>(var)` 形式 → 算作修改
             e = s.expr
-            if isinstance(e, Call) and isinstance(e.callee, UnresolvedOp):
-                op = e.callee.op_name
-                if any(m in op for m in ("operator++", "operator--", "operator+=",
-                                          "operator-=", "operator*=", "operator/=",
-                                          "operator%=", "operator<<=", "operator>>=",
-                                          "operator|=", "operator&=", "operator^=")):
-                    if e.args:
-                        n = target_root(e.args[0])
+            if isinstance(e, Call):
+                callee = e.callee
+                if isinstance(callee, UnresolvedOp):
+                    op = callee.op_name
+                    if any(m in op for m in ("operator++", "operator--", "operator+=",
+                                              "operator-=", "operator*=", "operator/=",
+                                              "operator%=", "operator<<=", "operator>>=",
+                                              "operator|=", "operator&=", "operator^=")):
+                        if e.args:
+                            n = target_root(e.args[0])
+                            if n: modified.add(n)
+                elif isinstance(callee, str) and callee in ("swap", "std::swap"):
+                    for a in e.args[:2]:
+                        n = target_root(a)
                         if n: modified.add(n)
 
     for s in stmts:
@@ -247,12 +260,13 @@ def _lift_lambda(lam: LambdaExpr, host_name: str, counter: list[int],
     modified_captures = sorted(set(capture_names) & modified)
 
     # 4. 构造新 HIRFunc 的 params = captures + 原 lambda params
+    #    被修改的 capture 用可变 [REF]；只读的用 [CONST-REF]。
     cap_params = [
         HIRParam(
             name=cn,
             ty=outer_typectx.get(cn, UnknownType("")),
-            is_ref=False,
-            is_const_ref=(cn not in modified),  # 不修改的用 const ref
+            is_ref=(cn in modified),
+            is_const_ref=(cn not in modified),
             is_output=False,
         )
         for cn in capture_names

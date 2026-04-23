@@ -764,29 +764,59 @@ lambda_lift(func):
 
 ### §5.4 `modified_captures` 检测
 
-扫描 lambda body，找所有对 capture 的写操作：
-- `AssignStmt(target=Var(cap_name))`
-- `CompoundAssignStmt(target=Var(cap_name), ...)`
-- `AssignStmt(target=ArrayAccess(Var(cap_name), ...))`
-- `AssignStmt(target=FieldAccess(Var(cap_name), ...))`
-- `Call(UnresolvedOp("operator++"), [Var(cap_name)])`
+扫描 lambda body，对每条语句算 `target_root(expr) -> str | None`，若目标根是某个 capture，就加入 `modified_caps`。
 
-对每个符合的 capture，加入 `modified_caps`。
+**`target_root` 递归规则**：
+- `Var(x)` → `x`
+- `ArrayAccess(arr, _)` → `target_root(arr)`
+- `FieldAccess(obj, _)` → `target_root(obj)`
+- `Cast(inner, _)` → `target_root(inner)`
+- `Call(UnresolvedOp("operator[]"), [arr, _])` → `target_root(arr)`
+  — Pass 1 对 `a[i]` 可能生成 `Call` 而非 `ArrayAccess`（例如嵌套 `M[i][k]` 或受 `operator-=` / `swap` 包裹时），必须递归到实参 0 上。
+- 其他情况 → `None`
 
-**特殊情况**：若 `[&]` 默认引用捕获，**保守地把所有 captures 都视为可能被修改**（依 `translation-fix-plan.md` M4 保守策略）。这会多一些无修改的返回值（被调用方丢弃）但不会错误。
+**判定为修改的 pattern**：
+| 源码示例 | HIR 节点 | 被修改的根 |
+|---|---|---|
+| `x = e` | `AssignStmt(target, e)` | `target_root(target)` |
+| `x += e` / `x *= e` / `x <<= e` ... | `CompoundAssignStmt(target, op, e)` | `target_root(target)` |
+| `++x` / `--x` / `x++` / `x--` | `ExprStmt(Call(UnresolvedOp("operator++"), [x]))` 等 | `target_root(args[0])` |
+| `a += b` / `a -= b` ...（作为 ExprStmt） | `ExprStmt(Call(UnresolvedOp("operator+="), [lhs, rhs]))` | `target_root(args[0])` |
+| `swap(a, b)` / `std::swap(a, b)` | `ExprStmt(Call("swap", [a, b]))` — callee 是字符串 | `target_root(args[0])` **和** `target_root(args[1])` 都算 |
+
+**遗漏案例（已知 TODO）**：
+- mutator method call（`vec.push_back(x)`、`vec.clear()` 等）未识别为修改 receiver。当前 Pass 3 的 15 个 lifted lambda 中没有此模式；若后续引入需要扩展。
+- 非 `swap` 的自由函数若修改 ref 实参（如自定义 out-param helper）同样未识别。保持关闭；Pass 4 的 SSA/alias 分析阶段会兜底。
+
+**保守策略已弃用**：早期 `translation-fix-plan.md` M4 建议 `[&]` 全捕获全部视作修改，但实测会产生大量 spurious tuple 返回值，现改为上述**精确检测**；smoke `test_smoke_all_65` 覆盖所有 15 宿主 26 lambda，任何漏检会导致后续 Pass 失败。
+
+**输出方式**：Pass 3 实现不新建字段，`modified_caps` 通过 aux `HIRFunc.qual_type` 字符串追加 `| modified_captures=[...]` 记录；同时把对应 capture param 标为 `is_ref=True, is_const_ref=False`（其余 capture 标 `is_const_ref=True`）。
 
 ### §5.5 调用方改写（modified capture 写回）
 
-`lambda_lift` Pass 完成后，调用点变为：
+**设计目标**：调用点最终要变成：
 
 ```
-old:  ExprStmt(Call("_lambda_N", [cap1, cap2, x, y]))
-new:  若无 modified → 同上
-      若有 modified caps [cap1] →
-        LetStmt(_lam_out, ret_ty, Call("_lambda_N", [cap1, cap2, x, y]))
-        + AssignStmt(Var("cap1"), FieldAccess(Var("_lam_out"), "1"))
-        + 若有原返回值则 AssignStmt(Var("result"), FieldAccess(Var("_lam_out"), "0"))
+old:  LAMBDA(...)  (inline LambdaExpr)
+target:
+  若无 modified → Call("_lambda_N", [cap1, cap2, x, y])
+  若有 modified caps [cap1] →
+    LetStmt(_lam_out, ret_ty, Call("_lambda_N", [cap1, cap2, x, y]))
+    + AssignStmt(Var("cap1"), FieldAccess(Var("_lam_out"), "1"))
+    + 若有原返回值则 AssignStmt(Var("result"), FieldAccess(Var("_lam_out"), "0"))
 ```
+
+**Pass 3 当前实现**：仅做 `LambdaExpr → Var(lam_name)` 简单替换，保留宿主 body 里原 `Call(...)`/`sort(...,lam)` 结构。换言之：
+- `sort(it1, it2, LAMBDA(...))` → `sort(it1, it2, Var("_lambda_N"))`
+- `auto f = LAMBDA(...); f(x)` → `let f := Var("_lambda_N"); Var("f")(x)`
+
+aux `HIRFunc.ret_ty` 不改写为 tuple；`modified_captures` 只保存在 `qual_type` 字符串里，供下游 Pass 读取。
+
+**剩余工作（后续 Pass 认领）**：
+- **tuple 返回类型改写**（ret_ty 追加 modified caps）—— 留给 Pass 5 `operator_resolve` 或 Pass 6 `ssa_build`，需先清楚调用点的表达式语境。
+- **capture 写回展开**（`LetStmt + AssignStmt` 注入）—— 同上。
+- **body 里 return 语句改写**（`return e` → `return (e, cap1, ...)`）—— 同上。
+- 当前 smoke 可通过，因为 HIR₂→HIR₃ 不检查这三项，下游依赖 `qual_type` 的 `modified_captures=[...]` 发起改写。
 
 ### §5.6 归属（aux_lambdas 位置）
 

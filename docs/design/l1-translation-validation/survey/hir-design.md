@@ -218,14 +218,6 @@ class Capture:
     is_default: bool        # [&] True（不是具名），[x] False
 
 @dataclass
-class IteratorExpr:
-    """HIR₀-HIR₂ 原始迭代器（`v.begin()`, `v.end()`, `*it` 等）。
-    iter_recognize Pass 识别模式后消除。"""
-    kind: str               # "begin" / "end" / "deref" / "increment"
-    container: Optional['ExprIR'] = None
-    operand: Optional['ExprIR'] = None
-
-@dataclass
 class BlockExpr:
     """语句块作为表达式值（phi 节点材料）。"""
     stmts: list['StmtIR']
@@ -253,13 +245,13 @@ class UnknownExpr:
 
 ExprIR = Union[Var, Lit, BinOp, UnaryOp, CondExpr, Call, UnresolvedOp,
                ArrayAccess, FieldAccess, Cast, LambdaExpr, Capture,
-               IteratorExpr, BlockExpr, TupleExpr, ArrayLit, UnknownExpr]
+               BlockExpr, TupleExpr, ArrayLit, UnknownExpr]
 ```
 
 **简化设计**（相对 v1 ir_types.py）：
 - 删除 `ArrayPush`：v1 用于表示 `.push_back()`，v2 统一用 `Call(callee="Array.push", ...)` 表达
 - 删除 `ExceptType`：CLPoly 不用异常（`cpp-subset-semantics.md` §7.3 确认）
-- 新增 `UnresolvedOp` / `IteratorExpr` / `LambdaExpr` / `Capture`：各自 Pass 中转节点
+- 新增 `UnresolvedOp` / `LambdaExpr` / `Capture`：各自 Pass 中转节点（迭代器操作不引入专用节点，Pass 1 统一用 `Call(UnresolvedOp("<method>.begin/.end/.erase"))` 等通用 Call 形式承载，Pass 4 基于 pattern 识别）
 - 新增 `TupleExpr` / `ArrayLit`：`ref_elim`、`initializer_list` 产物
 
 ### §1.4 语句（StmtIR）
@@ -425,7 +417,7 @@ class HIRProgram:
 | **HIR₀** | 原始——允许一切。`UnknownStmt`/`UnknownExpr` 可能出现（记录未识别节点）| Pass 1 `parse` |
 | **HIR₁** | **无 `T&`/`T&&` 参数**（`HIRParam.is_ref == False`）；所有 ref 参数已转 tuple | Pass 2 `ref_elim` |
 | **HIR₂** | **无 inline `LambdaExpr`**；所有 lambda 已提升为 `HIRFunc` in `aux_lambdas` | Pass 3 `lambda_lift` |
-| **HIR₃** | **无裸 `IteratorExpr`**；所有迭代器模式已转为高阶 Call（`Array.filter`/`Array.foreach`）或显式 index loop | Pass 4 `iter_recognize` |
+| **HIR₃** | **所有 `RangeForStmt.decomposition` 为空**（structured-binding 已 desugar 为 body 头部的 `LetStmt`）；**所有 compact-erase / classic iter-loop 模式已转为 `Call("Array.filter", …)`** | Pass 4 `iter_recognize` |
 | **HIR₄** | **所有 `Call.callee` 为具体函数名字符串**；无 `UnresolvedOp`；所有 `CompoundAssignStmt` 已展开；所有 `Cast` 的 source/target 可查 `CAST_TABLE` | Pass 5 `operator_resolve` |
 
 ### §2.2 runtime assert 函数
@@ -846,118 +838,188 @@ aux `HIRFunc.ret_ty` 不改写为 tuple；`modified_captures` 只保存在 `qual
 
 ### §6.1 职责
 
-识别迭代器模式，把裸迭代器操作（`IteratorExpr`、classic iterator loop、compact-erase 双指针模式）转为高阶 Call 或显式索引循环。依据 `cpp-subset-semantics.md` §6 + `iterators.md`。
+基于 HIR₂ 中的 `Call(UnresolvedOp("<method>.xxx"))` pattern 识别迭代器相关循环并 desugar。Pass 1 **不生成**专用迭代器节点（实证：HIR₂ 中无 `IteratorExpr`），所有 `.begin()` / `.end()` / `.erase()` / `operator*` / `operator++` 都表示为通用 `Call`——Pass 4 基于 string + 结构 pattern 做识别。依据 `cpp-subset-semantics.md` §6 + `iterators.md` + `pass3-smoke` dump 实测。
 
-### §6.2 识别的 4 种模式
+### §6.2 处理的 3 种模式
 
 | 模式 | 频次 | 转换目标 |
 |---|---|---|
-| `RangeForStmt` | 92 | 保留（已是高阶形式）+ 结构化绑定 desugar |
-| Structured-binding range-for | 24 | `RangeForStmt.decomposition` 字段处理 |
-| **Compact-erase 双指针** | **4** | **`AssignStmt(Var(v), Call("Array.filter", [Var(v), pred_lambda]))`** |
-| Classic iterator loop | 1 | 展开为显式 index-based `ForStmt` |
+| `RangeForStmt`（`decomposition` 为空） | ~68 | 保留，递归处理 body |
+| Structured-binding range-for（`decomposition` 非空） | 23 | body 头部注入 `LetStmt(k, _x.fst)`, `LetStmt(v, _x.snd)`；`decomposition=None` |
+| **Filter-loop**（A compact-erase **pure** 2 + B classic 2） | **4** | `AssignStmt(Var(v), Call("Array.filter", [Var(v), pred_lambda]))` |
 
-### §6.3 Compact-erase 模式识别
+> **Filter-loop 数量由 6 降到 4**（2026-04-23 Pass 4 审视发现，P0-b 修复后）：
+>
+> - HIR₂ 实测扫描出 6 个 4 件套/iter-loop 结构（比 `iterators.md` 源码正则多 1，源码正则漏掉 `__extract_monomial_content` 内嵌套的 `while(it != end())` 变体）。
+> - 其中 **2 个 form A 是 impure**——C++ 在 compact-erase 同一循环体内融合了 `fdiv_r/fdiv_q` 等对 `it->second` 的原地修改（`__upoly_mod_coeff`、`__hensel_step_linear`）。识别器若直接折叠为 `Array.filter` 会**静默丢弃 side-effect**（语义错误）。
+> - 因此 Pass 4 对 impure body **拒识**，原始 4 件套保留到 HIR₃——这是**已知技术债**，等 Pass 5/6/7 处理（见 §6.3 "impure 处理"）。
+>
+> 实际识别 4 处：`__hensel_step` ×2（form A，pure——`fdiv_r` 在独立前置 for-range）+ `__extract_monomial_content` ×2（form B）。
 
-**输入模式**（HIR₂ 形式，抽象化后）：
+并行双迭代器（`__upoly_divmod_mod` zip-walk，1 处）**不识别**，原样透传（见 §6.5）。
+
+### §6.3 Filter-loop 识别（合并 compact-erase + classic）
+
+两种源形态语义等价——都是"从容器保留满足 pred 的元素"——统一识别为 filter-loop，转 `Array.filter`：
+
+**形态 A — compact-erase 双指针**（4 处，全在 Univar；其中 1 处 `__hensel_step` 第二次复用变量 it/out）：
+```cpp
+auto it = v.data().begin(), out = it;
+while (it != v.data().end()) {
+    if (pred(*it)) { *out = *it; ++out; }
+    ++it;
+}
+v.data().erase(out, v.data().end());
+```
+
+HIR₂ 形式（Pass 3 走完后；前缀**三种之一**，根据 C++ 是否复用变量）：
+
+- 首次声明用 `auto it = v.begin(); auto out = it;` → `[LetStmt, LetStmt]`
+- 重赋值用 `it = v.begin(); out = it;` → `[ExprStmt(Call("operator=")), ExprStmt(Call("operator="))]`
+- 混合 → 另两种组合
 
 ```
-LetStmt(it_0, _, IteratorExpr("begin", Var(v)))
-LetStmt(out_0, _, Var(it_0))
-WhileStmt(
-    BinOp("!=", Var(it_0), IteratorExpr("end", Var(v))),
-    body=[
-        IfStmt(pred_expr_with_deref(Var(it_0)),
-               then=[ ... AssignStmt(FieldAccess(Var(out_0), "deref"), IteratorExpr("deref", Var(it_0)))
-                     + IteratorExpr("increment", Var(out_0)) ... ],
-               else=[]),
-        AssignStmt(Var(it_0), IteratorExpr("increment", Var(it_0)))
+# s0: 给 it 赋 begin（LetStmt | AssignStmt | ExprStmt(operator=)）
+# s1: 给 out 赋 it 的 alias（三种之一）
+s2: For/WhileStmt(
+    cond = Call(UnresolvedOp("operator!="),
+                [Var(it), Call(UnresolvedOp("<method>.end"), [v_expr])]),
+    body = [
+        IfStmt(pred_using_deref_it, then=[...], else=[]),
+        ExprStmt(Call(UnresolvedOp("operator++"), [Var(it)]))  # 或在 step 段
     ]
 )
-Call("erase", [Var(v), Var(out_0), IteratorExpr("end", Var(v))])
+s3: ExprStmt(Call(UnresolvedOp("<method>.erase"),
+                  [v_expr, Var(out), Call(UnresolvedOp("<method>.end"), [v_expr])]))
 ```
 
-**匹配算法**：
+识别器用 `stmt_rhs(s)` helper 抽 s0/s1 的 RHS，不依赖 stmt 类型分派。
+
+**形态 B — classic iter-loop + 条件 erase**（2 处，均在 `__extract_monomial_content`；ForStmt + WhileStmt 两种容器）：
+
+```cpp
+// B1: ForStmt 容器（空 step）
+for (auto it = X.begin(); it != X.end(); ) {
+    if (pred(*it)) ++it;
+    else it = X.erase(it);
+}
+
+// B2: WhileStmt 容器（it 在循环外 let 声明）
+auto it = X.begin();
+while (it != X.end()) {
+    if (!cond) it = X.erase(it);
+    else ++it;
+}
+```
+
+HIR₂ 形式：一条 `ForStmt`（init 含 `LetStmt(it, Call("<method>.begin", [v]))`）或 `WhileStmt`（cond 含 `Call("<method>.end", [v])`，it 在外层已声明）；body 内含 **深嵌的 erase**——形如 `ExprStmt(Call("operator=", [Var(it), Call("<method>.erase", ...)]))`，位于 IfStmt 的 then 或 else 分支里。识别器的 `deep_has_erase` 必须递归 Call.args 才能找到。
+
+**识别算法**：
+
+两形态独立识别器，顶层调度 `_match_filter_loop(stmts, idx)` 先试 A 再试 B。
+
 ```python
-def match_compact_erase(stmts: list[StmtIR]) -> Optional[tuple[Var, LambdaExpr]]:
-    """尝试识别 compact-erase 模式。
-    成功返回 (容器 Var, 过滤谓词 Lambda)。"""
-    # 1. 前 2 条 LetStmt 是 it = v.begin(); out = it;
-    # 2. 主 WhileStmt with cond it != v.end()
-    # 3. 末尾 erase(v, out, v.end())
-    # 4. 构造 lambda_pred from IfStmt.cond
-    ...
+def _match_filter_loop_A(stmts, idx) -> Optional[FilterLoopMatch]:
+    """形态 A 4 件套。"""
+    # 1. 前缀识别（3 种）：s0.rhs 是 Call("<method>.begin", [v])；
+    #    s1.rhs 是任意（Var(it) / Cast / Call(construct_iterator) ...）
+    # 2. s2 是 ForStmt | WhileStmt；s3 是 top-level ExprStmt(Call("<method>.erase"))
+    # 3. **pure 检查**（P0-b）：s2.body 中除 IfStmt 外只允许
+    #    operator++/--/= 作用在 it/out 变量自身；出现对 *it / it->field 的 ExprStmt 则拒识
+    # 4. 找 body 内 IfStmt（涉及 *it deref），提取 IfStmt.cond 作 pred
+    #    （form A 的 then 分支是 copy-and-advance，pred **不反转**）
+
+def _match_filter_loop_B(stmts, idx) -> Optional[FilterLoopMatch]:
+    """形态 B 单循环。"""
+    # 1. s 是 ForStmt | WhileStmt
+    # 2. 从 init 或 cond 抽 container（`<method>.begin(v)` / `<method>.end(v)`）
+    #    + 抽 it_name
+    # 3. body 递归扫描含 erase（_deep_has_erase，可嵌在 Call.args 里）
+    # 4. 找 body 内 IfStmt。**pred 反转判断**（P0-a）：
+    #    - erase 在 if.then_body（典型写法 `if (EraseCond) erase`）→ pred = UnaryOp("!", cond)
+    #    - erase 在 if.else_body（`if (KeepCond) ++it; else erase`）→ pred = cond
+    #    - 两侧都含或都不含 erase → 歧义，拒识
 ```
 
-**转换**：
+**转换**：匹配区间 `[start_idx, end_idx]` 替换为：
+```
+AssignStmt(
+    target = container_expr,
+    value  = Call("Array.filter", [container_expr, pred_lambda])
+)
+```
+
+**impure 处理（P0-b）**：若 form A body 含对 `it->field` 的 side-effect（如 `fdiv_r(it->second, ...)`），**不识别**；原 4 件套保留在 HIR₃ 里，留作技术债供 Pass 5/6 处理。影响 `__upoly_mod_coeff` + `__hensel_step_linear` 共 2 处。
+
+**pred 反转（P0-a）**：form B 的 C++ 写法 `if (EraseCond) erase; else ++it` 保留的元素是 `!EraseCond` 的。识别器必须按 erase 在 if.then 还是 if.else 决定是否给 pred 加 `UnaryOp("!", ...)` 外壳；否则 Lean `Array.filter` 语义与 C++ 完全相反。
+
+**pred_lambda 构造**：从选定的 pred 表达式出发，把所有 `*it` / `it->field` / `Call("operator*", [Var(it)])` / `FieldAccess(Call("operator->", [Var(it)]), field)` 的出现替换为新 lambda 参数 `__x`（或 `__x.field`）。元素类型留 `UnknownType("")`（Pass 5 可补全）。
+
+### §6.4 Structured-binding desugar
+
+Pass 1 把 `DecompositionDecl` 保留在 `RangeForStmt.decomposition`（非空列表）。Pass 4 展开：
 
 ```
-match [
-    LetStmt(it, _, IteratorExpr("begin", Var(v))),
-    LetStmt(out, _, Var(it)),
-    WhileStmt(...cond_expr = *it...),
-    ExprStmt(Call("erase", ...))
-]
+RangeForStmt(var=_x, ty=PairType(K, V), container=map,
+             body=body_using_k_and_v,
+             decomposition=[Var("k"), Var("v")])
 →
-AssignStmt(Var(v), Call("Array.filter", [Var(v), LambdaExpr(pred_body)]))
+RangeForStmt(var=_x, ty=PairType(K, V), container=map,
+             body=[
+                 LetStmt(Var("k"), K, FieldAccess(Var("_x"), "fst")),
+                 LetStmt(Var("v"), V, FieldAccess(Var("_x"), "snd")),
+             ] + body_using_k_and_v,
+             decomposition=None)
 ```
 
-### §6.4 Structured-binding range-for
+**RefType 穿透（P1，2026-04-23 修复）**：C++ range-for 元素类型常为 `Pair<A,B>&` / `const Pair<A,B>&`，HIR₀ 的 `rf.var_ty` 是 `RefType(inner=PairType(...))`。`_desugar_decomposition` 入口先剥 RefType 外壳：
 
-在 HIR₀ → HIR₁ 时，`parse` Pass 已把 `DecompositionDecl` 放到 `RangeForStmt.decomposition`。Pass 4 将其 desugar 为 body 开头的 `LetStmt`：
-
-```
-RangeForStmt(
-    var=_x,
-    ty=PairType(K, V),
-    container=map,
-    body=...body_using_k_and_v...,
-    decomposition=[Var("k"), Var("v")]
-)
-→
-RangeForStmt(
-    var=_x,
-    ty=PairType(K, V),
-    container=map,
-    body=[
-        LetStmt(Var("k"), K, FieldAccess(Var("_x"), "fst")),
-        LetStmt(Var("v"), V, FieldAccess(Var("_x"), "snd")),
-    ] + body,
-    decomposition=None
-)
+```python
+elem_ty = rf.var_ty
+while isinstance(elem_ty, RefType):
+    elem_ty = elem_ty.inner
+# 再判断 PairType / TupleType
 ```
 
-### §6.5 Classic iterator loop
+否则会落入 fallback 分支用 `elem0/elem1` + `UnknownType`，语义正确但字段名不符合 Lean 约定、类型信息丢失。该修复影响 11 处 desugar（`__factor_multivar` ×7、`__wang_core` ×2、`__select_prime`、`__select_eval_point` ×2、其他 ×若干）。
 
-Pattern: `for (auto it = v.begin(); it != v.end(); ++it) { body }`
+现有 23 处 structured-binding 全为 `PairType`；`TupleType` 3+ 字段的分支是 fallback（按 `FieldAccess(_x, "elemN")` 下标展开），CLPoly 当前不触发。
 
-**转换**：展开为显式 `ForStmt`
+### §6.5 并行双迭代器（不识别）
 
-```
-ForStmt(
-    init=[LetStmt(Var("__idx"), BaseType.NAT, Lit(0))],
-    cond=BinOp("<", Var("__idx"), Call("Array.size", [Var(v)])),
-    step=[CompoundAssignStmt(Var("__idx"), "+", Lit(1))],
-    body=[
-        LetStmt(Var("it"), elem_ty, ArrayAccess(Var(v), Var("__idx"))),
-        ... body with *it replaced by Var("it"), ++it removed ...
-    ]
-)
-```
+`__upoly_divmod_mod` 的 zip-walk（同时推进两个迭代器）不匹配 §6.3 filter-loop 特征，Pass 4 **不处理**：原始 `WhileStmt` + `Call(UnresolvedOp("operator++"))` 原样透传。Pass 5 `operator_resolve` 把 `operator!=` / `operator++` 等解析为普通 `Call`；Pass 8 codegen 对此类未识别循环输出 `-- TODO: zip-walk` 注释以便人工介入。项目后期若需要可单独补一个 zip-walk 识别器。
 
-然后 Pass 7 `loop_lower` 再处理 ForStmt。
+### §6.6 出口不变量 `assert_hir3_invariant(func)`
 
-### §6.6 并行双迭代器（1 处）
+强制：
+- `func.body` 和 `aux_lambdas[*].body` 中所有 `RangeForStmt.decomposition == None`
+- 不存在**可识别的** filter-loop A 形态 4 件套（由 `_match_filter_loop_A` 判定）
 
-`__upoly_divmod_mod` 的 zip-walk 不识别，保留原始 HIR（由 `UnresolvedOp("operator++")` 等表示）。最终由 `operator_resolve` Pass 解析为普通 Call。
+**允许残留**：
+1. `Call(UnresolvedOp("<method>.xxx"))` 本身可保留（Pass 5 作通用 Call 处理）
+2. **impure compact-erase 的原 4 件套**（P0-b 技术债）：body 内混有 `fdiv_r(it->second, ...)` 等 side-effect 的 A 形态会被 `_match_filter_loop_A` 返回 `None`（因 `_is_pure_filter_body` 拒识），所以 assert 也不会报错——原 4 件套保留给后续 Pass。CLPoly 当前 2 处：`__upoly_mod_coeff`、`__hensel_step_linear`。
+3. `__extract_monomial_content` 的 form B-WhileStmt 会遗留前置 `let it := begin(min_deg)` dead binding（B 形态消费单 stmt 不回吃前置 let），Pass 5 DCE 可清除；语义无误。
 
 ### §6.7 语义保持
 
-见 `cpp-subset-semantics.md` §6.3 引理 L6.1。
+见 `cpp-subset-semantics.md` §6.3 引理 L6.1。`Array.filter` 的 Lean 语义与 C++ compact-erase 的"移除不满足 pred 的元素"一致；structured-binding desugar 是纯记号展开，不改变值流。
 
 ### §6.8 实现规模
 
-~350 行 Python。
+`proof/cpp2lean_v2/passes/pass4_iter_recognize.py`：**~555 行 Python**（含 P0-a pred 反转、P0-b pure-body 拒识、P1 RefType 穿透）：
+- `_stmt_rhs` + `_expr_has_erase` + `_expr_has_iter_method` + `_deep_has_erase` helpers ~80 行
+- `_is_pure_filter_body`（P0-b） ~30 行
+- `_match_filter_loop_A/B` + `_match_filter_loop` 调度 ~150 行
+- `_build_pred_lambda`（把 `*it` / `it->field` 替换为新 lambda 参数 `__x`） ~60 行
+- `_find_pred_ifstmt_in_body` + `_refers_to_deref` ~40 行
+- `_desugar_decomposition`（含 P1 RefType 穿透） ~40 行
+- `_walk_and_rewrite`（递归穿透 RangeFor/If/For/While/DoWhile/Block + aux_lambdas） ~80 行
+- `assert_hir3_invariant` ~40 行
+- `iter_recognize_pass` 顶层 ~15 行
+
+测试规模：
+- `tests/test_pass4_iter.py` 7 单元测试（含 form A pure/impure、form B pred 反转验证）
+- `tests/smoke_pass4_full.py` 67 HIR 全量烟测 → `/tmp/hir3_dump/`
 
 ---
 

@@ -29,6 +29,7 @@ CLASS_MAP = {
             "+": None, "-": None, "*": None,
             "/": "Zp.div",
             "==": None, "!=": None,
+            "+=": None, "-=": None, "*=": None, "/=": "Zp.div",
         },
     },
 
@@ -49,6 +50,10 @@ CLASS_MAP = {
             "==": None, "!=": None, "<": None, ">": None,
             "<=": None, ">=": None,
             "bool": "ZZ.toBool",  # operator bool: ZZ → Bool (nonzero check)
+            # compound assignment：Pass 5 将 `x += y` 展开为 `x := x + y`；
+            # 这里注册占位让 CLASS_MAP 查表命中，Pass 5 走 compound 展开分支
+            "+=": None, "-=": None, "*=": None, "/=": None, "%=": None,
+            "<<=": None, ">>=": None, "|=": None, "&=": None, "^=": None,
         },
         "static_methods": {
             "fdiv_q": "ZZ.fdiv_q",
@@ -75,6 +80,10 @@ CLASS_MAP = {
         "constructors": {
             (): "SparsePolyZp.empty",
         },
+        "operators": {
+            "+": None, "-": None, "*": None,
+            "==": None, "!=": None,
+        },
         "methods": {
             "empty": ("method", "Array.isEmpty"),
             "front": ("method", "SparsePolyZp.front!"),
@@ -98,6 +107,10 @@ CLASS_MAP = {
         "lean_type": StructType("SparsePolyZZ", []),
         "constructors": {
             (): "SparsePolyZZ.empty",
+        },
+        "operators": {
+            "+": None, "-": None, "*": None,
+            "==": None, "!=": None,
         },
         "methods": {
             "empty": ("method", "Array.isEmpty"),
@@ -131,6 +144,7 @@ CLASS_MAP = {
             "+": None, "-": None, "*": None, "/": None,
             "==": None, "!=": None, "<": None, ">": None,
             "<=": None, ">=": None,
+            "+=": None, "-=": None, "*=": None, "/=": None,
         },
     },
 
@@ -138,6 +152,10 @@ CLASS_MAP = {
         "lean_type": StructType("MvPolyZZ", []),
         "constructors": {
             (): "MvPolyZZ.empty",
+        },
+        "operators": {
+            "+": None, "-": None, "*": None,
+            "==": None, "!=": None,
         },
         "methods": {
             "empty": ("method", "MvPolyZZ.isEmpty"),
@@ -160,6 +178,11 @@ CLASS_MAP = {
         "lean_type": StructType("MvPolyZp", []),
         "constructors": {
             (): "MvPolyZp.empty",
+        },
+        "operators": {
+            "+": None, "-": None, "*": None,
+            "==": None, "!=": None,
+            "+=": None, "-=": None, "*=": None,
         },
         "methods": {
             "empty": ("method", "MvPolyZp.isEmpty"),
@@ -192,6 +215,10 @@ CLASS_MAP = {
     "Variable": {
         "lean_type": StructType("Variable", []),
         "constructors": {},
+        "operators": {
+            "==": None, "!=": None, "<": None, ">": None,
+            "<=": None, ">=": None,
+        },
         "methods": {
             "insert": ("mutate", "Variable.insert"),
             "find": ("method", "Variable.find"),
@@ -238,6 +265,21 @@ CLASS_MAP = {
         "methods": {},
     },
 
+    # Iterator — Pass 4 已识别绝大多数 iter 循环；本表用于 impure compact-erase
+    # 等 Pass 4 拒识场景的兜底（保留为通用 Lean 操作）
+    "Iterator": {
+        "lean_type": StructType("Iterator", []),
+        "constructors": {},
+        "operators": {
+            "++": ("mutate", "Iterator.advance"),
+            "--": ("mutate", "Iterator.retreat"),
+            "*":  ("method", "Iterator.deref!"),
+            "->": ("method", "Iterator.deref!"),
+            "==": None, "!=": None,
+        },
+        "methods": {},
+    },
+
     "StdMap": {
         "lean_type": StructType("StdMap", []),
         "constructors": {
@@ -263,6 +305,169 @@ CLASS_MAP = {
         "methods": {
             "content": ("field", "content"),
             "factors": ("field", "factors"),
+        },
+    },
+
+    # ====================================================================
+    # Array — 通用 std::vector<T> 容器（Pass 1 把 std::vector 解析为
+    # ArrayType；Pass 5 用 "Array" 作为 receiver 键查方法）
+    # ====================================================================
+    "Array": {
+        "lean_type": StructType("Array", []),
+        "constructors": {
+            (): "#[]",
+        },
+        "methods": {
+            "size":         ("method",       "Array.size"),
+            "empty":        ("method",       "Array.isEmpty"),
+            "front":        ("method",       "Array.head!"),       # UB-3
+            "back":         ("method",       "Array.getLast!"),    # UB-3
+            "data":         ("identity",     None),                # vector::data() ≈ self
+            "begin":        ("method",       "Array.toList"),      # 配合 Pass 4 已识别 iter
+            "end":          ("method",       "Array.toList"),
+            "cbegin":       ("method",       "Array.toList"),
+            "cend":         ("method",       "Array.toList"),
+            "push_back":    ("mutate_push",  "Array.push"),
+            "pop_back":     ("mutate",       "Array.pop"),
+            "emplace_back": ("mutate_push",  "Array.push"),
+            "resize":       ("mutate",       "Array.resize"),
+            "reserve":      ("noop",         None),
+            "clear":        ("mutate",       "Array.empty"),
+            "assign":       ("mutate",       "id"),
+            "erase":        ("mutate",       "Array.erase"),       # Pass 4 漏识别的兜底
+            "at":           ("method",       "Array.get!"),        # UB-2
+            "insert":       ("mutate",       "Array.insert"),
+            "swap":         ("mutate",       "Array.swap"),
+        },
+        "operators": {
+            "[]":  "Array.get!",   # UB-2
+            "()":  None,           # 不应出现
+            "==":  None, "!=": None,
+            "=":   None,           # operator= → AssignStmt（特殊处理）
+        },
+    },
+
+    # ====================================================================
+    # Monomial — basic_monomial<...> typedef 别名；alias 到 MvMonomial
+    # ====================================================================
+    "Monomial": {
+        "lean_type": StructType("MvMonomial", []),
+        "constructors": {
+            (): "MvMonomial.empty",
+        },
+        "methods": {
+            "deg":          ("field",        "deg"),
+            "empty":        ("method",       "MvMonomial.isEmpty"),
+            "size":         ("method",       "MvMonomial.size_u64"),
+            "front":        ("method",       "MvMonomial.front!"),
+            "back":         ("method",       "MvMonomial.back!"),
+            "data":         ("identity",     None),
+            "push_back":    ("mutate_push",  "Array.push"),
+            "pop_back":     ("mutate",       "Array.pop"),
+            "begin":        ("method",       "MvMonomial.toList"),
+            "end":          ("method",       "MvMonomial.toList"),
+            "normalization": ("mutate",      "MvMonomial.normalization"),
+            "clear":        ("mutate",       "Array.empty"),
+            "reserve":      ("noop",         None),
+        },
+    },
+
+    # ====================================================================
+    # Poly / PolyZp / PolyQQ / PolyZZ — CLPoly 别名 typedef 到 MvPoly*
+    # （Pass 1 line 217 _TYPEDEF_ALIASES 里映射到独立 NamedType；这里
+    # 注册等同方法集，避免 Pass 5 漏命中）
+    # ====================================================================
+    "Poly": {
+        "lean_type": StructType("MvPolyZZ", []),
+        "constructors": {(): "MvPolyZZ.empty"},
+        "operators": {
+            "+": None, "-": None, "*": None,
+            "==": None, "!=": None,
+        },
+        "methods": {
+            # Poly == polynomial_<ZZ, lex_<var_order>> == MvPolyZZ alias
+            "size":          ("method",       "MvPolyZZ.size_u64"),
+            "empty":         ("method",       "MvPolyZZ.isEmpty"),
+            "front":         ("method",       "MvPolyZZ.front!"),
+            "back":          ("method",       "MvPolyZZ.back!"),
+            "data":          ("identity",     None),
+            "comp":          ("method",       "MvPolyZZ.comp"),
+            "comp_ptr":      ("method",       "MvPolyZZ.comp"),
+            "begin":         ("method",       "MvPolyZZ.toList"),
+            "end":           ("method",       "MvPolyZZ.toList"),
+            "push_back":     ("mutate_push",  "Array.push"),
+            "pop_back":      ("mutate",       "Array.pop"),
+            "normalization": ("mutate",       "MvPolyZZ.normalization"),
+            "reserve":       ("noop",         None),
+            "clear":         ("mutate",       "Array.empty"),
+            "assign":        ("mutate",       "id"),
+        },
+    },
+
+    "PolyZp": {
+        "lean_type": StructType("MvPolyZp", []),
+        "constructors": {(): "MvPolyZp.empty"},
+        "operators": {
+            "+": None, "-": None, "*": None,
+            "==": None, "!=": None,
+        },
+        "methods": {
+            "size":          ("method",       "MvPolyZp.size_u64"),
+            "empty":         ("method",       "MvPolyZp.isEmpty"),
+            "front":         ("method",       "MvPolyZp.front!"),
+            "back":          ("method",       "MvPolyZp.back!"),
+            "data":          ("identity",     None),
+            "comp":          ("method",       "MvPolyZp.comp"),
+            "comp_ptr":      ("method",       "MvPolyZp.comp"),
+            "begin":         ("method",       "MvPolyZp.toList"),
+            "end":           ("method",       "MvPolyZp.toList"),
+            "push_back":     ("mutate_push",  "Array.push"),
+            "pop_back":      ("mutate",       "Array.pop"),
+            "normalization": ("mutate",       "MvPolyZp.normalization"),
+            "reserve":       ("noop",         None),
+            "clear":         ("mutate",       "Array.empty"),
+            "assign":        ("mutate",       "id"),
+        },
+    },
+
+    "PolyZZ": {
+        "lean_type": StructType("MvPolyZZ", []),
+        "constructors": {(): "MvPolyZZ.empty"},
+        "methods": {
+            # 与 Poly 等同
+            "size":          ("method",       "MvPolyZZ.size_u64"),
+            "empty":         ("method",       "MvPolyZZ.isEmpty"),
+            "front":         ("method",       "MvPolyZZ.front!"),
+            "back":          ("method",       "MvPolyZZ.back!"),
+            "data":          ("identity",     None),
+            "comp":          ("method",       "MvPolyZZ.comp"),
+            "comp_ptr":      ("method",       "MvPolyZZ.comp"),
+            "begin":         ("method",       "MvPolyZZ.toList"),
+            "end":           ("method",       "MvPolyZZ.toList"),
+            "push_back":     ("mutate_push",  "Array.push"),
+            "pop_back":      ("mutate",       "Array.pop"),
+            "normalization": ("mutate",       "MvPolyZZ.normalization"),
+            "reserve":       ("noop",         None),
+            "clear":         ("mutate",       "Array.empty"),
+        },
+    },
+
+    "PolyQQ": {
+        "lean_type": StructType("PolyQQ", []),
+        "constructors": {(): "PolyQQ.empty"},
+        "methods": {
+            "size":          ("method",       "PolyQQ.size_u64"),
+            "empty":         ("method",       "PolyQQ.isEmpty"),
+            "front":         ("method",       "PolyQQ.front!"),
+            "back":          ("method",       "PolyQQ.back!"),
+            "data":          ("identity",     None),
+            "comp":          ("method",       "PolyQQ.comp"),
+            "begin":         ("method",       "PolyQQ.toList"),
+            "end":           ("method",       "PolyQQ.toList"),
+            "push_back":     ("mutate_push",  "Array.push"),
+            "normalization": ("mutate",       "PolyQQ.normalization"),
+            "reserve":       ("noop",         None),
+            "clear":         ("mutate",       "Array.empty"),
         },
     },
 }

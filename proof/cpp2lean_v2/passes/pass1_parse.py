@@ -217,8 +217,12 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         return NamedType("Monomial")
 
     if qt.startswith("basic_polynomial<"):
-        # 底层表示；根据内部类型映射
+        # 底层表示；根据内部类型映射。args 内部可能带 `clpoly::` 前缀，
+        # 比较前去掉。
         args = _extract_template_args(qt, "basic_polynomial<")
+        def _strip_clpoly(s: str) -> str:
+            return s[len("clpoly::"):] if s.startswith("clpoly::") else s
+        args = [_strip_clpoly(a) for a in args]
         if len(args) >= 2 and args[1] == "Zp":
             return NamedType("MvPolyZp") if "basic_monomial" in args[0] else NamedType("SparsePolyZp")
         if len(args) >= 2 and args[1] == "ZZ":

@@ -128,6 +128,8 @@ CLASS_MAP = {
             "end": ("method", "SparsePolyZZ.toList"),
             "clear": ("mutate", "Array.empty"),
             "assign": ("mutate", "id"),
+            "erase": ("mutate", "Array.erase"),  # P1-7: range/iter erase（兜底）
+            "at":    ("method", "Array.get!"),
         },
     },
 

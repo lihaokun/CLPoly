@@ -140,6 +140,75 @@ def _typename_for_classmap(ty: TypeIR | None) -> str | None:
 
 
 # ============================================================
+# Iterator-offset pattern 识别（A 类设计 gap 修复）
+# ============================================================
+
+def _try_extract_iter_offset(e: ExprIR
+                             ) -> tuple[ExprIR, ExprIR | None, str] | None:
+    """识别 iterator + offset 形态，返回 (容器, offset_expr_or_None, op)：
+
+    - `Call("Array.toList", [v])`                          → (v, None, "begin")
+    - `Call(UnresolvedOp("operator+"), [Call(toList,[v]), o])`→ (v, o, "+")
+    - `Call(UnresolvedOp("operator-"), [Call(toList,[v]), o])`→ (v, o, "-")
+    - `Call("__ctor__Iterator.fromList {a0}", [inner])`     → 透传 inner
+
+    其他 → None
+    """
+    # 透传 Iterator wrapper（已 resolve 后形态）
+    if isinstance(e, Call):
+        cs = e.callee if isinstance(e.callee, str) else None
+        if cs and cs.startswith("__ctor__Iterator.fromList"):
+            if e.args:
+                return _try_extract_iter_offset(e.args[0])
+    # 透传 raw Iterator ctor: Call(UnresolvedOp("construct_iterator"/"construct_const_iterator"))
+    if isinstance(e, Call) and isinstance(e.callee, UnresolvedOp):
+        if e.callee.op_name in ("construct_iterator", "construct_const_iterator"):
+            if e.args:
+                return _try_extract_iter_offset(e.args[0])
+    # 剥 Cast
+    if isinstance(e, Cast):
+        return _try_extract_iter_offset(e.expr)
+    # toList(v) 单独形式 = begin（已 resolve 后形态）
+    if isinstance(e, Call):
+        cs = e.callee if isinstance(e.callee, str) else None
+        if cs and (cs.endswith(".toList") or cs == "Array.toList"):
+            if e.args:
+                return (e.args[0], None, "begin")
+    # raw 形态：Call(UnresolvedOp("<method>.begin/.end/.cbegin/.cend"))
+    if isinstance(e, Call) and isinstance(e.callee, UnresolvedOp):
+        op_name = e.callee.op_name
+        if op_name in ("<method>.begin", "<method>.end",
+                       "<method>.cbegin", "<method>.cend"):
+            if e.args:
+                return (e.args[0], None, "begin")
+    # operator+ / operator- 嵌套
+    if isinstance(e, Call) and isinstance(e.callee, UnresolvedOp):
+        op = e.callee.op_name
+        if op in ("operator+", "operator-") and len(e.args) == 2:
+            inner_lhs = _try_extract_iter_offset(e.args[0])
+            if inner_lhs is not None and inner_lhs[1] is None:
+                # lhs 是 begin，offset 是 args[1]
+                return (inner_lhs[0], e.args[1], "+" if op == "operator+" else "-")
+    # BinOp 形态（万一已被 Lean-推出）
+    if isinstance(e, BinOp) and e.op in ("+", "-"):
+        inner = _try_extract_iter_offset(e.lhs)
+        if inner is not None and inner[1] is None:
+            return (inner[0], e.rhs, e.op)
+    return None
+
+
+def _exprs_eq(a: ExprIR, b: ExprIR) -> bool:
+    """简化的表达式相等判断（用于 Pattern B 检验 begin 和 end 的容器是同一个）。"""
+    if isinstance(a, Var) and isinstance(b, Var):
+        return a.name == b.name
+    if isinstance(a, FieldAccess) and isinstance(b, FieldAccess):
+        return a.field_name == b.field_name and _exprs_eq(a.obj, b.obj)
+    if isinstance(a, Cast) and isinstance(b, Cast):
+        return _exprs_eq(a.expr, b.expr)
+    return False
+
+
+# ============================================================
 # Cast 解析
 # ============================================================
 
@@ -224,12 +293,19 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
     # operator[] → ArrayAccess（UB require 在 stmt 注入阶段，按 receiver 类型分派）
     # P0-5：对 StdMap 不输出 ArrayAccess（Lean 的 StdMap.lookup 语义不同），
     # 用 Call 形态表示，UB 检查也走 StdMap 自己的判定
+    # P0-10：StdMap.get! 返回 value type，填到 Call.ty 让下游 method 调用能查
+    # CLASS_MAP（如 `groups[d].push_back(idx)` 中 push_back 的 receiver type）
     if op_sym == "[]" and len(args) == 2:
         recv_ty = _strip_ref(_expr_ty(args[0], typectx))
-        if isinstance(recv_ty, StdMapType) or (isinstance(recv_ty, NamedType)
-                                               and recv_ty.name == "StdMap"):
+        if isinstance(recv_ty, StdMapType):
+            return Call(callee="StdMap.get!", args=args, ty=recv_ty.value)
+        if isinstance(recv_ty, NamedType) and recv_ty.name == "StdMap":
             return Call(callee="StdMap.get!", args=args, ty=None)
-        return ArrayAccess(arr=args[0], idx=args[1], ty=None)
+        # ArrayAccess for vector/Array
+        elem_ty = None
+        if isinstance(recv_ty, ArrayType):
+            elem_ty = recv_ty.elem
+        return ArrayAccess(arr=args[0], idx=args[1], ty=elem_ty)
 
     # operator() → lambda/functor apply
     if op_sym == "()" and len(args) >= 1:
@@ -256,7 +332,26 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
     cls_ops = CLASS_MAP.get(recv, {}).get("operators", {}) if recv else {}
 
     if recv is None:
-        # 无类型信息：保留 UnresolvedOp
+        # P0-9：args[0] 类型未知。对**数值/比较二元 op**，输出 BinOp 让 Lean
+        # typeclass (HAdd/HMul/HSub/Eq/LT) 自动推断；对 args[0] 是 List/Array
+        # 等容器形态的，保留 UnresolvedOp（Lean 没 List+Int typeclass，会真编译失败，
+        # 标 gap 让人知道是 iterator-offset 模式 —— A 类设计 issue）
+        _NUMERIC_OPS = {"+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">=",
+                        "&&", "||", "&", "|", "^", "<<", ">>"}
+        if op_sym in _NUMERIC_OPS and len(args) == 2:
+            # 检查 args[0] 是不是 List 形态（来自 Array.toList）
+            def _is_list_form(e: ExprIR) -> bool:
+                if isinstance(e, Call):
+                    cs = e.callee if isinstance(e.callee, str) else None
+                    return bool(cs and ("toList" in cs or cs == "Array.toList"))
+                return False
+            if not _is_list_form(args[0]) and not _is_list_form(args[1]):
+                # 真正的数值算术，让 Lean typeclass 推
+                result_ty = (BaseType.BOOL
+                             if op_sym in ("==", "!=", "<", ">", "<=", ">=", "&&", "||")
+                             else None)
+                return BinOp(op=op_sym, lhs=args[0], rhs=args[1], ty=result_ty)
+        # iterator-offset / list-offset 等：保留 gap
         gap.op_miss.append(("None", op_sym))
         return replace(call, args=args)
 
@@ -322,6 +417,23 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
     `host_stmt_ctx=True` 表示调用方处于 stmt 级（ExprStmt 包裹），可生成
     AssignStmt（mutator 类）；False 时即使是 mutator 也只能返回 Call。
     """
+    # Pattern A：`vec.erase(begin + j)` 早识别，避免 walk operator+ 误记 gap
+    if method == "erase" and len(call.args) == 2:
+        iter_info = _try_extract_iter_offset(call.args[1])
+        if iter_info is not None:
+            container, offset, op = iter_info
+            if op == "+" and offset is not None:
+                recv_raw = call.args[0]
+                if _exprs_eq(container, recv_raw):
+                    recv_w = _walk_expr(recv_raw, typectx, gap)
+                    off_w = _walk_expr(offset, typectx, gap)
+                    new_call = Call(callee="Array.eraseIdx",
+                                    args=[recv_w, off_w], ty=None)
+                    if (host_stmt_ctx
+                            and isinstance(recv_w, (Var, FieldAccess, ArrayAccess))):
+                        return ([AssignStmt(target=recv_w, value=new_call)], recv_w)
+                    return new_call
+
     args = [_walk_expr(a, typectx, gap) for a in call.args]
     if not args:
         gap.method_miss.append(("?", method))
@@ -338,6 +450,9 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
 
     cls = CLASS_MAP.get(T, {})
     methods = cls.get("methods", {})
+    # P0-7：对 BaseType.BOOL 上的 `operator bool`，identity 剥（bool→bool 是 noop）
+    if T == "BaseType.BOOL" and method == "operator bool":
+        return recv
     # P1-3：`<method>.operator bool` / `<method>.operator <op>` 是 Pass 1 把
     # C++ 转换运算符或运算符 overload 包成 method 调用形态。优先查 methods，
     # 找不到时把 method 名按 operator 处理（剥 "operator " 前缀查 operators）
@@ -373,6 +488,20 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
         return recv  # mutate 但 no-op（如 reserve）
 
     if disposition == "mutate":
+        # Pattern A：识别 `vec.erase(begin + j)` → `Array.eraseIdx(vec, j)`
+        # 形态：method == "erase" / target == "Array.erase" / 1 个 extra arg
+        # 是 Iterator.fromList(begin+offset) 形态
+        if (method == "erase" and len(extra_args) == 1):
+            iter_info = _try_extract_iter_offset(extra_args[0])
+            if iter_info is not None:
+                container, offset, op = iter_info
+                if op == "+" and offset is not None and _exprs_eq(container, recv):
+                    new_call = Call(callee="Array.eraseIdx",
+                                    args=[recv, offset], ty=None)
+                    if host_stmt_ctx and isinstance(recv, (Var, FieldAccess, ArrayAccess)):
+                        return ([AssignStmt(target=recv, value=new_call)], recv)
+                    return new_call
+
         new_call = Call(callee=target, args=[recv] + extra_args, ty=None)
         # P1-5：扩展 ArrayAccess 也作 target（如 `groups[d].push_back(x)`）
         if host_stmt_ctx and isinstance(recv, (Var, FieldAccess, ArrayAccess)):
@@ -399,15 +528,47 @@ def _resolve_constructor_call(call: Call, op_name: str, typectx: dict,
                               gap: GapLog) -> ExprIR:
     """处理 `Call(UnresolvedOp("construct_X" | "default_init_X"), args)`。"""
     from constructor_map import _normalize_typename
+    typename = _normalize_typename(op_name)
+    arity = len(call.args)
+
+    # Pattern B：识别 `vector<T>(begin±i, end±j)` 形态。**raw args 检测**（在 walk
+    # 之前），匹配时只 walk container + offset 子表达式，避免 walk outer
+    # operator+/- 时误记 None-receiver gap。
+    if ("vector<" in typename and arity >= 2
+            and op_name.startswith("construct_")):
+        a0_info = _try_extract_iter_offset(call.args[0])
+        a1_info = _try_extract_iter_offset(call.args[1])
+        if a0_info is not None and a1_info is not None:
+            c0, off0, op0 = a0_info
+            c1, off1, op1 = a1_info
+            if _exprs_eq(c0, c1):
+                cw = _walk_expr(c0, typectx, gap)
+                off0_w = _walk_expr(off0, typectx, gap) if off0 is not None else None
+                off1_w = _walk_expr(off1, typectx, gap) if off1 is not None else None
+                if op0 == "+" and op1 == "begin" and off0_w is not None:
+                    return Call(callee="Array.drop", args=[cw, off0_w],
+                                ty=NamedType("Array"))
+                if op0 == "begin" and op1 == "-" and off1_w is not None:
+                    return Call(callee="Array.dropLast", args=[cw, off1_w],
+                                ty=NamedType("Array"))
+                if op0 == "begin" and op1 == "begin":
+                    return Call(callee="id", args=[cw], ty=NamedType("Array"))
+                if op0 == "begin" and op1 == "+" and off1_w is not None:
+                    return Call(callee="Array.take", args=[cw, off1_w],
+                                ty=NamedType("Array"))
+                if op0 == "+" and op1 == "+" and off0_w and off1_w:
+                    inner = Call(callee="Array.take", args=[cw, off1_w],
+                                 ty=NamedType("Array"))
+                    return Call(callee="Array.drop", args=[inner, off0_w],
+                                ty=NamedType("Array"))
+
     args = [_walk_expr(a, typectx, gap) for a in call.args]
-    arity = len(args)
     resolution = resolve_constructor(op_name, arity)
     if resolution is None:
         gap.constructor_miss.append((op_name, arity))
         return replace(call, args=args)
     # P0-3：从 typename 推回目标类型，填到 Call.ty。这样下游 receiver 类型查询
     # （如 `__ctor__Zp.ofInt(x) + y` 中 outer + 的 LHS 类型）能正确得到 Zp。
-    typename = _normalize_typename(op_name)
     target_ty = _typename_to_typeir(typename)
     return Call(callee=f"__ctor__{resolution.template}", args=args, ty=target_ty)
 

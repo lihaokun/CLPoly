@@ -229,6 +229,17 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
     "PolyZZ::monomial_type": {
         0: ConstructorResolution("MvMonomial.empty", is_default=True),
     },
+
+    # std::string —— 仅用于 assert 消息字符串（Variable name 字面量等）
+    # 2 args: (char_array, allocator) → String.mk
+    "basic_string<char>": {
+        2: ConstructorResolution("String.mk {a0}"),
+    },
+    "string": {
+        0: ConstructorResolution("\"\""),
+        1: ConstructorResolution("({a0} : String)"),
+        2: ConstructorResolution("String.mk {a0}"),
+    },
 }
 
 
@@ -310,6 +321,7 @@ def _try_stl_pattern(typename: str, arity: int) -> ConstructorResolution | None:
 
 DEFAULT_INIT_MAP: dict[str, ConstructorResolution] = {
     "default_init_const allocator_type": ConstructorResolution("()", is_default=True),
+    "default_init_const std::allocator<char>": ConstructorResolution("()", is_default=True),
     "default_init_int":  ConstructorResolution("0", is_default=True),
     "default_init_bool": ConstructorResolution("false", is_default=True),
     # 其他 default_init_* 走规则

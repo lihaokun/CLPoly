@@ -1170,9 +1170,52 @@ def rewrite_output_param_call(call: Call, call_stmt: StmtIR) -> list[StmtIR]:
 
 Signed overflow 单独扫描 `UB-6` 站点，批量生成 `Int.noOverflow` require。
 
-### §7.7 实现规模
+### §7.7 字面量 cast 简化（Pass 1 typectx 后剩余 4 处的处置）
 
-~250 行 Python（+ CLASS_MAP/FUNC_MAP/CAST_TABLE 的数据表，复用自 v1）。
+经 Pass 1 `desugar` + `_propagate_var_types` 后，HIR₃ 内 unresolved cast site
+从 205 降到 4，剩余 4 处全是 **`Cast(Lit(int), Int32, DependentType, IntegralCast)`** 形态——
+字面量 `0` / `1` 在 `__factor_multivar` template body 内被 implicit-cast 到
+`std::pair<...>::second_type`，Clang 保留 target 为 `DependentType`。
+
+**规则**：Pass 5 在通用 cast 处理之前，先判定能否安全剥 Cast：
+
+```python
+def _try_simplify_lit_cast(cast: Cast) -> ExprIR | None:
+    """若 cast 是 IntegralCast 且 inner 是 Lit(int)，且字面量在 int16 范围内，
+    且若 target 已知则也在 target 范围内 ⇒ 直接返回 inner Lit。"""
+    if not is_safe_to_strip_lit_cast(cast):  # 见 cast_table.py
+        return None
+    return cast.expr  # 剥 Cast，返回 Lit
+```
+
+**安全约束**（见 `cast_table.py::is_safe_to_strip_lit_cast`）：
+
+1. 内部表达式必须是 `Lit`，且 `value` 是 Python `int`（排除 bool/float/字符串字面量）
+2. **`value ∈ [-32768, 32767]` (int16 范围)** —— 通用安全保险阀；任何 ≥16 位主流
+   整数类型都能容纳此范围内的值，且 C++ implicit conversion 在此范围内是无损的
+3. 若 `target_ty` 是已知整数类型（int8/16/32/64、uint8/16/32/64、nat），`value`
+   必须在该 target 范围内；若 target 是 `unresolved`/`unknown` 等，仅靠条件 2 兜底
+
+**等价性论据**：
+
+| 端 | 求值 | 结果 |
+|---|---|---|
+| C++ | `(uint64_t)1` | `1` |
+| Lean（剥 Cast 后）| 字面量 `1` 在 `Prod.mk var_poly _ : Poly × UInt64` 上下文中 elaborate | `(1 : UInt64) = 1` |
+
+数值层面 1:1 一致——`OfNat UInt64 1` 实例 + Lean elaboration 完成 C++ implicit
+conversion 在该字面量场景下的全部工作。**不是"让 Lean 推任意类型"**，仅利用 Lean
+对 `IntegerLiteral` 的标准 typeclass 适配。
+
+**超出约束的字面量**（如 `(int32_t)1000000` 显式截断到 int16）保留 Cast 不剥，
+走 Pass 5 的 B 策略 fallback（`sorry` 占位）。
+
+**实测**：CLPoly 4 个 miss 中 lit 值全是 `0` 或 `1`，全部满足约束 → Pass 5 全部
+剥 Cast，HIR₄ 内 IntegralCast miss 归零。
+
+### §7.8 实现规模
+
+~250 行 Python（+ CAST_TABLE 数据 + CLASS_MAP/FUNC_MAP 复用自 v1）。
 
 ---
 

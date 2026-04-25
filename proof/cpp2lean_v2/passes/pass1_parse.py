@@ -23,7 +23,7 @@ from ir_types import (
     BaseType, NamedType, ArrayType, PairType, TupleType, OptionType,
     StdMapType, RefType, UnknownType, TypeIR,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
-    ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr, IteratorExpr,
+    ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
     LetStmt, AssignStmt, CompoundAssignStmt, IfStmt, WhileStmt, ForStmt,
     RangeForStmt, DoWhileStmt, BreakStmt, ContinueStmt, ReturnStmt,
@@ -36,14 +36,44 @@ from ir_types import (
 # 类型解析（type-system.md §1-3）
 # ============================================================
 
-def parse_type(qt: str) -> TypeIR:
+def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
     """C++ qualType 字符串 → TypeIR。
 
     严格按 type-system.md 的映射表；未识别的返回 UnknownType（不报错）。
+
+    `desugared` 是 Clang AST 的 `desugaredQualType`（typedef 展开后）。当 `qt`
+    是已知的 STL typedef 别名（`value_type` / `size_type` / `key_type` 等）时，
+    优先解析 `desugared`，避免产出 `NamedType("ValueType")` 这类占位。
+    对 CLPoly 自己的 typedef（`SparsePolyZZ` = `upolynomial_<ZZ>` 等）**不** desugar，
+    保持友好别名（由下方 `_TYPEDEF_ALIASES` / `_CLPOLY_TYPES` 规则识别）。
     """
-    if not qt:
+    if not qt and not desugared:
         return UnknownType("")
-    qt = qt.strip()
+    qt = (qt or "").strip()
+
+    # ====================================================================
+    # STL typedef 别名优先 desugar（value_type / size_type / key_type 等）
+    # 仅在 qt 恰好是别名（可能带 "const " 前缀）时触发；不影响复合类型。
+    # `iterator` / `const_iterator` 不 desugar — 保留抽象 NamedType("Iterator")；
+    # 它们的 desugared 形式（`__gnu_cxx::__normal_iterator<...>` 等）在下方
+    # 的 `__normal_iterator` / `_Rb_tree` 分支里已映射为同一个 `NamedType("Iterator")`。
+    # ====================================================================
+    _DESUGAR_ALIASES = {
+        "value_type", "size_type", "difference_type",
+        "key_type", "mapped_type", "result_type", "argument_type",
+        "reference", "const_reference", "pointer", "const_pointer",
+    }
+    _DESUGAR_SET = _DESUGAR_ALIASES | {f"const {a}" for a in _DESUGAR_ALIASES}
+
+    if desugared:
+        dq = desugared.strip()
+        if dq and dq != qt:
+            # 裸别名 → desugar
+            if qt in _DESUGAR_SET:
+                return parse_type(dq)
+            # `typename ...::xxx` 形式 → desugar
+            if qt.startswith("typename "):
+                return parse_type(dq)
 
     # 剥离 const / volatile 修饰（前导或后置）
     is_const = False
@@ -354,9 +384,9 @@ def _split_template_args(s: str) -> list[str]:
 def parse_param(parm_json: dict) -> HIRParam:
     """解析 ParmVarDecl → HIRParam。"""
     name = parm_json.get("name", "")
-    qt = parm_json.get("type", {}).get("qualType", "") or \
-         parm_json.get("type", {}).get("desugaredQualType", "")
-    ty = parse_type(qt)
+    t_node = parm_json.get("type", {})
+    qt = t_node.get("qualType", "") or t_node.get("desugaredQualType", "")
+    ty = parse_type(qt, t_node.get("desugaredQualType"))
 
     # is_ref / is_const_ref 判断（指针单独处理）
     is_const_ref = False
@@ -399,9 +429,9 @@ def parse_expr(node: Any) -> ExprIR:
         return UnknownExpr("not_a_dict", raw=str(node)[:100])
 
     kind = node.get("kind", "")
-    qt = node.get("type", {}).get("qualType", "") or \
-         node.get("type", {}).get("desugaredQualType", "")
-    ty = parse_type(qt) if qt else None
+    t_node = node.get("type", {})
+    qt = t_node.get("qualType", "") or t_node.get("desugaredQualType", "")
+    ty = parse_type(qt, t_node.get("desugaredQualType")) if qt else None
 
     if kind == "DeclRefExpr":
         rd = node.get("referencedDecl", {}) or {}
@@ -524,8 +554,9 @@ def parse_expr(node: Any) -> ExprIR:
         if not inner:
             return UnknownExpr(kind)
         sub = parse_expr(inner[0])
-        source_qt = inner[0].get("type", {}).get("qualType", "") if isinstance(inner[0], dict) else ""
-        source_ty = parse_type(source_qt) if source_qt else UnknownType("")
+        inner_t = inner[0].get("type", {}) if isinstance(inner[0], dict) else {}
+        source_qt = inner_t.get("qualType", "")
+        source_ty = parse_type(source_qt, inner_t.get("desugaredQualType")) if source_qt else UnknownType("")
         cast_kind = node.get("castKind", "?")
         target_ty = ty if ty else UnknownType("")
         return Cast(expr=sub, source_ty=source_ty, target_ty=target_ty, cast_kind=cast_kind)
@@ -709,9 +740,9 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
             child_kind = c.get("kind")
             if child_kind == "VarDecl":
                 name = c.get("name", "")
-                qt = c.get("type", {}).get("qualType", "") or \
-                     c.get("type", {}).get("desugaredQualType", "")
-                ty = parse_type(qt)
+                t_node = c.get("type", {})
+                qt = t_node.get("qualType", "") or t_node.get("desugaredQualType", "")
+                ty = parse_type(qt, t_node.get("desugaredQualType"))
                 # 初始值：inner[0] if present（跳过 TypeLoc 等元信息）
                 init = None
                 for cc in c.get("inner", []):
@@ -729,8 +760,9 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
             elif child_kind == "DecompositionDecl":
                 # 结构化绑定：auto [a, b] = pair_expr;
                 # 拆为：let _dec := expr; let a := _dec.fst; let b := _dec.snd
-                qt = c.get("type", {}).get("qualType", "")
-                ty = parse_type(qt)
+                dd_t = c.get("type", {})
+                qt = dd_t.get("qualType", "")
+                ty = parse_type(qt, dd_t.get("desugaredQualType"))
 
                 # 推导 binding 类型（从 pair/tuple 的 template 参数拆出）
                 binding_types: list[TypeIR] = []
@@ -756,7 +788,7 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
                             if isinstance(t_node, dict):
                                 btype_qt = t_node.get("qualType", "") or t_node.get("desugaredQualType", "")
                             if btype_qt:
-                                bty = parse_type(btype_qt)
+                                bty = parse_type(btype_qt, t_node.get("desugaredQualType") if isinstance(t_node, dict) else None)
                             elif idx < len(binding_types):
                                 bty = binding_types[idx]
                             else:
@@ -880,14 +912,16 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
                         if isinstance(b, dict) and b.get("kind") == "BindingDecl"
                     ]
                     # DecompositionDecl 自身的 qualType 是 pair 类型
-                    qt = vd.get("type", {}).get("qualType", "")
-                    var_ty = parse_type(qt)
+                    dd_t = vd.get("type", {})
+                    qt = dd_t.get("qualType", "")
+                    var_ty = parse_type(qt, dd_t.get("desugaredQualType"))
                     var = Var("__decomp")  # 占位，解构由 Pass 4 完成
                 elif vd.get("kind") == "VarDecl":
                     nm = vd.get("name", "")
-                    qt = vd.get("type", {}).get("qualType", "")
+                    vd_t = vd.get("type", {})
+                    qt = vd_t.get("qualType", "")
                     var = Var(nm)
-                    var_ty = parse_type(qt)
+                    var_ty = parse_type(qt, vd_t.get("desugaredQualType"))
 
         # inner[7]: body（可能是 CompoundStmt 或单语句）
         if len(inner) > 7 and isinstance(inner[7], dict):
@@ -1145,7 +1179,7 @@ def parse_pass(ast_json: dict) -> HIRFunc:
     # 实例化 suffix（基于 qual_type）
     instance_suffix = _infer_instance_suffix(qual_type)
 
-    return HIRFunc(
+    func = HIRFunc(
         base_name=base_name,
         instance_suffix=instance_suffix,
         mangled_name=mangled_name,
@@ -1154,6 +1188,158 @@ def parse_pass(ast_json: dict) -> HIRFunc:
         ret_ty=ret_ty,
         body=body,
     )
+    _propagate_var_types(func)
+    return func
+
+
+# ============================================================
+# Post-pass: typectx 传播（覆盖 Clang AST 里残留的 DependentType）
+# ============================================================
+
+def _is_unresolved(ty) -> bool:
+    """判断 ty 是否属于 `DependentType` / `ValueType` / `ResultType` / `StlInternal`
+    等 Clang typedef 未穿透的占位类型。"""
+    if isinstance(ty, NamedType):
+        return ty.name in ("DependentType", "ValueType", "ResultType", "StlInternal",
+                           "KeyType", "ArgType")
+    if isinstance(ty, UnknownType):
+        return True
+    return False
+
+
+def _propagate_var_types(func):
+    """Post-pass：walk HIR₀，维护 typectx 把 Var/Cast 里残留的 DependentType
+    用声明时的具体类型覆盖。覆盖三类输入：
+      - 函数参数（param.ty）
+      - LetStmt（var.ty）
+      - RangeForStmt 的 var_ty + decomposition bindings（从 container 元素类型推）
+    对 Cast.source_ty 若为 unresolved 且 inner Var 在 typectx 里，覆盖 source_ty。
+    """
+    typectx: dict[str, 'TypeIR'] = {}
+    # 参数
+    for p in func.params:
+        if not _is_unresolved(p.ty):
+            typectx[p.name] = p.ty
+
+    def propagate_expr(e):
+        """返回可能被覆盖 ty 的新 Expr。"""
+        if isinstance(e, Var):
+            if _is_unresolved(e.ty) and e.name in typectx:
+                return Var(name=e.name, version=e.version, ty=typectx[e.name])
+            return e
+        if isinstance(e, Cast):
+            new_inner = propagate_expr(e.expr)
+            new_source = e.source_ty
+            new_target = e.target_ty
+            if _is_unresolved(new_source):
+                inner_ty = _expr_ty(new_inner)
+                if inner_ty is not None and not _is_unresolved(inner_ty):
+                    new_source = inner_ty
+            # 对"同一类型"cast（LValueToRValue / NoOp / 剥 ref 等），若 source 已知
+            # 而 target 仍未解析，把 target 同步为 source（它们本就应等价）
+            _IDENTITY_KINDS = ("LValueToRValue", "NoOp", "ToVoid",
+                               "BuiltinFnToFnPtr", "ArrayToPointerDecay",
+                               "FunctionToPointerDecay")
+            if (e.cast_kind in _IDENTITY_KINDS
+                    and not _is_unresolved(new_source)
+                    and _is_unresolved(new_target)):
+                new_target = new_source
+            return Cast(expr=new_inner, source_ty=new_source,
+                        target_ty=new_target, cast_kind=e.cast_kind)
+        if isinstance(e, Call):
+            return Call(callee=e.callee,
+                        args=[propagate_expr(a) for a in e.args],
+                        ty=e.ty)
+        if isinstance(e, BinOp):
+            return BinOp(op=e.op, lhs=propagate_expr(e.lhs),
+                         rhs=propagate_expr(e.rhs), ty=e.ty)
+        if isinstance(e, UnaryOp):
+            return UnaryOp(op=e.op, operand=propagate_expr(e.operand), ty=e.ty)
+        if isinstance(e, CondExpr):
+            return CondExpr(cond=propagate_expr(e.cond),
+                            then_e=propagate_expr(e.then_e),
+                            else_e=propagate_expr(e.else_e), ty=e.ty)
+        if isinstance(e, FieldAccess):
+            return FieldAccess(obj=propagate_expr(e.obj),
+                               field_name=e.field_name, ty=e.ty)
+        if isinstance(e, ArrayAccess):
+            return ArrayAccess(arr=propagate_expr(e.arr),
+                               idx=propagate_expr(e.idx), ty=e.ty)
+        if isinstance(e, TupleExpr):
+            return TupleExpr(elems=[propagate_expr(x) for x in e.elems], ty=e.ty)
+        if isinstance(e, ArrayLit):
+            return ArrayLit(elems=[propagate_expr(x) for x in e.elems], elem_ty=e.elem_ty)
+        if isinstance(e, LambdaExpr):
+            return LambdaExpr(captures=e.captures, params=e.params,
+                              body=[propagate_stmt(s) for s in e.body], ty=e.ty)
+        return e
+
+    def _expr_ty(e):
+        """取表达式的 ty 字段；Cast 用 target_ty。"""
+        if isinstance(e, Cast):
+            return e.target_ty
+        return getattr(e, "ty", None)
+
+    def propagate_stmt(s):
+        if isinstance(s, LetStmt):
+            new_val = propagate_expr(s.value) if s.value else None
+            if not _is_unresolved(s.ty):
+                typectx[s.var.name] = s.ty
+            elif new_val is not None:
+                et = _expr_ty(new_val)
+                if et is not None and not _is_unresolved(et):
+                    typectx[s.var.name] = et
+            return LetStmt(var=s.var, ty=s.ty, value=new_val)
+        if isinstance(s, AssignStmt):
+            return AssignStmt(target=propagate_expr(s.target),
+                              value=propagate_expr(s.value))
+        if isinstance(s, CompoundAssignStmt):
+            return CompoundAssignStmt(target=propagate_expr(s.target), op=s.op,
+                                      value=propagate_expr(s.value))
+        if isinstance(s, IfStmt):
+            return IfStmt(cond=propagate_expr(s.cond),
+                          then_body=[propagate_stmt(t) for t in s.then_body],
+                          else_body=[propagate_stmt(t) for t in s.else_body])
+        if isinstance(s, WhileStmt):
+            return WhileStmt(cond=propagate_expr(s.cond),
+                             body=[propagate_stmt(t) for t in s.body])
+        if isinstance(s, DoWhileStmt):
+            return DoWhileStmt(cond=propagate_expr(s.cond) if s.cond else None,
+                               body=[propagate_stmt(t) for t in s.body])
+        if isinstance(s, ForStmt):
+            return ForStmt(init=[propagate_stmt(t) for t in s.init],
+                           cond=propagate_expr(s.cond) if s.cond else None,
+                           step=[propagate_stmt(t) for t in s.step],
+                           body=[propagate_stmt(t) for t in s.body])
+        if isinstance(s, RangeForStmt):
+            # RangeFor 的 var_ty 已知，注册 var；decomposition 从 var_ty 推各字段
+            if not _is_unresolved(s.var_ty):
+                typectx[s.var.name] = s.var_ty
+            elem_ty = s.var_ty
+            while isinstance(elem_ty, RefType):
+                elem_ty = elem_ty.inner
+            if s.decomposition and isinstance(elem_ty, PairType):
+                if len(s.decomposition) >= 1:
+                    typectx[s.decomposition[0].name] = elem_ty.fst
+                if len(s.decomposition) >= 2:
+                    typectx[s.decomposition[1].name] = elem_ty.snd
+            return RangeForStmt(var=s.var, var_ty=s.var_ty,
+                                container=propagate_expr(s.container),
+                                body=[propagate_stmt(t) for t in s.body],
+                                decomposition=s.decomposition)
+        if isinstance(s, ReturnStmt):
+            return ReturnStmt(value=propagate_expr(s.value) if s.value else None)
+        if isinstance(s, RequireStmt):
+            return RequireStmt(cond=propagate_expr(s.cond), name=s.name, source=s.source)
+        if isinstance(s, ExprStmt):
+            return ExprStmt(expr=propagate_expr(s.expr))
+        if isinstance(s, BlockStmt):
+            return BlockStmt(stmts=[propagate_stmt(t) for t in s.stmts])
+        return s
+
+    # 原地替换 body
+    new_body = [propagate_stmt(s) for s in func.body]
+    func.body = new_body
 
 
 def _infer_instance_suffix(qual_type: str) -> str:
@@ -1183,7 +1369,7 @@ _IR_NODE_TYPES = (
     RequireStmt, ExprStmt, BlockStmt, UnknownStmt,
     # Expr 家族
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
-    ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr, IteratorExpr,
+    ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr,
 )
 

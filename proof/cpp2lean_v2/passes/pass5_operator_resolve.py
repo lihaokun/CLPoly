@@ -221,15 +221,31 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
     if op_sym in ("++", "--"):
         return replace(call, args=args)
 
-    # operator[] → ArrayAccess + UB require（require 在 stmt 注入阶段）
+    # operator[] → ArrayAccess（UB require 在 stmt 注入阶段，按 receiver 类型分派）
+    # P0-5：对 StdMap 不输出 ArrayAccess（Lean 的 StdMap.lookup 语义不同），
+    # 用 Call 形态表示，UB 检查也走 StdMap 自己的判定
     if op_sym == "[]" and len(args) == 2:
+        recv_ty = _strip_ref(_expr_ty(args[0], typectx))
+        if isinstance(recv_ty, StdMapType) or (isinstance(recv_ty, NamedType)
+                                               and recv_ty.name == "StdMap"):
+            return Call(callee="StdMap.get!", args=args, ty=None)
         return ArrayAccess(arr=args[0], idx=args[1], ty=None)
 
-    # operator() → lambda apply
+    # operator() → lambda/functor apply
     if op_sym == "()" and len(args) >= 1:
-        # 第 0 个是 callable，其余是 args
-        return Call(callee=args[0] if isinstance(args[0], str) else "<callable>",
-                    args=args[1:], ty=None)
+        # 第 0 个是 callable：可能是 Var (lifted lambda 引用) / FieldAccess /
+        # 或裸字符串。Pass 3 lambda_lift 后 lifted lambda 调用形态是
+        # Call(UnresolvedOp("operator()"), [Var("dot"), arg1, arg2])。
+        callee = args[0]
+        if isinstance(callee, Var):
+            callee_str = callee.name
+        elif isinstance(callee, str):
+            callee_str = callee
+        elif isinstance(callee, FieldAccess):
+            callee_str = f"<field>.{callee.field_name}"
+        else:
+            callee_str = "<callable>"  # fallback：未知形态
+        return Call(callee=callee_str, args=args[1:], ty=None)
 
     # operator->: 解引用
     if op_sym == "->" and len(args) == 1:
@@ -247,14 +263,47 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
     if op_sym in cls_ops:
         target = cls_ops[op_sym]
         if target is None:
-            # 用 Lean typeclass：BinOp 节点
+            # 用 Lean typeclass：BinOp / UnaryOp 节点
+            # P0-4：填回结果 ty —— 算术/比较的结果类型规则：
+            #   - 比较 `==/!=/</>/<=/>=` → BaseType.BOOL
+            #   - 逻辑 `&&/||` → BaseType.BOOL
+            #   - 算术/位 `+/-/*//=/&/|/^/<</>>` → 同 receiver 类型
+            #   - 复合赋值 `+=/-=/*=/...` → 同 receiver 类型（虽然语义是赋值，
+            #     但表达式形态保留 receiver type 帮助下游推断）
+            result_ty: TypeIR | None
+            if op_sym in ("==", "!=", "<", ">", "<=", ">=", "&&", "||"):
+                result_ty = BaseType.BOOL
+            else:
+                # 算术/位/复合 → 用 receiver 类型（已 strip RefType）
+                result_ty = _strip_ref(_expr_ty(args[0], typectx))
             if len(args) == 2:
-                return BinOp(op=op_sym, lhs=args[0], rhs=args[1], ty=None)
+                return BinOp(op=op_sym, lhs=args[0], rhs=args[1], ty=result_ty)
             if len(args) == 1:
-                return UnaryOp(op=op_sym, operand=args[0], ty=None)
+                return UnaryOp(op=op_sym, operand=args[0], ty=result_ty)
             return replace(call, args=args)
-        # 具体函数名（如 Zp.div）
-        return Call(callee=target, args=args, ty=None)
+        # tuple disposition：(`disposition`, `target_fn`) — 类似 methods 表的
+        # 二元组形态。CLPoly 用此在 Iterator 类型里写 ("mutate", "Iterator.advance")
+        # 等。dispatch 与 method 同：method/mutate/identity/noop。
+        if isinstance(target, tuple) and len(target) == 2:
+            disp, fn = target
+            if disp == "method":
+                return Call(callee=fn, args=args, ty=None)
+            if disp == "mutate":
+                # mutator 形态：caller 在 stmt-level 转 AssignStmt（args[0] 通
+                # 常是 Iterator 变量）；此处仅回 Call，stmt-level 处理在
+                # _walk_stmt 的 ExprStmt 分支里识别 callee 是否 Iterator
+                # mutator 函数（保守：不在此自动转 stmt，避免误判）
+                return Call(callee=fn, args=args, ty=None)
+            if disp == "identity":
+                return args[0] if args else replace(call, args=args)
+            if disp == "noop":
+                return args[0] if args else replace(call, args=args)
+        # 具体函数名（字符串，如 Zp.div）
+        if isinstance(target, str):
+            return Call(callee=target, args=args, ty=None)
+        # 未知形态：保留为 UnresolvedOp（B 策略）
+        gap.op_miss.append((recv, op_sym))
+        return replace(call, args=args)
 
     # CLASS_MAP 没注册：B 策略
     gap.op_miss.append((recv, op_sym))
@@ -289,6 +338,20 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
 
     cls = CLASS_MAP.get(T, {})
     methods = cls.get("methods", {})
+    # P1-3：`<method>.operator bool` / `<method>.operator <op>` 是 Pass 1 把
+    # C++ 转换运算符或运算符 overload 包成 method 调用形态。优先查 methods，
+    # 找不到时把 method 名按 operator 处理（剥 "operator " 前缀查 operators）
+    if method not in methods and method.startswith("operator "):
+        op_sym = method[len("operator "):]
+        operators = cls.get("operators", {})
+        if op_sym in operators:
+            target = operators[op_sym]
+            if target is None:
+                # typeclass 形态：UnaryOp / 直接返回 recv
+                return UnaryOp(op=op_sym, operand=recv,
+                               ty=BaseType.BOOL if op_sym == "bool" else None)
+            if isinstance(target, str):
+                return Call(callee=target, args=[recv] + extra_args, ty=None)
     if method not in methods:
         gap.method_miss.append((T, method))
         return replace(call, args=args)
@@ -310,18 +373,16 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
         return recv  # mutate 但 no-op（如 reserve）
 
     if disposition == "mutate":
-        # mutator：返回 stmts + final expr（caller 决定是否在 stmt 级处理）
         new_call = Call(callee=target, args=[recv] + extra_args, ty=None)
-        if host_stmt_ctx and isinstance(recv, (Var, FieldAccess)):
+        # P1-5：扩展 ArrayAccess 也作 target（如 `groups[d].push_back(x)`）
+        if host_stmt_ctx and isinstance(recv, (Var, FieldAccess, ArrayAccess)):
             return ([AssignStmt(target=recv, value=new_call)], recv)
-        # 表达式上下文：保留为 Call（语义略损但保留语法树）
         return new_call
 
     if disposition == "mutate_push":
-        # push_back 类：v := Array.push v x
         new_call = Call(callee=target or "Array.push",
                         args=[recv] + extra_args, ty=None)
-        if host_stmt_ctx and isinstance(recv, (Var, FieldAccess)):
+        if host_stmt_ctx and isinstance(recv, (Var, FieldAccess, ArrayAccess)):
             return ([AssignStmt(target=recv, value=new_call)], recv)
         return new_call
 
@@ -337,14 +398,72 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
 def _resolve_constructor_call(call: Call, op_name: str, typectx: dict,
                               gap: GapLog) -> ExprIR:
     """处理 `Call(UnresolvedOp("construct_X" | "default_init_X"), args)`。"""
+    from constructor_map import _normalize_typename
     args = [_walk_expr(a, typectx, gap) for a in call.args]
     arity = len(args)
     resolution = resolve_constructor(op_name, arity)
     if resolution is None:
         gap.constructor_miss.append((op_name, arity))
         return replace(call, args=args)
-    # 把 template + args 包装为 Call("__ctor__<template>", args) 供 Pass 8 渲染
-    return Call(callee=f"__ctor__{resolution.template}", args=args, ty=None)
+    # P0-3：从 typename 推回目标类型，填到 Call.ty。这样下游 receiver 类型查询
+    # （如 `__ctor__Zp.ofInt(x) + y` 中 outer + 的 LHS 类型）能正确得到 Zp。
+    typename = _normalize_typename(op_name)
+    target_ty = _typename_to_typeir(typename)
+    return Call(callee=f"__ctor__{resolution.template}", args=args, ty=target_ty)
+
+
+def _typename_to_typeir(name: str) -> TypeIR | None:
+    """把 normalized typename（如 'Zp', 'ZZ', 'vector<Zp>', 'pair<A,B>'）映射回
+    TypeIR。仅覆盖 CLPoly 核心类型 + 常见 STL；未识别返回 NamedType(name)。"""
+    if not name:
+        return None
+    # CLPoly 核心类型
+    _CORE = {
+        "Zp": NamedType("Zp"),
+        "ZZ": NamedType("ZZ"),
+        "QQ": NamedType("QQ"),
+        "umonomial": NamedType("UMonomial"),
+        "UMonomial": NamedType("UMonomial"),
+        "Monomial": NamedType("Monomial"),
+        "Variable": NamedType("Variable"),
+        "variable": NamedType("Variable"),
+        "Poly": NamedType("MvPolyZZ"),
+        "PolyZp": NamedType("MvPolyZp"),
+        "PolyZZ": NamedType("MvPolyZZ"),
+        "PolyQQ": NamedType("PolyQQ"),
+        "upolynomial_<ZZ>": NamedType("SparsePolyZZ"),
+        "upolynomial_<Zp>": NamedType("SparsePolyZp"),
+        "UPZp": NamedType("SparsePolyZp"),
+        "polynomial_<ZZ, lex_<less>>": NamedType("MvPolyZZ"),
+        "polynomial_<Zp, lex_<less>>": NamedType("MvPolyZp"),
+        "polynomial_<ZZ, lex>": NamedType("MvPolyZZ"),
+        "LLLMatrix": NamedType("LLLMatrix"),
+        "iterator": NamedType("Iterator"),
+        "const_iterator": NamedType("Iterator"),
+    }
+    if name in _CORE:
+        return _CORE[name]
+    if name.startswith("vector<"):
+        return NamedType("Array")  # 元素类型留给 Pass 8 推
+    if name.startswith("pair<"):
+        return NamedType("Pair")
+    if name.startswith("map<") or name.startswith("multimap<"):
+        return NamedType("StdMap")
+    if name.startswith("set<") or name.startswith("unordered_set<"):
+        return NamedType("StdMap")
+    if name.startswith("factorization<"):
+        return NamedType("Factorization")
+    if name.startswith("basic_polynomial<"):
+        # 长形态——粗略归类
+        if "Zp" in name and "basic_monomial" in name:
+            return NamedType("MvPolyZp")
+        if "ZZ" in name and "basic_monomial" in name:
+            return NamedType("MvPolyZZ")
+        if "Zp" in name:
+            return NamedType("SparsePolyZp")
+        if "ZZ" in name:
+            return NamedType("SparsePolyZZ")
+    return NamedType(name)
 
 
 # ============================================================
@@ -457,11 +576,16 @@ def _collect_ub_requires(expr: ExprIR, typectx: dict) -> list[RequireStmt]:
         if isinstance(e, BinOp):
             walk(e.lhs); walk(e.rhs)
             if e.op in ("/", "%"):
-                # 仅整数类型加 require
-                rhs_ty = _expr_ty(e.rhs, typectx)
-                if isinstance(rhs_ty, BaseType) and rhs_ty in (
+                # P1-4：整数类型（含 ZZ/Zp/QQ 任意精度）加 require
+                rhs_ty = _strip_ref(_expr_ty(e.rhs, typectx))
+                is_int_like = (
+                    (isinstance(rhs_ty, BaseType) and rhs_ty in (
                         BaseType.INT32, BaseType.INT64, BaseType.UINT32,
-                        BaseType.UINT64, BaseType.NAT):
+                        BaseType.UINT64, BaseType.NAT, BaseType.UINT128))
+                    or (isinstance(rhs_ty, NamedType) and rhs_ty.name in (
+                        "ZZ", "Zp", "QQ"))
+                )
+                if is_int_like:
                     reqs.append(_emit_div_require(e.rhs))
         elif isinstance(e, UnaryOp):
             walk(e.operand)
@@ -565,21 +689,52 @@ def _walk_stmt(s: StmtIR, typectx: dict, gap: GapLog) -> list[StmtIR]:
                             name=s.name, source=s.source)]
 
     if isinstance(s, ExprStmt):
-        # ExprStmt 是 stmt-level mutator 的入口；先尝试识别 mutator method call
+        # ExprStmt 是 stmt-level mutator 的入口
+        # P1-1+P1-2：识别 user-defined op overload 形态的 compound assign / incdec
+        # `Call(UnresolvedOp("operator*=" | "operator++" | ...))`，在 stmt 级
+        # 展开为 AssignStmt（CompoundAssignStmt 在 BaseType 上的等价形态）
         e = s.expr
         if isinstance(e, Call) and isinstance(e.callee, UnresolvedOp):
+            op = e.callee.op_name
+            # operator++ / operator-- (incdec)
+            if op in ("operator++", "operator--") and len(e.args) >= 1:
+                target = _walk_expr(e.args[0], typectx, gap)
+                op_sym = "+" if op == "operator++" else "-"
+                if isinstance(target, (Var, FieldAccess, ArrayAccess)):
+                    new_assign = AssignStmt(
+                        target=target,
+                        value=BinOp(op=op_sym, lhs=target,
+                                    rhs=Lit(value=1, ty=BaseType.INT64),
+                                    ty=_strip_ref(_expr_ty(target, typectx))),
+                    )
+                    return _collect_ub_requires(new_assign.value, typectx) + [new_assign]
+            # operator+=/-=/*=/...（compound assign）
+            _COMPOUND = {"operator+=": "+", "operator-=": "-", "operator*=": "*",
+                         "operator/=": "/", "operator%=": "%",
+                         "operator<<=": "<<", "operator>>=": ">>",
+                         "operator&=": "&", "operator|=": "|", "operator^=": "^"}
+            if op in _COMPOUND and len(e.args) == 2:
+                target = _walk_expr(e.args[0], typectx, gap)
+                rhs = _walk_expr(e.args[1], typectx, gap)
+                op_sym = _COMPOUND[op]
+                if isinstance(target, (Var, FieldAccess, ArrayAccess)):
+                    new_assign = AssignStmt(
+                        target=target,
+                        value=BinOp(op=op_sym, lhs=target, rhs=rhs,
+                                    ty=_strip_ref(_expr_ty(target, typectx))),
+                    )
+                    return _collect_ub_requires(new_assign.value, typectx) + [new_assign]
+
+            # 一般 mutator method 路径
             result = _resolve_unresolved_op_call(e, typectx, gap, host_stmt_ctx=True)
             if isinstance(result, tuple):
-                # mutator 展开为 (stmts, _final_expr)
                 stmts, _ = result
-                # 对每条 stmt 收集 UB require
                 out: list[StmtIR] = []
                 for st in stmts:
                     if isinstance(st, AssignStmt):
                         out.extend(_collect_ub_requires(st.value, typectx))
                     out.append(st)
                 return out
-            # 非 mutator：返回 ExprStmt 包裹
             new_expr = result
         else:
             new_expr = _walk_expr(e, typectx, gap)
@@ -588,6 +743,17 @@ def _walk_stmt(s: StmtIR, typectx: dict, gap: GapLog) -> list[StmtIR]:
             return _collect_ub_requires(new_expr.rhs, typectx) + [
                 AssignStmt(target=new_expr.lhs, value=new_expr.rhs)
             ]
+        # P1-1 兜底：BinOp 形态的 compound（来自 _resolve_operator_call 返回）
+        if isinstance(new_expr, BinOp) and new_expr.op in (
+                "+=", "-=", "*=", "/=", "%=", "<<=", ">>=", "&=", "|=", "^="):
+            base_op = new_expr.op[:-1]  # "*=" → "*"
+            if isinstance(new_expr.lhs, (Var, FieldAccess, ArrayAccess)):
+                ty = _strip_ref(_expr_ty(new_expr.lhs, typectx))
+                new_assign = AssignStmt(
+                    target=new_expr.lhs,
+                    value=BinOp(op=base_op, lhs=new_expr.lhs, rhs=new_expr.rhs, ty=ty),
+                )
+                return _collect_ub_requires(new_expr.rhs, typectx) + [new_assign]
         return _collect_ub_requires(new_expr, typectx) + [ExprStmt(expr=new_expr)]
 
     if isinstance(s, BlockStmt):
@@ -633,26 +799,101 @@ def operator_resolve_pass(func: HIRFunc) -> tuple[HIRFunc, GapLog]:
 # ============================================================
 
 def assert_hir4_invariant(func: HIRFunc) -> None:
-    """HIR₄ 出口检查：
+    """HIR₄ 出口检查（P0-6 强化版）：
       - 禁止 CompoundAssignStmt 残留（必须展开为 AssignStmt + BinOp）
-      - 允许 UnresolvedOp 残留（B 策略 gap），但 gap 数量应在统计范围内
+      - 禁止 Call.callee 是 tuple / list / 非字符串非 UnresolvedOp 的形态（P0-2）
+      - 禁止 Call.callee 字面量 "<callable>" / "<field>." 占位（P0-1）
+      - 禁止 ExprStmt(Call(UnresolvedOp("operator+="/"-="/...))) 半展开（P1-1）
+      - 禁止 ExprStmt(Call(UnresolvedOp("operator++"/"--"))) 半展开（P1-2）
+      - 允许 UnresolvedOp 在表达式深处残留（B 策略 typectx gap）
     """
-    def check(stmts):
-        for s in stmts:
+    _COMPOUND_OPS = {"operator+=", "operator-=", "operator*=", "operator/=",
+                     "operator%=", "operator<<=", "operator>>=",
+                     "operator&=", "operator|=", "operator^="}
+    _INCDEC_OPS = {"operator++", "operator--"}
+
+    def fail(reason: str) -> None:
+        raise TranslationError(
+            pass_name="operator_resolve",
+            func_name=func.base_name,
+            reason=reason,
+        )
+
+    def check_callee(callee, ctx: str):
+        # callee 可以是 str 或 UnresolvedOp（B 策略允许）
+        if isinstance(callee, (str, UnresolvedOp)):
+            if isinstance(callee, str):
+                if callee == "<callable>":
+                    fail(f"{ctx}: P0-1 violation — '<callable>' placeholder")
+            return
+        fail(f"{ctx}: P0-2 violation — Call.callee is {type(callee).__name__} "
+             f"(must be str or UnresolvedOp), got {callee!r}")
+
+    def check_expr(e, ctx: str):
+        if isinstance(e, Call):
+            check_callee(e.callee, ctx)
+            for a in e.args: check_expr(a, ctx)
+        elif isinstance(e, Cast):
+            check_expr(e.expr, ctx)
+        elif isinstance(e, BinOp):
+            check_expr(e.lhs, ctx); check_expr(e.rhs, ctx)
+        elif isinstance(e, UnaryOp):
+            check_expr(e.operand, ctx)
+        elif isinstance(e, CondExpr):
+            check_expr(e.cond, ctx); check_expr(e.then_e, ctx); check_expr(e.else_e, ctx)
+        elif isinstance(e, FieldAccess):
+            check_expr(e.obj, ctx)
+        elif isinstance(e, ArrayAccess):
+            check_expr(e.arr, ctx); check_expr(e.idx, ctx)
+        elif isinstance(e, (TupleExpr, ArrayLit)):
+            for x in e.elems: check_expr(x, ctx)
+
+    def check(stmts, ctx: str = "body"):
+        for i, s in enumerate(stmts):
+            sub_ctx = f"{ctx}[{i}]"
             if isinstance(s, CompoundAssignStmt):
-                raise TranslationError(
-                    pass_name="operator_resolve",
-                    func_name=func.base_name,
-                    reason=f"CompoundAssignStmt residual: {s.op}",
-                )
-            if isinstance(s, IfStmt):
-                check(s.then_body); check(s.else_body)
+                fail(f"{sub_ctx}: CompoundAssignStmt residual: {s.op}")
+            if isinstance(s, ExprStmt):
+                # P1-1+P1-2：检测 ExprStmt 包 compound/incdec UnresolvedOp Call
+                if isinstance(s.expr, Call) and isinstance(s.expr.callee, UnresolvedOp):
+                    op = s.expr.callee.op_name
+                    if op in _COMPOUND_OPS:
+                        fail(f"{sub_ctx}: P1-1 violation — ExprStmt-wrapped "
+                             f"compound assign Call({op})")
+                    if op in _INCDEC_OPS:
+                        fail(f"{sub_ctx}: P1-2 violation — ExprStmt-wrapped "
+                             f"incdec Call({op})")
+                # P1-1 兜底形态：ExprStmt(BinOp("*=", ...))
+                if isinstance(s.expr, BinOp) and s.expr.op in (
+                        "+=", "-=", "*=", "/=", "%=", "<<=", ">>=", "&=", "|=", "^="):
+                    fail(f"{sub_ctx}: P1-1 violation — ExprStmt-wrapped "
+                         f"BinOp({s.expr.op})")
+                check_expr(s.expr, sub_ctx)
+            elif isinstance(s, LetStmt):
+                if s.value: check_expr(s.value, sub_ctx)
+            elif isinstance(s, AssignStmt):
+                check_expr(s.target, sub_ctx); check_expr(s.value, sub_ctx)
+            elif isinstance(s, IfStmt):
+                check_expr(s.cond, sub_ctx)
+                check(s.then_body, f"{sub_ctx}/then")
+                check(s.else_body, f"{sub_ctx}/else")
             elif isinstance(s, ForStmt):
-                check(s.init); check(s.step); check(s.body)
-            elif isinstance(s, (WhileStmt, DoWhileStmt, RangeForStmt)):
-                check(s.body)
+                check(s.init, f"{sub_ctx}/init")
+                check(s.step, f"{sub_ctx}/step")
+                check(s.body, f"{sub_ctx}/body")
+            elif isinstance(s, (WhileStmt, DoWhileStmt)):
+                if s.cond: check_expr(s.cond, sub_ctx)
+                check(s.body, f"{sub_ctx}/body")
+            elif isinstance(s, RangeForStmt):
+                check_expr(s.container, sub_ctx)
+                check(s.body, f"{sub_ctx}/body")
             elif isinstance(s, BlockStmt):
-                check(s.stmts)
-    check(func.body)
+                check(s.stmts, f"{sub_ctx}/blk")
+            elif isinstance(s, ReturnStmt):
+                if s.value: check_expr(s.value, sub_ctx)
+            elif isinstance(s, RequireStmt):
+                check_expr(s.cond, sub_ctx)
+
+    check(func.body, "body")
     for aux in func.aux_lambdas:
-        check(aux.body)
+        check(aux.body, f"aux({aux.base_name})")

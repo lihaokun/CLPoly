@@ -49,6 +49,8 @@ CLASS_MAP = {
             "/": None, "%": None,
             "==": None, "!=": None, "<": None, ">": None,
             "<=": None, ">=": None,
+            "<<": None, ">>": None,  # P1-6: ZZ << k / ZZ >> k 用 typeclass
+            "&": None, "|": None, "^": None,  # P1-6: 位运算
             "bool": "ZZ.toBool",  # operator bool: ZZ → Bool (nonzero check)
             # compound assignment：Pass 5 将 `x += y` 展开为 `x := x + y`；
             # 这里注册占位让 CLASS_MAP 查表命中，Pass 5 走 compound 展开分支

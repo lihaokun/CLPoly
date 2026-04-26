@@ -212,43 +212,80 @@ def _exprs_eq(a: ExprIR, b: ExprIR) -> bool:
 # Cast 解析
 # ============================================================
 
+_CAST_PENDING_REQUIRES: list = []  # P0-5: 临时收集 Cast 触发的 UB require
+
+
 def _resolve_cast(cast: Cast, typectx: dict, gap: GapLog) -> ExprIR:
-    """解析 Cast 节点。返回新的 ExprIR（可能仍是 Cast 或 Call 或剥后的内层）。"""
+    """解析 Cast 节点。返回新的 ExprIR（可能仍是 Cast 或 Call 或剥后的内层）。
+
+    P0-5（轮 2 修复）：CAST_TABLE 命中后若有 ub_kind，生成对应 RequireStmt
+    挂到 `_CAST_PENDING_REQUIRES` 全局列表，由 `_collect_ub_requires` 统一发射。
+    """
     inner = _walk_expr(cast.expr, typectx, gap)
     new_cast = replace(cast, expr=inner)
     disposition = CAST_KIND_DISPOSITION.get(cast.cast_kind, "unknown")
 
     if disposition == "strip":
-        # NoOp / LValueToRValue / ToVoid / 等：直接剥
         return inner
 
     if disposition == "table":
-        # IntegralCast / IntegralToFloating / FloatingToIntegral：查表
-        # 字面量+目标 unresolved 时优先剥（is_safe_to_strip_lit_cast）
         if is_safe_to_strip_lit_cast(new_cast):
             return inner
 
         resolution = lookup_cast(cast.source_ty, cast.target_ty)
         if resolution is None:
-            # B 策略：保留 Cast 不解析
             gap.cast_miss.append(
                 (canonicalize_type(cast.source_ty), canonicalize_type(cast.target_ty)))
             return new_cast
-        # 命中：用 resolution.template 包装为 Call("__lean_cast__", [inner])
-        # （Pass 8 codegen 用 template 渲染；此处用 Call 携带模板 + 参数）
+        # P0-5：发射 ub_kind 对应的 RequireStmt
+        if resolution.ub_kind:
+            _emit_cast_ub_require(inner, resolution.ub_kind)
         return Call(
-            callee=f"__cast__{resolution.template}",  # Pass 8 解析此 callee
+            callee=f"__cast__{resolution.template}",
             args=[inner],
             ty=cast.target_ty,
         )
 
     if disposition == "delegate":
-        # ConstructorConversion / UserDefinedConversion：交给 FUNC_MAP/CLASS_MAP
-        # 实际实现：把 Cast 视为 inner 直接转换（构造器调用通常已嵌在 inner 里）
+        # ConstructorConversion / UserDefinedConversion：剥外层（构造器调用已在 inner）
+        # P0-1 副作用：若 source==target 实质是 noop，inner 已是目标类型
         return inner
 
-    # 未知 cast_kind：保留
     return new_cast
+
+
+def _emit_cast_ub_require(inner: ExprIR, ub_kind: str) -> None:
+    """根据 cast 的 ub_kind 生成 RequireStmt 挂到 pending list。"""
+    cond: ExprIR | None = None
+    name = "h_cast"
+    if ub_kind == "nonneg":
+        cond = BinOp(op=">=", lhs=inner,
+                     rhs=Lit(value=0, ty=BaseType.INT64), ty=BaseType.BOOL)
+        name = "h_nonneg"
+    elif ub_kind == "fits_int32":
+        cond = BinOp(
+            op="&&",
+            lhs=BinOp(op=">=", lhs=inner,
+                      rhs=Lit(value=-(2**31), ty=BaseType.INT64), ty=BaseType.BOOL),
+            rhs=BinOp(op="<=", lhs=inner,
+                      rhs=Lit(value=2**31 - 1, ty=BaseType.INT64), ty=BaseType.BOOL),
+            ty=BaseType.BOOL,
+        )
+        name = "h_fits_int32"
+    elif ub_kind == "fits_int64":
+        cond = BinOp(
+            op="&&",
+            lhs=BinOp(op=">=", lhs=inner,
+                      rhs=Lit(value=-(2**63), ty=BaseType.INT64), ty=BaseType.BOOL),
+            rhs=BinOp(op="<=", lhs=inner,
+                      rhs=Lit(value=2**63 - 1, ty=BaseType.INT64), ty=BaseType.BOOL),
+            ty=BaseType.BOOL,
+        )
+        name = "h_fits_int64"
+    if cond is not None:
+        _CAST_PENDING_REQUIRES.append(
+            RequireStmt(cond=cond, name=name, source=f"UB cast: {ub_kind}")
+        )
 
 
 # ============================================================
@@ -279,6 +316,32 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
     Mutator 类（compound assign / operator++/--）由调用方在 stmt 级别处理。
     """
     args = [_walk_expr(a, typectx, gap) for a in call.args]
+
+    # P2-A（轮 2 修复）：识别 STL set::find == set::end 惯用法 →
+    # `(c.find? k).isNone` / `.isSome`。形态：
+    #   args[0] = Call("Array.find?" / "StdMap.find", [c, k])
+    #   args[1] = Call(toList-ish, [c])  （end iterator 被映射到 toList 形态）
+    if op_sym in ("==", "!=") and len(args) == 2:
+        def _is_find_call(e):
+            return (isinstance(e, Call) and isinstance(e.callee, str)
+                    and e.callee in ("Array.find?", "StdMap.find"))
+        def _is_end_marker(e):
+            return (isinstance(e, Call) and isinstance(e.callee, str)
+                    and (e.callee == "Array.toList" or e.callee.endswith(".toList")
+                         or e.callee in ("StdMap.end", "Array.end")))
+        find_call = end_call = None
+        if _is_find_call(args[0]) and _is_end_marker(args[1]):
+            find_call, end_call = args[0], args[1]
+        elif _is_find_call(args[1]) and _is_end_marker(args[0]):
+            find_call, end_call = args[1], args[0]
+        if find_call is not None and end_call is not None:
+            # 容器一致性检查：find?(c, k) 的 c 应等于 toList(c) 的 c
+            if (len(find_call.args) >= 1 and len(end_call.args) >= 1
+                    and _exprs_eq(find_call.args[0], end_call.args[0])):
+                # `find == end` ⇔ `.isNone`；`find != end` ⇔ `.isSome`
+                method = "Option.isNone" if op_sym == "==" else "Option.isSome"
+                # 重新构造 find?：从 find_call 直接复用
+                return Call(callee=method, args=[find_call], ty=BaseType.BOOL)
 
     # operator= → 调用方在 stmt 级别处理；这里返回 BinOp(=) 让 caller 识别
     if op_sym == "=":
@@ -314,13 +377,26 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
         # Call(UnresolvedOp("operator()"), [Var("dot"), arg1, arg2])。
         callee = args[0]
         if isinstance(callee, Var):
-            callee_str = callee.name
+            # P0-3（轮 2 修复）：检查是否是 lifted lambda 别名，重映射到 mangled name
+            alias_ty = typectx.get(callee.name)
+            if isinstance(alias_ty, NamedType) and alias_ty.name.startswith("__lambda_alias__:"):
+                callee_str = alias_ty.name[len("__lambda_alias__:"):]
+            else:
+                callee_str = callee.name
         elif isinstance(callee, str):
             callee_str = callee
         elif isinstance(callee, FieldAccess):
             callee_str = f"<field>.{callee.field_name}"
         else:
             callee_str = "<callable>"  # fallback：未知形态
+        # P0-4（轮 2 修复）：CALL_OPERATOR_MAP fallback——若 callable 是 RNG/distribution
+        # 等 functor，重映射到对应 functor.next/Rng.next 调用形态
+        recv_ty = _strip_ref(_expr_ty(callee, typectx))
+        if isinstance(recv_ty, NamedType):
+            if recv_ty.name in ("UniformIntDist", "UniformRealDist", "Distribution"):
+                # dist(rng) → Rng.next rng dist
+                if len(args) == 2:
+                    return Call(callee="Rng.next", args=[args[1], callee], ty=None)
         return Call(callee=callee_str, args=args[1:], ty=None)
 
     # operator->: 解引用
@@ -546,15 +622,24 @@ def _resolve_constructor_call(call: Call, op_name: str, typectx: dict,
                 off0_w = _walk_expr(off0, typectx, gap) if off0 is not None else None
                 off1_w = _walk_expr(off1, typectx, gap) if off1 is not None else None
                 if op0 == "+" and op1 == "begin" and off0_w is not None:
-                    return Call(callee="Array.drop", args=[cw, off0_w],
+                    # P0-10（轮 2 修复）：Lean Array.drop 第二参 Nat。包 .toNat
+                    nat_off = Call(callee="__cast__({x}).toNat",
+                                   args=[off0_w], ty=BaseType.NAT)
+                    return Call(callee="Array.drop", args=[cw, nat_off],
                                 ty=NamedType("Array"))
                 if op0 == "begin" and op1 == "-" and off1_w is not None:
-                    return Call(callee="Array.dropLast", args=[cw, off1_w],
+                    # P0-9（轮 2 修复）：Lean Array.dropLast 是 0-arg "去掉最后 1 个"，
+                    # 没有 2-arg 形态。`vector(begin, end-k)` = `arr.take (size-k)`
+                    size_call = Call(callee="Array.size", args=[cw], ty=BaseType.NAT)
+                    take_count = BinOp(op="-", lhs=size_call, rhs=off1_w, ty=BaseType.NAT)
+                    return Call(callee="Array.take", args=[cw, take_count],
                                 ty=NamedType("Array"))
                 if op0 == "begin" and op1 == "begin":
                     return Call(callee="id", args=[cw], ty=NamedType("Array"))
                 if op0 == "begin" and op1 == "+" and off1_w is not None:
-                    return Call(callee="Array.take", args=[cw, off1_w],
+                    nat_off = Call(callee="__cast__({x}).toNat",
+                                   args=[off1_w], ty=BaseType.NAT)
+                    return Call(callee="Array.take", args=[cw, nat_off],
                                 ty=NamedType("Array"))
                 if op0 == "+" and op1 == "+" and off0_w and off1_w:
                     inner = Call(callee="Array.take", args=[cw, off1_w],
@@ -563,13 +648,23 @@ def _resolve_constructor_call(call: Call, op_name: str, typectx: dict,
                                 ty=NamedType("Array"))
 
     args = [_walk_expr(a, typectx, gap) for a in call.args]
+
+    # P0-1（轮 2 修复）：copy ctor 检测 — 1-arg 构造且 arg 类型 == 目标类型时
+    # 是 copy/identity，直接返回 arg。避免 `<construct_Zp>(Zp_value)` 被错误
+    # 包成 `Zp.ofInt(Zp_value)` 等数据表 1-arg fallback。
+    target_ty = _typename_to_typeir(typename)
+    if arity == 1 and target_ty is not None:
+        arg_ty = _strip_ref(_expr_ty(args[0], typectx))
+        if (arg_ty is not None
+                and canonicalize_type(target_ty) == canonicalize_type(arg_ty)
+                and not _is_unresolved(arg_ty)):
+            return args[0]
+
     resolution = resolve_constructor(op_name, arity)
     if resolution is None:
         gap.constructor_miss.append((op_name, arity))
         return replace(call, args=args)
     # P0-3：从 typename 推回目标类型，填到 Call.ty。这样下游 receiver 类型查询
-    # （如 `__ctor__Zp.ofInt(x) + y` 中 outer + 的 LHS 类型）能正确得到 Zp。
-    target_ty = _typename_to_typeir(typename)
     return Call(callee=f"__ctor__{resolution.template}", args=args, ty=target_ty)
 
 
@@ -688,8 +783,16 @@ def _walk_expr(e: ExprIR, typectx: dict, gap: GapLog) -> ExprIR:
         return ArrayLit(elems=[_walk_expr(x, typectx, gap) for x in e.elems],
                         elem_ty=e.elem_ty)
     if isinstance(e, LambdaExpr):
-        # 不递归进入 lambda body（aux_lambdas 由顶层 pass 单独处理）
-        return e
+        # P0-7（轮 2 修复）：内联 LambdaExpr 来自 Pass 4 filter-loop pred（Pass 3
+        # lambda_lift 已经把所有 outer-level lambda 提升到 aux_lambdas，但 Pass 4
+        # 在 _build_pred_lambda 里**新生成**内联 LambdaExpr 用作 Array.filter 的
+        # pred，body 内的 UnresolvedOp 需要 Pass 5 处理）
+        inner_typectx = dict(typectx)
+        for p in e.params:
+            if p.ty is not None and not _is_unresolved(p.ty):
+                inner_typectx[p.name] = p.ty
+        new_body = _walk_stmts(list(e.body), inner_typectx, gap)
+        return replace(e, body=new_body)
     return e
 
 
@@ -729,8 +832,13 @@ def _emit_nonempty_require(container: ExprIR) -> RequireStmt:
 
 
 def _collect_ub_requires(expr: ExprIR, typectx: dict) -> list[RequireStmt]:
-    """从表达式收集 UB require（先深扫子表达式，再当前节点）。"""
+    """从表达式收集 UB require（先深扫子表达式，再当前节点）。
+    P0-5：吸收 _CAST_PENDING_REQUIRES（_resolve_cast 留下的 cast UB）"""
     reqs: list[RequireStmt] = []
+    # 先吸收 cast pending requires
+    if _CAST_PENDING_REQUIRES:
+        reqs.extend(_CAST_PENDING_REQUIRES)
+        _CAST_PENDING_REQUIRES.clear()
 
     def walk(e):
         # 先处理子表达式
@@ -779,8 +887,14 @@ def _walk_stmt(s: StmtIR, typectx: dict, gap: GapLog) -> list[StmtIR]:
     """处理单条 stmt。返回 stmt 列表（mutator 展开 + UB require 注入可能产生多条）。"""
     if isinstance(s, LetStmt):
         new_val = _walk_expr(s.value, typectx, gap) if s.value else None
-        # 注册 typectx
-        if s.ty is not None and not _is_unresolved(s.ty):
+        # P0-3（轮 2 修复）：检测 `let X := Var("_lambda_<host>_<N>")` 形态——
+        # X 是 lifted lambda 的本地别名（如 `auto dot = ...; dot(a, b)`）。
+        # 标记 X 类型为 `NamedType("__lambda_alias__:<mangled>")`，op_sym=="()"
+        # 解析时用 mangled name 作 callee 而非 X 自身
+        if (new_val is not None and isinstance(new_val, Var)
+                and new_val.name.startswith("_lambda_")):
+            typectx[s.var.name] = NamedType(f"__lambda_alias__:{new_val.name}")
+        elif s.ty is not None and not _is_unresolved(s.ty):
             typectx[s.var.name] = s.ty
         elif new_val is not None:
             et = _expr_ty(new_val, typectx)
@@ -793,6 +907,16 @@ def _walk_stmt(s: StmtIR, typectx: dict, gap: GapLog) -> list[StmtIR]:
     if isinstance(s, AssignStmt):
         new_val = _walk_expr(s.value, typectx, gap)
         new_tgt = _walk_expr(s.target, typectx, gap)
+        # P0-8（轮 2 修复）：`StdMap.get!(m, k) = v` 形态——Lean 不允许 Call 作
+        # 左值。识别 LHS 是 `StdMap.get!` 的 Call → 转 `m = StdMap.insert m k v`
+        if (isinstance(new_tgt, Call) and isinstance(new_tgt.callee, str)
+                and new_tgt.callee == "StdMap.get!" and len(new_tgt.args) == 2):
+            m, k = new_tgt.args
+            insert_call = Call(callee="StdMap.insert", args=[m, k, new_val], ty=None)
+            reqs = (_collect_ub_requires(new_val, typectx)
+                    + _collect_ub_requires(insert_call, typectx))
+            if isinstance(m, (Var, FieldAccess, ArrayAccess)):
+                return reqs + [AssignStmt(target=m, value=insert_call)]
         reqs = _collect_ub_requires(new_val, typectx) + _collect_ub_requires(new_tgt, typectx)
         return reqs + [AssignStmt(target=new_tgt, value=new_val)]
 
@@ -860,13 +984,35 @@ def _walk_stmt(s: StmtIR, typectx: dict, gap: GapLog) -> list[StmtIR]:
             # operator++ / operator-- (incdec)
             if op in ("operator++", "operator--") and len(e.args) >= 1:
                 target = _walk_expr(e.args[0], typectx, gap)
-                op_sym = "+" if op == "operator++" else "-"
                 if isinstance(target, (Var, FieldAccess, ArrayAccess)):
+                    target_ty = _strip_ref(_expr_ty(target, typectx))
+                    # P0-2（轮 2 修复）：先查 CLASS_MAP[T]["operators"]——
+                    # Iterator 等 user-defined 类型的 ++/-- 应走 mutate 路径
+                    # （如 `it = Iterator.advance(it)`）而非硬编码 `it = it + 1`
+                    T = _typename_for_classmap(target_ty)
+                    cls_ops = CLASS_MAP.get(T, {}).get("operators", {}) if T else {}
+                    op_short = "++" if op == "operator++" else "--"
+                    if op_short in cls_ops:
+                        target_def = cls_ops[op_short]
+                        if isinstance(target_def, tuple) and len(target_def) == 2:
+                            disp, fn = target_def
+                            if disp in ("mutate", "method"):
+                                new_call = Call(callee=fn, args=[target], ty=target_ty)
+                                return _collect_ub_requires(new_call, typectx) + [
+                                    AssignStmt(target=target, value=new_call)
+                                ]
+                        elif isinstance(target_def, str):
+                            new_call = Call(callee=target_def, args=[target], ty=target_ty)
+                            return _collect_ub_requires(new_call, typectx) + [
+                                AssignStmt(target=target, value=new_call)
+                            ]
+                    # 默认（数值类型）：x = x ± 1
+                    op_sym = "+" if op == "operator++" else "-"
                     new_assign = AssignStmt(
                         target=target,
                         value=BinOp(op=op_sym, lhs=target,
                                     rhs=Lit(value=1, ty=BaseType.INT64),
-                                    ty=_strip_ref(_expr_ty(target, typectx))),
+                                    ty=target_ty),
                     )
                     return _collect_ub_requires(new_assign.value, typectx) + [new_assign]
             # operator+=/-=/*=/...（compound assign）

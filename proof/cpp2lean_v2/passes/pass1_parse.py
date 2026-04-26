@@ -463,7 +463,12 @@ def parse_expr(node: Any) -> ExprIR:
         return Lit(value=value, ty=BaseType.FLOAT)
 
     if kind == "StringLiteral":
-        return Lit(value=node.get("value", ""), ty=NamedType("String"))
+        # P0-11（轮 2 修复）：Clang JSON `StringLiteral.value` 含两端引号
+        # （e.g. '"x"'）；剥掉避免 Lean 输出双重转义
+        val = node.get("value", "")
+        if isinstance(val, str) and len(val) >= 2 and val.startswith('"') and val.endswith('"'):
+            val = val[1:-1]
+        return Lit(value=val, ty=NamedType("String"))
 
     if kind == "BinaryOperator":
         op = node.get("opcode", "?")

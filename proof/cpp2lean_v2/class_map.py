@@ -99,7 +99,7 @@ CLASS_MAP = {
             "begin": ("method", "SparsePolyZp.toList"),
             "end": ("method", "SparsePolyZp.toList"),
             "clear": ("mutate", "Array.empty"),
-            "assign": ("mutate", "id"),
+            "assign": ("mutate", "Array.mkArray"),  # P0-6: vec.assign(n, val) → Array.mkArray n val
             "resize": ("noop", None),
             "erase": ("mutate", "Array.pop"),
             "at": ("method", "Array.get!"),
@@ -127,7 +127,7 @@ CLASS_MAP = {
             "begin": ("method", "SparsePolyZZ.toList"),
             "end": ("method", "SparsePolyZZ.toList"),
             "clear": ("mutate", "Array.empty"),
-            "assign": ("mutate", "id"),
+            "assign": ("mutate", "Array.mkArray"),  # P0-6: vec.assign(n, val) → Array.mkArray n val
             "erase": ("mutate", "Array.erase"),  # P1-7: range/iter erase（兜底）
             "at":    ("method", "Array.get!"),
         },
@@ -242,7 +242,7 @@ CLASS_MAP = {
         },
         "methods": {
             "size": ("method", "LLLMatrix.size"),
-            "assign": ("mutate", "id"),
+            "assign": ("mutate", "Array.mkArray"),  # P0-6: vec.assign(n, val) → Array.mkArray n val
             "push_back": ("mutate_push", "Array.push"),
             "reserve": ("noop", None),
             "swap": ("mutate", "LLLMatrix.swap"),
@@ -342,6 +342,8 @@ CLASS_MAP = {
             "at":           ("method",       "Array.get!"),        # UB-2
             "insert":       ("mutate",       "Array.insert"),
             "swap":         ("mutate",       "Array.swap"),
+            "find":         ("method",       "Array.find?"),  # P0-11 补：std::find/set::find 路径
+            "contains":     ("method",       "Array.contains"),
         },
         "operators": {
             "[]":  "Array.get!",   # UB-2

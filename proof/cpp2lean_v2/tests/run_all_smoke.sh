@@ -34,6 +34,10 @@ echo ""
 echo "--- MIR ir_types 单元测试 ---"
 python3 tests/test_mir_types.py
 
+echo ""
+echo "--- Pass 6 单元测试 ---"
+python3 tests/test_pass6_ssa.py
+
 # 烟测（全 65 函数）
 echo ""
 echo "--- Pass 1 烟测（65 函数）---"
@@ -55,10 +59,14 @@ echo ""
 echo "--- Pass 5 烟测（65 函数, factorize x3）---"
 python3 tests/smoke_pass5_full.py 2>&1 | tail -8
 
+echo ""
+echo "--- Pass 6 烟测（65 函数, factorize x3）---"
+python3 tests/smoke_pass6_full.py 2>&1 | tail -8
+
 # 未来 Pass 会在此添加：
 # echo ""
-# echo "--- Pass 6 烟测 ---"
-# python3 tests/smoke_pass6_full.py 2>&1 | tail -8
+# echo "--- Pass 7 烟测 ---"
+# python3 tests/smoke_pass7_full.py 2>&1 | tail -8
 
 echo ""
 echo "========================================="

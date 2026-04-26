@@ -128,6 +128,20 @@
 
 按依赖拓扑序推进，每函数 back-to-back 通过即结束。
 
+### 前置：建立 Lean Impl/* 工程层（**TD-2 见 tech-debt.md**）
+
+**必须**先把 Pass 5 数据表引用的 ~80 个目标 Lean 函数 stub / 实现到位，
+否则 Pass 8 codegen 后 lake build 会立刻 unbound identifier 全场。
+
+- [ ] 批次 0a：建 `proof/lean/CLPoly/Impl/Vec.lean`（vector/Array shim 方法 ~15）
+- [ ] 批次 0b：建 `proof/lean/CLPoly/Impl/StdMap.lean`（map/set shim ~10）
+- [ ] 批次 0c：建 `proof/lean/CLPoly/Impl/Iterator.lean`（Iterator advance/deref ~5；接 TD-1 begin/end 重设计同步）
+- [ ] 批次 0d：补 `proof/lean/CLPoly/Impl/Number.lean`（Zp/ZZ/QQ 的 ofInt/inv/div/fdiv 等 ~15）
+- [ ] 批次 0e：补 `proof/lean/CLPoly/Impl/MvPoly.lean`（MvPolyZp/ZZ/SparsePolyZp/ZZ 的 normalization/front!/data 等 ~30）
+- [ ] 批次 0f：建 RNG/Distribution stub（~5）
+
+### bring-up 批次（依赖拓扑序）
+
 - [ ] 批次 1：叶节点工具函数（~10 个）
 - [ ] 批次 2：基础多项式运算（~10 个）
 - [ ] 批次 3：Zp 模块 5 函数

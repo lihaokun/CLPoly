@@ -212,14 +212,6 @@ class LambdaExpr:
 
 
 @dataclass
-class IteratorExpr:
-    """HIR₀-HIR₂ 原始迭代器；iter_recognize Pass 之后消除。"""
-    kind: str                   # "begin" / "end" / "deref" / "increment"
-    container: Optional['ExprIR'] = None
-    operand: Optional['ExprIR'] = None
-
-
-@dataclass
 class BlockExpr:
     """语句块作为表达式值（phi 节点材料）。"""
     stmts: list['StmtIR']
@@ -252,7 +244,7 @@ class UnknownExpr:
 ExprIR = Union[
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast,
-    LambdaExpr, IteratorExpr,
+    LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit,
     UnknownExpr,
 ]
@@ -504,3 +496,202 @@ class TranslationError(Exception):
         self.reason = reason
         self.line = line
         super().__init__(f"[{pass_name}] {func_name}:{line}: {reason}")
+
+
+# ============================================================
+# §7 MIR：CFG / Phi / Terminator / MIRFunc
+# 依据 mir-design.md §1
+# ============================================================
+
+@dataclass
+class PhiStmt:
+    """phi 节点：x_n := phi(pred1 → x_i, pred2 → x_j, ...)
+    Pass 6 ssa_build 产出，仅出现在 BasicBlock 开头（连续 N 个）。"""
+    target: Var                            # 新版本 Var（被定义）
+    ty: TypeIR
+    sources: dict[int, Var]                # pred_bb_id → source Var（旧版本）
+
+
+# MIR 层 stmt 类型（subset of HIR + PhiStmt）：MIR₀ 不允许 AssignStmt /
+# CompoundAssignStmt / IfStmt / 循环 / Break/Continue/Return（控制流走 Terminator）
+MIRStmt = Union[PhiStmt, LetStmt, RequireStmt]
+
+
+# ============================================================
+# Terminator：基本块末尾的控制流
+# ============================================================
+
+@dataclass
+class JumpTerm:
+    """无条件跳转：goto target_bb。"""
+    target: int
+
+
+@dataclass
+class CondJumpTerm:
+    """条件跳转：cond ? then_bb : else_bb。"""
+    cond: ExprIR
+    then_bb: int
+    else_bb: int
+
+
+@dataclass
+class ReturnTerm:
+    """函数返回。"""
+    value: Optional[ExprIR] = None
+
+
+@dataclass
+class TailCallTerm:
+    """尾递归调用（Pass 7 循环下降产物）：跳转到另一个 def 的开头。
+    args 与 target_func 的参数列表对应，按位置传递。"""
+    target_func: str
+    args: list[ExprIR] = field(default_factory=list)
+
+
+Terminator = Union[JumpTerm, CondJumpTerm, ReturnTerm, TailCallTerm]
+
+
+# ============================================================
+# BasicBlock / CFG
+# ============================================================
+
+@dataclass
+class BasicBlock:
+    """基本块：一段无内部跳转的直线代码 + 末尾 Terminator。
+
+    `stmts` 由 PhiStmt（开头连续 N 个）+ LetStmt + RequireStmt 组成。
+    `terminator` 决定到哪个/哪些后继块（preds/succs 由 CFG 缓存）。"""
+    bb_id: int
+    stmts: list[MIRStmt]
+    terminator: Terminator
+
+
+@dataclass
+class CFG:
+    """控制流图：基本块集 + 入口；前驱/后继可缓存。"""
+    entry: int
+    blocks: dict[int, BasicBlock]
+    # 前驱/后继可由 terminator 隐式给出（rebuild_edges 重算）
+    preds: dict[int, list[int]] = field(default_factory=dict)
+    succs: dict[int, list[int]] = field(default_factory=dict)
+
+    def rebuild_edges(self) -> None:
+        """从 terminator 重新计算 preds/succs。"""
+        self.preds = {bb_id: [] for bb_id in self.blocks}
+        self.succs = {bb_id: [] for bb_id in self.blocks}
+        for bb_id, bb in self.blocks.items():
+            t = bb.terminator
+            if isinstance(t, JumpTerm):
+                targets = [t.target]
+            elif isinstance(t, CondJumpTerm):
+                targets = [t.then_bb, t.else_bb]
+            else:  # ReturnTerm / TailCallTerm 无 CFG 后继
+                targets = []
+            for tgt in targets:
+                if tgt in self.blocks:
+                    self.succs[bb_id].append(tgt)
+                    self.preds[tgt].append(bb_id)
+
+
+# ============================================================
+# MIRFunc
+# ============================================================
+
+@dataclass
+class MIRFunc:
+    """MIR 层函数。body / aux_lambdas 被转换为 cfg + aux_defs。
+
+    与 HIRFunc 对齐：base_name / instance_suffix / mangled_name / params /
+    ret_ty / requires；body 改为 cfg；aux_lambdas（HIR 层 lifted）继续保留为
+    aux_defs 的初始集合，Pass 7 循环提取后追加新 MIRFunc 进 aux_defs。"""
+    base_name: str
+    instance_suffix: str = ""
+    mangled_name: str = ""
+    qual_type: str = ""
+    params: list[HIRParam] = field(default_factory=list)
+    ret_ty: TypeIR = BaseType.UNIT
+    requires: list[RequireStmt] = field(default_factory=list)
+    cfg: Optional[CFG] = None              # 主 CFG（Pass 6 后非 None）
+    aux_defs: list['MIRFunc'] = field(default_factory=list)
+
+    @property
+    def lean_name(self) -> str:
+        if self.instance_suffix:
+            return f"{self.base_name}_{self.instance_suffix}_ir"
+        return f"{self.base_name}_ir"
+
+
+# ============================================================
+# §7.x MIR 不变量（Pass 6 / Pass 7 出口检查）
+# ============================================================
+
+def assert_mir0_invariant(func: MIRFunc) -> None:
+    """MIR₀（Pass 6 后）出口检查：
+      - func.cfg 非 None
+      - 每个 BasicBlock terminator 非 None 且类型属 Terminator union
+      - PhiStmt 只在 BasicBlock 开头（连续 N 个）
+      - 不允许 AssignStmt / CompoundAssignStmt / IfStmt / WhileStmt / ForStmt /
+        DoWhileStmt / RangeForStmt / BreakStmt / ContinueStmt / ReturnStmt /
+        ExprStmt / BlockStmt 残留
+      - SSA 性质：每个 Var(name, version) 至多一个定义（PhiStmt.target 或
+        LetStmt.var）
+    """
+    def fail(reason: str):
+        raise TranslationError(
+            pass_name="ssa_build",
+            func_name=func.base_name,
+            reason=reason,
+        )
+
+    if func.cfg is None:
+        fail("MIRFunc.cfg is None")
+
+    cfg = func.cfg
+    if cfg.entry not in cfg.blocks:
+        fail(f"CFG entry {cfg.entry} not in blocks")
+
+    seen_defs: dict[tuple[str, int], int] = {}  # (name, version) → bb_id
+
+    for bb_id, bb in cfg.blocks.items():
+        # Terminator 类型
+        if not isinstance(bb.terminator, (JumpTerm, CondJumpTerm,
+                                          ReturnTerm, TailCallTerm)):
+            fail(f"bb[{bb_id}]: invalid terminator type {type(bb.terminator).__name__}")
+
+        # phi 必须连续在开头
+        seen_non_phi = False
+        for i, s in enumerate(bb.stmts):
+            if isinstance(s, PhiStmt):
+                if seen_non_phi:
+                    fail(f"bb[{bb_id}].stmts[{i}]: PhiStmt after non-phi")
+                # 检查 SSA 唯一定义
+                key = (s.target.name, s.target.version)
+                if key in seen_defs:
+                    fail(f"bb[{bb_id}]: SSA violation — Var{key} redefined "
+                         f"(prior in bb[{seen_defs[key]}])")
+                seen_defs[key] = bb_id
+                continue
+            seen_non_phi = True
+            # 允许的非-phi MIRStmt：LetStmt / RequireStmt
+            if isinstance(s, LetStmt):
+                key = (s.var.name, s.var.version)
+                if key in seen_defs:
+                    fail(f"bb[{bb_id}].stmts[{i}]: SSA violation — Var{key} redefined")
+                seen_defs[key] = bb_id
+            elif isinstance(s, RequireStmt):
+                pass  # 允许
+            else:
+                fail(f"bb[{bb_id}].stmts[{i}]: disallowed MIR stmt "
+                     f"{type(s).__name__}")
+
+
+def assert_mir1_invariant(func: MIRFunc) -> None:
+    """MIR₁（Pass 7 后）出口检查：在 MIR₀ 基础上 +
+      - 无结构化循环（CFG 不含 back edge——拓扑序成立）
+      - 所有循环已提取为 aux_defs 内的独立 MIRFunc
+      - 残留 break/continue/return 由 TailCallTerm + flag 表达
+    """
+    assert_mir0_invariant(func)
+    # 简化：本检查不实际运行 DomTree 分析，仅约定 Pass 7 不留下显式 back edge
+    # （Pass 7 实现时此处可加 SCC / 拓扑序检查）

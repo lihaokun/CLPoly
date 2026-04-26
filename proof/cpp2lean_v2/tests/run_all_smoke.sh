@@ -30,6 +30,10 @@ echo ""
 echo "--- Pass 5 单元测试 ---"
 python3 tests/test_pass5_resolve.py
 
+echo ""
+echo "--- MIR ir_types 单元测试 ---"
+python3 tests/test_mir_types.py
+
 # 烟测（全 65 函数）
 echo ""
 echo "--- Pass 1 烟测（65 函数）---"

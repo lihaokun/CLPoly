@@ -23,6 +23,10 @@ echo "--- Pass 3 单元测试 ---"
 python3 tests/test_pass3_lambda_lift.py
 
 echo ""
+echo "--- TRANSLATION_SCOPE_OUTPUT_PARAMS 注册一致性校验 ---"
+python3 tests/test_output_params_consistency.py 2>&1 | tail -5
+
+echo ""
 echo "--- Pass 2b 单元测试（callsite ref-elim） ---"
 python3 tests/test_pass2b_callsite_ref_elim.py
 

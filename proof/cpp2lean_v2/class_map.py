@@ -712,7 +712,8 @@ TRANSLATION_SCOPE_OUTPUT_PARAMS = {
     "pair_vec_div#5": [0, 1],            # (new_v&, R&, v1, v2, comp)（basic.hh:698）
     "fdiv_r": [0],                       # r（ZZ.hh:810）
     "fdiv_q": [0],                       # q（ZZ.hh:731）
-    "swap": [0, 1],                      # std::swap 双向（用于 mu/M 行交换）
+    "swap#2": [0, 1],                    # std::swap 双向（mu/M 行交换）。
+                                         # `#2` 区分 interval.hh 的 1-arg 成员 swap
     # polynomial_GCD 4-arg Bezout 形式：return GCD + 修改 s, t (Bezout coefficients)
     "polynomial_GCD#4": [2, 3],          # F, G, s&, t&（s,t 为 out）
 }

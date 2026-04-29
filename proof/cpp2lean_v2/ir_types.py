@@ -301,12 +301,18 @@ class ForStmt:
 
 @dataclass
 class RangeForStmt:
-    """C++ for (auto& x : container) { body }"""
+    """C++ for (auto& x : container) { body }
+
+    is_mutable_ref：loop var 是否是 non-const 引用（auto&）。
+    True 时 Pass 6 desugar 必须在 latch 把 var 回写到 cont[idx]，
+    否则 body 中通过 var 的写入会丢失（C++ 引用语义 vs Lean 值语义）。
+    """
     var: Var
     var_ty: TypeIR
     container: ExprIR
     body: list['StmtIR']
     decomposition: Optional[list[Var]] = None    # 结构化绑定 [k, v]
+    is_mutable_ref: bool = False                 # auto& 写回触发标志（P0-1 修复）
 
 
 @dataclass
@@ -626,16 +632,55 @@ class MIRFunc:
 # §7.x MIR 不变量（Pass 6 / Pass 7 出口检查）
 # ============================================================
 
+def _walk_check_no_incdec(e, fail) -> None:
+    """递归检查 e 不含 UnaryOp("++"/"--")（B1 silent bug）。"""
+    if e is None:
+        return
+    if isinstance(e, UnaryOp):
+        if e.op in ("++", "--"):
+            fail(f"UnaryOp({e.op}) residual — B1 silent bug")
+        _walk_check_no_incdec(e.operand, fail); return
+    if isinstance(e, BinOp):
+        _walk_check_no_incdec(e.lhs, fail); _walk_check_no_incdec(e.rhs, fail); return
+    if isinstance(e, CondExpr):
+        _walk_check_no_incdec(e.cond, fail)
+        _walk_check_no_incdec(e.then_e, fail)
+        _walk_check_no_incdec(e.else_e, fail); return
+    if isinstance(e, Cast):
+        _walk_check_no_incdec(e.expr, fail); return
+    if isinstance(e, FieldAccess):
+        _walk_check_no_incdec(e.obj, fail); return
+    if isinstance(e, ArrayAccess):
+        _walk_check_no_incdec(e.arr, fail); _walk_check_no_incdec(e.idx, fail); return
+    if isinstance(e, Call):
+        for a in e.args: _walk_check_no_incdec(a, fail)
+        return
+    if isinstance(e, TupleExpr):
+        for x in e.elems: _walk_check_no_incdec(x, fail)
+        return
+    if isinstance(e, ArrayLit):
+        for x in e.elems: _walk_check_no_incdec(x, fail)
+        return
+
+
 def assert_mir0_invariant(func: MIRFunc) -> None:
-    """MIR₀（Pass 6 后）出口检查：
+    """MIR₀（Pass 6 后）出口检查（强化版，捕获 silent SSA bug）：
+
+    结构性：
       - func.cfg 非 None
       - 每个 BasicBlock terminator 非 None 且类型属 Terminator union
       - PhiStmt 只在 BasicBlock 开头（连续 N 个）
       - 不允许 AssignStmt / CompoundAssignStmt / IfStmt / WhileStmt / ForStmt /
         DoWhileStmt / RangeForStmt / BreakStmt / ContinueStmt / ReturnStmt /
         ExprStmt / BlockStmt 残留
-      - SSA 性质：每个 Var(name, version) 至多一个定义（PhiStmt.target 或
-        LetStmt.var）
+      - SSA 性质：每个 Var(name, version) 至多一个定义
+
+    强化检查（B1/B2/B3/B6/B8 silent bug 防护）:
+      - 无 unreachable 非-entry 块（B3）
+      - phi.sources keys 必须等于 cfg.preds[bb]（B2 弱症状）
+      - 任何表达式中不含 UnaryOp("++" / "--") 残留（B1）
+      - 递归校验 aux_defs（B6 — 若 Pass 6 错把 aux_defs 丢空，调用者请补
+        cross-check：参数 HIR.aux_lambdas 数 == MIR.aux_defs 数）
     """
     def fail(reason: str):
         raise TranslationError(
@@ -651,6 +696,11 @@ def assert_mir0_invariant(func: MIRFunc) -> None:
     if cfg.entry not in cfg.blocks:
         fail(f"CFG entry {cfg.entry} not in blocks")
 
+    # B3：无 unreachable
+    for bb_id in cfg.blocks:
+        if bb_id != cfg.entry and not cfg.preds.get(bb_id):
+            fail(f"bb[{bb_id}]: unreachable (no preds, not entry) — B3")
+
     seen_defs: dict[tuple[str, int], int] = {}  # (name, version) → bb_id
 
     for bb_id, bb in cfg.blocks.items():
@@ -661,6 +711,7 @@ def assert_mir0_invariant(func: MIRFunc) -> None:
 
         # phi 必须连续在开头
         seen_non_phi = False
+        preds_set = set(cfg.preds.get(bb_id, []))
         for i, s in enumerate(bb.stmts):
             if isinstance(s, PhiStmt):
                 if seen_non_phi:
@@ -671,6 +722,14 @@ def assert_mir0_invariant(func: MIRFunc) -> None:
                     fail(f"bb[{bb_id}]: SSA violation — Var{key} redefined "
                          f"(prior in bb[{seen_defs[key]}])")
                 seen_defs[key] = bb_id
+                # B2：phi.sources keys 必须 == preds
+                src_keys = set(s.sources.keys())
+                if src_keys != preds_set:
+                    fail(f"bb[{bb_id}].stmts[{i}]: phi.sources keys {sorted(src_keys)} "
+                         f"!= preds {sorted(preds_set)} for {s.target.name} — B2")
+                # B1：phi sources 也需 incdec-free
+                for src in s.sources.values():
+                    _walk_check_no_incdec(src, fail)
                 continue
             seen_non_phi = True
             # 允许的非-phi MIRStmt：LetStmt / RequireStmt
@@ -679,11 +738,24 @@ def assert_mir0_invariant(func: MIRFunc) -> None:
                 if key in seen_defs:
                     fail(f"bb[{bb_id}].stmts[{i}]: SSA violation — Var{key} redefined")
                 seen_defs[key] = bb_id
+                _walk_check_no_incdec(s.value, fail)
             elif isinstance(s, RequireStmt):
-                pass  # 允许
+                _walk_check_no_incdec(s.cond, fail)
             else:
                 fail(f"bb[{bb_id}].stmts[{i}]: disallowed MIR stmt "
                      f"{type(s).__name__}")
+        # terminator 中也检查
+        t = bb.terminator
+        if isinstance(t, ReturnTerm) and t.value is not None:
+            _walk_check_no_incdec(t.value, fail)
+        elif isinstance(t, CondJumpTerm):
+            _walk_check_no_incdec(t.cond, fail)
+        elif isinstance(t, TailCallTerm):
+            for a in t.args: _walk_check_no_incdec(a, fail)
+
+    # B6：递归 aux_defs（aux_defs 内部 MIRFunc 必须满足 MIR0）
+    for aux in func.aux_defs:
+        assert_mir0_invariant(aux)
 
 
 def assert_mir1_invariant(func: MIRFunc) -> None:

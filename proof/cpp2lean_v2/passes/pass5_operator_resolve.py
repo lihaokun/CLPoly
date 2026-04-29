@@ -197,6 +197,19 @@ def _try_extract_iter_offset(e: ExprIR
     return None
 
 
+def _is_lvalue_target(e: ExprIR) -> bool:
+    """检查 e 是否合法 AssignStmt target。
+    Var / FieldAccess / ArrayAccess 是显式 lvalue；
+    Call("StdMap.get!", [m, k]) 是 map subscript 等价 lvalue（Pass 6 _root_var 阶段 A 处理）。
+    """
+    if isinstance(e, (Var, FieldAccess, ArrayAccess)):
+        return True
+    if isinstance(e, Call) and isinstance(e.callee, str) \
+            and e.callee == "StdMap.get!" and len(e.args) == 2:
+        return True
+    return False
+
+
 def _exprs_eq(a: ExprIR, b: ExprIR) -> bool:
     """简化的表达式相等判断（用于 Pattern B 检验 begin 和 end 的容器是同一个）。"""
     if isinstance(a, Var) and isinstance(b, Var):
@@ -206,6 +219,30 @@ def _exprs_eq(a: ExprIR, b: ExprIR) -> bool:
     if isinstance(a, Cast) and isinstance(b, Cast):
         return _exprs_eq(a.expr, b.expr)
     return False
+
+
+def _stl_extract_toList_container(arg: ExprIR) -> ExprIR | None:
+    """CF-3 阶段 3: 从 `Array.toList(c)` / `<method>.begin(c)` / `<method>.end(c)` /
+    Cast(NoOp, ...) 等包装中抽出底层容器 expr。返回 None 表示不匹配。
+
+    HIR3 阶段（Pass 4 输入未到 Pass 5 时）begin/end 仍可能是 UnresolvedOp；
+    HIR4（Pass 5 输出）已被 CLASS_MAP 解析成 `Array.toList(c)`。本函数支持
+    两种形态：直接 toList Call、或仍未解析的 UnresolvedOp(<method>.begin/end)。
+    """
+    cur = arg
+    if isinstance(cur, Cast):
+        cur = cur.expr
+    if isinstance(cur, Call):
+        cs = cur.callee
+        # Pass 5 已解析后的 Array.toList(c)
+        if isinstance(cs, str) and cs == "Array.toList" and len(cur.args) == 1:
+            return cur.args[0]
+        # 未解析 UnresolvedOp("<method>.begin"|"<method>.end") — 极少见
+        if isinstance(cs, UnresolvedOp) \
+                and cs.op_name in ("<method>.begin", "<method>.end") \
+                and len(cur.args) == 1:
+            return cur.args[0]
+    return None
 
 
 # ============================================================
@@ -580,14 +617,14 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
 
         new_call = Call(callee=target, args=[recv] + extra_args, ty=None)
         # P1-5：扩展 ArrayAccess 也作 target（如 `groups[d].push_back(x)`）
-        if host_stmt_ctx and isinstance(recv, (Var, FieldAccess, ArrayAccess)):
+        if host_stmt_ctx and _is_lvalue_target(recv):
             return ([AssignStmt(target=recv, value=new_call)], recv)
         return new_call
 
     if disposition == "mutate_push":
         new_call = Call(callee=target or "Array.push",
                         args=[recv] + extra_args, ty=None)
-        if host_stmt_ctx and isinstance(recv, (Var, FieldAccess, ArrayAccess)):
+        if host_stmt_ctx and _is_lvalue_target(recv):
             return ([AssignStmt(target=recv, value=new_call)], recv)
         return new_call
 
@@ -962,7 +999,8 @@ def _walk_stmt(s: StmtIR, typectx: dict, gap: GapLog) -> list[StmtIR]:
         new_container = _walk_expr(s.container, typectx, gap)
         new_body = _walk_stmts(list(s.body), typectx, gap)
         return [RangeForStmt(var=s.var, var_ty=s.var_ty, container=new_container,
-                             body=new_body, decomposition=s.decomposition)]
+                             body=new_body, decomposition=s.decomposition,
+                             is_mutable_ref=s.is_mutable_ref)]
 
     if isinstance(s, ReturnStmt):
         new_val = _walk_expr(s.value, typectx, gap) if s.value else None
@@ -979,6 +1017,48 @@ def _walk_stmt(s: StmtIR, typectx: dict, gap: GapLog) -> list[StmtIR]:
         # `Call(UnresolvedOp("operator*=" | "operator++" | ...))`，在 stmt 级
         # 展开为 AssignStmt（CompoundAssignStmt 在 BaseType 上的等价形态）
         e = s.expr
+        # CF-3 阶段 3：STL 算法 sort/iota 取 begin/end iterator 范围 →
+        # 转为 functional Array.sort / Array.range_init 形态
+        # 形态：sort(Array.toList(c), Array.toList(c), comp) → c := Array.sort(c, comp)
+        #       iota(Array.toList(c), Array.toList(c), v)   → c := Array.range_init(c.size, v)
+        if isinstance(e, Call) and isinstance(e.callee, str) \
+                and e.callee in ("sort", "iota") and len(e.args) == 3:
+            container_arg = _stl_extract_toList_container(e.args[0])
+            container_arg2 = _stl_extract_toList_container(e.args[1])
+            if container_arg is not None and container_arg2 is not None \
+                    and _exprs_eq(container_arg, container_arg2):
+                container = _walk_expr(container_arg, typectx, gap)
+                if isinstance(container, (Var, FieldAccess, ArrayAccess)):
+                    third_arg = _walk_expr(e.args[2], typectx, gap)
+                    if e.callee == "sort":
+                        new_assign = AssignStmt(
+                            target=container,
+                            value=Call(callee="Array.sort",
+                                       args=[container, third_arg],
+                                       ty=_expr_ty(container, typectx)),
+                        )
+                    else:  # iota
+                        new_assign = AssignStmt(
+                            target=container,
+                            value=Call(callee="Array.range_init",
+                                       args=[container, third_arg],
+                                       ty=_expr_ty(container, typectx)),
+                        )
+                    return [new_assign]
+        # B1 修复：内建数值类型的 ++/--，Clang AST 直接吐出 UnaryOp，
+        # 不会包装成 Call(UnresolvedOp("operator++"))。在 stmt 级也展开为 AssignStmt
+        if isinstance(e, UnaryOp) and e.op in ("++", "--"):
+            target = _walk_expr(e.operand, typectx, gap)
+            if isinstance(target, (Var, FieldAccess, ArrayAccess)):
+                target_ty = _strip_ref(_expr_ty(target, typectx))
+                op_sym = "+" if e.op == "++" else "-"
+                new_assign = AssignStmt(
+                    target=target,
+                    value=BinOp(op=op_sym, lhs=target,
+                                rhs=Lit(value=1, ty=BaseType.INT64),
+                                ty=target_ty),
+                )
+                return _collect_ub_requires(new_assign.value, typectx) + [new_assign]
         if isinstance(e, Call) and isinstance(e.callee, UnresolvedOp):
             op = e.callee.op_name
             # operator++ / operator-- (incdec)
@@ -1061,6 +1141,10 @@ def _walk_stmt(s: StmtIR, typectx: dict, gap: GapLog) -> list[StmtIR]:
                     value=BinOp(op=base_op, lhs=new_expr.lhs, rhs=new_expr.rhs, ty=ty),
                 )
                 return _collect_ub_requires(new_expr.rhs, typectx) + [new_assign]
+        # 形式清理：ExprStmt 主体是裸 Var/Lit（C++ `(void)x;` 或 reserve()
+        # 等 noop disposition 退化）— 真合法 dead code，丢弃避免 sideeff 噪声
+        if isinstance(new_expr, (Var, Lit)):
+            return []
         return _collect_ub_requires(new_expr, typectx) + [ExprStmt(expr=new_expr)]
 
     if isinstance(s, BlockStmt):

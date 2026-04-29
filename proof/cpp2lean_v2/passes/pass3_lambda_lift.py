@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ir_types import (
     BaseType, NamedType, UnknownType, TypeIR,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
-    ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr, IteratorExpr,
+    ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
     LetStmt, AssignStmt, CompoundAssignStmt, IfStmt, WhileStmt, ForStmt,
     RangeForStmt, DoWhileStmt, BreakStmt, ContinueStmt, ReturnStmt,
@@ -89,11 +89,6 @@ def _collect_vars_expr(e: ExprIR, result: set[str]):
         # 收集其 body 的自由变量（不包括其自身 params / locals）
         nested_vars = _collect_free_vars(e.body, set(p.name for p in e.params))
         result |= nested_vars
-    elif isinstance(e, IteratorExpr):
-        if e.container:
-            _collect_vars_expr(e.container, result)
-        if e.operand:
-            _collect_vars_expr(e.operand, result)
     # Lit, UnresolvedOp, UnknownExpr: 无变量引用
 
 
@@ -282,24 +277,24 @@ def _lift_lambda(lam: LambdaExpr, host_name: str, counter: list[int],
         orig_ret = UnknownType("")
 
     # 6. 生成新 HIRFunc
+    # qual_type 编码 cap 信息（Pass 3b 用于区分 cap_params vs lambda by-ref params，
+    # 因为 cap_params 与 by-ref lambda 参数都用 is_ref=True 标记，无法仅靠
+    # HIRParam 字段区分）：
+    #   - n_caps：cap_params 的个数（即前 N 个 params 是 captures）
+    #   - modified_captures：被修改的 capture 名字列表
+    qual_type = (f"lambda in {host_name} | n_caps={len(cap_params)} "
+                 f"| modified_captures={modified_captures}")
     new_func = HIRFunc(
         base_name=lam_name,
         instance_suffix="",
         mangled_name="",
-        qual_type=f"lambda in {host_name}",
+        qual_type=qual_type,
         params=new_params,
         ret_ty=orig_ret,
         body=lam.body,
         requires=[],
         aux_lambdas=[],
     )
-    # 扩展字段：保存 modified_captures（存在 mangled_name 前缀？用 qual_type 记）
-    # 实际上 HIRFunc 没有 modified_captures 字段；我们用 qual_type 字符串带上
-    if modified_captures:
-        new_func = replace(
-            new_func,
-            qual_type=f"lambda in {host_name} | modified_captures={modified_captures}",
-        )
 
     # 7. 调用点替换：Var 指向新函数
     replacement = Var(name=lam_name, version=0, ty=NamedType("LambdaRef"))
@@ -375,7 +370,7 @@ def _rewrite_expr(e: ExprIR, host_name: str, counter: list[int],
     if isinstance(e, ArrayLit):
         return replace(e, elems=[_rewrite_expr(x, host_name, counter, outer_params, typectx, aux_collect)
                                  for x in e.elems])
-    # Var / Lit / UnresolvedOp / IteratorExpr / UnknownExpr 原样
+    # Var / Lit / UnresolvedOp / UnknownExpr 原样
     return e
 
 
@@ -532,7 +527,7 @@ def assert_hir2_invariant(func: HIRFunc):
 
 _EXPR_TYPES = (Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
                ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
-               IteratorExpr, BlockExpr, TupleExpr, ArrayLit, UnknownExpr)
+               BlockExpr, TupleExpr, ArrayLit, UnknownExpr)
 
 _STMT_TYPES = (LetStmt, AssignStmt, CompoundAssignStmt,
                IfStmt, WhileStmt, ForStmt, RangeForStmt, DoWhileStmt,

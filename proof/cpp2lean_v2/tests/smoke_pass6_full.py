@@ -117,17 +117,92 @@ def main():
     ok = 0; fail = 0; fail_details = []
     total_phi = 0
     total_blocks = 0
+    # 残余 silent-bug 计数器（每项越接近 0 越好，0 = clean）
+    metrics = {
+        "phi_undef_ver0": 0,    # B2 残：phi.sources Var.version=0 引用非-param
+        "sideeff_write": 0,     # B7 残：__sideeff_* := __write__(...) 而 root 是 param
+        "sideeff_other": 0,     # 其他 __sideeff_*（多为合法 discarded return）
+        "aux_dropped": 0,       # B6 残：HIR.aux_lambdas 数 != MIR.aux_defs 数
+        "rangefor_no_writeback": 0,  # P0-1：ranged-for 有 cont latch __write__ 但无 exit 写回
+        "lambda_ref_callsite_unwritten": 0,  # P0(lambda)：含 ref 的 lifted lambda 调用点未 destructure
+    }
+
+    def _walk_mir(mir, hir_aux_count, hir_aux_with_ref=None):
+        from ir_types import LetStmt, Call, Var
+        import re
+        n_phi = 0
+        param_names = {p.name for p in mir.params}
+        if len(mir.aux_defs) != hir_aux_count:
+            metrics["aux_dropped"] += 1
+        # 收集本函数所有 lifted lambda 名字（用于检测调用点是否 destructure）
+        lambda_names = {aux.base_name for aux in mir.aux_defs}
+        # 含 modified ref 的 lambda（调用点必须 destructure）
+        # 由于 Pass 3b 后 aux_defs 已经 ref-elim 过，看 ret_ty 不再有 is_ref；
+        # 改用 hir_aux_with_ref（外部传入的修复前快照）作为参考。若无快照，跳过此检测。
+        ref_lambda_names = hir_aux_with_ref or set()
+        # P0-1：每个 cont 实例（按 N 分组）应有 latch `let cont_N_X := __write__(cont_N[idx],...)`
+        # 同时 exit 应有写回（一个 LetStmt 把 cont_N_M 赋给某个变量/字段）。
+        # 检测：某个 cont_N 在 latch 出现 __write__ 写回但全 dump 没有任何 LetStmt
+        # 把 cont_N_* 作为 RHS 给到非 cont 变量。
+        cont_writes_in_latch: dict[str, bool] = {}      # "cont_4" -> True if latch __write__
+        cont_used_as_rhs: dict[str, bool] = {}          # "cont_4" -> True if used as rhs to non-cont LetStmt
+        for bb in mir.cfg.blocks.values():
+            for s in bb.stmts:
+                if isinstance(s, PhiStmt):
+                    n_phi += 1
+                    for src in s.sources.values():
+                        if isinstance(src, Var) and src.version == 0 \
+                                and src.name not in param_names:
+                            metrics["phi_undef_ver0"] += 1
+                elif isinstance(s, LetStmt) and s.var.name.startswith("__sideeff_"):
+                    if isinstance(s.value, Call) and s.value.callee == "__write__":
+                        metrics["sideeff_write"] += 1
+                    else:
+                        metrics["sideeff_other"] += 1
+                        # P0 lambda：含 ref 的 lifted lambda 被 sideeff（未 destructure）
+                        if isinstance(s.value, Call) and isinstance(s.value.callee, str):
+                            if s.value.callee in ref_lambda_names:
+                                metrics["lambda_ref_callsite_unwritten"] += 1
+                # P0-1 cont latch __write__ 检测
+                if isinstance(s, LetStmt):
+                    m = re.match(r'__rangefor_cont_(\d+)_\d+', s.var.name)
+                    if m and isinstance(s.value, Call) and s.value.callee == "__write__":
+                        cont_writes_in_latch[m.group(1)] = True
+                    # cont_*_* 作为 RHS 被赋给非 cont 变量（exit 写回）
+                    if not s.var.name.startswith("__rangefor_cont_"):
+                        if isinstance(s.value, Var):
+                            mr = re.match(r'__rangefor_cont_(\d+)_\d+', s.value.name)
+                            if mr:
+                                cont_used_as_rhs[mr.group(1)] = True
+                        elif isinstance(s.value, Call) and s.value.callee == "__write__" \
+                                and len(s.value.args) >= 2 and isinstance(s.value.args[1], Var):
+                            mr = re.match(r'__rangefor_cont_(\d+)_\d+', s.value.args[1].name)
+                            if mr:
+                                cont_used_as_rhs[mr.group(1)] = True
+        # 凡 latch 写但 exit 没回写的 cont = 漏写回
+        for cn, has_latch in cont_writes_in_latch.items():
+            if has_latch and not cont_used_as_rhs.get(cn, False):
+                metrics["rangefor_no_writeback"] += 1
+        # 递归 aux_defs
+        for aux in mir.aux_defs:
+            _walk_mir(aux, len(aux.aux_defs))  # aux 没有 HIR 比对源
+        return n_phi
 
     def process(tag, ast, dump_name):
         nonlocal ok, fail, total_phi, total_blocks
         try:
-            hir3 = iter_recognize_pass(lambda_lift_pass(ref_elim_pass(parse_pass(ast))))
+            from pass2b_callsite_ref_elim import callsite_ref_elim_pass
+            from pass3b_lambda_ref_elim import lambda_ref_elim_pass
+            # 修复前快照：在 Pass 3b 之前记录哪些 lifted lambda 含 ref param
+            hir_pre_3b = lambda_lift_pass(callsite_ref_elim_pass(ref_elim_pass(parse_pass(ast))))
+            ref_lambda_names = {aux.base_name for aux in hir_pre_3b.aux_lambdas
+                                if any(p.is_ref for p in aux.params)}
+            hir3 = iter_recognize_pass(lambda_ref_elim_pass(hir_pre_3b))
             hir4, _ = operator_resolve_pass(hir3)
             mir = ssa_build_pass(hir4)
             assert_mir0_invariant(mir)
             (DUMP_DIR / f"{dump_name}.txt").write_text(fmt_mir(mir))
-            n_phi = sum(1 for bb in mir.cfg.blocks.values()
-                        for s in bb.stmts if isinstance(s, PhiStmt))
+            n_phi = _walk_mir(mir, len(hir4.aux_lambdas), ref_lambda_names)
             total_phi += n_phi
             total_blocks += len(mir.cfg.blocks)
             ok += 1
@@ -164,6 +239,15 @@ def main():
     lines.append(f"- 平均 BasicBlock 数: **{avg_blocks:.1f}** / 函数")
     lines.append(f"- 总 phi: {total_phi} / 总 BB: {total_blocks}")
     lines.append("")
+    lines.append("## Silent-bug 残余指标")
+    lines.append("")
+    lines.append(f"- B2 phi.sources ver=0 非-param: **{metrics['phi_undef_ver0']}**")
+    lines.append(f"- B6 aux_dropped (HIR.aux_lambdas != MIR.aux_defs): **{metrics['aux_dropped']}**")
+    lines.append(f"- B7 __sideeff_*=__write__(...) (root 非 def): **{metrics['sideeff_write']}**")
+    lines.append(f"- P0-1 ranged-for 漏写回原 container: **{metrics['rangefor_no_writeback']}**")
+    lines.append(f"- P0(lambda) 含 ref 的 lifted lambda 调用点未 destructure: **{metrics['lambda_ref_callsite_unwritten']}**")
+    lines.append(f"- 其他 __sideeff_* (多为 discarded return): {metrics['sideeff_other']}")
+    lines.append("")
     if fail_details:
         lines.append("## FAIL")
         lines.append("")
@@ -175,8 +259,21 @@ def main():
     print(f"\n=== {ok} OK / {fail} FAIL ===", file=sys.stderr)
     print(f"  total phi: {total_phi} (avg {avg_phi:.1f}/func)", file=sys.stderr)
     print(f"  total BB:  {total_blocks} (avg {avg_blocks:.1f}/func)", file=sys.stderr)
+    print(f"  silent-bug residue:", file=sys.stderr)
+    for k, v in metrics.items():
+        print(f"    {k}: {v}", file=sys.stderr)
     print(f"\nReport: {OUT_MD}", file=sys.stderr)
     print(f"MIR₀ dumps: {DUMP_DIR}", file=sys.stderr)
+    # 关键：B2/B6/P0-1 残余非 0 → smoke 失败（B7 sideeff_write 接受少量残余）
+    if metrics["aux_dropped"] > 0:
+        print(f"FAIL: aux_dropped > 0 — B6 regression", file=sys.stderr)
+        return 1
+    if metrics["rangefor_no_writeback"] > 0:
+        print(f"FAIL: rangefor_no_writeback > 0 — P0-1 regression", file=sys.stderr)
+        return 1
+    if metrics["lambda_ref_callsite_unwritten"] > 0:
+        print(f"FAIL: lambda_ref_callsite_unwritten > 0 — P0(lambda) regression", file=sys.stderr)
+        return 1
     return 0 if fail == 0 else 1
 
 

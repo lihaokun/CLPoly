@@ -23,6 +23,14 @@ echo "--- Pass 3 单元测试 ---"
 python3 tests/test_pass3_lambda_lift.py
 
 echo ""
+echo "--- Pass 2b 单元测试（callsite ref-elim） ---"
+python3 tests/test_pass2b_callsite_ref_elim.py
+
+echo ""
+echo "--- Pass 3b 单元测试（lambda ref-elim） ---"
+python3 tests/test_pass3b_lambda_ref_elim.py
+
+echo ""
 echo "--- Pass 4 单元测试 ---"
 python3 tests/test_pass4_iter.py
 

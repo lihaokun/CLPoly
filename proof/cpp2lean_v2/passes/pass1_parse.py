@@ -809,7 +809,10 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
                 if init is None:
                     init = UnknownExpr("decomp_uninit")
                 # 先 let 整个解构目标
-                decomp_var = f"__decomp_{id(c) & 0xfffff}"
+                # B4 修复：用单调递增 counter，避免 Python id() 冲突 alias
+                global _DECOMP_COUNTER
+                _DECOMP_COUNTER += 1
+                decomp_var = f"__decomp_{_DECOMP_COUNTER}"
                 result.append(LetStmt(
                     var=Var(decomp_var),
                     ty=ty,
@@ -885,6 +888,7 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
         container: ExprIR = UnknownExpr("container")
         body: list[StmtIR] = []
         decomposition: list[Var] | None = None
+        is_mutable_ref = False  # P0-1 修复：loop var 是否 auto&（非 const ref）
 
         def extract_varDecl_or_decomp(declstmt: dict):
             """从 DeclStmt 里找 VarDecl 或 DecompositionDecl。"""
@@ -925,12 +929,16 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
                     qt = dd_t.get("qualType", "")
                     var_ty = parse_type(qt, dd_t.get("desugaredQualType"))
                     var = Var("__decomp")  # 占位，解构由 Pass 4 完成
+                    # 结构化绑定 `auto& [k, v] : c` — qt 含 `&` 且不含 `const`
+                    is_mutable_ref = ("&" in qt) and ("const " not in qt)
                 elif vd.get("kind") == "VarDecl":
                     nm = vd.get("name", "")
                     vd_t = vd.get("type", {})
                     qt = vd_t.get("qualType", "")
                     var = Var(nm)
                     var_ty = parse_type(qt, vd_t.get("desugaredQualType"))
+                    # P0-1：`for (auto& x : c)` qt 是 `T &`；`const auto& x` qt 是 `const T &`
+                    is_mutable_ref = ("&" in qt) and ("const " not in qt)
 
         # inner[7]: body（可能是 CompoundStmt 或单语句）
         if len(inner) > 7 and isinstance(inner[7], dict):
@@ -940,6 +948,7 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
             var=var, var_ty=var_ty,
             container=container, body=body,
             decomposition=decomposition,
+            is_mutable_ref=is_mutable_ref,
         )
 
     if kind == "DoStmt":
@@ -1141,6 +1150,9 @@ def _try_parse_assert_ternary(cond_op_node: dict) -> RequireStmt | None:
 # Pass 1 入口
 # ============================================================
 
+_DECOMP_COUNTER: int = 0  # B4 修复：__decomp 全局唯一 ID
+
+
 def parse_pass(ast_json: dict) -> HIRFunc:
     """AST FunctionDecl 节点 → HIRFunc（HIR₀ 阶段）。
 
@@ -1335,7 +1347,8 @@ def _propagate_var_types(func):
             return RangeForStmt(var=s.var, var_ty=s.var_ty,
                                 container=propagate_expr(s.container),
                                 body=[propagate_stmt(t) for t in s.body],
-                                decomposition=s.decomposition)
+                                decomposition=s.decomposition,
+                                is_mutable_ref=s.is_mutable_ref)
         if isinstance(s, ReturnStmt):
             return ReturnStmt(value=propagate_expr(s.value) if s.value else None)
         if isinstance(s, RequireStmt):

@@ -17,7 +17,7 @@ from ir_types import (
     BaseType, NamedType, RefType, ArrayType, PairType, TupleType,
     StdMapType, OptionType, UnknownType, TypeIR,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
-    ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr, IteratorExpr,
+    ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr,
     LetStmt, AssignStmt, CompoundAssignStmt, IfStmt, WhileStmt, ForStmt,
     RangeForStmt, DoWhileStmt, BreakStmt, ContinueStmt, ReturnStmt,
@@ -80,8 +80,6 @@ def fmt_expr(e, depth=0) -> str:
         return f"cast<{fmt_type(e.target_ty)}>({fmt_expr(e.expr)})[{e.cast_kind}]"
     if isinstance(e, LambdaExpr):
         return f"LAMBDA(captures={e.captures}, params={len(e.params)})"
-    if isinstance(e, IteratorExpr):
-        return f"ITER.{e.kind}"
     if isinstance(e, BlockExpr):
         return f"BLOCK(...;{fmt_expr(e.value)})"
     if isinstance(e, TupleExpr):

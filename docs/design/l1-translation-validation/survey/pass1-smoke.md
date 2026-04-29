@@ -1,7 +1,7 @@
 # Pass 1 parse 全量烟测 (65 函数)
 
-- OK (0 Unknown): **65**
-- WARN (有 Unknown 节点): **0**
+- OK (0 Unknown): **63**
+- WARN (有 Unknown 节点): **2**
 - FAIL (parse 崩溃): **0**
 
 ## 全局 Unknown 节点直方图
@@ -19,11 +19,11 @@
 ### Unknown Type qualTypes (top 20)
 | qualType | count |
 |---|---|
-| (none) | 0 |
+| `std::_Bit_reference` | 6 |
 
 ## Ref 参数自动检测 vs TRANSLATION_SCOPE_OUTPUT_PARAMS
 
-⚠️  有 **8** 个函数不匹配：
+⚠️  有 **7** 个函数不匹配：
 
 | 函数 | auto | configured |
 |---|---|---|
@@ -32,7 +32,6 @@
 | `__mtshl_sparse_int` | [6] | [3, 9] |
 | `__mtshl_step_j` | [1] | [3, 5] |
 | `__mtshl_wmds` | [5] | [3, 8] |
-| `__si_theta_array_eval` | [5] | [6] |
 | `__upoly_divmod` | [0, 1] | [] |
 | `__upoly_random` | [2] | [] |
 
@@ -44,7 +43,10 @@
 
 ### WARN 列表（按 total_unknowns 降序）
 
-(无)
+| 函数 | total Unknown | stmt kinds | expr kinds | unknown type refs |
+|---|---|---|---|---|
+| `__vanhoeij_recombine` | 3 | - | - | 3 |
+| `__wang_core` | 3 | - | - | 3 |
 
 ### OK 列表
 
@@ -108,8 +110,6 @@
 - `__upoly_subtract_x`
 - `__upoly_symmetric_mod`
 - `__upoly_to_poly`
-- `__vanhoeij_recombine`
-- `__wang_core`
 - `__wang_leading_coeff`
 - `__zassenhaus_recombine`
 - `factorize`

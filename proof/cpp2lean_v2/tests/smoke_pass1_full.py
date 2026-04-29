@@ -26,7 +26,7 @@ from ir_types import (
     BaseType, NamedType, RefType, UnknownType, TypeIR,
     UnknownStmt, UnknownExpr,
     HIRFunc, HIRParam,
-    LambdaExpr, IteratorExpr,
+    LambdaExpr,
     AssignStmt, CompoundAssignStmt, IfStmt, WhileStmt, ForStmt,
     RangeForStmt, DoWhileStmt, BreakStmt, ContinueStmt, ReturnStmt,
     RequireStmt, ExprStmt, BlockStmt, LetStmt,

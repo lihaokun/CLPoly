@@ -20,7 +20,7 @@ from ir_types import (
     Var, Lit, BinOp, UnaryOp, Call, UnresolvedOp, FieldAccess,
     LetStmt, IfStmt, ReturnStmt, RequireStmt, ExprStmt, AssignStmt,
     HIRFunc, HIRParam,
-    LambdaExpr, IteratorExpr,  # 不应在 HIR₀ 里出现于这些简单函数
+    LambdaExpr,
     UnknownStmt, UnknownExpr,
 )
 from pass1_parse import parse_pass, assert_hir0_invariant, parse_type

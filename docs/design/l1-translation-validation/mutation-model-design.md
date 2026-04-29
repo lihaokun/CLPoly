@@ -216,6 +216,16 @@ Lean 翻译：`partial def f_ir (out : T) (in_ : U) : T := let out_1 := S₁'(ou
 
 **前提**：SSA 正确追踪每次修改（引理 2）；`is_output` 正确标识输出参数；函数体中无 C++ 生命周期副作用（透传节点引理保证）。
 
+### 3.4b 实现 location（cpp2lean v2 落实）
+
+| Pass | 职责 |
+|------|------|
+| Pass 1 `parse_pass` (`pass1_parse.py`) | 检测 `is_ref` / `is_const_ref` / `is_output`（基于 ParmVarDecl qualType + LValueToRValue cast 检测） |
+| Pass 2 `ref_elim_pass` (`pass2_ref_elim.py`) | §3.4 函数定义签名改造：ref out 参数 → pair-return；ReturnStmt 包装 + 末尾自动追加 |
+| Pass 2b `callsite_ref_elim_pass` (`pass2b_callsite_ref_elim.py`) | §3.2 调用点变换：单 out → 直接 AssignStmt；多 out → tmp + FieldAccess 解；含 ArrayAccess 与 transparent method `.data()` unwrap；按 `class_map.TRANSLATION_SCOPE_OUTPUT_PARAMS` + arity overload 查询 |
+
+详见 [docs/fixes/cpp2lean-v2-rangefor-and-callsite-ref-elim.md](../../fixes/cpp2lean-v2-rangefor-and-callsite-ref-elim.md) 修正方案。
+
 ### 3.5 子类覆盖
 
 | C++ 模式 | 检测 | Lean 变换 |
@@ -508,6 +518,17 @@ Lean 语义：body 通过参数 z 读 z = v_z。
 两者等价（相同的值以不同方式传入）。
 
 递归调用中 z 不变（只读），因此递归传入的 z 始终 = v_z。∎
+
+### 5.4 实现 location（cpp2lean v2 落实）
+
+设计在 cpp2lean v2 翻译器中由 **Pass 3 + Pass 3b** 联合落实：
+
+| Pass | 职责 |
+|------|------|
+| Pass 3 `lambda_lift_pass` (`pass3_lambda_lift.py`) | 1) 自由变量分析 → captures；2) 检测 modified captures（body 中 AssignStmt/CompoundAssignStmt 对 capture）；3) 给 lifted lambda 的 cap params 标 `is_ref=True` (modified) / `is_const_ref=True` (read-only)；4) 在 `qual_type` 中编码 `n_caps=N` 标识前 N 个 params 是 captures（区分 cap 与 lambda 自身 by-ref 参数）。 |
+| Pass 3b `lambda_ref_elim_pass` (`pass3b_lambda_ref_elim.py`) | 1) 给 lifted lambda 应用 `ref_elim_pass`（pair-return 签名 + ReturnStmt 包装）；2) 在 outer body 重写调用点：prepend cap_args + destructure modified caps（含 lambda by-ref 参数对应 call-site real_args 位置）；3) 处理 ExprStmt / IfStmt.cond / DoWhileStmt.cond / LetStmt.value / AssignStmt.value 的 lambda Call hoist；4) DoWhile body 内 continue 之前注入 hoist pre-stmts。 |
+
+详见 [docs/fixes/cpp2lean-v2-lambda-by-ref-capture.md](../../fixes/cpp2lean-v2-lambda-by-ref-capture.md) 修正方案。
 
 ## 6. G4：迭代器模式变换
 

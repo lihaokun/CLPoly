@@ -39,7 +39,9 @@ AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
 def _run(func_name):
     with open(AST / f"{func_name}.json") as f:
         ast = json.load(f)
-    hir3 = iter_recognize_pass(lambda_lift_pass(ref_elim_pass(parse_pass(ast))))
+    from pass2b_callsite_ref_elim import callsite_ref_elim_pass
+    from pass3b_lambda_ref_elim import lambda_ref_elim_pass
+    hir3 = iter_recognize_pass(lambda_ref_elim_pass(lambda_lift_pass(callsite_ref_elim_pass(ref_elim_pass(parse_pass(ast))))))
     return operator_resolve_pass(hir3)
 
 
@@ -110,7 +112,8 @@ def test_smoke_all_65():
         if not f.exists(): continue
         try:
             with open(f) as fh: ast = json.load(fh)
-            hir3 = iter_recognize_pass(lambda_lift_pass(ref_elim_pass(parse_pass(ast))))
+            from pass2b_callsite_ref_elim import callsite_ref_elim_pass
+            hir3 = iter_recognize_pass(lambda_lift_pass(callsite_ref_elim_pass(ref_elim_pass(parse_pass(ast)))))
             hir4, gap = operator_resolve_pass(hir3)
             assert_hir4_invariant(hir4)
             ok += 1

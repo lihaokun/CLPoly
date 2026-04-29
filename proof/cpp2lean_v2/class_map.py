@@ -695,13 +695,36 @@ TRANSLATION_SCOPE_OUTPUT_PARAMS = {
     "__build_cld_matrix": [0],           # M
     "__lll_reduce": [0, 1],              # M, U
     "__si_vandermonde_solve": [2],       # coeffs
-    "__si_theta_array_eval": [6],        # images
+    "__si_theta_array_eval": [5],        # images（C++ 第 6 参数 = 索引 5；之前误填 6 越界）
     "__mtshl_zp_univar_mdp": [2],        # sigma
     "__mtshl_multi_bdp": [3, 8],         # c, result
     "__mtshl_sparse_int": [3, 9],        # c, result
     "__mtshl_wmds": [3, 8],              # c, result
     "__mtshl_step_j": [3, 5],            # F, lc_tau
+    # P0-2 同源补全（修正方案 §4 同类问题梳理 表）：
+    # 这些 callee 不在 TRANSLATION_SCOPE 内（外部 / lib 函数），但作为
+    # mutating call 调用点也需要 SSA bump。Pass 2b 用此表改写调用点。
+    "poly_convert": [1],                 # p_out（upolynomial.hh）
+    # pair_vec_div 有 2 个 overload — 按 arity 区分：
+    "pair_vec_div#4": [0],               # (new_v&, v1, v2, comp)（basic.hh:568）
+    "pair_vec_div#5": [0, 1],            # (new_v&, R&, v1, v2, comp)（basic.hh:698）
+    "fdiv_r": [0],                       # r（ZZ.hh:810）
+    "fdiv_q": [0],                       # q（ZZ.hh:731）
+    "swap": [0, 1],                      # std::swap 双向（用于 mu/M 行交换）
+    # polynomial_GCD 4-arg Bezout 形式：return GCD + 修改 s, t (Bezout coefficients)
+    "polynomial_GCD#4": [2, 3],          # F, G, s&, t&（s,t 为 out）
 }
+
+
+def get_output_params(callee: str, num_args: int) -> list[int]:
+    """查询函数的输出参数索引列表。
+    优先查 `name#arity` 形式（多 overload 区分），fall back 到 `name`。
+    返回空列表表示该函数不是 ref-out（无需调用点改写）。
+    """
+    key_arity = f"{callee}#{num_args}"
+    if key_arity in TRANSLATION_SCOPE_OUTPUT_PARAMS:
+        return TRANSLATION_SCOPE_OUTPUT_PARAMS[key_arity]
+    return TRANSLATION_SCOPE_OUTPUT_PARAMS.get(callee, [])
 
 TRANSLATION_SCOPE = {
     # Zp 模块 (13)

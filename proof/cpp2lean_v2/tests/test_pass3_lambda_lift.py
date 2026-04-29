@@ -34,9 +34,10 @@ AST_CACHE_DIR = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
 
 
 def _load_hir1(func_name: str) -> HIRFunc:
+    from pass2b_callsite_ref_elim import callsite_ref_elim_pass
     with open(AST_CACHE_DIR / f"{func_name}.json") as f:
         ast = json.load(f)
-    return ref_elim_pass(parse_pass(ast))
+    return callsite_ref_elim_pass(ref_elim_pass(parse_pass(ast)))
 
 
 # ============================================================

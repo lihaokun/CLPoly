@@ -24,8 +24,8 @@ sys.path.insert(0, str(V2_ROOT / "passes"))
 from ir_types import (
     BaseType, NamedType, UnknownType, PairType,
     Var, Lit, Call, UnresolvedOp, FieldAccess,
-    LetStmt, AssignStmt, ExprStmt, IfStmt, WhileStmt, ForStmt,
-    RangeForStmt, ReturnStmt,
+    LetStmt, AssignStmt, ExprStmt, IfStmt, WhileStmt, ForStmt, DoWhileStmt,
+    BlockStmt, RangeForStmt, ReturnStmt,
     HIRFunc, HIRParam, LambdaExpr, TranslationError,
 )
 from pass1_parse import parse_pass
@@ -41,9 +41,11 @@ AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
 
 
 def _load_hir2(func_name: str) -> HIRFunc:
+    from pass2b_callsite_ref_elim import callsite_ref_elim_pass
+    from pass3b_lambda_ref_elim import lambda_ref_elim_pass
     with open(AST / f"{func_name}.json") as f:
         ast = json.load(f)
-    return lambda_lift_pass(ref_elim_pass(parse_pass(ast)))
+    return lambda_ref_elim_pass(lambda_lift_pass(callsite_ref_elim_pass(ref_elim_pass(parse_pass(ast)))))
 
 
 def _count_filter_calls(stmts):
@@ -118,21 +120,41 @@ def test_compact_erase_pure_body():
     assert n == 2, f"expected 2 Array.filter for __hensel_step, got {n}"
 
 
-def test_impure_compact_erase_rejected():
-    """T3: __upoly_mod_coeff — body 内有 fdiv_r(it->second, ...) side-effect，
-    Pass 4 应拒识，保留原始 4 件套（0 Array.filter）。"""
+def _count_filtermap_calls(stmts):
+    """统计 Call("Array.filterMap", ...) (CF-1 mutate-then-filter)。"""
+    n = 0
+    for s in stmts:
+        if isinstance(s, AssignStmt) and isinstance(s.value, Call):
+            if isinstance(s.value.callee, str) and s.value.callee == "Array.filterMap":
+                n += 1
+        if isinstance(s, RangeForStmt): n += _count_filtermap_calls(s.body)
+        elif isinstance(s, IfStmt):
+            n += _count_filtermap_calls(s.then_body) + _count_filtermap_calls(s.else_body)
+        elif isinstance(s, ForStmt):
+            n += _count_filtermap_calls(s.init) + _count_filtermap_calls(s.step) + _count_filtermap_calls(s.body)
+        elif isinstance(s, (WhileStmt, DoWhileStmt)): n += _count_filtermap_calls(s.body)
+        elif isinstance(s, BlockStmt): n += _count_filtermap_calls(s.stmts)
+    return n
+
+
+def test_upoly_mod_coeff_mutate_filter():
+    """T3 (CF-1 阶段 1): __upoly_mod_coeff — body 头部有 fdiv_r(it->second,...) mutator
+    + 后续 if-write-advance；Pass 4 应识别为 mutate-then-filter，emit Array.filterMap。"""
     hir3 = iter_recognize_pass(_load_hir2("__upoly_mod_coeff"))
     assert_hir3_invariant(hir3)
-    n = _count_filter_calls(hir3.body)
-    assert n == 0, f"expected 0 Array.filter (impure body), got {n}"
+    n_filter = _count_filter_calls(hir3.body)
+    n_filtermap = _count_filtermap_calls(hir3.body)
+    assert n_filter == 0, f"expected 0 Array.filter, got {n_filter}"
+    assert n_filtermap >= 1, f"expected >=1 Array.filterMap (mutate-then-filter), got {n_filtermap}"
 
 
-def test_hensel_step_linear_impure():
-    """T4: __hensel_step_linear — body 内有 fdiv_q/fdiv_r side-effect，Pass 4 拒识。"""
+def test_hensel_step_linear_mutate_filter():
+    """T4 (CF-1 阶段 1): __hensel_step_linear — body 头部 fdiv_q + fdiv_r mutators
+    + if-write-advance；Pass 4 应识别 mutate-then-filter。"""
     hir3 = iter_recognize_pass(_load_hir2("__hensel_step_linear"))
     assert_hir3_invariant(hir3)
-    n = _count_filter_calls(hir3.body)
-    assert n == 0, f"expected 0 Array.filter (impure body), got {n}"
+    n_filtermap = _count_filtermap_calls(hir3.body)
+    assert n_filtermap >= 1, f"expected >=1 Array.filterMap, got {n_filtermap}"
 
 
 def test_classic_both_containers_with_pred_inversion():
@@ -211,8 +233,8 @@ if __name__ == "__main__":
     tests = [
         test_structured_binding_desugar,
         test_compact_erase_pure_body,
-        test_impure_compact_erase_rejected,
-        test_hensel_step_linear_impure,
+        test_upoly_mod_coeff_mutate_filter,
+        test_hensel_step_linear_mutate_filter,
         test_classic_both_containers_with_pred_inversion,
         test_make_zp_passthrough,
         test_invariant_rejects_leftover_decomposition,

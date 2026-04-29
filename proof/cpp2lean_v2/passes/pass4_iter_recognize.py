@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
-    BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType, RefType,
+    BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType, RefType, ArrayType,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
@@ -135,7 +135,12 @@ def _deep_has_erase(stmts: list[StmtIR]) -> bool:
 # ============================================================
 
 class FilterLoopMatch:
-    """识别到的 filter-loop 描述。"""
+    """识别到的 filter-loop 描述。
+
+    kind:
+      "A" / "B-For" / "B-While": pure filter → Array.filter
+      "A-mut": mutate-then-filter → Array.filterMap（CF-1 阶段 1）
+    """
     __slots__ = ("start_idx", "end_idx", "container", "pred_lambda", "kind")
 
     def __init__(self, start_idx, end_idx, container, pred_lambda, kind):
@@ -143,7 +148,7 @@ class FilterLoopMatch:
         self.end_idx = end_idx  # exclusive
         self.container = container
         self.pred_lambda = pred_lambda
-        self.kind = kind  # "A" or "B-For" or "B-While"
+        self.kind = kind
 
 
 def _extract_container_from_call(e: ExprIR) -> ExprIR | None:
@@ -237,6 +242,51 @@ def _find_pred_ifstmt_in_body(body: list[StmtIR], it_name: str) -> IfStmt | None
             r = _find_pred_ifstmt_in_body(s.stmts, it_name)
             if r is not None: return r
     return None
+
+
+def _is_field_assign_to_it(s: StmtIR, it_name: str
+                           ) -> tuple[str, ExprIR] | None:
+    """检查 stmt 是否为 `__deref__(it).field = expr` 形态的 mutator。
+    返回 (field_name, value_expr)；非该形态返回 None。
+
+    AssignStmt(target=FieldAccess(obj=Call("__deref__", [Var(it)]), field=...))
+    或 AssignStmt(target=Call("StdMap.get!", [m, k]), ...) 不在此处理（独立模式）。
+    """
+    if not isinstance(s, AssignStmt):
+        return None
+    tgt = _strip_cast(s.target)
+    if not isinstance(tgt, FieldAccess):
+        return None
+    obj = _strip_cast(tgt.obj)
+    # 形态 A：FieldAccess(obj=Call("__deref__", [Var(it)]), field)
+    if isinstance(obj, Call) and _callee_str(obj) == "__deref__" \
+            and len(obj.args) == 1:
+        inner = _strip_cast(obj.args[0])
+        if isinstance(inner, Var) and inner.name == it_name:
+            return tgt.field_name, s.value
+    # 形态 B：FieldAccess(obj=Call("operator->", [Var(it)]), field)
+    if isinstance(obj, Call) and _callee_str(obj) == "operator->" \
+            and len(obj.args) == 1:
+        inner = _strip_cast(obj.args[0])
+        if isinstance(inner, Var) and inner.name == it_name:
+            return tgt.field_name, s.value
+    return None
+
+
+def _extract_head_mutators(body: list[StmtIR], it_name: str
+                           ) -> tuple[list[tuple[str, ExprIR]], int]:
+    """从 body 头部连续提取 `it->field = expr` mutators。
+    返回 (mutators, consumed_count)：mutators 列表 + 消耗的 stmt 数（即 IfStmt 之前）。
+    """
+    mutators: list[tuple[str, ExprIR]] = []
+    i = 0
+    while i < len(body):
+        m = _is_field_assign_to_it(body[i], it_name)
+        if m is None:
+            break
+        mutators.append(m)
+        i += 1
+    return mutators, i
 
 
 def _is_pure_filter_body(body: list[StmtIR], it_name: str, out_name: str | None) -> bool:
@@ -333,14 +383,37 @@ def _match_filter_loop_A(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
     out_name = _get_it_name_from_stmt(s1)
     if it_name is None: return None
 
-    # P0-b：纯筛选约束。C++ compact-erase body 内若混有
+    # CF-1 阶段 1（mutate-then-filter）：先尝试识别 body 头部的 mutator stmts，
+    # 余下应是 pure filter pattern。若 mutator 非空则走 Array.filterMap 路径。
+    body_list = list(s2.body)
+    mutators, head_consumed = _extract_head_mutators(body_list, it_name)
+    rest_body = body_list[head_consumed:]
+
+    if mutators:
+        # mutate-then-filter：rest_body 应是纯 if-write-advance 形态
+        if not _is_pure_filter_body(rest_body, it_name, out_name):
+            return None
+        if_stmt = _find_pred_ifstmt_in_body(rest_body, it_name)
+        if if_stmt is None: return None
+        # 推 elem_ty：从 container 类型剥（Array → elem_ty）
+        elem_ty = None
+        if isinstance(container, Var) and isinstance(container.ty, ArrayType):
+            elem_ty = container.ty.elem
+        pred_lambda = _build_filter_map_lambda(
+            mutators, if_stmt.cond, it_name, elem_ty)
+        return FilterLoopMatch(
+            start_idx=idx, end_idx=idx + 4,
+            container=container, pred_lambda=pred_lambda, kind="A-mut",
+        )
+
+    # 纯筛选约束（无 mutator）：C++ compact-erase body 内若混有
     # side-effect（如 fdiv_r(it->second, ...)），丢弃识别以避免语义错失。
-    if not _is_pure_filter_body(list(s2.body), it_name, out_name):
+    if not _is_pure_filter_body(body_list, it_name, out_name):
         return None
 
     # 找 body 内 IfStmt 作 pred（form A 的 then 分支是 "copy-and-advance"，
     # pred 不反转——保留 cond=true 的元素）
-    if_stmt = _find_pred_ifstmt_in_body(list(s2.body), it_name)
+    if_stmt = _find_pred_ifstmt_in_body(body_list, it_name)
     if if_stmt is None: return None
 
     pred_lambda = _build_pred_lambda(if_stmt.cond, it_name, element_ty=None)
@@ -448,14 +521,145 @@ def _match_filter_loop(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | None:
 
 
 def _filter_loop_to_assign(m: FilterLoopMatch) -> AssignStmt:
-    """把 FilterLoopMatch 转为 AssignStmt(v, Call("Array.filter", [v, pred]))。"""
+    """把 FilterLoopMatch 转为 AssignStmt(v, Call("Array.filter|filterMap", [v, pred]))。"""
+    callee = "Array.filterMap" if m.kind == "A-mut" else "Array.filter"
     return AssignStmt(
         target=m.container,
         value=Call(
-            callee="Array.filter",
+            callee=callee,
             args=[m.container, m.pred_lambda],
             ty=None,
         ),
+    )
+
+
+def _build_filter_map_lambda(
+    mutators: list[tuple[str, ExprIR]],
+    filter_cond: ExprIR,
+    it_name: str,
+    elem_ty: TypeIR | None,
+) -> LambdaExpr:
+    """构造 mutate-then-filter 的 lambda（用于 Array.filterMap）。
+
+    生成形态：
+      fun (__x: ElemTy) =>
+        let __m_<f0> := <expr0_subst>     -- 每个 mutator 一个 let
+        let __m_<f1> := <expr1_subst>
+        let __x_mut := { __x with field0 := __m_f0, field1 := __m_f1, ... }
+        if <filter_cond_subst> then Some __x_mut else None
+
+    其中 expr_subst 是把 `__deref__(it).field` 替换为 `__x.field` 或 `__m_<field>`
+    （后者用于"mutator 后续读自身已修改的 field"）。
+
+    elem_ty 用于决定 record-update 形态：PairType → TupleExpr(fst, snd)；
+    其它 → Call("__ctor__pair", ...) 退化（Pass 8 codegen 兜底）。
+    """
+    x_name = "__x"
+    elem_ty = elem_ty if elem_ty else UnknownType("")
+
+    # 把 `__deref__(it).field` / `it->field` / `*it` → `__x.field` 或 `__x` 的 rewrite
+    # mutator_field_to_var：mutated 字段名 → 该字段当前最新 Var（让序列内引用拿到 mutated 后的值）
+    mutator_field_to_var: dict[str, Var] = {}
+
+    def rewrite_iter_ref(e: ExprIR) -> ExprIR:
+        if isinstance(e, Call):
+            cs = _callee_str(e)
+            # `*it` / `Iterator.deref!(it)` → __x（整体）
+            if cs in ("operator*", "Iterator.deref!", "__deref__") and len(e.args) == 1:
+                inner = _strip_cast(e.args[0])
+                if isinstance(inner, Var) and inner.name == it_name:
+                    return Var(name=x_name, version=0, ty=elem_ty)
+            return Call(callee=e.callee,
+                        args=[rewrite_iter_ref(a) for a in e.args], ty=e.ty)
+        if isinstance(e, FieldAccess):
+            obj = _strip_cast(e.obj)
+            # `it->field` 或 `__deref__(it).field` 或 `*it.field`
+            if isinstance(obj, Call):
+                cs = _callee_str(obj)
+                if cs in ("operator->", "__deref__", "Iterator.deref!") \
+                        and len(obj.args) == 1:
+                    inner = _strip_cast(obj.args[0])
+                    if isinstance(inner, Var) and inner.name == it_name:
+                        # 若该字段已被 mutator 修改过，用最新版本
+                        if e.field_name in mutator_field_to_var:
+                            return mutator_field_to_var[e.field_name]
+                        return FieldAccess(
+                            obj=Var(name=x_name, version=0, ty=elem_ty),
+                            field_name=e.field_name, ty=e.ty)
+            return FieldAccess(obj=rewrite_iter_ref(e.obj),
+                               field_name=e.field_name, ty=e.ty)
+        if isinstance(e, BinOp):
+            return BinOp(op=e.op, lhs=rewrite_iter_ref(e.lhs),
+                         rhs=rewrite_iter_ref(e.rhs), ty=e.ty)
+        if isinstance(e, UnaryOp):
+            return UnaryOp(op=e.op, operand=rewrite_iter_ref(e.operand), ty=e.ty)
+        if isinstance(e, CondExpr):
+            return CondExpr(cond=rewrite_iter_ref(e.cond),
+                            then_e=rewrite_iter_ref(e.then_e),
+                            else_e=rewrite_iter_ref(e.else_e), ty=e.ty)
+        if isinstance(e, Cast):
+            return Cast(expr=rewrite_iter_ref(e.expr),
+                        source_ty=e.source_ty, target_ty=e.target_ty,
+                        cast_kind=e.cast_kind)
+        if isinstance(e, ArrayAccess):
+            return ArrayAccess(arr=rewrite_iter_ref(e.arr),
+                               idx=rewrite_iter_ref(e.idx), ty=e.ty)
+        if isinstance(e, (TupleExpr, ArrayLit)):
+            return type(e)(elems=[rewrite_iter_ref(x) for x in e.elems],
+                           **({"ty": e.ty} if hasattr(e, "ty") else {})
+                                if not isinstance(e, ArrayLit) else
+                          {"elem_ty": e.elem_ty})
+        return e
+
+    # 构造 lambda body
+    body: list[StmtIR] = []
+    for field_name, value_expr in mutators:
+        # `__m_<field>_<idx>` 用全局 idx 防同 field 多次 mutate
+        m_var_name = f"__m_{field_name}_{len(mutator_field_to_var)}"
+        m_var = Var(name=m_var_name, version=0, ty=UnknownType(""))
+        body.append(LetStmt(
+            var=m_var, ty=UnknownType(""),
+            value=rewrite_iter_ref(value_expr),
+        ))
+        mutator_field_to_var[field_name] = m_var
+
+    # 构造 mutated x（PairType → TupleExpr(fst, snd)）
+    if mutators and isinstance(elem_ty, PairType):
+        # PairType: 字段 fst / snd
+        new_fst = mutator_field_to_var.get("fst") or mutator_field_to_var.get("first") or \
+            FieldAccess(obj=Var(name=x_name, version=0, ty=elem_ty),
+                        field_name="fst", ty=elem_ty.fst)
+        new_snd = mutator_field_to_var.get("snd") or mutator_field_to_var.get("second") or \
+            FieldAccess(obj=Var(name=x_name, version=0, ty=elem_ty),
+                        field_name="snd", ty=elem_ty.snd)
+        x_mut_expr: ExprIR = TupleExpr(elems=[new_fst, new_snd], ty=elem_ty)
+    else:
+        # 退化：直接用原 __x（mutator 修改通过 mutator_field_to_var 反映在 cond，
+        # 但 x_mut 本身保留原结构 — codegen 阶段处理）
+        x_mut_expr = Var(name=x_name, version=0, ty=elem_ty)
+
+    x_mut_var = Var(name="__x_mut", version=0, ty=elem_ty)
+    body.append(LetStmt(var=x_mut_var, ty=elem_ty, value=x_mut_expr))
+
+    # filter cond 改写后用于决定 some / none
+    cond_subst = rewrite_iter_ref(filter_cond)
+    body.append(ReturnStmt(
+        value=CondExpr(
+            cond=cond_subst,
+            then_e=Call(callee="Option.some",
+                        args=[x_mut_var], ty=None),
+            else_e=Call(callee="Option.none", args=[], ty=None),
+            ty=None,
+        )
+    ))
+
+    pred_param = HIRParam(name=x_name, ty=elem_ty, is_ref=False,
+                          is_const_ref=True, is_output=False)
+    return LambdaExpr(
+        captures=[],
+        params=[pred_param],
+        body=body,
+        ty=NamedType("Option"),
     )
 
 
@@ -498,7 +702,25 @@ def _desugar_decomposition(rf: RangeForStmt) -> RangeForStmt:
             value=FieldAccess(obj=x_var, field_name=fn, ty=fty),
         ))
 
-    return replace(rf, body=prelude + list(rf.body), decomposition=[])
+    # P0a 修复（嵌套 destructure-bound ranged-for + inner mutation）：
+    # `for (auto& [fac, mult] : c)` 在 C++ 中 fac/mult 是引用绑定——body
+    # 中 fac=... 应等价于 c[idx].fst=...。Pass 4 把 destructure 展开为
+    # `let fac := __decomp.fst` 后，body 内的 fac mutation 不会反向写回
+    # __decomp，导致 P0-1 的 cont latch 用旧 __decomp 写回 → 修改丢失。
+    # 解决：is_mutable_ref + decomposition 时，body 尾自动 repack：
+    #   `__decomp := __ctor__pair(fac_latest, mult_latest)`（PairType 用 TupleExpr）
+    postlude: list[StmtIR] = []
+    if rf.is_mutable_ref:
+        elems = [Var(name=dv.name, ty=field_tys[i] if i < len(field_tys)
+                                       else UnknownType(""))
+                 for i, dv in enumerate(rf.decomposition)]
+        postlude.append(AssignStmt(
+            target=x_var,
+            value=TupleExpr(elems=elems, ty=elem_ty),
+        ))
+
+    return replace(rf, body=prelude + list(rf.body) + postlude,
+                   decomposition=[])
 
 
 # ============================================================

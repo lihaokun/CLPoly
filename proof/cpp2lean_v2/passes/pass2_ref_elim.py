@@ -193,6 +193,7 @@ def _rewrite_stmt_returns(s: StmtIR, ref_names: list[str],
             container=s.container,
             body=_rewrite_returns(s.body, ref_names, original_is_void),
             decomposition=s.decomposition,
+            is_mutable_ref=s.is_mutable_ref,
         )
 
     if isinstance(s, DoWhileStmt):

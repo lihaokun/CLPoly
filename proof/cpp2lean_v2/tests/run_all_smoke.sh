@@ -50,6 +50,10 @@ echo ""
 echo "--- Pass 6 单元测试 ---"
 python3 tests/test_pass6_ssa.py
 
+echo ""
+echo "--- Pass 7 单元测试（loop_lower） ---"
+python3 tests/test_pass7_loop_lower.py
+
 # 烟测（全 65 函数）
 echo ""
 echo "--- Pass 1 烟测（65 函数）---"
@@ -74,6 +78,10 @@ python3 tests/smoke_pass5_full.py 2>&1 | tail -8
 echo ""
 echo "--- Pass 6 烟测（65 函数, factorize x3）---"
 python3 tests/smoke_pass6_full.py 2>&1 | tail -8
+
+echo ""
+echo "--- Pass 7 烟测（65 函数, factorize x3）---"
+python3 tests/smoke_pass7_full.py 2>&1 | tail -6
 
 # 未来 Pass 会在此添加：
 # echo ""

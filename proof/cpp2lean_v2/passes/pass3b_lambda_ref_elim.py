@@ -421,6 +421,23 @@ def _inject_pre_at_continues(stmts: list[StmtIR],
     return out
 
 
+def _body_has_value_return(stmts: list[StmtIR]) -> bool:
+    """递归检查 body 是否含 `ReturnStmt(value=non-None)`，用于判 lambda 真 void。"""
+    for s in stmts:
+        if isinstance(s, ReturnStmt) and s.value is not None:
+            return True
+        if isinstance(s, IfStmt):
+            if _body_has_value_return(s.then_body): return True
+            if _body_has_value_return(s.else_body or []): return True
+        elif isinstance(s, (WhileStmt, RangeForStmt, DoWhileStmt)):
+            if _body_has_value_return(s.body): return True
+        elif isinstance(s, ForStmt):
+            if _body_has_value_return(s.body): return True
+        elif isinstance(s, BlockStmt):
+            if _body_has_value_return(s.stmts): return True
+    return False
+
+
 def lambda_ref_elim_pass(func: HIRFunc) -> HIRFunc:
     """HIR₂ → HIR₂'：lifted lambda 的 ref-elim + 调用点改写。"""
     if not func.aux_lambdas:
@@ -436,8 +453,15 @@ def lambda_ref_elim_pass(func: HIRFunc) -> HIRFunc:
     # 同时跑 callsite_ref_elim_pass 处理 lambda body 内的 ref-out 调用（如
     # `fdiv_q(result, ...)` / `std::swap(M[i], M[j])` —— 这些在 Pass 3 lift 时
     # 仍是 ExprStmt(Call)，Pass 2b 错过因 lift 在 2b 之后；这里补做。
+    #
+    # **第八轮 P0 修复**：Pass 1 给 lambda 设 ret_ty=UnknownType（不是
+    # BaseType.UNIT）。ref_elim_pass 据此误判为非 void → 不追加 trailing return →
+    # SSA build 后 ReturnTerm.value=None，destructure 字段全空，M/U 修改丢失。
+    # 修：若 lambda body 无任何 non-None ReturnStmt，强制视为 void。
     new_aux: list[HIRFunc] = []
     for aux in func.aux_lambdas:
+        if isinstance(aux.ret_ty, UnknownType) and not _body_has_value_return(aux.body):
+            aux = replace(aux, ret_ty=BaseType.UNIT)
         aux_with_refelim = ref_elim_pass(aux)
         aux_final = callsite_ref_elim_pass(aux_with_refelim)
         new_aux.append(aux_final)

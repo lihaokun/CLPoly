@@ -45,18 +45,36 @@ def _mk_func(body, params=None, ret_ty=BaseType.UNIT) -> HIRFunc:
 # ============================================================
 
 def test_single_out_directly_assigned():
-    """`(expr) __upoly_make_monic(f)` → `f := __upoly_make_monic(f)`"""
+    """void + 1 out → `out := f(args)` 直接赋（callee `__upoly_mod_coeff` 是 void）"""
     body = [
-        ExprStmt(expr=Call(callee="__upoly_make_monic",
-                           args=[Var("f")], ty=BaseType.UNIT)),
+        ExprStmt(expr=Call(callee="__upoly_mod_coeff",
+                           args=[Var("f"), Var("m")], ty=BaseType.UNIT)),
     ]
-    func = _mk_func(body, params=[HIRParam(name="f", ty=NamedType("Poly"))])
+    func = _mk_func(body, params=[HIRParam(name="f", ty=NamedType("Poly")),
+                                  HIRParam(name="m", ty=NamedType("ZZ"))])
     out = callsite_ref_elim_pass(func)
     assert len(out.body) == 1
     s = out.body[0]
     assert isinstance(s, AssignStmt), f"got {type(s).__name__}"
     assert isinstance(s.target, Var) and s.target.name == "f"
-    assert isinstance(s.value, Call) and s.value.callee == "__upoly_make_monic"
+    assert isinstance(s.value, Call) and s.value.callee == "__upoly_mod_coeff"
+
+
+def test_nonvoid_single_out_destructure():
+    """non-void + 1 out → tmp + snd 取 ref（fst 是 ret 丢弃）。
+       `__upoly_make_monic` 返回 Zp + 修改 f → 不能直接赋 `f := ...`"""
+    body = [
+        ExprStmt(expr=Call(callee="__upoly_make_monic",
+                           args=[Var("f")], ty=NamedType("Zp"))),
+    ]
+    func = _mk_func(body, params=[HIRParam(name="f", ty=NamedType("Poly"))])
+    out = callsite_ref_elim_pass(func)
+    # 应有 2 个 stmt: tmp let + AssignStmt(f := tmp.snd)
+    assert len(out.body) == 2, f"got {len(out.body)} stmts"
+    let_tmp, assign = out.body
+    assert isinstance(let_tmp, LetStmt) and let_tmp.var.name.startswith("__refret_")
+    assert isinstance(assign, AssignStmt) and assign.target.name == "f"
+    assert isinstance(assign.value, FieldAccess) and assign.value.field_name == "snd"
 
 
 # ============================================================
@@ -132,8 +150,8 @@ def test_arrayaccess_unwrap():
 # ============================================================
 
 def test_data_method_unwrap():
-    """`(expr) f(vec.data(), other.data())` →
-       `vec := f(vec.data(), ...)`（vec 作为 lvalue）
+    """`(expr) f(vec.data(), m)` 中 `.data()` 透明剥离 → vec 作 lvalue。
+       用 void callee `__upoly_mod_coeff` 验证（一对一对应：单 out → 直接 AssignStmt）。
     """
     method_call = lambda recv, name: Call(
         callee=UnresolvedOp(op_name=f"<method>.{name}", receiver_ty=NamedType("Vec")),
@@ -141,12 +159,13 @@ def test_data_method_unwrap():
     )
     body = [
         ExprStmt(expr=Call(
-            callee="__upoly_make_monic",
-            args=[method_call(Var("vec"), "data")],
+            callee="__upoly_mod_coeff",
+            args=[method_call(Var("vec"), "data"), Var("m")],
             ty=BaseType.UNIT,
         )),
     ]
-    func = _mk_func(body, params=[HIRParam(name="vec", ty=NamedType("Poly"))])
+    func = _mk_func(body, params=[HIRParam(name="vec", ty=NamedType("Poly")),
+                                  HIRParam(name="m", ty=NamedType("ZZ"))])
     out = callsite_ref_elim_pass(func)
     assert len(out.body) == 1
     s = out.body[0]
@@ -241,6 +260,7 @@ def test_pipeline_smoke_67():
 if __name__ == "__main__":
     tests = [
         test_single_out_directly_assigned,
+        test_nonvoid_single_out_destructure,
         test_double_out_destructure,
         test_arrayaccess_unwrap,
         test_data_method_unwrap,

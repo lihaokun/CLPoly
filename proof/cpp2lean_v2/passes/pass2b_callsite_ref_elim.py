@@ -44,7 +44,7 @@ from ir_types import (
     BreakStmt, ContinueStmt, ReturnStmt, RequireStmt, ExprStmt, BlockStmt,
     HIRFunc, StmtIR, ExprIR, TranslationError,
 )
-from class_map import get_output_params
+from class_map import get_output_params, is_callee_nonvoid
 
 
 _FIELD_NAMES = ["fst", "snd"]
@@ -122,22 +122,42 @@ def _ref_elim_call_at_stmt(call: Call, counter: list[int]) -> list[StmtIR] | Non
         out_args.append(unwrapped)
 
     n_out = len(out_indices)
-    if n_out == 1:
-        # 单输出：直接 `out := f(args)`，不需要临时变量
+    nonvoid = is_callee_nonvoid(callee, len(call.args))
+
+    # callee 字段命名约定（与 Pass 2 ref_elim 配套）：
+    #   void + 1 out → ret_ty = ref_type (无 wrap), 单变量直接接收
+    #   void + 2 out → ret_ty = PairType(refs)  → fst, snd
+    #   void + 3+ out → ret_ty = TupleType(refs) → elem0..N-1
+    #   non-void + 1 out → ret_ty = PairType(orig_ret, ref) → fst (ret), snd (ref)
+    #   non-void + 2+ out → ret_ty = TupleType(orig_ret, refs) → elem0 (ret), elem1..N
+    if not nonvoid and n_out == 1:
+        # void + 1 out：直接 `out := f(args)`
         return [AssignStmt(target=out_args[0], value=call)]
 
-    # 多输出：临时变量 + 字段提取
+    # 否则用 tmp + destructure
     tmp_id = counter[0]
     counter[0] += 1
     tmp_name = f"__refret_{tmp_id}"
     tmp_var = Var(name=tmp_name, ty=UnknownType(""))
     out: list[StmtIR] = [LetStmt(var=tmp_var, ty=UnknownType(""), value=call)]
-    field_names = _FIELD_NAMES if n_out == 2 else [_ELEM_NAMES(k) for k in range(n_out)]
+
+    if nonvoid:
+        n_total = 1 + n_out
+        if n_total == 2:
+            # fst = orig_ret (discarded), snd = ref
+            out_fields = ["snd"]
+        else:
+            # elem0 = orig_ret (discarded), elem1..N = refs
+            out_fields = [f"elem{k+1}" for k in range(n_out)]
+    else:
+        # void: 仅 refs
+        out_fields = _FIELD_NAMES if n_out == 2 else [_ELEM_NAMES(k) for k in range(n_out)]
+
     for k, target in enumerate(out_args):
-        fld = field_names[k] if k < len(field_names) else _ELEM_NAMES(k)
         out.append(AssignStmt(
             target=target,
-            value=FieldAccess(obj=tmp_var, field_name=fld, ty=UnknownType("")),
+            value=FieldAccess(obj=tmp_var, field_name=out_fields[k],
+                              ty=UnknownType("")),
         ))
     return out
 

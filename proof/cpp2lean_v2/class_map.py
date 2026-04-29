@@ -729,6 +729,33 @@ def get_output_params(callee: str, num_args: int) -> list[int]:
         return TRANSLATION_SCOPE_OUTPUT_PARAMS[key_arity]
     return TRANSLATION_SCOPE_OUTPUT_PARAMS.get(callee, [])
 
+
+# 第八轮 P0 修复：哪些 ref-out 函数是非 void（含 orig_ret 作为返回 tuple 第一个元素）。
+# Pass 2b 据此决定 destructure 字段命名约定：
+#   void + 1 out  → 直接 AssignStmt(out := f(...))
+#   void + 2 out  → fst, snd (refs)
+#   void + N≥3 out → elem0..N-1 (refs)
+#   non-void + 1 out → fst (orig_ret), snd (ref) ← 必须解构
+#   non-void + N≥2 out → elem0 (orig_ret), elem1..N (refs)
+TRANSLATION_SCOPE_NONVOID_REFOUT: set[str] = {
+    "__upoly_make_monic",       # Zp
+    "__build_cld_matrix",       # int
+    "__lll_reduce",             # std::vector<int>
+    "__si_vandermonde_solve",   # bool
+    "__mtshl_zp_univar_mdp",    # bool
+    "__mtshl_multi_bdp",        # bool
+    "__mtshl_sparse_int",       # bool
+    "__mtshl_wmds",             # bool
+    "__mtshl_step_j",           # bool
+    "polynomial_GCD#4",         # polynomial_<ZZ,...>
+}
+
+
+def is_callee_nonvoid(callee: str, num_args: int) -> bool:
+    """callee 是否非 void（影响 destructure 字段命名）。"""
+    return (f"{callee}#{num_args}" in TRANSLATION_SCOPE_NONVOID_REFOUT
+            or callee in TRANSLATION_SCOPE_NONVOID_REFOUT)
+
 TRANSLATION_SCOPE = {
     # Zp 模块 (13)
     "__make_zp", "__upoly_make_monic", "__upoly_mod", "__upoly_divmod",

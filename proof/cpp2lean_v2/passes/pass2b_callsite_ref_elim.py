@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ir_types import (
     BaseType, NamedType, UnknownType, TypeIR,
     PairType, TupleType,
-    Var, Lit, Call, FieldAccess, ArrayAccess, Cast, UnresolvedOp,
+    Var, Lit, Call, FieldAccess, ArrayAccess, Cast, UnresolvedOp, UnaryOp,
     LetStmt, AssignStmt, IfStmt, WhileStmt, ForStmt, RangeForStmt, DoWhileStmt,
     BreakStmt, ContinueStmt, ReturnStmt, RequireStmt, ExprStmt, BlockStmt,
     HIRFunc, StmtIR, ExprIR, TranslationError,
@@ -142,6 +142,66 @@ def _ref_elim_call_at_stmt(call: Call, counter: list[int]) -> list[StmtIR] | Non
     return out
 
 
+def _hoist_ref_call(expr: ExprIR, counter: list[int]
+                    ) -> tuple[ExprIR, list[StmtIR]] | None:
+    """若 expr 是 ref-out Call（含 UnaryOp("!", Call) 包装），生成 hoist：
+       前置 stmts: `let __refret_N := f(args); <out_i> := __refret_N.<field>`
+       替换 expr：`__refret_N.fst`（或对 UnaryOp("!", ...) 包装：`!__refret_N.fst`）
+    返回 None 表示 expr 不是需 hoist 的形态。
+    """
+    # 剥 UnaryOp("!") 包装
+    not_wrap = False
+    inner = expr
+    if isinstance(expr, UnaryOp) and expr.op == "!":
+        inner = expr.operand
+        not_wrap = True
+    if not isinstance(inner, Call):
+        return None
+    callee = inner.callee
+    if not isinstance(callee, str):
+        return None
+    out_indices = get_output_params(callee, len(inner.args))
+    if not out_indices:
+        return None
+
+    out_args: list[ExprIR] = []
+    for idx in out_indices:
+        if idx >= len(inner.args):
+            return None
+        unwrapped = _unwrap_to_lvalue(inner.args[idx])
+        if unwrapped is None:
+            return None
+        out_args.append(unwrapped)
+
+    tmp_id = counter[0]
+    counter[0] += 1
+    tmp_name = f"__refret_{tmp_id}"
+    tmp_var = Var(name=tmp_name, ty=UnknownType(""))
+
+    n_out = len(out_indices)
+    # 字段命名：返回 (orig_ret, out_0, out_1, ...)
+    n_total = 1 + n_out  # orig_ret + outs
+    if n_total == 2:
+        ret_field = "fst"
+        out_fields = ["snd"]
+    else:
+        ret_field = "elem0"
+        out_fields = [f"elem{k+1}" for k in range(n_out)]
+
+    pre_stmts: list[StmtIR] = [
+        LetStmt(var=tmp_var, ty=UnknownType(""), value=inner),
+    ]
+    for k, target in enumerate(out_args):
+        pre_stmts.append(AssignStmt(
+            target=target,
+            value=FieldAccess(obj=tmp_var, field_name=out_fields[k],
+                              ty=UnknownType("")),
+        ))
+    new_inner = FieldAccess(obj=tmp_var, field_name=ret_field, ty=inner.ty)
+    new_expr = UnaryOp(op="!", operand=new_inner, ty=expr.ty) if not_wrap else new_inner
+    return new_expr, pre_stmts
+
+
 def _rewrite_stmt(s: StmtIR, counter: list[int]) -> list[StmtIR]:
     """处理一条 stmt，返回替换后的 stmt 列表。递归 if/while/for/block。"""
     if isinstance(s, ExprStmt):
@@ -151,12 +211,46 @@ def _rewrite_stmt(s: StmtIR, counter: list[int]) -> list[StmtIR]:
                 return replaced
         return [s]
 
+    # P0 修复（agent 第七轮发现）：嵌入在 LetStmt/AssignStmt RHS 与 IfStmt/While
+    # cond 内的 ref-out Call 也要 hoist + destructure，否则 out 参数 SSA 不 bump
+    # + Pair/Tuple 返回值被当 Bool/Int 处理。
+    if isinstance(s, LetStmt) and isinstance(s.value, Call):
+        hr = _hoist_ref_call(s.value, counter)
+        if hr is not None:
+            new_value, pre = hr
+            return pre + [LetStmt(var=s.var, ty=s.ty, value=new_value)]
+
+    if isinstance(s, AssignStmt) and isinstance(s.value, Call):
+        hr = _hoist_ref_call(s.value, counter)
+        if hr is not None:
+            new_value, pre = hr
+            return pre + [AssignStmt(target=s.target, value=new_value)]
+
     if isinstance(s, IfStmt):
-        return [replace(s,
-                        then_body=_rewrite_stmts(list(s.then_body), counter),
-                        else_body=_rewrite_stmts(list(s.else_body or []), counter))]
+        new_then = _rewrite_stmts(list(s.then_body), counter)
+        new_else = _rewrite_stmts(list(s.else_body or []), counter)
+        hr = _hoist_ref_call(s.cond, counter)
+        if hr is not None:
+            new_cond, pre = hr
+            return pre + [replace(s, cond=new_cond, then_body=new_then,
+                                  else_body=new_else)]
+        return [replace(s, then_body=new_then, else_body=new_else)]
     if isinstance(s, WhileStmt):
-        return [replace(s, body=_rewrite_stmts(list(s.body), counter))]
+        new_body = _rewrite_stmts(list(s.body), counter)
+        hr = _hoist_ref_call(s.cond, counter)
+        if hr is not None:
+            new_cond, pre = hr
+            return pre + [replace(s, cond=new_cond, body=new_body)]
+        return [replace(s, body=new_body)]
+    if isinstance(s, DoWhileStmt):
+        new_body = _rewrite_stmts(list(s.body), counter)
+        hr = _hoist_ref_call(s.cond, counter)
+        if hr is not None:
+            new_cond, pre = hr
+            # DoWhile cond 在 body 之后求值；hoist 放 body 末尾 + continue 路径
+            # （此 Pass 不识别 continue —— 简化：放 body 末尾，假设无 continue）
+            return [replace(s, body=new_body + pre, cond=new_cond)]
+        return [replace(s, body=new_body)]
     if isinstance(s, ForStmt):
         return [replace(s,
                         init=_rewrite_stmts(list(s.init), counter),
@@ -164,13 +258,11 @@ def _rewrite_stmt(s: StmtIR, counter: list[int]) -> list[StmtIR]:
                         body=_rewrite_stmts(list(s.body), counter))]
     if isinstance(s, RangeForStmt):
         return [replace(s, body=_rewrite_stmts(list(s.body), counter))]
-    if isinstance(s, DoWhileStmt):
-        return [replace(s, body=_rewrite_stmts(list(s.body), counter))]
     if isinstance(s, BlockStmt):
         return [replace(s, stmts=_rewrite_stmts(list(s.stmts), counter))]
 
-    # LetStmt / AssignStmt / RequireStmt / ReturnStmt / Break / Continue：
-    # 当前不改写其内嵌 Call（参见 docstring 设计：留 follow-up）
+    # 其它 stmt（RequireStmt/ReturnStmt/Break/Continue/CompoundAssignStmt）：
+    # 嵌套 Call hoist 暂不覆盖（corpus 未观测；P3-dormant follow-up）
     return [s]
 
 

@@ -696,11 +696,13 @@ TRANSLATION_SCOPE_OUTPUT_PARAMS = {
     "__lll_reduce": [0, 1],              # M, U
     "__si_vandermonde_solve": [2],       # coeffs
     "__si_theta_array_eval": [5],        # images（C++ 第 6 参数 = 索引 5；之前误填 6 越界）
-    "__mtshl_zp_univar_mdp": [2],        # sigma
-    "__mtshl_multi_bdp": [3, 8],         # c, result
-    "__mtshl_sparse_int": [3, 9],        # c, result
-    "__mtshl_wmds": [3, 8],              # c, result
-    "__mtshl_step_j": [3, 5],            # F, lc_tau
+    # MTSHL 函数原注册全部错索引（误填"第 N 个/第 M 个"形如 [3, 9]）。
+    # 重新对照 polynomial_factorize_wang.hh 真实参数列表（agent 第七轮发现）：
+    "__mtshl_zp_univar_mdp": [2],        # (F, c, sigma&) — 3 args，sigma at idx 2
+    "__mtshl_multi_bdp": [5],            # (F, c, x1, x2, alpha2, result&) — 6 args
+    "__mtshl_sparse_int": [6],           # (F, c, forms, x1, aux_vars, p, result&) — 7 args
+    "__mtshl_wmds": [5],                 # (F, c, x1, aux_vars, ideal_alphas_zp, result&) — 6 args
+    "__mtshl_step_j": [1],               # (aj, F&, lc_tau, xj, alpha_j, x1, aux_vars, ideal_alphas_zp, p) — 9 args，F at idx 1
     # P0-2 同源补全（修正方案 §4 同类问题梳理 表）：
     # 这些 callee 不在 TRANSLATION_SCOPE 内（外部 / lib 函数），但作为
     # mutating call 调用点也需要 SSA bump。Pass 2b 用此表改写调用点。

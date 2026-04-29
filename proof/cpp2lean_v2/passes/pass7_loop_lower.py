@@ -335,6 +335,80 @@ def _var_param_name(v: Var) -> str:
     return f"{v.name}_{v.version}" if v.version > 0 else v.name
 
 
+def _reaching_def_at(cfg: CFG, name: str, src_bb: int,
+                     idom: dict[int, int]) -> Var | None:
+    """Find latest def of `name` reaching src_bb（沿 dominator 链）。
+
+    返回 Var 或 None（无 def 可达——通常是 SSA 漏 def 的征兆）。
+    """
+    cur = src_bb
+    visited: set[int] = set()
+    while True:
+        if cur in visited:
+            return None
+        visited.add(cur)
+        bb = cfg.blocks.get(cur)
+        if bb is None:
+            return None
+        for s in reversed(bb.stmts):
+            if isinstance(s, LetStmt) and s.var.name == name:
+                return s.var
+            if isinstance(s, PhiStmt) and s.target.name == name:
+                return s.target
+        nxt = idom.get(cur, cur)
+        if nxt == cur:
+            return None
+        cur = nxt
+
+
+def _collect_loop_live_outs(cfg: CFG, body_bbs: set[int]) -> list[Var]:
+    """收集 loop body 内 def 且在 caller 端 (非-body BB) 被 read 的 SSA Var。
+
+    包括：
+    - body 内 LetStmt.var
+    - body 内 PhiStmt.target（含 header phi）
+    满足"在非-body BB 中被引用"。
+
+    返回按 (name, version) 排序的 Var 列表。
+    """
+    body_def_vars: dict[tuple[str, int], Var] = {}
+    for bb_id in body_bbs:
+        for s in cfg.blocks[bb_id].stmts:
+            if isinstance(s, LetStmt):
+                body_def_vars[(s.var.name, s.var.version)] = s.var
+            elif isinstance(s, PhiStmt):
+                body_def_vars[(s.target.name, s.target.version)] = s.target
+
+    non_body_reads: set[tuple[str, int]] = set()
+    read_tys: dict[tuple[str, int], TypeIR] = {}
+    for bb_id, bb in cfg.blocks.items():
+        if bb_id in body_bbs:
+            continue
+        for s in bb.stmts:
+            if isinstance(s, LetStmt) and s.value is not None:
+                _collect_var_reads_in_expr_versioned(s.value, non_body_reads, read_tys)
+            elif isinstance(s, PhiStmt):
+                for src_var in s.sources.values():
+                    if isinstance(src_var, Var):
+                        non_body_reads.add((src_var.name, src_var.version))
+            elif isinstance(s, RequireStmt):
+                _collect_var_reads_in_expr_versioned(s.cond, non_body_reads, read_tys)
+        t = bb.terminator
+        if isinstance(t, ReturnTerm) and t.value is not None:
+            _collect_var_reads_in_expr_versioned(t.value, non_body_reads, read_tys)
+        elif isinstance(t, CondJumpTerm):
+            _collect_var_reads_in_expr_versioned(t.cond, non_body_reads, read_tys)
+        elif isinstance(t, TailCallTerm):
+            for a in t.args:
+                _collect_var_reads_in_expr_versioned(a, non_body_reads, read_tys)
+
+    live_outs: list[Var] = []
+    for key, var in body_def_vars.items():
+        if key in non_body_reads:
+            live_outs.append(var)
+    return sorted(live_outs, key=lambda v: (v.name, v.version))
+
+
 def _is_exit_edge(succ_bb: int, body_bbs: set[int]) -> bool:
     """succ 不在 loop body → exit edge。"""
     return succ_bb not in body_bbs
@@ -352,69 +426,124 @@ def _replace_terminator_for_back_edge(t, header: int, loop_name: str,
 
 def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
                      idom: dict[int, int], loop_id: int
-                     ) -> tuple[MIRFunc, list[str], list[int], list[Var]]:
+                     ) -> tuple[MIRFunc, list[Var], list[int], list[Var], list[Var]]:
     """从 cfg 提取 loop 为独立 MIRFunc。
 
-    返回 (loop_func, phi_target_names, exit_targets, free_vars_versioned)。
-    free_vars_versioned 用于 caller 在 splice 时传 init args（含版本）。
+    返回 (loop_func, phi_target_vars, exit_targets, free_vars, live_outs)。
+    - phi_target_vars: caller 端做 init args 用
+    - live_outs: caller 端做 destructure 用（含 phi targets 若 post-loop 用）
     """
     loop_name = f"_loop_{loop_id}"
     header_block = cfg.blocks[header]
 
     # 1. params: phi targets at header + free vars（含版本号编入 name）
     phi_targets: list[tuple[Var, TypeIR]] = _collect_phi_targets_at(header_block)
-    phi_target_names = [t[0].name for t in phi_targets]
+    phi_target_vars = [Var(name=t[0].name, version=t[0].version, ty=t[1])
+                        for t in phi_targets]
     free_vars: list[Var] = _collect_loop_free_vars(cfg, body_bbs, phi_targets)
-    # cap_params: 每个 free var 编码 version 进 name（如 'k_1'）
     cap_params = [HIRParam(name=_var_param_name(v), ty=v.ty or UnknownType(""),
                             is_ref=False, is_const_ref=False, is_output=False)
                   for v in free_vars]
-    # phi_params: phi.target 同样编码 version（如 'i_2'）
     phi_params = [HIRParam(name=_var_param_name(t[0]), ty=t[1], is_ref=False,
                             is_const_ref=False, is_output=False)
                   for t in phi_targets]
     new_params = phi_params + cap_params
 
-    # 2. 收集 exit targets（按 first-encountered 顺序分配 kind）
+    # 2. exit targets（按 first-encountered 顺序分配 kind）
     exit_targets: list[int] = []
-    for bb_id in sorted(body_bbs):  # deterministic order
+    for bb_id in sorted(body_bbs):
         for s in cfg.succs.get(bb_id, []):
             if s not in body_bbs and s not in exit_targets:
                 exit_targets.append(s)
     n_exits = len(exit_targets)
     exit_kind: dict[int, int] = {t: i for i, t in enumerate(exit_targets)}
 
-    # 3. ret_ty: TupleType(exit_kind, phi target tys)
-    ret_tys: list[TypeIR] = [BaseType.INT64]  # exit_kind first
-    ret_tys.extend(t[1] for t in phi_targets)
+    # 3. P7-6 修复：live_outs = body 内 def 且 caller 端 read 的 SSA Var。
+    # 这替代之前"仅 phi targets 作 ret"的简化模型——含 body 内 def 的非-phi var
+    # 也作为 ret tuple 元素（如 __edf_Zp 的 g_8）。
+    live_outs: list[Var] = _collect_loop_live_outs(cfg, body_bbs)
+    # ret_ty: (exit_kind, ...live_outs)
+    ret_tys: list[TypeIR] = [BaseType.INT64]
+    ret_tys.extend(v.ty or UnknownType("") for v in live_outs)
     if len(ret_tys) == 1:
-        ret_ty: TypeIR = ret_tys[0]
+        ret_ty: TypeIR = ret_tys[0]  # 仅 kind（无 live_out）
     elif len(ret_tys) == 2:
         ret_ty = PairType(ret_tys[0], ret_tys[1])
     else:
         ret_ty = TupleType(tuple(ret_tys))
 
-    # 4. body cfg = copy of body BBs，改写 terminator
+    # 4. body cfg copy + 改写 terminator（用 reaching-def 修 P7-7）
     new_blocks: dict[int, BasicBlock] = {}
     for bb_id in body_bbs:
         bb = cfg.blocks[bb_id]
         new_stmts: list[MIRStmt] = []
         for s in bb.stmts:
-            # header 块的 phi 全部移除（target 已成 params）
             if bb_id == header and isinstance(s, PhiStmt):
                 continue
             new_stmts.append(s)
         new_term = _rewrite_loop_terminator(
             bb, body_bbs, header, header_block, loop_name, free_vars,
-            phi_target_names, exit_kind, n_exits)
+            exit_kind, n_exits, live_outs, idom, cfg)
         new_blocks[bb_id] = BasicBlock(bb_id=bb_id, stmts=new_stmts,
                                         terminator=new_term)
 
-    # CondJumpTerm 含 back/exit 边的块拆分（生成 dummy dispatch BBs）
     fresh_bb_id = [max(cfg.blocks.keys(), default=0) + 100 + loop_id * 1000]
     _split_cond_to_exit_or_back(new_blocks, body_bbs, header, header_block,
-                                  loop_name, free_vars, phi_target_names,
-                                  exit_kind, n_exits, fresh_bb_id)
+                                  loop_name, free_vars,
+                                  exit_kind, n_exits, fresh_bb_id,
+                                  live_outs, idom, cfg)
+
+    # P7-6 续：terminator rewrite 后，ReturnTerm 通过 reaching-def 引入新 Var
+    # 引用（如 outer-scope 的 vp_1）。重扫 new_blocks 找漏的 free vars，加入
+    # params。
+    all_def_keys: set[tuple[str, int]] = set()
+    all_def_keys.update((p.name, 0) for p in cap_params)  # free vars by name
+    for v, _ty in phi_targets:
+        all_def_keys.add((v.name, v.version))
+    for v in free_vars:
+        all_def_keys.add((v.name, v.version))
+    for bb in new_blocks.values():
+        for s in bb.stmts:
+            if isinstance(s, LetStmt):
+                all_def_keys.add((s.var.name, s.var.version))
+            elif isinstance(s, PhiStmt):
+                all_def_keys.add((s.target.name, s.target.version))
+    extra_reads: set[tuple[str, int]] = set()
+    extra_read_tys: dict[tuple[str, int], TypeIR] = {}
+    for bb in new_blocks.values():
+        for s in bb.stmts:
+            if isinstance(s, LetStmt) and s.value is not None:
+                _collect_var_reads_in_expr_versioned(s.value, extra_reads, extra_read_tys)
+            elif isinstance(s, RequireStmt):
+                _collect_var_reads_in_expr_versioned(s.cond, extra_reads, extra_read_tys)
+        t = bb.terminator
+        if isinstance(t, ReturnTerm) and t.value is not None:
+            _collect_var_reads_in_expr_versioned(t.value, extra_reads, extra_read_tys)
+        elif isinstance(t, CondJumpTerm):
+            _collect_var_reads_in_expr_versioned(t.cond, extra_reads, extra_read_tys)
+        elif isinstance(t, TailCallTerm):
+            for a in t.args:
+                _collect_var_reads_in_expr_versioned(a, extra_reads, extra_read_tys)
+    extra_free: list[Var] = []
+    for (n, v) in sorted(extra_reads):
+        if (n, v) in all_def_keys:
+            continue
+        if v == 0 and (n, 0) in all_def_keys:
+            continue
+        # 跳过函数引用 / loop ret / refret
+        if n.startswith(("_lambda_", "_loop_", "__loop_ret_",
+                          "__refret_", "__hoist_lam")):
+            continue
+        ty = extra_read_tys.get((n, v), UnknownType(""))
+        extra_free.append(Var(name=n, version=v, ty=ty))
+    if extra_free:
+        free_vars = list(free_vars) + extra_free
+        for ev in extra_free:
+            cap_params.append(HIRParam(name=_var_param_name(ev),
+                                         ty=ev.ty or UnknownType(""),
+                                         is_ref=False, is_const_ref=False,
+                                         is_output=False))
+        new_params = phi_params + cap_params
 
     new_cfg = CFG(entry=header, blocks=new_blocks)
     new_cfg.rebuild_edges()
@@ -430,15 +559,17 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
         cfg=new_cfg,
         aux_defs=[],
     )
-    return loop_func, phi_target_names, exit_targets, free_vars
+    return loop_func, phi_target_vars, exit_targets, free_vars, live_outs
 
 
 def _rewrite_loop_terminator(bb: BasicBlock, body_bbs: set[int],
                               header: int, header_block: BasicBlock,
                               loop_name: str, free_vars: list[Var],
-                              phi_target_names: list[str],
                               exit_kind: dict[int, int],
-                              n_exits: int):
+                              n_exits: int,
+                              live_outs: list[Var],
+                              idom: dict[int, int],
+                              orig_cfg: CFG):
     """改写 loop body 内某 block 的 terminator：
     - JumpTerm(t):
         t == header → TailCallTerm
@@ -454,8 +585,8 @@ def _rewrite_loop_terminator(bb: BasicBlock, body_bbs: set[int],
         if t.target == header:
             return _make_tail_call(header_block, src_bb_id, loop_name, free_vars)
         if t.target not in body_bbs:
-            return _make_exit_return(t.target, exit_kind, header_block,
-                                      src_bb_id, phi_target_names, n_exits)
+            return _make_exit_return(t.target, exit_kind, src_bb_id,
+                                      live_outs, idom, orig_cfg, n_exits)
         return t  # in-loop jump unchanged
     if isinstance(t, CondJumpTerm):
         # 处理：两边任意 mix（back/exit/inner）→ 用辅助 BB 拆分
@@ -478,26 +609,23 @@ def _rewrite_loop_terminator(bb: BasicBlock, body_bbs: set[int],
 
 
 def _make_exit_return(target: int, exit_kind: dict[int, int],
-                       header_block: BasicBlock, src_bb_id: int,
-                       phi_target_names: list[str], n_exits: int) -> ReturnTerm:
-    """exit edge → ReturnTerm((kind=k, phi_target_0, phi_target_1, ...))"""
+                       src_bb_id: int, live_outs: list[Var],
+                       idom: dict[int, int], orig_cfg: CFG,
+                       n_exits: int) -> ReturnTerm:
+    """exit edge → ReturnTerm((kind=k, ...live_out_values_at_src_bb))。
+
+    P7-7 修复：用 reaching-def 找 src_bb 处每个 live_out.name 的最新版本，
+    替代之前用 phi.target 自身的错误 fallback。
+    """
     from ir_types import TupleExpr
     k = exit_kind[target]
     elems: list[ExprIR] = [Lit(value=k, ty=BaseType.INT64)]
-    # phi target latest values when exiting through this edge
-    # 用 src_bb_id 的视角：phi.sources at header from src_bb_id（如果存在）
-    phi_targets_at_h: list[tuple[Var, TypeIR]] = _collect_phi_targets_at(header_block)
-    for v, ty in phi_targets_at_h:
-        src_var = None
-        for s in header_block.stmts:
-            if isinstance(s, PhiStmt) and s.target.name == v.name:
-                src_var = s.sources.get(src_bb_id)
-                break
-        if src_var is None:
-            # 直接用 phi target var（可能 src 不是 phi pred — 这种 case 罕见，
-            # 用最新 SSA 版本作 fallback）
-            src_var = v
-        elems.append(src_var)
+    for lo in live_outs:
+        rd = _reaching_def_at(orig_cfg, lo.name, src_bb_id, idom)
+        if rd is None:
+            # 无 reaching def — 使用 live_out 自身（保险，但应不发生）
+            rd = lo
+        elems.append(rd)
     if len(elems) == 1:
         return ReturnTerm(value=elems[0])
     return ReturnTerm(value=TupleExpr(elems=elems, ty=None))
@@ -516,9 +644,11 @@ def _split_cond_to_exit_or_back(loop_blocks: dict[int, BasicBlock],
                                  body_bbs: set[int], header: int,
                                  header_block: BasicBlock,
                                  loop_name: str, free_vars: list[Var],
-                                 phi_target_names: list[str],
                                  exit_kind: dict[int, int], n_exits: int,
-                                 fresh_bb_id: list[int]) -> None:
+                                 fresh_bb_id: list[int],
+                                 live_outs: list[Var],
+                                 idom: dict[int, int],
+                                 orig_cfg: CFG) -> None:
     """对 loop body 内含 CondJumpTerm 且至少一边是 back/exit 的块，拆分：
     把 back/exit 边替换为指向新 dummy BB（含 TailCallTerm/ReturnTerm）。
     """
@@ -539,8 +669,8 @@ def _split_cond_to_exit_or_back(loop_blocks: dict[int, BasicBlock],
             if tgt == header:
                 term = _make_tail_call(header_block, bb_id, loop_name, free_vars)
             else:
-                term = _make_exit_return(tgt, exit_kind, header_block, bb_id,
-                                          phi_target_names, n_exits)
+                term = _make_exit_return(tgt, exit_kind, bb_id, live_outs,
+                                          idom, orig_cfg, n_exits)
             new_bb_to_add[new_id] = BasicBlock(
                 bb_id=new_id, stmts=[], terminator=term)
             if side == "then":
@@ -583,23 +713,25 @@ def loop_lower_pass(func: MIRFunc) -> MIRFunc:
         header, back_srcs, body_bbs = loop_info
 
         # 提取 loop 函数
-        loop_func, phi_target_names, exit_targets, free_vars = _build_loop_func(
-            cfg, header, body_bbs, idom, loop_id_counter)
+        loop_func, phi_target_vars, exit_targets, free_vars, live_outs = \
+            _build_loop_func(cfg, header, body_bbs, idom, loop_id_counter)
         loop_id_counter += 1
         new_aux.append(loop_func)
 
         # 主 cfg 中替换 loop：header 改为 call block + dispatch BBs
         cfg = _splice_loop_call(cfg, header, body_bbs, loop_func,
-                                  phi_target_names, exit_targets, free_vars)
+                                  phi_target_vars, exit_targets, free_vars,
+                                  live_outs)
 
     return replace(func, cfg=cfg, aux_defs=new_aux)
 
 
 def _splice_loop_call(cfg: CFG, header: int, body_bbs: set[int],
                        loop_func: MIRFunc,
-                       phi_target_names: list[str],
+                       phi_target_vars: list[Var],
                        exit_targets: list[int],
-                       free_vars: list[Var]) -> CFG:
+                       free_vars: list[Var],
+                       live_outs: list[Var]) -> CFG:
     """主 cfg 中：header 块替换为 call block；删 loop body 块；分发到对应 exit。
 
     Loop func 返回 `(exit_kind: Int64, phi_target_0, ...)`。
@@ -612,18 +744,16 @@ def _splice_loop_call(cfg: CFG, header: int, body_bbs: set[int],
        dispatch_k: if __exit_kind == k then exit_k else dispatch_{k+1}
     """
     header_block = cfg.blocks[header]
-    phi_targets = _collect_phi_targets_at(header_block)
 
-    # init args
+    # init args: phi sources at h from outer pred + free vars
     outer_preds = [p for p in cfg.preds.get(header, []) if p not in body_bbs]
     if not outer_preds:
         raise TranslationError("loop_lower", loop_func.base_name,
                                 "loop header has no outer pred")
     init_outer_pred = outer_preds[0]
     init_phi_srcs = _collect_phi_sources_from(header_block, init_outer_pred)
-    n_phi = len(phi_targets)
     init_args: list[ExprIR] = list(init_phi_srcs)
-    init_args.extend(free_vars)  # 带版本的 free var Var 直接传
+    init_args.extend(free_vars)
 
     n_exits = len(exit_targets)
     if n_exits == 0:
@@ -634,18 +764,18 @@ def _splice_loop_call(cfg: CFG, header: int, body_bbs: set[int],
     tmp_name = f"__loop_ret_{loop_func.base_name.split('_')[-1]}"
     tmp_var = Var(name=tmp_name, version=1, ty=loop_func.ret_ty)
 
-    # 字段命名：n_total = 1 + n_phi（kind + phi_targets）
-    n_total = 1 + n_phi
+    # P7-6 修复：destructure 字段以 live_outs 为准（替代之前的 phi_targets）
+    n_lo = len(live_outs)
+    n_total = 1 + n_lo  # kind + live_outs
     if n_total == 1:
-        # 没 phi target，仅 kind，ret_ty = INT64
-        kind_field = None  # 直接用 tmp_var 即 kind
-        phi_fields: list[str] = []
+        kind_field: str | None = None  # 仅 kind
+        lo_fields: list[str] = []
     elif n_total == 2:
         kind_field = "fst"
-        phi_fields = ["snd"]
+        lo_fields = ["snd"]
     else:
         kind_field = "elem0"
-        phi_fields = [f"elem{k+1}" for k in range(n_phi)]
+        lo_fields = [f"elem{k+1}" for k in range(n_lo)]
 
     new_header_stmts: list[MIRStmt] = []
     new_header_stmts.append(LetStmt(
@@ -653,12 +783,14 @@ def _splice_loop_call(cfg: CFG, header: int, body_bbs: set[int],
         value=Call(callee=loop_func.base_name, args=init_args,
                     ty=loop_func.ret_ty),
     ))
-    # destructure phi targets
-    for k, (v, ty) in enumerate(phi_targets):
+    # destructure live_outs：每个 live_out 在 caller 端被恢复为其原 SSA Var
+    # （body 的 def 已删，destructure LetStmt 即为新 def，不破坏 SSA 单赋值）
+    for k, lo in enumerate(live_outs):
         new_header_stmts.append(LetStmt(
-            var=v, ty=ty,
-            value=FieldAccess(obj=tmp_var, field_name=phi_fields[k], ty=ty)
-                  if phi_fields else tmp_var,
+            var=lo, ty=lo.ty or UnknownType(""),
+            value=FieldAccess(obj=tmp_var, field_name=lo_fields[k],
+                              ty=lo.ty or UnknownType(""))
+                  if lo_fields else tmp_var,
         ))
 
     # 决定 exit dispatch

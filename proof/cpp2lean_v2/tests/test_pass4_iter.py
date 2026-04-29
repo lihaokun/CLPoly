@@ -167,25 +167,37 @@ def test_classic_both_containers_with_pred_inversion():
 
     # 深扫两个 filter 的 pred，验证都是 UnaryOp("!")
     preds = []
+    # P7-8 修复后：Array.filter 的 lambda 已被 lifted 到 aux_lambdas，
+    # Call args[1] 是 Var(lifted_name) 不是 LambdaExpr。从 aux_lambdas 找
+    # 对应 lifted lambda 的 body 提取 pred。
+    from ir_types import AssignStmt, Call, Var, LambdaExpr, ReturnStmt
+    lifted_names: list[str] = []
     def walk(stmts):
-        from ir_types import AssignStmt, Call, LambdaExpr, ReturnStmt
         for s in stmts:
             if isinstance(s, AssignStmt) and isinstance(s.value, Call):
                 if isinstance(s.value.callee, str) and s.value.callee == "Array.filter":
-                    lam = s.value.args[1]
-                    assert isinstance(lam, LambdaExpr)
-                    preds.append(lam.body[0].value)
+                    arg = s.value.args[1]
+                    if isinstance(arg, Var):
+                        lifted_names.append(arg.name)
             if isinstance(s, RangeForStmt): walk(s.body)
             elif isinstance(s, IfStmt): walk(s.then_body); walk(s.else_body)
             elif isinstance(s, ForStmt): walk(s.body)
             elif isinstance(s, WhileStmt): walk(s.body)
             elif hasattr(s, 'stmts'): walk(s.stmts)
-    from ir_types import UnaryOp
     walk(hir3.body)
-    assert len(preds) == 2, f"expected 2 preds, got {len(preds)}"
-    for i, p in enumerate(preds):
+    # 从 aux_lambdas 找对应 lifted func，提取 pred
+    aux_by_name = {a.base_name: a for a in hir3.aux_lambdas}
+    from ir_types import UnaryOp
+    for i, name in enumerate(lifted_names):
+        aux = aux_by_name.get(name)
+        assert aux is not None, f"lifted {name} not in aux_lambdas"
+        # body 末尾的 ReturnStmt.value 即 pred
+        ret = aux.body[-1]
+        assert isinstance(ret, ReturnStmt) and ret.value is not None
+        p = ret.value
         assert isinstance(p, UnaryOp) and p.op == "!", \
             f"pred[{i}] should be UnaryOp('!', ...) for form B inversion, got {type(p).__name__}"
+    assert len(lifted_names) == 2, f"expected 2 Array.filter calls, got {len(lifted_names)}"
 
 
 # ============================================================

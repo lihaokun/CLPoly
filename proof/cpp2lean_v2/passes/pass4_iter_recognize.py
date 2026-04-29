@@ -775,13 +775,101 @@ def _walk_and_rewrite(stmts: list[StmtIR]) -> list[StmtIR]:
 # ============================================================
 
 def iter_recognize_pass(func: HIRFunc) -> HIRFunc:
-    """Pass 4：HIR₂ → HIR₃。处理主 body + aux_lambdas[*].body。"""
+    """Pass 4：HIR₂ → HIR₃。处理主 body + aux_lambdas[*].body。
+
+    P7-8 修复：Pass 4 CF-1 生成的 LambdaExpr (Array.filterMap pred) 在 Pass 3
+    lambda_lift 之后才生成 → 没被 lift。这里在 Pass 4 末尾自己 lift：把
+    Array.filterMap 调用中的 LambdaExpr 提到 aux_lambdas 内（0 cap，pure），
+    Call args 改为 Var(lifted_name)。
+    """
     new_body = _walk_and_rewrite(list(func.body))
     new_aux = [
         replace(aux, body=_walk_and_rewrite(list(aux.body)))
         for aux in func.aux_lambdas
     ]
-    return replace(func, body=new_body, aux_lambdas=new_aux)
+    # 提取 CF-1 生成的 filter-map lambdas
+    extra_aux: list[HIRFunc] = []
+    counter = [0]
+    new_body = _lift_filtermap_lambdas(new_body, func.base_name,
+                                          extra_aux, counter)
+    new_aux_2: list[HIRFunc] = []
+    for aux in new_aux:
+        aux_extra: list[HIRFunc] = []
+        new_aux_body = _lift_filtermap_lambdas(list(aux.body), aux.base_name,
+                                                aux_extra, counter)
+        new_aux_2.append(replace(aux, body=new_aux_body))
+        new_aux_2.extend(aux_extra)
+    return replace(func, body=new_body,
+                    aux_lambdas=new_aux_2 + extra_aux)
+
+
+def _lift_filtermap_lambdas(stmts: list[StmtIR], host_name: str,
+                              extra_aux: list[HIRFunc],
+                              counter: list[int]) -> list[StmtIR]:
+    """递归扫描 stmts，找 Array.filterMap/filter Call 中嵌入的 LambdaExpr，提取
+    为 HIRFunc，加入 extra_aux，Call args 中替换为 Var(lifted_name)。
+    """
+    out: list[StmtIR] = []
+    for s in stmts:
+        if isinstance(s, AssignStmt) and isinstance(s.value, Call):
+            c = s.value
+            if isinstance(c.callee, str) and c.callee in ("Array.filter", "Array.filterMap") \
+                    and len(c.args) == 2 and isinstance(c.args[1], LambdaExpr):
+                lam: LambdaExpr = c.args[1]
+                counter[0] += 1
+                lam_name = f"_lambda_{host_name}_filt{counter[0]}"
+                # Lift: 0 caps，pure（lambda body 仅引用其 params __x）
+                lifted = HIRFunc(
+                    base_name=lam_name,
+                    instance_suffix="", mangled_name="",
+                    qual_type=f"lambda from filterMap | n_caps=0 | modified_captures=[]",
+                    params=list(lam.params),
+                    ret_ty=lam.ty if lam.ty else UnknownType(""),
+                    body=list(lam.body),
+                    requires=[], aux_lambdas=[],
+                )
+                extra_aux.append(lifted)
+                new_call = Call(callee=c.callee,
+                                  args=[c.args[0],
+                                         Var(name=lam_name, version=0,
+                                             ty=NamedType("LambdaRef"))],
+                                  ty=c.ty)
+                out.append(AssignStmt(target=s.target, value=new_call))
+                continue
+        if isinstance(s, IfStmt):
+            out.append(replace(s,
+                then_body=_lift_filtermap_lambdas(list(s.then_body),
+                                                    host_name, extra_aux, counter),
+                else_body=_lift_filtermap_lambdas(list(s.else_body or []),
+                                                    host_name, extra_aux, counter)))
+            continue
+        if isinstance(s, WhileStmt):
+            out.append(replace(s, body=_lift_filtermap_lambdas(list(s.body),
+                host_name, extra_aux, counter)))
+            continue
+        if isinstance(s, DoWhileStmt):
+            out.append(replace(s, body=_lift_filtermap_lambdas(list(s.body),
+                host_name, extra_aux, counter)))
+            continue
+        if isinstance(s, ForStmt):
+            out.append(replace(s,
+                init=_lift_filtermap_lambdas(list(s.init), host_name,
+                                                extra_aux, counter),
+                step=_lift_filtermap_lambdas(list(s.step), host_name,
+                                                extra_aux, counter),
+                body=_lift_filtermap_lambdas(list(s.body), host_name,
+                                                extra_aux, counter)))
+            continue
+        if isinstance(s, RangeForStmt):
+            out.append(replace(s, body=_lift_filtermap_lambdas(list(s.body),
+                host_name, extra_aux, counter)))
+            continue
+        if isinstance(s, BlockStmt):
+            out.append(replace(s, stmts=_lift_filtermap_lambdas(list(s.stmts),
+                host_name, extra_aux, counter)))
+            continue
+        out.append(s)
+    return out
 
 
 # ============================================================

@@ -5,4 +5,4 @@
 - 平均 loop 数: **3.7** / 函数
 - 总 loops 提取: 247
 - 总 TailCallTerm: 252
-- 总 BasicBlock 数（含 aux_defs）: 2454
+- 总 BasicBlock 数（含 aux_defs）: 2460

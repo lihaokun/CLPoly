@@ -327,6 +327,17 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
     if callee in ASSERT_FAIL_NAMES or callee == "unknown_func":
         return "()"
 
+    # __ctor__<template> — Pass 5 constructor 解析后形式
+    # 模板含 {a0}/{a1}/... 占位符，按位置 args 替换为实际表达式
+    if callee.startswith("__ctor__"):
+        template = callee[len("__ctor__"):]
+        arg_strs = [emit_expr(a, ctx) for a in e.args]
+        formatted = template
+        for i, s in enumerate(arg_strs):
+            formatted = formatted.replace(f"{{a{i}}}", s)
+        # 模板可能是 `Zp.mk {a0} {a1}` 这种空格分隔形式，包圆括号
+        return f"({formatted})"
+
     # _mutate_ 前缀 → 去掉（v1 兼容）
     raw = callee
     if callee.startswith("_mutate_"):

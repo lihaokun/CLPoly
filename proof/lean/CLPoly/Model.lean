@@ -205,6 +205,21 @@ abbrev MvPolyZZ := Array (Array (UInt64 × UInt64) × Int)
 abbrev MvPolyZp := Array (Array (UInt64 × UInt64) × Zp)
 abbrev MvMonomial := Array (UInt64 × UInt64)
 abbrev Variable := Array (String × Int)
+-- C++ side polynomial<Zp> 的 Lean 别名（语义相同 MvPolyZp）
+abbrev PolyZp := MvPolyZp
+abbrev PolyZZ := MvPolyZZ
+abbrev PolyQQ := Array (Array (UInt64 × UInt64) × Rat)
+
+-- MvPolyZp 操作（stub；实际语义留 Pass 上游 / B2B 测试细化）
+def MvPolyZp.normalization (f : MvPolyZp) : MvPolyZp := f
+def MvPolyZp.mk (f : MvPolyZp) : MvPolyZp := f
+def MvPolyZZ.normalization (f : MvPolyZZ) : MvPolyZZ := f
+def MvPolyZZ.mk (f : MvPolyZZ) : MvPolyZZ := f
+-- 通用 stub（与 SparsePolyZZ 解耦，无前向引用）
+def __write__ (_old : α) (new : α) : α := new
+def polynomial_GCD [Inhabited α] (_a _b : α) : α := default
+def pair_vec_div [Inhabited α] [Inhabited β] (_a _b : α × β) : α × β :=
+  (default, default)
 abbrev SparsePolyZZ := Array (UMonomial × Int)
 
 -- §5a2 迁移：SparsePolyZZ 操作（filterMap 等需要 SparsePolyZZ 已定义）
@@ -215,6 +230,12 @@ def SparsePolyZZ.modCoeff (f : SparsePolyZZ) (m : Int) : SparsePolyZZ :=
 
 def SparsePolyZZ.compactNonzero (f : SparsePolyZZ) : SparsePolyZZ :=
   f.filter (fun (_, coeff) => coeff != 0)
+
+def SparsePolyZZ.empty : SparsePolyZZ := #[]
+
+-- get_deg: SparsePolyZZ 的最高度数（C++ side 习惯命名）
+def get_deg (f : SparsePolyZZ) : UInt64 :=
+  if f.isEmpty then 0 else (f[0]!).fst.deg
 
 abbrev LLLMatrix := Array (Array Int)
 abbrev HenselNode := Array Int  -- 占位

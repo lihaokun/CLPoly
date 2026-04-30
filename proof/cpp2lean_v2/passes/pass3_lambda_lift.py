@@ -455,8 +455,14 @@ def lambda_lift_pass(func: HIRFunc) -> HIRFunc:
     # 初始 typectx = 参数
     typectx: dict[str, TypeIR] = {p.name: p.ty for p in func.params}
 
+    # P0 跨实例命名冲突修复：factorize 三实例（lex/grlex/grevlex）共享 base_name
+    # "factorize"，导致 lifted lambda 名重复。用 base + suffix 区分。
+    host = func.base_name
+    if func.instance_suffix:
+        host = f"{host}_{func.instance_suffix}"
+
     new_body = _walk_and_lift(
-        func.body, func.base_name, counter,
+        func.body, host, counter,
         outer_params=func.params,
         typectx=typectx,
         aux_collect=aux_collect,

@@ -793,7 +793,11 @@ def iter_recognize_pass(func: HIRFunc) -> HIRFunc:
     extra_aux: list[HIRFunc] = []
     counter = [0]
     main_typectx: dict[str, TypeIR] = {p.name: p.ty for p in func.params}
-    new_body = _lift_filtermap_lambdas(new_body, func.base_name,
+    # 跨实例命名冲突修复（与 Pass 3、Pass 7 保持一致）：含 instance_suffix
+    main_host = func.base_name
+    if func.instance_suffix:
+        main_host = f"{main_host}_{func.instance_suffix}"
+    new_body = _lift_filtermap_lambdas(new_body, main_host,
                                           main_typectx, extra_aux, counter)
     new_aux_2: list[HIRFunc] = []
     for aux in new_aux:

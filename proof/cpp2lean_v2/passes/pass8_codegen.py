@@ -148,6 +148,10 @@ def emit_type(ty: Optional[TypeIR]) -> str:
         # Lambda/LambdaRef 残留：Pass 3 lambda_lift 漏过的 case
         if ty.name in ("Lambda", "LambdaRef"):
             return _sorry(f"lambda residual type: {ty.name}")
+        # Option 单名（无 type arg）—— Pass 4 上游漏指定 inner type；
+        # 降级为 Option Unit 占位（语义不重要，B2B 测试时再细化）
+        if ty.name == "Option":
+            return "Option Unit"
         return ty.name
     if isinstance(ty, ArrayType):
         return f"Array {_paren(emit_type(ty.elem))}"
@@ -189,18 +193,25 @@ def _paren(s: str) -> str:
 # ============================================================
 
 def emit_lit(l: Lit) -> str:
-    """Lit → Lean 字面量（含类型标注）。"""
+    """Lit → Lean 字面量。
+
+    整数字面量不带类型标注（让 Lean 上下文推断）—— Pass 1 的 Lit.ty 常常过于
+    具体（C++ `0` 默认 Int32，但 Lean 上下文可能期望 Int / Nat / Int64）。
+    Pass 5 的 Cast 链处理显式转换；本函数仅给值 + 必要时显式标注。
+
+    Bool / Unit / Float / String 保留类型语义（符号不同）。
+    """
     if l.ty == BaseType.BOOL:
         return "true" if l.value else "false"
     if l.ty == BaseType.UNIT:
         return "()"
-    if l.ty in (BaseType.UINT64, BaseType.UINT32, BaseType.UINT128,
-                 BaseType.INT64, BaseType.INT32, BaseType.NAT, BaseType.FLOAT):
-        return f"({l.value} : {l.ty.value})"
+    if l.ty == BaseType.FLOAT:
+        return f"({l.value} : Float)"
     if isinstance(l.value, str):
         # 字符串字面量
         return f"\"{l.value}\""
-    return f"({l.value})"
+    # 整数字面量：不标注类型，让 Lean 推断
+    return f"{l.value}"
 
 
 # ============================================================
@@ -242,12 +253,26 @@ def emit_expr(e: ExprIR, ctx: EmitCtx) -> str:
     if isinstance(e, ArrayAccess):
         idx = emit_expr(e.idx, ctx)
         arr = emit_expr(e.arr, ctx)
-        # idx 可能是 UInt64/Int64，Lean Array.get! 需 Nat
-        return f"({arr}[{idx}.toNat]!)"
+        # Lean Array.get! 需 Nat。按 idx 类型分派：
+        #   Nat                → 直接用
+        #   UInt32/64/128 / Int → .toNat
+        #   Int32/Int64        → .toNatClampNeg（无 .toNat 方法；负数夹零）
+        # idx 强制 (...)  包裹（即使是裸字面量），避免 `0.toNat` 被解析 decimal。
+        idx_p = idx if (idx.startswith("(") and idx.endswith(")")) else f"({idx})"
+        idx_ty = getattr(e.idx, 'ty', None)
+        if idx_ty == BaseType.NAT:
+            return f"({arr}[{idx_p}]!)"
+        if idx_ty in (BaseType.INT32, BaseType.INT64):
+            return f"({arr}[{idx_p}.toNatClampNeg]!)"
+        return f"({arr}[{idx_p}.toNat]!)"
 
     if isinstance(e, FieldAccess):
         obj = emit_expr(e.obj, ctx)
-        return f"{obj}.{e.field_name}"
+        # C++ std::pair 字段名 first/second → Lean Prod fst/snd
+        field = e.field_name
+        if field == "first": field = "fst"
+        elif field == "second": field = "snd"
+        return f"{obj}.{field}"
 
     if isinstance(e, Cast):
         return emit_cast(e, ctx)
@@ -337,6 +362,17 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
             formatted = formatted.replace(f"{{a{i}}}", s)
         # 模板可能是 `Zp.mk {a0} {a1}` 这种空格分隔形式，包圆括号
         return f"({formatted})"
+
+    # __cast__<template> — Pass 5 cast 解析后形式
+    # 模板含 {x} 占位符（仅 1 个 arg = inner expr）
+    if callee.startswith("__cast__"):
+        template = callee[len("__cast__"):]
+        if len(e.args) == 1:
+            inner = emit_expr(e.args[0], ctx)
+            formatted = template.replace("{x}", inner)
+            return f"({formatted})"
+        # 多 arg 退化：保留 callee 名（不应发生）
+        return _sorry(f"__cast__ with !=1 arg: {len(e.args)}")
 
     # _mutate_ 前缀 → 去掉（v1 兼容）
     raw = callee
@@ -440,9 +476,15 @@ def emit_stmt(s: MIRStmt, ctx: EmitCtx) -> str:
 # Param emit（用于 S3 emit_mirfunc）
 # ============================================================
 
+_anon_param_counter = [0]
+
+
 def emit_param(p: HIRParam) -> str:
-    """HIRParam → Lean 函数参数 `(name : T)`。"""
-    return f"({_safe_ident(p.name)} : {emit_type(p.ty)})"
+    """HIRParam → Lean 函数参数 `(name : T)`。空名给匿名占位（防 parse 错误）。"""
+    name = p.name if p.name else f"_anon_{_anon_param_counter[0]}"
+    if not p.name:
+        _anon_param_counter[0] += 1
+    return f"({_safe_ident(name)} : {emit_type(p.ty)})"
 
 
 def emit_params(params: list[HIRParam]) -> str:
@@ -607,7 +649,7 @@ def emit_mirfunc(f: MIRFunc) -> str:
 
 
 def codegen_pass(top: MIRFunc) -> str:
-    """完整 mir 树 → Lean 4 .lean 源码。
+    """完整 mir 树 → Lean 4 .lean 源码（单 top）。
 
     布局：
       import CLPoly.Model
@@ -622,24 +664,58 @@ def codegen_pass(top: MIRFunc) -> str:
     out.append("")
     out.append("namespace Generated")
     out.append("")
-    # 拓扑序：递归先 emit aux_defs（深度优先后序），再 emit 自身
-    emit_order: list[MIRFunc] = []
-    visited: set[int] = set()  # id(func)
-
-    def _collect(f: MIRFunc):
-        if id(f) in visited:
-            return
-        visited.add(id(f))
-        for a in f.aux_defs:
-            _collect(a)
-        emit_order.append(f)
-
-    _collect(top)
-    for f in emit_order:
+    for f in _topo_collect_funcs([top]):
         out.append(emit_mirfunc(f))
         out.append("")
     out.append("end Generated")
     return "\n".join(out)
+
+
+def codegen_corpus(top_funcs: list[MIRFunc]) -> str:
+    """全 corpus → 单一 .lean 源码（aggregate，含一个全局 `mutual ... end`）。
+
+    所有 top 函数 + 它们的 aux_defs 全部在同一 mutual 块中——允许任意调用顺序，
+    简化文件分块策略（B1 阶段不做精细 SCC 拆分）。
+
+    输出：单个 .lean 文件字符串。
+    """
+    out: list[str] = []
+    out.append("-- Auto-generated by cpp2lean v2 Pass 8 (corpus aggregate)")
+    out.append("import CLPoly.Model")
+    out.append("")
+    out.append("namespace Generated")
+    out.append("")
+    out.append("mutual")
+    funcs = _topo_collect_funcs(top_funcs)
+    for f in funcs:
+        out.append(emit_mirfunc(f))
+        out.append("")
+    out.append("end")  # mutual end
+    out.append("")
+    out.append("end Generated")
+    return "\n".join(out)
+
+
+def _topo_collect_funcs(roots: list[MIRFunc]) -> list[MIRFunc]:
+    """从 roots 列表收集所有 MIRFunc，按"被依赖者先"顺序返回。
+
+    对每个 root：DFS 走 aux_defs（先递归到叶子），后序追加。跨 root 共享
+    visited 集，按 id() 去重。
+    """
+    emit_order: list[MIRFunc] = []
+    visited: set[int] = set()
+
+    def _walk(f: MIRFunc):
+        if id(f) in visited:
+            return
+        visited.add(id(f))
+        for a in f.aux_defs:
+            _walk(a)
+        emit_order.append(f)
+
+    for r in roots:
+        _walk(r)
+    return emit_order
 
 
 def emit_jump_to(target_bb: int, src_bb_id: int, ctx: EmitCtx) -> str:

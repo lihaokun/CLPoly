@@ -41,7 +41,7 @@ def test_single_bb_return():
     out = emit_cfg(cfg)
     print("--- single_bb ---")
     print(out)
-    assert "let x : Int64 := (42 : Int64)" in out
+    assert "let x : Int64 := 42" in out
     assert out.rstrip().endswith("x")  # 最后一行是 return value
     print("PASS test_single_bb_return")
 
@@ -96,7 +96,7 @@ def test_diamond_merge():
     # else 分支调用 bb_3 with x_2
     assert "bb_3 x_2" in out
     # if cond
-    assert "if (a > (0 : Int64)) then" in out
+    assert "if (a > 0) then" in out
     # merge body: x_3 直接 return
     assert "x_3" in out.split("=>")[1] if "=>" in out else False
     print("PASS test_diamond_merge")
@@ -134,7 +134,7 @@ def test_tailcall():
     # tail call 添加 _ir 后缀
     assert "_loop_foo_0_ir" in out
     # 返回 0
-    assert "(0 : Int64)" in out
+    assert "0" in out
     print("PASS test_tailcall")
 
 

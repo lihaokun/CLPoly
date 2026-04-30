@@ -80,8 +80,9 @@ def test_emit_type_residual_sorry():
 # ============================================================
 
 def test_emit_lit():
-    assert emit_lit(Lit(42, BaseType.INT64)) == "(42 : Int64)"
-    assert emit_lit(Lit(0, BaseType.UINT64)) == "(0 : UInt64)"
+    # 整数字面量不带类型标注，让 Lean 推断
+    assert emit_lit(Lit(42, BaseType.INT64)) == "42"
+    assert emit_lit(Lit(0, BaseType.UINT64)) == "0"
     assert emit_lit(Lit(True, BaseType.BOOL)) == "true"
     assert emit_lit(Lit(False, BaseType.BOOL)) == "false"
     assert emit_lit(Lit(0, BaseType.UNIT)) == "()"
@@ -111,9 +112,9 @@ def test_emit_expr_binop():
     e_add = BinOp("+", a, b, ty=BaseType.UINT64)
     assert emit_expr(e_add, _ctx()) == "(a + b)"
     e_shr = BinOp(">>", a, Lit(1, BaseType.UINT64), ty=BaseType.UINT64)
-    assert emit_expr(e_shr, _ctx()) == "(a >>> (1 : UInt64))"
+    assert emit_expr(e_shr, _ctx()) == "(a >>> 1)"
     e_eq = BinOp("==", a, Lit(0, BaseType.UINT64), ty=BaseType.BOOL)
-    assert emit_expr(e_eq, _ctx()) == "(a == (0 : UInt64))"
+    assert emit_expr(e_eq, _ctx()) == "(a == 0)"
     print("PASS test_emit_expr_binop")
 
 
@@ -134,14 +135,15 @@ def test_emit_expr_field_array_tuple():
     arr = Var(name="xs", version=0)
     idx = Var(name="i", version=0, ty=BaseType.UINT64)
     aa = ArrayAccess(arr=arr, idx=idx, ty=BaseType.UINT64)
-    assert emit_expr(aa, _ctx()) == "(xs[i.toNat]!)"
+    # idx 强制 () 包裹（防裸字面量 0.toNat decimal 歧义）
+    assert emit_expr(aa, _ctx()) == "(xs[(i).toNat]!)"
 
     te = TupleExpr(elems=[Var("a"), Var("b"), Var("c")])
     assert emit_expr(te, _ctx()) == "(a, b, c)"
 
     al = ArrayLit(elems=[Lit(1, BaseType.UINT64), Lit(2, BaseType.UINT64)],
                    elem_ty=BaseType.UINT64)
-    assert emit_expr(al, _ctx()) == "#[(1 : UInt64), (2 : UInt64)]"
+    assert emit_expr(al, _ctx()) == "#[1, 2]"
     print("PASS test_emit_expr_field_array_tuple")
 
 
@@ -202,7 +204,7 @@ def test_emit_stmt_let():
     s = LetStmt(var=Var("x", version=2, ty=BaseType.UINT64), ty=BaseType.UINT64,
                   value=Lit(42, BaseType.UINT64))
     out = emit_stmt(s, ctx)
-    assert out == "  let x_2 : UInt64 := (42 : UInt64)"
+    assert out == "  let x_2 : UInt64 := 42"
     # sorry type → 省略标注
     s2 = LetStmt(var=Var("y"), ty=UnknownType(""), value=Var("rhs"))
     out2 = emit_stmt(s2, EmitCtx(indent=0))

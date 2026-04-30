@@ -770,9 +770,13 @@ def loop_lower_pass(func: MIRFunc) -> MIRFunc:
         header, back_srcs, body_bbs = loop_info
 
         # 提取 loop 函数
+        # 跨实例命名冲突修复（与 Pass 3、Pass 4 保持一致）：含 instance_suffix
+        host_base = func.base_name
+        if func.instance_suffix:
+            host_base = f"{host_base}_{func.instance_suffix}"
         loop_func, phi_target_vars, exit_targets, free_vars, live_outs = \
             _build_loop_func(cfg, header, body_bbs, idom, loop_id_counter,
-                             host_base=func.base_name)
+                             host_base=host_base)
         loop_id_counter += 1
         new_aux.append(loop_func)
 

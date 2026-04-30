@@ -296,14 +296,25 @@ def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
     defs_in_loop: set[str] = {v.name for v, _ in phi_target_at_header}
     reads_in_loop: set[tuple[str, int]] = set()
     read_tys: dict[tuple[str, int], TypeIR] = {}
+    # header BB 的 phi 是 loop-carried — sources 要么在循环外（init arg），要么
+    # 在循环内某 body BB（loop-defined）。body 内非-header BB 的 phi（Pass 6 在
+    # 嵌套合流点也可能插 phi）—— 其 sources 可能引用 outer-scope Var。
+    # 策略：对所有 phi.sources 都扫；下面的 filter（name ∈ defs_in_loop）会自然
+    # 过滤掉 loop-defined 的 source，外层引用即落入 free_vars。
     for bb_id in body_bbs:
         bb = cfg.blocks[bb_id]
         for s in bb.stmts:
             if isinstance(s, PhiStmt):
                 defs_in_loop.add(s.target.name)
-                # phi sources from outside loop = init args (not free vars in body sense)
-                # phi sources from inside loop = loop-defined
-                # 这里跳过 phi.sources 的收集（init args 是 caller 的事）
+                # P1-rescan-phi（第十二轮）：扫 phi.sources 把 outer-scope 引用纳入；
+                # 若 source 是 loop-defined（含 header phi 的循环内分支），下面 filter
+                # 阶段 `name in defs_in_loop` 会过滤掉，无需在此区分。
+                for src in s.sources.values():
+                    if isinstance(src, Var):
+                        reads_in_loop.add((src.name, src.version))
+                        if (src.name, src.version) not in read_tys \
+                                and src.ty is not None:
+                            read_tys[(src.name, src.version)] = src.ty
             elif isinstance(s, LetStmt):
                 if s.value is not None:
                     _collect_var_reads_in_expr_versioned(s.value, reads_in_loop, read_tys)
@@ -321,9 +332,15 @@ def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
                 _collect_var_reads_in_expr_versioned(a, reads_in_loop, read_tys)
 
     # 过滤出 free vars: name 不在 defs_in_loop（含 phi target name）
+    # P1-cap-blacklist（第十二轮）：跳过合成名前缀（lambda/loop ref / 临时返回值），
+    # 与 rescan 段（line ~538）保持过滤一致——这些是函数引用 / Pass 7 内部生成
+    # 名，不应作为 cap_param 进 loop_func.params。
     free: list[Var] = []
     for (name, version) in sorted(reads_in_loop):
         if name in defs_in_loop:
+            continue
+        if name.startswith(("_lambda_", "_loop_", "__loop_ret_",
+                              "__refret_", "__hoist_lam")):
             continue
         ty = read_tys.get((name, version), UnknownType(""))
         free.append(Var(name=name, version=version, ty=ty))
@@ -425,15 +442,20 @@ def _replace_terminator_for_back_edge(t, header: int, loop_name: str,
 
 
 def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
-                     idom: dict[int, int], loop_id: int
+                     idom: dict[int, int], loop_id: int,
+                     host_base: str
                      ) -> tuple[MIRFunc, list[Var], list[int], list[Var], list[Var]]:
     """从 cfg 提取 loop 为独立 MIRFunc。
 
     返回 (loop_func, phi_target_vars, exit_targets, free_vars, live_outs)。
     - phi_target_vars: caller 端做 init args 用
     - live_outs: caller 端做 destructure 用（含 phi targets 若 post-loop 用）
+
+    P0-A 修复（第十一轮）：loop 名 `_loop_{host_base}_{id}` 避免全局命名冲突
+    （多个 host 都从 id=0 开始 → 旧的 `_loop_0` 在 aux_defs 跨 host 重名，导致
+    codegen 时同名碰撞 + arity 校验歧义）。
     """
-    loop_name = f"_loop_{loop_id}"
+    loop_name = f"_loop_{host_base}_{loop_id}"
     header_block = cfg.blocks[header]
 
     # 1. params: phi targets at header + free vars（含版本号编入 name）
@@ -516,6 +538,16 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
                 _collect_var_reads_in_expr_versioned(s.value, extra_reads, extra_read_tys)
             elif isinstance(s, RequireStmt):
                 _collect_var_reads_in_expr_versioned(s.cond, extra_reads, extra_read_tys)
+            elif isinstance(s, PhiStmt):
+                # P1-rescan-phi（第十二轮）：body 内非-header BB 的 PhiStmt
+                # （header phi 已在 482 行剔除），其 sources 可能引用 reaching-def
+                # 后的 outer-scope Var。漏扫导致 loop_func 内 undef 引用。
+                for src in s.sources.values():
+                    if isinstance(src, Var):
+                        extra_reads.add((src.name, src.version))
+                        if (src.name, src.version) not in extra_read_tys \
+                                and src.ty is not None:
+                            extra_read_tys[(src.name, src.version)] = src.ty
         t = bb.terminator
         if isinstance(t, ReturnTerm) and t.value is not None:
             _collect_var_reads_in_expr_versioned(t.value, extra_reads, extra_read_tys)
@@ -544,6 +576,31 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
                                          is_ref=False, is_const_ref=False,
                                          is_output=False))
         new_params = phi_params + cap_params
+        # P0-A 修复（第十一轮审视）：terminator 改写发生在重扫之前，已构造的
+        # TailCallTerm.args 用的是初始 free_vars。这里追加 extra_free 进所有
+        # 自调用的 TailCallTerm.args，否则 args 数 < params 数 → silent arity 错位。
+        for bb_id, bb in list(new_blocks.items()):
+            t = bb.terminator
+            if isinstance(t, TailCallTerm) and t.target_func == loop_name:
+                new_args = list(t.args) + list(extra_free)
+                new_blocks[bb_id] = BasicBlock(
+                    bb_id=bb_id, stmts=bb.stmts,
+                    terminator=TailCallTerm(target_func=loop_name,
+                                             args=new_args),
+                )
+
+    # P0-A 修复（续）：自检——所有自调用 TailCallTerm.args 数必须 == new_params 数。
+    expected_arity = len(new_params)
+    for bb_id, bb in new_blocks.items():
+        t = bb.terminator
+        if isinstance(t, TailCallTerm) and t.target_func == loop_name:
+            if len(t.args) != expected_arity:
+                raise TranslationError(
+                    pass_name="loop_lower",
+                    func_name=loop_name,
+                    reason=(f"bb[{bb_id}]: TailCallTerm arity mismatch — "
+                            f"args={len(t.args)} expected={expected_arity}"),
+                )
 
     new_cfg = CFG(entry=header, blocks=new_blocks)
     new_cfg.rebuild_edges()
@@ -552,7 +609,7 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
         base_name=loop_name,
         instance_suffix="",
         mangled_name="",
-        qual_type=f"loop in <outer> | id={loop_id}",
+        qual_type=f"loop in {host_base} | id={loop_id}",
         params=new_params,
         ret_ty=ret_ty,
         requires=[],
@@ -714,7 +771,8 @@ def loop_lower_pass(func: MIRFunc) -> MIRFunc:
 
         # 提取 loop 函数
         loop_func, phi_target_vars, exit_targets, free_vars, live_outs = \
-            _build_loop_func(cfg, header, body_bbs, idom, loop_id_counter)
+            _build_loop_func(cfg, header, body_bbs, idom, loop_id_counter,
+                             host_base=func.base_name)
         loop_id_counter += 1
         new_aux.append(loop_func)
 
@@ -761,7 +819,8 @@ def _splice_loop_call(cfg: CFG, header: int, body_bbs: set[int],
                                 "loop has no exit edges")
 
     # tmp var receiving loop func result
-    tmp_name = f"__loop_ret_{loop_func.base_name.split('_')[-1]}"
+    # P0-A 修复（续）：含 host 的 loop_name → tmp 名也唯一
+    tmp_name = f"__loop_ret_{loop_func.base_name.removeprefix('_loop_')}"
     tmp_var = Var(name=tmp_name, version=1, ty=loop_func.ret_ty)
 
     # P7-6 修复：destructure 字段以 live_outs 为准（替代之前的 phi_targets）

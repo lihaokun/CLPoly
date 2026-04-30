@@ -777,96 +777,155 @@ def _walk_and_rewrite(stmts: list[StmtIR]) -> list[StmtIR]:
 def iter_recognize_pass(func: HIRFunc) -> HIRFunc:
     """Pass 4：HIR₂ → HIR₃。处理主 body + aux_lambdas[*].body。
 
-    P7-8 修复：Pass 4 CF-1 生成的 LambdaExpr (Array.filterMap pred) 在 Pass 3
-    lambda_lift 之后才生成 → 没被 lift。这里在 Pass 4 末尾自己 lift：把
-    Array.filterMap 调用中的 LambdaExpr 提到 aux_lambdas 内（0 cap，pure），
-    Call args 改为 Var(lifted_name)。
+    P7-8 修复 + P0-B（第十一轮）：Pass 4 CF-1 生成的 LambdaExpr (Array.filter/
+    filterMap pred) 在 Pass 3 lambda_lift 之后才生成 → 没被 lift。这里在 Pass 4
+    末尾自己 lift：把 Call 中的 LambdaExpr 提到 aux_lambdas，并**正确处理 capture**：
+    复用 Pass 3 的 `_collect_free_vars` + outer typectx 计算捕获，把 captures
+    作为 lifted func 前置 params；Call args 仍替换为单个 Var(lifted_name)（与
+    Pass 3 行为一致，由 Pass 8 codegen 端基于 qual_type.n_caps 做 partial-app）。
     """
     new_body = _walk_and_rewrite(list(func.body))
     new_aux = [
         replace(aux, body=_walk_and_rewrite(list(aux.body)))
         for aux in func.aux_lambdas
     ]
-    # 提取 CF-1 生成的 filter-map lambdas
+    # 提取 CF-1 生成的 filter/filterMap lambdas
     extra_aux: list[HIRFunc] = []
     counter = [0]
+    main_typectx: dict[str, TypeIR] = {p.name: p.ty for p in func.params}
     new_body = _lift_filtermap_lambdas(new_body, func.base_name,
-                                          extra_aux, counter)
+                                          main_typectx, extra_aux, counter)
     new_aux_2: list[HIRFunc] = []
     for aux in new_aux:
         aux_extra: list[HIRFunc] = []
+        aux_typectx: dict[str, TypeIR] = {p.name: p.ty for p in aux.params}
         new_aux_body = _lift_filtermap_lambdas(list(aux.body), aux.base_name,
-                                                aux_extra, counter)
+                                                aux_typectx, aux_extra, counter)
         new_aux_2.append(replace(aux, body=new_aux_body))
         new_aux_2.extend(aux_extra)
     return replace(func, body=new_body,
                     aux_lambdas=new_aux_2 + extra_aux)
 
 
+# 引入 Pass 3 的 free-var 工具（外部依赖；Pass 3 已 1:1 验证过）
+from pass3_lambda_lift import _collect_free_vars as _p3_collect_free_vars
+from pass3_lambda_lift import _collect_modified as _p3_collect_modified
+
+
 def _lift_filtermap_lambdas(stmts: list[StmtIR], host_name: str,
+                              typectx: dict[str, TypeIR],
                               extra_aux: list[HIRFunc],
                               counter: list[int]) -> list[StmtIR]:
-    """递归扫描 stmts，找 Array.filterMap/filter Call 中嵌入的 LambdaExpr，提取
+    """递归扫描 stmts，找 Array.filter/filterMap Call 中嵌入的 LambdaExpr，提取
     为 HIRFunc，加入 extra_aux，Call args 中替换为 Var(lifted_name)。
+
+    捕获处理（P0-B 第十一轮）：lifted func 的 params = capture_params + lambda
+    原 params；qual_type 编码 n_caps + modified_captures，与 Pass 3 一致。
+
+    typectx 在递归中累积 LetStmt 引入的 local var 类型，用于决定哪些 free var
+    属于 host 可见 capture（vs 全局函数引用）。
     """
+    def _try_lift_call(c: Call) -> Call | None:
+        """若 c 是 Array.filter/filterMap 且 args[1] 是 LambdaExpr，lift 之；
+        返回替换后的 Call；否则返回 None。"""
+        if not (isinstance(c.callee, str)
+                and c.callee in ("Array.filter", "Array.filterMap")
+                and len(c.args) == 2 and isinstance(c.args[1], LambdaExpr)):
+            return None
+        lam: LambdaExpr = c.args[1]
+        counter[0] += 1
+        lam_name = f"_lambda_{host_name}_filt{counter[0]}"
+        param_names = {p.name for p in lam.params}
+        free_vars = _p3_collect_free_vars(lam.body, param_names)
+        capture_names = sorted(free_vars & set(typectx.keys()))
+        modified = _p3_collect_modified(lam.body)
+        modified_captures = sorted(set(capture_names) & modified)
+        cap_params = [
+            HIRParam(
+                name=cn,
+                ty=typectx.get(cn, UnknownType("")),
+                is_ref=(cn in modified),
+                is_const_ref=(cn not in modified),
+                is_output=False,
+            )
+            for cn in capture_names
+        ]
+        ret_ty = lam.ty if lam.ty else UnknownType("")
+        lifted = HIRFunc(
+            base_name=lam_name,
+            instance_suffix="", mangled_name="",
+            qual_type=(f"lambda from filterMap in {host_name} "
+                        f"| n_caps={len(cap_params)} "
+                        f"| modified_captures={modified_captures}"),
+            params=cap_params + list(lam.params),
+            ret_ty=ret_ty,
+            body=list(lam.body),
+            requires=[], aux_lambdas=[],
+        )
+        extra_aux.append(lifted)
+        return Call(callee=c.callee,
+                      args=[c.args[0],
+                             Var(name=lam_name, version=0,
+                                 ty=NamedType("LambdaRef"))],
+                      ty=c.ty)
+
     out: list[StmtIR] = []
     for s in stmts:
         if isinstance(s, AssignStmt) and isinstance(s.value, Call):
-            c = s.value
-            if isinstance(c.callee, str) and c.callee in ("Array.filter", "Array.filterMap") \
-                    and len(c.args) == 2 and isinstance(c.args[1], LambdaExpr):
-                lam: LambdaExpr = c.args[1]
-                counter[0] += 1
-                lam_name = f"_lambda_{host_name}_filt{counter[0]}"
-                # Lift: 0 caps，pure（lambda body 仅引用其 params __x）
-                lifted = HIRFunc(
-                    base_name=lam_name,
-                    instance_suffix="", mangled_name="",
-                    qual_type=f"lambda from filterMap | n_caps=0 | modified_captures=[]",
-                    params=list(lam.params),
-                    ret_ty=lam.ty if lam.ty else UnknownType(""),
-                    body=list(lam.body),
-                    requires=[], aux_lambdas=[],
-                )
-                extra_aux.append(lifted)
-                new_call = Call(callee=c.callee,
-                                  args=[c.args[0],
-                                         Var(name=lam_name, version=0,
-                                             ty=NamedType("LambdaRef"))],
-                                  ty=c.ty)
-                out.append(AssignStmt(target=s.target, value=new_call))
+            replaced = _try_lift_call(s.value)
+            if replaced is not None:
+                out.append(AssignStmt(target=s.target, value=replaced))
                 continue
+        if isinstance(s, LetStmt):
+            # P1-filter-letstmt（第十二轮）：LetStmt.value 也可能含 Array.filter
+            # （CF-1 当前只生成 AssignStmt 形态，但手写 HIR / 未来 CF-2 可能生成
+            # `let r := Array.filter(...)`，防御性 lift）。
+            new_value = s.value
+            if isinstance(s.value, Call):
+                replaced = _try_lift_call(s.value)
+                if replaced is not None:
+                    new_value = replaced
+            # 累积 typectx 后继续（注意：先 lift RHS，后入 typectx——RHS 内 lambda
+            # 不应视 s.var 为 capture，符合 C++ 作用域语义）
+            typectx[s.var.name] = s.ty
+            out.append(replace(s, value=new_value) if new_value is not s.value else s)
+            continue
         if isinstance(s, IfStmt):
             out.append(replace(s,
                 then_body=_lift_filtermap_lambdas(list(s.then_body),
-                                                    host_name, extra_aux, counter),
+                                                    host_name, typectx, extra_aux, counter),
                 else_body=_lift_filtermap_lambdas(list(s.else_body or []),
-                                                    host_name, extra_aux, counter)))
+                                                    host_name, typectx, extra_aux, counter)))
             continue
         if isinstance(s, WhileStmt):
             out.append(replace(s, body=_lift_filtermap_lambdas(list(s.body),
-                host_name, extra_aux, counter)))
+                host_name, typectx, extra_aux, counter)))
             continue
         if isinstance(s, DoWhileStmt):
             out.append(replace(s, body=_lift_filtermap_lambdas(list(s.body),
-                host_name, extra_aux, counter)))
+                host_name, typectx, extra_aux, counter)))
             continue
         if isinstance(s, ForStmt):
             out.append(replace(s,
-                init=_lift_filtermap_lambdas(list(s.init), host_name,
+                init=_lift_filtermap_lambdas(list(s.init), host_name, typectx,
                                                 extra_aux, counter),
-                step=_lift_filtermap_lambdas(list(s.step), host_name,
+                step=_lift_filtermap_lambdas(list(s.step), host_name, typectx,
                                                 extra_aux, counter),
-                body=_lift_filtermap_lambdas(list(s.body), host_name,
+                body=_lift_filtermap_lambdas(list(s.body), host_name, typectx,
                                                 extra_aux, counter)))
             continue
         if isinstance(s, RangeForStmt):
+            # range-for 引入循环变量 + decomposition
+            typectx[s.var.name] = s.var_ty
+            if s.decomposition:
+                for dv in s.decomposition:
+                    typectx[dv.name] = UnknownType("")
             out.append(replace(s, body=_lift_filtermap_lambdas(list(s.body),
-                host_name, extra_aux, counter)))
+                host_name, typectx, extra_aux, counter)))
             continue
         if isinstance(s, BlockStmt):
             out.append(replace(s, stmts=_lift_filtermap_lambdas(list(s.stmts),
-                host_name, extra_aux, counter)))
+                host_name, typectx, extra_aux, counter)))
             continue
         out.append(s)
     return out

@@ -763,7 +763,29 @@ def assert_mir1_invariant(func: MIRFunc) -> None:
       - 无结构化循环（CFG 不含 back edge——拓扑序成立）
       - 所有循环已提取为 aux_defs 内的独立 MIRFunc
       - 残留 break/continue/return 由 TailCallTerm + flag 表达
+      - 任意 TailCallTerm.args 数 == 目标 loop_func.params 数（P0-A 防回归）
     """
     assert_mir0_invariant(func)
+
+    # P0-A：检查自调用 TailCallTerm 的 args 数 == 当前 func 的 params 数。
+    # Pass 7 仅产生自调用形式（loop body 内回边 → 同一 loop_func 的 tail call），
+    # 跨 func TailCall 暂不处理；若未来引入需扩展此处。
+    def _check_tailcall_arity(f: MIRFunc) -> None:
+        if f.cfg is not None:
+            expected = len(f.params)
+            for bb_id, bb in f.cfg.blocks.items():
+                t = bb.terminator
+                if isinstance(t, TailCallTerm) and t.target_func == f.base_name:
+                    if len(t.args) != expected:
+                        raise TranslationError(
+                            pass_name="loop_lower",
+                            func_name=f.base_name,
+                            reason=(f"bb[{bb_id}]: TailCallTerm self-call "
+                                    f"arity mismatch — args={len(t.args)} "
+                                    f"expected={expected}"),
+                        )
+        for a in f.aux_defs:
+            _check_tailcall_arity(a)
+    _check_tailcall_arity(func)
     # 简化：本检查不实际运行 DomTree 分析，仅约定 Pass 7 不留下显式 back edge
     # （Pass 7 实现时此处可加 SCC / 拓扑序检查）

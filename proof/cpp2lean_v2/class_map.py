@@ -99,7 +99,7 @@ CLASS_MAP = {
             "begin": ("method", "SparsePolyZp.toList"),
             "end": ("method", "SparsePolyZp.toList"),
             "clear": ("mutate", "Array.empty"),
-            "assign": ("mutate", "Array.mkArray"),  # P0-6: vec.assign(n, val) → Array.mkArray n val
+            "assign": ("mutate", "Array.replicate"),  # P0-6: vec.assign(n, val) → Array.replicate n val
             "resize": ("noop", None),
             "erase": ("mutate", "Array.pop"),
             "at": ("method", "Array.get!"),
@@ -127,7 +127,7 @@ CLASS_MAP = {
             "begin": ("method", "SparsePolyZZ.toList"),
             "end": ("method", "SparsePolyZZ.toList"),
             "clear": ("mutate", "Array.empty"),
-            "assign": ("mutate", "Array.mkArray"),  # P0-6: vec.assign(n, val) → Array.mkArray n val
+            "assign": ("mutate", "Array.replicate"),  # P0-6: vec.assign(n, val) → Array.replicate n val
             "erase": ("mutate", "Array.erase"),  # P1-7: range/iter erase（兜底）
             "at":    ("method", "Array.get!"),
         },
@@ -242,7 +242,7 @@ CLASS_MAP = {
         },
         "methods": {
             "size": ("method", "LLLMatrix.size"),
-            "assign": ("mutate", "Array.mkArray"),  # P0-6: vec.assign(n, val) → Array.mkArray n val
+            "assign": ("mutate", "Array.replicate"),  # P0-6: vec.assign(n, val) → Array.replicate n val
             "push_back": ("mutate_push", "Array.push"),
             "reserve": ("noop", None),
             "swap": ("mutate", "LLLMatrix.swap"),

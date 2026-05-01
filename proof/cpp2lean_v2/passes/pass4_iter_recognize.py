@@ -397,8 +397,19 @@ def _match_filter_loop_A(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
         if if_stmt is None: return None
         # 推 elem_ty：从 container 类型剥（Array → elem_ty）
         elem_ty = None
-        if isinstance(container, Var) and isinstance(container.ty, ArrayType):
-            elem_ty = container.ty.elem
+        if isinstance(container, Var):
+            ct = container.ty
+            if isinstance(ct, ArrayType):
+                elem_ty = ct.elem
+            elif isinstance(ct, NamedType):
+                # 已知 CLPoly 容器 NamedType → elem 类型查表
+                _CONTAINER_ELEM = {
+                    "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
+                    "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
+                    "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
+                    "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
+                }
+                elem_ty = _CONTAINER_ELEM.get(ct.name)
         pred_lambda = _build_filter_map_lambda(
             mutators, if_stmt.cond, it_name, elem_ty)
         return FilterLoopMatch(

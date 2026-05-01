@@ -76,7 +76,14 @@ CAST_TABLE = {
     # 截断
     (BaseType.UINT128, BaseType.UINT64): "(uint128_lo {e})",
     (BaseType.UINT64, BaseType.UINT32):  "({e}).toUInt32",
-    (BaseType.INT64, BaseType.UINT32):   "({e}).toNat.toUInt32",
+    (BaseType.UINT64, BaseType.INT32):   "({e}).toUInt32.toInt32",
+    (BaseType.INT64, BaseType.UINT32):   "({e}).toUInt64.toUInt32",
+    (BaseType.INT64, BaseType.INT32):    "({e}).toInt32",
+    (BaseType.INT32, BaseType.INT64):    "({e}).toInt64",
+    (BaseType.INT32, BaseType.UINT64):   "({e}).toInt64.toUInt64",
+    (BaseType.INT32, BaseType.NAT):      "({e}).toNatClampNeg",
+    (BaseType.INT64, BaseType.NAT):      "({e}).toNatClampNeg",
+    (BaseType.UINT32, BaseType.INT64):   "({e}).toUInt64.toInt64",
     # 扩展
     (BaseType.UINT64, BaseType.UINT128): "({e} : UInt128)",
     (BaseType.UINT32, BaseType.UINT64):  "({e}).toUInt64",
@@ -85,10 +92,10 @@ CAST_TABLE = {
     (BaseType.NAT,    BaseType.INT64):   "(({e} : Int))",
     (BaseType.UINT64, BaseType.NAT):     "({e}).toNat",
     # 有符号 ↔ 无符号
-    (BaseType.INT64, BaseType.UINT64):   "({e}).toNat.toUInt64",
-    (BaseType.UINT64, BaseType.INT64):   "(({e}).toNat : Int)",
-    (BaseType.INT64, BaseType.UINT128):  "(({e}).toNat.toUInt64 : UInt128)",
-    (BaseType.UINT32, BaseType.INT64):   "(({e}).toNat : Int)",
+    (BaseType.INT64, BaseType.UINT64):   "({e}).toUInt64",
+    (BaseType.UINT64, BaseType.INT64):   "({e}).toInt64",
+    (BaseType.INT64, BaseType.UINT128):  "(({e}).toUInt64 : UInt128)",
+    # (UINT32, INT64) 已在上面定义为 toUInt64.toInt64
     (BaseType.UINT128, BaseType.INT64):  "((uint128_lo {e}).toNat : Int)",
     # Bool
     (BaseType.BOOL, BaseType.UINT64):    "(if {e} then (1 : UInt64) else 0)",
@@ -106,12 +113,19 @@ CAST_TABLE = {
 class EmitCtx:
     """共享 emit 状态。
 
-    indent — 当前 emit 缩进层级（每级 2 空格）
-    cfg / merge_bbs — S2 emit_cfg 注入；emit_jump_to 在 ctx 内查询
+    indent           — 当前 emit 缩进层级（每级 2 空格）
+    cfg / merge_bbs  — S2 emit_cfg 注入；emit_jump_to 在 ctx 内查询
+    caller_instance  — caller MIRFunc.instance_suffix（lex/grlex/grevlex/upoly/""）
+                       用于 Call 解析模板实例：caller 是 lex 实例时 callee
+                       `__polynomial_to_zp` 也应是 lex 实例 → `__polynomial_to_zp_lex_ir`
+    func_instances   — {base_name → {instance_suffix, ...}}：codegen_corpus 构造，
+                       用于查 callee 是否为模板函数
     """
     indent: int = 0
     cfg: Optional[CFG] = None
     merge_bbs: set[int] = field(default_factory=set)
+    caller_instance: str = ""
+    func_instances: dict[str, set[str]] = field(default_factory=dict)
 
 
 # ============================================================
@@ -193,13 +207,15 @@ def _paren(s: str) -> str:
 # ============================================================
 
 def emit_lit(l: Lit) -> str:
-    """Lit → Lean 字面量。
+    """Lit → Lean 字面量（含类型标注）。
 
-    整数字面量不带类型标注（让 Lean 上下文推断）—— Pass 1 的 Lit.ty 常常过于
-    具体（C++ `0` 默认 Int32，但 Lean 上下文可能期望 Int / Nat / Int64）。
-    Pass 5 的 Cast 链处理显式转换；本函数仅给值 + 必要时显式标注。
+    保留 Lit.ty 作为类型标注——Pass 1 的 Lit.ty 已规整（C++ 隐式 cast 已经在
+    AST 阶段被标注为 ImplicitCastExpr），所以 Lit.ty 即上下文期望类型。
+    BinOp(i_2:Int64, Lit(1, Int64)) → 输出 `i_2 + (1 : Int64)`，HAdd Int64
+    Int64 解析正确。
 
-    Bool / Unit / Float / String 保留类型语义（符号不同）。
+    若上游 Pass 1/5 错地把 Lit.ty 标为不期望类型（如 LetStmt(:Nat) 内
+    Lit(0, Int32) 不一致），那是上游 bug — Pass 8 不掩盖。
     """
     if l.ty == BaseType.BOOL:
         return "true" if l.value else "false"
@@ -208,9 +224,10 @@ def emit_lit(l: Lit) -> str:
     if l.ty == BaseType.FLOAT:
         return f"({l.value} : Float)"
     if isinstance(l.value, str):
-        # 字符串字面量
         return f"\"{l.value}\""
-    # 整数字面量：不标注类型，让 Lean 推断
+    # 整数字面量：带 Lit.ty 标注
+    if isinstance(l.ty, BaseType):
+        return f"({l.value} : {l.ty.value})"
     return f"{l.value}"
 
 
@@ -230,7 +247,18 @@ def emit_expr(e: ExprIR, ctx: EmitCtx) -> str:
         lean_op = BINOP_MAP.get(e.op, None)
         if lean_op is None:
             return _sorry(f"unmapped binop: {e.op}")
-        return f"({emit_expr(e.lhs, ctx)} {lean_op} {emit_expr(e.rhs, ctx)})"
+        # 上下文对齐：lhs/rhs 类型不一致时，若一边是 Lit 且 ty 是 BaseType，强制
+        # 重标 Lit.ty 与另一边对齐（修上游 Pass 5 cast 缺失的 silent bug）。
+        lhs, rhs = e.lhs, e.rhs
+        lhs_ty = getattr(lhs, 'ty', None)
+        rhs_ty = getattr(rhs, 'ty', None)
+        if isinstance(lhs_ty, BaseType) and isinstance(rhs_ty, BaseType) \
+                and lhs_ty != rhs_ty:
+            if isinstance(rhs, Lit):
+                rhs = Lit(value=rhs.value, ty=lhs_ty)
+            elif isinstance(lhs, Lit):
+                lhs = Lit(value=lhs.value, ty=rhs_ty)
+        return f"({emit_expr(lhs, ctx)} {lean_op} {emit_expr(rhs, ctx)})"
 
     if isinstance(e, UnaryOp):
         if e.op == "!":
@@ -269,9 +297,22 @@ def emit_expr(e: ExprIR, ctx: EmitCtx) -> str:
     if isinstance(e, FieldAccess):
         obj = emit_expr(e.obj, ctx)
         # C++ std::pair 字段名 first/second → Lean Prod fst/snd
+        # Pass 7 生成 elem0/elem1/.../elemN → Lean 嵌套 Prod 投影 .1 .2.1 .2.2 ...
         field = e.field_name
-        if field == "first": field = "fst"
-        elif field == "second": field = "snd"
+        if field == "first": return f"{obj}.fst"
+        if field == "second": return f"{obj}.snd"
+        if field.startswith("elem"):
+            try:
+                k = int(field[4:])
+                # n-tuple = (e0, (e1, (e2, ...)))；elem<k> 投影路径：
+                #   elem0 → .1
+                #   elemN (N>=1) → .2 (N-1 次) + .1 + tail
+                # 简化：用 .2 链 (k 次) 然后取 .1 (除非到末尾)
+                if k == 0:
+                    return f"{obj}.1"
+                return f"{obj}{'.2' * k}"  # 末位是 .2 直接拿，n-tuple 末尾即整体
+            except ValueError:
+                pass
         return f"{obj}.{field}"
 
     if isinstance(e, Cast):
@@ -356,6 +397,21 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
     # 模板含 {a0}/{a1}/... 占位符，按位置 args 替换为实际表达式
     if callee.startswith("__ctor__"):
         template = callee[len("__ctor__"):]
+        # ZZ:1 特判：模板 `(({a0}) : Int)` 是类型 ascription 不实际转换。
+        # 按 a0 实际类型选 .toInt / .toNat → Int 等。
+        if template == "(({a0}) : Int)" and len(e.args) == 1:
+            inner = emit_expr(e.args[0], ctx)
+            arg_ty = getattr(e.args[0], 'ty', None)
+            if arg_ty in (BaseType.INT64, BaseType.INT32):
+                return f"({inner}).toInt"
+            if arg_ty in (BaseType.UINT64, BaseType.UINT32):
+                return f"(({inner}).toNat : Int)"
+            if arg_ty == BaseType.NAT:
+                return f"(({inner}) : Int)"
+            # NamedType("ZZ"/"Int") 等已是 Int — 直接 inner
+            if isinstance(arg_ty, NamedType) and arg_ty.name in ("ZZ", "Int"):
+                return inner
+            return f"(({inner}) : Int) /- ZZ ctor fallback -/"
         arg_strs = [emit_expr(a, ctx) for a in e.args]
         formatted = template
         for i, s in enumerate(arg_strs):
@@ -401,7 +457,19 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
     if callee in NOOP_FUNCS:
         return args_str.split()[0] if args_str else "()"
     if callee in TRANSLATION_SCOPE:
-        return f"{callee}_ir" if no_args else f"({callee}_ir {args_str})"
+        # 模板实例化：caller 是 lex 实例时，callee 也用 lex 实例
+        # （C++ 模板单态化保证 caller / callee 在同一实例族内）
+        suffixes = ctx.func_instances.get(callee, set())
+        if ctx.caller_instance and ctx.caller_instance in suffixes:
+            ir_name = f"{callee}_{ctx.caller_instance}_ir"
+        elif suffixes and "" not in suffixes:
+            # 无 caller 实例信息但 callee 必须有 suffix（仅模板形式）；
+            # 任取一个稳定 suffix（按字母序）
+            picked = sorted(suffixes)[0]
+            ir_name = f"{callee}_{picked}_ir"
+        else:
+            ir_name = f"{callee}_ir"
+        return ir_name if no_args else f"({ir_name} {args_str})"
     # 已带 _ir 后缀（loop / lifted lambda）
     if callee.endswith("_ir"):
         return callee if no_args else f"({callee} {args_str})"
@@ -434,6 +502,27 @@ def emit_cast(e: Cast, ctx: EmitCtx) -> str:
         tmpl = CAST_TABLE.get((src, tgt))
         if tmpl is not None:
             return tmpl.format(e=inner)
+    # BaseType → NamedType("Int" / "ZZ"): 用 .toInt（Lean 4 Int64.toInt 等）
+    # ZZ 是 abbrev := Int，等价。
+    if isinstance(src, BaseType) and isinstance(tgt, NamedType) \
+            and tgt.name in ("Int", "ZZ"):
+        if src in (BaseType.INT64, BaseType.INT32):
+            return f"({inner}).toInt"
+        if src in (BaseType.UINT64, BaseType.UINT32):
+            return f"(({inner}).toNat : Int)"
+        if src == BaseType.NAT:
+            return f"({inner} : Int)"
+    # NamedType("Int" / "ZZ") → BaseType
+    if isinstance(src, NamedType) and src.name in ("Int", "ZZ") \
+            and isinstance(tgt, BaseType):
+        if tgt == BaseType.INT64:
+            return f"({inner}).toInt64"
+        if tgt == BaseType.INT32:
+            return f"({inner}).toInt32"
+        if tgt in (BaseType.UINT64, BaseType.UINT32):
+            return f"({inner}).toNat.{tgt.value.replace('UInt', 'toUInt')}"
+        if tgt == BaseType.NAT:
+            return f"({inner}).toNat"
     # NamedType ↔ BaseType: 兜底类型标注（Lean Coe 实例自动处理）
     if isinstance(tgt, (BaseType, NamedType)):
         return f"({inner} : {emit_type(tgt)})"
@@ -451,7 +540,14 @@ def emit_stmt(s: MIRStmt, ctx: EmitCtx) -> str:
 
     if isinstance(s, LetStmt):
         ty_str = emit_type(s.ty)
-        val_str = emit_expr(s.value, ctx)
+        # 上下文对齐：RHS 是 Lit 且 ty 与 LetStmt.ty 不一致 → 重标 Lit 类型对齐
+        # （修上游 Pass 5 cast 缺失的 silent bug，如 RangeFor i 索引 Nat 但
+        # Lit 标 Int32）
+        value = s.value
+        if isinstance(value, Lit) and isinstance(s.ty, BaseType) \
+                and isinstance(value.ty, BaseType) and value.ty != s.ty:
+            value = Lit(value=value.value, ty=s.ty)
+        val_str = emit_expr(value, ctx)
         var_str = emit_var_name(s.var)
         # 若类型是 sorry 或 unknown 残留，省略类型标注让 Lean 推断
         if "sorry" in ty_str:
@@ -496,7 +592,9 @@ def emit_params(params: list[HIRParam]) -> str:
 # S2: CFG / 终止子 emit
 # ============================================================
 
-def emit_cfg(cfg: CFG, base_indent: int = 1) -> str:
+def emit_cfg(cfg: CFG, base_indent: int = 1,
+              caller_instance: str = "",
+              func_instances: Optional[dict[str, set[str]]] = None) -> str:
     """MIRFunc.cfg → Lean 函数体表达式（不含 def 头/尾）。
 
     算法（见 pass8_codegen 文档 S2）：
@@ -526,7 +624,9 @@ def emit_cfg(cfg: CFG, base_indent: int = 1) -> str:
     dfs(cfg.entry)
 
     # 3 + 4. 构造 ctx 给所有 emit 函数共享
-    ctx = EmitCtx(indent=base_indent, cfg=cfg, merge_bbs=merge_bbs)
+    ctx = EmitCtx(indent=base_indent, cfg=cfg, merge_bbs=merge_bbs,
+                   caller_instance=caller_instance,
+                   func_instances=func_instances or {})
 
     # 3. emit merge BB lambdas（后序：被调用者先 emit）
     merge_lines: list[str] = []
@@ -567,7 +667,9 @@ def emit_merge_lambda(bb_id: int, ctx: EmitCtx) -> str:
         # 0 phi（理论可能：merge BB 无 SSA 冲突）→ 0 元 lambda
         header = f"{pad}let bb_{bb_id} := (fun _ : Unit =>"
     inner_ctx = EmitCtx(indent=ctx.indent + 1, cfg=ctx.cfg,
-                          merge_bbs=ctx.merge_bbs)
+                          merge_bbs=ctx.merge_bbs,
+                          caller_instance=ctx.caller_instance,
+                          func_instances=ctx.func_instances)
     body = emit_bb_inline(bb_id, inner_ctx)
     if not phi_targets:
         return f"{header}\n{body}\n{pad}) ()"
@@ -610,7 +712,9 @@ def emit_terminator(t, src_bb_id: int, ctx: EmitCtx) -> str:
         cond_str = emit_expr(t.cond, ctx)
         # 子分支缩进 +1
         inner_ctx = EmitCtx(indent=ctx.indent + 1, cfg=ctx.cfg,
-                              merge_bbs=ctx.merge_bbs)
+                              merge_bbs=ctx.merge_bbs,
+                              caller_instance=ctx.caller_instance,
+                              func_instances=ctx.func_instances)
         then_str = emit_jump_to(t.then_bb, src_bb_id, inner_ctx)
         else_str = emit_jump_to(t.else_bb, src_bb_id, inner_ctx)
         return (f"{pad}if {cond_str} then\n"
@@ -635,7 +739,7 @@ def emit_terminator(t, src_bb_id: int, ctx: EmitCtx) -> str:
 # S3: MIRFunc / 文件级 emit
 # ============================================================
 
-def emit_mirfunc(f: MIRFunc) -> str:
+def emit_mirfunc(f: MIRFunc, func_instances: Optional[dict[str, set[str]]] = None) -> str:
     """单个 MIRFunc → 顶层 `partial def {lean_name} (params) : ret := <body>`。"""
     sig_params = emit_params(f.params)
     sig_params_str = f" {sig_params}" if sig_params else ""
@@ -644,7 +748,9 @@ def emit_mirfunc(f: MIRFunc) -> str:
     if f.cfg is None:
         # 罕见：无 cfg 的 MIRFunc（如纯 sorry stub）
         return f"{sig}\n  sorry /- no cfg -/"
-    body = emit_cfg(f.cfg, base_indent=1)
+    body = emit_cfg(f.cfg, base_indent=1,
+                     caller_instance=f.instance_suffix,
+                     func_instances=func_instances or {})
     return f"{sig}\n{body}"
 
 
@@ -687,8 +793,12 @@ def codegen_corpus(top_funcs: list[MIRFunc]) -> str:
     out.append("")
     out.append("mutual")
     funcs = _topo_collect_funcs(top_funcs)
+    # 构建 base_name → {instance_suffix} 索引（用于 emit_call 模板实例解析）
+    func_instances: dict[str, set[str]] = {}
     for f in funcs:
-        out.append(emit_mirfunc(f))
+        func_instances.setdefault(f.base_name, set()).add(f.instance_suffix)
+    for f in funcs:
+        out.append(emit_mirfunc(f, func_instances=func_instances))
         out.append("")
     out.append("end")  # mutual end
     out.append("")

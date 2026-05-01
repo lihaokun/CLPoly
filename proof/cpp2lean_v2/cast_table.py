@@ -108,15 +108,15 @@ CAST_TABLE: dict[tuple[str, str], CastResolution] = {
     # 2. Widening（无 UB）
     ("int32",  "int64"):   CastResolution("({x}).toInt64", None),            # 70 次
     ("uint32", "uint64"):  CastResolution("({x}).toUInt64", None),           # 2 次
-    ("int32",  "nat"):     CastResolution("({x}).toNat", "nonneg"),          # 452 次（require x ≥ 0）
-    ("int32",  "uint64"):  CastResolution("({x}).toNat.toUInt64", "nonneg"), # 41 次
+    ("int32",  "nat"):     CastResolution("({x}).toNatClampNeg", "nonneg"),  # Lean 4: Int32 没 .toNat
+    ("int32",  "uint64"):  CastResolution("({x}).toInt64.toUInt64", "nonneg"),
     # int → size_t 走和 int → nat 相同路径（CLPoly Pass 1 size_t 常是 NAT；
     # UnknownType("std::size_t") 出现 4 次 — fallback 到 int32→nat 含义）
 
     # 3. Narrowing（带 UB-7 / fits require）
     ("nat",    "int32"):   CastResolution("({x}).toInt32", "fits_int32"),    # 46 次 — require x ≤ INT32_MAX
     ("int64",  "int32"):   CastResolution("({x}).toInt32", "fits_int32"),    # 6 次  — require -2^31 ≤ x < 2^31
-    ("int64",  "uint64"):  CastResolution("({x}).toNat.toUInt64", "nonneg"), # 5 次  — require x ≥ 0
+    ("int64",  "uint64"):  CastResolution("({x}).toUInt64", "nonneg"),       # 5 次  — require x ≥ 0
     ("uint64", "int64"):   CastResolution("({x}).toInt64", "fits_int64"),    # 2 次  — UB-7
     ("uint64", "int32"):   CastResolution("({x}).toInt32", "fits_int32"),    # 1 次  — UB-7
 

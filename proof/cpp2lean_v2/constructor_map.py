@@ -257,8 +257,8 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
 _VECTOR_PATTERNS = {
     0: ConstructorResolution("#[]", is_default=True),
     1: ConstructorResolution("({a0} : Array _)"),       # copy
-    2: ConstructorResolution("Array.mkArray {a0} {a1}"),  # n 个 default_val
-    3: ConstructorResolution("Array.mkArray {a0} {a1}"),  # alloc 第三参数忽略
+    2: ConstructorResolution("Array.replicate {a0} {a1}"),  # n 个 default_val
+    3: ConstructorResolution("Array.replicate {a0} {a1}"),  # alloc 第三参数忽略
 }
 
 # `std::pair<A, B>(a, b)`

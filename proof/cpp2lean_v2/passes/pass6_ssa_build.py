@@ -183,12 +183,18 @@ class CFGBuilder:
             self._range_counter += 1
             cont_name = f"__rangefor_cont_{n}"
             idx_name = f"__rangefor_idx_{n}"
-            cont_var = Var(name=cont_name, ty=UnknownType(""))
+            # 从 s.container 推 cont_var.ty（B1 修：之前一律标 UnknownType
+            # 导致下游 Pass 7 cap_param + Pass 8 codegen 类型 sorry 级联）
+            cont_ty: TypeIR = UnknownType("")
+            if isinstance(s.container, Var) and s.container.ty is not None \
+                    and not isinstance(s.container.ty, UnknownType):
+                cont_ty = s.container.ty
+            cont_var = Var(name=cont_name, ty=cont_ty)
             idx_var = Var(name=idx_name, ty=BaseType.INT64)
 
             # pre-block：缓存容器 + 初始化 idx
             current.stmts.append(LetStmt(
-                var=cont_var, ty=UnknownType(""), value=s.container))
+                var=cont_var, ty=cont_ty, value=s.container))
             current.stmts.append(LetStmt(
                 var=idx_var, ty=BaseType.INT64,
                 value=Lit(value=0, ty=BaseType.INT64)))

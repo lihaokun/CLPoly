@@ -828,6 +828,8 @@ def _splice_loop_call(cfg: CFG, header: int, body_bbs: set[int],
     tmp_var = Var(name=tmp_name, version=1, ty=loop_func.ret_ty)
 
     # P7-6 修复：destructure 字段以 live_outs 为准（替代之前的 phi_targets）
+    # B1 续修（2026-05-02）：n>2 tuple 直接生成 Lean 投影路径（"1", "2.1",
+    # "2.2.1", ..., "2.2...2"）—— Pass 8 emit FieldAccess 直接输出 obj.<path>
     n_lo = len(live_outs)
     n_total = 1 + n_lo  # kind + live_outs
     if n_total == 1:
@@ -837,8 +839,21 @@ def _splice_loop_call(cfg: CFG, header: int, body_bbs: set[int],
         kind_field = "fst"
         lo_fields = ["snd"]
     else:
-        kind_field = "elem0"
-        lo_fields = [f"elem{k+1}" for k in range(n_lo)]
+        # n > 2: nested Prod (a, (b, (c, d)))
+        #   elem0 (kind) → .1
+        #   elem1 → .2.1
+        #   elem2 → .2.2.1 (middle) or .2.2 (last)
+        kind_field = "1"
+        lo_fields = []
+        for k in range(n_lo):
+            # k 是 lo 内索引；对应 tuple 总位置 k+1（kind 在位置 0）
+            n_dots = k + 1  # 多少个 .2
+            if (k + 1) == n_total - 1:
+                # 最后一个：纯 .2 链
+                lo_fields.append("2" * 1 if n_dots == 1 else ".".join(["2"] * n_dots))
+            else:
+                # 中间：.2 链 + .1
+                lo_fields.append(".".join(["2"] * n_dots) + ".1")
 
     new_header_stmts: list[MIRStmt] = []
     new_header_stmts.append(LetStmt(

@@ -114,11 +114,11 @@ CAST_TABLE: dict[tuple[str, str], CastResolution] = {
     # UnknownType("std::size_t") 出现 4 次 — fallback 到 int32→nat 含义）
 
     # 3. Narrowing（带 UB-7 / fits require）
-    ("nat",    "int32"):   CastResolution("({x}).toInt32", "fits_int32"),    # 46 次 — require x ≤ INT32_MAX
+    ("nat",    "int32"):   CastResolution("({x}).toUInt32.toInt32", "fits_int32"),  # 兼容 Lean UInt64 视角
     ("int64",  "int32"):   CastResolution("({x}).toInt32", "fits_int32"),    # 6 次  — require -2^31 ≤ x < 2^31
     ("int64",  "uint64"):  CastResolution("({x}).toUInt64", "nonneg"),       # 5 次  — require x ≥ 0
     ("uint64", "int64"):   CastResolution("({x}).toInt64", "fits_int64"),    # 2 次  — UB-7
-    ("uint64", "int32"):   CastResolution("({x}).toInt32", "fits_int32"),    # 1 次  — UB-7
+    ("uint64", "int32"):   CastResolution("({x}).toUInt32.toInt32", "fits_int32"),  # Lean 4: UInt64 没 .toInt32
 
     # 4. bool 参与（设计需要，实测 0 次但 §8.2 列出）
     ("bool",   "int32"):   CastResolution("(if {x} then 1 else 0)", None),

@@ -144,8 +144,16 @@ def _safe_ident(name: str) -> str:
 
 
 def emit_var_name(v: Var) -> str:
-    """SSA Var → Lean 标识符（含版本 + «» 保护）。"""
-    return _safe_ident(v.lean_name())
+    """SSA Var → Lean 标识符（含版本 + «» 保护）。
+
+    `_lambda_*` / `_loop_*` 前缀的 Var 指向 lifted/extracted MIRFunc，对应
+    Lean 端 lean_name 形如 `_lambda_<host>_<n>_ir` —— 加 `_ir` 后缀。
+    """
+    name = v.lean_name()
+    if (name.startswith("_lambda_") or name.startswith("_loop_")) \
+            and not name.endswith("_ir"):
+        name = f"{name}_ir"
+    return _safe_ident(name)
 
 
 # ============================================================

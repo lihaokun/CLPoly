@@ -190,14 +190,17 @@ class CFGBuilder:
                     and not isinstance(s.container.ty, UnknownType):
                 cont_ty = s.container.ty
             cont_var = Var(name=cont_name, ty=cont_ty)
-            idx_var = Var(name=idx_name, ty=BaseType.INT64)
+            # idx 用 Nat 与 Lean Array indexing 原生类型一致（B1 续修）
+            # 之前用 Int64 → Pass 8 emit `idx < Array.size cont` 导致
+            # `Int64 vs Nat` 类型不匹配批量错误。
+            idx_var = Var(name=idx_name, ty=BaseType.NAT)
 
             # pre-block：缓存容器 + 初始化 idx
             current.stmts.append(LetStmt(
                 var=cont_var, ty=cont_ty, value=s.container))
             current.stmts.append(LetStmt(
-                var=idx_var, ty=BaseType.INT64,
-                value=Lit(value=0, ty=BaseType.INT64)))
+                var=idx_var, ty=BaseType.NAT,
+                value=Lit(value=0, ty=BaseType.NAT)))
 
             header = self.new_bb()
             body = self.new_bb()
@@ -210,7 +213,7 @@ class CFGBuilder:
                 op="<",
                 lhs=idx_var,
                 rhs=Call(callee="Array.size", args=[cont_var],
-                         ty=BaseType.INT64),
+                         ty=BaseType.NAT),
                 ty=BaseType.BOOL,
             )
             header.terminator = CondJumpTerm(
@@ -247,12 +250,12 @@ class CFGBuilder:
                                      s.var],
                                ty=UnknownType("")),
                 ))
-            # latch: idx ++ then jump header
+            # latch: idx ++ then jump header（idx 是 Nat，B1 续修）
             latch.stmts.append(AssignStmt(
                 target=idx_var,
                 value=BinOp(op="+", lhs=idx_var,
-                            rhs=Lit(value=1, ty=BaseType.INT64),
-                            ty=BaseType.INT64),
+                            rhs=Lit(value=1, ty=BaseType.NAT),
+                            ty=BaseType.NAT),
             ))
             latch.terminator = JumpTerm(target=header.bb_id)
 

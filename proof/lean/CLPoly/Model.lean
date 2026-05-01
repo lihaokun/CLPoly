@@ -232,10 +232,16 @@ def SparsePolyZZ.compactNonzero (f : SparsePolyZZ) : SparsePolyZZ :=
   f.filter (fun (_, coeff) => coeff != 0)
 
 def SparsePolyZZ.empty : SparsePolyZZ := #[]
+def SparsePolyZZ.front! (f : SparsePolyZZ) : UMonomial × Int := f[0]!
+def SparsePolyZZ.back! (f : SparsePolyZZ) : UMonomial × Int := f[f.size - 1]!
+def SparsePolyZZ.getDeg (f : SparsePolyZZ) : UInt64 := if f.isEmpty then 0 else f[0]!.fst.deg
 
--- get_deg: SparsePolyZZ 的最高度数（C++ side 习惯命名）
-def get_deg (f : SparsePolyZZ) : UInt64 :=
-  if f.isEmpty then 0 else (f[0]!).fst.deg
+-- get_deg: 泛型化（C++ side 多模板实例化共用同一 Lean 实现）
+-- 适用 SparsePolyZZ / SparsePolyZp 两种容器（结构相同：Array (UMonomial × _)）
+-- 返回 Nat（对齐 C++ size_t / Pass 1 类型推断；Pass 5 cast 链 .toUInt64 等
+-- 自动衔接）
+def get_deg {α : Type} [Inhabited α] (f : Array (UMonomial × α)) : Nat :=
+  if f.isEmpty then 0 else (f[0]!).fst.deg.toNat
 
 abbrev LLLMatrix := Array (Array Int)
 abbrev HenselNode := Array Int  -- 占位

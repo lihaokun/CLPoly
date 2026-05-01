@@ -126,6 +126,9 @@ class EmitCtx:
     merge_bbs: set[int] = field(default_factory=set)
     caller_instance: str = ""
     func_instances: dict[str, set[str]] = field(default_factory=dict)
+    # B1 续修：merge_free_vars[bb_id] = list[Var]，emit_merge_lambda 时计算，
+    # emit_jump_to 时调用 bb_<id> 加这些 args（在 phi_args 之前）
+    merge_free_vars: dict[int, list[Var]] = field(default_factory=dict)
 
 
 # ============================================================
@@ -636,16 +639,21 @@ def emit_cfg(cfg: CFG, base_indent: int = 1,
                    caller_instance=caller_instance,
                    func_instances=func_instances or {})
 
-    # 3. emit merge BB lambdas（后序：被调用者先 emit）
+    # 顺序：先 emit 所有 merge BB lambdas（被调用者后序），再 emit entry
+    # BB inline。Merge BB body 引用 caller-scope vars 通过 Lean 闭包捕获——
+    # 但 caller-scope vars 必须在 lambda 定义点之前可见。由于 Pass 8 emit_cfg
+    # 把 entry stmts 放在 merge lambdas 之后，Lean 闭包看不到。
+    #
+    # 妥协方案：用 `let rec` 风格——不可行 (Lean 4 let rec 限制)。
+    # 实战方案：把 merge BB 的 body 中引用的 caller-scope free vars 作为
+    # lambda 隐式参数（emit_merge_lambda 自己分析）。
     merge_lines: list[str] = []
     for bb_id in postorder:
         if bb_id in merge_bbs:
             merge_lines.append(emit_merge_lambda(bb_id, ctx))
 
-    # 4. emit entry inline（最后一个表达式）
     entry_lines = emit_bb_inline(cfg.entry, ctx)
 
-    # 拼接
     parts: list[str] = []
     for ml in merge_lines:
         parts.append(ml)
@@ -654,9 +662,12 @@ def emit_cfg(cfg: CFG, base_indent: int = 1,
 
 
 def emit_merge_lambda(bb_id: int, ctx: EmitCtx) -> str:
-    """合并块 → `let bb_<id> := fun phi_targets => <body>`。
+    """合并块 → `let bb_<id> := fun (free_vars...) (phi_targets...) => <body>`。
 
-    phi_targets 取 BB 开头连续 PhiStmt 的 target Var；body 跳过 phi 后 inline。
+    free_vars: body 引用但未在 body 中定义的 Var（caller-scope 引用）—— Pass 8
+    自己分析。Lean 闭包语义+词法作用域：merge lambda 在 entry stmts 之前 emit，
+    若不显式传 free vars 则 caller scope vars 不可见。
+    phi_targets: BB 开头连续 PhiStmt 的 target Var。
     """
     assert ctx.cfg is not None
     bb = ctx.cfg.blocks[bb_id]
@@ -666,22 +677,124 @@ def emit_merge_lambda(bb_id: int, ctx: EmitCtx) -> str:
             phi_targets.append(s.target)
         else:
             break
+    # 计算 free vars: body 引用且未定义在 body / phi_targets 中的 Var
+    free_vars = _compute_merge_free_vars(bb_id, phi_targets, ctx)
+    ctx.merge_free_vars[bb_id] = free_vars  # type: ignore[attr-defined]
+
     pad = "  " * ctx.indent
-    inner_pad = "  " * (ctx.indent + 1)
-    if phi_targets:
-        params_str = " ".join(emit_var_name(v) for v in phi_targets)
+    all_params = free_vars + phi_targets
+    if all_params:
+        params_str = " ".join(emit_var_name(v) for v in all_params)
         header = f"{pad}let bb_{bb_id} := fun {params_str} =>"
     else:
-        # 0 phi（理论可能：merge BB 无 SSA 冲突）→ 0 元 lambda
         header = f"{pad}let bb_{bb_id} := (fun _ : Unit =>"
     inner_ctx = EmitCtx(indent=ctx.indent + 1, cfg=ctx.cfg,
                           merge_bbs=ctx.merge_bbs,
                           caller_instance=ctx.caller_instance,
-                          func_instances=ctx.func_instances)
+                          func_instances=ctx.func_instances,
+                          merge_free_vars=ctx.merge_free_vars)
     body = emit_bb_inline(bb_id, inner_ctx)
-    if not phi_targets:
+    if not all_params:
         return f"{header}\n{body}\n{pad}) ()"
     return f"{header}\n{body}"
+
+
+def _compute_merge_free_vars(bb_id: int, phi_targets: list[Var],
+                               ctx: EmitCtx) -> list[Var]:
+    """递归扫描 merge BB 及其后继 (chain reachable until next merge or return)
+    收集所有 Var 引用减去 body-local-defs 减去 phi_targets。
+    """
+    assert ctx.cfg is not None
+
+    # 1. 收集 body-local defs（本 BB + 单前驱链 reachable 的 BB 的 Let/Phi 目标）
+    local_defs: set[tuple[str, int]] = set()
+    reads: list[Var] = []
+    seen: set[int] = set()
+
+    def visit(b_id: int):
+        if b_id in seen:
+            return
+        seen.add(b_id)
+        bb = ctx.cfg.blocks[b_id]
+        for s in bb.stmts:
+            if isinstance(s, PhiStmt):
+                local_defs.add((s.target.name, s.target.version))
+                # phi sources 不算 reads——它们由调用方传入（lambda args）
+                continue
+            if isinstance(s, LetStmt):
+                _collect_var_reads(s.value, reads)
+                local_defs.add((s.var.name, s.var.version))
+                continue
+            if isinstance(s, RequireStmt):
+                _collect_var_reads(s.cond, reads)
+        # terminator
+        t = bb.terminator
+        if isinstance(t, ReturnTerm) and t.value is not None:
+            _collect_var_reads(t.value, reads)
+        elif isinstance(t, CondJumpTerm):
+            _collect_var_reads(t.cond, reads)
+        elif isinstance(t, TailCallTerm):
+            for a in t.args:
+                _collect_var_reads(a, reads)
+        # 递归后继：仅非 merge 单前驱（那些被 inline 进本 BB 的）
+        if b_id != bb_id:
+            return  # 已收集过本 BB body; 不要进一步嵌套
+        for succ in ctx.cfg.succs.get(b_id, []):
+            if succ in ctx.merge_bbs:
+                # merge succ — 调用 bb_<succ>(its phi sources + free vars from succ)
+                # 那些 phi sources 已在 terminator 收集；succ 的 free_vars 还未知
+                continue
+            visit(succ)
+
+    visit(bb_id)
+    # 加入 phi_targets 到 local_defs（它们也是 lambda 参数）
+    for v in phi_targets:
+        local_defs.add((v.name, v.version))
+
+    # 2. 过滤 reads → free（不在 local_defs 且不是合成名）
+    free: list[Var] = []
+    seen_free: set[tuple[str, int]] = set()
+    for v in reads:
+        key = (v.name, v.version)
+        if key in local_defs:
+            continue
+        if key in seen_free:
+            continue
+        # 跳过 _lambda_/_loop_ 函数引用（它们是顶层 def 引用，不是 caller var）
+        if v.name.startswith(("_lambda_", "_loop_")):
+            continue
+        seen_free.add(key)
+        free.append(v)
+    return free
+
+
+def _collect_var_reads(e, out: list) -> None:
+    """递归收集 expr 中的 Var 引用。"""
+    if e is None: return
+    if isinstance(e, Var):
+        out.append(e); return
+    if isinstance(e, (Lit, UnresolvedOp)):
+        return
+    if isinstance(e, Cast):
+        _collect_var_reads(e.expr, out); return
+    if isinstance(e, BinOp):
+        _collect_var_reads(e.lhs, out); _collect_var_reads(e.rhs, out); return
+    if isinstance(e, UnaryOp):
+        _collect_var_reads(e.operand, out); return
+    if isinstance(e, CondExpr):
+        _collect_var_reads(e.cond, out)
+        _collect_var_reads(e.then_e, out)
+        _collect_var_reads(e.else_e, out); return
+    if isinstance(e, FieldAccess):
+        _collect_var_reads(e.obj, out); return
+    if isinstance(e, ArrayAccess):
+        _collect_var_reads(e.arr, out); _collect_var_reads(e.idx, out); return
+    if isinstance(e, Call):
+        for a in e.args: _collect_var_reads(a, out)
+        return
+    if isinstance(e, (TupleExpr, ArrayLit)):
+        for x in e.elems: _collect_var_reads(x, out)
+        return
 
 
 def emit_bb_inline(bb_id: int, ctx: EmitCtx) -> str:
@@ -722,7 +835,8 @@ def emit_terminator(t, src_bb_id: int, ctx: EmitCtx) -> str:
         inner_ctx = EmitCtx(indent=ctx.indent + 1, cfg=ctx.cfg,
                               merge_bbs=ctx.merge_bbs,
                               caller_instance=ctx.caller_instance,
-                              func_instances=ctx.func_instances)
+                              func_instances=ctx.func_instances,
+                              merge_free_vars=ctx.merge_free_vars)
         then_str = emit_jump_to(t.then_bb, src_bb_id, inner_ctx)
         else_str = emit_jump_to(t.else_bb, src_bb_id, inner_ctx)
         return (f"{pad}if {cond_str} then\n"
@@ -845,6 +959,9 @@ def emit_jump_to(target_bb: int, src_bb_id: int, ctx: EmitCtx) -> str:
     pad = "  " * ctx.indent
     if target_bb in ctx.merge_bbs:
         target_block = ctx.cfg.blocks[target_bb]
+        # free_vars from caller scope（emit_merge_lambda 已计算）
+        free_vars = ctx.merge_free_vars.get(target_bb, [])
+        free_args = [_paren(emit_expr(v, ctx)) for v in free_vars]
         phi_args: list[str] = []
         for s in target_block.stmts:
             if isinstance(s, PhiStmt):
@@ -855,9 +972,10 @@ def emit_jump_to(target_bb: int, src_bb_id: int, ctx: EmitCtx) -> str:
                     phi_args.append(_paren(emit_expr(src_var, ctx)))
             else:
                 break
-        if phi_args:
-            return f"{pad}bb_{target_bb} " + " ".join(phi_args)
-        # 0-phi merge：调零元 lambda（与 emit_merge_lambda 的 `(fun _ => ...) ()` 对应）
+        all_args = free_args + phi_args
+        if all_args:
+            return f"{pad}bb_{target_bb} " + " ".join(all_args)
+        # 0-arg merge：调零元 lambda
         return f"{pad}bb_{target_bb}"
     # 单前驱 → inline
     return emit_bb_inline(target_bb, ctx)

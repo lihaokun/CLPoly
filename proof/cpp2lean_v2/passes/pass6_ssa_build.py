@@ -398,6 +398,38 @@ def compute_dominance_frontier(cfg: CFG, idom: dict[int, int]
 # §D. Phi 放置 + 变量重命名
 # ============================================================
 
+def _build_record_update(tgt: ExprIR, new_val: ExprIR, root_name: str) -> ExprIR:
+    """从 FieldAccess/ArrayAccess 链构造 record update 表达式：
+      arr[i] = v       → Array.set! arr i v
+      arr[i][j] = v    → Array.set! arr i (Array.set! arr[i] j v)
+      obj.field = v    → _with obj field v   （Pass 8 codegen 转 `{ obj with field := v }`）
+    递归到 root 时返回最外层表达式赋给 root。
+    """
+    if isinstance(tgt, ArrayAccess):
+        arr = tgt.arr
+        idx = tgt.idx
+        ty = tgt.ty if tgt.ty is not None else UnknownType("")
+        # arr 还是 ArrayAccess 嵌套（如 m[i][j]）→ 外层 set! 内嵌 inner set!
+        if isinstance(arr, ArrayAccess) \
+                and _root_var(arr) is not None \
+                and _root_var(arr).name == root_name:
+            inner_set = Call(callee="Array.set!",
+                              args=[arr, idx, new_val], ty=ty)
+            outer_arr = arr.arr
+            outer_idx = arr.idx
+            return Call(callee="Array.set!",
+                        args=[outer_arr, outer_idx, inner_set], ty=ty)
+        return Call(callee="Array.set!", args=[arr, idx, new_val], ty=ty)
+    if isinstance(tgt, FieldAccess):
+        return Call(callee="_with",
+                    args=[tgt.obj,
+                          Var(name=tgt.field_name, version=0,
+                              ty=UnknownType("")),
+                          new_val],
+                    ty=tgt.ty if tgt.ty is not None else UnknownType(""))
+    return Call(callee="__write__", args=[tgt, new_val], ty=UnknownType(""))
+
+
 def _root_var(e: ExprIR) -> Var | None:
     """ArrayAccess/FieldAccess 链的根 Var（用于 record-update SSA）。
 
@@ -698,8 +730,9 @@ def rename_variables(cfg: CFG, idom: dict[int, int],
                         ty=ty, value=new_val))
                 else:
                     # B7 修复：FieldAccess/ArrayAccess target — record update：
-                    # `vec[i] = e`  →  `vec_(n+1) := __write__(vec_n[i], e)`
-                    # 即 root 变量的版本必须 bump，否则后续读 vec 看不到这次写
+                    # `vec[i] = e`  →  `vec_(n+1) := vec_n.set! i e`（Lean Array.set!）
+                    # `obj.field = e` → `obj_(n+1) := { obj_n with field := e }`
+                    # FieldAccess+ArrayAccess 嵌套（如 m[i][j]=v）→ 递归构造
                     new_tgt = rename_reads(tgt)
                     new_val = rename_reads(s.value)
                     root = _root_var(tgt)
@@ -707,12 +740,12 @@ def rename_variables(cfg: CFG, idom: dict[int, int],
                         ty = root.ty if root.ty is not None else UnknownType("")
                         new_ver = fresh(root.name)
                         pushes[root.name] += 1
+                        # 递归从 tgt（FieldAccess/ArrayAccess 链）构造 set/with 表达式
+                        new_value_expr = _build_record_update(new_tgt, new_val, root.name)
                         new_stmts.append(LetStmt(
                             var=Var(name=root.name, version=new_ver, ty=ty),
                             ty=ty,
-                            value=Call(callee="__write__",
-                                       args=[new_tgt, new_val],
-                                       ty=ty)))
+                            value=new_value_expr))
                     else:
                         # root 是 param 或外部引用：仍以合成 sideeff 保留
                         # （完整 fix 需要 param 视为可变 → 跨 Pass 工程，留 TODO）

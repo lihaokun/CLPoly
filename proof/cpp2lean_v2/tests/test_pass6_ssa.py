@@ -279,12 +279,13 @@ def test_rangefor_writeback_field_container():
                     ret_ty=NamedType("Container"))
     mir = ssa_build_pass(func)
     assert_mir0_invariant(mir)
-    # 期望：exit 块中存在 obj 的版本 ≥ 1，rhs 是 __write__(obj_X.field, cont)
+    # 期望：exit 块中存在 obj 的版本 ≥ 1，rhs 是 _with(obj_X, field, cont)
+    # （B1 续修：FieldAccess record-update 改用 _with → Lean { obj with field := v }）
     has_field_writeback = False
     for bb in mir.cfg.blocks.values():
         for s in bb.stmts:
             if isinstance(s, LetStmt) and s.var.name == "obj" and s.var.version >= 1:
-                if isinstance(s.value, Call) and s.value.callee == "__write__":
+                if isinstance(s.value, Call) and s.value.callee in ("__write__", "_with"):
                     has_field_writeback = True
     assert has_field_writeback, "missing FieldAccess record-update writeback at exit"
 

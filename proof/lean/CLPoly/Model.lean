@@ -238,10 +238,9 @@ def SparsePolyZZ.getDeg (f : SparsePolyZZ) : UInt64 := if f.isEmpty then 0 else 
 
 -- get_deg: 泛型化（C++ side 多模板实例化共用同一 Lean 实现）
 -- 适用 SparsePolyZZ / SparsePolyZp 两种容器（结构相同：Array (UMonomial × _)）
--- 返回 Nat（对齐 C++ size_t / Pass 1 类型推断；Pass 5 cast 链 .toUInt64 等
--- 自动衔接）
-def get_deg {α : Type} [Inhabited α] (f : Array (UMonomial × α)) : Nat :=
-  if f.isEmpty then 0 else (f[0]!).fst.deg.toNat
+-- 返回 Int64（多数 Pass 1 调用点把 get_deg 视为 int64_t / signed comparison 上下文）
+def get_deg {α : Type} [Inhabited α] (f : Array (UMonomial × α)) : Int64 :=
+  if f.isEmpty then 0 else (f[0]!).fst.deg.toInt64
 
 abbrev LLLMatrix := Array (Array Int)
 abbrev HenselNode := Array Int  -- 占位

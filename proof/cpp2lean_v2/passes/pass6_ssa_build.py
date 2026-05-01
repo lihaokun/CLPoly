@@ -241,14 +241,13 @@ class CFGBuilder:
             # P0-1 修复：is_mutable_ref（auto&）时，latch 必须把 var 回写到
             # cont[idx]，否则 body 中通过 var 的写入丢失（C++ 引用语义）
             # 必须在 idx++ 之前——读 idx 仍是当前迭代值
+            # B1 续修：用 Array.set! 替代 __write__（Pass 8 codegen 端正确生成）
             if s.is_mutable_ref:
                 latch.stmts.append(AssignStmt(
                     target=cont_var,
-                    value=Call(callee="__write__",
-                               args=[ArrayAccess(arr=cont_var, idx=idx_var,
-                                                 ty=s.var_ty),
-                                     s.var],
-                               ty=UnknownType("")),
+                    value=Call(callee="Array.set!",
+                               args=[cont_var, idx_var, s.var],
+                               ty=cont_ty),
                 ))
             # latch: idx ++ then jump header（idx 是 Nat，B1 续修）
             latch.stmts.append(AssignStmt(
@@ -398,16 +397,27 @@ def compute_dominance_frontier(cfg: CFG, idom: dict[int, int]
 # §D. Phi 放置 + 变量重命名
 # ============================================================
 
+def _idx_to_nat(idx: ExprIR) -> ExprIR:
+    """把 idx 转为 Nat（Array.set! / Array.get! 期望 Nat）。
+    若 idx 已是 Nat（Var.ty == NAT）则原样返回，否则包 Cast 到 Nat。"""
+    idx_ty = getattr(idx, 'ty', None)
+    if idx_ty == BaseType.NAT:
+        return idx
+    src_ty = idx_ty if isinstance(idx_ty, (BaseType, NamedType)) else UnknownType("")
+    return Cast(expr=idx, source_ty=src_ty, target_ty=BaseType.NAT,
+                cast_kind="IntegralCast")
+
+
 def _build_record_update(tgt: ExprIR, new_val: ExprIR, root_name: str) -> ExprIR:
     """从 FieldAccess/ArrayAccess 链构造 record update 表达式：
-      arr[i] = v       → Array.set! arr i v
-      arr[i][j] = v    → Array.set! arr i (Array.set! arr[i] j v)
+      arr[i] = v       → Array.set! arr i.toNat v
+      arr[i][j] = v    → Array.set! arr i.toNat (Array.set! arr[i] j.toNat v)
       obj.field = v    → _with obj field v   （Pass 8 codegen 转 `{ obj with field := v }`）
     递归到 root 时返回最外层表达式赋给 root。
     """
     if isinstance(tgt, ArrayAccess):
         arr = tgt.arr
-        idx = tgt.idx
+        idx = _idx_to_nat(tgt.idx)
         ty = tgt.ty if tgt.ty is not None else UnknownType("")
         # arr 还是 ArrayAccess 嵌套（如 m[i][j]）→ 外层 set! 内嵌 inner set!
         if isinstance(arr, ArrayAccess) \
@@ -416,7 +426,7 @@ def _build_record_update(tgt: ExprIR, new_val: ExprIR, root_name: str) -> ExprIR
             inner_set = Call(callee="Array.set!",
                               args=[arr, idx, new_val], ty=ty)
             outer_arr = arr.arr
-            outer_idx = arr.idx
+            outer_idx = _idx_to_nat(arr.idx)
             return Call(callee="Array.set!",
                         args=[outer_arr, outer_idx, inner_set], ty=ty)
         return Call(callee="Array.set!", args=[arr, idx, new_val], ty=ty)

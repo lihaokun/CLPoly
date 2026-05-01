@@ -213,13 +213,14 @@ def test_rangefor_auto_ref_writeback():
     mir = ssa_build_pass(func)
     assert_mir0_invariant(mir)
 
-    # 1) latch 含 __rangefor_cont_*_N := __write__(cont[idx], x)
+    # 1) latch 含 __rangefor_cont_*_N := Array.set! cont idx x
+    # （B1 续修：__write__ 改为 Array.set! 语义化）
     has_latch_writeback = False
     has_exit_writeback = False
     for bb in mir.cfg.blocks.values():
         for s in bb.stmts:
             if isinstance(s, LetStmt) and s.var.name.startswith("__rangefor_cont_") \
-                    and isinstance(s.value, Call) and s.value.callee == "__write__":
+                    and isinstance(s.value, Call) and s.value.callee in ("__write__", "Array.set!"):
                 has_latch_writeback = True
             # 2) exit 含 c_(N+1) := __rangefor_cont_*_M
             if isinstance(s, LetStmt) and s.var.name == "c" and s.var.version >= 1 \

@@ -568,8 +568,14 @@ def _match_filter_loop(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | None:
 
 
 def _filter_loop_to_assign(m: FilterLoopMatch) -> AssignStmt:
-    """把 FilterLoopMatch 转为 AssignStmt(v, Call("Array.filter|filterMap", [v, pred]))。"""
-    callee = "Array.filterMap" if m.kind == "A-mut" else "Array.filter"
+    """把 FilterLoopMatch 转为 AssignStmt(v, Call("Array.filter|filterMap", [v, pred]))。
+    StdMap 容器用 StdMap.filter（B1 续修）。"""
+    is_mut = m.kind == "A-mut"
+    cont_ty = getattr(m.container, 'ty', None) if isinstance(m.container, Var) else None
+    if isinstance(cont_ty, StdMapType):
+        callee = "StdMap.filterMap" if is_mut else "StdMap.filter"
+    else:
+        callee = "Array.filterMap" if is_mut else "Array.filter"
     return AssignStmt(
         target=m.container,
         value=Call(
@@ -880,7 +886,8 @@ def _lift_filtermap_lambdas(stmts: list[StmtIR], host_name: str,
         """若 c 是 Array.filter/filterMap 且 args[1] 是 LambdaExpr，lift 之；
         返回替换后的 Call；否则返回 None。"""
         if not (isinstance(c.callee, str)
-                and c.callee in ("Array.filter", "Array.filterMap")
+                and c.callee in ("Array.filter", "Array.filterMap",
+                                   "StdMap.filter", "StdMap.filterMap")
                 and len(c.args) == 2 and isinstance(c.args[1], LambdaExpr)):
             return None
         lam: LambdaExpr = c.args[1]

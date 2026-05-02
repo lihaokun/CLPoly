@@ -450,7 +450,7 @@ partial def __extract_candidates_ir (short_rows : Array Int32) (U : LLLMatrix) (
     ((candidates_2 : Array _))
 
 partial def _lambda___extract_monomial_content_lex_filt1_ir (present : Array Variable) (__x : (Variable × Int64)) : Bool :=
-  (! (Option.isNone (Array.find? present __x.fst)))
+  (! sorry /- unresolved call: operator== -/)
 
 partial def _lambda___extract_monomial_content_lex_filt2_ir (__x : (Variable × Int64)) : Bool :=
   (! (__x.snd == (0 : Int64)))
@@ -476,8 +476,8 @@ partial def _loop___extract_monomial_content_lex_1_ir (__rangefor_idx_2_2 : Nat)
     let deg_2 : Int64 := __decomp_3.snd
     let present_3 : Array Variable := (Array.insert present_2 var_2)
     let __iter_idx_it_1 : Int64 := (0 : Int64)
-    if (__iter_idx_it_1 < (Array.size min_deg_5)) then
-      let min_deg_6 : StdMap Variable Int64 := (__write__ (StdMap.get! min_deg_5 var_2) (min (StdMap.get! min_deg_5 var_2) deg_2))
+    if (__iter_idx_it_1 < (StdMap.size min_deg_5)) then
+      let min_deg_6 : StdMap Variable Int64 := (StdMap.insert min_deg_5 var_2 (min (StdMap.get! min_deg_5 var_2) deg_2))
       bb_22 __rangefor_idx_2_2 present_3 __rangefor_cont_2_1 min_deg_6
     else
       bb_22 __rangefor_idx_2_2 present_3 __rangefor_cont_2_1 min_deg_5
@@ -506,7 +506,7 @@ partial def _loop___extract_monomial_content_lex_2_ir (__rangefor_idx_0_2 : Nat)
       let __loop_ret___extract_monomial_content_lex_1_1 : (Int64 × StdMap Variable Int64) := (_loop___extract_monomial_content_lex_1_ir __rangefor_idx_2_1 present_1 min_deg_2 __rangefor_cont_2_1)
       let min_deg_5 : StdMap Variable Int64 := __loop_ret___extract_monomial_content_lex_1_1.snd
       let __iter_idx_it_2 : Int64 := (0 : Int64)
-      let min_deg_8 : StdMap Variable Int64 := (Array.filter min_deg_5 _lambda___extract_monomial_content_lex_filt1_ir)
+      let min_deg_8 : StdMap Variable Int64 := (StdMap.filter min_deg_5 _lambda___extract_monomial_content_lex_filt1_ir)
       bb_11 __rangefor_idx_0_2 __rangefor_cont_0_1 first_term_2 min_deg_8
   else
     ((0 : Int64), min_deg_2)
@@ -520,7 +520,7 @@ partial def _loop___extract_monomial_content_lex_3_ir (__rangefor_idx_4_2 : Nat)
     let var_3 : Variable := __decomp_5.fst
     let deg_3 : Int64 := __decomp_5.snd
     let __iter_idx_it_3 : Int64 := (0 : Int64)
-    let subtract_1 : Int64 := (if (__iter_idx_it_3 < (Array.size min_deg_10)) then (StdMap.get! min_deg_10 var_3) else (0 : Int32))
+    let subtract_1 : Int64 := (if (__iter_idx_it_3 < (StdMap.size min_deg_10)) then (StdMap.get! min_deg_10 var_3) else (0 : Int32))
     if (deg_3 > subtract_1) then
       let new_mono_3 : Monomial := (Array.push new_mono_2 ((var_3, (deg_3 - subtract_1))))
       bb_37 __rangefor_idx_4_2 __rangefor_cont_4_1 min_deg_10 new_mono_3
@@ -546,7 +546,7 @@ partial def _loop___extract_monomial_content_lex_4_ir (__rangefor_idx_3_2 : Nat)
     ((0 : Int64), result_2)
 
 partial def _loop___extract_monomial_content_lex_5_ir (__rangefor_idx_5_2 : Nat) (var_factors_2 : Array (Variable × Int64)) (__rangefor_cont_5_1 : StdMap Variable Int64) : (Int64 × Array (Variable × Int64)) :=
-  if (__rangefor_idx_5_2 < (Array.size __rangefor_cont_5_1)) then
+  if (__rangefor_idx_5_2 < (StdMap.size __rangefor_cont_5_1)) then
     let __decomp_6 : (Variable × Int64) /- ref residual -/ := (__rangefor_cont_5_1[(__rangefor_idx_5_2)]!)
     let var_4 : Variable := __decomp_6.fst
     let deg_4 : Int64 := __decomp_6.snd
@@ -567,7 +567,7 @@ partial def __extract_monomial_content_lex_ir (f : MvPolyZZ) (var_factors : Arra
     let __rangefor_idx_0_1 : Nat := (0 : Nat)
     let __loop_ret___extract_monomial_content_lex_2_1 : (Int64 × StdMap Variable Int64) := (_loop___extract_monomial_content_lex_2_ir __rangefor_idx_0_1 first_term_1 min_deg_1 __rangefor_cont_0_1)
     let min_deg_2 : StdMap Variable Int64 := __loop_ret___extract_monomial_content_lex_2_1.snd
-    let min_deg_10 : StdMap Variable Int64 := (Array.filter min_deg_2 _lambda___extract_monomial_content_lex_filt2_ir)
+    let min_deg_10 : StdMap Variable Int64 := (StdMap.filter min_deg_2 _lambda___extract_monomial_content_lex_filt2_ir)
     if (StdMap.isEmpty min_deg_10) then
       (f, var_factors_1)
     else
@@ -2024,7 +2024,7 @@ partial def __mtshl_coeff_bound_lex_ir (f : MvPolyZZ) : ZZ :=
   bound_2
 
 partial def _loop___mtshl_lift_upoly_0_ir (__rangefor_idx_0_2 : Nat) (aux_var_list_2 : Array Variable) (__rangefor_cont_0_1 : StdMap Variable ZZ) : (Int64 × Array Variable) :=
-  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
+  if (__rangefor_idx_0_2 < (StdMap.size __rangefor_cont_0_1)) then
     let __decomp_1 : (Variable × ZZ) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
     let v_1 : Variable := __decomp_1.fst
     let a_1 : ZZ := __decomp_1.snd
@@ -2771,7 +2771,7 @@ partial def _loop___mtshl_sparse_int_lex_6_ir (__rangefor_idx_0_2 : Nat) (__rang
 
 partial def _loop___mtshl_sparse_int_lex_7_ir (idx_2 : Int32) (groups_2 : StdMap Int64 (Array Int32)) (forms : Array (Array Monomial)) (i_14 : Int32) (x1 : Variable) : (Int64 × StdMap Int64 (Array Int32)) :=
   let bb_48 := fun groups_2 idx_2 i_14 forms x1 d_3 =>
-    let groups_3 : StdMap Int64 (Array Int32) := (__write__ (StdMap.get! groups_2 d_3) (Array.push (StdMap.get! groups_2 d_3) idx_2))
+    let groups_3 : StdMap Int64 (Array Int32) := (StdMap.insert groups_2 d_3 (Array.push (StdMap.get! groups_2 d_3) idx_2))
     -- require (h_nonneg): (i_14 >= (0 : Int32))
     -- require (h_fits_int32): (((Array.size (forms[((i_14).toInt64.toUInt64).toNat]!)) >= (-2147483648 : Int64)) && ((Array.size (forms[((i_14).toInt64.toUInt64).toNat]!)) <= (2147483647 : Int64)))
     let idx_3 : Int32 := (idx_2 + (1 : Int32))
@@ -2847,7 +2847,7 @@ partial def _loop___mtshl_sparse_int_lex_10_ir (k_8 : Nat) (result_7 : Array MvP
     ((0 : Int64), result_7)
 
 partial def _loop___mtshl_sparse_int_lex_11_ir (__rangefor_idx_1_2 : Nat) (result_6 : Array MvPolyZp) (__rangefor_cont_1_1 : StdMap Int64 (Array Int32)) (forms : Array (Array Monomial)) (i_14 : Int32) (p : UInt64) (sigma_vals_2 : Array (Array SparsePolyZp)) : (Int64 × Array MvPolyZp) :=
-  if (__rangefor_idx_1_2 < (Array.size __rangefor_cont_1_1)) then
+  if (__rangefor_idx_1_2 < (StdMap.size __rangefor_cont_1_1)) then
     let __decomp_1 : (Int64 × Array Int32) /- ref residual -/ := (__rangefor_cont_1_1[(__rangefor_idx_1_2)]!)
     let d_4 : Int64 := __decomp_1.fst
     let indices_1 : Array Int32 := __decomp_1.snd
@@ -3797,7 +3797,7 @@ partial def _loop___select_eval_point_lex_3_ir (max_abs_2 : Int32) (tmp_2 : Int3
     -- require (h_nonzero): (range_1 != (0 : Int32))
     let val_1 : Int32 := ((tmp_2 % range_1) - bound_2)
     let tmp_3 : Int32 := (tmp_2 / range_1)
-    let alpha_3 : StdMap Variable ZZ := (__write__ (StdMap.get! alpha_2 (vars_2[(i_5)]!)) (val_1).toInt)
+    let alpha_3 : StdMap Variable ZZ := (StdMap.insert alpha_2 (vars_2[(i_5)]!) (val_1).toInt)
     if ((Int.natAbs val_1) > max_abs_2) then
       let max_abs_3 : Int32 := (Int.natAbs val_1)
       bb_33 i_5 tmp_3 alpha_3 bound_2 n_1 range_1 vars_2 max_abs_3
@@ -4261,10 +4261,10 @@ partial def _loop___si_theta_array_eval_lex_4_ir (acc_2 : StdMap Int64 Zp) (runn
       let it_1 : Iterator := (StdMap.find acc_2 (e1_arr_2[((t_5).toInt64.toUInt64).toNat]!))
       if (it_1 == (StdMap.end acc_2)) then
         -- require (h_nonneg): (t_5 >= (0 : Int32))
-        let acc_4 : StdMap Int64 Zp := (__write__ (StdMap.get! acc_2 (e1_arr_2[((t_5).toInt64.toUInt64).toNat]!)) contrib_1)
+        let acc_4 : StdMap Int64 Zp := (StdMap.insert acc_2 (e1_arr_2[((t_5).toInt64.toUInt64).toNat]!) contrib_1)
         bb_42 acc_4
       else
-        let acc_5 : StdMap Int64 Zp := (__write__ (StdMap.get! acc_2 (e1_arr_2[((t_5).toInt64.toUInt64).toNat]!)) ((StdMap.get! acc_2 (e1_arr_2[((t_5).toInt64.toUInt64).toNat]!)) + contrib_1))
+        let acc_5 : StdMap Int64 Zp := (StdMap.insert acc_2 (e1_arr_2[((t_5).toInt64.toUInt64).toNat]!) ((StdMap.get! acc_2 (e1_arr_2[((t_5).toInt64.toUInt64).toNat]!)) + contrib_1))
         bb_42 acc_5
   else
     ((0 : Int64), acc_2, running_m_3)
@@ -4273,7 +4273,7 @@ partial def _loop___si_theta_array_eval_lex_5_ir (__rangefor_idx_2_2 : Nat) (ima
   let bb_49 := fun __rangefor_idx_2_2 __rangefor_cont_2_1 l_2 images_6 =>
     let __rangefor_idx_2_3 : Nat := (__rangefor_idx_2_2 + (1 : Nat))
     _loop___si_theta_array_eval_lex_5_ir __rangefor_idx_2_3 images_6 __rangefor_cont_2_1 l_2
-  if (__rangefor_idx_2_2 < (Array.size __rangefor_cont_2_1)) then
+  if (__rangefor_idx_2_2 < (StdMap.size __rangefor_cont_2_1)) then
     let __decomp_1 : (Int64 × Zp) /- ref residual -/ := (__rangefor_cont_2_1[(__rangefor_idx_2_2)]!)
     let deg_1 : Int64 := __decomp_1.fst
     let coeff_1 : Zp := __decomp_1.snd

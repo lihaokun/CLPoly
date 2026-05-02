@@ -24,7 +24,7 @@ from collections import defaultdict
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
-    BaseType, NamedType, UnknownType, TypeIR, RefType,
+    BaseType, NamedType, UnknownType, TypeIR, RefType, StdMapType,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
@@ -209,10 +209,12 @@ class CFGBuilder:
             current.terminator = JumpTerm(target=header.bb_id)
 
             # header: idx < size(cont)
+            # B1 续修：StdMap 容器用 StdMap.size 而非 Array.size
+            size_callee = "StdMap.size" if isinstance(cont_ty, StdMapType) else "Array.size"
             cond = BinOp(
                 op="<",
                 lhs=idx_var,
-                rhs=Call(callee="Array.size", args=[cont_var],
+                rhs=Call(callee=size_callee, args=[cont_var],
                          ty=BaseType.NAT),
                 ty=BaseType.BOOL,
             )
@@ -437,6 +439,13 @@ def _build_record_update(tgt: ExprIR, new_val: ExprIR, root_name: str) -> ExprIR
                               ty=UnknownType("")),
                           new_val],
                     ty=tgt.ty if tgt.ty is not None else UnknownType(""))
+    # StdMap.get!(m, k) = v → StdMap.insert m k v
+    if isinstance(tgt, Call) and isinstance(tgt.callee, str) \
+            and tgt.callee in ("StdMap.get!", "StdMap.find!") \
+            and len(tgt.args) == 2:
+        m, k = tgt.args
+        return Call(callee="StdMap.insert", args=[m, k, new_val],
+                    ty=getattr(m, 'ty', None) or UnknownType(""))
     return Call(callee="__write__", args=[tgt, new_val], ty=UnknownType(""))
 
 
@@ -1103,7 +1112,9 @@ def _rewrite_seq_iter_in_expr(e: ExprIR,
                             or rcs.endswith(".end"):
                         rhs_cont = rhs.args[0]
                 if rhs_cont is not None and _exprs_equal(cont, rhs_cont):
-                    size_call = Call(callee="Array.size", args=[cont],
+                    cont_ty_local = getattr(cont, 'ty', None)
+                    size_call_callee = "StdMap.size" if isinstance(cont_ty_local, StdMapType) else "Array.size"
+                    size_call = Call(callee=size_call_callee, args=[cont],
                                      ty=BaseType.INT64)
                     if e.op == "!=":
                         return BinOp(op="<",

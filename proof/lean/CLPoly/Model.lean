@@ -189,7 +189,12 @@ def insert [BEq K] (m : StdMap K V) (k : K) (v : V) : StdMap K V :=
   (k, v) :: m.filter (fun (k', _) => !(k == k'))
 
 def erase [BEq K] (m : StdMap K V) (k : K) : StdMap K V :=
-  m.filter (fun (k', _) => !(k == k'))
+  List.filter (fun (k', _) => !(k == k')) m
+
+-- StdMap.filter / filterMap：predicate / map 风格的过滤（与 Array.filter 对齐）
+def filter (m : StdMap K V) (p : K × V → Bool) : StdMap K V := List.filter p m
+def filterMap (m : StdMap K V) (f : K × V → Option (K × V)) : StdMap K V :=
+  List.filterMap f m
 
 def size (m : StdMap K V) : Nat := m.length
 
@@ -233,6 +238,10 @@ def pair_vec_div [Inhabited α] (_f _g _q : α) (_comp : β) : α := default
 
 -- Array.insert: C++ STL set::insert / vec.push_back 的占位（push 到末尾）
 def Array.insert (a : Array α) (v : α) : Array α := a.push v
+
+-- Array.findVal: C++ std::find(vec, x) 的语义（按值找）
+-- Lean 4 Array.find? 期望 predicate；这里 wrap 成"按 BEq 找值"
+def Array.findVal [BEq α] (a : Array α) (x : α) : Option α := a.find? (· == x)
 
 -- comp 方法占位（已存在于 namespace SparsePolyZp 之内为 UInt64）；
 -- 补 SparsePolyZZ / MvPolyZp / MvPolyZZ

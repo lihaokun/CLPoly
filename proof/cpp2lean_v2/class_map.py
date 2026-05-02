@@ -342,7 +342,7 @@ CLASS_MAP = {
             "at":           ("method",       "Array.get!"),        # UB-2
             "insert":       ("mutate",       "Array.insert"),
             "swap":         ("mutate",       "Array.swap"),
-            "find":         ("method",       "Array.find?"),  # P0-11 补：std::find/set::find 路径
+            "find":         ("method",       "Array.findVal"),  # 按值找（不是 predicate）
             "contains":     ("method",       "Array.contains"),
         },
         "operators": {

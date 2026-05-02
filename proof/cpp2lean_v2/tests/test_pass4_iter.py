@@ -49,12 +49,13 @@ def _load_hir2(func_name: str) -> HIRFunc:
 
 
 def _count_filter_calls(stmts):
-    """递归统计 Call("Array.filter", ...)。"""
+    """递归统计 Call("Array.filter" | "StdMap.filter", ...)（B1 续修：StdMap 容器）。"""
     from ir_types import BlockStmt, DoWhileStmt
     n = 0
     for s in stmts:
         if isinstance(s, AssignStmt) and isinstance(s.value, Call):
-            if isinstance(s.value.callee, str) and s.value.callee == "Array.filter":
+            if isinstance(s.value.callee, str) \
+                    and s.value.callee in ("Array.filter", "StdMap.filter"):
                 n += 1
         if isinstance(s, RangeForStmt): n += _count_filter_calls(s.body)
         elif isinstance(s, IfStmt):
@@ -173,17 +174,18 @@ def test_classic_both_containers_with_pred_inversion():
     from ir_types import AssignStmt, Call, Var, LambdaExpr, ReturnStmt
     lifted_names: list[str] = []
     def walk(stmts):
+        from ir_types import RangeForStmt, IfStmt, ForStmt, WhileStmt, DoWhileStmt, BlockStmt
         for s in stmts:
             if isinstance(s, AssignStmt) and isinstance(s.value, Call):
-                if isinstance(s.value.callee, str) and s.value.callee == "Array.filter":
+                if isinstance(s.value.callee, str) \
+                        and s.value.callee in ("Array.filter", "StdMap.filter"):
                     arg = s.value.args[1]
                     if isinstance(arg, Var):
                         lifted_names.append(arg.name)
-            if isinstance(s, RangeForStmt): walk(s.body)
+            if isinstance(s, (RangeForStmt, WhileStmt, DoWhileStmt)): walk(s.body)
             elif isinstance(s, IfStmt): walk(s.then_body); walk(s.else_body)
-            elif isinstance(s, ForStmt): walk(s.body)
-            elif isinstance(s, WhileStmt): walk(s.body)
-            elif hasattr(s, 'stmts'): walk(s.stmts)
+            elif isinstance(s, ForStmt): walk(s.init); walk(s.step); walk(s.body)
+            elif isinstance(s, BlockStmt): walk(s.stmts)
     walk(hir3.body)
     # 从 aux_lambdas 找对应 lifted func，提取 pred
     aux_by_name = {a.base_name: a for a in hir3.aux_lambdas}

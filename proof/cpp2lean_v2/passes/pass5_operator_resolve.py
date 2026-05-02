@@ -361,7 +361,8 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
     if op_sym in ("==", "!=") and len(args) == 2:
         def _is_find_call(e):
             return (isinstance(e, Call) and isinstance(e.callee, str)
-                    and e.callee in ("Array.find?", "StdMap.find"))
+                    and e.callee in ("Array.find?", "Array.findVal",
+                                       "StdMap.find"))
         def _is_end_marker(e):
             return (isinstance(e, Call) and isinstance(e.callee, str)
                     and (e.callee == "Array.toList" or e.callee.endswith(".toList")
@@ -557,7 +558,24 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
     recv_ty = _expr_ty(recv, typectx)
     T = _typename_for_classmap(recv_ty)
 
+    # B1 stage 4: 剥 "<method>." 前缀（Pass 1 把 C++ 转换运算符标记为
+    # "<method>.operator bool" 形态，干扰 Pass 5 的 startswith 检测）
+    if method.startswith("<method>."):
+        method = method[len("<method>."):]
     if T is None:
+        # T=None 且 method 是 unary 转换 / binary operator → fallback
+        if method.startswith("operator "):
+            op_sym = method[len("operator "):]
+            _BINARY_OPS = {"==", "!=", "<", ">", "<=", ">=", "+", "-", "*",
+                           "/", "%", "&&", "||", "&", "|", "^", "<<", ">>"}
+            if op_sym in _BINARY_OPS and len(args) >= 2:
+                return BinOp(op=op_sym, lhs=args[0], rhs=args[1],
+                             ty=BaseType.BOOL if op_sym in ("==", "!=", "<",
+                                 ">", "<=", ">=", "&&", "||") else None)
+            # operator bool / ! 等 unary：单 arg 时 fallback UnaryOp
+            if len(args) >= 1 and op_sym in ("bool", "!"):
+                return UnaryOp(op=op_sym, operand=args[0],
+                               ty=BaseType.BOOL if op_sym == "bool" else None)
         gap.method_miss.append(("None", method))
         return replace(call, args=args)
 
@@ -575,12 +593,32 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
         if op_sym in operators:
             target = operators[op_sym]
             if target is None:
-                # typeclass 形态：UnaryOp / 直接返回 recv
+                # typeclass 形态：unary (bool/!) → UnaryOp / 直接返回 recv；
+                # binary (==/!=/<...) → BinOp(op, recv, extra_args[0])
+                _BINARY_OPS = {"==", "!=", "<", ">", "<=", ">=", "+", "-",
+                               "*", "/", "%", "&&", "||", "&", "|", "^",
+                               "<<", ">>"}
+                if op_sym in _BINARY_OPS and len(extra_args) >= 1:
+                    return BinOp(op=op_sym, lhs=recv, rhs=extra_args[0],
+                                 ty=BaseType.BOOL if op_sym in ("==", "!=", "<",
+                                     ">", "<=", ">=", "&&", "||") else None)
                 return UnaryOp(op=op_sym, operand=recv,
                                ty=BaseType.BOOL if op_sym == "bool" else None)
             if isinstance(target, str):
                 return Call(callee=target, args=[recv] + extra_args, ty=None)
     if method not in methods:
+        # B1 stage 4：methods 找不到 + method 是 operator → fallback Bin/UnaryOp
+        if method.startswith("operator "):
+            op_sym = method[len("operator "):]
+            _BINARY_OPS = {"==", "!=", "<", ">", "<=", ">=", "+", "-", "*",
+                           "/", "%", "&&", "||", "&", "|", "^", "<<", ">>"}
+            if op_sym in _BINARY_OPS and len(extra_args) >= 1:
+                return BinOp(op=op_sym, lhs=recv, rhs=extra_args[0],
+                             ty=BaseType.BOOL if op_sym in ("==", "!=", "<",
+                                 ">", "<=", ">=", "&&", "||") else None)
+            if op_sym in ("bool", "!"):
+                return UnaryOp(op=op_sym, operand=recv,
+                               ty=BaseType.BOOL if op_sym == "bool" else None)
         gap.method_miss.append((T, method))
         return replace(call, args=args)
 

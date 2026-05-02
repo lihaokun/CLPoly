@@ -170,9 +170,10 @@ def emit_type(ty: Optional[TypeIR]) -> str:
     if isinstance(ty, BaseType):
         return ty.value
     if isinstance(ty, NamedType):
-        # Lambda/LambdaRef 残留：Pass 3 lambda_lift 漏过的 case
+        # Lambda/LambdaRef 残留：Pass 3 lambda_lift 没保留具体签名 → 用通用
+        # callable placeholder（Lean 端用 LambdaRef 替代，定义在 Model）
         if ty.name in ("Lambda", "LambdaRef"):
-            return _sorry(f"lambda residual type: {ty.name}")
+            return "LambdaRef"
         # Option 单名（无 type arg）—— Pass 4 上游漏指定 inner type；
         # 降级为 Option Unit 占位（语义不重要，B2B 测试时再细化）
         if ty.name == "Option":
@@ -278,6 +279,10 @@ def emit_expr(e: ExprIR, ctx: EmitCtx) -> str:
             return f"(- {emit_expr(e.operand, ctx)})"
         if e.op == "~":
             return f"(~~~ {emit_expr(e.operand, ctx)})"
+        if e.op == "bool":
+            # operator bool conversion: receiver != 0 / != default
+            inner = emit_expr(e.operand, ctx)
+            return f"({inner} != 0)"
         # ++ / -- / * / -> 在 MIR 中不应残留——Pass 5 已展开
         return _sorry(f"unmapped unary: {e.op}")
 

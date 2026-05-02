@@ -211,13 +211,15 @@ end StdMap
 -- ============================================================
 
 -- 多变量多项式（占位）
+abbrev MvMonomial := Array (UInt64 × UInt64)
+def MvMonomial.empty : MvMonomial := #[]
 abbrev MvPolyZZ := Array (Array (UInt64 × UInt64) × Int)
 abbrev MvPolyZp := Array (Array (UInt64 × UInt64) × Zp)
-abbrev MvMonomial := Array (UInt64 × UInt64)
 abbrev Variable := Array (String × Int)
--- Monomial 是 C++ Poly::monomial_type 的 typedef
--- 实际 corpus: 迭代 Monomial 得到 (Variable, Int64) pairs（指数表达）
--- 与 MvMonomial 不同（MvMonomial 是 (UInt64, UInt64) 即 (var_id, deg)）
+-- Monomial = C++ Poly::monomial_type；Pass 1 在不同 corpus context 推断 inner
+-- 类型不一致（一处 (Variable × Int64) 一处 (UInt64 × UInt64)）—— 选 Variable
+-- 形式（兼容 __extract_monomial_content 大多 case；__factor_multivar 的
+-- 5 case 残留作 known issue，等 Pass 1 类型推断统一后解）
 abbrev Monomial := Array (Variable × Int64)
 -- C++ side polynomial<Zp> 的 Lean 别名（语义相同 MvPolyZp）
 abbrev PolyZp := MvPolyZp
@@ -231,6 +233,13 @@ def MvPolyZZ.normalization (f : MvPolyZZ) : MvPolyZZ := f
 def MvPolyZZ.mk (f : MvPolyZZ) : MvPolyZZ := f
 -- 通用 stub（与 SparsePolyZZ 解耦，无前向引用）
 def __write__ (_old : α) (new : α) : α := new
+
+-- ZZ.toBool: ZZ → Bool（C++ side `if (zz)` 的语义：非零为 true）
+def ZZ.toBool (z : ZZ) : Bool := z != 0
+
+-- LambdaRef: Pass 3 lifted lambda 在 caller-arg 位置的 placeholder 类型
+-- (Pass 3 不保留具体函数签名)。语义占位为 Unit。
+abbrev LambdaRef := Unit
 def polynomial_GCD [Inhabited α] (_a _b : α) : α := default
 -- pair_vec_div: 4 参数版本（C++ side: pair_vec_div(f, g, q, comp) → 返回 quotient）
 -- 占位实现，B2B 测试细化（comp 通常是比较器/函数对象，签名宽松）

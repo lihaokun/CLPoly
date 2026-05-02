@@ -45,6 +45,13 @@ CLASS_MAP = {
             "fdiv_ui": ("method", "ZZ.fdiv_ui"),
         },
         "operators": {
+            # ZZ → bool: 非零为 true
+            "bool": "ZZ.toBool",
+            # ZZ comparison
+            "==": "BEq.beq",
+            "!=": "(fun a b => a != b)",
+        },
+        "operators": {
             "+": None, "-": None, "*": None,
             "/": None, "%": None,
             "==": None, "!=": None, "<": None, ">": None,

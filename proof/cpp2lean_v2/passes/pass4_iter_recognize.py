@@ -434,26 +434,25 @@ def _match_filter_loop_A(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
     if_stmt = _find_pred_ifstmt_in_body(body_list, it_name)
     if if_stmt is None: return None
 
-    # B1 续修：从 container 类型推 elem_ty（与 mut 路径一致）
+    # B1 续修：从 container 类型推 elem_ty（与 mut 路径一致；不限 Var）
     pure_elem_ty = None
-    if isinstance(container, Var):
-        ct = container.ty
-        while isinstance(ct, RefType):
-            ct = ct.inner
-        if isinstance(ct, ArrayType):
-            pure_elem_ty = ct.elem
-            if isinstance(pure_elem_ty, RefType):
-                pure_elem_ty = pure_elem_ty.inner
-        elif isinstance(ct, StdMapType):
-            pure_elem_ty = PairType(ct.key, ct.value)
-        elif isinstance(ct, NamedType):
-            _CONTAINER_ELEM_PURE = {
-                "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
-                "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
-                "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
-                "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
-            }
-            pure_elem_ty = _CONTAINER_ELEM_PURE.get(ct.name)
+    ct = getattr(container, 'ty', None)
+    while isinstance(ct, RefType):
+        ct = ct.inner
+    if isinstance(ct, ArrayType):
+        pure_elem_ty = ct.elem
+        if isinstance(pure_elem_ty, RefType):
+            pure_elem_ty = pure_elem_ty.inner
+    elif isinstance(ct, StdMapType):
+        pure_elem_ty = PairType(ct.key, ct.value)
+    elif isinstance(ct, NamedType):
+        _CONTAINER_ELEM_PURE = {
+            "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
+            "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
+            "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
+            "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
+        }
+        pure_elem_ty = _CONTAINER_ELEM_PURE.get(ct.name)
     pred_lambda = _build_pred_lambda(if_stmt.cond, it_name, element_ty=pure_elem_ty)
     return FilterLoopMatch(
         start_idx=idx, end_idx=idx + 4,
@@ -543,26 +542,25 @@ def _match_filter_loop_B(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
         # 模糊情况（两侧都或都不含 erase）— 不识别
         return None
 
-    # B1 续修：从 container 类型推 elem_ty
+    # B1 续修：从 container 类型推 elem_ty（不限 Var；Call/FieldAccess 等都可）
     b_elem_ty = None
-    if isinstance(container, Var):
-        ct = container.ty
-        while isinstance(ct, RefType):
-            ct = ct.inner
-        if isinstance(ct, ArrayType):
-            b_elem_ty = ct.elem
-            if isinstance(b_elem_ty, RefType):
-                b_elem_ty = b_elem_ty.inner
-        elif isinstance(ct, StdMapType):
-            b_elem_ty = PairType(ct.key, ct.value)
-        elif isinstance(ct, NamedType):
-            _CONTAINER_ELEM_B = {
-                "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
-                "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
-                "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
-                "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
-            }
-            b_elem_ty = _CONTAINER_ELEM_B.get(ct.name)
+    ct = getattr(container, 'ty', None)
+    while isinstance(ct, RefType):
+        ct = ct.inner
+    if isinstance(ct, ArrayType):
+        b_elem_ty = ct.elem
+        if isinstance(b_elem_ty, RefType):
+            b_elem_ty = b_elem_ty.inner
+    elif isinstance(ct, StdMapType):
+        b_elem_ty = PairType(ct.key, ct.value)
+    elif isinstance(ct, NamedType):
+        _CONTAINER_ELEM_B = {
+            "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
+            "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
+            "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
+            "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
+        }
+        b_elem_ty = _CONTAINER_ELEM_B.get(ct.name)
     pred_lambda = _build_pred_lambda(pred_expr, it_name, element_ty=b_elem_ty)
     kind = f"B-{type(s).__name__}"
     return FilterLoopMatch(

@@ -275,17 +275,33 @@ def _lift_lambda(lam: LambdaExpr, host_name: str, counter: list[int],
     # 若 Lambda 的 ty 是 NamedType("Lambda") 或其他，取 UnknownType("")
     if isinstance(orig_ret, NamedType) and orig_ret.name == "Lambda":
         orig_ret = UnknownType("")
-    # B1 续修：UnknownType 时从 body 最后一个 ReturnStmt 推断 ret_ty
+    # B1 续修：UnknownType 时从 body 最深的 ReturnStmt 推断 ret_ty
+    # （递归 IfStmt/ForStmt/WhileStmt/BlockStmt/RangeForStmt/DoWhileStmt body）
     if isinstance(orig_ret, UnknownType):
-        from ir_types import ReturnStmt, Cast
-        for s in reversed(lam.body):
-            if isinstance(s, ReturnStmt) and s.value is not None:
-                v = s.value
-                # Cast 用 target_ty
-                inferred = v.target_ty if isinstance(v, Cast) else getattr(v, 'ty', None)
-                if inferred is not None and not isinstance(inferred, UnknownType):
-                    orig_ret = inferred
-                break
+        from ir_types import (ReturnStmt, Cast, IfStmt, ForStmt, WhileStmt,
+                              BlockStmt, RangeForStmt, DoWhileStmt)
+        def _find_ret_ty(stmts):
+            for s in reversed(stmts):
+                if isinstance(s, ReturnStmt) and s.value is not None:
+                    v = s.value
+                    inferred = v.target_ty if isinstance(v, Cast) else getattr(v, 'ty', None)
+                    if inferred is not None and not isinstance(inferred, UnknownType):
+                        return inferred
+                elif isinstance(s, IfStmt):
+                    t = _find_ret_ty(s.then_body)
+                    if t is not None: return t
+                    e = _find_ret_ty(s.else_body)
+                    if e is not None: return e
+                elif isinstance(s, (ForStmt, WhileStmt, RangeForStmt, DoWhileStmt)):
+                    t = _find_ret_ty(s.body)
+                    if t is not None: return t
+                elif isinstance(s, BlockStmt):
+                    t = _find_ret_ty(s.stmts)
+                    if t is not None: return t
+            return None
+        inferred = _find_ret_ty(lam.body)
+        if inferred is not None:
+            orig_ret = inferred
 
     # 6. 生成新 HIRFunc
     # qual_type 编码 cap 信息（Pass 3b 用于区分 cap_params vs lambda by-ref params，

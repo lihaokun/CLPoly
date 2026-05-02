@@ -275,6 +275,17 @@ def _lift_lambda(lam: LambdaExpr, host_name: str, counter: list[int],
     # 若 Lambda 的 ty 是 NamedType("Lambda") 或其他，取 UnknownType("")
     if isinstance(orig_ret, NamedType) and orig_ret.name == "Lambda":
         orig_ret = UnknownType("")
+    # B1 续修：UnknownType 时从 body 最后一个 ReturnStmt 推断 ret_ty
+    if isinstance(orig_ret, UnknownType):
+        from ir_types import ReturnStmt, Cast
+        for s in reversed(lam.body):
+            if isinstance(s, ReturnStmt) and s.value is not None:
+                v = s.value
+                # Cast 用 target_ty
+                inferred = v.target_ty if isinstance(v, Cast) else getattr(v, 'ty', None)
+                if inferred is not None and not isinstance(inferred, UnknownType):
+                    orig_ret = inferred
+                break
 
     # 6. 生成新 HIRFunc
     # qual_type 编码 cap 信息（Pass 3b 用于区分 cap_params vs lambda by-ref params，

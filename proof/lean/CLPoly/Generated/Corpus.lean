@@ -62,7 +62,7 @@ partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : 
   else
     ((0 : Int64), term_1)
 
-partial def _lambda___build_cld_matrix_upoly_1_ir (p : SparsePolyZZ) (deg : Int32) : sorry /- unknown -/ :=
+partial def _lambda___build_cld_matrix_upoly_1_ir (p : SparsePolyZZ) (deg : Int32) : ZZ :=
   let __rangefor_cont_0_1 : SparsePolyZZ := p
   let __rangefor_idx_0_1 : Nat := (0 : Nat)
   let __loop_ret__lambda___build_cld_matrix_upoly_1_0_1 : (Int64 × (UMonomial × ZZ) /- ref residual -/) := (_loop__lambda___build_cld_matrix_upoly_1_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 deg)
@@ -603,7 +603,7 @@ partial def __extract_pth_root_ir (f : SparsePolyZp) : SparsePolyZp :=
   let g_2 : SparsePolyZp := __loop_ret___extract_pth_root_0_1.snd
   g_2
 
-partial def _lambda___factor_Zp_1_ir (a : (SparsePolyZp × UInt64)) (b : (SparsePolyZp × UInt64)) : sorry /- unknown -/ :=
+partial def _lambda___factor_Zp_1_ir (a : (SparsePolyZp × UInt64)) (b : (SparsePolyZp × UInt64)) : Bool :=
   ((get_deg a.fst) < (get_deg b.fst))
 
 partial def _loop___factor_Zp_0_ir (__rangefor_idx_2_2 : Nat) (__rangefor_cont_2_2 : Array SparsePolyZp) (result_4 : Array (SparsePolyZp × UInt64)) (sj_ej_1 : (SparsePolyZp × UInt64)) : (Int64 × Array SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
@@ -675,7 +675,7 @@ partial def __factor_Zp_ir (f : SparsePolyZp) : (Zp × Array (SparsePolyZp × UI
     let result_6 : Array (SparsePolyZp × UInt64) := (Array.sort result_2 _lambda___factor_Zp_1_ir)
     ((lc_1, (id result_6)))
 
-partial def _lambda___factor_multivar_lex_1_ir (a : (Poly × UInt64)) (b : (Poly × UInt64)) : sorry /- unknown -/ :=
+partial def _lambda___factor_multivar_lex_1_ir (a : (Poly × UInt64)) (b : (Poly × UInt64)) : Bool :=
   ((degree a.fst) < (degree b.fst))
 
 partial def _loop___factor_multivar_lex_0_ir (e_2 : UInt64) (result_5 : Factorization) (c_1 : ZZ) (content : sorry /- unknown -/) (mk_1 : UInt64) : (Int64 × Factorization) :=
@@ -1558,14 +1558,14 @@ partial def _loop__lambda___lll_reduce_1_0_ir (k_2 : Int32) (s_2 : ZZ) (a : Arra
   else
     ((0 : Int64), s_2)
 
-partial def _lambda___lll_reduce_1_ir (a : Array ZZ) (b : Array ZZ) : sorry /- unknown -/ :=
+partial def _lambda___lll_reduce_1_ir (a : Array ZZ) (b : Array ZZ) : ZZ :=
   let s_1 : ZZ := ((0 : Int32)).toInt
   let k_1 : Int32 := (0 : Int32)
   let __loop_ret__lambda___lll_reduce_1_0_1 : (Int64 × ZZ) := (_loop__lambda___lll_reduce_1_0_ir k_1 s_1 a b)
   let s_2 : ZZ := __loop_ret__lambda___lll_reduce_1_0_1.snd
   s_2
 
-partial def _lambda___lll_reduce_2_ir (q : QQ) : sorry /- unknown -/ :=
+partial def _lambda___lll_reduce_2_ir (q : QQ) : ZZ :=
   let a_1 : ZZ := (((QQ.num q) * ((2 : Int32)).toInt) + (QQ.den q))
   let b_1 : ZZ := ((QQ.den q) * ((2 : Int32)).toInt)
   let result_1 : ZZ := ((0 : Int))
@@ -1629,7 +1629,7 @@ partial def _lambda___lll_reduce_4_ir (M : LLLMatrix) (U : LLLMatrix) (i : Int32
   let U_2 : LLLMatrix := (Array.set! U_1 (((j).toInt64.toUInt64)).toNat __refret_1_1.snd)
   (M_2, U_2)
 
-partial def _lambda___lll_reduce_5_ir (M : LLLMatrix) (dot : sorry /- lambda residual type: Lambda -/) (a : Int32) (b : Int32) : sorry /- unknown -/ :=
+partial def _lambda___lll_reduce_5_ir (M : LLLMatrix) (dot : sorry /- lambda residual type: Lambda -/) (a : Int32) (b : Int32) : Bool :=
   -- require (h_nonneg): (a >= (0 : Int32))
   -- require (h_nonneg): (a >= (0 : Int32))
   -- require (h_nonneg): (b >= (0 : Int32))
@@ -2374,7 +2374,7 @@ partial def _loop__lambda___mtshl_multi_bdp_lex_1_0_ir (i_2 : Int32) (e_2 : Poly
   else
     ((0 : Int64), e_2)
 
-partial def _lambda___mtshl_multi_bdp_lex_1_ir (bi : Array PolyZp) (c : MvPolyZp) (r : Int32) (result : Array MvPolyZp) : sorry /- unknown -/ :=
+partial def _lambda___mtshl_multi_bdp_lex_1_ir (bi : Array PolyZp) (c : MvPolyZp) (r : Int32) (result : Array MvPolyZp) : PolyZp :=
   let e_1 : PolyZp := c
   let i_1 : Int32 := (0 : Int32)
   let __loop_ret__lambda___mtshl_multi_bdp_lex_1_0_1 : (Int64 × PolyZp) := (_loop__lambda___mtshl_multi_bdp_lex_1_0_ir i_1 e_1 bi r result)
@@ -2617,7 +2617,7 @@ partial def _loop__lambda___mtshl_sparse_int_lex_1_0_ir (__rangefor_idx_0_2 : Na
   else
     ((0 : Int64), term_1)
 
-partial def _lambda___mtshl_sparse_int_lex_1_ir (p : UInt64) (poly : SparsePolyZp) (d : Int64) : sorry /- unknown -/ :=
+partial def _lambda___mtshl_sparse_int_lex_1_ir (p : UInt64) (poly : SparsePolyZp) (d : Int64) : Zp :=
   let __rangefor_cont_0_1 : SparsePolyZp := poly
   let __rangefor_idx_0_1 : Nat := (0 : Nat)
   let __loop_ret__lambda___mtshl_sparse_int_lex_1_0_1 : (Int64 × (UMonomial × Zp) /- ref residual -/) := (_loop__lambda___mtshl_sparse_int_lex_1_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 d)
@@ -2666,7 +2666,7 @@ partial def _loop__lambda___mtshl_sparse_int_lex_2_1_ir (k_2 : Nat) (tm_2 : Zp) 
   else
     ((0 : Int64), tm_2)
 
-partial def _lambda___mtshl_sparse_int_lex_2_ir (aux_vars : Array Variable) (p : UInt64) (sparse_betas : Array Zp) (mono : Monomial) : sorry /- unknown -/ :=
+partial def _lambda___mtshl_sparse_int_lex_2_ir (aux_vars : Array Variable) (p : UInt64) (sparse_betas : Array Zp) (mono : Monomial) : Zp :=
   let tm_1 : Zp := (Zp.ofInt ((1 : Int32)).toInt p)
   let k_1 : Nat := (0 : Nat)
   let __loop_ret__lambda___mtshl_sparse_int_lex_2_1_1 : (Int64 × Zp) := (_loop__lambda___mtshl_sparse_int_lex_2_1_ir k_1 tm_1 aux_vars mono sparse_betas)
@@ -3043,7 +3043,7 @@ partial def _loop__lambda___mtshl_step_j_lex_2_0_ir (i_2 : Int32) (prod_2 : Poly
   else
     ((0 : Int64), prod_2)
 
-partial def _lambda___mtshl_step_j_lex_2_ir (F : Array MvPolyZp) (r : Int32) : sorry /- unknown -/ :=
+partial def _lambda___mtshl_step_j_lex_2_ir (F : Array MvPolyZp) (r : Int32) : PolyZp :=
   -- require (h_in_bounds): ((0 : Nat) < (Array.size F))
   let prod_1 : PolyZp := (F[(0 : Int32).toNatClampNeg]!)
   let i_1 : Int32 := (1 : Int32)
@@ -3338,7 +3338,7 @@ partial def _loop__lambda___mtshl_wmds_lex_1_0_ir (i_2 : Int32) (e_2 : PolyZp) (
   else
     ((0 : Int64), e_2)
 
-partial def _lambda___mtshl_wmds_lex_1_ir (bi : Array PolyZp) (c : MvPolyZp) (r : Int32) (result : Array MvPolyZp) : sorry /- unknown -/ :=
+partial def _lambda___mtshl_wmds_lex_1_ir (bi : Array PolyZp) (c : MvPolyZp) (r : Int32) (result : Array MvPolyZp) : PolyZp :=
   let e_1 : PolyZp := c
   let i_1 : Int32 := (0 : Int32)
   let __loop_ret__lambda___mtshl_wmds_lex_1_0_1 : (Int64 × PolyZp) := (_loop__lambda___mtshl_wmds_lex_1_0_ir i_1 e_1 bi r result)
@@ -5176,7 +5176,7 @@ partial def _loop__lambda___vanhoeij_recombine_upoly_1_0_ir (i_2 : Int32) (M_2 :
   else
     ((0 : Int64), M_2)
 
-partial def _lambda___vanhoeij_recombine_upoly_1_ir (rr : Int32) (U_exp_ : Int32) : sorry /- unknown -/ :=
+partial def _lambda___vanhoeij_recombine_upoly_1_ir (rr : Int32) (U_exp_ : Int32) : LLLMatrix :=
   -- require (h_nonneg): (rr >= (0 : Int32))
   -- require (h_nonneg): (rr >= (0 : Int32))
   let M_1 : LLLMatrix := (LLLMatrix.replicate ((rr).toInt64.toUInt64) (Array.replicate ((((rr).toInt64.toUInt64)).toNat) ((0 : Int32)).toInt) (()))
@@ -5187,7 +5187,7 @@ partial def _lambda___vanhoeij_recombine_upoly_1_ir (rr : Int32) (U_exp_ : Int32
   let M_2 : LLLMatrix := __loop_ret__lambda___vanhoeij_recombine_upoly_1_0_1.snd
   M_2
 
-partial def _lambda___vanhoeij_recombine_upoly_2_ir (a : SparsePolyZZ) (b : SparsePolyZZ) : sorry /- unknown -/ :=
+partial def _lambda___vanhoeij_recombine_upoly_2_ir (a : SparsePolyZZ) (b : SparsePolyZZ) : Bool :=
   ((get_deg a) < (get_deg b))
 
 partial def _loop___vanhoeij_recombine_upoly_0_ir (__rangefor_idx_0_2 : Nat) (active_lifted_2 : Array SparsePolyZZ) (__rangefor_cont_0_1 : Array Int32) (lifted : Array SparsePolyZZ) : (Int64 × Array SparsePolyZZ) :=
@@ -5488,7 +5488,7 @@ partial def _loop__lambda___wang_core_lex_2_0_ir (__rangefor_idx_0_2 : Nat) (__r
   else
     (0 : Int64)
 
-partial def _lambda___wang_core_lex_2_ir (L : MvPolyZZ) (p : UInt64) : sorry /- unknown -/ :=
+partial def _lambda___wang_core_lex_2_ir (L : MvPolyZZ) (p : UInt64) : Bool :=
   let __rangefor_cont_0_1 : MvPolyZZ := L
   let __rangefor_idx_0_1 : Nat := (0 : Nat)
   let __loop_ret__lambda___wang_core_lex_2_0_1 : Int64 := (_loop__lambda___wang_core_lex_2_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 p)
@@ -5518,7 +5518,7 @@ partial def _loop__lambda___wang_core_lex_3_1_ir (j_2 : Int32) (idx_2 : Array In
   else
     ((0 : Int64), idx_2)
 
-partial def _lambda___wang_core_lex_3_ir (idx : Array Int32) (n : Int32) : (sorry /- unknown -/ × Array Int32) :=
+partial def _lambda___wang_core_lex_3_ir (idx : Array Int32) (n : Int32) : (Bool × Array Int32) :=
   -- require (h_fits_int32): (((Array.size idx) >= (-2147483648 : Int64)) && ((Array.size idx) <= (2147483647 : Int64)))
   let sz_1 : Int32 := (((Array.size idx)).toUInt32.toInt32)
   let i_1 : Int32 := (sz_1 - (1 : Int32))
@@ -5894,7 +5894,7 @@ partial def __wang_core_lex_ir (g : MvPolyZZ) : Array (MvPolyZZ × UInt64) :=
       else
         ((verified_8 : Array _))
 
-partial def _lambda___wang_leading_coeff_upoly_1_ir (comp_ptr : Lex /- ref residual -/) (val : ZZ) : sorry /- unknown -/ :=
+partial def _lambda___wang_leading_coeff_upoly_1_ir (comp_ptr : Lex /- ref residual -/) (val : ZZ) : Poly :=
   let bb_3 := fun p_3 =>
     (MvPolyZZ.mk p_3)
   let p_1 : Poly := (MvPolyZZ.mk comp_ptr)
@@ -5904,7 +5904,7 @@ partial def _lambda___wang_leading_coeff_upoly_1_ir (comp_ptr : Lex /- ref resid
   else
     bb_3 p_1
 
-partial def _lambda___wang_leading_coeff_upoly_2_ir (a : (Poly × UInt64)) (b : (Poly × UInt64)) : sorry /- unknown -/ :=
+partial def _lambda___wang_leading_coeff_upoly_2_ir (a : (Poly × UInt64)) (b : (Poly × UInt64)) : Bool :=
   (a.snd > b.snd)
 
 partial def _loop___wang_leading_coeff_upoly_0_ir (i_2 : Nat) (w_2 : Array ZZ) (r_1 : Nat) (uni_content : ZZ) (univar_factors : Array SparsePolyZZ) : (Int64 × Array ZZ) :=
@@ -6300,7 +6300,7 @@ partial def _loop__lambda___zassenhaus_recombine_upoly_1_1_ir (j_2 : Int32) (idx
   else
     ((0 : Int64), idx_2)
 
-partial def _lambda___zassenhaus_recombine_upoly_1_ir (idx : Array Int32) (n : Int32) : (sorry /- unknown -/ × Array Int32) :=
+partial def _lambda___zassenhaus_recombine_upoly_1_ir (idx : Array Int32) (n : Int32) : (Bool × Array Int32) :=
   -- require (h_fits_int32): (((Array.size idx) >= (-2147483648 : Int64)) && ((Array.size idx) <= (2147483647 : Int64)))
   let s_1 : Int32 := (((Array.size idx)).toUInt32.toInt32)
   let i_1 : Int32 := (s_1 - (1 : Int32))
@@ -6317,7 +6317,7 @@ partial def _lambda___zassenhaus_recombine_upoly_1_ir (idx : Array Int32) (n : I
     let idx_2 : Array Int32 := __loop_ret__lambda___zassenhaus_recombine_upoly_1_1_1.snd
     (true, idx_2)
 
-partial def _lambda___zassenhaus_recombine_upoly_2_ir (a : SparsePolyZZ) (b : SparsePolyZZ) : sorry /- unknown -/ :=
+partial def _lambda___zassenhaus_recombine_upoly_2_ir (a : SparsePolyZZ) (b : SparsePolyZZ) : Bool :=
   ((get_deg a) < (get_deg b))
 
 partial def _loop___zassenhaus_recombine_upoly_0_ir (j_2 : Int32) (S_idx_2 : Array Nat) (T_3 : Array Int32) (idx_3 : Array Int32) (s_2 : Int32) : (Int64 × Array Nat) :=
@@ -6508,7 +6508,7 @@ partial def __zassenhaus_recombine_upoly_ir (f : SparsePolyZZ) (lifted : Array S
     else
       bb_11 f_star_2 result_2
 
-partial def _lambda_factorize_upoly_1_ir (a : (SparsePolyZZ × UInt64)) (b : (SparsePolyZZ × UInt64)) : sorry /- unknown -/ :=
+partial def _lambda_factorize_upoly_1_ir (a : (SparsePolyZZ × UInt64)) (b : (SparsePolyZZ × UInt64)) : Bool :=
   ((degree a.fst) < (degree b.fst))
 
 partial def _loop_factorize_upoly_0_ir (__rangefor_idx_2_2 : Nat) (__rangefor_cont_2_2 : SparsePolyZZ) (second : sorry /- unknown -/) : (Int64 × SparsePolyZZ) :=
@@ -6642,7 +6642,7 @@ partial def factorize_upoly_ir (F : SparsePolyZZ) : Factorization :=
         -- require (h_assert): (check_poly_4 == f_poly_2)
         result_13
 
-partial def _lambda_factorize_lex_1_ir (a : (Poly × UInt64)) (b : (Poly × UInt64)) : sorry /- unknown -/ :=
+partial def _lambda_factorize_lex_1_ir (a : (Poly × UInt64)) (b : (Poly × UInt64)) : Bool :=
   ((degree a.fst) < (degree b.fst))
 
 partial def _loop_factorize_lex_0_ir (__rangefor_idx_2_2 : Nat) (__rangefor_cont_2_2 : SparsePolyZZ) (second : sorry /- unknown -/) : (Int64 × SparsePolyZZ) :=

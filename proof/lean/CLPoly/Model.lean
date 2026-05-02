@@ -218,8 +218,40 @@ def MvPolyZZ.mk (f : MvPolyZZ) : MvPolyZZ := f
 -- 通用 stub（与 SparsePolyZZ 解耦，无前向引用）
 def __write__ (_old : α) (new : α) : α := new
 def polynomial_GCD [Inhabited α] (_a _b : α) : α := default
-def pair_vec_div [Inhabited α] [Inhabited β] (_a _b : α × β) : α × β :=
-  (default, default)
+-- pair_vec_div: 4 参数版本（C++ side: pair_vec_div(f, g, q, comp) → 返回 quotient）
+-- 占位实现，B2B 测试细化（comp 通常是比较器/函数对象，签名宽松）
+def pair_vec_div [Inhabited α] (_f _g _q : α) (_comp : β) : α := default
+
+-- comp 方法占位（已存在于 namespace SparsePolyZp 之内为 UInt64）；
+-- 补 SparsePolyZZ / MvPolyZp / MvPolyZZ
+def SparsePolyZZ.comp (_f : SparsePolyZZ) : UInt64 := 0
+def MvPolyZp.comp (_f : MvPolyZp) : UInt64 := 0
+def MvPolyZZ.comp (_f : MvPolyZZ) : UInt64 := 0
+
+-- HMul / HAdd / HSub / HPow 等 Lean 类型类 stub（B2B 测试时细化）
+instance : HMul SparsePolyZp SparsePolyZp SparsePolyZp where
+  hMul a b := a ++ b
+instance : HAdd SparsePolyZp SparsePolyZp SparsePolyZp where
+  hAdd a b := a ++ b
+instance : HSub SparsePolyZp SparsePolyZp SparsePolyZp where
+  hSub a b := a ++ b
+instance : HMul SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hMul a b := a ++ b
+instance : HAdd SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hAdd a b := a ++ b
+instance : HSub SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hSub a b := a ++ b
+instance : HPow Int UInt64 Int where
+  hPow base e := base ^ e.toNat
+instance : HPow ZZ UInt64 ZZ where
+  hPow base e := base ^ e.toNat
+
+-- Coe Int32 → UInt64 / Int64（Pass 1 把 C++ 字面量识别为 Int32，Lean 端
+-- 函数参数常需 UInt64/Int64；自动 Coe 解决 ~5 处 Application mismatch）
+instance : Coe Int32 UInt64 where coe n := n.toInt64.toUInt64
+instance : Coe Int32 Int64 where coe n := n.toInt64
+instance : Coe UInt64 Nat where coe n := n.toNat
+instance : Coe Int64 Nat where coe n := n.toNatClampNeg
 abbrev SparsePolyZZ := Array (UMonomial × Int)
 
 -- §5a2 迁移：SparsePolyZZ 操作（filterMap 等需要 SparsePolyZZ 已定义）

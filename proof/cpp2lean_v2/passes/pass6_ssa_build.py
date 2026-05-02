@@ -186,9 +186,12 @@ class CFGBuilder:
             # 从 s.container 推 cont_var.ty（B1 修：之前一律标 UnknownType
             # 导致下游 Pass 7 cap_param + Pass 8 codegen 类型 sorry 级联）
             cont_ty: TypeIR = UnknownType("")
-            if isinstance(s.container, Var) and s.container.ty is not None \
-                    and not isinstance(s.container.ty, UnknownType):
-                cont_ty = s.container.ty
+            # 阶段 C：container 可能是 Var / FieldAccess / Call 等，统一取 .ty
+            ct_raw = getattr(s.container, 'ty', None)
+            if ct_raw is not None and not isinstance(ct_raw, UnknownType):
+                cont_ty = ct_raw
+                while isinstance(cont_ty, RefType):
+                    cont_ty = cont_ty.inner
             cont_var = Var(name=cont_name, ty=cont_ty)
             # idx 用 Nat 与 Lean Array indexing 原生类型一致（B1 续修）
             # 之前用 Int64 → Pass 8 emit `idx < Array.size cont` 导致

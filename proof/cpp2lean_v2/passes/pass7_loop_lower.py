@@ -253,7 +253,11 @@ def _collect_var_reads_in_expr_versioned(e: ExprIR, out: set[tuple[str, int]],
     """收集 expr 中所有 Var 引用，含版本号 + 类型。"""
     if isinstance(e, Var):
         out.add((e.name, e.version))
-        if (e.name, e.version) not in tys and e.ty is not None:
+        # 优先非-Unknown ty（同一 SSA Var 多处引用时，先记的可能是 Unknown 占位，
+        # 后遇到的可能是正确类型 — 后者覆盖前者；与 setdefault 反过来）
+        if e.ty is not None and not isinstance(e.ty, UnknownType):
+            tys[(e.name, e.version)] = e.ty
+        elif (e.name, e.version) not in tys and e.ty is not None:
             tys[(e.name, e.version)] = e.ty
         return
     if isinstance(e, (Lit, UnresolvedOp)):
@@ -289,7 +293,8 @@ def _collect_var_reads_in_expr_versioned(e: ExprIR, out: set[tuple[str, int]],
 
 def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
                              phi_target_at_header: list[tuple[Var, TypeIR]],
-                             extra_aux_for_ty: list[MIRFunc] | None = None
+                             extra_aux_for_ty: list[MIRFunc] | None = None,
+                             func_param_tys: dict[str, TypeIR] | None = None
                              ) -> list[Var]:
     """收集 loop body 内 free Var（带版本）—— body 内 read 但 def 在外（也不是
     header phi target）。返回带版本的 Var 列表。
@@ -363,9 +368,18 @@ def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
         if name.startswith(("_lambda_", "_loop_", "__loop_ret_",
                               "__refret_", "__hoist_lam")):
             continue
-        # 阶段 A 续修：read_tys → cfg_def_tys → UnknownType 三级 fallback
-        ty = read_tys.get((name, version)) or cfg_def_tys.get((name, version)) \
-              or UnknownType("")
+        # 阶段 A/C 续修：read_tys → cfg_def_tys → func_param_tys (version=0
+        # 才匹配) → UnknownType 四级 fallback
+        ty = read_tys.get((name, version))
+        if ty is None or isinstance(ty, UnknownType):
+            ty = cfg_def_tys.get((name, version)) or ty
+        if (ty is None or isinstance(ty, UnknownType)) and version == 0 \
+                and func_param_tys and name in func_param_tys:
+            param_ty = func_param_tys[name]
+            if param_ty is not None and not isinstance(param_ty, UnknownType):
+                ty = param_ty
+        if ty is None:
+            ty = UnknownType("")
         free.append(Var(name=name, version=version, ty=ty))
     return free
 
@@ -493,7 +507,8 @@ def _replace_terminator_for_back_edge(t, header: int, loop_name: str,
 def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
                      idom: dict[int, int], loop_id: int,
                      host_base: str,
-                     extra_aux_for_ty: list[MIRFunc] | None = None
+                     extra_aux_for_ty: list[MIRFunc] | None = None,
+                     func_param_tys: dict[str, TypeIR] | None = None
                      ) -> tuple[MIRFunc, list[Var], list[int], list[Var], list[Var]]:
     """从 cfg 提取 loop 为独立 MIRFunc。
 
@@ -513,7 +528,8 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
     phi_target_vars = [Var(name=t[0].name, version=t[0].version, ty=t[1])
                         for t in phi_targets]
     free_vars: list[Var] = _collect_loop_free_vars(cfg, body_bbs, phi_targets,
-                                                     extra_aux_for_ty=extra_aux_for_ty)
+                                                     extra_aux_for_ty=extra_aux_for_ty,
+                                                     func_param_tys=func_param_tys)
     # 阶段 A：cap_param ty 剥 RefType（Pass 7 silent regression 修复）
     cap_params = [HIRParam(name=_var_param_name(v), ty=_strip_ref_ty(v.ty),
                             is_ref=False, is_const_ref=False, is_output=False)
@@ -810,6 +826,9 @@ def loop_lower_pass(func: MIRFunc) -> MIRFunc:
 
     cfg = func.cfg
     loop_id_counter = 0
+    # 阶段 C：func.params 作为 caller-scope ty 来源（free_var name == param name 时
+    # 使用 param.ty）
+    func_param_tys = {p.name: p.ty for p in func.params}
 
     while True:
         idom = _compute_idom(cfg)
@@ -832,7 +851,8 @@ def loop_lower_pass(func: MIRFunc) -> MIRFunc:
         # 可能在 inner loop 的 cfg 中定义（已被提取掉，main cfg 找不到）
         loop_func, phi_target_vars, exit_targets, free_vars, live_outs = \
             _build_loop_func(cfg, header, body_bbs, idom, loop_id_counter,
-                             host_base=host_base, extra_aux_for_ty=new_aux)
+                             host_base=host_base, extra_aux_for_ty=new_aux,
+                             func_param_tys=func_param_tys)
         loop_id_counter += 1
         new_aux.append(loop_func)
 

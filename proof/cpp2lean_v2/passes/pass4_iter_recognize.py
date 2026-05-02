@@ -398,22 +398,25 @@ def _match_filter_loop_A(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
         if if_stmt is None: return None
         # 推 elem_ty：从 container 类型剥（Array → elem_ty）
         elem_ty = None
-        if isinstance(container, Var):
-            ct = container.ty
-            if isinstance(ct, ArrayType):
-                elem_ty = ct.elem
-            elif isinstance(ct, StdMapType):
-                # std::map<K, V> 的 elem 是 (K, V) pair
-                elem_ty = PairType(ct.key, ct.value)
-            elif isinstance(ct, NamedType):
-                # 已知 CLPoly 容器 NamedType → elem 类型查表
-                _CONTAINER_ELEM = {
-                    "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
-                    "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
-                    "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
-                    "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
-                }
-                elem_ty = _CONTAINER_ELEM.get(ct.name)
+        # 阶段 C：container 可能是 Var / FieldAccess / ArrayAccess —— 都尝试取 ty
+        ct = getattr(container, 'ty', None)
+        # 阶段 C：剥 RefType 外壳
+        while isinstance(ct, RefType):
+            ct = ct.inner
+        if isinstance(ct, ArrayType):
+            elem_ty = ct.elem
+            if isinstance(elem_ty, RefType):
+                elem_ty = elem_ty.inner
+        elif isinstance(ct, StdMapType):
+            elem_ty = PairType(ct.key, ct.value)
+        elif isinstance(ct, NamedType):
+            _CONTAINER_ELEM = {
+                "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
+                "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
+                "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
+                "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
+            }
+            elem_ty = _CONTAINER_ELEM.get(ct.name)
         pred_lambda = _build_filter_map_lambda(
             mutators, if_stmt.cond, it_name, elem_ty)
         return FilterLoopMatch(
@@ -435,8 +438,12 @@ def _match_filter_loop_A(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
     pure_elem_ty = None
     if isinstance(container, Var):
         ct = container.ty
+        while isinstance(ct, RefType):
+            ct = ct.inner
         if isinstance(ct, ArrayType):
             pure_elem_ty = ct.elem
+            if isinstance(pure_elem_ty, RefType):
+                pure_elem_ty = pure_elem_ty.inner
         elif isinstance(ct, StdMapType):
             pure_elem_ty = PairType(ct.key, ct.value)
         elif isinstance(ct, NamedType):
@@ -540,8 +547,12 @@ def _match_filter_loop_B(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
     b_elem_ty = None
     if isinstance(container, Var):
         ct = container.ty
+        while isinstance(ct, RefType):
+            ct = ct.inner
         if isinstance(ct, ArrayType):
             b_elem_ty = ct.elem
+            if isinstance(b_elem_ty, RefType):
+                b_elem_ty = b_elem_ty.inner
         elif isinstance(ct, StdMapType):
             b_elem_ty = PairType(ct.key, ct.value)
         elif isinstance(ct, NamedType):

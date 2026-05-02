@@ -408,6 +408,21 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
     # 模板含 {a0}/{a1}/... 占位符，按位置 args 替换为实际表达式
     if callee.startswith("__ctor__"):
         template = callee[len("__ctor__"):]
+        # vector(n, T()) 特判：模板 `Array.replicate (({a0}).toNat) {a1}` 中
+        # {a1} 若是 Unit literal（来自 C++ 默认构造的 fallback），改用 `default`
+        # 让 Lean 按上下文 Inhabited 实例推断 element 默认值。
+        if template.startswith("Array.replicate") and len(e.args) >= 2:
+            a1 = e.args[1]
+            # Lit(0, BaseType.UNIT) / TupleExpr([]) / Call("__ctor__()", []) (default ctor)
+            is_unit_default = (
+                (isinstance(a1, Lit) and a1.ty == BaseType.UNIT) or
+                (isinstance(a1, TupleExpr) and len(a1.elems) == 0) or
+                (isinstance(a1, Call) and isinstance(a1.callee, str)
+                  and a1.callee.startswith("__ctor__") and len(a1.args) == 0)
+            )
+            if is_unit_default:
+                inner = emit_expr(e.args[0], ctx)
+                return f"(Array.replicate (({inner}).toNat) default)"
         # ZZ:1 特判：模板 `(({a0}) : Int)` 是类型 ascription 不实际转换。
         # 按 a0 实际类型选 .toInt / .toNat → Int 等。
         if template == "(({a0}) : Int)" and len(e.args) == 1:

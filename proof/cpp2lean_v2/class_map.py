@@ -686,6 +686,7 @@ TRANSLATION_SCOPE_OUTPUT_PARAMS = {
     "__upoly_mod_coeff": [0],            # f
     "__upoly_divmod_mod": [0, 1],        # q, r
     "__edf_Zp": [0, 3],                  # result, rng
+    "__upoly_random": [2],               # (max_deg, p, rng&) — rng output param
     "__hensel_tree_build_recursive": [0], # nodes
     "__hensel_step": [0],                # node
     "__hensel_extract_factors": [2],      # factors

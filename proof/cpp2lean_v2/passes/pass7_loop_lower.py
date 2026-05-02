@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
     BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType,
+    ArrayType, OptionType, StdMapType, RefType,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, ExprIR,
     LetStmt, RequireStmt, StmtIR,
@@ -287,7 +288,8 @@ def _collect_var_reads_in_expr_versioned(e: ExprIR, out: set[tuple[str, int]],
 
 
 def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
-                             phi_target_at_header: list[tuple[Var, TypeIR]]
+                             phi_target_at_header: list[tuple[Var, TypeIR]],
+                             extra_aux_for_ty: list[MIRFunc] | None = None
                              ) -> list[Var]:
     """收集 loop body 内 free Var（带版本）—— body 内 read 但 def 在外（也不是
     header phi target）。返回带版本的 Var 列表。
@@ -296,6 +298,25 @@ def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
     defs_in_loop: set[str] = {v.name for v, _ in phi_target_at_header}
     reads_in_loop: set[tuple[str, int]] = set()
     read_tys: dict[tuple[str, int], TypeIR] = {}
+    # 阶段 A 续修：扫全 cfg 收集 (name, version) → ty 表（caller-scope LetStmt 的
+    # ty 比 read 处 Var.ty 更可靠；当 Var.ty=None / UnknownType 时 fallback）
+    cfg_def_tys: dict[tuple[str, int], TypeIR] = {}
+    def _scan_cfg(c: CFG):
+        for bb_g in c.blocks.values():
+            for s_g in bb_g.stmts:
+                if isinstance(s_g, LetStmt):
+                    if s_g.ty is not None and not isinstance(s_g.ty, UnknownType):
+                        cfg_def_tys.setdefault((s_g.var.name, s_g.var.version), s_g.ty)
+                elif isinstance(s_g, PhiStmt):
+                    if s_g.ty is not None and not isinstance(s_g.ty, UnknownType):
+                        cfg_def_tys.setdefault((s_g.target.name, s_g.target.version), s_g.ty)
+    _scan_cfg(cfg)
+    # 阶段 A 续修：扫已提取的 aux_defs（new_aux）的 cfg —— nested loop 时外层
+    # cap_param 引用的 var 可能定义在内层（已提取的）loop 的 cfg 中
+    if extra_aux_for_ty:
+        for aux in extra_aux_for_ty:
+            if aux.cfg is not None:
+                _scan_cfg(aux.cfg)
     # header BB 的 phi 是 loop-carried — sources 要么在循环外（init arg），要么
     # 在循环内某 body BB（loop-defined）。body 内非-header BB 的 phi（Pass 6 在
     # 嵌套合流点也可能插 phi）—— 其 sources 可能引用 outer-scope Var。
@@ -342,7 +363,9 @@ def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
         if name.startswith(("_lambda_", "_loop_", "__loop_ret_",
                               "__refret_", "__hoist_lam")):
             continue
-        ty = read_tys.get((name, version), UnknownType(""))
+        # 阶段 A 续修：read_tys → cfg_def_tys → UnknownType 三级 fallback
+        ty = read_tys.get((name, version)) or cfg_def_tys.get((name, version)) \
+              or UnknownType("")
         free.append(Var(name=name, version=version, ty=ty))
     return free
 
@@ -350,6 +373,32 @@ def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
 def _var_param_name(v: Var) -> str:
     """SSA Var → HIRParam name（含版本编码）。"""
     return f"{v.name}_{v.version}" if v.version > 0 else v.name
+
+
+def _strip_ref_ty(ty: TypeIR | None) -> TypeIR:
+    """剥 RefType 外壳；递归处理 Pair / Tuple / Array / Option / StdMap 内层。
+    阶段 A 修复：Pass 7 emit 的 cap_param / live_out / ret_ty 不应含 RefType。
+    """
+    if ty is None:
+        return UnknownType("")
+    if isinstance(ty, RefType):
+        return _strip_ref_ty(ty.inner)
+    if isinstance(ty, ArrayType):
+        inner = _strip_ref_ty(ty.elem)
+        return ArrayType(elem=inner) if inner is not ty.elem else ty
+    if isinstance(ty, PairType):
+        f = _strip_ref_ty(ty.fst); s = _strip_ref_ty(ty.snd)
+        return PairType(fst=f, snd=s) if (f is not ty.fst or s is not ty.snd) else ty
+    if isinstance(ty, TupleType):
+        new_elems = tuple(_strip_ref_ty(e) for e in ty.elems)
+        return TupleType(elems=new_elems) if new_elems != ty.elems else ty
+    if isinstance(ty, OptionType):
+        inner = _strip_ref_ty(ty.inner)
+        return OptionType(inner=inner) if inner is not ty.inner else ty
+    if isinstance(ty, StdMapType):
+        k = _strip_ref_ty(ty.key); v = _strip_ref_ty(ty.value)
+        return StdMapType(key=k, value=v) if (k is not ty.key or v is not ty.value) else ty
+    return ty
 
 
 def _reaching_def_at(cfg: CFG, name: str, src_bb: int,
@@ -443,7 +492,8 @@ def _replace_terminator_for_back_edge(t, header: int, loop_name: str,
 
 def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
                      idom: dict[int, int], loop_id: int,
-                     host_base: str
+                     host_base: str,
+                     extra_aux_for_ty: list[MIRFunc] | None = None
                      ) -> tuple[MIRFunc, list[Var], list[int], list[Var], list[Var]]:
     """从 cfg 提取 loop 为独立 MIRFunc。
 
@@ -462,8 +512,10 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
     phi_targets: list[tuple[Var, TypeIR]] = _collect_phi_targets_at(header_block)
     phi_target_vars = [Var(name=t[0].name, version=t[0].version, ty=t[1])
                         for t in phi_targets]
-    free_vars: list[Var] = _collect_loop_free_vars(cfg, body_bbs, phi_targets)
-    cap_params = [HIRParam(name=_var_param_name(v), ty=v.ty or UnknownType(""),
+    free_vars: list[Var] = _collect_loop_free_vars(cfg, body_bbs, phi_targets,
+                                                     extra_aux_for_ty=extra_aux_for_ty)
+    # 阶段 A：cap_param ty 剥 RefType（Pass 7 silent regression 修复）
+    cap_params = [HIRParam(name=_var_param_name(v), ty=_strip_ref_ty(v.ty),
                             is_ref=False, is_const_ref=False, is_output=False)
                   for v in free_vars]
     phi_params = [HIRParam(name=_var_param_name(t[0]), ty=t[1], is_ref=False,
@@ -486,7 +538,8 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
     live_outs: list[Var] = _collect_loop_live_outs(cfg, body_bbs)
     # ret_ty: (exit_kind, ...live_outs)
     ret_tys: list[TypeIR] = [BaseType.INT64]
-    ret_tys.extend(v.ty or UnknownType("") for v in live_outs)
+    # 阶段 A：live_out ret_ty 也剥 RefType
+    ret_tys.extend(_strip_ref_ty(v.ty) for v in live_outs)
     if len(ret_tys) == 1:
         ret_ty: TypeIR = ret_tys[0]  # 仅 kind（无 live_out）
     elif len(ret_tys) == 2:
@@ -572,7 +625,7 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
         free_vars = list(free_vars) + extra_free
         for ev in extra_free:
             cap_params.append(HIRParam(name=_var_param_name(ev),
-                                         ty=ev.ty or UnknownType(""),
+                                         ty=_strip_ref_ty(ev.ty),
                                          is_ref=False, is_const_ref=False,
                                          is_output=False))
         new_params = phi_params + cap_params
@@ -774,9 +827,12 @@ def loop_lower_pass(func: MIRFunc) -> MIRFunc:
         host_base = func.base_name
         if func.instance_suffix:
             host_base = f"{host_base}_{func.instance_suffix}"
+        # 阶段 A 续修：把 new_aux（已提取的 loops + lifted lambdas）的 cfg 也
+        # 纳入 cfg_def_tys 来源——nested loop 提取时 outer cap_param 引用的 var
+        # 可能在 inner loop 的 cfg 中定义（已被提取掉，main cfg 找不到）
         loop_func, phi_target_vars, exit_targets, free_vars, live_outs = \
             _build_loop_func(cfg, header, body_bbs, idom, loop_id_counter,
-                             host_base=host_base)
+                             host_base=host_base, extra_aux_for_ty=new_aux)
         loop_id_counter += 1
         new_aux.append(loop_func)
 
@@ -864,10 +920,11 @@ def _splice_loop_call(cfg: CFG, header: int, body_bbs: set[int],
     # destructure live_outs：每个 live_out 在 caller 端被恢复为其原 SSA Var
     # （body 的 def 已删，destructure LetStmt 即为新 def，不破坏 SSA 单赋值）
     for k, lo in enumerate(live_outs):
+        # 阶段 A：destructure LetStmt ty 剥 RefType
+        lo_ty = _strip_ref_ty(lo.ty)
         new_header_stmts.append(LetStmt(
-            var=lo, ty=lo.ty or UnknownType(""),
-            value=FieldAccess(obj=tmp_var, field_name=lo_fields[k],
-                              ty=lo.ty or UnknownType(""))
+            var=lo, ty=lo_ty,
+            value=FieldAccess(obj=tmp_var, field_name=lo_fields[k], ty=lo_ty)
                   if lo_fields else tmp_var,
         ))
 

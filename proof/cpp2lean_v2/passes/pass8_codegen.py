@@ -465,7 +465,14 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
     if callee == "_with" and len(e.args) == 3:
         obj = emit_expr(e.args[0], ctx)
         field_arg = e.args[1]
-        field = field_arg.name if isinstance(field_arg, Var) else emit_expr(field_arg, ctx)
+        # 优先 Lit(string) 取 raw（Pass 6 _build_record_update 用此形式），
+        # fall-back 到 Var.name（兼容旧 emit）
+        if isinstance(field_arg, Lit) and isinstance(field_arg.value, str):
+            field = field_arg.value
+        elif isinstance(field_arg, Var):
+            field = field_arg.name
+        else:
+            field = emit_expr(field_arg, ctx)
         val = emit_expr(e.args[2], ctx)
         return f"{{ {obj} with {field} := {val} }}"
 

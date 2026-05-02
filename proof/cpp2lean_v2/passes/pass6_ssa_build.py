@@ -433,10 +433,11 @@ def _build_record_update(tgt: ExprIR, new_val: ExprIR, root_name: str) -> ExprIR
                         args=[outer_arr, outer_idx, inner_set], ty=ty)
         return Call(callee="Array.set!", args=[arr, idx, new_val], ty=ty)
     if isinstance(tgt, FieldAccess):
+        # field name 用 Lit(string) 占位（之前用 Var → 被 Pass 7 误当 free var
+        # → cap_param 含 'content'/'factors' 等 field 名导致 64+ Unknown 残留）
         return Call(callee="_with",
                     args=[tgt.obj,
-                          Var(name=tgt.field_name, version=0,
-                              ty=UnknownType("")),
+                          Lit(value=tgt.field_name, ty=NamedType("FieldName")),
                           new_val],
                     ty=tgt.ty if tgt.ty is not None else UnknownType(""))
     # StdMap.get!(m, k) = v → StdMap.insert m k v

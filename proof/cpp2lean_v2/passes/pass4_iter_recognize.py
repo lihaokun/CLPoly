@@ -732,6 +732,30 @@ def _desugar_decomposition(rf: RangeForStmt) -> RangeForStmt:
         elem_ty = elem_ty.inner
     x_var = rf.var
 
+    # 阶段 A 续修：若 rf.var_ty 不是 PairType/TupleType，尝试从 container 类型推
+    # （原本 fallback 给 UnknownType × N，导致 64+ aux_def cap_param sorry 残留）
+    _CONTAINER_ELEM_DECOMP = {
+        "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
+        "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
+        "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
+        "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
+    }
+    if not isinstance(elem_ty, (PairType, TupleType)):
+        ct = getattr(rf.container, 'ty', None) if rf.container else None
+        if isinstance(ct, RefType): ct = ct.inner
+        # ArrayType → elem_ty
+        if isinstance(ct, ArrayType):
+            inferred = ct.elem
+            if isinstance(inferred, RefType): inferred = inferred.inner
+            if isinstance(inferred, (PairType, TupleType)):
+                elem_ty = inferred
+        # StdMapType → (K, V)
+        elif isinstance(ct, StdMapType):
+            elem_ty = PairType(ct.key, ct.value)
+        # NamedType 已知容器 → 查表
+        elif isinstance(ct, NamedType) and ct.name in _CONTAINER_ELEM_DECOMP:
+            elem_ty = _CONTAINER_ELEM_DECOMP[ct.name]
+
     prelude: list[StmtIR] = []
 
     if isinstance(elem_ty, PairType):

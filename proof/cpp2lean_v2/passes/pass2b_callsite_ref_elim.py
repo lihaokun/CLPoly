@@ -37,7 +37,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
-    BaseType, NamedType, UnknownType, TypeIR,
+    BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType, RefType,
     PairType, TupleType,
     Var, Lit, Call, FieldAccess, ArrayAccess, Cast, UnresolvedOp, UnaryOp,
     LetStmt, AssignStmt, IfStmt, WhileStmt, ForStmt, RangeForStmt, DoWhileStmt,
@@ -138,8 +138,11 @@ def _ref_elim_call_at_stmt(call: Call, counter: list[int]) -> list[StmtIR] | Non
     tmp_id = counter[0]
     counter[0] += 1
     tmp_name = f"__refret_{tmp_id}"
-    tmp_var = Var(name=tmp_name, ty=UnknownType(""))
-    out: list[StmtIR] = [LetStmt(var=tmp_var, ty=UnknownType(""), value=call)]
+    # 阶段 B：tmp_var ty 从 call.ty + out_args[i].ty 推导
+    out_arg_tys = [_strip_ref_ty_b2(getattr(a, 'ty', None)) for a in out_args]
+    tmp_ty = _build_refret_tuple_ty(call.ty if nonvoid else None, out_arg_tys)
+    tmp_var = Var(name=tmp_name, ty=tmp_ty)
+    out: list[StmtIR] = [LetStmt(var=tmp_var, ty=tmp_ty, value=call)]
 
     if nonvoid:
         n_total = 1 + n_out
@@ -157,9 +160,45 @@ def _ref_elim_call_at_stmt(call: Call, counter: list[int]) -> list[StmtIR] | Non
         out.append(AssignStmt(
             target=target,
             value=FieldAccess(obj=tmp_var, field_name=out_fields[k],
-                              ty=UnknownType("")),
+                              ty=out_arg_tys[k] if out_arg_tys[k] else UnknownType("")),
         ))
     return out
+
+
+def _strip_ref_ty_b2(ty):
+    """剥 RefType 外壳（Pass 2b 内部使用，避免 forward dep on Pass 7）。"""
+    if ty is None:
+        return None
+    if isinstance(ty, RefType):
+        return _strip_ref_ty_b2(ty.inner)
+    return ty
+
+
+def _build_refret_tuple_ty(orig_ret_ty, out_arg_tys):
+    """构造 __refret tmp 的 tuple 类型。
+    nonvoid + 1 out: PairType(orig_ret, out0)
+    nonvoid + 2+ out: TupleType(orig_ret, out0, out1, ...)
+    void + 1 out: out0
+    void + 2 out: PairType(out0, out1)
+    void + 3+ out: TupleType(out0, out1, ...)
+    None 元素 → UnknownType
+    """
+    def _safe(ty):
+        return ty if ty is not None else UnknownType("")
+    n_out = len(out_arg_tys)
+    if orig_ret_ty is not None:
+        # nonvoid
+        elems = [_safe(orig_ret_ty)] + [_safe(t) for t in out_arg_tys]
+    else:
+        # void
+        if n_out == 1:
+            return _safe(out_arg_tys[0])
+        elems = [_safe(t) for t in out_arg_tys]
+    if len(elems) == 2:
+        return PairType(fst=elems[0], snd=elems[1])
+    if len(elems) >= 3:
+        return TupleType(elems=tuple(elems))
+    return UnknownType("")
 
 
 def _hoist_ref_call(expr: ExprIR, counter: list[int]
@@ -196,7 +235,10 @@ def _hoist_ref_call(expr: ExprIR, counter: list[int]
     tmp_id = counter[0]
     counter[0] += 1
     tmp_name = f"__refret_{tmp_id}"
-    tmp_var = Var(name=tmp_name, ty=UnknownType(""))
+    # 阶段 B：tmp_var ty 推导（_hoist_ref_call 总是 nonvoid，因 expr 即 inner ret）
+    out_arg_tys = [_strip_ref_ty_b2(getattr(a, 'ty', None)) for a in out_args]
+    tmp_ty = _build_refret_tuple_ty(inner.ty, out_arg_tys)
+    tmp_var = Var(name=tmp_name, ty=tmp_ty)
 
     n_out = len(out_indices)
     # 字段命名：返回 (orig_ret, out_0, out_1, ...)
@@ -209,13 +251,13 @@ def _hoist_ref_call(expr: ExprIR, counter: list[int]
         out_fields = [f"elem{k+1}" for k in range(n_out)]
 
     pre_stmts: list[StmtIR] = [
-        LetStmt(var=tmp_var, ty=UnknownType(""), value=inner),
+        LetStmt(var=tmp_var, ty=tmp_ty, value=inner),
     ]
     for k, target in enumerate(out_args):
         pre_stmts.append(AssignStmt(
             target=target,
             value=FieldAccess(obj=tmp_var, field_name=out_fields[k],
-                              ty=UnknownType("")),
+                              ty=out_arg_tys[k] if out_arg_tys[k] else UnknownType("")),
         ))
     new_inner = FieldAccess(obj=tmp_var, field_name=ret_field, ty=inner.ty)
     new_expr = UnaryOp(op="!", operand=new_inner, ty=expr.ty) if not_wrap else new_inner

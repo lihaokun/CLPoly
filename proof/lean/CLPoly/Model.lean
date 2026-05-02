@@ -68,8 +68,10 @@ abbrev ZZ := Int
 -- §3. UMonomial：单变量单项式
 -- ============================================================
 
+-- UMonomial.deg 用 Nat（C++ size_t；Lean 4 Nat 同时支持 .toInt32 等转换，
+-- 解决 (term_1.fst.deg).toInt32 等场景的 UInt64.toInt32 invalid field 问题）
 structure UMonomial where
-  deg : UInt64
+  deg : Nat
 deriving Repr, Inhabited, BEq
 
 -- ============================================================
@@ -84,7 +86,7 @@ def empty : SparsePolyZp := #[]
 
 def front! (f : SparsePolyZp) : UMonomial × Zp := f[0]!
 def back! (f : SparsePolyZp) : UMonomial × Zp := f[f.size - 1]!
-def getDeg (f : SparsePolyZp) : UInt64 := if f.isEmpty then 0 else f[0]!.fst.deg
+def getDeg (f : SparsePolyZp) : UInt64 := if f.isEmpty then 0 else f[0]!.fst.deg.toUInt64
 def size_u64 (f : SparsePolyZp) : UInt64 := f.size.toUInt64
 
 def normalization (f : SparsePolyZp) : SparsePolyZp :=
@@ -100,7 +102,7 @@ def derivative (f : SparsePolyZp) : SparsePolyZp :=
     let p := f[0]!.snd.prime
     f.filterMap (fun (m, c) =>
       if m.deg == 0 then none
-      else some (⟨m.deg - 1⟩, ⟨c.val * m.deg % p, p⟩))
+      else some (⟨m.deg - 1⟩, ⟨c.val * m.deg.toUInt64 % p, p⟩))
 
 -- GCD：欧几里得算法（需要多项式除法，暂用简化版）
 -- 完整实现需要 divmod，此处仅供背靠背测试框架编译
@@ -230,16 +232,20 @@ def MvPolyZZ.comp (_f : MvPolyZZ) : UInt64 := 0
 
 -- HMul / HAdd / HSub / HPow 等 Lean 类型类 stub（B2B 测试时细化）
 instance : HMul SparsePolyZp SparsePolyZp SparsePolyZp where
-  hMul a b := a ++ b
+  hMul a b := Array.append a b
 instance : HAdd SparsePolyZp SparsePolyZp SparsePolyZp where
-  hAdd a b := a ++ b
+  hAdd a b := Array.append a b
 instance : HSub SparsePolyZp SparsePolyZp SparsePolyZp where
-  hSub a b := a ++ b
-instance : HMul SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hSub a b := Array.append a b
+-- 用具体 array element 类型避免 abbrev 透明度问题
+instance instHMulSparsePolyZZ :
+    HMul (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
   hMul a b := a ++ b
-instance : HAdd SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+instance instHAddSparsePolyZZ :
+    HAdd (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
   hAdd a b := a ++ b
-instance : HSub SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+instance instHSubSparsePolyZZ :
+    HSub (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
   hSub a b := a ++ b
 instance : HPow Int UInt64 Int where
   hPow base e := base ^ e.toNat
@@ -266,13 +272,13 @@ def SparsePolyZZ.compactNonzero (f : SparsePolyZZ) : SparsePolyZZ :=
 def SparsePolyZZ.empty : SparsePolyZZ := #[]
 def SparsePolyZZ.front! (f : SparsePolyZZ) : UMonomial × Int := f[0]!
 def SparsePolyZZ.back! (f : SparsePolyZZ) : UMonomial × Int := f[f.size - 1]!
-def SparsePolyZZ.getDeg (f : SparsePolyZZ) : UInt64 := if f.isEmpty then 0 else f[0]!.fst.deg
+def SparsePolyZZ.getDeg (f : SparsePolyZZ) : UInt64 := if f.isEmpty then 0 else f[0]!.fst.deg.toUInt64
 
 -- get_deg: 泛型化（C++ side 多模板实例化共用同一 Lean 实现）
 -- 适用 SparsePolyZZ / SparsePolyZp 两种容器（结构相同：Array (UMonomial × _)）
 -- 返回 Int64（多数 Pass 1 调用点把 get_deg 视为 int64_t / signed comparison 上下文）
 def get_deg {α : Type} [Inhabited α] (f : Array (UMonomial × α)) : Int64 :=
-  if f.isEmpty then 0 else (f[0]!).fst.deg.toInt64
+  if f.isEmpty then 0 else (f[0]!).fst.deg.toUInt64.toInt64
 
 abbrev LLLMatrix := Array (Array Int)
 abbrev HenselNode := Array Int  -- 占位

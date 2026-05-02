@@ -182,6 +182,9 @@ def find! [BEq K] [Inhabited V] (m : StdMap K V) (k : K) : V :=
   | some v => v
   | none => default
 
+-- get! 别名（Pass 5 把 C++ map[k] 解析为 StdMap.get!，与 find! 等价语义）
+def get! [BEq K] [Inhabited V] (m : StdMap K V) (k : K) : V := find! m k
+
 def insert [BEq K] (m : StdMap K V) (k : K) (v : V) : StdMap K V :=
   (k, v) :: m.filter (fun (k', _) => !(k == k'))
 
@@ -207,6 +210,10 @@ abbrev MvPolyZZ := Array (Array (UInt64 × UInt64) × Int)
 abbrev MvPolyZp := Array (Array (UInt64 × UInt64) × Zp)
 abbrev MvMonomial := Array (UInt64 × UInt64)
 abbrev Variable := Array (String × Int)
+-- Monomial 是 C++ Poly::monomial_type 的 typedef
+-- 实际 corpus: 迭代 Monomial 得到 (Variable, Int64) pairs（指数表达）
+-- 与 MvMonomial 不同（MvMonomial 是 (UInt64, UInt64) 即 (var_id, deg)）
+abbrev Monomial := Array (Variable × Int64)
 -- C++ side polynomial<Zp> 的 Lean 别名（语义相同 MvPolyZp）
 abbrev PolyZp := MvPolyZp
 abbrev PolyZZ := MvPolyZZ
@@ -223,6 +230,9 @@ def polynomial_GCD [Inhabited α] (_a _b : α) : α := default
 -- pair_vec_div: 4 参数版本（C++ side: pair_vec_div(f, g, q, comp) → 返回 quotient）
 -- 占位实现，B2B 测试细化（comp 通常是比较器/函数对象，签名宽松）
 def pair_vec_div [Inhabited α] (_f _g _q : α) (_comp : β) : α := default
+
+-- Array.insert: C++ STL set::insert / vec.push_back 的占位（push 到末尾）
+def Array.insert (a : Array α) (v : α) : Array α := a.push v
 
 -- comp 方法占位（已存在于 namespace SparsePolyZp 之内为 UInt64）；
 -- 补 SparsePolyZZ / MvPolyZp / MvPolyZZ

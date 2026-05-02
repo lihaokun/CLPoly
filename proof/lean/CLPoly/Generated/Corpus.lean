@@ -449,10 +449,10 @@ partial def __extract_candidates_ir (short_rows : Array Int32) (U : LLLMatrix) (
     let candidates_2 : Array (Array Int32) := __loop_ret___extract_candidates_5_1.snd
     ((candidates_2 : Array _))
 
-partial def _lambda___extract_monomial_content_lex_filt1_ir (present : Array Variable) (__x : sorry /- unknown -/) : Bool :=
+partial def _lambda___extract_monomial_content_lex_filt1_ir (present : Array Variable) (__x : (Variable × Int64)) : Bool :=
   (! (Option.isNone (Array.find? present __x.fst)))
 
-partial def _lambda___extract_monomial_content_lex_filt2_ir (__x : sorry /- unknown -/) : Bool :=
+partial def _lambda___extract_monomial_content_lex_filt2_ir (__x : (Variable × Int64)) : Bool :=
   (! (__x.snd == (0 : Int64)))
 
 partial def _loop___extract_monomial_content_lex_0_ir (__rangefor_idx_1_2 : Nat) (min_deg_3 : StdMap Variable Int64) (__rangefor_cont_1_1 : Monomial) : (Int64 × StdMap Variable Int64) :=

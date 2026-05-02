@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
     BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType, RefType, ArrayType,
+    StdMapType,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
@@ -401,6 +402,9 @@ def _match_filter_loop_A(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
             ct = container.ty
             if isinstance(ct, ArrayType):
                 elem_ty = ct.elem
+            elif isinstance(ct, StdMapType):
+                # std::map<K, V> 的 elem 是 (K, V) pair
+                elem_ty = PairType(ct.key, ct.value)
             elif isinstance(ct, NamedType):
                 # 已知 CLPoly 容器 NamedType → elem 类型查表
                 _CONTAINER_ELEM = {
@@ -427,7 +431,23 @@ def _match_filter_loop_A(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
     if_stmt = _find_pred_ifstmt_in_body(body_list, it_name)
     if if_stmt is None: return None
 
-    pred_lambda = _build_pred_lambda(if_stmt.cond, it_name, element_ty=None)
+    # B1 续修：从 container 类型推 elem_ty（与 mut 路径一致）
+    pure_elem_ty = None
+    if isinstance(container, Var):
+        ct = container.ty
+        if isinstance(ct, ArrayType):
+            pure_elem_ty = ct.elem
+        elif isinstance(ct, StdMapType):
+            pure_elem_ty = PairType(ct.key, ct.value)
+        elif isinstance(ct, NamedType):
+            _CONTAINER_ELEM_PURE = {
+                "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
+                "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
+                "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
+                "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
+            }
+            pure_elem_ty = _CONTAINER_ELEM_PURE.get(ct.name)
+    pred_lambda = _build_pred_lambda(if_stmt.cond, it_name, element_ty=pure_elem_ty)
     return FilterLoopMatch(
         start_idx=idx, end_idx=idx + 4,
         container=container, pred_lambda=pred_lambda, kind="A",
@@ -516,7 +536,23 @@ def _match_filter_loop_B(stmts: list[StmtIR], idx: int) -> FilterLoopMatch | Non
         # 模糊情况（两侧都或都不含 erase）— 不识别
         return None
 
-    pred_lambda = _build_pred_lambda(pred_expr, it_name, element_ty=None)
+    # B1 续修：从 container 类型推 elem_ty
+    b_elem_ty = None
+    if isinstance(container, Var):
+        ct = container.ty
+        if isinstance(ct, ArrayType):
+            b_elem_ty = ct.elem
+        elif isinstance(ct, StdMapType):
+            b_elem_ty = PairType(ct.key, ct.value)
+        elif isinstance(ct, NamedType):
+            _CONTAINER_ELEM_B = {
+                "SparsePolyZp": PairType(NamedType("UMonomial"), NamedType("Zp")),
+                "SparsePolyZZ": PairType(NamedType("UMonomial"), NamedType("ZZ")),
+                "MvPolyZp": PairType(NamedType("MvMonomial"), NamedType("Zp")),
+                "MvPolyZZ": PairType(NamedType("MvMonomial"), NamedType("ZZ")),
+            }
+            b_elem_ty = _CONTAINER_ELEM_B.get(ct.name)
+    pred_lambda = _build_pred_lambda(pred_expr, it_name, element_ty=b_elem_ty)
     kind = f"B-{type(s).__name__}"
     return FilterLoopMatch(
         start_idx=idx, end_idx=idx + 1,

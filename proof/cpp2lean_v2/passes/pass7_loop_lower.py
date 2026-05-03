@@ -257,6 +257,10 @@ def _collect_var_reads_in_expr_versioned(e: ExprIR, out: set[tuple[str, int]],
                                           tys: dict[tuple[str, int], TypeIR]) -> None:
     """收集 expr 中所有 Var 引用，含版本号 + 类型。"""
     if isinstance(e, Var):
+        # 阶段 G+ 修复：__default_init__ 是 Pass 7 自身合成的 sentinel
+        # （Pass 8 emit 为 Lean keyword `default`），不应被收集为 cap_param。
+        if e.name == "__default_init__":
+            return
         out.add((e.name, e.version))
         # 优先非-Unknown ty（同一 SSA Var 多处引用时，先记的可能是 Unknown 占位，
         # 后遇到的可能是正确类型 — 后者覆盖前者；与 setdefault 反过来）

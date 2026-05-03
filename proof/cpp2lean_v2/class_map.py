@@ -135,7 +135,7 @@ CLASS_MAP = {
             "end": ("method", "SparsePolyZZ.toList"),
             "clear": ("mutate", "Array.clearVec"),
             "assign": ("mutate", "Array.replicateMut"),  # vec.assign(n, val) → Array.replicateMut recv n val（receiver 忽略，复用 mutate 模板）
-            "erase": ("mutate", "Array.erase"),  # P1-7: range/iter erase（兜底）
+            "erase": ("mutate", "Array.eraseAny"),  # P1-7: range/iter erase（兜底，接受任意 idx 类型）
             "at":    ("method", "Array.get!"),
         },
     },
@@ -345,7 +345,7 @@ CLASS_MAP = {
             "reserve":      ("noop",         None),
             "clear":        ("mutate",       "Array.clearVec"),
             "assign":       ("mutate",       "Array.replicateMut"),
-            "erase":        ("mutate",       "Array.erase"),       # Pass 4 漏识别的兜底
+            "erase":        ("mutate",       "Array.eraseAny"),       # Pass 4 漏识别的兜底
             "at":           ("method",       "Array.get!"),        # UB-2
             "insert":       ("mutate",       "Array.insert"),
             "swap":         ("mutate",       "Array.swap"),

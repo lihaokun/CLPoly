@@ -434,6 +434,17 @@ def _build_record_update(tgt: ExprIR, new_val: ExprIR, root_name: str) -> ExprIR
             outer_idx = _idx_to_nat(arr.idx)
             return Call(callee="Array.set!",
                         args=[outer_arr, outer_idx, inner_set], ty=ty)
+        # arr 是 FieldAccess（`struct.field[i] := v`）→ 用 _with 包裹整个 set
+        # 否则 LHS 是 struct 整体，RHS 只是 array → 类型不匹配
+        if isinstance(arr, FieldAccess):
+            inner_set = Call(callee="Array.set!",
+                              args=[arr, idx, new_val],
+                              ty=getattr(arr, 'ty', None) or UnknownType(""))
+            return Call(callee="_with",
+                        args=[arr.obj,
+                              Lit(value=arr.field_name, ty=NamedType("FieldName")),
+                              inner_set],
+                        ty=getattr(arr.obj, 'ty', None) or UnknownType(""))
         return Call(callee="Array.set!", args=[arr, idx, new_val], ty=ty)
     if isinstance(tgt, FieldAccess):
         # field name 用 Lit(string) 占位（之前用 Var → 被 Pass 7 误当 free var

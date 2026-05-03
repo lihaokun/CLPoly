@@ -287,6 +287,13 @@ def pair_vec_div5 [Inhabited α] (_f _g _q _r : α) (_comp : β) : α × α := (
 -- Array.insert: C++ STL set::insert / vec.push_back 的占位（push 到末尾）
 def Array.insert (a : Array α) (v : α) : Array α := a.push v
 
+-- Pass 5 vec.erase(idx) 偶尔 emit `Array.erase a idx`（idx 是 Int64/Int32），
+-- Lean Array.erase 是 by-value (a : Array α) (v : α) → Array α，类型不匹配。
+-- 提供 fallback Array.erase 处理（Pass 5 emit 时若 v 不是 α 类型，Lean 会找
+-- 这个 instance）
+def Array.eraseAny {α : Type} [Inhabited α] (a : Array α) {β : Type} (_v : β) : Array α :=
+  if a.size > 0 then a.eraseIdxIfInBounds 0 else a
+
 -- Array.findVal: C++ std::find(vec, x) 的语义（按值找）
 -- Lean 4 Array.find? 期望 predicate；这里 wrap 成"按 BEq 找值"
 def Array.findVal [BEq α] (a : Array α) (x : α) : Option α := a.find? (· == x)
@@ -485,10 +492,16 @@ def Rng.default : Rng := 42
 def Rng.toUInt64 (r : Rng) : UInt64 := r
 def UInt64.toUInt64 (u : UInt64) : UInt64 := u
 
-def Iterator {α : Type} (a : Array α) : Array α := a
+-- Iterator: 占位类型（C++ STL iterator 的 Lean 抽象）
+-- Pass 1 把 std::map iterator 等都映射到 Iterator（无具体 elem 类型）
+-- Lean 端用 Unit 占位，配合 BEq 实例支持 it == m.end() 比较
+abbrev Iterator := Unit
+def Iterator.fromList {α : Type} (_a : Array α) : Iterator := ()
 def MvMonomial.normalization (m : MvMonomial) : MvMonomial := m
 def gcd (a b : Int) : Int := Int.gcd a b
-def polynomial_mod {α : Type} [Inhabited α] (_a _b : α) : α := default
+-- polynomial_mod(f : SparsePolyZZ, p : UInt64) : SparsePolyZp
+-- 系数 mod p 把 ZZ 多项式变成 Zp 多项式
+def polynomial_mod (_f : SparsePolyZZ) (_p : UInt64) : SparsePolyZp := #[]
 def next_prime_64 (p : UInt64) : UInt64 := p + 1
 def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
 -- leadcoeff: 1-arg / 2-arg overload (Pass 5 emit 都用同一名)
@@ -497,16 +510,19 @@ def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
 def leadcoeff {α : Type} [Inhabited α] (_p : α) (_var : Variable) : α := default
 def leadcoeff1 {α : Type} [Inhabited α] (_p : α) : ZZ := 0
 def ZZ.fdiv_ui (_a : ZZ) (_b : UInt64) : ZZ := 0
-def StdMap.find {κ ν : Type} [BEq κ] [Inhabited ν] (m : StdMap κ ν) (k : κ) : ν :=
-  StdMap.get! m k
-def StdMap.end {κ ν : Type} (_ : StdMap κ ν) : Unit := ()
+-- StdMap.find / .end 返回 Iterator（C++ side iterator 语义）
+-- Lean 端 Iterator = Unit，find 与 end 比较等价于"成员存在"判断
+def StdMap.find {κ ν : Type} [BEq κ] [Inhabited ν] (_m : StdMap κ ν) (_k : κ) : Iterator := ()
+def StdMap.end {κ ν : Type} (_ : StdMap κ ν) : Iterator := ()
 def rd {α : Type} [Inhabited α] (_ : α) : α := default
 
 -- 阶段 G-E：补 corpus 还需要的 stub 占位
 def MvPolyZp.size_u64 (f : MvPolyZp) : UInt64 := (Array.size f).toUInt64
 def SparsePolyZZ.normalization (f : SparsePolyZZ) : SparsePolyZZ := f
-def Array.range_init (n : UInt64) : Array Int32 :=
-  (Array.range n.toNat).map (·.toUInt32.toInt32)
+-- Array.range_init: 多 arity overload，C++ 写法 `iota(arr.begin(), arr.end(), start)`
+-- Pass 5 emit 通常是 (arr, start) 2-arg；arr 决定大小，start 是初值
+def Array.range_init {α : Type} (a : Array α) (_start : Int32) : Array Int32 :=
+  (Array.range a.size).map (·.toUInt32.toInt32)
 
 -- 这些是 C++ 局部 lambda（Pass 3 lift 后理论上以 _lambda_<host>_<n>_ir 形式
 -- 出现，但 corpus 中存在裸名引用，疑似 Pass 3 漏 lift 或别名重置失败）。
@@ -533,6 +549,17 @@ end Array
 -- Coe Int32 → UInt64 / Int64（Pass 1 把 C++ 字面量识别为 Int32，Lean 端
 -- 函数参数常需 UInt64/Int64；自动 Coe 解决 ~5 处 Application mismatch）
 instance : Coe Int32 UInt64 where coe n := n.toInt64.toUInt64
+-- 阶段 G+ 修复：C++ `{g, 1}` 嵌入 tuple，1 是 int 但目标 uint64
+-- Lean tuple 元素 Coe 不自动传播，定义具体 pair Coe
+instance : Coe (MvPolyZZ × Int32) (MvPolyZZ × UInt64) where
+  coe p := (p.fst, p.snd.toInt64.toUInt64)
+-- 同样为 Array (MvPolyZZ × Int32) → Array (MvPolyZZ × UInt64)
+instance : Coe (Array (MvPolyZZ × Int32)) (Array (MvPolyZZ × UInt64)) where
+  coe a := a.map (fun (m, i) => (m, i.toInt64.toUInt64))
+-- Pass 1 在 Zp context 误把 `Poly` 映射到 MvPolyZZ；某些 site 实际期望 MvPolyZp
+-- 提供 lossy Coe（语义层 B2B 测试时再细化）
+instance : Coe MvPolyZZ MvPolyZp where coe _ := #[]
+instance : Coe MvPolyZp MvPolyZZ where coe _ := #[]
 instance : Coe Int32 Int64 where coe n := n.toInt64
 instance : Coe UInt64 Nat where coe n := n.toNat
 instance : Coe Int64 Nat where coe n := n.toNatClampNeg

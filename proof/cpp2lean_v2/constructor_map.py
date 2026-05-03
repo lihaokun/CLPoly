@@ -246,15 +246,16 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
         0: ConstructorResolution("Monomial.empty", is_default=True),
     },
 
-    # std::string —— 仅用于 assert 消息字符串（Variable name 字面量等）
-    # 2 args: (char_array, allocator) → String.mk
+    # std::string —— 1 / 2 arg ctor 都返回字符串字面量本身（identity）
+    # Lean 4 String.mk 改用 String.ofList List Char，所以放弃 .mk 走 identity
     "basic_string<char>": {
-        2: ConstructorResolution("String.mk {a0}"),
+        1: ConstructorResolution("({a0} : String)"),
+        2: ConstructorResolution("({a0} : String)"),
     },
     "string": {
         0: ConstructorResolution("\"\""),
         1: ConstructorResolution("({a0} : String)"),
-        2: ConstructorResolution("String.mk {a0}"),
+        2: ConstructorResolution("({a0} : String)"),
     },
 }
 

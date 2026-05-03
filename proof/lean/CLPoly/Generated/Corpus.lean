@@ -54,21 +54,21 @@ partial def __binomial_ir (n : Int64) (k : Int64) : ZZ :=
       else
         bb_11 n k
 
-partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZZ) (deg : Int32) (__default_init__ : (UMonomial × ZZ)) : (Int64 × (UMonomial × ZZ)) :=
+partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZZ) (deg : Int32) : (Int64 × (UMonomial × ZZ)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let term_1 : (UMonomial × ZZ) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
     if (((term_1.fst.deg).toInt32) == deg) then
       ((1 : Int64), term_1)
     else
       let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-      _loop__lambda___build_cld_matrix_upoly_1_0_ir __rangefor_idx_0_3 __rangefor_cont_0_1 deg default
+      _loop__lambda___build_cld_matrix_upoly_1_0_ir __rangefor_idx_0_3 __rangefor_cont_0_1 deg
   else
     ((0 : Int64), default)
 
 partial def _lambda___build_cld_matrix_upoly_1_ir (p : SparsePolyZZ) (deg : Int32) : ZZ :=
   let __rangefor_cont_0_1 : SparsePolyZZ := p
   let __rangefor_idx_0_1 : Nat := (0 : Nat)
-  let __loop_ret__lambda___build_cld_matrix_upoly_1_0_1 : (Int64 × (UMonomial × ZZ)) := (_loop__lambda___build_cld_matrix_upoly_1_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 deg default)
+  let __loop_ret__lambda___build_cld_matrix_upoly_1_0_1 : (Int64 × (UMonomial × ZZ)) := (_loop__lambda___build_cld_matrix_upoly_1_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 deg)
   let term_1 : (UMonomial × ZZ) := __loop_ret__lambda___build_cld_matrix_upoly_1_0_1.snd
   let __loop_ret__lambda___build_cld_matrix_upoly_1_0__kind_1 : Int64 := __loop_ret__lambda___build_cld_matrix_upoly_1_0_1.fst
   if (__loop_ret__lambda___build_cld_matrix_upoly_1_0__kind_1 == (0 : Int64)) then
@@ -247,18 +247,18 @@ partial def _loop___edf_Zp_0_ir (i_2 : UInt64) (g_3 : SparsePolyZp) (d : UInt64)
   else
     ((0 : Int64), g_3)
 
-partial def _loop___edf_Zp_1_ir (rng_1 : Rng) (d : UInt64) (f : SparsePolyZp) (n_1 : Int64) (p_1 : UInt64) (__default_init__ : SparsePolyZp) : (Int64 × SparsePolyZp × Rng × Rng) :=
-  let bb_18 := fun f rng_2 d n_1 p_1 default g_8 =>
+partial def _loop___edf_Zp_1_ir (rng_1 : Rng) (d : UInt64) (f : SparsePolyZp) (n_1 : Int64) (p_1 : UInt64) : (Int64 × SparsePolyZp × Rng × Rng) :=
+  let bb_18 := fun f rng_2 d n_1 p_1 g_8 =>
     if (((get_deg g_8) > (0 : Int64)) && ((get_deg g_8) < (get_deg f))) then
       ((1 : Int64), g_8, rng_2, rng_2)
     else
-      _loop___edf_Zp_1_ir rng_2 d f n_1 p_1 default
+      _loop___edf_Zp_1_ir rng_2 d f n_1 p_1
   if true then
     let __refret_1_1 : (SparsePolyZp × Rng) := (__upoly_random_ir n_1 p_1 rng_1)
     let rng_2 : Rng := __refret_1_1.snd
     let r_1 : SparsePolyZp := __refret_1_1.fst
     if (Array.isEmpty r_1) then
-      _loop___edf_Zp_1_ir rng_2 d f n_1 p_1 default
+      _loop___edf_Zp_1_ir rng_2 d f n_1 p_1
     else
       let g_1 : SparsePolyZp := (SparsePolyZp.empty)
       if (p_1 == (2 : UInt64)) then
@@ -267,14 +267,14 @@ partial def _loop___edf_Zp_1_ir (rng_1 : Rng) (d : UInt64) (f : SparsePolyZp) (n
         let __loop_ret___edf_Zp_0_1 : (Int64 × SparsePolyZp) := (_loop___edf_Zp_0_ir i_1 g_2 d f r_1)
         let g_3 : SparsePolyZp := __loop_ret___edf_Zp_0_1.snd
         let g_6 : SparsePolyZp := (polynomial_GCD g_3 f)
-        bb_18 f rng_2 d n_1 p_1 default g_6
+        bb_18 f rng_2 d n_1 p_1 g_6
       else
         -- require (h_nonzero): (((2 : Int32)).toInt != (0 : Int64))
         let exp_1 : ZZ := (((HPow.hPow ((p_1).toNat : Int) d) - ((1 : Int32)).toInt) / ((2 : Int32)).toInt)
         let g_pow_1 : SparsePolyZp := (__upoly_powmod_ir r_1 exp_1 f)
         let g_pow_minus_1_1 : SparsePolyZp := (__upoly_subtract_one_ir g_pow_1 p_1)
         let g_7 : SparsePolyZp := (polynomial_GCD g_pow_minus_1_1 f)
-        bb_18 f rng_2 d n_1 p_1 default g_7
+        bb_18 f rng_2 d n_1 p_1 g_7
   else
     ((0 : Int64), default, rng_1, rng_1)
 
@@ -293,7 +293,7 @@ partial def __edf_Zp_ir (result : Array SparsePolyZp) (f : SparsePolyZp) (d : UI
       -- require (h_nonempty): (! (Array.isEmpty f))
       let p_1 : UInt64 := (SparsePolyZp.front! f).snd.prime
       let n_1 : Int64 := (get_deg f)
-      let __loop_ret___edf_Zp_1_1 : (Int64 × SparsePolyZp × Rng × Rng) := (_loop___edf_Zp_1_ir rng d f n_1 p_1 default)
+      let __loop_ret___edf_Zp_1_1 : (Int64 × SparsePolyZp × Rng × Rng) := (_loop___edf_Zp_1_ir rng d f n_1 p_1)
       let g_8 : SparsePolyZp := __loop_ret___edf_Zp_1_1.2.1
       let rng_1 : Rng := __loop_ret___edf_Zp_1_1.2.2.1
       let rng_2 : Rng := __loop_ret___edf_Zp_1_1.2.2.2
@@ -1961,8 +1961,8 @@ partial def __lll_reduce_ir (M : LLLMatrix) (U : LLLMatrix) (B : ZZ) : (Array In
   let U_2 : LLLMatrix := __loop_ret___lll_reduce_0_1.snd
   let dot_1 : (Array ZZ) → (Array ZZ) → ZZ := _lambda___lll_reduce_1_ir
   let round_qq_1 : QQ → ZZ := _lambda___lll_reduce_2_ir
-  let row_sub_1 := (_lambda___lll_reduce_3_ir M U_2 n_1)
-  let row_swap_1 := (_lambda___lll_reduce_4_ir M U_2)
+  let row_sub_1 : Int32 → Int32 → ZZ → (LLLMatrix × LLLMatrix) := (_lambda___lll_reduce_3_ir M U_2 n_1)
+  let row_swap_1 : Int32 → Int32 → (LLLMatrix × LLLMatrix) := (_lambda___lll_reduce_4_ir M U_2)
   -- require (h_in_bounds): ((0 : Nat) < (Array.size M))
   -- require (h_in_bounds): ((0 : Nat) < (Array.size M))
   let B_gs_2 : Array QQ := (Array.set! B_gs_1 (0 : Nat) (QQ.mk (_lambda___lll_reduce_1_ir (M[(0 : Int32).toNatClampNeg]!) (M[(0 : Int32).toNatClampNeg]!)) ((1 : Int32)).toInt))
@@ -2617,21 +2617,21 @@ partial def __mtshl_multi_bdp_lex_ir (F : Array MvPolyZp) (c : MvPolyZp) (x1 : V
       else
         bb_45 comp_ptr_1 p_1 error_1 result_2 F0_2 alpha2 compute_error_1 deg_x2_2 r_1 x1 x2 xk_minus_alpha_2
 
-partial def _loop__lambda___mtshl_sparse_int_lex_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZp) (d : Int64) (__default_init__ : (UMonomial × Zp)) : (Int64 × (UMonomial × Zp)) :=
+partial def _loop__lambda___mtshl_sparse_int_lex_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZp) (d : Int64) : (Int64 × (UMonomial × Zp)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
     if (term_1.fst.deg == d) then
       ((1 : Int64), term_1)
     else
       let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-      _loop__lambda___mtshl_sparse_int_lex_1_0_ir __rangefor_idx_0_3 __rangefor_cont_0_1 d default
+      _loop__lambda___mtshl_sparse_int_lex_1_0_ir __rangefor_idx_0_3 __rangefor_cont_0_1 d
   else
     ((0 : Int64), default)
 
 partial def _lambda___mtshl_sparse_int_lex_1_ir (p : UInt64) (poly : SparsePolyZp) (d : Int64) : Zp :=
   let __rangefor_cont_0_1 : SparsePolyZp := poly
   let __rangefor_idx_0_1 : Nat := (0 : Nat)
-  let __loop_ret__lambda___mtshl_sparse_int_lex_1_0_1 : (Int64 × (UMonomial × Zp)) := (_loop__lambda___mtshl_sparse_int_lex_1_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 d default)
+  let __loop_ret__lambda___mtshl_sparse_int_lex_1_0_1 : (Int64 × (UMonomial × Zp)) := (_loop__lambda___mtshl_sparse_int_lex_1_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 d)
   let term_1 : (UMonomial × Zp) := __loop_ret__lambda___mtshl_sparse_int_lex_1_0_1.snd
   let __loop_ret__lambda___mtshl_sparse_int_lex_1_0__kind_1 : Int64 := __loop_ret__lambda___mtshl_sparse_int_lex_1_0_1.fst
   if (__loop_ret__lambda___mtshl_sparse_int_lex_1_0__kind_1 == (0 : Int64)) then
@@ -2639,7 +2639,7 @@ partial def _lambda___mtshl_sparse_int_lex_1_ir (p : UInt64) (poly : SparsePolyZ
   else
     term_1.snd
 
-partial def _loop__lambda___mtshl_sparse_int_lex_2_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : Monomial) (aux_vars : Array Variable) (k_2 : Nat) (__default_init__ : (Variable × Int64)) : (Int64 × (Variable × Int64)) :=
+partial def _loop__lambda___mtshl_sparse_int_lex_2_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : Monomial) (aux_vars : Array Variable) (k_2 : Nat) : (Int64 × (Variable × Int64)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let vp_1 : (Variable × Int64) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
     -- require (h_in_bounds): (k_2 < (Array.size aux_vars))
@@ -2647,40 +2647,40 @@ partial def _loop__lambda___mtshl_sparse_int_lex_2_0_ir (__rangefor_idx_0_2 : Na
       ((1 : Int64), vp_1)
     else
       let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-      _loop__lambda___mtshl_sparse_int_lex_2_0_ir __rangefor_idx_0_3 __rangefor_cont_0_1 aux_vars k_2 default
+      _loop__lambda___mtshl_sparse_int_lex_2_0_ir __rangefor_idx_0_3 __rangefor_cont_0_1 aux_vars k_2
   else
     ((0 : Int64), default)
 
-partial def _loop__lambda___mtshl_sparse_int_lex_2_1_ir (k_2 : Nat) (tm_2 : Zp) (aux_vars : Array Variable) (mono : Monomial) (sparse_betas : Array Zp) (__default_init__ : (Variable × Int64)) : (Int64 × Zp) :=
-  let bb_15 := fun k_2 aux_vars mono sparse_betas default tm_4 =>
+partial def _loop__lambda___mtshl_sparse_int_lex_2_1_ir (k_2 : Nat) (tm_2 : Zp) (aux_vars : Array Variable) (mono : Monomial) (sparse_betas : Array Zp) : (Int64 × Zp) :=
+  let bb_15 := fun k_2 aux_vars mono sparse_betas tm_4 =>
     let k_3 : Nat := (k_2 + (1 : Nat))
-    _loop__lambda___mtshl_sparse_int_lex_2_1_ir k_3 tm_4 aux_vars mono sparse_betas default
-  let bb_8 := fun k_2 sparse_betas tm_2 aux_vars mono default ek_3 =>
+    _loop__lambda___mtshl_sparse_int_lex_2_1_ir k_3 tm_4 aux_vars mono sparse_betas
+  let bb_8 := fun k_2 sparse_betas tm_2 aux_vars mono ek_3 =>
     if (ek_3 > (0 : Int64)) then
       -- require (h_in_bounds): (k_2 < (Array.size sparse_betas))
       let tm_3 : Zp := (tm_2 * (HPow.hPow (sparse_betas[(k_2)]!) ek_3))
-      bb_15 k_2 aux_vars mono sparse_betas default tm_3
+      bb_15 k_2 aux_vars mono sparse_betas tm_3
     else
-      bb_15 k_2 aux_vars mono sparse_betas default tm_2
+      bb_15 k_2 aux_vars mono sparse_betas tm_2
   if (k_2 < (Array.size aux_vars)) then
     let ek_1 : Int64 := (0 : Int64)
     let __rangefor_cont_0_1 : Monomial := mono
     let __rangefor_idx_0_1 : Nat := (0 : Nat)
-    let __loop_ret__lambda___mtshl_sparse_int_lex_2_0_1 : (Int64 × (Variable × Int64)) := (_loop__lambda___mtshl_sparse_int_lex_2_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 aux_vars k_2 default)
+    let __loop_ret__lambda___mtshl_sparse_int_lex_2_0_1 : (Int64 × (Variable × Int64)) := (_loop__lambda___mtshl_sparse_int_lex_2_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 aux_vars k_2)
     let vp_1 : (Variable × Int64) := __loop_ret__lambda___mtshl_sparse_int_lex_2_0_1.snd
     let __loop_ret__lambda___mtshl_sparse_int_lex_2_0__kind_1 : Int64 := __loop_ret__lambda___mtshl_sparse_int_lex_2_0_1.fst
     if (__loop_ret__lambda___mtshl_sparse_int_lex_2_0__kind_1 == (0 : Int64)) then
-      bb_8 k_2 sparse_betas tm_2 aux_vars mono default ek_1
+      bb_8 k_2 sparse_betas tm_2 aux_vars mono ek_1
     else
       let ek_2 : Int64 := vp_1.snd
-      bb_8 k_2 sparse_betas tm_2 aux_vars mono default ek_2
+      bb_8 k_2 sparse_betas tm_2 aux_vars mono ek_2
   else
     ((0 : Int64), tm_2)
 
 partial def _lambda___mtshl_sparse_int_lex_2_ir (aux_vars : Array Variable) (p : UInt64) (sparse_betas : Array Zp) (mono : Monomial) : Zp :=
   let tm_1 : Zp := (Zp.ofInt ((1 : Int32)).toInt p)
   let k_1 : Nat := (0 : Nat)
-  let __loop_ret__lambda___mtshl_sparse_int_lex_2_1_1 : (Int64 × Zp) := (_loop__lambda___mtshl_sparse_int_lex_2_1_ir k_1 tm_1 aux_vars mono sparse_betas default)
+  let __loop_ret__lambda___mtshl_sparse_int_lex_2_1_1 : (Int64 × Zp) := (_loop__lambda___mtshl_sparse_int_lex_2_1_ir k_1 tm_1 aux_vars mono sparse_betas)
   let tm_2 : Zp := __loop_ret__lambda___mtshl_sparse_int_lex_2_1_1.snd
   tm_2
 
@@ -2765,38 +2765,38 @@ partial def _loop___mtshl_sparse_int_lex_5_ir (l_2 : Int32) (sigma_vals_2 : Arra
   else
     ((0 : Int64), sigma_vals_2)
 
-partial def _loop___mtshl_sparse_int_lex_6_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : Monomial) (x1 : Variable) (__default_init__ : (Variable × Int64)) : (Int64 × (Variable × Int64)) :=
+partial def _loop___mtshl_sparse_int_lex_6_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : Monomial) (x1 : Variable) : (Int64 × (Variable × Int64)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let vp_1 : (Variable × Int64) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
     if (vp_1.fst == x1) then
       ((1 : Int64), vp_1)
     else
       let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-      _loop___mtshl_sparse_int_lex_6_ir __rangefor_idx_0_3 __rangefor_cont_0_1 x1 default
+      _loop___mtshl_sparse_int_lex_6_ir __rangefor_idx_0_3 __rangefor_cont_0_1 x1
   else
     ((0 : Int64), default)
 
-partial def _loop___mtshl_sparse_int_lex_7_ir (idx_2 : Int32) (groups_2 : StdMap Int64 (Array Int32)) (forms : Array (Array Monomial)) (i_14 : Int32) (x1 : Variable) (__default_init__ : (Variable × Int64)) : (Int64 × StdMap Int64 (Array Int32)) :=
-  let bb_48 := fun groups_2 idx_2 i_14 forms x1 default d_3 =>
+partial def _loop___mtshl_sparse_int_lex_7_ir (idx_2 : Int32) (groups_2 : StdMap Int64 (Array Int32)) (forms : Array (Array Monomial)) (i_14 : Int32) (x1 : Variable) : (Int64 × StdMap Int64 (Array Int32)) :=
+  let bb_48 := fun groups_2 idx_2 i_14 forms x1 d_3 =>
     let groups_3 : StdMap Int64 (Array Int32) := (StdMap.insert groups_2 d_3 (Array.push (StdMap.get! groups_2 d_3) idx_2))
     -- require (h_nonneg): (i_14 >= (0 : Int32))
     -- require (h_fits_int32): (((Array.size (forms[((i_14).toInt64.toUInt64).toNat]!)) >= (-2147483648 : Int64)) && ((Array.size (forms[((i_14).toInt64.toUInt64).toNat]!)) <= (2147483647 : Int64)))
     let idx_3 : Int32 := (idx_2 + (1 : Int32))
-    _loop___mtshl_sparse_int_lex_7_ir idx_3 groups_3 forms i_14 x1 default
+    _loop___mtshl_sparse_int_lex_7_ir idx_3 groups_3 forms i_14 x1
   if (idx_2 < (((Array.size (forms[((i_14).toInt64.toUInt64).toNat]!))).toUInt32.toInt32)) then
     let d_1 : Int64 := (0 : Int64)
     let __rangefor_cont_0_1 : Monomial := ((forms[((i_14).toInt64.toUInt64).toNat]!)[((idx_2).toInt64.toUInt64).toNat]!)
     let __rangefor_idx_0_1 : Nat := (0 : Nat)
-    let __loop_ret___mtshl_sparse_int_lex_6_1 : (Int64 × (Variable × Int64)) := (_loop___mtshl_sparse_int_lex_6_ir __rangefor_idx_0_1 __rangefor_cont_0_1 x1 default)
+    let __loop_ret___mtshl_sparse_int_lex_6_1 : (Int64 × (Variable × Int64)) := (_loop___mtshl_sparse_int_lex_6_ir __rangefor_idx_0_1 __rangefor_cont_0_1 x1)
     let vp_1 : (Variable × Int64) := __loop_ret___mtshl_sparse_int_lex_6_1.snd
     let __loop_ret___mtshl_sparse_int_lex_6__kind_1 : Int64 := __loop_ret___mtshl_sparse_int_lex_6_1.fst
     if (__loop_ret___mtshl_sparse_int_lex_6__kind_1 == (0 : Int64)) then
-      bb_48 groups_2 idx_2 i_14 forms x1 default d_1
+      bb_48 groups_2 idx_2 i_14 forms x1 d_1
     else
       -- require (h_nonneg): (i_14 >= (0 : Int32))
       -- require (h_nonneg): (idx_2 >= (0 : Int32))
       let d_2 : Int64 := vp_1.snd
-      bb_48 groups_2 idx_2 i_14 forms x1 default d_2
+      bb_48 groups_2 idx_2 i_14 forms x1 d_2
   else
     ((0 : Int64), groups_2)
 
@@ -2884,13 +2884,13 @@ partial def _loop___mtshl_sparse_int_lex_11_ir (__rangefor_idx_1_2 : Nat) (resul
   else
     ((0 : Int64), result_6)
 
-partial def _loop___mtshl_sparse_int_lex_12_ir (result_4 : Array MvPolyZp) (i_14 : Int32) (comp_ptr_1 : Lex) (compute_theta_1 : Monomial → Zp) (forms : Array (Array Monomial)) (p : UInt64) (r_1 : Int32) (sigma_vals_2 : Array (Array SparsePolyZp)) (upzp_coeff_1 : SparsePolyZp → Int64 → Zp) (x1 : Variable) (__default_init__ : (Variable × Int64)) : (Int64 × Array MvPolyZp × Array MvPolyZp) :=
+partial def _loop___mtshl_sparse_int_lex_12_ir (result_4 : Array MvPolyZp) (i_14 : Int32) (comp_ptr_1 : Lex) (compute_theta_1 : Monomial → Zp) (forms : Array (Array Monomial)) (p : UInt64) (r_1 : Int32) (sigma_vals_2 : Array (Array SparsePolyZp)) (upzp_coeff_1 : SparsePolyZp → Int64 → Zp) (x1 : Variable) : (Int64 × Array MvPolyZp × Array MvPolyZp) :=
   if (i_14 < r_1) then
     -- require (h_nonneg): (i_14 >= (0 : Int32))
     let result_5 : Array MvPolyZp := (Array.set! result_4 (((i_14).toInt64.toUInt64)).toNat (MvPolyZp.mk comp_ptr_1))
     let groups_1 : StdMap Int64 (Array Int32) := (StdMap.empty)
     let idx_1 : Int32 := (0 : Int32)
-    let __loop_ret___mtshl_sparse_int_lex_7_1 : (Int64 × StdMap Int64 (Array Int32)) := (_loop___mtshl_sparse_int_lex_7_ir idx_1 groups_1 forms i_14 x1 default)
+    let __loop_ret___mtshl_sparse_int_lex_7_1 : (Int64 × StdMap Int64 (Array Int32)) := (_loop___mtshl_sparse_int_lex_7_ir idx_1 groups_1 forms i_14 x1)
     let groups_2 : StdMap Int64 (Array Int32) := __loop_ret___mtshl_sparse_int_lex_7_1.snd
     let __rangefor_cont_1_1 : StdMap Int64 (Array Int32) := groups_2
     let __rangefor_idx_1_1 : Nat := (0 : Nat)
@@ -2902,7 +2902,7 @@ partial def _loop___mtshl_sparse_int_lex_12_ir (result_4 : Array MvPolyZp) (i_14
       -- require (h_in_bounds): (((i_14).toInt64.toUInt64) < (Array.size result_6))
       let result_10 : Array MvPolyZp := (Array.set! result_6 (((i_14).toInt64.toUInt64)).toNat (MvPolyZp.normalization (result_6[((i_14).toInt64.toUInt64).toNat]!)))
       let i_15 : Int32 := (i_14 + (1 : Int32))
-      _loop___mtshl_sparse_int_lex_12_ir result_10 i_15 comp_ptr_1 compute_theta_1 forms p r_1 sigma_vals_2 upzp_coeff_1 x1 default
+      _loop___mtshl_sparse_int_lex_12_ir result_10 i_15 comp_ptr_1 compute_theta_1 forms p r_1 sigma_vals_2 upzp_coeff_1 x1
     else
       ((1 : Int64), result_6, result_6)
   else
@@ -3003,7 +3003,7 @@ partial def __mtshl_sparse_int_lex_ir (F : Array MvPolyZp) (c : MvPolyZp) (forms
         -- require (h_nonneg): (r_1 >= (0 : Int32))
         let result_3 : Array MvPolyZp := (Array.resize result ((r_1).toInt64.toUInt64) (MvPolyZp.mk comp_ptr_1))
         let i_13 : Int32 := (0 : Int32)
-        let __loop_ret___mtshl_sparse_int_lex_12_1 : (Int64 × Array MvPolyZp × Array MvPolyZp) := (_loop___mtshl_sparse_int_lex_12_ir result_3 i_13 comp_ptr_1 compute_theta_1 forms p r_1 sigma_vals_2 upzp_coeff_1 x1 default)
+        let __loop_ret___mtshl_sparse_int_lex_12_1 : (Int64 × Array MvPolyZp × Array MvPolyZp) := (_loop___mtshl_sparse_int_lex_12_ir result_3 i_13 comp_ptr_1 compute_theta_1 forms p r_1 sigma_vals_2 upzp_coeff_1 x1)
         let result_4 : Array MvPolyZp := __loop_ret___mtshl_sparse_int_lex_12_1.2.1
         let result_6 : Array MvPolyZp := __loop_ret___mtshl_sparse_int_lex_12_1.2.2
         let __loop_ret___mtshl_sparse_int_lex_12__kind_1 : Int64 := __loop_ret___mtshl_sparse_int_lex_12_1.1
@@ -3307,7 +3307,7 @@ partial def __mtshl_step_j_lex_ir (aj : MvPolyZp) (F : Array MvPolyZp) (lc_tau :
   -- require (h_fits_int32): (((Array.size F) >= (-2147483648 : Int64)) && ((Array.size F) <= (2147483647 : Int64)))
   let r_1 : Int32 := (((Array.size F)).toUInt32.toInt32)
   let is_j2_1 : Bool := (Array.isEmpty aux_vars)
-  let lc_correct_1 := (_lambda___mtshl_step_j_lex_1_ir comp_ptr_1 p x1)
+  let lc_correct_1 : PolyZp → PolyZp → PolyZp := (_lambda___mtshl_step_j_lex_1_ir comp_ptr_1 p x1)
   let i_1 : Int32 := (0 : Int32)
   let __loop_ret___mtshl_step_j_lex_0_1 : (Int64 × Array MvPolyZp) := (_loop___mtshl_step_j_lex_0_ir F i_1 comp_ptr_1 lc_tau p r_1 x1)
   let F_1 : Array MvPolyZp := __loop_ret___mtshl_step_j_lex_0_1.snd
@@ -3870,33 +3870,33 @@ partial def _loop___select_eval_point_lex_7_ir (pairwise_coprime_2 : Bool) (i_8 
   else
     ((0 : Int64), pairwise_coprime_2)
 
-partial def _loop___select_eval_point_lex_8_ir (skip_2 : Int32) (idx_2 : Int32) (lc_irr_factors_6 : Array Poly) (L_1 : Poly) (bound_2 : Int32) (f : MvPolyZZ) (lc_coprime_mod : UInt64) (n_1 : Nat) (range_1 : Int32) (total_2 : Int32) (vars_2 : Array Variable) (__default_init__ : StdMap Variable ZZ) : (Int64 × StdMap Variable ZZ × Array Poly × Int32) :=
-  let bb_25 := fun idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_3 lc_irr_factors_7 =>
+partial def _loop___select_eval_point_lex_8_ir (skip_2 : Int32) (idx_2 : Int32) (lc_irr_factors_6 : Array Poly) (L_1 : Poly) (bound_2 : Int32) (f : MvPolyZZ) (lc_coprime_mod : UInt64) (n_1 : Nat) (range_1 : Int32) (total_2 : Int32) (vars_2 : Array Variable) : (Int64 × StdMap Variable ZZ × Array Poly × Int32) :=
+  let bb_25 := fun idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_3 lc_irr_factors_7 =>
     let idx_3 : Int32 := (idx_2 + (1 : Int32))
-    _loop___select_eval_point_lex_8_ir skip_3 idx_3 lc_irr_factors_7 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default
-  let bb_66 := fun skip_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default alpha_2 lc_irr_factors_9 =>
+    _loop___select_eval_point_lex_8_ir skip_3 idx_3 lc_irr_factors_7 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2
+  let bb_66 := fun skip_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 alpha_2 lc_irr_factors_9 =>
     if (skip_2 > (0 : Int32)) then
       let skip_4 : Int32 := (skip_2 - (1 : Int32))
-      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_4 lc_irr_factors_9
+      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_4 lc_irr_factors_9
     else
       ((1 : Int64), alpha_2, lc_irr_factors_9, skip_2)
-  let bb_86 := fun __rangefor_cont_3_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_8 alpha_2 bad_point_6 =>
+  let bb_86 := fun __rangefor_cont_3_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_8 alpha_2 bad_point_6 =>
     let vals_4 : Array ZZ := __rangefor_cont_3_2
     if bad_point_6 then
-      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_8
+      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_8
     else
       let pairwise_coprime_1 : Bool := true
       let i_7 : Nat := (0 : Nat)
       let __loop_ret___select_eval_point_lex_7_1 : (Int64 × Bool) := (_loop___select_eval_point_lex_7_ir pairwise_coprime_1 i_7 vals_4)
       let pairwise_coprime_2 : Bool := __loop_ret___select_eval_point_lex_7_1.snd
       if (! pairwise_coprime_2) then
-        bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_8
+        bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_8
       else
-        bb_66 skip_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default alpha_2 lc_irr_factors_8
-  let bb_70 := fun __rangefor_cont_2_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 vals_2 alpha_2 bad_point_4 =>
+        bb_66 skip_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 alpha_2 lc_irr_factors_8
+  let bb_70 := fun __rangefor_cont_2_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 vals_2 alpha_2 bad_point_4 =>
     let lc_irr_factors_8 : Array Poly := __rangefor_cont_2_2
     if bad_point_4 then
-      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_8
+      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_8
     else
       let __rangefor_cont_3_1 : Array ZZ := vals_2
       let __rangefor_idx_3_1 : Nat := (0 : Nat)
@@ -3904,11 +3904,11 @@ partial def _loop___select_eval_point_lex_8_ir (skip_2 : Int32) (idx_2 : Int32) 
       let __rangefor_cont_3_2 : Array ZZ := __loop_ret___select_eval_point_lex_5_1.snd
       let __loop_ret___select_eval_point_lex_5__kind_1 : Int64 := __loop_ret___select_eval_point_lex_5_1.fst
       if (__loop_ret___select_eval_point_lex_5__kind_1 == (0 : Int64)) then
-        bb_86 __rangefor_cont_3_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_8 alpha_2 bad_point_4
+        bb_86 __rangefor_cont_3_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_8 alpha_2 bad_point_4
       else
         let bad_point_5 : Bool := true
-        bb_86 __rangefor_cont_3_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_8 alpha_2 bad_point_5
-  let bb_59 := fun lc_irr_factors_6 alpha_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 =>
+        bb_86 __rangefor_cont_3_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_8 alpha_2 bad_point_5
+  let bb_59 := fun lc_irr_factors_6 alpha_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 =>
     if (! (Array.isEmpty lc_irr_factors_6)) then
       let vals_1 : Array ZZ := (#[])
       let bad_point_1 : Bool := false
@@ -3919,22 +3919,22 @@ partial def _loop___select_eval_point_lex_8_ir (skip_2 : Int32) (idx_2 : Int32) 
       let vals_2 : Array ZZ := __loop_ret___select_eval_point_lex_4_1.2.2
       let __loop_ret___select_eval_point_lex_4__kind_1 : Int64 := __loop_ret___select_eval_point_lex_4_1.1
       if (__loop_ret___select_eval_point_lex_4__kind_1 == (0 : Int64)) then
-        bb_70 __rangefor_cont_2_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 vals_2 alpha_2 bad_point_1
+        bb_70 __rangefor_cont_2_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 vals_2 alpha_2 bad_point_1
       else
         if (__loop_ret___select_eval_point_lex_4__kind_1 == (1 : Int64)) then
           let bad_point_2 : Bool := true
-          bb_70 __rangefor_cont_2_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 vals_2 alpha_2 bad_point_2
+          bb_70 __rangefor_cont_2_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 vals_2 alpha_2 bad_point_2
         else
           let bad_point_3 : Bool := true
-          bb_70 __rangefor_cont_2_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 vals_2 alpha_2 bad_point_3
+          bb_70 __rangefor_cont_2_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 vals_2 alpha_2 bad_point_3
     else
-      bb_66 skip_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default alpha_2 lc_irr_factors_6
-  let bb_40 := fun idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6 alpha_2 delta_4 =>
+      bb_66 skip_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 alpha_2 lc_irr_factors_6
+  let bb_40 := fun idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6 alpha_2 delta_4 =>
     if (delta_4 == ((0 : Int32)).toInt) then
-      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6
+      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6
     else
       if ((lc_coprime_mod != (0 : UInt64)) && ((ZZ.fdiv_ui delta_4 lc_coprime_mod) == (0 : Int32))) then
-        bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6
+        bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6
       else
         let f0_1 : MvPolyZZ := (assign2 f alpha_2)
         let f0_u_1 : SparsePolyZZ := (SparsePolyZZ.empty)
@@ -3943,11 +3943,11 @@ partial def _loop___select_eval_point_lex_8_ir (skip_2 : Int32) (idx_2 : Int32) 
         if (! (Array.isEmpty f0_d_1)) then
           let g_1 : SparsePolyZZ := (polynomial_GCD f0_u_2 f0_d_1)
           if ((! (Array.isEmpty g_1)) && ((get_deg g_1) > (0 : Int64))) then
-            bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6
+            bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6
           else
-            bb_59 lc_irr_factors_6 alpha_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2
+            bb_59 lc_irr_factors_6 alpha_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2
         else
-          bb_59 lc_irr_factors_6 alpha_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2
+          bb_59 lc_irr_factors_6 alpha_2 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2
   if (idx_2 < total_2) then
     let alpha_1 : StdMap Variable ZZ := (StdMap.empty)
     let tmp_1 : Int32 := idx_2
@@ -3957,28 +3957,28 @@ partial def _loop___select_eval_point_lex_8_ir (skip_2 : Int32) (idx_2 : Int32) 
     let alpha_2 : StdMap Variable ZZ := __loop_ret___select_eval_point_lex_3_1.2.1
     let max_abs_2 : Int32 := __loop_ret___select_eval_point_lex_3_1.2.2
     if (max_abs_2 < bound_2) then
-      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6
+      bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6
     else
       let delta_1 : ZZ := ((0 : Int))
       if (is_number L_1) then
         -- require (h_nonempty): (! (Array.isEmpty L_1))
         let delta_2 : ZZ := (MvPolyZZ.front! L_1).snd
-        bb_40 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6 alpha_2 delta_2
+        bb_40 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6 alpha_2 delta_2
       else
         let L_eval_1 : MvPolyZZ := (assign2 L_1 alpha_2)
         if (MvPolyZZ.isEmpty L_eval_1) then
-          bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6
+          bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6
         else
           if (! (is_number L_eval_1)) then
-            bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6
+            bb_25 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6
           else
             -- require (h_nonempty): (! (Array.isEmpty L_eval_1))
             let delta_3 : ZZ := (MvPolyZZ.front! L_eval_1).snd
-            bb_40 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default skip_2 lc_irr_factors_6 alpha_2 delta_3
+            bb_40 idx_2 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 skip_2 lc_irr_factors_6 alpha_2 delta_3
   else
     ((0 : Int64), default, lc_irr_factors_6, skip_2)
 
-partial def _loop___select_eval_point_lex_9_ir (skip_1 : Int32) (bound_2 : Int32) (lc_irr_factors_5 : Array Poly) (L_1 : Poly) (f : MvPolyZZ) (lc_coprime_mod : UInt64) (n_1 : Nat) (vars_2 : Array Variable) (__default_init__ : StdMap Variable ZZ) : (Int64 × StdMap Variable ZZ) :=
+partial def _loop___select_eval_point_lex_9_ir (skip_1 : Int32) (bound_2 : Int32) (lc_irr_factors_5 : Array Poly) (L_1 : Poly) (f : MvPolyZZ) (lc_coprime_mod : UInt64) (n_1 : Nat) (vars_2 : Array Variable) : (Int64 × StdMap Variable ZZ) :=
   if true then
     let range_1 : Int32 := (((2 : Int32) * bound_2) + (1 : Int32))
     let total_1 : Int32 := (1 : Int32)
@@ -3986,23 +3986,23 @@ partial def _loop___select_eval_point_lex_9_ir (skip_1 : Int32) (bound_2 : Int32
     let __loop_ret___select_eval_point_lex_2_1 : (Int64 × Int32) := (_loop___select_eval_point_lex_2_ir i_1 total_1 n_1 range_1)
     let total_2 : Int32 := __loop_ret___select_eval_point_lex_2_1.snd
     let idx_1 : Int32 := (0 : Int32)
-    let __loop_ret___select_eval_point_lex_8_1 : (Int64 × StdMap Variable ZZ × Array Poly × Int32) := (_loop___select_eval_point_lex_8_ir skip_1 idx_1 lc_irr_factors_5 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2 default)
+    let __loop_ret___select_eval_point_lex_8_1 : (Int64 × StdMap Variable ZZ × Array Poly × Int32) := (_loop___select_eval_point_lex_8_ir skip_1 idx_1 lc_irr_factors_5 L_1 bound_2 f lc_coprime_mod n_1 range_1 total_2 vars_2)
     let alpha_2 : StdMap Variable ZZ := __loop_ret___select_eval_point_lex_8_1.2.1
     let lc_irr_factors_6 : Array Poly := __loop_ret___select_eval_point_lex_8_1.2.2.1
     let skip_2 : Int32 := __loop_ret___select_eval_point_lex_8_1.2.2.2
     let __loop_ret___select_eval_point_lex_8__kind_1 : Int64 := __loop_ret___select_eval_point_lex_8_1.1
     if (__loop_ret___select_eval_point_lex_8__kind_1 == (0 : Int64)) then
       let bound_3 : Int32 := (bound_2 + (1 : Int32))
-      _loop___select_eval_point_lex_9_ir skip_2 bound_3 lc_irr_factors_6 L_1 f lc_coprime_mod n_1 vars_2 default
+      _loop___select_eval_point_lex_9_ir skip_2 bound_3 lc_irr_factors_6 L_1 f lc_coprime_mod n_1 vars_2
     else
       ((1 : Int64), alpha_2)
   else
     ((0 : Int64), default)
 
 partial def __select_eval_point_lex_ir (f : MvPolyZZ) (main_var : Variable) (skip : Int32) (lc_coprime_mod : UInt64) : StdMap Variable ZZ :=
-  let bb_10 := fun skip L_1 f lc_coprime_mod n_1 vars_2 default lc_irr_factors_4 =>
+  let bb_10 := fun skip L_1 f lc_coprime_mod n_1 vars_2 lc_irr_factors_4 =>
     let bound_1 : Int32 := (0 : Int32)
-    let __loop_ret___select_eval_point_lex_9_1 : (Int64 × StdMap Variable ZZ) := (_loop___select_eval_point_lex_9_ir skip bound_1 lc_irr_factors_4 L_1 f lc_coprime_mod n_1 vars_2 default)
+    let __loop_ret___select_eval_point_lex_9_1 : (Int64 × StdMap Variable ZZ) := (_loop___select_eval_point_lex_9_ir skip bound_1 lc_irr_factors_4 L_1 f lc_coprime_mod n_1 vars_2)
     let alpha_2 : StdMap Variable ZZ := __loop_ret___select_eval_point_lex_9_1.snd
     let __loop_ret___select_eval_point_lex_9__kind_1 : Int64 := __loop_ret___select_eval_point_lex_9_1.fst
     if (__loop_ret___select_eval_point_lex_9__kind_1 == (0 : Int64)) then
@@ -4029,9 +4029,9 @@ partial def __select_eval_point_lex_ir (f : MvPolyZZ) (main_var : Variable) (ski
     let __rangefor_cont_1_2 : Array (MvPolyZZ × UInt64) := __loop_ret___select_eval_point_lex_1_1.2.1
     let lc_irr_factors_2 : Array Poly := __loop_ret___select_eval_point_lex_1_1.2.2
     let lc_fac_2 : Factorization MvPolyZZ := { lc_fac_1 with factors := __rangefor_cont_1_2 }
-    bb_10 skip L_1 f lc_coprime_mod n_1 vars_2 default lc_irr_factors_2
+    bb_10 skip L_1 f lc_coprime_mod n_1 vars_2 lc_irr_factors_2
   else
-    bb_10 skip L_1 f lc_coprime_mod n_1 vars_2 default lc_irr_factors_1
+    bb_10 skip L_1 f lc_coprime_mod n_1 vars_2 lc_irr_factors_1
 
 partial def _lambda___select_prime_upoly_1_ir (use_large_prime : Bool) (cur : UInt64) : UInt64 :=
   if use_large_prime then
@@ -4071,29 +4071,29 @@ partial def _loop___select_prime_upoly_1_ir (__rangefor_idx_0_2 : Nat) (__rangef
   else
     ((0 : Int64), __rangefor_cont_0_2, irr_factors_2, rng_4)
 
-partial def _loop___select_prime_upoly_2_ir (tried_2 : Nat) (p_2 : UInt64) (rng_2 : Rng) (best_count_2 : Nat) (best_4 : PrimeSelectionResult) (deg_f_1 : Int64) (f : SparsePolyZZ) (lc_f_1 : ZZ) (max_tries_1 : Nat) (next_p_1 : UInt64 → UInt64) (__default_init__ : Array SparsePolyZp) : (Int64 × PrimeSelectionResult × SparsePolyZp × Array SparsePolyZp × UInt64) :=
-  let bb_3 := fun p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_3 rng_3 best_count_3 best_5 =>
+partial def _loop___select_prime_upoly_2_ir (tried_2 : Nat) (p_2 : UInt64) (rng_2 : Rng) (best_count_2 : Nat) (best_4 : PrimeSelectionResult) (deg_f_1 : Int64) (f : SparsePolyZZ) (lc_f_1 : ZZ) (max_tries_1 : Nat) (next_p_1 : UInt64 → UInt64) : (Int64 × PrimeSelectionResult × SparsePolyZp × Array SparsePolyZp × UInt64) :=
+  let bb_3 := fun p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_3 rng_3 best_count_3 best_5 =>
     let p_3 : UInt64 := (next_p_1 p_2)
-    _loop___select_prime_upoly_2_ir tried_3 p_3 rng_3 best_count_3 best_5 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default
-  let bb_38 := fun p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_4 rng_4 best_count_5 best_13 =>
-    bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_4 rng_4 best_count_5 best_13
+    _loop___select_prime_upoly_2_ir tried_3 p_3 rng_3 best_count_3 best_5 deg_f_1 f lc_f_1 max_tries_1 next_p_1
+  let bb_38 := fun p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_4 rng_4 best_count_5 best_13 =>
+    bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_4 rng_4 best_count_5 best_13
   if (tried_2 < max_tries_1) then
     let lc_mod_1 : ZZ := ((0 : Int))
     let lc_mod_2 : ZZ := (ZZ.fdiv_r lc_mod_1 lc_f_1 ((p_2).toNat : Int))
     if (! (ZZ.toBool lc_mod_2)) then
-      bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_2 rng_2 best_count_2 best_4
+      bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_2 rng_2 best_count_2 best_4
     else
       let fp_1 : SparsePolyZp := (polynomial_mod f p_2)
       if ((Array.isEmpty fp_1) || ((get_deg fp_1) != deg_f_1)) then
-        bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_2 rng_2 best_count_2 best_4
+        bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_2 rng_2 best_count_2 best_4
       else
         let fp_deriv_1 : SparsePolyZp := (derivative fp_1)
         if (Array.isEmpty fp_deriv_1) then
-          bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_2 rng_2 best_count_2 best_4
+          bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_2 rng_2 best_count_2 best_4
         else
           let g_1 : SparsePolyZp := (polynomial_GCD fp_1 fp_deriv_1)
           if ((get_deg g_1) > (0 : Int64)) then
-            bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_2 rng_2 best_count_2 best_4
+            bb_3 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_2 rng_2 best_count_2 best_4
           else
             let tried_4 : Nat := (tried_2 + (1 : Nat))
             let __refret_0_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir fp_1)
@@ -4115,9 +4115,9 @@ partial def _loop___select_prime_upoly_2_ir (tried_2 : Nat) (p_2 : UInt64) (rng_
                 let best_count_4 : Nat := nfactors_1
                 let best_11 : PrimeSelectionResult := { best_4 with prime := p_2 }
                 let best_12 : PrimeSelectionResult := { best_11 with factors := (id irr_factors_2) }
-                bb_38 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_4 rng_4 best_count_4 best_12
+                bb_38 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_4 rng_4 best_count_4 best_12
               else
-                bb_38 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default tried_4 rng_4 best_count_2 best_4
+                bb_38 p_2 deg_f_1 f lc_f_1 max_tries_1 next_p_1 tried_4 rng_4 best_count_2 best_4
   else
     ((0 : Int64), best_4, default, default, p_2)
 
@@ -4139,7 +4139,7 @@ partial def __select_prime_upoly_ir (f : SparsePolyZZ) (use_large_prime : Bool) 
   let p_1 : UInt64 := (if use_large_prime then ((((- (1 : Int32))).toInt64.toUInt64) - (58 : UInt64)) else (2 : Int32))
   let next_p_1 : UInt64 → UInt64 := (_lambda___select_prime_upoly_1_ir use_large_prime)
   let tried_1 : Nat := (0 : Nat)
-  let __loop_ret___select_prime_upoly_2_1 : (Int64 × PrimeSelectionResult × SparsePolyZp × Array SparsePolyZp × UInt64) := (_loop___select_prime_upoly_2_ir tried_1 p_1 rng_1 best_count_1 best_3 deg_f_1 f lc_f_1 max_tries_1 next_p_1 default)
+  let __loop_ret___select_prime_upoly_2_1 : (Int64 × PrimeSelectionResult × SparsePolyZp × Array SparsePolyZp × UInt64) := (_loop___select_prime_upoly_2_ir tried_1 p_1 rng_1 best_count_1 best_3 deg_f_1 f lc_f_1 max_tries_1 next_p_1)
   let best_4 : PrimeSelectionResult := __loop_ret___select_prime_upoly_2_1.2.1
   let fp_2 : SparsePolyZp := __loop_ret___select_prime_upoly_2_1.2.2.1
   let irr_factors_2 : Array SparsePolyZp := __loop_ret___select_prime_upoly_2_1.2.2.2.1
@@ -4157,14 +4157,14 @@ partial def __select_prime_upoly_ir (f : SparsePolyZZ) (use_large_prime : Bool) 
     else
       bb_34 best_7
 
-partial def _loop___si_theta_array_eval_lex_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : Monomial) (x1 : Variable) (__default_init__ : (Variable × Int64)) : (Int64 × (Variable × Int64)) :=
+partial def _loop___si_theta_array_eval_lex_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : Monomial) (x1 : Variable) : (Int64 × (Variable × Int64)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let vp_1 : (Variable × Int64) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
     if (vp_1.fst == x1) then
       ((1 : Int64), vp_1)
     else
       let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-      _loop___si_theta_array_eval_lex_0_ir __rangefor_idx_0_3 __rangefor_cont_0_1 x1 default
+      _loop___si_theta_array_eval_lex_0_ir __rangefor_idx_0_3 __rangefor_cont_0_1 x1
   else
     ((0 : Int64), default)
 
@@ -4208,8 +4208,8 @@ partial def _loop___si_theta_array_eval_lex_2_ir (k_2 : Int32) (tm_2 : Zp) (aux_
   else
     ((0 : Int64), tm_2)
 
-partial def _loop___si_theta_array_eval_lex_3_ir (t_2 : Int32) (theta_arr_2 : Array Zp) (coeff_arr_2 : Array Zp) (e1_arr_2 : Array Int64) (aux_vars : Array Variable) (f : MvPolyZp) (nauxvars_1 : Int32) (nterms_1 : Int32) (p_1 : UInt64) (sparse_betas : Array Zp) (x1 : Variable) (__default_init__ : (Variable × Int64)) : (Int64 × Array Zp × Array Int64 × Array Zp) :=
-  let bb_8 := fun t_2 e1_arr_2 p_1 aux_vars mono_1 nauxvars_1 sparse_betas vp_1 theta_arr_2 coeff_arr_3 f nterms_1 x1 default e1_3 =>
+partial def _loop___si_theta_array_eval_lex_3_ir (t_2 : Int32) (theta_arr_2 : Array Zp) (coeff_arr_2 : Array Zp) (e1_arr_2 : Array Int64) (aux_vars : Array Variable) (f : MvPolyZp) (nauxvars_1 : Int32) (nterms_1 : Int32) (p_1 : UInt64) (sparse_betas : Array Zp) (x1 : Variable) : (Int64 × Array Zp × Array Int64 × Array Zp) :=
+  let bb_8 := fun t_2 e1_arr_2 p_1 aux_vars mono_1 nauxvars_1 sparse_betas vp_1 theta_arr_2 coeff_arr_3 f nterms_1 x1 e1_3 =>
     -- require (h_nonneg): (t_2 >= (0 : Int32))
     -- require (h_in_bounds): (((t_2).toInt64.toUInt64) < (Array.size e1_arr_2))
     let e1_arr_3 : Array Int64 := (Array.set! e1_arr_2 (((t_2).toInt64.toUInt64)).toNat e1_3)
@@ -4220,7 +4220,7 @@ partial def _loop___si_theta_array_eval_lex_3_ir (t_2 : Int32) (theta_arr_2 : Ar
     -- require (h_nonneg): (t_2 >= (0 : Int32))
     let theta_arr_3 : Array Zp := (Array.set! theta_arr_2 (((t_2).toInt64.toUInt64)).toNat tm_2)
     let t_3 : Int32 := (t_2 + (1 : Int32))
-    _loop___si_theta_array_eval_lex_3_ir t_3 theta_arr_3 coeff_arr_3 e1_arr_3 aux_vars f nauxvars_1 nterms_1 p_1 sparse_betas x1 default
+    _loop___si_theta_array_eval_lex_3_ir t_3 theta_arr_3 coeff_arr_3 e1_arr_3 aux_vars f nauxvars_1 nterms_1 p_1 sparse_betas x1
   if (t_2 < nterms_1) then
     -- require (h_nonneg): (t_2 >= (0 : Int32))
     -- require (h_in_bounds): (((t_2).toNatClampNeg) < (Array.size f))
@@ -4232,14 +4232,14 @@ partial def _loop___si_theta_array_eval_lex_3_ir (t_2 : Int32) (theta_arr_2 : Ar
     let e1_1 : Int64 := (0 : Int64)
     let __rangefor_cont_0_1 : Monomial := mono_1
     let __rangefor_idx_0_1 : Nat := (0 : Nat)
-    let __loop_ret___si_theta_array_eval_lex_0_1 : (Int64 × (Variable × Int64)) := (_loop___si_theta_array_eval_lex_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 x1 default)
+    let __loop_ret___si_theta_array_eval_lex_0_1 : (Int64 × (Variable × Int64)) := (_loop___si_theta_array_eval_lex_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 x1)
     let vp_1 : (Variable × Int64) := __loop_ret___si_theta_array_eval_lex_0_1.snd
     let __loop_ret___si_theta_array_eval_lex_0__kind_1 : Int64 := __loop_ret___si_theta_array_eval_lex_0_1.fst
     if (__loop_ret___si_theta_array_eval_lex_0__kind_1 == (0 : Int64)) then
-      bb_8 t_2 e1_arr_2 p_1 aux_vars mono_1 nauxvars_1 sparse_betas vp_1 theta_arr_2 coeff_arr_3 f nterms_1 x1 default e1_1
+      bb_8 t_2 e1_arr_2 p_1 aux_vars mono_1 nauxvars_1 sparse_betas vp_1 theta_arr_2 coeff_arr_3 f nterms_1 x1 e1_1
     else
       let e1_2 : Int64 := vp_1.snd
-      bb_8 t_2 e1_arr_2 p_1 aux_vars mono_1 nauxvars_1 sparse_betas vp_1 theta_arr_2 coeff_arr_3 f nterms_1 x1 default e1_2
+      bb_8 t_2 e1_arr_2 p_1 aux_vars mono_1 nauxvars_1 sparse_betas vp_1 theta_arr_2 coeff_arr_3 f nterms_1 x1 e1_2
   else
     ((0 : Int64), coeff_arr_2, e1_arr_2, theta_arr_2)
 
@@ -4329,7 +4329,7 @@ partial def __si_theta_array_eval_lex_ir (f : MvPolyZp) (x1 : Variable) (aux_var
   -- require (h_nonneg): (nterms_1 >= (0 : Int32))
   let theta_arr_1 : Array Zp := (Array.replicate ((((nterms_1).toInt64.toUInt64)).toNat) (Zp.ofInt ((1 : Int32)).toInt p_1))
   let t_1 : Int32 := (0 : Int32)
-  let __loop_ret___si_theta_array_eval_lex_3_1 : (Int64 × Array Zp × Array Int64 × Array Zp) := (_loop___si_theta_array_eval_lex_3_ir t_1 theta_arr_1 coeff_arr_1 e1_arr_1 aux_vars f nauxvars_1 nterms_1 p_1 sparse_betas x1 default)
+  let __loop_ret___si_theta_array_eval_lex_3_1 : (Int64 × Array Zp × Array Int64 × Array Zp) := (_loop___si_theta_array_eval_lex_3_ir t_1 theta_arr_1 coeff_arr_1 e1_arr_1 aux_vars f nauxvars_1 nterms_1 p_1 sparse_betas x1)
   let coeff_arr_2 : Array Zp := __loop_ret___si_theta_array_eval_lex_3_1.2.1
   let e1_arr_2 : Array Int64 := __loop_ret___si_theta_array_eval_lex_3_1.2.2.1
   let theta_arr_2 : Array Zp := __loop_ret___si_theta_array_eval_lex_3_1.2.2.2
@@ -4859,7 +4859,7 @@ partial def _loop___upoly_divmod_mod_upoly_1_ir (r_3 : SparsePolyZZ) (q_2 : Spar
     let coeff_1 : ZZ := ((SparsePolyZZ.front! r_3).snd * lc_inv_1)
     let coeff_2 : ZZ := (ZZ.fdiv_r coeff_1 coeff_1 m)
     if (! (ZZ.toBool coeff_2)) then
-      let r_4 : SparsePolyZZ := (Array.erase r_3 (0 : Int64))
+      let r_4 : SparsePolyZZ := (Array.eraseAny r_3 (0 : Int64))
       _loop___upoly_divmod_mod_upoly_1_ir r_4 q_2 deg_g_1 g lc_inv_1 m
     else
       let q_3 : SparsePolyZZ := (Array.push q_2 (Prod.mk (UMonomial.mk d_1) coeff_2))
@@ -5213,7 +5213,7 @@ partial def _loop___vanhoeij_recombine_upoly_0_ir (__rangefor_idx_0_2 : Nat) (ac
   else
     ((0 : Int64), active_lifted_2)
 
-partial def _loop___vanhoeij_recombine_upoly_1_ir (__rangefor_idx_2_2 : Nat) (__rangefor_cont_2_1 : Array Int32) (consumed_2 : Array Bool) (__default_init__ : Int32) : (Int64 × Int32) :=
+partial def _loop___vanhoeij_recombine_upoly_1_ir (__rangefor_idx_2_2 : Nat) (__rangefor_cont_2_1 : Array Int32) (consumed_2 : Array Bool) : (Int64 × Int32) :=
   if (__rangefor_idx_2_2 < (Array.size __rangefor_cont_2_1)) then
     let k_2 : Int32 := (__rangefor_cont_2_1[(__rangefor_idx_2_2)]!)
     -- require (h_in_bounds): (((k_2).toInt64.toUInt64) < (Array.size consumed_2))
@@ -5221,7 +5221,7 @@ partial def _loop___vanhoeij_recombine_upoly_1_ir (__rangefor_idx_2_2 : Nat) (__
       ((1 : Int64), k_2)
     else
       let __rangefor_idx_2_3 : Nat := (__rangefor_idx_2_2 + (1 : Nat))
-      _loop___vanhoeij_recombine_upoly_1_ir __rangefor_idx_2_3 __rangefor_cont_2_1 consumed_2 default
+      _loop___vanhoeij_recombine_upoly_1_ir __rangefor_idx_2_3 __rangefor_cont_2_1 consumed_2
   else
     ((0 : Int64), default)
 
@@ -5248,14 +5248,14 @@ partial def _loop___vanhoeij_recombine_upoly_3_ir (__rangefor_idx_4_2 : Nat) (co
   else
     ((0 : Int64), consumed_4)
 
-partial def _loop___vanhoeij_recombine_upoly_4_ir (__rangefor_idx_1_2 : Nat) (__rangefor_cont_1_2 : Array (Array Int32)) (remaining_active_2 : Int32) (consumed_2 : Array Bool) (found_any_2 : Bool) (result_3 : Array SparsePolyZZ) (f_star_3 : SparsePolyZZ) (active_lifted_2 : Array SparsePolyZZ) (m : ZZ) (__default_init__ : Int32) : (Int64 × Array (Array Int32) × Array Bool × SparsePolyZZ × Bool × Array SparsePolyZZ) :=
-  let bb_16 := fun __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_3 consumed_3 found_any_3 result_4 f_star_4 =>
+partial def _loop___vanhoeij_recombine_upoly_4_ir (__rangefor_idx_1_2 : Nat) (__rangefor_cont_1_2 : Array (Array Int32)) (remaining_active_2 : Int32) (consumed_2 : Array Bool) (found_any_2 : Bool) (result_3 : Array SparsePolyZZ) (f_star_3 : SparsePolyZZ) (active_lifted_2 : Array SparsePolyZZ) (m : ZZ) : (Int64 × Array (Array Int32) × Array Bool × SparsePolyZZ × Bool × Array SparsePolyZZ) :=
+  let bb_16 := fun __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_3 consumed_3 found_any_3 result_4 f_star_4 =>
     let __rangefor_cont_1_3 : Array (Array Int32) := (Array.set! __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1)
     let __rangefor_idx_1_3 : Nat := (__rangefor_idx_1_2 + (1 : Nat))
-    _loop___vanhoeij_recombine_upoly_4_ir __rangefor_idx_1_3 __rangefor_cont_1_3 remaining_active_3 consumed_3 found_any_3 result_4 f_star_4 active_lifted_2 m default
-  let bb_29 := fun __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_2 consumed_2 found_any_2 result_3 f_star_3 any_consumed_3 =>
+    _loop___vanhoeij_recombine_upoly_4_ir __rangefor_idx_1_3 __rangefor_cont_1_3 remaining_active_3 consumed_3 found_any_3 result_4 f_star_4 active_lifted_2 m
+  let bb_29 := fun __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_2 consumed_2 found_any_2 result_3 f_star_3 any_consumed_3 =>
     if any_consumed_3 then
-      bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_2 consumed_2 found_any_2 result_3 f_star_3
+      bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_2 consumed_2 found_any_2 result_3 f_star_3
     else
       -- require (h_nonempty): (! (Array.isEmpty f_star_3))
       let lc_fstar_1 : ZZ := (SparsePolyZZ.front! f_star_3).snd
@@ -5275,7 +5275,7 @@ partial def _loop___vanhoeij_recombine_upoly_4_ir (__rangefor_idx_1_2 : Nat) (__
       let q_trial_2 : SparsePolyZZ := __refret_2_1.fst
       let r_trial_2 : SparsePolyZZ := __refret_2_1.snd
       if (! (Array.isEmpty r_trial_2)) then
-        bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_2 consumed_2 found_any_2 result_3 f_star_3
+        bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_2 consumed_2 found_any_2 result_3 f_star_3
       else
         let result_5 : Array SparsePolyZZ := (Array.push result_3 (id pp_g_1))
         let __decomp_5_1 : (ZZ × SparsePolyZZ) := (__upoly_primitive_upoly_ir (id q_trial_2))
@@ -5289,28 +5289,28 @@ partial def _loop___vanhoeij_recombine_upoly_4_ir (__rangefor_idx_1_2 : Nat) (__
         -- require (h_fits_int32): (((Array.size cand_1) >= (-2147483648 : Int64)) && ((Array.size cand_1) <= (2147483647 : Int64)))
         let remaining_active_4 : Int32 := (remaining_active_2 - (((Array.size cand_1)).toUInt32.toInt32))
         let found_any_4 : Bool := true
-        bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_4 consumed_4 found_any_4 result_5 f_star_5
+        bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_4 consumed_4 found_any_4 result_5 f_star_5
   if (__rangefor_idx_1_2 < (Array.size __rangefor_cont_1_2)) then
     let cand_1 : Array Int32 /- ref residual -/ := (__rangefor_cont_1_2[(__rangefor_idx_1_2)]!)
     if (Array.isEmpty cand_1) then
-      bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_2 consumed_2 found_any_2 result_3 f_star_3
+      bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_2 consumed_2 found_any_2 result_3 f_star_3
     else
       -- require (h_fits_int32): (((Array.size cand_1) >= (-2147483648 : Int64)) && ((Array.size cand_1) <= (2147483647 : Int64)))
       if ((((Array.size cand_1)).toUInt32.toInt32) >= remaining_active_2) then
-        bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_2 consumed_2 found_any_2 result_3 f_star_3
+        bb_16 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_2 consumed_2 found_any_2 result_3 f_star_3
       else
         let any_consumed_1 : Bool := false
         let __rangefor_cont_2_1 : Array Int32 := cand_1
         let __rangefor_idx_2_1 : Nat := (0 : Nat)
-        let __loop_ret___vanhoeij_recombine_upoly_1_1 : (Int64 × Int32) := (_loop___vanhoeij_recombine_upoly_1_ir __rangefor_idx_2_1 __rangefor_cont_2_1 consumed_2 default)
+        let __loop_ret___vanhoeij_recombine_upoly_1_1 : (Int64 × Int32) := (_loop___vanhoeij_recombine_upoly_1_ir __rangefor_idx_2_1 __rangefor_cont_2_1 consumed_2)
         let k_2 : Int32 := __loop_ret___vanhoeij_recombine_upoly_1_1.snd
         let __loop_ret___vanhoeij_recombine_upoly_1__kind_1 : Int64 := __loop_ret___vanhoeij_recombine_upoly_1_1.fst
         if (__loop_ret___vanhoeij_recombine_upoly_1__kind_1 == (0 : Int64)) then
-          bb_29 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_2 consumed_2 found_any_2 result_3 f_star_3 any_consumed_1
+          bb_29 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_2 consumed_2 found_any_2 result_3 f_star_3 any_consumed_1
         else
           -- require (h_nonneg): (k_2 >= (0 : Int32))
           let any_consumed_2 : Bool := true
-          bb_29 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m default remaining_active_2 consumed_2 found_any_2 result_3 f_star_3 any_consumed_2
+          bb_29 __rangefor_cont_1_2 __rangefor_idx_1_2 cand_1 active_lifted_2 m remaining_active_2 consumed_2 found_any_2 result_3 f_star_3 any_consumed_2
   else
     ((0 : Int64), __rangefor_cont_1_2, consumed_2, f_star_3, found_any_2, result_3)
 
@@ -5329,13 +5329,13 @@ partial def _loop___vanhoeij_recombine_upoly_5_ir (j_2 : Int32) (active_4 : Arra
   else
     ((0 : Int64), active_4)
 
-partial def _loop___vanhoeij_recombine_upoly_6_ir (J_target_2 : Int32) (J_cur_2 : Int32) (M_2 : LLLMatrix) (result_2 : Array SparsePolyZZ) (f_star_2 : SparsePolyZZ) (active_3 : Array Int32) (B_2 : ZZ) (J0_2 : Int32) (J_max_1 : Int32) (lifted : Array SparsePolyZZ) (m : ZZ) (__default_init__ : Array SparsePolyZZ) : (Int64 × Array SparsePolyZZ × SparsePolyZZ × SparsePolyZZ × Array SparsePolyZZ × Array SparsePolyZZ) :=
-  let bb_63 := fun J_max_1 active_lifted_2 f_star_3 result_3 J_cur_4 M_5 active_3 B_2 J0_2 lifted m default J_target_6 =>
+partial def _loop___vanhoeij_recombine_upoly_6_ir (J_target_2 : Int32) (J_cur_2 : Int32) (M_2 : LLLMatrix) (result_2 : Array SparsePolyZZ) (f_star_2 : SparsePolyZZ) (active_3 : Array Int32) (B_2 : ZZ) (J0_2 : Int32) (J_max_1 : Int32) (lifted : Array SparsePolyZZ) (m : ZZ) : (Int64 × Array SparsePolyZZ × SparsePolyZZ × SparsePolyZZ × Array SparsePolyZZ × Array SparsePolyZZ) :=
+  let bb_63 := fun J_max_1 active_lifted_2 f_star_3 result_3 J_cur_4 M_5 active_3 B_2 J0_2 lifted m J_target_6 =>
     if (J_target_6 > J_max_1) then
       ((1 : Int64), active_lifted_2, f_star_3, f_star_3, result_3, result_3)
     else
-      _loop___vanhoeij_recombine_upoly_6_ir J_target_6 J_cur_4 M_5 result_3 f_star_3 active_3 B_2 J0_2 J_max_1 lifted m default
-  let bb_13 := fun B_2 active_3 result_2 f_star_2 active_lifted_2 m default J0_2 J_max_1 lifted J_target_2 J_cur_4 M_4 =>
+      _loop___vanhoeij_recombine_upoly_6_ir J_target_6 J_cur_4 M_5 result_3 f_star_3 active_3 B_2 J0_2 J_max_1 lifted m
+  let bb_13 := fun B_2 active_3 result_2 f_star_2 active_lifted_2 m J0_2 J_max_1 lifted J_target_2 J_cur_4 M_4 =>
     let U_1 : LLLMatrix := (LLLMatrix.empty)
     let __refret_1_1 : (Array Int32 × LLLMatrix × LLLMatrix) := (__lll_reduce_ir M_4 U_1 B_2)
     let M_5 : LLLMatrix := __refret_1_1.2.1
@@ -5351,7 +5351,7 @@ partial def _loop___vanhoeij_recombine_upoly_6_ir (J_target_2 : Int32) (J_cur_2 
     let remaining_active_1 : Int32 := (((Array.size active_3)).toUInt32.toInt32)
     let __rangefor_cont_1_1 : Array (Array Int32) := candidates_1
     let __rangefor_idx_1_1 : Nat := (0 : Nat)
-    let __loop_ret___vanhoeij_recombine_upoly_4_1 : (Int64 × Array (Array Int32) × Array Bool × SparsePolyZZ × Bool × Array SparsePolyZZ) := (_loop___vanhoeij_recombine_upoly_4_ir __rangefor_idx_1_1 __rangefor_cont_1_1 remaining_active_1 consumed_1 found_any_1 result_2 f_star_2 active_lifted_2 m default)
+    let __loop_ret___vanhoeij_recombine_upoly_4_1 : (Int64 × Array (Array Int32) × Array Bool × SparsePolyZZ × Bool × Array SparsePolyZZ) := (_loop___vanhoeij_recombine_upoly_4_ir __rangefor_idx_1_1 __rangefor_cont_1_1 remaining_active_1 consumed_1 found_any_1 result_2 f_star_2 active_lifted_2 m)
     let __rangefor_cont_1_2 : Array (Array Int32) := __loop_ret___vanhoeij_recombine_upoly_4_1.2.1
     let consumed_2 : Array Bool := __loop_ret___vanhoeij_recombine_upoly_4_1.2.2.1
     let f_star_3 : SparsePolyZZ := __loop_ret___vanhoeij_recombine_upoly_4_1.2.2.2.1
@@ -5372,24 +5372,24 @@ partial def _loop___vanhoeij_recombine_upoly_6_ir (J_target_2 : Int32) (J_cur_2 
       let M_6 : LLLMatrix := (_lambda___vanhoeij_recombine_upoly_1_ir r_new_1 U_exp_n_1)
       let J_cur_5 : Int32 := (0 : Int32)
       let J_target_3 : Int32 := (0 : Int32)
-      _loop___vanhoeij_recombine_upoly_6_ir J_target_3 J_cur_5 M_6 result_3 f_star_3 active_4 B_3 J0_2 J_max_1 lifted m default
+      _loop___vanhoeij_recombine_upoly_6_ir J_target_3 J_cur_5 M_6 result_3 f_star_3 active_4 B_3 J0_2 J_max_1 lifted m
     else
       if (J_target_2 == (0 : Int32)) then
         let J_target_4 : Int32 := J0_2
-        bb_63 J_max_1 active_lifted_2 f_star_3 result_3 J_cur_4 M_5 active_3 B_2 J0_2 lifted m default J_target_4
+        bb_63 J_max_1 active_lifted_2 f_star_3 result_3 J_cur_4 M_5 active_3 B_2 J0_2 lifted m J_target_4
       else
         let J_target_5 : Int32 := (J_target_2 * (2 : Int32))
-        bb_63 J_max_1 active_lifted_2 f_star_3 result_3 J_cur_4 M_5 active_3 B_2 J0_2 lifted m default J_target_5
-  let bb_10 := fun J_target_2 M_2 J_cur_2 m B_2 active_3 result_2 f_star_2 active_lifted_2 default J0_2 J_max_1 lifted cld_3 =>
+        bb_63 J_max_1 active_lifted_2 f_star_3 result_3 J_cur_4 M_5 active_3 B_2 J0_2 lifted m J_target_5
+  let bb_10 := fun J_target_2 M_2 J_cur_2 m B_2 active_3 result_2 f_star_2 active_lifted_2 J0_2 J_max_1 lifted cld_3 =>
     let J_new_1 : Int32 := (0 : Int32)
     if (J_target_2 > (0 : Int32)) then
       let __refret_0_1 : (Int32 × LLLMatrix) := (__build_cld_matrix_upoly_ir M_2 cld_3 J_cur_2 J_target_2 m)
       let M_3 : LLLMatrix := __refret_0_1.snd
       let J_new_2 : Int32 := __refret_0_1.fst
       let J_cur_3 : Int32 := (J_cur_2 + J_new_2)
-      bb_13 B_2 active_3 result_2 f_star_2 active_lifted_2 m default J0_2 J_max_1 lifted J_target_2 J_cur_3 M_3
+      bb_13 B_2 active_3 result_2 f_star_2 active_lifted_2 m J0_2 J_max_1 lifted J_target_2 J_cur_3 M_3
     else
-      bb_13 B_2 active_3 result_2 f_star_2 active_lifted_2 m default J0_2 J_max_1 lifted J_target_2 J_cur_2 M_2
+      bb_13 B_2 active_3 result_2 f_star_2 active_lifted_2 m J0_2 J_max_1 lifted J_target_2 J_cur_2 M_2
   if ((((Array.size active_3)).toUInt32.toInt32) > (1 : Int32)) then
     -- require (h_fits_int32): (((Array.size active_3) >= (-2147483648 : Int64)) && ((Array.size active_3) <= (2147483647 : Int64)))
     let active_lifted_1 : Array SparsePolyZZ := (#[])
@@ -5400,9 +5400,9 @@ partial def _loop___vanhoeij_recombine_upoly_6_ir (J_target_2 : Int32) (J_cur_2 
     let cld_1 : Array SparsePolyZZ := (#[])
     if (J_target_2 > (0 : Int32)) then
       let cld_2 : Array SparsePolyZZ := (__cld_polys_upoly_ir f_star_2 active_lifted_2 m)
-      bb_10 J_target_2 M_2 J_cur_2 m B_2 active_3 result_2 f_star_2 active_lifted_2 default J0_2 J_max_1 lifted cld_2
+      bb_10 J_target_2 M_2 J_cur_2 m B_2 active_3 result_2 f_star_2 active_lifted_2 J0_2 J_max_1 lifted cld_2
     else
-      bb_10 J_target_2 M_2 J_cur_2 m B_2 active_3 result_2 f_star_2 active_lifted_2 default J0_2 J_max_1 lifted cld_1
+      bb_10 J_target_2 M_2 J_cur_2 m B_2 active_3 result_2 f_star_2 active_lifted_2 J0_2 J_max_1 lifted cld_1
   else
     ((0 : Int64), default, f_star_2, f_star_2, result_2, result_2)
 
@@ -5441,7 +5441,7 @@ partial def __vanhoeij_recombine_upoly_ir (f : SparsePolyZZ) (lifted : Array Spa
   let M_1 : LLLMatrix := (_lambda___vanhoeij_recombine_upoly_1_ir r_1 U_exp_1)
   let J_cur_1 : Int32 := (0 : Int32)
   let J_target_1 : Int32 := (0 : Int32)
-  let __loop_ret___vanhoeij_recombine_upoly_6_1 : (Int64 × Array SparsePolyZZ × SparsePolyZZ × SparsePolyZZ × Array SparsePolyZZ × Array SparsePolyZZ) := (_loop___vanhoeij_recombine_upoly_6_ir J_target_1 J_cur_1 M_1 result_1 f_star_1 active_2 B_1 J0_2 J_max_1 lifted m default)
+  let __loop_ret___vanhoeij_recombine_upoly_6_1 : (Int64 × Array SparsePolyZZ × SparsePolyZZ × SparsePolyZZ × Array SparsePolyZZ × Array SparsePolyZZ) := (_loop___vanhoeij_recombine_upoly_6_ir J_target_1 J_cur_1 M_1 result_1 f_star_1 active_2 B_1 J0_2 J_max_1 lifted m)
   let active_lifted_2 : Array SparsePolyZZ := __loop_ret___vanhoeij_recombine_upoly_6_1.2.1
   let f_star_2 : SparsePolyZZ := __loop_ret___vanhoeij_recombine_upoly_6_1.2.2.1
   let f_star_3 : SparsePolyZZ := __loop_ret___vanhoeij_recombine_upoly_6_1.2.2.2.1
@@ -5623,12 +5623,12 @@ partial def _loop___wang_core_lex_4_ir (k_2 : Int32) (prod_2 : Poly) (active_idx
   else
     ((0 : Int64), prod_2)
 
-partial def _loop___wang_core_lex_5_ir (idx_3 : Array Int32) (active_idx_2 : Array Nat) (comp_ptr_1 : Lex) (g : MvPolyZZ) (g_remaining_2 : Poly) (mv_T_3 : Array Int32) (n_cur_1 : Int32) (normed_2 : Array Poly) (s_2 : Int32) (__default_init__ : Poly) : (Int64 × Array Int32 × Poly × Poly) :=
-  let bb_76 := fun idx_3 n_cur_1 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 normed_2 s_2 default prod_5 =>
+partial def _loop___wang_core_lex_5_ir (idx_3 : Array Int32) (active_idx_2 : Array Nat) (comp_ptr_1 : Lex) (g : MvPolyZZ) (g_remaining_2 : Poly) (mv_T_3 : Array Int32) (n_cur_1 : Int32) (normed_2 : Array Poly) (s_2 : Int32) : (Int64 × Array Int32 × Poly × Poly) :=
+  let bb_76 := fun idx_3 n_cur_1 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 normed_2 s_2 prod_5 =>
     let __hoist_lam_0_1 := (_lambda___wang_core_lex_3_ir idx_3 n_cur_1)
     let idx_4 : Array Int32 := __hoist_lam_0_1.snd
     if __hoist_lam_0_1.fst then
-      _loop___wang_core_lex_5_ir idx_4 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 n_cur_1 normed_2 s_2 default
+      _loop___wang_core_lex_5_ir idx_4 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 n_cur_1 normed_2 s_2
     else
       ((0 : Int64), idx_4, prod_5, default)
   -- require (h_nonneg): ((idx_3[(0 : Int32).toNatClampNeg]!) >= (0 : Int32))
@@ -5651,9 +5651,9 @@ partial def _loop___wang_core_lex_5_ir (idx_3 : Array Int32) (active_idx_2 : Arr
     if ((MvPolyZZ.isEmpty rem_2) && (! (MvPolyZZ.isEmpty q_2))) then
       ((1 : Int64), idx_3, prod_5, q_2)
     else
-      bb_76 idx_3 n_cur_1 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 normed_2 s_2 default prod_5
+      bb_76 idx_3 n_cur_1 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 normed_2 s_2 prod_5
   else
-    bb_76 idx_3 n_cur_1 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 normed_2 s_2 default prod_5
+    bb_76 idx_3 n_cur_1 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 normed_2 s_2 prod_5
 
 partial def _loop___wang_core_lex_6_ir (j_2 : Int32) (mv_T_5 : Array Int32) (idx_3 : Array Int32) : (Int64 × Array Int32) :=
   if (j_2 >= (0 : Int32)) then
@@ -5665,14 +5665,14 @@ partial def _loop___wang_core_lex_6_ir (j_2 : Int32) (mv_T_5 : Array Int32) (idx
   else
     ((0 : Int64), mv_T_5)
 
-partial def _loop___wang_core_lex_7_ir (s_2 : Int32) (mv_T_3 : Array Int32) (g_remaining_2 : Poly) (verified_2 : Array (Poly × UInt64)) (active_idx_2 : Array Nat) (comp_ptr_1 : Lex) (g : MvPolyZZ) (normed_2 : Array Poly) (__default_init__ : Poly) : (Int64 × Poly × Array Int32 × Array (Poly × UInt64)) :=
-  let bb_69 := fun active_idx_2 comp_ptr_1 g normed_2 default s_2 found_3 mv_T_4 g_remaining_3 verified_3 =>
+partial def _loop___wang_core_lex_7_ir (s_2 : Int32) (mv_T_3 : Array Int32) (g_remaining_2 : Poly) (verified_2 : Array (Poly × UInt64)) (active_idx_2 : Array Nat) (comp_ptr_1 : Lex) (g : MvPolyZZ) (normed_2 : Array Poly) : (Int64 × Poly × Array Int32 × Array (Poly × UInt64)) :=
+  let bb_69 := fun active_idx_2 comp_ptr_1 g normed_2 s_2 found_3 mv_T_4 g_remaining_3 verified_3 =>
     if found_3 then
       let s_3 : Int32 := (1 : Int32)
-      _loop___wang_core_lex_7_ir s_3 mv_T_4 g_remaining_3 verified_3 active_idx_2 comp_ptr_1 g normed_2 default
+      _loop___wang_core_lex_7_ir s_3 mv_T_4 g_remaining_3 verified_3 active_idx_2 comp_ptr_1 g normed_2
     else
       let s_4 : Int32 := (s_2 + (1 : Int32))
-      _loop___wang_core_lex_7_ir s_4 mv_T_4 g_remaining_3 verified_3 active_idx_2 comp_ptr_1 g normed_2 default
+      _loop___wang_core_lex_7_ir s_4 mv_T_4 g_remaining_3 verified_3 active_idx_2 comp_ptr_1 g normed_2
   if (((2 : Int32) * s_2) <= (((Array.size mv_T_3)).toUInt32.toInt32)) then
     -- require (h_fits_int32): (((Array.size mv_T_3) >= (-2147483648 : Int64)) && ((Array.size mv_T_3) <= (2147483647 : Int64)))
     let found_2 : Bool := false
@@ -5685,13 +5685,13 @@ partial def _loop___wang_core_lex_7_ir (s_2 : Int32) (mv_T_3 : Array Int32) (g_r
       -- require (h_nonneg): (s_2 >= (0 : Int32))
       let idx_1 : Array Int32 := (Array.replicate ((((s_2).toInt64.toUInt64)).toNat) default)
       let idx_2 : Array Int32 := (Array.range_init idx_1 (0 : Int32))
-      let __loop_ret___wang_core_lex_5_1 : (Int64 × Array Int32 × Poly × Poly) := (_loop___wang_core_lex_5_ir idx_2 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 n_cur_1 normed_2 s_2 default)
+      let __loop_ret___wang_core_lex_5_1 : (Int64 × Array Int32 × Poly × Poly) := (_loop___wang_core_lex_5_ir idx_2 active_idx_2 comp_ptr_1 g g_remaining_2 mv_T_3 n_cur_1 normed_2 s_2)
       let idx_3 : Array Int32 := __loop_ret___wang_core_lex_5_1.2.1
       let prod_5 : Poly := __loop_ret___wang_core_lex_5_1.2.2.1
       let q_2 : Poly := __loop_ret___wang_core_lex_5_1.2.2.2
       let __loop_ret___wang_core_lex_5__kind_1 : Int64 := __loop_ret___wang_core_lex_5_1.1
       if (__loop_ret___wang_core_lex_5__kind_1 == (0 : Int64)) then
-        bb_69 active_idx_2 comp_ptr_1 g normed_2 default s_2 found_2 mv_T_3 g_remaining_2 verified_2
+        bb_69 active_idx_2 comp_ptr_1 g normed_2 s_2 found_2 mv_T_3 g_remaining_2 verified_2
       else
         let verified_4 : Array (Poly × UInt64) := (Array.push verified_2 (((id prod_5), (1 : Int32))))
         let g_remaining_4 : Poly := (id q_2)
@@ -5700,39 +5700,39 @@ partial def _loop___wang_core_lex_7_ir (s_2 : Int32) (mv_T_3 : Array Int32) (g_r
         let __loop_ret___wang_core_lex_6_1 : (Int64 × Array Int32) := (_loop___wang_core_lex_6_ir j_1 mv_T_3 idx_3)
         let mv_T_5 : Array Int32 := __loop_ret___wang_core_lex_6_1.snd
         let found_4 : Bool := true
-        bb_69 active_idx_2 comp_ptr_1 g normed_2 default s_2 found_4 mv_T_5 g_remaining_5 verified_4
+        bb_69 active_idx_2 comp_ptr_1 g normed_2 s_2 found_4 mv_T_5 g_remaining_5 verified_4
   else
     ((0 : Int64), g_remaining_2, mv_T_3, verified_2)
 
-partial def _loop___wang_core_lex_8_ir (skip_2 : Int32) (batch_end_1 : Int32) (comp_ptr_1 : Lex) (g : MvPolyZZ) (mtshl_p_1 : UInt64) (x1_1 : Variable) (__default_init__ : Array (Poly × UInt64)) : (Int64 × Array (Poly × UInt64)) :=
-  let bb_32 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default =>
+partial def _loop___wang_core_lex_8_ir (skip_2 : Int32) (batch_end_1 : Int32) (comp_ptr_1 : Lex) (g : MvPolyZZ) (mtshl_p_1 : UInt64) (x1_1 : Variable) : (Int64 × Array (Poly × UInt64)) :=
+  let bb_32 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 =>
     let skip_3 : Int32 := (skip_2 + (1 : Int32))
-    _loop___wang_core_lex_8_ir skip_3 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default
-  let bb_91 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default =>
-    bb_32 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default
-  let bb_94 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default verified_8 =>
+    _loop___wang_core_lex_8_ir skip_3 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1
+  let bb_91 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 =>
+    bb_32 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1
+  let bb_94 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 verified_8 =>
     if ((Array.size verified_8) >= (2 : Int32)) then
       ((2 : Int64), verified_8)
     else
-      bb_91 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default
-  let bb_97 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default verified_7 =>
-    bb_94 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default verified_7
-  let bb_59 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default mv_T_7 g_remaining_6 verified_5 =>
+      bb_91 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1
+  let bb_97 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 verified_7 =>
+    bb_94 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 verified_7
+  let bb_59 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 mv_T_7 g_remaining_6 verified_5 =>
     if ((Array.size mv_T_7) <= (1 : Int32)) then
       if ((! (MvPolyZZ.isEmpty g_remaining_6)) && (! (is_number g_remaining_6))) then
         let h_1 : Poly := (MvPolyZZ.mk g_remaining_6)
         let h_2 : Poly := (_lambda___wang_core_lex_1_ir h_1)
         if (! (is_number h_2)) then
           let verified_6 : Array (Poly × UInt64) := (Array.push verified_5 (((id h_2), (1 : Int32))))
-          bb_97 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default verified_6
+          bb_97 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 verified_6
         else
-          bb_97 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default verified_5
+          bb_97 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 verified_5
       else
-        bb_94 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default verified_5
+        bb_94 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 verified_5
     else
-      bb_91 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default
-  let bb_62 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default mv_T_3 g_remaining_2 verified_2 =>
-    bb_59 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default mv_T_3 g_remaining_2 verified_2
+      bb_91 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1
+  let bb_62 := fun skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 mv_T_3 g_remaining_2 verified_2 =>
+    bb_59 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 mv_T_3 g_remaining_2 verified_2
   if (skip_2 < batch_end_1) then
     let eval_1 : StdMap Variable ZZ := (__select_eval_point_lex_ir g x1_1 skip_2 mtshl_p_1)
     let f0_1 : MvPolyZZ := (assign2 g eval_1)
@@ -5751,11 +5751,11 @@ partial def _loop___wang_core_lex_8_ir (skip_2 : Int32) (batch_end_1 : Int32) (c
     else
       let lc_result_1 : WangLcResult := (__wang_leading_coeff_upoly_ir g uni_factors_2 eval_1 x1_1 uni_fac_2.content)
       if (! lc_result_1.success) then
-        bb_32 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default
+        bb_32 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1
       else
         let mv_factors_1 : Array MvPolyZZ := (__mtshl_lift_upoly_ir lc_result_1.f_scaled lc_result_1.scaled_factors lc_result_1.lc_targets eval_1 x1_1 mtshl_p_1)
         if (Array.isEmpty mv_factors_1) then
-          bb_32 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default
+          bb_32 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1
         else
           let normed_1 : Array Poly := (Array.replicate (((Array.size mv_factors_1)).toNat) (MvPolyZZ.mk comp_ptr_1))
           let active_idx_1 : Array Nat := (#[])
@@ -5767,54 +5767,54 @@ partial def _loop___wang_core_lex_8_ir (skip_2 : Int32) (batch_end_1 : Int32) (c
           let g_remaining_1 : Poly := g
           let mv_T_1 : Array Int32 := (Array.replicate (((Array.size active_idx_2)).toNat) default)
           let mv_T_2 : Array Int32 := (Array.range_init mv_T_1 (0 : Int32))
-          let mv_next_combination_1 : (Array Int32) → Int32 → Bool := _lambda___wang_core_lex_3_ir
+          let mv_next_combination_1 : (Array Int32) → Int32 → (Bool × Array Int32) := _lambda___wang_core_lex_3_ir
           if (! (Array.isEmpty mv_T_2)) then
             let found_1 : Bool := (false)
             let s_1 : Int32 := (1 : Int32)
-            let __loop_ret___wang_core_lex_7_1 : (Int64 × Poly × Array Int32 × Array (Poly × UInt64)) := (_loop___wang_core_lex_7_ir s_1 mv_T_2 g_remaining_1 verified_1 active_idx_2 comp_ptr_1 g normed_2 default)
+            let __loop_ret___wang_core_lex_7_1 : (Int64 × Poly × Array Int32 × Array (Poly × UInt64)) := (_loop___wang_core_lex_7_ir s_1 mv_T_2 g_remaining_1 verified_1 active_idx_2 comp_ptr_1 g normed_2)
             let g_remaining_2 : Poly := __loop_ret___wang_core_lex_7_1.2.1
             let mv_T_3 : Array Int32 := __loop_ret___wang_core_lex_7_1.2.2.1
             let verified_2 : Array (Poly × UInt64) := __loop_ret___wang_core_lex_7_1.2.2.2
             let __loop_ret___wang_core_lex_7__kind_1 : Int64 := __loop_ret___wang_core_lex_7_1.1
             if (__loop_ret___wang_core_lex_7__kind_1 == (0 : Int64)) then
-              bb_62 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default mv_T_3 g_remaining_2 verified_2
+              bb_62 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 mv_T_3 g_remaining_2 verified_2
             else
-              bb_62 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default mv_T_3 g_remaining_2 verified_2
+              bb_62 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 mv_T_3 g_remaining_2 verified_2
           else
-            bb_59 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default mv_T_2 g_remaining_1 verified_1
+            bb_59 skip_2 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 mv_T_2 g_remaining_1 verified_1
   else
     ((0 : Int64), default)
 
-partial def _loop___wang_core_lex_9_ir (vi_2 : Nat) (var_mtshl_p_3 : Array UInt64) (var_dead_3 : Array Bool) (var_skip_3 : Array Int32) (BATCH_SIZE_1 : Int32) (comp_ptr_1 : Lex) (g : MvPolyZZ) (main_vars_2 : Array Variable) (__default_init__ : Array (Poly × UInt64)) : (Int64 × Array Bool × Array UInt64 × Array Int32 × Array (Poly × UInt64)) :=
-  let bb_18 := fun vi_2 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default var_mtshl_p_4 var_dead_4 var_skip_4 =>
+partial def _loop___wang_core_lex_9_ir (vi_2 : Nat) (var_mtshl_p_3 : Array UInt64) (var_dead_3 : Array Bool) (var_skip_3 : Array Int32) (BATCH_SIZE_1 : Int32) (comp_ptr_1 : Lex) (g : MvPolyZZ) (main_vars_2 : Array Variable) : (Int64 × Array Bool × Array UInt64 × Array Int32 × Array (Poly × UInt64)) :=
+  let bb_18 := fun vi_2 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 var_mtshl_p_4 var_dead_4 var_skip_4 =>
     let vi_3 : Nat := (vi_2 + (1 : Nat))
-    _loop___wang_core_lex_9_ir vi_3 var_mtshl_p_4 var_dead_4 var_skip_4 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default
-  let bb_33 := fun vi_2 var_skip_3 batch_end_1 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default var_mtshl_p_8 var_dead_6 =>
+    _loop___wang_core_lex_9_ir vi_3 var_mtshl_p_4 var_dead_4 var_skip_4 BATCH_SIZE_1 comp_ptr_1 g main_vars_2
+  let bb_33 := fun vi_2 var_skip_3 batch_end_1 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 var_mtshl_p_8 var_dead_6 =>
     -- require (h_in_bounds): (vi_2 < (Array.size var_skip_3))
     let var_skip_5 : Array Int32 := (Array.set! var_skip_3 vi_2 batch_end_1)
-    bb_18 vi_2 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default var_mtshl_p_8 var_dead_6 var_skip_5
-  let bb_26 := fun vi_2 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g x1_1 default main_vars_2 var_dead_3 var_mtshl_p_8 =>
+    bb_18 vi_2 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 var_mtshl_p_8 var_dead_6 var_skip_5
+  let bb_26 := fun vi_2 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g x1_1 main_vars_2 var_dead_3 var_mtshl_p_8 =>
     -- require (h_in_bounds): (vi_2 < (Array.size var_mtshl_p_8))
     let mtshl_p_1 : UInt64 := (var_mtshl_p_8[(vi_2)]!)
     -- require (h_in_bounds): (vi_2 < (Array.size var_skip_3))
     let batch_end_1 : Int32 := ((var_skip_3[(vi_2)]!) + BATCH_SIZE_1)
     -- require (h_in_bounds): (vi_2 < (Array.size var_skip_3))
     let skip_1 : Int32 := (var_skip_3[(vi_2)]!)
-    let __loop_ret___wang_core_lex_8_1 : (Int64 × Array (Poly × UInt64)) := (_loop___wang_core_lex_8_ir skip_1 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1 default)
+    let __loop_ret___wang_core_lex_8_1 : (Int64 × Array (Poly × UInt64)) := (_loop___wang_core_lex_8_ir skip_1 batch_end_1 comp_ptr_1 g mtshl_p_1 x1_1)
     let verified_8 : Array (Poly × UInt64) := __loop_ret___wang_core_lex_8_1.snd
     let __loop_ret___wang_core_lex_8__kind_1 : Int64 := __loop_ret___wang_core_lex_8_1.fst
     if (__loop_ret___wang_core_lex_8__kind_1 == (0 : Int64)) then
-      bb_33 vi_2 var_skip_3 batch_end_1 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default var_mtshl_p_8 var_dead_3
+      bb_33 vi_2 var_skip_3 batch_end_1 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 var_mtshl_p_8 var_dead_3
     else
       if (__loop_ret___wang_core_lex_8__kind_1 == (1 : Int64)) then
         let var_dead_5 : Array Bool := (Array.set! var_dead_3 vi_2 true)
-        bb_33 vi_2 var_skip_3 batch_end_1 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default var_mtshl_p_8 var_dead_5
+        bb_33 vi_2 var_skip_3 batch_end_1 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 var_mtshl_p_8 var_dead_5
       else
         ((1 : Int64), var_dead_3, var_mtshl_p_8, var_skip_3, verified_8)
   if (vi_2 < (Array.size main_vars_2)) then
     -- require (h_in_bounds): (vi_2 < (Array.size var_dead_3))
     if (var_dead_3[(vi_2)]!) then
-      bb_18 vi_2 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default var_mtshl_p_3 var_dead_3 var_skip_3
+      bb_18 vi_2 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 var_mtshl_p_3 var_dead_3 var_skip_3
     else
       -- require (h_in_bounds): (vi_2 < (Array.size main_vars_2))
       let x1_1 : Variable := (main_vars_2[(vi_2)]!)
@@ -5826,9 +5826,9 @@ partial def _loop___wang_core_lex_9_ir (vi_2 : Nat) (var_mtshl_p_3 : Array UInt6
         let all_div_1 : UInt64 → Bool := (_lambda___wang_core_lex_2_ir L_1)
         let __loop_ret___wang_core_lex_1_1 : (Int64 × Array UInt64) := (_loop___wang_core_lex_1_ir var_mtshl_p_5 all_div_1 vi_2)
         let var_mtshl_p_6 : Array UInt64 := __loop_ret___wang_core_lex_1_1.snd
-        bb_26 vi_2 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g x1_1 default main_vars_2 var_dead_3 var_mtshl_p_6
+        bb_26 vi_2 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g x1_1 main_vars_2 var_dead_3 var_mtshl_p_6
       else
-        bb_26 vi_2 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g x1_1 default main_vars_2 var_dead_3 var_mtshl_p_3
+        bb_26 vi_2 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g x1_1 main_vars_2 var_dead_3 var_mtshl_p_3
   else
     ((0 : Int64), var_dead_3, var_mtshl_p_3, var_skip_3, default)
 
@@ -5843,15 +5843,15 @@ partial def _loop___wang_core_lex_10_ir (vi_5 : Nat) (main_vars_2 : Array Variab
   else
     (0 : Int64)
 
-partial def _loop___wang_core_lex_11_ir (var_mtshl_p_2 : Array UInt64) (var_dead_2 : Array Bool) (var_skip_2 : Array Int32) (BATCH_SIZE_1 : Int32) (comp_ptr_1 : Lex) (g : MvPolyZZ) (main_vars_2 : Array Variable) (__default_init__ : Array (Poly × UInt64)) : (Int64 × Array (Poly × UInt64)) :=
-  let bb_105 := fun verified_8 var_mtshl_p_3 var_dead_3 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default all_dead_3 =>
+partial def _loop___wang_core_lex_11_ir (var_mtshl_p_2 : Array UInt64) (var_dead_2 : Array Bool) (var_skip_2 : Array Int32) (BATCH_SIZE_1 : Int32) (comp_ptr_1 : Lex) (g : MvPolyZZ) (main_vars_2 : Array Variable) : (Int64 × Array (Poly × UInt64)) :=
+  let bb_105 := fun verified_8 var_mtshl_p_3 var_dead_3 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 all_dead_3 =>
     if all_dead_3 then
       ((1 : Int64), verified_8)
     else
-      _loop___wang_core_lex_11_ir var_mtshl_p_3 var_dead_3 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default
+      _loop___wang_core_lex_11_ir var_mtshl_p_3 var_dead_3 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g main_vars_2
   if true then
     let vi_1 : Nat := (0 : Nat)
-    let __loop_ret___wang_core_lex_9_1 : (Int64 × Array Bool × Array UInt64 × Array Int32 × Array (Poly × UInt64)) := (_loop___wang_core_lex_9_ir vi_1 var_mtshl_p_2 var_dead_2 var_skip_2 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default)
+    let __loop_ret___wang_core_lex_9_1 : (Int64 × Array Bool × Array UInt64 × Array Int32 × Array (Poly × UInt64)) := (_loop___wang_core_lex_9_ir vi_1 var_mtshl_p_2 var_dead_2 var_skip_2 BATCH_SIZE_1 comp_ptr_1 g main_vars_2)
     let var_dead_3 : Array Bool := __loop_ret___wang_core_lex_9_1.2.1
     let var_mtshl_p_3 : Array UInt64 := __loop_ret___wang_core_lex_9_1.2.2.1
     let var_skip_3 : Array Int32 := __loop_ret___wang_core_lex_9_1.2.2.2.1
@@ -5863,10 +5863,10 @@ partial def _loop___wang_core_lex_11_ir (var_mtshl_p_2 : Array UInt64) (var_dead
       let __loop_ret___wang_core_lex_10_1 : Int64 := (_loop___wang_core_lex_10_ir vi_4 main_vars_2 var_dead_3)
       let __loop_ret___wang_core_lex_10__kind_1 : Int64 := __loop_ret___wang_core_lex_10_1
       if (__loop_ret___wang_core_lex_10__kind_1 == (0 : Int64)) then
-        bb_105 verified_8 var_mtshl_p_3 var_dead_3 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default all_dead_1
+        bb_105 verified_8 var_mtshl_p_3 var_dead_3 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 all_dead_1
       else
         let all_dead_2 : Bool := false
-        bb_105 verified_8 var_mtshl_p_3 var_dead_3 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default all_dead_2
+        bb_105 verified_8 var_mtshl_p_3 var_dead_3 var_skip_3 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 all_dead_2
     else
       ((2 : Int64), verified_8)
   else
@@ -5891,9 +5891,9 @@ partial def __wang_core_lex_ir (g : MvPolyZZ) : Array (MvPolyZZ × UInt64) :=
   else
     let var_skip_1 : Array Int32 := (Array.replicate (((Array.size main_vars_2)).toNat) (0 : Int32))
     let var_dead_1 : Array Bool := (Array.replicate (((Array.size main_vars_2)).toNat) false)
-    let normalize_factor_1 := _lambda___wang_core_lex_1_ir
+    let normalize_factor_1 : Poly → Poly := _lambda___wang_core_lex_1_ir
     let var_mtshl_p_1 : Array UInt64 := (Array.replicate (((Array.size main_vars_2)).toNat) (0 : Int32))
-    let __loop_ret___wang_core_lex_11_1 : (Int64 × Array (Poly × UInt64)) := (_loop___wang_core_lex_11_ir var_mtshl_p_1 var_dead_1 var_skip_1 BATCH_SIZE_1 comp_ptr_1 g main_vars_2 default)
+    let __loop_ret___wang_core_lex_11_1 : (Int64 × Array (Poly × UInt64)) := (_loop___wang_core_lex_11_ir var_mtshl_p_1 var_dead_1 var_skip_1 BATCH_SIZE_1 comp_ptr_1 g main_vars_2)
     let verified_8 : Array (Poly × UInt64) := __loop_ret___wang_core_lex_11_1.snd
     let __loop_ret___wang_core_lex_11__kind_1 : Int64 := __loop_ret___wang_core_lex_11_1.fst
     if (__loop_ret___wang_core_lex_11__kind_1 == (0 : Int64)) then
@@ -6154,7 +6154,7 @@ partial def _loop___wang_leading_coeff_upoly_16_ir (i_17 : Nat) (result_6 : Wang
     let __loop_ret___wang_leading_coeff_upoly_15_1 : (Int64 × SparsePolyZZ) := (_loop___wang_leading_coeff_upoly_15_ir __rangefor_idx_1_1 vi_1 __rangefor_cont_1_1 delta_4 lc_ui_1)
     let vi_2 : SparsePolyZZ := __loop_ret___wang_leading_coeff_upoly_15_1.snd
     let vi_5 : SparsePolyZZ := (SparsePolyZZ.normalization vi_2)
-    let result_7 : WangLcResult := (Array.set! result_6.scaled_factors i_17 (id vi_5))
+    let result_7 : WangLcResult := { result_6 with scaled_factors := (Array.set! result_6.scaled_factors i_17 (id vi_5)) }
     let i_18 : Nat := (i_17 + (1 : Nat))
     _loop___wang_leading_coeff_upoly_16_ir i_18 result_7 delta_4 r_7 univar_factors
   else
@@ -6173,9 +6173,9 @@ partial def _loop___wang_leading_coeff_upoly_17_ir (i_20 : Nat) (result_10 : Wan
       -- require (h_nonzero): (sigma_val_1 != (0 : Int64))
       let scale_1 : ZZ := (delta_4 / sigma_val_1)
       -- require (h_in_bounds): (i_20 < (Array.size sigma_10))
-      let result_11 : WangLcResult := (Array.set! result_10.lc_targets i_20 ((sigma_10[(i_20)]!) * (make_const_1 scale_1)))
+      let result_11 : WangLcResult := { result_10 with lc_targets := (Array.set! result_10.lc_targets i_20 ((sigma_10[(i_20)]!) * (make_const_1 scale_1))) }
       -- require (h_in_bounds): (i_20 < (Array.size result_11.lc_targets))
-      let result_12 : WangLcResult := (Array.set! result_11.lc_targets i_20 (MvPolyZZ.normalization (result_11.lc_targets[(i_20)]!)))
+      let result_12 : WangLcResult := { result_11 with lc_targets := (Array.set! result_11.lc_targets i_20 (MvPolyZZ.normalization (result_11.lc_targets[(i_20)]!))) }
       let i_21 : Nat := (i_20 + (1 : Nat))
       _loop___wang_leading_coeff_upoly_17_ir i_21 result_12 delta_4 eval_point make_const_1 r_7 sigma_10
   else
@@ -6366,13 +6366,13 @@ partial def _loop___zassenhaus_recombine_upoly_2_ir (__rangefor_idx_1_2 : Nat) (
   else
     ((0 : Int64), c_prod_2)
 
-partial def _loop___zassenhaus_recombine_upoly_3_ir (idx_3 : Array Int32) (T_3 : Array Int32) (f_star_2 : SparsePolyZZ) (lifted : Array SparsePolyZZ) (m : ZZ) (n_active_1 : Int32) (s_2 : Int32) (__default_init__ : SparsePolyZZ) : (Int64 × Array Int32 × SparsePolyZZ × SparsePolyZZ) :=
-  let bb_17 := fun T_3 f_star_2 lifted m n_active_1 s_2 default __hoist_lam_0_1 idx_4 =>
+partial def _loop___zassenhaus_recombine_upoly_3_ir (idx_3 : Array Int32) (T_3 : Array Int32) (f_star_2 : SparsePolyZZ) (lifted : Array SparsePolyZZ) (m : ZZ) (n_active_1 : Int32) (s_2 : Int32) : (Int64 × Array Int32 × SparsePolyZZ × SparsePolyZZ) :=
+  let bb_17 := fun T_3 f_star_2 lifted m n_active_1 s_2 __hoist_lam_0_1 idx_4 =>
     if __hoist_lam_0_1.fst then
-      _loop___zassenhaus_recombine_upoly_3_ir idx_4 T_3 f_star_2 lifted m n_active_1 s_2 default
+      _loop___zassenhaus_recombine_upoly_3_ir idx_4 T_3 f_star_2 lifted m n_active_1 s_2
     else
       ((0 : Int64), idx_4, default, default)
-  let bb_40 := fun lifted S_idx_2 lc_mult_1 m f_star_2 idx_3 n_active_1 T_3 s_2 default =>
+  let bb_40 := fun lifted S_idx_2 lc_mult_1 m f_star_2 idx_3 n_active_1 T_3 s_2 =>
     let g_1 : SparsePolyZZ := (__subset_product_mod_upoly_ir lifted S_idx_2 lc_mult_1 m)
     let __decomp_6_1 : (ZZ × SparsePolyZZ) := (__upoly_primitive_upoly_ir (id g_1))
     let c_g_1 : ZZ := __decomp_6_1.fst
@@ -6387,8 +6387,8 @@ partial def _loop___zassenhaus_recombine_upoly_3_ir (idx_3 : Array Int32) (T_3 :
     else
       let __hoist_lam_0_4 := (_lambda___zassenhaus_recombine_upoly_1_ir idx_3 n_active_1)
       let idx_7 : Array Int32 := __hoist_lam_0_4.snd
-      bb_17 T_3 f_star_2 lifted m n_active_1 s_2 default __hoist_lam_0_4 idx_7
-  let bb_29 := fun lc_mult_1 S_idx_2 lifted m lc_fstar_1 f_star_2 idx_3 n_active_1 T_3 s_2 default =>
+      bb_17 T_3 f_star_2 lifted m n_active_1 s_2 __hoist_lam_0_4 idx_7
+  let bb_29 := fun lc_mult_1 S_idx_2 lifted m lc_fstar_1 f_star_2 idx_3 n_active_1 T_3 s_2 =>
     let c_prod_1 : ZZ := lc_mult_1
     let __rangefor_cont_1_1 : Array Nat := S_idx_2
     let __rangefor_idx_1_1 : Nat := (0 : Nat)
@@ -6402,11 +6402,11 @@ partial def _loop___zassenhaus_recombine_upoly_3_ir (idx_3 : Array Int32) (T_3 :
       if (rem2_2 != ((0 : Int32)).toInt) then
         let __hoist_lam_0_3 := (_lambda___zassenhaus_recombine_upoly_1_ir idx_3 n_active_1)
         let idx_6 : Array Int32 := __hoist_lam_0_3.snd
-        bb_17 T_3 f_star_2 lifted m n_active_1 s_2 default __hoist_lam_0_3 idx_6
+        bb_17 T_3 f_star_2 lifted m n_active_1 s_2 __hoist_lam_0_3 idx_6
       else
-        bb_40 lifted S_idx_2 lc_mult_1 m f_star_2 idx_3 n_active_1 T_3 s_2 default
+        bb_40 lifted S_idx_2 lc_mult_1 m f_star_2 idx_3 n_active_1 T_3 s_2
     else
-      bb_40 lifted S_idx_2 lc_mult_1 m f_star_2 idx_3 n_active_1 T_3 s_2 default
+      bb_40 lifted S_idx_2 lc_mult_1 m f_star_2 idx_3 n_active_1 T_3 s_2
   -- require (h_nonneg): (s_2 >= (0 : Int32))
   let S_idx_1 : Array Nat := (Array.replicate ((((s_2).toInt64.toUInt64)).toNat) default)
   let j_1 : Int32 := (0 : Int32)
@@ -6428,11 +6428,11 @@ partial def _loop___zassenhaus_recombine_upoly_3_ir (idx_3 : Array Int32) (T_3 :
     if (rem_2 != ((0 : Int32)).toInt) then
       let __hoist_lam_0_2 := (_lambda___zassenhaus_recombine_upoly_1_ir idx_3 n_active_1)
       let idx_5 : Array Int32 := __hoist_lam_0_2.snd
-      bb_17 T_3 f_star_2 lifted m n_active_1 s_2 default __hoist_lam_0_2 idx_5
+      bb_17 T_3 f_star_2 lifted m n_active_1 s_2 __hoist_lam_0_2 idx_5
     else
-      bb_29 lc_mult_1 S_idx_2 lifted m lc_fstar_1 f_star_2 idx_3 n_active_1 T_3 s_2 default
+      bb_29 lc_mult_1 S_idx_2 lifted m lc_fstar_1 f_star_2 idx_3 n_active_1 T_3 s_2
   else
-    bb_29 lc_mult_1 S_idx_2 lifted m lc_fstar_1 f_star_2 idx_3 n_active_1 T_3 s_2 default
+    bb_29 lc_mult_1 S_idx_2 lifted m lc_fstar_1 f_star_2 idx_3 n_active_1 T_3 s_2
 
 partial def _loop___zassenhaus_recombine_upoly_4_ir (j_5 : Int32) (T_5 : Array Int32) (idx_3 : Array Int32) : (Int64 × Array Int32) :=
   if (j_5 >= (0 : Int32)) then
@@ -6444,14 +6444,14 @@ partial def _loop___zassenhaus_recombine_upoly_4_ir (j_5 : Int32) (T_5 : Array I
   else
     ((0 : Int64), T_5)
 
-partial def _loop___zassenhaus_recombine_upoly_5_ir (s_2 : Int32) (result_2 : Array SparsePolyZZ) (f_star_2 : SparsePolyZZ) (T_3 : Array Int32) (lifted : Array SparsePolyZZ) (m : ZZ) (__default_init__ : SparsePolyZZ) : (Int64 × SparsePolyZZ × Array SparsePolyZZ) :=
-  let bb_18 := fun lifted m default s_2 found_3 result_3 f_star_3 T_4 =>
+partial def _loop___zassenhaus_recombine_upoly_5_ir (s_2 : Int32) (result_2 : Array SparsePolyZZ) (f_star_2 : SparsePolyZZ) (T_3 : Array Int32) (lifted : Array SparsePolyZZ) (m : ZZ) : (Int64 × SparsePolyZZ × Array SparsePolyZZ) :=
+  let bb_18 := fun lifted m s_2 found_3 result_3 f_star_3 T_4 =>
     if found_3 then
       let s_3 : Int32 := (1 : Int32)
-      _loop___zassenhaus_recombine_upoly_5_ir s_3 result_3 f_star_3 T_4 lifted m default
+      _loop___zassenhaus_recombine_upoly_5_ir s_3 result_3 f_star_3 T_4 lifted m
     else
       let s_4 : Int32 := (s_2 + (1 : Int32))
-      _loop___zassenhaus_recombine_upoly_5_ir s_4 result_3 f_star_3 T_4 lifted m default
+      _loop___zassenhaus_recombine_upoly_5_ir s_4 result_3 f_star_3 T_4 lifted m
   if (((2 : Int32) * s_2) <= (((Array.size T_3)).toUInt32.toInt32)) then
     -- require (h_fits_int32): (((Array.size T_3) >= (-2147483648 : Int64)) && ((Array.size T_3) <= (2147483647 : Int64)))
     let found_2 : Bool := false
@@ -6464,13 +6464,13 @@ partial def _loop___zassenhaus_recombine_upoly_5_ir (s_2 : Int32) (result_2 : Ar
       -- require (h_nonneg): (s_2 >= (0 : Int32))
       let idx_1 : Array Int32 := (Array.replicate ((((s_2).toInt64.toUInt64)).toNat) default)
       let idx_2 : Array Int32 := (Array.range_init idx_1 (0 : Int32))
-      let __loop_ret___zassenhaus_recombine_upoly_3_1 : (Int64 × Array Int32 × SparsePolyZZ × SparsePolyZZ) := (_loop___zassenhaus_recombine_upoly_3_ir idx_2 T_3 f_star_2 lifted m n_active_1 s_2 default)
+      let __loop_ret___zassenhaus_recombine_upoly_3_1 : (Int64 × Array Int32 × SparsePolyZZ × SparsePolyZZ) := (_loop___zassenhaus_recombine_upoly_3_ir idx_2 T_3 f_star_2 lifted m n_active_1 s_2)
       let idx_3 : Array Int32 := __loop_ret___zassenhaus_recombine_upoly_3_1.2.1
       let pp_g_1 : SparsePolyZZ := __loop_ret___zassenhaus_recombine_upoly_3_1.2.2.1
       let q_trial_2 : SparsePolyZZ := __loop_ret___zassenhaus_recombine_upoly_3_1.2.2.2
       let __loop_ret___zassenhaus_recombine_upoly_3__kind_1 : Int64 := __loop_ret___zassenhaus_recombine_upoly_3_1.1
       if (__loop_ret___zassenhaus_recombine_upoly_3__kind_1 == (0 : Int64)) then
-        bb_18 lifted m default s_2 found_2 result_2 f_star_2 T_3
+        bb_18 lifted m s_2 found_2 result_2 f_star_2 T_3
       else
         let result_4 : Array SparsePolyZZ := (Array.push result_2 (id pp_g_1))
         let __decomp_7_1 : (ZZ × SparsePolyZZ) := (__upoly_primitive_upoly_ir (id q_trial_2))
@@ -6481,7 +6481,7 @@ partial def _loop___zassenhaus_recombine_upoly_5_ir (s_2 : Int32) (result_2 : Ar
         let __loop_ret___zassenhaus_recombine_upoly_4_1 : (Int64 × Array Int32) := (_loop___zassenhaus_recombine_upoly_4_ir j_4 T_3 idx_3)
         let T_5 : Array Int32 := __loop_ret___zassenhaus_recombine_upoly_4_1.snd
         let found_4 : Bool := true
-        bb_18 lifted m default s_2 found_4 result_4 f_star_4 T_5
+        bb_18 lifted m s_2 found_4 result_4 f_star_4 T_5
   else
     ((0 : Int64), f_star_2, result_2)
 
@@ -6506,10 +6506,10 @@ partial def __zassenhaus_recombine_upoly_ir (f : SparsePolyZZ) (lifted : Array S
     let T_2 : Array Int32 := (Array.range_init T_1 (0 : Int32))
     let f_star_1 : SparsePolyZZ := f
     let result_1 : Array SparsePolyZZ := (#[])
-    let next_combination_1 : (Array Int32) → Int32 → Bool := _lambda___zassenhaus_recombine_upoly_1_ir
+    let next_combination_1 : (Array Int32) → Int32 → (Bool × Array Int32) := _lambda___zassenhaus_recombine_upoly_1_ir
     let found_1 : Bool := (false)
     let s_1 : Int32 := (1 : Int32)
-    let __loop_ret___zassenhaus_recombine_upoly_5_1 : (Int64 × SparsePolyZZ × Array SparsePolyZZ) := (_loop___zassenhaus_recombine_upoly_5_ir s_1 result_1 f_star_1 T_2 lifted m default)
+    let __loop_ret___zassenhaus_recombine_upoly_5_1 : (Int64 × SparsePolyZZ × Array SparsePolyZZ) := (_loop___zassenhaus_recombine_upoly_5_ir s_1 result_1 f_star_1 T_2 lifted m)
     let f_star_2 : SparsePolyZZ := __loop_ret___zassenhaus_recombine_upoly_5_1.2.1
     let result_2 : Array SparsePolyZZ := __loop_ret___zassenhaus_recombine_upoly_5_1.2.2
     let __loop_ret___zassenhaus_recombine_upoly_5__kind_1 : Int64 := __loop_ret___zassenhaus_recombine_upoly_5_1.1
@@ -6628,7 +6628,7 @@ partial def factorize_upoly_ir (F : SparsePolyZZ) : Factorization SparsePolyZZ :
         let result_6 : Factorization SparsePolyZZ := { result_5 with factors := (Array.push result_5.factors (((id uf_prim_1), (1 : Int32)))) }
         (result_6)
       else
-        let __x_1 : Variable := (Variable.mk (String.mk "x"))
+        let __x_1 : Variable := (Variable.mk (("x" : String)))
         let poly_prim_1 : MvPolyZZ := (MvPolyZZ.empty)
         let poly_prim_2 : MvPolyZZ := (poly_convert3 uf_prim_1 poly_prim_1 __x_1)
         let sqf_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize poly_prim_2)
@@ -6639,7 +6639,7 @@ partial def factorize_upoly_ir (F : SparsePolyZZ) : Factorization SparsePolyZZ :
         let result_7 : Factorization SparsePolyZZ := __loop_ret_factorize_upoly_2_1.2.2
         let sqf_2 : Array (MvPolyZZ × UInt64) := __rangefor_cont_0_2
         let result_13 : Factorization SparsePolyZZ := { result_7 with factors := (Array.sort result_7.factors _lambda_factorize_upoly_1_ir) }
-        let __xdbg_1 : Variable := (Variable.mk (String.mk "x"))
+        let __xdbg_1 : Variable := (Variable.mk (("x" : String)))
         let check_poly_1 : MvPolyZZ := (MvPolyZZ.empty)
         let f_poly_1 : MvPolyZZ := (MvPolyZZ.empty)
         let f_poly_2 : MvPolyZZ := (poly_convert3 F f_poly_1 __xdbg_1)

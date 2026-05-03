@@ -35,7 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
-    BaseType, NamedType, UnknownType, TypeIR,
+    BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
@@ -271,37 +271,43 @@ def _lift_lambda(lam: LambdaExpr, host_name: str, counter: list[int],
     # 5. 返回类型：若有 modified capture → (原返回, modified_cap...) tuple
     #    简化：Pass 3 不改返回类型（Pass 5 或后续 pass 可加）。
     # Lambda 原始返回类型从 ty 取；若无则用 UnknownType
+    # 阶段 G+ 修复：Pass 2 ref_elim 可能已经把 lambda body return 包成 tuple
+    # （把 ref-out 加到返回值），但 lam.ty 还是 C++ 原始 `-> bool` 类型 →
+    # 不一致。优先用 body ReturnStmt 推断的真实返回类型。
+    from ir_types import (ReturnStmt, Cast, IfStmt, ForStmt, WhileStmt,
+                          BlockStmt, RangeForStmt, DoWhileStmt)
+    def _find_ret_ty(stmts):
+        for s in reversed(stmts):
+            if isinstance(s, ReturnStmt) and s.value is not None:
+                v = s.value
+                inferred = v.target_ty if isinstance(v, Cast) else getattr(v, 'ty', None)
+                if inferred is not None and not isinstance(inferred, UnknownType):
+                    return inferred
+            elif isinstance(s, IfStmt):
+                t = _find_ret_ty(s.then_body)
+                if t is not None: return t
+                e = _find_ret_ty(s.else_body)
+                if e is not None: return e
+            elif isinstance(s, (ForStmt, WhileStmt, RangeForStmt, DoWhileStmt)):
+                t = _find_ret_ty(s.body)
+                if t is not None: return t
+            elif isinstance(s, BlockStmt):
+                t = _find_ret_ty(s.stmts)
+                if t is not None: return t
+        return None
+    body_inferred = _find_ret_ty(lam.body)
     orig_ret = lam.ty if lam.ty else UnknownType("")
-    # 若 Lambda 的 ty 是 NamedType("Lambda") 或其他，取 UnknownType("")
     if isinstance(orig_ret, NamedType) and orig_ret.name == "Lambda":
         orig_ret = UnknownType("")
-    # B1 续修：UnknownType 时从 body 最深的 ReturnStmt 推断 ret_ty
-    # （递归 IfStmt/ForStmt/WhileStmt/BlockStmt/RangeForStmt/DoWhileStmt body）
-    if isinstance(orig_ret, UnknownType):
-        from ir_types import (ReturnStmt, Cast, IfStmt, ForStmt, WhileStmt,
-                              BlockStmt, RangeForStmt, DoWhileStmt)
-        def _find_ret_ty(stmts):
-            for s in reversed(stmts):
-                if isinstance(s, ReturnStmt) and s.value is not None:
-                    v = s.value
-                    inferred = v.target_ty if isinstance(v, Cast) else getattr(v, 'ty', None)
-                    if inferred is not None and not isinstance(inferred, UnknownType):
-                        return inferred
-                elif isinstance(s, IfStmt):
-                    t = _find_ret_ty(s.then_body)
-                    if t is not None: return t
-                    e = _find_ret_ty(s.else_body)
-                    if e is not None: return e
-                elif isinstance(s, (ForStmt, WhileStmt, RangeForStmt, DoWhileStmt)):
-                    t = _find_ret_ty(s.body)
-                    if t is not None: return t
-                elif isinstance(s, BlockStmt):
-                    t = _find_ret_ty(s.stmts)
-                    if t is not None: return t
-            return None
-        inferred = _find_ret_ty(lam.body)
-        if inferred is not None:
-            orig_ret = inferred
+    # 若 body 推断的 ret 与 lam.ty 不一致（典型：Pass 2 ref-elim 后 body 返回
+    # tuple 但 lam.ty 还是单一类型），优先 body 推断
+    if body_inferred is not None:
+        if isinstance(orig_ret, UnknownType):
+            orig_ret = body_inferred
+        elif isinstance(body_inferred, (PairType, TupleType)) \
+                and not isinstance(orig_ret, (PairType, TupleType)):
+            # body 是 tuple 但 lam.ty 是单一 → Pass 2 transform 后的形态
+            orig_ret = body_inferred
 
     # 6. 生成新 HIRFunc
     # qual_type 编码 cap 信息（Pass 3b 用于区分 cap_params vs lambda by-ref params，

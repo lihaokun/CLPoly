@@ -881,6 +881,10 @@ def _collect_var_reads(e, out: list) -> None:
     """递归收集 expr 中的 Var 引用。"""
     if e is None: return
     if isinstance(e, Var):
+        # 阶段 G+ 修复：__default_init__ 是 Pass 7 sentinel（emit 为 Lean default 关键字），
+        # 不应被收集为 merge BB free var
+        if e.name == "__default_init__":
+            return
         out.append(e); return
     if isinstance(e, (Lit, UnresolvedOp)):
         return

@@ -474,12 +474,14 @@ def lambda_ref_elim_pass(func: HIRFunc) -> HIRFunc:
     # SSA build 后 ReturnTerm.value=None，destructure 字段全空，M/U 修改丢失。
     # 修：若 lambda body 无任何 non-None ReturnStmt，强制视为 void。
     new_aux: list[HIRFunc] = []
+    new_ret_tys: dict[str, TypeIR] = {}  # lifted_name → new ret_ty (after ref_elim 包 tuple)
     for aux in func.aux_lambdas:
         if isinstance(aux.ret_ty, UnknownType) and not _body_has_value_return(aux.body):
             aux = replace(aux, ret_ty=BaseType.UNIT)
         aux_with_refelim = ref_elim_pass(aux)
         aux_final = callsite_ref_elim_pass(aux_with_refelim)
         new_aux.append(aux_final)
+        new_ret_tys[aux_final.base_name] = aux_final.ret_ty
 
     # P3：扫描 outer body 建 alias map
     alias_map = _build_alias_map(func.body)
@@ -488,4 +490,64 @@ def lambda_ref_elim_pass(func: HIRFunc) -> HIRFunc:
     counter = [0]
     new_body = _rewrite_stmts(list(func.body), lambda_info, alias_map, counter)
 
+    # 阶段 G+ 修复：Pass 3 lift 时 lifted func 的 ret_ty 还是 C++ 原 ret（Bool）；
+    # Pass 3b ref_elim_pass(aux) 后 aux.ret_ty 改为 tuple。outer body 的
+    # LetStmt 引用 lifted lambda 的 Var.ty / Call.ty 还是旧 Bool — 需同步更新。
+    new_body = _propagate_new_ret_ty(new_body, new_ret_tys)
+
     return replace(func, body=new_body, aux_lambdas=new_aux)
+
+
+def _propagate_new_ret_ty(stmts: list[StmtIR],
+                            new_ret_tys: dict[str, TypeIR]) -> list[StmtIR]:
+    """递归扫 stmts，把指向 lifted lambda 的 Var/Call.ty 中的 FuncType.ret
+    更新为 new_ret_tys[lambda_name]."""
+    from ir_types import FuncType
+    def _update_ty(ty):
+        if isinstance(ty, FuncType):
+            return ty
+        return ty
+    def _update_var(v: Var) -> Var:
+        if v.name in new_ret_tys and isinstance(v.ty, FuncType):
+            new_func_ty = FuncType(params=v.ty.params, ret=new_ret_tys[v.name])
+            return replace(v, ty=new_func_ty)
+        return v
+    def _update_call(c: Call) -> Call:
+        if isinstance(c.callee, str) and c.callee in new_ret_tys \
+                and isinstance(c.ty, FuncType):
+            new_func_ty = FuncType(params=c.ty.params, ret=new_ret_tys[c.callee])
+            return replace(c, ty=new_func_ty)
+        return c
+    out: list[StmtIR] = []
+    for s in stmts:
+        if isinstance(s, LetStmt):
+            v = s.value
+            new_v = v
+            if isinstance(v, Var):
+                new_v = _update_var(v)
+            elif isinstance(v, Call):
+                new_v = _update_call(v)
+            new_ty = s.ty
+            new_var = s.var
+            new_rhs_ty = getattr(new_v, 'ty', None)
+            if isinstance(new_rhs_ty, FuncType):
+                new_ty = new_rhs_ty
+                new_var = replace(s.var, ty=new_rhs_ty)
+            out.append(replace(s, var=new_var, ty=new_ty, value=new_v))
+        elif isinstance(s, IfStmt):
+            out.append(replace(s,
+                then_body=_propagate_new_ret_ty(list(s.then_body), new_ret_tys),
+                else_body=_propagate_new_ret_ty(list(s.else_body or []), new_ret_tys),
+            ))
+        elif isinstance(s, (WhileStmt, RangeForStmt, DoWhileStmt)):
+            out.append(replace(s, body=_propagate_new_ret_ty(list(s.body), new_ret_tys)))
+        elif isinstance(s, ForStmt):
+            out.append(replace(s,
+                init=_propagate_new_ret_ty(list(s.init), new_ret_tys),
+                body=_propagate_new_ret_ty(list(s.body), new_ret_tys),
+            ))
+        elif isinstance(s, BlockStmt):
+            out.append(replace(s, stmts=_propagate_new_ret_ty(list(s.stmts), new_ret_tys)))
+        else:
+            out.append(s)
+    return out

@@ -62,6 +62,10 @@ end Zp
 -- Zp 隐式转换（对应 C++ 的 implicit conversion operators）
 instance : Coe Zp UInt64 where coe z := z.val
 instance : Coe Zp Int where coe z := z.val.toNat
+-- 阶段 G+ 修复：Pass 5 emit `Zp != (0 : Int32)` / `assign x (- alpha_j)` 等
+-- 字面量保持 Int32 而非 Zp。提供 Coe 让 Lean 自动桥接（占位 prime=1）。
+instance : Coe Int32 Zp where coe i := { val := i.toInt64.toUInt64, prime := 1 }
+instance : Coe Int Zp where coe i := { val := i.toNat.toUInt64, prime := 1 }
 
 -- ============================================================
 -- §2. ZZ：大整数
@@ -239,6 +243,8 @@ abbrev PolyQQ := Array (Monomial × Rat)
 
 -- MvPolyZp 操作（stub；实际语义留 Pass 上游 / B2B 测试细化）
 def MvPolyZp.normalization (f : MvPolyZp) : MvPolyZp := f
+def MvPolyZZ.empty : MvPolyZZ := #[]
+def MvPolyZp.empty : MvPolyZp := #[]
 -- C++ 的 Poly(comp_t) / Poly(const Poly&) ctor 都映射到 .mk；
 -- 用泛型 input → 空 Poly 占位（语义在 B2B 层细化）
 def MvPolyZp.mk {α : Type} (_ : α) : MvPolyZp := #[]
@@ -298,6 +304,20 @@ def MvPolyZZ.comp (_f : MvPolyZZ) : Lex := ()
 -- vec.clear() 的占位：忽略 receiver，返回空 Array
 def Array.clearVec {α : Type} (_ : Array α) : Array α := #[]
 
+-- Pass 5 vec.erase(begin + j) 转为 `Array.eraseIdx arr idx` —— 包装版本
+-- 接受任意 int-like 索引（Int32/Int64/UInt64）并 toNat 转为 Lean Nat
+class ToIdxNat (α : Type) where toIdxNat : α → Nat
+instance : ToIdxNat Nat where toIdxNat n := n
+instance : ToIdxNat Int32 where toIdxNat i := i.toNatClampNeg
+instance : ToIdxNat Int64 where toIdxNat i := i.toNatClampNeg
+instance : ToIdxNat UInt32 where toIdxNat u := u.toNat
+instance : ToIdxNat UInt64 where toIdxNat u := u.toNat
+instance : ToIdxNat Int where toIdxNat i := i.toNat
+
+def Array.eraseIdx' {α : Type} (a : Array α) {β : Type} [ToIdxNat β]
+    (i : β) : Array α :=
+  a.eraseIdxIfInBounds (ToIdxNat.toIdxNat i)
+
 -- vec.assign(n, val) 的占位：忽略 receiver，按 (n, val) 复制
 def Array.replicateMut {α : Type} (_ : Array α) (n : Nat) (v : α) : Array α :=
   Array.replicate n v
@@ -323,6 +343,9 @@ instance : HasDegree MvPolyZp where degree _ := 0
 -- SparsePolyZZ HasDegree instance 在 abbrev 后再加（见 §5c）
 
 def degree {α : Type} [HasDegree α] (a : α) : UInt64 := HasDegree.degree a
+-- 2-arg degree: poly + main var → 关于该 var 的次数（C++ degree(poly, var)）
+def degree2 {α : Type} [HasDegree α] (a : α) (_var : Variable) : Int64 :=
+  (HasDegree.degree a).toInt64
 
 -- C++ free functions: is_number(poly) / get_variables(poly)
 class IsNumber (α : Type) where
@@ -379,6 +402,9 @@ instance : HPow Int Int64 Int where hPow base e := base ^ e.toNatClampNeg
 instance : HPow ZZ Int64 ZZ where hPow base e := base ^ e.toNatClampNeg
 
 -- MvPolyZZ / MvPolyZp 的算术 stub
+-- HShiftLeft Int UInt64：C++ side `1 << bits` 等
+instance : HShiftLeft Int UInt64 Int where hShiftLeft a b := a <<< b.toNat
+instance : HShiftLeft Int Int Int where hShiftLeft a b := a <<< b.toNat
 instance : HMul MvPolyZZ MvPolyZZ MvPolyZZ where hMul a b := a ++ b
 instance : HAdd MvPolyZZ MvPolyZZ MvPolyZZ where hAdd a b := a ++ b
 instance : HSub MvPolyZZ MvPolyZZ MvPolyZZ where hSub a b := a ++ b
@@ -449,10 +475,15 @@ def Array.resize {α : Type} [Inhabited α] (a : Array α) (n : Nat) (v : α := 
   if n ≤ a.size then a.extract 0 n
   else a ++ Array.replicate (n - a.size) v
 def Array.getLast! {α : Type} [Inhabited α] (a : Array α) : α := a.back!
+def Array.head! {α : Type} [Inhabited α] (a : Array α) : α := a[0]!
 
-def Variable.mk (n : Nat) : Variable := n.toUInt64
+def Variable.mk {α : Type} (_ : α) : Variable := 0
 def UniformIntDist.mk (_lo _hi : Int32) : UniformIntDist := 0
 def Rng.default : Rng := 42
+-- 阶段 G+：Rng = UInt64 abbrev，Pass 5/8 偶尔在某些上下文 emit `.toUInt64`
+-- 让 abbrev Rng → UInt64 自动通过；定义 identity 避免 invalid field 错
+def Rng.toUInt64 (r : Rng) : UInt64 := r
+def UInt64.toUInt64 (u : UInt64) : UInt64 := u
 
 def Iterator {α : Type} (a : Array α) : Array α := a
 def MvMonomial.normalization (m : MvMonomial) : MvMonomial := m
@@ -483,8 +514,10 @@ def Array.range_init (n : UInt64) : Array Int32 :=
 def compute_theta {α : Type} [Inhabited α] : α := default
 def upzp_coeff {α : Type} [Inhabited α] : α := default
 def next_p : UInt64 := 2
-def cont {α : Type} [Inhabited α] : α := default
-def pp {α : Type} [Inhabited α] : α := default
+-- cont(poly) → ZZ: 多项式整数系数的 content (gcd)
+def cont {α : Type} (_p : α) : ZZ := 0
+-- pp(poly) → poly: primitive part (poly / cont)
+def pp {α : Type} [Inhabited α] (_p : α) : α := default
 def all_div : Bool := false
 -- 依赖 SparsePolyZZ / LLLMatrix abbrev：见 §5c (abbrev 之后)
 -- C++ std::swap(a, b)：值语义返回 (b, a) 元组（ref-elim 已转 SSA）
@@ -503,6 +536,12 @@ instance : Coe Int32 UInt64 where coe n := n.toInt64.toUInt64
 instance : Coe Int32 Int64 where coe n := n.toInt64
 instance : Coe UInt64 Nat where coe n := n.toNat
 instance : Coe Int64 Nat where coe n := n.toNatClampNeg
+-- 阶段 G+：Pass 5 cast 漏的 site 用 Lean Coe 自动桥（uni-directional safe casts）
+instance : Coe Nat Int64 where coe n := n.toUInt64.toInt64
+instance : Coe Nat Int32 where coe n := n.toUInt32.toInt32
+instance : Coe UInt64 Int64 where coe u := u.toInt64
+instance : Coe UInt32 UInt64 where coe u := u.toUInt64
+instance : Coe ZZ Nat where coe z := z.toNat
 abbrev SparsePolyZZ := Array (UMonomial × Int)
 
 -- §5a2 迁移：SparsePolyZZ 操作（filterMap 等需要 SparsePolyZZ 已定义）
@@ -534,8 +573,8 @@ instance : OfNat MvPolyZp 0 where ofNat := #[]
 def SparsePolyZZ.size_u64 (f : SparsePolyZZ) : UInt64 := f.size.toUInt64
 
 -- 阶段 F 后续：依赖 SparsePolyZZ 的 stub（LLLMatrix.size 见 abbrev 之后）
-def get_first_deg (f : SparsePolyZZ) : UInt64 :=
-  if f.isEmpty then 0 else f[0]!.fst.deg.toUInt64
+-- get_first_deg: 多变量 / 单变量两态。Lean 端泛型占位（语义层 B2B 细化）
+def get_first_deg {α : Type} (_f : α) : Int64 := 0
 
 -- get_deg: 泛型化（C++ side 多模板实例化共用同一 Lean 实现）
 -- 适用 SparsePolyZZ / SparsePolyZp 两种容器（结构相同：Array (UMonomial × _)）
@@ -546,7 +585,7 @@ def get_deg {α : Type} [Inhabited α] (f : Array (UMonomial × α)) : Int64 :=
 abbrev LLLMatrix := Array (Array Int)
 def LLLMatrix.size (m : LLLMatrix) : UInt64 := (Array.size m).toUInt64
 def LLLMatrix.empty : LLLMatrix := #[]
-def LLLMatrix.replicate (n : UInt64) (row : Array Int) : LLLMatrix :=
+def LLLMatrix.replicate (n : UInt64) (row : Array Int) (_ : Unit := ()) : LLLMatrix :=
   Array.replicate n.toNat row
 
 -- HenselNode: Hensel 提升二叉节点（C++ __hensel_node）

@@ -73,7 +73,8 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
     # Zp：模 p 整数
     "Zp": {
         0: ConstructorResolution("Zp.default", is_default=True),
-        1: ConstructorResolution("Zp.ofInt {a0}"),
+        # 1-arg: copy ctor（Zp value） — identity；Coe Int Zp 兜底处理 Int 字面量
+        1: ConstructorResolution("({a0} : Zp)"),
         # C++ Zp(int64_t v, uint64_t p) 做模归约 → 用 Zp.ofInt（Lean Model 提供）
         # ofInt 签名 (Int, UInt64)，Int64 → Int 用 .toInt
         2: ConstructorResolution("Zp.ofInt ({a0}).toInt {a1}"),

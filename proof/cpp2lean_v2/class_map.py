@@ -344,7 +344,7 @@ CLASS_MAP = {
             "resize":       ("mutate",       "Array.resize"),
             "reserve":      ("noop",         None),
             "clear":        ("mutate",       "Array.clearVec"),
-            "assign":       ("mutate",       "id"),
+            "assign":       ("mutate",       "Array.replicateMut"),
             "erase":        ("mutate",       "Array.erase"),       # Pass 4 漏识别的兜底
             "at":           ("method",       "Array.get!"),        # UB-2
             "insert":       ("mutate",       "Array.insert"),
@@ -413,7 +413,7 @@ CLASS_MAP = {
             "normalization": ("mutate",       "MvPolyZZ.normalization"),
             "reserve":       ("noop",         None),
             "clear":         ("mutate",       "Array.clearVec"),
-            "assign":        ("mutate",       "id"),
+            "assign":        ("mutate",       "Array.replicateMut"),
         },
     },
 
@@ -439,7 +439,7 @@ CLASS_MAP = {
             "normalization": ("mutate",       "MvPolyZp.normalization"),
             "reserve":       ("noop",         None),
             "clear":         ("mutate",       "Array.clearVec"),
-            "assign":        ("mutate",       "id"),
+            "assign":        ("mutate",       "Array.replicateMut"),
         },
     },
 

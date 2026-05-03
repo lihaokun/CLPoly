@@ -526,6 +526,9 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
         # assign 2-arg: poly + eval_point map（vs 3-arg: poly + var + val）
         if callee == "assign" and len(e.args) == 2:
             lean_name = "assign2"
+        # degree 2-arg: poly + main_var (vs 1-arg: poly only)
+        if callee == "degree" and len(e.args) == 2:
+            lean_name = "degree2"
         return lean_name if no_args else f"({lean_name} {args_str})"
     _func_map_targets = {v[0] for v in FUNC_MAP.values()}
     if callee in _func_map_targets:
@@ -536,14 +539,26 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
     if callee in NOOP_FUNCS:
         return args_str.split()[0] if args_str else "()"
     if callee in TRANSLATION_SCOPE:
-        # 模板实例化：caller 是 lex 实例时，callee 也用 lex 实例
-        # （C++ 模板单态化保证 caller / callee 在同一实例族内）
+        # 模板实例化：优先按 args[0] 类型匹配 callee 实例（caller_instance
+        # 仅当无类型信息时回退）。
+        # C++ 模板单态化按 arg 类型分派，caller 自身实例不一定 == callee 实例
+        # （如 caller=__wang_leading_coeff_upoly 调 factorize(L)，L 是 MvPolyZZ
+        # → 应 dispatch factorize_lex_ir 而非 factorize_upoly_ir）。
         suffixes = ctx.func_instances.get(callee, set())
-        if ctx.caller_instance and ctx.caller_instance in suffixes:
+        # arg-based 类型推断 → 实例后缀
+        arg_suffix = None
+        if e.args:
+            arg_ty = getattr(e.args[0], 'ty', None)
+            if isinstance(arg_ty, NamedType):
+                if arg_ty.name in ("MvPolyZZ", "MvPolyZp", "Poly", "PolyZZ", "PolyZp"):
+                    arg_suffix = "lex" if "lex" in suffixes else "grlex" if "grlex" in suffixes else None
+                elif arg_ty.name in ("SparsePolyZZ", "SparsePolyZp", "UPZZ", "UPZp"):
+                    arg_suffix = "upoly" if "upoly" in suffixes else None
+        if arg_suffix and arg_suffix in suffixes:
+            ir_name = f"{callee}_{arg_suffix}_ir"
+        elif ctx.caller_instance and ctx.caller_instance in suffixes:
             ir_name = f"{callee}_{ctx.caller_instance}_ir"
         elif suffixes and "" not in suffixes:
-            # 无 caller 实例信息但 callee 必须有 suffix（仅模板形式）；
-            # 任取一个稳定 suffix（按字母序）
             picked = sorted(suffixes)[0]
             ir_name = f"{callee}_{picked}_ir"
         else:

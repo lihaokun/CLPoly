@@ -548,7 +548,7 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
                 if _exprs_eq(container, recv_raw):
                     recv_w = _walk_expr(recv_raw, typectx, gap)
                     off_w = _walk_expr(offset, typectx, gap)
-                    new_call = Call(callee="Array.eraseIdx",
+                    new_call = Call(callee="Array.eraseIdx'",
                                     args=[recv_w, off_w], ty=None)
                     if (host_stmt_ctx
                             and isinstance(recv_w, (Var, FieldAccess, ArrayAccess))):
@@ -654,7 +654,7 @@ def _resolve_method_call(call: Call, method: str, typectx: dict, gap: GapLog,
             if iter_info is not None:
                 container, offset, op = iter_info
                 if op == "+" and offset is not None and _exprs_eq(container, recv):
-                    new_call = Call(callee="Array.eraseIdx",
+                    new_call = Call(callee="Array.eraseIdx'",
                                     args=[recv, offset], ty=None)
                     if host_stmt_ctx and isinstance(recv, (Var, FieldAccess, ArrayAccess)):
                         return ([AssignStmt(target=recv, value=new_call)], recv)

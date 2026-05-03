@@ -2695,7 +2695,7 @@ partial def _loop___mtshl_sparse_int_lex_0_ir (i_2 : Int32) (s_2 : Int32) (forms
   else
     ((0 : Int64), s_2)
 
-partial def _loop___mtshl_sparse_int_lex_1_ir (k_2 : Nat) (sparse_betas_2 : Array Zp) (aux_vars : Array Variable) (dist_1 : UniformIntDist) (gen_1 : Rng) (p : UInt64) : (Int64 × Array Zp) :=
+partial def _loop___mtshl_sparse_int_lex_1_ir (k_2 : Int32) (sparse_betas_2 : Array Zp) (aux_vars : Array Variable) (dist_1 : UniformIntDist) (gen_1 : Rng) (p : UInt64) : (Int64 × Array Zp) :=
   if (k_2 < (Array.size aux_vars)) then
     let sparse_betas_3 : Array Zp := (Array.set! sparse_betas_2 k_2 (Zp.ofInt ((Rng.next gen_1 dist_1)).toInt p))
     let k_3 : Nat := (k_2 + (1 : Nat))
@@ -2800,7 +2800,7 @@ partial def _loop___mtshl_sparse_int_lex_7_ir (idx_2 : Int32) (groups_2 : StdMap
   else
     ((0 : Int64), groups_2)
 
-partial def _loop___mtshl_sparse_int_lex_8_ir (thetas_2 : Array Zp) (k_5 : Nat) (compute_theta_1 : Monomial → Zp) (forms : Array (Array Monomial)) (i_14 : Int32) (indices_1 : Array Int32) (t_1 : Int32) : (Int64 × Array Zp) :=
+partial def _loop___mtshl_sparse_int_lex_8_ir (thetas_2 : Array Zp) (k_5 : Int32) (compute_theta_1 : Monomial → Zp) (forms : Array (Array Monomial)) (i_14 : Int32) (indices_1 : Array Int32) (t_1 : Int32) : (Int64 × Array Zp) :=
   if (k_5 < t_1) then
     -- require (h_nonneg): (k_5 >= (0 : Int32))
     -- require (h_nonneg): (i_14 >= (0 : Int32))
@@ -2828,7 +2828,7 @@ partial def _loop___mtshl_sparse_int_lex_9_ir (values_2 : Array Zp) (l_5 : Int32
   else
     ((0 : Int64), values_2)
 
-partial def _loop___mtshl_sparse_int_lex_10_ir (k_8 : Nat) (result_7 : Array MvPolyZp) (coeffs_2 : Array Zp) (forms : Array (Array Monomial)) (i_14 : Int32) (indices_1 : Array Int32) (t_1 : Int32) : (Int64 × Array MvPolyZp) :=
+partial def _loop___mtshl_sparse_int_lex_10_ir (k_8 : Int32) (result_7 : Array MvPolyZp) (coeffs_2 : Array Zp) (forms : Array (Array Monomial)) (i_14 : Int32) (indices_1 : Array Int32) (t_1 : Int32) : (Int64 × Array MvPolyZp) :=
   let bb_71 := fun k_8 coeffs_2 forms i_14 indices_1 t_1 result_8 =>
     let k_9 : Int32 := (k_8 + (1 : Int32))
     _loop___mtshl_sparse_int_lex_10_ir k_9 result_8 coeffs_2 forms i_14 indices_1 t_1
@@ -5587,7 +5587,7 @@ partial def _loop___wang_core_lex_2_ir (__rangefor_idx_1_2 : Nat) (__rangefor_co
   else
     ((0 : Int64), __rangefor_cont_1_2, uni_factors_2)
 
-partial def _loop___wang_core_lex_3_ir (active_idx_2 : Array Nat) (normed_2 : Array Poly) (fi_3 : SparsePolyZZ) (mv_factors_1 : Array MvPolyZZ) : (Int64 × Array Nat × Array Poly) :=
+partial def _loop___wang_core_lex_3_ir (active_idx_2 : Array Nat) (normed_2 : Array Poly) (fi_3 : Nat) (mv_factors_1 : Array MvPolyZZ) : (Int64 × Array Nat × Array Poly) :=
   let bb_56 := fun fi_3 normed_4 mv_factors_1 active_idx_4 =>
     let fi_4 : Nat := (fi_3 + (1 : Nat))
     _loop___wang_core_lex_3_ir active_idx_4 normed_4 fi_4 mv_factors_1
@@ -5927,7 +5927,7 @@ partial def _loop___wang_leading_coeff_upoly_0_ir (i_2 : Nat) (w_2 : Array ZZ) (
   else
     ((0 : Int64), w_2)
 
-partial def _loop___wang_leading_coeff_upoly_1_ir (e_2 : UInt64) (prod_z_3 : ZZ) (ej2_1 : UInt64) (v_1 : ZZ) : (Int64 × ZZ) :=
+partial def _loop___wang_leading_coeff_upoly_1_ir (e_2 : Int32) (prod_z_3 : ZZ) (ej2_1 : UInt64) (v_1 : ZZ) : (Int64 × ZZ) :=
   if (e_2 < ej2_1) then
     let prod_z_4 : ZZ := (prod_z_3 * v_1)
     let e_3 : UInt64 := (e_2 + (1 : UInt64))
@@ -5978,7 +5978,7 @@ partial def _loop___wang_leading_coeff_upoly_4_ir (j_2 : Nat) (lc_evals_2 : Arra
   else
     ((0 : Int64), lc_evals_2)
 
-partial def _loop___wang_leading_coeff_upoly_5_ir (q_3 : ZZ) (r_5 : Nat) : (Int64 × ZZ × Nat) :=
+partial def _loop___wang_leading_coeff_upoly_5_ir (q_3 : ZZ) (r_5 : ZZ) : (Int64 × ZZ × ZZ) :=
   if (r_5 != ((1 : Int32)).toInt) then
     let r_6 : ZZ := (gcd r_5 q_3)
     -- require (h_nonzero): (r_6 != (0 : Int64))
@@ -5990,14 +5990,14 @@ partial def _loop___wang_leading_coeff_upoly_5_ir (q_3 : ZZ) (r_5 : Nat) : (Int6
   else
     ((0 : Int64), q_3, r_5)
 
-partial def _loop___wang_leading_coeff_upoly_6_ir (k_2 : Int32) (q_2 : ZZ) (r_3 : Nat) (d_2 : Array ZZ) : (Int64 × ZZ × Nat) :=
+partial def _loop___wang_leading_coeff_upoly_6_ir (k_2 : Int32) (q_2 : ZZ) (r_3 : ZZ) (d_2 : Array ZZ) : (Int64 × ZZ × ZZ) :=
   if (k_2 >= (0 : Int32)) then
     -- require (h_nonneg): (k_2 >= (0 : Int32))
     -- require (h_in_bounds): (((k_2).toInt64.toUInt64) < (Array.size d_2))
     let r_4 : ZZ := (d_2[((k_2).toInt64.toUInt64).toNat]!)
-    let __loop_ret___wang_leading_coeff_upoly_5_1 : (Int64 × ZZ × Nat) := (_loop___wang_leading_coeff_upoly_5_ir q_2 r_4)
+    let __loop_ret___wang_leading_coeff_upoly_5_1 : (Int64 × ZZ × ZZ) := (_loop___wang_leading_coeff_upoly_5_ir q_2 r_4)
     let q_3 : ZZ := __loop_ret___wang_leading_coeff_upoly_5_1.2.1
-    let r_5 : Nat := __loop_ret___wang_leading_coeff_upoly_5_1.2.2
+    let r_5 : ZZ := __loop_ret___wang_leading_coeff_upoly_5_1.2.2
     let __loop_ret___wang_leading_coeff_upoly_5__kind_1 : Int64 := __loop_ret___wang_leading_coeff_upoly_5_1.1
     if (__loop_ret___wang_leading_coeff_upoly_5__kind_1 == (0 : Int64)) then
       let k_3 : Int32 := (k_2 - (1 : Int32))
@@ -6007,15 +6007,15 @@ partial def _loop___wang_leading_coeff_upoly_6_ir (k_2 : Int32) (q_2 : ZZ) (r_3 
   else
     ((0 : Int64), q_2, r_3)
 
-partial def _loop___wang_leading_coeff_upoly_7_ir (d_2 : Array ZZ) (j_5 : Nat) (r_2 : Nat) (lc_evals_2 : Array ZZ) (m_1 : Nat) : (Int64 × Nat) :=
+partial def _loop___wang_leading_coeff_upoly_7_ir (d_2 : Array ZZ) (j_5 : Nat) (r_2 : ZZ) (lc_evals_2 : Array ZZ) (m_1 : Nat) : (Int64 × ZZ) :=
   if (j_5 < m_1) then
     -- require (h_in_bounds): (j_5 < (Array.size lc_evals_2))
     let q_1 : ZZ := (lc_evals_2[(j_5)]!)
     -- require (h_fits_int32): ((j_5 >= (-2147483648 : Nat)) && (j_5 <= (2147483647 : Nat)))
     let k_1 : Int32 := ((j_5).toUInt32.toInt32)
-    let __loop_ret___wang_leading_coeff_upoly_6_1 : (Int64 × ZZ × Nat) := (_loop___wang_leading_coeff_upoly_6_ir k_1 q_1 r_2 d_2)
+    let __loop_ret___wang_leading_coeff_upoly_6_1 : (Int64 × ZZ × ZZ) := (_loop___wang_leading_coeff_upoly_6_ir k_1 q_1 r_2 d_2)
     let q_2 : ZZ := __loop_ret___wang_leading_coeff_upoly_6_1.2.1
-    let r_3 : Nat := __loop_ret___wang_leading_coeff_upoly_6_1.2.2
+    let r_3 : ZZ := __loop_ret___wang_leading_coeff_upoly_6_1.2.2
     let __loop_ret___wang_leading_coeff_upoly_6__kind_1 : Int64 := __loop_ret___wang_leading_coeff_upoly_6_1.1
     if (__loop_ret___wang_leading_coeff_upoly_6__kind_1 == (0 : Int64)) then
       let d_3 : Array ZZ := (Array.push d_2 q_2)
@@ -6035,7 +6035,7 @@ partial def _loop___wang_leading_coeff_upoly_8_ir (R_3 : ZZ) (k_5 : Int32) (Ej_1
   else
     ((0 : Int64), R_3, k_5)
 
-partial def _loop___wang_leading_coeff_upoly_9_ir (lj_power_2 : Poly) (e_5 : UInt64) (j_8 : Int32) (k_5 : Int32) (lc_factors_3 : Array (MvPolyZZ × UInt64)) : (Int64 × Poly) :=
+partial def _loop___wang_leading_coeff_upoly_9_ir (lj_power_2 : Poly) (e_5 : Int32) (j_8 : Int32) (k_5 : Int32) (lc_factors_3 : Array (MvPolyZZ × UInt64)) : (Int64 × Poly) :=
   if (e_5 < k_5) then
     -- require (h_nonneg): (j_8 >= (0 : Int32))
     -- require (h_in_bounds): (((j_8).toInt64.toUInt64) < (Array.size lc_factors_3))
@@ -6241,8 +6241,8 @@ partial def __wang_leading_coeff_upoly_ir (f : MvPolyZZ) (univar_factors : Array
           if (__loop_ret___wang_leading_coeff_upoly_4__kind_1 == (0 : Int64)) then
             let d_1 : Array ZZ := #[(Int.natAbs (uni_content * gamma_1))]
             let j_4 : Nat := (0 : Nat)
-            let __loop_ret___wang_leading_coeff_upoly_7_1 : (Int64 × Nat) := (_loop___wang_leading_coeff_upoly_7_ir d_1 j_4 r_1 lc_evals_2 m_1)
-            let r_2 : Nat := __loop_ret___wang_leading_coeff_upoly_7_1.snd
+            let __loop_ret___wang_leading_coeff_upoly_7_1 : (Int64 × ZZ) := (_loop___wang_leading_coeff_upoly_7_ir d_1 j_4 r_1 lc_evals_2 m_1)
+            let r_2 : ZZ := __loop_ret___wang_leading_coeff_upoly_7_1.snd
             let __loop_ret___wang_leading_coeff_upoly_7__kind_1 : Int64 := __loop_ret___wang_leading_coeff_upoly_7_1.fst
             if (__loop_ret___wang_leading_coeff_upoly_7__kind_1 == (0 : Int64)) then
               let k_matrix_1 : Array (Array Int32) := (Array.replicate ((r_2).toNat) (Array.replicate ((m_1).toNat) (0 : Int32)))

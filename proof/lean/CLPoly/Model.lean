@@ -589,11 +589,15 @@ structure PrimeSelectionResult where
   irreducible : Bool := false
 deriving Inhabited
 
+-- 阶段 G9 续修：对照 C++ __wang_lc_result（polynomial_factorize_wang.hh:1314）
+-- 5 字段 + delta（CLPoly 给 result.delta 的工程附加）
 structure WangLcResult where
-  success : Bool
-  scaled_factors : Array MvPolyZZ
-  lc_targets : Array MvPolyZZ
-  delta : ZZ
+  success : Bool := false
+  f_scaled : MvPolyZZ := #[]
+  lc_assignments : Array MvPolyZZ := #[]
+  lc_targets : Array MvPolyZZ := #[]
+  scaled_factors : Array SparsePolyZZ := #[]
+  delta : ZZ := 0
 deriving Inhabited
 
 -- assign：多项式变量代入 poly[var := val]

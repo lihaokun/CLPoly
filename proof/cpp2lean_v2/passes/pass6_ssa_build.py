@@ -503,11 +503,23 @@ def _collect_def_blocks_and_types(cfg: CFG, params: list[HIRParam]
             if root is not None:
                 defs[root.name].add(bb_id)
 
+    # 阶段 G9 修复：之前用 setdefault 让"第一次 def 的 ty"固化，导致同名 var
+    # 在不同 scope 出现时（如 wang_core 中 outer `[fi, ei]: factors`（fi=Poly）
+    # 与 inner `for(size_t fi=0;...)`（fi=Nat）），phi 放置时取错 ty。
+    # 改为：优先非-Unknown ty 覆盖（preferring concrete over UnknownType()），
+    # 同 concrete 时取最后的（更可能是循环体内的真实定义）。
     for bb_id, bb in cfg.blocks.items():
         for s in bb.stmts:
             if isinstance(s, LetStmt):
                 defs[s.var.name].add(bb_id)
-                types.setdefault(s.var.name, s.ty if s.ty is not None else UnknownType(""))
+                new_ty = s.ty if s.ty is not None else UnknownType("")
+                cur = types.get(s.var.name)
+                # cur 是 Unknown 或不存在 → 直覆盖；cur 已 concrete → 保留
+                # （但若 new_ty 也 concrete，还是覆盖以让最后 def 胜出，
+                #  因为 SSA 重命名后的每个 phi 期望对应当前 scope 的 ty）
+                if cur is None or isinstance(cur, UnknownType) \
+                        or not isinstance(new_ty, UnknownType):
+                    types[s.var.name] = new_ty
             elif isinstance(s, AssignStmt):
                 _record_target_def(s.target, bb_id)
             elif isinstance(s, CompoundAssignStmt):

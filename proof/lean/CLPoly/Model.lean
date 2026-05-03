@@ -400,10 +400,11 @@ def derivative {α : Type} [HasDerivative α] (a : α) : α := HasDerivative.der
 -- squarefreefactorize 占位（多变量 ZZ 默认；其他实例需要时再加）
 def squarefreefactorize (f : MvPolyZZ) : Array (MvPolyZZ × UInt64) := #[(f, 1)]
 
--- poly_convert: 跨域多项式系数转换占位（C++ 模板函数；2/3-arg overload）
--- 第三参数为可选 context（Variable / lex tag 等），用 default 实例填充
-def poly_convert {α β γ : Type} [Inhabited γ] (_f : α) (target : β)
-    (_ctx : γ := default) : β := target
+-- poly_convert: 跨域多项式系数转换占位（C++ 模板函数）
+-- 2-arg 版本（C++ side `poly_convert(p, target)`）
+def poly_convert {α β : Type} (_f : α) (target : β) : β := target
+-- 3-arg 版本（C++ side `poly_convert(p, target, ctx)`，ctx 是某 lex/var 标识）
+def poly_convert3 {α β γ : Type} (_f : α) (target : β) (_ctx : γ) : β := target
 
 -- SparsePolyZZ 的 OfNat 0 实例：见 §5c（abbrev 定义之后）
 

@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
     BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType, RefType, ArrayType,
-    StdMapType,
+    StdMapType, OptionType,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
@@ -719,11 +719,13 @@ def _build_filter_map_lambda(
 
     pred_param = HIRParam(name=x_name, ty=elem_ty, is_ref=False,
                           is_const_ref=True, is_output=False)
+    # 阶段 G7 修复：lambda ret_ty 应携带 elem_ty（Option (UMonomial × ZZ) 等）
+    # 而非裸 NamedType("Option")（Pass 8 emit 为 Option Unit 导致 caller 类型错）
     return LambdaExpr(
         captures=[],
         params=[pred_param],
         body=body,
-        ty=NamedType("Option"),
+        ty=OptionType(inner=elem_ty),
     )
 
 

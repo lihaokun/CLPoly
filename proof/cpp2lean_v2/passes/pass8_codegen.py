@@ -515,6 +515,10 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
         return callee if no_args else f"({callee} {args_str})"
     if callee in FUNC_MAP:
         lean_name = FUNC_MAP[callee][0]
+        # 阶段 G7：poly_convert 3-arg overload 派生（Pass 2b 仅处理顶层 Call，
+        # 嵌套形态如 `Array.set! a i (poly_convert ...)` 需在 emit 时按 arity 派发）
+        if callee == "poly_convert" and len(e.args) == 3:
+            lean_name = "poly_convert3"
         return lean_name if no_args else f"({lean_name} {args_str})"
     _func_map_targets = {v[0] for v in FUNC_MAP.values()}
     if callee in _func_map_targets:

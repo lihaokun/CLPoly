@@ -1301,7 +1301,7 @@ partial def __hensel_step_upoly_ir (node : HenselNode) (f : SparsePolyZZ) (m : Z
   let node_8 : HenselNode := { node_7 with t := (__upoly_mod_coeff_upoly_ir node_7.t m2_1) }
   node_8
 
-partial def _lambda___hensel_step_linear_upoly_filt1_ir (m : ZZ) (p_zz : ZZ) (__x : (UMonomial × ZZ)) : Option Unit :=
+partial def _lambda___hensel_step_linear_upoly_filt1_ir (m : ZZ) (p_zz : ZZ) (__x : (UMonomial × ZZ)) : Option (UMonomial × ZZ) :=
   let __m_second_0_1 := (ZZ.fdiv_q __x.snd __x.snd m)
   let __m_second_1_1 := (ZZ.fdiv_r __m_second_0_1 __m_second_0_1 p_zz)
   let __x_mut_1 : (UMonomial × ZZ) := (__x.fst, __m_second_1_1)
@@ -2416,7 +2416,7 @@ partial def _loop___mtshl_multi_bdp_lex_1_ir (result_2 : Array MvPolyZp) (i_5 : 
     -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size sigma0_2))
     -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size result_3))
     -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size result_3))
-    let result_4 : Array MvPolyZp := (Array.set! result_3 (((i_5).toInt64.toUInt64)).toNat (poly_convert (sigma0_2[((i_5).toInt64.toUInt64).toNat]!) (result_3[((i_5).toInt64.toUInt64).toNat]!) x1))
+    let result_4 : Array MvPolyZp := (Array.set! result_3 (((i_5).toInt64.toUInt64)).toNat (poly_convert3 (sigma0_2[((i_5).toInt64.toUInt64).toNat]!) (result_3[((i_5).toInt64.toUInt64).toNat]!) x1))
     let i_6 : Int32 := (i_5 + (1 : Int32))
     _loop___mtshl_multi_bdp_lex_1_ir result_4 i_6 comp_ptr_1 r_1 sigma0_2 x1
   else
@@ -2503,7 +2503,7 @@ partial def _loop___mtshl_multi_bdp_lex_6_ir (result_7 : Array MvPolyZp) (i_11 :
       let delta_poly_1 : PolyZp := (MvPolyZp.mk comp_ptr_1)
       -- require (h_nonneg): (i_11 >= (0 : Int32))
       -- require (h_in_bounds): (((i_11).toInt64.toUInt64) < (Array.size delta_k_2))
-      let delta_poly_2 : PolyZp := (poly_convert (delta_k_2[((i_11).toInt64.toUInt64).toNat]!) delta_poly_1 x1)
+      let delta_poly_2 : PolyZp := (poly_convert3 (delta_k_2[((i_11).toInt64.toUInt64).toNat]!) delta_poly_1 x1)
       let correction_1 : MvPolyZp := (delta_poly_2 * xk_pow_6)
       let correction_2 : MvPolyZp := (MvPolyZp.normalization correction_1)
       -- require (h_nonneg): (i_11 >= (0 : Int32))
@@ -3134,7 +3134,7 @@ partial def _loop___mtshl_step_j_lex_5_ir (sigma_k_3 : Array PolyZp) (i_14 : Int
     -- require (h_in_bounds): (((i_14).toInt64.toUInt64) < (Array.size sigma_up_2))
     -- require (h_in_bounds): (((i_14).toInt64.toUInt64) < (Array.size sigma_k_4))
     -- require (h_in_bounds): (((i_14).toInt64.toUInt64) < (Array.size sigma_k_4))
-    let sigma_k_5 : Array PolyZp := (Array.set! sigma_k_4 (((i_14).toInt64.toUInt64)).toNat (poly_convert (sigma_up_2[((i_14).toInt64.toUInt64).toNat]!) (sigma_k_4[((i_14).toInt64.toUInt64).toNat]!) x1))
+    let sigma_k_5 : Array PolyZp := (Array.set! sigma_k_4 (((i_14).toInt64.toUInt64)).toNat (poly_convert3 (sigma_up_2[((i_14).toInt64.toUInt64).toNat]!) (sigma_k_4[((i_14).toInt64.toUInt64).toNat]!) x1))
     let i_15 : Int32 := (i_14 + (1 : Int32))
     _loop___mtshl_step_j_lex_5_ir sigma_k_5 i_15 comp_ptr_1 r_1 sigma_up_2 x1
   else
@@ -3380,7 +3380,7 @@ partial def _loop___mtshl_wmds_lex_1_ir (result_2 : Array MvPolyZp) (i_5 : Int32
     -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size sigma_up_2))
     -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size result_3))
     -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size result_3))
-    let result_4 : Array MvPolyZp := (Array.set! result_3 (((i_5).toInt64.toUInt64)).toNat (poly_convert (sigma_up_2[((i_5).toInt64.toUInt64).toNat]!) (result_3[((i_5).toInt64.toUInt64).toNat]!) x1))
+    let result_4 : Array MvPolyZp := (Array.set! result_3 (((i_5).toInt64.toUInt64)).toNat (poly_convert3 (sigma_up_2[((i_5).toInt64.toUInt64).toNat]!) (result_3[((i_5).toInt64.toUInt64).toNat]!) x1))
     let i_6 : Int32 := (i_5 + (1 : Int32))
     _loop___mtshl_wmds_lex_1_ir result_4 i_6 comp_ptr_1 r_1 sigma_up_2 x1
   else
@@ -4923,7 +4923,7 @@ partial def __upoly_mod_ir (f : SparsePolyZp) (g : SparsePolyZp) : SparsePolyZp 
   let r_2 : SparsePolyZp := __refret_0_1.snd
   r_2
 
-partial def _lambda___upoly_mod_coeff_upoly_filt1_ir (m : ZZ) (__x : (UMonomial × ZZ)) : Option Unit :=
+partial def _lambda___upoly_mod_coeff_upoly_filt1_ir (m : ZZ) (__x : (UMonomial × ZZ)) : Option (UMonomial × ZZ) :=
   let __m_second_0_1 := (ZZ.fdiv_r __x.snd __x.snd m)
   let __x_mut_1 : (UMonomial × ZZ) := (__x.fst, __m_second_0_1)
   (if (__m_second_0_1 != 0) then (Option.some __x_mut_1) else Option.none)
@@ -5175,7 +5175,7 @@ partial def __upoly_symmetric_mod_upoly_ir (f : SparsePolyZZ) (m : ZZ) : SparseP
 
 partial def __upoly_to_poly_upoly_ir (up : SparsePolyZZ) (var : Variable) (comp_ptr : Lex) : MvPolyZZ :=
   let result_1 : MvPolyZZ := (MvPolyZZ.mk comp_ptr)
-  let result_2 : MvPolyZZ := (poly_convert up result_1 var)
+  let result_2 : MvPolyZZ := (poly_convert3 up result_1 var)
   result_2
 
 partial def _loop__lambda___vanhoeij_recombine_upoly_1_0_ir (i_2 : Int32) (M_2 : LLLMatrix) (rr : Int32) (scale_1 : ZZ) : (Int64 × LLLMatrix) :=
@@ -6599,7 +6599,7 @@ partial def _loop_factorize_upoly_4_ir (__rangefor_idx_3_2 : Nat) (check_poly_4 
     let fi_1 : SparsePolyZZ := __decomp_4.fst
     let ei_1 : UInt64 := __decomp_4.snd
     let fi_poly_1 : MvPolyZZ := (MvPolyZZ.empty)
-    let fi_poly_2 : MvPolyZZ := (poly_convert fi_1 fi_poly_1 __xdbg_1)
+    let fi_poly_2 : MvPolyZZ := (poly_convert3 fi_1 fi_poly_1 __xdbg_1)
     let e_1 : UInt64 := (0 : UInt64)
     let __loop_ret_factorize_upoly_3_1 : (Int64 × MvPolyZZ) := (_loop_factorize_upoly_3_ir e_1 check_poly_4 ei_1 fi_poly_2)
     let check_poly_5 : MvPolyZZ := __loop_ret_factorize_upoly_3_1.snd
@@ -6630,7 +6630,7 @@ partial def factorize_upoly_ir (F : SparsePolyZZ) : Factorization SparsePolyZZ :
       else
         let __x_1 : Variable := (Variable.mk (String.mk "x"))
         let poly_prim_1 : MvPolyZZ := (MvPolyZZ.empty)
-        let poly_prim_2 : MvPolyZZ := (poly_convert uf_prim_1 poly_prim_1 __x_1)
+        let poly_prim_2 : MvPolyZZ := (poly_convert3 uf_prim_1 poly_prim_1 __x_1)
         let sqf_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize poly_prim_2)
         let __rangefor_cont_0_1 : Array (MvPolyZZ × UInt64) := sqf_1
         let __rangefor_idx_0_1 : Nat := (0 : Nat)
@@ -6642,7 +6642,7 @@ partial def factorize_upoly_ir (F : SparsePolyZZ) : Factorization SparsePolyZZ :
         let __xdbg_1 : Variable := (Variable.mk (String.mk "x"))
         let check_poly_1 : MvPolyZZ := (MvPolyZZ.empty)
         let f_poly_1 : MvPolyZZ := (MvPolyZZ.empty)
-        let f_poly_2 : MvPolyZZ := (poly_convert F f_poly_1 __xdbg_1)
+        let f_poly_2 : MvPolyZZ := (poly_convert3 F f_poly_1 __xdbg_1)
         let check_poly_2 : MvPolyZZ := (Array.push check_poly_1 (((Monomial.empty), result_13.content)))
         let check_poly_3 : MvPolyZZ := (MvPolyZZ.normalization check_poly_2)
         let __rangefor_cont_3_1 : Array (SparsePolyZZ × UInt64) := result_13.factors

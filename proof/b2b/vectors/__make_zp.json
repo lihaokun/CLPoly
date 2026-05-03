@@ -1,0 +1,37 @@
+{
+  "fn": "__make_zp",
+  "cases": [
+    {
+      "name": "pos_in_range",
+      "args": [
+        {"type": "Int64", "val": 3},
+        {"type": "UInt64", "val": "7"}
+      ],
+      "expected": {"type": "Zp", "val": ["3", "7"]}
+    },
+    {
+      "name": "neg_wrap",
+      "args": [
+        {"type": "Int64", "val": -1},
+        {"type": "UInt64", "val": "7"}
+      ],
+      "expected": {"type": "Zp", "val": ["6", "7"]}
+    },
+    {
+      "name": "zero",
+      "args": [
+        {"type": "Int64", "val": 0},
+        {"type": "UInt64", "val": "13"}
+      ],
+      "expected": {"type": "Zp", "val": ["0", "13"]}
+    },
+    {
+      "name": "exact_p",
+      "args": [
+        {"type": "Int64", "val": 13},
+        {"type": "UInt64", "val": "13"}
+      ],
+      "expected": {"type": "Zp", "val": ["0", "13"]}
+    }
+  ]
+}

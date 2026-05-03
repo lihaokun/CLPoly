@@ -132,6 +132,9 @@ class EmitCtx:
     # 阶段 D 续修：lifted lambda 名 → cap names（前 N 个 params；codegen_corpus
     # 时收集；emit_var_name / emit_call 用作自动 partial-app）
     lifted_caps: dict[str, list[str]] = field(default_factory=dict)
+    # 阶段 G 收尾：当前函数 body 中所有被引用的 (var_name, version) 集合
+    # emit_stmt 看 LetStmt 的 var 是否在此集合，否则加 `_` 前缀避免 unused 警告
+    used_vars: set[tuple[str, int]] = field(default_factory=set)
 
 
 # ============================================================
@@ -643,6 +646,14 @@ def emit_stmt(s: MIRStmt, ctx: EmitCtx) -> str:
             value = Lit(value=value.value, ty=s.ty)
         val_str = emit_expr(value, ctx)
         var_str = emit_var_name(s.var)
+        # 阶段 G 收尾：unused var 加 `_` 前缀（Lean 4 unused linter 约定）
+        # SSA 命名两态：(name, version) 与 lean_name `"name_version"` 都查
+        is_used = (
+            (s.var.name, s.var.version) in ctx.used_vars
+            or (s.var.lean_name(), 0) in ctx.used_vars
+        )
+        if not is_used and not var_str.startswith("_"):
+            var_str = f"_{var_str}"
         # 若类型是 sorry 或 unknown 残留，省略类型标注让 Lean 推断
         if "sorry" in ty_str:
             return f"{pad}let {var_str} := {val_str}"
@@ -677,9 +688,21 @@ def emit_param(p: HIRParam) -> str:
     return f"({_safe_ident(name)} : {emit_type(p.ty)})"
 
 
-def emit_params(params: list[HIRParam]) -> str:
-    """params → Lean 参数列表（空格分隔）。"""
-    return " ".join(emit_param(p) for p in params) if params else ""
+def emit_params(params: list[HIRParam], used_names: Optional[set[str]] = None) -> str:
+    """params → Lean 参数列表（空格分隔）。
+    阶段 G 收尾：若提供 used_names（函数体中读到的 Var.name 集合），未读 param 加 `_` 前缀。"""
+    if not params:
+        return ""
+    parts: list[str] = []
+    for p in params:
+        name = p.name if p.name else f"_anon_{_anon_param_counter[0]}"
+        if not p.name:
+            _anon_param_counter[0] += 1
+        if used_names is not None and name and name not in used_names \
+                and not name.startswith("_"):
+            name = f"_{name}"
+        parts.append(f"({_safe_ident(name)} : {emit_type(p.ty)})")
+    return " ".join(parts)
 
 
 # ============================================================
@@ -719,10 +742,61 @@ def emit_cfg(cfg: CFG, base_indent: int = 1,
     dfs(cfg.entry)
 
     # 3 + 4. 构造 ctx 给所有 emit 函数共享
+    # 阶段 G 收尾：扫描 cfg 收集所有 read 的 (var_name, version)，emit_stmt 据此
+    # 给 unused LetStmt var 加 `_` 前缀（避免 Lean linter unused 警告）
+    used: set[tuple[str, int]] = set()
+    used_lean_names: set[str] = set()  # 也存 lean_name 形式（"name_ver"）
+    def _scan_var_reads(e):
+        if isinstance(e, Var):
+            used.add((e.name, e.version))
+            used_lean_names.add(e.lean_name())
+            return
+        if isinstance(e, (Lit, UnresolvedOp)) or e is None: return
+        if isinstance(e, Cast):
+            _scan_var_reads(e.expr); return
+        if isinstance(e, BinOp):
+            _scan_var_reads(e.lhs); _scan_var_reads(e.rhs); return
+        if isinstance(e, UnaryOp):
+            _scan_var_reads(e.operand); return
+        if isinstance(e, CondExpr):
+            _scan_var_reads(e.cond); _scan_var_reads(e.then_e); _scan_var_reads(e.else_e); return
+        if isinstance(e, FieldAccess):
+            _scan_var_reads(e.obj); return
+        if isinstance(e, ArrayAccess):
+            _scan_var_reads(e.arr); _scan_var_reads(e.idx); return
+        if isinstance(e, Call):
+            if isinstance(e.callee, Var): _scan_var_reads(e.callee)
+            for a in e.args: _scan_var_reads(a)
+            return
+        if isinstance(e, (TupleExpr, ArrayLit)):
+            for x in e.elems: _scan_var_reads(x)
+            return
+    for bb in cfg.blocks.values():
+        for s in bb.stmts:
+            if isinstance(s, LetStmt):
+                _scan_var_reads(s.value)
+            # RequireStmt 在 Pass 8 emit 为 Lean 注释（`-- require ...`），其中
+            # 的 Var 引用不算 Lean 实际 use → 跳过，否则被 linter 标 unused
+            elif isinstance(s, PhiStmt):
+                for src in s.sources.values():
+                    _scan_var_reads(src)
+        t = bb.terminator
+        if isinstance(t, ReturnTerm) and t.value is not None:
+            _scan_var_reads(t.value)
+        elif isinstance(t, CondJumpTerm):
+            _scan_var_reads(t.cond)
+        elif isinstance(t, TailCallTerm):
+            for a in t.args: _scan_var_reads(a)
+
     ctx = EmitCtx(indent=base_indent, cfg=cfg, merge_bbs=merge_bbs,
                    caller_instance=caller_instance,
                    func_instances=func_instances or {},
-                   lifted_caps=lifted_caps or {})
+                   lifted_caps=lifted_caps or {},
+                   used_vars=used)
+    # 把 lean_name 形式（"name_ver"）也追加到 used_vars 集中（key=("name_ver", 0)
+    # 与 (name, ver) 二选一匹配 emit_stmt 的 lookup 即可）
+    for lname in used_lean_names:
+        used.add((lname, 0))
 
     # 顺序：先 emit 所有 merge BB lambdas（被调用者后序），再 emit entry
     # BB inline。Merge BB body 引用 caller-scope vars 通过 Lean 闭包捕获——
@@ -778,7 +852,8 @@ def emit_merge_lambda(bb_id: int, ctx: EmitCtx) -> str:
                           caller_instance=ctx.caller_instance,
                           func_instances=ctx.func_instances,
                           merge_free_vars=ctx.merge_free_vars,
-                          lifted_caps=ctx.lifted_caps)
+                          lifted_caps=ctx.lifted_caps,
+                          used_vars=ctx.used_vars)
     body = emit_bb_inline(bb_id, inner_ctx)
     if not all_params:
         return f"{header}\n{body}\n{pad}) ()"
@@ -950,7 +1025,8 @@ def emit_terminator(t, src_bb_id: int, ctx: EmitCtx) -> str:
                               caller_instance=ctx.caller_instance,
                               func_instances=ctx.func_instances,
                               merge_free_vars=ctx.merge_free_vars,
-                          lifted_caps=ctx.lifted_caps)
+                          lifted_caps=ctx.lifted_caps,
+                          used_vars=ctx.used_vars)
         then_str = emit_jump_to(t.then_bb, src_bb_id, inner_ctx)
         else_str = emit_jump_to(t.else_bb, src_bb_id, inner_ctx)
         return (f"{pad}if {cond_str} then\n"
@@ -975,11 +1051,59 @@ def emit_terminator(t, src_bb_id: int, ctx: EmitCtx) -> str:
 # S3: MIRFunc / 文件级 emit
 # ============================================================
 
+def _collect_used_names_in_cfg(cfg: 'CFG') -> set[str]:
+    """扫描 cfg 收集所有被读取的 Var 名称（含版本 lean_name）。
+    阶段 G：emit_params 用这个判断 param 是否 unused。
+    跳过 RequireStmt（emit 为注释）。
+    注：仅当 Var.version=0 时把 e.name 加入 used（param 是 version=0 形态）；
+    Var.version>0 加 lean_name（"name_ver"）。这样区分 param `r` 与 SSA `r_1`。"""
+    used: set[str] = set()
+    def _scan(e):
+        if e is None: return
+        if isinstance(e, Var):
+            if e.version == 0:
+                used.add(e.name)
+            used.add(e.lean_name())
+            return
+        if isinstance(e, (Lit, UnresolvedOp)): return
+        if isinstance(e, Cast):
+            _scan(e.expr); return
+        if isinstance(e, BinOp):
+            _scan(e.lhs); _scan(e.rhs); return
+        if isinstance(e, UnaryOp):
+            _scan(e.operand); return
+        if isinstance(e, CondExpr):
+            _scan(e.cond); _scan(e.then_e); _scan(e.else_e); return
+        if isinstance(e, FieldAccess):
+            _scan(e.obj); return
+        if isinstance(e, ArrayAccess):
+            _scan(e.arr); _scan(e.idx); return
+        if isinstance(e, Call):
+            if isinstance(e.callee, Var): _scan(e.callee)
+            for a in e.args: _scan(a)
+            return
+        if isinstance(e, (TupleExpr, ArrayLit)):
+            for x in e.elems: _scan(x)
+    for bb in cfg.blocks.values():
+        for s in bb.stmts:
+            if isinstance(s, LetStmt):
+                _scan(s.value)
+            elif isinstance(s, PhiStmt):
+                for src in s.sources.values(): _scan(src)
+        t = bb.terminator
+        if isinstance(t, ReturnTerm) and t.value is not None: _scan(t.value)
+        elif isinstance(t, CondJumpTerm): _scan(t.cond)
+        elif isinstance(t, TailCallTerm):
+            for a in t.args: _scan(a)
+    return used
+
+
 def emit_mirfunc(f: MIRFunc,
                   func_instances: Optional[dict[str, set[str]]] = None,
                   lifted_caps: Optional[dict[str, list[str]]] = None) -> str:
     """单个 MIRFunc → 顶层 `partial def {lean_name} (params) : ret := <body>`。"""
-    sig_params = emit_params(f.params)
+    used_in_body = _collect_used_names_in_cfg(f.cfg) if f.cfg is not None else set()
+    sig_params = emit_params(f.params, used_names=used_in_body)
     sig_params_str = f" {sig_params}" if sig_params else ""
     ret_ty = emit_type(f.ret_ty)
     sig = f"partial def {f.lean_name}{sig_params_str} : {ret_ty} :="

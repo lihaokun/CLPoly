@@ -212,7 +212,7 @@ def isEmpty (m : StdMap K V) : Bool := List.isEmpty m
 
 -- end/begin 占位（迭代器语义，翻译中用 List 遍历替代）
 def end_ (m : StdMap K V) : Nat := m.length
-def begin_ (m : StdMap K V) : Nat := 0
+def begin_ (_m : StdMap K V) : Nat := 0
 
 end StdMap
 

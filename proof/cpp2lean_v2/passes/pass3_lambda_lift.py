@@ -323,8 +323,39 @@ def _lift_lambda(lam: LambdaExpr, host_name: str, counter: list[int],
         aux_lambdas=[],
     )
 
-    # 7. 调用点替换：Var 指向新函数
-    replacement = Var(name=lam_name, version=0, ty=NamedType("LambdaRef"))
+    # 7. 调用点替换
+    # 阶段 F #3 修复：用 FuncType 保留具体签名（params + ret），让下游
+    # Pass 8 emit 出 `α → β → ret` 而不是占位 `LambdaRef`。
+    # 阶段 F #4 修复：若 lambda 有 captures（C++ side `[present]`），把调用点
+    # 替换为 partial-app `Call(_lambda_<n>, [Var(cap_name) for cap_name in caps])`。
+    # 这样下游：
+    #   - Pass 6 SSA build 自动把 cap Var 重命名为对应版本（如 `present_1`）
+    #   - Pass 8 emit_call 生成 `(_lambda_..._ir present_1)`
+    # 残余类型：去掉 cap 参数后的函数签名（α2 → α3 → ... → ret）。
+    from ir_types import FuncType, Call
+    full_func_ty = FuncType(
+        params=tuple(p.ty if p.ty is not None else NamedType("LambdaRef")
+                     for p in new_params),
+        ret=orig_ret if orig_ret is not None else NamedType("LambdaRef"),
+    )
+    if capture_names:
+        # 残余类型：去掉前 N 个 cap 参数
+        residual_ty = FuncType(
+            params=tuple(p.ty if p.ty is not None else NamedType("LambdaRef")
+                         for p in lam.params),
+            ret=orig_ret if orig_ret is not None else NamedType("LambdaRef"),
+        )
+        cap_var_args = [
+            Var(name=cn, version=0, ty=outer_typectx.get(cn))
+            for cn in capture_names
+        ]
+        replacement = Call(
+            callee=lam_name,
+            args=cap_var_args,
+            ty=residual_ty,
+        )
+    else:
+        replacement = Var(name=lam_name, version=0, ty=full_func_ty)
     return replacement, new_func
 
 
@@ -407,9 +438,19 @@ def _rewrite_stmt(s: StmtIR, host_name: str, counter: list[int],
                   aux_collect: list[HIRFunc]) -> StmtIR:
     if isinstance(s, LetStmt):
         new_val = _rewrite_expr(s.value, host_name, counter, outer_params, typectx, aux_collect)
-        # 把这个 let 的 var 加入 typectx（后续语句里是 local）
-        typectx[s.var.name] = s.ty
-        return replace(s, value=new_val)
+        # 阶段 F #3 修复：lambda lift 后 let RHS 是 lifted lambda Var (带
+        # FuncType) 或 partial-app Call (also FuncType 残余类型)；let target ty
+        # 同步用该类型（替代旧的 LambdaRef 占位）。
+        new_ty = s.ty
+        new_var = s.var
+        rhs_ty = getattr(new_val, 'ty', None)
+        if rhs_ty is not None:
+            from ir_types import FuncType
+            if isinstance(rhs_ty, FuncType):
+                new_ty = rhs_ty
+                new_var = replace(s.var, ty=rhs_ty)
+        typectx[new_var.name] = new_ty
+        return replace(s, var=new_var, ty=new_ty, value=new_val)
     if isinstance(s, AssignStmt):
         return replace(s,
             target=_rewrite_expr(s.target, host_name, counter, outer_params, typectx, aux_collect),

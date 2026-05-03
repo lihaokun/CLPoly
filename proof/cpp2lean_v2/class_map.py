@@ -105,7 +105,7 @@ CLASS_MAP = {
             "comp": ("method", "SparsePolyZp.comp"),
             "begin": ("method", "SparsePolyZp.toList"),
             "end": ("method", "SparsePolyZp.toList"),
-            "clear": ("mutate", "Array.empty"),
+            "clear": ("mutate", "Array.clearVec"),
             "assign": ("mutate", "Array.replicate"),  # P0-6: vec.assign(n, val) → Array.replicate n val
             "resize": ("noop", None),
             "erase": ("mutate", "Array.pop"),
@@ -133,7 +133,7 @@ CLASS_MAP = {
             "comp": ("method", "SparsePolyZZ.comp"),
             "begin": ("method", "SparsePolyZZ.toList"),
             "end": ("method", "SparsePolyZZ.toList"),
-            "clear": ("mutate", "Array.empty"),
+            "clear": ("mutate", "Array.clearVec"),
             "assign": ("mutate", "Array.replicate"),  # P0-6: vec.assign(n, val) → Array.replicate n val
             "erase": ("mutate", "Array.erase"),  # P1-7: range/iter erase（兜底）
             "at":    ("method", "Array.get!"),
@@ -181,7 +181,7 @@ CLASS_MAP = {
             "comp_ptr": ("method", "MvPolyZZ.comp"),
             "begin": ("method", "MvPolyZZ.toList"),
             "end": ("method", "MvPolyZZ.toList"),
-            "clear": ("mutate", "Array.empty"),
+            "clear": ("mutate", "Array.clearVec"),
         },
     },
 
@@ -343,7 +343,7 @@ CLASS_MAP = {
             "emplace_back": ("mutate_push",  "Array.push"),
             "resize":       ("mutate",       "Array.resize"),
             "reserve":      ("noop",         None),
-            "clear":        ("mutate",       "Array.empty"),
+            "clear":        ("mutate",       "Array.clearVec"),
             "assign":       ("mutate",       "id"),
             "erase":        ("mutate",       "Array.erase"),       # Pass 4 漏识别的兜底
             "at":           ("method",       "Array.get!"),        # UB-2
@@ -380,7 +380,7 @@ CLASS_MAP = {
             "begin":        ("method",       "MvMonomial.toList"),
             "end":          ("method",       "MvMonomial.toList"),
             "normalization": ("mutate",      "MvMonomial.normalization"),
-            "clear":        ("mutate",       "Array.empty"),
+            "clear":        ("mutate",       "Array.clearVec"),
             "reserve":      ("noop",         None),
         },
     },
@@ -412,7 +412,7 @@ CLASS_MAP = {
             "pop_back":      ("mutate",       "Array.pop"),
             "normalization": ("mutate",       "MvPolyZZ.normalization"),
             "reserve":       ("noop",         None),
-            "clear":         ("mutate",       "Array.empty"),
+            "clear":         ("mutate",       "Array.clearVec"),
             "assign":        ("mutate",       "id"),
         },
     },
@@ -438,7 +438,7 @@ CLASS_MAP = {
             "pop_back":      ("mutate",       "Array.pop"),
             "normalization": ("mutate",       "MvPolyZp.normalization"),
             "reserve":       ("noop",         None),
-            "clear":         ("mutate",       "Array.empty"),
+            "clear":         ("mutate",       "Array.clearVec"),
             "assign":        ("mutate",       "id"),
         },
     },
@@ -461,7 +461,7 @@ CLASS_MAP = {
             "pop_back":      ("mutate",       "Array.pop"),
             "normalization": ("mutate",       "MvPolyZZ.normalization"),
             "reserve":       ("noop",         None),
-            "clear":         ("mutate",       "Array.empty"),
+            "clear":         ("mutate",       "Array.clearVec"),
         },
     },
 
@@ -480,7 +480,7 @@ CLASS_MAP = {
             "push_back":     ("mutate_push",  "Array.push"),
             "normalization": ("mutate",       "PolyQQ.normalization"),
             "reserve":       ("noop",         None),
-            "clear":         ("mutate",       "Array.empty"),
+            "clear":         ("mutate",       "Array.clearVec"),
         },
     },
 }
@@ -498,8 +498,9 @@ FUNC_MAP = {
     #   "output" = 输出参数模式：output_indices 指定的参数从 args 移到返回值
     # 输出参数索引：从 0 开始的参数位置列表（C++ 调用中的位置）
 
-    "derivative": ("SparsePolyZp.derivative", "direct"),
+    "derivative": ("derivative", "direct"),
     "polynomial_GCD": ("polynomial_GCD", "direct"),
+    "polynomial_GCD_eea": ("polynomial_GCD_eea", "direct"),
     "pair_vec_div": ("pair_vec_div", "direct"),
     "pair_vec_multiplies": ("pair_vec_multiplies", "direct"),
     "get_deg": ("get_deg", "direct"),
@@ -539,8 +540,9 @@ FUNC_MAP = {
     "polynomial_mod": ("polynomial_mod", "direct"),
     "cont": ("cont", "direct"),
     "log": ("Nat.log", "direct"),
-    "ceil": ("Int.toNat", "direct"),
-    "floor": ("Int.toNat", "direct"),
+    # C++ ceil(double) / floor(double) → 返回 Float（Lean 同名）
+    "ceil": ("Float.ceil", "direct"),
+    "floor": ("Float.floor", "direct"),
     "get_first_deg": ("get_first_deg", "direct"),
     "gcd": ("gcd", "direct"),
     "pp": ("pp", "direct"),
@@ -563,7 +565,7 @@ FIELD_MAP = {
 # ============================================================
 
 LEAN_BUILTINS = {
-    "Prod.mk", "Array.empty", "Array.mk", "Array.set!",
+    "Prod.mk", "Array.clearVec", "Array.mk", "Array.set!",
     "Array.push", "Array.size_u64", "Array.isEmpty",
     "Zp.ofInt", "Zp.ofUInt64", "Zp.div", "Zp.inv",
     "UMonomial.mk",
@@ -724,6 +726,10 @@ TRANSLATION_SCOPE_OUTPUT_PARAMS = {
                                          # `#2` 区分 interval.hh 的 1-arg 成员 swap
     # polynomial_GCD 4-arg Bezout 形式：return GCD + 修改 s, t (Bezout coefficients)
     "polynomial_GCD#4": [2, 3],          # F, G, s&, t&（s,t 为 out）
+    # __extract_monomial_content(f, var_factors&) — var_factors 输出
+    # Pass 8 emit lean_name = __extract_monomial_content_lex_ir，但 Pass 2b 看 callee
+    # 是 Pass 1 的 base_name `__extract_monomial_content`
+    "__extract_monomial_content": [1],   # var_factors&
 }
 
 

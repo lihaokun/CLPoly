@@ -783,7 +783,17 @@ def _typename_to_typeir(name: str) -> TypeIR | None:
     if name.startswith("set<") or name.startswith("unordered_set<"):
         return NamedType("StdMap")
     if name.startswith("factorization<"):
-        return NamedType("Factorization")
+        # A 方案：参数化 Factorization。inner 解析参考 Pass 1。
+        inner = name[len("factorization<"):].rstrip(">").strip()
+        if inner.startswith("clpoly::"):
+            inner = inner[len("clpoly::"):]
+        if "upolynomial_<ZZ>" in inner:
+            return NamedType("Factorization SparsePolyZZ")
+        if "upolynomial_<Zp>" in inner:
+            return NamedType("Factorization SparsePolyZp")
+        if "Zp" in inner and ("polynomial_" in inner or inner == "PolyZp"):
+            return NamedType("Factorization MvPolyZp")
+        return NamedType("Factorization MvPolyZZ")
     if name.startswith("basic_polynomial<"):
         # 长形态——粗略归类
         if "Zp" in name and "basic_monomial" in name:

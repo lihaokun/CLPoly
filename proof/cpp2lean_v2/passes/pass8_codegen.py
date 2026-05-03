@@ -129,6 +129,9 @@ class EmitCtx:
     # B1 续修：merge_free_vars[bb_id] = list[Var]，emit_merge_lambda 时计算，
     # emit_jump_to 时调用 bb_<id> 加这些 args（在 phi_args 之前）
     merge_free_vars: dict[int, list[Var]] = field(default_factory=dict)
+    # 阶段 D 续修：lifted lambda 名 → cap names（前 N 个 params；codegen_corpus
+    # 时收集；emit_var_name / emit_call 用作自动 partial-app）
+    lifted_caps: dict[str, list[str]] = field(default_factory=dict)
 
 
 # ============================================================
@@ -146,16 +149,20 @@ def _safe_ident(name: str) -> str:
     return name
 
 
-def emit_var_name(v: Var) -> str:
+def emit_var_name(v: Var, ctx: Optional['EmitCtx'] = None) -> str:
     """SSA Var → Lean 标识符（含版本 + «» 保护）。
 
     `_lambda_*` / `_loop_*` 前缀的 Var 指向 lifted/extracted MIRFunc，对应
     Lean 端 lean_name 形如 `_lambda_<host>_<n>_ir` —— 加 `_ir` 后缀。
+
+    NOTE：lifted lambda 的 partial-app（cap 注入）需要 Pass 7 把 caps 也加进
+    loop func 的 cap_params；否则 emit `(_lambda_..._ir cap1)` 时 cap1 不在
+    scope。当前不 partial-app（known issue 见 docs/fixes）。
     """
     name = v.lean_name()
     if (name.startswith("_lambda_") or name.startswith("_loop_")) \
             and not name.endswith("_ir"):
-        name = f"{name}_ir"
+        return _safe_ident(f"{name}_ir")
     return _safe_ident(name)
 
 
@@ -197,6 +204,11 @@ def emit_type(ty: Optional[TypeIR]) -> str:
     if isinstance(ty, RefType):
         # MIR 阶段不应有 RefType 残留——降级为 inner 类型 + 注释
         return f"{emit_type(ty.inner)} /- ref residual -/"
+    # FuncType: Pass 3 lifted lambda 的具体签名（阶段 F #3）
+    from ir_types import FuncType
+    if isinstance(ty, FuncType):
+        parts = [_paren(emit_type(p)) for p in ty.params] + [emit_type(ty.ret)]
+        return " → ".join(parts)
     if isinstance(ty, UnknownType):
         if ty.raw:
             return _sorry(f"unknown type: {ty.raw}")
@@ -250,7 +262,7 @@ def emit_lit(l: Lit) -> str:
 def emit_expr(e: ExprIR, ctx: EmitCtx) -> str:
     """ExprIR → Lean 表达式字符串。"""
     if isinstance(e, Var):
-        return emit_var_name(e)
+        return emit_var_name(e, ctx)
 
     if isinstance(e, Lit):
         return emit_lit(e)
@@ -417,7 +429,13 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
         # {a1} 若是 Unit literal（来自 C++ 默认构造的 fallback），改用 `default`
         # 让 Lean 按上下文 Inhabited 实例推断 element 默认值。
         if template.startswith("Array.replicate") and len(e.args) >= 2:
+            a0 = e.args[0]
             a1 = e.args[1]
+            # 阶段 F #7 修复：vector ctor with InitListExpr arg（C++ `return {f};`）
+            # → ArrayLit at a0 + 默认 a1。Pass 1 把 InitList 当 a0 传入 2-arg
+            # vector 构造，但语义上是 1-arg copy ctor。直 emit ArrayLit。
+            if isinstance(a0, ArrayLit):
+                return emit_expr(a0, ctx)
             # Lit(0, BaseType.UNIT) / TupleExpr([]) / Call("__ctor__()", []) (default ctor)
             is_unit_default = (
                 (isinstance(a1, Lit) and a1.ty == BaseType.UNIT) or
@@ -478,6 +496,11 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
             field = field_arg.name
         else:
             field = emit_expr(field_arg, ctx)
+        # std::pair 的 first/second 在 Lean 端是 fst/snd（Prod 投影）
+        if field == "first":
+            field = "fst"
+        elif field == "second":
+            field = "snd"
         val = emit_expr(e.args[2], ctx)
         return f"{{ {obj} with {field} := {val} }}"
 
@@ -632,7 +655,8 @@ def emit_params(params: list[HIRParam]) -> str:
 
 def emit_cfg(cfg: CFG, base_indent: int = 1,
               caller_instance: str = "",
-              func_instances: Optional[dict[str, set[str]]] = None) -> str:
+              func_instances: Optional[dict[str, set[str]]] = None,
+              lifted_caps: Optional[dict[str, list[str]]] = None) -> str:
     """MIRFunc.cfg → Lean 函数体表达式（不含 def 头/尾）。
 
     算法（见 pass8_codegen 文档 S2）：
@@ -664,7 +688,8 @@ def emit_cfg(cfg: CFG, base_indent: int = 1,
     # 3 + 4. 构造 ctx 给所有 emit 函数共享
     ctx = EmitCtx(indent=base_indent, cfg=cfg, merge_bbs=merge_bbs,
                    caller_instance=caller_instance,
-                   func_instances=func_instances or {})
+                   func_instances=func_instances or {},
+                   lifted_caps=lifted_caps or {})
 
     # 顺序：先 emit 所有 merge BB lambdas（被调用者后序），再 emit entry
     # BB inline。Merge BB body 引用 caller-scope vars 通过 Lean 闭包捕获——
@@ -719,7 +744,8 @@ def emit_merge_lambda(bb_id: int, ctx: EmitCtx) -> str:
                           merge_bbs=ctx.merge_bbs,
                           caller_instance=ctx.caller_instance,
                           func_instances=ctx.func_instances,
-                          merge_free_vars=ctx.merge_free_vars)
+                          merge_free_vars=ctx.merge_free_vars,
+                          lifted_caps=ctx.lifted_caps)
     body = emit_bb_inline(bb_id, inner_ctx)
     if not all_params:
         return f"{header}\n{body}\n{pad}) ()"
@@ -756,20 +782,43 @@ def _compute_merge_free_vars(bb_id: int, phi_targets: list[Var],
                 _collect_var_reads(s.cond, reads)
         # terminator
         t = bb.terminator
+        # 当 jump target 是 merge BB，源 BB 的 emit_jump_to 会调用
+        # `bb_<target> <free_vars> <phi_sources>`——这些都是源 BB 的 reads。
+        # 必须显式收集：a) target 的 free_vars (postorder 已计算)
+        #              b) target.stmts 的 PhiStmt.sources[b_id]
+        def _collect_merge_call(target_bb: int):
+            if target_bb not in ctx.merge_bbs:
+                return
+            tgt_free = ctx.merge_free_vars.get(target_bb, [])
+            for fv in tgt_free:
+                reads.append(fv)
+            tgt_block = ctx.cfg.blocks.get(target_bb)
+            if tgt_block is None:
+                return
+            for s in tgt_block.stmts:
+                if isinstance(s, PhiStmt):
+                    src_v = s.sources.get(b_id)
+                    if src_v is not None:
+                        _collect_var_reads(src_v, reads)
+                else:
+                    break
+
         if isinstance(t, ReturnTerm) and t.value is not None:
             _collect_var_reads(t.value, reads)
+        elif isinstance(t, JumpTerm):
+            _collect_merge_call(t.target)
         elif isinstance(t, CondJumpTerm):
             _collect_var_reads(t.cond, reads)
+            _collect_merge_call(t.then_bb)
+            _collect_merge_call(t.else_bb)
         elif isinstance(t, TailCallTerm):
             for a in t.args:
                 _collect_var_reads(a, reads)
-        # 递归后继：仅非 merge 单前驱（那些被 inline 进本 BB 的）
-        if b_id != bb_id:
-            return  # 已收集过本 BB body; 不要进一步嵌套
+        # 递归后继：所有非 merge 单前驱（被 inline 进本 BB 的链）。
+        # 旧实现仅在 top-level (b_id == bb_id) 时递归，导致深层 inline BB 的
+        # 终止子 jump 到 merge BB 时未收集 target 的 free_vars/phi sources。
         for succ in ctx.cfg.succs.get(b_id, []):
             if succ in ctx.merge_bbs:
-                # merge succ — 调用 bb_<succ>(its phi sources + free vars from succ)
-                # 那些 phi sources 已在 terminator 收集；succ 的 free_vars 还未知
                 continue
             visit(succ)
 
@@ -863,7 +912,8 @@ def emit_terminator(t, src_bb_id: int, ctx: EmitCtx) -> str:
                               merge_bbs=ctx.merge_bbs,
                               caller_instance=ctx.caller_instance,
                               func_instances=ctx.func_instances,
-                              merge_free_vars=ctx.merge_free_vars)
+                              merge_free_vars=ctx.merge_free_vars,
+                          lifted_caps=ctx.lifted_caps)
         then_str = emit_jump_to(t.then_bb, src_bb_id, inner_ctx)
         else_str = emit_jump_to(t.else_bb, src_bb_id, inner_ctx)
         return (f"{pad}if {cond_str} then\n"
@@ -888,7 +938,9 @@ def emit_terminator(t, src_bb_id: int, ctx: EmitCtx) -> str:
 # S3: MIRFunc / 文件级 emit
 # ============================================================
 
-def emit_mirfunc(f: MIRFunc, func_instances: Optional[dict[str, set[str]]] = None) -> str:
+def emit_mirfunc(f: MIRFunc,
+                  func_instances: Optional[dict[str, set[str]]] = None,
+                  lifted_caps: Optional[dict[str, list[str]]] = None) -> str:
     """单个 MIRFunc → 顶层 `partial def {lean_name} (params) : ret := <body>`。"""
     sig_params = emit_params(f.params)
     sig_params_str = f" {sig_params}" if sig_params else ""
@@ -899,7 +951,8 @@ def emit_mirfunc(f: MIRFunc, func_instances: Optional[dict[str, set[str]]] = Non
         return f"{sig}\n  sorry /- no cfg -/"
     body = emit_cfg(f.cfg, base_indent=1,
                      caller_instance=f.instance_suffix,
-                     func_instances=func_instances or {})
+                     func_instances=func_instances or {},
+                     lifted_caps=lifted_caps or {})
     return f"{sig}\n{body}"
 
 
@@ -946,8 +999,20 @@ def codegen_corpus(top_funcs: list[MIRFunc]) -> str:
     func_instances: dict[str, set[str]] = {}
     for f in funcs:
         func_instances.setdefault(f.base_name, set()).add(f.instance_suffix)
+    # 阶段 D：收集 lifted lambda 的 cap names（从 qual_type "n_caps=N" 解析）
+    lifted_caps: dict[str, list[str]] = {}
+    import re as _re
     for f in funcs:
-        out.append(emit_mirfunc(f, func_instances=func_instances))
+        if not f.base_name.startswith("_lambda_"):
+            continue
+        m = _re.search(r"n_caps=(\d+)", f.qual_type or "")
+        if m:
+            n = int(m.group(1))
+            if n > 0 and n <= len(f.params):
+                lifted_caps[f.lean_name] = [p.name for p in f.params[:n]]
+    for f in funcs:
+        out.append(emit_mirfunc(f, func_instances=func_instances,
+                                  lifted_caps=lifted_caps))
         out.append("")
     out.append("end")  # mutual end
     out.append("")

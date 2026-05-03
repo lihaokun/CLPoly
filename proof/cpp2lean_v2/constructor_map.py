@@ -96,14 +96,20 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
     },
 
     # basic_monomial<lex_<...>>：多元单项式
+    # Lean 端 Monomial = Array (Variable × Int64)（与 MvMonomial 不一致）
+    # → 用 Monomial.empty / Monomial.mk 占位
     "basic_monomial<lex_<less>>": {
-        0: ConstructorResolution("MvMonomial.empty", is_default=True),
-        1: ConstructorResolution("MvMonomial.mk {a0}"),
+        0: ConstructorResolution("Monomial.empty", is_default=True),
+        1: ConstructorResolution("Monomial.mk {a0}"),
     },
-    # 别名（typename Poly::monomial_type）
+    # 别名（typename Poly::monomial_type / typename Poly::value_type::first_type）
     "Monomial": {
-        0: ConstructorResolution("MvMonomial.empty", is_default=True),
-        1: ConstructorResolution("MvMonomial.mk {a0}"),
+        0: ConstructorResolution("Monomial.empty", is_default=True),
+        1: ConstructorResolution("Monomial.mk {a0}"),
+    },
+    "Poly::monomial_type": {
+        0: ConstructorResolution("Monomial.empty", is_default=True),
+        1: ConstructorResolution("Monomial.mk {a0}"),
     },
 
     # variable / Variable
@@ -203,12 +209,18 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
         1: ConstructorResolution("WangLcResult.mk {a0}"),
     },
     "__prime_selection_result": {
-        0: ConstructorResolution("PrimeSelectionResult.default", is_default=True),
+        0: ConstructorResolution("(default : PrimeSelectionResult)", is_default=True),
         1: ConstructorResolution("PrimeSelectionResult.mk {a0}"),
     },
     "__hensel_node": {
         0: ConstructorResolution("HenselNode.default", is_default=True),
         1: ConstructorResolution("HenselNode.mk {a0}"),
+        # 8 arg：(g, h, s, t, left, right, leaf_start, leaf_end) — C++ aggregate init 顺序
+        8: ConstructorResolution(
+            "({ g := {a0}, h := {a1}, s := {a2}, t := {a3}, "
+            "left := {a4}, right := {a5}, "
+            "leaf_start := {a6}, leaf_end := {a7} : HenselNode })"
+        ),
     },
 
     # 复合 const/uless/grlex 长形态（HIR 里偶现）
@@ -223,13 +235,13 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
     # `typename ` 前缀后剩 `T::monomial_type`，typedef 语义已知映射到具体
     # CLPoly 类型。
     "Poly::monomial_type": {
-        0: ConstructorResolution("MvMonomial.empty", is_default=True),
+        0: ConstructorResolution("Monomial.empty", is_default=True),
     },
     "PolyZp::monomial_type": {
-        0: ConstructorResolution("MvMonomial.empty", is_default=True),
+        0: ConstructorResolution("Monomial.empty", is_default=True),
     },
     "PolyZZ::monomial_type": {
-        0: ConstructorResolution("MvMonomial.empty", is_default=True),
+        0: ConstructorResolution("Monomial.empty", is_default=True),
     },
 
     # std::string —— 仅用于 assert 消息字符串（Variable name 字面量等）
@@ -272,8 +284,9 @@ _MAP_PATTERNS = {
     1: ConstructorResolution("({a0} : StdMap _ _)"),
 }
 _SET_PATTERNS = {
-    0: ConstructorResolution("StdMap.empty", is_default=True),  # set 视为 map<T, Unit>
-    1: ConstructorResolution("({a0} : StdMap _ Unit)"),
+    # Pass 1 把 std::set<T> 解析为 Array T —— 0-arity 构造空 Array
+    0: ConstructorResolution("#[]", is_default=True),
+    1: ConstructorResolution("({a0} : Array _)"),
 }
 
 # RNG 三件套

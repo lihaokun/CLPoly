@@ -201,14 +201,19 @@ def _collect_phi_targets_at(bb: BasicBlock) -> list[tuple[Var, TypeIR]]:
 
 
 def _collect_phi_sources_from(bb: BasicBlock, src_bb: int) -> list[Var]:
-    """收集块的 phi sources，按 phi 顺序，从 src_bb 边过来的 source。"""
+    """收集块的 phi sources，按 phi 顺序，从 src_bb 边过来的 source。
+
+    阶段 F #1 修复：phi target 在 loop body 内部新生（如 find-loop 的
+    `term_1`、EDF 的 `g_8`），outer pred 没 source，旧版返回
+    `Var(target.name, v0)` 导致下游 emit 时找不到名字 → Unknown identifier。
+    改为返回 Lean `default` 关键字，由 Inhabited 实例提供占位初值。
+    """
     out: list[Var] = []
     for s in bb.stmts:
         if isinstance(s, PhiStmt):
             src = s.sources.get(src_bb)
             if src is None:
-                # 不应发生（phi.sources 已与 preds 一致，invariant 保证）
-                src = Var(name=s.target.name, version=0, ty=s.ty)
+                src = Var(name="default", version=0, ty=s.ty)
             out.append(src)
     return out
 
@@ -279,6 +284,8 @@ def _collect_var_reads_in_expr_versioned(e: ExprIR, out: set[tuple[str, int]],
         _collect_var_reads_in_expr_versioned(e.arr, out, tys)
         _collect_var_reads_in_expr_versioned(e.idx, out, tys); return
     if isinstance(e, Call):
+        # Pass 6 把 local-var lambda 0-arg 调用 `compute_error()` 转为 Var
+        # 引用（见 pass6_ssa_build.py），所以 Pass 7 这里不需特殊处理 callee。
         for a in e.args:
             _collect_var_reads_in_expr_versioned(a, out, tys)
         return
@@ -749,8 +756,10 @@ def _make_exit_return(target: int, exit_kind: dict[int, int],
     for lo in live_outs:
         rd = _reaching_def_at(orig_cfg, lo.name, src_bb_id, idom)
         if rd is None:
-            # 无 reaching def — 使用 live_out 自身（保险，但应不发生）
-            rd = lo
+            # 阶段 F #1 修复：find-loop 模式中 live_out（如 `term_1`）只在循环
+            # body 内部 def，循环 0 次进入时 reaching-def 不存在 → 用 Lean
+            # `default` 关键字作占位（要求 Var.ty 有 Inhabited 实例）。
+            rd = Var(name="default", version=0, ty=lo.ty)
         elems.append(rd)
     if len(elems) == 1:
         return ReturnTerm(value=elems[0])

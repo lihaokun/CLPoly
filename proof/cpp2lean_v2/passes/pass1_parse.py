@@ -230,7 +230,39 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         return NamedType(qt)
 
     if qt.startswith("factorization<"):
-        return NamedType("Factorization")
+        # A 方案：保留模板参数并 emit `Factorization <PolyT>`（Lean 端
+        # `structure Factorization (PolyT : Type) ...`）。inner 模板递归 parse。
+        f_args = _extract_template_args(qt, "factorization<")
+        if f_args:
+            inner = f_args[0].strip()
+            # 剥 clpoly:: / std:: 装饰
+            if inner.startswith("clpoly::"):
+                inner = inner[len("clpoly::"):]
+            # 模板参数 → 具体多项式 Lean 类型
+            if inner.startswith("upolynomial_<"):
+                inner_args = _extract_template_args(inner, "upolynomial_<")
+                ia = inner_args[0].strip() if inner_args else ""
+                if ia == "ZZ":
+                    return NamedType("Factorization SparsePolyZZ")
+                if ia == "Zp":
+                    return NamedType("Factorization SparsePolyZp")
+            if inner.startswith("polynomial_<") or inner.startswith("basic_polynomial<"):
+                # polynomial_<Coeff, OrderTag>
+                prefix = "polynomial_<" if inner.startswith("polynomial_<") else "basic_polynomial<"
+                inner_args = _extract_template_args(inner, prefix)
+                if len(inner_args) >= 2:
+                    coeff = inner_args[1].strip() if prefix == "basic_polynomial<" else inner_args[0].strip()
+                    if coeff == "Zp":
+                        return NamedType("Factorization MvPolyZp")
+                    if coeff == "ZZ":
+                        return NamedType("Factorization MvPolyZZ")
+            # typedef 简写 'Poly' / 'PolyZp' / 'PolyZZ'
+            if inner == "Poly" or inner == "PolyZZ":
+                return NamedType("Factorization MvPolyZZ")
+            if inner == "PolyZp":
+                return NamedType("Factorization MvPolyZp")
+        # fallback: 多变量 ZZ（最常见）
+        return NamedType("Factorization MvPolyZZ")
 
     if qt.startswith("lex_<"):
         return NamedType("Lex")

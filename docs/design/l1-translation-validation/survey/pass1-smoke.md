@@ -23,13 +23,12 @@
 
 ## Ref 参数自动检测 vs TRANSLATION_SCOPE_OUTPUT_PARAMS
 
-⚠️  有 **3** 个函数不匹配：
+⚠️  有 **2** 个函数不匹配：
 
 | 函数 | auto | configured |
 |---|---|---|
 | `__extract_monomial_content` | [1] | [] |
 | `__upoly_divmod` | [0, 1] | [] |
-| `__upoly_random` | [2] | [] |
 
 ## 函数明细
 

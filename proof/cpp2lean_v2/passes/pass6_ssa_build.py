@@ -438,11 +438,22 @@ def _build_record_update(tgt: ExprIR, new_val: ExprIR, root_name: str) -> ExprIR
     if isinstance(tgt, FieldAccess):
         # field name 用 Lit(string) 占位（之前用 Var → 被 Pass 7 误当 free var
         # → cap_param 含 'content'/'factors' 等 field 名导致 64+ Unknown 残留）
-        return Call(callee="_with",
-                    args=[tgt.obj,
-                          Lit(value=tgt.field_name, ty=NamedType("FieldName")),
-                          new_val],
-                    ty=tgt.ty if tgt.ty is not None else UnknownType(""))
+        with_call = Call(callee="_with",
+                         args=[tgt.obj,
+                               Lit(value=tgt.field_name, ty=NamedType("FieldName")),
+                               new_val],
+                         ty=getattr(tgt.obj, 'ty', None) or UnknownType(""))
+        # 嵌套：tgt.obj 是 ArrayAccess 链（`arr[i].field := v`），需用
+        # Array.set! 把更新后的元素写回 root array。否则 Lean 端的 let target
+        # 类型 = root array type 与 RHS struct value 不匹配。
+        if isinstance(tgt.obj, ArrayAccess):
+            inner_arr = tgt.obj.arr
+            inner_idx = _idx_to_nat(tgt.obj.idx)
+            arr_ty = getattr(inner_arr, 'ty', None) or UnknownType("")
+            return Call(callee="Array.set!",
+                        args=[inner_arr, inner_idx, with_call],
+                        ty=arr_ty)
+        return with_call
     # StdMap.get!(m, k) = v → StdMap.insert m k v
     if isinstance(tgt, Call) and isinstance(tgt.callee, str) \
             and tgt.callee in ("StdMap.get!", "StdMap.find!") \
@@ -691,6 +702,15 @@ def rename_variables(cfg: CFG, idom: dict[int, int],
             return ArrayAccess(arr=rename_reads(e.arr),
                                idx=rename_reads(e.idx), ty=e.ty)
         if isinstance(e, Call):
+            # 阶段 F #B 修复：Pass 1 把 C++ 局部变量 lambda 调用 `compute_error()`
+            # parse 为 `Call(callee="compute_error", [])`。lifted 后 caps 已被
+            # partial-app 进 LetStmt RHS，故调用点只需 Var ref（lambda 值类型 = ret）。
+            # 若 callee 名在 SSA scope 中有版本（即是 local var），且 args 为空，
+            # 直接转为 Var 引用（脱去多余的 0-arg Call）。
+            if isinstance(e.callee, str) and stack.get(e.callee) and len(e.args) == 0:
+                v = cur_ver(e.callee)
+                if v > 0:
+                    return Var(name=e.callee, version=v, ty=e.ty)
             return Call(callee=e.callee,
                         args=[rename_reads(a) for a in e.args], ty=e.ty)
         if isinstance(e, TupleExpr):

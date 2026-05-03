@@ -211,26 +211,31 @@ end StdMap
 -- ============================================================
 
 -- 多变量多项式（占位）
-abbrev MvMonomial := Array (UInt64 × UInt64)
-def MvMonomial.empty : MvMonomial := #[]
-abbrev MvPolyZZ := Array (Array (UInt64 × UInt64) × Int)
-abbrev MvPolyZp := Array (Array (UInt64 × UInt64) × Zp)
-abbrev Variable := Array (String × Int)
--- Monomial = C++ Poly::monomial_type；Pass 1 在不同 corpus context 推断 inner
--- 类型不一致（一处 (Variable × Int64) 一处 (UInt64 × UInt64)）—— 选 Variable
--- 形式（兼容 __extract_monomial_content 大多 case；__factor_multivar 的
--- 5 case 残留作 known issue，等 Pass 1 类型推断统一后解）
+-- 阶段 E：Monomial / MvMonomial / Variable 类型统一
+-- C++ side: `Monomial = basic_monomial<lex_<less>>` = vector<pair<variable, exponent>>
+-- variable 是 UInt64 ID（CLPoly clpoly::variable handle），exponent 是 Int64
+abbrev Variable := UInt64
 abbrev Monomial := Array (Variable × Int64)
--- C++ side polynomial<Zp> 的 Lean 别名（语义相同 MvPolyZp）
+-- MvMonomial 与 Monomial 同义（Pass 1 不同 context 偶尔产生 MvMonomial 别名）
+abbrev MvMonomial := Monomial
+def Monomial.empty : Monomial := #[]
+def Monomial.mk (e : Variable × Int64) : Monomial := #[e]
+def MvMonomial.empty : MvMonomial := #[]
+-- 多变量多项式：内部元素的第一槽是 Monomial，与 Pass 1 推断的 (Monomial × ZZ)
+-- 一致；ZZ = Int / Zp 同样为系数类型
+abbrev MvPolyZZ := Array (Monomial × Int)
+abbrev MvPolyZp := Array (Monomial × Zp)
 abbrev PolyZp := MvPolyZp
 abbrev PolyZZ := MvPolyZZ
-abbrev PolyQQ := Array (Array (UInt64 × UInt64) × Rat)
+abbrev PolyQQ := Array (Monomial × Rat)
 
 -- MvPolyZp 操作（stub；实际语义留 Pass 上游 / B2B 测试细化）
 def MvPolyZp.normalization (f : MvPolyZp) : MvPolyZp := f
-def MvPolyZp.mk (f : MvPolyZp) : MvPolyZp := f
+-- C++ 的 Poly(comp_t) / Poly(const Poly&) ctor 都映射到 .mk；
+-- 用泛型 input → 空 Poly 占位（语义在 B2B 层细化）
+def MvPolyZp.mk {α : Type} (_ : α) : MvPolyZp := #[]
 def MvPolyZZ.normalization (f : MvPolyZZ) : MvPolyZZ := f
-def MvPolyZZ.mk (f : MvPolyZZ) : MvPolyZZ := f
+def MvPolyZZ.mk {α : Type} (_ : α) : MvPolyZZ := #[]
 -- 通用 stub（与 SparsePolyZZ 解耦，无前向引用）
 def __write__ (_old : α) (new : α) : α := new
 
@@ -240,7 +245,24 @@ def ZZ.toBool (z : ZZ) : Bool := z != 0
 -- LambdaRef: Pass 3 lifted lambda 在 caller-arg 位置的 placeholder 类型
 -- (Pass 3 不保留具体函数签名)。语义占位为 Unit。
 abbrev LambdaRef := Unit
+
+-- 模板/typedef 残留 alias（Pass 1 未替换为具体实例化）
+-- Rng: std::mt19937 — 状态用 UInt64 种子（与 §5a 命名一致）
+abbrev Rng := UInt64
+-- UniformIntDist: std::uniform_int_distribution<> — 占位（仅承载 upper bound）
+abbrev UniformIntDist := UInt64
+-- Poly: typedef polynomial_<ZZ, lex_<less>> 的别名（PolyZp/PolyZZ 已在 §5c 声明）
+abbrev Poly := MvPolyZZ
+-- QQ: typedef rational — 用 Rat 占位（C++ 用任意精度有理数）
+abbrev QQ := Rat
+-- Lex: 单项式序 tag —— 仅类型层占位
+abbrev Lex := Unit
 def polynomial_GCD [Inhabited α] (_a _b : α) : α := default
+-- 4-arg Bezout EEA 形式：(a, b, s_out, t_out) → (gcd, s, t)
+-- Pass 2b refret transform 把 ref-out 收成 tuple 返回，Pass 2b 同步 rename
+-- callee → polynomial_GCD_eea（避免与 2-arg 版本签名冲突）
+def polynomial_GCD_eea [Inhabited α] (_a _b _s _t : α) : α × α × α :=
+  (default, default, default)
 -- pair_vec_div: 4 参数版本（C++ side: pair_vec_div(f, g, q, comp) → 返回 quotient）
 -- 占位实现，B2B 测试细化（comp 通常是比较器/函数对象，签名宽松）
 def pair_vec_div [Inhabited α] (_f _g _q : α) (_comp : β) : α := default
@@ -257,6 +279,57 @@ def Array.findVal [BEq α] (a : Array α) (x : α) : Option α := a.find? (· ==
 def SparsePolyZZ.comp (_f : SparsePolyZZ) : UInt64 := 0
 def MvPolyZp.comp (_f : MvPolyZp) : UInt64 := 0
 def MvPolyZZ.comp (_f : MvPolyZZ) : UInt64 := 0
+
+-- §5e. C++ 容器 mutate 占位 + degree typeclass
+-- ============================================================
+
+-- vec.clear() 的占位：忽略 receiver，返回空 Array
+def Array.clearVec {α : Type} (_ : Array α) : Array α := #[]
+
+-- vec.empty() 谓词占位（Mv* 别名转发到 Array.isEmpty）
+def MvPolyZZ.isEmpty (f : MvPolyZZ) : Bool := Array.isEmpty f
+def MvPolyZp.isEmpty (f : MvPolyZp) : Bool := Array.isEmpty f
+def MvMonomial.isEmpty (m : MvMonomial) : Bool := Array.isEmpty m
+
+-- Rng.mk: 用整数种子构造 RNG（C++: std::mt19937(seed)）
+def Rng.mk (seed : Int32) : Rng := seed.toInt64.toUInt64
+
+-- Array.sort: 占位（C++ std::sort with comparator）
+def Array.sort {α : Type} (a : Array α) (_cmp : α → α → Bool) : Array α := a
+
+-- C++ 自由函数 degree(poly) — 多态（lambda 比较器里用）。
+-- 用 typeclass 解决"未限定 degree"调用的多重 receiver 类型问题。
+class HasDegree (α : Type) where
+  degree : α → UInt64
+
+instance : HasDegree MvPolyZZ where degree _ := 0
+instance : HasDegree MvPolyZp where degree _ := 0
+-- SparsePolyZZ HasDegree instance 在 abbrev 后再加（见 §5c）
+
+def degree {α : Type} [HasDegree α] (a : α) : UInt64 := HasDegree.degree a
+
+-- C++ free functions: is_number(poly) / get_variables(poly)
+class IsNumber (α : Type) where
+  isNumber : α → Bool
+
+instance : IsNumber MvPolyZZ where isNumber f := (f : Array _).isEmpty
+instance : IsNumber MvPolyZp where isNumber f := (f : Array _).isEmpty
+-- SparsePolyZZ instance 在其 abbrev 之后再定义（见 §5c）
+
+def is_number {α : Type} [IsNumber α] (a : α) : Bool := IsNumber.isNumber a
+
+class GetVariables (α : Type) where
+  vars : α → Array (Variable × Int64)
+
+instance : GetVariables MvPolyZZ where vars _ := #[]
+instance : GetVariables MvPolyZp where vars _ := #[]
+
+def get_variables {α : Type} [GetVariables α] (a : α) : Array (Variable × Int64) :=
+  GetVariables.vars a
+
+-- MvPolyZZ.front! / MvPolyZp.front!：取首项（mono × coeff）
+def MvPolyZZ.front! (f : MvPolyZZ) : (Monomial × Int) := f[0]!
+def MvPolyZp.front! (f : MvPolyZp) : (Monomial × Zp) := f[0]!
 
 -- HMul / HAdd / HSub / HPow 等 Lean 类型类 stub（B2B 测试时细化）
 instance : HMul SparsePolyZp SparsePolyZp SparsePolyZp where
@@ -280,6 +353,101 @@ instance : HPow Int UInt64 Int where
 instance : HPow ZZ UInt64 ZZ where
   hPow base e := base ^ e.toNat
 
+-- MvPolyZZ / MvPolyZp 的算术 stub
+instance : HMul MvPolyZZ MvPolyZZ MvPolyZZ where hMul a b := a ++ b
+instance : HAdd MvPolyZZ MvPolyZZ MvPolyZZ where hAdd a b := a ++ b
+instance : HSub MvPolyZZ MvPolyZZ MvPolyZZ where hSub a b := a ++ b
+instance : HMul MvPolyZp MvPolyZp MvPolyZp where hMul a b := a ++ b
+instance : HAdd MvPolyZp MvPolyZp MvPolyZp where hAdd a b := a ++ b
+instance : HSub MvPolyZp MvPolyZp MvPolyZp where hSub a b := a ++ b
+
+-- derivative typeclass：C++ free function `derivative(poly)` 对所有 poly 类型多态
+class HasDerivative (α : Type) where
+  derivative : α → α
+
+instance : HasDerivative SparsePolyZp where derivative f := f
+instance : HasDerivative SparsePolyZZ where derivative f := f
+instance : HasDerivative MvPolyZZ where derivative f := f
+instance : HasDerivative MvPolyZp where derivative f := f
+
+def derivative {α : Type} [HasDerivative α] (a : α) : α := HasDerivative.derivative a
+
+-- squarefreefactorize 占位（多变量 ZZ 默认；其他实例需要时再加）
+def squarefreefactorize (f : MvPolyZZ) : Array (MvPolyZZ × UInt64) := #[(f, 1)]
+
+-- poly_convert: 跨域多项式系数转换占位（C++ 模板函数）
+def poly_convert {α β : Type} (f : α) (_target : β) : β := _target
+
+-- SparsePolyZZ 的 OfNat 0 实例：见 §5c（abbrev 定义之后）
+
+-- C++ 全局常量 / 宏：占位（B2B 时填实际值）
+def ZASSENHAUS_THRESHOLD : Int32 := 8
+def __g_use_large_prime : Bool := false
+
+-- ZZ.invert: 模逆元（C++ mpz_invert(result, op, mod) → 0/1 success）
+-- 3 参数版：(out_dummy, num, mod) → Bool
+def ZZ.invert (_out _num _mod : ZZ) : Bool := true
+
+-- ZZ.fdiv_q / ZZ.fdiv_r: 向下取整除法（3 参数版：result, dividend, divisor → unit）
+def ZZ.fdiv_q (_out a b : ZZ) : ZZ := a / b
+def ZZ.fdiv_r (_out a b : ZZ) : ZZ := a % b
+
+-- ZZ = Int alias 时 `(x : ZZ).toInt` 不合法（Int 没 .toInt）。
+-- Pass 5 cast_table 在某些 ZZ → Int 路径仍 emit `.toInt`；提供 identity 兜底。
+def Int.toInt (x : Int) : Int := x
+
+-- C++ 数学/IO 内置占位（B2B 测试时细化语义）
+-- C++ log(x : double) : double — 提供同名 Lean 占位（屏蔽 Mathlib Nat.log 名冲突）
+namespace Nat
+def log (_x : Float) : Float := 1.0
+end Nat
+def Int.toFloat (n : Int) : Float := Float.ofInt n
+def ZZ.sizeinbase (_z : ZZ) (_base : Int32) : UInt64 := 0
+-- SparsePolyZZ.size_u64 见 §5c (abbrev 之后)
+-- QQ = Rat 的 .num / .den 别名（Pass 5 emit `QQ.num q`，需要显式 const）
+def QQ.num (q : QQ) : Int := Rat.num q
+def QQ.den (q : QQ) : Int := (Rat.den q : Int)
+def QQ.mk (n : Int) (d : Int) : QQ :=
+  if d = 0 then 0 else (n : Rat) / (d : Rat)
+def QQ.ofInt (n : Int) : QQ := (n : Rat)
+
+-- 阶段 F #3 后续 — Lean 端 cast / API 占位（此前被 LambdaRef 错误屏蔽）
+def Int64.toNat (i : Int64) : Nat := i.toNatClampNeg
+def UInt64.toInt (u : UInt64) : Int := u.toNat
+def Nat.toNat (n : Nat) : Nat := n  -- identity（cast_table 偶尔多余加的）
+
+def Array.resize {α : Type} [Inhabited α] (a : Array α) (n : Nat) : Array α :=
+  if n ≤ a.size then a.extract 0 n
+  else a ++ Array.replicate (n - a.size) default
+def Array.getLast! {α : Type} [Inhabited α] (a : Array α) : α := a.back!
+
+def Variable.mk (n : Nat) : Variable := n.toUInt64
+def UniformIntDist.mk (_lo _hi : Int32) : UniformIntDist := 0
+def Rng.default : Rng := 42
+
+def Iterator {α : Type} (a : Array α) : Array α := a
+def MvMonomial.normalization (m : MvMonomial) : MvMonomial := m
+def gcd (a b : Int) : Int := Int.gcd a b
+def polynomial_mod {α : Type} [Inhabited α] (_a _b : α) : α := default
+def next_prime_64 (p : UInt64) : UInt64 := p + 1
+def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
+def leadcoeff {α : Type} [Inhabited α] (_p : α) : ZZ := 0
+def ZZ.fdiv_ui (_a : ZZ) (_b : UInt64) : ZZ := 0
+def StdMap.find {κ ν : Type} [BEq κ] [Inhabited ν] (m : StdMap κ ν) (k : κ) : ν :=
+  StdMap.get! m k
+def StdMap.end {κ ν : Type} (_ : StdMap κ ν) : Unit := ()
+def rd {α : Type} [Inhabited α] (_ : α) : α := default
+-- 依赖 SparsePolyZZ / LLLMatrix abbrev：见 §5c (abbrev 之后)
+-- C++ std::swap(a, b)：值语义返回 (b, a) 元组（ref-elim 已转 SSA）
+def swap {α β : Type} (a : α) (b : β) : β × α := (b, a)
+
+-- Pass 4 filter-loop 转 `Array.filter(arr, pred)` —— Lean 4 Array.filter 期望
+-- (pred, arr) 顺序。提供 (arr, pred) 包装。
+namespace Array
+def filter' {α : Type} (a : Array α) (p : α → Bool) : Array α := Array.filter p a
+def filterMap' {α β : Type} (a : Array α) (f : α → Option β) : Array β := Array.filterMap f a
+end Array
+
 -- Coe Int32 → UInt64 / Int64（Pass 1 把 C++ 字面量识别为 Int32，Lean 端
 -- 函数参数常需 UInt64/Int64；自动 Coe 解决 ~5 处 Application mismatch）
 instance : Coe Int32 UInt64 where coe n := n.toInt64.toUInt64
@@ -302,6 +470,24 @@ def SparsePolyZZ.front! (f : SparsePolyZZ) : UMonomial × Int := f[0]!
 def SparsePolyZZ.back! (f : SparsePolyZZ) : UMonomial × Int := f[f.size - 1]!
 def SparsePolyZZ.getDeg (f : SparsePolyZZ) : UInt64 := if f.isEmpty then 0 else f[0]!.fst.deg.toUInt64
 
+-- IsNumber / HasDegree instance：SparsePolyZZ abbrev 之后才能定义
+instance : IsNumber SparsePolyZZ where isNumber f := (f : Array _).isEmpty
+instance : IsNumber SparsePolyZp where isNumber f := (f : Array _).isEmpty
+instance : HasDegree SparsePolyZZ where degree _ := 0
+instance : HasDegree SparsePolyZp where degree _ := 0
+
+-- OfNat 0 实例：C++ `SparsePolyZZ x = 0` → 空多项式
+instance : OfNat SparsePolyZZ 0 where ofNat := #[]
+instance : OfNat SparsePolyZp 0 where ofNat := #[]
+instance : OfNat MvPolyZZ 0 where ofNat := #[]
+instance : OfNat MvPolyZp 0 where ofNat := #[]
+
+def SparsePolyZZ.size_u64 (f : SparsePolyZZ) : UInt64 := f.size.toUInt64
+
+-- 阶段 F 后续：依赖 SparsePolyZZ 的 stub（LLLMatrix.size 见 abbrev 之后）
+def get_first_deg (f : SparsePolyZZ) : UInt64 :=
+  if f.isEmpty then 0 else f[0]!.fst.deg.toUInt64
+
 -- get_deg: 泛型化（C++ side 多模板实例化共用同一 Lean 实现）
 -- 适用 SparsePolyZZ / SparsePolyZp 两种容器（结构相同：Array (UMonomial × _)）
 -- 返回 Int64（多数 Pass 1 调用点把 get_deg 视为 int64_t / signed comparison 上下文）
@@ -309,17 +495,50 @@ def get_deg {α : Type} [Inhabited α] (f : Array (UMonomial × α)) : Int64 :=
   if f.isEmpty then 0 else (f[0]!).fst.deg.toUInt64.toInt64
 
 abbrev LLLMatrix := Array (Array Int)
-abbrev HenselNode := Array Int  -- 占位
+def LLLMatrix.size (m : LLLMatrix) : UInt64 := (Array.size m).toUInt64
 
-structure Factorization where
-  content : ZZ
-  factors : Array (SparsePolyZZ × UInt64)
+-- HenselNode: Hensel 提升二叉节点（C++ __hensel_node）
+-- left / right: 子节点 Int32 索引（-1 表叶节点）
+-- g, h, s, t: 多项式因子 / Bezout 系数（C++ side 用 SparsePolyZZ —— 模 m 的整数表示）
+structure HenselNode where
+  left : Int32 := -1
+  right : Int32 := -1
+  g : SparsePolyZZ := #[]
+  h : SparsePolyZZ := #[]
+  s : SparsePolyZZ := #[]
+  t : SparsePolyZZ := #[]
+  leaf_start : Int32 := 0
+  leaf_end : Int32 := 0
 deriving Inhabited
 
+-- Pass 1 把 C++ aggregate init `HenselNode{g,h,s,t,left,right,ls,le}` emit 为
+-- Array 字面量。提供 lossy coercion：取默认 HenselNode（语义层 B2B 测试细化）
+instance : CoeHTCT (Array SparsePolyZZ) HenselNode where
+  coe _ := default
+
+-- ValueType: Pass 1 把 `typename Container::value_type` 在某些 corpus 路径上
+-- 简化为 NamedType("ValueType")。在 Hensel 上下文 = HenselNode（Array.value_type）。
+abbrev ValueType := HenselNode
+
+-- A 方案：Factorization 参数化为 (PolyT : Type)，C++ `factorization<X>` 直接
+-- emit 为 `Factorization X`。`Factorization.empty` 用泛型 inhabit 默认值
+-- （PolyT 必须 [Inhabited]）。
+structure Factorization (PolyT : Type) where
+  content : ZZ := 0
+  factors : Array (PolyT × UInt64) := #[]
+
+instance {PolyT : Type} [Inhabited PolyT] : Inhabited (Factorization PolyT) where
+  default := { }
+
+def Factorization.empty {PolyT : Type} : Factorization PolyT :=
+  { content := 0, factors := #[] }
+
 structure PrimeSelectionResult where
-  p : UInt64
-  factors : Array SparsePolyZp
-  nfactors : UInt64
+  p : UInt64 := 0
+  prime : UInt64 := 0
+  factors : Array SparsePolyZp := #[]
+  nfactors : UInt64 := 0
+  irreducible : Bool := false
 deriving Inhabited
 
 structure WangLcResult where

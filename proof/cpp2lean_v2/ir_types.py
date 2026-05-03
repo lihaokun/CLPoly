@@ -73,6 +73,18 @@ class RefType:
 
 
 @dataclass(frozen=True)
+class FuncType:
+    """函数类型 α₁ → α₂ → ... → ret（Lean curry 形式）。
+
+    阶段 F #3 修复：Pass 3 lifted lambda 替换调用点 Var 的类型时，旧版本统一
+    标 NamedType("LambdaRef") 丢具体签名，下游 Lean 端无法把 lifted func
+    当函数应用。此节点保留 lifted lambda 的真实签名。
+    """
+    params: tuple['TypeIR', ...]
+    ret: 'TypeIR'
+
+
+@dataclass(frozen=True)
 class UnknownType:
     """parse Pass 偶尔产出；后续 Pass 不允许。"""
     raw: str

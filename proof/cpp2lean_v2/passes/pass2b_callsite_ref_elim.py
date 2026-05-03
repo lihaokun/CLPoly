@@ -142,7 +142,12 @@ def _ref_elim_call_at_stmt(call: Call, counter: list[int]) -> list[StmtIR] | Non
     out_arg_tys = [_strip_ref_ty_b2(getattr(a, 'ty', None)) for a in out_args]
     tmp_ty = _build_refret_tuple_ty(call.ty if nonvoid else None, out_arg_tys)
     tmp_var = Var(name=tmp_name, ty=tmp_ty)
-    out: list[StmtIR] = [LetStmt(var=tmp_var, ty=tmp_ty, value=call)]
+    # 阶段 F #8：polynomial_GCD#4 (Bezout 形式) 与 2-arg 形式同名，Lean 端
+    # 区分名为 polynomial_GCD_eea。在 callsite refret 转换时同步 rename。
+    refret_call = call
+    if callee == "polynomial_GCD" and len(call.args) == 4:
+        refret_call = Call(callee="polynomial_GCD_eea", args=call.args, ty=call.ty)
+    out: list[StmtIR] = [LetStmt(var=tmp_var, ty=tmp_ty, value=refret_call)]
 
     if nonvoid:
         n_total = 1 + n_out
@@ -150,11 +155,36 @@ def _ref_elim_call_at_stmt(call: Call, counter: list[int]) -> list[StmtIR] | Non
             # fst = orig_ret (discarded), snd = ref
             out_fields = ["snd"]
         else:
-            # elem0 = orig_ret (discarded), elem1..N = refs
-            out_fields = [f"elem{k+1}" for k in range(n_out)]
+            # 阶段 F #8 修复：n>2 tuple 用 Lean 嵌套 Prod 投影路径
+            # tuple = (orig_ret, out0, out1, ..., outN-1) = (a, (b, (c, ..., d)))
+            #   orig_ret → .1
+            #   out_k (k=0..n_out-1) → tuple position k+1
+            out_fields = []
+            for k in range(n_out):
+                pos = k + 1  # 在 tuple 中的位置（0=orig_ret）
+                n_dots = pos
+                if pos == n_total - 1:
+                    # 末尾元素：纯 .2 链
+                    out_fields.append(".".join(["2"] * n_dots))
+                else:
+                    # 中间元素：.2 链 + .1
+                    out_fields.append(".".join(["2"] * n_dots) + ".1")
     else:
-        # void: 仅 refs
-        out_fields = _FIELD_NAMES if n_out == 2 else [_ELEM_NAMES(k) for k in range(n_out)]
+        if n_out == 2:
+            out_fields = list(_FIELD_NAMES)
+        elif n_out >= 3:
+            # 阶段 F #8 修复：void + n_out>=3 tuple 同样用嵌套 Prod 投影
+            out_fields = []
+            for k in range(n_out):
+                n_dots = k
+                if k == n_out - 1:
+                    out_fields.append(".".join(["2"] * n_dots) if n_dots > 0 else "1")
+                elif k == 0:
+                    out_fields.append("1")
+                else:
+                    out_fields.append(".".join(["2"] * n_dots) + ".1")
+        else:
+            out_fields = [_ELEM_NAMES(k) for k in range(n_out)]
 
     for k, target in enumerate(out_args):
         out.append(AssignStmt(
@@ -247,11 +277,24 @@ def _hoist_ref_call(expr: ExprIR, counter: list[int]
         ret_field = "fst"
         out_fields = ["snd"]
     else:
-        ret_field = "elem0"
-        out_fields = [f"elem{k+1}" for k in range(n_out)]
+        # 阶段 F #8 修复：n>2 tuple 用 Lean 嵌套 Prod 投影路径
+        ret_field = "1"
+        out_fields = []
+        for k in range(n_out):
+            pos = k + 1
+            n_dots = pos
+            if pos == n_total - 1:
+                out_fields.append(".".join(["2"] * n_dots))
+            else:
+                out_fields.append(".".join(["2"] * n_dots) + ".1")
 
+    # 阶段 F #8：polynomial_GCD#4 → polynomial_GCD_eea（同 _ref_elim_call_at_stmt）
+    refret_inner = inner
+    if isinstance(inner.callee, str) and inner.callee == "polynomial_GCD" \
+            and len(inner.args) == 4:
+        refret_inner = Call(callee="polynomial_GCD_eea", args=inner.args, ty=inner.ty)
     pre_stmts: list[StmtIR] = [
-        LetStmt(var=tmp_var, ty=tmp_ty, value=inner),
+        LetStmt(var=tmp_var, ty=tmp_ty, value=refret_inner),
     ]
     for k, target in enumerate(out_args):
         pre_stmts.append(AssignStmt(

@@ -584,7 +584,9 @@ def _filter_loop_to_assign(m: FilterLoopMatch) -> AssignStmt:
     if isinstance(cont_ty, StdMapType):
         callee = "StdMap.filterMap" if is_mut else "StdMap.filter"
     else:
-        callee = "Array.filterMap" if is_mut else "Array.filter"
+        # Lean Array.filter / filterMap 期望 (pred, arr) 顺序——用 Model.lean 提供
+        # 的 (arr, pred) 包装版本（带 ' 后缀）
+        callee = "Array.filterMap'" if is_mut else "Array.filter'"
     return AssignStmt(
         target=m.container,
         value=Call(
@@ -919,7 +921,8 @@ def _lift_filtermap_lambdas(stmts: list[StmtIR], host_name: str,
         """若 c 是 Array.filter/filterMap 且 args[1] 是 LambdaExpr，lift 之；
         返回替换后的 Call；否则返回 None。"""
         if not (isinstance(c.callee, str)
-                and c.callee in ("Array.filter", "Array.filterMap",
+                and c.callee in ("Array.filter", "Array.filter'",
+                                   "Array.filterMap", "Array.filterMap'",
                                    "StdMap.filter", "StdMap.filterMap")
                 and len(c.args) == 2 and isinstance(c.args[1], LambdaExpr)):
             return None
@@ -954,11 +957,30 @@ def _lift_filtermap_lambdas(stmts: list[StmtIR], host_name: str,
             requires=[], aux_lambdas=[],
         )
         extra_aux.append(lifted)
-        return Call(callee=c.callee,
-                      args=[c.args[0],
-                             Var(name=lam_name, version=0,
-                                 ty=NamedType("LambdaRef"))],
-                      ty=c.ty)
+        # 阶段 F #4 修复：若 lambda 有 captures，调用点用 partial-app
+        # `Call(_lambda_..., [cap_var_refs])` 替代裸 Var ref；下游 SSA build
+        # 自动重命名 cap Var 到对应版本。
+        from ir_types import FuncType
+        if capture_names:
+            residual_ty = FuncType(
+                params=tuple(p.ty if p.ty is not None else NamedType("LambdaRef")
+                             for p in lam.params),
+                ret=ret_ty,
+            )
+            cap_args = [
+                Var(name=cn, version=0, ty=typectx.get(cn))
+                for cn in capture_names
+            ]
+            partial_app = Call(callee=lam_name, args=cap_args, ty=residual_ty)
+            lambda_arg = partial_app
+        else:
+            full_ty = FuncType(
+                params=tuple(p.ty if p.ty is not None else NamedType("LambdaRef")
+                             for p in lam.params),
+                ret=ret_ty,
+            )
+            lambda_arg = Var(name=lam_name, version=0, ty=full_ty)
+        return Call(callee=c.callee, args=[c.args[0], lambda_arg], ty=c.ty)
 
     out: list[StmtIR] = []
     for s in stmts:

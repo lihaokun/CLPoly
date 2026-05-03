@@ -460,7 +460,11 @@ def gcd (a b : Int) : Int := Int.gcd a b
 def polynomial_mod {α : Type} [Inhabited α] (_a _b : α) : α := default
 def next_prime_64 (p : UInt64) : UInt64 := p + 1
 def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
-def leadcoeff {α : Type} [Inhabited α] (_p : α) : ZZ := 0
+-- leadcoeff: 1-arg / 2-arg overload (Pass 5 emit 都用同一名)
+-- 1-arg `leadcoeff p` 返回 ZZ；2-arg `leadcoeff p var` 返回 Poly
+-- Lean 端：2-arg 版本（多变量主用），1-arg 用 leadcoeff1 区分
+def leadcoeff {α : Type} [Inhabited α] (_p : α) (_var : Variable) : α := default
+def leadcoeff1 {α : Type} [Inhabited α] (_p : α) : ZZ := 0
 def ZZ.fdiv_ui (_a : ZZ) (_b : UInt64) : ZZ := 0
 def StdMap.find {κ ν : Type} [BEq κ] [Inhabited ν] (m : StdMap κ ν) (k : κ) : ν :=
   StdMap.get! m k
@@ -603,6 +607,8 @@ deriving Inhabited
 -- assign：多项式变量代入 poly[var := val]
 -- C++ assign(poly, var, val) = 用 val 替代 poly 中的变量 var
 opaque assign (poly : α) (var : Variable) (val : β) : α := poly
+-- 2-arg overload：assign(poly, eval_point) 用 map 一次性代入多个变量
+def assign2 {α : Type} (poly : α) (_eval_point : StdMap Variable ZZ) : α := poly
 
 -- ============================================================
 -- §6. 验证测试

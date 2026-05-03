@@ -173,19 +173,19 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
     # factorization<T>
     "factorization<Poly>": {
         0: ConstructorResolution("Factorization.empty", is_default=True),
-        1: ConstructorResolution("({a0} : Factorization)"),
+        1: ConstructorResolution("{a0}"),  # copy ctor identity（Factorization 是参数化类型，避免漏 PolyT 参数）
     },
     "factorization<polynomial_<ZZ, lex_<less>>>": {
         0: ConstructorResolution("Factorization.empty", is_default=True),
-        1: ConstructorResolution("({a0} : Factorization)"),
+        1: ConstructorResolution("{a0}"),  # copy ctor identity（Factorization 是参数化类型，避免漏 PolyT 参数）
     },
     "factorization<polynomial_<ZZ, grlex_<less>>>": {
         0: ConstructorResolution("Factorization.empty", is_default=True),
-        1: ConstructorResolution("({a0} : Factorization)"),
+        1: ConstructorResolution("{a0}"),  # copy ctor identity（Factorization 是参数化类型，避免漏 PolyT 参数）
     },
     "factorization<upolynomial_<ZZ>>": {
         0: ConstructorResolution("Factorization.empty", is_default=True),
-        1: ConstructorResolution("({a0} : Factorization)"),
+        1: ConstructorResolution("{a0}"),  # copy ctor identity（Factorization 是参数化类型，避免漏 PolyT 参数）
     },
 
     # Iterator（compact-erase 残留 + Pass 4 漏识别兜底）
@@ -205,8 +205,8 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
 
     # Aux structs（CLPoly 内部）
     "__wang_lc_result<less>": {
-        0: ConstructorResolution("WangLcResult.default", is_default=True),
-        1: ConstructorResolution("WangLcResult.mk {a0}"),
+        0: ConstructorResolution("(default : WangLcResult)", is_default=True),
+        1: ConstructorResolution("({a0} : WangLcResult)"),  # copy ctor identity
     },
     "__prime_selection_result": {
         0: ConstructorResolution("(default : PrimeSelectionResult)", is_default=True),

@@ -213,7 +213,7 @@ def _collect_phi_sources_from(bb: BasicBlock, src_bb: int) -> list[Var]:
         if isinstance(s, PhiStmt):
             src = s.sources.get(src_bb)
             if src is None:
-                src = Var(name="default", version=0, ty=s.ty)
+                src = Var(name="__default_init__", version=0, ty=s.ty)
             out.append(src)
     return out
 
@@ -375,7 +375,7 @@ def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
         if name in defs_in_loop:
             continue
         if name.startswith(("_lambda_", "_loop_", "__loop_ret_",
-                              "__refret_", "__hoist_lam")):
+                              "__refret_", "__hoist_lam", "__default_init__")):
             continue
         # 阶段 A/C 续修：read_tys → cfg_def_tys → func_param_tys (version=0
         # 才匹配) → UnknownType 四级 fallback
@@ -767,7 +767,7 @@ def _make_exit_return(target: int, exit_kind: dict[int, int],
             # 阶段 F #1 修复：find-loop 模式中 live_out（如 `term_1`）只在循环
             # body 内部 def，循环 0 次进入时 reaching-def 不存在 → 用 Lean
             # `default` 关键字作占位（要求 Var.ty 有 Inhabited 实例）。
-            rd = Var(name="default", version=0, ty=lo.ty)
+            rd = Var(name="__default_init__", version=0, ty=lo.ty)
         elems.append(rd)
     if len(elems) == 1:
         return ReturnTerm(value=elems[0])

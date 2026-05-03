@@ -159,6 +159,10 @@ def emit_var_name(v: Var, ctx: Optional['EmitCtx'] = None) -> str:
     loop func 的 cap_params；否则 emit `(_lambda_..._ir cap1)` 时 cap1 不在
     scope。当前不 partial-app（known issue 见 docs/fixes）。
     """
+    # 阶段 G+ 修复：Pass 7 对 find-loop missing reaching-def 的 sentinel
+    # `__default_init__` → emit Lean `default` 关键字（Inhabited.default）
+    if v.name == "__default_init__" and v.version == 0:
+        return "default"
     name = v.lean_name()
     if (name.startswith("_lambda_") or name.startswith("_loop_")) \
             and not name.endswith("_ir"):
@@ -519,6 +523,9 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
         # 嵌套形态如 `Array.set! a i (poly_convert ...)` 需在 emit 时按 arity 派发）
         if callee == "poly_convert" and len(e.args) == 3:
             lean_name = "poly_convert3"
+        # assign 2-arg: poly + eval_point map（vs 3-arg: poly + var + val）
+        if callee == "assign" and len(e.args) == 2:
+            lean_name = "assign2"
         return lean_name if no_args else f"({lean_name} {args_str})"
     _func_map_targets = {v[0] for v in FUNC_MAP.values()}
     if callee in _func_map_targets:

@@ -97,13 +97,17 @@ def _is_lvalue(e: ExprIR) -> bool:
     return _unwrap_to_lvalue(e) is not None
 
 
-def _ref_elim_call_at_stmt(call: Call, counter: list[int]) -> list[StmtIR] | None:
+def _ref_elim_call_at_stmt(call: Call, counter: list[int],
+                           callee_filter: set[str] | None = None) -> list[StmtIR] | None:
     """对 Call 节点尝试做 ref-elim 改写。返回 None 表示不需改写。
 
     counter: 单元素 list 用作 mutable counter（生成 __refret_N 唯一名）。
+    callee_filter：rerun 模式下限定 callee 集合。
     """
     callee = call.callee
     if not isinstance(callee, str):
+        return None
+    if callee_filter is not None and callee not in callee_filter:
         return None
     out_indices = get_output_params(callee, len(call.args))
     if not out_indices:
@@ -236,33 +240,26 @@ def _build_refret_tuple_ty(orig_ret_ty, out_arg_tys):
     return UnknownType("")
 
 
-def _hoist_ref_call(expr: ExprIR, counter: list[int]
+def _hoist_one_call(call: Call, counter: list[int],
+                    callee_filter: set[str] | None = None
                     ) -> tuple[ExprIR, list[StmtIR]] | None:
-    """若 expr 是 ref-out Call（含 UnaryOp("!", Call) 包装），生成 hoist：
-       前置 stmts: `let __refret_N := f(args); <out_i> := __refret_N.<field>`
-       替换 expr：`__refret_N.fst`（或对 UnaryOp("!", ...) 包装：`!__refret_N.fst`）
-    返回 None 表示 expr 不是需 hoist 的形态。
-    """
-    # 剥 UnaryOp("!") 包装
-    not_wrap = False
-    inner = expr
-    if isinstance(expr, UnaryOp) and expr.op == "!":
-        inner = expr.operand
-        not_wrap = True
-    if not isinstance(inner, Call):
-        return None
-    callee = inner.callee
+    """对单个 Call 节点尝试 hoist。返回 (replacement_expr, pre_stmts) 或 None。
+    若 callee_filter 非 None，只对其中的 callee 名做 hoist（rerun 模式用，
+    避免重复 hoist 已被首轮 Pass 2b 处理过的 ref-out 调用）。"""
+    callee = call.callee
     if not isinstance(callee, str):
         return None
-    out_indices = get_output_params(callee, len(inner.args))
+    if callee_filter is not None and callee not in callee_filter:
+        return None
+    out_indices = get_output_params(callee, len(call.args))
     if not out_indices:
         return None
 
     out_args: list[ExprIR] = []
     for idx in out_indices:
-        if idx >= len(inner.args):
+        if idx >= len(call.args):
             return None
-        unwrapped = _unwrap_to_lvalue(inner.args[idx])
+        unwrapped = _unwrap_to_lvalue(call.args[idx])
         if unwrapped is None:
             return None
         out_args.append(unwrapped)
@@ -270,19 +267,16 @@ def _hoist_ref_call(expr: ExprIR, counter: list[int]
     tmp_id = counter[0]
     counter[0] += 1
     tmp_name = f"__refret_{tmp_id}"
-    # 阶段 B：tmp_var ty 推导（_hoist_ref_call 总是 nonvoid，因 expr 即 inner ret）
     out_arg_tys = [_strip_ref_ty_b2(getattr(a, 'ty', None)) for a in out_args]
-    tmp_ty = _build_refret_tuple_ty(inner.ty, out_arg_tys)
+    tmp_ty = _build_refret_tuple_ty(call.ty, out_arg_tys)
     tmp_var = Var(name=tmp_name, ty=tmp_ty)
 
     n_out = len(out_indices)
-    # 字段命名：返回 (orig_ret, out_0, out_1, ...)
-    n_total = 1 + n_out  # orig_ret + outs
+    n_total = 1 + n_out
     if n_total == 2:
         ret_field = "fst"
         out_fields = ["snd"]
     else:
-        # 阶段 F #8 修复：n>2 tuple 用 Lean 嵌套 Prod 投影路径
         ret_field = "1"
         out_fields = []
         for k in range(n_out):
@@ -293,17 +287,13 @@ def _hoist_ref_call(expr: ExprIR, counter: list[int]
             else:
                 out_fields.append(".".join(["2"] * n_dots) + ".1")
 
-    # 阶段 F #8：polynomial_GCD#4 → polynomial_GCD_eea（同 _ref_elim_call_at_stmt）
-    refret_inner = inner
-    if isinstance(inner.callee, str) and inner.callee == "polynomial_GCD" \
-            and len(inner.args) == 4:
-        refret_inner = Call(callee="polynomial_GCD_eea", args=inner.args, ty=inner.ty)
-    elif isinstance(inner.callee, str) and inner.callee == "pair_vec_div" \
-            and len(inner.args) == 5:
-        refret_inner = Call(callee="pair_vec_div5", args=inner.args, ty=inner.ty)
-    elif isinstance(inner.callee, str) and inner.callee == "poly_convert" \
-            and len(inner.args) == 3:
-        refret_inner = Call(callee="poly_convert3", args=inner.args, ty=inner.ty)
+    refret_inner = call
+    if callee == "polynomial_GCD" and len(call.args) == 4:
+        refret_inner = Call(callee="polynomial_GCD_eea", args=call.args, ty=call.ty)
+    elif callee == "pair_vec_div" and len(call.args) == 5:
+        refret_inner = Call(callee="pair_vec_div5", args=call.args, ty=call.ty)
+    elif callee == "poly_convert" and len(call.args) == 3:
+        refret_inner = Call(callee="poly_convert3", args=call.args, ty=call.ty)
     pre_stmts: list[StmtIR] = [
         LetStmt(var=tmp_var, ty=tmp_ty, value=refret_inner),
     ]
@@ -313,16 +303,70 @@ def _hoist_ref_call(expr: ExprIR, counter: list[int]
             value=FieldAccess(obj=tmp_var, field_name=out_fields[k],
                               ty=out_arg_tys[k] if out_arg_tys[k] else UnknownType("")),
         ))
-    new_inner = FieldAccess(obj=tmp_var, field_name=ret_field, ty=inner.ty)
-    new_expr = UnaryOp(op="!", operand=new_inner, ty=expr.ty) if not_wrap else new_inner
+    new_inner = FieldAccess(obj=tmp_var, field_name=ret_field, ty=call.ty)
+    return new_inner, pre_stmts
+
+
+def _hoist_ref_call(expr: ExprIR, counter: list[int],
+                    callee_filter: set[str] | None = None
+                    ) -> tuple[ExprIR, list[StmtIR]] | None:
+    """递归遍历 expr，hoist 所有内嵌 ref-out Call（包含顶层与子表达式）。
+       生成前置 stmts: `let __refret_N := f(args); <out_i> := __refret_N.<field>`
+       expr 中对应位置替换为 `__refret_N.<ret_field>`。
+       返回 None 表示 expr 不含可 hoist 的 ref-out Call。
+
+       callee_filter：rerun 模式下限定 callee 集合，避免重复 hoist。
+    """
+    pre_stmts: list[StmtIR] = []
+
+    def go(e: ExprIR) -> ExprIR:
+        if isinstance(e, Call):
+            # 先递归处理 args（可能包含 nested ref-out Call）
+            new_args = [go(a) for a in e.args]
+            new_call = Call(callee=e.callee, args=new_args, ty=e.ty) \
+                if any(na is not oa for na, oa in zip(new_args, e.args)) else e
+            # 再尝试 hoist 自身
+            res = _hoist_one_call(new_call, counter, callee_filter)
+            if res is not None:
+                replacement, pre = res
+                pre_stmts.extend(pre)
+                return replacement
+            return new_call
+        if isinstance(e, Cast):
+            new_inner = go(e.expr)
+            if new_inner is e.expr:
+                return e
+            return Cast(cast_kind=e.cast_kind, expr=new_inner, ty=e.ty)
+        if isinstance(e, UnaryOp):
+            new_operand = go(e.operand)
+            if new_operand is e.operand:
+                return e
+            return UnaryOp(op=e.op, operand=new_operand, ty=e.ty)
+        if isinstance(e, FieldAccess):
+            new_obj = go(e.obj)
+            if new_obj is e.obj:
+                return e
+            return FieldAccess(obj=new_obj, field_name=e.field_name, ty=e.ty)
+        if isinstance(e, ArrayAccess):
+            new_arr = go(e.arr)
+            new_idx = go(e.idx)
+            if new_arr is e.arr and new_idx is e.idx:
+                return e
+            return ArrayAccess(arr=new_arr, idx=new_idx, ty=e.ty)
+        return e
+
+    new_expr = go(expr)
+    if not pre_stmts:
+        return None
     return new_expr, pre_stmts
 
 
-def _rewrite_stmt(s: StmtIR, counter: list[int]) -> list[StmtIR]:
+def _rewrite_stmt(s: StmtIR, counter: list[int],
+                  callee_filter: set[str] | None = None) -> list[StmtIR]:
     """处理一条 stmt，返回替换后的 stmt 列表。递归 if/while/for/block。"""
     if isinstance(s, ExprStmt):
         if isinstance(s.expr, Call):
-            replaced = _ref_elim_call_at_stmt(s.expr, counter)
+            replaced = _ref_elim_call_at_stmt(s.expr, counter, callee_filter)
             if replaced is not None:
                 return replaced
         return [s]
@@ -331,36 +375,36 @@ def _rewrite_stmt(s: StmtIR, counter: list[int]) -> list[StmtIR]:
     # cond 内的 ref-out Call 也要 hoist + destructure，否则 out 参数 SSA 不 bump
     # + Pair/Tuple 返回值被当 Bool/Int 处理。
     if isinstance(s, LetStmt) and isinstance(s.value, Call):
-        hr = _hoist_ref_call(s.value, counter)
+        hr = _hoist_ref_call(s.value, counter, callee_filter)
         if hr is not None:
             new_value, pre = hr
             return pre + [LetStmt(var=s.var, ty=s.ty, value=new_value)]
 
     if isinstance(s, AssignStmt) and isinstance(s.value, Call):
-        hr = _hoist_ref_call(s.value, counter)
+        hr = _hoist_ref_call(s.value, counter, callee_filter)
         if hr is not None:
             new_value, pre = hr
             return pre + [AssignStmt(target=s.target, value=new_value)]
 
     if isinstance(s, IfStmt):
-        new_then = _rewrite_stmts(list(s.then_body), counter)
-        new_else = _rewrite_stmts(list(s.else_body or []), counter)
-        hr = _hoist_ref_call(s.cond, counter)
+        new_then = _rewrite_stmts(list(s.then_body), counter, callee_filter)
+        new_else = _rewrite_stmts(list(s.else_body or []), counter, callee_filter)
+        hr = _hoist_ref_call(s.cond, counter, callee_filter)
         if hr is not None:
             new_cond, pre = hr
             return pre + [replace(s, cond=new_cond, then_body=new_then,
                                   else_body=new_else)]
         return [replace(s, then_body=new_then, else_body=new_else)]
     if isinstance(s, WhileStmt):
-        new_body = _rewrite_stmts(list(s.body), counter)
-        hr = _hoist_ref_call(s.cond, counter)
+        new_body = _rewrite_stmts(list(s.body), counter, callee_filter)
+        hr = _hoist_ref_call(s.cond, counter, callee_filter)
         if hr is not None:
             new_cond, pre = hr
             return pre + [replace(s, cond=new_cond, body=new_body)]
         return [replace(s, body=new_body)]
     if isinstance(s, DoWhileStmt):
-        new_body = _rewrite_stmts(list(s.body), counter)
-        hr = _hoist_ref_call(s.cond, counter)
+        new_body = _rewrite_stmts(list(s.body), counter, callee_filter)
+        hr = _hoist_ref_call(s.cond, counter, callee_filter)
         if hr is not None:
             new_cond, pre = hr
             # DoWhile cond 在 body 之后求值；hoist 放 body 末尾 + continue 路径
@@ -369,31 +413,38 @@ def _rewrite_stmt(s: StmtIR, counter: list[int]) -> list[StmtIR]:
         return [replace(s, body=new_body)]
     if isinstance(s, ForStmt):
         return [replace(s,
-                        init=_rewrite_stmts(list(s.init), counter),
-                        step=_rewrite_stmts(list(s.step), counter),
-                        body=_rewrite_stmts(list(s.body), counter))]
+                        init=_rewrite_stmts(list(s.init), counter, callee_filter),
+                        step=_rewrite_stmts(list(s.step), counter, callee_filter),
+                        body=_rewrite_stmts(list(s.body), counter, callee_filter))]
     if isinstance(s, RangeForStmt):
-        return [replace(s, body=_rewrite_stmts(list(s.body), counter))]
+        return [replace(s, body=_rewrite_stmts(list(s.body), counter, callee_filter))]
     if isinstance(s, BlockStmt):
-        return [replace(s, stmts=_rewrite_stmts(list(s.stmts), counter))]
+        return [replace(s, stmts=_rewrite_stmts(list(s.stmts), counter, callee_filter))]
 
     # 其它 stmt（RequireStmt/ReturnStmt/Break/Continue/CompoundAssignStmt）：
     # 嵌套 Call hoist 暂不覆盖（corpus 未观测；P3-dormant follow-up）
     return [s]
 
 
-def _rewrite_stmts(stmts: list[StmtIR], counter: list[int]) -> list[StmtIR]:
+def _rewrite_stmts(stmts: list[StmtIR], counter: list[int],
+                   callee_filter: set[str] | None = None) -> list[StmtIR]:
     out: list[StmtIR] = []
     for s in stmts:
-        out.extend(_rewrite_stmt(s, counter))
+        out.extend(_rewrite_stmt(s, counter, callee_filter))
     return out
 
 
-def callsite_ref_elim_pass(func: HIRFunc) -> HIRFunc:
-    """HIR₁ → HIR₁'：调用点 ref-elim 改写。"""
+def callsite_ref_elim_pass(func: HIRFunc,
+                           callee_filter: set[str] | None = None) -> HIRFunc:
+    """HIR₁ → HIR₁'：调用点 ref-elim 改写。
+
+    callee_filter：限定 callee 集合。None 表示所有 OUTPUT_PARAMS callee 都处理（首轮）。
+    rerun 模式（Pass 5 之后）传入 {"Rng.next_advance"} 等只 hoist 新 emit 的 callee，
+    避免重复 hoist 已 destructure 的 ref-out 调用。
+    """
     counter = [0]
-    new_body = _rewrite_stmts(list(func.body), counter)
+    new_body = _rewrite_stmts(list(func.body), counter, callee_filter)
     new_aux = []
     for aux in func.aux_lambdas:
-        new_aux.append(callsite_ref_elim_pass(aux))
+        new_aux.append(callsite_ref_elim_pass(aux, callee_filter))
     return replace(func, body=new_body, aux_lambdas=new_aux)

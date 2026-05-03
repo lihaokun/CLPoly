@@ -2695,11 +2695,13 @@ partial def _loop___mtshl_sparse_int_lex_0_ir (i_2 : Int32) (s_2 : Int32) (forms
   else
     ((0 : Int64), s_2)
 
-partial def _loop___mtshl_sparse_int_lex_1_ir (k_2 : Int32) (sparse_betas_2 : Array Zp) (aux_vars : Array Variable) (dist_1 : UniformIntDist) (gen_1 : Rng) (p : UInt64) : (Int64 × Array Zp) :=
+partial def _loop___mtshl_sparse_int_lex_1_ir (k_2 : Int32) (sparse_betas_2 : Array Zp) (gen_2 : Rng) (aux_vars : Array Variable) (dist_1 : UniformIntDist) (p : UInt64) : (Int64 × Array Zp) :=
   if (k_2 < (Array.size aux_vars)) then
-    let sparse_betas_3 : Array Zp := (Array.set! sparse_betas_2 k_2 (Zp.ofInt ((Rng.next gen_1 dist_1)).toInt p))
+    let __refret_0_1 : (UInt64 × Rng) := (Rng.next_advance gen_2 dist_1)
+    let gen_3 : Rng := __refret_0_1.snd
+    let sparse_betas_3 : Array Zp := (Array.set! sparse_betas_2 k_2 (Zp.ofInt (__refret_0_1.fst).toInt p))
     let k_3 : Nat := (k_2 + (1 : Nat))
-    _loop___mtshl_sparse_int_lex_1_ir k_3 sparse_betas_3 aux_vars dist_1 gen_1 p
+    _loop___mtshl_sparse_int_lex_1_ir k_3 sparse_betas_3 gen_3 aux_vars dist_1 p
   else
     ((0 : Int64), sparse_betas_2)
 
@@ -2752,9 +2754,9 @@ partial def _loop___mtshl_sparse_int_lex_5_ir (l_2 : Int32) (sigma_vals_2 : Arra
     let sigma_at_l_1 : Array SparsePolyZp := (#[])
     -- require (h_nonneg): (l_2 >= (0 : Int32))
     -- require (h_in_bounds): (((l_2).toInt64.toUInt64) < (Array.size images_c_2))
-    let __refret_0_1 : (Bool × Array SparsePolyZp) := (__mtshl_zp_univar_mdp_ir F_at_l_2 (images_c_2[((l_2).toInt64.toUInt64).toNat]!) sigma_at_l_1)
-    let sigma_at_l_2 : Array SparsePolyZp := __refret_0_1.snd
-    if (! __refret_0_1.fst) then
+    let __refret_0_2 : (Bool × Array SparsePolyZp) := (__mtshl_zp_univar_mdp_ir F_at_l_2 (images_c_2[((l_2).toInt64.toUInt64).toNat]!) sigma_at_l_1)
+    let sigma_at_l_2 : Array SparsePolyZp := __refret_0_2.snd
+    if (! __refret_0_2.fst) then
       ((1 : Int64), sigma_vals_2)
     else
       let i_10 : Int32 := (0 : Int32)
@@ -2981,7 +2983,7 @@ partial def __mtshl_sparse_int_lex_ir (F : Array MvPolyZp) (c : MvPolyZp) (forms
       let dist_1 : UniformIntDist := (UniformIntDist.mk (1 : Int32) (p - (1 : UInt64)))
       let sparse_betas_1 : Array Zp := (Array.replicate (((Array.size aux_vars)).toNat) (Zp.ofInt ((0 : Int32)).toInt p))
       let k_1 : Nat := (0 : Nat)
-      let __loop_ret___mtshl_sparse_int_lex_1_1 : (Int64 × Array Zp) := (_loop___mtshl_sparse_int_lex_1_ir k_1 sparse_betas_1 aux_vars dist_1 gen_1 p)
+      let __loop_ret___mtshl_sparse_int_lex_1_1 : (Int64 × Array Zp) := (_loop___mtshl_sparse_int_lex_1_ir k_1 sparse_betas_1 gen_1 aux_vars dist_1 p)
       let sparse_betas_2 : Array Zp := __loop_ret___mtshl_sparse_int_lex_1_1.snd
       let images_c_1 : Array SparsePolyZp := (#[])
       let images_c_2 : Array SparsePolyZp := (__si_theta_array_eval_lex_ir c x1 aux_vars sparse_betas_2 s_2 images_c_1)
@@ -5043,27 +5045,30 @@ partial def __upoly_primitive_upoly_ir (f : SparsePolyZZ) : (ZZ × SparsePolyZZ)
     else
       bb_7 f c_1
 
-partial def _loop___upoly_random_0_ir (d_2 : Int64) (result_2 : SparsePolyZp) (dist_1 : UniformIntDist) (p : UInt64) (rng : Rng) : (Int64 × SparsePolyZp) :=
-  let bb_7 := fun d_2 dist_1 p rng result_4 =>
+partial def _loop___upoly_random_0_ir (rng_1 : Rng) (d_2 : Int64) (result_2 : SparsePolyZp) (dist_1 : UniformIntDist) (p : UInt64) : (Int64 × SparsePolyZp × Rng) :=
+  let bb_7 := fun d_2 rng_2 dist_1 p result_4 =>
     let d_3 : Int64 := (d_2 - (1 : Int64))
-    _loop___upoly_random_0_ir d_3 result_4 dist_1 p rng
+    _loop___upoly_random_0_ir rng_2 d_3 result_4 dist_1 p
   if (d_2 >= (0 : Int64)) then
-    let c_1 : UInt64 := (Rng.next rng dist_1)
+    let __refret_0_1 : (UInt64 × Rng) := (Rng.next_advance rng_1 dist_1)
+    let rng_2 : Rng := __refret_0_1.snd
+    let c_1 : UInt64 := __refret_0_1.fst
     if (c_1 != (0 : UInt64)) then
       let result_3 : SparsePolyZp := (Array.push result_2 (Prod.mk (UMonomial.mk d_2) (Zp.ofInt (c_1).toInt p)))
-      bb_7 d_2 dist_1 p rng result_3
+      bb_7 d_2 rng_2 dist_1 p result_3
     else
-      bb_7 d_2 dist_1 p rng result_2
+      bb_7 d_2 rng_2 dist_1 p result_2
   else
-    ((0 : Int64), result_2)
+    ((0 : Int64), result_2, rng_1)
 
 partial def __upoly_random_ir (max_deg : Int64) (p : UInt64) (rng : Rng) : (SparsePolyZp × Rng) :=
   let dist_1 : UniformIntDist := (UniformIntDist.mk (0 : Int32) (p - (1 : UInt64)))
   let result_1 : SparsePolyZp := (SparsePolyZp.empty)
   let d_1 : Int64 := (max_deg - (1 : Int64))
-  let __loop_ret___upoly_random_0_1 : (Int64 × SparsePolyZp) := (_loop___upoly_random_0_ir d_1 result_1 dist_1 p rng)
-  let result_2 : SparsePolyZp := __loop_ret___upoly_random_0_1.snd
-  (result_2, rng)
+  let __loop_ret___upoly_random_0_1 : (Int64 × SparsePolyZp × Rng) := (_loop___upoly_random_0_ir rng d_1 result_1 dist_1 p)
+  let result_2 : SparsePolyZp := __loop_ret___upoly_random_0_1.2.1
+  let rng_1 : Rng := __loop_ret___upoly_random_0_1.2.2
+  (result_2, rng_1)
 
 partial def _loop___upoly_subtract_one_0_ir (__rangefor_idx_0_2 : Nat) (found_2 : Bool) (result_2 : SparsePolyZp) (__rangefor_cont_0_1 : SparsePolyZp) (p : UInt64) : (Int64 × Bool × SparsePolyZp) :=
   let bb_7 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p found_4 result_6 =>

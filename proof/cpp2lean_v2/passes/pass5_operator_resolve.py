@@ -436,9 +436,13 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
         recv_ty = _strip_ref(_expr_ty(callee, typectx))
         if isinstance(recv_ty, NamedType):
             if recv_ty.name in ("UniformIntDist", "UniformRealDist", "Distribution"):
-                # dist(rng) → Rng.next rng dist
+                # 阶段 G+ 修复：dist(rng) → Rng.next_advance rng dist
+                # call.ty 设为 orig_ret_ty (UInt64)，Pass 2b 重跑时按 ref-out 约定
+                # 自动构造 PairType(UInt64, Rng) 作为 __refret tmp_ty
                 if len(args) == 2:
-                    return Call(callee="Rng.next", args=[args[1], callee], ty=None)
+                    return Call(callee="Rng.next_advance",
+                                args=[args[1], callee],
+                                ty=BaseType.UINT64)
         # 阶段 G-A：local var lambda 调用 → Call(callee=Var)，保留 SSA 命名信息
         if callee_var is not None:
             return Call(callee=callee_var, args=args[1:], ty=None)

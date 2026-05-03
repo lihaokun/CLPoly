@@ -43,6 +43,9 @@ def main():
                         ref_elim_pass(parse_pass(ast)))))
                     h3 = iter_recognize_pass(h)
                     h4, _ = operator_resolve_pass(h3)
+                    # 阶段 G+：Pass 5 emit 的 Rng.next_advance / 类似 ref-out
+                    # 调用，需 Pass 2b 再处理一遍（output_params 对它们生效）
+                    h4 = callsite_ref_elim_pass(h4, callee_filter={"Rng.next_advance"})
                     mir0 = ssa_build_pass(h4)
                     mir1 = loop_lower_pass(mir0)
                     mirs.append(mir1)
@@ -59,6 +62,9 @@ def main():
                 ref_elim_pass(parse_pass(ast)))))
             h3 = iter_recognize_pass(h)
             h4, _ = operator_resolve_pass(h3)
+            # 阶段 G+：Pass 5 emit 的 Rng.next_advance 等 ref-out 调用
+            # 需 Pass 2b 再处理一遍（output_params 对它们生效）
+            h4 = callsite_ref_elim_pass(h4, callee_filter={"Rng.next_advance"})
             mir0 = ssa_build_pass(h4)
             mir1 = loop_lower_pass(mir0)
             mirs.append(mir1)

@@ -161,6 +161,12 @@ def step (seed : UInt64) : UInt64 :=
   let s := s ^^^ (s >>> 7)
   s ^^^ (s <<< 17)
 
+-- 同时返回随机值 + 推进后的 seed（C++ side `dist(rng)` 的 ref-out 语义）
+-- Pass 5 把 `dist(rng)` translate 为 Rng.next_advance；Pass 2b（重跑）
+-- 把 idx=0 的 rng 当作 ref-out，destructure 为 (val, new_rng) tuple
+def next_advance (seed upper : UInt64) : UInt64 × UInt64 :=
+  (next seed upper, step seed)
+
 end Rng
 
 -- ============================================================

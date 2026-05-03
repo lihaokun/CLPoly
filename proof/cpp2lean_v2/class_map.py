@@ -731,6 +731,10 @@ TRANSLATION_SCOPE_OUTPUT_PARAMS = {
     # Pass 8 emit lean_name = __extract_monomial_content_lex_ir，但 Pass 2b 看 callee
     # 是 Pass 1 的 base_name `__extract_monomial_content`
     "__extract_monomial_content": [1],   # var_factors&
+    # 阶段 G+：dist(rng) ref-out 修
+    # Pass 5 把 `dist(rng)` translate 为 Rng.next_advance(rng, dist)
+    # Pass 2b（在 Pass 5 之后重跑）按 idx=0 把 rng 当 ref-out destructure
+    "Rng.next_advance": [0],             # rng&
 }
 
 

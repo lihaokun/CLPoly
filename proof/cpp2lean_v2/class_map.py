@@ -501,6 +501,7 @@ FUNC_MAP = {
     "derivative": ("derivative", "direct"),
     "polynomial_GCD": ("polynomial_GCD", "direct"),
     "polynomial_GCD_eea": ("polynomial_GCD_eea", "direct"),
+    "pair_vec_div5": ("pair_vec_div5", "direct"),
     "pair_vec_div": ("pair_vec_div", "direct"),
     "pair_vec_multiplies": ("pair_vec_multiplies", "direct"),
     "get_deg": ("get_deg", "direct"),

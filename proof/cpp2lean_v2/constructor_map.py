@@ -210,7 +210,8 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
     },
     "__prime_selection_result": {
         0: ConstructorResolution("(default : PrimeSelectionResult)", is_default=True),
-        1: ConstructorResolution("PrimeSelectionResult.mk {a0}"),
+        # 1-arg = copy ctor，identity（不要用 .mk 5-arg auto ctor）
+        1: ConstructorResolution("({a0} : PrimeSelectionResult)"),
     },
     "__hensel_node": {
         0: ConstructorResolution("HenselNode.default", is_default=True),

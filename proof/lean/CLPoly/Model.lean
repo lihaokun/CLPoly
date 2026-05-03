@@ -19,6 +19,11 @@ structure Zp where
   prime : UInt64
 deriving Repr, Inhabited, BEq
 
+-- OfNat Zp 0：字面量 0 作为 Zp 时 prime=1 占位（== 比较时只看 val）
+-- C++ side `if (zp != 0)` 直 emit 时，0 elaborate 为 Zp（OfNat） + BEq Zp 比较
+instance : OfNat Zp 0 where ofNat := { val := 0, prime := 1 }
+instance : OfNat Zp 1 where ofNat := { val := 1, prime := 1 }
+
 namespace Zp
 
 def ofInt (v : Int) (p : UInt64) : Zp :=
@@ -115,8 +120,9 @@ def divmod (f _g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
   (f, #[])  -- TODO: 实现多项式长除法
 
 -- 比较器：单变量多项式的单项式序（降幂排列）
--- 在 Lean 模型中不需要显式比较器（约定高次在前），返回 0 占位
-def comp (_f : SparsePolyZp) : UInt64 := 0
+-- C++ `.comp()` 返回比较器（lex_<less> 类对象）；Lean 用 Unit 占位
+-- (Lex = Unit abbrev 见 §5d，此处先用 Unit 避免 forward ref)
+def comp (_f : SparsePolyZp) : Unit := ()
 
 end SparsePolyZp
 
@@ -268,6 +274,9 @@ def polynomial_GCD_eea [Inhabited α] (_a _b _s _t : α) : α × α × α :=
 -- pair_vec_div: 4 参数版本（C++ side: pair_vec_div(f, g, q, comp) → 返回 quotient）
 -- 占位实现，B2B 测试细化（comp 通常是比较器/函数对象，签名宽松）
 def pair_vec_div [Inhabited α] (_f _g _q : α) (_comp : β) : α := default
+-- 5-arg overload: (new_v, R, v1, v2, comp) — basic.hh:698 形态
+-- Pass 2b refret 把 R 收成 tuple → return (q, R)
+def pair_vec_div5 [Inhabited α] (_f _g _q _r : α) (_comp : β) : α × α := (default, default)
 
 -- Array.insert: C++ STL set::insert / vec.push_back 的占位（push 到末尾）
 def Array.insert (a : Array α) (v : α) : Array α := a.push v
@@ -278,9 +287,10 @@ def Array.findVal [BEq α] (a : Array α) (x : α) : Option α := a.find? (· ==
 
 -- comp 方法占位（已存在于 namespace SparsePolyZp 之内为 UInt64）；
 -- 补 SparsePolyZZ / MvPolyZp / MvPolyZZ
-def SparsePolyZZ.comp (_f : SparsePolyZZ) : UInt64 := 0
-def MvPolyZp.comp (_f : MvPolyZp) : UInt64 := 0
-def MvPolyZZ.comp (_f : MvPolyZZ) : UInt64 := 0
+-- C++ `Poly.comp()` 返回比较器对象（lex_<less>）而非 UInt64
+def SparsePolyZZ.comp (_f : SparsePolyZZ) : Lex := ()
+def MvPolyZp.comp (_f : MvPolyZp) : Lex := ()
+def MvPolyZZ.comp (_f : MvPolyZZ) : Lex := ()
 
 -- §5e. C++ 容器 mutate 占位 + degree typeclass
 -- ============================================================
@@ -433,9 +443,10 @@ def Int64.toNat (i : Int64) : Nat := i.toNatClampNeg
 def UInt64.toInt (u : UInt64) : Int := u.toNat
 def Nat.toNat (n : Nat) : Nat := n  -- identity（cast_table 偶尔多余加的）
 
-def Array.resize {α : Type} [Inhabited α] (a : Array α) (n : Nat) : Array α :=
+-- 兼容 vec.resize(n) 和 vec.resize(n, val) 两种 overload：默认 v 用 Inhabited
+def Array.resize {α : Type} [Inhabited α] (a : Array α) (n : Nat) (v : α := default) : Array α :=
   if n ≤ a.size then a.extract 0 n
-  else a ++ Array.replicate (n - a.size) default
+  else a ++ Array.replicate (n - a.size) v
 def Array.getLast! {α : Type} [Inhabited α] (a : Array α) : α := a.back!
 
 def Variable.mk (n : Nat) : Variable := n.toUInt64

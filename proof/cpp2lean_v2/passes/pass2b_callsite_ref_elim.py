@@ -147,6 +147,9 @@ def _ref_elim_call_at_stmt(call: Call, counter: list[int]) -> list[StmtIR] | Non
     refret_call = call
     if callee == "polynomial_GCD" and len(call.args) == 4:
         refret_call = Call(callee="polynomial_GCD_eea", args=call.args, ty=call.ty)
+    elif callee == "pair_vec_div" and len(call.args) == 5:
+        # 5-arg overload: (new_v, R&, v1, v2, comp) — Lean 端 pair_vec_div5 返回 (q, R) tuple
+        refret_call = Call(callee="pair_vec_div5", args=call.args, ty=call.ty)
     out: list[StmtIR] = [LetStmt(var=tmp_var, ty=tmp_ty, value=refret_call)]
 
     if nonvoid:
@@ -293,6 +296,9 @@ def _hoist_ref_call(expr: ExprIR, counter: list[int]
     if isinstance(inner.callee, str) and inner.callee == "polynomial_GCD" \
             and len(inner.args) == 4:
         refret_inner = Call(callee="polynomial_GCD_eea", args=inner.args, ty=inner.ty)
+    elif isinstance(inner.callee, str) and inner.callee == "pair_vec_div" \
+            and len(inner.args) == 5:
+        refret_inner = Call(callee="pair_vec_div5", args=inner.args, ty=inner.ty)
     pre_stmts: list[StmtIR] = [
         LetStmt(var=tmp_var, ty=tmp_ty, value=refret_inner),
     ]

@@ -176,9 +176,14 @@ class UnresolvedOp:
 @dataclass
 class Call:
     """函数/方法调用。
-    HIR₀-HIR₃: callee 可为 str 或 UnresolvedOp
-    HIR₄+: callee 必为具体 Lean 函数名（str）"""
-    callee: 'str | UnresolvedOp'
+    HIR₀-HIR₃: callee 可为 str / UnresolvedOp / Var
+    HIR₄+: callee 必为具体 Lean 函数名（str）或 Var
+
+    阶段 G-A：callee 接 Var——C++ 把局部变量的 lambda 当函数调用
+    （`auto f = [...]; f(args)`）时 Pass 1 emit Var callee；下游 SSA 自动
+    重命名 Var.version，Pass 8 emit `(local_var_versioned args...)`。
+    """
+    callee: 'str | UnresolvedOp | Var'
     args: list['ExprIR']
     ty: Optional[TypeIR] = None
 

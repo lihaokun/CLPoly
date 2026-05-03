@@ -284,8 +284,10 @@ def _collect_var_reads_in_expr_versioned(e: ExprIR, out: set[tuple[str, int]],
         _collect_var_reads_in_expr_versioned(e.arr, out, tys)
         _collect_var_reads_in_expr_versioned(e.idx, out, tys); return
     if isinstance(e, Call):
-        # Pass 6 把 local-var lambda 0-arg 调用 `compute_error()` 转为 Var
-        # 引用（见 pass6_ssa_build.py），所以 Pass 7 这里不需特殊处理 callee。
+        # 阶段 G-A：callee 可能是 Var（local var lambda 调用），递归收集
+        # 让 cap_param 自动覆盖。其他形态（str / UnresolvedOp）跳过。
+        if isinstance(e.callee, Var):
+            _collect_var_reads_in_expr_versioned(e.callee, out, tys)
         for a in e.args:
             _collect_var_reads_in_expr_versioned(a, out, tys)
         return
@@ -377,9 +379,15 @@ def _collect_loop_free_vars(cfg: CFG, body_bbs: set[int],
             continue
         # 阶段 A/C 续修：read_tys → cfg_def_tys → func_param_tys (version=0
         # 才匹配) → UnknownType 四级 fallback
+        # 阶段 G-A 修复：read_tys 若是 NamedType("Lambda")/"LambdaRef" 占位，
+        # 优先 cfg_def_tys（LetStmt 实际 ty，如 PolyZp / FuncType）
         ty = read_tys.get((name, version))
-        if ty is None or isinstance(ty, UnknownType):
-            ty = cfg_def_tys.get((name, version)) or ty
+        is_lambda_placeholder = (isinstance(ty, NamedType)
+                                   and ty.name in ("Lambda", "LambdaRef"))
+        if ty is None or isinstance(ty, UnknownType) or is_lambda_placeholder:
+            cfg_ty = cfg_def_tys.get((name, version))
+            if cfg_ty is not None:
+                ty = cfg_ty
         if (ty is None or isinstance(ty, UnknownType)) and version == 0 \
                 and func_param_tys and name in func_param_tys:
             param_ty = func_param_tys[name]

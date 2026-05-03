@@ -702,16 +702,16 @@ def rename_variables(cfg: CFG, idom: dict[int, int],
             return ArrayAccess(arr=rename_reads(e.arr),
                                idx=rename_reads(e.idx), ty=e.ty)
         if isinstance(e, Call):
-            # 阶段 F #B 修复：Pass 1 把 C++ 局部变量 lambda 调用 `compute_error()`
-            # parse 为 `Call(callee="compute_error", [])`。lifted 后 caps 已被
-            # partial-app 进 LetStmt RHS，故调用点只需 Var ref（lambda 值类型 = ret）。
-            # 若 callee 名在 SSA scope 中有版本（即是 local var），且 args 为空，
-            # 直接转为 Var 引用（脱去多余的 0-arg Call）。
-            if isinstance(e.callee, str) and stack.get(e.callee) and len(e.args) == 0:
-                v = cur_ver(e.callee)
-                if v > 0:
-                    return Var(name=e.callee, version=v, ty=e.ty)
-            return Call(callee=e.callee,
+            # 阶段 G-A：callee 可能是 Var（local var lambda 调用），rename_reads 返回
+            # 带 SSA 版本的 Var；其他形态（str / UnresolvedOp）保持不变。
+            new_callee = e.callee
+            if isinstance(new_callee, Var):
+                new_callee = rename_reads(new_callee)
+                # 0-arg local var 调用：lambda 已 partial-app 完毕（无 lambda
+                # 参数），调用点等价于直接读 Var 的值；脱去多余 Call 包装。
+                if len(e.args) == 0:
+                    return new_callee
+            return Call(callee=new_callee,
                         args=[rename_reads(a) for a in e.args], ty=e.ty)
         if isinstance(e, TupleExpr):
             return TupleExpr(elems=[rename_reads(x) for x in e.elems], ty=e.ty)

@@ -386,6 +386,13 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
     callee = e.callee
     if isinstance(callee, UnresolvedOp):
         return _sorry(f"unresolved call: {callee.op_name}")
+    # 阶段 G-A：callee 是 Var（local var lambda 调用）→ 直 emit `(var args...)`
+    if isinstance(callee, Var):
+        callee_str = emit_var_name(callee, ctx)
+        if not e.args:
+            return callee_str
+        args_str = " ".join(_paren(emit_expr(a, ctx)) for a in e.args)
+        return f"({callee_str} {args_str})"
     if not isinstance(callee, str):
         return _sorry(f"non-str callee: {type(callee).__name__}")
 

@@ -535,6 +535,12 @@ def parse_expr(node: Any) -> ExprIR:
         callee_node = inner[0]
         callee_name = _extract_callee_name(callee_node)
         args = [parse_expr(a) for a in inner[1:]]
+        # 阶段 G-A：局部变量 lambda 调用（`auto f = [...]; f(args)`）的 callee
+        # 节点是 DeclRefExpr → VarDecl。emit Call(callee=Var(name)) 让下游
+        # SSA 自动重命名版本（lifted lambda 在 LetStmt 中已是 versioned var）。
+        if callee_name and _is_local_var_callee(callee_node):
+            callee_var = Var(name=callee_name, version=0, ty=None)
+            return Call(callee=callee_var, args=args, ty=ty)
         return Call(callee=callee_name, args=args, ty=ty)
 
     if kind == "CXXOperatorCallExpr":
@@ -731,6 +737,30 @@ def _extract_callee_name(node: Any) -> str | None:
     if kind == "UnresolvedLookupExpr":
         return node.get("name")
     return None
+
+
+def _is_local_var_callee(node: Any) -> bool:
+    """检查 CallExpr 的 callee 是否引用局部变量（VarDecl / ParmVarDecl）。
+
+    阶段 G-A：C++ `auto f = [...]; f(args);` 中的 `f(args)` 的 callee 节点是
+    DeclRefExpr → VarDecl。这种调用应 emit Call(callee=Var, args)，让下游
+    SSA 重命名 Var 版本（lambda lift 时 LetStmt 的 var 名）。
+
+    free function 的 callee 是 DeclRefExpr → FunctionDecl/FunctionTemplateDecl。
+    """
+    if not isinstance(node, dict):
+        return False
+    kind = node.get("kind", "")
+    if kind == "ImplicitCastExpr":
+        for c in node.get("inner", []):
+            if _is_local_var_callee(c):
+                return True
+        return False
+    if kind == "DeclRefExpr":
+        rd = node.get("referencedDecl", {}) or {}
+        rd_kind = rd.get("kind", "")
+        return rd_kind in ("VarDecl", "ParmVarDecl")
+    return False
 
 
 def _extract_member_name(node: Any) -> str:

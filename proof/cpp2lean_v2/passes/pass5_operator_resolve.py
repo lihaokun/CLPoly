@@ -414,6 +414,9 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
         # 或裸字符串。Pass 3 lambda_lift 后 lifted lambda 调用形态是
         # Call(UnresolvedOp("operator()"), [Var("dot"), arg1, arg2])。
         callee = args[0]
+        # 阶段 G-A：保留 Var callee（local var lambda 调用），让下游 SSA
+        # 自动重命名版本。
+        callee_var: Var | None = None
         if isinstance(callee, Var):
             # P0-3（轮 2 修复）：检查是否是 lifted lambda 别名，重映射到 mangled name
             alias_ty = typectx.get(callee.name)
@@ -421,6 +424,7 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
                 callee_str = alias_ty.name[len("__lambda_alias__:"):]
             else:
                 callee_str = callee.name
+                callee_var = callee  # 保留 Var 形态用于下游 SSA
         elif isinstance(callee, str):
             callee_str = callee
         elif isinstance(callee, FieldAccess):
@@ -435,6 +439,9 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
                 # dist(rng) → Rng.next rng dist
                 if len(args) == 2:
                     return Call(callee="Rng.next", args=[args[1], callee], ty=None)
+        # 阶段 G-A：local var lambda 调用 → Call(callee=Var)，保留 SSA 命名信息
+        if callee_var is not None:
+            return Call(callee=callee_var, args=args[1:], ty=None)
         return Call(callee=callee_str, args=args[1:], ty=None)
 
     # operator->: 解引用

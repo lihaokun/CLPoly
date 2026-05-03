@@ -1675,13 +1675,13 @@ partial def _loop___lll_reduce_1_ir (l_2 : Int32) (num_2 : QQ) (B_gs_3 : Array Q
   else
     ((0 : Int64), num_2)
 
-partial def _loop___lll_reduce_2_ir (j_2 : Int32) (mu_3 : Array (Array QQ)) (B_gs_3 : Array QQ) (M_2 : LLLMatrix) (i_5 : Int32) : (Int64 × Array (Array QQ)) :=
+partial def _loop___lll_reduce_2_ir (j_2 : Int32) (mu_3 : Array (Array QQ)) (B_gs_3 : Array QQ) (M : LLLMatrix) (i_5 : Int32) : (Int64 × Array (Array QQ)) :=
   if (j_2 < i_5) then
     -- require (h_nonneg): (i_5 >= (0 : Int32))
     -- require (h_nonneg): (j_2 >= (0 : Int32))
-    -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size M_2))
-    -- require (h_in_bounds): (((j_2).toInt64.toUInt64) < (Array.size M_2))
-    let num_1 : QQ := (QQ.mk (_lambda___lll_reduce_1_ir (M_2[((i_5).toInt64.toUInt64).toNat]!) (M_2[((j_2).toInt64.toUInt64).toNat]!)) ((1 : Int32)).toInt)
+    -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size M))
+    -- require (h_in_bounds): (((j_2).toInt64.toUInt64) < (Array.size M))
+    let num_1 : QQ := (QQ.mk (_lambda___lll_reduce_1_ir (M[((i_5).toInt64.toUInt64).toNat]!) (M[((j_2).toInt64.toUInt64).toNat]!)) ((1 : Int32)).toInt)
     let l_1 : Int32 := (0 : Int32)
     let __loop_ret___lll_reduce_1_1 : (Int64 × QQ) := (_loop___lll_reduce_1_ir l_1 num_1 B_gs_3 i_5 j_2 mu_3)
     let num_2 : QQ := __loop_ret___lll_reduce_1_1.snd
@@ -1694,7 +1694,7 @@ partial def _loop___lll_reduce_2_ir (j_2 : Int32) (mu_3 : Array (Array QQ)) (B_g
     -- require (h_nonzero): ((B_gs_3[((j_2).toInt64.toUInt64).toNat]!) != (0 : Int64))
     let mu_4 : Array (Array QQ) := (Array.set! mu_3 (((i_5).toInt64.toUInt64)).toNat (Array.set! (mu_3[((i_5).toInt64.toUInt64).toNat]!) (((j_2).toInt64.toUInt64)).toNat (if ((B_gs_3[((j_2).toInt64.toUInt64).toNat]!) == (QQ.ofInt (0 : Int32))) then (QQ.ofInt (0 : Int32)) else (num_2 / (B_gs_3[((j_2).toInt64.toUInt64).toNat]!)))))
     let j_3 : Int32 := (j_2 + (1 : Int32))
-    _loop___lll_reduce_2_ir j_3 mu_4 B_gs_3 M_2 i_5
+    _loop___lll_reduce_2_ir j_3 mu_4 B_gs_3 M i_5
   else
     ((0 : Int64), mu_3)
 
@@ -1718,22 +1718,22 @@ partial def _loop___lll_reduce_3_ir (j_5 : Int32) (B_gs_5 : Array QQ) (i_5 : Int
   else
     ((0 : Int64), B_gs_5)
 
-partial def _loop___lll_reduce_4_ir (i_5 : Int32) (B_gs_3 : Array QQ) (mu_2 : Array (Array QQ)) (M_2 : LLLMatrix) (n_1 : Int32) : (Int64 × Array QQ × Array (Array QQ)) :=
+partial def _loop___lll_reduce_4_ir (i_5 : Int32) (B_gs_3 : Array QQ) (mu_2 : Array (Array QQ)) (M : LLLMatrix) (n_1 : Int32) : (Int64 × Array QQ × Array (Array QQ)) :=
   if (i_5 < n_1) then
     let j_1 : Int32 := (0 : Int32)
-    let __loop_ret___lll_reduce_2_1 : (Int64 × Array (Array QQ)) := (_loop___lll_reduce_2_ir j_1 mu_2 B_gs_3 M_2 i_5)
+    let __loop_ret___lll_reduce_2_1 : (Int64 × Array (Array QQ)) := (_loop___lll_reduce_2_ir j_1 mu_2 B_gs_3 M i_5)
     let mu_3 : Array (Array QQ) := __loop_ret___lll_reduce_2_1.snd
     -- require (h_nonneg): (i_5 >= (0 : Int32))
     -- require (h_nonneg): (i_5 >= (0 : Int32))
     -- require (h_nonneg): (i_5 >= (0 : Int32))
-    -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size M_2))
-    -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size M_2))
-    let B_gs_4 : Array QQ := (Array.set! B_gs_3 (((i_5).toInt64.toUInt64)).toNat (QQ.mk (_lambda___lll_reduce_1_ir (M_2[((i_5).toInt64.toUInt64).toNat]!) (M_2[((i_5).toInt64.toUInt64).toNat]!)) ((1 : Int32)).toInt))
+    -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size M))
+    -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size M))
+    let B_gs_4 : Array QQ := (Array.set! B_gs_3 (((i_5).toInt64.toUInt64)).toNat (QQ.mk (_lambda___lll_reduce_1_ir (M[((i_5).toInt64.toUInt64).toNat]!) (M[((i_5).toInt64.toUInt64).toNat]!)) ((1 : Int32)).toInt))
     let j_4 : Int32 := (0 : Int32)
     let __loop_ret___lll_reduce_3_1 : (Int64 × Array QQ) := (_loop___lll_reduce_3_ir j_4 B_gs_4 i_5 mu_3)
     let B_gs_5 : Array QQ := __loop_ret___lll_reduce_3_1.snd
     let i_6 : Int32 := (i_5 + (1 : Int32))
-    _loop___lll_reduce_4_ir i_6 B_gs_5 mu_3 M_2 n_1
+    _loop___lll_reduce_4_ir i_6 B_gs_5 mu_3 M n_1
   else
     ((0 : Int64), B_gs_3, mu_2)
 
@@ -1769,10 +1769,10 @@ partial def _loop___lll_reduce_6_ir (l_5 : Int32) (mu_11 : Array (Array QQ)) (j_
   else
     ((0 : Int64), mu_11)
 
-partial def _loop___lll_reduce_7_ir (j_11 : Int32) (mu_10 : Array (Array QQ)) (k_2 : Int32) : (Int64 × Array (Array QQ)) :=
-  let bb_40 := fun j_11 k_2 mu_14 =>
+partial def _loop___lll_reduce_7_ir (M_4 : LLLMatrix) (j_11 : Int32) (U_7 : LLLMatrix) (mu_10 : Array (Array QQ)) (k_2 : Int32) (n_1 : Int32) : (Int64 × LLLMatrix × LLLMatrix × Array (Array QQ)) :=
+  let bb_40 := fun j_11 k_2 n_1 M_6 U_9 mu_14 =>
     let j_12 : Int32 := (j_11 - (1 : Int32))
-    _loop___lll_reduce_7_ir j_12 mu_14 k_2
+    _loop___lll_reduce_7_ir M_6 j_12 U_9 mu_14 k_2 n_1
   if (j_11 >= (0 : Int32)) then
     -- require (h_nonneg): (k_2 >= (0 : Int32))
     -- require (h_nonneg): (j_11 >= (0 : Int32))
@@ -1780,7 +1780,9 @@ partial def _loop___lll_reduce_7_ir (j_11 : Int32) (mu_10 : Array (Array QQ)) (k
     -- require (h_in_bounds): (((j_11).toInt64.toUInt64) < (Array.size (mu_10[((k_2).toInt64.toUInt64).toNat]!)))
     let q2_1 : ZZ := (_lambda___lll_reduce_2_ir ((mu_10[((k_2).toInt64.toUInt64).toNat]!)[((j_11).toInt64.toUInt64).toNat]!))
     if (q2_1 != ((0 : Int32)).toInt) then
-      let __sideeff_38_0_1 := (row_sub k_2 j_11 q2_1)
+      let __refret_lam_1_1 := (_lambda___lll_reduce_3_ir M_4 U_7 n_1 k_2 j_11 q2_1)
+      let M_5 := __refret_lam_1_1.fst
+      let U_8 := __refret_lam_1_1.snd
       let l_4 : Int32 := (0 : Int32)
       let __loop_ret___lll_reduce_6_1 : (Int64 × Array (Array QQ)) := (_loop___lll_reduce_6_ir l_4 mu_10 j_11 k_2 q2_1)
       let mu_11 : Array (Array QQ) := __loop_ret___lll_reduce_6_1.snd
@@ -1789,11 +1791,11 @@ partial def _loop___lll_reduce_7_ir (j_11 : Int32) (mu_10 : Array (Array QQ)) (k
       -- require (h_in_bounds): (((k_2).toInt64.toUInt64) < (Array.size mu_11))
       -- require (h_in_bounds): (((j_11).toInt64.toUInt64) < (Array.size (mu_11[((k_2).toInt64.toUInt64).toNat]!)))
       let mu_13 : Array (Array QQ) := (Array.set! mu_11 (((k_2).toInt64.toUInt64)).toNat (Array.set! (mu_11[((k_2).toInt64.toUInt64).toNat]!) (((j_11).toInt64.toUInt64)).toNat (((mu_11[((k_2).toInt64.toUInt64).toNat]!)[((j_11).toInt64.toUInt64).toNat]!) - (QQ.mk q2_1 ((1 : Int32)).toInt))))
-      bb_40 j_11 k_2 mu_13
+      bb_40 j_11 k_2 n_1 M_5 U_8 mu_13
     else
-      bb_40 j_11 k_2 mu_10
+      bb_40 j_11 k_2 n_1 M_4 U_7 mu_10
   else
-    ((0 : Int64), mu_10)
+    ((0 : Int64), M_4, U_7, mu_10)
 
 partial def _loop___lll_reduce_8_ir (j_14 : Int32) (mu_18 : Array (Array QQ)) (k_2 : Int32) (mu_new_1 : QQ) (mu_old_1 : QQ) (n_1 : Int32) : (Int64 × Array (Array QQ)) :=
   if (j_14 < n_1) then
@@ -1821,11 +1823,13 @@ partial def _loop___lll_reduce_8_ir (j_14 : Int32) (mu_18 : Array (Array QQ)) (k
   else
     ((0 : Int64), mu_18)
 
-partial def _loop___lll_reduce_9_ir (k_2 : Int32) (B_gs_7 : Array QQ) (mu_5 : Array (Array QQ)) (n_1 : Int32) : Int64 :=
-  let bb_33 := fun n_1 k_5 B_gs_11 mu_21 =>
-    _loop___lll_reduce_9_ir k_5 B_gs_11 mu_21 n_1
-  let bb_47 := fun k_2 mu_9 mu_new_1 mu_old_1 n_1 B_gs_10 =>
-    let __sideeff_47_1_1 := (row_swap k_2 (k_2 - (1 : Int32)))
+partial def _loop___lll_reduce_9_ir (M_1 : LLLMatrix) (k_2 : Int32) (U_4 : LLLMatrix) (B_gs_7 : Array QQ) (mu_5 : Array (Array QQ)) (n_1 : Int32) : (Int64 × LLLMatrix × LLLMatrix) :=
+  let bb_33 := fun n_1 M_8 k_5 U_11 B_gs_11 mu_21 =>
+    _loop___lll_reduce_9_ir M_8 k_5 U_11 B_gs_11 mu_21 n_1
+  let bb_47 := fun M_3 U_6 k_2 mu_9 mu_new_1 mu_old_1 n_1 B_gs_10 =>
+    let __refret_lam_2_1 := (_lambda___lll_reduce_4_ir M_3 U_6 k_2 (k_2 - (1 : Int32)))
+    let M_7 := __refret_lam_2_1.fst
+    let U_10 := __refret_lam_2_1.snd
     -- require (h_nonneg): (k_2 >= (0 : Int32))
     -- require (h_nonneg): ((k_2 - (1 : Int32)) >= (0 : Int32))
     -- require (h_in_bounds): (((k_2).toInt64.toUInt64) < (Array.size mu_9))
@@ -1844,8 +1848,8 @@ partial def _loop___lll_reduce_9_ir (k_2 : Int32) (B_gs_7 : Array QQ) (mu_5 : Ar
     let __loop_ret___lll_reduce_8_1 : (Int64 × Array (Array QQ)) := (_loop___lll_reduce_8_ir j_13 mu_17 k_2 mu_new_1 mu_old_1 n_1)
     let mu_18 : Array (Array QQ) := __loop_ret___lll_reduce_8_1.snd
     let k_4 : Int32 := (max (k_2 - (1 : Int32)) (1 : Int32))
-    bb_33 n_1 k_4 B_gs_10 mu_18
-  let bb_26 := fun k_2 B_gs_7 n_1 mu_9 =>
+    bb_33 n_1 M_7 k_4 U_10 B_gs_10 mu_18
+  let bb_26 := fun k_2 B_gs_7 n_1 M_3 U_6 mu_9 =>
     -- require (h_nonneg): (k_2 >= (0 : Int32))
     -- require (h_in_bounds): (((k_2).toInt64.toUInt64) < (Array.size B_gs_7))
     let lhs_1 : QQ := (B_gs_7[((k_2).toInt64.toUInt64).toNat]!)
@@ -1862,10 +1866,12 @@ partial def _loop___lll_reduce_9_ir (k_2 : Int32) (B_gs_7 : Array QQ) (mu_5 : Ar
     let rhs_1 : QQ := (((QQ.mk (3 : Int32) (4 : Int32)) - (((mu_9[((k_2).toInt64.toUInt64).toNat]!)[(((k_2 - (1 : Int32))).toInt64.toUInt64).toNat]!) * ((mu_9[((k_2).toInt64.toUInt64).toNat]!)[(((k_2 - (1 : Int32))).toInt64.toUInt64).toNat]!))) * (B_gs_7[(((k_2 - (1 : Int32))).toInt64.toUInt64).toNat]!))
     if (lhs_1 >= rhs_1) then
       let j_10 : Int32 := (k_2 - (2 : Int32))
-      let __loop_ret___lll_reduce_7_1 : (Int64 × Array (Array QQ)) := (_loop___lll_reduce_7_ir j_10 mu_9 k_2)
-      let mu_10 : Array (Array QQ) := __loop_ret___lll_reduce_7_1.snd
+      let __loop_ret___lll_reduce_7_1 : (Int64 × LLLMatrix × LLLMatrix × Array (Array QQ)) := (_loop___lll_reduce_7_ir M_3 j_10 U_6 mu_9 k_2 n_1)
+      let M_4 : LLLMatrix := __loop_ret___lll_reduce_7_1.2.1
+      let U_7 : LLLMatrix := __loop_ret___lll_reduce_7_1.2.2.1
+      let mu_10 : Array (Array QQ) := __loop_ret___lll_reduce_7_1.2.2.2
       let k_3 : Int32 := (k_2 + (1 : Int32))
-      bb_33 n_1 k_3 B_gs_7 mu_10
+      bb_33 n_1 M_4 k_3 U_7 B_gs_7 mu_10
     else
       -- require (h_nonneg): (k_2 >= (0 : Int32))
       -- require (h_nonneg): ((k_2 - (1 : Int32)) >= (0 : Int32))
@@ -1891,9 +1897,9 @@ partial def _loop___lll_reduce_9_ir (k_2 : Int32) (B_gs_7 : Array QQ) (mu_5 : Ar
         let B_gs_8 : Array QQ := (Array.set! B_gs_7 (((k_2).toInt64.toUInt64)).toNat (((B_gs_7[((k_2).toInt64.toUInt64).toNat]!) * (B_gs_7[(((k_2 - (1 : Int32))).toInt64.toUInt64).toNat]!)) / B_new_1))
         -- require (h_nonneg): ((k_2 - (1 : Int32)) >= (0 : Int32))
         let B_gs_9 : Array QQ := (Array.set! B_gs_8 (((((k_2 - (1 : Int32))).toInt64.toUInt64)).toNat) B_new_1)
-        bb_47 k_2 mu_9 mu_new_1 mu_old_1 n_1 B_gs_9
+        bb_47 M_3 U_6 k_2 mu_9 mu_new_1 mu_old_1 n_1 B_gs_9
       else
-        bb_47 k_2 mu_9 mu_new_1 mu_old_1 n_1 B_gs_7
+        bb_47 M_3 U_6 k_2 mu_9 mu_new_1 mu_old_1 n_1 B_gs_7
   if (k_2 < n_1) then
     -- require (h_nonneg): (k_2 >= (0 : Int32))
     -- require (h_nonneg): ((k_2 - (1 : Int32)) >= (0 : Int32))
@@ -1901,7 +1907,9 @@ partial def _loop___lll_reduce_9_ir (k_2 : Int32) (B_gs_7 : Array QQ) (mu_5 : Ar
     -- require (h_in_bounds): ((((k_2 - (1 : Int32))).toInt64.toUInt64) < (Array.size (mu_5[((k_2).toInt64.toUInt64).toNat]!)))
     let q_1 : ZZ := (_lambda___lll_reduce_2_ir ((mu_5[((k_2).toInt64.toUInt64).toNat]!)[(((k_2 - (1 : Int32))).toInt64.toUInt64).toNat]!))
     if (q_1 != ((0 : Int32)).toInt) then
-      let __sideeff_24_0_1 := (row_sub k_2 (k_2 - (1 : Int32)) q_1)
+      let __refret_lam_0_1 := (_lambda___lll_reduce_3_ir M_1 U_4 n_1 k_2 (k_2 - (1 : Int32)) q_1)
+      let M_2 := __refret_lam_0_1.fst
+      let U_5 := __refret_lam_0_1.snd
       let j_7 : Int32 := (0 : Int32)
       let __loop_ret___lll_reduce_5_1 : (Int64 × Array (Array QQ)) := (_loop___lll_reduce_5_ir j_7 mu_5 k_2 q_1)
       let mu_6 : Array (Array QQ) := __loop_ret___lll_reduce_5_1.snd
@@ -1910,27 +1918,27 @@ partial def _loop___lll_reduce_9_ir (k_2 : Int32) (B_gs_7 : Array QQ) (mu_5 : Ar
       -- require (h_in_bounds): (((k_2).toInt64.toUInt64) < (Array.size mu_6))
       -- require (h_in_bounds): ((((k_2 - (1 : Int32))).toInt64.toUInt64) < (Array.size (mu_6[((k_2).toInt64.toUInt64).toNat]!)))
       let mu_8 : Array (Array QQ) := (Array.set! mu_6 (((k_2).toInt64.toUInt64)).toNat (Array.set! (mu_6[((k_2).toInt64.toUInt64).toNat]!) (((((k_2 - (1 : Int32))).toInt64.toUInt64)).toNat) (((mu_6[((k_2).toInt64.toUInt64).toNat]!)[(((k_2 - (1 : Int32))).toInt64.toUInt64).toNat]!) - (QQ.mk q_1 ((1 : Int32)).toInt))))
-      bb_26 k_2 B_gs_7 n_1 mu_8
+      bb_26 k_2 B_gs_7 n_1 M_2 U_5 mu_8
     else
-      bb_26 k_2 B_gs_7 n_1 mu_5
+      bb_26 k_2 B_gs_7 n_1 M_1 U_4 mu_5
   else
-    (0 : Int64)
+    ((0 : Int64), M_1, U_4)
 
-partial def _loop___lll_reduce_10_ir (short_rows_2 : Array Int32) (i_8 : Int32) (B : ZZ) (M_2 : LLLMatrix) (n_1 : Int32) : (Int64 × Array Int32) :=
-  let bb_58 := fun i_8 B M_2 n_1 short_rows_4 =>
+partial def _loop___lll_reduce_10_ir (short_rows_2 : Array Int32) (i_8 : Int32) (B : ZZ) (M_1 : LLLMatrix) (n_1 : Int32) : (Int64 × Array Int32) :=
+  let bb_58 := fun i_8 B M_1 n_1 short_rows_4 =>
     let i_9 : Int32 := (i_8 + (1 : Int32))
-    _loop___lll_reduce_10_ir short_rows_4 i_9 B M_2 n_1
+    _loop___lll_reduce_10_ir short_rows_4 i_9 B M_1 n_1
   if (i_8 < n_1) then
     -- require (h_nonneg): (i_8 >= (0 : Int32))
     -- require (h_nonneg): (i_8 >= (0 : Int32))
-    -- require (h_in_bounds): (((i_8).toInt64.toUInt64) < (Array.size M_2))
-    -- require (h_in_bounds): (((i_8).toInt64.toUInt64) < (Array.size M_2))
-    let norm_sq_1 : ZZ := (_lambda___lll_reduce_1_ir (M_2[((i_8).toInt64.toUInt64).toNat]!) (M_2[((i_8).toInt64.toUInt64).toNat]!))
+    -- require (h_in_bounds): (((i_8).toInt64.toUInt64) < (Array.size M_1))
+    -- require (h_in_bounds): (((i_8).toInt64.toUInt64) < (Array.size M_1))
+    let norm_sq_1 : ZZ := (_lambda___lll_reduce_1_ir (M_1[((i_8).toInt64.toUInt64).toNat]!) (M_1[((i_8).toInt64.toUInt64).toNat]!))
     if (norm_sq_1 <= B) then
       let short_rows_3 : Array Int32 := (Array.push short_rows_2 i_8)
-      bb_58 i_8 B M_2 n_1 short_rows_3
+      bb_58 i_8 B M_1 n_1 short_rows_3
     else
-      bb_58 i_8 B M_2 n_1 short_rows_2
+      bb_58 i_8 B M_1 n_1 short_rows_2
   else
     ((0 : Int64), short_rows_2)
 
@@ -1944,35 +1952,31 @@ partial def __lll_reduce_ir (M : LLLMatrix) (U : LLLMatrix) (B : ZZ) : (Array In
   let B_gs_1 : Array QQ := (Array.replicate ((((n_1).toInt64.toUInt64)).toNat) (QQ.ofInt (0 : Int32)))
   -- require (h_nonneg): (n_1 >= (0 : Int32))
   -- require (h_nonneg): (n_1 >= (0 : Int32))
-  let U_1 : LLLMatrix := (Array.replicate U ((n_1).toInt64.toUInt64) (Array.replicate ((((n_1).toInt64.toUInt64)).toNat) ((0 : Int32)).toInt))
+  let U_1 : LLLMatrix := (Array.replicateMut U ((n_1).toInt64.toUInt64) (Array.replicate ((((n_1).toInt64.toUInt64)).toNat) ((0 : Int32)).toInt))
   let i_1 : Int32 := (0 : Int32)
   let __loop_ret___lll_reduce_0_1 : (Int64 × LLLMatrix) := (_loop___lll_reduce_0_ir i_1 U_1 n_1)
   let U_2 : LLLMatrix := __loop_ret___lll_reduce_0_1.snd
   let dot_1 : (Array ZZ) → (Array ZZ) → ZZ := _lambda___lll_reduce_1_ir
   let round_qq_1 : QQ → ZZ := _lambda___lll_reduce_2_ir
-  let __hoist_lam_0_1 := (_lambda___lll_reduce_3_ir M U_2 n_1 M U_2 n_1)
-  let M_1 := __hoist_lam_0_1.2
-  let U_4 := __hoist_lam_0_1.2.2
-  let row_sub_1 := __hoist_lam_0_1.1
-  let __hoist_lam_1_1 := (_lambda___lll_reduce_4_ir M_1 U_4 M_1 U_4)
-  let M_2 := __hoist_lam_1_1.2
-  let U_5 := __hoist_lam_1_1.2.2
-  let row_swap_1 := __hoist_lam_1_1.1
-  -- require (h_in_bounds): ((0 : Nat) < (Array.size M_2))
-  -- require (h_in_bounds): ((0 : Nat) < (Array.size M_2))
-  let B_gs_2 : Array QQ := (Array.set! B_gs_1 (0 : Nat) (QQ.mk (_lambda___lll_reduce_1_ir (M_2[(0 : Int32).toNatClampNeg]!) (M_2[(0 : Int32).toNatClampNeg]!)) ((1 : Int32)).toInt))
+  let row_sub_1 := (_lambda___lll_reduce_3_ir M U_2 n_1)
+  let row_swap_1 := (_lambda___lll_reduce_4_ir M U_2)
+  -- require (h_in_bounds): ((0 : Nat) < (Array.size M))
+  -- require (h_in_bounds): ((0 : Nat) < (Array.size M))
+  let B_gs_2 : Array QQ := (Array.set! B_gs_1 (0 : Nat) (QQ.mk (_lambda___lll_reduce_1_ir (M[(0 : Int32).toNatClampNeg]!) (M[(0 : Int32).toNatClampNeg]!)) ((1 : Int32)).toInt))
   let i_4 : Int32 := (1 : Int32)
-  let __loop_ret___lll_reduce_4_1 : (Int64 × Array QQ × Array (Array QQ)) := (_loop___lll_reduce_4_ir i_4 B_gs_2 mu_1 M_2 n_1)
+  let __loop_ret___lll_reduce_4_1 : (Int64 × Array QQ × Array (Array QQ)) := (_loop___lll_reduce_4_ir i_4 B_gs_2 mu_1 M n_1)
   let B_gs_3 : Array QQ := __loop_ret___lll_reduce_4_1.2.1
   let mu_2 : Array (Array QQ) := __loop_ret___lll_reduce_4_1.2.2
   let k_1 : Int32 := (1 : Int32)
-  let __loop_ret___lll_reduce_9_1 : Int64 := (_loop___lll_reduce_9_ir k_1 B_gs_3 mu_2 n_1)
+  let __loop_ret___lll_reduce_9_1 : (Int64 × LLLMatrix × LLLMatrix) := (_loop___lll_reduce_9_ir M k_1 U_2 B_gs_3 mu_2 n_1)
+  let M_1 : LLLMatrix := __loop_ret___lll_reduce_9_1.2.1
+  let U_4 : LLLMatrix := __loop_ret___lll_reduce_9_1.2.2
   let short_rows_1 : Array Int32 := (#[])
   let i_7 : Int32 := (0 : Int32)
-  let __loop_ret___lll_reduce_10_1 : (Int64 × Array Int32) := (_loop___lll_reduce_10_ir short_rows_1 i_7 B M_2 n_1)
+  let __loop_ret___lll_reduce_10_1 : (Int64 × Array Int32) := (_loop___lll_reduce_10_ir short_rows_1 i_7 B M_1 n_1)
   let short_rows_2 : Array Int32 := __loop_ret___lll_reduce_10_1.snd
-  let short_rows_5 : Array Int32 := (Array.sort short_rows_2 (_lambda___lll_reduce_5_ir M_2 dot_1))
-  (((short_rows_5 : Array _)), M_2, U_5)
+  let short_rows_5 : Array Int32 := (Array.sort short_rows_2 (_lambda___lll_reduce_5_ir M_1 dot_1))
+  (((short_rows_5 : Array _)), M_1, U_4)
 
 partial def __make_zp_ir (val : Int64) (p : UInt64) : Zp :=
   (Zp.ofInt (val).toInt p)
@@ -3055,26 +3059,28 @@ partial def _lambda___mtshl_step_j_lex_2_ir (F : Array MvPolyZp) (r : Int32) : P
   let prod_2 : PolyZp := __loop_ret__lambda___mtshl_step_j_lex_2_0_1.snd
   (MvPolyZp.mk prod_2)
 
-partial def _loop___mtshl_step_j_lex_0_ir (i_2 : Int32) (F : Array MvPolyZp) (lc_tau : Array MvPolyZp) (r_1 : Int32) : Int64 :=
+partial def _loop___mtshl_step_j_lex_0_ir (F_1 : Array MvPolyZp) (i_2 : Int32) (comp_ptr_1 : Lex) (lc_tau : Array MvPolyZp) (p : UInt64) (r_1 : Int32) (x1 : Variable) : (Int64 × Array MvPolyZp) :=
   if (i_2 < r_1) then
     -- require (h_nonneg): (i_2 >= (0 : Int32))
     -- require (h_nonneg): (i_2 >= (0 : Int32))
-    -- require (h_in_bounds): (((i_2).toInt64.toUInt64) < (Array.size F))
+    -- require (h_nonneg): (i_2 >= (0 : Int32))
+    -- require (h_in_bounds): (((i_2).toInt64.toUInt64) < (Array.size F_1))
     -- require (h_in_bounds): (((i_2).toInt64.toUInt64) < (Array.size lc_tau))
-    let __sideeff_2_4_1 := (lc_correct (F[((i_2).toInt64.toUInt64).toNat]!) (lc_tau[((i_2).toInt64.toUInt64).toNat]!))
+    -- require (h_in_bounds): (((i_2).toInt64.toUInt64) < (Array.size F_1))
+    let F_2 : Array MvPolyZp := (Array.set! F_1 (((i_2).toInt64.toUInt64)).toNat (_lambda___mtshl_step_j_lex_1_ir comp_ptr_1 p x1 (F_1[((i_2).toInt64.toUInt64).toNat]!) (lc_tau[((i_2).toInt64.toUInt64).toNat]!)))
     let i_3 : Int32 := (i_2 + (1 : Int32))
-    _loop___mtshl_step_j_lex_0_ir i_3 F lc_tau r_1
+    _loop___mtshl_step_j_lex_0_ir F_2 i_3 comp_ptr_1 lc_tau p r_1 x1
   else
-    (0 : Int64)
+    ((0 : Int64), F_1)
 
-partial def _loop___mtshl_step_j_lex_1_ir (F_base_2 : Array PolyZp) (i_5 : Int32) (F : Array MvPolyZp) (alpha_j : Zp) (r_1 : Int32) (xj : Variable) : (Int64 × Array PolyZp) :=
+partial def _loop___mtshl_step_j_lex_1_ir (F_base_2 : Array PolyZp) (i_5 : Int32) (F_1 : Array MvPolyZp) (alpha_j : Zp) (r_1 : Int32) (xj : Variable) : (Int64 × Array PolyZp) :=
   if (i_5 < r_1) then
     -- require (h_nonneg): (i_5 >= (0 : Int32))
     -- require (h_nonneg): (i_5 >= (0 : Int32))
-    -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size F))
-    let F_base_3 : Array PolyZp := (Array.set! F_base_2 (((i_5).toInt64.toUInt64)).toNat (assign (F[((i_5).toInt64.toUInt64).toNat]!) xj alpha_j))
+    -- require (h_in_bounds): (((i_5).toInt64.toUInt64) < (Array.size F_1))
+    let F_base_3 : Array PolyZp := (Array.set! F_base_2 (((i_5).toInt64.toUInt64)).toNat (assign (F_1[((i_5).toInt64.toUInt64).toNat]!) xj alpha_j))
     let i_6 : Int32 := (i_5 + (1 : Int32))
-    _loop___mtshl_step_j_lex_1_ir F_base_3 i_6 F alpha_j r_1 xj
+    _loop___mtshl_step_j_lex_1_ir F_base_3 i_6 F_1 alpha_j r_1 xj
   else
     ((0 : Int64), F_base_2)
 
@@ -3104,21 +3110,21 @@ partial def _loop___mtshl_step_j_lex_3_ir (__rangefor_idx_0_2 : Nat) (forms_3 : 
   else
     ((0 : Int64), forms_3)
 
-partial def _loop___mtshl_step_j_lex_4_ir (forms_2 : Array (Array Monomial)) (i_11 : Int32) (F : Array MvPolyZp) (r_1 : Int32) : (Int64 × Array (Array Monomial)) :=
+partial def _loop___mtshl_step_j_lex_4_ir (forms_2 : Array (Array Monomial)) (i_11 : Int32) (F_1 : Array MvPolyZp) (r_1 : Int32) : (Int64 × Array (Array Monomial)) :=
   if (i_11 < r_1) then
-    let __rangefor_cont_0_1 : MvPolyZp := (F[((i_11).toInt64.toUInt64).toNat]!)
+    let __rangefor_cont_0_1 : MvPolyZp := (F_1[((i_11).toInt64.toUInt64).toNat]!)
     let __rangefor_idx_0_1 : Nat := (0 : Nat)
     let __loop_ret___mtshl_step_j_lex_3_1 : (Int64 × Array (Array Monomial)) := (_loop___mtshl_step_j_lex_3_ir __rangefor_idx_0_1 forms_2 __rangefor_cont_0_1 i_11)
     let forms_3 : Array (Array Monomial) := __loop_ret___mtshl_step_j_lex_3_1.snd
     let i_12 : Int32 := (i_11 + (1 : Int32))
-    _loop___mtshl_step_j_lex_4_ir forms_3 i_12 F r_1
+    _loop___mtshl_step_j_lex_4_ir forms_3 i_12 F_1 r_1
   else
     ((0 : Int64), forms_2)
 
-partial def _loop___mtshl_step_j_lex_5_ir (sigma_k_3 : Array PolyZp) (i_14 : Int32) (comp_ptr_2 : Lex) (r_1 : Int32) (sigma_up_2 : Array SparsePolyZp) (x1 : Variable) : (Int64 × Array PolyZp) :=
+partial def _loop___mtshl_step_j_lex_5_ir (sigma_k_3 : Array PolyZp) (i_14 : Int32) (comp_ptr_1 : Lex) (r_1 : Int32) (sigma_up_2 : Array SparsePolyZp) (x1 : Variable) : (Int64 × Array PolyZp) :=
   if (i_14 < r_1) then
     -- require (h_nonneg): (i_14 >= (0 : Int32))
-    let sigma_k_4 : Array PolyZp := (Array.set! sigma_k_3 (((i_14).toInt64.toUInt64)).toNat (MvPolyZp.mk comp_ptr_2))
+    let sigma_k_4 : Array PolyZp := (Array.set! sigma_k_3 (((i_14).toInt64.toUInt64)).toNat (MvPolyZp.mk comp_ptr_1))
     -- require (h_nonneg): (i_14 >= (0 : Int32))
     -- require (h_nonneg): (i_14 >= (0 : Int32))
     -- require (h_nonneg): (i_14 >= (0 : Int32))
@@ -3127,7 +3133,7 @@ partial def _loop___mtshl_step_j_lex_5_ir (sigma_k_3 : Array PolyZp) (i_14 : Int
     -- require (h_in_bounds): (((i_14).toInt64.toUInt64) < (Array.size sigma_k_4))
     let sigma_k_5 : Array PolyZp := (Array.set! sigma_k_4 (((i_14).toInt64.toUInt64)).toNat (poly_convert (sigma_up_2[((i_14).toInt64.toUInt64).toNat]!) (sigma_k_4[((i_14).toInt64.toUInt64).toNat]!) x1))
     let i_15 : Int32 := (i_14 + (1 : Int32))
-    _loop___mtshl_step_j_lex_5_ir sigma_k_5 i_15 comp_ptr_2 r_1 sigma_up_2 x1
+    _loop___mtshl_step_j_lex_5_ir sigma_k_5 i_15 comp_ptr_1 r_1 sigma_up_2 x1
   else
     ((0 : Int64), sigma_k_3)
 
@@ -3143,15 +3149,15 @@ partial def _loop___mtshl_step_j_lex_6_ir (__rangefor_idx_1_2 : Nat) (forms_10 :
   else
     ((0 : Int64), forms_10)
 
-partial def _loop___mtshl_step_j_lex_7_ir (F_3 : Array MvPolyZp) (forms_7 : Array (Array Monomial)) (i_17 : Int32) (r_1 : Int32) (sigma_k_13 : Array PolyZp) (xk_pow_6 : PolyZp) : (Int64 × Array MvPolyZp × Array (Array Monomial)) :=
-  let bb_61 := fun i_17 r_1 sigma_k_13 xk_pow_6 F_4 forms_8 =>
+partial def _loop___mtshl_step_j_lex_7_ir (forms_7 : Array (Array Monomial)) (F_5 : Array MvPolyZp) (i_17 : Int32) (r_1 : Int32) (sigma_k_13 : Array PolyZp) (xk_pow_6 : PolyZp) : (Int64 × Array MvPolyZp × Array (Array Monomial)) :=
+  let bb_61 := fun i_17 r_1 sigma_k_13 xk_pow_6 forms_8 F_6 =>
     let i_18 : Int32 := (i_17 + (1 : Int32))
-    _loop___mtshl_step_j_lex_7_ir F_4 forms_8 i_18 r_1 sigma_k_13 xk_pow_6
+    _loop___mtshl_step_j_lex_7_ir forms_8 F_6 i_18 r_1 sigma_k_13 xk_pow_6
   if (i_17 < r_1) then
     -- require (h_nonneg): (i_17 >= (0 : Int32))
     -- require (h_in_bounds): (((i_17).toInt64.toUInt64) < (Array.size sigma_k_13))
     if (MvPolyZp.isEmpty (sigma_k_13[((i_17).toInt64.toUInt64).toNat]!)) then
-      bb_61 i_17 r_1 sigma_k_13 xk_pow_6 F_3 forms_7
+      bb_61 i_17 r_1 sigma_k_13 xk_pow_6 forms_7 F_5
     else
       -- require (h_nonneg): (i_17 >= (0 : Int32))
       -- require (h_in_bounds): (((i_17).toInt64.toUInt64) < (Array.size sigma_k_13))
@@ -3159,11 +3165,11 @@ partial def _loop___mtshl_step_j_lex_7_ir (F_3 : Array MvPolyZp) (forms_7 : Arra
       let correction_2 : MvPolyZp := (MvPolyZp.normalization correction_1)
       -- require (h_nonneg): (i_17 >= (0 : Int32))
       -- require (h_nonneg): (i_17 >= (0 : Int32))
-      -- require (h_in_bounds): (((i_17).toInt64.toUInt64) < (Array.size F_3))
-      let F_5 : Array MvPolyZp := (Array.set! F_3 (((i_17).toInt64.toUInt64)).toNat ((F_3[((i_17).toInt64.toUInt64).toNat]!) + correction_2))
-      -- require (h_nonneg): (i_17 >= (0 : Int32))
       -- require (h_in_bounds): (((i_17).toInt64.toUInt64) < (Array.size F_5))
-      let F_6 : Array MvPolyZp := (Array.set! F_5 (((i_17).toInt64.toUInt64)).toNat (MvPolyZp.normalization (F_5[((i_17).toInt64.toUInt64).toNat]!)))
+      let F_7 : Array MvPolyZp := (Array.set! F_5 (((i_17).toInt64.toUInt64)).toNat ((F_5[((i_17).toInt64.toUInt64).toNat]!) + correction_2))
+      -- require (h_nonneg): (i_17 >= (0 : Int32))
+      -- require (h_in_bounds): (((i_17).toInt64.toUInt64) < (Array.size F_7))
+      let F_8 : Array MvPolyZp := (Array.set! F_7 (((i_17).toInt64.toUInt64)).toNat (MvPolyZp.normalization (F_7[((i_17).toInt64.toUInt64).toNat]!)))
       -- require (h_nonneg): (i_17 >= (0 : Int32))
       -- require (h_in_bounds): (((i_17).toInt64.toUInt64) < (Array.size forms_7))
       let forms_9 : Array (Array Monomial) := (Array.set! forms_7 (((i_17).toInt64.toUInt64)).toNat (Array.clearVec (forms_7[((i_17).toInt64.toUInt64).toNat]!)))
@@ -3171,34 +3177,34 @@ partial def _loop___mtshl_step_j_lex_7_ir (F_3 : Array MvPolyZp) (forms_7 : Arra
       let __rangefor_idx_1_1 : Nat := (0 : Nat)
       let __loop_ret___mtshl_step_j_lex_6_1 : (Int64 × Array (Array Monomial)) := (_loop___mtshl_step_j_lex_6_ir __rangefor_idx_1_1 forms_9 __rangefor_cont_1_1 i_17)
       let forms_10 : Array (Array Monomial) := __loop_ret___mtshl_step_j_lex_6_1.snd
-      bb_61 i_17 r_1 sigma_k_13 xk_pow_6 F_6 forms_10
+      bb_61 i_17 r_1 sigma_k_13 xk_pow_6 forms_10 F_8
   else
-    ((0 : Int64), F_3, forms_7)
+    ((0 : Int64), F_5, forms_7)
 
-partial def _loop___mtshl_step_j_lex_8_ir (F_1 : Array MvPolyZp) (k_2 : Int32) (xk_pow_4 : PolyZp) (error_3 : PolyZp) (forms_5 : Array (Array Monomial)) (D_j_1 : Int64) (F_base_2 : Array PolyZp) (F_base_up_5 : Array SparsePolyZp) (aj : MvPolyZp) (alpha_j : Zp) (aux_vars : Array Variable) (comp_ptr_2 : Lex) (ideal_alphas_zp : Array Zp) (is_j2_1 : Bool) (p : UInt64) (product_F_1 : PolyZp) (r_1 : Int32) (x1 : Variable) (xj : Variable) (xj_minus_alpha_5 : PolyZp) : (Int64 × Array MvPolyZp × Array MvPolyZp) :=
-  let bb_29 := fun D_j_1 k_2 xk_pow_6 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5 F_2 error_4 forms_6 =>
+partial def _loop___mtshl_step_j_lex_8_ir (k_2 : Int32) (xk_pow_4 : PolyZp) (error_3 : PolyZp) (forms_5 : Array (Array Monomial)) (F_3 : Array MvPolyZp) (D_j_1 : Int64) (F_base_2 : Array PolyZp) (F_base_up_5 : Array SparsePolyZp) (aj : MvPolyZp) (alpha_j : Zp) (aux_vars : Array Variable) (comp_ptr_1 : Lex) (ideal_alphas_zp : Array Zp) (is_j2_1 : Bool) (p : UInt64) (product_F_1 : PolyZp) (r_1 : Int32) (x1 : Variable) (xj : Variable) (xj_minus_alpha_5 : PolyZp) : (Int64 × Array MvPolyZp × Array MvPolyZp) :=
+  let bb_29 := fun D_j_1 k_2 xk_pow_6 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5 error_4 forms_6 F_4 =>
     -- require (h_fits_int32): ((D_j_1 >= (-2147483648 : Int64)) && (D_j_1 <= (2147483647 : Int64)))
     let k_3 : Int32 := (k_2 + (1 : Int32))
-    _loop___mtshl_step_j_lex_8_ir F_2 k_3 xk_pow_6 error_4 forms_6 D_j_1 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5
-  let bb_37 := fun F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 sigma_k_13 =>
+    _loop___mtshl_step_j_lex_8_ir k_3 xk_pow_6 error_4 forms_6 F_4 D_j_1 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5
+  let bb_37 := fun forms_5 F_3 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 sigma_k_13 =>
     let i_16 : Int32 := (0 : Int32)
-    let __loop_ret___mtshl_step_j_lex_7_1 : (Int64 × Array MvPolyZp × Array (Array Monomial)) := (_loop___mtshl_step_j_lex_7_ir F_1 forms_5 i_16 r_1 sigma_k_13 xk_pow_6)
-    let F_3 : Array MvPolyZp := __loop_ret___mtshl_step_j_lex_7_1.2.1
+    let __loop_ret___mtshl_step_j_lex_7_1 : (Int64 × Array MvPolyZp × Array (Array Monomial)) := (_loop___mtshl_step_j_lex_7_ir forms_5 F_3 i_16 r_1 sigma_k_13 xk_pow_6)
+    let F_5 : Array MvPolyZp := __loop_ret___mtshl_step_j_lex_7_1.2.1
     let forms_7 : Array (Array Monomial) := __loop_ret___mtshl_step_j_lex_7_1.2.2
     let error_5 : PolyZp := (aj - product_F_1)
     let error_6 : PolyZp := (MvPolyZp.normalization error_5)
     if (MvPolyZp.isEmpty error_6) then
-      ((3 : Int64), F_3, F_3)
+      ((3 : Int64), F_5, F_5)
     else
-      bb_29 D_j_1 k_2 xk_pow_6 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5 F_3 error_6 forms_7
-  let bb_51 := fun F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_7 sigma_k_12 =>
+      bb_29 D_j_1 k_2 xk_pow_6 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5 error_6 forms_7 F_5
+  let bb_51 := fun F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_7 sigma_k_12 =>
     if (! success_7) then
-      ((2 : Int64), F_1, F_1)
+      ((2 : Int64), F_3, F_3)
     else
-      bb_37 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 sigma_k_12
-  let bb_54 := fun F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_6 sigma_k_11 =>
-    bb_51 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_6 sigma_k_11
-  let bb_48 := fun aux_vars ideal_alphas_zp F_base_2 ck_1 x1 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_up_5 alpha_j comp_ptr_2 is_j2_1 p xj xj_minus_alpha_5 success_3 sigma_k_8 =>
+      bb_37 forms_5 F_3 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 sigma_k_12
+  let bb_54 := fun F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_6 sigma_k_11 =>
+    bb_51 F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_6 sigma_k_11
+  let bb_48 := fun aux_vars ideal_alphas_zp F_base_2 ck_1 x1 F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_up_5 alpha_j comp_ptr_1 is_j2_1 p xj xj_minus_alpha_5 success_3 sigma_k_8 =>
     if (! success_3) then
       if ((Array.size aux_vars) == (1 : Int32)) then
         -- require (h_in_bounds): ((0 : Nat) < (Array.size aux_vars))
@@ -3206,20 +3212,20 @@ partial def _loop___mtshl_step_j_lex_8_ir (F_1 : Array MvPolyZp) (k_2 : Int32) (
         let __refret_3_1 : (Bool × Array PolyZp) := (__mtshl_multi_bdp_lex_ir F_base_2 ck_1 x1 (aux_vars[(0 : Int32).toNatClampNeg]!) (ideal_alphas_zp[(0 : Int32).toNatClampNeg]!) sigma_k_8)
         let sigma_k_9 : Array PolyZp := __refret_3_1.snd
         let success_4 : Bool := __refret_3_1.fst
-        bb_54 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_4 sigma_k_9
+        bb_54 F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_4 sigma_k_9
       else
         let __refret_4_1 : (Bool × Array PolyZp) := (__mtshl_wmds_lex_ir F_base_2 ck_1 x1 aux_vars ideal_alphas_zp sigma_k_8)
         let sigma_k_10 : Array PolyZp := __refret_4_1.snd
         let success_5 : Bool := __refret_4_1.fst
-        bb_54 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_5 sigma_k_10
+        bb_54 F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_5 sigma_k_10
     else
-      bb_51 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_3 sigma_k_8
+      bb_51 F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 success_3 sigma_k_8
   if (k_2 <= ((D_j_1).toInt32)) then
     let xk_pow_5 : PolyZp := (xk_pow_4 * xj_minus_alpha_5)
     let xk_pow_6 : PolyZp := (MvPolyZp.normalization xk_pow_5)
     let ck_1 : PolyZp := (__taylor_coeff_zp_lex_ir error_3 xj alpha_j k_2)
     if (MvPolyZp.isEmpty ck_1) then
-      bb_29 D_j_1 k_2 xk_pow_6 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5 F_1 error_3 forms_5
+      bb_29 D_j_1 k_2 xk_pow_6 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5 error_3 forms_5 F_3
     else
       let sigma_k_1 : Array PolyZp := (#[])
       if is_j2_1 then
@@ -3229,14 +3235,14 @@ partial def _loop___mtshl_step_j_lex_8_ir (F_1 : Array MvPolyZp) (k_2 : Int32) (
         let __refret_0_1 : (Bool × Array SparsePolyZp) := (__mtshl_zp_univar_mdp_ir F_base_up_5 ck_up_2 sigma_up_1)
         let sigma_up_2 : Array SparsePolyZp := __refret_0_1.snd
         if (! __refret_0_1.fst) then
-          ((1 : Int64), F_1, F_1)
+          ((1 : Int64), F_3, F_3)
         else
           -- require (h_nonneg): (r_1 >= (0 : Int32))
-          let sigma_k_2 : Array PolyZp := (Array.resize sigma_k_1 ((r_1).toInt64.toUInt64) (MvPolyZp.mk comp_ptr_2))
+          let sigma_k_2 : Array PolyZp := (Array.resize sigma_k_1 ((r_1).toInt64.toUInt64) (MvPolyZp.mk comp_ptr_1))
           let i_13 : Int32 := (0 : Int32)
-          let __loop_ret___mtshl_step_j_lex_5_1 : (Int64 × Array PolyZp) := (_loop___mtshl_step_j_lex_5_ir sigma_k_2 i_13 comp_ptr_2 r_1 sigma_up_2 x1)
+          let __loop_ret___mtshl_step_j_lex_5_1 : (Int64 × Array PolyZp) := (_loop___mtshl_step_j_lex_5_ir sigma_k_2 i_13 comp_ptr_1 r_1 sigma_up_2 x1)
           let sigma_k_3 : Array PolyZp := __loop_ret___mtshl_step_j_lex_5_1.snd
-          bb_37 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 sigma_k_3
+          bb_37 forms_5 F_3 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_2 F_base_up_5 alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p x1 xj xj_minus_alpha_5 sigma_k_3
       else
         let __refret_1_1 : (Bool × Array PolyZp) := (__mtshl_sparse_int_lex_ir F_base_2 ck_1 forms_5 x1 aux_vars p sigma_k_1)
         let sigma_k_6 : Array PolyZp := __refret_1_1.snd
@@ -3245,68 +3251,67 @@ partial def _loop___mtshl_step_j_lex_8_ir (F_1 : Array MvPolyZp) (k_2 : Int32) (
           let __refret_2_1 : (Bool × Array PolyZp) := (__mtshl_sparse_int_lex_ir F_base_2 ck_1 forms_5 x1 aux_vars p sigma_k_6)
           let sigma_k_7 : Array PolyZp := __refret_2_1.snd
           let success_2 : Bool := __refret_2_1.fst
-          bb_48 aux_vars ideal_alphas_zp F_base_2 ck_1 x1 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_up_5 alpha_j comp_ptr_2 is_j2_1 p xj xj_minus_alpha_5 success_2 sigma_k_7
+          bb_48 aux_vars ideal_alphas_zp F_base_2 ck_1 x1 F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_up_5 alpha_j comp_ptr_1 is_j2_1 p xj xj_minus_alpha_5 success_2 sigma_k_7
         else
-          bb_48 aux_vars ideal_alphas_zp F_base_2 ck_1 x1 F_1 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_up_5 alpha_j comp_ptr_2 is_j2_1 p xj xj_minus_alpha_5 success_1 sigma_k_6
+          bb_48 aux_vars ideal_alphas_zp F_base_2 ck_1 x1 F_3 forms_5 r_1 xk_pow_6 aj product_F_1 D_j_1 k_2 F_base_up_5 alpha_j comp_ptr_1 is_j2_1 p xj xj_minus_alpha_5 success_1 sigma_k_6
   else
-    ((0 : Int64), F_1, F_1)
+    ((0 : Int64), F_3, F_3)
 
 partial def __mtshl_step_j_lex_ir (aj : MvPolyZp) (F : Array MvPolyZp) (lc_tau : Array MvPolyZp) (xj : Variable) (alpha_j : Zp) (x1 : Variable) (aux_vars : Array Variable) (ideal_alphas_zp : Array Zp) (p : UInt64) : (Bool × Array MvPolyZp) :=
-  let bb_30 := fun F_7 =>
-    (true, F_7)
-  let bb_26 := fun comp_ptr_2 p aj xj F error_2 forms_2 F_base_2 F_base_up_5 alpha_j aux_vars ideal_alphas_zp is_j2_1 product_F_1 r_1 x1 xj_minus_alpha_4 =>
+  let bb_30 := fun F_9 =>
+    (true, F_9)
+  let bb_26 := fun comp_ptr_1 p aj xj error_2 forms_2 F_1 F_base_2 F_base_up_5 alpha_j aux_vars ideal_alphas_zp is_j2_1 product_F_1 r_1 x1 xj_minus_alpha_4 =>
     let xj_minus_alpha_5 : PolyZp := (MvPolyZp.normalization xj_minus_alpha_4)
-    let xk_pow_1 : PolyZp := (MvPolyZp.mk comp_ptr_2)
+    let xk_pow_1 : PolyZp := (MvPolyZp.mk comp_ptr_1)
     let xk_pow_2 : PolyZp := (Array.push xk_pow_1 (((Monomial.empty), (Zp.ofInt ((1 : Int32)).toInt p))))
     let xk_pow_3 : PolyZp := (MvPolyZp.normalization xk_pow_2)
     let D_j_1 : Int64 := (degree aj xj)
     let k_1 : Int32 := (1 : Int32)
-    let __loop_ret___mtshl_step_j_lex_8_1 : (Int64 × Array MvPolyZp × Array MvPolyZp) := (_loop___mtshl_step_j_lex_8_ir F k_1 xk_pow_3 error_2 forms_2 D_j_1 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_2 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5)
-    let F_1 : Array MvPolyZp := __loop_ret___mtshl_step_j_lex_8_1.2.1
-    let F_3 : Array MvPolyZp := __loop_ret___mtshl_step_j_lex_8_1.2.2
+    let __loop_ret___mtshl_step_j_lex_8_1 : (Int64 × Array MvPolyZp × Array MvPolyZp) := (_loop___mtshl_step_j_lex_8_ir k_1 xk_pow_3 error_2 forms_2 F_1 D_j_1 F_base_2 F_base_up_5 aj alpha_j aux_vars comp_ptr_1 ideal_alphas_zp is_j2_1 p product_F_1 r_1 x1 xj xj_minus_alpha_5)
+    let F_3 : Array MvPolyZp := __loop_ret___mtshl_step_j_lex_8_1.2.1
+    let F_5 : Array MvPolyZp := __loop_ret___mtshl_step_j_lex_8_1.2.2
     let __loop_ret___mtshl_step_j_lex_8__kind_1 : Int64 := __loop_ret___mtshl_step_j_lex_8_1.1
     if (__loop_ret___mtshl_step_j_lex_8__kind_1 == (0 : Int64)) then
-      bb_30 F_1
+      bb_30 F_3
     else
       if (__loop_ret___mtshl_step_j_lex_8__kind_1 == (1 : Int64)) then
-        (false, F_1)
+        (false, F_3)
       else
         if (__loop_ret___mtshl_step_j_lex_8__kind_1 == (2 : Int64)) then
-          (false, F_1)
+          (false, F_3)
         else
-          bb_30 F_3
-  let bb_11 := fun r_1 F aj comp_ptr_2 xj p alpha_j F_base_2 aux_vars ideal_alphas_zp is_j2_1 x1 F_base_up_5 =>
+          bb_30 F_5
+  let bb_11 := fun r_1 F_1 aj comp_ptr_1 xj p alpha_j F_base_2 aux_vars ideal_alphas_zp is_j2_1 x1 F_base_up_5 =>
     -- require (h_nonneg): (r_1 >= (0 : Int32))
     let forms_1 : Array (Array Monomial) := (Array.replicate ((((r_1).toInt64.toUInt64)).toNat) default)
     let i_10 : Int32 := (0 : Int32)
-    let __loop_ret___mtshl_step_j_lex_4_1 : (Int64 × Array (Array Monomial)) := (_loop___mtshl_step_j_lex_4_ir forms_1 i_10 F r_1)
+    let __loop_ret___mtshl_step_j_lex_4_1 : (Int64 × Array (Array Monomial)) := (_loop___mtshl_step_j_lex_4_ir forms_1 i_10 F_1 r_1)
     let forms_2 : Array (Array Monomial) := __loop_ret___mtshl_step_j_lex_4_1.snd
-    let product_F_1 : PolyZp := (_lambda___mtshl_step_j_lex_2_ir F r_1)
+    let product_F_1 : PolyZp := (_lambda___mtshl_step_j_lex_2_ir F_1 r_1)
     let error_1 : PolyZp := (aj - product_F_1)
     let error_2 : PolyZp := (MvPolyZp.normalization error_1)
-    let xj_minus_alpha_1 : PolyZp := (MvPolyZp.mk comp_ptr_2)
-    let m_xj_1 : Monomial := (Monomial.mk comp_ptr_2)
+    let xj_minus_alpha_1 : PolyZp := (MvPolyZp.mk comp_ptr_1)
+    let m_xj_1 : Monomial := (Monomial.mk comp_ptr_1)
     let m_xj_2 : Monomial := (Array.push m_xj_1 ((xj, (1 : Int32))))
     let xj_minus_alpha_2 : PolyZp := (Array.push xj_minus_alpha_1 ((m_xj_2, (Zp.ofInt ((1 : Int32)).toInt p))))
     if (alpha_j != (0 : Int32)) then
-      let m_const_1 : Monomial := (Monomial.mk comp_ptr_2)
+      let m_const_1 : Monomial := (Monomial.mk comp_ptr_1)
       let xj_minus_alpha_3 : PolyZp := (Array.push xj_minus_alpha_2 ((m_const_1, (- alpha_j))))
-      bb_26 comp_ptr_2 p aj xj F error_2 forms_2 F_base_2 F_base_up_5 alpha_j aux_vars ideal_alphas_zp is_j2_1 product_F_1 r_1 x1 xj_minus_alpha_3
+      bb_26 comp_ptr_1 p aj xj error_2 forms_2 F_1 F_base_2 F_base_up_5 alpha_j aux_vars ideal_alphas_zp is_j2_1 product_F_1 r_1 x1 xj_minus_alpha_3
     else
-      bb_26 comp_ptr_2 p aj xj F error_2 forms_2 F_base_2 F_base_up_5 alpha_j aux_vars ideal_alphas_zp is_j2_1 product_F_1 r_1 x1 xj_minus_alpha_2
+      bb_26 comp_ptr_1 p aj xj error_2 forms_2 F_1 F_base_2 F_base_up_5 alpha_j aux_vars ideal_alphas_zp is_j2_1 product_F_1 r_1 x1 xj_minus_alpha_2
   let comp_ptr_1 : Lex /- ref residual -/ := (MvPolyZp.comp aj)
   -- require (h_fits_int32): (((Array.size F) >= (-2147483648 : Int64)) && ((Array.size F) <= (2147483647 : Int64)))
   let r_1 : Int32 := (((Array.size F)).toUInt32.toInt32)
   let is_j2_1 : Bool := (Array.isEmpty aux_vars)
-  let __hoist_lam_0_1 := (_lambda___mtshl_step_j_lex_1_ir comp_ptr_1 p x1 comp_ptr_1 p x1)
-  let comp_ptr_2 : Lex /- ref residual -/ := __hoist_lam_0_1.snd
-  let lc_correct_1 := __hoist_lam_0_1.fst
+  let lc_correct_1 := (_lambda___mtshl_step_j_lex_1_ir comp_ptr_1 p x1)
   let i_1 : Int32 := (0 : Int32)
-  let __loop_ret___mtshl_step_j_lex_0_1 : Int64 := (_loop___mtshl_step_j_lex_0_ir i_1 F lc_tau r_1)
+  let __loop_ret___mtshl_step_j_lex_0_1 : (Int64 × Array MvPolyZp) := (_loop___mtshl_step_j_lex_0_ir F i_1 comp_ptr_1 lc_tau p r_1 x1)
+  let F_1 : Array MvPolyZp := __loop_ret___mtshl_step_j_lex_0_1.snd
   -- require (h_nonneg): (r_1 >= (0 : Int32))
-  let F_base_1 : Array PolyZp := (Array.replicate ((((r_1).toInt64.toUInt64)).toNat) (MvPolyZp.mk comp_ptr_2))
+  let F_base_1 : Array PolyZp := (Array.replicate ((((r_1).toInt64.toUInt64)).toNat) (MvPolyZp.mk comp_ptr_1))
   let i_4 : Int32 := (0 : Int32)
-  let __loop_ret___mtshl_step_j_lex_1_1 : (Int64 × Array PolyZp) := (_loop___mtshl_step_j_lex_1_ir F_base_1 i_4 F alpha_j r_1 xj)
+  let __loop_ret___mtshl_step_j_lex_1_1 : (Int64 × Array PolyZp) := (_loop___mtshl_step_j_lex_1_ir F_base_1 i_4 F_1 alpha_j r_1 xj)
   let F_base_2 : Array PolyZp := __loop_ret___mtshl_step_j_lex_1_1.snd
   let F_base_up_1 : Array SparsePolyZp := (#[])
   if is_j2_1 then
@@ -3315,9 +3320,9 @@ partial def __mtshl_step_j_lex_ir (aj : MvPolyZp) (F : Array MvPolyZp) (lc_tau :
     let i_7 : Int32 := (0 : Int32)
     let __loop_ret___mtshl_step_j_lex_2_1 : (Int64 × Array SparsePolyZp) := (_loop___mtshl_step_j_lex_2_ir F_base_up_2 i_7 F_base_2 r_1)
     let F_base_up_3 : Array SparsePolyZp := __loop_ret___mtshl_step_j_lex_2_1.snd
-    bb_11 r_1 F aj comp_ptr_2 xj p alpha_j F_base_2 aux_vars ideal_alphas_zp is_j2_1 x1 F_base_up_3
+    bb_11 r_1 F_1 aj comp_ptr_1 xj p alpha_j F_base_2 aux_vars ideal_alphas_zp is_j2_1 x1 F_base_up_3
   else
-    bb_11 r_1 F aj comp_ptr_2 xj p alpha_j F_base_2 aux_vars ideal_alphas_zp is_j2_1 x1 F_base_up_1
+    bb_11 r_1 F_1 aj comp_ptr_1 xj p alpha_j F_base_2 aux_vars ideal_alphas_zp is_j2_1 x1 F_base_up_1
 
 partial def _loop__lambda___mtshl_wmds_lex_1_0_ir (i_2 : Int32) (e_2 : PolyZp) (bi : Array PolyZp) (r : Int32) (result : Array MvPolyZp) : (Int64 × PolyZp) :=
   let bb_3 := fun i_2 bi r result e_3 =>

@@ -77,14 +77,22 @@ def _extract_cap_info(lifted: HIRFunc):
 
 
 def _build_alias_map(stmts: list[StmtIR]) -> dict[str, str]:
-    """递归扫描 stmts，找 LetStmt(var=X, value=Var("_lambda_<name>"))，建 alias→lambda 映射。"""
+    """递归扫描 stmts，找 LetStmt 把变量 alias 到 lifted lambda：
+       - `let X := Var("_lambda_...")` （Pass 3 无 capture lambda）
+       - `let X := Call("_lambda_...", [caps])` （Pass 3 F16 partial-app；alias 是
+         lambda 的"已绑定 caps 后"形态，但 alias→lambda_name 不变）
+    """
     out: dict[str, str] = {}
 
     def walk(ss: list[StmtIR]):
         for s in ss:
-            if isinstance(s, LetStmt) and isinstance(s.value, Var):
-                if s.value.name.startswith("_lambda_"):
-                    out[s.var.name] = s.value.name
+            if isinstance(s, LetStmt):
+                v = s.value
+                if isinstance(v, Var) and v.name.startswith("_lambda_"):
+                    out[s.var.name] = v.name
+                elif isinstance(v, Call) and isinstance(v.callee, str) \
+                        and v.callee.startswith("_lambda_"):
+                    out[s.var.name] = v.callee
             if isinstance(s, IfStmt):
                 walk(s.then_body); walk(s.else_body or [])
             elif isinstance(s, (WhileStmt, RangeForStmt, DoWhileStmt)):
@@ -275,6 +283,13 @@ def _hoist_lambda_call(expr: ExprIR,
     cap_names, ref_param_info = info
     if not ref_param_info:
         return None  # 无 is_ref 参数，无需 hoist
+
+    # 阶段 G-B 修复：跳过 Pass 3 F16 的 partial-app（args == caps only）。
+    # 这是 LetStmt(var=X, value=Call(lifted_lam, [caps])) 形态——不是真的
+    # lambda invocation，无需 hoist destructure。Pass 3b 误把它当 call
+    # 会 cap_args + real_args = 双倍 caps，下游类型错。
+    if len(real_args) == len(cap_names):
+        return None
 
     targets = _build_destructure_targets(ref_param_info, real_args)
     if targets is None:

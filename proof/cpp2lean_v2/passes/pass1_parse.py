@@ -265,7 +265,8 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         return NamedType("Factorization MvPolyZZ")
 
     if qt.startswith("lex_<"):
-        return NamedType("Lex")
+        # 用 MonomialOrder 而非 Lex 避免与 Mathlib `Lex` (Order.Synonym) 名冲突
+        return NamedType("MonomialOrder")
     if qt.startswith("grlex_<"):
         return NamedType("Grlex")
 

@@ -540,7 +540,8 @@ FUNC_MAP = {
     "upoly_prem": ("upoly_prem", "direct"),
     "polynomial_mod": ("polynomial_mod", "direct"),
     "cont": ("cont", "direct"),
-    "log": ("Nat.log", "direct"),
+    # C++ std::log(double) → Lean Float.log（自然对数；Float 内置）
+    "log": ("Float.log", "direct"),
     # C++ ceil(double) / floor(double) → 返回 Float（Lean 同名）
     "ceil": ("Float.ceil", "direct"),
     "floor": ("Float.floor", "direct"),

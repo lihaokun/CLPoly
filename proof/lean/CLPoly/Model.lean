@@ -8,6 +8,8 @@
 
 -- Model.lean 来自 v1 cpp2lean/clpoly_model.lean，借用其隐式变量风格。
 -- proof/lean lakefile 全局禁用 autoImplicit，本文件局部启用。
+-- 不 import Mathlib：Mathlib 的 `Nat.log` 与 cpp2lean Pass 5 emit 的 `Nat.log`
+-- 冲突（已弃用，改 emit `Float.log`）。需要的数学引理见 CLPoly.Math.Bigint。
 set_option autoImplicit true
 
 -- ============================================================
@@ -125,7 +127,7 @@ def divmod (f _g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
 
 -- 比较器：单变量多项式的单项式序（降幂排列）
 -- C++ `.comp()` 返回比较器（lex_<less> 类对象）；Lean 用 Unit 占位
--- (Lex = Unit abbrev 见 §5d，此处先用 Unit 避免 forward ref)
+-- (MonomialOrder = Unit abbrev 见 §5d，此处先用 Unit 避免 forward ref)
 def comp (_f : SparsePolyZp) : Unit := ()
 
 end SparsePolyZp
@@ -275,8 +277,9 @@ abbrev UniformIntDist := UInt64
 abbrev Poly := MvPolyZZ
 -- QQ: typedef rational — 用 Rat 占位（C++ 用任意精度有理数）
 abbrev QQ := Rat
--- Lex: 单项式序 tag —— 仅类型层占位
-abbrev Lex := Unit
+-- MonomialOrder: 单项式序 tag —— 仅类型层占位（C++ side `lex_<var_order>`）
+-- 命名避开 Mathlib `Lex` (Order.Synonym) 名冲突。
+abbrev MonomialOrder := Unit
 def polynomial_GCD [Inhabited α] (_a _b : α) : α := default
 -- 4-arg Bezout EEA 形式：(a, b, s_out, t_out) → (gcd, s, t)
 -- Pass 2b refret transform 把 ref-out 收成 tuple 返回，Pass 2b 同步 rename
@@ -307,9 +310,9 @@ def Array.findVal [BEq α] (a : Array α) (x : α) : Option α := a.find? (· ==
 -- comp 方法占位（已存在于 namespace SparsePolyZp 之内为 UInt64）；
 -- 补 SparsePolyZZ / MvPolyZp / MvPolyZZ
 -- C++ `Poly.comp()` 返回比较器对象（lex_<less>）而非 UInt64
-def SparsePolyZZ.comp (_f : SparsePolyZZ) : Lex := ()
-def MvPolyZp.comp (_f : MvPolyZp) : Lex := ()
-def MvPolyZZ.comp (_f : MvPolyZZ) : Lex := ()
+def SparsePolyZZ.comp (_f : SparsePolyZZ) : MonomialOrder := ()
+def MvPolyZp.comp (_f : MvPolyZp) : MonomialOrder := ()
+def MvPolyZZ.comp (_f : MvPolyZZ) : MonomialOrder := ()
 
 -- §5e. C++ 容器 mutate 占位 + degree typeclass
 -- ============================================================
@@ -451,25 +454,204 @@ def poly_convert3 {α β γ : Type} (_f : α) (target : β) (_ctx : γ) : β := 
 def ZASSENHAUS_THRESHOLD : Int32 := 8
 def __g_use_large_prime : Bool := false
 
--- ZZ.invert: 模逆元（C++ mpz_invert(result, op, mod) → 0/1 success）
--- 3 参数版：(out_dummy, num, mod) → Bool
-def ZZ.invert (_out _num _mod : ZZ) : Bool := true
+-- ZZ.invert: GMP `mpz_invert(out, num, mod)` → 模逆元，true 表存在。
+-- 数学定义：返回 inv 使得 num * inv ≡ 1 (mod mod)，仅当 gcd(num, mod) = 1。
+-- 退化：mod ≤ 1 → false（mod 0/1 域无意义）。
 
--- ZZ.fdiv_q / ZZ.fdiv_r: 向下取整除法（3 参数版：result, dividend, divisor → unit）
-def ZZ.fdiv_q (_out a b : ZZ) : ZZ := a / b
-def ZZ.fdiv_r (_out a b : ZZ) : ZZ := a % b
+-- 扩展欧几里得（Nat 版，well-founded on b）
+-- 返回 (g, x, y) 满足 (a : Int) * x + (b : Int) * y = g, g = gcd(a, b)
+-- x, y 用 Int 因可能为负
+-- spec proof: 见 CLPoly.Math.Bigint (Bezout)
+def Nat.extGcd (a b : Nat) : Nat × Int × Int :=
+  if h : b = 0 then (a, 1, 0)
+  else
+    let q := a / b
+    let r := a % b
+    let (g, x, y) := Nat.extGcd b r
+    (g, y, x - (q : Int) * y)
+termination_by b
+decreasing_by
+  exact Nat.mod_lt a (Nat.pos_of_ne_zero h)
+
+-- 内部计算：返回 (success, inv)
+-- spec proof: 见 CLPoly.Math.Bigint (invert_correct)
+def ZZ.invertImpl (a m : Int) : Bool × Int :=
+  if m ≤ 1 then (false, 0)
+  else
+    -- 把 a 折回 [0, m)
+    let am : Int := ((a % m) + m) % m
+    if am = 0 then (false, 0)
+    else
+      -- extGcd am.natAbs m.natAbs：返回 (g, x, y) 满足 am * x + m * y = g
+      -- 当 g = 1 时 am * x ≡ 1 (mod m)，即 x 是 am 的逆
+      let (g, x, _) := Nat.extGcd am.natAbs m.natAbs
+      if g = 1 then
+        let inv := ((x % m) + m) % m
+        (true, inv)
+      else
+        (false, 0)
+
+-- 公开签名（与 Pass 5 emit 一致）：返回 Bool。
+-- 当前 Pass 2b 不把 invert 当 ref-out 处理 → inv 没有写回 ref 参数（下游
+-- lc_inv 仍是 0）— 这是已知翻译 bug，待 Phase 2A.8 补 Pass 2b OUTPUT_PARAMS
+-- 后将签名改为 (Bool × ZZ) 返回。
+def ZZ.invert (_out num mod : ZZ) : Bool := (ZZ.invertImpl num mod).1
+
+-- #eval 数值验证
+#eval ZZ.invertImpl 3 7      -- (true, 5)：3 * 5 = 15 ≡ 1 mod 7
+#eval ZZ.invertImpl 2 4      -- (false, 0)：gcd(2, 4) = 2 ≠ 1
+#eval ZZ.invertImpl 5 13     -- (true, 8)：5 * 8 = 40 ≡ 1 mod 13
+#eval ZZ.invertImpl 7 13     -- (true, 2)：7 * 2 = 14 ≡ 1 mod 13
+#eval ZZ.invertImpl 0 5      -- (false, 0)
+#eval ZZ.invertImpl 1 5      -- (true, 1)
+
+-- ZZ.fdiv_q / ZZ.fdiv_r: 向下取整除法（floor division，对应 GMP mpz_fdiv_*）
+-- 数学定义：q = ⌊a/b⌋，r = a - b·q（即 b·q + r = a，0 ≤ r < |b| 当 b > 0）
+-- Lean stdlib 的 Int.fdiv / Int.fmod 即此语义；C++ 自带 `a / b` (即 Int.tdiv) 是
+-- 截断除法，对负被除数与 GMP 不一致，故必须用 fdiv/fmod。
+-- _out 参数：Pass 2 ref-elim 的"前一 SSA out 值"占位，未使用。
+def ZZ.fdiv_q (_out a b : ZZ) : ZZ := Int.fdiv a b
+def ZZ.fdiv_r (_out a b : ZZ) : ZZ := Int.fmod a b
+
+-- spec：除法恒等式 b·q + r = a（Lean stdlib 已证）
+theorem ZZ.fdiv_add_fmod (out a b : ZZ) :
+    b * ZZ.fdiv_q out a b + ZZ.fdiv_r out a b = a :=
+  Int.mul_fdiv_add_fmod a b
+
+-- spec：余数非负界（仅 b > 0）
+theorem ZZ.fdiv_r_nonneg (out a b : ZZ) (hb : 0 < b) :
+    0 ≤ ZZ.fdiv_r out a b :=
+  Int.fmod_nonneg_of_pos a hb
+
+theorem ZZ.fdiv_r_lt (out a b : ZZ) (hb : 0 < b) :
+    ZZ.fdiv_r out a b < b :=
+  Int.fmod_lt_of_pos a hb
+
+-- #eval 数值验证
+#eval ZZ.fdiv_q 0 7 2          -- 3
+#eval ZZ.fdiv_q 0 (-7) 2       -- -4 (floor, GMP 一致；非 -3)
+#eval ZZ.fdiv_r 0 7 2          -- 1
+#eval ZZ.fdiv_r 0 (-7) 2       -- 1 (在 [0, 2) 内)
 
 -- ZZ = Int alias 时 `(x : ZZ).toInt` 不合法（Int 没 .toInt）。
 -- Pass 5 cast_table 在某些 ZZ → Int 路径仍 emit `.toInt`；提供 identity 兜底。
 def Int.toInt (x : Int) : Int := x
 
--- C++ 数学/IO 内置占位（B2B 测试时细化语义）
--- C++ log(x : double) : double — 提供同名 Lean 占位（屏蔽 Mathlib Nat.log 名冲突）
-namespace Nat
-def log (_x : Float) : Float := 1.0
-end Nat
+-- C++ log(x : double) → Lean Float.log（自然对数；Float stdlib 内置，无需 def）
+-- cpp2lean Pass 5 已改 emit `Float.log` 直接调用；旧 `Nat.log` 占位被移除以避免
+-- 与 Mathlib `Nat.log : Nat → Nat → Nat` 名冲突。
+
+#eval Float.log (1.0 : Float)        -- 应为 0.0
+#eval Float.log (2.71828182845904523536 : Float)  -- 应接近 1.0
+#eval Float.log (10.0 : Float)       -- 应接近 2.302585...
+#eval Float.log (100.0 : Float)      -- 应接近 4.605170...
 def Int.toFloat (n : Int) : Float := Float.ofInt n
-def ZZ.sizeinbase (_z : ZZ) (_base : Int32) : UInt64 := 0
+
+-- ZZ.sizeinbase: GMP `mpz_sizeinbase(z, base)` — |z| 在 base 进制下的位数。
+-- 数学定义（base ≥ 2, z ≠ 0）：sizeinbase = ⌊log_base |z|⌋ + 1
+-- GMP 约定：z = 0 时返回 1。
+-- 退化 case（base ≤ 1）数学未定义；此处返回 1 兜底。
+--
+-- 不复用 Mathlib `Nat.log` 因为名字与 cpp2lean Pass 5 emit 冲突。本地实现 + 证明。
+
+-- 整数对数：最大 k 使得 b^k ≤ n（要求 b ≥ 2, n ≥ 1）
+-- 退化：b ≤ 1 或 n = 0 → 0
+def Nat.intLog (b n : Nat) : Nat :=
+  if h : 2 ≤ b ∧ b ≤ n then Nat.intLog b (n / b) + 1
+  else 0
+termination_by n
+decreasing_by
+  simp_wf
+  exact Nat.div_lt_self (by omega) (by omega)
+
+-- spec: b^(intLog b n) ≤ n （n ≥ 1, b ≥ 2 时）
+theorem Nat.pow_intLog_le {b n : Nat} (hb : 2 ≤ b) (hn : 0 < n) :
+    b ^ (Nat.intLog b n) ≤ n := by
+  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    rw [Nat.intLog]
+    by_cases h : 2 ≤ b ∧ b ≤ n
+    · simp [h]
+      have hbpos : 0 < b := by omega
+      have hpos_n : 0 < n := hn
+      have hdiv_lt : n / b < n := Nat.div_lt_self hpos_n h.1
+      have hdiv_pos : 0 < n / b := Nat.div_pos h.2 hbpos
+      have ih' : b ^ Nat.intLog b (n / b) ≤ n / b := ih (n / b) hdiv_lt hdiv_pos
+      calc b ^ (Nat.intLog b (n / b) + 1)
+          = b ^ Nat.intLog b (n / b) * b := by rw [Nat.pow_succ]
+        _ ≤ (n / b) * b := Nat.mul_le_mul_right b ih'
+        _ ≤ n := Nat.div_mul_le_self n b
+    · simp only [h, ↓reduceDIte, Nat.pow_zero]
+      -- b^0 = 1 ≤ n （由 0 < n 得）
+      exact hn
+
+-- spec: n < b^(intLog b n + 1) （b ≥ 2 时；n=0 也成立 因 0 < b）
+theorem Nat.lt_pow_succ_intLog {b n : Nat} (hb : 2 ≤ b) :
+    n < b ^ (Nat.intLog b n + 1) := by
+  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    rw [Nat.intLog]
+    by_cases h : 2 ≤ b ∧ b ≤ n
+    · simp [h]
+      have hbpos : 0 < b := by omega
+      have hpos : 0 < n := by omega
+      have hdiv_lt : n / b < n := Nat.div_lt_self hpos h.1
+      have ih' : n / b < b ^ (Nat.intLog b (n / b) + 1) := ih (n / b) hdiv_lt
+      -- n < (n / b + 1) * b （由 div_add_mod + mod_lt 得）
+      have hmod : n % b < b := Nat.mod_lt n hbpos
+      -- 注意 div_add_mod 是 b * (n/b) + n%b = n；交换乘法顺序
+      have hdivmod : (n / b) * b + n % b = n := by
+        rw [Nat.mul_comm]; exact Nat.div_add_mod n b
+      have hub : n < (n / b + 1) * b := by
+        rw [Nat.add_mul, Nat.one_mul]
+        omega
+      calc n < (n / b + 1) * b := hub
+        _ ≤ b ^ (Nat.intLog b (n / b) + 1) * b := Nat.mul_le_mul_right b ih'
+        _ = b ^ (Nat.intLog b (n / b) + 1 + 1) := (Nat.pow_succ b _).symm
+    · simp only [h, ↓reduceDIte, Nat.pow_succ, Nat.pow_zero, Nat.one_mul]
+      -- 目标 n < b。h ¬(2 ≤ b ∧ b ≤ n)，hb 2 ≤ b → ¬(b ≤ n) → n < b
+      exact Nat.lt_of_not_ge (fun hbn => h ⟨hb, hbn⟩)
+
+-- _nat 中间层：避开 UInt64 转换噪音（spec 都在 Nat 层）
+def ZZ.sizeinbase_nat (z : ZZ) (base : Nat) : Nat :=
+  if z.natAbs = 0 then 1
+  else Nat.intLog base z.natAbs + 1
+
+def ZZ.sizeinbase (z : ZZ) (base : Int32) : UInt64 :=
+  (ZZ.sizeinbase_nat z base.toInt64.toNatClampNeg).toUInt64
+
+-- spec 1: 总是 ≥ 1
+theorem ZZ.sizeinbase_nat_pos (z : ZZ) (b : Nat) :
+    1 ≤ ZZ.sizeinbase_nat z b := by
+  unfold ZZ.sizeinbase_nat
+  split <;> omega
+
+-- spec 2: 当 z ≠ 0 且 base ≥ 2，base^(sizeinbase - 1) ≤ |z|
+theorem ZZ.pow_pred_sizeinbase_nat_le {z : ZZ} {b : Nat}
+    (hz : z ≠ 0) (hb : 2 ≤ b) :
+    b ^ (ZZ.sizeinbase_nat z b - 1) ≤ z.natAbs := by
+  have hn : z.natAbs ≠ 0 := Int.natAbs_ne_zero.mpr hz
+  have hpos : 0 < z.natAbs := Nat.pos_of_ne_zero hn
+  unfold ZZ.sizeinbase_nat
+  simp [hn]
+  exact Nat.pow_intLog_le hb hpos
+
+-- spec 3: 当 z ≠ 0 且 base ≥ 2，|z| < base^sizeinbase
+theorem ZZ.lt_pow_sizeinbase_nat {z : ZZ} {b : Nat}
+    (hz : z ≠ 0) (hb : 2 ≤ b) :
+    z.natAbs < b ^ ZZ.sizeinbase_nat z b := by
+  have hn : z.natAbs ≠ 0 := Int.natAbs_ne_zero.mpr hz
+  unfold ZZ.sizeinbase_nat
+  simp [hn]
+  exact Nat.lt_pow_succ_intLog hb
+
+-- #eval 数值验证
+#eval ZZ.sizeinbase 0 2          -- 1
+#eval ZZ.sizeinbase 1 2          -- 1
+#eval ZZ.sizeinbase 2 2          -- 2
+#eval ZZ.sizeinbase 7 2          -- 3
+#eval ZZ.sizeinbase 8 2          -- 4
+#eval ZZ.sizeinbase (-100) 10    -- 3
 -- SparsePolyZZ.size_u64 见 §5c (abbrev 之后)
 -- QQ = Rat 的 .num / .den 别名（Pass 5 emit `QQ.num q`，需要显式 const）
 def QQ.num (q : QQ) : Int := Rat.num q
@@ -515,7 +697,24 @@ def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
 -- Lean 端：2-arg 版本（多变量主用），1-arg 用 leadcoeff1 区分
 def leadcoeff {α : Type} [Inhabited α] (_p : α) (_var : Variable) : α := default
 def leadcoeff1 {α : Type} [Inhabited α] (_p : α) : ZZ := 0
-def ZZ.fdiv_ui (_a : ZZ) (_b : UInt64) : ZZ := 0
+-- ZZ.fdiv_ui: GMP mpz_fdiv_ui(a, b) — 返回 a mod b 的非负残余（≤ b - 1）
+-- 数学定义：与 fdiv_r 相同语义，被除数同 fdiv_r；只是除数是 UInt64 而非 ZZ。
+-- C++ 调用点：clpoly::Zp(ZZ, prime) 用此把 ZZ 折回 Zp 域。
+def ZZ.fdiv_ui (a : ZZ) (b : UInt64) : ZZ := Int.fmod a (b.toNat : Int)
+
+-- spec：当 b > 0 时 fdiv_ui 落在 [0, b)
+theorem ZZ.fdiv_ui_nonneg (a : ZZ) (b : UInt64) (hb : (b.toNat : Int) > 0) :
+    0 ≤ ZZ.fdiv_ui a b :=
+  Int.fmod_nonneg_of_pos a hb
+
+theorem ZZ.fdiv_ui_lt (a : ZZ) (b : UInt64) (hb : (b.toNat : Int) > 0) :
+    ZZ.fdiv_ui a b < (b.toNat : Int) :=
+  Int.fmod_lt_of_pos a hb
+
+-- #eval 数值验证
+#eval ZZ.fdiv_ui 100 (7 : UInt64)     -- 2
+#eval ZZ.fdiv_ui (-1) (7 : UInt64)    -- 6
+#eval ZZ.fdiv_ui 0 (13 : UInt64)      -- 0
 -- StdMap.find / .end 返回 Iterator（C++ side iterator 语义）
 -- Lean 端 Iterator = Unit，find 与 end 比较等价于"成员存在"判断
 def StdMap.find {κ ν : Type} [BEq κ] [Inhabited ν] (_m : StdMap κ ν) (_k : κ) : Iterator := ()

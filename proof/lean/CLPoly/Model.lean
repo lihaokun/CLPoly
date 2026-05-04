@@ -386,13 +386,91 @@ def get_variables {α : Type} [GetVariables α] (a : α) : Array (Variable × In
 def MvPolyZZ.front! (f : MvPolyZZ) : (Monomial × Int) := f[0]!
 def MvPolyZp.front! (f : MvPolyZp) : (Monomial × Zp) := f[0]!
 
--- HMul / HAdd / HSub / HPow 等 Lean 类型类 stub（B2B 测试时细化）
-instance : HMul SparsePolyZp SparsePolyZp SparsePolyZp where
-  hMul a b := Array.append a b
+-- ============================================================
+-- §5d.1 SparsePolyZp 算术：真实多项式加减乘
+--
+-- 不变量（与 C++ upolynomial_<Zp> 一致）：
+--   1. 按 deg 降序排序
+--   2. 无重复 deg
+--   3. 无 0 系数
+-- 算法基于归并；spec 在 CLPoly.Math.Univariate（Mathlib Polynomial bridge）。
+-- ============================================================
+
+namespace SparsePolyZp
+
+-- 归并加：合并两个降序列表，同 deg 项相加，删 0
+-- termination_by: xs.length + ys.length 严格递减
+def mergeAdd : List (UMonomial × Zp) → List (UMonomial × Zp) → List (UMonomial × Zp)
+  | [], gs => gs
+  | f :: fs, [] => f :: fs
+  | f :: fs, g :: gs =>
+    if f.fst.deg > g.fst.deg then
+      f :: mergeAdd fs (g :: gs)
+    else if f.fst.deg < g.fst.deg then
+      g :: mergeAdd (f :: fs) gs
+    else
+      let s := f.snd + g.snd
+      if s.val = 0 then mergeAdd fs gs
+      else (f.fst, s) :: mergeAdd fs gs
+termination_by xs ys => xs.length + ys.length
+
+-- 加法：实现 +
+def addImpl (f g : SparsePolyZp) : SparsePolyZp :=
+  (mergeAdd f.toList g.toList).toArray
+
+-- 取负：每项系数取负
+def negImpl (f : SparsePolyZp) : SparsePolyZp :=
+  f.map (fun (m, c) => (m, -c))
+
+-- 减法：f + (-g)
+def subImpl (f g : SparsePolyZp) : SparsePolyZp :=
+  addImpl f (negImpl g)
+
+-- 标量乘 monomial：c * x^d * f
+def scaleByMonomial (m : UMonomial) (c : Zp) (f : SparsePolyZp) : SparsePolyZp :=
+  if c.val = 0 then #[]
+  else f.filterMap (fun (mf, cf) =>
+    let prod := c * cf
+    if prod.val = 0 then none
+    else some (UMonomial.mk (m.deg + mf.deg), prod))
+
+-- 乘法：朴素 O(n*m) 累加
+-- f * g = Σ_i (f[i].snd * x^f[i].fst) * g
+def mulImpl (f g : SparsePolyZp) : SparsePolyZp :=
+  f.foldl (fun acc (mf, cf) => addImpl acc (scaleByMonomial mf cf g)) #[]
+
+end SparsePolyZp
+
 instance : HAdd SparsePolyZp SparsePolyZp SparsePolyZp where
-  hAdd a b := Array.append a b
+  hAdd a b := SparsePolyZp.addImpl a b
 instance : HSub SparsePolyZp SparsePolyZp SparsePolyZp where
-  hSub a b := Array.append a b
+  hSub a b := SparsePolyZp.subImpl a b
+instance : Neg SparsePolyZp where
+  neg a := SparsePolyZp.negImpl a
+instance : HMul SparsePolyZp SparsePolyZp SparsePolyZp where
+  hMul a b := SparsePolyZp.mulImpl a b
+
+-- #eval 数值验证（手算）
+-- f = 2x^2 + 3x，g = x^2 + 4 (over F_7)
+-- f + g = 3x^2 + 3x + 4
+#eval (#[(⟨2⟩, Zp.ofInt 2 7), (⟨1⟩, Zp.ofInt 3 7)] : SparsePolyZp) +
+      (#[(⟨2⟩, Zp.ofInt 1 7), (⟨0⟩, Zp.ofInt 4 7)] : SparsePolyZp)
+-- 期望: #[(⟨2⟩, ⟨3, 7⟩), (⟨1⟩, ⟨3, 7⟩), (⟨0⟩, ⟨4, 7⟩)]
+
+-- f - f = 0（删空）
+#eval (#[(⟨2⟩, Zp.ofInt 2 7), (⟨1⟩, Zp.ofInt 3 7)] : SparsePolyZp) -
+      (#[(⟨2⟩, Zp.ofInt 2 7), (⟨1⟩, Zp.ofInt 3 7)] : SparsePolyZp)
+-- 期望: #[]
+
+-- (x + 1)(x - 1) = x^2 - 1 (over F_7)
+#eval (#[(⟨1⟩, Zp.ofInt 1 7), (⟨0⟩, Zp.ofInt 1 7)] : SparsePolyZp) *
+      (#[(⟨1⟩, Zp.ofInt 1 7), (⟨0⟩, Zp.ofInt (-1) 7)] : SparsePolyZp)
+-- 期望: #[(⟨2⟩, ⟨1, 7⟩), (⟨0⟩, ⟨6, 7⟩)] (因为 -1 ≡ 6 mod 7)
+
+-- f * 0 = 0
+#eval (#[(⟨2⟩, Zp.ofInt 2 7), (⟨1⟩, Zp.ofInt 3 7)] : SparsePolyZp) *
+      (#[] : SparsePolyZp)
+-- 期望: #[]
 -- 用具体 array element 类型避免 abbrev 透明度问题
 instance instHMulSparsePolyZZ :
     HMul (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where

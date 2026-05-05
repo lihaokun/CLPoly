@@ -300,12 +300,17 @@ instance (priority := 0) {α : Type} [Inhabited α] : HasPolyGCD α where
 instance (priority := 0) {α : Type} [Inhabited α] : HasPolyDivmod α where
   polyDivmod _ _ := (default, default)
 
--- 4-arg Bezout EEA 形式：(a, b, s_out, t_out) → (gcd, s, t)
--- 留 stub（真实 EEA for SparsePolyZp 是 phase 2A.10）
--- Pass 2b refret transform 把 ref-out 收成 tuple 返回，Pass 2b 同步 rename
--- callee → polynomial_GCD_eea（避免与 2-arg 版本签名冲突）
-def polynomial_GCD_eea [Inhabited α] (_a _b _s _t : α) : α × α × α :=
-  (default, default, default)
+-- 4-arg Bezout EEA 形式：(a, b, s_out, t_out) → (gcd, s, t) 满足 a*s + b*t = g
+-- typeclass dispatch；SparsePolyZp 特化在 SparsePolyZp.gcd / divmod 之后注册
+class HasPolyGCDEEA (α : Type) where
+  polyGCDEEA : α → α → α × α × α
+
+def polynomial_GCD_eea {α : Type} [HasPolyGCDEEA α]
+    (a b _s_old _t_old : α) : α × α × α :=
+  HasPolyGCDEEA.polyGCDEEA a b
+
+instance (priority := 0) {α : Type} [Inhabited α] : HasPolyGCDEEA α where
+  polyGCDEEA _ _ := (default, default, default)
 
 -- Array.insert: C++ STL set::insert / vec.push_back 的占位（push 到末尾）
 def Array.insert (a : Array α) (v : α) : Array α := a.push v
@@ -500,6 +505,26 @@ partial def gcd (f g : SparsePolyZp) : SparsePolyZp :=
   if g.isEmpty then f
   else gcd g (divmod f g).snd
 
+-- 扩展欧几里得：返回 (g, s, t) 满足 a*s + b*t = g
+-- 类比 Nat.extGcd：
+--   if b = 0 then (a, 1, 0)
+--   else (q, r) := divmod a b
+--        (g, s', t') := extGcd b r
+--        a*t' + b*(s' - q*t') = g
+partial def extGcd (a b : SparsePolyZp) : SparsePolyZp × SparsePolyZp × SparsePolyZp :=
+  if b.isEmpty then
+    if a.isEmpty then (#[], #[], #[])
+    else
+      let p := a[0]!.snd.prime
+      let one_poly : SparsePolyZp := #[(⟨0⟩, Zp.ofUInt64 1 p)]
+      (a, one_poly, #[])
+  else
+    let (q, r) := divmod a b
+    let (g, s', t') := extGcd b r
+    -- a*t' + b*(s' - q*t') = g
+    let new_t := s' - q * t'
+    (g, t', new_t)
+
 end SparsePolyZp
 
 -- SparsePolyZp 特化 instance（高优先级，覆盖兜底 default）
@@ -508,6 +533,9 @@ instance : HasPolyGCD SparsePolyZp where
 
 instance : HasPolyDivmod SparsePolyZp where
   polyDivmod := SparsePolyZp.divmod
+
+instance : HasPolyGCDEEA SparsePolyZp where
+  polyGCDEEA := SparsePolyZp.extGcd
 
 -- #eval 数值验证（小例 over F_5）
 -- (x^2 - 1) / (x - 1) = x + 1, remainder 0
@@ -583,8 +611,12 @@ instance : HSub MvPolyZp MvPolyZp MvPolyZp where hSub a b := a ++ b
 class HasDerivative (α : Type) where
   derivative : α → α
 
-instance : HasDerivative SparsePolyZp where derivative f := f
-instance : HasDerivative SparsePolyZZ where derivative f := f
+-- HasDerivative SparsePolyZp 真实实现已在 §4 namespace SparsePolyZp（line ~108）
+-- 但 typeclass instance 还要绑定到那个 def
+instance : HasDerivative SparsePolyZp where derivative := SparsePolyZp.derivative
+
+-- HasDerivative SparsePolyZZ 真实实现移到 abbrev SparsePolyZZ 之后（见下文）
+instance : HasDerivative SparsePolyZZ where derivative f := f  -- 占位，覆盖见下方
 instance : HasDerivative MvPolyZZ where derivative f := f
 instance : HasDerivative MvPolyZp where derivative f := f
 
@@ -874,7 +906,10 @@ def rd {α : Type} [Inhabited α] (_ : α) : α := default
 
 -- 阶段 G-E：补 corpus 还需要的 stub 占位
 def MvPolyZp.size_u64 (f : MvPolyZp) : UInt64 := (Array.size f).toUInt64
+-- 真实 SparsePolyZZ.normalization：按 deg 降序、合并同 deg、剔零
+-- 注意：abbrev SparsePolyZZ 在 line 936，本 def 移到 abbrev 之后实现（见下文）
 def SparsePolyZZ.normalization (f : SparsePolyZZ) : SparsePolyZZ := f
+-- 真实实现见下方 abbrev SparsePolyZZ 之后
 -- Array.range_init: 多 arity overload，C++ 写法 `iota(arr.begin(), arr.end(), start)`
 -- Pass 5 emit 通常是 (arr, start) 2-arg；arr 决定大小，start 是初值
 def Array.range_init {α : Type} (a : Array α) (_start : Int32) : Array Int32 :=
@@ -990,12 +1025,47 @@ def SparsePolyZZ.ppImpl (f : SparsePolyZZ) : SparsePolyZZ :=
 instance : HasCont SparsePolyZZ where cont := SparsePolyZZ.contImpl
 instance : HasPP SparsePolyZZ where pp := SparsePolyZZ.ppImpl
 
+-- §5c.cont SparsePolyZZ 真实 derivative + normalization（abbrev 之后才能用 Array API）
+def SparsePolyZZ.derivativeImpl (f : SparsePolyZZ) : SparsePolyZZ :=
+  f.filterMap (fun term =>
+    if term.fst.deg = 0 then none
+    else
+      let new_c : Int := term.snd * term.fst.deg
+      if new_c = 0 then none
+      else some (⟨term.fst.deg - 1⟩, new_c))
+
+instance : HasDerivative SparsePolyZZ where
+  derivative := SparsePolyZZ.derivativeImpl
+
+-- normalization：按 deg 降序、合并同 deg、剔零
+def SparsePolyZZ.normalizationImpl (f : SparsePolyZZ) : SparsePolyZZ :=
+  -- step 1: group by deg, summing coefs (O(n²) but simple)
+  let grouped : SparsePolyZZ := f.foldl (fun acc term =>
+    match acc.findIdx? (fun t => t.fst.deg = term.fst.deg) with
+    | some idx => acc.modify idx (fun (m, c) => (m, c + term.snd))
+    | none => acc.push term) #[]
+  -- step 2: drop zero coefficients
+  let nonZero : SparsePolyZZ := grouped.filter (fun t => t.snd ≠ 0)
+  -- step 3: sort descending by deg
+  nonZero.qsort (fun a b => a.fst.deg > b.fst.deg)
+
 -- polynomial_mod: SparsePolyZZ + p → SparsePolyZp
 -- 数学定义：每个系数 mod p（用 Zp.ofInt 折回 [0, p)），剔除 0 系数
 def polynomial_mod (f : SparsePolyZZ) (p : UInt64) : SparsePolyZp :=
   f.filterMap (fun term =>
     let zp := Zp.ofInt term.snd p
     if zp.val = 0 then none else some (term.fst, zp))
+
+-- #eval 验证 derivative + normalization
+-- d/dx (3x² + 5x + 7) = 6x + 5
+#eval (SparsePolyZZ.derivativeImpl
+  (#[(⟨2⟩, (3 : Int)), (⟨1⟩, (5 : Int)), (⟨0⟩, (7 : Int))] : SparsePolyZZ))
+-- 期望: #[(1, 6), (0, 5)]
+
+-- normalization: [(0,1), (2,3), (1,2), (2,4)] → [(2,7), (1,2), (0,1)]
+#eval (SparsePolyZZ.normalizationImpl
+  (#[(⟨0⟩, (1 : Int)), (⟨2⟩, (3 : Int)), (⟨1⟩, (2 : Int)), (⟨2⟩, (4 : Int))] : SparsePolyZZ))
+-- 期望: #[(2, 7), (1, 2), (0, 1)]
 
 -- #eval 验证：(2x² + 3x + 5) mod 5 = 2x² + 3x （5 mod 5 = 0 剔除）
 #eval polynomial_mod

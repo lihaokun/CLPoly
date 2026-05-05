@@ -387,17 +387,183 @@ theorem SparsePolyZp.toPoly_sub (p : Nat) (h2p : 2 * p ≤ UInt64.size)
   ring
 
 -- ============================================================
+-- §7c. WellFormed 在加减下保持
+-- ============================================================
+
+-- mergeAdd 保持 AllReduced（核心：归纳 + case5 输出新 Zp 仍是 Reduced）
+theorem mergeAdd_AllReduced (p : Nat) (xs ys : List (UMonomial × Zp)) :
+    SparsePolyZp.AllReduced p xs → SparsePolyZp.AllReduced p ys →
+    SparsePolyZp.AllReduced p (SparsePolyZp.mergeAdd xs ys) := by
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys =>
+    intro _ hys
+    rw [SparsePolyZp.mergeAdd]
+    exact hys
+  | case2 f fs =>
+    intro hfs _
+    rw [SparsePolyZp.mergeAdd]
+    exact hfs
+  | case3 f fs g gs hgt ih =>
+    intro hxs hys
+    have hxs' : SparsePolyZp.AllReduced p fs :=
+      fun y hy => hxs y (List.mem_cons_of_mem _ hy)
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+        f :: SparsePolyZp.mergeAdd fs (g :: gs) := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_pos hgt]
+    rw [h_eq]
+    intro x hx
+    simp only [List.mem_cons] at hx
+    rcases hx with hx_eq | hx_in
+    · rw [hx_eq]; exact hxs f List.mem_cons_self
+    · exact ih hxs' hys x hx_in
+  | case4 f fs g gs hngt hlt ih =>
+    intro hxs hys
+    have hys' : SparsePolyZp.AllReduced p gs :=
+      fun y hy => hys y (List.mem_cons_of_mem _ hy)
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+        g :: SparsePolyZp.mergeAdd (f :: fs) gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_pos hlt]
+    rw [h_eq]
+    intro x hx
+    simp only [List.mem_cons] at hx
+    rcases hx with hx_eq | hx_in
+    · rw [hx_eq]; exact hys g List.mem_cons_self
+    · exact ih hxs hys' x hx_in
+  | case5 f fs g gs hngt hnlt s heq_zero ih =>
+    intro hxs hys
+    have hxs' : SparsePolyZp.AllReduced p fs :=
+      fun y hy => hxs y (List.mem_cons_of_mem _ hy)
+    have hys' : SparsePolyZp.AllReduced p gs :=
+      fun y hy => hys y (List.mem_cons_of_mem _ hy)
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) = SparsePolyZp.mergeAdd fs gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_neg hnlt]; exact if_pos heq_zero
+    rw [h_eq]
+    exact ih hxs' hys'
+  | case6 f fs g gs hngt hnlt s heq_nonzero ih =>
+    intro hxs hys
+    have hxs' : SparsePolyZp.AllReduced p fs :=
+      fun y hy => hxs y (List.mem_cons_of_mem _ hy)
+    have hys' : SparsePolyZp.AllReduced p gs :=
+      fun y hy => hys y (List.mem_cons_of_mem _ hy)
+    have hf_red : Zp.Reduced p f.snd := hxs f List.mem_cons_self
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+        (f.fst, f.snd + g.snd) :: SparsePolyZp.mergeAdd fs gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_neg hnlt]; exact if_neg heq_nonzero
+    rw [h_eq]
+    intro x hx
+    simp only [List.mem_cons] at hx
+    rcases hx with hx_eq | hx_in
+    · rw [hx_eq]
+      -- 新元素 (f.fst, f.snd + g.snd) 是 Reduced p
+      refine ⟨?_, ?_⟩
+      · show f.snd.prime.toNat = p
+        exact hf_red.1
+      · show ((f.snd.val + g.snd.val) % f.snd.prime).toNat < p
+        rw [UInt64.toNat_mod, hf_red.1]
+        have : 0 < p := lt_of_le_of_lt (Nat.zero_le _) hf_red.2
+        exact Nat.mod_lt _ this
+    · exact ih hxs' hys' x hx_in
+
+theorem SparsePolyZp.WellFormed_arr.add (p : Nat) (f g : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
+    SparsePolyZp.WellFormed_arr p (f + g) := by
+  -- f + g = addImpl f g = (mergeAdd f.toList g.toList).toArray
+  -- (f + g).toList = mergeAdd f.toList g.toList
+  show SparsePolyZp.AllReduced p (SparsePolyZp.addImpl f g).toList
+  unfold SparsePolyZp.addImpl
+  -- (List.toArray l).toList = l 由 simp 自动得
+  have h : (SparsePolyZp.mergeAdd f.toList g.toList).toArray.toList =
+           SparsePolyZp.mergeAdd f.toList g.toList := by simp
+  rw [h]
+  exact mergeAdd_AllReduced p f.toList g.toList hf hg
+
+theorem SparsePolyZp.WellFormed_arr.sub (p : Nat) (f g : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
+    SparsePolyZp.WellFormed_arr p (f - g) := by
+  -- f - g = addImpl f (negImpl g)
+  show SparsePolyZp.AllReduced p (SparsePolyZp.subImpl f g).toList
+  unfold SparsePolyZp.subImpl
+  show SparsePolyZp.AllReduced p (SparsePolyZp.addImpl f (SparsePolyZp.negImpl g)).toList
+  -- 由 WellFormed_arr.neg 得 negImpl g 是 WF；再用 add 保持性
+  have hg_neg : SparsePolyZp.WellFormed_arr p (-g) :=
+    SparsePolyZp.WellFormed_arr.neg p g hg
+  -- (-g) = negImpl g 定义上相等
+  have h_eq : (-g : SparsePolyZp) = SparsePolyZp.negImpl g := rfl
+  rw [h_eq] at hg_neg
+  -- 此时 hg_neg : WellFormed_arr p (negImpl g)
+  -- 转 WellFormed.add
+  show SparsePolyZp.AllReduced p
+      ((SparsePolyZp.addImpl f (SparsePolyZp.negImpl g)) : SparsePolyZp).toList
+  -- f + (negImpl g) 当成 WellFormed.add 应用
+  have h_add : SparsePolyZp.WellFormed_arr p (f + SparsePolyZp.negImpl g) :=
+    SparsePolyZp.WellFormed_arr.add p f (SparsePolyZp.negImpl g) hf hg_neg
+  -- f + (negImpl g) = addImpl f (negImpl g)
+  exact h_add
+
+-- ============================================================
+-- §7d. Ring 公理（加法部分）via toPoly bridge
+-- 这些定理把 SparsePolyZp 加法的 ring 公理 reduce 到 Polynomial 已有的 ring 公理。
+-- 形式：toPoly p (LHS) = toPoly p (RHS)（不直接 Array 等式；后者需 toPoly_inj）
+-- ============================================================
+
+-- 加法交换律
+theorem SparsePolyZp.add_comm_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+    (f g : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
+    SparsePolyZp.toPoly p (f + g) = SparsePolyZp.toPoly p (g + f) := by
+  rw [SparsePolyZp.toPoly_add p h2p f g hf hg, SparsePolyZp.toPoly_add p h2p g f hg hf]
+  ring
+
+-- 加法结合律
+theorem SparsePolyZp.add_assoc_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+    (f g h : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f)
+    (hg : SparsePolyZp.WellFormed_arr p g)
+    (hh : SparsePolyZp.WellFormed_arr p h) :
+    SparsePolyZp.toPoly p ((f + g) + h) = SparsePolyZp.toPoly p (f + (g + h)) := by
+  have hfg := SparsePolyZp.WellFormed_arr.add p f g hf hg
+  have hgh := SparsePolyZp.WellFormed_arr.add p g h hg hh
+  rw [SparsePolyZp.toPoly_add p h2p _ _ hfg hh,
+      SparsePolyZp.toPoly_add p h2p f g hf hg,
+      SparsePolyZp.toPoly_add p h2p f _ hf hgh,
+      SparsePolyZp.toPoly_add p h2p g h hg hh]
+  ring
+
+-- 零元（左/右）：toPoly p (0 + f) = toPoly p f, toPoly p (f + 0) = toPoly p f
+-- 注意：0 在 SparsePolyZp 是 #[]（OfNat instance），WellFormed_arr p 0 trivially holds.
+theorem SparsePolyZp.zero_add_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+    (f : SparsePolyZp) (hf : SparsePolyZp.WellFormed_arr p f) :
+    SparsePolyZp.toPoly p (0 + f) = SparsePolyZp.toPoly p f := by
+  have h0 : SparsePolyZp.WellFormed_arr p (0 : SparsePolyZp) := by
+    intro x hx
+    simp [show (0 : SparsePolyZp) = #[] from rfl] at hx
+  rw [SparsePolyZp.toPoly_add p h2p _ _ h0 hf]
+  show SparsePolyZp.toPoly p (#[] : SparsePolyZp) + _ = _
+  rw [SparsePolyZp.toPoly_empty]
+  ring
+
+-- 加法逆元：toPoly p (f - f) = 0
+theorem SparsePolyZp.sub_self_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+    (f : SparsePolyZp) (hf : SparsePolyZp.WellFormed_arr p f) :
+    SparsePolyZp.toPoly p (f - f) = 0 := by
+  rw [SparsePolyZp.toPoly_sub p h2p f f hf hf]
+  ring
+
+-- ============================================================
 -- §8. 数值验证（Mathlib decidable 通过）
 -- ============================================================
 --
--- 余下工作（未在本 commit 完成）：
--- - listSum_filterMap_scale: scaleByMonomial 在列表层同态
--- - toPoly_scaleByMonomial: scaleByMonomial 在 Array 层同态
--- - listSum_foldl_addImpl 或类似：foldl 与 addImpl 的关系
--- - toPoly_mul: 乘法 polynomial 同态（从 scale + foldl 推）
--- - WellFormed_arr.add/mul 保持性
--- - toPoly_inj_canonical（要求 canonical form）
--- - ring 公理 via toPoly bridge（add_comm/assoc, mul_comm/assoc, distrib）
+-- 余下工作（未在本 commit 完成；难度递增）：
+-- - listSum_filterMap_scale + toPoly_scaleByMonomial（标量乘法同态）
+-- - WellFormed_arr.scaleByMonomial 保持性
+-- - toPoly_mul（foldl 分配律 — 最复杂）
+-- - WellFormed_arr.mul 保持性
+-- - 乘法相关 ring 公理（mul_comm/_assoc, distrib）via toPoly bridge
+-- - toPoly_inj_canonical（用于反推 Array 等式 spec）
 -- ============================================================
 
 -- Zp 7 的 0 → ZMod 7 的 0

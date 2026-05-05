@@ -746,11 +746,27 @@ def derivative {α : Type} [HasDerivative α] (a : α) : α := HasDerivative.der
 -- squarefreefactorize 占位（多变量 ZZ 默认；其他实例需要时再加）
 def squarefreefactorize (f : MvPolyZZ) : Array (MvPolyZZ × UInt64) := #[(f, 1)]
 
--- poly_convert: 跨域多项式系数转换占位（C++ 模板函数）
--- 2-arg 版本（C++ side `poly_convert(p, target)`）
-def poly_convert {α β : Type} (_f : α) (target : β) : β := target
--- 3-arg 版本（C++ side `poly_convert(p, target, ctx)`，ctx 是某 lex/var 标识）
-def poly_convert3 {α β γ : Type} (_f : α) (target : β) (_ctx : γ) : β := target
+-- poly_convert: 跨域多项式转换 typeclass dispatch
+class HasPolyConvert (α β : Type) where
+  convert : α → β → β
+
+class HasPolyConvert3 (α β γ : Type) where
+  convert3 : α → β → γ → β
+
+-- 通用兜底：返回 target 不变
+instance (priority := 0) {α β : Type} : HasPolyConvert α β where
+  convert _ target := target
+
+instance (priority := 0) {α β γ : Type} : HasPolyConvert3 α β γ where
+  convert3 _ target _ := target
+
+def poly_convert {α β : Type} [HasPolyConvert α β] (f : α) (target : β) : β :=
+  HasPolyConvert.convert f target
+
+def poly_convert3 {α β γ : Type} [HasPolyConvert3 α β γ] (f : α) (target : β) (ctx : γ) : β :=
+  HasPolyConvert3.convert3 f target ctx
+
+-- 具体实例（特化高优先级覆盖兜底）见 §5c 末尾（abbrev SparsePolyZZ 之后）
 
 -- SparsePolyZZ 的 OfNat 0 实例：见 §5c（abbrev 定义之后）
 
@@ -999,7 +1015,18 @@ def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
 -- leadcoeff: 1-arg / 2-arg overload (Pass 5 emit 都用同一名)
 -- 1-arg `leadcoeff p` 返回 ZZ；2-arg `leadcoeff p var` 返回 Poly
 -- Lean 端：2-arg 版本（多变量主用），1-arg 用 leadcoeff1 区分
-def leadcoeff {α : Type} [Inhabited α] (_p : α) (_var : Variable) : α := default
+-- leadcoeff (2-arg): 关于 var 的首项系数（剥离 var 后的剩余多项式）
+class HasLeadcoeff (α : Type) where
+  leadcoeffImpl : α → Variable → α
+
+-- 通用兜底：返回 default
+instance (priority := 0) {α : Type} [Inhabited α] : HasLeadcoeff α where
+  leadcoeffImpl _ _ := default
+
+def leadcoeff {α : Type} [HasLeadcoeff α] (p : α) (var : Variable) : α :=
+  HasLeadcoeff.leadcoeffImpl p var
+
+-- MvPoly 实例见 §5c 末尾（abbrev 之后）
 def leadcoeff1 {α : Type} [Inhabited α] (_p : α) : ZZ := 0
 -- ZZ.fdiv_ui: GMP mpz_fdiv_ui(a, b) — 返回 a mod b 的非负残余（≤ b - 1）
 -- 数学定义：与 fdiv_r 相同语义，被除数同 fdiv_r；只是除数是 UInt64 而非 ZZ。
@@ -1361,6 +1388,64 @@ instance (priority := 0) {α β : Type} : HasAssign2 α β where
 def assign2 {α : Type} (poly : α) (eval_point : StdMap Variable ZZ)
     [HasAssign2 α ZZ] : α :=
   HasAssign2.assign2Impl poly eval_point
+
+-- §5e. leadcoeff (2-arg) / poly_convert / poly_convert3 具体实例
+-- 这些实例必须在 abbrev MvPolyZZ/MvPolyZp/SparsePolyZZ 之后定义
+
+-- 工具：取 mono 中关于 var 的 exp（缺失视作 0）
+def Monomial.expOf (m : Monomial) (var : Variable) : Int64 :=
+  match m.find? (fun e => e.fst == var) with
+  | some e => e.snd
+  | none => 0
+
+-- 工具：strip mono 中的 var 条目
+def Monomial.dropVar (m : Monomial) (var : Variable) : Monomial :=
+  m.filter (fun e => e.fst != var)
+
+-- leadcoeff(p, var)：找 var 的最大 exp，收集这些项，剥离 var
+instance : HasLeadcoeff MvPolyZZ where
+  leadcoeffImpl (f : MvPolyZZ) (var : Variable) :=
+    let exps : Array Int64 := f.map (fun t => Monomial.expOf t.fst var)
+    let maxExp : Int64 := exps.foldl (fun acc e => if e > acc then e else acc) 0
+    let lc : MvPolyZZ := f.filterMap (fun (m, c) =>
+      if Monomial.expOf m var = maxExp then some (Monomial.dropVar m var, c) else none)
+    MvPolyZZ.normalization lc
+
+instance : HasLeadcoeff MvPolyZp where
+  leadcoeffImpl (f : MvPolyZp) (var : Variable) :=
+    let exps : Array Int64 := f.map (fun t => Monomial.expOf t.fst var)
+    let maxExp : Int64 := exps.foldl (fun acc e => if e > acc then e else acc) 0
+    let lc : MvPolyZp := f.filterMap (fun (m, c) =>
+      if Monomial.expOf m var = maxExp then some (Monomial.dropVar m var, c) else none)
+    MvPolyZp.normalization lc
+
+-- SparsePolyZp → SparsePolyZZ: Zp.val.toInt → Int（Hensel 升提用）
+instance : HasPolyConvert SparsePolyZp SparsePolyZZ where
+  convert (f : SparsePolyZp) (_target : SparsePolyZZ) : SparsePolyZZ :=
+    f.map (fun (m, c) => (m, (c.val.toNat : Int)))
+
+-- MvPolyZp → SparsePolyZp: 投影到单变量（假设 mono 仅含一个 var 条目）
+instance : HasPolyConvert MvPolyZp SparsePolyZp where
+  convert (f : MvPolyZp) (_target : SparsePolyZp) : SparsePolyZp :=
+    SparsePolyZp.normalization (f.map (fun (m, c) =>
+      let deg : Nat := if h : 0 < m.size then m[0].snd.toNatClampNeg else 0
+      (⟨deg⟩, c)))
+
+-- SparsePolyZp + var → MvPolyZp: 单变量提升到多变量
+instance : HasPolyConvert3 SparsePolyZp MvPolyZp Variable where
+  convert3 (f : SparsePolyZp) (_target : MvPolyZp) (var : Variable) : MvPolyZp :=
+    f.map (fun (umono, c) =>
+      let deg64 : Int64 := (umono.deg : Int64)
+      let mono : Monomial := if deg64 = 0 then #[] else #[(var, deg64)]
+      (mono, c))
+
+-- SparsePolyZZ + var → MvPolyZZ: 同上对 ZZ
+instance : HasPolyConvert3 SparsePolyZZ MvPolyZZ Variable where
+  convert3 (f : SparsePolyZZ) (_target : MvPolyZZ) (var : Variable) : MvPolyZZ :=
+    f.map (fun (umono, c) =>
+      let deg64 : Int64 := (umono.deg : Int64)
+      let mono : Monomial := if deg64 = 0 then #[] else #[(var, deg64)]
+      (mono, c))
 
 -- ============================================================
 -- §6. 验证测试

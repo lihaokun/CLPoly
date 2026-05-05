@@ -266,3 +266,50 @@ HGCD 给出常数因子加速（~1.5x），但有效指数 α ≈ 2.0（与 Eucl
 - [ ] 算法文档：补充各模块采用的算法描述和参考文献
 - [ ] 示例代码：在 `examples/` 目录添加典型用例
 - [ ] 性能指南：记录各操作的复杂度和适用场景
+
+## Lean 形式化验证 / B2B 测试
+
+### L1 实现模型 stub 完成（`proof/lean/CLPoly/Model.lean`）
+
+L1 实现模型现在 0 sorry、`lake build` 3071/3071 全绿。Phase 2A–E 全部完成：
+
+- [x] **Phase 2A.0** `Nat.log` → `Float.log`（Pass 5 emit 修正，避免 Mathlib 冲突）
+- [x] **Phase 2A.1** `ZZ.fdiv_q/r/ui` 实现 + spec proof
+- [x] **Phase 2A.2** `ZZ.sizeinbase` 实现 + spec proof
+- [x] **Phase 2A.3** `ZZ.invert` 扩展欧几里得 + Bezout proof
+- [x] **Phase 2A.4a** SparsePolyZp 加/减/乘实现 + Mathlib `Polynomial (ZMod p)` bridge 基础
+- [x] **Phase 2A.4b** `Zp.toZMod_add/_neg/_mul` + `toPoly_add/_neg/_sub` + `WellFormed.add/sub/neg` + 加法部分 ring 公理
+- [x] **Phase 2A.5** SparsePolyZp.divmod 长除法（仅 impl）
+- [x] **Phase 2A.6** SparsePolyZp.gcd 欧几里得（仅 impl）
+- [x] **Phase 2A.7** `cont/pp` 实现（仅 impl）
+- [x] **Phase 2A.8** `polynomial_GCD/_eea`/`pair_vec_div(5)`/`polynomial_mod` typeclass dispatch
+- [x] **Phase 2A.9** `ZZ.invert` 签名修复（`class_map` OUTPUT_PARAMS + Pass 2b destructure + corpus 重生）
+- [x] **Phase A.1** `polynomial_GCD_eea`（SparsePolyZp 扩展欧几里得）
+- [x] **Phase A.2** SparsePolyZZ `derivative`/`normalization`/`leadcoeff1`
+- [x] **Phase B** Pass 3 vestigial artifacts 调研 + 清理（`compute_theta`/`upzp_coeff`/`next_p`/`all_div`/`rd`）
+- [x] **Phase C** `MonomialOrder` 结构化（避开 Mathlib `Lex` 冲突）+ MvPoly 算术
+- [x] **Phase D** MvPoly typeclass 实例
+- [x] **Phase E** 多变量高阶函数：`assign` / `assign2` / `leadcoeff` (2-arg) / `squarefreefactorize` (stub) / `poly_convert` / `poly_convert3`
+
+#### 已知债务
+
+- [ ] **Phase 2A.4c** （DEFERRED）：SparsePolyZp 乘法的 ring 公理证明 + canonical injection（`Impl/Types.lean` 还有 2 个 sorry：`toPoly ≠ 0` + 度数匹配）
+- [ ] **squarefreefactorize MvPoly** 仍是 `#[(f, 1)]` 占位（Yun's algorithm 太大，按设计跳过）
+
+### B2B 语义测试覆盖（`proof/b2b/`）
+
+框架已搭好（C++ driver、Lean driver via interpreter、NDJSON 协议、runner/diff），但向量极少。当前仅 5 例：`__make_zp` 4 例 + `_pipeline_smoke` 1 例。
+
+需按 Phase 顺序补向量。建议从底向上：
+
+- [ ] **B2B-Zp**：Zp 算术（`add`/`sub`/`mul`/`neg`/`inv`/`pow`/`ofInt`/`ofUInt64`）
+- [ ] **B2B-ZZ**：`fdiv_q/r/ui`、`sizeinbase`、`invert`（含 `Bool × ZZ` 返回）、`gcd`/`lcm`
+- [ ] **B2B-SparsePolyZp**：`add`/`sub`/`mul`/`divmod`/`gcd`/`gcd_eea`/`derivative`/`normalization`
+- [ ] **B2B-SparsePolyZZ**：`derivative`/`normalization`/`cont`/`pp`/`polynomial_mod`
+- [ ] **B2B-MvPoly**：`assign`/`assign2`/`leadcoeff` (2-arg)/`poly_convert`/`poly_convert3`
+- [ ] **B2B-Bezout**：`Nat.extGcd`（spec 验证）
+
+### cpp2lean 翻译器后续
+
+- [ ] L2 与 L1 的精化证明（"L1 行为与 L2 算法一致"）
+- [ ] Pass 视图层进一步扩展（current: Pass 1-7 + 2b ref-elim）

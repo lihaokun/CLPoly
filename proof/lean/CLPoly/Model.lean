@@ -228,6 +228,49 @@ abbrev Variable := UInt64
 abbrev Monomial := Array (Variable × Int64)
 -- MvMonomial 与 Monomial 同义（Pass 1 不同 context 偶尔产生 MvMonomial 别名）
 abbrev MvMonomial := Monomial
+
+-- §3a Monomial 比较 / normalize（lex order，与 C++ lex_<less> 一致）
+namespace Monomial
+
+-- 规范化：合并同 var 项 + 按 var id 升序 + 剔除 exp = 0
+def normalize (m : Monomial) : Monomial :=
+  let grouped : Monomial := m.foldl (fun acc (v, e) =>
+    match acc.findIdx? (fun t => t.fst == v) with
+    | some idx => acc.modify idx (fun (v', e') => (v', e' + e))
+    | none => acc.push (v, e)) #[]
+  let nonZero : Monomial := grouped.filter (fun (_, e) => e ≠ 0)
+  nonZero.qsort (fun a b => a.fst < b.fst)
+
+-- Monomial 乘法：exp 相加（合并同 var）
+def mul (m1 m2 : Monomial) : Monomial :=
+  Monomial.normalize (m1 ++ m2)
+
+-- Lex 比较 (small var id = high priority)
+-- 假设输入已 normalize（按 var id 升序、无 0 exp）
+partial def ltAux : List (Variable × Int64) → List (Variable × Int64) → Bool
+  | [], [] => false
+  | [], _ :: _ => true   -- m1 = 0 < m2 在该 var 上 > 0
+  | _ :: _, [] => false  -- m1 > m2
+  | (v1, e1) :: rest1, (v2, e2) :: rest2 =>
+    if v1 == v2 then
+      if e1 == e2 then ltAux rest1 rest2
+      else e1 < e2
+    else if v1 < v2 then
+      false  -- m1 在更小 var 上有 > 0 exp，m2 那位 = 0 → m1 > m2
+    else
+      true   -- 反之
+
+def lt (m1 m2 : Monomial) : Bool :=
+  Monomial.ltAux m1.toList m2.toList
+
+def eq (m1 m2 : Monomial) : Bool :=
+  m1 == m2
+
+-- 总度数（所有 exp 之和的 toNat）
+def totalDeg (m : Monomial) : Nat :=
+  m.foldl (fun acc (_, e) => acc + e.toNatClampNeg) 0
+
+end Monomial
 def Monomial.empty : Monomial := #[]
 -- Pass 5 把 C++ 多种 1-arg Monomial 构造（comp_ptr / element 等）都映射到 .mk；
 -- 用泛型 input 统一占位（Variable×Int64 输入仍可隐式 Coe）
@@ -241,14 +284,29 @@ abbrev PolyZp := MvPolyZp
 abbrev PolyZZ := MvPolyZZ
 abbrev PolyQQ := Array (Monomial × Rat)
 
--- MvPolyZp 操作（stub；实际语义留 Pass 上游 / B2B 测试细化）
-def MvPolyZp.normalization (f : MvPolyZp) : MvPolyZp := f
+-- §3b MvPoly normalize：normalize 每个 monomial、合并同 monomial、排序
+-- MvPolyZp normalization
+def MvPolyZp.normalization (f : MvPolyZp) : MvPolyZp :=
+  let normMonos : MvPolyZp := f.map (fun (m, c) => (Monomial.normalize m, c))
+  let grouped : MvPolyZp := normMonos.foldl (fun acc term =>
+    match acc.findIdx? (fun t => Monomial.eq t.fst term.fst) with
+    | some idx => acc.modify idx (fun (m, c) => (m, c + term.snd))
+    | none => acc.push term) #[]
+  let nonZero := grouped.filter (fun t => t.snd.val ≠ 0)
+  nonZero.qsort (fun a b => Monomial.lt b.fst a.fst)
 def MvPolyZZ.empty : MvPolyZZ := #[]
 def MvPolyZp.empty : MvPolyZp := #[]
 -- C++ 的 Poly(comp_t) / Poly(const Poly&) ctor 都映射到 .mk；
 -- 用泛型 input → 空 Poly 占位（语义在 B2B 层细化）
 def MvPolyZp.mk {α : Type} (_ : α) : MvPolyZp := #[]
-def MvPolyZZ.normalization (f : MvPolyZZ) : MvPolyZZ := f
+def MvPolyZZ.normalization (f : MvPolyZZ) : MvPolyZZ :=
+  let normMonos : MvPolyZZ := f.map (fun (m, c) => (Monomial.normalize m, c))
+  let grouped : MvPolyZZ := normMonos.foldl (fun acc term =>
+    match acc.findIdx? (fun t => Monomial.eq t.fst term.fst) with
+    | some idx => acc.modify idx (fun (m, c) => (m, c + term.snd))
+    | none => acc.push term) #[]
+  let nonZero := grouped.filter (fun t => t.snd ≠ 0)
+  nonZero.qsort (fun a b => Monomial.lt b.fst a.fst)
 def MvPolyZZ.mk {α : Type} (_ : α) : MvPolyZZ := #[]
 -- 通用 stub（与 SparsePolyZZ 解耦，无前向引用）
 def __write__ (_old : α) (new : α) : α := new
@@ -373,8 +431,16 @@ def Array.sort {α : Type} (a : Array α) (_cmp : α → α → Bool) : Array α
 class HasDegree (α : Type) where
   degree : α → UInt64
 
-instance : HasDegree MvPolyZZ where degree _ := 0
-instance : HasDegree MvPolyZp where degree _ := 0
+-- HasDegree MvPoly：取所有 monomial 的 max total degree
+instance : HasDegree MvPolyZZ where
+  degree (f : MvPolyZZ) : UInt64 :=
+    f.foldl (fun acc (mono, _) =>
+      max acc (Monomial.totalDeg mono).toUInt64) 0
+
+instance : HasDegree MvPolyZp where
+  degree (f : MvPolyZp) : UInt64 :=
+    f.foldl (fun acc (mono, _) =>
+      max acc (Monomial.totalDeg mono).toUInt64) 0
 -- SparsePolyZZ HasDegree instance 在 abbrev 后再加（见 §5c）
 
 def degree {α : Type} [HasDegree α] (a : α) : UInt64 := HasDegree.degree a
@@ -386,8 +452,14 @@ def degree2 {α : Type} [HasDegree α] (a : α) (_var : Variable) : Int64 :=
 class IsNumber (α : Type) where
   isNumber : α → Bool
 
-instance : IsNumber MvPolyZZ where isNumber f := (f : Array _).isEmpty
-instance : IsNumber MvPolyZp where isNumber f := (f : Array _).isEmpty
+-- IsNumber：常数多项式（空 / 单项 0 度 / 所有 monomial 都为空）
+instance : IsNumber MvPolyZZ where
+  isNumber (f : MvPolyZZ) : Bool :=
+    f.all (fun (mono, _) => mono.all (fun (_, e) => e = 0))
+
+instance : IsNumber MvPolyZp where
+  isNumber (f : MvPolyZp) : Bool :=
+    f.all (fun (mono, _) => mono.all (fun (_, e) => e = 0))
 -- SparsePolyZZ instance 在其 abbrev 之后再定义（见 §5c）
 
 def is_number {α : Type} [IsNumber α] (a : α) : Bool := IsNumber.isNumber a
@@ -395,8 +467,22 @@ def is_number {α : Type} [IsNumber α] (a : α) : Bool := IsNumber.isNumber a
 class GetVariables (α : Type) where
   vars : α → Array (Variable × Int64)
 
-instance : GetVariables MvPolyZZ where vars _ := #[]
-instance : GetVariables MvPolyZp where vars _ := #[]
+-- GetVariables：收集 f 中出现的所有 (var, max_exp) 对（去重）
+instance : GetVariables MvPolyZZ where
+  vars (f : MvPolyZZ) : Array (Variable × Int64) :=
+    f.foldl (fun acc (mono, _) =>
+      mono.foldl (fun a (v, e) =>
+        match a.findIdx? (fun t => t.fst == v) with
+        | some idx => a.modify idx (fun (v', e') => (v', max e' e))
+        | none => a.push (v, e)) acc) #[]
+
+instance : GetVariables MvPolyZp where
+  vars (f : MvPolyZp) : Array (Variable × Int64) :=
+    f.foldl (fun acc (mono, _) =>
+      mono.foldl (fun a (v, e) =>
+        match a.findIdx? (fun t => t.fst == v) with
+        | some idx => a.modify idx (fun (v', e') => (v', max e' e))
+        | none => a.push (v, e)) acc) #[]
 
 def get_variables {α : Type} [GetVariables α] (a : α) : Array (Variable × Int64) :=
   GetVariables.vars a
@@ -600,12 +686,47 @@ instance : HPow ZZ Int64 ZZ where hPow base e := base ^ e.toNatClampNeg
 -- HShiftLeft Int UInt64：C++ side `1 << bits` 等
 instance : HShiftLeft Int UInt64 Int where hShiftLeft a b := a <<< b.toNat
 instance : HShiftLeft Int Int Int where hShiftLeft a b := a <<< b.toNat
-instance : HMul MvPolyZZ MvPolyZZ MvPolyZZ where hMul a b := a ++ b
-instance : HAdd MvPolyZZ MvPolyZZ MvPolyZZ where hAdd a b := a ++ b
-instance : HSub MvPolyZZ MvPolyZZ MvPolyZZ where hSub a b := a ++ b
-instance : HMul MvPolyZp MvPolyZp MvPolyZp where hMul a b := a ++ b
-instance : HAdd MvPolyZp MvPolyZp MvPolyZp where hAdd a b := a ++ b
-instance : HSub MvPolyZp MvPolyZp MvPolyZp where hSub a b := a ++ b
+-- MvPoly 算术：append 后 normalize（merge 同 monomial、排序、剔零）
+-- MvPolyZZ
+def MvPolyZZ.addImpl (f g : MvPolyZZ) : MvPolyZZ :=
+  MvPolyZZ.normalization (f ++ g)
+
+def MvPolyZZ.negImpl (f : MvPolyZZ) : MvPolyZZ :=
+  f.map (fun (m, c) => (m, -c))
+
+def MvPolyZZ.subImpl (f g : MvPolyZZ) : MvPolyZZ :=
+  MvPolyZZ.addImpl f (MvPolyZZ.negImpl g)
+
+def MvPolyZZ.mulImpl (f g : MvPolyZZ) : MvPolyZZ :=
+  let prods : MvPolyZZ := f.foldl (fun acc (mf, cf) =>
+    g.foldl (fun a (mg, cg) =>
+      a.push (Monomial.mul mf mg, cf * cg)) acc) #[]
+  MvPolyZZ.normalization prods
+
+-- MvPolyZp
+def MvPolyZp.addImpl (f g : MvPolyZp) : MvPolyZp :=
+  MvPolyZp.normalization (f ++ g)
+
+def MvPolyZp.negImpl (f : MvPolyZp) : MvPolyZp :=
+  f.map (fun (m, c) => (m, -c))
+
+def MvPolyZp.subImpl (f g : MvPolyZp) : MvPolyZp :=
+  MvPolyZp.addImpl f (MvPolyZp.negImpl g)
+
+def MvPolyZp.mulImpl (f g : MvPolyZp) : MvPolyZp :=
+  let prods : MvPolyZp := f.foldl (fun acc (mf, cf) =>
+    g.foldl (fun a (mg, cg) =>
+      a.push (Monomial.mul mf mg, cf * cg)) acc) #[]
+  MvPolyZp.normalization prods
+
+instance : HMul MvPolyZZ MvPolyZZ MvPolyZZ where hMul := MvPolyZZ.mulImpl
+instance : HAdd MvPolyZZ MvPolyZZ MvPolyZZ where hAdd := MvPolyZZ.addImpl
+instance : HSub MvPolyZZ MvPolyZZ MvPolyZZ where hSub := MvPolyZZ.subImpl
+instance : Neg MvPolyZZ where neg := MvPolyZZ.negImpl
+instance : HMul MvPolyZp MvPolyZp MvPolyZp where hMul := MvPolyZp.mulImpl
+instance : HAdd MvPolyZp MvPolyZp MvPolyZp where hAdd := MvPolyZp.addImpl
+instance : HSub MvPolyZp MvPolyZp MvPolyZp where hSub := MvPolyZp.subImpl
+instance : Neg MvPolyZp where neg := MvPolyZp.negImpl
 
 -- derivative typeclass：C++ free function `derivative(poly)` 对所有 poly 类型多态
 class HasDerivative (α : Type) where
@@ -1088,7 +1209,32 @@ def polynomial_mod (f : SparsePolyZZ) (p : UInt64) : SparsePolyZp :=
 
 -- 阶段 F 后续：依赖 SparsePolyZZ 的 stub（LLLMatrix.size 见 abbrev 之后）
 -- get_first_deg: 多变量 / 单变量两态。Lean 端泛型占位（语义层 B2B 细化）
-def get_first_deg {α : Type} (_f : α) : Int64 := 0
+-- get_first_deg：典型用法是取多变量首项关于第一个变量的 deg
+-- 对 MvPoly：f.front!.fst.front!.snd（首单项的首变量 exp）
+-- 对其他类型：兜底 0
+class HasFirstDeg (α : Type) where
+  firstDeg : α → Int64
+
+instance : HasFirstDeg MvPolyZZ where
+  firstDeg (f : MvPolyZZ) : Int64 :=
+    if f.isEmpty then 0
+    else
+      let mono := f[0]!.fst
+      if mono.isEmpty then 0
+      else mono[0]!.snd
+
+instance : HasFirstDeg MvPolyZp where
+  firstDeg (f : MvPolyZp) : Int64 :=
+    if f.isEmpty then 0
+    else
+      let mono := f[0]!.fst
+      if mono.isEmpty then 0
+      else mono[0]!.snd
+
+instance (priority := 0) {α : Type} : HasFirstDeg α where
+  firstDeg _ := 0
+
+def get_first_deg {α : Type} [HasFirstDeg α] (f : α) : Int64 := HasFirstDeg.firstDeg f
 
 -- get_deg: 泛型化（C++ side 多模板实例化共用同一 Lean 实现）
 -- 适用 SparsePolyZZ / SparsePolyZp 两种容器（结构相同：Array (UMonomial × _)）
@@ -1158,10 +1304,63 @@ structure WangLcResult where
 deriving Inhabited
 
 -- assign：多项式变量代入 poly[var := val]
--- C++ assign(poly, var, val) = 用 val 替代 poly 中的变量 var
-opaque assign (poly : α) (var : Variable) (val : β) : α := poly
+-- typeclass dispatch：MvPolyZp + Zp 真实实现，其他类型兜底
+class HasAssign (α β : Type) where
+  assignImpl : α → Variable → β → α
+
+-- MvPolyZp + Zp: 真实 substitution + normalize
+instance : HasAssign MvPolyZp Zp where
+  assignImpl (f : MvPolyZp) (var : Variable) (val : Zp) : MvPolyZp :=
+    let p := val.prime
+    let one_zp : Zp := Zp.ofUInt64 1 p
+    let substituted : MvPolyZp := f.map (fun (mono, c) =>
+      let acc0 : Monomial × Zp := (#[], one_zp)
+      let result := mono.foldl (fun (acc : Monomial × Zp) (entry : Variable × Int64) =>
+        if entry.fst == var then
+          (acc.fst, acc.snd * (val ^ entry.snd.toNatClampNeg))
+        else
+          (acc.fst.push entry, acc.snd)) acc0
+      (result.fst, c * result.snd))
+    MvPolyZp.normalization substituted
+
+-- MvPolyZZ + ZZ: 真实 substitution + normalize
+instance : HasAssign MvPolyZZ ZZ where
+  assignImpl (f : MvPolyZZ) (var : Variable) (val : ZZ) : MvPolyZZ :=
+    let substituted : MvPolyZZ := f.map (fun (mono, c) =>
+      let acc0 : Monomial × ZZ := (#[], (1 : Int))
+      let result := mono.foldl (fun (acc : Monomial × ZZ) (entry : Variable × Int64) =>
+        if entry.fst == var then
+          (acc.fst, acc.snd * (val ^ entry.snd.toNatClampNeg))
+        else
+          (acc.fst.push entry, acc.snd)) acc0
+      (result.fst, c * result.snd))
+    MvPolyZZ.normalization substituted
+
+-- 通用兜底（identity）
+instance (priority := 0) {α β : Type} : HasAssign α β where
+  assignImpl p _ _ := p
+
+def assign {α β : Type} [HasAssign α β] (poly : α) (var : Variable) (val : β) : α :=
+  HasAssign.assignImpl poly var val
+
 -- 2-arg overload：assign(poly, eval_point) 用 map 一次性代入多个变量
-def assign2 {α : Type} (poly : α) (_eval_point : StdMap Variable ZZ) : α := poly
+class HasAssign2 (α β : Type) where
+  assign2Impl : α → StdMap Variable β → α
+
+instance : HasAssign2 MvPolyZZ ZZ where
+  assign2Impl (poly : MvPolyZZ) (eval : StdMap Variable ZZ) : MvPolyZZ :=
+    eval.foldl (fun acc (v, val) => HasAssign.assignImpl acc v val) poly
+
+instance : HasAssign2 MvPolyZp Zp where
+  assign2Impl (poly : MvPolyZp) (eval : StdMap Variable Zp) : MvPolyZp :=
+    eval.foldl (fun acc (v, val) => HasAssign.assignImpl acc v val) poly
+
+instance (priority := 0) {α β : Type} : HasAssign2 α β where
+  assign2Impl p _ := p
+
+def assign2 {α : Type} (poly : α) (eval_point : StdMap Variable ZZ)
+    [HasAssign2 α ZZ] : α :=
+  HasAssign2.assign2Impl poly eval_point
 
 -- ============================================================
 -- §6. 验证测试

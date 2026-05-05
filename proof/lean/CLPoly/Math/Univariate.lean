@@ -255,7 +255,44 @@ theorem listSum_mergeAdd (p : Nat)
     ring
 
 -- ============================================================
--- §7. SparsePolyZp.WellFormed_arr：Array 版本 + toPoly_add
+-- §6b. Zp.toZMod 在 neg / mul 下的 homomorphism
+-- ============================================================
+
+-- Zp 取负对应 ZMod 取负（前提：a.prime = p，a.val ≤ a.prime 不下溢）
+theorem Zp.toZMod_neg (p : Nat) (a : Zp) (ha : a.prime.toNat = p)
+    (hred : a.val.toNat < p) :
+    Zp.toZMod p (-a) = -Zp.toZMod p a := by
+  show Zp.toZMod p ⟨(a.prime - a.val) % a.prime, a.prime⟩ = -Zp.toZMod p a
+  unfold Zp.toZMod
+  -- (a.prime - a.val).toNat = p - a.val.toNat（由 a.val ≤ a.prime 不下溢）
+  have h_le : a.val ≤ a.prime := by
+    rw [show a.val ≤ a.prime ↔ a.val.toNat ≤ a.prime.toNat from UInt64.le_iff_toNat_le]
+    omega
+  have h_sub : (a.prime - a.val).toNat = a.prime.toNat - a.val.toNat :=
+    UInt64.toNat_sub_of_le _ _ h_le
+  rw [UInt64.toNat_mod, h_sub, ha]
+  -- 目标：((p - a.val.toNat) % p : ZMod p) = -↑a.val.toNat
+  rw [ZMod.natCast_mod]
+  -- (p - n : Nat) % p = p - n when n < p, else 0; 直接计算
+  -- ↑(p - a.val.toNat) = ↑p - ↑a.val.toNat (in ZMod p)
+  -- ↑p = 0
+  rw [Nat.cast_sub (by omega : a.val.toNat ≤ p)]
+  rw [ZMod.natCast_self, zero_sub]
+
+-- Zp 乘法对应 ZMod 乘法（前提：a.prime = b.prime = p，无溢出 p^2 ≤ UInt64.size）
+theorem Zp.toZMod_mul (p : Nat) (a b : Zp)
+    (ha : a.prime.toNat = p) (_hb : b.prime.toNat = p)
+    (hno : a.val.toNat * b.val.toNat < UInt64.size) :
+    Zp.toZMod p (a * b) = Zp.toZMod p a * Zp.toZMod p b := by
+  show Zp.toZMod p ⟨(a.val * b.val) % a.prime, a.prime⟩ = _
+  unfold Zp.toZMod
+  rw [UInt64.toNat_mod, UInt64.toNat_mul, Nat.mod_eq_of_lt hno, ha]
+  rw [ZMod.natCast_mod]
+  push_cast
+  rfl
+
+-- ============================================================
+-- §7. SparsePolyZp.WellFormed_arr：Array 版本 + toPoly_add/_neg/_sub/_mul
 -- ============================================================
 
 -- Array 版本（包装 toList）
@@ -267,17 +304,100 @@ theorem SparsePolyZp.toPoly_add (p : Nat) (h2p : 2 * p ≤ UInt64.size)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
     SparsePolyZp.toPoly p (f + g) = SparsePolyZp.toPoly p f + SparsePolyZp.toPoly p g := by
-  -- f + g 通过 addImpl 实现，addImpl = (mergeAdd f.toList g.toList).toArray
   show listSum p (SparsePolyZp.addImpl f g).toList = listSum p f.toList + listSum p g.toList
   have h_toList : (SparsePolyZp.addImpl f g).toList = SparsePolyZp.mergeAdd f.toList g.toList := by
     unfold SparsePolyZp.addImpl
-    -- (List.toArray l).toList = l 由 simp 自动证
     simp
   rw [h_toList]
   exact listSum_mergeAdd p h2p f.toList g.toList hf hg
 
+-- listSum_map_neg: 取负在列表上的同态
+theorem listSum_map_neg (p : Nat) (xs : List (UMonomial × Zp))
+    (hxs : SparsePolyZp.AllReduced p xs) :
+    listSum p (xs.map (fun (m, c) => (m, -c))) = -listSum p xs := by
+  induction xs with
+  | nil => simp
+  | cons x xs ih =>
+    rcases x with ⟨m, c⟩
+    have hc_red : Zp.Reduced p c := hxs (m, c) List.mem_cons_self
+    have hxs' : SparsePolyZp.AllReduced p xs := fun y hy => hxs y (List.mem_cons_of_mem _ hy)
+    simp only [List.map_cons, listSum_cons]
+    rw [ih hxs', Zp.toZMod_neg p c hc_red.1 hc_red.2]
+    rw [Polynomial.monomial_neg]
+    ring
+
+-- toPoly_neg: 取负的 polynomial 同态
+theorem SparsePolyZp.toPoly_neg (p : Nat) (f : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) :
+    SparsePolyZp.toPoly p (-f) = -SparsePolyZp.toPoly p f := by
+  show listSum p (SparsePolyZp.negImpl f).toList = -listSum p f.toList
+  unfold SparsePolyZp.negImpl
+  -- (f.map g).toList = f.toList.map g
+  rw [Array.toList_map]
+  exact listSum_map_neg p f.toList hf
+
+-- toPoly_sub: 由 toPoly_add + toPoly_neg 推
+-- WellFormed_arr 在 negImpl 下需保持（neg 不影响 prime）
+theorem SparsePolyZp.WellFormed_arr.neg (p : Nat) (f : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) :
+    SparsePolyZp.WellFormed_arr p (-f) := by
+  intro x hx
+  show Zp.Reduced p x.snd
+  -- (-f) = SparsePolyZp.negImpl f = f.map (fun (m, c) => (m, -c))
+  -- toList 后用 List.mem_map 解构成员关系
+  simp only [SparsePolyZp.WellFormed_arr, Neg.neg, SparsePolyZp.negImpl,
+             Array.toList_map, List.mem_map] at hx
+  rcases hx with ⟨y, hy_mem, hy_eq⟩
+  have hy_red : Zp.Reduced p y.snd := hf y hy_mem
+  rw [← hy_eq]
+  refine ⟨?_, ?_⟩
+  · show y.snd.prime.toNat = p
+    exact hy_red.1
+  · show ((y.snd.prime - y.snd.val) % y.snd.prime).toNat < p
+    rw [UInt64.toNat_mod]
+    have hp_eq : y.snd.prime.toNat = p := hy_red.1
+    have hp_pos : 0 < p := by
+      have := hy_red.2  -- y.snd.val.toNat < p
+      omega
+    rw [hp_eq]
+    exact Nat.mod_lt _ hp_pos
+
+theorem SparsePolyZp.toPoly_sub (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+    (f g : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
+    SparsePolyZp.toPoly p (f - g) = SparsePolyZp.toPoly p f - SparsePolyZp.toPoly p g := by
+  -- f - g = subImpl f g = addImpl f (negImpl g)
+  show listSum p (SparsePolyZp.subImpl f g).toList = listSum p f.toList - listSum p g.toList
+  unfold SparsePolyZp.subImpl
+  -- 转 toPoly 后用 add + neg
+  have h1 : listSum p (SparsePolyZp.addImpl f (SparsePolyZp.negImpl g)).toList =
+      listSum p f.toList + listSum p (SparsePolyZp.negImpl g).toList := by
+    have hg_neg : SparsePolyZp.WellFormed_arr p (-g) :=
+      SparsePolyZp.WellFormed_arr.neg p g hg
+    have h_toList : (SparsePolyZp.addImpl f (SparsePolyZp.negImpl g)).toList =
+        SparsePolyZp.mergeAdd f.toList (SparsePolyZp.negImpl g).toList := by
+      unfold SparsePolyZp.addImpl; simp
+    rw [h_toList]
+    exact listSum_mergeAdd p h2p f.toList (SparsePolyZp.negImpl g).toList hf hg_neg
+  rw [h1]
+  -- listSum p (negImpl g).toList = -listSum p g.toList
+  unfold SparsePolyZp.negImpl
+  rw [Array.toList_map]
+  rw [listSum_map_neg p g.toList hg]
+  ring
+
 -- ============================================================
 -- §8. 数值验证（Mathlib decidable 通过）
+-- ============================================================
+--
+-- 余下工作（未在本 commit 完成）：
+-- - listSum_filterMap_scale: scaleByMonomial 在列表层同态
+-- - toPoly_scaleByMonomial: scaleByMonomial 在 Array 层同态
+-- - listSum_foldl_addImpl 或类似：foldl 与 addImpl 的关系
+-- - toPoly_mul: 乘法 polynomial 同态（从 scale + foldl 推）
+-- - WellFormed_arr.add/mul 保持性
+-- - toPoly_inj_canonical（要求 canonical form）
+-- - ring 公理 via toPoly bridge（add_comm/assoc, mul_comm/assoc, distrib）
 -- ============================================================
 
 -- Zp 7 的 0 → ZMod 7 的 0

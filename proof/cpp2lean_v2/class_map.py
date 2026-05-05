@@ -724,6 +724,10 @@ TRANSLATION_SCOPE_OUTPUT_PARAMS = {
     "pair_vec_div#5": [0, 1],            # (new_v&, R&, v1, v2, comp)（basic.hh:698）
     "fdiv_r": [0],                       # r（ZZ.hh:810）
     "fdiv_q": [0],                       # q（ZZ.hh:731）
+    # ZZ.invert: 模逆元，bool 返回成功与否 + 写到 out 的 inv 值
+    # Pass 2b 把 out 当 ref-out → 返回 (Bool, ZZ) tuple，Pass 2b destructure
+    "invert": [0],                       # out (inv 值)
+    "ZZ.invert": [0],                    # 同上（Pass 5 已重命名后再次匹配）
     "swap#2": [0, 1],                    # std::swap 双向（mu/M 行交换）。
                                          # `#2` 区分 interval.hh 的 1-arg 成员 swap
     # polynomial_GCD 4-arg Bezout 形式：return GCD + 修改 s, t (Bezout coefficients)
@@ -768,6 +772,8 @@ TRANSLATION_SCOPE_NONVOID_REFOUT: set[str] = {
     "__mtshl_wmds",             # bool
     "__mtshl_step_j",           # bool
     "polynomial_GCD#4",         # polynomial_<ZZ,...>
+    "invert",                   # bool（ZZ::invert 返回 success bit）
+    "ZZ.invert",                # 同上（Pass 5 重命名后形式）
 }
 
 

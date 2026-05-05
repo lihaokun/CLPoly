@@ -115,15 +115,7 @@ def derivative (f : SparsePolyZp) : SparsePolyZp :=
       if m.deg == 0 then none
       else some (⟨m.deg - 1⟩, ⟨c.val * m.deg.toUInt64 % p, p⟩))
 
--- GCD：欧几里得算法（需要多项式除法，暂用简化版）
--- 完整实现需要 divmod，此处仅供背靠背测试框架编译
-partial def gcd (f g : SparsePolyZp) : SparsePolyZp :=
-  if g.isEmpty then f else gcd g (f)  -- TODO: 需要 poly mod
-
--- 多项式除法：f = q * g + r
--- 完整实现需要逐项消去，暂返回 (f, #[])
-def divmod (f _g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
-  (f, #[])  -- TODO: 实现多项式长除法
+-- divmod / gcd 实现移到 §5d.1 之后（需要 SparsePolyZp 算术 instance 已注册）
 
 -- 比较器：单变量多项式的单项式序（降幂排列）
 -- C++ `.comp()` 返回比较器（lex_<less> 类对象）；Lean 用 Unit 占位
@@ -280,18 +272,40 @@ abbrev QQ := Rat
 -- MonomialOrder: 单项式序 tag —— 仅类型层占位（C++ side `lex_<var_order>`）
 -- 命名避开 Mathlib `Lex` (Order.Synonym) 名冲突。
 abbrev MonomialOrder := Unit
-def polynomial_GCD [Inhabited α] (_a _b : α) : α := default
+-- §5d.0 多项式 GCD / divmod typeclass dispatch
+-- 通用兜底（Inhabited α）+ SparsePolyZp 特化（在 SparsePolyZp.gcd / divmod 之后注册）
+class HasPolyGCD (α : Type) where
+  polyGCD : α → α → α
+
+class HasPolyDivmod (α : Type) where
+  polyDivmod : α → α → α × α
+
+-- Generic dispatch（与 cpp2lean Pass 5 emit 一致）
+def polynomial_GCD {α : Type} [HasPolyGCD α] (a b : α) : α := HasPolyGCD.polyGCD a b
+
+-- 4-arg pair_vec_div: (q_out, v1, v2, comp) → q（C++ basic.hh:568）
+def pair_vec_div {α : Type} [HasPolyDivmod α] {β : Type}
+    (_q_out v1 v2 : α) (_comp : β) : α :=
+  (HasPolyDivmod.polyDivmod v1 v2).fst
+
+-- 5-arg pair_vec_div5: (q_out, r_out, v1, v2, comp) → (q, r)（C++ basic.hh:698）
+def pair_vec_div5 {α : Type} [HasPolyDivmod α] {β : Type}
+    (_q_out _r_out v1 v2 : α) (_comp : β) : α × α :=
+  HasPolyDivmod.polyDivmod v1 v2
+
+-- 兜底 instance（任意 Inhabited 类型 → default）
+instance (priority := 0) {α : Type} [Inhabited α] : HasPolyGCD α where
+  polyGCD _ _ := default
+
+instance (priority := 0) {α : Type} [Inhabited α] : HasPolyDivmod α where
+  polyDivmod _ _ := (default, default)
+
 -- 4-arg Bezout EEA 形式：(a, b, s_out, t_out) → (gcd, s, t)
+-- 留 stub（真实 EEA for SparsePolyZp 是 phase 2A.10）
 -- Pass 2b refret transform 把 ref-out 收成 tuple 返回，Pass 2b 同步 rename
 -- callee → polynomial_GCD_eea（避免与 2-arg 版本签名冲突）
 def polynomial_GCD_eea [Inhabited α] (_a _b _s _t : α) : α × α × α :=
   (default, default, default)
--- pair_vec_div: 4 参数版本（C++ side: pair_vec_div(f, g, q, comp) → 返回 quotient）
--- 占位实现，B2B 测试细化（comp 通常是比较器/函数对象，签名宽松）
-def pair_vec_div [Inhabited α] (_f _g _q : α) (_comp : β) : α := default
--- 5-arg overload: (new_v, R, v1, v2, comp) — basic.hh:698 形态
--- Pass 2b refret 把 R 收成 tuple → return (q, R)
-def pair_vec_div5 [Inhabited α] (_f _g _q _r : α) (_comp : β) : α × α := (default, default)
 
 -- Array.insert: C++ STL set::insert / vec.push_back 的占位（push 到末尾）
 def Array.insert (a : Array α) (v : α) : Array α := a.push v
@@ -450,6 +464,65 @@ instance : Neg SparsePolyZp where
 instance : HMul SparsePolyZp SparsePolyZp SparsePolyZp where
   hMul a b := SparsePolyZp.mulImpl a b
 
+namespace SparsePolyZp
+
+-- §5d.2 多项式长除法 + GCD（须在 HMul / HSub instance 之后定义）
+-- 不变量：g 非空（除数 ≠ 0），所有 Zp 共享 prime（WellFormed）
+
+-- 长除法主循环：从 r 中持续减去 g 的倍数，累加商到 q
+-- partial def 因 Lean 终止性证明依赖 deg(r') < deg(r) 的严格递减（数学正确）
+partial def divmodAux (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp)
+    (q r : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
+  if r.isEmpty then (q, r)
+  else
+    let dr := r[0]!.fst.deg
+    if dr < dg then (q, r)
+    else
+      let coeff := r[0]!.snd * lc_g_inv
+      let d := dr - dg
+      let term : SparsePolyZp := #[(⟨d⟩, coeff)]
+      let r' := r - (term * g)
+      let q' := q.push (⟨d⟩, coeff)
+      divmodAux g dg lc_g_inv q' r'
+
+-- 多项式长除法：f = q * g + r, deg(r) < deg(g)
+-- 退化：g 为空（除以 0）→ 返回 (#[], f) 占位
+def divmod (f g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
+  if g.isEmpty then (#[], f)
+  else
+    let dg := g[0]!.fst.deg
+    let lc_g_inv := g[0]!.snd.inv
+    divmodAux g dg lc_g_inv #[] f
+
+-- 欧几里得 GCD：gcd(f, g) = gcd(g, f mod g)
+-- partial def 因终止性依赖 deg(f mod g) < deg(g) 严格递减
+partial def gcd (f g : SparsePolyZp) : SparsePolyZp :=
+  if g.isEmpty then f
+  else gcd g (divmod f g).snd
+
+end SparsePolyZp
+
+-- SparsePolyZp 特化 instance（高优先级，覆盖兜底 default）
+instance : HasPolyGCD SparsePolyZp where
+  polyGCD := SparsePolyZp.gcd
+
+instance : HasPolyDivmod SparsePolyZp where
+  polyDivmod := SparsePolyZp.divmod
+
+-- #eval 数值验证（小例 over F_5）
+-- (x^2 - 1) / (x - 1) = x + 1, remainder 0
+-- (1 - 1 = 0; x^2 ≡ x^2 mod 5)
+#eval SparsePolyZp.divmod
+  (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x^2 - 1
+  (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x - 1
+-- 期望: (#[(1, 1), (0, 1)], #[])  — q = x+1, r = 0
+
+-- gcd(x^2 - 1, x - 1) = x - 1（因为 x-1 整除）
+-- 实际返回的可能是 normalized 形式，待 normalization
+#eval SparsePolyZp.gcd
+  (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
+  (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
+
 -- #eval 数值验证（手算）
 -- f = 2x^2 + 3x，g = x^2 + 4 (over F_7)
 -- f + g = 3x^2 + 3x + 4
@@ -569,11 +642,10 @@ def ZZ.invertImpl (a m : Int) : Bool × Int :=
       else
         (false, 0)
 
--- 公开签名（与 Pass 5 emit 一致）：返回 Bool。
--- 当前 Pass 2b 不把 invert 当 ref-out 处理 → inv 没有写回 ref 参数（下游
--- lc_inv 仍是 0）— 这是已知翻译 bug，待 Phase 2A.8 补 Pass 2b OUTPUT_PARAMS
--- 后将签名改为 (Bool × ZZ) 返回。
-def ZZ.invert (_out num mod : ZZ) : Bool := (ZZ.invertImpl num mod).1
+-- 公开签名（与 Pass 5 emit 一致 + Pass 2b ref-elim）：返回 (Bool × ZZ) tuple。
+-- class_map 的 OUTPUT_PARAMS 把 _out 当 ref-out → Pass 2b 把调用点 destructure
+-- 为 `let __refret := ZZ.invert old_out num mod; lc_inv := __refret.snd`。
+def ZZ.invert (_out num mod : ZZ) : Bool × ZZ := ZZ.invertImpl num mod
 
 -- #eval 数值验证
 #eval ZZ.invertImpl 3 7      -- (true, 5)：3 * 5 = 15 ≡ 1 mod 7
@@ -767,7 +839,8 @@ def MvMonomial.normalization (m : MvMonomial) : MvMonomial := m
 def gcd (a b : Int) : Int := Int.gcd a b
 -- polynomial_mod(f : SparsePolyZZ, p : UInt64) : SparsePolyZp
 -- 系数 mod p 把 ZZ 多项式变成 Zp 多项式
-def polynomial_mod (_f : SparsePolyZZ) (_p : UInt64) : SparsePolyZp := #[]
+-- polynomial_mod: SparsePolyZZ + p → SparsePolyZp（实现移到 abbrev SparsePolyZZ 之后）
+-- 见下方 §5c 末尾
 def next_prime_64 (p : UInt64) : UInt64 := p + 1
 def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
 -- leadcoeff: 1-arg / 2-arg overload (Pass 5 emit 都用同一名)
@@ -814,9 +887,25 @@ def compute_theta {α : Type} [Inhabited α] : α := default
 def upzp_coeff {α : Type} [Inhabited α] : α := default
 def next_p : UInt64 := 2
 -- cont(poly) → ZZ: 多项式整数系数的 content (gcd)
-def cont {α : Type} (_p : α) : ZZ := 0
--- pp(poly) → poly: primitive part (poly / cont)
-def pp {α : Type} [Inhabited α] (_p : α) : α := default
+-- ContPP typeclass：cont(poly) = gcd 系数（带符号），pp(poly) = poly / cont(poly)
+-- 注意：SparsePolyZZ.{cont,pp}Impl 实现移到 abbrev SparsePolyZZ 之后（见下方）
+class HasCont (α : Type) where
+  cont : α → ZZ
+
+class HasPP (α : Type) where
+  pp : α → α
+
+-- 全局调度入口（与 cpp2lean Pass 5 emit 一致）
+def cont {α : Type} [HasCont α] (p : α) : ZZ := HasCont.cont p
+def pp {α : Type} [HasPP α] (p : α) : α := HasPP.pp p
+
+-- MvPolyZZ / MvPolyZp 暂保 stub（多变量留 phase 2B）
+instance : HasCont MvPolyZZ where cont _ := 0
+instance : HasPP MvPolyZZ where pp f := f
+instance : HasCont MvPolyZp where cont _ := 0
+instance : HasPP MvPolyZp where pp f := f
+instance : HasCont SparsePolyZp where cont _ := 0  -- Zp 是域，cont 总是 1 / unit；占位
+instance : HasPP SparsePolyZp where pp f := f
 def all_div : Bool := false
 -- 依赖 SparsePolyZZ / LLLMatrix abbrev：见 §5c (abbrev 之后)
 -- C++ std::swap(a, b)：值语义返回 (b, a) 元组（ref-elim 已转 SSA）
@@ -881,6 +970,51 @@ instance : OfNat MvPolyZZ 0 where ofNat := #[]
 instance : OfNat MvPolyZp 0 where ofNat := #[]
 
 def SparsePolyZZ.size_u64 (f : SparsePolyZZ) : UInt64 := f.size.toUInt64
+
+-- §5c 续：SparsePolyZZ.cont / pp 实现（在 abbrev 之后才能用 .map / .foldl 等）
+-- cont = gcd 所有系数（符号匹配 leading coeff）
+def SparsePolyZZ.contImpl (f : SparsePolyZZ) : ZZ :=
+  if f.isEmpty then 0
+  else
+    let c_nat := f.foldl (fun (acc : Nat) (term : UMonomial × Int) =>
+      Nat.gcd acc term.snd.natAbs) 0
+    let c_int : Int := c_nat
+    if f[0]!.snd < 0 then -c_int else c_int
+
+-- pp = f / cont(f)
+def SparsePolyZZ.ppImpl (f : SparsePolyZZ) : SparsePolyZZ :=
+  let c : ZZ := SparsePolyZZ.contImpl f
+  if c = 0 then f
+  else f.map (fun term => (term.fst, term.snd / c))
+
+instance : HasCont SparsePolyZZ where cont := SparsePolyZZ.contImpl
+instance : HasPP SparsePolyZZ where pp := SparsePolyZZ.ppImpl
+
+-- polynomial_mod: SparsePolyZZ + p → SparsePolyZp
+-- 数学定义：每个系数 mod p（用 Zp.ofInt 折回 [0, p)），剔除 0 系数
+def polynomial_mod (f : SparsePolyZZ) (p : UInt64) : SparsePolyZp :=
+  f.filterMap (fun term =>
+    let zp := Zp.ofInt term.snd p
+    if zp.val = 0 then none else some (term.fst, zp))
+
+-- #eval 验证：(2x² + 3x + 5) mod 5 = 2x² + 3x （5 mod 5 = 0 剔除）
+#eval polynomial_mod
+  (#[(⟨2⟩, (2 : Int)), (⟨1⟩, (3 : Int)), (⟨0⟩, (5 : Int))] : SparsePolyZZ) 5
+-- 期望: #[(2, [2, 5]), (1, [3, 5])]
+
+-- #eval 验证：cont(2x² + 4x + 6) = 2，pp = x² + 2x + 3
+#eval SparsePolyZZ.contImpl
+  (#[(⟨2⟩, (2 : Int)), (⟨1⟩, (4 : Int)), (⟨0⟩, (6 : Int))] : SparsePolyZZ)
+-- 期望: 2
+
+#eval SparsePolyZZ.ppImpl
+  (#[(⟨2⟩, (2 : Int)), (⟨1⟩, (4 : Int)), (⟨0⟩, (6 : Int))] : SparsePolyZZ)
+-- 期望: #[(2, 1), (1, 2), (0, 3)]
+
+-- cont(-2x² - 4) = -2 (sign matches leading coeff)
+#eval SparsePolyZZ.contImpl
+  (#[(⟨2⟩, (-2 : Int)), (⟨0⟩, (-4 : Int))] : SparsePolyZZ)
+-- 期望: -2
 
 -- 阶段 F 后续：依赖 SparsePolyZZ 的 stub（LLLMatrix.size 见 abbrev 之后）
 -- get_first_deg: 多变量 / 单变量两态。Lean 端泛型占位（语义层 B2B 细化）

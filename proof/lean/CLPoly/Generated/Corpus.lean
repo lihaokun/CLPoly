@@ -1025,13 +1025,13 @@ partial def _loop___hensel_lift_upoly_2_ir (m_2 : ZZ) (nodes_2 : Array HenselNod
   else
     ((0 : Int64), m_2, nodes_2)
 
-partial def _loop___hensel_lift_upoly_3_ir (__rangefor_idx_1_2 : Nat) (__rangefor_cont_1_2 : SparsePolyZZ) (lc_inv_1 : ZZ) : (Int64 × SparsePolyZZ) :=
+partial def _loop___hensel_lift_upoly_3_ir (__rangefor_idx_1_2 : Nat) (__rangefor_cont_1_2 : SparsePolyZZ) (lc_inv_2 : ZZ) : (Int64 × SparsePolyZZ) :=
   if (__rangefor_idx_1_2 < (Array.size __rangefor_cont_1_2)) then
     let term_3 : (UMonomial × ZZ) /- ref residual -/ := (__rangefor_cont_1_2[(__rangefor_idx_1_2)]!)
-    let term_4 : (UMonomial × ZZ) := { term_3 with snd := (term_3.snd * lc_inv_1) }
+    let term_4 : (UMonomial × ZZ) := { term_3 with snd := (term_3.snd * lc_inv_2) }
     let __rangefor_cont_1_3 : SparsePolyZZ := (Array.set! __rangefor_cont_1_2 __rangefor_idx_1_2 term_4)
     let __rangefor_idx_1_3 : Nat := (__rangefor_idx_1_2 + (1 : Nat))
-    _loop___hensel_lift_upoly_3_ir __rangefor_idx_1_3 __rangefor_cont_1_3 lc_inv_1
+    _loop___hensel_lift_upoly_3_ir __rangefor_idx_1_3 __rangefor_cont_1_3 lc_inv_2
   else
     ((0 : Int64), __rangefor_cont_1_2)
 
@@ -1062,11 +1062,13 @@ partial def __hensel_lift_upoly_ir (f : SparsePolyZZ) (factors : Array SparsePol
       let lc_inv_1 : ZZ := ((0 : Int))
       -- require (h_in_bounds): ((0 : Nat) < (Array.size result_2))
       -- require (h_nonempty): (! (Array.isEmpty (result_2[(0 : Int32).toNatClampNeg]!)))
-      let _ok_1 : Bool := (ZZ.invert lc_inv_1 ((SparsePolyZZ.front! (result_2[(0 : Int32).toNatClampNeg]!)).snd) m_2)
+      let __refret_0_1 : (Bool × ZZ) := (ZZ.invert lc_inv_1 ((SparsePolyZZ.front! (result_2[(0 : Int32).toNatClampNeg]!)).snd) m_2)
+      let lc_inv_2 : ZZ := __refret_0_1.snd
+      let _ok_1 : Bool := __refret_0_1.fst
       -- require (h_assert): ok_1
       let __rangefor_cont_1_1 : SparsePolyZZ := (result_2[(0 : Int32).toNatClampNeg]!)
       let __rangefor_idx_1_1 : Nat := (0 : Nat)
-      let __loop_ret___hensel_lift_upoly_3_1 : (Int64 × SparsePolyZZ) := (_loop___hensel_lift_upoly_3_ir __rangefor_idx_1_1 __rangefor_cont_1_1 lc_inv_1)
+      let __loop_ret___hensel_lift_upoly_3_1 : (Int64 × SparsePolyZZ) := (_loop___hensel_lift_upoly_3_ir __rangefor_idx_1_1 __rangefor_cont_1_1 lc_inv_2)
       let __rangefor_cont_1_2 : SparsePolyZZ := __loop_ret___hensel_lift_upoly_3_1.snd
       let result_3 : Array SparsePolyZZ := (Array.set! result_2 (0 : Nat) __rangefor_cont_1_2)
       -- require (h_in_bounds): ((0 : Nat) < (Array.size result_3))
@@ -4854,15 +4856,15 @@ partial def _loop___upoly_divmod_mod_upoly_0_ir (__iter_idx_g_it_3 : Int64) (__i
   else
     ((0 : Int64), new_r_2)
 
-partial def _loop___upoly_divmod_mod_upoly_1_ir (r_3 : SparsePolyZZ) (q_2 : SparsePolyZZ) (deg_g_1 : Int64) (g : SparsePolyZZ) (lc_inv_1 : ZZ) (m : ZZ) : (Int64 × SparsePolyZZ × SparsePolyZZ) :=
+partial def _loop___upoly_divmod_mod_upoly_1_ir (r_3 : SparsePolyZZ) (q_2 : SparsePolyZZ) (deg_g_1 : Int64) (g : SparsePolyZZ) (lc_inv_2 : ZZ) (m : ZZ) : (Int64 × SparsePolyZZ × SparsePolyZZ) :=
   if ((! (Array.isEmpty r_3)) && ((get_deg r_3) >= deg_g_1)) then
     let d_1 : Int64 := ((get_deg r_3) - deg_g_1)
     -- require (h_nonempty): (! (Array.isEmpty r_3))
-    let coeff_1 : ZZ := ((SparsePolyZZ.front! r_3).snd * lc_inv_1)
+    let coeff_1 : ZZ := ((SparsePolyZZ.front! r_3).snd * lc_inv_2)
     let coeff_2 : ZZ := (ZZ.fdiv_r coeff_1 coeff_1 m)
     if (! (ZZ.toBool coeff_2)) then
       let r_4 : SparsePolyZZ := (Array.eraseAny r_3 (0 : Int64))
-      _loop___upoly_divmod_mod_upoly_1_ir r_4 q_2 deg_g_1 g lc_inv_1 m
+      _loop___upoly_divmod_mod_upoly_1_ir r_4 q_2 deg_g_1 g lc_inv_2 m
     else
       let q_3 : SparsePolyZZ := (Array.push q_2 (Prod.mk (UMonomial.mk d_1) coeff_2))
       let new_r_1 : SparsePolyZZ := (SparsePolyZZ.empty)
@@ -4873,7 +4875,7 @@ partial def _loop___upoly_divmod_mod_upoly_1_ir (r_3 : SparsePolyZZ) (q_2 : Spar
       let __loop_ret___upoly_divmod_mod_upoly_0_1 : (Int64 × SparsePolyZZ) := (_loop___upoly_divmod_mod_upoly_0_ir __iter_idx_g_it_2 __iter_idx_r_it_2 new_r_1 coeff_2 d_1 g m r_3)
       let new_r_2 : SparsePolyZZ := __loop_ret___upoly_divmod_mod_upoly_0_1.snd
       let r_5 : SparsePolyZZ := (id new_r_2)
-      _loop___upoly_divmod_mod_upoly_1_ir r_5 q_3 deg_g_1 g lc_inv_1 m
+      _loop___upoly_divmod_mod_upoly_1_ir r_5 q_3 deg_g_1 g lc_inv_2 m
   else
     ((0 : Int64), q_2, r_3)
 
@@ -4884,10 +4886,12 @@ partial def __upoly_divmod_mod_upoly_ir (q : SparsePolyZZ) (_r : SparsePolyZZ) (
   let r_2 : SparsePolyZZ := (__upoly_mod_coeff_upoly_ir r_1 m)
   let lc_inv_1 : ZZ := ((0 : Int))
   -- require (h_nonempty): (! (Array.isEmpty g))
-  let _ok_1 : Bool := (ZZ.invert lc_inv_1 ((SparsePolyZZ.front! g).snd) m)
+  let __refret_0_1 : (Bool × ZZ) := (ZZ.invert lc_inv_1 ((SparsePolyZZ.front! g).snd) m)
+  let lc_inv_2 : ZZ := __refret_0_1.snd
+  let _ok_1 : Bool := __refret_0_1.fst
   -- require (h_assert): ok_1
   let deg_g_1 : Int64 := (get_deg g)
-  let __loop_ret___upoly_divmod_mod_upoly_1_1 : (Int64 × SparsePolyZZ × SparsePolyZZ) := (_loop___upoly_divmod_mod_upoly_1_ir r_2 q_1 deg_g_1 g lc_inv_1 m)
+  let __loop_ret___upoly_divmod_mod_upoly_1_1 : (Int64 × SparsePolyZZ × SparsePolyZZ) := (_loop___upoly_divmod_mod_upoly_1_ir r_2 q_1 deg_g_1 g lc_inv_2 m)
   let q_2 : SparsePolyZZ := __loop_ret___upoly_divmod_mod_upoly_1_1.2.1
   let r_3 : SparsePolyZZ := __loop_ret___upoly_divmod_mod_upoly_1_1.2.2
   (q_2, r_3)

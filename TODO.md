@@ -310,8 +310,15 @@ L1 实现模型现在 0 sorry、`lake build` 3071/3071 全绿。Phase 2A–E 全
 
 #### 已知债务
 
-- [ ] **Phase 2A.4c** （DEFERRED）：SparsePolyZp 乘法的 ring 公理证明 + canonical injection（`Impl/Types.lean` 还有 2 个 sorry：`toPoly ≠ 0` + 度数匹配）
-- [ ] **squarefreefactorize MvPoly** 仍是 `#[(f, 1)]` 占位（Yun's algorithm 太大，按设计跳过）
+- [x] ~~**Phase 2A.4c** （DEFERRED）：SparsePolyZp 乘法的 ring 公理证明 + canonical injection（`Impl/Types.lean` 还有 2 个 sorry：`toPoly ≠ 0` + 度数匹配）~~ — 2026-05-07 完成
+- [ ] **squarefreefactorize MvPolyZZ** 仍是 `#[(f, 1)]` 占位（**blocked-deferred**）
+  - 当前对 squarefree 输入（最常见情形）结果正确；对有重复因子输入会丢失重数
+  - 实现需要的依赖链：
+    1. `HasPolyGCD MvPolyZZ`（多变量 GCD over Z）—— ~200-400 行（模算法+Hensel 提升 / Zippel / SPMOD）
+    2. `HasPolyDivmod MvPolyZZ`（多变量精确除法）—— ~50-100 行
+    3. Yun's loop 本体 —— ~30 行
+  - 总 ~300-500 行新代码；属于**新 Phase 范畴**，单做 stub 修复反而引入"半成品多变量 GCD" 的隐患
+  - 当 B2B 多变量路径被覆盖到时再回来攻这一组
 
 ### B2B 语义测试覆盖（`proof/b2b/`）
 

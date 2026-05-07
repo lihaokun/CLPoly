@@ -1161,10 +1161,14 @@ instance : Coe (MvPolyZZ × Int32) (MvPolyZZ × UInt64) where
 -- 同样为 Array (MvPolyZZ × Int32) → Array (MvPolyZZ × UInt64)
 instance : Coe (Array (MvPolyZZ × Int32)) (Array (MvPolyZZ × UInt64)) where
   coe a := a.map (fun (m, i) => (m, i.toInt64.toUInt64))
--- Pass 1 在 Zp context 误把 `Poly` 映射到 MvPolyZZ；某些 site 实际期望 MvPolyZp
--- 提供 lossy Coe（语义层 B2B 测试时再细化）
-instance : Coe MvPolyZZ MvPolyZp where coe _ := #[]
-instance : Coe MvPolyZp MvPolyZZ where coe _ := #[]
+-- Pass 1 在 Zp context 误把 `Poly` 映射到 MvPolyZZ；某些 site 实际期望 MvPolyZp。
+-- 历史上有 lossy `coe _ := #[]` escape hatch — 但那是 silent dropping bug。
+-- 改为 panic：让任何隐式触发点立刻爆出来，逼 Pass 1 修类型推断 / 调用方加 explicit cast。
+-- 若 corpus 编译失败，说明真有触发点；需修 Pass 1 而不是回退到丢值的 Coe。
+instance : Coe MvPolyZZ MvPolyZp where
+  coe _ := panic! "Coe MvPolyZZ→MvPolyZp triggered: Pass 1 type inference broken; add explicit conversion at call site"
+instance : Coe MvPolyZp MvPolyZZ where
+  coe _ := panic! "Coe MvPolyZp→MvPolyZZ triggered: Pass 1 type inference broken; add explicit conversion at call site"
 instance : Coe Int32 Int64 where coe n := n.toInt64
 instance : Coe UInt64 Nat where coe n := n.toNat
 instance : Coe Int64 Nat where coe n := n.toNatClampNeg

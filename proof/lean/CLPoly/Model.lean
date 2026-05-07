@@ -36,9 +36,15 @@ def ofInt (v : Int) (p : UInt64) : Zp :=
 
 def ofUInt64 (v p : UInt64) : Zp := ⟨v % p, p⟩
 
-instance : Add Zp where add a b := ⟨(a.val + b.val) % a.prime, a.prime⟩
-instance : Sub Zp where sub a b := ⟨(a.val + a.prime - b.val) % a.prime, a.prime⟩
-instance : Mul Zp where mul a b := ⟨(a.val * b.val) % a.prime, a.prime⟩
+-- Zp 算术：UInt64 溢出安全。a.val + b.val 或 a.val * b.val 可能 > UInt64.size
+-- （尤其对大素数 p > 2^32 的情况），统一用 Nat 中间值再 toUInt64
+instance : Add Zp where add a b :=
+  ⟨((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64, a.prime⟩
+instance : Sub Zp where sub a b :=
+  ⟨((a.val.toNat + a.prime.toNat - b.val.toNat) % a.prime.toNat).toUInt64, a.prime⟩
+instance : Mul Zp where mul a b :=
+  ⟨((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64, a.prime⟩
+-- Neg: a.val < a.prime 已保证，p - val 不溢出；外层 mod p 处理 val=0 → 0 的边界
 instance : Neg Zp where neg a := ⟨(a.prime - a.val) % a.prime, a.prime⟩
 
 -- 扩展欧几里得：gcd(a, b) = a*x + b*y，返回 (gcd, x)

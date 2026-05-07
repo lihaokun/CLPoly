@@ -19,6 +19,22 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
     let val ← parseInt64 args[0]!
     let p   ← parseUInt64 args[1]!
     return encodeZp (Generated.__make_zp_ir val p)
+  -- Zp 算术 wrapper（C++ 端是 operator 重载，B2B 起 ____xx_zp 名）
+  | "__add_zp" =>
+    let a ← parseZp args[0]!
+    let b ← parseZp args[1]!
+    return encodeZp (a + b)
+  | "__sub_zp" =>
+    let a ← parseZp args[0]!
+    let b ← parseZp args[1]!
+    return encodeZp (a - b)
+  | "__mul_zp" =>
+    let a ← parseZp args[0]!
+    let b ← parseZp args[1]!
+    return encodeZp (a * b)
+  | "__neg_zp" =>
+    let a ← parseZp args[0]!
+    return encodeZp (-a)
   | _ => throw s!"unknown fn: {fn}"
 
 end B2B

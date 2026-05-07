@@ -23,6 +23,27 @@ json dispatch(const std::string& fn, const json& args) {
         return serialize_Zp(clpoly::__make_zp(val, p));
     }
 
+    // ---- Zp 算术（B2B wrapper）：operator 重载在 C++ 没有命名函数，B2B 起 ____xx_zp 名 ----
+    if (fn == "__add_zp") {
+        Zp a = parse_Zp(args.at(0));
+        Zp b = parse_Zp(args.at(1));
+        return serialize_Zp(a + b);
+    }
+    if (fn == "__sub_zp") {
+        Zp a = parse_Zp(args.at(0));
+        Zp b = parse_Zp(args.at(1));
+        return serialize_Zp(a - b);
+    }
+    if (fn == "__mul_zp") {
+        Zp a = parse_Zp(args.at(0));
+        Zp b = parse_Zp(args.at(1));
+        return serialize_Zp(a * b);
+    }
+    if (fn == "__neg_zp") {
+        Zp a = parse_Zp(args.at(0));
+        return serialize_Zp(-a);
+    }
+
     throw std::runtime_error("unknown fn: " + fn);
 }
 

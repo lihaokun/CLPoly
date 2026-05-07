@@ -1051,7 +1051,6 @@ theorem ZZ.fdiv_ui_lt (a : ZZ) (b : UInt64) (hb : (b.toNat : Int) > 0) :
 -- Lean 端 Iterator = Unit，find 与 end 比较等价于"成员存在"判断
 def StdMap.find {κ ν : Type} [BEq κ] [Inhabited ν] (_m : StdMap κ ν) (_k : κ) : Iterator := ()
 def StdMap.end {κ ν : Type} (_ : StdMap κ ν) : Iterator := ()
-def rd {α : Type} [Inhabited α] (_ : α) : α := default
 
 -- 阶段 G-E：补 corpus 还需要的 stub 占位
 def MvPolyZp.size_u64 (f : MvPolyZp) : UInt64 := (Array.size f).toUInt64

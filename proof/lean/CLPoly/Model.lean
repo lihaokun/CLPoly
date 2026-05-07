@@ -736,10 +736,10 @@ class HasDerivative (α : Type) where
 -- 但 typeclass instance 还要绑定到那个 def
 instance : HasDerivative SparsePolyZp where derivative := SparsePolyZp.derivative
 
--- HasDerivative SparsePolyZZ 真实实现移到 abbrev SparsePolyZZ 之后（见下文）
-instance : HasDerivative SparsePolyZZ where derivative f := f  -- 占位，覆盖见下方
-instance : HasDerivative MvPolyZZ where derivative f := f
-instance : HasDerivative MvPolyZp where derivative f := f
+-- HasDerivative SparsePolyZZ 真实实现见 §5c（abbrev SparsePolyZZ 之后）
+-- MvPoly 的 1-arg derivative 在 corpus 中无调用（C++ 多变量求导需要 var 参数），
+-- 但保留 priority := 0 兜底以防 Pass 5 emit 在多变量上下文意外触发 typeclass 查找
+instance (priority := 0) {α : Type} : HasDerivative α where derivative f := f
 
 def derivative {α : Type} [HasDerivative α] (a : α) : α := HasDerivative.derivative a
 
@@ -1054,21 +1054,15 @@ def rd {α : Type} [Inhabited α] (_ : α) : α := default
 
 -- 阶段 G-E：补 corpus 还需要的 stub 占位
 def MvPolyZp.size_u64 (f : MvPolyZp) : UInt64 := (Array.size f).toUInt64
--- 真实 SparsePolyZZ.normalization：按 deg 降序、合并同 deg、剔零
--- 注意：abbrev SparsePolyZZ 在 line 936，本 def 移到 abbrev 之后实现（见下文）
-def SparsePolyZZ.normalization (f : SparsePolyZZ) : SparsePolyZZ := f
--- 真实实现见下方 abbrev SparsePolyZZ 之后
+-- 真实 SparsePolyZZ.normalization 见 §5c.cont（abbrev 之后），不在此处放占位
+-- （以前此处放 `def SparsePolyZZ.normalization (f) := f` 是 autoImplicit silent bug）
 -- Array.range_init: 多 arity overload，C++ 写法 `iota(arr.begin(), arr.end(), start)`
 -- Pass 5 emit 通常是 (arr, start) 2-arg；arr 决定大小，start 是初值
 def Array.range_init {α : Type} (a : Array α) (_start : Int32) : Array Int32 :=
   (Array.range a.size).map (·.toUInt32.toInt32)
 
--- 这些是 C++ 局部 lambda（Pass 3 lift 后理论上以 _lambda_<host>_<n>_ir 形式
--- 出现，但 corpus 中存在裸名引用，疑似 Pass 3 漏 lift 或别名重置失败）。
--- 占位让 Lean 通过类型检查；正确语义留 stage G-A 整改。
-def compute_theta {α : Type} [Inhabited α] : α := default
-def upzp_coeff {α : Type} [Inhabited α] : α := default
-def next_p : UInt64 := 2
+-- 注：旧 corpus 中曾出现 `compute_theta` / `upzp_coeff` / `next_p` 裸名引用（Pass 3
+-- lift 不完整的产物）。当前 corpus 全部通过 `_1` lambda-arg 注入；不再需要全局占位。
 -- cont(poly) → ZZ: 多项式整数系数的 content (gcd)
 -- ContPP typeclass：cont(poly) = gcd 系数（带符号），pp(poly) = poly / cont(poly)
 -- 注意：SparsePolyZZ.{cont,pp}Impl 实现移到 abbrev SparsePolyZZ 之后（见下方）
@@ -1082,14 +1076,31 @@ class HasPP (α : Type) where
 def cont {α : Type} [HasCont α] (p : α) : ZZ := HasCont.cont p
 def pp {α : Type} [HasPP α] (p : α) : α := HasPP.pp p
 
--- MvPolyZZ / MvPolyZp 暂保 stub（多变量留 phase 2B）
-instance : HasCont MvPolyZZ where cont _ := 0
-instance : HasPP MvPolyZZ where pp f := f
-instance : HasCont MvPolyZp where cont _ := 0
+-- MvPolyZZ: cont = signed gcd of all int coeffs; pp = f / cont
+def MvPolyZZ.contImpl (f : MvPolyZZ) : ZZ :=
+  if f.isEmpty then 0
+  else
+    let c_nat := f.foldl (fun (acc : Nat) (term : Monomial × Int) =>
+      Nat.gcd acc term.snd.natAbs) 0
+    let c_int : Int := c_nat
+    if f[0]!.snd < 0 then -c_int else c_int
+
+def MvPolyZZ.ppImpl (f : MvPolyZZ) : MvPolyZZ :=
+  let c : ZZ := MvPolyZZ.contImpl f
+  if c = 0 then f
+  else f.map (fun term => (term.fst, term.snd / c))
+
+instance : HasCont MvPolyZZ where cont := MvPolyZZ.contImpl
+instance : HasPP MvPolyZZ where pp := MvPolyZZ.ppImpl
+
+-- MvPolyZp / SparsePolyZp（Zp 是域）: cont 类型为 ZZ，仅起 unit 标记作用
+-- 约定：cont = (isEmpty ? 0 : 1)，pp = f（无需提主因子，仅在 ZZ 上有意义）
+instance : HasCont MvPolyZp where
+  cont f := if f.isEmpty then 0 else 1
 instance : HasPP MvPolyZp where pp f := f
-instance : HasCont SparsePolyZp where cont _ := 0  -- Zp 是域，cont 总是 1 / unit；占位
+instance : HasCont SparsePolyZp where
+  cont f := if f.isEmpty then 0 else 1
 instance : HasPP SparsePolyZp where pp f := f
-def all_div : Bool := false
 -- 依赖 SparsePolyZZ / LLLMatrix abbrev：见 §5c (abbrev 之后)
 -- C++ std::swap(a, b)：值语义返回 (b, a) 元组（ref-elim 已转 SSA）
 def swap {α β : Type} (a : α) (b : β) : β × α := (b, a)
@@ -1143,8 +1154,11 @@ def SparsePolyZZ.getDeg (f : SparsePolyZZ) : UInt64 := if f.isEmpty then 0 else 
 -- IsNumber / HasDegree instance：SparsePolyZZ abbrev 之后才能定义
 instance : IsNumber SparsePolyZZ where isNumber f := (f : Array _).isEmpty
 instance : IsNumber SparsePolyZp where isNumber f := (f : Array _).isEmpty
-instance : HasDegree SparsePolyZZ where degree _ := 0
-instance : HasDegree SparsePolyZp where degree _ := 0
+-- 单变量稀疏多项式：约定首项已是 leading（按 deg 降序），degree = front.deg
+instance : HasDegree SparsePolyZZ where
+  degree f := if f.isEmpty then 0 else f[0]!.fst.deg.toUInt64
+instance : HasDegree SparsePolyZp where
+  degree f := if f.isEmpty then 0 else f[0]!.fst.deg.toUInt64
 
 -- OfNat 0 实例：C++ `SparsePolyZZ x = 0` → 空多项式
 instance : OfNat SparsePolyZZ 0 where ofNat := #[]
@@ -1186,7 +1200,7 @@ instance : HasDerivative SparsePolyZZ where
   derivative := SparsePolyZZ.derivativeImpl
 
 -- normalization：按 deg 降序、合并同 deg、剔零
-def SparsePolyZZ.normalizationImpl (f : SparsePolyZZ) : SparsePolyZZ :=
+def SparsePolyZZ.normalization (f : SparsePolyZZ) : SparsePolyZZ :=
   -- step 1: group by deg, summing coefs (O(n²) but simple)
   let grouped : SparsePolyZZ := f.foldl (fun acc term =>
     match acc.findIdx? (fun t => t.fst.deg = term.fst.deg) with
@@ -1211,7 +1225,7 @@ def polynomial_mod (f : SparsePolyZZ) (p : UInt64) : SparsePolyZp :=
 -- 期望: #[(1, 6), (0, 5)]
 
 -- normalization: [(0,1), (2,3), (1,2), (2,4)] → [(2,7), (1,2), (0,1)]
-#eval (SparsePolyZZ.normalizationImpl
+#eval (SparsePolyZZ.normalization
   (#[(⟨0⟩, (1 : Int)), (⟨2⟩, (3 : Int)), (⟨1⟩, (2 : Int)), (⟨2⟩, (4 : Int))] : SparsePolyZZ))
 -- 期望: #[(2, 7), (1, 2), (0, 1)]
 

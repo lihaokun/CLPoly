@@ -272,9 +272,18 @@ def totalDeg (m : Monomial) : Nat :=
 
 end Monomial
 def Monomial.empty : Monomial := #[]
--- Pass 5 把 C++ 多种 1-arg Monomial 构造（comp_ptr / element 等）都映射到 .mk；
--- 用泛型 input 统一占位（Variable×Int64 输入仍可隐式 Coe）
-def Monomial.mk {α : Type} (_ : α) : Monomial := #[]
+-- HasPolyMk：1-arg ctor 派发
+-- Pass 5 把 C++ 多种 1-arg ctor（copy / Poly(comp_ptr) / Poly(elem) / Variable("x")）
+-- 都映射到 .mk。用 typeclass 区分：
+--   - 输入类型 = 输出类型（copy ctor） → 返回输入（避免 silent identity bug）
+--   - 否则（comp_ptr/MonomialOrder/String 等元素） → 返回 default（空 Array / 0）
+class HasPolyMk (β α : Type) where
+  mkImpl : α → β
+-- 同型 copy ctor（高优先级）
+instance {β : Type} : HasPolyMk β β where mkImpl x := x
+-- 异型兜底：返回 default
+instance (priority := 0) {β α : Type} [Inhabited β] : HasPolyMk β α where mkImpl _ := default
+def Monomial.mk {α : Type} (x : α) [HasPolyMk Monomial α] : Monomial := HasPolyMk.mkImpl x
 def MvMonomial.empty : MvMonomial := #[]
 -- 多变量多项式：内部元素的第一槽是 Monomial，与 Pass 1 推断的 (Monomial × ZZ)
 -- 一致；ZZ = Int / Zp 同样为系数类型
@@ -298,7 +307,7 @@ def MvPolyZZ.empty : MvPolyZZ := #[]
 def MvPolyZp.empty : MvPolyZp := #[]
 -- C++ 的 Poly(comp_t) / Poly(const Poly&) ctor 都映射到 .mk；
 -- 用泛型 input → 空 Poly 占位（语义在 B2B 层细化）
-def MvPolyZp.mk {α : Type} (_ : α) : MvPolyZp := #[]
+def MvPolyZp.mk {α : Type} (x : α) [HasPolyMk MvPolyZp α] : MvPolyZp := HasPolyMk.mkImpl x
 def MvPolyZZ.normalization (f : MvPolyZZ) : MvPolyZZ :=
   let normMonos : MvPolyZZ := f.map (fun (m, c) => (Monomial.normalize m, c))
   let grouped : MvPolyZZ := normMonos.foldl (fun acc term =>
@@ -307,7 +316,7 @@ def MvPolyZZ.normalization (f : MvPolyZZ) : MvPolyZZ :=
     | none => acc.push term) #[]
   let nonZero := grouped.filter (fun t => t.snd ≠ 0)
   nonZero.qsort (fun a b => Monomial.lt b.fst a.fst)
-def MvPolyZZ.mk {α : Type} (_ : α) : MvPolyZZ := #[]
+def MvPolyZZ.mk {α : Type} (x : α) [HasPolyMk MvPolyZZ α] : MvPolyZZ := HasPolyMk.mkImpl x
 -- 通用 stub（与 SparsePolyZZ 解耦，无前向引用）
 def __write__ (_old : α) (new : α) : α := new
 
@@ -772,7 +781,7 @@ def poly_convert3 {α β γ : Type} [HasPolyConvert3 α β γ] (f : α) (target 
 -- SparsePolyZZ 的 OfNat 0 实例：见 §5c（abbrev 定义之后）
 
 -- C++ 全局常量 / 宏：占位（B2B 时填实际值）
-def ZASSENHAUS_THRESHOLD : Int32 := 8
+def ZASSENHAUS_THRESHOLD : Int32 := 10  -- C++: clpoly/polynomial_factorize_univar.hh:889
 def __g_use_large_prime : Bool := false
 
 -- ZZ.invert: GMP `mpz_invert(out, num, mod)` → 模逆元，true 表存在。
@@ -992,7 +1001,7 @@ def Array.resize {α : Type} [Inhabited α] (a : Array α) (n : Nat) (v : α := 
 def Array.getLast! {α : Type} [Inhabited α] (a : Array α) : α := a.back!
 def Array.head! {α : Type} [Inhabited α] (a : Array α) : α := a[0]!
 
-def Variable.mk {α : Type} (_ : α) : Variable := 0
+def Variable.mk {α : Type} (x : α) [HasPolyMk Variable α] : Variable := HasPolyMk.mkImpl x
 def UniformIntDist.mk (_lo _hi : Int32) : UniformIntDist := 0
 def Rng.default : Rng := 42
 -- 阶段 G+：Rng = UInt64 abbrev，Pass 5/8 偶尔在某些上下文 emit `.toUInt64`
@@ -1000,18 +1009,39 @@ def Rng.default : Rng := 42
 def Rng.toUInt64 (r : Rng) : UInt64 := r
 def UInt64.toUInt64 (u : UInt64) : UInt64 := u
 
--- Iterator: 占位类型（C++ STL iterator 的 Lean 抽象）
--- Pass 1 把 std::map iterator 等都映射到 Iterator（无具体 elem 类型）
--- Lean 端用 Unit 占位，配合 BEq 实例支持 it == m.end() 比较
-abbrev Iterator := Unit
-def Iterator.fromList {α : Type} (_a : Array α) : Iterator := ()
-def MvMonomial.normalization (m : MvMonomial) : MvMonomial := m
+-- Iterator: C++ STL iterator 的 Lean 抽象。语义层只区分"指向有效元素"与"end"。
+-- true = valid iterator（指向有效元素），false = end sentinel（"未找到"）。
+-- 这样 `it == m.end()` 在 Lean 端 ↔ found == false ↔ 未找到，与 C++ 语义一致。
+abbrev Iterator := Bool
+def Iterator.fromList {α : Type} (_a : Array α) : Iterator := true
+-- MvMonomial 与 Monomial 同构（都是 Array (Variable × Int64)）；规范化复用 Monomial.normalize
+def MvMonomial.normalization (m : MvMonomial) : MvMonomial := Monomial.normalize m
 def gcd (a b : Int) : Int := Int.gcd a b
 -- polynomial_mod(f : SparsePolyZZ, p : UInt64) : SparsePolyZp
 -- 系数 mod p 把 ZZ 多项式变成 Zp 多项式
 -- polynomial_mod: SparsePolyZZ + p → SparsePolyZp（实现移到 abbrev SparsePolyZZ 之后）
 -- 见下方 §5c 末尾
-def next_prime_64 (p : UInt64) : UInt64 := p + 1
+
+-- next_prime_64: 返回 > n 的最小素数（C++ clpoly/number/ZZ.hh:1036, GMP mpz_nextprime 包装）
+-- Lean 端用 trial division（O(√n) 单次），足够 B2B 测试小素数场景
+def Nat.isPrime64 (n : Nat) : Bool :=
+  if n < 2 then false
+  else if n = 2 then true
+  else if n % 2 = 0 then false
+  else
+    let rec loop (d : Nat) (fuel : Nat) : Bool :=
+      match fuel with
+      | 0 => true
+      | fuel'+1 => if d * d > n then true
+                   else if n % d = 0 then false
+                   else loop (d + 2) fuel'
+    loop 3 n
+def next_prime_64 (p : UInt64) : UInt64 :=
+  let rec scan (cand : Nat) (fuel : Nat) : Nat :=
+    match fuel with
+    | 0 => cand
+    | fuel'+1 => if Nat.isPrime64 cand then cand else scan (cand + 1) fuel'
+  (scan (p.toNat + 1) 100000).toUInt64
 def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
 -- leadcoeff: 1-arg / 2-arg overload (Pass 5 emit 都用同一名)
 -- 1-arg `leadcoeff p` 返回 ZZ；2-arg `leadcoeff p var` 返回 Poly
@@ -1047,10 +1077,13 @@ theorem ZZ.fdiv_ui_lt (a : ZZ) (b : UInt64) (hb : (b.toNat : Int) > 0) :
 #eval ZZ.fdiv_ui 100 (7 : UInt64)     -- 2
 #eval ZZ.fdiv_ui (-1) (7 : UInt64)    -- 6
 #eval ZZ.fdiv_ui 0 (13 : UInt64)      -- 0
--- StdMap.find / .end 返回 Iterator（C++ side iterator 语义）
--- Lean 端 Iterator = Unit，find 与 end 比较等价于"成员存在"判断
-def StdMap.find {κ ν : Type} [BEq κ] [Inhabited ν] (_m : StdMap κ ν) (_k : κ) : Iterator := ()
-def StdMap.end {κ ν : Type} (_ : StdMap κ ν) : Iterator := ()
+-- StdMap.find / .end 返回 Iterator（Bool 语义）
+-- find m k = isSome (find? m k)（true 表已存在，false 表未找到）
+-- end _   = false（end sentinel）
+-- 故 `it == m.end()` ↔ 未找到，与 C++ STL `std::map::find` 语义一致
+def StdMap.find {κ ν : Type} [BEq κ] [Inhabited ν] (m : StdMap κ ν) (k : κ) : Iterator :=
+  (StdMap.find? m k).isSome
+def StdMap.end {κ ν : Type} (_ : StdMap κ ν) : Iterator := false
 
 -- 阶段 G-E：补 corpus 还需要的 stub 占位
 def MvPolyZp.size_u64 (f : MvPolyZp) : UInt64 := (Array.size f).toUInt64

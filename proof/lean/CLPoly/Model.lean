@@ -423,8 +423,9 @@ def MvMonomial.isEmpty (m : MvMonomial) : Bool := Array.isEmpty m
 -- Rng.mk: 用整数种子构造 RNG（C++: std::mt19937(seed)）
 def Rng.mk (seed : Int32) : Rng := seed.toInt64.toUInt64
 
--- Array.sort: 占位（C++ std::sort with comparator）
-def Array.sort {α : Type} (a : Array α) (_cmp : α → α → Bool) : Array α := a
+-- Array.sort: C++ std::sort with comparator
+-- cmp a b 返回 true 表示 a 应排在 b 之前（与 std::less 一致）
+def Array.sort {α : Type} (a : Array α) (cmp : α → α → Bool) : Array α := a.qsort cmp
 
 -- C++ 自由函数 degree(poly) — 多态（lambda 比较器里用）。
 -- 用 typeclass 解决"未限定 degree"调用的多重 receiver 类型问题。

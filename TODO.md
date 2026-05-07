@@ -291,6 +291,23 @@ L1 实现模型现在 0 sorry、`lake build` 3071/3071 全绿。Phase 2A–E 全
 - [x] **Phase D** MvPoly typeclass 实例
 - [x] **Phase E** 多变量高阶函数：`assign` / `assign2` / `leadcoeff` (2-arg) / `squarefreefactorize` (stub) / `poly_convert` / `poly_convert3`
 
+#### Stub 补完中发现的 silent bug（已修复 2026-05-07）
+
+逐项验证"占位"是否真按设计时发现 5 处 silent bug：
+
+| 项 | 旧实现 | 影响 | 修复 |
+|----|--------|------|------|
+| `SparsePolyZZ.normalization` (autoImplicit) | 多态恒等 | corpus 3 处归一化空跑 | 改名 + 删除占位 |
+| `Array.sort` | 恒等返回 | corpus 8 处 std::sort 未排序 | 派发到 `Array.qsort` |
+| `Iterator = Unit` + `find/end` | `() == ()` 恒真 | StdMap accumulation 不触发 | `Iterator := Bool`，find=isSome |
+| `MvMonomial.normalization` | 恒等 | corpus L2060 mono 未规范化 | 派发到 `Monomial.normalize` |
+| `next_prime_64 := p + 1` | 完全错 | select_prime 拿到非素数 | trial-division 实现 |
+| `.mk {α} _ := #[]` 4 处 | 拷贝 ctor 丢结果 | corpus L26 函数返回空多项式 | `HasPolyMk` typeclass 派发 |
+| `ZASSENHAUS_THRESHOLD := 8` | 与 C++ 不一致（实值 10） | 分流决策错 | 改为 10 |
+
+**经验**：每个"占位"宣称都需对照 C++ 行为 + corpus 实际调用方式验证；
+"按设计"不能基于注释信任，必须实测。
+
 #### 已知债务
 
 - [ ] **Phase 2A.4c** （DEFERRED）：SparsePolyZp 乘法的 ring 公理证明 + canonical injection（`Impl/Types.lean` 还有 2 个 sorry：`toPoly ≠ 0` + 度数匹配）

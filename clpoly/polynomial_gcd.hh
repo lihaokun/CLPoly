@@ -108,6 +108,14 @@ namespace clpoly{
             return {{F,1}};
         auto f_cont=cont(F);
         auto F_=F/f_cont;
+        // sign 归一化（对齐 SymPy/Maple/FLINT 约定）：
+        // 把 F_ 的首项 sign 提到 f_cont，使 factor 永远首项正。
+        // 不做的话 squarefreebasis 在 associate 比较时会把 unit 残留进 basis（issue #14）。
+        if (!F_.empty() && F_.front().second < ZZ(0))
+        {
+            F_=-F_;
+            f_cont=-f_cont;
+        }
         auto lst=squarefreefactorize(f_cont);
         polynomial_<ZZ,lex_<var_order>> F_1(F.comp_ptr()),F_2(F.comp_ptr()),F_3(F.comp_ptr());
         for(uint64_t i=1;;++i)

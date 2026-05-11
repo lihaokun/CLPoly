@@ -759,8 +759,9 @@ instance (priority := 0) {α : Type} : HasDerivative α where derivative f := f
 
 def derivative {α : Type} [HasDerivative α] (a : α) : α := HasDerivative.derivative a
 
--- squarefreefactorize 占位（多变量 ZZ 默认；其他实例需要时再加）
-def squarefreefactorize (f : MvPolyZZ) : Array (MvPolyZZ × UInt64) := #[(f, 1)]
+-- squarefreefactorize 现在由 cpp2lean v2 翻译进 Generated/Corpus.lean
+-- （`squarefreefactorize_lex_ir`），不在 Model.lean 提供 stub。
+-- caller 经 Pass 8 codegen 派发到 _lex_ir 后缀，不会调到此处。
 
 -- poly_convert: 跨域多项式转换 typeclass dispatch
 class HasPolyConvert (α β : Type) where
@@ -1102,17 +1103,22 @@ def Array.range_init {α : Type} (a : Array α) (_start : Int32) : Array Int32 :
 
 -- 注：旧 corpus 中曾出现 `compute_theta` / `upzp_coeff` / `next_p` 裸名引用（Pass 3
 -- lift 不完整的产物）。当前 corpus 全部通过 `_1` lambda-arg 注入；不再需要全局占位。
--- cont(poly) → ZZ: 多项式整数系数的 content (gcd)
--- ContPP typeclass：cont(poly) = gcd 系数（带符号），pp(poly) = poly / cont(poly)
+-- cont(poly) → output：多项式整数系数的 content
+-- C++ 端 `cont` 是 template，输入决定输出：
+--   - cont(upolynomial_<ZZ>) → ZZ  （单变量，对应 SparsePolyZZ）
+--   - cont(polynomial_<ZZ, lex_<var_order>>) → polynomial_<ZZ, lex_<var_order>>
+--                                              （多变量，对应 MvPolyZZ；cont 在剩余变量中）
+-- Lean 端用 associated output type 模拟：HasCont.Out 决定输出类型，默认 ZZ。
 -- 注意：SparsePolyZZ.{cont,pp}Impl 实现移到 abbrev SparsePolyZZ 之后（见下方）
 class HasCont (α : Type) where
-  cont : α → ZZ
+  Out : Type := ZZ
+  cont : α → Out
 
 class HasPP (α : Type) where
   pp : α → α
 
 -- 全局调度入口（与 cpp2lean Pass 5 emit 一致）
-def cont {α : Type} [HasCont α] (p : α) : ZZ := HasCont.cont p
+def cont {α : Type} [c : HasCont α] (p : α) : c.Out := c.cont p
 def pp {α : Type} [HasPP α] (p : α) : α := HasPP.pp p
 
 -- MvPolyZZ: cont = signed gcd of all int coeffs; pp = f / cont
@@ -1129,8 +1135,24 @@ def MvPolyZZ.ppImpl (f : MvPolyZZ) : MvPolyZZ :=
   if c = 0 then f
   else f.map (fun term => (term.fst, term.snd / c))
 
-instance : HasCont MvPolyZZ where cont := MvPolyZZ.contImpl
+-- C++ 多变量 cont 返回 polynomial（关于剩余变量的 GCD）。Lean 端简化：把
+-- 整数 cont 包成常数 polynomial。对单变量输入正确；对真正多变量输入是占位
+-- （Phase F 续要做真实多变量 cont w.r.t. main var）。
+def MvPolyZZ.contMv (f : MvPolyZZ) : MvPolyZZ :=
+  let c : ZZ := MvPolyZZ.contImpl f
+  if c = 0 then #[]
+  else #[(#[], c)]
+
+instance : HasCont MvPolyZZ where
+  Out := MvPolyZZ
+  cont := MvPolyZZ.contMv
 instance : HasPP MvPolyZZ where pp := MvPolyZZ.ppImpl
+
+-- HDiv MvPolyZZ MvPolyZZ MvPolyZZ：sqf 翻译需要。placeholder：返回 numerator 不动
+-- （sqf 算法上 F/cont 永远成立，但具体多变量除法实现留给 Phase F 续）。
+-- C++ 端是真正的多项式精确除法。
+instance : HDiv MvPolyZZ MvPolyZZ MvPolyZZ where
+  hDiv f _g := f
 
 -- MvPolyZp / SparsePolyZp（Zp 是域）: cont 类型为 ZZ，仅起 unit 标记作用
 -- 约定：cont = (isEmpty ? 0 : 1)，pp = f（无需提主因子，仅在 ZZ 上有意义）

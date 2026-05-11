@@ -1,31 +1,31 @@
 # AST 调研总览
 
-> 生成时间：2026-04-21 11:07
+> 生成时间：2026-05-11 18:39
 
 ## 覆盖情况
 
-- 目标函数总数（TRANSLATION_SCOPE）: **65**
-- 成功 dump AST 的函数数: **65**
+- 目标函数总数（TRANSLATION_SCOPE）: **66**
+- 成功 dump AST 的函数数: **66**
 - 失败/缺失的函数数: **0**
 
 ## 全局统计
 
 - 不同的 AST kind 种数: **58**
 - 不同的运算符种数: **45**
-- 不同的类型（qualType）种数: **1199**
-- AST 节点总数（累计）: **24560**
+- 不同的类型（qualType）种数: **1205**
+- AST 节点总数（累计）: **24832**
 
 ## 潜在难点提示
 
 ### 控制流构造
-- ✅ `IfStmt`: 275
+- ✅ `IfStmt`: 282
 - ✅ `WhileStmt`: 20
-- ✅ `ForStmt`: 145
+- ✅ `ForStmt`: 146
 - ✅ `CXXForRangeStmt`: 92
 - ✅ `DoStmt`: 2
-- ✅ `BreakStmt`: 26
+- ✅ `BreakStmt`: 27
 - ✅ `ContinueStmt`: 52
-- ✅ `ReturnStmt`: 165
+- ✅ `ReturnStmt`: 168
 - — `SwitchStmt`: 0
 - — `CaseStmt`: 0
 - — `DefaultStmt`: 0
@@ -37,15 +37,15 @@
 ### Lambda / 闭包
 - ✅ `LambdaExpr`: 24
 - ✅ `CXXRecordDecl`: 24
-- ✅ `CallExpr`: 507
-- ✅ `CXXOperatorCallExpr`: 1332
+- ✅ `CallExpr`: 515
+- ✅ `CXXOperatorCallExpr`: 1347
 
 ### 结构化绑定 / 迭代器
 - ✅ `DecompositionDecl`: 30
 - ✅ `BindingDecl`: 60
-- ✅ `CXXBindTemporaryExpr`: 542
-- ✅ `MaterializeTemporaryExpr`: 522
-- ✅ `CXXConstructExpr`: 627
+- ✅ `CXXBindTemporaryExpr`: 558
+- ✅ `MaterializeTemporaryExpr`: 536
+- ✅ `CXXConstructExpr`: 639
 - — `CXXDependentScopeMemberExpr`: 0
 
 ### 模板相关
@@ -60,7 +60,7 @@
 ### 内存/生命周期
 - — `CXXNewExpr`: 0
 - — `CXXDeleteExpr`: 0
-- ✅ `ExprWithCleanups`: 535
+- ✅ `ExprWithCleanups`: 547
 - — `CXXThisExpr`: 0
 - — `UnresolvedMemberExpr`: 0
 
@@ -95,6 +95,7 @@
 | __upoly_powmod | 29 |
 | __hensel_tree_build | 28 |
 | __taylor_coeff_zp | 28 |
+| squarefreefactorize | 28 |
 | __edf_Zp | 27 |
 | __symmetric_mod_poly | 27 |
 | __assign_partial_zp | 26 |

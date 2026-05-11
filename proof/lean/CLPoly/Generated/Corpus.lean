@@ -940,7 +940,7 @@ partial def _loop___factor_multivar_lex_12_ir (__rangefor_idx_8_2 : Nat) (check_
 partial def __factor_multivar_lex_ir (f_input : MvPolyZZ) : Factorization MvPolyZZ :=
   let result_1 : Factorization MvPolyZZ := (Factorization.empty)
   let result_2 : Factorization MvPolyZZ := { result_1 with content := ((1 : Int32)).toInt }
-  let sqf_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize f_input)
+  let sqf_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize_lex_ir f_input)
   let __rangefor_cont_0_1 : Array (MvPolyZZ × UInt64) := sqf_1
   let __rangefor_idx_0_1 : Nat := (0 : Nat)
   let __loop_ret___factor_multivar_lex_8_1 : (Int64 × Array (MvPolyZZ × UInt64) × Factorization MvPolyZZ) := (_loop___factor_multivar_lex_8_ir __rangefor_idx_0_1 __rangefor_cont_0_1 result_2)
@@ -6640,7 +6640,7 @@ partial def factorize_upoly_ir (F : SparsePolyZZ) : Factorization SparsePolyZZ :
         let __x_1 : Variable := (Variable.mk (("x" : String)))
         let poly_prim_1 : MvPolyZZ := (MvPolyZZ.empty)
         let poly_prim_2 : MvPolyZZ := (poly_convert3 uf_prim_1 poly_prim_1 __x_1)
-        let sqf_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize poly_prim_2)
+        let sqf_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize_lex_ir poly_prim_2)
         let __rangefor_cont_0_1 : Array (MvPolyZZ × UInt64) := sqf_1
         let __rangefor_idx_0_1 : Nat := (0 : Nat)
         let __loop_ret_factorize_upoly_2_1 : (Int64 × Array (MvPolyZZ × UInt64) × Factorization SparsePolyZZ) := (_loop_factorize_upoly_2_ir __rangefor_idx_0_1 __rangefor_cont_0_1 result_5)
@@ -6781,7 +6781,7 @@ partial def factorize_lex_ir (F : MvPolyZZ) : Factorization MvPolyZZ :=
           result_6
         else
           let poly_prim_1 : MvPolyZZ := (__upoly_to_poly_upoly_ir uf_prim_1 var_1 (MvPolyZZ.comp F))
-          let sqf_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize poly_prim_1)
+          let sqf_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize_lex_ir poly_prim_1)
           let __rangefor_cont_0_1 : Array (MvPolyZZ × UInt64) := sqf_1
           let __rangefor_idx_0_1 : Nat := (0 : Nat)
           let __loop_ret_factorize_lex_2_1 : (Int64 × Array (MvPolyZZ × UInt64) × Factorization MvPolyZZ) := (_loop_factorize_lex_2_ir __rangefor_idx_0_1 __rangefor_cont_0_1 result_5 F var_1)
@@ -6827,6 +6827,73 @@ partial def factorize_grlex_ir (F : MvPolyZZ) : Factorization MvPolyZZ :=
   let result_3 : Factorization MvPolyZZ := __loop_ret_factorize_grlex_0_1.2.2
   let _result_lex_2 : Factorization MvPolyZZ := { result_lex_1 with factors := __rangefor_cont_0_2 }
   result_3
+
+partial def _loop_squarefreefactorize_lex_0_ir (i_2 : UInt64) (F_3_2 : MvPolyZZ) (lst_2 : Array (MvPolyZZ × UInt64)) (F__4 : MvPolyZZ) : (Int64 × MvPolyZZ × MvPolyZZ × UInt64 × Array (MvPolyZZ × UInt64)) :=
+  let bb_25 := fun F_1_2 i_2 F_3_4 lst_8 =>
+    let F__5 : MvPolyZZ := (id F_1_2)
+    let i_3 : UInt64 := (i_2 + (1 : UInt64))
+    _loop_squarefreefactorize_lex_0_ir i_3 F_3_4 lst_8 F__5
+  let bb_28 := fun F_2_2 F_1_2 i_2 lst_7 =>
+    let F_3_3 : MvPolyZZ := (id F_2_2)
+    bb_25 F_1_2 i_2 F_3_3 lst_7
+  if true then
+    let F_1_2 : MvPolyZZ := (polynomial_GCD F__4 (derivative F__4))
+    if (is_number F_1_2) then
+      ((1 : Int64), F__4, F_3_2, i_2, lst_2)
+    else
+      let F_2_2 : MvPolyZZ := (F__4 / F_1_2)
+      if (F_2_2 != F_3_2) then
+        if (i_2 > (1 : UInt64)) then
+          let lst_6 : Array (MvPolyZZ × UInt64) := (Array.push lst_2 (((F_3_2 / F_2_2), (i_2 - (1 : UInt64)))))
+          bb_28 F_2_2 F_1_2 i_2 lst_6
+        else
+          bb_28 F_2_2 F_1_2 i_2 lst_2
+      else
+        bb_25 F_1_2 i_2 F_3_2 lst_2
+  else
+    ((0 : Int64), F__4, F_3_2, i_2, lst_2)
+
+partial def squarefreefactorize_lex_ir (F : MvPolyZZ) : Array (MvPolyZZ × UInt64) :=
+  let bb_15 := fun lst_9 =>
+    ((lst_9 : Array _))
+  let bb_21 := fun F__4 i_2 lst_4 =>
+    let lst_5 : Array (MvPolyZZ × UInt64) := (Array.push lst_4 ((F__4, i_2)))
+    bb_15 lst_5
+  let bb_11 := fun F F__3 f_cont_3 =>
+    let lst_1 : Array (MvPolyZZ × UInt64) := (squarefreefactorize_lex_ir f_cont_3)
+    let _F_1_1 : MvPolyZZ := (MvPolyZZ.mk (MvPolyZZ.comp F))
+    let _F_2_1 : MvPolyZZ := (MvPolyZZ.mk (MvPolyZZ.comp F))
+    let F_3_1 : MvPolyZZ := (MvPolyZZ.mk (MvPolyZZ.comp F))
+    let i_1 : UInt64 := (1 : UInt64)
+    let __loop_ret_squarefreefactorize_lex_0_1 : (Int64 × MvPolyZZ × MvPolyZZ × UInt64 × Array (MvPolyZZ × UInt64)) := (_loop_squarefreefactorize_lex_0_ir i_1 F_3_1 lst_1 F__3)
+    let F__4 : MvPolyZZ := __loop_ret_squarefreefactorize_lex_0_1.2.1
+    let F_3_2 : MvPolyZZ := __loop_ret_squarefreefactorize_lex_0_1.2.2.1
+    let i_2 : UInt64 := __loop_ret_squarefreefactorize_lex_0_1.2.2.2.1
+    let lst_2 : Array (MvPolyZZ × UInt64) := __loop_ret_squarefreefactorize_lex_0_1.2.2.2.2
+    let __loop_ret_squarefreefactorize_lex_0__kind_1 : Int64 := __loop_ret_squarefreefactorize_lex_0_1.1
+    if (__loop_ret_squarefreefactorize_lex_0__kind_1 == (0 : Int64)) then
+      bb_15 lst_2
+    else
+      if ((i_2 > (1 : UInt64)) && (F__4 != F_3_2)) then
+        let lst_3 : Array (MvPolyZZ × UInt64) := (Array.push lst_2 (((F_3_2 / F__4), (i_2 - (1 : UInt64)))))
+        bb_21 F__4 i_2 lst_3
+      else
+        bb_21 F__4 i_2 lst_2
+  if (MvPolyZZ.isEmpty F) then
+    (#[])
+  else
+    if (is_number F) then
+      #[((F, (1 : Int32)))]
+    else
+      let f_cont_1 : MvPolyZZ := (cont F)
+      let F__1 : MvPolyZZ := (F / f_cont_1)
+      -- require (h_nonempty): (! (Array.isEmpty F__1))
+      if ((! (MvPolyZZ.isEmpty F__1)) && ((MvPolyZZ.front! F__1).snd < ((0 : Int32)).toInt)) then
+        let F__2 : MvPolyZZ := (- F__1)
+        let f_cont_2 : MvPolyZZ := (- f_cont_1)
+        bb_11 F F__2 f_cont_2
+      else
+        bb_11 F F__1 f_cont_1
 
 end
 

@@ -293,7 +293,7 @@ FUNC_MAP = {
     "prev_prime_64": ("prev_prime_64", "direct"),
     # 多项式转换
     "poly_convert": ("poly_convert", "direct"),
-    "squarefreefactorize": ("squarefreefactorize", "direct"),
+    # squarefreefactorize 现在在 TRANSLATION_SCOPE（参 L532）；不在 FUNC_MAP
     "degree": ("degree", "direct"),
     "is_number": ("is_number", "direct"),
     # 排序（翻译为 identity，排序不影响正确性）
@@ -528,4 +528,6 @@ TRANSLATION_SCOPE = {
     "__select_eval_point", "__si_theta_array_eval",
     "__symmetric_mod_poly", "__taylor_coeff_zp",
     "__wang_core", "__wang_leading_coeff",
+    # GCD 模块（仅 sqf，其余 GCD/cont/derivative/division 仍走 basis）
+    "squarefreefactorize",
 }

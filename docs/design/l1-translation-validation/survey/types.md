@@ -1,21 +1,21 @@
 # 类型（qualType）直方图
 
-> 生成时间：2026-04-21 11:07
+> 生成时间：2026-05-11 18:39
 
 按出现次数降序。截取前 200 条。
 
 | Type | Count | First Seen In |
 |---|---|---|
-| `int` | 2974 | __assign_partial_zp |
-| `ZZ` | 1065 | __binomial |
-| `bool` | 1046 | __assign_partial_zp |
-| `<bound member function type>` | 869 | __assign_partial_zp |
+| `int` | 2982 | __assign_partial_zp |
+| `ZZ` | 1068 | __binomial |
+| `bool` | 1059 | __assign_partial_zp |
+| `<bound member function type>` | 878 | __assign_partial_zp |
 | `iterator` | 659 | __build_cld_matrix |
 | `size_type` | 559 | __assign_partial_zp |
-| `const ZZ` | 551 | __binomial |
-| `value_type` | 518 | __build_cld_matrix |
-| `void` | 497 | __assign_partial_zp |
-| `uint64_t` | 421 | __assign_partial_zp |
+| `const ZZ` | 554 | __binomial |
+| `value_type` | 527 | __build_cld_matrix |
+| `void` | 503 | __assign_partial_zp |
+| `uint64_t` | 442 | __assign_partial_zp |
 | `reference (*)(size_type) noexcept` | 389 | __build_cld_matrix |
 | `reference (size_type) noexcept` | 389 | __build_cld_matrix |
 | `upolynomial_<Zp>` | 340 | __ddf_Zp |
@@ -27,48 +27,48 @@
 | `Zp` | 243 | __assign_partial_zp |
 | `basic_polynomial<basic_monomial<lex_<less>>, Zp, lex_<less>>` | 207 | __assign_partial_zp |
 | `Poly` | 164 | __extract_monomial_content |
+| `polynomial_<ZZ, lex_<less>>` | 149 | __extract_monomial_content |
 | `QQ` | 144 | __lll_reduce |
-| `const clpoly::lex_<clpoly::less> *` | 120 | __extract_monomial_content |
+| `const clpoly::lex_<clpoly::less> *` | 123 | __extract_monomial_content |
 | `std::vector<int>` | 118 | __extract_candidates |
-| `polynomial_<ZZ, lex_<less>>` | 115 | __extract_monomial_content |
 | `const upolynomial_<Zp>` | 112 | __ddf_Zp |
 | `basic_polynomial<umonomial, ZZ, uless>` | 108 | __cld_polys |
-| `clpoly::ZZ` | 107 | __extract_monomial_content |
+| `clpoly::ZZ` | 108 | __extract_monomial_content |
 | `clpoly::lex_<clpoly::less>` | 105 | __assign_partial_zp |
+| `basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>>` | 104 | __extract_monomial_content |
 | `const upolynomial_<ZZ>` | 103 | __build_cld_matrix |
 | `reference (*)() const noexcept` | 100 | __build_cld_matrix |
 | `reference () const noexcept` | 100 | __build_cld_matrix |
 | `std::vector<upolynomial_<ZZ>>` | 99 | __cld_polys |
 | `const QQ` | 95 | __lll_reduce |
 | `const value_type` | 92 | __assign_partial_zp |
+| `const polynomial_<ZZ, lex_<less>>` | 90 | __assign_partial_zp |
+| `clpoly::less` | 81 | __assign_partial_zp |
 | `const Zp` | 81 | __hensel_lift |
 | `std::vector<PolyZp>` | 81 | __mtshl_lift |
 | `polynomial_<Zp, lex_<less>>` | 80 | __assign_partial_zp |
-| `clpoly::less` | 79 | __assign_partial_zp |
 | `basic_monomial<lex_<less>>` | 79 | __assign_partial_zp |
-| `const polynomial_<ZZ, lex_<less>>` | 79 | __assign_partial_zp |
 | `basic_polynomial<umonomial, Zp, uless>` | 79 | __ddf_Zp |
 | `LLLMatrix` | 74 | __build_cld_matrix |
+| `const allocator_type` | 69 | __build_cld_matrix |
 | `const char *` | 69 | __cld_polys |
-| `const allocator_type` | 68 | __build_cld_matrix |
 | `std::vector<Zp>` | 68 | __mtshl_lift |
 | `const polynomial_<Zp, lex_<less>>` | 66 | __assign_partial_zp |
 | `const_reference (*)(size_type) const noexcept` | 65 | __assign_partial_zp |
 | `const_reference (size_type) const noexcept` | 65 | __assign_partial_zp |
 | `ZZ (const ZZ &, const ZZ &)` | 64 | __edf_Zp |
-| `basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>>` | 64 | __extract_monomial_content |
 | `ZZ (*)(const ZZ &, const ZZ &)` | 63 | __edf_Zp |
 | `std::vector<std::pair<upolynomial_<Zp>, uint64_t>>` | 59 | __ddf_Zp |
 | `umonomial` | 59 | __ddf_Zp |
 | `const basic_polynomial<umonomial, ZZ, uless>` | 58 | __hensel_step |
 | `const basic_polynomial<basic_monomial<lex_<less>>, Zp, lex_<less>>` | 58 | __mtshl_multi_bdp |
 | `clpoly::Zp` | 55 | __assign_partial_zp |
+| `<builtin fn type>` | 55 | __build_cld_matrix |
 | `std::vector<std::pair<umonomial, ZZ>>` | 55 | __hensel_step |
-| `<builtin fn type>` | 53 | __build_cld_matrix |
 | `const variable` | 52 | __mtshl_lift |
+| `bool (*)(const ZZ &, const ZZ &)` | 50 | __extract_candidates |
+| `bool (const ZZ &, const ZZ &)` | 50 | __extract_candidates |
 | `std::vector<upolynomial_<Zp>>` | 49 | __edf_Zp |
-| `bool (*)(const ZZ &, const ZZ &)` | 49 | __extract_candidates |
-| `bool (const ZZ &, const ZZ &)` | 49 | __extract_candidates |
 | `std::vector<UPZp>` | 49 | __mtshl_multi_bdp |
 | `std::tuple_element<1, std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<`... | 47 | __factor_multivar |
 | `std::vector<__hensel_node>` | 47 | __hensel_lift |
@@ -92,7 +92,9 @@
 | `std::pair<ZZ, upolynomial_<ZZ>>` | 35 | __upoly_primitive |
 | `std::pair<clpoly::umonomial, clpoly::ZZ>` | 34 | __hensel_lift |
 | `unsigned long` | 33 | __factor_Zp |
+| `const basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>>` | 33 | __factor_multivar |
 | `const std::vector<Zp>` | 32 | __assign_partial_zp |
+| `std::vector<std::pair<polynomial_<ZZ, lex_<less>>, uint64_t>>` | 32 | __factor_multivar |
 | `const PolyZp` | 32 | __mtshl_lift |
 | `basic_polynomial<basic_monomial<lex_<less>>, Zp, lex_<less>> (*)(const basic_pol`... | 32 | __mtshl_multi_bdp |
 | `basic_polynomial<basic_monomial<lex_<less>>, Zp, lex_<less>> (const basic_polyno`... | 32 | __mtshl_multi_bdp |
@@ -126,19 +128,19 @@
 | `void (const char *, const char *, unsigned int, const char *) __attribute__((nor`... | 23 | __cld_polys |
 | `long` | 23 | __extract_monomial_content |
 | `std::tuple_element<0, std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<`... | 23 | __factor_multivar |
+| `std::pair<basic_monomial<lex_<less>>, ZZ>` | 23 | __factor_multivar |
 | `std::list<std::pair<variable, int64_t>>` | 23 | __factor_multivar |
 | `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>`... | 23 | __mtshl_lift |
 | `std::vector<std::vector<Zp>>` | 23 | __si_vandermonde_solve |
 | `const clpoly::Zp` | 22 | __ddf_Zp |
 | `basic_polynomial<umonomial, Zp, uless> &(*)(basic_polynomial<umonomial, Zp, ules`... | 22 | __ddf_Zp |
 | `basic_polynomial<umonomial, Zp, uless> &(basic_polynomial<umonomial, Zp, uless> `... | 22 | __ddf_Zp |
-| `std::pair<basic_monomial<lex_<less>>, ZZ>` | 22 | __factor_multivar |
+| `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>`... | 22 | __factor_multivar |
 | `__normal_iterator<pair<umonomial, ZZ> *, vector<pair<umonomial, ZZ>>> &(*)() noe`... | 22 | __hensel_lift |
 | `__normal_iterator<pair<umonomial, ZZ> *, vector<pair<umonomial, ZZ>>> &() noexce`... | 22 | __hensel_lift |
 | `int64_t (*)(const upolynomial_<Zp> &)` | 21 | __ddf_Zp |
 | `int64_t (const upolynomial_<Zp> &)` | 21 | __ddf_Zp |
 | `const clpoly::basic_polynomial<clpoly::umonomial, clpoly::Zp, clpoly::uless>` | 21 | __ddf_Zp |
-| `const basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>>` | 21 | __factor_multivar |
 | `void (*)(ZZ &, const ZZ &, const ZZ &)` | 21 | __hensel_step |
 | `void (ZZ &, const ZZ &, const ZZ &)` | 21 | __hensel_step |
 | `std::vector<QQ>` | 21 | __lll_reduce |
@@ -154,9 +156,9 @@
 | `bool (*)(const __normal_iterator<pair<umonomial, ZZ> *, vector<pair<umonomial, Z`... | 20 | __hensel_lift |
 | `bool (const __normal_iterator<pair<umonomial, ZZ> *, vector<pair<umonomial, ZZ>,`... | 20 | __hensel_lift |
 | `std::vector<std::pair<basic_monomial<lex_<less>>, ZZ>>` | 19 | __extract_monomial_content |
-| `std::vector<std::pair<polynomial_<ZZ, lex_<less>>, uint64_t>>` | 19 | __factor_multivar |
-| `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>`... | 19 | __factor_multivar |
 | `ZZ (*)(const ZZ &)` | 19 | __factor_multivar |
+| `basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>> &(*)(basic_polynomi`... | 19 | __factor_multivar |
+| `basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>> &(basic_polynomial<`... | 19 | __factor_multivar |
 | `const std::pair<clpoly::umonomial, clpoly::Zp>` | 18 | __ddf_Zp |
 | `const basic_polynomial<umonomial, Zp, uless>` | 18 | __edf_Zp |
 | `std::pair<variable, int64_t>` | 18 | __extract_monomial_content |
@@ -164,6 +166,8 @@
 | `const clpoly::umonomial` | 17 | __build_cld_matrix |
 | `const clpoly::basic_polynomial<clpoly::umonomial, clpoly::ZZ, clpoly::uless>` | 17 | __build_cld_matrix |
 | `std::map<variable, int64_t>` | 17 | __extract_monomial_content |
+| `bool (*)(const polynomial_<ZZ, lex_<less>> &)` | 17 | __factor_multivar |
+| `bool (const polynomial_<ZZ, lex_<less>> &)` | 17 | __factor_multivar |
 | `std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ>` | 17 | __factor_multivar |
 | `std::pair<std::vector<upolynomial_<ZZ>>, ZZ>` | 17 | __hensel_lift |
 | `std::vector<std::vector<basic_monomial<lex_<less>>>>` | 17 | __mtshl_lift |
@@ -186,35 +190,31 @@
 | `typename std::remove_reference<basic_polynomial<umonomial, ZZ, uless> &>::type &`... | 15 | __cld_polys |
 | `const _Self` | 15 | __extract_monomial_content |
 | `std::pair<clpoly::basic_polynomial<clpoly::umonomial, clpoly::Zp, clpoly::uless>`... | 15 | __factor_Zp |
-| `bool (*)(const polynomial_<ZZ, lex_<less>> &)` | 15 | __factor_multivar |
-| `bool (const polynomial_<ZZ, lex_<less>> &)` | 15 | __factor_multivar |
+| `const polynomial_<ZZ, lex_<less>> &` | 14 | __assign_partial_zp |
 | `std::vector<std::pair<variable, int64_t>>` | 14 | __extract_monomial_content |
 | `std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ> const` | 14 | __extract_monomial_content |
+| `basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>> (*)(const basic_pol`... | 14 | __factor_multivar |
+| `basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>> (const basic_polyno`... | 14 | __factor_multivar |
 | `const std::map<variable, ZZ>` | 14 | __mtshl_lift |
-| `const polynomial_<ZZ, lex_<less>> &` | 13 | __assign_partial_zp |
 | `basic_polynomial<umonomial, ZZ, uless> &(*)(basic_polynomial<umonomial, ZZ, ules`... | 13 | __cld_polys |
 | `basic_polynomial<umonomial, ZZ, uless> &(basic_polynomial<umonomial, ZZ, uless> `... | 13 | __cld_polys |
 | `upolynomial_<Zp> (const upolynomial_<Zp> &, const upolynomial_<Zp> &)` | 13 | __ddf_Zp |
 | `std::mt19937` | 13 | __edf_Zp |
 | `const long` | 13 | __extract_monomial_content |
 | `typename basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>>::coeff_typ`... | 13 | __factor_multivar |
-| `basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>> &(*)(basic_polynomi`... | 13 | __factor_multivar |
-| `basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>> &(basic_polynomial<`... | 13 | __factor_multivar |
 | `(lambda at /home/haokun/projects/CLPoly/clpoly/polynomial_factorize_univar.hh:10`... | 13 | __lll_reduce |
 | `const variable &` | 13 | __mtshl_lift |
 | `Zp (*)(Zp, const Zp &)` | 13 | __mtshl_sparse_int |
 | `Zp (Zp, const Zp &)` | 13 | __mtshl_sparse_int |
-| `const __gnu_cxx::__normal_iterator<const std::pair<clpoly::umonomial, clpoly::ZZ`... | 12 | __build_cld_matrix |
-| `const std::pair<umonomial, ZZ>` | 12 | __build_cld_matrix |
 
 ## 类型分组
 
 ### 基础数值
 
-- `int` — 2974
-- `bool` — 1046
+- `int` — 2982
+- `bool` — 1059
 - `size_type` — 559
-- `uint64_t` — 421
+- `uint64_t` — 442
 - `reference (*)(size_type) noexcept` — 389
 - `reference (size_type) noexcept` — 389
 - `size_t` — 322
@@ -224,12 +224,13 @@
 - `const_reference (*)(size_type) const noexcept` — 65
 - `const_reference (size_type) const noexcept` — 65
 - `std::vector<std::pair<upolynomial_<Zp>, uint64_t>>` — 59
-- `bool (*)(const ZZ &, const ZZ &)` — 49
-- `bool (const ZZ &, const ZZ &)` — 49
+- `bool (*)(const ZZ &, const ZZ &)` — 50
+- `bool (const ZZ &, const ZZ &)` — 50
 - `std::tuple_element<1, std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>>::type` — 47
 - `const int` — 39
 - `std::vector<std::pair<basic_polynomial<basic_monomial<lex_<less>>, ZZ, lex_<less>>, uint64_t>>` — 35
 - `unsigned long` — 33
+- `std::vector<std::pair<polynomial_<ZZ, lex_<less>>, uint64_t>>` — 32
 - `double` — 30
 - `pointer` — 29
 - `pointer (*)() const noexcept` — 29
@@ -240,11 +241,10 @@
 - `void (*)(const char *, const char *, unsigned int, const char *) __attribute__((noreturn)) noexcept(true)` — 23
 - `void (const char *, const char *, unsigned int, const char *) __attribute__((noreturn)) noexcept(true)` — 23
 - `long` — 23
-- `std::tuple_element<0, std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>>::type` — 23
 
 ### CLPoly 数域
 
-- `clpoly::ZZ` — 107
+- `clpoly::ZZ` — 108
 - `clpoly::Zp` — 55
 - `std::tuple_element<1, std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>>::type` — 47
 - `const clpoly::ZZ` — 45
@@ -254,8 +254,8 @@
 - `std::tuple_element<0, std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>>::type` — 23
 - `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::Zp, clpoly::lex_<clpoly::less>>` — 23
 - `const clpoly::Zp` — 22
+- `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>` — 22
 - `const clpoly::basic_polynomial<clpoly::umonomial, clpoly::Zp, clpoly::uless>` — 21
-- `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>` — 19
 - `const std::pair<clpoly::umonomial, clpoly::Zp>` — 18
 - `const clpoly::basic_polynomial<clpoly::umonomial, clpoly::ZZ, clpoly::uless>` — 17
 - `std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ>` — 17
@@ -273,7 +273,7 @@
 - `std::tuple_element<1, std::pair<clpoly::ZZ, clpoly::basic_polynomial<clpoly::umonomial, clpoly::ZZ, clpoly::uless>>>::type` — 10
 - `const __gnu_cxx::__normal_iterator<std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long> *, std::vector<std::pa...<truncated>` — 9
 - `typename std::remove_reference<ZZ &>::type &&(*)(clpoly::ZZ &) noexcept` — 9
-- `basic_polynomial<basic_monomial<lex_<less>>, clpoly::Zp, clpoly::lex_<clpoly::less>>` — 8
+- `const std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>[1]` — 9
 
 ### CLPoly 多项式
 
@@ -282,8 +282,8 @@
 - `std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>` — 25
 - `std::tuple_element<0, std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>>::type` — 23
 - `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::Zp, clpoly::lex_<clpoly::less>>` — 23
+- `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>` — 22
 - `std::pair<clpoly::variable, long> const` — 20
-- `const clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>` — 19
 - `std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ>` — 17
 - `clpoly::basic_monomial<clpoly::lex_<clpoly::less>>` — 15
 - `std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ> const` — 14
@@ -297,6 +297,7 @@
 - `const __gnu_cxx::__normal_iterator<std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long> *, std::vector<std::pa...<truncated>` — 9
 - `std::pair<clpoly::variable, long>` — 9
 - `const std::vector<clpoly::variable>` — 9
+- `const std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>[1]` — 9
 - `clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::Zp, clpoly::lex_<clpoly::less>>` — 8
 - `std::tuple_element<0, const std::pair<clpoly::variable, long>>::type` — 8
 - `std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long> &` — 8
@@ -306,7 +307,6 @@
 - `const __gnu_cxx::__normal_iterator<std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ> *, std::vector<std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ>>>` — 8
 - `std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ> const &` — 7
 - `std::tuple_element<1, const std::pair<clpoly::variable, long>>::type` — 7
-- `std::pair<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::Zp> const &` — 7
 
 ### STL 容器
 
@@ -331,6 +331,7 @@
 - `std::pair<ZZ, upolynomial_<ZZ>>` — 35
 - `std::pair<clpoly::umonomial, clpoly::ZZ>` — 34
 - `const std::vector<Zp>` — 32
+- `std::vector<std::pair<polynomial_<ZZ, lex_<less>>, uint64_t>>` — 32
 - `const std::vector<variable>` — 31
 - `const std::vector<ZZ>` — 30
 - `const std::vector<upolynomial_<Zp>>` — 27
@@ -339,7 +340,6 @@
 - `const std::vector<polynomial_<Zp, lex_<less>>>` — 26
 - `std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>` — 25
 - `std::tuple_element<0, std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long>>::type` — 23
-- `std::list<std::pair<variable, int64_t>>` — 23
 
 ### STL 迭代器/引用
 

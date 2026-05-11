@@ -17,7 +17,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <signal.h>
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#include <sys/sysctl.h>
+#elif defined(__GLIBC__)
 #include <malloc.h>
+#endif
 
 struct BenchResult { std::string name; double ms; };
 static std::vector<BenchResult> _bench_results;
@@ -32,6 +37,18 @@ inline void print_sysinfo() {
         std::cout << "OS:        " << uts.sysname << " " << uts.release
                   << " " << uts.machine << std::endl;
 
+#if defined(__APPLE__)
+    char cpu_buf[256];
+    size_t cpu_buf_len = sizeof(cpu_buf);
+    if (sysctlbyname("machdep.cpu.brand_string", cpu_buf, &cpu_buf_len, nullptr, 0) == 0) {
+        std::cout << "CPU:       " << cpu_buf << std::endl;
+    }
+    uint64_t ram_bytes = 0;
+    size_t ram_len = sizeof(ram_bytes);
+    if (sysctlbyname("hw.memsize", &ram_bytes, &ram_len, nullptr, 0) == 0) {
+        std::cout << "RAM:       " << (ram_bytes / (1024 * 1024)) << " MB" << std::endl;
+    }
+#else
     std::ifstream cpuinfo("/proc/cpuinfo");
     if (cpuinfo) {
         std::string line;
@@ -53,6 +70,7 @@ inline void print_sysinfo() {
                 break;
             }
     }
+#endif
 
 #ifdef __VERSION__
     std::cout << "Compiler:  g++ " << __VERSION__ << std::endl;
@@ -68,8 +86,15 @@ inline void print_sysinfo() {
 // ---- Heap measurement ----
 
 inline long get_heap_bytes() {
+#if defined(__APPLE__)
+    struct mstats ms = mstats();
+    return static_cast<long>(ms.bytes_used);
+#elif defined(__GLIBC__)
     struct mallinfo2 mi = mallinfo2();
     return static_cast<long>(mi.uordblks) + static_cast<long>(mi.hblkhd);
+#else
+#error "Unsupported platform for heap measurement"
+#endif
 }
 
 // ---- Fork-based execution core ----

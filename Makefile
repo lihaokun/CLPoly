@@ -26,16 +26,19 @@ config:
 	   echo 'CLPoly_REL?=$(CLPoly_REL)'               ; \
 	   echo 'CLPoly_DEB?=$(CLPoly_DEB)'               ; \
 	   echo 'CLPoly_FPIC?=$(CLPoly_FPIC)'             ; \
-	   echo 'CLPoly_prefix?=$(CLPoly_prefix)'          ) > config.mk
+	   echo 'CLPoly_prefix?=$(CLPoly_prefix)'         ; \
+	   echo 'CLPoly_IPATHS?=$(CLPoly_IPATHS)'         ; \
+	   echo 'CLPoly_LDFLAGS?=$(CLPoly_LDFLAGS)'        ) > config.mk
 
-CXX      = g++
-IPATHS   = -I./
-DEPFLAGS = -MMD -MP
+CXX            ?= g++
+CLPoly_IPATHS  ?= -I./
+CLPoly_LDFLAGS ?=
+DEPFLAGS       = -MMD -MP
 
 ## GMP version check (>= 6.3.0 required for mpz_prevprime) ########################################
 
 GMP_VERSION := $(shell echo '__GNU_MP_VERSION __GNU_MP_VERSION_MINOR __GNU_MP_VERSION_PATCHLEVEL' \
-                 | $(CXX) -include gmp.h -E -x c++ - 2>/dev/null | tail -1 | tr -s ' ')
+                 | $(CXX) $(CLPoly_IPATHS) -include gmp.h -E -x c++ - 2>/dev/null | tail -1 | tr -s ' ')
 GMP_OK := $(shell echo '$(GMP_VERSION)' | awk '{ if ($$1>6||($$1==6&&$$2>3)||($$1==6&&$$2==3&&$$3>=0)) print "yes"; else print "no" }')
 
 ifneq ($(GMP_OK),yes)
@@ -67,15 +70,15 @@ clpoly_pr_o = $(clpoly_cc:clpoly/%.cc=$(OBJ_PROF)/clpoly/%.o)
 
 $(OBJ_REL)/clpoly/%.o: clpoly/%.cc
 	mkdir -p $(dir $@)
-	$(CXX) $(CLPoly_REL) $(CLPoly_FPIC) $(DEPFLAGS) $(IPATHS) -c $< -o $@
+	$(CXX) $(CLPoly_REL) $(CLPoly_FPIC) $(DEPFLAGS) $(CLPoly_IPATHS) -c $< -o $@
 
 $(OBJ_DEB)/clpoly/%.o: clpoly/%.cc
 	mkdir -p $(dir $@)
-	$(CXX) $(CLPoly_DEB) $(CLPoly_FPIC) $(DEPFLAGS) $(IPATHS) -c $< -o $@
+	$(CXX) $(CLPoly_DEB) $(CLPoly_FPIC) $(DEPFLAGS) $(CLPoly_IPATHS) -c $< -o $@
 
 $(OBJ_PROF)/clpoly/%.o: clpoly/%.cc
 	mkdir -p $(dir $@)
-	$(CXX) -O2 -DCLPOLY_PROFILE $(CLPoly_FPIC) $(DEPFLAGS) $(IPATHS) -c $< -o $@
+	$(CXX) -O2 -DCLPOLY_PROFILE $(CLPoly_FPIC) $(DEPFLAGS) $(CLPoly_IPATHS) -c $< -o $@
 
 # Prevent Make from deleting .o as intermediate files
 .PRECIOUS: $(OBJ_REL)/clpoly/%.o $(OBJ_DEB)/clpoly/%.o $(OBJ_PROF)/clpoly/%.o
@@ -98,11 +101,11 @@ $(CLPoly_LIB_DIR)/profile/libclpoly.a: $(clpoly_pr_o)
 
 $(CLPoly_LIB_DIR)/libclpoly.so: $(clpoly_r_o)
 	mkdir -p $(dir $@)
-	$(CXX) -shared -o $@ $^ $(Numberlib)
+	$(CXX) -shared -o $@ $^ $(CLPoly_LDFLAGS) $(Numberlib)
 
 $(CLPoly_LIB_DIR)/debug/libclpoly.so: $(clpoly_d_o)
 	mkdir -p $(dir $@)
-	$(CXX) -shared -o $@ $^ $(Numberlib)
+	$(CXX) -shared -o $@ $^ $(CLPoly_LDFLAGS) $(Numberlib)
 
 ## Aggregate library target ######################################################################
 
@@ -117,21 +120,21 @@ libs: $(CLPoly_LIB_DIR)/libclpoly.a \
 
 test/%: test/%.cc $(CLPoly_LIB_DIR)/debug/libclpoly.a
 	mkdir -p $(BIN_DEB)
-	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(IPATHS) $< -o $(BIN_DEB)/$* $(CLPoly_LIB_DIR)/debug/libclpoly.a $(Numberlib)
+	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $(BIN_DEB)/$* $(CLPoly_LIB_DIR)/debug/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib)
 
 ## Cross-library correctness tests (explicit rules take priority) ################################
 
 $(BIN_DEB)/test_crosscheck_flint: test/test_crosscheck_flint.cc $(CLPoly_LIB_DIR)/debug/libclpoly.a
 	mkdir -p $(BIN_DEB)
-	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(Numberlib) $(FLINT_LIBS)
+	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib) $(FLINT_LIBS)
 
 $(BIN_DEB)/test_crosscheck_ntl: test/test_crosscheck_ntl.cc $(CLPoly_LIB_DIR)/debug/libclpoly.a
 	mkdir -p $(BIN_DEB)
-	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(Numberlib) $(NTL_LIBS)
+	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib) $(NTL_LIBS)
 
 $(BIN_DEB)/test_factorize_stress: test/test_factorize_stress.cc $(CLPoly_LIB_DIR)/debug/libclpoly.a
 	mkdir -p $(BIN_DEB)
-	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(Numberlib) $(FLINT_LIBS)
+	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib) $(FLINT_LIBS)
 
 .PHONY: crosscheck
 crosscheck: $(BIN_DEB)/test_crosscheck_flint $(BIN_DEB)/test_crosscheck_ntl
@@ -142,15 +145,15 @@ crosscheck: $(BIN_DEB)/test_crosscheck_flint $(BIN_DEB)/test_crosscheck_ntl
 
 $(BIN_REL)/bench_clpoly: test/bench_clpoly.cc $(CLPoly_LIB_DIR)/libclpoly.a
 	mkdir -p $(BIN_REL)
-	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(Numberlib)
+	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib)
 
 $(BIN_REL)/bench_comparative: test/bench_comparative.cc $(CLPoly_LIB_DIR)/libclpoly.a
 	mkdir -p $(BIN_REL)
-	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(Numberlib) $(FLINT_LIBS) $(NTL_LIBS)
+	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib) $(FLINT_LIBS) $(NTL_LIBS)
 
 $(BIN_REL)/test_stress_factorize: test/test_stress_factorize.cc $(CLPoly_LIB_DIR)/libclpoly.a
 	mkdir -p $(BIN_REL)
-	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(Numberlib)
+	$(CXX) $(CLPoly_REL) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib)
 
 .PHONY: stress
 stress: $(BIN_REL)/test_stress_factorize
@@ -168,7 +171,7 @@ bench: bench-clpoly bench-comparative
 ## Profiling (gprof) — build with -O2 -pg, run, then print flat profile
 $(BIN_PROF)/bench_profile: test/bench_profile.cc $(CLPoly_LIB_DIR)/profile/libclpoly.a
 	mkdir -p $(BIN_PROF)
-	$(CXX) -O2 -DCLPOLY_PROFILE $(DEPFLAGS) $(IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/profile/libclpoly.a $(Numberlib)
+	$(CXX) -O2 -DCLPOLY_PROFILE $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/profile/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib)
 
 .PHONY: profile
 profile: $(BIN_PROF)/bench_profile

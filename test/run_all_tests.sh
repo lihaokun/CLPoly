@@ -2,7 +2,7 @@
 # Run all CLPoly automated tests
 # Usage: bash test/run_all_tests.sh
 
-set -e
+set -e -o pipefail
 
 cd "$(dirname "$0")/.."
 
@@ -33,6 +33,8 @@ TESTS=(
     test_factorize_multivar
     test_groebner
     test_dense_upoly_hgcd
+    test_factorize_bugfix
+    test_squarefreebasis_bugfix
 )
 
 TOTAL_PASS=0

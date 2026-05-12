@@ -1168,9 +1168,10 @@ def MvPolyZZ.ppImpl (f : MvPolyZZ) : MvPolyZZ :=
   if c = 0 then f
   else f.map (fun term => (term.fst, term.snd / c))
 
--- C++ 多变量 cont 返回 polynomial（关于剩余变量的 GCD）。Lean 端简化：把
--- 整数 cont 包成常数 polynomial。对单变量输入正确；对真正多变量输入是占位
--- （Phase F 续要做真实多变量 cont w.r.t. main var）。
+-- C++ 多变量 cont 返回 polynomial（关于剩余变量的 GCD）。
+-- 对 univariate-as-mvpoly 输入：剩余变量集合为空，"系数多项式 GCD" 退化为
+-- 整数 GCD，故"整数 cont 包成常数 polynomial"是数学正确的。
+-- 对真正多变量输入：是不完整占位（应返回剩余变量的多项式）。Phase F-impl-v2 续。
 def MvPolyZZ.contMv (f : MvPolyZZ) : MvPolyZZ :=
   let c : ZZ := MvPolyZZ.contImpl f
   if c = 0 then #[]
@@ -1616,6 +1617,88 @@ partial def MvPolyZZ.divExact (f g : MvPolyZZ) : MvPolyZZ :=
 -- 覆盖之前的 placeholder HDiv（identity）
 instance : HDiv MvPolyZZ MvPolyZZ MvPolyZZ where
   hDiv := MvPolyZZ.divExact
+
+-- ============================================================
+-- MvPolyZZ.polynomialGCD（多变量 ZZ GCD）—— Phase F-impl-X.6
+-- ============================================================
+
+-- 整数 cont（所有系数的 gcd 绝对值；首项符号决定整体符号）
+def MvPolyZZ.contInt (f : MvPolyZZ) : Int :=
+  if h : 0 < f.size then
+    let nat_gcd := f.foldl (fun (acc : Nat) (t : Monomial × Int) =>
+      Nat.gcd acc t.snd.natAbs) 0
+    let g : Int := (nat_gcd : Int)
+    if f[0].snd < 0 then -g else g
+  else 0
+
+-- 是否常数（所有 mono 为空）
+def MvPolyZZ.isConstantMv (f : MvPolyZZ) : Bool :=
+  f.all (fun t => t.fst.isEmpty)
+
+-- 取首项的主变量（lex 最高）；首项是常数返回 none
+def MvPolyZZ.getMainVar (f : MvPolyZZ) : Option Variable :=
+  if h : 0 < f.size then
+    let firstMono := f[0].fst
+    if hm : 0 < firstMono.size then some firstMono[0].fst
+    else none
+  else none
+
+-- 是否仅使用变量 v
+def MvPolyZZ.isUnivariateInVar (f : MvPolyZZ) (v : Variable) : Bool :=
+  f.all (fun t =>
+    t.fst.all (fun e => e.fst == v))
+
+-- univariate-in-v → SparsePolyZZ
+def MvPolyZZ.mvToSparseZZ (v : Variable) (f : MvPolyZZ) : SparsePolyZZ :=
+  let s : SparsePolyZZ := f.map (fun term =>
+    let deg : Nat := (Monomial.expOf term.fst v).toNatClampNeg
+    (⟨deg⟩, term.snd))
+  SparsePolyZZ.normalization s
+
+-- SparsePolyZZ → MvPolyZZ (单变量 v)
+def MvPolyZZ.sparseZZToMv (v : Variable) (f : SparsePolyZZ) : MvPolyZZ :=
+  f.map (fun term =>
+    let mono : Monomial :=
+      if term.fst.deg = 0 then #[]
+      else #[(v, (term.fst.deg.toUInt64.toInt64 : Int64))]
+    (mono, term.snd))
+
+-- 多变量 polynomial_GCD：
+--   - 任一空 → 另一个
+--   - 任一常数 → 常数 GCD（整数 gcd 包成常数 poly）
+--   - 同主变量且都 univariate → 转 SparsePolyZZ 调单变量 gcd 再转回
+--   - 否则（真多变量）→ 退化到整数 cont gcd（已知不完整，TODO Phase F-impl-v2）
+def MvPolyZZ.polynomialGCD (F G : MvPolyZZ) : MvPolyZZ :=
+  if F.isEmpty then G
+  else if G.isEmpty then F
+  else if MvPolyZZ.isConstantMv F then
+    let c : Int := F[0]!.snd
+    let cInt := MvPolyZZ.contInt G
+    let g : Int := (Nat.gcd c.natAbs cInt.natAbs : Int)
+    if g = 0 then #[] else #[(#[], g)]
+  else if MvPolyZZ.isConstantMv G then
+    let c : Int := G[0]!.snd
+    let cInt := MvPolyZZ.contInt F
+    let g : Int := (Nat.gcd c.natAbs cInt.natAbs : Int)
+    if g = 0 then #[] else #[(#[], g)]
+  else
+    match MvPolyZZ.getMainVar F, MvPolyZZ.getMainVar G with
+    | some vF, some vG =>
+      if vF = vG ∧ MvPolyZZ.isUnivariateInVar F vF ∧ MvPolyZZ.isUnivariateInVar G vG then
+        -- univariate-as-mvpoly：转 SparsePolyZZ 调 univariate GCD
+        let sF := MvPolyZZ.mvToSparseZZ vF F
+        let sG := MvPolyZZ.mvToSparseZZ vG G
+        let sGcd := SparsePolyZZ.gcd sF sG
+        MvPolyZZ.sparseZZToMv vF sGcd
+      else
+        -- 真多变量退化：整数 cont gcd（不完整占位，TODO Phase F-impl-v2）
+        let cF := MvPolyZZ.contInt F
+        let cG := MvPolyZZ.contInt G
+        let g : Int := (Nat.gcd cF.natAbs cG.natAbs : Int)
+        if g = 0 then #[] else #[(#[], g)]
+    | _, _ => #[]
+
+instance : HasPolyGCD MvPolyZZ where polyGCD := MvPolyZZ.polynomialGCD
 
 -- leadcoeff(p, var)：找 var 的最大 exp，收集这些项，剥离 var
 instance : HasLeadcoeff MvPolyZZ where

@@ -819,10 +819,8 @@ TRANSLATION_SCOPE = {
     "__select_eval_point", "__si_theta_array_eval",
     "__symmetric_mod_poly", "__taylor_coeff_zp",
     "__wang_core", "__wang_leading_coeff",
-    # GCD 模块（Phase F-impl: 翻译 GCD/cont/__polynomial_GCD 等）
+    # GCD 模块：仅 sqf 翻译；polynomial_GCD/cont 等翻译路径试过但 survey_ast
+    # 单 template instance 限制 + dense_upoly_zp basis 缺口 → 不走翻译路线，
+    # 改 Phase F-impl-A（数学 spec + L1 placeholder/真实现）。详 docs/devlog
     "squarefreefactorize",
-    "polynomial_GCD",         # 多变量 Brown's modular GCD over ZZ
-    "cont",                   # 多变量 cont w.r.t. main var
-    "leadcoeff",              # 多变量 leadcoeff w.r.t. main var
-    "__polynomial_GCD",       # mod-p 多变量 GCD（Brown 内层）
 }

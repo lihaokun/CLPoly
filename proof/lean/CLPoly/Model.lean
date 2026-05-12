@@ -753,8 +753,41 @@ class HasDerivative (α : Type) where
 instance : HasDerivative SparsePolyZp where derivative := SparsePolyZp.derivative
 
 -- HasDerivative SparsePolyZZ 真实实现见 §5c（abbrev SparsePolyZZ 之后）
--- MvPoly 的 1-arg derivative 在 corpus 中无调用（C++ 多变量求导需要 var 参数），
--- 但保留 priority := 0 兜底以防 Pass 5 emit 在多变量上下文意外触发 typeclass 查找
+-- MvPoly 的 1-arg derivative：对应 C++ polynomial.hh:880 derivative<lex_<...>>
+-- 关于第一个变量（主变量，lex order 的最高 var）求导
+def MvPolyZZ.derivativeMv (f : MvPolyZZ) : MvPolyZZ :=
+  if h : 0 < f.size then
+    let firstMono := f[0].fst
+    if hm : 0 < firstMono.size then
+      let mainVar : Variable := firstMono[0].fst
+      f.filterMap (fun term =>
+        let mono := term.fst
+        let c := term.snd
+        if hm' : 0 < mono.size then
+          let firstVar := mono[0].fst
+          let firstExp := mono[0].snd
+          if firstVar = mainVar then
+            -- 该 term 含主变量：新系数 = 原系数 * exp；新 mono 去掉 mainVar 或降一次
+            let newCoef : Int := c * firstExp.toInt
+            let rest : Monomial := mono.extract 1 mono.size
+            let newMono : Monomial :=
+              if firstExp = 1 then rest
+              else #[(mainVar, firstExp - 1)] ++ rest
+            some (newMono, newCoef)
+          else
+            -- 该 term 首变量不是主变量（lex 在主变量后），无主变量项 → 求导为 0
+            none
+        else
+          -- 空 mono（常数项）→ 求导为 0
+          none)
+    else
+      #[]  -- 首项是常数（特殊情形）
+  else
+    #[]  -- 空多项式
+
+instance : HasDerivative MvPolyZZ where derivative := MvPolyZZ.derivativeMv
+
+-- 兜底（MvPolyZp 等仍走 priority := 0 fallback）
 instance (priority := 0) {α : Type} : HasDerivative α where derivative f := f
 
 def derivative {α : Type} [HasDerivative α] (a : α) : α := HasDerivative.derivative a
@@ -1148,11 +1181,7 @@ instance : HasCont MvPolyZZ where
   cont := MvPolyZZ.contMv
 instance : HasPP MvPolyZZ where pp := MvPolyZZ.ppImpl
 
--- HDiv MvPolyZZ MvPolyZZ MvPolyZZ：sqf 翻译需要。placeholder：返回 numerator 不动
--- （sqf 算法上 F/cont 永远成立，但具体多变量除法实现留给 Phase F 续）。
--- C++ 端是真正的多项式精确除法。
-instance : HDiv MvPolyZZ MvPolyZZ MvPolyZZ where
-  hDiv f _g := f
+-- HDiv MvPolyZZ MvPolyZZ MvPolyZZ：真实现见 §5e 末尾（abbrev 之后的 MvPolyZZ.divExact）
 
 -- MvPolyZp / SparsePolyZp（Zp 是域）: cont 类型为 ZZ，仅起 unit 标记作用
 -- 约定：cont = (isEmpty ? 0 : 1)，pp = f（无需提主因子，仅在 ZZ 上有意义）
@@ -1282,6 +1311,78 @@ def polynomial_mod (f : SparsePolyZZ) (p : UInt64) : SparsePolyZp :=
   f.filterMap (fun term =>
     let zp := Zp.ofInt term.snd p
     if zp.val = 0 then none else some (term.fst, zp))
+
+-- ============================================================
+-- SparsePolyZZ.gcd（单变量 ZZ primitive PRS GCD）—— Phase F-impl-X.4
+-- ============================================================
+
+-- 标量乘
+def SparsePolyZZ.scalarMul (c : Int) (f : SparsePolyZZ) : SparsePolyZZ :=
+  if c = 0 then #[]
+  else f.map (fun (m, x) => (m, x * c))
+
+-- 移位乘：f * x^k
+def SparsePolyZZ.shiftMul (k : Nat) (f : SparsePolyZZ) : SparsePolyZZ :=
+  f.map (fun (m, c) => (⟨m.deg + k⟩, c))
+
+-- 真加法（合并同 deg + 排序）
+def SparsePolyZZ.addReal (f g : SparsePolyZZ) : SparsePolyZZ :=
+  SparsePolyZZ.normalization (f ++ g)
+
+-- 真减法
+def SparsePolyZZ.subReal (f g : SparsePolyZZ) : SparsePolyZZ :=
+  let neg_g := g.map (fun (m, c) => (m, -c))
+  SparsePolyZZ.normalization (f ++ neg_g)
+
+-- 伪余数：lc(G)^k * F mod G, k = deg(F) - deg(G) + 1
+-- 通过迭代单步消首项实现（每步乘 lc(G) 然后消首项）
+partial def SparsePolyZZ.pseudoRem (F G : SparsePolyZZ) : SparsePolyZZ :=
+  if F.isEmpty then #[]
+  else if G.isEmpty then F  -- div by 0 placeholder
+  else
+    let dF := F[0]!.fst.deg
+    let dG := G[0]!.fst.deg
+    if dF < dG then F
+    else
+      let lcG := G[0]!.snd
+      let lcF := F[0]!.snd
+      let k := dF - dG
+      let F_scaled := SparsePolyZZ.scalarMul lcG F
+      let shifted := SparsePolyZZ.scalarMul lcF (SparsePolyZZ.shiftMul k G)
+      let newF := SparsePolyZZ.subReal F_scaled shifted
+      SparsePolyZZ.pseudoRem newF G
+
+-- 基本 PRS：交替伪余数 + 取 primitive part
+partial def SparsePolyZZ.primitivePRS (F G : SparsePolyZZ) : SparsePolyZZ :=
+  if G.isEmpty then F
+  else
+    let R := SparsePolyZZ.pseudoRem F G
+    if R.isEmpty then G
+    else
+      let Rp := SparsePolyZZ.ppImpl R
+      SparsePolyZZ.primitivePRS G Rp
+
+-- 单变量 ZZ GCD
+def SparsePolyZZ.gcd (F G : SparsePolyZZ) : SparsePolyZZ :=
+  if F.isEmpty then G
+  else if G.isEmpty then F
+  else
+    let cF := SparsePolyZZ.contImpl F
+    let cG := SparsePolyZZ.contImpl G
+    -- 整数 gcd（取绝对值 + 符号约定为首项正）
+    let d : Int := (Int.gcd cF cG : Int)
+    let F0 := SparsePolyZZ.ppImpl F
+    let G0 := SparsePolyZZ.ppImpl G
+    let primGCD := SparsePolyZZ.primitivePRS F0 G0
+    -- 首项规范化（issue #14 一致：factor 永远首项正）
+    if h : 0 < primGCD.size then
+      let lead := primGCD[0].snd
+      if lead < 0 then
+        SparsePolyZZ.scalarMul (-d) primGCD
+      else
+        SparsePolyZZ.scalarMul d primGCD
+    else
+      #[]
 
 -- #eval 验证 derivative + normalization
 -- d/dx (3x² + 5x + 7) = 6x + 5
@@ -1480,6 +1581,41 @@ def Monomial.expOf (m : Monomial) (var : Variable) : Int64 :=
 -- 工具：strip mono 中的 var 条目
 def Monomial.dropVar (m : Monomial) (var : Variable) : Monomial :=
   m.filter (fun e => e.fst != var)
+
+-- m1 divides m2 ⇔ ∀ var v ∈ m1, m1[v].exp ≤ m2[v].exp（m2 缺失项视为 0）
+def Monomial.divides (m1 m2 : Monomial) : Bool :=
+  m1.all (fun (v, e) => e ≤ Monomial.expOf m2 v)
+
+-- m2 / m1 = monomial 商：var-by-var exp 相减（假设 m1 divides m2）
+def Monomial.div (m2 m1 : Monomial) : Monomial :=
+  Monomial.normalize (m2.map (fun (v, e) => (v, e - Monomial.expOf m1 v)))
+
+-- HDiv MvPolyZZ MvPolyZZ MvPolyZZ：exact division via leading-mono reduction
+-- 假设 g | f（除尽）；否则返回不完整商（leading 不能整除时停）
+-- 对应 C++ basic_polynomial::operator/(p1, p) = pair_vec_div(...)
+-- C++ 是 heap-based 优化版；Lean 用经典 leading-mono 归约（语义等价）
+partial def MvPolyZZ.divExact (f g : MvPolyZZ) : MvPolyZZ :=
+  if g.isEmpty then f  -- div by 0 placeholder（数学未定义）
+  else
+    let rec loop (rem : MvPolyZZ) (acc : MvPolyZZ) : MvPolyZZ :=
+      if rem.isEmpty then acc
+      else
+        let lc_r : Monomial × Int := rem[0]!
+        let lc_g : Monomial × Int := g[0]!
+        if Monomial.divides lc_g.fst lc_r.fst ∧ lc_r.snd % lc_g.snd = 0 then
+          let q_mono : Monomial := Monomial.div lc_r.fst lc_g.fst
+          let q_coef : Int := lc_r.snd / lc_g.snd
+          let q_term : MvPolyZZ := #[(q_mono, q_coef)]
+          let prod : MvPolyZZ := MvPolyZZ.mulImpl q_term g
+          let new_rem : MvPolyZZ := MvPolyZZ.normalization (rem - prod)
+          loop new_rem (acc.push (q_mono, q_coef))
+        else
+          acc  -- leading 无法整除（非 exact），返回当前商
+    loop f #[]
+
+-- 覆盖之前的 placeholder HDiv（identity）
+instance : HDiv MvPolyZZ MvPolyZZ MvPolyZZ where
+  hDiv := MvPolyZZ.divExact
 
 -- leadcoeff(p, var)：找 var 的最大 exp，收集这些项，剥离 var
 instance : HasLeadcoeff MvPolyZZ where

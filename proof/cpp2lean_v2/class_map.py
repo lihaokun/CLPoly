@@ -819,6 +819,10 @@ TRANSLATION_SCOPE = {
     "__select_eval_point", "__si_theta_array_eval",
     "__symmetric_mod_poly", "__taylor_coeff_zp",
     "__wang_core", "__wang_leading_coeff",
-    # GCD 模块（仅 sqf，其余 GCD/cont/derivative/division 仍走 basis）
+    # GCD 模块（Phase F-impl: 翻译 GCD/cont/__polynomial_GCD 等）
     "squarefreefactorize",
+    "polynomial_GCD",         # 多变量 Brown's modular GCD over ZZ
+    "cont",                   # 多变量 cont w.r.t. main var
+    "leadcoeff",              # 多变量 leadcoeff w.r.t. main var
+    "__polynomial_GCD",       # mod-p 多变量 GCD（Brown 内层）
 }

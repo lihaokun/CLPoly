@@ -1,38 +1,38 @@
 # 运算符直方图
 
-> 生成时间：2026-05-11 18:39
+> 生成时间：2026-05-12 01:45
 
 包括 `CXXOperatorCallExpr`（用户类型重载）、`UnaryOperator`（基本类型 `!` `-` `~` `++` 等）、`BinaryOperator`（`+ - * / == ` 等）、`CompoundAssignOperator`（`+= -= *=` 等）。
 
 | Operator | Count | First Seen In |
 |---|---|---|
 | CXXOperatorCallExpr::operator[] | 468 | __assign_partial_zp |
-| CXXOperatorCallExpr::operator* | 207 | __build_cld_matrix |
-| CXXOperatorCallExpr::operator= | 173 | __assign_partial_zp |
+| CXXOperatorCallExpr::operator* | 210 | __build_cld_matrix |
+| CXXOperatorCallExpr::operator= | 175 | __assign_partial_zp |
 | BinaryOperator::< | 146 | __assign_partial_zp |
 | UnaryOperator::++ | 145 | __assign_partial_zp |
-| CXXOperatorCallExpr::operator!= | 131 | __build_cld_matrix |
-| CXXOperatorCallExpr::operator++ | 110 | __build_cld_matrix |
+| CXXOperatorCallExpr::operator!= | 135 | __build_cld_matrix |
+| CXXOperatorCallExpr::operator++ | 115 | __build_cld_matrix |
 | BinaryOperator::= | 74 | __binomial |
-| UnaryOperator::! | 70 | __build_cld_matrix |
+| UnaryOperator::! | 74 | __build_cld_matrix |
 | BinaryOperator::- | 64 | __binomial |
+| BinaryOperator::> | 40 | __binomial |
 | BinaryOperator::== | 40 | __binomial |
 | BinaryOperator::+ | 40 | __binomial |
 | CXXOperatorCallExpr::operator() | 40 | __build_cld_matrix |
 | CXXOperatorCallExpr::operator- | 40 | __edf_Zp |
-| BinaryOperator::> | 39 | __binomial |
-| BinaryOperator::&& | 36 | __build_cld_matrix |
+| BinaryOperator::&& | 37 | __build_cld_matrix |
+| CXXOperatorCallExpr::operator-> | 31 | __extract_monomial_content |
 | CXXOperatorCallExpr::operator+ | 30 | __edf_Zp |
-| CXXOperatorCallExpr::operator-> | 29 | __extract_monomial_content |
+| CXXOperatorCallExpr::operator*= | 26 | __binomial |
+| UnaryOperator::__extension__ | 24 | __cld_polys |
 | BinaryOperator::>= | 24 | __factor_squarefree_primitive_ZZ |
-| CXXOperatorCallExpr::operator*= | 23 | __binomial |
-| UnaryOperator::__extension__ | 23 | __cld_polys |
 | CXXOperatorCallExpr::operator== | 23 | __extract_monomial_content |
 | BinaryOperator::<= | 19 | __edf_Zp |
 | BinaryOperator::!= | 18 | __extract_candidates |
 | BinaryOperator::* | 16 | __ddf_Zp |
 | CXXOperatorCallExpr::operator/ | 15 | __edf_Zp |
-| UnaryOperator::- | 12 | __extract_candidates |
+| UnaryOperator::- | 13 | __extract_candidates |
 | CXXOperatorCallExpr::operator< | 12 | __factor_multivar |
 | CXXOperatorCallExpr::operator-= | 12 | __hensel_lift |
 | UnaryOperator::-- | 12 | __lll_reduce |

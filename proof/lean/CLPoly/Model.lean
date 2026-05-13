@@ -1154,14 +1154,13 @@ class HasPP (α : Type) where
 def cont {α : Type} [c : HasCont α] (p : α) : c.Out := c.cont p
 def pp {α : Type} [HasPP α] (p : α) : α := HasPP.pp p
 
--- MvPolyZZ: cont = signed gcd of all int coeffs; pp = f / cont
+-- MvPolyZZ: cont = non-negative gcd of all int coeffs (issue #17 / C++ PR #18); pp = f / cont
 def MvPolyZZ.contImpl (f : MvPolyZZ) : ZZ :=
   if f.isEmpty then 0
   else
-    let c_nat := f.foldl (fun (acc : Nat) (term : Monomial × Int) =>
+    let c_nat : Nat := f.foldl (fun (acc : Nat) (term : Monomial × Int) =>
       Nat.gcd acc term.snd.natAbs) 0
-    let c_int : Int := c_nat
-    if f[0]!.snd < 0 then -c_int else c_int
+    (c_nat : Int)
 
 def MvPolyZZ.ppImpl (f : MvPolyZZ) : MvPolyZZ :=
   let c : ZZ := MvPolyZZ.contImpl f
@@ -1264,14 +1263,13 @@ instance : OfNat MvPolyZp 0 where ofNat := #[]
 def SparsePolyZZ.size_u64 (f : SparsePolyZZ) : UInt64 := f.size.toUInt64
 
 -- §5c 续：SparsePolyZZ.cont / pp 实现（在 abbrev 之后才能用 .map / .foldl 等）
--- cont = gcd 所有系数（符号匹配 leading coeff）
+-- cont = gcd 所有系数（始终非负，issue #17 / C++ PR #18 对齐）
 def SparsePolyZZ.contImpl (f : SparsePolyZZ) : ZZ :=
   if f.isEmpty then 0
   else
-    let c_nat := f.foldl (fun (acc : Nat) (term : UMonomial × Int) =>
+    let c_nat : Nat := f.foldl (fun (acc : Nat) (term : UMonomial × Int) =>
       Nat.gcd acc term.snd.natAbs) 0
-    let c_int : Int := c_nat
-    if f[0]!.snd < 0 then -c_int else c_int
+    (c_nat : Int)
 
 -- pp = f / cont(f)
 def SparsePolyZZ.ppImpl (f : SparsePolyZZ) : SparsePolyZZ :=
@@ -1410,10 +1408,26 @@ def SparsePolyZZ.gcd (F G : SparsePolyZZ) : SparsePolyZZ :=
   (#[(⟨2⟩, (2 : Int)), (⟨1⟩, (4 : Int)), (⟨0⟩, (6 : Int))] : SparsePolyZZ)
 -- 期望: #[(2, 1), (1, 2), (0, 3)]
 
--- cont(-2x² - 4) = -2 (sign matches leading coeff)
+-- cont(-2x² - 4) = 2 (issue #17 / PR #18：始终非负)
 #eval SparsePolyZZ.contImpl
   (#[(⟨2⟩, (-2 : Int)), (⟨0⟩, (-4 : Int))] : SparsePolyZZ)
--- 期望: -2
+-- 期望: 2
+
+-- issue #17 回归用例：cont 在单项 / 常数 / 负 leading 情形始终非负
+-- cont(-x) = 1
+#eval SparsePolyZZ.contImpl
+  (#[(⟨1⟩, (-1 : Int))] : SparsePolyZZ)
+-- 期望: 1
+
+-- cont(-6 const) = 6
+#eval SparsePolyZZ.contImpl
+  (#[(⟨0⟩, (-6 : Int))] : SparsePolyZZ)
+-- 期望: 6
+
+-- pp(-2x² - 4) = -x² - 2 （Maple/SymPy/FLINT 约定：pp 首项可能为负）
+#eval SparsePolyZZ.ppImpl
+  (#[(⟨2⟩, (-2 : Int)), (⟨0⟩, (-4 : Int))] : SparsePolyZZ)
+-- 期望: #[(2, -1), (0, -2)]
 
 -- 阶段 F 后续：依赖 SparsePolyZZ 的 stub（LLLMatrix.size 见 abbrev 之后）
 -- get_first_deg: 多变量 / 单变量两态。Lean 端泛型占位（语义层 B2B 细化）
@@ -1622,13 +1636,12 @@ instance : HDiv MvPolyZZ MvPolyZZ MvPolyZZ where
 -- MvPolyZZ.polynomialGCD（多变量 ZZ GCD）—— Phase F-impl-X.6
 -- ============================================================
 
--- 整数 cont（所有系数的 gcd 绝对值；首项符号决定整体符号）
+-- 整数 cont（所有系数 gcd 绝对值，始终非负，issue #17 / C++ PR #18 对齐）
 def MvPolyZZ.contInt (f : MvPolyZZ) : Int :=
-  if h : 0 < f.size then
-    let nat_gcd := f.foldl (fun (acc : Nat) (t : Monomial × Int) =>
+  if 0 < f.size then
+    let nat_gcd : Nat := f.foldl (fun (acc : Nat) (t : Monomial × Int) =>
       Nat.gcd acc t.snd.natAbs) 0
-    let g : Int := (nat_gcd : Int)
-    if f[0].snd < 0 then -g else g
+    (nat_gcd : Int)
   else 0
 
 -- 是否常数（所有 mono 为空）

@@ -35,6 +35,7 @@ TESTS=(
     test_dense_upoly_hgcd
     test_factorize_bugfix
     test_squarefreebasis_bugfix
+    test_cont_sign_consistency
 )
 
 TOTAL_PASS=0

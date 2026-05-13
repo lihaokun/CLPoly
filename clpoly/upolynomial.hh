@@ -219,15 +219,16 @@ namespace clpoly{
     template <class Tc>
     Tc cont(const upolynomial_<Tc> & F)
     {
-        if (F.empty())
-            return 1;
-        auto ptr=F.begin();
-        auto I=(ptr++).second;
-        for (;ptr!=F.end();++ptr)
+        // issue #17 修复：与 polynomial_gcd.hh:1067 (ZZ 特化版) 行为一致
+        // 始终非负 + 零多项式约定返 1
+        Tc c = 0;
+        for (auto &t : F)
         {
-            I=gcd(I,ptr->second);
+            c = gcd(c, t.second);
         }
-        return I;
+        if (c == 0)
+            return 1;
+        return c;
     }
     
 

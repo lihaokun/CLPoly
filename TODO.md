@@ -249,15 +249,15 @@ HGCD 给出常数因子加速（~1.5x），但有效指数 α ≈ 2.0（与 Eucl
 - [ ] （低优先级）实现随机采样 `α ∈ [-B, B]^{n-1}`，`B = max(100, 2*tdeg_sum)`
 - [ ] 设计文档：`docs/design/factorization/fix-oversplit.md` §4
 
-### H1: GCDHEU `(uint64_t)(-v)` 有符号溢出（UB）
+### H1: GCDHEU `(uint64_t)(-v)` 有符号溢出（**短期已修复**）
 
 `clpoly/polynomial_gcd.cc:57`：当 `v == INT64_MIN` 时，`-v` 在 `int64_t` 域溢出，是 C++ 未定义行为。
 
-**快速修复**：用 `clpoly_zz_to_mpz` 替代手动 small/large 分支，避免有符号取负。
+**短期修复**（commit `67f653e`）：改用 `static_cast<uint64_t>(-(v + 1)) + 1` 的 safe negation pattern，规避 `-INT64_MIN` 溢出。
 
 **长期方案**：给 ZZ 补上位操作（`mul_2exp`/`tdiv_q_2exp`/`tdiv_r_2exp`），GCDHEU 直接用 ZZ，参考 FLINT fmpz 接口。
 
-- [ ] 快速修复：GCDHEU 系数加法改用 `clpoly_zz_to_mpz`
+- [x] 短期修复：safe negation pattern (commit `67f653e`，含 INT64_MIN 边界回归测试)
 - [ ] 长期：ZZ 补充位操作接口（`mul_2exp`, `tdiv_q_2exp`, `tdiv_r_2exp`）
 
 ## 文档完善

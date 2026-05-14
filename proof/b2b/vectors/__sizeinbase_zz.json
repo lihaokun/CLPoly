@@ -1,0 +1,53 @@
+{
+  "fn": "__sizeinbase_zz",
+  "cases": [
+    {
+      "name": "base10_123",
+      "args": [
+        {"type": "ZZ", "val": "123"},
+        {"type": "Int32", "val": 10}
+      ],
+      "expected": {"type": "UInt64", "val": "3"}
+    },
+    {
+      "name": "base10_neg123",
+      "args": [
+        {"type": "ZZ", "val": "-123"},
+        {"type": "Int32", "val": 10}
+      ],
+      "expected": {"type": "UInt64", "val": "3"}
+    },
+    {
+      "name": "base2_100",
+      "args": [
+        {"type": "ZZ", "val": "100"},
+        {"type": "Int32", "val": 2}
+      ],
+      "expected": {"type": "UInt64", "val": "7"}
+    },
+    {
+      "name": "base10_zero",
+      "args": [
+        {"type": "ZZ", "val": "0"},
+        {"type": "Int32", "val": 10}
+      ],
+      "expected": {"type": "UInt64", "val": "1"}
+    },
+    {
+      "name": "base2_one",
+      "args": [
+        {"type": "ZZ", "val": "1"},
+        {"type": "Int32", "val": 2}
+      ],
+      "expected": {"type": "UInt64", "val": "1"}
+    },
+    {
+      "name": "base10_large",
+      "args": [
+        {"type": "ZZ", "val": "1000000000000"},
+        {"type": "Int32", "val": 10}
+      ],
+      "expected": {"type": "UInt64", "val": "13"}
+    }
+  ]
+}

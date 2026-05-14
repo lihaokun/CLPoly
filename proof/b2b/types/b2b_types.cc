@@ -29,7 +29,8 @@ uint64_t parse_UInt64(const json& j) {
 
 json serialize_Int32(int32_t v)  { return {{"type","Int32"},  {"val", v}}; }
 json serialize_Int64(int64_t v)  { return {{"type","Int64"},  {"val", v}}; }
-json serialize_UInt64(uint64_t v){ return {{"type","UInt64"}, {"val", v}}; }
+// UInt64 用字符串避免 IEEE754 精度（>2^53），与 Lean encodeUInt64 一致
+json serialize_UInt64(uint64_t v){ return {{"type","UInt64"}, {"val", std::to_string(v)}}; }
 
 // ---- ZZ ----
 
@@ -73,6 +74,14 @@ json serialize_Zp(const Zp& z) {
         std::to_string(z.number()),
         std::to_string(z.prime())
     })}};
+}
+
+// ---- BoolZZ ----
+
+json serialize_BoolZZ(bool ok, const ZZ& z) {
+    std::ostringstream os;
+    os << z;
+    return {{"type","BoolZZ"}, {"val", json::array({ ok, os.str() })}};
 }
 
 // ---- SparsePolyZp ----

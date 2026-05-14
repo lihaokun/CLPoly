@@ -1,0 +1,45 @@
+{
+  "fn": "__fdiv_ui_zz",
+  "cases": [
+    {
+      "name": "pos_100_mod_7",
+      "args": [
+        {"type": "ZZ", "val": "100"},
+        {"type": "UInt64", "val": "7"}
+      ],
+      "expected": {"type": "UInt64", "val": "2"}
+    },
+    {
+      "name": "neg_minus_1_mod_7",
+      "args": [
+        {"type": "ZZ", "val": "-1"},
+        {"type": "UInt64", "val": "7"}
+      ],
+      "expected": {"type": "UInt64", "val": "6"}
+    },
+    {
+      "name": "exact_div",
+      "args": [
+        {"type": "ZZ", "val": "21"},
+        {"type": "UInt64", "val": "7"}
+      ],
+      "expected": {"type": "UInt64", "val": "0"}
+    },
+    {
+      "name": "zero_dividend",
+      "args": [
+        {"type": "ZZ", "val": "0"},
+        {"type": "UInt64", "val": "5"}
+      ],
+      "expected": {"type": "UInt64", "val": "0"}
+    },
+    {
+      "name": "large_zz",
+      "args": [
+        {"type": "ZZ", "val": "1000000000000"},
+        {"type": "UInt64", "val": "7"}
+      ],
+      "expected": {"type": "UInt64", "val": "1"}
+    }
+  ]
+}

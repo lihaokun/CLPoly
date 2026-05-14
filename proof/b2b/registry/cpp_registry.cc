@@ -78,6 +78,23 @@ json dispatch(const std::string& fn, const json& args) {
         ZZ::fdiv_r(r, a, b);
         return serialize_ZZ(r);
     }
+    if (fn == "__fdiv_ui_zz") {
+        ZZ       a = parse_ZZ(args.at(0));
+        uint64_t b = parse_UInt64(args.at(1));
+        return serialize_UInt64(a.fdiv_ui(b));
+    }
+    if (fn == "__sizeinbase_zz") {
+        ZZ      z    = parse_ZZ(args.at(0));
+        int32_t base = parse_Int32(args.at(1));
+        return serialize_UInt64(z.sizeinbase(base));
+    }
+    if (fn == "__invert_zz") {
+        ZZ a = parse_ZZ(args.at(0));
+        ZZ m = parse_ZZ(args.at(1));
+        ZZ result;
+        bool ok = ZZ::invert(result, a, m);
+        return serialize_BoolZZ(ok, result);
+    }
 
     throw std::runtime_error("unknown fn: " + fn);
 }

@@ -61,6 +61,12 @@ json serialize_ZZ(const ZZ& z);
 Zp   parse_Zp(const json& j);
 json serialize_Zp(const Zp& z);
 
+// ---- BoolZZ tuple ----
+// JSON: {"type":"BoolZZ","val":[<bool>,<zz_string>]}
+// 用于 ZZ::invert 返回 (success, inverse)
+
+json serialize_BoolZZ(bool ok, const ZZ& z);
+
 // ---- SparsePolyZp ----
 // JSON: {"type":"SparsePolyZp","val":[[<deg>,[<val>,<prime>]], ...]}
 // 注意：内部 [val,prime] 不带 type 包装（紧凑表示）

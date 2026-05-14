@@ -59,6 +59,20 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
     let a ← parseZZ args[0]!
     let b ← parseZZ args[1]!
     return encodeZZ (ZZ.fdiv_r 0 a b)
+  | "__fdiv_ui_zz" =>
+    let a ← parseZZ args[0]!
+    let b ← parseUInt64 args[1]!
+    -- Lean ZZ.fdiv_ui 返 ZZ；C++ 返 uint64_t。统一编码为 UInt64
+    return encodeUInt64 (ZZ.fdiv_ui a b).toNat.toUInt64
+  | "__sizeinbase_zz" =>
+    let z    ← parseZZ args[0]!
+    let base ← parseInt32 args[1]!
+    return encodeUInt64 (ZZ.sizeinbase z base)
+  | "__invert_zz" =>
+    let a ← parseZZ args[0]!
+    let m ← parseZZ args[1]!
+    let (ok, inv) := ZZ.invertImpl a m
+    return encodeBoolZZ ok inv
   | _ => throw s!"unknown fn: {fn}"
 
 end B2B

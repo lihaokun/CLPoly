@@ -88,6 +88,14 @@ def encodeZp (z : Zp) : Json :=
     ])
   ]
 
+-- ---- BoolZZ (用于 ZZ::invert 结果) ----
+
+def encodeBoolZZ (ok : Bool) (z : Int) : Json :=
+  Json.mkObj [
+    ("type", "BoolZZ"),
+    ("val", Json.arr #[Json.bool ok, Json.str (toString z)])
+  ]
+
 -- ---- SparsePolyZp ----
 
 def parseSparsePolyZp (j : Json) : Except String SparsePolyZp := do

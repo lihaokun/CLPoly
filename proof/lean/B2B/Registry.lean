@@ -35,6 +35,13 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
   | "__neg_zp" =>
     let a ← parseZp args[0]!
     return encodeZp (-a)
+  | "__inv_zp" =>
+    let a ← parseZp args[0]!
+    return encodeZp a.inv
+  | "__pow_zp" =>
+    let a ← parseZp args[0]!
+    let i ← parseInt64 args[1]!
+    return encodeZp (a ^ i)
   | _ => throw s!"unknown fn: {fn}"
 
 end B2B

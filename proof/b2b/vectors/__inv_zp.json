@@ -1,0 +1,40 @@
+{
+  "fn": "__inv_zp",
+  "cases": [
+    {
+      "name": "inv_2_mod_7",
+      "args": [
+        {"type": "Zp", "val": ["2", "7"]}
+      ],
+      "expected": {"type": "Zp", "val": ["4", "7"]}
+    },
+    {
+      "name": "inv_3_mod_11",
+      "args": [
+        {"type": "Zp", "val": ["3", "11"]}
+      ],
+      "expected": {"type": "Zp", "val": ["4", "11"]}
+    },
+    {
+      "name": "inv_1_mod_13",
+      "args": [
+        {"type": "Zp", "val": ["1", "13"]}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "13"]}
+    },
+    {
+      "name": "inv_5_mod_17",
+      "args": [
+        {"type": "Zp", "val": ["5", "17"]}
+      ],
+      "expected": {"type": "Zp", "val": ["7", "17"]}
+    },
+    {
+      "name": "inv_10_mod_101",
+      "args": [
+        {"type": "Zp", "val": ["10", "101"]}
+      ],
+      "expected": {"type": "Zp", "val": ["91", "101"]}
+    }
+  ]
+}

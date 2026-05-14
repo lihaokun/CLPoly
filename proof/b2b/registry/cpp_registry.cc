@@ -43,6 +43,15 @@ json dispatch(const std::string& fn, const json& args) {
         Zp a = parse_Zp(args.at(0));
         return serialize_Zp(-a);
     }
+    if (fn == "__inv_zp") {
+        Zp a = parse_Zp(args.at(0));
+        return serialize_Zp(a.inv());
+    }
+    if (fn == "__pow_zp") {
+        Zp       a = parse_Zp(args.at(0));
+        int64_t  i = parse_Int64(args.at(1));
+        return serialize_Zp(clpoly::pow(a, i));
+    }
 
     throw std::runtime_error("unknown fn: " + fn);
 }

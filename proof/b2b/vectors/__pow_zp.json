@@ -1,0 +1,53 @@
+{
+  "fn": "__pow_zp",
+  "cases": [
+    {
+      "name": "pow_3_4_mod_7",
+      "args": [
+        {"type": "Zp", "val": ["3", "7"]},
+        {"type": "Int64", "val": 4}
+      ],
+      "expected": {"type": "Zp", "val": ["4", "7"]}
+    },
+    {
+      "name": "pow_2_10_mod_13",
+      "args": [
+        {"type": "Zp", "val": ["2", "13"]},
+        {"type": "Int64", "val": 10}
+      ],
+      "expected": {"type": "Zp", "val": ["10", "13"]}
+    },
+    {
+      "name": "pow_5_0_mod_11",
+      "args": [
+        {"type": "Zp", "val": ["5", "11"]},
+        {"type": "Int64", "val": 0}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "11"]}
+    },
+    {
+      "name": "pow_5_1_mod_11",
+      "args": [
+        {"type": "Zp", "val": ["5", "11"]},
+        {"type": "Int64", "val": 1}
+      ],
+      "expected": {"type": "Zp", "val": ["5", "11"]}
+    },
+    {
+      "name": "fermat_a_p_minus_1",
+      "args": [
+        {"type": "Zp", "val": ["3", "13"]},
+        {"type": "Int64", "val": 12}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "13"]}
+    },
+    {
+      "name": "pow_neg_exp_returns_one",
+      "args": [
+        {"type": "Zp", "val": ["3", "7"]},
+        {"type": "Int64", "val": -5}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "7"]}
+    }
+  ]
+}

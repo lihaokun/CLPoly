@@ -65,6 +65,10 @@ def modInv (a p : UInt64) : UInt64 :=
 def inv (a : Zp) : Zp := ⟨modInv a.val a.prime, a.prime⟩
 def div (a b : Zp) : Zp := a * b.inv
 
+-- 注：Zp.pow 在 §HPow 区块定义（Nat 输入，简单递归）；HPow Zp Int64 Zp
+-- 走 toNatClampNeg → 负 exponent 退化为 0 → 返 1，与 C++ pow(Zp,int64_t)
+-- (while i>0 模式) 一致。B2B __pow_zp 通过 `a ^ i` 调用。
+
 end Zp
 
 -- Zp 隐式转换（对应 C++ 的 implicit conversion operators）
@@ -1780,3 +1784,9 @@ instance : HasPolyConvert3 SparsePolyZZ MvPolyZZ Variable where
 
 -- derivative: d/dx(2x^3 + x) = 6x^2 + 1 over F_5 = x^2 + 1
 #eval SparsePolyZp.derivative #[(⟨3⟩, ⟨2, 5⟩), (⟨1⟩, ⟨1, 5⟩)]
+
+-- Zp.pow 验证（HPow Zp Int64 → 走 toNatClampNeg → Zp.pow Nat）
+#eval ((⟨3, 7⟩ : Zp) ^ (4 : Int64))    -- 期望: 3^4 mod 7 = 4
+#eval ((⟨2, 13⟩ : Zp) ^ (10 : Int64))  -- 期望: 2^10 mod 13 = 10
+#eval ((⟨5, 11⟩ : Zp) ^ (0 : Int64))   -- 期望: 1
+#eval ((⟨5, 11⟩ : Zp) ^ (1 : Int64))   -- 期望: 5

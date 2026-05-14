@@ -10,10 +10,12 @@
 #define CLPOLY_B2B_TYPES_HH
 
 #include <cstdint>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include "nlohmann/json.hpp"
 #include "clpoly/number.hh"
+#include "clpoly/polynomial.hh"
 #include "clpoly/upolynomial.hh"
 
 namespace b2b {
@@ -89,6 +91,38 @@ json serialize_TripleSPZp(
     const upolynomial_<Zp>& g,
     const upolynomial_<Zp>& s,
     const upolynomial_<Zp>& t);
+
+// ---- A5 类型：Variable + Monomial + MvPolyZZ/Zp + VarMap ----
+// Variable: clpoly::variable 通过 serial 复原（B2B 测试预声明 x/y/z/w = serial 1-4）
+// JSON: {"type":"Variable","val":<uint64>}
+using Variable = clpoly::variable;
+using Monomial = clpoly::basic_monomial<clpoly::lex>;
+using MvPolyZZ = clpoly::polynomial_<ZZ, clpoly::lex>;
+using MvPolyZp = clpoly::polynomial_<Zp, clpoly::lex>;
+
+Variable parse_Variable(const json& j);
+json     serialize_Variable(const Variable& v);
+
+// Monomial: {"type":"Monomial","val":[[<var_serial>, <exp>], ...]}
+Monomial parse_Monomial(const json& j);
+json     serialize_Monomial(const Monomial& m);
+
+// MvPolyZZ: {"type":"MvPolyZZ","val":[[<mono_val>, "<zz_str>"], ...]}
+// 注：mono_val 是 Monomial 的 val 字段（裸数组，无 type 包装）
+MvPolyZZ parse_MvPolyZZ(const json& j);
+json     serialize_MvPolyZZ(const MvPolyZZ& p);
+
+// MvPolyZp: {"type":"MvPolyZp","val":[[<mono_val>, [<zp_val>,<zp_prime>]], ...]}
+MvPolyZp parse_MvPolyZp(const json& j);
+json     serialize_MvPolyZp(const MvPolyZp& p);
+
+// VarMap (for assign2): JSON {"type":"VarMap","val":[[<var_serial>, "<zz_str>"], ...]}
+// 解析为 std::map<variable, ZZ>
+std::map<Variable, ZZ> parse_VarMapZZ(const json& j);
+
+// ---- A6 类型：ZZTriple（Bezout 返回 (g, s, t)）----
+// JSON: {"type":"ZZTriple","val":["<g>","<s>","<t>"]}
+json serialize_ZZTriple(const ZZ& g, const ZZ& s, const ZZ& t);
 
 }  // namespace b2b
 

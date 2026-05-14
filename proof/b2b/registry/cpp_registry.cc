@@ -6,6 +6,10 @@
 #include "../types/b2b_types.hh"
 
 #include "clpoly/polynomial_factorize_zp.hh"
+#include "clpoly/polynomial.hh"
+#include <cstring>
+#include <gmp.h>
+#include <sstream>
 
 namespace b2b {
 
@@ -168,6 +172,65 @@ json dispatch(const std::string& fn, const json& args) {
         auto p = parse_SparsePolyZp(args.at(0));
         p.normalization();
         return serialize_SparsePolyZp(p);
+    }
+
+    // ---- A5: MvPoly ops ----
+    if (fn == "__assign_mv_zz") {
+        auto p = parse_MvPolyZZ(args.at(0));
+        auto v = parse_Variable(args.at(1));
+        auto c = parse_ZZ(args.at(2));
+        return serialize_MvPolyZZ(clpoly::assign(p, v, c));
+    }
+    if (fn == "__assign2_mv_zz") {
+        auto p = parse_MvPolyZZ(args.at(0));
+        auto m = parse_VarMapZZ(args.at(1));
+        return serialize_MvPolyZZ(clpoly::assign(p, m));
+    }
+    if (fn == "__leadcoeff_mv_zz") {
+        auto p = parse_MvPolyZZ(args.at(0));
+        auto v = parse_Variable(args.at(1));
+        return serialize_MvPolyZZ(clpoly::leadcoeff(p, v));
+    }
+    if (fn == "__poly_convert_spzp_to_spzz") {
+        auto p_in = parse_SparsePolyZp(args.at(0));
+        upolynomial_<ZZ> p_out;
+        clpoly::poly_convert(p_in, p_out);
+        return serialize_SparsePolyZZ(p_out);
+    }
+    if (fn == "__poly_convert3_spzz_to_mvzz") {
+        auto p_in = parse_SparsePolyZZ(args.at(0));
+        auto v    = parse_Variable(args.at(1));
+        MvPolyZZ p_out;
+        clpoly::poly_convert(p_in, p_out, v);
+        return serialize_MvPolyZZ(p_out);
+    }
+
+    // ---- A6: Bezout extGcd ----
+    if (fn == "__nat_extgcd") {
+        // 输入两个非负整数 a, b，返回 (g, s, t) 满足 s*a + t*b = g (= gcd(a,b))
+        // 直接调 GMP mpz_gcdext，然后用字符串往返回 ZZ（绕过私有 mpz 访问）
+        ZZ a = parse_ZZ(args.at(0));
+        ZZ b = parse_ZZ(args.at(1));
+        mpz_t g_mp, s_mp, t_mp, a_mp, b_mp;
+        mpz_inits(g_mp, s_mp, t_mp, NULL);
+        // 把 ZZ 转 mpz_t（用 ZZ::operator<<）
+        std::ostringstream a_os; a_os << a;
+        std::ostringstream b_os; b_os << b;
+        mpz_init_set_str(a_mp, a_os.str().c_str(), 10);
+        mpz_init_set_str(b_mp, b_os.str().c_str(), 10);
+        mpz_gcdext(g_mp, s_mp, t_mp, a_mp, b_mp);
+        // 从 mpz_t 重建 ZZ
+        char* g_str = mpz_get_str(nullptr, 10, g_mp);
+        char* s_str = mpz_get_str(nullptr, 10, s_mp);
+        char* t_str = mpz_get_str(nullptr, 10, t_mp);
+        ZZ g(g_str), s(s_str), t(t_str);
+        void (*freefunc)(void*, size_t);
+        mp_get_memory_functions(nullptr, nullptr, &freefunc);
+        freefunc(g_str, std::strlen(g_str) + 1);
+        freefunc(s_str, std::strlen(s_str) + 1);
+        freefunc(t_str, std::strlen(t_str) + 1);
+        mpz_clears(g_mp, s_mp, t_mp, a_mp, b_mp, NULL);
+        return serialize_ZZTriple(g, s, t);
     }
 
     throw std::runtime_error("unknown fn: " + fn);

@@ -9,10 +9,16 @@
 #include <string>
 #include "nlohmann/json.hpp"
 #include "../registry/cpp_registry.hh"
+#include "clpoly/variable.hh"
 
 using nlohmann::json;
 
 int main() {
+    // 预声明 B2B 测试用变量，让 get_variable(serial) 调用合法。
+    // Convention: serial 1=x, 2=y, 3=z, 4=w（与 vectors 中 Variable val 对齐）
+    clpoly::variable _x("x"), _y("y"), _z("z"), _w("w");
+    (void)_x; (void)_y; (void)_z; (void)_w;
+
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;

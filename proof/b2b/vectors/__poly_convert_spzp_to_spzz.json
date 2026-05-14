@@ -1,0 +1,19 @@
+{
+  "fn": "__poly_convert_spzp_to_spzz",
+  "cases": [
+    {
+      "name": "basic_F7",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["3", "7"]], [1, ["5", "7"]], [0, ["6", "7"]]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[2, "3"], [1, "5"], [0, "6"]]}
+    },
+    {
+      "name": "empty",
+      "args": [
+        {"type": "SparsePolyZp", "val": []}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": []}
+    }
+  ]
+}

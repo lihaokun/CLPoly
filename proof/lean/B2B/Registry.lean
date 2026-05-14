@@ -123,6 +123,35 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
   | "__normalization_zp_poly" =>
     let p ← parseSparsePolyZp args[0]!
     return encodeSparsePolyZp (SparsePolyZp.normalization p)
+  -- ---- A5: MvPoly ops ----
+  | "__assign_mv_zz" =>
+    let p ← parseMvPolyZZ args[0]!
+    let v ← parseVariable args[1]!
+    let c ← parseZZ args[2]!
+    return encodeMvPolyZZ (assign p v c)
+  | "__assign2_mv_zz" =>
+    let p ← parseMvPolyZZ args[0]!
+    let m ← parseVarMapZZ args[1]!
+    return encodeMvPolyZZ (assign2 p m)
+  | "__leadcoeff_mv_zz" =>
+    let p ← parseMvPolyZZ args[0]!
+    let v ← parseVariable args[1]!
+    return encodeMvPolyZZ (leadcoeff p v)
+  | "__poly_convert_spzp_to_spzz" =>
+    let p ← parseSparsePolyZp args[0]!
+    return encodeSparsePolyZZ (poly_convert p (#[] : SparsePolyZZ))
+  | "__poly_convert3_spzz_to_mvzz" =>
+    let p ← parseSparsePolyZZ args[0]!
+    let v ← parseVariable args[1]!
+    return encodeMvPolyZZ (poly_convert3 p (#[] : MvPolyZZ) v)
+  -- ---- A6: Bezout ----
+  | "__nat_extgcd" =>
+    let a ← parseZZ args[0]!
+    let b ← parseZZ args[1]!
+    -- Nat.extGcd 接受非负 Nat；ZZ 输入需取 natAbs。但 C++ 端可处理负数（gmp_gcdext 支持）。
+    -- 为简化：B2B 测例约定 a,b ≥ 0
+    let (g, s, t) := Nat.extGcd a.toNat b.toNat
+    return encodeZZTriple (g : Int) s t
   | _ => throw s!"unknown fn: {fn}"
 
 end B2B

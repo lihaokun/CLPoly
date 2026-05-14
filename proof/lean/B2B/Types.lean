@@ -161,4 +161,105 @@ def encodeTripleSPZp (g s t : SparsePolyZp) : Json :=
                                  encodeSparsePolyZp s,
                                  encodeSparsePolyZp t])]
 
+-- ---- A5: Variable ----
+
+def parseVariable (j : Json) : Except String Variable := do
+  let v ← checkType j "Variable"
+  let i ← parseAnyInt v
+  if i < 0 then throw s!"Variable: negative serial {i}"
+  return i.toNat.toUInt64
+
+def encodeVariable (v : Variable) : Json :=
+  Json.mkObj [("type", "Variable"), ("val", Json.str (toString v.toNat))]
+
+-- ---- A5: Monomial (内部 parse/serialize 不带 type 包装，用于嵌套) ----
+
+def _parseMonomialInner (v : Json) : Except String Monomial := do
+  let arr ← v.getArr?
+  let mut result : Monomial := #[]
+  for entry in arr do
+    let entryArr ← entry.getArr?
+    if entryArr.size != 2 then throw "Monomial entry: expected [var_serial, exp]"
+    let serial ← parseAnyInt entryArr[0]!
+    let exp ← parseAnyInt entryArr[1]!
+    if serial < 0 then throw s!"Monomial var serial negative: {serial}"
+    result := result.push (serial.toNat.toUInt64, exp.toInt64)
+  return Monomial.normalize result
+
+def _encodeMonomialInner (m : Monomial) : Json :=
+  Json.arr (m.map fun (v, e) =>
+    Json.arr #[Json.str (toString v.toNat), Json.num (JsonNumber.fromInt e.toInt)])
+
+def parseMonomial (j : Json) : Except String Monomial := do
+  let v ← checkType j "Monomial"
+  _parseMonomialInner v
+
+def encodeMonomial (m : Monomial) : Json :=
+  Json.mkObj [("type", "Monomial"), ("val", _encodeMonomialInner m)]
+
+-- ---- A5: MvPolyZZ / MvPolyZp ----
+
+def parseMvPolyZZ (j : Json) : Except String MvPolyZZ := do
+  let v ← checkType j "MvPolyZZ"
+  let arr ← v.getArr?
+  let mut result : MvPolyZZ := #[]
+  for term in arr do
+    let termArr ← term.getArr?
+    if termArr.size != 2 then throw "MvPolyZZ term: expected [mono, zz_str]"
+    let m ← _parseMonomialInner termArr[0]!
+    let coef ← parseAnyInt termArr[1]!
+    result := result.push (m, coef)
+  return MvPolyZZ.normalization result
+
+def encodeMvPolyZZ (p : MvPolyZZ) : Json :=
+  let terms := p.map fun (m, c) =>
+    Json.arr #[_encodeMonomialInner m, Json.str (toString c)]
+  Json.mkObj [("type", "MvPolyZZ"), ("val", Json.arr terms)]
+
+def parseMvPolyZp (j : Json) : Except String MvPolyZp := do
+  let v ← checkType j "MvPolyZp"
+  let arr ← v.getArr?
+  let mut result : MvPolyZp := #[]
+  for term in arr do
+    let termArr ← term.getArr?
+    if termArr.size != 2 then throw "MvPolyZp term: expected [mono, [val,prime]]"
+    let m ← _parseMonomialInner termArr[0]!
+    let zpArr ← termArr[1]!.getArr?
+    if zpArr.size != 2 then throw "MvPolyZp term zp: expected [val,prime]"
+    let valI ← parseAnyInt zpArr[0]!
+    let primeI ← parseAnyInt zpArr[1]!
+    let zp := Zp.ofInt valI primeI.toNat.toUInt64
+    result := result.push (m, zp)
+  return MvPolyZp.normalization result
+
+def encodeMvPolyZp (p : MvPolyZp) : Json :=
+  let terms := p.map fun (m, c) =>
+    Json.arr #[_encodeMonomialInner m,
+               Json.arr #[Json.str (toString c.val.toNat),
+                          Json.str (toString c.prime.toNat)]]
+  Json.mkObj [("type", "MvPolyZp"), ("val", Json.arr terms)]
+
+-- ---- A5: VarMap (Variable → ZZ)，C++ 端是 std::map，Lean 端用 StdMap ----
+
+def parseVarMapZZ (j : Json) : Except String (StdMap Variable Int) := do
+  let v ← checkType j "VarMap"
+  let arr ← v.getArr?
+  let mut result : StdMap Variable Int := StdMap.empty
+  for entry in arr do
+    let entryArr ← entry.getArr?
+    if entryArr.size != 2 then throw "VarMap entry: expected [var_serial, zz_str]"
+    let serial ← parseAnyInt entryArr[0]!
+    let val ← parseAnyInt entryArr[1]!
+    if serial < 0 then throw s!"VarMap var serial negative: {serial}"
+    result := result.insert serial.toNat.toUInt64 val
+  return result
+
+-- ---- A6: ZZTriple ----
+
+def encodeZZTriple (g s t : Int) : Json :=
+  Json.mkObj [("type", "ZZTriple"),
+              ("val", Json.arr #[Json.str (toString g),
+                                 Json.str (toString s),
+                                 Json.str (toString t)])]
+
 end B2B

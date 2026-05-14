@@ -53,6 +53,32 @@ json dispatch(const std::string& fn, const json& args) {
         return serialize_Zp(clpoly::pow(a, i));
     }
 
+    // ---- ZZ 算术（C++ 端用 gcd/lcm/static fdiv_q/r 入口）----
+    if (fn == "__gcd_zz") {
+        ZZ a = parse_ZZ(args.at(0));
+        ZZ b = parse_ZZ(args.at(1));
+        return serialize_ZZ(clpoly::gcd(a, b));
+    }
+    if (fn == "__lcm_zz") {
+        ZZ a = parse_ZZ(args.at(0));
+        ZZ b = parse_ZZ(args.at(1));
+        return serialize_ZZ(clpoly::lcm(a, b));
+    }
+    if (fn == "__fdiv_q_zz") {
+        ZZ a = parse_ZZ(args.at(0));
+        ZZ b = parse_ZZ(args.at(1));
+        ZZ q;
+        ZZ::fdiv_q(q, a, b);
+        return serialize_ZZ(q);
+    }
+    if (fn == "__fdiv_r_zz") {
+        ZZ a = parse_ZZ(args.at(0));
+        ZZ b = parse_ZZ(args.at(1));
+        ZZ r;
+        ZZ::fdiv_r(r, a, b);
+        return serialize_ZZ(r);
+    }
+
     throw std::runtime_error("unknown fn: " + fn);
 }
 

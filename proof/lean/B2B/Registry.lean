@@ -42,6 +42,23 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
     let a ← parseZp args[0]!
     let i ← parseInt64 args[1]!
     return encodeZp (a ^ i)
+  -- ---- ZZ 算术 ----
+  | "__gcd_zz" =>
+    let a ← parseZZ args[0]!
+    let b ← parseZZ args[1]!
+    return encodeZZ (Int.gcd a b)
+  | "__lcm_zz" =>
+    let a ← parseZZ args[0]!
+    let b ← parseZZ args[1]!
+    return encodeZZ (Int.lcm a b)
+  | "__fdiv_q_zz" =>
+    let a ← parseZZ args[0]!
+    let b ← parseZZ args[1]!
+    return encodeZZ (ZZ.fdiv_q 0 a b)
+  | "__fdiv_r_zz" =>
+    let a ← parseZZ args[0]!
+    let b ← parseZZ args[1]!
+    return encodeZZ (ZZ.fdiv_r 0 a b)
   | _ => throw s!"unknown fn: {fn}"
 
 end B2B

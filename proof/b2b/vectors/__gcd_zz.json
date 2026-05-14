@@ -1,0 +1,45 @@
+{
+  "fn": "__gcd_zz",
+  "cases": [
+    {
+      "name": "gcd_12_18",
+      "args": [
+        {"type": "ZZ", "val": "12"},
+        {"type": "ZZ", "val": "18"}
+      ],
+      "expected": {"type": "ZZ", "val": "6"}
+    },
+    {
+      "name": "gcd_0_5",
+      "args": [
+        {"type": "ZZ", "val": "0"},
+        {"type": "ZZ", "val": "5"}
+      ],
+      "expected": {"type": "ZZ", "val": "5"}
+    },
+    {
+      "name": "gcd_coprime",
+      "args": [
+        {"type": "ZZ", "val": "7"},
+        {"type": "ZZ", "val": "13"}
+      ],
+      "expected": {"type": "ZZ", "val": "1"}
+    },
+    {
+      "name": "gcd_neg",
+      "args": [
+        {"type": "ZZ", "val": "-12"},
+        {"type": "ZZ", "val": "18"}
+      ],
+      "expected": {"type": "ZZ", "val": "6"}
+    },
+    {
+      "name": "gcd_large",
+      "args": [
+        {"type": "ZZ", "val": "1234567890"},
+        {"type": "ZZ", "val": "987654321"}
+      ],
+      "expected": {"type": "ZZ", "val": "9"}
+    }
+  ]
+}

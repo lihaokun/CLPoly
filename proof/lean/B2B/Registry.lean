@@ -73,6 +73,23 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
     let m ← parseZZ args[1]!
     let (ok, inv) := ZZ.invertImpl a m
     return encodeBoolZZ ok inv
+  -- ---- SparsePolyZZ ops ----
+  | "__cont_zz_poly" =>
+    let p ← parseSparsePolyZZ args[0]!
+    return encodeZZ (SparsePolyZZ.contImpl p)
+  | "__pp_zz_poly" =>
+    let p ← parseSparsePolyZZ args[0]!
+    return encodeSparsePolyZZ (SparsePolyZZ.ppImpl p)
+  | "__derivative_zz_poly" =>
+    let p ← parseSparsePolyZZ args[0]!
+    return encodeSparsePolyZZ (SparsePolyZZ.derivativeImpl p)
+  | "__normalization_zz_poly" =>
+    let p ← parseSparsePolyZZ args[0]!
+    return encodeSparsePolyZZ (SparsePolyZZ.normalization p)
+  | "__polynomial_mod_zz" =>
+    let p ← parseSparsePolyZZ args[0]!
+    let prime ← parseUInt64 args[1]!
+    return encodeSparsePolyZp (polynomial_mod p prime)
   | _ => throw s!"unknown fn: {fn}"
 
 end B2B

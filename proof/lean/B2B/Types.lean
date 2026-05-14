@@ -126,4 +126,27 @@ def encodeSparsePolyZp (p : SparsePolyZp) : Json :=
     ]
   Json.mkObj [("type", "SparsePolyZp"), ("val", Json.arr terms)]
 
+-- ---- SparsePolyZZ ----
+
+def parseSparsePolyZZ (j : Json) : Except String SparsePolyZZ := do
+  let v ← checkType j "SparsePolyZZ"
+  let arr ← v.getArr?
+  let mut result : SparsePolyZZ := #[]
+  for term in arr do
+    let termArr ← term.getArr?
+    if termArr.size != 2 then throw s!"SparsePolyZZ term: expected [deg, zz_decimal_str]"
+    let degI ← parseAnyInt termArr[0]!
+    if degI < 0 then throw s!"SparsePolyZZ deg negative: {degI}"
+    let coef ← parseAnyInt termArr[1]!
+    result := result.push (UMonomial.mk degI.toNat, coef)
+  return result
+
+def encodeSparsePolyZZ (p : SparsePolyZZ) : Json :=
+  let terms := p.map fun (m, c) =>
+    Json.arr #[
+      Json.num (JsonNumber.fromNat m.deg),
+      Json.str (toString c)
+    ]
+  Json.mkObj [("type", "SparsePolyZZ"), ("val", Json.arr terms)]
+
 end B2B

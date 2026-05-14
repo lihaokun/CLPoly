@@ -1,0 +1,40 @@
+{
+  "fn": "__pp_zz_poly",
+  "cases": [
+    {
+      "name": "pp_2x2_4x_6",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "2"], [1, "4"], [0, "6"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[2, "1"], [1, "2"], [0, "3"]]}
+    },
+    {
+      "name": "pp_neg_x_keeps_sign_issue17",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[1, "-1"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[1, "-1"]]}
+    },
+    {
+      "name": "pp_neg_2x_pp_keeps_neg_issue17",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[1, "-2"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[1, "-1"]]}
+    },
+    {
+      "name": "pp_neg_2x2_minus_4",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "-2"], [0, "-4"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[2, "-1"], [0, "-2"]]}
+    },
+    {
+      "name": "pp_already_primitive",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "1"], [0, "3"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[2, "1"], [0, "3"]]}
+    }
+  ]
+}

@@ -96,6 +96,35 @@ json dispatch(const std::string& fn, const json& args) {
         return serialize_BoolZZ(ok, result);
     }
 
+    // ---- SparsePolyZZ ops ----
+    if (fn == "__cont_zz_poly") {
+        auto p = parse_SparsePolyZZ(args.at(0));
+        return serialize_ZZ(clpoly::cont(p));
+    }
+    if (fn == "__pp_zz_poly") {
+        auto p = parse_SparsePolyZZ(args.at(0));
+        ZZ c = clpoly::cont(p);
+        // pp = p / cont(p)（精确除法）。空 p 或 cont=0：返原值（防 div by zero）
+        if (c != ZZ(0)) {
+            for (auto& term : p) term.second = term.second / c;
+        }
+        return serialize_SparsePolyZZ(p);
+    }
+    if (fn == "__derivative_zz_poly") {
+        auto p = parse_SparsePolyZZ(args.at(0));
+        return serialize_SparsePolyZZ(clpoly::derivative(p));
+    }
+    if (fn == "__normalization_zz_poly") {
+        auto p = parse_SparsePolyZZ(args.at(0));
+        p.normalization();
+        return serialize_SparsePolyZZ(p);
+    }
+    if (fn == "__polynomial_mod_zz") {
+        auto     p     = parse_SparsePolyZZ(args.at(0));
+        uint64_t prime = parse_UInt64(args.at(1));
+        return serialize_SparsePolyZp(clpoly::polynomial_mod(p, prime));
+    }
+
     throw std::runtime_error("unknown fn: " + fn);
 }
 

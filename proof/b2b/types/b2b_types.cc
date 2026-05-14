@@ -124,4 +124,39 @@ json serialize_SparsePolyZp(const upolynomial_<Zp>& p) {
     return {{"type","SparsePolyZp"}, {"val", terms}};
 }
 
+// ---- SparsePolyZZ ----
+
+upolynomial_<ZZ> parse_SparsePolyZZ(const json& j) {
+    _check_type(j, "SparsePolyZZ");
+    const auto& v = j.at("val");
+    if (!v.is_array()) {
+        throw std::runtime_error("SparsePolyZZ val: expected array of [deg, zz_decimal_str]");
+    }
+    upolynomial_<ZZ> result;
+    for (const auto& term : v) {
+        if (!term.is_array() || term.size() != 2) {
+            throw std::runtime_error("SparsePolyZZ term: expected [deg, zz_decimal_str]");
+        }
+        int64_t deg = term[0].get<int64_t>();
+        ZZ coef = term[1].is_string()
+            ? ZZ(term[1].get<std::string>())
+            : ZZ(term[1].get<int64_t>());
+        result.push_back(std::make_pair(umonomial(deg), std::move(coef)));
+    }
+    return result;
+}
+
+json serialize_SparsePolyZZ(const upolynomial_<ZZ>& p) {
+    json terms = json::array();
+    for (const auto& term : p) {
+        std::ostringstream os;
+        os << term.second;
+        terms.push_back(json::array({
+            (int64_t)term.first.deg(),
+            os.str()
+        }));
+    }
+    return {{"type","SparsePolyZZ"}, {"val", terms}};
+}
+
 }  // namespace b2b

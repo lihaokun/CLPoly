@@ -1,0 +1,26 @@
+{
+  "fn": "__normalization_zz_poly",
+  "cases": [
+    {
+      "name": "merge_dup_degs",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[0, "1"], [2, "3"], [1, "2"], [2, "4"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[2, "7"], [1, "2"], [0, "1"]]}
+    },
+    {
+      "name": "drop_zero_coefs",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "3"], [1, "0"], [0, "5"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[2, "3"], [0, "5"]]}
+    },
+    {
+      "name": "already_normal",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[3, "1"], [1, "2"], [0, "3"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[3, "1"], [1, "2"], [0, "3"]]}
+    }
+  ]
+}

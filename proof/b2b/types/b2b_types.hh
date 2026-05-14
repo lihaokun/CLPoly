@@ -74,6 +74,12 @@ json serialize_BoolZZ(bool ok, const ZZ& z);
 upolynomial_<Zp> parse_SparsePolyZp(const json& j);
 json             serialize_SparsePolyZp(const upolynomial_<Zp>& p);
 
+// ---- SparsePolyZZ ----
+// JSON: {"type":"SparsePolyZZ","val":[[<deg>,"<zz_decimal>"], ...]}
+
+upolynomial_<ZZ> parse_SparsePolyZZ(const json& j);
+json             serialize_SparsePolyZZ(const upolynomial_<ZZ>& p);
+
 }  // namespace b2b
 
 #endif

@@ -1,0 +1,37 @@
+{
+  "fn": "__polynomial_mod_zz",
+  "cases": [
+    {
+      "name": "mod_5_drop_zero",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "2"], [1, "3"], [0, "5"]]},
+        {"type": "UInt64", "val": "5"}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": [[2, ["2", "5"]], [1, ["3", "5"]]]}
+    },
+    {
+      "name": "mod_7_basic",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "10"], [1, "14"], [0, "21"]]},
+        {"type": "UInt64", "val": "7"}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": [[2, ["3", "7"]]]}
+    },
+    {
+      "name": "mod_5_neg_wraps",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[1, "-1"]]},
+        {"type": "UInt64", "val": "5"}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": [[1, ["4", "5"]]]}
+    },
+    {
+      "name": "mod_3_all_zero_returns_empty",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "3"], [1, "6"], [0, "9"]]},
+        {"type": "UInt64", "val": "3"}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": []}
+    }
+  ]
+}

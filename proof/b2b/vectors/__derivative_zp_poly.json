@@ -1,0 +1,26 @@
+{
+  "fn": "__derivative_zp_poly",
+  "cases": [
+    {
+      "name": "d_2x3_plus_x_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[3, ["2", "5"]], [1, ["1", "5"]]]}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["1", "5"]]]}
+    },
+    {
+      "name": "deriv_constant_empty",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[0, ["7", "11"]]]}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": []}
+    },
+    {
+      "name": "p_x_kills_coef_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[5, ["1", "5"]], [1, ["2", "5"]]]}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": [[0, ["2", "5"]]]}
+    }
+  ]
+}

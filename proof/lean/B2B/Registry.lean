@@ -90,6 +90,39 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
     let p ← parseSparsePolyZZ args[0]!
     let prime ← parseUInt64 args[1]!
     return encodeSparsePolyZp (polynomial_mod p prime)
+  -- ---- SparsePolyZp ops ----
+  | "__add_zp_poly" =>
+    let f ← parseSparsePolyZp args[0]!
+    let g ← parseSparsePolyZp args[1]!
+    return encodeSparsePolyZp (f + g)
+  | "__sub_zp_poly" =>
+    let f ← parseSparsePolyZp args[0]!
+    let g ← parseSparsePolyZp args[1]!
+    return encodeSparsePolyZp (f - g)
+  | "__mul_zp_poly" =>
+    let f ← parseSparsePolyZp args[0]!
+    let g ← parseSparsePolyZp args[1]!
+    return encodeSparsePolyZp (f * g)
+  | "__divmod_zp_poly" =>
+    let f ← parseSparsePolyZp args[0]!
+    let g ← parseSparsePolyZp args[1]!
+    let (q, r) := SparsePolyZp.divmod f g
+    return encodePairSPZp q r
+  | "__gcd_zp_poly" =>
+    let f ← parseSparsePolyZp args[0]!
+    let g ← parseSparsePolyZp args[1]!
+    return encodeSparsePolyZp (SparsePolyZp.gcd f g)
+  | "__gcd_eea_zp_poly" =>
+    let f ← parseSparsePolyZp args[0]!
+    let g ← parseSparsePolyZp args[1]!
+    let (gcd, s, t) := polynomial_GCD_eea f g #[] #[]
+    return encodeTripleSPZp gcd s t
+  | "__derivative_zp_poly" =>
+    let p ← parseSparsePolyZp args[0]!
+    return encodeSparsePolyZp (SparsePolyZp.derivative p)
+  | "__normalization_zp_poly" =>
+    let p ← parseSparsePolyZp args[0]!
+    return encodeSparsePolyZp (SparsePolyZp.normalization p)
   | _ => throw s!"unknown fn: {fn}"
 
 end B2B

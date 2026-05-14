@@ -117,13 +117,18 @@ def reserve (f : SparsePolyZp) (_n : UInt64) : SparsePolyZp := f
 def data (f : SparsePolyZp) : SparsePolyZp := f
 
 -- 求导：d/dx (Σ c_i x^{d_i}) = Σ d_i * c_i * x^{d_i - 1}
+-- Bug fix (B2B A3)：modular reduction 后 new_val 可能为 0（如 d/dx(x^p)=p*x^{p-1}=0
+-- 在 F_p 上），需 filter 掉 0-coef 项，否则 SparsePolyZp 失常规化
 def derivative (f : SparsePolyZp) : SparsePolyZp :=
   if f.isEmpty then #[]
   else
     let p := f[0]!.snd.prime
     f.filterMap (fun (m, c) =>
       if m.deg == 0 then none
-      else some (⟨m.deg - 1⟩, ⟨c.val * m.deg.toUInt64 % p, p⟩))
+      else
+        let new_val := c.val * m.deg.toUInt64 % p
+        if new_val = 0 then none
+        else some (⟨m.deg - 1⟩, ⟨new_val, p⟩))
 
 -- divmod / gcd 实现移到 §5d.1 之后（需要 SparsePolyZp 算术 instance 已注册）
 
@@ -605,11 +610,28 @@ def divmod (f g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
     let lc_g_inv := g[0]!.snd.inv
     divmodAux g dg lc_g_inv #[] f
 
--- 欧几里得 GCD：gcd(f, g) = gcd(g, f mod g)
+-- 标量乘（用于首一化）：multiply all coefs by const Zp
+def scalarMul (c : Zp) (f : SparsePolyZp) : SparsePolyZp :=
+  f.filterMap (fun (m, x) =>
+    let new_val := x.val * c.val % c.prime
+    if new_val = 0 then none
+    else some (m, ⟨new_val, c.prime⟩))
+
+-- 首一化：multiply by inv(lc) — 与 C++ polynomial_GCD 输出约定一致
+def makeMonic (f : SparsePolyZp) : SparsePolyZp :=
+  if f.isEmpty then f
+  else
+    let lc_inv := f[0]!.snd.inv
+    scalarMul lc_inv f
+
+-- 欧几里得 GCD：gcd(f, g) = gcd(g, f mod g)；最后首一化（与 C++ 一致）
 -- partial def 因终止性依赖 deg(f mod g) < deg(g) 严格递减
-partial def gcd (f g : SparsePolyZp) : SparsePolyZp :=
+partial def gcdAux (f g : SparsePolyZp) : SparsePolyZp :=
   if g.isEmpty then f
-  else gcd g (divmod f g).snd
+  else gcdAux g (divmod f g).snd
+
+def gcd (f g : SparsePolyZp) : SparsePolyZp :=
+  makeMonic (gcdAux f g)
 
 -- 扩展欧几里得：返回 (g, s, t) 满足 a*s + b*t = g
 -- 类比 Nat.extGcd：
@@ -617,7 +639,8 @@ partial def gcd (f g : SparsePolyZp) : SparsePolyZp :=
 --   else (q, r) := divmod a b
 --        (g, s', t') := extGcd b r
 --        a*t' + b*(s' - q*t') = g
-partial def extGcd (a b : SparsePolyZp) : SparsePolyZp × SparsePolyZp × SparsePolyZp :=
+-- C++ 约定：最后 g, s, t 三者同乘 inv(lc(g))，使 g 首一
+partial def extGcdAux (a b : SparsePolyZp) : SparsePolyZp × SparsePolyZp × SparsePolyZp :=
   if b.isEmpty then
     if a.isEmpty then (#[], #[], #[])
     else
@@ -626,10 +649,17 @@ partial def extGcd (a b : SparsePolyZp) : SparsePolyZp × SparsePolyZp × Sparse
       (a, one_poly, #[])
   else
     let (q, r) := divmod a b
-    let (g, s', t') := extGcd b r
+    let (g, s', t') := extGcdAux b r
     -- a*t' + b*(s' - q*t') = g
     let new_t := s' - q * t'
     (g, t', new_t)
+
+def extGcd (a b : SparsePolyZp) : SparsePolyZp × SparsePolyZp × SparsePolyZp :=
+  let (g, s, t) := extGcdAux a b
+  if g.isEmpty then (g, s, t)
+  else
+    let lc_inv := g[0]!.snd.inv
+    (scalarMul lc_inv g, scalarMul lc_inv s, scalarMul lc_inv t)
 
 end SparsePolyZp
 

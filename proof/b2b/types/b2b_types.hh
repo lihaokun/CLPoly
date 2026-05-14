@@ -80,6 +80,16 @@ json             serialize_SparsePolyZp(const upolynomial_<Zp>& p);
 upolynomial_<ZZ> parse_SparsePolyZZ(const json& j);
 json             serialize_SparsePolyZZ(const upolynomial_<ZZ>& p);
 
+// ---- 复合返回类型（仅 serialize；解析端不接受这些）----
+// PairSPZp: divmod 返回 (q, r)
+// JSON: {"type":"PairSPZp","val":[<spzp>,<spzp>]} 内嵌完整 SparsePolyZp 对象
+json serialize_PairSPZp(const upolynomial_<Zp>& q, const upolynomial_<Zp>& r);
+// TripleSPZp: gcd_eea 返回 (gcd, s, t)
+json serialize_TripleSPZp(
+    const upolynomial_<Zp>& g,
+    const upolynomial_<Zp>& s,
+    const upolynomial_<Zp>& t);
+
 }  // namespace b2b
 
 #endif

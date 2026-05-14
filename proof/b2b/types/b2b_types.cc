@@ -102,7 +102,8 @@ upolynomial_<Zp> parse_SparsePolyZp(const json& j) {
         if (!zp_arr.is_array() || zp_arr.size() != 2) {
             throw std::runtime_error("SparsePolyZp term zp: expected [val,prime]");
         }
-        int64_t  val   = zp_arr[0].get<int64_t>();
+        int64_t  val   = zp_arr[0].is_string() ? std::stoll(zp_arr[0].get<std::string>())
+                                               : zp_arr[0].get<int64_t>();
         uint64_t prime = zp_arr[1].is_string() ? std::stoull(zp_arr[1].get<std::string>())
                                                : zp_arr[1].get<uint64_t>();
         result.push_back(std::make_pair(umonomial(deg), Zp(val, prime)));
@@ -157,6 +158,25 @@ json serialize_SparsePolyZZ(const upolynomial_<ZZ>& p) {
         }));
     }
     return {{"type","SparsePolyZZ"}, {"val", terms}};
+}
+
+// ---- 复合返回类型 ----
+
+json serialize_PairSPZp(const upolynomial_<Zp>& q, const upolynomial_<Zp>& r) {
+    return {{"type","PairSPZp"}, {"val", json::array({
+        serialize_SparsePolyZp(q),
+        serialize_SparsePolyZp(r)
+    })}};
+}
+
+json serialize_TripleSPZp(const upolynomial_<Zp>& g,
+                          const upolynomial_<Zp>& s,
+                          const upolynomial_<Zp>& t) {
+    return {{"type","TripleSPZp"}, {"val", json::array({
+        serialize_SparsePolyZp(g),
+        serialize_SparsePolyZp(s),
+        serialize_SparsePolyZp(t)
+    })}};
 }
 
 }  // namespace b2b

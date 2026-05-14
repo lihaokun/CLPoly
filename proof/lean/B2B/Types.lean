@@ -149,4 +149,16 @@ def encodeSparsePolyZZ (p : SparsePolyZZ) : Json :=
     ]
   Json.mkObj [("type", "SparsePolyZZ"), ("val", Json.arr terms)]
 
+-- ---- 复合返回类型 ----
+
+def encodePairSPZp (q r : SparsePolyZp) : Json :=
+  Json.mkObj [("type", "PairSPZp"),
+              ("val", Json.arr #[encodeSparsePolyZp q, encodeSparsePolyZp r])]
+
+def encodeTripleSPZp (g s t : SparsePolyZp) : Json :=
+  Json.mkObj [("type", "TripleSPZp"),
+              ("val", Json.arr #[encodeSparsePolyZp g,
+                                 encodeSparsePolyZp s,
+                                 encodeSparsePolyZp t])]
+
 end B2B

@@ -125,6 +125,51 @@ json dispatch(const std::string& fn, const json& args) {
         return serialize_SparsePolyZp(clpoly::polynomial_mod(p, prime));
     }
 
+    // ---- SparsePolyZp ops ----
+    if (fn == "__add_zp_poly") {
+        auto f = parse_SparsePolyZp(args.at(0));
+        auto g = parse_SparsePolyZp(args.at(1));
+        return serialize_SparsePolyZp(f + g);
+    }
+    if (fn == "__sub_zp_poly") {
+        auto f = parse_SparsePolyZp(args.at(0));
+        auto g = parse_SparsePolyZp(args.at(1));
+        return serialize_SparsePolyZp(f - g);
+    }
+    if (fn == "__mul_zp_poly") {
+        auto f = parse_SparsePolyZp(args.at(0));
+        auto g = parse_SparsePolyZp(args.at(1));
+        return serialize_SparsePolyZp(f * g);
+    }
+    if (fn == "__divmod_zp_poly") {
+        auto f = parse_SparsePolyZp(args.at(0));
+        auto g = parse_SparsePolyZp(args.at(1));
+        upolynomial_<Zp> q, r;
+        clpoly::__upoly_divmod(q, r, f, g);
+        return serialize_PairSPZp(q, r);
+    }
+    if (fn == "__gcd_zp_poly") {
+        auto f = parse_SparsePolyZp(args.at(0));
+        auto g = parse_SparsePolyZp(args.at(1));
+        return serialize_SparsePolyZp(clpoly::polynomial_GCD(f, g));
+    }
+    if (fn == "__gcd_eea_zp_poly") {
+        auto f = parse_SparsePolyZp(args.at(0));
+        auto g = parse_SparsePolyZp(args.at(1));
+        upolynomial_<Zp> s, t;
+        auto gcd = clpoly::polynomial_GCD(f, g, s, t);
+        return serialize_TripleSPZp(gcd, s, t);
+    }
+    if (fn == "__derivative_zp_poly") {
+        auto p = parse_SparsePolyZp(args.at(0));
+        return serialize_SparsePolyZp(clpoly::derivative(p));
+    }
+    if (fn == "__normalization_zp_poly") {
+        auto p = parse_SparsePolyZp(args.at(0));
+        p.normalization();
+        return serialize_SparsePolyZp(p);
+    }
+
     throw std::runtime_error("unknown fn: " + fn);
 }
 

@@ -577,16 +577,144 @@ theorem SparsePolyZp.sub_self_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
   ring
 
 -- ============================================================
+-- §7e. scaleByMonomial 同态 + WellFormed (Phase 2A.4c Stage 1)
+-- ============================================================
+
+-- Lemma 1: scaleByMonomial 内层 filterMap 在 list 上对应 polynomial 单项式乘
+-- 每项 (mf, cf) 映射到 monomial(m+mf, c*cf)；零项被 filterMap 丢掉
+theorem listSum_filterMap_scale (p : Nat) (h_p2 : p * p ≤ UInt64.size)
+    (m : UMonomial) (c : Zp) (hc : Zp.Reduced p c)
+    (xs : List (UMonomial × Zp)) (hxs : SparsePolyZp.AllReduced p xs) :
+    listSum p (xs.filterMap (fun term : UMonomial × Zp =>
+      if (c * term.snd).val = 0 then none
+      else some (UMonomial.mk (m.deg + term.fst.deg), c * term.snd)))
+    = Polynomial.monomial m.deg (Zp.toZMod p c) * listSum p xs := by
+  induction xs with
+  | nil =>
+    simp [listSum_nil, mul_zero]
+  | cons x rest ih =>
+    rcases x with ⟨mf, cf⟩
+    have hcf_red : Zp.Reduced p cf := hxs (mf, cf) List.mem_cons_self
+    have hxs' : SparsePolyZp.AllReduced p rest := fun y hy => hxs y (List.mem_cons_of_mem _ hy)
+    -- c.val * cf.val < p * p ≤ UInt64.size，故 Zp.toZMod_mul 前提满足
+    have h_no_overflow : c.val.toNat * cf.val.toNat < UInt64.size := by
+      have h1 : c.val.toNat < p := hc.2
+      have h2 : cf.val.toNat < p := hcf_red.2
+      have hp_pos : 0 < p := Nat.zero_lt_of_lt h1
+      calc c.val.toNat * cf.val.toNat
+          < p * p := Nat.mul_lt_mul_of_lt_of_le h1 (Nat.le_of_lt h2) hp_pos
+        _ ≤ UInt64.size := h_p2
+    have h_toZMod_mul : Zp.toZMod p (c * cf) = Zp.toZMod p c * Zp.toZMod p cf :=
+      Zp.toZMod_mul p c cf hc.1 hcf_red.1 h_no_overflow
+    -- monomial 乘法等式：monomial(m+mf, toZMod(c*cf)) = monomial m (toZMod c) * monomial mf (toZMod cf)
+    have h_mono_eq : Polynomial.monomial (m.deg + mf.deg) (Zp.toZMod p (c * cf))
+                    = Polynomial.monomial m.deg (Zp.toZMod p c) *
+                      Polynomial.monomial mf.deg (Zp.toZMod p cf) := by
+      rw [h_toZMod_mul, Polynomial.monomial_mul_monomial]
+    by_cases h_zero : (c * cf).val = 0
+    · -- filterMap 在该位 drop
+      simp only [List.filterMap_cons, h_zero, ↓reduceIte]
+      rw [ih hxs', listSum_cons, mul_add]
+      -- 证 monomial m.deg (toZMod c) * monomial mf.deg (toZMod cf) = 0
+      have h_toZMod_zero : Zp.toZMod p (c * cf) = 0 := by
+        unfold Zp.toZMod
+        rw [show (c * cf).val.toNat = 0 from by rw [h_zero]; rfl]
+        simp
+      have h_mono_zero :
+          Polynomial.monomial m.deg (Zp.toZMod p c) *
+          Polynomial.monomial mf.deg (Zp.toZMod p cf) = 0 := by
+        rw [← h_mono_eq, h_toZMod_zero]; exact Polynomial.monomial_zero_right _
+      rw [h_mono_zero, zero_add]
+    · -- filterMap 在该位 keep
+      simp only [List.filterMap_cons, h_zero, ↓reduceIte]
+      rw [listSum_cons, ih hxs']
+      rw [listSum_cons, mul_add, h_mono_eq]
+
+-- Lemma 2: toPoly_scaleByMonomial — 整 SparsePoly 对应 polynomial 单项式乘
+theorem SparsePolyZp.toPoly_scaleByMonomial (p : Nat) (h_p2 : p * p ≤ UInt64.size)
+    (m : UMonomial) (c : Zp) (hc : Zp.Reduced p c)
+    (f : SparsePolyZp) (hf : SparsePolyZp.WellFormed_arr p f) :
+    SparsePolyZp.toPoly p (SparsePolyZp.scaleByMonomial m c f)
+    = Polynomial.monomial m.deg (Zp.toZMod p c) * SparsePolyZp.toPoly p f := by
+  unfold SparsePolyZp.scaleByMonomial
+  by_cases h_c_zero : c.val = 0
+  · -- c.val = 0：scaleByMonomial 返 #[]；同时 toZMod c = 0 → RHS = 0 * _ = 0
+    simp only [h_c_zero, ↓reduceIte]
+    show SparsePolyZp.toPoly p (#[] : SparsePolyZp) = _
+    rw [SparsePolyZp.toPoly_empty p]
+    have h_toZMod_c_zero : Zp.toZMod p c = 0 := by
+      unfold Zp.toZMod
+      rw [show c.val.toNat = 0 from by rw [h_c_zero]; rfl]
+      simp
+    rw [h_toZMod_c_zero, Polynomial.monomial_zero_right, zero_mul]
+  · -- c.val ≠ 0：套 Lemma 1
+    simp only [h_c_zero, ↓reduceIte]
+    show listSum p (Array.filterMap _ f).toList = _
+    rw [Array.toList_filterMap]
+    -- 现在目标 listSum p (f.toList.filterMap _) = monomial _ _ * toPoly p f
+    -- toPoly p f = listSum p f.toList
+    show listSum p (f.toList.filterMap _) = _ * listSum p f.toList
+    exact listSum_filterMap_scale p h_p2 m c hc f.toList hf
+
+-- Lemma 3: WellFormed_arr 在 scaleByMonomial 下闭合
+theorem SparsePolyZp.WellFormed_arr.scaleByMonomial (p : Nat)
+    (h_p2 : p * p ≤ UInt64.size)
+    (m : UMonomial) (c : Zp) (hc : Zp.Reduced p c)
+    (f : SparsePolyZp) (hf : SparsePolyZp.WellFormed_arr p f) :
+    SparsePolyZp.WellFormed_arr p (SparsePolyZp.scaleByMonomial m c f) := by
+  unfold SparsePolyZp.scaleByMonomial
+  by_cases h_c_zero : c.val = 0
+  · -- c.val = 0：scaleByMonomial 返 #[]，平凡 WellFormed
+    simp only [h_c_zero, ↓reduceIte]
+    intro x hx
+    simp at hx
+  · -- c.val ≠ 0：每项 = (m+mf, c*cy) 中 c*cy 的 prime = c.prime；val < c.prime
+    simp only [h_c_zero, ↓reduceIte]
+    intro x hx
+    rw [Array.toList_filterMap, List.mem_filterMap] at hx
+    rcases hx with ⟨y, hy_mem, hy_some⟩
+    rcases y with ⟨my, cy⟩
+    have hcy_red : Zp.Reduced p cy := hf (my, cy) hy_mem
+    -- hy_some 形如 `(if ... then none else some (..., c*cy)) = some x`
+    simp only at hy_some
+    by_cases h_prod_zero : (c * cy).val = 0
+    · simp [h_prod_zero] at hy_some
+    · simp only [h_prod_zero, ↓reduceIte, Option.some.injEq] at hy_some
+      -- hy_some : ({ deg := m.deg + my.deg }, c * cy) = x
+      subst hy_some
+      -- 目标：Zp.Reduced p (c * cy)
+      refine ⟨?_, ?_⟩
+      · -- (c*cy).prime.toNat = p：Mul Zp 实例返 a.prime
+        show c.prime.toNat = p
+        exact hc.1
+      · -- (c*cy).val.toNat < p
+        -- Mul Zp 实例: (c*cy).val = ((c.val.toNat * cy.val.toNat) % c.prime.toNat).toUInt64
+        show (((c.val.toNat * cy.val.toNat) % c.prime.toNat).toUInt64).toNat < p
+        have hp_pos : 0 < p := Nat.zero_lt_of_lt hc.2
+        have h_no : c.val.toNat * cy.val.toNat < UInt64.size := by
+          calc c.val.toNat * cy.val.toNat
+              < p * p := Nat.mul_lt_mul_of_lt_of_le hc.2 (Nat.le_of_lt hcy_red.2) hp_pos
+            _ ≤ UInt64.size := h_p2
+        have h_mod_lt_prime : (c.val.toNat * cy.val.toNat) % c.prime.toNat <
+                              c.prime.toNat := by
+          apply Nat.mod_lt; rw [hc.1]; exact hp_pos
+        have h_mod_lt_size : (c.val.toNat * cy.val.toNat) % c.prime.toNat <
+                             UInt64.size :=
+          Nat.lt_of_le_of_lt (Nat.mod_le _ _) h_no
+        change (OfNat.ofNat _ : UInt64).toNat < p
+        rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt h_mod_lt_size, hc.1]
+        rw [hc.1] at h_mod_lt_prime
+        exact h_mod_lt_prime
+
+-- ============================================================
 -- §8. 数值验证（Mathlib decidable 通过）
 -- ============================================================
 --
--- 余下工作（未在本 commit 完成；难度递增）：
--- - listSum_filterMap_scale + toPoly_scaleByMonomial（标量乘法同态）
--- - WellFormed_arr.scaleByMonomial 保持性
--- - toPoly_mul（foldl 分配律 — 最复杂）
--- - WellFormed_arr.mul 保持性
--- - 乘法相关 ring 公理（mul_comm/_assoc, distrib）via toPoly bridge
--- - toPoly_inj_canonical（用于反推 Array 等式 spec）
+-- 余下工作（Phase 2A.4c Stage 2-3）：
+-- - toPoly_mul (Stage 2)
+-- - WellFormed_arr.mul (Stage 2)
+-- - Canonical + toPoly_inj_canonical (Stage 3)
+-- - 乘法 ring 公理（mul_comm/_assoc, distrib）via toPoly bridge (Stage 3)
 -- ============================================================
 
 -- Zp 7 的 0 → ZMod 7 的 0

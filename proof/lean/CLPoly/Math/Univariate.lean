@@ -707,14 +707,110 @@ theorem SparsePolyZp.WellFormed_arr.scaleByMonomial (p : Nat)
         exact h_mod_lt_prime
 
 -- ============================================================
+-- §7f. toPoly_mul + WellFormed_arr.mul (Phase 2A.4c Stage 2)
+-- ============================================================
+
+-- Helper: 对 List.foldl 的不变量
+-- foldl 累积 acc：每步 acc' = acc + scaleByMonomial (mf, cf) g
+-- 不变量：toPoly p (foldl ... acc xs) = toPoly p acc + listSum p xs * toPoly p g
+theorem toPoly_foldl_mulStep (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (g : SparsePolyZp) (hg : SparsePolyZp.WellFormed_arr p g)
+    (xs : List (UMonomial × Zp)) :
+    ∀ acc : SparsePolyZp,
+    SparsePolyZp.WellFormed_arr p acc → SparsePolyZp.AllReduced p xs →
+    SparsePolyZp.toPoly p (List.foldl (fun a (t : UMonomial × Zp) =>
+        SparsePolyZp.addImpl a (SparsePolyZp.scaleByMonomial t.fst t.snd g)) acc xs)
+    = SparsePolyZp.toPoly p acc + listSum p xs * SparsePolyZp.toPoly p g := by
+  induction xs with
+  | nil =>
+    intro acc _ _
+    simp [listSum_nil, zero_mul, add_zero]
+  | cons x rest ih =>
+    intro acc hacc hxs
+    rcases x with ⟨mf, cf⟩
+    have hcf_red : Zp.Reduced p cf := hxs (mf, cf) List.mem_cons_self
+    have hxs' : SparsePolyZp.AllReduced p rest :=
+      fun y hy => hxs y (List.mem_cons_of_mem _ hy)
+    have h_scale_wf : SparsePolyZp.WellFormed_arr p
+        (SparsePolyZp.scaleByMonomial mf cf g) :=
+      SparsePolyZp.WellFormed_arr.scaleByMonomial p h_p2 mf cf hcf_red g hg
+    have hacc' : SparsePolyZp.WellFormed_arr p
+        (SparsePolyZp.addImpl acc (SparsePolyZp.scaleByMonomial mf cf g)) :=
+      SparsePolyZp.WellFormed_arr.add p acc _ hacc h_scale_wf
+    rw [List.foldl_cons]
+    rw [ih _ hacc' hxs']
+    -- 目标: toPoly p (addImpl acc (scale mf cf g)) + listSum rest * toPoly g
+    --     = toPoly p acc + listSum ((mf,cf) :: rest) * toPoly g
+    show SparsePolyZp.toPoly p (acc + SparsePolyZp.scaleByMonomial mf cf g) +
+         listSum p rest * SparsePolyZp.toPoly p g = _
+    rw [SparsePolyZp.toPoly_add p h_2p acc _ hacc h_scale_wf]
+    rw [SparsePolyZp.toPoly_scaleByMonomial p h_p2 mf cf hcf_red g hg]
+    rw [listSum_cons, add_mul]
+    ring
+
+-- Lemma 4 (核心): toPoly_mul — SparsePolyZp 乘法的 polynomial 同态
+theorem SparsePolyZp.toPoly_mul (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
+    SparsePolyZp.toPoly p (f * g) = SparsePolyZp.toPoly p f * SparsePolyZp.toPoly p g := by
+  show SparsePolyZp.toPoly p (SparsePolyZp.mulImpl f g) = _
+  unfold SparsePolyZp.mulImpl
+  rw [← Array.foldl_toList]
+  have h_empty_wf : SparsePolyZp.WellFormed_arr p (#[] : SparsePolyZp) := by
+    intro x hx
+    simp at hx
+  rw [toPoly_foldl_mulStep p h_2p h_p2 g hg f.toList #[] h_empty_wf hf]
+  rw [SparsePolyZp.toPoly_empty p, zero_add]
+  -- 目标: listSum p f.toList * toPoly p g = toPoly p f * toPoly p g
+  show listSum p f.toList * SparsePolyZp.toPoly p g = SparsePolyZp.toPoly p f * _
+  rfl
+
+-- Lemma 5: WellFormed_arr 在 * 下闭合
+theorem SparsePolyZp.WellFormed_arr.mul (p : Nat)
+    (h_p2 : p * p ≤ UInt64.size)
+    (f g : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
+    SparsePolyZp.WellFormed_arr p (f * g) := by
+  show SparsePolyZp.WellFormed_arr p (SparsePolyZp.mulImpl f g)
+  unfold SparsePolyZp.mulImpl
+  rw [← Array.foldl_toList]
+  have h_empty_wf : SparsePolyZp.WellFormed_arr p (#[] : SparsePolyZp) := by
+    intro x hx; simp at hx
+  -- 内层 helper：xs 优先归纳，acc/hxs 留到 IH 内层
+  suffices h : ∀ xs : List (UMonomial × Zp), ∀ acc : SparsePolyZp,
+      SparsePolyZp.WellFormed_arr p acc → SparsePolyZp.AllReduced p xs →
+      SparsePolyZp.WellFormed_arr p (List.foldl
+        (fun a (t : UMonomial × Zp) =>
+          SparsePolyZp.addImpl a (SparsePolyZp.scaleByMonomial t.fst t.snd g)) acc xs)
+    from h f.toList #[] h_empty_wf hf
+  intro xs
+  induction xs with
+  | nil =>
+    intro acc hacc _; simp [List.foldl_nil]; exact hacc
+  | cons x rest ih =>
+    intro acc hacc hxs
+    rcases x with ⟨mf, cf⟩
+    have hcf_red : Zp.Reduced p cf := hxs (mf, cf) List.mem_cons_self
+    have hxs' : SparsePolyZp.AllReduced p rest :=
+      fun y hy => hxs y (List.mem_cons_of_mem _ hy)
+    have h_scale_wf : SparsePolyZp.WellFormed_arr p
+        (SparsePolyZp.scaleByMonomial mf cf g) :=
+      SparsePolyZp.WellFormed_arr.scaleByMonomial p h_p2 mf cf hcf_red g hg
+    have hacc' : SparsePolyZp.WellFormed_arr p
+        (SparsePolyZp.addImpl acc (SparsePolyZp.scaleByMonomial mf cf g)) :=
+      SparsePolyZp.WellFormed_arr.add p acc _ hacc h_scale_wf
+    rw [List.foldl_cons]
+    exact ih _ hacc' hxs'
+
+-- ============================================================
 -- §8. 数值验证（Mathlib decidable 通过）
 -- ============================================================
 --
--- 余下工作（Phase 2A.4c Stage 2-3）：
--- - toPoly_mul (Stage 2)
--- - WellFormed_arr.mul (Stage 2)
--- - Canonical + toPoly_inj_canonical (Stage 3)
--- - 乘法 ring 公理（mul_comm/_assoc, distrib）via toPoly bridge (Stage 3)
+-- 余下工作（Phase 2A.4c Stage 3）：
+-- - Canonical + toPoly_inj_canonical
+-- - 乘法 ring 公理（mul_comm/_assoc, distrib）via toPoly bridge
 -- ============================================================
 
 -- Zp 7 的 0 → ZMod 7 的 0

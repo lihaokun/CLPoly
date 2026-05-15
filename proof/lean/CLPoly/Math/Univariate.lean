@@ -51,15 +51,20 @@ theorem Zp.toZMod_add (p : Nat) (a b : Zp)
     (ha : a.prime.toNat = p) (_hb : b.prime.toNat = p)
     (hno : a.val.toNat + b.val.toNat < UInt64.size) :
     Zp.toZMod p (a + b) = Zp.toZMod p a + Zp.toZMod p b := by
-  -- Zp 加法定义：(a + b).val = (a.val + b.val) % a.prime
-  show Zp.toZMod p ⟨(a.val + b.val) % a.prime, a.prime⟩ = _
+  -- Add Zp 实例（Nat-based 防大素数溢出）：
+  -- (a + b).val = ((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64
+  show Zp.toZMod p ⟨((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64, a.prime⟩ = _
   unfold Zp.toZMod
-  -- 步骤 1: ((a.val + b.val) % a.prime).toNat = (a.val.toNat + b.val.toNat) % p
-  have step1 : ((a.val + b.val) % a.prime).toNat = (a.val.toNat + b.val.toNat) % p := by
-    rw [UInt64.toNat_mod, UInt64.toNat_add, Nat.mod_eq_of_lt hno, ha]
-  rw [step1]
-  -- 步骤 2: ZMod.natCast_mod 消 mod，然后 Nat.cast_add 拆开
-  rw [ZMod.natCast_mod]
+  -- 关键 round-trip: (((a+b)%p).toUInt64).toNat = (a+b)%p（因 (a+b)%p ≤ a+b < UInt64.size）
+  have h_mod_le : (a.val.toNat + b.val.toNat) % a.prime.toNat ≤
+                  a.val.toNat + b.val.toNat := Nat.mod_le _ _
+  have h_mod_lt : (a.val.toNat + b.val.toNat) % a.prime.toNat < UInt64.size :=
+    Nat.lt_of_le_of_lt h_mod_le hno
+  have step1 : (((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64).toNat =
+               (a.val.toNat + b.val.toNat) % p := by
+    change (OfNat.ofNat _ : UInt64).toNat = _
+    rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt h_mod_lt, ha]
+  rw [step1, ZMod.natCast_mod]
   push_cast
   rfl
 
@@ -284,10 +289,18 @@ theorem Zp.toZMod_mul (p : Nat) (a b : Zp)
     (ha : a.prime.toNat = p) (_hb : b.prime.toNat = p)
     (hno : a.val.toNat * b.val.toNat < UInt64.size) :
     Zp.toZMod p (a * b) = Zp.toZMod p a * Zp.toZMod p b := by
-  show Zp.toZMod p ⟨(a.val * b.val) % a.prime, a.prime⟩ = _
+  -- Mul Zp 实例（Nat-based）：(a*b).val = ((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64
+  show Zp.toZMod p ⟨((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64, a.prime⟩ = _
   unfold Zp.toZMod
-  rw [UInt64.toNat_mod, UInt64.toNat_mul, Nat.mod_eq_of_lt hno, ha]
-  rw [ZMod.natCast_mod]
+  have h_mod_le : (a.val.toNat * b.val.toNat) % a.prime.toNat ≤
+                  a.val.toNat * b.val.toNat := Nat.mod_le _ _
+  have h_mod_lt : (a.val.toNat * b.val.toNat) % a.prime.toNat < UInt64.size :=
+    Nat.lt_of_le_of_lt h_mod_le hno
+  have step1 : (((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64).toNat =
+               (a.val.toNat * b.val.toNat) % p := by
+    change (OfNat.ofNat _ : UInt64).toNat = _
+    rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt h_mod_lt, ha]
+  rw [step1, ZMod.natCast_mod]
   push_cast
   rfl
 
@@ -459,13 +472,23 @@ theorem mergeAdd_AllReduced (p : Nat) (xs ys : List (UMonomial × Zp)) :
     rcases hx with hx_eq | hx_in
     · rw [hx_eq]
       -- 新元素 (f.fst, f.snd + g.snd) 是 Reduced p
+      -- (f.snd + g.snd).val = ((f.snd.val.toNat + g.snd.val.toNat) % f.snd.prime.toNat).toUInt64
       refine ⟨?_, ?_⟩
       · show f.snd.prime.toNat = p
         exact hf_red.1
-      · show ((f.snd.val + g.snd.val) % f.snd.prime).toNat < p
-        rw [UInt64.toNat_mod, hf_red.1]
-        have : 0 < p := lt_of_le_of_lt (Nat.zero_le _) hf_red.2
-        exact Nat.mod_lt _ this
+      · -- 目标:((((f.snd.val.toNat + g.snd.val.toNat) % f.snd.prime.toNat).toUInt64)).toNat < p
+        show (((f.snd.val.toNat + g.snd.val.toNat) % f.snd.prime.toNat).toUInt64).toNat < p
+        have hp_pos : 0 < p := lt_of_le_of_lt (Nat.zero_le _) hf_red.2
+        have h_mod_lt_prime : (f.snd.val.toNat + g.snd.val.toNat) % f.snd.prime.toNat <
+                              f.snd.prime.toNat := by
+          apply Nat.mod_lt; rw [hf_red.1]; exact hp_pos
+        have h_mod_lt_size : (f.snd.val.toNat + g.snd.val.toNat) % f.snd.prime.toNat <
+                             UInt64.size :=
+          lt_of_lt_of_le h_mod_lt_prime (Nat.le_of_lt f.snd.prime.toNat_lt)
+        change (OfNat.ofNat _ : UInt64).toNat < p
+        rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt h_mod_lt_size, hf_red.1]
+        rw [hf_red.1] at h_mod_lt_prime
+        exact h_mod_lt_prime
     · exact ih hxs' hys' x hx_in
 
 theorem SparsePolyZp.WellFormed_arr.add (p : Nat) (f g : SparsePolyZp)

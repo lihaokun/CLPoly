@@ -805,12 +805,76 @@ theorem SparsePolyZp.WellFormed_arr.mul (p : Nat)
     exact ih _ hacc' hxs'
 
 -- ============================================================
+-- §7g. 乘法 ring 公理（toPoly-level, Phase 2A.4c Stage 3a）
+-- ============================================================
+-- 通过 toPoly bridge 把 Mathlib Polynomial 的 ring 公理外包到 SparsePolyZp。
+-- 注：这些是 toPoly-level 等式（toPoly p (f*g) = toPoly p (g*f) 等），
+-- 不是 Array-level 等式。Array-level 等式需 toPoly_inj_canonical（Stage 3b）。
+
+theorem SparsePolyZp.mul_comm_via_toPoly (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
+    SparsePolyZp.toPoly p (f * g) = SparsePolyZp.toPoly p (g * f) := by
+  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf hg]
+  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 g f hg hf]
+  ring
+
+theorem SparsePolyZp.mul_assoc_via_toPoly (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g h : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g)
+    (hh : SparsePolyZp.WellFormed_arr p h) :
+    SparsePolyZp.toPoly p ((f * g) * h) = SparsePolyZp.toPoly p (f * (g * h)) := by
+  have hfg := SparsePolyZp.WellFormed_arr.mul p h_p2 f g hf hg
+  have hgh := SparsePolyZp.WellFormed_arr.mul p h_p2 g h hg hh
+  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 _ h hfg hh,
+      SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf hg,
+      SparsePolyZp.toPoly_mul p h_2p h_p2 f _ hf hgh,
+      SparsePolyZp.toPoly_mul p h_2p h_p2 g h hg hh]
+  ring
+
+theorem SparsePolyZp.left_distrib_via_toPoly (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g h : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g)
+    (hh : SparsePolyZp.WellFormed_arr p h) :
+    SparsePolyZp.toPoly p (f * (g + h)) =
+    SparsePolyZp.toPoly p (f * g) + SparsePolyZp.toPoly p (f * h) := by
+  have hgh := SparsePolyZp.WellFormed_arr.add p g h hg hh
+  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 f _ hf hgh,
+      SparsePolyZp.toPoly_add p h_2p g h hg hh,
+      SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf hg,
+      SparsePolyZp.toPoly_mul p h_2p h_p2 f h hf hh]
+  ring
+
+theorem SparsePolyZp.right_distrib_via_toPoly (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g h : SparsePolyZp)
+    (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g)
+    (hh : SparsePolyZp.WellFormed_arr p h) :
+    SparsePolyZp.toPoly p ((f + g) * h) =
+    SparsePolyZp.toPoly p (f * h) + SparsePolyZp.toPoly p (g * h) := by
+  have hfg := SparsePolyZp.WellFormed_arr.add p f g hf hg
+  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 _ h hfg hh,
+      SparsePolyZp.toPoly_add p h_2p f g hf hg,
+      SparsePolyZp.toPoly_mul p h_2p h_p2 f h hf hh,
+      SparsePolyZp.toPoly_mul p h_2p h_p2 g h hg hh]
+  ring
+
+-- 单位元：toPoly p (1 * f) = toPoly p f
+-- 注：SparsePolyZp 没有显式 1 元素；常数 1 多项式 ⟨(0, 1), ...⟩ 需 Reduced
+-- 此条留 Stage 3b（与 Canonical 一起）
+
+-- ============================================================
 -- §8. 数值验证（Mathlib decidable 通过）
 -- ============================================================
 --
--- 余下工作（Phase 2A.4c Stage 3）：
--- - Canonical + toPoly_inj_canonical
--- - 乘法 ring 公理（mul_comm/_assoc, distrib）via toPoly bridge
+-- 余下工作（Phase 2A.4c Stage 3b — 工作量 ~150 行）：
+-- - Canonical 谓词定义（WellFormed + Chain' 严格降序 + no-zero-val）
+-- - toPoly_inj_canonical（核心难点 ~100 行）
+-- - Canonical.add / Canonical.mul 保持性
+-- - Array-level ring 公理（f * g = g * f 等，via toPoly_inj）
 -- ============================================================
 
 -- Zp 7 的 0 → ZMod 7 的 0

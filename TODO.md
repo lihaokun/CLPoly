@@ -310,7 +310,13 @@ L1 实现模型现在 0 sorry、`lake build` 3071/3071 全绿。Phase 2A–E 全
 
 #### 已知债务
 
-- [x] ~~**Phase 2A.4c** （DEFERRED）：SparsePolyZp 乘法的 ring 公理证明 + canonical injection（`Impl/Types.lean` 还有 2 个 sorry：`toPoly ≠ 0` + 度数匹配）~~ — 2026-05-07 完成
+- [x] ~~**Phase 2A.4c**：SparsePolyZp 乘法的 ring 公理证明 + canonical injection~~ — 2026-05-15 完成
+  - Stage 1: scaleByMonomial 同态 + WellFormed 保持（commit `5da715b`）
+  - Stage 2: toPoly_mul + WellFormed_arr.mul（commit `a445719`）
+  - Stage 3a: 4 个 toPoly-level ring 公理（commit `ac84154`）
+  - Stage 3b core: Canonical + toPoly_inj_canonical（commit `1a983d2`）
+  - Stage 3b 收尾 (2A.4d): mergeAdd_chain + Canonical.add/.mul + 4 个 Array-level ring 公理（commit `0441b66`）
+  - 总 ~1021 行 Lean 0 sorry；fix doc: `docs/fixes/2026-05-15-phase-2a4c-mul-ring-proof.md`
 - [ ] **squarefreefactorize MvPolyZZ** 仍是 `#[(f, 1)]` 占位（**blocked-deferred**）
   - 当前对 squarefree 输入（最常见情形）结果正确；对有重复因子输入会丢失重数
   - 实现需要的依赖链：
@@ -326,12 +332,18 @@ L1 实现模型现在 0 sorry、`lake build` 3071/3071 全绿。Phase 2A–E 全
 
 需按 Phase 顺序补向量。建议从底向上：
 
-- [ ] **B2B-Zp**：Zp 算术（`add`/`sub`/`mul`/`neg`/`inv`/`pow`/`ofInt`/`ofUInt64`）
-- [ ] **B2B-ZZ**：`fdiv_q/r/ui`、`sizeinbase`、`invert`（含 `Bool × ZZ` 返回）、`gcd`/`lcm`
-- [ ] **B2B-SparsePolyZp**：`add`/`sub`/`mul`/`divmod`/`gcd`/`gcd_eea`/`derivative`/`normalization`
-- [ ] **B2B-SparsePolyZZ**：`derivative`/`normalization`/`cont`/`pp`/`polynomial_mod`
-- [ ] **B2B-MvPoly**：`assign`/`assign2`/`leadcoeff` (2-arg)/`poly_convert`/`poly_convert3`
-- [ ] **B2B-Bezout**：`Nat.extGcd`（spec 验证）
+- [x] **B2B-Zp**：Zp 算术（add/sub/mul/neg + inv/pow）—— 完成 2026-05-14（Phase A1）
+- [x] **B2B-ZZ**：gcd/lcm/fdiv_q/r/ui/sizeinbase/invert（含 BoolZZ tuple）—— 完成 2026-05-14（Phase A2.1+A2.2+A2.3）
+- [x] **B2B-SparsePolyZp**：add/sub/mul/divmod/gcd/gcd_eea/derivative/normalization —— 完成 2026-05-14（Phase A3，发现 2 Lean stub bug）
+- [x] **B2B-SparsePolyZZ**：cont/pp/derivative/normalization/polynomial_mod —— 完成 2026-05-14（Phase A4，验证 issue #17 修复）
+- [x] **B2B-MvPoly**：assign/assign2/leadcoeff (2-arg)/poly_convert/poly_convert3 —— 完成 2026-05-14（Phase A5）
+- [x] **B2B-Bezout**：`__nat_extgcd`（spec 验证）—— 完成 2026-05-14（Phase A6）
+
+**Phase A 累计**：138 个 B2B 测例（102 PASS + 1 expected smoke + 0 真 fail）。发现 2 个 Lean stub bug（derivative 漏剔零、gcd 漏首一化），已修。**翻译器质量验证**：所有 bug 都在 Model.lean 手写 stub，Corpus.lean 翻译产物 0 bug。
+
+后续 B2B：
+- [ ] **B2B-Pipeline**：端到端因式分解测试向量（squarefree / factorize 主入口）
+- [ ] **B2B 性能基准**：跟踪 B2B 测试运行时间
 
 ### cpp2lean 翻译器后续
 

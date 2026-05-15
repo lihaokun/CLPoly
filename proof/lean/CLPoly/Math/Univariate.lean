@@ -24,6 +24,9 @@
 
 import CLPoly.Model
 import Mathlib.Algebra.Polynomial.Basic
+import Mathlib.Algebra.Polynomial.Coeff
+import Mathlib.Algebra.Polynomial.Degree.Definitions
+import Mathlib.Data.List.Chain
 import Mathlib.Data.ZMod.Basic
 import Mathlib.Tactic.Ring
 import Mathlib.Tactic.Linarith
@@ -867,12 +870,246 @@ theorem SparsePolyZp.right_distrib_via_toPoly (p : Nat)
 -- 此条留 Stage 3b（与 Canonical 一起）
 
 -- ============================================================
+-- §7h. Canonical 谓词 (Phase 2A.4c Stage 3b 起步)
+-- ============================================================
+
+-- Canonical: 严格 canonical 形式
+-- (1) WellFormed_arr：所有 Zp 元素 .prime.toNat = p, .val.toNat < p
+-- (2) Chain'：deg 严格降序（用 sorted 降序保 leading 项位置确定）
+-- (3) 无零系数
+def SparsePolyZp.Canonical (p : Nat) (f : SparsePolyZp) : Prop :=
+  SparsePolyZp.WellFormed_arr p f ∧
+  List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) f.toList ∧
+  ∀ x ∈ f.toList, x.snd.val ≠ 0
+
+-- Helper: list 中所有项 deg < n → listSum p xs.coeff n = 0
+theorem listSum_coeff_zero_of_all_lt (p : Nat) (n : Nat)
+    (xs : List (UMonomial × Zp))
+    (h : ∀ x ∈ xs, x.fst.deg < n) :
+    (listSum p xs).coeff n = 0 := by
+  induction xs with
+  | nil => simp [listSum_nil]
+  | cons x rest ih =>
+    have hx : x.fst.deg < n := h x List.mem_cons_self
+    have hrest : ∀ y ∈ rest, y.fst.deg < n :=
+      fun y hy => h y (List.mem_cons_of_mem _ hy)
+    rcases x with ⟨mx, cx⟩
+    rw [listSum_cons, Polynomial.coeff_add, Polynomial.coeff_monomial]
+    rw [if_neg (Nat.ne_of_lt hx)]
+    rw [ih hrest]; ring
+
+-- Helper: toZMod 在 Reduced 上 injective
+theorem Zp.toZMod_inj_of_reduced (p : Nat) (a b : Zp)
+    (ha : Zp.Reduced p a) (hb : Zp.Reduced p b)
+    (heq : Zp.toZMod p a = Zp.toZMod p b) :
+    a = b := by
+  -- toZMod a = (a.val.toNat : ZMod p)；用 ZMod.val 反推
+  have h_val_eq : a.val.toNat = b.val.toNat := by
+    have ha_lt : a.val.toNat < p := ha.2
+    have hb_lt : b.val.toNat < p := hb.2
+    have ha_cast : ((a.val.toNat : ZMod p)).val = a.val.toNat := by
+      rw [ZMod.val_natCast]; exact Nat.mod_eq_of_lt ha_lt
+    have hb_cast : ((b.val.toNat : ZMod p)).val = b.val.toNat := by
+      rw [ZMod.val_natCast]; exact Nat.mod_eq_of_lt hb_lt
+    unfold Zp.toZMod at heq
+    rw [← ha_cast, ← hb_cast, heq]
+  have h_val : a.val = b.val := UInt64.toNat.inj h_val_eq
+  have h_prime : a.prime = b.prime :=
+    UInt64.toNat.inj (ha.1.trans hb.1.symm)
+  rcases a with ⟨va, pa⟩
+  rcases b with ⟨vb, pb⟩
+  simp only at h_val h_prime
+  rw [h_val, h_prime]
+
+-- Helper: Chain' 严格降序 → head 之后所有 deg < head.deg
+theorem chain_gt_all_after_head
+    (head : UMonomial × Zp) (rest : List (UMonomial × Zp))
+    (h_chain : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg)
+                 (head :: rest)) :
+    ∀ x ∈ rest, x.fst.deg < head.fst.deg := by
+  induction rest generalizing head with
+  | nil =>
+    intro x hx; simp at hx
+  | cons r₀ rs ih =>
+    intro x hx
+    -- h_chain: Chain' R (head :: r₀ :: rs)
+    rw [List.isChain_cons_cons] at h_chain
+    obtain ⟨h_head_r₀, h_chain_r₀_rs⟩ := h_chain
+    -- h_head_r₀ : head.fst.deg > r₀.fst.deg
+    rcases List.mem_cons.mp hx with rfl | hx_in_rs
+    · exact h_head_r₀
+    · -- x ∈ rs；用 IH for (r₀ :: rs) on r₀
+      have := ih r₀ h_chain_r₀_rs x hx_in_rs
+      -- this : x.fst.deg < r₀.fst.deg；trans with h_head_r₀
+      exact Nat.lt_trans this h_head_r₀
+
+-- Helper: 排序列表 leading coeff
+theorem listSum_coeff_at_head (p : Nat)
+    (head : UMonomial × Zp) (rest : List (UMonomial × Zp))
+    (h_chain : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg)
+                 (head :: rest)) :
+    (listSum p (head :: rest)).coeff head.fst.deg = Zp.toZMod p head.snd := by
+  rcases head with ⟨mh, ch⟩
+  rw [listSum_cons, Polynomial.coeff_add, Polynomial.coeff_monomial]
+  rw [if_pos rfl]
+  have h_rest_lt : ∀ x ∈ rest, x.fst.deg < mh.deg :=
+    chain_gt_all_after_head ⟨mh, ch⟩ rest h_chain
+  rw [listSum_coeff_zero_of_all_lt p mh.deg rest h_rest_lt]; ring
+
+-- Helper: Reduced p c + c.val ≠ 0 → toZMod p c ≠ 0
+-- 因为 c.val < p 且 c.val ≠ 0 → (c.val.toNat : ZMod p) 不被 p 整除
+theorem Zp.toZMod_ne_zero_of_val_ne_zero (p : Nat) (c : Zp)
+    (hc : Zp.Reduced p c) (hval : c.val ≠ 0) :
+    Zp.toZMod p c ≠ 0 := by
+  intro heq
+  -- toZMod p c = (c.val.toNat : ZMod p) = 0 → p ∣ c.val.toNat
+  -- 但 c.val.toNat < p 且 c.val ≠ 0 → c.val.toNat ≠ 0 → ¬(p ∣ c.val.toNat)
+  unfold Zp.toZMod at heq
+  -- 用 ZMod.val: (c.val.toNat : ZMod p).val = c.val.toNat % p = c.val.toNat（因 < p）
+  have h_cast : ((c.val.toNat : ZMod p)).val = c.val.toNat := by
+    rw [ZMod.val_natCast]; exact Nat.mod_eq_of_lt hc.2
+  rw [heq, ZMod.val_zero] at h_cast
+  -- h_cast: 0 = c.val.toNat
+  apply hval
+  exact UInt64.toNat.inj h_cast.symm
+
+-- List-level helper: canonical 列表（含 sorted、reduced、no-zero）的 listSum 单射
+theorem listSum_inj_canonical (p : Nat)
+    (xs ys : List (UMonomial × Zp))
+    (hx_red : SparsePolyZp.AllReduced p xs)
+    (hy_red : SparsePolyZp.AllReduced p ys)
+    (hx_sorted : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) xs)
+    (hy_sorted : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) ys)
+    (hx_nz : ∀ x ∈ xs, x.snd.val ≠ 0)
+    (hy_nz : ∀ y ∈ ys, y.snd.val ≠ 0)
+    (heq : listSum p xs = listSum p ys) :
+    xs = ys := by
+  induction xs generalizing ys with
+  | nil =>
+    -- xs = []：listSum = 0；ys 必为 []
+    rcases ys with _ | ⟨⟨mh, ch⟩, rest⟩
+    · rfl
+    · exfalso
+      rw [listSum_nil] at heq
+      have hch_red : Zp.Reduced p ch := hy_red (mh, ch) List.mem_cons_self
+      have hch_nz : ch.val ≠ 0 := hy_nz (mh, ch) List.mem_cons_self
+      have h_ne : Zp.toZMod p ch ≠ 0 :=
+        Zp.toZMod_ne_zero_of_val_ne_zero p ch hch_red hch_nz
+      have h_coeff : (listSum p ((mh, ch) :: rest)).coeff mh.deg = Zp.toZMod p ch :=
+        listSum_coeff_at_head p (mh, ch) rest hy_sorted
+      rw [← heq] at h_coeff
+      simp at h_coeff
+      exact h_ne h_coeff.symm
+  | cons xf rest_f ih =>
+    rcases xf with ⟨mf, cf⟩
+    rcases ys with _ | ⟨⟨mg, cg⟩, rest_g⟩
+    · -- ys = []：对称矛盾
+      exfalso
+      rw [listSum_nil] at heq
+      have hcf_red : Zp.Reduced p cf := hx_red (mf, cf) List.mem_cons_self
+      have hcf_nz : cf.val ≠ 0 := hx_nz (mf, cf) List.mem_cons_self
+      have h_ne : Zp.toZMod p cf ≠ 0 :=
+        Zp.toZMod_ne_zero_of_val_ne_zero p cf hcf_red hcf_nz
+      have h_coeff : (listSum p ((mf, cf) :: rest_f)).coeff mf.deg = Zp.toZMod p cf :=
+        listSum_coeff_at_head p (mf, cf) rest_f hx_sorted
+      rw [heq] at h_coeff
+      simp at h_coeff
+      exact h_ne h_coeff.symm
+    · -- 两边非空：比 leading deg + leading coef
+      have hcf_red : Zp.Reduced p cf := hx_red (mf, cf) List.mem_cons_self
+      have hcg_red : Zp.Reduced p cg := hy_red (mg, cg) List.mem_cons_self
+      have hcf_nz : cf.val ≠ 0 := hx_nz (mf, cf) List.mem_cons_self
+      have hcg_nz : cg.val ≠ 0 := hy_nz (mg, cg) List.mem_cons_self
+      have hf_ne : Zp.toZMod p cf ≠ 0 :=
+        Zp.toZMod_ne_zero_of_val_ne_zero p cf hcf_red hcf_nz
+      have hg_ne : Zp.toZMod p cg ≠ 0 :=
+        Zp.toZMod_ne_zero_of_val_ne_zero p cg hcg_red hcg_nz
+      have h_deg_eq : mf.deg = mg.deg := by
+        rcases lt_trichotomy mf.deg mg.deg with hlt | heq_d | hgt
+        · exfalso
+          have h_f_zero : (listSum p ((mf, cf) :: rest_f)).coeff mg.deg = 0 := by
+            apply listSum_coeff_zero_of_all_lt
+            intro x hx
+            rcases List.mem_cons.mp hx with rfl | hx_in_rest
+            · exact hlt
+            · have := chain_gt_all_after_head (mf, cf) rest_f hx_sorted x hx_in_rest
+              exact Nat.lt_trans this hlt
+          have h_g_lead :
+              (listSum p ((mg, cg) :: rest_g)).coeff mg.deg = Zp.toZMod p cg :=
+            listSum_coeff_at_head p (mg, cg) rest_g hy_sorted
+          rw [heq] at h_f_zero
+          rw [h_g_lead] at h_f_zero
+          exact hg_ne h_f_zero
+        · exact heq_d
+        · exfalso
+          have h_g_zero : (listSum p ((mg, cg) :: rest_g)).coeff mf.deg = 0 := by
+            apply listSum_coeff_zero_of_all_lt
+            intro x hx
+            rcases List.mem_cons.mp hx with rfl | hx_in_rest
+            · exact hgt
+            · have := chain_gt_all_after_head (mg, cg) rest_g hy_sorted x hx_in_rest
+              exact Nat.lt_trans this hgt
+          have h_f_lead :
+              (listSum p ((mf, cf) :: rest_f)).coeff mf.deg = Zp.toZMod p cf :=
+            listSum_coeff_at_head p (mf, cf) rest_f hx_sorted
+          rw [← heq] at h_g_zero
+          rw [h_f_lead] at h_g_zero
+          exact hf_ne h_g_zero
+      have h_cf_eq_cg : cf = cg := by
+        have h_f_lead : (listSum p ((mf, cf) :: rest_f)).coeff mf.deg = Zp.toZMod p cf :=
+          listSum_coeff_at_head p (mf, cf) rest_f hx_sorted
+        have h_g_lead : (listSum p ((mg, cg) :: rest_g)).coeff mg.deg = Zp.toZMod p cg :=
+          listSum_coeff_at_head p (mg, cg) rest_g hy_sorted
+        rw [heq, h_deg_eq] at h_f_lead
+        rw [h_g_lead] at h_f_lead
+        exact Zp.toZMod_inj_of_reduced p cf cg hcf_red hcg_red h_f_lead.symm
+      have h_mf_eq_mg : mf = mg := by
+        rcases mf with ⟨df⟩; rcases mg with ⟨dg⟩
+        simp at h_deg_eq
+        exact congrArg UMonomial.mk h_deg_eq
+      have h_rest_listSum_eq : listSum p rest_f = listSum p rest_g := by
+        have heq' := heq
+        rw [listSum_cons, listSum_cons] at heq'
+        rw [h_mf_eq_mg, h_cf_eq_cg] at heq'
+        exact add_left_cancel heq'
+      have hx_red' : SparsePolyZp.AllReduced p rest_f :=
+        fun y hy => hx_red y (List.mem_cons_of_mem _ hy)
+      have hy_red' : SparsePolyZp.AllReduced p rest_g :=
+        fun y hy => hy_red y (List.mem_cons_of_mem _ hy)
+      have hx_sorted' : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) rest_f :=
+        (List.isChain_cons.mp hx_sorted).2
+      have hy_sorted' : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) rest_g :=
+        (List.isChain_cons.mp hy_sorted).2
+      have hx_nz' : ∀ x ∈ rest_f, x.snd.val ≠ 0 :=
+        fun y hy => hx_nz y (List.mem_cons_of_mem _ hy)
+      have hy_nz' : ∀ y ∈ rest_g, y.snd.val ≠ 0 :=
+        fun y hy => hy_nz y (List.mem_cons_of_mem _ hy)
+      have h_rest_eq := ih rest_g hx_red' hy_red' hx_sorted' hy_sorted'
+                        hx_nz' hy_nz' h_rest_listSum_eq
+      rw [h_mf_eq_mg, h_cf_eq_cg, h_rest_eq]
+
+-- 核心定理：toPoly_inj_canonical (Array level)
+theorem SparsePolyZp.toPoly_inj_canonical (p : Nat)
+    (f g : SparsePolyZp)
+    (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g)
+    (heq : SparsePolyZp.toPoly p f = SparsePolyZp.toPoly p g) :
+    f = g := by
+  suffices h : f.toList = g.toList by
+    cases f; cases g; congr 1
+  obtain ⟨hf_wf, hf_sorted, hf_nonzero⟩ := hf
+  obtain ⟨hg_wf, hg_sorted, hg_nonzero⟩ := hg
+  unfold SparsePolyZp.toPoly at heq
+  exact listSum_inj_canonical p _ _ hf_wf hg_wf hf_sorted hg_sorted
+    hf_nonzero hg_nonzero heq
+
+-- ============================================================
 -- §8. 数值验证（Mathlib decidable 通过）
 -- ============================================================
 --
--- 余下工作（Phase 2A.4c Stage 3b — 工作量 ~150 行）：
--- - Canonical 谓词定义（WellFormed + Chain' 严格降序 + no-zero-val）
--- - toPoly_inj_canonical（核心难点 ~100 行）
+-- 余下工作（Phase 2A.4c Stage 3b 续）：
+-- - listSum_coeff_zero_of_all_lt, listSum_coeff_at_head (coeff helpers)
+-- - Zp.toZMod_inj_of_reduced (toZMod 单射)
+-- - toPoly_inj_canonical（核心难点）
 -- - Canonical.add / Canonical.mul 保持性
 -- - Array-level ring 公理（f * g = g * f 等，via toPoly_inj）
 -- ============================================================

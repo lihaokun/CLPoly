@@ -309,6 +309,91 @@ theorem SparsePolyZp.toPoly_inj_canonical (p : Nat) [Fact (Nat.Prime p)]
 
 ---
 
+### §3.6.5 — Canonical preservation 子定理 nl（2026-05-15 补）
+
+`§3.7 Ring 公理` 假定 `Canonical.add / .mul` 保持性，本节提供详细 nl-proof。
+
+#### Lemma 7.1 — `chain_R_head_to_mem` (generic helper)
+
+**陈述**：若 `R` 传递 + `xs` 满足 `IsChain R` + 对 `xs.head?` 有 `∀ y ∈ xs.head?, R x y`，
+则 `∀ a ∈ xs, R x a`。
+
+**证明**：归纳 xs。
+- nil：vacuous
+- cons z zs：a = z 时由 hypothesis 直接；a ∈ zs 时由 IH on (R x zs.head?) — 需 `R x z` + `R z zs.head` → `R x zs.head` (R 传递)
+
+#### Lemma 7.2 — `List.IsChain_filterMap_of_mono` (generic helper)
+
+**陈述**：若 `R, S` 传递 + 单调 `f : α → Option β`（即 `R a₁ a₂ + f a_i = some b_i → S b₁ b₂`），
+则 `xs.filterMap f` 满足 `IsChain S`。
+
+**证明**：归纳 xs。
+- nil：filterMap = []，trivial
+- cons x rest：case split on `f x`：
+  - `f x = none`：filterMap 跳过，直接用 IH
+  - `f x = some bx`：用 IH 得 `rest.filterMap f` 是 IsChain S；需证 head 关系
+    - 设 y 是 `rest.filterMap f` 的首项，要 `S bx y`
+    - 由 `List.mem_filterMap` 拆解：∃ a ∈ rest, f a = some y
+    - 由 Lemma 7.1（R 传递）+ `R x rest.head?`：`R x a`
+    - 由 mono：`S bx y` ✓
+
+#### Lemma 7.3 — `scaleByMonomial_Chain'`
+
+**陈述**：`Canonical p f → IsChain (>) ((scaleByMonomial m c f).toList.map deg)`
+等价：`Canonical p f → scaleByMonomial m c f` 的 deg 列表严格降序。
+
+**证明**：
+- case `c.val = 0`：返 #[]，trivial Chain'
+- case `c.val ≠ 0`：scaleByMonomial = filterMap-over-orig
+  - 套 Lemma 7.2 with：
+    - R = `(>)`on orig 的 deg, S = `(>)` on new 的 deg
+    - R 传递：Nat 上 `>` 当然传递
+    - mono：原 `mf₁.deg > mf₂.deg` → 新 `(m.deg + mf₁.deg) > (m.deg + mf₂.deg)` (加法保单调)
+
+#### Lemma 7.4 — `mergeAdd_Chain'`
+
+**陈述**：若 xs 和 ys 都满足 IsChain (>) 且 AllReduced (Reduced)，
+则 `mergeAdd xs ys` 满足 IsChain (>)。
+
+**证明**：归纳 `mergeAdd.induct` 的 6 case：
+- case1 (xs=[])：mergeAdd = ys，由前提 ys Chain'
+- case2 (ys=[])：对称
+- case3 (xs head > ys head)：合并 = xs.head :: mergeAdd xs.rest ys
+  - 用 IH on xs.rest, ys 得 mergeAdd 结果 Chain'
+  - 需要 head 关系：xs.head.deg 大于 mergeAdd 结果 head 的 deg
+  - mergeAdd 结果 head 是 max(xs.rest.head, ys.head)
+  - xs.head.deg > xs.rest.head.deg (xs 自身 Chain')
+  - xs.head.deg > ys.head.deg (case 假设)
+  - 故 xs.head.deg > max(...) ✓
+- case4 (xs.head < ys.head)：对称
+- case5 (deg 相等, sum.val = 0)：返 mergeAdd xs.rest ys.rest，IH 直接
+- case6 (deg 相等, sum.val ≠ 0)：合并 = (xs.head.deg, sum) :: mergeAdd xs.rest ys.rest
+  - 用 IH on xs.rest, ys.rest
+  - head 关系：xs.head.deg 大于 mergeAdd xs.rest ys.rest 的 head deg
+  - 同 case3 推理
+
+预期行数：~80（与 listSum_mergeAdd 同复杂度）
+
+#### Lemma 7.5 — `Canonical.add`
+
+**陈述**：`Canonical p f ∧ Canonical p g → Canonical p (f + g)`
+
+**证明**：拆 3 子句：
+- WellFormed：已证 (Stage 2A.4b)
+- Chain'：用 Lemma 7.4 mergeAdd_Chain'
+- no-zero：mergeAdd 内置 filter val = 0（case5 删除）
+
+#### Lemma 7.6 — `Canonical.mul`
+
+**陈述**：`Canonical p f ∧ Canonical p g + h_p2 → Canonical p (f * g)`
+
+**证明**：f * g = foldl over (addImpl acc (scaleByMonomial mf cf g))
+- foldl 不变量：每步 acc Canonical
+- 初值 `#[]` Canonical（vacuously）
+- 每步：addImpl (Canonical, Canonical) → Canonical (Lemma 7.5 + Lemma 7.3)
+
+预期行数：~25
+
 ### §3.7 Ring 公理
 
 **陈述模式**：
@@ -335,6 +420,27 @@ theorem SparsePolyZp.mul_comm_via_toPoly (p : Nat) [Fact (Nat.Prime p)]
 **预期行数**：4 个 ring 公理 × ~15 行 + Canonical.mul ~30 行 = ~90 行
 
 ---
+
+## 第三-bis 部分：实施状态（2026-05-15 更新）
+
+### 已完成
+- ✅ **Lemma 1-3** Stage 1 (commit `5da715b`) — 135 行
+- ✅ **Lemma 4-5** Stage 2 (commit `a445719`) — 106 行
+- ✅ **Ring 公理 (toPoly-level)** Stage 3a (commit `ac84154`) — 70 行
+- ✅ **Lemma 6 toPoly_inj_canonical 核心** Stage 3b core (commit `1a983d2`) — 243 行
+  - 配套 helpers: listSum_coeff_zero_of_all_lt, Zp.toZMod_inj_of_reduced,
+    chain_gt_all_after_head, listSum_coeff_at_head, listSum_inj_canonical
+
+**当前 lake build 0 sorry，3071 jobs 全过**。
+
+### 未完成（nl-proof 已补足 §3.6.5；Lean 形式化为 Stage 3b 续 / 独立 Phase 2A.4d）
+- ❌ Lemma 7.1-7.2 generic chain helpers (~30 行)
+- ❌ Lemma 7.3 scaleByMonomial_Chain' (~15 行)
+- ❌ Lemma 7.4 mergeAdd_Chain' (~80 行；与 listSum_mergeAdd 同复杂度)
+- ❌ Lemma 7.5-7.6 Canonical.add / .mul (~30 行)
+- ❌ §3.7 Ring 公理 (4 个，~80 行)
+
+预计剩余形式化工作量：~250 行 Lean 代码 + 多轮 Mathlib API 探索（已知卡点：`List.IsChain` deprecated form, `List.mem_filterMap`, `head?` 处理等）
 
 ## 第四部分：实施分阶段
 

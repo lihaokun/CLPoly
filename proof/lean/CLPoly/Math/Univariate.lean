@@ -1103,15 +1103,476 @@ theorem SparsePolyZp.toPoly_inj_canonical (p : Nat)
     hf_nonzero hg_nonzero heq
 
 -- ============================================================
+-- §7i. mergeAdd_deg_mem — mergeAdd 元素的 deg 来自 xs 或 ys (Phase 2A.4d)
+-- 注：case6 引入合并项 (f.fst, s)，其本身不在原 list，但 deg = f.fst.deg ∈ xs
+-- ============================================================
+
+theorem mergeAdd_deg_mem (xs ys : List (UMonomial × Zp)) (h : UMonomial × Zp) :
+    h ∈ SparsePolyZp.mergeAdd xs ys →
+    (∃ x ∈ xs, h.fst.deg = x.fst.deg) ∨ (∃ y ∈ ys, h.fst.deg = y.fst.deg) := by
+  intro hin
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys =>
+    rw [SparsePolyZp.mergeAdd] at hin
+    right; exact ⟨h, hin, rfl⟩
+  | case2 f fs =>
+    rw [SparsePolyZp.mergeAdd] at hin
+    left; exact ⟨h, hin, rfl⟩
+  | case3 f fs g gs hgt ih =>
+    rw [SparsePolyZp.mergeAdd] at hin
+    simp only [hgt, ↓reduceIte, List.mem_cons] at hin
+    rcases hin with rfl | h_in_rec
+    · left; exact ⟨h, List.mem_cons_self, rfl⟩
+    · rcases ih h_in_rec with ⟨x, hx_in, hd⟩ | ⟨y, hy_in, hd⟩
+      · left; exact ⟨x, List.mem_cons_of_mem _ hx_in, hd⟩
+      · right; exact ⟨y, hy_in, hd⟩
+  | case4 f fs g gs hngt hlt ih =>
+    rw [SparsePolyZp.mergeAdd] at hin
+    simp only [hngt, ↓reduceIte, hlt, List.mem_cons] at hin
+    rcases hin with rfl | h_in_rec
+    · right; exact ⟨h, List.mem_cons_self, rfl⟩
+    · rcases ih h_in_rec with ⟨x, hx_in, hd⟩ | ⟨y, hy_in, hd⟩
+      · left; exact ⟨x, hx_in, hd⟩
+      · right; exact ⟨y, List.mem_cons_of_mem _ hy_in, hd⟩
+  | case5 f fs g gs hngt hnlt s heq_zero ih =>
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+                SparsePolyZp.mergeAdd fs gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_neg hnlt]
+      exact if_pos heq_zero
+    rw [h_eq] at hin
+    rcases ih hin with ⟨x, hx_in, hd⟩ | ⟨y, hy_in, hd⟩
+    · left; exact ⟨x, List.mem_cons_of_mem _ hx_in, hd⟩
+    · right; exact ⟨y, List.mem_cons_of_mem _ hy_in, hd⟩
+  | case6 f fs g gs hngt hnlt s heq_nonzero ih =>
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+                (f.fst, s) :: SparsePolyZp.mergeAdd fs gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_neg hnlt]
+      exact if_neg heq_nonzero
+    rw [h_eq] at hin
+    simp only [List.mem_cons] at hin
+    rcases hin with h_head | h_in_rec
+    · -- h = (f.fst, s)；其 deg = f.fst.deg，f ∈ xs = f :: fs
+      left
+      exact ⟨f, List.mem_cons_self, by rw [h_head]⟩
+    · rcases ih h_in_rec with ⟨x, hx_in, hd⟩ | ⟨y, hy_in, hd⟩
+      · left; exact ⟨x, List.mem_cons_of_mem _ hx_in, hd⟩
+      · right; exact ⟨y, List.mem_cons_of_mem _ hy_in, hd⟩
+
+-- ============================================================
+-- §7j. scaleByMonomial / mergeAdd 保持 Chain' (Phase 2A.4d)
+-- ============================================================
+
+-- Trans 实例，让 isChain_iff_pairwise 在 deg-relation 上可用
+instance : Trans (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg)
+                 (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg)
+                 (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) :=
+  ⟨fun {a b c} hab hbc => Nat.lt_trans hbc hab⟩
+
+-- Helper: a ∈ l.head? → a ∈ l
+theorem head?_mem {α : Type*} (l : List α) (a : α) : a ∈ l.head? → a ∈ l := by
+  rcases l with _ | ⟨b, l'⟩
+  · intro h; simp at h
+  · intro h; simp at h; rw [h]; exact List.mem_cons_self
+
+-- Lemma 7.3: scaleByMonomial 保持 Chain'（用 Pairwise.filterMap 桥）
+theorem SparsePolyZp.scaleByMonomial_chain (m : UMonomial) (c : Zp)
+    (f : SparsePolyZp)
+    (h_chain : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) f.toList) :
+    List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg)
+                 (SparsePolyZp.scaleByMonomial m c f).toList := by
+  unfold SparsePolyZp.scaleByMonomial
+  by_cases h_c_zero : c.val = 0
+  · simp only [h_c_zero, ↓reduceIte]; simp
+  · simp only [h_c_zero, ↓reduceIte]
+    rw [Array.toList_filterMap]
+    rw [List.isChain_iff_pairwise] at h_chain
+    rw [List.isChain_iff_pairwise]
+    apply List.Pairwise.filterMap _ ?_ h_chain
+    intro a b hab a' ha' b' hb'
+    by_cases hca : (c * a.snd).val = 0
+    · simp [hca] at ha'
+    · simp only [hca, ↓reduceIte, Option.some.injEq] at ha'
+      by_cases hcb : (c * b.snd).val = 0
+      · simp [hcb] at hb'
+      · simp only [hcb, ↓reduceIte, Option.some.injEq] at hb'
+        rw [← ha', ← hb']
+        show m.deg + a.fst.deg > m.deg + b.fst.deg
+        exact Nat.add_lt_add_left hab m.deg
+
+-- Lemma 7.4: mergeAdd 保持 Chain' (6-case)
+theorem mergeAdd_chain
+    (xs ys : List (UMonomial × Zp))
+    (hxs : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) xs)
+    (hys : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) ys) :
+    List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg)
+                 (SparsePolyZp.mergeAdd xs ys) := by
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => rw [SparsePolyZp.mergeAdd]; exact hys
+  | case2 f fs => rw [SparsePolyZp.mergeAdd]; exact hxs
+  | case3 f fs g gs hgt ih =>
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+                f :: SparsePolyZp.mergeAdd fs (g :: gs) := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      exact if_pos hgt
+    rw [h_eq]
+    have hfs : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) fs :=
+      (List.isChain_cons.mp hxs).2
+    have ih_chain := ih hfs hys
+    rw [List.isChain_cons]
+    refine ⟨?_, ih_chain⟩
+    intro h hh_in
+    -- h 是 mergeAdd fs (g :: gs) 的 head；要证 f.fst.deg > h.fst.deg
+    have h_mem : h ∈ SparsePolyZp.mergeAdd fs (g :: gs) := by
+      exact head?_mem _ h hh_in
+    rcases mergeAdd_deg_mem fs (g :: gs) h h_mem with ⟨x, hx_in, hd⟩ | ⟨y, hy_in, hd⟩
+    · -- x ∈ fs；用 xs = f :: fs 的 IsChain 推 f.fst.deg > x.fst.deg
+      have hxs_pw : List.Pairwise (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) (f :: fs) :=
+        List.isChain_iff_pairwise.mp hxs
+      have h_f_x : f.fst.deg > x.fst.deg := (List.pairwise_cons.mp hxs_pw).1 x hx_in
+      rw [hd]; exact h_f_x
+    · -- y ∈ g :: gs
+      rcases List.mem_cons.mp hy_in with rfl | hy_in_gs
+      · rw [hd]; exact hgt
+      · have hys_pw : List.Pairwise (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) (g :: gs) :=
+          List.isChain_iff_pairwise.mp hys
+        have h_g_y : g.fst.deg > y.fst.deg := (List.pairwise_cons.mp hys_pw).1 y hy_in_gs
+        rw [hd]; exact Nat.lt_trans h_g_y hgt
+  | case4 f fs g gs hngt hlt ih =>
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+                g :: SparsePolyZp.mergeAdd (f :: fs) gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt]
+      exact if_pos hlt
+    rw [h_eq]
+    have hgs : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) gs :=
+      (List.isChain_cons.mp hys).2
+    have ih_chain := ih hxs hgs
+    rw [List.isChain_cons]
+    refine ⟨?_, ih_chain⟩
+    intro h hh_in
+    have h_mem : h ∈ SparsePolyZp.mergeAdd (f :: fs) gs := by
+      exact head?_mem _ h hh_in
+    rcases mergeAdd_deg_mem (f :: fs) gs h h_mem with ⟨x, hx_in, hd⟩ | ⟨y, hy_in, hd⟩
+    · rcases List.mem_cons.mp hx_in with rfl | hx_in_fs
+      · rw [hd]; exact hlt
+      · have hxs_pw : List.Pairwise (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) (f :: fs) :=
+          List.isChain_iff_pairwise.mp hxs
+        have h_f_x : f.fst.deg > x.fst.deg := (List.pairwise_cons.mp hxs_pw).1 x hx_in_fs
+        rw [hd]; exact Nat.lt_trans h_f_x hlt
+    · have hys_pw : List.Pairwise (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) (g :: gs) :=
+        List.isChain_iff_pairwise.mp hys
+      have h_g_y : g.fst.deg > y.fst.deg := (List.pairwise_cons.mp hys_pw).1 y hy_in
+      rw [hd]; exact h_g_y
+  | case5 f fs g gs hngt hnlt s heq_zero ih =>
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+                SparsePolyZp.mergeAdd fs gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_neg hnlt]
+      exact if_pos heq_zero
+    rw [h_eq]
+    have hfs : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) fs :=
+      (List.isChain_cons.mp hxs).2
+    have hgs : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) gs :=
+      (List.isChain_cons.mp hys).2
+    exact ih hfs hgs
+  | case6 f fs g gs hngt hnlt s heq_nonzero ih =>
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+                (f.fst, s) :: SparsePolyZp.mergeAdd fs gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_neg hnlt]
+      exact if_neg heq_nonzero
+    rw [h_eq]
+    have hfs : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) fs :=
+      (List.isChain_cons.mp hxs).2
+    have hgs : List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) gs :=
+      (List.isChain_cons.mp hys).2
+    have ih_chain := ih hfs hgs
+    rw [List.isChain_cons]
+    refine ⟨?_, ih_chain⟩
+    intro h hh_in
+    -- h 是 mergeAdd fs gs 的 head；要证 f.fst.deg > h.fst.deg
+    have h_mem : h ∈ SparsePolyZp.mergeAdd fs gs := by
+      exact head?_mem _ h hh_in
+    rcases mergeAdd_deg_mem fs gs h h_mem with ⟨x, hx_in, hd⟩ | ⟨y, hy_in, hd⟩
+    · have hxs_pw : List.Pairwise (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) (f :: fs) :=
+        List.isChain_iff_pairwise.mp hxs
+      have h_f_x : f.fst.deg > x.fst.deg := (List.pairwise_cons.mp hxs_pw).1 x hx_in
+      rw [hd]; exact h_f_x
+    · have hys_pw : List.Pairwise (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) (g :: gs) :=
+        List.isChain_iff_pairwise.mp hys
+      have h_g_y : g.fst.deg > y.fst.deg := (List.pairwise_cons.mp hys_pw).1 y hy_in
+      -- f.fst.deg = g.fst.deg (deg eq from case6)
+      have h_deg_eq : f.fst.deg = g.fst.deg := by
+        rcases lt_trichotomy f.fst.deg g.fst.deg with hh | hh | hh
+        · exact absurd hh hnlt
+        · exact hh
+        · exact absurd hh hngt
+      rw [hd, h_deg_eq]; exact h_g_y
+
+-- ============================================================
+-- §7k. Canonical preservation 在 + / * 下 (Phase 2A.4d)
+-- ============================================================
+
+-- mergeAdd 删零项：每个 element val ≠ 0
+theorem mergeAdd_nonzero
+    (xs ys : List (UMonomial × Zp))
+    (hxs_nz : ∀ x ∈ xs, x.snd.val ≠ 0)
+    (hys_nz : ∀ y ∈ ys, y.snd.val ≠ 0) :
+    ∀ h ∈ SparsePolyZp.mergeAdd xs ys, h.snd.val ≠ 0 := by
+  intro h hin
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys =>
+    rw [SparsePolyZp.mergeAdd] at hin
+    exact hys_nz h hin
+  | case2 f fs =>
+    rw [SparsePolyZp.mergeAdd] at hin
+    exact hxs_nz h hin
+  | case3 f fs g gs hgt ih =>
+    rw [SparsePolyZp.mergeAdd] at hin
+    simp only [hgt, ↓reduceIte, List.mem_cons] at hin
+    rcases hin with rfl | h_in_rec
+    · exact hxs_nz h List.mem_cons_self
+    · have hxs_nz' : ∀ x ∈ fs, x.snd.val ≠ 0 :=
+        fun x hx => hxs_nz x (List.mem_cons_of_mem _ hx)
+      exact ih hxs_nz' hys_nz h_in_rec
+  | case4 f fs g gs hngt hlt ih =>
+    rw [SparsePolyZp.mergeAdd] at hin
+    simp only [hngt, ↓reduceIte, hlt, List.mem_cons] at hin
+    rcases hin with rfl | h_in_rec
+    · exact hys_nz h List.mem_cons_self
+    · have hys_nz' : ∀ y ∈ gs, y.snd.val ≠ 0 :=
+        fun y hy => hys_nz y (List.mem_cons_of_mem _ hy)
+      exact ih hxs_nz hys_nz' h_in_rec
+  | case5 f fs g gs hngt hnlt s heq_zero ih =>
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+                SparsePolyZp.mergeAdd fs gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_neg hnlt]
+      exact if_pos heq_zero
+    rw [h_eq] at hin
+    have hxs_nz' : ∀ x ∈ fs, x.snd.val ≠ 0 :=
+      fun x hx => hxs_nz x (List.mem_cons_of_mem _ hx)
+    have hys_nz' : ∀ y ∈ gs, y.snd.val ≠ 0 :=
+      fun y hy => hys_nz y (List.mem_cons_of_mem _ hy)
+    exact ih hxs_nz' hys_nz' hin
+  | case6 f fs g gs hngt hnlt s heq_nonzero ih =>
+    have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
+                (f.fst, s) :: SparsePolyZp.mergeAdd fs gs := by
+      conv_lhs => rw [SparsePolyZp.mergeAdd]
+      rw [if_neg hngt, if_neg hnlt]
+      exact if_neg heq_nonzero
+    rw [h_eq] at hin
+    simp only [List.mem_cons] at hin
+    rcases hin with h_eq2 | h_in_rec
+    · rw [h_eq2]; exact heq_nonzero
+    · have hxs_nz' : ∀ x ∈ fs, x.snd.val ≠ 0 :=
+        fun x hx => hxs_nz x (List.mem_cons_of_mem _ hx)
+      have hys_nz' : ∀ y ∈ gs, y.snd.val ≠ 0 :=
+        fun y hy => hys_nz y (List.mem_cons_of_mem _ hy)
+      exact ih hxs_nz' hys_nz' h_in_rec
+
+-- Canonical.add: Canonical 在 + 下闭合
+theorem SparsePolyZp.Canonical.add (p : Nat) (f g : SparsePolyZp)
+    (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g) :
+    SparsePolyZp.Canonical p (f + g) := by
+  obtain ⟨hf_wf, hf_chain, hf_nz⟩ := hf
+  obtain ⟨hg_wf, hg_chain, hg_nz⟩ := hg
+  refine ⟨?_, ?_, ?_⟩
+  · exact SparsePolyZp.WellFormed_arr.add p f g hf_wf hg_wf
+  · -- Chain' on (f + g).toList = mergeAdd f.toList g.toList
+    show List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg)
+                     (f + g).toList
+    show List.IsChain _ (SparsePolyZp.addImpl f g).toList
+    unfold SparsePolyZp.addImpl
+    have h_rw : (SparsePolyZp.mergeAdd f.toList g.toList).toArray.toList =
+                SparsePolyZp.mergeAdd f.toList g.toList := by simp
+    rw [h_rw]
+    exact mergeAdd_chain f.toList g.toList hf_chain hg_chain
+  · show ∀ x ∈ (f + g).toList, x.snd.val ≠ 0
+    show ∀ x ∈ (SparsePolyZp.addImpl f g).toList, x.snd.val ≠ 0
+    unfold SparsePolyZp.addImpl
+    have h_rw2 : (SparsePolyZp.mergeAdd f.toList g.toList).toArray.toList =
+                 SparsePolyZp.mergeAdd f.toList g.toList := by simp
+    rw [h_rw2]
+    exact mergeAdd_nonzero f.toList g.toList hf_nz hg_nz
+
+-- scaleByMonomial 保持 no-zero
+theorem SparsePolyZp.scaleByMonomial_nonzero {p : Nat} (m : UMonomial) (c : Zp)
+    (f : SparsePolyZp) (hc_red : Zp.Reduced p c)
+    (hf_nz : ∀ x ∈ f.toList, x.snd.val ≠ 0) :
+    ∀ x ∈ (SparsePolyZp.scaleByMonomial m c f).toList, x.snd.val ≠ 0 := by
+  intro x hx
+  unfold SparsePolyZp.scaleByMonomial at hx
+  by_cases h_c_zero : c.val = 0
+  · simp only [h_c_zero, ↓reduceIte] at hx
+    simp at hx
+  · simp only [h_c_zero, ↓reduceIte] at hx
+    rw [Array.toList_filterMap, List.mem_filterMap] at hx
+    rcases hx with ⟨y, _, hy_some⟩
+    by_cases h_prod_zero : (c * y.snd).val = 0
+    · simp [h_prod_zero] at hy_some
+    · simp only [h_prod_zero, ↓reduceIte, Option.some.injEq] at hy_some
+      subst hy_some
+      simp only
+      exact h_prod_zero
+
+-- Canonical.scaleByMonomial: Canonical 在 scaleByMonomial 下闭合（需 c reduced）
+theorem SparsePolyZp.Canonical.scaleByMonomial (p : Nat) (h_p2 : p * p ≤ UInt64.size)
+    (m : UMonomial) (c : Zp) (hc_red : Zp.Reduced p c)
+    (f : SparsePolyZp) (hf : SparsePolyZp.Canonical p f) :
+    SparsePolyZp.Canonical p (SparsePolyZp.scaleByMonomial m c f) := by
+  obtain ⟨hf_wf, hf_chain, hf_nz⟩ := hf
+  refine ⟨?_, ?_, ?_⟩
+  · exact SparsePolyZp.WellFormed_arr.scaleByMonomial p h_p2 m c hc_red f hf_wf
+  · exact SparsePolyZp.scaleByMonomial_chain m c f hf_chain
+  · exact SparsePolyZp.scaleByMonomial_nonzero (p := p) m c f hc_red hf_nz
+
+-- Canonical.mul: Canonical 在 * 下闭合
+theorem SparsePolyZp.Canonical.mul (p : Nat) (h_p2 : p * p ≤ UInt64.size)
+    (f g : SparsePolyZp)
+    (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g) :
+    SparsePolyZp.Canonical p (f * g) := by
+  show SparsePolyZp.Canonical p (SparsePolyZp.mulImpl f g)
+  unfold SparsePolyZp.mulImpl
+  rw [← Array.foldl_toList]
+  -- 不变量：foldl 保持 Canonical
+  have h_empty_canon : SparsePolyZp.Canonical p (#[] : SparsePolyZp) := by
+    refine ⟨?_, ?_, ?_⟩
+    · intro x hx; simp at hx
+    · simp
+    · intro x hx; simp at hx
+  -- helper：xs Canonical-data 完整时 foldl 保持
+  obtain ⟨hf_wf, _, _⟩ := hf
+  suffices h : ∀ xs : List (UMonomial × Zp), ∀ acc : SparsePolyZp,
+      SparsePolyZp.Canonical p acc → SparsePolyZp.AllReduced p xs →
+      SparsePolyZp.Canonical p (List.foldl
+        (fun a (t : UMonomial × Zp) =>
+          SparsePolyZp.addImpl a (SparsePolyZp.scaleByMonomial t.fst t.snd g)) acc xs)
+    from h f.toList #[] h_empty_canon hf_wf
+  intro xs
+  induction xs with
+  | nil => intro acc hacc _; simp [List.foldl_nil]; exact hacc
+  | cons x rest ih =>
+    intro acc hacc hxs
+    rcases x with ⟨mf, cf⟩
+    have hcf_red : Zp.Reduced p cf := hxs (mf, cf) List.mem_cons_self
+    have hxs' : SparsePolyZp.AllReduced p rest :=
+      fun y hy => hxs y (List.mem_cons_of_mem _ hy)
+    have h_scale_canon : SparsePolyZp.Canonical p
+        (SparsePolyZp.scaleByMonomial mf cf g) :=
+      SparsePolyZp.Canonical.scaleByMonomial p h_p2 mf cf hcf_red g hg
+    have hacc' : SparsePolyZp.Canonical p
+        (SparsePolyZp.addImpl acc (SparsePolyZp.scaleByMonomial mf cf g)) := by
+      show SparsePolyZp.Canonical p
+          (acc + SparsePolyZp.scaleByMonomial mf cf g)
+      exact SparsePolyZp.Canonical.add p acc _ hacc h_scale_canon
+    rw [List.foldl_cons]
+    exact ih _ hacc' hxs'
+
+-- ============================================================
+-- §7l. Array-level ring 公理 (Phase 2A.4d, via toPoly_inj_canonical)
+-- ============================================================
+
+-- mul_comm: f * g = g * f as Arrays (前提：均 Canonical)
+theorem SparsePolyZp.mul_comm_canonical (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g : SparsePolyZp)
+    (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g) :
+    f * g = g * f := by
+  apply SparsePolyZp.toPoly_inj_canonical p
+  · exact SparsePolyZp.Canonical.mul p h_p2 f g hf hg
+  · exact SparsePolyZp.Canonical.mul p h_p2 g f hg hf
+  · obtain ⟨hf_wf, _, _⟩ := hf
+    obtain ⟨hg_wf, _, _⟩ := hg
+    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf_wf hg_wf]
+    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 g f hg_wf hf_wf]
+    ring
+
+-- mul_assoc
+theorem SparsePolyZp.mul_assoc_canonical (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g h : SparsePolyZp)
+    (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g)
+    (hh : SparsePolyZp.Canonical p h) :
+    (f * g) * h = f * (g * h) := by
+  apply SparsePolyZp.toPoly_inj_canonical p
+  · exact SparsePolyZp.Canonical.mul p h_p2 _ _
+      (SparsePolyZp.Canonical.mul p h_p2 f g hf hg) hh
+  · exact SparsePolyZp.Canonical.mul p h_p2 _ _ hf
+      (SparsePolyZp.Canonical.mul p h_p2 g h hg hh)
+  · obtain ⟨hf_wf, _, _⟩ := hf
+    obtain ⟨hg_wf, _, _⟩ := hg
+    obtain ⟨hh_wf, _, _⟩ := hh
+    have hfg_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 f g hf_wf hg_wf
+    have hgh_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 g h hg_wf hh_wf
+    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 _ h hfg_wf hh_wf,
+        SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf_wf hg_wf,
+        SparsePolyZp.toPoly_mul p h_2p h_p2 f _ hf_wf hgh_wf,
+        SparsePolyZp.toPoly_mul p h_2p h_p2 g h hg_wf hh_wf]
+    ring
+
+-- left_distrib
+theorem SparsePolyZp.left_distrib_canonical (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g h : SparsePolyZp)
+    (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g)
+    (hh : SparsePolyZp.Canonical p h) :
+    f * (g + h) = f * g + f * h := by
+  apply SparsePolyZp.toPoly_inj_canonical p
+  · exact SparsePolyZp.Canonical.mul p h_p2 _ _ hf
+      (SparsePolyZp.Canonical.add p g h hg hh)
+  · exact SparsePolyZp.Canonical.add p _ _
+      (SparsePolyZp.Canonical.mul p h_p2 f g hf hg)
+      (SparsePolyZp.Canonical.mul p h_p2 f h hf hh)
+  · obtain ⟨hf_wf, _, _⟩ := hf
+    obtain ⟨hg_wf, _, _⟩ := hg
+    obtain ⟨hh_wf, _, _⟩ := hh
+    have hgh_wf := SparsePolyZp.WellFormed_arr.add p g h hg_wf hh_wf
+    have hfg_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 f g hf_wf hg_wf
+    have hfh_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 f h hf_wf hh_wf
+    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 f _ hf_wf hgh_wf,
+        SparsePolyZp.toPoly_add p h_2p g h hg_wf hh_wf,
+        SparsePolyZp.toPoly_add p h_2p _ _ hfg_wf hfh_wf,
+        SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf_wf hg_wf,
+        SparsePolyZp.toPoly_mul p h_2p h_p2 f h hf_wf hh_wf]
+    ring
+
+-- right_distrib
+theorem SparsePolyZp.right_distrib_canonical (p : Nat)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (f g h : SparsePolyZp)
+    (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g)
+    (hh : SparsePolyZp.Canonical p h) :
+    (f + g) * h = f * h + g * h := by
+  apply SparsePolyZp.toPoly_inj_canonical p
+  · exact SparsePolyZp.Canonical.mul p h_p2 _ _
+      (SparsePolyZp.Canonical.add p f g hf hg) hh
+  · exact SparsePolyZp.Canonical.add p _ _
+      (SparsePolyZp.Canonical.mul p h_p2 f h hf hh)
+      (SparsePolyZp.Canonical.mul p h_p2 g h hg hh)
+  · obtain ⟨hf_wf, _, _⟩ := hf
+    obtain ⟨hg_wf, _, _⟩ := hg
+    obtain ⟨hh_wf, _, _⟩ := hh
+    have hfg_wf := SparsePolyZp.WellFormed_arr.add p f g hf_wf hg_wf
+    have hfh_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 f h hf_wf hh_wf
+    have hgh_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 g h hg_wf hh_wf
+    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 _ h hfg_wf hh_wf,
+        SparsePolyZp.toPoly_add p h_2p f g hf_wf hg_wf,
+        SparsePolyZp.toPoly_add p h_2p _ _ hfh_wf hgh_wf,
+        SparsePolyZp.toPoly_mul p h_2p h_p2 f h hf_wf hh_wf,
+        SparsePolyZp.toPoly_mul p h_2p h_p2 g h hg_wf hh_wf]
+    ring
+
+-- ============================================================
 -- §8. 数值验证（Mathlib decidable 通过）
 -- ============================================================
 --
--- 余下工作（Phase 2A.4c Stage 3b 续）：
--- - listSum_coeff_zero_of_all_lt, listSum_coeff_at_head (coeff helpers)
--- - Zp.toZMod_inj_of_reduced (toZMod 单射)
--- - toPoly_inj_canonical（核心难点）
--- - Canonical.add / Canonical.mul 保持性
--- - Array-level ring 公理（f * g = g * f 等，via toPoly_inj）
+-- 余下工作（Phase 2A.4d 续）：
+-- - scaleByMonomial_chain, mergeAdd_chain (Chain' preservation)
+-- - Canonical.add / Canonical.mul
+-- - Array-level ring 公理
 -- ============================================================
 
 -- Zp 7 的 0 → ZMod 7 的 0

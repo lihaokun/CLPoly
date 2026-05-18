@@ -302,7 +302,7 @@ def test_seq_iter_desugar_to_index():
        - `__deref__(it).field` → `c[__iter_idx_it].field`
        - `it != c.toList(c)` → `__iter_idx_it < c.size`
     """
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     f = AST / "__upoly_divmod_mod.json"
     if not f.exists():
         return  # corpus 缺该函数则跳过
@@ -355,7 +355,7 @@ def test_stl_sort_iota_functional():
     """sort/iota 应被 Pass 5 改写为 Array.sort / Array.range_init。
     不再有 `__sideeff_X := sort(toList, toList, comp)` 形态。
     """
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     found_funcs = ["__factor_Zp", "__zassenhaus_recombine"]
     from pass1_parse import parse_pass
     from pass2_ref_elim import ref_elim_pass
@@ -388,7 +388,7 @@ def test_stl_sort_iota_functional():
 
 def test_smoke_all_67():
     """全 67 函数走 Pass 1-6 + invariant 全过。"""
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     ok = 0
     errs = []
     for fn in sorted(TRANSLATION_SCOPE):
@@ -415,7 +415,7 @@ def test_smoke_all_67():
 def test_no_silent_bug_regression():
     """全 67 函数：phi_undef_ver0 + aux_dropped + B1 incdec 残余 == 0。"""
     from ir_types import Call as _Call
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     phi_ver0 = 0
     aux_drop = 0
     sideeff_write_count = 0

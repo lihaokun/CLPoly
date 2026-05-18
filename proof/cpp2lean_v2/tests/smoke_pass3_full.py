@@ -33,7 +33,7 @@ sys.path.insert(0, str(V2_ROOT / "tests"))
 from dump_all_hir import fmt_func
 from smoke_pass2_full import _get_factorize_instances
 
-AST_CACHE_DIR = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST_CACHE_DIR = V2_ROOT / "tests" / "ast_cache"
 OUT_MD = V2_ROOT.parent.parent / "docs" / "design" / "l1-translation-validation" / "survey" / "pass3-smoke.md"
 DUMP_DIR = Path("/tmp/hir2_dump")
 

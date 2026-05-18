@@ -37,7 +37,7 @@ from pass4_iter_recognize import (
     _stmt_rhs,
 )
 
-AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST = V2_ROOT / "tests" / "ast_cache"
 
 
 def _load_hir2(func_name: str) -> HIRFunc:

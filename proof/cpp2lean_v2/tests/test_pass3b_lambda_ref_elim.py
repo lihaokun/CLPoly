@@ -248,7 +248,7 @@ def test_no_modified_captures_only_prepend():
 
 def test_pipeline_smoke_67():
     """全 67 函数走 parse → ref_elim → 2b → lift → 3b 全过 + 不抛错。"""
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     ok = 0
     errs = []
     for fn in sorted(TRANSLATION_SCOPE):

@@ -28,7 +28,7 @@ from pass7_loop_lower import loop_lower_pass
 from pass8_codegen import codegen_pass
 from smoke_pass2_full import _get_factorize_instances
 
-AST_CACHE = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST_CACHE = V2_ROOT / "tests" / "ast_cache"
 OUT_DIR = Path("/tmp/v2_lean_dump")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 REPORT = (V2_ROOT.parent.parent / "docs" / "design" /

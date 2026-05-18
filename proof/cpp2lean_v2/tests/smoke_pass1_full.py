@@ -1,7 +1,7 @@
 """
 Pass 1 parse 全量烟测 — 65 函数。
 
-使用 Week 1 Day 1 survey 阶段产生的 AST cache（proof/cpp2lean/_ast_cache/）。
+使用 Week 1 Day 1 survey 阶段产生的 AST cache（proof/cpp2lean_v2/tests/ast_cache/）。
 每 AST 对应一个已实例化的 FunctionDecl（mangledName ≠ None）。
 
 输出：
@@ -37,7 +37,7 @@ from ir_types import (
 from pass1_parse import parse_pass, assert_hir0_invariant, _walk_ir
 from class_map import TRANSLATION_SCOPE, TRANSLATION_SCOPE_OUTPUT_PARAMS
 
-AST_CACHE_DIR = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST_CACHE_DIR = V2_ROOT / "tests" / "ast_cache"
 OUT_MD = V2_ROOT.parent.parent / "docs" / "design" / "l1-translation-validation" / "survey" / "pass1-smoke.md"
 
 

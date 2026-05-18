@@ -26,7 +26,7 @@ from pass7_loop_lower import loop_lower_pass
 from pass8_codegen import codegen_corpus
 from smoke_pass2_full import _get_factorize_instances
 
-AST_CACHE = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST_CACHE = V2_ROOT / "tests" / "ast_cache"
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "Corpus.lean"
 
 

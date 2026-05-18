@@ -54,22 +54,20 @@ jobs:
           cd proof/lean
           lake exe cache get || true
 
-      - name: Lake build (all CLPoly proofs)
+      - name: Lake build (all CLPoly proofs) + sorry 检查
         run: |
           cd proof/lean
-          lake build 2>&1 | tail -50
+          lake build 2>&1 | tee /tmp/lake-build.log | tail -50
+          # 检查真 sorry warning（lake 对 sorry 使用会发 "declaration uses 'sorry'" warning）
+          # 排除 Experiment/ 下的已知 sorry
+          if grep "warning:.*uses 'sorry'" /tmp/lake-build.log | grep -v "/Experiment/" ; then
+            echo "ERROR: found sorry warning outside Experiment/"
+            exit 1
+          else
+            echo "OK: no sorry warning outside Experiment/"
+          fi
 
       - name: Lake build B2B targets
         run: |
           cd proof/lean
           lake build B2B.Registry B2B.Driver 2>&1 | tail -10
-
-      - name: Verify zero sorry in L2/L3 proofs
-        run: |
-          cd proof/lean
-          if grep -rn "sorry" CLPoly/ --include="*.lean" | grep -v "/Experiment/" | grep -v -- "-- sorry" ; then
-            echo "ERROR: found sorry outside Experiment/"
-            exit 1
-          else
-            echo "OK: no sorry in L2/L3 (Experiment/ allowed)"
-          fi

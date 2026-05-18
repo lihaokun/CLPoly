@@ -15,10 +15,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system deps
+      - name: Install system deps (clang-18 for AST stability)
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libgmp-dev libboost-dev python3 python3-pip
+          sudo apt-get install -y wget gnupg lsb-release
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
+          sudo apt-get install -y libgmp-dev libboost-dev python3 python3-pip
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+          clang --version
 
       - name: Build CLPoly library (needed for header resolution by clang)
         run: make

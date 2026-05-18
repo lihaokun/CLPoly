@@ -1,31 +1,31 @@
 # AST 调研总览
 
-> 生成时间：2026-05-12 01:45
+> 生成时间：2026-05-19 00:58
 
 ## 覆盖情况
 
-- 目标函数总数（TRANSLATION_SCOPE）: **70**
-- 成功 dump AST 的函数数: **70**
+- 目标函数总数（TRANSLATION_SCOPE）: **66**
+- 成功 dump AST 的函数数: **66**
 - 失败/缺失的函数数: **0**
 
 ## 全局统计
 
 - 不同的 AST kind 种数: **58**
 - 不同的运算符种数: **45**
-- 不同的类型（qualType）种数: **1219**
-- AST 节点总数（累计）: **25275**
+- 不同的类型（qualType）种数: **1205**
+- AST 节点总数（累计）: **24832**
 
 ## 潜在难点提示
 
 ### 控制流构造
-- ✅ `IfStmt`: 288
+- ✅ `IfStmt`: 282
 - ✅ `WhileStmt`: 20
-- ✅ `ForStmt`: 147
-- ✅ `CXXForRangeStmt`: 95
+- ✅ `ForStmt`: 146
+- ✅ `CXXForRangeStmt`: 92
 - ✅ `DoStmt`: 2
 - ✅ `BreakStmt`: 27
 - ✅ `ContinueStmt`: 52
-- ✅ `ReturnStmt`: 176
+- ✅ `ReturnStmt`: 168
 - — `SwitchStmt`: 0
 - — `CaseStmt`: 0
 - — `DefaultStmt`: 0
@@ -37,15 +37,15 @@
 ### Lambda / 闭包
 - ✅ `LambdaExpr`: 24
 - ✅ `CXXRecordDecl`: 24
-- ✅ `CallExpr`: 523
-- ✅ `CXXOperatorCallExpr`: 1366
+- ✅ `CallExpr`: 515
+- ✅ `CXXOperatorCallExpr`: 1347
 
 ### 结构化绑定 / 迭代器
 - ✅ `DecompositionDecl`: 30
 - ✅ `BindingDecl`: 60
-- ✅ `CXXBindTemporaryExpr`: 560
-- ✅ `MaterializeTemporaryExpr`: 542
-- ✅ `CXXConstructExpr`: 654
+- ✅ `CXXBindTemporaryExpr`: 558
+- ✅ `MaterializeTemporaryExpr`: 536
+- ✅ `CXXConstructExpr`: 639
 - — `CXXDependentScopeMemberExpr`: 0
 
 ### 模板相关
@@ -60,7 +60,7 @@
 ### 内存/生命周期
 - — `CXXNewExpr`: 0
 - — `CXXDeleteExpr`: 0
-- ✅ `ExprWithCleanups`: 552
+- ✅ `ExprWithCleanups`: 547
 - — `CXXThisExpr`: 0
 - — `UnresolvedMemberExpr`: 0
 
@@ -97,7 +97,6 @@
 | __taylor_coeff_zp | 28 |
 | squarefreefactorize | 28 |
 | __edf_Zp | 27 |
-| __polynomial_GCD | 27 |
 | __symmetric_mod_poly | 27 |
 | __assign_partial_zp | 26 |
 | __cld_polys | 26 |
@@ -117,12 +116,10 @@
 | __hensel_step | 20 |
 | __lll_factorize | 20 |
 | __upoly_primitive | 20 |
-| cont | 20 |
 | __binomial | 19 |
 | __hensel_step_linear | 19 |
 | __subset_product_mod | 19 |
 | __upoly_norm_l1 | 19 |
-| polynomial_GCD | 19 |
 | __upoly_symmetric_mod | 18 |
 | __symmetric_mod | 17 |
 | __upoly_norm_l2_sq | 17 |
@@ -130,7 +127,6 @@
 | __hensel_extract_factors | 15 |
 | __upoly_const_term | 15 |
 | __factor_recombine | 14 |
-| leadcoeff | 14 |
 | __upoly_mul_mod | 13 |
 | __hensel_lift_recursive | 12 |
 | __upoly_mod | 12 |

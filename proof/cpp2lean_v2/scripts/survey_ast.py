@@ -183,6 +183,29 @@ def dump_ast_json(func_name: str, timeout: int = 30) -> dict | None:
     return None
 
 
+def _is_degraded(ast: dict) -> tuple[bool, str]:
+    """判断一个 dump 结果是否退化（未完整实例化）。
+
+    返回 (退化标志, 原因描述)。完整实例化要求：
+    - 顶层是 FunctionDecl（不是模板基声明）
+    - 有 mangledName（具体实例化签名）
+    - 有 CompoundStmt body（实现存在）
+
+    若不满足，说明 clang 没有沿调用链 ODR-instantiate 这个函数，
+    cache 写入将污染下游 pass 测试。
+    """
+    if not isinstance(ast, dict):
+        return True, "non-dict root"
+    if ast.get("kind") != "FunctionDecl":
+        return True, f"root kind={ast.get('kind')} (expect FunctionDecl)"
+    if not ast.get("mangledName"):
+        return True, "no mangledName (primary template, not instantiation)"
+    for c in ast.get("inner", []):
+        if isinstance(c, dict) and c.get("kind") == "CompoundStmt":
+            return False, ""
+    return True, "no CompoundStmt body (declaration-only, instantiation incomplete)"
+
+
 # ----------------------------------------------------------------------
 # 缓存
 # ----------------------------------------------------------------------
@@ -218,11 +241,20 @@ def cache_path(func_name: str) -> Path:
     return AST_CACHE_DIR / f"{safe}.json"
 
 
+# 记录退化的 target（main 末尾汇总）
+DEGRADED: list[tuple[str, str]] = []
+
+
 def get_ast(func_name: str, refresh: bool = False) -> dict | None:
     p = cache_path(func_name)
     if not refresh and p.exists():
         with open(p) as f:
-            return json.load(f)
+            cached = json.load(f)
+        # 复用 cache 时也检查（防止上次写入了退化数据）
+        deg, why = _is_degraded(cached)
+        if deg:
+            DEGRADED.append((func_name, f"cached: {why}"))
+        return cached
 
     print(f"  dumping {func_name}...", end="", flush=True, file=sys.stderr)
     t0 = time.time()
@@ -232,9 +264,14 @@ def get_ast(func_name: str, refresh: bool = False) -> dict | None:
         print(f" FAILED ({dt:.1f}s)", file=sys.stderr)
         return None
     slim = _strip_large(ast)
+    deg, why = _is_degraded(slim)
+    if deg:
+        DEGRADED.append((func_name, why))
+        print(f" DEGRADED ({dt:.1f}s, {why})", file=sys.stderr)
+    else:
+        print(f" OK ({dt:.1f}s, {len(json.dumps(slim))//1024}KB)", file=sys.stderr)
     with open(p, "w") as f:
         json.dump(slim, f, indent=2, ensure_ascii=False)
-    print(f" OK ({dt:.1f}s, {len(json.dumps(slim))//1024}KB)", file=sys.stderr)
     return slim
 
 
@@ -521,6 +558,8 @@ def main():
                         help="强制重 dump 所有函数（忽略缓存）")
     parser.add_argument("--only", nargs="*",
                         help="只处理指定函数（调试用）")
+    parser.add_argument("--strict", action="store_true",
+                        help="任一 target 退化（未完整 ODR-实例化）时 exit 1。CI 推荐开启。")
     args = parser.parse_args()
 
     AST_CACHE_DIR.mkdir(exist_ok=True)
@@ -551,6 +590,16 @@ def main():
 
     print(f"\nOutput in: {SURVEY_DIR}", file=sys.stderr)
     print(f"Cache in: {AST_CACHE_DIR}", file=sys.stderr)
+
+    if DEGRADED:
+        print(f"\n!! {len(DEGRADED)} target(s) DEGRADED (instantiation incomplete) !!",
+              file=sys.stderr)
+        for name, why in DEGRADED:
+            print(f"  - {name}: {why}", file=sys.stderr)
+        print("\n根因通常是 instantiate.cc 未真正 ODR-use result，导致 clang "
+              "跳过沿调用链的内部模板实例化。", file=sys.stderr)
+        if args.strict:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

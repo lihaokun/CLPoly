@@ -1,14 +1,21 @@
 // 强制实例化全部因式分解模板函数。
 // 用途：clang++ -Xclang -ast-dump=json -fsyntax-only -std=c++17 -I../../ instantiate.cc
-// 这样 Clang AST 包含所有具体化的函数定义。
+//
+// 注意 (2026-05-19): clang ≥ 18.1.8 在 `-fsyntax-only` 下若 result 未被
+// ODR-used，会跳过沿调用链的内部模板实例化。因此每个 result 都必须真正
+// 被读取（这里通过 .factors.size() + volatile sink 实现），否则
+// __upoly_divmod / __upoly_mod 等内部函数会退化为 primary template 声明
+// （参数 qualType 变成 `int &`，丢失 body）。
 
+#include <cstddef>
 #include <clpoly/polynomial_factorize.hh>
 
-void force_instantiate() {
+namespace { volatile std::size_t __force_instantiate_sink = 0; }
+
+std::size_t force_instantiate() {
     using namespace clpoly;
 
     // grlex 是 CLPoly 默认的单项式序（多变量）
-    // 调用顶层 factorize 会沿调用链实例化 wang/univar/zp 的全部模板
     polynomial_<ZZ, grlex> f_mv;
     auto r1 = factorize(f_mv);
 
@@ -23,4 +30,10 @@ void force_instantiate() {
     // Zp 模块
     upolynomial_<Zp> f_zp;
     auto r4 = __factor_Zp(f_zp);
+
+    // 真正使用 r1..r4 的成员，强制 clang 沿调用链 ODR-instantiate
+    std::size_t total = r1.factors.size() + r2.factors.size()
+                      + r3.factors.size() + r4.factors.size();
+    __force_instantiate_sink = total;
+    return total;
 }

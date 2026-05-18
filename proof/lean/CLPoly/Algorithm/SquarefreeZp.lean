@@ -48,7 +48,7 @@ private lemma divByMonic_ne_zero_of_ne_zero
     (f g : Polynomial (ZMod p)) (hg : Monic g) (hdvd : g ∣ f) (hf : f ≠ 0) :
     f /ₘ g ≠ 0 := by
   intro h
-  have := modByMonic_add_div f hg
+  have := modByMonic_add_div f g
   rw [(modByMonic_eq_zero_iff_dvd hg).mpr hdvd, h, mul_zero, zero_add] at this
   exact hf this.symm
 
@@ -98,7 +98,7 @@ decreasing_by
   -- c = y * (c /ₘ y) → deg(c) = deg(y) + deg(c /ₘ y)
   have hc_eq : normalize (EuclideanDomain.gcd w c) *
       (c /ₘ normalize (EuclideanDomain.gcd w c)) = c := by
-    have := modByMonic_add_div c hy_monic'
+    have := modByMonic_add_div c (normalize (EuclideanDomain.gcd w c))
     rw [(modByMonic_eq_zero_iff_dvd hy_monic').mpr hy_dvd_c', zero_add] at this
     exact this
   have hq_ne : c /ₘ normalize (EuclideanDomain.gcd w c) ≠ 0 :=
@@ -156,7 +156,7 @@ private lemma yunLoop_c_natDegree_le
         exact divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
       -- deg(c') ≤ deg(c)
       have hcq_dvd : c /ₘ y ∣ c := by
-        have hmod := modByMonic_add_div c hy_monic
+        have hmod := modByMonic_add_div c y
         rw [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at hmod
         exact ⟨y, by rw [mul_comm]; exact hmod.symm⟩
       have hc'_le : c'.natDegree ≤ c.natDegree := by
@@ -167,7 +167,7 @@ private lemma yunLoop_c_natDegree_le
       have hq_ne : c /ₘ y ≠ 0 := divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
       have hdeg_c := Polynomial.natDegree_mul hy_ne hq_ne
       have hc_eq : y * (c /ₘ y) = c := by
-        have := modByMonic_add_div c hy_monic
+        have := modByMonic_add_div c y
         rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
       rw [hc_eq] at hdeg_c
       have hdeg_norm_c := natDegree_normalize_eq (c /ₘ y)
@@ -215,7 +215,7 @@ private lemma yunLoop_acc_subset
         have hy_ne := Monic.ne_zero hy_monic
         have hq_ne := divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
         have hc_eq : y * (c /ₘ y) = c := by
-          have := modByMonic_add_div c hy_monic
+          have := modByMonic_add_div c y
           rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
         have hdeg_c := Polynomial.natDegree_mul hy_ne hq_ne
         rw [hc_eq] at hdeg_c
@@ -262,7 +262,7 @@ private lemma yunLoop_c_ne_zero
       have hy_ne := Monic.ne_zero hy_monic
       have hq_ne := divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
       have hc_eq : y * (c /ₘ y) = c := by
-        have := modByMonic_add_div c hy_monic
+        have := modByMonic_add_div c y
         rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
       have hdeg_c := Polynomial.natDegree_mul hy_ne hq_ne
       rw [hc_eq] at hdeg_c
@@ -315,7 +315,7 @@ private lemma yunLoop_extracts_factor
       -- w = y * (w/y), Squarefree w → IsRelPrime y (w/y)
       -- q | w, q prime → q | y or q | (w/y)
       have hw_eq : w = y * (w /ₘ y) := by
-        have := modByMonic_add_div w hy_monic
+        have := modByMonic_add_div w y
         rw [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_w, zero_add] at this; exact this.symm
       have hq_prime := hq.prime
       have hq_dvd_prod : q ∣ y * (w /ₘ y) := hw_eq ▸ hq_dvd
@@ -325,7 +325,7 @@ private lemma yunLoop_extracts_factor
         have hy_ne := Monic.ne_zero hy_monic
         have hq_ne := divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
         have hc_eq : y * (c /ₘ y) = c := by
-          have := modByMonic_add_div c hy_monic
+          have := modByMonic_add_div c y
           rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
         have hdeg_c := Polynomial.natDegree_mul hy_ne hq_ne
         rw [hc_eq] at hdeg_c
@@ -398,7 +398,7 @@ private lemma yunLoop_preserves_pow_dvd
               rw [he, mul_assoc, IsUnit.mul_val_inv hu, mul_one]⟩ hd_y) hq_y
       have hcop : IsCoprime (q ^ k) y := hcop_q_y.pow_left
       have hc_eq : y * (c /ₘ y) = c := by
-        have := modByMonic_add_div c hy_monic
+        have := modByMonic_add_div c y
         rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
       have hqk_yc : q ^ k ∣ y * (c /ₘ y) := ⟨hqk_c.choose, by rw [hc_eq]; exact hqk_c.choose_spec⟩
       have hqk_cq : q ^ k ∣ (c /ₘ y) := hcop.dvd_of_dvd_mul_right (by rwa [mul_comm] at hqk_yc)
@@ -455,7 +455,7 @@ private lemma yunLoop_crem_dvd_c
         have hq_ne' := divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
         have hdeg_c := Polynomial.natDegree_mul hy_ne hq_ne'
         have hc_eq : y * (c /ₘ y) = c := by
-          have := modByMonic_add_div c hy_monic
+          have := modByMonic_add_div c y
           rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
         rw [hc_eq] at hdeg_c
         have hdeg_norm := natDegree_normalize_eq (c /ₘ y)
@@ -467,7 +467,7 @@ private lemma yunLoop_crem_dvd_c
         hc'_ne rfl
       -- c' | c: c' = normalize(c /ₘ y) ~ (c /ₘ y), and (c /ₘ y) | c (since c = y * (c /ₘ y))
       have hc_eq : y * (c /ₘ y) = c := by
-        have := modByMonic_add_div c hy_monic
+        have := modByMonic_add_div c y
         rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
       have hc'_dvd_c : c' ∣ c :=
         dvd_trans (normalize_associated (c /ₘ y)).dvd
@@ -592,7 +592,7 @@ private lemma squarefree_div_gcd_derivative
       normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left f _))))
   -- f = c * (f /ₘ c) exactly
   have hf_eq : c * (f /ₘ c) = f := by
-    have := modByMonic_add_div f hc_monic
+    have := modByMonic_add_div f c
     rwa [(modByMonic_eq_zero_iff_dvd hc_monic).mpr hc_dvd_f, zero_add] at this
   -- w = normalize(f /ₘ c), so w | f (via Associated + f/c | f)
   have hw_dvd_f : w ∣ f := dvd_trans (normalize_associated _).dvd
@@ -764,7 +764,7 @@ private lemma derivative_of_yun_remainder_eq_zero
     -- So gcd ∤ derivative when derivative ≠ 0 (degree too small). But gcd | derivative. So derivative = 0.
     have hcrem_eq' : normalize (EuclideanDomain.gcd crem (derivative crem)) *
         (crem /ₘ normalize (EuclideanDomain.gcd crem (derivative crem))) = crem := by
-      have := modByMonic_add_div crem hcg_monic
+      have := modByMonic_add_div crem (normalize (EuclideanDomain.gcd crem (derivative crem)))
       rwa [(modByMonic_eq_zero_iff_dvd hcg_monic).mpr hcg_dvd, zero_add] at this
     have hgcd_deg : (normalize (EuclideanDomain.gcd crem (derivative crem))).natDegree =
         crem.natDegree := by
@@ -786,7 +786,7 @@ private lemma derivative_of_yun_remainder_eq_zero
   have hq_crem : q ∣ crem := by
     have hcrem_eq : normalize (EuclideanDomain.gcd crem (derivative crem)) *
         (crem /ₘ normalize (EuclideanDomain.gcd crem (derivative crem))) = crem := by
-      have := modByMonic_add_div crem hcg_monic
+      have := modByMonic_add_div crem (normalize (EuclideanDomain.gcd crem (derivative crem)))
       rwa [(modByMonic_eq_zero_iff_dvd hcg_monic).mpr hcg_dvd, zero_add] at this
     exact dvd_trans hq_w' (dvd_trans (normalize_associated _).dvd
       ⟨_, hcrem_eq.symm.trans (mul_comm _ _)⟩)
@@ -849,7 +849,7 @@ private lemma derivative_of_yun_remainder_eq_zero
     -- q | w' (= crem/gcd) and q^v | gcd → q^{v+1} | crem = gcd * (crem/gcd). Contradiction.
     have hcrem_eq' : normalize (EuclideanDomain.gcd crem (derivative crem)) *
         (crem /ₘ normalize (EuclideanDomain.gcd crem (derivative crem))) = crem := by
-      have := modByMonic_add_div crem hcg_monic
+      have := modByMonic_add_div crem (normalize (EuclideanDomain.gcd crem (derivative crem)))
       rwa [(modByMonic_eq_zero_iff_dvd hcg_monic).mpr hcg_dvd, zero_add] at this
     have hq_cdg : q ∣ (crem /ₘ normalize (EuclideanDomain.gcd crem (derivative crem))) :=
       dvd_trans hq_w' (normalize_associated _).dvd
@@ -1041,7 +1041,7 @@ private theorem yunLoop_correct
         -- Same as yunLoop termination proof
         have hq_ne := divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
         have hc_eq : y * (c /ₘ y) = c := by
-          have := modByMonic_add_div c hy_monic
+          have := modByMonic_add_div c y
           rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
         have hdeg_c := Polynomial.natDegree_mul hy_ne hq_ne
         rw [hc_eq] at hdeg_c
@@ -1055,11 +1055,11 @@ private theorem yunLoop_correct
       -- Useful facts for coprimality
       have hz_dvd_w : z ∣ w := by
         rw [hz_def, normalize_dvd_iff]
-        have hmod := modByMonic_add_div w hy_monic
+        have hmod := modByMonic_add_div w y
         rw [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_w, zero_add] at hmod
         exact ⟨y, by rw [mul_comm]; exact hmod.symm⟩
       have hcq_dvd_c : (c /ₘ y) ∣ c := by
-        have hmod := modByMonic_add_div c hy_monic
+        have hmod := modByMonic_add_div c y
         rw [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at hmod
         exact ⟨y, by rw [mul_comm]; exact hmod.symm⟩
       have hc'_dvd_c : c' ∣ c := by
@@ -1076,10 +1076,10 @@ private theorem yunLoop_correct
         -- In both cases: acc'_prod * y^(i+1) * c' ~ P * w^i * c
         -- (nl-proof §2 Y1 preservation: z^i * y^i * c = (z*y)^i * c ~ w^i * c)
         have hw_eq : y * (w /ₘ y) = w := by
-          have := modByMonic_add_div w hy_monic
+          have := modByMonic_add_div w y
           rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_w, zero_add] at this
         have hc_eq : y * (c /ₘ y) = c := by
-          have := modByMonic_add_div c hy_monic
+          have := modByMonic_add_div c y
           rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
         -- Associated (w /ₘ y) z and (c /ₘ y) c' (via normalize)
         have hz_assoc : Associated (w /ₘ y) z := (normalize_associated _).symm
@@ -1154,7 +1154,7 @@ private theorem yunLoop_correct
             · -- Squarefree z: z | w + Squarefree w
               have hz_dvd : z ∣ w := by
                 rw [hz_def, normalize_dvd_iff]
-                have hmod := modByMonic_add_div w hy_monic
+                have hmod := modByMonic_add_div w y
                 rw [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_w, zero_add] at hmod
                 exact ⟨y, by rw [mul_comm]; exact hmod.symm⟩
               exact Squarefree.squarefree_of_dvd hz_dvd hY2
@@ -1186,7 +1186,7 @@ private theorem yunLoop_correct
             rw [h_new]
             -- IsCoprime z y from Squarefree w = Squarefree (y * (w/y))
             have hw_eq' : w = y * (w /ₘ y) := by
-              have := modByMonic_add_div w hy_monic
+              have := modByMonic_add_div w y
               rw [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_w, zero_add] at this
               exact this.symm
             have hsqf_wy : Squarefree (y * (w /ₘ y)) := by rw [← hw_eq']; exact hY2
@@ -1207,7 +1207,7 @@ private theorem yunLoop_correct
             -- But IsCoprime z y → IsUnit d
             have hz_cop_y : IsCoprime z y := by
               have hw_eq' : w = y * (w /ₘ y) := by
-                have := modByMonic_add_div w hy_monic
+                have := modByMonic_add_div w y
                 rw [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_w, zero_add] at this
                 exact this.symm
               have hsqf_wy : Squarefree (y * (w /ₘ y)) := by rw [← hw_eq']; exact hY2
@@ -1318,7 +1318,7 @@ theorem sqf_correct
             normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left f _)
           have hfc_eq : normalize (EuclideanDomain.gcd f (derivative f)) *
               (f /ₘ normalize (EuclideanDomain.gcd f (derivative f))) = f := by
-            have := modByMonic_add_div f hc₀_monic
+            have := modByMonic_add_div f (normalize (EuclideanDomain.gcd f (derivative f)))
             rwa [(modByMonic_eq_zero_iff_dvd hc₀_monic).mpr hc₀_dvd, zero_add] at this
           -- w * c ~ (f/c) * c = f, so Associated f (w * c)
           exact ((normalize_associated (f /ₘ normalize (EuclideanDomain.gcd f (derivative f)) :

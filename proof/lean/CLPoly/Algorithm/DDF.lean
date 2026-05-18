@@ -34,7 +34,7 @@ private lemma natDegree_divByMonic_lt
   have hg_ne : g ≠ 0 := Monic.ne_zero hg
   have hmod : f %ₘ g = 0 := (modByMonic_eq_zero_iff_dvd hg).mpr hdvd
   have heq : g * (f /ₘ g) = f := by
-    have := modByMonic_add_div f hg; rwa [hmod, zero_add] at this
+    have := modByMonic_add_div f g; rwa [hmod, zero_add] at this
   have hfn_ne : f /ₘ g ≠ 0 := by
     intro h; rw [h, mul_zero] at heq; exact hf heq.symm
   have hdeg := Polynomial.natDegree_mul hg_ne hfn_ne
@@ -100,7 +100,7 @@ private lemma monic_divByMonic_mul_eq
     (f g : Polynomial (ZMod p)) (hg : Monic g) (hdvd : g ∣ f) :
     g * (f /ₘ g) = f := by
   have h0 : f %ₘ g = 0 := (modByMonic_eq_zero_iff_dvd hg).mpr hdvd
-  have := modByMonic_add_div f hg
+  have := modByMonic_add_div f g
   rw [h0, zero_add] at this
   exact this
 
@@ -127,7 +127,7 @@ private lemma prime_dvd_list_prod
     证明：(a-b) | (a^p - b^p) + modByMonic 分解 -/
 private lemma h_cong_step
     (h f_star : Polynomial (ZMod p)) (d : ℕ) (hd : d ≥ 1)
-    (hmonic : Monic f_star)
+    (_hmonic : Monic f_star)
     (hcong : f_star ∣ (h - X ^ (p ^ (d - 1)))) :
     f_star ∣ ((h ^ p) %ₘ f_star - X ^ (p ^ d)) := by
   -- Step A: f_star ∣ (h^p - X^{p^d})
@@ -145,7 +145,7 @@ private lemma h_cong_step
   -- Step B: f_star ∣ (h^p - h^p %ₘ f_star)
   have step_b : f_star ∣ (h ^ p - (h ^ p) %ₘ f_star) := by
     refine ⟨(h ^ p) /ₘ f_star, ?_⟩
-    have := (modByMonic_add_div (h ^ p) hmonic).symm
+    have := (modByMonic_add_div (h ^ p) f_star).symm
     rw [add_comm] at this
     exact sub_eq_of_eq_add this
   -- Step C: combine
@@ -354,7 +354,7 @@ theorem ddfLoop_correct
       -- fnv ∣ (h'v - h'v %ₘ fnv) from modByMonic
       have hmod_dvd : fnv ∣ (h'v - h'v %ₘ fnv) := by
         refine ⟨h'v /ₘ fnv, ?_⟩
-        have := (modByMonic_add_div h'v hfn_monic).symm
+        have := (modByMonic_add_div h'v fnv).symm
         rw [add_comm] at this; exact sub_eq_of_eq_add this
       have hdecomp : (h'v %ₘ fnv - X ^ (p ^ dv)) =
           -(h'v - h'v %ₘ fnv) + (h'v - X ^ (p ^ dv)) := by ring

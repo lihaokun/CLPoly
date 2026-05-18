@@ -39,7 +39,7 @@ private lemma divByMonic_ne_zero'
     (f g : Polynomial (ZMod p)) (hg : Monic g) (hdvd : g ∣ f) (hf : f ≠ 0) :
     f /ₘ g ≠ 0 := by
   intro h
-  have := modByMonic_add_div f hg
+  have := modByMonic_add_div f g
   rw [(modByMonic_eq_zero_iff_dvd hg).mpr hdvd, h, mul_zero, zero_add] at this
   exact hf this.symm
 
@@ -74,7 +74,7 @@ decreasing_by
     have hg_monic : Monic g := Polynomial.monic_normalize hgcd_ne
     have hg_dvd : g ∣ f := normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right _ _)
     have hfg_eq : g * (f /ₘ g) = f := by
-      have := modByMonic_add_div f hg_monic
+      have := modByMonic_add_div f g
       rwa [(modByMonic_eq_zero_iff_dvd hg_monic).mpr hg_dvd, zero_add] at this
     have hfg_ne := divByMonic_ne_zero' f g hg_monic hg_dvd hf_ne
     have hdeg := Polynomial.natDegree_mul (Monic.ne_zero hg_monic) hfg_ne
@@ -190,7 +190,7 @@ private theorem edf_correct_aux
           have hg_monic : Monic g := Polynomial.monic_normalize hgcd_ne
           have hg_dvd : g ∣ f := normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right _ _)
           have hfg_eq : g * (f /ₘ g) = f := by
-            have := modByMonic_add_div f hg_monic
+            have := modByMonic_add_div f g
             rwa [(modByMonic_eq_zero_iff_dvd hg_monic).mpr hg_dvd, zero_add] at this
           have hfg_ne := divByMonic_ne_zero' f g hg_monic hg_dvd hf_ne
           -- Associated f (g * normalize(f /ₘ g))

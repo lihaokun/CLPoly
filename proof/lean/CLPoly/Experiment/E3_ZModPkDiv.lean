@@ -46,7 +46,7 @@ example : Monic g343 := by
 -- 除法恒等式：modByMonic_add_div 给出 f %ₘ g + g * (f /ₘ g) = f
 example : Monic g343 → f343 %ₘ g343 + g343 * (f343 /ₘ g343) = f343 := by
   intro hm
-  exact modByMonic_add_div f343 hm
+  exact modByMonic_add_div f343 g343
 
 -- ============================================================
 -- 3. castHom 层间投影
@@ -72,7 +72,7 @@ def proj2 : ZMod 343 →+* ZMod 49 :=
 
 -- 3 和 343 互素 → 3 是单位
 example : IsUnit (3 : ZMod 343) := by
-  sorry -- 尝试 ZMod.unitOfCoprime 或 decide
+  exact isUnit_iff_exists_inv.mpr ⟨229, by decide⟩
 
 -- ============================================================
 -- 5. 自然提升：ℤ → ZMod n

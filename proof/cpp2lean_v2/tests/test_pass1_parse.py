@@ -31,7 +31,13 @@ FIXTURES_DIR = V2_ROOT / "tests" / "fixtures"
 
 
 def _system_includes() -> list[str]:
-    """与 survey_ast.py 一致：抓系统 include。"""
+    """与 survey_ast.py 一致：抓 libstdc++ 系统 include。
+
+    不加 /usr/lib/llvm-*/lib/clang/*/include —— clang 会自己定位
+    resource-dir，手动追加会让 boost/cstdint.hpp 找不到 int_least8_t 等
+    stdint.h wrapper（CI 上 LLVM apt repo 与本地 distro clang 路径差异
+    最易触发）。
+    """
     try:
         r = subprocess.run(
             ["g++", "-E", "-Wp,-v", "-x", "c++", "-"],
@@ -47,9 +53,6 @@ def _system_includes() -> list[str]:
                 break
             if cap and line.startswith(" "):
                 paths.append(f"-I{line.strip()}")
-        import glob
-        for d in glob.glob("/usr/lib/llvm-*/lib/clang/*/include"):
-            paths.append(f"-I{d}")
         return paths
     except Exception:
         return []

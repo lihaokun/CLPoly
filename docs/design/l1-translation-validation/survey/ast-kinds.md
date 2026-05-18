@@ -1,95 +1,77 @@
 # AST Kind 直方图
 
-> 生成时间：2026-05-19 01:11
-> 覆盖 3 个函数
+> 生成时间：2026-05-19 01:18
+> 覆盖 5 个函数
 
 按出现次数降序。每 kind 列首次出现的函数名（样例）。
 
 | Kind | Count | First Seen In |
 |---|---|---|
-| MemberExpr | 16 | __upoly_const_term |
-| DeclRefExpr | 16 | __upoly_const_term |
-| CXXMemberCallExpr | 14 | __upoly_const_term |
-| ParmVarDecl | 7 | __upoly_const_term |
-| CXXConstructExpr | 6 | __upoly_const_term |
-| ReturnStmt | 4 | __upoly_const_term |
-| ImplicitCastExpr | 4 | __upoly_const_term |
-| FunctionDecl | 3 | __upoly_const_term |
-| CompoundStmt | 3 | __upoly_const_term |
-| IntegerLiteral | 3 | __upoly_const_term |
-| IfStmt | 2 | __upoly_const_term |
-| ExprWithCleanups | 2 | __upoly_const_term |
-| CXXFunctionalCastExpr | 2 | __upoly_const_term |
-| CXXBindTemporaryExpr | 2 | __upoly_const_term |
-| CallExpr | 2 | __upoly_divmod |
-| VarDecl | 2 | __upoly_mod |
+| DeclRefExpr | 284 | __hensel_step |
+| ImplicitCastExpr | 193 | __hensel_step |
+| MemberExpr | 101 | __hensel_step |
+| CXXOperatorCallExpr | 67 | __hensel_step |
+| VarDecl | 56 | __hensel_step |
+| CXXMemberCallExpr | 55 | __hensel_step |
+| DeclStmt | 53 | __hensel_step |
+| ExprWithCleanups | 28 | __hensel_step |
+| CXXBindTemporaryExpr | 25 | __hensel_step |
+| CallExpr | 24 | __hensel_step |
+| CXXConstructExpr | 23 | __hensel_step |
+| MaterializeTemporaryExpr | 14 | __hensel_step |
+| CompoundStmt | 12 | __hensel_step |
+| ParmVarDecl | 11 | __hensel_step |
+| RecordType | 8 | factorize |
+| CXXForRangeStmt | 7 | __hensel_step |
+| TemplateArgument | 7 | factorize |
+| IfStmt | 6 | __hensel_step |
+| FunctionDecl | 5 | __hensel_step |
+| IntegerLiteral | 5 | __hensel_step |
+| ReturnStmt | 5 | __upoly_const_term |
+| CXXFunctionalCastExpr | 4 | __hensel_step |
+| ElaboratedType | 4 | factorize |
+| SubstTemplateTypeParmType | 4 | factorize |
+| TemplateSpecializationType | 3 | factorize |
+| ForStmt | 2 | __hensel_step |
+| BindingDecl | 2 | factorize |
 | BinaryOperator | 1 | __upoly_const_term |
-| DeclStmt | 1 | __upoly_mod |
+| TypeAliasDecl | 1 | factorize |
+| DecompositionDecl | 1 | factorize |
 
 ## 罕见 Kind 样例（≤3 次出现）
 
 ### `BinaryOperator` （1 次，首现 `__upoly_const_term`）
 
 ```json
-{"id": "0x7f74c89eba28", "kind": "BinaryOperator", "range": {"line": null, "col": 13}, "type": {"qualType": "bool"}, "valueCategory": "prvalue", "opcode": "=="}
+{"id": "0x7a18a461fa28", "kind": "BinaryOperator", "range": {"line": null, "col": 13}, "type": {"qualType": "bool"}, "valueCategory": "prvalue", "opcode": "=="}
 ```
 
-### `CXXBindTemporaryExpr` （2 次，首现 `__upoly_const_term`）
+### `BindingDecl` （2 次，首现 `factorize`）
 
 ```json
-{"id": "0x7f74c89eb698", "kind": "CXXBindTemporaryExpr", "range": {"line": null, "col": 31}, "type": {"desugaredQualType": "clpoly::ZZ", "qualType": "ZZ"}, "valueCategory": "prvalue", "temp": "0x7f74c89eb690", "dtor": {"id": "0x5a88523d8b58", "kind": "CXXDestructorDecl", "name": "~ZZ", "type": {"qualType": "void () noexcept"}}}
+{"id": "0x7c38d741ed60", "kind": "BindingDecl", "range": {"line": null, "col": 21}, "isReferenced": true, "name": "fac"}
 ```
 
-### `CXXFunctionalCastExpr` （2 次，首现 `__upoly_const_term`）
+### `DecompositionDecl` （1 次，首现 `factorize`）
 
 ```json
-{"id": "0x7f74c89eb6b8", "kind": "CXXFunctionalCastExpr", "range": {"line": null, "col": 31}, "type": {"desugaredQualType": "clpoly::ZZ", "qualType": "ZZ"}, "valueCategory": "prvalue", "castKind": "ConstructorConversion", "conversionFunc": {"id": "0x5a88523d76e8", "kind": "CXXConstructorDecl", "name": "ZZ", "type": {"qualType": "void (int)"}}}
+{"id": "0x7c38d741edf0", "kind": "DecompositionDecl", "range": {"line": null, "col": 14}, "isUsed": true, "type": {"qualType": "std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long> &"}, "init": "c"}
 ```
 
-### `CallExpr` （2 次，首现 `__upoly_divmod`）
+### `ForStmt` （2 次，首现 `__hensel_step`）
 
 ```json
-{"id": "0x7ff3fc146d18", "kind": "CallExpr", "range": {"line": 55, "col": 9}, "type": {"qualType": "void"}, "valueCategory": "prvalue"}
+{"id": "0x7667f358a380", "kind": "ForStmt", "range": {"line": 425, "col": 9}}
 ```
 
-### `CompoundStmt` （3 次，首现 `__upoly_const_term`）
+### `TemplateSpecializationType` （3 次，首现 `factorize`）
 
 ```json
-{"id": "0x7f74c89ebcd0", "kind": "CompoundStmt", "range": {"line": 744, "col": 5}}
+{"id": "0x7c38d74158c0", "kind": "TemplateSpecializationType", "type": {"qualType": "polynomial_<ZZ, clpoly::grlex_<clpoly::less>>"}, "isAlias": true, "templateName": "polynomial_"}
 ```
 
-### `DeclStmt` （1 次，首现 `__upoly_mod`）
+### `TypeAliasDecl` （1 次，首现 `factorize`）
 
 ```json
-{"id": "0x7a43ebf000e0", "kind": "DeclStmt", "range": {"line": 43, "col": 9}}
-```
-
-### `ExprWithCleanups` （2 次，首现 `__upoly_const_term`）
-
-```json
-{"id": "0x7f74c89eb6e0", "kind": "ExprWithCleanups", "range": {"line": null, "col": 31}, "type": {"desugaredQualType": "clpoly::ZZ", "qualType": "ZZ"}, "valueCategory": "prvalue", "cleanupsHaveSideEffects": true}
-```
-
-### `FunctionDecl` （3 次，首现 `__upoly_const_term`）
-
-```json
-{"id": "0x7f74c89eb490", "kind": "FunctionDecl", "range": {"line": null, "col": 5}, "isUsed": true, "name": "__upoly_const_term", "mangledName": "_ZN6clpoly18__upoly_const_termERKNS_16basic_polynomialINS_9umonomialENS_2ZZENS_5ulessEEE", "type": {"qualType": "ZZ (const upolynomial_<ZZ> &)"}, "inline": true}
-```
-
-### `IfStmt` （2 次，首现 `__upoly_const_term`）
-
-```json
-{"id": "0x7f74c89eb708", "kind": "IfStmt", "range": {"line": 745, "col": 9}}
-```
-
-### `IntegerLiteral` （3 次，首现 `__upoly_const_term`）
-
-```json
-{"id": "0x7f74c89eb5f0", "kind": "IntegerLiteral", "range": {"line": null, "col": 34}, "type": {"qualType": "int"}, "valueCategory": "prvalue", "value": "0"}
-```
-
-### `VarDecl` （2 次，首现 `__upoly_mod`）
-
-```json
-{"id": "0x7a43ebefff50", "kind": "VarDecl", "range": {"line": null, "col": 9}, "isUsed": true, "name": "q", "type": {"desugaredQualType": "clpoly::basic_polynomial<clpoly::umonomial, clpoly::Zp, clpoly::uless>", "qualType": "upolynomial_<Zp>"}, "init": "call"}
+{"id": "0x7c38d7415988", "kind": "TypeAliasDecl", "range": {"line": null, "col": 9}, "isReferenced": true, "name": "Poly", "type": {"desugaredQualType": "clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::grlex_<clpoly::less>>, clpoly::ZZ, clpoly::grlex_<clpoly::less>>", "qualType": "polynomial_<ZZ, grlex_<less>>"}}
 ```

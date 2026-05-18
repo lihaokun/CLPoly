@@ -27,6 +27,19 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
           clang --version
 
+      - name: DEBUG — toolchain versions + system includes
+        run: |
+          echo "=== clang version ==="
+          clang --version
+          echo "=== clang++ version ==="
+          clang++ --version
+          echo "=== g++ version ==="
+          g++ --version || echo "no g++"
+          echo "=== g++ -E -Wp,-v -x c++ - (system includes) ==="
+          echo "" | g++ -E -Wp,-v -x c++ - 2>&1 | grep -A30 "search starts here:" | head -25 || true
+          echo "=== libboost-dev version ==="
+          dpkg -l | grep -E "libboost|libgmp|libstdc" | head -20
+
       - name: Build CLPoly library (needed for header resolution by clang)
         run: make
 
@@ -38,6 +51,38 @@ jobs:
       - name: Verify cache populated
         run: |
           test "$(ls proof/cpp2lean_v2/tests/ast_cache/*.json 2>/dev/null | wc -l)" -ge 60
+
+      - name: DEBUG — __upoly_divmod cache stats + param types
+        run: |
+          cd proof/cpp2lean_v2
+          echo "=== Cache file sizes ==="
+          ls -la tests/ast_cache/__upoly_divmod.json tests/ast_cache/__upoly_mod.json tests/ast_cache/__hensel_step.json 2>&1 | head -5
+          echo "=== __upoly_divmod ParmVarDecl qualType ==="
+          python3 -c "
+          import json
+          with open('tests/ast_cache/__upoly_divmod.json') as f:
+              ast = json.load(f)
+          def find_params(node):
+              if isinstance(node, dict):
+                  if node.get('kind') == 'ParmVarDecl':
+                      print(f'  name={node.get(\"name\")} qualType={node.get(\"type\", {}).get(\"qualType\")}')
+                  for c in node.get('inner', []):
+                      find_params(c)
+          find_params(ast)
+          "
+          echo "=== __upoly_mod ParmVarDecl qualType ==="
+          python3 -c "
+          import json
+          with open('tests/ast_cache/__upoly_mod.json') as f:
+              ast = json.load(f)
+          def find_params(node):
+              if isinstance(node, dict):
+                  if node.get('kind') == 'ParmVarDecl':
+                      print(f'  name={node.get(\"name\")} qualType={node.get(\"type\", {}).get(\"qualType\")}')
+                  for c in node.get('inner', []):
+                      find_params(c)
+          find_params(ast)
+          " || echo "[upoly_mod cache too small or missing params]"
 
       # 注：fixture parse 单元（test_pass1_parse.py 中 3 个 upoly_* 测试 +
       # test_pass4_iter.py 中 4 个 filter recognition 测试）在 CI 上本地 vs

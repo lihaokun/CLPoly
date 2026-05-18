@@ -57,7 +57,14 @@ from class_map import TRANSLATION_SCOPE  # noqa: E402
 # Clang 调用
 # ----------------------------------------------------------------------
 def _system_includes() -> list[str]:
-    """从 g++ 拿系统 include 路径 + libclang 内建头文件。"""
+    """从 g++ 拿 libstdc++ 系统 include 路径。
+
+    注意：不要手动追加 /usr/lib/llvm-*/lib/clang/*/include —— clang 会自己
+    找自己的 resource-dir。手动追加可能让 clang internal headers 路径与
+    实际运行的 clang 二进制不匹配，从而出现 boost/cstdint.hpp 找不到
+    int_least8_t 这类 stdint.h wrapper 错位（CI 上 LLVM apt repo 安装的
+    clang 与本地 distro clang 的 resource-dir 不同，最易触发）。
+    """
     try:
         result = subprocess.run(
             ["g++", "-E", "-Wp,-v", "-x", "c++", "-"],
@@ -73,9 +80,6 @@ def _system_includes() -> list[str]:
                 break
             if capture and line.startswith(" "):
                 paths.append(f"-I{line.strip()}")
-        import glob
-        for d in glob.glob("/usr/lib/llvm-*/lib/clang/*/include"):
-            paths.append(f"-I{d}")
         return paths
     except Exception:
         return []

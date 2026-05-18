@@ -30,6 +30,18 @@ jobs:
       - name: Build CLPoly library (needed for header resolution by clang)
         run: make
 
+      - name: Sanity — clang++ syntax check on instantiate.cc
+        run: |
+          # 复用 survey_ast.py 用的 system include 路径（g++ -E -Wp,-v）
+          SYS_INC=$(echo "" | g++ -E -Wp,-v -x c++ - 2>&1 | awk '/^#include <\.\.\.>/{f=1;next} /^End of search/{f=0} f && /^ /{printf "-I%s ", $1}')
+          echo "Using SYS_INC=$SYS_INC"
+          clang++ -std=c++17 -fsyntax-only $SYS_INC -I. proof/cpp2lean_v2/tests/fixtures/instantiate.cc 2>&1 | tee /tmp/syn.log | tail -30
+          if grep -q " error: " /tmp/syn.log; then
+            echo "ERROR: clang reported syntax errors on instantiate.cc"
+            exit 1
+          fi
+          echo "OK: instantiate.cc syntax-clean"
+
       - name: Generate AST cache (66 functions, --strict 防止模板未完整实例化)
         run: |
           cd proof/cpp2lean_v2

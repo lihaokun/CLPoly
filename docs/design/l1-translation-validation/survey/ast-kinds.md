@@ -1,81 +1,95 @@
 # AST Kind 直方图
 
-> 生成时间：2026-05-19 00:58
-> 覆盖 66 个函数
+> 生成时间：2026-05-19 01:11
+> 覆盖 3 个函数
 
 按出现次数降序。每 kind 列首次出现的函数名（样例）。
 
 | Kind | Count | First Seen In |
 |---|---|---|
-| DeclRefExpr | 6423 | __assign_partial_zp |
-| ImplicitCastExpr | 5472 | __assign_partial_zp |
-| CXXOperatorCallExpr | 1347 | __assign_partial_zp |
-| MemberExpr | 1187 | __assign_partial_zp |
-| VarDecl | 1152 | __assign_partial_zp |
-| DeclStmt | 1128 | __assign_partial_zp |
-| CXXMemberCallExpr | 878 | __assign_partial_zp |
-| CXXConstructExpr | 639 | __assign_partial_zp |
-| IntegerLiteral | 603 | __assign_partial_zp |
-| CXXBindTemporaryExpr | 558 | __assign_partial_zp |
-| ExprWithCleanups | 547 | __assign_partial_zp |
-| BinaryOperator | 541 | __assign_partial_zp |
-| MaterializeTemporaryExpr | 536 | __assign_partial_zp |
-| CallExpr | 515 | __assign_partial_zp |
-| CompoundStmt | 388 | __assign_partial_zp |
-| IfStmt | 282 | __binomial |
-| ParmVarDecl | 268 | __assign_partial_zp |
-| UnaryOperator | 262 | __assign_partial_zp |
-| ReturnStmt | 168 | __assign_partial_zp |
-| RecordType | 166 | __assign_partial_zp |
-| CXXFunctionalCastExpr | 156 | __binomial |
-| TemplateArgument | 146 | __assign_partial_zp |
-| ForStmt | 146 | __assign_partial_zp |
-| ElaboratedType | 99 | __assign_partial_zp |
-| CXXForRangeStmt | 92 | __build_cld_matrix |
-| CXXBoolLiteralExpr | 82 | __edf_Zp |
-| TemplateSpecializationType | 71 | __assign_partial_zp |
-| CStyleCastExpr | 70 | __build_cld_matrix |
-| CXXDefaultArgExpr | 70 | __build_cld_matrix |
-| SubstTemplateTypeParmType | 68 | __assign_partial_zp |
-| FunctionDecl | 66 | __assign_partial_zp |
-| ParenExpr | 60 | __build_cld_matrix |
-| BindingDecl | 60 | __extract_monomial_content |
-| ContinueStmt | 52 | __edf_Zp |
-| StringLiteral | 46 | __cld_polys |
-| SourceLocExpr | 46 | __cld_polys |
-| CXXTemporaryObjectExpr | 46 | __lll_reduce |
-| CXXMethodDecl | 41 | __build_cld_matrix |
-| ConditionalOperator | 39 | __build_cld_matrix |
-| DecompositionDecl | 30 | __extract_monomial_content |
-| BreakStmt | 27 | __ddf_Zp |
-| FieldDecl | 27 | __lll_reduce |
-| CXXStaticCastExpr | 26 | __cld_polys |
-| LambdaExpr | 24 | __build_cld_matrix |
-| CXXRecordDecl | 24 | __build_cld_matrix |
-| CXXDestructorDecl | 24 | __build_cld_matrix |
-| PredefinedExpr | 23 | __cld_polys |
-| TypeAliasDecl | 20 | __assign_partial_zp |
-| WhileStmt | 20 | __edf_Zp |
-| InitListExpr | 12 | __ddf_Zp |
-| CXXConstructorDecl | 12 | __factor_Zp |
-| ImplicitValueInitExpr | 12 | __hensel_tree_build |
-| CXXConversionDecl | 11 | __build_cld_matrix |
-| CXXStdInitializerListExpr | 9 | __ddf_Zp |
-| CompoundAssignOperator | 6 | __select_eval_point |
-| CXXCtorInitializer | 4 | __lll_reduce |
-| FloatingLiteral | 3 | __heuristic_starting_precision |
-| DoStmt | 2 | __wang_core |
+| MemberExpr | 16 | __upoly_const_term |
+| DeclRefExpr | 16 | __upoly_const_term |
+| CXXMemberCallExpr | 14 | __upoly_const_term |
+| ParmVarDecl | 7 | __upoly_const_term |
+| CXXConstructExpr | 6 | __upoly_const_term |
+| ReturnStmt | 4 | __upoly_const_term |
+| ImplicitCastExpr | 4 | __upoly_const_term |
+| FunctionDecl | 3 | __upoly_const_term |
+| CompoundStmt | 3 | __upoly_const_term |
+| IntegerLiteral | 3 | __upoly_const_term |
+| IfStmt | 2 | __upoly_const_term |
+| ExprWithCleanups | 2 | __upoly_const_term |
+| CXXFunctionalCastExpr | 2 | __upoly_const_term |
+| CXXBindTemporaryExpr | 2 | __upoly_const_term |
+| CallExpr | 2 | __upoly_divmod |
+| VarDecl | 2 | __upoly_mod |
+| BinaryOperator | 1 | __upoly_const_term |
+| DeclStmt | 1 | __upoly_mod |
 
 ## 罕见 Kind 样例（≤3 次出现）
 
-### `DoStmt` （2 次，首现 `__wang_core`）
+### `BinaryOperator` （1 次，首现 `__upoly_const_term`）
 
 ```json
-{"id": "0x7be5fcc7bac0", "kind": "DoStmt", "range": {"line": 2375, "col": 29}}
+{"id": "0x7f74c89eba28", "kind": "BinaryOperator", "range": {"line": null, "col": 13}, "type": {"qualType": "bool"}, "valueCategory": "prvalue", "opcode": "=="}
 ```
 
-### `FloatingLiteral` （3 次，首现 `__heuristic_starting_precision`）
+### `CXXBindTemporaryExpr` （2 次，首现 `__upoly_const_term`）
 
 ```json
-{"id": "0x7e2e3491bc40", "kind": "FloatingLiteral", "range": {"line": null, "col": 14}, "type": {"qualType": "double"}, "valueCategory": "prvalue", "value": "2.5"}
+{"id": "0x7f74c89eb698", "kind": "CXXBindTemporaryExpr", "range": {"line": null, "col": 31}, "type": {"desugaredQualType": "clpoly::ZZ", "qualType": "ZZ"}, "valueCategory": "prvalue", "temp": "0x7f74c89eb690", "dtor": {"id": "0x5a88523d8b58", "kind": "CXXDestructorDecl", "name": "~ZZ", "type": {"qualType": "void () noexcept"}}}
+```
+
+### `CXXFunctionalCastExpr` （2 次，首现 `__upoly_const_term`）
+
+```json
+{"id": "0x7f74c89eb6b8", "kind": "CXXFunctionalCastExpr", "range": {"line": null, "col": 31}, "type": {"desugaredQualType": "clpoly::ZZ", "qualType": "ZZ"}, "valueCategory": "prvalue", "castKind": "ConstructorConversion", "conversionFunc": {"id": "0x5a88523d76e8", "kind": "CXXConstructorDecl", "name": "ZZ", "type": {"qualType": "void (int)"}}}
+```
+
+### `CallExpr` （2 次，首现 `__upoly_divmod`）
+
+```json
+{"id": "0x7ff3fc146d18", "kind": "CallExpr", "range": {"line": 55, "col": 9}, "type": {"qualType": "void"}, "valueCategory": "prvalue"}
+```
+
+### `CompoundStmt` （3 次，首现 `__upoly_const_term`）
+
+```json
+{"id": "0x7f74c89ebcd0", "kind": "CompoundStmt", "range": {"line": 744, "col": 5}}
+```
+
+### `DeclStmt` （1 次，首现 `__upoly_mod`）
+
+```json
+{"id": "0x7a43ebf000e0", "kind": "DeclStmt", "range": {"line": 43, "col": 9}}
+```
+
+### `ExprWithCleanups` （2 次，首现 `__upoly_const_term`）
+
+```json
+{"id": "0x7f74c89eb6e0", "kind": "ExprWithCleanups", "range": {"line": null, "col": 31}, "type": {"desugaredQualType": "clpoly::ZZ", "qualType": "ZZ"}, "valueCategory": "prvalue", "cleanupsHaveSideEffects": true}
+```
+
+### `FunctionDecl` （3 次，首现 `__upoly_const_term`）
+
+```json
+{"id": "0x7f74c89eb490", "kind": "FunctionDecl", "range": {"line": null, "col": 5}, "isUsed": true, "name": "__upoly_const_term", "mangledName": "_ZN6clpoly18__upoly_const_termERKNS_16basic_polynomialINS_9umonomialENS_2ZZENS_5ulessEEE", "type": {"qualType": "ZZ (const upolynomial_<ZZ> &)"}, "inline": true}
+```
+
+### `IfStmt` （2 次，首现 `__upoly_const_term`）
+
+```json
+{"id": "0x7f74c89eb708", "kind": "IfStmt", "range": {"line": 745, "col": 9}}
+```
+
+### `IntegerLiteral` （3 次，首现 `__upoly_const_term`）
+
+```json
+{"id": "0x7f74c89eb5f0", "kind": "IntegerLiteral", "range": {"line": null, "col": 34}, "type": {"qualType": "int"}, "valueCategory": "prvalue", "value": "0"}
+```
+
+### `VarDecl` （2 次，首现 `__upoly_mod`）
+
+```json
+{"id": "0x7a43ebefff50", "kind": "VarDecl", "range": {"line": null, "col": 9}, "isUsed": true, "name": "q", "type": {"desugaredQualType": "clpoly::basic_polynomial<clpoly::umonomial, clpoly::Zp, clpoly::uless>", "qualType": "upolynomial_<Zp>"}, "init": "call"}
 ```

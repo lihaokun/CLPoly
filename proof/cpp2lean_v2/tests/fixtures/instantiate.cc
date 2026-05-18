@@ -27,13 +27,14 @@ std::size_t force_instantiate() {
     upolynomial_<ZZ> f_uni;
     auto r3 = factorize(f_uni);
 
-    // Zp 模块
+    // Zp 模块（__factor_Zp 返回 std::pair<Zp, vector<pair<upoly, u64>>>，
+    // 不是 factorization<>，所以用 r4.second 而非 r4.factors）
     upolynomial_<Zp> f_zp;
     auto r4 = __factor_Zp(f_zp);
 
     // 真正使用 r1..r4 的成员，强制 clang 沿调用链 ODR-instantiate
     std::size_t total = r1.factors.size() + r2.factors.size()
-                      + r3.factors.size() + r4.factors.size();
+                      + r3.factors.size() + r4.second.size();
     __force_instantiate_sink = total;
     return total;
 }

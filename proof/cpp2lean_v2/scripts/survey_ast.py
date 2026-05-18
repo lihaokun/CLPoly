@@ -110,6 +110,15 @@ def dump_ast_json(func_name: str, timeout: int = 30) -> dict | None:
         print(f"  TIMEOUT", file=sys.stderr)
         return None
 
+    # 检查 clang 报错（即使 stdout 有内容，stderr 中的 error 会导致 AST
+    # type annotation 错乱，例如 `upolynomial_<Zp> &` 退化为 `int &`）
+    err_lines = [ln for ln in result.stderr.splitlines() if " error: " in ln]
+    if err_lines:
+        print(f"\n  CLANG ERRORS ({len(err_lines)}):", file=sys.stderr)
+        for ln in err_lines[:5]:
+            print(f"    {ln}", file=sys.stderr)
+        return None
+
     if not result.stdout.strip():
         print(f"  empty stdout", file=sys.stderr)
         return None
@@ -183,6 +192,18 @@ def dump_ast_json(func_name: str, timeout: int = 30) -> dict | None:
     return None
 
 
+# clang 在某些版本会把未完整实例化的模板函数 dump 成"参数全是 raw int &"
+# 的退化形式（has body + has mangledName，但 template parameter 被默认替换
+# 为 int）。CLPoly 全部 66 个 target 中没有任何函数所有参数都是基础类型
+# （都至少接 polynomial / coefficient 引用），所以可以可靠地用这条规则
+# 识别退化。
+_SUSPICIOUS_RAW_PARM_TYPES = {
+    "int", "const int", "int &", "const int &", "int *", "const int *",
+    "long", "long &", "void", "void *", "unsigned int", "unsigned long",
+    "short", "short &", "char", "char &",
+}
+
+
 def _is_degraded(ast: dict) -> tuple[bool, str]:
     """判断一个 dump 结果是否退化（未完整实例化）。
 
@@ -190,6 +211,8 @@ def _is_degraded(ast: dict) -> tuple[bool, str]:
     - 顶层是 FunctionDecl（不是模板基声明）
     - 有 mangledName（具体实例化签名）
     - 有 CompoundStmt body（实现存在）
+    - 参数类型不全是 raw 基础类型（避免 clang 把 template parameter
+      默认替换为 int 的退化情况）
 
     若不满足，说明 clang 没有沿调用链 ODR-instantiate 这个函数，
     cache 写入将污染下游 pass 测试。
@@ -200,10 +223,19 @@ def _is_degraded(ast: dict) -> tuple[bool, str]:
         return True, f"root kind={ast.get('kind')} (expect FunctionDecl)"
     if not ast.get("mangledName"):
         return True, "no mangledName (primary template, not instantiation)"
+    has_body = False
+    parm_types: list[str] = []
     for c in ast.get("inner", []):
-        if isinstance(c, dict) and c.get("kind") == "CompoundStmt":
-            return False, ""
-    return True, "no CompoundStmt body (declaration-only, instantiation incomplete)"
+        if isinstance(c, dict):
+            if c.get("kind") == "CompoundStmt":
+                has_body = True
+            elif c.get("kind") == "ParmVarDecl":
+                parm_types.append(c.get("type", {}).get("qualType", ""))
+    if not has_body:
+        return True, "no CompoundStmt body (declaration-only, instantiation incomplete)"
+    if parm_types and all(t in _SUSPICIOUS_RAW_PARM_TYPES for t in parm_types):
+        return True, f"all params are raw base types {parm_types} (template substitution degraded to int)"
+    return False, ""
 
 
 # ----------------------------------------------------------------------

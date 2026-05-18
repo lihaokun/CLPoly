@@ -238,7 +238,7 @@ def test_arity_overload_resolution():
 
 def test_pipeline_smoke_67():
     """全 67 函数走 parse → ref_elim → callsite_ref_elim 全过 + 不抛错。"""
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     ok = 0
     errs = []
     for fn in sorted(TRANSLATION_SCOPE):

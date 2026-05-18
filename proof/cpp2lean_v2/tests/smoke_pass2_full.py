@@ -33,7 +33,7 @@ from class_map import TRANSLATION_SCOPE
 sys.path.insert(0, str(V2_ROOT / "tests"))
 from dump_all_hir import fmt_func
 
-AST_CACHE_DIR = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST_CACHE_DIR = V2_ROOT / "tests" / "ast_cache"
 OUT_MD = V2_ROOT.parent.parent / "docs" / "design" / "l1-translation-validation" / "survey" / "pass2-smoke.md"
 DUMP_DIR = Path("/tmp/hir1_dump")
 
@@ -82,7 +82,7 @@ def _get_factorize_instances() -> list[tuple[str, dict]]:
         "-Xclang", "-ast-dump=json",
         "-Xclang", "-ast-dump-filter=factorize",
         "-fsyntax-only",
-        str(V2_ROOT.parent / "cpp2lean" / "instantiate.cc"),
+        str(V2_ROOT / "tests" / "fixtures" / "instantiate.cc"),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 

@@ -33,7 +33,7 @@ from pass3_lambda_lift import lambda_lift_pass
 from pass4_iter_recognize import iter_recognize_pass
 from pass5_operator_resolve import operator_resolve_pass, assert_hir4_invariant
 
-AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST = V2_ROOT / "tests" / "ast_cache"
 
 
 def _run(func_name):

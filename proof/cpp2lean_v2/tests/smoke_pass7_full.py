@@ -24,7 +24,7 @@ from pass7_loop_lower import loop_lower_pass, _compute_idom, _find_back_edges
 from ir_types import TailCallTerm, MIRFunc, assert_mir1_invariant
 from smoke_pass2_full import _get_factorize_instances
 
-AST_CACHE_DIR = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST_CACHE_DIR = V2_ROOT / "tests" / "ast_cache"
 OUT_MD = V2_ROOT.parent.parent / "docs" / "design" / "l1-translation-validation" / "survey" / "pass7-smoke.md"
 
 

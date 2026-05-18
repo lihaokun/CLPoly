@@ -30,7 +30,7 @@ from pass3_lambda_lift import (
 )
 from class_map import TRANSLATION_SCOPE
 
-AST_CACHE_DIR = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST_CACHE_DIR = V2_ROOT / "tests" / "ast_cache"
 
 
 def _load_hir1(func_name: str) -> HIRFunc:

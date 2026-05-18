@@ -46,7 +46,7 @@ def _full_pipeline(ast: dict) -> MIRFunc:
 # T1: 无循环 passthrough
 def test_no_loop_passthrough():
     """无循环函数：MIR₁ 与 MIR₀ 结构相同（aux_defs 仅含 lifted lambda）。"""
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     f = AST / "__make_zp.json"
     with open(f) as fh: ast = json.load(fh)
     mir0 = _full_pipeline(ast)
@@ -62,7 +62,7 @@ def test_no_loop_passthrough():
 # T2: 含简单 while 循环的函数
 def test_simple_while_loop():
     """`__binomial` 含简单 while；提取后 invariant 通过 + 0 back edge。"""
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     f = AST / "__binomial.json"
     if not f.exists():
         return
@@ -89,7 +89,7 @@ def test_simple_while_loop():
 # T3: 嵌套 while 循环（多 loops in single func）
 def test_nested_loops():
     """`__lll_reduce` 含多重嵌套循环；测试嵌套提取。"""
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     f = AST / "__lll_reduce.json"
     if not f.exists():
         return
@@ -104,7 +104,7 @@ def test_nested_loops():
 # T4: while + break（多 exit）
 def test_multi_exit_loop():
     """`__edf_Zp` 含 while-true + break，多 exit dispatch。"""
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     f = AST / "__edf_Zp.json"
     if not f.exists():
         return
@@ -126,7 +126,7 @@ def test_multi_exit_loop():
 # T5: 67 函数烟测
 def test_smoke_all_67():
     """67 函数全过 Pass 7 + invariant。"""
-    AST = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+    AST = V2_ROOT / "tests" / "ast_cache"
     ok = 0
     errs = []
     for fn in sorted(TRANSLATION_SCOPE):

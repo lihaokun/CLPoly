@@ -26,7 +26,7 @@ from pass1_parse import parse_pass
 from pass2_ref_elim import ref_elim_pass, assert_hir1_invariant
 from class_map import TRANSLATION_SCOPE
 
-AST_CACHE_DIR = V2_ROOT.parent / "cpp2lean" / "_ast_cache"
+AST_CACHE_DIR = V2_ROOT / "tests" / "ast_cache"
 
 
 def _load_hir0(func_name: str) -> HIRFunc:

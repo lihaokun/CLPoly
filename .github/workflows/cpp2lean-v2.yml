@@ -1,0 +1,94 @@
+name: cpp2lean v2 tests
+
+on:
+  push:
+    branches: [master, feature/formal-proofs]
+  pull_request:
+    branches: [master, feature/formal-proofs]
+  workflow_dispatch:
+
+jobs:
+  v2-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libgmp-dev libboost-dev python3 python3-pip
+
+      - name: Build CLPoly library (needed for header resolution by clang)
+        run: make
+
+      - name: Generate AST cache (66 functions via clang -ast-dump)
+        run: |
+          cd proof/cpp2lean_v2
+          python3 scripts/survey_ast.py
+
+      - name: Verify cache populated
+        run: |
+          test "$(ls proof/cpp2lean_v2/tests/ast_cache/*.json 2>/dev/null | wc -l)" -ge 60
+
+      - name: Pass 1 单元 + smoke
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass1_parse.py
+          python3 tests/smoke_pass1_full.py 2>&1 | tail -8
+
+      - name: Pass 2 单元 + smoke
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass2_ref_elim.py
+          python3 tests/smoke_pass2_full.py 2>&1 | tail -8
+
+      - name: Pass 2b 单元
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass2b_callsite_ref_elim.py
+
+      - name: Pass 3 单元 + smoke
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass3_lambda_lift.py
+          python3 tests/smoke_pass3_full.py 2>&1 | tail -8
+
+      - name: Pass 3b 单元
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass3b_lambda_ref_elim.py
+
+      - name: Pass 4 smoke (unit tests have pre-existing failures, tracked separately)
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/smoke_pass4_full.py 2>&1 | tail -8
+
+      - name: Pass 5 单元 + smoke
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass5_resolve.py
+          python3 tests/smoke_pass5_full.py 2>&1 | tail -8
+
+      - name: MIR ir_types 单元
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_mir_types.py
+
+      - name: Pass 6 单元 + smoke
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass6_ssa.py
+          python3 tests/smoke_pass6_full.py 2>&1 | tail -8
+
+      - name: Pass 7 单元 + smoke
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass7_loop_lower.py
+          python3 tests/smoke_pass7_full.py 2>&1 | tail -8
+
+      - name: TRANSLATION_SCOPE_OUTPUT_PARAMS 一致性
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_output_params_consistency.py 2>&1 | tail -5

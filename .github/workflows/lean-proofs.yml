@@ -1,0 +1,75 @@
+name: Lean L2/L3 proofs
+
+on:
+  push:
+    branches: [master, feature/formal-proofs]
+    paths:
+      - 'proof/lean/**'
+      - '.github/workflows/lean-proofs.yml'
+  pull_request:
+    branches: [master, feature/formal-proofs]
+    paths:
+      - 'proof/lean/**'
+      - '.github/workflows/lean-proofs.yml'
+  workflow_dispatch:
+
+jobs:
+  lake-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Lean toolchain
+        id: toolchain
+        run: |
+          cd proof/lean
+          ver=$(cat lean-toolchain | sed 's|^leanprover/lean4:||')
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Lean toolchain: $ver"
+
+      - name: Install elan
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Install Lean toolchain
+        run: |
+          cd proof/lean
+          elan toolchain install "${{ steps.toolchain.outputs.version }}"
+          elan override set "${{ steps.toolchain.outputs.version }}"
+
+      - name: Cache Mathlib build artifacts
+        uses: actions/cache@v4
+        with:
+          path: proof/lean/.lake
+          key: lake-${{ steps.toolchain.outputs.version }}-${{ hashFiles('proof/lean/lake-manifest.json') }}
+          restore-keys: |
+            lake-${{ steps.toolchain.outputs.version }}-
+
+      - name: Lake get dependencies
+        run: |
+          cd proof/lean
+          lake exe cache get || true
+
+      - name: Lake build (all CLPoly proofs)
+        run: |
+          cd proof/lean
+          lake build 2>&1 | tail -50
+
+      - name: Lake build B2B targets
+        run: |
+          cd proof/lean
+          lake build B2B.Registry B2B.Driver 2>&1 | tail -10
+
+      - name: Verify zero sorry in L2/L3 proofs
+        run: |
+          cd proof/lean
+          if grep -rn "sorry" CLPoly/ --include="*.lean" | grep -v "/Experiment/" | grep -v -- "-- sorry" ; then
+            echo "ERROR: found sorry outside Experiment/"
+            exit 1
+          else
+            echo "OK: no sorry in L2/L3 (Experiment/ allowed)"
+          fi

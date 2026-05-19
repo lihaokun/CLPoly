@@ -172,8 +172,9 @@ def test_classic_both_containers_with_pred_inversion():
     # 深扫两个 filter 的 pred，验证都是 UnaryOp("!")
     preds = []
     # P7-8 修复后：Array.filter' 的 lambda 已被 lifted 到 aux_lambdas，
-    # Call args[1] 是 Var(lifted_name) 不是 LambdaExpr。从 aux_lambdas 找
-    # 对应 lifted lambda 的 body 提取 pred。
+    # 自 ac757f7 (stage F #4) 起：若 lifted lambda 有 captures，
+    # Pass 4 在调用点 emit partial-app `Call(_lambda_, [cap_var_refs])`，
+    # 否则 emit 裸 `Var(lifted_name)`. 两种形态都要提取。
     from ir_types import AssignStmt, Call, Var, LambdaExpr, ReturnStmt
     lifted_names: list[str] = []
     def walk(stmts):
@@ -185,6 +186,9 @@ def test_classic_both_containers_with_pred_inversion():
                     arg = s.value.args[1]
                     if isinstance(arg, Var):
                         lifted_names.append(arg.name)
+                    elif isinstance(arg, Call) and isinstance(arg.callee, str):
+                        # partial-app 形态：Call(lifted_name, [captures...])
+                        lifted_names.append(arg.callee)
             if isinstance(s, (RangeForStmt, WhileStmt, DoWhileStmt)): walk(s.body)
             elif isinstance(s, IfStmt): walk(s.then_body); walk(s.else_body)
             elif isinstance(s, ForStmt): walk(s.init); walk(s.step); walk(s.body)

@@ -75,16 +75,11 @@ jobs:
       - name: Pass 3b 单元
         run: cd proof/cpp2lean_v2 && python3 tests/test_pass3b_lambda_ref_elim.py
 
-      # Pass 4 unit 还剩 1 个 pre-existing fail (test_classic_both_containers_
-      # with_pred_inversion)：__extract_monomial_content 有 B-For + B-While
-      # 两个 erase 循环，pass4 只识别 1 个 Array.filter'（B 形态 + 不同容器
-      # iter 类型的 recognition gap，与本 PR 无关）。后续单独修。
-      - name: Pass 4 单元 (continue-on-error — 1 个 pre-existing recognition gap)
-        continue-on-error: true
-        run: cd proof/cpp2lean_v2 && python3 tests/test_pass4_iter.py 2>&1 | tail -15
-
-      - name: Pass 4 smoke
-        run: cd proof/cpp2lean_v2 && python3 tests/smoke_pass4_full.py 2>&1 | tail -8
+      - name: Pass 4 单元 + smoke
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass4_iter.py
+          python3 tests/smoke_pass4_full.py 2>&1 | tail -8
 
       - name: Pass 5 单元 + smoke
         run: |

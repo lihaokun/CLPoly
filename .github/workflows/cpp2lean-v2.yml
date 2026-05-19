@@ -75,26 +75,22 @@ jobs:
       - name: Pass 3b 单元
         run: cd proof/cpp2lean_v2 && python3 tests/test_pass3b_lambda_ref_elim.py
 
-      # Pass 4 unit 有 4 个 pre-existing fail（filter recognition pattern
-      # 识别 bug，与本 PR 无关），smoke 全过。先 continue-on-error 保 CI
-      # 推进，后续单独修。
-      - name: Pass 4 单元 (continue-on-error — 已知 pre-existing fail)
+      # Pass 4 unit 还剩 1 个 pre-existing fail (test_classic_both_containers_
+      # with_pred_inversion)：__extract_monomial_content 有 B-For + B-While
+      # 两个 erase 循环，pass4 只识别 1 个 Array.filter'（B 形态 + 不同容器
+      # iter 类型的 recognition gap，与本 PR 无关）。后续单独修。
+      - name: Pass 4 单元 (continue-on-error — 1 个 pre-existing recognition gap)
         continue-on-error: true
         run: cd proof/cpp2lean_v2 && python3 tests/test_pass4_iter.py 2>&1 | tail -15
 
       - name: Pass 4 smoke
         run: cd proof/cpp2lean_v2 && python3 tests/smoke_pass4_full.py 2>&1 | tail -8
 
-      # Pass 5 unit 的 test_smoke_all_65 子用例有 5 个函数 (__lll_reduce /
-      # __mtshl_*) 卡在 lambda call 未消解（pre-existing P0-2 violation），
-      # 其余 5 个 unit 用例全过。smoke_pass5_full 用 B 策略容差，所以 smoke
-      # 仍能跑 0 gap。
-      - name: Pass 5 单元 (continue-on-error — 已知 lambda call resolve 缺口)
-        continue-on-error: true
-        run: cd proof/cpp2lean_v2 && python3 tests/test_pass5_resolve.py
-
-      - name: Pass 5 smoke
-        run: cd proof/cpp2lean_v2 && python3 tests/smoke_pass5_full.py 2>&1 | tail -8
+      - name: Pass 5 单元 + smoke
+        run: |
+          cd proof/cpp2lean_v2
+          python3 tests/test_pass5_resolve.py
+          python3 tests/smoke_pass5_full.py 2>&1 | tail -8
 
       - name: MIR ir_types 单元
         run: cd proof/cpp2lean_v2 && python3 tests/test_mir_types.py

@@ -1,81 +1,77 @@
 # AST Kind 直方图
 
-> 生成时间：2026-05-12 01:45
-> 覆盖 70 个函数
+> 生成时间：2026-05-19 01:18
+> 覆盖 5 个函数
 
 按出现次数降序。每 kind 列首次出现的函数名（样例）。
 
 | Kind | Count | First Seen In |
 |---|---|---|
-| DeclRefExpr | 6534 | __assign_partial_zp |
-| ImplicitCastExpr | 5548 | __assign_partial_zp |
-| CXXOperatorCallExpr | 1366 | __assign_partial_zp |
-| MemberExpr | 1230 | __assign_partial_zp |
-| VarDecl | 1181 | __assign_partial_zp |
-| DeclStmt | 1156 | __assign_partial_zp |
-| CXXMemberCallExpr | 911 | __assign_partial_zp |
-| CXXConstructExpr | 654 | __assign_partial_zp |
-| IntegerLiteral | 608 | __assign_partial_zp |
-| CXXBindTemporaryExpr | 560 | __assign_partial_zp |
-| ExprWithCleanups | 552 | __assign_partial_zp |
-| BinaryOperator | 543 | __assign_partial_zp |
-| MaterializeTemporaryExpr | 542 | __assign_partial_zp |
-| CallExpr | 523 | __assign_partial_zp |
-| CompoundStmt | 397 | __assign_partial_zp |
-| IfStmt | 288 | __binomial |
-| ParmVarDecl | 278 | __assign_partial_zp |
-| UnaryOperator | 268 | __assign_partial_zp |
-| ReturnStmt | 176 | __assign_partial_zp |
-| RecordType | 168 | __assign_partial_zp |
-| CXXFunctionalCastExpr | 157 | __binomial |
-| TemplateArgument | 148 | __assign_partial_zp |
-| ForStmt | 147 | __assign_partial_zp |
-| ElaboratedType | 99 | __assign_partial_zp |
-| CXXForRangeStmt | 95 | __build_cld_matrix |
-| CXXBoolLiteralExpr | 82 | __edf_Zp |
-| TemplateSpecializationType | 71 | __assign_partial_zp |
-| FunctionDecl | 70 | __assign_partial_zp |
-| CStyleCastExpr | 70 | __build_cld_matrix |
-| CXXDefaultArgExpr | 70 | __build_cld_matrix |
-| SubstTemplateTypeParmType | 68 | __assign_partial_zp |
-| ParenExpr | 62 | __build_cld_matrix |
-| BindingDecl | 60 | __extract_monomial_content |
-| ContinueStmt | 52 | __edf_Zp |
-| StringLiteral | 48 | __cld_polys |
-| SourceLocExpr | 48 | __cld_polys |
-| CXXTemporaryObjectExpr | 46 | __lll_reduce |
-| CXXMethodDecl | 41 | __build_cld_matrix |
-| ConditionalOperator | 40 | __build_cld_matrix |
-| DecompositionDecl | 30 | __extract_monomial_content |
-| CXXStaticCastExpr | 27 | __cld_polys |
-| BreakStmt | 27 | __ddf_Zp |
-| FieldDecl | 27 | __lll_reduce |
-| LambdaExpr | 24 | __build_cld_matrix |
-| CXXRecordDecl | 24 | __build_cld_matrix |
-| CXXDestructorDecl | 24 | __build_cld_matrix |
-| PredefinedExpr | 24 | __cld_polys |
-| TypeAliasDecl | 20 | __assign_partial_zp |
-| WhileStmt | 20 | __edf_Zp |
-| InitListExpr | 12 | __ddf_Zp |
-| CXXConstructorDecl | 12 | __factor_Zp |
-| ImplicitValueInitExpr | 12 | __hensel_tree_build |
-| CXXConversionDecl | 11 | __build_cld_matrix |
-| CXXStdInitializerListExpr | 9 | __ddf_Zp |
-| CompoundAssignOperator | 6 | __select_eval_point |
-| CXXCtorInitializer | 4 | __lll_reduce |
-| FloatingLiteral | 3 | __heuristic_starting_precision |
-| DoStmt | 2 | __wang_core |
+| DeclRefExpr | 284 | __hensel_step |
+| ImplicitCastExpr | 193 | __hensel_step |
+| MemberExpr | 101 | __hensel_step |
+| CXXOperatorCallExpr | 67 | __hensel_step |
+| VarDecl | 56 | __hensel_step |
+| CXXMemberCallExpr | 55 | __hensel_step |
+| DeclStmt | 53 | __hensel_step |
+| ExprWithCleanups | 28 | __hensel_step |
+| CXXBindTemporaryExpr | 25 | __hensel_step |
+| CallExpr | 24 | __hensel_step |
+| CXXConstructExpr | 23 | __hensel_step |
+| MaterializeTemporaryExpr | 14 | __hensel_step |
+| CompoundStmt | 12 | __hensel_step |
+| ParmVarDecl | 11 | __hensel_step |
+| RecordType | 8 | factorize |
+| CXXForRangeStmt | 7 | __hensel_step |
+| TemplateArgument | 7 | factorize |
+| IfStmt | 6 | __hensel_step |
+| FunctionDecl | 5 | __hensel_step |
+| IntegerLiteral | 5 | __hensel_step |
+| ReturnStmt | 5 | __upoly_const_term |
+| CXXFunctionalCastExpr | 4 | __hensel_step |
+| ElaboratedType | 4 | factorize |
+| SubstTemplateTypeParmType | 4 | factorize |
+| TemplateSpecializationType | 3 | factorize |
+| ForStmt | 2 | __hensel_step |
+| BindingDecl | 2 | factorize |
+| BinaryOperator | 1 | __upoly_const_term |
+| TypeAliasDecl | 1 | factorize |
+| DecompositionDecl | 1 | factorize |
 
 ## 罕见 Kind 样例（≤3 次出现）
 
-### `DoStmt` （2 次，首现 `__wang_core`）
+### `BinaryOperator` （1 次，首现 `__upoly_const_term`）
 
 ```json
-{"id": "0x7ada75153500", "kind": "DoStmt", "range": {"line": 2375, "col": 29}}
+{"id": "0x7a18a461fa28", "kind": "BinaryOperator", "range": {"line": null, "col": 13}, "type": {"qualType": "bool"}, "valueCategory": "prvalue", "opcode": "=="}
 ```
 
-### `FloatingLiteral` （3 次，首现 `__heuristic_starting_precision`）
+### `BindingDecl` （2 次，首现 `factorize`）
 
 ```json
-{"id": "0x7eaf1dc07ef0", "kind": "FloatingLiteral", "range": {"line": null, "col": 14}, "type": {"qualType": "double"}, "valueCategory": "prvalue", "value": "2.5"}
+{"id": "0x7c38d741ed60", "kind": "BindingDecl", "range": {"line": null, "col": 21}, "isReferenced": true, "name": "fac"}
+```
+
+### `DecompositionDecl` （1 次，首现 `factorize`）
+
+```json
+{"id": "0x7c38d741edf0", "kind": "DecompositionDecl", "range": {"line": null, "col": 14}, "isUsed": true, "type": {"qualType": "std::pair<clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::lex_<clpoly::less>>, clpoly::ZZ, clpoly::lex_<clpoly::less>>, unsigned long> &"}, "init": "c"}
+```
+
+### `ForStmt` （2 次，首现 `__hensel_step`）
+
+```json
+{"id": "0x7667f358a380", "kind": "ForStmt", "range": {"line": 425, "col": 9}}
+```
+
+### `TemplateSpecializationType` （3 次，首现 `factorize`）
+
+```json
+{"id": "0x7c38d74158c0", "kind": "TemplateSpecializationType", "type": {"qualType": "polynomial_<ZZ, clpoly::grlex_<clpoly::less>>"}, "isAlias": true, "templateName": "polynomial_"}
+```
+
+### `TypeAliasDecl` （1 次，首现 `factorize`）
+
+```json
+{"id": "0x7c38d7415988", "kind": "TypeAliasDecl", "range": {"line": null, "col": 9}, "isReferenced": true, "name": "Poly", "type": {"desugaredQualType": "clpoly::basic_polynomial<clpoly::basic_monomial<clpoly::grlex_<clpoly::less>>, clpoly::ZZ, clpoly::grlex_<clpoly::less>>", "qualType": "polynomial_<ZZ, grlex_<less>>"}}
 ```

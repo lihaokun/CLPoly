@@ -1270,14 +1270,19 @@ def assert_hir4_invariant(func: HIRFunc) -> None:
         )
 
     def check_callee(callee, ctx: str):
-        # callee 可以是 str 或 UnresolvedOp（B 策略允许）
-        if isinstance(callee, (str, UnresolvedOp)):
+        # callee 可以是：
+        #  - str（已解析的函数/方法名）
+        #  - UnresolvedOp（B 策略允许残留）
+        #  - Var（commit 29258c3 起：local-var lambda 调用，Pass 1/5/6/7
+        #    全链路保留 Var callee 携带 SSA 命名信息；Pass 8 codegen 在
+        #    实际产物中替换为 fully-applied lifted function 调用）
+        if isinstance(callee, (str, UnresolvedOp, Var)):
             if isinstance(callee, str):
                 if callee == "<callable>":
                     fail(f"{ctx}: P0-1 violation — '<callable>' placeholder")
             return
         fail(f"{ctx}: P0-2 violation — Call.callee is {type(callee).__name__} "
-             f"(must be str or UnresolvedOp), got {callee!r}")
+             f"(must be str / UnresolvedOp / Var), got {callee!r}")
 
     def check_expr(e, ctx: str):
         if isinstance(e, Call):

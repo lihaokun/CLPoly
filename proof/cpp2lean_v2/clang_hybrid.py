@@ -36,9 +36,6 @@ def _get_system_includes() -> list[str]:
             if capture and line.startswith(" "):
                 paths.append(f"-I{line.strip()}")
         # libclang 的内建头文件（stddef.h 等）
-        import glob
-        for d in glob.glob("/usr/lib/llvm-*/lib/clang/*/include"):
-            paths.append(f"-I{d}")
         return paths
     except Exception:
         return []

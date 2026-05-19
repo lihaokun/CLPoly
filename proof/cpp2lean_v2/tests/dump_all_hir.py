@@ -204,9 +204,6 @@ def _dump_factorize_instances(out_dir: Path):
                     break
                 if cap and line.startswith(" "):
                     paths.append(f"-I{line.strip()}")
-            import glob
-            for d in glob.glob("/usr/lib/llvm-*/lib/clang/*/include"):
-                paths.append(f"-I{d}")
             return paths
         except Exception:
             return []

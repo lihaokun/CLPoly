@@ -49,13 +49,16 @@ def _load_hir2(func_name: str) -> HIRFunc:
 
 
 def _count_filter_calls(stmts):
-    """递归统计 Call("Array.filter" | "StdMap.filter", ...)（B1 续修：StdMap 容器）。"""
+    """递归统计 Call("Array.filter'" | "StdMap.filter", ...)（B1 续修：StdMap 容器）。
+
+    注：自 ac757f7 起 Pass 4 emit ' 后缀（对齐 Model.lean 的 (arr, pred) 参数顺序）。
+    """
     from ir_types import BlockStmt, DoWhileStmt
     n = 0
     for s in stmts:
         if isinstance(s, AssignStmt) and isinstance(s.value, Call):
             if isinstance(s.value.callee, str) \
-                    and s.value.callee in ("Array.filter", "StdMap.filter"):
+                    and s.value.callee in ("Array.filter'", "StdMap.filter"):
                 n += 1
         if isinstance(s, RangeForStmt): n += _count_filter_calls(s.body)
         elif isinstance(s, IfStmt):
@@ -118,15 +121,15 @@ def test_compact_erase_pure_body():
     hir3 = iter_recognize_pass(_load_hir2("__hensel_step"))
     assert_hir3_invariant(hir3)
     n = _count_filter_calls(hir3.body)
-    assert n == 2, f"expected 2 Array.filter for __hensel_step, got {n}"
+    assert n == 2, f"expected 2 Array.filter' for __hensel_step, got {n}"
 
 
 def _count_filtermap_calls(stmts):
-    """统计 Call("Array.filterMap", ...) (CF-1 mutate-then-filter)。"""
+    """统计 Call("Array.filterMap'", ...) (CF-1 mutate-then-filter)。"""
     n = 0
     for s in stmts:
         if isinstance(s, AssignStmt) and isinstance(s.value, Call):
-            if isinstance(s.value.callee, str) and s.value.callee == "Array.filterMap":
+            if isinstance(s.value.callee, str) and s.value.callee == "Array.filterMap'":
                 n += 1
         if isinstance(s, RangeForStmt): n += _count_filtermap_calls(s.body)
         elif isinstance(s, IfStmt):
@@ -145,8 +148,8 @@ def test_upoly_mod_coeff_mutate_filter():
     assert_hir3_invariant(hir3)
     n_filter = _count_filter_calls(hir3.body)
     n_filtermap = _count_filtermap_calls(hir3.body)
-    assert n_filter == 0, f"expected 0 Array.filter, got {n_filter}"
-    assert n_filtermap >= 1, f"expected >=1 Array.filterMap (mutate-then-filter), got {n_filtermap}"
+    assert n_filter == 0, f"expected 0 Array.filter', got {n_filter}"
+    assert n_filtermap >= 1, f"expected >=1 Array.filterMap' (mutate-then-filter), got {n_filtermap}"
 
 
 def test_hensel_step_linear_mutate_filter():
@@ -155,7 +158,7 @@ def test_hensel_step_linear_mutate_filter():
     hir3 = iter_recognize_pass(_load_hir2("__hensel_step_linear"))
     assert_hir3_invariant(hir3)
     n_filtermap = _count_filtermap_calls(hir3.body)
-    assert n_filtermap >= 1, f"expected >=1 Array.filterMap, got {n_filtermap}"
+    assert n_filtermap >= 1, f"expected >=1 Array.filterMap', got {n_filtermap}"
 
 
 def test_classic_both_containers_with_pred_inversion():
@@ -164,13 +167,14 @@ def test_classic_both_containers_with_pred_inversion():
     hir3 = iter_recognize_pass(_load_hir2("__extract_monomial_content"))
     assert_hir3_invariant(hir3)
     n = _count_filter_calls(hir3.body)
-    assert n == 2, f"expected 2 Array.filter (B-For + B-While), got {n}"
+    assert n == 2, f"expected 2 Array.filter' (B-For + B-While), got {n}"
 
     # 深扫两个 filter 的 pred，验证都是 UnaryOp("!")
     preds = []
-    # P7-8 修复后：Array.filter 的 lambda 已被 lifted 到 aux_lambdas，
-    # Call args[1] 是 Var(lifted_name) 不是 LambdaExpr。从 aux_lambdas 找
-    # 对应 lifted lambda 的 body 提取 pred。
+    # P7-8 修复后：Array.filter' 的 lambda 已被 lifted 到 aux_lambdas，
+    # 自 ac757f7 (stage F #4) 起：若 lifted lambda 有 captures，
+    # Pass 4 在调用点 emit partial-app `Call(_lambda_, [cap_var_refs])`，
+    # 否则 emit 裸 `Var(lifted_name)`. 两种形态都要提取。
     from ir_types import AssignStmt, Call, Var, LambdaExpr, ReturnStmt
     lifted_names: list[str] = []
     def walk(stmts):
@@ -178,10 +182,13 @@ def test_classic_both_containers_with_pred_inversion():
         for s in stmts:
             if isinstance(s, AssignStmt) and isinstance(s.value, Call):
                 if isinstance(s.value.callee, str) \
-                        and s.value.callee in ("Array.filter", "StdMap.filter"):
+                        and s.value.callee in ("Array.filter'", "StdMap.filter"):
                     arg = s.value.args[1]
                     if isinstance(arg, Var):
                         lifted_names.append(arg.name)
+                    elif isinstance(arg, Call) and isinstance(arg.callee, str):
+                        # partial-app 形态：Call(lifted_name, [captures...])
+                        lifted_names.append(arg.callee)
             if isinstance(s, (RangeForStmt, WhileStmt, DoWhileStmt)): walk(s.body)
             elif isinstance(s, IfStmt): walk(s.then_body); walk(s.else_body)
             elif isinstance(s, ForStmt): walk(s.init); walk(s.step); walk(s.body)
@@ -199,7 +206,7 @@ def test_classic_both_containers_with_pred_inversion():
         p = ret.value
         assert isinstance(p, UnaryOp) and p.op == "!", \
             f"pred[{i}] should be UnaryOp('!', ...) for form B inversion, got {type(p).__name__}"
-    assert len(lifted_names) == 2, f"expected 2 Array.filter calls, got {len(lifted_names)}"
+    assert len(lifted_names) == 2, f"expected 2 Array.filter' calls, got {len(lifted_names)}"
 
 
 # ============================================================

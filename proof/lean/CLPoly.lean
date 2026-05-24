@@ -21,6 +21,9 @@ import CLPoly.Algorithm.Recombine
 import CLPoly.Pipeline.FactorZpInstantiate
 import CLPoly.Pipeline.FactorZZInstantiate
 
+-- L1 实例化（翻译代码管线）
+import CLPoly.Pipeline.L1
+
 -- Phase 0: 实验（保留参考，E4 被 Algorithm.DDF 取代）
 import CLPoly.Experiment.E1_ZpPolyAPI
 import CLPoly.Experiment.E2_TheoremBridge

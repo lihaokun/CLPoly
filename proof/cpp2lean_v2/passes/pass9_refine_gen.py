@@ -82,6 +82,7 @@ _PARAM_TABLE = {
     "__symmetric_mod": [("a", "ZZ"), ("m", "ZZ")],
     "__binomial": [("n", "Int64"), ("k", "Int64")],
     "__isqrt_ceil": [("n", "ZZ")],
+    "__upoly_mod":      [("f", "SparsePolyZp"), ("g", "SparsePolyZp")],
     "__edf_Zp":         [("result", "Array SparsePolyZp"), ("f", "SparsePolyZp"),
                          ("d", "UInt64"), ("rng", "Rng")],
     "__factor_Zp":      [("f", "SparsePolyZp")],

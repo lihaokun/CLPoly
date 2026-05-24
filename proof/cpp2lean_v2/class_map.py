@@ -881,6 +881,16 @@ REFINEMENT_MAP = {
         "cpp_source": "clpoly/number/ZZ.hh",
         "doc": "向上取整平方根 ceil(sqrt(n))",
     },
+    "__upoly_mod": {
+        "l1_name": "__upoly_mod_ir",
+        "l2_name": "SparsePolyZp.divmod",
+        "l2_call": "(SparsePolyZp.divmod f g).snd",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZpArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/upolynomial.hh",
+        "doc": "多项式取模 remainder = f mod g",
+    },
 }
 
 TRANSLATION_SCOPE = {

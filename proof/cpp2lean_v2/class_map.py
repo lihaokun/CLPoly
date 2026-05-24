@@ -783,6 +783,106 @@ def is_callee_nonvoid(callee: str, num_args: int) -> bool:
     return (f"{callee}#{num_args}" in TRANSLATION_SCOPE_NONVOID_REFOUT
             or callee in TRANSLATION_SCOPE_NONVOID_REFOUT)
 
+# ============================================================
+# REFINEMENT_MAP: L1 translated function → L2 algorithm model
+#
+# Each entry maps a TRANSLATION_SCOPE function (by base_name) to its
+# L2 mathematical model. The generator (Pass 9) uses this to emit
+# refinement theorem skeletons.
+#
+# Fields:
+#   l2_name        — L2 function name (in CLPoly.Algorithm.* or Model)
+#   l2_import      — Lean import path for the L2 module
+#   refinement_file — Output file name (without .lean)
+#   bridge         — Type bridge: "toPoly" | "toZMod" | "identity" | "toMathlib"
+#   result_kind    — Theorem shape (see pass9 docstring)
+#   cpp_source     — Original C++ source file (for docstring provenance)
+#   doc            — Human-readable description
+# ============================================================
+
+REFINEMENT_MAP = {
+    "__squarefree_Zp": {
+        "l1_name": "__squarefree_Zp_ir",
+        "l2_name": "sqfZp",
+        "l2_call": "sqfZp (SparsePolyZp.toPoly p f)",
+        "l2_import": "CLPoly.Algorithm.SquarefreeZp",
+        "refinement_file": "SquarefreeZp",
+        "result_kind": "map_eq",
+        "cpp_source": "clpoly/polynomial_factorize_zp.hh",
+        "doc": "无平方因子分解（Yun 算法）",
+    },
+    "__ddf_Zp": {
+        "l1_name": "__ddf_Zp_ir",
+        "l2_name": "ddf",
+        "l2_call": "ddf (SparsePolyZp.toPoly p f)",
+        "l2_import": "CLPoly.Algorithm.DDF",
+        "refinement_file": "DDF",
+        "result_kind": "map_eq",
+        "cpp_source": "clpoly/polynomial_factorize_zp.hh",
+        "doc": "不同度数因子分解",
+    },
+    "__make_zp": {
+        "l1_name": "__make_zp_ir",
+        "l2_name": "Zp.ofInt",
+        "l2_call": "Zp.ofInt val.toInt modulus",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZpArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/number/ZZ.hh",
+        "doc": "Zp 构造函数",
+    },
+    "__upoly_make_monic": {
+        "l1_name": "__upoly_make_monic_ir",
+        "l2_name": "SparsePolyZp.makeMonic",
+        "l2_call": "SparsePolyZp.makeMonic f",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZpArith",
+        "result_kind": "map_eq_pair",
+        "cpp_source": "clpoly/upolynomial.hh",
+        "doc": "首一化：multiply by inv(lc)",
+    },
+    "__upoly_divmod": {
+        "l1_name": "__upoly_divmod_ir",
+        "l2_name": "SparsePolyZp.divmod",
+        "l2_call": "SparsePolyZp.divmod f g",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZpArith",
+        "result_kind": "pair_eq",
+        "cpp_source": "clpoly/upolynomial.hh",
+        "doc": "多项式长除法：q = f / g, r = f mod g",
+    },
+    "__symmetric_mod": {
+        "l1_name": "__symmetric_mod_ir",
+        "l2_name": "ZZ.symmetricMod",
+        "l2_call": "ZZ.symmetricMod a m",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZZArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/number/ZZ.hh",
+        "doc": "对称模运算：a mod m → [-m/2, m/2]",
+    },
+    "__binomial": {
+        "l1_name": "__binomial_ir",
+        "l2_name": "ZZ.binomial",
+        "l2_call": "ZZ.binomial n k",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZZArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "二项式系数 n choose k",
+    },
+    "__isqrt_ceil": {
+        "l1_name": "__isqrt_ceil_ir",
+        "l2_name": "ZZ.isqrtCeil",
+        "l2_call": "ZZ.isqrtCeil n",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZZArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/number/ZZ.hh",
+        "doc": "向上取整平方根 ceil(sqrt(n))",
+    },
+}
+
 TRANSLATION_SCOPE = {
     # Zp 模块 (13)
     "__make_zp", "__upoly_make_monic", "__upoly_mod", "__upoly_divmod",

@@ -24,6 +24,7 @@ from pass5_operator_resolve import operator_resolve_pass
 from pass6_ssa_build import ssa_build_pass
 from pass7_loop_lower import loop_lower_pass
 from pass8_codegen import codegen_corpus
+from pass9_refine_gen import refine_gen_pass
 from smoke_pass2_full import _get_factorize_instances
 
 AST_CACHE = V2_ROOT / "tests" / "ast_cache"
@@ -84,6 +85,13 @@ def main():
     if skipped:
         print(f"  skipped: {len(skipped)}", file=sys.stderr)
         for s in skipped: print(f"    {s}", file=sys.stderr)
+
+    # Pass 9: 生成精化定理骨架
+    try:
+        refine_gen_pass(mirs)
+        print(f"Refinement skeletons generated.", file=sys.stderr)
+    except Exception as e:
+        print(f"Refinement gen error: {type(e).__name__}: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -1023,6 +1023,24 @@ def ZZ.sizeinbase_nat (z : ZZ) (base : Nat) : Nat :=
 def ZZ.sizeinbase (z : ZZ) (base : Int32) : UInt64 :=
   (ZZ.sizeinbase_nat z base.toInt64.toNatClampNeg).toUInt64
 
+/-- 对称模运算 a mod m → [-m/2, m/2] -/
+def ZZ.symmetricMod (a m : ZZ) : ZZ :=
+  let r := a % m
+  if r * 2 ≤ m then r else r - m
+
+/-- 整数二项式系数 -/
+def ZZ.binomial (n k : ZZ) : ZZ :=
+  if 0 ≤ k ∧ k ≤ n then
+    1  -- TODO: implement Nat.choose for ZZ
+  else 0
+
+/-- 整数向上取整平方根 -/
+noncomputable def ZZ.isqrtCeil (n : ZZ) : ZZ :=
+  if n ≤ 0 then 0
+  else
+    -- TODO: implement Nat.sqrt for ZZ
+    n
+
 -- spec 1: 总是 ≥ 1
 theorem ZZ.sizeinbase_nat_pos (z : ZZ) (b : Nat) :
     1 ≤ ZZ.sizeinbase_nat z b := by

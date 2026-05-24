@@ -26,3 +26,10 @@ import CLPoly.Experiment.E1_ZpPolyAPI
 import CLPoly.Experiment.E2_TheoremBridge
 import CLPoly.Experiment.E3_ZModPkDiv
 -- import CLPoly.Experiment.E4_Termination  -- 与 Algorithm.DDF 冲突（ddfLoop 重定义）
+
+-- Phase 9: L1 → L2 精化定理
+import CLPoly.Refinement.Basic
+import CLPoly.Refinement.DDF
+import CLPoly.Refinement.SquarefreeZp
+import CLPoly.Refinement.ZZArith
+import CLPoly.Refinement.ZpArith

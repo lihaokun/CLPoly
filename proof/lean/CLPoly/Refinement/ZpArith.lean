@@ -50,8 +50,28 @@ theorem __upoly_make_monic_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (hred_f : SparsePolyZp.AllReduced p f.toList)
     (hp_size : 2 * p ≤ UInt64.size)
     :   SparsePolyZp.toPoly p (Generated.__upoly_make_monic_ir f).snd = SparsePolyZp.toPoly p (SparsePolyZp.makeMonic f) :=
-  by
-  sorry
+by
+  by_cases hempty : f.isEmpty
+  · simp [hempty, Generated.__upoly_make_monic_ir, SparsePolyZp.makeMonic, SparsePolyZp.toPoly_empty p]
+  · have h_nonempty : ¬ f.isEmpty := hempty
+    have h_pos : 0 < Array.size f := Array.size_pos_of_nonempty h_nonempty
+    unfold Generated.__upoly_make_monic_ir SparsePolyZp.makeMonic
+    let lc := (SparsePolyZp.front! f).snd
+    have hlc_prime : lc.prime.toNat = p := hwf_f _ (by
+      -- need to show (SparsePolyZp.front! f) ∈ f
+      have : (SparsePolyZp.front! f) ∈ f := by
+        simpa [SparsePolyZp.front!, Array.mem_iff_get] using h_pos
+      exact this)
+    have hlc_val_lt_p : lc.val.toNat < p := hred_f _ (by
+      have : (SparsePolyZp.front! f) ∈ f := by
+        simpa [SparsePolyZp.front!, Array.mem_iff_get] using h_pos
+      exact this)
+    by_cases hone : lc.val = (1 : UInt64)
+    · simp [hone]
+    · have h_lc_inv := Zp.inv lc
+      sorry
+      -- TODO: finish the proof by showing loop result = scalarMul lc_inv f under toPoly
+      sorry
 
 /--
   L1 `__upoly_divmod_ir` (C++: `clpoly/upolynomial.hh`) → L2 `SparsePolyZp.divmod`

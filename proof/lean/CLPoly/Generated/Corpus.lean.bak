@@ -6,19 +6,6 @@ set_option maxErrors 2000
 
 namespace Generated
 
-
-def _loop___upoly_make_monic_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : SparsePolyZp) (lc_inv_1 : Zp) : (Int64 × SparsePolyZp) :=
-  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
-    let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_2[(__rangefor_idx_0_2)]!)
-    let term_2 : (UMonomial × Zp) := { term_1 with snd := (term_1.snd * lc_inv_1) }
-    let __rangefor_cont_0_3 : SparsePolyZp := (Array.set! __rangefor_cont_0_2 __rangefor_idx_0_2 term_2)
-    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-    _loop___upoly_make_monic_0_ir __rangefor_idx_0_3 __rangefor_cont_0_3 lc_inv_1
-  else
-    ((0 : Int64), __rangefor_cont_0_2)
-
-termination_by Array.size __rangefor_cont_0_2 - __rangefor_idx_0_2
-
 mutual
 partial def _loop___assign_partial_zp_lex_0_ir (i_2 : Nat) (result_2 : PolyZp) (alphas : Array Zp) (vars : Array Variable) : (Int64 × PolyZp) :=
   if (i_2 < (Array.size vars)) then
@@ -4908,6 +4895,16 @@ partial def __upoly_divmod_mod_upoly_ir (q : SparsePolyZZ) (_r : SparsePolyZZ) (
   let q_2 : SparsePolyZZ := __loop_ret___upoly_divmod_mod_upoly_1_1.2.1
   let r_3 : SparsePolyZZ := __loop_ret___upoly_divmod_mod_upoly_1_1.2.2
   (q_2, r_3)
+
+partial def _loop___upoly_make_monic_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : SparsePolyZp) (lc_inv_1 : Zp) : (Int64 × SparsePolyZp) :=
+  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
+    let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_2[(__rangefor_idx_0_2)]!)
+    let term_2 : (UMonomial × Zp) := { term_1 with snd := (term_1.snd * lc_inv_1) }
+    let __rangefor_cont_0_3 : SparsePolyZp := (Array.set! __rangefor_cont_0_2 __rangefor_idx_0_2 term_2)
+    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
+    _loop___upoly_make_monic_0_ir __rangefor_idx_0_3 __rangefor_cont_0_3 lc_inv_1
+  else
+    ((0 : Int64), __rangefor_cont_0_2)
 
 partial def __upoly_make_monic_ir (f : SparsePolyZp) : (Zp × SparsePolyZp) :=
   -- require (h_assert): (! (Array.isEmpty f))

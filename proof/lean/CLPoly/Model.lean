@@ -613,9 +613,9 @@ def divmod (f g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
 -- 标量乘（用于首一化）：multiply all coefs by const Zp
 def scalarMul (c : Zp) (f : SparsePolyZp) : SparsePolyZp :=
   f.filterMap (fun (m, x) =>
-    let new_val := x.val * c.val % c.prime
-    if new_val = 0 then none
-    else some (m, ⟨new_val, c.prime⟩))
+    let new_val := x * c
+    if new_val.val = 0 then none
+    else some (m, new_val))
 
 -- 首一化：multiply by inv(lc) — 与 C++ polynomial_GCD 输出约定一致
 def makeMonic (f : SparsePolyZp) : SparsePolyZp :=

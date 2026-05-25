@@ -68,6 +68,192 @@ theorem __make_zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     :   Generated.__make_zp_ir val modulus = Zp.ofInt val.toInt modulus :=
   rfl
 
+-- ============================================================
+-- Helper lemmas for list operations
+-- ============================================================
+
+theorem drop_eq_get_cons {α : Type} (l : List α) (n : Nat) (h : n < l.length) :
+    List.drop n l = l.get ⟨n, h⟩ :: List.drop (n + 1) l := by
+  induction l generalizing n with
+  | nil => simp at h
+  | cons hd tl ih =>
+    cases n with
+    | zero => simp
+    | succ n =>
+      have hn : n < tl.length := by
+        simpa [List.length_cons] using h
+      calc
+        List.drop (n + 1) (hd :: tl) = List.drop n tl := rfl
+        _ = tl.get ⟨n, hn⟩ :: List.drop (n + 1) tl := ih n hn
+        _ = (hd :: tl).get ⟨n + 1, h⟩ :: List.drop (n + 2) (hd :: tl) := by simp
+
+theorem take_all_of_le {α : Type} (l : List α) (idx : Nat) (h : l.length ≤ idx) : List.take idx l = l := by
+  revert h; induction l generalizing idx with
+  | nil => intro; simp
+  | cons hd tl ih =>
+    intro h
+    simp [List.length_cons] at h
+    cases idx with
+    | zero => simp at h
+    | succ n =>
+      have h' : tl.length ≤ n := Nat.le_of_succ_le_succ h
+      simp [List.take, ih n h']
+
+theorem drop_all_of_le {α : Type} (l : List α) (idx : Nat) (h : l.length ≤ idx) : List.drop idx l = [] := by
+  revert h; induction l generalizing idx with
+  | nil => intro; simp
+  | cons hd tl ih =>
+    intro h
+    simp [List.length_cons] at h
+    cases idx with
+    | zero => simp at h
+    | succ n =>
+      have h' : tl.length ≤ n := Nat.le_of_succ_le_succ h
+      simp [List.drop, ih n h']
+
+theorem take_set_succ {α : Type} (l : List α) (idx : Nat) (v : α) (h : idx < l.length) :
+    List.take (idx + 1) (l.set idx v) = List.take idx l ++ [v] := by
+  induction l generalizing idx with
+  | nil => simp at h
+  | cons hd tl ih =>
+    cases idx with
+    | zero => simp
+    | succ n =>
+      have hn : n < tl.length := by
+        simpa [List.length_cons] using h
+      simp [ih n hn]
+
+theorem drop_set_succ {α : Type} (l : List α) (idx : Nat) (v : α) (h : idx < l.length) :
+    List.drop (idx + 1) (l.set idx v) = List.drop (idx + 1) l := by
+  induction l generalizing idx with
+  | nil => simp at h
+  | cons hd tl ih =>
+    cases idx with
+    | zero => simp
+    | succ n =>
+      have hn : n < tl.length := by
+        simpa [List.length_cons] using h
+      simp [ih n hn]
+
+-- ============================================================
+-- Loop invariant for _loop___upoly_make_monic_0_ir
+-- ============================================================
+
+theorem loop_result_toList (f : SparsePolyZp) (c : Zp) (idx : Nat) (hidx : idx ≤ Array.size f) :
+    (Generated._loop___upoly_make_monic_0_ir idx f c).snd.toList =
+    (List.take idx (f.toList)) ++ (List.drop idx (f.toList)).map (fun (m, x) => (m, x * c)) := by
+  have h_wf : WellFounded (λ (a b : SparsePolyZp × Nat) => Array.size a.1 - a.2 < Array.size b.1 - b.2) :=
+    (measure (λ (p : SparsePolyZp × Nat) => Array.size p.1 - p.2)).wf
+  refine h_wf.induction (f, idx) (C := λ p =>
+    (Generated._loop___upoly_make_monic_0_ir p.2 p.1 c).snd.toList =
+    (List.take p.2 (p.1.toList)) ++ (List.drop p.2 (p.1.toList)).map (fun (m, x) => (m, x * c))) ?_
+  intro p ih
+  rw [Generated._loop___upoly_make_monic_0_ir.eq_1]
+  by_cases h : p.2 < Array.size p.1
+  · simp [h]
+    have hx_len : p.2 < p.1.toList.length := by simpa using h
+    have h_measure : Array.size (Array.set! p.1 p.2 (p.1[p.2].1, p.1[p.2].2 * c)) - (p.2 + 1) < Array.size p.1 - p.2 := by
+      simp; omega
+    have h_ih : (Generated._loop___upoly_make_monic_0_ir (p.2 + 1) (Array.set! p.1 p.2 (p.1[p.2].1, p.1[p.2].2 * c)) c).snd.toList =
+      (List.take (p.2 + 1) ((Array.set! p.1 p.2 (p.1[p.2].1, p.1[p.2].2 * c)).toList)) ++
+      (List.drop (p.2 + 1) ((Array.set! p.1 p.2 (p.1[p.2].1, p.1[p.2].2 * c)).toList)).map (fun (m, x) => (m, x * c)) :=
+      ih (Array.set! p.1 p.2 (p.1[p.2].1, p.1[p.2].2 * c), p.2 + 1) h_measure
+    dsimp [Array.set!] at h_ih ⊢
+    rw [h_ih]
+    have h_toList : (Array.setIfInBounds p.1 p.2 (p.1[p.2].1, p.1[p.2].2 * c)).toList =
+      (p.1.toList).set p.2 (p.1[p.2].1, p.1[p.2].2 * c) := by simp
+    rw [h_toList]
+    have htake : List.take (p.2 + 1) ((p.1.toList).set p.2 (p.1[p.2].1, p.1[p.2].2 * c)) =
+        List.take p.2 (p.1.toList) ++ [(p.1[p.2].1, p.1[p.2].2 * c)] :=
+      take_set_succ (p.1.toList) p.2 (p.1[p.2].1, p.1[p.2].2 * c) hx_len
+    have hdrop : List.drop (p.2 + 1) ((p.1.toList).set p.2 (p.1[p.2].1, p.1[p.2].2 * c)) =
+        List.drop (p.2 + 1) (p.1.toList) :=
+      drop_set_succ (p.1.toList) p.2 (p.1[p.2].1, p.1[p.2].2 * c) hx_len
+    rw [htake, hdrop]
+    have h_drop_cons : List.drop p.2 (p.1.toList) = (p.1[p.2].1, p.1[p.2].2) :: List.drop (p.2 + 1) (p.1.toList) := by
+      simpa using drop_eq_get_cons (p.1.toList) p.2 hx_len
+    calc
+      (List.take p.2 (p.1.toList) ++ [(p.1[p.2].1, p.1[p.2].2 * c)]) ++
+          (List.drop (p.2 + 1) (p.1.toList)).map (fun (m, x) => (m, x * c))
+          = List.take p.2 (p.1.toList) ++ ([(p.1[p.2].1, p.1[p.2].2 * c)] ++
+            (List.drop (p.2 + 1) (p.1.toList)).map (fun (m, x) => (m, x * c))) := by simp [List.append_assoc]
+      _ = List.take p.2 (p.1.toList) ++ (((p.1[p.2].1, p.1[p.2].2) :: List.drop (p.2 + 1) (p.1.toList)).map
+            (fun (m, x) => (m, x * c))) := by simp
+      _ = List.take p.2 (p.1.toList) ++ (List.drop p.2 (p.1.toList)).map (fun (m, x) => (m, x * c)) := by rw [h_drop_cons]
+    have h_eq : (List.drop p.2 p.1.toList).map (fun (m, x) => (m, x * c)) =
+      List.drop p.2 (List.map (fun x => (x.1, x.2 * c)) p.1.toList) := by
+      rw [List.map_drop]
+    rw [h_eq]
+  · simp [h]
+    have hidex : Array.size p.1 ≤ p.2 := by omega
+    have hlen : p.1.toList.length ≤ p.2 := by simpa using hidex
+    have htake : List.take p.2 (p.1.toList) = p.1.toList := take_all_of_le (p.1.toList) p.2 hlen
+    have hdrop : List.drop p.2 (p.1.toList) = [] := drop_all_of_le (p.1.toList) p.2 hlen
+    simp [htake, hdrop]
+    exact hidex
+
+theorem loop_toPoly (f : SparsePolyZp) (c : Zp)
+    (hred_f : SparsePolyZp.AllReduced p f.toList) (hc_prime : c.prime.toNat = p)
+    (hp_size : 2 * p ≤ UInt64.size) :
+    SparsePolyZp.toPoly p (Generated._loop___upoly_make_monic_0_ir 0 f c).snd =
+    C (c.toZMod p) * SparsePolyZp.toPoly p f := by
+  have h_list : (Generated._loop___upoly_make_monic_0_ir 0 f c).snd.toList =
+    (f.toList).map (fun (m, x) => (m, x * c)) := by
+    have h_inv := loop_result_toList f c 0 (Nat.zero_le _)
+    simpa [List.take, List.drop] using h_inv
+  calc
+    SparsePolyZp.toPoly p (Generated._loop___upoly_make_monic_0_ir 0 f c).snd
+        = listSum p ((Generated._loop___upoly_make_monic_0_ir 0 f c).snd.toList) := rfl
+    _ = listSum p ((f.toList).map (fun (m, x) => (m, x * c))) := by rw [h_list]
+    _ = C (c.toZMod p) * listSum p (f.toList) :=
+      listSum_map_mul_prime_only c f.toList hred_f hc_prime hp_size
+    _ = C (c.toZMod p) * SparsePolyZp.toPoly p f := rfl
+
+-- ============================================================
+-- toPoly of scalarMul: filterMap removes zero terms,
+-- but listSum is unchanged
+-- ============================================================
+
+theorem listSum_filterMap_eq_map (l : List (UMonomial × Zp)) (c : Zp)
+    (hred : ∀ x ∈ l, Zp.Reduced p x.snd) :
+    listSum p (l.filterMap (fun (p : UMonomial × Zp) =>
+      let new_val := p.2 * c
+      if new_val.val = 0 then none
+      else some (p.1, new_val))) =
+    listSum p (l.map (fun (p : UMonomial × Zp) => (p.1, p.2 * c))) := by
+  induction l with
+  | nil => simp
+  | cons hd tl ih =>
+    simp
+    have hx_red : Zp.Reduced p hd.2 := hred hd (by simp)
+    have hred_tl : ∀ x ∈ tl, Zp.Reduced p x.snd := by
+      intro x hx; exact hred x (List.mem_cons_of_mem hd hx)
+    by_cases hzero : (hd.2 * c).val = 0
+    · simp [hzero, ih hred_tl, Zp.toZMod]
+    · simp [hzero, ih hred_tl, Zp.toZMod]
+
+theorem toPoly_scalarMul (c : Zp) (f : SparsePolyZp)
+    (hred_f : SparsePolyZp.AllReduced p f.toList) (hc_prime : c.prime.toNat = p)
+    (hp_size : 2 * p ≤ UInt64.size) :
+    SparsePolyZp.toPoly p (SparsePolyZp.scalarMul c f) = C (c.toZMod p) * SparsePolyZp.toPoly p f := by
+  unfold SparsePolyZp.scalarMul SparsePolyZp.toPoly
+  have hfilter : (f.filterMap (fun (m, x) =>
+    let new_val := x * c
+    if new_val.val = 0 then none
+    else some (m, new_val))).toList =
+    (f.toList).filterMap (fun (p : UMonomial × Zp) =>
+      let new_val := p.2 * c
+      if new_val.val = 0 then none
+      else some (p.1, new_val)) := by
+    ext i; simp
+  rw [hfilter]
+  rw [listSum_filterMap_eq_map (f.toList) c hred_f,
+    listSum_map_mul_prime_only c f.toList hred_f hc_prime hp_size]
+
+-- ============================================================
+-- Main theorem: __upoly_make_monic_ir_refines
+-- ============================================================
+
 theorem __upoly_make_monic_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (f : SparsePolyZp)
     (hwf_f : SparsePolyZp.WellFormed p f)

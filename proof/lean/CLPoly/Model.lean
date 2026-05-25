@@ -1025,13 +1025,19 @@ def ZZ.sizeinbase (z : ZZ) (base : Int32) : UInt64 :=
 
 /-- 对称模运算 a mod m → [-m/2, m/2] -/
 def ZZ.symmetricMod (a m : ZZ) : ZZ :=
-  let r := a % m
+  let r := a.fmod m
   if r * 2 ≤ m then r else r - m
+
+/-- 二项式系数 C(n, k) — 由于 Lean 标准库可能无 Nat.choose，手动实现 -/
+def Nat.myChoose : Nat → Nat → Nat
+  | _, 0 => 1
+  | 0, _ => 0
+  | n+1, k+1 => Nat.myChoose n (k+1) + Nat.myChoose n k
 
 /-- 整数二项式系数 -/
 def ZZ.binomial (n k : ZZ) : ZZ :=
   if 0 ≤ k ∧ k ≤ n then
-    1  -- TODO: implement Nat.choose for ZZ
+    (Nat.myChoose n.natAbs k.natAbs : ZZ)
   else 0
 
 /-- 整数向上取整平方根 -/

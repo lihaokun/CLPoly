@@ -31,8 +31,26 @@ theorem __symmetric_mod_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (a : ZZ)
     (m : ZZ)
     :   Generated.__symmetric_mod_ir a m = ZZ.symmetricMod a m :=
-  by
-  sorry
+by
+  unfold Generated.__symmetric_mod_ir ZZ.symmetricMod
+  dsimp
+  -- Goal:
+  --   (if ZZ.fdiv_r 0 a m > ZZ.fdiv_q 0 m 2 then ZZ.fdiv_r 0 a m - m else ZZ.fdiv_r 0 a m) =
+  --   (if a.fmod m * 2 ≤ m then a.fmod m else a.fmod m - m)
+  have h_fdiv_r : ZZ.fdiv_r 0 a m = a.fmod m := rfl
+  have h_fdiv_q : ZZ.fdiv_q 0 m ((2 : Int32).toInt) = Int.fdiv m 2 := rfl
+  -- But dsimp simplified (2 : Int32).toInt to 2 in the goal, so the LHS pattern is ZZ.fdiv_q 0 m 2
+  -- We need a lemma that ZZ.fdiv_q 0 m 2 = Int.fdiv m 2
+  have h_fdiv_q' : ZZ.fdiv_q 0 m 2 = Int.fdiv m 2 := by
+    unfold ZZ.fdiv_q; simp
+  rw [h_fdiv_r, h_fdiv_q']
+  rw [Int.fdiv_eq_ediv_of_nonneg m (by norm_num : 0 ≤ (2 : Int))]
+  set r := a.fmod m with hr
+  by_cases h : r * 2 ≤ m
+  · have h_not_gt : ¬ (r > m / 2) := by omega
+    simp [h, h_not_gt]
+  · have h_gt : r > m / 2 := by omega
+    simp [h, h_gt]
 
 /--
   L1 `__binomial_ir` (C++: `clpoly/polynomial_factorize_univar.hh`) → L2 `ZZ.binomial`

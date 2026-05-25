@@ -16,7 +16,7 @@ namespace Refinement
 
 variable {p : ℕ} [hp : Fact (Nat.Prime p)]
 
-lemma Zp.toZMod_mul_weak (a b : Zp)
+theorem Zp.toZMod_mul_weak (a b : Zp)
     (ha : a.prime.toNat = p) (hb : b.prime.toNat = p)
     (hp_size : 2 * p ≤ UInt64.size) :
     Zp.toZMod p (a * b) = Zp.toZMod p a * Zp.toZMod p b := by
@@ -45,7 +45,7 @@ lemma Zp.toZMod_mul_weak (a b : Zp)
     _ = (a.val.toNat : ZMod p) * (b.val.toNat : ZMod p) := by simp
     _ = Zp.toZMod p a * Zp.toZMod p b := rfl
 
-lemma listSum_map_mul_prime_only (c : Zp) (l : List (UMonomial × Zp))
+theorem listSum_map_mul_prime_only (c : Zp) (l : List (UMonomial × Zp))
     (hred : ∀ x ∈ l, Zp.Reduced p x.snd) (hc_prime : c.prime.toNat = p)
     (hp_size : 2 * p ≤ UInt64.size) :
     listSum p (l.map (fun (m, x) => (m, x * c))) = C (c.toZMod p) * listSum p l := by

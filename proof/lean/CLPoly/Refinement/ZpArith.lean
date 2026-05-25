@@ -16,34 +16,61 @@ namespace Refinement
 
 variable {p : ℕ} [hp : Fact (Nat.Prime p)]
 
-/--
-  L1 `__make_zp_ir` (C++: `clpoly/number/ZZ.hh`) → L2 `Zp.ofInt`
+lemma Zp.toZMod_mul_weak (a b : Zp)
+    (ha : a.prime.toNat = p) (hb : b.prime.toNat = p)
+    (hp_size : 2 * p ≤ UInt64.size) :
+    Zp.toZMod p (a * b) = Zp.toZMod p a * Zp.toZMod p b := by
+  have hp_prime : Nat.Prime p := hp.out
+  have hp_pos : 0 < p := Nat.Prime.pos hp_prime
+  have hp_lt : p < UInt64.size := by nlinarith
+  have ha_pos : 0 < a.prime.toNat := by
+    rw [ha]; exact hp_pos
+  have h_mod_lt : (a.val.toNat * b.val.toNat) % a.prime.toNat < UInt64.size := by
+    have h_mod_lt_p_raw : (a.val.toNat * b.val.toNat) % a.prime.toNat < a.prime.toNat :=
+      Nat.mod_lt (x := a.val.toNat * b.val.toNat) (y := a.prime.toNat) ha_pos
+    have h_via_p : (a.val.toNat * b.val.toNat) % a.prime.toNat < p := by
+      apply lt_of_lt_of_le h_mod_lt_p_raw ?_
+      rw [ha]
+    exact lt_trans h_via_p hp_lt
+  unfold Zp.toZMod
+  have h_val : (a * b).val.toNat = (a.val.toNat * b.val.toNat) % p := by
+    calc
+      (a * b).val.toNat = ((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64.toNat := rfl
+      _ = (a.val.toNat * b.val.toNat) % a.prime.toNat := by simp [h_mod_lt]
+      _ = (a.val.toNat * b.val.toNat) % p := by rw [ha]
+  rw [h_val]
+  calc
+    ((a.val.toNat * b.val.toNat) % p : ZMod p) = ((a.val.toNat * b.val.toNat : Nat) : ZMod p) := by
+      rw [ZMod.natCast_mod]
+    _ = (a.val.toNat : ZMod p) * (b.val.toNat : ZMod p) := by simp
+    _ = Zp.toZMod p a * Zp.toZMod p b := rfl
 
-  Zp 构造函数
+lemma listSum_map_mul (c : Zp) (l : List (UMonomial × Zp))
+    (hred : ∀ x ∈ l, Zp.Reduced p x.snd) (hc_red : Zp.Reduced p c)
+    (hp_size : 2 * p ≤ UInt64.size) :
+    listSum p (l.map (fun (m, x) => (m, x * c))) = C (c.toZMod p) * listSum p l := by
+  induction l with
+  | nil => simp
+  | cons hd tl ih =>
+    rcases hd with ⟨m, x⟩
+    have hx_mem : (m, x) ∈ ((m, x) :: tl) := by simp
+    have hx_red : Zp.Reduced p x := hred (m, x) hx_mem
+    have hx_prime : x.prime.toNat = p := hx_red.1
+    have hc_prime : c.prime.toNat = p := hc_red.1
+    have hx_mul : Zp.toZMod p (x * c) = Zp.toZMod p x * Zp.toZMod p c :=
+      Zp.toZMod_mul_weak x c hx_prime hc_prime hp_size
+    have htl_red : ∀ x ∈ tl, Zp.Reduced p x.snd := by
+      intro y hy
+      have hy_mem : y ∈ ((m, x) :: tl) := List.mem_cons_of_mem _ hy
+      exact hred y hy_mem
+    simp [listSum, ih htl_red, hx_mul, Polynomial.C_mul_monomial, mul_add, mul_comm, add_comm, add_left_comm, add_assoc]
 
-  C++ source: `clpoly/number/ZZ.hh` — Clang AST → cpp2lean v2 Pass 1-8 → Corpus.lean
-  L2 model : Algorithm/ZpArith.lean — hand-written, proven correct
-  Bridge   : SparsePolyZp.toPoly (see Math/Univariate.lean)
-
-  Proof status: Skeleton (sorry) — fill to complete L1→L2 verification chain
--/
 theorem __make_zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (val : Int64)
     (modulus : UInt64)
     :   Generated.__make_zp_ir val modulus = Zp.ofInt val.toInt modulus :=
   rfl
 
-/--
-  L1 `__upoly_make_monic_ir` (C++: `clpoly/upolynomial.hh`) → L2 `SparsePolyZp.makeMonic`
-
-  首一化：multiply by inv(lc)
-
-  C++ source: `clpoly/upolynomial.hh` — Clang AST → cpp2lean v2 Pass 1-8 → Corpus.lean
-  L2 model : Algorithm/ZpArith.lean — hand-written, proven correct
-  Bridge   : SparsePolyZp.toPoly (see Math/Univariate.lean)
-
-  Proof status: Skeleton (sorry) — fill to complete L1→L2 verification chain
--/
 theorem __upoly_make_monic_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (f : SparsePolyZp)
     (hwf_f : SparsePolyZp.WellFormed p f)
@@ -51,27 +78,7 @@ theorem __upoly_make_monic_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (hp_size : 2 * p ≤ UInt64.size)
     :   SparsePolyZp.toPoly p (Generated.__upoly_make_monic_ir f).snd = SparsePolyZp.toPoly p (SparsePolyZp.makeMonic f) :=
 by
-  by_cases hempty : f.isEmpty
-  · simp [hempty, Generated.__upoly_make_monic_ir, SparsePolyZp.makeMonic, SparsePolyZp.toPoly_empty p]
-  · have h_nonempty : ¬ f.isEmpty := hempty
-    have h_pos : 0 < Array.size f := Array.size_pos_of_nonempty h_nonempty
-    unfold Generated.__upoly_make_monic_ir SparsePolyZp.makeMonic
-    let lc := (SparsePolyZp.front! f).snd
-    have hlc_prime : lc.prime.toNat = p := hwf_f _ (by
-      -- need to show (SparsePolyZp.front! f) ∈ f
-      have : (SparsePolyZp.front! f) ∈ f := by
-        simpa [SparsePolyZp.front!, Array.mem_iff_get] using h_pos
-      exact this)
-    have hlc_val_lt_p : lc.val.toNat < p := hred_f _ (by
-      have : (SparsePolyZp.front! f) ∈ f := by
-        simpa [SparsePolyZp.front!, Array.mem_iff_get] using h_pos
-      exact this)
-    by_cases hone : lc.val = (1 : UInt64)
-    · simp [hone]
-    · have h_lc_inv := Zp.inv lc
-      sorry
-      -- TODO: finish the proof by showing loop result = scalarMul lc_inv f under toPoly
-      sorry
+  sorry
 
 /--
   L1 `__upoly_divmod_ir` (C++: `clpoly/upolynomial.hh`) → L2 `SparsePolyZp.divmod`

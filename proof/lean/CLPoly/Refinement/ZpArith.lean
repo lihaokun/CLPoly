@@ -45,8 +45,8 @@ lemma Zp.toZMod_mul_weak (a b : Zp)
     _ = (a.val.toNat : ZMod p) * (b.val.toNat : ZMod p) := by simp
     _ = Zp.toZMod p a * Zp.toZMod p b := rfl
 
-lemma listSum_map_mul (c : Zp) (l : List (UMonomial × Zp))
-    (hred : ∀ x ∈ l, Zp.Reduced p x.snd) (hc_red : Zp.Reduced p c)
+lemma listSum_map_mul_prime_only (c : Zp) (l : List (UMonomial × Zp))
+    (hred : ∀ x ∈ l, Zp.Reduced p x.snd) (hc_prime : c.prime.toNat = p)
     (hp_size : 2 * p ≤ UInt64.size) :
     listSum p (l.map (fun (m, x) => (m, x * c))) = C (c.toZMod p) * listSum p l := by
   induction l with
@@ -56,13 +56,10 @@ lemma listSum_map_mul (c : Zp) (l : List (UMonomial × Zp))
     have hx_mem : (m, x) ∈ ((m, x) :: tl) := by simp
     have hx_red : Zp.Reduced p x := hred (m, x) hx_mem
     have hx_prime : x.prime.toNat = p := hx_red.1
-    have hc_prime : c.prime.toNat = p := hc_red.1
     have hx_mul : Zp.toZMod p (x * c) = Zp.toZMod p x * Zp.toZMod p c :=
       Zp.toZMod_mul_weak x c hx_prime hc_prime hp_size
     have htl_red : ∀ x ∈ tl, Zp.Reduced p x.snd := by
-      intro y hy
-      have hy_mem : y ∈ ((m, x) :: tl) := List.mem_cons_of_mem _ hy
-      exact hred y hy_mem
+      intro y hy; exact hred y (List.mem_cons_of_mem _ hy)
     simp [listSum, ih htl_red, hx_mul, Polynomial.C_mul_monomial, mul_add, mul_comm, add_comm, add_left_comm, add_assoc]
 
 theorem __make_zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]

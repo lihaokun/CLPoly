@@ -48,11 +48,38 @@ instance : Mul Zp where mul a b :=
 instance : Neg Zp where neg a := ⟨(a.prime - a.val) % a.prime, a.prime⟩
 
 -- 扩展欧几里得：gcd(a, b) = a*x + b*y，返回 (gcd, x)
-partial def extGcdAux (old_r r old_s s : Int) : Int × Int :=
-  if r == 0 then (old_r, old_s)
+def extGcdAux (old_r r old_s s : Int) : Int × Int :=
+  if h : r == 0 then (old_r, old_s)
   else
     let q := old_r / r
+    have hr_ne_zero : r ≠ 0 := by
+      intro hzero
+      apply h
+      simp [hzero]
+    have h_decr : (old_r - q * r).natAbs < r.natAbs := by
+      have hq : old_r - q * r = old_r % r := by
+        dsimp [q]
+        have h := Int.ediv_add_emod old_r r
+        -- h: r * (old_r / r) + old_r % r = old_r
+        calc
+          old_r - (old_r / r) * r = (r * (old_r / r) + old_r % r) - (old_r / r) * r := by rw [h]
+          _ = (r * (old_r / r) + old_r % r) - r * (old_r / r) := by
+            rw [Int.mul_comm (old_r / r) r, Int.mul_comm r (old_r / r)]
+          _ = old_r % r := by
+            rw [Int.sub_eq_add_neg, Int.add_comm (r * (old_r / r)) (old_r % r), Int.add_assoc,
+              Int.add_right_neg (r * (old_r / r)), Int.add_zero]
+      rw [hq]
+      have h_nonneg : 0 ≤ old_r % r := Int.emod_nonneg old_r hr_ne_zero
+      have h_mod_lt : old_r % r < (r.natAbs : Int) := Int.emod_lt old_r hr_ne_zero
+      have h_natAbs_lt : (old_r % r).natAbs < r.natAbs := by
+        have h_eq : ((old_r % r).natAbs : Int) = old_r % r :=
+          Int.natAbs_of_nonneg h_nonneg
+        have h' : ((old_r % r).natAbs : Int) < (r.natAbs : Int) := by
+          rw [h_eq]; exact h_mod_lt
+        exact (Int.ofNat_lt.mp h')
+      exact h_natAbs_lt
     extGcdAux r (old_r - q * r) s (old_s - q * s)
+termination_by r.natAbs
 
 def modInv (a p : UInt64) : UInt64 :=
   if a == 0 then 0

@@ -254,6 +254,34 @@ theorem toPoly_scalarMul (c : Zp) (f : SparsePolyZp)
 -- Main theorem: __upoly_make_monic_ir_refines
 -- ============================================================
 
+lemma extGcdAux_a_1_0_1 (a : Int) : Zp.extGcdAux a 1 0 1 = (1, 1) := by
+  simp [Zp.extGcdAux]
+
+lemma modInv_one (p : UInt64) (hp : p.toNat ≠ 1) : Zp.modInv 1 p = 1 := by
+  dsimp [Zp.modInv]
+  have h1ne0 : (1 : UInt64) ≠ 0 := by decide
+  simp [h1ne0, extGcdAux_a_1_0_1 (p.toNat : Int)]
+  have h_mod_eq_one : (1 : Int) % (p.toNat : Int) = (1 : Int) := by
+    have hp_cases : p.toNat = 0 ∨ 2 ≤ p.toNat := by
+      by_cases h0 : p.toNat = 0
+      · left; exact h0
+      · right
+        have h1pos : 1 ≤ p.toNat := Nat.one_le_of_lt (Nat.pos_of_ne_zero h0)
+        by_contra! h_not2le
+        have h_le1 : p.toNat ≤ 1 := by omega
+        have h_eq1 : p.toNat = 1 := Nat.le_antisymm h_le1 h1pos
+        exact hp h_eq1
+    rcases hp_cases with (h0 | h2)
+    · rw [h0]; simp
+    · have h_1lt_nat : 1 < p.toNat := by
+        calc
+          1 < 2 := by decide
+          _ ≤ p.toNat := h2
+      have h1_nonneg : (0 : Int) ≤ 1 := by norm_num
+      have h_1lt_int : (1 : Int) < (p.toNat : Int) := by exact_mod_cast h_1lt_nat
+      exact Int.emod_eq_of_lt h1_nonneg h_1lt_int
+  simp [h_mod_eq_one]
+
 theorem __upoly_make_monic_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (f : SparsePolyZp)
     (hwf_f : SparsePolyZp.WellFormed p f)
@@ -261,7 +289,121 @@ theorem __upoly_make_monic_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (hp_size : 2 * p ≤ UInt64.size)
     :   SparsePolyZp.toPoly p (Generated.__upoly_make_monic_ir f).snd = SparsePolyZp.toPoly p (SparsePolyZp.makeMonic f) :=
 by
-  sorry
+  have hfront_snd_eq : (SparsePolyZp.front! f).snd = f[0]!.snd := rfl
+  by_cases hsize_zero : Array.size f = 0
+  · -- f is empty: both sides equal toPoly(p, f)
+    have hempty : f.isEmpty = true := by
+      simp [Array.isEmpty, hsize_zero]
+    have hf_empty : f = #[] := (Array.isEmpty_iff.mp hempty)
+    subst hf_empty
+    have hLHS : (Generated.__upoly_make_monic_ir #[]).snd = #[] := by
+      unfold Generated.__upoly_make_monic_ir
+      have h_loop_snd : (Generated._loop___upoly_make_monic_0_ir 0 #[] (default : UMonomial × Zp).2.inv).snd = #[] := by
+        unfold Generated._loop___upoly_make_monic_0_ir
+        simp
+      dsimp [SparsePolyZp.front!]
+      by_cases h_cond_val : (default : UMonomial × Zp).2.val = Int64.toUInt64 1
+      · simp [h_cond_val]
+      · simp [h_cond_val, h_loop_snd]
+    have hRHS : SparsePolyZp.makeMonic (#[] : SparsePolyZp) = #[] := by
+      unfold SparsePolyZp.makeMonic
+      simp
+    simp [hLHS, hRHS]
+  · -- f is not empty
+    have hsize_pos : 0 < Array.size f := by
+      by_contra! hzero
+      apply hsize_zero
+      omega
+    have hempty_false : f.isEmpty = false := by
+      apply Bool.eq_false_iff.mpr
+      intro h
+      have hsize : Array.size f = 0 := by
+        simpa [Array.isEmpty] using h
+      exact hsize_pos.ne' hsize
+    have hfront_mem : f.front! ∈ f.toList := by
+      have hpos' : 0 < f.toList.length := by
+        have : f.toList.length = Array.size f := by simp
+        rw [this]; exact hsize_pos
+      have hval : f[0]! = (f.toList).get ⟨0, hpos'⟩ := by
+        simp [hsize_pos, hpos']
+      dsimp [SparsePolyZp.front!]
+      rw [hval]
+      exact (f.toList).get_mem ⟨0, hpos'⟩
+    have hl_prime : (SparsePolyZp.front! f).snd.prime.toNat = p := by
+      have hfront_red : Zp.Reduced p (SparsePolyZp.front! f).snd :=
+        hred_f (SparsePolyZp.front! f) hfront_mem
+      exact hfront_red.1
+    have hl_inv_prime : (Zp.inv (SparsePolyZp.front! f).snd).prime.toNat = p := by
+      simp [Zp.inv, hl_prime]
+    have h_loop : SparsePolyZp.toPoly p (Generated._loop___upoly_make_monic_0_ir 0 f
+        (Zp.inv ((SparsePolyZp.front! f).snd))).snd =
+        C ((Zp.inv ((SparsePolyZp.front! f).snd)).toZMod p) * SparsePolyZp.toPoly p f :=
+      loop_toPoly f (Zp.inv ((SparsePolyZp.front! f).snd)) hred_f hl_inv_prime hp_size
+    have h_scalarMul : SparsePolyZp.toPoly p (SparsePolyZp.scalarMul
+        (Zp.inv ((SparsePolyZp.front! f).snd)) f) =
+        C ((Zp.inv ((SparsePolyZp.front! f).snd)).toZMod p) * SparsePolyZp.toPoly p f :=
+      toPoly_scalarMul (Zp.inv ((SparsePolyZp.front! f).snd)) f hred_f hl_inv_prime hp_size
+    by_cases hone_val : ((SparsePolyZp.front! f).snd).val = (1 : Int32)
+    · -- leading coefficient is 1: generated code returns f directly
+      have hgc : ((SparsePolyZp.front! f).snd).val = Int64.toUInt64 1 := by
+        have h_cast_eq : (Int32.toInt64 1).toUInt64 = Int64.toUInt64 1 := by
+          native_decide
+        simpa [h_cast_eq] using hone_val
+      have hgen_snd : (Generated.__upoly_make_monic_ir f).snd = f := by
+        unfold Generated.__upoly_make_monic_ir
+        simp [hgc, hsize_pos]
+      have hmake_toPoly : SparsePolyZp.toPoly p (SparsePolyZp.makeMonic f) = SparsePolyZp.toPoly p f := by
+        unfold SparsePolyZp.makeMonic
+        simp [hempty_false]
+        calc
+          SparsePolyZp.toPoly p (SparsePolyZp.scalarMul (Zp.inv ((SparsePolyZp.front! f).snd)) f)
+              = C ((Zp.inv ((SparsePolyZp.front! f).snd)).toZMod p) * SparsePolyZp.toPoly p f := h_scalarMul
+          _ = C (1 : ZMod p) * SparsePolyZp.toPoly p f := by
+            have h_one : (Zp.inv ((SparsePolyZp.front! f).snd)).toZMod p = (1 : ZMod p) := by
+              unfold Zp.toZMod
+              have h_val : (SparsePolyZp.front! f).snd.val = 1 := by
+                simpa using hone_val
+              have hprime_ne_one : ((SparsePolyZp.front! f).snd).prime.toNat ≠ 1 := by
+                rw [hl_prime]
+                exact Nat.Prime.ne_one (hp.out : Nat.Prime p)
+              have h_modInv_eq_one : Zp.modInv 1 ((SparsePolyZp.front! f).snd).prime = 1 :=
+                modInv_one ((SparsePolyZp.front! f).snd).prime hprime_ne_one
+              simp [Zp.inv, h_val, h_modInv_eq_one]
+            rw [h_one]
+          _ = SparsePolyZp.toPoly p f := by simp
+      calc
+        SparsePolyZp.toPoly p (Generated.__upoly_make_monic_ir f).snd
+            = SparsePolyZp.toPoly p f := by rw [hgen_snd]
+        _ = SparsePolyZp.toPoly p (SparsePolyZp.makeMonic f) := by rw [hmake_toPoly]
+    · have hne_val : ((SparsePolyZp.front! f).snd).val ≠ (1 : Int32) := hone_val
+      have hne_beq : (((SparsePolyZp.front! f).snd).val == (1 : Int32)) = false := by
+        apply Bool.eq_false_iff.mpr
+        intro h
+        apply hne_val
+        simpa using h
+      have hgen_snd : (Generated.__upoly_make_monic_ir f).snd =
+          (Generated._loop___upoly_make_monic_0_ir 0 f
+            (Zp.inv ((SparsePolyZp.front! f).snd))).snd := by
+        unfold Generated.__upoly_make_monic_ir
+        dsimp
+        have h_cast_eq : Int64.toUInt64 1 = (Int32.toInt64 1).toUInt64 := by
+          native_decide
+        have h_ne_prop : f.front!.2.val ≠ Int64.toUInt64 1 := by
+          rw [h_cast_eq]
+          exact hne_val
+        simp [h_ne_prop]
+      have hmake : SparsePolyZp.makeMonic f =
+          SparsePolyZp.scalarMul (Zp.inv ((SparsePolyZp.front! f).snd)) f := by
+        unfold SparsePolyZp.makeMonic
+        simp [hempty_false, hfront_snd_eq]
+      calc
+        SparsePolyZp.toPoly p (Generated.__upoly_make_monic_ir f).snd
+            = SparsePolyZp.toPoly p ((Generated._loop___upoly_make_monic_0_ir 0 f
+                (Zp.inv ((SparsePolyZp.front! f).snd))).snd) := by rw [hgen_snd]
+        _ = C ((Zp.inv ((SparsePolyZp.front! f).snd)).toZMod p) * SparsePolyZp.toPoly p f := h_loop
+        _ = SparsePolyZp.toPoly p (SparsePolyZp.scalarMul
+              (Zp.inv ((SparsePolyZp.front! f).snd)) f) := by rw [← h_scalarMul]
+        _ = SparsePolyZp.toPoly p (SparsePolyZp.makeMonic f) := by rw [hmake]
 
 /--
   L1 `__upoly_divmod_ir` (C++: `clpoly/upolynomial.hh`) → L2 `SparsePolyZp.divmod`

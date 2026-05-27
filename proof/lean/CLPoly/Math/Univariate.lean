@@ -1585,3 +1585,10 @@ example : Zp.toZMod 7 ⟨3, 7⟩ = (3 : ZMod 7) := by decide
 example : SparsePolyZp.WellFormed 7 #[] := SparsePolyZp.WellFormed.empty 7
 
 end CLPoly.Math
+
+-- ============================================================
+-- §8. SparsePolyZZ.toPoly：SparsePolyZZ → Polynomial ℤ 桥
+-- ============================================================
+
+noncomputable def SparsePolyZZ.toPoly (f : SparsePolyZZ) : Polynomial ℤ :=
+  (f.toList.map (fun (t : UMonomial × Int) => Polynomial.monomial t.1.deg t.2)).sum

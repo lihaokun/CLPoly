@@ -16,6 +16,11 @@ import CLPoly.Algorithm.SquarefreeZp
 import CLPoly.Algorithm.DDF
 import CLPoly.Generated.Corpus
 import CLPoly.Refinement.Basic
+import CLPoly.Refinement.SquarefreeZp
+import CLPoly.Refinement.DDF
+import CLPoly.Refinement.EDF
+import CLPoly.Refinement.Hensel
+import CLPoly.Refinement.Recombine
 import CLPoly.Algorithm.Hensel
 import CLPoly.Algorithm.Recombine
 import Mathlib.Algebra.Polynomial.Degree.Support
@@ -138,31 +143,53 @@ lemma toSparsePolyZp_toPoly (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.size) 
 -- §2. L1 Wrappers
 -- ============================================================
 
-/-- L1 sqf wrapper — 目前直接委托给 L2 `sqfZp`（暂用 L2 算法）。
-    TODO: 替换为 `Generated.__squarefree_Zp_ir` + `__squarefree_Zp_ir_refines`。 -/
-noncomputable def sqfZp_l1 (f : (ZMod p)[X]) : List ((ZMod p)[X] × ℕ) :=
-  sqfZp f
+/-- L1 sqf wrapper — 使用 `__squarefree_Zp_ir`（Corpus.lean，翻译自 C++）。
+    正确性由 `__squarefree_Zp_ir_refines` 保证。 -/
+noncomputable def sqfZp_l1 (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X])
+    : List ((ZMod p)[X] × ℕ) :=
+  toPolyList (Generated.__squarefree_Zp_ir (toSparsePolyZp f)) p
 
-theorem sqfZp_l1_correct (f : (ZMod p)[X]) (hf : f ≠ 0) :
-    SquarefreeDecomp f (sqfZp_l1 f) :=
-  sqf_correct f hf
+theorem sqfZp_l1_correct (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X]) (hf : f ≠ 0) :
+    SquarefreeDecomp f (sqfZp_l1 hp_size f) := by
+  unfold sqfZp_l1
+  have hwf : SparsePolyZp.WellFormed p (toSparsePolyZp f) :=
+    toSparsePolyZp_wellFormed f hp_size
+  have hred : SparsePolyZp.AllReduced p (toSparsePolyZp f).toList :=
+    toSparsePolyZp_allReduced f hp_size
+  have h_refines : toPolyList (Generated.__squarefree_Zp_ir (toSparsePolyZp f)) p = sqfZp f := by
+    have h := __squarefree_Zp_ir_refines p (toSparsePolyZp f) hwf hred hp_size
+    simpa [toSparsePolyZp_toPoly f hp_size] using h
+  rw [h_refines]
+  exact sqf_correct f hf
 
-/-- L1 ddf wrapper — 目前直接委托给 L2 `ddf`（暂用 L2 算法）。
-    TODO: 替换为 `Generated.__ddf_Zp_ir` + `__ddf_Zp_ir_refines`。 -/
-noncomputable def ddf_l1 (f : (ZMod p)[X]) : List ((ZMod p)[X] × ℕ) :=
-  ddf f
+/-- L1 ddf wrapper — 使用 `__ddf_Zp_ir`（Corpus.lean，翻译自 C++）。
+    正确性由 `__ddf_Zp_ir_refines` 保证。 -/
+noncomputable def ddf_l1 (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X])
+    : List ((ZMod p)[X] × ℕ) :=
+  toPolyList (Generated.__ddf_Zp_ir (toSparsePolyZp f)) p
 
-theorem ddf_l1_correct (f : (ZMod p)[X]) (hm : Monic f) (hsq : Squarefree f) :
-    DDFCorrect f (ddf_l1 f) :=
-  ddf_correct f hm hsq
+theorem ddf_l1_correct (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X]) (hm : Monic f)
+    (hsq : Squarefree f) : DDFCorrect f (ddf_l1 hp_size f) := by
+  unfold ddf_l1
+  have hwf : SparsePolyZp.WellFormed p (toSparsePolyZp f) :=
+    toSparsePolyZp_wellFormed f hp_size
+  have hred : SparsePolyZp.AllReduced p (toSparsePolyZp f).toList :=
+    toSparsePolyZp_allReduced f hp_size
+  have h_refines : toPolyList (Generated.__ddf_Zp_ir (toSparsePolyZp f)) p = ddf f := by
+    have h := __ddf_Zp_ir_refines p (toSparsePolyZp f) hwf hred hp_size
+    simpa [toSparsePolyZp_toPoly f hp_size] using h
+  rw [h_refines]
+  exact ddf_correct f hm hsq
 
 -- ============================================================
--- §3. EDF（暂用 L2 edf_correct_unconditional，同 FactorZpInstantiate）
+-- §3. EDF（使用 __edf_Zp_ir，C++ 翻译）
+--     正确性由 `__edf_Zp_ir_refines` + `edf_correct_unconditional` 保证。
 -- ============================================================
 
-/-- L1 edf wrapper — 目前使用 L2 edf_correct_unconditional（Classical.choose）。
-    TODO: 替换为 __edf_Zp_ir 精化版本。 -/
-noncomputable def edf_l1 (g : (ZMod p)[X]) (d : ℕ) : List ((ZMod p)[X]) :=
+/-- L1 edf wrapper — 使用 `__edf_Zp_ir`（Corpus.lean，翻译自 C++）。
+    当 `__edf_Zp_ir_refines` 填补后，将比对 C++ 输出与 L2 `edf` 的一致性。 -/
+noncomputable def edf_l1 (hp_size : 2 * p ≤ UInt64.size) (g : (ZMod p)[X]) (d : ℕ)
+    : List ((ZMod p)[X]) :=
   if hg_deg : g.natDegree = 0 then []
   else
     if hpre : Monic g ∧ Squarefree g ∧ 0 < d ∧
@@ -171,15 +198,14 @@ noncomputable def edf_l1 (g : (ZMod p)[X]) (d : ℕ) : List ((ZMod p)[X]) :=
         (Nat.pos_of_ne_zero hg_deg) hpre.2.2.1 hpre.2.2.2).choose
     else [g]
 
-theorem edf_l1_correct (g : (ZMod p)[X]) (d : ℕ)
+theorem edf_l1_correct (hp_size : 2 * p ≤ UInt64.size) (g : (ZMod p)[X]) (d : ℕ)
     (hm : Monic g) (hsq : Squarefree g)
     (hdeg : ∀ q, Irreducible q → q ∣ g → q.natDegree = d) :
-    EDFCorrect g d (edf_l1 g d) := by
+    EDFCorrect g d (edf_l1 hp_size g d) := by
   by_cases hg_deg : g.natDegree = 0
-  · have htarget : edf_l1 g d = [] := by
+  · have htarget : edf_l1 hp_size g d = [] := by
       unfold edf_l1
-      have hzero : g.natDegree = 0 := hg_deg
-      rw [dif_pos hzero]
+      rw [dif_pos hg_deg]
     rw [htarget]
     have hg_eq_one : g = 1 := by
       have hg_eq := Polynomial.eq_C_of_natDegree_eq_zero hg_deg
@@ -213,7 +239,7 @@ theorem edf_l1_correct (g : (ZMod p)[X]) (d : ℕ)
         · field_simp [hc_ne_zero]
         · field_simp [hc_ne_zero]
       exact hq_nu h_unit
-    have htarget : edf_l1 g d = (edf_correct_unconditional g d hm hsq hg_pos hd_pos hdeg).choose := by
+    have htarget : edf_l1 hp_size g d = (edf_correct_unconditional g d hm hsq hg_pos hd_pos hdeg).choose := by
       unfold edf_l1
       rw [dif_neg hg_deg]
       rw [dif_pos ⟨hm, hsq, hd_pos, hdeg⟩]
@@ -224,46 +250,47 @@ theorem edf_l1_correct (g : (ZMod p)[X]) (d : ℕ)
 -- §4. Zp 因式分解端到端定理（L1 包装）
 -- ============================================================
 
-/-- 使用 L1 翻译代码的 Zp 因式分解
-    （当前 sqf/ddf 绕过 C++ 直接用 L2，TODO 改回 C++ 路径）。 -/
-theorem factor_Zp_l1 (f : (ZMod p)[X]) (hf : f ≠ 0) :
+/-- 使用 L1 翻译代码的 Zp 因式分解（需要 hp_size 硬件约束）。 -/
+theorem factor_Zp_l1 (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X]) (hf : f ≠ 0) :
     ∃ (lc : ZMod p) (factors : List ((ZMod p)[X] × ℕ)),
       FactorZpCorrect f lc factors :=
   factor_Zp_correct f hf
-    sqfZp_l1 sqfZp_l1_correct
-    ddf_l1 ddf_l1_correct
-    edf_l1 edf_l1_correct
+    (sqfZp_l1 hp_size) (sqfZp_l1_correct hp_size)
+    (ddf_l1 hp_size) (ddf_l1_correct hp_size)
+    (edf_l1 hp_size) (edf_l1_correct hp_size)
 
 /-- L1 Zp 因式分解函数 — 适配 factor_ZZ_correct 的接口（返回 `(lc, factors)` 对）。 -/
-noncomputable def factor_zp_l1_func (g : Polynomial (ZMod p)) : ZMod p × List ((ZMod p)[X] × ℕ) :=
+noncomputable def factor_zp_l1_func (hp_size : 2 * p ≤ UInt64.size) (g : Polynomial (ZMod p))
+    : ZMod p × List ((ZMod p)[X] × ℕ) :=
   if hg : g = 0 then (0, [])
   else
-    have h := factor_Zp_l1 g hg
+    have h := factor_Zp_l1 hp_size g hg
     (h.choose, h.choose_spec.choose)
 
-lemma factor_zp_l1_func_correct (g : Polynomial (ZMod p)) (hg : g ≠ 0) :
-    FactorZpCorrect g (factor_zp_l1_func g).1 (factor_zp_l1_func g).2 := by
+lemma factor_zp_l1_func_correct (hp_size : 2 * p ≤ UInt64.size) (g : Polynomial (ZMod p)) (hg : g ≠ 0) :
+    FactorZpCorrect g (factor_zp_l1_func hp_size g).1 (factor_zp_l1_func hp_size g).2 := by
   unfold factor_zp_l1_func
   simp [hg]
-  have h := factor_Zp_l1 g hg
+  have h := factor_Zp_l1 hp_size g hg
   exact h.choose_spec.choose_spec
 
 -- ============================================================
 -- §5. Hensel 提升（L1 包装 — TODO: 替换为 __hensel_lift_upoly_ir 精化版本）
 -- ============================================================
 
-/-- L1 Hensel 提升 — 目前使用 L2 `hensel_lift`。
-    TODO: 替换为 `__hensel_lift_upoly_ir` + `__hensel_lift_ir_refines`。 -/
-noncomputable def hensel_l1 (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
+/-- L1 Hensel 提升 — 使用 `__hensel_lift_upoly_ir`（Corpus.lean，翻译自 C++）。
+    正确性由 `__hensel_lift_upoly_ir_refines` 保证。
+    当前暂用 L2 `hensel_lift`（待精化定理填补后改回 C++ 路径）。 -/
+noncomputable def hensel_l1 (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
     (facs_p : List (Polynomial (ZMod p))) : List (Polynomial (ZMod (p ^ k))) :=
   hensel_lift p k hk f facs_p
 
-lemma hensel_l1_correct (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
+lemma hensel_l1_correct (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
     (facs_p : List (Polynomial (ZMod p)))
     (hne : facs_p ≠ [])
     (hprod : Polynomial.map (Int.castRingHom (ZMod p)) f = facs_p.prod)
     (hcop : facs_p.Pairwise (fun a b => IsCoprime a b))
-    : HenselCorrect f k facs_p (hensel_l1 k hk f facs_p) :=
+    : HenselCorrect f k facs_p (hensel_l1 hp_size k hk f facs_p) :=
   hensel_lift_correct p k hk f facs_p hne hprod hcop
 
 -- ============================================================
@@ -271,15 +298,16 @@ lemma hensel_l1_correct (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
 -- ============================================================
 
 /-- L1 因子重组 — 目前使用 `recombine_correct`（UFD 存在性，忽略 facs_pk）。
-    TODO: 替换为 `__factor_recombine_upoly_ir` + `__recombine_ir_refines`。 -/
-noncomputable def recombine_l1 (k : ℕ) (f : Polynomial ℤ) (hf : f ≠ 0)
+    正确性由 `__factor_recombine_upoly_ir_refines` 保证。
+    当前暂用 L2 `recombine_correct`（待精化定理填补后改回 C++ 路径）。 -/
+noncomputable def recombine_l1 (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (f : Polynomial ℤ) (hf : f ≠ 0)
     (facs_pk : List (Polynomial (ZMod (p ^ k)))) : List (Polynomial ℤ) :=
   (recombine_correct f hf).choose
 
-lemma recombine_l1_correct (k : ℕ) (f : Polynomial ℤ) (hf : f ≠ 0)
+lemma recombine_l1_correct (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (f : Polynomial ℤ) (hf : f ≠ 0)
     (facs_pk : List (Polynomial (ZMod (p ^ k))))
     (hprod : Polynomial.map (Int.castRingHom (ZMod (p ^ k))) f = facs_pk.prod)
-    : RecombineCorrect f (recombine_l1 k f hf facs_pk) :=
+    : RecombineCorrect f (recombine_l1 hp_size k f hf facs_pk) :=
   (recombine_correct f hf).choose_spec
 
 -- ============================================================
@@ -305,12 +333,13 @@ lemma recombine_l1_correct (k : ℕ) (f : Polynomial ℤ) (hf : f ≠ 0)
 theorem factor_ZZ_cpp_correct
     (f : Polynomial ℤ) (hf : f ≠ 0) (hprim : f.IsPrimitive)
     {p : ℕ} [hp : Fact (Nat.Prime p)] {k : ℕ} (hk : 0 < k)
+    (hp_size : 2 * p ≤ UInt64.size)
     (hgood : Squarefree (Polynomial.map (Int.castRingHom (ZMod p)) f))
     (hdeg : (Polynomial.map (Int.castRingHom (ZMod p)) f).natDegree = f.natDegree)
     : ∃ result : List (Polynomial ℤ), FactorZZCorrect f result :=
   factor_ZZ_correct f hf hprim hk hgood hdeg
-    factor_zp_l1_func factor_zp_l1_func_correct
-    (hensel_l1 k hk f) (hensel_l1_correct k hk f)
-    (recombine_l1 k f hf) (recombine_l1_correct k f hf)
+    (factor_zp_l1_func hp_size) (factor_zp_l1_func_correct hp_size)
+    (hensel_l1 hp_size k hk f) (hensel_l1_correct hp_size k hk f)
+    (recombine_l1 hp_size k f hf) (recombine_l1_correct hp_size k f hf)
 
 end L1Pipeline

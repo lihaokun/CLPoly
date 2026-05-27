@@ -63,11 +63,84 @@ by
 
   Proof status: Skeleton (sorry) — fill to complete L1→L2 verification chain
 -/
+theorem my_mul_add (a b c : Nat) : a * (b + c) = a * b + a * c := by
+  rw [Nat.mul_comm a (b + c), Nat.add_mul b c a, Nat.mul_comm b a, Nat.mul_comm c a]
+
+theorem myChoose_one (n : Nat) : Nat.myChoose n 1 = n := by
+  induction n with
+  | zero => simp [Nat.myChoose]
+  | succ n ih =>
+    unfold Nat.myChoose
+    rw [ih]
+    simp [Nat.myChoose]
+
+theorem myChoose_eq_zero_of_lt {n j : Nat} (h : n < j) : Nat.myChoose n j = 0 := by
+  induction n generalizing j with
+  | zero =>
+    cases j
+    · exact (Nat.not_lt_zero _ h).elim
+    · simp [Nat.myChoose]
+  | succ n ih =>
+    cases j
+    · exact (Nat.not_lt_zero _ h).elim
+    · case succ j =>
+      have hn_j : n < j := by omega
+      have hn_jsucc : n < j+1 := by omega
+      unfold Nat.myChoose
+      have h1 : Nat.myChoose n (j+1) = 0 := ih (j := j+1) hn_jsucc
+      have h2 : Nat.myChoose n j = 0 := ih (j := j) hn_j
+      rw [h1, h2]
+
+/-- 组合恒等式：C(n, k+1) * (k+1) = C(n, k) * (n - k) -/
+theorem myChoose_mul_eq (n k : Nat) : Nat.myChoose n (k + 1) * (k + 1) = Nat.myChoose n k * (n - k) := by
+  revert n
+  induction k with
+  | zero =>
+    intro n
+    simp [myChoose_one, Nat.myChoose]
+  | succ k ih =>
+    intro n
+    induction n with
+    | zero => simp [Nat.myChoose]
+    | succ n ih_n =>
+      simp [Nat.myChoose]
+      rw [Nat.add_mul, Nat.add_mul]
+      have h_ih_n : Nat.myChoose n (k + 2) * (k + 2) = Nat.myChoose n (k + 1) * (n - (k + 1)) := ih_n
+      rw [h_ih_n]
+      have h_eq_ih : Nat.myChoose n (k + 1) * (k + 1) = Nat.myChoose n k * (n - k) := ih n
+      by_cases hk_le_n : k + 1 ≤ n
+      · have h_n_sub : n - k = (n + 1) - (k + 1) := by omega
+        have h_sum : (n - (k + 1)) + (k + 2) = (n - k) + (k + 1) := by omega
+        calc
+          Nat.myChoose n (k + 1) * (n - (k + 1)) + Nat.myChoose n (k + 1) * (k + 2)
+              = Nat.myChoose n (k + 1) * ((n - (k + 1)) + (k + 2)) := by rw [← my_mul_add]
+          _ = Nat.myChoose n (k + 1) * ((n - k) + (k + 1)) := by rw [h_sum]
+          _ = Nat.myChoose n (k + 1) * (n - k) + Nat.myChoose n (k + 1) * (k + 1) := by rw [my_mul_add]
+           _ = Nat.myChoose n (k + 1) * (n - k) + Nat.myChoose n k * (n - k) := by rw [h_eq_ih]
+      · have hk_gt_n : n < k + 1 := by omega
+        have h_zero : Nat.myChoose n (k + 1) = 0 := myChoose_eq_zero_of_lt hk_gt_n
+        have h_eq' : Nat.myChoose n k * (n - k) = 0 := by
+          rw [← h_eq_ih, h_zero, zero_mul]
+        calc
+          Nat.myChoose n (k + 1) * (n - (k + 1)) + Nat.myChoose n (k + 1) * (k + 2)
+              = 0 := by simp [h_zero]
+          _ = Nat.myChoose n k * (n - k) := by rw [h_eq'.symm]
+        simp [h_zero]
+
 theorem __binomial_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (n : Int64)
     (k : Int64)
     :   Generated.__binomial_ir n k = ZZ.binomial n k :=
-  by
+by
+  -- Using native_decide for each concrete pair is infeasible.
+  -- Instead, prove equality by reduction to Nat.myChoose
+  -- using the fact that both sides compute the binomial coefficient.
+  -- For now, this is a known gap that requires a full proof of
+  -- the loop correctness by induction on the Nat counter.
+  
+  -- The key lemma needed: myChoose_mul_eq (being proved above)
+  -- and a lemma connecting the loop to Nat.myChoose via Induction
+  
   sorry
 
 /--

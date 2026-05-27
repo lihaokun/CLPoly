@@ -38,17 +38,47 @@ partial def __assign_partial_zp_lex_ir (f : MvPolyZZ) (vars : Array Variable) (a
   let result_2 : PolyZp := __loop_ret___assign_partial_zp_lex_0_1.snd
   (MvPolyZp.mk result_2)
 
-partial def _loop___binomial_0_ir (i_2 : Int64) (result_2 : ZZ) (k_2 : Int64) (n : Int64) : (Int64 × ZZ) :=
-  if (i_2 < k_2) then
-    let result_3 : ZZ := (result_2 * ((n - i_2)).toInt)
-    -- require (h_nonzero): (((i_2 + (1 : Int64))).toInt != (0 : Int64))
-    let result_4 : ZZ := (result_3 / ((i_2 + (1 : Int64))).toInt)
-    let i_3 : Int64 := (i_2 + (1 : Int64))
-    _loop___binomial_0_ir i_3 result_4 k_2 n
+partial def _loop___polynomial_to_zp_lex_0_ir (__rangefor_idx_0_2 : Nat) (result_2 : PolyZp) (__rangefor_cont_0_1 : MvPolyZZ) (p : UInt64) : (Int64 × PolyZp) :=
+  let bb_7 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_4 =>
+    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
+    _loop___polynomial_to_zp_lex_0_ir __rangefor_idx_0_3 result_4 __rangefor_cont_0_1 p
+  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
+    let term_1 : (Monomial × ZZ) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
+    let coeff_1 : Zp := (Zp.ofInt (term_1.snd).toInt p)
+    if (coeff_1.val != (0 : Int32)) then
+      let result_3 : PolyZp := (Array.push result_2 ((term_1.fst, coeff_1)))
+      bb_7 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_3
+    else
+      bb_7 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_2
   else
     ((0 : Int64), result_2)
 
-partial def __binomial_ir (n : Int64) (k : Int64) : ZZ :=
+partial def __polynomial_to_zp_lex_ir (f : MvPolyZZ) (p : UInt64) : MvPolyZp :=
+  let result_1 : PolyZp := (MvPolyZp.mk (MvPolyZZ.comp f))
+  let __rangefor_cont_0_1 : MvPolyZZ := f
+  let __rangefor_idx_0_1 : Nat := (0 : Nat)
+  let __loop_ret___polynomial_to_zp_lex_0_1 : (Int64 × PolyZp) := (_loop___polynomial_to_zp_lex_0_ir __rangefor_idx_0_1 result_1 __rangefor_cont_0_1 p)
+  let result_2 : PolyZp := __loop_ret___polynomial_to_zp_lex_0_1.snd
+  let result_5 : PolyZp := (MvPolyZp.normalization result_2)
+  (MvPolyZp.mk result_5)
+
+end
+
+def _loop___binomial_0_ir (i_2 : Int64) (result_2 : ZZ) (k_2 : Int64) (n : Int64) : (Int64 × ZZ) :=
+  go ((k_2 - i_2).toNatClampNeg) i_2 result_2 k_2 n
+where
+  go : Nat → Int64 → ZZ → Int64 → Int64 → (Int64 × ZZ)
+    | 0, i_2, result_2, k_2, n => ((0 : Int64), result_2)
+    | d+1, i_2, result_2, k_2, n =>
+      if h : i_2 < k_2 then
+        let result_3 : ZZ := (result_2 * ((n - i_2)).toInt)
+        -- require (h_nonzero): (((i_2 + (1 : Int64))).toInt != (0 : Int64))
+        let result_4 : ZZ := (result_3 / ((i_2 + (1 : Int64))).toInt)
+        go d (i_2 + 1) result_4 k_2 n
+      else
+        ((0 : Int64), result_2)
+
+def __binomial_ir (n : Int64) (k : Int64) : ZZ :=
   let bb_11 := fun n k_2 =>
     let result_1 : ZZ := ((1 : Int32)).toInt
     let i_1 : Int64 := (0 : Int64)
@@ -67,6 +97,7 @@ partial def __binomial_ir (n : Int64) (k : Int64) : ZZ :=
       else
         bb_11 n k
 
+mutual
 partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZZ) (deg : Int32) : (Int64 × (UMonomial × ZZ)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let term_1 : (UMonomial × ZZ) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
@@ -3750,30 +3781,6 @@ partial def __mtshl_zp_univar_mdp_ir (F : Array SparsePolyZp) (c : SparsePolyZp)
       (true, sigma_3)
     else
       (false, sigma)
-
-partial def _loop___polynomial_to_zp_lex_0_ir (__rangefor_idx_0_2 : Nat) (result_2 : PolyZp) (__rangefor_cont_0_1 : MvPolyZZ) (p : UInt64) : (Int64 × PolyZp) :=
-  let bb_7 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_4 =>
-    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-    _loop___polynomial_to_zp_lex_0_ir __rangefor_idx_0_3 result_4 __rangefor_cont_0_1 p
-  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
-    let term_1 : (Monomial × ZZ) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
-    let coeff_1 : Zp := (Zp.ofInt (term_1.snd).toInt p)
-    if (coeff_1.val != (0 : Int32)) then
-      let result_3 : PolyZp := (Array.push result_2 ((term_1.fst, coeff_1)))
-      bb_7 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_3
-    else
-      bb_7 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_2
-  else
-    ((0 : Int64), result_2)
-
-partial def __polynomial_to_zp_lex_ir (f : MvPolyZZ) (p : UInt64) : MvPolyZp :=
-  let result_1 : PolyZp := (MvPolyZp.mk (MvPolyZZ.comp f))
-  let __rangefor_cont_0_1 : MvPolyZZ := f
-  let __rangefor_idx_0_1 : Nat := (0 : Nat)
-  let __loop_ret___polynomial_to_zp_lex_0_1 : (Int64 × PolyZp) := (_loop___polynomial_to_zp_lex_0_ir __rangefor_idx_0_1 result_1 __rangefor_cont_0_1 p)
-  let result_2 : PolyZp := __loop_ret___polynomial_to_zp_lex_0_1.snd
-  let result_5 : PolyZp := (MvPolyZp.normalization result_2)
-  (MvPolyZp.mk result_5)
 
 partial def _loop___select_eval_point_lex_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Array (Variable × Int64)) (vars_2 : Array Variable) (main_var : Variable) : (Int64 × Array (Variable × Int64) × Array Variable) :=
   let bb_7 := fun v_1 d_1 __rangefor_cont_0_2 __rangefor_idx_0_2 main_var vars_4 =>

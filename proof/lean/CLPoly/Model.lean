@@ -112,6 +112,9 @@ instance : Coe Int Zp where coe i := { val := i.toNat.toUInt64, prime := 1 }
 
 abbrev ZZ := Int
 
+instance : Coe Int64 ZZ where
+  coe x := x.toInt
+
 -- ============================================================
 -- §3. UMonomial：单变量单项式
 -- ============================================================

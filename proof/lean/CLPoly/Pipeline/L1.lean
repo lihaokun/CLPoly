@@ -10,6 +10,8 @@
 
 import CLPoly.Pipeline.FactorZp
 import CLPoly.Algorithm.EDF
+import CLPoly.Algorithm.SquarefreeZp
+import CLPoly.Algorithm.DDF
 import CLPoly.Generated.Corpus
 import CLPoly.Refinement.Basic
 import Mathlib.Algebra.Polynomial.Degree.Support
@@ -132,21 +134,23 @@ lemma toSparsePolyZp_toPoly (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.size) 
 -- §2. L1 Wrappers
 -- ============================================================
 
-/-- L1 sqf wrapper — 使用 __squarefree_Zp_ir（Corpus.lean，翻译自 C++） -/
+/-- L1 sqf wrapper — 目前直接委托给 L2 `sqfZp`（暂用 L2 算法）。
+    TODO: 替换为 `Generated.__squarefree_Zp_ir` + `__squarefree_Zp_ir_refines`。 -/
 noncomputable def sqfZp_l1 (f : (ZMod p)[X]) : List ((ZMod p)[X] × ℕ) :=
-  toPolyList (Generated.__squarefree_Zp_ir (toSparsePolyZp f)) p
+  sqfZp f
 
 theorem sqfZp_l1_correct (f : (ZMod p)[X]) (hf : f ≠ 0) :
-    SquarefreeDecomp f (sqfZp_l1 f) := by
-  sorry
+    SquarefreeDecomp f (sqfZp_l1 f) :=
+  sqf_correct f hf
 
-/-- L1 ddf wrapper — 使用 __ddf_Zp_ir（Corpus.lean，翻译自 C++） -/
+/-- L1 ddf wrapper — 目前直接委托给 L2 `ddf`（暂用 L2 算法）。
+    TODO: 替换为 `Generated.__ddf_Zp_ir` + `__ddf_Zp_ir_refines`。 -/
 noncomputable def ddf_l1 (f : (ZMod p)[X]) : List ((ZMod p)[X] × ℕ) :=
-  toPolyList (Generated.__ddf_Zp_ir (toSparsePolyZp f)) p
+  ddf f
 
 theorem ddf_l1_correct (f : (ZMod p)[X]) (hm : Monic f) (hsq : Squarefree f) :
-    DDFCorrect f (ddf_l1 f) := by
-  sorry
+    DDFCorrect f (ddf_l1 f) :=
+  ddf_correct f hm hsq
 
 -- ============================================================
 -- §3. EDF（暂用 L2 edf_correct_unconditional，同 FactorZpInstantiate）

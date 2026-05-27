@@ -9,11 +9,15 @@
 -/
 
 import CLPoly.Pipeline.FactorZp
+import CLPoly.Pipeline.FactorZZ
+import CLPoly.Pipeline.FactorZZInstantiate
 import CLPoly.Algorithm.EDF
 import CLPoly.Algorithm.SquarefreeZp
 import CLPoly.Algorithm.DDF
 import CLPoly.Generated.Corpus
 import CLPoly.Refinement.Basic
+import CLPoly.Algorithm.Hensel
+import CLPoly.Algorithm.Recombine
 import Mathlib.Algebra.Polynomial.Degree.Support
 
 set_option autoImplicit false
@@ -193,7 +197,22 @@ theorem edf_l1_correct (g : (ZMod p)[X]) (d : ℕ)
       WfDvdMonoid.exists_irreducible_factor hg_nu (Monic.ne_zero hm)
     have hd_pos : 0 < d := by
       rw [← hdeg q₀ hq₀_irr hq₀_dvd]
-      exact Irreducible.natDegree_pos hq₀_irr
+      have hq_nu : ¬ IsUnit q₀ := hq₀_irr.1
+      by_contra hzero
+      have hzero' : q₀.natDegree = 0 := Nat.eq_zero_of_not_pos hzero
+      have hconst : q₀ = Polynomial.C (q₀.coeff 0) :=
+        Polynomial.eq_C_of_natDegree_eq_zero hzero'
+      have hc_ne_zero : q₀.coeff 0 ≠ 0 := by
+        intro hc0
+        apply hq₀_irr.ne_zero
+        rw [hconst, hc0, Polynomial.C_0]
+      have h_unit : IsUnit q₀ := by
+        rw [hconst]
+        refine Polynomial.isUnit_C.mpr ?_
+        refine ⟨⟨q₀.coeff 0, (q₀.coeff 0)⁻¹, ?_, ?_⟩, rfl⟩
+        · field_simp [hc_ne_zero]
+        · field_simp [hc_ne_zero]
+      exact hq_nu h_unit
     have htarget : edf_l1 g d = (edf_correct_unconditional g d hm hsq hg_pos hd_pos hdeg).choose := by
       unfold edf_l1
       rw [dif_neg hg_deg]
@@ -202,10 +221,11 @@ theorem edf_l1_correct (g : (ZMod p)[X]) (d : ℕ)
     exact (edf_correct_unconditional g d hm hsq hg_pos hd_pos hdeg).choose_spec
 
 -- ============================================================
--- §4. 端到端定理
+-- §4. Zp 因式分解端到端定理（L1 包装）
 -- ============================================================
 
-/-- 使用 L1 翻译代码的 Zp 因式分解（精化定理填补后即验证 C++）。 -/
+/-- 使用 L1 翻译代码的 Zp 因式分解
+    （当前 sqf/ddf 绕过 C++ 直接用 L2，TODO 改回 C++ 路径）。 -/
 theorem factor_Zp_l1 (f : (ZMod p)[X]) (hf : f ≠ 0) :
     ∃ (lc : ZMod p) (factors : List ((ZMod p)[X] × ℕ)),
       FactorZpCorrect f lc factors :=
@@ -213,5 +233,84 @@ theorem factor_Zp_l1 (f : (ZMod p)[X]) (hf : f ≠ 0) :
     sqfZp_l1 sqfZp_l1_correct
     ddf_l1 ddf_l1_correct
     edf_l1 edf_l1_correct
+
+/-- L1 Zp 因式分解函数 — 适配 factor_ZZ_correct 的接口（返回 `(lc, factors)` 对）。 -/
+noncomputable def factor_zp_l1_func (g : Polynomial (ZMod p)) : ZMod p × List ((ZMod p)[X] × ℕ) :=
+  if hg : g = 0 then (0, [])
+  else
+    have h := factor_Zp_l1 g hg
+    (h.choose, h.choose_spec.choose)
+
+lemma factor_zp_l1_func_correct (g : Polynomial (ZMod p)) (hg : g ≠ 0) :
+    FactorZpCorrect g (factor_zp_l1_func g).1 (factor_zp_l1_func g).2 := by
+  unfold factor_zp_l1_func
+  simp [hg]
+  have h := factor_Zp_l1 g hg
+  exact h.choose_spec.choose_spec
+
+-- ============================================================
+-- §5. Hensel 提升（L1 包装 — TODO: 替换为 __hensel_lift_upoly_ir 精化版本）
+-- ============================================================
+
+/-- L1 Hensel 提升 — 目前使用 L2 `hensel_lift`。
+    TODO: 替换为 `__hensel_lift_upoly_ir` + `__hensel_lift_ir_refines`。 -/
+noncomputable def hensel_l1 (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
+    (facs_p : List (Polynomial (ZMod p))) : List (Polynomial (ZMod (p ^ k))) :=
+  hensel_lift p k hk f facs_p
+
+lemma hensel_l1_correct (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
+    (facs_p : List (Polynomial (ZMod p)))
+    (hne : facs_p ≠ [])
+    (hprod : Polynomial.map (Int.castRingHom (ZMod p)) f = facs_p.prod)
+    (hcop : facs_p.Pairwise (fun a b => IsCoprime a b))
+    : HenselCorrect f k facs_p (hensel_l1 k hk f facs_p) :=
+  hensel_lift_correct p k hk f facs_p hne hprod hcop
+
+-- ============================================================
+-- §6. 因子重组（L1 包装 — TODO: 替换为 __factor_recombine_upoly_ir 精化版本）
+-- ============================================================
+
+/-- L1 因子重组 — 目前使用 `recombine_correct`（UFD 存在性，忽略 facs_pk）。
+    TODO: 替换为 `__factor_recombine_upoly_ir` + `__recombine_ir_refines`。 -/
+noncomputable def recombine_l1 (k : ℕ) (f : Polynomial ℤ) (hf : f ≠ 0)
+    (facs_pk : List (Polynomial (ZMod (p ^ k)))) : List (Polynomial ℤ) :=
+  (recombine_correct f hf).choose
+
+lemma recombine_l1_correct (k : ℕ) (f : Polynomial ℤ) (hf : f ≠ 0)
+    (facs_pk : List (Polynomial (ZMod (p ^ k))))
+    (hprod : Polynomial.map (Int.castRingHom (ZMod (p ^ k))) f = facs_pk.prod)
+    : RecombineCorrect f (recombine_l1 k f hf facs_pk) :=
+  (recombine_correct f hf).choose_spec
+
+-- ============================================================
+-- §7. C++ 端到端因式分解定理
+-- ============================================================
+
+/-- C++ 翻译代码的 Z[x] 因式分解正确性定理。
+
+    使用 L1 包装（C++ 翻译函数）实例化 `factor_ZZ_correct` 的三个子过程。
+    当前 L1 包装中 sqf/ddf/edf 暂用 L2 算法（待 __squarefree_Zp_ir_refines 等精化定理
+    填补后改回 C++ 路径）；Hensel 和 Recombine 同理。
+
+    精化定理状态：
+     - ❌ `__squarefree_Zp_ir_refines`
+     - ❌ `__ddf_Zp_ir_refines`
+     - ✅ `__symmetric_mod_ir_refines`
+     - ❌ `__binomial_ir_refines`
+     - ❌ `__isqrt_ceil_ir_refines`
+     - ❌ `__edf_Zp_ir_refines`（待新增）
+     - ❌ `__hensel_lift_*_ir_refines`（待新增）
+     - ❌ `__recombine_*_ir_refines`（待新增）
+ -/
+theorem factor_ZZ_cpp_correct
+    (f : Polynomial ℤ) (hf : f ≠ 0) (hprim : f.IsPrimitive)
+    {p : ℕ} [hp : Fact (Nat.Prime p)] {k : ℕ} (hk : 0 < k)
+    (hgood : Squarefree (Polynomial.map (Int.castRingHom (ZMod p)) f))
+    (hdeg : (Polynomial.map (Int.castRingHom (ZMod p)) f).natDegree = f.natDegree)
+    : ∃ result : List (Polynomial ℤ), FactorZZCorrect f result :=
+  factor_ZZ_correct f hf hprim hk hgood hdeg
+    factor_zp_l1_func factor_zp_l1_func_correct
+    (hensel_l1 k hk f) (hensel_l1_correct k hk f)
+    (recombine_l1 k f hf) (recombine_l1_correct k f hf)
 
 end L1Pipeline

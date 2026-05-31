@@ -240,9 +240,11 @@ private lemma extGcdAux_gcd_nonneg (A B : ℕ) : 0 ≤ (Zp.extGcdAux (A : Int) (
       -- but we need: 0 ≤ (extGcdAux (B : Int) ((A:Int) % (B:Int)) 0 1).1
       simpa [Int.natAbs_of_nonneg h_nonneg] using h_result
 
-/-- 对于非零且 AllReduced 的 Zp 元素 a，在 ZMod p 中有 (a * a.inv).toZMod p = 1。 -/
-private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0) :
-    Zp.toZMod p (a * a.inv) = (1 : ZMod p) := by
+/-- 对于非零且 AllReduced 的 Zp 元素 a，在 ZMod p 中有 (a * a.inv).toZMod p = 1。
+    需要: (1) extGcdAux_bezout 给出 y*a.val + x*p = g; (2) gcd(p,a.val) = 1 → g = 1;
+    (3) a.inv = y (mod p); (4) Zp.toZMod_mul 的 overflow 条件满足 (p*p ≤ UInt64.size)。 -/
+private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0)
+    (h_p2 : p * p ≤ UInt64.size) : Zp.toZMod p (a * a.inv) = (1 : ZMod p) := by
   admit
 
 /-- 多项式长除法中 r' = r - term*g 的首项抵消 → deg(r') < dr。 -/

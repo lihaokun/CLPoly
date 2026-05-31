@@ -154,8 +154,91 @@ private lemma extGcdAux_bezout (A B : Int) :
 
 /-- extGcdAux 对非负输入返回非负值的第一个分量。
     证明：强归纳于 B（第二个参数），利用 extGcdAux_linearity_gcd 连通不同 (old_s, s) 的 .1。 -/
+private lemma extGcdAux_fst_independent (old_r r old_s s : Int) :
+    (Zp.extGcdAux old_r r old_s s).1 = (Zp.extGcdAux old_r r 0 1).1 := by
+  have h_nat : ∀ (n : ℕ), (∀ m < n, ∀ (old_r' r' old_s' s' : Int), r'.natAbs = m →
+    (Zp.extGcdAux old_r' r' old_s' s').1 = (Zp.extGcdAux old_r' r' 0 1).1) →
+    ∀ (old_r r old_s s : Int), r.natAbs = n → (Zp.extGcdAux old_r r old_s s).1 = (Zp.extGcdAux old_r r 0 1).1 := by
+    intro n IH old_r r old_s s hn
+    by_cases hzero : r == 0
+    · simp [Zp.extGcdAux, hzero]
+    · have hzero_beq : ¬ (r == 0) := hzero
+      have h_sub1 : Zp.extGcdAux old_r r old_s s = Zp.extGcdAux r (old_r - (old_r / r) * r) s (old_s - (old_r / r) * s) := by
+        rw [Zp.extGcdAux, dif_neg hzero_beq]
+      have h_sub2 : Zp.extGcdAux old_r r 0 1 = Zp.extGcdAux r (old_r - (old_r / r) * r) 1 (-(old_r / r)) := by
+        rw [Zp.extGcdAux, dif_neg hzero_beq]
+        dsimp; simp
+      have h_eq : old_r - (old_r / r) * r = old_r % r := by
+        linarith [Int.ediv_add_emod old_r r]
+      have h_decr : (old_r % r).natAbs < r.natAbs := by
+        have h_nonneg : 0 ≤ old_r % r := Int.emod_nonneg old_r (by
+          intro h; apply hzero; simp [h])
+        have h_mod_lt : old_r % r < (r.natAbs : Int) := Int.emod_lt old_r (by
+          intro h; apply hzero; simp [h])
+        have h_natAbs_lt : (old_r % r).natAbs < r.natAbs := by
+          have h_eq' : ((old_r % r).natAbs : Int) = old_r % r := Int.natAbs_of_nonneg h_nonneg
+          have h' : ((old_r % r).natAbs : Int) < (r.natAbs : Int) := by rw [h_eq']; exact h_mod_lt
+          exact (Int.ofNat_lt.mp h')
+        exact h_natAbs_lt
+      have h_lt_n : (old_r % r).natAbs < n := by rw [← hn]; exact h_decr
+      have h_IH1 : (Zp.extGcdAux r (old_r % r) s (old_s - (old_r / r) * s)).1 = (Zp.extGcdAux r (old_r % r) 0 1).1 :=
+        IH (old_r % r).natAbs h_lt_n r (old_r % r) s (old_s - (old_r / r) * s) rfl
+      have h_IH2 : (Zp.extGcdAux r (old_r % r) 1 (-(old_r / r))).1 = (Zp.extGcdAux r (old_r % r) 0 1).1 :=
+        IH (old_r % r).natAbs h_lt_n r (old_r % r) (1 : Int) (-(old_r / r)) rfl
+      calc
+        (Zp.extGcdAux old_r r old_s s).1 = (Zp.extGcdAux r (old_r - (old_r / r) * r) s (old_s - (old_r / r) * s)).1 := by rw [h_sub1]
+        _ = (Zp.extGcdAux r (old_r % r) s (old_s - (old_r / r) * s)).1 := by rw [h_eq]
+        _ = (Zp.extGcdAux r (old_r % r) 0 1).1 := h_IH1
+        _ = (Zp.extGcdAux r (old_r % r) 1 (-(old_r / r))).1 := by symm; exact h_IH2
+        _ = (Zp.extGcdAux r (old_r - (old_r / r) * r) 1 (-(old_r / r))).1 := by rw [← h_eq]
+        _ = (Zp.extGcdAux old_r r 0 1).1 := by rw [← h_sub2]
+  have h_all : ∀ (n : ℕ), ∀ (old_r r old_s s : Int), r.natAbs = n →
+    (Zp.extGcdAux old_r r old_s s).1 = (Zp.extGcdAux old_r r 0 1).1 := by
+    intro n
+    induction n using Nat.strong_induction_on with
+    | h m IH_all =>
+      intro old_r r old_s s hm
+      apply h_nat m (λ k hk old_r' r' old_s' s' hk_eq => IH_all k hk old_r' r' old_s' s' hk_eq) old_r r old_s s hm
+  apply h_all r.natAbs old_r r old_s s rfl
+
 private lemma extGcdAux_gcd_nonneg (A B : ℕ) : 0 ≤ (Zp.extGcdAux (A : Int) (B : Int) 0 1).1 := by
-  admit
+  revert A
+  induction B using Nat.strong_induction_on with
+  | h B IH =>
+    intro A
+    by_cases hB : (B : ℕ) = 0
+    · subst hB; simp [Zp.extGcdAux]
+    · have hB_int_ne_zero : (B : Int) ≠ 0 := by exact_mod_cast hB
+      have hzero_beq : ¬ (B : Int) == 0 := by
+        intro h; apply hB_int_ne_zero; simpa using h
+      have h_sub : Zp.extGcdAux (A : Int) (B : Int) 0 1 =
+          Zp.extGcdAux (B : Int) ((A : Int) % (B : Int)) (1 : Int) (-((A : Int) / (B : Int))) := by
+        rw [Zp.extGcdAux, dif_neg hzero_beq]; dsimp
+        have h_eq_rem : (A : Int) - ((A : Int) / (B : Int)) * (B : Int) = (A : Int) % (B : Int) := by
+          linarith [Int.ediv_add_emod (A : Int) (B : Int)]
+        simp [h_eq_rem]
+      rw [h_sub]
+      rw [extGcdAux_fst_independent (B : Int) ((A : Int) % (B : Int)) (1 : Int) (-((A : Int) / (B : Int)))]
+      have h_nonneg : 0 ≤ (A : Int) % (B : Int) :=
+        Int.emod_nonneg (A : Int) hB_int_ne_zero
+      have h_lt_B : ((A : Int) % (B : Int)).natAbs < B := by
+        have h_mod_lt : (A : Int) % (B : Int) < (B : Int) :=
+          Int.emod_lt (A : Int) hB_int_ne_zero
+        have h_natAbs_lt : ((A : Int) % (B : Int)).natAbs < (B : Int).natAbs := by
+          have h_eq : (((A : Int) % (B : Int)).natAbs : Int) = (A : Int) % (B : Int) :=
+            Int.natAbs_of_nonneg h_nonneg
+          have h' : (((A : Int) % (B : Int)).natAbs : Int) < ((B : Int).natAbs : Int) := by
+            rw [h_eq]; exact h_mod_lt
+          exact (Int.ofNat_lt.mp h')
+        have : (B : Int).natAbs = B := by simp
+        rw [this] at h_natAbs_lt
+        exact h_natAbs_lt
+      -- IH generalizes over A, so we can apply it with A' = B
+      have h_IH : ∀ (m : ℕ), m < B → ∀ (A' : ℕ), 0 ≤ (Zp.extGcdAux (A' : Int) (m : Int) 0 1).1 := IH
+      have h_result := h_IH ((A : Int) % (B : Int)).natAbs h_lt_B B
+      -- h_result: 0 ≤ (extGcdAux (B : Int) (((A:Int) % (B:Int)).natAbs : Int) 0 1).1
+      -- but we need: 0 ≤ (extGcdAux (B : Int) ((A:Int) % (B:Int)) 0 1).1
+      simpa [Int.natAbs_of_nonneg h_nonneg] using h_result
 
 /-- 对于非零且 AllReduced 的 Zp 元素 a，在 ZMod p 中有 (a * a.inv).toZMod p = 1。 -/
 private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0) :

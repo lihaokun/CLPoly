@@ -714,6 +714,54 @@ private lemma divmod_identity (f g : SparsePolyZp)
     divmodAux'_wf_eq g dg lc_g_inv #[] f
   simpa [h_eq] using h_res
 
+/-- divmod'_wf 的 toPoly 恒等式（绕过 divmodAux'_wf_eq + partial def，直接使用 divmodAux_invariant）。 -/
+private lemma divmod'_wf_identity (f g : SparsePolyZp) (h_nonempty : ¬g.isEmpty)
+    (hwf_f : SparsePolyZp.WellFormed p f) (hwg_g : SparsePolyZp.WellFormed p g)
+    (hred_f : SparsePolyZp.AllReduced p f.toList) (hred_g : SparsePolyZp.AllReduced p g.toList)
+    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size) :
+    SparsePolyZp.toPoly p f = SparsePolyZp.toPoly p (divmod'_wf f g).fst * SparsePolyZp.toPoly p g +
+                              SparsePolyZp.toPoly p (divmod'_wf f g).snd := by
+  unfold divmod'_wf
+  simp [h_nonempty]
+  have hpos : 0 < g.size := by
+    rw [Array.isEmpty_iff_size_eq_zero] at h_nonempty; omega
+  have h_prime : (g[0]!.snd.inv).prime.toNat = p := by
+    have hm' : g[0]! ∈ g := by
+      have hmem : g[0] ∈ g := Array.getElem_mem (i := 0) (h := hpos) (xs := g)
+      simpa [show g[0]! = g[0] from by simp [hpos]] using hmem
+    have h_from_wf : (g[0]!).snd.prime.toNat = p := hwg_g (g[0]!) hm'
+    simpa [Zp.inv, h_from_wf]
+  have h_inv_init : SparsePolyZp.toPoly p f = SparsePolyZp.toPoly p (#[] : SparsePolyZp) * SparsePolyZp.toPoly p g + SparsePolyZp.toPoly p f := by
+    simp [SparsePolyZp.toPoly_empty]
+  exact divmodAux_invariant g (g[0]!.fst.deg) (g[0]!.snd.inv) #[] f f h_inv_init hwf_f hwg_g hred_f hred_g (allReduced_empty p) hred_f h_2p h_p2 h_nonempty h_prime
+
+/-- divmod'_wf 的余式保持 AllReduced。 -/
+private lemma divmod'_wf_snd_allReduced (f g : SparsePolyZp)
+    (hred_f : SparsePolyZp.AllReduced p f.toList) (hred_g : SparsePolyZp.AllReduced p g.toList) :
+    SparsePolyZp.AllReduced p (divmod'_wf f g).snd.toList := by
+  unfold divmod'_wf
+  by_cases hg_empty : g.isEmpty
+  · simp [hg_empty, hred_f]
+  · simp [hg_empty]
+    admit
+
+/-- divmod'_wf 的余式保持 WellFormed（由 AllReduced 推出）。 -/
+private lemma divmod'_wf_snd_wellFormed (f g : SparsePolyZp)
+    (hred_f : SparsePolyZp.AllReduced p f.toList) (hred_g : SparsePolyZp.AllReduced p g.toList) :
+    SparsePolyZp.WellFormed p (divmod'_wf f g).snd := by
+  have hred_snd : SparsePolyZp.AllReduced p (divmod'_wf f g).snd.toList :=
+    divmod'_wf_snd_allReduced f g hred_f hred_g
+  -- AllReduced → WellFormed (只需 prime 部分)
+  intro x hx
+  have hx_red : Zp.Reduced p x.snd := hred_snd x (by
+    rw [← Array.mem_def]; exact hx)
+  exact hx_red.1
+
+/-- divmod'_wf 的余式度 < 除式度。 -/
+private lemma divmod'_wf_deg_lt (f g : SparsePolyZp) (h_nonempty : ¬g.isEmpty) :
+    (SparsePolyZp.toPoly p (divmod'_wf f g).snd).natDegree < (SparsePolyZp.toPoly p g).natDegree := by
+  admit
+
 /-- 多项式除法的余式度严格小于除式度：由 divmodAux_invariant + deg(r') < deg(g) 性质得证。 -/
 private lemma divmod_deg_lt (f g : SparsePolyZp) (h_nonempty : ¬g.isEmpty) :
     (SparsePolyZp.toPoly p (SparsePolyZp.divmod f g).snd).natDegree <
@@ -737,69 +785,66 @@ private lemma gcdAux_unfold (f g : SparsePolyZp) :
     SparsePolyZp.gcdAux f g = (if g.isEmpty then f else SparsePolyZp.gcdAux g ((SparsePolyZp.divmod f g).snd)) := by
   admit
 
-/-- gcdAux 的 toPoly gcd 性质：整除双方 + 最大性。用 Nat 强归纳于 g 的 toPoly natDegree。 -/
-private lemma gcdAux_gcd_properties (f g : SparsePolyZp)
+/-- gcdAux'_wf 的 toPoly gcd 性质：整除双方 + 最大性。用 Nat 强归纳于 g 的 toPoly natDegree。
+    使用 gcdAux'_wf（有 .eq_1），绕过 partial def 的 opaque 问题。 -/
+private lemma gcdAux'_wf_gcd_properties (f g : SparsePolyZp)
     (hwf : SparsePolyZp.WellFormed p f) (hwg : SparsePolyZp.WellFormed p g)
     (hred_f : SparsePolyZp.AllReduced p f.toList) (hred_g : SparsePolyZp.AllReduced p g.toList)
     (h2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size) :
-    (SparsePolyZp.toPoly p (SparsePolyZp.gcdAux f g) ∣ SparsePolyZp.toPoly p f) ∧
-    (SparsePolyZp.toPoly p (SparsePolyZp.gcdAux f g) ∣ SparsePolyZp.toPoly p g) ∧
+    (SparsePolyZp.toPoly p (gcdAux'_wf p f g) ∣ SparsePolyZp.toPoly p f) ∧
+    (SparsePolyZp.toPoly p (gcdAux'_wf p f g) ∣ SparsePolyZp.toPoly p g) ∧
     (∀ d : Polynomial (ZMod p), d ∣ SparsePolyZp.toPoly p f → d ∣ SparsePolyZp.toPoly p g →
-      d ∣ SparsePolyZp.toPoly p (SparsePolyZp.gcdAux f g)) := by
+      d ∣ SparsePolyZp.toPoly p (gcdAux'_wf p f g)) := by
   -- 用 auxiliary lemma 做强归纳于 (toPoly g).natDegree
   have h_aux : ∀ (n : ℕ), ∀ (f g : SparsePolyZp)
       (hwf : SparsePolyZp.WellFormed p f) (hwg : SparsePolyZp.WellFormed p g)
       (hred_f : SparsePolyZp.AllReduced p f.toList) (hred_g : SparsePolyZp.AllReduced p g.toList)
       (h2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
       (hM : (SparsePolyZp.toPoly p g).natDegree = n),
-      (SparsePolyZp.toPoly p (SparsePolyZp.gcdAux f g) ∣ SparsePolyZp.toPoly p f) ∧
-      (SparsePolyZp.toPoly p (SparsePolyZp.gcdAux f g) ∣ SparsePolyZp.toPoly p g) ∧
+      (SparsePolyZp.toPoly p (gcdAux'_wf p f g) ∣ SparsePolyZp.toPoly p f) ∧
+      (SparsePolyZp.toPoly p (gcdAux'_wf p f g) ∣ SparsePolyZp.toPoly p g) ∧
       (∀ d : Polynomial (ZMod p), d ∣ SparsePolyZp.toPoly p f → d ∣ SparsePolyZp.toPoly p g →
-        d ∣ SparsePolyZp.toPoly p (SparsePolyZp.gcdAux f g)) := by
+        d ∣ SparsePolyZp.toPoly p (gcdAux'_wf p f g)) := by
     intro n
     induction n using Nat.strong_induction_on with
     | h n IH =>
       intro f g hwf hwg hred_f hred_g h2p h_p2 hM
+      rw [gcdAux'_wf.eq_1 p f g]
       by_cases hg_empty : g.isEmpty
-      · -- case g.isEmpty: gcdAux = f
+      · -- case g.isEmpty: gcdAux'_wf = f
         have hg_empty' : g.isEmpty = true := hg_empty
         have hg_eq : g = #[] := by simpa using (Array.isEmpty_iff.mp hg_empty')
-        have hgcdAux : SparsePolyZp.gcdAux f g = f := by
-          admit
-        rw [hgcdAux, hg_eq]
-        simp [SparsePolyZp.toPoly_empty]
-      · -- case ¬g.isEmpty: gcdAux f g = gcdAux g r with r = (divmod f g).snd
+        simpa [hg_eq, SparsePolyZp.toPoly_empty] using ⟨dvd_refl _, dvd_zero _, λ d hd_f hd_g => hd_f⟩
+      · -- case ¬g.isEmpty: gcdAux'_wf f g = gcdAux'_wf p g (divmod'_wf f g).snd
         push_neg at hg_empty
-        have h_gcd_eq : SparsePolyZp.gcdAux f g = SparsePolyZp.gcdAux g ((SparsePolyZp.divmod f g).snd) := by
-          rw [gcdAux_unfold f g, if_neg hg_empty]
-        rw [h_gcd_eq]
-        let r := (SparsePolyZp.divmod f g).snd
-        have hwf_r : SparsePolyZp.WellFormed p r := divmod_snd_wellFormed f g hwf hwg
-        have hred_r : SparsePolyZp.AllReduced p r.toList := divmod_snd_allReduced f g hred_f hred_g
+        simp [hg_empty]
+        let r := (divmod'_wf f g).snd
+        have hwf_r : SparsePolyZp.WellFormed p r := divmod'_wf_snd_wellFormed f g hred_f hred_g
+        have hred_r : SparsePolyZp.AllReduced p r.toList := divmod'_wf_snd_allReduced f g hred_f hred_g
         have h_deg_r_lt : (SparsePolyZp.toPoly p r).natDegree < (SparsePolyZp.toPoly p g).natDegree :=
-          divmod_deg_lt f g hg_empty
+          divmod'_wf_deg_lt f g hg_empty
         have h_deg_r_lt_n : (SparsePolyZp.toPoly p r).natDegree < n := by
           rw [← hM]; exact h_deg_r_lt
         have h_IH := IH (SparsePolyZp.toPoly p r).natDegree h_deg_r_lt_n g r hwg hwf_r hred_g hred_r h2p h_p2 rfl
         rcases h_IH with ⟨h_gcd_dvd_g, h_gcd_dvd_r, h_gcd_greatest⟩
         have h_div_id : SparsePolyZp.toPoly p f =
-            SparsePolyZp.toPoly p (SparsePolyZp.divmod f g).fst * SparsePolyZp.toPoly p g +
+            SparsePolyZp.toPoly p (divmod'_wf f g).fst * SparsePolyZp.toPoly p g +
             SparsePolyZp.toPoly p r :=
-          divmod_identity f g hg_empty hwf hwg hred_f hred_g h2p h_p2
-        have h_gcd_dvd_f : SparsePolyZp.toPoly p (SparsePolyZp.gcdAux g r) ∣ SparsePolyZp.toPoly p f := by
+          divmod'_wf_identity f g hg_empty hwf hwg hred_f hred_g h2p h_p2
+        have h_gcd_dvd_f : SparsePolyZp.toPoly p (gcdAux'_wf p g r) ∣ SparsePolyZp.toPoly p f := by
           rw [h_div_id]
           apply dvd_add
           · exact dvd_mul_of_dvd_right h_gcd_dvd_g _
           · exact h_gcd_dvd_r
         have h_gcd_greatest' : ∀ d : Polynomial (ZMod p), d ∣ SparsePolyZp.toPoly p f → d ∣ SparsePolyZp.toPoly p g →
-            d ∣ SparsePolyZp.toPoly p (SparsePolyZp.gcdAux g r) := by
+            d ∣ SparsePolyZp.toPoly p (gcdAux'_wf p g r) := by
           intro d hd_f hd_g
           apply h_gcd_greatest d hd_g
-          have hd_qg : d ∣ (SparsePolyZp.toPoly p (SparsePolyZp.divmod f g).fst * SparsePolyZp.toPoly p g) :=
+          have hd_qg : d ∣ (SparsePolyZp.toPoly p (divmod'_wf f g).fst * SparsePolyZp.toPoly p g) :=
             dvd_mul_of_dvd_right hd_g _
-          have hd_sub : d ∣ (SparsePolyZp.toPoly p f - SparsePolyZp.toPoly p (SparsePolyZp.divmod f g).fst * SparsePolyZp.toPoly p g) :=
+          have hd_sub : d ∣ (SparsePolyZp.toPoly p f - SparsePolyZp.toPoly p (divmod'_wf f g).fst * SparsePolyZp.toPoly p g) :=
             dvd_sub hd_f hd_qg
-          have h_div_eq : SparsePolyZp.toPoly p f - (SparsePolyZp.toPoly p (SparsePolyZp.divmod f g).fst * SparsePolyZp.toPoly p g) =
+          have h_div_eq : SparsePolyZp.toPoly p f - (SparsePolyZp.toPoly p (divmod'_wf f g).fst * SparsePolyZp.toPoly p g) =
               SparsePolyZp.toPoly p r := by
             rw [h_div_id, add_sub_cancel_left]
           have hd_sub' : d ∣ SparsePolyZp.toPoly p r := by

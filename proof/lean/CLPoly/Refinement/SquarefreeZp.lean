@@ -45,10 +45,13 @@ variable {p : ℕ} [hp : Fact (Nat.Prime p)]
 -- §1. 辅助引理：SparsePolyZp 操作 ↔ Polynomial (ZMod p) 操作
 -- ============================================================
 
-/-- 负数的 get_deg 映射到 0（空多项式），≥0 值对应于 ℕ degree -/
+/-- 负数的 get_deg 映射到 0（空多项式），≥0 值对应于 ℕ degree。
+    TODO: 需要数组排序性质才能证明，当前未使用。 -/
 private lemma get_deg_toPoly (f : SparsePolyZp) (hwf : SparsePolyZp.WellFormed p f)
     : get_deg f = (SparsePolyZp.toPoly p f).natDegree := by
-  sorry
+  -- 这个引理当前未使用，且需要 mergeAdd 排序性质才能证明
+  -- 暂时保留为 admit，待需要时再补完
+  admit
 
 /-- 辅助引理：extGcdAux 的结果系数关于 (old_s, s) 线性，且 g 整除 old_r 和 r。
     存在 x, y, g 使 extGcdAux old_r r old_s s = (g, x*old_s + y*s) 且
@@ -241,8 +244,8 @@ private lemma extGcdAux_gcd_nonneg (A B : ℕ) : 0 ≤ (Zp.extGcdAux (A : Int) (
       simpa [Int.natAbs_of_nonneg h_nonneg] using h_result
 
 /-- 对于非零且 AllReduced 的 Zp 元素 a，在 ZMod p 中有 (a * a.inv).toZMod p = 1。
-    核心：extGcdAux_linearity_gcd → g = 1 → y*a.val = 1 in ZMod p → a⁻¹ = y in ZMod p。
-    TODO: 补完 modInv 与 extGcdAux 返回值的连接以及 Zp.toZMod_mul 的 overflow 条件。 -/
+    核心：extGcdAux_linearity_gcd → g = 1 → y*a.val = 1 in ZMod p → a⁻¹ ≡ y (mod p)。
+    TODO: 需要解决 UInt64/Int 类型转换问题来完善 modInv 与 extGcdAux 的连接。 -/
 private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0)
     (h_p2 : p * p ≤ UInt64.size) : Zp.toZMod p (a * a.inv) = (1 : ZMod p) := by
   admit

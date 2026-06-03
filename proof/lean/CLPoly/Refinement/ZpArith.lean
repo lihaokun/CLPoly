@@ -298,6 +298,7 @@ by
     subst hf_empty
     have hLHS : (Generated.__upoly_make_monic_ir #[]).snd = #[] := by
       unfold Generated.__upoly_make_monic_ir
+      unfold Generated.__upoly_make_monic_ir_def
       have h_loop_snd : (Generated._loop___upoly_make_monic_0_ir 0 #[] (default : UMonomial × Zp).2.inv).snd = #[] := by
         unfold Generated._loop___upoly_make_monic_0_ir
         simp
@@ -351,6 +352,7 @@ by
         simpa [h_cast_eq] using hone_val
       have hgen_snd : (Generated.__upoly_make_monic_ir f).snd = f := by
         unfold Generated.__upoly_make_monic_ir
+        unfold Generated.__upoly_make_monic_ir_def
         simp [hgc, hsize_pos]
       have hmake_toPoly : SparsePolyZp.toPoly p (SparsePolyZp.makeMonic f) = SparsePolyZp.toPoly p f := by
         unfold SparsePolyZp.makeMonic
@@ -385,6 +387,7 @@ by
           (Generated._loop___upoly_make_monic_0_ir 0 f
             (Zp.inv ((SparsePolyZp.front! f).snd))).snd := by
         unfold Generated.__upoly_make_monic_ir
+        unfold Generated.__upoly_make_monic_ir_def
         dsimp
         have h_cast_eq : Int64.toUInt64 1 = (Int32.toInt64 1).toUInt64 := by
           native_decide

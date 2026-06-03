@@ -968,6 +968,36 @@ lemma upoly_make_monic_deg_bound (f : SparsePolyZp) (h_deg_bound : ∀ x ∈ f.t
     rcases List.mem_map.mp hx_mem with ⟨y, hy, rfl⟩
     exact h_deg_bound y hy
 
+/-- __extract_pth_root_ir 保持 WellFormed。 -/
+lemma extract_pth_root_wellFormed (g : SparsePolyZp) (hwf : SparsePolyZp.WellFormed p g) :
+    SparsePolyZp.WellFormed p (Generated.__extract_pth_root_ir g) := by
+  admit
+
+/-- __extract_pth_root_ir 保持 AllReduced。 -/
+lemma extract_pth_root_allReduced (g : SparsePolyZp) (hred : SparsePolyZp.AllReduced p g.toList) :
+    SparsePolyZp.AllReduced p (Generated.__extract_pth_root_ir g).toList := by
+  admit
+
+/-- __extract_pth_root_ir 保持 degree bound。 -/
+lemma extract_pth_root_deg_bound (g : SparsePolyZp) (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
+    ∀ x ∈ (Generated.__extract_pth_root_ir g).toList, x.1.deg < 2 ^ 64 := by
+  admit
+
+/-- __extract_pth_root_ir 保持 no_overflow，且因 degree 被 p 除，还有 p * deg < 2^64。 -/
+lemma extract_pth_root_no_overflow (g : SparsePolyZp) (h_no_overflow : ∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
+    (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
+    (∀ x ∈ (Generated.__extract_pth_root_ir g).toList, x.2.val.toNat * x.1.deg < 2 ^ 64) ∧
+    (∀ x ∈ (Generated.__extract_pth_root_ir g).toList, p * x.1.deg < 2 ^ 64) := by
+  admit
+
+/-- __extract_pth_root_ir 的 toPoly 对应 contract p。 -/
+lemma extract_pth_root_toPoly_eq (g : SparsePolyZp) (h_deriv0 : SparsePolyZp.derivative g = SparsePolyZp.empty)
+    (hwf : SparsePolyZp.WellFormed p g) (hred : SparsePolyZp.AllReduced p g.toList)
+    (hp_size : 2 * p ≤ UInt64.size) (h_no_overflow : ∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
+    (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
+    SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) = Polynomial.contract p (SparsePolyZp.toPoly p g) := by
+  admit
+
 -- ============================================================
 -- §3. 主定理：__squarefree_Zp_ir ≃ sqfZp
 -- ============================================================
@@ -1064,9 +1094,15 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                 _ = (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree := by rw [h_toPoly_g1]
                 _ < (SparsePolyZp.toPoly p g).natDegree := h_contract_deg_lt
                 _ = n := h_deg_eq
+            have h_wf_g1 : SparsePolyZp.WellFormed p g_1 := extract_pth_root_wellFormed g hwf_g
+            have h_red_g1 : SparsePolyZp.AllReduced p g_1.toList := extract_pth_root_allReduced g hred_g
+            have h_db_g1 : ∀ x ∈ g_1.toList, x.1.deg < 2 ^ 64 := extract_pth_root_deg_bound g h_deg_bound_g
+            have h_wf_g2 : SparsePolyZp.WellFormed p g_2 := upoly_make_monic_wellFormed g_1 h_wf_g1
+            have h_red_g2 : SparsePolyZp.AllReduced p g_2.toList := upoly_make_monic_allReduced g_1 h_red_g1 hp_size
+            have h_db_g2 : ∀ x ∈ g_2.toList, x.1.deg < 2 ^ 64 := upoly_make_monic_deg_bound g_1 h_db_g1
             have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
               ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl
-                (by admit) (by admit) hp_size (by admit) (by admit)
+                h_wf_g2 h_red_g2 hp_size (by admit) h_db_g2
             let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
             have hp_1_eq_p : p_1.toNat = p := by
               have hsize_pos : 0 < Array.size g := by

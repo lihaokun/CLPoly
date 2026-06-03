@@ -975,7 +975,103 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
           rw [Generated.__squarefree_Zp_ir_def.eq_1]
           by_cases h_deriv0 : SparsePolyZp.derivative g = (SparsePolyZp.empty : SparsePolyZp)
           · -- Branch A: derivative = 0 → p-th root
-            sorry
+            have hp_prime : Nat.Prime p := hp.out
+            have hp_ne_zero : p ≠ 0 := Nat.Prime.ne_zero hp_prime
+            have h_deriv_poly : Polynomial.derivative (SparsePolyZp.toPoly p g) = 0 := by
+              calc
+                Polynomial.derivative (SparsePolyZp.toPoly p g) = SparsePolyZp.toPoly p (SparsePolyZp.derivative g) := by
+                  symm; exact derivative_toPoly_eq g hwf_g hp_size h_no_overflow_g h_deg_bound_g
+                _ = SparsePolyZp.toPoly p (SparsePolyZp.empty) := by rw [h_deriv0]
+                _ = 0 := SparsePolyZp.toPoly_empty p
+            have h_eq_nd : (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree * p =
+                (SparsePolyZp.toPoly p g).natDegree := by
+              have hexp : Polynomial.expand (ZMod p) p (Polynomial.contract p (SparsePolyZp.toPoly p g)) =
+                  SparsePolyZp.toPoly p g :=
+                Polynomial.expand_contract p h_deriv_poly hp_ne_zero
+              calc
+                (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree * p
+                    = (Polynomial.expand (ZMod p) p (Polynomial.contract p (SparsePolyZp.toPoly p g))).natDegree := by
+                  rw [Polynomial.natDegree_expand, mul_comm]
+                _ = (SparsePolyZp.toPoly p g).natDegree := by rw [hexp]
+            have h_contract_pos : 0 < (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree := by
+              by_contra hzero
+              have hzero' : (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree = 0 := by omega
+              rw [hzero', zero_mul] at h_eq_nd
+              omega
+            have h_contract_deg_lt : (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree <
+                (SparsePolyZp.toPoly p g).natDegree := by
+              have hp_ge_2 : 2 ≤ p := Nat.Prime.two_le hp_prime
+              by_cases hpos : (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree = 0
+              · omega
+              · have hpos_mul : (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree * 1 <
+                    (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree * p :=
+                  mul_lt_mul_of_pos_left (by omega) (Nat.pos_of_ne_zero hpos)
+                simp at hpos_mul
+                have : (SparsePolyZp.toPoly p g).natDegree
+                    = (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree * p := by
+                  symm; exact h_eq_nd
+                rw [this]
+                exact hpos_mul
+            have h_extract_eq : SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) =
+                Polynomial.contract p (SparsePolyZp.toPoly p g) := by
+              admit
+            let g_1 := Generated.__extract_pth_root_ir g
+            let g_2 := (Generated.__upoly_make_monic_ir g_1).snd
+            have h_toPoly_g1 : SparsePolyZp.toPoly p g_1 = Polynomial.contract p (SparsePolyZp.toPoly p g) := h_extract_eq
+            have h_nd_g2 : (SparsePolyZp.toPoly p g_2).natDegree = (SparsePolyZp.toPoly p g_1).natDegree := by
+              admit
+            have h_deg_g2_lt_n : (SparsePolyZp.toPoly p g_2).natDegree < n := by
+              calc
+                (SparsePolyZp.toPoly p g_2).natDegree = (SparsePolyZp.toPoly p g_1).natDegree := h_nd_g2
+                _ = (Polynomial.contract p (SparsePolyZp.toPoly p g)).natDegree := by rw [h_toPoly_g1]
+                _ < (SparsePolyZp.toPoly p g).natDegree := h_contract_deg_lt
+                _ = n := h_deg_eq
+            have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
+              ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl
+                (by admit) (by admit) hp_size (by admit) (by admit)
+            let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
+            have hp_1_eq_p : p_1.toNat = p := by
+              have hsize_pos : 0 < Array.size g := by
+                by_contra! hzero
+                have hzero_sz : Array.size g = 0 := by omega
+                have h_empty : g = #[] := Array.eq_empty_of_size_eq_zero hzero_sz
+                have : SparsePolyZp.toPoly p g = 0 := by
+                  rw [h_empty]; exact SparsePolyZp.toPoly_empty p
+                have hzero_nd : (SparsePolyZp.toPoly p g).natDegree = 0 := by simp [this]
+                omega
+              have hfront_wf : (SparsePolyZp.front! g).snd.prime.toNat = p :=
+                hwf_g (SparsePolyZp.front! g) (by
+                  apply Array.Mem.mk
+                  have hsize_pos' : 0 < Array.size g := hsize_pos
+                  simpa [SparsePolyZp.front!] using mem_getFirst_toList g hsize_pos')
+              simp [p_1, hfront_wf]
+            have h_loop_eq : (Generated._loop___squarefree_Zp_0_ir_def 0
+                (Generated.__squarefree_Zp_ir g_2) #[] p_1).2.2 =
+                (Generated.__squarefree_Zp_ir g_2).map (fun (g_h, e) => (g_h, e * p_1)) := by
+              admit
+            have h_sqfz_g : sqfZp (SparsePolyZp.toPoly p g) = (sqfZp (Polynomial.contract p (SparsePolyZp.toPoly p g))).map
+                (fun (h, e) => (h, e * p)) := by
+              rw [sqfZp]
+              split_ifs with h1 h2
+              · exfalso
+                have : (SparsePolyZp.toPoly p g).natDegree = n := h_deg_eq
+                have hpos : n > 0 := by
+                  rw [← this]
+                  omega
+                omega
+              · simp
+            have h_result : toPolyList (Generated.__squarefree_Zp_ir g) p = sqfZp (SparsePolyZp.toPoly p g) := by
+              have h_step1 : toPolyList (Generated.__squarefree_Zp_ir g) p = toPolyList ((Generated._loop___squarefree_Zp_0_ir_def 0
+                  (__squarefree_Zp_ir_safe p g_2) #[] p_1).2.2) p := by
+                -- __squarefree_Zp_ir 展开后等于 safe wrapper 的结果（因为 g_2 的 natDegree > 0）
+                -- 这里需要更多引理，暂时 admit
+                admit
+              have h_calc : toPolyList ((Generated._loop___squarefree_Zp_0_ir_def 0
+                  (__squarefree_Zp_ir_safe p g_2) #[] p_1).2.2) p = sqfZp (SparsePolyZp.toPoly p g) := by
+                admit
+              rw [h_step1, h_calc]
+            -- Branch A 的结果
+            admit
           · -- Branch B: derivative ≠ 0 → Yun algorithm
             sorry
     simpa [h_deg0, __squarefree_Zp_ir_safe] using h_main

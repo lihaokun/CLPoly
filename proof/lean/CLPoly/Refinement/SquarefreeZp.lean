@@ -930,6 +930,44 @@ lemma upoly_make_monic_allReduced (f : SparsePolyZp) (hred : SparsePolyZp.AllRed
       exact Nat.mod_lt _ hp_pos
     exact ⟨this, hval_lt_p⟩
 
+/-- __upoly_make_monic_ir 保持 WellFormed。 -/
+lemma upoly_make_monic_wellFormed (f : SparsePolyZp) (hwf : SparsePolyZp.WellFormed p f) :
+    SparsePolyZp.WellFormed p (Generated.__upoly_make_monic_ir f).snd := by
+  intro x hx
+  simp [Generated.__upoly_make_monic_ir, Generated.__upoly_make_monic_ir_def] at hx
+  split_ifs at hx with h
+  · simp at hx; exact hwf x hx
+  · simp at hx
+    have hloop : (Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd.toList =
+        (f.toList).map (fun (m, x) => (m, x * (Zp.inv ((SparsePolyZp.front! f).snd)))) := by
+      have := loop_result_toList f (Zp.inv ((SparsePolyZp.front! f).snd)) 0 (Nat.zero_le _)
+      simpa [List.take, List.drop] using this
+    have hx_val : x ∈ (Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd.toList :=
+      (show x ∈ ((Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd : SparsePolyZp) from hx).val
+    have hx_mem : x ∈ (f.toList).map (fun (m, x) => (m, x * (Zp.inv ((SparsePolyZp.front! f).snd)))) := by
+      rw [← hloop]; exact hx_val
+    rcases List.mem_map.mp hx_mem with ⟨y, hy, rfl⟩
+    exact hwf y (Array.Mem.mk hy)
+
+/-- __upoly_make_monic_ir 保持 degree bound。 -/
+lemma upoly_make_monic_deg_bound (f : SparsePolyZp) (h_deg_bound : ∀ x ∈ f.toList, x.1.deg < 2 ^ 64) :
+    ∀ x ∈ (Generated.__upoly_make_monic_ir f).snd.toList, x.1.deg < 2 ^ 64 := by
+  intro x hx
+  simp [Generated.__upoly_make_monic_ir, Generated.__upoly_make_monic_ir_def] at hx ⊢
+  split_ifs at hx with h
+  · simp at hx; exact h_deg_bound x hx.val
+  · simp at hx
+    have hloop : (Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd.toList =
+        (f.toList).map (fun (m, x) => (m, x * (Zp.inv ((SparsePolyZp.front! f).snd)))) := by
+      have := loop_result_toList f (Zp.inv ((SparsePolyZp.front! f).snd)) 0 (Nat.zero_le _)
+      simpa [List.take, List.drop] using this
+    have hx_val : x ∈ (Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd.toList :=
+      (show x ∈ ((Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd : SparsePolyZp) from hx).val
+    have hx_mem : x ∈ (f.toList).map (fun (m, x) => (m, x * (Zp.inv ((SparsePolyZp.front! f).snd)))) := by
+      rw [← hloop]; exact hx_val
+    rcases List.mem_map.mp hx_mem with ⟨y, hy, rfl⟩
+    exact h_deg_bound y hy
+
 -- ============================================================
 -- §3. 主定理：__squarefree_Zp_ir ≃ sqfZp
 -- ============================================================

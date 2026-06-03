@@ -1152,12 +1152,15 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
             have h_wf_g1 : SparsePolyZp.WellFormed p g_1 := extract_pth_root_wellFormed g hwf_g
             have h_red_g1 : SparsePolyZp.AllReduced p g_1.toList := extract_pth_root_allReduced g hred_g
             have h_db_g1 : ∀ x ∈ g_1.toList, x.1.deg < 2 ^ 64 := extract_pth_root_deg_bound g h_deg_bound_g
+            rcases extract_pth_root_no_overflow g h_no_overflow_g h_deg_bound_g (hp := hp) with ⟨h_nov_g1, h_p_mul_g1⟩
             have h_wf_g2 : SparsePolyZp.WellFormed p g_2 := upoly_make_monic_wellFormed g_1 h_wf_g1
             have h_red_g2 : SparsePolyZp.AllReduced p g_2.toList := upoly_make_monic_allReduced g_1 h_red_g1 hp_size
             have h_db_g2 : ∀ x ∈ g_2.toList, x.1.deg < 2 ^ 64 := upoly_make_monic_deg_bound g_1 h_db_g1
+            have h_nov_g2 : ∀ x ∈ g_2.toList, x.2.val.toNat * x.1.deg < 2 ^ 64 :=
+              upoly_make_monic_no_overflow g_1 h_red_g1 h_nov_g1 h_p_mul_g1 hp_size
             have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
               ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl
-                h_wf_g2 h_red_g2 hp_size (by admit) h_db_g2
+                h_wf_g2 h_red_g2 hp_size h_nov_g2 h_db_g2
             let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
             have hp_1_eq_p : p_1.toNat = p := by
               have hsize_pos : 0 < Array.size g := by

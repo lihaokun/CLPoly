@@ -998,6 +998,61 @@ lemma extract_pth_root_toPoly_eq (g : SparsePolyZp) (h_deriv0 : SparsePolyZp.der
     SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) = Polynomial.contract p (SparsePolyZp.toPoly p g) := by
   admit
 
+/-- __upoly_make_monic_ir 保持 no_overflow（需 p * deg < 2^64 保证缩放后的 val * deg < 2^64）。 -/
+lemma upoly_make_monic_no_overflow (f : SparsePolyZp) (hred : SparsePolyZp.AllReduced p f.toList)
+    (h_no_overflow : ∀ x ∈ f.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
+    (h_p_mul_deg_lt : ∀ x ∈ f.toList, p * x.1.deg < 2 ^ 64) (hp_size : 2 * p ≤ UInt64.size) :
+    ∀ x ∈ (Generated.__upoly_make_monic_ir f).snd.toList, x.2.val.toNat * x.1.deg < 2 ^ 64 := by
+  intro x hx
+  simp [Generated.__upoly_make_monic_ir, Generated.__upoly_make_monic_ir_def] at hx ⊢
+  split_ifs at hx with h
+  · simp at hx; exact h_no_overflow x hx.val
+  · simp at hx
+    have hloop : (Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd.toList =
+        (f.toList).map (fun (m, x) => (m, x * (Zp.inv ((SparsePolyZp.front! f).snd)))) := by
+      have := loop_result_toList f (Zp.inv ((SparsePolyZp.front! f).snd)) 0 (Nat.zero_le _)
+      simpa [List.take, List.drop] using this
+    have hx_val : x ∈ (Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd.toList :=
+      (show x ∈ ((Generated._loop___upoly_make_monic_0_ir 0 f (Zp.inv ((SparsePolyZp.front! f).snd))).snd : SparsePolyZp) from hx).val
+    have hx_mem : x ∈ (f.toList).map (fun (m, x) => (m, x * (Zp.inv ((SparsePolyZp.front! f).snd)))) := by
+      rw [← hloop]; exact hx_val
+    rcases List.mem_map.mp hx_mem with ⟨y, hy, rfl⟩
+    have hy_red : Zp.Reduced p y.2 := hred y hy
+    have hp_pos : 0 < p := Nat.Prime.pos (hp.out)
+    have hp_le_size : p ≤ UInt64.size := by
+      have : 2 * p ≤ UInt64.size := hp_size
+      have : p ≤ 2 * p := by omega
+      omega
+    have h_new_val_lt_p : (y.2 * (Zp.inv ((SparsePolyZp.front! f).snd))).val.toNat < p := by
+      have hp_le_size : p ≤ UInt64.size := by
+        have : 2 * p ≤ UInt64.size := hp_size
+        have : p ≤ 2 * p := by omega
+        omega
+      have h_mod_lt_uint64 : (y.2.val.toNat * (Zp.inv ((SparsePolyZp.front! f).snd)).val.toNat) % y.2.prime.toNat < UInt64.size := by
+        have h_mod_lt_p : (y.2.val.toNat * (Zp.inv ((SparsePolyZp.front! f).snd)).val.toNat) % y.2.prime.toNat < y.2.prime.toNat :=
+          Nat.mod_lt _ (by
+            have : y.2.prime.toNat = p := hy_red.1
+            rw [this]; exact hp_pos)
+        have h_p_eq : y.2.prime.toNat = p := hy_red.1
+        have h_mod_lt_p' : (y.2.val.toNat * (Zp.inv ((SparsePolyZp.front! f).snd)).val.toNat) % p < p := by
+          simpa [h_p_eq] using h_mod_lt_p
+        exact calc
+          (y.2.val.toNat * (Zp.inv ((SparsePolyZp.front! f).snd)).val.toNat) % y.2.prime.toNat
+              = (y.2.val.toNat * (Zp.inv ((SparsePolyZp.front! f).snd)).val.toNat) % p := by simp [hy_red.1]
+          _ < p := h_mod_lt_p'
+          _ ≤ UInt64.size := hp_le_size
+      have h_val : (y.2 * (Zp.inv ((SparsePolyZp.front! f).snd))).val.toNat =
+          (y.2.val.toNat * (Zp.inv ((SparsePolyZp.front! f).snd)).val.toNat) % y.2.prime.toNat := by
+        calc
+          (y.2 * (Zp.inv ((SparsePolyZp.front! f).snd))).val.toNat
+              = ((y.2.val.toNat * (Zp.inv ((SparsePolyZp.front! f).snd)).val.toNat) % y.2.prime.toNat).toUInt64.toNat := rfl
+          _ = (y.2.val.toNat * (Zp.inv ((SparsePolyZp.front! f).snd)).val.toNat) % y.2.prime.toNat := by
+            simp [UInt64.toNat_ofNat, h_mod_lt_uint64]
+      rw [h_val, hy_red.1]
+      exact Nat.mod_lt _ hp_pos
+    have hp_mul_deg_lt : p * y.1.deg < 2 ^ 64 := h_p_mul_deg_lt y hy
+    nlinarith
+
 -- ============================================================
 -- §3. 主定理：__squarefree_Zp_ir ≃ sqfZp
 -- ============================================================

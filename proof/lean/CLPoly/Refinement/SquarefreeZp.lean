@@ -1013,15 +1013,17 @@ private lemma loop_extract_toList (f : SparsePolyZp) (acc : SparsePolyZp) (idx :
           simp [List.append_assoc]
         _ = acc.toList ++ (((p.1[p.2]) :: List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by simp
         _ = acc.toList ++ (List.drop p.2 (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
-          rw [hx_drop]
+          simp [hx_drop]
         _ = acc.toList ++ List.drop p.2 ((p.1.toList).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by
           simp [List.map_drop]
     exact h_target
-  · simp [h]
-    have h_drop_empty : List.drop p.2 (p.1.toList) = [] := by
-      apply drop_all_of_le
-      simpa using h
-    simp [h_drop_empty]
+  · -- i ≥ size, loop returns acc directly, List.drop is empty
+    have h_drop_empty : List.drop p.2 (p.1.toList) = [] :=
+      List.drop_eq_nil_of_le (by
+        have : p.1.toList.length = Array.size p.1 := by simp
+        rw [this]
+        omega)
+    simp [Generated._loop___extract_pth_root_0_ir_def, h, h_drop_empty]
 
 /-- __extract_pth_root_ir 保持 WellFormed。 -/
 lemma extract_pth_root_wellFormed (g : SparsePolyZp) (hwf : SparsePolyZp.WellFormed p g) :

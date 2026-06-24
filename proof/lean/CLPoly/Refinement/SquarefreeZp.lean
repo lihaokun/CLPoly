@@ -996,6 +996,8 @@ private lemma loop_extract_toList (f : SparsePolyZp) (acc : SparsePolyZp) (idx :
             = (p.1.toList).get ⟨p.2, hx_len⟩ :: List.drop (p.2 + 1) (p.1.toList) := htemp
         _ = p.1[p.2]! :: List.drop (p.2 + 1) (p.1.toList) := by rw [h_get_eq]
         _ = term_1 :: List.drop (p.2 + 1) (p.1.toList) := rfl
+    have hx_drop_no_get! : List.drop p.2 (p.1.toList) = (p.1[p.2]) :: List.drop (p.2 + 1) (p.1.toList) := by
+      simpa [term_1, getElem!_def, getElem?_def, h] using hx_drop
     have h_measure : Array.size p.1 - (p.2 + 1) < Array.size p.1 - p.2 := by omega
     have h_idx_succ : p.2 + 1 ≤ Array.size p.1 := by omega
     have h_ih := ih (p.1, p.2 + 1) h_measure
@@ -1003,7 +1005,9 @@ private lemma loop_extract_toList (f : SparsePolyZp) (acc : SparsePolyZp) (idx :
       h_idx_succ
     -- h_ih uses term_1. Replace with p.1[p.2]! (defined by term_1) then simplify ! to no-!.
     have h_get_eq : p.1[p.2]! = p.1[p.2] := by
-      simp [getElem!_def, h]
+      -- Use h: p.2 < Array.size p.1 to resolve getElem? to Some val
+      have hsize : p.2 < Array.size p.1 := h
+      simp [getElem!_def, getElem?_def, hsize]
     replace h_ih : (Generated._loop___extract_pth_root_0_ir_def (p.2 + 1)
         (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2))
         p.1 p_1).snd.toList
@@ -1028,7 +1032,7 @@ private lemma loop_extract_toList (f : SparsePolyZp) (acc : SparsePolyZp) (idx :
           simp [List.append_assoc]
         _ = acc.toList ++ (((p.1[p.2]) :: List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by simp
         _ = acc.toList ++ (List.drop p.2 (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
-          rw [hx_drop]
+          rw [hx_drop_no_get!]
         _ = acc.toList ++ List.drop p.2 ((p.1.toList).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by
           simp [List.map_drop]
     exact h_target

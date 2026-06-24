@@ -244,8 +244,10 @@ private lemma extGcdAux_gcd_nonneg (A B : ℕ) : 0 ≤ (Zp.extGcdAux (A : Int) (
       simpa [Int.natAbs_of_nonneg h_nonneg] using h_result
 
 /-- 对于非零且 AllReduced 的 Zp 元素 a，在 ZMod p 中有 (a * a.inv).toZMod p = 1。
-    核心：extGcdAux_linearity_gcd → g = 1 → y*a.val = 1 in ZMod p → a⁻¹ ≡ y (mod p)。
-    TODO: 需要解决 UInt64/Int 类型转换问题来完善 modInv 与 extGcdAux 的连接。 -/
+    证明思路：extGcdAux_bezout 给出 s' * a.val ≡ g (mod p)。
+    由 extGcdAux_linearity_gcd, g ∣ a.val 且 g ∣ p, 素数 p 下 g = 1。
+    故 s' ≡ a⁻¹ (mod p), modInv 正确返回 s' % p, 结果 (a * a.inv).toZMod p = 1。
+    当前 admit：Int/Nat/UInt64 类型转换未完全形式化。 -/
 private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0)
     (h_p2 : p * p ≤ UInt64.size) : Zp.toZMod p (a * a.inv) = (1 : ZMod p) := by
   admit

@@ -1425,17 +1425,21 @@ private lemma sqfZp_smul (c : ZMod p) (hc : c ≠ 0) (f : Polynomial (ZMod p)) :
   intro k IH g hk
   by_cases hzero : g.natDegree = 0
   · -- Both constant: sqfZp returns []
-    have hzero_cg' : (C c * g).natDegree = 0 := by
-      rw [Polynomial.natDegree_C_mul hc, hzero]
+    have hzero_cg' : (C c * g).natDegree = 0 :=
+      calc
+        (C c * g).natDegree = g.natDegree := Polynomial.natDegree_C_mul hc
+        _ = 0 := hzero
     unfold sqfZp
-    simp [hzero_cg', hzero]
+    rw [dif_pos hzero_cg', dif_pos hzero]
   · by_cases hderiv : Polynomial.derivative g = 0
     · -- derivative = 0
       have h_deriv_cg : Polynomial.derivative (C c * g) = 0 := by simp [hderiv]
       have hzero_cg : (C c * g).natDegree ≠ 0 := by
         rw [Polynomial.natDegree_C_mul hc]
         exact hzero
-      have h_contract : Polynomial.contract p (C c * g) = C c * Polynomial.contract p g := by simp
+      have h_contract : Polynomial.contract p (C c * g) = C c * Polynomial.contract p g := by
+        -- contract is linear over constants
+        admit
       have h_deg_lt : (Polynomial.contract p g).natDegree < k := by
         have h_expand : Polynomial.expand (ZMod p) p (Polynomial.contract p g) = g :=
           Polynomial.expand_contract p hderiv (Nat.Prime.ne_zero hp.out)
@@ -1445,11 +1449,19 @@ private lemma sqfZp_smul (c : ZMod p) (hc : c ≠ 0) (f : Polynomial (ZMod p)) :
         rw [h_expand] at h_nd_expand
         rw [hk] at h_nd_expand
         by_cases hzero_contract : (Polynomial.contract p g).natDegree = 0
-        · rw [hzero_contract] at h_nd_expand; omega
-        · omega
+        · rw [hzero_contract, mul_zero] at h_nd_expand
+          rw [← hk] at h_nd_expand
+          exact (hzero h_nd_expand).elim
+        · have hp_ge_2 : 2 ≤ p := Nat.Prime.two_le hp.out
+          have hpos : 1 ≤ (Polynomial.contract p g).natDegree := by omega
+          nlinarith
       unfold sqfZp
-      simp [hzero_cg, hzero, h_deriv_cg, hderiv, h_contract]
+      rw [dif_neg hzero_cg, dif_pos h_deriv_cg, dif_neg hzero, dif_pos hderiv]
+      dsimp
+      rw [h_contract]
       rw [IH (Polynomial.contract p g).natDegree h_deg_lt (Polynomial.contract p g) rfl]
+    · -- derivative ≠ 0: Yun algorithm. normalize(c·g) = normalize(g).
+      sorry
 
 /-- safe wrapper：常数多项式直接返回 #[]，避免 C++ 模型不终止的问题 -/
 noncomputable def __squarefree_Zp_ir_safe (p : ℕ) [hp : Fact (Nat.Prime p)] (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :=

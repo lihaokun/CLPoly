@@ -1438,8 +1438,9 @@ private lemma sqfZp_smul (c : ZMod p) (hc : c ≠ 0) (f : Polynomial (ZMod p)) :
         rw [Polynomial.natDegree_C_mul hc]
         exact hzero
       have h_contract : Polynomial.contract p (C c * g) = C c * Polynomial.contract p g := by
-        -- contract is linear over constants
-        admit
+        have hp_ne_zero : p ≠ 0 := Nat.Prime.ne_zero hp.out
+        ext n
+        simp [Polynomial.coeff_contract hp_ne_zero, Polynomial.coeff_C_mul]
       have h_deg_lt : (Polynomial.contract p g).natDegree < k := by
         have h_expand : Polynomial.expand (ZMod p) p (Polynomial.contract p g) = g :=
           Polynomial.expand_contract p hderiv (Nat.Prime.ne_zero hp.out)

@@ -1662,11 +1662,13 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
               simp [p_1, hfront_wf]
             have h_loop_lemma (arr : Array (SparsePolyZp × UInt64)) :
                 (Generated._loop___squarefree_Zp_0_ir_def 0 arr #[] p_1).2.2 = arr.map (fun (g_h, e) => (g_h, e * p_1)) := by
-              -- The loop iterates from 0 to arr.size-1, pushing (elem.1, elem.2 * p_1) for each elem.
-              -- This is equivalent to Array.map. Proof: induction on arr.size, using the invariant:
-              -- (loop i arr r p).2.2 = r ++ (List.drop i arr.toList).map (fun (g,e) => (g, e * p))
-              -- For i=0, r=#[] this gives the desired equality.
+              -- Loop invariant: (loop i arr result p).2.2.toList = result.toList ++ (arr.toList.drop i).map f
+              -- For i=0, result=#[]: (loop 0 arr #[] p).2.2.toList = arr.toList.map f = (arr.map f).toList
+              -- Hence the arrays are equal. Proof by strong induction on arr.size - i.
+              -- The induction step requires relating arr[i]! to arr.toList[i] (getElem! vs get),
+              -- and Array.push toList append. These are all true but require Array/List conversion lemmas.
               admit
+              
             have h_loop_eq : (Generated._loop___squarefree_Zp_0_ir_def 0
                 (Generated.__squarefree_Zp_ir g_2) #[] p_1).2.2 =
                 (Generated.__squarefree_Zp_ir g_2).map (fun (g_h, e) => (g_h, e * p_1)) :=

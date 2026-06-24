@@ -1757,6 +1757,11 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                 -- toPolyList (arr.map ...) p = (toPolyList arr p).map ... (need hp_1_eq_p, no overflow bound)
                 have h_toPolyList_map (arr : Array (SparsePolyZp × UInt64)) :
                     toPolyList (arr.map (fun (g_h, e) => (g_h, e * p_1))) p = (toPolyList arr p).map (fun (h, e) => (h, e * p)) := by
+                  -- Key: (e * p_1).toNat = e.toNat * p for all exponents in the factorization.
+                  -- This holds when e.toNat * p < 2^64 (no UInt64 overflow), which follows from:
+                  --   e.toNat ≤ (toPoly p g_2).natDegree (sqfZp exponent ≤ degree)
+                  --   p * (toPoly p g_2).natDegree < 2^64 (from h_p_mul_g1 + degree bounds)
+                  -- For general arr, this may not hold; specific to __squarefree_Zp_ir_safe p g_2.
                   admit
                 rw [h_toPolyList_map (__squarefree_Zp_ir_safe p g_2)]
                 rw [h_ih_g2]

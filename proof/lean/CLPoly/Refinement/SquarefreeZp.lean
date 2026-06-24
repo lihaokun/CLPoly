@@ -984,37 +984,18 @@ private lemma loop_extract_toList (f : SparsePolyZp) (acc : SparsePolyZp) (idx :
   rw [Generated._loop___extract_pth_root_0_ir_def.eq_1]
   by_cases h : p.2 < Array.size p.1
   · simp [h]
-    let term_1 : (UMonomial × Zp) := p.1[p.2]!
     have hx_len : p.2 < p.1.toList.length := by simpa using h
-    have hx_drop : List.drop p.2 (p.1.toList) = term_1 :: List.drop (p.2 + 1) (p.1.toList) := by
+    have hx_drop : List.drop p.2 (p.1.toList) = (p.1[p.2]) :: List.drop (p.2 + 1) (p.1.toList) := by
       have htemp := drop_eq_get_cons (p.1.toList) p.2 hx_len
-      have h_get_eq : (p.1.toList).get ⟨p.2, hx_len⟩ = p.1[p.2]! := by
-        have hx_len' : p.2 < Array.size p.1 := by simpa using hx_len
-        simpa [getElem!_def, hx_len']
       calc
         List.drop p.2 (p.1.toList)
             = (p.1.toList).get ⟨p.2, hx_len⟩ :: List.drop (p.2 + 1) (p.1.toList) := htemp
-        _ = p.1[p.2]! :: List.drop (p.2 + 1) (p.1.toList) := by rw [h_get_eq]
-        _ = term_1 :: List.drop (p.2 + 1) (p.1.toList) := rfl
-    have hx_drop_no_get! : List.drop p.2 (p.1.toList) = (p.1[p.2]) :: List.drop (p.2 + 1) (p.1.toList) := by
-      simpa [term_1, getElem!_def, getElem?_def, h] using hx_drop
+        _ = p.1[p.2] :: List.drop (p.2 + 1) (p.1.toList) := by simp
     have h_measure : Array.size p.1 - (p.2 + 1) < Array.size p.1 - p.2 := by omega
     have h_idx_succ : p.2 + 1 ≤ Array.size p.1 := by omega
     have h_ih := ih (p.1, p.2 + 1) h_measure
-      (Array.push acc (Prod.mk (UMonomial.mk ((term_1.1.deg.toUInt64 / p_1).toInt64)) term_1.2))
+      (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2))
       h_idx_succ
-    -- h_ih uses term_1. Replace with p.1[p.2]! (defined by term_1) then simplify ! to no-!.
-    have h_get_eq : p.1[p.2]! = p.1[p.2] := by
-      -- Use h: p.2 < Array.size p.1 to resolve getElem? to Some val
-      have hsize : p.2 < Array.size p.1 := h
-      simp [getElem!_def, getElem?_def, hsize]
-    replace h_ih : (Generated._loop___extract_pth_root_0_ir_def (p.2 + 1)
-        (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2))
-        p.1 p_1).snd.toList
-        = (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2)).toList ++
-          (List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
-      dsimp [term_1] at h_ih
-      simpa [h_get_eq] using h_ih
     have h_target : (Generated._loop___extract_pth_root_0_ir_def (p.2 + 1)
         (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2))
         p.1 p_1).snd.toList = acc.toList ++ List.drop p.2 ((p.1.toList).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) :=
@@ -1032,7 +1013,7 @@ private lemma loop_extract_toList (f : SparsePolyZp) (acc : SparsePolyZp) (idx :
           simp [List.append_assoc]
         _ = acc.toList ++ (((p.1[p.2]) :: List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by simp
         _ = acc.toList ++ (List.drop p.2 (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
-          rw [hx_drop_no_get!]
+          rw [hx_drop]
         _ = acc.toList ++ List.drop p.2 ((p.1.toList).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by
           simp [List.map_drop]
     exact h_target
@@ -1051,8 +1032,10 @@ lemma extract_pth_root_wellFormed (g : SparsePolyZp) (hwf : SparsePolyZp.WellFor
     unfold Generated.__extract_pth_root_ir Generated.__extract_pth_root_ir_def
     have h_loop' := loop_extract_toList g SparsePolyZp.empty 0 (SparsePolyZp.front! g).snd.prime (by simp)
     simpa [SparsePolyZp.empty, List.drop] using h_loop'
+  have hx' : x ∈ (Generated.__extract_pth_root_ir g).toList := by
+    simpa using hx
   rcases List.mem_map.mp (by
-    simpa [h_loop] using hx) with ⟨y, hy, rfl⟩
+    simpa [h_loop] using hx') with ⟨y, hy, rfl⟩
   exact hwf y hy
 
 /-- __extract_pth_root_ir 保持 AllReduced。 -/

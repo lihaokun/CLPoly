@@ -1417,13 +1417,39 @@ private lemma coeff_listSum_map_Φ_eq_coeff_listSum_mul (xs : List (UMonomial ×
 -- ============================================================
 
 /-- sqfZp 关于标量乘法的不变性：对于非零常数 c，sqfZp(c·f) = sqfZp(f)。
-    证明使用强归纳于 f.natDegree，对 sqfZp 的两个分支分别处理。
-    derivative=0 分支利用 contract 的线性；derivative≠0 分支利用 normalize 的单位不变性。 -/
-/-- sqfZp 关于标量乘法的不变性：对于非零常数 c，sqfZp(c·f) = sqfZp(f)。
-    证明使用强归纳于 f.natDegree。derivative=0 分支可通过 contract 线性性处理；
-    derivative≠0 分支需利用 normalize 的单位不变性及 yunLoop 的正确性。 -/
+    证明使用强归纳于 f.natDegree。derivative=0 分支通过 contract 线性性处理；
+    derivative≠0 分支需 normalize 的单位不变性（admit）。 -/
 private lemma sqfZp_smul (c : ZMod p) (hc : c ≠ 0) (f : Polynomial (ZMod p)) : sqfZp (C c * f) = sqfZp f := by
-  admit
+  refine Nat.strongRecOn (motive := λ n => ∀ (g : Polynomial (ZMod p)), g.natDegree = n → sqfZp (C c * g) = sqfZp g)
+    f.natDegree ?_ f rfl
+  intro k IH g hk
+  by_cases hzero : g.natDegree = 0
+  · -- Both constant: sqfZp returns []
+    have hzero_cg' : (C c * g).natDegree = 0 := by
+      rw [Polynomial.natDegree_C_mul hc, hzero]
+    unfold sqfZp
+    simp [hzero_cg', hzero]
+  · by_cases hderiv : Polynomial.derivative g = 0
+    · -- derivative = 0
+      have h_deriv_cg : Polynomial.derivative (C c * g) = 0 := by simp [hderiv]
+      have hzero_cg : (C c * g).natDegree ≠ 0 := by
+        rw [Polynomial.natDegree_C_mul hc]
+        exact hzero
+      have h_contract : Polynomial.contract p (C c * g) = C c * Polynomial.contract p g := by simp
+      have h_deg_lt : (Polynomial.contract p g).natDegree < k := by
+        have h_expand : Polynomial.expand (ZMod p) p (Polynomial.contract p g) = g :=
+          Polynomial.expand_contract p hderiv (Nat.Prime.ne_zero hp.out)
+        have h_nd_expand : (Polynomial.expand (ZMod p) p (Polynomial.contract p g)).natDegree =
+            p * (Polynomial.contract p g).natDegree := by
+          rw [Polynomial.natDegree_expand, mul_comm]
+        rw [h_expand] at h_nd_expand
+        rw [hk] at h_nd_expand
+        by_cases hzero_contract : (Polynomial.contract p g).natDegree = 0
+        · rw [hzero_contract] at h_nd_expand; omega
+        · omega
+      unfold sqfZp
+      simp [hzero_cg, hzero, h_deriv_cg, hderiv, h_contract]
+      rw [IH (Polynomial.contract p g).natDegree h_deg_lt (Polynomial.contract p g) rfl]
 
 /-- safe wrapper：常数多项式直接返回 #[]，避免 C++ 模型不终止的问题 -/
 noncomputable def __squarefree_Zp_ir_safe (p : ℕ) [hp : Fact (Nat.Prime p)] (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :=
@@ -1623,8 +1649,10 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
               simp [p_1, hfront_wf]
             have h_loop_lemma (arr : Array (SparsePolyZp × UInt64)) :
                 (Generated._loop___squarefree_Zp_0_ir_def 0 arr #[] p_1).2.2 = arr.map (fun (g_h, e) => (g_h, e * p_1)) := by
-              -- The loop iterates over arr, multiplying each exponent by p_1 and accumulating.
-              -- Equivalent to Array.map. Proved by induction on arr.size.
+              -- The loop iterates from 0 to arr.size-1, pushing (elem.1, elem.2 * p_1) for each elem.
+              -- This is equivalent to Array.map. Proof: induction on arr.size, using the invariant:
+              -- (loop i arr r p).2.2 = r ++ (List.drop i arr.toList).map (fun (g,e) => (g, e * p))
+              -- For i=0, r=#[] this gives the desired equality.
               admit
             have h_loop_eq : (Generated._loop___squarefree_Zp_0_ir_def 0
                 (Generated.__squarefree_Zp_ir g_2) #[] p_1).2.2 =

@@ -999,26 +999,32 @@ private lemma loop_extract_toList (f : SparsePolyZp) (acc : SparsePolyZp) (idx :
     have h_ih := ih (p.1, p.2 + 1) h_measure
       (Array.push acc (Prod.mk (UMonomial.mk ((term_1.1.deg.toUInt64 / p_1).toInt64)) term_1.2))
       h_idx_succ
-    dsimp [term_1] at *
-    -- h_ih: (loop ...).snd.toList = (push ...).toList ++ ...
-    -- Goal: (loop ...).2.toList = acc.toList ++ ...
-    -- Since .2 = .snd, rewrite using h_ih and then simplify the RHS
+    -- h_ih uses term_1. Replace with p.1[p.2]! (defined by term_1) then simplify ! to no-!.
+    have h_get_eq : p.1[p.2]! = p.1[p.2] := by
+      simp [getElem!_def, h]
+    replace h_ih : (Generated._loop___extract_pth_root_0_ir_def (p.2 + 1)
+        (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2))
+        p.1 p_1).snd.toList
+        = (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2)).toList ++
+          (List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
+      dsimp [term_1] at h_ih
+      simpa [h_get_eq] using h_ih
     have h_target : (Generated._loop___extract_pth_root_0_ir_def (p.2 + 1)
-        (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]!).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]!.2)))
-        p.1 p_1).2.toList = acc.toList ++ List.drop p.2 ((p.1.toList).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) :=
+        (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2))
+        p.1 p_1).snd.toList = acc.toList ++ List.drop p.2 ((p.1.toList).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) :=
       calc
         (Generated._loop___extract_pth_root_0_ir_def (p.2 + 1)
-            (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]!).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]!.2)))
-            p.1 p_1).2.toList
-            = (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]!).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]!.2))).toList ++
-              (List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
-          simpa [Prod.snd] using h_ih
-        _ = (acc.toList ++ [Prod.mk (UMonomial.mk (((p.1[p.2]!).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]!.2)]) ++
+            (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2))
+            p.1 p_1).snd.toList
+            = (Array.push acc (Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2)).toList ++
+              (List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) :=
+          h_ih
+        _ = (acc.toList ++ [Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2]) ++
               (List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by simp
-        _ = acc.toList ++ ([Prod.mk (UMonomial.mk (((p.1[p.2]!).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]!.2)] ++
+        _ = acc.toList ++ ([Prod.mk (UMonomial.mk (((p.1[p.2]).1.deg.toUInt64 / p_1).toInt64)) (p.1[p.2]).2] ++
               (List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by
           simp [List.append_assoc]
-        _ = acc.toList ++ (((p.1[p.2]!) :: List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by simp
+        _ = acc.toList ++ (((p.1[p.2]) :: List.drop (p.2 + 1) (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by simp
         _ = acc.toList ++ (List.drop p.2 (p.1.toList)).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
           rw [hx_drop]
         _ = acc.toList ++ List.drop p.2 ((p.1.toList).map (λ term => (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2))) := by

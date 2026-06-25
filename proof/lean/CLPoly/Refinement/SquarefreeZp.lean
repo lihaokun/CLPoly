@@ -1083,10 +1083,24 @@ lemma extract_pth_root_deg_bound (g : SparsePolyZp) (h_deg_bound : ∀ x ∈ g.t
         unfold BitVec.udiv; simp
       _ = a.toNat / b.toNat := by simp
   have hdiv_le : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg ≤ y.1.deg := by
-    -- Need: (toInt64 : ℕ).deg ≈ toNat. The deg field of UMonomial.mk(x : Int64) = x.toNatClampNeg.
-    -- For non-negative x (deg < 2^64, division reduces further), this equals x.toNat = z.toNat.
-    -- For now, we use the degree bound and Nat.div_le_self.
-    admit
+    -- UMonomial.mk with Int64 argument has deg = (toInt64).toNatClampNeg. When non-negative and < 2^63,
+    -- this equals the UInt64.toNat of the original value.
+    -- For y.1.deg < 2^64 and division by prime ≥ 2, this holds. Needs a dedicated lemma.
+    have h_deg_lt : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg ≤
+        (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat := by
+      -- deg = (toInt64).toNatClampNeg ≤ toNat (true for non-negative values)
+      admit
+    have hval_le : (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat ≤ y.1.deg := by
+      calc
+        (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat
+            = (y.1.deg.toUInt64).toNat / ((SparsePolyZp.front! g).snd.prime).toNat := by rw [hU64_div]
+        _ = y.1.deg / ((SparsePolyZp.front! g).snd.prime).toNat := by
+          have h_degU64_toNat : (y.1.deg.toUInt64).toNat = y.1.deg := by
+            have : y.1.deg % 2 ^ 64 = y.1.deg := Nat.mod_eq_of_lt hdeg
+            simpa [UInt64.toNat_ofNat] using this
+          rw [h_degU64_toNat]
+        _ ≤ y.1.deg := Nat.div_le_self _ _
+    omega
     -- Original calc kept below for reference
     /- calc
       (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg
@@ -1130,11 +1144,13 @@ lemma extract_pth_root_no_overflow (g : SparsePolyZp) (h_no_overflow : ∀ x ∈
     rcases List.mem_map.mp hx with ⟨y, hy, rfl⟩
     have h_ov : y.2.val.toNat * y.1.deg < 2 ^ 64 := h_no_overflow y hy
     have hdiv_le : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg ≤ y.1.deg := by
+      have h_deg_eq : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg =
+          (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat := by
+        dsimp
+      rw [h_deg_eq]
       calc
-        (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg
-            = ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64 : ℕ) := rfl
-        _ = ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat) := by simp
-        _ = (y.1.deg.toUInt64).toNat / ((SparsePolyZp.front! g).snd.prime).toNat := by rw [UInt64_toNat_div]
+        (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat
+            = (y.1.deg.toUInt64).toNat / ((SparsePolyZp.front! g).snd.prime).toNat := by rw [UInt64_toNat_div]
         _ = y.1.deg / ((SparsePolyZp.front! g).snd.prime).toNat := by
           have h_degU64_toNat : (y.1.deg.toUInt64).toNat = y.1.deg := by
             have : y.1.deg % 2 ^ 64 = y.1.deg := Nat.mod_eq_of_lt (h_deg_bound y hy)
@@ -1147,11 +1163,13 @@ lemma extract_pth_root_no_overflow (g : SparsePolyZp) (h_no_overflow : ∀ x ∈
     rcases List.mem_map.mp hx with ⟨y, hy, rfl⟩
     have hdeg : y.1.deg < 2 ^ 64 := h_deg_bound y hy
     have hdiv_le : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg ≤ y.1.deg := by
+      have h_deg_eq : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg =
+          (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat := by
+        dsimp
+      rw [h_deg_eq]
       calc
-        (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg
-            = ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64 : ℕ) := rfl
-        _ = ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat) := by simp
-        _ = (y.1.deg.toUInt64).toNat / ((SparsePolyZp.front! g).snd.prime).toNat := by rw [UInt64_toNat_div]
+        (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat
+            = (y.1.deg.toUInt64).toNat / ((SparsePolyZp.front! g).snd.prime).toNat := by rw [UInt64_toNat_div]
         _ = y.1.deg / ((SparsePolyZp.front! g).snd.prime).toNat := by
           have h_degU64_toNat : (y.1.deg.toUInt64).toNat = y.1.deg := by
             have : y.1.deg % 2 ^ 64 = y.1.deg := Nat.mod_eq_of_lt hdeg
@@ -1227,9 +1245,8 @@ lemma upoly_make_monic_no_overflow (f : SparsePolyZp) (hred : SparsePolyZp.AllRe
 private lemma Φ_deg_div (x : UMonomial × Zp) (p_1 : UInt64) (hp_1_eq_p : p_1.toNat = p) (hdeg : (x.1.deg : ℕ) < 2 ^ 64) :
     ((UMonomial.mk ((x.1.deg.toUInt64 / p_1).toInt64)).deg : ℕ) = (x.1.deg : ℕ) / p := by
   calc
-    ((UMonomial.mk ((x.1.deg.toUInt64 / p_1).toInt64)).deg : ℕ) = ((x.1.deg.toUInt64 / p_1).toInt64 : ℕ) := rfl
-    _ = ((x.1.deg.toUInt64 / p_1).toInt64).toNatClampNeg := rfl
-    _ = ((x.1.deg.toUInt64 / p_1).toNat) := by simp
+    ((UMonomial.mk ((x.1.deg.toUInt64 / p_1).toInt64)).deg : ℕ) = ((x.1.deg.toUInt64 / p_1).toNat) := by
+      dsimp; simp
     _ = (x.1.deg.toUInt64).toNat / p_1.toNat := by rw [UInt64_toNat_div]
     _ = x.1.deg / p_1.toNat := by
       have h_degU64_toNat : (x.1.deg.toUInt64).toNat = x.1.deg := by

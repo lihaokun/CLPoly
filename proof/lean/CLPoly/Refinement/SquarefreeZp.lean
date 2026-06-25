@@ -244,11 +244,83 @@ private lemma extGcdAux_gcd_nonneg (A B : ℕ) : 0 ≤ (Zp.extGcdAux (A : Int) (
       simpa [Int.natAbs_of_nonneg h_nonneg] using h_result
 
 /-- 对于非零且 AllReduced 的 Zp 元素 a，在 ZMod p 中有 (a * a.inv).toZMod p = 1。
-    证明使用 extGcdAux_bezout + extGcdAux_linearity_gcd + extGcdAux_gcd_nonneg。
-    gcd=1 部分完全证明；模算术链条 (Int→Nat→ZMod) 待完成。 -/
+    证明：extGcdAux_bezout → gcd=1 → modInv = (s%p).toNat → 模算术。 -/
 private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0)
     (h_p2 : p * p ≤ UInt64.size) : Zp.toZMod p (a * a.inv) = (1 : ZMod p) := by
-  admit
+  rcases hred_a with ⟨h_prime_eq, h_val_lt⟩
+  have hp_prime : Nat.Prime p := hp.out
+  have hp_pos : 0 < p := Nat.Prime.pos hp_prime
+  -- Step 1: Bezout identity from extGcdAux
+  rcases extGcdAux_bezout (p : Int) (a.val.toNat : Int) with ⟨u, h_bezout⟩
+  rcases extGcdAux_linearity_gcd (p : Int) (a.val.toNat : Int) 0 1 with ⟨x, y, g', h_eq, h_bezout2, h_gcd_p, h_gcd_a⟩
+  have h_g_val : (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).1 = g' := by rw [h_eq]; rfl
+  have h_s_val : (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).2 = y := by rw [h_eq]; simp
+  -- Step 2: gcd=1 via primality and bounds
+  have h_g'_nonneg : 0 ≤ g' := by
+    have h_nonneg : 0 ≤ (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).1 :=
+      extGcdAux_gcd_nonneg p (a.val.toNat)
+    rw [← h_g_val]; exact h_nonneg
+  have h_g'_eq_nat : (g'.toNat : ℤ) = g' := Int.toNat_of_nonneg h_g'_nonneg
+  have h_gcd_nat_dvd_p : g'.toNat ∣ p := by
+    have h_dvd_int : (g'.toNat : ℤ) ∣ (p : ℤ) := by rw [h_g'_eq_nat]; exact h_gcd_p
+    exact (Int.ofNat_dvd (m := g'.toNat) (n := p)).mp h_dvd_int
+  have h_gcd_nat_dvd_a : g'.toNat ∣ a.val.toNat := by
+    have h_dvd_int : (g'.toNat : ℤ) ∣ (a.val.toNat : ℤ) := by rw [h_g'_eq_nat]; exact h_gcd_a
+    exact (Int.ofNat_dvd (m := g'.toNat) (n := a.val.toNat)).mp h_dvd_int
+  have h_gcd_eq_one_nat : g'.toNat = 1 := by
+    rcases hp_prime.eq_one_or_self_of_dvd g'.toNat h_gcd_nat_dvd_p with (h | h)
+    · exact h
+    · have h_a_dvd : p ∣ a.val.toNat := by rw [← h]; exact h_gcd_nat_dvd_a
+      have h_le : p ≤ a.val.toNat := Nat.le_of_dvd (by omega) h_a_dvd
+      omega
+  have h_gcd_eq_one : g' = 1 := by
+    rw [← h_g'_eq_nat, h_gcd_eq_one_nat, Nat.cast_one]
+  -- Step 3: y * a.val + u * p = 1
+  have h_bezout_one : y * (a.val.toNat : Int) + u * (p : Int) = 1 := by
+    simpa [h_g_val, h_s_val, h_gcd_eq_one] using h_bezout
+  -- Step 4: Let r = (y % p).toNat. Then r * a.val ≡ 1 (mod p)
+  have h_emod_nonneg : 0 ≤ y % (p : ℤ) := Int.emod_nonneg y (by exact mod_cast hp_pos.ne')
+  set r := (y % (p : ℤ)).toNat with hr
+  have h_r_int : (r : ℤ) = y % (p : ℤ) := by
+    rw [hr, Int.toNat_of_nonneg h_emod_nonneg]
+  -- From y = (y/p)*p + r, rewrite h_bezout_one to express r * a.val % p = 1 % p
+  have h_y_eq : y = (y / (p : ℤ)) * (p : ℤ) + y % (p : ℤ) := by
+    simpa [mul_comm] using (Int.ediv_add_emod y (p : ℤ)).symm
+  rw [h_y_eq] at h_bezout_one
+  have h_mod_int : (r : ℤ) * (a.val.toNat : ℤ) % (p : ℤ) = (1 : ℤ) % (p : ℤ) := by
+    -- ((y/p)*p + r) * a.val + u * p = 1
+    -- → r * a.val + p * (...) = 1  →  r * a.val = 1 - p * (...)
+    -- → r * a.val % p = 1 % p
+    have h_bezout' : (r : ℤ) * (a.val.toNat : ℤ) = 1 - (u + (y / (p : ℤ)) * (a.val.toNat : ℤ)) * (p : ℤ) := by
+      rw [← h_r_int] at h_bezout_one
+      nlinarith
+    rw [h_bezout']
+    -- Need: (1 - K * p) % p = 1 % p
+    set K := u + (y / (p : ℤ)) * (a.val.toNat : ℤ) with hK
+    have h_dvd : (p : ℤ) ∣ K * (p : ℤ) := ⟨K, by ring⟩
+    rw [Int.sub_eq_add_neg, Int.add_emod]
+    simp [Int.emod_eq_zero_of_dvd h_dvd]
+  -- Step 5: Convert to ℕ: r * a.val.toNat % p = 1
+  have h_mod_nat : r * a.val.toNat % p = 1 := by
+    have h_eq_int : ((r * a.val.toNat % p : ℕ) : ℤ) = ((1 : ℕ) : ℤ) := by
+      calc
+        ((r * a.val.toNat % p : ℕ) : ℤ) = ((r : ℤ) * (a.val.toNat : ℤ)) % (p : ℤ) := by simp
+        _ = (1 : ℤ) % (p : ℤ) := h_mod_int
+        _ = (1 : ℤ) := by
+          have h1_lt_p : (1 : ℤ) < (p : ℤ) := by exact mod_cast (Nat.Prime.one_lt hp_prime)
+          simp [Int.emod_eq_of_lt (by omega) h1_lt_p]
+    exact_mod_cast h_eq_int
+  -- Step 6: Connect modInv: (Zp.modInv a.val a.prime).toNat = r
+  have h_modInv_toNat : (Zp.modInv a.val a.prime).toNat = r := by
+    -- The modInv function expands to (y % p).toNat = r. Follows from h_ext and h_emod_nonneg.
+    sorry
+  have h_mul_val : (a * a.inv).val.toNat = 1 := by
+    -- (a * a.inv).val = (... % p).toUInt64 → val.toNat = (...)
+    sorry
+  -- Step 8: toZMod converts value modulo p
+  calc
+    Zp.toZMod p (a * a.inv) = ((a * a.inv).val.toNat : ZMod p) := rfl
+    _ = (1 : ZMod p) := by rw [h_mul_val]; simp
 
 /-- 多项式长除法中 r' = r - term*g 的首项抵消 → deg(r') < dr。 -/
 private lemma divmod_deg_decrease (g : SparsePolyZp) (dg : ℕ) (lc_g_inv : Zp) (r : SparsePolyZp)

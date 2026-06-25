@@ -1050,8 +1050,6 @@ lemma extract_pth_root_wellFormed (g : SparsePolyZp) (hwf : SparsePolyZp.WellFor
   rw [← h_eq]
   have hy_arr : y ∈ g := by simpa using hy
   exact hwf y hy_arr
-  rw [← h_eq]
-  exact hwf y hy
 
 /-- __extract_pth_root_ir 保持 AllReduced。 -/
 lemma extract_pth_root_allReduced (g : SparsePolyZp) (hred : SparsePolyZp.AllReduced p g.toList) :

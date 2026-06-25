@@ -1276,9 +1276,14 @@ private lemma partition_sum_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_
     simp
     by_cases h1 : ((Φ a).1.deg : ℕ) = k
     · by_cases h2 : (a.1.deg : ℕ) = k * p
-      · simp [h1, h2, ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))]
-      · simp [h1, h2, ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))]
-    · simp [h1, ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))]
+      · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
+        -- Goal: ((a::xs).filter Φ=k).map sum = ((a::xs).filter deg=kp).map sum + ((a::xs).filter Φ=k∧deg≠kp).map sum
+        -- With h1, h2, a satisfies all conditions
+        simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, add_assoc, ih']
+      · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
+        simp [h1, h2, List.filter_cons, List.map_cons, List.sum_cons, add_assoc, ih']
+    · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
+      simp [h1, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, ih']
 
 private lemma extra_union_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_eq_p : p_1.toNat = p) (k : ℕ) (Φ : UMonomial × Zp → UMonomial × Zp) (hp_pos : 0 < p)
     (h_Φ_div : ∀ x ∈ xs, ((Φ x).1.deg : ℕ) = (x.1.deg : ℕ) / p) :

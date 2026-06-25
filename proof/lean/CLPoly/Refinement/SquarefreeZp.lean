@@ -1277,11 +1277,21 @@ private lemma partition_sum_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_
     by_cases h1 : ((Φ a).1.deg : ℕ) = k
     · by_cases h2 : (a.1.deg : ℕ) = k * p
       · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
-        -- Goal: ((a::xs).filter Φ=k).map sum = ((a::xs).filter deg=kp).map sum + ((a::xs).filter Φ=k∧deg≠kp).map sum
-        -- With h1, h2, a satisfies all conditions
+        simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons,
+          add_assoc, add_comm, add_left_comm, ih']
+      · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
         simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, add_assoc, ih']
       · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
         simp [h1, h2, List.filter_cons, List.map_cons, List.sum_cons, add_assoc, ih']
+    · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
+      by_cases h2 : (a.1.deg : ℕ) = k * p
+      · -- h1: False, h2: True → impossible by ha_div
+        have h_contra : ((Φ a).1.deg : ℕ) = k := by
+          rw [ha_div, h2]
+          simp [hp_pos]
+        exact h1 h_contra
+      · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
+        simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, ih']
     · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
       simp [h1, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, ih']
 

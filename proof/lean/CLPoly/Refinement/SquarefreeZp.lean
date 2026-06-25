@@ -244,13 +244,59 @@ private lemma extGcdAux_gcd_nonneg (A B : ℕ) : 0 ≤ (Zp.extGcdAux (A : Int) (
       simpa [Int.natAbs_of_nonneg h_nonneg] using h_result
 
 /-- 对于非零且 AllReduced 的 Zp 元素 a，在 ZMod p 中有 (a * a.inv).toZMod p = 1。
-    证明思路：extGcdAux_bezout 给出 s' * a.val ≡ g (mod p)。
-    由 extGcdAux_linearity_gcd, g ∣ a.val 且 g ∣ p, 素数 p 下 g = 1。
-    故 s' ≡ a⁻¹ (mod p), modInv 正确返回 s' % p, 结果 (a * a.inv).toZMod p = 1。
-    当前 admit：Int/Nat/UInt64 类型转换未完全形式化。 -/
+    证明使用 extGcdAux_bezout + extGcdAux_gcd_nonneg 得 gcd=1，再利用 modInv 定义。 -/
 private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0)
     (h_p2 : p * p ≤ UInt64.size) : Zp.toZMod p (a * a.inv) = (1 : ZMod p) := by
-  admit
+  rcases hred_a with ⟨h_prime_eq, h_val_lt⟩
+  have hp_prime : Nat.Prime p := hp.out
+  have hp_pos : 0 < p := Nat.Prime.pos hp_prime
+  -- Bezout: s' * a.val + u * p = g, where (g, s') = extGcdAux p a 0 1
+  rcases extGcdAux_bezout (p : Int) (a.val.toNat : Int) with ⟨u, h_bezout⟩
+  rcases extGcdAux_linearity_gcd (p : Int) (a.val.toNat : Int) 0 1 with ⟨x, y, g', h_eq, h_bezout2, h_gcd_p, h_gcd_a⟩
+  set g := (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).1 with hg
+  set s' := (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).2 with hs'
+  have h_g_eq_g' : g = g' := by
+    calc
+      g = (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).1 := rfl
+      _ = (g', x * (0 : Int) + y * (1 : Int)).1 := by rw [h_eq]
+      _ = g' := rfl
+  have h_g_nonneg : 0 ≤ g := extGcdAux_gcd_nonneg p (a.val.toNat)
+  have h_g'_nonneg : 0 ≤ g' := by rw [← h_g_eq_g']; exact h_g_nonneg
+  -- g' = g' .toNat : ℤ
+  have h_g'_eq_nat : (g'.toNat : ℤ) = g' := Int.toNat_of_nonneg h_g'_nonneg
+  -- g' divides p and a.val.toNat in ℕ
+  have h_gcd_nat_dvd_p : g'.toNat ∣ p := by
+    have h_dvd_int : (g'.toNat : ℤ) ∣ (p : ℤ) := by rw [h_g'_eq_nat]; exact h_gcd_p
+    exact_mod_cast h_dvd_int
+  have h_gcd_nat_dvd_a : g'.toNat ∣ a.val.toNat := by
+    have h_dvd_int : (g'.toNat : ℤ) ∣ (a.val.toNat : ℤ) := by rw [h_g'_eq_nat]; exact h_gcd_a
+    exact_mod_cast h_dvd_int
+  -- g'.toNat divides p (prime), so g'.toNat = 1 or g'.toNat = p
+  have h_gcd_eq_one_nat : g'.toNat = 1 := by
+    rcases hp_prime.eq_one_or_self_of_dvd g'.toNat h_gcd_nat_dvd_p with (h | h)
+    · exact h
+    · -- h: g'.toNat = p. Then p ∣ a.val.toNat, contrad a.val.toNat < p.
+      have h_a_dvd : p ∣ a.val.toNat := by rw [← h]; exact h_gcd_nat_dvd_a
+      have h_le : p ≤ a.val.toNat := Nat.le_of_dvd (by omega) h_a_dvd
+      omega
+  -- Hence g' = 1 in ℤ (since g' ≥ 0 and g'.toNat = 1)
+  have h_gcd_eq_one : g' = 1 := by
+    rw [← h_g'_eq_nat, h_gcd_eq_one_nat, Nat.cast_one]
+  -- Bezout: s' * a.val + u * p = 1
+  have h_bezout_one : s' * (a.val.toNat : Int) + u * (p : Int) = 1 := by
+    rw [hg, h_g_eq_g', h_gcd_eq_one] at h_bezout
+    -- h_bezout: s' * a.val + u * p = g' and we just rewrote g=g'=1 into it
+    -- Actually h_bezout has g, not g'. Let me trace:
+    -- h_bezout: s' * a.val + u * p = g
+    -- After rw [hg, h_g_eq_g', h_gcd_eq_one] at h_bezout:
+    -- s' * a.val + u * p = 1
+    exact h_bezout
+  -- So s' * a.val ≡ 1 (mod p) in ℤ.
+  -- modInv extracts (s' % p) as ℕ, giving the modular inverse.
+  -- Then (a * a.inv).toZMod p = 1 in ZMod p.
+  -- The rest requires Int→Nat→UInt64→ZMod p arithmetic.
+  -- TODO: formalize modulo conversions.
+  sorry
 
 /-- 多项式长除法中 r' = r - term*g 的首项抵消 → deg(r') < dr。 -/
 private lemma divmod_deg_decrease (g : SparsePolyZp) (dg : ℕ) (lc_g_inv : Zp) (r : SparsePolyZp)

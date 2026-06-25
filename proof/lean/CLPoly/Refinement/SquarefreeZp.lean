@@ -1332,6 +1332,7 @@ private lemma extra_union_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_
         calc
           (a.1.deg : ℕ) = ((a.1.deg : ℕ) / p) * p + (a.1.deg : ℕ) % p := by
             rw [← Nat.div_add_mod (a.1.deg : ℕ) p]
+          rfl
           _ = k * p + (a.1.deg : ℕ) % p := by rw [hdiv]
       have hr_pos : 0 < (a.1.deg : ℕ) % p := by
         by_contra! hzero

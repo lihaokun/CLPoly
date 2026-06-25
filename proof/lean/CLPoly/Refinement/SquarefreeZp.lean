@@ -1323,16 +1323,15 @@ private lemma extra_union_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_
       (xs.filter (λ x => (x.1.deg : ℕ) / p = k ∧ (x.1.deg : ℕ) ≠ k * p)) := by
     apply List.filter_congr
     intro x hx
-    constructor
-    · rintro ⟨hΦ, hne⟩; rw [h_Φ_div x hx] at hΦ; exact ⟨hΦ, hne⟩
-    · rintro ⟨hdiv, hne⟩; rw [h_Φ_div x hx]; exact ⟨hdiv, hne⟩
+    simp [h_Φ_div x hx]
   rw [h_filter_eq]
   have h_cond_equiv (a : UMonomial × Zp) : ((a.1.deg : ℕ) / p = k ∧ (a.1.deg : ℕ) ≠ k * p) ↔ ∃ r ∈ Finset.Ico 1 p, (a.1.deg : ℕ) = k * p + r := by
     constructor
     · rintro ⟨hdiv, hne⟩
       have h_total : (a.1.deg : ℕ) = k * p + (a.1.deg : ℕ) % p := by
         calc
-          (a.1.deg : ℕ) = ((a.1.deg : ℕ) / p) * p + (a.1.deg : ℕ) % p := by rw [Nat.div_add_mod]
+          (a.1.deg : ℕ) = ((a.1.deg : ℕ) / p) * p + (a.1.deg : ℕ) % p := by
+            rw [← Nat.div_add_mod (a.1.deg : ℕ) p]
           _ = k * p + (a.1.deg : ℕ) % p := by rw [hdiv]
       have hr_pos : 0 < (a.1.deg : ℕ) % p := by
         by_contra! hzero

@@ -1279,7 +1279,10 @@ private lemma partition_sum_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_
       · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
         simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, add_assoc, ih']
       · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
-        simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, add_assoc, ih']
+        -- h1:True, h2:False. LHS: a included; RHS1: a not; RHS2: a included.
+        -- a' + L = R1 + (a' + R2) where L = R1 + R2 → a' + R1 + R2 = R1 + a' + R2
+        simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, ih']
+        ring
     · have ih' := ih (λ x hx => h_Φ_div x (List.mem_cons_of_mem _ hx))
       by_cases h2 : (a.1.deg : ℕ) = k * p
       · -- h1: False, h2: True → impossible by ha_div

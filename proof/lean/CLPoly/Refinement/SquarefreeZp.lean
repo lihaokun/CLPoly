@@ -1288,7 +1288,7 @@ private lemma partition_sum_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_
       · -- h1: False, h2: True → impossible by ha_div
         have h_contra : ((Φ a).1.deg : ℕ) = k := by
           rw [ha_div, h2]
-          simp [hp_pos]
+          exact Nat.mul_div_left k hp_pos
         exact h1 h_contra
       · simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, ih']
 

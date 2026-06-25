@@ -1288,8 +1288,11 @@ private lemma partition_sum_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_
       · -- h1: False, h2: True → impossible by ha_div
         have h_contra : ((Φ a).1.deg : ℕ) = k := by
           rw [ha_div, h2]
-          exact Nat.mul_div_left k hp_pos
-        exact h1 h_contra
+          have hp_pos : 0 < p := Nat.Prime.pos hp.out
+          calc
+            (k * p) / p = (p * k) / p := by rw [mul_comm]
+            _ = k := Nat.mul_div_cancel_left k hp_pos
+        exfalso; exact h1 h_contra
       · simp [h1, h2, List.filter_cons, not_true_eq_false, List.map_cons, List.sum_cons, ih']
 
 private lemma extra_union_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_eq_p : p_1.toNat = p) (k : ℕ) (Φ : UMonomial × Zp → UMonomial × Zp) (hp_pos : 0 < p)

@@ -1037,10 +1037,20 @@ lemma extract_pth_root_wellFormed (g : SparsePolyZp) (hwf : SparsePolyZp.WellFor
     unfold Generated.__extract_pth_root_ir Generated.__extract_pth_root_ir_def
     have h_loop' := loop_extract_toList g SparsePolyZp.empty 0 (SparsePolyZp.front! g).snd.prime (by simp)
     simpa [SparsePolyZp.empty, List.drop] using h_loop'
-  have hx' : x ∈ (Generated.__extract_pth_root_ir g).toList := by
+  have hx_list : x ∈ (Generated.__extract_pth_root_ir g).toList := by
     simpa using hx
-  rcases List.mem_map.mp (by
-    simpa [h_loop] using hx') with ⟨y, hy, rfl⟩
+  -- Apply List.mem_map directly via `apply`
+  have hx_map : x ∈ (g.toList.map (λ term : UMonomial × Zp => (UMonomial.mk ((term.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64), term.2))) := by
+    -- Rewrite using h_loop in the membership
+    rw [← h_loop]
+    exact hx_list
+  -- Now use mem_map to decompose
+  simp only [List.mem_map] at hx_map
+  obtain ⟨y, hy, h_eq⟩ := hx_map
+  rw [← h_eq]
+  have hy_arr : y ∈ g := by simpa using hy
+  exact hwf y hy_arr
+  rw [← h_eq]
   exact hwf y hy
 
 /-- __extract_pth_root_ir 保持 AllReduced。 -/

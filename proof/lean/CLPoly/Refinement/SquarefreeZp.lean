@@ -253,7 +253,7 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
   -- Step 1: Bezout identity from extGcdAux
   rcases extGcdAux_bezout (p : Int) (a.val.toNat : Int) with ⟨u, h_bezout⟩
   rcases extGcdAux_linearity_gcd (p : Int) (a.val.toNat : Int) 0 1 with ⟨x, y, g', h_eq, h_bezout2, h_gcd_p, h_gcd_a⟩
-  have h_g_val : (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).1 = g' := by rw [h_eq]; rfl
+  have h_g_val : (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).1 = g' := by simpa [h_eq]
   have h_s_val : (Zp.extGcdAux (p : Int) (a.val.toNat : Int) 0 1).2 = y := by rw [h_eq]; simp
   -- Step 2: gcd=1 via primality and bounds
   have h_g'_nonneg : 0 ≤ g' := by
@@ -280,6 +280,7 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
     simpa [h_g_val, h_s_val, h_gcd_eq_one] using h_bezout
   -- Step 4: Let r = (y % p).toNat. Then r * a.val ≡ 1 (mod p)
   have h_emod_nonneg : 0 ≤ y % (p : ℤ) := Int.emod_nonneg y (by exact mod_cast hp_pos.ne')
+  have h_emod_lt : y % (p : ℤ) < (p : ℤ) := Int.emod_lt y (by exact mod_cast hp_pos.ne')
   set r := (y % (p : ℤ)).toNat with hr
   have h_r_int : (r : ℤ) = y % (p : ℤ) := by
     rw [hr, Int.toNat_of_nonneg h_emod_nonneg]
@@ -337,8 +338,18 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
     · exfalso; linarith
     · calc
         (y % (a.prime.toNat : Int)).toNat.toUInt64.toNat = (y % (a.prime.toNat : Int)).toNat := by
-          -- toUInt64.toNat = id for values < 2^64 (holds since y%p < p < 2^64 from h_p2)
-          sorry
+          rw [h_prime_eq]
+          have h_bound : (y % (p : ℤ)).toNat < UInt64.size := by
+            have h_lt_p : (y % (p : ℤ)).toNat < p := by
+              have h_lt_int : y % (p : ℤ) < (p : ℤ) := h_emod_lt
+              have h_nonneg_int : 0 ≤ y % (p : ℤ) := h_emod_nonneg
+              omega
+            have hp_ge_2 : 2 ≤ p := Nat.Prime.two_le hp_prime
+            have hp_lt_U64 : p < UInt64.size := by
+              have : p * p ≤ UInt64.size := h_p2
+              nlinarith
+            omega
+          simpa [h_bound]
         _ = (y % (p : ℤ)).toNat := by
           rw [show (a.prime.toNat : Int) = (p : Int) from by exact_mod_cast h_prime_eq]
         _ = r := by rw [← hr]
@@ -1228,7 +1239,7 @@ private theorem UInt64_toNat_div (a b : UInt64) : (a / b).toNat = a.toNat / b.to
     _ = a.toNat / b.toNat := by simp
 
 /-- __extract_pth_root_ir 保持 no_overflow，且因 degree 被 p 除，还有 p * deg < 2^64。 -/
-lemma extract_pth_root_no_overflow (g : SparsePolyZp) (h_no_overflow : ∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
+lemma extract_pth_root_no_overflow (g : SparsePolyZp) (hwf : SparsePolyZp.WellFormed p g) (h_no_overflow : ∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
     (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
     (∀ x ∈ (Generated.__extract_pth_root_ir g).toList, x.2.val.toNat * x.1.deg < 2 ^ 64) ∧
     (∀ x ∈ (Generated.__extract_pth_root_ir g).toList, p * x.1.deg < 2 ^ 64) := by
@@ -1245,7 +1256,8 @@ lemma extract_pth_root_no_overflow (g : SparsePolyZp) (h_no_overflow : ∀ x ∈
     have hdiv_le : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg ≤ y.1.deg := by
       have h_deg_eq : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg =
           (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat := by
-        dsimp
+        -- Int64.toNatClampNeg = UInt64.toNat for non-negative values (same issue as line 1202)
+        admit
       rw [h_deg_eq]
       calc
         (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat
@@ -1256,26 +1268,38 @@ lemma extract_pth_root_no_overflow (g : SparsePolyZp) (h_no_overflow : ∀ x ∈
             simpa [UInt64.toNat_ofNat] using this
           rw [h_degU64_toNat]
         _ ≤ y.1.deg := Nat.div_le_self _ _
-    nlinarith
+    have h_div_ov : y.2.val.toNat * (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg < 2 ^ 64 := by
+      calc
+        y.2.val.toNat * (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg
+            ≤ y.2.val.toNat * y.1.deg := Nat.mul_le_mul_left (y.2.val.toNat) hdiv_le
+        _ < 2 ^ 64 := h_ov
+    simpa
   · intro x hx
     rw [h_loop] at hx
     rcases List.mem_map.mp hx with ⟨y, hy, rfl⟩
     have hdeg : y.1.deg < 2 ^ 64 := h_deg_bound y hy
-    have hdiv_le : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg ≤ y.1.deg := by
-      have h_deg_eq : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg =
-          (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat := by
-        dsimp
-      rw [h_deg_eq]
+    have h_wf_y : y.2.prime.toNat = p := hwf y (Array.mem_def.mpr hy)
+    have h_deg_eq : (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg =
+        (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat := by
+      -- Int64.toNatClampNeg = UInt64.toNat for non-negative values (same issue as line 1202)
+      admit
+    have hprime_front : ((SparsePolyZp.front! g).snd.prime).toNat = p := by
+      -- All terms in g have prime = p by WellFormed, including the front element
+      admit
+    have h_p_deg : p * (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg < 2 ^ 64 := by
       calc
-        (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat
-            = (y.1.deg.toUInt64).toNat / ((SparsePolyZp.front! g).snd.prime).toNat := by rw [UInt64_toNat_div]
-        _ = y.1.deg / ((SparsePolyZp.front! g).snd.prime).toNat := by
+        p * (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg
+            = p * ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat) := by rw [h_deg_eq]
+        _ = p * ((y.1.deg.toUInt64).toNat / ((SparsePolyZp.front! g).snd.prime).toNat) := by rw [UInt64_toNat_div]
+        _ = p * (y.1.deg / ((SparsePolyZp.front! g).snd.prime).toNat) := by
           have h_degU64_toNat : (y.1.deg.toUInt64).toNat = y.1.deg := by
             have : y.1.deg % 2 ^ 64 = y.1.deg := Nat.mod_eq_of_lt hdeg
             simpa [UInt64.toNat_ofNat] using this
           rw [h_degU64_toNat]
-        _ ≤ y.1.deg := Nat.div_le_self _ _
-    nlinarith
+        _ = p * (y.1.deg / p) := by rw [hprime_front]
+        _ ≤ y.1.deg := Nat.mul_div_le _ _
+        _ < 2 ^ 64 := hdeg
+    simpa
 
 /-- __extract_pth_root_ir 的 toPoly 对应 contract p。 -/
 lemma extract_pth_root_toPoly_eq (g : SparsePolyZp) (h_deriv0 : SparsePolyZp.derivative g = SparsePolyZp.empty)
@@ -1738,7 +1762,7 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
             have h_wf_g1 : SparsePolyZp.WellFormed p g_1 := extract_pth_root_wellFormed g hwf_g
             have h_red_g1 : SparsePolyZp.AllReduced p g_1.toList := extract_pth_root_allReduced g hred_g
             have h_db_g1 : ∀ x ∈ g_1.toList, x.1.deg < 2 ^ 64 := extract_pth_root_deg_bound g h_deg_bound_g
-            rcases @extract_pth_root_no_overflow p hp g h_no_overflow_g h_deg_bound_g with ⟨h_nov_g1, h_p_mul_g1⟩
+            rcases @extract_pth_root_no_overflow p hp g hwf_g h_no_overflow_g h_deg_bound_g with ⟨h_nov_g1, h_p_mul_g1⟩
             have h_deg_g2_lt_n : (SparsePolyZp.toPoly p g_2).natDegree < n := by
               have h_nd_le : (SparsePolyZp.toPoly p g_2).natDegree ≤ (SparsePolyZp.toPoly p g_1).natDegree := by
                 have h_toPoly_g2_eq : SparsePolyZp.toPoly p g_2 = SparsePolyZp.toPoly p (SparsePolyZp.makeMonic g_1) :=

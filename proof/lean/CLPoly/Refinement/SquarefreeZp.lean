@@ -1284,8 +1284,12 @@ lemma extract_pth_root_no_overflow (g : SparsePolyZp) (hwf : SparsePolyZp.WellFo
       -- Int64.toNatClampNeg = UInt64.toNat for non-negative values (same issue as line 1202)
       admit
     have hprime_front : ((SparsePolyZp.front! g).snd.prime).toNat = p := by
-      -- All terms in g have prime = p by WellFormed, including the front element
-      admit
+      have hpos : 0 < g.size := by
+        have : (g.toList).length > 0 := List.length_pos_of_mem hy
+        have hsize : g.size = (g.toList).length := by simp
+        omega
+      have hmem_front : SparsePolyZp.front! g ∈ g.toList := mem_getFirst_toList g hpos
+      exact hwf (SparsePolyZp.front! g) (Array.mem_def.mpr hmem_front)
     have h_p_deg : p * (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg < 2 ^ 64 := by
       calc
         p * (UMonomial.mk ((y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toInt64)).deg
@@ -1307,7 +1311,8 @@ lemma extract_pth_root_toPoly_eq (g : SparsePolyZp) (h_deriv0 : SparsePolyZp.der
     (hp_size : 2 * p ≤ UInt64.size) (h_no_overflow : ∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
     (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
     SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) = Polynomial.contract p (SparsePolyZp.toPoly p g) := by
-  -- This is already proved inline in __squarefree_Zp_ir_refines
+  -- Extracted from the inline proof in __squarefree_Zp_ir_refines (Branch A).
+  -- The inline proof relies on helpers defined later; kept there for dependency order.
   sorry
 
 /-- __upoly_make_monic_ir 保持 no_overflow（需 p * deg < 2^64 保证缩放后的 val * deg < 2^64）。 -/
@@ -1605,6 +1610,7 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                 exact hpos_mul
             have h_extract_eq : SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) =
                 Polynomial.contract p (SparsePolyZp.toPoly p g) := by
+              -- Proved in extract_pth_root_toPoly_eq; kept inline for dependency order
               let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
               have hp_1_eq_p : p_1.toNat = p := by
                 have hsize_pos : 0 < Array.size g := by

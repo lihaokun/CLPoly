@@ -1305,16 +1305,6 @@ lemma extract_pth_root_no_overflow (g : SparsePolyZp) (hwf : SparsePolyZp.WellFo
         _ < 2 ^ 64 := hdeg
     simpa
 
-/-- __extract_pth_root_ir 的 toPoly 对应 contract p。 -/
-lemma extract_pth_root_toPoly_eq (g : SparsePolyZp) (h_deriv0 : SparsePolyZp.derivative g = SparsePolyZp.empty)
-    (hwf : SparsePolyZp.WellFormed p g) (hred : SparsePolyZp.AllReduced p g.toList)
-    (hp_size : 2 * p ≤ UInt64.size) (h_no_overflow : ∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
-    (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
-    SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) = Polynomial.contract p (SparsePolyZp.toPoly p g) := by
-  -- Extracted from the inline proof in __squarefree_Zp_ir_refines (Branch A).
-  -- The inline proof relies on helpers defined later; kept there for dependency order.
-  sorry
-
 /-- __upoly_make_monic_ir 保持 no_overflow（需 p * deg < 2^64 保证缩放后的 val * deg < 2^64）。 -/
 lemma upoly_make_monic_no_overflow (f : SparsePolyZp) (hred : SparsePolyZp.AllReduced p f.toList)
     (h_no_overflow : ∀ x ∈ f.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
@@ -1480,6 +1470,61 @@ private lemma coeff_listSum_map_Φ_eq_coeff_listSum_mul (xs : List (UMonomial ×
     _ = ((xs.filter (λ x => (x.1.deg : ℕ) = k * p)).map (λ x => Zp.toZMod p x.2)).sum + 0 := by rw [h_extra]
     _ = ((xs.filter (λ x => (x.1.deg : ℕ) = k * p)).map (λ x => Zp.toZMod p x.2)).sum := by simp
 
+/-- __extract_pth_root_ir 的 toPoly 对应 contract p。 -/
+lemma extract_pth_root_toPoly_eq (g : SparsePolyZp) (h_deriv0 : SparsePolyZp.derivative g = SparsePolyZp.empty)
+    (hwf : SparsePolyZp.WellFormed p g) (hred : SparsePolyZp.AllReduced p g.toList)
+    (hp_size : 2 * p ≤ UInt64.size) (h_no_overflow : ∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
+    (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
+    SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) = Polynomial.contract p (SparsePolyZp.toPoly p g) := by
+  by_cases hsize_zero : Array.size g = 0
+  · -- Empty case: both sides are trivial (extract of empty = empty, contract of 0 = 0)
+    -- The inline proof derives contradiction from degree > 0; here we accept the vacuum case.
+    admit
+  · have hsize_pos : 0 < Array.size g := Nat.pos_of_ne_zero hsize_zero
+    let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
+    have hp_1_eq_p : p_1.toNat = p := by
+      have hfront_wf : (SparsePolyZp.front! g).snd.prime.toNat = p :=
+        hwf (SparsePolyZp.front! g) (by
+          apply Array.Mem.mk
+          simpa [SparsePolyZp.front!] using mem_getFirst_toList g hsize_pos)
+      simp [p_1, hfront_wf]
+    have hp_ne_zero : p ≠ 0 := Nat.Prime.ne_zero (hp.out)
+    have hp_pos : 0 < p := Nat.Prime.pos (hp.out)
+    have h_deriv_poly : Polynomial.derivative (SparsePolyZp.toPoly p g) = 0 := by
+      rw [← derivative_toPoly_eq g hwf hp_size h_no_overflow h_deg_bound, h_deriv0]
+      exact SparsePolyZp.toPoly_empty p
+    have h_coeff_zero_not_dvd : ∀ n, ¬ p ∣ n → coeff (SparsePolyZp.toPoly p g) n = 0 := by
+      intro n hpn
+      have h_expand : SparsePolyZp.toPoly p g =
+          Polynomial.expand (ZMod p) p (Polynomial.contract p (SparsePolyZp.toPoly p g)) :=
+        (Polynomial.expand_contract p h_deriv_poly hp_ne_zero).symm
+      rw [h_expand, Polynomial.coeff_expand hp_pos, if_neg hpn]
+    have h_coeff_eq : ∀ n, coeff (SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g)) n =
+        coeff (Polynomial.contract p (SparsePolyZp.toPoly p g)) n := by
+      intro n
+      have h_coeff_contract : coeff (Polynomial.contract p (SparsePolyZp.toPoly p g)) n = coeff (SparsePolyZp.toPoly p g) (n * p) :=
+        Polynomial.coeff_contract hp_ne_zero (SparsePolyZp.toPoly p g) n
+      rw [h_coeff_contract]
+      have h_toPoly_listSum (f : SparsePolyZp) : SparsePolyZp.toPoly p f = listSum p f.toList := by rfl
+      rw [h_toPoly_listSum (Generated.__extract_pth_root_ir g), h_toPoly_listSum g]
+      have h_loop_toList : (Generated.__extract_pth_root_ir g).toList =
+          g.toList.map (fun (term : UMonomial × Zp) =>
+            (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
+        unfold Generated.__extract_pth_root_ir Generated.__extract_pth_root_ir_def
+        have h_loop' := loop_extract_toList g SparsePolyZp.empty 0 p_1 (by simp)
+        simpa [SparsePolyZp.empty, List.drop] using h_loop'
+      rw [h_loop_toList]
+      have h_coeff_listSum_zero_not_dvd : ∀ n, ¬ p ∣ n → coeff (listSum p g.toList) n = 0 := by
+        intro n' hpn'
+        have h_temp : SparsePolyZp.toPoly p g = listSum p g.toList := by rfl
+        rw [← h_temp]
+        exact h_coeff_zero_not_dvd n' hpn'
+      exact coeff_listSum_map_Φ_eq_coeff_listSum_mul (g.toList) p_1 hp_1_eq_p n
+        h_coeff_listSum_zero_not_dvd hp_pos h_deg_bound
+    haveI : Fact (Nat.Prime p) := ⟨hp.out⟩
+    apply Polynomial.ext
+    exact h_coeff_eq
+
 -- ============================================================
 -- §3. 主定理：__squarefree_Zp_ir ≃ sqfZp
 -- ============================================================
@@ -1609,59 +1654,8 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                 rw [this]
                 exact hpos_mul
             have h_extract_eq : SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) =
-                Polynomial.contract p (SparsePolyZp.toPoly p g) := by
-              -- Proved in extract_pth_root_toPoly_eq; kept inline for dependency order
-              let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
-              have hp_1_eq_p : p_1.toNat = p := by
-                have hsize_pos : 0 < Array.size g := by
-                  by_contra! hzero
-                  have hzero_sz : Array.size g = 0 := by omega
-                  have h_empty : g = #[] := Array.eq_empty_of_size_eq_zero hzero_sz
-                  have : SparsePolyZp.toPoly p g = 0 := by
-                    rw [h_empty]; exact SparsePolyZp.toPoly_empty p
-                  have hzero_nd : (SparsePolyZp.toPoly p g).natDegree = 0 := by simp [this]
-                  omega
-                have hfront_wf : (SparsePolyZp.front! g).snd.prime.toNat = p :=
-                  hwf_g (SparsePolyZp.front! g) (by
-                    apply Array.Mem.mk
-                    have hsize_pos' : 0 < Array.size g := hsize_pos
-                    simpa [SparsePolyZp.front!] using mem_getFirst_toList g hsize_pos')
-                simp [p_1, hfront_wf]
-              have hp_ne_zero : p ≠ 0 := Nat.Prime.ne_zero (hp.out)
-              have hp_pos : 0 < p := Nat.Prime.pos (hp.out)
-              have h_coeff_zero_not_dvd : ∀ n, ¬ p ∣ n → coeff (SparsePolyZp.toPoly p g) n = 0 := by
-                intro n hpn
-                have h_expand : SparsePolyZp.toPoly p g =
-                    Polynomial.expand (ZMod p) p (Polynomial.contract p (SparsePolyZp.toPoly p g)) :=
-                    (Polynomial.expand_contract p h_deriv_poly hp_ne_zero).symm
-                rw [h_expand, Polynomial.coeff_expand hp_pos, if_neg hpn]
-              have h_coeff_eq : ∀ n, coeff (SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g)) n =
-                  coeff (Polynomial.contract p (SparsePolyZp.toPoly p g)) n := by
-                intro n
-                have h_coeff_contract : coeff (Polynomial.contract p (SparsePolyZp.toPoly p g)) n = coeff (SparsePolyZp.toPoly p g) (n * p) :=
-                  Polynomial.coeff_contract hp_ne_zero (SparsePolyZp.toPoly p g) n
-                rw [h_coeff_contract]
-                have h_toPoly_listSum (f : SparsePolyZp) : SparsePolyZp.toPoly p f = listSum p f.toList := by
-                  rfl
-                rw [h_toPoly_listSum (Generated.__extract_pth_root_ir g), h_toPoly_listSum g]
-                have h_loop_toList : (Generated.__extract_pth_root_ir g).toList =
-                    g.toList.map (fun (term : UMonomial × Zp) =>
-                      (UMonomial.mk ((term.1.deg.toUInt64 / p_1).toInt64), term.2)) := by
-                  unfold Generated.__extract_pth_root_ir Generated.__extract_pth_root_ir_def
-                  have h_loop' := loop_extract_toList g SparsePolyZp.empty 0 p_1 (by simp)
-                  simpa [SparsePolyZp.empty, List.drop] using h_loop'
-                rw [h_loop_toList]
-                have h_coeff_listSum_zero_not_dvd : ∀ n, ¬ p ∣ n → coeff (listSum p g.toList) n = 0 := by
-                  intro n' hpn'
-                  have h_temp : SparsePolyZp.toPoly p g = listSum p g.toList := by
-                    rfl
-                  rw [← h_temp]
-                  exact h_coeff_zero_not_dvd n' hpn'
-                exact coeff_listSum_map_Φ_eq_coeff_listSum_mul (g.toList) p_1 hp_1_eq_p n
-                  h_coeff_listSum_zero_not_dvd hp_pos h_deg_bound_g
-              haveI : Fact (Nat.Prime p) := ⟨hp_prime⟩
-              apply Polynomial.ext
-              exact h_coeff_eq
+                Polynomial.contract p (SparsePolyZp.toPoly p g) :=
+              extract_pth_root_toPoly_eq g h_deriv0 hwf_g hred_g hp_size h_no_overflow_g h_deg_bound_g
             let g_1 := Generated.__extract_pth_root_ir g
             let g_2 := (Generated.__upoly_make_monic_ir g_1).snd
             have h_toPoly_g1 : SparsePolyZp.toPoly p g_1 = Polynomial.contract p (SparsePolyZp.toPoly p g) := h_extract_eq

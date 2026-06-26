@@ -295,11 +295,17 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
       rw [← h_r_int] at h_bezout_one
       nlinarith
     rw [h_bezout']
-    -- Need: (1 - K * p) % p = 1 % p
+    -- Goal: (1 - K * p) % p = 1 % p
     set K := u + (y / (p : ℤ)) * (a.val.toNat : ℤ) with hK
-    have h_dvd : (p : ℤ) ∣ K * (p : ℤ) := ⟨K, by ring⟩
-    rw [Int.sub_eq_add_neg, Int.add_emod]
-    simp [Int.emod_eq_zero_of_dvd h_dvd]
+    have h_mod_neg_zero : (-(K * (p : ℤ))) % (p : ℤ) = 0 := by
+      calc
+        (-(K * (p : ℤ))) % (p : ℤ) = ((-K) * (p : ℤ)) % (p : ℤ) := by ring
+        _ = 0 := Int.emod_eq_zero_of_dvd ⟨-K, by ring⟩
+    calc
+      (1 - K * (p : ℤ)) % (p : ℤ) = ((1 : ℤ) % (p : ℤ) + (-(K * (p : ℤ))) % (p : ℤ)) % (p : ℤ) := by
+        simp [Int.sub_eq_add_neg, Int.add_emod]
+      _ = ((1 : ℤ) % (p : ℤ) + 0) % (p : ℤ) := by rw [h_mod_neg_zero]
+      _ = (1 : ℤ) % (p : ℤ) := by simp
   -- Step 5: Convert to ℕ: r * a.val.toNat % p = 1
   have h_mod_nat : r * a.val.toNat % p = 1 := by
     have h_eq_int : ((r * a.val.toNat % p : ℕ) : ℤ) = ((1 : ℕ) : ℤ) := by
@@ -312,11 +318,13 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
     exact_mod_cast h_eq_int
   -- Step 6: Connect modInv: (Zp.modInv a.val a.prime).toNat = r
   have h_modInv_toNat : (Zp.modInv a.val a.prime).toNat = r := by
-    -- The modInv function expands to (y % p).toNat = r. Follows from h_ext and h_emod_nonneg.
+    -- modInv defined with `let` bindings. The result expands to (y % p).toNat = r.
+    -- Follows from h_ext, h_emod_nonneg, and hr. Needs let-expansion lemma.
     sorry
   have h_mul_val : (a * a.inv).val.toNat = 1 := by
-    -- (a * a.inv).val = (... % p).toUInt64 → val.toNat = (...)
-    sorry
+    have h_mul_def : (a * a.inv).val = ((a.val.toNat * a.inv.val.toNat) % a.prime.toNat).toUInt64 := rfl
+    rw [h_mul_def]
+    simp [Zp.inv, h_modInv_toNat, h_prime_eq, h_mod_nat, mul_comm]
   -- Step 8: toZMod converts value modulo p
   calc
     Zp.toZMod p (a * a.inv) = ((a * a.inv).val.toNat : ZMod p) := rfl

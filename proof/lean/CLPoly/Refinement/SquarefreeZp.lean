@@ -318,9 +318,30 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
     exact_mod_cast h_eq_int
   -- Step 6: Connect modInv: (Zp.modInv a.val a.prime).toNat = r
   have h_modInv_toNat : (Zp.modInv a.val a.prime).toNat = r := by
-    -- modInv defined with `let` bindings. The result expands to (y % p).toNat = r.
-    -- Follows from h_ext, h_emod_nonneg, and hr. Needs let-expansion lemma.
-    sorry
+    -- modInv defined with `let` bindings. Expand via dsimp, then substitute y.
+    unfold Zp.modInv
+    have hzero_val : a.val ≠ 0 := by
+      intro h; apply hval_nonzero; simp [h]
+    have hzero_bool : (a.val == 0) = false := by simp [hzero_val]
+    rw [hzero_bool]
+    -- Expand `let (_, s) := extGcdAux ...` and subsequent `let` bindings
+    dsimp
+    -- Now the goal has (extGcdAux ...).2, replace it with y (by h_s_val)
+    have h_ext2 : (Zp.extGcdAux (a.prime.toNat : Int) (a.val.toNat : Int) 0 1).2 = y := by
+      rw [h_prime_eq]; exact h_s_val
+    rw [h_ext2]
+    -- Goal: ((if y % (a.prime.toNat : Int) < 0 then ... else ...).toNat.toUInt64).toNat = r
+    -- Since y % p ≥ 0 and a.prime.toNat = p, the `if` is false
+    have h_nonneg : 0 ≤ y % (a.prime.toNat : Int) := by rw [h_prime_eq]; exact h_emod_nonneg
+    split_ifs with h_lt
+    · exfalso; linarith
+    · calc
+        (y % (a.prime.toNat : Int)).toNat.toUInt64.toNat = (y % (a.prime.toNat : Int)).toNat := by
+          -- toUInt64.toNat = id for values < 2^64 (holds since y%p < p < 2^64 from h_p2)
+          sorry
+        _ = (y % (p : ℤ)).toNat := by
+          rw [show (a.prime.toNat : Int) = (p : Int) from by exact_mod_cast h_prime_eq]
+        _ = r := by rw [← hr]
   have h_mul_val : (a * a.inv).val.toNat = 1 := by
     have h_mul_def : (a * a.inv).val = ((a.val.toNat * a.inv.val.toNat) % a.prime.toNat).toUInt64 := rfl
     rw [h_mul_def]

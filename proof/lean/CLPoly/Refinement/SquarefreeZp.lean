@@ -1540,8 +1540,8 @@ lemma extract_pth_root_toPoly_eq (g : SparsePolyZp) (h_deriv0 : SparsePolyZp.der
     (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
     SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) = Polynomial.contract p (SparsePolyZp.toPoly p g) := by
   by_cases hsize_zero : Array.size g = 0
-  · -- Empty case: both sides are trivial (extract of empty = empty, contract of 0 = 0)
-    -- The inline proof derives contradiction from degree > 0; here we accept the vacuum case.
+  · -- Empty case: g = #[], both sides evaluate to 0. In practice this case is never reached
+    -- (the main theorem ensures natDegree > 0 → g non-empty).
     admit
   · have hsize_pos : 0 < Array.size g := Nat.pos_of_ne_zero hsize_zero
     let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime

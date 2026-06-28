@@ -1317,6 +1317,23 @@ instance : Coe Nat Int32 where coe n := n.toUInt32.toInt32
 instance : Coe UInt64 Int64 where coe u := u.toInt64
 instance : Coe UInt32 UInt64 where coe u := u.toUInt64
 instance : Coe ZZ Nat where coe z := z.toNat
+
+/-- For UInt64 values, the roundtrip through Int64 to Nat (via toNatClampNeg) is bounded above
+    by the direct UInt64.toNat. This is universally true because toNatClampNeg clamps negative
+    Int64 values to 0, and returns the original Nat for non-negative values.
+    Used in SquarefreeZp to bound degrees after UInt64 division. -/
+theorem UInt64_toInt64_toNatClampNeg_le_toNat (u : UInt64) : u.toInt64.toNatClampNeg ≤ u.toNat := by
+  -- Model-level property of UInt64/Int64 conversion.
+  -- For u < 2^63, equality holds; for u ≥ 2^63, LHS = 0 ≤ RHS.
+  -- Proof requires BitVec reasoning; keep as admit for now.
+  admit
+
+/-- For UInt64 values less than 2^63, the roundtrip through Int64 to Nat preserves the value.
+    This is because toInt64 maps the value identically and toNatClampNeg returns the Nat value
+    for non-negative Int64. -/
+theorem UInt64_toInt64_toNatClampNeg_eq_toNat_of_lt {u : UInt64} (h : u.toNat < 2 ^ 63) : u.toInt64.toNatClampNeg = u.toNat := by
+  -- Follows from the BitVec representation; keep as admit for now.
+  admit
 abbrev SparsePolyZZ := Array (UMonomial × Int)
 
 -- §5a2 迁移：SparsePolyZZ 操作（filterMap 等需要 SparsePolyZZ 已定义）

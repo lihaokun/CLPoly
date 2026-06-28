@@ -246,7 +246,7 @@ private lemma extGcdAux_gcd_nonneg (A B : ℕ) : 0 ≤ (Zp.extGcdAux (A : Int) (
 /-- 对于非零且 AllReduced 的 Zp 元素 a，在 ZMod p 中有 (a * a.inv).toZMod p = 1。
     证明：extGcdAux_bezout → gcd=1 → modInv = (s%p).toNat → 模算术。 -/
 private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0)
-    (h_p2 : p * p ≤ UInt64.size) : Zp.toZMod p (a * a.inv) = (1 : ZMod p) := by
+    (hp_lt_U64 : p < UInt64.size) : Zp.toZMod p (a * a.inv) = (1 : ZMod p) := by
   rcases hred_a with ⟨h_prime_eq, h_val_lt⟩
   have hp_prime : Nat.Prime p := hp.out
   have hp_pos : 0 < p := Nat.Prime.pos hp_prime
@@ -345,9 +345,7 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
               have h_nonneg_int : 0 ≤ y % (p : ℤ) := h_emod_nonneg
               omega
             have hp_ge_2 : 2 ≤ p := Nat.Prime.two_le hp_prime
-            have hp_lt_U64 : p < UInt64.size := by
-              have : p * p ≤ UInt64.size := h_p2
-              nlinarith
+            have hp_lt_U64' : p < UInt64.size := hp_lt_U64
             omega
           simpa [h_bound]
         _ = (y % (p : ℤ)).toNat := by
@@ -1842,9 +1840,8 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                   exact hprime_wf_inv
                 simpa using toPoly_scalarMul ((SparsePolyZp.front! g_1).snd.inv) g_1 h_red_g1 hfront_prime_safe hp_size
             have h_lc_inv_nonzero : ((SparsePolyZp.front! g_1).snd.inv).toZMod p ≠ 0 := by
-              -- (front! g_1).snd.toZMod p ≠ 0 (leading coefficient non-zero).
-              -- In Z/pZ, a ≠ 0 → a⁻¹ ≠ 0. Zp.inv computes the modular inverse.
-              -- The equality (inv a).toZMod p = (a.toZMod p)⁻¹ follows from Zp_toZMod_inv_mul_self.
+              -- Nearly proved: Zp_toZMod_inv_mul_self weakened to need only p < UInt64.size.
+              -- Remaining gap: hval_nonzero (leading coefficient ≠ 0 from h_contract_pos).
               admit
             have h_nd_g2_pos : (SparsePolyZp.toPoly p g_2).natDegree > 0 := by
               have h_nd_g1_pos : (SparsePolyZp.toPoly p g_1).natDegree > 0 := by

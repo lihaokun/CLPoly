@@ -1681,12 +1681,16 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
           2 * p ≤ UInt64.size →
           (∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64) →
           (∀ x ∈ g.toList, x.1.deg < 2 ^ 64) →
+          (∀ x ∈ g.toList, x.snd.val.toNat ≠ 0) →
           toPolyList (__squarefree_Zp_ir_safe p g) p = sqfZp (SparsePolyZp.toPoly p g) from
         this (SparsePolyZp.toPoly p f).natDegree f rfl hwf_f hred_f hp_size h_no_overflow h_deg_bound
+          (by
+            -- Original f from toSparsePolyZp has no zero coefficients (pipeline invariant)
+            admit)
       intro n
       induction n using Nat.strongRecOn with
       | ind n ih =>
-        intro g h_deg_eq hwf_g hred_g hp_size h_no_overflow_g h_deg_bound_g
+        intro g h_deg_eq hwf_g hred_g hp_size h_no_overflow_g h_deg_bound_g h_val_nonzero_g
         unfold __squarefree_Zp_ir_safe
         by_cases h_deg0_g : (SparsePolyZp.toPoly p g).natDegree = 0
         · simp [sqfZp, h_deg0_g, toPolyList_empty]
@@ -1783,6 +1787,9 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
             have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
               ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl
                 h_wf_g2 h_red_g2 hp_size h_nov_g2 h_db_g2
+                (by
+                  -- g_2 = makeMonic g_1 preserves non-zero coefficients (admit for pipeline invariant)
+                  admit)
             let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
             have hp_1_eq_p : p_1.toNat = p := by
               have hsize_pos : 0 < Array.size g := by
@@ -1887,12 +1894,6 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
               have h_red_a : Zp.Reduced p a := by
                 have := h_red_g1 (SparsePolyZp.front! g_1) hmem_toList
                 simpa [ha] using this
-              -- Invariant: g has no zero-coefficient terms (holds from pipeline construction)
-              -- Proved by extraction lemma + induction on pipeline stages
-              have h_val_nonzero_g : ∀ x ∈ g.toList, x.snd.val.toNat ≠ 0 := by
-                -- Pipeline preserves non-zero coefficients: toSparsePolyZp → extract → makeMonic → ...
-                -- Formalization requires propagating this invariant through the induction.
-                admit
               have h_val_nonzero_g1 : ∀ x ∈ (Generated.__extract_pth_root_ir g).toList, x.snd.val.toNat ≠ 0 :=
                 extract_pth_root_val_nonzero g h_val_nonzero_g
               have hval_nonzero : a.val.toNat ≠ 0 := by

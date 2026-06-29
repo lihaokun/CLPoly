@@ -1893,8 +1893,9 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                 simpa [ha] using this
               have hval_nonzero : a.val.toNat ≠ 0 := by
                 -- The leading coefficient of a degree > 0 polynomial is non-zero.
-                -- Needs lemma connecting front! g_1 to natDegree of toPoly p g_1.
-                -- h_contract_pos and h_toPoly_g1 give natDegree > 0.
+                -- Follows from get_deg_toPoly: get_deg g_1 = natDegree (toPoly p g_1) > 0,
+                -- and get_deg returns front! degree, which requires the leading coefficient non-zero.
+                -- Requires proving get_deg_toPoly (l.50) and the sorting invariant.
                 admit
               have h_mul_one : Zp.toZMod p (a * a.inv) = (1 : ZMod p) :=
                 Zp_toZMod_inv_mul_self a h_red_a hval_nonzero hp_lt_U64

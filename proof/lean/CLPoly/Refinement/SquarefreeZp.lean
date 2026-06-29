@@ -1667,6 +1667,7 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (hp_size : 2 * p ≤ UInt64.size)
     (h_no_overflow : ∀ x ∈ f.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
     (h_deg_bound : ∀ x ∈ f.toList, x.1.deg < 2 ^ 64)
+    (h_val_nonzero_f : ∀ x ∈ f.toList, x.snd.val.toNat ≠ 0)
     :   toPolyList (__squarefree_Zp_ir_safe p f) p = sqfZp (SparsePolyZp.toPoly p f) := by
   unfold __squarefree_Zp_ir_safe
   by_cases h_deg0 : (SparsePolyZp.toPoly p f).natDegree = 0
@@ -1684,9 +1685,7 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
           (∀ x ∈ g.toList, x.snd.val.toNat ≠ 0) →
           toPolyList (__squarefree_Zp_ir_safe p g) p = sqfZp (SparsePolyZp.toPoly p g) from
         this (SparsePolyZp.toPoly p f).natDegree f rfl hwf_f hred_f hp_size h_no_overflow h_deg_bound
-          (by
-            -- Original f from toSparsePolyZp has no zero coefficients (pipeline invariant)
-            admit)
+          h_val_nonzero_f
       intro n
       induction n using Nat.strongRecOn with
       | ind n ih =>

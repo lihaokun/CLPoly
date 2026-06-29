@@ -1840,9 +1840,70 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                   exact hprime_wf_inv
                 simpa using toPoly_scalarMul ((SparsePolyZp.front! g_1).snd.inv) g_1 h_red_g1 hfront_prime_safe hp_size
             have h_lc_inv_nonzero : ((SparsePolyZp.front! g_1).snd.inv).toZMod p ≠ 0 := by
-              -- Nearly proved: Zp_toZMod_inv_mul_self weakened to need only p < UInt64.size.
-              -- Remaining gap: hval_nonzero (leading coefficient ≠ 0 from h_contract_pos).
-              admit
+              set a := (SparsePolyZp.front! g_1).snd with ha
+              have hp_lt_U64 : p < UInt64.size := by
+                have : 2 * p ≤ UInt64.size := hp_size; omega
+              have ha_prime : a.prime.toNat = p := by
+                have hfront_in_arr : (SparsePolyZp.front! g_1) ∈ g_1 := by
+                  have hsize_pos : 0 < Array.size g_1 := by
+                    by_contra! hzero
+                    have hsize_zero : Array.size g_1 = 0 := by omega
+                    have h_len_zero : (g_1.toList).length = 0 := by
+                      have h_len_size : (g_1.toList).length = Array.size g_1 := by simp
+                      rw [h_len_size, hsize_zero]
+                    have h_empty_list : g_1.toList = [] := by
+                      cases h : g_1.toList
+                      · rfl
+                      · simp [h] at h_len_zero
+                    -- Now g_1 is effectively empty, so toPoly p g_1 = 0
+                    have hzero_val : SparsePolyZp.toPoly p g_1 = 0 := by
+                      simp [SparsePolyZp.toPoly, h_empty_list, listSum]
+                    rw [hzero_val] at h_toPoly_g1
+                    -- h_contract_pos: 0 < (contract ...).natDegree = 0, contradiction
+                    have hzero_nd : Polynomial.natDegree (0 : Polynomial (ZMod p)) = 0 := by simp
+                    rw [← h_toPoly_g1, hzero_nd] at h_contract_pos
+                    omega
+                  have hmem_toList : (SparsePolyZp.front! g_1) ∈ g_1.toList :=
+                    mem_getFirst_toList g_1 hsize_pos
+                  exact Array.mem_def.mpr hmem_toList
+                have hwf_front := h_wf_g1 (SparsePolyZp.front! g_1) hfront_in_arr
+                simpa [ha] using hwf_front
+              have ha_inv_prime : (a.inv).prime.toNat = p := by
+                simpa [Zp.inv, ha] using ha_prime
+              have h_red_a : Zp.Reduced p a := by
+                have hfront_in_toList : (SparsePolyZp.front! g_1) ∈ g_1.toList := by
+                  have hsize_pos : 0 < Array.size g_1 := by
+                    by_contra! hzero
+                    have hsize_zero : Array.size g_1 = 0 := by omega
+                    have h_len_zero : (g_1.toList).length = 0 := by
+                      have h_len_size : (g_1.toList).length = Array.size g_1 := by simp
+                      rw [h_len_size, hsize_zero]
+                    have h_empty_list : g_1.toList = [] := by
+                      cases h : g_1.toList
+                      · rfl
+                      · simp [h] at h_len_zero
+                    have hzero_val : SparsePolyZp.toPoly p g_1 = 0 := by
+                      simp [SparsePolyZp.toPoly, h_empty_list, listSum]
+                    rw [hzero_val] at h_toPoly_g1
+                    have hzero_nd : Polynomial.natDegree (0 : Polynomial (ZMod p)) = 0 := by simp
+                    rw [← h_toPoly_g1, hzero_nd] at h_contract_pos
+                    omega
+                  exact mem_getFirst_toList g_1 hsize_pos
+                have := h_red_g1 (SparsePolyZp.front! g_1) hfront_in_toList
+                simpa [ha] using this
+              have hval_nonzero : a.val.toNat ≠ 0 := by
+                -- The leading coefficient of a degree > 0 polynomial is non-zero.
+                -- Needs lemma connecting front! g_1 to natDegree of toPoly p g_1.
+                -- h_contract_pos and h_toPoly_g1 give natDegree > 0.
+                admit
+              have h_mul_one : Zp.toZMod p (a * a.inv) = (1 : ZMod p) :=
+                Zp_toZMod_inv_mul_self a h_red_a hval_nonzero hp_lt_U64
+              have h_mul_split : Zp.toZMod p (a * a.inv) = Zp.toZMod p a * Zp.toZMod p (a.inv) :=
+                Zp.toZMod_mul_weak a a.inv ha_prime ha_inv_prime hp_size
+              rw [h_mul_split] at h_mul_one
+              intro hzero
+              rw [hzero] at h_mul_one
+              simp at h_mul_one
             have h_nd_g2_pos : (SparsePolyZp.toPoly p g_2).natDegree > 0 := by
               have h_nd_g1_pos : (SparsePolyZp.toPoly p g_1).natDegree > 0 := by
                 rw [h_toPoly_g1]

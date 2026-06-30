@@ -1933,43 +1933,19 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
             have h_lc_inv_nonzero : ((SparsePolyZp.front! g_1).snd.inv).toZMod p ≠ 0 := by
               set a := (SparsePolyZp.front! g_1).snd with ha
               have hp_lt_U64 : p < UInt64.size := by
-                have : 2 * p ≤ UInt64.size := hp_size; omega
-              -- g_1 is non-empty because toPoly p g_1 has positive degree
-              have hsize_pos_g1 : 0 < Array.size g_1 := by
-                by_contra! hzero
-                have hsize_zero : Array.size g_1 = 0 := by omega
-                have h_len_zero : (g_1.toList).length = 0 := by
-                  have h_len_size : (g_1.toList).length = Array.size g_1 := by simp
-                  rw [h_len_size, hsize_zero]
-                have h_empty_list : g_1.toList = [] := by
-                  cases h : g_1.toList
-                  · rfl
-                  · simp [h] at h_len_zero
-                have hzero_val : SparsePolyZp.toPoly p g_1 = 0 := by
-                  simp [SparsePolyZp.toPoly, h_empty_list, listSum]
-                rw [hzero_val] at h_toPoly_g1
-                have hzero_nd : Polynomial.natDegree (0 : Polynomial (ZMod p)) = 0 := by simp
-                rw [← h_toPoly_g1, hzero_nd] at h_contract_pos
-                omega
-              have hmem_toList : (SparsePolyZp.front! g_1) ∈ g_1.toList :=
-                mem_getFirst_toList g_1 hsize_pos_g1
+                have : 2 * p ≤ UInt64.size := hp_size; nlinarith
               have ha_prime : a.prime.toNat = p := by
                 have hfront_in_arr : (SparsePolyZp.front! g_1) ∈ g_1 :=
-                  Array.mem_def.mpr hmem_toList
+                  Array.mem_def.mpr hmem_front_g1
                 have hwf_front := h_wf_g1 (SparsePolyZp.front! g_1) hfront_in_arr
                 simpa [ha] using hwf_front
               have ha_inv_prime : (a.inv).prime.toNat = p := by
                 simpa [Zp.inv, ha] using ha_prime
               have h_red_a : Zp.Reduced p a := by
-                have := h_red_g1 (SparsePolyZp.front! g_1) hmem_toList
+                have := h_red_g1 (SparsePolyZp.front! g_1) hmem_front_g1
                 simpa [ha] using this
-              have h_val_nonzero_g1 : ∀ x ∈ (Generated.__extract_pth_root_ir g).toList, x.snd.val.toNat ≠ 0 :=
-                extract_pth_root_val_nonzero g h_val_nonzero_g
-              have hval_nonzero : a.val.toNat ≠ 0 := by
-                have hmem_g1 : (SparsePolyZp.front! g_1) ∈ (Generated.__extract_pth_root_ir g).toList := by
-                  -- g_1 IS extract_pth_root_ir g, so g_1.toList = (extract g).toList
-                  simpa using hmem_toList
-                simpa [ha] using h_val_nonzero_g1 (SparsePolyZp.front! g_1) hmem_g1
+              have hval_nonzero : a.val.toNat ≠ 0 :=
+                h_val_nonzero_g1 (SparsePolyZp.front! g_1) hmem_front_g1
               have h_mul_one : Zp.toZMod p (a * a.inv) = (1 : ZMod p) :=
                 Zp_toZMod_inv_mul_self a h_red_a hval_nonzero hp_lt_U64
               have h_mul_split : Zp.toZMod p (a * a.inv) = Zp.toZMod p a * Zp.toZMod p (a.inv) :=

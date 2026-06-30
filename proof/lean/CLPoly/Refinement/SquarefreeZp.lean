@@ -360,6 +360,55 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
     Zp.toZMod p (a * a.inv) = ((a * a.inv).val.toNat : ZMod p) := rfl
     _ = (1 : ZMod p) := by rw [h_mul_val]; simp
 
+/-- 非零 Zp 元素的逆仍然非零：a.val ≠ 0 → (a.inv).val ≠ 0。 -/
+private lemma Zp_inv_val_nonzero (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0)
+    (hp_size : 2 * p ≤ UInt64.size) : (a.inv).val.toNat ≠ 0 := by
+  have ha_prime : a.prime.toNat = p := hred_a.1
+  have ha_inv_prime : (a.inv).prime.toNat = p := by
+    simpa [Zp.inv] using ha_prime
+  have hp_lt_U64 : p < UInt64.size := by
+    nlinarith
+  have h_mul_one : Zp.toZMod p (a * a.inv) = (1 : ZMod p) :=
+    Zp_toZMod_inv_mul_self a hred_a hval_nonzero hp_lt_U64
+  have h_mul_split : Zp.toZMod p (a * a.inv) = Zp.toZMod p a * Zp.toZMod p (a.inv) :=
+    Zp.toZMod_mul_weak a a.inv ha_prime ha_inv_prime hp_size
+  rw [h_mul_split] at h_mul_one
+  intro hzero
+  have hzero_toZMod : Zp.toZMod p (a.inv) = 0 := by
+    simp [Zp.toZMod, hzero]
+  rw [hzero_toZMod] at h_mul_one
+  simp at h_mul_one
+
+/-- Zp 乘法保持 val ≠ 0（ZMod p 是整环）。 -/
+private lemma Zp_mul_val_nonzero {a b : Zp} (hred_a : Zp.Reduced p a) (hred_b : Zp.Reduced p b)
+    (ha : a.val.toNat ≠ 0) (hb : b.val.toNat ≠ 0) (hp_size : 2 * p ≤ UInt64.size) :
+    (a * b).val.toNat ≠ 0 := by
+  have ha_prime : a.prime.toNat = p := hred_a.1
+  have ha_lt : a.val.toNat < p := hred_a.2
+  have hb_lt : b.val.toNat < p := hred_b.2
+  have hp_prime : Nat.Prime p := hp.out
+  have hp_lt_U64 : p < UInt64.size := by nlinarith
+  have h_val : (a * b).val.toNat = (a.val.toNat * b.val.toNat) % p := by
+    have h_mod_lt : (a.val.toNat * b.val.toNat) % p < UInt64.size :=
+      calc
+        (a.val.toNat * b.val.toNat) % p < p := Nat.mod_lt (a.val.toNat * b.val.toNat) (Nat.Prime.pos hp_prime)
+        _ < UInt64.size := hp_lt_U64
+    have h_mul_val : (a * b).val = ((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64 := rfl
+    calc
+      (a * b).val.toNat = (((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64).toNat := by rw [h_mul_val]
+      _ = (a.val.toNat * b.val.toNat) % a.prime.toNat := by
+        -- .toUInt64.toNat = id for values < UInt64.size
+        have h_mod_lt' : (a.val.toNat * b.val.toNat) % a.prime.toNat < UInt64.size := by
+          rw [ha_prime]; exact h_mod_lt
+        simp [h_mod_lt']
+      _ = (a.val.toNat * b.val.toNat) % p := by rw [ha_prime]
+  intro hzero
+  rw [h_val] at hzero
+  have h_dvd : p ∣ a.val.toNat * b.val.toNat := Nat.dvd_of_mod_eq_zero hzero
+  rcases hp_prime.dvd_mul.mp h_dvd with (hp_a | hp_b)
+  · exact ha (Nat.eq_zero_of_dvd_of_lt hp_a ha_lt)
+  · exact hb (Nat.eq_zero_of_dvd_of_lt hp_b hb_lt)
+
 /-- 多项式长除法中 r' = r - term*g 的首项抵消 → deg(r') < dr。 -/
 private lemma divmod_deg_decrease (g : SparsePolyZp) (dg : ℕ) (lc_g_inv : Zp) (r : SparsePolyZp)
     (dr : ℕ) (coeff : Zp) (d : ℕ) (term : SparsePolyZp) (r' : SparsePolyZp)
@@ -1783,12 +1832,28 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
             have h_db_g2 : ∀ x ∈ g_2.toList, x.1.deg < 2 ^ 64 := upoly_make_monic_deg_bound g_1 h_db_g1
             have h_nov_g2 : ∀ x ∈ g_2.toList, x.2.val.toNat * x.1.deg < 2 ^ 64 :=
               upoly_make_monic_no_overflow g_1 h_red_g1 h_nov_g1 h_p_mul_g1 hp_size
+            have hmem_front_g1 : (SparsePolyZp.front! g_1) ∈ g_1.toList := by
+              have hsize_pos : 0 < Array.size g_1 := by
+                by_contra! hzero
+                have h_empty : g_1 = #[] := Array.eq_empty_of_size_eq_zero (by omega)
+                rw [h_empty] at h_toPoly_g1
+                have : SparsePolyZp.toPoly p #[] = (0 : Polynomial (ZMod p)) := by simp
+                rw [this] at h_toPoly_g1
+                have hzero_nd : Polynomial.natDegree (0 : Polynomial (ZMod p)) = 0 := by simp
+                rw [← h_toPoly_g1, hzero_nd] at h_contract_pos
+                omega
+              exact mem_getFirst_toList g_1 hsize_pos
+            have h_val_nonzero_g1 : ∀ x ∈ g_1.toList, x.snd.val.toNat ≠ 0 :=
+              extract_pth_root_val_nonzero g h_val_nonzero_g
+            have h_lc_val_nonzero : ((SparsePolyZp.front! g_1).snd).val.toNat ≠ 0 :=
+              h_val_nonzero_g1 (SparsePolyZp.front! g_1) hmem_front_g1
+            have h_red_lc : Zp.Reduced p ((SparsePolyZp.front! g_1).snd) :=
+              h_red_g1 (SparsePolyZp.front! g_1) hmem_front_g1
+            have h_inv_val_nonzero : ((SparsePolyZp.front! g_1).snd.inv).val.toNat ≠ 0 :=
+              Zp_inv_val_nonzero ((SparsePolyZp.front! g_1).snd) h_red_lc h_lc_val_nonzero hp_size
             have h_val_nonzero_g2 : ∀ x ∈ g_2.toList, x.snd.val.toNat ≠ 0 := by
-              -- g_2 = makeMonic g_1 = scalarMul (inv lc) g_1.
-              -- In ZMod p (integral domain), non-zero × non-zero = non-zero.
-              -- Since g_1 has non-zero coeffs & inv(lc) ≠ 0 (¬hempty branch), products are non-zero.
-              -- The C++ model's _loop___upoly_make_monic_0_ir uses Array.set! and preserves this.
-              -- Formalization needs a lemma about this loop preserving val ≠ 0.
+              -- The C++ loop multiplies each coefficient by inv(lc); by Zp_mul_val_nonzero, products stay non-zero
+              -- Formalizing the loop-to-map correspondence requires a lemma (see h_loop_lemma pattern)
               admit
             have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
               ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl

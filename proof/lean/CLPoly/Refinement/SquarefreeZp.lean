@@ -1783,12 +1783,17 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
             have h_db_g2 : ∀ x ∈ g_2.toList, x.1.deg < 2 ^ 64 := upoly_make_monic_deg_bound g_1 h_db_g1
             have h_nov_g2 : ∀ x ∈ g_2.toList, x.2.val.toNat * x.1.deg < 2 ^ 64 :=
               upoly_make_monic_no_overflow g_1 h_red_g1 h_nov_g1 h_p_mul_g1 hp_size
+            have h_val_nonzero_g2 : ∀ x ∈ g_2.toList, x.snd.val.toNat ≠ 0 := by
+              -- g_2 = makeMonic g_1 = scalarMul (inv lc) g_1.
+              -- In ZMod p (integral domain), non-zero × non-zero = non-zero.
+              -- Since g_1 has non-zero coeffs & inv(lc) ≠ 0 (¬hempty branch), products are non-zero.
+              -- The C++ model's _loop___upoly_make_monic_0_ir uses Array.set! and preserves this.
+              -- Formalization needs a lemma about this loop preserving val ≠ 0.
+              admit
             have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
               ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl
                 h_wf_g2 h_red_g2 hp_size h_nov_g2 h_db_g2
-                (by
-                  -- g_2 = makeMonic g_1 preserves non-zero coefficients (admit for pipeline invariant)
-                  admit)
+                h_val_nonzero_g2
             let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
             have hp_1_eq_p : p_1.toNat = p := by
               have hsize_pos : 0 < Array.size g := by

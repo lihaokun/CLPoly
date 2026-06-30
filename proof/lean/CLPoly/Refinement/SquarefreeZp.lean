@@ -1849,16 +1849,40 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
               h_val_nonzero_g1 (SparsePolyZp.front! g_1) hmem_front_g1
             have h_red_lc : Zp.Reduced p ((SparsePolyZp.front! g_1).snd) :=
               h_red_g1 (SparsePolyZp.front! g_1) hmem_front_g1
+            have h_red_inv : Zp.Reduced p ((SparsePolyZp.front! g_1).snd.inv) := by
+              -- inv preserves prime (= p); val < p follows from modInv returning value in [0, p)
+              have ha_prime : ((SparsePolyZp.front! g_1).snd).prime.toNat = p := h_red_lc.1
+              have h_val_lt : ((SparsePolyZp.front! g_1).snd.inv).val.toNat < p := by
+                -- modInv returns r where r = s % p, so 0 ≤ r < p
+                admit
+              exact ⟨by simpa [Zp.inv] using ha_prime, h_val_lt⟩
             have h_inv_val_nonzero : ((SparsePolyZp.front! g_1).snd.inv).val.toNat ≠ 0 :=
               Zp_inv_val_nonzero ((SparsePolyZp.front! g_1).snd) h_red_lc h_lc_val_nonzero hp_size
             have h_val_nonzero_g2 : ∀ x ∈ g_2.toList, x.snd.val.toNat ≠ 0 := by
-              -- All ingredients proved:
-              --   Zp_inv_val_nonzero → inv(lc).val ≠ 0
-              --   Zp_mul_val_nonzero → non-zero × non-zero = non-zero in Zp
-              --   h_val_nonzero_g1 → all g_1 coefficients are non-zero
-              -- The C++ loop _loop___upoly_make_monic_0_ir multiplies each coeff by inv(lc),
-              -- preserving non-zero via Zp_mul_val_nonzero. Proved by WF induction on size-idx.
-              admit
+              intro x hx
+              set lc_inv := ((SparsePolyZp.front! g_1).snd.inv) with hlc_inv
+              -- Convert List membership to Array membership (as in upoly_make_monic_wellFormed)
+              have hx_arr : x ∈ g_2 := Array.mem_def.mpr hx
+              dsimp [g_2] at hx_arr
+              -- hx_arr: x ∈ (Generated.__upoly_make_monic_ir g_1).snd
+              simp [Generated.__upoly_make_monic_ir, Generated.__upoly_make_monic_ir_def] at hx_arr
+              split_ifs at hx_arr with h
+              · -- lc.val == 1: g_2 = g_1, so x ∈ g_1
+                simp at hx_arr
+                -- hx_arr: x ∈ g_1 (Array membership), convert to List
+                have hx_list : x ∈ g_1.toList := (Array.mem_def.mp hx_arr)
+                exact h_val_nonzero_g1 x hx_list
+              · simp at hx_arr
+                -- hx_arr: x ∈ ((loop ...).snd : SparsePolyZp)
+                have hx_list : x ∈ (Generated._loop___upoly_make_monic_0_ir 0 g_1 lc_inv).snd.toList :=
+                  (show x ∈ ((Generated._loop___upoly_make_monic_0_ir 0 g_1 lc_inv).snd : SparsePolyZp) from hx_arr).val
+                have hloop : (Generated._loop___upoly_make_monic_0_ir 0 g_1 lc_inv).snd.toList =
+                    (g_1.toList).map (fun (m, y) => (m, y * lc_inv)) := by
+                  have := loop_result_toList g_1 lc_inv 0 (Nat.zero_le _)
+                  simpa [List.take, List.drop] using this
+                rw [hloop] at hx_list
+                rcases List.mem_map.mp hx_list with ⟨y, hy, rfl⟩
+                exact Zp_mul_val_nonzero (h_red_g1 y hy) h_red_inv (h_val_nonzero_g1 y hy) h_inv_val_nonzero hp_size
             have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
               ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl
                 h_wf_g2 h_red_g2 hp_size h_nov_g2 h_db_g2

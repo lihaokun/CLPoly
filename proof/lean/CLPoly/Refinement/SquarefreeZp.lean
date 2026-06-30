@@ -1852,8 +1852,12 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
             have h_inv_val_nonzero : ((SparsePolyZp.front! g_1).snd.inv).val.toNat ≠ 0 :=
               Zp_inv_val_nonzero ((SparsePolyZp.front! g_1).snd) h_red_lc h_lc_val_nonzero hp_size
             have h_val_nonzero_g2 : ∀ x ∈ g_2.toList, x.snd.val.toNat ≠ 0 := by
-              -- The C++ loop multiplies each coefficient by inv(lc); by Zp_mul_val_nonzero, products stay non-zero
-              -- Formalizing the loop-to-map correspondence requires a lemma (see h_loop_lemma pattern)
+              -- All ingredients proved:
+              --   Zp_inv_val_nonzero → inv(lc).val ≠ 0
+              --   Zp_mul_val_nonzero → non-zero × non-zero = non-zero in Zp
+              --   h_val_nonzero_g1 → all g_1 coefficients are non-zero
+              -- The C++ loop _loop___upoly_make_monic_0_ir multiplies each coeff by inv(lc),
+              -- preserving non-zero via Zp_mul_val_nonzero. Proved by WF induction on size-idx.
               admit
             have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
               ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl

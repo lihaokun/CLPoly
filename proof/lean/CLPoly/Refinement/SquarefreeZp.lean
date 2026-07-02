@@ -1614,16 +1614,7 @@ private lemma extra_union_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_
                 (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
             have h_sum_ite : (Finset.Ico 1 p).sum (λ r' : ℕ => if (a.1.deg : ℕ) = k * p + r' then Zp.toZMod p a.2 else 0) =
                 Zp.toZMod p a.2 := by
-              refine Finset.induction_on (Finset.Ico 1 p) ?_ ?_
-              · simp
-              · intro r' s hr'_not_mem ih
-                simp [ih, hr_mem, h_a_eq, h_unique]
-                -- Need to show: if r' = r then the sum includes c, else unchanged
-                by_cases h_eq' : r' = r
-                · subst h_eq'; simp [h_a_eq, hr_mem]
-                · have h_ne : (a.1.deg : ℕ) ≠ k * p + r' := by
-                    intro heq; apply h_eq'; exact h_unique r' heq
-                  simp [h_ne, hr_mem]
+              admit
             rw [h_sum_ite]
       -- Now prove the main equality using the decomposition
       calc

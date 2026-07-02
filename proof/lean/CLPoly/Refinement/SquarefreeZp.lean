@@ -1552,7 +1552,101 @@ private lemma extra_union_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_
       (xs.filter (λ x => ((Φ x).1.deg : ℕ) = k ∧ (x.1.deg : ℕ) ≠ k * p))) =
     (Finset.Ico 1 p).sum (λ r : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
       (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r)))) := by
-  admit
+  induction xs with
+  | nil => simp
+  | cons a xs ih =>
+    have ha_div : ((Φ a).1.deg : ℕ) = (a.1.deg : ℕ) / p := h_Φ_div a (by simp)
+    have h_Φ_div_xs : ∀ x ∈ xs, ((Φ x).1.deg : ℕ) = (x.1.deg : ℕ) / p := by
+      intro x hx; exact h_Φ_div x (by simp [hx])
+    by_cases hcond : ((Φ a).1.deg : ℕ) = k ∧ (a.1.deg : ℕ) ≠ k * p
+    · have hΦ := hcond.1
+      have hne := hcond.2
+      rw [ha_div] at hΦ
+      -- hΦ: a.deg / p = k, so a.deg = k*p + r where r = a.deg % p, 0 < r < p
+      set r := (a.1.deg : ℕ) % p with hr_def
+      have hr_pos : 0 < r := by
+        by_contra hzero
+        have hr_zero : r = 0 := by omega
+        apply hne
+        have h_total : (a.1.deg : ℕ) = k * p + r := by
+          calc
+            (a.1.deg : ℕ) = p * ((a.1.deg : ℕ) / p) + (a.1.deg : ℕ) % p :=
+              (Nat.div_add_mod (a.1.deg : ℕ) p).symm
+            _ = p * k + r := by rw [hΦ, hr_def]
+            _ = k * p + r := by ring
+        calc
+          (a.1.deg : ℕ) = k * p + r := h_total
+          _ = k * p := by simp [hr_zero]
+      have hr_lt_p : r < p := Nat.mod_lt _ hp_pos
+      have hr_mem : r ∈ Finset.Ico 1 p := Finset.mem_Ico.mpr ⟨hr_pos, hr_lt_p⟩
+      have h_a_eq : (a.1.deg : ℕ) = k * p + r := by
+        calc
+          (a.1.deg : ℕ) = p * ((a.1.deg : ℕ) / p) + (a.1.deg : ℕ) % p :=
+            (Nat.div_add_mod (a.1.deg : ℕ) p).symm
+          _ = p * k + r := by rw [hΦ, hr_def]
+          _ = k * p + r := by ring
+      -- Uniqueness: a.deg = k*p + r' implies r' = r
+      have h_unique : ∀ r', (a.1.deg : ℕ) = k * p + r' → r' = r := by
+        intro r' heq; omega
+      -- Compute RHS(a::xs) = a.2.toZMod p + RHS(xs) as a separate lemma
+      have h_rhs_decomp : (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+          ((a :: xs).filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) =
+          Zp.toZMod p a.2 +
+          (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+            (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
+        calc
+          (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+            ((a :: xs).filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) =
+              (Finset.Ico 1 p).sum (λ r' : ℕ =>
+                (if (a.1.deg : ℕ) = k * p + r' then Zp.toZMod p a.2 else 0) +
+                List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+                  (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
+            refine Finset.sum_congr rfl (λ r' hr' => ?_)
+            by_cases ha_eq' : (a.1.deg : ℕ) = k * p + r'
+            · simp [ha_eq']
+            · simp [ha_eq']
+          _ = ((Finset.Ico 1 p).sum (λ r' : ℕ => if (a.1.deg : ℕ) = k * p + r' then Zp.toZMod p a.2 else 0)) +
+              (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+                (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
+            rw [Finset.sum_add_distrib]
+          _ = Zp.toZMod p a.2 +
+              (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+                (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
+            have h_sum_ite : (Finset.Ico 1 p).sum (λ r' : ℕ => if (a.1.deg : ℕ) = k * p + r' then Zp.toZMod p a.2 else 0) =
+                Zp.toZMod p a.2 := by
+              refine Finset.induction_on (Finset.Ico 1 p) ?_ ?_
+              · simp
+              · intro r' s hr'_not_mem ih
+                simp [ih, hr_mem, h_a_eq, h_unique]
+                -- Need to show: if r' = r then the sum includes c, else unchanged
+                by_cases h_eq' : r' = r
+                · subst h_eq'; simp [h_a_eq, hr_mem]
+                · have h_ne : (a.1.deg : ℕ) ≠ k * p + r' := by
+                    intro heq; apply h_eq'; exact h_unique r' heq
+                  simp [h_ne, hr_mem]
+            rw [h_sum_ite]
+      -- Now prove the main equality using the decomposition
+      calc
+        List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+          ((a :: xs).filter (λ x => ((Φ x).1.deg : ℕ) = k ∧ (x.1.deg : ℕ) ≠ k * p))) =
+            Zp.toZMod p a.2 +
+            List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+              (xs.filter (λ x => ((Φ x).1.deg : ℕ) = k ∧ (x.1.deg : ℕ) ≠ k * p))) := by
+          simp [hcond]
+        _ = Zp.toZMod p a.2 +
+            (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+              (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
+          rw [ih h_Φ_div_xs]
+        _ = (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+              ((a :: xs).filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
+          rw [h_rhs_decomp]
+    · -- a does not satisfy the condition: both sides exclude a
+      -- Show that for all r' ∈ Ico 1 p, a.deg ≠ k*p + r', so a is excluded from all RHS terms too
+      -- This follows from: ¬(Φ(a).deg = k ∧ a.deg ≠ k*p)
+      -- Case 1: Φ(a).deg ≠ k → a.deg/p ≠ k → a.deg ≠ k*p + r' for any r' < p
+      -- Case 2: a.deg = k*p → a.deg ≠ k*p + r' for any r' ≥ 1
+      -- Since the Finset sum identity needs explicit computation, admit this branch for now
+      admit
 private lemma coeff_listSum_map_Φ_eq_coeff_listSum_mul (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_eq_p : p_1.toNat = p) (k : ℕ)
     (hcoeff : ∀ n, ¬ p ∣ n → coeff (listSum p xs) n = 0) (hp_pos : 0 < p)
     (hdeg_bound : ∀ x ∈ xs, (x.1.deg : ℕ) < 2 ^ 64) :

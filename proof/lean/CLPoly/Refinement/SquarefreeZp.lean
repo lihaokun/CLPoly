@@ -1631,13 +1631,45 @@ private lemma extra_union_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_
         _ = (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
               ((a :: xs).filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
           rw [h_rhs_decomp]
-    · -- a does not satisfy the condition: both sides exclude a
-      -- Show that for all r' ∈ Ico 1 p, a.deg ≠ k*p + r', so a is excluded from all RHS terms too
-      -- This follows from: ¬(Φ(a).deg = k ∧ a.deg ≠ k*p)
-      -- Case 1: Φ(a).deg ≠ k → a.deg/p ≠ k → a.deg ≠ k*p + r' for any r' < p
-      -- Case 2: a.deg = k*p → a.deg ≠ k*p + r' for any r' ≥ 1
-      -- Since the Finset sum identity needs explicit computation, admit this branch for now
-      admit
+    · -- a does not satisfy the condition: ¬(Φ(a).deg = k ∧ a.deg ≠ k*p)
+      -- So either Φ(a).deg ≠ k, or a.deg = k*p
+      have h_no_match : ∀ r' ∈ Finset.Ico 1 p, (a.1.deg : ℕ) ≠ k * p + r' := by
+        intro r' hr'
+        by_cases hΦ_eq' : ((Φ a).1.deg : ℕ) = k
+        · -- a.deg/p = k (from ha_div). From hcond: a.deg = k*p
+          have hΦ_eq_orig : ((Φ a).1.deg : ℕ) = k := hΦ_eq'
+          rw [ha_div] at hΦ_eq'
+          by_cases h_ne_kp : (a.1.deg : ℕ) ≠ k * p
+          · exfalso; apply hcond; exact ⟨hΦ_eq_orig, h_ne_kp⟩
+          · -- a.deg = k*p. Then a.deg ≠ k*p + r' since r' ≥ 1
+            have h_kp : (a.1.deg : ℕ) = k * p := by omega
+            rw [h_kp]
+            have hr'_pos : 1 ≤ r' := (Finset.mem_Ico.mp hr').1
+            omega
+        · -- Φ(a).deg ≠ k, so a.deg/p ≠ k
+          rw [ha_div] at hΦ_eq'
+          intro heq
+          apply hΦ_eq'
+          rw [heq]
+          have hr'_lt_p : r' < p := (Finset.mem_Ico.mp hr').2
+          have h_lt : k * p + r' < (k + 1) * p :=
+            calc
+              k * p + r' < k * p + p := Nat.add_lt_add_left hr'_lt_p _
+              _ = (k + 1) * p := by ring
+          exact Nat.div_eq_of_lt_le (Nat.le_add_right _ _) h_lt
+      calc
+        List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+          ((a :: xs).filter (λ x => ((Φ x).1.deg : ℕ) = k ∧ (x.1.deg : ℕ) ≠ k * p))) =
+            List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+              (xs.filter (λ x => ((Φ x).1.deg : ℕ) = k ∧ (x.1.deg : ℕ) ≠ k * p))) := by
+          simp [hcond]
+        _ = (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+              (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
+          rw [ih h_Φ_div_xs]
+        _ = (Finset.Ico 1 p).sum (λ r' : ℕ => List.sum (List.map (λ x : UMonomial × Zp => Zp.toZMod p x.2)
+              ((a :: xs).filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
+          refine Finset.sum_congr rfl (λ r' hr' => ?_)
+          simp [h_no_match r' hr']
 private lemma coeff_listSum_map_Φ_eq_coeff_listSum_mul (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_eq_p : p_1.toNat = p) (k : ℕ)
     (hcoeff : ∀ n, ¬ p ∣ n → coeff (listSum p xs) n = 0) (hp_pos : 0 < p)
     (hdeg_bound : ∀ x ∈ xs, (x.1.deg : ℕ) < 2 ^ 64) :

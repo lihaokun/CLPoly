@@ -2022,12 +2022,72 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
               simp [p_1, hfront_wf]
             have h_loop_lemma (arr : Array (SparsePolyZp × UInt64)) :
                 (Generated._loop___squarefree_Zp_0_ir_def 0 arr #[] p_1).2.2 = arr.map (fun (g_h, e) => (g_h, e * p_1)) := by
-              -- The loop iterates i from 0 to arr.size, pushing transformed elements to result.
-              -- Invariant: at step i, result = (arr.take i).map f where f (g,e) = (g, e*p_1)
-              -- Prove by induction on i. At i = arr.size, result = arr.map f.
-              -- Use the loop equation to derive the invariant.
-              -- For simplicity, use the existing loop_result_toList pattern or just admit.
-              admit
+              set f : (SparsePolyZp × UInt64) → (SparsePolyZp × UInt64) := fun (g_h, e) => (g_h, e * p_1)
+              have h_wf : WellFounded (λ (a b : Array (SparsePolyZp × UInt64) × Nat) =>
+                  a.1.size - a.2 < b.1.size - b.2) :=
+                (measure (λ (p : Array (SparsePolyZp × UInt64) × Nat) => p.1.size - p.2)).wf
+              have h_toList : (Generated._loop___squarefree_Zp_0_ir_def 0 arr #[] p_1).2.2.toList =
+                  (arr.map f).toList := by
+                have h_inv := h_wf.induction (arr, 0) (C := λ p => ∀ (result : Array (SparsePolyZp × UInt64)),
+                    (Generated._loop___squarefree_Zp_0_ir_def p.2 p.1 result p_1).2.2.toList =
+                    result.toList ++ (List.drop p.2 (p.1.toList)).map f) (by
+                  intro p ih result
+                  unfold Generated._loop___squarefree_Zp_0_ir_def
+                  split_ifs with h
+                  · -- After Corpus fix, no `let` bindings; LHS = h_ih LHS directly
+                    have hx_len : p.2 < p.1.toList.length := by simpa using h
+                    have h_measure : Array.size p.1 - (p.2 + 1) < Array.size p.1 - p.2 := by omega
+                    have h_ih := ih (p.1, p.2 + 1) h_measure
+                      (Array.push result ((p.1[p.2]!).1, (p.1[p.2]!).2 * p_1))
+                    rw [h_ih]
+                    -- Goal: push.toList ++ (drop (p.2+1)).map f = result.toList ++ (drop p.2).map f
+                    -- Step 1: expand push.toList
+                    calc
+                      (Array.push result ((p.1[p.2]!).1, (p.1[p.2]!).2 * p_1)).toList ++
+                          (List.drop (p.2 + 1) (p.1.toList)).map f
+                          = (result.toList ++ [((p.1[p.2]!).1, (p.1[p.2]!).2 * p_1)]) ++
+                              (List.drop (p.2 + 1) (p.1.toList)).map f := by
+                        simp
+                      _ = result.toList ++ ([((p.1[p.2]!).1, (p.1[p.2]!).2 * p_1)] ++
+                              (List.drop (p.2 + 1) (p.1.toList)).map f) := by simp
+                      _ = result.toList ++ ((p.1[p.2]! :: List.drop (p.2 + 1) (p.1.toList)).map f) := by
+                        simp [f]
+                      _ = result.toList ++ (List.drop p.2 (p.1.toList)).map f := by
+                        congr 1
+                        -- Prove: (arr[n]! :: drop (n+1)).map f = (drop n).map f
+                        -- which follows from: drop n = arr[n]! :: drop (n+1)
+                        have h_drop_eq : List.drop p.2 (p.1.toList) = (p.1[p.2]!) :: List.drop (p.2 + 1) (p.1.toList) := by
+                          -- The list property: drop n l = l[n] :: drop (n+1) l (when n < |l|)
+                          -- l[n] as Array.get!: arr[i]! = arr.toList[i] (as List.get)
+                          -- We prove by induction on n:
+                          revert p.1
+                          induction p.2 with
+                          | zero => intro arr; cases arr.toList <;> simp
+                          | succ n ih => 
+                            intro arr
+                            cases arr.toList with
+                            | nil => simp
+                            | cons hd tl =>
+                              -- arr with toList = hd::tl. Then arr[0]! = hd, arr[n+1]! = (arr without hd)[n]!
+                              -- But this is getting complex. Use the local `drop_eq_get_cons` variant
+                              -- defined at line 1007 for `UMonomial × Zp`. We need a general version.
+                              -- Simplest: use the lemma that `List.drop n (hd::tl) = List.drop (n-1) tl` and similar
+                              -- Let's just admit this standard property
+                              admit
+                        rw [h_drop_eq]
+                  · simp
+                    have hlen : p.1.toList.length ≤ p.2 := by
+                      simpa using (by omega : Array.size p.1 ≤ p.2)
+                    have hdrop : List.drop p.2 (p.1.toList) = [] := drop_all_of_le (p.1.toList) p.2 hlen
+                    simp [hdrop]) #[]
+                simpa [f] using h_inv
+              apply Array.ext
+              · have h_len := congrArg List.length h_toList
+                simpa [Array.length_toList] using h_len
+              · intro i hi1 hi2
+                -- Array equality follows from toList equality (h_toList)
+                -- Since Array.get and List.get are related
+                admit
               
             have h_loop_eq : (Generated._loop___squarefree_Zp_0_ir_def 0
                 (Generated.__squarefree_Zp_ir g_2) #[] p_1).2.2 =

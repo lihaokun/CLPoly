@@ -136,17 +136,15 @@ private def _sep_sqfree_aux_1 : Unit := ()
 
 def _loop___squarefree_Zp_0_ir_def (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Array (SparsePolyZp × UInt64)) (result_2 : Array (SparsePolyZp × UInt64)) (p_1 : UInt64) : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
-    let si_ei_1 : (SparsePolyZp × UInt64) /- ref residual -/ := (__rangefor_cont_0_2[(__rangefor_idx_0_2)]!)
-    let result_3 : Array (SparsePolyZp × UInt64) := (Array.push result_2 (((id si_ei_1.fst), (si_ei_1.snd * p_1))))
-    let __rangefor_cont_0_3 : Array (SparsePolyZp × UInt64) := (Array.set! __rangefor_cont_0_2 __rangefor_idx_0_2 si_ei_1)
-    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-    _loop___squarefree_Zp_0_ir_def __rangefor_idx_0_3 __rangefor_cont_0_3 result_3 p_1
+    -- MANUAL FIX (2026-07-01): Removed `let` bindings to make the definition
+    -- zeta-reducible. The original generated code wraps the recursive call in `let`
+    -- bindings which are opaque in eq_1, preventing `rw` from matching.
+    -- The `Array.set!` call is a no-op (set element to itself) and can be dropped.
+    _loop___squarefree_Zp_0_ir_def (__rangefor_idx_0_2 + 1) __rangefor_cont_0_2
+      (Array.push result_2 ((__rangefor_cont_0_2[__rangefor_idx_0_2]!).1, (__rangefor_cont_0_2[__rangefor_idx_0_2]!).2 * p_1)) p_1
   else
     ((0 : Int64), __rangefor_cont_0_2, result_2)
 termination_by Array.size __rangefor_cont_0_2 - __rangefor_idx_0_2
-decreasing_by
-  unfold Array.set!; simp
-  omega
 
 private def _sep_sqfree_aux_2 : Unit := ()
 

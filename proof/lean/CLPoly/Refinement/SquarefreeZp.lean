@@ -1003,6 +1003,26 @@ private lemma divmod'_wf_snd_wellFormed (f g : SparsePolyZp)
   have hx_red : Zp.Reduced p x.snd := hred_snd x (by rw [← Array.mem_def]; exact hx)
   exact hx_red.1
 
+/-- drop n xs = xs[n] :: drop (n+1) xs when n < length xs (general version)。 -/
+lemma drop_eq_get_cons_general {α : Type} (l : List α) (n : ℕ) (h : n < l.length) :
+    l.drop n = (l.get ⟨n, h⟩) :: l.drop (n + 1) := by
+  revert l
+  induction n with
+  | zero =>
+    intro l h
+    cases l
+    · simp at h
+    · simp
+  | succ n ih =>
+    intro l h
+    cases l with
+    | nil => simp at h
+    | cons hd tl =>
+      have h' : n < tl.length := by
+        simpa [List.length_cons] using h
+      have h_ih := ih tl h'
+      simpa using h_ih
+
 /-- drop n xs = xs[n] :: drop (n+1) xs when n < length xs。 -/
 lemma drop_eq_get_cons' (l : List (UMonomial × Zp)) (n : ℕ) (h : n < l.length) :
     l.drop n = (l.get ⟨n, h⟩) :: l.drop (n + 1) := by
@@ -2057,12 +2077,20 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                         -- Prove: (arr[n]! :: drop (n+1)).map f = (drop n).map f
                         -- which follows from: drop n = arr[n]! :: drop (n+1)
                         have h_drop_eq : List.drop p.2 (p.1.toList) = (p.1[p.2]!) :: List.drop (p.2 + 1) (p.1.toList) := by
-                          -- Standard list property: drop n l = l[n] :: drop (n+1) l when n < |l|
-                          -- Here l[n] = (p.1.toList).get n, and (p.1.toList).get n = p.1[n]! by definition
-                          -- This is true for all n; can be proved by induction on n for any list type
-                          admit
+                          -- Use the general list lemma, then relate List.get to Array.get!
+                          have h_temp := drop_eq_get_cons_general (p.1.toList) p.2 hx_len
+                          -- h_temp: drop = l.get :: drop
+                          -- p.1[p.2]! is the same element as l.get
+                          have h_get : (p.1.toList).get ⟨p.2, hx_len⟩ = p.1[p.2]! := by
+                            -- Array.get! i = (toList.get? i).getD default
+                            -- For i < size, this equals toList.get i
+                            -- This is a basic Array/List relationship
+                            admit
+                          rw [h_get] at h_temp
+                          exact h_temp
                         rw [h_drop_eq]
-                  · simp
+                  · -- ¬ p.2 < Array.size p.1: loop returns result
+                    dsimp
                     have hlen : p.1.toList.length ≤ p.2 := by
                       simpa using (by omega : Array.size p.1 ≤ p.2)
                     have hdrop : List.drop p.2 (p.1.toList) = [] := drop_all_of_le (p.1.toList) p.2 hlen

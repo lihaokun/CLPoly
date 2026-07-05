@@ -136,10 +136,25 @@ private def _sep_sqfree_aux_1 : Unit := ()
 
 def _loop___squarefree_Zp_0_ir_def (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Array (SparsePolyZp × UInt64)) (result_2 : Array (SparsePolyZp × UInt64)) (p_1 : UInt64) : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
-    -- MANUAL FIX (2026-07-01): Removed `let` bindings to make the definition
-    -- zeta-reducible. The original generated code wraps the recursive call in `let`
-    -- bindings which are opaque in eq_1, preventing `rw` from matching.
-    -- The `Array.set!` call is a no-op (set element to itself) and can be dropped.
+    -- ============================================================
+    -- MANUAL FIX (2026-07-01): Removed 4 `let` bindings + 1 `Array.set!` call.
+    --
+    -- Reason: The equation compiler produces opaque `let` bindings in `eq_1`
+    -- that cannot be matched by `rw` in refinement proofs. Removing them
+    -- makes the definition zeta-reducible.
+    --
+    -- Correctness: The removed operations are semantically neutral:
+    --   (1) `let si_ei_1 := cont[idx]!`          — pure binding, no effect
+    --   (2) `let result_3 := result.push(...)`    — pure binding, no effect
+    --   (3) `Array.set! cont idx si_ei_1`         — **NO-OP**: sets cont[idx] to
+    --       si_ei_1, but si_ei_1 was just accessed as cont[idx]!, so it sets
+    --       the element to itself. In the C++ model this is a redundant
+    --       write-back from reference semantics; the Lean model doesn't need it.
+    --   (4) `let __rangefor_idx_0_3 := idx + 1`   — pure binding, no effect
+    --
+    -- The rewritten code performs exactly the same computation (increment
+    -- index, push transformed element, recurse) with the same arguments.
+    -- ============================================================
     _loop___squarefree_Zp_0_ir_def (__rangefor_idx_0_2 + 1) __rangefor_cont_0_2
       (Array.push result_2 ((__rangefor_cont_0_2[__rangefor_idx_0_2]!).1, (__rangefor_cont_0_2[__rangefor_idx_0_2]!).2 * p_1)) p_1
   else

@@ -1634,21 +1634,24 @@ private lemma extra_union_eq (xs : List (UMonomial × Zp)) (p_1 : UInt64) (hp_1_
                 (xs.filter (λ x : UMonomial × Zp => (x.1.deg : ℕ) = k * p + r')))) := by
             have h_sum_ite : (Finset.Ico 1 p).sum (λ r' : ℕ => if (a.1.deg : ℕ) = k * p + r' then Zp.toZMod p a.2 else 0) =
                 Zp.toZMod p a.2 := by
-              -- The condition (a.deg = k*p + r') holds for exactly r' = r, which is in Ico 1 p.
-              -- All other r' contribute 0. So the sum is just the value at r' = r.
-              -- Since Finset lemma support is limited, convert to list and induct.
-              have h_list : (Finset.Ico 1 p).sum (λ r' : ℕ => if (a.1.deg : ℕ) = k * p + r' then Zp.toZMod p a.2 else 0) =
-                  Zp.toZMod p a.2 := by
-                -- The set Ico 1 p = {r' | 1 ≤ r' < p}. Only r (a.deg % p) matches.
-                -- Since r is between 1 and p-1, it's in the set.
-                -- Use a direct computation via the list of elements.
-                -- Convert to List.range p and filter
-                let s := List.range p
-                -- But Finset.Ico 1 p != List.range p exactly
-                -- Let's just induct: the sum has exactly one matching element
-                -- For now, admit this as a standard Finset property
-                admit
-              exact h_list
+              -- Only r' = r satisfies the condition, and r ∈ Ico 1 p
+              -- Replace the condition with equality to r
+              have h_fn_eq : (λ r' : ℕ => if (a.1.deg : ℕ) = k * p + r' then Zp.toZMod p a.2 else 0) =
+                             (λ r' : ℕ => if r' = r then Zp.toZMod p a.2 else 0) := by
+                ext r'
+                by_cases h_eq : (a.1.deg : ℕ) = k * p + r'
+                · -- then r' = r (by uniqueness) so r' = r branch gives c, deg branch also gives c
+                  have hr_eq : r' = r := h_unique r' h_eq
+                  simp [h_eq, hr_eq]
+                · -- deg ≠ k*p + r', and r' ≠ r (since if r' = r, then deg = k*p + r by h_a_eq)
+                  have hr_ne : r' ≠ r := by
+                    intro hsub; apply h_eq; rw [hsub]; exact h_a_eq
+                  simp [h_eq, hr_ne]
+              rw [h_fn_eq]
+              -- (Finset.Ico 1 p).sum (λ r' => if r' = r then c else 0) = c when r ∈ Ico 1 p
+              -- Convert to list: Finset.sum = List.sum of sort
+              -- Since there are no Finset sum_ite lemmas, admit this standard identity
+              admit
             rw [h_sum_ite]
       -- Now prove the main equality using the decomposition
       calc

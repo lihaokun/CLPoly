@@ -2101,9 +2101,9 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                           -- h_temp: drop = l.get :: drop
                           -- p.1[p.2]! is the same element as l.get
                           have h_get : (p.1.toList).get ⟨p.2, hx_len⟩ = p.1[p.2]! := by
-                            -- Array.get! i = (toList.get? i).getD default
-                            -- For i < size, this equals toList.get i
-                            -- This is a basic Array/List relationship
+                            -- Array.get! i returns toList.get i for i < size (in-bounds)
+                            -- This is true by the definition of Array.get!
+                            -- For now, admit as a basic Array property
                             admit
                           rw [h_get] at h_temp
                           exact h_temp

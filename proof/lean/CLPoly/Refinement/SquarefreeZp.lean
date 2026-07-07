@@ -2101,10 +2101,16 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                           -- h_temp: drop = l.get :: drop
                           -- p.1[p.2]! is the same element as l.get
                           have h_get : (p.1.toList).get ⟨p.2, hx_len⟩ = p.1[p.2]! := by
-                            -- Array.get! i returns toList.get i for i < size (in-bounds)
-                            -- This is true by the definition of Array.get!
-                            -- For now, admit as a basic Array property
-                            admit
+                            -- Exact same pattern as mem_getFirst_toList (line 673-677)
+                            have hpos : p.2 < Array.size p.1 := by
+                              simpa [Array.length_toList] using hx_len
+                            have h_eq : (p.1.toList).get ⟨p.2, hx_len⟩ = p.1[p.2] := by simp
+                            have h_eq' : p.1[p.2]! = p.1[p.2] := by
+                              rw [getElem!_def, getElem?_def]
+                              simp [hpos]
+                            calc
+                              (p.1.toList).get ⟨p.2, hx_len⟩ = p.1[p.2] := h_eq
+                              _ = p.1[p.2]! := h_eq'.symm
                           rw [h_get] at h_temp
                           exact h_temp
                         rw [h_drop_eq]

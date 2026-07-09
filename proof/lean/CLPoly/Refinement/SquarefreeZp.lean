@@ -2235,11 +2235,17 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                 have h_toPolyList_specific :
                     toPolyList ((__squarefree_Zp_ir_safe p g_2).map (fun (g_h, e) => (g_h, e * p_1))) p =
                     (toPolyList (__squarefree_Zp_ir_safe p g_2) p).map (fun (h, e) => (h, e * p)) := by
-                  -- Key: (e * p_1).toNat = e.toNat * p for all exponents.
-                  -- Since e ≤ natDegree and p * natDegree < 2^64 (from degree bounds), no UInt64 overflow.
-                  -- Fusing the maps: arr.map(f).map(g) = arr.map(g∘f). The exponent conversion:
-                  --   (e * p_1).toNat = (e.toNat * p_1.toNat) % 2^64 = (e.toNat * p) % 2^64
-                  --   = e.toNat * p  (since e.toNat * p < 2^64)
+                  -- Both sides map (g, e) → (toPoly p g, x) where x differs:
+                  --   LHS: (e * p_1).toNat, RHS: e.toNat * p
+                  -- Since hp_1_eq_p: p_1.toNat = p, we need (e * UInt64.ofNat p).toNat = e.toNat * p
+                  -- This holds when e.toNat * p < 2^64 (no UInt64 overflow)
+                  -- For sqfZp exponents, e.toNat ≤ natDegree and p * natDegree < 2^64
+                  --   → follows from degree bounds and extract_pth_root_no_overflow
+                  -- The map fusion: (arr.map f).map g = arr.map (g ∘ f)
+                  unfold toPolyList
+                  -- After unfolding, both sides are arr.map ... but with different second component
+                  -- Need element-wise equality: (e * p_1).toNat = e.toNat * p
+                  -- For the specific array __squarefree_Zp_ir_safe p g_2, this holds
                   admit
                 rw [h_toPolyList_specific]
                 rw [h_ih_g2]

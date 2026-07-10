@@ -2236,15 +2236,9 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                     toPolyList ((__squarefree_Zp_ir_safe p g_2).map (fun (g_h, e) => (g_h, e * p_1))) p =
                     (toPolyList (__squarefree_Zp_ir_safe p g_2) p).map (fun (h, e) => (h, e * p)) := by
                   unfold toPolyList
-                  simp [Function.comp]
-                  -- Goal: two arrays are equal if ∀ x, (x.2 * p_1).toNat = x.2.toNat * p
-                  -- This holds for arr = __squarefree_Zp_ir_safe p g_2 because:
-                  --   x.2 is a sqfZp exponent, so x.2.toNat ≤ natDegree
-                  --   p * natDegree < 2^64 (from h_p_mul_g1 + degree bounds)
-                  --   Hence (x.2 * p_1).toNat = x.2.toNat * p (no UInt64 overflow)
-                  --
-                  -- Formal proof needs: ∀ x ∈ arr, (x.2 * p_1).toNat = x.2.toNat * p
-                  -- Which follows from the bound on sqfZp exponents.
+                  simp [Function.comp, hp_1_eq_p]
+                  -- Remaining: (e * UInt64.ofNat p).toNat = e.toNat * p (element-wise equality)
+                  -- This holds when e.toNat * p < 2^64 (no UInt64 overflow)
                   admit
                 rw [h_toPolyList_specific]
                 rw [h_ih_g2]

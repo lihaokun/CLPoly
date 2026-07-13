@@ -360,6 +360,32 @@ private lemma Zp_toZMod_inv_mul_self (a : Zp) (hred_a : Zp.Reduced p a) (hval_no
     Zp.toZMod p (a * a.inv) = ((a * a.inv).val.toNat : ZMod p) := rfl
     _ = (1 : ZMod p) := by rw [h_mul_val]; simp
 
+/-- `modInv a q` 的返回值恒落在 `[0, q)`。由定义构造直接得出（无需 Bezout / 逆元正确性）：
+    `a = 0` 时返回 0；否则返回 `s % q`（`Int.emod` 值域 `[0, q)`），再经 toUInt64 往返保值。 -/
+private lemma modInv_val_lt (a q : UInt64) (hq : 1 < q.toNat) (hq_size : q.toNat ≤ UInt64.size) :
+    (Zp.modInv a q).toNat < q.toNat := by
+  unfold Zp.modInv
+  by_cases hb : (a == 0) = true
+  · rw [if_pos hb]; simp; omega
+  · rw [if_neg hb]
+    dsimp only
+    set s : Int := (Zp.extGcdAux (q.toNat : Int) (a.toNat : Int) 0 1).2 with hs
+    have hne : (q.toNat : Int) ≠ 0 := by
+      have : q.toNat ≠ 0 := by omega
+      exact_mod_cast this
+    have hpos : (0 : Int) < (q.toNat : Int) := by
+      have : 0 < q.toNat := by omega
+      exact_mod_cast this
+    have h_nonneg : 0 ≤ s % (q.toNat : Int) := Int.emod_nonneg s hne
+    have h_lt : s % (q.toNat : Int) < (q.toNat : Int) := Int.emod_lt_of_pos s hpos
+    rw [if_neg (by linarith)]
+    have h_toNat_lt : (s % (q.toNat : Int)).toNat < q.toNat := by omega
+    have h_bound : (s % (q.toNat : Int)).toNat < UInt64.size :=
+      lt_of_lt_of_le h_toNat_lt hq_size
+    calc ((s % (q.toNat : Int)).toNat.toUInt64).toNat
+        = (s % (q.toNat : Int)).toNat := by simp [h_bound]
+      _ < q.toNat := h_toNat_lt
+
 /-- 非零 Zp 元素的逆仍然非零：a.val ≠ 0 → (a.inv).val ≠ 0。 -/
 private lemma Zp_inv_val_nonzero (a : Zp) (hred_a : Zp.Reduced p a) (hval_nonzero : a.val.toNat ≠ 0)
     (hp_size : 2 * p ≤ UInt64.size) : (a.inv).val.toNat ≠ 0 := by
@@ -1759,8 +1785,26 @@ lemma extract_pth_root_toPoly_eq (g : SparsePolyZp) (h_deriv0 : SparsePolyZp.der
     SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir g) = Polynomial.contract p (SparsePolyZp.toPoly p g) := by
   by_cases hsize_zero : Array.size g = 0
   · -- Empty case: g = #[], both sides evaluate to 0. In practice this case is never reached
-    -- (the main theorem ensures natDegree > 0 → g non-empty).
-    admit
+    -- (the main theorem ensures natDegree > 0 → g non-empty), but the lemma is stated
+    -- unconditionally, so we discharge it directly.
+    have hg_empty : g = #[] := Array.eq_empty_of_size_eq_zero hsize_zero
+    subst hg_empty
+    have hp_ne_zero : p ≠ 0 := Nat.Prime.ne_zero hp.out
+    -- LHS: __extract_pth_root_ir #[] 的 toList 为空（循环遍历空数组），故 toPoly = 0
+    have hL : SparsePolyZp.toPoly p (Generated.__extract_pth_root_ir (#[] : SparsePolyZp)) = 0 := by
+      have h_tl : (Generated.__extract_pth_root_ir (#[] : SparsePolyZp)).toList = [] := by
+        unfold Generated.__extract_pth_root_ir Generated.__extract_pth_root_ir_def
+        have h_loop' := loop_extract_toList (#[] : SparsePolyZp) SparsePolyZp.empty 0
+          (SparsePolyZp.front! (#[] : SparsePolyZp)).snd.prime (by simp)
+        simpa [SparsePolyZp.empty, List.drop] using h_loop'
+      show listSum p (Generated.__extract_pth_root_ir (#[] : SparsePolyZp)).toList = 0
+      rw [h_tl]; simp [listSum]
+    -- RHS: contract p 0 = 0（逐系数：coeff (contract p 0) n = coeff 0 (n*p) = 0）
+    have hR : Polynomial.contract p (SparsePolyZp.toPoly p (#[] : SparsePolyZp)) = 0 := by
+      rw [SparsePolyZp.toPoly_empty]
+      apply Polynomial.ext; intro n
+      rw [Polynomial.coeff_contract hp_ne_zero]; simp
+    rw [hL, hR]
   · have hsize_pos : 0 < Array.size g := Nat.pos_of_ne_zero hsize_zero
     let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
     have hp_1_eq_p : p_1.toNat = p := by
@@ -1855,8 +1899,75 @@ private lemma sqfZp_smul (c : ZMod p) (hc : c ≠ 0) (f : Polynomial (ZMod p)) :
       dsimp
       rw [h_contract]
       rw [IH (Polynomial.contract p g).natDegree h_deg_lt (Polynomial.contract p g) rfl]
-    · -- derivative ≠ 0: Yun algorithm. normalize(c·g) = normalize(g).
-      sorry
+    · -- derivative ≠ 0: Yun algorithm。C c 是单位（c ≠ 0 于域 ZMod p），
+      -- 故内部的 gcd / divByMonic / normalize 均在单位乘法下不变 ⇒ c、w 相等 ⇒ 整个结果相等。
+      have hCc_unit : IsUnit (C c : Polynomial (ZMod p)) := isUnit_C.mpr hc.isUnit
+      have h_deriv_cg : Polynomial.derivative (C c * g) = C c * Polynomial.derivative g :=
+        Polynomial.derivative_C_mul c g
+      have hderiv_cg_ne : Polynomial.derivative (C c * g) ≠ 0 := by
+        rw [h_deriv_cg]; intro h
+        rcases mul_eq_zero.mp h with h1 | h2
+        · exact hc (Polynomial.C_eq_zero.mp h1)
+        · exact hderiv h2
+      have hzero_cg : (C c * g).natDegree ≠ 0 := by
+        rw [Polynomial.natDegree_C_mul hc]; exact hzero
+      -- (1) c 相等：gcd 在单位乘法下相伴，normalize 后相等
+      have hg_assoc : Associated (C c * g) g := associated_unit_mul_left g (C c) hCc_unit
+      have hg'_assoc : Associated (C c * Polynomial.derivative g) (Polynomial.derivative g) :=
+        associated_unit_mul_left (Polynomial.derivative g) (C c) hCc_unit
+      have hgcd_assoc : Associated (EuclideanDomain.gcd (C c * g) (Polynomial.derivative (C c * g)))
+          (EuclideanDomain.gcd g (Polynomial.derivative g)) := by
+        rw [h_deriv_cg]
+        apply associated_of_dvd_dvd
+        · exact EuclideanDomain.dvd_gcd
+            (dvd_trans (EuclideanDomain.gcd_dvd_left _ _) hg_assoc.dvd)
+            (dvd_trans (EuclideanDomain.gcd_dvd_right _ _) hg'_assoc.dvd)
+        · exact EuclideanDomain.dvd_gcd
+            (dvd_trans (EuclideanDomain.gcd_dvd_left _ _) hg_assoc.symm.dvd)
+            (dvd_trans (EuclideanDomain.gcd_dvd_right _ _) hg'_assoc.symm.dvd)
+      have hcc_eq : normalize (EuclideanDomain.gcd (C c * g) (Polynomial.derivative (C c * g)))
+          = normalize (EuclideanDomain.gcd g (Polynomial.derivative g)) :=
+        normalize_eq_normalize_iff_associated.mpr hgcd_assoc
+      -- normalized gcd 非零且 monic
+      have hgcd_g_ne : EuclideanDomain.gcd g (Polynomial.derivative g) ≠ 0 := by
+        intro h
+        have hdvd : EuclideanDomain.gcd g (Polynomial.derivative g) ∣ g :=
+          EuclideanDomain.gcd_dvd_left g (Polynomial.derivative g)
+        rw [h] at hdvd
+        exact hzero (by rw [zero_dvd_iff.mp hdvd]; simp)
+      have hcc_monic : Monic (normalize (EuclideanDomain.gcd g (Polynomial.derivative g))) :=
+        monic_normalize hgcd_g_ne
+      -- (2) w 相等：(C c * g) /ₘ cc = C c * (g /ₘ cc)，再由单位相伴 normalize 相等
+      have h_div_eq : (C c * g) /ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g))
+          = C c * (g /ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g))) := by
+        refine (div_modByMonic_unique
+          (C c * (g /ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g))))
+          (C c * (g %ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g))))
+          hcc_monic ⟨?_, ?_⟩).1
+        · calc C c * (g %ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g)))
+                + normalize (EuclideanDomain.gcd g (Polynomial.derivative g))
+                  * (C c * (g /ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g))))
+              = C c * (g %ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g))
+                + normalize (EuclideanDomain.gcd g (Polynomial.derivative g))
+                  * (g /ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g)))) := by ring
+            _ = C c * g := by
+                rw [modByMonic_add_div g (normalize (EuclideanDomain.gcd g (Polynomial.derivative g)))]
+        · have hdeg : (C c * (g %ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g)))).degree
+              = (g %ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g))).degree := by
+            rw [Polynomial.degree_mul, Polynomial.degree_C hc, zero_add]
+          rw [hdeg]; exact degree_modByMonic_lt g hcc_monic
+      have hw_eq : normalize ((C c * g) /ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g)))
+          = normalize (g /ₘ normalize (EuclideanDomain.gcd g (Polynomial.derivative g))) := by
+        rw [h_div_eq]
+        exact normalize_eq_normalize_iff_associated.mpr
+          (associated_unit_mul_left _ (C c) hCc_unit)
+      -- 展开两侧的 else-else 分支，用 hcc_eq、hw_eq 对齐
+      unfold sqfZp
+      rw [dif_neg hzero_cg, dif_neg hderiv_cg_ne, dif_neg hzero, dif_neg hderiv]
+      dsimp only
+      -- CC1(=gcd of C c*g) → CC2(=gcd of g) 出现在 yunLoop 的依赖证明位，需用 simp 的
+      -- proof-irrelevant congruence 重写（rw 会破坏 motive）
+      simp only [hcc_eq, hw_eq]
 
 /-- safe wrapper：常数多项式直接返回 #[]，避免 C++ 模型不终止的问题 -/
 noncomputable def __squarefree_Zp_ir_safe (p : ℕ) [hp : Fact (Nat.Prime p)] (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :=
@@ -2010,7 +2121,13 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
               have ha_prime : ((SparsePolyZp.front! g_1).snd).prime.toNat = p := h_red_lc.1
               have h_val_lt : ((SparsePolyZp.front! g_1).snd.inv).val.toNat < p := by
                 -- modInv returns r where r = s % p, so 0 ≤ r < p
-                admit
+                calc ((SparsePolyZp.front! g_1).snd.inv).val.toNat
+                    = (Zp.modInv ((SparsePolyZp.front! g_1).snd).val
+                        ((SparsePolyZp.front! g_1).snd).prime).toNat := rfl
+                  _ < ((SparsePolyZp.front! g_1).snd).prime.toNat :=
+                      modInv_val_lt _ _ (by rw [ha_prime]; exact hp.out.one_lt)
+                        (by rw [ha_prime]; omega)
+                  _ = p := ha_prime
               exact ⟨by simpa [Zp.inv] using ha_prime, h_val_lt⟩
             have h_inv_val_nonzero : ((SparsePolyZp.front! g_1).snd.inv).val.toNat ≠ 0 :=
               Zp_inv_val_nonzero ((SparsePolyZp.front! g_1).snd) h_red_lc h_lc_val_nonzero hp_size
@@ -2121,14 +2238,9 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                     have hdrop : List.drop p.2 (p.1.toList) = [] := drop_all_of_le (p.1.toList) p.2 hlen
                     simp [hdrop]) #[]
                 simpa [f] using h_inv
-              apply Array.ext
-              · have h_len := congrArg List.length h_toList
-                simpa [Array.length_toList] using h_len
-              · intro i hi1 hi2
-                -- Array equality follows from toList equality (h_toList)
-                -- Since Array.get and List.get are related
-                admit
-              
+              -- Array 相等由 toList 相等直接得出（Array.ext' : toList 相等 → Array 相等）
+              exact Array.ext' h_toList
+
             have h_loop_eq : (Generated._loop___squarefree_Zp_0_ir_def 0
                 (Generated.__squarefree_Zp_ir g_2) #[] p_1).2.2 =
                 (Generated.__squarefree_Zp_ir g_2).map (fun (g_h, e) => (g_h, e * p_1)) :=

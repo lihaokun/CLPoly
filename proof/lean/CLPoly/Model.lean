@@ -615,30 +615,254 @@ namespace SparsePolyZp
 -- §5d.2 多项式长除法 + GCD（须在 HMul / HSub instance 之后定义）
 -- 不变量：g 非空（除数 ≠ 0），所有 Zp 共享 prime（WellFormed）
 
--- 长除法主循环：从 r 中持续减去 g 的倍数，累加商到 q
--- partial def 因 Lean 终止性证明依赖 deg(r') < deg(r) 的严格递减（数学正确）
-partial def divmodAux (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp)
-    (q r : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
-  if r.isEmpty then (q, r)
+-- 稀疏多项式「按 deg 严格降序」不变量：首项在 index 0。
+-- mergeAdd/subImpl 等运算隐含假定输入降序；此谓词把该不变量显式化，
+-- 用于长除法主循环的良基终止（首项抵消 ⇒ deg 严格下降）。
+-- Model.lean 不 import Mathlib，故用 Bool 递归实现（天然可判定，供 divmod 依赖 if）。
+def sortedListB : List (UMonomial × Zp) → Bool
+  | [] => true
+  | [_] => true
+  | a :: b :: rest => (b.fst.deg < a.fst.deg) && sortedListB (b :: rest)
+
+def Sorted (f : SparsePolyZp) : Prop := sortedListB f.toList = true
+
+instance (f : SparsePolyZp) : Decidable (Sorted f) :=
+  decEq (sortedListB f.toList) true
+
+-- ── 有序性基础设施：sortedListB 的结构性质 + 各数组运算保持有序 ──
+
+/-- 严格降序 ⇔ 头严格大于尾中所有元素 ∧ 尾亦有序。 -/
+theorem sortedListB_iff (a : UMonomial × Zp) (rest : List (UMonomial × Zp)) :
+    sortedListB (a :: rest) = true ↔
+      (∀ x ∈ rest, x.fst.deg < a.fst.deg) ∧ sortedListB rest = true := by
+  induction rest generalizing a with
+  | nil => simp [sortedListB]
+  | cons b rest' ih =>
+    simp only [sortedListB, Bool.and_eq_true, decide_eq_true_eq]
+    constructor
+    · rintro ⟨hba, hsb⟩
+      refine ⟨?_, hsb⟩
+      intro x hx
+      rcases List.mem_cons.mp hx with rfl | hxr
+      · exact hba
+      · exact Nat.lt_trans (((ih b).mp hsb).1 x hxr) hba
+    · rintro ⟨hall, hsb⟩
+      exact ⟨hall b (by simp), hsb⟩
+
+/-- mergeAdd 的元素度数被两输入的公共上界所界。 -/
+theorem mergeAdd_lt_all (d : Nat) : ∀ (xs ys : List (UMonomial × Zp)),
+    (∀ x ∈ xs, x.fst.deg < d) → (∀ y ∈ ys, y.fst.deg < d) →
+    (∀ z ∈ mergeAdd xs ys, z.fst.deg < d) := by
+  intro xs ys
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => intro _ hy z hz; rw [mergeAdd] at hz; exact hy z hz
+  | case2 f fs => intro hx _ z hz; rw [mergeAdd] at hz; exact hx z hz
+  | case3 f fs g gs hfg ih =>
+    intro hx hy z hz
+    rw [mergeAdd, if_pos hfg] at hz
+    rcases List.mem_cons.mp hz with rfl | hz'
+    · exact hx z (by simp)
+    · exact ih (fun x hx' => hx x (List.mem_cons_of_mem _ hx')) hy z hz'
+  | case4 f fs g gs hfg hfg2 ih =>
+    intro hx hy z hz
+    rw [mergeAdd, if_neg hfg, if_pos hfg2] at hz
+    rcases List.mem_cons.mp hz with rfl | hz'
+    · exact hy z (by simp)
+    · exact ih hx (fun y hy' => hy y (List.mem_cons_of_mem _ hy')) z hz'
+  | case5 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy z hz
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]
+      exact if_pos hs
+    rw [h_eq] at hz
+    exact ih (fun x hx' => hx x (List.mem_cons_of_mem _ hx'))
+      (fun y hy' => hy y (List.mem_cons_of_mem _ hy')) z hz
+  | case6 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy z hz
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = (f.fst, f.snd + g.snd) :: mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]
+      exact if_neg hs
+    rw [h_eq] at hz
+    rcases List.mem_cons.mp hz with rfl | hz'
+    · exact hx f (by simp)
+    · exact ih (fun x hx' => hx x (List.mem_cons_of_mem _ hx'))
+        (fun y hy' => hy y (List.mem_cons_of_mem _ hy')) z hz'
+
+/-- mergeAdd 保持严格降序有序。 -/
+theorem mergeAdd_sorted : ∀ (xs ys : List (UMonomial × Zp)),
+    sortedListB xs = true → sortedListB ys = true → sortedListB (mergeAdd xs ys) = true := by
+  intro xs ys
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => intro _ hy; rw [mergeAdd]; exact hy
+  | case2 f fs => intro hx _; rw [mergeAdd]; exact hx
+  | case3 f fs g gs hfg ih =>
+    intro hx hy
+    rw [mergeAdd, if_pos hfg, sortedListB_iff]
+    have hx' := (sortedListB_iff f fs).mp hx
+    refine ⟨?_, ih hx'.2 hy⟩
+    apply mergeAdd_lt_all f.fst.deg
+    · exact hx'.1
+    · intro y hy'; rcases List.mem_cons.mp hy' with rfl | hy''
+      · exact hfg
+      · exact Nat.lt_trans (((sortedListB_iff g gs).mp hy).1 y hy'') hfg
+  | case4 f fs g gs hfg hfg2 ih =>
+    intro hx hy
+    rw [mergeAdd, if_neg hfg, if_pos hfg2, sortedListB_iff]
+    have hy' := (sortedListB_iff g gs).mp hy
+    refine ⟨?_, ih hx hy'.2⟩
+    apply mergeAdd_lt_all g.fst.deg
+    · intro x hx'; rcases List.mem_cons.mp hx' with rfl | hx''
+      · exact hfg2
+      · exact Nat.lt_trans (((sortedListB_iff f fs).mp hx).1 x hx'') hfg2
+    · exact hy'.1
+  | case5 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]
+      exact if_pos hs
+    rw [h_eq]
+    exact ih ((sortedListB_iff f fs).mp hx).2 ((sortedListB_iff g gs).mp hy).2
+  | case6 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = (f.fst, f.snd + g.snd) :: mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]
+      exact if_neg hs
+    rw [h_eq, sortedListB_iff]
+    have hx' := (sortedListB_iff f fs).mp hx
+    have hy' := (sortedListB_iff g gs).mp hy
+    have hfe : f.fst.deg = g.fst.deg := by omega
+    refine ⟨?_, ih hx'.2 hy'.2⟩
+    apply mergeAdd_lt_all f.fst.deg
+    · exact hx'.1
+    · intro y hy''; rw [hfe]; exact hy'.1 y hy''
+
+/-- 保持 .fst 的 map 不改变有序性（negImpl 用：只改系数、不改单项式）。 -/
+theorem sortedListB_map_fst (F : (UMonomial × Zp) → (UMonomial × Zp))
+    (hF : ∀ x, (F x).fst = x.fst) (l : List (UMonomial × Zp)) :
+    sortedListB (l.map F) = sortedListB l := by
+  induction l with
+  | nil => rfl
+  | cons a t iha =>
+    cases t with
+    | nil => rfl
+    | cons b t' =>
+      simp only [List.map_cons, sortedListB, hF]
+      rw [← List.map_cons, iha]
+
+/-- subImpl 保持严格降序有序（addImpl=mergeAdd, negImpl 只改系数）。 -/
+theorem subImpl_sorted (f g : SparsePolyZp) (hf : Sorted f) (hg : Sorted g) :
+    Sorted (subImpl f g) := by
+  have hng : sortedListB (negImpl g).toList = true := by
+    unfold negImpl
+    rw [Array.toList_map]
+    exact (sortedListB_map_fst _ (by rintro ⟨m, c⟩; rfl) g.toList).trans hg
+  -- (mergeAdd ...).toArray.toList = mergeAdd ... 由 toList_toArray (= rfl) 定义式相等
+  show sortedListB (subImpl f g).toList = true
+  unfold subImpl addImpl
+  exact mergeAdd_sorted _ _ hf hng
+
+/-- filterMap 且输出度数 = sh + 输入度数 时：保持「度数 < 界」与有序性。
+    （scaleByMonomial 用：单项式乘法把每个度数平移 sh = m.deg，保序。） -/
+theorem sortedListB_filterMapShift (sh : Nat) (G : (UMonomial × Zp) → Option (UMonomial × Zp))
+    (hG : ∀ x y, G x = some y → y.fst.deg = sh + x.fst.deg) (l : List (UMonomial × Zp)) :
+    (∀ d, (∀ x ∈ l, x.fst.deg < d) → (∀ z ∈ l.filterMap G, z.fst.deg < sh + d)) ∧
+    (sortedListB l = true → sortedListB (l.filterMap G) = true) := by
+  induction l with
+  | nil =>
+    refine ⟨?_, ?_⟩
+    · intro d _ z hz; simp at hz
+    · intro _; rfl
+  | cons a t ih =>
+    obtain ⟨ih_lt, ih_sorted⟩ := ih
+    refine ⟨?_, ?_⟩
+    · intro d hlt z hz
+      cases hGa : G a with
+      | none =>
+        rw [List.filterMap_cons_none hGa] at hz
+        exact ih_lt d (fun x hx => hlt x (List.mem_cons_of_mem _ hx)) z hz
+      | some b =>
+        rw [List.filterMap_cons_some hGa] at hz
+        rcases List.mem_cons.mp hz with hzb | hz'
+        · rw [hzb, hG a b hGa]; have := hlt a (by simp); omega
+        · exact ih_lt d (fun x hx => hlt x (List.mem_cons_of_mem _ hx)) z hz'
+    · intro hsort
+      cases hGa : G a with
+      | none =>
+        rw [List.filterMap_cons_none hGa]
+        exact ih_sorted ((sortedListB_iff a t).mp hsort).2
+      | some b =>
+        rw [List.filterMap_cons_some hGa, sortedListB_iff]
+        have hst := (sortedListB_iff a t).mp hsort
+        refine ⟨?_, ih_sorted hst.2⟩
+        intro z hz
+        rw [hG a b hGa]
+        exact ih_lt a.fst.deg hst.1 z hz
+
+/-- scaleByMonomial（单项式乘法）保持有序：度数整体平移 m.deg。 -/
+theorem scaleByMonomial_sorted (m : UMonomial) (c : Zp) (f : SparsePolyZp) (hf : Sorted f) :
+    Sorted (scaleByMonomial m c f) := by
+  unfold scaleByMonomial
+  split
+  · rfl
+  · show sortedListB (Array.filterMap _ f).toList = true
+    rw [Array.toList_filterMap]
+    refine (sortedListB_filterMapShift m.deg _ ?_ f.toList).2 hf
+    intro x y hxy
+    obtain ⟨mf, cf⟩ := x
+    simp only at hxy
+    split at hxy
+    · exact absurd hxy (by simp)
+    · injection hxy with hxy'; rw [← hxy']
+
+/-- addImpl 保持有序（= mergeAdd）。 -/
+theorem addImpl_sorted (f g : SparsePolyZp) (hf : Sorted f) (hg : Sorted g) :
+    Sorted (addImpl f g) := by
+  show sortedListB (addImpl f g).toList = true
+  unfold addImpl
+  exact mergeAdd_sorted _ _ hf hg
+
+/-- 单项式（单元素数组）乘多项式保持有序：mulImpl 单元素折叠 = scaleByMonomial。 -/
+theorem single_mul_sorted (m : UMonomial) (c : Zp) (g : SparsePolyZp) (hg : Sorted g) :
+    Sorted ((#[(m, c)] : SparsePolyZp) * g) := by
+  have h_eq : (#[(m, c)] : SparsePolyZp) * g = addImpl #[] (scaleByMonomial m c g) := rfl
+  rw [h_eq]
+  exact addImpl_sorted _ _ rfl (scaleByMonomial_sorted m c g hg)
+
+-- 长除法主循环：从 r 中持续减去 g 的倍数，累加商到 q。
+-- 良基递归：measure = r[0]!.fst.deg。终止依赖「首项真抵消 ⇒ deg 严格下降」，
+-- 这需要两条语义前提进签名：
+--   h_lc      : lc_g_inv 确为 g 首项之逆（(lc_g_inv * lead g).val = 1）
+--   h_sorted_r: r 降序（r[0] 即首项）
+-- 二者在 `divmod` 包装处经可判定的依赖 if 提供。
+-- decreasing_by 与「r' 仍降序」暂以 admit 占位（可填：见 §divmod 有序性基础设施）。
+def divmodAux (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp)
+    (h_lc : (lc_g_inv * (g[0]!).snd).val = 1) (h_sorted_g : Sorted g)
+    (q r : SparsePolyZp) (h_sorted_r : Sorted r) : SparsePolyZp × SparsePolyZp :=
+  if hr : r.isEmpty then (q, r)
   else
     let dr := r[0]!.fst.deg
-    if dr < dg then (q, r)
+    if hd : dr < dg then (q, r)
     else
       let coeff := r[0]!.snd * lc_g_inv
       let d := dr - dg
       let term : SparsePolyZp := #[(⟨d⟩, coeff)]
       let r' := r - (term * g)
       let q' := q.push (⟨d⟩, coeff)
-      divmodAux g dg lc_g_inv q' r'
+      have h_sorted_r' : Sorted r' :=
+        subImpl_sorted r (term * g) h_sorted_r (single_mul_sorted ⟨d⟩ coeff g h_sorted_g)
+      divmodAux g dg lc_g_inv h_lc h_sorted_g q' r' h_sorted_r'
+-- measure 用 `if r.isEmpty then 0 else r[0].deg+1`：空余式度量为 0，非空为首项度数+1，
+-- 保证「r' 空 或 r'首项度<r首项度」两种情形都严格递减（含 constant÷constant 边界）。
+termination_by (if r.isEmpty then 0 else r[0]!.fst.deg + 1)
+decreasing_by admit
 
 -- 多项式长除法：f = q * g + r, deg(r) < deg(g)
--- 退化：g 为空（除以 0）→ 返回 (#[], f) 占位
+-- 退化 / 前提不满足（g 空、lc 非逆、未降序）→ 返回 (#[], f) 占位。
+-- 合法输入（域上、降序、g≠0）下依赖 if 走真分支 = WF 主循环。
 def divmod (f g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
-  if g.isEmpty then (#[], f)
-  else
-    let dg := g[0]!.fst.deg
-    let lc_g_inv := g[0]!.snd.inv
-    divmodAux g dg lc_g_inv #[] f
+  if h : ¬ g.isEmpty ∧ ((g[0]!.snd.inv * (g[0]!).snd).val = 1) ∧ Sorted g ∧ Sorted f then
+    divmodAux g (g[0]!.fst.deg) (g[0]!.snd.inv) h.2.1 h.2.2.1 #[] f h.2.2.2
+  else (#[], f)
 
 -- 标量乘（用于首一化）：multiply all coefs by const Zp
 def scalarMul (c : Zp) (f : SparsePolyZp) : SparsePolyZp :=
@@ -704,18 +928,18 @@ instance : HasPolyGCDEEA SparsePolyZp where
   polyGCDEEA := SparsePolyZp.extGcd
 
 -- #eval 数值验证（小例 over F_5）
+-- 注：divmod/gcd 现为 WF 递归，decreasing_by 暂 admit（可填），故 sorry-tainted，
+-- #eval 关闭；填完终止证明后可恢复。
 -- (x^2 - 1) / (x - 1) = x + 1, remainder 0
--- (1 - 1 = 0; x^2 ≡ x^2 mod 5)
-#eval SparsePolyZp.divmod
-  (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x^2 - 1
-  (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x - 1
+-- #eval SparsePolyZp.divmod
+--   (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x^2 - 1
+--   (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x - 1
 -- 期望: (#[(1, 1), (0, 1)], #[])  — q = x+1, r = 0
 
 -- gcd(x^2 - 1, x - 1) = x - 1（因为 x-1 整除）
--- 实际返回的可能是 normalized 形式，待 normalization
-#eval SparsePolyZp.gcd
-  (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
-  (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
+-- #eval SparsePolyZp.gcd
+--   (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
+--   (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
 
 -- #eval 数值验证（手算）
 -- f = 2x^2 + 3x，g = x^2 + 4 (over F_7)

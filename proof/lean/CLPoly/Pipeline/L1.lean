@@ -81,22 +81,34 @@ lemma toSparsePolyZp_allReduced (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.si
   have h_mod_eq : ZMod.val (f.coeff n) % p = ZMod.val (f.coeff n) := Nat.mod_eq_of_lt hval_lt_p
   simp [h_mod, h_mod_eq, hval_lt_p]
 
-lemma toSparsePolyZp_val_nonzero (f : (ZMod p)[X]) : ∀ x ∈ (toSparsePolyZp f).toList, x.snd.val.toNat ≠ 0 := by
+lemma toSparsePolyZp_val_nonzero (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.size) :
+    ∀ x ∈ (toSparsePolyZp f).toList, x.snd.val.toNat ≠ 0 := by
   unfold toSparsePolyZp
   intro x hx
   -- x is in the array built from f.support; all support elements have non-zero coefficients
   have hx_list : x ∈ ((f.support.sort (· ≤ ·)).map (fun n =>
     ({deg := n}, Zp.ofUInt64 (UInt64.ofNat (ZMod.val (f.coeff n))) (UInt64.ofNat p)))).toArray.toList := hx
-  rw [Array.toList_toArray] at hx_list
+  rw [List.toList_toArray] at hx_list
   rcases List.mem_map.mp hx_list with ⟨n, hn, rfl⟩
   -- n ∈ f.support, so f.coeff n ≠ 0, so ZMod.val (f.coeff n) ≠ 0
-  have h_coeff_ne_zero : f.coeff n ≠ 0 := Polynomial.mem_support_iff.mp hn
+  have hn' : n ∈ f.support := Finset.mem_sort (· ≤ ·) |>.mp hn
+  have h_coeff_ne_zero : f.coeff n ≠ 0 := Polynomial.mem_support_iff.mp hn'
   have h_val_ne_zero : ZMod.val (f.coeff n) ≠ 0 :=
-    mt ZMod.val_eq_zero.mp h_coeff_ne_zero
-  -- Zp.ofUInt64 (UInt64.ofNat v) p has val = v.toUInt64, so val.toNat = v
-  -- Since v ≠ 0, the result is non-zero
+    mt (ZMod.val_eq_zero _).mp h_coeff_ne_zero
+  -- Zp.ofUInt64 (UInt64.ofNat v) p has val = v % p (UInt64)；由 v < p < 2^64 化简为 v ≠ 0
+  have hp_prime : Nat.Prime p := hp.out
+  haveI : NeZero p := ⟨hp_prime.ne_zero⟩
+  have hv_lt : ZMod.val (f.coeff n) < p := ZMod.val_lt (f.coeff n)
+  have hp_lt_sz : p < UInt64.size := by
+    have h2 : (2 : ℕ) ≤ p := hp_prime.two_le
+    omega
+  have hv_lt_sz : ZMod.val (f.coeff n) < UInt64.size := lt_trans hv_lt hp_lt_sz
   unfold Zp.ofUInt64
-  simp [h_val_ne_zero]
+  simp only [UInt64.toNat_mod]
+  have h1 : (UInt64.ofNat (ZMod.val (f.coeff n))).toNat = ZMod.val (f.coeff n) := by simp [hv_lt_sz]
+  have h2 : (UInt64.ofNat p).toNat = p := by simp [hp_lt_sz]
+  rw [h1, h2, Nat.mod_eq_of_lt hv_lt]
+  exact h_val_ne_zero
 
 lemma toSparsePolyZp_toPoly (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.size) :
     SparsePolyZp.toPoly p (toSparsePolyZp f) = f := by
@@ -188,7 +200,7 @@ theorem sqfZp_l1_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt
     admit
   have h_refines : toPolyList (__squarefree_Zp_ir_safe p (toSparsePolyZp f)) p = sqfZp f := by
     have h := __squarefree_Zp_ir_refines p (toSparsePolyZp f) hwf hred hp_size h_no_overflow h_deg_bound
-      (toSparsePolyZp_val_nonzero f)
+      (toSparsePolyZp_val_nonzero f hp_size)
     rw [toSparsePolyZp_toPoly f hp_size] at h
     exact h
   rw [h_refines]

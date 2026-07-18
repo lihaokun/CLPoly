@@ -666,11 +666,9 @@ decreasing_by
   -- 由于 partial def 版本「数学上能终止」，此处暂跳过。
   sorry
 
-/-- divmodAux'_wf 与原始 partial def divmodAux 对 terminating inputs 等价。
-     用 native_decide 可验证所有具体小例；一般情形因 partial def 不可推理而 admit。 -/
-private lemma divmodAux'_wf_eq (g : SparsePolyZp) (dg : ℕ) (lc_g_inv : Zp) (q r : SparsePolyZp) :
-    divmodAux'_wf g dg lc_g_inv q r = SparsePolyZp.divmodAux g dg lc_g_inv q r := by
-  admit
+-- 注：原 `divmodAux'_wf_eq`（影子 = partial def divmodAux 的桥接）已删除。
+-- Model 的 divmodAux 现为 WF 递归（带 termination_by），不再是 partial def；
+-- 该桥接因此过时（且 partial def 不可推理本就使其无法证明）。
 
 /-- 非递归的 divmod 良基版包装器（供 gcdAux'_wf 使用）。 -/
 noncomputable def divmod'_wf (f g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
@@ -867,42 +865,11 @@ private lemma divmodAux_invariant (g : SparsePolyZp) (dg : ℕ) (lc_g_inv : Zp) 
     let dr := r[0]!.fst.deg
     apply h_aux (dr + 1) q r hred_q hred_r (Or.inl rfl) h_inv
 
-/-- 多项式除法的 toPoly 对应（依 divmodAux_invariant 得证） -/
-private lemma divmod_identity (f g : SparsePolyZp)
-    (h_nonempty : ¬g.isEmpty)
-    (hwf_f : SparsePolyZp.WellFormed p f) (hwg_g : SparsePolyZp.WellFormed p g)
-    (hred_f : SparsePolyZp.AllReduced p f.toList) (hred_g : SparsePolyZp.AllReduced p g.toList)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size) :
-    SparsePolyZp.toPoly p f =
-      SparsePolyZp.toPoly p (SparsePolyZp.divmod f g).fst * SparsePolyZp.toPoly p g +
-      SparsePolyZp.toPoly p (SparsePolyZp.divmod f g).snd := by
-  unfold SparsePolyZp.divmod
-  have h_nonempty_g : ¬ g.isEmpty := h_nonempty
-  simp [h_nonempty_g]
-  let dg := g[0]!.fst.deg
-  let lc_g_inv := g[0]!.snd.inv
-  have h_inv_init : SparsePolyZp.toPoly p f = SparsePolyZp.toPoly p (#[] : SparsePolyZp) * SparsePolyZp.toPoly p g + SparsePolyZp.toPoly p f := by
-    simp [SparsePolyZp.toPoly_empty]
-  have hpos : 0 < g.size := by
-    rw [Array.isEmpty_iff_size_eq_zero] at h_nonempty_g
-    omega
-  have h_prime : lc_g_inv.prime.toNat = p := by
-    have hm' : g[0]! ∈ g := by
-      have hmem : g[0] ∈ g := Array.getElem_mem (i := 0) (h := hpos) (xs := g)
-      -- g[0]! = g[0] when hpos holds
-      simpa [show g[0]! = g[0] from by simp [hpos]] using hmem
-    have h_from_wf : (g[0]!).snd.prime.toNat = p := hwg_g (g[0]!) hm'
-    dsimp [lc_g_inv]
-    -- (inv a).prime = a.prime
-    simpa using h_from_wf
-  have h_res := divmodAux_invariant g dg lc_g_inv #[] f f h_inv_init hwf_f hwg_g hred_f hred_g (allReduced_empty p) hred_f h_2p h_p2 h_nonempty_g h_prime
-  -- h_res: let (q', r') := divmodAux'_wf ...; toPoly f = toPoly q' * toPoly g + toPoly r'
-  -- Need to connect divmodAux'_wf to SparsePolyZp.divmodAux
-  have h_eq : divmodAux'_wf g dg lc_g_inv #[] f = SparsePolyZp.divmodAux g dg lc_g_inv #[] f :=
-    divmodAux'_wf_eq g dg lc_g_inv #[] f
-  simpa [h_eq] using h_res
+-- 注：原 `divmod_identity`（对 SparsePolyZp.divmod 的 toPoly 恒等式）已删除——
+-- 它依赖已删除的 divmodAux'_wf_eq。Branch B 需要的对 Model divmod 的恒等式将在
+-- 迁移到 Model WF divmodAux 后重建（用其 WF induct，不再经影子）。
 
-/-- divmod'_wf 的 toPoly 恒等式（绕过 divmodAux'_wf_eq + partial def，直接使用 divmodAux_invariant）。 -/
+/-- divmod'_wf 的 toPoly 恒等式（直接使用 divmodAux_invariant）。 -/
 private lemma divmod'_wf_identity (f g : SparsePolyZp) (h_nonempty : ¬g.isEmpty)
     (hwf_f : SparsePolyZp.WellFormed p f) (hwg_g : SparsePolyZp.WellFormed p g)
     (hred_f : SparsePolyZp.AllReduced p f.toList) (hred_g : SparsePolyZp.AllReduced p g.toList)

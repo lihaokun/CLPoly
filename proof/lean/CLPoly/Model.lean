@@ -986,6 +986,132 @@ theorem ReducedB_single_mul (m : UMonomial) (c : Zp) (g : SparsePolyZp) (q : UIn
   rw [h_eq]
   exact ReducedB_addImpl _ _ q hq rfl (ReducedB_scaleByMonomial m c g q hc hq)
 
+-- ── 非零系数不变量：所有系数 val ≠ 0（首项抵消所需——保证 term*g 首项存活） ──
+
+def nonzeroListB : List (UMonomial × Zp) → Bool
+  | [] => true
+  | a :: rest => (a.snd.val != 0) && nonzeroListB rest
+
+def NonZeroB (f : SparsePolyZp) : Prop := nonzeroListB f.toList = true
+
+instance (f : SparsePolyZp) : Decidable (NonZeroB f) := decEq (nonzeroListB f.toList) true
+
+theorem nonzeroListB_cons (a : UMonomial × Zp) (rest : List (UMonomial × Zp)) :
+    nonzeroListB (a :: rest) = true ↔ a.snd.val ≠ 0 ∧ nonzeroListB rest = true := by
+  simp only [nonzeroListB, Bool.and_eq_true, bne_iff_ne, ne_eq]
+
+/-- mergeAdd 保持非零系数（case6 的 s.val≠0 条件 + 保留原元素）。 -/
+theorem nonzeroListB_mergeAdd : ∀ (xs ys : List (UMonomial × Zp)),
+    nonzeroListB xs = true → nonzeroListB ys = true → nonzeroListB (mergeAdd xs ys) = true := by
+  intro xs ys
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => intro _ hy; rw [mergeAdd]; exact hy
+  | case2 f fs => intro hx _; rw [mergeAdd]; exact hx
+  | case3 f fs g gs hfg ih =>
+    intro hx hy
+    rw [mergeAdd, if_pos hfg, nonzeroListB_cons]
+    exact ⟨((nonzeroListB_cons f fs).mp hx).1, ih ((nonzeroListB_cons f fs).mp hx).2 hy⟩
+  | case4 f fs g gs hfg hfg2 ih =>
+    intro hx hy
+    rw [mergeAdd, if_neg hfg, if_pos hfg2, nonzeroListB_cons]
+    exact ⟨((nonzeroListB_cons g gs).mp hy).1, ih hx ((nonzeroListB_cons g gs).mp hy).2⟩
+  | case5 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]; exact if_pos hs
+    rw [h_eq]
+    exact ih ((nonzeroListB_cons f fs).mp hx).2 ((nonzeroListB_cons g gs).mp hy).2
+  | case6 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = (f.fst, f.snd + g.snd) :: mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]; exact if_neg hs
+    rw [h_eq, nonzeroListB_cons]
+    exact ⟨hs, ih ((nonzeroListB_cons f fs).mp hx).2 ((nonzeroListB_cons g gs).mp hy).2⟩
+
+/-- Zp 取负保持非零（需约化 val<prime）。 -/
+theorem Zp_neg_nonzero (c : Zp) (hred : c.val < c.prime) (hnz : c.val ≠ 0)
+    (hq : 0 < c.prime.toNat) : (-c).val ≠ 0 := by
+  show ((c.prime - c.val) % c.prime) ≠ 0
+  have h1 : c.val.toNat < c.prime.toNat := (UInt64.lt_iff_toNat_lt).mp hred
+  have h2 : c.val.toNat ≠ 0 := fun h => hnz (UInt64.toNat_inj.mp (by simp [h]))
+  have hsub : (c.prime - c.val).toNat = c.prime.toNat - c.val.toNat :=
+    UInt64.toNat_sub_of_le _ _ (Nat.le_of_lt h1)
+  intro hzero
+  have hz : ((c.prime - c.val) % c.prime).toNat = 0 := by simp [hzero]
+  rw [UInt64.toNat_mod, hsub, Nat.mod_eq_of_lt (by omega)] at hz
+  omega
+
+/-- filterMap 若每个输出都非零，则结果非零。 -/
+theorem nonzeroListB_filterMap (G : (UMonomial × Zp) → Option (UMonomial × Zp))
+    (hG : ∀ x y, G x = some y → y.snd.val ≠ 0) :
+    ∀ (l : List (UMonomial × Zp)), nonzeroListB (l.filterMap G) = true := by
+  intro l
+  induction l with
+  | nil => rfl
+  | cons a rest ih =>
+    cases hGa : G a with
+    | none => rw [List.filterMap_cons_none hGa]; exact ih
+    | some b => rw [List.filterMap_cons_some hGa, nonzeroListB_cons]; exact ⟨hG a b hGa, ih⟩
+
+/-- negImpl 保持非零（需约化）。 -/
+theorem nonzeroListB_neg (q : UInt64) (hq : 0 < q.toNat) :
+    ∀ (l : List (UMonomial × Zp)), reducedListB q l = true → nonzeroListB l = true →
+    nonzeroListB (l.map (fun x => (x.1, -x.2))) = true := by
+  intro l
+  induction l with
+  | nil => intro _ _; rfl
+  | cons a rest ih =>
+    intro hred hnz
+    have hred' := (reducedListB_cons q a rest).mp hred
+    have hnz' := (nonzeroListB_cons a rest).mp hnz
+    rw [List.map_cons, nonzeroListB_cons]
+    have hqp : 0 < a.snd.prime.toNat := by rw [hred'.1.2]; exact hq
+    exact ⟨Zp_neg_nonzero a.snd (hred'.1.2 ▸ hred'.1.1) hnz'.1 hqp, ih hred'.2 hnz'.2⟩
+
+/-- addImpl 保持非零。 -/
+theorem NonZeroB_addImpl (f g : SparsePolyZp) (hf : NonZeroB f) (hg : NonZeroB g) :
+    NonZeroB (addImpl f g) := by
+  show nonzeroListB (addImpl f g).toList = true
+  unfold addImpl
+  exact nonzeroListB_mergeAdd _ _ hf hg
+
+/-- subImpl 保持非零（neg 需约化）。 -/
+theorem NonZeroB_subImpl (f g : SparsePolyZp) (q : UInt64) (hq : 0 < q.toNat)
+    (hredg : ReducedB g q) (hf : NonZeroB f) (hg : NonZeroB g) : NonZeroB (subImpl f g) := by
+  have hng : nonzeroListB (negImpl g).toList = true := by
+    unfold negImpl
+    rw [Array.toList_map]
+    exact nonzeroListB_neg q hq g.toList hredg hg
+  show nonzeroListB (subImpl f g).toList = true
+  unfold subImpl addImpl
+  exact nonzeroListB_mergeAdd _ _ hf hng
+
+/-- scaleByMonomial 结果非零（filterMap 丢弃零系数）。 -/
+theorem NonZeroB_scaleByMonomial (m : UMonomial) (c : Zp) (f : SparsePolyZp) :
+    NonZeroB (scaleByMonomial m c f) := by
+  unfold scaleByMonomial
+  split
+  · exact rfl
+  · show nonzeroListB (Array.filterMap _ f).toList = true
+    rw [Array.toList_filterMap]
+    apply nonzeroListB_filterMap
+    intro x y hxy
+    obtain ⟨mf, cf⟩ := x
+    simp only at hxy
+    split at hxy
+    · exact absurd hxy (by simp)
+    · rename_i hcond
+      injection hxy with hxy'
+      rw [← hxy']
+      exact hcond
+
+/-- 单项式乘多项式结果非零。 -/
+theorem NonZeroB_single_mul (m : UMonomial) (c : Zp) (g : SparsePolyZp) :
+    NonZeroB ((#[(m, c)] : SparsePolyZp) * g) := by
+  have h_eq : (#[(m, c)] : SparsePolyZp) * g = addImpl #[] (scaleByMonomial m c g) := rfl
+  rw [h_eq]
+  exact NonZeroB_addImpl _ _ rfl (NonZeroB_scaleByMonomial m c g)
+
 -- 长除法主循环：从 r 中持续减去 g 的倍数，累加商到 q。
 -- 良基递归：measure = r[0]!.fst.deg。终止依赖「首项真抵消 ⇒ deg 严格下降」，
 -- 这需要两条语义前提进签名：

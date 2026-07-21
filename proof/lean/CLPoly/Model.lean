@@ -828,6 +828,164 @@ theorem single_mul_sorted (m : UMonomial) (c : Zp) (g : SparsePolyZp) (hg : Sort
   rw [h_eq]
   exact addImpl_sorted _ _ rfl (scaleByMonomial_sorted m c g hg)
 
+-- ── 约化+同素数不变量：所有系数 val < q 且 prime = q（长除法首项抵消所需） ──
+
+def reducedListB (q : UInt64) : List (UMonomial × Zp) → Bool
+  | [] => true
+  | a :: rest => (a.snd.val < q) && (a.snd.prime == q) && reducedListB q rest
+
+def ReducedB (f : SparsePolyZp) (q : UInt64) : Prop := reducedListB q f.toList = true
+
+instance (f : SparsePolyZp) (q : UInt64) : Decidable (ReducedB f q) :=
+  decEq (reducedListB q f.toList) true
+
+theorem reducedListB_cons (q : UInt64) (a : UMonomial × Zp) (rest : List (UMonomial × Zp)) :
+    reducedListB q (a :: rest) = true ↔
+      (a.snd.val < q ∧ a.snd.prime = q) ∧ reducedListB q rest = true := by
+  simp only [reducedListB, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq, and_assoc]
+
+/-- Zp 加法结果的 val 界（同素数 q>0 时 < q）。 -/
+theorem Zp_add_reduced (a b : Zp) (hq : 0 < a.prime.toNat) :
+    (a + b).val < a.prime ∧ (a + b).prime = a.prime := by
+  refine ⟨?_, rfl⟩
+  show ((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64 < a.prime
+  have hlt : (a.val.toNat + b.val.toNat) % a.prime.toNat < a.prime.toNat := Nat.mod_lt _ hq
+  have h2 : (a.val.toNat + b.val.toNat) % a.prime.toNat < UInt64.size :=
+    Nat.lt_trans hlt a.prime.toNat_lt_size
+  rw [UInt64.lt_iff_toNat_lt,
+    show ((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64.toNat
+      = (a.val.toNat + b.val.toNat) % a.prime.toNat from by simp [h2]]
+  exact hlt
+
+/-- mergeAdd 保持约化+同素数不变量。 -/
+theorem reducedListB_mergeAdd (q : UInt64) (hq : 0 < q.toNat) : ∀ (xs ys : List (UMonomial × Zp)),
+    reducedListB q xs = true → reducedListB q ys = true → reducedListB q (mergeAdd xs ys) = true := by
+  intro xs ys
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => intro _ hy; rw [mergeAdd]; exact hy
+  | case2 f fs => intro hx _; rw [mergeAdd]; exact hx
+  | case3 f fs g gs hfg ih =>
+    intro hx hy
+    rw [mergeAdd, if_pos hfg, reducedListB_cons]
+    have hx' := (reducedListB_cons q f fs).mp hx
+    exact ⟨hx'.1, ih hx'.2 hy⟩
+  | case4 f fs g gs hfg hfg2 ih =>
+    intro hx hy
+    rw [mergeAdd, if_neg hfg, if_pos hfg2, reducedListB_cons]
+    have hy' := (reducedListB_cons q g gs).mp hy
+    exact ⟨hy'.1, ih hx hy'.2⟩
+  | case5 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]; exact if_pos hs
+    rw [h_eq]
+    exact ih ((reducedListB_cons q f fs).mp hx).2 ((reducedListB_cons q g gs).mp hy).2
+  | case6 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = (f.fst, f.snd + g.snd) :: mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]; exact if_neg hs
+    rw [h_eq, reducedListB_cons]
+    have hx' := (reducedListB_cons q f fs).mp hx
+    have hprime : f.snd.prime = q := hx'.1.2
+    have hqp : 0 < f.snd.prime.toNat := by rw [hprime]; exact hq
+    have hadd := Zp_add_reduced f.snd g.snd hqp
+    refine ⟨⟨?_, ?_⟩, ih hx'.2 ((reducedListB_cons q g gs).mp hy).2⟩
+    · rw [← hprime]; exact hadd.1
+    · rw [hadd.2]; exact hprime
+
+/-- Zp 乘法结果的 val 界（同素数 q>0 时 < q）。 -/
+theorem Zp_mul_reduced (a b : Zp) (hq : 0 < a.prime.toNat) :
+    (a * b).val < a.prime ∧ (a * b).prime = a.prime := by
+  refine ⟨?_, rfl⟩
+  show ((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64 < a.prime
+  have hlt : (a.val.toNat * b.val.toNat) % a.prime.toNat < a.prime.toNat := Nat.mod_lt _ hq
+  have h2 : (a.val.toNat * b.val.toNat) % a.prime.toNat < UInt64.size :=
+    Nat.lt_trans hlt a.prime.toNat_lt_size
+  rw [UInt64.lt_iff_toNat_lt,
+    show ((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64.toNat
+      = (a.val.toNat * b.val.toNat) % a.prime.toNat from by simp [h2]]
+  exact hlt
+
+/-- Zp 取负结果的 val 界。 -/
+theorem Zp_neg_reduced (c : Zp) (hq : 0 < c.prime.toNat) :
+    (-c).val < c.prime ∧ (-c).prime = c.prime := by
+  refine ⟨?_, rfl⟩
+  show ((c.prime - c.val) % c.prime) < c.prime
+  rw [UInt64.lt_iff_toNat_lt, UInt64.toNat_mod]
+  exact Nat.mod_lt _ hq
+
+/-- filterMap 若每个输出都约化，则结果约化（无需输入约化）。 -/
+theorem reducedListB_filterMap (q : UInt64) (G : (UMonomial × Zp) → Option (UMonomial × Zp))
+    (hG : ∀ x y, G x = some y → y.snd.val < q ∧ y.snd.prime = q) :
+    ∀ (l : List (UMonomial × Zp)), reducedListB q (l.filterMap G) = true := by
+  intro l
+  induction l with
+  | nil => rfl
+  | cons a rest ih =>
+    cases hGa : G a with
+    | none => rw [List.filterMap_cons_none hGa]; exact ih
+    | some b => rw [List.filterMap_cons_some hGa, reducedListB_cons]; exact ⟨hG a b hGa, ih⟩
+
+/-- negImpl（映射取负）保持约化。 -/
+theorem reducedListB_neg (q : UInt64) (hq : 0 < q.toNat) :
+    ∀ (l : List (UMonomial × Zp)), reducedListB q l = true →
+    reducedListB q (l.map (fun x => (x.1, -x.2))) = true := by
+  intro l
+  induction l with
+  | nil => intro _; rfl
+  | cons a rest ih =>
+    intro h
+    have h' := (reducedListB_cons q a rest).mp h
+    rw [List.map_cons, reducedListB_cons]
+    have hqp : 0 < a.snd.prime.toNat := by rw [h'.1.2]; exact hq
+    have hneg := Zp_neg_reduced a.snd hqp
+    exact ⟨⟨h'.1.2 ▸ hneg.1, hneg.2.trans h'.1.2⟩, ih h'.2⟩
+
+/-- addImpl 保持约化。 -/
+theorem ReducedB_addImpl (f g : SparsePolyZp) (q : UInt64) (hq : 0 < q.toNat)
+    (hf : ReducedB f q) (hg : ReducedB g q) : ReducedB (addImpl f g) q := by
+  show reducedListB q (addImpl f g).toList = true
+  unfold addImpl
+  exact reducedListB_mergeAdd q hq _ _ hf hg
+
+/-- subImpl 保持约化。 -/
+theorem ReducedB_subImpl (f g : SparsePolyZp) (q : UInt64) (hq : 0 < q.toNat)
+    (hf : ReducedB f q) (hg : ReducedB g q) : ReducedB (subImpl f g) q := by
+  have hng : reducedListB q (negImpl g).toList = true := by
+    unfold negImpl
+    rw [Array.toList_map]
+    exact reducedListB_neg q hq g.toList hg
+  show reducedListB q (subImpl f g).toList = true
+  unfold subImpl addImpl
+  exact reducedListB_mergeAdd q hq _ _ hf hng
+
+/-- scaleByMonomial 结果约化（系数素数 = q）。 -/
+theorem ReducedB_scaleByMonomial (m : UMonomial) (c : Zp) (f : SparsePolyZp) (q : UInt64)
+    (hc : c.prime = q) (hq : 0 < q.toNat) : ReducedB (scaleByMonomial m c f) q := by
+  unfold scaleByMonomial
+  split
+  · exact rfl
+  · show reducedListB q (Array.filterMap _ f).toList = true
+    rw [Array.toList_filterMap]
+    apply reducedListB_filterMap q
+    intro x y hxy
+    obtain ⟨mf, cf⟩ := x
+    simp only at hxy
+    split at hxy
+    · exact absurd hxy (by simp)
+    · injection hxy with hxy'
+      rw [← hxy']
+      have hqp : 0 < c.prime.toNat := by rw [hc]; exact hq
+      have hmul := Zp_mul_reduced c cf hqp
+      exact ⟨hc ▸ hmul.1, hmul.2.trans hc⟩
+
+/-- 单项式乘多项式结果约化。 -/
+theorem ReducedB_single_mul (m : UMonomial) (c : Zp) (g : SparsePolyZp) (q : UInt64)
+    (hc : c.prime = q) (hq : 0 < q.toNat) : ReducedB ((#[(m, c)] : SparsePolyZp) * g) q := by
+  have h_eq : (#[(m, c)] : SparsePolyZp) * g = addImpl #[] (scaleByMonomial m c g) := rfl
+  rw [h_eq]
+  exact ReducedB_addImpl _ _ q hq rfl (ReducedB_scaleByMonomial m c g q hc hq)
+
 -- 长除法主循环：从 r 中持续减去 g 的倍数，累加商到 q。
 -- 良基递归：measure = r[0]!.fst.deg。终止依赖「首项真抵消 ⇒ deg 严格下降」，
 -- 这需要两条语义前提进签名：

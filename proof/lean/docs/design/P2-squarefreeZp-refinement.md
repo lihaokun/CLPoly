@@ -144,3 +144,42 @@ h_toPolyList_specific:
 ## 建议实现顺序
 1. **先 Branch A**（Part 1）：UInt64 引理（已备）+ 指数界结构引理（路径 a）。较 contained，先落地。
 2. **再 Branch B**（Part 2）：先评估 Model.gcd WF 化是否必需，再逐子步。这是全项目最复杂精化之一。
+
+---
+
+## Part 4：实现进度（2026-07-27 更新）
+
+### 已验证落地
+- ✅ **`yunLoop_factors_natDegree_pos`**（Algorithm/SquarefreeZp.lean，已编译）：
+  `(∀ pr ∈ acc, 0 < pr.1.natDegree) → ∀ pr ∈ (yunLoop w c i acc hc).1, 0 < pr.1.natDegree`。
+  强归纳 on measure `w.natDegree + c.natDegree`（复用 yunLoop_c_natDegree_le 的测量递减）。
+  是 Branch B 因子非常数的基石。
+
+### 已验证策略（待落地）
+- **UInt64 指数转换**（scratch 验证 ✓）：
+  ```lean
+  lemma uint64_mul_ofNat_toNat (e : UInt64) (b : ℕ) (hb : b < 2^64) (h : e.toNat * b < 2^64) :
+      (e * UInt64.ofNat b).toNat = e.toNat * b := by
+    rw [UInt64.toNat_mul, UInt64.toNat_ofNat_of_lt' hb, Nat.mod_eq_of_lt h]
+  ```
+- **指数界 `sqfZp_exponent_le_natDegree`**（简洁证法，避开求和）：
+  `pr ∈ sqfZp f ⇒ pr.1^pr.2 ∣ f`（List.dvd_prod + sqf_correct 的 Associated.symm.dvd）
+  → `natDegree_le_of_dvd` + `natDegree_pow` → `pr.2 ≤ pr.2 * pr.1.natDegree ≤ f.natDegree`
+  （需 `sqfZp_factor_natDegree_pos`：0 < pr.1.natDegree）。
+- **contract-lt 事实**（复用 sqfZp decreasing_by，line 573-616）：
+  Branch A `(contract p f).natDegree < f.natDegree`；Branch B `(contract p c_rem).natDegree < f.natDegree`。
+
+### 剩余步骤（下轮）
+1. **`sqfZp_factor_natDegree_pos`**：`∀ pr ∈ sqfZp f, 0 < pr.1.natDegree`。
+   难点：sqfZp 多 `let`（c/w/c_rem/yun_output）结构使 functional induction (`sqfZp.induct`) 的
+   case3/case4 binder（~13 个含 let）难匹配，strong induction 又难干净访问中间 let。
+   **建议路径**：functional induction + 每 case 用 `rw [sqfZp, dif_neg ‹_›, dif_pos/neg ‹_›]` 展开 +
+   `‹_›` 匿名访问 case 假设 + `rename_i` 取 IH；Branch B 两处用 `yunLoop_factors_natDegree_pos _ _ 1 [] _ (by simp)`。
+   case3/case4 的内层 `if 0 < c_rem.natDegree` 需 `simp only [‹0 < _›]` 或 split 归约。
+2. **`sqfZp_exponent_le_natDegree`**：按上述简洁证法（sqf_correct + factor_pos）。
+3. **line 1969 组装**：`unfold toPolyList; simp [Function.comp, hp_1_eq_p]` → `List.map_congr_left` 逐元素 →
+   对每个 `(g_h, e) ∈ __squarefree_Zp_ir_safe p g_2`，经 `h_ih_g2 : toPolyList(…) = sqfZp(toPoly g_2)`
+   得 `e.toNat ≤ natDegree(toPoly g_2)`，再经 contract 度数链 + h_deg_bound 得 `e.toNat * p < 2^64`，
+   套 uint64_mul_ofNat_toNat 收尾。
+
+### Branch B（Part 2）—— 仍待 Model.gcdAux WF 化前置 + 全部实现（下轮大工程）。

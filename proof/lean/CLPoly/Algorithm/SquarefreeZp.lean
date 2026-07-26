@@ -1555,3 +1555,49 @@ theorem sqf_correct
                   fun pr hpr => ⟨(hyun4 pr hpr).1, (hyun4 pr hpr).2.1⟩,
                   fun pr hpr => (hyun4 pr hpr).2.2.2, hyun5⟩
 
+
+/-- sqfZp 输出因子均非常数（Branch A/A' 复用 IH；Branch B 用 yunLoop_factors_natDegree_pos）。 -/
+lemma sqfZp_factor_natDegree_pos (f : Polynomial (ZMod p)) :
+    ∀ pr ∈ sqfZp f, 0 < pr.1.natDegree := by
+  induction f using sqfZp.induct with
+  | case1 => intro pr hpr; rename_i hdeg0; rw [sqfZp, dif_pos hdeg0] at hpr; simp at hpr
+  | case2 =>
+    intro pr hpr
+    rename_i ih
+    rw [sqfZp] at hpr
+    simp only [dif_neg ‹¬ _ = 0›, dif_pos ‹derivative _ = 0›, List.mem_map] at hpr
+    obtain ⟨pr', hmem', heq'⟩ := hpr
+    rw [← heq']; exact ih pr' hmem'
+  | case3 =>
+    intro pr hpr
+    rename_i ih
+    rw [sqfZp] at hpr
+    simp only [dif_neg ‹¬ _ = 0›, dif_neg ‹¬ derivative _ = 0›] at hpr
+    rw [if_pos ‹0 < _›, List.mem_append] at hpr
+    rcases hpr with h | h
+    · exact yunLoop_factors_natDegree_pos _ _ 1 [] _ (by simp) pr h
+    · simp only [List.mem_map] at h
+      obtain ⟨pr', hmem', heq'⟩ := h
+      rw [← heq']; exact ih pr' hmem'
+  | case4 =>
+    intro pr hpr
+    rw [sqfZp] at hpr
+    simp only [dif_neg ‹¬ _ = 0›, dif_neg ‹¬ derivative _ = 0›] at hpr
+    rw [if_neg ‹¬ 0 < _›] at hpr
+    exact yunLoop_factors_natDegree_pos _ _ 1 [] _ (by simp) pr hpr
+
+/-- sqfZp 输出重数 ≤ natDegree（因子非常数 + pr.1^pr.2 ∣ f）。 -/
+lemma sqfZp_exponent_le_natDegree (f : Polynomial (ZMod p)) :
+    ∀ pr ∈ sqfZp f, pr.2 ≤ f.natDegree := by
+  intro pr hpr
+  by_cases hf : f = 0
+  · subst hf; rw [sqfZp, dif_pos (by simp)] at hpr; simp at hpr
+  · obtain ⟨hassoc, _, _, _⟩ := sqf_correct f hf
+    have hmem : pr.1 ^ pr.2 ∈ (sqfZp f).map (fun pr => pr.1 ^ pr.2) :=
+      List.mem_map.mpr ⟨pr, hpr, rfl⟩
+    have hdvd : pr.1 ^ pr.2 ∣ f := (List.dvd_prod hmem).trans hassoc.symm.dvd
+    have hle : (pr.1 ^ pr.2).natDegree ≤ f.natDegree := Polynomial.natDegree_le_of_dvd hdvd hf
+    rw [Polynomial.natDegree_pow] at hle
+    have hpos : 0 < pr.1.natDegree := sqfZp_factor_natDegree_pos f pr hpr
+    calc pr.2 ≤ pr.2 * pr.1.natDegree := Nat.le_mul_of_pos_right _ hpos
+      _ ≤ f.natDegree := hle

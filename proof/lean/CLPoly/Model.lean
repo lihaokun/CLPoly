@@ -1368,6 +1368,55 @@ decreasing_by
     have hlt := hdrop R'[0]! hmem
     omega
 
+-- divmodAux 输出余式：空 或 首项度 < dg（欧几里得余式界，供 gcdAux WF 化）。
+theorem divmodAux_snd_deg_lt (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp) (pm : UInt64)
+    (hq : 0 < pm.toNat) (hg_ne : ¬ g.isEmpty) (hg_red : ReducedB g pm)
+    (h_dg : (g[0]!).fst.deg = dg) (hlp : lc_g_inv.prime = pm)
+    (h_lc : (lc_g_inv * (g[0]!).snd).val = 1) (h_sorted_g : Sorted g) :
+    ∀ (q r : SparsePolyZp) (h_sorted_r : Sorted r) (hr_red : ReducedB r pm) (hr_nz : NonZeroB r),
+      (divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g
+        q r h_sorted_r hr_red hr_nz).snd.isEmpty = true
+      ∨ (divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g
+        q r h_sorted_r hr_red hr_nz).snd[0]!.fst.deg < dg := by
+  suffices H : ∀ n, ∀ (q r : SparsePolyZp) (h_sorted_r : Sorted r) (hr_red : ReducedB r pm)
+      (hr_nz : NonZeroB r), (if r.isEmpty then 0 else r[0]!.fst.deg + 1) = n →
+      (divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g
+        q r h_sorted_r hr_red hr_nz).snd.isEmpty = true
+      ∨ (divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g
+        q r h_sorted_r hr_red hr_nz).snd[0]!.fst.deg < dg by
+    intro q r h_sorted_r hr_red hr_nz; exact H _ q r h_sorted_r hr_red hr_nz rfl
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro q r h_sorted_r hr_red hr_nz hn
+    rw [divmodAux]
+    split
+    · rename_i hr; left; exact hr
+    · rename_i hr
+      dsimp only
+      split
+      · rename_i hd; right; exact hd
+      · rename_i hd
+        have hr_ne : ¬ r.isEmpty := hr
+        have hdg_le : dg ≤ r[0]!.fst.deg := Nat.le_of_not_lt hd
+        have hdrop := divmod_step_drop g r dg lc_g_inv pm hq hg_ne h_sorted_g hg_red h_dg hlp h_lc
+          hr_ne h_sorted_r hr_red hr_nz hdg_le
+        have hmeas : (if (r - (#[(⟨r[0]!.fst.deg - dg⟩, r[0]!.snd * lc_g_inv)] : SparsePolyZp) * g).isEmpty
+            then 0
+            else (r - (#[(⟨r[0]!.fst.deg - dg⟩, r[0]!.snd * lc_g_inv)] : SparsePolyZp) * g)[0]!.fst.deg + 1)
+            < n := by
+          rw [← hn, if_neg hr_ne]
+          generalize hRdef : (r - (#[(⟨r[0]!.fst.deg - dg⟩, r[0]!.snd * lc_g_inv)] : SparsePolyZp) * g) = R'
+            at hdrop ⊢
+          split
+          · omega
+          · rename_i hR'ne
+            have hr'l := toList_cons_of_ne_empty R' hR'ne
+            have hmem : R'[0]! ∈ R'.toList := by rw [hr'l]; simp
+            have hlt := hdrop R'[0]! hmem
+            omega
+        exact ih _ hmeas _ _ _ _ _ rfl
+
 -- 多项式长除法：f = q * g + r, deg(r) < deg(g)
 -- 退化 / 前提不满足（g 空、lc 非逆、未降序、未约化、有零系数）→ 返回 (#[], f) 占位。
 -- 合法输入（域上、降序、g≠0、同素数约化）下依赖 if 走真分支 = WF 主循环。

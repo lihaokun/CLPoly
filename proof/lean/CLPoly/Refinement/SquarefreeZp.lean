@@ -1589,6 +1589,19 @@ noncomputable def __squarefree_Zp_ir_safe (p : ℕ) [hp : Fact (Nat.Prime p)] (f
   if (SparsePolyZp.toPoly p f).natDegree = 0 then #[]
   else Generated.__squarefree_Zp_ir f
 
+/-- listSum 的 natDegree 被各项度数的公共上界所界（Branch A 指数界用）。 -/
+private lemma listSum_natDegree_lt (p : ℕ) (xs : List (UMonomial × Zp)) (B : ℕ) (hB : 0 < B)
+    (h : ∀ x ∈ xs, x.1.deg < B) : (listSum p xs).natDegree < B := by
+  induction xs with
+  | nil => simpa using hB
+  | cons a rest ih =>
+    rcases a with ⟨m, c⟩
+    rw [listSum_cons]
+    have h1 : (Polynomial.monomial m.deg (Zp.toZMod p c)).natDegree < B :=
+      lt_of_le_of_lt (Polynomial.natDegree_monomial_le _) (h (m, c) (by simp))
+    have h2 : (listSum p rest).natDegree < B := ih (fun x hx => h x (List.mem_cons_of_mem _ hx))
+    exact lt_of_le_of_lt (Polynomial.natDegree_add_le _ _) (by simp only [max_lt_iff]; exact ⟨h1, h2⟩)
+
 set_option maxHeartbeats 0 in
 /-- 主正确性定理（使用 safe wrapper） -/
 theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
@@ -1963,10 +1976,26 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                     toPolyList ((__squarefree_Zp_ir_safe p g_2).map (fun (g_h, e) => (g_h, e * p_1))) p =
                     (toPolyList (__squarefree_Zp_ir_safe p g_2) p).map (fun (h, e) => (h, e * p)) := by
                   unfold toPolyList
-                  simp [Function.comp, hp_1_eq_p]
-                  -- Remaining: (e * UInt64.ofNat p).toNat = e.toNat * p (element-wise equality)
-                  -- This holds when e.toNat * p < 2^64 (no UInt64 overflow)
-                  admit
+                  simp only [Array.map_map, Function.comp, Array.toList_map, List.map_map]
+                  apply List.map_congr_left
+                  intro x hx
+                  -- x ∈ (__squarefree_Zp_ir_safe p g_2).toList；证指数界 x.2.toNat * p < 2^64
+                  have hmem_poly : (SparsePolyZp.toPoly p x.1, x.2.toNat)
+                      ∈ sqfZp (SparsePolyZp.toPoly p g_2) := by
+                    rw [← h_ih_g2]; unfold toPolyList
+                    rw [Array.toList_map, List.mem_map]; exact ⟨x, hx, rfl⟩
+                  have he_le : x.2.toNat ≤ (SparsePolyZp.toPoly p g_2).natDegree :=
+                    sqfZp_exponent_le_natDegree _ _ hmem_poly
+                  have hg2_deg : (SparsePolyZp.toPoly p g_2).natDegree * p
+                      = (SparsePolyZp.toPoly p g).natDegree := by
+                    rw [h_toPoly_g2_eq, h_makeMonic_eq,
+                      Polynomial.natDegree_C_mul h_lc_inv_nonzero, h_toPoly_g1]; exact h_eq_nd
+                  have hn_lt : (SparsePolyZp.toPoly p g).natDegree < 2 ^ 64 :=
+                    listSum_natDegree_lt p g.toList (2 ^ 64) (by norm_num) h_deg_bound_g
+                  have hbound : x.2.toNat * p < 2 ^ 64 :=
+                    lt_of_le_of_lt (le_trans (Nat.mul_le_mul_right p he_le) (le_of_eq hg2_deg)) hn_lt
+                  simp only [Function.comp_apply, Prod.mk.injEq, true_and]
+                  rw [UInt64.toNat_mul, hp_1_eq_p, Nat.mod_eq_of_lt hbound]
                 rw [h_toPolyList_specific]
                 rw [h_ih_g2]
                 -- sqfZp invariant under scaling by units (makeMonic preserves sqfZp)

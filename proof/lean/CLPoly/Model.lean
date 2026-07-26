@@ -1112,16 +1112,221 @@ theorem NonZeroB_single_mul (m : UMonomial) (c : Zp) (g : SparsePolyZp) :
   rw [h_eq]
   exact NonZeroB_addImpl _ _ rfl (NonZeroB_scaleByMonomial m c g)
 
+-- ── divmodAux 终止性基础设施：首项真抵消 ⇒ 度数严格下降 ──
+-- nl-proof: docs/design/divmodAux-termination-nlproof.md
+
+/-- Zp 乘法的 val 用 Nat 表示（供模运算链）。 -/
+theorem Zp_mul_val_toNat (x y : Zp) (hq : 0 < x.prime.toNat) :
+    (x * y).val.toNat = (x.val.toNat * y.val.toNat) % x.prime.toNat := by
+  show ((x.val.toNat * y.val.toNat) % x.prime.toNat).toUInt64.toNat = _
+  have hlt : (x.val.toNat * y.val.toNat) % x.prime.toNat < x.prime.toNat := Nat.mod_lt _ hq
+  have h2 : (x.val.toNat * y.val.toNat) % x.prime.toNat < UInt64.size :=
+    Nat.lt_trans hlt x.prime.toNat_lt_size
+  simp [h2]
+
+/-- 引理 B：三重积逆化。(lc*gh).val = 1 ⇒ ((a*lc)*gh).val = a.val（同素数 pm，a 约化）。 -/
+theorem Zp_mul3_lc (a lc gh : Zp) (pm : UInt64)
+    (hap : a.prime = pm) (hlp : lc.prime = pm) (hgp : gh.prime = pm)
+    (hav : a.val < pm) (hlcgh : (lc * gh).val = 1) (hq : 0 < pm.toNat) :
+    ((a * lc) * gh).val = a.val := by
+  have hq_a : 0 < a.prime.toNat := hap ▸ hq
+  have hq_lc : 0 < lc.prime.toNat := hlp ▸ hq
+  have hav' : a.val.toNat < pm.toNat := (UInt64.lt_iff_toNat_lt).mp hav
+  have hlcgh_nat : (lc.val.toNat * gh.val.toNat) % pm.toNat = 1 := by
+    have hm := Zp_mul_val_toNat lc gh hq_lc
+    rw [hlp] at hm
+    rw [← hm, hlcgh]; rfl
+  apply UInt64.toNat_inj.mp
+  have halc_prime : (a * lc).prime = pm := hap
+  have hq_alc : 0 < (a * lc).prime.toNat := halc_prime ▸ hq
+  rw [Zp_mul_val_toNat (a * lc) gh hq_alc, halc_prime, Zp_mul_val_toNat a lc hq_a, hap,
+      Nat.mod_mul_mod, Nat.mul_assoc, Nat.mul_mod a.val.toNat (lc.val.toNat * gh.val.toNat),
+      hlcgh_nat, Nat.mul_one, Nat.mod_mod, Nat.mod_eq_of_lt hav']
+
+/-- 引理 C：a + (-c) = 0（当 c 与 a 同 val 同 prime，a 约化）。 -/
+theorem Zp_add_neg_cancel (a c : Zp) (hval : c.val = a.val) (hprime : c.prime = a.prime)
+    (hred : a.val < a.prime) (hq : 0 < a.prime.toNat) : (a + (-c)).val = 0 := by
+  show ((a.val.toNat + (-c).val.toNat) % a.prime.toNat).toUInt64 = 0
+  have h1 : a.val.toNat < a.prime.toNat := (UInt64.lt_iff_toNat_lt).mp hred
+  have hnegval : (-c).val.toNat = (a.prime.toNat - a.val.toNat) % a.prime.toNat := by
+    show ((c.prime - c.val) % c.prime).toNat = _
+    rw [UInt64.toNat_mod, hprime, hval, UInt64.toNat_sub_of_le _ _ (Nat.le_of_lt h1)]
+  rw [hnegval]
+  have hkey : (a.val.toNat + (a.prime.toNat - a.val.toNat) % a.prime.toNat) % a.prime.toNat = 0 := by
+    rcases Nat.eq_zero_or_pos a.val.toNat with h0 | hpos
+    · simp [h0, Nat.mod_self]
+    · rw [Nat.mod_eq_of_lt (show a.prime.toNat - a.val.toNat < a.prime.toNat by omega)]
+      rw [show a.val.toNat + (a.prime.toNat - a.val.toNat) = a.prime.toNat by omega, Nat.mod_self]
+  rw [hkey]; rfl
+
+/-- 引理 D：首项等度且系数和为 0 ⇒ mergeAdd 结果全元素度数 < d。 -/
+theorem mergeAdd_cancel_lead (d : Nat) (a b : UMonomial × Zp)
+    (ra rb : List (UMonomial × Zp))
+    (ha : a.fst.deg = d) (hb : b.fst.deg = d)
+    (hsum : (a.snd + b.snd).val = 0)
+    (hra : ∀ x ∈ ra, x.fst.deg < d) (hrb : ∀ y ∈ rb, y.fst.deg < d) :
+    ∀ z ∈ mergeAdd (a :: ra) (b :: rb), z.fst.deg < d := by
+  have h_eq : mergeAdd (a :: ra) (b :: rb) = mergeAdd ra rb := by
+    rw [mergeAdd, if_neg (show ¬ a.fst.deg > b.fst.deg by omega),
+        if_neg (show ¬ a.fst.deg < b.fst.deg by omega)]
+    exact if_pos hsum
+  rw [h_eq]
+  exact mergeAdd_lt_all d ra rb hra hrb
+
+/-- 非空数组的 toList = 首项 :: 尾。 -/
+theorem toList_cons_of_ne_empty (r : SparsePolyZp) (h : ¬ r.isEmpty) :
+    r.toList = (r[0]!) :: r.toList.tail := by
+  match hrl : r.toList with
+  | [] =>
+    exfalso; apply h
+    simp [Array.isEmpty, Array.size_eq_length_toList, hrl]
+  | hd :: tl =>
+    have hsz : 0 < r.size := by rw [Array.size_eq_length_toList, hrl]; simp
+    have hhead : r[0]! = hd := by
+      rw [getElem!_pos r 0 hsz]
+      have h2 : r[0] = r.toList[0]'(by rw [Array.size_eq_length_toList] at hsz; exact hsz) :=
+        (Array.getElem_toList (xs := r) (i := 0) hsz).symm
+      rw [h2]; simp [hrl]
+    simp only [hhead, hrl, List.tail_cons]
+
+/-- addImpl #[] x 的 toList = x 的 toList（mergeAdd [] = id）。 -/
+theorem addImpl_nil_toList (x : SparsePolyZp) : (addImpl #[] x).toList = x.toList := by
+  unfold addImpl; simp [mergeAdd]
+
+/-- scaleByMonomial 内部 filterMap 的 lambda（提取为 def 以便 unfold + 复用）。 -/
+def scaleLambda (m : UMonomial) (coeff : Zp) : (UMonomial × Zp) → Option (UMonomial × Zp) :=
+  fun x => let prod := coeff * x.2
+    if prod.val = 0 then none else some (UMonomial.mk (m.deg + x.1.deg), prod)
+
+/-- 引理 A：scaleByMonomial 的首项 = (m.deg + dg, coeff·gh)，尾全部度数 < m.deg + dg。 -/
+theorem scaleByMonomial_head_drop (m : UMonomial) (coeff : Zp) (g : SparsePolyZp)
+    (gh : UMonomial × Zp) (gt : List (UMonomial × Zp)) (dgv : Nat)
+    (hgl : g.toList = gh :: gt) (hcoeff_nz : coeff.val ≠ 0)
+    (hhead_nz : (coeff * gh.snd).val ≠ 0)
+    (hghdeg : gh.fst.deg = dgv) (hgt_lt : ∀ x ∈ gt, x.fst.deg < dgv) :
+    ∃ T, (scaleByMonomial m coeff g).toList
+          = (UMonomial.mk (m.deg + dgv), coeff * gh.snd) :: T
+      ∧ (∀ z ∈ T, z.fst.deg < m.deg + dgv) := by
+  have hF_shift : ∀ x y, scaleLambda m coeff x = some y → y.fst.deg = m.deg + x.fst.deg := by
+    intro x y hxy
+    unfold scaleLambda at hxy; simp only at hxy; split at hxy
+    · exact absurd hxy (by simp)
+    · injection hxy with h'; rw [← h']
+  have hF_gh : scaleLambda m coeff gh = some (UMonomial.mk (m.deg + dgv), coeff * gh.snd) := by
+    unfold scaleLambda; simp only; rw [if_neg hhead_nz, hghdeg]
+  refine ⟨gt.filterMap (scaleLambda m coeff), ?_, ?_⟩
+  · show (scaleByMonomial m coeff g).toList = _
+    unfold scaleByMonomial
+    rw [if_neg hcoeff_nz, Array.toList_filterMap]
+    show g.toList.filterMap (scaleLambda m coeff) = _
+    rw [hgl, List.filterMap_cons_some hF_gh]
+  · intro z hz
+    exact (sortedListB_filterMapShift m.deg (scaleLambda m coeff) hF_shift gt).1 dgv hgt_lt z hz
+
+/-- subImpl 的 toList = mergeAdd（addImpl 定义展开）。 -/
+theorem subImpl_toList (f g : SparsePolyZp) :
+    (subImpl f g).toList = mergeAdd f.toList (negImpl g).toList := by
+  unfold subImpl addImpl; simp
+
+/-- negImpl 的 toList = 逐项取负 map。 -/
+theorem negImpl_toList (f : SparsePolyZp) :
+    (negImpl f).toList = f.toList.map (fun x => (x.1, -x.2)) := by
+  unfold negImpl; rw [Array.toList_map]
+
+/-- 核心：长除法一步后余式 r' = r - term*g 的所有项度数严格 < 原首项度数 dr。
+    首项真抵消（coeff·lc(g) = r 首项系数，相减为 0）⇒ 度量严格下降。 -/
+theorem divmod_step_drop (g r : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp) (pm : UInt64)
+    (hq : 0 < pm.toNat)
+    (hg_ne : ¬ g.isEmpty) (hg_sorted : Sorted g) (hg_red : ReducedB g pm)
+    (h_dg : (g[0]!).fst.deg = dg)
+    (hlp : lc_g_inv.prime = pm) (h_lc : (lc_g_inv * (g[0]!).snd).val = 1)
+    (hr_ne : ¬ r.isEmpty) (hr_sorted : Sorted r) (hr_red : ReducedB r pm) (hr_nz : NonZeroB r)
+    (hdg_le : dg ≤ (r[0]!).fst.deg) :
+    ∀ z ∈ (r - (#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g).toList,
+      z.fst.deg < (r[0]!).fst.deg := by
+  -- r 分解
+  have hr_red' : reducedListB pm r.toList = true := hr_red
+  have hr_nz' : nonzeroListB r.toList = true := hr_nz
+  have hr_sorted' : sortedListB r.toList = true := hr_sorted
+  have hg_red' : reducedListB pm g.toList = true := hg_red
+  have hg_sorted' : sortedListB g.toList = true := hg_sorted
+  have hrl : r.toList = (r[0]!) :: r.toList.tail := toList_cons_of_ne_empty r hr_ne
+  have ha_val_lt : (r[0]!).snd.val < pm := ((reducedListB_cons pm _ _).mp (hrl ▸ hr_red')).1.1
+  have ha_prime : (r[0]!).snd.prime = pm := ((reducedListB_cons pm _ _).mp (hrl ▸ hr_red')).1.2
+  have ha_nz : (r[0]!).snd.val ≠ 0 := ((nonzeroListB_cons _ _).mp (hrl ▸ hr_nz')).1
+  have hra_lt : ∀ x ∈ r.toList.tail, x.fst.deg < (r[0]!).fst.deg :=
+    ((sortedListB_iff _ _).mp (hrl ▸ hr_sorted')).1
+  -- g 分解
+  have hgl : g.toList = (g[0]!) :: g.toList.tail := toList_cons_of_ne_empty g hg_ne
+  have hgh_prime : (g[0]!).snd.prime = pm := ((reducedListB_cons pm _ _).mp (hgl ▸ hg_red')).1.2
+  have hgt_lt : ∀ x ∈ g.toList.tail, x.fst.deg < dg := by
+    intro x hx
+    have hh := ((sortedListB_iff _ _).mp (hgl ▸ hg_sorted')).1 x hx
+    rwa [h_dg] at hh
+  -- coeff/c 性质
+  have hcoeff_prime : ((r[0]!).snd * lc_g_inv).prime = pm := ha_prime
+  have hc_val : (((r[0]!).snd * lc_g_inv) * (g[0]!).snd).val = (r[0]!).snd.val :=
+    Zp_mul3_lc (r[0]!).snd lc_g_inv (g[0]!).snd pm ha_prime hlp hgh_prime ha_val_lt h_lc hq
+  have hc_prime : (((r[0]!).snd * lc_g_inv) * (g[0]!).snd).prime = pm := hcoeff_prime
+  have hc_nz : (((r[0]!).snd * lc_g_inv) * (g[0]!).snd).val ≠ 0 := by rw [hc_val]; exact ha_nz
+  have hcoeff_nz : ((r[0]!).snd * lc_g_inv).val ≠ 0 := by
+    intro h0
+    have hz0 : (((r[0]!).snd * lc_g_inv) * (g[0]!).snd).val.toNat = 0 := by
+      rw [Zp_mul_val_toNat _ _ (by rw [hcoeff_prime]; exact hq), h0]; simp
+    exact hc_nz (UInt64.toNat_inj.mp (by rw [hz0]; rfl))
+  -- dr - dg + dg = dr
+  have hdrdg : (r[0]!).fst.deg - dg + dg = (r[0]!).fst.deg := by omega
+  -- term*g 分解
+  obtain ⟨T, hT_eq, hT_lt⟩ := scaleByMonomial_head_drop ⟨(r[0]!).fst.deg - dg⟩
+    ((r[0]!).snd * lc_g_inv) g (g[0]!) (g.toList.tail) dg hgl hcoeff_nz hc_nz h_dg hgt_lt
+  -- 转 (term*g).toList
+  have hterm_eq : ((#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g).toList
+      = (scaleByMonomial ⟨(r[0]!).fst.deg - dg⟩ ((r[0]!).snd * lc_g_inv) g).toList := by
+    rw [show ((#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g)
+          = addImpl #[] (scaleByMonomial ⟨(r[0]!).fst.deg - dg⟩ ((r[0]!).snd * lc_g_inv) g) from rfl,
+        addImpl_nil_toList]
+  -- 头 monomial deg 化简
+  have heqdeg : (⟨(r[0]!).fst.deg - dg⟩ : UMonomial).deg + dg = (r[0]!).fst.deg := by
+    show (r[0]!).fst.deg - dg + dg = (r[0]!).fst.deg; omega
+  have hheadmono : (UMonomial.mk ((⟨(r[0]!).fst.deg - dg⟩ : UMonomial).deg + dg))
+      = (⟨(r[0]!).fst.deg⟩ : UMonomial) := by rw [heqdeg]
+  -- (term*g).toList = (⟨dr⟩, c) :: T
+  have hTG : ((#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g).toList
+      = (⟨(r[0]!).fst.deg⟩, ((r[0]!).snd * lc_g_inv) * (g[0]!).snd) :: T := by
+    rw [hterm_eq, hT_eq, hheadmono]
+  have hT_lt' : ∀ z ∈ T, z.fst.deg < (r[0]!).fst.deg := by
+    intro z hz; have hh := hT_lt z hz; rwa [heqdeg] at hh
+  -- 目标转 mergeAdd 形式
+  rw [show r - (#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g
+        = subImpl r ((#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g) from rfl,
+      subImpl_toList, negImpl_toList, hTG, hrl]
+  rw [List.map_cons]
+  apply mergeAdd_cancel_lead (r[0]!).fst.deg (r[0]!)
+    (⟨(r[0]!).fst.deg⟩, -((r[0]!).snd * lc_g_inv * (g[0]!).snd))
+  · rfl
+  · rfl
+  · exact Zp_add_neg_cancel (r[0]!).snd (((r[0]!).snd * lc_g_inv) * (g[0]!).snd)
+      hc_val (hc_prime.trans ha_prime.symm) (ha_prime ▸ ha_val_lt) (by rw [ha_prime]; exact hq)
+  · exact hra_lt
+  · intro y hy
+    rw [List.mem_map] at hy
+    obtain ⟨x, hxT, hxy⟩ := hy
+    rw [← hxy]
+    exact hT_lt' x hxT
+
 -- 长除法主循环：从 r 中持续减去 g 的倍数，累加商到 q。
--- 良基递归：measure = r[0]!.fst.deg。终止依赖「首项真抵消 ⇒ deg 严格下降」，
--- 这需要两条语义前提进签名：
---   h_lc      : lc_g_inv 确为 g 首项之逆（(lc_g_inv * lead g).val = 1）
---   h_sorted_r: r 降序（r[0] 即首项）
--- 二者在 `divmod` 包装处经可判定的依赖 if 提供。
--- decreasing_by 与「r' 仍降序」暂以 admit 占位（可填：见 §divmod 有序性基础设施）。
-def divmodAux (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp)
+-- 良基递归（真 WF，0 admit）：measure = if r.isEmpty then 0 else r[0].deg+1。
+-- 终止依赖「首项真抵消 ⇒ deg 严格下降」（divmod_step_drop），需以下不变量进签名：
+--   pm/hq/hlp/h_lc : 系数同素数 pm、lc_g_inv 为 g 首项之逆
+--   hg_ne/hg_red/h_dg/h_sorted_g : 除数 g 非空、约化、首项度 dg、降序
+--   h_sorted_r/hr_red/hr_nz : 余式 r 降序、约化、非零系数（r' 递归保持）
+-- 全部在 `divmod` 包装处经可判定的依赖 if 提供。
+def divmodAux (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp) (pm : UInt64)
+    (hq : 0 < pm.toNat) (hg_ne : ¬ g.isEmpty) (hg_red : ReducedB g pm)
+    (h_dg : (g[0]!).fst.deg = dg) (hlp : lc_g_inv.prime = pm)
     (h_lc : (lc_g_inv * (g[0]!).snd).val = 1) (h_sorted_g : Sorted g)
-    (q r : SparsePolyZp) (h_sorted_r : Sorted r) : SparsePolyZp × SparsePolyZp :=
+    (q r : SparsePolyZp) (h_sorted_r : Sorted r) (hr_red : ReducedB r pm)
+    (hr_nz : NonZeroB r) : SparsePolyZp × SparsePolyZp :=
   if hr : r.isEmpty then (q, r)
   else
     let dr := r[0]!.fst.deg
@@ -1134,18 +1339,45 @@ def divmodAux (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp)
       let q' := q.push (⟨d⟩, coeff)
       have h_sorted_r' : Sorted r' :=
         subImpl_sorted r (term * g) h_sorted_r (single_mul_sorted ⟨d⟩ coeff g h_sorted_g)
-      divmodAux g dg lc_g_inv h_lc h_sorted_g q' r' h_sorted_r'
+      have hcoeff_prime : coeff.prime = pm := by
+        have hr_red' : reducedListB pm r.toList = true := hr_red
+        have hrl : r.toList = r[0]! :: r.toList.tail := toList_cons_of_ne_empty r hr
+        exact ((reducedListB_cons pm _ _).mp (hrl ▸ hr_red')).1.2
+      have h_tg_red : ReducedB (term * g) pm := ReducedB_single_mul ⟨d⟩ coeff g pm hcoeff_prime hq
+      have h_tg_nz : NonZeroB (term * g) := NonZeroB_single_mul ⟨d⟩ coeff g
+      have hr'_red : ReducedB r' pm := ReducedB_subImpl r (term * g) pm hq hr_red h_tg_red
+      have hr'_nz : NonZeroB r' := NonZeroB_subImpl r (term * g) pm hq h_tg_red hr_nz h_tg_nz
+      divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g q' r'
+        h_sorted_r' hr'_red hr'_nz
 -- measure 用 `if r.isEmpty then 0 else r[0].deg+1`：空余式度量为 0，非空为首项度数+1，
 -- 保证「r' 空 或 r'首项度<r首项度」两种情形都严格递减（含 constant÷constant 边界）。
 termination_by (if r.isEmpty then 0 else r[0]!.fst.deg + 1)
-decreasing_by admit
+decreasing_by
+  have hr_ne : ¬ r.isEmpty := hr
+  have hdg_le : dg ≤ r[0]!.fst.deg := Nat.le_of_not_lt hd
+  have hdrop := divmod_step_drop g r dg lc_g_inv pm hq hg_ne h_sorted_g hg_red h_dg hlp h_lc
+    hr_ne h_sorted_r hr_red hr_nz hdg_le
+  rw [if_neg hr_ne]
+  generalize hRdef : (r - (#[(⟨r[0]!.fst.deg - dg⟩, r[0]!.snd * lc_g_inv)] : SparsePolyZp) * g) = R'
+    at hdrop ⊢
+  split
+  · omega
+  · rename_i hR'ne
+    have hr'l := toList_cons_of_ne_empty R' hR'ne
+    have hmem : R'[0]! ∈ R'.toList := by rw [hr'l]; simp
+    have hlt := hdrop R'[0]! hmem
+    omega
 
 -- 多项式长除法：f = q * g + r, deg(r) < deg(g)
--- 退化 / 前提不满足（g 空、lc 非逆、未降序）→ 返回 (#[], f) 占位。
--- 合法输入（域上、降序、g≠0）下依赖 if 走真分支 = WF 主循环。
+-- 退化 / 前提不满足（g 空、lc 非逆、未降序、未约化、有零系数）→ 返回 (#[], f) 占位。
+-- 合法输入（域上、降序、g≠0、同素数约化）下依赖 if 走真分支 = WF 主循环。
 def divmod (f g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
-  if h : ¬ g.isEmpty ∧ ((g[0]!.snd.inv * (g[0]!).snd).val = 1) ∧ Sorted g ∧ Sorted f then
-    divmodAux g (g[0]!.fst.deg) (g[0]!.snd.inv) h.2.1 h.2.2.1 #[] f h.2.2.2
+  if h : ¬ g.isEmpty ∧ ((g[0]!.snd.inv * (g[0]!).snd).val = 1) ∧ Sorted g ∧ Sorted f
+      ∧ 0 < (g[0]!.snd.prime).toNat ∧ ReducedB g (g[0]!.snd.prime)
+      ∧ ReducedB f (g[0]!.snd.prime) ∧ NonZeroB f then
+    divmodAux g (g[0]!.fst.deg) (g[0]!.snd.inv) (g[0]!.snd.prime)
+      h.2.2.2.2.1 h.1 h.2.2.2.2.2.1 rfl rfl h.2.1 h.2.2.1 #[] f
+      h.2.2.2.1 h.2.2.2.2.2.2.1 h.2.2.2.2.2.2.2
   else (#[], f)
 
 -- 标量乘（用于首一化）：multiply all coefs by const Zp
@@ -1212,18 +1444,18 @@ instance : HasPolyGCDEEA SparsePolyZp where
   polyGCDEEA := SparsePolyZp.extGcd
 
 -- #eval 数值验证（小例 over F_5）
--- 注：divmod/gcd 现为 WF 递归，decreasing_by 暂 admit（可填），故 sorry-tainted，
--- #eval 关闭；填完终止证明后可恢复。
+-- 注：divmodAux 现为真 WF 递归（decreasing_by 完整证明，0 admit，无 sorryAx），
+-- divmod 不再 sorry-tainted，#eval 已恢复。
 -- (x^2 - 1) / (x - 1) = x + 1, remainder 0
--- #eval SparsePolyZp.divmod
---   (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x^2 - 1
---   (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x - 1
+#eval SparsePolyZp.divmod
+  (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x^2 - 1
+  (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x - 1
 -- 期望: (#[(1, 1), (0, 1)], #[])  — q = x+1, r = 0
 
--- gcd(x^2 - 1, x - 1) = x - 1（因为 x-1 整除）
--- #eval SparsePolyZp.gcd
---   (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
---   (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
+-- gcd(x^2 - 1, x - 1) = x - 1（因为 x-1 整除；F_5 下 -1 = 4）
+#eval SparsePolyZp.gcd
+  (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
+  (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
 
 -- #eval 数值验证（手算）
 -- f = 2x^2 + 3x，g = x^2 + 4 (over F_7)

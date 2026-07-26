@@ -2063,17 +2063,23 @@ instance : Coe ZZ Nat where coe z := z.toNat
     Int64 values to 0, and returns the original Nat for non-negative values.
     Used in SquarefreeZp to bound degrees after UInt64 division. -/
 theorem UInt64_toInt64_toNatClampNeg_le_toNat (u : UInt64) : u.toInt64.toNatClampNeg ≤ u.toNat := by
-  -- Model-level property of UInt64/Int64 conversion.
-  -- For u < 2^63, equality holds; for u ≥ 2^63, LHS = 0 ≤ RHS.
-  -- Proof requires BitVec reasoning; keep as admit for now.
-  admit
+  -- toNatClampNeg = toInt.toNat；toInt64 保位，故 toInt = (toNat).bmod 2^64。
+  show (u.toInt64.toInt).toNat ≤ u.toNat
+  have h1 : u.toInt64.toInt = ((u.toNat : Int)).bmod (2 ^ 64) := by
+    show u.toBitVec.toInt = _
+    rw [BitVec.toInt_eq_toNat_bmod, UInt64.toNat_toBitVec]
+  rw [h1, Int.bmod_def]; omega
 
 /-- For UInt64 values less than 2^63, the roundtrip through Int64 to Nat preserves the value.
     This is because toInt64 maps the value identically and toNatClampNeg returns the Nat value
     for non-negative Int64. -/
 theorem UInt64_toInt64_toNatClampNeg_eq_toNat_of_lt {u : UInt64} (h : u.toNat < 2 ^ 63) : u.toInt64.toNatClampNeg = u.toNat := by
-  -- Follows from the BitVec representation; keep as admit for now.
-  admit
+  -- u.toNat < 2^63 ⇒ bmod 落在正区间，等于原值。
+  show (u.toInt64.toInt).toNat = u.toNat
+  have h1 : u.toInt64.toInt = ((u.toNat : Int)).bmod (2 ^ 64) := by
+    show u.toBitVec.toInt = _
+    rw [BitVec.toInt_eq_toNat_bmod, UInt64.toNat_toBitVec]
+  rw [h1, Int.bmod_def]; omega
 abbrev SparsePolyZZ := Array (UMonomial × Int)
 
 -- §5a2 迁移：SparsePolyZZ 操作（filterMap 等需要 SparsePolyZZ 已定义）

@@ -196,3 +196,42 @@ h_toPolyList_specific:
 
 **SquarefreeZp 剩余**：Branch B（Yun 循环，line 2015）+ get_deg_toPoly（line 54）。
 **下一步**：Branch B —— 按 Part 2/2.4，先评估 Model.gcdAux WF 化前置。
+
+---
+
+## Part 6：Branch B 精确计划（2026-07-27 调研后修正）
+
+### ⚠️ 修正 Explore 的「gcd 黑盒」误判
+Explore 建议用未证引理 `polynomial_GCD_correct` 把 gcd 当黑盒。**但那等于加一个 sorry，违背清零目标。**
+要无 sorry 证 Branch B，**必须真正证明 gcd 桥接** `Model.gcd ~ EuclideanDomain.gcd`，
+而这需对 `gcdAux` 归纳 → **Model.gcdAux WF 化是真前置**（partial def 无法归纳）。
+
+### C++ 结构（Corpus.lean 已确认）
+- `__squarefree_Zp_ir` 导数≠0 分支（224-246）：`c_1 = polynomial_GCD(f,f')`；
+  `w_3 = normalize(f/c_1)`；`_loop_1(1, w_3, c_1, [])` → (c_rem, result)；c_rem 非空则递归。
+- `_loop_1`（182-204）：守卫 `deg(w)>0`；`y = polynomial_GCD(w,c)`；`z = normalize(w/y)`；
+  `deg(z)>0` 时 append `(makeMonic z, i)`；递归 `(i+1, y, normalize(c/y), result)`。
+- 被调：`polynomial_GCD` = `SparsePolyZp.gcd` = `makeMonic(gcdAux f g)`（gcdAux **partial**）；
+  `pair_vec_div` = `divmod.fst`（Model.divmod 已 WF ✓）；`__upoly_make_monic_ir`。
+
+### 5 个子步（逐个 commit）
+1. **divmod 余式度数界**：`(divmodAux …).snd.isEmpty ∨ (…).snd[0]!.fst.deg < dg`。
+   divmodAux.induct，两个 base case 直接给出（r 空 / dr<dg），递归 case 用 IH。
+2. **Model.gcdAux WF 化**：与本会话 divmodAux 相当的工程——
+   - 加 Sorted/ReducedB/NonZeroB 不变量参数（gcd 输入需 WellFormed）；
+   - 证 `divmod` 输出（.snd 余式）保持这些不变量（复用 subImpl 保持引理）；
+   - 用 #1 的余式度数界作 termination_by measure（`if g.isEmpty then 0 else g[0]!.fst.deg+1`）；
+   - 更新 gcd/extGcd 调用处守卫（类比 divmod）。
+3. **gcd 桥接** `Model.gcd a b ~ EuclideanDomain.gcd (toPoly a) (toPoly b)`：
+   对 WF 化的 gcdAux 归纳（Euclid 不变量：gcd(f,g)=gcd(g,f mod g)），
+   复用 divmod 的 toPoly 恒等式（f = q*g + r）+ modByMonic 对应。normalize/Associated 桥接。
+4. **yun 循环逐步对应**：C++ `_loop_1` ↔ L2 `yunLoop`。对 yunLoop 强归纳（measure w.natDegree+c.natDegree）：
+   每步 `toPoly(C++ w_i)=L2 w_i`、`toPoly(C++ c_i)=L2 c_i`，用 #3 的 gcd 桥接 + divmod toPoly 恒等式 +
+   makeMonic 精化（__upoly_make_monic_ir_refines）。提取因子 `(z,i)` 逐元素对应。
+   复用 yunLoop_extracts_factor / yunLoop_c_natDegree_le / yunLoop_crem_dvd_c。
+5. **组装 + 第二轮 p-root**：c_rem 非空时递归（复用 Branch A 的指数缩放 + derivative_of_yun_remainder_eq_zero）。
+
+### 工作量诚实评估
+- 每个子步都是硬骨头；#2 单独 ≈ 本会话 divmodAux 终止性的工作量。
+- normalize/Associated 摩擦（CLAUDE.md 点名）贯穿 #3#4，是最大时间源。
+- **Branch B 是多会话工程**，建议作为独立专项推进。#1 是最 contained 的起点。

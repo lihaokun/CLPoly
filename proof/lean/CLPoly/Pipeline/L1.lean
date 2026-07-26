@@ -168,6 +168,16 @@ lemma toSparsePolyZp_toPoly (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.size) 
     _ = ∑ n ∈ f.support, monomial n (f.coeff n) := by simp
     _ = f := (Polynomial.as_sum_support f).symm
 
+/-- toSparsePolyZp 各项度数不超过 natDegree（支集元素 ≤ natDegree）。 -/
+lemma toSparsePolyZp_deg_le (f : (ZMod p)[X]) :
+    ∀ x ∈ (toSparsePolyZp f).toList, x.1.deg ≤ f.natDegree := by
+  intro x hx
+  unfold toSparsePolyZp at hx
+  simp only [List.mem_map] at hx
+  obtain ⟨n, hn_mem, hn_eq⟩ := hx
+  rw [← hn_eq]
+  exact Polynomial.le_natDegree_of_mem_supp n ((Finset.mem_sort _).mp hn_mem)
+
 -- ============================================================
 -- §2. L1 Wrappers
 -- ============================================================
@@ -178,6 +188,10 @@ noncomputable def sqfZp_l1 (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X])
     : List ((ZMod p)[X] × ℕ) :=
   toPolyList (__squarefree_Zp_ir_safe p (toSparsePolyZp f)) p
 
+-- 系数×度数不溢出 + 度数界的证明前提（P1 已备好，待管线接口穿线 hdeg 后接入）：
+--   h_no_overflow: 由 toSparsePolyZp_deg_le + AllReduced(val<p) + hdeg(natDegree·p<2^64) 得
+--   h_deg_bound:   由 toSparsePolyZp_deg_le + natDegree ≤ natDegree·p < 2^64 得
+-- 当前 hdeg 尚未穿线到 factor_ZZ_cpp_correct（需 L2 管线接口给子过程假设加度数界条件），故暂 admit。
 theorem sqfZp_l1_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size) (f : (ZMod p)[X]) (hf : f ≠ 0) :
     SquarefreeDecomp f (sqfZp_l1 hp_size f) := by
   unfold sqfZp_l1
@@ -186,17 +200,8 @@ theorem sqfZp_l1_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt
   have hred : SparsePolyZp.AllReduced p (toSparsePolyZp f).toList :=
     toSparsePolyZp_allReduced f hp_size
   have h_no_overflow : ∀ x ∈ (toSparsePolyZp f).toList, x.2.val.toNat * x.1.deg < 2 ^ 64 := by
-    -- Need to prove this from hp_size and the structure of toSparsePolyZp
-    -- x.2.val.toNat < p (since it's ZMod.val) and x.1.deg ≤ natDegree f
-    -- So x.2.val.toNat * x.1.deg < p * natDegree f < 2^64 *if* we assume p * natDegree f < 2^64
-    -- This would need a new hypothesis h_deg_bound: natDegree f < 2^64 / p
-    -- Alternatively, note that for practical C++ usage, natDegree fits in UInt64.
     admit
   have h_deg_bound : ∀ x ∈ (toSparsePolyZp f).toList, x.1.deg < 2 ^ 64 := by
-    -- x.1.deg = n for n ∈ f.support
-    -- Since support is finite and degrees are natural numbers,
-    -- this holds for all practical C++ polynomials (natDegree f < 2^64)
-    -- But we need a stronger condition on natDegree f
     admit
   have h_refines : toPolyList (__squarefree_Zp_ir_safe p (toSparsePolyZp f)) p = sqfZp f := by
     have h := __squarefree_Zp_ir_refines p (toSparsePolyZp f) hwf hred hp_size h_no_overflow h_deg_bound

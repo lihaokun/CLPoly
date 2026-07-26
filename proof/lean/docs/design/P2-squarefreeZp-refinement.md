@@ -183,3 +183,16 @@ h_toPolyList_specific:
    套 uint64_mul_ofNat_toNat 收尾。
 
 ### Branch B（Part 2）—— 仍待 Model.gcdAux WF 化前置 + 全部实现（下轮大工程）。
+
+---
+
+## Part 5：Branch A 完成（2026-07-27）✅
+
+**line 1969 admit 清零。** 落地引理链：
+- `yunLoop_factors_natDegree_pos`、`sqfZp_factor_natDegree_pos`、`sqfZp_exponent_le_natDegree`（Algorithm）
+- `listSum_natDegree_lt`（Refinement）：natDegree(toPoly g) < 2^64
+- 组装：h_ih_g2 接数组↔sqfZp → 指数界 e≤deg(g_2) → 度数链 deg(g_2)·p=deg(g)<2^64 →
+  UInt64.toNat_mul 收尾。
+
+**SquarefreeZp 剩余**：Branch B（Yun 循环，line 2015）+ get_deg_toPoly（line 54）。
+**下一步**：Branch B —— 按 Part 2/2.4，先评估 Model.gcdAux WF 化前置。

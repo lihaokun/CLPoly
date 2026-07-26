@@ -154,7 +154,7 @@ theorem factor_Zp_correct
     (f : Polynomial (ZMod p)) (hf : f ≠ 0)
     -- 假设各子过程存在且正确
     (sqf : Polynomial (ZMod p) → List (Polynomial (ZMod p) × ℕ))
-    (hsqf : ∀ g, g ≠ 0 → SquarefreeDecomp g (sqf g))
+    (hsqf : SquarefreeDecomp f (sqf f))
     (ddf : Polynomial (ZMod p) → List (Polynomial (ZMod p) × ℕ))
     (hddf : ∀ g, Monic g → Squarefree g → DDFCorrect g (ddf g))
     (edf : Polynomial (ZMod p) → ℕ → List (Polynomial (ZMod p)))
@@ -164,7 +164,7 @@ theorem factor_Zp_correct
     : ∃ (lc : ZMod p) (factors : List (Polynomial (ZMod p) × ℕ)),
         FactorZpCorrect f lc factors := by
   -- Step 1: 展开 SQF 规约
-  have sqf_spec := hsqf f hf
+  have sqf_spec := hsqf
   obtain ⟨sqf_assoc, sqf_props, sqf_mult, _⟩ := sqf_spec
   -- Step 2: 对每个 SQF 分量 (gᵢ, eᵢ)，用 DDF+EDF 得到不可约因子
   have component_ok : ∀ ge ∈ sqf f,

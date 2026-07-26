@@ -229,7 +229,9 @@ theorem factor_ZZ_correct
     -- 假设子过程存在且正确
     -- 1. Zp 因式分解
     (factor_zp : Polynomial (ZMod p) → ZMod p × List (Polynomial (ZMod p) × ℕ))
-    (hfzp : ∀ g, g ≠ 0 → FactorZpCorrect g (factor_zp g).1 (factor_zp g).2)
+    (hfzp : FactorZpCorrect (Polynomial.map (Int.castRingHom (ZMod p)) f)
+        (factor_zp (Polynomial.map (Int.castRingHom (ZMod p)) f)).1
+        (factor_zp (Polynomial.map (Int.castRingHom (ZMod p)) f)).2)
     -- 2. Hensel 提升
     (hensel : List (Polynomial (ZMod p)) → List (Polynomial (ZMod (p ^ k))))
     (hhensel : ∀ facs_p,
@@ -249,7 +251,7 @@ theorem factor_ZZ_correct
   have hfp_ne : fp ≠ 0 := by
     intro h; rw [h] at hgood; exact not_squarefree_zero hgood
   -- Step 2: 对 fp 做 Zp 因式分解
-  have fzp_ok := hfzp fp hfp_ne
+  have fzp_ok := hfzp
   -- Step 3: 构造 Hensel 输入列表
   --   facs_p = [C(lc), f₁^e₁, f₂^e₂, ...]
   --   乘积 = C(lc) * ∏(fᵢ^eᵢ) = fp（由 FactorZpCorrect.1 + List.prod_cons）

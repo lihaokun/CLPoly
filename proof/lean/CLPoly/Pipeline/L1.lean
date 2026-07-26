@@ -188,21 +188,28 @@ noncomputable def sqfZp_l1 (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X])
     : List ((ZMod p)[X] × ℕ) :=
   toPolyList (__squarefree_Zp_ir_safe p (toSparsePolyZp f)) p
 
--- 系数×度数不溢出 + 度数界的证明前提（P1 已备好，待管线接口穿线 hdeg 后接入）：
---   h_no_overflow: 由 toSparsePolyZp_deg_le + AllReduced(val<p) + hdeg(natDegree·p<2^64) 得
---   h_deg_bound:   由 toSparsePolyZp_deg_le + natDegree ≤ natDegree·p < 2^64 得
--- 当前 hdeg 尚未穿线到 factor_ZZ_cpp_correct（需 L2 管线接口给子过程假设加度数界条件），故暂 admit。
-theorem sqfZp_l1_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size) (f : (ZMod p)[X]) (hf : f ≠ 0) :
+theorem sqfZp_l1_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size)
+    (f : (ZMod p)[X]) (hf : f ≠ 0) (hdeg : f.natDegree * p < 2 ^ 64) :
     SquarefreeDecomp f (sqfZp_l1 hp_size f) := by
   unfold sqfZp_l1
   have hwf : SparsePolyZp.WellFormed p (toSparsePolyZp f) :=
     toSparsePolyZp_wellFormed f hp_size
   have hred : SparsePolyZp.AllReduced p (toSparsePolyZp f).toList :=
     toSparsePolyZp_allReduced f hp_size
+  have hppos : 0 < p := (Fact.out (p := Nat.Prime p)).pos
+  -- 系数 val < p、度数 ≤ natDegree ⇒ 乘积 ≤ natDegree·p < 2^64（无 UInt64 溢出）。
   have h_no_overflow : ∀ x ∈ (toSparsePolyZp f).toList, x.2.val.toNat * x.1.deg < 2 ^ 64 := by
-    admit
+    intro x hx
+    have hval : x.2.val.toNat < p := (hred x hx).2
+    have hdle : x.1.deg ≤ f.natDegree := toSparsePolyZp_deg_le f x hx
+    have hle : x.2.val.toNat * x.1.deg ≤ f.natDegree * p := by
+      rw [Nat.mul_comm f.natDegree p]; exact Nat.mul_le_mul (Nat.le_of_lt hval) hdle
+    exact Nat.lt_of_le_of_lt hle hdeg
   have h_deg_bound : ∀ x ∈ (toSparsePolyZp f).toList, x.1.deg < 2 ^ 64 := by
-    admit
+    intro x hx
+    have hdle : x.1.deg ≤ f.natDegree := toSparsePolyZp_deg_le f x hx
+    have hnp : f.natDegree ≤ f.natDegree * p := Nat.le_mul_of_pos_right _ hppos
+    omega
   have h_refines : toPolyList (__squarefree_Zp_ir_safe p (toSparsePolyZp f)) p = sqfZp f := by
     have h := __squarefree_Zp_ir_refines p (toSparsePolyZp f) hwf hred hp_size h_no_overflow h_deg_bound
       (toSparsePolyZp_val_nonzero f hp_size)
@@ -300,28 +307,31 @@ theorem edf_l1_correct (hp_size : 2 * p ≤ UInt64.size) (g : (ZMod p)[X]) (d : 
 -- ============================================================
 
 /-- 使用 L1 翻译代码的 Zp 因式分解（需要 hp_size 硬件约束）。 -/
-theorem factor_Zp_l1 (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size) (f : (ZMod p)[X]) (hf : f ≠ 0) :
+theorem factor_Zp_l1 (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size) (f : (ZMod p)[X]) (hf : f ≠ 0)
+    (hdeg : f.natDegree * p < 2 ^ 64) :
     ∃ (lc : ZMod p) (factors : List ((ZMod p)[X] × ℕ)),
       FactorZpCorrect f lc factors :=
   factor_Zp_correct f hf
-    (sqfZp_l1 hp_size) (sqfZp_l1_correct hp_size hp2)
+    (sqfZp_l1 hp_size) (sqfZp_l1_correct hp_size hp2 f hf hdeg)
     (ddf_l1 hp_size) (ddf_l1_correct hp_size)
     (edf_l1 hp_size) (edf_l1_correct hp_size)
 
-/-- L1 Zp 因式分解函数 — 适配 factor_ZZ_correct 的接口（返回 `(lc, factors)` 对）。 -/
+/-- L1 Zp 因式分解函数 — 适配 factor_ZZ_correct 的接口（返回 `(lc, factors)` 对）。
+    大度数（溢出）分支返回占位 (0, [])；正确性仅在 `g.natDegree * p < 2^64` 时成立。 -/
 noncomputable def factor_zp_l1_func (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size) (g : Polynomial (ZMod p))
     : ZMod p × List ((ZMod p)[X] × ℕ) :=
   if hg : g = 0 then (0, [])
-  else
-    have h := factor_Zp_l1 hp_size hp2 g hg
+  else if hb : g.natDegree * p < 2 ^ 64 then
+    have h := factor_Zp_l1 hp_size hp2 g hg hb
     (h.choose, h.choose_spec.choose)
+  else (0, [])
 
-lemma factor_zp_l1_func_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size) (g : Polynomial (ZMod p)) (hg : g ≠ 0) :
+lemma factor_zp_l1_func_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size)
+    (g : Polynomial (ZMod p)) (hg : g ≠ 0) (hb : g.natDegree * p < 2 ^ 64) :
     FactorZpCorrect g (factor_zp_l1_func hp_size hp2 g).1 (factor_zp_l1_func hp_size hp2 g).2 := by
   unfold factor_zp_l1_func
-  simp [hg]
-  have h := factor_Zp_l1 hp_size hp2 g hg
-  exact h.choose_spec.choose_spec
+  rw [dif_neg hg, dif_pos hb]
+  exact (factor_Zp_l1 hp_size hp2 g hg hb).choose_spec.choose_spec
 
 -- ============================================================
 -- §5. Hensel 提升（L1 包装 — TODO: 替换为 __hensel_lift_upoly_ir 精化版本）
@@ -385,9 +395,15 @@ theorem factor_ZZ_cpp_correct
     (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size)
     (hgood : Squarefree (Polynomial.map (Int.castRingHom (ZMod p)) f))
     (hdeg : (Polynomial.map (Int.castRingHom (ZMod p)) f).natDegree = f.natDegree)
-    : ∃ result : List (Polynomial ℤ), FactorZZCorrect f result :=
-  factor_ZZ_correct f hf hprim hk hgood hdeg
-    (factor_zp_l1_func hp_size hp2) (factor_zp_l1_func_correct hp_size hp2)
+    (hfbound : f.natDegree * p < 2 ^ 64)
+    : ∃ result : List (Polynomial ℤ), FactorZZCorrect f result := by
+  have hfp_ne : (Polynomial.map (Int.castRingHom (ZMod p)) f) ≠ 0 :=
+    fun h => not_squarefree_zero (h ▸ hgood)
+  have hb : (Polynomial.map (Int.castRingHom (ZMod p)) f).natDegree * p < 2 ^ 64 := by
+    rw [hdeg]; exact hfbound
+  exact factor_ZZ_correct f hf hprim hk hgood hdeg
+    (factor_zp_l1_func hp_size hp2)
+    (factor_zp_l1_func_correct hp_size hp2 _ hfp_ne hb)
     (hensel_l1 hp_size k hk f) (hensel_l1_correct hp_size k hk f)
     (recombine_l1 hp_size k f hf) (recombine_l1_correct hp_size k f hf)
 

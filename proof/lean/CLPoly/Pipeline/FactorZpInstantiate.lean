@@ -29,7 +29,7 @@ theorem factor_Zp_instantiate
         FactorZpCorrect f lc factors := by
   exact factor_Zp_correct f hf
     sqfZp
-    (fun g hg => sqf_correct g hg)
+    (sqf_correct f hf)
     ddf
     (fun g hm hsq => ddf_correct g hm hsq)
     (fun g d => if g.natDegree = 0 then [] else edf g d (splits_fn g d))
@@ -77,7 +77,7 @@ theorem factor_Zp_instantiate_unconditional
             (Nat.pos_of_ne_zero hg_deg) hpre.2.2.1 hpre.2.2.2).choose
         else [g]
   exact factor_Zp_correct f hf
-    sqfZp (fun g hg => sqf_correct g hg)
+    sqfZp (sqf_correct f hf)
     ddf (fun g hm hsq => ddf_correct g hm hsq)
     edf_unconditional
     (fun g d hm hsq hfactors => by

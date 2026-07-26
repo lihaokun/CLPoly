@@ -174,9 +174,11 @@ theorem factor_ZZ_unconditional
     (fun g => if hg : g = 0 then (0, [])
               else ((factor_Zp_instantiate_unconditional g hg).choose,
                     (factor_Zp_instantiate_unconditional g hg).choose_spec.choose))
-    (fun g hg => by
-      simp only [dif_neg hg]
-      exact (factor_Zp_instantiate_unconditional g hg).choose_spec.choose_spec)
+    (by
+      have hfp_ne : (Polynomial.map (Int.castRingHom (ZMod p)) f) ≠ 0 :=
+        fun h => not_squarefree_zero (h ▸ hgood)
+      simp only [dif_neg hfp_ne]
+      exact (factor_Zp_instantiate_unconditional _ hfp_ne).choose_spec.choose_spec)
     -- 2. Hensel lifting (hcop is provided by factor_ZZ_correct)
     (fun facs_p => hensel_lift p k hk f facs_p)
     (fun facs_p hne hprod hcop => hensel_lift_correct p k hk f facs_p hne hprod hcop)

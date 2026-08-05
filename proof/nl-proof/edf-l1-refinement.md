@@ -24,27 +24,30 @@ C++ 包含 `while (true)`。当 RNG 不再产生有效候选时，该循环没�
 
 ## 3. 可证明的总化接口
 
-定义 `edfZpSafe`：
+实现分为两层：
 
-1. 常数多项式返回空列表，与生成代码的基本分支一致。
-2. 对满足 EDF 前置条件的非常数输入，返回 L2 已证明存在的首一不可约
-   因子分解。这是 C++ 随机搜索成功时的规格级结果，不伪装成对 partial
-   函数的计算等式。
-3. 对不满足前置条件的单独入口，返回 `[g]`；Pipeline 的正确性定理
-   只在 DDF 提供的 EDF 前置条件下调用已验证分支。
+1. `Generated.edfZpTrySafe fuel` 是可执行的有界 L1 控制流：它总化了随机
+   多项式生成、特征 2 trace、奇特征 powmod/GCD、非平凡分裂和两侧递归。
+   每次尝试和递归都消耗 fuel；耗尽返回 `none`。失败尝试会保留已推进的
+   RNG，不会重复同一候选。
+2. `Refinement.edfZpSafe` 运行该 L1 路径。若成功结果通过 `EDFCorrect`
+   认证则直接采用；若 fuel 耗尽或结果未通过认证，则返回 L2 已证明
+   存在的首一不可约分解。
+3. 常数多项式在 L1 路径中返回空列表，与生成代码的基本分支一致。
 
 对应定理不再是错误的“输出等于 `edf ... []`”，而是：
 
 ```text
 Monic g → Squarefree g → EqualDegree g d
-  → EDFCorrect g d (edfZpSafe g d)
+  → EDFCorrect g d (edfZpSafe g sparse_g d fuel rng)
 ```
 
 ## 4. Pipeline 闭环
 
-`Pipeline/L1.lean` 的 `edf_l1` 改为调用 `Refinement.edfZpSafe`，而不再直接在
-Pipeline 内展开 `edf_correct_unconditional.choose`。这样 EDF 的总化边界和正确性都集中
-在精化模块，Pipeline 只消费已证明接口。
+`Pipeline/L1.lean` 的 `edf_l1` 以 `toSparsePolyZp g`、固定种子 42 和
+`8 * (degree g + 1)` fuel 调用 `Refinement.edfZpSafe`，而不再直接在
+Pipeline 内展开 `edf_correct_unconditional.choose`。生成路径成功时使用其输出，
+其余情况走显式的认证回退。
 
 ## 5. 完成标准
 

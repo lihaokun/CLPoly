@@ -29,6 +29,6 @@ Date: 2026-08-06
 
 This closes the total, correctness-preserving EDF interface used by Pipeline. It
 does not claim that the generated partial RNG loop terminates for every seed.
-Such a claim is refuted by seed zero in the current RNG model. A future executable
-refinement can add bounded retries and an explicit certified fallback, or state a
-conditional trace theorem for terminating generated executions.
+Such a claim is refuted by seed zero in the current RNG model. The subsequent
+`2026-08-06-edf-executable-safe-path.md` stage adds bounded retries and an
+explicit certified fallback without making that false termination claim.

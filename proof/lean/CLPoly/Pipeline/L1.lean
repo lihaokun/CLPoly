@@ -308,13 +308,14 @@ theorem ddf_l1_correct (hp_size : 2 * p ≤ UInt64.size)
 /-- L1 EDF wrapper：调用精化层的总化入口。 -/
 noncomputable def edf_l1 (hp_size : 2 * p ≤ UInt64.size) (g : (ZMod p)[X]) (d : ℕ)
     : List ((ZMod p)[X]) :=
-  Refinement.edfZpSafe g d
+  Refinement.edfZpSafe g (toSparsePolyZp g) d (8 * (g.natDegree + 1)) (Rng.mk 42)
 
 theorem edf_l1_correct (hp_size : 2 * p ≤ UInt64.size) (g : (ZMod p)[X]) (d : ℕ)
     (hm : Monic g) (hsq : Squarefree g)
     (hdeg : ∀ q, Irreducible q → q ∣ g → q.natDegree = d) :
     EDFCorrect g d (edf_l1 hp_size g d) := by
-  exact Refinement.edfZpSafe_correct g d hm hsq hdeg
+  exact Refinement.edfZpSafe_correct g (toSparsePolyZp g) d
+    (8 * (g.natDegree + 1)) (Rng.mk 42) hm hsq hdeg
 
 -- ============================================================
 -- §4. Zp 因式分解端到端定理（L1 包装）

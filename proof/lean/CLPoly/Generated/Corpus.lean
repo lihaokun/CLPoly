@@ -264,6 +264,22 @@ decreasing_by
   all_goals try dsimp only at *
   all_goals assumption
 
+/-- Total implementation of the binary-exponentiation loop used by
+`__upoly_powmod_ir`.  The raw generated loop is a `partial def`, which has no
+equation theorem available to refinement proofs. -/
+def upolyPowmodLoopSafe
+    (modFn : SparsePolyZp → SparsePolyZp → SparsePolyZp)
+    (e : Nat) (b result modpoly : SparsePolyZp) : SparsePolyZp :=
+  if he : 0 < e then
+    let result' := if e % 2 != 0 then modFn (result * b) modpoly else result
+    let e' := e / 2
+    let b' := if 0 < e' then modFn (b * b) modpoly else b
+    upolyPowmodLoopSafe modFn e' b' result' modpoly
+  else
+    result
+termination_by e
+decreasing_by omega
+
 mutual
 partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZZ) (deg : Int32) : (Int64 × (UMonomial × ZZ)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
@@ -5085,10 +5101,10 @@ partial def __upoly_powmod_ir (base : SparsePolyZp) (exp : ZZ) (modpoly : Sparse
   let one_1 : Zp := (__make_zp_ir (1 : Int32) p_1)
   let result_1 : SparsePolyZp := ((#[(Prod.mk (UMonomial.mk (0 : Int32)) one_1)] : SparsePolyZp))
   let b_1 : SparsePolyZp := (__upoly_mod_ir base modpoly)
-  let e_1 : ZZ := exp
-  let __loop_ret___upoly_powmod_0_1 : (Int64 × SparsePolyZp) := (_loop___upoly_powmod_0_ir e_1 b_1 result_1 modpoly)
-  let result_2 : SparsePolyZp := __loop_ret___upoly_powmod_0_1.snd
-  result_2
+  if exp > 0 then
+    upolyPowmodLoopSafe __upoly_mod_ir exp.toNat b_1 result_1 modpoly
+  else
+    result_1
 
 partial def _loop___upoly_primitive_upoly_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : SparsePolyZZ) (c_3 : ZZ) : (Int64 × SparsePolyZZ) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then

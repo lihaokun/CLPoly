@@ -744,6 +744,103 @@ private lemma allReduced_of_reducedB (f : SparsePolyZp) (pm : UInt64)
 private def CanonicalRep (p : Nat) (f : SparsePolyZp) : Prop :=
   SparsePolyZp.Sorted f ∧ SparsePolyZp.NonZeroB f ∧ SparsePolyZp.AllReduced p f.toList
 
+private lemma nonzeroB_of_val_nonzero (f : SparsePolyZp)
+    (h : ∀ x ∈ f.toList, x.2.val ≠ 0) : SparsePolyZp.NonZeroB f := by
+  unfold SparsePolyZp.NonZeroB
+  have aux : ∀ l : List (UMonomial × Zp),
+      (∀ x ∈ l, x.2.val ≠ 0) → SparsePolyZp.nonzeroListB l = true := by
+    intro l
+    induction l with
+    | nil => simp [SparsePolyZp.nonzeroListB]
+    | cons a rest ih =>
+        intro hl
+        rw [SparsePolyZp.nonzeroListB_cons]
+        exact ⟨hl a (by simp), ih (fun x hx => hl x (List.mem_cons_of_mem a hx))⟩
+  exact aux f.toList h
+
+private lemma sortedListB_filterMap_pred
+    (G : (UMonomial × Zp) → Option (UMonomial × Zp))
+    (hG : ∀ x y, G x = some y → y.1.deg + 1 = x.1.deg) :
+    ∀ l : List (UMonomial × Zp), SparsePolyZp.sortedListB l = true →
+      SparsePolyZp.sortedListB (l.filterMap G) = true := by
+  intro l
+  induction l with
+  | nil => simp [SparsePolyZp.sortedListB]
+  | cons a rest ih =>
+      intro hs
+      cases hGa : G a with
+      | none =>
+          rw [List.filterMap_cons_none hGa]
+          exact ih ((SparsePolyZp.sortedListB_iff a rest).mp hs).2
+      | some b =>
+          rw [List.filterMap_cons_some hGa, SparsePolyZp.sortedListB_iff]
+          have hst := (SparsePolyZp.sortedListB_iff a rest).mp hs
+          refine ⟨?_, ih hst.2⟩
+          intro z hz
+          rcases List.mem_filterMap.mp hz with ⟨x, hx, hxz⟩
+          have hxa := hst.1 x hx
+          have hba := hG a b hGa
+          have hzx := hG x z hxz
+          omega
+
+/-- 稀疏求导在非空规范输入上保持 GCD 所需的规范形。 -/
+private lemma derivative_canonical (f : SparsePolyZp) (hf : CanonicalRep p f)
+    (hfne : ¬f.isEmpty) : CanonicalRep p (SparsePolyZp.derivative f) := by
+  let D : (UMonomial × Zp) → Option (UMonomial × Zp) := fun x =>
+    if x.1.deg = 0 then none
+    else
+      let v := x.2.val * x.1.deg.toUInt64 % f[0]!.2.prime
+      if v = 0 then none else some (⟨x.1.deg - 1⟩, ⟨v, f[0]!.2.prime⟩)
+  have hlist : (SparsePolyZp.derivative f).toList = f.toList.filterMap D := by
+    simp [SparsePolyZp.derivative, hfne, D, Array.toList_filterMap]
+  have hfrontmem : f[0]! ∈ f.toList := mem_getFirst_toList f (by
+    rw [Array.isEmpty_iff_size_eq_zero] at hfne
+    omega)
+  have hprime : f[0]!.2.prime.toNat = p := (hf.2.2 f[0]! hfrontmem).1
+  have hsorted : SparsePolyZp.Sorted (SparsePolyZp.derivative f) := by
+    unfold SparsePolyZp.Sorted
+    rw [hlist]
+    apply sortedListB_filterMap_pred D
+    · intro x y hxy
+      by_cases hd : x.1.deg = 0
+      · simp [D, hd] at hxy
+      let v := x.2.val * x.1.deg.toUInt64 % f[0]!.2.prime
+      by_cases hv : v = 0
+      · simp [D, hd, v, hv] at hxy
+      simp [D, hd, v, hv] at hxy
+      have hydeg : y.1.deg = x.1.deg - 1 := by
+        simpa using congrArg (fun z : UMonomial × Zp => z.1.deg) hxy.symm
+      rw [hydeg]
+      omega
+    · simpa [SparsePolyZp.Sorted] using hf.1
+  have hnonzero : SparsePolyZp.NonZeroB (SparsePolyZp.derivative f) := by
+    apply nonzeroB_of_val_nonzero
+    intro z hz
+    rw [hlist] at hz
+    rcases List.mem_filterMap.mp hz with ⟨x, hx, hxz⟩
+    simp only [D] at hxz
+    split at hxz <;> try contradiction
+    split at hxz <;> try contradiction
+    injection hxz with hxz
+    simpa [← hxz] using ‹_›
+  have hreduced : SparsePolyZp.AllReduced p (SparsePolyZp.derivative f).toList := by
+    intro z hz
+    rw [hlist] at hz
+    rcases List.mem_filterMap.mp hz with ⟨x, hx, hxz⟩
+    simp only [D] at hxz
+    split at hxz <;> try contradiction
+    split at hxz <;> try contradiction
+    injection hxz with hxz
+    rw [← hxz]
+    constructor
+    · exact hprime
+    · rw [← hprime]
+      rw [← UInt64.lt_iff_toNat_lt]
+      exact UInt64.mod_lt (x.2.val * x.1.deg.toUInt64) (by
+        rw [UInt64.lt_iff_toNat_lt, hprime]
+        exact hp.out.pos)
+  exact ⟨hsorted, hnonzero, hreduced⟩
+
 private lemma isChain_of_sortedListB : ∀ xs : List (UMonomial × Zp),
     SparsePolyZp.sortedListB xs = true →
       List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) xs := by

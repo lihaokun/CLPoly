@@ -84,6 +84,67 @@ private lemma singleton_one_data (q : UInt64) (hq : q.toNat = p) :
     SparsePolyZp.sortedListB, SparsePolyZp.nonzeroListB,
     Zp.ofInt, Zp.toZMod, hmod, hqgt]
 
+private lemma singleton_x_data (q : UInt64) (hq : q.toNat = p) :
+    CanonicalRep p
+        (#[(UMonomial.mk (1 : Int32), Zp.ofInt (1 : Int) q)] : SparsePolyZp) ∧
+      SparsePolyZp.toPoly p
+          (#[(UMonomial.mk (1 : Int32), Zp.ofInt (1 : Int) q)] : SparsePolyZp) = X := by
+  subst p
+  have hqgt : 1 < q.toNat := Nat.Prime.one_lt hp.out
+  have hmod : (1 : Int) % (q.toNat : Int) = 1 := by
+    apply Int.emod_eq_of_lt
+    · norm_num
+    · exact_mod_cast hqgt
+  simp [CanonicalRep, SparsePolyZp.Sorted, SparsePolyZp.NonZeroB,
+    SparsePolyZp.AllReduced, SparsePolyZp.toPoly, listSum, Zp.Reduced,
+    SparsePolyZp.sortedListB, SparsePolyZp.nonzeroListB,
+    Zp.ofInt, Zp.toZMod, hmod, hqgt]
+  rw [show (Int64.toUInt64 1).toNat = 1 by rfl,
+    Polynomial.monomial_one_one_eq_X]
+
+private lemma canonicalRep_neg (f : SparsePolyZp) (hf : CanonicalRep p f) :
+    CanonicalRep p (-f) := by
+  refine ⟨?_, ?_, SparsePolyZp.WellFormed_arr.neg p f hf.2.2⟩
+  · change SparsePolyZp.sortedListB (SparsePolyZp.negImpl f).toList = true
+    unfold SparsePolyZp.negImpl
+    rw [Array.toList_map]
+    exact (SparsePolyZp.sortedListB_map_fst _
+      (by rintro ⟨m, c⟩; rfl) f.toList).trans hf.1
+  · change SparsePolyZp.nonzeroListB (SparsePolyZp.negImpl f).toList = true
+    unfold SparsePolyZp.negImpl
+    rw [Array.toList_map]
+    have aux : ∀ xs : List (UMonomial × Zp),
+        SparsePolyZp.AllReduced p xs →
+        SparsePolyZp.nonzeroListB xs = true →
+        SparsePolyZp.nonzeroListB (xs.map fun x => (x.1, -x.2)) = true := by
+      intro xs
+      induction xs with
+      | nil => simp [SparsePolyZp.nonzeroListB]
+      | cons a rest ih =>
+          intro hred hnz
+          rw [List.map_cons, SparsePolyZp.nonzeroListB_cons]
+          have ha_red := hred a List.mem_cons_self
+          have hrest_red : SparsePolyZp.AllReduced p rest :=
+            fun x hx => hred x (List.mem_cons_of_mem _ hx)
+          have hnz' := (SparsePolyZp.nonzeroListB_cons a rest).mp hnz
+          have hprime_pos : 0 < a.2.prime.toNat := by
+            rw [ha_red.1]
+            exact hp.out.pos
+          have hval_lt : a.2.val < a.2.prime := by
+            rw [UInt64.lt_iff_toNat_lt, ha_red.1]
+            exact ha_red.2
+          exact ⟨SparsePolyZp.Zp_neg_nonzero a.2 hval_lt hnz'.1 hprime_pos,
+            ih hrest_red hnz'.2⟩
+    exact aux f.toList hf.2.2 hf.2.1
+
+private lemma canonicalRep_sub (f g : SparsePolyZp)
+    (hf : CanonicalRep p f) (hg : CanonicalRep p g) : CanonicalRep p (f - g) := by
+  change CanonicalRep p (f + -g)
+  rw [canonicalRep_iff_canonical]
+  exact SparsePolyZp.Canonical.add p f (-g)
+    ((canonicalRep_iff_canonical f).mp hf)
+    ((canonicalRep_iff_canonical (-g)).mp (canonicalRep_neg g hg))
+
 set_option maxHeartbeats 0 in
 /-- 二进制 powmod 内循环在非负整数指数上的精确语义。 -/
 private theorem powmod_loop_refines (h2p : 2 * p ≤ UInt64.size)
@@ -229,6 +290,19 @@ private theorem upoly_powmod_safe_refines (h2p : 2 * p ≤ UInt64.size)
   refine ⟨hloop.1, hloop.2.trans ?_⟩
   rw [honedata.2, one_mul]
   exact pow_modByMonic_congr (by rw [hbdata.2, modByMonic_idem _ _ hm_monic]) n
+
+/-- The total subtract-X entry point preserves canonical sparse form and has
+the expected polynomial semantics. -/
+private theorem upoly_subtract_x_safe_refines (h2p : 2 * p ≤ UInt64.size)
+    (h : SparsePolyZp) (q : UInt64) (hq : q.toNat = p)
+    (hh : CanonicalRep p h) :
+    CanonicalRep p (Generated.upolySubtractXSafe h q) ∧
+      SparsePolyZp.toPoly p (Generated.upolySubtractXSafe h q) =
+        SparsePolyZp.toPoly p h - X := by
+  have hx := singleton_x_data q hq
+  rw [Generated.upolySubtractXSafe]
+  refine ⟨canonicalRep_sub h _ hh hx.1, ?_⟩
+  rw [SparsePolyZp.toPoly_sub p h2p h _ hh.2.2 hx.1.2.2, hx.2]
 
 /--
   L1 `__ddf_Zp_ir` (C++: `clpoly/polynomial_factorize_zp.hh`) → L2 `ddf`

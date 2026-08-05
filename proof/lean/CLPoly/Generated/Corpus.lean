@@ -293,6 +293,10 @@ def upolyPowmodSafe
   else
     result
 
+/-- Total canonical implementation of subtracting `X`. -/
+def upolySubtractXSafe (h : SparsePolyZp) (q : UInt64) : SparsePolyZp :=
+  h - #[(UMonomial.mk (1 : Int32), Zp.ofInt (1 : Int) q)]
+
 mutual
 partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZZ) (deg : Int32) : (Int64 × (UMonomial × ZZ)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
@@ -5236,21 +5240,7 @@ partial def _loop___upoly_subtract_x_0_ir (__rangefor_idx_0_2 : Nat) (inserted_2
     ((0 : Int64), inserted_2, result_2)
 
 partial def __upoly_subtract_x_ir (h : SparsePolyZp) (p : UInt64) : SparsePolyZp :=
-  let bb_17 := fun result_10 =>
-    let result_11 : SparsePolyZp := (SparsePolyZp.normalization result_10)
-    result_11
-  let result_1 : SparsePolyZp := (SparsePolyZp.empty)
-  let inserted_1 : Bool := false
-  let __rangefor_cont_0_1 : SparsePolyZp := h
-  let __rangefor_idx_0_1 : Nat := (0 : Nat)
-  let __loop_ret___upoly_subtract_x_0_1 : (Int64 × Bool × SparsePolyZp) := (_loop___upoly_subtract_x_0_ir __rangefor_idx_0_1 inserted_1 result_1 __rangefor_cont_0_1 p)
-  let inserted_2 : Bool := __loop_ret___upoly_subtract_x_0_1.2.1
-  let result_2 : SparsePolyZp := __loop_ret___upoly_subtract_x_0_1.2.2
-  if (! inserted_2) then
-    let result_9 : SparsePolyZp := (Array.push result_2 (Prod.mk (UMonomial.mk (1 : Int32)) (Zp.ofInt ((p - (1 : UInt64))).toInt p)))
-    bb_17 result_9
-  else
-    bb_17 result_2
+  upolySubtractXSafe h p
 
 partial def _loop___upoly_symmetric_mod_upoly_0_ir (__rangefor_idx_0_2 : Nat) (result_2 : SparsePolyZZ) (__rangefor_cont_0_1 : SparsePolyZZ) (m : ZZ) : (Int64 × SparsePolyZZ) :=
   let bb_7 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 m result_4 =>

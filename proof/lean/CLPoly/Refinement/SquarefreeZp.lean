@@ -45,14 +45,6 @@ variable {p : ℕ} [hp : Fact (Nat.Prime p)]
 -- §1. 辅助引理：SparsePolyZp 操作 ↔ Polynomial (ZMod p) 操作
 -- ============================================================
 
-/-- 负数的 get_deg 映射到 0（空多项式），≥0 值对应于 ℕ degree。
-    TODO: 需要数组排序性质才能证明，当前未使用。 -/
-private lemma get_deg_toPoly (f : SparsePolyZp) (hwf : SparsePolyZp.WellFormed p f)
-    : get_deg f = (SparsePolyZp.toPoly p f).natDegree := by
-  -- 这个引理当前未使用，且需要 mergeAdd 排序性质才能证明
-  -- 暂时保留为 admit，待需要时再补完
-  admit
-
 /-- 辅助引理：extGcdAux 的结果系数关于 (old_s, s) 线性，且 g 整除 old_r 和 r。
     存在 x, y, g 使 extGcdAux old_r r old_s s = (g, x*old_s + y*s) 且
     x*old_r + y*r = g 且 g ∣ old_r 且 g ∣ r。

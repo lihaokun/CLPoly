@@ -1443,11 +1443,33 @@ def makeMonic (f : SparsePolyZp) : SparsePolyZp :=
     let lc_inv := f[0]!.snd.inv
     scalarMul lc_inv f
 
--- 欧几里得 GCD：gcd(f, g) = gcd(g, f mod g)；最后首一化（与 C++ 一致）
--- partial def 因终止性依赖 deg(f mod g) < deg(g) 严格递减
-partial def gcdAux (f g : SparsePolyZp) : SparsePolyZp :=
-  if g.isEmpty then f
-  else gcdAux g (divmod f g).snd
+-- 欧几里得 GCD：gcd(f, g) = gcd(g, f mod g)；最后首一化（与 C++ 一致）。
+--
+-- 合法的规范形输入上，`divmodAux_snd_deg_lt` 保证余式为空或首项次数严格下降。
+-- `divmod` 对不满足其表示不变量的输入会走保守回退分支；这里也显式检查下降条件，
+-- 使实现对所有 Array 输入总化，同时在合法输入上保持原 Euclid 控制流不变。
+def gcdAux (f g : SparsePolyZp) : SparsePolyZp :=
+  if hg : g.isEmpty then f
+  else
+    let r := (divmod f g).snd
+    if hr : r.isEmpty then g
+    else if hd : r[0]!.fst.deg < g[0]!.fst.deg then gcdAux g r
+    else g
+termination_by if g.isEmpty then 0 else g[0]!.fst.deg + 1
+decreasing_by
+  simp_wf
+  have hg' : g ≠ #[] := by
+    intro h
+    subst g
+    simp at hg
+  have hr' : r ≠ #[] := by
+    intro h
+    apply hr
+    simp [h]
+  change (if r = #[] then 0 else r[0]!.fst.deg + 1) <
+    (if g = #[] then 0 else g[0]!.fst.deg + 1)
+  rw [if_neg hg', if_neg hr']
+  omega
 
 def gcd (f g : SparsePolyZp) : SparsePolyZp :=
   makeMonic (gcdAux f g)

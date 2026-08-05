@@ -348,7 +348,7 @@ by
     · -- leading coefficient is 1: generated code returns f directly
       have hgc : ((SparsePolyZp.front! f).snd).val = Int64.toUInt64 1 := by
         have h_cast_eq : (Int32.toInt64 1).toUInt64 = Int64.toUInt64 1 := by
-          native_decide
+          rfl
         simpa [h_cast_eq] using hone_val
       have hgen_snd : (Generated.__upoly_make_monic_ir f).snd = f := by
         unfold Generated.__upoly_make_monic_ir
@@ -390,7 +390,7 @@ by
         unfold Generated.__upoly_make_monic_ir_def
         dsimp
         have h_cast_eq : Int64.toUInt64 1 = (Int32.toInt64 1).toUInt64 := by
-          native_decide
+          rfl
         have h_ne_prop : f.front!.2.val ≠ Int64.toUInt64 1 := by
           rw [h_cast_eq]
           exact hne_val

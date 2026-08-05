@@ -4,8 +4,8 @@
   用 L1 `_ir` 函数（来自 Corpus.lean，翻译自 C++）实例化 factor_Zp_correct。
   精化定理填补后，此文件直接验证翻译出的 C++ 代码。
 
-  当前 L1 覆盖：sqf (__squarefree_Zp_ir), ddf (__ddf_Zp_ir)
-  EDF 暂用 L2 edf_correct_unconditional（同 FactorZpInstantiate）
+  当前已闭合的 L1 覆盖：SQF (`__squarefree_Zp_ir`)
+  DDF/EDF 仍有独立精化债务；EDF 暂用 L2 `edf_correct_unconditional`。
 -/
 
 import CLPoly.Pipeline.FactorZp
@@ -429,11 +429,11 @@ lemma recombine_l1_correct (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (f : Poly
 /-- C++ 翻译代码的 Z[x] 因式分解正确性定理。
 
     使用 L1 包装（C++ 翻译函数）实例化 `factor_ZZ_correct` 的三个子过程。
-    当前 L1 包装中 sqf/ddf/edf 暂用 L2 算法（待 __squarefree_Zp_ir_refines 等精化定理
-    填补后改回 C++ 路径）；Hensel 和 Recombine 同理。
+    当前 L1 包装中 SQF 已使用 C++ 翻译路径；DDF/EDF 仍等待精化定理。
+    Hensel 和 Recombine 同理。
 
     精化定理状态：
-     - ❌ `__squarefree_Zp_ir_refines`
+     - ✅ `__squarefree_Zp_ir_refines`
      - ❌ `__ddf_Zp_ir_refines`
      - ✅ `__symmetric_mod_ir_refines`
      - ❌ `__binomial_ir_refines`

@@ -18,6 +18,10 @@
 ## 验证边界
 
 - SQF 链路（`Algorithm/SquarefreeZp.lean`、`Generated/Corpus.lean` 中 SQF 定义、`Refinement/SquarefreeZp.lean`、`Pipeline/L1.lean`）不再使用 `sorry`/`admit`。
+- `#print axioms` 审计中，`sqf_correct`、`__squarefree_Zp_ir_refines` 和
+  `sqfZp_l1_correct` 均只依赖 Lean/Mathlib 常规的 `propext`、`Classical.choice`、
+  `Quot.sound`。`make_monic` 桥接原有的两个 `native_decide` 常量转换已改为内核 `rfl`，
+  因此 SQF 公理闭包不再包含 `native_decide` 生成的公理。
 - `lake build` 用于检查全库兼容性。仓库中 EDF、DDF、Hensel、Recombine 和部分 ZZ 算术的 L1 精化仍有独立 `sorry`；它们不在本次 SQF 闭合的声明范围内。
 
 ## 度量

@@ -1,5 +1,10 @@
 # P2-a：SquarefreeZp 精化设计文档（`__squarefree_Zp_ir_refines` Branch A + B）
 
+> **最终状态（2026-08-06）：已完成。** Branch A、Branch B、GCD/divmod 桥接、
+> Yun 循环、p 次根递归、UInt64/Int64 界与生成层终止性均已形式化。
+> 以下内容保留为实现前的设计与历史进度；权威结果为
+> `Refinement.__squarefree_Zp_ir_refines` 和 `sqfZp_l1_correct`。
+
 日期：2026-07-26
 目标：清 `CLPoly/Refinement/SquarefreeZp.lean` 的 2 个 admit：
 - **Admit 1**（Branch A，line 1969，导数=0 分支）—— 指数 UInt64 转换。

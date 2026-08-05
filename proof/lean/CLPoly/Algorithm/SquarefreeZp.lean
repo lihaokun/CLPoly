@@ -116,7 +116,7 @@ decreasing_by
   omega
 
 /-- yunLoop 不增加 c 的 natDegree -/
-private lemma yunLoop_c_natDegree_le
+theorem yunLoop_c_natDegree_le
     (w c : Polynomial (ZMod p)) (i : ℕ)
     (acc : List (Polynomial (ZMod p) × ℕ))
     (hc : c ≠ 0) :
@@ -1278,6 +1278,139 @@ private theorem yunLoop_correct
 -- ============================================================
 -- 4. 主定理
 -- ============================================================
+
+private lemma normalize_gcd_normalize_left_local
+    (w c : Polynomial (ZMod p)) :
+    normalize (EuclideanDomain.gcd (normalize w) c) =
+      normalize (EuclideanDomain.gcd w c) := by
+  apply (normalize_eq_normalize_iff).mpr
+  constructor
+  · apply EuclideanDomain.dvd_gcd
+    · exact dvd_trans (EuclideanDomain.gcd_dvd_left _ _)
+        (normalize_associated w).dvd
+    · exact EuclideanDomain.gcd_dvd_right _ _
+  · apply EuclideanDomain.dvd_gcd
+    · exact dvd_trans (EuclideanDomain.gcd_dvd_left _ _)
+        (normalize_associated w).symm.dvd
+    · exact EuclideanDomain.gcd_dvd_right _ _
+
+private lemma normalize_divByMonic_normalize_left_local
+    (w y : Polynomial (ZMod p)) (hy : Monic y) (hydvd : y ∣ w) :
+    normalize (normalize w /ₘ y) = normalize (w /ₘ y) := by
+  have hydvd' : y ∣ normalize w :=
+    dvd_trans hydvd (normalize_associated w).symm.dvd
+  have hwprod : y * (w /ₘ y) = w := by
+    have h := modByMonic_add_div w y
+    rwa [(modByMonic_eq_zero_iff_dvd hy).mpr hydvd, zero_add] at h
+  have hnprod : y * (normalize w /ₘ y) = normalize w := by
+    have h := modByMonic_add_div (normalize w) y
+    rwa [(modByMonic_eq_zero_iff_dvd hy).mpr hydvd', zero_add] at h
+  have hassoc : Associated (normalize w /ₘ y) (w /ₘ y) := by
+    apply Associated.of_mul_left
+      (a := y) (b := normalize w /ₘ y) (c := y) (d := w /ₘ y)
+    · rw [hnprod, hwprod]
+      exact normalize_associated w
+    · exact Associated.refl y
+    · exact hy.ne_zero
+  exact (normalize_eq_normalize_iff.mpr ⟨hassoc.dvd, hassoc.symm.dvd⟩)
+
+/-- Yun 循环会在第一步将所有提取因子首一化，因而左输入先行
+    `normalize` 不改变结果。 -/
+theorem yunLoop_normalize_left
+    (w c : Polynomial (ZMod p)) (i : ℕ)
+    (acc : List (Polynomial (ZMod p) × ℕ)) (hc : c ≠ 0) :
+    yunLoop (normalize w) c i acc hc = yunLoop w c i acc hc := by
+  by_cases hw0 : w.natDegree = 0
+  · rw [yunLoop, yunLoop]
+    rw [dif_pos hw0, dif_pos (by simpa [natDegree_normalize_eq] using hw0)]
+  · rw [yunLoop, yunLoop]
+    rw [dif_neg hw0, dif_neg (by simpa [natDegree_normalize_eq] using hw0)]
+    dsimp only
+    have hyeq : normalize (EuclideanDomain.gcd (normalize w) c) =
+        normalize (EuclideanDomain.gcd w c) :=
+      normalize_gcd_normalize_left_local w c
+    simp only [hyeq]
+    let y := normalize (EuclideanDomain.gcd w c)
+    have hyne : EuclideanDomain.gcd w c ≠ 0 := by
+      intro h
+      have hwne : w ≠ 0 := by intro hz; simp [hz] at hw0
+      exact hwne (zero_dvd_iff.mp (h ▸ EuclideanDomain.gcd_dvd_left w c))
+    have hymonic : Monic y := Polynomial.monic_normalize hyne
+    have hydvd : y ∣ w :=
+      normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left w c)
+    have hzeq : normalize (normalize w /ₘ y) = normalize (w /ₘ y) :=
+      normalize_divByMonic_normalize_left_local w y hymonic hydvd
+    dsimp [y] at hzeq
+    simp only [hzeq]
+
+/-- Yun 平方自由分解从 `f / gcd(f,f')` 与 `gcd(f,f')` 启动时，
+    循环结束的残余多项式导数为零。该接口供 L1 精化证明复用。 -/
+theorem yunLoop_sqf_remainder_derivative_zero
+    (f : Polynomial (ZMod p)) (hf_ne : f ≠ 0)
+    (hc_ne : normalize (EuclideanDomain.gcd f (derivative f)) ≠ 0) :
+    derivative (yunLoop
+      (normalize (f /ₘ normalize (EuclideanDomain.gcd f (derivative f))))
+      (normalize (EuclideanDomain.gcd f (derivative f))) 1 [] hc_ne).2 = 0 := by
+  let w₀ := normalize (f /ₘ normalize (EuclideanDomain.gcd f (derivative f)))
+  let c₀ := normalize (EuclideanDomain.gcd f (derivative f))
+  have hsqf_w := squarefree_div_gcd_derivative f hf_ne
+  have hY1_init : Associated f
+      ((List.map (fun (pr : Polynomial (ZMod p) × ℕ) => pr.1 ^ pr.2) []).prod *
+        w₀ ^ 1 * c₀) := by
+    simp only [List.map_nil, List.prod_nil, one_mul, pow_one]
+    have hc₀_monic : Monic c₀ := by
+      dsimp [c₀]
+      exact Polynomial.monic_normalize (by
+        intro h
+        exact hf_ne (zero_dvd_iff.mp ((normalize_eq_zero.mpr h) ▸
+          normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left f _))))
+    have hc₀_dvd : c₀ ∣ f := by
+      dsimp [c₀]
+      exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left f _)
+    have hfc_eq : c₀ * (f /ₘ c₀) = f := by
+      have h := modByMonic_add_div f c₀
+      rwa [(modByMonic_eq_zero_iff_dvd hc₀_monic).mpr hc₀_dvd, zero_add] at h
+    exact ((normalize_associated (f /ₘ c₀)).mul_right c₀
+      |>.trans ⟨1, by simp [w₀, mul_comm]; exact hfc_eq⟩).symm
+  have hyun := yunLoop_correct w₀ c₀ 1 [] hc_ne f hY1_init hsqf_w (by omega)
+    (by simp) (by simp) (by simp) (by simp)
+  obtain ⟨hyun1, hyun4, hyun5, hyun10⟩ := hyun
+  let crem := (yunLoop w₀ c₀ 1 [] hc_ne).2
+  have hcrem_ne : crem ≠ 0 := yunLoop_c_ne_zero w₀ c₀ 1 [] hc_ne
+  let acc := (yunLoop w₀ c₀ 1 [] hc_ne).1
+  let P := (acc.map (fun pr => pr.1 ^ pr.2)).prod
+  have hf_decomp : Associated f (w₀ * c₀) := by
+    simpa only [List.map_nil, List.prod_nil, one_mul, pow_one] using hY1_init
+  have hc₀_dvd_f' : c₀ ∣ derivative f := by
+    dsimp [c₀]
+    exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right f _)
+  have hcop : IsCoprime P crem := by
+    suffices ∀ l : List (Polynomial (ZMod p) × ℕ),
+        (∀ pr ∈ l, IsCoprime pr.1 crem) →
+        IsCoprime (l.map (fun pr => pr.1 ^ pr.2)).prod crem from
+      this acc (fun pr hpr => hyun10 pr hpr)
+    intro l hl
+    induction l with
+    | nil => simp [isCoprime_one_left]
+    | cons hd tl ih =>
+        simp only [List.map_cons, List.prod_cons]
+        exact ((hl hd (by simp)).pow_left).mul_left
+          (ih (fun pr hpr => hl pr (by simp [hpr])))
+  have hextract : ∀ q : Polynomial (ZMod p), Irreducible q → q ∣ w₀ → q ∣ P := by
+    intro q hq_irr hq_w₀
+    obtain ⟨pr, hpr_mem, hq_pr⟩ :=
+      yunLoop_extracts_factor q w₀ c₀ 1 [] hc_ne hq_irr hq_w₀ hsqf_w
+    exact dvd_trans hq_pr (dvd_trans (dvd_pow_self pr.1
+      (Nat.one_le_iff_ne_zero.mp (hyun4 pr hpr_mem).2.2.2))
+      (List.dvd_prod (List.mem_map.mpr ⟨pr, hpr_mem, rfl⟩)))
+  have hpreserve : ∀ q : Polynomial (ZMod p), Irreducible q → ¬(q ∣ w₀) →
+      ∀ k, q ^ k ∣ c₀ → q ^ k ∣ crem := by
+    intro q hq_irr hq_nw₀ k hqk
+    exact yunLoop_preserves_pow_dvd q hq_irr w₀ c₀ 1 [] hc_ne hq_nw₀ k hqk
+  have hcrem_dvd_c₀ : crem ∣ c₀ := yunLoop_crem_dvd_c w₀ c₀ 1 [] hc_ne
+  exact derivative_of_yun_remainder_eq_zero f w₀ c₀ crem P
+    hf_ne hcrem_ne hsqf_w hf_decomp hc₀_dvd_f'
+    (by convert hyun1) hcop hextract hpreserve hcrem_dvd_c₀
 
 /-- SQF 顶层正确性 -/
 theorem sqf_correct

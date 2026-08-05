@@ -280,6 +280,19 @@ def upolyPowmodLoopSafe
 termination_by e
 decreasing_by omega
 
+/-- Total public-facing powmod core.  The modulus is required to be nonempty by
+the generated C++ precondition. -/
+def upolyPowmodSafe
+    (modFn : SparsePolyZp → SparsePolyZp → SparsePolyZp)
+    (base : SparsePolyZp) (exp : Int) (modpoly : SparsePolyZp) : SparsePolyZp :=
+  let q := (SparsePolyZp.front! modpoly).snd.prime
+  let result : SparsePolyZp := #[(UMonomial.mk (0 : Int32), Zp.ofInt 1 q)]
+  let b := modFn base modpoly
+  if exp > 0 then
+    upolyPowmodLoopSafe modFn exp.toNat b result modpoly
+  else
+    result
+
 mutual
 partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZZ) (deg : Int32) : (Int64 × (UMonomial × ZZ)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
@@ -5097,14 +5110,7 @@ partial def _loop___upoly_powmod_0_ir (e_2 : ZZ) (b_2 : SparsePolyZp) (result_2 
 partial def __upoly_powmod_ir (base : SparsePolyZp) (exp : ZZ) (modpoly : SparsePolyZp) : SparsePolyZp :=
   -- require (h_assert): (! (Array.isEmpty modpoly))
   -- require (h_nonempty): (! (Array.isEmpty modpoly))
-  let p_1 : UInt64 := (SparsePolyZp.front! modpoly).snd.prime
-  let one_1 : Zp := (__make_zp_ir (1 : Int32) p_1)
-  let result_1 : SparsePolyZp := ((#[(Prod.mk (UMonomial.mk (0 : Int32)) one_1)] : SparsePolyZp))
-  let b_1 : SparsePolyZp := (__upoly_mod_ir base modpoly)
-  if exp > 0 then
-    upolyPowmodLoopSafe __upoly_mod_ir exp.toNat b_1 result_1 modpoly
-  else
-    result_1
+  upolyPowmodSafe __upoly_mod_ir base exp modpoly
 
 partial def _loop___upoly_primitive_upoly_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : SparsePolyZZ) (c_3 : ZZ) : (Int64 × SparsePolyZZ) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then

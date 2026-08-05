@@ -15,6 +15,7 @@ open CLPoly.Math
 
 namespace Refinement
 
+
 variable {p : ℕ} [hp : Fact (Nat.Prime p)]
 
 /-- `__upoly_mod_ir` 在规范输入上同时保持稀疏规范形，并精化为
@@ -66,6 +67,22 @@ private lemma pow_modByMonic_congr {a b m : Polynomial (ZMod p)}
   | succ n ih =>
       rw [pow_succ, pow_succ]
       exact mul_modByMonic_congr ih h
+
+private lemma singleton_one_data (q : UInt64) (hq : q.toNat = p) :
+    CanonicalRep p
+        (#[(UMonomial.mk (0 : Int32), Zp.ofInt (1 : Int) q)] : SparsePolyZp) ∧
+      SparsePolyZp.toPoly p
+          (#[(UMonomial.mk (0 : Int32), Zp.ofInt (1 : Int) q)] : SparsePolyZp) = 1 := by
+  subst p
+  have hqgt : 1 < q.toNat := Nat.Prime.one_lt hp.out
+  have hmod : (1 : Int) % (q.toNat : Int) = 1 := by
+    apply Int.emod_eq_of_lt
+    · norm_num
+    · exact_mod_cast hqgt
+  simp [CanonicalRep, SparsePolyZp.Sorted, SparsePolyZp.NonZeroB,
+    SparsePolyZp.AllReduced, SparsePolyZp.toPoly, listSum, Zp.Reduced,
+    SparsePolyZp.sortedListB, SparsePolyZp.nonzeroListB,
+    Zp.ofInt, Zp.toZMod, hmod, hqgt]
 
 set_option maxHeartbeats 0 in
 /-- 二进制 powmod 内循环在非负整数指数上的精确语义。 -/
@@ -168,6 +185,50 @@ private theorem powmod_loop_refines (h2p : 2 * p ≤ UInt64.size)
                       (by rw [hb'poly, modByMonic_idem _ _ hm_monic]) k)
             _ = (SparsePolyZp.toPoly p r * SparsePolyZp.toPoly p b ^ n) %ₘ
                   SparsePolyZp.toPoly p m := by rw [hnform]; congr 1 <;> ring
+
+/-- The total powmod entry point implements polynomial exponentiation modulo a
+nonempty monic modulus. -/
+private theorem upoly_powmod_safe_refines (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (base m : SparsePolyZp) (n : Nat)
+    (hn : 0 < n) (hbase : CanonicalRep p base) (hm : CanonicalRep p m)
+    (hm_ne : ¬m.isEmpty) (hm_monic : Monic (SparsePolyZp.toPoly p m))
+    (hm_deg : 0 < (SparsePolyZp.toPoly p m).natDegree)
+    (hprime : (SparsePolyZp.front! m).snd.prime.toNat = p) :
+    CanonicalRep p
+        (Generated.upolyPowmodSafe Generated.__upoly_mod_ir base (n : Int) m) ∧
+      SparsePolyZp.toPoly p
+          (Generated.upolyPowmodSafe Generated.__upoly_mod_ir base (n : Int) m) =
+        SparsePolyZp.toPoly p base ^ n %ₘ SparsePolyZp.toPoly p m := by
+  have hbdata := upoly_mod_step_data h2p hp2 base m hbase hm hm_ne hm_monic
+  have honedata := singleton_one_data (SparsePolyZp.front! m).snd.prime hprime
+  have hbmod : SparsePolyZp.toPoly p (Generated.__upoly_mod_ir base m) %ₘ
+      SparsePolyZp.toPoly p m =
+      SparsePolyZp.toPoly p (Generated.__upoly_mod_ir base m) := by
+    rw [hbdata.2]
+    exact modByMonic_idem _ _ hm_monic
+  have honemod : SparsePolyZp.toPoly p
+        (#[(UMonomial.mk (0 : Int32),
+          Zp.ofInt (1 : Int) (SparsePolyZp.front! m).snd.prime)] : SparsePolyZp) %ₘ
+        SparsePolyZp.toPoly p m =
+      SparsePolyZp.toPoly p
+        (#[(UMonomial.mk (0 : Int32),
+          Zp.ofInt (1 : Int) (SparsePolyZp.front! m).snd.prime)] : SparsePolyZp) := by
+    rw [honedata.2]
+    apply (modByMonic_eq_self_iff hm_monic).mpr
+    have hm0 : SparsePolyZp.toPoly p m ≠ 0 := by
+      intro hzero
+      simp [hzero] at hm_deg
+    simp [degree_eq_natDegree hm0, hm_deg]
+  have hloop := powmod_loop_refines h2p hp2 m hm hm_ne hm_monic n
+    (Generated.__upoly_mod_ir base m)
+    (#[(UMonomial.mk (0 : Int32),
+      Zp.ofInt (1 : Int) (SparsePolyZp.front! m).snd.prime)] : SparsePolyZp)
+    hbdata.1 honedata.1 hbmod honemod
+  rw [Generated.upolyPowmodSafe]
+  simp only [Int.natCast_pos.mpr hn, if_pos, Int.toNat_natCast]
+  refine ⟨hloop.1, hloop.2.trans ?_⟩
+  rw [honedata.2, one_mul]
+  exact pow_modByMonic_congr (by rw [hbdata.2, modByMonic_idem _ _ hm_monic]) n
 
 /--
   L1 `__ddf_Zp_ir` (C++: `clpoly/polynomial_factorize_zp.hh`) → L2 `ddf`

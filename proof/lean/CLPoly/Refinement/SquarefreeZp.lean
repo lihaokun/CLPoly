@@ -741,7 +741,7 @@ private lemma allReduced_of_reducedB (f : SparsePolyZp) (pm : UInt64)
   exact aux f.toList hred
 
 /-- SQF/GCD 所需的稀疏表示规范形。空数组也满足该谓词。 -/
-private def CanonicalRep (p : Nat) (f : SparsePolyZp) : Prop :=
+def CanonicalRep (p : Nat) (f : SparsePolyZp) : Prop :=
   SparsePolyZp.Sorted f ∧ SparsePolyZp.NonZeroB f ∧ SparsePolyZp.AllReduced p f.toList
 
 private lemma nonzeroB_of_val_nonzero (f : SparsePolyZp)
@@ -1229,7 +1229,7 @@ private theorem divmod_toPoly_identity (f g : SparsePolyZp)
   simpa using hinv
 
 /-- `normalization` 只删除零系数项，不改变表示的数学多项式。 -/
-private lemma normalization_toPoly (f : SparsePolyZp) :
+lemma normalization_toPoly (f : SparsePolyZp) :
     SparsePolyZp.toPoly p (SparsePolyZp.normalization f) = SparsePolyZp.toPoly p f := by
   unfold SparsePolyZp.normalization SparsePolyZp.toPoly
   rw [Array.toList_filter]
@@ -1251,7 +1251,7 @@ private lemma normalization_eq_of_nonZeroB (f : SparsePolyZp)
   have hv := val_ne_zero_of_nonzeroListB f.toList hf x hx
   simpa [bne_iff_ne] using hv
 
-private lemma normalization_canonical (f : SparsePolyZp) (hf : CanonicalRep p f) :
+lemma normalization_canonical (f : SparsePolyZp) (hf : CanonicalRep p f) :
     CanonicalRep p (SparsePolyZp.normalization f) := by
   rw [normalization_eq_of_nonZeroB f hf.2.1]
   exact hf
@@ -1308,7 +1308,7 @@ private lemma scalarMul_canonical (c : Zp) (f : SparsePolyZp)
         simpa [hxred.1] using hm.1⟩
   exact ⟨hs, hnz, hred⟩
 
-private lemma makeMonic_canonical (f : SparsePolyZp) (hf : CanonicalRep p f) :
+lemma makeMonic_canonical (f : SparsePolyZp) (hf : CanonicalRep p f) :
     CanonicalRep p (SparsePolyZp.makeMonic f) := by
   unfold SparsePolyZp.makeMonic
   split_ifs with hempty
@@ -1321,12 +1321,12 @@ private lemma makeMonic_canonical (f : SparsePolyZp) (hf : CanonicalRep p f) :
       simpa [Zp.inv] using (hf.2.2 f[0]! hmem).1
     exact scalarMul_canonical f[0]!.snd.inv f hf hprime
 
-private lemma wellFormed_of_canonical (f : SparsePolyZp) (hf : CanonicalRep p f) :
+lemma wellFormed_of_canonical (f : SparsePolyZp) (hf : CanonicalRep p f) :
     SparsePolyZp.WellFormed p f := by
   intro x hx
   exact (hf.2.2 x (Array.mem_def.mp hx)).1
 
-private lemma squarefreeMeasure_eq (f : SparsePolyZp) (hf : CanonicalRep p f) :
+lemma squarefreeMeasure_eq (f : SparsePolyZp) (hf : CanonicalRep p f) :
     Generated.squarefreeMeasure f =
       if f.isEmpty then 0 else (SparsePolyZp.toPoly p f).natDegree + 1 := by
   unfold Generated.squarefreeMeasure
@@ -1334,7 +1334,7 @@ private lemma squarefreeMeasure_eq (f : SparsePolyZp) (hf : CanonicalRep p f) :
   · rfl
   · rw [(toPoly_head_data (p := p) f hf hempty).1]
 
-private lemma get_deg_pos_iff (f : SparsePolyZp) (hf : CanonicalRep p f)
+lemma get_deg_pos_iff (f : SparsePolyZp) (hf : CanonicalRep p f)
     (hdeg : ∀ x ∈ f.toList, x.1.deg < 2 ^ 63) :
     (get_deg f > (0 : Int64)) ↔ 0 < (SparsePolyZp.toPoly p f).natDegree := by
   by_cases hempty : f.isEmpty
@@ -1372,7 +1372,7 @@ private lemma toPoly_ne_zero_of_canonical_nonempty (f : SparsePolyZp)
   simp at hc
   exact hcoeffne hc.symm
 
-private lemma nonempty_of_toPoly_ne_zero (f : SparsePolyZp)
+lemma nonempty_of_toPoly_ne_zero (f : SparsePolyZp)
     (hne : SparsePolyZp.toPoly p f ≠ 0) : ¬f.isEmpty := by
   intro hempty
   have hfarr : f = #[] := Array.eq_empty_of_size_eq_zero
@@ -1887,7 +1887,7 @@ private theorem polynomial_GCD_toPoly_eq_normalize (h2p : 2 * p ≤ UInt64.size)
   exact Polynomial.eq_of_monic_of_associated houtmonic hnormmonic
     (hassoc.trans (normalize_associated _).symm)
 
-private theorem polynomial_GCD_step_data (h2p : 2 * p ≤ UInt64.size)
+theorem polynomial_GCD_step_data (h2p : 2 * p ≤ UInt64.size)
     (hp2 : p * p ≤ UInt64.size) (f g : SparsePolyZp)
     (hf : CanonicalRep p f) (hg : CanonicalRep p g)
     (hfpoly : SparsePolyZp.toPoly p f ≠ 0) :
@@ -1920,7 +1920,7 @@ private theorem polynomial_GCD_step_data (h2p : 2 * p ≤ UInt64.size)
   exact ⟨hycan, hyne, hyeq, hyeq ▸ Polynomial.monic_normalize hgcdne⟩
 
 /-- 对规范输入及首一除数，实际 `divmod` 的商等于 mathlib 的首一长除商。 -/
-private theorem divmod_fst_toPoly_eq_divByMonic (h2p : 2 * p ≤ UInt64.size)
+theorem divmod_fst_toPoly_eq_divByMonic (h2p : 2 * p ≤ UInt64.size)
     (hp2 : p * p ≤ UInt64.size) (f g : SparsePolyZp)
     (hf : CanonicalRep p f) (hg : CanonicalRep p g) (hg_ne : ¬g.isEmpty)
     (hg_monic : Monic (SparsePolyZp.toPoly p g))

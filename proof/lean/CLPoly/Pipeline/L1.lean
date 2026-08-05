@@ -4,8 +4,7 @@
   用 L1 `_ir` 函数（来自 Corpus.lean，翻译自 C++）实例化 factor_Zp_correct。
   精化定理填补后，此文件直接验证翻译出的 C++ 代码。
 
-  当前已闭合的 L1 覆盖：SQF 与 DDF 的 total safe 路径。
-  EDF 仍暂用 L2 `edf_correct_unconditional`。
+  当前已闭合的 L1 覆盖：SQF、DDF 与 EDF 的 total safe 路径。
 -/
 
 import CLPoly.Pipeline.FactorZp
@@ -302,69 +301,20 @@ theorem ddf_l1_correct (hp_size : 2 * p ≤ UInt64.size)
     exact ddf_correct f hm hsq
 
 -- ============================================================
--- §3. EDF（使用 __edf_Zp_ir，C++ 翻译）
---     正确性由 `__edf_Zp_ir_refines` + `edf_correct_unconditional` 保证。
+-- §3. EDF（总化精化边界）
+--     生成函数的无界随机重试不对任意 RNG 终止；详见 Refinement/EDF.lean。
 -- ============================================================
 
-/-- L1 edf wrapper — 使用 `__edf_Zp_ir`（Corpus.lean，翻译自 C++）。
-    当 `__edf_Zp_ir_refines` 填补后，将比对 C++ 输出与 L2 `edf` 的一致性。 -/
+/-- L1 EDF wrapper：调用精化层的总化入口。 -/
 noncomputable def edf_l1 (hp_size : 2 * p ≤ UInt64.size) (g : (ZMod p)[X]) (d : ℕ)
     : List ((ZMod p)[X]) :=
-  if hg_deg : g.natDegree = 0 then []
-  else
-    if hpre : Monic g ∧ Squarefree g ∧ 0 < d ∧
-        (∀ q : (ZMod p)[X], Irreducible q → q ∣ g → q.natDegree = d) then
-      (edf_correct_unconditional g d hpre.1 hpre.2.1
-        (Nat.pos_of_ne_zero hg_deg) hpre.2.2.1 hpre.2.2.2).choose
-    else [g]
+  Refinement.edfZpSafe g d
 
 theorem edf_l1_correct (hp_size : 2 * p ≤ UInt64.size) (g : (ZMod p)[X]) (d : ℕ)
     (hm : Monic g) (hsq : Squarefree g)
     (hdeg : ∀ q, Irreducible q → q ∣ g → q.natDegree = d) :
     EDFCorrect g d (edf_l1 hp_size g d) := by
-  by_cases hg_deg : g.natDegree = 0
-  · have htarget : edf_l1 hp_size g d = [] := by
-      unfold edf_l1
-      rw [dif_pos hg_deg]
-    rw [htarget]
-    have hg_eq_one : g = 1 := by
-      have hg_eq := Polynomial.eq_C_of_natDegree_eq_zero hg_deg
-      have h_lc : g.coeff 0 = 1 := by
-        have := hm.leadingCoeff
-        rw [Polynomial.leadingCoeff, hg_deg] at this
-        exact this
-      rw [hg_eq, h_lc, map_one]
-    subst hg_eq_one
-    exact ⟨Associated.refl 1, by intro q hq; simp at hq⟩
-  · have hg_pos : 0 < g.natDegree := Nat.pos_of_ne_zero hg_deg
-    have hg_nu : ¬IsUnit g := fun hu =>
-      absurd (natDegree_eq_zero_of_isUnit hu) hg_deg
-    obtain ⟨q₀, hq₀_irr, hq₀_dvd⟩ :=
-      WfDvdMonoid.exists_irreducible_factor hg_nu (Monic.ne_zero hm)
-    have hd_pos : 0 < d := by
-      rw [← hdeg q₀ hq₀_irr hq₀_dvd]
-      have hq_nu : ¬ IsUnit q₀ := hq₀_irr.1
-      by_contra hzero
-      have hzero' : q₀.natDegree = 0 := Nat.eq_zero_of_not_pos hzero
-      have hconst : q₀ = Polynomial.C (q₀.coeff 0) :=
-        Polynomial.eq_C_of_natDegree_eq_zero hzero'
-      have hc_ne_zero : q₀.coeff 0 ≠ 0 := by
-        intro hc0
-        apply hq₀_irr.ne_zero
-        rw [hconst, hc0, Polynomial.C_0]
-      have h_unit : IsUnit q₀ := by
-        rw [hconst]
-        refine Polynomial.isUnit_C.mpr ?_
-        refine ⟨⟨q₀.coeff 0, (q₀.coeff 0)⁻¹, ?_, ?_⟩, rfl⟩
-        · field_simp [hc_ne_zero]
-        · field_simp [hc_ne_zero]
-      exact hq_nu h_unit
-    have htarget : edf_l1 hp_size g d = (edf_correct_unconditional g d hm hsq hg_pos hd_pos hdeg).choose := by
-      unfold edf_l1
-      rw [dif_neg hg_deg]
-      rw [dif_pos ⟨hm, hsq, hd_pos, hdeg⟩]
-    rw [htarget]
-    exact (edf_correct_unconditional g d hm hsq hg_pos hd_pos hdeg).choose_spec
+  exact Refinement.edfZpSafe_correct g d hm hsq hdeg
 
 -- ============================================================
 -- §4. Zp 因式分解端到端定理（L1 包装）
@@ -440,16 +390,16 @@ lemma recombine_l1_correct (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (f : Poly
 /-- C++ 翻译代码的 Z[x] 因式分解正确性定理。
 
     使用 L1 包装（C++ 翻译函数）实例化 `factor_ZZ_correct` 的三个子过程。
-    当前 L1 包装中 SQF 与 DDF 已使用验证过的 total safe 路径；EDF 仍待精化。
+    当前 L1 包装中 SQF、DDF 与 EDF 已使用验证过的 total safe 路径。
     Hensel 和 Recombine 同理。
 
     精化定理状态：
      - ✅ `__squarefree_Zp_ir_refines`
      - ✅ `ddfZpSafe_refines`
+     - ✅ `edfZpSafe_correct`（partial RNG 入口的总化规格边界）
      - ✅ `__symmetric_mod_ir_refines`
      - ❌ `__binomial_ir_refines`
      - ❌ `__isqrt_ceil_ir_refines`
-     - ❌ `__edf_Zp_ir_refines`（待新增）
      - ❌ `__hensel_lift_*_ir_refines`（待新增）
      - ❌ `__recombine_*_ir_refines`（待新增）
  -/

@@ -244,8 +244,19 @@ theorem sqfZp_l1_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt
     have hdle : x.1.deg ≤ f.natDegree := toSparsePolyZp_deg_le f x hx
     have hnp : f.natDegree ≤ f.natDegree * p := Nat.le_mul_of_pos_right _ hppos
     omega
+  have hf_signed : f.natDegree < 2 ^ 63 := by
+    have hp_ge_two : 2 ≤ p := (Fact.out (p := Nat.Prime p)).two_le
+    have htwop : f.natDegree * 2 ≤ f.natDegree * p :=
+      Nat.mul_le_mul_left f.natDegree hp_ge_two
+    have hlt : f.natDegree * 2 < 2 ^ 64 := lt_of_le_of_lt htwop hdeg
+    norm_num [pow_succ] at hlt ⊢
+    omega
+  have h_signed_deg_bound : ∀ x ∈ (toSparsePolyZp f).toList, x.1.deg < 2 ^ 63 := by
+    intro x hx
+    exact lt_of_le_of_lt (toSparsePolyZp_deg_le f x hx) hf_signed
   have h_refines : toPolyList (__squarefree_Zp_ir_safe p (toSparsePolyZp f)) p = sqfZp f := by
-    have h := __squarefree_Zp_ir_refines p (toSparsePolyZp f) hwf hred hp_size h_no_overflow h_deg_bound
+    have h := __squarefree_Zp_ir_refines p (toSparsePolyZp f) (toSparsePolyZp_sorted f)
+      hwf hred hp_size hp2 h_no_overflow h_deg_bound h_signed_deg_bound
       (toSparsePolyZp_val_nonzero f hp_size)
     rw [toSparsePolyZp_toPoly f hp_size] at h
     exact h

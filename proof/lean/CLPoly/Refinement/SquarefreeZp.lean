@@ -758,6 +758,22 @@ private lemma nonzeroB_of_val_nonzero (f : SparsePolyZp)
         exact ⟨hl a (by simp), ih (fun x hx => hl x (List.mem_cons_of_mem a hx))⟩
   exact aux f.toList h
 
+private lemma val_nonzero_of_nonzeroB (f : SparsePolyZp)
+    (h : SparsePolyZp.NonZeroB f) : ∀ x ∈ f.toList, x.2.val ≠ 0 := by
+  unfold SparsePolyZp.NonZeroB at h
+  have aux : ∀ l : List (UMonomial × Zp),
+      SparsePolyZp.nonzeroListB l = true → ∀ x ∈ l, x.2.val ≠ 0 := by
+    intro l
+    induction l with
+    | nil => simp
+    | cons a rest ih =>
+        intro hl x hx
+        rw [SparsePolyZp.nonzeroListB_cons] at hl
+        rcases List.mem_cons.mp hx with rfl | hx
+        · exact hl.1
+        · exact ih hl.2 x hx
+  exact aux f.toList h
+
 private lemma sortedListB_filterMap_pred
     (G : (UMonomial × Zp) → Option (UMonomial × Zp))
     (hG : ∀ x y, G x = some y → y.1.deg + 1 = x.1.deg) :
@@ -840,6 +856,74 @@ private lemma derivative_canonical (f : SparsePolyZp) (hf : CanonicalRep p f)
         rw [UInt64.lt_iff_toNat_lt, hprime]
         exact hp.out.pos)
   exact ⟨hsorted, hnonzero, hreduced⟩
+
+private lemma derivative_deg_bound_of (B : Nat) (f : SparsePolyZp)
+    (hdeg : ∀ x ∈ f.toList, x.1.deg < B) :
+    ∀ x ∈ (SparsePolyZp.derivative f).toList, x.1.deg < B := by
+  intro y hy
+  unfold SparsePolyZp.derivative at hy
+  split at hy
+  · simp at hy
+  · rw [Array.toList_filterMap] at hy
+    rcases List.mem_filterMap.mp hy with ⟨x, hx, hxy⟩
+    simp only at hxy
+    split at hxy <;> try contradiction
+    split at hxy <;> try contradiction
+    injection hxy with hxy
+    have hydeg : y.1.deg = x.1.deg - 1 := by
+      simpa using congrArg (fun z : UMonomial × Zp => z.1.deg) hxy.symm
+    rw [hydeg]
+    exact lt_of_le_of_lt (Nat.sub_le _ _) (hdeg x hx)
+
+/-- 若稀疏求导在 `ZMod p` 上为空，则每个存储项的次数都被 `p` 整除。 -/
+private lemma degree_dvd_of_derivative_empty (f : SparsePolyZp)
+    (hf : CanonicalRep p f) (hfne : ¬f.isEmpty)
+    (hderiv : SparsePolyZp.derivative f = SparsePolyZp.empty)
+    (h_no_overflow : ∀ x ∈ f.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
+    (h_deg_bound : ∀ x ∈ f.toList, x.1.deg < 2 ^ 64) :
+    ∀ x ∈ f.toList, p ∣ x.1.deg := by
+  let D : (UMonomial × Zp) → Option (UMonomial × Zp) := fun x =>
+    if x.1.deg = 0 then none
+    else
+      let v := x.2.val * x.1.deg.toUInt64 % f[0]!.2.prime
+      if v = 0 then none else some (⟨x.1.deg - 1⟩, ⟨v, f[0]!.2.prime⟩)
+  have hfilter : f.toList.filterMap D = [] := by
+    have h := congrArg Array.toList hderiv
+    simpa [SparsePolyZp.derivative, hfne, SparsePolyZp.empty, D] using h
+  have hfrontmem : f[0]! ∈ f.toList := mem_getFirst_toList f (by
+    rw [Array.isEmpty_iff_size_eq_zero] at hfne
+    omega)
+  have hprime : f[0]!.2.prime.toNat = p := (hf.2.2 f[0]! hfrontmem).1
+  intro x hx
+  by_cases hd0 : x.1.deg = 0
+  · simp [hd0]
+  have hv0 : x.2.val * x.1.deg.toUInt64 % f[0]!.2.prime = 0 := by
+    by_contra hv
+    have hm : (⟨x.1.deg - 1⟩,
+        ⟨x.2.val * x.1.deg.toUInt64 % f[0]!.2.prime,
+          f[0]!.2.prime⟩) ∈ f.toList.filterMap D := by
+      apply List.mem_filterMap.mpr
+      refine ⟨x, hx, ?_⟩
+      simp [D, hd0, hv]
+    rw [hfilter] at hm
+    simp at hm
+  have hdeg_round : x.1.deg.toUInt64.toNat = x.1.deg := by
+    have hm := Nat.mod_eq_of_lt (h_deg_bound x hx)
+    simpa [UInt64.toNat_ofNat] using hm
+  have hmul_round : (x.2.val * x.1.deg.toUInt64).toNat =
+      x.2.val.toNat * x.1.deg := by
+    rw [UInt64.toNat_mul, hdeg_round,
+      Nat.mod_eq_of_lt (h_no_overflow x hx)]
+  have hmod0 : (x.2.val.toNat * x.1.deg) % p = 0 := by
+    have h := congrArg UInt64.toNat hv0
+    simpa [UInt64.toNat_mod, hmul_round, hprime] using h
+  have hdvd_mul : p ∣ x.2.val.toNat * x.1.deg := Nat.dvd_of_mod_eq_zero hmod0
+  rcases hp.out.dvd_mul.mp hdvd_mul with hval | hdeg
+  · have hval_lt := (hf.2.2 x hx).2
+    have hval0 := Nat.eq_zero_of_dvd_of_lt hval hval_lt
+    exact False.elim ((val_nonzero_of_nonzeroB f hf.2.1 x hx)
+      (UInt64.toNat_inj.mp (by simpa using hval0)))
+  · exact hdeg
 
 private lemma isChain_of_sortedListB : ∀ xs : List (UMonomial × Zp),
     SparsePolyZp.sortedListB xs = true →
@@ -2315,6 +2399,25 @@ lemma upoly_make_monic_wellFormed (f : SparsePolyZp) (hwf : SparsePolyZp.WellFor
     rcases List.mem_map.mp hx_mem with ⟨y, hy, rfl⟩
     exact hwf y (Array.Mem.mk hy)
 
+/-- `__upoly_make_monic_ir` 只改变系数，保持严格降序的稀疏表示。 -/
+lemma upoly_make_monic_sorted (f : SparsePolyZp) (hs : SparsePolyZp.Sorted f) :
+    SparsePolyZp.Sorted (Generated.__upoly_make_monic_ir f).snd := by
+  unfold SparsePolyZp.Sorted
+  simp [Generated.__upoly_make_monic_ir, Generated.__upoly_make_monic_ir_def]
+  split_ifs with h
+  · exact hs
+  · have hloop :
+        (Generated._loop___upoly_make_monic_0_ir 0 f
+          (Zp.inv ((SparsePolyZp.front! f).snd))).snd.toList =
+        f.toList.map (fun (m, x) =>
+          (m, x * Zp.inv ((SparsePolyZp.front! f).snd))) := by
+        have hres := loop_result_toList f
+          (Zp.inv ((SparsePolyZp.front! f).snd)) 0 (Nat.zero_le _)
+        simpa [List.take, List.drop] using hres
+    rw [hloop]
+    exact (SparsePolyZp.sortedListB_map_fst _
+      (by rintro ⟨m, c⟩; rfl) f.toList).trans hs
+
 /-- `__upoly_make_monic_ir` 不改变项的次数，因而保持任意次数上界。 -/
 lemma upoly_make_monic_deg_bound_of (B : Nat) (f : SparsePolyZp)
     (h_deg_bound : ∀ x ∈ f.toList, x.1.deg < B) :
@@ -2756,6 +2859,70 @@ private lemma Φ_deg_div (x : UMonomial × Zp) (p_1 : UInt64) (hp_1_eq_p : p_1.t
         simpa [UInt64.toNat_ofNat] using this
       rw [h_degU64_toNat]
     _ = (x.1.deg : ℕ) / p := by rw [hp_1_eq_p]
+
+private lemma sortedListB_map_of_strict
+    (F : UMonomial × Zp → UMonomial × Zp) :
+    ∀ l : List (UMonomial × Zp), SparsePolyZp.sortedListB l = true →
+      (∀ a ∈ l, ∀ b ∈ l, b.1.deg < a.1.deg → (F b).1.deg < (F a).1.deg) →
+      SparsePolyZp.sortedListB (l.map F) = true := by
+  intro l
+  induction l with
+  | nil => simp [SparsePolyZp.sortedListB]
+  | cons a rest ih =>
+      intro hs hstrict
+      rw [List.map_cons, SparsePolyZp.sortedListB_iff]
+      have hst := (SparsePolyZp.sortedListB_iff a rest).mp hs
+      constructor
+      · intro z hz
+        rcases List.mem_map.mp hz with ⟨b, hb, rfl⟩
+        exact hstrict a (by simp) b (List.mem_cons_of_mem a hb) (hst.1 b hb)
+      · exact ih hst.2 (by
+          intro x hx y hy hxy
+          exact hstrict x (List.mem_cons_of_mem a hx) y
+            (List.mem_cons_of_mem a hy) hxy)
+
+/-- `derivative = 0` 分支中，p 次根保持稀疏规范形和严格次数顺序。 -/
+private lemma extract_pth_root_canonical (g : SparsePolyZp) (hg : CanonicalRep p g)
+    (hgne : ¬g.isEmpty)
+    (hderiv : SparsePolyZp.derivative g = SparsePolyZp.empty)
+    (h_no_overflow : ∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
+    (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 64) :
+    CanonicalRep p (Generated.__extract_pth_root_ir g) := by
+  let p_1 := (SparsePolyZp.front! g).snd.prime
+  let F : UMonomial × Zp → UMonomial × Zp := fun x =>
+    (UMonomial.mk ((x.1.deg.toUInt64 / p_1).toInt64), x.2)
+  have hlist : (Generated.__extract_pth_root_ir g).toList = g.toList.map F := by
+    unfold Generated.__extract_pth_root_ir Generated.__extract_pth_root_ir_def
+    have h := loop_extract_toList g SparsePolyZp.empty 0 p_1 (by simp)
+    simpa [SparsePolyZp.empty, List.drop, F, p_1] using h
+  have hfrontmem : g[0]! ∈ g.toList := mem_getFirst_toList g (by
+    rw [Array.isEmpty_iff_size_eq_zero] at hgne
+    omega)
+  have hp1 : p_1.toNat = p := by
+    simpa [p_1] using (hg.2.2 g[0]! hfrontmem).1
+  have hdvd := degree_dvd_of_derivative_empty (p := p) g hg hgne hderiv
+    h_no_overflow h_deg_bound
+  have hsorted : SparsePolyZp.Sorted (Generated.__extract_pth_root_ir g) := by
+    unfold SparsePolyZp.Sorted
+    rw [hlist]
+    apply sortedListB_map_of_strict F g.toList hg.1
+    intro a ha b hb hba
+    rw [show (F b).1.deg = b.1.deg / p by
+          exact Φ_deg_div (p := p) b p_1 hp1 (h_deg_bound b hb),
+      show (F a).1.deg = a.1.deg / p by
+          exact Φ_deg_div (p := p) a p_1 hp1 (h_deg_bound a ha)]
+    apply (Nat.div_lt_iff_lt_mul hp.out.pos).mpr
+    rw [Nat.div_mul_cancel (hdvd a ha)]
+    exact hba
+  have hnonzero : SparsePolyZp.NonZeroB (Generated.__extract_pth_root_ir g) := by
+    apply nonzeroB_of_val_nonzero
+    intro x hx
+    have hxnat := extract_pth_root_val_nonzero g
+      (fun y hy => by
+        exact fun hz => (val_nonzero_of_nonzeroB g hg.2.1 y hy)
+          (UInt64.toNat_inj.mp (by simpa using hz))) x hx
+    exact fun hz => hxnat (hz ▸ rfl)
+  exact ⟨hsorted, hnonzero, extract_pth_root_allReduced g hg.2.2⟩
 
 -- ============================================================
 -- §2b. 辅助引理：Φ 映射下的系数对应
@@ -3212,11 +3379,14 @@ set_option maxHeartbeats 0 in
 /-- 主正确性定理（使用 safe wrapper） -/
 theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (f : SparsePolyZp)
+    (hsorted_f : SparsePolyZp.Sorted f)
     (hwf_f : SparsePolyZp.WellFormed p f)
     (hred_f : SparsePolyZp.AllReduced p f.toList)
     (hp_size : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size)
     (h_no_overflow : ∀ x ∈ f.toList, x.2.val.toNat * x.1.deg < 2 ^ 64)
     (h_deg_bound : ∀ x ∈ f.toList, x.1.deg < 2 ^ 64)
+    (h_signed_deg_bound : ∀ x ∈ f.toList, x.1.deg < 2 ^ 63)
     (h_val_nonzero_f : ∀ x ∈ f.toList, x.snd.val.toNat ≠ 0)
     :   toPolyList (__squarefree_Zp_ir_safe p f) p = sqfZp (SparsePolyZp.toPoly p f) := by
   unfold __squarefree_Zp_ir_safe
@@ -3227,19 +3397,23 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     have h_main : toPolyList (__squarefree_Zp_ir_safe p f) p = sqfZp (SparsePolyZp.toPoly p f) := by
       suffices ∀ n, ∀ (g : SparsePolyZp),
           (SparsePolyZp.toPoly p g).natDegree = n →
+          SparsePolyZp.Sorted g →
           SparsePolyZp.WellFormed p g →
           SparsePolyZp.AllReduced p g.toList →
           2 * p ≤ UInt64.size →
+          p * p ≤ UInt64.size →
           (∀ x ∈ g.toList, x.2.val.toNat * x.1.deg < 2 ^ 64) →
           (∀ x ∈ g.toList, x.1.deg < 2 ^ 64) →
+          (∀ x ∈ g.toList, x.1.deg < 2 ^ 63) →
           (∀ x ∈ g.toList, x.snd.val.toNat ≠ 0) →
           toPolyList (__squarefree_Zp_ir_safe p g) p = sqfZp (SparsePolyZp.toPoly p g) from
-        this (SparsePolyZp.toPoly p f).natDegree f rfl hwf_f hred_f hp_size h_no_overflow h_deg_bound
-          h_val_nonzero_f
+        this (SparsePolyZp.toPoly p f).natDegree f rfl hsorted_f hwf_f hred_f hp_size hp2
+          h_no_overflow h_deg_bound h_signed_deg_bound h_val_nonzero_f
       intro n
       induction n using Nat.strongRecOn with
       | ind n ih =>
-        intro g h_deg_eq hwf_g hred_g hp_size h_no_overflow_g h_deg_bound_g h_val_nonzero_g
+        intro g h_deg_eq hsorted_g hwf_g hred_g hp_size hp2 h_no_overflow_g h_deg_bound_g
+          h_signed_deg_bound_g h_val_nonzero_g
         unfold __squarefree_Zp_ir_safe
         by_cases h_deg0_g : (SparsePolyZp.toPoly p g).natDegree = 0
         · simp [sqfZp, h_deg0_g, toPolyList_empty]
@@ -3287,10 +3461,24 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
               extract_pth_root_toPoly_eq g h_deriv0 hwf_g hred_g hp_size h_no_overflow_g h_deg_bound_g
             let g_1 := Generated.__extract_pth_root_ir g
             let g_2 := (Generated.__upoly_make_monic_ir g_1).snd
+            have hg_nonzeroB : SparsePolyZp.NonZeroB g := by
+              apply nonzeroB_of_val_nonzero
+              intro x hx hv
+              exact h_val_nonzero_g x hx (by simp [hv])
+            have hgcan : CanonicalRep p g := ⟨hsorted_g, hg_nonzeroB, hred_g⟩
+            have hgpolyne : SparsePolyZp.toPoly p g ≠ 0 := by
+              intro hz
+              simp [hz] at h_deg0_g
+            have hgne : ¬g.isEmpty := nonempty_of_toPoly_ne_zero (p := p) g hgpolyne
+            have hg1can : CanonicalRep p g_1 := by
+              simpa [g_1] using extract_pth_root_canonical (p := p) g hgcan hgne h_deriv0
+                h_no_overflow_g h_deg_bound_g
             have h_toPoly_g1 : SparsePolyZp.toPoly p g_1 = Polynomial.contract p (SparsePolyZp.toPoly p g) := h_extract_eq
             have h_wf_g1 : SparsePolyZp.WellFormed p g_1 := extract_pth_root_wellFormed g hwf_g
             have h_red_g1 : SparsePolyZp.AllReduced p g_1.toList := extract_pth_root_allReduced g hred_g
             have h_db_g1 : ∀ x ∈ g_1.toList, x.1.deg < 2 ^ 64 := extract_pth_root_deg_bound g h_deg_bound_g
+            have h_sdb_g1 : ∀ x ∈ g_1.toList, x.1.deg < 2 ^ 63 :=
+              extract_pth_root_signed_deg_bound g h_signed_deg_bound_g
             rcases @extract_pth_root_no_overflow p hp g hwf_g h_no_overflow_g h_deg_bound_g with ⟨h_nov_g1, h_p_mul_g1⟩
             have h_deg_g2_lt_n : (SparsePolyZp.toPoly p g_2).natDegree < n := by
               have h_nd_le : (SparsePolyZp.toPoly p g_2).natDegree ≤ (SparsePolyZp.toPoly p g_1).natDegree := by
@@ -3329,8 +3517,11 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                 exact h_contract_deg_lt
               omega
             have h_wf_g2 : SparsePolyZp.WellFormed p g_2 := upoly_make_monic_wellFormed g_1 h_wf_g1
+            have h_sorted_g2 : SparsePolyZp.Sorted g_2 := upoly_make_monic_sorted g_1 hg1can.1
             have h_red_g2 : SparsePolyZp.AllReduced p g_2.toList := upoly_make_monic_allReduced g_1 h_red_g1 hp_size
             have h_db_g2 : ∀ x ∈ g_2.toList, x.1.deg < 2 ^ 64 := upoly_make_monic_deg_bound g_1 h_db_g1
+            have h_sdb_g2 : ∀ x ∈ g_2.toList, x.1.deg < 2 ^ 63 :=
+              upoly_make_monic_deg_bound_of (2 ^ 63) g_1 h_sdb_g1
             have h_nov_g2 : ∀ x ∈ g_2.toList, x.2.val.toNat * x.1.deg < 2 ^ 64 :=
               upoly_make_monic_no_overflow g_1 h_red_g1 h_nov_g1 h_p_mul_g1 hp_size
             have hmem_front_g1 : (SparsePolyZp.front! g_1) ∈ g_1.toList := by
@@ -3392,7 +3583,7 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
                 exact Zp_mul_val_nonzero (h_red_g1 y hy) h_red_inv (h_val_nonzero_g1 y hy) h_inv_val_nonzero hp_size
             have h_ih_g2 : toPolyList (__squarefree_Zp_ir_safe p g_2) p = sqfZp (SparsePolyZp.toPoly p g_2) :=
               ih (SparsePolyZp.toPoly p g_2).natDegree h_deg_g2_lt_n g_2 rfl
-                h_wf_g2 h_red_g2 hp_size h_nov_g2 h_db_g2
+                h_sorted_g2 h_wf_g2 h_red_g2 hp_size hp2 h_nov_g2 h_db_g2 h_sdb_g2
                 h_val_nonzero_g2
             let p_1 : UInt64 := (SparsePolyZp.front! g).snd.prime
             have hp_1_eq_p : p_1.toNat = p := by
@@ -3618,6 +3809,96 @@ theorem __squarefree_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
             simp [h_deg0_g]
             exact h_result
           · -- Branch B: derivative ≠ 0 → Yun algorithm
+            have hg_nonzeroB : SparsePolyZp.NonZeroB g := by
+              apply nonzeroB_of_val_nonzero
+              intro x hx hv
+              exact h_val_nonzero_g x hx (by simp [hv])
+            have hgcan : CanonicalRep p g := ⟨hsorted_g, hg_nonzeroB, hred_g⟩
+            have hgpolyne : SparsePolyZp.toPoly p g ≠ 0 := by
+              intro hz
+              simp [hz] at h_deg0_g
+            have hgne : ¬g.isEmpty := nonempty_of_toPoly_ne_zero (p := p) g hgpolyne
+            let fd := SparsePolyZp.derivative g
+            have hfdcan : CanonicalRep p fd := by
+              simpa [fd] using derivative_canonical (p := p) g hgcan hgne
+            have hfdne : ¬fd.isEmpty := by simpa [fd] using h_deriv0
+            have hfdpolyne : SparsePolyZp.toPoly p fd ≠ 0 :=
+              toPoly_ne_zero_of_canonical_nonempty (p := p) fd hfdcan hfdne
+            have hfd_signed : ∀ x ∈ fd.toList, x.1.deg < 2 ^ 63 := by
+              simpa [fd] using derivative_deg_bound_of (2 ^ 63) g h_signed_deg_bound_g
+            let c1 := polynomial_GCD g fd
+            have hc1data := polynomial_GCD_step_data (p := p) hp_size hp2 g fd hgcan hfdcan hgpolyne
+            have hc1can : CanonicalRep p c1 := by simpa [c1] using hc1data.1
+            have hc1ne : ¬c1.isEmpty := by simpa [c1] using hc1data.2.1
+            have hc1poly : SparsePolyZp.toPoly p c1 = normalize
+                (EuclideanDomain.gcd (SparsePolyZp.toPoly p g)
+                  (SparsePolyZp.toPoly p fd)) := by
+              simpa [c1] using hc1data.2.2.1
+            have hc1monic : Monic (SparsePolyZp.toPoly p c1) := by
+              simpa [c1] using hc1data.2.2.2
+            have hc1polyne : SparsePolyZp.toPoly p c1 ≠ 0 :=
+              toPoly_ne_zero_of_canonical_nonempty (p := p) c1 hc1can hc1ne
+            have hc1dvd : SparsePolyZp.toPoly p c1 ∣ SparsePolyZp.toPoly p g := by
+              rw [hc1poly]
+              exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left _ _)
+            let wraw := (SparsePolyZp.divmod g c1).1
+            have hwrawcan : CanonicalRep p wraw := by
+              exact divmod_fst_canonical (p := p) g c1 hgcan hc1can hc1ne hp_size
+            have hwrawpoly : SparsePolyZp.toPoly p wraw =
+                SparsePolyZp.toPoly p g /ₘ SparsePolyZp.toPoly p c1 := by
+              simpa [wraw] using divmod_fst_toPoly_eq_divByMonic (p := p) hp_size hp2
+                g c1 hgcan hc1can hc1ne hc1monic hc1dvd
+            have hwrawpolyne : SparsePolyZp.toPoly p wraw ≠ 0 := by
+              rw [hwrawpoly]
+              exact divByMonic_ne_zero_local _ _ hc1monic hc1dvd hgpolyne
+            have hwrawne : ¬wraw.isEmpty :=
+              nonempty_of_toPoly_ne_zero (p := p) wraw hwrawpolyne
+            have hnormw : SparsePolyZp.normalization wraw = wraw :=
+              normalization_eq_of_nonZeroB wraw hwrawcan.2.1
+            let w3 := SparsePolyZp.normalization wraw
+            have hw3can : CanonicalRep p w3 := normalization_canonical wraw hwrawcan
+            have hw3poly : SparsePolyZp.toPoly p w3 = SparsePolyZp.toPoly p wraw := by
+              simpa [w3] using normalization_toPoly (p := p) wraw
+            have hgnd63 : (SparsePolyZp.toPoly p g).natDegree < 2 ^ 63 := by
+              rw [(toPoly_head_data (p := p) g hgcan hgne).1]
+              exact h_signed_deg_bound_g g[0]! (mem_getFirst_toList g (by
+                rw [Array.isEmpty_iff_size_eq_zero] at hgne
+                omega))
+            have hc1ndle : (SparsePolyZp.toPoly p c1).natDegree ≤
+                (SparsePolyZp.toPoly p g).natDegree :=
+              Polynomial.natDegree_le_of_dvd hc1dvd hgpolyne
+            have hwrawndle : (SparsePolyZp.toPoly p wraw).natDegree ≤
+                (SparsePolyZp.toPoly p g).natDegree := by
+              rw [hwrawpoly, Polynomial.natDegree_divByMonic _ hc1monic]
+              omega
+            have hc1signed : ∀ x ∈ c1.toList, x.1.deg < 2 ^ 63 :=
+              canonical_deg_bound_of_natDegree_lt (p := p) c1 hc1can
+                (lt_of_le_of_lt hc1ndle hgnd63)
+            have hwrawsigned : ∀ x ∈ wraw.toList, x.1.deg < 2 ^ 63 :=
+              canonical_deg_bound_of_natDegree_lt (p := p) wraw hwrawcan
+                (lt_of_le_of_lt hwrawndle hgnd63)
+            have hw3signed : ∀ x ∈ w3.toList, x.1.deg < 2 ^ 63 := by
+              simpa [w3, hnormw] using hwrawsigned
+            have hmul : SparsePolyZp.toPoly p c1 * SparsePolyZp.toPoly p wraw =
+                SparsePolyZp.toPoly p g := by
+              have hid := modByMonic_add_div (SparsePolyZp.toPoly p g)
+                (SparsePolyZp.toPoly p c1)
+              rw [(modByMonic_eq_zero_iff_dvd hc1monic).mpr hc1dvd, zero_add] at hid
+              simpa [hwrawpoly] using hid
+            have hdegsum : (SparsePolyZp.toPoly p w3).natDegree +
+                (SparsePolyZp.toPoly p c1).natDegree =
+                (SparsePolyZp.toPoly p g).natDegree := by
+              have hm := Polynomial.natDegree_mul hc1polyne hwrawpolyne
+              rw [hmul] at hm
+              rw [hw3poly]
+              omega
+            have hloopbound : (1 : UInt64).toNat +
+                (SparsePolyZp.toPoly p w3).natDegree +
+                (SparsePolyZp.toPoly p c1).natDegree + 2 < 2 ^ 64 := by
+              simp only [UInt64.toNat_ofNat]
+              omega
+            have hloop := yunLoop_ir_refines (p := p) hp_size hp2 (1 : UInt64) w3 c1 #[]
+              hw3can hc1can hw3signed hc1signed hc1polyne hc1monic hloopbound
             admit
     unfold __squarefree_Zp_ir_safe at h_main
     simpa using h_main

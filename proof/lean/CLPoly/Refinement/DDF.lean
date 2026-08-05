@@ -5,6 +5,7 @@ import CLPoly.Algorithm.DDF
 import CLPoly.Model
 import CLPoly.Generated.Corpus
 import CLPoly.Refinement.Basic
+import CLPoly.Refinement.SquarefreeZp
 import CLPoly.Math.Univariate
 
 set_option autoImplicit false
@@ -15,6 +16,56 @@ open CLPoly.Math
 namespace Refinement
 
 variable {p : ℕ} [hp : Fact (Nat.Prime p)]
+
+/-- `__upoly_mod_ir` 在规范输入上同时保持稀疏规范形，并精化为
+mathlib 的首一多项式余式。 -/
+private theorem upoly_mod_step_data (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (f g : SparsePolyZp)
+    (hf : CanonicalRep p f) (hg : CanonicalRep p g) (hg_ne : ¬g.isEmpty)
+    (hg_monic : Monic (SparsePolyZp.toPoly p g)) :
+    CanonicalRep p (Generated.__upoly_mod_ir f g) ∧
+      SparsePolyZp.toPoly p (Generated.__upoly_mod_ir f g) =
+        SparsePolyZp.toPoly p f %ₘ SparsePolyZp.toPoly p g := by
+  have hmod := __upoly_mod_ir_refines p f g (wellFormed_of_canonical f hf) hf.2.2
+    (wellFormed_of_canonical g hg) hg.2.2 h2p
+  rw [hmod]
+  exact ⟨divmod_snd_canonical f g hf hg hg_ne (by nlinarith),
+    divmod_snd_toPoly_eq_modByMonic h2p hp2 f g hf hg hg_ne hg_monic⟩
+
+/-- DDF/powmod 中的“先乘后取模”单步语义。 -/
+private theorem mul_mod_step_data (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (a b m : SparsePolyZp)
+    (ha : CanonicalRep p a) (hb : CanonicalRep p b) (hm : CanonicalRep p m)
+    (hm_ne : ¬m.isEmpty) (hm_monic : Monic (SparsePolyZp.toPoly p m)) :
+    CanonicalRep p (Generated.__upoly_mod_ir (a * b) m) ∧
+      SparsePolyZp.toPoly p (Generated.__upoly_mod_ir (a * b) m) =
+        (SparsePolyZp.toPoly p a * SparsePolyZp.toPoly p b) %ₘ
+          SparsePolyZp.toPoly p m := by
+  have hab := canonicalRep_mul hp2 a b ha hb
+  have hstep := upoly_mod_step_data h2p hp2 (a * b) m hab hm hm_ne hm_monic
+  refine ⟨hstep.1, ?_⟩
+  rw [hstep.2, SparsePolyZp.toPoly_mul p h2p hp2 a b ha.2.2 hb.2.2]
+
+private lemma modByMonic_idem (a m : Polynomial (ZMod p)) (hm : Monic m) :
+    (a %ₘ m) %ₘ m = a %ₘ m :=
+  (modByMonic_eq_self_iff hm).mpr (degree_modByMonic_lt a hm)
+
+private lemma mul_modByMonic_congr {a a' b b' m : Polynomial (ZMod p)}
+    (ha : a %ₘ m = a' %ₘ m) (hb : b %ₘ m = b' %ₘ m) :
+    (a * b) %ₘ m = (a' * b') %ₘ m := by
+  calc
+    (a * b) %ₘ m = (a %ₘ m) * (b %ₘ m) %ₘ m := Polynomial.mul_modByMonic _ _ _
+    _ = (a' %ₘ m) * (b' %ₘ m) %ₘ m := by rw [ha, hb]
+    _ = (a' * b') %ₘ m := (Polynomial.mul_modByMonic _ _ _).symm
+
+private lemma pow_modByMonic_congr {a b m : Polynomial (ZMod p)}
+    (h : a %ₘ m = b %ₘ m) : ∀ n : Nat, (a ^ n) %ₘ m = (b ^ n) %ₘ m := by
+  intro n
+  induction n with
+  | zero => simp
+  | succ n ih =>
+      rw [pow_succ, pow_succ]
+      exact mul_modByMonic_congr ih h
 
 /--
   L1 `__ddf_Zp_ir` (C++: `clpoly/polynomial_factorize_zp.hh`) → L2 `ddf`

@@ -1072,6 +1072,48 @@ private lemma val_ne_zero_of_nonzeroListB (xs : List (UMonomial × Zp))
       · exact hs.1
       · exact ih hs.2 x hx
 
+private lemma sortedListB_of_isChain : ∀ xs : List (UMonomial × Zp),
+    List.IsChain (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) xs →
+      SparsePolyZp.sortedListB xs = true := by
+  intro xs hchain
+  induction xs with
+  | nil => simp [SparsePolyZp.sortedListB]
+  | cons a rest ih =>
+      cases rest with
+      | nil => simp [SparsePolyZp.sortedListB]
+      | cons b tail =>
+          rw [SparsePolyZp.sortedListB_iff]
+          have hpw := List.isChain_iff_pairwise.mp hchain
+          exact ⟨(List.pairwise_cons.mp hpw).1, ih (List.isChain_cons.mp hchain).2⟩
+
+private lemma nonzeroListB_of_forall : ∀ xs : List (UMonomial × Zp),
+    (∀ x ∈ xs, x.snd.val ≠ 0) → SparsePolyZp.nonzeroListB xs = true := by
+  intro xs
+  induction xs with
+  | nil => simp [SparsePolyZp.nonzeroListB]
+  | cons a rest ih =>
+      intro h
+      rw [SparsePolyZp.nonzeroListB_cons]
+      exact ⟨h a List.mem_cons_self, ih (fun x hx => h x (List.mem_cons_of_mem _ hx))⟩
+
+/-- SQF/DDF 使用的布尔规范形与 `Math.Univariate` 中的结构化规范形等价。 -/
+theorem canonicalRep_iff_canonical (f : SparsePolyZp) :
+    CanonicalRep p f ↔ SparsePolyZp.Canonical p f := by
+  constructor
+  · intro hf
+    exact ⟨hf.2.2, isChain_of_sortedListB f.toList hf.1,
+      val_ne_zero_of_nonzeroListB f.toList hf.2.1⟩
+  · intro hf
+    exact ⟨sortedListB_of_isChain f.toList hf.2.1,
+      nonzeroListB_of_forall f.toList hf.2.2, hf.1⟩
+
+/-- 规范稀疏多项式在实现层乘法下封闭。 -/
+theorem canonicalRep_mul (hp2 : p * p ≤ UInt64.size) (f g : SparsePolyZp)
+    (hf : CanonicalRep p f) (hg : CanonicalRep p g) : CanonicalRep p (f * g) := by
+  rw [canonicalRep_iff_canonical]
+  exact SparsePolyZp.Canonical.mul p hp2 f g
+    ((canonicalRep_iff_canonical f).mp hf) ((canonicalRep_iff_canonical g).mp hg)
+
 private lemma nonzeroListB_filterMap_of_output
     (G : (UMonomial × Zp) → Option (UMonomial × Zp))
     (hG : ∀ x y, G x = some y → y.2.val ≠ 0) :
@@ -1355,7 +1397,7 @@ lemma get_deg_pos_iff (f : SparsePolyZp) (hf : CanonicalRep p f)
     rw [Int64.toInt_ofNat_of_lt hheadlt]
     exact_mod_cast (show 0 < f[0]!.fst.deg ↔ 0 < f[0]!.fst.deg from Iff.rfl)
 
-private lemma toPoly_ne_zero_of_canonical_nonempty (f : SparsePolyZp)
+lemma toPoly_ne_zero_of_canonical_nonempty (f : SparsePolyZp)
     (hf : CanonicalRep p f) (hne : ¬f.isEmpty) : SparsePolyZp.toPoly p f ≠ 0 := by
   have hdata := toPoly_head_data (p := p) f hf hne
   have hpos : 0 < f.size := by
@@ -1613,7 +1655,7 @@ private theorem divmod_snd_invariants_and_deg (f g : SparsePolyZp)
   rw [dif_pos hvalid]
   exact ⟨hinv.1, hinv.2.1, hinv.2.2, hdeg⟩
 
-private lemma divmod_snd_canonical (f g : SparsePolyZp)
+lemma divmod_snd_canonical (f g : SparsePolyZp)
     (hf : CanonicalRep p f) (hg : CanonicalRep p g) (hg_ne : ¬g.isEmpty)
     (hp_lt : p < UInt64.size) : CanonicalRep p (SparsePolyZp.divmod f g).2 := by
   have hvalid := divmod_valid_of_canonical f g hg_ne hf hg hp_lt
@@ -1973,6 +2015,55 @@ theorem divmod_fst_toPoly_eq_divByMonic (h2p : 2 * p ≤ UInt64.size)
       simpa only [Polynomial.degree_zero, bot_lt_iff_ne_bot, Polynomial.degree_ne_bot]
         using hg_monic.ne_zero⟩
   simpa [Q, F, G, q] using huniq.1.symm
+
+/-- 对规范输入及首一除数，实际 `divmod` 的余式等于 mathlib 的首一长除余式。 -/
+theorem divmod_snd_toPoly_eq_modByMonic (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (f g : SparsePolyZp)
+    (hf : CanonicalRep p f) (hg : CanonicalRep p g) (hg_ne : ¬g.isEmpty)
+    (hg_monic : Monic (SparsePolyZp.toPoly p g)) :
+    SparsePolyZp.toPoly p (SparsePolyZp.divmod f g).2 =
+      SparsePolyZp.toPoly p f %ₘ SparsePolyZp.toPoly p g := by
+  have hp_lt : p < UInt64.size := by nlinarith
+  have hvalid := divmod_valid_of_canonical f g hg_ne hf hg hp_lt
+  have hpos : 0 < g.size := by
+    rw [Array.isEmpty_iff_size_eq_zero] at hg_ne
+    omega
+  have hpm : g[0]!.snd.prime.toNat = p :=
+    (hg.2.2 g[0]! (mem_getFirst_toList g hpos)).1
+  have hid := divmod_toPoly_identity f g hvalid hpm h2p hp2
+  let q := (SparsePolyZp.divmod f g).1
+  let r := (SparsePolyZp.divmod f g).2
+  let F := SparsePolyZp.toPoly p f
+  let G := SparsePolyZp.toPoly p g
+  let Q := SparsePolyZp.toPoly p q
+  let R := SparsePolyZp.toPoly p r
+  have hGne : G ≠ 0 := by
+    exact toPoly_ne_zero_of_canonical_nonempty (p := p) g hg hg_ne
+  have hiden : F = Q * G + R := by simpa [F, G, Q, R, q, r] using hid
+  have hrdeg : R.degree < G.degree := by
+    have hi := divmod_snd_invariants_and_deg f g hvalid
+    rcases hi.2.2.2 with hr_empty | hr_lt
+    · have hr_arr : r = #[] := Array.eq_empty_of_size_eq_zero
+          (Array.isEmpty_iff_size_eq_zero.mp hr_empty)
+      simp [R, hr_arr, SparsePolyZp.toPoly_empty,
+        bot_lt_iff_ne_bot, Polynomial.degree_ne_bot, hGne]
+    · by_cases hr_ne : ¬r.isEmpty
+      · have hrcan : CanonicalRep p r := divmod_snd_canonical f g hf hg hg_ne hp_lt
+        have hrdata := toPoly_head_data (p := p) r hrcan hr_ne
+        have hgdata := toPoly_head_data (p := p) g hg hg_ne
+        have hRne : R ≠ 0 := by
+          exact toPoly_ne_zero_of_canonical_nonempty (p := p) r hrcan hr_ne
+        rw [Polynomial.degree_eq_natDegree hRne,
+          Polynomial.degree_eq_natDegree hg_monic.ne_zero]
+        exact_mod_cast (by simpa [R, G, r, hrdata.1, hgdata.1] using hr_lt)
+      · have hr_empty' : r.isEmpty := Decidable.not_not.mp hr_ne
+        have hr_arr : r = #[] := Array.eq_empty_of_size_eq_zero
+          (Array.isEmpty_iff_size_eq_zero.mp hr_empty')
+        simp [R, hr_arr, SparsePolyZp.toPoly_empty,
+          bot_lt_iff_ne_bot, Polynomial.degree_ne_bot, hGne]
+  have hdecomp : R + G * Q = F := by rw [hiden]; ring
+  have huniq := div_modByMonic_unique Q R hg_monic ⟨hdecomp, hrdeg⟩
+  simpa [R, F, G, r] using huniq.2.symm
 
 set_option maxHeartbeats 0 in
 private theorem yunLoop_ir_refines (h2p : 2 * p ≤ UInt64.size)

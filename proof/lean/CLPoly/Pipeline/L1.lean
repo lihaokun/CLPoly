@@ -44,15 +44,49 @@ variable {p : ℕ} [hp : Fact (Nat.Prime p)]
     利用 Polynomial.support（非零系数的度集合）构造项列表。
     noncomputable 因为 Polynomial 基于 Finsupp（非可计算）。 -/
 noncomputable def toSparsePolyZp (f : (ZMod p)[X]) : SparsePolyZp :=
-  (f.support.sort (· ≤ ·)).map (fun n =>
+  (f.support.sort (· ≥ ·)).map (fun n =>
     ({deg := n}, Zp.ofUInt64 (UInt64.ofNat (ZMod.val (f.coeff n))) (UInt64.ofNat p))
   ) |>.toArray
+
+private lemma sortedListB_of_pairwise : ∀ l : List (UMonomial × Zp),
+    l.Pairwise (fun a b => b.1.deg < a.1.deg) → SparsePolyZp.sortedListB l = true := by
+  intro l
+  induction l with
+  | nil => simp [SparsePolyZp.sortedListB]
+  | cons a rest ih =>
+      intro hs
+      rw [SparsePolyZp.sortedListB_iff]
+      exact ⟨(List.pairwise_cons.mp hs).1, ih (List.pairwise_cons.mp hs).2⟩
+
+private lemma pairwise_gt_of_pairwise_ge_nodup : ∀ l : List Nat,
+    l.Pairwise (· ≥ ·) → l.Nodup → l.Pairwise (· > ·) := by
+  intro l
+  induction l with
+  | nil => simp
+  | cons a rest ih =>
+      intro hge hnd
+      rw [List.pairwise_cons] at hge ⊢
+      rw [List.nodup_cons] at hnd
+      refine ⟨?_, ih hge.2 hnd.2⟩
+      intro b hb
+      have hab := hge.1 b hb
+      have hne : a ≠ b := fun he => hnd.1 (he ▸ hb)
+      omega
+
+lemma toSparsePolyZp_sorted (f : (ZMod p)[X]) :
+    SparsePolyZp.Sorted (toSparsePolyZp f) := by
+  unfold toSparsePolyZp SparsePolyZp.Sorted
+  simp only [List.toList_toArray]
+  apply sortedListB_of_pairwise
+  rw [List.pairwise_map]
+  simpa only using pairwise_gt_of_pairwise_ge_nodup (f.support.sort (· ≥ ·))
+    (Finset.sort_sorted f.support (· ≥ ·)) (Finset.sort_nodup f.support (· ≥ ·))
 
 lemma toSparsePolyZp_wellFormed (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.size) :
     SparsePolyZp.WellFormed p (toSparsePolyZp f) := by
   unfold toSparsePolyZp SparsePolyZp.WellFormed
   intro x hx
-  have hx_list : x ∈ ((f.support.sort (· ≤ ·)).map (fun n =>
+  have hx_list : x ∈ ((f.support.sort (· ≥ ·)).map (fun n =>
       ({deg := n}, Zp.ofUInt64 (UInt64.ofNat (ZMod.val (f.coeff n))) (UInt64.ofNat p)))) :=
     Array.mem_toArray.mp hx
   rcases List.mem_map.mp hx_list with ⟨n, hn, rfl⟩
@@ -86,12 +120,12 @@ lemma toSparsePolyZp_val_nonzero (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.s
   unfold toSparsePolyZp
   intro x hx
   -- x is in the array built from f.support; all support elements have non-zero coefficients
-  have hx_list : x ∈ ((f.support.sort (· ≤ ·)).map (fun n =>
+  have hx_list : x ∈ ((f.support.sort (· ≥ ·)).map (fun n =>
     ({deg := n}, Zp.ofUInt64 (UInt64.ofNat (ZMod.val (f.coeff n))) (UInt64.ofNat p)))).toArray.toList := hx
   rw [List.toList_toArray] at hx_list
   rcases List.mem_map.mp hx_list with ⟨n, hn, rfl⟩
   -- n ∈ f.support, so f.coeff n ≠ 0, so ZMod.val (f.coeff n) ≠ 0
-  have hn' : n ∈ f.support := Finset.mem_sort (· ≤ ·) |>.mp hn
+  have hn' : n ∈ f.support := Finset.mem_sort (· ≥ ·) |>.mp hn
   have h_coeff_ne_zero : f.coeff n ≠ 0 := Polynomial.mem_support_iff.mp hn'
   have h_val_ne_zero : ZMod.val (f.coeff n) ≠ 0 :=
     mt (ZMod.val_eq_zero _).mp h_coeff_ne_zero
@@ -136,8 +170,8 @@ lemma toSparsePolyZp_toPoly (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.size) 
         _ = ZMod.val (f.coeff n) % p := by simp [h1, hp_lt']
         _ = ZMod.val (f.coeff n) := Nat.mod_eq_of_lt (ZMod.val_lt (f.coeff n))
     simp [h_mod_toNat, ZMod.natCast_zmod_val]
-  have h_nodup : (f.support.sort (· ≤ ·)).Nodup :=
-    Finset.sort_nodup (s := f.support) (r := (· ≤ ·))
+  have h_nodup : (f.support.sort (· ≥ ·)).Nodup :=
+    Finset.sort_nodup (s := f.support) (r := (· ≥ ·))
   have hlistSum (l : List ℕ) (hn : l.Nodup) : listSum p (l.map (fun n =>
       ({deg := n}, Zp.ofUInt64 (UInt64.ofNat (ZMod.val (f.coeff n))) (UInt64.ofNat p)))) =
       ∑ n ∈ l.toFinset, monomial n (f.coeff n) := by
@@ -161,10 +195,10 @@ lemma toSparsePolyZp_toPoly (f : (ZMod p)[X]) (hp_size : 2 * p ≤ UInt64.size) 
             rw [Finset.sum_insert hx_not_mem_fs]
           _ = ∑ n ∈ (x :: xs).toFinset, monomial n (f.coeff n) := by simp
   calc
-    listSum p ((f.support.sort (· ≤ ·)).map (fun n =>
+    listSum p ((f.support.sort (· ≥ ·)).map (fun n =>
         ({deg := n}, Zp.ofUInt64 (UInt64.ofNat (ZMod.val (f.coeff n))) (UInt64.ofNat p)))) =
-      ∑ n ∈ ((f.support.sort (· ≤ ·)).toFinset), monomial n (f.coeff n) :=
-      hlistSum (f.support.sort (· ≤ ·)) h_nodup
+      ∑ n ∈ ((f.support.sort (· ≥ ·)).toFinset), monomial n (f.coeff n) :=
+      hlistSum (f.support.sort (· ≥ ·)) h_nodup
     _ = ∑ n ∈ f.support, monomial n (f.coeff n) := by simp
     _ = f := (Polynomial.as_sum_support f).symm
 

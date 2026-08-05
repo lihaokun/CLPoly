@@ -1805,6 +1805,10 @@ private theorem yunLoop_ir_refines (h2p : 2 * p ≤ UInt64.size)
       i.toNat + (SparsePolyZp.toPoly p w).natDegree +
           (SparsePolyZp.toPoly p c).natDegree + 2 < 2 ^ 64 →
       let out := Generated._loop___squarefree_Zp_1_ir_def i w c result
+      CanonicalRep p out.2.1 ∧
+      (∀ x ∈ out.2.1.toList, x.1.deg < 2 ^ 63) ∧
+      SparsePolyZp.toPoly p out.2.1 ≠ 0 ∧
+      Monic (SparsePolyZp.toPoly p out.2.1) ∧
       (toPolyList out.2.2 p, SparsePolyZp.toPoly p out.2.1) =
         yunLoop (SparsePolyZp.toPoly p w) (SparsePolyZp.toPoly p c) i.toNat
           (toPolyList result p) hcne := by
@@ -1818,6 +1822,10 @@ private theorem yunLoop_ir_refines (h2p : 2 * p ≤ UInt64.size)
     i.toNat + (SparsePolyZp.toPoly p w).natDegree +
         (SparsePolyZp.toPoly p c).natDegree + 2 < 2 ^ 64 →
     let out := Generated._loop___squarefree_Zp_1_ir_def i w c result
+    CanonicalRep p out.2.1 ∧
+    (∀ x ∈ out.2.1.toList, x.1.deg < 2 ^ 63) ∧
+    SparsePolyZp.toPoly p out.2.1 ≠ 0 ∧
+    Monic (SparsePolyZp.toPoly p out.2.1) ∧
     (toPolyList out.2.2 p, SparsePolyZp.toPoly p out.2.1) =
       yunLoop (SparsePolyZp.toPoly p w) (SparsePolyZp.toPoly p c) i.toNat
         (toPolyList result p) hcne
@@ -1953,9 +1961,14 @@ private theorem yunLoop_ir_refines (h2p : 2 * p ≤ UInt64.size)
       simpa [y, qc, hdivinst, hnormqc] using hmeasure
     rw [Generated._loop___squarefree_Zp_1_ir_def.eq_1, if_pos hcond]
     simp only [pair_vec_div, id_eq]
+    rw [dif_pos hdec_impl]
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · simpa [y, qc, pair_vec_div, hdivinst, hnormqc] using hih_raw.1
+    · simpa [y, qc, pair_vec_div, hdivinst, hnormqc] using hih_raw.2.1
+    · simpa [y, qc, pair_vec_div, hdivinst, normalization_toPoly] using hih_raw.2.2.1
+    · simpa [y, qc, pair_vec_div, hdivinst, normalization_toPoly] using hih_raw.2.2.2.1
     rw [yunLoop]
     rw [dif_neg hwpos.ne']
-    rw [dif_pos hdec_impl]
     have hYeq0 : SparsePolyZp.toPoly p (polynomial_GCD w c) =
         normalize (EuclideanDomain.gcd (SparsePolyZp.toPoly p w)
           (SparsePolyZp.toPoly p c)) := by
@@ -2009,7 +2022,7 @@ private theorem yunLoop_ir_refines (h2p : 2 * p ≤ UInt64.size)
       have hpush : toPolyList (result.push ((Generated.__upoly_make_monic_ir_def qw).snd, i)) p =
           toPolyList result p ++ [(normalize (SparsePolyZp.toPoly p qw), i.toNat)] := by
         simp [toPolyList, hzmake]
-      have hih_pos := hih_raw
+      have hih_pos := hih_raw.2.2.2.2
       simp [hzcond_raw, pair_vec_div, hdivinst, hnormqw_impl, hnormqc] at hih_pos
       rw [hih_pos]
       have hzprop : ¬(SparsePolyZp.divmod w (polynomial_GCD w c)).1 = #[] ∧
@@ -2053,7 +2066,7 @@ private theorem yunLoop_ir_refines (h2p : 2 * p ≤ UInt64.size)
               (0 : Int64))) = true := by
         simpa [qw, y] using hzcond
       simp [hdivinst, qw, y, hzcond, hnormqw]
-      have hih_neg := hih_raw
+      have hih_neg := hih_raw.2.2.2.2
       simp [hzcond_raw, pair_vec_div, hdivinst, hnormqw_impl, hnormqc] at hih_neg
       rw [hih_neg]
       have hz0 : (W /ₘ normalize (EuclideanDomain.gcd W C)).natDegree = 0 := by
@@ -2131,6 +2144,7 @@ private theorem yunLoop_ir_refines (h2p : 2 * p ≤ UInt64.size)
       exact (squarefree_loop_cond_iff (p := p) w hw hdw).mpr (Nat.pos_of_ne_zero hn)
     rw [Generated._loop___squarefree_Zp_1_ir_def.eq_1, if_neg hcond]
     unfold yunLoop
+    refine ⟨hc, hdc, hcne, hcmonic, ?_⟩
     rw [dif_pos hwzero]
 /-- __upoly_make_monic_ir 保持 AllReduced（需 hp_size 保证 UInt64 roundtrip）。 -/
 lemma upoly_make_monic_allReduced (f : SparsePolyZp) (hred : SparsePolyZp.AllReduced p f.toList)
@@ -2204,9 +2218,10 @@ lemma upoly_make_monic_wellFormed (f : SparsePolyZp) (hwf : SparsePolyZp.WellFor
     rcases List.mem_map.mp hx_mem with ⟨y, hy, rfl⟩
     exact hwf y (Array.Mem.mk hy)
 
-/-- __upoly_make_monic_ir 保持 degree bound。 -/
-lemma upoly_make_monic_deg_bound (f : SparsePolyZp) (h_deg_bound : ∀ x ∈ f.toList, x.1.deg < 2 ^ 64) :
-    ∀ x ∈ (Generated.__upoly_make_monic_ir f).snd.toList, x.1.deg < 2 ^ 64 := by
+/-- `__upoly_make_monic_ir` 不改变项的次数，因而保持任意次数上界。 -/
+lemma upoly_make_monic_deg_bound_of (B : Nat) (f : SparsePolyZp)
+    (h_deg_bound : ∀ x ∈ f.toList, x.1.deg < B) :
+    ∀ x ∈ (Generated.__upoly_make_monic_ir f).snd.toList, x.1.deg < B := by
   intro x hx
   simp [Generated.__upoly_make_monic_ir, Generated.__upoly_make_monic_ir_def] at hx ⊢
   split_ifs at hx with h
@@ -2222,6 +2237,12 @@ lemma upoly_make_monic_deg_bound (f : SparsePolyZp) (h_deg_bound : ∀ x ∈ f.t
       rw [← hloop]; exact hx_val
     rcases List.mem_map.mp hx_mem with ⟨y, hy, rfl⟩
     exact h_deg_bound y hy
+
+/-- `__upoly_make_monic_ir` 保持 UInt64 次数上界。 -/
+lemma upoly_make_monic_deg_bound (f : SparsePolyZp)
+    (h_deg_bound : ∀ x ∈ f.toList, x.1.deg < 2 ^ 64) :
+    ∀ x ∈ (Generated.__upoly_make_monic_ir f).snd.toList, x.1.deg < 2 ^ 64 :=
+  upoly_make_monic_deg_bound_of (2 ^ 64) f h_deg_bound
 
 /-- _loop___extract_pth_root_0_ir_def 的 toList = acc.toList ++ (drop idx f.toList).map Φ。 -/
 private lemma loop_extract_toList (f : SparsePolyZp) (acc : SparsePolyZp) (idx : Nat) (p_1 : UInt64) (hidx : idx ≤ Array.size f) :
@@ -2391,6 +2412,59 @@ lemma extract_pth_root_deg_bound (g : SparsePolyZp) (h_deg_bound : ∀ x ∈ g.t
           ≤ y.1.deg := hdiv_le
       _ < 2 ^ 64 := hdeg
   exact h_deg_bound'
+
+/-- `__extract_pth_root_ir` 保持 `get_deg` 的有符号 64 位安全范围。 -/
+lemma extract_pth_root_signed_deg_bound (g : SparsePolyZp)
+    (h_deg_bound : ∀ x ∈ g.toList, x.1.deg < 2 ^ 63) :
+    ∀ x ∈ (Generated.__extract_pth_root_ir g).toList, x.1.deg < 2 ^ 63 := by
+  have h_loop : (Generated.__extract_pth_root_ir g).toList =
+      g.toList.map (λ term : UMonomial × Zp =>
+        (UMonomial.mk ((term.1.deg.toUInt64 /
+          (SparsePolyZp.front! g).snd.prime).toInt64), term.2)) := by
+    unfold Generated.__extract_pth_root_ir Generated.__extract_pth_root_ir_def
+    have h := loop_extract_toList g SparsePolyZp.empty 0
+      (SparsePolyZp.front! g).snd.prime (by simp)
+    simpa [SparsePolyZp.empty, List.drop] using h
+  rw [h_loop]
+  intro x hx
+  rcases List.mem_map.mp hx with ⟨y, hy, rfl⟩
+  have hy63 := h_deg_bound y hy
+  have hy64 : y.1.deg < 2 ^ 64 := lt_trans hy63 (by norm_num)
+  have hU64_div (a b : UInt64) : (a / b).toNat = a.toNat / b.toNat := by
+    calc
+      (a / b).toNat = (a.toBitVec.udiv b.toBitVec).toNat := rfl
+      _ = a.toBitVec.toNat / b.toBitVec.toNat := by
+        unfold BitVec.udiv
+        simp
+      _ = a.toNat / b.toNat := by simp
+  have hdiv_le :
+      (UMonomial.mk ((y.1.deg.toUInt64 /
+        (SparsePolyZp.front! g).snd.prime).toInt64)).deg ≤ y.1.deg := by
+    have hclamp :
+        (UMonomial.mk ((y.1.deg.toUInt64 /
+          (SparsePolyZp.front! g).snd.prime).toInt64)).deg ≤
+          (y.1.deg.toUInt64 / (SparsePolyZp.front! g).snd.prime).toNat := by
+      calc
+        (UMonomial.mk ((y.1.deg.toUInt64 /
+            (SparsePolyZp.front! g).snd.prime).toInt64)).deg =
+            ((y.1.deg.toUInt64 /
+              (SparsePolyZp.front! g).snd.prime).toInt64).toNatClampNeg := rfl
+        _ ≤ (y.1.deg.toUInt64 /
+              (SparsePolyZp.front! g).snd.prime).toNat :=
+          UInt64_toInt64_toNatClampNeg_le_toNat _
+    calc
+      _ ≤ (y.1.deg.toUInt64 /
+          (SparsePolyZp.front! g).snd.prime).toNat := hclamp
+      _ = (y.1.deg.toUInt64).toNat /
+          (SparsePolyZp.front! g).snd.prime.toNat := by
+        rw [hU64_div]
+      _ = y.1.deg / (SparsePolyZp.front! g).snd.prime.toNat := by
+        have hround : (y.1.deg.toUInt64).toNat = y.1.deg := by
+          have hm : y.1.deg % 2 ^ 64 = y.1.deg := Nat.mod_eq_of_lt hy64
+          simpa [UInt64.toNat_ofNat] using hm
+        rw [hround]
+      _ ≤ y.1.deg := Nat.div_le_self _ _
+  exact lt_of_le_of_lt hdiv_le hy63
 
 private theorem UInt64_toNat_div (a b : UInt64) : (a / b).toNat = a.toNat / b.toNat := by
   calc

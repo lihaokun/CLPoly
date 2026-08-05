@@ -220,7 +220,11 @@ def __squarefree_Zp_ir_def (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :
     let g_1 : SparsePolyZp := (__extract_pth_root_ir_def f)
     let __refret_0_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir_def g_1)
     let g_2 : SparsePolyZp := __refret_0_1.snd
-    let sub_1 : Array (SparsePolyZp × UInt64) := (__squarefree_Zp_ir_def g_2)
+    let sub_1 : Array (SparsePolyZp × UInt64) :=
+      if hdec : squarefreeMeasure g_2 < squarefreeMeasure f then
+        __squarefree_Zp_ir_def g_2
+      else
+        #[]
     let __rangefor_cont_0_1 : Array (SparsePolyZp × UInt64) := sub_1
     let __rangefor_idx_0_1 : Nat := (0 : Nat)
     let __loop_ret___squarefree_Zp_0_1 : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) := (_loop___squarefree_Zp_0_ir_def __rangefor_idx_0_1 __rangefor_cont_0_1 result_1 p_1)
@@ -241,7 +245,11 @@ def __squarefree_Zp_ir_def (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :
       let g_3 : SparsePolyZp := (__extract_pth_root_ir_def c_2)
       let __refret_2_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir_def g_3)
       let g_4 : SparsePolyZp := __refret_2_1.snd
-      let sub_3 : Array (SparsePolyZp × UInt64) := (__squarefree_Zp_ir_def g_4)
+      let sub_3 : Array (SparsePolyZp × UInt64) :=
+        if hdec : squarefreeMeasure g_4 < squarefreeMeasure f then
+          __squarefree_Zp_ir_def g_4
+        else
+          #[]
       let __rangefor_cont_1_1 : Array (SparsePolyZp × UInt64) := sub_3
       let __rangefor_idx_1_1 : Nat := (0 : Nat)
       let __loop_ret___squarefree_Zp_2_1 : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) := (_loop___squarefree_Zp_2_ir_def __rangefor_idx_1_1 __rangefor_cont_1_1 result_4 p_1)
@@ -251,10 +259,10 @@ def __squarefree_Zp_ir_def (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :
       bb_17 result_7
     else
       bb_17 result_4
-termination_by get_deg f
+termination_by squarefreeMeasure f
 decreasing_by
-  · sorry
-  · sorry
+  all_goals try dsimp only at *
+  all_goals assumption
 
 mutual
 partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZZ) (deg : Int32) : (Int64 × (UMonomial × ZZ)) :=

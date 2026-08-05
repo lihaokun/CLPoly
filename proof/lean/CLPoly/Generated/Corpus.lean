@@ -179,29 +179,36 @@ decreasing_by
 
 private def _sep_sqfree_aux_3 : Unit := ()
 
-partial def _loop___squarefree_Zp_1_ir_def (i_2 : UInt64) (w_4 : SparsePolyZp) (c_2 : SparsePolyZp) (result_4 : Array (SparsePolyZp × UInt64)) : (Int64 × SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
-  let bb_14 := fun c_2 y_1 i_2 result_6 =>
+def squarefreeMeasure (f : SparsePolyZp) : Nat :=
+  if f.isEmpty then 0 else f[0]!.fst.deg + 1
+
+def _loop___squarefree_Zp_1_ir_def (i_2 : UInt64) (w_4 : SparsePolyZp) (c_2 : SparsePolyZp) (result_4 : Array (SparsePolyZp × UInt64)) : (Int64 × SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
+  if ((! (Array.isEmpty w_4)) && ((get_deg w_4) > (0 : Int64))) then
+    let y_1 : SparsePolyZp := (polynomial_GCD w_4 c_2)
+    let z_1 : SparsePolyZp := (SparsePolyZp.empty)
+    let z_2 : SparsePolyZp := (pair_vec_div z_1 w_4 y_1 (SparsePolyZp.comp w_4))
+    let z_3 : SparsePolyZp := (SparsePolyZp.normalization z_2)
+    let result_6 :=
+      if ((! (Array.isEmpty z_3)) && ((get_deg z_3) > (0 : Int64))) then
+        let __refret_1_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir_def z_3)
+        let z_4 : SparsePolyZp := __refret_1_1.snd
+        Array.push result_4 (((id z_4), i_2))
+      else result_4
     let c_new_1 : SparsePolyZp := (SparsePolyZp.empty)
     let c_new_2 : SparsePolyZp := (pair_vec_div c_new_1 c_2 y_1 (SparsePolyZp.comp c_2))
     let c_3 : SparsePolyZp := (id c_new_2)
     let c_4 : SparsePolyZp := (SparsePolyZp.normalization c_3)
     let w_5 : SparsePolyZp := (id y_1)
     let i_3 : UInt64 := (i_2 + (1 : UInt64))
-    _loop___squarefree_Zp_1_ir_def i_3 w_5 c_4 result_6
-  if ((! (Array.isEmpty w_4)) && ((get_deg w_4) > (0 : Int64))) then
-    let y_1 : SparsePolyZp := (polynomial_GCD w_4 c_2)
-    let z_1 : SparsePolyZp := (SparsePolyZp.empty)
-    let z_2 : SparsePolyZp := (pair_vec_div z_1 w_4 y_1 (SparsePolyZp.comp w_4))
-    let z_3 : SparsePolyZp := (SparsePolyZp.normalization z_2)
-    if ((! (Array.isEmpty z_3)) && ((get_deg z_3) > (0 : Int64))) then
-      let __refret_1_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir_def z_3)
-      let z_4 : SparsePolyZp := __refret_1_1.snd
-      let result_5 : Array (SparsePolyZp × UInt64) := (Array.push result_4 (((id z_4), i_2)))
-      bb_14 c_2 y_1 i_2 result_5
+    if hdec : squarefreeMeasure w_5 + squarefreeMeasure c_4 <
+        squarefreeMeasure w_4 + squarefreeMeasure c_2 then
+      _loop___squarefree_Zp_1_ir_def i_3 w_5 c_4 result_6
     else
-      bb_14 c_2 y_1 i_2 result_4
+      ((0 : Int64), c_4, result_6)
   else
     ((0 : Int64), c_2, result_4)
+termination_by squarefreeMeasure w_4 + squarefreeMeasure c_2
+decreasing_by assumption
 
 def __squarefree_Zp_ir_def (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :=
   let bb_17 := fun result_9 =>

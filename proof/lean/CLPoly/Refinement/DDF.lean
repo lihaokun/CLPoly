@@ -145,6 +145,20 @@ private lemma canonicalRep_sub (f g : SparsePolyZp)
     ((canonicalRep_iff_canonical f).mp hf)
     ((canonicalRep_iff_canonical (-g)).mp (canonicalRep_neg g hg))
 
+private lemma front_prime_of_canonical (f : SparsePolyZp)
+    (hf : CanonicalRep p f) (hne : ¬f.isEmpty) :
+    (SparsePolyZp.front! f).snd.prime.toNat = p := by
+  have hsize : 0 < f.size := by
+    rw [Array.isEmpty_iff_size_eq_zero] at hne
+    omega
+  have hlen : 0 < f.toList.length := by simpa using hsize
+  have hget : f[0]! = f.toList.get ⟨0, hlen⟩ := by
+    simp [getElem!_def, getElem?_def, hsize, hlen]
+  have hmem : f[0]! ∈ f.toList := by
+    rw [hget]
+    exact List.get_mem _ _
+  simpa [SparsePolyZp.front!] using (hf.2.2 f[0]! hmem).1
+
 set_option maxHeartbeats 0 in
 /-- 二进制 powmod 内循环在非负整数指数上的精确语义。 -/
 private theorem powmod_loop_refines (h2p : 2 * p ≤ UInt64.size)
@@ -304,24 +318,285 @@ private theorem upoly_subtract_x_safe_refines (h2p : 2 * p ≤ UInt64.size)
   refine ⟨canonicalRep_sub h _ hh hx.1, ?_⟩
   rw [SparsePolyZp.toPoly_sub p h2p h _ hh.2.2 hx.1.2.2, hx.2]
 
-/--
-  L1 `__ddf_Zp_ir` (C++: `clpoly/polynomial_factorize_zp.hh`) → L2 `ddf`
+/-- Total DDF loop mirroring the generated control flow.  The defensive
+`hdec` branch is unreachable under the refinement invariant and makes the
+degree decrease explicit to Lean. -/
+noncomputable def ddfZpLoopSafe (p : Nat) [Fact (Nat.Prime p)]
+    (q : UInt64) (h fStar : SparsePolyZp) (d : Nat)
+    (acc : Array (SparsePolyZp × UInt64)) :
+    Array (SparsePolyZp × UInt64) :=
+  if hterm : (SparsePolyZp.toPoly p fStar).natDegree < 2 * d then
+    if 0 < (SparsePolyZp.toPoly p fStar).natDegree then
+      acc.push (fStar, UInt64.ofNat (SparsePolyZp.toPoly p fStar).natDegree)
+    else
+      acc
+  else
+    let h' := Generated.upolyPowmodSafe Generated.__upoly_mod_ir h (q.toNat : Int) fStar
+    let hMinusX := Generated.upolySubtractXSafe h' q
+    let gd := polynomial_GCD hMinusX fStar
+    if 0 < (SparsePolyZp.toPoly p gd).natDegree then
+      let fNew := SparsePolyZp.normalization (SparsePolyZp.divmod fStar gd).1
+      if hdec : (SparsePolyZp.toPoly p fNew).natDegree <
+          (SparsePolyZp.toPoly p fStar).natDegree then
+        let hNew := Generated.__upoly_mod_ir h' fNew
+        ddfZpLoopSafe p q hNew fNew (d + 1)
+          (acc.push (gd, UInt64.ofNat d))
+      else
+        acc
+    else
+      ddfZpLoopSafe p q h' fStar (d + 1) acc
+termination_by (SparsePolyZp.toPoly p fStar).natDegree + 1 - 2 * d
+decreasing_by
+  · have hdec' : (SparsePolyZp.toPoly p
+        (SparsePolyZp.normalization (SparsePolyZp.divmod fStar
+          (polynomial_GCD
+            (Generated.upolySubtractXSafe
+              (Generated.upolyPowmodSafe Generated.__upoly_mod_ir h
+                (q.toNat : Int) fStar) q) fStar)).1)).natDegree <
+          (SparsePolyZp.toPoly p fStar).natDegree := by
+      simpa only [fNew, gd, hMinusX, h'] using hdec
+    omega
+  · omega
 
-  不同度数因子分解
+noncomputable def ddfZpSafe (p : Nat) [Fact (Nat.Prime p)]
+    (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :=
+  if f.isEmpty then #[]
+  else
+    let q := (SparsePolyZp.front! f).snd.prime
+    let x : SparsePolyZp := #[(UMonomial.mk (1 : Int32), Zp.ofInt (1 : Int) q)]
+    ddfZpLoopSafe p q x f 1 #[]
 
-  C++ source: `clpoly/polynomial_factorize_zp.hh` — Clang AST → cpp2lean v2 Pass 1-8 → Corpus.lean
-  L2 model : Algorithm/DDF.lean — hand-written, proven correct
-  Bridge   : SparsePolyZp.toPoly (see Math/Univariate.lean)
+set_option maxHeartbeats 0 in
+private theorem ddfZpLoopSafe_refines (q : UInt64)
+    (h fStar : SparsePolyZp) (d : Nat)
+    (acc : Array (SparsePolyZp × UInt64))
+    (h2p : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size)
+    (hq : q.toNat = p) (hd : 1 ≤ d)
+    (hh : CanonicalRep p h) (hf : CanonicalRep p fStar)
+    (hfmonic : Monic (SparsePolyZp.toPoly p fStar))
+    (hfdeg : (SparsePolyZp.toPoly p fStar).natDegree < UInt64.size) :
+    toPolyList (ddfZpLoopSafe p q h fStar d acc) p =
+      ddfLoop (SparsePolyZp.toPoly p h) (SparsePolyZp.toPoly p fStar) d
+        (toPolyList acc p) := by
+  revert hq hd hh hf hfmonic hfdeg
+  induction h, fStar, d, acc using ddfZpLoopSafe.induct p q
+  case case1 h fStar d acc hterm hpos =>
+    intro hq hd hh hf hfmonic hfdeg
+    rw [ddfZpLoopSafe, dif_pos hterm, if_pos hpos]
+    rw [ddfLoop, dif_pos hterm, if_pos hpos]
+    simp [toPolyList, UInt64.toNat_ofNat_of_lt' hfdeg]
+  case case2 h fStar d acc hterm hzero =>
+    intro hq hd hh hf hfmonic hfdeg
+    rw [ddfZpLoopSafe, dif_pos hterm, if_neg hzero]
+    rw [ddfLoop, dif_pos hterm, if_neg hzero]
+  case case3 h fStar d acc hterm h' hMinusX gd hsplit fNew hdec hNew ih =>
+    intro hq hd hh hf hfmonic hfdeg
+    have hfpos : 0 < (SparsePolyZp.toPoly p fStar).natDegree := by omega
+    have hfpoly : SparsePolyZp.toPoly p fStar ≠ 0 := by
+      intro hz
+      simp [hz] at hfpos
+    have hfne : ¬fStar.isEmpty :=
+      nonempty_of_toPoly_ne_zero (p := p) fStar hfpoly
+    have hfprime := front_prime_of_canonical fStar hf hfne
+    have hpow := upoly_powmod_safe_refines h2p hp2 h fStar p hp.out.pos
+      hh hf hfne hfmonic hfpos hfprime
+    have hpow' : CanonicalRep p h' ∧
+        SparsePolyZp.toPoly p h' =
+          SparsePolyZp.toPoly p h ^ p %ₘ SparsePolyZp.toPoly p fStar := by
+      simpa [h', hq] using hpow
+    have hsub := upoly_subtract_x_safe_refines h2p h' q hq hpow'.1
+    have hsub' : CanonicalRep p hMinusX ∧
+        SparsePolyZp.toPoly p hMinusX = SparsePolyZp.toPoly p h' - X := by
+      simpa [hMinusX] using hsub
+    have hgcd := polynomial_GCD_step_data_right (p := p) h2p hp2
+      hMinusX fStar hsub'.1 hf hfpoly
+    have hgdcan : CanonicalRep p gd := by simpa [gd] using hgcd.1
+    have hgdne : ¬gd.isEmpty := by simpa [gd] using hgcd.2.1
+    have hgdpoly : SparsePolyZp.toPoly p gd = normalize (EuclideanDomain.gcd
+        (SparsePolyZp.toPoly p h' - X) (SparsePolyZp.toPoly p fStar)) := by
+      simpa [gd, hsub'.2] using hgcd.2.2.1
+    have hgdmonic : Monic (SparsePolyZp.toPoly p gd) := by
+      simpa [gd] using hgcd.2.2.2
+    have hgddvd : SparsePolyZp.toPoly p gd ∣ SparsePolyZp.toPoly p fStar := by
+      rw [hgdpoly]
+      exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right _ _)
+    let qRaw := (SparsePolyZp.divmod fStar gd).1
+    have hqcan : CanonicalRep p qRaw :=
+      divmod_fst_canonical fStar gd hf hgdcan hgdne h2p
+    have hqpoly : SparsePolyZp.toPoly p qRaw =
+        SparsePolyZp.toPoly p fStar /ₘ SparsePolyZp.toPoly p gd :=
+      divmod_fst_toPoly_eq_divByMonic h2p hp2 fStar gd hf hgdcan hgdne
+        hgdmonic hgddvd
+    have hfnewcan : CanonicalRep p fNew := by
+      simpa [fNew, qRaw] using normalization_canonical qRaw hqcan
+    have hfnewpoly : SparsePolyZp.toPoly p fNew =
+        SparsePolyZp.toPoly p fStar /ₘ SparsePolyZp.toPoly p gd := by
+      simpa [fNew, qRaw, normalization_toPoly] using hqpoly
+    have hmodzero : SparsePolyZp.toPoly p fStar %ₘ SparsePolyZp.toPoly p gd = 0 :=
+      (modByMonic_eq_zero_iff_dvd hgdmonic).mpr hgddvd
+    have hfactor : SparsePolyZp.toPoly p gd * SparsePolyZp.toPoly p fNew =
+        SparsePolyZp.toPoly p fStar := by
+      rw [hfnewpoly]
+      have hadd := modByMonic_add_div (SparsePolyZp.toPoly p fStar)
+        (SparsePolyZp.toPoly p gd)
+      rw [hmodzero, zero_add] at hadd
+      exact hadd
+    have hfnewpoly0 : SparsePolyZp.toPoly p fNew ≠ 0 := by
+      intro hz
+      rw [hz, mul_zero] at hfactor
+      exact hfpoly hfactor.symm
+    have hfnewne : ¬fNew.isEmpty :=
+      nonempty_of_toPoly_ne_zero (p := p) fNew hfnewpoly0
+    have hfnewmonic : Monic (SparsePolyZp.toPoly p fNew) := by
+      exact Polynomial.Monic.of_mul_monic_left hgdmonic (hfactor ▸ hfmonic)
+    have hnewdata := upoly_mod_step_data h2p hp2 h' fNew hpow'.1 hfnewcan
+      hfnewne hfnewmonic
+    have hnewcan : CanonicalRep p hNew := by simpa [hNew] using hnewdata.1
+    have hnewpoly : SparsePolyZp.toPoly p hNew =
+        SparsePolyZp.toPoly p h' %ₘ SparsePolyZp.toPoly p fNew := by
+      simpa [hNew] using hnewdata.2
+    have hfnewdeg : (SparsePolyZp.toPoly p fNew).natDegree < UInt64.size :=
+      lt_trans hdec hfdeg
+    have hdsize : d < UInt64.size := by omega
+    have ih' := ih hq (by omega) hnewcan hfnewcan hfnewmonic hfnewdeg
+    rw [ddfZpLoopSafe, dif_neg hterm]
+    dsimp only
+    rw [if_pos hsplit, dif_pos hdec]
+    conv_rhs =>
+      rw [ddfLoop, dif_neg hterm]
+      dsimp only
+    have hsplitL2 : 0 < (normalize (EuclideanDomain.gcd
+        (SparsePolyZp.toPoly p h ^ p %ₘ SparsePolyZp.toPoly p fStar - X)
+        (SparsePolyZp.toPoly p fStar))).natDegree := by
+      rw [← hpow'.2, ← hgdpoly]
+      exact hsplit
+    conv_rhs => rw [dif_pos hsplitL2]
+    rw [ih']
+    simp [toPolyList, UInt64.toNat_ofNat_of_lt' hdsize, hgdpoly,
+      hfnewpoly, hnewpoly, hpow'.2]
+  case case4 h fStar d acc hterm h' hMinusX gd hsplit fNew hdecneg =>
+    intro hq hd hh hf hfmonic hfdeg
+    have hfpos : 0 < (SparsePolyZp.toPoly p fStar).natDegree := by omega
+    have hfpoly : SparsePolyZp.toPoly p fStar ≠ 0 := by
+      intro hz
+      simp [hz] at hfpos
+    have hfne : ¬fStar.isEmpty :=
+      nonempty_of_toPoly_ne_zero (p := p) fStar hfpoly
+    have hfprime := front_prime_of_canonical fStar hf hfne
+    have hpow := upoly_powmod_safe_refines h2p hp2 h fStar p hp.out.pos
+      hh hf hfne hfmonic hfpos hfprime
+    have hpow' : CanonicalRep p h' ∧
+        SparsePolyZp.toPoly p h' =
+          SparsePolyZp.toPoly p h ^ p %ₘ SparsePolyZp.toPoly p fStar := by
+      simpa [h', hq] using hpow
+    have hsub := upoly_subtract_x_safe_refines h2p h' q hq hpow'.1
+    have hsub' : CanonicalRep p hMinusX ∧
+        SparsePolyZp.toPoly p hMinusX = SparsePolyZp.toPoly p h' - X := by
+      simpa [hMinusX] using hsub
+    have hgcd := polynomial_GCD_step_data_right (p := p) h2p hp2
+      hMinusX fStar hsub'.1 hf hfpoly
+    have hgdcan : CanonicalRep p gd := by simpa [gd] using hgcd.1
+    have hgdne : ¬gd.isEmpty := by simpa [gd] using hgcd.2.1
+    have hgdpoly : SparsePolyZp.toPoly p gd = normalize (EuclideanDomain.gcd
+        (SparsePolyZp.toPoly p h' - X) (SparsePolyZp.toPoly p fStar)) := by
+      simpa [gd, hsub'.2] using hgcd.2.2.1
+    have hgdmonic : Monic (SparsePolyZp.toPoly p gd) := by
+      simpa [gd] using hgcd.2.2.2
+    have hgddvd : SparsePolyZp.toPoly p gd ∣ SparsePolyZp.toPoly p fStar := by
+      rw [hgdpoly]
+      exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right _ _)
+    let qRaw := (SparsePolyZp.divmod fStar gd).1
+    have hqcan : CanonicalRep p qRaw :=
+      divmod_fst_canonical fStar gd hf hgdcan hgdne h2p
+    have hqpoly : SparsePolyZp.toPoly p qRaw =
+        SparsePolyZp.toPoly p fStar /ₘ SparsePolyZp.toPoly p gd :=
+      divmod_fst_toPoly_eq_divByMonic h2p hp2 fStar gd hf hgdcan hgdne
+        hgdmonic hgddvd
+    have hfnewpoly : SparsePolyZp.toPoly p fNew =
+        SparsePolyZp.toPoly p fStar /ₘ SparsePolyZp.toPoly p gd := by
+      simpa [fNew, qRaw, normalization_toPoly] using hqpoly
+    have hmodzero : SparsePolyZp.toPoly p fStar %ₘ SparsePolyZp.toPoly p gd = 0 :=
+      (modByMonic_eq_zero_iff_dvd hgdmonic).mpr hgddvd
+    have hfactor : SparsePolyZp.toPoly p gd * SparsePolyZp.toPoly p fNew =
+        SparsePolyZp.toPoly p fStar := by
+      rw [hfnewpoly]
+      have hadd := modByMonic_add_div (SparsePolyZp.toPoly p fStar)
+        (SparsePolyZp.toPoly p gd)
+      rw [hmodzero, zero_add] at hadd
+      exact hadd
+    have hfnewpoly0 : SparsePolyZp.toPoly p fNew ≠ 0 := by
+      intro hz
+      rw [hz, mul_zero] at hfactor
+      exact hfpoly hfactor.symm
+    have hdegmul := Polynomial.natDegree_mul hgdmonic.ne_zero hfnewpoly0
+    rw [hfactor] at hdegmul
+    have hdec : (SparsePolyZp.toPoly p fNew).natDegree <
+        (SparsePolyZp.toPoly p fStar).natDegree := by omega
+    exact absurd hdec hdecneg
+  case case5 h fStar d acc hterm h' hMinusX gd hnosplit ih =>
+    intro hq hd hh hf hfmonic hfdeg
+    have hfpos : 0 < (SparsePolyZp.toPoly p fStar).natDegree := by omega
+    have hfpoly : SparsePolyZp.toPoly p fStar ≠ 0 := by
+      intro hz
+      simp [hz] at hfpos
+    have hfne : ¬fStar.isEmpty :=
+      nonempty_of_toPoly_ne_zero (p := p) fStar hfpoly
+    have hfprime := front_prime_of_canonical fStar hf hfne
+    have hpow := upoly_powmod_safe_refines h2p hp2 h fStar p hp.out.pos
+      hh hf hfne hfmonic hfpos hfprime
+    have hpow' : CanonicalRep p h' ∧
+        SparsePolyZp.toPoly p h' =
+          SparsePolyZp.toPoly p h ^ p %ₘ SparsePolyZp.toPoly p fStar := by
+      simpa [h', hq] using hpow
+    have hsub := upoly_subtract_x_safe_refines h2p h' q hq hpow'.1
+    have hsub' : CanonicalRep p hMinusX ∧
+        SparsePolyZp.toPoly p hMinusX = SparsePolyZp.toPoly p h' - X := by
+      simpa [hMinusX] using hsub
+    have hgcd := polynomial_GCD_step_data_right (p := p) h2p hp2
+      hMinusX fStar hsub'.1 hf hfpoly
+    have hgdpoly : SparsePolyZp.toPoly p gd = normalize (EuclideanDomain.gcd
+        (SparsePolyZp.toPoly p h' - X) (SparsePolyZp.toPoly p fStar)) := by
+      simpa [gd, hsub'.2] using hgcd.2.2.1
+    have hnsplitL2 : ¬0 < (normalize (EuclideanDomain.gcd
+        (SparsePolyZp.toPoly p h' - X) (SparsePolyZp.toPoly p fStar))).natDegree := by
+      simpa [hgdpoly] using hnosplit
+    have hnsplitL2' : ¬0 < (normalize (EuclideanDomain.gcd
+        (SparsePolyZp.toPoly p h ^ p %ₘ SparsePolyZp.toPoly p fStar - X)
+        (SparsePolyZp.toPoly p fStar))).natDegree := by
+      rw [← hpow'.2]
+      exact hnsplitL2
+    have ih' := ih hq (by omega) hpow'.1 hf hfmonic hfdeg
+    rw [ddfZpLoopSafe, dif_neg hterm]
+    dsimp only
+    rw [if_neg hnosplit]
+    conv_rhs =>
+      rw [ddfLoop, dif_neg hterm]
+      dsimp only
+      rw [dif_neg hnsplitL2']
+    rw [hpow'.2] at ih'
+    exact ih'
 
-  Proof status: Skeleton (sorry) — fill to complete L1→L2 verification chain
--/
-theorem __ddf_Zp_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
+/-- The total sparse DDF implementation refines the L2 DDF algorithm. -/
+theorem ddfZpSafe_refines (p : Nat) [hp : Fact (Nat.Prime p)]
     (f : SparsePolyZp)
-    (hwf_f : SparsePolyZp.WellFormed p f)
-    (hred_f : SparsePolyZp.AllReduced p f.toList)
-    (hp_size : 2 * p ≤ UInt64.size)
-    :   toPolyList (Generated.__ddf_Zp_ir f) p = ddf (SparsePolyZp.toPoly p f) :=
-  by
-  sorry
+    (h2p : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size)
+    (hf : CanonicalRep p f) (hfmonic : Monic (SparsePolyZp.toPoly p f))
+    (hfdeg : (SparsePolyZp.toPoly p f).natDegree < UInt64.size) :
+    toPolyList (ddfZpSafe p f) p = ddf (SparsePolyZp.toPoly p f) := by
+  have hfpoly : SparsePolyZp.toPoly p f ≠ 0 := hfmonic.ne_zero
+  have hfne : ¬f.isEmpty := nonempty_of_toPoly_ne_zero (p := p) f hfpoly
+  let q := (SparsePolyZp.front! f).snd.prime
+  let x : SparsePolyZp :=
+    #[(UMonomial.mk (1 : Int32), Zp.ofInt (1 : Int) q)]
+  have hq : q.toNat = p := front_prime_of_canonical f hf hfne
+  have hx := singleton_x_data q hq
+  have hxpoly : SparsePolyZp.toPoly p x = X := by simpa [x] using hx.2
+  have hloop := ddfZpLoopSafe_refines (p := p) q x f 1 #[] h2p hp2 hq
+    (by omega) hx.1 hf hfmonic hfdeg
+  unfold ddfZpSafe
+  rw [if_neg hfne]
+  dsimp only
+  change toPolyList (ddfZpLoopSafe p q x f 1 #[]) p = _
+  simpa [ddf, hxpoly] using hloop
 
 end Refinement

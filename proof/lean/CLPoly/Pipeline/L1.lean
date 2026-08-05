@@ -4,8 +4,8 @@
   用 L1 `_ir` 函数（来自 Corpus.lean，翻译自 C++）实例化 factor_Zp_correct。
   精化定理填补后，此文件直接验证翻译出的 C++ 代码。
 
-  当前已闭合的 L1 覆盖：SQF (`__squarefree_Zp_ir`)
-  DDF/EDF 仍有独立精化债务；EDF 暂用 L2 `edf_correct_unconditional`。
+  当前已闭合的 L1 覆盖：SQF 与 DDF 的 total safe 路径。
+  EDF 仍暂用 L2 `edf_correct_unconditional`。
 -/
 
 import CLPoly.Pipeline.FactorZp
@@ -271,24 +271,35 @@ theorem sqfZp_l1_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt
   rw [h_refines]
   exact sqf_correct f hf
 
-/-- L1 ddf wrapper — 使用 `__ddf_Zp_ir`（Corpus.lean，翻译自 C++）。
-    正确性由 `__ddf_Zp_ir_refines` 保证。 -/
+/-- L1 DDF wrapper.  Machine-representable degrees use the verified total
+    sparse implementation; larger mathematical inputs fall back to L2. -/
 noncomputable def ddf_l1 (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X])
     : List ((ZMod p)[X] × ℕ) :=
-  toPolyList (Generated.__ddf_Zp_ir (toSparsePolyZp f)) p
+  if f.natDegree < UInt64.size then
+    toPolyList (ddfZpSafe p (toSparsePolyZp f)) p
+  else
+    ddf f
 
-theorem ddf_l1_correct (hp_size : 2 * p ≤ UInt64.size) (f : (ZMod p)[X]) (hm : Monic f)
+theorem ddf_l1_correct (hp_size : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (f : (ZMod p)[X]) (hm : Monic f)
     (hsq : Squarefree f) : DDFCorrect f (ddf_l1 hp_size f) := by
   unfold ddf_l1
-  have hwf : SparsePolyZp.WellFormed p (toSparsePolyZp f) :=
-    toSparsePolyZp_wellFormed f hp_size
-  have hred : SparsePolyZp.AllReduced p (toSparsePolyZp f).toList :=
-    toSparsePolyZp_allReduced f hp_size
-  have h_refines : toPolyList (Generated.__ddf_Zp_ir (toSparsePolyZp f)) p = ddf f := by
-    have h := __ddf_Zp_ir_refines p (toSparsePolyZp f) hwf hred hp_size
-    simpa [toSparsePolyZp_toPoly f hp_size] using h
-  rw [h_refines]
-  exact ddf_correct f hm hsq
+  by_cases hdeg : f.natDegree < UInt64.size
+  · rw [if_pos hdeg]
+    have hcan : CanonicalRep p (toSparsePolyZp f) := by
+      refine ⟨toSparsePolyZp_sorted f, ?_, toSparsePolyZp_allReduced f hp_size⟩
+      unfold SparsePolyZp.NonZeroB
+      apply nonzeroListB_of_forall
+      intro x hx
+      intro hzero
+      exact toSparsePolyZp_val_nonzero f hp_size x hx (by simp [hzero])
+    have href := ddfZpSafe_refines p (toSparsePolyZp f) hp_size hp2 hcan
+      (by simpa [toSparsePolyZp_toPoly f hp_size] using hm)
+      (by simpa [toSparsePolyZp_toPoly f hp_size] using hdeg)
+    rw [href, toSparsePolyZp_toPoly f hp_size]
+    exact ddf_correct f hm hsq
+  · rw [if_neg hdeg]
+    exact ddf_correct f hm hsq
 
 -- ============================================================
 -- §3. EDF（使用 __edf_Zp_ir，C++ 翻译）
@@ -366,7 +377,7 @@ theorem factor_Zp_l1 (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.s
       FactorZpCorrect f lc factors :=
   factor_Zp_correct f hf
     (sqfZp_l1 hp_size) (sqfZp_l1_correct hp_size hp2 f hf hdeg)
-    (ddf_l1 hp_size) (ddf_l1_correct hp_size)
+    (ddf_l1 hp_size) (ddf_l1_correct hp_size hp2)
     (edf_l1 hp_size) (edf_l1_correct hp_size)
 
 /-- L1 Zp 因式分解函数 — 适配 factor_ZZ_correct 的接口（返回 `(lc, factors)` 对）。
@@ -429,12 +440,12 @@ lemma recombine_l1_correct (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (f : Poly
 /-- C++ 翻译代码的 Z[x] 因式分解正确性定理。
 
     使用 L1 包装（C++ 翻译函数）实例化 `factor_ZZ_correct` 的三个子过程。
-    当前 L1 包装中 SQF 已使用 C++ 翻译路径；DDF/EDF 仍等待精化定理。
+    当前 L1 包装中 SQF 与 DDF 已使用验证过的 total safe 路径；EDF 仍待精化。
     Hensel 和 Recombine 同理。
 
     精化定理状态：
      - ✅ `__squarefree_Zp_ir_refines`
-     - ❌ `__ddf_Zp_ir_refines`
+     - ✅ `ddfZpSafe_refines`
      - ✅ `__symmetric_mod_ir_refines`
      - ❌ `__binomial_ir_refines`
      - ❌ `__isqrt_ceil_ir_refines`

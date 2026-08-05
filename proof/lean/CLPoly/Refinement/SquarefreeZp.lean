@@ -1086,7 +1086,7 @@ private lemma sortedListB_of_isChain : ∀ xs : List (UMonomial × Zp),
           have hpw := List.isChain_iff_pairwise.mp hchain
           exact ⟨(List.pairwise_cons.mp hpw).1, ih (List.isChain_cons.mp hchain).2⟩
 
-private lemma nonzeroListB_of_forall : ∀ xs : List (UMonomial × Zp),
+lemma nonzeroListB_of_forall : ∀ xs : List (UMonomial × Zp),
     (∀ x ∈ xs, x.snd.val ≠ 0) → SparsePolyZp.nonzeroListB xs = true := by
   intro xs
   induction xs with
@@ -1668,7 +1668,7 @@ lemma divmod_snd_canonical (f g : SparsePolyZp)
   have hpm : g[0]!.snd.prime.toNat = p := (hg.2.2 g[0]! hmem).1
   exact ⟨hi.1, hi.2.2.1, allReduced_of_reducedB _ _ hpm hi.2.1⟩
 
-private lemma divmod_fst_canonical (f g : SparsePolyZp)
+lemma divmod_fst_canonical (f g : SparsePolyZp)
     (hf : CanonicalRep p f) (hg : CanonicalRep p g) (hg_ne : ¬g.isEmpty)
     (h2p : 2 * p ≤ UInt64.size) : CanonicalRep p (SparsePolyZp.divmod f g).1 := by
   have hp_lt : p < UInt64.size := by nlinarith
@@ -1959,6 +1959,41 @@ theorem polynomial_GCD_step_data (h2p : 2 * p ≤ UInt64.size)
   have hyeq : SparsePolyZp.toPoly p y = normalize (EuclideanDomain.gcd
       (SparsePolyZp.toPoly p f) (SparsePolyZp.toPoly p g)) := by
     simpa [y, d] using polynomial_GCD_toPoly_eq_normalize (p := p) h2p hp2 f g hf hg hdne
+  exact ⟨hycan, hyne, hyeq, hyeq ▸ Polynomial.monic_normalize hgcdne⟩
+
+/-- `polynomial_GCD_step_data` with nonzeroness supplied by the second input. -/
+theorem polynomial_GCD_step_data_right (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (f g : SparsePolyZp)
+    (hf : CanonicalRep p f) (hg : CanonicalRep p g)
+    (hgpoly : SparsePolyZp.toPoly p g ≠ 0) :
+    let y := polynomial_GCD f g
+    CanonicalRep p y ∧ ¬y.isEmpty ∧
+      SparsePolyZp.toPoly p y = normalize (EuclideanDomain.gcd
+        (SparsePolyZp.toPoly p f) (SparsePolyZp.toPoly p g)) ∧
+      Monic (SparsePolyZp.toPoly p y) := by
+  let d := SparsePolyZp.gcdAux f g
+  let y := polynomial_GCD f g
+  have hd := gcdAux_refines (p := p) h2p hp2 f g hf hg
+  have hgcdne : EuclideanDomain.gcd (SparsePolyZp.toPoly p f)
+      (SparsePolyZp.toPoly p g) ≠ 0 := by
+    intro hz
+    have hdiv := EuclideanDomain.gcd_dvd_right (SparsePolyZp.toPoly p f)
+      (SparsePolyZp.toPoly p g)
+    rw [hz] at hdiv
+    exact hgpoly (zero_dvd_iff.mp hdiv)
+  have hdpolyne : SparsePolyZp.toPoly p d ≠ 0 :=
+    (by simpa [d] using hd.2.ne_zero_iff.mpr hgcdne)
+  have hdne : ¬d.isEmpty := nonempty_of_toPoly_ne_zero (p := p) d hdpolyne
+  have hycan : CanonicalRep p y := by
+    simpa [y] using polynomial_GCD_canonical (p := p) h2p hp2 f g hf hg
+  have hyne : ¬y.isEmpty := by
+    apply nonempty_of_toPoly_ne_zero (p := p)
+    simpa [y] using
+      (polynomial_GCD_refines (p := p) h2p hp2 f g hf hg).ne_zero_iff.mpr hgcdne
+  have hyeq : SparsePolyZp.toPoly p y = normalize (EuclideanDomain.gcd
+      (SparsePolyZp.toPoly p f) (SparsePolyZp.toPoly p g)) := by
+    simpa [y, d] using
+      polynomial_GCD_toPoly_eq_normalize (p := p) h2p hp2 f g hf hg hdne
   exact ⟨hycan, hyne, hyeq, hyeq ▸ Polynomial.monic_normalize hgcdne⟩
 
 /-- 对规范输入及首一除数，实际 `divmod` 的商等于 mathlib 的首一长除商。 -/

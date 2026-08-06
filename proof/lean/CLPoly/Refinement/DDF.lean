@@ -375,6 +375,37 @@ private lemma strict_make_zp_one_toZMod (q : UInt64) (hq : q.toNat = p) :
   simpa [SparsePolyZp.toPoly, listSum,
     Generated.StrictDDF.__make_zp_ir] using congrArg (Polynomial.coeff · 0) h
 
+private lemma strict_minus_one_toZMod (q : UInt64) (hq : q.toNat = p) :
+    Zp.toZMod p (Zp.ofInt ((q - (1 : UInt64)).toInt) q) = -1 := by
+  subst p
+  have hqgt : 1 < q.toNat := hp.out.one_lt
+  have hqpos : 0 < q.toNat := hp.out.pos
+  have hone_le : (1 : UInt64) ≤ q := by
+    rw [UInt64.le_iff_toNat_le]
+    simpa using Nat.one_le_iff_ne_zero.mpr hp.out.ne_zero
+  have hsub : (q - (1 : UInt64)).toNat = q.toNat - 1 :=
+    UInt64.toNat_sub_of_le _ _ hone_le
+  have hsub_lt : (q - (1 : UInt64)).toNat < Int64.size := by
+    rw [hsub]
+    exact lt_trans (Nat.sub_lt (by omega) (by omega)) q.toNat_lt_size
+  have hemod : ((q.toNat - 1 : Nat) : Int) % (q.toNat : Int) =
+      (q.toNat - 1 : Nat) := by
+    apply Int.emod_eq_of_lt
+    · positivity
+    · exact_mod_cast (by omega : q.toNat - 1 < q.toNat)
+  have hnonneg : ¬((q.toNat - 1 : Nat) : Int) < 0 := by omega
+  have hsmall : q.toNat - 1 < UInt64.size := by
+    exact lt_trans (by omega : q.toNat - 1 < q.toNat) q.toNat_lt_size
+  have htoNat : ((q.toNat - 1).toUInt64).toNat = q.toNat - 1 := by
+    simpa [Nat.mod_eq_of_lt hsmall] using
+      (UInt64.toNat_ofNat (n := q.toNat - 1))
+  unfold Zp.ofInt Zp.toZMod
+  simp only [UInt64.toInt, hsub_lt, ↓reduceIte, hsub, hemod,
+    hnonneg, ↓reduceIte, Int.toNat_natCast]
+  rw [htoNat]
+  push_cast [Nat.cast_sub (by omega : 1 ≤ q.toNat)]
+  simp
+
 private lemma singleton_x_data (q : UInt64) (hq : q.toNat = p) :
     CanonicalRep p
         (#[(UMonomial.mk (1 : Int32), Zp.ofInt (1 : Int) q)] : SparsePolyZp) ∧
@@ -507,6 +538,18 @@ theorem strict_subtract_x_loop_of_done (i : Nat) (inserted : Bool)
         i inserted result input q = ((0 : Int64), inserted, result) := by
   rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
   simp only [show ¬i < input.size by omega, ↓reduceIte]
+
+/-- Direct generated-entry semantics for an empty input: the C++ routine
+inserts the missing `-X` term and normalizes it. -/
+theorem strict_subtract_x_empty (q : UInt64) (hq : q.toNat = p) :
+    SparsePolyZp.toPoly p
+        (Generated.StrictDDF.__upoly_subtract_x_ir #[] q) = -X := by
+  simp [Generated.StrictDDF.__upoly_subtract_x_ir,
+    strict_subtract_x_loop_of_done, normalization_toPoly, toPoly_push,
+    strict_minus_one_toZMod q hq]
+  simp [SparsePolyZp.empty, SparsePolyZp.toPoly_empty,
+    show (Int64.toUInt64 1).toNat = 1 by rfl,
+    Polynomial.monomial_one_one_eq_X]
 
 /- Any theorem for powmod, subtract-X, or the DDF loop must unfold and prove
    the corresponding definitions in Generated.StrictDDF directly. -/

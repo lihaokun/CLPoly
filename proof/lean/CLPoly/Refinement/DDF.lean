@@ -658,6 +658,41 @@ theorem strict_subtract_x_singleton_constant (m : UMonomial) (c : Zp)
   rw [Polynomial.monomial_one_one_eq_X]
   ring
 
+/-- Array indexing used by the generated range loop agrees with the head of
+the corresponding unprocessed `List.drop`. -/
+private lemma drop_eq_getElem_cons (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size) :
+    input.toList.drop i = input[i]! :: input.toList.drop (i + 1) := by
+  have hlen : i < input.toList.length := by simpa using hi
+  have hdrop := drop_eq_get_cons_general input.toList i hlen
+  have hget : input.toList.get ⟨i, hlen⟩ = input[i]! := by
+    calc
+      input.toList.get ⟨i, hlen⟩ = input[i] := by simp
+      _ = input[i]! := by
+        rw [getElem!_def, getElem?_def]
+        simp [hi]
+  rw [hget] at hdrop
+  exact hdrop
+
+private lemma getElem_mem_drop (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size) : input[i]! ∈ input.toList.drop i := by
+  rw [drop_eq_getElem_cons input i hi]
+  exact List.mem_cons_self
+
+private lemma nodup_degrees_drop_tail (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size)
+    (hnd : (input.toList.drop i).map (fun x => x.1.deg) |>.Nodup) :
+    (input.toList.drop (i + 1)).map (fun x => x.1.deg) |>.Nodup := by
+  rw [drop_eq_getElem_cons input i hi, List.map_cons, List.nodup_cons] at hnd
+  exact hnd.2
+
+private lemma current_degree_not_mem_tail (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size)
+    (hnd : (input.toList.drop i).map (fun x => x.1.deg) |>.Nodup) :
+    input[i]!.1.deg ∉ (input.toList.drop (i + 1)).map (fun x => x.1.deg) := by
+  rw [drop_eq_getElem_cons input i hi, List.map_cons, List.nodup_cons] at hnd
+  exact hnd.1
+
 /- Any theorem for powmod, subtract-X, or the DDF loop must unfold and prove
    the corresponding definitions in Generated.StrictDDF directly. -/
 

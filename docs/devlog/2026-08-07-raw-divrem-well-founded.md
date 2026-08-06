@@ -8,7 +8,7 @@
 
 - 按 C++ `_poly_divrem` 的四个循环建立 `RawExec` L1：W3 初始化、内层乘加、倒序商循环、余式归约。
 - 所有原始指针访问均经过 `RawHeap.read/write`，错误传播为 `RawFault`。
-- 增加 raw limb slice 有效性谓词和“有效 slice 内读取必成功”的首个桥接引理。
+- 增加 raw limb slice 有效性谓词，以及“有效 slice 内读写必成功”的基础桥接引理。
 - 增加严格准入检查器，将专用 lowering 绑定到稳定化后的完整 Clang AST 哈希，并检查原始指针签名、四循环形状、Lean artifact 哈希和禁用构造。
 
 ## 为什么做

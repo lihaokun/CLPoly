@@ -351,6 +351,21 @@ def writeU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat)
     else
       .error (.invalidRegion regionId)
 
+theorem writeU64_of_valid (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length index : Nat) (value : UInt64)
+    (hvalid : ValidU64Slice heap ptr length) (hindex : index < length) :
+    ∃ heap', heap.writeU64 ptr index value = .ok heap' := by
+  rcases hvalid with ⟨regionId, hregion, hr, hlength⟩
+  have hoffset : ptr.limbOffset + index < heap.regions[regionId].size := by
+    omega
+  let region' := heap.regions[regionId].set
+    (ptr.limbOffset + index) value hoffset
+  let heap' : RawHeap :=
+    { heap with regions := heap.regions.set regionId region' hr }
+  refine ⟨heap', ?_⟩
+  simp only [writeU64, hregion, hr, dif_pos, hoffset]
+  simp [heap', region']
+
 def readWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat) :
     RawExec Word3 :=
   let base := ptr.limbOffset + 3 * index

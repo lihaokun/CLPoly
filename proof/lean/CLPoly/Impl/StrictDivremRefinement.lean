@@ -48,12 +48,15 @@ The W3 write preserves both B and W3 allocation invariants; recurse at `j+1`
 with the strictly smaller measure `d+1-j`.  At `j>d`, the source loop exits. -/
 theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     (W3 : RawPtr Word3) (lenW3 i d j : Nat) (c : UInt64)
+    (other : RawPtr UInt64) (otherLen : Nat)
     (hB : heap.ValidU64Slice B (d + 1))
     (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hOther : heap.ValidU64Slice other otherLen)
     (htop : i + d < lenW3) (hj : j ≤ d + 1) :
     ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
       heap'.ValidU64Slice B (d + 1) ∧
-      heap'.ValidWord3Slice W3 lenW3 := by
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      heap'.ValidU64Slice other otherLen := by
   rw [addMulLoop]
   split
   next hle =>
@@ -77,11 +80,66 @@ theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
       (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
         hwrite (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
-    exact addMulLoop_ok heap1 B W3 lenW3 i d (j + 1) c
-      hB1 hW31 htop (by omega)
+    have hOther1 : heap1.ValidU64Slice other otherLen :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite other otherLen).mp hOther
+    exact addMulLoop_ok heap1 B W3 lenW3 i d (j + 1) c other otherLen
+      hB1 hW31 hOther1 htop (by omega)
   next hnot =>
-    exact ⟨heap, rfl, hB, hW3⟩
+    exact ⟨heap, rfl, hB, hW3, hOther⟩
 termination_by d + 1 - j
 decreasing_by omega
+
+/-- The descending quotient loop cannot fault when Q, B and W3 have the
+capacities documented by the C++ raw API.  Its induction variable is exactly
+the source `ii`: the successor case processes coefficient `i = ii-1`, then
+recurses on the predecessor. -/
+theorem quotientLoop_ok (this : DenseUPolyZp) (Q B : RawPtr UInt64)
+    (W3 : RawPtr Word3) (qLen d lenW3 : Nat) (invLc : UInt64)
+    (heap : RawHeap) (ii : Nat)
+    (hQ : heap.ValidU64Slice Q qLen)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hii : ii ≤ qLen) (hspan : qLen + d ≤ lenW3) :
+    ∃ heap', quotientLoop this Q B W3 d invLc heap ii = .ok heap' ∧
+      heap'.ValidU64Slice Q qLen ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 := by
+  cases ii with
+  | zero => exact ⟨heap, rfl, hQ, hB, hW3⟩
+  | succ i =>
+    have hiQ : i < qLen := by omega
+    have hiW : i + d < lenW3 := by omega
+    simp only [quotientLoop]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + d) hW3 hiW with
+      ⟨accum, hread⟩
+    simp only [hread]
+    let r := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      accum.hi accum.mid accum.lo this._p this._ninv this._norm
+    let qi := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r invLc
+    rcases heap.writeU64_of_valid Q qLen i qi hQ hiQ with ⟨heap1, hwrite⟩
+    dsimp [r, qi] at hwrite ⊢
+    simp only [hwrite]
+    have hQ1 : heap1.ValidU64Slice Q qLen :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite Q qLen).mp hQ
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite
+        (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    split
+    next hnonzero =>
+      rcases addMulLoop_ok heap1 B W3 lenW3 i d 0 (this._p -
+          Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+            (Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+              accum.hi accum.mid accum.lo this._p this._ninv this._norm) invLc)
+          Q qLen hB1 hW31 hQ1 hiW (by omega) with
+        ⟨heap2, hadd, hB2, hW32, hQ2⟩
+      simp only [hadd]
+      exact quotientLoop_ok this Q B W3 qLen d lenW3 invLc heap2 i
+        hQ2 hB2 hW32 (by omega) hspan
+    next hzero =>
+      exact quotientLoop_ok this Q B W3 qLen d lenW3 invLc heap1 i
+        hQ1 hB1 hW31 (by omega) hspan
 
 end CLPoly.Impl.StrictDivremRefinement

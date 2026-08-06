@@ -421,6 +421,25 @@ theorem validU64Slice_add (heap : RawHeap) (ptr : RawPtr UInt64)
   · change ptr.limbOffset + start * 1 + count ≤ heap.regions[regionId].size
     omega
 
+theorem validU64Slice_mono (heap : RawHeap) (ptr : RawPtr UInt64)
+    (large small : Nat) (hvalid : ValidU64Slice heap ptr large)
+    (hle : small ≤ large) : ValidU64Slice heap ptr small := by
+  rcases hvalid with ⟨regionId, hregion, hr, hlength⟩
+  exact ⟨regionId, hregion, hr, by omega⟩
+
+/-- Two heaps have identical allocation shape.  Values may differ, but every
+raw slice is valid in one heap exactly when it is valid in the other. -/
+def SameLayout (heap heap' : RawHeap) : Prop :=
+  ∀ ptr length, ValidU64Slice heap ptr length ↔
+    ValidU64Slice heap' ptr length
+
+theorem writeU64_sameLayout (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (index : Nat) (value : UInt64)
+    (hwrite : heap.writeU64 ptr index value = .ok heap') :
+    SameLayout heap heap' := by
+  intro other length
+  exact writeU64_preserves_valid heap heap' ptr index value hwrite other length
+
 def ValidWord3Slice (heap : RawHeap) (ptr : RawPtr Word3) (length : Nat) : Prop :=
   ValidU64Slice heap (RawPtr.reinterpret ptr) (3 * length)
 
@@ -504,6 +523,13 @@ theorem writeWord3_preserves_valid (heap heap' : RawHeap)
       exact (writeU64_preserves_valid heap heap1 _ 0 value.lo hwrite0 other length).trans
         ((writeU64_preserves_valid heap1 heap2 _ 1 value.mid hwrite1 other length).trans
           (writeU64_preserves_valid heap2 heap' _ 2 value.hi hwrite other length))
+
+theorem writeWord3_sameLayout (heap heap' : RawHeap)
+    (ptr : RawPtr Word3) (index : Nat) (value : Word3)
+    (hwrite : heap.writeWord3 ptr index value = .ok heap') :
+    SameLayout heap heap' := by
+  intro other length
+  exact writeWord3_preserves_valid heap heap' ptr index value hwrite other length
 
 /-- Limb-level semantics used for the `memcpy` calls in the dense polynomial
 raw API.  Source and destination validity are checked at every C++ access;

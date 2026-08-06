@@ -4,6 +4,61 @@ namespace CLPoly.Impl.StrictDivremRefinement
 
 open Generated.StrictDivrem
 
+/-- `_poly_normalise` only reads within its declared prefix.  Structural
+recursion on `len` proves both successful execution and the returned prefix
+bound; there is no fuel or fallback result. -/
+theorem normaliseU64_ok (heap : RawHeap) (ptr : RawPtr UInt64) (len : Nat)
+    (hvalid : heap.ValidU64Slice ptr len) :
+    ∃ result, heap.normaliseU64 ptr len = .ok result ∧ result ≤ len := by
+  cases len with
+  | zero => exact ⟨0, rfl, Nat.le_refl 0⟩
+  | succ n =>
+    simp only [RawHeap.normaliseU64]
+    rcases heap.readU64_of_valid ptr (n + 1) n hvalid (by omega) with
+      ⟨value, hread⟩
+    simp only [hread]
+    split
+    next hzero =>
+      have hprefix := heap.validU64Slice_mono ptr (n + 1) n hvalid (by omega)
+      rcases normaliseU64_ok heap ptr n hprefix with ⟨result, hresult, hle⟩
+      exact ⟨result, hresult, by omega⟩
+    next hnonzero => exact ⟨n + 1, rfl, Nat.le_refl _⟩
+
+/-- Limb `memcpy` succeeds for valid source and destination slices.  The
+returned heap has exactly the same allocation layout as the input heap, so
+all caller slice invariants can be transported through the copy. -/
+theorem copyU64_ok (heap : RawHeap) (dst src : RawPtr UInt64) (count : Nat)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count) :
+    ∃ heap', heap.copyU64 dst src count = .ok heap' ∧
+      RawHeap.SameLayout heap heap' := by
+  cases count with
+  | zero =>
+    refine ⟨heap, rfl, ?_⟩
+    intro ptr length
+    exact Iff.rfl
+  | succ n =>
+    simp only [RawHeap.copyU64]
+    rcases heap.readU64_of_valid src (n + 1) 0 hSrc (by omega) with
+      ⟨value, hread⟩
+    simp only [hread]
+    rcases heap.writeU64_of_valid dst (n + 1) 0 value hDst (by omega) with
+      ⟨heap1, hwrite⟩
+    simp only [hwrite]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 dst 0 value hwrite
+    have hDstTail0 := heap.validU64Slice_add dst (n + 1) 1 n hDst (by omega)
+    have hSrcTail0 := heap.validU64Slice_add src (n + 1) 1 n hSrc (by omega)
+    have hDstTail1 : heap1.ValidU64Slice (RawPtr.add dst 1) n :=
+      (hlayout1 (RawPtr.add dst 1) n).mp hDstTail0
+    have hSrcTail1 : heap1.ValidU64Slice (RawPtr.add src 1) n :=
+      (hlayout1 (RawPtr.add src 1) n).mp hSrcTail0
+    rcases copyU64_ok heap1 (RawPtr.add dst 1) (RawPtr.add src 1) n
+      hDstTail1 hSrcTail1 with ⟨heap2, hcopy, hlayout2⟩
+    simp only [hcopy]
+    refine ⟨heap2, rfl, ?_⟩
+    intro ptr length
+    exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+
 /-- Natural-language proof outline:
 
 At an iteration with `i < lenA`, validity of `A[0..lenA)` gives a successful
@@ -17,7 +72,8 @@ theorem initW3Loop_ok (heap : RawHeap) (A : RawPtr UInt64)
     (hA : heap.ValidU64Slice A lenA)
     (hW3 : heap.ValidWord3Slice W3 lenA) (hi : i ≤ lenA) :
     ∃ heap', initW3Loop heap A W3 lenA i = .ok heap' ∧
-      heap'.ValidU64Slice A lenA ∧ heap'.ValidWord3Slice W3 lenA := by
+      heap'.ValidU64Slice A lenA ∧ heap'.ValidWord3Slice W3 lenA ∧
+      RawHeap.SameLayout heap heap' := by
   rw [initW3Loop]
   split
   next hlt =>
@@ -33,9 +89,15 @@ theorem initW3Loop_ok (heap : RawHeap) (A : RawPtr UInt64)
       (RawHeap.writeWord3_preserves_valid heap heap1 W3 i
         { lo := value, mid := 0, hi := 0 } hwrite
         (RawPtr.reinterpret W3) (3 * lenA)).mp hW3
-    exact initW3Loop_ok heap1 A W3 lenA (i + 1) hA1 hW31 (by omega)
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 i
+      { lo := value, mid := 0, hi := 0 } hwrite
+    rcases initW3Loop_ok heap1 A W3 lenA (i + 1) hA1 hW31 (by omega) with
+      ⟨heap2, hloop, hA2, hW32, hlayout2⟩
+    refine ⟨heap2, hloop, hA2, hW32, ?_⟩
+    intro ptr length
+    exact (hlayout1 ptr length).trans (hlayout2 ptr length)
   next hnot =>
-    exact ⟨heap, rfl, hA, hW3⟩
+    exact ⟨heap, rfl, hA, hW3, fun _ _ => Iff.rfl⟩
 termination_by lenA - i
 decreasing_by omega
 
@@ -56,7 +118,8 @@ theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
       heap'.ValidU64Slice B (d + 1) ∧
       heap'.ValidWord3Slice W3 lenW3 ∧
-      heap'.ValidU64Slice other otherLen := by
+      heap'.ValidU64Slice other otherLen ∧
+      RawHeap.SameLayout heap heap' := by
   rw [addMulLoop]
   split
   next hle =>
@@ -83,10 +146,16 @@ theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     have hOther1 : heap1.ValidU64Slice other otherLen :=
       (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
         hwrite other otherLen).mp hOther
-    exact addMulLoop_ok heap1 B W3 lenW3 i d (j + 1) c other otherLen
-      hB1 hW31 hOther1 htop (by omega)
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 (i + j)
+      accum' hwrite
+    rcases addMulLoop_ok heap1 B W3 lenW3 i d (j + 1) c other otherLen
+      hB1 hW31 hOther1 htop (by omega) with
+      ⟨heap2, hloop, hB2, hW32, hOther2, hlayout2⟩
+    refine ⟨heap2, hloop, hB2, hW32, hOther2, ?_⟩
+    intro ptr length
+    exact (hlayout1 ptr length).trans (hlayout2 ptr length)
   next hnot =>
-    exact ⟨heap, rfl, hB, hW3, hOther⟩
+    exact ⟨heap, rfl, hB, hW3, hOther, fun _ _ => Iff.rfl⟩
 termination_by d + 1 - j
 decreasing_by omega
 
@@ -104,9 +173,10 @@ theorem quotientLoop_ok (this : DenseUPolyZp) (Q B : RawPtr UInt64)
     ∃ heap', quotientLoop this Q B W3 d invLc heap ii = .ok heap' ∧
       heap'.ValidU64Slice Q qLen ∧
       heap'.ValidU64Slice B (d + 1) ∧
-      heap'.ValidWord3Slice W3 lenW3 := by
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' := by
   cases ii with
-  | zero => exact ⟨heap, rfl, hQ, hB, hW3⟩
+  | zero => exact ⟨heap, rfl, hQ, hB, hW3, fun _ _ => Iff.rfl⟩
   | succ i =>
     have hiQ : i < qLen := by omega
     have hiW : i + d < lenW3 := by omega
@@ -127,6 +197,7 @@ theorem quotientLoop_ok (this : DenseUPolyZp) (Q B : RawPtr UInt64)
     have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
       (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite
         (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 Q i _ hwrite
     split
     next hnonzero =>
       rcases addMulLoop_ok heap1 B W3 lenW3 i d 0 (this._p -
@@ -134,13 +205,22 @@ theorem quotientLoop_ok (this : DenseUPolyZp) (Q B : RawPtr UInt64)
             (Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
               accum.hi accum.mid accum.lo this._p this._ninv this._norm) invLc)
           Q qLen hB1 hW31 hQ1 hiW (by omega) with
-        ⟨heap2, hadd, hB2, hW32, hQ2⟩
+        ⟨heap2, hadd, hB2, hW32, hQ2, hlayout2⟩
       simp only [hadd]
-      exact quotientLoop_ok this Q B W3 qLen d lenW3 invLc heap2 i
-        hQ2 hB2 hW32 (by omega) hspan
+      rcases quotientLoop_ok this Q B W3 qLen d lenW3 invLc heap2 i
+        hQ2 hB2 hW32 (by omega) hspan with
+        ⟨heap3, hloop, hQ3, hB3, hW33, hlayout3⟩
+      refine ⟨heap3, hloop, hQ3, hB3, hW33, ?_⟩
+      intro ptr length
+      exact (hlayout1 ptr length).trans
+        ((hlayout2 ptr length).trans (hlayout3 ptr length))
     next hzero =>
-      exact quotientLoop_ok this Q B W3 qLen d lenW3 invLc heap1 i
-        hQ1 hB1 hW31 (by omega) hspan
+      rcases quotientLoop_ok this Q B W3 qLen d lenW3 invLc heap1 i
+        hQ1 hB1 hW31 (by omega) hspan with
+        ⟨heap2, hloop, hQ2, hB2, hW32, hlayout2⟩
+      refine ⟨heap2, hloop, hQ2, hB2, hW32, ?_⟩
+      intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
 
 /-- The final C++ remainder loop reads exactly W3[0..d) and writes R[0..d).
 Both layouts are preserved at each iteration, and `d-i` decreases. -/
@@ -150,7 +230,8 @@ theorem remainderLoop_ok (this : DenseUPolyZp) (R : RawPtr UInt64)
     (hW3 : heap.ValidWord3Slice W3 lenW3)
     (hdW : d ≤ lenW3) (hi : i ≤ d) :
     ∃ heap', remainderLoop this R W3 d i heap = .ok heap' ∧
-      heap'.ValidU64Slice R d ∧ heap'.ValidWord3Slice W3 lenW3 := by
+      heap'.ValidU64Slice R d ∧ heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' := by
   rw [remainderLoop]
   split
   next hlt =>
@@ -167,10 +248,83 @@ theorem remainderLoop_ok (this : DenseUPolyZp) (R : RawPtr UInt64)
     have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
       (RawHeap.writeU64_preserves_valid heap heap1 R i _ hwrite
         (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
-    exact remainderLoop_ok this R W3 d lenW3 (i + 1) heap1
-      hR1 hW31 hdW (by omega)
-  next hnot => exact ⟨heap, rfl, hR, hW3⟩
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 R i _ hwrite
+    rcases remainderLoop_ok this R W3 d lenW3 (i + 1) heap1
+      hR1 hW31 hdW (by omega) with
+      ⟨heap2, hloop, hR2, hW32, hlayout2⟩
+    refine ⟨heap2, hloop, hR2, hW32, ?_⟩
+    intro ptr length
+    exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+  next hnot => exact ⟨heap, rfl, hR, hW3, fun _ _ => Iff.rfl⟩
 termination_by d - i
 decreasing_by omega
+
+/-- Under exactly the capacities documented on the C++ raw API,
+`_poly_divrem` cannot take `RawFault`.  This theorem is only the termination
+and memory-safety bridge; the quotient/remainder algebraic invariant is the
+next refinement obligation. -/
+theorem polyDivrem_ok (this : DenseUPolyZp) (Q R A B : RawPtr UInt64)
+    (lenA lenB : Nat) (W3 : RawPtr Word3) (heap : RawHeap)
+    (hlenB : 0 < lenB)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hQ : heap.ValidU64Slice Q (lenA - (lenB - 1)))
+    (hR : heap.ValidU64Slice R (Nat.min lenA (lenB - 1)))
+    (hW3 : heap.ValidWord3Slice W3 lenA) :
+    ∃ heap' lenQ lenR,
+      dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
+        .ok (heap', lenQ, lenR) ∧
+      lenQ ≤ lenA - (lenB - 1) ∧
+      lenR ≤ Nat.min lenA (lenB - 1) := by
+  cases lenB with
+  | zero => omega
+  | succ d =>
+    simp only [dense_upoly_zp__poly_divrem_ir]
+    split
+    next hshort =>
+      have hlenAd : lenA ≤ d := by omega
+      have hRfull : heap.ValidU64Slice R lenA := by
+        simpa [Nat.min_eq_left hlenAd] using hR
+      rcases copyU64_ok heap R A lenA hRfull hA with
+        ⟨heap1, hcopy, hlayout⟩
+      simp only [hcopy]
+      exact ⟨heap1, 0, lenA, rfl, by omega, by simpa [Nat.min_eq_left hlenAd]⟩
+    next hlong =>
+      have hdA : d < lenA := by omega
+      have hdleA : d ≤ lenA := Nat.le_of_lt hdA
+      have hRfull : heap.ValidU64Slice R d := by
+        simpa [Nat.min_eq_right hdleA] using hR
+      rcases heap.readU64_of_valid B (d + 1) d hB (by omega) with
+        ⟨lead, hlead⟩
+      simp only [hlead]
+      let invLc := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+      rcases initW3Loop_ok heap A W3 lenA 0 hA hW3 (by omega) with
+        ⟨heap1, hinit, hA1, hW31, hlayout1⟩
+      simp only [hinit]
+      have hQ1 : heap1.ValidU64Slice Q (lenA - d) :=
+        (hlayout1 Q (lenA - d)).mp (by simpa using hQ)
+      have hB1 : heap1.ValidU64Slice B (d + 1) :=
+        (hlayout1 B (d + 1)).mp hB
+      have hR1 : heap1.ValidU64Slice R d := (hlayout1 R d).mp hRfull
+      rcases quotientLoop_ok this Q B W3 (lenA - d) d lenA invLc heap1
+        (lenA - d) hQ1 hB1 hW31 (Nat.le_refl _) (by omega) with
+        ⟨heap2, hquot, hQ2, hB2, hW32, hlayout2⟩
+      dsimp [invLc] at hquot ⊢
+      simp only [hquot]
+      have hR2 : heap2.ValidU64Slice R d := (hlayout2 R d).mp hR1
+      rcases remainderLoop_ok this R W3 d lenA 0 heap2 hR2 hW32
+        (by omega) (by omega) with
+        ⟨heap3, hrem, hR3, hW33, hlayout3⟩
+      simp only [hrem]
+      have hQ3 : heap3.ValidU64Slice Q (lenA - d) :=
+        (hlayout3 Q (lenA - d)).mp ((hlayout2 Q (lenA - d)).mp hQ1)
+      rcases normaliseU64_ok heap3 Q (lenA - d) hQ3 with
+        ⟨lenQ, hnormQ, hlenQ⟩
+      simp only [hnormQ]
+      rcases normaliseU64_ok heap3 R d hR3 with ⟨lenR, hnormR, hlenR⟩
+      simp only [hnormR]
+      refine ⟨heap3, lenQ, lenR, rfl, ?_, ?_⟩
+      · simpa using hlenQ
+      · simpa [Nat.min_eq_right hdleA] using hlenR
 
 end CLPoly.Impl.StrictDivremRefinement

@@ -375,6 +375,27 @@ private lemma strict_make_zp_one_toZMod (q : UInt64) (hq : q.toNat = p) :
   simpa [SparsePolyZp.toPoly, listSum,
     Generated.StrictDDF.__make_zp_ir] using congrArg (Polynomial.coeff · 0) h
 
+private lemma strict_sub_one_toZMod (h2p : 2 * p ≤ UInt64.size)
+    (c : Zp) (q : UInt64) (hc_prime : c.prime.toNat = p)
+    (hc_red : c.val.toNat < p) (hq : q.toNat = p) :
+    Zp.toZMod p
+        (c - Generated.StrictDDF.__make_zp_ir (1 : Int32) q) =
+      Zp.toZMod p c - 1 := by
+  have hone_rep_raw := (singleton_one_data (p := p) q hq).1.2.2
+    (UMonomial.mk (0 : Int32), Zp.ofInt (1 : Int) q) (by simp)
+  have hone_rep :
+      (Generated.StrictDDF.__make_zp_ir (1 : Int32) q).prime.toNat = p ∧
+        (Generated.StrictDDF.__make_zp_ir (1 : Int32) q).val.toNat < p := by
+    simpa [Generated.StrictDDF.__make_zp_ir] using hone_rep_raw
+  have hone_prime :
+      (Generated.StrictDDF.__make_zp_ir (1 : Int32) q).prime.toNat = p :=
+    hone_rep.1
+  have hone_red :
+      (Generated.StrictDDF.__make_zp_ir (1 : Int32) q).val.toNat < p :=
+    hone_rep.2
+  rw [zp_toZMod_sub h2p c _ hc_prime hone_prime hc_red hone_red,
+    strict_make_zp_one_toZMod q hq]
+
 private lemma strict_minus_one_toZMod (q : UInt64) (hq : q.toNat = p) :
     Zp.toZMod p (Zp.ofInt ((q - (1 : UInt64)).toInt) q) = -1 := by
   subst p

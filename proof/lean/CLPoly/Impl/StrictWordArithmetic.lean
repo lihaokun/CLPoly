@@ -980,6 +980,180 @@ theorem preinv_balance_cases (B d m u1 u0 : Nat)
 /-
   Natural-language proof.
 
+  A UInt subtraction observes `(B-(Q%B)+(N%B))%B`.  When `Q≤N` and the
+  difference is below `B`, modular subtraction has a unique representative
+  below `B`, namely `N-Q`.  The proof performs the subtraction only after
+  adding one `B` to both representatives, so no natural-number subtraction is
+  silently truncated.
+-/
+theorem baseMod_sub_eq_positive (B N Q : Nat) (hB : 0 < B)
+    (hle : Q ≤ N) (hdiff : N - Q < B) :
+    (B - (Q % B) + (N % B)) % B = N - Q := by
+  have hqr : Q % B < B := Nat.mod_lt Q hB
+  have hmodN : Nat.ModEq B (N + B) (N % B + B) := by simp [Nat.ModEq]
+  have hmodQ : Nat.ModEq B Q (Q % B) := by simp [Nat.ModEq]
+  have hs := hmodN.sub (by omega) (by omega) hmodQ
+  have hl : N + B - Q = N - Q + B := by omega
+  have hr : N % B + B - Q % B = B - Q % B + N % B := by omega
+  rw [hl, hr] at hs
+  change (N - Q + B) % B = (B - Q % B + N % B) % B at hs
+  rw [Nat.add_mod_right, Nat.mod_eq_of_lt hdiff] at hs
+  exact hs.symm
+
+/-
+  Natural-language proof.
+
+  When `N<Q` but `Q-N<B`, the same machine subtraction is the wrapped
+  representative `B-(Q-N)`.  Adding one base before applying modular
+  subtraction again avoids any illicit truncated subtraction, and the strict
+  error bound makes the resulting representative uniquely below `B`.
+-/
+theorem baseMod_sub_eq_negative (B N Q : Nat) (hB : 0 < B)
+    (hlt : N < Q) (hdiff : Q - N < B) :
+    (B - (Q % B) + (N % B)) % B = B - (Q - N) := by
+  have hqr : Q % B < B := Nat.mod_lt Q hB
+  have hqle : Q ≤ N + B := by omega
+  have hmodN : Nat.ModEq B (N + B) (N % B + B) := by simp [Nat.ModEq]
+  have hmodQ : Nat.ModEq B Q (Q % B) := by simp [Nat.ModEq]
+  have hs := hmodN.sub hqle (by omega) hmodQ
+  have hl : N + B - Q = B - (Q - N) := by omega
+  have hr : N % B + B - Q % B = B - Q % B + N % B := by omega
+  rw [hl, hr] at hs
+  change (B - (Q - N)) % B = (B - Q % B + N % B) % B at hs
+  have hkpos : 0 < Q - N := by omega
+  have hres : B - (Q - N) < B := by omega
+  rw [Nat.mod_eq_of_lt hres] at hs
+  exact hs.symm
+
+/-
+  Natural-language proof.
+
+  UInt64 successor and multiplication each reduce modulo `B`; composing the
+  two reductions is the same as reducing the mathematical product once.  In
+  particular this theorem covers the important `q=B` case, where `q` wraps to
+  zero before multiplication in C++.
+-/
+theorem uint64_succ_mul_mod (q d : UInt64) :
+    ((q + 1) * d).toNat = ((q.toNat + 1) * d.toNat) % limbBase := by
+  simp [UInt64.toNat_mul, UInt64.toNat_add, limbBase, Nat.mul_mod]
+
+/-
+  Natural-language proof.
+
+  The machine subtrahend is the estimated multiple modulo `B`, while `u0` is
+  the two-limb numerator modulo `B`.  The positive modular-subtraction lemma
+  and the strict estimate window therefore identify the UInt64 subtraction
+  with the ordinary nonnegative error `N-Q`.
+-/
+theorem uint64_sub_observe_positive (u0 prod : UInt64) (N Q : Nat)
+    (hu0 : u0.toNat = N % limbBase) (hprod : prod.toNat = Q % limbBase)
+    (hle : Q ≤ N) (hdiff : N - Q < limbBase) :
+    (u0 - prod).toNat = N - Q := by
+  rw [UInt64.toNat_sub, hu0, hprod]
+  simpa [limbBase] using
+    baseMod_sub_eq_positive limbBase N Q (by norm_num [limbBase]) hle hdiff
+
+/-
+  Natural-language proof.
+
+  Under negative error, the same UInt64 subtraction is uniquely the wrapped
+  representative `B-(Q-N)`.  This is the exact value consumed by the source
+  `r>q0` detector; no claim that machine subtraction equals Nat subtraction is
+  made.
+-/
+theorem uint64_sub_observe_negative (u0 prod : UInt64) (N Q : Nat)
+    (hu0 : u0.toNat = N % limbBase) (hprod : prod.toNat = Q % limbBase)
+    (hlt : N < Q) (hdiff : Q - N < limbBase) :
+    (u0 - prod).toNat = limbBase - (Q - N) := by
+  rw [UInt64.toNat_sub, hu0, hprod]
+  simpa [limbBase] using
+    baseMod_sub_eq_negative limbBase N Q (by norm_num [limbBase]) hlt hdiff
+
+/-
+  Natural-language proof.
+
+  In the two-limb numerator `N=u1*B+u0`, the high term is divisible by `B`
+  and the low limb is already below `B`; therefore `u0` is exactly `N%B`.
+-/
+theorem twoLimb_low_mod (u1 u0 : UInt64) :
+    u0.toNat = (u1.toNat * limbBase + u0.toNat) % limbBase := by
+  have hu0 : u0.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt u0
+  simp [Nat.add_mod, Nat.mod_eq_of_lt hu0]
+
+/-
+  Natural-language proof.
+
+  The no-wrap quotient theorem identifies the generated high estimate with
+  `(u1*pinv+u0)/B+u1`, which is algebraically
+  `(u1*(B+pinv)+u0)/B`.  The preceding UInt64 successor/multiplication theorem
+  then identifies the exact machine subtrahend with the estimated multiple
+  modulo `B`, including the possible wrap of the added one.
+-/
+theorem preinv_estimated_product_mod (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2) :
+    (((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat =
+      ((((u1.toNat * (limbBase + pinv.toNat) + u0.toNat) / limbBase) + 1) *
+        pn.toNat) % limbBase := by
+  have hhigh := preinvQuotientPair_high_noWrap u1 u0 pn pinv hu1 hmul
+  rw [uint64_succ_mul_mod, hhigh]
+  have hB : 0 < limbBase := by norm_num [limbBase]
+  have hrewrite :
+      (u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat =
+        (u1.toNat * (limbBase + pinv.toNat) + u0.toNat) / limbBase := by
+    rw [show u1.toNat * (limbBase + pinv.toNat) + u0.toNat =
+      (u1.toNat * pinv.toNat + u0.toNat) + limbBase * u1.toNat by ring]
+    rw [Nat.add_mul_div_left _ _ hB]
+  rw [hrewrite]
+
+/-
+  Natural-language proof.
+
+  Let `Q` be the mathematical estimated multiple.  The generated subtrahend
+  has value `Q%B`, and the low input limb has value `N%B`.  The preinverse
+  estimate window gives both `Q≤N+d` and `N<Q+B`.  Consequently, according to
+  the actual ordering of `Q` and `N`, the UInt64 subtraction is uniquely
+  observed as either `N-Q` or the wrapped value `B-(Q-N)`.
+-/
+theorem preinv_initial_subtraction_cases (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * pn.toNat) :
+    let N := u1.toNat * limbBase + u0.toNat
+    let Q :=
+      (((u1.toNat * (limbBase + pinv.toNat) + u0.toNat) / limbBase) + 1) *
+        pn.toNat
+    let prod := ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn
+    (Q ≤ N → (u0 - prod).toNat = N - Q) ∧
+      (N < Q → (u0 - prod).toNat = limbBase - (Q - N)) := by
+  dsimp
+  have hB : 0 < limbBase := by norm_num [limbBase]
+  have hpnB : pn.toNat ≤ limbBase := by
+    have := UInt64.toNat_lt pn
+    norm_num [limbBase] at this ⊢
+    omega
+  have hpnlt : pn.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt pn
+  have hu0B : u0.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt u0
+  have hbounds := preinv_estimated_multiple_bounds limbBase pn.toNat
+    (limbBase + pinv.toNat) u1.toNat u0.toNat hB hpnB hu0B hu1 hmul hlower
+  have hu0mod := twoLimb_low_mod u1 u0
+  have hprod := preinv_estimated_product_mod u1 u0 pn pinv hu1 hmul
+  constructor
+  · intro hle
+    apply uint64_sub_observe_positive _ _ _ _ hu0mod hprod hle
+    exact (Nat.sub_lt_iff_lt_add hle).2 (by simpa [Nat.add_comm] using hbounds.2)
+  · intro hlt
+    apply uint64_sub_observe_negative _ _ _ _ hu0mod hprod hlt
+    apply (Nat.sub_lt_iff_lt_add' (Nat.le_of_lt hlt)).2
+    exact lt_of_le_of_lt hbounds.1 (Nat.add_lt_add_left hpnlt _)
+
+/-
+  Natural-language proof.
+
   The generated C++ multiplication first shifts `a`, forms its exact UInt128
   product with `b`, and splits that product into high and low limbs.  The
   remaining quotient estimate, carry conversion, two correction branches and

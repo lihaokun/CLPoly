@@ -169,6 +169,32 @@ private theorem strict_mul_mod_step_data (h2p : 2 * p ≤ UInt64.size)
   refine ⟨hstep.1, ?_⟩
   rw [hstep.2, SparsePolyZp.toPoly_mul p h2p hp2 a b ha.2.2 hb.2.2]
 
+/-- Coefficient subtraction in the C++ `Zp` representation agrees with
+subtraction in `ZMod p` when both operands are reduced representatives. -/
+private theorem zp_toZMod_sub (h2p : 2 * p ≤ UInt64.size) (a b : Zp)
+    (ha_prime : a.prime.toNat = p) (hb_prime : b.prime.toNat = p)
+    (ha_red : a.val.toNat < p) (hb_red : b.val.toNat < p) :
+    Zp.toZMod p (a - b) = Zp.toZMod p a - Zp.toZMod p b := by
+  have hp_pos : 0 < p := by omega
+  have hp_lt_size : p < UInt64.size := by omega
+  have hsub_le : b.val.toNat ≤ a.val.toNat + p := by omega
+  have hmod_lt : (a.val.toNat + p - b.val.toNat) % p < UInt64.size :=
+    lt_trans (Nat.mod_lt _ hp_pos) hp_lt_size
+  unfold Zp.toZMod
+  change
+    (((((a.val.toNat + a.prime.toNat - b.val.toNat) %
+      a.prime.toNat).toUInt64).toNat : Nat) : ZMod p) = _
+  rw [ha_prime]
+  have htoNat : (((a.val.toNat + p - b.val.toNat) % p).toUInt64).toNat =
+      (a.val.toNat + p - b.val.toNat) % p := by
+    simpa [Nat.mod_eq_of_lt hmod_lt] using
+      (UInt64.toNat_ofNat
+        (n := (a.val.toNat + p - b.val.toNat) % p))
+  rw [htoNat]
+  rw [ZMod.natCast_mod]
+  push_cast [Nat.cast_sub hsub_le]
+  simp [ha_prime, hb_prime]
+
 private lemma modByMonic_idem (a m : Polynomial (ZMod p)) (hm : Monic m) :
     (a %ₘ m) %ₘ m = a %ₘ m :=
   (modByMonic_eq_self_iff hm).mpr (degree_modByMonic_lt a hm)
@@ -342,6 +368,12 @@ private lemma singleton_one_data (q : UInt64) (hq : q.toNat = p) :
     SparsePolyZp.AllReduced, SparsePolyZp.toPoly, listSum, Zp.Reduced,
     SparsePolyZp.sortedListB, SparsePolyZp.nonzeroListB,
     Zp.ofInt, Zp.toZMod, hmod, hqgt]
+
+private lemma strict_make_zp_one_toZMod (q : UInt64) (hq : q.toNat = p) :
+    Zp.toZMod p (Generated.StrictDDF.__make_zp_ir (1 : Int32) q) = 1 := by
+  have h := (singleton_one_data (p := p) q hq).2
+  simpa [SparsePolyZp.toPoly, listSum,
+    Generated.StrictDDF.__make_zp_ir] using congrArg (Polynomial.coeff · 0) h
 
 private lemma singleton_x_data (q : UInt64) (hq : q.toNat = p) :
     CanonicalRep p

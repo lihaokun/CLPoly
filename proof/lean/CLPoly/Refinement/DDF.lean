@@ -819,6 +819,68 @@ private lemma subtract_x_linear_transition (h2p : 2 * p ≤ UInt64.size)
       Polynomial.monomial_one_one_eq_X]
     ring
 
+set_option maxHeartbeats 0 in
+/-- Once `inserted` is true and the remaining suffix contains no linear term,
+the generated loop keeps the flag true and copies the suffix verbatim into the
+accumulator. -/
+private theorem strict_subtract_x_loop_after_insert
+    (q : UInt64) : ∀ (i : Nat) (result input : SparsePolyZp),
+    (∀ x ∈ input.toList.drop i,
+      x.1.deg.toUInt32.toInt32 ≠ (1 : Int32)) →
+    let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+      i true result input q
+    out.2.1 = true ∧
+      SparsePolyZp.toPoly p out.2.2 =
+        SparsePolyZp.toPoly p result + listSum p (input.toList.drop i) := by
+  intro i result input
+  refine Generated.StrictDDF._loop___upoly_subtract_x_0_ir.induct
+    (motive := fun i inserted result input q =>
+      inserted = true →
+      (∀ x ∈ input.toList.drop i,
+        x.1.deg.toUInt32.toInt32 ≠ (1 : Int32)) →
+      let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+        i inserted result input q
+      out.2.1 = true ∧
+        SparsePolyZp.toPoly p out.2.2 =
+          SparsePolyZp.toPoly p result + listSum p (input.toList.drop i))
+    ?_ ?_ ?_ i true result input q rfl
+  · intro i inserted result input q hi term hbefore ih hins hno
+    subst inserted
+    simp at hbefore
+  · intro i inserted result input q hi term hbefore ih hins hno
+    subst inserted
+    have hdrop : input.toList.drop i = term :: input.toList.drop (i + 1) := by
+      simpa [term] using drop_eq_getElem_cons input i hi
+    have hlinear : term.1.deg.toUInt32.toInt32 ≠ (1 : Int32) :=
+      hno term (by rw [hdrop]; simp)
+    have hlinearOfNat : Int32.ofNat term.1.deg ≠ (1 : Int32) := by
+      simpa [Int32.ofNat, Nat.toUInt32] using hlinear
+    have hlinearBool :
+        (term.1.deg.toUInt32.toInt32 == (1 : Int32)) = false := by
+      simp [hlinearOfNat]
+    have hno_tail : ∀ x ∈ input.toList.drop (i + 1),
+        x.1.deg.toUInt32.toInt32 ≠ (1 : Int32) := by
+      intro x hx
+      exact hno x (by rw [hdrop]; exact List.mem_cons_of_mem _ hx)
+    have hdec : input.size - (i + 1) < input.size - i := by omega
+    have hrec := ih (i + 1) true (result.push term) input q hdec rfl hno_tail
+    rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+    simp only [hi, ↓reduceIte, Bool.not_true, Bool.false_and,
+      Bool.false_eq_true, hlinearBool, hdec, term]
+    refine ⟨hrec.1, hrec.2.trans ?_⟩
+    rw [hdrop]
+    have htransition := subtract_x_copy_transition (p := p) true result term
+      (input.toList.drop (i + 1))
+    simpa [pendingX] using htransition
+  · intro i inserted result input q hi ih hins hno
+    subst inserted
+    rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+    simp only [hi, ↓reduceIte]
+    have hdrop_empty : input.toList.drop i = [] := by
+      apply List.drop_eq_nil_of_le
+      simpa using (by omega : input.size ≤ i)
+    simp [hdrop_empty, listSum]
+
 /- Any theorem for powmod, subtract-X, or the DDF loop must unfold and prove
    the corresponding definitions in Generated.StrictDDF directly. -/
 

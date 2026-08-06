@@ -9,6 +9,8 @@
 - 将 C++ 原始指针从引用类型中分离，保留分配区身份与以 `uint64_t` limb 为单位的偏移。
 - 增加 `RawHeap`、`RawPtr`、`RawFault` 与 `RawExec`；越界、无效区和未初始化指针均显式失败。
 - 为 `word3 *` 的重解释与三 limb 读写建立模型。
+- 增加 `memcpy` 的逐 limb `copyU64` 语义和 `_poly_normalise` 的
+  `normaliseU64` 语义；两者按剩余长度结构递归并传播 `RawFault`。
 - 将尚使用 `Array.get!`、`Array.set!` 和默认填充值的 `divrem`、构造器及数组例程撤出 StrictGCD 准入集合。
 - StrictGCD 生成器现在拒绝 `sorry`、`partial def`、未解析调用、默认数组访问、fuel、Safe/oracle/fallback 和 axiom。
 - 删除 `size_t` 未初始化局部变量自动取 0 的翻译规则；在证明第一次读取前存在支配写之前，相关 HGCD 函数会生成失败而非产生伪语义。
@@ -52,6 +54,6 @@ Lean 的 `Array.get!`/`set!` 在越界时具有默认行为，而 C++ 原始指�
 
 - 耗时：约 1 小时（语义设计、AST/IR 探测、生成与编译验证）
 - 迭代：4 轮生成/编译/审计
-- Lean 新增/修改行数：约 120 行；StrictGCD 撤回约 260 行未准入定义
+- Lean 新增/修改行数：约 150 行；StrictGCD 撤回约 260 行未准入定义
 - 对应 C++ 行数：本阶段为底层内存语义基础，未新增已完成精化的 C++ 算法行
 - 放弃的方案：把未初始化 `size_t` 解释为 0；原因是它会把缺失的支配写证明变成可执行后备值

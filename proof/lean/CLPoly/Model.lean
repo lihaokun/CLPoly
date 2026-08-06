@@ -356,6 +356,33 @@ def writeWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat)
     | .error fault => .error fault
     | .ok heap2 => writeU64 heap2 limbPtr 2 value.hi
 
+/-- Limb-level semantics used for the `memcpy` calls in the dense polynomial
+raw API.  Source and destination validity are checked at every C++ access;
+`memcpy`'s non-overlap requirement is carried by the later refinement
+precondition. -/
+def copyU64 (heap : RawHeap) (dst : RawPtr UInt64) (src : RawPtr UInt64) :
+    (count : Nat) → RawExec RawHeap
+  | 0 => .ok heap
+  | count + 1 =>
+    match readU64 heap src 0 with
+    | .error fault => .error fault
+    | .ok value =>
+      match writeU64 heap dst 0 value with
+      | .error fault => .error fault
+      | .ok heap' =>
+        copyU64 heap' (RawPtr.add dst 1) (RawPtr.add src 1) count
+
+/-- Exact decreasing scan of `_poly_normalise(A, len)`: discard trailing zero
+limbs and return the first prefix length whose final limb is nonzero. -/
+def normaliseU64 (heap : RawHeap) (ptr : RawPtr UInt64) :
+    (len : Nat) → RawExec Nat
+  | 0 => .ok 0
+  | len + 1 =>
+    match readU64 heap ptr len with
+    | .error fault => .error fault
+    | .ok value =>
+      if value == 0 then normaliseU64 heap ptr len else .ok (len + 1)
+
 end RawHeap
 
 /-- Executable semantics of the x86_64 instruction sequence in

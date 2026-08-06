@@ -1154,6 +1154,180 @@ theorem preinv_initial_subtraction_cases (u1 u0 pn pinv : UInt64)
 /-
   Natural-language proof.
 
+  The component theorem gives `q0=(u1*pinv+u0)%B`.  Adding the omitted
+  `u1*B` term does not change a remainder modulo `B`, so this is also exactly
+  `(u1*(B+pinv)+u0)%B`, the `q0` used by the balance identities.
+-/
+theorem preinvQuotientPair_low_source_mod (u1 u0 pinv : UInt64) :
+    (preinvQuotientPair u1 u0 pinv).2.toNat =
+      (u1.toNat * (limbBase + pinv.toNat) + u0.toNat) % limbBase := by
+  have hlow := (preinvQuotientPair_components u1 u0 pinv).1
+  rw [hlow]
+  rw [show u1.toNat * (limbBase + pinv.toNat) + u0.toNat =
+    (u1.toNat * pinv.toNat + u0.toNat) + limbBase * u1.toNat by ring]
+  simp [Nat.add_mod]
+
+/-- Exact Nat observation of a UInt64 conditional subtraction. -/
+theorem uint64_condSub_toNat (x d : UInt64) :
+    (if x ≥ d then x - d else x).toNat =
+      if d.toNat ≤ x.toNat then x.toNat - d.toNat else x.toNat := by
+  by_cases h : d ≤ x
+  · have hn : d.toNat ≤ x.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using h
+    simp only [h, hn, ↓reduceIte]
+    exact UInt64.toNat_sub_of_le x d h
+  · have hn : ¬d.toNat ≤ x.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using h
+    simp only [h, hn, ↓reduceIte]
+
+/-
+  Natural-language proof.
+
+  Expanding the shared source round, the first comparison is exactly the Nat
+  comparison of UInt64 observations.  If it fires, UInt64 addition observes
+  `(r+pn)%B`; otherwise it observes `r`.  The final comparison likewise is the
+  Nat ordering, and in its true branch subtraction cannot underflow, so it
+  observes ordinary Nat subtraction.  This theorem exposes the complete
+  machine correction block without assuming its arithmetic correctness.
+-/
+theorem preinvReduceNormalized_toNat_model (u1 u0 pn pinv : UInt64) :
+    let q := preinvQuotientPair u1 u0 pinv
+    let prod := (q.1 + 1) * pn
+    let r := u0 - prod
+    let rNat := r.toNat
+    let corrected :=
+      if q.2.toNat < rNat then (rNat + pn.toNat) % limbBase else rNat
+    (preinvReduceNormalized u1 u0 pn pinv).toNat =
+      if pn.toNat ≤ corrected then corrected - pn.toNat else corrected := by
+  dsimp only
+  unfold preinvReduceNormalized
+  dsimp only
+  by_cases hadd :
+      u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn >
+        (preinvQuotientPair u1 u0 pinv).2
+  · have haddNat :
+        (preinvQuotientPair u1 u0 pinv).2.toNat <
+          (u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat := by
+      simpa [UInt64.lt_iff_toNat_lt] using hadd
+    simp only [hadd, haddNat, ↓reduceIte]
+    let corrected :=
+      u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn + pn
+    have hc : corrected.toNat =
+        ((u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat +
+          pn.toNat) % limbBase := by
+      simp [corrected, UInt64.toNat_add, limbBase]
+    rw [← hc]
+    exact uint64_condSub_toNat corrected pn
+  · have haddNat : ¬
+        (preinvQuotientPair u1 u0 pinv).2.toNat <
+          (u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat := by
+      simpa [UInt64.lt_iff_toNat_lt] using hadd
+    simp only [hadd, haddNat, ↓reduceIte]
+    exact uint64_condSub_toNat
+      (u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn) pn
+
+/-
+  Natural-language proof.
+
+  Set `m=B+pinv`, `N=u1*B+u0`, and let `Q` be the estimated multiple.  The
+  quotient-limb theorems identify the generated `q0` and product with the Nat
+  model, while the machine-subtraction theorem identifies `r` with `N-Q` or
+  `B-(Q-N)` according to the actual ordering.  The preinverse bounds provide
+  the estimate window and deficit bound; the balance identities then prove
+  both detector obligations.  Applying the already verified correction
+  control flow yields `N%pn`.  Every equality used here has been established
+  from the generated fixed-width operations—there is no modular oracle.
+-/
+theorem preinvReduceNormalized_correct (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hnorm : limbBase ≤ 2 * pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * pn.toNat) :
+    (preinvReduceNormalized u1 u0 pn pinv).toNat =
+      (u1.toNat * limbBase + u0.toNat) % pn.toNat := by
+  let B := limbBase
+  let d := pn.toNat
+  let m := B + pinv.toNat
+  let X := u1.toNat * m + u0.toNat
+  let q0 := X % B
+  let Q := (X / B + 1) * d
+  let N := u1.toNat * B + u0.toNat
+  let e := B ^ 2 - m * d
+  let A := u1.toNat * e + (B - d) * u0.toNat
+  let qp := preinvQuotientPair u1 u0 pinv
+  let prod := (qp.1 + 1) * pn
+  let r := u0 - prod
+  have hB : 0 < B := by simp [B, limbBase]
+  have hdB : d < B := by
+    simpa [d, B, limbBase] using UInt64.toNat_lt pn
+  have hu0 : u0.toNat < B := by
+    simpa [B, limbBase] using UInt64.toNat_lt u0
+  have hbounds : Q ≤ N + d ∧ N < Q + B := by
+    simpa [B, d, m, X, Q, N] using
+      preinv_estimated_multiple_bounds B d m u1.toNat u0.toNat hB
+        (Nat.le_of_lt hdB) hu0 hu1 hmul hlower
+  have hdeficit : 0 < e ∧ e ≤ d := by
+    simpa [B, d, m, e] using preinv_deficit_bounds B d m hmul hlower
+  have hbalances := preinv_balance_cases B d m u1.toNat u0.toNat hB
+    (Nat.le_of_lt hdB) (Nat.le_of_lt hmul)
+  have hbalancePos : Q ≤ N → B * (N - Q) + d * (B - q0) = A := by
+    simpa [X, Q, N, q0, A, e] using hbalances.1
+  have hbalanceNeg : N < Q → B * (Q - N) + A = d * (B - q0) := by
+    simpa [X, Q, N, q0, A, e] using hbalances.2
+  have hq0 : qp.2.toNat = q0 := by
+    simpa [qp, q0, X, m, B] using
+      preinvQuotientPair_low_source_mod u1 u0 pinv
+  have hrCases :
+      (Q ≤ N → r.toNat = N - Q) ∧
+        (N < Q → r.toNat = B - (Q - N)) := by
+    simpa [B, d, m, X, Q, N, qp, prod, r] using
+      preinv_initial_subtraction_cases u1 u0 pn pinv hu1 hmul hlower
+  have hr : r.toNat = if Q ≤ N then N - Q else B - (Q - N) := by
+    by_cases hle : Q ≤ N
+    · simp [hle, hrCases.1 hle]
+    · have hlt : N < Q := by omega
+      simp [hle, hrCases.2 hlt]
+  have hdetectNeg : N < Q → q0 < B - (Q - N) := by
+    intro hlt
+    exact preinv_negative_detector B d q0 (Q - N) A hdB
+      (Nat.mod_lt X hB) (hbalanceNeg hlt)
+  have hdetectPos : Q ≤ N → q0 < N - Q → N - Q + d < B := by
+    intro hle hcmp
+    have hdeltaB : N - Q < B :=
+      (Nat.sub_lt_iff_lt_add hle).2 (by simpa [Nat.add_comm] using hbounds.2)
+    exact preinv_positive_detector_bound B d e u1.toNat u0.toNat q0
+      (N - Q) hdB hu1 hu0 hdeficit.2 hcmp hdeltaB (hbalancePos hle)
+  have hcorrect := preinv_correction_of_detector B d Q N q0 hdB
+    (by simpa [B, d] using hnorm) (dvd_mul_left d (X / B + 1))
+    hbounds.1 hbounds.2 hdetectNeg hdetectPos
+  dsimp only at hcorrect
+  have hmodel := preinvReduceNormalized_toNat_model u1 u0 pn pinv
+  dsimp only at hmodel
+  rw [show (preinvQuotientPair u1 u0 pinv).2.toNat = q0 by simpa [qp] using hq0]
+    at hmodel
+  rw [show
+      (u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat =
+        (if Q ≤ N then N - Q else B - (Q - N)) by simpa [qp, prod, r] using hr]
+    at hmodel
+  exact hmodel.trans (by simpa [B, d, N] using hcorrect)
+
+/-- Single-round modular correctness transferred to the verbatim generated
+carry and correction block. -/
+theorem preinvRoundIR_correct (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hnorm : limbBase ≤ 2 * pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * pn.toNat) :
+    (preinvRoundIR u1 u0 pn pinv).toNat =
+      (u1.toNat * limbBase + u0.toNat) % pn.toNat := by
+  rw [preinvRoundIR_eq_reduceNormalized]
+  exact preinvReduceNormalized_correct u1 u0 pn pinv hu1 hnorm hmul hlower
+
+/-
+  Natural-language proof.
+
   The generated C++ multiplication first shifts `a`, forms its exact UInt128
   product with `b`, and splits that product into high and low limbs.  The
   remaining quotient estimate, carry conversion, two correction branches and

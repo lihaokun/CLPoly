@@ -60,6 +60,24 @@ theorem strict_make_monic_eq_raw (f : SparsePolyZp) :
     Generated.__upoly_make_monic_ir_def]
   rw [strict_make_monic_loop_eq]
 
+/-- The non-positive branch of the generated well-founded powmod loop returns
+the current accumulator exactly.  This is the C++ loop exit, not a wrapper. -/
+theorem strict_powmod_loop_of_nonpos (e : ZZ) (b r m : SparsePolyZp)
+    (he : ¬e > (0 : Int32).toInt) :
+    Generated.StrictDDF._loop___upoly_powmod_0_ir e b r m =
+      ((0 : Int64), r) := by
+  rw [Generated.StrictDDF._loop___upoly_powmod_0_ir.eq_1]
+  simp only [he, ↓reduceIte]
+
+/-- Direct generated-entry equation for exponent zero. -/
+theorem strict_upoly_powmod_zero (base m : SparsePolyZp) :
+    Generated.StrictDDF.__upoly_powmod_ir base 0 m =
+      (#[(UMonomial.mk (0 : Int32),
+        Generated.StrictDDF.__make_zp_ir (1 : Int32)
+          (SparsePolyZp.front! m).snd.prime)] : SparsePolyZp) := by
+  simp [Generated.StrictDDF.__upoly_powmod_ir,
+    strict_powmod_loop_of_nonpos]
+
 /-- `__upoly_mod_ir` 在规范输入上同时保持稀疏规范形，并精化为
 mathlib 的首一多项式余式。 -/
 private theorem upoly_mod_step_data (h2p : 2 * p ≤ UInt64.size)

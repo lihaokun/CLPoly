@@ -4,9 +4,39 @@ namespace CLPoly.Impl.StrictDivremRefinement
 
 open Generated.StrictDivrem
 
+/-- A valid raw coefficient slice has a safe observation of exactly the C++
+declared length. -/
+theorem readU64s_ok (heap : RawHeap) (ptr : RawPtr UInt64) (count : Nat)
+    (hvalid : heap.ValidU64Slice ptr count) :
+    ∃ coeffs, heap.readU64s ptr count = .ok coeffs ∧ coeffs.size = count := by
+  cases count with
+  | zero => exact ⟨#[], rfl, rfl⟩
+  | succ n =>
+    simp only [RawHeap.readU64s]
+    rcases heap.readU64_of_valid ptr (n + 1) 0 hvalid (by omega) with
+      ⟨head, hhead⟩
+    simp only [hhead]
+    have htail := heap.validU64Slice_add ptr (n + 1) 1 n hvalid (by omega)
+    rcases readU64s_ok heap (RawPtr.add ptr 1) n htail with
+      ⟨tail, hreadTail, hsizeTail⟩
+    simp only [hreadTail]
+    refine ⟨#[head] ++ tail, rfl, ?_⟩
+    simp [hsizeTail, Nat.add_comm]
+
+theorem sliceRep_exists_unique (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length : Nat) (hvalid : heap.ValidU64Slice ptr length) :
+    ∃ coeffs : Array UInt64,
+      (heap.SliceRep ptr length coeffs ∧ coeffs.size = length) ∧
+      ∀ other : Array UInt64,
+        heap.SliceRep ptr length other ∧ other.size = length → other = coeffs := by
+  rcases readU64s_ok heap ptr length hvalid with ⟨coeffs, hread, hsize⟩
+  refine ⟨coeffs, ⟨hread, hsize⟩, ?_⟩
+  intro other hother
+  exact (Except.ok.inj (hread.symm.trans hother.1)).symm
+
 /-- `_poly_normalise` only reads within its declared prefix.  Structural
 recursion on `len` proves both successful execution and the returned prefix
-bound; there is no fuel or fallback result. -/
+bound; structural recursion produces no alternate execution result. -/
 theorem normaliseU64_ok (heap : RawHeap) (ptr : RawPtr UInt64) (len : Nat)
     (hvalid : heap.ValidU64Slice ptr len) :
     ∃ result, heap.normaliseU64 ptr len = .ok result ∧ result ≤ len := by

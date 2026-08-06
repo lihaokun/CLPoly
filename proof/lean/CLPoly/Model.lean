@@ -558,6 +558,25 @@ def normaliseU64 (heap : RawHeap) (ptr : RawPtr UInt64) :
     | .ok value =>
       if value == 0 then normaliseU64 heap ptr len else .ok (len + 1)
 
+/-- Total observation of a C++ limb slice.  Unlike `Array.get!`, an invalid
+address is observable as `RawFault`; successful observation returns exactly
+`count` coefficients in increasing-address order. -/
+def readU64s (heap : RawHeap) (ptr : RawPtr UInt64) :
+    (count : Nat) → RawExec (Array UInt64)
+  | 0 => .ok #[]
+  | count + 1 =>
+    match readU64 heap ptr 0 with
+    | .error fault => .error fault
+    | .ok head =>
+      match readU64s heap (RawPtr.add ptr 1) count with
+      | .error fault => .error fault
+      | .ok tail => .ok (#[head] ++ tail)
+
+/-- Raw-to-safe representation relation for a coefficient buffer. -/
+def SliceRep (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (coeffs : Array UInt64) : Prop :=
+  readU64s heap ptr length = .ok coeffs
+
 end RawHeap
 
 /-- Executable semantics of the x86_64 instruction sequence in

@@ -7,7 +7,7 @@
 
     theorem <l1_ir>_refines (f : SparsePolyZp) (hwf : WellFormed p f) ... :
       (l1_ir f).map (SparsePolyZp.toPoly p ∘ Prod.fst, ...) = l2 (SparsePolyZp.toPoly p f) := by
-      sorry
+      <direct generated-execution proof>
 -/
 
 import CLPoly.Model

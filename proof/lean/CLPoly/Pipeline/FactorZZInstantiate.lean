@@ -1,9 +1,8 @@
 /-
-  CLPoly/Pipeline/FactorZZInstantiate.lean — 端到端 Z[x] 因式分解定理（0 sorry）
+  CLPoly/Pipeline/FactorZZInstantiate.lean — L2 Z[x] 因式分解辅助构造（无占位符）
 
-  三个版本：
-  1. factor_ZZ_instantiate：直接 UFD
-  2. factor_ZZ_unconditional：管线路径，无外部假设
+  本文件保留 L2 辅助构造。曾经将 UFD/`Classical.choose` witness 作为
+  通过选择存在性见证拼装各阶段实现的旧入口已删除。
 -/
 import CLPoly.Pipeline.FactorZZ
 import CLPoly.Pipeline.FactorZpInstantiate
@@ -161,27 +160,3 @@ theorem factor_ZZ_instantiate
     (f : Polynomial ℤ) (hf : f ≠ 0)
     : ∃ result : List (Polynomial ℤ), FactorZZCorrect f result :=
   recombine_correct f hf
-
-theorem factor_ZZ_unconditional
-    (f : Polynomial ℤ) (hf : f ≠ 0) (hprim : f.IsPrimitive)
-    {p : ℕ} [hp : Fact (Nat.Prime p)] {k : ℕ} (hk : 0 < k)
-    (hgood : Squarefree (Polynomial.map (Int.castRingHom (ZMod p)) f))
-    (hdeg : (Polynomial.map (Int.castRingHom (ZMod p)) f).natDegree = f.natDegree)
-    : ∃ result : List (Polynomial ℤ), FactorZZCorrect f result := by
-  classical
-  exact factor_ZZ_correct f hf hprim hk hgood hdeg
-    -- 1. Zp factorization (unconditional)
-    (fun g => if hg : g = 0 then (0, [])
-              else ((factor_Zp_instantiate_unconditional g hg).choose,
-                    (factor_Zp_instantiate_unconditional g hg).choose_spec.choose))
-    (by
-      have hfp_ne : (Polynomial.map (Int.castRingHom (ZMod p)) f) ≠ 0 :=
-        fun h => not_squarefree_zero (h ▸ hgood)
-      simp only [dif_neg hfp_ne]
-      exact (factor_Zp_instantiate_unconditional _ hfp_ne).choose_spec.choose_spec)
-    -- 2. Hensel lifting (hcop is provided by factor_ZZ_correct)
-    (fun facs_p => hensel_lift p k hk f facs_p)
-    (fun facs_p hne hprod hcop => hensel_lift_correct p k hk f facs_p hne hprod hcop)
-    -- 3. Recombination (UFD path)
-    (fun _ => (recombine_correct f hf).choose)
-    (fun _ _ => (recombine_correct f hf).choose_spec)

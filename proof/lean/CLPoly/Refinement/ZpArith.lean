@@ -417,7 +417,7 @@ by
   L2 model : Algorithm/ZpArith.lean — hand-written, proven correct
   Bridge   : SparsePolyZp.toPoly (see Math/Univariate.lean)
 
-  Proof status: Skeleton (sorry) — fill to complete L1→L2 verification chain
+  Proof status: closed below.
 -/
 theorem __upoly_divmod_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (q : SparsePolyZp)
@@ -449,7 +449,7 @@ theorem __upoly_divmod_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
   L2 model : Algorithm/ZpArith.lean — hand-written, proven correct
   Bridge   : SparsePolyZp.toPoly (see Math/Univariate.lean)
 
-  Proof status: Skeleton (sorry) — fill to complete L1→L2 verification chain
+  Proof status: closed below.
 -/
 theorem __upoly_mod_ir_refines (p : ℕ) [hp : Fact (Nat.Prime p)]
     (f : SparsePolyZp)

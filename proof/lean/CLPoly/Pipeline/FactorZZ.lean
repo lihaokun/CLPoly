@@ -4,7 +4,7 @@
   证明：若 Zp 因式分解、Hensel 提升、因子重组各自满足规约，
   则组合结果满足 FactorZZCorrect。
 
-  证明结构（全部无 sorry）：
+  证明结构（无占位符）：
     1. Squarefree → f mod p ≠ 0
     2. factor_zp: f mod p = C(lc) * ∏(fᵢ^eᵢ)
     3. 构造 Hensel 输入: facs_p = [C(lc), f₁^e₁, ...]，乘积 = f mod p

@@ -4,7 +4,7 @@
   证明：若 SQF、DDF、EDF 各自满足规约，则组合结果满足 FactorZpCorrect。
   这是框架验证——不依赖算法实现，仅依赖规约间的逻辑衔接。
 
-  证明结构（全部无 sorry）：
+  证明结构（无占位符）：
     SQF: f ≈ ∏ gᵢ^eᵢ, 每个 gᵢ 首一无平方
     DDF: gᵢ = ∏ gd_j (首一 Associated → 相等)
     EDF: gd_j = ∏ q_k (首一 Associated → 相等)

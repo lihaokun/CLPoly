@@ -912,6 +912,244 @@ private theorem strict_subtract_x_loop_after_insert
       simpa using (by omega : input.size ≤ i)
     simp [hdrop_empty, listSum]
 
+set_option maxHeartbeats 0 in
+/-- Starting before insertion, the generated well-founded loop accounts for
+exactly one subtraction of `X`.  The proof follows all three C++ branches:
+insert before a constant term, update the unique linear coefficient, or copy a
+higher-degree term and recurse. -/
+private theorem strict_subtract_x_loop_before_insert
+    (h2p : 2 * p ≤ UInt64.size) (q : UInt64) (hq : q.toNat = p) :
+    ∀ (i : Nat) (result input : SparsePolyZp),
+    (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg) →
+    (∀ x ∈ input.toList.drop i, x.1.deg < 2 ^ 31) →
+    SparsePolyZp.AllReduced p (input.toList.drop i) →
+    let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+      i false result input q
+    SparsePolyZp.toPoly p out.2.2 - pendingX (p := p) out.2.1 =
+      SparsePolyZp.toPoly p result + listSum p (input.toList.drop i) - X := by
+  intro i result input
+  refine Generated.StrictDDF._loop___upoly_subtract_x_0_ir.induct
+    (motive := fun i inserted result input q =>
+      inserted = false → q.toNat = p →
+      (input.toList.drop i).Pairwise
+        (fun a b => b.1.deg < a.1.deg) →
+      (∀ x ∈ input.toList.drop i, x.1.deg < 2 ^ 31) →
+      SparsePolyZp.AllReduced p (input.toList.drop i) →
+      let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+        i inserted result input q
+      SparsePolyZp.toPoly p out.2.2 - pendingX (p := p) out.2.1 =
+        SparsePolyZp.toPoly p result + listSum p (input.toList.drop i) - X)
+    ?_ ?_ ?_ i false result input q rfl hq
+  · intro i inserted result input q hi term hbefore ih hins hq hs hdeg hred
+    subst inserted
+    have hdrop : input.toList.drop i = term :: input.toList.drop (i + 1) := by
+      simpa [term] using drop_eq_getElem_cons input i hi
+    have hdegNat : (Int64.toUInt64 1).toNat = 1 := by rfl
+    have hcur_lt : term.1.deg < 1 := by
+      simp at hbefore
+      rw [hdegNat] at hbefore
+      exact hbefore
+    have hcur_le : term.1.deg ≤ 1 := Nat.le_of_lt hcur_lt
+    have hnotlinear : Int32.ofNat term.1.deg ≠ (1 : Int32) := by
+      intro h
+      have hbound := hdeg term (by rw [hdrop]; simp)
+      have : term.1.deg = 1 :=
+        (int32_ofNat_eq_one_iff term.1.deg hbound).mp h
+      omega
+    have hnotlinearBool :
+        (term.1.deg.toUInt32.toInt32 == (1 : Int32)) = false := by
+      simpa [Int32.ofNat, Nat.toUInt32] using
+        (show (Int32.ofNat term.1.deg == (1 : Int32)) = false by
+          simp [hnotlinear])
+    have hnotlinearInput :
+        (input[i]!.1.deg.toUInt32.toInt32 == (1 : Int32)) ≠ true := by
+      simpa [term, hnotlinearBool]
+    have hs_tail := pairwise_drop_tail input i hi hs
+    have hdeg_tail : ∀ x ∈ input.toList.drop (i + 1), x.1.deg < 2 ^ 31 := by
+      intro x hx
+      exact hdeg x (by rw [hdrop]; exact List.mem_cons_of_mem _ hx)
+    have hno_tail := no_generated_linear_in_tail_of_current_le_one
+      input i hi hs (by simpa [term] using hcur_le) hdeg_tail
+    let minusX := (UMonomial.mk (1 : Int32),
+      Zp.ofInt ((q - (1 : UInt64)).toInt) q)
+    let result' := (result.push minusX).push term
+    have hpost := strict_subtract_x_loop_after_insert (p := p) q (i + 1)
+      result' input hno_tail
+    have hdec : input.size - (i + 1) < input.size - i := by omega
+    rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+    simp only [hi, ↓reduceIte, hbefore, hdec, term]
+    rw [if_neg hnotlinearInput]
+    simp only [hdec, dif_pos]
+    change SparsePolyZp.toPoly p
+        (Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+          (i + 1) true result' input q).2.2 -
+          pendingX (p := p)
+            (Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+              (i + 1) true result' input q).2.1 = _
+    rw [hpost.1, hpost.2]
+    rw [hdrop]
+    simpa [result', minusX] using
+      (subtract_x_insert_transition (p := p) result term
+        (input.toList.drop (i + 1)) q hq)
+  · intro i inserted result input q hi term hbefore ih hins hq hs hdeg hred
+    subst inserted
+    have hdrop : input.toList.drop i = term :: input.toList.drop (i + 1) := by
+      simpa [term] using drop_eq_getElem_cons input i hi
+    have hs_tail := pairwise_drop_tail input i hi hs
+    have hdeg_tail : ∀ x ∈ input.toList.drop (i + 1), x.1.deg < 2 ^ 31 := by
+      intro x hx
+      exact hdeg x (by rw [hdrop]; exact List.mem_cons_of_mem _ hx)
+    have hred_term := hred term (by rw [hdrop]; simp)
+    have hred_tail : SparsePolyZp.AllReduced p
+        (input.toList.drop (i + 1)) := by
+      intro x hx
+      exact hred x (by rw [hdrop]; exact List.mem_cons_of_mem _ hx)
+    have hdec : input.size - (i + 1) < input.size - i := by omega
+    by_cases hlinear : term.1.deg.toUInt32.toInt32 = (1 : Int32)
+    · have hlinearOfNat : Int32.ofNat term.1.deg = (1 : Int32) := by
+        simpa [Int32.ofNat, Nat.toUInt32] using hlinear
+      have hlinearBool :
+          (term.1.deg.toUInt32.toInt32 == (1 : Int32)) = true := by
+        simpa [Int32.ofNat, Nat.toUInt32] using
+          (show (Int32.ofNat term.1.deg == (1 : Int32)) = true by
+            simp [hlinearOfNat])
+      have hlinearInput :
+          (input[i]!.1.deg.toUInt32.toInt32 == (1 : Int32)) = true := by
+        simpa [term] using hlinearBool
+      have hcur : term.1.deg = 1 := by
+        have hcurBound := hdeg term (by rw [hdrop]; simp)
+        apply (int32_ofNat_eq_one_iff term.1.deg hcurBound).mp
+        simpa [Int32.ofNat, Nat.toUInt32] using hlinear
+      have hno_tail := no_generated_linear_in_tail_of_current_le_one
+        input i hi hs (by simpa [term, hcur]) hdeg_tail
+      let c' := input[i]!.2 -
+        Generated.StrictDDF.__make_zp_ir ((1 : Int32).toInt64) q
+      let result' := if c'.val != ((0 : Int32).toInt64.toUInt64) then
+          result.push
+            ({ deg := (((1 : Int32).toInt64.toUInt64.toNat : Int)).toNat }, c')
+        else result
+      have hpost := strict_subtract_x_loop_after_insert (p := p) q (i + 1)
+        result' input hno_tail
+      rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+      simp only [hi, ↓reduceIte, hbefore, hdec, term]
+      simp only [Bool.false_eq_true, ↓reduceIte]
+      rw [if_pos hlinearInput]
+      simp only [hdec, dif_pos]
+      dsimp [result', c'] at hpost
+      simp only [Int.toNat_natCast]
+      have hloopEq :
+          (if
+              ((input[i]!.2 - Generated.StrictDDF.__make_zp_ir
+                ((1 : Int32).toInt64) q).val !=
+                ((0 : Int32).toInt64.toUInt64)) = true then
+            Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+              (i + 1) true
+              (result.push
+                ({ deg := (1 : Int32).toInt64.toUInt64.toNat },
+                  input[i]!.2 - Generated.StrictDDF.__make_zp_ir
+                    ((1 : Int32).toInt64) q)) input q
+          else
+            Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+              (i + 1) true result input q) =
+            Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+              (i + 1) true
+              (if
+                ((input[i]!.2 - Generated.StrictDDF.__make_zp_ir
+                  ((1 : Int32).toInt64) q).val !=
+                  ((0 : Int32).toInt64.toUInt64)) = true then
+                result.push
+                  ({ deg := (1 : Int32).toInt64.toUInt64.toNat },
+                    input[i]!.2 - Generated.StrictDDF.__make_zp_ir
+                      ((1 : Int32).toInt64) q)
+              else result) input q := by
+        split <;> rfl
+      rw [hloopEq]
+      rw [hpost.1, hpost.2, hdrop]
+      have htransition := subtract_x_linear_transition (p := p) h2p result
+        term.2 (input.toList.drop (i + 1)) q hred_term.1 hred_term.2 hq
+      simpa [result', c', term, hcur, listSum, pendingX,
+        show Int64.toUInt64 0 = 0 by rfl] using htransition
+    · have hlinearOfNat : Int32.ofNat term.1.deg ≠ (1 : Int32) := by
+        simpa [Int32.ofNat, Nat.toUInt32] using hlinear
+      have hlinearBool :
+          (term.1.deg.toUInt32.toInt32 == (1 : Int32)) = false := by
+        simpa [Int32.ofNat, Nat.toUInt32] using
+          (show (Int32.ofNat term.1.deg == (1 : Int32)) = false by
+            simp [hlinearOfNat])
+      have hlinearInput :
+          (input[i]!.1.deg.toUInt32.toInt32 == (1 : Int32)) ≠ true := by
+        simpa [term, hlinearBool]
+      have hrec := ih (i + 1) false (result.push term) input q hdec rfl hq
+        hs_tail hdeg_tail hred_tail
+      rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+      simp only [hi, ↓reduceIte, hbefore, hdec, term]
+      simp only [Bool.false_eq_true, ↓reduceIte]
+      rw [if_neg hlinearInput]
+      simp only [hdec, dif_pos]
+      refine hrec.trans ?_
+      rw [hdrop]
+      exact subtract_x_copy_transition (p := p) false result term
+        (input.toList.drop (i + 1))
+  · intro i inserted result input q hi ih hins hq hs hdeg hred
+    subst inserted
+    rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+    simp only [hi, ↓reduceIte]
+    have hdrop_empty : input.toList.drop i = [] := by
+      apply List.drop_eq_nil_of_le
+      simpa using (by omega : input.size ≤ i)
+    simp [hdrop_empty, pendingX, listSum]
+
+set_option maxHeartbeats 0 in
+/-- The generated well-founded subtract-X entry has exactly the polynomial
+semantics of subtracting `X`.  This theorem executes the generated range loop
+from its real empty accumulator and then proves both generated epilogue
+branches (already inserted, or append the missing `-X` term) before applying
+the generated normalization. -/
+theorem strict_upoly_subtract_x_refines
+    (h2p : 2 * p ≤ UInt64.size) (h : SparsePolyZp) (q : UInt64)
+    (hq : q.toNat = p) (hh : CanonicalRep p h)
+    (hdeg : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
+    SparsePolyZp.toPoly p
+        (Generated.StrictDDF.__upoly_subtract_x_ir h q) =
+      SparsePolyZp.toPoly p h - X := by
+  have hs : h.toList.Pairwise (fun a b => b.1.deg < a.1.deg) :=
+    pairwise_degrees_of_sortedListB h.toList hh.1
+  have hloop := strict_subtract_x_loop_before_insert (p := p) h2p q hq
+    0 SparsePolyZp.empty h (by simpa using hs) (by simpa using hdeg)
+    (by simpa using hh.2.2)
+  let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+    0 false SparsePolyZp.empty h q
+  have haccount :
+      SparsePolyZp.toPoly p out.2.2 - pendingX (p := p) out.2.1 =
+        SparsePolyZp.toPoly p h - X := by
+    simpa [out, SparsePolyZp.empty, SparsePolyZp.toPoly_empty,
+      SparsePolyZp.toPoly, listSum] using hloop
+  simp only [Generated.StrictDDF.__upoly_subtract_x_ir]
+  change SparsePolyZp.toPoly p
+      (if !out.2.1 then
+        SparsePolyZp.normalization
+          (out.2.2.push
+            ({ deg := (((1 : Int32).toInt64.toUInt64.toNat : Int)).toNat },
+              Zp.ofInt ((q - (1 : UInt64)).toInt) q))
+      else SparsePolyZp.normalization out.2.2) = _
+  by_cases hins : out.2.1 = true
+  · simp only [hins, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+    rw [normalization_toPoly]
+    simpa [pendingX, hins] using haccount
+  · have hinsfalse : out.2.1 = false := Bool.eq_false_of_not_eq_true hins
+    simp only [hinsfalse, Bool.not_false, ↓reduceIte]
+    rw [normalization_toPoly, toPoly_push,
+      strict_minus_one_toZMod q hq]
+    norm_num [Int64.toUInt64]
+    rw [show (Int64.toUInt64 1).toNat = 1 by rfl,
+      Polynomial.monomial_one_one_eq_X]
+    calc
+      SparsePolyZp.toPoly p out.2.2 + -X =
+          SparsePolyZp.toPoly p out.2.2 - X := by ring
+      _ = SparsePolyZp.toPoly p h - X := by
+        simpa only [pendingX, hinsfalse, ↓reduceIte] using haccount
+
 /- Any theorem for powmod, subtract-X, or the DDF loop must unfold and prove
    the corresponding definitions in Generated.StrictDDF directly. -/
 

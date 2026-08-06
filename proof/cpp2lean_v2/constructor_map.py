@@ -65,6 +65,9 @@ def _normalize_typename(name: str) -> str:
 # ============================================================
 
 CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
+    "hgcd_mat": {
+        0: ConstructorResolution("HgcdMat.uninit", is_default=True),
+    },
     # `dense_upoly_zp` algorithms are emitted into the strict GCD dependency
     # closure.  Constructor resolution names those generated bodies; it does
     # not substitute the sparse Lean GCD implementation.

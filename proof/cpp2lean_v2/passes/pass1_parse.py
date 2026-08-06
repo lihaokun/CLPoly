@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
     BaseType, NamedType, ArrayType, PairType, TupleType, OptionType,
-    StdMapType, RefType, UnknownType, TypeIR,
+    StdMapType, RefType, PtrType, UnknownType, TypeIR,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
@@ -94,9 +94,10 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         inner = parse_type(qt[:-1].strip())
         return RefType(inner, is_const, is_rvalue=False)
     if qt.endswith("*"):
-        # 指针（如 `const lex_<var_order>* comp_ptr`，CLPoly 仅 1 处）
+        # Raw pointers are values with allocation identity and offset; unlike
+        # references they must survive Pass 2.
         inner = parse_type(qt[:-1].strip())
-        return RefType(inner, is_const, is_rvalue=False, is_pointer=True)
+        return PtrType(inner, is_const=is_const)
 
     # C 数组 char[N]（字符串字面量）
     import re as _re
@@ -190,6 +191,7 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         "umonomial": NamedType("UMonomial"),
         "dense_upoly_zp": NamedType("DenseUPolyZp"),
         "word3": NamedType("Word3"),
+        "hgcd_mat": NamedType("HgcdMat"),
         "less": NamedType("Less"),  # MonomialOrder tag
         "uless": NamedType("ULess"),
     }
@@ -430,11 +432,8 @@ def parse_param(parm_json: dict) -> HIRParam:
     # is_ref / is_const_ref 判断（指针单独处理）
     is_const_ref = False
     is_ref = False
-    is_pointer = False
     if isinstance(ty, RefType):
-        if ty.is_pointer:
-            is_pointer = True
-        elif ty.is_const:
+        if ty.is_const:
             is_const_ref = True
         else:
             is_ref = True
@@ -643,6 +642,8 @@ def parse_expr(node: Any) -> ExprIR:
         return UnknownExpr(kind)
 
     if kind == "CXXThisExpr":
+        if isinstance(ty, PtrType):
+            ty = ty.elem
         return Var(name="this", version=0, ty=ty)
 
     if kind == "CXXDefaultArgExpr":

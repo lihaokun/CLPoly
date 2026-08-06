@@ -16,7 +16,7 @@ sys.path.insert(0, str(V2_ROOT))
 sys.path.insert(0, str(V2_ROOT / "passes"))
 
 from ir_types import (
-    BaseType, NamedType, RefType, ArrayType, PairType, UnknownType,
+    BaseType, NamedType, RefType, PtrType, ArrayType, PairType, UnknownType,
     Var, Lit, BinOp, UnaryOp, Cast, Call, UnresolvedOp, FieldAccess,
     LetStmt, IfStmt, WhileStmt, BlockStmt, ReturnStmt, RequireStmt, ExprStmt, AssignStmt,
     HIRFunc, HIRParam,
@@ -140,11 +140,15 @@ def test_parse_type_ref():
     assert not r2.is_const
     assert r2.inner == NamedType("SparsePolyZZ")
 
+    p = parse_type("const uint64_t *")
+    assert p == PtrType(BaseType.UINT64, is_const=True)
+
 
 def test_parse_type_clpoly():
     assert parse_type("ZZ") == NamedType("ZZ")
     assert parse_type("Zp") == NamedType("Zp")
     assert parse_type("word3") == NamedType("Word3")
+    assert parse_type("hgcd_mat") == NamedType("HgcdMat")
     assert parse_type("upolynomial_<Zp>") == NamedType("SparsePolyZp")
     assert parse_type("upolynomial_<ZZ>") == NamedType("SparsePolyZZ")
 

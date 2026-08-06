@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
     BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType,
-    OptionType, StdMapType, ArrayType, RefType,
+    OptionType, StdMapType, ArrayType, RefType, PtrType,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
@@ -212,6 +212,8 @@ def emit_type(ty: Optional[TypeIR]) -> str:
     if isinstance(ty, RefType):
         # MIR 阶段不应有 RefType 残留——降级为 inner 类型 + 注释
         return f"{emit_type(ty.inner)} /- ref residual -/"
+    if isinstance(ty, PtrType):
+        return f"RawPtr {_paren(emit_type(ty.elem))}"
     # FuncType: Pass 3 lifted lambda 的具体签名（阶段 F #3）
     from ir_types import FuncType
     if isinstance(ty, FuncType):

@@ -73,6 +73,13 @@ class RefType:
 
 
 @dataclass(frozen=True)
+class PtrType:
+    """C++ raw pointer value preserved through reference elimination."""
+    elem: 'TypeIR'
+    is_const: bool = False
+
+
+@dataclass(frozen=True)
 class FuncType:
     """函数类型 α₁ → α₂ → ... → ret（Lean curry 形式）。
 
@@ -115,7 +122,7 @@ class StructType:
 
 TypeIR = Union[
     BaseType, NamedType, ArrayType, PairType, TupleType,
-    OptionType, StdMapType, RefType, UnknownType,
+    OptionType, StdMapType, RefType, PtrType, UnknownType,
 ]
 
 

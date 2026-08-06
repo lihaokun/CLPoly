@@ -244,6 +244,120 @@ structure Word3 where
   hi : UInt64 := 0
 deriving Repr, Inhabited, BEq
 
+/-- Address identity for C++ raw buffers.  `limbOffset` is measured in
+64-bit limbs, so reinterpretation between limb and `word3` pointers preserves
+the underlying address. -/
+structure RawPtr (α : Type) where
+  region : Option Nat := none
+  limbOffset : Nat
+deriving Repr, Inhabited, BEq
+
+/-- Heap backing the dense raw-pointer API.  Every C++ allocation occupies a
+distinct region and all pointer reads/writes explicitly thread this state. -/
+structure RawHeap where
+  regions : Array (Array UInt64) := #[]
+deriving Repr, Inhabited, BEq
+
+/-- Exact field layout of `dense_upoly_zp::hgcd_mat`.  The C arrays have
+length four; `HgcdMat.Valid` below records that representation invariant. -/
+structure HgcdMat where
+  poly : Array (RawPtr UInt64) := Array.replicate 4 default
+  len : Array Nat := Array.replicate 4 0
+deriving Repr, Inhabited, BEq
+
+def HgcdMat.Valid (m : HgcdMat) : Prop :=
+  m.poly.size = 4 ∧ m.len.size = 4
+
+def HgcdMat.uninit : HgcdMat :=
+  { poly := Array.replicate 4 (RawPtr.mk none 0)
+    len := Array.replicate 4 0 }
+
+inductive RawFault where
+  | invalidPointer
+  | invalidRegion (region : Nat)
+  | outOfBounds (region limbOffset : Nat)
+deriving Repr, Inhabited, BEq
+
+abbrev RawExec (α : Type) := Except RawFault α
+
+class RawLimbWidth (α : Type) where
+  width : Nat
+
+instance : RawLimbWidth UInt64 where width := 1
+instance : RawLimbWidth Word3 where width := 3
+
+namespace RawPtr
+
+def add [RawLimbWidth α] (p : RawPtr α) (n : Nat) : RawPtr α :=
+  { p with limbOffset := p.limbOffset + n * RawLimbWidth.width α }
+
+def reinterpret (p : RawPtr α) : RawPtr β :=
+  { region := p.region, limbOffset := p.limbOffset }
+
+def sameAddress (p : RawPtr α) (q : RawPtr β) : Bool :=
+  p.region == q.region && p.limbOffset == q.limbOffset
+
+end RawPtr
+
+namespace RawHeap
+
+def readU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat) :
+    RawExec UInt64 :=
+  match ptr.region with
+  | none => .error .invalidPointer
+  | some regionId =>
+    if hr : regionId < heap.regions.size then
+      let region := heap.regions[regionId]
+      let offset := ptr.limbOffset + index
+      if hb : offset < region.size then
+        .ok region[offset]
+      else
+        .error (.outOfBounds regionId offset)
+    else
+      .error (.invalidRegion regionId)
+
+def writeU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat)
+    (value : UInt64) : RawExec RawHeap :=
+  match ptr.region with
+  | none => .error .invalidPointer
+  | some regionId =>
+    if hr : regionId < heap.regions.size then
+      let region := heap.regions[regionId]
+      let offset := ptr.limbOffset + index
+      if hb : offset < region.size then
+        let region' := region.set offset value hb
+        .ok { heap with regions := heap.regions.set regionId region' hr }
+      else
+        .error (.outOfBounds regionId offset)
+    else
+      .error (.invalidRegion regionId)
+
+def readWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat) :
+    RawExec Word3 :=
+  let base := ptr.limbOffset + 3 * index
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := base }
+  match readU64 heap limbPtr 0, readU64 heap limbPtr 1,
+      readU64 heap limbPtr 2 with
+  | .ok lo, .ok mid, .ok hi => .ok { lo := lo, mid := mid, hi := hi }
+  | .error fault, _, _ => .error fault
+  | _, .error fault, _ => .error fault
+  | _, _, .error fault => .error fault
+
+def writeWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat)
+    (value : Word3) : RawExec RawHeap :=
+  let base := ptr.limbOffset + 3 * index
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := base }
+  match writeU64 heap limbPtr 0 value.lo with
+  | .error fault => .error fault
+  | .ok heap1 =>
+    match writeU64 heap1 limbPtr 1 value.mid with
+    | .error fault => .error fault
+    | .ok heap2 => writeU64 heap2 limbPtr 2 value.hi
+
+end RawHeap
+
 /-- Executable semantics of the x86_64 instruction sequence in
 `dense_upoly_zp::_add_carry3`:
 `addq b0, lo; adcq b1, mid; adcq 0, hi`. -/

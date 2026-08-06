@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ir_types import BaseType, NamedType, UnknownType, TypeIR
+from ir_types import BaseType, NamedType, PtrType, UnknownType, TypeIR
 
 
 # ============================================================
@@ -71,6 +71,8 @@ def canonicalize_type(ty: TypeIR | None) -> str:
         if ty.name in ("ValueType", "DependentType", "ResultType", "StlInternal"):
             return "unresolved"
         return f"named:{ty.name}"
+    if isinstance(ty, PtrType):
+        return f"ptr:{canonicalize_type(ty.elem)}"
     if isinstance(ty, UnknownType):
         # Pass 1 对 `std::size_t` / `std::size_type` 有时保留为 UnknownType（
         # typedef 未穿透）。CLPoly 里它们一律是 unsigned 容器索引，规范化为 'nat'。

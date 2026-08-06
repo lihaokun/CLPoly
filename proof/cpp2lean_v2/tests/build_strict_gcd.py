@@ -1,9 +1,11 @@
-"""Generate the strict C++ member-function core used by polynomial_GCD.
+"""Generate the admitted strict C++ foundations used by polynomial_GCD.
 
 Every definition in this file starts from a concrete Clang AST body in
-``dense_upoly_zp.hh``.  The outer constructors, divrem, Euclid/HGCD branch and
-polynomial_GCD wrappers are added to ``METHOD_ROOTS`` only after their own
-dependency closures are placeholder-free.
+``dense_upoly_zp.hh``.  Buffer-manipulating routines, divrem, Euclid/HGCD and
+polynomial_GCD are added to ``METHOD_ROOTS`` only after they use explicit raw
+heap semantics and their dependency closures are placeholder-free.  In
+particular, an Array ``get!``/``set!`` model is not admissible: its default
+out-of-bounds behaviour is not C++ semantics.
 """
 
 from __future__ import annotations
@@ -35,22 +37,11 @@ OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictGCD.lean"
 METHOD_ROOTS = (
     "inv_prime",
     "__preinvert_limb",
-    "__precompute",
     "_umul128",
     "_add_carry3",
     "_lll_mod_preinv",
-    "empty",
-    "__strip",
-    "dense_upoly_zp_default",
-    "dense_upoly_zp_of_prime",
-    "dense_upoly_zp_of_sparse",
-    "deg",
-    "lead",
     "nmod_mul",
     "nmod_inv",
-    "scalar_mul",
-    "to_upoly",
-    "divrem",
 )
 
 CONSTRUCTOR_ARITIES = {
@@ -85,9 +76,30 @@ def dense_constructor_ast(name: str):
     return matches[0]
 
 
+def dense_method_ast(name: str):
+    """Select an exact method from the `dense_upoly_zp` record.
+
+    This is required for names such as `gcd` that collide with free/template
+    functions elsewhere in the translation unit.
+    """
+    record = dump_ast_json("dense_upoly_zp", timeout=120)
+    if record is None or record.get("kind") != "CXXRecordDecl":
+        raise RuntimeError("missing dense_upoly_zp record AST")
+    matches = [node for node in record.get("inner", [])
+               if node.get("kind") == "CXXMethodDecl" and
+               node.get("name") == name and
+               any(child.get("kind") == "CompoundStmt"
+                   for child in node.get("inner", [])
+                   if isinstance(child, dict))]
+    if len(matches) != 1:
+        raise RuntimeError(f"ambiguous dense method {name}: {len(matches)}")
+    return matches[0]
+
+
 def lower_method(name: str):
-    ast = (dense_constructor_ast(name) if name in CONSTRUCTOR_ARITIES
-           else dump_ast_json(name, timeout=120))
+    ast = (dense_constructor_ast(name) if name in CONSTRUCTOR_ARITIES else
+           dense_method_ast(name) if name == "gcd" else
+           dump_ast_json(name, timeout=120))
     expected_kind = ("CXXConstructorDecl" if name in CONSTRUCTOR_ARITIES else
                      "FunctionDecl" if name == "inv_prime" else "CXXMethodDecl")
     if ast is None or ast.get("kind") != expected_kind:
@@ -169,7 +181,11 @@ def generate_strict_gcd() -> str:
     source = codegen_corpus(
         [lower_method(name) for name in METHOD_ROOTS],
         namespace="Generated.StrictGCD")
-    forbidden = ("sorry", "partial def", "unresolved call")
+    forbidden = (
+        "sorry", "partial def", "unresolved call", "Array.get!", "Array.set!",
+        "get!", "set!", " default", "fuel", "Safe", "oracle", "fallback",
+        "axiom",
+    )
     found = [token for token in forbidden if token in source]
     if found:
         raise RuntimeError(f"strict GCD core contains placeholders: {found}")

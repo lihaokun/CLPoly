@@ -18,6 +18,16 @@ def limbBase : Nat := 2 ^ 64
 def word3Value (s : Word3) : Nat :=
   s.lo.toNat + limbBase * s.mid.toNat + limbBase ^ 2 * s.hi.toNat
 
+/-- The repeated two-limb quotient-estimate block in `_lll_mod_preinv`. -/
+def preinvQuotientPair (u1 u0 pinv : UInt64) : UInt64 × UInt64 :=
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 := if q0' < u0 then 1 else 0
+  let q1' : UInt64 := q1 + (u1 + carry)
+  (q1', q0')
+
 /-
   Natural-language proof.
 
@@ -337,5 +347,62 @@ theorem denseNormalizedModulus_spec (p : UInt64) (hp : p ≠ 0) :
     rw [hnorm64, Nat.mod_eq_of_lt hn, Nat.shiftLeft_eq]
     exact Nat.mod_eq_of_lt hprodlt'
   exact ⟨hnormNat, hshift, hshift ▸ hnorm.2.1⟩
+
+/-
+  Natural-language proof.
+
+  Split the exact 128-bit product `u1*pinv` into `(q1,q0)`.  Adding `u0` to
+  the low limb produces `q0'` and the comparison `q0'<u0` is exactly its carry
+  bit.  Adding `u1+carry` to the high limb completes a two-limb addition.
+  Reconstructing both limbs cancels the carry; only overflow beyond the high
+  limb is discarded, hence equality modulo `B^2`.
+-/
+theorem preinvQuotientPair_modEq (u1 u0 pinv : UInt64) :
+    let out := preinvQuotientPair u1 u0 pinv
+    Nat.ModEq (limbBase ^ 2)
+      (out.2.toNat + limbBase * out.1.toNat)
+      (u1.toNat * pinv.toNat + u0.toNat + limbBase * u1.toNat) := by
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 := if q0' < u0 then 1 else 0
+  let q1' : UInt64 := q1 + (u1 + carry)
+  have hprod : q0.toNat + limbBase * q1.toNat =
+      u1.toNat * pinv.toNat := by
+    simpa [qm, q0, q1, dense_upoly_zp__umul128_ir] using
+      umul128_reconstruct u1 pinv
+  have hq0 := UInt64.toNat_lt q0
+  have hu0 := UInt64.toNat_lt u0
+  have hu1 := UInt64.toNat_lt u1
+  norm_num [limbBase] at hq0 hu0 hu1
+  have hcarry : carry.toNat = (q0.toNat + u0.toNat) / limbBase := by
+    by_cases hov : q0' < u0
+    · have hwrap : limbBase ≤ q0.toNat + u0.toNat := by
+        simp only [q0', UInt64.lt_iff_toNat_lt, UInt64.toNat_add] at hov
+        norm_num [limbBase] at hov ⊢
+        omega
+      have hsumlt : q0.toNat + u0.toNat < 2 * limbBase := by
+        norm_num [limbBase]
+        omega
+      simp [carry, hov, UInt64.toNat_ofNat, limbBase]
+      norm_num [limbBase] at hwrap hsumlt ⊢
+      omega
+    · have hnowrap : q0.toNat + u0.toNat < limbBase := by
+        simp only [q0', UInt64.lt_iff_toNat_lt, UInt64.toNat_add] at hov
+        norm_num [limbBase] at hov ⊢
+        omega
+      simp [carry, hov, Nat.div_eq_of_lt hnowrap]
+  have hq0' : q0'.toNat = (q0.toNat + u0.toNat) % limbBase := by
+    simp [q0', UInt64.toNat_add, limbBase]
+  have hq1' : q1'.toNat =
+      (q1.toNat + u1.toNat + carry.toNat) % limbBase := by
+    simp [q1', UInt64.toNat_add, limbBase, Nat.add_assoc]
+  change Nat.ModEq (limbBase ^ 2)
+    (q0'.toNat + limbBase * q1'.toNat)
+    (u1.toNat * pinv.toNat + u0.toNat + limbBase * u1.toNat)
+  simp only [limbBase] at hprod hq0 hu0 hu1 hcarry hq0' hq1' ⊢
+  norm_num [Nat.ModEq] at hprod hq0 hu0 hu1 hcarry hq0' hq1' ⊢
+  omega
 
 end CLPoly.Impl.StrictWordArithmetic

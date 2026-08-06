@@ -16,6 +16,8 @@
 - 从该公式推导 Granlund--Möller 约简所需的严格双边界：`m*pn < B^2 ≤ (m+1)*pn`，其中 `m=B+pinv`。
 - 证明非零 `p` 的 `clz` 移位满足 `norm<64`，且 `p*2^norm ∈ [2^63,2^64)`。
 - 将该自然数结论连接到实际 `UInt32 _norm` 与 `UInt64 (p << _norm)`，证明 C++ 左移没有回绕。
+- 抽取 `_lll_mod_preinv` 两次使用的双-limb 近似商机器块，证明低 limb 比较精确表示 carry。
+- 证明生成的 `(q1,q0)` 按 `B^2` 同余于 `u1*pinv + u0 + B*u1`，完整覆盖乘法、低位加法和高位带进位加法。
 
 ## 为什么做
 
@@ -36,6 +38,7 @@ RawHeap `_poly_divrem` 的循环虽然已经终止且无越界，但其多项式
 - 预逆 quotient 截断前先由 `pn ≥ B/2` 证明 quotient `< B`，排除低 limb 投影回绕。
 - 双边界直接使用自然数 Euclidean division 的 `div_mul_le_self` 与 `div_lt_iff_lt_mul`，没有引用外部正确性定理。
 - `clz` 规范化使用 BitVec 已证明的首个置位上下界；机器整数转换均逐层证明保持自然数值。
+- 双-limb 商估计没有抽象成数学除法；定理直接展开与生成代码一致的 UInt128/UInt64 操作并保留高位回绕。
 
 ## 涉及文件
 
@@ -45,6 +48,6 @@ RawHeap `_poly_divrem` 的循环虽然已经终止且无越界，但其多项式
 
 - 耗时：约 20 分钟
 - 迭代：6 轮 Lean 编译-修复
-- Lean 新增/修改行数：约 345 行
+- Lean 新增/修改行数：约 430 行
 - 对应 C++ 行数：约 15 行 `_umul128`、`_add_carry3` 与 `__preinvert_limb`
 - 放弃的方案：直接位爆破 128 位乘法；通用量化命题应使用算术界与商余定理

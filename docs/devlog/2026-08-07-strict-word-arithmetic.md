@@ -21,6 +21,9 @@
 - 将生成的 `nmod_mul_ir` 精确分解为 UInt128 乘积拆分、原样预逆
   quotient/carry/correction round 和最终反归一化右移；该结构定理直接按
   生成分支证明，没有改写成 `% p`。
+- 证明生成 round 中经 `Int32 → Int64 → UInt64` 的 carry 与此前已证明
+  同余性质的 `preinvQuotientPair` 完全相同，从而把真实 IR 接到后续数值
+  不变量所用的共享归约定义。
 
 ## 为什么做
 

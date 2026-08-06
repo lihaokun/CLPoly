@@ -43,6 +43,14 @@ def preinvRoundIR (u1 u0 pn pinv : UInt64) : UInt64 :=
   let r' : UInt64 := if r > q0' then r + pn else r
   if r' >= pn then r' - pn else r'
 
+/-- The same source round with its quotient/carry prefix shared through
+`preinvQuotientPair`; this is the form used by the arithmetic invariant. -/
+def preinvReduceNormalized (u1 u0 pn pinv : UInt64) : UInt64 :=
+  let q := preinvQuotientPair u1 u0 pinv
+  let r : UInt64 := u0 - ((q.1 + 1) * pn)
+  let r' : UInt64 := if r > q.2 then r + pn else r
+  if r' >= pn then r' - pn else r'
+
 @[simp] theorem uint32_zero_toUInt64 : (0 : UInt32).toUInt64 = 0 := by
   decide
 
@@ -69,6 +77,36 @@ def preinvRoundIR (u1 u0 pn pinv : UInt64) : UInt64 :=
   apply UInt64.toNat_inj.mp
   change (x >>> (0 : UInt64)).toNat = x.toNat
   simp
+
+theorem int32Carry_toUInt64 (c : Prop) [Decidable c] :
+    ((if c then (1 : Int32) else 0).toInt64.toUInt64) =
+      (if c then (1 : UInt64) else 0) := by
+  by_cases h : c <;> simp [h] <;> decide
+
+theorem int64_one_toUInt64 : (1 : Int64).toUInt64 = 1 := by
+  decide
+
+theorem int64_zero_toUInt64 : (0 : Int64).toUInt64 = 0 := by
+  decide
+
+/-
+  Natural-language proof.
+
+  The two definitions differ only in how the carry bit is written.  The C++
+  translation passes `0` or `1` through `Int32`, `Int64`, and `UInt64`, while
+  `preinvQuotientPair` constructs the same UInt64 bit directly.  Splitting on
+  the source comparison makes both conversions concrete; every subsequent
+  fixed-width operation and correction branch is then identical.
+-/
+theorem preinvRoundIR_eq_reduceNormalized (u1 u0 pn pinv : UInt64) :
+    preinvRoundIR u1 u0 pn pinv =
+      preinvReduceNormalized u1 u0 pn pinv := by
+  by_cases hcarry :
+      uint128_lo (uint128_of_uint64 u1 * uint128_of_uint64 pinv) + u0 < u0
+  · simp [preinvRoundIR, preinvReduceNormalized, preinvQuotientPair, hcarry,
+      int64_one_toUInt64]
+  · simp [preinvRoundIR, preinvReduceNormalized, preinvQuotientPair, hcarry,
+      int64_zero_toUInt64]
 
 /-
   Natural-language proof.
@@ -465,7 +503,7 @@ theorem nmod_mul_eq_preinvRoundIR (this : DenseUPolyZp) (a b : UInt64) :
         (uint128_lo (prod >>> (64 : UInt128)))
         (uint128_lo prod)
         (this._p <<< this._norm) this._ninv) >>> this._norm := by
-  simp [dense_upoly_zp_nmod_mul_ir, preinvRoundIR] <;
+  simp [dense_upoly_zp_nmod_mul_ir, preinvRoundIR] <;>
     repeat' split <;> simp_all
 
 end CLPoly.Impl.StrictWordArithmetic

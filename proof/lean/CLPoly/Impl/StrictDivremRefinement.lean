@@ -142,4 +142,35 @@ theorem quotientLoop_ok (this : DenseUPolyZp) (Q B : RawPtr UInt64)
       exact quotientLoop_ok this Q B W3 qLen d lenW3 invLc heap1 i
         hQ1 hB1 hW31 (by omega) hspan
 
+/-- The final C++ remainder loop reads exactly W3[0..d) and writes R[0..d).
+Both layouts are preserved at each iteration, and `d-i` decreases. -/
+theorem remainderLoop_ok (this : DenseUPolyZp) (R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (d lenW3 i : Nat) (heap : RawHeap)
+    (hR : heap.ValidU64Slice R d)
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hdW : d ≤ lenW3) (hi : i ≤ d) :
+    ∃ heap', remainderLoop this R W3 d i heap = .ok heap' ∧
+      heap'.ValidU64Slice R d ∧ heap'.ValidWord3Slice W3 lenW3 := by
+  rw [remainderLoop]
+  split
+  next hlt =>
+    have hiW : i < lenW3 := by omega
+    rcases heap.readWord3_of_valid W3 lenW3 i hW3 hiW with ⟨accum, hread⟩
+    simp only [hread]
+    let value := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      accum.hi accum.mid accum.lo this._p this._ninv this._norm
+    rcases heap.writeU64_of_valid R d i value hR hlt with ⟨heap1, hwrite⟩
+    dsimp [value] at hwrite ⊢
+    simp only [hwrite]
+    have hR1 : heap1.ValidU64Slice R d :=
+      (RawHeap.writeU64_preserves_valid heap heap1 R i _ hwrite R d).mp hR
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeU64_preserves_valid heap heap1 R i _ hwrite
+        (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    exact remainderLoop_ok this R W3 d lenW3 (i + 1) heap1
+      hR1 hW31 hdW (by omega)
+  next hnot => exact ⟨heap, rfl, hR, hW3⟩
+termination_by d - i
+decreasing_by omega
+
 end CLPoly.Impl.StrictDivremRefinement

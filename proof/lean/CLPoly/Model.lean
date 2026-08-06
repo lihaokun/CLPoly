@@ -125,6 +125,51 @@ structure UMonomial where
   deg : Nat
 deriving Repr, Inhabited, BEq
 
+/-- Exact unsigned 128-bit machine word used by the dense C++ arithmetic. -/
+abbrev UInt128 := BitVec 128
+
+/-- Low 64 bits of an unsigned 128-bit word. -/
+def uint128_lo (x : UInt128) : UInt64 := UInt64.ofNat x.toNat
+
+/-- Clang keeps the dense arithmetic shift count as `uint32_t`; Lean's
+machine-word shift instances use `Nat`, so expose the exact conversion. -/
+instance : HShiftLeft UInt64 UInt32 UInt64 where
+  hShiftLeft x n := x <<< n.toUInt64
+
+instance : HShiftRight UInt64 UInt32 UInt64 where
+  hShiftRight x n := x >>> n.toUInt64
+
+/-- Termination fact for the C++ descending `int64_t` loop.
+
+Proof sketch: the loop guard gives `0 ≤ i`.  Hence subtracting one stays in
+the signed 64-bit interval (including the endpoint `-1`), so machine
+subtraction agrees with integer subtraction.  The nonnegative measure
+`max (i + 1) 0` therefore drops by exactly one. -/
+theorem int64_sub_one_measure_lt (i : Int64) (h : i >= (0 : Int64)) :
+    (((i - (1 : Int64)).toInt + 1).toNat < (i.toInt + 1).toNat) := by
+  rw [Int64.toInt_sub]
+  have hone : (1 : Int64).toInt = 1 := by decide
+  rw [hone]
+  rw [Int.bmod_eq_of_le]
+  · have hlo : 0 ≤ i.toInt := by
+      simpa [Int64.le_iff_toInt_le] using h
+    omega
+  · have hlo : 0 ≤ i.toInt := by
+      simpa [Int64.le_iff_toInt_le] using h
+    omega
+  · have hi := Int64.toInt_lt i
+    omega
+
+/-- State carried by the C++ `dense_upoly_zp` implementation.  This is only
+the L1 representation type; its constructors and algorithms are translated
+from the corresponding C++ member bodies into generated namespaces. -/
+structure DenseUPolyZp where
+  _coeffs : Array UInt64 := #[]
+  _p : UInt64 := 0
+  _ninv : UInt64 := 0
+  _norm : UInt32 := 0
+deriving Repr, Inhabited, BEq
+
 -- ============================================================
 -- §4. SparsePolyZp：Z/pZ 上稀疏多项式
 -- ============================================================

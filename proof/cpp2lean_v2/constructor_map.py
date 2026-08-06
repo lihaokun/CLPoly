@@ -65,6 +65,14 @@ def _normalize_typename(name: str) -> str:
 # ============================================================
 
 CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
+    # `dense_upoly_zp` algorithms are emitted into the strict GCD dependency
+    # closure.  Constructor resolution names those generated bodies; it does
+    # not substitute the sparse Lean GCD implementation.
+    "dense_upoly_zp": {
+        0: ConstructorResolution("dense_upoly_zp_default_ir"),
+        1: ConstructorResolution("dense_upoly_zp_of_prime_ir {a0}"),
+        2: ConstructorResolution("dense_upoly_zp_of_sparse_ir {a0} {a1}"),
+    },
     # ZZ：任意精度整数
     "ZZ": {
         0: ConstructorResolution("(0 : Int)", is_default=True),

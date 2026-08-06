@@ -766,6 +766,8 @@ def _typename_to_typeir(name: str) -> TypeIR | None:
         "QQ": NamedType("QQ"),
         "umonomial": NamedType("UMonomial"),
         "UMonomial": NamedType("UMonomial"),
+        "dense_upoly_zp": NamedType("DenseUPolyZp"),
+        "DenseUPolyZp": NamedType("DenseUPolyZp"),
         "Monomial": NamedType("Monomial"),
         "Variable": NamedType("Variable"),
         "variable": NamedType("Variable"),

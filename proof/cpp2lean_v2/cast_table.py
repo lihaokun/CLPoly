@@ -129,6 +129,12 @@ CAST_TABLE: dict[tuple[str, str], CastResolution] = {
     # ====================================================================
     ("int32",  "float64"): CastResolution("Int.toFloat ({x})", None),
     ("uint64", "float64"): CastResolution("Nat.toFloat (UInt64.toNat {x})", None),
+    # `assert(bool_expr)` on libc headers materializes this integral cast in
+    # Clang's expanded AST.  Preserve the C++ 0/1 conversion exactly.
+    ("bool", "int64"): CastResolution(
+        "(if {x} then (1 : Int64) else (0 : Int64))", None),
+    ("uint64", "uint128"): CastResolution("({x} : UInt128)", None),
+    ("uint128", "uint64"): CastResolution("uint128_lo {x}", None),
 
     # ====================================================================
     # FloatingToIntegral（1 处实测）

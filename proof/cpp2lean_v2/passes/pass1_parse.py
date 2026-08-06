@@ -188,6 +188,7 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         "Zp": NamedType("Zp"),
         "variable": NamedType("Variable"),
         "umonomial": NamedType("UMonomial"),
+        "dense_upoly_zp": NamedType("DenseUPolyZp"),
         "less": NamedType("Less"),  # MonomialOrder tag
         "uless": NamedType("ULess"),
     }
@@ -1217,16 +1218,19 @@ _DECOMP_COUNTER: int = 0  # B4 修复：__decomp 全局唯一 ID
 
 
 def parse_pass(ast_json: dict) -> HIRFunc:
-    """AST FunctionDecl 节点 → HIRFunc（HIR₀ 阶段）。
+    """AST free/member function node → HIRFunc（HIR₀ 阶段）。
 
-    前提：ast_json 是一个实例化的 FunctionDecl（mangledName 非空）。
+    普通入口是具体 `FunctionDecl`。C++ 类依赖闭包还会传入具体
+    `CXXMethodDecl`; 这时显式补入 `this` 参数，使后续纯函数化 pass 能把
+    receiver mutation 与普通 ref-out 参数统一处理。
     """
     if not isinstance(ast_json, dict):
         raise TranslationError("parse", "<unknown>", "AST not a dict")
-    if ast_json.get("kind") != "FunctionDecl":
+    decl_kind = ast_json.get("kind")
+    if decl_kind not in ("FunctionDecl", "CXXMethodDecl"):
         raise TranslationError(
             "parse", ast_json.get("name", "<unknown>"),
-            f"expected FunctionDecl, got {ast_json.get('kind')}",
+            f"expected FunctionDecl/CXXMethodDecl, got {decl_kind}",
         )
 
     base_name = ast_json.get("name", "")
@@ -1235,6 +1239,15 @@ def parse_pass(ast_json: dict) -> HIRFunc:
 
     # 解析参数
     params = []
+    if decl_kind == "CXXMethodDecl":
+        is_const_method = qual_type.rstrip().endswith(" const")
+        params.append(HIRParam(
+            name="this",
+            ty=NamedType("DenseUPolyZp"),
+            is_ref=not is_const_method,
+            is_const_ref=is_const_method,
+            is_output=not is_const_method,
+        ))
     body_node: Any = None
     for c in ast_json.get("inner", []):
         if not isinstance(c, dict):

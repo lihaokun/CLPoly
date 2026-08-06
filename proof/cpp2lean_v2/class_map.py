@@ -84,6 +84,22 @@ CLASS_MAP = {
         },
     },
 
+    "DenseUPolyZp": {
+        "lean_type": StructType("DenseUPolyZp", []),
+        # Constructor bodies are part of the strict generated GCD closure;
+        # these names must never be mapped to SparsePolyZp.gcd or another L2
+        # implementation.
+        "constructors": {},
+        "methods": {
+            "lead": ("method", "dense_upoly_zp_lead_ir"),
+            "nmod_inv": ("method", "dense_upoly_zp_nmod_inv_ir"),
+            "nmod_mul": ("method", "dense_upoly_zp_nmod_mul_ir"),
+            "scalar_mul": ("mutate", "dense_upoly_zp_scalar_mul_ir"),
+            "deg": ("method", "dense_upoly_zp_deg_ir"),
+            "to_upoly": ("method", "dense_upoly_zp_to_upoly_ir"),
+        },
+    },
+
     "SparsePolyZp": {
         "lean_type": StructType("SparsePolyZp", []),
         "constructors": {

@@ -1130,6 +1130,8 @@ def _get_loop_termination_measure(f: MIRFunc) -> Optional[str]:
         return "ddfWellFoundedMeasure f_star_2 d_2"
     if f.base_name == "_loop___upoly_powmod_0":
         return "upolyPowmodWellFoundedMeasure e_2"
+    if f.base_name == "_loop_to_upoly_0":
+        return "(i_2.toInt + 1).toNat"
     if not f.base_name.startswith("_loop_"):
         return None
     if len(f.params) < 2:
@@ -1162,6 +1164,14 @@ _STRICT_TOTAL_ENTRIES = {
     "__upoly_powmod",
     "__upoly_subtract_x",
     "__ddf_Zp",
+    "dense_upoly_zp_deg",
+    "dense_upoly_zp_lead",
+    "dense_upoly_zp_nmod_mul",
+    "dense_upoly_zp_nmod_inv",
+    "dense_upoly_zp_scalar_mul",
+    "dense_upoly_zp_to_upoly",
+    "__polynomial_GCD",
+    "polynomial_GCD",
 }
 
 
@@ -1227,10 +1237,35 @@ def emit_mirfunc(f: MIRFunc,
             "    else\n"
             "      default\n")
         body = recur + body
+    elif f.base_name == "_loop_to_upoly_0":
+        # Inline the MIR continuation beneath the loop guard.  Leaving the
+        # recursive call inside a separately emitted lambda loses the fact
+        # that its counter is the guarded loop counter, which is precisely
+        # the evidence required by the well-founded termination proof.
+        body = body.replace(
+            "  let bb_7 := fun i_2 this result_4 =>\n"
+            "    let i_3 : Int64 := (i_2 - (1 : Int64))\n"
+            f"    {f.lean_name} i_3 result_4 this\n",
+            "")
+        body = body.replace(
+            "  if (i_2 >= (0 : Int64)) then",
+            "  if h_nonneg : (i_2 >= (0 : Int64)) then")
+        body = body.replace(
+            "      bb_7 i_2 this result_3",
+            "      let i_3 : Int64 := (i_2 - (1 : Int64))\n"
+            f"      {f.lean_name} i_3 result_3 this")
+        body = body.replace(
+            "      bb_7 i_2 this result_2",
+            "      let i_3 : Int64 := (i_2 - (1 : Int64))\n"
+            f"      {f.lean_name} i_3 result_2 this")
     if term is not None:
         if f.base_name in {"_loop___ddf_Zp_0", "_loop___upoly_powmod_0",
                            "_loop___upoly_subtract_x_0"}:
             decreasing = "\ndecreasing_by exact hdec"
+        elif f.base_name == "_loop_to_upoly_0":
+            decreasing = (
+                "\ndecreasing_by\n"
+                "  all_goals exact int64_sub_one_measure_lt i_2 h_nonneg")
         else:
             decreasing = ""
         return f"{sig}\n{body}\ntermination_by {term}{decreasing}"
@@ -1337,6 +1372,14 @@ def codegen_corpus(top_funcs: list[MIRFunc],
         "__upoly_subtract_x": 7,
         "_loop___ddf_Zp_0": 8,
         "__ddf_Zp": 9,
+        "dense_upoly_zp_deg": 20,
+        "dense_upoly_zp_lead": 21,
+        "dense_upoly_zp_nmod_mul": 22,
+        "dense_upoly_zp_nmod_inv": 23,
+        "_loop_scalar_mul_0": 24,
+        "dense_upoly_zp_scalar_mul": 25,
+        "_loop_to_upoly_0": 26,
+        "dense_upoly_zp_to_upoly": 27,
     }
     ordered_total = helper_loops + helper_entries + ddf_loops + ddf_entries
     indexed_total = list(enumerate(ordered_total))

@@ -725,6 +725,19 @@ private lemma tail_degree_lt_current (input : SparsePolyZp) (i : Nat)
   rw [drop_eq_getElem_cons input i hi, List.pairwise_cons] at hs
   exact hs.1
 
+/-- In a strictly descending sparse suffix, once the current degree is at
+most one, no later term can be linear.  This is the ordering fact that makes
+the C++ `inserted` flag permanent after either insertion branch. -/
+private lemma no_linear_degree_in_tail_of_current_le_one
+    (input : SparsePolyZp) (i : Nat) (hi : i < input.size)
+    (hs : (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg))
+    (hcur : input[i]!.1.deg ≤ 1) :
+    ∀ x ∈ input.toList.drop (i + 1), x.1.deg ≠ 1 := by
+  intro x hx hlinear
+  have hlt := tail_degree_lt_current input i hi hs x hx
+  omega
+
 /-- Under the signed-degree precondition used by the C++ interface, the
 generated narrowing conversion recognizes degree one exactly. -/
 private lemma int32_ofNat_eq_one_iff (d : Nat) (hd : d < 2 ^ 31) :
@@ -743,6 +756,24 @@ private lemma int32_ofNat_eq_one_iff (d : Nat) (hd : d < 2 ^ 31) :
     exact hval
   · rintro rfl
     rfl
+
+/-- Version of the preceding ordering fact in the exact narrowed `Int32`
+test used by the generated C++ loop. -/
+private lemma no_generated_linear_in_tail_of_current_le_one
+    (input : SparsePolyZp) (i : Nat) (hi : i < input.size)
+    (hs : (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg))
+    (hcur : input[i]!.1.deg ≤ 1)
+    (hdeg : ∀ x ∈ input.toList.drop (i + 1), x.1.deg < 2 ^ 31) :
+    ∀ x ∈ input.toList.drop (i + 1),
+      x.1.deg.toUInt32.toInt32 ≠ (1 : Int32) := by
+  intro x hx hlinear
+  have hlinear' : Int32.ofNat x.1.deg = (1 : Int32) := by
+    simpa [Int32.ofNat, Nat.toUInt32] using hlinear
+  have hxdeg : x.1.deg = 1 :=
+    (int32_ofNat_eq_one_iff x.1.deg (hdeg x hx)).mp hlinear'
+  exact (no_linear_degree_in_tail_of_current_le_one input i hi hs hcur x hx)
+    hxdeg
 
 private noncomputable def pendingX (inserted : Bool) : Polynomial (ZMod p) :=
   if inserted then 0 else X

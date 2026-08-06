@@ -515,6 +515,7 @@ FUNC_MAP = {
     # 输出参数索引：从 0 开始的参数位置列表（C++ 调用中的位置）
 
     "derivative": ("derivative", "direct"),
+    "inv_prime": ("inv_prime_ir", "direct"),
     "polynomial_GCD": ("polynomial_GCD", "direct"),
     "polynomial_GCD_eea": ("polynomial_GCD_eea", "direct"),
     "pair_vec_div5": ("pair_vec_div5", "direct"),

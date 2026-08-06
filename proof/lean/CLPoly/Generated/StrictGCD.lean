@@ -6,6 +6,47 @@ set_option maxErrors 2000
 
 namespace Generated.StrictGCD
 
+def _loop_inv_prime_0_ir (s2_2 : UInt64) (s1_2 : UInt64) (c_3 : UInt64) (b_2 : UInt64) (a_2 : UInt64) (_p : UInt64) : (Int64 × UInt64) :=
+  if h_c_nonzero : (c_3 != 0) then
+    -- require (h_nonzero): (b_2 != (0 : UInt64))
+    let q_1 : UInt64 := (a_2 / b_2)
+    -- require (h_nonzero): (((_p : UInt128)) != (0 : UInt128))
+    let sq_mod_1 : UInt64 := (uint128_lo ((((s2_2 : UInt128)) * ((q_1 : UInt128))) % ((_p : UInt128))))
+    let s3_2 : UInt64 := (if (s1_2 >= sq_mod_1) then (s1_2 - sq_mod_1) else ((_p - sq_mod_1) + s1_2))
+    let a_3 : UInt64 := b_2
+    let b_3 : UInt64 := c_3
+    let s1_3 : UInt64 := s2_2
+    let s2_3 : UInt64 := s3_2
+    -- require (h_nonzero): (b_3 != (0 : UInt64))
+    let c_4 : UInt64 := (a_3 % b_3)
+    _loop_inv_prime_0_ir s2_3 s1_3 c_4 b_3 a_3 _p
+  else
+    ((0 : Int64), s2_2)
+termination_by c_3.toNat
+decreasing_by
+  have hc : c_3 ≠ (0 : UInt64) := by simpa using h_c_nonzero
+  have hcNat : 0 < c_3.toNat := by
+    have : c_3.toNat ≠ 0 := by
+      intro hz
+      apply hc
+      exact UInt64.toNat_inj.mp (by simpa using hz)
+    omega
+  exact Nat.mod_lt _ hcNat
+
+def inv_prime_ir (_i : UInt64) (_p : UInt64) : UInt64 :=
+  -- assert side effect represented by RequireStmt
+  let a_1 : UInt64 := _p
+  let b_1 : UInt64 := _i
+  let _c_1 : UInt64 := ((0 : UInt64))
+  let s1_1 : UInt64 := (0 : UInt64)
+  let s2_1 : UInt64 := (1 : UInt64)
+  let _s3_1 : UInt64 := ((0 : UInt64))
+  -- require (h_nonzero): (b_1 != (0 : UInt64))
+  let c_2 : UInt64 := (a_1 % b_1)
+  let __loop_ret_inv_prime_0_1 : (Int64 × UInt64) := (_loop_inv_prime_0_ir s2_1 s1_1 c_2 b_1 a_1 _p)
+  let s2_2 : UInt64 := __loop_ret_inv_prime_0_1.snd
+  s2_2
+
 def dense_upoly_zp_deg_ir (this : DenseUPolyZp) : Int64 :=
   -- require (h_fits_int64): (((Array.size this._coeffs) >= (-9223372036854775808 : Int64)) && ((Array.size this._coeffs) <= (9223372036854775807 : Int64)))
   ((((Array.size this._coeffs)).toInt64) - (1 : Int64))
@@ -41,6 +82,9 @@ def dense_upoly_zp_nmod_mul_ir (this : DenseUPolyZp) (a : UInt64) (b : UInt64) :
     bb_3 pn_1 this r_2
   else
     bb_3 pn_1 this r_1
+
+def dense_upoly_zp_nmod_inv_ir (this : DenseUPolyZp) (a : UInt64) : UInt64 :=
+  (inv_prime_ir a this._p)
 
 def _loop_scalar_mul_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Array UInt64) (c : UInt64) (this : DenseUPolyZp) : (Int64 × Array UInt64) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then

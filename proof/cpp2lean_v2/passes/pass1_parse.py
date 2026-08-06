@@ -919,6 +919,46 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
         if len(inner) >= 2:
             cond = parse_expr(inner[0])
             body = _parse_stmts(inner[1])
+            # C/C++ permits an assignment as the controlling expression,
+            # e.g. `while ((c = a % b))`.  HIR expressions are pure, so make
+            # that sequencing explicit: initialize once before the loop and
+            # repeat the assignment at the bottom of each iteration.  This
+            # form is used only when the body has no `continue`, which would
+            # otherwise bypass the bottom assignment.
+            def assignment_core(e):
+                while isinstance(e, Cast):
+                    e = e.expr
+                if isinstance(e, BinOp) and e.op == "=" and isinstance(e.lhs, Var):
+                    return e.lhs, e.rhs
+                return None
+
+            def replace_assignment(e, lhs):
+                if isinstance(e, Cast):
+                    return Cast(expr=replace_assignment(e.expr, lhs),
+                                source_ty=e.source_ty, target_ty=e.target_ty,
+                                cast_kind=e.cast_kind)
+                if isinstance(e, BinOp) and e.op == "=":
+                    return lhs
+                return e
+
+            def has_continue(stmts):
+                for stmt in stmts:
+                    if isinstance(stmt, ContinueStmt):
+                        return True
+                    if isinstance(stmt, IfStmt) and (
+                        has_continue(stmt.then_body) or has_continue(stmt.else_body)):
+                        return True
+                    if isinstance(stmt, BlockStmt) and has_continue(stmt.stmts):
+                        return True
+                return False
+
+            core = assignment_core(cond)
+            if core is not None and not has_continue(body):
+                lhs, rhs = core
+                update = AssignStmt(target=lhs, value=rhs)
+                pure_cond = replace_assignment(cond, lhs)
+                return BlockStmt(stmts=[update,
+                    WhileStmt(cond=pure_cond, body=[*body, update])])
             return WhileStmt(cond=cond, body=body)
         return UnknownStmt(kind)
 

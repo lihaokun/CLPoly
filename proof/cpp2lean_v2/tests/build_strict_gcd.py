@@ -32,9 +32,11 @@ from pass8_codegen import codegen_corpus
 
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictGCD.lean"
 METHOD_ROOTS = (
+    "inv_prime",
     "deg",
     "lead",
     "nmod_mul",
+    "nmod_inv",
     "scalar_mul",
     "to_upoly",
 )
@@ -42,8 +44,9 @@ METHOD_ROOTS = (
 
 def lower_method(name: str):
     ast = dump_ast_json(name, timeout=120)
-    if ast is None or ast.get("kind") != "CXXMethodDecl":
-        raise RuntimeError(f"missing concrete dense_upoly_zp method AST: {name}")
+    expected_kind = "FunctionDecl" if name == "inv_prime" else "CXXMethodDecl"
+    if ast is None or ast.get("kind") != expected_kind:
+        raise RuntimeError(f"missing concrete C++ AST for {name}: {expected_kind}")
     hir = parse_pass(ast)
     hir = ref_elim_pass(hir)
     hir = callsite_ref_elim_pass(hir)
@@ -55,7 +58,7 @@ def lower_method(name: str):
             gaps.op_miss, gaps.constructor_miss)):
         raise RuntimeError(f"unresolved {name} translation gaps: {gaps}")
     mir = loop_lower_pass(ssa_build_pass(hir))
-    mir.base_name = f"dense_upoly_zp_{name}"
+    mir.base_name = name if name == "inv_prime" else f"dense_upoly_zp_{name}"
     return mir
 
 

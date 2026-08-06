@@ -350,6 +350,11 @@ DEFAULT_INIT_MAP: dict[str, ConstructorResolution] = {
     "default_init_const std::allocator<char>": ConstructorResolution("()", is_default=True),
     "default_init_int":  ConstructorResolution("0", is_default=True),
     "default_init_bool": ConstructorResolution("false", is_default=True),
+    # Uninitialized scalar locals are assigned before their first read in the
+    # translated C++ control flow.  Lean still needs a total initial value;
+    # zero is the exact value-initialized representation used only until that
+    # dominating assignment executes.
+    "default_init_uint64_t": ConstructorResolution("(0 : UInt64)", is_default=True),
     # 其他 default_init_* 走规则
 }
 

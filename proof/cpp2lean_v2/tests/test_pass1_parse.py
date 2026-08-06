@@ -17,8 +17,8 @@ sys.path.insert(0, str(V2_ROOT / "passes"))
 
 from ir_types import (
     BaseType, NamedType, RefType, ArrayType, PairType, UnknownType,
-    Var, Lit, BinOp, UnaryOp, Call, UnresolvedOp, FieldAccess,
-    LetStmt, IfStmt, ReturnStmt, RequireStmt, ExprStmt, AssignStmt,
+    Var, Lit, BinOp, UnaryOp, Cast, Call, UnresolvedOp, FieldAccess,
+    LetStmt, IfStmt, WhileStmt, BlockStmt, ReturnStmt, RequireStmt, ExprStmt, AssignStmt,
     HIRFunc, HIRParam,
     LambdaExpr,
     UnknownStmt, UnknownExpr,
@@ -259,6 +259,26 @@ def test_fixture_upoly_const_term():
     assert len(if_stmts) >= 2, f"expected ≥2 IfStmt, got {len(if_stmts)}"
 
 
+def test_assignment_while_is_sequenced():
+    hir = _test_fixture(
+        func_name="assignment_while",
+        fixture_file="assignment_while.cc",
+        expected_params=[("a", BaseType), ("b", BaseType)],
+        min_body_stmts=3,
+    )
+    loops = [nested for s in hir.body if isinstance(s, BlockStmt)
+             for nested in s.stmts if isinstance(nested, WhileStmt)]
+    assert len(loops) == 1
+    loop = loops[0]
+    assert isinstance(loop.cond, Cast)
+    cond_core = loop.cond
+    while isinstance(cond_core, Cast):
+        cond_core = cond_core.expr
+    assert isinstance(cond_core, Var) and cond_core.name == "c"
+    assert isinstance(loop.body[-1], AssignStmt)
+    assert isinstance(loop.body[-1].target, Var) and loop.body[-1].target.name == "c"
+
+
 if __name__ == "__main__":
     # pytest-less 简易 runner
     tests = [
@@ -271,6 +291,7 @@ if __name__ == "__main__":
         test_fixture_upoly_divmod,
         test_fixture_symmetric_mod,
         test_fixture_upoly_const_term,
+        test_assignment_while_is_sequenced,
     ]
     passed = 0
     failed = 0

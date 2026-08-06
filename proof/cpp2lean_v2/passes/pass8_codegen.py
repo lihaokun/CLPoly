@@ -1132,6 +1132,8 @@ def _get_loop_termination_measure(f: MIRFunc) -> Optional[str]:
         return "upolyPowmodWellFoundedMeasure e_2"
     if f.base_name == "_loop_to_upoly_0":
         return "(i_2.toInt + 1).toNat"
+    if f.base_name == "_loop_inv_prime_0":
+        return "c_3.toNat"
     if not f.base_name.startswith("_loop_"):
         return None
     if len(f.params) < 2:
@@ -1172,6 +1174,7 @@ _STRICT_TOTAL_ENTRIES = {
     "dense_upoly_zp_to_upoly",
     "__polynomial_GCD",
     "polynomial_GCD",
+    "inv_prime",
 }
 
 
@@ -1297,6 +1300,10 @@ def emit_mirfunc(f: MIRFunc,
             "      bb_7 i_2 this result_2",
             "      let i_3 : Int64 := (i_2 - (1 : Int64))\n"
             f"      {f.lean_name} i_3 result_2 this")
+    elif f.base_name == "_loop_inv_prime_0":
+        body = body.replace(
+            "  if (c_3 != 0) then",
+            "  if h_c_nonzero : (c_3 != 0) then")
     if term is not None:
         if f.base_name == "_loop___ddf_Zp_0":
             decreasing = "\ndecreasing_by exact hdec"
@@ -1307,6 +1314,17 @@ def emit_mirfunc(f: MIRFunc,
                 "  simpa using hpos")
         elif f.base_name == "_loop___upoly_subtract_x_0":
             decreasing = "\ndecreasing_by exact hdec"
+        elif f.base_name == "_loop_inv_prime_0":
+            decreasing = (
+                "\ndecreasing_by\n"
+                "  have hc : c_3 ≠ (0 : UInt64) := by simpa using h_c_nonzero\n"
+                "  have hcNat : 0 < c_3.toNat := by\n"
+                "    have : c_3.toNat ≠ 0 := by\n"
+                "      intro hz\n"
+                "      apply hc\n"
+                "      exact UInt64.toNat_inj.mp (by simpa using hz)\n"
+                "    omega\n"
+                "  exact Nat.mod_lt _ hcNat")
         elif f.base_name == "_loop_to_upoly_0":
             decreasing = (
                 "\ndecreasing_by\n"
@@ -1425,6 +1443,8 @@ def codegen_corpus(top_funcs: list[MIRFunc],
         "dense_upoly_zp_scalar_mul": 25,
         "_loop_to_upoly_0": 26,
         "dense_upoly_zp_to_upoly": 27,
+        "_loop_inv_prime_0": 18,
+        "inv_prime": 19,
     }
     ordered_total = helper_loops + helper_entries + ddf_loops + ddf_entries
     indexed_total = list(enumerate(ordered_total))

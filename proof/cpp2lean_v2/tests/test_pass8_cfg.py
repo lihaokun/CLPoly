@@ -9,13 +9,13 @@ sys.path.insert(0, str(V2_ROOT))
 sys.path.insert(0, str(V2_ROOT / "passes"))
 
 from ir_types import (
-    BaseType, NamedType, UnknownType,
+    BaseType, NamedType, UnknownType, ArrayType, PairType, TupleType,
     Var, Lit, BinOp, Call,
     LetStmt, RequireStmt, PhiStmt,
     JumpTerm, CondJumpTerm, ReturnTerm, TailCallTerm,
-    BasicBlock, CFG,
+    BasicBlock, CFG, HIRParam, MIRFunc,
 )
-from pass8_codegen import emit_cfg, EmitCtx
+from pass8_codegen import emit_cfg, EmitCtx, emit_mirfunc
 
 
 def _make_cfg(entry: int, blocks_dict: dict[int, BasicBlock]) -> CFG:
@@ -138,6 +138,39 @@ def test_tailcall():
     print("PASS test_tailcall")
 
 
+def test_ddf_loop_uses_well_founded_recursive_edge():
+    d = Var("d_2", 0, BaseType.UINT64)
+    f_star = Var("f_star_2", 0, NamedType("SparsePolyZp"))
+    h = Var("h_2", 0, NamedType("SparsePolyZp"))
+    result = Var("result_2", 0,
+                 ArrayType(PairType(NamedType("SparsePolyZp"), BaseType.UINT64)))
+    p = Var("p_1", 0, BaseType.UINT64)
+    bb0 = BasicBlock(0, [], TailCallTerm(
+        target_func="_loop___ddf_Zp_0", args=[d, f_star, h, result, p]))
+    cfg = _make_cfg(0, {0: bb0})
+    f = MIRFunc(
+        base_name="_loop___ddf_Zp_0",
+        params=[
+            HIRParam("d_2", BaseType.UINT64),
+            HIRParam("f_star_2", NamedType("SparsePolyZp")),
+            HIRParam("h_2", NamedType("SparsePolyZp")),
+            HIRParam("result_2",
+                     ArrayType(PairType(NamedType("SparsePolyZp"), BaseType.UINT64))),
+            HIRParam("p_1", BaseType.UINT64),
+        ],
+        ret_ty=TupleType((BaseType.INT64, NamedType("SparsePolyZp"),
+                          ArrayType(PairType(NamedType("SparsePolyZp"), BaseType.UINT64)))),
+        cfg=cfg)
+    out = emit_mirfunc(f)
+    assert out.startswith("def _loop___ddf_Zp_0_ir")
+    assert "let recur := fun d_next f_star_next" in out
+    assert "if hdec : ddfWellFoundedMeasure f_star_next d_next <" in out
+    assert "recur d_2 f_star_2 h_2 result_2 p_1" in out
+    assert "termination_by ddfWellFoundedMeasure f_star_2 d_2" in out
+    assert "decreasing_by exact hdec" in out
+    print("PASS test_ddf_loop_uses_well_founded_recursive_edge")
+
+
 # ============================================================
 # Case 4: 嵌套 merge（菱形里再嵌菱形）
 # ============================================================
@@ -197,6 +230,7 @@ if __name__ == "__main__":
         test_single_bb_return,
         test_diamond_merge,
         test_tailcall,
+        test_ddf_loop_uses_well_founded_recursive_edge,
         test_nested_merges,
     ]
     passed = 0

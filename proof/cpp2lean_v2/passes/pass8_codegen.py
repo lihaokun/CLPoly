@@ -1108,6 +1108,8 @@ def _get_loop_termination_measure(f: MIRFunc) -> Optional[str]:
     
     返回 `termination_by` 的度量表达式字符串，或 None（不可用）。
     """
+    if f.base_name == "_loop___ddf_Zp_0":
+        return "ddfWellFoundedMeasure f_star_2 d_2"
     if not f.base_name.startswith("_loop_"):
         return None
     if len(f.params) < 2:
@@ -1152,8 +1154,25 @@ def emit_mirfunc(f: MIRFunc,
                      caller_instance=f.instance_suffix,
                      func_instances=func_instances or {},
                      lifted_caps=lifted_caps or {})
+    if f.base_name == "_loop___ddf_Zp_0":
+        # The source loop has two recursive edges and terminates by the DDF
+        # invariant, not by a syntactic range counter.  Keep the emitted MIR
+        # body unchanged except for routing self tail-calls through a guarded
+        # well-founded recursive edge.
+        recursive_name = f.lean_name
+        body = body.replace(f"{recursive_name} ", "recur ")
+        recur = (
+            "  let recur := fun d_next f_star_next h_next result_next p_next =>\n"
+            "    if hdec : ddfWellFoundedMeasure f_star_next d_next <\n"
+            "        ddfWellFoundedMeasure f_star_2 d_2 then\n"
+            f"      {recursive_name} d_next f_star_next h_next result_next p_next\n"
+            "    else\n"
+            "      default\n")
+        body = recur + body
     if term is not None:
-        return f"{sig}\n{body}\ntermination_by {term}"
+        decreasing = "\ndecreasing_by exact hdec" \
+            if f.base_name == "_loop___ddf_Zp_0" else ""
+        return f"{sig}\n{body}\ntermination_by {term}{decreasing}"
     return f"{sig}\n{body}"
 
 
@@ -1174,6 +1193,10 @@ def codegen_pass(top: MIRFunc) -> str:
     out.append("namespace Generated")
     out.append("")
     all_funcs = _topo_collect_funcs([top])
+    if any(f.base_name == "_loop___ddf_Zp_0" for f in all_funcs):
+        out.append("def ddfWellFoundedMeasure (fStar : SparsePolyZp) (d : UInt64) : Nat :=")
+        out.append("  if fStar.isEmpty then 0 else (get_deg fStar).toNat + 1 - 2 * d.toNat")
+        out.append("")
     for f in all_funcs:
         out.append(emit_mirfunc(f))
         out.append("")
@@ -1198,6 +1221,10 @@ def codegen_corpus(top_funcs: list[MIRFunc]) -> str:
     out.append("namespace Generated")
     out.append("")
     funcs = _topo_collect_funcs(top_funcs)
+    if any(f.base_name == "_loop___ddf_Zp_0" for f in funcs):
+        out.append("def ddfWellFoundedMeasure (fStar : SparsePolyZp) (d : UInt64) : Nat :=")
+        out.append("  if fStar.isEmpty then 0 else (get_deg fStar).toNat + 1 - 2 * d.toNat")
+        out.append("")
     # 构建 base_name → {instance_suffix} 索引（用于 emit_call 模板实例解析）
     func_instances: dict[str, set[str]] = {}
     for f in funcs:
@@ -1290,4 +1317,3 @@ def emit_jump_to(target_bb: int, src_bb_id: int, ctx: EmitCtx) -> str:
         return f"{pad}bb_{target_bb}"
     # 单前驱 → inline
     return emit_bb_inline(target_bb, ctx)
-

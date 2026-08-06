@@ -224,4 +224,39 @@ theorem preinvert_limb_spec (pn : UInt64)
       rw [Nat.add_mul_div_left num.toNat limbBase hpnpos]
     _ = (limbBase ^ 2 - 1) / pn.toNat := by rw [hdecomp]
 
+/-
+  Natural-language proof.
+
+  Put `x = B^2 - 1` and `m = x / pn`, using `preinvert_limb_spec` to identify
+  `m` with `B + pinv`.  Euclidean division gives `m*pn ≤ x`.  Since
+  `x < B^2`, this is the strict lower approximation.  Also `m < m+1`; the
+  division comparison theorem yields `x < (m+1)*pn`, hence
+  `B^2 ≤ (m+1)*pn`.  These are exactly the two bounds consumed by the
+  Granlund--Möller reduction step.
+-/
+theorem preinverse_mul_bounds (pn : UInt64)
+    (hnorm : limbBase / 2 ≤ pn.toNat) :
+    let pinv := dense_upoly_zp___preinvert_limb_ir pn
+    let m := limbBase + pinv.toNat
+    m * pn.toNat < limbBase ^ 2 ∧
+      limbBase ^ 2 ≤ (m + 1) * pn.toNat := by
+  have hspec := preinvert_limb_spec pn hnorm
+  have hpnpos : 0 < pn.toNat := by
+    have hhalf : 0 < limbBase / 2 := by norm_num [limbBase]
+    omega
+  let pinv := dense_upoly_zp___preinvert_limb_ir pn
+  let m := limbBase + pinv.toNat
+  have hm : m = (limbBase ^ 2 - 1) / pn.toNat := by
+    simpa [m, pinv] using hspec
+  have hlo : m * pn.toNat ≤ limbBase ^ 2 - 1 := by
+    rw [hm]
+    exact Nat.div_mul_le_self _ _
+  have hupper : limbBase ^ 2 - 1 < (m + 1) * pn.toNat := by
+    rw [← Nat.div_lt_iff_lt_mul hpnpos, ← hm]
+    exact Nat.lt_succ_self m
+  change m * pn.toNat < limbBase ^ 2 ∧
+    limbBase ^ 2 ≤ (m + 1) * pn.toNat
+  have hBpos : 0 < limbBase ^ 2 := by norm_num [limbBase]
+  exact ⟨by omega, by omega⟩
+
 end CLPoly.Impl.StrictWordArithmetic

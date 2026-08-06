@@ -30,6 +30,7 @@ Sorry 降级（残留容错，不阻塞 Pass 8）：
 
 from __future__ import annotations
 import sys
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -1138,6 +1139,8 @@ def _get_loop_termination_measure(f: MIRFunc) -> Optional[str]:
         return "Array.size this_1._coeffs"
     if f.base_name == "_loop_divrem_0":
         return "r_len_1 - i_2"
+    if f.base_name == "_loop_divrem_1":
+        return "(d_1.toInt - j_2.toInt + 1).toNat"
     if f.base_name == "_loop_divrem_2":
         return "(i_5.toInt + 1).toNat"
     if f.base_name == "_loop_divrem_3":
@@ -1193,6 +1196,7 @@ _STRICT_TOTAL_ENTRIES = {
     "dense_upoly_zp_default",
     "dense_upoly_zp_of_prime",
     "dense_upoly_zp_of_sparse",
+    "dense_upoly_zp_divrem_nonalias",
 }
 
 
@@ -1209,6 +1213,13 @@ def emit_mirfunc(f: MIRFunc,
     used_in_body = _collect_used_names_in_cfg(f.cfg) if f.cfg is not None else set()
     sig_params = emit_params(f.params, used_names=used_in_body)
     sig_params_str = f" {sig_params}" if sig_params else ""
+    if f.base_name in ("_loop_divrem_1", "_loop_divrem_2"):
+        sig_params_str += (
+            " (h_d_lt_max : d_1.toInt < 9223372036854775807)")
+    elif f.base_name == "dense_upoly_zp_divrem_nonalias":
+        sig_params_str += (
+            " (h_d_lt_max : (dense_upoly_zp_deg_ir B).toInt < "
+            "9223372036854775807)")
     ret_ty = emit_type(f.ret_ty)
     term = _get_loop_termination_measure(f)
     if term is not None or _is_strict_total_entry(f):
@@ -1328,25 +1339,66 @@ def emit_mirfunc(f: MIRFunc,
             "  if h_strip : ((! (Array.isEmpty this_1._coeffs)) &&")
     elif f.base_name == "_loop_divrem_2":
         body = body.replace(
-            "  let bb_19 := fun i_5 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1 R3_7 =>\n"
-            "    let i_6 : Int64 := (i_5 - (1 : Int64))\n"
-            f"    {f.lean_name} i_6 R3_7 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1\n",
-            "")
-        body = body.replace(
             "  if (i_5 >= (0 : Int64)) then",
             "  if h_nonneg : (i_5 >= (0 : Int64)) then")
         body = body.replace(
-            "      bb_19 i_5 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1 R3_5",
-            "      let i_6 : Int64 := (i_5 - (1 : Int64))\n"
-            f"      {f.lean_name} i_6 R3_5 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1")
-        body = body.replace(
-            "      bb_19 i_5 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1 R3_4",
-            "      let i_6 : Int64 := (i_5 - (1 : Int64))\n"
-            f"      {f.lean_name} i_6 R3_4 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1")
+            "(_loop_divrem_1_ir j_1 R3_4 B c_1 d_1 i_5)",
+            "(_loop_divrem_1_ir j_1 R3_4 B c_1 d_1 i_5 h_d_lt_max)")
+        # BB numbers and SSA suffixes legitimately change when the preceding
+        # alias branch is specialized away.  Thread the guard evidence through
+        # the generated continuation by its structural shape, not by one
+        # snapshot's number.
+        bb_match = re.search(r"^  let (bb_[0-9]+) := fun (.+) =>$", body,
+                             flags=re.MULTILINE)
+        if bb_match is None:
+            raise RuntimeError("divrem descending loop continuation missing")
+        bb_name = bb_match.group(1)
+        continuation = re.compile(
+            rf"^  let {bb_name} := fun .+ =>\n"
+            rf"    let i_6 : Int64 := \(i_5 - \(1 : Int64\)\)\n"
+            rf"    {re.escape(f.lean_name)} i_6 .+\n",
+            flags=re.MULTILINE)
+        body, removed = continuation.subn("", body, count=1)
+        if removed != 1:
+            raise RuntimeError("divrem descending continuation shape changed")
+        rewritten = []
+        for line in body.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(f"{bb_name} "):
+                indent = line[:len(line) - len(line.lstrip())]
+                args = stripped.split()[1:]
+                if len(args) != 10:
+                    raise RuntimeError(
+                        f"divrem continuation arity changed: {stripped}")
+                _, q, b, r, d, inv, norm, p, pinv, r3 = args
+                rewritten.append(
+                    f"{indent}let i_6 : Int64 := (i_5 - (1 : Int64))")
+                rewritten.append(
+                    f"{indent}{f.lean_name} i_6 {r3} {q} {b} {r} {d} "
+                    f"{inv} {norm} {p} {pinv} h_d_lt_max")
+            else:
+                rewritten.append(line)
+        body = "\n".join(rewritten)
     elif f.base_name == "_loop_divrem_3":
         body = body.replace(
             "  if (i_8 < d_1) then",
             "  if h_lt : (i_8 < d_1) then")
+    elif f.base_name == "_loop_divrem_1":
+        body = body.replace(
+            "  if (j_2 <= d_1) then",
+            "  if h_le : (j_2 <= d_1) then")
+        body = body.replace(
+            f"{f.lean_name} j_3 R3_6 B c_1 d_1 i_5",
+            f"{f.lean_name} j_3 R3_6 B c_1 d_1 i_5 h_d_lt_max")
+    elif f.base_name == "dense_upoly_zp_divrem_nonalias":
+        body = body.replace(
+            "(_loop_divrem_2_ir i_4 R3_2 Q_6 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1)",
+            "(_loop_divrem_2_ir i_4 R3_2 Q_6 B R_4 d_1 inv_lc_1 norm_1 "
+            "p_1 pinv_1 (by simpa [d_1] using h_d_lt_max))")
+        if "h_d_lt_max))" not in body:
+            body = body.replace(
+                " p_1 pinv_1)",
+                " p_1 pinv_1 (by simpa [d_1] using h_d_lt_max))", 1)
     if term is not None:
         if f.base_name == "_loop___ddf_Zp_0":
             decreasing = "\ndecreasing_by exact hdec"
@@ -1385,6 +1437,11 @@ def emit_mirfunc(f: MIRFunc,
                 "  omega")
         elif f.base_name == "_loop_divrem_0":
             decreasing = "\ndecreasing_by omega"
+        elif f.base_name == "_loop_divrem_1":
+            decreasing = (
+                "\ndecreasing_by\n"
+                "  exact int64_add_one_inclusive_gap_lt j_2 d_1 h_le "
+                "h_d_lt_max")
         elif f.base_name == "_loop_divrem_2":
             decreasing = (
                 "\ndecreasing_by\n"
@@ -1521,6 +1578,11 @@ def codegen_corpus(top_funcs: list[MIRFunc],
         "dense_upoly_zp__umul128": 27,
         "dense_upoly_zp__add_carry3": 28,
         "dense_upoly_zp__lll_mod_preinv": 29,
+        "_loop_divrem_0": 30,
+        "_loop_divrem_1": 31,
+        "_loop_divrem_2": 32,
+        "_loop_divrem_3": 33,
+        "dense_upoly_zp_divrem_nonalias": 34,
     }
     ordered_total = helper_loops + helper_entries + ddf_loops + ddf_entries
     indexed_total = list(enumerate(ordered_total))

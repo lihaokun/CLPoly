@@ -523,6 +523,7 @@ FUNC_MAP = {
     "_umul128": ("dense_upoly_zp__umul128_ir", "direct"),
     "_add_carry3": ("dense_upoly_zp__add_carry3_ir", "direct"),
     "_lll_mod_preinv": ("dense_upoly_zp__lll_mod_preinv_ir", "direct"),
+    "divrem": ("dense_upoly_zp_divrem_nonalias_ir", "direct"),
     "__builtin_clzll": ("uint64_clz", "direct"),
     "polynomial_GCD": ("polynomial_GCD", "direct"),
     "polynomial_GCD_eea": ("polynomial_GCD_eea", "direct"),

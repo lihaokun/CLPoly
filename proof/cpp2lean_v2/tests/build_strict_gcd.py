@@ -28,6 +28,7 @@ from pass5_operator_resolve import operator_resolve_pass
 from pass6_ssa_build import ssa_build_pass
 from pass7_loop_lower import loop_lower_pass
 from pass8_codegen import codegen_corpus
+from ir_types import BinOp, Cast, IfStmt, UnaryOp, Var
 
 
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictGCD.lean"
@@ -49,6 +50,7 @@ METHOD_ROOTS = (
     "nmod_inv",
     "scalar_mul",
     "to_upoly",
+    "divrem",
 )
 
 CONSTRUCTOR_ARITIES = {
@@ -91,6 +93,8 @@ def lower_method(name: str):
     if ast is None or ast.get("kind") != expected_kind:
         raise RuntimeError(f"missing concrete C++ AST for {name}: {expected_kind}")
     hir = parse_pass(ast)
+    if name == "divrem":
+        hir.body = _specialize_divrem_nonalias(hir.body)
     hir = ref_elim_pass(hir)
     hir = callsite_ref_elim_pass(hir)
     hir = lambda_lift_pass(hir)
@@ -101,9 +105,64 @@ def lower_method(name: str):
             gaps.op_miss, gaps.constructor_miss)):
         raise RuntimeError(f"unresolved {name} translation gaps: {gaps}")
     mir = loop_lower_pass(ssa_build_pass(hir))
-    mir.base_name = (name if name == "inv_prime" or name in CONSTRUCTOR_ARITIES
-                     else f"dense_upoly_zp_{name}")
+    mir.base_name = (
+        "dense_upoly_zp_divrem_nonalias" if name == "divrem" else
+        name if name == "inv_prime" or name in CONSTRUCTOR_ARITIES else
+        f"dense_upoly_zp_{name}")
     return mir
+
+
+def _strip_casts(expr):
+    while isinstance(expr, Cast):
+        expr = expr.expr
+    return expr
+
+
+def _address_pair(expr):
+    expr = _strip_casts(expr)
+    if not isinstance(expr, BinOp) or expr.op not in ("==", "="):
+        return None
+    names = []
+    for side in (expr.lhs, expr.rhs):
+        side = _strip_casts(side)
+        if not isinstance(side, UnaryOp) or side.op != "&":
+            return None
+        operand = _strip_casts(side.operand)
+        if not isinstance(operand, Var):
+            return None
+        names.append(operand.name)
+    return tuple(names)
+
+
+def _flatten_alias_disjunction(expr):
+    expr = _strip_casts(expr)
+    if isinstance(expr, BinOp) and expr.op == "||":
+        return (_flatten_alias_disjunction(expr.lhs) +
+                _flatten_alias_disjunction(expr.rhs))
+    pair = _address_pair(expr)
+    return [pair] if pair is not None else []
+
+
+def _specialize_divrem_nonalias(body):
+    """Remove only the verified alias-protection branch.
+
+    The sole production caller is `gcd` with four distinct local objects
+    `q`, `r`, `a`, and `b`.  The later GCD closure gate checks those declaration
+    identities before this specialization is admitted.  Here we additionally
+    require the source guard to be exactly the four documented comparisons;
+    any source drift fails generation instead of silently pruning a branch.
+    """
+    expected = {("Q", "A"), ("Q", "B"), ("R", "A"), ("R", "B")}
+    matches = []
+    for index, stmt in enumerate(body):
+        if isinstance(stmt, IfStmt):
+            pairs = set(_flatten_alias_disjunction(stmt.cond))
+            if pairs == expected:
+                matches.append(index)
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"divrem nonalias specialization guard mismatch: {matches}")
+    return [stmt for index, stmt in enumerate(body) if index != matches[0]]
 
 
 def generate_strict_gcd() -> str:

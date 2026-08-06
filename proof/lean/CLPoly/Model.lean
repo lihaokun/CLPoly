@@ -192,6 +192,29 @@ theorem int64_add_one_gap_lt (i d : Int64) (h : i < d) :
       simpa [Int64.lt_iff_toInt_lt] using h
     omega
 
+/-- Termination fact for the inclusive C++ loop `for (j = 0; j <= d; ++j)`.
+
+Unlike the strict-guarded variant, the inclusive guard needs the reachable
+representation invariant `d < INT64_MAX`; otherwise `j = d = INT64_MAX`
+would wrap.  Under that invariant machine addition is ordinary integer
+addition and the inclusive gap `d-j+1` decreases by one. -/
+theorem int64_add_one_inclusive_gap_lt (j d : Int64)
+    (h : j <= d) (hd : d.toInt < 9223372036854775807) :
+    (d.toInt - (j + (1 : Int64)).toInt + 1).toNat <
+      (d.toInt - j.toInt + 1).toNat := by
+  rw [Int64.toInt_add]
+  have hone : (1 : Int64).toInt = 1 := by decide
+  rw [hone]
+  rw [Int.bmod_eq_of_le]
+  · have hjd : j.toInt ≤ d.toInt := by
+      simpa [Int64.le_iff_toInt_le] using h
+    omega
+  · have hlo := Int64.le_toInt j
+    omega
+  · have hjd : j.toInt ≤ d.toInt := by
+      simpa [Int64.le_iff_toInt_le] using h
+    omega
+
 /-- Termination fact for the C++ binary-exponentiation loop.
 
 Proof sketch: a positive integer has positive absolute value; division by the

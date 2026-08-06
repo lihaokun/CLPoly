@@ -297,4 +297,124 @@ def dense_upoly_zp__lll_mod_preinv_ir (hi : UInt64) (mid : UInt64) (lo : UInt64)
   else
     bb_3 mid norm pinv pn_1 p lo h_shifted_1
 
+def _loop_divrem_0_ir (i_2 : Nat) (R3_2 : Array Word3) (A : DenseUPolyZp) (r_len_1 : Nat) : (Int64 × Array Word3) :=
+  if (i_2 < r_len_1) then
+    -- require (h_in_bounds): (i_2 < (Array.size A._coeffs))
+    let R3_3 : Array Word3 := (Array.set! R3_2 i_2 (Word3.mk (A._coeffs[(i_2)]!) (0 : UInt64) (0 : UInt64)))
+    let i_3 : Nat := (i_2 + (1 : Nat))
+    _loop_divrem_0_ir i_3 R3_3 A r_len_1
+  else
+    ((0 : Int64), R3_2)
+termination_by r_len_1 - i_2
+decreasing_by omega
+
+def _loop_divrem_1_ir (j_2 : Int64) (R3_5 : Array Word3) (B : DenseUPolyZp) (c_1 : UInt64) (d_1 : Int64) (i_5 : Int64) (h_d_lt_max : d_1.toInt < 9223372036854775807) : (Int64 × Array Word3) :=
+  if h_le : (j_2 <= d_1) then
+    let p1_1 : UInt64 := ((0 : UInt64))
+    let p0_1 : UInt64 := ((0 : UInt64))
+    -- require (h_nonneg): (j_2 >= (0 : Int64))
+    -- require (h_in_bounds): (((j_2).toUInt64) < (Array.size B._coeffs))
+    let __refret_0_1 : (UInt64 × UInt64) := (dense_upoly_zp__umul128_ir p1_1 p0_1 c_1 (B._coeffs[((j_2).toUInt64).toNat]!))
+    let p1_2 : UInt64 := __refret_0_1.fst
+    let p0_2 : UInt64 := __refret_0_1.snd
+    -- require (h_nonneg): ((i_5 + j_2) >= (0 : Int64))
+    -- require (h_nonneg): ((i_5 + j_2) >= (0 : Int64))
+    -- require (h_in_bounds): ((((i_5 + j_2)).toUInt64) < (Array.size R3_5))
+    -- require (h_in_bounds): ((((i_5 + j_2)).toUInt64) < (Array.size R3_5))
+    let R3_6 : Array Word3 := (Array.set! R3_5 (((((i_5 + j_2)).toUInt64)).toNat) (dense_upoly_zp__add_carry3_ir (R3_5[(((i_5 + j_2)).toUInt64).toNat]!) p1_2 p0_2))
+    let j_3 : Int64 := (j_2 + (1 : Int64))
+    _loop_divrem_1_ir j_3 R3_6 B c_1 d_1 i_5 h_d_lt_max
+  else
+    ((0 : Int64), R3_5)
+termination_by (d_1.toInt - j_2.toInt + 1).toNat
+decreasing_by
+  exact int64_add_one_inclusive_gap_lt j_2 d_1 h_le h_d_lt_max
+
+def _loop_divrem_2_ir (i_5 : Int64) (R3_4 : Array Word3) (Q_6 : DenseUPolyZp) (B : DenseUPolyZp) (R_3 : DenseUPolyZp) (d_1 : Int64) (inv_lc_1 : UInt64) (norm_1 : UInt32) (p_1 : UInt64) (pinv_1 : UInt64) (h_d_lt_max : d_1.toInt < 9223372036854775807) : (Int64 × DenseUPolyZp × Array Word3) :=
+  if h_nonneg : (i_5 >= (0 : Int64)) then
+    -- require (h_nonneg): ((i_5 + d_1) >= (0 : Int64))
+    -- require (h_nonneg): ((i_5 + d_1) >= (0 : Int64))
+    -- require (h_nonneg): ((i_5 + d_1) >= (0 : Int64))
+    -- require (h_in_bounds): ((((i_5 + d_1)).toUInt64) < (Array.size R3_4))
+    -- require (h_in_bounds): ((((i_5 + d_1)).toUInt64) < (Array.size R3_4))
+    -- require (h_in_bounds): ((((i_5 + d_1)).toUInt64) < (Array.size R3_4))
+    let r_1 : UInt64 := (dense_upoly_zp__lll_mod_preinv_ir ((R3_4[(((i_5 + d_1)).toUInt64).toNat]!).hi) ((R3_4[(((i_5 + d_1)).toUInt64).toNat]!).mid) ((R3_4[(((i_5 + d_1)).toUInt64).toNat]!).lo) p_1 pinv_1 norm_1)
+    let q_i_1 : UInt64 := (dense_upoly_zp_nmod_mul_ir R_3 r_1 inv_lc_1)
+    -- require (h_nonneg): (i_5 >= (0 : Int64))
+    -- require (h_in_bounds): (((i_5).toUInt64) < (Array.size Q_6._coeffs))
+    let Q_7 : DenseUPolyZp := { Q_6 with _coeffs := (Array.set! Q_6._coeffs (((i_5).toUInt64)).toNat q_i_1) }
+    if (q_i_1 != (0 : UInt64)) then
+      let c_1 : UInt64 := (p_1 - q_i_1)
+      let j_1 : Int64 := (0 : Int64)
+      let __loop_ret_divrem_1_1 : (Int64 × Array Word3) := (_loop_divrem_1_ir j_1 R3_4 B c_1 d_1 i_5 h_d_lt_max)
+      let R3_5 : Array Word3 := __loop_ret_divrem_1_1.snd
+      let i_6 : Int64 := (i_5 - (1 : Int64))
+      _loop_divrem_2_ir i_6 R3_5 Q_7 B R_3 d_1 inv_lc_1 norm_1 p_1 pinv_1 h_d_lt_max
+    else
+      let i_6 : Int64 := (i_5 - (1 : Int64))
+      _loop_divrem_2_ir i_6 R3_4 Q_7 B R_3 d_1 inv_lc_1 norm_1 p_1 pinv_1 h_d_lt_max
+  else
+    ((0 : Int64), Q_6, R3_4)
+termination_by (i_5.toInt + 1).toNat
+decreasing_by
+  all_goals exact int64_sub_one_measure_lt i_5 h_nonneg
+
+def _loop_divrem_3_ir (i_8 : Int64) (R_6 : DenseUPolyZp) (R3_4 : Array Word3) (d_1 : Int64) (norm_1 : UInt32) (p_1 : UInt64) (pinv_1 : UInt64) : (Int64 × DenseUPolyZp) :=
+  if h_lt : (i_8 < d_1) then
+    -- require (h_nonneg): (i_8 >= (0 : Int64))
+    -- require (h_nonneg): (i_8 >= (0 : Int64))
+    -- require (h_nonneg): (i_8 >= (0 : Int64))
+    -- require (h_nonneg): (i_8 >= (0 : Int64))
+    -- require (h_in_bounds): (((i_8).toUInt64) < (Array.size R3_4))
+    -- require (h_in_bounds): (((i_8).toUInt64) < (Array.size R3_4))
+    -- require (h_in_bounds): (((i_8).toUInt64) < (Array.size R3_4))
+    -- require (h_in_bounds): (((i_8).toUInt64) < (Array.size R_6._coeffs))
+    let R_7 : DenseUPolyZp := { R_6 with _coeffs := (Array.set! R_6._coeffs (((i_8).toUInt64)).toNat (dense_upoly_zp__lll_mod_preinv_ir (R3_4[((i_8).toUInt64).toNat]!).hi (R3_4[((i_8).toUInt64).toNat]!).mid (R3_4[((i_8).toUInt64).toNat]!).lo p_1 pinv_1 norm_1)) }
+    let i_9 : Int64 := (i_8 + (1 : Int64))
+    _loop_divrem_3_ir i_9 R_7 R3_4 d_1 norm_1 p_1 pinv_1
+  else
+    ((0 : Int64), R_6)
+termination_by (d_1.toInt - i_8.toInt).toNat
+decreasing_by
+  exact int64_add_one_gap_lt i_8 d_1 h_lt
+
+def dense_upoly_zp_divrem_nonalias_ir (Q : DenseUPolyZp) (R : DenseUPolyZp) (A : DenseUPolyZp) (B : DenseUPolyZp) (h_d_lt_max : (dense_upoly_zp_deg_ir B).toInt < 9223372036854775807) : (DenseUPolyZp × DenseUPolyZp) :=
+  -- assert side effect represented by RequireStmt
+  let Q_1 : DenseUPolyZp := { Q with _p := A._p }
+  let Q_2 : DenseUPolyZp := { Q_1 with _ninv := A._ninv }
+  let Q_3 : DenseUPolyZp := { Q_2 with _norm := A._norm }
+  let R_1 : DenseUPolyZp := { R with _p := A._p }
+  let R_2 : DenseUPolyZp := { R_1 with _ninv := A._ninv }
+  let R_3 : DenseUPolyZp := { R_2 with _norm := A._norm }
+  if ((dense_upoly_zp_deg_ir A) < (dense_upoly_zp_deg_ir B)) then
+    let Q_4 : DenseUPolyZp := { Q_3 with _coeffs := (Array.clearVec Q_3._coeffs) }
+    let R_4 : DenseUPolyZp := { R_3 with _coeffs := A._coeffs }
+    (Q_4, R_4)
+  else
+    let d_1 : Int64 := (dense_upoly_zp_deg_ir B)
+    let q_len_1 : Int64 := (((dense_upoly_zp_deg_ir A) - d_1) + (1 : Int64))
+    -- require (h_nonneg): (q_len_1 >= (0 : Int64))
+    let Q_5 : DenseUPolyZp := { Q_3 with _coeffs := (Array.replicateMut Q_3._coeffs ((q_len_1).toUInt64) (0 : UInt64)) }
+    let inv_lc_1 : UInt64 := (dense_upoly_zp_nmod_inv_ir R_3 (dense_upoly_zp_lead_ir B))
+    let r_len_1 : Nat := (Array.size A._coeffs)
+    let R3_1 : Array Word3 := (Array.replicate ((r_len_1).toNat) default)
+    let i_1 : Nat := (0 : Nat)
+    let __loop_ret_divrem_0_1 : (Int64 × Array Word3) := (_loop_divrem_0_ir i_1 R3_1 A r_len_1)
+    let R3_2 : Array Word3 := __loop_ret_divrem_0_1.snd
+    let p_1 : UInt64 := A._p
+    let pinv_1 : UInt64 := A._ninv
+    let norm_1 : UInt32 := A._norm
+    let i_4 : Int64 := (q_len_1 - (1 : Int64))
+    let __loop_ret_divrem_2_1 : (Int64 × DenseUPolyZp × Array Word3) := (_loop_divrem_2_ir i_4 R3_2 Q_5 B R_3 d_1 inv_lc_1 norm_1 p_1 pinv_1 (by simpa [d_1] using h_d_lt_max))
+    let Q_6 : DenseUPolyZp := __loop_ret_divrem_2_1.2.1
+    let R3_4 : Array Word3 := __loop_ret_divrem_2_1.2.2
+    -- require (h_nonneg): ((if (d_1 > (0 : Int64)) then d_1 else (0 : Int64)) >= (0 : Int64))
+    let R_5 : DenseUPolyZp := { R_3 with _coeffs := (Array.resize R_3._coeffs (((if (d_1 > (0 : Int64)) then d_1 else (0 : Int64))).toUInt64)) }
+    let i_7 : Int64 := (0 : Int64)
+    let __loop_ret_divrem_3_1 : (Int64 × DenseUPolyZp) := (_loop_divrem_3_ir i_7 R_5 R3_4 d_1 norm_1 p_1 pinv_1)
+    let R_6 : DenseUPolyZp := __loop_ret_divrem_3_1.snd
+    let R_8 : DenseUPolyZp := (dense_upoly_zp___strip_ir R_6)
+    let Q_8 : DenseUPolyZp := (dense_upoly_zp___strip_ir Q_6)
+    (Q_8, R_8)
+
 end Generated.StrictGCD

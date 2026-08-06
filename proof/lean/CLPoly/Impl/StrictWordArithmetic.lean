@@ -717,6 +717,92 @@ theorem preinvRoundIR_lt (u1 u0 pn pinv : UInt64)
 /-
   Natural-language proof.
 
+  For a value below `2*d`, one conditional subtraction of `d` computes its
+  canonical remainder: values below `d` stay fixed, while values in
+  `[d,2*d)` lose exactly one copy of `d`.
+-/
+theorem nat_condSub_eq_mod (x d : Nat) (hx : x < 2 * d) :
+    (if d ≤ x then x - d else x) = x % d := by
+  by_cases h : d ≤ x
+  · simp only [h, ↓reduceIte]
+    rw [Nat.mod_eq_sub_mod h]
+    apply (Nat.mod_eq_of_lt ?_).symm
+    omega
+  · simp only [h, ↓reduceIte]
+    exact (Nat.mod_eq_of_lt (by omega)).symm
+
+/-
+  Natural-language proof.
+
+  This lemma isolates the exact remaining detector obligation of the C++
+  algorithm.  If the estimated multiple is above `N`, the wrapped subtraction
+  is `B-(qd-N)` and the source comparison must request the add-back.  If it is
+  below `N`, the subtraction is `N-qd`; whenever the comparison nevertheless
+  requests an add-back, that sum must not wrap.  Under those two detector
+  facts and the already proved estimate window, the first correction produces
+  either the signed difference made nonnegative or that value plus one `d`.
+  The final conditional subtraction is therefore exactly `N % d`.
+-/
+theorem preinv_correction_of_detector (B d qd N q0 : Nat)
+    (hd : 0 < d) (hdB : d < B) (hB2d : B ≤ 2 * d)
+    (hdiv : d ∣ qd) (habove : qd ≤ N + d) (hbelow : N < qd + B)
+    (hdetectNeg : N < qd → q0 < B - (qd - N))
+    (hdetectPos : qd ≤ N → q0 < N - qd → N - qd + d < B) :
+    let r := if qd ≤ N then N - qd else B - (qd - N)
+    let r' := if q0 < r then (r + d) % B else r
+    (if d ≤ r' then r' - d else r') = N % d := by
+  dsimp
+  by_cases hle : qd ≤ N
+  · simp only [hle, ↓reduceIte]
+    let delta := N - qd
+    have hdeltaB : delta < B := by
+      dsimp [delta]
+      omega
+    have hN : N = qd + delta := by
+      dsimp [delta]
+      omega
+    have hmod : delta % d = N % d := by
+      rw [hN, Nat.add_mod, Nat.mod_eq_zero_of_dvd hdiv]
+      simp
+    by_cases hadd : q0 < delta
+    · simp only [delta, hadd, ↓reduceIte]
+      have hsumB : delta + d < B := hdetectPos hle hadd
+      rw [Nat.mod_eq_of_lt hsumB]
+      rw [nat_condSub_eq_mod (delta + d) d (lt_of_lt_of_le hsumB hB2d)]
+      simpa [Nat.add_mod] using hmod
+    · simp only [delta, hadd, ↓reduceIte]
+      rw [nat_condSub_eq_mod delta d (lt_of_lt_of_le hdeltaB hB2d)]
+      exact hmod
+  · have hlt : N < qd := by omega
+    simp only [hle, ↓reduceIte, hdetectNeg hlt]
+    let k := qd - N
+    have hkpos : 0 < k := by dsimp [k]; omega
+    have hkle : k ≤ d := by dsimp [k]; omega
+    have hkB : k < B := lt_of_le_of_lt hkle hdB
+    have haddEq : B - k + d = B + (d - k) := by omega
+    rw [show qd - N = k by rfl, haddEq, Nat.add_comm B, Nat.add_mod_right]
+    have hdkB : d - k < B := lt_of_le_of_lt (Nat.sub_le d k) hdB
+    rw [Nat.mod_eq_of_lt hdkB]
+    have hdkd : d - k < d := by omega
+    simp only [show ¬d ≤ d - k by omega, ↓reduceIte]
+    rcases hdiv with ⟨z, hz⟩
+    cases z with
+    | zero =>
+        simp at hz
+        omega
+    | succ z =>
+        have hz' : qd = d * z + d := by
+          simpa [Nat.mul_succ] using hz
+        have hkN : k + N = qd := by
+          dsimp [k]
+          omega
+        have hN : N = d * z + (d - k) := by omega
+        rw [hN, Nat.add_mod]
+        simp [Nat.mod_eq_of_lt hdkd]
+
+/-
+  Natural-language proof.
+
   The generated C++ multiplication first shifts `a`, forms its exact UInt128
   product with `b`, and splits that product into high and low limbs.  The
   remaining quotient estimate, carry conversion, two correction branches and

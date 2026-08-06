@@ -24,6 +24,34 @@ theorem readU64s_ok (heap : RawHeap) (ptr : RawPtr UInt64) (count : Nat)
     refine ⟨#[head] ++ tail, rfl, ?_⟩
     simp [hsizeTail, Nat.add_comm]
 
+theorem readU64s_get (heap : RawHeap) (ptr : RawPtr UInt64) (count : Nat)
+    (coeffs : Array UInt64) (hread : heap.readU64s ptr count = .ok coeffs)
+    (hsize : coeffs.size = count) (index : Nat) (hindex : index < count) :
+    heap.readU64 ptr index = .ok coeffs[index] := by
+  cases count with
+  | zero => omega
+  | succ n =>
+    simp only [RawHeap.readU64s] at hread
+    cases hhead : heap.readU64 ptr 0 with
+    | error fault => simp [hhead] at hread
+    | ok head =>
+      cases htail : heap.readU64s (RawPtr.add ptr 1) n with
+      | error fault => simp [hhead, htail] at hread
+      | ok tail =>
+        simp only [hhead, htail] at hread
+        have hcoeffs : coeffs = #[head] ++ tail := (Except.ok.inj hread).symm
+        subst coeffs
+        have htailSizeEq : 1 + tail.size = n + 1 := by simpa using hsize
+        have htailSize : tail.size = n := by omega
+        cases index with
+        | zero => simpa using hhead
+        | succ j =>
+          have hj : j < n := by omega
+          have ih := readU64s_get heap (RawPtr.add ptr 1) n tail htail
+            htailSize j hj
+          rw [RawHeap.readU64_add] at ih
+          simpa [Nat.add_comm] using ih
+
 theorem sliceRep_exists_unique (heap : RawHeap) (ptr : RawPtr UInt64)
     (length : Nat) (hvalid : heap.ValidU64Slice ptr length) :
     ∃ coeffs : Array UInt64,
@@ -51,6 +79,18 @@ theorem slicePolyRep_exists_unique (heap : RawHeap) (ptr : RawPtr UInt64)
     hunique otherCoeffs ⟨hreadOther, hsizeOther⟩
   subst otherCoeffs
   exact hpolyOther
+
+theorem slicePolyRep_coeff (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length p : Nat) (poly : Polynomial (ZMod p))
+    (hrep : SlicePolyRep heap ptr length p poly)
+    (degree : Nat) (hdegree : degree < length) :
+    ∃ value : UInt64,
+      heap.readU64 ptr degree = .ok value ∧
+      poly.coeff degree = (value.toNat : ZMod p) := by
+  rcases hrep with ⟨coeffs, hread, hsize, hpoly⟩
+  have hraw := readU64s_get heap ptr length coeffs hread hsize degree hdegree
+  refine ⟨coeffs[degree], hraw, ?_⟩
+  rw [hpoly, coeff_coeffArrayPoly, dif_pos]
 
 /-- `_poly_normalise` only reads within its declared prefix.  Structural
 recursion on `len` proves both successful execution and the returned prefix

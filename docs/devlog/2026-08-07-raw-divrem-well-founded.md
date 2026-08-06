@@ -18,6 +18,7 @@
 - 完成整个 `_poly_divrem` 的终止/内存安全定理：按 C++ 规定的 A/B/Q/R/W3 容量，两个控制分支均必返回 `.ok`，且输出长度不超过缓冲区容量。
 - 增加无默认值的 `readU64s` 与 `SliceRep` raw→safe 内容关系；证明合法 slice 存在唯一安全系数数组且数组长度精确等于 C++ length。
 - 将安全系数数组按小端下标解释为现有 L2 使用的 `Polynomial (ZMod p)`，并证明每个合法 raw slice 唯一表示一个该类型的多项式。
+- 证明 `coeffArrayPoly` 的逐系数公式、指针加法读取等式、整段读取的逐下标一致性，以及 `SlicePolyRep` 系数到 raw limb 读取的桥。
 - 增加严格准入检查器，将专用 lowering 绑定到稳定化后的完整 Clang AST 哈希，并检查原始指针签名、四循环形状、Lean artifact 哈希和禁用构造。
 
 ## 为什么做
@@ -51,6 +52,6 @@
 
 - 耗时：约 1 小时
 - 迭代：6 轮 Lean/AST/checker 编译检查
-- Lean 新增/修改行数：约 650 行
+- Lean 新增/修改行数：约 720 行
 - 对应 C++ 行数：约 50 行 `_poly_divrem` 与 `_poly_normalise/memcpy` 依赖
 - 放弃的方案：继续使用 Array `get!`/`set!`；原因是越界默认值不等于 C++ 语义

@@ -335,6 +335,17 @@ theorem readU64_of_valid (heap : RawHeap) (ptr : RawPtr UInt64)
   refine ⟨heap.regions[regionId][ptr.limbOffset + index], ?_⟩
   simp only [readU64, hregion, hr, dif_pos, hoffset]
 
+theorem readU64_add (heap : RawHeap) (ptr : RawPtr UInt64)
+    (start index : Nat) :
+    heap.readU64 (RawPtr.add ptr start) index =
+      heap.readU64 ptr (start + index) := by
+  have hwidth : RawLimbWidth.width UInt64 = 1 := rfl
+  have haddress : ptr.limbOffset + start * RawLimbWidth.width UInt64 + index =
+      ptr.limbOffset + (start + index) := by
+    rw [hwidth]
+    omega
+  simp [readU64, RawPtr.add, haddress]
+
 def writeU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat)
     (value : UInt64) : RawExec RawHeap :=
   match ptr.region with

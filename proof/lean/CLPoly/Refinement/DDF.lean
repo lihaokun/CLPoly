@@ -693,6 +693,38 @@ private lemma current_degree_not_mem_tail (input : SparsePolyZp) (i : Nat)
   rw [drop_eq_getElem_cons input i hi, List.map_cons, List.nodup_cons] at hnd
   exact hnd.1
 
+/-- The executable descending-order checker implies the relational invariant
+needed by the generated range-loop proof. -/
+private lemma pairwise_degrees_of_sortedListB :
+    ∀ xs : List (UMonomial × Zp),
+      SparsePolyZp.sortedListB xs = true →
+        xs.Pairwise (fun a b => b.1.deg < a.1.deg) := by
+  intro xs
+  induction xs with
+  | nil => simp
+  | cons a rest ih =>
+      intro hs
+      have hs' := (SparsePolyZp.sortedListB_iff a rest).mp hs
+      rw [List.pairwise_cons]
+      exact ⟨hs'.1, ih hs'.2⟩
+
+private lemma pairwise_drop_tail (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size)
+    (hs : (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg)) :
+    (input.toList.drop (i + 1)).Pairwise
+      (fun a b => b.1.deg < a.1.deg) := by
+  rw [drop_eq_getElem_cons input i hi, List.pairwise_cons] at hs
+  exact hs.2
+
+private lemma tail_degree_lt_current (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size)
+    (hs : (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg)) :
+    ∀ x ∈ input.toList.drop (i + 1), x.1.deg < input[i]!.1.deg := by
+  rw [drop_eq_getElem_cons input i hi, List.pairwise_cons] at hs
+  exact hs.1
+
 private noncomputable def pendingX (inserted : Bool) : Polynomial (ZMod p) :=
   if inserted then 0 else X
 

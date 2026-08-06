@@ -34,6 +34,32 @@ theorem strict_upoly_mod_eq_raw (f g : SparsePolyZp) :
   rw [Generated.__upoly_mod_ir.eq_1]
   rfl
 
+private theorem strict_make_monic_loop_eq (i : Nat) (f : SparsePolyZp)
+    (c : Zp) :
+    Generated.StrictDDF._loop___upoly_make_monic_0_ir i f c =
+      Generated._loop___upoly_make_monic_0_ir i f c := by
+  refine Generated.StrictDDF._loop___upoly_make_monic_0_ir.induct c
+    (motive := fun i f =>
+      Generated.StrictDDF._loop___upoly_make_monic_0_ir i f c =
+        Generated._loop___upoly_make_monic_0_ir i f c) ?_ ?_ i f
+  · intro i f hlt term term' f' i' ih
+    rw [Generated.StrictDDF._loop___upoly_make_monic_0_ir.eq_1,
+      Generated._loop___upoly_make_monic_0_ir.eq_1]
+    simp only [hlt, ↓reduceIte]
+    exact ih
+  · intro i f hge
+    rw [Generated.StrictDDF._loop___upoly_make_monic_0_ir.eq_1,
+      Generated._loop___upoly_make_monic_0_ir.eq_1]
+    simp only [hge, ↓reduceIte]
+
+theorem strict_make_monic_eq_raw (f : SparsePolyZp) :
+    Generated.StrictDDF.__upoly_make_monic_ir f =
+      Generated.__upoly_make_monic_ir f := by
+  rw [Generated.__upoly_make_monic_ir.eq_1]
+  simp only [Generated.StrictDDF.__upoly_make_monic_ir,
+    Generated.__upoly_make_monic_ir_def]
+  rw [strict_make_monic_loop_eq]
+
 /-- `__upoly_mod_ir` 在规范输入上同时保持稀疏规范形，并精化为
 mathlib 的首一多项式余式。 -/
 private theorem upoly_mod_step_data (h2p : 2 * p ≤ UInt64.size)
@@ -48,6 +74,16 @@ private theorem upoly_mod_step_data (h2p : 2 * p ≤ UInt64.size)
   rw [hmod]
   exact ⟨divmod_snd_canonical f g hf hg hg_ne (by nlinarith),
     divmod_snd_toPoly_eq_modByMonic h2p hp2 f g hf hg hg_ne hg_monic⟩
+
+private theorem strict_upoly_mod_step_data (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (f g : SparsePolyZp)
+    (hf : CanonicalRep p f) (hg : CanonicalRep p g) (hg_ne : ¬g.isEmpty)
+    (hg_monic : Monic (SparsePolyZp.toPoly p g)) :
+    CanonicalRep p (Generated.StrictDDF.__upoly_mod_ir f g) ∧
+      SparsePolyZp.toPoly p (Generated.StrictDDF.__upoly_mod_ir f g) =
+        SparsePolyZp.toPoly p f %ₘ SparsePolyZp.toPoly p g := by
+  rw [strict_upoly_mod_eq_raw]
+  exact upoly_mod_step_data h2p hp2 f g hf hg hg_ne hg_monic
 
 /-- DDF/powmod 中的“先乘后取模”单步语义。 -/
 private theorem mul_mod_step_data (h2p : 2 * p ≤ UInt64.size)

@@ -435,6 +435,13 @@ def emit_call(e: Call, ctx: EmitCtx) -> str:
     if callee in ASSERT_FAIL_NAMES or callee == "unknown_func":
         return "()"
 
+    # `__builtin_expect` is a compiler branch-prediction hint and has exactly
+    # the operational value of its first argument.
+    if callee == "__builtin_expect":
+        if not e.args:
+            return "true"
+        return emit_expr(e.args[0], ctx)
+
     # __ctor__<template> — Pass 5 constructor 解析后形式
     # 模板含 {a0}/{a1}/... 占位符，按位置 args 替换为实际表达式
     if callee.startswith("__ctor__"):
@@ -636,6 +643,17 @@ def emit_stmt(s: MIRStmt, ctx: EmitCtx) -> str:
     pad = "  " * ctx.indent
 
     if isinstance(s, LetStmt):
+        # Clang lowers `assert(c)` to a dummy side-effect value containing an
+        # assert-failure call.  Pass 2 already records `c` as a RequireStmt;
+        # the dummy Unit/0 conditional is not part of the C++ result value and
+        # is ill-typed if emitted literally in Lean.
+        if s.var.name.startswith("__sideeff") \
+                and isinstance(s.value, CondExpr):
+            branches = (s.value.then_e, s.value.else_e)
+            if any(isinstance(x, Call) and isinstance(x.callee, str)
+                   and x.callee in {"__assert_fail", "__assert_rtn", "__assert"}
+                   for x in branches):
+                return f"{pad}-- assert side effect represented by RequireStmt"
         ty_str = emit_type(s.ty)
         # 上下文对齐：RHS 是 Lit 且 ty 与 LetStmt.ty 不一致 → 重标 Lit 类型对齐
         # （修上游 Pass 5 cast 缺失的 silent bug，如 RangeFor i 索引 Nat 但
@@ -1110,6 +1128,8 @@ def _get_loop_termination_measure(f: MIRFunc) -> Optional[str]:
     """
     if f.base_name == "_loop___ddf_Zp_0":
         return "ddfWellFoundedMeasure f_star_2 d_2"
+    if f.base_name == "_loop___upoly_powmod_0":
+        return "upolyPowmodWellFoundedMeasure e_2"
     if not f.base_name.startswith("_loop_"):
         return None
     if len(f.params) < 2:
@@ -1135,6 +1155,22 @@ def _get_loop_termination_measure(f: MIRFunc) -> Optional[str]:
     return f"Array.size {cont_name} - {idx_name}"
 
 
+_STRICT_TOTAL_ENTRIES = {
+    "__make_zp",
+    "__upoly_make_monic",
+    "__upoly_mod",
+    "__upoly_powmod",
+    "__upoly_subtract_x",
+    "__ddf_Zp",
+}
+
+
+def _is_strict_total_entry(f: MIRFunc) -> bool:
+    """Non-recursive C++ entries whose complete call closure is emitted as
+    total definitions for the strict DDF L1 path."""
+    return f.base_name in _STRICT_TOTAL_ENTRIES
+
+
 def emit_mirfunc(f: MIRFunc,
                   func_instances: Optional[dict[str, set[str]]] = None,
                   lifted_caps: Optional[dict[str, list[str]]] = None) -> str:
@@ -1144,7 +1180,7 @@ def emit_mirfunc(f: MIRFunc,
     sig_params_str = f" {sig_params}" if sig_params else ""
     ret_ty = emit_type(f.ret_ty)
     term = _get_loop_termination_measure(f)
-    if term is not None:
+    if term is not None or _is_strict_total_entry(f):
         sig = f"def {f.lean_name}{sig_params_str} : {ret_ty} :="
     else:
         sig = f"partial def {f.lean_name}{sig_params_str} : {ret_ty} :="
@@ -1169,9 +1205,34 @@ def emit_mirfunc(f: MIRFunc,
             "    else\n"
             "      default\n")
         body = recur + body
+    elif f.base_name == "_loop___upoly_powmod_0":
+        recursive_name = f.lean_name
+        body = body.replace(f"{recursive_name} ", "recur ")
+        recur = (
+            "  let recur := fun e_next b_next result_next modpoly_next =>\n"
+            "    if hdec : upolyPowmodWellFoundedMeasure e_next <\n"
+            "        upolyPowmodWellFoundedMeasure e_2 then\n"
+            f"      {recursive_name} e_next b_next result_next modpoly_next\n"
+            "    else\n"
+            "      default\n")
+        body = recur + body
+    elif f.base_name == "_loop___upoly_subtract_x_0":
+        recursive_name = f.lean_name
+        body = body.replace(f"{recursive_name} ", "recur ")
+        recur = (
+            "  let recur := fun idx_next inserted_next result_next cont_next p_next =>\n"
+            "    if hdec : Array.size cont_next - idx_next <\n"
+            "        Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2 then\n"
+            f"      {recursive_name} idx_next inserted_next result_next cont_next p_next\n"
+            "    else\n"
+            "      default\n")
+        body = recur + body
     if term is not None:
-        decreasing = "\ndecreasing_by exact hdec" \
-            if f.base_name == "_loop___ddf_Zp_0" else ""
+        if f.base_name in {"_loop___ddf_Zp_0", "_loop___upoly_powmod_0",
+                           "_loop___upoly_subtract_x_0"}:
+            decreasing = "\ndecreasing_by exact hdec"
+        else:
+            decreasing = ""
         return f"{sig}\n{body}\ntermination_by {term}{decreasing}"
     return f"{sig}\n{body}"
 
@@ -1197,6 +1258,9 @@ def codegen_pass(top: MIRFunc) -> str:
         out.append("def ddfWellFoundedMeasure (fStar : SparsePolyZp) (d : UInt64) : Nat :=")
         out.append("  if fStar.isEmpty then 0 else (get_deg fStar).toNat + 1 - 2 * d.toNat")
         out.append("")
+    if any(f.base_name == "_loop___upoly_powmod_0" for f in all_funcs):
+        out.append("def upolyPowmodWellFoundedMeasure (e : ZZ) : Nat := e.natAbs")
+        out.append("")
     for f in all_funcs:
         out.append(emit_mirfunc(f))
         out.append("")
@@ -1204,7 +1268,8 @@ def codegen_pass(top: MIRFunc) -> str:
     return "\n".join(out)
 
 
-def codegen_corpus(top_funcs: list[MIRFunc]) -> str:
+def codegen_corpus(top_funcs: list[MIRFunc],
+                   namespace: str = "Generated") -> str:
     """全 corpus → 单一 .lean 源码（aggregate）。
 
     布局：
@@ -1218,12 +1283,15 @@ def codegen_corpus(top_funcs: list[MIRFunc]) -> str:
     out.append("-- 阶段 G：报告所有错误（默认 100 截断会掩盖 per-function 真实通过率）")
     out.append("set_option maxErrors 2000")
     out.append("")
-    out.append("namespace Generated")
+    out.append(f"namespace {namespace}")
     out.append("")
     funcs = _topo_collect_funcs(top_funcs)
     if any(f.base_name == "_loop___ddf_Zp_0" for f in funcs):
         out.append("def ddfWellFoundedMeasure (fStar : SparsePolyZp) (d : UInt64) : Nat :=")
         out.append("  if fStar.isEmpty then 0 else (get_deg fStar).toNat + 1 - 2 * d.toNat")
+        out.append("")
+    if any(f.base_name == "_loop___upoly_powmod_0" for f in funcs):
+        out.append("def upolyPowmodWellFoundedMeasure (e : ZZ) : Nat := e.natAbs")
         out.append("")
     # 构建 base_name → {instance_suffix} 索引（用于 emit_call 模板实例解析）
     func_instances: dict[str, set[str]] = {}
@@ -1242,14 +1310,43 @@ def codegen_corpus(top_funcs: list[MIRFunc]) -> str:
                 lifted_caps[f.lean_name] = [p.name for p in f.params[:n]]
     # 分离 def 循环（可 unfold）和 partial def 宿主函数
     def_loops: list[MIRFunc] = []
+    total_entries: list[MIRFunc] = []
     partial_funcs: list[MIRFunc] = []
     for f in funcs:
         if _get_loop_termination_measure(f) is not None:
             def_loops.append(f)
+        elif _is_strict_total_entry(f):
+            total_entries.append(f)
         else:
             partial_funcs.append(f)
-    # 先输出 def 循环体（mutual 块外，可被 unfold）
-    for f in def_loops:
+
+    # DDF loop depends on the four total helper entries, while those entries
+    # depend on their own range/powmod loops.  Emit the exact dependency layers.
+    ddf_loops = [f for f in def_loops if f.base_name == "_loop___ddf_Zp_0"]
+    helper_loops = [f for f in def_loops if f.base_name != "_loop___ddf_Zp_0"]
+    ddf_entries = [f for f in total_entries if f.base_name == "__ddf_Zp"]
+    helper_entries = [f for f in total_entries if f.base_name != "__ddf_Zp"]
+    strict_order = {
+        "_loop___upoly_make_monic_0": 0,
+        "__make_zp": 1,
+        "__upoly_make_monic": 2,
+        "__upoly_mod": 3,
+        "_loop___upoly_powmod_0": 4,
+        "__upoly_powmod": 5,
+        "_loop___upoly_subtract_x_0": 6,
+        "__upoly_subtract_x": 7,
+        "_loop___ddf_Zp_0": 8,
+        "__ddf_Zp": 9,
+    }
+    ordered_total = helper_loops + helper_entries + ddf_loops + ddf_entries
+    indexed_total = list(enumerate(ordered_total))
+    indexed_total.sort(key=lambda pair: (
+        strict_order.get(pair[1].base_name, 100), pair[0]))
+    ordered_total = [f for _, f in indexed_total]
+
+    # Output total definitions outside the partial mutual block so Lean emits
+    # transparent equations and function induction principles.
+    for f in ordered_total:
         out.append(emit_mirfunc(f, func_instances=func_instances,
                                  lifted_caps=lifted_caps))
         out.append("")
@@ -1262,7 +1359,7 @@ def codegen_corpus(top_funcs: list[MIRFunc]) -> str:
             out.append("")
         out.append("end")
         out.append("")
-    out.append("end Generated")
+    out.append(f"end {namespace}")
     return "\n".join(out)
 
 

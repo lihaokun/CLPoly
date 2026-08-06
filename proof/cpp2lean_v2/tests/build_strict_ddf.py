@@ -1,0 +1,64 @@
+"""Generate the strict, total C++ L1 dependency closure for DDF."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+V2_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(V2_ROOT))
+sys.path.insert(0, str(V2_ROOT / "passes"))
+sys.path.insert(0, str(V2_ROOT / "tests"))
+
+from build_pass8_corpus import generate_corpus
+from pass8_codegen import codegen_corpus
+
+
+OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictDDF.lean"
+STRICT_DDF_ROOTS = {
+    "__make_zp",
+    "__upoly_make_monic",
+    "__upoly_mod",
+    "__upoly_powmod",
+    "__upoly_subtract_x",
+    "__ddf_Zp",
+}
+
+
+def generate_strict_ddf() -> str:
+    _, skipped, roots = generate_corpus()
+    if skipped:
+        details = ", ".join(f"{name}:{reason}" for name, reason in skipped)
+        raise RuntimeError(f"full MIR generation skipped functions: {details}")
+    selected = [f for f in roots if f.base_name in STRICT_DDF_ROOTS]
+    found = {f.base_name for f in selected}
+    missing = STRICT_DDF_ROOTS - found
+    if missing:
+        raise RuntimeError(f"missing strict DDF roots: {sorted(missing)}")
+    source = codegen_corpus(selected, namespace="Generated.StrictDDF")
+    if "sorry" in source or "partial def" in source:
+        raise RuntimeError("strict DDF output contains an opaque placeholder")
+    return source
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, default=OUT)
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    source = generate_strict_ddf()
+    if args.check:
+        if not args.output.exists() or args.output.read_text() != source:
+            print(f"FAIL: {args.output} is not reproducible", file=sys.stderr)
+            return 1
+        print(f"PASS: {args.output} is reproducible and placeholder-free")
+        return 0
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(source)
+    print(f"generated {args.output} ({source.count(chr(10)) + 1} lines)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -171,6 +171,28 @@ def test_ddf_loop_uses_well_founded_recursive_edge():
     print("PASS test_ddf_loop_uses_well_founded_recursive_edge")
 
 
+def test_subtract_x_loop_guards_generalized_recursive_edge():
+    idx = Var("__rangefor_idx_0_2", 0, BaseType.NAT)
+    inserted = Var("inserted_2", 0, BaseType.BOOL)
+    result = Var("result_2", 0, NamedType("SparsePolyZp"))
+    cont = Var("__rangefor_cont_0_1", 0, NamedType("SparsePolyZp"))
+    p = Var("p", 0, BaseType.UINT64)
+    cfg = _make_cfg(0, {0: BasicBlock(0, [], TailCallTerm(
+        target_func="_loop___upoly_subtract_x_0",
+        args=[idx, inserted, result, cont, p]))})
+    f = MIRFunc(
+        base_name="_loop___upoly_subtract_x_0",
+        params=[HIRParam(v.name, v.ty) for v in
+                [idx, inserted, result, cont, p]],
+        ret_ty=TupleType((BaseType.INT64, BaseType.BOOL,
+                          NamedType("SparsePolyZp"))), cfg=cfg)
+    out = emit_mirfunc(f)
+    assert "if hdec : Array.size cont_next - idx_next <" in out
+    assert "recur __rangefor_idx_0_2 inserted_2 result_2" in out
+    assert "decreasing_by exact hdec" in out
+    print("PASS test_subtract_x_loop_guards_generalized_recursive_edge")
+
+
 # ============================================================
 # Case 4: 嵌套 merge（菱形里再嵌菱形）
 # ============================================================
@@ -231,6 +253,7 @@ if __name__ == "__main__":
         test_diamond_merge,
         test_tailcall,
         test_ddf_loop_uses_well_founded_recursive_edge,
+        test_subtract_x_loop_guards_generalized_recursive_edge,
         test_nested_merges,
     ]
     passed = 0

@@ -4,6 +4,7 @@
 import CLPoly.Algorithm.DDF
 import CLPoly.Model
 import CLPoly.Generated.Corpus
+import CLPoly.Generated.StrictDDF
 import CLPoly.Refinement.Basic
 import CLPoly.Refinement.SquarefreeZp
 import CLPoly.Math.Univariate
@@ -17,6 +18,21 @@ namespace Refinement
 
 
 variable {p : ℕ} [hp : Fact (Nat.Prime p)]
+
+/-- The strict total entry is emitted from the same MIR equation as the legacy
+partial entry.  Non-recursive entries therefore agree by the raw equation
+theorem, with no algorithm replacement involved. -/
+theorem strict_make_zp_eq_raw (val : Int64) (q : UInt64) :
+    Generated.StrictDDF.__make_zp_ir val q =
+      Generated.__make_zp_ir val q := by
+  rw [Generated.__make_zp_ir.eq_1]
+  rfl
+
+theorem strict_upoly_mod_eq_raw (f g : SparsePolyZp) :
+    Generated.StrictDDF.__upoly_mod_ir f g =
+      Generated.__upoly_mod_ir f g := by
+  rw [Generated.__upoly_mod_ir.eq_1]
+  rfl
 
 /-- `__upoly_mod_ir` 在规范输入上同时保持稀疏规范形，并精化为
 mathlib 的首一多项式余式。 -/

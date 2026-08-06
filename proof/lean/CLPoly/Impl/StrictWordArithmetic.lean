@@ -562,6 +562,56 @@ theorem preinvQuotientPair_components (u1 u0 pinv : UInt64) :
 /-
   Natural-language proof.
 
+  Write `m = B + pinv`.  The quotient estimate is exactly
+  `(u1*m+u0)/B`: adding `u1` after division accounts for the `u1*B` part.
+  Since `u1 < pn`, multiplying `u1+1 ≤ pn` by `m` and using
+  `m*pn < B²` leaves at least `m ≥ B` below `B²`; the low limb `u0 < B`
+  fits in that gap.  Thus the numerator is below `B²`, so the estimate is
+  strictly below `B` and its UInt64 representation cannot wrap.
+-/
+theorem preinv_estimate_lt_base (B pn pinv u1 u0 : Nat)
+    (hB : 0 < B) (hu0 : u0 < B) (hu1 : u1 < pn)
+    (hmul : (B + pinv) * pn < B ^ 2) :
+    (u1 * pinv + u0) / B + u1 < B := by
+  let m := B + pinv
+  have humul : (u1 + 1) * m ≤ pn * m :=
+    Nat.mul_le_mul_right m (Nat.succ_le_iff.mpr hu1)
+  have hmcomm : pn * m < B ^ 2 := by
+    simpa [m, Nat.mul_comm] using hmul
+  have hmB : B ≤ m := by simp [m]
+  have hnum : u1 * m + u0 < B ^ 2 := by
+    nlinarith
+  have hrewrite : (u1 * pinv + u0) / B + u1 =
+      (u1 * m + u0) / B := by
+    rw [show u1 * m + u0 = (u1 * pinv + u0) + B * u1 by
+      simp [m]; ring]
+    rw [Nat.add_mul_div_left _ _ hB]
+  rw [hrewrite]
+  exact (Nat.div_lt_iff_lt_mul hB).2 (by simpa [pow_two] using hnum)
+
+/-
+  Natural-language proof.
+
+  The component theorem says that the machine high limb is the mathematical
+  estimate modulo `B`.  Under the normalized preinverse multiplication bound
+  and `u1 < pn`, the preceding theorem proves that estimate is already below
+  `B`; consequently the modulo operation is the identity.  This rules out the
+  high-limb wrap that would otherwise invalidate the quotient invariant.
+-/
+theorem preinvQuotientPair_high_noWrap (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2) :
+    (preinvQuotientPair u1 u0 pinv).1.toNat =
+      (u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat := by
+  have hest := preinv_estimate_lt_base limbBase pn.toNat pinv.toNat
+    u1.toNat u0.toNat (by norm_num [limbBase])
+    (by simpa [limbBase] using UInt64.toNat_lt u0) hu1 hmul
+  have hcomp := (preinvQuotientPair_components u1 u0 pinv).2
+  simpa [Nat.mod_eq_of_lt hest] using hcomp
+
+/-
+  Natural-language proof.
+
   The generated C++ multiplication first shifts `a`, forms its exact UInt128
   product with `b`, and splits that product into high and low limbs.  The
   remaining quotient estimate, carry conversion, two correction branches and

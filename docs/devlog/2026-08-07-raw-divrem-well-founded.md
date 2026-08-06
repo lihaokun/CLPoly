@@ -20,6 +20,8 @@
 - 将安全系数数组按小端下标解释为现有 L2 使用的 `Polynomial (ZMod p)`，并证明每个合法 raw slice 唯一表示一个该类型的多项式。
 - 证明 `coeffArrayPoly` 的逐系数公式、指针加法读取等式、整段读取的逐下标一致性，以及 `SlicePolyRep` 系数到 raw limb 读取的桥。
 - 增加严格准入检查器，将专用 lowering 绑定到稳定化后的完整 Clang AST 哈希，并检查原始指针签名、四循环形状、Lean artifact 哈希和禁用构造。
+- 审计并撤销旧 `ZpArith` 中通过 `HasPolyDivmod` 直接选择手写 L2 除法所得的“精化”定理；同步关闭依赖该结论的旧 DDF/SQF 导出边界。
+- 扩展严格准入检查器，禁止上述 dispatch-based 定理名称重新进入证明闭包。
 
 ## 为什么做
 
@@ -34,6 +36,7 @@
 - 使用 Nat 良基/结构递归，不使用 fuel。
 - 保留 `lenB=0` 的 C++ assert 失败路径为 `RawFault.assertionFailure`。
 - 当前是 AST 绑定的专用 raw-state lowering；在通用 RawHeap 状态提升 pass 完成前，不把它描述为通用后端能力，也不宣称 raw→L2 精化已经完成。
+- 旧 sparse Corpus 可以保留作翻译器历史产物，但其中的类型类分派不得作为 C++ L1 精化证据；严格 SQF/DDF 只能依赖 RawHeap 链。
 
 ## 遇到的问题与解决方式
 
@@ -46,12 +49,15 @@
 - `proof/lean/CLPoly/Generated/StrictDivrem.lean`
 - `proof/lean/CLPoly/Impl/StrictDivremRefinement.lean`
 - `proof/lean/CLPoly/Impl/RawPolynomialRep.lean`
+- `proof/lean/CLPoly/Refinement/ZpArith.lean`
+- `proof/lean/CLPoly/Refinement/DDF.lean`
+- `proof/lean/CLPoly/Refinement/SquarefreeZp.lean`
 - `proof/cpp2lean_v2/tests/check_strict_divrem.py`
 
 ## 度量
 
 - 耗时：约 1 小时
 - 迭代：6 轮 Lean/AST/checker 编译检查
-- Lean 新增/修改行数：约 720 行
+- Lean 新增/修改行数：约 720 行；另撤销约 5,200 行不满足 raw C++ 精化标准的旧证明链
 - 对应 C++ 行数：约 50 行 `_poly_divrem` 与 `_poly_normalise/memcpy` 依赖
 - 放弃的方案：继续使用 Array `get!`/`set!`；原因是越界默认值不等于 C++ 语义

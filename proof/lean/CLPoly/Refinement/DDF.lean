@@ -468,6 +468,14 @@ theorem strict_upoly_powmod_refines (h2p : 2 * p ≤ UInt64.size)
         simpa [b] using hbdata.2,
       modByMonic_idem _ _ hm_monic]) n
 
+/-- Exact exit equation of the generated subtract-X range loop. -/
+theorem strict_subtract_x_loop_of_done (i : Nat) (inserted : Bool)
+    (result input : SparsePolyZp) (q : UInt64) (hi : input.size ≤ i) :
+    Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+        i inserted result input q = ((0 : Int64), inserted, result) := by
+  rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+  simp only [show ¬i < input.size by omega, ↓reduceIte]
+
 /- Any theorem for powmod, subtract-X, or the DDF loop must unfold and prove
    the corresponding definitions in Generated.StrictDDF directly. -/
 

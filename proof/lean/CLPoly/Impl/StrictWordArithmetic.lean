@@ -1328,6 +1328,133 @@ theorem preinvRoundIR_correct (u1 u0 pn pinv : UInt64)
 /-
   Natural-language proof.
 
+  Multiplication by the common positive scale commutes with remainder:
+  `(x*s)%(p*s)=(x%p)*s`.  Dividing the result by `s` therefore recovers
+  `x%p`.  This is the mathematical normalization/denormalization identity
+  used by generated nmod multiplication.
+-/
+theorem scaled_mod_div (x p s : Nat) (hs : 0 < s) :
+    ((x * s) % (p * s)) / s = x % p := by
+  rw [Nat.mul_mod_mul_right, Nat.mul_div_left _ hs]
+
+/-
+  Natural-language proof.
+
+  UInt64 left shift observes multiplication by `2^n` modulo `B`.  If `n<64`
+  and the scaled value is already below `B`, both the shift-count reduction
+  and the value reduction are identities.
+-/
+theorem uint64_shiftLeft_toNat_of_mul_lt (x : UInt64) (n : UInt32)
+    (hn : n.toNat < 64) (hscaled : x.toNat * 2 ^ n.toNat < limbBase) :
+    (x <<< n).toNat = x.toNat * 2 ^ n.toNat := by
+  change (x <<< n.toUInt64).toNat = _
+  rw [UInt64.toNat_shiftLeft, UInt32.toNat_toUInt64]
+  rw [Nat.mod_eq_of_lt hn, Nat.shiftLeft_eq]
+  have hscaled' : x.toNat * 2 ^ n.toNat < UInt64.size := by
+    simpa [limbBase, UInt64.size] using hscaled
+  exact Nat.mod_eq_of_lt hscaled'
+
+/-
+  Natural-language proof.
+
+  UInt64 right shift by `n<64` observes division by `2^n`; the shift count is
+  not truncated because it is already in range.
+-/
+theorem uint64_shiftRight_toNat_of_lt (x : UInt64) (n : UInt32)
+    (hn : n.toNat < 64) :
+    (x >>> n).toNat = x.toNat / 2 ^ n.toNat := by
+  change (x >>> n.toUInt64).toNat = _
+  rw [UInt64.toNat_shiftRight, UInt32.toNat_toUInt64]
+  rw [Nat.mod_eq_of_lt hn, Nat.shiftRight_eq_div_pow]
+
+/-- Structural factoring of generated nmod multiplication through the exact
+source-level preinverse round. -/
+theorem nmod_mul_eq_preinvRoundIR_core (this : DenseUPolyZp) (a b : UInt64) :
+    dense_upoly_zp_nmod_mul_ir this a b =
+      let prod : UInt128 :=
+        uint128_of_uint64 (a <<< this._norm) * uint128_of_uint64 b
+      (preinvRoundIR
+        (uint128_lo (prod >>> (64 : UInt128)))
+        (uint128_lo prod)
+        (this._p <<< this._norm) this._ninv) >>> this._norm := by
+  simp [dense_upoly_zp_nmod_mul_ir, preinvRoundIR] <;>
+    repeat' split <;> simp_all
+
+/-
+  Natural-language proof.
+
+  The generated function first scales `a`, forms the exact UInt128 product,
+  splits it into limbs, performs the now-certified preinverse round modulo the
+  scaled modulus, and shifts the canonical result back down.  The input bound
+  `a<p` proves the scaled input is below `pn`, while the high product limb is
+  below `pn` because the other UInt64 operand is below `B`.  The final scaled
+  remainder identity then yields `(a*b)%p`.
+-/
+theorem nmod_mul_ir_correct (this : DenseUPolyZp) (a b : UInt64)
+    (hn : this._norm.toNat < 64)
+    (hpn : (this._p <<< this._norm).toNat =
+      this._p.toNat * 2 ^ this._norm.toNat)
+    (hnorm : limbBase ≤ 2 * (this._p <<< this._norm).toNat)
+    (hmul : (limbBase + this._ninv.toNat) *
+      (this._p <<< this._norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + this._ninv.toNat + 1) *
+        (this._p <<< this._norm).toNat)
+    (ha : a.toNat < this._p.toNat) :
+    (dense_upoly_zp_nmod_mul_ir this a b).toNat =
+      (a.toNat * b.toNat) % this._p.toNat := by
+  let pn := this._p <<< this._norm
+  let ashift := a <<< this._norm
+  let prod : UInt128 := uint128_of_uint64 ashift * uint128_of_uint64 b
+  let hi := uint128_lo (prod >>> (64 : UInt128))
+  let lo := uint128_lo prod
+  let reduced := preinvRoundIR hi lo pn this._ninv
+  have hB : 0 < limbBase := by norm_num [limbBase]
+  have hpnB : pn.toNat < limbBase := by
+    simpa [pn, limbBase] using UInt64.toNat_lt pn
+  have hscalePos : 0 < 2 ^ this._norm.toNat := pow_pos (by omega) _
+  have hascaled : a.toNat * 2 ^ this._norm.toNat < limbBase := by
+    have : a.toNat * 2 ^ this._norm.toNat <
+        this._p.toNat * 2 ^ this._norm.toNat :=
+      Nat.mul_lt_mul_of_pos_right ha hscalePos
+    rw [← hpn] at this
+    exact lt_trans this (by simpa [pn] using hpnB)
+  have hashift : ashift.toNat = a.toNat * 2 ^ this._norm.toNat := by
+    exact uint64_shiftLeft_toNat_of_mul_lt a this._norm hn hascaled
+  have hashiftPn : ashift.toNat < pn.toNat := by
+    rw [hashift, hpn]
+    exact Nat.mul_lt_mul_of_pos_right ha hscalePos
+  have hprod : lo.toNat + limbBase * hi.toNat = ashift.toNat * b.toNat := by
+    simpa [ashift, prod, hi, lo, dense_upoly_zp__umul128_ir] using
+      umul128_reconstruct ashift b
+  have hbB : b.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt b
+  have hprodlt : ashift.toNat * b.toNat < pn.toNat * limbBase :=
+    Nat.mul_lt_mul_of_lt_of_le hashiftPn (Nat.le_of_lt hbB) hB
+  have hhi : hi.toNat < pn.toNat := by
+    apply Nat.lt_of_mul_lt_mul_right (a := limbBase)
+    calc
+      hi.toNat * limbBase ≤ lo.toNat + limbBase * hi.toNat := by
+        nlinarith
+      _ = ashift.toNat * b.toNat := hprod
+      _ < pn.toNat * limbBase := hprodlt
+  have hround : reduced.toNat =
+      (hi.toNat * limbBase + lo.toNat) % pn.toNat := by
+    exact preinvRoundIR_correct hi lo pn this._ninv hhi hnorm hmul hlower
+  rw [nmod_mul_eq_preinvRoundIR_core]
+  change (reduced >>> this._norm).toNat = _
+  rw [uint64_shiftRight_toNat_of_lt reduced this._norm hn, hround]
+  rw [show hi.toNat * limbBase + lo.toNat = ashift.toNat * b.toNat by
+    nlinarith [hprod]]
+  rw [hashift, hpn]
+  rw [show a.toNat * 2 ^ this._norm.toNat * b.toNat =
+    (a.toNat * b.toNat) * 2 ^ this._norm.toNat by ring]
+  exact scaled_mod_div (a.toNat * b.toNat) this._p.toNat
+    (2 ^ this._norm.toNat) hscalePos
+
+/-
+  Natural-language proof.
+
   The generated C++ multiplication first shifts `a`, forms its exact UInt128
   product with `b`, and splits that product into high and low limbs.  The
   remaining quotient estimate, carry conversion, two correction branches and
@@ -1342,8 +1469,7 @@ theorem nmod_mul_eq_preinvRoundIR (this : DenseUPolyZp) (a b : UInt64) :
       (preinvRoundIR
         (uint128_lo (prod >>> (64 : UInt128)))
         (uint128_lo prod)
-        (this._p <<< this._norm) this._ninv) >>> this._norm := by
-  simp [dense_upoly_zp_nmod_mul_ir, preinvRoundIR] <;>
-    repeat' split <;> simp_all
+        (this._p <<< this._norm) this._ninv) >>> this._norm :=
+  nmod_mul_eq_preinvRoundIR_core this a b
 
 end CLPoly.Impl.StrictWordArithmetic

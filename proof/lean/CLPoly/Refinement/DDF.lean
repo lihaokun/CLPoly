@@ -370,7 +370,7 @@ private lemma singleton_one_data (q : UInt64) (hq : q.toNat = p) :
     Zp.ofInt, Zp.toZMod, hmod, hqgt]
 
 private lemma strict_make_zp_one_toZMod (q : UInt64) (hq : q.toNat = p) :
-    Zp.toZMod p (Generated.StrictDDF.__make_zp_ir (1 : Int32) q) = 1 := by
+    Zp.toZMod p (Generated.StrictDDF.__make_zp_ir (1 : Int64) q) = 1 := by
   have h := (singleton_one_data (p := p) q hq).2
   simpa [SparsePolyZp.toPoly, listSum,
     Generated.StrictDDF.__make_zp_ir] using congrArg (Polynomial.coeff · 0) h
@@ -379,19 +379,19 @@ private lemma strict_sub_one_toZMod (h2p : 2 * p ≤ UInt64.size)
     (c : Zp) (q : UInt64) (hc_prime : c.prime.toNat = p)
     (hc_red : c.val.toNat < p) (hq : q.toNat = p) :
     Zp.toZMod p
-        (c - Generated.StrictDDF.__make_zp_ir (1 : Int32) q) =
+        (c - Generated.StrictDDF.__make_zp_ir (1 : Int64) q) =
       Zp.toZMod p c - 1 := by
   have hone_rep_raw := (singleton_one_data (p := p) q hq).1.2.2
     (UMonomial.mk (0 : Int32), Zp.ofInt (1 : Int) q) (by simp)
   have hone_rep :
-      (Generated.StrictDDF.__make_zp_ir (1 : Int32) q).prime.toNat = p ∧
-        (Generated.StrictDDF.__make_zp_ir (1 : Int32) q).val.toNat < p := by
+      (Generated.StrictDDF.__make_zp_ir (1 : Int64) q).prime.toNat = p ∧
+        (Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val.toNat < p := by
     simpa [Generated.StrictDDF.__make_zp_ir] using hone_rep_raw
   have hone_prime :
-      (Generated.StrictDDF.__make_zp_ir (1 : Int32) q).prime.toNat = p :=
+      (Generated.StrictDDF.__make_zp_ir (1 : Int64) q).prime.toNat = p :=
     hone_rep.1
   have hone_red :
-      (Generated.StrictDDF.__make_zp_ir (1 : Int32) q).val.toNat < p :=
+      (Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val.toNat < p :=
     hone_rep.2
   rw [zp_toZMod_sub h2p c _ hc_prime hone_prime hc_red hone_red,
     strict_make_zp_one_toZMod q hq]
@@ -571,6 +571,52 @@ theorem strict_subtract_x_empty (q : UInt64) (hq : q.toNat = p) :
   simp [SparsePolyZp.empty, SparsePolyZp.toPoly_empty,
     show (Int64.toUInt64 1).toNat = 1 by rfl,
     Polynomial.monomial_one_one_eq_X]
+
+/-- Direct execution semantics for the generated singleton linear-term case,
+including both coefficient-cancellation and coefficient-retention branches. -/
+theorem strict_subtract_x_singleton_linear (h2p : 2 * p ≤ UInt64.size)
+    (c : Zp) (q : UInt64) (hc_prime : c.prime.toNat = p)
+    (hc_red : c.val.toNat < p) (hq : q.toNat = p) :
+    SparsePolyZp.toPoly p
+        (Generated.StrictDDF.__upoly_subtract_x_ir
+          #[(UMonomial.mk (1 : Int32), c)] q) =
+      SparsePolyZp.toPoly p (#[(UMonomial.mk (1 : Int32), c)] : SparsePolyZp) - X := by
+  let one := Generated.StrictDDF.__make_zp_ir (1 : Int64) q
+  let c' := c - one
+  have hc' : Zp.toZMod p c' = Zp.toZMod p c - 1 := by
+    simpa [c', one] using strict_sub_one_toZMod h2p c q hc_prime hc_red hq
+  have hdeg : (Int64.toUInt64 1).toUInt32.toInt32 = (1 : Int32) := by decide
+  have hzero64 : Int64.toUInt64 0 = (0 : UInt64) := by decide
+  by_cases hz : c'.val = 0
+  · have hzraw :
+        (c - Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val = 0 := by
+      simpa [c', one] using hz
+    simp [Generated.StrictDDF.__upoly_subtract_x_ir,
+      Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1,
+      strict_subtract_x_loop_of_done, c', one, hz, normalization_toPoly,
+      SparsePolyZp.empty, SparsePolyZp.toPoly_empty, hdeg, hzero64, hzraw] at hc' ⊢
+    have hc'z : Zp.toZMod p
+        (c - Generated.StrictDDF.__make_zp_ir (1 : Int64) q) = 0 := by
+      simp [Zp.toZMod, hzraw]
+    rw [hc'z] at hc'
+    simp [SparsePolyZp.toPoly, listSum,
+      show (Int64.toUInt64 1).toNat = 1 by rfl,
+      Polynomial.monomial_one_one_eq_X]
+    have hc_one : Zp.toZMod p c = 1 := sub_eq_zero.mp hc'.symm
+    rw [hc_one]
+    change 0 = X - X
+    ring
+  · have hzraw :
+        (c - Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val ≠ 0 := by
+      simpa [c', one] using hz
+    simp [Generated.StrictDDF.__upoly_subtract_x_ir,
+      Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1,
+      strict_subtract_x_loop_of_done, c', one, hz, normalization_toPoly,
+      SparsePolyZp.empty, SparsePolyZp.toPoly_empty, toPoly_push, hdeg, hzero64,
+      hzraw]
+    simp [SparsePolyZp.toPoly, listSum]
+    rw [hc', show (Int64.toUInt64 1).toNat = 1 by rfl,
+      Polynomial.monomial_sub, Polynomial.monomial_one_one_eq_X]
 
 /- Any theorem for powmod, subtract-X, or the DDF loop must unfold and prove
    the corresponding definitions in Generated.StrictDDF directly. -/

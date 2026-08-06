@@ -1,4 +1,9 @@
-"""Generate the strict, total C++ L1 dependency closure for DDF."""
+"""Generate the currently closed strict C++ L1 dependencies for DDF.
+
+The DDF entry itself must not be emitted until its C++ ``polynomial_GCD``
+dependency is translated as L1.  Mapping that call to ``CLPoly.Model`` would
+silently turn the purported L1 proof into an L2 fallback.
+"""
 
 from __future__ import annotations
 
@@ -22,7 +27,6 @@ STRICT_DDF_ROOTS = {
     "__upoly_mod",
     "__upoly_powmod",
     "__upoly_subtract_x",
-    "__ddf_Zp",
 }
 
 
@@ -39,6 +43,8 @@ def generate_strict_ddf() -> str:
     source = codegen_corpus(selected, namespace="Generated.StrictDDF")
     if "sorry" in source or "partial def" in source:
         raise RuntimeError("strict DDF output contains an opaque placeholder")
+    if "polynomial_GCD" in source:
+        raise RuntimeError("strict DDF output contains the untranslated C++ GCD boundary")
     return source
 
 

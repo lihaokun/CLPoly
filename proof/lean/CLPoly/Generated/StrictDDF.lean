@@ -6,9 +6,6 @@ set_option maxErrors 2000
 
 namespace Generated.StrictDDF
 
-def ddfWellFoundedMeasure (fStar : SparsePolyZp) (d : UInt64) : Nat :=
-  if fStar.isEmpty then 0 else (get_deg fStar).toNat + 1 - 2 * d.toNat
-
 def upolyPowmodWellFoundedMeasure (e : ZZ) : Nat := e.natAbs
 
 def _loop___upoly_make_monic_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : SparsePolyZp) (lc_inv_1 : Zp) : (Int64 × SparsePolyZp) :=
@@ -144,68 +141,5 @@ def __upoly_subtract_x_ir (h : SparsePolyZp) (p : UInt64) : SparsePolyZp :=
     bb_17 result_9
   else
     bb_17 result_2
-
-def _loop___ddf_Zp_0_ir (d_2 : UInt64) (f_star_2 : SparsePolyZp) (h_2 : SparsePolyZp) (result_2 : Array (SparsePolyZp × UInt64)) (p_1 : UInt64) : (Int64 × SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
-  let recur := fun d_next f_star_next h_next result_next p_next =>
-    if hdec : ddfWellFoundedMeasure f_star_next d_next <
-        ddfWellFoundedMeasure f_star_2 d_2 then
-      _loop___ddf_Zp_0_ir d_next f_star_next h_next result_next p_next
-    else
-      default
-  let bb_11 := fun d_2 p_1 f_star_5 h_5 result_4 =>
-    let d_3 : UInt64 := (d_2 + (1 : UInt64))
-    recur d_3 f_star_5 h_5 result_4 p_1
-  if true then
-    -- require (h_fits_int64): ((((2 : UInt64) * d_2) >= (-9223372036854775808 : UInt64)) && (((2 : UInt64) * d_2) <= (9223372036854775807 : UInt64)))
-    if ((get_deg f_star_2) < ((((2 : UInt64) * d_2)).toInt64)) then
-      ((1 : Int64), f_star_2, result_2)
-    else
-      let h_3 : SparsePolyZp := (__upoly_powmod_ir h_2 ((p_1).toNat : Int) f_star_2)
-      let h_minus_x_1 : SparsePolyZp := (__upoly_subtract_x_ir h_3 p_1)
-      let gd_1 : SparsePolyZp := (polynomial_GCD h_minus_x_1 f_star_2)
-      if ((! (Array.isEmpty gd_1)) && ((get_deg gd_1) > (0 : Int64))) then
-        let __refret_0_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir gd_1)
-        let gd_2 : SparsePolyZp := __refret_0_1.snd
-        let result_3 : Array (SparsePolyZp × UInt64) := (Array.push result_2 ((gd_2, d_2)))
-        let f_new_1 : SparsePolyZp := (SparsePolyZp.empty)
-        let f_new_2 : SparsePolyZp := (pair_vec_div f_new_1 f_star_2 gd_2 (SparsePolyZp.comp f_star_2))
-        let f_star_3 : SparsePolyZp := (id f_new_2)
-        let f_star_4 : SparsePolyZp := (SparsePolyZp.normalization f_star_3)
-        let h_4 : SparsePolyZp := (__upoly_mod_ir h_3 f_star_4)
-        bb_11 d_2 p_1 f_star_4 h_4 result_3
-      else
-        bb_11 d_2 p_1 f_star_2 h_3 result_2
-  else
-    ((0 : Int64), f_star_2, result_2)
-termination_by ddfWellFoundedMeasure f_star_2 d_2
-decreasing_by exact hdec
-
-def __ddf_Zp_ir (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :=
-  let bb_14 := fun result_6 =>
-    ((result_6 : Array _))
-  let bb_4 := fun f_star_2 result_2 =>
-    if ((! (Array.isEmpty f_star_2)) && ((get_deg f_star_2) > (0 : Int64))) then
-      let __refret_1_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir f_star_2)
-      let f_star_6 : SparsePolyZp := __refret_1_1.snd
-      -- require (h_nonneg): ((get_deg f_star_6) >= (0 : Int64))
-      let result_5 : Array (SparsePolyZp × UInt64) := (Array.push result_2 (((id f_star_6), (((get_deg f_star_6)).toUInt64))))
-      bb_14 result_5
-    else
-      bb_14 result_2
-  -- assert side effect represented by RequireStmt
-  -- require (h_nonempty): (! (Array.isEmpty f))
-  let p_1 : UInt64 := (SparsePolyZp.front! f).snd.prime
-  let result_1 : Array (SparsePolyZp × UInt64) := (#[])
-  let h_1 : SparsePolyZp := ((#[(Prod.mk (UMonomial.mk (1 : Int32)) (__make_zp_ir (1 : Int32) p_1))] : SparsePolyZp))
-  let f_star_1 : SparsePolyZp := f
-  let d_1 : UInt64 := (1 : UInt64)
-  let __loop_ret___ddf_Zp_0_1 : (Int64 × SparsePolyZp × Array (SparsePolyZp × UInt64)) := (_loop___ddf_Zp_0_ir d_1 f_star_1 h_1 result_1 p_1)
-  let f_star_2 : SparsePolyZp := __loop_ret___ddf_Zp_0_1.2.1
-  let result_2 : Array (SparsePolyZp × UInt64) := __loop_ret___ddf_Zp_0_1.2.2
-  let __loop_ret___ddf_Zp_0__kind_1 : Int64 := __loop_ret___ddf_Zp_0_1.1
-  if (__loop_ret___ddf_Zp_0__kind_1 == (0 : Int64)) then
-    bb_4 f_star_2 result_2
-  else
-    bb_4 f_star_2 result_2
 
 end Generated.StrictDDF

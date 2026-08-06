@@ -144,6 +144,7 @@ def test_parse_type_ref():
 def test_parse_type_clpoly():
     assert parse_type("ZZ") == NamedType("ZZ")
     assert parse_type("Zp") == NamedType("Zp")
+    assert parse_type("word3") == NamedType("Word3")
     assert parse_type("upolynomial_<Zp>") == NamedType("SparsePolyZp")
     assert parse_type("upolynomial_<ZZ>") == NamedType("SparsePolyZZ")
 

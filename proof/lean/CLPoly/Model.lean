@@ -187,6 +187,14 @@ structure DenseUPolyZp where
   _norm : UInt32 := 0
 deriving Repr, Inhabited, BEq
 
+/-- Exact L1 representation of `dense_upoly_zp::word3`, the three-limb lazy
+accumulator used by the C++ multiplication and division routines. -/
+structure Word3 where
+  lo : UInt64 := 0
+  mid : UInt64 := 0
+  hi : UInt64 := 0
+deriving Repr, Inhabited, BEq
+
 -- ============================================================
 -- §4. SparsePolyZp：Z/pZ 上稀疏多项式
 -- ============================================================

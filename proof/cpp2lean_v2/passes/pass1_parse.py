@@ -189,6 +189,7 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         "variable": NamedType("Variable"),
         "umonomial": NamedType("UMonomial"),
         "dense_upoly_zp": NamedType("DenseUPolyZp"),
+        "word3": NamedType("Word3"),
         "less": NamedType("Less"),  # MonomialOrder tag
         "uless": NamedType("ULess"),
     }

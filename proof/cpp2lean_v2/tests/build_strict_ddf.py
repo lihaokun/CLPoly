@@ -1,8 +1,13 @@
-"""Generate the currently closed strict C++ L1 dependencies for DDF.
+"""Generate only the currently honest strict C++ L1 dependencies for DDF.
 
 The DDF entry itself must not be emitted until its C++ ``polynomial_GCD``
 dependency is translated as L1.  Mapping that call to ``CLPoly.Model`` would
 silently turn the purported L1 proof into an L2 fallback.
+
+The same restriction applies to ``__upoly_mod`` and ``__upoly_powmod``: their
+current translation reaches ``pair_vec_div5`` and hence the hand-written L2
+``SparsePolyZp.divmod`` instance.  They are deliberately excluded until the
+raw four-loop division implementation is connected to their source call.
 """
 
 from __future__ import annotations
@@ -23,10 +28,6 @@ from pass8_codegen import codegen_corpus
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictDDF.lean"
 STRICT_DDF_ROOTS = {
     "__make_zp",
-    "__upoly_make_monic",
-    "__upoly_mod",
-    "__upoly_powmod",
-    "__upoly_subtract_x",
 }
 
 
@@ -45,6 +46,12 @@ def generate_strict_ddf() -> str:
         raise RuntimeError("strict DDF output contains an opaque placeholder")
     if "polynomial_GCD" in source:
         raise RuntimeError("strict DDF output contains the untranslated C++ GCD boundary")
+    forbidden_dispatch = (
+        "pair_vec_div", "HasPolyDivmod", "SparsePolyZp.divmod",
+        "Array.get!", "Array.set!", "front!", "back!",
+    )
+    if any(token in source for token in forbidden_dispatch):
+        raise RuntimeError("strict DDF output contains an L2 polynomial-division dispatch")
     return source
 
 

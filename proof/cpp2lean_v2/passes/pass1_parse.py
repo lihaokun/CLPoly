@@ -806,6 +806,32 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
                 stmts.append(s)
         return BlockStmt(stmts=stmts)
 
+    if kind == "GCCAsmStmt":
+        # Exact x86_64 semantics of dense_upoly_zp::_add_carry3:
+        #   addq b0, lo; adcq b1, mid; adcq 0, hi.
+        # Clang's JSON AST omits the template string but retains the three
+        # output lvalues followed by b0 and b1.  Recognize only that exact
+        # operand shape; every other asm statement remains UnknownStmt and is
+        # rejected by strict generation.
+        inner = node.get("inner", [])
+        if len(inner) == 5:
+            outputs = [parse_expr(x) for x in inner[:3]]
+            if (all(isinstance(x, FieldAccess) for x in outputs) and
+                    [x.field_name for x in outputs] == ["lo", "mid", "hi"] and
+                    outputs[0].obj == outputs[1].obj == outputs[2].obj):
+                state = outputs[0].obj
+                b0 = parse_expr(inner[3])
+                b1 = parse_expr(inner[4])
+                return AssignStmt(
+                    target=state,
+                    value=Call(
+                        callee="word3_addCarry_x86",
+                        args=[state, b1, b0],
+                        ty=NamedType("Word3"),
+                    ),
+                )
+        return UnknownStmt(kind="GCCAsmStmt")
+
     if kind == "DeclStmt":
         result = []
         for c in node.get("inner", []):

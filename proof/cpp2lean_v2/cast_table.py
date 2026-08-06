@@ -134,7 +134,7 @@ CAST_TABLE: dict[tuple[str, str], CastResolution] = {
     # Clang's expanded AST.  Preserve the C++ 0/1 conversion exactly.
     ("bool", "int64"): CastResolution(
         "(if {x} then (1 : Int64) else (0 : Int64))", None),
-    ("uint64", "uint128"): CastResolution("({x} : UInt128)", None),
+    ("uint64", "uint128"): CastResolution("uint128_of_uint64 {x}", None),
     ("uint128", "uint64"): CastResolution("uint128_lo {x}", None),
 
     # ====================================================================

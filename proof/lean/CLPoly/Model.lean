@@ -128,6 +128,10 @@ deriving Repr, Inhabited, BEq
 /-- Exact unsigned 128-bit machine word used by the dense C++ arithmetic. -/
 abbrev UInt128 := BitVec 128
 
+/-- Zero-extension of an exact 64-bit machine word to 128 bits. -/
+def uint128_of_uint64 (x : UInt64) : UInt128 :=
+  BitVec.ofNat 128 x.toNat
+
 /-- Low 64 bits of an unsigned 128-bit word. -/
 def uint128_lo (x : UInt128) : UInt64 := UInt64.ofNat x.toNat
 
@@ -194,6 +198,20 @@ structure Word3 where
   mid : UInt64 := 0
   hi : UInt64 := 0
 deriving Repr, Inhabited, BEq
+
+/-- Executable semantics of the x86_64 instruction sequence in
+`dense_upoly_zp::_add_carry3`:
+`addq b0, lo; adcq b1, mid; adcq 0, hi`. -/
+def word3_addCarry_x86 (s : Word3) (b1 b0 : UInt64) : Word3 :=
+  let sum0 : UInt128 := uint128_of_uint64 s.lo + uint128_of_uint64 b0
+  let carry0 : UInt64 := uint128_lo (sum0 >>> (64 : UInt128))
+  let sum1 : UInt128 :=
+    uint128_of_uint64 s.mid + uint128_of_uint64 b1 +
+      uint128_of_uint64 carry0
+  let carry1 : UInt64 := uint128_lo (sum1 >>> (64 : UInt128))
+  { lo := uint128_lo sum0
+    mid := uint128_lo sum1
+    hi := s.hi + carry1 }
 
 -- ============================================================
 -- §4. SparsePolyZp：Z/pZ 上稀疏多项式

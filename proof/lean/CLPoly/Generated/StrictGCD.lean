@@ -16,9 +16,9 @@ def dense_upoly_zp_default_ir : DenseUPolyZp :=
 
 def dense_upoly_zp___preinvert_limb_ir (pn : UInt64) : UInt64 :=
   -- assert side effect represented by RequireStmt
-  let num_1 : UInt128 := (((((~~~ pn) : UInt128)) <<< (64 : UInt128)) ||| (((~~~ (0 : UInt64)) : UInt128)))
-  -- require (h_nonzero): (((pn : UInt128)) != (0 : UInt128))
-  (uint128_lo (num_1 / ((pn : UInt128))))
+  let num_1 : UInt128 := (((uint128_of_uint64 (~~~ pn)) <<< (64 : UInt128)) ||| (uint128_of_uint64 (~~~ (0 : UInt64))))
+  -- require (h_nonzero): ((uint128_of_uint64 pn) != (0 : UInt128))
+  (uint128_lo (num_1 / (uint128_of_uint64 pn)))
 
 def dense_upoly_zp___precompute_ir (this : DenseUPolyZp) : DenseUPolyZp :=
   if (this._p == (0 : UInt64)) then
@@ -76,8 +76,8 @@ def _loop_inv_prime_0_ir (s2_2 : UInt64) (s1_2 : UInt64) (c_3 : UInt64) (b_2 : U
   if h_c_nonzero : (c_3 != 0) then
     -- require (h_nonzero): (b_2 != (0 : UInt64))
     let q_1 : UInt64 := (a_2 / b_2)
-    -- require (h_nonzero): (((_p : UInt128)) != (0 : UInt128))
-    let sq_mod_1 : UInt64 := (uint128_lo ((((s2_2 : UInt128)) * ((q_1 : UInt128))) % ((_p : UInt128))))
+    -- require (h_nonzero): ((uint128_of_uint64 _p) != (0 : UInt128))
+    let sq_mod_1 : UInt64 := (uint128_lo (((uint128_of_uint64 s2_2) * (uint128_of_uint64 q_1)) % (uint128_of_uint64 _p)))
     let s3_2 : UInt64 := (if (s1_2 >= sq_mod_1) then (s1_2 - sq_mod_1) else ((_p - sq_mod_1) + s1_2))
     let a_3 : UInt64 := b_2
     let b_3 : UInt64 := c_3
@@ -129,10 +129,10 @@ def dense_upoly_zp_nmod_mul_ir (this : DenseUPolyZp) (a : UInt64) (b : UInt64) :
   -- assert side effect represented by RequireStmt
   let pn_1 : UInt64 := (this._p <<< this._norm)
   let a_shifted_1 : UInt64 := (a <<< this._norm)
-  let prod_1 : UInt128 := (((a_shifted_1 : UInt128)) * ((b : UInt128)))
+  let prod_1 : UInt128 := ((uint128_of_uint64 a_shifted_1) * (uint128_of_uint64 b))
   let hi_1 : UInt64 := (uint128_lo (prod_1 >>> (64 : UInt128)))
   let lo_1 : UInt64 := (uint128_lo prod_1)
-  let qm_1 : UInt128 := (((hi_1 : UInt128)) * ((this._ninv : UInt128)))
+  let qm_1 : UInt128 := ((uint128_of_uint64 hi_1) * (uint128_of_uint64 this._ninv))
   let q1_1 : UInt64 := (uint128_lo (qm_1 >>> (64 : UInt128)))
   let q0_1 : UInt64 := (uint128_lo qm_1)
   let q0_2 : UInt64 := (q0_1 + lo_1)
@@ -218,6 +218,12 @@ termination_by (i_2.toInt + 1).toNat
 decreasing_by
   all_goals exact int64_sub_one_measure_lt i_2 h_nonneg
 
+def dense_upoly_zp__umul128_ir (_hi : UInt64) (_lo : UInt64) (a : UInt64) (b : UInt64) : (UInt64 × UInt64) :=
+  let prod_1 : UInt128 := ((uint128_of_uint64 a) * (uint128_of_uint64 b))
+  let lo_1 : UInt64 := (uint128_lo prod_1)
+  let hi_1 : UInt64 := (uint128_lo (prod_1 >>> (64 : UInt128)))
+  (hi_1, lo_1)
+
 def dense_upoly_zp_to_upoly_ir (this : DenseUPolyZp) : SparsePolyZp :=
   let result_1 : SparsePolyZp := (SparsePolyZp.empty)
   -- require (h_fits_int64): (((Array.size this._coeffs) >= (-9223372036854775808 : Int64)) && ((Array.size this._coeffs) <= (9223372036854775807 : Int64)))
@@ -225,5 +231,70 @@ def dense_upoly_zp_to_upoly_ir (this : DenseUPolyZp) : SparsePolyZp :=
   let __loop_ret_to_upoly_0_1 : (Int64 × SparsePolyZp) := (_loop_to_upoly_0_ir i_1 result_1 this)
   let result_2 : SparsePolyZp := __loop_ret_to_upoly_0_1.snd
   result_2
+
+def dense_upoly_zp__add_carry3_ir (s : Word3) (b1 : UInt64) (b0 : UInt64) : Word3 :=
+  let s_1 : Word3 := (word3_addCarry_x86 s b1 b0)
+  s_1
+
+def dense_upoly_zp__lll_mod_preinv_ir (hi : UInt64) (mid : UInt64) (lo : UInt64) (p : UInt64) (pinv : UInt64) (norm : UInt32) : UInt64 :=
+  let bb_18 := fun norm r_10 =>
+    (r_10 >>> norm)
+  let bb_15 := fun pn_2 norm r_8 =>
+    if (r_8 >= pn_2) then
+      let r_9 : UInt64 := (r_8 - pn_2)
+      bb_18 norm r_9
+    else
+      bb_18 norm r_8
+  let bb_12 := fun lo norm pinv pn_2 h_3 =>
+    let l_1 : UInt64 := (lo <<< norm)
+    let qm_2 : UInt128 := ((uint128_of_uint64 h_3) * (uint128_of_uint64 pinv))
+    let q1_3 : UInt64 := (uint128_lo (qm_2 >>> (64 : UInt128)))
+    let q0_3 : UInt64 := (uint128_lo qm_2)
+    let q0_4 : UInt64 := (q0_3 + l_1)
+    -- require (h_nonneg): ((if (q0_4 < l_1) then (1 : Int32) else (0 : Int32)) >= (0 : Int32))
+    let q1_4 : UInt64 := (q1_3 + (h_3 + (((if (q0_4 < l_1) then (1 : Int32) else (0 : Int32))).toInt64.toUInt64)))
+    let r_6 : UInt64 := (l_1 - ((q1_4 + (1 : UInt64)) * pn_2))
+    if (r_6 > q0_4) then
+      let r_7 : UInt64 := (r_6 + pn_2)
+      bb_15 pn_2 norm r_7
+    else
+      bb_15 pn_2 norm r_6
+  let bb_9 := fun norm p lo pinv r_5 =>
+    let r1_2 : UInt64 := (r_5 >>> norm)
+    let pn_2 : UInt64 := (p <<< norm)
+    let h_1 : UInt64 := (r1_2 <<< norm)
+    if (norm > (0 : UInt32)) then
+      let h_2 : UInt64 := (h_1 ||| (lo >>> ((64 : UInt32) - norm)))
+      bb_12 lo norm pinv pn_2 h_2
+    else
+      bb_12 lo norm pinv pn_2 h_1
+  let bb_6 := fun pn_1 norm p lo pinv r_3 =>
+    if (r_3 >= pn_1) then
+      let r_4 : UInt64 := (r_3 - pn_1)
+      bb_9 norm p lo pinv r_4
+    else
+      bb_9 norm p lo pinv r_3
+  let bb_3 := fun mid norm pinv pn_1 p lo h_shifted_3 =>
+    let m_shifted_1 : UInt64 := (mid <<< norm)
+    let qm_1 : UInt128 := ((uint128_of_uint64 h_shifted_3) * (uint128_of_uint64 pinv))
+    let q1_1 : UInt64 := (uint128_lo (qm_1 >>> (64 : UInt128)))
+    let q0_1 : UInt64 := (uint128_lo qm_1)
+    let q0_2 : UInt64 := (q0_1 + m_shifted_1)
+    -- require (h_nonneg): ((if (q0_2 < m_shifted_1) then (1 : Int32) else (0 : Int32)) >= (0 : Int32))
+    let q1_2 : UInt64 := (q1_1 + (h_shifted_3 + (((if (q0_2 < m_shifted_1) then (1 : Int32) else (0 : Int32))).toInt64.toUInt64)))
+    let r_1 : UInt64 := (m_shifted_1 - ((q1_2 + (1 : UInt64)) * pn_1))
+    if (r_1 > q0_2) then
+      let r_2 : UInt64 := (r_1 + pn_1)
+      bb_6 pn_1 norm p lo pinv r_2
+    else
+      bb_6 pn_1 norm p lo pinv r_1
+  let _r1_1 : UInt64 := ((0 : UInt64))
+  let pn_1 : UInt64 := (p <<< norm)
+  let h_shifted_1 : UInt64 := (hi <<< norm)
+  if (norm > (0 : UInt32)) then
+    let h_shifted_2 : UInt64 := (h_shifted_1 ||| (mid >>> ((64 : UInt32) - norm)))
+    bb_3 mid norm pinv pn_1 p lo h_shifted_2
+  else
+    bb_3 mid norm pinv pn_1 p lo h_shifted_1
 
 end Generated.StrictGCD

@@ -85,16 +85,16 @@ CAST_TABLE = {
     (BaseType.INT64, BaseType.NAT):      "({e}).toNatClampNeg",
     (BaseType.UINT32, BaseType.INT64):   "({e}).toUInt64.toInt64",
     # 扩展
-    (BaseType.UINT64, BaseType.UINT128): "({e} : UInt128)",
+    (BaseType.UINT64, BaseType.UINT128): "(uint128_of_uint64 {e})",
     (BaseType.UINT32, BaseType.UINT64):  "({e}).toUInt64",
-    (BaseType.UINT32, BaseType.UINT128): "(({e}).toUInt64 : UInt128)",
+    (BaseType.UINT32, BaseType.UINT128): "(uint128_of_uint64 ({e}).toUInt64)",
     (BaseType.NAT,    BaseType.UINT64):  "({e}).toUInt64",
     (BaseType.NAT,    BaseType.INT64):   "(({e} : Int))",
     (BaseType.UINT64, BaseType.NAT):     "({e}).toNat",
     # 有符号 ↔ 无符号
     (BaseType.INT64, BaseType.UINT64):   "({e}).toUInt64",
     (BaseType.UINT64, BaseType.INT64):   "({e}).toInt64",
-    (BaseType.INT64, BaseType.UINT128):  "(({e}).toUInt64 : UInt128)",
+    (BaseType.INT64, BaseType.UINT128):  "(uint128_of_uint64 ({e}).toUInt64)",
     # (UINT32, INT64) 已在上面定义为 toUInt64.toInt64
     (BaseType.UINT128, BaseType.INT64):  "((uint128_lo {e}).toNat : Int)",
     # Bool
@@ -1179,6 +1179,9 @@ _STRICT_TOTAL_ENTRIES = {
     "inv_prime",
     "dense_upoly_zp___preinvert_limb",
     "dense_upoly_zp___precompute",
+    "dense_upoly_zp__umul128",
+    "dense_upoly_zp__add_carry3",
+    "dense_upoly_zp__lll_mod_preinv",
     "dense_upoly_zp_empty",
     "dense_upoly_zp___strip",
     "dense_upoly_zp_default",
@@ -1478,6 +1481,9 @@ def codegen_corpus(top_funcs: list[MIRFunc],
         "dense_upoly_zp_empty": 23,
         "_loop___strip_0": 24,
         "dense_upoly_zp___strip": 25,
+        "dense_upoly_zp__umul128": 27,
+        "dense_upoly_zp__add_carry3": 28,
+        "dense_upoly_zp__lll_mod_preinv": 29,
     }
     ordered_total = helper_loops + helper_entries + ddf_loops + ddf_entries
     indexed_total = list(enumerate(ordered_total))

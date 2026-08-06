@@ -725,6 +725,25 @@ private lemma tail_degree_lt_current (input : SparsePolyZp) (i : Nat)
   rw [drop_eq_getElem_cons input i hi, List.pairwise_cons] at hs
   exact hs.1
 
+/-- Under the signed-degree precondition used by the C++ interface, the
+generated narrowing conversion recognizes degree one exactly. -/
+private lemma int32_ofNat_eq_one_iff (d : Nat) (hd : d < 2 ^ 31) :
+    Int32.ofNat d = (1 : Int32) ↔ d = 1 := by
+  constructor
+  · intro h
+    have hval := congrArg (fun x : Int32 => x.toUInt32.toNat) h
+    change (UInt32.ofNat d).toNat = (1 : Int32).toUInt32.toNat at hval
+    have hd32 : d < 2 ^ 32 := lt_trans hd (by norm_num)
+    have hone : (1 : Int32).toUInt32.toNat = 1 := by decide
+    rw [hone] at hval
+    change (BitVec.ofNat 32 d).toNat = 1 at hval
+    rw [BitVec.toNat_ofNat] at hval
+    norm_num at hd32
+    rw [Nat.mod_eq_of_lt hd32] at hval
+    exact hval
+  · rintro rfl
+    rfl
+
 private noncomputable def pendingX (inserted : Bool) : Polynomial (ZMod p) :=
   if inserted then 0 else X
 

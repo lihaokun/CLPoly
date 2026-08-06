@@ -693,6 +693,81 @@ private lemma current_degree_not_mem_tail (input : SparsePolyZp) (i : Nat)
   rw [drop_eq_getElem_cons input i hi, List.map_cons, List.nodup_cons] at hnd
   exact hnd.1
 
+private noncomputable def pendingX (inserted : Bool) : Polynomial (ZMod p) :=
+  if inserted then 0 else X
+
+/-- Copying a non-linear current term from the unprocessed suffix into the
+generated accumulator preserves the loop's polynomial accounting equation. -/
+private lemma subtract_x_copy_transition (inserted : Bool)
+    (result : SparsePolyZp) (term : UMonomial × Zp)
+    (rest : List (UMonomial × Zp)) :
+    SparsePolyZp.toPoly p (result.push term) + listSum p rest -
+        pendingX (p := p) inserted =
+      SparsePolyZp.toPoly p result + listSum p (term :: rest) -
+        pendingX (p := p) inserted := by
+  rcases term with ⟨m, c⟩
+  rw [toPoly_push]
+  simp only [listSum]
+  ring
+
+/-- When no linear term has been seen and the current degree is below one,
+the generated two pushes account for inserting `-X` and copying the term. -/
+private lemma subtract_x_insert_transition (result : SparsePolyZp)
+    (term : UMonomial × Zp) (rest : List (UMonomial × Zp))
+    (q : UInt64) (hq : q.toNat = p) :
+    SparsePolyZp.toPoly p
+        ((result.push (UMonomial.mk (1 : Int32),
+          Zp.ofInt ((q - (1 : UInt64)).toInt) q)).push term) +
+        listSum p rest - pendingX (p := p) true =
+      SparsePolyZp.toPoly p result + listSum p (term :: rest) -
+        pendingX (p := p) false := by
+  rcases term with ⟨m, c⟩
+  rw [toPoly_push, toPoly_push]
+  unfold pendingX
+  simp only [listSum, ↓reduceIte]
+  rw [strict_minus_one_toZMod q hq]
+  norm_num
+  rw [show (Int64.toUInt64 1).toNat = 1 by rfl,
+    Polynomial.monomial_one_one_eq_X]
+  ring
+
+/-- Updating the unique linear coefficient (and dropping it when it becomes
+zero) has exactly the semantic effect of subtracting `X` once. -/
+private lemma subtract_x_linear_transition (h2p : 2 * p ≤ UInt64.size)
+    (result : SparsePolyZp) (c : Zp) (rest : List (UMonomial × Zp))
+    (q : UInt64) (hc_prime : c.prime.toNat = p)
+    (hc_red : c.val.toNat < p) (hq : q.toNat = p) :
+    let c' := c - Generated.StrictDDF.__make_zp_ir (1 : Int64) q
+    let result' := if c'.val != 0 then
+        result.push (UMonomial.mk (1 : Int32), c') else result
+    SparsePolyZp.toPoly p result' + listSum p rest - pendingX (p := p) true =
+      SparsePolyZp.toPoly p result +
+        listSum p ((UMonomial.mk (1 : Int32), c) :: rest) -
+          pendingX (p := p) false := by
+  dsimp only
+  unfold pendingX
+  let c' := c - Generated.StrictDDF.__make_zp_ir (1 : Int64) q
+  have hc' : Zp.toZMod p c' = Zp.toZMod p c - 1 := by
+    simpa [c'] using strict_sub_one_toZMod h2p c q hc_prime hc_red hq
+  have hdegNat : (Int64.toUInt64 1).toNat = 1 := by rfl
+  by_cases hz : c'.val = 0
+  · have hzraw :
+        (c - Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val = 0 := by
+      simpa [c'] using hz
+    simp [c', hz, hzraw, hdegNat]
+    have hc'z : Zp.toZMod p c' = 0 := by simp [Zp.toZMod, hz]
+    rw [hc'z] at hc'
+    have hc_one : Zp.toZMod p c = 1 := sub_eq_zero.mp hc'.symm
+    rw [hc_one, Polynomial.monomial_one_one_eq_X]
+    ring
+  · have hzraw :
+        (c - Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val ≠ 0 := by
+      simpa [c'] using hz
+    simp [c', hz, hzraw, hdegNat, toPoly_push]
+    rw [hc', Polynomial.monomial_sub,
+      Polynomial.monomial_one_one_eq_X]
+    ring
+
 /- Any theorem for powmod, subtract-X, or the DDF loop must unfold and prove
    the corresponding definitions in Generated.StrictDDF directly. -/
 

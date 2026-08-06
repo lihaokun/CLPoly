@@ -744,7 +744,7 @@ theorem nat_condSub_eq_mod (x d : Nat) (hx : x < 2 * d) :
   The final conditional subtraction is therefore exactly `N % d`.
 -/
 theorem preinv_correction_of_detector (B d qd N q0 : Nat)
-    (hd : 0 < d) (hdB : d < B) (hB2d : B ≤ 2 * d)
+    (hdB : d < B) (hB2d : B ≤ 2 * d)
     (hdiv : d ∣ qd) (habove : qd ≤ N + d) (hbelow : N < qd + B)
     (hdetectNeg : N < qd → q0 < B - (qd - N))
     (hdetectPos : qd ≤ N → q0 < N - qd → N - qd + d < B) :
@@ -799,6 +799,47 @@ theorem preinv_correction_of_detector (B d qd N q0 : Nat)
         have hN : N = d * z + (d - k) := by omega
         rw [hN, Nat.add_mod]
         simp [Nat.mod_eq_of_lt hdkd]
+
+/-
+  Natural-language proof.
+
+  In the negative-error case write `k=qd-N`.  The preinverse remainder
+  identity has the form `B*k + A = d*(B-q0)` with `A≥0`.  Hence
+  `B*k ≤ d*(B-q0)`.  Since `d<B` and `q0<B`, the right side is strictly below
+  `B*(B-q0)`, so cancellation gives `k<B-q0`, equivalently
+  `q0<B-k`.  Thus the actual C++ comparison necessarily detects the wrapped
+  negative subtraction and takes the add-back branch.
+-/
+theorem preinv_negative_detector (B d q0 k A : Nat)
+    (hdB : d < B) (hq0 : q0 < B)
+    (hbalance : B * k + A = d * (B - q0)) :
+    q0 < B - k := by
+  have hgap : 0 < B - q0 := by omega
+  have hBk : B * k ≤ d * (B - q0) := by omega
+  have hstrict : d * (B - q0) < B * (B - q0) :=
+    Nat.mul_lt_mul_of_pos_right hdB hgap
+  have hk : k < B - q0 :=
+    Nat.lt_of_mul_lt_mul_left (lt_of_le_of_lt hBk hstrict)
+  omega
+
+/-
+  Natural-language proof.
+
+  For nonnegative error `delta=N-qd`, the same remainder identity is
+  `B*delta + d*(B-q0)=A`.  If the comparison asks for an add-back, its safety
+  reduces to the strict source bound `A+d*q0<B²`.  Substituting the balance
+  identity cancels the `d*B` terms and yields `B*(delta+d)<B²`; positivity of
+  `B` then gives `delta+d<B`.  This is exactly the no-wrap fact required by
+  the positive detector branch.
+-/
+theorem preinv_positive_add_noWrap (B d q0 delta A : Nat)
+    (hq0 : q0 < B)
+    (hbalance : B * delta + d * (B - q0) = A)
+    (hsource : A + d * q0 < B ^ 2) :
+    delta + d < B := by
+  have hq0B : q0 ≤ B := Nat.le_of_lt hq0
+  have hsub : B - q0 + q0 = B := Nat.sub_add_cancel hq0B
+  nlinarith [sq_nonneg (B - delta - d)]
 
 /-
   Natural-language proof.

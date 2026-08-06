@@ -11,6 +11,8 @@
 - 证明直接展开 `BitVec 128` 的乘法、右移与截断，没有使用抽象乘法 oracle。
 - 证明任意 `UInt128` 的高低 limb 商余重构定理。
 - 证明生成的 `_add_carry3` 将三-limb 值增加 `b0 + 2^64*b1`，并精确按 `2^192` 回绕。
+- 证明生成的 `__preinvert_limb` numerator 的精确 128 位自然数值。
+- 在规范化除数最高位为一的条件下，证明生成预逆值满足 FLINT 公式 `B + pinv = (B^2-1)/pn`。
 
 ## 为什么做
 
@@ -27,6 +29,8 @@ RawHeap `_poly_divrem` 的循环虽然已经终止且无越界，但其多项式
 
 - 生成代码的移位量本身是 `UInt128`，不是 `Nat`；证明中保留该精确类型后再化简为自然数除法。
 - `UInt64.ofNat` 和 `BitVec.ofNat` 都带模语义；分别用输入和乘积的位宽上界消去模运算。
+- 预逆 numerator 的高低 limb 拼接使用 `Nat.shiftLeft_add_eq_or_of_lt`，显式证明低 64 位与高移位部分不重叠。
+- 预逆 quotient 截断前先由 `pn ≥ B/2` 证明 quotient `< B`，排除低 limb 投影回绕。
 
 ## 涉及文件
 
@@ -36,6 +40,6 @@ RawHeap `_poly_divrem` 的循环虽然已经终止且无越界，但其多项式
 
 - 耗时：约 20 分钟
 - 迭代：6 轮 Lean 编译-修复
-- Lean 新增/修改行数：约 135 行
-- 对应 C++ 行数：约 9 行 `_umul128` 与 `_add_carry3`
+- Lean 新增/修改行数：约 225 行
+- 对应 C++ 行数：约 15 行 `_umul128`、`_add_carry3` 与 `__preinvert_limb`
 - 放弃的方案：直接位爆破 128 位乘法；通用量化命题应使用算术界与商余定理

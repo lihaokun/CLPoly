@@ -138,4 +138,90 @@ theorem addCarry3_modEq (s : Word3) (b1 b0 : UInt64) :
   rw [hsum1] at hsplit1
   omega
 
+/-
+  Natural-language proof.
+
+  The generated numerator places `~pn` in the high limb and an all-one word
+  in the low limb.  As a 128-bit bitvector this is exactly the all-one
+  128-bit word minus `pn * 2^64`.  Since `pn < 2^64`, that subtraction is
+  nonnegative and the shifted product is below `2^128`; converting to `Nat`
+  therefore yields `2^128 - 1 - pn*2^64` without modular wrap.
+-/
+theorem preinvert_numerator_value (pn : UInt64) :
+    let num : UInt128 :=
+      ((uint128_of_uint64 (~~~pn)) <<< (64 : UInt128)) |||
+        uint128_of_uint64 (~~~(0 : UInt64))
+    num.toNat = limbBase ^ 2 - 1 - pn.toNat * limbBase := by
+  let num : UInt128 :=
+    ((uint128_of_uint64 (~~~pn)) <<< (64 : UInt128)) |||
+      uint128_of_uint64 (~~~(0 : UInt64))
+  change num.toNat = limbBase ^ 2 - 1 - pn.toNat * limbBase
+  have hpn := UInt64.toNat_lt pn
+  have h64 : (64 : UInt128).toNat = 64 := by decide
+  have hhigh :
+      (2 ^ 64 - 1 - pn.toNat) <<< 64 < 2 ^ 128 := by
+    rw [Nat.shiftLeft_eq]
+    calc
+      (2 ^ 64 - 1 - pn.toNat) * 2 ^ 64 < (2 ^ 64) * 2 ^ 64 :=
+        Nat.mul_lt_mul_of_pos_right (by omega) (by positivity)
+      _ = 2 ^ 128 := by rw [← pow_add]
+  have hlow : 2 ^ 64 - 1 < 2 ^ 64 := by omega
+  have hor := Nat.shiftLeft_add_eq_or_of_lt hlow
+    (2 ^ 64 - 1 - pn.toNat)
+  dsimp [num, uint128_of_uint64]
+  simp only [BitVec.toNat_shiftLeft,
+    BitVec.toNat_ofNat, UInt64.toNat_not, UInt64.size]
+  norm_num [Nat.shiftLeft_eq, limbBase] at hhigh hor hpn ⊢
+  rw [Nat.mod_eq_of_lt hhigh]
+  rw [← hor]
+  omega
+
+/-
+  Natural-language proof.
+
+  By `preinvert_numerator_value`, the generated dividend is
+  `N = B^2 - 1 - pn*B`.  Normalization gives `pn ≥ B/2`, hence `N < pn*B`, so
+  `N/pn < B` and truncating the quotient to one limb is exact.  Finally
+  `B^2 - 1 = N + pn*B`; division by `pn` and `Nat.add_mul_div_left` give
+  `(B^2 - 1)/pn = N/pn + B`, which is the FLINT preinverse equation.
+-/
+theorem preinvert_limb_spec (pn : UInt64)
+    (hnorm : limbBase / 2 ≤ pn.toNat) :
+    limbBase + (dense_upoly_zp___preinvert_limb_ir pn).toNat =
+      (limbBase ^ 2 - 1) / pn.toNat := by
+  have hpnlt : pn.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt pn
+  have hpnpos : 0 < pn.toNat := by
+    have hhalf : 0 < limbBase / 2 := by norm_num [limbBase]
+    omega
+  let num : UInt128 :=
+    ((uint128_of_uint64 (~~~pn)) <<< (64 : UInt128)) |||
+      uint128_of_uint64 (~~~(0 : UInt64))
+  have hnum : num.toNat = limbBase ^ 2 - 1 - pn.toNat * limbBase :=
+    preinvert_numerator_value pn
+  have hdecomp :
+      limbBase ^ 2 - 1 = num.toNat + pn.toNat * limbBase := by
+    rw [hnum]
+    norm_num [limbBase] at hpnlt ⊢
+    omega
+  have hnumlt : num.toNat < pn.toNat * limbBase := by
+    rw [hnum]
+    norm_num [limbBase] at hnorm hpnlt ⊢
+    omega
+  have hquotlt : num.toNat / pn.toNat < limbBase := by
+    rw [Nat.div_lt_iff_lt_mul hpnpos]
+    simpa [Nat.mul_comm] using hnumlt
+  change limbBase + (uint128_lo (num / uint128_of_uint64 pn)).toNat = _
+  simp only [uint128_lo, uint128_of_uint64, UInt64.toNat_ofNat',
+    BitVec.toNat_udiv, BitVec.toNat_ofNat]
+  rw [Nat.mod_eq_of_lt (lt_trans hpnlt (by norm_num [limbBase]))]
+  change limbBase + (num.toNat / pn.toNat) % limbBase = _
+  rw [Nat.mod_eq_of_lt hquotlt]
+  calc
+    limbBase + num.toNat / pn.toNat = num.toNat / pn.toNat + limbBase :=
+      Nat.add_comm _ _
+    _ = (num.toNat + pn.toNat * limbBase) / pn.toNat := by
+      rw [Nat.add_mul_div_left num.toNat limbBase hpnpos]
+    _ = (limbBase ^ 2 - 1) / pn.toNat := by rw [hdecomp]
+
 end CLPoly.Impl.StrictWordArithmetic

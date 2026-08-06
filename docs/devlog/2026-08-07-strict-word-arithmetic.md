@@ -24,6 +24,10 @@
 - 证明生成 round 中经 `Int32 → Int64 → UInt64` 的 carry 与此前已证明
   同余性质的 `preinvQuotientPair` 完全相同，从而把真实 IR 接到后续数值
   不变量所用的共享归约定义。
+- 加强 quotient-pair 语义为逐 limb 精确公式：低 limb 是
+  `(u1*pinv+u0) % B`，高 limb 是
+  `((u1*pinv+u0)/B+u1) % B`。该定理显式证明低位加法 carry 与嵌套
+  UInt64 加法的两层回绕。
 
 ## 为什么做
 

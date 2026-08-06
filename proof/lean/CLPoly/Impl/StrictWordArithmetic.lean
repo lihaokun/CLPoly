@@ -488,6 +488,80 @@ theorem preinvQuotientPair_modEq (u1 u0 pinv : UInt64) :
 /-
   Natural-language proof.
 
+  The low output is the low product limb plus `u0`, hence the remainder of
+  `u1*pinv+u0` modulo `B`.  Its wrap comparison is exactly the quotient (zero
+  or one) of that limb addition by `B`.  Adding the product high limb, `u1`,
+  and that carry therefore gives the quotient of `u1*pinv+u0` by `B`, plus
+  `u1`, with the final UInt64 wrap represented by `% B`.
+-/
+theorem preinvQuotientPair_components (u1 u0 pinv : UInt64) :
+    let out := preinvQuotientPair u1 u0 pinv
+    out.2.toNat = (u1.toNat * pinv.toNat + u0.toNat) % limbBase ∧
+      out.1.toNat =
+        ((u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat) %
+          limbBase := by
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 := if q0' < u0 then 1 else 0
+  let q1' : UInt64 := q1 + (u1 + carry)
+  have hprod : q0.toNat + limbBase * q1.toNat =
+      u1.toNat * pinv.toNat := by
+    simpa [qm, q0, q1, dense_upoly_zp__umul128_ir] using
+      umul128_reconstruct u1 pinv
+  have hq0 := UInt64.toNat_lt q0
+  have hu0 := UInt64.toNat_lt u0
+  norm_num [limbBase] at hq0 hu0
+  have hcarry : carry.toNat = (q0.toNat + u0.toNat) / limbBase := by
+    by_cases hov : q0' < u0
+    · have hwrap : limbBase ≤ q0.toNat + u0.toNat := by
+        simp only [q0', UInt64.lt_iff_toNat_lt, UInt64.toNat_add] at hov
+        norm_num [limbBase] at hov ⊢
+        omega
+      have hsumlt : q0.toNat + u0.toNat < 2 * limbBase := by
+        norm_num [limbBase]
+        omega
+      simp [carry, hov, UInt64.toNat_ofNat, limbBase]
+      norm_num [limbBase] at hwrap hsumlt ⊢
+      omega
+    · have hnowrap : q0.toNat + u0.toNat < limbBase := by
+        simp only [q0', UInt64.lt_iff_toNat_lt, UInt64.toNat_add] at hov
+        norm_num [limbBase] at hov ⊢
+        omega
+      simp [carry, hov, Nat.div_eq_of_lt hnowrap]
+  have hlow : q0'.toNat =
+      (u1.toNat * pinv.toNat + u0.toNat) % limbBase := by
+    simp only [q0', UInt64.toNat_add]
+    rw [← hprod]
+    simp [limbBase, Nat.add_mod]
+  have hquot : (u1.toNat * pinv.toNat + u0.toNat) / limbBase =
+      q1.toNat + carry.toNat := by
+    rw [← hprod]
+    rw [show q0.toNat + limbBase * q1.toNat + u0.toNat =
+      (q0.toNat + u0.toNat) + limbBase * q1.toNat by omega]
+    rw [Nat.add_mul_div_left _ _ (by norm_num [limbBase])]
+    omega
+  have hhigh : q1'.toNat =
+      ((u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat) %
+        limbBase := by
+    have hq1lt : q1.toNat < limbBase := by
+      simpa [limbBase] using UInt64.toNat_lt q1
+    calc
+      q1'.toNat =
+          (q1.toNat + (u1.toNat + carry.toNat) % limbBase) % limbBase := by
+            simp [q1', UInt64.toNat_add, limbBase]
+      _ = (q1.toNat + (u1.toNat + carry.toNat)) % limbBase := by
+            rw [Nat.add_mod]
+            simp [Nat.mod_eq_of_lt hq1lt]
+      _ = ((u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat) %
+          limbBase := by rw [hquot]; congr 1 <;> omega
+  change q0'.toNat = _ ∧ q1'.toNat = _
+  exact ⟨hlow, hhigh⟩
+
+/-
+  Natural-language proof.
+
   The generated C++ multiplication first shifts `a`, forms its exact UInt128
   product with `b`, and splits that product into high and low limbs.  The
   remaining quotient estimate, carry conversion, two correction branches and

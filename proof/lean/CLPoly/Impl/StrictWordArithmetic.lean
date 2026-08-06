@@ -259,4 +259,83 @@ theorem preinverse_mul_bounds (pn : UInt64)
   have hBpos : 0 < limbBase ^ 2 := by norm_num [limbBase]
   exact ⟨by omega, by omega⟩
 
+/-
+  Natural-language proof.
+
+  For nonzero `p`, the count-leading-zeros result `n` is strictly below 64.
+  The bit immediately following those `n` zeroes is set, giving
+  `2^(63-n) ≤ p`; the definition of `clz` also gives `p < 2^(64-n)`.
+  Multiplying both inequalities by `2^n` and using `n ≤ 63` yields
+  `2^63 ≤ p*2^n < 2^64`.  The strict upper bound also proves that the C++
+  left shift is an exact natural-number multiplication, not a wrapped value.
+-/
+theorem clz_normalizes_uint64 (p : UInt64) (hp : p ≠ 0) :
+    let n := p.toBitVec.clz.toNat
+    n < 64 ∧ limbBase / 2 ≤ p.toNat * 2 ^ n ∧
+      p.toNat * 2 ^ n < limbBase := by
+  let n := p.toBitVec.clz.toNat
+  have hpBits : p.toBitVec ≠ (0#64) := by
+    intro h
+    apply hp
+    exact UInt64.toNat_inj.mp (by simpa using congrArg BitVec.toNat h)
+  have hn : n < 64 := by
+    simpa [n] using (BitVec.clz_lt_iff_ne_zero (x := p.toBitVec)).2 hpBits
+  have hlo0 : 2 ^ (64 - 1 - n) ≤ p.toNat := by
+    simpa [n] using BitVec.two_pow_sub_clz_le_toNat_of_ne_zero
+      (x := p.toBitVec) (by omega : 0 < 64) hpBits
+  have hhi0 : p.toNat < 2 ^ (64 - n) := by
+    simpa [n] using BitVec.toNat_lt_two_pow_sub_clz (x := p.toBitVec)
+  have hlo : 2 ^ 63 ≤ p.toNat * 2 ^ n := by
+    have := Nat.mul_le_mul_right (2 ^ n) hlo0
+    rw [← pow_add] at this
+    have hexp : 64 - 1 - n + n = 63 := by omega
+    rw [hexp] at this
+    exact this
+  have hhi : p.toNat * 2 ^ n < 2 ^ 64 := by
+    have := Nat.mul_lt_mul_of_pos_right hhi0 (by positivity : 0 < 2 ^ n)
+    rw [← pow_add] at this
+    have hexp : 64 - n + n = 64 := by omega
+    rw [hexp] at this
+    exact this
+  exact ⟨hn, by simpa [limbBase] using hlo, by simpa [limbBase] using hhi⟩
+
+/-- Exact machine value assigned to `_norm` by dense C++ precomputation. -/
+def denseNorm (p : UInt64) : UInt32 := UInt32.ofNat p.toBitVec.clz.toNat
+
+/-- Exact normalized limb `p << _norm` used by generated preinverse code. -/
+def denseNormalizedModulus (p : UInt64) : UInt64 := p <<< denseNorm p
+
+/-
+  Natural-language proof.
+
+  `clz_normalizes_uint64` supplies `n<64` and the no-overflow product bound.
+  Therefore converting `n` through `UInt32` and then through the generated
+  shift instance preserves it exactly.  The machine left shift consequently
+  has natural value `p*2^n`, which lies in the normalized half-open interval.
+-/
+theorem denseNormalizedModulus_spec (p : UInt64) (hp : p ≠ 0) :
+    let n := p.toBitVec.clz.toNat
+    (denseNorm p).toNat = n ∧
+      (denseNormalizedModulus p).toNat = p.toNat * 2 ^ n ∧
+      limbBase / 2 ≤ (denseNormalizedModulus p).toNat := by
+  let n := p.toBitVec.clz.toNat
+  have hnorm := clz_normalizes_uint64 p hp
+  have hn : n < 64 := hnorm.1
+  have hn32 : n < UInt32.size := lt_trans hn (by norm_num [UInt32.size])
+  have hnormNat : (denseNorm p).toNat = n := by
+    simp [denseNorm, n, UInt32.toNat_ofNat', Nat.mod_eq_of_lt hn32]
+  have hprodlt : p.toNat * 2 ^ n < limbBase := hnorm.2.2
+  have hshift : (denseNormalizedModulus p).toNat = p.toNat * 2 ^ n := by
+    unfold denseNormalizedModulus
+    change (p <<< (denseNorm p).toUInt64).toNat = p.toNat * 2 ^ n
+    rw [UInt64.toNat_shiftLeft]
+    have hprodlt' : p.toNat * 2 ^ n < UInt64.size := by
+      simpa [limbBase, UInt64.size] using hprodlt
+    have hnorm64 : (denseNorm p).toUInt64.toNat = n := by
+      rw [UInt32.toNat_toUInt64]
+      exact hnormNat
+    rw [hnorm64, Nat.mod_eq_of_lt hn, Nat.shiftLeft_eq]
+    exact Nat.mod_eq_of_lt hprodlt'
+  exact ⟨hnormNat, hshift, hshift ▸ hnorm.2.1⟩
+
 end CLPoly.Impl.StrictWordArithmetic

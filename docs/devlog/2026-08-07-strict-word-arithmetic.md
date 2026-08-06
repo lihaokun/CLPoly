@@ -18,6 +18,9 @@
 - 将该自然数结论连接到实际 `UInt32 _norm` 与 `UInt64 (p << _norm)`，证明 C++ 左移没有回绕。
 - 抽取 `_lll_mod_preinv` 两次使用的双-limb 近似商机器块，证明低 limb 比较精确表示 carry。
 - 证明生成的 `(q1,q0)` 按 `B^2` 同余于 `u1*pinv + u0 + B*u1`，完整覆盖乘法、低位加法和高位带进位加法。
+- 将生成的 `nmod_mul_ir` 精确分解为 UInt128 乘积拆分、原样预逆
+  quotient/carry/correction round 和最终反归一化右移；该结构定理直接按
+  生成分支证明，没有改写成 `% p`。
 
 ## 为什么做
 
@@ -39,6 +42,9 @@ RawHeap `_poly_divrem` 的循环虽然已经终止且无越界，但其多项式
 - 双边界直接使用自然数 Euclidean division 的 `div_mul_le_self` 与 `div_lt_iff_lt_mul`，没有引用外部正确性定理。
 - `clz` 规范化使用 BitVec 已证明的首个置位上下界；机器整数转换均逐层证明保持自然数值。
 - 双-limb 商估计没有抽象成数学除法；定理直接展开与生成代码一致的 UInt128/UInt64 操作并保留高位回绕。
+- 生成器将最终右移复制到 correction 的各个 continuation 分支；证明通过
+  穷尽这些真实分支对齐共享的 `preinvRoundIR`，而不是依赖大规模定义等价
+  展开。
 
 ## 涉及文件
 

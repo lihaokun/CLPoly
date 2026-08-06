@@ -28,6 +28,48 @@ def preinvQuotientPair (u1 u0 pinv : UInt64) : UInt64 × UInt64 :=
   let q1' : UInt64 := q1 + (u1 + carry)
   (q1', q0')
 
+/-- One source-level normalized reduction round, retaining the generated
+`Int32 → Int64 → UInt64` carry conversion verbatim.  This definition is a
+factoring of the C++ machine operations, not a mathematical oracle. -/
+def preinvRoundIR (u1 u0 pn pinv : UInt64) : UInt64 :=
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 :=
+    ((if q0' < u0 then (1 : Int32) else 0).toInt64.toUInt64)
+  let q1' : UInt64 := q1 + (u1 + carry)
+  let r : UInt64 := u0 - ((q1' + 1) * pn)
+  let r' : UInt64 := if r > q0' then r + pn else r
+  if r' >= pn then r' - pn else r'
+
+@[simp] theorem uint32_zero_toUInt64 : (0 : UInt32).toUInt64 = 0 := by
+  decide
+
+@[simp] theorem uint64_shiftLeft_zero (x : UInt64) :
+    x <<< (0 : UInt64) = x := by
+  apply UInt64.toNat_inj.mp
+  change (x <<< (0 : UInt64)).toNat = x.toNat
+  simp
+
+@[simp] theorem uint64_shiftLeft_zero_u32 (x : UInt64) :
+    x <<< (0 : UInt32) = x := by
+  apply UInt64.toNat_inj.mp
+  change (x <<< (0 : UInt64)).toNat = x.toNat
+  simp
+
+@[simp] theorem uint64_shiftRight_zero (x : UInt64) :
+    x >>> (0 : UInt64) = x := by
+  apply UInt64.toNat_inj.mp
+  change (x >>> (0 : UInt64)).toNat = x.toNat
+  simp
+
+@[simp] theorem uint64_shiftRight_zero_u32 (x : UInt64) :
+    x >>> (0 : UInt32) = x := by
+  apply UInt64.toNat_inj.mp
+  change (x >>> (0 : UInt64)).toNat = x.toNat
+  simp
+
 /-
   Natural-language proof.
 
@@ -404,5 +446,26 @@ theorem preinvQuotientPair_modEq (u1 u0 pinv : UInt64) :
   simp only [limbBase] at hprod hq0 hu0 hu1 hcarry hq0' hq1' ⊢
   norm_num [Nat.ModEq] at hprod hq0 hu0 hu1 hcarry hq0' hq1' ⊢
   omega
+
+/-
+  Natural-language proof.
+
+  The generated C++ multiplication first shifts `a`, forms its exact UInt128
+  product with `b`, and splits that product into high and low limbs.  The
+  remaining quotient estimate, carry conversion, two correction branches and
+  final denormalising shift are exactly `preinvRoundIR`.  Unfolding both
+  definitions therefore gives the same fixed-width program; no `% p`, L2
+  multiplication, or specification oracle is introduced.
+-/
+theorem nmod_mul_eq_preinvRoundIR (this : DenseUPolyZp) (a b : UInt64) :
+    dense_upoly_zp_nmod_mul_ir this a b =
+      let prod : UInt128 :=
+        uint128_of_uint64 (a <<< this._norm) * uint128_of_uint64 b
+      (preinvRoundIR
+        (uint128_lo (prod >>> (64 : UInt128)))
+        (uint128_lo prod)
+        (this._p <<< this._norm) this._ninv) >>> this._norm := by
+  simp [dense_upoly_zp_nmod_mul_ir, preinvRoundIR] <;
+    repeat' split <;> simp_all
 
 end CLPoly.Impl.StrictWordArithmetic

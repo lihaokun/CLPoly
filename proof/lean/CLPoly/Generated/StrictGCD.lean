@@ -145,8 +145,28 @@ def dense_upoly_zp_nmod_mul_ir (this : DenseUPolyZp) (a : UInt64) (b : UInt64) :
   else
     bb_3 pn_1 this r_1
 
+def dense_upoly_zp_empty_ir (this : DenseUPolyZp) : Bool :=
+  (Array.isEmpty this._coeffs)
+
 def dense_upoly_zp_nmod_inv_ir (this : DenseUPolyZp) (a : UInt64) : UInt64 :=
   (inv_prime_ir a this._p)
+
+def _loop___strip_0_ir (this_1 : DenseUPolyZp) : (Int64 × DenseUPolyZp) :=
+  if h_strip : ((! (Array.isEmpty this_1._coeffs)) && ((Array.getLast! this_1._coeffs) == (0 : UInt64))) then
+    let this_2 : DenseUPolyZp /- ref residual -/ := { this_1 with _coeffs := (Array.pop this_1._coeffs) }
+    _loop___strip_0_ir this_2
+  else
+    ((0 : Int64), this_1)
+termination_by Array.size this_1._coeffs
+decreasing_by
+  simp only [Bool.and_eq_true] at h_strip
+  have hne : this_1._coeffs.size ≠ 0 := by
+    intro hz
+    have hempty : this_1._coeffs = #[] :=
+      Array.size_eq_zero_iff.mp hz
+    simpa [hempty] using h_strip.1
+  rw [Array.size_pop]
+  omega
 
 def _loop_scalar_mul_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Array UInt64) (c : UInt64) (this : DenseUPolyZp) : (Int64 × Array UInt64) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
@@ -158,6 +178,11 @@ def _loop_scalar_mul_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Arra
   else
     ((0 : Int64), __rangefor_cont_0_2)
 termination_by Array.size __rangefor_cont_0_2 - __rangefor_idx_0_2
+
+def dense_upoly_zp___strip_ir (this : DenseUPolyZp) : DenseUPolyZp :=
+  let __loop_ret___strip_0_1 : (Int64 × DenseUPolyZp) := (_loop___strip_0_ir this)
+  let this_1 : DenseUPolyZp := __loop_ret___strip_0_1.snd
+  this_1
 
 def dense_upoly_zp_scalar_mul_ir (this : DenseUPolyZp) (c : UInt64) : DenseUPolyZp :=
   if (c == (0 : UInt64)) then

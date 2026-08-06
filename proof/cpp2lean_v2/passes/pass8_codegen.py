@@ -1134,6 +1134,8 @@ def _get_loop_termination_measure(f: MIRFunc) -> Optional[str]:
         return "(i_2.toInt + 1).toNat"
     if f.base_name == "_loop_inv_prime_0":
         return "c_3.toNat"
+    if f.base_name == "_loop___strip_0":
+        return "Array.size this_1._coeffs"
     if not f.base_name.startswith("_loop_"):
         return None
     if len(f.params) < 2:
@@ -1177,6 +1179,8 @@ _STRICT_TOTAL_ENTRIES = {
     "inv_prime",
     "dense_upoly_zp___preinvert_limb",
     "dense_upoly_zp___precompute",
+    "dense_upoly_zp_empty",
+    "dense_upoly_zp___strip",
     "dense_upoly_zp_default",
     "dense_upoly_zp_of_prime",
     "dense_upoly_zp_of_sparse",
@@ -1309,6 +1313,10 @@ def emit_mirfunc(f: MIRFunc,
         body = body.replace(
             "  if (c_3 != 0) then",
             "  if h_c_nonzero : (c_3 != 0) then")
+    elif f.base_name == "_loop___strip_0":
+        body = body.replace(
+            "  if ((! (Array.isEmpty this_1._coeffs)) &&",
+            "  if h_strip : ((! (Array.isEmpty this_1._coeffs)) &&")
     if term is not None:
         if f.base_name == "_loop___ddf_Zp_0":
             decreasing = "\ndecreasing_by exact hdec"
@@ -1334,6 +1342,17 @@ def emit_mirfunc(f: MIRFunc,
             decreasing = (
                 "\ndecreasing_by\n"
                 "  all_goals exact int64_sub_one_measure_lt i_2 h_nonneg")
+        elif f.base_name == "_loop___strip_0":
+            decreasing = (
+                "\ndecreasing_by\n"
+                "  simp only [Bool.and_eq_true] at h_strip\n"
+                "  have hne : this_1._coeffs.size ≠ 0 := by\n"
+                "    intro hz\n"
+                "    have hempty : this_1._coeffs = #[] :=\n"
+                "      Array.size_eq_zero_iff.mp hz\n"
+                "    simpa [hempty] using h_strip.1\n"
+                "  rw [Array.size_pop]\n"
+                "  omega")
         else:
             decreasing = ""
         return f"{sig}\n{body}\ntermination_by {term}{decreasing}"
@@ -1456,6 +1475,9 @@ def codegen_corpus(top_funcs: list[MIRFunc],
         "dense_upoly_zp_of_prime": 18,
         "_loop_dense_upoly_zp_0": 19,
         "dense_upoly_zp_of_sparse": 20,
+        "dense_upoly_zp_empty": 23,
+        "_loop___strip_0": 24,
+        "dense_upoly_zp___strip": 25,
     }
     ordered_total = helper_loops + helper_entries + ddf_loops + ddf_entries
     indexed_total = list(enumerate(ordered_total))

@@ -35,6 +35,8 @@ METHOD_ROOTS = (
     "inv_prime",
     "__preinvert_limb",
     "__precompute",
+    "empty",
+    "__strip",
     "dense_upoly_zp_default",
     "dense_upoly_zp_of_prime",
     "dense_upoly_zp_of_sparse",

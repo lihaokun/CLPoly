@@ -92,6 +92,8 @@ CLASS_MAP = {
         "constructors": {},
         "methods": {
             "lead": ("method", "dense_upoly_zp_lead_ir"),
+            "empty": ("method", "dense_upoly_zp_empty_ir"),
+            "__strip": ("mutate", "dense_upoly_zp___strip_ir"),
             "nmod_inv": ("method", "dense_upoly_zp_nmod_inv_ir"),
             "nmod_mul": ("method", "dense_upoly_zp_nmod_mul_ir"),
             "__precompute": ("mutate", "dense_upoly_zp___precompute_ir"),

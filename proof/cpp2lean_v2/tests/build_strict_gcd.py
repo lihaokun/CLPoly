@@ -33,6 +33,11 @@ from pass8_codegen import codegen_corpus
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictGCD.lean"
 METHOD_ROOTS = (
     "inv_prime",
+    "__preinvert_limb",
+    "__precompute",
+    "dense_upoly_zp_default",
+    "dense_upoly_zp_of_prime",
+    "dense_upoly_zp_of_sparse",
     "deg",
     "lead",
     "nmod_mul",
@@ -41,10 +46,43 @@ METHOD_ROOTS = (
     "to_upoly",
 )
 
+CONSTRUCTOR_ARITIES = {
+    "dense_upoly_zp_default": 0,
+    "dense_upoly_zp_of_prime": 1,
+    "dense_upoly_zp_of_sparse": 2,
+}
+
+
+def dense_constructor_ast(name: str):
+    record = dump_ast_json("dense_upoly_zp", timeout=120)
+    if record is None or record.get("kind") != "CXXRecordDecl":
+        raise RuntimeError("missing dense_upoly_zp record AST")
+    arity = CONSTRUCTOR_ARITIES[name]
+    matches = []
+    for node in record.get("inner", []):
+        if node.get("kind") != "CXXConstructorDecl":
+            continue
+        params = [x for x in node.get("inner", [])
+                  if x.get("kind") == "ParmVarDecl"]
+        param_types = [x.get("type", {}).get("qualType", "") for x in params]
+        type_match = (
+            name == "dense_upoly_zp_default" or
+            name == "dense_upoly_zp_of_prime" and param_types == ["uint64_t"] or
+            name == "dense_upoly_zp_of_sparse" and
+              len(param_types) == 2 and "upolynomial_<Zp>" in param_types[0]
+        )
+        if len(params) == arity and type_match:
+            matches.append(node)
+    if len(matches) != 1:
+        raise RuntimeError(f"ambiguous dense constructor {name}: {len(matches)}")
+    return matches[0]
+
 
 def lower_method(name: str):
-    ast = dump_ast_json(name, timeout=120)
-    expected_kind = "FunctionDecl" if name == "inv_prime" else "CXXMethodDecl"
+    ast = (dense_constructor_ast(name) if name in CONSTRUCTOR_ARITIES
+           else dump_ast_json(name, timeout=120))
+    expected_kind = ("CXXConstructorDecl" if name in CONSTRUCTOR_ARITIES else
+                     "FunctionDecl" if name == "inv_prime" else "CXXMethodDecl")
     if ast is None or ast.get("kind") != expected_kind:
         raise RuntimeError(f"missing concrete C++ AST for {name}: {expected_kind}")
     hir = parse_pass(ast)
@@ -58,7 +96,8 @@ def lower_method(name: str):
             gaps.op_miss, gaps.constructor_miss)):
         raise RuntimeError(f"unresolved {name} translation gaps: {gaps}")
     mir = loop_lower_pass(ssa_build_pass(hir))
-    mir.base_name = name if name == "inv_prime" else f"dense_upoly_zp_{name}"
+    mir.base_name = (name if name == "inv_prime" or name in CONSTRUCTOR_ARITIES
+                     else f"dense_upoly_zp_{name}")
     return mir
 
 

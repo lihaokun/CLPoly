@@ -1267,10 +1267,10 @@ def parse_pass(ast_json: dict) -> HIRFunc:
     if not isinstance(ast_json, dict):
         raise TranslationError("parse", "<unknown>", "AST not a dict")
     decl_kind = ast_json.get("kind")
-    if decl_kind not in ("FunctionDecl", "CXXMethodDecl"):
+    if decl_kind not in ("FunctionDecl", "CXXMethodDecl", "CXXConstructorDecl"):
         raise TranslationError(
             "parse", ast_json.get("name", "<unknown>"),
-            f"expected FunctionDecl/CXXMethodDecl, got {decl_kind}",
+            f"expected function/method/constructor declaration, got {decl_kind}",
         )
 
     base_name = ast_json.get("name", "")
@@ -1279,7 +1279,7 @@ def parse_pass(ast_json: dict) -> HIRFunc:
 
     # 解析参数
     params = []
-    if decl_kind == "CXXMethodDecl":
+    if decl_kind == "CXXMethodDecl" and ast_json.get("storageClass") != "static":
         is_const_method = qual_type.rstrip().endswith(" const")
         params.append(HIRParam(
             name="this",
@@ -1289,17 +1289,21 @@ def parse_pass(ast_json: dict) -> HIRFunc:
             is_output=not is_const_method,
         ))
     body_node: Any = None
+    ctor_initializers: list[dict] = []
     for c in ast_json.get("inner", []):
         if not isinstance(c, dict):
             continue
         k = c.get("kind")
         if k == "ParmVarDecl":
             params.append(parse_param(c))
+        elif k == "CXXCtorInitializer":
+            ctor_initializers.append(c)
         elif k == "CompoundStmt":
             body_node = c
 
     # 返回类型
-    ret_ty = parse_return_type(qual_type)
+    ret_ty = (NamedType("DenseUPolyZp") if decl_kind == "CXXConstructorDecl"
+              else parse_return_type(qual_type))
 
     # body
     if body_node:
@@ -1312,6 +1316,55 @@ def parse_pass(ast_json: dict) -> HIRFunc:
             body = [body_stmt]
     else:
         body = []
+
+    if decl_kind == "CXXConstructorDecl":
+        this_var = Var(name="this", version=0, ty=NamedType("DenseUPolyZp"))
+        prefix: list[StmtIR] = [LetStmt(
+            var=this_var,
+            ty=NamedType("DenseUPolyZp"),
+            value=Call(callee="DenseUPolyZp.mk", args=[
+                ArrayLit(elems=[], elem_ty=BaseType.UINT64),
+                Lit(0, BaseType.UINT64), Lit(0, BaseType.UINT64),
+                Lit(0, BaseType.UINT32),
+            ], ty=NamedType("DenseUPolyZp")),
+        )]
+        for init in ctor_initializers:
+            field = (init.get("anyInit") or {}).get("name", "")
+            inners = init.get("inner", [])
+            if not field or not inners:
+                continue
+            field_decl = init.get("anyInit") or {}
+            field_type = parse_type(
+                (field_decl.get("type") or {}).get("qualType", ""),
+                (field_decl.get("type") or {}).get("desugaredQualType"))
+            init_expr = parse_expr(inners[0])
+            # A default-constructed std::vector<uint64_t> is the empty C++
+            # coefficient buffer.  Record that exact initializer directly;
+            # it is not an algorithmic replacement.
+            if field == "_coeffs" and isinstance(init_expr, Call) and not init_expr.args:
+                init_expr = ArrayLit(elems=[], elem_ty=BaseType.UINT64)
+            prefix.append(AssignStmt(
+                target=FieldAccess(obj=this_var, field_name=field, ty=field_type),
+                value=init_expr,
+            ))
+
+        def ctor_returns(stmts: list[StmtIR]) -> list[StmtIR]:
+            out: list[StmtIR] = []
+            for stmt in stmts:
+                if isinstance(stmt, ReturnStmt) and stmt.value is None:
+                    out.append(ReturnStmt(value=this_var))
+                elif isinstance(stmt, IfStmt):
+                    out.append(IfStmt(
+                        cond=stmt.cond,
+                        then_body=ctor_returns(stmt.then_body),
+                        else_body=ctor_returns(stmt.else_body)))
+                elif isinstance(stmt, BlockStmt):
+                    out.append(BlockStmt(stmts=ctor_returns(stmt.stmts)))
+                else:
+                    out.append(stmt)
+            return out
+
+        body = prefix + ctor_returns(body) + [ReturnStmt(value=this_var)]
 
     # 实例化 suffix（基于 qual_type）
     instance_suffix = _infer_instance_suffix(qual_type)

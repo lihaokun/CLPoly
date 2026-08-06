@@ -131,6 +131,12 @@ abbrev UInt128 := BitVec 128
 /-- Low 64 bits of an unsigned 128-bit word. -/
 def uint128_lo (x : UInt128) : UInt64 := UInt64.ofNat x.toNat
 
+/-- Exact 64-bit count-leading-zeros operation used by `__builtin_clzll`.
+The C++ call is guarded against zero; this total definition also assigns the
+conventional bit width `64` to zero. -/
+def uint64_clz (x : UInt64) : Int32 :=
+  Int32.ofNat x.toBitVec.clz.toNat
+
 /-- Clang keeps the dense arithmetic shift count as `uint32_t`; Lean's
 machine-word shift instances use `Nat`, so expose the exact conversion. -/
 instance : HShiftLeft UInt64 UInt32 UInt64 where

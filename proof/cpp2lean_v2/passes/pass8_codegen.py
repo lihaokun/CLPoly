@@ -1175,6 +1175,11 @@ _STRICT_TOTAL_ENTRIES = {
     "__polynomial_GCD",
     "polynomial_GCD",
     "inv_prime",
+    "dense_upoly_zp___preinvert_limb",
+    "dense_upoly_zp___precompute",
+    "dense_upoly_zp_default",
+    "dense_upoly_zp_of_prime",
+    "dense_upoly_zp_of_sparse",
 }
 
 
@@ -1443,8 +1448,14 @@ def codegen_corpus(top_funcs: list[MIRFunc],
         "dense_upoly_zp_scalar_mul": 25,
         "_loop_to_upoly_0": 26,
         "dense_upoly_zp_to_upoly": 27,
-        "_loop_inv_prime_0": 18,
-        "inv_prime": 19,
+        "_loop_inv_prime_0": 21,
+        "inv_prime": 22,
+        "dense_upoly_zp___preinvert_limb": 16,
+        "dense_upoly_zp___precompute": 17,
+        "dense_upoly_zp_default": 14,
+        "dense_upoly_zp_of_prime": 18,
+        "_loop_dense_upoly_zp_0": 19,
+        "dense_upoly_zp_of_sparse": 20,
     }
     ordered_total = helper_loops + helper_entries + ddf_loops + ddf_entries
     indexed_total = list(enumerate(ordered_total))

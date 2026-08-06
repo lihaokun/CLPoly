@@ -6,6 +6,72 @@ set_option maxErrors 2000
 
 namespace Generated.StrictGCD
 
+def dense_upoly_zp_default_ir : DenseUPolyZp :=
+  let this_1 : DenseUPolyZp := (DenseUPolyZp.mk #[] (0 : UInt64) (0 : UInt64) (0 : UInt32))
+  let this_2 : DenseUPolyZp := { this_1 with _coeffs := #[] }
+  let this_3 : DenseUPolyZp := { this_2 with _p := (0 : UInt64) }
+  let this_4 : DenseUPolyZp := { this_3 with _ninv := (0 : UInt64) }
+  let this_5 : DenseUPolyZp := { this_4 with _norm := (0 : UInt32) }
+  this_5
+
+def dense_upoly_zp___preinvert_limb_ir (pn : UInt64) : UInt64 :=
+  -- assert side effect represented by RequireStmt
+  let num_1 : UInt128 := (((((~~~ pn) : UInt128)) <<< (64 : UInt128)) ||| (((~~~ (0 : UInt64)) : UInt128)))
+  -- require (h_nonzero): (((pn : UInt128)) != (0 : UInt128))
+  (uint128_lo (num_1 / ((pn : UInt128))))
+
+def dense_upoly_zp___precompute_ir (this : DenseUPolyZp) : DenseUPolyZp :=
+  if (this._p == (0 : UInt64)) then
+    let this_1 : DenseUPolyZp /- ref residual -/ := { this with _ninv := (0 : UInt64) }
+    let this_2 : DenseUPolyZp /- ref residual -/ := { this_1 with _norm := (0 : UInt32) }
+    this_2
+  else
+    -- assert side effect represented by RequireStmt
+    let this_3 : DenseUPolyZp /- ref residual -/ := { this with _norm := (((uint64_clz this._p)).toUInt32) }
+    let this_4 : DenseUPolyZp /- ref residual -/ := { this_3 with _ninv := (dense_upoly_zp___preinvert_limb_ir (this_3._p <<< this_3._norm)) }
+    this_4
+
+def dense_upoly_zp_of_prime_ir (p : UInt64) : DenseUPolyZp :=
+  let this_1 : DenseUPolyZp := (DenseUPolyZp.mk #[] (0 : UInt64) (0 : UInt64) (0 : UInt32))
+  let this_2 : DenseUPolyZp := { this_1 with _coeffs := #[] }
+  let this_3 : DenseUPolyZp := { this_2 with _p := p }
+  let this_4 : DenseUPolyZp /- ref residual -/ := (dense_upoly_zp___precompute_ir this_3)
+  this_4
+
+def _loop_dense_upoly_zp_0_ir (__rangefor_idx_0_2 : Nat) (this_6 : DenseUPolyZp) (__rangefor_cont_0_1 : SparsePolyZp) : (Int64 × DenseUPolyZp) :=
+  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
+    let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
+    -- require (h_nonneg): (term_1.fst.deg >= (0 : Int64))
+    -- require (h_in_bounds): (((term_1.fst.deg).toUInt64) < (Array.size this_6._coeffs))
+    let this_7 : DenseUPolyZp /- ref residual -/ := { this_6 with _coeffs := (Array.set! this_6._coeffs (((term_1.fst.deg).toUInt64)).toNat term_1.snd.val) }
+    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
+    _loop_dense_upoly_zp_0_ir __rangefor_idx_0_3 this_7 __rangefor_cont_0_1
+  else
+    ((0 : Int64), this_6)
+termination_by Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2
+
+def dense_upoly_zp_of_sparse_ir (sparse : SparsePolyZp) (p : UInt64) : DenseUPolyZp :=
+  let this_1 : DenseUPolyZp := (DenseUPolyZp.mk #[] (0 : UInt64) (0 : UInt64) (0 : UInt32))
+  let this_2 : DenseUPolyZp := { this_1 with _coeffs := #[] }
+  let this_3 : DenseUPolyZp := { this_2 with _p := p }
+  let this_4 : DenseUPolyZp /- ref residual -/ := (dense_upoly_zp___precompute_ir this_3)
+  if (Array.isEmpty sparse) then
+    this_4
+  else
+    -- require (h_nonempty): (! (Array.isEmpty sparse))
+    let d_1 : Int64 := (SparsePolyZp.front! sparse).fst.deg
+    -- require (h_nonneg): ((d_1 + (1 : Int64)) >= (0 : Int64))
+    let this_5 : DenseUPolyZp /- ref residual -/ := { this_4 with _coeffs := (Array.resize this_4._coeffs (((d_1 + (1 : Int64))).toUInt64) (0 : UInt64)) }
+    let __rangefor_cont_0_1 : SparsePolyZp := sparse
+    let __rangefor_idx_0_1 : Nat := (0 : Nat)
+    let __loop_ret_dense_upoly_zp_0_1 : (Int64 × DenseUPolyZp) := (_loop_dense_upoly_zp_0_ir __rangefor_idx_0_1 this_5 __rangefor_cont_0_1)
+    let this_6 : DenseUPolyZp := __loop_ret_dense_upoly_zp_0_1.snd
+    this_6
+
+def dense_upoly_zp_deg_ir (this : DenseUPolyZp) : Int64 :=
+  -- require (h_fits_int64): (((Array.size this._coeffs) >= (-9223372036854775808 : Int64)) && ((Array.size this._coeffs) <= (9223372036854775807 : Int64)))
+  ((((Array.size this._coeffs)).toInt64) - (1 : Int64))
+
 def _loop_inv_prime_0_ir (s2_2 : UInt64) (s1_2 : UInt64) (c_3 : UInt64) (b_2 : UInt64) (a_2 : UInt64) (_p : UInt64) : (Int64 × UInt64) :=
   if h_c_nonzero : (c_3 != 0) then
     -- require (h_nonzero): (b_2 != (0 : UInt64))
@@ -33,6 +99,10 @@ decreasing_by
     omega
   exact Nat.mod_lt _ hcNat
 
+def dense_upoly_zp_lead_ir (this : DenseUPolyZp) : UInt64 :=
+  -- require (h_nonempty): (! (Array.isEmpty this._coeffs))
+  (if (Array.isEmpty this._coeffs) then (0 : UInt64) else (Array.getLast! this._coeffs))
+
 def inv_prime_ir (_i : UInt64) (_p : UInt64) : UInt64 :=
   -- assert side effect represented by RequireStmt
   let a_1 : UInt64 := _p
@@ -46,14 +116,6 @@ def inv_prime_ir (_i : UInt64) (_p : UInt64) : UInt64 :=
   let __loop_ret_inv_prime_0_1 : (Int64 × UInt64) := (_loop_inv_prime_0_ir s2_1 s1_1 c_2 b_1 a_1 _p)
   let s2_2 : UInt64 := __loop_ret_inv_prime_0_1.snd
   s2_2
-
-def dense_upoly_zp_deg_ir (this : DenseUPolyZp) : Int64 :=
-  -- require (h_fits_int64): (((Array.size this._coeffs) >= (-9223372036854775808 : Int64)) && ((Array.size this._coeffs) <= (9223372036854775807 : Int64)))
-  ((((Array.size this._coeffs)).toInt64) - (1 : Int64))
-
-def dense_upoly_zp_lead_ir (this : DenseUPolyZp) : UInt64 :=
-  -- require (h_nonempty): (! (Array.isEmpty this._coeffs))
-  (if (Array.isEmpty this._coeffs) then (0 : Int32) else (Array.getLast! this._coeffs))
 
 def dense_upoly_zp_nmod_mul_ir (this : DenseUPolyZp) (a : UInt64) (b : UInt64) : UInt64 :=
   let bb_6 := fun this r_5 =>

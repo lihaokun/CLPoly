@@ -267,7 +267,10 @@ def _resolve_cast(cast: Cast, typectx: dict, gap: GapLog) -> ExprIR:
 
     if disposition == "table":
         if is_safe_to_strip_lit_cast(new_cast):
-            return inner
+            # The numeric value is unchanged, but retaining the destination
+            # type is essential for enclosing machine operations such as
+            # `~(uint64_t)0`; otherwise codegen would perform a 32-bit not.
+            return replace(inner, ty=cast.target_ty)
 
         resolution = lookup_cast(cast.source_ty, cast.target_ty)
         if resolution is None:

@@ -94,6 +94,7 @@ CLASS_MAP = {
             "lead": ("method", "dense_upoly_zp_lead_ir"),
             "nmod_inv": ("method", "dense_upoly_zp_nmod_inv_ir"),
             "nmod_mul": ("method", "dense_upoly_zp_nmod_mul_ir"),
+            "__precompute": ("mutate", "dense_upoly_zp___precompute_ir"),
             "scalar_mul": ("mutate", "dense_upoly_zp_scalar_mul_ir"),
             "deg": ("method", "dense_upoly_zp_deg_ir"),
             "to_upoly": ("method", "dense_upoly_zp_to_upoly_ir"),
@@ -516,6 +517,8 @@ FUNC_MAP = {
 
     "derivative": ("derivative", "direct"),
     "inv_prime": ("inv_prime_ir", "direct"),
+    "__preinvert_limb": ("dense_upoly_zp___preinvert_limb_ir", "direct"),
+    "__builtin_clzll": ("uint64_clz", "direct"),
     "polynomial_GCD": ("polynomial_GCD", "direct"),
     "polynomial_GCD_eea": ("polynomial_GCD_eea", "direct"),
     "pair_vec_div5": ("pair_vec_div5", "direct"),

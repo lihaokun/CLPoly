@@ -110,6 +110,7 @@ CAST_TABLE: dict[tuple[str, str], CastResolution] = {
     ("uint32", "uint64"):  CastResolution("({x}).toUInt64", None),           # 2 次
     ("int32",  "nat"):     CastResolution("({x}).toNatClampNeg", "nonneg"),  # Lean 4: Int32 没 .toNat
     ("int32",  "uint64"):  CastResolution("({x}).toInt64.toUInt64", "nonneg"),
+    ("int32",  "uint32"):  CastResolution("({x}).toUInt32", None),
     # int → size_t 走和 int → nat 相同路径（CLPoly Pass 1 size_t 常是 NAT；
     # UnknownType("std::size_t") 出现 4 次 — fallback 到 int32→nat 含义）
 

@@ -1,8 +1,9 @@
-import CLPoly.Generated.StrictDivrem
+import CLPoly.Impl.RawPolynomialRep
 
 namespace CLPoly.Impl.StrictDivremRefinement
 
 open Generated.StrictDivrem
+open CLPoly.Impl.RawPolynomialRep
 
 /-- A valid raw coefficient slice has a safe observation of exactly the C++
 declared length. -/
@@ -33,6 +34,23 @@ theorem sliceRep_exists_unique (heap : RawHeap) (ptr : RawPtr UInt64)
   refine ⟨coeffs, ⟨hread, hsize⟩, ?_⟩
   intro other hother
   exact (Except.ok.inj (hread.symm.trans hother.1)).symm
+
+theorem slicePolyRep_exists_unique (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length p : Nat) (hvalid : heap.ValidU64Slice ptr length) :
+    ∃ poly : Polynomial (ZMod p),
+      SlicePolyRep heap ptr length p poly ∧
+      ∀ other : Polynomial (ZMod p),
+        SlicePolyRep heap ptr length p other → other = poly := by
+  rcases sliceRep_exists_unique heap ptr length hvalid with
+    ⟨coeffs, hcoeffs, hunique⟩
+  let poly := coeffArrayPoly p coeffs
+  refine ⟨poly, ⟨coeffs, hcoeffs.1, hcoeffs.2, rfl⟩, ?_⟩
+  intro other hother
+  rcases hother with ⟨otherCoeffs, hreadOther, hsizeOther, hpolyOther⟩
+  have heq : otherCoeffs = coeffs :=
+    hunique otherCoeffs ⟨hreadOther, hsizeOther⟩
+  subst otherCoeffs
+  exact hpolyOther
 
 /-- `_poly_normalise` only reads within its declared prefix.  Structural
 recursion on `len` proves both successful execution and the returned prefix

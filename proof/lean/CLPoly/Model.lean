@@ -273,6 +273,7 @@ def HgcdMat.uninit : HgcdMat :=
     len := Array.replicate 4 0 }
 
 inductive RawFault where
+  | assertionFailure
   | invalidPointer
   | invalidRegion (region : Nat)
   | outOfBounds (region limbOffset : Nat)
@@ -301,6 +302,14 @@ end RawPtr
 
 namespace RawHeap
 
+/-- `ptr[0..length)` denotes an allocated C++ limb slice.  This predicate is
+the raw-side representation invariant used to rule out UB before relating a
+buffer to an L2 polynomial. -/
+def ValidU64Slice (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat) : Prop :=
+  ∃ regionId, ptr.region = some regionId ∧
+    ∃ hr : regionId < heap.regions.size,
+      ptr.limbOffset + length ≤ heap.regions[regionId].size
+
 def readU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat) :
     RawExec UInt64 :=
   match ptr.region with
@@ -315,6 +324,16 @@ def readU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat) :
         .error (.outOfBounds regionId offset)
     else
       .error (.invalidRegion regionId)
+
+theorem readU64_of_valid (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length index : Nat) (hvalid : ValidU64Slice heap ptr length)
+    (hindex : index < length) :
+    ∃ value, heap.readU64 ptr index = .ok value := by
+  rcases hvalid with ⟨regionId, hregion, hr, hlength⟩
+  have hoffset : ptr.limbOffset + index < heap.regions[regionId].size := by
+    omega
+  refine ⟨heap.regions[regionId][ptr.limbOffset + index], ?_⟩
+  simp only [readU64, hregion, hr, dif_pos, hoffset]
 
 def writeU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat)
     (value : UInt64) : RawExec RawHeap :=

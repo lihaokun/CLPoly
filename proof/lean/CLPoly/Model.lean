@@ -160,6 +160,17 @@ theorem int64_sub_one_measure_lt (i : Int64) (h : i >= (0 : Int64)) :
   · have hi := Int64.toInt_lt i
     omega
 
+/-- Termination fact for the C++ binary-exponentiation loop.
+
+Proof sketch: a positive integer has positive absolute value; division by the
+positive constant two commutes with `natAbs`, and natural-number division by
+two is strictly smaller than every positive dividend. -/
+theorem int_natAbs_ediv_two_lt (e : Int) (h : 0 < e) :
+    (e / 2).natAbs < e.natAbs := by
+  rw [Int.natAbs_ediv_of_nonneg (Int.le_of_lt h)]
+  have he : 0 < e.natAbs := Int.natAbs_pos.mpr (by omega)
+  simpa using Nat.div_lt_self he (by decide : 1 < 2)
+
 /-- State carried by the C++ `dense_upoly_zp` implementation.  This is only
 the L1 representation type; its constructors and algorithms are translated
 from the corresponding C++ member bodies into generated namespaces. -/

@@ -66,8 +66,9 @@ theorem strict_powmod_loop_of_nonpos (e : ZZ) (b r m : SparsePolyZp)
     (he : ¬e > (0 : Int32).toInt) :
     Generated.StrictDDF._loop___upoly_powmod_0_ir e b r m =
       ((0 : Int64), r) := by
+  have hnonpos : ¬(0 : Int) < e := by simpa using he
   rw [Generated.StrictDDF._loop___upoly_powmod_0_ir.eq_1]
-  simp only [he, ↓reduceIte]
+  simp [hnonpos]
 
 /-- Direct generated-entry equation for exponent zero. -/
 theorem strict_upoly_powmod_zero (base m : SparsePolyZp) :
@@ -558,7 +559,7 @@ theorem strict_subtract_x_loop_of_done (i : Nat) (inserted : Bool)
     Generated.StrictDDF._loop___upoly_subtract_x_0_ir
         i inserted result input q = ((0 : Int64), inserted, result) := by
   rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
-  simp only [show ¬i < input.size by omega, ↓reduceIte]
+  simp [show ¬i < input.size by omega]
 
 /-- Direct generated-entry semantics for an empty input: the C++ routine
 inserts the missing `-X` term and normalizes it. -/

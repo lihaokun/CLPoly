@@ -1216,26 +1216,65 @@ def emit_mirfunc(f: MIRFunc,
             "      default\n")
         body = recur + body
     elif f.base_name == "_loop___upoly_powmod_0":
-        recursive_name = f.lean_name
-        body = body.replace(f"{recursive_name} ", "recur ")
-        recur = (
-            "  let recur := fun e_next b_next result_next modpoly_next =>\n"
-            "    if hdec : upolyPowmodWellFoundedMeasure e_next <\n"
-            "        upolyPowmodWellFoundedMeasure e_2 then\n"
-            f"      {recursive_name} e_next b_next result_next modpoly_next\n"
-            "    else\n"
-            "      default\n")
-        body = recur + body
+        # Preserve the square-and-multiply loop as one guarded recursive
+        # block.  Generic continuation lifting otherwise separates `e / 2`
+        # from the source guard `e > 0` and forces an executable fallback.
+        body = (
+            "  if hpos : (e_2 > ((0 : Int32)).toInt) then\n"
+            "    let result_5 : SparsePolyZp :=\n"
+            "      if ((e_2 % ((2 : Int32)).toInt) != "
+            "((0 : Int32)).toInt) then\n"
+            "        __upoly_mod_ir (result_2 * b_2) modpoly\n"
+            "      else\n"
+            "        result_2\n"
+            "    let e_3 : ZZ := (e_2 / ((2 : Int32)).toInt)\n"
+            "    let b_5 : SparsePolyZp :=\n"
+            "      if (e_3 > ((0 : Int32)).toInt) then\n"
+            "        __upoly_mod_ir (b_2 * b_2) modpoly\n"
+            "      else\n"
+            "        b_2\n"
+            f"    {f.lean_name} e_3 b_5 result_5 modpoly\n"
+            "  else\n"
+            "    ((0 : Int64), result_2)")
     elif f.base_name == "_loop___upoly_subtract_x_0":
+        # Keep the CFG continuations (and hence the generated induction
+        # principle) but make descent evidence an explicit erased argument.
+        # The source bounds guard is threaded through the continuations, so
+        # the recursive edge is total without a runtime fallback.
         recursive_name = f.lean_name
         body = body.replace(f"{recursive_name} ", "recur ")
+        body = body.replace(
+            "  let bb_3 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_5 result_5 =>",
+            "  let bb_3 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p "
+            "inserted_5 result_5 hdec =>")
+        body = body.replace(
+            "    recur __rangefor_idx_0_3 inserted_5 result_5 __rangefor_cont_0_1 p",
+            "    recur __rangefor_idx_0_3 inserted_5 result_5 "
+            "__rangefor_cont_0_1 p hdec")
+        body = body.replace(
+            "  let bb_13 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_7 =>",
+            "  let bb_13 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_7 "
+            "hdec =>")
+        body = body.replace(
+            "    bb_3 __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_6 result_7",
+            "    bb_3 __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_6 result_7 hdec")
+        body = body.replace(
+            "  let bb_7 := fun term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_4 result_4 =>",
+            "  let bb_7 := fun term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 "
+            "inserted_4 result_4 hdec =>")
+        body = body.replace(" p result_6\n", " p result_6 hdec\n")
+        body = body.replace(" p result_4\n", " p result_4 hdec\n")
+        body = body.replace(" p inserted_4 result_8\n", " p inserted_4 result_8 hdec\n")
+        body = body.replace(
+            "  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then",
+            "  if hidx : (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then")
+        body = body.replace(" inserted_3 result_3\n", " inserted_3 result_3 (by omega)\n")
+        body = body.replace(" inserted_2 result_2\n", " inserted_2 result_2 (by omega)\n")
         recur = (
-            "  let recur := fun idx_next inserted_next result_next cont_next p_next =>\n"
-            "    if hdec : Array.size cont_next - idx_next <\n"
-            "        Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2 then\n"
-            f"      {recursive_name} idx_next inserted_next result_next cont_next p_next\n"
-            "    else\n"
-            "      default\n")
+            "  let recur := fun idx_next inserted_next result_next cont_next p_next "
+            "(hdec : Array.size cont_next - idx_next < "
+            "Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2) =>\n"
+            f"    {recursive_name} idx_next inserted_next result_next cont_next p_next\n")
         body = recur + body
     elif f.base_name == "_loop_to_upoly_0":
         # Inline the MIR continuation beneath the loop guard.  Leaving the
@@ -1259,8 +1298,14 @@ def emit_mirfunc(f: MIRFunc,
             "      let i_3 : Int64 := (i_2 - (1 : Int64))\n"
             f"      {f.lean_name} i_3 result_2 this")
     if term is not None:
-        if f.base_name in {"_loop___ddf_Zp_0", "_loop___upoly_powmod_0",
-                           "_loop___upoly_subtract_x_0"}:
+        if f.base_name == "_loop___ddf_Zp_0":
+            decreasing = "\ndecreasing_by exact hdec"
+        elif f.base_name == "_loop___upoly_powmod_0":
+            decreasing = (
+                "\ndecreasing_by\n"
+                "  apply int_natAbs_ediv_two_lt\n"
+                "  simpa using hpos")
+        elif f.base_name == "_loop___upoly_subtract_x_0":
             decreasing = "\ndecreasing_by exact hdec"
         elif f.base_name == "_loop_to_upoly_0":
             decreasing = (

@@ -46,35 +46,25 @@ def __upoly_mod_ir (f : SparsePolyZp) (g : SparsePolyZp) : SparsePolyZp :=
   r_2
 
 def _loop___upoly_powmod_0_ir (e_2 : ZZ) (b_2 : SparsePolyZp) (result_2 : SparsePolyZp) (modpoly : SparsePolyZp) : (Int64 × SparsePolyZp) :=
-  let recur := fun e_next b_next result_next modpoly_next =>
-    if hdec : upolyPowmodWellFoundedMeasure e_next <
-        upolyPowmodWellFoundedMeasure e_2 then
-      _loop___upoly_powmod_0_ir e_next b_next result_next modpoly_next
-    else
-      default
-  let bb_9 := fun e_3 result_5 modpoly b_5 =>
-    recur e_3 b_5 result_5 modpoly
-  let bb_6 := fun e_2 b_2 modpoly result_5 =>
-    -- require (h_nonzero): (((2 : Int32)).toInt != (0 : Int64))
+  if hpos : (e_2 > ((0 : Int32)).toInt) then
+    let result_5 : SparsePolyZp :=
+      if ((e_2 % ((2 : Int32)).toInt) != ((0 : Int32)).toInt) then
+        __upoly_mod_ir (result_2 * b_2) modpoly
+      else
+        result_2
     let e_3 : ZZ := (e_2 / ((2 : Int32)).toInt)
-    if (e_3 > ((0 : Int32)).toInt) then
-      let b_3 : SparsePolyZp := (b_2 * b_2)
-      let b_4 : SparsePolyZp := (__upoly_mod_ir b_3 modpoly)
-      bb_9 e_3 result_5 modpoly b_4
-    else
-      bb_9 e_3 result_5 modpoly b_2
-  if (e_2 > ((0 : Int32)).toInt) then
-    -- require (h_nonzero): (((2 : Int32)).toInt != (0 : Int64))
-    if ((e_2 % ((2 : Int32)).toInt) != ((0 : Int32)).toInt) then
-      let result_3 : SparsePolyZp := (result_2 * b_2)
-      let result_4 : SparsePolyZp := (__upoly_mod_ir result_3 modpoly)
-      bb_6 e_2 b_2 modpoly result_4
-    else
-      bb_6 e_2 b_2 modpoly result_2
+    let b_5 : SparsePolyZp :=
+      if (e_3 > ((0 : Int32)).toInt) then
+        __upoly_mod_ir (b_2 * b_2) modpoly
+      else
+        b_2
+    _loop___upoly_powmod_0_ir e_3 b_5 result_5 modpoly
   else
     ((0 : Int64), result_2)
 termination_by upolyPowmodWellFoundedMeasure e_2
-decreasing_by exact hdec
+decreasing_by
+  apply int_natAbs_ediv_two_lt
+  simpa using hpos
 
 def __upoly_powmod_ir (base : SparsePolyZp) (exp : ZZ) (modpoly : SparsePolyZp) : SparsePolyZp :=
   -- assert side effect represented by RequireStmt
@@ -89,37 +79,33 @@ def __upoly_powmod_ir (base : SparsePolyZp) (exp : ZZ) (modpoly : SparsePolyZp) 
   result_2
 
 def _loop___upoly_subtract_x_0_ir (__rangefor_idx_0_2 : Nat) (inserted_2 : Bool) (result_2 : SparsePolyZp) (__rangefor_cont_0_1 : SparsePolyZp) (p : UInt64) : (Int64 × Bool × SparsePolyZp) :=
-  let recur := fun idx_next inserted_next result_next cont_next p_next =>
-    if hdec : Array.size cont_next - idx_next <
-        Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2 then
-      _loop___upoly_subtract_x_0_ir idx_next inserted_next result_next cont_next p_next
-    else
-      default
-  let bb_3 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_5 result_5 =>
+  let recur := fun idx_next inserted_next result_next cont_next p_next (hdec : Array.size cont_next - idx_next < Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2) =>
+    _loop___upoly_subtract_x_0_ir idx_next inserted_next result_next cont_next p_next
+  let bb_3 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_5 result_5 hdec =>
     let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-    recur __rangefor_idx_0_3 inserted_5 result_5 __rangefor_cont_0_1 p
-  let bb_13 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_7 =>
+    recur __rangefor_idx_0_3 inserted_5 result_5 __rangefor_cont_0_1 p hdec
+  let bb_13 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_7 hdec =>
     let inserted_6 : Bool := true
-    bb_3 __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_6 result_7
-  let bb_7 := fun term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_4 result_4 =>
+    bb_3 __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_6 result_7 hdec
+  let bb_7 := fun term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_4 result_4 hdec =>
     if (term_1.fst.deg == (1 : Int32)) then
       let new_c_1 : Zp := (term_1.snd - (__make_zp_ir (1 : Int32) p))
       if (new_c_1.val != (0 : Int32)) then
         let result_6 : SparsePolyZp := (Array.push result_4 (Prod.mk (UMonomial.mk (1 : Int32)) new_c_1))
-        bb_13 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_6
+        bb_13 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_6 hdec
       else
-        bb_13 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_4
+        bb_13 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_4 hdec
     else
       let result_8 : SparsePolyZp := (Array.push result_4 term_1)
-      bb_3 __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_4 result_8
-  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
+      bb_3 __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_4 result_8 hdec
+  if hidx : (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
     if ((! inserted_2) && (term_1.fst.deg < (1 : Int32))) then
       let result_3 : SparsePolyZp := (Array.push result_2 (Prod.mk (UMonomial.mk (1 : Int32)) (Zp.ofInt ((p - (1 : UInt64))).toInt p)))
       let inserted_3 : Bool := true
-      bb_7 term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_3 result_3
+      bb_7 term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_3 result_3 (by omega)
     else
-      bb_7 term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_2 result_2
+      bb_7 term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_2 result_2 (by omega)
   else
     ((0 : Int64), inserted_2, result_2)
 termination_by Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2

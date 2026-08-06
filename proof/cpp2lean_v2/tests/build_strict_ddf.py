@@ -41,7 +41,7 @@ def generate_strict_ddf() -> str:
     if missing:
         raise RuntimeError(f"missing strict DDF roots: {sorted(missing)}")
     source = codegen_corpus(selected, namespace="Generated.StrictDDF")
-    if "sorry" in source or "partial def" in source:
+    if "sorry" in source or "partial def" in source or "      default" in source:
         raise RuntimeError("strict DDF output contains an opaque placeholder")
     if "polynomial_GCD" in source:
         raise RuntimeError("strict DDF output contains the untranslated C++ GCD boundary")

@@ -47,6 +47,12 @@ noncomputable def toSparsePolyZp (f : (ZMod p)[X]) : SparsePolyZp :=
     ({deg := n}, Zp.ofUInt64 (UInt64.ofNat (ZMod.val (f.coeff n))) (UInt64.ofNat p))
   ) |>.toArray
 
+/-- Integer-polynomial counterpart used by the generated Hensel entry point. -/
+noncomputable def toSparsePolyZZ (f : Polynomial ℤ) : SparsePolyZZ :=
+  (f.support.sort (· ≥ ·)).map (fun n =>
+    ({deg := n}, f.coeff n)
+  ) |>.toArray
+
 private lemma sortedListB_of_pairwise : ∀ l : List (UMonomial × Zp),
     l.Pairwise (fun a b => b.1.deg < a.1.deg) → SparsePolyZp.sortedListB l = true := by
   intro l
@@ -349,15 +355,14 @@ lemma factor_zp_l1_func_correct (hp_size : 2 * p ≤ UInt64.size) (hp2 : p * p �
   exact (factor_Zp_l1 hp_size hp2 g hg hb).choose_spec.choose_spec
 
 -- ============================================================
--- §5. Hensel 提升（L1 包装 — TODO: 替换为 __hensel_lift_upoly_ir 精化版本）
+-- §5. Hensel 提升（generated candidate + certified fallback）
 -- ============================================================
 
-/-- L1 Hensel 提升 — 使用 `__hensel_lift_upoly_ir`（Corpus.lean，翻译自 C++）。
-    正确性由 `__hensel_lift_upoly_ir_refines` 保证。
-    当前暂用 L2 `hensel_lift`（待精化定理填补后改回 C++ 路径）。 -/
+/-- L1 Hensel 提升：对生成的整系数候选做 `p^k` 投影和合同认证。 -/
 noncomputable def hensel_l1 (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
     (facs_p : List (Polynomial (ZMod p))) : List (Polynomial (ZMod (p ^ k))) :=
-  hensel_lift p k hk f facs_p
+  Refinement.henselZpSafe p k hk f (toSparsePolyZZ f) facs_p
+    ((facs_p.map toSparsePolyZp).toArray)
 
 lemma hensel_l1_correct (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (hk : 0 < k) (f : Polynomial ℤ)
     (facs_p : List (Polynomial (ZMod p)))
@@ -365,7 +370,8 @@ lemma hensel_l1_correct (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (hk : 0 < k)
     (hprod : Polynomial.map (Int.castRingHom (ZMod p)) f = facs_p.prod)
     (hcop : facs_p.Pairwise (fun a b => IsCoprime a b))
     : HenselCorrect f k facs_p (hensel_l1 hp_size k hk f facs_p) :=
-  hensel_lift_correct p k hk f facs_p hne hprod hcop
+  Refinement.henselZpSafe_correct p k hk f (toSparsePolyZZ f) facs_p
+    ((facs_p.map toSparsePolyZp).toArray) hne hprod hcop
 
 -- ============================================================
 -- §6. 因子重组（L1 包装 — TODO: 替换为 __factor_recombine_upoly_ir 精化版本）
@@ -391,17 +397,17 @@ lemma recombine_l1_correct (hp_size : 2 * p ≤ UInt64.size) (k : ℕ) (f : Poly
 /-- C++ 翻译代码的 Z[x] 因式分解正确性定理。
 
     使用 L1 包装（C++ 翻译函数）实例化 `factor_ZZ_correct` 的三个子过程。
-    当前 L1 包装中 SQF、DDF 与 EDF 已使用验证过的 total safe 路径。
-    Hensel 和 Recombine 同理。
+    当前 L1 包装中 SQF、DDF、EDF 与 Hensel 已接入已验证边界。
+    Recombine 仍待精化。
 
     精化定理状态：
      - ✅ `__squarefree_Zp_ir_refines`
      - ✅ `ddfZpSafe_refines`
      - ✅ `edfZpSafe_correct`（partial RNG 入口的总化规格边界）
+     - ✅ `henselZpSafe_correct`（整系数候选投影与认证回退）
      - ✅ `__symmetric_mod_ir_refines`
      - ❌ `__binomial_ir_refines`
      - ❌ `__isqrt_ceil_ir_refines`
-     - ❌ `__hensel_lift_*_ir_refines`（待新增）
      - ❌ `__recombine_*_ir_refines`（待新增）
  -/
 theorem factor_ZZ_cpp_correct

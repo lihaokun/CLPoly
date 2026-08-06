@@ -44,6 +44,11 @@
 - 证明正误差 add-back 安全性：由
   `B*delta+d*(B-q0)=A` 与 `A+d*q0<B²` 推出 `delta+d<B`，排除加回
   模数时的额外 UInt64 回绕。
+- 从 `X=u1*m+u0=B*t+q0` 推导统一且无自然数截断的 balance identity，
+  并按 `q*d≤N` 与 `N<q*d` 分解为 detector 使用的正、负方程。
+- 证明预逆 deficit `e=B²-m*d` 满足 `0<e≤d`；再用
+  `u1<d`、`u0<B` 与正 balance 方程直接推出比较触发时
+  `delta+d<B`，不再把该性质作为外部假设。
 
 ## 为什么做
 

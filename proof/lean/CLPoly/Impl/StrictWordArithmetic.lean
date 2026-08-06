@@ -844,6 +844,142 @@ theorem preinv_positive_add_noWrap (B d q0 delta A : Nat)
 /-
   Natural-language proof.
 
+  The concrete source term is `A=u1*e+(B-d)*u0`, where the preinverse deficit
+  satisfies `e≤d`.  Bounding `u1≤d-1` and `u0≤B-1` gives the strict headroom
+  needed by the positive detector.  If `delta+d≥B` while `q0<delta`, the
+  balance equation forces its left side above that maximal source term, a
+  contradiction.  Hence a requested positive add-back is always below `B`.
+-/
+theorem preinv_positive_detector_bound (B d e u1 u0 q0 delta : Nat)
+    (hdB : d < B) (hu1 : u1 < d) (hu0 : u0 < B) (he : e ≤ d)
+    (hq0 : q0 < delta) (hdeltaB : delta < B)
+    (hbalance : B * delta + d * (B - q0) =
+      u1 * e + (B - d) * u0) :
+    delta + d < B := by
+  have hd : 0 < d := by omega
+  have hu1le : u1 ≤ d - 1 := by omega
+  have hu0le : u0 ≤ B - 1 := by omega
+  have hu1e : u1 * e ≤ (d - 1) * d := Nat.mul_le_mul hu1le he
+  have hu0p : (B - d) * u0 ≤ (B - d) * (B - 1) :=
+    Nat.mul_le_mul_left (B - d) hu0le
+  have hdsub : B - d + d = B := Nat.sub_add_cancel (Nat.le_of_lt hdB)
+  have hdm : d - 1 + 1 = d := by omega
+  have hBm : B - 1 + 1 = B := by omega
+  have hdel : B - delta + delta = B :=
+    Nat.sub_add_cancel (Nat.le_of_lt hdeltaB)
+  by_contra hn
+  have hBd : B - d ≤ delta := by omega
+  have hgap : B - delta + 1 ≤ B - q0 := by omega
+  have hgapmul : d * (B - delta + 1) ≤ d * (B - q0) :=
+    Nat.mul_le_mul_left d hgap
+  ring_nf at hbalance hu1e hu0p hgapmul hdsub hdm hBm hdel
+  nlinarith [sq_nonneg (B - d), sq_nonneg (delta - (B - d))]
+
+/-
+  Natural-language proof.
+
+  The strict lower product bound makes the deficit `B²-m*d` positive.  The
+  upper bound `B²≤(m+1)*d=m*d+d` makes that same deficit at most one modulus.
+-/
+theorem preinv_deficit_bounds (B d m : Nat)
+    (hupper : m * d < B ^ 2) (hlower : B ^ 2 ≤ (m + 1) * d) :
+    0 < B ^ 2 - m * d ∧ B ^ 2 - m * d ≤ d := by
+  have hle : m * d ≤ B ^ 2 := Nat.le_of_lt hupper
+  have hsplit : m * d + (B ^ 2 - m * d) = B ^ 2 :=
+    Nat.add_sub_of_le hle
+  ring_nf at hlower
+  omega
+
+/-
+  Natural-language proof.
+
+  Euclidean division of `X=u1*m+u0` gives `X=B*t+q0`.  Writing the
+  preinverse deficit as `e=B²-m*d`, multiplication and collection of terms
+  yields one unsigned identity:
+
+      B*N + d*(B-q0) = B*((t+1)*d) + u1*e + (B-d)*u0.
+
+  This identity contains no truncated subtraction.  It is therefore the safe
+  bridge from the generated quotient limbs to the positive and negative
+  detector balance equations used above.
+-/
+theorem preinv_balance_identity (B d m u1 u0 : Nat)
+    (hB : 0 < B) (hdB : d ≤ B) (hmd : m * d ≤ B ^ 2) :
+    let X := u1 * m + u0
+    let t := X / B
+    let q0 := X % B
+    let q := t + 1
+    let N := u1 * B + u0
+    let e := B ^ 2 - m * d
+    let A := u1 * e + (B - d) * u0
+    B * N + d * (B - q0) = B * (q * d) + A := by
+  dsimp
+  let X := u1 * m + u0
+  let t := X / B
+  let q0 := X % B
+  have hq0 : q0 < B := Nat.mod_lt X hB
+  have hX : B * t + q0 = X := by
+    simpa [t, q0] using Nat.div_add_mod X B
+  have he : m * d + (B ^ 2 - m * d) = B ^ 2 := Nat.add_sub_of_le hmd
+  dsimp [X, t, q0] at hX hq0 ⊢
+  have hdsub : B - d + d = B := Nat.sub_add_cancel hdB
+  have hqsub : B - q0 + q0 = B := Nat.sub_add_cancel (Nat.le_of_lt hq0)
+  dsimp [q0, X] at hqsub
+  have hXd := congrArg (fun z : Nat => d * z) hX
+  have heu := congrArg (fun z : Nat => u1 * z) he
+  have hq := congrArg (fun z : Nat => d * z) hqsub
+  have hdu := congrArg (fun z : Nat => u0 * z) hdsub
+  ring_nf at hXd heu hq hdu ⊢
+  omega
+
+/-
+  Natural-language proof.
+
+  The unsigned balance identity can now be oriented according to the actual
+  comparison between `q*d` and `N`.  In the nonnegative case it yields the
+  positive detector equation; in the negative case it yields the wrapped
+  detector equation.  Multiplication is monotone, so both natural-number
+  subtractions are known not to truncate before they are introduced.
+-/
+theorem preinv_balance_cases (B d m u1 u0 : Nat)
+    (hB : 0 < B) (hdB : d ≤ B) (hmd : m * d ≤ B ^ 2) :
+    let X := u1 * m + u0
+    let t := X / B
+    let q0 := X % B
+    let qd := (t + 1) * d
+    let N := u1 * B + u0
+    let A := u1 * (B ^ 2 - m * d) + (B - d) * u0
+    (qd ≤ N → B * (N - qd) + d * (B - q0) = A) ∧
+      (N < qd → B * (qd - N) + A = d * (B - q0)) := by
+  dsimp
+  have hmaster := preinv_balance_identity B d m u1 u0 hB hdB hmd
+  dsimp at hmaster
+  constructor
+  · intro hle
+    have hmul : B * (((u1 * m + u0) / B + 1) * d) ≤
+        B * (u1 * B + u0) := by
+      exact Nat.mul_le_mul_left B hle
+    rw [Nat.mul_sub_left_distrib]
+    have hcancel :
+        B * (u1 * B + u0) - B * (((u1 * m + u0) / B + 1) * d) +
+          B * (((u1 * m + u0) / B + 1) * d) = B * (u1 * B + u0) :=
+      Nat.sub_add_cancel hmul
+    omega
+  · intro hlt
+    have hmul : B * (u1 * B + u0) ≤
+        B * (((u1 * m + u0) / B + 1) * d) := by
+      exact Nat.mul_le_mul_left B (Nat.le_of_lt hlt)
+    rw [Nat.mul_sub_left_distrib]
+    have hcancel :
+        B * (((u1 * m + u0) / B + 1) * d) - B * (u1 * B + u0) +
+          B * (u1 * B + u0) =
+            B * (((u1 * m + u0) / B + 1) * d) :=
+      Nat.sub_add_cancel hmul
+    omega
+
+/-
+  Natural-language proof.
+
   The generated C++ multiplication first shifts `a`, forms its exact UInt128
   product with `b`, and splits that product into high and low limbs.  The
   remaining quotient estimate, carry conversion, two correction branches and

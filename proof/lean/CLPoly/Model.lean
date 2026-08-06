@@ -366,6 +366,64 @@ theorem writeU64_of_valid (heap : RawHeap) (ptr : RawPtr UInt64)
   simp only [writeU64, hregion, hr, dif_pos, hoffset]
   simp [heap', region']
 
+theorem writeU64_preserves_valid (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (index : Nat) (value : UInt64)
+    (hwrite : heap.writeU64 ptr index value = .ok heap')
+    (other : RawPtr UInt64) (length : Nat) :
+    ValidU64Slice heap other length ↔ ValidU64Slice heap' other length := by
+  cases hregion : ptr.region with
+  | none => simp [writeU64, hregion] at hwrite
+  | some regionId =>
+    simp only [writeU64, hregion] at hwrite
+    split at hwrite
+    next hr =>
+      split at hwrite
+      next hoffset =>
+        let region' := heap.regions[regionId].set
+          (ptr.limbOffset + index) value hoffset
+        let updated : RawHeap :=
+          { heap with regions := heap.regions.set regionId region' hr }
+        have heq : heap' = updated := by
+          exact Except.ok.inj hwrite.symm
+        subst heap'
+        dsimp [updated, region']
+        unfold ValidU64Slice
+        constructor <;> intro hvalid
+        · rcases hvalid with ⟨otherRegion, hother, hrother, hlength⟩
+          have hrother' : otherRegion < (heap.regions.set regionId
+              (heap.regions[regionId].set (ptr.limbOffset + index) value hoffset) hr).size := by
+            simpa using hrother
+          refine ⟨otherRegion, hother, hrother', ?_⟩
+          by_cases heqRegion : otherRegion = regionId
+          · subst otherRegion
+            simpa using hlength
+          · simpa only [Array.getElem_set_ne hr hrother (Ne.symm heqRegion)]
+              using hlength
+        · rcases hvalid with ⟨otherRegion, hother, hrother, hlength⟩
+          have hrother' : otherRegion < heap.regions.size := by
+            simpa using hrother
+          refine ⟨otherRegion, hother, hrother', ?_⟩
+          by_cases heqRegion : otherRegion = regionId
+          · subst otherRegion
+            simpa using hlength
+          · simpa only [Array.getElem_set_ne hr hrother' (Ne.symm heqRegion)]
+              using hlength
+      next => cases hwrite
+    next => cases hwrite
+
+theorem validU64Slice_add (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length start count : Nat) (hvalid : ValidU64Slice heap ptr length)
+    (hrange : start + count ≤ length) :
+    ValidU64Slice heap (RawPtr.add ptr start) count := by
+  rcases hvalid with ⟨regionId, hregion, hr, hlength⟩
+  refine ⟨regionId, ?_, hr, ?_⟩
+  · simpa [RawPtr.add] using hregion
+  · change ptr.limbOffset + start * 1 + count ≤ heap.regions[regionId].size
+    omega
+
+def ValidWord3Slice (heap : RawHeap) (ptr : RawPtr Word3) (length : Nat) : Prop :=
+  ValidU64Slice heap (RawPtr.reinterpret ptr) (3 * length)
+
 def readWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat) :
     RawExec Word3 :=
   let base := ptr.limbOffset + 3 * index
@@ -378,6 +436,23 @@ def readWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat) :
   | _, .error fault, _ => .error fault
   | _, _, .error fault => .error fault
 
+theorem readWord3_of_valid (heap : RawHeap) (ptr : RawPtr Word3)
+    (length index : Nat) (hvalid : ValidWord3Slice heap ptr length)
+    (hindex : index < length) :
+    ∃ value, heap.readWord3 ptr index = .ok value := by
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * index }
+  have hslice : ValidU64Slice heap limbPtr 3 := by
+    have hadd := validU64Slice_add heap (RawPtr.reinterpret ptr)
+      (3 * length) (3 * index) 3 hvalid (by omega)
+    simpa [limbPtr, RawPtr.add, RawPtr.reinterpret, Nat.mul_comm,
+      Nat.mul_left_comm, Nat.mul_assoc] using hadd
+  rcases readU64_of_valid heap limbPtr 3 0 hslice (by omega) with ⟨lo, hlo⟩
+  rcases readU64_of_valid heap limbPtr 3 1 hslice (by omega) with ⟨mid, hmid⟩
+  rcases readU64_of_valid heap limbPtr 3 2 hslice (by omega) with ⟨hi, hhi⟩
+  refine ⟨{ lo := lo, mid := mid, hi := hi }, ?_⟩
+  simp [readWord3, limbPtr, hlo, hmid, hhi]
+
 def writeWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat)
     (value : Word3) : RawExec RawHeap :=
   let base := ptr.limbOffset + 3 * index
@@ -389,6 +464,46 @@ def writeWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat)
     match writeU64 heap1 limbPtr 1 value.mid with
     | .error fault => .error fault
     | .ok heap2 => writeU64 heap2 limbPtr 2 value.hi
+
+theorem writeWord3_of_valid (heap : RawHeap) (ptr : RawPtr Word3)
+    (length index : Nat) (value : Word3)
+    (hvalid : ValidWord3Slice heap ptr length) (hindex : index < length) :
+    ∃ heap', heap.writeWord3 ptr index value = .ok heap' := by
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * index }
+  have hslice : ValidU64Slice heap limbPtr 3 := by
+    have hadd := validU64Slice_add heap (RawPtr.reinterpret ptr)
+      (3 * length) (3 * index) 3 hvalid (by omega)
+    simpa [limbPtr, RawPtr.add, RawPtr.reinterpret, Nat.mul_comm,
+      Nat.mul_left_comm, Nat.mul_assoc] using hadd
+  rcases writeU64_of_valid heap limbPtr 3 0 value.lo hslice (by omega) with
+    ⟨heap1, hwrite0⟩
+  have hslice1 : ValidU64Slice heap1 limbPtr 3 :=
+    (writeU64_preserves_valid heap heap1 limbPtr 0 value.lo hwrite0 limbPtr 3).mp hslice
+  rcases writeU64_of_valid heap1 limbPtr 3 1 value.mid hslice1 (by omega) with
+    ⟨heap2, hwrite1⟩
+  have hslice2 : ValidU64Slice heap2 limbPtr 3 :=
+    (writeU64_preserves_valid heap1 heap2 limbPtr 1 value.mid hwrite1 limbPtr 3).mp hslice1
+  rcases writeU64_of_valid heap2 limbPtr 3 2 value.hi hslice2 (by omega) with
+    ⟨heap3, hwrite2⟩
+  refine ⟨heap3, ?_⟩
+  simp [writeWord3, limbPtr, hwrite0, hwrite1, hwrite2]
+
+theorem writeWord3_preserves_valid (heap heap' : RawHeap)
+    (ptr : RawPtr Word3) (index : Nat) (value : Word3)
+    (hwrite : heap.writeWord3 ptr index value = .ok heap')
+    (other : RawPtr UInt64) (length : Nat) :
+    ValidU64Slice heap other length ↔ ValidU64Slice heap' other length := by
+  simp only [writeWord3] at hwrite
+  split at hwrite
+  next fault => cases hwrite
+  next heap1 hwrite0 =>
+    split at hwrite
+    next fault => cases hwrite
+    next heap2 hwrite1 =>
+      exact (writeU64_preserves_valid heap heap1 _ 0 value.lo hwrite0 other length).trans
+        ((writeU64_preserves_valid heap1 heap2 _ 1 value.mid hwrite1 other length).trans
+          (writeU64_preserves_valid heap2 heap' _ 2 value.hi hwrite other length))
 
 /-- Limb-level semantics used for the `memcpy` calls in the dense polynomial
 raw API.  Source and destination validity are checked at every C++ access;

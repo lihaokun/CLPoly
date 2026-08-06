@@ -9,6 +9,8 @@
 - 按 C++ `_poly_divrem` 的四个循环建立 `RawExec` L1：W3 初始化、内层乘加、倒序商循环、余式归约。
 - 所有原始指针访问均经过 `RawHeap.read/write`，错误传播为 `RawFault`。
 - 增加 raw limb slice 有效性谓词，以及“有效 slice 内读写必成功”的基础桥接引理。
+- 证明单-limb 与三-limb写入保持所有 raw slice 的分配区长度不变量。
+- 完成 W3 初始化循环的无故障定理：合法 A/W3 布局下必返回 `.ok`，且两项布局不变量保持。
 - 增加严格准入检查器，将专用 lowering 绑定到稳定化后的完整 Clang AST 哈希，并检查原始指针签名、四循环形状、Lean artifact 哈希和禁用构造。
 
 ## 为什么做
@@ -34,12 +36,13 @@
 
 - `proof/lean/CLPoly/Model.lean`
 - `proof/lean/CLPoly/Generated/StrictDivrem.lean`
+- `proof/lean/CLPoly/Impl/StrictDivremRefinement.lean`
 - `proof/cpp2lean_v2/tests/check_strict_divrem.py`
 
 ## 度量
 
 - 耗时：约 1 小时
 - 迭代：6 轮 Lean/AST/checker 编译检查
-- Lean 新增/修改行数：约 145 行
+- Lean 新增/修改行数：约 260 行
 - 对应 C++ 行数：约 50 行 `_poly_divrem` 与 `_poly_normalise/memcpy` 依赖
 - 放弃的方案：继续使用 Array `get!`/`set!`；原因是越界默认值不等于 C++ 语义

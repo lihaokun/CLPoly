@@ -279,7 +279,10 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
 # - arity 3: (n, default_val, allocator) — alloc 忽略
 _VECTOR_PATTERNS = {
     0: ConstructorResolution("#[]", is_default=True),
-    1: ConstructorResolution("({a0} : Array _)"),       # copy
+    # Same-type copy construction is removed as identity by Pass 5 before
+    # this table is consulted.  The remaining one-argument overload is
+    # vector(size_type n), which value-initializes n elements.
+    1: ConstructorResolution("Array.replicate (({a0}).toNat) default"),
     2: ConstructorResolution("Array.replicate (({a0}).toNat) {a1}"),  # size → Nat
     3: ConstructorResolution("Array.replicate (({a0}).toNat) {a1}"),
 }

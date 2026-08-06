@@ -1136,6 +1136,12 @@ def _get_loop_termination_measure(f: MIRFunc) -> Optional[str]:
         return "c_3.toNat"
     if f.base_name == "_loop___strip_0":
         return "Array.size this_1._coeffs"
+    if f.base_name == "_loop_divrem_0":
+        return "r_len_1 - i_2"
+    if f.base_name == "_loop_divrem_2":
+        return "(i_5.toInt + 1).toNat"
+    if f.base_name == "_loop_divrem_3":
+        return "(d_1.toInt - i_8.toInt).toNat"
     if not f.base_name.startswith("_loop_"):
         return None
     if len(f.params) < 2:
@@ -1320,6 +1326,27 @@ def emit_mirfunc(f: MIRFunc,
         body = body.replace(
             "  if ((! (Array.isEmpty this_1._coeffs)) &&",
             "  if h_strip : ((! (Array.isEmpty this_1._coeffs)) &&")
+    elif f.base_name == "_loop_divrem_2":
+        body = body.replace(
+            "  let bb_19 := fun i_5 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1 R3_7 =>\n"
+            "    let i_6 : Int64 := (i_5 - (1 : Int64))\n"
+            f"    {f.lean_name} i_6 R3_7 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1\n",
+            "")
+        body = body.replace(
+            "  if (i_5 >= (0 : Int64)) then",
+            "  if h_nonneg : (i_5 >= (0 : Int64)) then")
+        body = body.replace(
+            "      bb_19 i_5 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1 R3_5",
+            "      let i_6 : Int64 := (i_5 - (1 : Int64))\n"
+            f"      {f.lean_name} i_6 R3_5 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1")
+        body = body.replace(
+            "      bb_19 i_5 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1 R3_4",
+            "      let i_6 : Int64 := (i_5 - (1 : Int64))\n"
+            f"      {f.lean_name} i_6 R3_4 Q_8 B R_4 d_1 inv_lc_1 norm_1 p_1 pinv_1")
+    elif f.base_name == "_loop_divrem_3":
+        body = body.replace(
+            "  if (i_8 < d_1) then",
+            "  if h_lt : (i_8 < d_1) then")
     if term is not None:
         if f.base_name == "_loop___ddf_Zp_0":
             decreasing = "\ndecreasing_by exact hdec"
@@ -1356,6 +1383,16 @@ def emit_mirfunc(f: MIRFunc,
                 "    simpa [hempty] using h_strip.1\n"
                 "  rw [Array.size_pop]\n"
                 "  omega")
+        elif f.base_name == "_loop_divrem_0":
+            decreasing = "\ndecreasing_by omega"
+        elif f.base_name == "_loop_divrem_2":
+            decreasing = (
+                "\ndecreasing_by\n"
+                "  all_goals exact int64_sub_one_measure_lt i_5 h_nonneg")
+        elif f.base_name == "_loop_divrem_3":
+            decreasing = (
+                "\ndecreasing_by\n"
+                "  exact int64_add_one_gap_lt i_8 d_1 h_lt")
         else:
             decreasing = ""
         return f"{sig}\n{body}\ntermination_by {term}{decreasing}"

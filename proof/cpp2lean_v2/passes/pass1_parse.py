@@ -697,6 +697,8 @@ def parse_expr(node: Any) -> ExprIR:
 
     if kind == "InitListExpr":
         elems = [parse_expr(c) for c in node.get("inner", [])]
+        if isinstance(ty, NamedType) and ty.name == "Word3" and len(elems) == 3:
+            return Call(callee="Word3.mk", args=elems, ty=ty)
         elem_ty = elems[0].ty if elems and hasattr(elems[0], "ty") else UnknownType("")
         return ArrayLit(elems=elems, elem_ty=elem_ty)
 

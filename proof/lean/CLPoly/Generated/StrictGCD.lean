@@ -38,7 +38,7 @@ def dense_upoly_zp_of_prime_ir (p : UInt64) : DenseUPolyZp :=
   let this_4 : DenseUPolyZp /- ref residual -/ := (dense_upoly_zp___precompute_ir this_3)
   this_4
 
-def _loop_dense_upoly_zp_0_ir (__rangefor_idx_0_2 : Nat) (this_6 : DenseUPolyZp) (__rangefor_cont_0_1 : SparsePolyZp) : (Int64 × DenseUPolyZp) :=
+def _loop_dense_upoly_zp_0_ir (__rangefor_idx_0_2 : Nat) (this_6 : DenseUPolyZp /- ref residual -/) (__rangefor_cont_0_1 : SparsePolyZp) : (Int64 × DenseUPolyZp) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
     -- require (h_nonneg): (term_1.fst.deg >= (0 : Int64))
@@ -151,7 +151,7 @@ def dense_upoly_zp_empty_ir (this : DenseUPolyZp) : Bool :=
 def dense_upoly_zp_nmod_inv_ir (this : DenseUPolyZp) (a : UInt64) : UInt64 :=
   (inv_prime_ir a this._p)
 
-def _loop___strip_0_ir (this_1 : DenseUPolyZp) : (Int64 × DenseUPolyZp) :=
+def _loop___strip_0_ir (this_1 : DenseUPolyZp /- ref residual -/) : (Int64 × DenseUPolyZp) :=
   if h_strip : ((! (Array.isEmpty this_1._coeffs)) && ((Array.getLast! this_1._coeffs) == (0 : UInt64))) then
     let this_2 : DenseUPolyZp /- ref residual -/ := { this_1 with _coeffs := (Array.pop this_1._coeffs) }
     _loop___strip_0_ir this_2

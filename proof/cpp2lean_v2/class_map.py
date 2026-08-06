@@ -719,6 +719,9 @@ CALL_OPERATOR_MAP = {
 # M2：TRANSLATION_SCOPE 中函数的输出参数（从 C++ 源码扫描）
 # func_name → [输出参数索引]（非 const 引用参数位置）
 TRANSLATION_SCOPE_OUTPUT_PARAMS = {
+    "_umul128": [0, 1],                 # hi, lo
+    "_add_carry3": [0],                 # word3 accumulator
+    "divrem": [0, 1],                   # dense quotient and remainder
     "__upoly_make_monic": [0],           # f
     "__upoly_mod_coeff": [0],            # f
     "__upoly_divmod_mod": [0, 1],        # q, r

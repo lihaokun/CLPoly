@@ -170,6 +170,28 @@ theorem int64_sub_one_measure_lt (i : Int64) (h : i >= (0 : Int64)) :
   · have hi := Int64.toInt_lt i
     omega
 
+/-- Termination fact for an ascending signed 64-bit loop guarded by `i < d`.
+
+The guard implies `i` is strictly below the signed upper endpoint because
+`d` itself is representable.  Thus machine addition by one agrees with
+integer addition, and the nonnegative gap to `d` drops by one. -/
+theorem int64_add_one_gap_lt (i d : Int64) (h : i < d) :
+    (d.toInt - (i + (1 : Int64)).toInt).toNat <
+      (d.toInt - i.toInt).toNat := by
+  rw [Int64.toInt_add]
+  have hone : (1 : Int64).toInt = 1 := by decide
+  rw [hone]
+  rw [Int.bmod_eq_of_le]
+  · have hid : i.toInt < d.toInt := by
+      simpa [Int64.lt_iff_toInt_lt] using h
+    omega
+  · have hlo := Int64.le_toInt i
+    omega
+  · have hdi := Int64.toInt_lt d
+    have hid : i.toInt < d.toInt := by
+      simpa [Int64.lt_iff_toInt_lt] using h
+    omega
+
 /-- Termination fact for the C++ binary-exponentiation loop.
 
 Proof sketch: a positive integer has positive absolute value; division by the

@@ -78,6 +78,41 @@ theorem strict_upoly_powmod_zero (base m : SparsePolyZp) :
   simp [Generated.StrictDDF.__upoly_powmod_ir,
     strict_powmod_loop_of_nonpos]
 
+/-- One positive iteration of the generated binary-powmod loop.  The recursive
+call is accepted by the generated `natAbs` well-founded measure. -/
+theorem strict_powmod_loop_positive_eq (e : ZZ) (b r m : SparsePolyZp)
+    (he : e > (0 : Int32).toInt) :
+    Generated.StrictDDF._loop___upoly_powmod_0_ir e b r m =
+      let r' := if (e % (2 : Int32).toInt != (0 : Int32).toInt) then
+          Generated.StrictDDF.__upoly_mod_ir (r * b) m else r
+      let e' := e / (2 : Int32).toInt
+      let b' := if e' > (0 : Int32).toInt then
+          Generated.StrictDDF.__upoly_mod_ir (b * b) m else b
+      Generated.StrictDDF._loop___upoly_powmod_0_ir e' b' r' m := by
+  change 0 < e at he
+  have he_nonneg : 0 ≤ e := le_of_lt he
+  have he_div_nonneg : 0 ≤ e / (2 : Int) :=
+    Int.ediv_nonneg he_nonneg (by norm_num)
+  have he_div_lt : e / (2 : Int) < e := by
+    apply Int.ediv_lt_of_lt_mul (by norm_num : (0 : Int) < 2)
+    nlinarith [he]
+  have hdec :
+      Generated.StrictDDF.upolyPowmodWellFoundedMeasure
+          (e / (2 : Int32).toInt) <
+        Generated.StrictDDF.upolyPowmodWellFoundedMeasure e := by
+    simp only [Generated.StrictDDF.upolyPowmodWellFoundedMeasure]
+    have hcast : ((e / (2 : Int)).natAbs : Int) <
+        (e.natAbs : Int) := by
+      rw [Int.natAbs_of_nonneg he_div_nonneg,
+        Int.natAbs_of_nonneg he_nonneg]
+      exact he_div_lt
+    exact_mod_cast hcast
+  rw [Generated.StrictDDF._loop___upoly_powmod_0_ir.eq_1]
+  simp only [he, ↓reduceIte]
+  by_cases ho : e % (2 : Int) = 1 <;>
+    by_cases hd : 0 < e / (2 : Int) <;> simp_all [ho, hd] <;>
+      (split <;> rfl)
+
 /-- `__upoly_mod_ir` 在规范输入上同时保持稀疏规范形，并精化为
 mathlib 的首一多项式余式。 -/
 private theorem upoly_mod_step_data (h2p : 2 * p ≤ UInt64.size)
@@ -117,6 +152,23 @@ private theorem mul_mod_step_data (h2p : 2 * p ≤ UInt64.size)
   refine ⟨hstep.1, ?_⟩
   rw [hstep.2, SparsePolyZp.toPoly_mul p h2p hp2 a b ha.2.2 hb.2.2]
 
+/-- The same multiplication/remainder fact, stated directly for the generated
+strict dependency closure. -/
+private theorem strict_mul_mod_step_data (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (a b m : SparsePolyZp)
+    (ha : CanonicalRep p a) (hb : CanonicalRep p b) (hm : CanonicalRep p m)
+    (hm_ne : ¬m.isEmpty) (hm_monic : Monic (SparsePolyZp.toPoly p m)) :
+    CanonicalRep p (Generated.StrictDDF.__upoly_mod_ir (a * b) m) ∧
+      SparsePolyZp.toPoly p
+          (Generated.StrictDDF.__upoly_mod_ir (a * b) m) =
+        (SparsePolyZp.toPoly p a * SparsePolyZp.toPoly p b) %ₘ
+          SparsePolyZp.toPoly p m := by
+  have hab := canonicalRep_mul hp2 a b ha hb
+  have hstep := strict_upoly_mod_step_data h2p hp2 (a * b) m hab hm
+    hm_ne hm_monic
+  refine ⟨hstep.1, ?_⟩
+  rw [hstep.2, SparsePolyZp.toPoly_mul p h2p hp2 a b ha.2.2 hb.2.2]
+
 private lemma modByMonic_idem (a m : Polynomial (ZMod p)) (hm : Monic m) :
     (a %ₘ m) %ₘ m = a %ₘ m :=
   (modByMonic_eq_self_iff hm).mpr (degree_modByMonic_lt a hm)
@@ -137,6 +189,143 @@ private lemma pow_modByMonic_congr {a b m : Polynomial (ZMod p)}
   | succ n ih =>
       rw [pow_succ, pow_succ]
       exact mul_modByMonic_congr ih h
+
+set_option maxHeartbeats 0 in
+/-- Direct semantics of the generated well-founded binary-powmod loop for a
+natural exponent.  No auxiliary executable loop occurs in this statement. -/
+private theorem strict_powmod_loop_refines (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (m : SparsePolyZp)
+    (hm : CanonicalRep p m) (hm_ne : ¬m.isEmpty)
+    (hm_monic : Monic (SparsePolyZp.toPoly p m)) :
+    ∀ (n : Nat) (b r : SparsePolyZp),
+      CanonicalRep p b → CanonicalRep p r →
+      SparsePolyZp.toPoly p b %ₘ SparsePolyZp.toPoly p m =
+        SparsePolyZp.toPoly p b →
+      SparsePolyZp.toPoly p r %ₘ SparsePolyZp.toPoly p m =
+        SparsePolyZp.toPoly p r →
+      let out :=
+        (Generated.StrictDDF._loop___upoly_powmod_0_ir (n : Int) b r m).2
+      CanonicalRep p out ∧
+        SparsePolyZp.toPoly p out =
+          (SparsePolyZp.toPoly p r * SparsePolyZp.toPoly p b ^ n) %ₘ
+            SparsePolyZp.toPoly p m := by
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+      intro b r hb hr hbmod hrmod
+      by_cases hn : n = 0
+      · subst n
+        dsimp only
+        rw [strict_powmod_loop_of_nonpos _ _ _ _ (by decide)]
+        exact ⟨hr, by simpa using hrmod.symm⟩
+      · have hnpos : 0 < n := Nat.pos_of_ne_zero hn
+        let k := n / 2
+        have hklt : k < n := Nat.div_lt_self hnpos (by norm_num)
+        by_cases hodd : n % 2 ≠ 0
+        · have hodd1 : n % 2 = 1 := by omega
+          let r' := Generated.StrictDDF.__upoly_mod_ir (r * b) m
+          have hr'data := strict_mul_mod_step_data h2p hp2 r b m hr hb hm
+            hm_ne hm_monic
+          have hr'can : CanonicalRep p r' := by simpa [r'] using hr'data.1
+          have hr'poly : SparsePolyZp.toPoly p r' =
+              (SparsePolyZp.toPoly p r * SparsePolyZp.toPoly p b) %ₘ
+                SparsePolyZp.toPoly p m := by simpa [r'] using hr'data.2
+          have hr'mod : SparsePolyZp.toPoly p r' %ₘ SparsePolyZp.toPoly p m =
+              SparsePolyZp.toPoly p r' := by
+            rw [hr'poly]
+            exact modByMonic_idem _ _ hm_monic
+          by_cases hkpos : 0 < k
+          · let b' := Generated.StrictDDF.__upoly_mod_ir (b * b) m
+            have hb'data := strict_mul_mod_step_data h2p hp2 b b m hb hb hm
+              hm_ne hm_monic
+            have hb'can : CanonicalRep p b' := by simpa [b'] using hb'data.1
+            have hb'poly : SparsePolyZp.toPoly p b' =
+                (SparsePolyZp.toPoly p b * SparsePolyZp.toPoly p b) %ₘ
+                  SparsePolyZp.toPoly p m := by simpa [b'] using hb'data.2
+            have hb'mod : SparsePolyZp.toPoly p b' %ₘ SparsePolyZp.toPoly p m =
+                SparsePolyZp.toPoly p b' := by
+              rw [hb'poly]
+              exact modByMonic_idem _ _ hm_monic
+            have hrec := ih k hklt b' r' hb'can hr'can hb'mod hr'mod
+            have hkcast : (n : Int) / 2 = (k : Int) := by simp [k]
+            have hoddcast : (n : Int) % 2 = 1 := by exact_mod_cast hodd1
+            have hkposcast : (0 : Int) < k := by exact_mod_cast hkpos
+            have hkposgenerated : (k : Int) > (0 : Int32).toInt := by
+              change (0 : Int) < k
+              exact hkposcast
+            have hdivpos : (n : Int) / (2 : Int32).toInt >
+                (0 : Int32).toInt := by
+              change (0 : Int) < (n : Int) / 2
+              rw [hkcast]
+              exact hkposcast
+            rw [strict_powmod_loop_positive_eq (n : Int) b r m (by
+              change (0 : Int) < n
+              exact_mod_cast hnpos)]
+            simp [hkcast, hoddcast, hdivpos, hkposgenerated, b', r']
+            rw [if_pos hkpos]
+            dsimp only at hrec ⊢
+            refine ⟨hrec.1, hrec.2.trans ?_⟩
+            have hnform : n = 2 * k + 1 := by omega
+            calc
+              (SparsePolyZp.toPoly p r' * SparsePolyZp.toPoly p b' ^ k) %ₘ
+                  SparsePolyZp.toPoly p m =
+                  ((SparsePolyZp.toPoly p r * SparsePolyZp.toPoly p b) *
+                    (SparsePolyZp.toPoly p b * SparsePolyZp.toPoly p b) ^ k) %ₘ
+                    SparsePolyZp.toPoly p m := mul_modByMonic_congr
+                      (by rw [hr'poly, modByMonic_idem _ _ hm_monic])
+                      (pow_modByMonic_congr
+                        (by rw [hb'poly, modByMonic_idem _ _ hm_monic]) k)
+              _ = (SparsePolyZp.toPoly p r * SparsePolyZp.toPoly p b ^ n) %ₘ
+                    SparsePolyZp.toPoly p m := by rw [hnform]; congr 1 <;> ring
+          · have hkzero : k = 0 := by omega
+            have hn_one : n = 1 := by omega
+            subst n
+            simp only [Nat.cast_one]
+            rw [strict_powmod_loop_positive_eq (1 : Int) b r m (by decide)]
+            simpa [r', strict_powmod_loop_of_nonpos] using hr'data
+        · have heven : n % 2 = 0 := by omega
+          have hkpos : 0 < k := by dsimp [k]; omega
+          let b' := Generated.StrictDDF.__upoly_mod_ir (b * b) m
+          have hb'data := strict_mul_mod_step_data h2p hp2 b b m hb hb hm
+            hm_ne hm_monic
+          have hb'can : CanonicalRep p b' := by simpa [b'] using hb'data.1
+          have hb'poly : SparsePolyZp.toPoly p b' =
+              (SparsePolyZp.toPoly p b * SparsePolyZp.toPoly p b) %ₘ
+                SparsePolyZp.toPoly p m := by simpa [b'] using hb'data.2
+          have hb'mod : SparsePolyZp.toPoly p b' %ₘ SparsePolyZp.toPoly p m =
+              SparsePolyZp.toPoly p b' := by
+            rw [hb'poly]
+            exact modByMonic_idem _ _ hm_monic
+          have hrec := ih k hklt b' r hb'can hr hb'mod hrmod
+          have hkcast : (n : Int) / 2 = (k : Int) := by simp [k]
+          have hevencast : (n : Int) % 2 = 0 := by exact_mod_cast heven
+          have hkposcast : (0 : Int) < k := by exact_mod_cast hkpos
+          have hkposgenerated : (k : Int) > (0 : Int32).toInt := by
+            change (0 : Int) < k
+            exact hkposcast
+          have hdivpos : (n : Int) / (2 : Int32).toInt >
+              (0 : Int32).toInt := by
+            change (0 : Int) < (n : Int) / 2
+            rw [hkcast]
+            exact hkposcast
+          rw [strict_powmod_loop_positive_eq (n : Int) b r m (by
+            change (0 : Int) < n
+            exact_mod_cast hnpos)]
+          simp [hkcast, hevencast, hdivpos, hkposgenerated, b']
+          rw [if_pos hkpos]
+          dsimp only at hrec ⊢
+          refine ⟨hrec.1, hrec.2.trans ?_⟩
+          have hnform : n = 2 * k := by omega
+          calc
+            (SparsePolyZp.toPoly p r * SparsePolyZp.toPoly p b' ^ k) %ₘ
+                SparsePolyZp.toPoly p m =
+                (SparsePolyZp.toPoly p r *
+                  (SparsePolyZp.toPoly p b * SparsePolyZp.toPoly p b) ^ k) %ₘ
+                  SparsePolyZp.toPoly p m := mul_modByMonic_congr rfl
+                    (pow_modByMonic_congr
+                      (by rw [hb'poly, modByMonic_idem _ _ hm_monic]) k)
+            _ = (SparsePolyZp.toPoly p r * SparsePolyZp.toPoly p b ^ n) %ₘ
+                  SparsePolyZp.toPoly p m := by rw [hnform]; congr 1 <;> ring
 
 private lemma singleton_one_data (q : UInt64) (hq : q.toNat = p) :
     CanonicalRep p
@@ -228,6 +417,56 @@ private lemma front_prime_of_canonical (f : SparsePolyZp)
     rw [hget]
     exact List.get_mem _ _
   simpa [SparsePolyZp.front!] using (hf.2.2 f[0]! hmem).1
+
+set_option maxHeartbeats 0 in
+/-- The generated strict powmod entry implements exponentiation modulo a
+nonempty monic sparse modulus for positive natural exponents. -/
+theorem strict_upoly_powmod_refines (h2p : 2 * p ≤ UInt64.size)
+    (hp2 : p * p ≤ UInt64.size) (base m : SparsePolyZp) (n : Nat)
+    (hn : 0 < n) (hbase : CanonicalRep p base) (hm : CanonicalRep p m)
+    (hm_ne : ¬m.isEmpty) (hm_monic : Monic (SparsePolyZp.toPoly p m))
+    (hm_deg : 0 < (SparsePolyZp.toPoly p m).natDegree)
+    (hprime : (SparsePolyZp.front! m).snd.prime.toNat = p) :
+    CanonicalRep p
+        (Generated.StrictDDF.__upoly_powmod_ir base (n : Int) m) ∧
+      SparsePolyZp.toPoly p
+          (Generated.StrictDDF.__upoly_powmod_ir base (n : Int) m) =
+        SparsePolyZp.toPoly p base ^ n %ₘ SparsePolyZp.toPoly p m := by
+  let q := (SparsePolyZp.front! m).snd.prime
+  let one : SparsePolyZp :=
+    #[(UMonomial.mk (0 : Int32),
+      Generated.StrictDDF.__make_zp_ir (1 : Int32) q)]
+  let b := Generated.StrictDDF.__upoly_mod_ir base m
+  have hbdata := strict_upoly_mod_step_data h2p hp2 base m hbase hm hm_ne hm_monic
+  have honedata : CanonicalRep p one ∧ SparsePolyZp.toPoly p one = 1 := by
+    simpa [one, q, Generated.StrictDDF.__make_zp_ir] using
+      (singleton_one_data (SparsePolyZp.front! m).snd.prime hprime)
+  have hbmod : SparsePolyZp.toPoly p b %ₘ SparsePolyZp.toPoly p m =
+      SparsePolyZp.toPoly p b := by
+    rw [show SparsePolyZp.toPoly p b =
+      SparsePolyZp.toPoly p base %ₘ SparsePolyZp.toPoly p m by
+        simpa [b] using hbdata.2]
+    exact modByMonic_idem _ _ hm_monic
+  have honemod : SparsePolyZp.toPoly p one %ₘ SparsePolyZp.toPoly p m =
+      SparsePolyZp.toPoly p one := by
+    rw [honedata.2]
+    apply (modByMonic_eq_self_iff hm_monic).mpr
+    have hm0 : SparsePolyZp.toPoly p m ≠ 0 := by
+      intro hzero
+      simp [hzero] at hm_deg
+    simp [degree_eq_natDegree hm0, hm_deg]
+  have hloop := strict_powmod_loop_refines h2p hp2 m hm hm_ne hm_monic n
+    b one (by simpa [b] using hbdata.1) honedata.1 hbmod honemod
+  simp only [Generated.StrictDDF.__upoly_powmod_ir]
+  change CanonicalRep p
+      (Generated.StrictDDF._loop___upoly_powmod_0_ir (n : Int) b one m).2 ∧ _
+  refine ⟨hloop.1, hloop.2.trans ?_⟩
+  rw [honedata.2, one_mul]
+  exact pow_modByMonic_congr
+    (by rw [show SparsePolyZp.toPoly p b =
+      SparsePolyZp.toPoly p base %ₘ SparsePolyZp.toPoly p m by
+        simpa [b] using hbdata.2,
+      modByMonic_idem _ _ hm_monic]) n
 
 /- Any theorem for powmod, subtract-X, or the DDF loop must unfold and prove
    the corresponding definitions in Generated.StrictDDF directly. -/

@@ -48,3 +48,13 @@
 - 当前严格扫描：`sorry/admit` 0 个；fallback/后验选择定义 0 个。
 - 受影响 Lean 目标：9 个全部构建成功。
 - StrictDDF 递归：良基递归 2 处（powmod、DDF），fuel 0 处。
+
+## Powmod 直接闭合进展
+
+- 已证明生成循环的非正指数退出方程。
+- 已证明正指数单步方程及 `natAbs(e/2) < natAbs(e)`。
+- 已直接对生成循环证明二进制幂模不变量：输出表示规范，且语义为
+  `result * base^n mod modulus`。
+- 已闭合生成入口 `Generated.StrictDDF.__upoly_powmod_ir` 对正自然指数的
+  L2 多项式幂模语义。
+- 新增直接生成函数定理：4 个；新增替代可执行函数：0 个；fuel：0 个。

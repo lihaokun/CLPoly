@@ -612,6 +612,111 @@ theorem preinvQuotientPair_high_noWrap (u1 u0 pn pinv : UInt64)
 /-
   Natural-language proof.
 
+  Put `X=u1*m+u0`, `t=X/B`, and `q=t+1`.  Euclidean division gives
+  `t*B ≤ X < q*B`.  The upper preinverse inequality `m*d < B²` implies
+  `X*d ≤ (u1*B+u0)*B`, hence `t*d ≤ N` and `q*d ≤ N+d`.
+  Conversely `B² ≤ (m+1)*d`, together with `u1<d`, `u0<B`, and `d≤B`,
+  bounds `N*B` by `X*d+B²`; combining this with `X*d<q*B*d` yields
+  `N<q*d+B`.  Thus the estimated multiple lies at most one modulus above
+  the numerator and less than one machine base below it—the exact window
+  handled by the two C++ correction tests.
+-/
+theorem preinv_estimated_multiple_bounds (B d m u1 u0 : Nat)
+    (hB : 0 < B) (hdB : d ≤ B) (hu0 : u0 < B) (hu1 : u1 < d)
+    (hupper : m * d < B ^ 2) (hlower : B ^ 2 ≤ (m + 1) * d) :
+    let q := (u1 * m + u0) / B + 1
+    let N := u1 * B + u0
+    q * d ≤ N + d ∧ N < q * d + B := by
+  dsimp
+  let X := u1 * m + u0
+  let t := X / B
+  have hd : 0 < d := by omega
+  have hrem : X % B < B := Nat.mod_lt X hB
+  have hdecomp : B * t + X % B = X := by
+    simpa [t] using Nat.div_add_mod X B
+  have htd : t * d ≤ u1 * B + u0 := by
+    have h1 : t * B ≤ X := by
+      calc
+        t * B = B * t := Nat.mul_comm _ _
+        _ ≤ B * t + X % B := Nat.le_add_right _ _
+        _ = X := hdecomp
+    have h1' : t * B * d ≤ X * d := Nat.mul_le_mul_right d h1
+    have hm : u1 * (m * d) ≤ u1 * (B ^ 2) :=
+      Nat.mul_le_mul_left u1 (Nat.le_of_lt hupper)
+    have hu : u0 * d ≤ u0 * B := Nat.mul_le_mul_left u0 hdB
+    dsimp [X] at h1' ⊢
+    nlinarith
+  constructor
+  · change (t + 1) * d ≤ u1 * B + u0 + d
+    simpa [Nat.add_mul] using Nat.add_le_add_right htd d
+  · have hXq : X < (t + 1) * B := by
+      calc
+        X = B * t + X % B := hdecomp.symm
+        _ < B * t + B := Nat.add_lt_add_left hrem _
+        _ = (t + 1) * B := by ring
+    have hXqd : X * d < (t + 1) * B * d :=
+      Nat.mul_lt_mul_of_pos_right hXq hd
+    have hgap : (u1 * B + u0) * B ≤ X * d + B ^ 2 := by
+      dsimp [X]
+      nlinarith [sq_nonneg (d - u1), sq_nonneg (B - u0),
+        sq_nonneg (B - d)]
+    dsimp [t, X] at hXqd ⊢
+    nlinarith
+
+/-
+  Natural-language proof.
+
+  Every UInt64 value is below `B`.  If it is already below the normalized
+  modulus, the conditional subtraction returns it unchanged.  Otherwise the
+  machine subtraction cannot underflow; because normalization gives
+  `B ≤ 2*d`, subtracting `d` from a value below `B` leaves a value below `d`.
+-/
+theorem uint64_condSub_lt (x d : UInt64)
+    (hnorm : limbBase ≤ 2 * d.toNat) :
+    (if x ≥ d then x - d else x).toNat < d.toNat := by
+  by_cases h : x ≥ d
+  · simp only [h, ↓reduceIte]
+    have hdle : d.toNat ≤ x.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using h
+    rw [UInt64.toNat_sub_of_le x d h]
+    have hx := UInt64.toNat_lt x
+    norm_num [limbBase] at hx hnorm
+    have hsub : x.toNat - d.toNat + d.toNat = x.toNat :=
+      Nat.sub_add_cancel hdle
+    omega
+  · simp only [h, ↓reduceIte]
+    have hnot : ¬d.toNat ≤ x.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using h
+    omega
+
+/-
+  Natural-language proof.
+
+  The first correction branch may change the intermediate UInt64 value, but
+  the final source operation is exactly a conditional subtraction of the
+  normalized modulus.  The preceding machine-word lemma applies to that value
+  without needing any unproved assumption about which first branch fired.
+  Consequently every generated reduction round returns a canonical limb
+  below `pn` whenever `pn` has its top bit set.
+-/
+theorem preinvReduceNormalized_lt (u1 u0 pn pinv : UInt64)
+    (hnorm : limbBase ≤ 2 * pn.toNat) :
+    (preinvReduceNormalized u1 u0 pn pinv).toNat < pn.toNat := by
+  unfold preinvReduceNormalized
+  dsimp only
+  exact uint64_condSub_lt _ pn hnorm
+
+/-- The canonical-range result transferred back to the verbatim generated
+carry/correction block. -/
+theorem preinvRoundIR_lt (u1 u0 pn pinv : UInt64)
+    (hnorm : limbBase ≤ 2 * pn.toNat) :
+    (preinvRoundIR u1 u0 pn pinv).toNat < pn.toNat := by
+  rw [preinvRoundIR_eq_reduceNormalized]
+  exact preinvReduceNormalized_lt u1 u0 pn pinv hnorm
+
+/-
+  Natural-language proof.
+
   The generated C++ multiplication first shifts `a`, forms its exact UInt128
   product with `b`, and splits that product into high and low limbs.  The
   remaining quotient estimate, carry conversion, two correction branches and

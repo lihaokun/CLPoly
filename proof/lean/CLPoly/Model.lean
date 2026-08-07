@@ -377,6 +377,100 @@ theorem writeU64_of_valid (heap : RawHeap) (ptr : RawPtr UInt64)
   simp only [writeU64, hregion, hr, dif_pos, hoffset]
   simp [heap', region']
 
+/-- A successful raw limb write is observed at the same address by the next
+read.  The statement is failure-aware and derives every bound from the
+successful `writeU64` execution itself. -/
+theorem readU64_writeU64_same (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (index : Nat) (value : UInt64)
+    (hwrite : heap.writeU64 ptr index value = .ok heap') :
+    heap'.readU64 ptr index = .ok value := by
+  cases hregion : ptr.region with
+  | none => simp [writeU64, hregion] at hwrite
+  | some regionId =>
+    simp only [writeU64, hregion] at hwrite
+    split at hwrite
+    next hr =>
+      split at hwrite
+      next hoffset =>
+        let region' := heap.regions[regionId].set
+          (ptr.limbOffset + index) value hoffset
+        let updated : RawHeap :=
+          { heap with regions := heap.regions.set regionId region' hr }
+        have heq : heap' = updated := Except.ok.inj hwrite.symm
+        subst heap'
+        dsimp [updated, region']
+        simp [readU64, hregion, hr, hoffset]
+      next => cases hwrite
+    next => cases hwrite
+
+/-- A successful raw write preserves a successful read at every distinct
+absolute limb address. -/
+theorem readU64_writeU64_ne (heap heap' : RawHeap)
+    (dst src : RawPtr UInt64) (writeIndex readIndex : Nat)
+    (value old : UInt64)
+    (hwrite : heap.writeU64 dst writeIndex value = .ok heap')
+    (hread : heap.readU64 src readIndex = .ok old)
+    (hne : dst.region ≠ src.region ∨
+      dst.limbOffset + writeIndex ≠ src.limbOffset + readIndex) :
+    heap'.readU64 src readIndex = .ok old := by
+  cases hd : dst.region with
+  | none => simp [writeU64, hd] at hwrite
+  | some dstRegion =>
+    simp only [writeU64, hd] at hwrite
+    split at hwrite
+    next hdValid =>
+      split at hwrite
+      next hdOffset =>
+        let region' := heap.regions[dstRegion].set
+          (dst.limbOffset + writeIndex) value hdOffset
+        let updated : RawHeap :=
+          { heap with regions := heap.regions.set dstRegion region' hdValid }
+        have heq : heap' = updated := Except.ok.inj hwrite.symm
+        subst heap'
+        cases hs : src.region with
+        | none => simp [readU64, hs] at hread
+        | some srcRegion =>
+          simp only [readU64, hs] at hread ⊢
+          split at hread
+          next hsValid =>
+            split at hread
+            next hsOffset =>
+              have hold : heap.regions[srcRegion][src.limbOffset + readIndex] =
+                  old := Except.ok.inj hread
+              by_cases hregions : srcRegion = dstRegion
+              · subst srcRegion
+                have hoffset : dst.limbOffset + writeIndex ≠
+                    src.limbOffset + readIndex := by
+                  rcases hne with hneRegion | hneOffset
+                  · exact False.elim (hneRegion (by simpa [hd, hs]))
+                  · exact hneOffset
+                dsimp [updated, region']
+                simp only [Array.size_set, hdValid, dif_pos,
+                  Array.getElem_set_self]
+                simp only [hsOffset, dif_pos]
+                rw [Array.getElem_set_ne hdOffset hsOffset hoffset]
+                exact congrArg Except.ok hold
+              · dsimp [updated, region']
+                have hsValid' : srcRegion <
+                    (heap.regions.set dstRegion
+                      (heap.regions[dstRegion].set
+                        (dst.limbOffset + writeIndex) value hdOffset)
+                      hdValid).size := by simpa using hsValid
+                have hregionGet :
+                    (heap.regions.set dstRegion
+                      (heap.regions[dstRegion].set
+                        (dst.limbOffset + writeIndex) value hdOffset)
+                      hdValid)[srcRegion] = heap.regions[srcRegion] :=
+                  Array.getElem_set_ne hdValid hsValid (Ne.symm hregions)
+                simp only [Array.size_set, hsValid, dif_pos]
+                rw [hregionGet]
+                simp only [hsOffset, dif_pos]
+                exact congrArg Except.ok hold
+            next => cases hread
+          next => cases hread
+      next => cases hwrite
+    next => cases hwrite
+
 theorem writeU64_preserves_valid (heap heap' : RawHeap)
     (ptr : RawPtr UInt64) (index : Nat) (value : UInt64)
     (hwrite : heap.writeU64 ptr index value = .ok heap')
@@ -466,6 +560,17 @@ def readWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat) :
   | _, .error fault, _ => .error fault
   | _, _, .error fault => .error fault
 
+theorem readWord3_eq_ok_iff (heap : RawHeap) (ptr : RawPtr Word3)
+    (index : Nat) (value : Word3) :
+    heap.readWord3 ptr index = .ok value ↔
+      let limbPtr : RawPtr UInt64 :=
+        { region := ptr.region, limbOffset := ptr.limbOffset + 3 * index }
+      heap.readU64 limbPtr 0 = .ok value.lo ∧
+      heap.readU64 limbPtr 1 = .ok value.mid ∧
+      heap.readU64 limbPtr 2 = .ok value.hi := by
+  simp only [readWord3]
+  split <;> simp_all <;> cases value <;> simp_all
+
 theorem readWord3_of_valid (heap : RawHeap) (ptr : RawPtr Word3)
     (length index : Nat) (hvalid : ValidWord3Slice heap ptr length)
     (hindex : index < length) :
@@ -518,6 +623,105 @@ theorem writeWord3_of_valid (heap : RawHeap) (ptr : RawPtr Word3)
     ⟨heap3, hwrite2⟩
   refine ⟨heap3, ?_⟩
   simp [writeWord3, limbPtr, hwrite0, hwrite1, hwrite2]
+
+/-- A successful three-limb write is read back as exactly the written
+`Word3`.  The proof uses the concrete three successive UInt64 writes and
+their distinct absolute offsets. -/
+theorem readWord3_writeWord3_same (heap heap' : RawHeap)
+    (ptr : RawPtr Word3) (index : Nat) (value : Word3)
+    (hwrite : heap.writeWord3 ptr index value = .ok heap') :
+    heap'.readWord3 ptr index = .ok value := by
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * index }
+  simp only [writeWord3] at hwrite
+  split at hwrite
+  next fault => cases hwrite
+  next heap1 hwrite0 =>
+    split at hwrite
+    next fault => cases hwrite
+    next heap2 hwrite1 =>
+      have hlo0 := readU64_writeU64_same heap heap1 limbPtr 0 value.lo hwrite0
+      have hlo1 := readU64_writeU64_ne heap1 heap2 limbPtr limbPtr 1 0
+        value.mid value.lo hwrite1 hlo0 (Or.inr (by omega))
+      have hlo2 := readU64_writeU64_ne heap2 heap' limbPtr limbPtr 2 0
+        value.hi value.lo hwrite hlo1 (Or.inr (by omega))
+      have hmid1 := readU64_writeU64_same heap1 heap2 limbPtr 1 value.mid
+        hwrite1
+      have hmid2 := readU64_writeU64_ne heap2 heap' limbPtr limbPtr 2 1
+        value.hi value.mid hwrite hmid1 (Or.inr (by omega))
+      have hhi := readU64_writeU64_same heap2 heap' limbPtr 2 value.hi hwrite
+      simp [readWord3, limbPtr, hlo2, hmid2, hhi]
+
+/-- Writing one `Word3` preserves every different `Word3` cell. -/
+theorem readWord3_writeWord3_ne (heap heap' : RawHeap)
+    (ptr : RawPtr Word3) (writeIndex readIndex : Nat)
+    (value old : Word3)
+    (hwrite : heap.writeWord3 ptr writeIndex value = .ok heap')
+    (hread : heap.readWord3 ptr readIndex = .ok old)
+    (hne : writeIndex ≠ readIndex) :
+    heap'.readWord3 ptr readIndex = .ok old := by
+  let dstPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * writeIndex }
+  let srcPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * readIndex }
+  have hparts := (readWord3_eq_ok_iff heap ptr readIndex old).mp hread
+  change heap.readU64 srcPtr 0 = .ok old.lo ∧
+      heap.readU64 srcPtr 1 = .ok old.mid ∧
+      heap.readU64 srcPtr 2 = .ok old.hi at hparts
+  simp only [writeWord3] at hwrite
+  split at hwrite
+  next fault => cases hwrite
+  next heap1 hwrite0 =>
+    split at hwrite
+    next fault => cases hwrite
+    next heap2 hwrite1 =>
+      have preserve (b : Nat) (hb : b < 3)
+          (x : UInt64) (hr : heap.readU64 srcPtr b = .ok x) :
+          heap'.readU64 srcPtr b = .ok x := by
+        have hr1 := readU64_writeU64_ne heap heap1 dstPtr srcPtr 0 b
+          value.lo x hwrite0 hr (Or.inr (by
+            dsimp [dstPtr, srcPtr]
+            omega))
+        have hr2 := readU64_writeU64_ne heap1 heap2 dstPtr srcPtr 1 b
+          value.mid x hwrite1 hr1 (Or.inr (by
+            dsimp [dstPtr, srcPtr]
+            omega))
+        exact readU64_writeU64_ne heap2 heap' dstPtr srcPtr 2 b
+          value.hi x hwrite hr2 (Or.inr (by
+            dsimp [dstPtr, srcPtr]
+            omega))
+      apply (readWord3_eq_ok_iff heap' ptr readIndex old).mpr
+      change heap'.readU64 srcPtr 0 = .ok old.lo ∧
+        heap'.readU64 srcPtr 1 = .ok old.mid ∧
+        heap'.readU64 srcPtr 2 = .ok old.hi
+      exact ⟨preserve 0 (by omega) old.lo hparts.1,
+        preserve 1 (by omega) old.mid hparts.2.1,
+        preserve 2 (by omega) old.hi hparts.2.2⟩
+
+/-- A `Word3` write cannot alter a limb read from a different allocation
+region. -/
+theorem readU64_writeWord3_region_ne (heap heap' : RawHeap)
+    (dst : RawPtr Word3) (src : RawPtr UInt64) (writeIndex readIndex : Nat)
+    (value : Word3) (old : UInt64)
+    (hwrite : heap.writeWord3 dst writeIndex value = .ok heap')
+    (hread : heap.readU64 src readIndex = .ok old)
+    (hne : dst.region ≠ src.region) :
+    heap'.readU64 src readIndex = .ok old := by
+  let dstPtr : RawPtr UInt64 :=
+    { region := dst.region, limbOffset := dst.limbOffset + 3 * writeIndex }
+  simp only [writeWord3] at hwrite
+  split at hwrite
+  next fault => cases hwrite
+  next heap1 hwrite0 =>
+    split at hwrite
+    next fault => cases hwrite
+    next heap2 hwrite1 =>
+      have hr1 := readU64_writeU64_ne heap heap1 dstPtr src 0 readIndex
+        value.lo old hwrite0 hread (Or.inl (by simpa [dstPtr] using hne))
+      have hr2 := readU64_writeU64_ne heap1 heap2 dstPtr src 1 readIndex
+        value.mid old hwrite1 hr1 (Or.inl (by simpa [dstPtr] using hne))
+      exact readU64_writeU64_ne heap2 heap' dstPtr src 2 readIndex
+        value.hi old hwrite hr2 (Or.inl (by simpa [dstPtr] using hne))
 
 theorem writeWord3_preserves_valid (heap heap' : RawHeap)
     (ptr : RawPtr Word3) (index : Nat) (value : Word3)

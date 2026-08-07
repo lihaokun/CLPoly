@@ -189,6 +189,73 @@ theorem initW3Loop_ok (heap : RawHeap) (A : RawPtr UInt64)
 termination_by lenA - i
 decreasing_by omega
 
+/-- The already initialized W3 prefix is the exact zero-extended image of
+the corresponding source coefficient prefix. -/
+def InitW3Prefix (heap : RawHeap) (A : RawPtr UInt64)
+    (W3 : RawPtr Word3) (upto : Nat) : Prop :=
+  ∀ j, j < upto → ∃ value : UInt64,
+    heap.readU64 A j = .ok value ∧
+    heap.readWord3 W3 j = .ok { lo := value, mid := 0, hi := 0 }
+
+/-- Content-level refinement of the generated initialization loop.  With
+the C++ non-aliasing allocation precondition, every output W3 cell is exactly
+the corresponding A limb zero-extended to three limbs. -/
+theorem initW3Loop_refines (heap : RawHeap) (A : RawPtr UInt64)
+    (W3 : RawPtr Word3) (lenA i : Nat)
+    (hA : heap.ValidU64Slice A lenA)
+    (hW3 : heap.ValidWord3Slice W3 lenA) (hi : i ≤ lenA)
+    (hregions : W3.region ≠ A.region)
+    (hprefix : InitW3Prefix heap A W3 i) :
+    ∃ heap', initW3Loop heap A W3 lenA i = .ok heap' ∧
+      heap'.ValidU64Slice A lenA ∧ heap'.ValidWord3Slice W3 lenA ∧
+      RawHeap.SameLayout heap heap' ∧ InitW3Prefix heap' A W3 lenA := by
+  rw [initW3Loop]
+  split
+  next hlt =>
+    rcases heap.readU64_of_valid A lenA i hA hlt with ⟨value, hread⟩
+    simp only [hread]
+    let word : Word3 := { lo := value, mid := 0, hi := 0 }
+    rcases heap.writeWord3_of_valid W3 lenA i word hW3 hlt with
+      ⟨heap1, hwrite⟩
+    dsimp [word] at hwrite ⊢
+    simp only [hwrite]
+    have hA1 : heap1.ValidU64Slice A lenA :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 i word
+        hwrite A lenA).mp hA
+    have hW31 : heap1.ValidWord3Slice W3 lenA :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 i word
+        hwrite (RawPtr.reinterpret W3) (3 * lenA)).mp hW3
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 i word hwrite
+    have hprefix1 : InitW3Prefix heap1 A W3 (i + 1) := by
+      intro j hj
+      by_cases hji : j = i
+      · subst j
+        have hreadA := RawHeap.readU64_writeWord3_region_ne heap heap1
+          W3 A i i word value hwrite hread hregions
+        have hreadW := RawHeap.readWord3_writeWord3_same heap heap1
+          W3 i word hwrite
+        exact ⟨value, hreadA, hreadW⟩
+      · have hjlt : j < i := by omega
+        rcases hprefix j hjlt with ⟨old, hreadA, hreadW⟩
+        have hreadA1 := RawHeap.readU64_writeWord3_region_ne heap heap1
+          W3 A i j word old hwrite hreadA hregions
+        have hreadW1 := RawHeap.readWord3_writeWord3_ne heap heap1
+          W3 i j word { lo := old, mid := 0, hi := 0 }
+          hwrite hreadW (Ne.symm hji)
+        exact ⟨old, hreadA1, hreadW1⟩
+    rcases initW3Loop_refines heap1 A W3 lenA (i + 1) hA1 hW31
+      (by omega) hregions hprefix1 with
+      ⟨heap2, hloop, hA2, hW32, hlayout2, hfull⟩
+    refine ⟨heap2, hloop, hA2, hW32, ?_, hfull⟩
+    intro ptr length
+    exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+  next hnot =>
+    have hieq : i = lenA := by omega
+    subst i
+    exact ⟨heap, rfl, hA, hW3, fun _ _ => Iff.rfl, hprefix⟩
+termination_by lenA - i
+decreasing_by omega
+
 /-- Natural-language proof outline:
 
 For `j ≤ d`, the divisor invariant makes `B[j]` readable.  The bound

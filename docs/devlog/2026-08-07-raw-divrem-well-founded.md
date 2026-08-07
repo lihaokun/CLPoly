@@ -22,6 +22,12 @@
 - 增加严格准入检查器，将专用 lowering 绑定到稳定化后的完整 Clang AST 哈希，并检查原始指针签名、四循环形状、Lean artifact 哈希和禁用构造。
 - 审计并撤销旧 `ZpArith` 中通过 `HasPolyDivmod` 直接选择手写 L2 除法所得的“精化”定理；同步关闭依赖该结论的旧 DDF/SQF 导出边界。
 - 扩展严格准入检查器，禁止上述 dispatch-based 定理名称重新进入证明闭包。
+- 补齐 RawHeap 内容保持基础：成功的 UInt64 同址写后读、异址读取保持，
+  Word3 同单元写后读、不同单元读取保持，以及跨 allocation region 的
+  UInt64 读取保持。所有结论都从真实 `RawExec` 成功等式推出。
+- 将 W3 初始化循环从“必定成功”加强为内容级精化：在 C++ 非别名 region
+  前提下，最终每个 `W3[i]` 都精确等于 `{lo := A[i], mid := 0, hi := 0}`；
+  证明继续使用 `lenA-i` 良基度量，没有 fuel。
 
 ## 为什么做
 

@@ -1,9 +1,11 @@
 import CLPoly.Impl.RawPolynomialRep
+import CLPoly.Impl.StrictWordArithmetic
 
 namespace CLPoly.Impl.StrictDivremRefinement
 
 open Generated.StrictDivrem
 open CLPoly.Impl.RawPolynomialRep
+open CLPoly.Impl.StrictWordArithmetic
 
 /-- A valid raw coefficient slice has a safe observation of exactly the C++
 declared length. -/
@@ -311,6 +313,141 @@ theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     exact (hlayout1 ptr length).trans (hlayout2 ptr length)
   next hnot =>
     exact ⟨heap, rfl, hB, hW3, hOther, fun _ _ => Iff.rfl⟩
+termination_by d + 1 - j
+decreasing_by omega
+
+/-- Content semantics of the exact body executed by one generated
+`addMulLoop` iteration.  It reads the real B/W3 cells, applies the generated
+`_umul128` and `_add_carry3`, writes that machine result, and relates the
+observed output cell to addition of `c*bj` modulo the 192-bit accumulator
+width. -/
+theorem addMulCell_refines (heap heap' : RawHeap) (B : RawPtr UInt64)
+    (W3 : RawPtr Word3) (bIndex wIndex : Nat) (c bj : UInt64)
+    (accum : Word3)
+    (hreadB : heap.readU64 B bIndex = .ok bj)
+    (hreadW : heap.readWord3 W3 wIndex = .ok accum)
+    (hregions : W3.region ≠ B.region)
+    (hwrite : heap.writeWord3 W3 wIndex
+      (let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+       Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+         accum product.1 product.2) = .ok heap') :
+    ∃ accum', heap.readWord3 W3 wIndex = .ok accum ∧
+      heap'.readWord3 W3 wIndex = .ok accum' ∧
+      heap'.readU64 B bIndex = .ok bj ∧
+      Nat.ModEq (limbBase ^ 3) (word3Value accum')
+        (word3Value accum + c.toNat * bj.toNat) := by
+  let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+  let accum' := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+    accum product.1 product.2
+  have hwrite' : heap.writeWord3 W3 wIndex accum' = .ok heap' := by
+    simpa [accum', product] using hwrite
+  have hreadW' := RawHeap.readWord3_writeWord3_same heap heap' W3 wIndex
+    accum' hwrite'
+  have hreadB' := RawHeap.readU64_writeWord3_region_ne heap heap'
+    W3 B wIndex bIndex accum' bj hwrite' hreadB hregions
+  refine ⟨accum', hreadW, hreadW', hreadB', ?_⟩
+  simpa [accum', product] using addMulWord3_modEq accum c bj
+
+def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
+    (length : Nat) : Prop :=
+  ∀ k value, k < length → before.readU64 ptr k = .ok value →
+    after.readU64 ptr k = .ok value
+
+def SameWord3PrefixAt (before after : RawHeap) (ptr : RawPtr Word3)
+    (offset length : Nat) : Prop :=
+  ∀ k value, k < length → before.readWord3 ptr (offset + k) = .ok value →
+    after.readWord3 ptr (offset + k) = .ok value
+
+def AddMulRangeRep (before after : RawHeap) (B : RawPtr UInt64)
+    (W3 : RawPtr Word3) (offset start stop : Nat) (c : UInt64) : Prop :=
+  ∀ k, start ≤ k → k ≤ stop → ∀ bj accum,
+    before.readU64 B k = .ok bj →
+    before.readWord3 W3 (offset + k) = .ok accum →
+    ∃ accum', after.readWord3 W3 (offset + k) = .ok accum' ∧
+      Nat.ModEq (limbBase ^ 3) (word3Value accum')
+        (word3Value accum + c.toNat * bj.toNat)
+
+/-- Full content invariant for the generated multiply/add loop.  B is
+unchanged, cells before `j` are unchanged, and every processed cell in
+`j..d` is its input accumulator plus the corresponding `c*B[k]` product. -/
+theorem addMulLoop_refines (heap : RawHeap) (B : RawPtr UInt64)
+    (W3 : RawPtr Word3) (lenW3 i d j : Nat) (c : UInt64)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (htop : i + d < lenW3) (hj : j ≤ d + 1)
+    (hregions : W3.region ≠ B.region) :
+    ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' B (d + 1) ∧
+      SameWord3PrefixAt heap heap' W3 i j ∧
+      AddMulRangeRep heap heap' B W3 i j d c := by
+  rw [addMulLoop]
+  split
+  next hle =>
+    have hjB : j < d + 1 := by omega
+    have hijW : i + j < lenW3 := by omega
+    rcases heap.readU64_of_valid B (d + 1) j hB hjB with ⟨bj, hreadB⟩
+    simp only [hreadB]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + j) hW3 hijW with
+      ⟨accum, hreadW⟩
+    simp only [hreadW]
+    let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+    let accum' := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+      accum product.1 product.2
+    rcases heap.writeWord3_of_valid W3 lenW3 (i + j) accum' hW3 hijW with
+      ⟨heap1, hwrite⟩
+    dsimp [product, accum'] at hwrite ⊢
+    simp only [hwrite]
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 (i + j)
+      accum' hwrite
+    rcases addMulLoop_refines heap1 B W3 lenW3 i d (j + 1) c hB1 hW31
+      htop (by omega) hregions with
+      ⟨heap2, hloop, hB2, hW32, hlayout2, hsameB2, hprefix2, hrange2⟩
+    refine ⟨heap2, hloop, hB2, hW32, ?_, ?_, ?_, ?_⟩
+    · intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+    · intro k value hk hread
+      have hread1 := RawHeap.readU64_writeWord3_region_ne heap heap1
+        W3 B (i + j) k accum' value hwrite hread hregions
+      exact hsameB2 k value hk hread1
+    · intro k value hk hread
+      have hkj : k ≠ j := by omega
+      have hread1 := RawHeap.readWord3_writeWord3_ne heap heap1 W3
+        (i + j) (i + k) accum' value hwrite hread (by omega)
+      exact hprefix2 k value (by omega) hread1
+    · intro k hlow hhigh bk old hreadBk hreadOld
+      by_cases hkj : k = j
+      · subst k
+        have hcell := addMulCell_refines heap heap1 B W3 j (i + j) c bj
+          accum hreadB hreadW hregions (by simpa [product, accum'] using hwrite)
+        rcases hcell with ⟨written, _, hreadWritten, _, hmod⟩
+        have hbk : bk = bj := Except.ok.inj (hreadBk.symm.trans hreadB)
+        have hold : old = accum := Except.ok.inj (hreadOld.symm.trans hreadW)
+        subst bk
+        subst old
+        exact ⟨written, hprefix2 j written (by omega) hreadWritten, hmod⟩
+      · have hjk : j + 1 ≤ k := by omega
+        have hreadBk1 := RawHeap.readU64_writeWord3_region_ne heap heap1
+          W3 B (i + j) k accum' bk hwrite hreadBk hregions
+        have hreadOld1 := RawHeap.readWord3_writeWord3_ne heap heap1 W3
+          (i + j) (i + k) accum' old hwrite hreadOld (by omega)
+        exact hrange2 k hjk hhigh bk old hreadBk1 hreadOld1
+  next hnot =>
+    refine ⟨heap, rfl, hB, hW3, fun _ _ => Iff.rfl, ?_, ?_, ?_⟩
+    · intro k value hk hread
+      exact hread
+    · intro k value hk hread
+      exact hread
+    · intro k hlow hhigh
+      omega
 termination_by d + 1 - j
 decreasing_by omega
 

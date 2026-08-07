@@ -410,6 +410,25 @@ theorem addCarry3_modEq (s : Word3) (b1 b0 : UInt64) :
   rw [hsum1] at hsplit1
   omega
 
+/-- One exact generated multiply/add step adds the mathematical limb product
+to the three-limb accumulator, modulo its `2^192` machine width. -/
+theorem addMulWord3_modEq (s : Word3) (a b : UInt64) :
+    let product := dense_upoly_zp__umul128_ir 0 0 a b
+    let out := dense_upoly_zp__add_carry3_ir s product.1 product.2
+    Nat.ModEq (limbBase ^ 3) (word3Value out)
+      (word3Value s + a.toNat * b.toNat) := by
+  let product := dense_upoly_zp__umul128_ir 0 0 a b
+  have hproduct := umul128_reconstruct a b
+  have hadd := addCarry3_modEq s product.1 product.2
+  dsimp only at hproduct hadd ⊢
+  have hproduct' : product.2.toNat + limbBase * product.1.toNat =
+      a.toNat * b.toNat := by simpa [product] using hproduct
+  have hrhs : word3Value s + product.2.toNat +
+      limbBase * product.1.toNat = word3Value s + a.toNat * b.toNat := by
+    omega
+  rw [hrhs] at hadd
+  simpa [product] using hadd
+
 /-
   Natural-language proof.
 

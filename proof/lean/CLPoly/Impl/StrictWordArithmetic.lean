@@ -271,6 +271,30 @@ theorem preinvStepCFG64_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
       k (preinvStepIR hi lo p pinv norm) := by
   rw [preinvStepCFG64_eq_CPS64, preinvStepCPS64_eq_step _ _ _ _ _ _ hn]
 
+/-- Bind the generated outer basic-block graph to the two typed CFG rounds.
+The only non-definitional splice is conversion of the source UInt32
+normalization count to the UInt64 count carried by the second block. -/
+theorem lll_mod_preinv_ir_eq_cfg (hi mid lo p pinv : UInt64)
+    (norm : UInt32) (hn : norm.toNat ≤ 64) :
+    dense_upoly_zp__lll_mod_preinv_ir hi mid lo p pinv norm =
+      preinvFirstCFG hi mid p pinv norm
+        (fun r => preinvStepCFG64 r lo p pinv norm.toUInt64 id) := by
+  by_cases hnorm : norm > 0 <;>
+    simp [dense_upoly_zp__lll_mod_preinv_ir, preinvFirstCFG,
+      preinvStepCFG64, preinvRoundCFG, uint32_sub_64_toUInt64 norm hn,
+      hnorm]
+
+/-- The generated function is exactly the composition of the two source
+machine steps; this theorem contains no mathematical remainder operation. -/
+theorem lll_mod_preinv_ir_eq_steps (hi mid lo p pinv : UInt64)
+    (norm : UInt32) (hn : norm.toNat ≤ 64) :
+    dense_upoly_zp__lll_mod_preinv_ir hi mid lo p pinv norm =
+      preinvStepIR (preinvStepIR hi mid p pinv norm) lo p pinv norm := by
+  rw [lll_mod_preinv_ir_eq_cfg hi mid lo p pinv norm hn]
+  rw [preinvFirstCFG_eq_step]
+  rw [preinvStepCFG64_eq_step _ _ _ _ norm id hn]
+  rfl
+
 /-
   Natural-language proof.
 
@@ -1724,6 +1748,24 @@ theorem preinvTwoSteps_correct (hi mid lo p pinv : UInt64) (norm : UInt32)
   congr 1
   simp only [word3Value]
   ring
+
+/-- Final semantic theorem for the actual cpp2lean-generated
+`_lll_mod_preinv` entry. -/
+theorem lll_mod_preinv_ir_correct (hi mid lo p pinv : UInt64)
+    (norm : UInt32)
+    (hn : norm.toNat < 64)
+    (hhi : hi.toNat < p.toNat)
+    (hpn : (p <<< norm).toNat = p.toNat * 2 ^ norm.toNat)
+    (hpnB : p.toNat * 2 ^ norm.toNat < limbBase)
+    (hnorm : limbBase ≤ 2 * (p <<< norm).toNat)
+    (hmul : (limbBase + pinv.toNat) * (p <<< norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * (p <<< norm).toNat) :
+    (dense_upoly_zp__lll_mod_preinv_ir hi mid lo p pinv norm).toNat =
+      word3Value { hi := hi, mid := mid, lo := lo } % p.toNat := by
+  rw [lll_mod_preinv_ir_eq_steps hi mid lo p pinv norm (Nat.le_of_lt hn)]
+  exact preinvTwoSteps_correct hi mid lo p pinv norm hn hhi hpn hpnB
+    hnorm hmul hlower
 
 /-- Structural factoring of generated nmod multiplication through the exact
 source-level preinverse round. -/

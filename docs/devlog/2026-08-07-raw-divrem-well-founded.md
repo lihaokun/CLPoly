@@ -54,6 +54,13 @@
 - 闭合 `_poly_divrem` 的短除法生成分支：入口执行精确返回
   `(lenQ,lenR)=(0,lenA)`，R 表示原 dividend；对 canonical、normalized
   输入进一步证明余式为零或其 `natDegree` 严格小于 divisor。
+- 闭合真实生成 `_lll_mod_preinv` 的最外层 CFG 绑定：在预计算产生的
+  `norm≤64` 条件下，精确识别第一轮 UInt32 splice 和第二轮 UInt64 basic
+  block，并证明生成入口等于两个 `preinvStepIR` 的组合；再与两轮机器算术
+  定理组合，得到生成入口返回三-limb 值模 `p` 的最终语义定理。
+- 将该生成入口定理接到 `remainderLoop` 内容不变式：在商循环提供每个
+  `W3[i].hi<p` 后，最终 raw `R[i]` 的 `toNat` 精确等于对应三-limb 数值
+  模 `p`，不再把生成调用作为未解释的黑盒。
 
 ## 为什么做
 

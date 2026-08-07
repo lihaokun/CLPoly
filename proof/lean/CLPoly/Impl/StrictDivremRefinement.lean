@@ -857,6 +857,39 @@ def RemainderPrefix (this : DenseUPolyZp) (heap : RawHeap)
       (Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
         accum.hi accum.mid accum.lo this._p this._ninv this._norm)
 
+def RemainderModPrefix (this : DenseUPolyZp) (heap : RawHeap)
+    (R : RawPtr UInt64) (W3 : RawPtr Word3) (upto : Nat) : Prop :=
+  ∀ j, j < upto → ∃ accum value,
+    heap.readWord3 W3 j = .ok accum ∧
+    heap.readU64 R j = .ok value ∧
+    value.toNat = word3Value accum % this._p.toNat
+
+theorem remainderPrefix_to_mod (this : DenseUPolyZp) (heap : RawHeap)
+    (R : RawPtr UInt64) (W3 : RawPtr Word3) (upto : Nat)
+    (hprefix : RemainderPrefix this heap R W3 upto)
+    (hn : this._norm.toNat < 64)
+    (hpn : (this._p <<< this._norm).toNat =
+      this._p.toNat * 2 ^ this._norm.toNat)
+    (hpnB : this._p.toNat * 2 ^ this._norm.toNat < limbBase)
+    (hnorm : limbBase ≤ 2 * (this._p <<< this._norm).toNat)
+    (hmul : (limbBase + this._ninv.toNat) *
+      (this._p <<< this._norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + this._ninv.toNat + 1) *
+        (this._p <<< this._norm).toNat)
+    (hhi : ∀ j accum, j < upto → heap.readWord3 W3 j = .ok accum →
+      accum.hi.toNat < this._p.toNat) :
+    RemainderModPrefix this heap R W3 upto := by
+  intro j hj
+  rcases hprefix j hj with ⟨accum, hreadW, hreadR⟩
+  let value := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+    accum.hi accum.mid accum.lo this._p this._ninv this._norm
+  refine ⟨accum, value, hreadW, ?_, ?_⟩
+  · simpa [value] using hreadR
+  · exact lll_mod_preinv_ir_correct accum.hi accum.mid accum.lo
+      this._p this._ninv this._norm hn (hhi j accum hj hreadW)
+      hpn hpnB hnorm hmul hlower
+
 /-- Content-level refinement of the generated final remainder loop. -/
 theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
     (W3 : RawPtr Word3) (d lenW3 i : Nat) (heap : RawHeap)

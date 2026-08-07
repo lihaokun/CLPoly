@@ -76,6 +76,21 @@ def preinvRoundCPS (u1 u0 pn pinv : UInt64) (k : UInt64 → UInt64) : UInt64 :=
   let r' : UInt64 := if r > q0' then r + pn else r
   if r' >= pn then k (r' - pn) else k r'
 
+/-- Basic-block-distributed form emitted by cpp2lean. -/
+def preinvRoundCFG (u1 u0 pn pinv : UInt64) (k : UInt64 → UInt64) : UInt64 :=
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 :=
+    ((if q0' < u0 then (1 : Int32) else 0).toInt64.toUInt64)
+  let q1' : UInt64 := q1 + (u1 + carry)
+  let r : UInt64 := u0 - ((q1' + 1) * pn)
+  if r > q0' then
+    let r' := r + pn
+    if r' >= pn then k (r' - pn) else k r'
+  else if r >= pn then k (r - pn) else k r
+
 /-- Continuation form of one normalized limb step, matching the block layout
 emitted by cpp2lean. -/
 def preinvStepCPS (hi lo p pinv : UInt64) (norm : UInt32)
@@ -86,6 +101,46 @@ def preinvStepCPS (hi lo p pinv : UInt64) (norm : UInt32)
     if norm > 0 then h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
   let l : UInt64 := lo <<< norm
   preinvRoundCPS h l pn pinv (fun r => k (r >>> norm))
+
+/-- The second `_lll_mod_preinv` step has a UInt64 shift count in the
+cpp2lean CFG because the generated basic block receives `norm.toUInt64`. -/
+def preinvStepCPS64 (hi lo p pinv norm : UInt64)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 := if norm > 0 then
+    h0 ||| (lo >>> ((64 : UInt32).toUInt64 - norm)) else h0
+  let l : UInt64 := lo <<< norm
+  preinvRoundCPS h l pn pinv (fun r => k (r >>> norm))
+
+/-- The first generated step uses UInt32 shifts for its initial splice but
+passes `norm.toUInt64` to the correction block and its continuation. -/
+def preinvFirstCPS (hi mid p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 := if norm > 0 then
+    h0 ||| (mid >>> ((64 : UInt32) - norm)) else h0
+  let l : UInt64 := mid <<< norm.toUInt64
+  preinvRoundCPS h l pn pinv (fun r => k (r >>> norm.toUInt64))
+
+def preinvStepCFG64 (hi lo p pinv norm : UInt64)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 := if norm > 0 then
+    h0 ||| (lo >>> ((64 : UInt32).toUInt64 - norm)) else h0
+  let l : UInt64 := lo <<< norm
+  preinvRoundCFG h l pn pinv (fun r => k (r >>> norm))
+
+def preinvFirstCFG (hi mid p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 := if norm > 0 then
+    h0 ||| (mid >>> ((64 : UInt32) - norm)) else h0
+  let l : UInt64 := mid <<< norm.toUInt64
+  preinvRoundCFG h l pn pinv (fun r => k (r >>> norm.toUInt64))
 
 @[simp] theorem uint32_zero_toUInt64 : (0 : UInt32).toUInt64 = 0 := by
   decide
@@ -136,6 +191,33 @@ theorem uint32_sub_64_toUInt64 (n : UInt32) (hn : n.toNat ≤ 64) :
   change (x >>> (0 : UInt64)).toNat = x.toNat
   simp
 
+theorem preinvRoundCPS_eq_early (u1 u0 pn pinv : UInt64)
+    (k : UInt64 → UInt64) :
+    preinvRoundCPS u1 u0 pn pinv k = k (preinvRoundIR u1 u0 pn pinv) := by
+  simp [preinvRoundCPS, preinvRoundIR] <;> repeat' split <;> simp_all
+
+theorem preinvFirstCPS_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) :
+    preinvFirstCPS hi lo p pinv norm k =
+      k (preinvStepIR hi lo p pinv norm) := by
+  simp only [preinvFirstCPS, preinvStepIR]
+  rw [preinvRoundCPS_eq_early]
+  rw [← uint64_shiftLeft_u32_eq_u64 lo norm]
+  rw [← uint64_shiftRight_u32_eq_u64]
+
+theorem preinvStepCPS64_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) (hn : norm.toNat ≤ 64) :
+    preinvStepCPS64 hi lo p pinv norm.toUInt64 k =
+      k (preinvStepIR hi lo p pinv norm) := by
+  simp only [preinvStepCPS64, preinvStepIR]
+  rw [preinvRoundCPS_eq_early]
+  simp only [uint64_shiftLeft_u32_eq_u64,
+    uint64_shiftRight_u32_eq_u64]
+  rw [uint32_sub_64_toUInt64 norm hn]
+  have h64 : (64 : UInt32).toUInt64 = (64 : UInt64) := by decide
+  rw [h64]
+  simp only [uint32_toUInt64_pos]
+
 theorem int32Carry_toUInt64 (c : Prop) [Decidable c] :
     ((if c then (1 : Int32) else 0).toInt64.toUInt64) =
       (if c then (1 : UInt64) else 0) := by
@@ -152,11 +234,42 @@ theorem preinvRoundCPS_eq (u1 u0 pn pinv : UInt64)
     preinvRoundCPS u1 u0 pn pinv k = k (preinvRoundIR u1 u0 pn pinv) := by
   simp [preinvRoundCPS, preinvRoundIR] <;> repeat' split <;> simp_all
 
+theorem preinvRoundCFG_eq_CPS (u1 u0 pn pinv : UInt64)
+    (k : UInt64 → UInt64) :
+    preinvRoundCFG u1 u0 pn pinv k = preinvRoundCPS u1 u0 pn pinv k := by
+  simp [preinvRoundCFG, preinvRoundCPS] <;> repeat' split <;> simp_all
+
 theorem preinvStepCPS_eq (hi lo p pinv : UInt64) (norm : UInt32)
     (k : UInt64 → UInt64) :
     preinvStepCPS hi lo p pinv norm k = k (preinvStepIR hi lo p pinv norm) := by
   simp only [preinvStepCPS, preinvStepIR]
   rw [preinvRoundCPS_eq]
+
+theorem preinvStepCFG64_eq_CPS64 (hi lo p pinv norm : UInt64)
+    (k : UInt64 → UInt64) :
+    preinvStepCFG64 hi lo p pinv norm k =
+      preinvStepCPS64 hi lo p pinv norm k := by
+  simp only [preinvStepCFG64, preinvStepCPS64]
+  rw [preinvRoundCFG_eq_CPS]
+
+theorem preinvFirstCFG_eq_CPS (hi mid p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) :
+    preinvFirstCFG hi mid p pinv norm k =
+      preinvFirstCPS hi mid p pinv norm k := by
+  simp only [preinvFirstCFG, preinvFirstCPS]
+  rw [preinvRoundCFG_eq_CPS]
+
+theorem preinvFirstCFG_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) :
+    preinvFirstCFG hi lo p pinv norm k =
+      k (preinvStepIR hi lo p pinv norm) := by
+  rw [preinvFirstCFG_eq_CPS, preinvFirstCPS_eq_step]
+
+theorem preinvStepCFG64_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) (hn : norm.toNat ≤ 64) :
+    preinvStepCFG64 hi lo p pinv norm.toUInt64 k =
+      k (preinvStepIR hi lo p pinv norm) := by
+  rw [preinvStepCFG64_eq_CPS64, preinvStepCPS64_eq_step _ _ _ _ _ _ hn]
 
 /-
   Natural-language proof.
@@ -1558,6 +1671,40 @@ theorem preinvStepIR_correct (hi lo p pinv : UInt64) (norm : UInt32)
   rw [uint64_shiftRight_toNat_of_lt r norm hn, hr]
   exact scaled_mod_div (hi.toNat * limbBase + lo.toNat) p.toNat
     (2 ^ norm.toNat) hs
+
+/-- Mathematical correctness of the two source-exact steps performed by
+`_lll_mod_preinv` on a three-limb accumulator. -/
+theorem preinvTwoSteps_correct (hi mid lo p pinv : UInt64) (norm : UInt32)
+    (hn : norm.toNat < 64)
+    (hhi : hi.toNat < p.toNat)
+    (hpn : (p <<< norm).toNat = p.toNat * 2 ^ norm.toNat)
+    (hpnB : p.toNat * 2 ^ norm.toNat < limbBase)
+    (hnorm : limbBase ≤ 2 * (p <<< norm).toNat)
+    (hmul : (limbBase + pinv.toNat) * (p <<< norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * (p <<< norm).toNat) :
+    (preinvStepIR (preinvStepIR hi mid p pinv norm) lo p pinv norm).toNat =
+      word3Value { hi := hi, mid := mid, lo := lo } % p.toNat := by
+  let r1 := preinvStepIR hi mid p pinv norm
+  have hp : 0 < p.toNat := by
+    have : 0 < (p <<< norm).toNat := by omega
+    omega
+  have hfirst : r1.toNat =
+      (hi.toNat * limbBase + mid.toNat) % p.toNat :=
+    preinvStepIR_correct hi mid p pinv norm hn hhi hpn hpnB hnorm hmul hlower
+  have hr1 : r1.toNat < p.toNat := by
+    rw [hfirst]
+    exact Nat.mod_lt _ hp
+  rw [preinvStepIR_correct r1 lo p pinv norm hn hr1 hpn hpnB
+    hnorm hmul hlower, hfirst]
+  have hmod := Nat.mod_modEq (hi.toNat * limbBase + mid.toNat) p.toNat
+  have hcongr := (hmod.mul_right limbBase).add_right lo.toNat
+  change (((hi.toNat * limbBase + mid.toNat) % p.toNat) * limbBase +
+      lo.toNat) % p.toNat = _
+  rw [hcongr]
+  congr 1
+  simp only [word3Value]
+  ring
 
 /-- Structural factoring of generated nmod multiplication through the exact
 source-level preinverse round. -/

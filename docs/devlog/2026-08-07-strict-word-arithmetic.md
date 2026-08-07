@@ -69,6 +69,11 @@
   `2^norm`，再接入真实 `preinvRoundIR` 和最终右移，得到
   `preinvStepIR hi lo ... = (hi*B+lo)%p`。该步骤不使用 fuel、规格
   oracle、L2 运算或默认回退。
+- 建立与 cpp2lean basic block 同形的 continuation/CFG 归约层，并证明
+  分支分配形式、共享 continuation 形式与 `preinvStepIR` 语义一致；同时
+  处理生成器在第一、第二轮分别使用 UInt32 与 UInt64 shift count 的差异。
+- 组合两个已认证 limb 步骤，证明三-limb `Word3` 的结果精确为
+  `word3Value % p`。组合只使用模同余，仍未引入任何 L2 多项式操作。
 
 ## 为什么做
 

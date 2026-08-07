@@ -48,6 +48,12 @@
 - 对系数为 canonical residue（每项 raw 值 `< p`）的输入，进一步从 C++
   返回前缀末项的 raw 非零性证明对应 `ZMod p` 系数非零，从而在返回长度
   非零时得到精确等式 `poly.natDegree = result - 1`。
+- 将真实递归 `copyU64` 从布局安全加强为逐 limb 内容精化：显式使用 C++
+  非重叠 region 前提，证明源读取保持、每个目标项等于复制前源项，并提升
+  为 `SliceRep`/`SlicePolyRep` 保持；递归度量是 `count`，无 fuel。
+- 闭合 `_poly_divrem` 的短除法生成分支：入口执行精确返回
+  `(lenQ,lenR)=(0,lenA)`，R 表示原 dividend；对 canonical、normalized
+  输入进一步证明余式为零或其 `natDegree` 严格小于 divisor。
 
 ## 为什么做
 

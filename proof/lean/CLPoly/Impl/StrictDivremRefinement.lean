@@ -191,6 +191,18 @@ theorem normaliseU64_poly_natDegree_le (heap : RawHeap)
     hvalid hrep hnorm degree
   omega
 
+theorem normaliseU64_poly_eq_zero (heap : RawHeap)
+    (ptr : RawPtr UInt64) (len p : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr len)
+    (hrep : SlicePolyRep heap ptr len p poly)
+    (hnorm : heap.normaliseU64 ptr len = .ok 0) :
+    poly = 0 := by
+  ext degree
+  have hcoeff := normaliseU64_poly_coeff_zero heap ptr len p 0 poly
+    hvalid hrep hnorm degree (Nat.zero_le degree)
+  simpa using hcoeff
+
 /-- If the raw coefficients are canonical residues, the nonempty prefix
 returned by C++ normalization ends in a genuinely nonzero L2 coefficient. -/
 theorem normaliseU64_poly_last_coeff_ne_zero (heap : RawHeap)
@@ -277,6 +289,161 @@ theorem copyU64_ok (heap : RawHeap) (dst src : RawPtr UInt64) (count : Nat)
     refine ⟨heap2, rfl, ?_⟩
     intro ptr length
     exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+
+/-- A successful generated `memcpy` preserves any raw limb whose absolute
+address is outside its destination range. -/
+theorem copyU64_preserves_read (heap heap' : RawHeap)
+    (dst src guard : RawPtr UInt64) (count readIndex : Nat)
+    (old : UInt64)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hread : heap.readU64 guard readIndex = .ok old)
+    (houtside : ∀ k, k < count →
+      dst.region ≠ guard.region ∨
+        dst.limbOffset + k ≠ guard.limbOffset + readIndex)
+    (hcopy : heap.copyU64 dst src count = .ok heap') :
+    heap'.readU64 guard readIndex = .ok old := by
+  cases count with
+  | zero =>
+    simp only [RawHeap.copyU64] at hcopy
+    have heq : heap' = heap := Except.ok.inj hcopy.symm
+    simpa [heq] using hread
+  | succ n =>
+    simp only [RawHeap.copyU64] at hcopy
+    rcases heap.readU64_of_valid src (n + 1) 0 hSrc (by omega) with
+      ⟨value, hvalue⟩
+    simp only [hvalue] at hcopy
+    rcases heap.writeU64_of_valid dst (n + 1) 0 value hDst (by omega) with
+      ⟨heap1, hwrite⟩
+    simp only [hwrite] at hcopy
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 dst guard
+      0 readIndex value old hwrite hread (houtside 0 (by omega))
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 dst 0 value hwrite
+    have hDstTail0 := heap.validU64Slice_add dst (n + 1) 1 n hDst (by omega)
+    have hSrcTail0 := heap.validU64Slice_add src (n + 1) 1 n hSrc (by omega)
+    have hDstTail1 : heap1.ValidU64Slice (RawPtr.add dst 1) n :=
+      (hlayout1 (RawPtr.add dst 1) n).mp hDstTail0
+    have hSrcTail1 : heap1.ValidU64Slice (RawPtr.add src 1) n :=
+      (hlayout1 (RawPtr.add src 1) n).mp hSrcTail0
+    apply copyU64_preserves_read heap1 heap'
+      (RawPtr.add dst 1) (RawPtr.add src 1) guard n readIndex old
+      hDstTail1 hSrcTail1 hread1
+    · intro k hk
+      have hout := houtside (k + 1) (by omega)
+      rcases hout with hregion | hoffset
+      · exact Or.inl (by simpa [RawPtr.add] using hregion)
+      · right
+        dsimp [RawPtr.add]
+        change dst.limbOffset + 1 + k ≠ guard.limbOffset + readIndex
+        omega
+    · exact hcopy
+termination_by count
+
+def CopyU64Contents (before after : RawHeap)
+    (dst src : RawPtr UInt64) (count : Nat) : Prop :=
+  ∀ k value, k < count → before.readU64 src k = .ok value →
+    after.readU64 dst k = .ok value
+
+/-- Content-level semantics of the actual recursive `copyU64` used by the
+short-division branch.  The C++ non-overlap precondition is explicit. -/
+theorem copyU64_refines (heap : RawHeap) (dst src : RawPtr UInt64)
+    (count : Nat)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hregions : dst.region ≠ src.region) :
+    ∃ heap', heap.copyU64 dst src count = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      CopyU64Contents heap heap' dst src count := by
+  cases count with
+  | zero =>
+    exact ⟨heap, rfl, fun _ _ => Iff.rfl, by intro k _ hk; omega⟩
+  | succ n =>
+    simp only [RawHeap.copyU64]
+    rcases heap.readU64_of_valid src (n + 1) 0 hSrc (by omega) with
+      ⟨value, hread⟩
+    simp only [hread]
+    rcases heap.writeU64_of_valid dst (n + 1) 0 value hDst (by omega) with
+      ⟨heap1, hwrite⟩
+    simp only [hwrite]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 dst 0 value hwrite
+    have hDstTail0 := heap.validU64Slice_add dst (n + 1) 1 n hDst (by omega)
+    have hSrcTail0 := heap.validU64Slice_add src (n + 1) 1 n hSrc (by omega)
+    have hDstTail1 : heap1.ValidU64Slice (RawPtr.add dst 1) n :=
+      (hlayout1 (RawPtr.add dst 1) n).mp hDstTail0
+    have hSrcTail1 : heap1.ValidU64Slice (RawPtr.add src 1) n :=
+      (hlayout1 (RawPtr.add src 1) n).mp hSrcTail0
+    rcases copyU64_refines heap1 (RawPtr.add dst 1) (RawPtr.add src 1) n
+      hDstTail1 hSrcTail1 (by simpa [RawPtr.add] using hregions) with
+      ⟨heap2, hcopy, hlayout2, hcontents⟩
+    simp only [hcopy]
+    refine ⟨heap2, rfl, ?_, ?_⟩
+    · intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+    · intro k old hk hold
+      cases k with
+      | zero =>
+        have hnow := RawHeap.readU64_writeU64_same heap heap1 dst 0 value hwrite
+        have hpres := copyU64_preserves_read heap1 heap2
+          (RawPtr.add dst 1) (RawPtr.add src 1) dst n 0 value
+          hDstTail1 hSrcTail1 hnow (by
+            intro j hj
+            right
+            dsimp [RawPtr.add]
+            change dst.limbOffset + 1 + j ≠ dst.limbOffset + 0
+            omega) hcopy
+        have holdEq : old = value := Except.ok.inj (hold.symm.trans hread)
+        simpa [holdEq] using hpres
+      | succ k =>
+        have hk' : k < n := by omega
+        have hold1 := RawHeap.readU64_writeU64_ne heap heap1 dst src
+          0 (k + 1) value old hwrite hold (Or.inl hregions)
+        have htail := hcontents k old hk'
+        rw [RawHeap.readU64_add, RawHeap.readU64_add] at htail
+        have hout := htail (by simpa [Nat.add_comm] using hold1)
+        simpa [Nat.add_comm] using hout
+termination_by count
+
+theorem copyU64_sliceRep (heap : RawHeap) (dst src : RawPtr UInt64)
+    (count : Nat) (coeffs : Array UInt64)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hregions : dst.region ≠ src.region)
+    (hrep : heap.SliceRep src count coeffs)
+    (hsize : coeffs.size = count) :
+    ∃ heap', heap.copyU64 dst src count = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      heap'.SliceRep dst count coeffs := by
+  rcases copyU64_refines heap dst src count hDst hSrc hregions with
+    ⟨heap', hcopy, hlayout, hcontents⟩
+  have hDst' : heap'.ValidU64Slice dst count :=
+    (hlayout dst count).mp hDst
+  rcases readU64s_ok heap' dst count hDst' with
+    ⟨other, hother, hotherSize⟩
+  have heq : other = coeffs := by
+    apply Array.ext (hotherSize.trans hsize.symm)
+    intro i hiOther hiCoeffs
+    have hi : i < count := by simpa [hsize] using hiCoeffs
+    have hsrc := readU64s_get heap src count coeffs hrep hsize i hi
+    have hdst := hcontents i coeffs[i] hi hsrc
+    have hdstOther := readU64s_get heap' dst count other hother
+      hotherSize i hi
+    exact Except.ok.inj (hdstOther.symm.trans hdst)
+  subst other
+  exact ⟨heap', hcopy, hlayout, hother⟩
+
+theorem copyU64_slicePolyRep (heap : RawHeap) (dst src : RawPtr UInt64)
+    (count p : Nat) (poly : Polynomial (ZMod p))
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hregions : dst.region ≠ src.region)
+    (hrep : SlicePolyRep heap src count p poly) :
+    ∃ heap', heap.copyU64 dst src count = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' dst count p poly := by
+  rcases hrep with ⟨coeffs, hslice, hsize, hpoly⟩
+  rcases copyU64_sliceRep heap dst src count coeffs hDst hSrc hregions
+    hslice hsize with ⟨heap', hcopy, hlayout, hslice'⟩
+  exact ⟨heap', hcopy, hlayout, coeffs, hslice', hsize, hpoly⟩
 
 /-- Natural-language proof outline:
 
@@ -746,6 +913,62 @@ theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
     exact ⟨heap, rfl, hR, hW3, fun _ _ => Iff.rfl, hprefix⟩
 termination_by d - i
 decreasing_by omega
+
+/-- Complete content semantics of the C++ short-division branch: the
+generated function returns quotient length zero and copies the represented
+dividend, unchanged, into the remainder buffer. -/
+theorem polyDivrem_short_refines (this : DenseUPolyZp)
+    (Q R A B : RawPtr UInt64) (lenA lenB : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (p : Nat) (dividend : Polynomial (ZMod p))
+    (hlenB : 0 < lenB) (hshort : lenA < lenB)
+    (hA : heap.ValidU64Slice A lenA)
+    (hR : heap.ValidU64Slice R lenA)
+    (hregions : R.region ≠ A.region)
+    (hrep : SlicePolyRep heap A lenA p dividend) :
+    ∃ heap',
+      dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
+        .ok (heap', 0, lenA) ∧
+      RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' R lenA p dividend := by
+  cases lenB with
+  | zero => omega
+  | succ d =>
+    have hbranch : lenA < d + 1 := by omega
+    rcases copyU64_slicePolyRep heap R A lenA p dividend hR hA hregions
+      hrep with ⟨heap', hcopy, hlayout, hrep'⟩
+    refine ⟨heap', ?_, hlayout, hrep'⟩
+    simp [dense_upoly_zp__poly_divrem_ir, hbranch, hcopy]
+
+/-- The short branch also satisfies the mathematical remainder-degree side
+condition when the caller-provided C++ lengths are normalized canonical
+residue lengths. -/
+theorem polyDivrem_short_remainder_degree (heap : RawHeap)
+    (A B : RawPtr UInt64) (lenA lenB p : Nat)
+    (dividend divisor : Polynomial (ZMod p))
+    (hshort : lenA < lenB)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hrepA : SlicePolyRep heap A lenA p dividend)
+    (hrepB : SlicePolyRep heap B lenB p divisor)
+    (hreducedA : ∀ i value, i < lenA → heap.readU64 A i = .ok value →
+      value.toNat < p)
+    (hreducedB : ∀ i value, i < lenB → heap.readU64 B i = .ok value →
+      value.toNat < p)
+    (hnormA : heap.normaliseU64 A lenA = .ok lenA)
+    (hnormB : heap.normaliseU64 B lenB = .ok lenB) :
+    dividend = 0 ∨ dividend.natDegree < divisor.natDegree := by
+  by_cases hlenA : lenA = 0
+  · left
+    subst lenA
+    exact normaliseU64_poly_eq_zero heap A 0 p dividend hA hrepA hnormA
+  · right
+    have hlenB : lenB ≠ 0 := by omega
+    rw [normaliseU64_poly_natDegree_eq heap A lenA p lenA dividend
+        hA hrepA hreducedA hnormA hlenA,
+      normaliseU64_poly_natDegree_eq heap B lenB p lenB divisor
+        hB hrepB hreducedB hnormB hlenB]
+    omega
 
 /-- Under exactly the capacities documented on the C++ raw API,
 `_poly_divrem` cannot take `RawFault`.  This theorem is only the termination

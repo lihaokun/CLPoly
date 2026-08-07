@@ -700,6 +700,36 @@ theorem addMulWord3_modEq (s : Word3) (a b : UInt64) :
   rw [hrhs] at hadd
   simpa [product] using hadd
 
+theorem word3Value_lt (s : Word3) : word3Value s < limbBase ^ 3 := by
+  have hlo := UInt64.toNat_lt s.lo
+  have hmid := UInt64.toNat_lt s.mid
+  have hhi := UInt64.toNat_lt s.hi
+  dsimp [word3Value]
+  norm_num [limbBase] at hlo hmid hhi ⊢
+  nlinarith
+
+theorem word3_hi_lt_of_value_lt (s : Word3) (p : UInt64)
+    (hvalue : word3Value s < p.toNat * limbBase ^ 2) :
+    s.hi.toNat < p.toNat := by
+  dsimp [word3Value] at hvalue
+  have hlo : 0 ≤ s.lo.toNat := Nat.zero_le _
+  have hmid : 0 ≤ s.mid.toNat := Nat.zero_le _
+  nlinarith
+
+/-- Under the no-overflow bound supplied by the C++ `size_t` accumulation
+count, the generated three-limb update is ordinary exact addition. -/
+theorem addMulWord3_exact (s : Word3) (a b : UInt64)
+    (hbound : word3Value s + a.toNat * b.toNat < limbBase ^ 3) :
+    let product := dense_upoly_zp__umul128_ir 0 0 a b
+    let out := dense_upoly_zp__add_carry3_ir s product.1 product.2
+    word3Value out = word3Value s + a.toNat * b.toNat := by
+  let product := dense_upoly_zp__umul128_ir 0 0 a b
+  let out := dense_upoly_zp__add_carry3_ir s product.1 product.2
+  have hmod : Nat.ModEq (limbBase ^ 3) (word3Value out)
+      (word3Value s + a.toNat * b.toNat) := by
+    simpa [product, out] using addMulWord3_modEq s a b
+  exact hmod.eq_of_lt_of_lt (word3Value_lt out) hbound
+
 /-
   Natural-language proof.
 

@@ -890,6 +890,18 @@ theorem remainderPrefix_to_mod (this : DenseUPolyZp) (heap : RawHeap)
       this._p this._ninv this._norm hn (hhi j accum hj hreadW)
       hpn hpnB hnorm hmul hlower
 
+theorem remainderPrefix_to_mod_of_configured (this : DenseUPolyZp)
+    (heap : RawHeap) (R : RawPtr UInt64) (W3 : RawPtr Word3) (upto : Nat)
+    (hprefix : RemainderPrefix this heap R W3 upto)
+    (hcfg : DensePreinvConfigured this)
+    (hhi : ∀ j accum, j < upto → heap.readWord3 W3 j = .ok accum →
+      accum.hi.toNat < this._p.toNat) :
+    RemainderModPrefix this heap R W3 upto := by
+  rcases densePreinvConfigured_conditions this hcfg with
+    ⟨hn, hpn, hpnB, hnorm, hmul, hlower⟩
+  exact remainderPrefix_to_mod this heap R W3 upto hprefix hn hpn hpnB
+    hnorm hmul hlower hhi
+
 /-- Content-level refinement of the generated final remainder loop. -/
 theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
     (W3 : RawPtr Word3) (d lenW3 i : Nat) (heap : RawHeap)

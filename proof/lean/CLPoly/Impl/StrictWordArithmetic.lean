@@ -653,6 +653,56 @@ theorem denseNormalizedModulus_spec (p : UInt64) (hp : p ≠ 0) :
     exact Nat.mod_eq_of_lt hprodlt'
   exact ⟨hnormNat, hshift, hshift ▸ hnorm.2.1⟩
 
+/-- The three field relationships established by the dense C++ modulus
+constructor.  This is representation state, not an arithmetic oracle. -/
+def DensePreinvConfigured (this : DenseUPolyZp) : Prop :=
+  this._p ≠ 0 ∧
+  this._norm = denseNorm this._p ∧
+  this._ninv = dense_upoly_zp___preinvert_limb_ir
+    (this._p <<< this._norm)
+
+/-- All arithmetic side conditions consumed by generated preinverse reduction
+follow from the actual dense-object precomputation fields. -/
+theorem densePreinvConfigured_conditions (this : DenseUPolyZp)
+    (hcfg : DensePreinvConfigured this) :
+    this._norm.toNat < 64 ∧
+    (this._p <<< this._norm).toNat =
+      this._p.toNat * 2 ^ this._norm.toNat ∧
+    this._p.toNat * 2 ^ this._norm.toNat < limbBase ∧
+    limbBase ≤ 2 * (this._p <<< this._norm).toNat ∧
+    (limbBase + this._ninv.toNat) *
+        (this._p <<< this._norm).toNat < limbBase ^ 2 ∧
+    limbBase ^ 2 ≤
+      (limbBase + this._ninv.toNat + 1) *
+        (this._p <<< this._norm).toNat := by
+  rcases hcfg with ⟨hp, hnormField, hinvField⟩
+  have hclz := clz_normalizes_uint64 this._p hp
+  have hspec := denseNormalizedModulus_spec this._p hp
+  let n := this._p.toBitVec.clz.toNat
+  have hnormNat : this._norm.toNat = n := by
+    rw [hnormField]
+    exact hspec.1
+  have hn : this._norm.toNat < 64 := by
+    rw [hnormNat]
+    exact hclz.1
+  have hpn : (this._p <<< this._norm).toNat =
+      this._p.toNat * 2 ^ this._norm.toNat := by
+    rw [hnormField]
+    simpa [denseNormalizedModulus, hspec.1] using hspec.2.1
+  have hpnB : this._p.toNat * 2 ^ this._norm.toNat < limbBase := by
+    rw [hnormNat]
+    exact hclz.2.2
+  have hhalf : limbBase / 2 ≤ (this._p <<< this._norm).toNat := by
+    rw [hnormField]
+    exact hspec.2.2
+  have hnorm : limbBase ≤ 2 * (this._p <<< this._norm).toNat := by
+    have hEven : 2 * (limbBase / 2) = limbBase := by
+      norm_num [limbBase]
+    nlinarith
+  have hbounds := preinverse_mul_bounds (this._p <<< this._norm) hhalf
+  rw [hinvField]
+  exact ⟨hn, hpn, hpnB, hnorm, hbounds.1, by simpa [Nat.add_assoc] using hbounds.2⟩
+
 /-
   Natural-language proof.
 
@@ -1766,6 +1816,18 @@ theorem lll_mod_preinv_ir_correct (hi mid lo p pinv : UInt64)
   rw [lll_mod_preinv_ir_eq_steps hi mid lo p pinv norm (Nat.le_of_lt hn)]
   exact preinvTwoSteps_correct hi mid lo p pinv norm hn hhi hpn hpnB
     hnorm hmul hlower
+
+theorem lll_mod_preinv_ir_correct_of_configured (this : DenseUPolyZp)
+    (hi mid lo : UInt64)
+    (hcfg : DensePreinvConfigured this)
+    (hhi : hi.toNat < this._p.toNat) :
+    (dense_upoly_zp__lll_mod_preinv_ir hi mid lo this._p this._ninv
+      this._norm).toNat =
+      word3Value { hi := hi, mid := mid, lo := lo } % this._p.toNat := by
+  rcases densePreinvConfigured_conditions this hcfg with
+    ⟨hn, hpn, hpnB, hnorm, hmul, hlower⟩
+  exact lll_mod_preinv_ir_correct hi mid lo this._p this._ninv this._norm
+    hn hhi hpn hpnB hnorm hmul hlower
 
 /-- Structural factoring of generated nmod multiplication through the exact
 source-level preinverse round. -/

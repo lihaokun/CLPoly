@@ -61,6 +61,10 @@
 - 将该生成入口定理接到 `remainderLoop` 内容不变式：在商循环提供每个
   `W3[i].hi<p` 后，最终 raw `R[i]` 的 `toNat` 精确等于对应三-limb 数值
   模 `p`，不再把生成调用作为未解释的黑盒。
+- 定义真实 dense 对象预计算关系 `DensePreinvConfigured`（非零模数、
+  `_norm=clz(p)`、`_ninv=_preinvert_limb(p<<norm)`），并一次性从该关系
+  推出 reduction 所需的全部七条位移/归一化/preinverse 上下界；余式循环
+  可直接消费该配置关系，不需要把算术条件当作外部 oracle。
 
 ## 为什么做
 

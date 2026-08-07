@@ -723,6 +723,34 @@ theorem readU64_writeWord3_region_ne (heap heap' : RawHeap)
       exact readU64_writeU64_ne heap2 heap' dstPtr src 2 readIndex
         value.hi old hwrite hr2 (Or.inl (by simpa [dstPtr] using hne))
 
+/-- A limb write cannot alter a `Word3` read from a different allocation
+region. -/
+theorem readWord3_writeU64_region_ne (heap heap' : RawHeap)
+    (dst : RawPtr UInt64) (src : RawPtr Word3) (writeIndex readIndex : Nat)
+    (value : UInt64) (old : Word3)
+    (hwrite : heap.writeU64 dst writeIndex value = .ok heap')
+    (hread : heap.readWord3 src readIndex = .ok old)
+    (hne : dst.region ≠ src.region) :
+    heap'.readWord3 src readIndex = .ok old := by
+  let srcPtr : RawPtr UInt64 :=
+    { region := src.region, limbOffset := src.limbOffset + 3 * readIndex }
+  have hparts := (readWord3_eq_ok_iff heap src readIndex old).mp hread
+  change heap.readU64 srcPtr 0 = .ok old.lo ∧
+      heap.readU64 srcPtr 1 = .ok old.mid ∧
+      heap.readU64 srcPtr 2 = .ok old.hi at hparts
+  apply (readWord3_eq_ok_iff heap' src readIndex old).mpr
+  change heap'.readU64 srcPtr 0 = .ok old.lo ∧
+    heap'.readU64 srcPtr 1 = .ok old.mid ∧
+    heap'.readU64 srcPtr 2 = .ok old.hi
+  have preserve (limb : Nat) (x : UInt64)
+      (hr : heap.readU64 srcPtr limb = .ok x) :
+      heap'.readU64 srcPtr limb = .ok x :=
+    readU64_writeU64_ne heap heap' dst srcPtr writeIndex limb value x
+      hwrite hr (Or.inl (by simpa [srcPtr] using hne))
+  exact ⟨preserve 0 old.lo hparts.1,
+    preserve 1 old.mid hparts.2.1,
+    preserve 2 old.hi hparts.2.2⟩
+
 theorem writeWord3_preserves_valid (heap heap' : RawHeap)
     (ptr : RawPtr Word3) (index : Nat) (value : Word3)
     (hwrite : heap.writeWord3 ptr index value = .ok heap')

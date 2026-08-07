@@ -34,6 +34,10 @@
 - 完成整个生成 `addMulLoop` 的内容级良基归纳：B 的全部读取保持、已处理
   前缀保持、区间 `j..d` 的每个 W3 cell 均满足对应乘加同余；度量仍为
   `d+1-j`，没有 fuel 或 L2 多项式运算。
+- 证明 UInt64 输出写入保持不同 allocation region 的 Word3 读取，并据此
+  完成生成 `remainderLoop` 的内容级良基归纳：最终每个 `R[i]` 精确等于
+  对应 W3 cell 调用真实生成 `_lll_mod_preinv_ir` 的结果。此处刻意保留
+  L1 函数，未用 `%p` 规格替换尚待闭合的最外层 CFG 绑定。
 
 ## 为什么做
 

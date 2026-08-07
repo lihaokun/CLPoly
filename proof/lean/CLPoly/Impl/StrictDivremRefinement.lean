@@ -551,6 +551,73 @@ theorem remainderLoop_ok (this : DenseUPolyZp) (R : RawPtr UInt64)
 termination_by d - i
 decreasing_by omega
 
+/-- The completed remainder prefix contains exactly the outputs of the
+generated three-limb reduction on the corresponding W3 cells. -/
+def RemainderPrefix (this : DenseUPolyZp) (heap : RawHeap)
+    (R : RawPtr UInt64) (W3 : RawPtr Word3) (upto : Nat) : Prop :=
+  ∀ j, j < upto → ∃ accum : Word3,
+    heap.readWord3 W3 j = .ok accum ∧
+    heap.readU64 R j = .ok
+      (Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        accum.hi accum.mid accum.lo this._p this._ninv this._norm)
+
+/-- Content-level refinement of the generated final remainder loop. -/
+theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (d lenW3 i : Nat) (heap : RawHeap)
+    (hR : heap.ValidU64Slice R d)
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hdW : d ≤ lenW3) (hi : i ≤ d)
+    (hregions : R.region ≠ W3.region)
+    (hprefix : RemainderPrefix this heap R W3 i) :
+    ∃ heap', remainderLoop this R W3 d i heap = .ok heap' ∧
+      heap'.ValidU64Slice R d ∧ heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      RemainderPrefix this heap' R W3 d := by
+  rw [remainderLoop]
+  split
+  next hlt =>
+    have hiW : i < lenW3 := by omega
+    rcases heap.readWord3_of_valid W3 lenW3 i hW3 hiW with ⟨accum, hread⟩
+    simp only [hread]
+    let value := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      accum.hi accum.mid accum.lo this._p this._ninv this._norm
+    rcases heap.writeU64_of_valid R d i value hR hlt with ⟨heap1, hwrite⟩
+    dsimp [value] at hwrite ⊢
+    simp only [hwrite]
+    have hR1 : heap1.ValidU64Slice R d :=
+      (RawHeap.writeU64_preserves_valid heap heap1 R i value hwrite R d).mp hR
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeU64_preserves_valid heap heap1 R i value hwrite
+        (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 R i value hwrite
+    have hprefix1 : RemainderPrefix this heap1 R W3 (i + 1) := by
+      intro j hj
+      by_cases hji : j = i
+      · subst j
+        have hreadW := RawHeap.readWord3_writeU64_region_ne heap heap1
+          R W3 i i value accum hwrite hread hregions
+        have hreadR := RawHeap.readU64_writeU64_same heap heap1 R i value hwrite
+        exact ⟨accum, hreadW, hreadR⟩
+      · have hjlt : j < i := by omega
+        rcases hprefix j hjlt with ⟨old, hreadW, hreadR⟩
+        have hreadW1 := RawHeap.readWord3_writeU64_region_ne heap heap1
+          R W3 i j value old hwrite hreadW hregions
+        have hreadR1 := RawHeap.readU64_writeU64_ne heap heap1 R R i j
+          value _ hwrite hreadR (Or.inr (by omega))
+        exact ⟨old, hreadW1, hreadR1⟩
+    rcases remainderLoop_refines this R W3 d lenW3 (i + 1) heap1
+      hR1 hW31 hdW (by omega) hregions hprefix1 with
+      ⟨heap2, hloop, hR2, hW32, hlayout2, hfull⟩
+    refine ⟨heap2, hloop, hR2, hW32, ?_, hfull⟩
+    intro ptr length
+    exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+  next hnot =>
+    have hieq : i = d := by omega
+    subst i
+    exact ⟨heap, rfl, hR, hW3, fun _ _ => Iff.rfl, hprefix⟩
+termination_by d - i
+decreasing_by omega
+
 /-- Under exactly the capacities documented on the C++ raw API,
 `_poly_divrem` cannot take `RawFault`.  This theorem is only the termination
 and memory-safety bridge; the quotient/remainder algebraic invariant is the

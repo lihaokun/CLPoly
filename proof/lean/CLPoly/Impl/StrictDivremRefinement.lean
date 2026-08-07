@@ -114,6 +114,45 @@ theorem normaliseU64_ok (heap : RawHeap) (ptr : RawPtr UInt64) (len : Nat)
       exact ⟨result, hresult, by omega⟩
     next hnonzero => exact ⟨n + 1, rfl, Nat.le_refl _⟩
 
+/-- Exact content specification of generated `_poly_normalise`: the returned
+prefix discards only zero trailing limbs, and a nonempty returned prefix ends
+in a nonzero limb. -/
+theorem normaliseU64_spec (heap : RawHeap) (ptr : RawPtr UInt64) (len : Nat)
+    (hvalid : heap.ValidU64Slice ptr len) :
+    ∃ result, heap.normaliseU64 ptr len = .ok result ∧ result ≤ len ∧
+      (∀ j, result ≤ j → j < len → heap.readU64 ptr j = .ok 0) ∧
+      (result = 0 ∨ ∃ value : UInt64,
+        heap.readU64 ptr (result - 1) = .ok value ∧ value ≠ 0) := by
+  cases len with
+  | zero =>
+      refine ⟨0, rfl, Nat.le_refl 0, ?_, Or.inl rfl⟩
+      intro j _ hj
+      omega
+  | succ n =>
+      simp only [RawHeap.normaliseU64]
+      rcases heap.readU64_of_valid ptr (n + 1) n hvalid (by omega) with
+        ⟨value, hread⟩
+      simp only [hread]
+      split
+      next hzero =>
+        have hvalue : value = 0 := by simpa using hzero
+        have hprefix := heap.validU64Slice_mono ptr (n + 1) n hvalid (by omega)
+        rcases normaliseU64_spec heap ptr n hprefix with
+          ⟨result, hresult, hle, hzeros, hlast⟩
+        refine ⟨result, hresult, by omega, ?_, hlast⟩
+        intro j hjlow hjhigh
+        by_cases hjn : j < n
+        · exact hzeros j hjlow hjn
+        · have hjeq : j = n := by omega
+          subst j
+          simpa [hvalue] using hread
+      next hnonzero =>
+        have hvalue : value ≠ 0 := by simpa using hnonzero
+        refine ⟨n + 1, rfl, Nat.le_refl _, ?_, Or.inr ?_⟩
+        · intro j hjlow hjhigh
+          omega
+        · exact ⟨value, by simpa using hread, hvalue⟩
+
 /-- Limb `memcpy` succeeds for valid source and destination slices.  The
 returned heap has exactly the same allocation layout as the input heap, so
 all caller slice invariants can be transported through the copy. -/

@@ -61,6 +61,32 @@ def preinvStepIR (hi lo p pinv : UInt64) (norm : UInt32) : UInt64 :=
   let l := lo <<< norm
   (preinvRoundIR h l pn pinv) >>> norm
 
+/-- Continuation form of the exact generated preinverse correction block.
+It mirrors cpp2lean's basic-block representation and exposes no specification
+operation. -/
+def preinvRoundCPS (u1 u0 pn pinv : UInt64) (k : UInt64 → UInt64) : UInt64 :=
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 :=
+    ((if q0' < u0 then (1 : Int32) else 0).toInt64.toUInt64)
+  let q1' : UInt64 := q1 + (u1 + carry)
+  let r : UInt64 := u0 - ((q1' + 1) * pn)
+  let r' : UInt64 := if r > q0' then r + pn else r
+  if r' >= pn then k (r' - pn) else k r'
+
+/-- Continuation form of one normalized limb step, matching the block layout
+emitted by cpp2lean. -/
+def preinvStepCPS (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 :=
+    if norm > 0 then h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
+  let l : UInt64 := lo <<< norm
+  preinvRoundCPS h l pn pinv (fun r => k (r >>> norm))
+
 @[simp] theorem uint32_zero_toUInt64 : (0 : UInt32).toUInt64 = 0 := by
   decide
 
@@ -120,6 +146,17 @@ theorem int64_one_toUInt64 : (1 : Int64).toUInt64 = 1 := by
 
 theorem int64_zero_toUInt64 : (0 : Int64).toUInt64 = 0 := by
   decide
+
+theorem preinvRoundCPS_eq (u1 u0 pn pinv : UInt64)
+    (k : UInt64 → UInt64) :
+    preinvRoundCPS u1 u0 pn pinv k = k (preinvRoundIR u1 u0 pn pinv) := by
+  simp [preinvRoundCPS, preinvRoundIR] <;> repeat' split <;> simp_all
+
+theorem preinvStepCPS_eq (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) :
+    preinvStepCPS hi lo p pinv norm k = k (preinvStepIR hi lo p pinv norm) := by
+  simp only [preinvStepCPS, preinvStepIR]
+  rw [preinvRoundCPS_eq]
 
 /-
   Natural-language proof.

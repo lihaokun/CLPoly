@@ -51,8 +51,40 @@ def preinvReduceNormalized (u1 u0 pn pinv : UInt64) : UInt64 :=
   let r' : UInt64 := if r > q.2 then r + pn else r
   if r' >= pn then r' - pn else r'
 
+/-- One complete two-limb step of `_lll_mod_preinv`: pack the adjacent limbs
+under the source normalization shift, run the exact preinverse block, then
+denormalize its canonical result. -/
+def preinvStepIR (hi lo p pinv : UInt64) (norm : UInt32) : UInt64 :=
+  let pn := p <<< norm
+  let h0 := hi <<< norm
+  let h := if norm > 0 then h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
+  let l := lo <<< norm
+  (preinvRoundIR h l pn pinv) >>> norm
+
 @[simp] theorem uint32_zero_toUInt64 : (0 : UInt32).toUInt64 = 0 := by
   decide
+
+@[simp] theorem uint32_toUInt64_pos (n : UInt32) :
+    (0 : UInt64) < n.toUInt64 ↔ (0 : UInt32) < n := by
+  simp [UInt64.lt_iff_toNat_lt, UInt32.lt_iff_toNat_lt,
+    UInt32.toNat_toUInt64]
+
+@[simp] theorem uint64_shiftLeft_u32_eq_u64 (x : UInt64) (n : UInt32) :
+    x <<< n = x <<< n.toUInt64 := by rfl
+
+@[simp] theorem uint64_shiftRight_u32_eq_u64 (x : UInt64) (n : UInt32) :
+    x >>> n = x >>> n.toUInt64 := by rfl
+
+theorem uint32_sub_64_toUInt64 (n : UInt32) (hn : n.toNat ≤ 64) :
+    ((64 : UInt32) - n).toUInt64 = (64 : UInt64) - n.toUInt64 := by
+  apply UInt64.toNat_inj.mp
+  rw [UInt32.toNat_toUInt64]
+  have hn32 : n ≤ (64 : UInt32) := by
+    simpa [UInt32.le_iff_toNat_le] using hn
+  have hn64 : n.toUInt64 ≤ (64 : UInt64) := by
+    simp [UInt64.le_iff_toNat_le, UInt32.toNat_toUInt64, hn]
+  rw [UInt32.toNat_sub_of_le _ _ hn32, UInt64.toNat_sub_of_le _ _ hn64]
+  simp [UInt32.toNat_toUInt64]
 
 @[simp] theorem uint64_shiftLeft_zero (x : UInt64) :
     x <<< (0 : UInt64) = x := by
@@ -1366,6 +1398,129 @@ theorem uint64_shiftRight_toNat_of_lt (x : UInt64) (n : UInt32)
   change (x >>> n.toUInt64).toNat = _
   rw [UInt64.toNat_shiftRight, UInt32.toNat_toUInt64]
   rw [Nat.mod_eq_of_lt hn, Nat.shiftRight_eq_div_pow]
+
+/-- The normalization splice used by `_lll_mod_preinv` preserves the exact
+two-limb value after multiplication by `2^norm`. -/
+theorem preinv_normalized_pair_value (hi lo p : UInt64) (norm : UInt32)
+    (hn : norm.toNat < 64)
+    (hhi : hi.toNat < p.toNat)
+    (hpn : p.toNat * 2 ^ norm.toNat < limbBase) :
+    let h0 := hi <<< norm
+    let h := if norm > 0 then
+      h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
+    let l := lo <<< norm
+    h.toNat * limbBase + l.toNat =
+      (hi.toNat * limbBase + lo.toNat) * 2 ^ norm.toNat := by
+  dsimp only
+  by_cases hz : norm = 0
+  · subst norm
+    simp [limbBase]
+  · have hnpos : 0 < norm.toNat := Nat.pos_of_ne_zero (by
+      intro h
+      apply hz
+      exact UInt32.toNat_inj.mp (by simpa using h))
+    have hnormPos : (0 : UInt32) < norm := by
+      simpa [UInt32.lt_iff_toNat_lt] using hnpos
+    simp only [hnormPos, ↓reduceIte]
+    have hhiScaled : hi.toNat * 2 ^ norm.toNat < limbBase := by
+      have hs : 0 < 2 ^ norm.toNat := by positivity
+      have := Nat.mul_lt_mul_of_pos_right hhi hs
+      omega
+    rw [UInt64.toNat_or]
+    rw [uint64_shiftLeft_toNat_of_mul_lt hi norm hn hhiScaled]
+    have hnle : norm.toNat ≤ 64 := Nat.le_of_lt hn
+    rw [uint64_shiftRight_u32_eq_u64]
+    rw [uint32_sub_64_toUInt64 norm hnle]
+    have hsubNat : ((64 : UInt64) - norm.toUInt64).toNat =
+        64 - norm.toNat := by
+      have hle : norm.toUInt64 ≤ (64 : UInt64) := by
+        simp [UInt64.le_iff_toNat_le, UInt32.toNat_toUInt64, hnle]
+      rw [UInt64.toNat_sub_of_le _ _ hle]
+      simp [UInt32.toNat_toUInt64]
+    rw [UInt64.toNat_shiftRight, hsubNat]
+    have hsub64 : 64 - norm.toNat < 64 := by omega
+    rw [Nat.mod_eq_of_lt hsub64, Nat.shiftRight_eq_div_pow]
+    rw [uint64_shiftLeft_u32_eq_u64]
+    rw [UInt64.toNat_shiftLeft, UInt32.toNat_toUInt64,
+      Nat.mod_eq_of_lt hn, Nat.shiftLeft_eq]
+    have htail : lo.toNat / 2 ^ (64 - norm.toNat) < 2 ^ norm.toNat := by
+      have hlo : lo.toNat < 2 ^ 64 := by simpa using UInt64.toNat_lt lo
+      exact (Nat.div_lt_iff_lt_mul (by positivity)).2 (by
+        have heq : 2 ^ norm.toNat * 2 ^ (64 - norm.toNat) = 2 ^ 64 := by
+          rw [← pow_add]
+          congr 1
+          omega
+        simpa [heq] using hlo)
+    have hor := Nat.shiftLeft_add_eq_or_of_lt htail hi.toNat
+    rw [Nat.shiftLeft_eq] at hor
+    rw [← hor]
+    have hpow : 2 ^ (64 - norm.toNat) * 2 ^ norm.toNat = limbBase := by
+      rw [← pow_add]
+      simp [limbBase, Nat.sub_add_cancel hnle]
+    have hloDiv := Nat.div_add_mod lo.toNat (2 ^ (64 - norm.toNat))
+    have hloMod : lo.toNat % 2 ^ (64 - norm.toNat) <
+        2 ^ (64 - norm.toNat) := Nat.mod_lt _ (by positivity)
+    have hmod : lo.toNat * 2 ^ norm.toNat % limbBase =
+        lo.toNat % 2 ^ (64 - norm.toNat) * 2 ^ norm.toNat := by
+      rw [← hpow, Nat.mul_mod_mul_right]
+    norm_num [limbBase] at hmod
+    rw [hmod]
+    norm_num [limbBase] at hpow ⊢
+    nlinarith
+
+/-- Semantic correctness of one complete source `_lll_mod_preinv` step,
+including normalization, the generated preinverse round, and denormalization. -/
+theorem preinvStepIR_correct (hi lo p pinv : UInt64) (norm : UInt32)
+    (hn : norm.toNat < 64)
+    (hhi : hi.toNat < p.toNat)
+    (hpn : (p <<< norm).toNat = p.toNat * 2 ^ norm.toNat)
+    (hpnB : p.toNat * 2 ^ norm.toNat < limbBase)
+    (hnorm : limbBase ≤ 2 * (p <<< norm).toNat)
+    (hmul : (limbBase + pinv.toNat) * (p <<< norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * (p <<< norm).toNat) :
+    (preinvStepIR hi lo p pinv norm).toNat =
+      (hi.toNat * limbBase + lo.toNat) % p.toNat := by
+  let pn := p <<< norm
+  let h0 := hi <<< norm
+  let h := if norm > 0 then
+    h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
+  let l := lo <<< norm
+  let r := preinvRoundIR h l pn pinv
+  have hs : 0 < 2 ^ norm.toNat := by positivity
+  have hpair : h.toNat * limbBase + l.toNat =
+      (hi.toNat * limbBase + lo.toNat) * 2 ^ norm.toNat := by
+    simpa [h, h0, l] using
+      preinv_normalized_pair_value hi lo p norm hn hhi hpnB
+  have hloB : lo.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt lo
+  have hlB : l.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt l
+  have hpPos : 0 < p.toNat := by
+    have : 0 < (p <<< norm).toNat := by omega
+    omega
+  have hhpn : h.toNat < pn.toNat := by
+    have hvalue : hi.toNat * limbBase + lo.toNat < p.toNat * limbBase := by
+      nlinarith
+    dsimp [pn]
+    rw [hpn]
+    nlinarith
+  have hr : r.toNat =
+      ((hi.toNat * limbBase + lo.toNat) * 2 ^ norm.toNat) %
+        (p.toNat * 2 ^ norm.toNat) := by
+    have hround := preinvRoundIR_correct h l pn pinv hhpn hnorm hmul hlower
+    dsimp [r]
+    rw [hround, hpair]
+    change ((hi.toNat * limbBase + lo.toNat) * 2 ^ norm.toNat) %
+      (p <<< norm).toNat = _
+    rw [hpn]
+  have hrlt : r.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt r
+  unfold preinvStepIR
+  change (r >>> norm).toNat = _
+  rw [uint64_shiftRight_toNat_of_lt r norm hn, hr]
+  exact scaled_mod_div (hi.toNat * limbBase + lo.toNat) p.toNat
+    (2 ^ norm.toNat) hs
 
 /-- Structural factoring of generated nmod multiplication through the exact
 source-level preinverse round. -/

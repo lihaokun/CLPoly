@@ -64,6 +64,11 @@
   小于规范化模数、单轮归约适用，并用
   `((x*2^n)%(p*2^n))/2^n=x%p` 证明最终右移精确返回
   `(a*b)%p`。全程没有调用 `Zp` 或 L2 乘法。
+- 闭合 `_lll_mod_preinv` 的单个 limb 步骤：直接证明生成代码中的
+  `hi<<norm | lo>>(64-norm)` 与 `lo<<norm` 精确表示原双-limb 数乘
+  `2^norm`，再接入真实 `preinvRoundIR` 和最终右移，得到
+  `preinvStepIR hi lo ... = (hi*B+lo)%p`。该步骤不使用 fuel、规格
+  oracle、L2 运算或默认回退。
 
 ## 为什么做
 
@@ -88,6 +93,10 @@ RawHeap `_poly_divrem` 的循环虽然已经终止且无越界，但其多项式
 - 生成器将最终右移复制到 correction 的各个 continuation 分支；证明通过
   穷尽这些真实分支对齐共享的 `preinvRoundIR`，而不是依赖大规模定义等价
   展开。
+- `_lll_mod_preinv` 的两个步骤在生成 CFG 中被 continuation 复制；直接完全
+  展开会产生巨大分支目标。因此先证明可复用的单步语义，下一步再以局部 CFG
+  continuation 引理把生成函数结构性绑定为两个单步，避免把数学规格偷换成
+  实现。
 
 ## 涉及文件
 

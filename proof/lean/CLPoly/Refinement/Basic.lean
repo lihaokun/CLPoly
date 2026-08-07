@@ -11,7 +11,6 @@
 -/
 
 import CLPoly.Model
-import CLPoly.Generated.Corpus
 import CLPoly.Math.Univariate
 
 set_option autoImplicit false

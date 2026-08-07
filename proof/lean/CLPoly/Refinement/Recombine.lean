@@ -6,7 +6,6 @@
   implementation and the claimed refinement have been removed.  A replacement
   must prove the generated candidate/extraction loops directly.
 -/
-import CLPoly.Generated.Corpus
 import CLPoly.Algorithm.Recombine
 import CLPoly.Refinement.Basic
 

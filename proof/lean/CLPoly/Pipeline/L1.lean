@@ -14,7 +14,6 @@ import CLPoly.Pipeline.FactorZZInstantiate
 import CLPoly.Algorithm.EDF
 import CLPoly.Algorithm.SquarefreeZp
 import CLPoly.Algorithm.DDF
-import CLPoly.Generated.Corpus
 import CLPoly.Refinement.Basic
 import CLPoly.Refinement.SquarefreeZp
 import CLPoly.Refinement.DDF

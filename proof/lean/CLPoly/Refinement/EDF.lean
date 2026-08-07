@@ -12,7 +12,6 @@
   manufacture an L2 result on an unproved execution branch.
 -/
 import CLPoly.Algorithm.EDF
-import CLPoly.Generated.Corpus
 import CLPoly.Refinement.Basic
 
 set_option autoImplicit false

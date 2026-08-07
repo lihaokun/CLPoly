@@ -65,6 +65,12 @@
   `_norm=clz(p)`、`_ninv=_preinvert_limb(p<<norm)`），并一次性从该关系
   推出 reduction 所需的全部七条位移/归一化/preinverse 上下界；余式循环
   可直接消费该配置关系，不需要把算术条件当作外部 oracle。
+- 闭合生成 `inv_prime_ir` 的扩展欧几里得循环：以实际 `c=a%b` 的
+  `c.toNat` 为良基度量，证明 128-bit 乘模和条件减法维持 Bézout 系数的
+  `ZMod p` 表示，终止系数表示 `gcd(a,b)`；对素数模和非零输入推出生成
+  `nmod_inv` 为 canonical 逆元。没有 fuel，也没有调用 L2 逆元作实现。
+- 将生成 `nmod_inv` 与已证生成 `nmod_mul` 组合，证明商循环计算的 `qi`
+  满足 `qi<p` 且 `(qi*lead)%p=r`，即真实机器路径确实消去当前最高系数。
 
 ## 为什么做
 

@@ -434,6 +434,253 @@ theorem addCarry3_modEq (s : Word3) (b1 b0 : UInt64) :
   rw [hsum1] at hsplit1
   omega
 
+/-- Exact observation of the generated 128-bit multiply/reduce used by the
+extended-Euclid inverse loop. -/
+theorem uint128_mul_mod_u64_toNat (a b p : UInt64) (hp : p ≠ 0) :
+    (uint128_lo ((uint128_of_uint64 a * uint128_of_uint64 b) %
+      uint128_of_uint64 p)).toNat =
+      (a.toNat * b.toNat) % p.toNat := by
+  have hpNat : 0 < p.toNat := by
+    apply Nat.pos_of_ne_zero
+    intro hzero
+    apply hp
+    exact UInt64.toNat_inj.mp (by simpa using hzero)
+  have hab : a.toNat * b.toNat < 2 ^ 128 := by
+    have ha := UInt64.toNat_lt a
+    have hb := UInt64.toNat_lt b
+    norm_num at ha hb ⊢
+    nlinarith
+  have ha128 : a.toNat < 2 ^ 128 := lt_trans (UInt64.toNat_lt a) (by norm_num)
+  have hb128 : b.toNat < 2 ^ 128 := lt_trans (UInt64.toNat_lt b) (by norm_num)
+  have hp128 : p.toNat < 2 ^ 128 := lt_trans (UInt64.toNat_lt p) (by norm_num)
+  have hmod64 : (a.toNat * b.toNat) % p.toNat < UInt64.size := by
+    have := Nat.mod_lt (a.toNat * b.toNat) hpNat
+    exact lt_trans this (UInt64.toNat_lt p)
+  simp only [uint128_lo, uint128_of_uint64, BitVec.toNat_umod,
+    BitVec.toNat_mul, BitVec.toNat_ofNat]
+  rw [Nat.mod_eq_of_lt ha128, Nat.mod_eq_of_lt hb128,
+    Nat.mod_eq_of_lt hab, Nat.mod_eq_of_lt hp128]
+  rw [UInt64.toNat_ofNat', Nat.mod_eq_of_lt hmod64]
+
+/-- One coefficient update of the generated extended-Euclid loop is exactly
+modular subtraction. -/
+theorem invPrimeCoeffStep_cast (s1 s2 q p : UInt64)
+    (hp : p ≠ 0) :
+    let sq : UInt64 := uint128_lo
+      ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+    let s3 : UInt64 :=
+      if s1 ≥ sq then s1 - sq else (p - sq) + s1
+    (s3.toNat : ZMod p.toNat) =
+      (s1.toNat : ZMod p.toNat) -
+        (s2.toNat : ZMod p.toNat) * (q.toNat : ZMod p.toNat) := by
+  dsimp only
+  let sq : UInt64 := uint128_lo
+    ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+  change ((if s1 ≥ sq then s1 - sq else (p - sq) + s1).toNat :
+      ZMod p.toNat) =
+    (s1.toNat : ZMod p.toNat) -
+      (s2.toNat : ZMod p.toNat) * (q.toNat : ZMod p.toNat)
+  have hsq : sq.toNat = (s2.toNat * q.toNat) % p.toNat := by
+    exact uint128_mul_mod_u64_toNat s2 q p hp
+  have hpNat : 0 < p.toNat := by
+    exact Nat.pos_of_ne_zero (fun h => hp (UInt64.toNat_inj.mp (by simpa using h)))
+  have hsqP : sq.toNat < p.toNat := by
+    rw [hsq]
+    exact Nat.mod_lt _ hpNat
+  by_cases hle : sq ≤ s1
+  · have hleNat : sq.toNat ≤ s1.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using hle
+    simp only [hle, ↓reduceIte]
+    rw [UInt64.toNat_sub_of_le _ _ hle]
+    rw [Nat.cast_sub hleNat, hsq]
+    simp
+  · have hltNat : s1.toNat < sq.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using hle
+    have hsqLeP : sq ≤ p := by
+      simp [UInt64.le_iff_toNat_le, Nat.le_of_lt hsqP]
+    have hsum : (p - sq).toNat + s1.toNat < UInt64.size := by
+      rw [UInt64.toNat_sub_of_le _ _ hsqLeP]
+      apply lt_trans (b := p.toNat)
+      · omega
+      · exact UInt64.toNat_lt p
+    simp only [hle, ↓reduceIte]
+    rw [UInt64.toNat_add, Nat.mod_eq_of_lt hsum,
+      UInt64.toNat_sub_of_le _ _ hsqLeP, hsq]
+    rw [Nat.cast_add,
+      Nat.cast_sub (Nat.le_of_lt (Nat.mod_lt (s2.toNat * q.toNat) hpNat))]
+    simp
+    ring
+
+theorem invPrimeCoeffStep_lt (s1 s2 q p : UInt64)
+    (hp : p ≠ 0) (hs1 : s1.toNat < p.toNat) :
+    let sq : UInt64 := uint128_lo
+      ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+    let s3 : UInt64 :=
+      if s1 ≥ sq then s1 - sq else (p - sq) + s1
+    s3.toNat < p.toNat := by
+  dsimp only
+  let sq : UInt64 := uint128_lo
+    ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+  change (if s1 ≥ sq then s1 - sq else (p - sq) + s1).toNat < p.toNat
+  have hsq : sq.toNat = (s2.toNat * q.toNat) % p.toNat :=
+    uint128_mul_mod_u64_toNat s2 q p hp
+  have hpNat : 0 < p.toNat :=
+    Nat.pos_of_ne_zero (fun h => hp (UInt64.toNat_inj.mp (by simpa using h)))
+  have hsqP : sq.toNat < p.toNat := by
+    rw [hsq]
+    exact Nat.mod_lt _ hpNat
+  by_cases hle : sq ≤ s1
+  · simp only [hle, ↓reduceIte]
+    rw [UInt64.toNat_sub_of_le _ _ hle]
+    omega
+  · have hltNat : s1.toNat < sq.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using hle
+    have hsqLeP : sq ≤ p := by
+      simp [UInt64.le_iff_toNat_le, Nat.le_of_lt hsqP]
+    have hsumP : (p - sq).toNat + s1.toNat < p.toNat := by
+      rw [UInt64.toNat_sub_of_le _ _ hsqLeP]
+      omega
+    have hsumB : (p - sq).toNat + s1.toNat < UInt64.size :=
+      lt_trans hsumP (UInt64.toNat_lt p)
+    simp only [hle, ↓reduceIte]
+    rw [UInt64.toNat_add, Nat.mod_eq_of_lt hsumB]
+    exact hsumP
+
+/-- Well-founded semantic invariant for the exact generated extended-Euclid
+loop.  The returned coefficient represents `gcd(a,b)` modulo `p`. -/
+theorem loop_inv_prime_ir_refines (input p s2 s1 c b a : UInt64)
+    (hp : p ≠ 0) (hb : b ≠ 0)
+    (hc : c.toNat = a.toNat % b.toNat)
+    (hs1lt : s1.toNat < p.toNat) (hs2lt : s2.toNat < p.toNat)
+    (hs1 : (s1.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) =
+      (a.toNat : ZMod p.toNat))
+    (hs2 : (s2.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) =
+      (b.toNat : ZMod p.toNat)) :
+    let out := Generated.StrictGCD._loop_inv_prime_0_ir s2 s1 c b a p
+    out.2.toNat < p.toNat ∧
+      (out.2.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) =
+        (Nat.gcd a.toNat b.toNat : ZMod p.toNat) := by
+  induction hmeasure : c.toNat using Nat.strong_induction_on generalizing
+    s2 s1 c b a with
+  | h measure ih =>
+    rw [Generated.StrictGCD._loop_inv_prime_0_ir]
+    split
+    next hcnz =>
+      have hcNe : c ≠ 0 := by simpa using hcnz
+      have hcPos : 0 < c.toNat := by
+        exact Nat.pos_of_ne_zero (fun hz => hcNe (UInt64.toNat_inj.mp (by simpa using hz)))
+      let q : UInt64 := a / b
+      let sq : UInt64 := uint128_lo
+        ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+      let s3 : UInt64 := if s1 ≥ sq then s1 - sq else (p - sq) + s1
+      let c' : UInt64 := b % c
+      have hq : q.toNat = a.toNat / b.toNat := by
+        simp [q, UInt64.toNat_div]
+      have hc' : c'.toNat = b.toNat % c.toNat := by
+        simp [c', UInt64.toNat_mod]
+      have hc'lt : c'.toNat < measure := by
+        rw [← hmeasure, hc']
+        exact Nat.mod_lt _ hcPos
+      have hs3lt : s3.toNat < p.toNat := by
+        exact invPrimeCoeffStep_lt s1 s2 q p hp hs1lt
+      have hstep : (s3.toNat : ZMod p.toNat) =
+          (s1.toNat : ZMod p.toNat) -
+            (s2.toNat : ZMod p.toNat) * (q.toNat : ZMod p.toNat) := by
+        exact invPrimeCoeffStep_cast s1 s2 q p hp
+      have hac : a.toNat = c.toNat + b.toNat * q.toNat := by
+        rw [hc, hq]
+        nlinarith [Nat.mod_add_div a.toNat b.toNat]
+      have hs3 : (s3.toNat : ZMod p.toNat) *
+          (input.toNat : ZMod p.toNat) = (c.toNat : ZMod p.toNat) := by
+        calc
+          (s3.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) =
+              (s1.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) -
+                ((s2.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat)) *
+                  (q.toNat : ZMod p.toNat) := by rw [hstep]; ring
+          _ = (a.toNat : ZMod p.toNat) -
+                (b.toNat : ZMod p.toNat) * (q.toNat : ZMod p.toNat) := by
+                rw [hs1, hs2]
+          _ = (c.toNat : ZMod p.toNat) := by
+                rw [← Nat.cast_mul, ← Nat.cast_sub]
+                · congr 1
+                  omega
+                · rw [hq]
+                  exact Nat.mul_div_le a.toNat b.toNat
+      have hrec := ih c'.toNat hc'lt s3 s2 c' c b hcNe hc'
+        hs2lt hs3lt hs2 hs3 rfl
+      have hgcd : Nat.gcd b.toNat c.toNat = Nat.gcd a.toNat b.toNat := by
+        calc
+          Nat.gcd b.toNat c.toNat = Nat.gcd c.toNat b.toNat := Nat.gcd_comm _ _
+          _ = Nat.gcd (a.toNat % b.toNat) b.toNat := by rw [← hc]
+          _ = Nat.gcd b.toNat a.toNat := (Nat.gcd_rec b.toNat a.toNat).symm
+          _ = Nat.gcd a.toNat b.toNat := Nat.gcd_comm _ _
+      simpa [q, sq, s3, c', hgcd] using hrec
+    next hcz =>
+      have hcZero : c = 0 := by simpa using hcz
+      have hmodZero : a.toNat % b.toNat = 0 := by simpa [hcZero] using hc.symm
+      have hdvd : b.toNat ∣ a.toNat := Nat.dvd_of_mod_eq_zero hmodZero
+      simp only
+      refine ⟨hs2lt, ?_⟩
+      rw [Nat.gcd_eq_right hdvd]
+      exact hs2
+
+/-- Correctness of the exact generated inverse entry for a nonzero residue
+modulo a prime. -/
+theorem inv_prime_ir_correct (i p : UInt64)
+    (hprime : Nat.Prime p.toNat)
+    (hiPos : 0 < i.toNat) (hiP : i.toNat < p.toNat) :
+    let out := Generated.StrictGCD.inv_prime_ir i p
+    out.toNat < p.toNat ∧
+      (out.toNat : ZMod p.toNat) * (i.toNat : ZMod p.toNat) = 1 := by
+  have hp : p ≠ 0 := by
+    intro hzero
+    subst p
+    simpa using hprime.ne_zero
+  have hi : i ≠ 0 := by
+    intro hzero
+    subst i
+    simpa using hiPos
+  have hs1 : ((0 : UInt64).toNat : ZMod p.toNat) *
+      (i.toNat : ZMod p.toNat) = (p.toNat : ZMod p.toNat) := by simp
+  have hs2 : ((1 : UInt64).toNat : ZMod p.toNat) *
+      (i.toNat : ZMod p.toNat) = (i.toNat : ZMod p.toNat) := by simp
+  have hloop := loop_inv_prime_ir_refines i p 1 0 (p % i) i p hp hi
+    (by simp [UInt64.toNat_mod]) (by simpa using hprime.pos)
+    (by simpa using hprime.one_lt) hs1 hs2
+  have hcoprime : Nat.Coprime p.toNat i.toNat := by
+    apply (hprime.coprime_iff_not_dvd).2
+    intro hdvd
+    exact (not_le_of_gt hiP) (Nat.le_of_dvd hiPos hdvd)
+  have hgcd : Nat.gcd p.toNat i.toNat = 1 := hcoprime.gcd_eq_one
+  simpa [Generated.StrictGCD.inv_prime_ir, hgcd] using hloop
+
+theorem dense_upoly_zp_nmod_inv_ir_correct (this : DenseUPolyZp)
+    (a : UInt64) (hprime : Nat.Prime this._p.toNat)
+    (haPos : 0 < a.toNat) (haP : a.toNat < this._p.toNat) :
+    let out := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this a
+    out.toNat < this._p.toNat ∧
+      (out.toNat : ZMod this._p.toNat) *
+        (a.toNat : ZMod this._p.toNat) = 1 := by
+  simpa [Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir] using
+    inv_prime_ir_correct a this._p hprime haPos haP
+
+theorem dense_upoly_zp_nmod_inv_ir_mul_mod (this : DenseUPolyZp)
+    (a : UInt64) (hprime : Nat.Prime this._p.toNat)
+    (haPos : 0 < a.toNat) (haP : a.toNat < this._p.toNat) :
+    let out := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this a
+    out.toNat < this._p.toNat ∧
+      (out.toNat * a.toNat) % this._p.toNat = 1 := by
+  let out := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this a
+  have hcorrect := dense_upoly_zp_nmod_inv_ir_correct this a hprime haPos haP
+  dsimp only at hcorrect ⊢
+  refine ⟨hcorrect.1, ?_⟩
+  have hcast : ((out.toNat * a.toNat : Nat) : ZMod this._p.toNat) =
+      ((1 : Nat) : ZMod this._p.toNat) := by
+    simpa [out, Nat.cast_mul] using hcorrect.2
+  have hmodEq : Nat.ModEq this._p.toNat (out.toNat * a.toNat) 1 :=
+    (ZMod.natCast_eq_natCast_iff _ _ _).mp hcast
+  exact Nat.mod_eq_of_modEq hmodEq hprime.one_lt
+
 /-- One exact generated multiply/add step adds the mathematical limb product
 to the three-limb accumulator, modulo its `2^192` machine width. -/
 theorem addMulWord3_modEq (s : Word3) (a b : UInt64) :
@@ -1913,6 +2160,48 @@ theorem nmod_mul_ir_correct (this : DenseUPolyZp) (a b : UInt64)
     (a.toNat * b.toNat) * 2 ^ this._norm.toNat by ring]
   exact scaled_mod_div (a.toNat * b.toNat) this._p.toNat
     (2 ^ this._norm.toNat) hscalePos
+
+theorem nmod_mul_ir_correct_of_configured (this : DenseUPolyZp)
+    (a b : UInt64) (hcfg : DensePreinvConfigured this)
+    (ha : a.toNat < this._p.toNat) :
+    (dense_upoly_zp_nmod_mul_ir this a b).toNat =
+      (a.toNat * b.toNat) % this._p.toNat := by
+  rcases densePreinvConfigured_conditions this hcfg with
+    ⟨hn, hpn, hpnB, hnorm, hmul, hlower⟩
+  exact nmod_mul_ir_correct this a b hn hpn hnorm hmul hlower ha
+
+/-- The coefficient computed by the actual generated inverse and multiply
+eliminates the current leading residue. -/
+theorem quotientCoeff_eliminates_lead (this : DenseUPolyZp)
+    (r lead : UInt64) (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat)
+    (hr : r.toNat < this._p.toNat)
+    (hleadPos : 0 < lead.toNat) (hlead : lead.toNat < this._p.toNat) :
+    let invLc := dense_upoly_zp_nmod_inv_ir this lead
+    let qi := dense_upoly_zp_nmod_mul_ir this r invLc
+    qi.toNat < this._p.toNat ∧
+      (qi.toNat * lead.toNat) % this._p.toNat = r.toNat := by
+  let invLc := dense_upoly_zp_nmod_inv_ir this lead
+  let qi := dense_upoly_zp_nmod_mul_ir this r invLc
+  have hpPos : 0 < this._p.toNat := hprime.pos
+  have hmul : qi.toNat = (r.toNat * invLc.toNat) % this._p.toNat := by
+    exact nmod_mul_ir_correct_of_configured this r invLc hcfg hr
+  have hinv := dense_upoly_zp_nmod_inv_ir_correct this lead hprime
+    hleadPos hlead
+  have hqi : qi.toNat < this._p.toNat := by
+    rw [hmul]
+    exact Nat.mod_lt _ hpPos
+  refine ⟨hqi, ?_⟩
+  have hcast : ((qi.toNat * lead.toNat : Nat) : ZMod this._p.toNat) =
+      (r.toNat : ZMod this._p.toNat) := by
+    rw [Nat.cast_mul, hmul]
+    simp only [ZMod.natCast_mod]
+    rw [Nat.cast_mul]
+    rw [mul_assoc, hinv.2, mul_one]
+  have hmodEq : Nat.ModEq this._p.toNat
+      (qi.toNat * lead.toNat) r.toNat :=
+    (ZMod.natCast_eq_natCast_iff _ _ _).mp hcast
+  exact Nat.mod_eq_of_modEq hmodEq hr
 
 /-
   Natural-language proof.

@@ -191,6 +191,58 @@ theorem normaliseU64_poly_natDegree_le (heap : RawHeap)
     hvalid hrep hnorm degree
   omega
 
+/-- If the raw coefficients are canonical residues, the nonempty prefix
+returned by C++ normalization ends in a genuinely nonzero L2 coefficient. -/
+theorem normaliseU64_poly_last_coeff_ne_zero (heap : RawHeap)
+    (ptr : RawPtr UInt64) (len p result : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr len)
+    (hrep : SlicePolyRep heap ptr len p poly)
+    (hreduced : ∀ i value, i < len → heap.readU64 ptr i = .ok value →
+      value.toNat < p)
+    (hnorm : heap.normaliseU64 ptr len = .ok result)
+    (hresult : result ≠ 0) :
+    poly.coeff (result - 1) ≠ 0 := by
+  rcases normaliseU64_spec heap ptr len hvalid with
+    ⟨result', hnorm', hle, hzeros, hlast⟩
+  have heq : result' = result := Except.ok.inj (hnorm'.symm.trans hnorm)
+  subst result'
+  rcases hlast with hzero | ⟨value, hread, hvalue⟩
+  · exact (hresult hzero).elim
+  · have hindex : result - 1 < len := by omega
+    rcases slicePolyRep_coeff heap ptr len p poly hrep (result - 1) hindex with
+      ⟨value', hread', hcoeff⟩
+    have hvalueEq : value' = value := Except.ok.inj (hread'.symm.trans hread)
+    subst value'
+    rw [hcoeff]
+    intro hcast
+    have hdvd : p ∣ value.toNat :=
+      (ZMod.natCast_eq_zero_iff value.toNat p).mp hcast
+    have hvalueNat : value.toNat ≠ 0 := by
+      intro hzero
+      apply hvalue
+      apply UInt64.toNat_inj.mp
+      simpa using hzero
+    exact (Nat.not_dvd_of_pos_of_lt
+      (Nat.pos_of_ne_zero hvalueNat)
+      (hreduced (result - 1) value hindex hread)) hdvd
+
+theorem normaliseU64_poly_natDegree_eq (heap : RawHeap)
+    (ptr : RawPtr UInt64) (len p result : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr len)
+    (hrep : SlicePolyRep heap ptr len p poly)
+    (hreduced : ∀ i value, i < len → heap.readU64 ptr i = .ok value →
+      value.toNat < p)
+    (hnorm : heap.normaliseU64 ptr len = .ok result)
+    (hresult : result ≠ 0) :
+    poly.natDegree = result - 1 := by
+  apply Polynomial.natDegree_eq_of_le_of_coeff_ne_zero
+    (normaliseU64_poly_natDegree_le heap ptr len p result poly
+      hvalid hrep hnorm)
+  exact normaliseU64_poly_last_coeff_ne_zero heap ptr len p result poly
+    hvalid hrep hreduced hnorm hresult
+
 /-- Limb `memcpy` succeeds for valid source and destination slices.  The
 returned heap has exactly the same allocation layout as the input heap, so
 all caller slice invariants can be transported through the copy. -/

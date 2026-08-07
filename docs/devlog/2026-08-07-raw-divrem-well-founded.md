@@ -45,6 +45,9 @@
   及其以上的每个 L2 多项式系数都为零，并由此推出
   `poly.natDegree ≤ result - 1`。该桥只读取 raw slice 的实际内容，不调用
   L2 normalization、除法或任何默认回退。
+- 对系数为 canonical residue（每项 raw 值 `< p`）的输入，进一步从 C++
+  返回前缀末项的 raw 非零性证明对应 `ZMod p` 系数非零，从而在返回长度
+  非零时得到精确等式 `poly.natDegree = result - 1`。
 
 ## 为什么做
 

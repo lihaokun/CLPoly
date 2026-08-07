@@ -41,6 +41,10 @@
 - 将 `_poly_normalise` 从“返回值不超过容量”加强为精确内容规格：返回前缀
   之后的原 slice 项全部为零，且非空返回前缀的最后一项非零。证明直接沿
   生成递归扫描展开，为后续 `lenQ/lenR` 到 L2 次数的桥提供依据。
+- 将上述 raw normalization 规格提升到真实 `SlicePolyRep`：证明返回长度
+  及其以上的每个 L2 多项式系数都为零，并由此推出
+  `poly.natDegree ≤ result - 1`。该桥只读取 raw slice 的实际内容，不调用
+  L2 normalization、除法或任何默认回退。
 
 ## 为什么做
 

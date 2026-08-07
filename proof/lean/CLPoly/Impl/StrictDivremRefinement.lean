@@ -153,6 +153,44 @@ theorem normaliseU64_spec (heap : RawHeap) (ptr : RawPtr UInt64) (len : Nat)
           omega
         · exact ⟨value, by simpa using hread, hvalue⟩
 
+/-- L2 consequence of raw normalization: every coefficient at or above the
+returned prefix length is zero in the represented `Polynomial (ZMod p)`. -/
+theorem normaliseU64_poly_coeff_zero (heap : RawHeap)
+    (ptr : RawPtr UInt64) (len p result : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr len)
+    (hrep : SlicePolyRep heap ptr len p poly)
+    (hnorm : heap.normaliseU64 ptr len = .ok result) :
+    ∀ degree, result ≤ degree → poly.coeff degree = 0 := by
+  rcases normaliseU64_spec heap ptr len hvalid with
+    ⟨result', hnorm', hle, hzeros, hlast⟩
+  have hresult : result' = result := Except.ok.inj (hnorm'.symm.trans hnorm)
+  subst result'
+  intro degree hdegree
+  by_cases hin : degree < len
+  · rcases slicePolyRep_coeff heap ptr len p poly hrep degree hin with
+      ⟨value, hread, hcoeff⟩
+    have hzeroRead := hzeros degree hdegree hin
+    have hvalue : value = 0 := Except.ok.inj (hread.symm.trans hzeroRead)
+    subst value
+    simpa using hcoeff
+  · rcases hrep with ⟨coeffs, hread, hsize, rfl⟩
+    rw [coeff_coeffArrayPoly, dif_neg]
+    simpa [hsize] using hin
+
+theorem normaliseU64_poly_natDegree_le (heap : RawHeap)
+    (ptr : RawPtr UInt64) (len p result : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr len)
+    (hrep : SlicePolyRep heap ptr len p poly)
+    (hnorm : heap.normaliseU64 ptr len = .ok result) :
+    poly.natDegree ≤ result - 1 := by
+  apply Polynomial.natDegree_le_iff_coeff_eq_zero.mpr
+  intro degree hdegree
+  apply normaliseU64_poly_coeff_zero heap ptr len p result poly
+    hvalid hrep hnorm degree
+  omega
+
 /-- Limb `memcpy` succeeds for valid source and destination slices.  The
 returned heap has exactly the same allocation layout as the input heap, so
 all caller slice invariants can be transported through the copy. -/

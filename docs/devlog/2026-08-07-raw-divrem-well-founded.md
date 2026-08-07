@@ -75,6 +75,9 @@
   小于 `2^192`，并将 `_umul128+_add_carry3` 的模同余在右侧和小于
   `2^192` 时提升为精确自然数加法；若累加值小于 `p·2^128`，则直接推出
   `hi<p`，供下一步 size_t 次数预算不变式使用。
+- 证明通用 lazy-accumulation 预算：当 `count<2^64`、初值 `<p` 且每个
+  因子为 canonical residue 时，`initial + count·(p-1)^2 < p·2^128`。
+  这把 C++ `size_t` 容量直接转换成余式归约需要的 `Word3.hi<p` 上界。
 
 ## 为什么做
 

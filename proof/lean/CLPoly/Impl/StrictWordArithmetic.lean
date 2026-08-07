@@ -716,6 +716,45 @@ theorem word3_hi_lt_of_value_lt (s : Word3) (p : UInt64)
   have hmid : 0 ≤ s.mid.toNat := Nat.zero_le _
   nlinarith
 
+/-- Capacity inequality behind lazy three-limb accumulation. -/
+theorem lazyAccumulation_budget (B p count initial : Nat)
+    (hB : 1 < B) (hp : 1 < p) (hpB : p < B)
+    (hcount : count < B) (hinitial : initial < p) :
+    initial + count * (p - 1) ^ 2 < p * B ^ 2 := by
+  have hc : count ≤ B - 1 := by omega
+  have hi : initial ≤ p - 1 := by omega
+  have hpm : p - 1 < B := by omega
+  have hsq : (p - 1) ^ 2 < p * B := by
+    rw [pow_two]
+    exact Nat.mul_lt_mul_of_lt_of_le (by omega) (Nat.le_of_lt hpm) (by omega)
+  have hmul : count * (p - 1) ^ 2 ≤ (B - 1) * (p * B) :=
+    Nat.mul_le_mul hc (Nat.le_of_lt hsq)
+  calc
+    initial + count * (p - 1) ^ 2 ≤
+        (p - 1) + (B - 1) * (p * B) := Nat.add_le_add hi hmul
+    _ < p * B ^ 2 := by
+      calc
+        (p - 1) + (B - 1) * (p * B) <
+            p * B + (B - 1) * (p * B) := by
+              apply Nat.add_lt_add_right
+              nlinarith
+        _ = p * B ^ 2 := by
+          calc
+            p * B + (B - 1) * (p * B) = p * B * (1 + (B - 1)) := by ring
+            _ = p * B * B := by congr 2 <;> omega
+            _ = p * B ^ 2 := by ring
+
+theorem lazyAccumulation_word3_budget (p : UInt64) (count initial : Nat)
+    (hp : 1 < p.toNat) (hcount : count < limbBase)
+    (hinitial : initial < p.toNat) :
+    initial + count * (p.toNat - 1) ^ 2 < p.toNat * limbBase ^ 2 := by
+  apply lazyAccumulation_budget limbBase p.toNat count initial
+  · norm_num [limbBase]
+  · exact hp
+  · simpa [limbBase] using UInt64.toNat_lt p
+  · exact hcount
+  · exact hinitial
+
 /-- Under the no-overflow bound supplied by the C++ `size_t` accumulation
 count, the generated three-limb update is ordinary exact addition. -/
 theorem addMulWord3_exact (s : Word3) (a b : UInt64)

@@ -511,6 +511,43 @@ def Word3AccumulationBudget (heap : RawHeap) (W3 : RawPtr Word3)
   ∀ k accum, k < length → heap.readWord3 W3 k = .ok accum →
     word3Value accum ≤ (p.toNat - 1) + count * (p.toNat - 1) ^ 2
 
+/-- Inner-loop form of the capacity invariant.  Cells in
+`[offset, offset + processed)` have received the current quotient product;
+all other cells retain the previous outer-loop allowance. -/
+def Word3StagedBudget (heap : RawHeap) (W3 : RawPtr Word3)
+    (length : Nat) (p : UInt64) (count offset processed : Nat) : Prop :=
+  ∀ k accum, k < length → heap.readWord3 W3 k = .ok accum →
+    word3Value accum ≤ (p.toNat - 1) +
+      (count + if offset ≤ k ∧ k < offset + processed then 1 else 0) *
+        (p.toNat - 1) ^ 2
+
+theorem accumulationBudget_to_staged_zero (heap : RawHeap)
+    (W3 : RawPtr Word3) (length : Nat) (p : UInt64)
+    (count offset : Nat)
+    (hbudget : Word3AccumulationBudget heap W3 length p count) :
+    Word3StagedBudget heap W3 length p count offset 0 := by
+  intro k accum hk hread
+  have hnot : ¬(offset ≤ k ∧ k < offset) := by omega
+  simpa [hnot] using hbudget k accum hk hread
+
+theorem stagedBudget_to_next_budget (heap : RawHeap)
+    (W3 : RawPtr Word3) (length : Nat) (p : UInt64)
+    (count offset processed : Nat)
+    (hstage : Word3StagedBudget heap W3 length p count offset processed) :
+    Word3AccumulationBudget heap W3 length p (count + 1) := by
+  intro k accum hk hread
+  have h := hstage k accum hk hread
+  by_cases hin : offset ≤ k ∧ k < offset + processed
+  · simpa [Word3StagedBudget, hin] using h
+  · simp only [Word3StagedBudget, hin, ↓reduceIte] at h
+    calc
+      word3Value accum ≤
+          (p.toNat - 1) + count * (p.toNat - 1) ^ 2 := by simpa using h
+      _ ≤ (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := by
+        apply Nat.add_le_add_left
+        apply Nat.mul_le_mul_right
+        omega
+
 /-- Zero-extension performed by the generated initialization loop establishes
 the zero-product instance of the accumulation budget. -/
 theorem initW3Prefix_budget (heap : RawHeap) (A : RawPtr UInt64)
@@ -806,6 +843,92 @@ theorem word3_hi_lt_of_accumulation_budget (heap : RawHeap)
   apply word3_hi_lt_of_value_lt accum p
   exact lt_of_le_of_lt hvalue hcapacity
 
+/-- Exact staged transition for one inner-loop cell.  Only the cell at
+`offset + processed` receives the extra allowance; every other cell keeps the
+same bound. -/
+theorem writeAddMul_preserves_staged_budget (heap heap' : RawHeap)
+    (W3 : RawPtr Word3) (length count offset processed : Nat)
+    (p c bj : UInt64) (accum : Word3)
+    (hvalid : heap.ValidWord3Slice W3 length)
+    (hindex : offset + processed < length)
+    (hstage : Word3StagedBudget heap W3 length p count offset processed)
+    (hp : 1 < p.toNat) (hcount : count + 1 < limbBase)
+    (hc : c.toNat < p.toNat) (hb : bj.toNat < p.toNat)
+    (hread : heap.readWord3 W3 (offset + processed) = .ok accum)
+    (hwrite : heap.writeWord3 W3 (offset + processed)
+      (let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+       Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+         accum product.1 product.2) = .ok heap') :
+    Word3StagedBudget heap' W3 length p count offset (processed + 1) := by
+  let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+  let written := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+    accum product.1 product.2
+  have hwrite' : heap.writeWord3 W3 (offset + processed) written =
+      .ok heap' := by simpa [written, product] using hwrite
+  have hnotOld : ¬(offset ≤ offset + processed ∧
+      offset + processed < offset + processed) := by omega
+  have hbaseRaw := hstage (offset + processed) accum hindex hread
+  have hbase : word3Value accum ≤
+      (p.toNat - 1) + count * (p.toNat - 1) ^ 2 := by
+    simpa [hnotOld] using hbaseRaw
+  have hc' : c.toNat ≤ p.toNat - 1 := by omega
+  have hb' : bj.toNat ≤ p.toNat - 1 := by omega
+  have hproduct : c.toNat * bj.toNat ≤ (p.toNat - 1) ^ 2 := by
+    rw [pow_two]
+    exact Nat.mul_le_mul hc' hb'
+  have hsum : word3Value accum + c.toNat * bj.toNat ≤
+      (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := by
+    calc
+      word3Value accum + c.toNat * bj.toNat ≤
+          ((p.toNat - 1) + count * (p.toNat - 1) ^ 2) +
+            (p.toNat - 1) ^ 2 := Nat.add_le_add hbase hproduct
+      _ = (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := by ring
+  have hcapacity := lazyAccumulation_word3_budget p (count + 1)
+    (p.toNat - 1) hp hcount (by omega)
+  have hpB : p.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt p
+  have hnoWrap : word3Value accum + c.toNat * bj.toNat < limbBase ^ 3 := by
+    calc
+      word3Value accum + c.toNat * bj.toNat ≤
+          (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := hsum
+      _ < p.toNat * limbBase ^ 2 := hcapacity
+      _ < limbBase ^ 3 := by
+        calc
+          p.toNat * limbBase ^ 2 < limbBase * limbBase ^ 2 :=
+            Nat.mul_lt_mul_of_pos_right hpB (pow_pos (by omega) 2)
+          _ = limbBase ^ 2 * limbBase := Nat.mul_comm _ _
+          _ = limbBase ^ 3 := by ring
+  have hwritten : word3Value written =
+      word3Value accum + c.toNat * bj.toNat := by
+    simpa [written, product] using addMulWord3_exact accum c bj hnoWrap
+  intro k out hk hreadOut
+  by_cases hki : k = offset + processed
+  · subst k
+    have hsame := RawHeap.readWord3_writeWord3_same heap heap' W3
+      (offset + processed) written hwrite'
+    have hout : out = written := Except.ok.inj (hreadOut.symm.trans hsame)
+    subst out
+    have hnew : offset ≤ offset + processed ∧
+        offset + processed < offset + (processed + 1) := by omega
+    simpa [hnew, hwritten] using hsum
+  · rcases heap.readWord3_of_valid W3 length k hvalid hk with
+      ⟨old, hreadOld⟩
+    have hpreserved := RawHeap.readWord3_writeWord3_ne heap heap' W3
+      (offset + processed) k written old hwrite' hreadOld (Ne.symm hki)
+    have hout : out = old := Except.ok.inj (hreadOut.symm.trans hpreserved)
+    subst out
+    have hold := hstage k old hk hreadOld
+    by_cases hin : offset ≤ k ∧ k < offset + processed
+    · have hin' : offset ≤ k ∧ k < offset + (processed + 1) := by omega
+      simpa [hin, hin'] using hold
+    · have hin' : ¬(offset ≤ k ∧ k < offset + (processed + 1)) := by
+        intro hnew
+        apply hin
+        constructor
+        · exact hnew.1
+        · omega
+      simpa [hin, hin'] using hold
+
 def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
     (length : Nat) : Prop :=
   ∀ k value, k < length → before.readU64 ptr k = .ok value →
@@ -908,6 +1031,101 @@ theorem addMulLoop_refines (heap : RawHeap) (B : RawPtr UInt64)
       omega
 termination_by d + 1 - j
 decreasing_by omega
+
+/-- Capacity refinement of the complete generated inner multiply/add loop.
+The staged invariant ensures that this whole loop consumes exactly one outer
+quotient allowance per affected cell, independently of the divisor degree. -/
+theorem addMulLoop_preserves_staged_budget (heap : RawHeap)
+    (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (lenW3 i d j count : Nat) (p c : UInt64)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hcanonical : CanonicalU64Prefix heap B (d + 1) p)
+    (hstage : Word3StagedBudget heap W3 lenW3 p count i j)
+    (htop : i + d < lenW3) (hj : j ≤ d + 1)
+    (hregions : W3.region ≠ B.region)
+    (hp : 1 < p.toNat) (hcount : count + 1 < limbBase)
+    (hc : c.toNat < p.toNat) :
+    ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      CanonicalU64Prefix heap' B (d + 1) p ∧
+      Word3StagedBudget heap' W3 lenW3 p count i (d + 1) := by
+  rw [addMulLoop]
+  split
+  next hle =>
+    have hjB : j < d + 1 := by omega
+    have hijW : i + j < lenW3 := by omega
+    rcases heap.readU64_of_valid B (d + 1) j hB hjB with
+      ⟨bj, hreadB⟩
+    simp only [hreadB]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + j) hW3 hijW with
+      ⟨accum, hreadW⟩
+    simp only [hreadW]
+    let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+    let accum' := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+      accum product.1 product.2
+    rcases heap.writeWord3_of_valid W3 lenW3 (i + j) accum' hW3 hijW with
+      ⟨heap1, hwrite⟩
+    dsimp [product, accum'] at hwrite ⊢
+    simp only [hwrite]
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hbj : bj.toNat < p.toNat := hcanonical j bj hjB hreadB
+    have hstage1 : Word3StagedBudget heap1 W3 lenW3 p count i (j + 1) :=
+      writeAddMul_preserves_staged_budget heap heap1 W3 lenW3 count i j
+        p c bj accum hW3 hijW hstage hp hcount hc hbj hreadW
+        (by simpa [product, accum'] using hwrite)
+    have hcanonical1 : CanonicalU64Prefix heap1 B (d + 1) p := by
+      intro k value hk hread1
+      rcases heap.readU64_of_valid B (d + 1) k hB hk with
+        ⟨old, hreadOld⟩
+      have hpreserved := RawHeap.readU64_writeWord3_region_ne heap heap1
+        W3 B (i + j) k accum' old hwrite hreadOld hregions
+      have hvalue : value = old :=
+        Except.ok.inj (hread1.symm.trans hpreserved)
+      subst value
+      exact hcanonical k old hk hreadOld
+    rcases addMulLoop_preserves_staged_budget heap1 B W3 lenW3 i d
+      (j + 1) count p c hB1 hW31 hcanonical1 hstage1 htop (by omega)
+      hregions hp hcount hc with
+      ⟨heap2, hloop, hB2, hW32, hcanonical2, hstage2⟩
+    exact ⟨heap2, hloop, hB2, hW32, hcanonical2, hstage2⟩
+  next hnot =>
+    have hjeq : j = d + 1 := by omega
+    subst j
+    exact ⟨heap, rfl, hB, hW3, hcanonical, hstage⟩
+termination_by d + 1 - j
+decreasing_by omega
+
+/-- Public outer-step form: a complete generated `addMulLoop` raises the
+per-cell accumulation count once, not once per divisor coefficient. -/
+theorem addMulLoop_preserves_budget (heap : RawHeap)
+    (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (lenW3 i d count : Nat) (p c : UInt64)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hcanonical : CanonicalU64Prefix heap B (d + 1) p)
+    (hbudget : Word3AccumulationBudget heap W3 lenW3 p count)
+    (htop : i + d < lenW3) (hregions : W3.region ≠ B.region)
+    (hp : 1 < p.toNat) (hcount : count + 1 < limbBase)
+    (hc : c.toNat < p.toNat) :
+    ∃ heap', addMulLoop heap B W3 i d 0 c = .ok heap' ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      CanonicalU64Prefix heap' B (d + 1) p ∧
+      Word3AccumulationBudget heap' W3 lenW3 p (count + 1) := by
+  have hstage0 := accumulationBudget_to_staged_zero heap W3 lenW3 p
+    count i hbudget
+  rcases addMulLoop_preserves_staged_budget heap B W3 lenW3 i d 0 count
+    p c hB hW3 hcanonical hstage0 htop (by omega) hregions hp hcount hc with
+    ⟨heap', hrun, hB', hW3', hcanonical', hstage'⟩
+  exact ⟨heap', hrun, hB', hW3', hcanonical',
+    stagedBudget_to_next_budget heap' W3 lenW3 p count i (d + 1) hstage'⟩
 
 /-- The descending quotient loop cannot fault when Q, B and W3 have the
 capacities documented by the C++ raw API.  Its induction variable is exactly

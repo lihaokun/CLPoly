@@ -570,6 +570,7 @@ theorem hgcdIterLoop_step_divrem_refines (this : DenseUPolyZp)
       RawDensePolyRep this heap1 Q lenQ quotient ∧
       RawDensePolyRep this heap1 state.B state.lenB divisor ∧
       RawDensePolyRep this heap1 state.T lenR remainder ∧
+      dividend = quotient * divisor + remainder ∧
       normalize (EuclideanDomain.gcd dividend divisor) =
         normalize (EuclideanDomain.gcd divisor remainder) ∧
       dense_upoly_zp__mat_row_update_ir this state.matrix
@@ -599,12 +600,12 @@ theorem hgcdIterLoop_step_divrem_refines (this : DenseUPolyZp)
       state.lenB W3 state.heap dividend divisor hlenB hARep hBRep hQ hR
       hW3 hqCapacity hRA hWA hWB hQB hQW hRW hRQ hRB hcfg with
     ⟨semanticHeap, semanticLenQ, semanticLenR, quotient, remainder,
-      hsemantic, hQRep, hBRep1, hRRep, hgcd, _, _, _, _⟩
+      hsemantic, hQRep, hBRep1, hRRep, hdivision, hgcd, _, _, _, _⟩
   have heq : (semanticHeap, semanticLenQ, semanticLenR) =
       (heap1, lenQ, lenR) := Except.ok.inj (hsemantic.symm.trans hdiv)
   cases heq
   exact ⟨heap1, lenQ, lenR, quotient, remainder, row23, row01, hdiv,
-    hQRep, hBRep1, hRRep, hgcd, hrow23, hrow01, htail, hlt⟩
+    hQRep, hBRep1, hRRep, hdivision, hgcd, hrow23, hrow01, htail, hlt⟩
 
 /-- The source's zero-quotient/zero-entry branch performs exactly the two
 matrix-entry swaps and no heap access.  This exposes the real descriptor

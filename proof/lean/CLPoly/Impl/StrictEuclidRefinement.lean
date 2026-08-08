@@ -187,6 +187,7 @@ theorem polyDivrem_next_state (this : DenseUPolyZp)
       RawDensePolyRep this heap' Q lenQ quotient ∧
       RawDensePolyRep this heap' B lenB divisor ∧
       RawDensePolyRep this heap' R lenR remainder ∧
+      dividend = quotient * divisor + remainder ∧
       normalize (EuclideanDomain.gcd dividend divisor) =
         normalize (EuclideanDomain.gcd divisor remainder) ∧
       RawHeap.SameLayout heap heap' ∧
@@ -199,7 +200,7 @@ theorem polyDivrem_next_state (this : DenseUPolyZp)
       hdividend hdivisor hnormA hnormB hqCapacity hRA hWA hWB hQB hQW hRW
       hRQ hRB hcfg with
     ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient, hremainder,
-      hcanonicalR, hnormR, hlayout, hsameB, _, hgcd, _, hlenQ,
+      hcanonicalR, hnormR, hlayout, hsameB, hdivision, hgcd, _, hlenQ,
       hlenRCapacity, hlenR⟩
   have hBResult : heap'.ValidU64Slice B lenB := (hlayout B lenB).mp hB
   have hcanonicalBResult : CanonicalU64Prefix heap' B lenB this._p := by
@@ -223,7 +224,7 @@ theorem polyDivrem_next_state (this : DenseUPolyZp)
       hlenRCapacity
   exact ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
     ⟨hBResult, hcanonicalBResult, hdivisorResult, hnormBResult⟩,
-    ⟨hRResult, hcanonicalR, hremainder, hnormR⟩, hgcd, hlayout,
+    ⟨hRResult, hcanonicalR, hremainder, hnormR⟩, hdivision, hgcd, hlayout,
     hlenQ, hlenRCapacity, hlenR⟩
 
 /-- End-to-end semantic refinement of the actual well-founded raw Euclid
@@ -273,7 +274,7 @@ theorem strictEuclidLoop_refines (this : DenseUPolyZp)
         hworkspace.regions.q_w3 hworkspace.regions.w3_r.symm
         hworkspace.regions.q_r.symm hworkspace.regions.b_r.symm hcfg with
       ⟨heap1, lenQ, lenR, quotient, remainder, hrun, _, hBRep1, hRRep1,
-        hgcdStep, hlayout1, _, _, hlenR⟩
+        _, hgcdStep, hlayout1, _, _, hlenR⟩
     have hworkspace1 := hworkspace.rotate_of_sameLayout hlayout1
     rcases strictEuclidLoop_refines this Q W3 capacity heap1 B (lenB + 1) R
         lenR A divisor remainder hworkspace1 hlenB (Nat.le_trans

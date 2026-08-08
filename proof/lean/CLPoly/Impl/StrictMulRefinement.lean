@@ -15,6 +15,13 @@ open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Impl.StrictPolyAddSubRefinement
 
+theorem rawPtr_add_add (ptr : RawPtr UInt64) (first second : Nat) :
+    (ptr.add first).add second = ptr.add (first + second) := by
+  cases ptr
+  have hwidth : RawLimbWidth.width UInt64 = 1 := rfl
+  simp [RawPtr.add, hwidth]
+  omega
+
 /-- Address-level non-aliasing for two UInt64 slices.  Unlike comparing
 allocation regions, this also represents disjoint subarrays of one C++
 scratch allocation. -/
@@ -318,6 +325,58 @@ theorem karScratchSlices (heap : RawHeap) (scratch : RawPtr UInt64)
       simp [RawPtr.add, hwidth]
       omega
     rw [hp]
+    exact hrec
+
+theorem karScratchSlices_disjoint_guard (scratch guard : RawPtr UInt64)
+    (n guardLength : Nat) (hn : 16 ≤ n)
+    (hdisjoint : U64SlicesDisjoint scratch (karScratchNeed n)
+      guard guardLength) :
+    let m := n / 2
+    let h := n - m
+    let t1 := scratch
+    let t2 := t1.add h
+    let sP0 := t2.add h
+    let sP1 := sP0.add (2 * m - 1)
+    let recScratch := sP1.add (2 * h - 1)
+    U64SlicesDisjoint t1 h guard guardLength ∧
+      U64SlicesDisjoint t2 h guard guardLength ∧
+      U64SlicesDisjoint sP0 (2 * m - 1) guard guardLength ∧
+      U64SlicesDisjoint sP1 (2 * h - 1) guard guardLength ∧
+      U64SlicesDisjoint recScratch
+        (max (karScratchNeed m) (karScratchNeed h)) guard guardLength := by
+  let m := n / 2
+  let h := n - m
+  have hneed : karScratchNeed n =
+      2 * h + (2 * m - 1) + (2 * h - 1) +
+        max (karScratchNeed m) (karScratchNeed h) := by
+    simpa [m, h] using karScratchNeed_step n (by omega)
+  have ht1 := u64SlicesDisjoint_mono hdisjoint (smallLeft := h)
+    (by rw [hneed]; omega) (Nat.le_refl guardLength)
+  have ht2 := u64SlicesDisjoint_add_left hdisjoint (start := h) (count := h)
+    (by rw [hneed]; omega)
+  have hp0 := u64SlicesDisjoint_add_left hdisjoint (start := 2 * h)
+    (count := 2 * m - 1) (by rw [hneed]; omega)
+  have hp1 := u64SlicesDisjoint_add_left hdisjoint
+    (start := 2 * h + (2 * m - 1)) (count := 2 * h - 1)
+    (by rw [hneed]; omega)
+  have hrec := u64SlicesDisjoint_add_left hdisjoint
+    (start := 2 * h + (2 * m - 1) + (2 * h - 1))
+    (count := max (karScratchNeed m) (karScratchNeed h))
+    (by rw [hneed])
+  dsimp [m, h] at ht1 ht2 hp0 hp1 hrec ⊢
+  refine ⟨ht1, ht2, ?_, ?_, ?_⟩
+  · rw [rawPtr_add_add, show (n - n / 2) + (n - n / 2) =
+        2 * (n - n / 2) by omega]
+    exact hp0
+  · rw [rawPtr_add_add, rawPtr_add_add,
+      show (n - n / 2) + ((n - n / 2) + (2 * (n / 2) - 1)) =
+        2 * (n - n / 2) + (2 * (n / 2) - 1) by omega]
+    exact hp1
+  · rw [rawPtr_add_add, rawPtr_add_add, rawPtr_add_add,
+      show (n - n / 2) + ((n - n / 2) +
+          ((2 * (n / 2) - 1) + (2 * (n - n / 2) - 1))) =
+        2 * (n - n / 2) + (2 * (n / 2) - 1) +
+          (2 * (n - n / 2) - 1) by omega]
     exact hrec
 
 theorem karScratchNeed_le_seven (n : Nat) : karScratchNeed n ≤ 7 * n := by

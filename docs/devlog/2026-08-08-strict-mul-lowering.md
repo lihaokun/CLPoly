@@ -175,6 +175,10 @@
 - 建立 `SameU64Prefix` 的跨 heap 传递，以及单次 raw write、真实 copyU64、
   完整 karSubLoop、完整 karAssembleLoop 的 slice 级帧包装。每个包装仍调用
   已证明的逐 read/write 定理；它们将用于按生成控制流组合递归 frame。
+- 证明 UInt64 指针嵌套偏移满足 `(ptr.add a).add b = ptr.add (a+b)`，并将
+  顶层 `scratch[0..karScratchNeed n)` 与任意 guard 的不相交性一次性下推为
+  t1、t2、P0、P1、共享 recScratch 五段各自的不相交合同。证明使用精确需求
+  递推式验证每段范围，并显式归一化源码的嵌套 pointer arithmetic。
 
 ## 当前边界
 

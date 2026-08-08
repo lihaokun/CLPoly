@@ -9,6 +9,40 @@ def SameCommonDivisors {R : Type*} [CommRing R]
     (a b c d : R) : Prop :=
   ∀ x : R, (x ∣ a ∧ x ∣ b) ↔ (x ∣ c ∧ x ∣ d)
 
+/-- Algebraic orientation of the matrix produced by C++ HGCD: the original
+pair is the matrix applied to the current Euclidean pair. -/
+def HgcdTransform {R : Type*} [CommRing R]
+    (left right currentA currentB m00 m01 m10 m11 : R) : Prop :=
+  left = m00 * currentA + m01 * currentB ∧
+    right = m10 * currentA + m11 * currentB
+
+/-- One real Euclidean division followed by the two C++ row updates preserves
+the HGCD transform orientation.  Each source row `[u,v]` becomes
+`[v + quotient*u, u]`. -/
+theorem hgcdTransform_euclid_step {R : Type*} [CommRing R]
+    (left right currentA currentB remainder quotient
+      m00 m01 m10 m11 : R)
+    (htransform : HgcdTransform left right currentA currentB
+      m00 m01 m10 m11)
+    (hdivision : currentA = quotient * currentB + remainder) :
+    HgcdTransform left right currentB remainder
+      (m01 + quotient * m00) m00
+      (m11 + quotient * m10) m10 := by
+  rcases htransform with ⟨hleft, hright⟩
+  constructor
+  · rw [hleft, hdivision]
+    ring
+  · rw [hright, hdivision]
+    ring
+
+/-- The exact two C++ row updates negate the tracked 2×2 determinant. -/
+theorem hgcdRowUpdate_determinant {R : Type*} [CommRing R]
+    (quotient m00 m01 m10 m11 : R) :
+    (m01 + quotient * m00) * m10 -
+        m00 * (m11 + quotient * m10) =
+      -(m00 * m11 - m01 * m10) := by
+  ring
+
 /-- Equality of normalized Euclidean gcds follows solely from equality of
 common divisors.  This does not execute either gcd algorithm. -/
 theorem normalize_gcd_eq_of_sameCommonDivisors

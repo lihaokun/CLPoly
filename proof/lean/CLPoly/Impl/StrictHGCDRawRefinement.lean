@@ -424,14 +424,23 @@ theorem matRowUpdate_zero_exec (this : DenseUPolyZp) (M : HgcdMat)
     (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
     (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
     (heap : RawHeap) (hM : M.Valid)
+    (hne : i0 ≠ i1)
     (hzero : lenQ = 0 ∨ hgcdMatLen M hM i0 = 0) :
     ∃ result,
       dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T lenT t
           scratch heap = .ok result ∧
       result.heap = heap ∧ result.T = T ∧ result.lenT = lenT ∧
-      result.t = t ∧ result.matrix.Valid := by
+      result.t = t ∧
+      ∃ hResult : result.matrix.Valid,
+        hgcdMatPtr result.matrix hResult i0 = hgcdMatPtr M hM i1 ∧
+        hgcdMatLen result.matrix hResult i0 = hgcdMatLen M hM i1 ∧
+        hgcdMatPtr result.matrix hResult i1 = hgcdMatPtr M hM i0 ∧
+        hgcdMatLen result.matrix hResult i1 = hgcdMatLen M hM i0 := by
   have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
     simpa [HgcdMat.Valid] using hM
+  have hneVal : i0.val ≠ i1.val := by
+    intro heq
+    exact hne (Fin.ext heq)
   let p0 := hgcdMatPtr M hM i0
   let p1 := hgcdMatPtr M hM i1
   let l0 := hgcdMatLen M hM i0
@@ -451,8 +460,77 @@ theorem matRowUpdate_zero_exec (this : DenseUPolyZp) (M : HgcdMat)
       lenT t scratch heap = .ok result := by
     simp [dense_upoly_zp__mat_row_update_ir, hvalid, hbranch', result,
       poly', len', p0, p1, l0, l1, hgcdMatPtr, hgcdMatLen]
-  refine ⟨result, hrun, rfl, rfl, rfl, rfl, ?_⟩
-  simp [result, HgcdMat.Valid, poly', len', hvalid]
+  have hResult : result.matrix.Valid := by
+    simp [result, HgcdMat.Valid, poly', len', hvalid]
+  refine ⟨result, hrun, rfl, rfl, rfl, rfl, hResult, ?_, ?_, ?_, ?_⟩
+  · simp [result, poly', p1, hgcdMatPtr]
+  · simp [result, len', l1, hgcdMatLen]
+  · simp only [result, poly', hgcdMatPtr]
+    rw [Array.getElem_set_ne
+      (by simpa using (show i0.val < M.poly.size by
+        rw [hvalid.1]; exact i0.isLt))
+      (by simpa using (show i1.val < M.poly.size by
+        rw [hvalid.1]; exact i1.isLt)) hneVal,
+      Array.getElem_set_self]
+    simp [p0, hgcdMatPtr]
+  · simp only [result, len', hgcdMatLen]
+    rw [Array.getElem_set_ne
+      (by simpa using (show i0.val < M.len.size by
+        rw [hvalid.2]; exact i0.isLt))
+      (by simpa using (show i1.val < M.len.size by
+        rw [hvalid.2]; exact i1.isLt)) hneVal,
+      Array.getElem_set_self]
+    simp [l0, hgcdMatLen]
+
+/-- Complete semantic refinement of the source's zero row-update branch.
+The physical descriptor swap represents `[entry1 + quotient*entry0,
+entry0]`; the vanishing factor is derived from the actual zero-length raw
+representation, not assumed at L2. -/
+theorem matRowUpdate_zero_refines (this : DenseUPolyZp)
+    (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : MatRowUpdateResult) (hM : M.Valid)
+    (quotient entry0 entry1 : Polynomial (ZMod this._p.toNat))
+    (hne : i0 ≠ i1)
+    (hzero : lenQ = 0 ∨ hgcdMatLen M hM i0 = 0)
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hEntry0Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) entry0)
+    (hEntry1Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) entry1)
+    (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result) :
+    ∃ hResult : result.matrix.Valid,
+      RawDensePolyRep this result.heap
+        (hgcdMatPtr result.matrix hResult i0)
+        (hgcdMatLen result.matrix hResult i0)
+        (entry1 + quotient * entry0) ∧
+      RawDensePolyRep this result.heap
+        (hgcdMatPtr result.matrix hResult i1)
+        (hgcdMatLen result.matrix hResult i1) entry0 := by
+  rcases matRowUpdate_zero_exec this M i0 i1 Q lenQ T lenT t scratch
+      heap hM hne hzero with
+    ⟨actual, hactual, hheap, _, _, _, hActualM, hptr0, hlen0,
+      hptr1, hlen1⟩
+  have heq : actual = result := Except.ok.inj (hactual.symm.trans hrun)
+  subst actual
+  have hvanish : quotient = 0 ∨ entry0 = 0 := by
+    rcases hzero with hq | he
+    · left
+      subst lenQ
+      exact slicePolyRep_zero_length heap Q this._p.toNat quotient
+        hQRep.2.2.1
+    · right
+      have hrep0 : SlicePolyRep heap (hgcdMatPtr M hM i0) 0
+          this._p.toNat entry0 := by
+        simpa [he] using hEntry0Rep.2.2.1
+      exact slicePolyRep_zero_length heap (hgcdMatPtr M hM i0)
+        this._p.toNat entry0 hrep0
+  refine ⟨hActualM, ?_, ?_⟩
+  · rcases hvanish with hq | he
+    · simpa [hheap, hptr0, hlen0, hq] using hEntry1Rep
+    · simpa [hheap, hptr0, hlen0, he] using hEntry1Rep
+  · simpa [hheap, hptr1, hlen1] using hEntry0Rep
 
 /-- Successful execution of the nonzero source branch can only arise from
 the actual `_mul` followed by the actual `_poly_add`; the returned pointer

@@ -86,6 +86,7 @@ def main() -> None:
         "dense_upoly_zp__hgcd_iter_ir",
         "polyDivrem_remainder_lt",
         "matRowUpdate_zero_exec",
+        "matRowUpdate_zero_refines",
         "matRowUpdate_nonzero_success_shape",
         "matRowUpdate_mul_result",
         "matRowUpdate_mul_preserves_entry1",
@@ -93,6 +94,9 @@ def main() -> None:
         "matRowUpdate_nonzero_sum_rep",
         "matRowUpdate_nonzero_refines",
         "normalize_gcd_eq_of_hgcd_transform",
+        "HgcdTransform",
+        "hgcdTransform_euclid_step",
+        "hgcdRowUpdate_determinant",
         "normalize_gcd_eq_of_det_one_transform",
         "normalize_gcd_eq_of_det_neg_one_transform",
     )

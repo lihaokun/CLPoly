@@ -708,6 +708,104 @@ theorem addMulCell_refines_exact (heap heap' : RawHeap)
   refine ⟨accum', hreadW, hreadW', hreadB', ?_⟩
   simpa [accum', product] using addMulWord3_exact accum c bj hbound
 
+/-- One actual generated multiply/add write raises the uniform accumulation
+budget by one.  The proof obtains the no-wrap premise from the C++ `size_t`
+iteration bound and canonical residues, then uses the exact machine-update
+theorem above. -/
+theorem writeAddMul_preserves_budget (heap heap' : RawHeap)
+    (W3 : RawPtr Word3) (length index count : Nat) (p c bj : UInt64)
+    (accum : Word3)
+    (hvalid : heap.ValidWord3Slice W3 length)
+    (hindex : index < length)
+    (hbudget : Word3AccumulationBudget heap W3 length p count)
+    (hp : 1 < p.toNat) (hcount : count + 1 < limbBase)
+    (hc : c.toNat < p.toNat) (hb : bj.toNat < p.toNat)
+    (hread : heap.readWord3 W3 index = .ok accum)
+    (hwrite : heap.writeWord3 W3 index
+      (let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+       Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+         accum product.1 product.2) = .ok heap') :
+    Word3AccumulationBudget heap' W3 length p (count + 1) := by
+  let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+  let written := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+    accum product.1 product.2
+  have hwrite' : heap.writeWord3 W3 index written = .ok heap' := by
+    simpa [written, product] using hwrite
+  have hbase : word3Value accum ≤
+      (p.toNat - 1) + count * (p.toNat - 1) ^ 2 :=
+    hbudget index accum hindex hread
+  have hc' : c.toNat ≤ p.toNat - 1 := by omega
+  have hb' : bj.toNat ≤ p.toNat - 1 := by omega
+  have hproduct : c.toNat * bj.toNat ≤ (p.toNat - 1) ^ 2 := by
+    rw [pow_two]
+    exact Nat.mul_le_mul hc' hb'
+  have hsum : word3Value accum + c.toNat * bj.toNat ≤
+      (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := by
+    calc
+      word3Value accum + c.toNat * bj.toNat ≤
+          ((p.toNat - 1) + count * (p.toNat - 1) ^ 2) +
+            (p.toNat - 1) ^ 2 := Nat.add_le_add hbase hproduct
+      _ = (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := by ring
+  have hcapacity := lazyAccumulation_word3_budget p (count + 1)
+    (p.toNat - 1) hp hcount (by omega)
+  have hpB : p.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt p
+  have hnoWrap : word3Value accum + c.toNat * bj.toNat < limbBase ^ 3 := by
+    calc
+      word3Value accum + c.toNat * bj.toNat ≤
+          (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := hsum
+      _ < p.toNat * limbBase ^ 2 := hcapacity
+      _ < limbBase ^ 3 := by
+        calc
+          p.toNat * limbBase ^ 2 < limbBase * limbBase ^ 2 :=
+            Nat.mul_lt_mul_of_pos_right hpB (pow_pos (by omega) 2)
+          _ = limbBase ^ 2 * limbBase := Nat.mul_comm _ _
+          _ = limbBase ^ 3 := by ring
+  have hwritten : word3Value written =
+      word3Value accum + c.toNat * bj.toNat := by
+    simpa [written, product] using addMulWord3_exact accum c bj hnoWrap
+  intro k out hk hreadOut
+  by_cases hki : k = index
+  · subst k
+    have hsame := RawHeap.readWord3_writeWord3_same heap heap' W3 index
+      written hwrite'
+    have hout : out = written := Except.ok.inj (hreadOut.symm.trans hsame)
+    subst out
+    rw [hwritten]
+    exact hsum
+  · rcases heap.readWord3_of_valid W3 length k hvalid hk with
+      ⟨old, hreadOld⟩
+    have hpreserved := RawHeap.readWord3_writeWord3_ne heap heap' W3
+      index k written old hwrite' hreadOld (Ne.symm hki)
+    have hout : out = old := Except.ok.inj (hreadOut.symm.trans hpreserved)
+    subst out
+    have hold := hbudget k old hk hreadOld
+    calc
+      word3Value old ≤
+          (p.toNat - 1) + count * (p.toNat - 1) ^ 2 := hold
+      _ ≤ (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := by
+        apply Nat.add_le_add_left
+        apply Nat.mul_le_mul_right
+        omega
+
+/-- The accumulation budget supplies exactly the high-limb precondition of
+the generated `_lll_mod_preinv` call.  Thus quotient/remainder reduction can
+consume a property derived from actual writes rather than assume `hi < p` at
+each call site. -/
+theorem word3_hi_lt_of_accumulation_budget (heap : RawHeap)
+    (W3 : RawPtr Word3) (length count index : Nat) (p : UInt64)
+    (accum : Word3)
+    (hbudget : Word3AccumulationBudget heap W3 length p count)
+    (hp : 1 < p.toNat) (hcount : count < limbBase)
+    (hindex : index < length)
+    (hread : heap.readWord3 W3 index = .ok accum) :
+    accum.hi.toNat < p.toNat := by
+  have hvalue := hbudget index accum hindex hread
+  have hcapacity := lazyAccumulation_word3_budget p count
+    (p.toNat - 1) hp hcount (by omega)
+  apply word3_hi_lt_of_value_lt accum p
+  exact lt_of_le_of_lt hvalue hcapacity
+
 def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
     (length : Nat) : Prop :=
   ∀ k value, k < length → before.readU64 ptr k = .ok value →

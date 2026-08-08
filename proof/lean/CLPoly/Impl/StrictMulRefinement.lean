@@ -557,6 +557,49 @@ def ClassicalCoeffPrefix {p : Nat} (heap : RawHeap)
     heap.readU64 C i = .ok value ∧
       (value.toNat : ZMod p) = poly.coeff i
 
+theorem slicePolyRep_of_classicalCoeffPrefix {p : Nat}
+    (heap : RawHeap) (C : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice C length)
+    (hprefix : ClassicalCoeffPrefix heap C length poly)
+    (hzero : ∀ i, length ≤ i → poly.coeff i = 0) :
+    SlicePolyRep heap C length p poly := by
+  rcases slicePolyRep_exists_unique heap C length p hvalid with
+    ⟨observed, hObserved, _⟩
+  have heq : observed = poly := by
+    ext i
+    by_cases hi : i < length
+    · rcases hprefix i hi with ⟨value, hread, hcoeff⟩
+      rcases slicePolyRep_coeff heap C length p observed hObserved i hi with
+        ⟨observedValue, hObservedRead, hObservedCoeff⟩
+      have hvalue : observedValue = value :=
+        Except.ok.inj (hObservedRead.symm.trans hread)
+      rw [hObservedCoeff, hvalue, hcoeff]
+    · rw [slicePolyRep_coeff_zero_of_length_le heap C length p observed
+          hObserved i (by omega),
+        hzero i (by omega)]
+  rw [heq] at hObserved
+  exact hObserved
+
+theorem mul_coeff_zero_of_slice_lengths {p : Nat}
+    (heap : RawHeap) (A B : RawPtr UInt64) (lenA lenB degree : Nat)
+    (left right : Polynomial (ZMod p))
+    (hApos : 0 < lenA) (hBpos : 0 < lenB)
+    (hRepA : SlicePolyRep heap A lenA p left)
+    (hRepB : SlicePolyRep heap B lenB p right)
+    (hdegree : lenA + lenB - 1 ≤ degree) :
+    (left * right).coeff degree = 0 := by
+  rw [Polynomial.coeff_mul]
+  apply Finset.sum_eq_zero
+  intro pair hpair
+  simp only [Finset.mem_antidiagonal] at hpair
+  by_cases hleft : lenA ≤ pair.1
+  · rw [slicePolyRep_coeff_zero_of_length_le heap A lenA p left hRepA
+      pair.1 hleft, zero_mul]
+  · have hright : lenB ≤ pair.2 := by omega
+    rw [slicePolyRep_coeff_zero_of_length_le heap B lenB p right hRepB
+      pair.2 hright, mul_zero]
+
 theorem classicalCoeffPrefix_succ_of_write {p : Nat}
     (before after : RawHeap) (C : RawPtr UInt64) (upto : Nat)
     (poly : Polynomial (ZMod p)) (value : UInt64)
@@ -733,6 +776,43 @@ theorem classicalMul_ok (this : DenseUPolyZp)
     (lenA + lenB - 1) 0 heap hApos hBpos rfl hC hA hB with
     ⟨heap', hrun, hlayout⟩
   refine ⟨heap', ?_, hlayout⟩
+  simp [dense_upoly_zp__classical_mul_ir, Nat.ne_of_gt hApos,
+    Nat.ne_of_gt hBpos, hrun]
+
+theorem classicalMul_refines_slice (this : DenseUPolyZp)
+    (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
+    (heap : RawHeap) (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hApos : 0 < lenA) (hBpos : 0 < lenB)
+    (hLenAWord : lenA < limbBase)
+    (hC : heap.ValidU64Slice C (lenA + lenB - 1))
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hCA : C.region ≠ A.region) (hCB : C.region ≠ B.region)
+    (hCanonicalA : CanonicalU64Prefix heap A lenA this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B lenB this._p)
+    (hRepA : SlicePolyRep heap A lenA this._p.toNat left)
+    (hRepB : SlicePolyRep heap B lenB this._p.toNat right) :
+    ∃ heap', dense_upoly_zp__classical_mul_ir this C A lenA B lenB heap =
+        .ok heap' ∧ RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' C (lenA + lenB - 1) this._p.toNat
+        (left * right) := by
+  have hempty : ClassicalCoeffPrefix heap C 0 (left * right) := by
+    intro _ hi
+    omega
+  rcases classicalOuterLoop_refines_coeff_prefix this C A B lenA lenB
+      (lenA + lenB - 1) 0 heap left right hcfg hp hApos hBpos hLenAWord
+      rfl hC hA hB hCA hCB hCanonicalA hCanonicalB hRepA hRepB hempty with
+    ⟨heap', hrun, hlayout, hprefix⟩
+  have hvalid' := (hlayout C (lenA + lenB - 1)).mp hC
+  have hslice := slicePolyRep_of_classicalCoeffPrefix heap' C
+    (lenA + lenB - 1) (left * right) hvalid' hprefix
+    (by
+      intro degree hdegree
+      exact mul_coeff_zero_of_slice_lengths heap A B lenA lenB degree
+        left right hApos hBpos hRepA hRepB hdegree)
+  refine ⟨heap', ?_, hlayout, hslice⟩
   simp [dense_upoly_zp__classical_mul_ir, Nat.ne_of_gt hApos,
     Nat.ne_of_gt hBpos, hrun]
 

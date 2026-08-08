@@ -44,6 +44,10 @@
   点积和写入，扩展输出前缀，并通过 allocation 不相交性保持 A/B 的
   `SlicePolyRep` 与规范剩余；退出时 C 的全部 `lenC` 个 cell 均对应乘积
   系数。
+- 从完整点态输出不变式构造实际 `SlicePolyRep`：先由 raw slice 的唯一观测
+  表示逐系数识别缓冲区内内容，再用卷积 antidiagonal 与 A/B 声明长度证明
+  `lenA+lenB-1` 之外的所有乘积系数为零。由此得到 `_classical_mul` 的完整
+  raw slice 到 L2 乘积精化定理。
 
 ## 当前边界
 

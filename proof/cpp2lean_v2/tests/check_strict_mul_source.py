@@ -72,10 +72,13 @@ def main() -> None:
                      "classicalOuterLoop_same_prefix_region_ne",
                      "canonicalU64Prefix_of_same_prefix",
                      "ClassicalCoeffPrefix",
+                     "slicePolyRep_of_classicalCoeffPrefix",
+                     "mul_coeff_zero_of_slice_lengths",
                      "classicalCoeffPrefix_succ_of_write",
                      "classicalOuterLoop_preserves_coeff_prefix",
                      "classicalOuterLoop_refines_coeff_prefix",
                      "classicalOuterLoop_ok", "classicalMul_ok",
+                     "classicalMul_refines_slice",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:
             raise SystemExit(f"strict multiplication refinement drift: missing {fragment}")

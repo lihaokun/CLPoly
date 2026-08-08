@@ -163,6 +163,50 @@ theorem matOne_refines (M : HgcdMat) (heap : RawHeap) (p : Nat)
       slicePolyRep_one_of_read_one heap2 p3 p ((hlayout2 p3 1).mp h3one)
         hread3
 
+/-- The two real writes in `_mat_one` preserve every declared prefix outside
+the two matrix-entry cells. -/
+theorem matOne_preserves_prefix (M : HgcdMat) (heap heap' : RawHeap)
+    (M' : HgcdMat) (guard : RawPtr UInt64) (guardLen : Nat)
+    (hM : M.Valid)
+    (h0Guard : U64SlicesDisjoint
+      (hgcdMatPtr M hM ⟨0, by omega⟩) 1 guard guardLen)
+    (h3Guard : U64SlicesDisjoint
+      (hgcdMatPtr M hM ⟨3, by omega⟩) 1 guard guardLen)
+    (hrun : dense_upoly_zp__mat_one_ir M heap = .ok (heap', M')) :
+    SameU64Prefix heap heap' guard guardLen := by
+  have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
+    simpa [HgcdMat.Valid] using hM
+  let p0 := hgcdMatPtr M hM ⟨0, by omega⟩
+  let p3 := hgcdMatPtr M hM ⟨3, by omega⟩
+  cases hwrite0 : heap.writeU64 p0 0 1 with
+  | error fault =>
+      have hwrite0' : heap.writeU64 (M.poly[0]'(by omega)) 0 1 =
+          .error fault := by simpa [p0, hgcdMatPtr] using hwrite0
+      simp [dense_upoly_zp__mat_one_ir, hvalid, hwrite0'] at hrun
+  | ok heap1 =>
+      have hwrite0' : heap.writeU64 (M.poly[0]'(by omega)) 0 1 =
+          .ok heap1 := by simpa [p0, hgcdMatPtr] using hwrite0
+      cases hwrite3 : heap1.writeU64 p3 0 1 with
+      | error fault =>
+          have hwrite3' : heap1.writeU64 (M.poly[3]'(by omega)) 0 1 =
+              .error fault := by simpa [p3, hgcdMatPtr] using hwrite3
+          simp [dense_upoly_zp__mat_one_ir, hvalid, hwrite0', hwrite3'] at hrun
+      | ok heap2 =>
+          have hwrite3' : heap1.writeU64 (M.poly[3]'(by omega)) 0 1 =
+              .ok heap2 := by simpa [p3, hgcdMatPtr] using hwrite3
+          have heq : heap' = heap2 := by
+            have hrun' : (.ok (heap2, { M with len := #[1, 0, 0, 1] }) :
+                RawExec (RawHeap × HgcdMat)) = .ok (heap', M') := by
+              simpa [dense_upoly_zp__mat_one_ir, hvalid, hwrite0', hwrite3']
+                using hrun
+            exact (congrArg Prod.fst (Except.ok.inj hrun')).symm
+          subst heap'
+          have hsame0 := writeU64_preserves_prefix heap heap1 p0 guard 1
+            guardLen 0 1 h0Guard (by omega) hwrite0
+          have hsame3 := writeU64_preserves_prefix heap1 heap2 p3 guard 1
+            guardLen 0 1 h3Guard (by omega) hwrite3
+          exact sameU64Prefix_trans hsame0 hsame3
+
 /-- The source's zero-quotient/zero-entry branch performs exactly the two
 matrix-entry swaps and no heap access.  This exposes the real descriptor
 state consumed by the next HGCD iteration. -/

@@ -107,6 +107,58 @@ theorem rawDensePolyRep_of_same_prefix (this : DenseUPolyZp)
     hrep.1 hsame
   exact hnorm.symm.trans hrep.2.2.2
 
+/-- A normalized raw polynomial has zero descriptor length exactly when its
+represented polynomial is zero. -/
+theorem rawDensePolyRep_length_zero_iff (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hrep : RawDensePolyRep this heap ptr length poly) :
+    length = 0 ↔ poly = 0 := by
+  constructor
+  · intro hzero
+    subst length
+    exact slicePolyRep_zero_length heap ptr this._p.toNat poly
+      (by simpa using hrep.2.2.1)
+  · intro hpoly
+    by_contra hlength
+    have hpositive : 0 < length := Nat.pos_of_ne_zero hlength
+    have hlast := normaliseU64_poly_last_coeff_ne_zero heap ptr length
+      this._p.toNat length poly hrep.1 hrep.2.2.1 hrep.2.1 hrep.2.2.2
+      hlength
+    rw [hpoly] at hlast
+    simp at hlast
+
+/-- For every nonzero normalized raw descriptor, its C++ length is exactly
+one more than the L2 polynomial's natural degree. -/
+theorem rawDensePolyRep_natDegree_add_one (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hrep : RawDensePolyRep this heap ptr length poly)
+    (hpositive : 0 < length) :
+    poly.natDegree + 1 = length := by
+  have hdegree := normaliseU64_poly_natDegree_eq heap ptr length
+    this._p.toNat length poly hrep.1 hrep.2.2.1 hrep.2.1 hrep.2.2.2
+    (Nat.ne_of_gt hpositive)
+  omega
+
+/-- Convert an L2 degree bound back to the normalized C++ descriptor length.
+The zero case uses the exact zero-length equivalence above. -/
+theorem rawDensePolyRep_length_le_of_degree_lt (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length bound : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hrep : RawDensePolyRep this heap ptr length poly)
+    (hdegree : poly = 0 ∨ poly.natDegree < bound) :
+    length ≤ bound := by
+  rcases hdegree with hzero | hdegree
+  · have := (rawDensePolyRep_length_zero_iff this heap ptr length poly
+      hrep).mpr hzero
+    omega
+  · by_cases hlength : length = 0
+    · omega
+    · have hexact := rawDensePolyRep_natDegree_add_one this heap ptr length
+        poly hrep (Nat.pos_of_ne_zero hlength)
+      omega
+
 /-- Normalized raw representation of all four live HGCD matrix entries. -/
 def HgcdMatRawDenseRep (this : DenseUPolyZp) (heap : RawHeap)
     (M : HgcdMat) (entries : Fin 4 → Polynomial (ZMod this._p.toNat))

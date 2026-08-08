@@ -5442,6 +5442,71 @@ theorem hgcdMatApplyQuotient_refines (this : DenseUPolyZp)
     hsecond
   simpa [hgcdMatApplyQuotientEntries] using hSecond
 
+/-- Purely physical obligations for the exact final matrix block.  Besides
+the two existing generated-call workspaces, the frame fields state that the
+quotient update does not alter any buffer of the left matrix `R`. -/
+structure HgcdRecursiveCombineMatrixWorkspace (this : DenseUPolyZp)
+    (R S : HgcdMat) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) (modified : HgcdMatQuotientResult) : Prop where
+  quotient : HgcdMatApplyQuotientWorkspaceProvider this S hS q lenQ T
+    scratch heap
+  rightLayout : RawHeap.SameLayout heap modified.heap
+  rightPrefix : ∀ i : Fin 4, SameU64Prefix heap modified.heap
+    (hgcdMatPtr R hR i) (hgcdMatLen R hR i)
+  multiply : HgcdMatMulLoopWorkspaceProvider this R modified.matrix hR
+    modified.valid a2 scratch
+
+def HgcdRecursiveCombineMatrixWorkspaceProvider (this : DenseUPolyZp)
+    (R S : HgcdMat) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) : Prop :=
+  ∀ modified,
+    hgcdMatApplyQuotient this S hS q lenQ T scratch heap = .ok modified →
+    HgcdRecursiveCombineMatrixWorkspace this R S hR hS q lenQ T a2 scratch
+      heap modified
+
+/-- End-to-end semantic refinement of the exact final C++ matrix block.
+The proof consumes the real quotient update and the complete four-entry
+matrix multiplication; the L2 result is obtained only after both generated
+executions have succeeded. -/
+theorem hgcdRecursiveCombineMatrix_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : HgcdMatMulResult)
+    (right entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveCombineMatrixWorkspaceProvider this R S hR hS
+      q lenQ T a2 scratch heap)
+    (hRight : HgcdMatRawDenseRep this heap R right hR)
+    (hSRep : HgcdMatRawDenseRep this heap S entries hS)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hrun : hgcdRecursiveCombineMatrix this M R S hM hR hS q lenQ T a2
+      scratch heap = .ok result) :
+    HgcdMatRawDenseRep this result.heap R right hR ∧
+      ∃ hResult : result.matrix.Valid,
+        HgcdMatRawDenseRep this result.heap result.matrix
+          (hgcdMatProductEntry right
+            (hgcdMatApplyQuotientEntries entries quotient)) hResult := by
+  rcases hgcdRecursiveCombineMatrix_exec this M R S hM hR hS q lenQ T a2
+      scratch heap result hrun with ⟨modified, hmodified, hmul⟩
+  have hwork := physical modified hmodified
+  have hModified := hgcdMatApplyQuotient_refines this S hS q lenQ T scratch
+    heap modified entries quotient hcfg hp hwork.quotient hQ hSRep hmodified
+  have hRightModified :
+      HgcdMatRawDenseRep this modified.heap R right hR := by
+    intro i
+    exact rawDensePolyRep_of_same_prefix this heap modified.heap
+      (hgcdMatPtr R hR i) (hgcdMatLen R hR i) (right i)
+      hwork.rightLayout (hwork.rightPrefix i) (hRight i)
+  have hProduct := hgcdMatMul_refines this M R modified.matrix hM hR
+    modified.valid a2 scratch modified.heap result right
+    (hgcdMatApplyQuotientEntries entries quotient) hcfg hp hwork.multiply
+    hRightModified hModified.1 hmul
+  exact ⟨hProduct.1, hProduct.2.2⟩
+
 /-- The generated recursive-HGCD base helper with matrix computation enabled
 is exactly the already-refined iterator initialization prefix, modulo its
 smaller return record. -/

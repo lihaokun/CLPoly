@@ -1226,6 +1226,48 @@ theorem hgcdMatApplyQuotient_result_valid (this : DenseUPolyZp)
       .ok result) : result.matrix.Valid := by
   exact result.valid
 
+/-- Exact lowering of the final matrix block of `_hgcd_recursive`:
+first form `S := [[q,1],[1,0]] * S` using the two real guarded column
+updates, then execute the complete generated `_mat_mul(M, R, S, a2,
+scratch)`. -/
+def hgcdRecursiveCombineMatrix (this : DenseUPolyZp)
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) : RawExec HgcdMatMulResult :=
+  match hgcdMatApplyQuotient this S hS q lenQ T scratch heap with
+  | .error fault => .error fault
+  | .ok modified =>
+    hgcdMatMul this M R modified.matrix hM hR modified.valid a2 scratch
+      modified.heap
+
+/-- A successful final matrix block exposes both actual generated calls in
+their C++ order. -/
+theorem hgcdRecursiveCombineMatrix_exec (this : DenseUPolyZp)
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : HgcdMatMulResult)
+    (hrun : hgcdRecursiveCombineMatrix this M R S hM hR hS q lenQ T a2
+      scratch heap = .ok result) :
+    ∃ modified,
+      hgcdMatApplyQuotient this S hS q lenQ T scratch heap = .ok modified ∧
+      hgcdMatMul this M R modified.matrix hM hR modified.valid a2 scratch
+        modified.heap = .ok result := by
+  simp only [hgcdRecursiveCombineMatrix] at hrun
+  split at hrun
+  next fault hmodified => simp at hrun
+  next modified hmodified => exact ⟨modified, hmodified, hrun⟩
+
+theorem hgcdRecursiveCombineMatrix_result_valid (this : DenseUPolyZp)
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : HgcdMatMulResult)
+    (hrun : hgcdRecursiveCombineMatrix this M R S hM hR hS q lenQ T a2
+      scratch heap = .ok result) : result.matrix.Valid := by
+  rcases hgcdRecursiveCombineMatrix_exec this M R S hM hR hS q lenQ T a2
+      scratch heap result hrun with ⟨modified, _, hmul⟩
+  exact hgcdMatMul_result_valid this M R modified.matrix hM hR modified.valid
+    a2 scratch modified.heap result hmul
+
 structure HgcdEarlyMatrixResult where
   heap : RawHeap
   matrix : HgcdMat

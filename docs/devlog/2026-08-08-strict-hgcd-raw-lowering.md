@@ -163,6 +163,12 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 零乘积都从实际返回长度为零及 `SlicePolyRep` 推出。物理 provider 仅含容量、
 别名和分离条件。
 
+最终矩阵合并块也已按源码顺序闭合：`hgcdRecursiveCombineMatrix` 先实际执行
+两列商矩阵更新，再把其返回的 matrix/heap 直接交给完整四项 `_mat_mul`。
+对应 raw 定理从两次生成调用分别取得 `[[q,1],[1,0]]*S` 与
+`R*([[q,1],[1,0]]*S)`，没有用单独的 L2 赋值替代执行。对左矩阵的跨调用
+保持通过物理 layout/prefix frame 表达，provider 不携带预期多项式结果。
+
 完整四项 `_mat_mul` 的 raw 语义现已闭合。新的单项 frame 定理按真实的
 两次 guarded 乘法和 add/copy/skip 尾分支，保持两个输入矩阵以及先前已完成
 的输出项。`hgcdMatMulLoop_refines` 再沿生成的 `4-i` 递归逐项执行

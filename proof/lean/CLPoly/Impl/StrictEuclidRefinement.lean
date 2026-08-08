@@ -132,7 +132,7 @@ theorem polyDivrem_preserves_normalized_gcd (this : DenseUPolyZp)
     ∃ heap' lenQ lenR quotient remainder,
       dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
         .ok (heap', lenQ, lenR) ∧
-      SlicePolyRep heap' Q lenQ this._p.toNat quotient ∧
+      RawDensePolyRep this heap' Q lenQ quotient ∧
       SlicePolyRep heap' R lenR this._p.toNat remainder ∧
       CanonicalU64Prefix heap' R lenR this._p ∧
       heap'.normaliseU64 R lenR = .ok lenR ∧
@@ -148,10 +148,13 @@ theorem polyDivrem_preserves_normalized_gcd (this : DenseUPolyZp)
       hlenB hA hB hQ hR hW3 hcanonicalA hcanonicalB hdividend hdivisor
       hnormA hnormB hqCapacity hRA hWA hWB hQB hQW hRW hRQ hRB hcfg
       hprime.out with
-    ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient, hremainder,
-      hcanonicalR, hnormR, hlayout, hsameB, hdivision, hdegree, hlenQ,
-      hlenRCapacity, hlenR⟩
-  exact ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
+    ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient, hcanonicalQ,
+      hnormQ, hremainder, hcanonicalR, hnormR, hlayout, hsameB, hdivision,
+      hdegree, hlenQ, hlenRCapacity, hlenR⟩
+  exact ⟨heap', lenQ, lenR, quotient, remainder, hrun,
+    ⟨(hlayout Q lenQ).mp
+        (heap.validU64Slice_mono Q (lenA - (lenB - 1)) lenQ hQ hlenQ),
+      hcanonicalQ, hquotient, hnormQ⟩,
     hremainder, hcanonicalR, hnormR, hlayout, hsameB, hdivision,
     normalize_gcd_eq_of_division_identity dividend divisor quotient remainder
       hdivision,
@@ -181,7 +184,7 @@ theorem polyDivrem_next_state (this : DenseUPolyZp)
     ∃ heap' lenQ lenR quotient remainder,
       dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
         .ok (heap', lenQ, lenR) ∧
-      SlicePolyRep heap' Q lenQ this._p.toNat quotient ∧
+      RawDensePolyRep this heap' Q lenQ quotient ∧
       RawDensePolyRep this heap' B lenB divisor ∧
       RawDensePolyRep this heap' R lenR remainder ∧
       normalize (EuclideanDomain.gcd dividend divisor) =

@@ -102,6 +102,10 @@
   因而完整 A/B 表示可安全跨准备阶段保持。
 - 证明 `karHalfSumPoly` 只依赖输入前 `2m` 个系数：任意与完整多项式在该
   prefix 上逐系数一致的截断表示，计算出的半区和多项式与完整输入版本相等。
+- 闭合统一准备精化 `karPrepareHalves_refines`：从完整 `m+h` 输入提取真实
+  `2m` prefix，执行公共半区相加，保持完整 A/B 表示到中间 heap，再按
+  `h=m` 的无写尾分支或 `h=m+1` 的真实尾项分支组合。最终 t1/t2 都获得
+  长度 h 的 `SlicePolyRep (karPreparedPoly ...)` 与完整规范剩余证明。
 
 ## 当前边界
 

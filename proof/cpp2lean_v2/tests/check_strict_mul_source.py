@@ -70,6 +70,7 @@ def main() -> None:
                      "karOddTail_values", "karOddTail_coeffs",
                      "karOddTail_preserves_own_prefixes",
                      "karOddTail_refines_slices_odd",
+                     "karPreparedPoly", "karPrepareHalves_refines",
                      "karAddHalvesLoop_preserves_outside",
                      "karAddHalvesLoop_current_values",
                      "karAddHalvesLoop_current_coeffs",

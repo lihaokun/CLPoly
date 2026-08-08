@@ -362,6 +362,58 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
   · simpa [initial] using hA3
   · simpa [initial] using hB3
 
+/-- A stopped generated HGCD loop returns its state unchanged. -/
+theorem hgcdIterLoop_stop (this : DenseUPolyZp) (m : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (state : HgcdIterState) (hstop : state.lenB < m + 1) :
+    hgcdIterLoop this m Q W3 scratch state = .ok state := by
+  rw [hgcdIterLoop]
+  simp [show ¬state.lenB ≥ m + 1 by omega]
+
+/-- Every successful nonterminal iteration is exactly one generated divrem,
+the source pointer rotation, two generated row updates, and the recursive
+tail call on the shorter remainder. -/
+theorem hgcdIterLoop_step_shape (this : DenseUPolyZp) (m : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (state final : HgcdIterState) (hguard : state.lenB ≥ m + 1)
+    (hrun : hgcdIterLoop this m Q W3 scratch state = .ok final) :
+    ∃ heap1 lenQ lenR row23 row01,
+      Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+        state.A state.lenA state.B state.lenB W3 state.heap =
+          .ok (heap1, lenQ, lenR) ∧
+      dense_upoly_zp__mat_row_update_ir this state.matrix
+        ⟨2, by omega⟩ ⟨3, by omega⟩ Q lenQ state.A state.lenT state.t
+        scratch heap1 = .ok row23 ∧
+      dense_upoly_zp__mat_row_update_ir this row23.matrix
+        ⟨0, by omega⟩ ⟨1, by omega⟩ Q lenQ row23.T row23.lenT row23.t
+        scratch row23.heap = .ok row01 ∧
+      hgcdIterLoop this m Q W3 scratch {
+        heap := row01.heap
+        matrix := row01.matrix
+        A := state.B
+        lenA := state.lenB
+        B := state.T
+        lenB := lenR
+        T := row01.T
+        lenT := row01.lenT
+        t := row01.t
+        sgn := -state.sgn
+      } = .ok final := by
+  rw [hgcdIterLoop] at hrun
+  simp only [if_pos hguard] at hrun
+  split at hrun
+  next fault hdiv => simp at hrun
+  next =>
+    rename_i heap1 lenQ lenR hdiv
+    split at hrun
+    next fault hrow23 => simp at hrun
+    next row23 hrow23 =>
+      split at hrun
+      next fault hrow01 => simp at hrun
+      next row01 hrow01 =>
+        exact ⟨heap1, lenQ, lenR, row23, row01, hdiv, hrow23,
+          hrow01, hrun⟩
+
 /-- The source's zero-quotient/zero-entry branch performs exactly the two
 matrix-entry swaps and no heap access.  This exposes the real descriptor
 state consumed by the next HGCD iteration. -/

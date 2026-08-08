@@ -1268,6 +1268,91 @@ theorem hgcdRecursiveCombineMatrix_result_valid (this : DenseUPolyZp)
   exact hgcdMatMul_result_valid this M R modified.matrix hM hR modified.valid
     a2 scratch modified.heap result hmul
 
+/-- Return state of the complete tail after the second high-half HGCD call. -/
+structure HgcdRecursiveFinishResult where
+  heap : RawHeap
+  matrix : HgcdMat
+  valid : matrix.Valid
+  lenA : Nat
+  lenB : Nat
+  sgn : Int
+
+/-- Exact source-order tail of `_hgcd_recursive`: reconstruct `B`, reconstruct
+`A`, optionally execute the quotient update and full matrix product, then
+return `-(sgnR * sgnS)`. -/
+def hgcdRecursiveFinish (this : DenseUPolyZp)
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (computeM : Bool) (A B T0 lowA lowB highA highB q : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift lenQ : Nat)
+    (a2 scratch : RawPtr UInt64) (sgnR sgnS : Int) (heap : RawHeap) :
+    RawExec HgcdRecursiveFinishResult :=
+  match hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
+      scratch lenLowA lenLowB lenHighA lenHighB shift S hS sgnS heap with
+  | .error fault => .error fault
+  | .ok reconstructed =>
+    if computeM then
+      match hcombine : hgcdRecursiveCombineMatrix this M R S hM hR hS q
+          lenQ T0 a2 scratch reconstructed.heap with
+      | .error fault => .error fault
+      | .ok combined => .ok {
+          heap := combined.heap
+          matrix := combined.matrix
+          valid := hgcdRecursiveCombineMatrix_result_valid this M R S hM hR
+            hS q lenQ T0 a2 scratch reconstructed.heap combined hcombine
+          lenA := reconstructed.lenA
+          lenB := reconstructed.lenB
+          sgn := -(sgnR * sgnS) }
+    else .ok {
+      heap := reconstructed.heap
+      matrix := M
+      valid := hM
+      lenA := reconstructed.lenA
+      lenB := reconstructed.lenB
+      sgn := -(sgnR * sgnS) }
+
+/-- Successful execution of the recursive tail exposes the actual pair
+reconstruction and, exactly when requested by C++, the actual matrix block. -/
+theorem hgcdRecursiveFinish_exec (this : DenseUPolyZp)
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (computeM : Bool) (A B T0 lowA lowB highA highB q : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift lenQ : Nat)
+    (a2 scratch : RawPtr UInt64) (sgnR sgnS : Int) (heap : RawHeap)
+    (result : HgcdRecursiveFinishResult)
+    (hrun : hgcdRecursiveFinish this M R S hM hR hS computeM A B T0 lowA
+      lowB highA highB q lenLowA lenLowB lenHighA lenHighB shift lenQ a2
+      scratch sgnR sgnS heap = .ok result) :
+    ∃ reconstructed,
+      hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB scratch
+          lenLowA lenLowB lenHighA lenHighB shift S hS sgnS heap =
+        .ok reconstructed ∧
+      result.lenA = reconstructed.lenA ∧
+      result.lenB = reconstructed.lenB ∧
+      result.sgn = -(sgnR * sgnS) ∧
+      (if computeM then
+        ∃ combined,
+          hgcdRecursiveCombineMatrix this M R S hM hR hS q lenQ T0 a2
+              scratch reconstructed.heap = .ok combined ∧
+          result.heap = combined.heap ∧ result.matrix = combined.matrix
+       else result.heap = reconstructed.heap ∧ result.matrix = M) := by
+  simp only [hgcdRecursiveFinish] at hrun
+  split at hrun
+  next fault hreconstruct => simp at hrun
+  next reconstructed hreconstruct =>
+    split at hrun
+    next hcompute =>
+      split at hrun
+      next fault hcombine => simp at hrun
+      next combined hcombine =>
+        have heq := Except.ok.inj hrun
+        subst result
+        exact ⟨reconstructed, hreconstruct, rfl, rfl, rfl, by
+          simp [hcompute, hcombine]⟩
+    next hcompute =>
+      have heq := Except.ok.inj hrun
+      subst result
+      exact ⟨reconstructed, hreconstruct, rfl, rfl, rfl, by
+        simp [hcompute]⟩
+
 structure HgcdEarlyMatrixResult where
   heap : RawHeap
   matrix : HgcdMat

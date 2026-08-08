@@ -169,6 +169,11 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 `R*([[q,1],[1,0]]*S)`，没有用单独的 L2 赋值替代执行。对左矩阵的跨调用
 保持通过物理 layout/prefix frame 表达，provider 不携带预期多项式结果。
 
+第二次高半部 HGCD 返回后的完整尾部现由 `hgcdRecursiveFinish` 固定：它先按
+源码顺序执行 B/A 成对重构，再仅在 `compute_M` 为真时把同一返回 heap 交给
+最终矩阵组合，最后原样返回 `-(sgnR*sgnS)`。执行分解定理分别钉住
+`compute_M` 两个分支，因而良基主函数不能跳过重构或用规格矩阵替代可选调用。
+
 完整四项 `_mat_mul` 的 raw 语义现已闭合。新的单项 frame 定理按真实的
 两次 guarded 乘法和 add/copy/skip 尾分支，保持两个输入矩阵以及先前已完成
 的输出项。`hgcdMatMulLoop_refines` 再沿生成的 `4-i` 递归逐项执行

@@ -63,6 +63,8 @@ def main() -> None:
                      "classicalDotLoop_exact_zero",
                      "classicalDotReduced_toNat",
                      "classicalDotReduced_cast",
+                     "classicalDotPoly",
+                     "classicalDotNat_cast_eq_poly",
                      "classicalOuterLoop_ok", "classicalMul_ok",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:

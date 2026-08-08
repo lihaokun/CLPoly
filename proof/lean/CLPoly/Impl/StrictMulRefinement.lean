@@ -8,6 +8,7 @@ namespace CLPoly.Impl.StrictMulRefinement
 open Generated.StrictMul
 open CLPoly.Impl.StrictWordArithmetic
 open CLPoly.Impl.StrictDivremRefinement
+open CLPoly.Impl.RawPolynomialRep
 
 /-- Mathematical value of the exact raw cells visited by the C++ dot loop.
 It shares the loop's reads and failure behavior, but performs unbounded natural
@@ -26,6 +27,56 @@ def classicalDotNat (heap : RawHeap) (A B : RawPtr UInt64)
         | .ok tail => .ok (a.toNat * b.toNat + tail)
   else
     .ok 0
+termination_by stop + 1 - j
+decreasing_by omega
+
+def classicalDotPoly {p : Nat} (left right : Polynomial (ZMod p))
+    (k stop j : Nat) : ZMod p :=
+  if h : j ≤ stop then
+    left.coeff j * right.coeff (k - j) +
+      classicalDotPoly left right k stop (j + 1)
+  else
+    0
+termination_by stop + 1 - j
+decreasing_by omega
+
+theorem classicalDotNat_cast_eq_poly (heap : RawHeap)
+    (A B : RawPtr UInt64) (lenA lenB p k stop j sum : Nat)
+    (left right : Polynomial (ZMod p))
+    (hRepA : SlicePolyRep heap A lenA p left)
+    (hRepB : SlicePolyRep heap B lenB p right)
+    (hAIndex : ∀ t, j ≤ t → t ≤ stop → t < lenA)
+    (hBIndex : ∀ t, j ≤ t → t ≤ stop → k - t < lenB)
+    (hrun : classicalDotNat heap A B k stop j = .ok sum) :
+    (sum : ZMod p) = classicalDotPoly left right k stop j := by
+  unfold classicalDotNat at hrun
+  split at hrun
+  next hle =>
+    rw [classicalDotPoly, dif_pos hle]
+    have hjA := hAIndex j (Nat.le_refl _) hle
+    have hjB := hBIndex j (Nat.le_refl _) hle
+    rcases slicePolyRep_coeff heap A lenA p left hRepA j hjA with
+      ⟨a, ha, hcoeffA⟩
+    simp only [ha] at hrun
+    rcases slicePolyRep_coeff heap B lenB p right hRepB (k - j) hjB with
+      ⟨b, hb, hcoeffB⟩
+    simp only [hb] at hrun
+    cases ht : classicalDotNat heap A B k stop (j + 1) with
+    | error fault => simp [ht] at hrun
+    | ok tail =>
+      simp only [ht] at hrun
+      have hsum : sum = a.toNat * b.toNat + tail :=
+        Except.ok.inj hrun.symm
+      have htail := classicalDotNat_cast_eq_poly heap A B lenA lenB p k
+        stop (j + 1) tail left right hRepA hRepB
+        (by intro t hjt hts; exact hAIndex t (by omega) hts)
+        (by intro t hjt hts; exact hBIndex t (by omega) hts) ht
+      rw [hsum, Nat.cast_add, Nat.cast_mul, hcoeffA, hcoeffB, htail]
+  next hnot =>
+    rw [classicalDotPoly, dif_neg hnot]
+    have hzero : sum = 0 := Except.ok.inj hrun.symm
+    subst sum
+    simp
 termination_by stop + 1 - j
 decreasing_by omega
 

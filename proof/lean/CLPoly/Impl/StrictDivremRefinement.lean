@@ -644,6 +644,11 @@ For `j ≤ d`, the divisor invariant makes `B[j]` readable.  The bound
 writable.  The multiplication and carry routines are total word operations.
 The W3 write preserves both B and W3 allocation invariants; recurse at `j+1`
 with the strictly smaller measure `d+1-j`.  At `j>d`, the source loop exits. -/
+def SameWord3Above (before after : RawHeap) (ptr : RawPtr Word3)
+    (top upper : Nat) : Prop :=
+  ∀ k, top < k → k < upper →
+    before.readWord3 ptr k = after.readWord3 ptr k
+
 theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     (W3 : RawPtr Word3) (lenW3 i d j : Nat) (c : UInt64)
     (other : RawPtr UInt64) (otherLen : Nat)
@@ -692,6 +697,64 @@ theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     exact (hlayout1 ptr length).trans (hlayout2 ptr length)
   next hnot =>
     exact ⟨heap, rfl, hB, hW3, hOther, fun _ _ => Iff.rfl⟩
+termination_by d + 1 - j
+decreasing_by omega
+
+/-- Later quotient iterations update only `W3[i..i+d]`; every allocated cell
+strictly above that interval is byte-for-byte unchanged. -/
+theorem addMulLoop_preserves_above (heap : RawHeap) (B : RawPtr UInt64)
+    (W3 : RawPtr Word3) (lenW3 i d j : Nat) (c : UInt64)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (htop : i + d < lenW3) (hj : j ≤ d + 1) :
+    ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      SameWord3Above heap heap' W3 (i + d) lenW3 := by
+  rw [addMulLoop]
+  split
+  next hle =>
+    have hjB : j < d + 1 := by omega
+    have hijW : i + j < lenW3 := by omega
+    rcases heap.readU64_of_valid B (d + 1) j hB hjB with ⟨bj, hreadB⟩
+    simp only [hreadB]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + j) hW3 hijW with
+      ⟨accum, hreadW⟩
+    simp only [hreadW]
+    let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+    let accum' := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+      accum product.1 product.2
+    rcases heap.writeWord3_of_valid W3 lenW3 (i + j) accum' hW3 hijW with
+      ⟨heap1, hwrite⟩
+    dsimp [product, accum'] at hwrite ⊢
+    simp only [hwrite]
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 (i + j)
+      accum' hwrite
+    have hsame1 : SameWord3Above heap heap1 W3 (i + d) lenW3 := by
+      intro k hkTop hkLen
+      rcases heap.readWord3_of_valid W3 lenW3 k hW3 hkLen with
+        ⟨old, hreadOld⟩
+      have hpreserved := RawHeap.readWord3_writeWord3_ne heap heap1 W3
+        (i + j) k accum' old hwrite hreadOld (by omega)
+      rw [hreadOld, hpreserved]
+    rcases addMulLoop_preserves_above heap1 B W3 lenW3 i d (j + 1) c
+      hB1 hW31 htop (by omega) with
+      ⟨heap2, hloop, hB2, hW32, hlayout2, hsame2⟩
+    refine ⟨heap2, hloop, hB2, hW32, ?_, ?_⟩
+    · intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+    · intro k hkTop hkLen
+      exact (hsame1 k hkTop hkLen).trans (hsame2 k hkTop hkLen)
+  next hnot =>
+    exact ⟨heap, rfl, hB, hW3, fun _ _ => Iff.rfl,
+      fun _ _ _ => rfl⟩
 termination_by d + 1 - j
 decreasing_by omega
 
@@ -985,6 +1048,52 @@ def SameWord3PrefixAt (before after : RawHeap) (ptr : RawPtr Word3)
     (offset length : Nat) : Prop :=
   ∀ k value, k < length → before.readWord3 ptr (offset + k) = .ok value →
     after.readWord3 ptr (offset + k) = .ok value
+
+def Word3ZeroModRange (heap : RawHeap) (ptr : RawPtr Word3)
+    (lower upper p : Nat) : Prop :=
+  ∀ k value, lower ≤ k → k < upper →
+    heap.readWord3 ptr k = .ok value → word3Value value % p = 0
+
+theorem zeroModRange_of_same_above (before after : RawHeap)
+    (W3 : RawPtr Word3) (top upper p : Nat)
+    (hsame : SameWord3Above before after W3 top upper)
+    (hzero : Word3ZeroModRange before W3 (top + 1) upper p) :
+    Word3ZeroModRange after W3 (top + 1) upper p := by
+  intro k value hlow hhigh hreadAfter
+  have hsameRead := hsame k (by omega) hhigh
+  apply hzero k value hlow hhigh
+  rwa [hsameRead]
+
+theorem zeroModRange_writeU64_region_ne (before after : RawHeap)
+    (dst : RawPtr UInt64) (W3 : RawPtr Word3)
+    (writeIndex length lower upper p : Nat) (written : UInt64)
+    (hvalid : before.ValidWord3Slice W3 length)
+    (hupper : upper ≤ length)
+    (hzero : Word3ZeroModRange before W3 lower upper p)
+    (hregions : dst.region ≠ W3.region)
+    (hwrite : before.writeU64 dst writeIndex written = .ok after) :
+    Word3ZeroModRange after W3 lower upper p := by
+  intro k value hlow hhigh hreadAfter
+  rcases before.readWord3_of_valid W3 length k hvalid (by omega) with
+    ⟨old, hreadOld⟩
+  have hpreserved := RawHeap.readWord3_writeU64_region_ne before after
+    dst W3 writeIndex k written old hwrite hreadOld hregions
+  have hvalue : value = old :=
+    Except.ok.inj (hreadAfter.symm.trans hpreserved)
+  subst value
+  exact hzero k old hlow hhigh hreadOld
+
+theorem zeroModRange_extend_down (heap : RawHeap) (W3 : RawPtr Word3)
+    (lower upper p : Nat)
+    (hcell : ∀ value, heap.readWord3 W3 lower = .ok value →
+      word3Value value % p = 0)
+    (hrest : Word3ZeroModRange heap W3 (lower + 1) upper p) :
+    Word3ZeroModRange heap W3 lower upper p := by
+  intro k value hlow hhigh hread
+  by_cases hk : k = lower
+  · subst k
+    exact hcell value hread
+  · exact hrest k value (by omega) hhigh hread
 
 def AddMulRangeRep (before after : RawHeap) (B : RawPtr UInt64)
     (W3 : RawPtr Word3) (offset start stop : Nat) (c : UInt64) : Prop :=

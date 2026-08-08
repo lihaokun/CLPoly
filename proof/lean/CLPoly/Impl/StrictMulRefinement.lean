@@ -2800,6 +2800,75 @@ theorem karPrepareHalves_refines (this : DenseUPolyZp)
       by simpa [karPreparedPoly, hoddGt] using hT2Final,
       hCanonicalT1Final, hCanonicalT2Final⟩
 
+/-- Full interface needed by the first recursive Karatsuba child: the actual
+half-preparation execution produces the two sum slices while preserving both
+input slices in the resulting heap. -/
+theorem karPrepareHalves_refines_and_preserves_inputs (this : DenseUPolyZp)
+    (A B t1 t2 : RawPtr UInt64) (m h : Nat) (heap heap' : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hp : 1 < this._p.toNat)
+    (hshape : h = m ∨ h = m + 1)
+    (hA : heap.ValidU64Slice A (m + h))
+    (hB : heap.ValidU64Slice B (m + h))
+    (hT1 : heap.ValidU64Slice t1 h)
+    (hT2 : heap.ValidU64Slice t2 h)
+    (hT1T2 : U64SlicesDisjoint t1 h t2 h)
+    (hT1A : U64SlicesDisjoint t1 h A (m + h))
+    (hT1B : U64SlicesDisjoint t1 h B (m + h))
+    (hT2A : U64SlicesDisjoint t2 h A (m + h))
+    (hT2B : U64SlicesDisjoint t2 h B (m + h))
+    (hCanonicalA : CanonicalU64Prefix heap A (m + h) this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B (m + h) this._p)
+    (hRepA : SlicePolyRep heap A (m + h) this._p.toNat left)
+    (hRepB : SlicePolyRep heap B (m + h) this._p.toNat right)
+    (hrun : karPrepareHalves this A B t1 t2 m h heap = .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' A (m + h) this._p.toNat left ∧
+      SlicePolyRep heap' B (m + h) this._p.toNat right ∧
+      CanonicalU64Prefix heap' A (m + h) this._p ∧
+      CanonicalU64Prefix heap' B (m + h) this._p ∧
+      SlicePolyRep heap' t1 h this._p.toNat
+        (karPreparedPoly left m h) ∧
+      SlicePolyRep heap' t2 h this._p.toNat
+        (karPreparedPoly right m h) ∧
+      CanonicalU64Prefix heap' t1 h this._p ∧
+      CanonicalU64Prefix heap' t2 h this._p := by
+  have hmh : m ≤ h := by rcases hshape with h | h <;> omega
+  rcases karPrepareHalves_ok this A B t1 t2 m h heap hmh hA hB hT1 hT2 with
+    ⟨okHeap, hok, hlayout⟩
+  have heq : okHeap = heap' := Except.ok.inj (hok.symm.trans hrun)
+  subst okHeap
+  rcases karPrepareHalves_refines this A B t1 t2 m h heap heap' left right
+      hp hshape hA hB hT1 hT2 hT1T2 hT1A hT1B hT2A hT2B
+      hCanonicalA hCanonicalB hRepA hRepB hrun with
+    ⟨hRepT1, hRepT2, hCanonicalT1, hCanonicalT2⟩
+  have hsameA := karPrepareHalves_preserves_outside this A B t1 t2 A m h
+    (m + h) heap heap' hmh hA hB hT1 hT2 hT1A hT2A hrun
+  have hsameB := karPrepareHalves_preserves_outside this A B t1 t2 B m h
+    (m + h) heap heap' hmh hA hB hT1 hT2 hT1B hT2B hrun
+  have hA' := (hlayout A (m + h)).mp hA
+  have hB' := (hlayout B (m + h)).mp hB
+  have hRepA' := slicePolyRep_of_same_prefix heap heap' A (m + h)
+    this._p.toNat left hA hA' hsameA hRepA
+  have hRepB' := slicePolyRep_of_same_prefix heap heap' B (m + h)
+    this._p.toNat right hB hB' hsameB hRepB
+  have hCanonicalA' : CanonicalU64Prefix heap' A (m + h) this._p := by
+    intro k value hk hread'
+    rcases heap.readU64_of_valid A (m + h) k hA hk with ⟨old, hread⟩
+    have hvalue : value = old :=
+      Except.ok.inj (hread'.symm.trans (hsameA k old hk hread))
+    subst value
+    exact hCanonicalA k old hk hread
+  have hCanonicalB' : CanonicalU64Prefix heap' B (m + h) this._p := by
+    intro k value hk hread'
+    rcases heap.readU64_of_valid B (m + h) k hB hk with ⟨old, hread⟩
+    have hvalue : value = old :=
+      Except.ok.inj (hread'.symm.trans (hsameB k old hk hread))
+    subst value
+    exact hCanonicalB k old hk hread
+  exact ⟨hlayout, hRepA', hRepB', hCanonicalA', hCanonicalB', hRepT1,
+    hRepT2, hCanonicalT1, hCanonicalT2⟩
+
 theorem normaliseU64_eq_length_of_classicalCoeffPrefix {p : Nat}
     (heap : RawHeap) (C : RawPtr UInt64) (length : Nat)
     (poly : Polynomial (ZMod p))

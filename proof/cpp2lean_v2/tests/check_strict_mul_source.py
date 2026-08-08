@@ -58,7 +58,9 @@ def main() -> None:
         raise SystemExit(f"strict multiplication refinement contains forbidden constructs: {found}")
     for fragment in ("classicalDotLoop_ok", "classical_index_bounds",
                      "classicalDotNat", "classicalDotNat_ok",
-                     "classicalDotLoop_modEq", "classicalDotLoop_raw_sum",
+                     "classicalDotNat_bound", "classicalDotLoop_modEq",
+                     "classicalDotLoop_raw_sum",
+                     "classicalDotLoop_exact_zero",
                      "classicalOuterLoop_ok", "classicalMul_ok",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:

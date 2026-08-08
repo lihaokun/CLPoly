@@ -7,6 +7,7 @@ namespace CLPoly.Impl.StrictMulRefinement
 
 open Generated.StrictMul
 open CLPoly.Impl.StrictWordArithmetic
+open CLPoly.Impl.StrictDivremRefinement
 
 /-- Mathematical value of the exact raw cells visited by the C++ dot loop.
 It shares the loop's reads and failure behavior, but performs unbounded natural
@@ -101,6 +102,61 @@ theorem classicalDotNat_ok (heap : RawHeap) (A B : RawPtr UInt64)
 termination_by stop + 1 - j
 decreasing_by omega
 
+theorem classicalDotNat_bound (heap : RawHeap) (A B : RawPtr UInt64)
+    (lenA lenB k stop j : Nat) (p : UInt64) (sum : Nat)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hCanonicalA : CanonicalU64Prefix heap A lenA p)
+    (hCanonicalB : CanonicalU64Prefix heap B lenB p)
+    (hAIndex : ∀ t, j ≤ t → t ≤ stop → t < lenA)
+    (hBIndex : ∀ t, j ≤ t → t ≤ stop → k - t < lenB)
+    (hrun : classicalDotNat heap A B k stop j = .ok sum) :
+    sum ≤ (stop + 1 - j) * (p.toNat - 1) ^ 2 := by
+  unfold classicalDotNat at hrun
+  split at hrun
+  next hle =>
+    have hjA := hAIndex j (Nat.le_refl _) hle
+    have hjB := hBIndex j (Nat.le_refl _) hle
+    rcases heap.readU64_of_valid A lenA j hA hjA with ⟨a, ha⟩
+    simp only [ha] at hrun
+    rcases heap.readU64_of_valid B lenB (k - j) hB hjB with ⟨b, hb⟩
+    simp only [hb] at hrun
+    cases ht : classicalDotNat heap A B k stop (j + 1) with
+    | error fault => simp [ht] at hrun
+    | ok tail =>
+      simp only [ht] at hrun
+      have hsum : sum = a.toNat * b.toNat + tail :=
+        Except.ok.inj hrun.symm
+      have haLe : a.toNat ≤ p.toNat - 1 := by
+        have := hCanonicalA j a hjA ha
+        omega
+      have hbLe : b.toNat ≤ p.toNat - 1 := by
+        have := hCanonicalB (k - j) b hjB hb
+        omega
+      have hprod : a.toNat * b.toNat ≤ (p.toNat - 1) ^ 2 := by
+        rw [pow_two]
+        exact Nat.mul_le_mul haLe hbLe
+      have htail := classicalDotNat_bound heap A B lenA lenB k stop (j + 1)
+        p tail hA hB hCanonicalA hCanonicalB
+        (by intro t hjt hts; exact hAIndex t (by omega) hts)
+        (by intro t hjt hts; exact hBIndex t (by omega) hts) ht
+      rw [hsum]
+      calc
+        a.toNat * b.toNat + tail ≤
+            (p.toNat - 1) ^ 2 +
+              (stop + 1 - (j + 1)) * (p.toNat - 1) ^ 2 :=
+          Nat.add_le_add hprod htail
+        _ = (stop + 1 - j) * (p.toNat - 1) ^ 2 := by
+          have : stop + 1 - j = (stop + 1 - (j + 1)) + 1 := by omega
+          rw [this]
+          ring
+  next hnot =>
+    have hzero : sum = 0 := Except.ok.inj hrun.symm
+    subst sum
+    exact Nat.zero_le _
+termination_by stop + 1 - j
+decreasing_by omega
+
 theorem classicalDotLoop_ok (heap : RawHeap) (A B : RawPtr UInt64)
     (lenA lenB k stop j : Nat) (acc : Word3)
     (hA : heap.ValidU64Slice A lenA)
@@ -147,6 +203,43 @@ theorem classicalDotLoop_raw_sum (heap : RawHeap) (A B : RawPtr UInt64)
     hAIndex hBIndex with ⟨sum, hsum⟩
   exact ⟨result, sum, hrun, hsum,
     classicalDotLoop_modEq heap A B k stop j acc result sum hrun hsum⟩
+
+theorem classicalDotLoop_exact_zero (heap : RawHeap) (A B : RawPtr UInt64)
+    (lenA lenB k stop j : Nat) (p : UInt64) (result : Word3) (sum : Nat)
+    (hp : 1 < p.toNat)
+    (hcount : stop + 1 - j < limbBase)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hCanonicalA : CanonicalU64Prefix heap A lenA p)
+    (hCanonicalB : CanonicalU64Prefix heap B lenB p)
+    (hAIndex : ∀ t, j ≤ t → t ≤ stop → t < lenA)
+    (hBIndex : ∀ t, j ≤ t → t ≤ stop → k - t < lenB)
+    (hrun : classicalDotLoop heap A B k stop j
+      { lo := 0, mid := 0, hi := 0 } = .ok result)
+    (hsum : classicalDotNat heap A B k stop j = .ok sum) :
+    word3Value result = sum := by
+  have hbound := classicalDotNat_bound heap A B lenA lenB k stop j p sum
+    hA hB hCanonicalA hCanonicalB hAIndex hBIndex hsum
+  have hlazy := lazyAccumulation_word3_budget p (stop + 1 - j) 0
+    hp hcount (by omega)
+  have hpB : p.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt p
+  have hsumLt : sum < limbBase ^ 3 := by
+    calc
+      sum ≤ (stop + 1 - j) * (p.toNat - 1) ^ 2 := hbound
+      _ < p.toNat * limbBase ^ 2 := by simpa using hlazy
+      _ < limbBase ^ 3 := by
+        have hpowPos : 0 < limbBase ^ 2 :=
+          pow_pos (by norm_num [limbBase]) 2
+        have hmul : p.toNat * limbBase ^ 2 < limbBase * limbBase ^ 2 :=
+          Nat.mul_lt_mul_of_pos_right hpB hpowPos
+        simpa [pow_succ, Nat.mul_comm, Nat.mul_left_comm,
+          Nat.mul_assoc] using hmul
+  have hmod := classicalDotLoop_modEq heap A B k stop j
+    { lo := 0, mid := 0, hi := 0 } result sum hrun hsum
+  have hmod' : Nat.ModEq (limbBase ^ 3) (word3Value result) sum := by
+    simpa [word3Value] using hmod
+  exact hmod'.eq_of_lt_of_lt (word3Value_lt result) hsumLt
 
 theorem classical_index_bounds (lenA lenB k j : Nat)
     (hApos : 0 < lenA) (hBpos : 0 < lenB)

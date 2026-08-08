@@ -163,6 +163,13 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 零乘积都从实际返回长度为零及 `SlicePolyRep` 推出。物理 provider 仅含容量、
 别名和分离条件。
 
+HGCD 迭代的矩阵长度不变式现已贯穿完整的良基循环。证明先顺序消费真实
+`_poly_divrem`、row `(2,3)` 更新和 row `(0,1)` 更新，取得商长度界、余数
+严格下降以及四个 descriptor 长度界；随后用这些界证明下一状态仍满足四项
+互补长度不变式，并以源码的 `state.lenB` 严格下降递归。迭代器的初始化、
+停止分支以及递归 iterator arm 的 stabilization/store 也已接通，因此返回
+矩阵四项相对于原输入长度的界和 `result.lenB ≤ result.lenA` 都来自实际执行。
+
 最终矩阵合并块也已按源码顺序闭合：`hgcdRecursiveCombineMatrix` 先实际执行
 两列商矩阵更新，再把其返回的 matrix/heap 直接交给完整四项 `_mat_mul`。
 对应 raw 定理从两次生成调用分别取得 `[[q,1],[1,0]]*S` 与

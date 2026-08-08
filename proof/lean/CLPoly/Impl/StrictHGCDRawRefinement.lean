@@ -4294,6 +4294,117 @@ theorem hgcdTwoRowUpdates_preserve_guard (this : DenseUPolyZp)
     guardPoly (by decide) hcfg hp workspace01 guard01 hQ23 hE0_23 hE1_23
     hGuard23 hrow01
 
+/-- Descriptor-length effect of the two source-ordered matrix row updates.
+This theorem follows both real generated calls; in particular the second
+bound uses the quotient and the untouched `(0,1)` entries framed through the
+first heap transition. -/
+theorem hgcdTwoRowUpdates_length_bounds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (row23 row01 : MatRowUpdateResult)
+    (hM : M.Valid) (h23 : row23.matrix.Valid)
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (workspace23 : MatRowUpdateWorkspace M (2 : Fin 4) (3 : Fin 4)
+      Q lenQ T t scratch heap hM)
+    (workspace01 : MatRowUpdateWorkspace row23.matrix (0 : Fin 4)
+      (1 : Fin 4) Q lenQ row23.T row23.t scratch row23.heap h23)
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
+    (hrow23 : dense_upoly_zp__mat_row_update_ir this M
+      (2 : Fin 4) (3 : Fin 4) Q lenQ T lenT t scratch heap = .ok row23)
+    (hrow01 : dense_upoly_zp__mat_row_update_ir this row23.matrix
+      (0 : Fin 4) (1 : Fin 4) Q lenQ row23.T row23.lenT row23.t
+      scratch row23.heap = .ok row01) :
+    ∃ h01 : row01.matrix.Valid,
+      hgcdMatLen row01.matrix h01 (0 : Fin 4) ≤
+        max (hgcdMatLen M hM (1 : Fin 4))
+          (lenQ + hgcdMatLen M hM (0 : Fin 4) - 1) ∧
+      hgcdMatLen row01.matrix h01 (1 : Fin 4) =
+        hgcdMatLen M hM (0 : Fin 4) ∧
+      hgcdMatLen row01.matrix h01 (2 : Fin 4) ≤
+        max (hgcdMatLen M hM (3 : Fin 4))
+          (lenQ + hgcdMatLen M hM (2 : Fin 4) - 1) ∧
+      hgcdMatLen row01.matrix h01 (3 : Fin 4) =
+        hgcdMatLen M hM (2 : Fin 4) := by
+  have hE0 := hMatrix (0 : Fin 4)
+  have hE1 := hMatrix (1 : Fin 4)
+  have hE2 := hMatrix (2 : Fin 4)
+  have hE3 := hMatrix (3 : Fin 4)
+  rcases matRowUpdate_length_bound_of_workspace this M (2 : Fin 4)
+      (3 : Fin 4) Q lenQ T lenT t scratch heap row23 hM quotient
+      (entries 2) (entries 3) (by decide) hcfg hp workspace23 hQRep hE2 hE3
+      hrow23 with ⟨h23', hlen2, hlen3, hother23⟩
+  have hh23 : h23' = h23 := Subsingleton.elim _ _
+  subst h23'
+  have hQ23 := matRowUpdate_preserves_quotient_of_workspace this M
+    (2 : Fin 4) (3 : Fin 4) Q lenQ T lenT t scratch heap row23 hM
+    quotient (entries 2) (entries 3) (by decide) hcfg hp workspace23
+    hQRep hE2 hE3 hrow23
+  have hE0_23 := matRowUpdate_preserves_matrix_entry_of_workspace this M
+    (2 : Fin 4) (3 : Fin 4) (0 : Fin 4) Q lenQ T lenT t scratch heap
+    row23 hM quotient (entries 2) (entries 3) (entries 0) (by decide)
+    (by decide) hcfg hp workspace23 hQRep hE2 hE3 hE0 hrow23
+  have hE1_23 := matRowUpdate_preserves_matrix_entry_of_workspace this M
+    (2 : Fin 4) (3 : Fin 4) (1 : Fin 4) Q lenQ T lenT t scratch heap
+    row23 hM quotient (entries 2) (entries 3) (entries 1) (by decide)
+    (by decide) hcfg hp workspace23 hQRep hE2 hE3 hE1 hrow23
+  rcases hgcdTwoRowUpdates_descriptor_frame this M Q lenQ T lenT t scratch
+      heap row23 row01 hM hrow23 hrow01 with
+    ⟨h23Frame, _, hframe23, _⟩
+  have hh23Frame : h23Frame = h23 := Subsingleton.elim _ _
+  subst h23Frame
+  have hE0_23' : RawDensePolyRep this row23.heap
+      (hgcdMatPtr row23.matrix h23 (0 : Fin 4))
+      (hgcdMatLen row23.matrix h23 (0 : Fin 4)) (entries 0) := by
+    have hptr : hgcdMatPtr row23.matrix h23 (0 : Fin 4) =
+        hgcdMatPtr M hM (0 : Fin 4) := by
+      simpa only using (hframe23 (0 : Fin 2)).1
+    have hlen : hgcdMatLen row23.matrix h23 (0 : Fin 4) =
+        hgcdMatLen M hM (0 : Fin 4) := by
+      simpa only using (hframe23 (0 : Fin 2)).2
+    rw [hptr, hlen]
+    exact hE0_23
+  have hE1_23' : RawDensePolyRep this row23.heap
+      (hgcdMatPtr row23.matrix h23 (1 : Fin 4))
+      (hgcdMatLen row23.matrix h23 (1 : Fin 4)) (entries 1) := by
+    have hptr : hgcdMatPtr row23.matrix h23 (1 : Fin 4) =
+        hgcdMatPtr M hM (1 : Fin 4) := by
+      simpa only using (hframe23 (1 : Fin 2)).1
+    have hlen : hgcdMatLen row23.matrix h23 (1 : Fin 4) =
+        hgcdMatLen M hM (1 : Fin 4) := by
+      simpa only using (hframe23 (1 : Fin 2)).2
+    rw [hptr, hlen]
+    exact hE1_23
+  rcases matRowUpdate_length_bound_of_workspace this row23.matrix
+      (0 : Fin 4) (1 : Fin 4) Q lenQ row23.T row23.lenT row23.t scratch
+      row23.heap row01 h23 quotient (entries 0) (entries 1) (by decide)
+      hcfg hp workspace01 hQ23 hE0_23' hE1_23' hrow01 with
+    ⟨h01, hlen0, hlen1, hother01⟩
+  have h23len0 : hgcdMatLen row23.matrix h23 (0 : Fin 4) =
+      hgcdMatLen M hM (0 : Fin 4) := hother23 (0 : Fin 4) (by decide)
+        (by decide)
+  have h23len1 : hgcdMatLen row23.matrix h23 (1 : Fin 4) =
+      hgcdMatLen M hM (1 : Fin 4) := hother23 (1 : Fin 4) (by decide)
+        (by decide)
+  have h01len2 := hother01 (2 : Fin 4) (by decide) (by decide)
+  have h01len3 := hother01 (3 : Fin 4) (by decide) (by decide)
+  have hfinal0 : hgcdMatLen row01.matrix h01 (0 : Fin 4) ≤
+      max (hgcdMatLen M hM (1 : Fin 4))
+        (lenQ + hgcdMatLen M hM (0 : Fin 4) - 1) := by
+    simpa only [h23len0, h23len1] using hlen0
+  have hfinal1 : hgcdMatLen row01.matrix h01 (1 : Fin 4) =
+      hgcdMatLen M hM (0 : Fin 4) := by
+    simpa only [h23len0] using hlen1
+  have hfinal2 : hgcdMatLen row01.matrix h01 (2 : Fin 4) ≤
+      max (hgcdMatLen M hM (3 : Fin 4))
+        (lenQ + hgcdMatLen M hM (2 : Fin 4) - 1) := h01len2 ▸ hlen2
+  have hfinal3 : hgcdMatLen row01.matrix h01 (3 : Fin 4) =
+      hgcdMatLen M hM (2 : Fin 4) := h01len3.trans hlen3
+  exact ⟨h01, hfinal0, hfinal1, hfinal2, hfinal3⟩
+
 /-- One complete nonterminal HGCD Euclidean iteration, from the actual
 generated divrem call through both actual row updates, preserves the raw
 state, matrix transform, signed determinant, normalized gcd, and the strict
@@ -4348,6 +4459,8 @@ theorem hgcdIterationCalls_refine (this : DenseUPolyZp)
       (0 : Fin 4) (1 : Fin 4) Q lenQ row23.T row23.lenT row23.t scratch
       row23.heap = .ok row01) :
     ∃ quotient remainder h01,
+      RawDensePolyRep this heap1 Q lenQ quotient ∧
+      HgcdMatRawDenseRep this heap1 M entries hM ∧
       HgcdMatRawDenseRep this row01.heap row01.matrix
         (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
         h01 ∧
@@ -4365,12 +4478,13 @@ theorem hgcdIterationCalls_refine (this : DenseUPolyZp)
         (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 2)
         (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 3) ∧
       normalize (EuclideanDomain.gcd dividend divisor) =
-        normalize (EuclideanDomain.gcd divisor remainder) ∧ lenR < lenB := by
+        normalize (EuclideanDomain.gcd divisor remainder) ∧
+      lenQ ≤ lenA - (lenB - 1) ∧ lenR < lenB := by
   rcases polyDivrem_next_state this Q R A B lenA lenB W3 heap dividend
       divisor hlenB hARep hBRep hQ hR hW3 hqCapacity hRA hWA hWB hQB hQW
       hRW hRQ hRB hcfg with
     ⟨semanticHeap, semanticLenQ, semanticLenR, quotient, remainder,
-      hsemantic, hQRep, hBRep1, hRRep1, hdivision, hgcd, _, _, _, hlt⟩
+      hsemantic, hQRep, hBRep1, hRRep1, hdivision, hgcd, _, hlenQ, _, hlt⟩
   have heq : (semanticHeap, semanticLenQ, semanticLenR) =
       (heap1, lenQ, lenR) := Except.ok.inj (hsemantic.symm.trans hdiv)
   cases heq
@@ -4395,8 +4509,9 @@ theorem hgcdIterationCalls_refine (this : DenseUPolyZp)
   have hdet' :=
     CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries_preserves_signedDet
       sgn quotient entries hdet
-  exact ⟨quotient, remainder, h01, hMatrix01, hDivisor01, hRemainder01,
-    htransform', hdet', hgcd, hlt⟩
+  exact ⟨quotient, remainder, h01, hQRep, hMatrix1, hMatrix01, hDivisor01,
+    hRemainder01,
+    htransform', hdet', hgcd, hlenQ, hlt⟩
 
 /-- Semantic invariant carried by the well-founded generated HGCD loop.
 The original pair is related to the current raw pair by the actual matrix,
@@ -4426,6 +4541,62 @@ structure HgcdMatrixLengthInvariant (inputLength : Nat)
     inputLength + 1
   row3B : hgcdMatLen state.matrix hM (3 : Fin 4) + state.lenB ≤
     inputLength + 1
+
+/-- Arithmetic closure for one Euclidean matrix step.  The quotient bound
+comes from the real generated divrem call and the four descriptor bounds
+come from the two real row updates. -/
+theorem hgcdMatrixLengthInvariant_step
+    (inputLength lenA lenB lenQ lenR : Nat)
+    (M nextM : HgcdMat) (hM : M.Valid) (hNextM : nextM.Valid)
+    (hinvariant :
+      hgcdMatLen M hM (0 : Fin 4) + lenA ≤ inputLength + 1 ∧
+      hgcdMatLen M hM (1 : Fin 4) + lenB ≤ inputLength + 1 ∧
+      hgcdMatLen M hM (2 : Fin 4) + lenA ≤ inputLength + 1 ∧
+      hgcdMatLen M hM (3 : Fin 4) + lenB ≤ inputLength + 1)
+    (horder : lenB ≤ lenA)
+    (hlenQ : lenQ ≤ lenA - (lenB - 1)) (hlenR : lenR < lenB)
+    (hlen0 : hgcdMatLen nextM hNextM (0 : Fin 4) ≤
+      max (hgcdMatLen M hM (1 : Fin 4))
+        (lenQ + hgcdMatLen M hM (0 : Fin 4) - 1))
+    (hlen1 : hgcdMatLen nextM hNextM (1 : Fin 4) =
+      hgcdMatLen M hM (0 : Fin 4))
+    (hlen2 : hgcdMatLen nextM hNextM (2 : Fin 4) ≤
+      max (hgcdMatLen M hM (3 : Fin 4))
+        (lenQ + hgcdMatLen M hM (2 : Fin 4) - 1))
+    (hlen3 : hgcdMatLen nextM hNextM (3 : Fin 4) =
+      hgcdMatLen M hM (2 : Fin 4)) :
+    hgcdMatLen nextM hNextM (0 : Fin 4) + lenB ≤ inputLength + 1 ∧
+    hgcdMatLen nextM hNextM (1 : Fin 4) + lenR ≤ inputLength + 1 ∧
+    hgcdMatLen nextM hNextM (2 : Fin 4) + lenB ≤ inputLength + 1 ∧
+    hgcdMatLen nextM hNextM (3 : Fin 4) + lenR ≤ inputLength + 1 := by
+  rcases hinvariant with ⟨h0A, h1B, h2A, h3B⟩
+  have hq0 : lenQ + hgcdMatLen M hM (0 : Fin 4) - 1 + lenB ≤
+      inputLength + 1 := by omega
+  have hq2 : lenQ + hgcdMatLen M hM (2 : Fin 4) - 1 + lenB ≤
+      inputLength + 1 := by omega
+  have hmax0 : max (hgcdMatLen M hM (1 : Fin 4))
+        (lenQ + hgcdMatLen M hM (0 : Fin 4) - 1) + lenB ≤
+      inputLength + 1 := by
+    rcases le_total (hgcdMatLen M hM (1 : Fin 4))
+        (lenQ + hgcdMatLen M hM (0 : Fin 4) - 1) with hle | hle
+    · rw [max_eq_right hle]
+      exact hq0
+    · rw [max_eq_left hle]
+      omega
+  have hmax2 : max (hgcdMatLen M hM (3 : Fin 4))
+        (lenQ + hgcdMatLen M hM (2 : Fin 4) - 1) + lenB ≤
+      inputLength + 1 := by
+    rcases le_total (hgcdMatLen M hM (3 : Fin 4))
+        (lenQ + hgcdMatLen M hM (2 : Fin 4) - 1) with hle | hle
+    · rw [max_eq_right hle]
+      exact hq2
+    · rw [max_eq_left hle]
+      omega
+  constructor
+  · omega
+  constructor
+  · omega
+  constructor <;> omega
 
 /-- The real `_mat_one` descriptor and the two source-ordered input copies
 establish the matrix-length invariant. -/
@@ -4550,8 +4721,8 @@ theorem hgcdIterLoop_refines (this : DenseUPolyZp)
           hworkspace.row01Workspace hworkspace.divisorGuard23
           hworkspace.divisorGuard01 hworkspace.remainderGuard23
           hworkspace.remainderGuard01 hdiv hrow23 hrow01 with
-        ⟨quotient, remainder, h01, hMatrix01, hDivisor01, hRemainder01,
-          htransform, hdet, hgcdStep, hlt'⟩
+        ⟨quotient, remainder, h01, _, _, hMatrix01, hDivisor01, hRemainder01,
+          htransform, hdet, hgcdStep, _, hlt'⟩
       let next : HgcdIterState := {
         heap := row01.heap
         matrix := row01.matrix
@@ -4586,6 +4757,94 @@ theorem hgcdIterLoop_refines (this : DenseUPolyZp)
 termination_by state => state.lenB
 decreasing_by exact hlt'
 
+/-- The same well-founded source loop carries the descriptor-length
+invariant needed by the enclosing recursive call.  This is deliberately a
+separate theorem from semantic refinement so its result cannot be supplied
+without following the generated heap execution. -/
+theorem hgcdIterLoop_preserves_matrixLength (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (inputLength m : Nat) (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (scratch : RawPtr UInt64)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdLoopWorkspaceProvider this m Q W3 scratch) :
+    ∀ (state final : HgcdIterState)
+      (currentA currentB : Polynomial (ZMod this._p.toNat))
+      (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+      (hM : state.matrix.Valid),
+      HgcdIterRawInvariant this left right currentA currentB entries state hM →
+      HgcdMatrixLengthInvariant inputLength state hM →
+      state.lenB ≤ state.lenA →
+      hgcdIterLoop this m Q W3 scratch state = .ok final →
+      ∃ hFinalM : final.matrix.Valid,
+        HgcdMatrixLengthInvariant inputLength final hFinalM ∧
+        final.lenB ≤ final.lenA
+  | state, final, currentA, currentB, entries, hM, hraw, hlength, horder,
+      hrun => by
+    by_cases hguard : state.lenB ≥ m + 1
+    · rcases hgcdIterLoop_step_shape this m Q W3 scratch state final hguard
+        hrun with
+      ⟨heap1, lenQ, lenR, row23, row01, hdiv, hrow23, hrow01, htail, hlt⟩
+      have hworkspace := physical state hM heap1 lenQ lenR row23 row01
+        hguard hdiv hrow23 hrow01
+      rcases hgcdIterationCalls_refine this state.matrix Q W3 scratch state.A
+          state.B state.T state.lenA state.lenB state.A state.lenT state.t
+          state.heap heap1 lenQ lenR row23 row01 hM
+          hworkspace.matrix23Valid left right currentA currentB entries
+          state.sgn hcfg hp (by omega) hraw.aRep hraw.bRep hraw.matrixRep
+          hraw.transform hraw.signedDet hworkspace.validQ hworkspace.validR
+          hworkspace.validW3 hworkspace.quotientCapacity hworkspace.rA
+          hworkspace.wA hworkspace.wB hworkspace.qB hworkspace.qW
+          hworkspace.rW hworkspace.rQ hworkspace.rB hworkspace.qMatrix
+          hworkspace.rMatrix hworkspace.wMatrix hworkspace.row23Workspace
+          hworkspace.row01Workspace hworkspace.divisorGuard23
+          hworkspace.divisorGuard01 hworkspace.remainderGuard23
+          hworkspace.remainderGuard01 hdiv hrow23 hrow01 with
+        ⟨quotient, remainder, h01, hQRep, hMatrix1, hMatrix01, hDivisor01,
+          hRemainder01, htransform, hdet, _, hlenQ, hlenR⟩
+      rcases hgcdTwoRowUpdates_length_bounds this state.matrix Q lenQ
+          state.A state.lenT state.t scratch heap1 row23 row01 hM
+          hworkspace.matrix23Valid quotient entries hcfg hp
+          hworkspace.row23Workspace hworkspace.row01Workspace hQRep
+          hMatrix1 hrow23 hrow01 with
+        ⟨h01', hlen0, hlen1, hlen2, hlen3⟩
+      have hh01 : h01' = h01 := Subsingleton.elim _ _
+      subst h01'
+      let next : HgcdIterState := {
+        heap := row01.heap
+        matrix := row01.matrix
+        A := state.B
+        lenA := state.lenB
+        B := state.T
+        lenB := lenR
+        T := row01.T
+        lenT := row01.lenT
+        t := row01.t
+        sgn := -state.sgn }
+      have hnextRaw : HgcdIterRawInvariant this left right currentB remainder
+          (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
+          next h01 := ⟨hMatrix01, hDivisor01, hRemainder01, htransform, hdet⟩
+      have hnextBounds := hgcdMatrixLengthInvariant_step inputLength
+        state.lenA state.lenB lenQ lenR state.matrix row01.matrix hM h01
+        ⟨hlength.row0A, hlength.row1B, hlength.row2A, hlength.row3B⟩
+        horder hlenQ hlenR hlen0 hlen1 hlen2 hlen3
+      have hnextLength : HgcdMatrixLengthInvariant inputLength next h01 := by
+        exact ⟨hnextBounds.1, hnextBounds.2.1, hnextBounds.2.2.1,
+          hnextBounds.2.2.2⟩
+      have htail' : hgcdIterLoop this m Q W3 scratch next = .ok final := by
+        simpa [next] using htail
+      exact hgcdIterLoop_preserves_matrixLength this inputLength m Q W3
+        scratch left right hcfg hp physical next final currentB remainder
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
+        h01 hnextRaw hnextLength (by simpa [next] using hlenR.le) htail'
+    · have hstop : state.lenB < m + 1 := by omega
+      have hsame := hgcdIterLoop_stop this m Q W3 scratch state hstop
+      have hfinal : state = final := Except.ok.inj (hsame.symm.trans hrun)
+      subst final
+      exact ⟨hM, hlength, horder⟩
+termination_by state => state.lenB
+decreasing_by exact hlt
+
 /-- End-to-end refinement of generated C++ `_hgcd_iter`: the exact identity
 initialization and ordered copies feed the exact well-founded loop theorem. -/
 theorem hgcdIter_refines (this : DenseUPolyZp)
@@ -4596,6 +4855,7 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
     (heap : RawHeap) (final : HgcdIterState)
     (left right : Polynomial (ZMod this._p.toNat)) (hM : M.Valid)
     (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (horder : lenB ≤ lenA)
     (physical : HgcdLoopWorkspaceProvider this (lenA / 2) Q W3 scratch)
     (h0 : heap.ValidU64Slice (hgcdMatPtr M hM (0 : Fin 4)) 1)
     (h3 : heap.ValidU64Slice (hgcdMatPtr M hM (3 : Fin 4)) 1)
@@ -4626,7 +4886,9 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
         hFinalM ∧
       normalize (EuclideanDomain.gcd left right) =
         normalize (EuclideanDomain.gcd finalA finalB) ∧
-      final.lenB < lenA / 2 + 1 := by
+      final.lenB < lenA / 2 + 1 ∧
+      HgcdMatrixLengthInvariant lenA final hFinalM ∧
+      final.lenB ≤ final.lenA := by
   rcases hgcdIterInit_refines this M A B T t lenT a lenA b lenB heap left
       right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a h3a h0b h3b
       hAMatrix hBMatrix hMatrixValid hLeft hRight with
@@ -4639,9 +4901,25 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
   have hInitialInvariant : HgcdIterRawInvariant this left right left right
       (identityEntries this._p.toNat) initial hInitialM :=
     ⟨hInitialMatrix, hInitialA, hInitialB, hInitialTransform, hInitialDet⟩
-  exact hgcdIterLoop_refines this (lenA / 2) Q W3 scratch left right hcfg hp
-    physical initial final left right (identityEntries this._p.toNat)
-    hInitialM hInitialInvariant hloop
+  have hInitialLength := hgcdIterInit_matrixLengthInvariant M A B T t lenT
+    a lenA b lenB heap initial hInitialM horder hinit
+  have hInitialOrder : initial.lenB ≤ initial.lenA := by
+    have hlens := hgcdIterInit_lengths M A B T t lenT a lenA b lenB heap
+      initial hinit
+    omega
+  rcases hgcdIterLoop_refines this (lenA / 2) Q W3 scratch left right hcfg hp
+      physical initial final left right (identityEntries this._p.toNat)
+      hInitialM hInitialInvariant hloop with
+    ⟨finalA, finalB, finalEntries, hFinalM, hFinalRaw, hGcd, hStop⟩
+  rcases hgcdIterLoop_preserves_matrixLength this lenA (lenA / 2) Q W3
+      scratch left right hcfg hp physical initial final left right
+      (identityEntries this._p.toNat) hInitialM hInitialInvariant
+      hInitialLength hInitialOrder hloop with
+    ⟨hFinalM', hFinalLength, hFinalOrder⟩
+  have hhFinal : hFinalM' = hFinalM := Subsingleton.elim _ _
+  subst hFinalM'
+  exact ⟨finalA, finalB, finalEntries, hFinalM, hFinalRaw, hGcd, hStop,
+    hFinalLength, hFinalOrder⟩
 
 /-- Purely physical obligations needed after one concrete iterator result to
 stabilize its matrix and normalize its two output pointers.  No polynomial
@@ -4702,6 +4980,7 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
     (result : HgcdRecursiveIterBranchResult)
     (left right : Polynomial (ZMod this._p.toNat))
     (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hInputOrder : lenInputB ≤ lenInputA)
     (loopPhysical : HgcdLoopWorkspaceProvider this (lenInputA / 2) Q W3
       scratch)
     (finalizePhysical : HgcdRecursiveIterFinalizeWorkspaceProvider this
@@ -4748,20 +5027,29 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
         (finalEntries 0) (finalEntries 1) (finalEntries 2) (finalEntries 3) ∧
       normalize (EuclideanDomain.gcd left right) =
         normalize (EuclideanDomain.gcd finalA finalB) ∧
-      result.lenB < lenInputA / 2 + 1 := by
+      result.lenB < lenInputA / 2 + 1 ∧
+      hgcdMatLen result.matrix hResultM (0 : Fin 4) + result.lenA ≤
+        lenInputA + 1 ∧
+      hgcdMatLen result.matrix hResultM (1 : Fin 4) + result.lenB ≤
+        lenInputA + 1 ∧
+      hgcdMatLen result.matrix hResultM (2 : Fin 4) + result.lenA ≤
+        lenInputA + 1 ∧
+      hgcdMatLen result.matrix hResultM (3 : Fin 4) + result.lenB ≤
+        lenInputA + 1 ∧
+      result.lenB ≤ result.lenA := by
   rcases hgcdRecursiveIterBranch_exec this original hOriginal a3 b3 inputA
       inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap result hrun with
     ⟨iter, hIter, stable, hiter, hstable, hstore, hResultMatrix,
       hResultLenA, hResultLenB, hResultSgn⟩
   rcases hgcdIter_refines this original a3 b3 T0 T1 0 inputA lenInputA
       inputB lenInputB Q W3 scratch heap iter left right hOriginal hcfg hp
-      loopPhysical h0 h3 h03 hA3 hB3 hAInput hBInput hAInputB hB3A3 h0A
+      hInputOrder loopPhysical h0 h3 h03 hA3 hB3 hAInput hBInput hAInputB hB3A3 h0A
       h3A h0B h3B hA3Matrix hB3Matrix hMatrixValid hLeft hRight hiter with
     ⟨finalA, finalB, finalEntries, hFinalIter,
-      hInvariant, hGcd, hStop⟩
-  have hStableValid : stable.matrix.Valid :=
-    (hgcdMatStabilize_preserves_descriptors original iter.matrix hOriginal
-      hIter stage iter.heap stable hstable).1
+      hInvariant, hGcd, hStop, hMatrixLength, hFinalOrder⟩
+  have hStableDescriptors := hgcdMatStabilize_preserves_descriptors original
+    iter.matrix hOriginal hIter stage iter.heap stable hstable
+  have hStableValid : stable.matrix.Valid := hStableDescriptors.1
   have hFinalize := finalizePhysical iter hIter stable hStableValid hiter hstable
   rcases hgcdMatStabilize_refines this original iter.matrix hOriginal hIter
       stage finalEntries iter.heap hFinalize.stabilize
@@ -4799,10 +5087,40 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
   have hResultValid : result.matrix.Valid := by
     rw [hResultMatrix]
     exact hSemanticValid
+  have hResultLength0 : hgcdMatLen result.matrix hResultValid (0 : Fin 4) +
+      result.lenA ≤ lenInputA + 1 := by
+    simp only [hgcdMatLen, hResultMatrix, hResultLenA,
+      hStableDescriptors.2.2]
+    exact hMatrixLength.row0A
+  have hResultLength1 : hgcdMatLen result.matrix hResultValid (1 : Fin 4) +
+      result.lenB ≤ lenInputA + 1 := by
+    simp only [hgcdMatLen, hResultMatrix, hResultLenB,
+      hStableDescriptors.2.2]
+    exact hMatrixLength.row1B
+  have hResultLength2 : hgcdMatLen result.matrix hResultValid (2 : Fin 4) +
+      result.lenA ≤ lenInputA + 1 := by
+    simp only [hgcdMatLen, hResultMatrix, hResultLenA,
+      hStableDescriptors.2.2]
+    exact hMatrixLength.row2A
+  have hResultLength3 : hgcdMatLen result.matrix hResultValid (3 : Fin 4) +
+      result.lenB ≤ lenInputA + 1 := by
+    simp only [hgcdMatLen, hResultMatrix, hResultLenB,
+      hStableDescriptors.2.2]
+    exact hMatrixLength.row3B
+  have hMatrixResult : HgcdMatRawDenseRep this result.heap result.matrix
+      finalEntries hResultValid := by
+    simpa only [hResultMatrix] using hMatrixAfter.2
+  have hAResult : RawDensePolyRep this result.heap a3 result.lenA finalA := by
+    simpa only [hResultLenA] using hFinalARep
+  have hBResult : RawDensePolyRep this result.heap b3 result.lenB finalB := by
+    simpa only [hResultLenB] using hFinalBRep
   refine ⟨finalA, finalB, finalEntries, hResultValid, ?_⟩
-  simpa only [hResultMatrix, hResultLenA, hResultLenB, hResultSgn] using
-    ⟨hMatrixAfter.2, hFinalARep, hFinalBRep, hInvariant.transform,
-      hInvariant.signedDet, hGcd, hStop⟩
+  refine ⟨hMatrixResult, hAResult, hBResult, ?_, ?_, hGcd, ?_,
+    hResultLength0, hResultLength1, hResultLength2, hResultLength3, ?_⟩
+  · simpa only [hResultLenA, hResultLenB] using hInvariant.transform
+  · simpa only [hResultSgn] using hInvariant.signedDet
+  · simpa only [hResultLenB] using hStop
+  · simpa only [hResultLenA, hResultLenB] using hFinalOrder
 
 /-- Physical obligations for the two concrete guarded products and the
 source-selected tail of one `_mat_mul_entry`. -/

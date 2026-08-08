@@ -24,3 +24,10 @@
 - `python3 proof/cpp2lean_v2/tests/check_strict_hgcd_source.py`
 - `#print axioms`：严格下降算术定理仅依赖 `propext`、`Quot.sound`；
   原始堆精化定理仅再依赖 `Classical.choice`，无 `sorryAx`。
+
+## 后续 leading-A 接口
+
+原始表示长度桥同时推广为：只要整个低部的规范化长度严格小于
+`shift + highLength`，移位高部的最高项就不可能被低部抵消，输出长度精确等于
+`shift + highLength`。旧的 `lowLength ≤ shift` 版本保留为推论。这个推广
+直接对应最终重构所需的次数分离，不引入“结果非零”之类的规格前提。

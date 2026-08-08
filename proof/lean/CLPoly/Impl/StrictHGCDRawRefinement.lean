@@ -246,7 +246,7 @@ theorem rawDensePolyRep_length_eq (this : DenseUPolyZp)
 descriptor is nonempty, the shifted high term determines the exact normalized
 output length.  This is the semantic form of the real `liftHigh` leading-limb
 preservation used by recursive HGCD. -/
-theorem rawDensePolyRep_add_shift_length_eq (this : DenseUPolyZp)
+theorem rawDensePolyRep_add_shift_length_eq_of_lt (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]
     (lowHeap highHeap outHeap : RawHeap)
     (lowPtr highPtr outPtr : RawPtr UInt64)
@@ -256,7 +256,8 @@ theorem rawDensePolyRep_add_shift_length_eq (this : DenseUPolyZp)
     (hHigh : RawDensePolyRep this highHeap highPtr highLength high)
     (hOut : RawDensePolyRep this outHeap outPtr outLength
       (low + Polynomial.X ^ shift * high))
-    (hLowBound : lowLength ≤ shift) (hHighPos : 0 < highLength) :
+    (hLowBound : lowLength < shift + highLength)
+    (hHighPos : 0 < highLength) :
     outLength = shift + highLength := by
   have hHighNonzero : high ≠ 0 := by
     intro hzero
@@ -303,6 +304,26 @@ theorem rawDensePolyRep_add_shift_length_eq (this : DenseUPolyZp)
     outLength (low + Polynomial.X ^ shift * high) hOut hOutPos
   rw [hOutDegree] at hNormalized
   omega
+
+/-- The common disjoint-low/high specialization of
+`rawDensePolyRep_add_shift_length_eq_of_lt`. -/
+theorem rawDensePolyRep_add_shift_length_eq (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (lowHeap highHeap outHeap : RawHeap)
+    (lowPtr highPtr outPtr : RawPtr UInt64)
+    (lowLength highLength outLength shift : Nat)
+    (low high : Polynomial (ZMod this._p.toNat))
+    (hLow : RawDensePolyRep this lowHeap lowPtr lowLength low)
+    (hHigh : RawDensePolyRep this highHeap highPtr highLength high)
+    (hOut : RawDensePolyRep this outHeap outPtr outLength
+      (low + Polynomial.X ^ shift * high))
+    (hLowBound : lowLength ≤ shift) (hHighPos : 0 < highLength) :
+    outLength = shift + highLength := by
+  apply rawDensePolyRep_add_shift_length_eq_of_lt this lowHeap highHeap outHeap
+    lowPtr highPtr outPtr lowLength highLength outLength shift low high hLow
+    hHigh hOut
+  · omega
+  · exact hHighPos
 
 /-- Exact normalized length bound for the quotient update used by the real
 HGCD tail, `top + quotient * bottom`. -/

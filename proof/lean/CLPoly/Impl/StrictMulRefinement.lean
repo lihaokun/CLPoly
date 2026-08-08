@@ -549,6 +549,52 @@ theorem canonicalU64Prefix_of_same_prefix (before after : RawHeap)
   subst value
   exact hcanonical k old hk hreadBefore
 
+/-- Coefficient-level output invariant for the prefix already produced by
+the C++ schoolbook outer loop. -/
+def ClassicalCoeffPrefix {p : Nat} (heap : RawHeap)
+    (C : RawPtr UInt64) (upto : Nat) (poly : Polynomial (ZMod p)) : Prop :=
+  ∀ i, i < upto → ∃ value : UInt64,
+    heap.readU64 C i = .ok value ∧
+      (value.toNat : ZMod p) = poly.coeff i
+
+theorem classicalCoeffPrefix_succ_of_write {p : Nat}
+    (before after : RawHeap) (C : RawPtr UInt64) (upto : Nat)
+    (poly : Polynomial (ZMod p)) (value : UInt64)
+    (hprefix : ClassicalCoeffPrefix before C upto poly)
+    (hwrite : before.writeU64 C upto value = .ok after)
+    (hvalue : (value.toNat : ZMod p) = poly.coeff upto) :
+    ClassicalCoeffPrefix after C (upto + 1) poly := by
+  intro i hi
+  by_cases heq : i = upto
+  · subst i
+    exact ⟨value, RawHeap.readU64_writeU64_same before after C upto value
+      hwrite, hvalue⟩
+  · have hiOld : i < upto := by omega
+    rcases hprefix i hiOld with ⟨old, hread, hold⟩
+    refine ⟨old, ?_, hold⟩
+    exact RawHeap.readU64_writeU64_ne before after C C upto i value old
+      hwrite hread (Or.inr (by omega))
+
+theorem classicalOuterLoop_preserves_coeff_prefix {p : Nat}
+    (this : DenseUPolyZp) (C A B : RawPtr UInt64)
+    (lenA lenB lenC k : Nat) (heap heap' : RawHeap)
+    (poly : Polynomial (ZMod p))
+    (hC : heap.ValidU64Slice C lenC)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hprefix : ClassicalCoeffPrefix heap C k poly)
+    (hrun : classicalOuterLoop this C A B lenA lenB lenC k heap =
+      .ok heap') :
+    ClassicalCoeffPrefix heap' C k poly := by
+  intro i hi
+  rcases hprefix i hi with ⟨old, hread, hold⟩
+  refine ⟨old, ?_, hold⟩
+  apply classicalOuterLoop_preserves_outside this C A B C lenA lenB lenC
+    k i heap heap' old hC hA hB hread
+  · intro target hktarget _
+    exact Or.inr (by omega)
+  · exact hrun
+
 theorem classicalOuterLoop_ok (this : DenseUPolyZp)
     (C A B : RawPtr UInt64) (lenA lenB lenC k : Nat) (heap : RawHeap)
     (hApos : 0 < lenA) (hBpos : 0 < lenB)

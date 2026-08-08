@@ -708,6 +708,43 @@ theorem karAssembleLoop_preserves_outside (this : DenseUPolyZp)
 termination_by count - i
 decreasing_by omega
 
+theorem karPrepareHalves_preserves_region_ne (this : DenseUPolyZp)
+    (A B t1 t2 guard : RawPtr UInt64) (m h guardLen : Nat)
+    (heap heap' : RawHeap)
+    (hmh : m ≤ h)
+    (hA : heap.ValidU64Slice A (m + h))
+    (hB : heap.ValidU64Slice B (m + h))
+    (hT1 : heap.ValidU64Slice t1 h)
+    (hT2 : heap.ValidU64Slice t2 h)
+    (hT1Guard : t1.region ≠ guard.region)
+    (hT2Guard : t2.region ≠ guard.region)
+    (hrun : karPrepareHalves this A B t1 t2 m h heap = .ok heap') :
+    SameU64Prefix heap heap' guard guardLen := by
+  have hA2m := heap.validU64Slice_mono A (m + h) (2 * m) hA (by omega)
+  have hB2m := heap.validU64Slice_mono B (m + h) (2 * m) hB (by omega)
+  have hT1m := heap.validU64Slice_mono t1 h m hT1 hmh
+  have hT2m := heap.validU64Slice_mono t2 h m hT2 hmh
+  rcases karAddHalvesLoop_ok this A B t1 t2 m 0 heap hA2m hB2m hT1m
+      hT2m with ⟨heap1, hadd, hlayout1⟩
+  have htail : karOddTail A B t1 t2 m h heap1 = .ok heap' := by
+    simpa [karPrepareHalves, hadd] using hrun
+  have hsameAdd : SameU64Prefix heap heap1 guard guardLen := by
+    intro i old hi hread
+    apply karAddHalvesLoop_preserves_outside this A B t1 t2 guard m 0 i
+      heap heap1 old hA2m hB2m hT1m hT2m hread
+    · intro _ _ _
+      exact Or.inl hT1Guard
+    · intro _ _ _
+      exact Or.inl hT2Guard
+    · exact hadd
+  have hsameTail := karOddTail_preserves_region_ne A B t1 t2 guard m h
+    guardLen heap1 heap'
+    ((hlayout1 A (m + h)).mp hA) ((hlayout1 B (m + h)).mp hB)
+    ((hlayout1 t1 h).mp hT1) ((hlayout1 t2 h).mp hT2)
+    hT1Guard hT2Guard htail
+  intro i old hi hread
+  exact hsameTail i old hi (hsameAdd i old hi hread)
+
 /-- Mathematical value of the exact raw cells visited by the C++ dot loop.
 It shares the loop's reads and failure behavior, but performs unbounded natural
 addition so that machine accumulation can be related to it explicitly. -/
@@ -1328,6 +1365,17 @@ theorem coeff_karHalfSumPoly {p : Nat}
       apply hdegree
       simpa [heq] using index.isLt
     simp [Polynomial.coeff_monomial, hval]
+
+theorem karHalfSumPoly_congr_of_prefix {p : Nat}
+    (prefixPoly fullPoly : Polynomial (ZMod p)) (m : Nat)
+    (hcoeff : ∀ i, i < 2 * m → prefixPoly.coeff i = fullPoly.coeff i) :
+    karHalfSumPoly prefixPoly m = karHalfSumPoly fullPoly m := by
+  ext degree
+  rw [coeff_karHalfSumPoly, coeff_karHalfSumPoly]
+  by_cases hdegree : degree < m
+  · rw [if_pos hdegree, if_pos hdegree,
+      hcoeff degree (by omega), hcoeff (m + degree) (by omega)]
+  · rw [if_neg hdegree, if_neg hdegree]
 
 theorem karAddHalvesLoop_refines_slices (this : DenseUPolyZp)
     (A B t1 t2 : RawPtr UInt64) (m : Nat) (heap heap' : RawHeap)

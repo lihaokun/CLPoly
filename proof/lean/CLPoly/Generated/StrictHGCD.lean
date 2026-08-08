@@ -2131,7 +2131,7 @@ def HgcdFirstReconstructionBoundProvider (this : DenseUPolyZp)
       scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
       first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
       first.heap = .ok reconstructed →
-    reconstructed.lenB ≤ lenA
+    reconstructed.lenB < lenA
 
 /-- Strictly decreasing version of the complete recursive body.  Both
 recursive dispatches receive a proof that their source `lenA` is smaller
@@ -2199,10 +2199,12 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
               reconstructed.lenA reconstructed.lenB m ws.W3 reconstructed.heap with
           | .error fault => .error fault
           | .ok middle =>
-            have hreconstructed : reconstructed.lenB ≤ lenA :=
+            have hreconstructedStrict : reconstructed.lenB < lenA :=
               reconstructionBound first reconstructed (by
                 simpa [high, hgcdRecursiveHighInput] using hfirstLength)
                 hreconstruct
+            have hreconstructed : reconstructed.lenB ≤ lenA :=
+              Nat.le_of_lt hreconstructedStrict
             have hremainder : middle.lenD < reconstructed.lenB :=
               polyDivrem_remainder_lt this ws.q ws.d ws.a2 reconstructed.lenA
                 ws.b2 reconstructed.lenB ws.W3 reconstructed.heap middle.heap

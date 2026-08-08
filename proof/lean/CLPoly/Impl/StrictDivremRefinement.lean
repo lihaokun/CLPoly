@@ -2173,6 +2173,36 @@ theorem quotientLoop_ok (this : DenseUPolyZp) (Q B : RawPtr UInt64)
       intro ptr length
       exact (hlayout1 ptr length).trans (hlayout2 ptr length)
 
+/-- Full semantic base case of the generated quotient recursion. -/
+theorem quotientLoop_zero_refines_polynomial (this : DenseUPolyZp)
+    (Q B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (qLen d lenW3 : Nat) (invLc : UInt64) (heap : RawHeap)
+    (divisor : Polynomial (ZMod this._p.toNat))
+    (hQ : heap.ValidU64Slice Q qLen)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3) :
+    ∃ heap' quotient beforeValues afterValues,
+      quotientLoop this Q B W3 d invLc heap 0 = .ok heap' ∧
+      heap'.ValidU64Slice Q qLen ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      SlicePolyRep heap' Q 0 this._p.toNat quotient ∧
+      Word3SliceRep heap W3 lenW3 beforeValues ∧
+      Word3SliceRep heap' W3 lenW3 afterValues ∧
+      word3ArrayPoly this._p.toNat afterValues =
+        word3ArrayPoly this._p.toNat beforeValues - quotient * divisor := by
+  have hQ0 : heap.ValidU64Slice Q 0 :=
+    heap.validU64Slice_mono Q qLen 0 hQ (Nat.zero_le _)
+  rcases slicePolyRep_exists_unique heap Q 0 this._p.toNat hQ0 with
+    ⟨quotient, hquotient, _⟩
+  have hquotientZero := slicePolyRep_zero_length heap Q this._p.toNat
+    quotient hquotient
+  rcases word3SliceRep_exists_unique heap W3 lenW3 hW3 with
+    ⟨values, hvalues, _⟩
+  refine ⟨heap, quotient, values, values, rfl, hQ, hB, hW3, hquotient,
+    hvalues, hvalues, ?_⟩
+  rw [hquotientZero, zero_mul, sub_zero]
+
 /-- The descending generated quotient loop writes only Q indices below its
 current `ii`.  All already-produced higher coefficients are preserved across
 both the Q write and the optional W3 multiply/add. -/

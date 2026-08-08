@@ -1094,6 +1094,206 @@ theorem hgcdRecursiveMulTerm_preserves_guard (this : DenseUPolyZp)
     subst result
     exact fun _ _ _ hread => hread
 
+def hgcdMulCapacity (leftLength rightLength : Nat) : Nat :=
+  2 * max leftLength rightLength - 1
+
+/-- Physical obligations for the two generated products and their in-place
+subtraction.  It contains capacities and aliasing only, never an expected L2
+polynomial or a supplied execution result. -/
+structure HgcdReconstructWorkspace (heap : RawHeap)
+    (out temp left1 : RawPtr UInt64) (lenLeft1 : Nat)
+    (right1 : RawPtr UInt64) (lenRight1 : Nat)
+    (left2 : RawPtr UInt64) (lenLeft2 : Nat)
+    (right2 : RawPtr UInt64) (lenRight2 : Nat)
+    (scratch : RawPtr UInt64) : Prop where
+  first : HgcdMulTermWorkspace heap out left1 lenLeft1 right1 lenRight1 scratch
+  second : HgcdMulTermWorkspace heap temp left2 lenLeft2 right2 lenRight2 scratch
+  subDstValid : heap.ValidU64Slice out
+    (max (hgcdMulCapacity lenLeft1 lenRight1)
+      (hgcdMulCapacity lenLeft2 lenRight2))
+  firstDstLeft2 : U64SlicesDisjoint out
+    (hgcdMulCapacity lenLeft1 lenRight1) left2 lenLeft2
+  firstScratchLeft2 : U64SlicesDisjoint scratch
+    (8 * max lenLeft1 lenRight1) left2 lenLeft2
+  firstDstRight2 : U64SlicesDisjoint out
+    (hgcdMulCapacity lenLeft1 lenRight1) right2 lenRight2
+  firstScratchRight2 : U64SlicesDisjoint scratch
+    (8 * max lenLeft1 lenRight1) right2 lenRight2
+  secondDstFirst : U64SlicesDisjoint temp
+    (hgcdMulCapacity lenLeft2 lenRight2) out
+    (hgcdMulCapacity lenLeft1 lenRight1)
+  secondScratchFirst : U64SlicesDisjoint scratch
+    (8 * max lenLeft2 lenRight2) out
+    (hgcdMulCapacity lenLeft1 lenRight1)
+  subAliasTemp : ExactOrDisjoint out temp
+
+theorem hgcdMulTermWorkspace_of_sameLayout (heap heap' : RawHeap)
+    (dst left : RawPtr UInt64) (lenLeft : Nat)
+    (right : RawPtr UInt64) (lenRight : Nat) (scratch : RawPtr UInt64)
+    (hlayout : RawHeap.SameLayout heap heap')
+    (hwork : HgcdMulTermWorkspace heap dst left lenLeft right lenRight scratch) :
+    HgcdMulTermWorkspace heap' dst left lenLeft right lenRight scratch := by
+  exact ⟨hwork.lengthFits,
+    (hlayout dst (2 * max lenLeft lenRight - 1)).mp hwork.dstValid,
+    (hlayout scratch (8 * max lenLeft lenRight)).mp hwork.scratchValid,
+    hwork.dstLeft, hwork.dstRight, hwork.dstScratch,
+    hwork.scratchLeft, hwork.scratchRight⟩
+
+/-- Semantic refinement of the exact `b2` low reconstruction block.  Both
+products and the final sign-selected subtraction are actual generated raw
+executions. -/
+theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (b2 T0 r2 r0 aLo bLo scratch : RawPtr UInt64)
+    (lenR2 lenR0 lenALo lenBLo : Nat) (sgn : Int) (heap : RawHeap)
+    (polyR2 polyR0 polyALo polyBLo :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hwork : HgcdReconstructWorkspace heap b2 T0 r2 lenR2 aLo lenALo
+      r0 lenR0 bLo lenBLo scratch)
+    (hR2 : RawDensePolyRep this heap r2 lenR2 polyR2)
+    (hR0 : RawDensePolyRep this heap r0 lenR0 polyR0)
+    (hALo : RawDensePolyRep this heap aLo lenALo polyALo)
+    (hBLo : RawDensePolyRep this heap bLo lenBLo polyBLo) :
+    ∃ heap' length,
+      hgcdRecursiveReconstructB this b2 T0 r2 r0 aLo bLo scratch
+        lenR2 lenR0 lenALo lenBLo sgn heap = .ok (heap', length) ∧
+      RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' b2 length
+        (if sgn < 0 then polyR2 * polyALo - polyR0 * polyBLo
+         else polyR0 * polyBLo - polyR2 * polyALo) := by
+  rcases hgcdRecursiveMulTerm_refines this b2 r2 lenR2 aLo lenALo
+      scratch heap polyR2 polyALo hcfg hp hwork.first hR2 hALo with
+    ⟨term1, hrun1, hlayout1, hTerm1⟩
+  have hR01 : RawDensePolyRep this term1.heap r0 lenR0 polyR0 := by
+    apply rawDensePolyRep_of_same_prefix this heap term1.heap r0 lenR0
+      polyR0 hlayout1
+    · exact hgcdRecursiveMulTerm_preserves_guard this b2 r2 lenR2 aLo
+        lenALo scratch r0 lenR0 heap term1 hwork.first hR2.1 hALo.1
+        hwork.firstDstLeft2 hwork.firstScratchLeft2 hrun1
+    · exact hR0
+  have hBLo1 : RawDensePolyRep this term1.heap bLo lenBLo polyBLo := by
+    apply rawDensePolyRep_of_same_prefix this heap term1.heap bLo lenBLo
+      polyBLo hlayout1
+    · exact hgcdRecursiveMulTerm_preserves_guard this b2 r2 lenR2 aLo
+        lenALo scratch bLo lenBLo heap term1 hwork.first hR2.1 hALo.1
+        hwork.firstDstRight2 hwork.firstScratchRight2 hrun1
+    · exact hBLo
+  have hSecond1 := hgcdMulTermWorkspace_of_sameLayout heap term1.heap T0 r0
+    lenR0 bLo lenBLo scratch hlayout1 hwork.second
+  rcases hgcdRecursiveMulTerm_refines this T0 r0 lenR0 bLo lenBLo
+      scratch term1.heap polyR0 polyBLo hcfg hp hSecond1 hR01 hBLo1 with
+    ⟨term2, hrun2, hlayout2, hTerm2⟩
+  have hLen1 := hgcdRecursiveMulTerm_length_le this b2 r2 lenR2 aLo
+    lenALo scratch heap term1 hrun1
+  have hLen2 := hgcdRecursiveMulTerm_length_le this T0 r0 lenR0 bLo
+    lenBLo scratch term1.heap term2 hrun2
+  have hTerm1Final : RawDensePolyRep this term2.heap b2 term1.length
+      (polyR2 * polyALo) := by
+    apply rawDensePolyRep_of_same_prefix this term1.heap term2.heap b2
+      term1.length (polyR2 * polyALo) hlayout2
+    · apply hgcdRecursiveMulTerm_preserves_guard this T0 r0 lenR0 bLo
+        lenBLo scratch b2 term1.length term1.heap term2 hSecond1 hR01.1
+        hBLo1.1
+      · exact u64SlicesDisjoint_mono hwork.secondDstFirst
+          (Nat.le_refl _) hLen1
+      · exact u64SlicesDisjoint_mono hwork.secondScratchFirst
+          (Nat.le_refl _) hLen1
+      · exact hrun2
+    · exact hTerm1
+  have hSubValid0 : heap.ValidU64Slice b2
+      (max term1.length term2.length) :=
+    heap.validU64Slice_mono b2
+      (max (hgcdMulCapacity lenR2 lenALo)
+        (hgcdMulCapacity lenR0 lenBLo))
+      (max term1.length term2.length) hwork.subDstValid (by
+        apply max_le
+        · exact le_max_of_le_left hLen1
+        · exact le_max_of_le_right hLen2)
+  have hSubValid : term2.heap.ValidU64Slice b2
+      (max term1.length term2.length) :=
+    (hlayout2 b2 _).mp ((hlayout1 b2 _).mp hSubValid0)
+  have hpWord : this._p ≠ 0 := by
+    intro hzero
+    have hzeroNat := congrArg UInt64.toNat hzero
+    simp at hzeroNat
+    omega
+  by_cases hsgn : sgn < 0
+  · rcases polySub_ok this b2 b2 term1.length T0 term2.length
+        term2.heap hSubValid hTerm1Final.1 hTerm2.1 with
+      ⟨heap3, length, hsub, hlayout3, _⟩
+    have hrep := polySub_refines this b2 b2 term1.length T0 term2.length
+      term2.heap heap3 length (polyR2 * polyALo) (polyR0 * polyBLo)
+      hpWord hSubValid hTerm1Final hTerm2 (Or.inl rfl)
+      hwork.subAliasTemp hsub
+    refine ⟨heap3, length, ?_, ?_, ?_⟩
+    · simp [hgcdRecursiveReconstructB, hrun1, hrun2, hsgn, hsub]
+    · exact fun ptr count =>
+        (hlayout1 ptr count).trans
+          ((hlayout2 ptr count).trans (hlayout3 ptr count))
+    · simpa [hsgn] using hrep
+
+  · rcases polySub_ok this b2 T0 term2.length b2 term1.length
+        term2.heap (by simpa [max_comm] using hSubValid) hTerm2.1
+        hTerm1Final.1 with
+      ⟨heap3, length, hsub, hlayout3, _⟩
+    have hrep := polySub_refines this b2 T0 term2.length b2 term1.length
+      term2.heap heap3 length (polyR0 * polyBLo) (polyR2 * polyALo)
+      hpWord (by simpa [max_comm] using hSubValid) hTerm2 hTerm1Final
+      hwork.subAliasTemp
+      (Or.inl rfl) hsub
+    refine ⟨heap3, length, ?_, ?_, ?_⟩
+    · simp [hgcdRecursiveReconstructB, hrun1, hrun2, hsgn, hsub]
+    · exact fun ptr count =>
+        (hlayout1 ptr count).trans
+          ((hlayout2 ptr count).trans (hlayout3 ptr count))
+    · simpa [hsgn] using hrep
+
+/-- Semantic refinement of the exact `a2` reconstruction block.  Its source
+differs from `b2` only by reversing the sign-selected subtraction, so the
+already verified physical execution is reused with an explicitly flipped
+branch selector. -/
+theorem hgcdRecursiveReconstructA_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (a2 T0 r3 r1 aLo bLo scratch : RawPtr UInt64)
+    (lenR3 lenR1 lenALo lenBLo : Nat) (sgn : Int) (heap : RawHeap)
+    (polyR3 polyR1 polyALo polyBLo :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hwork : HgcdReconstructWorkspace heap a2 T0 r3 lenR3 aLo lenALo
+      r1 lenR1 bLo lenBLo scratch)
+    (hR3 : RawDensePolyRep this heap r3 lenR3 polyR3)
+    (hR1 : RawDensePolyRep this heap r1 lenR1 polyR1)
+    (hALo : RawDensePolyRep this heap aLo lenALo polyALo)
+    (hBLo : RawDensePolyRep this heap bLo lenBLo polyBLo) :
+    ∃ heap' length,
+      hgcdRecursiveReconstructA this a2 T0 r3 r1 aLo bLo scratch
+        lenR3 lenR1 lenALo lenBLo sgn heap = .ok (heap', length) ∧
+      RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' a2 length
+        (if sgn < 0 then polyR1 * polyBLo - polyR3 * polyALo
+         else polyR3 * polyALo - polyR1 * polyBLo) := by
+  let flippedSign : Int := if sgn < 0 then 0 else -1
+  rcases hgcdRecursiveReconstructB_refines this a2 T0 r3 r1 aLo bLo
+      scratch lenR3 lenR1 lenALo lenBLo flippedSign heap polyR3 polyR1
+      polyALo polyBLo hcfg hp hwork hR3 hR1 hALo hBLo with
+    ⟨heap', length, hrun, hlayout, hrep⟩
+  refine ⟨heap', length, ?_, hlayout, ?_⟩
+  · have hfunctions :
+        hgcdRecursiveReconstructA this a2 T0 r3 r1 aLo bLo scratch
+            lenR3 lenR1 lenALo lenBLo sgn heap =
+          hgcdRecursiveReconstructB this a2 T0 r3 r1 aLo bLo scratch
+            lenR3 lenR1 lenALo lenBLo flippedSign heap := by
+      by_cases hsgn : sgn < 0
+      · simp [hgcdRecursiveReconstructA, hgcdRecursiveReconstructB,
+          flippedSign, hsgn]
+      · simp [hgcdRecursiveReconstructA, hgcdRecursiveReconstructB,
+          flippedSign, hsgn]
+    exact hfunctions.trans hrun
+  · by_cases hsgn : sgn < 0
+    · simpa [flippedSign, hsgn] using hrep
+    · simpa [flippedSign, hsgn] using hrep
+
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/
 theorem rawDensePolyRep_one_of_read_one (this : DenseUPolyZp)

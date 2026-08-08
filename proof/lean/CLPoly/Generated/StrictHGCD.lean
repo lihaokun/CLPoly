@@ -513,6 +513,37 @@ def hgcdRecursiveMulTerm (this : DenseUPolyZp) (dst left : RawPtr UInt64)
   else
     .ok { heap := heap, length := 0 }
 
+/-- The physical output length selected by the guarded source block fits the
+full product buffer for the longer operand. -/
+theorem hgcdRecursiveMulTerm_length_le (this : DenseUPolyZp)
+    (dst left : RawPtr UInt64) (lenLeft : Nat)
+    (right : RawPtr UInt64) (lenRight : Nat)
+    (scratch : RawPtr UInt64) (heap : RawHeap) (result : HgcdMulTermResult)
+    (hrun : hgcdRecursiveMulTerm this dst left lenLeft right lenRight
+      scratch heap = .ok result) :
+    result.length ≤ 2 * max lenLeft lenRight - 1 := by
+  simp only [hgcdRecursiveMulTerm] at hrun
+  split at hrun
+  next hnonzero =>
+    split at hrun
+    next fault hmul => simp at hrun
+    next heap1 hmul =>
+      have heq : result =
+          HgcdMulTermResult.mk heap1 (lenLeft + lenRight - 1) :=
+        (Except.ok.inj hrun).symm
+      subst result
+      simp at hnonzero
+      rcases Nat.le_total lenLeft lenRight with hle | hle
+      · simp [Nat.max_eq_right hle]
+        omega
+      · simp [Nat.max_eq_left hle]
+        omega
+  next hzero =>
+    have heq : result = HgcdMulTermResult.mk heap 0 :=
+      (Except.ok.inj hrun).symm
+    subst result
+    exact Nat.zero_le _
+
 /-- Exact `b2` low-half reconstruction block:
 `R[2]*a_lo` and `R[0]*b_lo`, followed by the sign-selected subtraction. -/
 def hgcdRecursiveReconstructB (this : DenseUPolyZp)

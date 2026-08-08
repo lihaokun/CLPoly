@@ -162,3 +162,9 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 尾分支分别用真实 `_poly_add`、保持 PQ、真实 `copyU64` 或零长度表示完成，
 零乘积都从实际返回长度为零及 `SlicePolyRep` 推出。物理 provider 仅含容量、
 别名和分离条件。
+
+完整四项 `_mat_mul` 的 raw 语义现已闭合。新的单项 frame 定理按真实的
+两次 guarded 乘法和 add/copy/skip 尾分支，保持两个输入矩阵以及先前已完成
+的输出项。`hgcdMatMulLoop_refines` 再沿生成的 `4-i` 递归逐项执行
+`hgcdMatMulEntry`，最终返四个精确的 L2 矩阵乘法项。workspace/provider
+只保存容量和分离事实，不含预期多项式或矩阵乘积。

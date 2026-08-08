@@ -24,6 +24,7 @@
 - 将 divrem 的递减 quotient recursion 内存帧从专用 divisor 推广到任意与 `Q/W3` allocation 分离的 UInt64 slice；证明逐次跟随实际 `Q` 写入、可选 `addMulLoop` 的 `W3` 写入及递归调用，为矩阵跨 divrem 保持奠定基础。
 - 闭合完整 `_poly_divrem` 的任意外部 slice 帧，覆盖短输入 `copyU64` 与长输入三段循环，并据此证明四项 HGCD raw 矩阵跨真实 divrem 保持。
 - 将实际 divrem、两次实际 row update、raw 状态轮换、矩阵变换、signed determinant、规范化 gcd 及严格 `lenR < lenB` 组合成 `hgcdIterationCalls_refine` 单轮精化定理。
+- 定义不含 L2 结果的循环物理工作区 provider，并以生成函数相同的 `state.lenB` 度量证明完整 `hgcdIterLoop_refines`：每轮调用上述真实单轮定理，以实际 `lenR < lenB` 进入递归，最终得到停止条件、最终 raw 状态、transform、signed determinant 和全程 gcd 保持。
 
 ## 为什么做
 
@@ -35,6 +36,7 @@ HGCD 循环的 raw 执行只有在每轮都保持“原始对—矩阵—当前�
 - 零分支中的消失乘积由零长度 `SlicePolyRep` 推出 quotient 或 entry 为零，而不是增加 L2 前提。
 - 行列式翻转单独证明，后续将与状态中的 `sgn := -sgn` 对齐。
 - 两次行更新之间复用同一 quotient；因此把 quotient 的内存帧作为独立定理证明，并要求 addition destination 与 quotient allocation 分离。
+- 循环级接口明确分离语义不变量与物理工作区：provider 只量化成功 L1 调用并给出有效性/容量/别名事实，不携带 quotient、remainder、矩阵公式或其他 L2 结论。
 
 ## 涉及文件
 

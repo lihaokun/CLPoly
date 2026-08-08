@@ -2025,4 +2025,163 @@ theorem hgcdIterationCalls_refine (this : DenseUPolyZp)
   exact ⟨quotient, remainder, h01, hMatrix01, hDivisor01, hRemainder01,
     htransform', hdet', hgcd, hlt⟩
 
+/-- Semantic invariant carried by the well-founded generated HGCD loop.
+The original pair is related to the current raw pair by the actual matrix,
+whose determinant sign is synchronized with the source `sgn` field. -/
+structure HgcdIterRawInvariant (this : DenseUPolyZp)
+    (left right currentA currentB : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (state : HgcdIterState) (hM : state.matrix.Valid) : Prop where
+  matrixRep : HgcdMatRawDenseRep this state.heap state.matrix entries hM
+  aRep : RawDensePolyRep this state.heap state.A state.lenA currentA
+  bRep : RawDensePolyRep this state.heap state.B state.lenB currentB
+  transform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right
+    currentA currentB (entries 0) (entries 1) (entries 2) (entries 3)
+  signedDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet state.sgn
+    (entries 0) (entries 1) (entries 2) (entries 3)
+
+/-- Purely physical obligations for one concrete successful nonterminal
+iteration.  Every field concerns validity, capacity, or allocation
+separation of the exact buffers used by the generated calls. -/
+structure HgcdIterationWorkspace (this : DenseUPolyZp)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (state : HgcdIterState) (heap1 : RawHeap) (lenQ lenR : Nat)
+    (row23 row01 : MatRowUpdateResult) (hM : state.matrix.Valid) : Prop where
+  validQ : state.heap.ValidU64Slice Q
+    (state.lenA - (state.lenB - 1))
+  validR : state.heap.ValidU64Slice state.T
+    (Nat.min state.lenA (state.lenB - 1))
+  validW3 : state.heap.ValidWord3Slice W3 state.lenA
+  quotientCapacity : state.lenA - (state.lenB - 1) < limbBase
+  rA : state.T.region ≠ state.A.region
+  wA : W3.region ≠ state.A.region
+  wB : W3.region ≠ state.B.region
+  qB : Q.region ≠ state.B.region
+  qW : Q.region ≠ W3.region
+  rW : state.T.region ≠ W3.region
+  rQ : state.T.region ≠ Q.region
+  rB : state.T.region ≠ state.B.region
+  qMatrix : ∀ i : Fin 4,
+    Q.region ≠ (hgcdMatPtr state.matrix hM i).region
+  rMatrix : ∀ i : Fin 4,
+    state.T.region ≠ (hgcdMatPtr state.matrix hM i).region
+  wMatrix : ∀ i : Fin 4,
+    W3.region ≠ (hgcdMatPtr state.matrix hM i).region
+  matrix23Valid : row23.matrix.Valid
+  row23Workspace : MatRowUpdateWorkspace state.matrix (2 : Fin 4)
+    (3 : Fin 4) Q lenQ state.A state.t scratch heap1 hM
+  row01Workspace : MatRowUpdateWorkspace row23.matrix (0 : Fin 4)
+    (1 : Fin 4) Q lenQ row23.T row23.t scratch row23.heap matrix23Valid
+  divisorGuard23 : MatRowUpdateGuardWorkspace state.matrix (2 : Fin 4)
+    Q lenQ state.A state.t scratch state.B state.lenB hM
+  divisorGuard01 : MatRowUpdateGuardWorkspace row23.matrix (0 : Fin 4)
+    Q lenQ row23.T row23.t scratch state.B state.lenB matrix23Valid
+  remainderGuard23 : MatRowUpdateGuardWorkspace state.matrix (2 : Fin 4)
+    Q lenQ state.A state.t scratch state.T lenR hM
+  remainderGuard01 : MatRowUpdateGuardWorkspace row23.matrix (0 : Fin 4)
+    Q lenQ row23.T row23.t scratch state.T lenR matrix23Valid
+
+/-- Separation-logic style precondition for the whole loop: for every
+concrete successful source step, the caller can discharge the purely
+physical workspace obligations above.  It contains no polynomial or L2
+result. -/
+def HgcdLoopWorkspaceProvider (this : DenseUPolyZp) (m : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (scratch : RawPtr UInt64) : Prop :=
+  ∀ (state : HgcdIterState) (hM : state.matrix.Valid)
+    (heap1 : RawHeap) (lenQ lenR : Nat)
+    (row23 row01 : MatRowUpdateResult),
+    state.lenB ≥ m + 1 →
+    Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+      state.A state.lenA state.B state.lenB W3 state.heap =
+        .ok (heap1, lenQ, lenR) →
+    dense_upoly_zp__mat_row_update_ir this state.matrix (2 : Fin 4)
+      (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1 =
+        .ok row23 →
+    dense_upoly_zp__mat_row_update_ir this row23.matrix (0 : Fin 4)
+      (1 : Fin 4) Q lenQ row23.T row23.lenT row23.t scratch row23.heap =
+        .ok row01 →
+    HgcdIterationWorkspace this Q W3 scratch state heap1 lenQ lenR row23
+      row01 hM
+
+/-- End-to-end semantic refinement of the actual well-founded generated
+`hgcdIterLoop`.  Recursion is on the source measure `state.lenB`; each
+recursive call is justified by the exact divrem result's `lenR < lenB`; no
+bounded execution counter or alternate L2 execution is introduced. -/
+theorem hgcdIterLoop_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (m : Nat) (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (scratch : RawPtr UInt64)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdLoopWorkspaceProvider this m Q W3 scratch) :
+    ∀ (state final : HgcdIterState)
+      (currentA currentB : Polynomial (ZMod this._p.toNat))
+      (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+      (hM : state.matrix.Valid),
+      HgcdIterRawInvariant this left right currentA currentB entries state hM →
+      hgcdIterLoop this m Q W3 scratch state = .ok final →
+      ∃ finalA finalB finalEntries hFinalM,
+        HgcdIterRawInvariant this left right finalA finalB finalEntries final
+          hFinalM ∧
+        normalize (EuclideanDomain.gcd currentA currentB) =
+          normalize (EuclideanDomain.gcd finalA finalB) ∧
+        final.lenB < m + 1
+  | state, final, currentA, currentB, entries, hM, hinvariant, hrun => by
+    by_cases hguard : state.lenB ≥ m + 1
+    · rcases hgcdIterLoop_step_shape this m Q W3 scratch state final hguard
+        hrun with
+      ⟨heap1, lenQ, lenR, row23, row01, hdiv, hrow23, hrow01, htail, hlt⟩
+      have hworkspace := physical state hM heap1 lenQ lenR row23 row01
+        hguard hdiv hrow23 hrow01
+      rcases hgcdIterationCalls_refine this state.matrix Q W3 scratch state.A
+          state.B state.T state.lenA state.lenB state.A state.lenT state.t
+          state.heap heap1 lenQ lenR row23 row01 hM
+          hworkspace.matrix23Valid left right currentA currentB entries
+          state.sgn hcfg hp (by omega) hinvariant.aRep hinvariant.bRep
+          hinvariant.matrixRep hinvariant.transform hinvariant.signedDet
+          hworkspace.validQ hworkspace.validR hworkspace.validW3
+          hworkspace.quotientCapacity hworkspace.rA hworkspace.wA
+          hworkspace.wB hworkspace.qB hworkspace.qW hworkspace.rW
+          hworkspace.rQ hworkspace.rB hworkspace.qMatrix
+          hworkspace.rMatrix hworkspace.wMatrix hworkspace.row23Workspace
+          hworkspace.row01Workspace hworkspace.divisorGuard23
+          hworkspace.divisorGuard01 hworkspace.remainderGuard23
+          hworkspace.remainderGuard01 hdiv hrow23 hrow01 with
+        ⟨quotient, remainder, h01, hMatrix01, hDivisor01, hRemainder01,
+          htransform, hdet, hgcdStep, hlt'⟩
+      let next : HgcdIterState := {
+        heap := row01.heap
+        matrix := row01.matrix
+        A := state.B
+        lenA := state.lenB
+        B := state.T
+        lenB := lenR
+        T := row01.T
+        lenT := row01.lenT
+        t := row01.t
+        sgn := -state.sgn }
+      have hnextInvariant : HgcdIterRawInvariant this left right currentB
+          remainder
+          (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
+          next h01 := by
+        exact ⟨hMatrix01, hDivisor01, hRemainder01, htransform, hdet⟩
+      have htail' : hgcdIterLoop this m Q W3 scratch next = .ok final := by
+        simpa [next] using htail
+      rcases hgcdIterLoop_refines this m Q W3 scratch left right hcfg hp
+          physical next final currentB remainder
+          (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
+          h01 hnextInvariant htail' with
+        ⟨finalA, finalB, finalEntries, hFinalM, hfinalInvariant,
+          hgcdRest, hstop⟩
+      exact ⟨finalA, finalB, finalEntries, hFinalM, hfinalInvariant,
+        hgcdStep.trans hgcdRest, hstop⟩
+    · have hstop : state.lenB < m + 1 := by omega
+      have hsame := hgcdIterLoop_stop this m Q W3 scratch state hstop
+      have hfinal : state = final := Except.ok.inj (hsame.symm.trans hrun)
+      subst final
+      exact ⟨currentA, currentB, entries, hM, hinvariant, rfl, hstop⟩
+termination_by state => state.lenB
+decreasing_by exact hlt'
+
 end CLPoly.Impl.StrictHGCDRawRefinement

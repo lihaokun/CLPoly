@@ -1632,6 +1632,14 @@ theorem zmod_cast_uint64_complement (p qi : UInt64)
     exact ZMod.natCast_self p.toNat
   rw [hpzero, zero_sub]
 
+theorem add_complement_monomial_mul_eq_sub (p qi : UInt64)
+    (i : Nat) (base divisor : Polynomial (ZMod p.toNat))
+    (hqi : qi.toNat ≤ p.toNat) :
+    base + Polynomial.monomial i ((p - qi).toNat : ZMod p.toNat) * divisor =
+      base - Polynomial.monomial i (qi.toNat : ZMod p.toNat) * divisor := by
+  rw [zmod_cast_uint64_complement p qi hqi,
+    Polynomial.monomial_neg, neg_mul, sub_eq_add_neg]
+
 /-- A non-aliasing raw Q write leaves the complete W3 polynomial observation
 unchanged.  Both sides are reconstructed from their respective heaps. -/
 theorem word3ArrayPoly_writeU64_region_ne (before after : RawHeap)

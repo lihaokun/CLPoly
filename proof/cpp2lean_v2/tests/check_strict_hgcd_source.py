@@ -25,6 +25,7 @@ from pass1_parse import parse_pass
 
 EXPECTED = {
     "_mat_one": "82467677117ac0f62183eb2d4ff8879c7297787a0ba8a5523150027b6aff03dc",
+    "_mat_row_update": "193d713664e9c1c8c08989e0c113a1c876a77be8ca8892ebe11cd972d03da8bf",
     "_hgcd_iter": "b4bdca04357c87b7f56b7ace1824b6bcd1c244b66f696638359134cce29a9a4d",
     "_hgcd_recursive": "a39dc9dc390042e7873087b671ff4721b1dd0ba1d9c7b25dbd4a12b6acf29191",
     "_gcd_hgcd": "7eabada4b3f368249f26de6945b34b8bfa37c0f5066a1aec5161feba072bdb9f",
@@ -33,6 +34,7 @@ EXPECTED = {
 
 REQUIRED_CALLS = {
     "_mat_one": (),
+    "_mat_row_update": ("_mul", "_poly_add"),
     "_hgcd_iter": ("_poly_divrem", "_mat_row_update"),
     "_hgcd_recursive": ("_hgcd_iter", "_hgcd_recursive", "_poly_divrem"),
     "_gcd_hgcd": ("_poly_divrem", "_hgcd_recursive", "_gcd_euclid"),
@@ -70,6 +72,8 @@ def main() -> None:
     required = (
         "dense_upoly_zp__mat_one_ir",
         "matOne_refines",
+        "dense_upoly_zp__mat_row_update_ir",
+        "matRowUpdate_zero_exec",
         "normalize_gcd_eq_of_hgcd_transform",
         "normalize_gcd_eq_of_det_one_transform",
         "normalize_gcd_eq_of_det_neg_one_transform",

@@ -116,4 +116,41 @@ theorem matOne_refines (M : HgcdMat) (heap : RawHeap) (p : Nat)
       slicePolyRep_one_of_read_one heap2 p3 p ((hlayout2 p3 1).mp h3one)
         hread3
 
+/-- The source's zero-quotient/zero-entry branch performs exactly the two
+matrix-entry swaps and no heap access.  This exposes the real descriptor
+state consumed by the next HGCD iteration. -/
+theorem matRowUpdate_zero_exec (this : DenseUPolyZp) (M : HgcdMat)
+    (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (hM : M.Valid)
+    (hzero : lenQ = 0 ∨ hgcdMatLen M hM i0 = 0) :
+    ∃ result,
+      dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T lenT t
+          scratch heap = .ok result ∧
+      result.heap = heap ∧ result.T = T ∧ result.lenT = lenT ∧
+      result.t = t ∧ result.matrix.Valid := by
+  have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
+    simpa [HgcdMat.Valid] using hM
+  let p0 := hgcdMatPtr M hM i0
+  let p1 := hgcdMatPtr M hM i1
+  let l0 := hgcdMatLen M hM i0
+  let l1 := hgcdMatLen M hM i1
+  let poly' := (M.poly.set i1.val p0 (by omega)).set i0.val p1 (by simp; omega)
+  let len' := (M.len.set i1.val l0 (by omega)).set i0.val l1 (by simp; omega)
+  let result := MatRowUpdateResult.mk heap
+    ({ poly := poly', len := len' } : HgcdMat) T lenT t
+  have hbranch : ¬(lenQ ≠ 0 ∧ l0 ≠ 0) := by
+    intro h
+    rcases hzero with hq | hentry
+    · exact h.1 hq
+    · exact h.2 (by simpa [l0, hgcdMatLen] using hentry)
+  have hbranch' : ¬(lenQ ≠ 0 ∧ M.len[i0.val]'(by omega) ≠ 0) := by
+    simpa [l0, hgcdMatLen] using hbranch
+  have hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result := by
+    simp [dense_upoly_zp__mat_row_update_ir, hvalid, hbranch', result,
+      poly', len', p0, p1, l0, l1, hgcdMatPtr, hgcdMatLen]
+  refine ⟨result, hrun, rfl, rfl, rfl, rfl, ?_⟩
+  simp [result, HgcdMat.Valid, poly', len', hvalid]
+
 end CLPoly.Impl.StrictHGCDRawRefinement

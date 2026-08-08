@@ -7,10 +7,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 FILES = [ROOT / "proof/lean/CLPoly/Pipeline/L1.lean"]
 FILES.extend(sorted((ROOT / "proof/lean/CLPoly/Refinement").glob("*.lean")))
+FILES.extend(sorted((ROOT / "proof/lean/CLPoly/Generated").glob("Strict*.lean")))
+FILES.extend(sorted((ROOT / "proof/lean/CLPoly/Impl").glob("Strict*.lean")))
 
 FORBIDDEN = (
     "import CLPoly.Generated.Corpus",
     "HasPolyDivmod.polyDivmod",
+    "partial def",
+    "sorry",
+    "fuel",
     "def henselGeneratedCandidate",
     "def henselCandidateToPk",
 )

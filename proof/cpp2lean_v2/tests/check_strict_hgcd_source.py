@@ -80,6 +80,7 @@ def main() -> None:
         "HgcdIterState",
         "hgcdIterLoop",
         "hgcdIterInit",
+        "hgcdIterInit_refines",
         "dense_upoly_zp__hgcd_iter_ir",
         "polyDivrem_remainder_lt",
         "matRowUpdate_zero_exec",

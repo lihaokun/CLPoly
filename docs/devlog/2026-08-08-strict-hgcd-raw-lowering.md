@@ -60,3 +60,8 @@
 
 下一步证明初始化 copy 的表示传递，以及每轮 divrem/两次行更新共同保持
 Euclid 对与矩阵变换关系，最终导出循环停止条件和 GCD 不变式。
+
+初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
+同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
+长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为
+显式 L1 前置条件。

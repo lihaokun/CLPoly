@@ -74,6 +74,12 @@ noncomputable def identityEntries (p : Nat) : Fin 4 → Polynomial (ZMod p)
   | ⟨2, _⟩ => 0
   | ⟨3, _⟩ => 1
 
+def identityEntryLen : Fin 4 → Nat
+  | ⟨0, _⟩ => 1
+  | ⟨1, _⟩ => 0
+  | ⟨2, _⟩ => 0
+  | ⟨3, _⟩ => 1
+
 /-- A normalized raw polynomial survives any execution that preserves both
 its allocation layout and every cell in its declared prefix. -/
 theorem rawDensePolyRep_of_same_prefix (this : DenseUPolyZp)
@@ -248,6 +254,113 @@ theorem matOne_preserves_prefix (M : HgcdMat) (heap heap' : RawHeap)
           have hsame3 := writeU64_preserves_prefix heap1 heap2 p3 guard 1
             guardLen 0 1 h3Guard (by omega) hwrite3
           exact sameU64Prefix_trans hsame0 hsame3
+
+/-- End-to-end refinement of the exact initialization prefix of C++
+`_hgcd_iter`: identity matrix construction followed by the ordered A and B
+copies.  Every alias restriction below is a physical L1 memory condition. -/
+theorem hgcdIterInit_refines (this : DenseUPolyZp)
+    (M : HgcdMat) (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (heap : RawHeap) (left right : Polynomial (ZMod this._p.toNat))
+    (hM : M.Valid)
+    (h0 : heap.ValidU64Slice (hgcdMatPtr M hM ⟨0, by omega⟩) 1)
+    (h3 : heap.ValidU64Slice (hgcdMatPtr M hM ⟨3, by omega⟩) 1)
+    (h03 : U64SlicesDisjoint (hgcdMatPtr M hM ⟨0, by omega⟩) 1
+      (hgcdMatPtr M hM ⟨3, by omega⟩) 1)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hAa : U64SlicesDisjoint A lenA a lenA)
+    (hBb : U64SlicesDisjoint B lenB b lenB)
+    (hAb : U64SlicesDisjoint A lenA b lenB)
+    (hBA : U64SlicesDisjoint B lenB A lenA)
+    (h0a : U64SlicesDisjoint (hgcdMatPtr M hM ⟨0, by omega⟩) 1 a lenA)
+    (h3a : U64SlicesDisjoint (hgcdMatPtr M hM ⟨3, by omega⟩) 1 a lenA)
+    (h0b : U64SlicesDisjoint (hgcdMatPtr M hM ⟨0, by omega⟩) 1 b lenB)
+    (h3b : U64SlicesDisjoint (hgcdMatPtr M hM ⟨3, by omega⟩) 1 b lenB)
+    (hAMatrix : ∀ i : Fin 4, U64SlicesDisjoint A lenA
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hBMatrix : ∀ i : Fin 4, U64SlicesDisjoint B lenB
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hMatrixValid : ∀ i : Fin 4, heap.ValidU64Slice
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hLeft : RawDensePolyRep this heap a lenA left)
+    (hRight : RawDensePolyRep this heap b lenB right) :
+    ∃ initial, hgcdIterInit M A B T t lenT a lenA b lenB heap =
+        .ok initial ∧
+      initial.A = A ∧ initial.lenA = lenA ∧
+      initial.B = B ∧ initial.lenB = lenB ∧
+      initial.T = T ∧ initial.lenT = lenT ∧ initial.t = t ∧
+      initial.sgn = 1 ∧
+      ∃ hInitialM : initial.matrix.Valid,
+        HgcdMatPolyRep initial.heap initial.matrix this._p.toNat
+          (identityEntries this._p.toNat) hInitialM ∧
+        RawDensePolyRep this initial.heap initial.A initial.lenA left ∧
+        RawDensePolyRep this initial.heap initial.B initial.lenB right := by
+  rcases matOne_refines M heap this._p.toNat hM h0 h3 h03 with
+    ⟨heap1, M1, hone, hlayout1, hpoly1, hlen1, hM1, hMatrix1⟩
+  have hsameA := matOne_preserves_prefix M heap heap1 M1 a lenA hM
+    h0a h3a hone
+  have hsameB := matOne_preserves_prefix M heap heap1 M1 b lenB hM
+    h0b h3b hone
+  have hLeft1 := rawDensePolyRep_of_same_prefix this heap heap1 a lenA left
+    hlayout1 hsameA hLeft
+  have hRight1 := rawDensePolyRep_of_same_prefix this heap heap1 b lenB right
+    hlayout1 hsameB hRight
+  have hPtr1 : ∀ i : Fin 4,
+      hgcdMatPtr M1 hM1 i = hgcdMatPtr M hM i := by
+    intro i
+    fin_cases i <;> simp [hgcdMatPtr, hpoly1]
+  have hLen1 : ∀ i : Fin 4, hgcdMatLen M1 hM1 i = identityEntryLen i := by
+    intro i
+    fin_cases i <;> simp [hgcdMatLen, hlen1, identityEntryLen]
+  have hValidMatrix1 : ∀ i : Fin 4, heap1.ValidU64Slice
+      (hgcdMatPtr M1 hM1 i) (hgcdMatLen M1 hM1 i) := by
+    intro i
+    rw [hPtr1 i, hLen1 i]
+    exact (hlayout1 _ _).mp (hMatrixValid i)
+  have hA1 := (hlayout1 A lenA).mp hA
+  rcases copyU64_refines_rawDense this heap1 A a lenA left hA1 hAa
+      hLeft1 with ⟨heap2, hcopyA, hlayout2, hA2⟩
+  have hsameB2 := copyU64_preserves_prefix heap1 heap2 A a b lenA lenB
+    hA1 hLeft1.1 hAb hcopyA
+  have hRight2 := rawDensePolyRep_of_same_prefix this heap1 heap2 b lenB
+    right hlayout2 hsameB2 hRight1
+  have hAMatrix1 : ∀ i : Fin 4, U64SlicesDisjoint A lenA
+      (hgcdMatPtr M1 hM1 i) (hgcdMatLen M1 hM1 i) := by
+    intro i
+    simpa [hPtr1 i, hLen1 i] using hAMatrix i
+  rcases copyU64_preserves_hgcdMatPolyRep heap1 heap2 A a lenA M1
+      this._p.toNat (identityEntries this._p.toNat) hM1 hA1 hLeft1.1
+      hValidMatrix1 hAMatrix1 hcopyA hMatrix1 with
+    ⟨_, hMatrix2⟩
+  have hB2 := (hlayout2 B lenB).mp ((hlayout1 B lenB).mp hB)
+  rcases copyU64_refines_rawDense this heap2 B b lenB right hB2 hBb
+      hRight2 with ⟨heap3, hcopyB, hlayout3, hB3⟩
+  have hsameA3 := copyU64_preserves_prefix heap2 heap3 B b A lenB lenA
+    hB2 hRight2.1 hBA hcopyB
+  have hA3 := rawDensePolyRep_of_same_prefix this heap2 heap3 A lenA left
+    hlayout3 hsameA3 hA2
+  have hValidMatrix2 : ∀ i : Fin 4, heap2.ValidU64Slice
+      (hgcdMatPtr M1 hM1 i) (hgcdMatLen M1 hM1 i) := by
+    intro i
+    exact (hlayout2 _ _).mp (hValidMatrix1 i)
+  have hBMatrix1 : ∀ i : Fin 4, U64SlicesDisjoint B lenB
+      (hgcdMatPtr M1 hM1 i) (hgcdMatLen M1 hM1 i) := by
+    intro i
+    simpa [hPtr1 i, hLen1 i] using hBMatrix i
+  rcases copyU64_preserves_hgcdMatPolyRep heap2 heap3 B b lenB M1
+      this._p.toNat (identityEntries this._p.toNat) hM1 hB2 hRight2.1
+      hValidMatrix2 hBMatrix1 hcopyB hMatrix2 with
+    ⟨_, hMatrix3⟩
+  let initial : HgcdIterState := {
+    heap := heap3, matrix := M1, A := A, lenA := lenA, B := B,
+    lenB := lenB, T := T, lenT := lenT, t := t, sgn := 1 }
+  refine ⟨initial, ?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl,
+    hM1, ?_, ?_, ?_⟩
+  · simp [hgcdIterInit, hone, hcopyA, hcopyB, initial]
+  · simpa [initial] using hMatrix3
+  · simpa [initial] using hA3
+  · simpa [initial] using hB3
 
 /-- The source's zero-quotient/zero-entry branch performs exactly the two
 matrix-entry swaps and no heap access.  This exposes the real descriptor

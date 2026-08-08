@@ -3125,6 +3125,49 @@ theorem remainderPrefix_to_mod_of_budget (this : DenseUPolyZp)
   exact word3_hi_lt_of_accumulation_budget heap W3 length count j this._p
     accum hbudget hprime.two_le hcount (by omega) hread
 
+/-- A completed raw remainder prefix is exactly the polynomial represented by
+the W3 accumulator when all cells above the physical remainder buffer are
+zero modulo the source prime. -/
+theorem remainderModPrefix_poly_eq (this : DenseUPolyZp) (heap : RawHeap)
+    (R : RawPtr UInt64) (W3 : RawPtr Word3) (d length : Nat)
+    (values : Array Word3) (remainder : Polynomial (ZMod this._p.toNat))
+    (hprefix : RemainderModPrefix this heap R W3 d)
+    (hvalues : Word3SliceRep heap W3 length values)
+    (hrep : SlicePolyRep heap R d this._p.toNat remainder)
+    (hd : d ≤ length)
+    (hzero : Word3ZeroModRange heap W3 d length this._p.toNat) :
+    remainder = word3ArrayPoly this._p.toNat values := by
+  ext degree
+  rw [coeff_word3ArrayPoly]
+  by_cases hdegree : degree < d
+  · have hdegreeValues : degree < values.size := by
+      simpa [hvalues.1] using (show degree < length by omega)
+    rw [dif_pos hdegreeValues]
+    rcases slicePolyRep_coeff heap R d this._p.toNat remainder hrep degree
+        hdegree with ⟨value, hreadR, hcoeff⟩
+    rcases hprefix degree hdegree with
+      ⟨accum, reduced, hreadW, hreadReduced, hreduced⟩
+    have hvalue : value = reduced :=
+      Except.ok.inj (hreadR.symm.trans hreadReduced)
+    have haccum : values[degree] = accum :=
+      Except.ok.inj ((hvalues.2 degree hdegreeValues).symm.trans hreadW)
+    rw [hcoeff, hvalue, haccum, hreduced]
+    exact ZMod.natCast_mod _ _
+  · have hcoeffZero := slicePolyRep_coeff_zero_of_length_le heap R d
+        this._p.toNat remainder hrep degree (by omega)
+    rw [hcoeffZero]
+    by_cases hlength : degree < length
+    · have hdegreeValues : degree < values.size := by
+        simpa [hvalues.1] using hlength
+      rw [dif_pos hdegreeValues]
+      have hread := hvalues.2 degree hdegreeValues
+      have hz := hzero degree values[degree] (by omega) hlength hread
+      rw [← ZMod.natCast_mod (word3Value values[degree]) this._p.toNat, hz]
+      simp
+    · have hdegreeValues : ¬degree < values.size := by
+        simpa [hvalues.1] using hlength
+      rw [dif_neg hdegreeValues]
+
 /-- Content-level refinement of the generated final remainder loop. -/
 theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
     (W3 : RawPtr Word3) (d lenW3 i count : Nat) (heap : RawHeap)

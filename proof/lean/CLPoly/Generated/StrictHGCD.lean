@@ -2033,7 +2033,7 @@ there is no counter and no executable guard for this proof-only argument. -/
 abbrev HgcdRecursiveCallBelow (bound : Nat) :=
   (M : HgcdMat) → M.Valid → (computeM : Bool) →
   (A B a b : RawPtr UInt64) → (lenA lenB : Nat) →
-  (W scratch : RawPtr UInt64) → RawHeap → lenA < bound →
+  (W scratch : RawPtr UInt64) → RawHeap → lenB < lenA → lenA < bound →
   RawExec HgcdRecursiveResult
 
 def hgcdRecursiveCutoff : Nat := 100
@@ -2077,7 +2077,8 @@ def hgcdRecursiveDispatchBelow (this : DenseUPolyZp) (bound : Nat)
     (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
     (Q : RawPtr UInt64) (W3 : RawPtr Word3)
     (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
-    (hdecrease : lenInputA < bound) : RawExec HgcdRecursiveResult :=
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound) :
+    RawExec HgcdRecursiveResult :=
   if lenInputA < hgcdRecursiveCutoff then
     match hrun : hgcdRecursiveIterBranch this matrix hMatrix a3 b3 inputA
         inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap with
@@ -2088,7 +2089,7 @@ def hgcdRecursiveDispatchBelow (this : DenseUPolyZp) (bound : Nat)
           result hrun))
   else
     recurse matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
-      WNext scratch heap hdecrease
+      WNext scratch heap horder hdecrease
 
 /-- Proof-only algorithmic invariant needed between the two recursive call
 sites: every successful first reconstruction produced from the concrete
@@ -2135,7 +2136,8 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
       exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder (by omega)
     match hfirst : hgcdRecursiveDispatchBelow this bound recurse ws.R hR ws.a3
         ws.b3 high.a0 high.b0 high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1
-        scratch ws.a2 ws.next heap hfirstDecrease with
+        scratch ws.a2 ws.next heap
+        (hgcdRecursiveHighInput_order a b lenA lenB horder) hfirstDecrease with
     | .error fault => .error fault
     | .ok first =>
       match hreconstruct : hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0
@@ -2175,7 +2177,8 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
               exact hsecondBounds.2.2
             match hgcdRecursiveDispatchBelow this bound recurse ws.S hS ws.a3
                 ws.b3 middle.c0 middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3
-                ws.T0 ws.T1 scratch ws.a2 ws.next middle.heap hsecondDecrease with
+                ws.T0 ws.T1 scratch ws.a2 ws.next middle.heap
+                hsecondBounds.2.1 hsecondDecrease with
             | .error fault => .error fault
             | .ok second =>
               match hgcdRecursiveFinish this M first.matrix second.matrix hM

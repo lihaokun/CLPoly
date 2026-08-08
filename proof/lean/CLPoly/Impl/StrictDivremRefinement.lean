@@ -230,6 +230,21 @@ theorem slicePolyRep_succ_eq_add_monomial (heap : RawHeap)
           hprefix degree (by omega)]
       rw [if_neg (show length ≠ degree by omega), add_zero]
 
+theorem slicePolyRep_extend_exists (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length p : Nat) (value : UInt64)
+    (prefixPoly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr (length + 1))
+    (hprefix : SlicePolyRep heap ptr length p prefixPoly)
+    (hread : heap.readU64 ptr length = .ok value) :
+    ∃ full : Polynomial (ZMod p),
+      SlicePolyRep heap ptr (length + 1) p full ∧
+      full = prefixPoly +
+        Polynomial.monomial length (value.toNat : ZMod p) := by
+  rcases slicePolyRep_exists_unique heap ptr (length + 1) p hvalid with
+    ⟨full, hfull, _⟩
+  exact ⟨full, hfull, slicePolyRep_succ_eq_add_monomial heap ptr length p
+    value prefixPoly full hprefix hfull hread⟩
+
 /-- Pointwise preservation of a raw UInt64 slice transports its L2
 polynomial representation without re-running any L2 algorithm. -/
 theorem slicePolyRep_of_same_prefix (before after : RawHeap)

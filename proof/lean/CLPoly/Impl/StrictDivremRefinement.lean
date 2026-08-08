@@ -1453,18 +1453,36 @@ theorem remainderPrefix_to_mod_of_configured (this : DenseUPolyZp)
   exact remainderPrefix_to_mod this heap R W3 upto hprefix hn hpn hpnB
     hnorm hmul hlower hhi
 
+/-- Consume the quotient-loop capacity invariant directly when interpreting
+the generated remainder writes. -/
+theorem remainderPrefix_to_mod_of_budget (this : DenseUPolyZp)
+    (heap : RawHeap) (R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (upto length count : Nat)
+    (hprefix : RemainderPrefix this heap R W3 upto)
+    (hbudget : Word3AccumulationBudget heap W3 length this._p count)
+    (hupto : upto ≤ length) (hcount : count < limbBase)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat) :
+    RemainderModPrefix this heap R W3 upto := by
+  apply remainderPrefix_to_mod_of_configured this heap R W3 upto hprefix hcfg
+  intro j accum hj hread
+  exact word3_hi_lt_of_accumulation_budget heap W3 length count j this._p
+    accum hbudget hprime.two_le hcount (by omega) hread
+
 /-- Content-level refinement of the generated final remainder loop. -/
 theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
-    (W3 : RawPtr Word3) (d lenW3 i : Nat) (heap : RawHeap)
+    (W3 : RawPtr Word3) (d lenW3 i count : Nat) (heap : RawHeap)
     (hR : heap.ValidU64Slice R d)
     (hW3 : heap.ValidWord3Slice W3 lenW3)
     (hdW : d ≤ lenW3) (hi : i ≤ d)
     (hregions : R.region ≠ W3.region)
-    (hprefix : RemainderPrefix this heap R W3 i) :
+    (hprefix : RemainderPrefix this heap R W3 i)
+    (hbudget : Word3AccumulationBudget heap W3 lenW3 this._p count) :
     ∃ heap', remainderLoop this R W3 d i heap = .ok heap' ∧
       heap'.ValidU64Slice R d ∧ heap'.ValidWord3Slice W3 lenW3 ∧
       RawHeap.SameLayout heap heap' ∧
-      RemainderPrefix this heap' R W3 d := by
+      RemainderPrefix this heap' R W3 d ∧
+      Word3AccumulationBudget heap' W3 lenW3 this._p count := by
   rw [remainderLoop]
   split
   next hlt =>
@@ -1482,6 +1500,8 @@ theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
       (RawHeap.writeU64_preserves_valid heap heap1 R i value hwrite
         (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
     have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 R i value hwrite
+    have hbudget1 := accumulationBudget_writeU64_region_ne heap heap1 R W3
+      i lenW3 count value this._p hW3 hbudget hregions hwrite
     have hprefix1 : RemainderPrefix this heap1 R W3 (i + 1) := by
       intro j hj
       by_cases hji : j = i
@@ -1497,16 +1517,16 @@ theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
         have hreadR1 := RawHeap.readU64_writeU64_ne heap heap1 R R i j
           value _ hwrite hreadR (Or.inr (by omega))
         exact ⟨old, hreadW1, hreadR1⟩
-    rcases remainderLoop_refines this R W3 d lenW3 (i + 1) heap1
-      hR1 hW31 hdW (by omega) hregions hprefix1 with
-      ⟨heap2, hloop, hR2, hW32, hlayout2, hfull⟩
-    refine ⟨heap2, hloop, hR2, hW32, ?_, hfull⟩
+    rcases remainderLoop_refines this R W3 d lenW3 (i + 1) count heap1
+      hR1 hW31 hdW (by omega) hregions hprefix1 hbudget1 with
+      ⟨heap2, hloop, hR2, hW32, hlayout2, hfull, hbudget2⟩
+    refine ⟨heap2, hloop, hR2, hW32, ?_, hfull, hbudget2⟩
     intro ptr length
     exact (hlayout1 ptr length).trans (hlayout2 ptr length)
   next hnot =>
     have hieq : i = d := by omega
     subst i
-    exact ⟨heap, rfl, hR, hW3, fun _ _ => Iff.rfl, hprefix⟩
+    exact ⟨heap, rfl, hR, hW3, fun _ _ => Iff.rfl, hprefix, hbudget⟩
 termination_by d - i
 decreasing_by omega
 

@@ -275,6 +275,11 @@
 - 同步强化 `check_strict_mul_source.py`：现在必须在生成文件中找到
   `mulZeroPadLoop`/`dense_upoly_zp__mul_ir`，并单独扫描正式 Karatsuba 主定理
   模块的禁止构造、三次递归调用、全长减法/组装桥和良基终止声明。
+- 新增 `_mul` Karatsuba 分支的真实零填充语义定理：直接展开生成的
+  `mulZeroPadLoop`，逐 cell 执行 `writeU64 0`，并以剩余长度
+  `count - i` 做良基递归。定理证明已有 B 前缀在扩展到完整 bPad 后仍表示
+  同一个 L2 多项式，同时保持 allocation layout 和全前缀 canonical；没有
+  fuel、规格 oracle 或跳回 L2 计算。
 
 ## 当前边界
 

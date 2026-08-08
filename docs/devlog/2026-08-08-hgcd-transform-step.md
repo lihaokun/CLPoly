@@ -31,6 +31,7 @@
 - 严格降低非 base 分支的工作区切片：记录 `a2/b2/a3/b3/q/d/T0/T1`、R/S 八个矩阵条目、三肢 `W3` 和 `W_next` 的源码指针推进，并用 `hgcdRecursiveWorkspace_layout` 固定每个等式及两个矩阵描述符的四项布局。
 - 降低第一次递归/iterator 的高半部输入 `a0=a+m`、`b0=b+m` 及源码条件长度，并从非 base 条件与 `len_b < len_a` 证明 `len_a0 < len_a`，为 `_hgcd_recursive` 的真实良基递归提供下降证据。
 - 将 iterator 返回后的 R/S 稳定化块降低为两个以 `4-i` 为度量的 raw 循环：第一遍逐项 `copyU64` 到连续 stage，第二遍逐项复制回调用前指针并同步恢复矩阵 descriptor；组合函数保持两个循环及其错误传播顺序。
+- 证明第二个真实恢复循环的每个成功后缀都保持矩阵描述符有效性，并逐字保持 iterator 返回的四项长度；该结论由实际四次 copy/descriptor 更新的良基循环归纳得到，不预设 L2 矩阵结果。
 
 ## 为什么做
 

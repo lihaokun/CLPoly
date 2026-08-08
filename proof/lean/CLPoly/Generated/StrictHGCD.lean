@@ -382,4 +382,39 @@ def hgcdMatStabilize (original current : HgcdMat)
   | .ok staged => hgcdMatRestoreLoop original current hOriginal hCurrent
       stage 0 0 staged.heap
 
+/-- Every successful suffix of the real restore loop returns a valid matrix
+and leaves the complete length descriptor byte-for-byte unchanged. -/
+theorem hgcdMatRestoreLoop_preserves_valid_len
+    (original current : HgcdMat)
+    (hOriginal : original.Valid) (hCurrent : current.Valid)
+    (stage : RawPtr UInt64) (i off : Nat) (heap : RawHeap)
+    (result : HgcdMatRestoreResult)
+    (hrun : hgcdMatRestoreLoop original current hOriginal hCurrent stage
+      i off heap = .ok result) :
+    result.matrix.Valid ∧ result.matrix.len = current.len := by
+  rw [hgcdMatRestoreLoop] at hrun
+  split at hrun
+  next hi =>
+    dsimp only at hrun
+    split at hrun
+    next fault hcopy => simp at hrun
+    next heap1 hcopy =>
+      let index : Fin 4 := ⟨i, hi⟩
+      let poly' := current.poly.set i (hgcdMatPtrRaw original hOriginal index)
+        (by rw [hCurrent.1]; omega)
+      let next : HgcdMat := { current with poly := poly' }
+      have hNext : next.Valid := by
+        exact ⟨by simp [next, poly', hCurrent.1], hCurrent.2⟩
+      have hrec := hgcdMatRestoreLoop_preserves_valid_len original next
+        hOriginal hNext stage (i + 1)
+        (off + hgcdMatLenRaw current hCurrent index) heap1 result hrun
+      exact ⟨hrec.1, hrec.2.trans (by rfl)⟩
+  next hstop =>
+    have heq : ({ heap := heap, matrix := current, off := off } :
+        HgcdMatRestoreResult) = result := Except.ok.inj hrun
+    subst result
+    exact ⟨hCurrent, rfl⟩
+termination_by 4 - i
+decreasing_by omega
+
 end Generated.StrictHGCD

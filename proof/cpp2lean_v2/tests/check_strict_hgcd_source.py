@@ -132,6 +132,7 @@ def main() -> None:
         "hgcdMatStageLoop",
         "hgcdMatRestoreLoop",
         "hgcdMatStabilize",
+        "hgcdMatRestoreLoop_preserves_valid_len",
         "normalize_gcd_eq_of_hgcd_transform",
         "HgcdTransform",
         "hgcdTransform_euclid_step",

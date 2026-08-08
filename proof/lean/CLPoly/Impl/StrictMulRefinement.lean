@@ -432,14 +432,14 @@ theorem karOddTail_ok (A B t1 t2 : RawPtr UInt64) (m h : Nat)
       (hlayout1 ptr length).trans (hlayout2 ptr length)⟩
   next => exact ⟨heap, rfl, fun _ _ => Iff.rfl⟩
 
-theorem karOddTail_preserves_region_ne (A B t1 t2 guard : RawPtr UInt64)
+theorem karOddTail_preserves_outside (A B t1 t2 guard : RawPtr UInt64)
     (m h guardLen : Nat) (heap heap' : RawHeap)
     (hA : heap.ValidU64Slice A (m + h))
     (hB : heap.ValidU64Slice B (m + h))
     (hT1 : heap.ValidU64Slice t1 h)
     (hT2 : heap.ValidU64Slice t2 h)
-    (hT1Guard : t1.region ≠ guard.region)
-    (hT2Guard : t2.region ≠ guard.region)
+    (hT1Guard : U64SlicesDisjoint t1 h guard guardLen)
+    (hT2Guard : U64SlicesDisjoint t2 h guard guardLen)
     (hrun : karOddTail A B t1 t2 m h heap = .ok heap') :
     SameU64Prefix heap heap' guard guardLen := by
   intro i old hi hread
@@ -461,9 +461,9 @@ theorem karOddTail_preserves_region_ne (A B t1 t2 guard : RawPtr UInt64)
     have heq : heap' = heap2 := Except.ok.inj hrun.symm
     subst heap'
     have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 guard m i
-      aTail old hw1 hread (Or.inl hT1Guard)
+      aTail old hw1 hread (hT1Guard m hodd i hi)
     exact RawHeap.readU64_writeU64_ne heap1 heap2 t2 guard m i bTail old
-      hw2 hread1 (Or.inl hT2Guard)
+      hw2 hread1 (hT2Guard m hodd i hi)
   next hnot =>
     have heq : heap' = heap := Except.ok.inj hrun.symm
     simpa [heq] using hread
@@ -1272,7 +1272,7 @@ theorem karAssembleLoop_refines_slice (this : DenseUPolyZp)
       (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalC degree base hd hbase)
       (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalP1 k cross hk hcross)
 
-theorem karPrepareHalves_preserves_region_ne (this : DenseUPolyZp)
+theorem karPrepareHalves_preserves_outside (this : DenseUPolyZp)
     (A B t1 t2 guard : RawPtr UInt64) (m h guardLen : Nat)
     (heap heap' : RawHeap)
     (hmh : m ≤ h)
@@ -1280,8 +1280,8 @@ theorem karPrepareHalves_preserves_region_ne (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B (m + h))
     (hT1 : heap.ValidU64Slice t1 h)
     (hT2 : heap.ValidU64Slice t2 h)
-    (hT1Guard : t1.region ≠ guard.region)
-    (hT2Guard : t2.region ≠ guard.region)
+    (hT1Guard : U64SlicesDisjoint t1 h guard guardLen)
+    (hT2Guard : U64SlicesDisjoint t2 h guard guardLen)
     (hrun : karPrepareHalves this A B t1 t2 m h heap = .ok heap') :
     SameU64Prefix heap heap' guard guardLen := by
   have hA2m := heap.validU64Slice_mono A (m + h) (2 * m) hA (by omega)
@@ -1297,11 +1297,11 @@ theorem karPrepareHalves_preserves_region_ne (this : DenseUPolyZp)
     apply karAddHalvesLoop_preserves_outside this A B t1 t2 guard m 0 i
       heap heap1 old hA2m hB2m hT1m hT2m hread
     · intro _ _ _
-      exact Or.inl hT1Guard
+      exact hT1Guard _ (by omega) i hi
     · intro _ _ _
-      exact Or.inl hT2Guard
+      exact hT2Guard _ (by omega) i hi
     · exact hadd
-  have hsameTail := karOddTail_preserves_region_ne A B t1 t2 guard m h
+  have hsameTail := karOddTail_preserves_outside A B t1 t2 guard m h
     guardLen heap1 heap'
     ((hlayout1 A (m + h)).mp hA) ((hlayout1 B (m + h)).mp hB)
     ((hlayout1 t1 h).mp hT1) ((hlayout1 t2 h).mp hT2)
@@ -2538,6 +2538,29 @@ theorem classicalMul_ok (this : DenseUPolyZp)
   refine ⟨heap', ?_, hlayout⟩
   simp [dense_upoly_zp__classical_mul_ir, Nat.ne_of_gt hApos,
     Nat.ne_of_gt hBpos, hrun]
+
+theorem classicalMul_preserves_outside (this : DenseUPolyZp)
+    (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
+    (guard : RawPtr UInt64) (guardLen : Nat) (heap heap' : RawHeap)
+    (hApos : 0 < lenA) (hBpos : 0 < lenB)
+    (hC : heap.ValidU64Slice C (lenA + lenB - 1))
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hCGuard : U64SlicesDisjoint C (lenA + lenB - 1) guard guardLen)
+    (hrun : dense_upoly_zp__classical_mul_ir this C A lenA B lenB heap =
+      .ok heap') :
+    SameU64Prefix heap heap' guard guardLen := by
+  have houter : classicalOuterLoop this C A B lenA lenB
+      (lenA + lenB - 1) 0 heap = .ok heap' := by
+    simpa [dense_upoly_zp__classical_mul_ir, Nat.ne_of_gt hApos,
+      Nat.ne_of_gt hBpos] using hrun
+  intro readIndex old hreadIndex hread
+  exact classicalOuterLoop_preserves_outside this C A B guard lenA lenB
+    (lenA + lenB - 1) 0 readIndex heap heap' old hC hA hB hread
+    (by
+      intro writeIndex _ hwriteIndex
+      exact hCGuard writeIndex hwriteIndex readIndex hreadIndex)
+    houter
 
 /-- The generated Karatsuba routine terminates on its exact raw slices.
 This follows the three C++ recursive calls and uses `n` itself as the

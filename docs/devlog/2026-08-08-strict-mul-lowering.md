@@ -162,6 +162,13 @@
 - 在 Polynomial 环中闭合 Karatsuba 恒等式：P0、`(low+high)` 乘积减 P0/P2
   所得交叉项、以及移位 `X^(2m)P2` 的和精确等于原左右输入之积。该恒等式
   将作为递归 raw 输出组合到最终 C 表示的代数终点。
+- 将 `karOddTail` 与完整 `karPrepareHalves` 的 guard 帧定理从 region 不同推广
+  为任意地址级不相交 slices。每次 t1/t2 写入都用实际写索引和 guard 读索引
+  证明地址不同，因此同一 scratch allocation 内的 P0/P1/recScratch 可作为
+  guard 被可靠保持。
+- 新增 schoolbook 完整调用的地址级帧定理：从生成 `_classical_mul` 的成功
+  执行还原真实 outer loop，并逐 guard cell 应用已有逐写帧，得到任意与 C
+  输出 slice 不相交区域的 `SameU64Prefix`。这是 Karatsuba 递归基例的帧桥。
 
 ## 当前边界
 

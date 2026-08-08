@@ -175,3 +175,10 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 `_mul`、原地 `_poly_add` 及单个长度更新。`hgcdMatApplyQuotient_exec` 固定两次
 实际执行的顺序和中间 heap/matrix，不复用会产生不同 descriptor swap 的
 `_mat_row_update`。下一步是为这两次执行建立完整 raw 矩阵语义与 frame。
+
+商矩阵更新的 raw 语义现已闭合。单列定理在非活跃分支从真实零长度表示
+推出乘积为零；活跃分支则从同一次生成 `_mul` 和原地 `_poly_add` 推出
+`top + q*bottom`，同时逐项 frame 另外三个矩阵项和商 `q`。完整定理先
+证明四次 descriptor swap 只重排 raw 表示，再顺序消费两次真实列更新，
+得到 `[[q,1],[1,0]] * S` 的四项 raw 语义。两层 workspace/provider 均只含容量、
+别名和分离条件。

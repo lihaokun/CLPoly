@@ -5169,6 +5169,279 @@ theorem hgcdMatMul_refines (this : DenseUPolyZp)
   exact hgcdMatMulLoop_refines this A B hA hB T scratch C hC 0 heap result
     left right hcfg hp physical hLeft hRight (by intro j hj; omega) hrun
 
+/-- L2 effect of one quotient-matrix column update. -/
+noncomputable def hgcdMatQuotientUpdateEntries {p : Nat}
+    (entries : Fin 4 → Polynomial (ZMod p))
+    (quotient : Polynomial (ZMod p)) (top bottom : Fin 4) :
+    Fin 4 → Polynomial (ZMod p) :=
+  Function.update entries top (entries top + quotient * entries bottom)
+
+/-- The quotient-entry lowering has exactly the same physical multiplication
+and addition requirements as a row update with `bottom` as the multiplied
+entry and the existing `top` buffer as the in-place sum destination. -/
+abbrev HgcdMatQuotientEntryWorkspace (S : HgcdMat) (hS : S.Valid)
+    (top bottom : Fin 4) (q : RawPtr UInt64) (lenQ : Nat)
+    (T scratch : RawPtr UInt64) (heap : RawHeap) : Prop :=
+  MatRowUpdateWorkspace S bottom top q lenQ T (hgcdMatPtr S hS top)
+    scratch heap hS
+
+/-- Complete raw refinement of one actual guarded quotient-column update.
+The inactive branch derives the vanishing product from a real zero-length
+representation.  The active branch consumes the generated ordered `_mul`
+and in-place `_poly_add`, then frames every non-target matrix entry. -/
+theorem hgcdMatQuotientEntry_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (S : HgcdMat) (hS : S.Valid) (top bottom : Fin 4)
+    (q : RawPtr UInt64) (lenQ : Nat) (T scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : HgcdMatQuotientEntryResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (workspace : HgcdMatQuotientEntryWorkspace S hS top bottom q lenQ T
+      scratch heap)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hMatrix : HgcdMatRawDenseRep this heap S entries hS)
+    (hrun : hgcdMatQuotientEntry this S hS top bottom q lenQ T scratch
+      heap = .ok result) :
+    HgcdMatRawDenseRep this result.heap result.matrix
+      (hgcdMatQuotientUpdateEntries entries quotient top bottom)
+      result.valid ∧
+    RawDensePolyRep this result.heap q lenQ quotient := by
+  simp only [hgcdMatQuotientEntry] at hrun
+  split at hrun
+  next hactive =>
+    have hparts : decide (lenQ > 0) = true ∧
+        decide (hgcdMatLenRaw S hS bottom > 0) = true := by
+      simpa using hactive
+    have hQPos : 0 < lenQ := by
+      simpa only [decide_eq_true_eq] using hparts.1
+    have hBottomPos : 0 < hgcdMatLen S hS bottom := by
+      simpa only [decide_eq_true_eq, hgcdMatLenRaw, hgcdMatLen] using
+        hparts.2
+    generalize hmul : Generated.StrictMul.dense_upoly_zp__mul_ir this T
+        (if lenQ ≥ hgcdMatLenRaw S hS bottom then q
+          else hgcdMatPtrRaw S hS bottom)
+        (if lenQ ≥ hgcdMatLenRaw S hS bottom then lenQ
+          else hgcdMatLenRaw S hS bottom)
+        (if lenQ ≥ hgcdMatLenRaw S hS bottom then
+          hgcdMatPtrRaw S hS bottom else q)
+        (if lenQ ≥ hgcdMatLenRaw S hS bottom then
+          hgcdMatLenRaw S hS bottom else lenQ)
+        scratch heap = mulRun at hrun
+    cases mulRun with
+    | error fault => simp at hrun
+    | ok heap1 =>
+      simp only [hmul] at hrun
+      generalize hadd : Generated.StrictPolyAddSub.dense_upoly_zp__poly_add_ir this
+          (hgcdMatPtrRaw S hS top) (hgcdMatPtrRaw S hS top)
+          (hgcdMatLenRaw S hS top) T
+          (lenQ + hgcdMatLenRaw S hS bottom - 1) heap1 = addRun at hrun
+      cases addRun with
+      | error fault => simp [hadd] at hrun
+      | ok pair =>
+        rcases pair with ⟨heap2, sumLen⟩
+        simp only [hadd] at hrun
+        have heq := Except.ok.inj hrun
+        cases heq
+        have hProduct := matRowUpdate_mul_result this S hS bottom q T scratch
+          lenQ heap heap1 quotient (entries bottom) hcfg hp hQPos hBottomPos
+          workspace.lenWord workspace.validT workspace.validScratch
+          workspace.disjointTQ (workspace.disjointTMatrix bottom)
+          workspace.disjointTScratch workspace.disjointScratchQ
+          (workspace.disjointScratchMatrix bottom) hQ (hMatrix bottom)
+          (by simpa [hgcdMatPtrRaw, hgcdMatLenRaw, hgcdMatPtr,
+              hgcdMatLen] using hmul)
+        have hMatrix1 : HgcdMatRawDenseRep this heap1 S entries hS := by
+          intro j
+          exact matRowUpdate_mul_preserves_guard this S hS bottom q T scratch
+            (hgcdMatPtr S hS j) lenQ (hgcdMatLen S hS j) heap heap1
+            (entries j) hQPos hBottomPos workspace.validT
+            workspace.validScratch hQ.1 (hMatrix bottom).1
+            workspace.disjointScratchQ
+            (workspace.disjointScratchMatrix bottom)
+            (workspace.disjointTMatrix j)
+            (workspace.disjointScratchMatrix j) (hMatrix j) hProduct.1
+            (by simpa [hgcdMatPtrRaw, hgcdMatLenRaw, hgcdMatPtr,
+                hgcdMatLen] using hmul)
+        have hQ1 := matRowUpdate_mul_preserves_guard this S hS bottom q T
+          scratch q lenQ lenQ heap heap1 quotient hQPos hBottomPos
+          workspace.validT workspace.validScratch hQ.1 (hMatrix bottom).1
+          workspace.disjointScratchQ
+          (workspace.disjointScratchMatrix bottom) workspace.disjointTQ
+          workspace.disjointScratchQ hQ hProduct.1
+          (by simpa [hgcdMatPtrRaw, hgcdMatLenRaw, hgcdMatPtr,
+              hgcdMatLen] using hmul)
+        have hOutput1 := (hProduct.1 _ _).mp workspace.validAddOutput
+        have hpWord : this._p ≠ 0 := by
+          intro hzero
+          have hzeroNat := congrArg UInt64.toNat hzero
+          simp at hzeroNat
+          omega
+        have hSum : RawDensePolyRep this heap2 (hgcdMatPtr S hS top)
+            sumLen (entries top + quotient * entries bottom) :=
+          polyAdd_refines this (hgcdMatPtr S hS top)
+            (hgcdMatPtr S hS top) (hgcdMatLen S hS top) T
+            (lenQ + hgcdMatLen S hS bottom - 1) heap1 heap2 sumLen
+            (entries top) (quotient * entries bottom) hpWord hOutput1
+            (hMatrix1 top) hProduct.2 workspace.aliasEntry1
+            workspace.aliasProduct
+            (by simpa [hgcdMatPtrRaw, hgcdMatLenRaw, hgcdMatPtr,
+                hgcdMatLen] using hadd)
+        rcases polyAdd_ok this (hgcdMatPtr S hS top)
+            (hgcdMatPtr S hS top) (hgcdMatLen S hS top) T
+            (lenQ + hgcdMatLen S hS bottom - 1) heap1 hOutput1
+            (hMatrix1 top).1 hProduct.2.1 with
+          ⟨heapAdd, lenAdd, haddAdd, hLayoutAdd, _⟩
+        have heqAdd : (heapAdd, lenAdd) = (heap2, sumLen) :=
+          Except.ok.inj (haddAdd.symm.trans (by
+            simpa [hgcdMatPtrRaw, hgcdMatLenRaw, hgcdMatPtr,
+              hgcdMatLen] using hadd))
+        have hHeapAdd : heapAdd = heap2 := congrArg Prod.fst heqAdd
+        have hLayoutAdd2 : RawHeap.SameLayout heap1 heap2 := by
+          intro ptr count
+          rw [← hHeapAdd]
+          exact hLayoutAdd ptr count
+        have hQPrefix := polyAdd_preserves_prefix_region_ne this
+          (hgcdMatPtr S hS top) (hgcdMatPtr S hS top)
+          (hgcdMatLen S hS top) T q
+          (lenQ + hgcdMatLen S hS bottom - 1) lenQ heap1 heap2 sumLen
+          hOutput1 (hMatrix1 top).1 hProduct.2.1 workspace.tDisjointQ
+          (by simpa [hgcdMatPtrRaw, hgcdMatLenRaw, hgcdMatPtr,
+              hgcdMatLen] using hadd)
+        have hQ2 := rawDensePolyRep_of_same_prefix this heap1 heap2 q lenQ
+          quotient hLayoutAdd2 hQPrefix hQ1
+        constructor
+        · intro j
+          by_cases hj : j = top
+          · subst j
+            simpa [hgcdMatQuotientUpdateEntries, hgcdMatPtr, hgcdMatLen,
+              hS.2] using hSum
+          · have hPrefix := polyAdd_preserves_prefix_region_ne this
+              (hgcdMatPtr S hS top) (hgcdMatPtr S hS top)
+              (hgcdMatLen S hS top) T (hgcdMatPtr S hS j)
+              (lenQ + hgcdMatLen S hS bottom - 1) (hgcdMatLen S hS j)
+              heap1 heap2 sumLen hOutput1 (hMatrix1 top).1 hProduct.2.1
+              (workspace.tDisjointOther j hj)
+              (by simpa [hgcdMatPtrRaw, hgcdMatLenRaw, hgcdMatPtr,
+                  hgcdMatLen] using hadd)
+            have hFrame := rawDensePolyRep_of_same_prefix this heap1 heap2
+              (hgcdMatPtr S hS j) (hgcdMatLen S hS j) (entries j)
+              hLayoutAdd2 hPrefix (hMatrix1 j)
+            simp only [hgcdMatPtr, hgcdMatLen]
+            rw [Array.getElem_set_ne
+              (by simpa [hS.2] using top.isLt)
+              (by simpa [hS.2] using j.isLt) (by
+                intro hval
+                exact hj (Fin.ext hval.symm))]
+            simpa [hgcdMatQuotientUpdateEntries, hj] using hFrame
+        · simpa using hQ2
+  next hinactive =>
+    have heq := Except.ok.inj hrun
+    subst result
+    have hzero : quotient = 0 ∨ entries bottom = 0 := by
+      have hnot : ¬(0 < lenQ ∧ 0 < hgcdMatLen S hS bottom) := by
+        simpa only [Bool.and_eq_true, decide_eq_true_eq, hgcdMatLenRaw,
+          hgcdMatLen] using hinactive
+      rcases not_and_or.mp hnot with hq | hb
+      · left
+        have hlen : lenQ = 0 := by omega
+        exact slicePolyRep_zero_length heap q this._p.toNat quotient
+          (by simpa [hlen] using hQ.2.2.1)
+      · right
+        have hlen : hgcdMatLen S hS bottom = 0 := by omega
+        exact slicePolyRep_zero_length heap (hgcdMatPtr S hS bottom)
+          this._p.toNat (entries bottom)
+          (by simpa [hlen] using (hMatrix bottom).2.2.1)
+    constructor
+    · intro j
+      by_cases hj : j = top
+      · subst j
+        rcases hzero with hq | hb
+        · simpa [hgcdMatQuotientUpdateEntries, hq] using hMatrix top
+        · simpa [hgcdMatQuotientUpdateEntries, hb] using hMatrix top
+      · simpa [hgcdMatQuotientUpdateEntries, hj] using hMatrix j
+    · exact hQ
+
+/-- L2 descriptor permutation induced by the four source row swaps. -/
+noncomputable def hgcdMatSwapEntries {p : Nat}
+    (entries : Fin 4 → Polynomial (ZMod p)) :
+    Fin 4 → Polynomial (ZMod p) :=
+  fun j => entries ⟨(j.val + 2) % 4, by omega⟩
+
+/-- The descriptor-only row swaps preserve the same four raw buffers and
+only permute their L2 indexing. -/
+theorem hgcdMatSwapRows_refines (this : DenseUPolyZp)
+    (S : HgcdMat) (hS : S.Valid)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat)) (heap : RawHeap)
+    (hMatrix : HgcdMatRawDenseRep this heap S entries hS) :
+    HgcdMatRawDenseRep this heap (hgcdMatSwapRows S hS)
+      (hgcdMatSwapEntries entries) (hgcdMatSwapRows_valid S hS) := by
+  intro j
+  fin_cases j <;>
+    simpa [hgcdMatSwapRows, hgcdMatSwapEntries, hgcdMatPtr, hgcdMatLen,
+      hgcdMatPtrRaw, hgcdMatLenRaw] using
+      hMatrix (⟨_, by omega⟩ : Fin 4)
+
+/-- Final L2 entries after both source-order quotient column updates. -/
+noncomputable def hgcdMatApplyQuotientEntries {p : Nat}
+    (entries : Fin 4 → Polynomial (ZMod p))
+    (quotient : Polynomial (ZMod p)) : Fin 4 → Polynomial (ZMod p) :=
+  let swapped := hgcdMatSwapEntries entries
+  let first := hgcdMatQuotientUpdateEntries swapped quotient
+    (0 : Fin 4) (2 : Fin 4)
+  hgcdMatQuotientUpdateEntries first quotient (1 : Fin 4) (3 : Fin 4)
+
+/-- Physical provider for the two concrete column executions.  It is
+quantified over the actual first result and contains no L2 polynomial. -/
+def HgcdMatApplyQuotientWorkspaceProvider (this : DenseUPolyZp)
+    (S : HgcdMat) (hS : S.Valid) (q : RawPtr UInt64) (lenQ : Nat)
+    (T scratch : RawPtr UInt64) (heap : RawHeap) : Prop :=
+  ∀ first,
+    hgcdMatQuotientEntry this (hgcdMatSwapRows S hS)
+      (hgcdMatSwapRows_valid S hS) (0 : Fin 4) (2 : Fin 4) q lenQ T
+      scratch heap = .ok first →
+    HgcdMatQuotientEntryWorkspace (hgcdMatSwapRows S hS)
+        (hgcdMatSwapRows_valid S hS) (0 : Fin 4) (2 : Fin 4) q lenQ T
+        scratch heap ∧
+      HgcdMatQuotientEntryWorkspace first.matrix first.valid
+        (1 : Fin 4) (3 : Fin 4) q lenQ T scratch first.heap
+
+/-- End-to-end refinement of the exact source block
+`S := [[q,1],[1,0]] * S`: descriptor swaps and both real guarded
+multiplication/addition executions are all consumed in source order. -/
+theorem hgcdMatApplyQuotient_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (S : HgcdMat) (hS : S.Valid) (q : RawPtr UInt64) (lenQ : Nat)
+    (T scratch : RawPtr UInt64) (heap : RawHeap)
+    (result : HgcdMatQuotientResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdMatApplyQuotientWorkspaceProvider this S hS q lenQ T
+      scratch heap)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hMatrix : HgcdMatRawDenseRep this heap S entries hS)
+    (hrun : hgcdMatApplyQuotient this S hS q lenQ T scratch heap =
+      .ok result) :
+    HgcdMatRawDenseRep this result.heap result.matrix
+      (hgcdMatApplyQuotientEntries entries quotient) result.valid ∧
+    RawDensePolyRep this result.heap q lenQ quotient := by
+  rcases hgcdMatApplyQuotient_exec this S hS q lenQ T scratch heap result
+      hrun with ⟨first, hfirst, hsecond⟩
+  have hwork := physical first hfirst
+  have hSwapped := hgcdMatSwapRows_refines this S hS entries heap hMatrix
+  have hFirst := hgcdMatQuotientEntry_refines this (hgcdMatSwapRows S hS)
+    (hgcdMatSwapRows_valid S hS) (0 : Fin 4) (2 : Fin 4) q lenQ T
+    scratch heap first (hgcdMatSwapEntries entries) quotient hcfg hp hwork.1
+    hQ hSwapped hfirst
+  have hSecond := hgcdMatQuotientEntry_refines this first.matrix first.valid
+    (1 : Fin 4) (3 : Fin 4) q lenQ T scratch first.heap
+    (HgcdMatQuotientEntryResult.mk result.heap result.matrix result.valid)
+    (hgcdMatQuotientUpdateEntries (hgcdMatSwapEntries entries) quotient
+      (0 : Fin 4) (2 : Fin 4)) quotient hcfg hp hwork.2 hFirst.2 hFirst.1
+    hsecond
+  simpa [hgcdMatApplyQuotientEntries] using hSecond
+
 /-- The generated recursive-HGCD base helper with matrix computation enabled
 is exactly the already-refined iterator initialization prefix, modulo its
 smaller return record. -/

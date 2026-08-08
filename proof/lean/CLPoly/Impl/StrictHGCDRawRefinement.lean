@@ -7189,6 +7189,21 @@ theorem hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant
     hlenLowA hlenLowB
     hrefines.2.2.2.2.1
 
+/-- Substituting the exact source split `k = 2*m-lenB2+1` into the exact
+final-A reconstruction length shows that the complete recursive result stays
+strictly above the outer half-length threshold. -/
+theorem hgcdRecursiveFinalReconstruct_lenA_above_half
+    (outerLength m reconstructedLenB k lenC0 secondLenA resultLenA : Nat)
+    (hm : m = outerLength / 2)
+    (hk : k = 2 * m - reconstructedLenB + 1)
+    (hc : lenC0 = reconstructedLenB - k)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hreconstructedUpper : reconstructedLenB < outerLength)
+    (hsecondAbove : lenC0 / 2 < secondLenA)
+    (hresult : resultLenA = k + secondLenA) :
+    outerLength / 2 < resultLenA := by
+  omega
+
 /-- The B output of the second reconstruction satisfies the outer HGCD stop
 threshold.  This uses the source's exact `k = 2*m-lenB2+1`, the second call's
 leading-A/stop pair, and the two matrix rows that physically build B. -/

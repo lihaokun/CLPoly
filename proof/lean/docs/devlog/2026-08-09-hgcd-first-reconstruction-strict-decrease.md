@@ -43,3 +43,5 @@
 `S[3] * lowA`、`S[1] * lowB` 均严格低于 `X^k * secondA` 的最高项，
 由规范化 raw 表示推出 `result.lenA = k + second.lenA`，特别得到
 `0 < result.lenA`。这不是对输出非零的假设，而是源矩阵更新与物理重构的推论。
+代入源码的 `k = 2*m-lenB2+1` 后还得到
+`outerLength / 2 < result.lenA`，因此该不变量可继续传给递归父调用。

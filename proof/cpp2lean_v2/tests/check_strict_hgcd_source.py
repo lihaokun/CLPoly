@@ -26,7 +26,7 @@ from pass1_parse import parse_pass
 EXPECTED = {
     "_hgcd_iter": "b4bdca04357c87b7f56b7ace1824b6bcd1c244b66f696638359134cce29a9a4d",
     "_hgcd_recursive": "a39dc9dc390042e7873087b671ff4721b1dd0ba1d9c7b25dbd4a12b6acf29191",
-    "_gcd_hgcd": "11889fd1a4899758fd150e591fff6ac63d7a486a16b339483204202627e398a3",
+    "_gcd_hgcd": "7eabada4b3f368249f26de6945b34b8bfa37c0f5066a1aec5161feba072bdb9f",
     "_gcd_euclid": "c7bfe30f2d2da9ba4eb217092546166f10b830afdbaba44e3640424f71e810f2",
 }
 

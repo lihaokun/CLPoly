@@ -94,6 +94,39 @@ theorem karScratchNeed_current_le (n : Nat) (hn : 16 ≤ n) :
   dsimp
   omega
 
+theorem karScratchNeed_le_seven (n : Nat) : karScratchNeed n ≤ 7 * n := by
+  rw [karScratchNeed]
+  split
+  next hbase => omega
+  next hrec =>
+    let m := n / 2
+    let h := n - m
+    have hn16 : 16 ≤ n := by omega
+    have hmLt : m < n := (kar_split_children_lt n hn16).1
+    have hhLt : h < n := by
+      dsimp [h, m]
+      exact (kar_split_children_lt n hn16).2
+    have ihm := karScratchNeed_le_seven m
+    have ihh := karScratchNeed_le_seven h
+    have hmLeH : m ≤ h := by
+      dsimp [m, h]
+      omega
+    have hmax : max (karScratchNeed m) (karScratchNeed h) ≤ 7 * h := by
+      apply max_le
+      · exact le_trans ihm (by omega)
+      · exact ihh
+    have hshape : h = m ∨ h = m + 1 := by
+      simpa [m, h] using kar_split_shape n
+    rcases hshape with heven | hodd
+    · dsimp [m, h] at hmax ⊢
+      omega
+    · dsimp [m, h] at hmax ⊢
+      omega
+termination_by n
+decreasing_by
+  · exact hmLt
+  · exact hhLt
+
 theorem karAddHalvesLoop_ok (this : DenseUPolyZp)
     (A B t1 t2 : RawPtr UInt64) (m i : Nat) (heap : RawHeap)
     (hA : heap.ValidU64Slice A (2 * m))

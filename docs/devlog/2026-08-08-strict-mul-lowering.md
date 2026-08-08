@@ -116,6 +116,12 @@
   `karScratchNeed n`，并证明共享递归尾区的 `max` 同时支配 m/h 两个子调用
   的精确需求。全局 `karScratchNeed n≤6n` 尚需携带递归余量的不变式；未用
   奇数层不成立的朴素 `6h` 归纳替代。
+- 进一步审计发现 `6n` 不只是难证，而是在连续奇数分割下为假：例如
+  `n=2^31+1` 时精确需求已超过 `6n`。因此修正 C++ 容量合同：公开 mul 的
+  Karatsuba scratch 从 `6n` 增至 `7n`，raw `_mul` 总 scratch 从 `7n`
+  增至 `8n`，HGCD 工作区同步调整；设计文档和 `_gcd_hgcd` AST 锁已更新。
+- 以 n 为良基度量证明 `karScratchNeed n ≤ 7n`。递归步分别使用 m/h 子结论、
+  共享区的 max 上界以及 `h=m ∨ h=m+1`，覆盖全 Nat 范围。
 
 ## 当前边界
 

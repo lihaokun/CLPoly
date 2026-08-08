@@ -355,7 +355,7 @@ private:
 
     // 不等长乘法（raw API）
     // C 预分配 2*len_a - 1 元素
-    // scratch 预分配 7*len_a（b_pad[len_a] + kar_scratch[6*len_a]）
+    // scratch 预分配 8*len_a（b_pad[len_a] + kar_scratch[7*len_a]）
     // 前置：len_a >= len_b > 0
     void _mul(uint64_t* C,
               const uint64_t* A, size_t len_a,
@@ -983,7 +983,7 @@ private:
         { size_t tmp = n; while (tmp > 1) { tmp = (tmp + 1) / 2; ++log2n; } }
 
         size_t hgcd_ws = 28 * n + 16 * (log2n + 1);
-        size_t scratch_size = 7 * n + 1;
+        size_t scratch_size = 8 * n + 1;
         size_t half = (n + 1) / 2;
         size_t mat_size = 4 * half;
         size_t total = 6 * n + hgcd_ws + scratch_size + mat_size;
@@ -1160,7 +1160,7 @@ public:
             std::memcpy(b_pad.data(), B._coeffs.data(), len_b * sizeof(uint64_t));
 
             C._coeffs.resize(2 * n - 1);
-            std::vector<uint64_t> scratch(6 * n);
+            std::vector<uint64_t> scratch(7 * n);
             C._kar_mul(C._coeffs.data(), a_pad.data(), b_pad.data(),
                        n, scratch.data());
             C.__strip();

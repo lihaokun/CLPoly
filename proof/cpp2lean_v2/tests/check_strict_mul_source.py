@@ -67,6 +67,7 @@ def main() -> None:
                      "kar_split_children_lt",
                      "karScratchNeed_child_le_rec",
                      "karScratchNeed_current_le",
+                     "karScratchNeed_le_seven",
                      "karAddHalvesLoop_ok", "karSubLoop_ok",
                      "karAssembleLoop_ok",
                      "karOddTail_ok", "karOddTail_preserves_region_ne",

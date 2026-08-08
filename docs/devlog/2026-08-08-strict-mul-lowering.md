@@ -214,6 +214,11 @@
   allocation 的相邻尾 slices 继续递归，并把逐 cell 内容提升到
   `SlicePolyRep` 与 canonical 结果。因此子层 Karatsuba 的 C/P0 都在父层
   scratch allocation 中时也可直接应用，不再需要虚构 region 不等。
+- 证明每层 Karatsuba scratch 中 t1、t2、P0、P1、recScratch 五个
+  连续区间的成对地址不相交，并将规范 offset 形式对齐到生成 L1
+  中字面出现的嵌套 `ptr.add`。这些合同同时支撑 P0/P1 递归输出与
+  共享子 scratch、两次交叉项减法以及 P0→C copy，不依赖 allocation
+  region 不等。
 
 ## 当前边界
 

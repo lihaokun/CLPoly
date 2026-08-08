@@ -74,6 +74,66 @@ theorem u64SlicesDisjoint_add_of_le (base : RawPtr UInt64)
   simp [RawPtr.add, hwidth]
   omega
 
+/-- Pairwise non-aliasing of the five consecutive regions used by one
+Karatsuba frame, expressed at their canonical offsets in the shared scratch
+allocation. -/
+theorem karScratchRanges_pairwise (scratch : RawPtr UInt64)
+    (m h recLength : Nat) :
+    let t1 := scratch
+    let t2 := scratch.add h
+    let sP0 := scratch.add (2 * h)
+    let sP1 := scratch.add (2 * h + (2 * m - 1))
+    let recScratch := scratch.add
+      (2 * h + (2 * m - 1) + (2 * h - 1))
+    U64SlicesDisjoint t1 h t2 h ∧
+      U64SlicesDisjoint t1 h sP0 (2 * m - 1) ∧
+      U64SlicesDisjoint t1 h sP1 (2 * h - 1) ∧
+      U64SlicesDisjoint t2 h sP0 (2 * m - 1) ∧
+      U64SlicesDisjoint t2 h sP1 (2 * h - 1) ∧
+      U64SlicesDisjoint sP0 (2 * m - 1) sP1 (2 * h - 1) ∧
+      U64SlicesDisjoint sP0 (2 * m - 1) recScratch recLength ∧
+      U64SlicesDisjoint sP1 (2 * h - 1) recScratch recLength := by
+  dsimp
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · exact u64SlicesDisjoint_add_of_le scratch 0 h h h (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch 0 h (2 * h)
+      (2 * m - 1) (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch 0 h
+      (2 * h + (2 * m - 1)) (2 * h - 1) (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch h h (2 * h)
+      (2 * m - 1) (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch h h
+      (2 * h + (2 * m - 1)) (2 * h - 1) (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch (2 * h) (2 * m - 1)
+      (2 * h + (2 * m - 1)) (2 * h - 1) (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch (2 * h) (2 * m - 1)
+      (2 * h + (2 * m - 1) + (2 * h - 1))
+      recLength (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch
+      (2 * h + (2 * m - 1)) (2 * h - 1)
+      (2 * h + (2 * m - 1) + (2 * h - 1))
+      recLength (by omega)
+
+/-- The same pairwise partition, normalized to the nested pointer additions
+that occur literally in generated `_kar_mul`. -/
+theorem karScratchNested_pairwise (scratch : RawPtr UInt64)
+    (m h recLength : Nat) :
+    let t1 := scratch
+    let t2 := t1.add h
+    let sP0 := t2.add h
+    let sP1 := sP0.add (2 * m - 1)
+    let recScratch := sP1.add (2 * h - 1)
+    U64SlicesDisjoint t1 h t2 h ∧
+      U64SlicesDisjoint t1 h sP0 (2 * m - 1) ∧
+      U64SlicesDisjoint t1 h sP1 (2 * h - 1) ∧
+      U64SlicesDisjoint t2 h sP0 (2 * m - 1) ∧
+      U64SlicesDisjoint t2 h sP1 (2 * h - 1) ∧
+      U64SlicesDisjoint sP0 (2 * m - 1) sP1 (2 * h - 1) ∧
+      U64SlicesDisjoint sP0 (2 * m - 1) recScratch recLength ∧
+      U64SlicesDisjoint sP1 (2 * h - 1) recScratch recLength := by
+  simpa only [rawPtr_add_add, two_mul, Nat.add_assoc] using
+    karScratchRanges_pairwise scratch m h recLength
+
 theorem u64SlicesDisjoint_add_left {base guard : RawPtr UInt64}
     {length guardLength start count : Nat}
     (h : U64SlicesDisjoint base length guard guardLength)

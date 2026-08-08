@@ -910,6 +910,57 @@ theorem initW3Loop_refines (heap : RawHeap) (A : RawPtr UInt64)
 termination_by lenA - i
 decreasing_by omega
 
+/-- The initialization loop writes only W3.  Any disjoint UInt64 slice keeps
+its exact contents throughout the generated recursion. -/
+theorem initW3Loop_preserves_u64_region_ne (heap : RawHeap)
+    (A other : RawPtr UInt64) (W3 : RawPtr Word3)
+    (lenA i otherLen : Nat)
+    (hA : heap.ValidU64Slice A lenA)
+    (hW3 : heap.ValidWord3Slice W3 lenA)
+    (hOther : heap.ValidU64Slice other otherLen)
+    (hi : i ≤ lenA) (hregions : W3.region ≠ other.region) :
+    ∃ heap', initW3Loop heap A W3 lenA i = .ok heap' ∧
+      heap'.ValidU64Slice A lenA ∧ heap'.ValidWord3Slice W3 lenA ∧
+      heap'.ValidU64Slice other otherLen ∧ RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' other otherLen := by
+  rw [initW3Loop]
+  split
+  next hlt =>
+    rcases heap.readU64_of_valid A lenA i hA hlt with ⟨value, hread⟩
+    simp only [hread]
+    let word : Word3 := { lo := value, mid := 0, hi := 0 }
+    rcases heap.writeWord3_of_valid W3 lenA i word hW3 hlt with
+      ⟨heap1, hwrite⟩
+    dsimp [word] at hwrite ⊢
+    simp only [hwrite]
+    have hA1 : heap1.ValidU64Slice A lenA :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 i word
+        hwrite A lenA).mp hA
+    have hW31 : heap1.ValidWord3Slice W3 lenA :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 i word
+        hwrite (RawPtr.reinterpret W3) (3 * lenA)).mp hW3
+    have hOther1 : heap1.ValidU64Slice other otherLen :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 i word
+        hwrite other otherLen).mp hOther
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 i word hwrite
+    have hsame1 : SameU64Prefix heap heap1 other otherLen := by
+      intro k old hk hreadOld
+      exact RawHeap.readU64_writeWord3_region_ne heap heap1 W3 other i k
+        word old hwrite hreadOld hregions
+    rcases initW3Loop_preserves_u64_region_ne heap1 A other W3 lenA
+      (i + 1) otherLen hA1 hW31 hOther1 (by omega) hregions with
+      ⟨heap2, hloop, hA2, hW32, hOther2, hlayout2, hsame2⟩
+    refine ⟨heap2, hloop, hA2, hW32, hOther2, ?_, ?_⟩
+    · intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+    · intro k old hk hreadOld
+      exact hsame2 k old hk (hsame1 k old hk hreadOld)
+  next hnot =>
+    exact ⟨heap, rfl, hA, hW3, hOther, fun _ _ => Iff.rfl,
+      fun _ _ _ hread => hread⟩
+termination_by lenA - i
+decreasing_by omega
+
 /-- Natural-language proof outline:
 
 For `j ≤ d`, the divisor invariant makes `B[j]` readable.  The bound

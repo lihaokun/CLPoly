@@ -808,6 +808,10 @@ def SameWord3Above (before after : RawHeap) (ptr : RawPtr Word3)
   ∀ k, top < k → k < upper →
     before.readWord3 ptr k = after.readWord3 ptr k
 
+def SameWord3Below (before after : RawHeap) (ptr : RawPtr Word3)
+    (lower : Nat) : Prop :=
+  ∀ k, k < lower → before.readWord3 ptr k = after.readWord3 ptr k
+
 theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     (W3 : RawPtr Word3) (lenW3 i d j : Nat) (c : UInt64)
     (other : RawPtr UInt64) (otherLen : Nat)
@@ -856,6 +860,63 @@ theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     exact (hlayout1 ptr length).trans (hlayout2 ptr length)
   next hnot =>
     exact ⟨heap, rfl, hB, hW3, hOther, fun _ _ => Iff.rfl⟩
+termination_by d + 1 - j
+decreasing_by omega
+
+/-- The generated inner loop writes only cells `i+j`; every W3 cell strictly
+below its offset `i` is byte-for-byte unchanged. -/
+theorem addMulLoop_preserves_below (heap : RawHeap) (B : RawPtr UInt64)
+    (W3 : RawPtr Word3) (lenW3 i d j : Nat) (c : UInt64)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (htop : i + d < lenW3) (hj : j ≤ d + 1) :
+    ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      SameWord3Below heap heap' W3 i := by
+  rw [addMulLoop]
+  split
+  next hle =>
+    have hjB : j < d + 1 := by omega
+    have hijW : i + j < lenW3 := by omega
+    rcases heap.readU64_of_valid B (d + 1) j hB hjB with ⟨bj, hreadB⟩
+    simp only [hreadB]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + j) hW3 hijW with
+      ⟨accum, hreadW⟩
+    simp only [hreadW]
+    let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+    let accum' := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+      accum product.1 product.2
+    rcases heap.writeWord3_of_valid W3 lenW3 (i + j) accum' hW3 hijW with
+      ⟨heap1, hwrite⟩
+    dsimp [product, accum'] at hwrite ⊢
+    simp only [hwrite]
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 (i + j)
+      accum' hwrite
+    have hsame1 : SameWord3Below heap heap1 W3 i := by
+      intro k hk
+      rcases heap.readWord3_of_valid W3 lenW3 k hW3 (by omega) with
+        ⟨old, hreadOld⟩
+      have hpreserved := RawHeap.readWord3_writeWord3_ne heap heap1 W3
+        (i + j) k accum' old hwrite hreadOld (by omega)
+      rw [hreadOld, hpreserved]
+    rcases addMulLoop_preserves_below heap1 B W3 lenW3 i d (j + 1) c
+      hB1 hW31 htop (by omega) with
+      ⟨heap2, hloop, hB2, hW32, hlayout2, hsame2⟩
+    refine ⟨heap2, hloop, hB2, hW32, ?_, ?_⟩
+    · intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+    · intro k hk
+      exact (hsame1 k hk).trans (hsame2 k hk)
+  next hnot =>
+    exact ⟨heap, rfl, hB, hW3, fun _ _ => Iff.rfl, fun _ _ => rfl⟩
 termination_by d + 1 - j
 decreasing_by omega
 

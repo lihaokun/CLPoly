@@ -163,6 +163,8 @@ def main() -> None:
         "hgcdRecursiveStoreIterOutputs_regular_skip_b_refines",
         "hgcdRecursiveStoreIterOutputs_regular_skip_both_refines",
         "hgcdRecursiveStoreIterOutputs_refines",
+        "optionalCopy_preserves_hgcdMatRawDenseRep",
+        "hgcdRecursiveStoreIterOutputs_preserves_matrix",
         "HgcdMulTermResult",
         "hgcdRecursiveMulTerm",
         "hgcdRecursiveMulTerm_length_le",

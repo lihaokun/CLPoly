@@ -865,6 +865,88 @@ theorem hgcdRecursiveStoreIterOutputs_refines (this : DenseUPolyZp)
           (hPAEq hpa) hpb (hPBEq hpb) hARep hBRep
         exact ⟨heap, hboth.1, hboth.2.1, hboth.2.2⟩
 
+/-- Matrix frame for one source-conditional memcpy. -/
+theorem optionalCopy_preserves_hgcdMatRawDenseRep (this : DenseUPolyZp)
+    (condition : Bool) (heap heap' : RawHeap)
+    (dst src : RawPtr UInt64) (count : Nat)
+    (M : HgcdMat) (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hM : M.Valid) (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hframe : ∀ j : Fin 4, U64SlicesDisjoint dst count
+      (hgcdMatPtr M hM j) (hgcdMatLen M hM j))
+    (hrep : HgcdMatRawDenseRep this heap M entries hM)
+    (hrun : (if condition then heap.copyU64 dst src count else .ok heap) =
+      .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      HgcdMatRawDenseRep this heap' M entries hM := by
+  cases hcondition : condition with
+  | false =>
+    have heq : heap = heap' := by simpa [hcondition] using hrun
+    subst heap'
+    exact ⟨fun _ _ => Iff.rfl, hrep⟩
+  | true =>
+    have hcopy : heap.copyU64 dst src count = .ok heap' := by
+      simpa [hcondition] using hrun
+    exact copyU64_preserves_hgcdMatRawDenseRep this heap heap' dst src count
+      M entries hM hDst hSrc hframe hcopy hrep
+
+/-- The complete alias-sensitive output normalization is a frame for every
+stable matrix entry when both possible destinations are disjoint from it. -/
+theorem hgcdRecursiveStoreIterOutputs_preserves_matrix
+    (this : DenseUPolyZp)
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (heap heap' : RawHeap)
+    (M : HgcdMat) (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hM : M.Valid)
+    (hA3 : heap.ValidU64Slice a3 lenA3)
+    (hB3 : heap.ValidU64Slice b3 lenB3)
+    (hPA : heap.ValidU64Slice pA lenA3)
+    (hPB : heap.ValidU64Slice pB lenB3)
+    (hAFrame : ∀ j : Fin 4, U64SlicesDisjoint a3 lenA3
+      (hgcdMatPtr M hM j) (hgcdMatLen M hM j))
+    (hBFrame : ∀ j : Fin 4, U64SlicesDisjoint b3 lenB3
+      (hgcdMatPtr M hM j) (hgcdMatLen M hM j))
+    (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
+    (hrun : hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap =
+      .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      HgcdMatRawDenseRep this heap' M entries hM := by
+  simp only [hgcdRecursiveStoreIterOutputs] at hrun
+  split at hrun
+  next hcross =>
+    split at hrun
+    next fault hcopyB => simp at hrun
+    next heap1 hcopyB =>
+      have hframe1 := copyU64_preserves_hgcdMatRawDenseRep this heap heap1
+        b3 pB lenB3 M entries hM hB3 hPB hBFrame hcopyB hMatrix
+      have hA31 := (hframe1.1 a3 lenA3).mp hA3
+      have hPA1 := (hframe1.1 pA lenA3).mp hPA
+      have hframe2 := copyU64_preserves_hgcdMatRawDenseRep this heap1 heap'
+        a3 pA lenA3 M entries hM hA31 hPA1 hAFrame hrun hframe1.2
+      exact ⟨fun ptr count =>
+        (hframe1.1 ptr count).trans (hframe2.1 ptr count), hframe2.2⟩
+  next hregular =>
+    generalize hfirst :
+      (if !(pA == a3) then heap.copyU64 a3 pA lenA3 else .ok heap) = first
+      at hrun
+    cases first with
+    | error fault => simp at hrun
+    | ok heap1 =>
+      have hframe1 := optionalCopy_preserves_hgcdMatRawDenseRep this
+        (!(pA == a3)) heap heap1 a3 pA lenA3 M entries hM hA3 hPA
+        hAFrame hMatrix hfirst
+      have hB31 := (hframe1.1 b3 lenB3).mp hB3
+      have hPB1 := (hframe1.1 pB lenB3).mp hPB
+      have hsecond :
+          (if !(pB == b3) then heap1.copyU64 b3 pB lenB3 else .ok heap1) =
+            .ok heap' := by
+        exact hrun
+      have hframe2 := optionalCopy_preserves_hgcdMatRawDenseRep this
+        (!(pB == b3)) heap1 heap' b3 pB lenB3 M entries hM hB31 hPB1
+        hBFrame hframe1.2 hsecond
+      exact ⟨fun ptr count =>
+        (hframe1.1 ptr count).trans (hframe2.1 ptr count), hframe2.2⟩
+
 theorem slicePolyRep_zero_length_any (heap : RawHeap) (ptr : RawPtr UInt64)
     (p : Nat) : SlicePolyRep heap ptr 0 p 0 := by
   refine ⟨#[], rfl, rfl, ?_⟩

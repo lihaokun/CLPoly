@@ -127,3 +127,8 @@ descriptor 有效性链：`_mat_one`、每次 `_mat_row_update`、良基
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为
 显式 L1 前置条件。
+
+递归 iterator 输出归一化的矩阵 frame 也已闭合：无论源码进入交叉别名保护
+分支，还是分别跳过/执行 `a3`、`b3` 的条件复制，每次真实 `copyU64` 都保持
+四个稳定矩阵项的 raw 表示，且组合后给出初末 heap 的 `SameLayout`。该证明
+只依赖显式切片有效性与目标/矩阵项不相交，不对 heap 或矩阵内容作规格替换。

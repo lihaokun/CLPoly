@@ -1,4 +1,5 @@
 import CLPoly.Impl.StrictKarMulRefinement
+import CLPoly.Impl.StrictEuclidRefinement
 
 set_option autoImplicit false
 
@@ -7,6 +8,7 @@ namespace CLPoly.Impl.StrictMulRefinement
 open Generated.StrictMul
 open CLPoly.Impl.StrictWordArithmetic
 open CLPoly.Impl.StrictDivremRefinement
+open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Impl.RawPolynomialRep
 
 theorem canonicalU64Prefix_mono (heap : RawHeap) (ptr : RawPtr UInt64)
@@ -247,5 +249,52 @@ theorem mul_refines_slice (this : DenseUPolyZp)
       canonicalU64Prefix_mono heap3 C (2 * lenA - 1)
         (lenA + lenB - 1) this._p hlogical hCanonicalFull⟩
     simpa [bPad, karScratch, hcopy, hzero] using hmul
+
+/-- Normalized-object form of the real `_mul` dispatcher, needed by HGCD
+matrix arithmetic.  Nonzero leading output follows from the two normalized
+input buffers and the actual final-cell read. -/
+theorem mul_refines_rawDense (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
+    (scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hApos : 0 < lenA) (hBpos : 0 < lenB) (hBA : lenB ≤ lenA)
+    (hLenAWord : lenA < limbBase)
+    (hC : heap.ValidU64Slice C (2 * lenA - 1))
+    (hScratch : heap.ValidU64Slice scratch (8 * lenA))
+    (hCA : U64SlicesDisjoint C (2 * lenA - 1) A lenA)
+    (hCB : U64SlicesDisjoint C (2 * lenA - 1) B lenB)
+    (hCScratch : U64SlicesDisjoint C (2 * lenA - 1) scratch (8 * lenA))
+    (hScratchA : U64SlicesDisjoint scratch (8 * lenA) A lenA)
+    (hScratchB : U64SlicesDisjoint scratch (8 * lenA) B lenB)
+    (hLeft : RawDensePolyRep this heap A lenA left)
+    (hRight : RawDensePolyRep this heap B lenB right) :
+    ∃ heap', dense_upoly_zp__mul_ir this C A lenA B lenB scratch heap =
+        .ok heap' ∧ RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' C (lenA + lenB - 1) (left * right) := by
+  rcases mul_refines_slice this C A lenA B lenB scratch heap left right hcfg
+      hp hApos hBpos hBA hLenAWord hC hLeft.1 hRight.1 hScratch hCA hCB
+      hCScratch hScratchA hScratchB hLeft.2.1 hRight.2.1 hLeft.2.2.1
+      hRight.2.2.1 with
+    ⟨heap', hrun, hlayout, hrep, hcanonical⟩
+  let outLen := lenA + lenB - 1
+  have houtPos : 0 < outLen := by dsimp [outLen]; omega
+  have hlogical : outLen ≤ 2 * lenA - 1 := by dsimp [outLen]; omega
+  have hvalid := (hlayout C outLen).mp
+    (heap.validU64Slice_mono C (2 * lenA - 1) outLen hC hlogical)
+  have hlast := mul_last_coeff_ne_zero_of_rawDense this heap A B lenA lenB
+    left right hApos hBpos hLeft hRight
+  rcases slicePolyRep_coeff heap' C outLen this._p.toNat (left * right) hrep
+      (outLen - 1) (by omega) with ⟨value, hread, hcoeff⟩
+  have hvalue : value ≠ 0 := by
+    intro hz
+    subst value
+    apply hlast
+    simpa [outLen] using hcoeff
+  have hnorm : heap'.normaliseU64 C outLen = .ok outLen := by
+    rw [show outLen = (outLen - 1) + 1 by omega]
+    simp [RawHeap.normaliseU64, hread, hvalue]
+  exact ⟨heap', hrun, hlayout, hvalid, hcanonical, hrep, hnorm⟩
 
 end CLPoly.Impl.StrictMulRefinement

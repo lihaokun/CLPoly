@@ -21,6 +21,8 @@ REFINEMENT = (V2_ROOT.parent / "lean" / "CLPoly" / "Impl" /
               "StrictMulRefinement.lean")
 KAR_REFINEMENT = (V2_ROOT.parent / "lean" / "CLPoly" / "Impl" /
                   "StrictKarMulRefinement.lean")
+DISPATCH_REFINEMENT = (V2_ROOT.parent / "lean" / "CLPoly" / "Impl" /
+                       "StrictMulDispatchRefinement.lean")
 
 EXPECTED = {
     "_classical_mul": "0d701d8406109ef552a49a4538ed63c1776f63ae03bf3156e3f0083b76a47f06",
@@ -133,6 +135,19 @@ def main() -> None:
         if fragment not in kar_refinement:
             raise SystemExit(
                 f"strict Karatsuba refinement drift: missing {fragment}"
+            )
+    dispatch_refinement = DISPATCH_REFINEMENT.read_text()
+    found = [token for token in forbidden if token in dispatch_refinement]
+    if found:
+        raise SystemExit(
+            f"strict multiplication dispatcher contains forbidden constructs: {found}"
+        )
+    for fragment in ("mulZeroPadLoop_refines", "mul_refines_slice",
+                     "mul_refines_rawDense",
+                     "mul_last_coeff_ne_zero_of_rawDense"):
+        if fragment not in dispatch_refinement:
+            raise SystemExit(
+                f"strict multiplication dispatcher drift: missing {fragment}"
             )
     print("PASS: multiplication source family and strict raw refinement are pinned")
 

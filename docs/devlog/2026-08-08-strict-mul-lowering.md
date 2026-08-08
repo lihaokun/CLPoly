@@ -286,6 +286,10 @@
   有效性和地址不相交合同。Karatsuba 写出的对称长度 `2*lenA-1` 只有在利用
   原始 A/B slice 推出 `lenA+lenB-1` 以上乘积系数全为零后才截短，因此统一
   `_mul` 结果没有改变 L2 多项式，也没有用规格执行替代 C++ 分支。
+- 新增 `_mul` 的 `RawDensePolyRep` 结果桥，供 HGCD 矩阵更新直接调用。它从
+  两个输入 buffer 的真实 normalization 固定点推出两者最高系数非零，再由
+  输出 `SlicePolyRep` 的末 cell 读取证明乘积末 cell 非零，最后展开实际
+  `normaliseU64` 首次扫描得到固定长度；没有假设或调用 L2 normalization。
 
 ## 当前边界
 

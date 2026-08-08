@@ -5923,6 +5923,116 @@ noncomputable def hgcdMatApplyQuotientEntries {p : Nat}
     (0 : Fin 4) (2 : Fin 4)
   hgcdMatQuotientUpdateEntries first quotient (1 : Fin 4) (3 : Fin 4)
 
+/-- The quotient update represents the source matrix
+`[[q,1],[1,0]] * S`, whose determinant is the negation of `det S`. -/
+theorem hgcdMatApplyQuotientEntries_det
+    {p : Nat} (entries : Fin 4 → Polynomial (ZMod p))
+    (quotient : Polynomial (ZMod p)) :
+    hgcdMatApplyQuotientEntries entries quotient 0 *
+        hgcdMatApplyQuotientEntries entries quotient 3 -
+      hgcdMatApplyQuotientEntries entries quotient 1 *
+        hgcdMatApplyQuotientEntries entries quotient 2 =
+      -(entries 0 * entries 3 - entries 1 * entries 2) := by
+  simp [hgcdMatApplyQuotientEntries, hgcdMatSwapEntries,
+    hgcdMatQuotientUpdateEntries, Function.update]
+  ring
+
+/-- Determinant of the exact flat-matrix product used by `_mat_mul`. -/
+theorem hgcdMatProductEntry_det
+    {p : Nat} (left right : Fin 4 → Polynomial (ZMod p)) :
+    hgcdMatProductEntry left right 0 * hgcdMatProductEntry left right 3 -
+      hgcdMatProductEntry left right 1 * hgcdMatProductEntry left right 2 =
+    (left 0 * left 3 - left 1 * left 2) *
+      (right 0 * right 3 - right 1 * right 2) := by
+  simp [hgcdMatProductEntry]
+  ring
+
+/-- Algebraic composition of the two real recursive matrices around the
+middle divrem step, in the exact orientation used by the generated code. -/
+theorem hgcdRecursiveCombined_preserves_transform
+    {p : Nat}
+    (left right currentA currentB remainder quotient finalA finalB :
+      Polynomial (ZMod p))
+    (first second : Fin 4 → Polynomial (ZMod p))
+    (hFirst : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right
+      currentA currentB (first 0) (first 1) (first 2) (first 3))
+    (hDivision : currentA = quotient * currentB + remainder)
+    (hSecond : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform currentB
+      remainder finalA finalB (second 0) (second 1) (second 2) (second 3)) :
+    CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right finalA finalB
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 0)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 1)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 2)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 3) := by
+  rcases hFirst with ⟨hLeft, hRight⟩
+  rcases hSecond with ⟨hCurrentB, hRemainder⟩
+  constructor
+  · rw [hLeft, hDivision, hCurrentB, hRemainder]
+    simp [hgcdMatProductEntry, hgcdMatApplyQuotientEntries,
+      hgcdMatSwapEntries, hgcdMatQuotientUpdateEntries, Function.update]
+    ring
+  · rw [hRight, hDivision, hCurrentB, hRemainder]
+    simp [hgcdMatProductEntry, hgcdMatApplyQuotientEntries,
+      hgcdMatSwapEntries, hgcdMatQuotientUpdateEntries, Function.update]
+    ring
+
+/-- The source return sign `-(sgnR*sgnS)` equals the determinant sign of
+the exact product `R * ([[q,1],[1,0]] * S)`. -/
+theorem hgcdRecursiveCombined_preserves_signedDet
+    {p : Nat} (sgnR sgnS : Int) (quotient : Polynomial (ZMod p))
+    (first second : Fin 4 → Polynomial (ZMod p))
+    (hFirst : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgnR
+      (first 0) (first 1) (first 2) (first 3))
+    (hSecond : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgnS
+      (second 0) (second 1) (second 2) (second 3)) :
+    CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet (-(sgnR * sgnS))
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 0)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 1)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 2)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 3) := by
+  have hProduct := hgcdMatProductEntry_det first
+    (hgcdMatApplyQuotientEntries second quotient)
+  have hStep := hgcdMatApplyQuotientEntries_det second quotient
+  rcases hFirst with ⟨hsgnR, hdetR⟩ | ⟨hsgnR, hdetR⟩
+  · rcases hSecond with ⟨hsgnS, hdetS⟩ | ⟨hsgnS, hdetS⟩
+    · subst sgnR
+      subst sgnS
+      right
+      constructor
+      · norm_num
+      · rw [hProduct, hStep, hdetR, hdetS]
+        ring
+    · subst sgnR
+      subst sgnS
+      left
+      constructor
+      · norm_num
+      · rw [hProduct, hStep, hdetR, hdetS]
+        ring
+  · rcases hSecond with ⟨hsgnS, hdetS⟩ | ⟨hsgnS, hdetS⟩
+    · subst sgnR
+      subst sgnS
+      left
+      constructor
+      · norm_num
+      · rw [hProduct, hStep, hdetR, hdetS]
+        ring
+    · subst sgnR
+      subst sgnS
+      right
+      constructor
+      · norm_num
+      · rw [hProduct, hStep, hdetR, hdetS]
+        ring
+
 /-- Physical provider for the two concrete column executions.  It is
 quantified over the actual first result and contains no L2 polynomial. -/
 def HgcdMatApplyQuotientWorkspaceProvider (this : DenseUPolyZp)

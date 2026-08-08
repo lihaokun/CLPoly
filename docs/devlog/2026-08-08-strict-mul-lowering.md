@@ -179,6 +179,14 @@
   顶层 `scratch[0..karScratchNeed n)` 与任意 guard 的不相交性一次性下推为
   t1、t2、P0、P1、共享 recScratch 五段各自的不相交合同。证明使用精确需求
   递推式验证每段范围，并显式归一化源码的嵌套 pointer arithmetic。
+- 强化 `karMul_ok` 的同一个 n 良基归纳，使每层除成功执行与 SameLayout 外，
+  还返回任意同时避开输出 C 和该层 scratch 的 guard `SameU64Prefix`。基例
+  使用真实 schoolbook frame；递归层依次组合半区准备、P0、P1、高半区、
+  两次模减、copy、补零与组装九个实际 heap 阶段。
+- 三个递归调用的 frame 直接取自各自良基归纳结果，recScratch 的 child 需求
+  由 max 缩短，输出段由五分区不相交定理取得；后处理分别使用已证明的
+  sub/copy/write/assemble slice frame。新增 `karMul_preserves_prefix` 将任意给定
+  成功运行与唯一 ok heap 对齐后导出该完整帧性质。
 
 ## 当前边界
 

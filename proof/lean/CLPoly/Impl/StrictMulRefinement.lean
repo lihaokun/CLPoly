@@ -2713,12 +2713,21 @@ theorem karMul_ok (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B n)
     (hScratch : heap.ValidU64Slice scratch (karScratchNeed n)) :
     ∃ heap', dense_upoly_zp__kar_mul_ir this C A B n scratch heap =
-        .ok heap' ∧ RawHeap.SameLayout heap heap' := by
+        .ok heap' ∧ RawHeap.SameLayout heap heap' ∧
+      ∀ guard guardLength,
+        U64SlicesDisjoint C (2 * n - 1) guard guardLength →
+        U64SlicesDisjoint scratch (karScratchNeed n) guard guardLength →
+        SameU64Prefix heap heap' guard guardLength := by
   unfold dense_upoly_zp__kar_mul_ir
   split
   next hbase =>
-    exact classicalMul_ok this C A n B n heap hn hn
-      (by simpa [two_mul] using hC) hA hB
+    rcases classicalMul_ok this C A n B n heap hn hn
+      (by simpa [two_mul] using hC) hA hB with ⟨heap', hrun, hlayout⟩
+    refine ⟨heap', hrun, hlayout, ?_⟩
+    intro guard guardLength hCGuard _
+    exact classicalMul_preserves_outside this C A n B n guard guardLength
+      heap heap' hn hn (by simpa [two_mul] using hC) hA hB
+      (by simpa [two_mul] using hCGuard) hrun
   next hrecCase =>
     let m := n / 2
     let h := n - m
@@ -2779,14 +2788,14 @@ theorem karMul_ok (this : DenseUPolyZp)
       ((hlay2 sP0 (2 * m - 1)).mp hP0)
       ((hlay2 A m).mp hAm) ((hlay2 B m).mp hBm)
       ((hlay2 recScratch (karScratchNeed m)).mp hRecM) with
-      ⟨heap3, hp0, hlay3⟩
+      ⟨heap3, hp0, hlay3, hframe3⟩
     rcases karMul_ok this sP1 t1 t2 h recScratch heap3 hhPos
       ((hlay3 sP1 (2 * h - 1)).mp ((hlay2 sP1 (2 * h - 1)).mp hP1))
       ((hlay3 t1 h).mp ((hlay2 t1 h).mp hT1))
       ((hlay3 t2 h).mp ((hlay2 t2 h).mp hT2))
       ((hlay3 recScratch (karScratchNeed h)).mp
         ((hlay2 recScratch (karScratchNeed h)).mp hRecH)) with
-      ⟨heap4, hp1, hlay4⟩
+      ⟨heap4, hp1, hlay4, hframe4⟩
     rcases karMul_ok this (C.add (2 * m)) (A.add m) (B.add m) h
       recScratch heap4 hhPos
       ((hlay4 (C.add (2 * m)) (2 * h - 1)).mp
@@ -2799,7 +2808,7 @@ theorem karMul_ok (this : DenseUPolyZp)
       ((hlay4 recScratch (karScratchNeed h)).mp
         ((hlay3 recScratch (karScratchNeed h)).mp
           ((hlay2 recScratch (karScratchNeed h)).mp hRecH))) with
-      ⟨heap5, phigh, hlay5⟩
+      ⟨heap5, phigh, hlay5, hframe5⟩
     have hP1short := heap5.validU64Slice_mono sP1 (2 * h - 1)
       (2 * m - 1)
       ((hlay5 sP1 (2 * h - 1)).mp ((hlay4 sP1 (2 * h - 1)).mp
@@ -2844,7 +2853,7 @@ theorem karMul_ok (this : DenseUPolyZp)
       ((hlay8 sP1 (2 * h - 1)).mp ((hlay7 sP1 (2 * h - 1)).mp hP16))
     rcases karAssembleLoop_ok this C sP1 m (2 * h - 1) 0 heap9
       hCassemble hP19 with ⟨heap10, hassemble, hlay10⟩
-    refine ⟨heap10, ?_, ?_⟩
+    refine ⟨heap10, ?_, ?_, ?_⟩
     · simp [m, h, t1, t2, sP0, sP1, recScratch, hprep, hp0, hp1,
         phigh, hsub0, hsub1, hcopy, hzero, hassemble]
     · intro ptr length
@@ -2853,11 +2862,78 @@ theorem karMul_ok (this : DenseUPolyZp)
           ((hlay6 ptr length).trans ((hlay7 ptr length).trans
             ((hlay8 ptr length).trans ((hlay9 ptr length).trans
               (hlay10 ptr length))))))))
+    · intro guard guardLength hCGuard hScratchGuard
+      rcases karScratchSlices_disjoint_guard scratch guard n guardLength hn16
+          hScratchGuard with ⟨hT1Guard, hT2Guard, hP0Guard, hP1Guard,
+            hRecGuard⟩
+      have hRecMGuard := u64SlicesDisjoint_mono hRecGuard
+        (Nat.le_max_left _ _) (Nat.le_refl guardLength)
+      have hRecHGuard := u64SlicesDisjoint_mono hRecGuard
+        (Nat.le_max_right _ _) (Nat.le_refl guardLength)
+      have hCHighGuard := u64SlicesDisjoint_add_left hCGuard
+        (start := 2 * m) (count := 2 * h - 1) (by
+          dsimp [m, h]
+          omega)
+      have hPrepFrame := karPrepareHalves_preserves_outside this A B t1 t2
+        guard m h guardLength heap heap2 hmh hAfull hBfull hT1 hT2
+        hT1Guard hT2Guard hprep
+      have hP0Frame := hframe3 guard guardLength hP0Guard hRecMGuard
+      have hP1Frame := hframe4 guard guardLength hP1Guard hRecHGuard
+      have hHighFrame := hframe5 guard guardLength hCHighGuard hRecHGuard
+      have hP1ShortGuard := u64SlicesDisjoint_mono hP1Guard
+        (smallLeft := 2 * m - 1) (by omega)
+        (Nat.le_refl guardLength)
+      have hSub0Frame := karSubLoop_preserves_prefix this sP1 sP0 guard
+        (2 * m - 1) guardLength heap5 heap6 hP1short hP05
+        hP1ShortGuard hsub0
+      have hSub1Frame := karSubLoop_preserves_prefix this sP1
+        (C.add (2 * m)) guard (2 * h - 1) guardLength heap6 heap7
+        hP16 hCHigh6 hP1Guard hsub1
+      have hCPrefixGuard := u64SlicesDisjoint_mono hCGuard
+        (smallLeft := 2 * m - 1) (by omega)
+        (Nat.le_refl guardLength)
+      have hCopyFrame := copyU64_preserves_prefix heap7 heap8 C sP0 guard
+        (2 * m - 1) guardLength hCprefix hP07 hCPrefixGuard hcopy
+      have hZeroFrame := writeU64_preserves_prefix heap8 heap9 C guard
+        (2 * n - 1) guardLength (2 * m - 1) 0 hCGuard (by omega) hzero
+      have hCAssembleGuard := u64SlicesDisjoint_mono hCGuard
+        (smallLeft := m + (2 * h - 1)) (by
+          dsimp [m, h]
+          omega) (Nat.le_refl guardLength)
+      have hAssembleFrame := karAssembleLoop_preserves_prefix this C sP1
+        guard m (2 * h - 1) guardLength heap9 heap10 hCassemble hP19
+        hCAssembleGuard hassemble
+      exact sameU64Prefix_trans hPrepFrame
+        (sameU64Prefix_trans hP0Frame
+          (sameU64Prefix_trans hP1Frame
+            (sameU64Prefix_trans hHighFrame
+              (sameU64Prefix_trans hSub0Frame
+                (sameU64Prefix_trans hSub1Frame
+                  (sameU64Prefix_trans hCopyFrame
+                    (sameU64Prefix_trans hZeroFrame hAssembleFrame)))))))
 termination_by n
 decreasing_by
   · exact hmLt
   · exact hhLt
   · exact hhLt
+
+theorem karMul_preserves_prefix (this : DenseUPolyZp)
+    (C A B : RawPtr UInt64) (n : Nat) (scratch guard : RawPtr UInt64)
+    (guardLength : Nat) (heap heap' : RawHeap) (hn : 0 < n)
+    (hC : heap.ValidU64Slice C (2 * n - 1))
+    (hA : heap.ValidU64Slice A n)
+    (hB : heap.ValidU64Slice B n)
+    (hScratch : heap.ValidU64Slice scratch (karScratchNeed n))
+    (hCGuard : U64SlicesDisjoint C (2 * n - 1) guard guardLength)
+    (hScratchGuard : U64SlicesDisjoint scratch (karScratchNeed n)
+      guard guardLength)
+    (hrun : dense_upoly_zp__kar_mul_ir this C A B n scratch heap = .ok heap') :
+    SameU64Prefix heap heap' guard guardLength := by
+  rcases karMul_ok this C A B n scratch heap hn hC hA hB hScratch with
+    ⟨okHeap, hok, _, hframe⟩
+  have heq : okHeap = heap' := Except.ok.inj (hok.symm.trans hrun)
+  subst okHeap
+  exact hframe guard guardLength hCGuard hScratchGuard
 
 theorem classicalMul_refines_slice (this : DenseUPolyZp)
     (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)

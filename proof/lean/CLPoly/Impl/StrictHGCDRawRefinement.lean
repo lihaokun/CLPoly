@@ -10146,4 +10146,36 @@ theorem hgcdRecursiveDispatchBelow_eq_dispatch (this : DenseUPolyZp)
   · rfl
   · exact hagrees
 
+/-- Proof-erased observation of a recursive execution.  Faults are retained
+exactly, and every computational field of a successful result is retained. -/
+def hgcdRecursiveExecValue (run : RawExec HgcdRecursiveResult) :
+    RawExec HgcdRecursiveValue :=
+  run.map HgcdRecursiveResult.value
+
+/-- Equality of proof-erased recursive executions is enough for equality of
+the original executions because `HgcdRecursiveResult.valid` is proof-only. -/
+theorem hgcdRecursiveExec_ext_value
+    (left right : RawExec HgcdRecursiveResult)
+    (hvalue : hgcdRecursiveExecValue left = hgcdRecursiveExecValue right) :
+    left = right := by
+  cases left with
+  | error leftFault =>
+      cases right with
+      | error rightFault =>
+          simp only [hgcdRecursiveExecValue, Except.map] at hvalue
+          exact congrArg Except.error (Except.error.inj hvalue)
+      | ok rightResult =>
+          simp only [hgcdRecursiveExecValue, Except.map] at hvalue
+          contradiction
+  | ok leftResult =>
+      cases right with
+      | error rightFault =>
+          simp only [hgcdRecursiveExecValue, Except.map] at hvalue
+          contradiction
+      | ok rightResult =>
+          simp only [hgcdRecursiveExecValue, Except.map, Except.ok.injEq]
+            at hvalue
+          exact congrArg Except.ok
+            (HgcdRecursiveResult.ext_value leftResult rightResult hvalue)
+
 end CLPoly.Impl.StrictHGCDRawRefinement

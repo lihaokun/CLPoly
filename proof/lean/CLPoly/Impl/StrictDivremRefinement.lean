@@ -3596,6 +3596,7 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
     (hWA : W3.region ≠ A.region) (hWB : W3.region ≠ B.region)
     (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
     (hRW : R.region ≠ W3.region) (hRQ : R.region ≠ Q.region)
+    (hRB : R.region ≠ B.region)
     (hcfg : DensePreinvConfigured this)
     (hprime : Nat.Prime this._p.toNat) :
     ∃ heap' lenQ lenR quotient remainder,
@@ -3606,6 +3607,7 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
       CanonicalU64Prefix heap' R lenR this._p ∧
       heap'.normaliseU64 R lenR = .ok lenR ∧
       RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' B (d + 1) ∧
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < d) ∧
       lenQ ≤ lenA - d ∧ lenR ≤ d := by
@@ -3682,6 +3684,12 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
     ⟨heap2, quotient, beforeValues, quotientValues, hquot, hQ2, hB2,
       hW32, hlayout2, hcanonicalB2, hbudget2, hquotient,
       hbeforeValues, hquotientValues, hquotientPoly⟩
+  rcases quotientLoop_preserves_B this Q B W3 (lenA - d) d lenA invLc
+      heap1 (lenA - d) hQ1 hB1 hW31 (by omega) (by omega) hQB hWB with
+    ⟨heapB2, hquotB, _, _, _, _, hsameB12⟩
+  have hheapB2 : heapB2 = heap2 :=
+    Except.ok.inj (hquotB.symm.trans hquot)
+  subst heapB2
   have hbeforeEq : beforeValues = initialValues :=
     word3SliceRep_eq heap1 W3 lenA beforeValues initialValues
       hbeforeValues hinitialValues
@@ -3710,6 +3718,16 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
     ⟨heapQ, hremQ, _, _, hQ3, _, hsameQ⟩
   have hheapQ : heapQ = heap3 := Except.ok.inj (hremQ.symm.trans hrem)
   subst heapQ
+  rcases remainderLoop_preserves_u64_region_ne this R B W3 d lenA 0
+      (d + 1) heap2 hR2 hW32 hB2 (by omega) (Nat.zero_le _) hRB with
+    ⟨heapB3, hremB, _, _, _, _, hsameB23⟩
+  have hheapB3 : heapB3 = heap3 :=
+    Except.ok.inj (hremB.symm.trans hrem)
+  subst heapB3
+  have hsameB03 : SameU64Prefix heap heap3 B (d + 1) := by
+    intro k value hk hread
+    exact hsameB23 k value hk
+      (hsameB12 k value hk (hsameB k value hk hread))
   have hquotient3 := slicePolyRep_of_same_prefix heap2 heap3 Q (lenA - d)
     this._p.toNat quotient hQ2 hQ3 hsameQ hquotient
   rcases normaliseU64_ok heap3 Q (lenA - d) hQ3 with
@@ -3733,8 +3751,8 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
     exact (hlayout1 ptr length).trans
       ((hlayout2 ptr length).trans (hlayout3 ptr length))
   refine ⟨heap3, lenQ, lenR, quotient, remainder, ?_, hquotientNorm,
-    hremainderNorm, hcanonicalRNorm, hnormRFixed, hlayout, halgebra, hdegree,
-    hlenQ, hlenR⟩
+    hremainderNorm, hcanonicalRNorm, hnormRFixed, hlayout, hsameB03,
+    halgebra, hdegree, hlenQ, hlenR⟩
   simp [dense_upoly_zp__poly_divrem_ir, hlong, hreadLead, hinit, hquot,
     hrem, hnormQ, hnormR, invLc]
 
@@ -3865,6 +3883,7 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
     (hWA : W3.region ≠ A.region) (hWB : W3.region ≠ B.region)
     (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
     (hRW : R.region ≠ W3.region) (hRQ : R.region ≠ Q.region)
+    (hRB : R.region ≠ B.region)
     (hcfg : DensePreinvConfigured this)
     (hprime : Nat.Prime this._p.toNat) :
     ∃ heap' lenQ lenR quotient remainder,
@@ -3875,6 +3894,7 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
       CanonicalU64Prefix heap' R lenR this._p ∧
       heap'.normaliseU64 R lenR = .ok lenR ∧
       RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' B lenB ∧
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < divisor.natDegree) ∧
       lenQ ≤ lenA - (lenB - 1) ∧
@@ -3890,6 +3910,20 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
         W3 heap this._p.toNat dividend (by omega) hshort hA hRfull hRA
         hcanonicalA hnormA hdividend with
         ⟨heap', hrun, hlayout, hremainder, hcanonicalR, hnormR⟩
+      rcases copyU64_refines heap R A lenA hRfull hA hRA with
+        ⟨heapCopy, hcopy, _, _⟩
+      have hrunCopy :
+          dense_upoly_zp__poly_divrem_ir this Q R A lenA B (d + 1) W3 heap =
+            .ok (heapCopy, 0, lenA) := by
+        simp [dense_upoly_zp__poly_divrem_ir, hshort, hcopy]
+      have hresultEq := Except.ok.inj (hrunCopy.symm.trans hrun)
+      have hheapCopy : heapCopy = heap' := congrArg (fun result => result.1)
+        hresultEq
+      subst heapCopy
+      have hsameB : SameU64Prefix heap heap' B (d + 1) := by
+        intro k value hk hread
+        exact copyU64_preserves_read heap heap' R A B lenA k value hRfull
+          hA hread (by intro _ _; exact Or.inl hRB) hcopy
       have hQ' : heap'.ValidU64Slice Q (lenA - d) :=
         (hlayout Q (lenA - d)).mp (by simpa using hQ)
       have hQ0 := heap'.validU64Slice_mono Q (lenA - d) 0 hQ'
@@ -3903,7 +3937,7 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
         (d + 1) this._p.toNat dividend divisor hshort hA hB hdividend
         hdivisor hcanonicalA hcanonicalB hnormA hnormB
       refine ⟨heap', 0, lenA, 0, dividend, hrun, hquotient, hremainder,
-        hcanonicalR, hnormR, hlayout, ?_, hdegree, by omega,
+        hcanonicalR, hnormR, hlayout, hsameB, ?_, hdegree, by omega,
         by simp [Nat.min_eq_left hlenAd], by omega⟩
       simp
     · have hlong : d < lenA := by omega
@@ -3913,10 +3947,10 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
       rcases polyDivrem_long_refines this Q R A B lenA d W3 heap dividend
         divisor hlong hA hB (by simpa using hQ) hRfull hW3 hcanonicalA
         hcanonicalB hdividend hdivisor hnormB (by simpa using hqCapacity)
-        hWA hWB hQB hQW hRW hRQ hcfg hprime with
+        hWA hWB hQB hQW hRW hRQ hRB hcfg hprime with
         ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
-          hremainder, hcanonicalR, hnormR, hlayout, halgebra, hdegree,
-          hlenQ, hlenR⟩
+          hremainder, hcanonicalR, hnormR, hlayout, hsameB, halgebra,
+          hdegree, hlenQ, hlenR⟩
       have hdivisorDegree : divisor.natDegree = d := by
         simpa using normaliseU64_poly_natDegree_eq heap B (d + 1)
           this._p.toNat (d + 1) divisor hB hdivisor hcanonicalB hnormB
@@ -3927,7 +3961,7 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
         · exact Or.inl hzero
         · exact Or.inr (by simpa [hdivisorDegree] using hlt)
       exact ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
-        hremainder, hcanonicalR, hnormR, hlayout, halgebra, hdegree',
+        hremainder, hcanonicalR, hnormR, hlayout, hsameB, halgebra, hdegree',
         by simpa using hlenQ, by simpa [Nat.min_eq_right hdleA] using hlenR,
         by omega⟩
 

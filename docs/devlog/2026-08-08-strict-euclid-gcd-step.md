@@ -14,6 +14,10 @@
   长度、物理容量及 heap layout。
 - 定义 `RawDensePolyRep`，并证明真实除法输出的 `R` 满足下一轮 Euclid
   可直接消费的完整 raw 状态不变量。
+- 逐段证明除法不改写旧 `B`：短分支检查 `memcpy` 目标区域，长分支组合
+  W3 初始化、quotient loop 与 remainder loop 的逐 cell 保持定理。
+- `polyDivrem_next_state` 同时返回轮换后 `A = old B` 与 `B = R` 的完整
+  `RawDensePolyRep`，不再把源除数内容保持留作递归假设。
 
 ## 为什么做
 

@@ -69,6 +69,7 @@ theorem polyDivrem_preserves_normalized_gcd (this : DenseUPolyZp)
     (hWA : W3.region ≠ A.region) (hWB : W3.region ≠ B.region)
     (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
     (hRW : R.region ≠ W3.region) (hRQ : R.region ≠ Q.region)
+    (hRB : R.region ≠ B.region)
     (hcfg : DensePreinvConfigured this) :
     ∃ heap' lenQ lenR quotient remainder,
       dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
@@ -78,6 +79,7 @@ theorem polyDivrem_preserves_normalized_gcd (this : DenseUPolyZp)
       CanonicalU64Prefix heap' R lenR this._p ∧
       heap'.normaliseU64 R lenR = .ok lenR ∧
       RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' B lenB ∧
       dividend = quotient * divisor + remainder ∧
       normalize (EuclideanDomain.gcd dividend divisor) =
         normalize (EuclideanDomain.gcd divisor remainder) ∧
@@ -86,13 +88,13 @@ theorem polyDivrem_preserves_normalized_gcd (this : DenseUPolyZp)
       lenR ≤ Nat.min lenA (lenB - 1) ∧ lenR < lenB := by
   rcases polyDivrem_refines this Q R A B lenA lenB W3 heap dividend divisor
       hlenB hA hB hQ hR hW3 hcanonicalA hcanonicalB hdividend hdivisor
-      hnormA hnormB hqCapacity hRA hWA hWB hQB hQW hRW hRQ hcfg
+      hnormA hnormB hqCapacity hRA hWA hWB hQB hQW hRW hRQ hRB hcfg
       hprime.out with
     ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient, hremainder,
-      hcanonicalR, hnormR, hlayout, hdivision, hdegree, hlenQ, hlenRCapacity,
-      hlenR⟩
+      hcanonicalR, hnormR, hlayout, hsameB, hdivision, hdegree, hlenQ,
+      hlenRCapacity, hlenR⟩
   exact ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
-    hremainder, hcanonicalR, hnormR, hlayout, hdivision,
+    hremainder, hcanonicalR, hnormR, hlayout, hsameB, hdivision,
     normalize_gcd_eq_of_division_identity dividend divisor quotient remainder
       hdivision,
     hdegree, hlenQ, hlenRCapacity, hlenR⟩
@@ -116,11 +118,13 @@ theorem polyDivrem_next_state (this : DenseUPolyZp)
     (hWA : W3.region ≠ A.region) (hWB : W3.region ≠ B.region)
     (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
     (hRW : R.region ≠ W3.region) (hRQ : R.region ≠ Q.region)
+    (hRB : R.region ≠ B.region)
     (hcfg : DensePreinvConfigured this) :
     ∃ heap' lenQ lenR quotient remainder,
       dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
         .ok (heap', lenQ, lenR) ∧
       SlicePolyRep heap' Q lenQ this._p.toNat quotient ∧
+      RawDensePolyRep this heap' B lenB divisor ∧
       RawDensePolyRep this heap' R lenR remainder ∧
       normalize (EuclideanDomain.gcd dividend divisor) =
         normalize (EuclideanDomain.gcd divisor remainder) ∧
@@ -132,17 +136,33 @@ theorem polyDivrem_next_state (this : DenseUPolyZp)
   rcases polyDivrem_preserves_normalized_gcd this Q R A B lenA lenB W3
       heap dividend divisor hlenB hA hB hQ hR hW3 hcanonicalA hcanonicalB
       hdividend hdivisor hnormA hnormB hqCapacity hRA hWA hWB hQB hQW hRW
-      hRQ hcfg with
+      hRQ hRB hcfg with
     ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient, hremainder,
-      hcanonicalR, hnormR, hlayout, _, hgcd, _, hlenQ, hlenRCapacity,
-      hlenR⟩
+      hcanonicalR, hnormR, hlayout, hsameB, _, hgcd, _, hlenQ,
+      hlenRCapacity, hlenR⟩
+  have hBResult : heap'.ValidU64Slice B lenB := (hlayout B lenB).mp hB
+  have hcanonicalBResult : CanonicalU64Prefix heap' B lenB this._p := by
+    intro k value hk hread'
+    rcases heap.readU64_of_valid B lenB k hB hk with ⟨old, hread⟩
+    have hvalue : value = old :=
+      Except.ok.inj (hread'.symm.trans (hsameB k old hk hread))
+    subst value
+    exact hcanonicalB k old hk hread
+  have hdivisorResult := slicePolyRep_of_same_prefix heap heap' B lenB
+    this._p.toNat divisor hB hBResult hsameB hdivisor
+  have hnormBEq := normaliseU64_eq_of_prefix_map heap heap' B B lenB hB
+    hsameB
+  have hnormBResult : heap'.normaliseU64 B lenB = .ok lenB := by
+    rw [← hnormBEq]
+    exact hnormB
   have hRFull : heap'.ValidU64Slice R (Nat.min lenA (lenB - 1)) :=
     (hlayout R (Nat.min lenA (lenB - 1))).mp hR
   have hRResult : heap'.ValidU64Slice R lenR :=
     heap'.validU64Slice_mono R (Nat.min lenA (lenB - 1)) lenR hRFull
       hlenRCapacity
   exact ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
-    ⟨hRResult, hcanonicalR, hremainder, hnormR⟩, hgcd, hlayout, hlenQ,
-    hlenRCapacity, hlenR⟩
+    ⟨hBResult, hcanonicalBResult, hdivisorResult, hnormBResult⟩,
+    ⟨hRResult, hcanonicalR, hremainder, hnormR⟩, hgcd, hlayout,
+    hlenQ, hlenRCapacity, hlenR⟩
 
 end CLPoly.Impl.StrictEuclidRefinement

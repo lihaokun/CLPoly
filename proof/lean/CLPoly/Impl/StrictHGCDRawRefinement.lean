@@ -5821,6 +5821,46 @@ theorem hgcdMatMul_refines (this : DenseUPolyZp)
   exact hgcdMatMulLoop_refines this A B hA hB T scratch C hC 0 heap result
     left right hcfg hp physical hLeft hRight (by intro j hj; omega) hrun
 
+/-- Every descriptor produced by the real four-call `_mat_mul` is bounded by
+the two source product capacities for that entry.  Quantifying over `i`
+simultaneously covers all four physical output descriptors. -/
+theorem hgcdMatProductEntry_length_le (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (heap : RawHeap) (A B C : HgcdMat)
+    (hA : A.Valid) (hB : B.Valid) (hC : C.Valid)
+    (left right : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hLeft : HgcdMatRawDenseRep this heap A left hA)
+    (hRight : HgcdMatRawDenseRep this heap B right hB)
+    (hProduct : HgcdMatRawDenseRep this heap C
+      (hgcdMatProductEntry left right) hC) (i : Fin 4) :
+    hgcdMatLen C hC i ≤
+      max
+        (hgcdMatLen A hA ⟨2 * (i.val / 2), by omega⟩ +
+          hgcdMatLen B hB ⟨i.val % 2, by omega⟩ - 1)
+        (hgcdMatLen A hA ⟨2 * (i.val / 2) + 1, by omega⟩ +
+          hgcdMatLen B hB ⟨2 + i.val % 2, by omega⟩ - 1) := by
+  simpa only [hgcdMatProductEntry] using
+    rawDensePolyRep_sum_products_length_le this heap
+      (hgcdMatPtr A hA ⟨2 * (i.val / 2), by omega⟩)
+      (hgcdMatPtr B hB ⟨i.val % 2, by omega⟩)
+      (hgcdMatPtr A hA ⟨2 * (i.val / 2) + 1, by omega⟩)
+      (hgcdMatPtr B hB ⟨2 + i.val % 2, by omega⟩)
+      (hgcdMatPtr C hC i)
+      (hgcdMatLen A hA ⟨2 * (i.val / 2), by omega⟩)
+      (hgcdMatLen B hB ⟨i.val % 2, by omega⟩)
+      (hgcdMatLen A hA ⟨2 * (i.val / 2) + 1, by omega⟩)
+      (hgcdMatLen B hB ⟨2 + i.val % 2, by omega⟩)
+      (hgcdMatLen C hC i)
+      (left ⟨2 * (i.val / 2), by omega⟩)
+      (right ⟨i.val % 2, by omega⟩)
+      (left ⟨2 * (i.val / 2) + 1, by omega⟩)
+      (right ⟨2 + i.val % 2, by omega⟩)
+      (hLeft ⟨2 * (i.val / 2), by omega⟩)
+      (hRight ⟨i.val % 2, by omega⟩)
+      (hLeft ⟨2 * (i.val / 2) + 1, by omega⟩)
+      (hRight ⟨2 + i.val % 2, by omega⟩)
+      (hProduct i)
+
 /-- L2 effect of one quotient-matrix column update. -/
 noncomputable def hgcdMatQuotientUpdateEntries {p : Nat}
     (entries : Fin 4 → Polynomial (ZMod p))

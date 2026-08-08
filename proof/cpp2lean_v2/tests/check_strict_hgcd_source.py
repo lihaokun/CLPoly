@@ -222,6 +222,7 @@ def main() -> None:
         "hgcdMatMul_result_valid",
         "hgcdMatMulLoop_refines",
         "hgcdMatMul_refines",
+        "hgcdMatProductEntry_length_le",
         "HgcdMatQuotientEntryResult",
         "hgcdMatQuotientEntry",
         "hgcdMatQuotientEntry_result_valid",

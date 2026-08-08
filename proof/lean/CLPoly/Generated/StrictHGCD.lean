@@ -2126,6 +2126,17 @@ theorem hgcdRecursiveLengthInvariant_toResult_proof_irrel
   subst hright
   exact hinvariant
 
+/-- Facts exported by the actual first paired reconstruction.  Besides the
+strict outer decrease used by well-founded recursion, the exact leading-A
+length and operand order are needed by the following generated divrem. -/
+structure HgcdFirstReconstructionInvariant (outerLength : Nat)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult) : Prop where
+  leadingA : reconstructed.lenA = outerLength / 2 + first.lenA
+  positiveA : 0 < reconstructed.lenA
+  ordered : reconstructed.lenB ≤ reconstructed.lenA
+  decreases : reconstructed.lenB < outerLength
+
 /-- Proof-only algorithmic invariant needed between the two recursive call
 sites.  It applies only to a first result carrying the exact recursive length
 invariant, rather than quantifying over arbitrary matrices. -/
@@ -2139,7 +2150,7 @@ def HgcdFirstReconstructionBoundProvider (this : DenseUPolyZp)
       scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
       first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
       first.heap = .ok reconstructed →
-    reconstructed.lenB < lenA
+    HgcdFirstReconstructionInvariant lenA first reconstructed
 
 /-- Strictly decreasing version of the complete recursive body.  Both
 recursive dispatches receive a proof that their source `lenA` is smaller
@@ -2193,6 +2204,11 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
           first.lenA first.lenB m first.matrix first.valid first.sgn first.heap with
       | .error fault => .error fault
       | .ok reconstructed =>
+        have hreconstructedInvariant :
+            HgcdFirstReconstructionInvariant lenA first reconstructed :=
+          reconstructionBound first reconstructed (by
+            simpa [high, hgcdRecursiveHighInput] using hfirstLength)
+            hreconstruct
         if hearlyGuard : reconstructed.lenB < m + 1 then
           match hearly : hgcdRecursiveEarlyReturn M first.matrix hM first.valid
               computeM A B ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB
@@ -2208,9 +2224,7 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
           | .error fault => .error fault
           | .ok middle =>
             have hreconstructedStrict : reconstructed.lenB < lenA :=
-              reconstructionBound first reconstructed (by
-                simpa [high, hgcdRecursiveHighInput] using hfirstLength)
-                hreconstruct
+              hreconstructedInvariant.decreases
             have hreconstructed : reconstructed.lenB ≤ lenA :=
               Nat.le_of_lt hreconstructedStrict
             have hremainder : middle.lenD < reconstructed.lenB :=

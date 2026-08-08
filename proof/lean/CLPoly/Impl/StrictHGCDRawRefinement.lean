@@ -7307,6 +7307,50 @@ theorem hgcdRecursiveFirstReconstruct_order_of_invariant
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
     hleading.1 hrefines.2.2.2.1
 
+/-- Complete proof-erased provider value consumed by
+`hgcdRecursiveBodyBelow`.  Its four fields all come from one successful raw
+paired reconstruction plus the real first-child length invariant. -/
+theorem hgcdRecursiveFirstReconstruct_invariant_of_execution
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (A B T0 a b highA highB scratch : RawPtr UInt64)
+    (lenA lenB : Nat) (first : HgcdRecursiveResult)
+    (result : HgcdRecursiveReconstructPairResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (polyLowA polyLowB polyHighA polyHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hinputOrder : lenB < lenA)
+    (hinvariant : HgcdRecursiveLengthInvariant (lenA - lenA / 2) first)
+    (physical : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
+      a b highA highB scratch (Nat.min lenA (lenA / 2))
+      (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
+      first.matrix first.valid first.sgn first.heap)
+    (hMatrix : HgcdMatRawDenseRep this first.heap first.matrix entries
+      first.valid)
+    (hLowA : RawDensePolyRep this first.heap a
+      (Nat.min lenA (lenA / 2)) polyLowA)
+    (hLowB : RawDensePolyRep this first.heap b
+      (Nat.min lenB (lenA / 2)) polyLowB)
+    (hHighA : RawDensePolyRep this first.heap highA first.lenA polyHighA)
+    (hHighB : RawDensePolyRep this first.heap highB first.lenB polyHighB)
+    (hrun : hgcdRecursiveReconstructPair this A B T0 a b highA highB scratch
+      (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2)) first.lenA
+      first.lenB (lenA / 2) first.matrix first.valid first.sgn first.heap =
+        .ok result) :
+    HgcdFirstReconstructionInvariant lenA first result := by
+  have horder := hgcdRecursiveFirstReconstruct_order_of_invariant this A B
+    T0 a b highA highB scratch lenA lenB first result entries polyLowA
+    polyLowB polyHighA polyHighB hcfg hp hinvariant physical hMatrix hLowA
+    hLowB hHighA hHighB hrun
+  exact {
+    leadingA := horder.1
+    positiveA := horder.2.1
+    ordered := horder.2.2
+    decreases := hgcdRecursiveFirstReconstruct_bound_of_invariant this A B
+      T0 a b highA highB scratch lenA lenB first result entries polyLowA
+      polyLowB polyHighA polyHighB hcfg hp hinputOrder hinvariant physical
+      hMatrix hLowA hLowB hHighA hHighB hrun }
+
 /-- Substituting the exact source split `k = 2*m-lenB2+1` into the exact
 final-A reconstruction length shows that the complete recursive result stays
 strictly above the outer half-length threshold. -/

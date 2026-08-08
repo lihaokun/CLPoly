@@ -65,3 +65,9 @@
 `result.lenA = lenA / 2 + first.lenA`、A 正长度以及
 `result.lenB ≤ result.lenA`。第二次递归调用因此可以直接消费真实描述符次序，
 无需规格侧补充“输入已经排好序”的假设。
+
+良基递归体的 proof-only provider 已相应加强为
+`HgcdFirstReconstructionInvariant`。它一次携带精确 A 长度、A 正长度、真实操作数
+次序和外层严格下降；`hgcdRecursiveBodyBelow` 的可执行分支仍完全相同，只从该
+擦除结构读取下降证明。后续中间 divrem 精化可以直接读取同一个执行事实，而不
+再另设 oracle 式前提。

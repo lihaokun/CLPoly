@@ -88,6 +88,64 @@ theorem slicePolyRep_prefix_exists (heap : RawHeap) (ptr : RawPtr UInt64)
     Except.ok.inj (hreadPrefix.symm.trans hreadFull)
   rw [hcoeffPrefix, hcoeffFull, heq]
 
+theorem slicePolyRep_split_exists (heap : RawHeap) (ptr : RawPtr UInt64)
+    (lowLength highLength p : Nat) (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr (lowLength + highLength))
+    (hrep : SlicePolyRep heap ptr (lowLength + highLength) p poly) :
+    ∃ low high : Polynomial (ZMod p),
+      SlicePolyRep heap ptr lowLength p low ∧
+      SlicePolyRep heap (ptr.add lowLength) highLength p high ∧
+      poly = low + Polynomial.X ^ lowLength * high := by
+  have hvalidLow := heap.validU64Slice_mono ptr (lowLength + highLength)
+    lowLength hvalid (by omega)
+  have hvalidHigh := heap.validU64Slice_add ptr (lowLength + highLength)
+    lowLength highLength hvalid (by omega)
+  rcases slicePolyRep_exists_unique heap ptr lowLength p hvalidLow with
+    ⟨low, hrepLow, _⟩
+  rcases slicePolyRep_exists_unique heap (ptr.add lowLength) highLength p
+      hvalidHigh with ⟨high, hrepHigh, _⟩
+  refine ⟨low, high, hrepLow, hrepHigh, ?_⟩
+  ext degree
+  by_cases hdlow : degree < lowLength
+  · rcases slicePolyRep_coeff heap ptr (lowLength + highLength) p poly hrep
+      degree (by omega) with ⟨fullValue, hfull, hcoeffFull⟩
+    rcases slicePolyRep_coeff heap ptr lowLength p low hrepLow degree hdlow with
+      ⟨lowValue, hlow, hcoeffLow⟩
+    have hvalue : fullValue = lowValue := Except.ok.inj (hfull.symm.trans hlow)
+    rw [Polynomial.coeff_add, Polynomial.coeff_X_pow_mul', if_neg (by omega),
+      hcoeffFull, hcoeffLow, hvalue, add_zero]
+  · by_cases hdfull : degree < lowLength + highLength
+    · let highDegree := degree - lowLength
+      have hdHigh : highDegree < highLength := by
+        dsimp [highDegree]
+        omega
+      have hdegree : lowLength + highDegree = degree := by
+        dsimp [highDegree]
+        omega
+      rcases slicePolyRep_coeff heap ptr (lowLength + highLength) p poly hrep
+        degree hdfull with ⟨fullValue, hfull, hcoeffFull⟩
+      rcases slicePolyRep_coeff heap (ptr.add lowLength) highLength p high
+        hrepHigh highDegree hdHigh with ⟨highValue, hhigh, hcoeffHigh⟩
+      have hhighBase : heap.readU64 ptr degree = .ok highValue := by
+        rw [← hdegree, ← RawHeap.readU64_add]
+        exact hhigh
+      have hvalue : fullValue = highValue :=
+        Except.ok.inj (hfull.symm.trans hhighBase)
+      rw [Polynomial.coeff_add,
+        slicePolyRep_coeff_zero_of_length_le heap ptr lowLength p low hrepLow
+          degree (by omega),
+        Polynomial.coeff_X_pow_mul', if_pos (by omega), hcoeffFull,
+        hcoeffHigh, hvalue, zero_add]
+    · rw [slicePolyRep_coeff_zero_of_length_le heap ptr
+          (lowLength + highLength) p poly hrep degree (by omega),
+        Polynomial.coeff_add,
+        slicePolyRep_coeff_zero_of_length_le heap ptr lowLength p low hrepLow
+          degree (by omega),
+        Polynomial.coeff_X_pow_mul', if_pos (by omega),
+        slicePolyRep_coeff_zero_of_length_le heap (ptr.add lowLength)
+          highLength p high hrepHigh (degree - lowLength) (by omega),
+        zero_add]
+
 /-- Exact number of UInt64 scratch cells reachable by the generated
 Karatsuba recursion.  The three child products share `recScratch`, so the
 recursive contribution is a maximum rather than a sum. -/
@@ -2029,6 +2087,93 @@ noncomputable def karPreparedPoly {p : Nat}
     karHalfSumPoly poly m + Polynomial.monomial m (poly.coeff (m + m))
   else
     karHalfSumPoly poly m
+
+theorem karPreparedPoly_eq_low_add_high {p : Nat}
+    (heap : RawHeap) (ptr : RawPtr UInt64) (m h : Nat)
+    (poly low high : Polynomial (ZMod p))
+    (hshape : h = m ∨ h = m + 1)
+    (hRepPoly : SlicePolyRep heap ptr (m + h) p poly)
+    (hRepLow : SlicePolyRep heap ptr m p low)
+    (hRepHigh : SlicePolyRep heap (ptr.add m) h p high)
+    (hsplit : poly = low + Polynomial.X ^ m * high) :
+    karPreparedPoly poly m h = low + high := by
+  ext degree
+  rcases hshape with heven | hodd
+  · subst h
+    have hnot : ¬m > m := by omega
+    rw [karPreparedPoly, if_neg hnot, coeff_karHalfSumPoly]
+    by_cases hd : degree < m
+    · rw [if_pos hd, Polynomial.coeff_add]
+      have hpolyLow : poly.coeff degree = low.coeff degree := by
+        rw [hsplit, Polynomial.coeff_add, Polynomial.coeff_X_pow_mul',
+          if_neg (by omega), add_zero]
+      have hpolyHigh : poly.coeff (m + degree) = high.coeff degree := by
+        rw [hsplit, Polynomial.coeff_add,
+          slicePolyRep_coeff_zero_of_length_le heap ptr m p low hRepLow
+            (m + degree) (by omega),
+          Polynomial.coeff_X_pow_mul', if_pos (by omega), zero_add]
+        simp
+
+      rw [hpolyLow, hpolyHigh]
+    · rw [if_neg hd, Polynomial.coeff_add,
+        slicePolyRep_coeff_zero_of_length_le heap ptr m p low hRepLow degree
+          (by omega),
+        slicePolyRep_coeff_zero_of_length_le heap (ptr.add m) m p high
+          hRepHigh degree (by omega), zero_add]
+  · subst h
+    have hgt : m + 1 > m := by omega
+    rw [karPreparedPoly, if_pos hgt, Polynomial.coeff_add,
+      Polynomial.coeff_add, coeff_karHalfSumPoly]
+    by_cases hd : degree < m
+    · rw [if_pos hd, Polynomial.coeff_monomial, if_neg (by omega)]
+      have hpolyLow : poly.coeff degree = low.coeff degree := by
+        rw [hsplit, Polynomial.coeff_add, Polynomial.coeff_X_pow_mul',
+          if_neg (by omega), add_zero]
+      have hpolyHigh : poly.coeff (m + degree) = high.coeff degree := by
+        rw [hsplit, Polynomial.coeff_add,
+          slicePolyRep_coeff_zero_of_length_le heap ptr m p low hRepLow
+            (m + degree) (by omega),
+          Polynomial.coeff_X_pow_mul', if_pos (by omega), zero_add]
+        simp
+
+      rw [hpolyLow, hpolyHigh, add_zero]
+    · by_cases hdm : degree = m
+      · subst degree
+        rw [if_neg (by omega), Polynomial.coeff_monomial, if_pos rfl,
+          slicePolyRep_coeff_zero_of_length_le heap ptr m p low hRepLow m
+            (by omega), zero_add]
+        have hpolyHigh : poly.coeff (m + m) = high.coeff m := by
+          rw [hsplit, Polynomial.coeff_add,
+            slicePolyRep_coeff_zero_of_length_le heap ptr m p low hRepLow
+              (m + m) (by omega),
+            Polynomial.coeff_X_pow_mul', if_pos (by omega), zero_add]
+          simp
+        simpa using hpolyHigh
+      · have hdhigh : m + 1 ≤ degree := by omega
+        rw [if_neg hd, Polynomial.coeff_monomial, if_neg (by omega), add_zero,
+          slicePolyRep_coeff_zero_of_length_le heap ptr m p low hRepLow degree
+            (by omega),
+          slicePolyRep_coeff_zero_of_length_le heap (ptr.add m) (m + 1) p high
+            hRepHigh degree hdhigh]
+        simp
+
+theorem karatsuba_polynomial_identity {p : Nat}
+    (left right leftLow leftHigh rightLow rightHigh : Polynomial (ZMod p))
+    (m : Nat)
+    (hleft : left = leftLow + Polynomial.X ^ m * leftHigh)
+    (hright : right = rightLow + Polynomial.X ^ m * rightHigh) :
+    leftLow * rightLow +
+        Polynomial.X ^ m *
+          ((leftLow + leftHigh) * (rightLow + rightHigh) -
+            leftLow * rightLow - leftHigh * rightHigh) +
+        Polynomial.X ^ (2 * m) * (leftHigh * rightHigh) =
+      left * right := by
+  rw [hleft, hright]
+  have hpow : Polynomial.X ^ (2 * m) =
+      (Polynomial.X ^ m : Polynomial (ZMod p)) * Polynomial.X ^ m := by
+    rw [two_mul, pow_add]
+  rw [hpow]
+  ring
 
 theorem karPrepareHalves_refines (this : DenseUPolyZp)
     (A B t1 t2 : RawPtr UInt64) (m h : Nat) (heap heap' : RawHeap)

@@ -152,6 +152,16 @@
 - 将组装逐 cell 结论提升为完整多项式表示：低于 m 的 C prefix 由真实帧保持，
   `[m,m+count)` 逐项加入 P1，slice 外双方系数均为零，最终精确得到
   `basePoly + X^m * crossPoly`；同时证明整个 C 输出区间仍为规范模 p cells。
+- 新增 raw slice 二分桥：从长度 `lowLength+highLength` 的同一表示构造底部
+  prefix 与 `ptr.add lowLength` 尾部的唯一 L2 多项式，并逐系数证明原多项式
+  精确分解为 `low + X^lowLength * high`；尾段系数通过真实 `readU64_add`
+  地址等式关联，未把数组切片作为未证假设。
+- 证明奇偶二分下 `karPreparedPoly` 精确等于 `low+high`。偶数分支覆盖 m 个
+  公共和，奇数分支额外证明源码尾 cell 对应 high 的第 m 项；所有 slice 外
+  系数均由表示长度定理归零。
+- 在 Polynomial 环中闭合 Karatsuba 恒等式：P0、`(low+high)` 乘积减 P0/P2
+  所得交叉项、以及移位 `X^(2m)P2` 的和精确等于原左右输入之积。该恒等式
+  将作为递归 raw 输出组合到最终 C 表示的代数终点。
 
 ## 当前边界
 

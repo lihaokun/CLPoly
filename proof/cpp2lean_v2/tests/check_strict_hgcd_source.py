@@ -74,6 +74,7 @@ def main() -> None:
         "matOne_refines",
         "dense_upoly_zp__mat_row_update_ir",
         "matRowUpdate_zero_exec",
+        "matRowUpdate_nonzero_success_shape",
         "normalize_gcd_eq_of_hgcd_transform",
         "normalize_gcd_eq_of_det_one_transform",
         "normalize_gcd_eq_of_det_neg_one_transform",

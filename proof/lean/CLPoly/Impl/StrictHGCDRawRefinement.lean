@@ -153,4 +153,96 @@ theorem matRowUpdate_zero_exec (this : DenseUPolyZp) (M : HgcdMat)
   refine ⟨result, hrun, rfl, rfl, rfl, rfl, ?_⟩
   simp [result, HgcdMat.Valid, poly', len', hvalid]
 
+/-- Successful execution of the nonzero source branch can only arise from
+the actual `_mul` followed by the actual `_poly_add`; the returned pointer
+state is exactly the three source swaps. -/
+theorem matRowUpdate_nonzero_success_shape (this : DenseUPolyZp)
+    (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : MatRowUpdateResult) (hM : M.Valid)
+    (hQ : lenQ ≠ 0) (hEntry : hgcdMatLen M hM i0 ≠ 0)
+    (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result) :
+    ∃ heap1 heap2 sumLen,
+      Generated.StrictMul.dense_upoly_zp__mul_ir this T
+        (if lenQ ≥ hgcdMatLen M hM i0 then Q else hgcdMatPtr M hM i0)
+        (if lenQ ≥ hgcdMatLen M hM i0 then lenQ else hgcdMatLen M hM i0)
+        (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatPtr M hM i0 else Q)
+        (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatLen M hM i0 else lenQ)
+        scratch heap = .ok heap1 ∧
+      Generated.StrictPolyAddSub.dense_upoly_zp__poly_add_ir this t
+        (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1) T
+        (lenQ + hgcdMatLen M hM i0 - 1) heap1 = .ok (heap2, sumLen) ∧
+      result.heap = heap2 ∧ result.T = T ∧
+      result.lenT = lenQ + hgcdMatLen M hM i0 - 1 ∧
+      result.t = hgcdMatPtr M hM i1 ∧ result.matrix.Valid := by
+  have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
+    simpa [HgcdMat.Valid] using hM
+  let p0 := hgcdMatPtr M hM i0
+  let p1 := hgcdMatPtr M hM i1
+  let l0 := hgcdMatLen M hM i0
+  let l1 := hgcdMatLen M hM i1
+  let left := if lenQ ≥ l0 then Q else p0
+  let leftLen := if lenQ ≥ l0 then lenQ else l0
+  let right := if lenQ ≥ l0 then p0 else Q
+  let rightLen := if lenQ ≥ l0 then l0 else lenQ
+  have hEntry' : M.len[i0.val]'(by omega) ≠ 0 := by
+    simpa [hgcdMatLen] using hEntry
+  cases hmul : Generated.StrictMul.dense_upoly_zp__mul_ir this T left
+      leftLen right rightLen scratch heap with
+  | error fault =>
+      have hmul' : Generated.StrictMul.dense_upoly_zp__mul_ir this T
+          (if lenQ ≥ M.len[i0.val]'(by omega) then Q else M.poly[i0.val]'(by omega))
+          (if lenQ ≥ M.len[i0.val]'(by omega) then lenQ else M.len[i0.val]'(by omega))
+          (if lenQ ≥ M.len[i0.val]'(by omega) then M.poly[i0.val]'(by omega) else Q)
+          (if lenQ ≥ M.len[i0.val]'(by omega) then M.len[i0.val]'(by omega) else lenQ)
+          scratch heap = .error fault := by
+        simpa [left, leftLen, right, rightLen, p0, l0, hgcdMatPtr,
+          hgcdMatLen] using hmul
+      simp [dense_upoly_zp__mat_row_update_ir, hvalid, hQ, hEntry', hmul'] at hrun
+  | ok heap1 =>
+      have hmul' : Generated.StrictMul.dense_upoly_zp__mul_ir this T
+          (if lenQ ≥ M.len[i0.val]'(by omega) then Q else M.poly[i0.val]'(by omega))
+          (if lenQ ≥ M.len[i0.val]'(by omega) then lenQ else M.len[i0.val]'(by omega))
+          (if lenQ ≥ M.len[i0.val]'(by omega) then M.poly[i0.val]'(by omega) else Q)
+          (if lenQ ≥ M.len[i0.val]'(by omega) then M.len[i0.val]'(by omega) else lenQ)
+          scratch heap = .ok heap1 := by
+        simpa [left, leftLen, right, rightLen, p0, l0, hgcdMatPtr,
+          hgcdMatLen] using hmul
+      cases hadd : Generated.StrictPolyAddSub.dense_upoly_zp__poly_add_ir
+          this t p1 l1 T (lenQ + l0 - 1) heap1 with
+      | error fault =>
+          have hadd' : Generated.StrictPolyAddSub.dense_upoly_zp__poly_add_ir
+              this t (M.poly[i1.val]'(by omega)) (M.len[i1.val]'(by omega)) T
+              (lenQ + M.len[i0.val]'(by omega) - 1) heap1 = .error fault := by
+            simpa [p1, l0, l1, hgcdMatPtr, hgcdMatLen] using hadd
+          simp [dense_upoly_zp__mat_row_update_ir, hvalid, hQ, hEntry',
+            hmul', hadd'] at hrun
+      | ok pair =>
+          rcases pair with ⟨heap2, sumLen⟩
+          have hadd' : Generated.StrictPolyAddSub.dense_upoly_zp__poly_add_ir
+              this t (M.poly[i1.val]'(by omega)) (M.len[i1.val]'(by omega)) T
+              (lenQ + M.len[i0.val]'(by omega) - 1) heap1 =
+                .ok (heap2, sumLen) := by
+            simpa [p1, l0, l1, hgcdMatPtr, hgcdMatLen] using hadd
+          have heq : result = MatRowUpdateResult.mk heap2
+              ({
+                poly := (M.poly.set i1.val p0 (by omega)).set i0.val t
+                  (by simp; omega)
+                len := (M.len.set i1.val l0 (by omega)).set i0.val sumLen
+                  (by simp; omega)
+              } : HgcdMat) T (lenQ + l0 - 1) p1 := by
+            have hrun' := hrun
+            simp [dense_upoly_zp__mat_row_update_ir, hvalid, hQ, hEntry',
+              hmul', hadd'] at hrun'
+            simpa [p0, p1, l0, hgcdMatPtr, hgcdMatLen] using hrun'.symm
+          subst result
+          refine ⟨heap1, heap2, sumLen, ?_, ?_, rfl, rfl, ?_, ?_, ?_⟩
+          · simpa [left, leftLen, right, rightLen, p0, l0,
+              hgcdMatPtr, hgcdMatLen] using hmul
+          · simpa [p1, l0, l1, hgcdMatPtr, hgcdMatLen] using hadd
+          · simp [l0, hgcdMatLen]
+          · simp [p1, hgcdMatPtr]
+          · simp [HgcdMat.Valid, hvalid]
+
 end CLPoly.Impl.StrictHGCDRawRefinement

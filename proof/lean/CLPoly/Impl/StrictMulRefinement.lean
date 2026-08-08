@@ -91,10 +91,12 @@ theorem karScratchRanges_pairwise (scratch : RawPtr UInt64)
       U64SlicesDisjoint t2 h sP0 (2 * m - 1) ∧
       U64SlicesDisjoint t2 h sP1 (2 * h - 1) ∧
       U64SlicesDisjoint sP0 (2 * m - 1) sP1 (2 * h - 1) ∧
+      U64SlicesDisjoint t1 h recScratch recLength ∧
+      U64SlicesDisjoint t2 h recScratch recLength ∧
       U64SlicesDisjoint sP0 (2 * m - 1) recScratch recLength ∧
       U64SlicesDisjoint sP1 (2 * h - 1) recScratch recLength := by
   dsimp
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · exact u64SlicesDisjoint_add_of_le scratch 0 h h h (by omega)
   · exact u64SlicesDisjoint_add_of_le scratch 0 h (2 * h)
       (2 * m - 1) (by omega)
@@ -106,6 +108,10 @@ theorem karScratchRanges_pairwise (scratch : RawPtr UInt64)
       (2 * h + (2 * m - 1)) (2 * h - 1) (by omega)
   · exact u64SlicesDisjoint_add_of_le scratch (2 * h) (2 * m - 1)
       (2 * h + (2 * m - 1)) (2 * h - 1) (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch 0 h
+      (2 * h + (2 * m - 1) + (2 * h - 1)) recLength (by omega)
+  · exact u64SlicesDisjoint_add_of_le scratch h h
+      (2 * h + (2 * m - 1) + (2 * h - 1)) recLength (by omega)
   · exact u64SlicesDisjoint_add_of_le scratch (2 * h) (2 * m - 1)
       (2 * h + (2 * m - 1) + (2 * h - 1))
       recLength (by omega)
@@ -129,6 +135,8 @@ theorem karScratchNested_pairwise (scratch : RawPtr UInt64)
       U64SlicesDisjoint t2 h sP0 (2 * m - 1) ∧
       U64SlicesDisjoint t2 h sP1 (2 * h - 1) ∧
       U64SlicesDisjoint sP0 (2 * m - 1) sP1 (2 * h - 1) ∧
+      U64SlicesDisjoint t1 h recScratch recLength ∧
+      U64SlicesDisjoint t2 h recScratch recLength ∧
       U64SlicesDisjoint sP0 (2 * m - 1) recScratch recLength ∧
       U64SlicesDisjoint sP1 (2 * h - 1) recScratch recLength := by
   simpa only [rawPtr_add_add, two_mul, Nat.add_assoc] using

@@ -219,6 +219,9 @@
   中字面出现的嵌套 `ptr.add`。这些合同同时支撑 P0/P1 递归输出与
   共享子 scratch、两次交叉项减法以及 P0→C copy，不依赖 allocation
   region 不等。
+  后续主定理预备时又补齐 t1/recScratch 与 t2/recScratch 两对，
+  使该定理实际覆盖五段的全部成对关系，足以证明 P1 子调用的
+  输入 t1/t2 与其共享子 scratch 不别名。
 - 将真实 `karPrepareHalves` 提升为递归子调用可直接消费的接口：
   除了返回 t1/t2 对 `karPreparedPoly` 的 slice 表示和 canonical 性，还返回
   真实执行的 `SameLayout`，并由每次 t1/t2 write 的地址帧证明 A/B 的

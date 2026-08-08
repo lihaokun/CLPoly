@@ -445,6 +445,32 @@ theorem matRowUpdate_mul_preserves_entry1 (this : DenseUPolyZp)
       (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1) entry1 hlayout hsame
       hEntry1Rep
 
+/-- The generated row addition writes only `t`; therefore the old `i0`
+buffer installed as the new `i1` entry retains its normalized polynomial. -/
+theorem matRowUpdate_add_preserves_entry0 (this : DenseUPolyZp)
+    (t p1 T p0 : RawPtr UInt64) (l1 productLen l0 sumLen : Nat)
+    (heap1 heap2 : RawHeap)
+    (entry0 entry1 product : Polynomial (ZMod this._p.toNat))
+    (hOutput : heap1.ValidU64Slice t (max l1 productLen))
+    (hEntry1 : RawDensePolyRep this heap1 p1 l1 entry1)
+    (hProduct : RawDensePolyRep this heap1 T productLen product)
+    (hEntry0 : RawDensePolyRep this heap1 p0 l0 entry0)
+    (htp0 : t.region ≠ p0.region)
+    (hadd : Generated.StrictPolyAddSub.dense_upoly_zp__poly_add_ir this t
+      p1 l1 T productLen heap1 = .ok (heap2, sumLen)) :
+    RawDensePolyRep this heap2 p0 l0 entry0 := by
+  rcases polyAdd_ok this t p1 l1 T productLen heap1 hOutput hEntry1.1
+      hProduct.1 with ⟨heap', length, hrun, hlayout, _⟩
+  have heq : (heap', length) = (heap2, sumLen) :=
+    Except.ok.inj (hrun.symm.trans hadd)
+  have hheap : heap' = heap2 := congrArg Prod.fst heq
+  subst heap'
+  have hsame := polyAdd_preserves_prefix_region_ne this t p1 l1 T p0
+    productLen l0 heap1 heap2 sumLen hOutput hEntry1.1 hProduct.1 htp0
+    hadd
+  exact rawDensePolyRep_of_same_prefix this heap1 heap2 p0 l0 entry0
+    hlayout hsame hEntry0
+
 /-- Algebraic result of the actual add call exposed by the nonzero row-update
 branch.  The product premise is supplied by strict `_mul`; this theorem then
 binds the generated `_poly_add` result to the descriptor installed in M[i0]. -/

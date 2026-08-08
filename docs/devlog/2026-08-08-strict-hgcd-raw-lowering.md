@@ -33,6 +33,9 @@
 - 同一真实 `_mul` 的写区域 frame 现已证明旧 `i1` 项逐 cell 不变；由此
   重新导出其有效切片、canonical 系数、L2 多项式表示和 normalization，
   不再把“乘法后旧项仍可供 `_poly_add` 使用”留作语义假设。
+- 严格 `_poly_add` 现有完整外部 allocation frame；HGCD 用它证明加法后
+  旧 `i0` 缓冲区仍保持 normalized polynomial 表示，因此 descriptor 交换
+  到新 `i1` 后的内容语义也不再缺失。
 
 ## 下一步
 

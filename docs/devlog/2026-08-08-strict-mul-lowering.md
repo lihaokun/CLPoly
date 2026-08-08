@@ -268,6 +268,13 @@
   `P0 + X^(2m)P2 + X^m(P1-P0-P2)` 的完整 raw 表示，再由输入 split、
   prepared-sum 等式与 Karatsuba 环恒等式改写为 `left*right`；同时返回
   `SameLayout` 和全输出 `CanonicalU64Prefix`。
+- 修正乘法生成边界的覆盖缺口：源码检查虽已锁定 `_mul` AST 哈希，
+  但 `StrictMul.lean` 实际只 lowering 到 `_kar_mul`。现新增真实
+  `dense_upoly_zp__mul_ir`，依次表达 C++ assert、schoolbook 分派，以及
+  Karatsuba 分支中 B→bPad copy、`memset` 零填充循环和 `_kar_mul` 调用。
+- 同步强化 `check_strict_mul_source.py`：现在必须在生成文件中找到
+  `mulZeroPadLoop`/`dense_upoly_zp__mul_ir`，并单独扫描正式 Karatsuba 主定理
+  模块的禁止构造、三次递归调用、全长减法/组装桥和良基终止声明。
 
 ## 当前边界
 

@@ -19,6 +19,8 @@ from check_strict_divrem import stable_ast
 LEAN = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictMul.lean"
 REFINEMENT = (V2_ROOT.parent / "lean" / "CLPoly" / "Impl" /
               "StrictMulRefinement.lean")
+KAR_REFINEMENT = (V2_ROOT.parent / "lean" / "CLPoly" / "Impl" /
+                  "StrictKarMulRefinement.lean")
 
 EXPECTED = {
     "_classical_mul": "0d701d8406109ef552a49a4538ed63c1776f63ae03bf3156e3f0083b76a47f06",
@@ -53,6 +55,7 @@ def main() -> None:
                      "karOddTail",
                      "karPrepareHalves",
                      "dense_upoly_zp__kar_mul_ir", "copyU64",
+                     "mulZeroPadLoop", "dense_upoly_zp__mul_ir",
                      "readU64", "writeU64", "termination_by"):
         if fragment not in source:
             raise SystemExit(f"strict multiplication drift: missing {fragment}")
@@ -115,7 +118,23 @@ def main() -> None:
                      "RawHeap.SameLayout"):
         if fragment not in refinement:
             raise SystemExit(f"strict multiplication refinement drift: missing {fragment}")
-    print("PASS: multiplication source family is pinned and schoolbook raw lowering is strict")
+    kar_refinement = KAR_REFINEMENT.read_text()
+    found = [token for token in forbidden if token in kar_refinement]
+    if found:
+        raise SystemExit(
+            f"strict Karatsuba refinement contains forbidden constructs: {found}"
+        )
+    for fragment in ("karMul_refines_slice", "karMul_refines_slice this sP0",
+                     "karMul_refines_slice this sP1",
+                     "karMul_refines_slice this (C.add (2 * m))",
+                     "karSubLoop_refines_full_of_prefix",
+                     "karAssembleLoop_refines_full",
+                     "karatsuba_polynomial_identity", "termination_by n"):
+        if fragment not in kar_refinement:
+            raise SystemExit(
+                f"strict Karatsuba refinement drift: missing {fragment}"
+            )
+    print("PASS: multiplication source family and strict raw refinement are pinned")
 
 
 if __name__ == "__main__":

@@ -180,4 +180,37 @@ decreasing_by
     have hm : 0 < n / 2 := Nat.div_pos (by omega) (by omega)
     omega
 
+/-- Raw lowering of the `memset` used to zero the suffix of `_mul`'s padded
+second operand. -/
+def mulZeroPadLoop (bPad : RawPtr UInt64) (start count i : Nat)
+    (heap : RawHeap) : RawExec RawHeap :=
+  if h : i < count then
+    match heap.writeU64 bPad (start + i) 0 with
+    | .error fault => .error fault
+    | .ok heap' => mulZeroPadLoop bPad start count (i + 1) heap'
+  else
+    .ok heap
+termination_by count - i
+decreasing_by omega
+
+/-- Raw lowering of `dense_upoly_zp::_mul`, including its assertion,
+schoolbook dispatch, and the copy/zero-pad/Karatsuba branch. -/
+def dense_upoly_zp__mul_ir (this : DenseUPolyZp)
+    (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
+    (scratch : RawPtr UInt64) (heap : RawHeap) : RawExec RawHeap :=
+  if ¬(lenB ≤ lenA ∧ 0 < lenB) then
+    .error .assertionFailure
+  else if lenB < 16 then
+    dense_upoly_zp__classical_mul_ir this C A lenA B lenB heap
+  else
+    let bPad := scratch
+    let karScratch := scratch.add lenA
+    match heap.copyU64 bPad B lenB with
+    | .error fault => .error fault
+    | .ok heap1 =>
+      match mulZeroPadLoop bPad lenB (lenA - lenB) 0 heap1 with
+      | .error fault => .error fault
+      | .ok heap2 =>
+        dense_upoly_zp__kar_mul_ir this C A bPad lenA karScratch heap2
+
 end Generated.StrictMul

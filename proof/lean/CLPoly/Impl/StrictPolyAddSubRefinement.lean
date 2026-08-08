@@ -8,6 +8,21 @@ namespace CLPoly.Impl.StrictPolyAddSubRefinement
 open Generated.StrictPolyAddSub
 open CLPoly.Impl.StrictDivremRefinement
 
+/-- The only pointer relationships supported by the source API: the output
+starts at exactly the input address, or belongs to a different allocation. -/
+def ExactOrDisjoint (out input : RawPtr UInt64) : Prop :=
+  out = input ∨ out.region ≠ input.region
+
+theorem address_ne_of_exactOrDisjoint {out input : RawPtr UInt64}
+    {writeIndex readIndex : Nat} (h : ExactOrDisjoint out input)
+    (hne : writeIndex ≠ readIndex) :
+    out.region ≠ input.region ∨
+      out.limbOffset + writeIndex ≠ input.limbOffset + readIndex := by
+  rcases h with rfl | hregions
+  · right
+    omega
+  · exact Or.inl hregions
+
 theorem nmodAdd_toNat (this : DenseUPolyZp) (a b : UInt64)
     (hp : this._p ≠ 0) (ha : a < this._p) (hb : b < this._p) :
     (dense_upoly_zp_nmod_add_ir this a b).toNat =
@@ -147,6 +162,98 @@ theorem addCommonLoop_ok (this : DenseUPolyZp) (C A B : RawPtr UInt64)
 termination_by limit - i
 decreasing_by omega
 
+/-- The generated add loop writes only `C[i..limit)`.  This is the memory
+fact needed to justify both exact in-place aliases admitted by the C++ API. -/
+theorem addCommonLoop_preserves_outside (this : DenseUPolyZp)
+    (C A B guard : RawPtr UInt64) (limit i readIndex : Nat)
+    (heap heap' : RawHeap) (old : UInt64)
+    (hC : heap.ValidU64Slice C limit)
+    (hA : heap.ValidU64Slice A limit)
+    (hB : heap.ValidU64Slice B limit)
+    (hread : heap.readU64 guard readIndex = .ok old)
+    (houtside : ∀ k, i ≤ k → k < limit →
+      C.region ≠ guard.region ∨
+        C.limbOffset + k ≠ guard.limbOffset + readIndex)
+    (hrun : addCommonLoop this C A B limit i heap = .ok heap') :
+    heap'.readU64 guard readIndex = .ok old := by
+  unfold addCommonLoop at hrun
+  split at hrun
+  next hlt =>
+    rcases heap.readU64_of_valid A limit i hA hlt with ⟨a, ha⟩
+    simp only [ha] at hrun
+    rcases heap.readU64_of_valid B limit i hB hlt with ⟨b, hb⟩
+    simp only [hb] at hrun
+    rcases heap.writeU64_of_valid C limit i
+      (dense_upoly_zp_nmod_add_ir this a b) hC hlt with ⟨heap1, hw⟩
+    simp only [hw] at hrun
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 C guard
+      i readIndex _ old hw hread (houtside i (Nat.le_refl _) hlt)
+    have hlayout := RawHeap.writeU64_sameLayout heap heap1 C i _ hw
+    apply addCommonLoop_preserves_outside this C A B guard limit (i + 1)
+      readIndex heap1 heap' old
+      ((hlayout C limit).mp hC) ((hlayout A limit).mp hA)
+      ((hlayout B limit).mp hB) hread1
+    · intro k hik hkl
+      exact houtside k (by omega) hkl
+    · exact hrun
+  next hnot =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+termination_by limit - i
+decreasing_by omega
+
+theorem addCommonLoop_value (this : DenseUPolyZp)
+    (C A B : RawPtr UInt64) (limit i k : Nat) (heap heap' : RawHeap)
+    (a b : UInt64)
+    (hC : heap.ValidU64Slice C limit)
+    (hA : heap.ValidU64Slice A limit)
+    (hB : heap.ValidU64Slice B limit)
+    (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B)
+    (hik : i ≤ k) (hkl : k < limit)
+    (ha : heap.readU64 A k = .ok a)
+    (hb : heap.readU64 B k = .ok b)
+    (hrun : addCommonLoop this C A B limit i heap = .ok heap') :
+    heap'.readU64 C k =
+      .ok (dense_upoly_zp_nmod_add_ir this a b) := by
+  unfold addCommonLoop at hrun
+  split at hrun
+  next hlt =>
+    rcases heap.readU64_of_valid A limit i hA hlt with ⟨ai, hai⟩
+    simp only [hai] at hrun
+    rcases heap.readU64_of_valid B limit i hB hlt with ⟨bi, hbi⟩
+    simp only [hbi] at hrun
+    rcases heap.writeU64_of_valid C limit i
+      (dense_upoly_zp_nmod_add_ir this ai bi) hC hlt with ⟨heap1, hw⟩
+    simp only [hw] at hrun
+    have hlayout := RawHeap.writeU64_sameLayout heap heap1 C i _ hw
+    by_cases heq : k = i
+    · subst k
+      have haiEq : ai = a := Except.ok.inj (hai.symm.trans ha)
+      have hbiEq : bi = b := Except.ok.inj (hbi.symm.trans hb)
+      subst ai
+      subst bi
+      have hnow := RawHeap.readU64_writeU64_same heap heap1 C i
+        (dense_upoly_zp_nmod_add_ir this a b) hw
+      apply addCommonLoop_preserves_outside this C A B C limit (i + 1)
+        i heap1 heap' (dense_upoly_zp_nmod_add_ir this a b)
+        ((hlayout C limit).mp hC) ((hlayout A limit).mp hA)
+        ((hlayout B limit).mp hB) hnow
+      · intro j hij hjl
+        right
+        omega
+      · exact hrun
+    · have hik' : i + 1 ≤ k := by omega
+      have ha1 := RawHeap.readU64_writeU64_ne heap heap1 C A i k _ a
+        hw ha (address_ne_of_exactOrDisjoint hAliasA (Ne.symm heq))
+      have hb1 := RawHeap.readU64_writeU64_ne heap heap1 C B i k _ b
+        hw hb (address_ne_of_exactOrDisjoint hAliasB (Ne.symm heq))
+      exact addCommonLoop_value this C A B limit (i + 1) k heap1 heap'
+        a b ((hlayout C limit).mp hC) ((hlayout A limit).mp hA)
+        ((hlayout B limit).mp hB) hAliasA hAliasB hik' hkl ha1 hb1 hrun
+  next hnot => omega
+termination_by limit - i
+decreasing_by omega
+
 theorem subCommonLoop_ok (this : DenseUPolyZp) (C A B : RawPtr UInt64)
     (limit i : Nat) (heap : RawHeap)
     (hC : heap.ValidU64Slice C limit)
@@ -177,6 +284,96 @@ theorem subCommonLoop_ok (this : DenseUPolyZp) (C A B : RawPtr UInt64)
 termination_by limit - i
 decreasing_by omega
 
+theorem subCommonLoop_preserves_outside (this : DenseUPolyZp)
+    (C A B guard : RawPtr UInt64) (limit i readIndex : Nat)
+    (heap heap' : RawHeap) (old : UInt64)
+    (hC : heap.ValidU64Slice C limit)
+    (hA : heap.ValidU64Slice A limit)
+    (hB : heap.ValidU64Slice B limit)
+    (hread : heap.readU64 guard readIndex = .ok old)
+    (houtside : ∀ k, i ≤ k → k < limit →
+      C.region ≠ guard.region ∨
+        C.limbOffset + k ≠ guard.limbOffset + readIndex)
+    (hrun : subCommonLoop this C A B limit i heap = .ok heap') :
+    heap'.readU64 guard readIndex = .ok old := by
+  unfold subCommonLoop at hrun
+  split at hrun
+  next hlt =>
+    rcases heap.readU64_of_valid A limit i hA hlt with ⟨a, ha⟩
+    simp only [ha] at hrun
+    rcases heap.readU64_of_valid B limit i hB hlt with ⟨b, hb⟩
+    simp only [hb] at hrun
+    rcases heap.writeU64_of_valid C limit i
+      (dense_upoly_zp_nmod_sub_ir this a b) hC hlt with ⟨heap1, hw⟩
+    simp only [hw] at hrun
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 C guard
+      i readIndex _ old hw hread (houtside i (Nat.le_refl _) hlt)
+    have hlayout := RawHeap.writeU64_sameLayout heap heap1 C i _ hw
+    apply subCommonLoop_preserves_outside this C A B guard limit (i + 1)
+      readIndex heap1 heap' old
+      ((hlayout C limit).mp hC) ((hlayout A limit).mp hA)
+      ((hlayout B limit).mp hB) hread1
+    · intro k hik hkl
+      exact houtside k (by omega) hkl
+    · exact hrun
+  next hnot =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+termination_by limit - i
+decreasing_by omega
+
+theorem subCommonLoop_value (this : DenseUPolyZp)
+    (C A B : RawPtr UInt64) (limit i k : Nat) (heap heap' : RawHeap)
+    (a b : UInt64)
+    (hC : heap.ValidU64Slice C limit)
+    (hA : heap.ValidU64Slice A limit)
+    (hB : heap.ValidU64Slice B limit)
+    (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B)
+    (hik : i ≤ k) (hkl : k < limit)
+    (ha : heap.readU64 A k = .ok a)
+    (hb : heap.readU64 B k = .ok b)
+    (hrun : subCommonLoop this C A B limit i heap = .ok heap') :
+    heap'.readU64 C k =
+      .ok (dense_upoly_zp_nmod_sub_ir this a b) := by
+  unfold subCommonLoop at hrun
+  split at hrun
+  next hlt =>
+    rcases heap.readU64_of_valid A limit i hA hlt with ⟨ai, hai⟩
+    simp only [hai] at hrun
+    rcases heap.readU64_of_valid B limit i hB hlt with ⟨bi, hbi⟩
+    simp only [hbi] at hrun
+    rcases heap.writeU64_of_valid C limit i
+      (dense_upoly_zp_nmod_sub_ir this ai bi) hC hlt with ⟨heap1, hw⟩
+    simp only [hw] at hrun
+    have hlayout := RawHeap.writeU64_sameLayout heap heap1 C i _ hw
+    by_cases heq : k = i
+    · subst k
+      have haiEq : ai = a := Except.ok.inj (hai.symm.trans ha)
+      have hbiEq : bi = b := Except.ok.inj (hbi.symm.trans hb)
+      subst ai
+      subst bi
+      have hnow := RawHeap.readU64_writeU64_same heap heap1 C i
+        (dense_upoly_zp_nmod_sub_ir this a b) hw
+      apply subCommonLoop_preserves_outside this C A B C limit (i + 1)
+        i heap1 heap' (dense_upoly_zp_nmod_sub_ir this a b)
+        ((hlayout C limit).mp hC) ((hlayout A limit).mp hA)
+        ((hlayout B limit).mp hB) hnow
+      · intro j hij hjl
+        right
+        omega
+      · exact hrun
+    · have hik' : i + 1 ≤ k := by omega
+      have ha1 := RawHeap.readU64_writeU64_ne heap heap1 C A i k _ a
+        hw ha (address_ne_of_exactOrDisjoint hAliasA (Ne.symm heq))
+      have hb1 := RawHeap.readU64_writeU64_ne heap heap1 C B i k _ b
+        hw hb (address_ne_of_exactOrDisjoint hAliasB (Ne.symm heq))
+      exact subCommonLoop_value this C A B limit (i + 1) k heap1 heap'
+        a b ((hlayout C limit).mp hC) ((hlayout A limit).mp hA)
+        ((hlayout B limit).mp hB) hAliasA hAliasB hik' hkl ha1 hb1 hrun
+  next hnot => omega
+termination_by limit - i
+decreasing_by omega
+
 theorem subNegTailLoop_ok (this : DenseUPolyZp) (C B : RawPtr UInt64)
     (limit i : Nat) (heap : RawHeap)
     (hC : heap.ValidU64Slice C limit)
@@ -201,6 +398,41 @@ theorem subNegTailLoop_ok (this : DenseUPolyZp) (C B : RawPtr UInt64)
       (hlayout1 ptr length).trans (hlayout2 ptr length)⟩
   next hnot =>
     exact ⟨heap, rfl, fun _ _ => Iff.rfl⟩
+termination_by limit - i
+decreasing_by omega
+
+theorem subNegTailLoop_preserves_outside (this : DenseUPolyZp)
+    (C B guard : RawPtr UInt64) (limit i readIndex : Nat)
+    (heap heap' : RawHeap) (old : UInt64)
+    (hC : heap.ValidU64Slice C limit)
+    (hB : heap.ValidU64Slice B limit)
+    (hread : heap.readU64 guard readIndex = .ok old)
+    (houtside : ∀ k, i ≤ k → k < limit →
+      C.region ≠ guard.region ∨
+        C.limbOffset + k ≠ guard.limbOffset + readIndex)
+    (hrun : subNegTailLoop this C B limit i heap = .ok heap') :
+    heap'.readU64 guard readIndex = .ok old := by
+  unfold subNegTailLoop at hrun
+  split at hrun
+  next hlt =>
+    rcases heap.readU64_of_valid B limit i hB hlt with ⟨b, hb⟩
+    simp only [hb] at hrun
+    let value := if b = 0 then 0 else this._p - b
+    rcases heap.writeU64_of_valid C limit i value hC hlt with ⟨heap1, hw⟩
+    rw [show (if b = 0 then 0 else this._p - b) = value by rfl, hw] at hrun
+    simp only at hrun
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 C guard
+      i readIndex value old hw hread (houtside i (Nat.le_refl _) hlt)
+    have hlayout := RawHeap.writeU64_sameLayout heap heap1 C i value hw
+    apply subNegTailLoop_preserves_outside this C B guard limit (i + 1)
+      readIndex heap1 heap' old
+      ((hlayout C limit).mp hC) ((hlayout B limit).mp hB) hread1
+    · intro k hik hkl
+      exact houtside k (by omega) hkl
+    · exact hrun
+  next hnot =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
 termination_by limit - i
 decreasing_by omega
 

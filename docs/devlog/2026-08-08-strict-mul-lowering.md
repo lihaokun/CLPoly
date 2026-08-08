@@ -139,6 +139,13 @@
   三次递归乘法、两次模减、P0 copy、边界补零和交叉项组装。每次调用都从
   精确 scratch 分区与 SameLayout 传递实际 slice 有效性；基例执行已证明的
   schoolbook。递归只以 n 良基下降到 m/h，没有 fuel 或 L2 回退。
+- 证明 Karatsuba `karSubLoop` 与加减生成层的 `subCommonLoop dst dst sub`
+  在每次 read/read/write 及错误传播上结构相同；该等式只复用 raw 执行结构，
+  不调用带规范化的高层 `_poly_sub`，也不替代 Karatsuba 的实际 heap 执行。
+- 直接在地址级不相交条件下证明 `karSubLoop_value`：原目标 cell 与 sub cell
+  穿过更早 dst 写入保持不变，当前 cell 写入真实 `nmod_sub`，再穿过其余循环
+  保持到最终 heap。由逐 cell 结论闭合完整 `SlicePolyRep (left-right)` 和输出
+  `CanonicalU64Prefix`，可用于同一 scratch allocation 内相邻 P1/P0 分区。
 
 ## 当前边界
 

@@ -847,6 +847,75 @@ theorem karAddHalvesLoop_coeffs (this : DenseUPolyZp)
 termination_by m - i
 decreasing_by omega
 
+theorem karSubLoop_eq_subCommonLoop (this : DenseUPolyZp)
+    (dst sub : RawPtr UInt64) (count i : Nat) (heap : RawHeap) :
+    karSubLoop this dst sub count i heap =
+      subCommonLoop this dst dst sub count i heap := by
+  unfold karSubLoop subCommonLoop
+  split
+  next hi =>
+    rcases hdst : heap.readU64 dst i with fault | a
+    · simp [hdst]
+    · rcases hsub : heap.readU64 sub i with fault | b
+      · simp [hdst, hsub]
+      · rcases hwrite : heap.writeU64 dst i
+          (dense_upoly_zp_nmod_sub_ir this a b) with fault | heap1
+        · simp [hdst, hsub, hwrite]
+        · simp only [hdst, hsub, hwrite]
+          exact karSubLoop_eq_subCommonLoop this dst sub count (i + 1) heap1
+  next hdone => simp [hdone]
+termination_by count - i
+decreasing_by omega
+
+theorem karSubLoop_value (this : DenseUPolyZp)
+    (dst sub : RawPtr UInt64) (count i k : Nat) (heap heap' : RawHeap)
+    (a b : UInt64)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSub : heap.ValidU64Slice sub count)
+    (hDstSub : U64SlicesDisjoint dst count sub count)
+    (hik : i ≤ k) (hkc : k < count)
+    (ha : heap.readU64 dst k = .ok a)
+    (hb : heap.readU64 sub k = .ok b)
+    (hrun : karSubLoop this dst sub count i heap = .ok heap') :
+    heap'.readU64 dst k =
+      .ok (dense_upoly_zp_nmod_sub_ir this a b) := by
+  unfold karSubLoop at hrun
+  split at hrun
+  next hi =>
+    rcases heap.readU64_of_valid dst count i hDst hi with ⟨ai, hai⟩
+    simp only [hai] at hrun
+    rcases heap.readU64_of_valid sub count i hSub hi with ⟨bi, hbi⟩
+    simp only [hbi] at hrun
+    let value := dense_upoly_zp_nmod_sub_ir this ai bi
+    rcases heap.writeU64_of_valid dst count i value hDst hi with ⟨heap1, hw⟩
+    simp only [value, hw] at hrun
+    have hlayout := RawHeap.writeU64_sameLayout heap heap1 dst i value hw
+    by_cases heq : k = i
+    · subst k
+      have haiEq : ai = a := Except.ok.inj (hai.symm.trans ha)
+      have hbiEq : bi = b := Except.ok.inj (hbi.symm.trans hb)
+      subst ai
+      subst bi
+      have hnow := RawHeap.readU64_writeU64_same heap heap1 dst i value hw
+      apply subCommonLoop_preserves_outside this dst dst sub dst count
+        (i + 1) i heap1 heap' value ((hlayout dst count).mp hDst)
+        ((hlayout dst count).mp hDst) ((hlayout sub count).mp hSub) hnow
+      · intro j _ _
+        exact Or.inr (by omega)
+      · rw [← karSubLoop_eq_subCommonLoop]
+        simpa [value] using hrun
+    · have hik' : i + 1 ≤ k := by omega
+      have ha1 := RawHeap.readU64_writeU64_ne heap heap1 dst dst i k value a
+        hw ha (Or.inr (by omega))
+      have hb1 := RawHeap.readU64_writeU64_ne heap heap1 dst sub i k value b
+        hw hb (hDstSub i hi k hkc)
+      exact karSubLoop_value this dst sub count (i + 1) k heap1 heap'
+        a b ((hlayout dst count).mp hDst) ((hlayout sub count).mp hSub)
+        hDstSub hik' hkc ha1 hb1 (by simpa [value] using hrun)
+  next hdone => omega
+termination_by count - i
+decreasing_by omega
+
 theorem karSubLoop_preserves_outside (this : DenseUPolyZp)
     (dst sub guard : RawPtr UInt64) (count i readIndex : Nat)
     (heap heap' : RawHeap) (old : UInt64)
@@ -881,6 +950,72 @@ theorem karSubLoop_preserves_outside (this : DenseUPolyZp)
     simpa [heq] using hread
 termination_by count - i
 decreasing_by omega
+
+theorem karSubLoop_refines_slice (this : DenseUPolyZp)
+    (dst sub : RawPtr UInt64) (count : Nat) (heap heap' : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSub : heap.ValidU64Slice sub count)
+    (hDstSub : U64SlicesDisjoint dst count sub count)
+    (hCanonicalDst : CanonicalU64Prefix heap dst count this._p)
+    (hCanonicalSub : CanonicalU64Prefix heap sub count this._p)
+    (hRepDst : SlicePolyRep heap dst count this._p.toNat left)
+    (hRepSub : SlicePolyRep heap sub count this._p.toNat right)
+    (hrun : karSubLoop this dst sub count 0 heap = .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' dst count this._p.toNat (left - right) ∧
+      CanonicalU64Prefix heap' dst count this._p := by
+  rcases karSubLoop_ok this dst sub count 0 heap hDst hSub with
+    ⟨okHeap, hok, hlayout⟩
+  have heq : okHeap = heap' := Except.ok.inj (hok.symm.trans hrun)
+  subst okHeap
+  have hDst' := (hlayout dst count).mp hDst
+  rcases slicePolyRep_exists_unique heap' dst count this._p.toNat hDst' with
+    ⟨output, hRepOutput, _⟩
+  have houtput : output = left - right := by
+    ext degree
+    by_cases hd : degree < count
+    · rcases slicePolyRep_coeff heap dst count this._p.toNat left hRepDst
+        degree hd with ⟨a, ha, hcoeffA⟩
+      rcases slicePolyRep_coeff heap sub count this._p.toNat right hRepSub
+        degree hd with ⟨b, hb, hcoeffB⟩
+      rcases slicePolyRep_coeff heap' dst count this._p.toNat output
+        hRepOutput degree hd with ⟨c, hc, hcoeffC⟩
+      have hvalue := karSubLoop_value this dst sub count 0 degree heap heap'
+        a b hDst hSub hDstSub (by omega) hd ha hb hrun
+      have hcEq : c = dense_upoly_zp_nmod_sub_ir this a b :=
+        Except.ok.inj (hc.symm.trans hvalue)
+      have haLt : a < this._p := by
+        simpa [UInt64.lt_iff_toNat_lt] using
+          hCanonicalDst degree a hd ha
+      have hbLt : b < this._p := by
+        simpa [UInt64.lt_iff_toNat_lt] using
+          hCanonicalSub degree b hd hb
+      rw [Polynomial.coeff_sub, hcoeffC, hcEq,
+        nmodSub_cast this a b hp haLt hbLt, hcoeffA, hcoeffB]
+    · rw [slicePolyRep_coeff_zero_of_length_le heap' dst count
+          this._p.toNat output hRepOutput degree (by omega),
+        Polynomial.coeff_sub,
+        slicePolyRep_coeff_zero_of_length_le heap dst count
+          this._p.toNat left hRepDst degree (by omega),
+        slicePolyRep_coeff_zero_of_length_le heap sub count
+          this._p.toNat right hRepSub degree (by omega), sub_zero]
+  subst output
+  refine ⟨hlayout, hRepOutput, ?_⟩
+  intro k value hk hread
+  rcases slicePolyRep_coeff heap dst count this._p.toNat left hRepDst k hk with
+    ⟨a, ha, _⟩
+  rcases slicePolyRep_coeff heap sub count this._p.toNat right hRepSub k hk with
+    ⟨b, hb, _⟩
+  have hvalue := karSubLoop_value this dst sub count 0 k heap heap'
+    a b hDst hSub hDstSub (by omega) hk ha hb hrun
+  have heqValue : value = dense_upoly_zp_nmod_sub_ir this a b :=
+    Except.ok.inj (hread.symm.trans hvalue)
+  subst value
+  exact nmodSub_lt this a b hp
+    (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalDst k a hk ha)
+    (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalSub k b hk hb)
 
 theorem karAssembleLoop_preserves_outside (this : DenseUPolyZp)
     (C sP1 guard : RawPtr UInt64) (m count i readIndex : Nat)

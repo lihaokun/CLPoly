@@ -213,3 +213,14 @@ workspace `a3/b3`，随后调用已闭合的 dispatch→finish 链。最后再�
 每层 `Except.ok` 单射证明辅助定理中的 first/reconstructed/middle/second/finished
 正是 body 实际选中的记录，再把 `finished.toResult` 运输到最终返回值。因此当前定理
 覆盖完整生成控制流，而非只证明一组可独立选择的 helper 结果。
+
+## Finish 停止与长度不变量内部化
+
+完整非 early body 定理不再接收 `finished` 的停止界或长度不变量。证明对实际第二
+dispatch 再取得其 raw/length 不变量，并从同一次 finish 执行反演最终成对重构；
+`hgcdRecursiveFinish_operandInvariant` 由真实 low/high 表示推出 stop、positive 和
+above-half，`hgcdRecursiveFinish_lengthInvariant` 则在 `computeM=true` 分支跟随真实
+quotient-update 与四项矩阵乘法推出全部 row/coeff 界。
+
+因此父级 `HgcdRecursiveRawInvariant.lengths` 和 `stopped` 字段现在完全由生成执行与
+已证明算法不变量构造，不再是 body 调用者可任意提供的语义前提。

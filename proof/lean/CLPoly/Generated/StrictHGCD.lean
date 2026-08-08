@@ -362,6 +362,38 @@ def hgcdRecursiveBase (M : HgcdMat) (computeM : Bool)
   else
     continueWith heap M
 
+theorem hgcdRecursiveBase_result_valid (M : HgcdMat) (hM : M.Valid)
+    (computeM : Bool) (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (heap : RawHeap) (result : HgcdRecursiveBaseResult)
+    (hrun : hgcdRecursiveBase M computeM A B a b lenA lenB heap =
+      .ok result) :
+    result.matrix.Valid := by
+  simp only [hgcdRecursiveBase] at hrun
+  split at hrun
+  next hcompute =>
+    split at hrun
+    next fault hone => simp at hrun
+    next heap1 matrix hone =>
+      split at hrun
+      next fault hcopyA => simp at hrun
+      next heap2 hcopyA =>
+        split at hrun
+        next fault hcopyB => simp at hrun
+        next heap3 hcopyB =>
+          have heq := Except.ok.inj hrun
+          subst result
+          exact matOne_result_valid M heap heap1 matrix hone
+  next hcompute =>
+    split at hrun
+    next fault hcopyA => simp at hrun
+    next heap1 hcopyA =>
+      split at hrun
+      next fault hcopyB => simp at hrun
+      next heap2 hcopyB =>
+        have heq := Except.ok.inj hrun
+        subst result
+        exact hM
+
 /-- Exact pointer slices created at the start of the non-base
 `_hgcd_recursive` branch. -/
 structure HgcdRecursiveWorkspace where
@@ -1849,5 +1881,178 @@ theorem hgcdMatStabilize_preserves_descriptors
   next staged hstage =>
     exact hgcdMatRestoreLoop_zero_descriptors original current hOriginal hCurrent
       stage staged.heap result hrun
+
+theorem hgcdRecursiveIterBranch_result_valid (this : DenseUPolyZp)
+    (original : HgcdMat) (hOriginal : original.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage : RawPtr UInt64) (heap : RawHeap)
+    (result : HgcdRecursiveIterBranchResult)
+    (hrun : hgcdRecursiveIterBranch this original hOriginal a3 b3 inputA
+      inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap =
+        .ok result) :
+    result.matrix.Valid := by
+  rcases hgcdRecursiveIterBranch_exec this original hOriginal a3 b3 inputA
+      inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap result hrun with
+    ⟨iter, hIter, stable, _, hstable, _, hmatrix, _, _, _⟩
+  rw [hmatrix]
+  exact (hgcdMatStabilize_preserves_descriptors original iter.matrix
+    hOriginal hIter stage iter.heap stable hstable).1
+
+theorem hgcdRecursiveEarlyReturn_result_valid
+    (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid) (computeM : Bool)
+    (A B a2 b2 : RawPtr UInt64) (lenA2 lenB2 : Nat) (sgn : Int)
+    (heap : RawHeap) (result : HgcdRecursiveEarlyResult)
+    (hrun : hgcdRecursiveEarlyReturn M R hM hR computeM A B a2 b2 lenA2
+      lenB2 sgn heap = .ok result) :
+    result.matrix.Valid := by
+  simp only [hgcdRecursiveEarlyReturn] at hrun
+  split at hrun
+  next fault hcopyA => simp at hrun
+  next heap1 hcopyA =>
+    split at hrun
+    next fault hcopyB => simp at hrun
+    next heap2 hcopyB =>
+      split at hrun
+      next hcompute =>
+        split at hrun
+        next fault hmatrix => simp at hrun
+        next matrixResult hmatrix =>
+          have heq := Except.ok.inj hrun
+          subst result
+          exact hgcdEarlyMatrixLoop_result_valid M R hM hR 0 heap2
+            matrixResult hmatrix
+      next hcompute =>
+        have heq := Except.ok.inj hrun
+        subst result
+        exact hM
+
+/-- Common return record for the complete recursive lowering.  The validity
+field is proof-only; all computational fields are copied byte-for-byte from
+the concrete source branch that produced them. -/
+structure HgcdRecursiveResult where
+  heap : RawHeap
+  matrix : HgcdMat
+  valid : matrix.Valid
+  lenA : Nat
+  lenB : Nat
+  sgn : Int
+
+def HgcdRecursiveBaseResult.toResult (result : HgcdRecursiveBaseResult)
+    (hvalid : result.matrix.Valid) : HgcdRecursiveResult :=
+  ⟨result.heap, result.matrix, hvalid, result.lenA, result.lenB, result.sgn⟩
+
+def HgcdRecursiveIterBranchResult.toResult
+    (result : HgcdRecursiveIterBranchResult)
+    (hvalid : result.matrix.Valid) : HgcdRecursiveResult :=
+  ⟨result.heap, result.matrix, hvalid, result.lenA, result.lenB, result.sgn⟩
+
+def HgcdRecursiveEarlyResult.toResult (result : HgcdRecursiveEarlyResult)
+    (hvalid : result.matrix.Valid) : HgcdRecursiveResult :=
+  ⟨result.heap, result.matrix, hvalid, result.lenA, result.lenB, result.sgn⟩
+
+def HgcdRecursiveFinishResult.toResult (result : HgcdRecursiveFinishResult) :
+    HgcdRecursiveResult :=
+  ⟨result.heap, result.matrix, result.valid, result.lenA, result.lenB,
+    result.sgn⟩
+
+/-- Computational signature of one recursive self-call.  It is used only to
+factor the source's identical cutoff dispatch at the two call sites; the
+well-founded main definition supplies itself as this argument. -/
+abbrev HgcdRecursiveCall :=
+  (M : HgcdMat) → M.Valid → (computeM : Bool) →
+  (A B a b : RawPtr UInt64) → (lenA lenB : Nat) →
+  (W scratch : RawPtr UInt64) → RawHeap → RawExec HgcdRecursiveResult
+
+def hgcdRecursiveCutoff : Nat := 100
+
+theorem hgcdRecursiveWorkspace_R_valid (W : RawPtr UInt64) (lenA : Nat) :
+    (hgcdRecursiveWorkspace W lenA).R.Valid := by
+  simp [hgcdRecursiveWorkspace, HgcdMat.Valid]
+
+theorem hgcdRecursiveWorkspace_S_valid (W : RawPtr UInt64) (lenA : Nat) :
+    (hgcdRecursiveWorkspace W lenA).S.Valid := by
+  simp [hgcdRecursiveWorkspace, HgcdMat.Valid]
+
+/-- Exact lowering of either `len < HGCD_CUTOFF` dispatch.  The small arm
+executes the generated iterator/stabilization/store block; the large arm
+uses the supplied recursive call with `computeM=true`. -/
+def hgcdRecursiveDispatch (this : DenseUPolyZp)
+    (recurse : HgcdRecursiveCall)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap) :
+    RawExec HgcdRecursiveResult :=
+  if lenInputA < hgcdRecursiveCutoff then
+    match hrun : hgcdRecursiveIterBranch this matrix hMatrix a3 b3 inputA
+        inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap with
+    | .error fault => .error fault
+    | .ok result => .ok (result.toResult
+        (hgcdRecursiveIterBranch_result_valid this matrix hMatrix a3 b3
+          inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap
+          result hrun))
+  else
+    recurse matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+      WNext scratch heap
+
+/-- The complete source body of `_hgcd_recursive`, parameterized only at its
+two genuine recursive call sites.  Every other operation is one of the exact
+generated helpers above and occurs in C++ order. -/
+def hgcdRecursiveBody (this : DenseUPolyZp) (recurse : HgcdRecursiveCall)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap) :
+    RawExec HgcdRecursiveResult :=
+  let m := lenA / 2
+  if lenB < m + 1 then
+    match hbase : hgcdRecursiveBase M computeM A B a b lenA lenB heap with
+    | .error fault => .error fault
+    | .ok result => .ok (result.toResult
+        (hgcdRecursiveBase_result_valid M hM computeM A B a b lenA lenB heap
+          result hbase))
+  else
+    let ws := hgcdRecursiveWorkspace W lenA
+    have hR : ws.R.Valid := hgcdRecursiveWorkspace_R_valid W lenA
+    have hS : ws.S.Valid := hgcdRecursiveWorkspace_S_valid W lenA
+    let high := hgcdRecursiveHighInput a b lenA lenB
+    match hgcdRecursiveDispatch this recurse ws.R hR ws.a3 ws.b3 high.a0
+        high.b0 high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2
+        ws.next heap with
+    | .error fault => .error fault
+    | .ok first =>
+      let lenLowA := Nat.min lenA m
+      let lenLowB := Nat.min lenB m
+      match hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3
+          ws.b3 scratch lenLowA lenLowB first.lenA first.lenB m first.matrix
+          first.valid first.sgn first.heap with
+      | .error fault => .error fault
+      | .ok reconstructed =>
+        if reconstructed.lenB < m + 1 then
+          match hearly : hgcdRecursiveEarlyReturn M first.matrix hM first.valid
+              computeM A B ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB
+              first.sgn reconstructed.heap with
+          | .error fault => .error fault
+          | .ok result => .ok (result.toResult
+              (hgcdRecursiveEarlyReturn_result_valid M first.matrix hM
+                first.valid computeM A B ws.a2 ws.b2 reconstructed.lenA
+                reconstructed.lenB first.sgn reconstructed.heap result hearly))
+        else
+          match hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2
+              reconstructed.lenA reconstructed.lenB m ws.W3 reconstructed.heap with
+          | .error fault => .error fault
+          | .ok middle =>
+            match hgcdRecursiveDispatch this recurse ws.S hS ws.a3 ws.b3
+                middle.c0 middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3
+                ws.T0 ws.T1 scratch ws.a2 ws.next middle.heap with
+            | .error fault => .error fault
+            | .ok second =>
+              match hgcdRecursiveFinish this M first.matrix second.matrix hM
+                  first.valid second.valid computeM A B ws.T0 ws.b2 ws.d ws.a3
+                  ws.b3 ws.q (Nat.min reconstructed.lenB middle.k)
+                  (Nat.min middle.lenD middle.k) second.lenA second.lenB middle.k
+                  middle.lenQ ws.a2 scratch first.sgn second.sgn second.heap with
+              | .error fault => .error fault
+              | .ok result => .ok result.toResult
 
 end Generated.StrictHGCD

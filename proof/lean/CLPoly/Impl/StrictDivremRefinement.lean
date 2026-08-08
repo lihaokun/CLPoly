@@ -1271,6 +1271,39 @@ def ExactAddMulRangeRep (before after : RawHeap) (B : RawPtr UInt64)
     ∃ accum', after.readWord3 W3 (offset + k) = .ok accum' ∧
       word3Value accum' = word3Value accum + c.toNat * bj.toNat
 
+/-- Array-observation form of the exact raw range theorem.  Both accumulator
+values are obtained from the corresponding pre/post C++ heaps; the divisor
+coefficient is likewise an actual raw read. -/
+theorem exactAddMulRange_observed (before after : RawHeap)
+    (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (length offset start stop : Nat) (c : UInt64)
+    (beforeValues afterValues : Array Word3)
+    (hrange : ExactAddMulRangeRep before after B W3 offset start stop c)
+    (hB : before.ValidU64Slice B (stop + 1))
+    (hbefore : Word3SliceRep before W3 length beforeValues)
+    (hafter : Word3SliceRep after W3 length afterValues)
+    (k : Nat) (hstart : start ≤ k) (hstop : k ≤ stop)
+    (hindex : offset + k < length) :
+    ∃ bj : UInt64, ∃ accum out : Word3,
+      before.readU64 B k = .ok bj ∧
+      beforeValues[offset + k]? = some accum ∧
+      afterValues[offset + k]? = some out ∧
+      word3Value out = word3Value accum + c.toNat * bj.toNat := by
+  have hbeforeIndex : offset + k < beforeValues.size := by
+    simpa [hbefore.1] using hindex
+  have hafterIndex : offset + k < afterValues.size := by
+    simpa [hafter.1] using hindex
+  rcases before.readU64_of_valid B (stop + 1) k hB (by omega) with
+    ⟨bj, hreadB⟩
+  have hreadBefore := hbefore.2 (offset + k) hbeforeIndex
+  rcases hrange k hstart hstop bj beforeValues[offset + k]
+      hreadB hreadBefore with ⟨out, hreadOut, hout⟩
+  have houtEq : afterValues[offset + k] = out :=
+    Except.ok.inj ((hafter.2 (offset + k) hafterIndex).symm.trans hreadOut)
+  refine ⟨bj, beforeValues[offset + k], out, hreadB, ?_, ?_, hout⟩
+  · simp [hbeforeIndex]
+  · simp [hafterIndex, houtEq]
+
 /-- Algebraic core of the source's leading-coefficient cancellation.  It is
 stated over naturals so the subsequent raw-memory theorem only has to supply
 the exact generated write and canonical UInt64 observations. -/

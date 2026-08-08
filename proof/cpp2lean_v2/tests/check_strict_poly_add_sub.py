@@ -79,6 +79,7 @@ def main() -> None:
                      "polySub_equalLength_refines",
                      "polyAdd_leftLong_refines",
                      "polyAdd_rightLong_refines", "polyAdd_refines",
+                     "polyAdd_preserves_prefix_region_ne",
                      "polySub_leftLong_refines",
                      "polySub_rightLong_refines", "polySub_refines",
                      "RawDensePolyRep",

@@ -1624,6 +1624,47 @@ theorem word3ArrayPoly_addMul (before after : RawHeap)
       simpa [hlow, hhigh] using hstep
     · simpa [hlow, hhigh] using hstep
 
+theorem zmod_cast_uint64_complement (p qi : UInt64)
+    (hqi : qi.toNat ≤ p.toNat) :
+    ((p - qi).toNat : ZMod p.toNat) = -(qi.toNat : ZMod p.toNat) := by
+  rw [UInt64.toNat_sub_of_le _ _ hqi, Nat.cast_sub hqi]
+  have hpzero : (p.toNat : ZMod p.toNat) = 0 := by
+    exact ZMod.natCast_self p.toNat
+  rw [hpzero, zero_sub]
+
+/-- A non-aliasing raw Q write leaves the complete W3 polynomial observation
+unchanged.  Both sides are reconstructed from their respective heaps. -/
+theorem word3ArrayPoly_writeU64_region_ne (before after : RawHeap)
+    (dst : RawPtr UInt64) (W3 : RawPtr Word3)
+    (writeIndex length p : Nat) (written : UInt64)
+    (beforeValues afterValues : Array Word3)
+    (hvalid : before.ValidWord3Slice W3 length)
+    (hbefore : Word3SliceRep before W3 length beforeValues)
+    (hafter : Word3SliceRep after W3 length afterValues)
+    (hregions : dst.region ≠ W3.region)
+    (hwrite : before.writeU64 dst writeIndex written = .ok after) :
+    word3ArrayPoly p afterValues = word3ArrayPoly p beforeValues := by
+  ext degree
+  rw [coeff_word3ArrayPoly, coeff_word3ArrayPoly]
+  by_cases hdegree : degree < length
+  · have hbeforeDegree : degree < beforeValues.size := by
+      simpa [hbefore.1] using hdegree
+    have hafterDegree : degree < afterValues.size := by
+      simpa [hafter.1] using hdegree
+    rw [dif_pos hafterDegree, dif_pos hbeforeDegree]
+    have hreadBefore := hbefore.2 degree hbeforeDegree
+    have hpreserved := RawHeap.readWord3_writeU64_region_ne before after
+      dst W3 writeIndex degree written beforeValues[degree] hwrite
+      hreadBefore hregions
+    have hvalue : afterValues[degree] = beforeValues[degree] :=
+      Except.ok.inj ((hafter.2 degree hafterDegree).symm.trans hpreserved)
+    rw [hvalue]
+  · have hbeforeDegree : ¬ degree < beforeValues.size := by
+      simpa [hbefore.1] using hdegree
+    have hafterDegree : ¬ degree < afterValues.size := by
+      simpa [hafter.1] using hdegree
+    rw [dif_neg hafterDegree, dif_neg hbeforeDegree]
+
 /-- Algebraic core of the source's leading-coefficient cancellation.  It is
 stated over naturals so the subsequent raw-memory theorem only has to supply
 the exact generated write and canonical UInt64 observations. -/

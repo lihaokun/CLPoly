@@ -2125,6 +2125,9 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
       CanonicalU64Prefix result.heap d result.lenD this._p ∧
       result.heap.normaliseU64 d result.lenD = .ok result.lenD ∧
       RawHeap.SameLayout heap result.heap ∧
+      RawDensePolyRep this result.heap q result.lenQ quotient ∧
+      RawDensePolyRep this result.heap d result.lenD remainder ∧
+      RawDensePolyRep this result.heap b2 lenB2 divisor ∧
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < divisor.natDegree) ∧
       result.lenD < lenB2 ∧ result.lenC0 < lenA ∧
@@ -2155,10 +2158,23 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
   have hmiddle : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3
       heap = .ok result := by
     simp [hgcdRecursiveMiddle, hdiv, result]
+  have hQValid : heap1.ValidU64Slice q lenQ :=
+    heap1.validU64Slice_mono q (lenA2 - (lenB2 - 1)) lenQ
+      ((hlayout q _).mp hQ) hlenQ
+  have hDValid : heap1.ValidU64Slice d lenD :=
+    heap1.validU64Slice_mono d (Nat.min lenA2 (lenB2 - 1)) lenD
+      ((hlayout d _).mp hD) hlenD
+  have hQDense : RawDensePolyRep this heap1 q lenQ quotient :=
+    ⟨hQValid, hQCanonical, hQRep, hQNorm⟩
+  have hDDense : RawDensePolyRep this heap1 d lenD remainder :=
+    ⟨hDValid, hDCanonical, hDRep, hDNorm⟩
+  have hBDense := rawDensePolyRep_of_same_prefix this heap heap1 b2 lenB2
+    divisor hlayout hsameB hB
   have hdecrease := hgcdRecursiveMiddle_lenC0_lt this q d a2 b2 lenA2
     lenB2 m lenA W3 heap result hlenA hlenB2Bound hmiddle
   refine ⟨result, quotient, remainder, hmiddle, hQRep, hQCanonical, hQNorm,
-    hDRep, hDCanonical, hDNorm, hlayout, hidentity, hdegree, hlt,
+    hDRep, hDCanonical, hDNorm, hlayout, hQDense, hDDense, hBDense,
+    hidentity, hdegree, hlt,
     hdecrease, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- A readable limb `1` is the normalized raw representation of the constant

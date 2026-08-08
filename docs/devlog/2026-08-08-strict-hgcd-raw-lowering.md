@@ -101,6 +101,11 @@ divisor/remainder，并由真实 divrem 的 `lenD < lenB2` 推出
 `lenD0 < lenC0`。中间精化定理现直接返回第一条下降事实，供最终
 `_hgcd_recursive` 的 `termination_by lenA` 使用。
 
+middle 精化输出已进一步强化为最终 heap 上的三个完整
+`RawDensePolyRep`：商 `q`、余式 `d`，以及被真实 divrem 保持不变的除数
+`b2`。因此第二次调用的 `c0=b2+k`、`d0=d+k` 将从真实 raw 表示切分，
+不需要按商余式 L2 等式重新制造输入缓冲区。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

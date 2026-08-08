@@ -1675,6 +1675,105 @@ theorem hgcdRecursiveLiftHigh_refines (this : DenseUPolyZp)
         (lowPoly + Polynomial.X ^ m * highPoly) hOut2 hWholeSlice hnorm,
       normaliseU64_result_fixed heap2 out fullLength length hOut2 hnorm⟩
 
+/-- Physical capacities needed by the optional four-entry early-return
+matrix copy.  Source lengths come from `R`, exactly as in C++. -/
+structure HgcdEarlyMatrixWorkspace (heap : RawHeap) (M R : HgcdMat)
+    (hM : M.Valid) (hR : R.Valid) : Prop where
+  targetValid : ∀ i : Fin 4, heap.ValidU64Slice
+    (hgcdMatPtrRaw M hM i) (hgcdMatLenRaw R hR i)
+  sourceValid : ∀ i : Fin 4, heap.ValidU64Slice
+    (hgcdMatPtrRaw R hR i) (hgcdMatLenRaw R hR i)
+
+theorem hgcdEarlyMatrixLoop_terminates (M R : HgcdMat)
+    (hM : M.Valid) (hR : R.Valid) (i : Nat) (heap : RawHeap)
+    (hwork : HgcdEarlyMatrixWorkspace heap M R hM hR) :
+    ∃ result, hgcdEarlyMatrixLoop M R hM hR i heap = .ok result ∧
+      RawHeap.SameLayout heap result.heap ∧ result.matrix.Valid := by
+  rw [hgcdEarlyMatrixLoop]
+  split
+  next hi =>
+    let index : Fin 4 := ⟨i, hi⟩
+    rcases copyU64_ok heap (hgcdMatPtrRaw M hM index)
+        (hgcdMatPtrRaw R hR index) (hgcdMatLenRaw R hR index)
+        (hwork.targetValid index) (hwork.sourceValid index) with
+      ⟨heap1, hcopy, hlayout1⟩
+    simp only [hcopy]
+    let nextLen := M.len.set i (hgcdMatLenRaw R hR index)
+      (by rw [hM.2]; exact hi)
+    let next : HgcdMat := { M with len := nextLen }
+    have hNext : next.Valid := by
+      exact ⟨hM.1, by simp [next, nextLen, hM.2]⟩
+    have hwork1 : HgcdEarlyMatrixWorkspace heap1 next R hNext hR := by
+      constructor
+      · intro j
+        apply (hlayout1 (hgcdMatPtrRaw next hNext j)
+          (hgcdMatLenRaw R hR j)).mp
+        simpa [hgcdMatPtrRaw, next] using hwork.targetValid j
+      · intro j
+        exact (hlayout1 (hgcdMatPtrRaw R hR j)
+          (hgcdMatLenRaw R hR j)).mp (hwork.sourceValid j)
+    rcases hgcdEarlyMatrixLoop_terminates next R hNext hR (i + 1)
+        heap1 hwork1 with ⟨result, hrun, hlayout2, hvalid⟩
+    refine ⟨result, ?_, fun ptr count =>
+      (hlayout1 ptr count).trans (hlayout2 ptr count), hvalid⟩
+    simpa [index, next, nextLen, hcopy] using hrun
+  next hi =>
+    exact ⟨HgcdEarlyMatrixResult.mk heap M, rfl, fun _ _ => Iff.rfl, hM⟩
+termination_by 4 - i
+decreasing_by omega
+
+structure HgcdEarlyReturnWorkspace (heap : RawHeap)
+    (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid)
+    (A B a2 b2 : RawPtr UInt64) (lenA2 lenB2 : Nat) : Prop where
+  AValid : heap.ValidU64Slice A lenA2
+  BValid : heap.ValidU64Slice B lenB2
+  a2Valid : heap.ValidU64Slice a2 lenA2
+  b2Valid : heap.ValidU64Slice b2 lenB2
+  matrix : HgcdEarlyMatrixWorkspace heap M R hM hR
+
+/-- Total execution bridge for the generated early-return branch, including
+the optional matrix copy. -/
+theorem hgcdRecursiveEarlyReturn_terminates (M R : HgcdMat)
+    (hM : M.Valid) (hR : R.Valid) (computeM : Bool)
+    (A B a2 b2 : RawPtr UInt64) (lenA2 lenB2 : Nat) (sgn : Int)
+    (heap : RawHeap)
+    (hwork : HgcdEarlyReturnWorkspace heap M R hM hR A B a2 b2
+      lenA2 lenB2) :
+    ∃ result,
+      hgcdRecursiveEarlyReturn M R hM hR computeM A B a2 b2
+        lenA2 lenB2 sgn heap = .ok result ∧
+      RawHeap.SameLayout heap result.heap ∧
+      result.matrix.Valid ∧ result.lenA = lenA2 ∧
+      result.lenB = lenB2 ∧ result.sgn = sgn := by
+  rcases copyU64_ok heap A a2 lenA2 hwork.AValid hwork.a2Valid with
+    ⟨heap1, hcopyA, hlayout1⟩
+  have hB1 := (hlayout1 B lenB2).mp hwork.BValid
+  have hb21 := (hlayout1 b2 lenB2).mp hwork.b2Valid
+  rcases copyU64_ok heap1 B b2 lenB2 hB1 hb21 with
+    ⟨heap2, hcopyB, hlayout2⟩
+  by_cases hcompute : computeM = true
+  · have hmatrix2 : HgcdEarlyMatrixWorkspace heap2 M R hM hR := by
+      constructor <;> intro j
+      · exact (hlayout2 _ _).mp ((hlayout1 _ _).mp
+          (hwork.matrix.targetValid j))
+      · exact (hlayout2 _ _).mp ((hlayout1 _ _).mp
+          (hwork.matrix.sourceValid j))
+    rcases hgcdEarlyMatrixLoop_terminates M R hM hR 0 heap2 hmatrix2 with
+      ⟨matrixResult, hmatrix, hlayout3, hvalid⟩
+    refine ⟨HgcdRecursiveEarlyResult.mk matrixResult.heap
+        matrixResult.matrix lenA2 lenB2 sgn, ?_, ?_, hvalid,
+      rfl, rfl, rfl⟩
+    · simp [hgcdRecursiveEarlyReturn, hcopyA, hcopyB, hcompute, hmatrix]
+    · exact fun ptr count =>
+        (hlayout1 ptr count).trans
+          ((hlayout2 ptr count).trans (hlayout3 ptr count))
+  · have hfalse : computeM = false := by cases computeM <;> simp_all
+    refine ⟨HgcdRecursiveEarlyResult.mk heap2 M lenA2 lenB2 sgn,
+      ?_, ?_, hM, rfl, rfl, rfl⟩
+    · simp [hgcdRecursiveEarlyReturn, hcopyA, hcopyB, hfalse]
+    · exact fun ptr count =>
+        (hlayout1 ptr count).trans (hlayout2 ptr count)
+
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/
 theorem rawDensePolyRep_one_of_read_one (this : DenseUPolyZp)

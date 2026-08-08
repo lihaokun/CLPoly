@@ -609,6 +609,88 @@ def hgcdRecursiveLiftHigh (this : DenseUPolyZp)
       | .error fault => .error fault
       | .ok length => .ok { heap := heap2, length := length }
 
+structure HgcdEarlyMatrixResult where
+  heap : RawHeap
+  matrix : HgcdMat
+
+/-- Exact source-order loop used by the early-return branch to copy `R` into
+the caller's matrix buffers and install the four returned lengths. -/
+def hgcdEarlyMatrixLoop (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid)
+    (i : Nat) (heap : RawHeap) : RawExec HgcdEarlyMatrixResult :=
+  if hi : i < 4 then
+    let index : Fin 4 := ⟨i, hi⟩
+    match heap.copyU64 (hgcdMatPtrRaw M hM index)
+        (hgcdMatPtrRaw R hR index) (hgcdMatLenRaw R hR index) with
+    | .error fault => .error fault
+    | .ok heap1 =>
+      let nextLen := M.len.set i (hgcdMatLenRaw R hR index)
+        (by rw [hM.2]; exact hi)
+      let next : HgcdMat := { M with len := nextLen }
+      have hNext : next.Valid := by
+        exact ⟨hM.1, by simp [next, nextLen, hM.2]⟩
+      hgcdEarlyMatrixLoop next R hNext hR (i + 1) heap1
+  else
+    .ok { heap := heap, matrix := M }
+termination_by 4 - i
+decreasing_by omega
+
+theorem hgcdEarlyMatrixLoop_result_valid (M R : HgcdMat)
+    (hM : M.Valid) (hR : R.Valid) (i : Nat) (heap : RawHeap)
+    (result : HgcdEarlyMatrixResult)
+    (hrun : hgcdEarlyMatrixLoop M R hM hR i heap = .ok result) :
+    result.matrix.Valid := by
+  rw [hgcdEarlyMatrixLoop] at hrun
+  split at hrun
+  next hi =>
+    dsimp only at hrun
+    split at hrun
+    next fault hcopy => simp at hrun
+    next heap1 hcopy =>
+      exact hgcdEarlyMatrixLoop_result_valid _ R _ hR (i + 1)
+        heap1 result hrun
+  next hi =>
+    have heq : result = HgcdEarlyMatrixResult.mk heap M :=
+      (Except.ok.inj hrun).symm
+    subst result
+    exact hM
+termination_by 4 - i
+decreasing_by omega
+
+structure HgcdRecursiveEarlyResult where
+  heap : RawHeap
+  matrix : HgcdMat
+  lenA : Nat
+  lenB : Nat
+  sgn : Int
+
+/-- Exact lowering of the `_hgcd_recursive` early return after both shifted
+reconstructions.  Output copies precede the optional matrix loop. -/
+def hgcdRecursiveEarlyReturn (M R : HgcdMat)
+    (hM : M.Valid) (hR : R.Valid) (computeM : Bool)
+    (A B a2 b2 : RawPtr UInt64) (lenA2 lenB2 : Nat) (sgn : Int)
+    (heap : RawHeap) : RawExec HgcdRecursiveEarlyResult :=
+  match heap.copyU64 A a2 lenA2 with
+  | .error fault => .error fault
+  | .ok heap1 =>
+    match heap1.copyU64 B b2 lenB2 with
+    | .error fault => .error fault
+    | .ok heap2 =>
+      if computeM then
+        match hgcdEarlyMatrixLoop M R hM hR 0 heap2 with
+        | .error fault => .error fault
+        | .ok matrixResult => .ok {
+            heap := matrixResult.heap
+            matrix := matrixResult.matrix
+            lenA := lenA2
+            lenB := lenB2
+            sgn := sgn }
+      else .ok {
+        heap := heap2
+        matrix := M
+        lenA := lenA2
+        lenB := lenB2
+        sgn := sgn }
+
 /-- Every successful suffix of the real restore loop returns a valid matrix
 and leaves the complete length descriptor byte-for-byte unchanged. -/
 theorem hgcdMatRestoreLoop_preserves_valid_len

@@ -51,6 +51,8 @@
 - 加强真实零填充循环的同 allocation 帧：循环从 `start` 起写零，因此逐次证明此前任意前缀保持不变；组合为 `hgcdLiftHigh_zero_refines`，同时保留原 normalized 低段并建立扩大后非规范化 slice 的同一多项式表示。
 - 暴露 `_poly_add` 返回长度确由其完整物理输出前缀上的 normalization scan 得到，并证明可用 scan 丢弃区间的真实零肢将 normalized 短表示重新扩展为完整 slice/canonical 表示。
 - 闭合 `hgcdRecursiveLiftHigh_refines`：拆分原低段为 `lowPart + X^m*existingHigh`，在相邻高段上执行真实原位 `_poly_add` 得到 `existingHigh + high`，保留低前缀后重新 join，并由源码最终 `_poly_normalise` 得到规范化 raw 表示 `low + X^m*high`。
+- 开始提前终止分支 lowering：严格保持 `A ← a2`、`B ← b2` 的 copy 顺序；`compute_M=true` 时再以 `4-i` 良基循环逐项执行 `M.poly[i] ← R.poly[i]` 并写入 `R.len[i]`，false 分支完全跳过矩阵访问。
+- 为可选矩阵循环和完整 early-return 建立纯物理总终止桥：每项只要求目标/来源按 `R` 的实际长度有效，逐次真实 `copyU64` 并传递 SameLayout；最终结果固定 `lenA/lenB/sgn` 且矩阵 descriptor 保持有效。
 
 ## 为什么做
 

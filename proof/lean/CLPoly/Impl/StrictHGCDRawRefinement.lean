@@ -4567,6 +4567,74 @@ structure HgcdRecursiveRawInvariant (this : DenseUPolyZp)
   stopped : result.lenB < inputLength / 2 + 1
   lengths : computeM = true → HgcdRecursiveLengthInvariant inputLength result
 
+/-- Package the exact early-return execution as the common recursive result.
+The algebraic premises are precisely the facts established by the preceding
+recursive call and paired reconstruction; this theorem only transports them
+through the generated output and optional matrix copies. -/
+theorem hgcdRecursiveEarlyReturn_rawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid) (computeM : Bool)
+    (A B a2 b2 : RawPtr UInt64) (lenA2 lenB2 inputLength : Nat)
+    (sgn : Int) (left right finalA finalB : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (heap : RawHeap) (result : HgcdRecursiveEarlyResult)
+    (hwork : HgcdEarlyReturnRefineWorkspace heap M R hM hR
+      A B a2 b2 lenA2 lenB2)
+    (hARep : RawDensePolyRep this heap a2 lenA2 finalA)
+    (hBRep : RawDensePolyRep this heap b2 lenB2 finalB)
+    (hMatrix : HgcdMatRawDenseRep this heap R entries hR)
+    (hTransform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right
+      finalA finalB (entries 0) (entries 1) (entries 2) (entries 3))
+    (hDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgn
+      (entries 0) (entries 1) (entries 2) (entries 3))
+    (hGcd : normalize (EuclideanDomain.gcd left right) =
+      normalize (EuclideanDomain.gcd finalA finalB))
+    (hstop : lenB2 < inputLength / 2 + 1)
+    (hLength : HgcdRecursiveLengthInvariant inputLength
+      ⟨heap, R, hR, lenA2, lenB2, sgn⟩)
+    (hrun : hgcdRecursiveEarlyReturn M R hM hR computeM A B a2 b2
+      lenA2 lenB2 sgn heap = .ok result) :
+    ∃ hResult : result.matrix.Valid,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
+        A B inputLength (result.toResult hResult) := by
+  rcases hgcdRecursiveEarlyReturn_refines this M R hM hR computeM A B a2 b2
+      lenA2 lenB2 sgn finalA finalB entries heap hwork hARep hBRep hMatrix with
+    ⟨actual, hactual, _, hlenA, hlenB, hsgn, hAResult, hBResult,
+      hActualM, hmatrixTrue, _⟩
+  have heq : actual = result := Except.ok.inj (hactual.symm.trans hrun)
+  subst actual
+  refine ⟨hActualM, {
+    aRep := by simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using hAResult
+    bRep := by simpa [HgcdRecursiveEarlyResult.toResult, hlenB] using hBResult
+    matrixSemantics := ?_
+    gcdPreserved := hGcd
+    stopped := by
+      simpa [HgcdRecursiveEarlyResult.toResult, hlenB] using hstop
+    lengths := ?_ }⟩
+  · intro hcompute
+    have hcopied := hmatrixTrue hcompute
+    exact ⟨by
+        simpa [HgcdRecursiveEarlyResult.toResult] using hcopied.2,
+      hTransform,
+      by simpa [HgcdRecursiveEarlyResult.toResult, hsgn] using hDet⟩
+  · intro hcompute
+    have hcopied := hmatrixTrue hcompute
+    constructor
+    · simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
+        hlenA, hcopied.1] using hLength.row0A
+    · simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
+        hlenB, hcopied.1] using hLength.row1B
+    · simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
+        hlenA, hcopied.1] using hLength.row2A
+    · simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
+        hlenB, hcopied.1] using hLength.row3B
+    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA, hlenB] using
+        hLength.order
+    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
+        hLength.inputBound
+    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
+        hLength.positive
+
 /-- Arithmetic closure for one Euclidean matrix step.  The quotient bound
 comes from the real generated divrem call and the four descriptor bounds
 come from the two real row updates. -/

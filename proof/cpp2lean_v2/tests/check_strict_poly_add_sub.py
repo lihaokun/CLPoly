@@ -60,6 +60,8 @@ def main() -> None:
         raise SystemExit(f"strict add/sub refinement contains forbidden constructs: {found}")
     for fragment in ("addCommonLoop_ok", "subCommonLoop_ok",
                      "subNegTailLoop_ok", "polyAdd_ok", "polySub_ok",
+                     "nmodAdd_toNat", "nmodSub_toNat", "nmodAdd_lt",
+                     "nmodSub_lt", "nmodAdd_cast", "nmodSub_cast",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:
             raise SystemExit(f"strict add/sub refinement drift: missing {fragment}")

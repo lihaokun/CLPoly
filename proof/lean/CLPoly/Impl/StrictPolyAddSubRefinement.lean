@@ -8,6 +8,114 @@ namespace CLPoly.Impl.StrictPolyAddSubRefinement
 open Generated.StrictPolyAddSub
 open CLPoly.Impl.StrictDivremRefinement
 
+theorem nmodAdd_toNat (this : DenseUPolyZp) (a b : UInt64)
+    (hp : this._p ≠ 0) (ha : a < this._p) (hb : b < this._p) :
+    (dense_upoly_zp_nmod_add_ir this a b).toNat =
+      (a.toNat + b.toNat) % this._p.toNat := by
+  have hpNat : 0 < this._p.toNat := by
+    exact Nat.pos_of_ne_zero (fun h => hp (UInt64.toNat_inj.mp (by simpa using h)))
+  have haNat : a.toNat < this._p.toNat := by
+    simpa [UInt64.lt_iff_toNat_lt] using ha
+  have hbNat : b.toNat < this._p.toNat := by
+    simpa [UInt64.lt_iff_toNat_lt] using hb
+  have haLe : a ≤ this._p := by
+    simpa [UInt64.le_iff_toNat_le] using Nat.le_of_lt haNat
+  have hsub : (this._p - a).toNat = this._p.toNat - a.toNat :=
+    UInt64.toNat_sub_of_le _ _ haLe
+  simp only [dense_upoly_zp_nmod_add_ir]
+  split
+  next hlt =>
+    have hltNat : b.toNat < this._p.toNat - a.toNat := by
+      simpa [UInt64.lt_iff_toNat_lt, hsub] using hlt
+    have hsumP : a.toNat + b.toNat < this._p.toNat := by omega
+    have hsum64 : a.toNat + b.toNat < UInt64.size :=
+      lt_trans hsumP (UInt64.toNat_lt this._p)
+    rw [UInt64.toNat_add, Nat.mod_eq_of_lt hsum64,
+      Nat.mod_eq_of_lt hsumP]
+  next hnot =>
+    have hleNat : this._p.toNat - a.toNat ≤ b.toNat := by
+      have : ¬b.toNat < (this._p - a).toNat := by
+        simpa [UInt64.lt_iff_toNat_lt] using hnot
+      omega
+    have hleWord : this._p - a ≤ b := by
+      simpa [UInt64.le_iff_toNat_le, hsub] using hleNat
+    rw [UInt64.toNat_sub_of_le _ _ hleWord, hsub]
+    rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
+    omega
+
+theorem nmodSub_toNat (this : DenseUPolyZp) (a b : UInt64)
+    (hp : this._p ≠ 0) (ha : a < this._p) (hb : b < this._p) :
+    (dense_upoly_zp_nmod_sub_ir this a b).toNat =
+      (a.toNat + this._p.toNat - b.toNat) % this._p.toNat := by
+  have hpNat : 0 < this._p.toNat := by
+    exact Nat.pos_of_ne_zero (fun h => hp (UInt64.toNat_inj.mp (by simpa using h)))
+  have haNat : a.toNat < this._p.toNat := by
+    simpa [UInt64.lt_iff_toNat_lt] using ha
+  have hbNat : b.toNat < this._p.toNat := by
+    simpa [UInt64.lt_iff_toNat_lt] using hb
+  simp only [dense_upoly_zp_nmod_sub_ir]
+  split
+  next hle =>
+    have hleNat : b.toNat ≤ a.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using hle
+    rw [UInt64.toNat_sub_of_le _ _ hle]
+    have heq : a.toNat + this._p.toNat - b.toNat =
+        this._p.toNat + (a.toNat - b.toNat) := by omega
+    have hdiffLt : a.toNat - b.toNat < this._p.toNat :=
+      lt_of_le_of_lt (Nat.sub_le _ _) haNat
+    rw [heq, Nat.add_mod, Nat.mod_self, zero_add]
+    simp [Nat.mod_eq_of_lt hdiffLt]
+  next hnot =>
+    have hltNat : a.toNat < b.toNat := by
+      have : ¬b.toNat ≤ a.toNat := by
+        simpa [UInt64.le_iff_toNat_le] using hnot
+      omega
+    have hbLe : b ≤ this._p := by
+      simpa [UInt64.le_iff_toNat_le] using Nat.le_of_lt hbNat
+    have hsub : (this._p - b).toNat = this._p.toNat - b.toNat :=
+      UInt64.toNat_sub_of_le _ _ hbLe
+    have hsumP : (this._p.toNat - b.toNat) + a.toNat < this._p.toNat := by
+      omega
+    have hsum64 : (this._p.toNat - b.toNat) + a.toNat < UInt64.size :=
+      lt_trans hsumP (UInt64.toNat_lt this._p)
+    rw [UInt64.toNat_add, hsub, Nat.mod_eq_of_lt hsum64]
+    have heq : a.toNat + this._p.toNat - b.toNat =
+        (this._p.toNat - b.toNat) + a.toNat := by omega
+    rw [heq, Nat.mod_eq_of_lt hsumP]
+
+theorem nmodAdd_lt (this : DenseUPolyZp) (a b : UInt64)
+    (hp : this._p ≠ 0) (ha : a < this._p) (hb : b < this._p) :
+    dense_upoly_zp_nmod_add_ir this a b < this._p := by
+  rw [UInt64.lt_iff_toNat_lt, nmodAdd_toNat this a b hp ha hb]
+  exact Nat.mod_lt _ (Nat.pos_of_ne_zero
+    (fun h => hp (UInt64.toNat_inj.mp (by simpa using h))))
+
+theorem nmodSub_lt (this : DenseUPolyZp) (a b : UInt64)
+    (hp : this._p ≠ 0) (ha : a < this._p) (hb : b < this._p) :
+    dense_upoly_zp_nmod_sub_ir this a b < this._p := by
+  rw [UInt64.lt_iff_toNat_lt, nmodSub_toNat this a b hp ha hb]
+  exact Nat.mod_lt _ (Nat.pos_of_ne_zero
+    (fun h => hp (UInt64.toNat_inj.mp (by simpa using h))))
+
+theorem nmodAdd_cast (this : DenseUPolyZp) (a b : UInt64)
+    (hp : this._p ≠ 0) (ha : a < this._p) (hb : b < this._p) :
+    ((dense_upoly_zp_nmod_add_ir this a b).toNat : ZMod this._p.toNat) =
+      (a.toNat : ZMod this._p.toNat) + (b.toNat : ZMod this._p.toNat) := by
+  rw [nmodAdd_toNat this a b hp ha hb]
+  rw [ZMod.natCast_mod]
+  push_cast
+  rfl
+
+theorem nmodSub_cast (this : DenseUPolyZp) (a b : UInt64)
+    (hp : this._p ≠ 0) (ha : a < this._p) (hb : b < this._p) :
+    ((dense_upoly_zp_nmod_sub_ir this a b).toNat : ZMod this._p.toNat) =
+      (a.toNat : ZMod this._p.toNat) - (b.toNat : ZMod this._p.toNat) := by
+  rw [nmodSub_toNat this a b hp ha hb]
+  rw [ZMod.natCast_mod, Nat.cast_sub (by
+    have hbNat : b.toNat < this._p.toNat := by
+      simpa [UInt64.lt_iff_toNat_lt] using hb
+    omega), Nat.cast_add, ZMod.natCast_self, add_zero]
+
 theorem addCommonLoop_ok (this : DenseUPolyZp) (C A B : RawPtr UInt64)
     (limit i : Nat) (heap : RawHeap)
     (hC : heap.ValidU64Slice C limit)

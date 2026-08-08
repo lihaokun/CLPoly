@@ -79,6 +79,21 @@ theorem kar_split_children_lt (n : Nat) (hn : 16 ≤ n) :
   · exact Nat.div_lt_self (by omega) (by omega)
   · omega
 
+theorem karScratchNeed_child_le_rec (n : Nat) (hn : 16 ≤ n) :
+    let m := n / 2
+    let h := n - m
+    karScratchNeed m ≤ max (karScratchNeed m) (karScratchNeed h) ∧
+      karScratchNeed h ≤ max (karScratchNeed m) (karScratchNeed h) := by
+  exact ⟨Nat.le_max_left _ _, Nat.le_max_right _ _⟩
+
+theorem karScratchNeed_current_le (n : Nat) (hn : 16 ≤ n) :
+    let m := n / 2
+    let h := n - m
+    2 * h + (2 * m - 1) + (2 * h - 1) ≤ karScratchNeed n := by
+  rw [karScratchNeed_step n (by omega)]
+  dsimp
+  omega
+
 theorem karAddHalvesLoop_ok (this : DenseUPolyZp)
     (A B t1 t2 : RawPtr UInt64) (m i : Nat) (heap : RawHeap)
     (hA : heap.ValidU64Slice A (2 * m))

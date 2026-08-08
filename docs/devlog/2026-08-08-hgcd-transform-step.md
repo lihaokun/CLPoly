@@ -17,6 +17,8 @@
 - 将非终止循环执行分解与 `polyDivrem_next_state` 合并，绑定同一个实际 divrem 返回值的 quotient/remainder raw 表示、gcd 保持、两次 row update 和递归尾调用。
 - 证明 row update 未选中索引的指针/长度描述符保持，并组合两次更新得到 `(0,1)` 与 `(2,3)` 的交叉描述符帧。
 - 定义四条目的 `hgcdStepEntries`，证明其同时保持 HGCD 变换关系和同步更新 signed determinant。
+- 将每次 row update 所需的缓冲区有效性和别名条件封装为纯 L1 的 `MatRowUpdateWorkspace`，不在其中预设任何 L2 运算结果。
+- 证明两个实际生成的 `_mat_row_update` 调用共同得到完整四条目 `hgcdStepEntries` raw 表示；证明过程中显式保持 quotient、未选中矩阵条目及描述符，而不是直接改写为数学矩阵公式。
 
 ## 为什么做
 
@@ -27,6 +29,7 @@ HGCD 循环的 raw 执行只有在每轮都保持“原始对—矩阵—当前�
 - 采用源码实际的右乘方向：每一行 `[u,v]` 更新为 `[v+Q*u,u]`，吸收 `A=Q*B+R`。
 - 零分支中的消失乘积由零长度 `SlicePolyRep` 推出 quotient 或 entry 为零，而不是增加 L2 前提。
 - 行列式翻转单独证明，后续将与状态中的 `sgn := -sgn` 对齐。
+- 两次行更新之间复用同一 quotient；因此把 quotient 的内存帧作为独立定理证明，并要求 addition destination 与 quotient allocation 分离。
 
 ## 涉及文件
 

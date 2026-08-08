@@ -248,6 +248,11 @@
   `lake build` 刷新 olean 后用 `#check/#print` 确认公开类型同时包含乘积
   `SlicePolyRep` 和 `CanonicalU64Prefix`。之前只直接运行源文件检查会使
   临时主定理导入旧 olean；后续集成验证将同时执行 target build。
+- 闭合 Karatsuba 第一次交叉项减法的“短前缀写入→整多项式”桥：
+  先将完整 P1 slice 真实分成低前缀与相邻尾段，在低前缀上应用
+  `karSubLoop_refines_slice`，用循环写地址 frame 保持尾段，然后重新拼接并
+  证明结果精确为整个 `P1 - P0`。canonical 性也分段保持后拼接，
+  没有把只执行 `2*m-1` 次的生成循环误当作全长减法。
 
 ## 当前边界
 

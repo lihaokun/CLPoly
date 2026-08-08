@@ -1642,6 +1642,67 @@ theorem karSubLoop_refines_slice (this : DenseUPolyZp)
     (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalDst k a hk ha)
     (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalSub k b hk hb)
 
+/-- A generated subtraction over only the low prefix refines subtraction on
+the whole destination polynomial, because the untouched adjacent tail is
+framed and rejoined explicitly. -/
+theorem karSubLoop_refines_full_of_prefix (this : DenseUPolyZp)
+    (dst sub : RawPtr UInt64) (count tailLength : Nat)
+    (heap heap' : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hDst : heap.ValidU64Slice dst (count + tailLength))
+    (hSub : heap.ValidU64Slice sub count)
+    (hDstSub : U64SlicesDisjoint dst count sub count)
+    (hCanonicalDst : CanonicalU64Prefix heap dst (count + tailLength)
+      this._p)
+    (hCanonicalSub : CanonicalU64Prefix heap sub count this._p)
+    (hRepDst : SlicePolyRep heap dst (count + tailLength)
+      this._p.toNat left)
+    (hRepSub : SlicePolyRep heap sub count this._p.toNat right)
+    (hrun : karSubLoop this dst sub count 0 heap = .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' dst (count + tailLength) this._p.toNat
+        (left - right) ∧
+      CanonicalU64Prefix heap' dst (count + tailLength) this._p := by
+  rcases splitSlicePolyRepCanonical heap dst count tailLength this._p.toNat
+      left this._p hDst hRepDst hCanonicalDst with
+    ⟨lowPart, tail, hRepPrefix, hRepTail, hCanonicalPrefix,
+      hCanonicalTail, hsplit⟩
+  have hDstPrefix := heap.validU64Slice_mono dst (count + tailLength)
+    count hDst (by omega)
+  rcases karSubLoop_refines_slice this dst sub count heap heap' lowPart right
+      hp hDstPrefix hSub hDstSub hCanonicalPrefix hCanonicalSub hRepPrefix
+      hRepSub hrun with ⟨hlayout, hRepPrefix', hCanonicalPrefix'⟩
+  have hTail := heap.validU64Slice_add dst (count + tailLength) count
+    tailLength hDst (by omega)
+  have hTail' := (hlayout (dst.add count) tailLength).mp hTail
+  have hPrefixTail := u64SlicesDisjoint_adjacent dst count tailLength
+  have hsameTail := karSubLoop_preserves_prefix this dst sub
+    (dst.add count) count tailLength heap heap' hDstPrefix hSub
+    hPrefixTail hrun
+  have hRepTail' := slicePolyRep_of_same_prefix heap heap' (dst.add count)
+    tailLength this._p.toNat tail hTail hTail' hsameTail hRepTail
+  have hCanonicalTail' : CanonicalU64Prefix heap' (dst.add count)
+      tailLength this._p := by
+    intro k value hk hread'
+    rcases heap.readU64_of_valid (dst.add count) tailLength k hTail hk with
+      ⟨old, hread⟩
+    have hvalue : value = old :=
+      Except.ok.inj (hread'.symm.trans (hsameTail k old hk hread))
+    subst value
+    exact hCanonicalTail k old hk hread
+  have hDst' := (hlayout dst (count + tailLength)).mp hDst
+  have hRepJoined := slicePolyRep_join heap' dst count tailLength
+    this._p.toNat (lowPart - right) tail hDst' hRepPrefix' hRepTail'
+  have hresult : lowPart - right + Polynomial.X ^ count * tail =
+      left - right := by
+    rw [hsplit]
+    ring
+  rw [hresult] at hRepJoined
+  exact ⟨hlayout, hRepJoined,
+    canonicalU64Prefix_join heap' dst count tailLength this._p hDst'
+      hCanonicalPrefix' hCanonicalTail'⟩
+
 theorem karAssembleLoop_preserves_outside (this : DenseUPolyZp)
     (C sP1 guard : RawPtr UInt64) (m count i readIndex : Nat)
     (heap heap' : RawHeap) (old : UInt64)

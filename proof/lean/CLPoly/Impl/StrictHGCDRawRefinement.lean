@@ -6046,6 +6046,107 @@ theorem hgcdRecursiveDispatchBelow_rawInvariant (this : DenseUPolyZp)
   next hlarge =>
     exact recursiveRefines result hrun
 
+/-- Frame facts for the exact second cutoff dispatch.  These facts mention
+only source buffers that the second call must not overwrite: the first
+matrix, the middle quotient, and the two low prefixes later consumed by
+`hgcdRecursiveFinish`. -/
+structure HgcdRecursiveSecondDispatchFrame
+    (preserved : HgcdMat) (hPreserved : preserved.Valid)
+    (quotient lowA lowB : RawPtr UInt64)
+    (lenQuotient lenLowA lenLowB : Nat)
+    (before : RawHeap) (result : HgcdRecursiveResult) : Prop where
+  layout : RawHeap.SameLayout before result.heap
+  matrixPrefix : ∀ i : Fin 4, SameU64Prefix before result.heap
+    (hgcdMatPtr preserved hPreserved i) (hgcdMatLen preserved hPreserved i)
+  quotientPrefix : SameU64Prefix before result.heap quotient lenQuotient
+  lowAPrefix : SameU64Prefix before result.heap lowA lenLowA
+  lowBPrefix : SameU64Prefix before result.heap lowB lenLowB
+
+def HgcdRecursiveSecondDispatchFrameProvider
+    (this : DenseUPolyZp) (bound : Nat)
+    (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (preserved : HgcdMat) (hPreserved : preserved.Valid)
+    (quotient lowA lowB : RawPtr UInt64)
+    (lenQuotient lenLowA lenLowB : Nat) : Prop :=
+  ∀ result,
+    hgcdRecursiveDispatchBelow this bound recurse matrix hMatrix a3 b3 inputA
+      inputB lenInputA lenInputB Q W3 T0 T1 scratch stage WNext heap horder
+      hdecrease = .ok result →
+    HgcdRecursiveSecondDispatchFrame preserved hPreserved quotient lowA lowB
+      lenQuotient lenLowA lenLowB heap result
+
+/-- The actual second cutoff dispatch supplies its recursive semantic
+invariant while its physical frame transports every value needed by the
+following finish block to the returned heap. -/
+theorem hgcdRecursiveSecondDispatch_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (preserved : HgcdMat) (hPreserved : preserved.Valid)
+    (quotient lowA lowB : RawPtr UInt64)
+    (lenQuotient lenLowA lenLowB : Nat)
+    (preservedEntries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotientPoly lowAPoly lowBPoly : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (iterWorkspace : HgcdRecursiveDispatchIterWorkspace this matrix hMatrix
+      a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap
+      left right)
+    (recursiveRefines : HgcdRecursiveCallbackRefinesAt this bound recurse
+      matrix hMatrix a3 b3 inputA inputB lenInputA lenInputB WNext scratch
+      heap horder hdecrease left right)
+    (frame : HgcdRecursiveSecondDispatchFrameProvider this bound recurse matrix
+      hMatrix a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage
+      WNext heap horder hdecrease preserved hPreserved quotient lowA lowB
+      lenQuotient lenLowA lenLowB)
+    (hPreservedRep : HgcdMatRawDenseRep this heap preserved preservedEntries
+      hPreserved)
+    (hQuotient : RawDensePolyRep this heap quotient lenQuotient quotientPoly)
+    (hLowA : RawCanonicalPolySlice this heap lowA lenLowA lowAPoly)
+    (hLowB : RawCanonicalPolySlice this heap lowB lenLowB lowBPoly)
+    (result : HgcdRecursiveResult)
+    (hrun : hgcdRecursiveDispatchBelow this bound recurse matrix hMatrix a3
+      b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage WNext
+      heap horder hdecrease = .ok result) :
+    ∃ finalA finalB entries,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries true
+          a3 b3 lenInputA result ∧
+        HgcdMatRawDenseRep this result.heap preserved preservedEntries
+          hPreserved ∧
+        RawDensePolyRep this result.heap quotient lenQuotient quotientPoly ∧
+        RawCanonicalPolySlice this result.heap lowA lenLowA lowAPoly ∧
+        RawCanonicalPolySlice this result.heap lowB lenLowB lowBPoly := by
+  rcases hgcdRecursiveDispatchBelow_rawInvariant this bound recurse matrix
+      hMatrix a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch
+      stage WNext heap left right hcfg hp horder hdecrease iterWorkspace
+      recursiveRefines result hrun with ⟨finalA, finalB, entries, hResult⟩
+  have hFrame := frame result hrun
+  have hMatrixAfter : HgcdMatRawDenseRep this result.heap preserved
+      preservedEntries hPreserved := by
+    intro i
+    exact rawDensePolyRep_of_same_prefix this heap result.heap
+      (hgcdMatPtr preserved hPreserved i) (hgcdMatLen preserved hPreserved i)
+      (preservedEntries i) hFrame.layout (hFrame.matrixPrefix i)
+      (hPreservedRep i)
+  have hQuotientAfter := rawDensePolyRep_of_same_prefix this heap result.heap
+    quotient lenQuotient quotientPoly hFrame.layout hFrame.quotientPrefix
+    hQuotient
+  have hLowAAfter := rawCanonicalPolySlice_of_same_prefix this heap result.heap
+    lowA lenLowA lowAPoly hFrame.layout hFrame.lowAPrefix hLowA
+  have hLowBAfter := rawCanonicalPolySlice_of_same_prefix this heap result.heap
+    lowB lenLowB lowBPoly hFrame.layout hFrame.lowBPrefix hLowB
+  exact ⟨finalA, finalB, entries, hResult, hMatrixAfter, hQuotientAfter,
+    hLowAAfter, hLowBAfter⟩
+
 /-- Physical obligations for the two concrete guarded products and the
 source-selected tail of one `_mat_mul_entry`. -/
 structure HgcdMatMulEntryWorkspace
@@ -8886,6 +8987,99 @@ theorem hgcdRecursiveRawInvariant_of_finish_execution
   · simpa [HgcdRecursiveFinishResult.toResult] using hsgn
   · exact hstop
   · exact hlength
+
+/-- End-to-end semantic closure of the generated non-early tail, beginning
+with the exact second cutoff dispatch and ending with the exact finish
+record.  The middle quotient and low/high decompositions are consumed as
+representations in the dispatch input heap and are transported only by the
+dispatch's physical frame. -/
+theorem hgcdRecursiveSecondDispatchFinish_rawInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (computeM : Bool)
+    (A B T0 lowA lowB highA highB q inputA inputB : RawPtr UInt64)
+    (lenLowA lenLowB shift lenQ : Nat)
+    (Q2 : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T1 scratch stage WNext a2 : RawPtr UInt64)
+    (lenInputA lenInputB inputLength : Nat) (heap : RawHeap)
+    (second : HgcdRecursiveResult) (result : HgcdRecursiveFinishResult)
+    (outerA outerB left right currentA currentB remainder quotient
+      lowAPoly lowBPoly :
+      Polynomial (ZMod this._p.toNat))
+    (firstEntries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (sgnR : Int)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (iterWorkspace : HgcdRecursiveDispatchIterWorkspace this S hS highA highB
+      inputA inputB lenInputA lenInputB Q2 W3 T0 T1 scratch stage heap left
+      right)
+    (recursiveRefines : HgcdRecursiveCallbackRefinesAt this bound recurse S hS
+      highA highB inputA inputB lenInputA lenInputB WNext scratch heap horder
+      hdecrease left right)
+    (frame : HgcdRecursiveSecondDispatchFrameProvider this bound recurse S hS
+      highA highB inputA inputB lenInputA lenInputB Q2 W3 T0 T1 scratch stage
+      WNext heap horder hdecrease R hR q lowA lowB lenQ lenLowA lenLowB)
+    (hRRep : HgcdMatRawDenseRep this heap R firstEntries hR)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hLowA : RawCanonicalPolySlice this heap lowA lenLowA lowAPoly)
+    (hLowB : RawCanonicalPolySlice this heap lowB lenLowB lowBPoly)
+    (hFullA : currentB = lowAPoly + Polynomial.X ^ shift * left)
+    (hFullB : remainder = lowBPoly + Polynomial.X ^ shift * right)
+    (hFirstTransform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      outerA outerB currentA currentB (firstEntries 0) (firstEntries 1)
+      (firstEntries 2) (firstEntries 3))
+    (hFirstDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgnR
+      (firstEntries 0) (firstEntries 1) (firstEntries 2) (firstEntries 3))
+    (hDivision : currentA = quotient * currentB + remainder)
+    (finishWorkspace : HgcdRecursiveFinishWorkspaceProvider this M R
+      second.matrix hM hR second.valid A B T0 lowA lowB highA highB q
+      lenLowA lenLowB second.lenA second.lenB shift lenQ a2 scratch second.sgn
+      second.heap)
+    (hsecond : hgcdRecursiveDispatchBelow this bound recurse S hS highA highB
+      inputA inputB lenInputA lenInputB Q2 W3 T0 T1 scratch stage WNext heap
+      horder hdecrease = .ok second)
+    (hfinish : hgcdRecursiveFinish this M R second.matrix hM hR second.valid
+      computeM A B T0 lowA lowB highA highB q lenLowA lenLowB second.lenA
+      second.lenB shift lenQ a2 scratch sgnR second.sgn second.heap =
+        .ok result)
+    (hstop : result.lenB < inputLength / 2 + 1)
+    (hlength : computeM = true →
+      HgcdRecursiveLengthInvariant inputLength result.toResult) :
+    ∃ finalA finalB combinedEntries,
+      HgcdRecursiveRawInvariant this outerA outerB finalA finalB
+        combinedEntries computeM A B inputLength result.toResult := by
+  rcases hgcdRecursiveSecondDispatch_refines this bound recurse S hS highA
+      highB inputA inputB lenInputA lenInputB Q2 W3 T0 T1 scratch stage WNext
+      heap left right R hR q lowA lowB lenQ lenLowA lenLowB firstEntries
+      quotient lowAPoly lowBPoly hcfg hp horder hdecrease iterWorkspace
+      recursiveRefines frame hRRep hQ hLowA hLowB second hsecond with
+    ⟨outputHighA, outputHighB, secondEntries, hSecond, hRAfter, hQAfter,
+      hLowAAfter, hLowBAfter⟩
+  have hFinish := hgcdRecursiveFinish_preserves_input this M R second.matrix
+    hM hR second.valid computeM A B T0 lowA lowB highA highB q lenLowA
+    lenLowB second.lenA second.lenB shift lenQ lenInputA a2 scratch sgnR
+    second.sgn second.heap result firstEntries secondEntries quotient currentB
+    remainder lowAPoly lowBPoly left right outputHighA outputHighB second hcfg
+    hp finishWorkspace hRAfter (hSecond.matrixSemantics rfl).1 hQAfter
+    hLowAAfter hLowBAfter hSecond rfl rfl (HEq.rfl) rfl rfl rfl hFullA
+    hFullB hfinish
+  let finalA := hgcdReconstructedLowA secondEntries lowAPoly lowBPoly
+      second.sgn + Polynomial.X ^ shift * outputHighA
+  let finalB := hgcdReconstructedLowB secondEntries lowAPoly lowBPoly
+      second.sgn + Polynomial.X ^ shift * outputHighB
+  let combinedEntries := hgcdMatProductEntry firstEntries
+    (hgcdMatApplyQuotientEntries secondEntries quotient)
+  have hInvariant := hgcdRecursiveRawInvariant_of_finish_execution this
+    outerA outerB currentA currentB remainder quotient finalA finalB
+    firstEntries secondEntries sgnR second.sgn computeM A B inputLength result
+    (by simpa [finalA] using hFinish.1)
+    (by simpa [finalB] using hFinish.2.1)
+    hFinish.2.2.2.2.2 hFirstTransform hFirstDet hDivision
+    (by simpa [finalA, finalB] using hFinish.2.2.1)
+    hFinish.2.2.2.1 hFinish.2.2.2.2.1 hstop hlength
+  exact ⟨finalA, finalB, combinedEntries, by
+    simpa [combinedEntries] using hInvariant⟩
 
 set_option maxHeartbeats 1200000 in
 /-- Complete length invariant of the real matrix-producing non-early tail.

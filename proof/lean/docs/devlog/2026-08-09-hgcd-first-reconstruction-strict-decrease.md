@@ -184,3 +184,18 @@ normalise 事实。`hgcdRecursiveReconstructPair_preserves_input` 与
 矩阵乘积。`hgcdRecursiveRawInvariant_of_finish_execution` 随后把这些具体字段装配为
 共同递归不变量，为展开完整非 early body 只留下 middle/第二 dispatch 的物理
 frame 接线。
+
+## 第二 dispatch 到 finish 的实际控制流闭合
+
+新增 `HgcdRecursiveSecondDispatchFrameProvider`，只描述第二次 cutoff dispatch
+不得覆写的真实源缓冲：第一矩阵、middle quotient，以及 finish 将读取的两个低位
+前缀。`hgcdRecursiveSecondDispatch_refines` 对同一个成功执行同时调用 iterator/良基
+递归语义桥并运输这些前缀，因此第二子结果、矩阵语义和 finish 操作数来自同一返回
+堆，而不是分别选择的状态。
+
+`hgcdRecursiveSecondDispatchFinish_rawInvariant` 现将实际第二 dispatch 直接接到实际
+`hgcdRecursiveFinish`。它严格区分第二调用的输入 `c0/d0` 与输出 `a3/b3`，使用
+middle 的 `low + X^k * high` 等式提升第二 transform，并与第一次 transform、真实
+divrem 等式及生成矩阵乘积组合成父级 raw 不变量。至此 middle 后半段的语义链已经
+闭合；下一步是在完整 `hgcdRecursiveBodyBelow` 展开中从 middle 执行直接构造这些
+表示和 frame 实例。

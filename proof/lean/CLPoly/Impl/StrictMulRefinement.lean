@@ -1059,6 +1059,91 @@ theorem canonicalU64Prefix_of_classicalCoeffPrefix
   subst value
   exact hstoredLt
 
+noncomputable def karHalfSumPoly {p : Nat}
+    (poly : Polynomial (ZMod p)) (m : Nat) : Polynomial (ZMod p) :=
+  ∑ i : Fin m,
+    Polynomial.monomial i.val (poly.coeff i.val + poly.coeff (m + i.val))
+
+theorem coeff_karHalfSumPoly {p : Nat}
+    (poly : Polynomial (ZMod p)) (m degree : Nat) :
+    (karHalfSumPoly poly m).coeff degree =
+      if degree < m then poly.coeff degree + poly.coeff (m + degree) else 0 := by
+  classical
+  unfold karHalfSumPoly
+  rw [Polynomial.finset_sum_coeff]
+  by_cases hdegree : degree < m
+  · rw [if_pos hdegree, Finset.sum_eq_single ⟨degree, hdegree⟩]
+    · simp
+    · intro index _ hne
+      have hval : index.val ≠ degree := by
+        intro heq
+        apply hne
+        exact Fin.ext heq
+      simp [Polynomial.coeff_monomial, hval]
+    · simp
+  · rw [if_neg hdegree]
+    apply Finset.sum_eq_zero
+    intro index _
+    have hval : index.val ≠ degree := by
+      intro heq
+      apply hdegree
+      simpa [heq] using index.isLt
+    simp [Polynomial.coeff_monomial, hval]
+
+theorem karAddHalvesLoop_refines_slices (this : DenseUPolyZp)
+    (A B t1 t2 : RawPtr UInt64) (m : Nat) (heap heap' : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hp : 1 < this._p.toNat)
+    (hA : heap.ValidU64Slice A (2 * m))
+    (hB : heap.ValidU64Slice B (2 * m))
+    (hT1 : heap.ValidU64Slice t1 m)
+    (hT2 : heap.ValidU64Slice t2 m)
+    (hT1T2 : t1.region ≠ t2.region)
+    (hT1A : t1.region ≠ A.region) (hT1B : t1.region ≠ B.region)
+    (hT2A : t2.region ≠ A.region) (hT2B : t2.region ≠ B.region)
+    (hCanonicalA : CanonicalU64Prefix heap A (2 * m) this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B (2 * m) this._p)
+    (hRepA : SlicePolyRep heap A (2 * m) this._p.toNat left)
+    (hRepB : SlicePolyRep heap B (2 * m) this._p.toNat right)
+    (hrun : karAddHalvesLoop this A B t1 t2 m 0 heap = .ok heap') :
+    SlicePolyRep heap' t1 m this._p.toNat (karHalfSumPoly left m) ∧
+      SlicePolyRep heap' t2 m this._p.toNat (karHalfSumPoly right m) ∧
+      CanonicalU64Prefix heap' t1 m this._p ∧
+      CanonicalU64Prefix heap' t2 m this._p := by
+  have hvalues := karAddHalvesLoop_coeffs this A B t1 t2 m 0 heap heap'
+    left right hp hA hB hT1 hT2 hT1T2 hT1A hT1B hT2A hT2B
+    hCanonicalA hCanonicalB hRepA hRepB hrun
+  rcases karAddHalvesLoop_ok this A B t1 t2 m 0 heap hA hB hT1 hT2 with
+    ⟨okHeap, hok, hlayout⟩
+  have hokHeap : okHeap = heap' := Except.ok.inj (hok.symm.trans hrun)
+  subst okHeap
+  have hT1' := (hlayout t1 m).mp hT1
+  have hT2' := (hlayout t2 m).mp hT2
+  have hprefix1 : ClassicalCoeffPrefix heap' t1 m (karHalfSumPoly left m) := by
+    intro k hk
+    rcases hvalues k (Nat.zero_le _) hk with
+      ⟨value1, value2, hread1, _, hcoeff1, _, hlt1, _⟩
+    refine ⟨value1, hread1, ?_, hlt1⟩
+    simpa [coeff_karHalfSumPoly, hk] using hcoeff1
+  have hprefix2 : ClassicalCoeffPrefix heap' t2 m (karHalfSumPoly right m) := by
+    intro k hk
+    rcases hvalues k (Nat.zero_le _) hk with
+      ⟨value1, value2, _, hread2, _, hcoeff2, _, hlt2⟩
+    refine ⟨value2, hread2, ?_, hlt2⟩
+    simpa [coeff_karHalfSumPoly, hk] using hcoeff2
+  refine ⟨slicePolyRep_of_classicalCoeffPrefix heap' t1 m
+      (karHalfSumPoly left m) hT1' hprefix1 ?_,
+    slicePolyRep_of_classicalCoeffPrefix heap' t2 m
+      (karHalfSumPoly right m) hT2' hprefix2 ?_,
+    canonicalU64Prefix_of_classicalCoeffPrefix heap' t1 m this._p
+      (karHalfSumPoly left m) hprefix1,
+    canonicalU64Prefix_of_classicalCoeffPrefix heap' t2 m this._p
+      (karHalfSumPoly right m) hprefix2⟩
+  · intro degree hdegree
+    rw [coeff_karHalfSumPoly, if_neg (by omega)]
+  · intro degree hdegree
+    rw [coeff_karHalfSumPoly, if_neg (by omega)]
+
 theorem normaliseU64_eq_length_of_classicalCoeffPrefix {p : Nat}
     (heap : RawHeap) (C : RawPtr UInt64) (length : Nat)
     (poly : Polynomial (ZMod p))

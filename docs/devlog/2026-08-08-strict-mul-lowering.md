@@ -75,6 +75,10 @@
   A/B allocation 不相交性逐 cell 构造 `SameU64Prefix`，重新传递输入
   `SlicePolyRep` 和规范剩余，再对 `m-(i+1)` 做良基递归。由此从 i=0 可
   得到全部 `k<m` 的 t1/t2 raw 值与 L2 半区和语义。
+- 定义有限 L2 半区和多项式并证明其系数公式；再以 t1/t2 全部 raw cell 的
+  唯一观测把区间结论提升为两个完整 `SlicePolyRep`，同时从每个实际
+  `nmod_add` 输出 `<p` 得到两个 scratch slice 的 `CanonicalU64Prefix`。
+  该定理覆盖长度 `2m` 的公共部分，奇数 n 的第 h 个尾项仍按源码分支另证。
 
 ## 当前边界
 

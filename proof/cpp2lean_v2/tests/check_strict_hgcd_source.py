@@ -263,6 +263,7 @@ def main() -> None:
         "rawDensePolyRep_mul_zero_or_degree_lt",
         "rawDensePolyRep_zero_or_degree_lt",
         "rawDensePolyRep_length_eq",
+        "rawDensePolyRep_add_shift_length_eq",
         "rawDensePolyRep_add_mul_length_le",
         "rawDensePolyRep_sum_products_length_le",
         "HgcdRecursiveFinishResult",

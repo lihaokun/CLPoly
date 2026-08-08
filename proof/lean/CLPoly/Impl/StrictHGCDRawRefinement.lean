@@ -242,6 +242,68 @@ theorem rawDensePolyRep_length_eq (this : DenseUPolyZp)
       poly hrep₂ hpos₂
     omega
 
+/-- When the normalized low part lies strictly below the shift and the high
+descriptor is nonempty, the shifted high term determines the exact normalized
+output length.  This is the semantic form of the real `liftHigh` leading-limb
+preservation used by recursive HGCD. -/
+theorem rawDensePolyRep_add_shift_length_eq (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (lowHeap highHeap outHeap : RawHeap)
+    (lowPtr highPtr outPtr : RawPtr UInt64)
+    (lowLength highLength outLength shift : Nat)
+    (low high : Polynomial (ZMod this._p.toNat))
+    (hLow : RawDensePolyRep this lowHeap lowPtr lowLength low)
+    (hHigh : RawDensePolyRep this highHeap highPtr highLength high)
+    (hOut : RawDensePolyRep this outHeap outPtr outLength
+      (low + Polynomial.X ^ shift * high))
+    (hLowBound : lowLength ≤ shift) (hHighPos : 0 < highLength) :
+    outLength = shift + highLength := by
+  have hHighNonzero : high ≠ 0 := by
+    intro hzero
+    have := (rawDensePolyRep_length_zero_iff this highHeap highPtr highLength
+      high hHigh).mpr hzero
+    omega
+  have hXNonzero : (Polynomial.X ^ shift :
+      Polynomial (ZMod this._p.toNat)) ≠ 0 := pow_ne_zero _ Polynomial.X_ne_zero
+  have hShiftNonzero : Polynomial.X ^ shift * high ≠ 0 :=
+    mul_ne_zero hXNonzero hHighNonzero
+  have hHighDegree := rawDensePolyRep_natDegree_add_one this highHeap highPtr
+    highLength high hHigh hHighPos
+  have hShiftDegree : (Polynomial.X ^ shift * high).natDegree =
+      shift + high.natDegree := by
+    rw [Polynomial.natDegree_mul hXNonzero hHighNonzero,
+      Polynomial.natDegree_X_pow]
+  have hOutNonzero : low + Polynomial.X ^ shift * high ≠ 0 := by
+    intro hzero
+    have heq : low = -(Polynomial.X ^ shift * high) := eq_neg_of_add_eq_zero_left
+      hzero
+    have hLowDegreeEq : low.natDegree =
+        (Polynomial.X ^ shift * high).natDegree := by
+      rw [heq, Polynomial.natDegree_neg]
+    rcases rawDensePolyRep_zero_or_degree_lt this lowHeap lowPtr lowLength low
+        hLow with hLowZero | hLowDegree
+    · exact hShiftNonzero (by simpa [hLowZero] using hzero.symm)
+    · rw [hShiftDegree] at hLowDegreeEq
+      omega
+  have hOutPos : 0 < outLength := by
+    by_contra hnot
+    have hlength : outLength = 0 := by omega
+    exact hOutNonzero ((rawDensePolyRep_length_zero_iff this outHeap outPtr
+      outLength (low + Polynomial.X ^ shift * high) hOut).mp hlength)
+  have hOutDegree : (low + Polynomial.X ^ shift * high).natDegree =
+      shift + high.natDegree := by
+    rcases rawDensePolyRep_zero_or_degree_lt this lowHeap lowPtr lowLength low
+        hLow with hLowZero | hLowDegree
+    · simp [hLowZero, hShiftDegree]
+    · rw [Polynomial.natDegree_add_eq_right_of_natDegree_lt]
+      · exact hShiftDegree
+      · rw [hShiftDegree]
+        omega
+  have hNormalized := rawDensePolyRep_natDegree_add_one this outHeap outPtr
+    outLength (low + Polynomial.X ^ shift * high) hOut hOutPos
+  rw [hOutDegree] at hNormalized
+  omega
+
 /-- Exact normalized length bound for the quotient update used by the real
 HGCD tail, `top + quotient * bottom`. -/
 theorem rawDensePolyRep_add_mul_length_le (this : DenseUPolyZp)
@@ -6588,7 +6650,15 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       result.lenB ≤ max (shift + lenHighB)
         (max
           (hgcdMatLen M hM (2 : Fin 4) + lenLowA - 1)
-          (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1)) := by
+          (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1)) ∧
+      (max
+          (hgcdMatLen M hM (3 : Fin 4) + lenLowA - 1)
+          (hgcdMatLen M hM (1 : Fin 4) + lenLowB - 1) ≤ shift →
+        0 < lenHighA → result.lenA = shift + lenHighA) ∧
+      (max
+          (hgcdMatLen M hM (2 : Fin 4) + lenLowA - 1)
+          (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1) ≤ shift →
+        0 < lenHighB → result.lenB = shift + lenHighB) := by
   rcases hgcdRecursiveReconstructPair_exec this A B T0 lowA lowB highA
       highB scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap
       result hrun with
@@ -6667,8 +6737,26 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
     (hgcdReconstructedLowB entries polyLowA polyLowB sgn +
       Polynomial.X ^ shift * polyHighB) hwork.finalBLayout
       hwork.finalBPrefix hBFinal
+  have hExactA : max
+        (hgcdMatLen M hM (3 : Fin 4) + lenLowA - 1)
+        (hgcdMatLen M hM (1 : Fin 4) + lenLowB - 1) ≤ shift →
+      0 < lenHighA → liftedA.length = shift + lenHighA := by
+    intro hlow hhigh
+    exact rawDensePolyRep_add_shift_length_eq this heap3 heap3 liftedA.heap
+      A highA A lowLenA lenHighA liftedA.length shift
+      (hgcdReconstructedLowA entries polyLowA polyLowB sgn) polyHighA hA0
+      hHighA3 hAFinal (hLowLenA.trans hlow) hhigh
+  have hExactB : max
+        (hgcdMatLen M hM (2 : Fin 4) + lenLowA - 1)
+        (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1) ≤ shift →
+      0 < lenHighB → liftedB.length = shift + lenHighB := by
+    intro hlow hhigh
+    exact rawDensePolyRep_add_shift_length_eq this heap1 heap1 liftedB.heap
+      B highB B lowLenB lenHighB liftedB.length shift
+      (hgcdReconstructedLowB entries polyLowA polyLowB sgn) polyHighB hB0
+      hHighB1 hBFinal (hLowLenB.trans hlow) hhigh
   rw [hHeap, hLenA, hLenB]
-  refine ⟨hAFinal, hBAtFinal, ?_, ?_⟩
+  refine ⟨hAFinal, hBAtFinal, ?_, ?_, hExactA, hExactB⟩
   · exact hBoundA.trans (max_le_max (Nat.le_refl _) hLowLenA)
   · exact hBoundB.trans (max_le_max (Nat.le_refl _) hLowLenB)
 
@@ -6718,7 +6806,7 @@ theorem hgcdRecursiveReconstructPair_preserves_input (this : DenseUPolyZp)
       first.valid first.sgn first.heap result entries polyLowA polyLowB
       polyOutputHighA polyOutputHighB hcfg hp physical hMatrixSemantics.1
       hLowA hLowB hFirst.aRep hFirst.bRep hrun with
-    ⟨hAResult, hBResult, _, hLength⟩
+    ⟨hAResult, hBResult, _, hLength, _, _⟩
   let finalA := hgcdReconstructedLowA entries polyLowA polyLowB first.sgn +
     Polynomial.X ^ shift * polyOutputHighA
   let finalB := hgcdReconstructedLowB entries polyLowA polyLowB first.sgn +
@@ -6825,7 +6913,7 @@ theorem hgcdRecursiveFirstReconstruct_bound_of_invariant
   exact hgcdRecursiveFirstReconstruct_lenB_le_input result.lenB lenA lenB
     first.lenA first.lenB
     (hgcdMatLen first.matrix first.valid (2 : Fin 4))
-    (hgcdMatLen first.matrix first.valid (0 : Fin 4)) hrefines.2.2.2
+    (hgcdMatLen first.matrix first.valid (0 : Fin 4)) hrefines.2.2.2.1
     hinvariant.order hinvariant.inputBound
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row0A)
@@ -7072,7 +7160,7 @@ theorem hgcdRecursiveFinish_refines (this : DenseUPolyZp)
       highB scratch lenLowA lenLowB lenHighA lenHighB shift S hS sgnS heap
       reconstructed entries polyLowA polyLowB polyHighA polyHighB hcfg hp
       hwork.reconstruct hSRep hLowA hLowB hHighA hHighB hreconstruct with
-    ⟨hAReconstructed, hBReconstructed, _⟩
+    ⟨hAReconstructed, hBReconstructed, _, _, _, _⟩
   let finalA := hgcdReconstructedLowA entries polyLowA polyLowB sgnS +
     Polynomial.X ^ shift * polyHighA
   let finalB := hgcdReconstructedLowB entries polyLowA polyLowB sgnS +

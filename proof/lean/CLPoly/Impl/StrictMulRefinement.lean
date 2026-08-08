@@ -418,6 +418,52 @@ theorem classical_index_bounds (lenA lenB k j : Nat)
     · omega
     · split at hjMin <;> omega
 
+/-- The generated schoolbook outer loop writes only `C[k..lenC)`.  This
+memory fact keeps both source buffers and already-produced coefficients tied
+to their original raw cells throughout the actual C++ loop. -/
+theorem classicalOuterLoop_preserves_outside (this : DenseUPolyZp)
+    (C A B guard : RawPtr UInt64) (lenA lenB lenC k readIndex : Nat)
+    (heap heap' : RawHeap) (old : UInt64)
+    (hC : heap.ValidU64Slice C lenC)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hread : heap.readU64 guard readIndex = .ok old)
+    (houtside : ∀ i, k ≤ i → i < lenC →
+      C.region ≠ guard.region ∨
+        C.limbOffset + i ≠ guard.limbOffset + readIndex)
+    (hrun : classicalOuterLoop this C A B lenA lenB lenC k heap =
+      .ok heap') :
+    heap'.readU64 guard readIndex = .ok old := by
+  unfold classicalOuterLoop at hrun
+  split at hrun
+  next hk =>
+    let jMin := if k ≥ lenB then k - lenB + 1 else 0
+    let jMax := if k < lenA then k else lenA - 1
+    cases hdot : classicalDotLoop heap A B k jMax jMin
+        { lo := 0, mid := 0, hi := 0 } with
+    | error fault => simp [jMin, jMax, hdot] at hrun
+    | ok acc =>
+      simp only [jMin, jMax, hdot] at hrun
+      let value := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        acc.hi acc.mid acc.lo this._p this._ninv this._norm
+      rcases heap.writeU64_of_valid C lenC k value hC hk with ⟨heap1, hw⟩
+      simp only [value, hw] at hrun
+      have hread1 := RawHeap.readU64_writeU64_ne heap heap1 C guard
+        k readIndex value old hw hread (houtside k (Nat.le_refl _) hk)
+      have hlayout := RawHeap.writeU64_sameLayout heap heap1 C k value hw
+      apply classicalOuterLoop_preserves_outside this C A B guard lenA lenB
+        lenC (k + 1) readIndex heap1 heap' old
+        ((hlayout C lenC).mp hC) ((hlayout A lenA).mp hA)
+        ((hlayout B lenB).mp hB) hread1
+      · intro i hik hil
+        exact houtside i (by omega) hil
+      · exact hrun
+  next hnot =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+termination_by lenC - k
+decreasing_by omega
+
 theorem classicalOuterLoop_ok (this : DenseUPolyZp)
     (C A B : RawPtr UInt64) (lenA lenB lenC k : Nat) (heap : RawHeap)
     (hApos : 0 < lenA) (hBpos : 0 < lenB)

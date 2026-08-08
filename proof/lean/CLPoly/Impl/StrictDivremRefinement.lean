@@ -161,6 +161,16 @@ theorem slicePolyRep_coeff (heap : RawHeap) (ptr : RawPtr UInt64)
   refine ⟨coeffs[degree], hraw, ?_⟩
   rw [hpoly, coeff_coeffArrayPoly, dif_pos]
 
+theorem slicePolyRep_coeff_zero_of_length_le (heap : RawHeap)
+    (ptr : RawPtr UInt64) (length p : Nat)
+    (poly : Polynomial (ZMod p))
+    (hrep : SlicePolyRep heap ptr length p poly)
+    (degree : Nat) (hdegree : length ≤ degree) :
+    poly.coeff degree = 0 := by
+  rcases hrep with ⟨coeffs, _, hsize, rfl⟩
+  rw [coeff_coeffArrayPoly, dif_neg]
+  simpa [hsize] using hdegree
+
 /-- `_poly_normalise` only reads within its declared prefix.  Structural
 recursion on `len` proves both successful execution and the returned prefix
 bound; structural recursion produces no alternate execution result. -/
@@ -1364,6 +1374,120 @@ theorem exactAddMulRange_observed (before after : RawHeap)
   refine ⟨bj, beforeValues[offset + k], out, hreadB, ?_, ?_, hout⟩
   · simp [hbeforeIndex]
   · simp [hafterIndex, houtEq]
+
+/-- Coefficient semantics of a complete generated multiply/add range.  This
+is the pointwise convolution law needed to lift the raw loop to polynomial
+addition; cells outside `offset..offset+d` are proved unchanged explicitly. -/
+theorem word3ArrayPoly_coeff_addMul (before after : RawHeap)
+    (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (length offset d p : Nat) (c : UInt64)
+    (beforeValues afterValues : Array Word3)
+    (divisor : Polynomial (ZMod p))
+    (hbefore : Word3SliceRep before W3 length beforeValues)
+    (hafter : Word3SliceRep after W3 length afterValues)
+    (hdivisor : SlicePolyRep before B (d + 1) p divisor)
+    (hbelow : SameWord3Below before after W3 offset)
+    (habove : SameWord3Above before after W3 (offset + d) length)
+    (hrange : ExactAddMulRangeRep before after B W3 offset 0 d c)
+    (htop : offset + d < length) (degree : Nat) :
+    (word3ArrayPoly p afterValues).coeff degree =
+      if degree < offset ∨ offset + d < degree then
+        (word3ArrayPoly p beforeValues).coeff degree
+      else
+        (word3ArrayPoly p beforeValues).coeff degree +
+          (c.toNat : ZMod p) * divisor.coeff (degree - offset) := by
+  rw [coeff_word3ArrayPoly, coeff_word3ArrayPoly]
+  by_cases hdegree : degree < length
+  · have hbeforeDegree : degree < beforeValues.size := by
+      simpa [hbefore.1] using hdegree
+    have hafterDegree : degree < afterValues.size := by
+      simpa [hafter.1] using hdegree
+    rw [dif_pos hafterDegree, dif_pos hbeforeDegree]
+    by_cases hlow : degree < offset
+    · rw [if_pos (Or.inl hlow)]
+      have hsame := hbelow degree hlow
+      have hreadBefore := hbefore.2 degree hbeforeDegree
+      have hreadAfter := hafter.2 degree hafterDegree
+      rw [hreadBefore, hreadAfter] at hsame
+      exact congrArg (fun value => (word3Value value : ZMod p))
+        (Except.ok.inj hsame).symm
+    · by_cases hhigh : offset + d < degree
+      · rw [if_pos (Or.inr hhigh)]
+        have hsame := habove degree hhigh hdegree
+        have hreadBefore := hbefore.2 degree hbeforeDegree
+        have hreadAfter := hafter.2 degree hafterDegree
+        rw [hreadBefore, hreadAfter] at hsame
+        exact congrArg (fun value => (word3Value value : ZMod p))
+          (Except.ok.inj hsame).symm
+      · rw [if_neg (by simp [hlow, hhigh])]
+        let k := degree - offset
+        have hk : degree = offset + k := by
+          dsimp [k]
+          omega
+        have hkd : k ≤ d := by
+          dsimp [k]
+          omega
+        rcases slicePolyRep_coeff before B (d + 1) p divisor hdivisor
+            k (by omega) with ⟨bj, hreadB, hcoeff⟩
+        have hreadBefore := hbefore.2 degree hbeforeDegree
+        rcases hrange k (by omega) hkd bj beforeValues[degree]
+            hreadB (by simpa [hk] using hreadBefore) with
+          ⟨out, hreadOut, hout⟩
+        have houtEq : afterValues[degree] = out :=
+          Except.ok.inj ((hafter.2 degree hafterDegree).symm.trans
+            (by simpa [hk] using hreadOut))
+        subst out
+        rw [hcoeff]
+        simpa [k, hout, Nat.cast_add, Nat.cast_mul]
+  · have hbeforeDegree : ¬ degree < beforeValues.size := by
+      simpa [hbefore.1] using hdegree
+    have hafterDegree : ¬ degree < afterValues.size := by
+      simpa [hafter.1] using hdegree
+    rw [dif_neg hafterDegree, dif_neg hbeforeDegree]
+    have hhigh : offset + d < degree := by omega
+    simp [hhigh]
+
+/-- Polynomial form of the generated multiply/add loop: the observed W3
+accumulator gains exactly the shifted scalar multiple written by C++.
+No polynomial operation is used to execute or replace the raw loop. -/
+theorem word3ArrayPoly_addMul (before after : RawHeap)
+    (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (length offset d p : Nat) (c : UInt64)
+    (beforeValues afterValues : Array Word3)
+    (divisor : Polynomial (ZMod p))
+    (hbefore : Word3SliceRep before W3 length beforeValues)
+    (hafter : Word3SliceRep after W3 length afterValues)
+    (hdivisor : SlicePolyRep before B (d + 1) p divisor)
+    (hbelow : SameWord3Below before after W3 offset)
+    (habove : SameWord3Above before after W3 (offset + d) length)
+    (hrange : ExactAddMulRangeRep before after B W3 offset 0 d c)
+    (htop : offset + d < length) :
+    word3ArrayPoly p afterValues = word3ArrayPoly p beforeValues +
+      Polynomial.monomial offset (c.toNat : ZMod p) * divisor := by
+  ext degree
+  rw [Polynomial.coeff_add]
+  have hstep := word3ArrayPoly_coeff_addMul before after B W3 length
+    offset d p c beforeValues afterValues divisor hbefore hafter hdivisor
+    hbelow habove hrange htop degree
+  have hproduct :
+      (Polynomial.monomial offset (c.toNat : ZMod p) * divisor).coeff degree =
+        if offset ≤ degree then
+          (c.toNat : ZMod p) * divisor.coeff (degree - offset)
+        else 0 := by
+    rw [← Polynomial.C_mul_X_pow_eq_monomial, mul_assoc,
+      Polynomial.coeff_C_mul, Polynomial.coeff_X_pow_mul']
+    by_cases hoffset : offset ≤ degree <;> simp [hoffset]
+  rw [hproduct]
+  by_cases hlow : degree < offset
+  · rw [if_neg (by omega)]
+    simpa [hlow] using hstep
+  · rw [if_pos (by omega)]
+    by_cases hhigh : offset + d < degree
+    · have hzero := slicePolyRep_coeff_zero_of_length_le before B
+        (d + 1) p divisor hdivisor (degree - offset) (by omega)
+      rw [hzero, mul_zero, add_zero]
+      simpa [hlow, hhigh] using hstep
+    · simpa [hlow, hhigh] using hstep
 
 /-- Algebraic core of the source's leading-coefficient cancellation.  It is
 stated over naturals so the subsequent raw-memory theorem only has to supply

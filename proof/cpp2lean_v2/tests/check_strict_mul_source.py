@@ -64,6 +64,8 @@ def main() -> None:
                      "karAssembleLoop_ok",
                      "karOddTail_ok", "karOddTail_preserves_region_ne",
                      "karOddTail_values", "karOddTail_coeffs",
+                     "karOddTail_preserves_own_prefixes",
+                     "karOddTail_refines_slices_odd",
                      "karAddHalvesLoop_preserves_outside",
                      "karAddHalvesLoop_current_values",
                      "karAddHalvesLoop_current_coeffs",

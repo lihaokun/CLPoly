@@ -87,6 +87,10 @@
   个 cell 的两次原样 writes 后保持到最终 heap；再由完整输入
   `SlicePolyRep` 和规范剩余得到这两个 raw 值分别等于原 L2 的第 `2m`
   个系数且严格小于 p。
+- 证明尾项块保持 t1/t2 自身的 `[0,m)` raw prefix；将已有长度 m 的半区和
+  `SlicePolyRep` 传递到最终 heap 后，使用真实第 m 个尾 cell 分别扩展为
+  长度 `h=m+1` 的完整 slice。输出多项式精确为公共半区和加第 `2m` 系数
+  的单项式，并逐分支证明整个新 slice 仍为规范余数。
 
 ## 当前边界
 

@@ -1003,6 +1003,39 @@ def ExactAddMulRangeRep (before after : RawHeap) (B : RawPtr UInt64)
     ∃ accum', after.readWord3 W3 (offset + k) = .ok accum' ∧
       word3Value accum' = word3Value accum + c.toNat * bj.toNat
 
+/-- Algebraic core of the source's leading-coefficient cancellation.  It is
+stated over naturals so the subsequent raw-memory theorem only has to supply
+the exact generated write and canonical UInt64 observations. -/
+theorem add_complement_eliminates_mod (p old qi lead r : Nat)
+    (hp : 0 < p) (hqi : qi ≤ p)
+    (hold : old % p = r)
+    (hproduct : (qi * lead) % p = r) :
+    (old + (p - qi) * lead) % p = 0 := by
+  have hcongr : Nat.ModEq p old (qi * lead) := by
+    exact hold.trans hproduct.symm
+  have hadd := hcongr.add_right ((p - qi) * lead)
+  have hrhs : qi * lead + (p - qi) * lead = p * lead := by
+    calc
+      qi * lead + (p - qi) * lead = (qi + (p - qi)) * lead := by ring
+      _ = p * lead := by rw [Nat.add_sub_of_le hqi]
+  rw [hrhs] at hadd
+  have hzero : Nat.ModEq p (p * lead) 0 :=
+    (show p ∣ p * lead from ⟨lead, rfl⟩).modEq_zero_nat
+  exact Nat.mod_eq_of_modEq (hadd.trans hzero) hp
+
+/-- UInt64 form used at the generated quotient-loop call site. -/
+theorem word3_complement_add_eliminates_mod (p qi lead : UInt64)
+    (old out : Word3) (r : Nat)
+    (hp : 0 < p.toNat) (hqi : qi.toNat ≤ p.toNat)
+    (hold : word3Value old % p.toNat = r)
+    (hproduct : (qi.toNat * lead.toNat) % p.toNat = r)
+    (hout : word3Value out =
+      word3Value old + (p - qi).toNat * lead.toNat) :
+    word3Value out % p.toNat = 0 := by
+  rw [hout, UInt64.toNat_sub_of_le _ _ hqi]
+  exact add_complement_eliminates_mod p.toNat (word3Value old)
+    qi.toNat lead.toNat r hp hqi hold hproduct
+
 /-- A modular range observation of the generated loop is an ordinary exact
 addition range once the independently proved machine-capacity invariant is
 available. -/
@@ -1050,6 +1083,40 @@ theorem addMulRangeRep_exact_of_budget (before after : RawHeap)
           _ = limbBase ^ 2 * limbBase := Nat.mul_comm _ _
           _ = limbBase ^ 3 := by ring
   exact ⟨out, hreadOut, hmod.eq_of_lt_of_lt (word3Value_lt out) hrhs⟩
+
+/-- The top cell written by the actual generated quotient coefficient and
+`addMulLoop` is zero modulo `p`.  This combines the generated inverse/multiply
+proof with the exact raw-memory range update; no polynomial-level division is
+used. -/
+theorem generated_quotient_top_cell_eliminates (this : DenseUPolyZp)
+    (before after : RawHeap) (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (offset d : Nat) (r lead : UInt64) (old : Word3)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat)
+    (hr : r.toNat < this._p.toNat)
+    (hleadPos : 0 < lead.toNat) (hlead : lead.toNat < this._p.toNat)
+    (hreadLead : before.readU64 B d = .ok lead)
+    (hreadOld : before.readWord3 W3 (offset + d) = .ok old)
+    (hold : word3Value old % this._p.toNat = r.toNat)
+    (hrange :
+      let invLc := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+      let qi := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r invLc
+      ExactAddMulRangeRep before after B W3 offset 0 d (this._p - qi)) :
+    ∃ out, after.readWord3 W3 (offset + d) = .ok out ∧
+      word3Value out % this._p.toNat = 0 := by
+  let invLc := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+  let qi := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r invLc
+  have hcoeff := quotientCoeff_eliminates_lead this r lead hcfg hprime hr
+    hleadPos hlead
+  change qi.toNat < this._p.toNat ∧
+      (qi.toNat * lead.toNat) % this._p.toNat = r.toNat at hcoeff
+  have hrange' : ExactAddMulRangeRep before after B W3 offset 0 d
+      (this._p - qi) := by simpa [invLc, qi] using hrange
+  rcases hrange' d (by omega) (by omega) lead old hreadLead hreadOld with
+    ⟨out, hreadOut, hout⟩
+  refine ⟨out, hreadOut, ?_⟩
+  exact word3_complement_add_eliminates_mod this._p qi lead old out r.toNat
+    hprime.pos (Nat.le_of_lt hcoeff.1) hold hcoeff.2 hout
 
 /-- Full content invariant for the generated multiply/add loop.  B is
 unchanged, cells before `j` are unchanged, and every processed cell in

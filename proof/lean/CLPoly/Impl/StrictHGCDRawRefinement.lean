@@ -624,7 +624,10 @@ theorem matRowUpdate_zero_exec (this : DenseUPolyZp) (M : HgcdMat)
         hgcdMatPtr result.matrix hResult i0 = hgcdMatPtr M hM i1 ∧
         hgcdMatLen result.matrix hResult i0 = hgcdMatLen M hM i1 ∧
         hgcdMatPtr result.matrix hResult i1 = hgcdMatPtr M hM i0 ∧
-        hgcdMatLen result.matrix hResult i1 = hgcdMatLen M hM i0 := by
+        hgcdMatLen result.matrix hResult i1 = hgcdMatLen M hM i0 ∧
+        ∀ j : Fin 4, j ≠ i0 → j ≠ i1 →
+          hgcdMatPtr result.matrix hResult j = hgcdMatPtr M hM j ∧
+          hgcdMatLen result.matrix hResult j = hgcdMatLen M hM j := by
   have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
     simpa [HgcdMat.Valid] using hM
   have hneVal : i0.val ≠ i1.val := by
@@ -651,7 +654,7 @@ theorem matRowUpdate_zero_exec (this : DenseUPolyZp) (M : HgcdMat)
       poly', len', p0, p1, l0, l1, hgcdMatPtr, hgcdMatLen]
   have hResult : result.matrix.Valid := by
     simp [result, HgcdMat.Valid, poly', len', hvalid]
-  refine ⟨result, hrun, rfl, rfl, rfl, rfl, hResult, ?_, ?_, ?_, ?_⟩
+  refine ⟨result, hrun, rfl, rfl, rfl, rfl, hResult, ?_, ?_, ?_, ?_, ?_⟩
   · simp [result, poly', p1, hgcdMatPtr]
   · simp [result, len', l1, hgcdMatLen]
   · simp only [result, poly', hgcdMatPtr]
@@ -670,6 +673,32 @@ theorem matRowUpdate_zero_exec (this : DenseUPolyZp) (M : HgcdMat)
         rw [hvalid.2]; exact i1.isLt)) hneVal,
       Array.getElem_set_self]
     simp [l0, hgcdMatLen]
+  · intro j hji0 hji1
+    have hi0j : i0.val ≠ j.val := by
+      intro heq
+      exact hji0 (Fin.ext heq.symm)
+    have hi1j : i1.val ≠ j.val := by
+      intro heq
+      exact hji1 (Fin.ext heq.symm)
+    have hi0PolySet : i0.val < (M.poly.set i1.val p0 (by omega)).size := by
+      simpa [hvalid.1] using i0.isLt
+    have hjPolySet : j.val < (M.poly.set i1.val p0 (by omega)).size := by
+      simpa [hvalid.1] using j.isLt
+    have hi1Poly : i1.val < M.poly.size := by simpa [hvalid.1] using i1.isLt
+    have hjPoly : j.val < M.poly.size := by simpa [hvalid.1] using j.isLt
+    have hi0LenSet : i0.val < (M.len.set i1.val l0 (by omega)).size := by
+      simpa [hvalid.2] using i0.isLt
+    have hjLenSet : j.val < (M.len.set i1.val l0 (by omega)).size := by
+      simpa [hvalid.2] using j.isLt
+    have hi1Len : i1.val < M.len.size := by simpa [hvalid.2] using i1.isLt
+    have hjLen : j.val < M.len.size := by simpa [hvalid.2] using j.isLt
+    constructor
+    · simp only [result, poly', hgcdMatPtr]
+      rw [Array.getElem_set_ne hi0PolySet hjPolySet hi0j,
+        Array.getElem_set_ne hi1Poly hjPoly hi1j]
+    · simp only [result, len', hgcdMatLen]
+      rw [Array.getElem_set_ne hi0LenSet hjLenSet hi0j,
+        Array.getElem_set_ne hi1Len hjLen hi1j]
 
 /-- Complete semantic refinement of the source's zero row-update branch.
 The physical descriptor swap represents `[entry1 + quotient*entry0,
@@ -700,7 +729,7 @@ theorem matRowUpdate_zero_refines (this : DenseUPolyZp)
   rcases matRowUpdate_zero_exec this M i0 i1 Q lenQ T lenT t scratch
       heap hM hne hzero with
     ⟨actual, hactual, hheap, _, _, _, hActualM, hptr0, hlen0,
-      hptr1, hlen1⟩
+      hptr1, hlen1, _⟩
   have heq : actual = result := Except.ok.inj (hactual.symm.trans hrun)
   subst actual
   have hvanish : quotient = 0 ∨ entry0 = 0 := by
@@ -749,7 +778,10 @@ theorem matRowUpdate_nonzero_success_shape (this : DenseUPolyZp)
         hgcdMatPtr result.matrix hResult i0 = t ∧
         hgcdMatLen result.matrix hResult i0 = sumLen ∧
         hgcdMatPtr result.matrix hResult i1 = hgcdMatPtr M hM i0 ∧
-        hgcdMatLen result.matrix hResult i1 = hgcdMatLen M hM i0 := by
+        hgcdMatLen result.matrix hResult i1 = hgcdMatLen M hM i0 ∧
+        ∀ j : Fin 4, j ≠ i0 → j ≠ i1 →
+          hgcdMatPtr result.matrix hResult j = hgcdMatPtr M hM j ∧
+          hgcdMatLen result.matrix hResult j = hgcdMatLen M hM j := by
   have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
     simpa [HgcdMat.Valid] using hM
   have hneVal : i0.val ≠ i1.val := by
@@ -829,7 +861,7 @@ theorem matRowUpdate_nonzero_success_shape (this : DenseUPolyZp)
                     (by simp; omega)
                 } : HgcdMat).Valid := by
               simp [HgcdMat.Valid, hvalid]
-            refine ⟨hResult, ?_, ?_, ?_, ?_⟩
+            refine ⟨hResult, ?_, ?_, ?_, ?_, ?_⟩
             · simp [hgcdMatPtr]
             · simp [hgcdMatLen]
             · simp only [hgcdMatPtr]
@@ -848,6 +880,115 @@ theorem matRowUpdate_nonzero_success_shape (this : DenseUPolyZp)
                   rw [hvalid.2]; exact i1.isLt)) hneVal,
                 Array.getElem_set_self]
               rfl
+            · intro j hji0 hji1
+              have hi0j : i0.val ≠ j.val := by
+                intro heq
+                exact hji0 (Fin.ext heq.symm)
+              have hi1j : i1.val ≠ j.val := by
+                intro heq
+                exact hji1 (Fin.ext heq.symm)
+              have hi0PolySet : i0.val <
+                  (M.poly.set i1.val p0 (by omega)).size := by
+                simpa [hvalid.1] using i0.isLt
+              have hjPolySet : j.val <
+                  (M.poly.set i1.val p0 (by omega)).size := by
+                simpa [hvalid.1] using j.isLt
+              have hi1Poly : i1.val < M.poly.size := by
+                simpa [hvalid.1] using i1.isLt
+              have hjPoly : j.val < M.poly.size := by
+                simpa [hvalid.1] using j.isLt
+              have hi0LenSet : i0.val <
+                  (M.len.set i1.val l0 (by omega)).size := by
+                simpa [hvalid.2] using i0.isLt
+              have hjLenSet : j.val <
+                  (M.len.set i1.val l0 (by omega)).size := by
+                simpa [hvalid.2] using j.isLt
+              have hi1Len : i1.val < M.len.size := by
+                simpa [hvalid.2] using i1.isLt
+              have hjLen : j.val < M.len.size := by
+                simpa [hvalid.2] using j.isLt
+              constructor
+              · simp only [hgcdMatPtr]
+                rw [Array.getElem_set_ne hi0PolySet hjPolySet hi0j,
+                  Array.getElem_set_ne hi1Poly hjPoly hi1j]
+              · simp only [hgcdMatLen]
+                rw [Array.getElem_set_ne hi0LenSet hjLenSet hi0j,
+                  Array.getElem_set_ne hi1Len hjLen hi1j]
+
+/-- Branch-complete descriptor frame for `_mat_row_update`: indices other
+than the selected pair retain exactly their source pointer and length. -/
+theorem matRowUpdate_preserves_other_descriptor (this : DenseUPolyZp)
+    (M : HgcdMat) (i0 i1 j : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : MatRowUpdateResult) (hM : M.Valid)
+    (hne : i0 ≠ i1) (hji0 : j ≠ i0) (hji1 : j ≠ i1)
+    (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result) :
+    ∃ hResult : result.matrix.Valid,
+      hgcdMatPtr result.matrix hResult j = hgcdMatPtr M hM j ∧
+      hgcdMatLen result.matrix hResult j = hgcdMatLen M hM j := by
+  by_cases hzero : lenQ = 0 ∨ hgcdMatLen M hM i0 = 0
+  · rcases matRowUpdate_zero_exec this M i0 i1 Q lenQ T lenT t scratch
+      heap hM hne hzero with
+    ⟨actual, hactual, _, _, _, _, hActualM, _, _, _, _, hother⟩
+    have heq : actual = result := Except.ok.inj (hactual.symm.trans hrun)
+    subst actual
+    exact ⟨hActualM, hother j hji0 hji1⟩
+  · rcases matRowUpdate_nonzero_success_shape this M i0 i1 Q lenQ T lenT
+      t scratch heap result hM hne (by omega) (by omega) hrun with
+    ⟨_, _, _, _, _, _, _, _, _, hResult, _, _, _, _, hother⟩
+    exact ⟨hResult, hother j hji0 hji1⟩
+
+/-- Descriptor frame specialized to the two source row updates in one HGCD
+iteration: `(2,3)` leaves `(0,1)` unchanged, then `(0,1)` leaves `(2,3)`
+unchanged. -/
+theorem hgcdTwoRowUpdates_descriptor_frame (this : DenseUPolyZp)
+    (M : HgcdMat) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (row23 row01 : MatRowUpdateResult) (hM : M.Valid)
+    (hrow23 : dense_upoly_zp__mat_row_update_ir this M
+      ⟨2, by omega⟩ ⟨3, by omega⟩ Q lenQ T lenT t scratch heap = .ok row23)
+    (hrow01 : dense_upoly_zp__mat_row_update_ir this row23.matrix
+      ⟨0, by omega⟩ ⟨1, by omega⟩ Q lenQ row23.T row23.lenT row23.t
+      scratch row23.heap = .ok row01) :
+    ∃ h23 : row23.matrix.Valid, ∃ h01 : row01.matrix.Valid,
+      (∀ j : Fin 2,
+        hgcdMatPtr row23.matrix h23 ⟨j.val, by omega⟩ =
+          hgcdMatPtr M hM ⟨j.val, by omega⟩ ∧
+        hgcdMatLen row23.matrix h23 ⟨j.val, by omega⟩ =
+          hgcdMatLen M hM ⟨j.val, by omega⟩) ∧
+      (∀ j : Fin 2,
+        hgcdMatPtr row01.matrix h01 ⟨j.val + 2, by omega⟩ =
+          hgcdMatPtr row23.matrix h23 ⟨j.val + 2, by omega⟩ ∧
+        hgcdMatLen row01.matrix h01 ⟨j.val + 2, by omega⟩ =
+          hgcdMatLen row23.matrix h23 ⟨j.val + 2, by omega⟩) := by
+  rcases matRowUpdate_preserves_other_descriptor this M
+      (2 : Fin 4) (3 : Fin 4) (0 : Fin 4) Q lenQ T lenT t
+      scratch heap row23 hM (by decide) (by decide) (by decide)
+      hrow23 with
+    ⟨h23, hzero⟩
+  rcases matRowUpdate_preserves_other_descriptor this row23.matrix
+      (0 : Fin 4) (1 : Fin 4) (2 : Fin 4) Q lenQ row23.T
+      row23.lenT row23.t scratch row23.heap row01 h23 (by decide)
+      (by decide) (by decide) hrow01 with ⟨h01, htwo⟩
+  refine ⟨h23, h01, ?_, ?_⟩
+  · intro j
+    fin_cases j
+    · exact hzero
+    · rcases matRowUpdate_preserves_other_descriptor this M
+        (2 : Fin 4) (3 : Fin 4) (1 : Fin 4) Q lenQ T lenT t
+        scratch heap row23 hM (by decide) (by decide) (by decide)
+        hrow23 with
+        ⟨h23', hone⟩
+      simpa only using hone
+  · intro j
+    fin_cases j
+    · exact htwo
+    · rcases matRowUpdate_preserves_other_descriptor this row23.matrix
+        (0 : Fin 4) (1 : Fin 4) (3 : Fin 4) Q lenQ row23.T
+        row23.lenT row23.t scratch row23.heap row01 h23 (by decide)
+        (by decide) (by decide) hrow01 with ⟨h01', hthree⟩
+      simpa only using hthree
 
 /-- The multiplication call exposed by the real nonzero row-update branch
 computes exactly the quotient times the old `i0` entry.  The conditional
@@ -1159,7 +1300,7 @@ theorem matRowUpdate_nonzero_refines (this : DenseUPolyZp)
   rcases matRowUpdate_nonzero_success_shape this M i0 i1 Q lenQ T lenT t
       scratch heap result hM hne (by omega) (by omega) hrun with
     ⟨heap1, heap2, sumLen, hmul, hadd, hResultHeap, _, _, _,
-      hResult, hptr0, hlen0, hptr1, hlen1⟩
+      hResult, hptr0, hlen0, hptr1, hlen1, _⟩
   have hmulSemantic := matRowUpdate_mul_result this M hM i0 Q T scratch
     lenQ heap heap1 quotient entry0 hcfg hp hQpos hEntryPos hLenWord hT
     hScratch hTQ hTEntry0 hTScratch hScratchQ hScratchEntry0 hQRep
@@ -1335,7 +1476,8 @@ theorem matRowUpdate_preserves_guard (this : DenseUPolyZp)
       exact hzero (Or.inr heq))
     rcases matRowUpdate_nonzero_success_shape this M i0 i1 Q lenQ T lenT
         t scratch heap result hM hne (by omega) (by omega) hrun with
-      ⟨heap1, heap2, sumLen, hmul, hadd, hResultHeap, _, _, _, _, _, _, _, _⟩
+      ⟨heap1, heap2, sumLen, hmul, hadd, hResultHeap, _, _, _, _, _, _, _,
+        _, _⟩
     rcases matRowUpdate_mul_result this M hM i0 Q T scratch lenQ heap
         heap1 quotient entry0 hcfg hp hQpos hEntryPos hLenWord hT hScratch
         hTQ hTEntry0 hTScratch hScratchQ hScratchEntry0 hQRep hEntry0Rep

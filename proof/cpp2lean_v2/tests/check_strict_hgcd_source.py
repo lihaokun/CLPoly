@@ -94,6 +94,8 @@ def main() -> None:
         "matRowUpdate_zero_exec",
         "matRowUpdate_zero_refines",
         "matRowUpdate_nonzero_success_shape",
+        "matRowUpdate_preserves_other_descriptor",
+        "hgcdTwoRowUpdates_descriptor_frame",
         "matRowUpdate_mul_result",
         "matRowUpdate_mul_preserves_entry1",
         "matRowUpdate_mul_preserves_guard",

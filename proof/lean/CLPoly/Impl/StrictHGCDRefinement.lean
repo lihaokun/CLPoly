@@ -50,6 +50,34 @@ def HgcdSignedDet {R : Type*} [CommRing R]
   (sgn = 1 ∧ m00 * m11 - m01 * m10 = 1) ∨
     (sgn = -1 ∧ m00 * m11 - m01 * m10 = -1)
 
+/-- Mathematical four-entry matrix state after the two C++ row updates in
+one HGCD Euclidean iteration. -/
+def hgcdStepEntries {R : Type*} [CommRing R]
+    (quotient : R) (entries : Fin 4 → R) : Fin 4 → R
+  | ⟨0, _⟩ => entries ⟨1, by omega⟩ + quotient * entries ⟨0, by omega⟩
+  | ⟨1, _⟩ => entries ⟨0, by omega⟩
+  | ⟨2, _⟩ => entries ⟨3, by omega⟩ + quotient * entries ⟨2, by omega⟩
+  | ⟨3, _⟩ => entries ⟨2, by omega⟩
+
+/-- Entry-array form of `hgcdTransform_euclid_step`, matching the exact
+flat matrix layout used by C++. -/
+theorem hgcdStepEntries_preserves_transform {R : Type*} [CommRing R]
+    (left right currentA currentB remainder quotient : R)
+    (entries : Fin 4 → R)
+    (htransform : HgcdTransform left right currentA currentB
+      (entries ⟨0, by omega⟩) (entries ⟨1, by omega⟩)
+      (entries ⟨2, by omega⟩) (entries ⟨3, by omega⟩))
+    (hdivision : currentA = quotient * currentB + remainder) :
+    HgcdTransform left right currentB remainder
+      (hgcdStepEntries quotient entries ⟨0, by omega⟩)
+      (hgcdStepEntries quotient entries ⟨1, by omega⟩)
+      (hgcdStepEntries quotient entries ⟨2, by omega⟩)
+      (hgcdStepEntries quotient entries ⟨3, by omega⟩) := by
+  simpa [hgcdStepEntries] using hgcdTransform_euclid_step left right
+    currentA currentB remainder quotient (entries ⟨0, by omega⟩)
+    (entries ⟨1, by omega⟩) (entries ⟨2, by omega⟩)
+    (entries ⟨3, by omega⟩) htransform hdivision
+
 /-- The two generated row updates and the source assignment `sgn = -sgn`
 preserve the signed-determinant invariant. -/
 theorem hgcdSignedDet_euclid_step {R : Type*} [CommRing R]
@@ -68,6 +96,21 @@ theorem hgcdSignedDet_euclid_step {R : Type*} [CommRing R]
     · simp [hsgn]
     · rw [hgcdRowUpdate_determinant, hdet]
       simp
+
+/-- Entry-array form of the synchronized matrix/sign update. -/
+theorem hgcdStepEntries_preserves_signedDet {R : Type*} [CommRing R]
+    (sgn : Int) (quotient : R) (entries : Fin 4 → R)
+    (hdet : HgcdSignedDet sgn
+      (entries ⟨0, by omega⟩) (entries ⟨1, by omega⟩)
+      (entries ⟨2, by omega⟩) (entries ⟨3, by omega⟩)) :
+    HgcdSignedDet (-sgn)
+      (hgcdStepEntries quotient entries ⟨0, by omega⟩)
+      (hgcdStepEntries quotient entries ⟨1, by omega⟩)
+      (hgcdStepEntries quotient entries ⟨2, by omega⟩)
+      (hgcdStepEntries quotient entries ⟨3, by omega⟩) := by
+  simpa [hgcdStepEntries] using hgcdSignedDet_euclid_step sgn quotient
+    (entries ⟨0, by omega⟩) (entries ⟨1, by omega⟩)
+    (entries ⟨2, by omega⟩) (entries ⟨3, by omega⟩) hdet
 
 /-- Equality of normalized Euclidean gcds follows solely from equality of
 common divisors.  This does not execute either gcd algorithm. -/

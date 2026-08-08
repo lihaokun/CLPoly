@@ -16,6 +16,7 @@
 - 将 C++ `sgn` 与矩阵行列式 `±1` 关联，证明行更新和符号取反同步保持，并由带符号变换推出规范化 gcd 保持。
 - 将非终止循环执行分解与 `polyDivrem_next_state` 合并，绑定同一个实际 divrem 返回值的 quotient/remainder raw 表示、gcd 保持、两次 row update 和递归尾调用。
 - 证明 row update 未选中索引的指针/长度描述符保持，并组合两次更新得到 `(0,1)` 与 `(2,3)` 的交叉描述符帧。
+- 定义四条目的 `hgcdStepEntries`，证明其同时保持 HGCD 变换关系和同步更新 signed determinant。
 
 ## 为什么做
 

@@ -6856,6 +6856,62 @@ theorem hgcdRecursiveCombineMatrix_refines (this : DenseUPolyZp)
     hRightModified hModified.1 hmul
   exact ⟨hProduct.1, hProduct.2.2⟩
 
+/-- Length evidence for the same real quotient-update/matrix-product block.
+The intermediate matrix is the concrete result returned by the generated
+quotient execution, so the final product bounds remain tied to actual C++
+descriptors rather than a specification-side matrix. -/
+theorem hgcdRecursiveCombineMatrix_length_bounds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : HgcdMatMulResult)
+    (right entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveCombineMatrixWorkspaceProvider this R S hR hS
+      q lenQ T a2 scratch heap)
+    (hRight : HgcdMatRawDenseRep this heap R right hR)
+    (hSRep : HgcdMatRawDenseRep this heap S entries hS)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hrun : hgcdRecursiveCombineMatrix this M R S hM hR hS q lenQ T a2
+      scratch heap = .ok result) :
+    ∃ (modified : HgcdMatQuotientResult) (hResult : result.matrix.Valid),
+      HgcdMatApplyQuotientLengthBounds S modified.matrix hS modified.valid
+        lenQ ∧
+      (∀ i : Fin 4,
+        hgcdMatLen result.matrix hResult i ≤
+          max
+            (hgcdMatLen R hR ⟨2 * (i.val / 2), by omega⟩ +
+              hgcdMatLen modified.matrix modified.valid
+                ⟨i.val % 2, by omega⟩ - 1)
+            (hgcdMatLen R hR ⟨2 * (i.val / 2) + 1, by omega⟩ +
+              hgcdMatLen modified.matrix modified.valid
+                ⟨2 + i.val % 2, by omega⟩ - 1)) := by
+  rcases hgcdRecursiveCombineMatrix_exec this M R S hM hR hS q lenQ T a2
+      scratch heap result hrun with ⟨modified, hmodified, hmul⟩
+  have hwork := physical modified hmodified
+  have hModified := hgcdMatApplyQuotient_refines this S hS q lenQ T scratch
+    heap modified entries quotient hcfg hp hwork.quotient hQ hSRep hmodified
+  have hRightModified : HgcdMatRawDenseRep this modified.heap R right hR := by
+    intro i
+    exact rawDensePolyRep_of_same_prefix this heap modified.heap
+      (hgcdMatPtr R hR i) (hgcdMatLen R hR i) (right i)
+      hwork.rightLayout (hwork.rightPrefix i) (hRight i)
+  have hProduct := hgcdMatMul_refines this M R modified.matrix hM hR
+    modified.valid a2 scratch modified.heap result right
+    (hgcdMatApplyQuotientEntries entries quotient) hcfg hp hwork.multiply
+    hRightModified hModified.1 hmul
+  rcases hProduct.2.2 with ⟨hResult, hResultRep⟩
+  refine ⟨modified, hResult, ?_, ?_⟩
+  · exact hgcdMatApplyQuotientEntries_length_bounds this heap modified.heap
+      modified.heap S modified.matrix hS modified.valid q lenQ entries
+      quotient hSRep hModified.2 hModified.1
+  · intro i
+    exact hgcdMatProductEntry_length_le this result.heap R modified.matrix
+      result.matrix hR modified.valid hResult right
+      (hgcdMatApplyQuotientEntries entries quotient) hProduct.1 hProduct.2.1
+      hResultRep i
+
 /-- Physical obligations that connect the real final reconstruction to the
 optional quotient/matrix-product block while framing both reconstructed
 output polynomials. -/

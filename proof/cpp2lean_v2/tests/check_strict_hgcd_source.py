@@ -248,6 +248,7 @@ def main() -> None:
         "HgcdRecursiveCombineMatrixWorkspace",
         "HgcdRecursiveCombineMatrixWorkspaceProvider",
         "hgcdRecursiveCombineMatrix_refines",
+        "hgcdRecursiveCombineMatrix_length_bounds",
         "HgcdRecursiveFinishWorkspace",
         "HgcdRecursiveFinishWorkspaceProvider",
         "hgcdRecursiveFinish_refines",

@@ -1728,6 +1728,29 @@ theorem hgcdRecursiveMiddle_lenD0_lt_lenC0 (this : DenseUPolyZp)
   next hkB =>
     simp at hlenC0
 
+/-- All measure facts required at the second recursive call, tied to the
+same concrete middle divrem execution.  The only incoming algorithmic facts
+are the first reconstruction bound and the real remainder strict decrease. -/
+theorem hgcdRecursiveMiddle_second_call_bounds (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m outerLenA : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (result : HgcdRecursiveMiddleResult)
+    (houterPos : 0 < outerLenA) (hm : 0 < m)
+    (hreconstructed : lenB2 ≤ outerLenA)
+    (hnonearly : m + 1 ≤ lenB2)
+    (hremainder : result.lenD < lenB2)
+    (hrun : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
+      .ok result) :
+    0 < result.lenC0 ∧ result.lenD0 < result.lenC0 ∧
+      result.lenC0 < outerLenA := by
+  have hcpos := hgcdRecursiveMiddle_lenC0_pos this q d a2 b2 lenA2 lenB2
+    m W3 heap result hm hnonearly hrun
+  exact ⟨hcpos,
+    hgcdRecursiveMiddle_lenD0_lt_lenC0 this q d a2 b2 lenA2 lenB2 m W3
+      heap result hremainder hcpos hrun,
+    hgcdRecursiveMiddle_lenC0_lt this q d a2 b2 lenA2 lenB2 m outerLenA
+      W3 heap result houterPos hreconstructed hrun⟩
+
 /-- Every successful suffix of the real restore loop returns a valid matrix
 and leaves the complete length descriptor byte-for-byte unchanged. -/
 theorem hgcdMatRestoreLoop_preserves_valid_len
@@ -1952,6 +1975,31 @@ structure HgcdRecursiveResult where
   lenA : Nat
   lenB : Nat
   sgn : Int
+
+/-- Proof-erased observable return state.  Refinement and unfolding theorems
+compare this record, while `HgcdRecursiveResult.valid` remains available to
+feed the next concrete matrix call. -/
+structure HgcdRecursiveValue where
+  heap : RawHeap
+  matrix : HgcdMat
+  lenA : Nat
+  lenB : Nat
+  sgn : Int
+
+def HgcdRecursiveResult.value (result : HgcdRecursiveResult) :
+    HgcdRecursiveValue :=
+  ⟨result.heap, result.matrix, result.lenA, result.lenB, result.sgn⟩
+
+@[ext] theorem HgcdRecursiveResult.ext_value
+    (left right : HgcdRecursiveResult) (hvalue : left.value = right.value) :
+    left = right := by
+  cases left with
+  | mk leftHeap leftMatrix leftValid leftLenA leftLenB leftSgn =>
+    cases right with
+    | mk rightHeap rightMatrix rightValid rightLenA rightLenB rightSgn =>
+      simp only [HgcdRecursiveResult.value, HgcdRecursiveValue.mk.injEq] at hvalue
+      rcases hvalue with ⟨rfl, rfl, rfl, rfl, rfl⟩
+      rfl
 
 def HgcdRecursiveBaseResult.toResult (result : HgcdRecursiveBaseResult)
     (hvalid : result.matrix.Valid) : HgcdRecursiveResult :=

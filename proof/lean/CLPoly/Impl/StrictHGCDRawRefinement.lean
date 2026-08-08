@@ -2465,12 +2465,9 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
     ⟨hDValid, hDCanonical, hDRep, hDNorm⟩
   have hBDense := rawDensePolyRep_of_same_prefix this heap heap1 b2 lenB2
     divisor hlayout hsameB hB
-  have hdecrease := hgcdRecursiveMiddle_lenC0_lt this q d a2 b2 lenA2
-    lenB2 m lenA W3 heap result hlenA hlenB2Bound hmiddle
-  have hcpos := hgcdRecursiveMiddle_lenC0_pos this q d a2 b2 lenA2
-    lenB2 m W3 heap result hm hnonearly hmiddle
-  have hdorder := hgcdRecursiveMiddle_lenD0_lt_lenC0 this q d a2 b2
-    lenA2 lenB2 m W3 heap result hlt hcpos hmiddle
+  rcases hgcdRecursiveMiddle_second_call_bounds this q d a2 b2 lenA2 lenB2
+      m lenA W3 heap result hlenA hm hlenB2Bound hnonearly hlt hmiddle with
+    ⟨hcpos, hdorder, hdecrease⟩
   refine ⟨result, quotient, remainder, hmiddle, hQRep, hQCanonical, hQNorm,
     hDRep, hDCanonical, hDNorm, hlayout, hQDense, hDDense, hBDense,
     hidentity, hdegree, hlt,

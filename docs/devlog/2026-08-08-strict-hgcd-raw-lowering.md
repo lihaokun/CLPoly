@@ -195,6 +195,13 @@ HGCD 迭代的矩阵长度不变式现已贯穿完整的良基循环。证明先
 配合非 base guard，已有 `lenA0<lenA`。因此第一次递归调用现在具备完整的
 正长度、严格有序和外层度量下降三项证明。
 
+第二次调用的良基接口现已收束为单一执行定理：对同一次
+`hgcdRecursiveMiddle`，只消费第一重构的 `lenb2≤len_a` 与真实 divrem 的
+`lend<lenb2`，一次性返回 `0<lenc0`、`lend0<lenc0` 和 `lenc0<len_a`。
+此外统一递归结果新增 proof-erased `HgcdRecursiveValue`；执行与精化等式只
+观察 heap、matrix、两项长度和符号，矩阵有效性证明仍保留给下一次真实调用，
+但不会成为 C++ 可观察语义的一部分。
+
 最终矩阵合并块也已按源码顺序闭合：`hgcdRecursiveCombineMatrix` 先实际执行
 两列商矩阵更新，再把其返回的 matrix/heap 直接交给完整四项 `_mat_mul`。
 对应 raw 定理从两次生成调用分别取得 `[[q,1],[1,0]]*S` 与

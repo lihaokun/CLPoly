@@ -911,6 +911,64 @@ theorem matRowUpdate_mul_preserves_entry1 (this : DenseUPolyZp)
       (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1) entry1 hlayout hsame
       hEntry1Rep
 
+/-- Generic frame form of the generated multiplication inside a row update.
+Any raw polynomial slice disjoint from both physical write areas (`T` and
+`scratch`) is preserved. -/
+theorem matRowUpdate_mul_preserves_guard (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid) (i0 : Fin 4)
+    (Q T scratch guard : RawPtr UInt64) (lenQ guardLen : Nat)
+    (heap heap1 : RawHeap) (guardPoly : Polynomial (ZMod this._p.toNat))
+    (hQpos : 0 < lenQ) (hEntryPos : 0 < hgcdMatLen M hM i0)
+    (hT : heap.ValidU64Slice T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1))
+    (hScratch : heap.ValidU64Slice scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)))
+    (hQValid : heap.ValidU64Slice Q lenQ)
+    (hEntryValid : heap.ValidU64Slice (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0))
+    (hScratchQ : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)) Q lenQ)
+    (hScratchEntry : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0))
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0))
+    (hTGuard : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1) guard guardLen)
+    (hScratchGuard : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)) guard guardLen)
+    (hGuardRep : RawDensePolyRep this heap guard guardLen guardPoly)
+    (hlayout : RawHeap.SameLayout heap heap1)
+    (hmul : Generated.StrictMul.dense_upoly_zp__mul_ir this T
+      (if lenQ ≥ hgcdMatLen M hM i0 then Q else hgcdMatPtr M hM i0)
+      (if lenQ ≥ hgcdMatLen M hM i0 then lenQ else hgcdMatLen M hM i0)
+      (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatPtr M hM i0 else Q)
+      (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatLen M hM i0 else lenQ)
+      scratch heap = .ok heap1) :
+    RawDensePolyRep this heap1 guard guardLen guardPoly := by
+  by_cases horder : lenQ ≥ hgcdMatLen M hM i0
+  · have hsame := mul_preserves_prefix this T Q lenQ
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0) scratch guard guardLen
+      heap heap1 hQpos hEntryPos horder
+      (by simpa [max_eq_left horder] using hT) hQValid hEntryValid
+      (by simpa [max_eq_left horder] using hScratch)
+      (by simpa [max_eq_left horder] using hScratchEntry)
+      (by simpa [max_eq_left horder] using hTGuard)
+      (by simpa [max_eq_left horder] using hScratchGuard)
+      (by simpa [horder] using hmul)
+    exact rawDensePolyRep_of_same_prefix this heap heap1 guard guardLen
+      guardPoly hlayout hsame hGuardRep
+  · have hle : lenQ ≤ hgcdMatLen M hM i0 := by omega
+    have hsame := mul_preserves_prefix this T (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) Q lenQ scratch guard guardLen heap heap1
+      hEntryPos hQpos hle
+      (by simpa [max_eq_right hle] using hT) hEntryValid hQValid
+      (by simpa [max_eq_right hle] using hScratch)
+      (by simpa [max_eq_right hle] using hScratchQ)
+      (by simpa [max_eq_right hle] using hTGuard)
+      (by simpa [max_eq_right hle] using hScratchGuard)
+      (by simpa [horder] using hmul)
+    exact rawDensePolyRep_of_same_prefix this heap heap1 guard guardLen
+      guardPoly hlayout hsame hGuardRep
+
 /-- The generated row addition writes only `t`; therefore the old `i0`
 buffer installed as the new `i1` entry retains its normalized polynomial. -/
 theorem matRowUpdate_add_preserves_entry0 (this : DenseUPolyZp)
@@ -1131,5 +1189,96 @@ theorem matRowUpdate_refines (this : DenseUPolyZp)
       hcfg hp hLenWord hT hScratch hAddOutput hTQ hTEntry0 hTEntry1
       hTScratch hScratchQ hScratchEntry0 hScratchEntry1 hAliasEntry1
       hAliasProduct htEntry0 hQRep hEntry0Rep hEntry1Rep hrun
+
+/-- Branch-complete frame theorem for a generated row update.  A normalized
+raw polynomial disjoint from `T`, `scratch`, and the add destination `t`
+survives the exact `_mul`/`_poly_add` execution (or the swap-only branch). -/
+theorem matRowUpdate_preserves_guard (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch guard : RawPtr UInt64)
+    (guardLen : Nat) (heap : RawHeap) (result : MatRowUpdateResult)
+    (hM : M.Valid)
+    (quotient entry0 entry1 guardPoly : Polynomial (ZMod this._p.toNat))
+    (hne : i0 ≠ i1)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hLenWord : max lenQ (hgcdMatLen M hM i0) < limbBase)
+    (hT : heap.ValidU64Slice T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1))
+    (hScratch : heap.ValidU64Slice scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)))
+    (hAddOutput : heap.ValidU64Slice t
+      (max (hgcdMatLen M hM i1)
+        (lenQ + hgcdMatLen M hM i0 - 1)))
+    (hTQ : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1) Q lenQ)
+    (hTEntry0 : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1)
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0))
+    (hTEntry1 : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1)
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1))
+    (hTScratch : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1) scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)))
+    (hScratchQ : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)) Q lenQ)
+    (hScratchEntry0 : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0))
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0))
+    (hScratchEntry1 : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0))
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1))
+    (hTGuard : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1) guard guardLen)
+    (hScratchGuard : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)) guard guardLen)
+    (htGuard : t.region ≠ guard.region)
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hEntry0Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) entry0)
+    (hEntry1Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) entry1)
+    (hGuardRep : RawDensePolyRep this heap guard guardLen guardPoly)
+    (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result) :
+    RawDensePolyRep this result.heap guard guardLen guardPoly := by
+  by_cases hzero : lenQ = 0 ∨ hgcdMatLen M hM i0 = 0
+  · rcases matRowUpdate_zero_exec this M i0 i1 Q lenQ T lenT t scratch
+      heap hM hne hzero with ⟨actual, hactual, hheap, _⟩
+    have heq : actual = result := Except.ok.inj (hactual.symm.trans hrun)
+    subst actual
+    simpa [hheap] using hGuardRep
+  · have hQpos : 0 < lenQ := Nat.pos_of_ne_zero (by
+      intro heq
+      exact hzero (Or.inl heq))
+    have hEntryPos : 0 < hgcdMatLen M hM i0 := Nat.pos_of_ne_zero (by
+      intro heq
+      exact hzero (Or.inr heq))
+    rcases matRowUpdate_nonzero_success_shape this M i0 i1 Q lenQ T lenT
+        t scratch heap result hM hne (by omega) (by omega) hrun with
+      ⟨heap1, heap2, sumLen, hmul, hadd, hResultHeap, _, _, _, _, _, _, _, _⟩
+    rcases matRowUpdate_mul_result this M hM i0 Q T scratch lenQ heap
+        heap1 quotient entry0 hcfg hp hQpos hEntryPos hLenWord hT hScratch
+        hTQ hTEntry0 hTScratch hScratchQ hScratchEntry0 hQRep hEntry0Rep
+        hmul with ⟨hlayoutMul, hProduct1⟩
+    have hGuard1 := matRowUpdate_mul_preserves_guard this M hM i0 Q T
+      scratch guard lenQ guardLen heap heap1 guardPoly hQpos hEntryPos hT
+      hScratch hQRep.1 hEntry0Rep.1 hScratchQ hScratchEntry0 hTGuard
+      hScratchGuard hGuardRep hlayoutMul hmul
+    have hEntry1_1 := matRowUpdate_mul_preserves_guard this M hM i0 Q T
+      scratch (hgcdMatPtr M hM i1) lenQ (hgcdMatLen M hM i1) heap heap1
+      entry1 hQpos hEntryPos hT hScratch hQRep.1 hEntry0Rep.1 hScratchQ
+      hScratchEntry0 hTEntry1 hScratchEntry1
+      hEntry1Rep hlayoutMul hmul
+    have hAddOutput1 := (hlayoutMul t
+      (max (hgcdMatLen M hM i1)
+        (lenQ + hgcdMatLen M hM i0 - 1))).mp hAddOutput
+    have hGuard2 := matRowUpdate_add_preserves_entry0 this t
+      (hgcdMatPtr M hM i1) T guard (hgcdMatLen M hM i1)
+      (lenQ + hgcdMatLen M hM i0 - 1) guardLen sumLen heap1 heap2
+      guardPoly entry1 (quotient * entry0) hAddOutput1 hEntry1_1
+      hProduct1 hGuard1 htGuard hadd
+    simpa [hResultHeap] using hGuard2
 
 end CLPoly.Impl.StrictHGCDRawRefinement

@@ -130,15 +130,13 @@ decreasing_by
   exact polyDivrem_remainder_lt this Q state.T state.A state.lenA state.B
     state.lenB W3 state.heap heap1 lenQ lenR hdiv
 
-/-- Raw lowering of the complete C++ `_hgcd_iter` initialization followed by
-its well-founded Euclidean loop.  The source order of the two copies is kept
-because it is required for the documented `{B,a}` aliasing case. -/
-def dense_upoly_zp__hgcd_iter_ir (this : DenseUPolyZp) (M : HgcdMat)
+/-- Raw lowering of the initialization prefix of C++ `_hgcd_iter`.  The
+source order of the two copies is kept because it is required for the
+documented `{B,a}` aliasing case. -/
+def hgcdIterInit (M : HgcdMat)
     (A B T t : RawPtr UInt64) (lenT : Nat)
     (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
-    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
     (heap : RawHeap) : RawExec HgcdIterState :=
-  let m := lenA / 2
   match dense_upoly_zp__mat_one_ir M heap with
   | .error fault => .error fault
   | .ok (heap1, matrix) =>
@@ -148,7 +146,7 @@ def dense_upoly_zp__hgcd_iter_ir (this : DenseUPolyZp) (M : HgcdMat)
       match heap2.copyU64 B b lenB with
       | .error fault => .error fault
       | .ok heap3 =>
-        hgcdIterLoop this m Q W3 scratch {
+        .ok {
           heap := heap3
           matrix := matrix
           A := A
@@ -160,5 +158,16 @@ def dense_upoly_zp__hgcd_iter_ir (this : DenseUPolyZp) (M : HgcdMat)
           t := t
           sgn := 1
         }
+
+/-- Raw lowering of the complete C++ `_hgcd_iter` initialization followed by
+its well-founded Euclidean loop. -/
+def dense_upoly_zp__hgcd_iter_ir (this : DenseUPolyZp) (M : HgcdMat)
+    (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (heap : RawHeap) : RawExec HgcdIterState :=
+  match hgcdIterInit M A B T t lenT a lenA b lenB heap with
+  | .error fault => .error fault
+  | .ok initial => hgcdIterLoop this (lenA / 2) Q W3 scratch initial
 
 end Generated.StrictHGCD

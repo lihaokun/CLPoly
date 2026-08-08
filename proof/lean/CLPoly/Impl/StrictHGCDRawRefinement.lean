@@ -52,6 +52,29 @@ theorem rawDensePolyRep_of_same_prefix (this : DenseUPolyZp)
     hrep.1 hsame
   exact hnorm.symm.trans hrep.2.2.2
 
+/-- The actual recursive RawHeap memcpy transports the complete normalized
+polynomial representation to a disjoint destination. -/
+theorem copyU64_refines_rawDense (this : DenseUPolyZp)
+    (heap : RawHeap) (dst src : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hDst : heap.ValidU64Slice dst length)
+    (hdisjoint : U64SlicesDisjoint dst length src length)
+    (hrep : RawDensePolyRep this heap src length poly) :
+    ∃ heap', heap.copyU64 dst src length = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' dst length poly := by
+  rcases copyU64_refines_disjoint heap dst src length hDst hrep.1 hdisjoint
+      with ⟨heap', hcopy, hlayout, hcontents⟩
+  rcases copyU64_refines_slice_canonical heap dst src length
+      this._p.toNat poly this._p hDst hrep.1 hdisjoint hrep.2.2.1
+      hrep.2.1 with ⟨repHeap, hcopyRep, _, hslice, hcanonical⟩
+  have heq : repHeap = heap' := Except.ok.inj (hcopyRep.symm.trans hcopy)
+  subst repHeap
+  have hnorm := normaliseU64_eq_of_prefix_map heap heap' src dst length
+    hrep.1 hcontents
+  exact ⟨heap', hcopy, hlayout, (hlayout dst length).mp hDst, hcanonical,
+    hslice, hnorm.symm.trans hrep.2.2.2⟩
+
 theorem slicePolyRep_zero_length_any (heap : RawHeap) (ptr : RawPtr UInt64)
     (p : Nat) : SlicePolyRep heap ptr 0 p 0 := by
   refine ⟨#[], rfl, rfl, ?_⟩

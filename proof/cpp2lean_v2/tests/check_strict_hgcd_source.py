@@ -72,9 +72,11 @@ def main() -> None:
     required = (
         "dense_upoly_zp__mat_one_ir",
         "matOne_refines",
+        "copyU64_refines_rawDense",
         "dense_upoly_zp__mat_row_update_ir",
         "HgcdIterState",
         "hgcdIterLoop",
+        "hgcdIterInit",
         "dense_upoly_zp__hgcd_iter_ir",
         "polyDivrem_remainder_lt",
         "matRowUpdate_zero_exec",

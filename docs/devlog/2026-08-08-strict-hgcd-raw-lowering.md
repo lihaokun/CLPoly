@@ -47,5 +47,9 @@
 `_mat_row_update`。循环直接按当前 `lenB` 良基递归；下降证据由实际 divrem
 返回的 `lenR < lenB` 控制流定理提供，不使用 fuel 或额外运行时断言。
 
+初始化前缀现已抽成 `hgcdIterInit`，完整入口严格等于初始化成功后进入同一
+良基循环；真实 recursive memcpy 也已有完整 `RawDensePolyRep` 传递定理，
+包括有效性、canonical、L2 slice 语义和 normalization。
+
 下一步证明初始化 copy 的表示传递，以及每轮 divrem/两次行更新共同保持
 Euclid 对与矩阵变换关系，最终导出循环停止条件和 GCD 不变式。

@@ -1496,16 +1496,6 @@ structure HgcdMulTermWorkspace (heap : RawHeap)
   scratchRight : U64SlicesDisjoint scratch (8 * max lenLeft lenRight)
     right lenRight
 
-/-- Observable representation of a fixed-length C++ polynomial slice.  It
-permits trailing zero limbs and therefore matches low prefixes cut at the
-generated `k`; unlike `RawDensePolyRep`, it makes no normalization claim. -/
-def RawCanonicalPolySlice (this : DenseUPolyZp) (heap : RawHeap)
-    (ptr : RawPtr UInt64) (length : Nat)
-    (poly : Polynomial (ZMod this._p.toNat)) : Prop :=
-  heap.ValidU64Slice ptr length ∧
-    CanonicalU64Prefix heap ptr length this._p ∧
-    SlicePolyRep heap ptr length this._p.toNat poly
-
 /-- Exact guarded multiplication for canonical fixed-length slices.  The
 positive branch retains the source capacity `lenLeft + lenRight - 1`; it does
 not claim that this capacity is already the normalized product length. -/
@@ -1845,6 +1835,19 @@ theorem hgcdMulTermWorkspace_of_sameLayout (heap heap' : RawHeap)
     hwork.dstLeft, hwork.dstRight, hwork.dstScratch,
     hwork.scratchLeft, hwork.scratchRight⟩
 
+theorem rawCanonicalPolySlice_of_same_prefix (this : DenseUPolyZp)
+    (before after : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hlayout : RawHeap.SameLayout before after)
+    (hprefix : SameU64Prefix before after ptr length)
+    (hrep : RawCanonicalPolySlice this before ptr length poly) :
+    RawCanonicalPolySlice this after ptr length poly :=
+  ⟨(hlayout ptr length).mp hrep.1,
+    canonicalU64Prefix_of_same_prefix before after ptr length this._p
+      hrep.1 hprefix hrep.2.1,
+    slicePolyRep_of_same_prefix before after ptr length this._p.toNat poly
+      hrep.1 ((hlayout ptr length).mp hrep.1) hprefix hrep.2.2⟩
+
 /-- Semantic refinement of the exact `b2` low reconstruction block.  Both
 products and the final sign-selected subtraction are actual generated raw
 executions. -/
@@ -1859,8 +1862,8 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
       r0 lenR0 bLo lenBLo scratch)
     (hR2 : RawDensePolyRep this heap r2 lenR2 polyR2)
     (hR0 : RawDensePolyRep this heap r0 lenR0 polyR0)
-    (hALo : RawDensePolyRep this heap aLo lenALo polyALo)
-    (hBLo : RawDensePolyRep this heap bLo lenBLo polyBLo) :
+    (hALo : RawCanonicalPolySlice this heap aLo lenALo polyALo)
+    (hBLo : RawCanonicalPolySlice this heap bLo lenBLo polyBLo) :
     ∃ heap' length,
       hgcdRecursiveReconstructB this b2 T0 r2 r0 aLo bLo scratch
         lenR2 lenR0 lenALo lenBLo sgn heap = .ok (heap', length) ∧
@@ -1869,8 +1872,9 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
         (if sgn < 0 then polyR2 * polyALo - polyR0 * polyBLo
          else polyR0 * polyBLo - polyR2 * polyALo) ∧
       length ≤ max (lenR2 + lenALo - 1) (lenR0 + lenBLo - 1) := by
-  rcases hgcdRecursiveMulTerm_refines this b2 r2 lenR2 aLo lenALo
-      scratch heap polyR2 polyALo hcfg hp hwork.first hR2 hALo with
+  rcases hgcdRecursiveMulTerm_refines_slice this b2 r2 lenR2 aLo lenALo
+      scratch heap polyR2 polyALo hcfg hp hwork.first
+      hR2.toCanonicalSlice hALo with
     ⟨term1, hrun1, hlayout1, hTerm1⟩
   have hR01 : RawDensePolyRep this term1.heap r0 lenR0 polyR0 := by
     apply rawDensePolyRep_of_same_prefix this heap term1.heap r0 lenR0
@@ -1879,17 +1883,18 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
         lenALo scratch r0 lenR0 heap term1 hwork.first hR2.1 hALo.1
         hwork.firstDstLeft2 hwork.firstScratchLeft2 hrun1
     · exact hR0
-  have hBLo1 : RawDensePolyRep this term1.heap bLo lenBLo polyBLo := by
-    apply rawDensePolyRep_of_same_prefix this heap term1.heap bLo lenBLo
-      polyBLo hlayout1
+  have hBLo1 : RawCanonicalPolySlice this term1.heap bLo lenBLo polyBLo := by
+    apply rawCanonicalPolySlice_of_same_prefix this heap term1.heap bLo
+      lenBLo polyBLo hlayout1
     · exact hgcdRecursiveMulTerm_preserves_guard this b2 r2 lenR2 aLo
         lenALo scratch bLo lenBLo heap term1 hwork.first hR2.1 hALo.1
         hwork.firstDstRight2 hwork.firstScratchRight2 hrun1
     · exact hBLo
   have hSecond1 := hgcdMulTermWorkspace_of_sameLayout heap term1.heap T0 r0
     lenR0 bLo lenBLo scratch hlayout1 hwork.second
-  rcases hgcdRecursiveMulTerm_refines this T0 r0 lenR0 bLo lenBLo
-      scratch term1.heap polyR0 polyBLo hcfg hp hSecond1 hR01 hBLo1 with
+  rcases hgcdRecursiveMulTerm_refines_slice this T0 r0 lenR0 bLo lenBLo
+      scratch term1.heap polyR0 polyBLo hcfg hp hSecond1
+      hR01.toCanonicalSlice hBLo1 with
     ⟨term2, hrun2, hlayout2, hTerm2⟩
   have hLen1 := hgcdRecursiveMulTerm_length_le this b2 r2 lenR2 aLo
     lenALo scratch heap term1 hrun1
@@ -1899,9 +1904,9 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
     lenALo scratch heap term1 hrun1
   have hLen2Product := hgcdRecursiveMulTerm_length_le_product this T0 r0 lenR0 bLo
     lenBLo scratch term1.heap term2 hrun2
-  have hTerm1Final : RawDensePolyRep this term2.heap b2 term1.length
+  have hTerm1Final : RawCanonicalPolySlice this term2.heap b2 term1.length
       (polyR2 * polyALo) := by
-    apply rawDensePolyRep_of_same_prefix this term1.heap term2.heap b2
+    apply rawCanonicalPolySlice_of_same_prefix this term1.heap term2.heap b2
       term1.length (polyR2 * polyALo) hlayout2
     · apply hgcdRecursiveMulTerm_preserves_guard this T0 r0 lenR0 bLo
         lenBLo scratch b2 term1.length term1.heap term2 hSecond1 hR01.1
@@ -1978,8 +1983,8 @@ theorem hgcdRecursiveReconstructA_refines (this : DenseUPolyZp)
       r1 lenR1 bLo lenBLo scratch)
     (hR3 : RawDensePolyRep this heap r3 lenR3 polyR3)
     (hR1 : RawDensePolyRep this heap r1 lenR1 polyR1)
-    (hALo : RawDensePolyRep this heap aLo lenALo polyALo)
-    (hBLo : RawDensePolyRep this heap bLo lenBLo polyBLo) :
+    (hALo : RawCanonicalPolySlice this heap aLo lenALo polyALo)
+    (hBLo : RawCanonicalPolySlice this heap bLo lenBLo polyBLo) :
     ∃ heap' length,
       hgcdRecursiveReconstructA this a2 T0 r3 r1 aLo bLo scratch
         lenR3 lenR1 lenALo lenBLo sgn heap = .ok (heap', length) ∧
@@ -7171,8 +7176,8 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       lowA lowB highA highB scratch lenLowA lenLowB lenHighA lenHighB shift
       M hM sgn heap)
     (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
-    (hLowA : RawDensePolyRep this heap lowA lenLowA polyLowA)
-    (hLowB : RawDensePolyRep this heap lowB lenLowB polyLowB)
+    (hLowA : RawCanonicalPolySlice this heap lowA lenLowA polyLowA)
+    (hLowB : RawCanonicalPolySlice this heap lowB lenLowB polyLowB)
     (hHighA : RawDensePolyRep this heap highA lenHighA polyHighA)
     (hHighB : RawDensePolyRep this heap highB lenHighB polyHighB)
     (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
@@ -7245,10 +7250,10 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
     rawDensePolyRep_of_same_prefix this heap liftedB.heap
       (hgcdMatPtr M hM i) (hgcdMatLen M hM i) (entries i)
       hwork.aInputLayout (hwork.aMatrixPrefix i) (hMatrix i)
-  have lowAAtB := rawDensePolyRep_of_same_prefix this heap liftedB.heap lowA
-    lenLowA polyLowA hwork.aInputLayout hwork.aLowAPrefix hLowA
-  have lowBAtB := rawDensePolyRep_of_same_prefix this heap liftedB.heap lowB
-    lenLowB polyLowB hwork.aInputLayout hwork.aLowBPrefix hLowB
+  have lowAAtB := rawCanonicalPolySlice_of_same_prefix this heap liftedB.heap
+    lowA lenLowA polyLowA hwork.aInputLayout hwork.aLowAPrefix hLowA
+  have lowBAtB := rawCanonicalPolySlice_of_same_prefix this heap liftedB.heap
+    lowB lenLowB polyLowB hwork.aInputLayout hwork.aLowBPrefix hLowB
   rcases hgcdRecursiveReconstructA_refines this A T0
       (hgcdMatPtr M hM (3 : Fin 4)) (hgcdMatPtr M hM (1 : Fin 4)) lowA
       lowB scratch (hgcdMatLen M hM (3 : Fin 4))
@@ -7325,8 +7330,8 @@ theorem hgcdRecursiveReconstructPair_preserves_input (this : DenseUPolyZp)
     (hFirst : HgcdRecursiveRawInvariant this polyInputHighA polyInputHighB
       polyOutputHighA polyOutputHighB entries true highA highB inputLength
       first)
-    (hLowA : RawDensePolyRep this first.heap lowA lenLowA polyLowA)
-    (hLowB : RawDensePolyRep this first.heap lowB lenLowB polyLowB)
+    (hLowA : RawCanonicalPolySlice this first.heap lowA lenLowA polyLowA)
+    (hLowB : RawCanonicalPolySlice this first.heap lowB lenLowB polyLowB)
     (hFullA : fullA = polyLowA + Polynomial.X ^ shift * polyInputHighA)
     (hFullB : fullB = polyLowB + Polynomial.X ^ shift * polyInputHighB)
     (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
@@ -7453,7 +7458,8 @@ theorem hgcdRecursiveFirstReconstruct_bound_of_invariant
     highA highB scratch (Nat.min lenA (lenA / 2))
     (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
     first.matrix first.valid first.sgn first.heap result entries polyLowA
-    polyLowB polyHighA polyHighB hcfg hp physical hMatrix hLowA hLowB
+    polyLowB polyHighA polyHighB hcfg hp physical hMatrix
+    hLowA.toCanonicalSlice hLowB.toCanonicalSlice
     hHighA hHighB hrun
   exact hgcdRecursiveFirstReconstruct_lenB_lt_input result.lenB lenA lenB
     first.lenA first.lenB
@@ -7577,8 +7583,8 @@ theorem hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant
   have hrefines := hgcdRecursiveReconstructPair_refines this A B T0 lowA
     lowB highA highB scratch lenLowA lenLowB second.lenA second.lenB shift
     second.matrix second.valid second.sgn second.heap result entries polyLowA
-    polyLowB polyHighA polyHighB hcfg hp physical hMatrix hLowA hLowB hHighA
-    hHighB hrun
+    polyLowB polyHighA polyHighB hcfg hp physical hMatrix
+    hLowA.toCanonicalSlice hLowB.toCanonicalSlice hHighA hHighB hrun
   exact hgcdRecursiveFinalReconstruct_lenA_eq inputLength shift lenLowA
     lenLowB second.lenA
     (hgcdMatLen second.matrix second.valid (1 : Fin 4))
@@ -7636,7 +7642,8 @@ theorem hgcdRecursiveFirstReconstruct_order_of_invariant
     highA highB scratch (Nat.min lenA (lenA / 2))
     (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
     first.matrix first.valid first.sgn first.heap result entries polyLowA
-    polyLowB polyHighA polyHighB hcfg hp physical hMatrix hLowA hLowB
+    polyLowB polyHighA polyHighB hcfg hp physical hMatrix
+    hLowA.toCanonicalSlice hLowB.toCanonicalSlice
     hHighA hHighB hrun
   refine ⟨hleading.1, hleading.2, ?_⟩
   exact hgcdRecursiveFirstReconstruct_order lenA lenB
@@ -7862,7 +7869,8 @@ theorem hgcdRecursiveFinish_operandInvariant (this : DenseUPolyZp)
     lowB highA highB scratch (Nat.min reconstructedLenB k)
     (Nat.min lenD k) second.lenA second.lenB k second.matrix second.valid
     second.sgn second.heap reconstructed entries polyLowA polyLowB polyHighA
-    polyHighB hcfg hp physical hMatrix hLowA hLowB hHighA hHighB hreconstruct
+    polyHighB hcfg hp physical hMatrix hLowA.toCanonicalSlice
+    hLowB.toCanonicalSlice hHighA hHighB hreconstruct
   have hleading := hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant this A
     B T0 lowA lowB highA highB scratch (Nat.min reconstructedLenB k)
     (Nat.min lenD k) k secondInputLength second reconstructed entries polyLowA
@@ -8608,7 +8616,8 @@ theorem hgcdRecursiveFinish_refines (this : DenseUPolyZp)
   rcases hgcdRecursiveReconstructPair_refines this A B T0 lowA lowB highA
       highB scratch lenLowA lenLowB lenHighA lenHighB shift S hS sgnS heap
       reconstructed entries polyLowA polyLowB polyHighA polyHighB hcfg hp
-      hwork.reconstruct hSRep hLowA hLowB hHighA hHighB hreconstruct with
+      hwork.reconstruct hSRep hLowA.toCanonicalSlice hLowB.toCanonicalSlice
+      hHighA hHighB hreconstruct with
     ⟨hAReconstructed, hBReconstructed, _, _, _, _⟩
   let finalA := hgcdReconstructedLowA entries polyLowA polyLowB sgnS +
     Polynomial.X ^ shift * polyHighA
@@ -9350,7 +9359,8 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
       a b ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
       (Nat.min lenB (lenA / 2)) (lenA / 2) high.lenA0 first reconstructed
       entries left right lowPolyA lowPolyB inputHighA inputHighB outputHighA
-      outputHighB hcfg hp reconstructWork hFirst hLowA hLowB hFullA hFullB
+      outputHighB hcfg hp reconstructWork hFirst hLowA.toCanonicalSlice
+      hLowB.toCanonicalSlice hFullA hFullB
       hreconstruct with
     ⟨finalA, finalB, hARep, hBRep, hTransform, hDet, hGcd, _⟩
   have hLength : HgcdRecursiveLengthInvariant lenA

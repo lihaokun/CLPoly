@@ -155,3 +155,16 @@ normalise 调用之后恢复 `RawDensePolyRep`。
 当 `k` 超过 remainder 长度时，证明按源码得到零长度 `d0`，从物理有效空切片
 推出零多项式，而不是补充一个规格侧零值。该桥消除了第二递归输入和 finish 低部
 之间原先缺失的语义联系。
+
+## Reconstruction 只在真实减法后规范化
+
+`RawCanonicalPolySlice` 已下沉到公共 raw 多项式表示层，并新增从
+`RawDensePolyRep` 的单向转换。`polySub_equalLength_refines`、左右长分支以及统一
+`polySub_refines` 现在只要求两个输入是 canonical 定长 slice；其返回值仍由生成的
+`dense_upoly_zp__poly_sub_ir` 内部真实 `normaliseU64` 得到
+`RawDensePolyRep`。
+
+`hgcdRecursiveReconstructB_refines` 和 `hgcdRecursiveReconstructA_refines` 已实际迁移
+到 slice 乘法与 slice 减法接口。成对重构也允许低部为定长 slice，并在两个真实
+乘积、符号选择减法和后续 lift-high 执行之后返回规范化 A/B。因此 final
+reconstruction 不再依赖低前缀“碰巧已经规范化”的不可导出前提。

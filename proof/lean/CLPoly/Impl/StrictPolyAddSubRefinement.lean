@@ -229,7 +229,7 @@ termination_by limit - i
 decreasing_by omega
 
 /-- The generated add loop writes only `C[i..limit)`.  This is the memory
-fact needed to justify both exact in-place aliases admitted by the C++ API. -/
+fact needed to justify both exact in-place aliases supported by the C++ API. -/
 theorem addCommonLoop_preserves_outside (this : DenseUPolyZp)
     (C A B guard : RawPtr UInt64) (limit i readIndex : Nat)
     (heap heap' : RawHeap) (old : UInt64)
@@ -1218,14 +1218,14 @@ theorem polySub_equalLength_refines (this : DenseUPolyZp)
     (outLen : Nat) (left right : Polynomial (ZMod this._p.toNat))
     (hp : this._p ≠ 0)
     (hC : heap.ValidU64Slice C length)
-    (hLeft : RawDensePolyRep this heap A length left)
-    (hRight : RawDensePolyRep this heap B length right)
+    (hLeft : RawCanonicalPolySlice this heap A length left)
+    (hRight : RawCanonicalPolySlice this heap B length right)
     (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B)
     (hrun : dense_upoly_zp__poly_sub_ir this C A length B length heap =
       .ok (heap', outLen)) :
     RawDensePolyRep this heap' C outLen (left - right) := by
-  rcases hLeft with ⟨hA, hcanonA, hrepA, hnormA⟩
-  rcases hRight with ⟨hB, hcanonB, hrepB, hnormB⟩
+  rcases hLeft with ⟨hA, hcanonA, hrepA⟩
+  rcases hRight with ⟨hB, hcanonB, hrepB⟩
   rcases subCommonLoop_ok this C A B length 0 heap hC hA hB (by omega) with
     ⟨heap1, hloop, hlayout⟩
   have hC1 : heap1.ValidU64Slice C length := (hlayout C length).mp hC
@@ -1540,14 +1540,14 @@ theorem polySub_leftLong_refines (this : DenseUPolyZp)
     (outLen : Nat) (left right : Polynomial (ZMod this._p.toNat))
     (hp : this._p ≠ 0) (hLong : lenB < lenA)
     (hC : heap.ValidU64Slice C lenA)
-    (hLeft : RawDensePolyRep this heap A lenA left)
-    (hRight : RawDensePolyRep this heap B lenB right)
+    (hLeft : RawCanonicalPolySlice this heap A lenA left)
+    (hRight : RawCanonicalPolySlice this heap B lenB right)
     (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B)
     (hrun : dense_upoly_zp__poly_sub_ir this C A lenA B lenB heap =
       .ok (heap', outLen)) :
     RawDensePolyRep this heap' C outLen (left - right) := by
-  rcases hLeft with ⟨hA, hcanonA, hrepA, hnormA⟩
-  rcases hRight with ⟨hB, hcanonB, hrepB, hnormB⟩
+  rcases hLeft with ⟨hA, hcanonA, hrepA⟩
+  rcases hRight with ⟨hB, hcanonB, hrepB⟩
   have hCMin := heap.validU64Slice_mono C lenA lenB hC (by omega)
   have hAMin := heap.validU64Slice_mono A lenA lenB hA (by omega)
   rcases subCommonLoop_ok this C A B lenB 0 heap
@@ -1642,14 +1642,14 @@ theorem polySub_rightLong_refines (this : DenseUPolyZp)
     (outLen : Nat) (left right : Polynomial (ZMod this._p.toNat))
     (hp : this._p ≠ 0) (hLong : lenA < lenB)
     (hC : heap.ValidU64Slice C lenB)
-    (hLeft : RawDensePolyRep this heap A lenA left)
-    (hRight : RawDensePolyRep this heap B lenB right)
+    (hLeft : RawCanonicalPolySlice this heap A lenA left)
+    (hRight : RawCanonicalPolySlice this heap B lenB right)
     (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B)
     (hrun : dense_upoly_zp__poly_sub_ir this C A lenA B lenB heap =
       .ok (heap', outLen)) :
     RawDensePolyRep this heap' C outLen (left - right) := by
-  rcases hLeft with ⟨hA, hcanonA, hrepA, hnormA⟩
-  rcases hRight with ⟨hB, hcanonB, hrepB, hnormB⟩
+  rcases hLeft with ⟨hA, hcanonA, hrepA⟩
+  rcases hRight with ⟨hB, hcanonB, hrepB⟩
   have hCMin := heap.validU64Slice_mono C lenB lenA hC (by omega)
   have hBMin := heap.validU64Slice_mono B lenB lenA hB (by omega)
   rcases subCommonLoop_ok this C A B lenA 0 heap
@@ -1752,8 +1752,8 @@ theorem polySub_refines (this : DenseUPolyZp)
     (left right : Polynomial (ZMod this._p.toNat))
     (hp : this._p ≠ 0)
     (hC : heap.ValidU64Slice C (max lenA lenB))
-    (hLeft : RawDensePolyRep this heap A lenA left)
-    (hRight : RawDensePolyRep this heap B lenB right)
+    (hLeft : RawCanonicalPolySlice this heap A lenA left)
+    (hRight : RawCanonicalPolySlice this heap B lenB right)
     (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B)
     (hrun : dense_upoly_zp__poly_sub_ir this C A lenA B lenB heap =
       .ok (heap', outLen)) :

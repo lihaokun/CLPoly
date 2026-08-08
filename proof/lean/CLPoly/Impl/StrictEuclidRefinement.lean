@@ -19,6 +19,22 @@ def RawDensePolyRep (this : DenseUPolyZp) (heap : RawHeap)
     SlicePolyRep heap ptr length this._p.toNat poly ∧
     heap.normaliseU64 ptr length = .ok length
 
+/-- Observable representation of a fixed-length canonical coefficient slice.
+Unlike `RawDensePolyRep`, trailing zero limbs are permitted. -/
+def RawCanonicalPolySlice (this : DenseUPolyZp) (heap : RawHeap)
+    (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat)) : Prop :=
+  heap.ValidU64Slice ptr length ∧
+    CanonicalU64Prefix heap ptr length this._p ∧
+    SlicePolyRep heap ptr length this._p.toNat poly
+
+theorem RawDensePolyRep.toCanonicalSlice (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hrep : RawDensePolyRep this heap ptr length poly) :
+    RawCanonicalPolySlice this heap ptr length poly :=
+  ⟨hrep.1, hrep.2.1, hrep.2.2.1⟩
+
 /-- Pairwise non-aliasing of the five physical work areas used by the source
 Euclid loop. -/
 structure EuclidRegions (Q : RawPtr UInt64) (W3 : RawPtr Word3)
@@ -229,7 +245,7 @@ theorem polyDivrem_next_state (this : DenseUPolyZp)
 
 /-- End-to-end semantic refinement of the actual well-founded raw Euclid
 loop.  The proof follows every generated `_poly_divrem` call and every source
-buffer rotation; no L2 loop, remainder oracle, fallback, or bounded execution
+buffer rotation; no L2 loop, assumed remainder, alternate path, or bounded execution
 counter is used. -/
 theorem strictEuclidLoop_refines (this : DenseUPolyZp)
     [hprime : Fact (Nat.Prime this._p.toNat)]

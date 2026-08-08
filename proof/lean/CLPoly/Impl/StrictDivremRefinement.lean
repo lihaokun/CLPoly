@@ -1620,6 +1620,203 @@ theorem quotientLoop_preserves_budget (this : DenseUPolyZp)
       intro ptr length
       exact (hlayout1 ptr length).trans (hlayout2 ptr length)
 
+/-- Strengthening of `quotientLoop_preserves_budget` with the descending
+leading-cell invariant.  Every processed high W3 cell is proved zero modulo
+the source prime, including the generated `qi = 0` branch. -/
+theorem quotientLoop_zeroes_high_cells (this : DenseUPolyZp)
+    (Q B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (qLen d lenW3 count : Nat) (lead invLc : UInt64)
+    (heap : RawHeap) (ii : Nat)
+    (hQ : heap.ValidU64Slice Q qLen)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hcanonical : CanonicalU64Prefix heap B (d + 1) this._p)
+    (hreadLead : heap.readU64 B d = .ok lead)
+    (hbudget : Word3AccumulationBudget heap W3 lenW3 this._p count)
+    (hzero : Word3ZeroModRange heap W3 (ii + d) (qLen + d)
+      this._p.toNat)
+    (hstate : count + ii = qLen)
+    (hspan : qLen + d ≤ lenW3) (hqLen : qLen < limbBase)
+    (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
+    (hWB : W3.region ≠ B.region)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat)
+    (hleadPos : 0 < lead.toNat) (hlead : lead.toNat < this._p.toNat)
+    (hinv : invLc =
+      Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead) :
+    ∃ heap', quotientLoop this Q B W3 d invLc heap ii = .ok heap' ∧
+      heap'.ValidU64Slice Q qLen ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      CanonicalU64Prefix heap' B (d + 1) this._p ∧
+      Word3AccumulationBudget heap' W3 lenW3 this._p qLen ∧
+      Word3ZeroModRange heap' W3 d (qLen + d) this._p.toNat := by
+  subst invLc
+  cases ii with
+  | zero =>
+      have hcount : count = qLen := by omega
+      subst count
+      exact ⟨heap, rfl, hQ, hB, hW3, fun _ _ => Iff.rfl, hcanonical,
+        hbudget, by simpa using hzero⟩
+  | succ i =>
+    have hiQ : i < qLen := by omega
+    have hiW : i + d < lenW3 := by omega
+    have hcountLt : count < limbBase := by omega
+    have hcountNext : count + 1 < limbBase := by omega
+    simp only [quotientLoop]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + d) hW3 hiW with
+      ⟨accum, hread⟩
+    simp only [hread]
+    let r := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      accum.hi accum.mid accum.lo this._p this._ninv this._norm
+    let inv := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+    let qi := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r inv
+    have hhi : accum.hi.toNat < this._p.toNat :=
+      word3_hi_lt_of_accumulation_budget heap W3 lenW3 count (i + d)
+        this._p accum hbudget hprime.two_le hcountLt hiW hread
+    have hrEq : r.toNat = word3Value accum % this._p.toNat := by
+      simpa [r] using lll_mod_preinv_ir_correct_of_configured this
+        accum.hi accum.mid accum.lo hcfg hhi
+    have hr : r.toNat < this._p.toNat := by
+      rw [hrEq]
+      exact Nat.mod_lt _ hprime.pos
+    have hcoeff := quotientCoeff_eliminates_lead this r lead hcfg hprime hr
+      hleadPos hlead
+    change qi.toNat < this._p.toNat ∧
+      (qi.toNat * lead.toNat) % this._p.toNat = r.toNat at hcoeff
+    rcases heap.writeU64_of_valid Q qLen i qi hQ hiQ with
+      ⟨heap1, hwrite⟩
+    dsimp [r, inv, qi] at hwrite ⊢
+    simp only [hwrite]
+    have hQ1 : heap1.ValidU64Slice Q qLen :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite Q qLen).mp hQ
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite
+        (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 Q i _ hwrite
+    have hcanonical1 := canonicalPrefix_writeU64_region_ne heap heap1 Q B
+      i (d + 1) _ this._p hB hcanonical hQB hwrite
+    have hbudget1 := accumulationBudget_writeU64_region_ne heap heap1 Q W3
+      i lenW3 count _ this._p hW3 hbudget hQW hwrite
+    have hzero1 := zeroModRange_writeU64_region_ne heap heap1 Q W3 i lenW3
+      (i + 1 + d) (qLen + d) this._p.toNat _ hW3 hspan hzero hQW hwrite
+    have hreadLead1 := RawHeap.readU64_writeU64_ne heap heap1 Q B i d _ lead
+      hwrite hreadLead (Or.inl hQB)
+    have hreadW1 := RawHeap.readWord3_writeU64_region_ne heap heap1 Q W3
+      i (i + d) _ accum hwrite hread hQW
+    split
+    next hnonzero =>
+      let r0 := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        accum.hi accum.mid accum.lo this._p this._ninv this._norm
+      let inv0 := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+      let qi0 := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r0 inv0
+      have hqi0 : qi0.toNat < this._p.toNat := by
+        simpa [qi0, inv0, r0] using hcoeff.1
+      have hqi0ne : qi0 ≠ 0 := by simpa [qi0, inv0, r0] using hnonzero
+      have hqi0pos : 0 < qi0.toNat := by
+        have : qi0.toNat ≠ 0 := by
+          intro hz
+          apply hqi0ne
+          exact UInt64.toNat_inj.mp (by simpa using hz)
+        omega
+      have hc : (this._p - qi0).toNat < this._p.toNat := by
+        rw [UInt64.toNat_sub_of_le _ _ (Nat.le_of_lt hqi0)]
+        omega
+      rcases addMulLoop_preserves_budget heap1 B W3 lenW3 i d count
+        this._p (this._p - qi0) hB1 hW31 hcanonical1 hbudget1 hiW hWB
+        hprime.two_le hcountNext hc with
+        ⟨heap2, hadd, hB2, hW32, hlayout2, hcanonical2, hbudget2⟩
+      rcases addMulLoop_refines_exact heap1 B W3 lenW3 i d 0 count
+        this._p (this._p - qi0) hB1 hW31 hbudget1 hcanonical1 hiW
+        (by omega) hWB hprime.two_le hcountNext hc with
+        ⟨heapExact, haddExact, _, _, _, hsameB, _, hrange⟩
+      have hheapExact : heapExact = heap2 :=
+        Except.ok.inj (haddExact.symm.trans hadd)
+      subst heapExact
+      rcases generated_quotient_top_cell_eliminates this heap1 heap2 B W3
+        i d r0 lead accum hcfg hprime (by simpa [r0] using hr) hleadPos
+        hlead hreadLead1 hreadW1 (by simpa [r0] using hrEq.symm) (by
+          simpa [qi0, inv0, r0] using hrange) with
+        ⟨topOut, hreadTop, htopZero⟩
+      rcases addMulLoop_preserves_above heap1 B W3 lenW3 i d 0
+        (this._p - qi0) hB1 hW31 hiW (by omega) with
+        ⟨heapAbove, haddAbove, _, _, _, hsameAbove⟩
+      have hheapAbove : heapAbove = heap2 :=
+        Except.ok.inj (haddAbove.symm.trans hadd)
+      subst heapAbove
+      have hrest : Word3ZeroModRange heap1 W3 (i + d + 1)
+          (qLen + d) this._p.toNat := by
+        convert hzero1 using 1 <;> omega
+      have hsameRestricted : SameWord3Above heap1 heap2 W3 (i + d)
+          (qLen + d) := by
+        intro k hkTop hkUpper
+        exact hsameAbove k hkTop (by omega)
+      have hrest2 := zeroModRange_of_same_above heap1 heap2 W3 (i + d)
+        (qLen + d) this._p.toNat hsameRestricted hrest
+      have hzero2 : Word3ZeroModRange heap2 W3 (i + d) (qLen + d)
+          this._p.toNat := zeroModRange_extend_down heap2 W3 (i + d)
+            (qLen + d) this._p.toNat (by
+              intro value hreadValue
+              have : value = topOut :=
+                Except.ok.inj (hreadValue.symm.trans hreadTop)
+              subst value
+              exact htopZero) hrest2
+      have hQ2 : heap2.ValidU64Slice Q qLen := (hlayout2 Q qLen).mp hQ1
+      have hreadLead2 := hsameB d lead (by omega) hreadLead1
+      simp only [qi0, inv0, r0] at hadd
+      simp only [hadd]
+      rcases quotientLoop_zeroes_high_cells this Q B W3 qLen d lenW3
+        (count + 1) lead inv0 heap2 i hQ2 hB2 hW32 hcanonical2
+        hreadLead2 hbudget2 hzero2 (by omega) hspan hqLen hQB hQW hWB
+        hcfg hprime hleadPos hlead rfl with
+        ⟨heap3, hloop, hQ3, hB3, hW33, hlayout3, hcanonical3,
+          hbudget3, hzero3⟩
+      refine ⟨heap3, hloop, hQ3, hB3, hW33, ?_, hcanonical3,
+        hbudget3, hzero3⟩
+      intro ptr length
+      exact (hlayout1 ptr length).trans
+        ((hlayout2 ptr length).trans (hlayout3 ptr length))
+    next hzeroBranch =>
+      let r0 := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        accum.hi accum.mid accum.lo this._p this._ninv this._norm
+      let inv0 := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+      let qi0 := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r0 inv0
+      have hqi0zero : qi0 = 0 := by simpa [qi0, inv0, r0] using hzeroBranch
+      have hr0zero : r0.toNat = 0 := by
+        have hprod0 : (qi0.toNat * lead.toNat) % this._p.toNat =
+            r0.toNat := by simpa [qi0, inv0, r0] using hcoeff.2
+        rw [hqi0zero] at hprod0
+        simpa using hprod0.symm
+      have hcell : ∀ value, heap1.readWord3 W3 (i + d) = .ok value →
+          word3Value value % this._p.toNat = 0 := by
+        intro value hreadValue
+        have hvalue : value = accum :=
+          Except.ok.inj (hreadValue.symm.trans hreadW1)
+        subst value
+        rw [← hrEq]
+        simpa [r0] using hr0zero
+      have hrest : Word3ZeroModRange heap1 W3 (i + d + 1)
+          (qLen + d) this._p.toNat := by
+        convert hzero1 using 1 <;> omega
+      have hzeroNext := zeroModRange_extend_down heap1 W3 (i + d)
+        (qLen + d) this._p.toNat hcell hrest
+      have hbudgetNext : Word3AccumulationBudget heap1 W3 lenW3 this._p
+          (count + 1) := accumulationBudget_mono heap1 W3 lenW3 this._p
+            count (count + 1) hbudget1 (by omega)
+      rcases quotientLoop_zeroes_high_cells this Q B W3 qLen d lenW3
+        (count + 1) lead inv0 heap1 i hQ1 hB1 hW31 hcanonical1
+        hreadLead1 hbudgetNext hzeroNext (by omega) hspan hqLen hQB hQW
+        hWB hcfg hprime hleadPos hlead rfl with
+        ⟨heap2, hloop, hQ2, hB2, hW32, hlayout2, hcanonical2,
+          hbudget2, hzero2⟩
+      refine ⟨heap2, hloop, hQ2, hB2, hW32, ?_, hcanonical2,
+        hbudget2, hzero2⟩
+      intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+
 /-- The final C++ remainder loop reads exactly W3[0..d) and writes R[0..d).
 Both layouts are preserved at each iteration, and `d-i` decreases. -/
 theorem remainderLoop_ok (this : DenseUPolyZp) (R : RawPtr UInt64)

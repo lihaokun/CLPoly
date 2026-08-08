@@ -359,6 +359,40 @@ theorem normaliseU64_poly_coeff_zero (heap : RawHeap)
     rw [coeff_coeffArrayPoly, dif_neg]
     simpa [hsize] using hin
 
+/-- Shrinking a raw coefficient slice to the exact length returned by the
+generated normalization routine preserves its represented polynomial. -/
+theorem slicePolyRep_of_normaliseU64 (heap : RawHeap)
+    (ptr : RawPtr UInt64) (len p result : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr len)
+    (hrep : SlicePolyRep heap ptr len p poly)
+    (hnorm : heap.normaliseU64 ptr len = .ok result) :
+    SlicePolyRep heap ptr result p poly := by
+  rcases normaliseU64_ok heap ptr len hvalid with
+    ⟨result', hnorm', hresultLe⟩
+  have hresult : result' = result := Except.ok.inj (hnorm'.symm.trans hnorm)
+  subst result'
+  have hvalidResult := heap.validU64Slice_mono ptr len result hvalid hresultLe
+  rcases slicePolyRep_exists_unique heap ptr result p hvalidResult with
+    ⟨prefixPoly, hprefix, _⟩
+  have heq : prefixPoly = poly := by
+    ext degree
+    by_cases hdegree : degree < result
+    · rcases slicePolyRep_coeff heap ptr result p prefixPoly hprefix degree
+          hdegree with ⟨prefixValue, hreadPrefix, hcoeffPrefix⟩
+      rcases slicePolyRep_coeff heap ptr len p poly hrep degree
+          (by omega) with ⟨fullValue, hreadFull, hcoeffFull⟩
+      have hvalue : prefixValue = fullValue :=
+        Except.ok.inj (hreadPrefix.symm.trans hreadFull)
+      rw [hcoeffPrefix, hcoeffFull, hvalue]
+    · have hprefixZero := slicePolyRep_coeff_zero_of_length_le heap ptr
+        result p prefixPoly hprefix degree (by omega)
+      have hfullZero := normaliseU64_poly_coeff_zero heap ptr len p result
+        poly hvalid hrep hnorm degree (by omega)
+      rw [hprefixZero, hfullZero]
+  rw [← heq]
+  exact hprefix
+
 theorem normaliseU64_poly_natDegree_le (heap : RawHeap)
     (ptr : RawPtr UInt64) (len p result : Nat)
     (poly : Polynomial (ZMod p))
@@ -3474,8 +3508,8 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
     ∃ heap' lenQ lenR quotient remainder,
       dense_upoly_zp__poly_divrem_ir this Q R A lenA B (d + 1) W3 heap =
         .ok (heap', lenQ, lenR) ∧
-      SlicePolyRep heap' Q (lenA - d) this._p.toNat quotient ∧
-      SlicePolyRep heap' R d this._p.toNat remainder ∧
+      SlicePolyRep heap' Q lenQ this._p.toNat quotient ∧
+      SlicePolyRep heap' R lenR this._p.toNat remainder ∧
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < d) ∧
       lenQ ≤ lenA - d ∧ lenR ≤ d := by
@@ -3590,8 +3624,12 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
     ring
   have hdegree := normaliseU64_poly_degree_lt_length heap3 R d
     this._p.toNat lenR remainder hR3 hremainder hnormR
-  refine ⟨heap3, lenQ, lenR, quotient, remainder, ?_, hquotient3,
-    hremainder, halgebra, hdegree, hlenQ, hlenR⟩
+  have hquotientNorm := slicePolyRep_of_normaliseU64 heap3 Q (lenA - d)
+    this._p.toNat lenQ quotient hQ3 hquotient3 hnormQ
+  have hremainderNorm := slicePolyRep_of_normaliseU64 heap3 R d
+    this._p.toNat lenR remainder hR3 hremainder hnormR
+  refine ⟨heap3, lenQ, lenR, quotient, remainder, ?_, hquotientNorm,
+    hremainderNorm, halgebra, hdegree, hlenQ, hlenR⟩
   simp [dense_upoly_zp__poly_divrem_ir, hlong, hreadLead, hinit, hquot,
     hrem, hnormQ, hnormR, invLc]
 

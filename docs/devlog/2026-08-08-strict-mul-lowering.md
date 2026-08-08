@@ -280,6 +280,12 @@
   `count - i` 做良基递归。定理证明已有 B 前缀在扩展到完整 bPad 后仍表示
   同一个 L2 多项式，同时保持 allocation layout 和全前缀 canonical；没有
   fuel、规格 oracle 或跳回 L2 计算。
+- 闭合生成的 `dense_upoly_zp__mul_ir` 分派定理：schoolbook 分支直接复用
+  真实 classical loop 精化；Karatsuba 分支顺序执行 B→scratch copy、后缀
+  零填充和良基 `_kar_mul`。证明显式传递 A 的逐 cell frame、scratch 子区间
+  有效性和地址不相交合同。Karatsuba 写出的对称长度 `2*lenA-1` 只有在利用
+  原始 A/B slice 推出 `lenA+lenB-1` 以上乘积系数全为零后才截短，因此统一
+  `_mul` 结果没有改变 L2 多项式，也没有用规格执行替代 C++ 分支。
 
 ## 当前边界
 

@@ -26,6 +26,10 @@
   `_poly_add` 的 `RawDensePolyRep` 定理接到该落点，得到新行项精确表示
   `old[i1] + product`。其中 product 将由严格 `_mul` 定理实例化为
   `Q * old[i0]`，而不是在矩阵层重新计算。
+- 已将该 product 前提闭合到真实 dispatcher：按 C++ 的长度条件选择参数
+  顺序，覆盖 schoolbook 与良基 Karatsuba，并用执行确定性确认 dispatcher
+  返回的就是行更新所观察到的同一个 heap。交换参数后仅使用乘法交换律统一
+  为 `Q * old[i0]`；没有另造规格执行或 L2 回退。
 
 ## 下一步
 

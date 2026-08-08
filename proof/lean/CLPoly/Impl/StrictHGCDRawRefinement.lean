@@ -1,5 +1,5 @@
 import CLPoly.Generated.StrictHGCD
-import CLPoly.Impl.StrictMulRefinement
+import CLPoly.Impl.StrictMulDispatchRefinement
 import CLPoly.Impl.StrictPolyAddSubRefinement
 
 set_option autoImplicit false
@@ -11,6 +11,8 @@ open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Impl.StrictDivremRefinement
 open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Impl.StrictPolyAddSubRefinement
+open CLPoly.Impl.StrictMulRefinement
+open CLPoly.Impl.StrictWordArithmetic
 
 /-- Bounds-safe accessors justified by the C array layout invariant. -/
 def hgcdMatPtr (M : HgcdMat) (hM : M.Valid) (i : Fin 4) : RawPtr UInt64 :=
@@ -283,6 +285,79 @@ theorem matRowUpdate_nonzero_success_shape (this : DenseUPolyZp)
                   rw [hvalid.2]; exact i1.isLt)) hneVal,
                 Array.getElem_set_self]
               rfl
+
+/-- The multiplication call exposed by the real nonzero row-update branch
+computes exactly the quotient times the old `i0` entry.  The conditional
+operand order is the one used by C++ to satisfy `_mul`'s length contract;
+commutativity is used only after refining that actual dispatcher call. -/
+theorem matRowUpdate_mul_result (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid) (i0 : Fin 4)
+    (Q T scratch : RawPtr UInt64) (lenQ : Nat) (heap heap1 : RawHeap)
+    (quotient entry0 : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hQpos : 0 < lenQ) (hEntryPos : 0 < hgcdMatLen M hM i0)
+    (hLenWord : max lenQ (hgcdMatLen M hM i0) < limbBase)
+    (hT : heap.ValidU64Slice T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1))
+    (hScratch : heap.ValidU64Slice scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)))
+    (hTQ : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1) Q lenQ)
+    (hTEntry : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1)
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0))
+    (hTScratch : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1) scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)))
+    (hScratchQ : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)) Q lenQ)
+    (hScratchEntry : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0))
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0))
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hEntryRep : RawDensePolyRep this heap (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) entry0)
+    (hmul : Generated.StrictMul.dense_upoly_zp__mul_ir this T
+      (if lenQ ≥ hgcdMatLen M hM i0 then Q else hgcdMatPtr M hM i0)
+      (if lenQ ≥ hgcdMatLen M hM i0 then lenQ else hgcdMatLen M hM i0)
+      (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatPtr M hM i0 else Q)
+      (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatLen M hM i0 else lenQ)
+      scratch heap = .ok heap1) :
+    RawDensePolyRep this heap1 T
+      (lenQ + hgcdMatLen M hM i0 - 1) (quotient * entry0) := by
+  by_cases horder : lenQ ≥ hgcdMatLen M hM i0
+  · rcases mul_refines_rawDense this T Q lenQ (hgcdMatPtr M hM i0)
+        (hgcdMatLen M hM i0) scratch heap quotient entry0 hcfg hp hQpos
+        hEntryPos horder
+        (by simpa [max_eq_left horder] using hLenWord)
+        (by simpa [max_eq_left horder] using hT)
+        (by simpa [max_eq_left horder] using hScratch)
+        (by simpa [max_eq_left horder] using hTQ)
+        (by simpa [max_eq_left horder] using hTEntry)
+        (by simpa [max_eq_left horder] using hTScratch)
+        (by simpa [max_eq_left horder] using hScratchQ)
+        (by simpa [max_eq_left horder] using hScratchEntry)
+        hQRep hEntryRep with ⟨heap', hrun, _, hrep⟩
+    have heq : heap' = heap1 := Except.ok.inj (hrun.symm.trans (by
+      simpa [horder] using hmul))
+    simpa [heq] using hrep
+  · have hle : lenQ ≤ hgcdMatLen M hM i0 := by omega
+    rcases mul_refines_rawDense this T (hgcdMatPtr M hM i0)
+        (hgcdMatLen M hM i0) Q lenQ scratch heap entry0 quotient hcfg hp
+        hEntryPos hQpos hle
+        (by simpa [max_eq_right hle] using hLenWord)
+        (by simpa [max_eq_right hle] using hT)
+        (by simpa [max_eq_right hle] using hScratch)
+        (by simpa [max_eq_right hle] using hTEntry)
+        (by simpa [max_eq_right hle] using hTQ)
+        (by simpa [max_eq_right hle] using hTScratch)
+        (by simpa [max_eq_right hle] using hScratchEntry)
+        (by simpa [max_eq_right hle] using hScratchQ)
+        hEntryRep hQRep with ⟨heap', hrun, _, hrep⟩
+    have heq : heap' = heap1 := Except.ok.inj (hrun.symm.trans (by
+      simpa [horder] using hmul))
+    simpa [heq, mul_comm, Nat.add_comm] using hrep
 
 /-- Algebraic result of the actual add call exposed by the nonzero row-update
 branch.  The product premise is supplied by strict `_mul`; this theorem then

@@ -644,6 +644,37 @@ theorem addMulCell_refines (heap heap' : RawHeap) (B : RawPtr UInt64)
   refine ⟨accum', hreadW, hreadW', hreadB', ?_⟩
   simpa [accum', product] using addMulWord3_modEq accum c bj
 
+/-- Exact, non-wrapping form of `addMulCell_refines`.  The additional bound is
+the concrete machine-capacity obligation that will be maintained by the
+quotient loop; it does not replace the generated update with mathematical
+addition. -/
+theorem addMulCell_refines_exact (heap heap' : RawHeap)
+    (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (bIndex wIndex : Nat) (c bj : UInt64) (accum : Word3)
+    (hreadB : heap.readU64 B bIndex = .ok bj)
+    (hreadW : heap.readWord3 W3 wIndex = .ok accum)
+    (hregions : W3.region ≠ B.region)
+    (hbound : word3Value accum + c.toNat * bj.toNat < limbBase ^ 3)
+    (hwrite : heap.writeWord3 W3 wIndex
+      (let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+       Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+         accum product.1 product.2) = .ok heap') :
+    ∃ accum', heap.readWord3 W3 wIndex = .ok accum ∧
+      heap'.readWord3 W3 wIndex = .ok accum' ∧
+      heap'.readU64 B bIndex = .ok bj ∧
+      word3Value accum' = word3Value accum + c.toNat * bj.toNat := by
+  let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+  let accum' := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+    accum product.1 product.2
+  have hwrite' : heap.writeWord3 W3 wIndex accum' = .ok heap' := by
+    simpa [accum', product] using hwrite
+  have hreadW' := RawHeap.readWord3_writeWord3_same heap heap' W3 wIndex
+    accum' hwrite'
+  have hreadB' := RawHeap.readU64_writeWord3_region_ne heap heap'
+    W3 B wIndex bIndex accum' bj hwrite' hreadB hregions
+  refine ⟨accum', hreadW, hreadW', hreadB', ?_⟩
+  simpa [accum', product] using addMulWord3_exact accum c bj hbound
+
 def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
     (length : Nat) : Prop :=
   ∀ k value, k < length → before.readU64 ptr k = .ok value →

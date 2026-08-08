@@ -5,16 +5,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
-FILES = [
-    ROOT / "proof/lean/CLPoly/Pipeline/L1.lean",
-    ROOT / "proof/lean/CLPoly/Refinement/Basic.lean",
-    ROOT / "proof/lean/CLPoly/Refinement/ZpArith.lean",
-    ROOT / "proof/lean/CLPoly/Refinement/SquarefreeZp.lean",
-    ROOT / "proof/lean/CLPoly/Refinement/DDF.lean",
-    ROOT / "proof/lean/CLPoly/Refinement/EDF.lean",
-    ROOT / "proof/lean/CLPoly/Refinement/Hensel.lean",
-    ROOT / "proof/lean/CLPoly/Refinement/Recombine.lean",
-]
+FILES = [ROOT / "proof/lean/CLPoly/Pipeline/L1.lean"]
+FILES.extend(sorted((ROOT / "proof/lean/CLPoly/Refinement").glob("*.lean")))
 
 FORBIDDEN = (
     "import CLPoly.Generated.Corpus",

@@ -150,3 +150,9 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 分解定理固定这四次执行的顺序，并将返回长度精确绑定到两次真实
 `normaliseU64` 的结果。以 `shift=m,R` 实例化第一处，以 `shift=k,S` 实例化
 第二处，不引入新的算法或规格执行。
+
+最终矩阵乘法依赖已开始严格降低。`hgcdMatMulEntry` 依次执行两个真实 guarded
+乘积，并逐字保留源码的四个尾分支：双非零 `_poly_add`、仅 PQ、仅 RS 的
+`copyU64`、双零。`hgcdMatMulLoop` 再以 `4-i` 为度量按行列索引公式执行四
+项，逐项安装实际返回长度并证明最终 descriptor 有效；没有直接构造 L2
+矩阵乘积。

@@ -917,6 +917,194 @@ theorem hgcdRecursiveReconstructPair_exec (this : DenseUPolyZp)
           exact ⟨heap1, lowLenB, liftedB, heap3, lowLenA, liftedA,
             rfl, hLiftB, hA, hLiftA, rfl, rfl, rfl⟩
 
+/-- Raw result of the C++ `_mat_mul_entry` helper. -/
+structure HgcdMatMulEntryResult where
+  heap : RawHeap
+  length : Nat
+
+/-- Exact lowering of `_mat_mul_entry`: compute the two guarded products in
+source order, then select add, first-only, copied-second, or zero. -/
+def hgcdMatMulEntry (this : DenseUPolyZp)
+    (C P Q R S T scratch : RawPtr UInt64)
+    (lenP lenQ lenR lenS : Nat) (heap : RawHeap) :
+    RawExec HgcdMatMulEntryResult :=
+  match hgcdRecursiveMulTerm this C P lenP Q lenQ scratch heap with
+  | .error fault => .error fault
+  | .ok productPQ =>
+    match hgcdRecursiveMulTerm this T R lenR S lenS scratch productPQ.heap with
+    | .error fault => .error fault
+    | .ok productRS =>
+      if productPQ.length > 0 && productRS.length > 0 then
+        match dense_upoly_zp__poly_add_ir this C C productPQ.length T
+            productRS.length productRS.heap with
+        | .error fault => .error fault
+        | .ok (heap3, length) => .ok { heap := heap3, length := length }
+      else if productPQ.length > 0 then
+        .ok { heap := productRS.heap, length := productPQ.length }
+      else if productRS.length > 0 then
+        match productRS.heap.copyU64 C T productRS.length with
+        | .error fault => .error fault
+        | .ok heap3 => .ok { heap := heap3, length := productRS.length }
+      else
+        .ok { heap := productRS.heap, length := 0 }
+
+/-- Successful `_mat_mul_entry` exposes both actual product executions and
+the exact source post-product branch. -/
+theorem hgcdMatMulEntry_exec (this : DenseUPolyZp)
+    (C P Q R S T scratch : RawPtr UInt64)
+    (lenP lenQ lenR lenS : Nat) (heap : RawHeap)
+    (result : HgcdMatMulEntryResult)
+    (hrun : hgcdMatMulEntry this C P Q R S T scratch lenP lenQ lenR lenS
+      heap = .ok result) :
+    ∃ productPQ productRS,
+      hgcdRecursiveMulTerm this C P lenP Q lenQ scratch heap = .ok productPQ ∧
+      hgcdRecursiveMulTerm this T R lenR S lenS scratch productPQ.heap =
+        .ok productRS ∧
+      (if productPQ.length > 0 && productRS.length > 0 then
+        ∃ length, dense_upoly_zp__poly_add_ir this C C productPQ.length T
+            productRS.length productRS.heap = .ok (result.heap, length) ∧
+          result.length = length
+       else if productPQ.length > 0 then
+        result.heap = productRS.heap ∧ result.length = productPQ.length
+       else if productRS.length > 0 then
+        productRS.heap.copyU64 C T productRS.length = .ok result.heap ∧
+          result.length = productRS.length
+       else
+        result.heap = productRS.heap ∧ result.length = 0) := by
+  simp only [hgcdMatMulEntry] at hrun
+  generalize hPQ : hgcdRecursiveMulTerm this C P lenP Q lenQ scratch heap =
+    runPQ at hrun ⊢
+  cases runPQ with
+  | error fault => simp at hrun
+  | ok productPQ =>
+    generalize hRS : hgcdRecursiveMulTerm this T R lenR S lenS scratch
+      productPQ.heap = runRS at hrun ⊢
+    cases runRS with
+    | error fault => simp [hRS] at hrun
+    | ok productRS =>
+      simp only [hRS] at hrun
+      refine ⟨productPQ, productRS, rfl, hRS, ?_⟩
+      split at hrun
+      next hboth =>
+        simp only [hboth, ↓reduceIte]
+        generalize hadd : dense_upoly_zp__poly_add_ir this C C
+          productPQ.length T productRS.length productRS.heap = addRun at hrun ⊢
+        cases addRun with
+        | error fault => simp at hrun
+        | ok pair =>
+          rcases pair with ⟨heap3, length⟩
+          have heq := Except.ok.inj hrun
+          cases heq
+          exact ⟨length, rfl, rfl⟩
+      next hboth =>
+        simp only [hboth, ↓reduceIte]
+        split at hrun
+        next hPQPos =>
+          simp only [hPQPos, ↓reduceIte]
+          have heq := Except.ok.inj hrun
+          cases heq
+          exact ⟨rfl, rfl⟩
+        next hPQPos =>
+          simp only [hPQPos, ↓reduceIte]
+          split at hrun
+          next hRSPos =>
+            simp only [hRSPos, ↓reduceIte]
+            generalize hcopy : productRS.heap.copyU64 C T productRS.length =
+              copyRun at hrun ⊢
+            cases copyRun with
+            | error fault => simp at hrun
+            | ok heap3 =>
+              have heq := Except.ok.inj hrun
+              cases heq
+              exact ⟨rfl, rfl⟩
+          next hRSPos =>
+            simp only [hRSPos, ↓reduceIte]
+            have heq := Except.ok.inj hrun
+            cases heq
+            exact ⟨rfl, rfl⟩
+
+/-- Raw result of the four-entry C++ `_mat_mul`. -/
+structure HgcdMatMulResult where
+  heap : RawHeap
+  matrix : HgcdMat
+
+/-- Exact source-order lowering of `_mat_mul`.  Entry `i` uses row
+`i/2` and column `i%2`, hence the two products
+`A[2r]*B[c] + A[2r+1]*B[2+c]`. -/
+def hgcdMatMulLoop (this : DenseUPolyZp)
+    (A B : HgcdMat) (hA : A.Valid) (hB : B.Valid)
+    (T scratch : RawPtr UInt64) :
+    (C : HgcdMat) → (hC : C.Valid) → (i : Nat) →
+      (heap : RawHeap) → RawExec HgcdMatMulResult
+  | C, hC, i, heap =>
+    if hi : i < 4 then
+      let out : Fin 4 := ⟨i, hi⟩
+      let rowBase : Fin 4 := ⟨2 * (i / 2), by omega⟩
+      let rowNext : Fin 4 := ⟨2 * (i / 2) + 1, by omega⟩
+      let col : Fin 4 := ⟨i % 2, by omega⟩
+      let lowerCol : Fin 4 := ⟨2 + i % 2, by omega⟩
+      match hgcdMatMulEntry this
+          (hgcdMatPtrRaw C hC out)
+          (hgcdMatPtrRaw A hA rowBase) (hgcdMatPtrRaw B hB col)
+          (hgcdMatPtrRaw A hA rowNext) (hgcdMatPtrRaw B hB lowerCol)
+          T scratch
+          (hgcdMatLenRaw A hA rowBase) (hgcdMatLenRaw B hB col)
+          (hgcdMatLenRaw A hA rowNext) (hgcdMatLenRaw B hB lowerCol)
+          heap with
+      | .error fault => .error fault
+      | .ok entry =>
+        let nextLen := C.len.set i entry.length
+          (by rw [hC.2]; exact hi)
+        let next : HgcdMat := { C with len := nextLen }
+        have hNext : next.Valid := by
+          exact ⟨hC.1, by simp [next, nextLen, hC.2]⟩
+        hgcdMatMulLoop this A B hA hB T scratch next hNext (i + 1)
+          entry.heap
+    else
+      .ok { heap := heap, matrix := C }
+termination_by C hC i heap => 4 - i
+decreasing_by omega
+
+def hgcdMatMul (this : DenseUPolyZp)
+    (C A B : HgcdMat) (hC : C.Valid) (hA : A.Valid) (hB : B.Valid)
+    (T scratch : RawPtr UInt64) (heap : RawHeap) : RawExec HgcdMatMulResult :=
+  hgcdMatMulLoop this A B hA hB T scratch C hC 0 heap
+
+theorem hgcdMatMulLoop_result_valid (this : DenseUPolyZp)
+    (A B : HgcdMat) (hA : A.Valid) (hB : B.Valid)
+    (T scratch : RawPtr UInt64) (C : HgcdMat) (hC : C.Valid)
+    (i : Nat) (heap : RawHeap) (result : HgcdMatMulResult)
+    (hrun : hgcdMatMulLoop this A B hA hB T scratch C hC i heap =
+      .ok result) : result.matrix.Valid := by
+  rw [hgcdMatMulLoop] at hrun
+  split at hrun
+  next hi =>
+    dsimp only at hrun
+    split at hrun
+    next fault hentry => simp at hrun
+    next entry hentry =>
+      let nextLen := C.len.set i entry.length
+        (by rw [hC.2]; exact hi)
+      let next : HgcdMat := { C with len := nextLen }
+      have hNext : next.Valid := by
+        exact ⟨hC.1, by simp [next, nextLen, hC.2]⟩
+      exact hgcdMatMulLoop_result_valid this A B hA hB T scratch next hNext
+        (i + 1) entry.heap result hrun
+  next hstop =>
+    have heq := Except.ok.inj hrun
+    subst result
+    exact hC
+termination_by 4 - i
+decreasing_by omega
+
+theorem hgcdMatMul_result_valid (this : DenseUPolyZp)
+    (C A B : HgcdMat) (hC : C.Valid) (hA : A.Valid) (hB : B.Valid)
+    (T scratch : RawPtr UInt64) (heap : RawHeap) (result : HgcdMatMulResult)
+    (hrun : hgcdMatMul this C A B hC hA hB T scratch heap = .ok result) :
+    result.matrix.Valid := by
+  exact hgcdMatMulLoop_result_valid this A B hA hB T scratch C hC 0 heap
+    result hrun
+
 structure HgcdEarlyMatrixResult where
   heap : RawHeap
   matrix : HgcdMat

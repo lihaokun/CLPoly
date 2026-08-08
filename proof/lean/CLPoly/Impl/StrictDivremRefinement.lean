@@ -7,6 +7,73 @@ open Generated.StrictDivrem
 open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Impl.StrictWordArithmetic
 
+/-- Complete pointwise observation of an allocated C++ `word3` slice.  The
+array is proof data only: every entry is required to be the result of the
+corresponding failure-aware raw read. -/
+def Word3SliceRep (heap : RawHeap) (ptr : RawPtr Word3) (length : Nat)
+    (values : Array Word3) : Prop :=
+  values.size = length ∧
+    ∀ i (hi : i < values.size),
+      heap.readWord3 ptr i = .ok values[i]
+
+theorem word3SliceRep_exists_unique (heap : RawHeap) (ptr : RawPtr Word3)
+    (length : Nat) (hvalid : heap.ValidWord3Slice ptr length) :
+    ∃ values : Array Word3,
+      Word3SliceRep heap ptr length values ∧
+      ∀ other : Array Word3,
+        Word3SliceRep heap ptr length other → other = values := by
+  classical
+  let observed : Fin length → Word3 := fun i =>
+    Classical.choose (heap.readWord3_of_valid ptr length i hvalid i.isLt)
+  let values : Array Word3 := Array.ofFn observed
+  have hread (i : Nat) (hi : i < length) (hiValues : i < values.size) :
+      heap.readWord3 ptr i = .ok values[i] := by
+    have hchosen := Classical.choose_spec
+      (heap.readWord3_of_valid ptr length i hvalid hi)
+    simpa [values, observed] using hchosen
+  refine ⟨values, ⟨by simp [values], ?_⟩, ?_⟩
+  · intro i hi
+    exact hread i (by simpa [values] using hi) hi
+  intro other hother
+  apply Array.ext (hother.1.trans (by simp [values]))
+  intro i hiOther hiValues
+  exact Except.ok.inj ((hother.2 i hiOther).symm.trans
+    (hread i (by simpa [values] using hiValues) hiValues))
+
+/-- Polynomial observation of a W3 accumulator array modulo the source
+prime. -/
+noncomputable def word3ArrayPoly (p : Nat) (values : Array Word3) :
+    Polynomial (ZMod p) :=
+  ∑ i : Fin values.size,
+    Polynomial.monomial i.val (word3Value values[i] : ZMod p)
+
+theorem coeff_word3ArrayPoly (p : Nat) (values : Array Word3) (degree : Nat) :
+    (word3ArrayPoly p values).coeff degree =
+      if h : degree < values.size then
+        (word3Value values[degree] : ZMod p)
+      else 0 := by
+  classical
+  unfold word3ArrayPoly
+  rw [Polynomial.finset_sum_coeff]
+  by_cases hdegree : degree < values.size
+  · rw [dif_pos hdegree, Finset.sum_eq_single ⟨degree, hdegree⟩]
+    · simp
+    · intro index _ hne
+      have hval : index.val ≠ degree := by
+        intro heq
+        apply hne
+        exact Fin.ext heq
+      simp [Polynomial.coeff_monomial, hval]
+    · simp
+  · rw [dif_neg hdegree]
+    apply Finset.sum_eq_zero
+    intro index _
+    have hval : index.val ≠ degree := by
+      intro heq
+      apply hdegree
+      simpa [heq] using index.isLt
+    simp [Polynomial.coeff_monomial, hval]
+
 /-- A valid raw coefficient slice has a safe observation of exactly the C++
 declared length. -/
 theorem readU64s_ok (heap : RawHeap) (ptr : RawPtr UInt64) (count : Nat)
@@ -636,6 +703,39 @@ theorem initW3Prefix_budget (heap : RawHeap) (A : RawPtr UInt64)
   simp only [word3Value, UInt64.toNat_zero, Nat.mul_zero, Nat.add_zero,
     zero_mul]
   omega
+
+/-- The generated W3 initialization is already the input polynomial, when
+observed cell-by-cell through the raw heap.  This is the algebraic base case
+for the later quotient-times-divisor accumulation proof. -/
+theorem initW3Prefix_word3ArrayPoly (heap : RawHeap) (A : RawPtr UInt64)
+    (W3 : RawPtr Word3) (length p : Nat) (values : Array Word3)
+    (dividend : Polynomial (ZMod p))
+    (hprefix : InitW3Prefix heap A W3 length)
+    (hvalues : Word3SliceRep heap W3 length values)
+    (hdividend : SlicePolyRep heap A length p dividend) :
+    word3ArrayPoly p values = dividend := by
+  rcases hdividend with ⟨coeffs, hreadCoeffs, hcoeffsSize, rfl⟩
+  ext degree
+  rw [coeff_word3ArrayPoly, coeff_coeffArrayPoly]
+  by_cases hdegree : degree < length
+  · have hdegreeValues : degree < values.size := by
+      simpa [hvalues.1] using hdegree
+    have hdegreeCoeffs : degree < coeffs.size := by
+      simpa [hcoeffsSize] using hdegree
+    rw [dif_pos hdegreeValues, dif_pos hdegreeCoeffs]
+    rcases hprefix degree hdegree with ⟨value, hreadA, hreadW⟩
+    have hcoeffRead := readU64s_get heap A length coeffs hreadCoeffs
+      hcoeffsSize degree hdegree
+    have hcoeff : coeffs[degree] = value :=
+      Except.ok.inj (hcoeffRead.symm.trans hreadA)
+    have hword : values[degree] = { lo := value, mid := 0, hi := 0 } :=
+      Except.ok.inj ((hvalues.2 degree hdegreeValues).symm.trans hreadW)
+    simp [hcoeff, hword, word3Value]
+  · have hdegreeValues : ¬ degree < values.size := by
+      simpa [hvalues.1] using hdegree
+    have hdegreeCoeffs : ¬ degree < coeffs.size := by
+      simpa [hcoeffsSize] using hdegree
+    rw [dif_neg hdegreeValues, dif_neg hdegreeCoeffs]
 
 /-- Content-level refinement of the generated initialization loop.  With
 the C++ non-aliasing allocation precondition, every output W3 cell is exactly

@@ -3330,6 +3330,67 @@ theorem remainderLoop_refines (this : DenseUPolyZp) (R : RawPtr UInt64)
 termination_by d - i
 decreasing_by omega
 
+/-- End-to-end polynomial semantics of the actual generated remainder loop.
+The returned polynomial is reconstructed from the raw R buffer; its equality
+with W3 follows from the generated three-limb reductions and the quotient
+loop's zero-high-cell invariant. -/
+theorem remainderLoop_refines_polynomial (this : DenseUPolyZp)
+    (R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (d lenW3 count : Nat) (heap : RawHeap) (values : Array Word3)
+    (hR : heap.ValidU64Slice R d)
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hvalues : Word3SliceRep heap W3 lenW3 values)
+    (hdW : d ≤ lenW3) (hregions : R.region ≠ W3.region)
+    (hbudget : Word3AccumulationBudget heap W3 lenW3 this._p count)
+    (hcount : count < limbBase)
+    (hzero : Word3ZeroModRange heap W3 d lenW3 this._p.toNat)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat) :
+    ∃ heap' remainder,
+      remainderLoop this R W3 d 0 heap = .ok heap' ∧
+      heap'.ValidU64Slice R d ∧ heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      Word3AccumulationBudget heap' W3 lenW3 this._p count ∧
+      SlicePolyRep heap' R d this._p.toNat remainder ∧
+      Word3SliceRep heap' W3 lenW3 values ∧
+      remainder = word3ArrayPoly this._p.toNat values := by
+  have hempty : RemainderPrefix this heap R W3 0 := by
+    intro _ h
+    omega
+  rcases remainderLoop_refines this R W3 d lenW3 0 count heap hR hW3
+    hdW (Nat.zero_le _) hregions hempty hbudget with
+    ⟨heap', hrun, hR', hW3', hlayout, hprefix, hbudget'⟩
+  rcases remainderLoop_preserves_W3 this R W3 d lenW3 0 heap hR hW3
+    hdW (Nat.zero_le _) hregions with
+    ⟨heapSame, hrunSame, _, _, _, hsame⟩
+  have hheapSame : heapSame = heap' :=
+    Except.ok.inj (hrunSame.symm.trans hrun)
+  subst heapSame
+  have hvalues' : Word3SliceRep heap' W3 lenW3 values := by
+    refine ⟨hvalues.1, ?_⟩
+    intro k hk
+    have hkLen : k < lenW3 := by simpa [hvalues.1] using hk
+    simpa using hsame k values[k] hkLen (by simpa using hvalues.2 k hk)
+  have hzero' : Word3ZeroModRange heap' W3 d lenW3 this._p.toNat := by
+    intro k value hdk hkLen hreadFinal
+    have hkValues : k < values.size := by simpa [hvalues.1] using hkLen
+    have hreadOld := hvalues.2 k hkValues
+    have hreadPreserved := hsame k values[k] hkLen (by simpa using hreadOld)
+    have hreadPreserved' : heap'.readWord3 W3 k = .ok values[k] := by
+      simpa using hreadPreserved
+    have hvalue : value = values[k] :=
+      Except.ok.inj (hreadFinal.symm.trans hreadPreserved')
+    subst value
+    exact hzero k values[k] hdk hkLen hreadOld
+  have hmod := remainderPrefix_to_mod_of_budget this heap' R W3 d lenW3
+    count hprefix hbudget' hdW hcount hcfg hprime
+  rcases slicePolyRep_exists_unique heap' R d this._p.toNat hR' with
+    ⟨remainder, hrep, _⟩
+  refine ⟨heap', remainder, hrun, hR', hW3', hlayout, hbudget', hrep,
+    hvalues', ?_⟩
+  exact remainderModPrefix_poly_eq this heap' R W3 d lenW3 values
+    remainder hmod hvalues' hrep hdW hzero'
+
 /-- Complete content semantics of the C++ short-division branch: the
 generated function returns quotient length zero and copies the represented
 dividend, unchanged, into the remainder buffer. -/

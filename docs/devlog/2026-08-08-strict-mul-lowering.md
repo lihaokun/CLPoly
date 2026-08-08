@@ -240,6 +240,14 @@
   与 A/B 的整段合同现在可直接下推到如 `C+2*m`、`A+m`、
   `B+m` 与 recScratch 等任意双方子区间，为 P0/P1/P2 递归前提
   提供单一可审计的来源。
+- 新增 `SlicePolyRep` 唯一性包装和 `SameU64Prefix` 的子 slice 传递定理，
+  并强化半区准备接口显式返回 A/B 的逐 cell frame。因此准备前已命名
+  的 low/high 多项式可通过真实 read 保持到 heap2，而不是在新 heap 中
+  重新选择一个无法对齐的存在量见证。
+- 对 `classicalMul_refines_slice` 的输出联取显式加括号，并通过真实
+  `lake build` 刷新 olean 后用 `#check/#print` 确认公开类型同时包含乘积
+  `SlicePolyRep` 和 `CanonicalU64Prefix`。之前只直接运行源文件检查会使
+  临时主定理导入旧 olean；后续集成验证将同时执行 target build。
 
 ## 当前边界
 

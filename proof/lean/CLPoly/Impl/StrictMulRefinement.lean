@@ -182,6 +182,15 @@ theorem sameU64Prefix_trans {heap1 heap2 heap3 : RawHeap}
   intro i value hi hread
   exact h23 i value hi (h12 i value hi hread)
 
+theorem sameU64Prefix_subslice {before after : RawHeap}
+    {base : RawPtr UInt64} {length start count : Nat}
+    (h : SameU64Prefix before after base length)
+    (hrange : start + count ≤ length) :
+    SameU64Prefix before after (base.add start) count := by
+  intro i value hi hread
+  rw [RawHeap.readU64_add] at hread ⊢
+  exact h (start + i) value (by omega) hread
+
 theorem writeU64_preserves_prefix (heap heap' : RawHeap)
     (dst guard : RawPtr UInt64) (dstLength guardLength writeIndex : Nat)
     (value : UInt64)
@@ -345,6 +354,16 @@ theorem slicePolyRep_prefix_exists (heap : RawHeap) (ptr : RawPtr UInt64)
   have heq : prefixValue = fullValue :=
     Except.ok.inj (hreadPrefix.symm.trans hreadFull)
   rw [hcoeffPrefix, hcoeffFull, heq]
+
+theorem slicePolyRep_eq (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length p : Nat) (left right : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hleft : SlicePolyRep heap ptr length p left)
+    (hright : SlicePolyRep heap ptr length p right) :
+    left = right := by
+  rcases slicePolyRep_exists_unique heap ptr length p hvalid with
+    ⟨poly, _, hunique⟩
+  exact (hunique left hleft).trans (hunique right hright).symm
 
 theorem slicePolyRep_split_exists (heap : RawHeap) (ptr : RawPtr UInt64)
     (lowLength highLength p : Nat) (poly : Polynomial (ZMod p))
@@ -2885,6 +2904,8 @@ theorem karPrepareHalves_refines_and_preserves_inputs (this : DenseUPolyZp)
     (hRepB : SlicePolyRep heap B (m + h) this._p.toNat right)
     (hrun : karPrepareHalves this A B t1 t2 m h heap = .ok heap') :
     RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' A (m + h) ∧
+      SameU64Prefix heap heap' B (m + h) ∧
       SlicePolyRep heap' A (m + h) this._p.toNat left ∧
       SlicePolyRep heap' B (m + h) this._p.toNat right ∧
       CanonicalU64Prefix heap' A (m + h) this._p ∧
@@ -2928,8 +2949,8 @@ theorem karPrepareHalves_refines_and_preserves_inputs (this : DenseUPolyZp)
       Except.ok.inj (hread'.symm.trans (hsameB k old hk hread))
     subst value
     exact hCanonicalB k old hk hread
-  exact ⟨hlayout, hRepA', hRepB', hCanonicalA', hCanonicalB', hRepT1,
-    hRepT2, hCanonicalT1, hCanonicalT2⟩
+  exact ⟨hlayout, hsameA, hsameB, hRepA', hRepB', hCanonicalA',
+    hCanonicalB', hRepT1, hRepT2, hCanonicalT1, hCanonicalT2⟩
 
 theorem normaliseU64_eq_length_of_classicalCoeffPrefix {p : Nat}
     (heap : RawHeap) (C : RawPtr UInt64) (length : Nat)
@@ -3485,9 +3506,9 @@ theorem classicalMul_refines_slice (this : DenseUPolyZp)
     (hRepB : SlicePolyRep heap B lenB this._p.toNat right) :
     ∃ heap', dense_upoly_zp__classical_mul_ir this C A lenA B lenB heap =
         .ok heap' ∧ RawHeap.SameLayout heap heap' ∧
-      SlicePolyRep heap' C (lenA + lenB - 1) this._p.toNat
-        (left * right) ∧
-      CanonicalU64Prefix heap' C (lenA + lenB - 1) this._p := by
+      (SlicePolyRep heap' C (lenA + lenB - 1) this._p.toNat
+          (left * right) ∧
+        CanonicalU64Prefix heap' C (lenA + lenB - 1) this._p) := by
   have hempty : ClassicalCoeffPrefix heap C 0 (left * right) := by
     intro _ hi
     omega

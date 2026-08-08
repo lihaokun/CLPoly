@@ -1715,6 +1715,53 @@ theorem addMulLoop_refines_exact (heap : RawHeap) (B : RawPtr UInt64)
     i j d count p c hrange hbudget hcanonical htop hp hcount hc
   exact ⟨heap', hrun, hB', hW3', hlayout, hsameB, hprefix, hexact⟩
 
+/-- End-to-end semantic package for one execution of the generated inner
+loop.  The returned arrays are uniquely observed from the actual pre/post
+raw heaps, and their polynomial relation follows from the machine execution. -/
+theorem addMulLoop_refines_polynomial (heap : RawHeap)
+    (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (lenW3 i d count : Nat) (p c : UInt64)
+    (divisor : Polynomial (ZMod p.toNat))
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hbudget : Word3AccumulationBudget heap W3 lenW3 p count)
+    (hcanonical : CanonicalU64Prefix heap B (d + 1) p)
+    (hdivisor : SlicePolyRep heap B (d + 1) p.toNat divisor)
+    (htop : i + d < lenW3)
+    (hregions : W3.region ≠ B.region)
+    (hp : 1 < p.toNat) (hcount : count + 1 < limbBase)
+    (hc : c.toNat < p.toNat) :
+    ∃ heap' beforeValues afterValues,
+      addMulLoop heap B W3 i d 0 c = .ok heap' ∧
+      Word3SliceRep heap W3 lenW3 beforeValues ∧
+      Word3SliceRep heap' W3 lenW3 afterValues ∧
+      word3ArrayPoly p.toNat afterValues =
+        word3ArrayPoly p.toNat beforeValues +
+          Polynomial.monomial i (c.toNat : ZMod p.toNat) * divisor := by
+  rcases word3SliceRep_exists_unique heap W3 lenW3 hW3 with
+    ⟨beforeValues, hbefore, _⟩
+  rcases addMulLoop_refines_exact heap B W3 lenW3 i d 0 count p c
+      hB hW3 hbudget hcanonical htop (by omega) hregions hp hcount hc with
+    ⟨heap', hrun, hB', hW3', _, _, _, hrange⟩
+  rcases addMulLoop_preserves_below heap B W3 lenW3 i d 0 c hB hW3
+      htop (by omega) with
+    ⟨heapBelow, hrunBelow, _, _, _, hbelow⟩
+  have hheapBelow : heapBelow = heap' :=
+    Except.ok.inj (hrunBelow.symm.trans hrun)
+  subst heapBelow
+  rcases addMulLoop_preserves_above heap B W3 lenW3 i d 0 c hB hW3
+      htop (by omega) with
+    ⟨heapAbove, hrunAbove, _, _, _, habove⟩
+  have hheapAbove : heapAbove = heap' :=
+    Except.ok.inj (hrunAbove.symm.trans hrun)
+  subst heapAbove
+  rcases word3SliceRep_exists_unique heap' W3 lenW3 hW3' with
+    ⟨afterValues, hafter, _⟩
+  refine ⟨heap', beforeValues, afterValues, hrun, hbefore, hafter, ?_⟩
+  exact word3ArrayPoly_addMul heap heap' B W3 lenW3 i d p.toNat c
+    beforeValues afterValues divisor hbefore hafter hdivisor hbelow habove
+    hrange htop
+
 /-- Capacity refinement of the complete generated inner multiply/add loop.
 The staged invariant ensures that this whole loop consumes exactly one outer
 quotient allowance per affected cell, independently of the divisor degree. -/

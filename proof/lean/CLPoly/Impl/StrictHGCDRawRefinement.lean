@@ -7337,15 +7337,26 @@ theorem hgcdRecursiveReconstructPair_preserves_input (this : DenseUPolyZp)
     (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
       scratch lenLowA lenLowB first.lenA first.lenB shift first.matrix
       first.valid first.sgn first.heap = .ok result) :
-    ∃ finalA finalB,
-      RawDensePolyRep this result.heap A result.lenA finalA ∧
-      RawDensePolyRep this result.heap B result.lenB finalB ∧
-      CLPoly.Impl.StrictHGCDRefinement.HgcdTransform fullA fullB finalA finalB
+    RawDensePolyRep this result.heap A result.lenA
+        (hgcdReconstructedLowA entries polyLowA polyLowB first.sgn +
+          Polynomial.X ^ shift * polyOutputHighA) ∧
+      RawDensePolyRep this result.heap B result.lenB
+        (hgcdReconstructedLowB entries polyLowA polyLowB first.sgn +
+          Polynomial.X ^ shift * polyOutputHighB) ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdTransform fullA fullB
+        (hgcdReconstructedLowA entries polyLowA polyLowB first.sgn +
+          Polynomial.X ^ shift * polyOutputHighA)
+        (hgcdReconstructedLowB entries polyLowA polyLowB first.sgn +
+          Polynomial.X ^ shift * polyOutputHighB)
         (entries 0) (entries 1) (entries 2) (entries 3) ∧
       CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet first.sgn
         (entries 0) (entries 1) (entries 2) (entries 3) ∧
       normalize (EuclideanDomain.gcd fullA fullB) =
-        normalize (EuclideanDomain.gcd finalA finalB) ∧
+        normalize (EuclideanDomain.gcd
+          (hgcdReconstructedLowA entries polyLowA polyLowB first.sgn +
+            Polynomial.X ^ shift * polyOutputHighA)
+          (hgcdReconstructedLowB entries polyLowA polyLowB first.sgn +
+            Polynomial.X ^ shift * polyOutputHighB)) ∧
       result.lenB ≤ max (shift + first.lenB)
         (max
           (hgcdMatLen first.matrix first.valid (2 : Fin 4) + lenLowA - 1)
@@ -7371,8 +7382,10 @@ theorem hgcdRecursiveReconstructPair_preserves_input (this : DenseUPolyZp)
     CLPoly.Impl.StrictHGCDRefinement.normalize_gcd_eq_of_hgcd_signed_transform
       first.sgn fullA fullB finalA finalB (entries 0) (entries 1)
       (entries 2) (entries 3) hTransform hMatrixSemantics.2.2
-  exact ⟨finalA, finalB, hAResult, hBResult, hTransform,
-    hMatrixSemantics.2.2, hGcd, hLength⟩
+  simpa [finalA, finalB] using
+    And.intro hAResult (And.intro hBResult
+      (And.intro hTransform (And.intro hMatrixSemantics.2.2
+        (And.intro hGcd hLength))))
 
 /-- The physical paired-reconstruction bound closes against an enclosing
 input length once its shifted high part and both real low products fit that
@@ -7572,8 +7585,8 @@ theorem hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant
       shift second.matrix second.valid second.sgn second.heap)
     (hMatrix : HgcdMatRawDenseRep this second.heap second.matrix entries
       second.valid)
-    (hLowA : RawDensePolyRep this second.heap lowA lenLowA polyLowA)
-    (hLowB : RawDensePolyRep this second.heap lowB lenLowB polyLowB)
+    (hLowA : RawCanonicalPolySlice this second.heap lowA lenLowA polyLowA)
+    (hLowB : RawCanonicalPolySlice this second.heap lowB lenLowB polyLowB)
     (hHighA : RawDensePolyRep this second.heap highA second.lenA polyHighA)
     (hHighB : RawDensePolyRep this second.heap highB second.lenB polyHighB)
     (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
@@ -7584,7 +7597,7 @@ theorem hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant
     lowB highA highB scratch lenLowA lenLowB second.lenA second.lenB shift
     second.matrix second.valid second.sgn second.heap result entries polyLowA
     polyLowB polyHighA polyHighB hcfg hp physical hMatrix
-    hLowA.toCanonicalSlice hLowB.toCanonicalSlice hHighA hHighB hrun
+    hLowA hLowB hHighA hHighB hrun
   exact hgcdRecursiveFinalReconstruct_lenA_eq inputLength shift lenLowA
     lenLowB second.lenA
     (hgcdMatLen second.matrix second.valid (1 : Fin 4))
@@ -7637,7 +7650,8 @@ theorem hgcdRecursiveFirstReconstruct_order_of_invariant
     B T0 a b highA highB scratch (Nat.min lenA (lenA / 2))
     (Nat.min lenB (lenA / 2)) (lenA / 2) (lenA - lenA / 2) first result
     entries polyLowA polyLowB polyHighA polyHighB hcfg hp hinvariant
-    hlenLowA hlenLowB physical hMatrix hLowA hLowB hHighA hHighB hrun
+    hlenLowA hlenLowB physical hMatrix hLowA.toCanonicalSlice
+    hLowB.toCanonicalSlice hHighA hHighB hrun
   have hrefines := hgcdRecursiveReconstructPair_refines this A B T0 a b
     highA highB scratch (Nat.min lenA (lenA / 2))
     (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
@@ -7844,9 +7858,9 @@ theorem hgcdRecursiveFinish_operandInvariant (this : DenseUPolyZp)
       second.sgn second.heap)
     (hMatrix : HgcdMatRawDenseRep this second.heap second.matrix entries
       second.valid)
-    (hLowA : RawDensePolyRep this second.heap lowA
+    (hLowA : RawCanonicalPolySlice this second.heap lowA
       (Nat.min reconstructedLenB k) polyLowA)
-    (hLowB : RawDensePolyRep this second.heap lowB
+    (hLowB : RawCanonicalPolySlice this second.heap lowB
       (Nat.min lenD k) polyLowB)
     (hHighA : RawDensePolyRep this second.heap highA second.lenA polyHighA)
     (hHighB : RawDensePolyRep this second.heap highB second.lenB polyHighB)
@@ -7869,8 +7883,8 @@ theorem hgcdRecursiveFinish_operandInvariant (this : DenseUPolyZp)
     lowB highA highB scratch (Nat.min reconstructedLenB k)
     (Nat.min lenD k) second.lenA second.lenB k second.matrix second.valid
     second.sgn second.heap reconstructed entries polyLowA polyLowB polyHighA
-    polyHighB hcfg hp physical hMatrix hLowA.toCanonicalSlice
-    hLowB.toCanonicalSlice hHighA hHighB hreconstruct
+    polyHighB hcfg hp physical hMatrix hLowA hLowB hHighA hHighB
+    hreconstruct
   have hleading := hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant this A
     B T0 lowA lowB highA highB scratch (Nat.min reconstructedLenB k)
     (Nat.min lenD k) k secondInputLength second reconstructed entries polyLowA
@@ -8593,16 +8607,19 @@ theorem hgcdRecursiveFinish_refines (this : DenseUPolyZp)
     (hRRep : HgcdMatRawDenseRep this heap R right hR)
     (hSRep : HgcdMatRawDenseRep this heap S entries hS)
     (hQ : RawDensePolyRep this heap q lenQ quotient)
-    (hLowA : RawDensePolyRep this heap lowA lenLowA polyLowA)
-    (hLowB : RawDensePolyRep this heap lowB lenLowB polyLowB)
+    (hLowA : RawCanonicalPolySlice this heap lowA lenLowA polyLowA)
+    (hLowB : RawCanonicalPolySlice this heap lowB lenLowB polyLowB)
     (hHighA : RawDensePolyRep this heap highA lenHighA polyHighA)
     (hHighB : RawDensePolyRep this heap highB lenHighB polyHighB)
     (hrun : hgcdRecursiveFinish this M R S hM hR hS computeM A B T0 lowA
       lowB highA highB q lenLowA lenLowB lenHighA lenHighB shift lenQ a2
       scratch sgnR sgnS heap = .ok result) :
-    ∃ finalA finalB,
-      RawDensePolyRep this result.heap A result.lenA finalA ∧
-      RawDensePolyRep this result.heap B result.lenB finalB ∧
+    RawDensePolyRep this result.heap A result.lenA
+        (hgcdReconstructedLowA entries polyLowA polyLowB sgnS +
+          Polynomial.X ^ shift * polyHighA) ∧
+      RawDensePolyRep this result.heap B result.lenB
+        (hgcdReconstructedLowB entries polyLowA polyLowB sgnS +
+          Polynomial.X ^ shift * polyHighB) ∧
       result.sgn = -(sgnR * sgnS) ∧
       (computeM = true →
         HgcdMatRawDenseRep this result.heap result.matrix
@@ -8616,8 +8633,7 @@ theorem hgcdRecursiveFinish_refines (this : DenseUPolyZp)
   rcases hgcdRecursiveReconstructPair_refines this A B T0 lowA lowB highA
       highB scratch lenLowA lenLowB lenHighA lenHighB shift S hS sgnS heap
       reconstructed entries polyLowA polyLowB polyHighA polyHighB hcfg hp
-      hwork.reconstruct hSRep hLowA.toCanonicalSlice hLowB.toCanonicalSlice
-      hHighA hHighB hreconstruct with
+      hwork.reconstruct hSRep hLowA hLowB hHighA hHighB hreconstruct with
     ⟨hAReconstructed, hBReconstructed, _, _, _, _⟩
   let finalA := hgcdReconstructedLowA entries polyLowA polyLowB sgnS +
     Polynomial.X ^ shift * polyHighA
@@ -8652,18 +8668,100 @@ theorem hgcdRecursiveFinish_refines (this : DenseUPolyZp)
     have hBCombined := rawDensePolyRep_of_same_prefix this reconstructed.heap
       combined.heap B reconstructed.lenB finalB hcombineWork.2.1
       hcombineWork.2.2.2 hBReconstructed
-    refine ⟨finalA, finalB, ?_, ?_, hsgn, ?_⟩
-    · simpa [hheap, hlenA] using hACombined
-    · simpa [hheap, hlenB] using hBCombined
+    refine ⟨?_, ?_, hsgn, ?_⟩
+    · simpa [finalA, hheap, hlenA] using hACombined
+    · simpa [finalB, hheap, hlenB] using hBCombined
     · intro _
       simpa [hheap, hmatrix] using hCombined.2.2
   · have hfalse : computeM = false := by cases computeM <;> simp_all
     simp [hfalse] at htail
-    refine ⟨finalA, finalB, ?_, ?_, hsgn, ?_⟩
-    · simpa [htail.1, hlenA] using hAReconstructed
-    · simpa [htail.1, hlenB] using hBReconstructed
+    refine ⟨?_, ?_, hsgn, ?_⟩
+    · simpa [finalA, htail.1, hlenA] using hAReconstructed
+    · simpa [finalB, htail.1, hlenB] using hBReconstructed
     · intro htrue
       simp [hfalse] at htrue
+
+/-- The exact final source tail lifts the second recursive transform from its
+high suffixes back to the complete divisor/remainder pair.  The transform is
+obtained from the same four reconstruction calls that produce the returned
+raw operands; the optional matrix block only frames those operands. -/
+theorem hgcdRecursiveFinish_preserves_input (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (computeM : Bool) (A B T0 lowA lowB highA highB q : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift lenQ inputLength : Nat)
+    (a2 scratch : RawPtr UInt64) (sgnR sgnS : Int) (heap : RawHeap)
+    (result : HgcdRecursiveFinishResult)
+    (right entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient fullA fullB polyLowA polyLowB polyInputHighA polyInputHighB
+      polyOutputHighA polyOutputHighB : Polynomial (ZMod this._p.toNat))
+    (second : HgcdRecursiveResult)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveFinishWorkspaceProvider this M R S hM hR hS A
+      B T0 lowA lowB highA highB q lenLowA lenLowB lenHighA lenHighB shift
+      lenQ a2 scratch sgnS heap)
+    (hRRep : HgcdMatRawDenseRep this heap R right hR)
+    (hSRep : HgcdMatRawDenseRep this heap S entries hS)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hLowA : RawCanonicalPolySlice this heap lowA lenLowA polyLowA)
+    (hLowB : RawCanonicalPolySlice this heap lowB lenLowB polyLowB)
+    (hSecond : HgcdRecursiveRawInvariant this polyInputHighA polyInputHighB
+      polyOutputHighA polyOutputHighB entries true highA highB inputLength
+      second)
+    (hSecondHeap : second.heap = heap)
+    (hSecondMatrix : second.matrix = S)
+    (hSecondValid : HEq second.valid hS)
+    (hSecondLenA : second.lenA = lenHighA)
+    (hSecondLenB : second.lenB = lenHighB)
+    (hSecondSgn : second.sgn = sgnS)
+    (hFullA : fullA = polyLowA + Polynomial.X ^ shift * polyInputHighA)
+    (hFullB : fullB = polyLowB + Polynomial.X ^ shift * polyInputHighB)
+    (hrun : hgcdRecursiveFinish this M R S hM hR hS computeM A B T0 lowA
+      lowB highA highB q lenLowA lenLowB lenHighA lenHighB shift lenQ a2
+      scratch sgnR sgnS heap = .ok result) :
+    RawDensePolyRep this result.heap A result.lenA
+        (hgcdReconstructedLowA entries polyLowA polyLowB sgnS +
+          Polynomial.X ^ shift * polyOutputHighA) ∧
+      RawDensePolyRep this result.heap B result.lenB
+        (hgcdReconstructedLowB entries polyLowA polyLowB sgnS +
+          Polynomial.X ^ shift * polyOutputHighB) ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdTransform fullA fullB
+        (hgcdReconstructedLowA entries polyLowA polyLowB sgnS +
+          Polynomial.X ^ shift * polyOutputHighA)
+        (hgcdReconstructedLowB entries polyLowA polyLowB sgnS +
+          Polynomial.X ^ shift * polyOutputHighB)
+        (entries 0) (entries 1) (entries 2) (entries 3) ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgnS
+        (entries 0) (entries 1) (entries 2) (entries 3) ∧
+      result.sgn = -(sgnR * sgnS) ∧
+      (computeM = true →
+        HgcdMatRawDenseRep this result.heap result.matrix
+          (hgcdMatProductEntry right
+            (hgcdMatApplyQuotientEntries entries quotient)) result.valid) := by
+  subst heap
+  subst S
+  subst lenHighA
+  subst lenHighB
+  subst sgnS
+  cases hSecondValid
+  have hFinish := hgcdRecursiveFinish_refines this M R second.matrix hM hR
+    second.valid computeM A B T0 lowA lowB highA highB q lenLowA lenLowB
+    second.lenA second.lenB shift lenQ a2 scratch sgnR second.sgn second.heap
+    result right entries quotient polyLowA polyLowB polyOutputHighA
+    polyOutputHighB hcfg hp physical hRRep hSRep hQ hLowA hLowB hSecond.aRep
+    hSecond.bRep hrun
+  rcases hgcdRecursiveFinish_exec this M R second.matrix hM hR second.valid
+      computeM A B T0 lowA lowB highA highB q lenLowA lenLowB second.lenA
+      second.lenB shift lenQ a2 scratch sgnR second.sgn second.heap result hrun
+      with ⟨reconstructed, hreconstruct, _, _, _, _⟩
+  have hwork := physical reconstructed hreconstruct
+  have hTransform := hgcdRecursiveReconstructPair_preserves_input this A B T0
+    lowA lowB highA highB scratch lenLowA lenLowB shift inputLength second
+    reconstructed entries fullA fullB polyLowA polyLowB polyInputHighA
+    polyInputHighB polyOutputHighA polyOutputHighB hcfg hp hwork.reconstruct
+    hSecond hLowA hLowB hFullA hFullB hreconstruct
+  exact ⟨hFinish.1, hFinish.2.1, hTransform.2.2.1,
+    hTransform.2.2.2.1, hFinish.2.2.1, hFinish.2.2.2⟩
 
 /-- Assemble the semantic portion of the non-early recursive result after
 the real middle division, second recursive transform, and finish execution
@@ -8738,6 +8836,57 @@ theorem hgcdRecursiveRawInvariant_of_finish_semantics (this : DenseUPolyZp)
     stopped := hstop
     lengths := hlengths }
 
+/-- Package the actual final-tail facts as the common recursive invariant.
+The operands and matrix below are the concrete fields of one successful
+`hgcdRecursiveFinish` result; the two transforms are those proved for the
+first reconstruction and the second reconstruction respectively. -/
+theorem hgcdRecursiveRawInvariant_of_finish_execution
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (left right currentA currentB remainder quotient finalA finalB :
+      Polynomial (ZMod this._p.toNat))
+    (first second : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (sgnR sgnS : Int) (computeM : Bool) (A B : RawPtr UInt64)
+    (inputLength : Nat) (result : HgcdRecursiveFinishResult)
+    (hFinishA : RawDensePolyRep this result.heap A result.lenA finalA)
+    (hFinishB : RawDensePolyRep this result.heap B result.lenB finalB)
+    (hFinishMatrix : computeM = true →
+      HgcdMatRawDenseRep this result.heap result.matrix
+        (hgcdMatProductEntry first
+          (hgcdMatApplyQuotientEntries second quotient)) result.valid)
+    (hFirstTransform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      left right currentA currentB (first 0) (first 1) (first 2) (first 3))
+    (hFirstDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgnR
+      (first 0) (first 1) (first 2) (first 3))
+    (hDivision : currentA = quotient * currentB + remainder)
+    (hSecondTransform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      currentB remainder finalA finalB (second 0) (second 1) (second 2)
+      (second 3))
+    (hSecondDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgnS
+      (second 0) (second 1) (second 2) (second 3))
+    (hsgn : result.sgn = -(sgnR * sgnS))
+    (hstop : result.lenB < inputLength / 2 + 1)
+    (hlength : computeM = true →
+      HgcdRecursiveLengthInvariant inputLength result.toResult) :
+    HgcdRecursiveRawInvariant this left right finalA finalB
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient))
+      computeM A B inputLength result.toResult := by
+  apply hgcdRecursiveRawInvariant_of_finish_semantics this left right currentA
+    currentB remainder quotient finalA finalB first second sgnR sgnS computeM
+    A B inputLength result.toResult
+  · simpa [HgcdRecursiveFinishResult.toResult] using hFinishA
+  · simpa [HgcdRecursiveFinishResult.toResult] using hFinishB
+  · intro hcompute
+    simpa [HgcdRecursiveFinishResult.toResult] using hFinishMatrix hcompute
+  · exact hFirstTransform
+  · exact hFirstDet
+  · exact hDivision
+  · exact hSecondTransform
+  · exact hSecondDet
+  · simpa [HgcdRecursiveFinishResult.toResult] using hsgn
+  · exact hstop
+  · exact hlength
+
 set_option maxHeartbeats 1200000 in
 /-- Complete length invariant of the real matrix-producing non-early tail.
 The proof uses the exact reconstruction and combine executions exposed by
@@ -8766,9 +8915,9 @@ theorem hgcdRecursiveFinish_lengthInvariant (this : DenseUPolyZp)
     (hSRep : HgcdMatRawDenseRep this second.heap second.matrix entries
       second.valid)
     (hQ : RawDensePolyRep this second.heap q lenQ quotient)
-    (hLowA : RawDensePolyRep this second.heap lowA
+    (hLowA : RawCanonicalPolySlice this second.heap lowA
       (Nat.min reconstructedLenB k) polyLowA)
-    (hLowB : RawDensePolyRep this second.heap lowB
+    (hLowB : RawCanonicalPolySlice this second.heap lowB
       (Nat.min lenD k) polyLowB)
     (hHighA : RawDensePolyRep this second.heap highA second.lenA polyHighA)
     (hHighB : RawDensePolyRep this second.heap highB second.lenB polyHighB)
@@ -9355,6 +9504,10 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
       reconstructed :=
     reconstructionBound first reconstructed (by
       simpa [high, hgcdRecursiveHighInput] using hfirstLength) hreconstruct
+  let finalA := hgcdReconstructedLowA entries lowPolyA lowPolyB first.sgn +
+    Polynomial.X ^ (lenA / 2) * outputHighA
+  let finalB := hgcdReconstructedLowB entries lowPolyA lowPolyB first.sgn +
+    Polynomial.X ^ (lenA / 2) * outputHighB
   rcases hgcdRecursiveReconstructPair_preserves_input this ws.a2 ws.b2 ws.T0
       a b ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
       (Nat.min lenB (lenA / 2)) (lenA / 2) high.lenA0 first reconstructed
@@ -9362,7 +9515,7 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
       outputHighB hcfg hp reconstructWork hFirst hLowA.toCanonicalSlice
       hLowB.toCanonicalSlice hFullA hFullB
       hreconstruct with
-    ⟨finalA, finalB, hARep, hBRep, hTransform, hDet, hGcd, _⟩
+    ⟨hARep, hBRep, hTransform, hDet, hGcd, _⟩
   have hLength : HgcdRecursiveLengthInvariant lenA
       ⟨reconstructed.heap, first.matrix, first.valid, reconstructed.lenA,
         reconstructed.lenB, first.sgn⟩ :=

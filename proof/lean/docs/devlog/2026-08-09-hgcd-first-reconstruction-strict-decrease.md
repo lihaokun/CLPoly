@@ -168,3 +168,19 @@ normalise 调用之后恢复 `RawDensePolyRep`。
 到 slice 乘法与 slice 减法接口。成对重构也允许低部为定长 slice，并在两个真实
 乘积、符号选择减法和后续 lift-high 执行之后返回规范化 A/B。因此 final
 reconstruction 不再依赖低前缀“碰巧已经规范化”的不可导出前提。
+
+## 第二次重构的真实语义接口
+
+最终重构的 operand、length 和 semantic 三层定理现统一接受
+`RawCanonicalPolySlice` 低部；因此 `hgcdRecursiveMiddle_split_reps` 从真实 divrem
+得到的 `b2[0:k]` 与 `d[0:k]` 可以直接进入 finish，不再要求规格侧补出
+normalise 事实。`hgcdRecursiveReconstructPair_preserves_input` 与
+`hgcdRecursiveFinish_refines` 的结论也加强为生成四调用实际构造出的精确多项式，
+避免用无约束存在量掩盖第二次重构的操作数身份。
+
+新增 `hgcdRecursiveFinish_preserves_input`：它反演同一次真实 finish 执行，使用
+第二子调用的 raw 不变量和 middle 的低高分解，将高 suffix 上的 transform 提升为
+完整 divisor/remainder 上的 transform，同时保留实际 A/B 输出、返回符号和可选
+矩阵乘积。`hgcdRecursiveRawInvariant_of_finish_execution` 随后把这些具体字段装配为
+共同递归不变量，为展开完整非 early body 只留下 middle/第二 dispatch 的物理
+frame 接线。

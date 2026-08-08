@@ -51,6 +51,7 @@ def main() -> None:
                      "dense_upoly_zp__classical_mul_ir", "RawExec",
                      "karAddHalvesLoop", "karSubLoop", "karAssembleLoop",
                      "karOddTail",
+                     "karPrepareHalves",
                      "dense_upoly_zp__kar_mul_ir", "copyU64",
                      "readU64", "writeU64", "termination_by"):
         if fragment not in source:
@@ -60,9 +61,11 @@ def main() -> None:
     if found:
         raise SystemExit(f"strict multiplication refinement contains forbidden constructs: {found}")
     for fragment in ("classicalDotLoop_ok", "classical_index_bounds",
+                     "slicePolyRep_prefix_exists",
                      "karAddHalvesLoop_ok", "karSubLoop_ok",
                      "karAssembleLoop_ok",
                      "karOddTail_ok", "karOddTail_preserves_region_ne",
+                     "karPrepareHalves_ok",
                      "karOddTail_values", "karOddTail_coeffs",
                      "karOddTail_preserves_own_prefixes",
                      "karOddTail_refines_slices_odd",

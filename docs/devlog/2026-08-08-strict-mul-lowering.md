@@ -91,6 +91,12 @@
   `SlicePolyRep` 传递到最终 heap 后，使用真实第 m 个尾 cell 分别扩展为
   长度 `h=m+1` 的完整 slice。输出多项式精确为公共半区和加第 `2m` 系数
   的单项式，并逐分支证明整个新 slice 仍为规范余数。
+- 新增通用 raw prefix 提取桥：从较长 `SlicePolyRep` 的相同底层 allocation
+  构造任意较短 prefix 的唯一 L2 表示，并证明前缀内系数与完整输入一致。
+  该桥用于奇数 n 时从 `m+h` 输入安全取得公共 `2m` 部分。
+- 将公共半区相加与奇数尾项按源码顺序组合为 `karPrepareHalves`，主
+  `_kar_mul` 直接调用该真实 RawHeap 块；证明在 `m≤h` 和完整容量下该组合
+  必然成功并保持布局。
 
 ## 当前边界
 

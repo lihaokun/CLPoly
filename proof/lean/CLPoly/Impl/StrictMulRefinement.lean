@@ -15,6 +15,27 @@ open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Impl.StrictPolyAddSubRefinement
 
+theorem slicePolyRep_prefix_exists (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length prefixLength p : Nat) (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hle : prefixLength ≤ length)
+    (hrep : SlicePolyRep heap ptr length p poly) :
+    ∃ prefixPoly : Polynomial (ZMod p),
+      SlicePolyRep heap ptr prefixLength p prefixPoly ∧
+      ∀ i, i < prefixLength → prefixPoly.coeff i = poly.coeff i := by
+  have hvalidPrefix := heap.validU64Slice_mono ptr length prefixLength hvalid hle
+  rcases slicePolyRep_exists_unique heap ptr prefixLength p hvalidPrefix with
+    ⟨prefixPoly, hprefix, _⟩
+  refine ⟨prefixPoly, hprefix, ?_⟩
+  intro i hi
+  rcases slicePolyRep_coeff heap ptr prefixLength p prefixPoly hprefix i hi with
+    ⟨prefixValue, hreadPrefix, hcoeffPrefix⟩
+  rcases slicePolyRep_coeff heap ptr length p poly hrep i (by omega) with
+    ⟨fullValue, hreadFull, hcoeffFull⟩
+  have heq : prefixValue = fullValue :=
+    Except.ok.inj (hreadPrefix.symm.trans hreadFull)
+  rw [hcoeffPrefix, hcoeffFull, heq]
+
 theorem karAddHalvesLoop_ok (this : DenseUPolyZp)
     (A B t1 t2 : RawPtr UInt64) (m i : Nat) (heap : RawHeap)
     (hA : heap.ValidU64Slice A (2 * m))
@@ -178,6 +199,31 @@ theorem karOddTail_preserves_region_ne (A B t1 t2 guard : RawPtr UInt64)
   next hnot =>
     have heq : heap' = heap := Except.ok.inj hrun.symm
     simpa [heq] using hread
+
+theorem karPrepareHalves_ok (this : DenseUPolyZp)
+    (A B t1 t2 : RawPtr UInt64) (m h : Nat) (heap : RawHeap)
+    (hmh : m ≤ h)
+    (hA : heap.ValidU64Slice A (m + h))
+    (hB : heap.ValidU64Slice B (m + h))
+    (hT1 : heap.ValidU64Slice t1 h)
+    (hT2 : heap.ValidU64Slice t2 h) :
+    ∃ heap', karPrepareHalves this A B t1 t2 m h heap = .ok heap' ∧
+      RawHeap.SameLayout heap heap' := by
+  have hA2m := heap.validU64Slice_mono A (m + h) (2 * m) hA (by omega)
+  have hB2m := heap.validU64Slice_mono B (m + h) (2 * m) hB (by omega)
+  have hT1m := heap.validU64Slice_mono t1 h m hT1 hmh
+  have hT2m := heap.validU64Slice_mono t2 h m hT2 hmh
+  rcases karAddHalvesLoop_ok this A B t1 t2 m 0 heap hA2m hB2m hT1m
+      hT2m with ⟨heap1, hadd, hlayout1⟩
+  have hA1 := (hlayout1 A (m + h)).mp hA
+  have hB1 := (hlayout1 B (m + h)).mp hB
+  have hT11 := (hlayout1 t1 h).mp hT1
+  have hT21 := (hlayout1 t2 h).mp hT2
+  rcases karOddTail_ok A B t1 t2 m h heap1 hA1 hB1 hT11 hT21 with
+    ⟨heap2, htail, hlayout2⟩
+  refine ⟨heap2, ?_, fun ptr length =>
+    (hlayout1 ptr length).trans (hlayout2 ptr length)⟩
+  simp [karPrepareHalves, hadd, htail]
 
 theorem karOddTail_values (A B t1 t2 : RawPtr UInt64) (m h : Nat)
     (heap heap' : RawHeap)

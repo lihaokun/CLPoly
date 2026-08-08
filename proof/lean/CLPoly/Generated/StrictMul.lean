@@ -85,6 +85,13 @@ def karOddTail (A B t1 t2 : RawPtr UInt64) (m h : Nat)
   else
     .ok heap
 
+def karPrepareHalves (this : DenseUPolyZp)
+    (A B t1 t2 : RawPtr UInt64) (m h : Nat) (heap : RawHeap) :
+    RawExec RawHeap :=
+  match karAddHalvesLoop this A B t1 t2 m 0 heap with
+  | .error fault => .error fault
+  | .ok heap1 => karOddTail A B t1 t2 m h heap1
+
 def classicalDotLoop (heap : RawHeap) (A B : RawPtr UInt64)
     (k stop j : Nat) (acc : Word3) : RawExec Word3 :=
   if h : j ≤ stop then
@@ -139,10 +146,7 @@ def dense_upoly_zp__kar_mul_ir (this : DenseUPolyZp)
     let sP0 := t2.add h
     let sP1 := sP0.add (2 * m - 1)
     let recScratch := sP1.add (2 * h - 1)
-    match karAddHalvesLoop this A B t1 t2 m 0 heap with
-    | .error fault => .error fault
-    | .ok heap1 =>
-      match karOddTail A B t1 t2 m h heap1 with
+    match karPrepareHalves this A B t1 t2 m h heap with
       | .error fault => .error fault
       | .ok heap2 =>
         match dense_upoly_zp__kar_mul_ir this sP0 A B m recScratch heap2 with

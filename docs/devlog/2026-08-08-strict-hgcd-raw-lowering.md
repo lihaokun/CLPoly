@@ -68,6 +68,13 @@ Euclid 对与矩阵变换关系，最终导出循环停止条件和 GCD 不变�
 HGCD source gate；下一步是将同一循环的四次 heap 写入组合成每个矩阵项的
 最终 `RawDensePolyRep`，从而闭合早退矩阵的完整语义。
 
+早退矩阵的四项 heap 内容语义现已闭合。新增的 refine workspace 明确要求
+每个目标与全部源项不相交、四个目标两两不相交；归纳证明逐次调用真实
+`copyU64` 的 `RawDensePolyRep` 精化定理，并 frame 所有源项和此前已复制的
+目标项。入口定理同时给出返回 `len = R.len` 以及四个返回矩阵项精确表示
+`R` 的四个 L2 多项式。该证明没有从描述符相等推测 heap 内容，也没有调用
+任何规格 oracle 或 L2 执行回退。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

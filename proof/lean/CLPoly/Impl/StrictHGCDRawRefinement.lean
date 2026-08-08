@@ -1684,6 +1684,31 @@ structure HgcdEarlyMatrixWorkspace (heap : RawHeap) (M R : HgcdMat)
   sourceValid : ∀ i : Fin 4, heap.ValidU64Slice
     (hgcdMatPtrRaw R hR i) (hgcdMatLenRaw R hR i)
 
+/-- Non-aliasing obligations that make the four sequential C++ matrix copies
+semantic, rather than merely executable.  Later destinations cannot overwrite
+an earlier result or any still-live source entry. -/
+structure HgcdEarlyMatrixRefineWorkspace (heap : RawHeap) (M R : HgcdMat)
+    (hM : M.Valid) (hR : R.Valid) extends
+    HgcdEarlyMatrixWorkspace heap M R hM hR where
+  targetSourceDisjoint : ∀ i j : Fin 4, U64SlicesDisjoint
+    (hgcdMatPtrRaw M hM i) (hgcdMatLenRaw R hR i)
+    (hgcdMatPtrRaw R hR j) (hgcdMatLenRaw R hR j)
+  targetPairwiseDisjoint : ∀ i j : Fin 4, i ≠ j → U64SlicesDisjoint
+    (hgcdMatPtrRaw M hM i) (hgcdMatLenRaw R hR i)
+    (hgcdMatPtrRaw M hM j) (hgcdMatLenRaw R hR j)
+
+theorem hgcdEarlyMatrixRefineWorkspace_of_sameLayout
+    (before after : RawHeap) (M R : HgcdMat)
+    (hM : M.Valid) (hR : R.Valid)
+    (hlayout : RawHeap.SameLayout before after)
+    (hwork : HgcdEarlyMatrixRefineWorkspace before M R hM hR) :
+    HgcdEarlyMatrixRefineWorkspace after M R hM hR := by
+  exact {
+    targetValid := fun i => (hlayout _ _).mp (hwork.targetValid i)
+    sourceValid := fun i => (hlayout _ _).mp (hwork.sourceValid i)
+    targetSourceDisjoint := hwork.targetSourceDisjoint
+    targetPairwiseDisjoint := hwork.targetPairwiseDisjoint }
+
 theorem hgcdEarlyMatrixLoop_terminates (M R : HgcdMat)
     (hM : M.Valid) (hR : R.Valid) (i : Nat) (heap : RawHeap)
     (hwork : HgcdEarlyMatrixWorkspace heap M R hM hR) :
@@ -1721,6 +1746,127 @@ theorem hgcdEarlyMatrixLoop_terminates (M R : HgcdMat)
     exact ⟨HgcdEarlyMatrixResult.mk heap M, rfl, fun _ _ => Iff.rfl, hM⟩
 termination_by 4 - i
 decreasing_by omega
+
+/-- Content semantics of the actual four-copy early-return loop.  The
+induction follows the generated loop and records exactly which destination
+slots have already received the corresponding normalized source polynomial. -/
+theorem hgcdEarlyMatrixLoop_copies (this : DenseUPolyZp)
+    (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (i : Nat) (heap : RawHeap) (result : HgcdEarlyMatrixResult)
+    (hwork : HgcdEarlyMatrixRefineWorkspace heap M R hM hR)
+    (hsource : ∀ j : Fin 4, RawDensePolyRep this heap
+      (hgcdMatPtrRaw R hR j) (hgcdMatLenRaw R hR j) (entries j))
+    (hdone : ∀ j : Fin 4, j.val < i → RawDensePolyRep this heap
+      (hgcdMatPtrRaw M hM j) (hgcdMatLenRaw R hR j) (entries j))
+    (hrun : hgcdEarlyMatrixLoop M R hM hR i heap = .ok result) :
+    (∀ j : Fin 4, RawDensePolyRep this result.heap
+      (hgcdMatPtrRaw R hR j) (hgcdMatLenRaw R hR j) (entries j)) ∧
+    ∀ j : Fin 4, RawDensePolyRep this result.heap
+      (hgcdMatPtrRaw result.matrix
+        (hgcdEarlyMatrixLoop_result_valid M R hM hR i heap result hrun) j)
+      (hgcdMatLenRaw R hR j) (entries j) := by
+  rw [hgcdEarlyMatrixLoop] at hrun
+  split at hrun
+  next hi =>
+    dsimp only at hrun
+    split at hrun
+    next fault hcopy => simp at hrun
+    next heap1 hcopy =>
+      let index : Fin 4 := ⟨i, hi⟩
+      let dst := hgcdMatPtrRaw M hM index
+      let src := hgcdMatPtrRaw R hR index
+      let length := hgcdMatLenRaw R hR index
+      rcases copyU64_refines_rawDense this heap dst src length (entries index)
+          (hwork.targetValid index) (hwork.targetSourceDisjoint index index)
+          (hsource index) with ⟨semanticHeap, hsemantic, hlayout, hcopied⟩
+      have heq : semanticHeap = heap1 :=
+        Except.ok.inj (hsemantic.symm.trans hcopy)
+      subst semanticHeap
+      have hsource1 : ∀ j : Fin 4, RawDensePolyRep this heap1
+          (hgcdMatPtrRaw R hR j) (hgcdMatLenRaw R hR j) (entries j) := by
+        intro j
+        exact (copyU64_preserves_rawDenseRep this heap heap1 dst src length
+          (hgcdMatPtrRaw R hR j) (hgcdMatLenRaw R hR j) (entries j)
+          (hwork.targetValid index) (hwork.sourceValid index)
+          (hwork.targetSourceDisjoint index j) hcopy (hsource j)).2
+      let nextLen := M.len.set i (hgcdMatLenRaw R hR index)
+        (by rw [hM.2]; exact hi)
+      let next : HgcdMat := { M with len := nextLen }
+      have hNext : next.Valid := by
+        exact ⟨hM.1, by simp [next, nextLen, hM.2]⟩
+      have hwork1 : HgcdEarlyMatrixRefineWorkspace heap1 next R hNext hR := by
+        have transported := hgcdEarlyMatrixRefineWorkspace_of_sameLayout
+          heap heap1 M R hM hR hlayout hwork
+        exact {
+          targetValid := fun j => by
+            simpa [next, hgcdMatPtrRaw] using transported.targetValid j
+          sourceValid := transported.sourceValid
+          targetSourceDisjoint := fun j k => by
+            simpa [next, hgcdMatPtrRaw] using
+              transported.targetSourceDisjoint j k
+          targetPairwiseDisjoint := fun j k hjk => by
+            simpa [next, hgcdMatPtrRaw] using
+              transported.targetPairwiseDisjoint j k hjk }
+      have hdone1 : ∀ j : Fin 4, j.val < i + 1 →
+          RawDensePolyRep this heap1 (hgcdMatPtrRaw next hNext j)
+            (hgcdMatLenRaw R hR j) (entries j) := by
+        intro j hj
+        by_cases hji : j = index
+        · subst j
+          simpa [dst, next, hgcdMatPtrRaw] using hcopied
+        · have hjlt : j.val < i := by
+            have : j.val ≠ i := by
+              intro hval
+              exact hji (Fin.ext hval)
+            omega
+          have hpreserved := (copyU64_preserves_rawDenseRep this heap heap1
+            dst src length (hgcdMatPtrRaw M hM j) (hgcdMatLenRaw R hR j)
+            (entries j) (hwork.targetValid index) (hwork.sourceValid index)
+            (hwork.targetPairwiseDisjoint index j (Ne.symm hji)) hcopy
+            (hdone j hjlt)).2
+          simpa [next, hgcdMatPtrRaw] using hpreserved
+      exact hgcdEarlyMatrixLoop_copies this next R hNext hR entries (i + 1)
+        heap1 result hwork1 hsource1 hdone1 hrun
+  next hi =>
+    have heq : result = HgcdEarlyMatrixResult.mk heap M :=
+      (Except.ok.inj hrun).symm
+    subst result
+    exact ⟨hsource, fun j => hdone j (by omega)⟩
+termination_by 4 - i
+decreasing_by omega
+
+/-- Entry-point refinement of the optional matrix branch: the returned
+descriptor has `R`'s four lengths and its original destination pointers now
+represent exactly `R`'s four L2 polynomial entries. -/
+theorem hgcdEarlyMatrixLoop_zero_refines (this : DenseUPolyZp)
+    (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (heap : RawHeap) (result : HgcdEarlyMatrixResult)
+    (hwork : HgcdEarlyMatrixRefineWorkspace heap M R hM hR)
+    (hsource : HgcdMatRawDenseRep this heap R entries hR)
+    (hrun : hgcdEarlyMatrixLoop M R hM hR 0 heap = .ok result) :
+    ∃ hResult : result.matrix.Valid,
+      result.matrix.len = R.len ∧
+      HgcdMatRawDenseRep this result.heap result.matrix entries hResult := by
+  have hvalid := hgcdEarlyMatrixLoop_result_valid M R hM hR 0 heap result hrun
+  have hlen := hgcdEarlyMatrixLoop_lengths M R hM hR 0 heap result
+    (by intro j hj; omega) hrun
+  have hcopies := hgcdEarlyMatrixLoop_copies this M R hM hR entries 0 heap
+    result hwork (by
+      intro j
+      simpa [HgcdMatRawDenseRep, hgcdMatPtr, hgcdMatLen,
+        hgcdMatPtrRaw, hgcdMatLenRaw] using hsource j)
+    (by intro j hj; omega) hrun
+  refine ⟨hvalid, hlen, ?_⟩
+  intro j
+  have hLength : hgcdMatLen result.matrix hvalid j =
+      hgcdMatLenRaw R hR j := by
+    exact array_getElem_eq_of_eq result.matrix.len R.len hlen j.val
+      (by rw [hvalid.2]; exact j.isLt)
+      (by rw [hR.2]; exact j.isLt)
+  rw [hLength]
+  simpa [hgcdMatPtr, hgcdMatPtrRaw] using hcopies.2 j
 
 structure HgcdEarlyReturnWorkspace (heap : RawHeap)
     (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid)

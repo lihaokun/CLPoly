@@ -22,6 +22,13 @@ def hgcdMatPtr (M : HgcdMat) (hM : M.Valid) (i : Fin 4) : RawPtr UInt64 :=
 def hgcdMatLen (M : HgcdMat) (hM : M.Valid) (i : Fin 4) : Nat :=
   M.len[i.val]'(by rw [hM.2]; exact i.isLt)
 
+theorem array_getElem_eq_of_eq {α : Type} (left right : Array α)
+    (h : left = right) (i : Nat) (hLeft : i < left.size)
+    (hRight : i < right.size) :
+    left[i]'hLeft = right[i]'hRight := by
+  subst right
+  rfl
+
 /-- Raw representation of the four polynomial entries of an HGCD matrix. -/
 def HgcdMatPolyRep (heap : RawHeap) (M : HgcdMat) (p : Nat)
     (entries : Fin 4 → Polynomial (ZMod p)) (hM : M.Valid) : Prop :=
@@ -150,6 +157,15 @@ theorem u64SlicesDisjoint_stage_entry_left (stage other : RawPtr UInt64)
     simpa [RawPtr.add, hwidth, Nat.add_assoc, Nat.add_left_comm, Nat.add_comm]
       using hoff
 
+theorem u64SlicesDisjoint_stage_entry_right (other stage : RawPtr UInt64)
+    (otherLength total offset length : Nat)
+    (hbound : offset + length ≤ total)
+    (hdisjoint : U64SlicesDisjoint other otherLength stage total) :
+    U64SlicesDisjoint other otherLength (stage.add offset) length := by
+  exact u64SlicesDisjoint_symm
+    (u64SlicesDisjoint_stage_entry_left stage other total offset length
+      otherLength hbound (u64SlicesDisjoint_symm hdisjoint))
+
 theorem hgcdMatStabilizeWorkspace_of_sameLayout (before after : RawHeap)
     (original current : HgcdMat) (hOriginal : original.Valid)
     (hCurrent : current.Valid) (stage : RawPtr UInt64)
@@ -274,6 +290,7 @@ theorem hgcdMatStageLoop_refines (this : DenseUPolyZp)
     ∃ result, hgcdMatStageLoop M hM stage i
         (hgcdMatStageOffset M hM i) heap = .ok result ∧
       result.off = hgcdMatStageSize M hM ∧
+      RawHeap.SameLayout heap result.heap ∧
       HgcdMatRawDenseRep this result.heap M entries hM ∧
       HgcdMatStageRawDenseRep this result.heap stage M entries hM := by
   rw [hgcdMatStageLoop]
@@ -342,13 +359,18 @@ theorem hgcdMatStageLoop_refines (this : DenseUPolyZp)
     have hrec := hgcdMatStageLoop_refines this M original hM hOriginal stage
       entries (i + 1) (by omega) heap1 hws1 hMatrix1 hPrior1
     rw [hcopyLoop]
-    simpa [index, dst, length, hgcdMatPtr, hgcdMatPtrRaw, hgcdMatLen,
-      hgcdMatLenRaw, hgcdMatStageOffset_step M hM i hlt] using hrec
+    rcases hrec with ⟨final, hrunFinal, hoffFinal, hlayoutFinal,
+      hMatrixFinal, hStageFinal⟩
+    refine ⟨final, ?_, hoffFinal, ?_, hMatrixFinal, hStageFinal⟩
+    · simpa [index, dst, length, hgcdMatPtr, hgcdMatPtrRaw, hgcdMatLen,
+        hgcdMatLenRaw, hgcdMatStageOffset_step M hM i hlt] using hrunFinal
+    · intro ptr count
+      exact (hlayout ptr count).trans (hlayoutFinal ptr count)
   next hstop =>
     have hi4 : i = 4 := by omega
     subst i
     refine ⟨{ heap := heap, off := hgcdMatStageOffset M hM 4 }, rfl,
-      rfl, hMatrix, ?_⟩
+      rfl, (fun _ _ => Iff.rfl), hMatrix, ?_⟩
     intro j
     exact hPrior j (by omega)
 termination_by 4 - i
@@ -364,11 +386,277 @@ theorem hgcdMatStageLoop_zero_refines (this : DenseUPolyZp)
     (hMatrix : HgcdMatRawDenseRep this heap M entries hM) :
     ∃ result, hgcdMatStageLoop M hM stage 0 0 heap = .ok result ∧
       result.off = hgcdMatStageSize M hM ∧
+      RawHeap.SameLayout heap result.heap ∧
       HgcdMatRawDenseRep this result.heap M entries hM ∧
       HgcdMatStageRawDenseRep this result.heap stage M entries hM := by
   simpa [hgcdMatStageOffset] using
     (hgcdMatStageLoop_refines this M original hM hOriginal stage entries 0
       (by omega) heap hws hMatrix (by intro j hj; omega))
+
+/-- Semantic refinement of every suffix of the second generated stabilization
+loop.  `base` fixes the iterator-produced lengths while `current` follows the
+real descriptor pointer updates performed by the loop. -/
+theorem hgcdMatRestoreLoop_refines (this : DenseUPolyZp)
+    (original base current : HgcdMat)
+    (hOriginal : original.Valid) (hBase : base.Valid)
+    (hCurrent : current.Valid)
+    (stage : RawPtr UInt64)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (i : Nat) (hi : i ≤ 4) (heap : RawHeap)
+    (result : HgcdMatRestoreResult)
+    (hLen : current.len = base.len)
+    (hws : HgcdMatStabilizeWorkspace heap original base hOriginal hBase stage)
+    (hStage : HgcdMatStageRawDenseRep this heap stage base entries hBase)
+    (hPrior : ∀ j : Fin 4, j.val < i → RawDensePolyRep this heap
+      (hgcdMatPtr original hOriginal j) (hgcdMatLen base hBase j)
+      (entries j))
+    (hrun : hgcdMatRestoreLoop original current hOriginal hCurrent stage i
+      (hgcdMatStageOffset base hBase i) heap = .ok result) :
+    HgcdMatStageRawDenseRep this result.heap stage base entries hBase ∧
+      ∀ j : Fin 4, RawDensePolyRep this result.heap
+        (hgcdMatPtr original hOriginal j) (hgcdMatLen base hBase j)
+        (entries j) := by
+  rw [hgcdMatRestoreLoop] at hrun
+  split at hrun
+  next hlt =>
+    dsimp only at hrun
+    split at hrun
+    next fault hcopy => simp at hrun
+    next heap1 hcopy =>
+      let index : Fin 4 := ⟨i, hlt⟩
+      let dst := hgcdMatPtr original hOriginal index
+      let src := stage.add (hgcdMatStageOffset base hBase i)
+      let length := hgcdMatLen base hBase index
+      have hLength : hgcdMatLen current hCurrent index = length := by
+        exact array_getElem_eq_of_eq current.len base.len hLen index.val
+          (by rw [hCurrent.2]; exact index.isLt)
+          (by rw [hBase.2]; exact index.isLt)
+      have hLengthRaw : hgcdMatLenRaw current hCurrent index = length := by
+        simpa [hgcdMatLenRaw, hgcdMatLen] using hLength
+      have hDst : heap.ValidU64Slice dst length := hws.originalValid index
+      have hSrc := hStage index
+      have hDstSrc : U64SlicesDisjoint dst length src length := by
+        exact u64SlicesDisjoint_stage_entry_right dst stage length
+          (hgcdMatStageSize base hBase) (hgcdMatStageOffset base hBase i)
+          length (hgcdMatStageOffset_entry_le_size base hBase i hlt)
+          (hws.originalStageDisjoint index)
+      rcases copyU64_refines_rawDense this heap dst src length (entries index)
+          hDst hDstSrc hSrc with
+        ⟨semanticHeap, hsemantic, hlayout, hRestoredI⟩
+      have hcopyNorm : heap.copyU64 dst src length = .ok heap1 := by
+        simpa [dst, src, length, index, hgcdMatPtr, hgcdMatPtrRaw,
+          hLengthRaw] using hcopy
+      have heq : semanticHeap = heap1 :=
+        Except.ok.inj (hsemantic.symm.trans hcopyNorm)
+      subst semanticHeap
+      have hStage1 : HgcdMatStageRawDenseRep this heap1 stage base entries
+          hBase := by
+        intro k
+        have hDisjoint : U64SlicesDisjoint dst length
+            (stage.add (hgcdMatStageOffset base hBase k.val))
+            (hgcdMatLen base hBase k) := by
+          exact u64SlicesDisjoint_stage_entry_right dst stage length
+            (hgcdMatStageSize base hBase)
+            (hgcdMatStageOffset base hBase k.val) (hgcdMatLen base hBase k)
+            (hgcdMatStageOffset_entry_le_size base hBase k.val k.isLt)
+            (hws.originalStageDisjoint index)
+        exact (copyU64_preserves_rawDenseRep this heap heap1 dst src length
+          (stage.add (hgcdMatStageOffset base hBase k.val))
+          (hgcdMatLen base hBase k) (entries k) hDst hSrc.1 hDisjoint
+          hcopyNorm (hStage k)).2
+      have hPrior1 : ∀ j : Fin 4, j.val < i + 1 →
+          RawDensePolyRep this heap1 (hgcdMatPtr original hOriginal j)
+            (hgcdMatLen base hBase j) (entries j) := by
+        intro j hj
+        by_cases hji : j.val = i
+        · have hjeq : j = index := Fin.ext hji
+          subst j
+          exact hRestoredI
+        · have hjlt : j.val < i := by omega
+          have hDisjoint : U64SlicesDisjoint dst length
+              (hgcdMatPtr original hOriginal j)
+              (hgcdMatLen base hBase j) := by
+            exact hws.originalPairwiseDisjoint index j (by
+              intro heqIndex
+              exact hji (congrArg Fin.val heqIndex).symm)
+          exact (copyU64_preserves_rawDenseRep this heap heap1 dst src length
+            (hgcdMatPtr original hOriginal j) (hgcdMatLen base hBase j)
+            (entries j) hDst hSrc.1 hDisjoint hcopyNorm
+            (hPrior j hjlt)).2
+      let poly' := current.poly.set i (hgcdMatPtrRaw original hOriginal index)
+        (by rw [hCurrent.1]; omega)
+      let next : HgcdMat := { current with poly := poly' }
+      have hNext : next.Valid := by
+        exact ⟨by simp [next, poly', hCurrent.1], hCurrent.2⟩
+      have hLenNext : next.len = base.len := by
+        exact hLen
+      have hws1 := hgcdMatStabilizeWorkspace_of_sameLayout heap heap1 original
+        base hOriginal hBase stage hlayout hws
+      have htail : hgcdMatRestoreLoop original next hOriginal hNext stage
+          (i + 1) (hgcdMatStageOffset base hBase (i + 1)) heap1 =
+            .ok result := by
+        rw [hgcdMatStageOffset_step base hBase i hlt]
+        simpa [next, poly', index, hLengthRaw] using hrun
+      exact hgcdMatRestoreLoop_refines this original base next hOriginal hBase
+        hNext stage entries (i + 1) (by omega) heap1 result hLenNext hws1
+        hStage1 hPrior1 htail
+  next hstop =>
+    have hi4 : i = 4 := by omega
+    have heq := Except.ok.inj hrun
+    subst result
+    constructor
+    · exact hStage
+    · intro j
+      exact hPrior j (by omega)
+termination_by 4 - i
+decreasing_by omega
+
+/-- Entry-point refinement of the second generated loop: staged polynomial
+contents are copied back to all four saved pointers, and the returned matrix
+descriptor represents those same entries at the iterator-produced lengths. -/
+theorem hgcdMatRestoreLoop_zero_refines (this : DenseUPolyZp)
+    (original current : HgcdMat)
+    (hOriginal : original.Valid) (hCurrent : current.Valid)
+    (stage : RawPtr UInt64)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (heap : RawHeap) (result : HgcdMatRestoreResult)
+    (hws : HgcdMatStabilizeWorkspace heap original current hOriginal
+      hCurrent stage)
+    (hStage : HgcdMatStageRawDenseRep this heap stage current entries hCurrent)
+    (hrun : hgcdMatRestoreLoop original current hOriginal hCurrent stage
+      0 0 heap = .ok result) :
+    ∃ hResult : result.matrix.Valid,
+      HgcdMatStageRawDenseRep this result.heap stage current entries hCurrent ∧
+      HgcdMatRawDenseRep this result.heap result.matrix entries hResult := by
+  have hrefine := hgcdMatRestoreLoop_refines this original current current
+    hOriginal hCurrent hCurrent stage entries 0 (by omega) heap result rfl hws
+    hStage (by intro j hj; omega) (by
+      simpa [hgcdMatStageOffset] using hrun)
+  have hdesc := hgcdMatRestoreLoop_zero_descriptors original current hOriginal
+    hCurrent stage heap result hrun
+  refine ⟨hdesc.1, hrefine.1, ?_⟩
+  intro j
+  have hPtr : hgcdMatPtr result.matrix hdesc.1 j =
+      hgcdMatPtr original hOriginal j := by
+    exact array_getElem_eq_of_eq result.matrix.poly original.poly hdesc.2.1
+      j.val (by rw [hdesc.1.1]; exact j.isLt)
+      (by rw [hOriginal.1]; exact j.isLt)
+  have hLength : hgcdMatLen result.matrix hdesc.1 j =
+      hgcdMatLen current hCurrent j := by
+    exact array_getElem_eq_of_eq result.matrix.len current.len hdesc.2.2
+      j.val (by rw [hdesc.1.2]; exact j.isLt)
+      (by rw [hCurrent.2]; exact j.isLt)
+  rw [hPtr, hLength]
+  exact hrefine.2 j
+
+/-- The physical stabilization workspace is sufficient to make every suffix
+of the generated restore loop terminate successfully. -/
+theorem hgcdMatRestoreLoop_terminates (this : DenseUPolyZp)
+    (original base current : HgcdMat)
+    (hOriginal : original.Valid) (hBase : base.Valid)
+    (hCurrent : current.Valid) (stage : RawPtr UInt64)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (i : Nat) (hi : i ≤ 4) (heap : RawHeap)
+    (hLen : current.len = base.len)
+    (hws : HgcdMatStabilizeWorkspace heap original base hOriginal hBase stage)
+    (hStage : HgcdMatStageRawDenseRep this heap stage base entries hBase) :
+    ∃ result, hgcdMatRestoreLoop original current hOriginal hCurrent stage i
+      (hgcdMatStageOffset base hBase i) heap = .ok result := by
+  rw [hgcdMatRestoreLoop]
+  split
+  next hlt =>
+    let index : Fin 4 := ⟨i, hlt⟩
+    let dst := hgcdMatPtr original hOriginal index
+    let src := stage.add (hgcdMatStageOffset base hBase i)
+    let length := hgcdMatLen base hBase index
+    have hLength : hgcdMatLen current hCurrent index = length := by
+      exact array_getElem_eq_of_eq current.len base.len hLen index.val
+        (by rw [hCurrent.2]; exact index.isLt)
+        (by rw [hBase.2]; exact index.isLt)
+    have hLengthRaw : hgcdMatLenRaw current hCurrent index = length := by
+      simpa [hgcdMatLenRaw, hgcdMatLen] using hLength
+    have hBaseLengthRaw : hgcdMatLenRaw base hBase index = length := by
+      rfl
+    have hDst : heap.ValidU64Slice dst length := hws.originalValid index
+    have hSrc := hStage index
+    have hDstSrc : U64SlicesDisjoint dst length src length := by
+      exact u64SlicesDisjoint_stage_entry_right dst stage length
+        (hgcdMatStageSize base hBase) (hgcdMatStageOffset base hBase i) length
+        (hgcdMatStageOffset_entry_le_size base hBase i hlt)
+        (hws.originalStageDisjoint index)
+    rcases copyU64_refines_rawDense this heap dst src length (entries index)
+        hDst hDstSrc hSrc with ⟨heap1, hcopy, hlayout, _⟩
+    have hStage1 : HgcdMatStageRawDenseRep this heap1 stage base entries
+        hBase := by
+      intro k
+      have hDisjoint : U64SlicesDisjoint dst length
+          (stage.add (hgcdMatStageOffset base hBase k.val))
+          (hgcdMatLen base hBase k) := by
+        exact u64SlicesDisjoint_stage_entry_right dst stage length
+          (hgcdMatStageSize base hBase)
+          (hgcdMatStageOffset base hBase k.val) (hgcdMatLen base hBase k)
+          (hgcdMatStageOffset_entry_le_size base hBase k.val k.isLt)
+          (hws.originalStageDisjoint index)
+      exact (copyU64_preserves_rawDenseRep this heap heap1 dst src length
+        (stage.add (hgcdMatStageOffset base hBase k.val))
+        (hgcdMatLen base hBase k) (entries k) hDst hSrc.1 hDisjoint hcopy
+        (hStage k)).2
+    let poly' := current.poly.set i (hgcdMatPtrRaw original hOriginal index)
+      (by rw [hCurrent.1]; omega)
+    let next : HgcdMat := { current with poly := poly' }
+    have hNext : next.Valid := by
+      exact ⟨by simp [next, poly', hCurrent.1], hCurrent.2⟩
+    have hws1 := hgcdMatStabilizeWorkspace_of_sameLayout heap heap1 original
+      base hOriginal hBase stage hlayout hws
+    rcases hgcdMatRestoreLoop_terminates this original base next hOriginal hBase
+        hNext stage entries (i + 1) (by omega) heap1 hLen hws1 hStage1 with
+      ⟨result, htail⟩
+    refine ⟨result, ?_⟩
+    dsimp only
+    rw [show heap.copyU64 (hgcdMatPtrRaw original hOriginal index) src
+        (hgcdMatLenRaw current hCurrent index) = .ok heap1 by
+      simpa [dst, length, hLengthRaw] using hcopy]
+    simp only
+    rw [hLengthRaw, ← hBaseLengthRaw,
+      ← hgcdMatStageOffset_step base hBase i hlt]
+    simpa [next, poly', index, hLengthRaw] using htail
+  next hstop =>
+    exact ⟨HgcdMatRestoreResult.mk heap current
+      (hgcdMatStageOffset base hBase i), rfl⟩
+termination_by 4 - i
+decreasing_by omega
+
+/-- Complete raw semantic refinement of the two-loop source stabilization
+block, including successful termination under its physical workspace. -/
+theorem hgcdMatStabilize_refines (this : DenseUPolyZp)
+    (original current : HgcdMat)
+    (hOriginal : original.Valid) (hCurrent : current.Valid)
+    (stage : RawPtr UInt64)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (heap : RawHeap)
+    (hws : HgcdMatStabilizeWorkspace heap original current hOriginal
+      hCurrent stage)
+    (hMatrix : HgcdMatRawDenseRep this heap current entries hCurrent) :
+    ∃ result, hgcdMatStabilize original current hOriginal hCurrent stage heap =
+        .ok result ∧
+      ∃ hResult : result.matrix.Valid,
+        HgcdMatRawDenseRep this result.heap result.matrix entries hResult := by
+  rcases hgcdMatStageLoop_zero_refines this current original hCurrent hOriginal
+      stage entries heap hws hMatrix with
+    ⟨staged, hstage, hoff, hlayout, _, hStage⟩
+  have hws1 := hgcdMatStabilizeWorkspace_of_sameLayout heap staged.heap original
+    current hOriginal hCurrent stage hlayout hws
+  rcases hgcdMatRestoreLoop_terminates this original current current hOriginal
+      hCurrent hCurrent stage entries 0 (by omega) staged.heap rfl hws1 hStage with
+    ⟨result, hrestore⟩
+  have hrestore0 : hgcdMatRestoreLoop original current hOriginal hCurrent stage
+      0 0 staged.heap = .ok result := by
+    simpa [hgcdMatStageOffset] using hrestore
+  rcases hgcdMatRestoreLoop_zero_refines this original current hOriginal hCurrent
+      stage entries staged.heap result hws1 hStage hrestore0 with
+    ⟨hResult, _, hResultRep⟩
+  refine ⟨result, ?_, hResult, hResultRep⟩
+  simp [hgcdMatStabilize, hstage, hrestore0]
 
 theorem slicePolyRep_zero_length_any (heap : RawHeap) (ptr : RawPtr UInt64)
     (p : Nat) : SlicePolyRep heap ptr 0 p 0 := by

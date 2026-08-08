@@ -170,6 +170,120 @@ def dense_upoly_zp__hgcd_iter_ir (this : DenseUPolyZp) (M : HgcdMat)
   | .error fault => .error fault
   | .ok initial => hgcdIterLoop this (lenA / 2) Q W3 scratch initial
 
+theorem matOne_result_valid (M : HgcdMat) (heap heap' : RawHeap)
+    (matrix : HgcdMat)
+    (hrun : dense_upoly_zp__mat_one_ir M heap = .ok (heap', matrix)) :
+    matrix.Valid := by
+  simp only [dense_upoly_zp__mat_one_ir] at hrun
+  split at hrun
+  next hvalid =>
+    split at hrun
+    next fault hwrite0 => simp at hrun
+    next heap1 hwrite0 =>
+      split at hrun
+      next fault hwrite3 => simp at hrun
+      next heap2 hwrite3 =>
+        have heq := Except.ok.inj hrun
+        cases heq
+        exact ⟨hvalid.1, by simp⟩
+  next hvalid => simp at hrun
+
+theorem matRowUpdate_result_valid (this : DenseUPolyZp)
+    (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : MatRowUpdateResult)
+    (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T lenT
+      t scratch heap = .ok result) :
+    result.matrix.Valid := by
+  simp only [dense_upoly_zp__mat_row_update_ir] at hrun
+  split at hrun
+  next hvalid =>
+    split at hrun
+    next hnonzero =>
+      split at hrun
+      next fault hmul => simp at hrun
+      next heap1 hmul =>
+        split at hrun
+        next fault hadd => simp at hrun
+        next heap2 sumLen hadd =>
+          have heq := Except.ok.inj hrun
+          cases heq
+          exact ⟨by simp [hvalid.1], by simp [hvalid.2]⟩
+    next hzero =>
+      have heq := Except.ok.inj hrun
+      cases heq
+      exact ⟨by simp [hvalid.1], by simp [hvalid.2]⟩
+  next hvalid => simp at hrun
+
+theorem hgcdIterLoop_result_valid (this : DenseUPolyZp) (m : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (state result : HgcdIterState) (hState : state.matrix.Valid)
+    (hrun : hgcdIterLoop this m Q W3 scratch state = .ok result) :
+    result.matrix.Valid := by
+  rw [hgcdIterLoop] at hrun
+  split at hrun
+  next hcontinue =>
+    split at hrun
+    next fault hdiv => simp at hrun
+    next heap1 lenQ lenR hdiv =>
+      dsimp only at hrun
+      split at hrun
+      next fault hrow23 => simp at hrun
+      next row23 hrow23 =>
+        split at hrun
+        next fault hrow01 => simp at hrun
+        next row01 hrow01 =>
+          have hvalid01 := matRowUpdate_result_valid this row23.matrix
+            ⟨0, by omega⟩ ⟨1, by omega⟩ Q lenQ row23.T row23.lenT
+            row23.t scratch row23.heap row01 hrow01
+          have hlt : lenR < state.lenB :=
+            polyDivrem_remainder_lt this Q state.T state.A state.lenA state.B
+              state.lenB W3 state.heap heap1 lenQ lenR hdiv
+          exact hgcdIterLoop_result_valid this m Q W3 scratch _ result
+            hvalid01 hrun
+  next hstop =>
+    have heq : state = result := Except.ok.inj hrun
+    subst result
+    exact hState
+termination_by state.lenB
+decreasing_by assumption
+
+theorem hgcdIterInit_result_valid (M : HgcdMat)
+    (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (heap : RawHeap) (result : HgcdIterState)
+    (hrun : hgcdIterInit M A B T t lenT a lenA b lenB heap = .ok result) :
+    result.matrix.Valid := by
+  simp only [hgcdIterInit] at hrun
+  split at hrun
+  next fault hone => simp at hrun
+  next heap1 matrix hone =>
+    split at hrun
+    next fault hcopyA => simp at hrun
+    next heap2 hcopyA =>
+      split at hrun
+      next fault hcopyB => simp at hrun
+      next heap3 hcopyB =>
+        have heq := Except.ok.inj hrun
+        subst result
+        exact matOne_result_valid M heap heap1 matrix hone
+
+theorem hgcdIter_result_valid (this : DenseUPolyZp) (M : HgcdMat)
+    (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : HgcdIterState)
+    (hrun : dense_upoly_zp__hgcd_iter_ir this M A B T t lenT a lenA b lenB
+      Q W3 scratch heap = .ok result) :
+    result.matrix.Valid := by
+  simp only [dense_upoly_zp__hgcd_iter_ir] at hrun
+  split at hrun
+  next fault hinit => simp at hrun
+  next initial hinit =>
+    exact hgcdIterLoop_result_valid this (lenA / 2) Q W3 scratch initial
+      result (hgcdIterInit_result_valid M A B T t lenT a lenA b lenB heap
+        initial hinit) hrun
+
 /-- Reference-eliminated return state of the source `_hgcd_recursive` base
 branch. -/
 structure HgcdRecursiveBaseResult where

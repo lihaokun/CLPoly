@@ -112,6 +112,12 @@ middle 精化输出已进一步强化为最终 heap 上的三个完整
 提供的零长度有效性得到零多项式表示。整个桥不执行写 heap，也不调用 L2
 算法生成 `c0/d0`。
 
+为无额外运行时 guard 地组合递归内 iterator 分支，生成层现已证明完整的
+descriptor 有效性链：`_mat_one`、每次 `_mat_row_update`、良基
+`hgcdIterLoop`、初始化以及完整 `_hgcd_iter` 的每个成功结果都保持
+`HgcdMat.Valid`。循环证明与执行使用相同的 `state.lenB` 终止度量，下降仍
+直接来自真实 divrem 返回的余式长度。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

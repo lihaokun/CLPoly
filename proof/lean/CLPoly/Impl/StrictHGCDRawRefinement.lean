@@ -163,33 +163,33 @@ theorem rawDensePolyRep_length_le_of_degree_lt (this : DenseUPolyZp)
 normalized C++ descriptor lengths. -/
 theorem rawDensePolyRep_mul_zero_or_degree_lt (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]
-    (heap : RawHeap) (leftPtr rightPtr : RawPtr UInt64)
+    (leftHeap rightHeap : RawHeap) (leftPtr rightPtr : RawPtr UInt64)
     (leftLength rightLength : Nat)
     (left right : Polynomial (ZMod this._p.toNat))
-    (hLeft : RawDensePolyRep this heap leftPtr leftLength left)
-    (hRight : RawDensePolyRep this heap rightPtr rightLength right) :
+    (hLeft : RawDensePolyRep this leftHeap leftPtr leftLength left)
+    (hRight : RawDensePolyRep this rightHeap rightPtr rightLength right) :
     left * right = 0 ∨
       (left * right).natDegree < leftLength + rightLength - 1 := by
   by_cases hLeftLength : leftLength = 0
   · left
-    rw [(rawDensePolyRep_length_zero_iff this heap leftPtr leftLength left
+    rw [(rawDensePolyRep_length_zero_iff this leftHeap leftPtr leftLength left
       hLeft).mp hLeftLength, zero_mul]
   · by_cases hRightLength : rightLength = 0
     · left
-      rw [(rawDensePolyRep_length_zero_iff this heap rightPtr rightLength right
+      rw [(rawDensePolyRep_length_zero_iff this rightHeap rightPtr rightLength right
         hRight).mp hRightLength, mul_zero]
     · right
-      have hLeftDegree := rawDensePolyRep_natDegree_add_one this heap leftPtr
+      have hLeftDegree := rawDensePolyRep_natDegree_add_one this leftHeap leftPtr
         leftLength left hLeft (Nat.pos_of_ne_zero hLeftLength)
-      have hRightDegree := rawDensePolyRep_natDegree_add_one this heap rightPtr
+      have hRightDegree := rawDensePolyRep_natDegree_add_one this rightHeap rightPtr
         rightLength right hRight (Nat.pos_of_ne_zero hRightLength)
       have hLeftNonzero : left ≠ 0 := by
         intro hzero
-        exact hLeftLength ((rawDensePolyRep_length_zero_iff this heap leftPtr
+        exact hLeftLength ((rawDensePolyRep_length_zero_iff this leftHeap leftPtr
           leftLength left hLeft).mpr hzero)
       have hRightNonzero : right ≠ 0 := by
         intro hzero
-        exact hRightLength ((rawDensePolyRep_length_zero_iff this heap rightPtr
+        exact hRightLength ((rawDensePolyRep_length_zero_iff this rightHeap rightPtr
           rightLength right hRight).mpr hzero)
       rw [Polynomial.natDegree_mul hLeftNonzero hRightNonzero]
       omega
@@ -211,25 +211,57 @@ theorem rawDensePolyRep_zero_or_degree_lt (this : DenseUPolyZp)
       poly hrep (Nat.pos_of_ne_zero hlength)
     omega
 
+/-- Normalization makes the descriptor length uniquely determined by the L2
+polynomial, even when the two real buffers live in different heaps. -/
+theorem rawDensePolyRep_length_eq (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (heap₁ heap₂ : RawHeap) (ptr₁ ptr₂ : RawPtr UInt64)
+    (length₁ length₂ : Nat) (poly : Polynomial (ZMod this._p.toNat))
+    (hrep₁ : RawDensePolyRep this heap₁ ptr₁ length₁ poly)
+    (hrep₂ : RawDensePolyRep this heap₂ ptr₂ length₂ poly) :
+    length₁ = length₂ := by
+  by_cases hzero : poly = 0
+  · have hzero₁ := (rawDensePolyRep_length_zero_iff this heap₁ ptr₁ length₁
+      poly hrep₁).mpr hzero
+    have hzero₂ := (rawDensePolyRep_length_zero_iff this heap₂ ptr₂ length₂
+      poly hrep₂).mpr hzero
+    omega
+  · have hpos₁ : 0 < length₁ := by
+      by_contra hnot
+      have hlength : length₁ = 0 := by omega
+      exact hzero ((rawDensePolyRep_length_zero_iff this heap₁ ptr₁ length₁
+        poly hrep₁).mp hlength)
+    have hpos₂ : 0 < length₂ := by
+      by_contra hnot
+      have hlength : length₂ = 0 := by omega
+      exact hzero ((rawDensePolyRep_length_zero_iff this heap₂ ptr₂ length₂
+        poly hrep₂).mp hlength)
+    have hdegree₁ := rawDensePolyRep_natDegree_add_one this heap₁ ptr₁ length₁
+      poly hrep₁ hpos₁
+    have hdegree₂ := rawDensePolyRep_natDegree_add_one this heap₂ ptr₂ length₂
+      poly hrep₂ hpos₂
+    omega
+
 /-- Exact normalized length bound for the quotient update used by the real
 HGCD tail, `top + quotient * bottom`. -/
 theorem rawDensePolyRep_add_mul_length_le (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]
-    (heap : RawHeap) (topPtr quotientPtr bottomPtr outPtr : RawPtr UInt64)
+    (topHeap quotientHeap bottomHeap outHeap : RawHeap)
+    (topPtr quotientPtr bottomPtr outPtr : RawPtr UInt64)
     (topLength quotientLength bottomLength outLength : Nat)
     (top quotient bottom : Polynomial (ZMod this._p.toNat))
-    (hTop : RawDensePolyRep this heap topPtr topLength top)
-    (hQuotient : RawDensePolyRep this heap quotientPtr quotientLength quotient)
-    (hBottom : RawDensePolyRep this heap bottomPtr bottomLength bottom)
-    (hOut : RawDensePolyRep this heap outPtr outLength
+    (hTop : RawDensePolyRep this topHeap topPtr topLength top)
+    (hQuotient : RawDensePolyRep this quotientHeap quotientPtr quotientLength quotient)
+    (hBottom : RawDensePolyRep this bottomHeap bottomPtr bottomLength bottom)
+    (hOut : RawDensePolyRep this outHeap outPtr outLength
       (top + quotient * bottom)) :
     outLength ≤ max topLength (quotientLength + bottomLength - 1) := by
-  have hTopDegree := rawDensePolyRep_zero_or_degree_lt this heap topPtr
+  have hTopDegree := rawDensePolyRep_zero_or_degree_lt this topHeap topPtr
     topLength top hTop
-  have hProductDegree := rawDensePolyRep_mul_zero_or_degree_lt this heap
-    quotientPtr bottomPtr quotientLength bottomLength quotient bottom
+  have hProductDegree := rawDensePolyRep_mul_zero_or_degree_lt this quotientHeap
+    bottomHeap quotientPtr bottomPtr quotientLength bottomLength quotient bottom
     hQuotient hBottom
-  apply rawDensePolyRep_length_le_of_degree_lt this heap outPtr outLength
+  apply rawDensePolyRep_length_le_of_degree_lt this outHeap outPtr outLength
     (max topLength (quotientLength + bottomLength - 1))
     (top + quotient * bottom) hOut
   rcases hTopDegree with hTopZero | hTopDegree <;>
@@ -260,9 +292,9 @@ theorem rawDensePolyRep_sum_products_length_le (this : DenseUPolyZp)
     (hS : RawDensePolyRep this heap sPtr lenS S)
     (hOut : RawDensePolyRep this heap outPtr outLength (P * Q + R * S)) :
     outLength ≤ max (lenP + lenQ - 1) (lenR + lenS - 1) := by
-  have hPQ := rawDensePolyRep_mul_zero_or_degree_lt this heap pPtr qPtr lenP
+  have hPQ := rawDensePolyRep_mul_zero_or_degree_lt this heap heap pPtr qPtr lenP
     lenQ P Q hP hQ
-  have hRS := rawDensePolyRep_mul_zero_or_degree_lt this heap rPtr sPtr lenR
+  have hRS := rawDensePolyRep_mul_zero_or_degree_lt this heap heap rPtr sPtr lenR
     lenS R S hR hS
   apply rawDensePolyRep_length_le_of_degree_lt this heap outPtr outLength
     (max (lenP + lenQ - 1) (lenR + lenS - 1)) (P * Q + R * S) hOut
@@ -6296,6 +6328,74 @@ theorem hgcdMatApplyQuotient_refines (this : DenseUPolyZp)
       (0 : Fin 4) (2 : Fin 4)) quotient hcfg hp hwork.2 hFirst.2 hFirst.1
     hsecond
   simpa [hgcdMatApplyQuotientEntries] using hSecond
+
+/-- Exact descriptor bounds induced by the source row swap followed by its
+two quotient column updates. -/
+structure HgcdMatApplyQuotientLengthBounds
+    (S result : HgcdMat) (hS : S.Valid) (hResult : result.Valid)
+    (lenQ : Nat) : Prop where
+  row0 : hgcdMatLen result hResult (0 : Fin 4) ≤
+    max (hgcdMatLen S hS (2 : Fin 4))
+      (lenQ + hgcdMatLen S hS (0 : Fin 4) - 1)
+  row1 : hgcdMatLen result hResult (1 : Fin 4) ≤
+    max (hgcdMatLen S hS (3 : Fin 4))
+      (lenQ + hgcdMatLen S hS (1 : Fin 4) - 1)
+  row2 : hgcdMatLen result hResult (2 : Fin 4) =
+    hgcdMatLen S hS (0 : Fin 4)
+  row3 : hgcdMatLen result hResult (3 : Fin 4) =
+    hgcdMatLen S hS (1 : Fin 4)
+
+/-- The raw semantic result of the actual quotient block determines all four
+source descriptor bounds, including exact preservation of the lower row. -/
+theorem hgcdMatApplyQuotientEntries_length_bounds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (inputHeap resultHeap quotientHeap : RawHeap)
+    (S result : HgcdMat) (hS : S.Valid) (hResult : result.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (hMatrix : HgcdMatRawDenseRep this inputHeap S entries hS)
+    (hQ : RawDensePolyRep this quotientHeap q lenQ quotient)
+    (hOutput : HgcdMatRawDenseRep this resultHeap result
+      (hgcdMatApplyQuotientEntries entries quotient) hResult) :
+    HgcdMatApplyQuotientLengthBounds S result hS hResult lenQ := by
+  constructor
+  · simpa [hgcdMatApplyQuotientEntries, hgcdMatSwapEntries,
+      hgcdMatQuotientUpdateEntries, Function.update] using
+      rawDensePolyRep_add_mul_length_le this inputHeap quotientHeap inputHeap
+        resultHeap (hgcdMatPtr S hS (2 : Fin 4)) q
+        (hgcdMatPtr S hS (0 : Fin 4))
+        (hgcdMatPtr result hResult (0 : Fin 4))
+        (hgcdMatLen S hS (2 : Fin 4)) lenQ
+        (hgcdMatLen S hS (0 : Fin 4))
+        (hgcdMatLen result hResult (0 : Fin 4))
+        (entries 2) quotient (entries 0) (hMatrix 2) hQ (hMatrix 0)
+        (hOutput 0)
+  · simpa [hgcdMatApplyQuotientEntries, hgcdMatSwapEntries,
+      hgcdMatQuotientUpdateEntries, Function.update] using
+      rawDensePolyRep_add_mul_length_le this inputHeap quotientHeap inputHeap
+        resultHeap (hgcdMatPtr S hS (3 : Fin 4)) q
+        (hgcdMatPtr S hS (1 : Fin 4))
+        (hgcdMatPtr result hResult (1 : Fin 4))
+        (hgcdMatLen S hS (3 : Fin 4)) lenQ
+        (hgcdMatLen S hS (1 : Fin 4))
+        (hgcdMatLen result hResult (1 : Fin 4))
+        (entries 3) quotient (entries 1) (hMatrix 3) hQ (hMatrix 1)
+        (hOutput 1)
+  · exact (rawDensePolyRep_length_eq this inputHeap resultHeap
+      (hgcdMatPtr S hS (0 : Fin 4))
+      (hgcdMatPtr result hResult (2 : Fin 4))
+      (hgcdMatLen S hS (0 : Fin 4))
+      (hgcdMatLen result hResult (2 : Fin 4)) (entries 0) (hMatrix 0)
+      (by simpa [hgcdMatApplyQuotientEntries, hgcdMatSwapEntries,
+        hgcdMatQuotientUpdateEntries, Function.update] using hOutput 2)).symm
+  · exact (rawDensePolyRep_length_eq this inputHeap resultHeap
+      (hgcdMatPtr S hS (1 : Fin 4))
+      (hgcdMatPtr result hResult (3 : Fin 4))
+      (hgcdMatLen S hS (1 : Fin 4))
+      (hgcdMatLen result hResult (3 : Fin 4)) (entries 1) (hMatrix 1)
+      (by simpa [hgcdMatApplyQuotientEntries, hgcdMatSwapEntries,
+        hgcdMatQuotientUpdateEntries, Function.update] using hOutput 3)).symm
 
 /-- L2 low parts computed by the two sign-selected reconstruction blocks. -/
 noncomputable def hgcdReconstructedLowB {p : Nat}

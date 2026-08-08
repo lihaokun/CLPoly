@@ -194,6 +194,59 @@ theorem rawDensePolyRep_mul_zero_or_degree_lt (this : DenseUPolyZp)
       rw [Polynomial.natDegree_mul hLeftNonzero hRightNonzero]
       omega
 
+/-- A normalized raw descriptor is either the zero polynomial or its stored
+length strictly dominates its degree. -/
+theorem rawDensePolyRep_zero_or_degree_lt (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hrep : RawDensePolyRep this heap ptr length poly) :
+    poly = 0 ∨ poly.natDegree < length := by
+  by_cases hlength : length = 0
+  · left
+    exact (rawDensePolyRep_length_zero_iff this heap ptr length poly hrep).mp
+      hlength
+  · right
+    have hdegree := rawDensePolyRep_natDegree_add_one this heap ptr length
+      poly hrep (Nat.pos_of_ne_zero hlength)
+    omega
+
+/-- Exact normalized length bound for the quotient update used by the real
+HGCD tail, `top + quotient * bottom`. -/
+theorem rawDensePolyRep_add_mul_length_le (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (heap : RawHeap) (topPtr quotientPtr bottomPtr outPtr : RawPtr UInt64)
+    (topLength quotientLength bottomLength outLength : Nat)
+    (top quotient bottom : Polynomial (ZMod this._p.toNat))
+    (hTop : RawDensePolyRep this heap topPtr topLength top)
+    (hQuotient : RawDensePolyRep this heap quotientPtr quotientLength quotient)
+    (hBottom : RawDensePolyRep this heap bottomPtr bottomLength bottom)
+    (hOut : RawDensePolyRep this heap outPtr outLength
+      (top + quotient * bottom)) :
+    outLength ≤ max topLength (quotientLength + bottomLength - 1) := by
+  have hTopDegree := rawDensePolyRep_zero_or_degree_lt this heap topPtr
+    topLength top hTop
+  have hProductDegree := rawDensePolyRep_mul_zero_or_degree_lt this heap
+    quotientPtr bottomPtr quotientLength bottomLength quotient bottom
+    hQuotient hBottom
+  apply rawDensePolyRep_length_le_of_degree_lt this heap outPtr outLength
+    (max topLength (quotientLength + bottomLength - 1))
+    (top + quotient * bottom) hOut
+  rcases hTopDegree with hTopZero | hTopDegree <;>
+      rcases hProductDegree with hProductZero | hProductDegree
+  · left
+    rw [hTopZero, hProductZero, zero_add]
+  · right
+    rw [hTopZero, zero_add]
+    exact hProductDegree.trans_le (Nat.le_max_right _ _)
+  · right
+    rw [hProductZero, add_zero]
+    exact hTopDegree.trans_le (Nat.le_max_left _ _)
+  · right
+    exact (Polynomial.natDegree_add_le top (quotient * bottom)).trans_lt (by
+      exact max_lt (hTopDegree.trans_le (Nat.le_max_left _ _))
+        (hProductDegree.trans_le (Nat.le_max_right _ _)))
+
 /-- Exact normalized length bound for the polynomial produced by one real
 matrix-entry computation `P*Q + R*S`. -/
 theorem rawDensePolyRep_sum_products_length_le (this : DenseUPolyZp)

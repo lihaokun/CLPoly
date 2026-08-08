@@ -1649,6 +1649,14 @@ theorem add_complement_monomial_mul_eq_sub (p qi : UInt64)
   rw [zmod_cast_uint64_complement p qi hqi,
     Polynomial.monomial_neg, neg_mul, sub_eq_add_neg]
 
+theorem quotient_step_compose (p : Nat)
+    (before afterStep afterRec lowerQ term divisor : Polynomial (ZMod p))
+    (hstep : afterStep = before - term * divisor)
+    (hrec : afterRec = afterStep - lowerQ * divisor) :
+    afterRec = before - (lowerQ + term) * divisor := by
+  rw [hrec, hstep]
+  ring
+
 /-- A non-aliasing raw Q write leaves the complete W3 polynomial observation
 unchanged.  Both sides are reconstructed from their respective heaps. -/
 theorem word3ArrayPoly_writeU64_region_ne (before after : RawHeap)

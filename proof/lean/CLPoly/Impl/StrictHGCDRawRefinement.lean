@@ -2942,6 +2942,93 @@ theorem hgcdRecursiveMiddle_suffix_reps (this : DenseUPolyZp)
       (by simpa [hLenD0] using hD0Valid)
     exact ⟨cPoly, 0, hCResult, by simpa [hLenD0] using hZero⟩
 
+/-- Complete low/high decomposition consumed by the second recursive call
+and final reconstruction.  Low parts are fixed-length canonical slices,
+while the nonempty suffixes inherit normalization from the original divrem
+outputs. -/
+theorem hgcdRecursiveMiddle_split_reps (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (result : HgcdRecursiveMiddleResult)
+    (divisor remainder : Polynomial (ZMod this._p.toNat))
+    (hDivisor : RawDensePolyRep this result.heap b2 lenB2 divisor)
+    (hRemainder : RawDensePolyRep this result.heap d result.lenD remainder)
+    (hD0Valid : result.heap.ValidU64Slice result.d0 result.lenD0)
+    (hC0Pos : 0 < result.lenC0)
+    (hrun : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
+      .ok result) :
+    ∃ lowC highC lowD highD : Polynomial (ZMod this._p.toNat),
+      RawCanonicalPolySlice this result.heap b2 (Nat.min lenB2 result.k)
+        lowC ∧
+      RawDensePolyRep this result.heap result.c0 result.lenC0 highC ∧
+      RawCanonicalPolySlice this result.heap d
+        (Nat.min result.lenD result.k) lowD ∧
+      RawDensePolyRep this result.heap result.d0 result.lenD0 highD ∧
+      divisor = lowC + Polynomial.X ^ result.k * highC ∧
+      remainder = lowD + Polynomial.X ^ result.k * highD := by
+  have hlayout := hgcdRecursiveMiddle_layout this q d a2 b2 lenA2 lenB2 m
+    W3 heap result hrun
+  have hkB : result.k ≤ lenB2 := by
+    rw [hlayout.2.2.2.1] at hC0Pos
+    split at hC0Pos
+    next hk => exact hk
+    next hk => simp at hC0Pos
+  rcases rawDensePolyRep_split_suffix this result.heap b2 lenB2 result.k
+      divisor hkB hDivisor with
+    ⟨lowC, highC, hLowC, hHighC, hSplitC⟩
+  have hLowCCanonical : RawCanonicalPolySlice this result.heap b2
+      (Nat.min lenB2 result.k) lowC := by
+    simp only [Nat.min_eq_right hkB]
+    exact ⟨result.heap.validU64Slice_mono b2 lenB2 result.k hDivisor.1
+        hkB,
+      (canonicalU64Prefix_split result.heap b2 result.k
+        (lenB2 - result.k) this._p (by
+          simpa [Nat.add_sub_of_le hkB] using hDivisor.2.1)).1,
+      hLowC⟩
+  have hHighCResult : RawDensePolyRep this result.heap result.c0
+      result.lenC0 highC := by
+    rw [hlayout.2.2.1, hlayout.2.2.2.1]
+    simp [hkB]
+    exact hHighC
+  by_cases hkD : result.k ≤ result.lenD
+  · rcases rawDensePolyRep_split_suffix this result.heap d result.lenD
+        result.k remainder hkD hRemainder with
+      ⟨lowD, highD, hLowD, hHighD, hSplitD⟩
+    have hLowDCanonical : RawCanonicalPolySlice this result.heap d
+        (Nat.min result.lenD result.k) lowD := by
+      simp only [Nat.min_eq_right hkD]
+      exact ⟨result.heap.validU64Slice_mono d result.lenD result.k
+          hRemainder.1 hkD,
+        (canonicalU64Prefix_split result.heap d result.k
+          (result.lenD - result.k) this._p (by
+            simpa [Nat.add_sub_of_le hkD] using hRemainder.2.1)).1,
+        hLowD⟩
+    have hHighDResult : RawDensePolyRep this result.heap result.d0
+        result.lenD0 highD := by
+      rw [hlayout.2.2.2.2.1, hlayout.2.2.2.2.2]
+      simp [hkD]
+      exact hHighD
+    exact ⟨lowC, highC, lowD, highD, hLowCCanonical, hHighCResult,
+      hLowDCanonical, hHighDResult, hSplitC, hSplitD⟩
+  · have hLenD0 : result.lenD0 = 0 := by
+      rw [hlayout.2.2.2.2.2]
+      simp [hkD]
+    have hLowDCanonical : RawCanonicalPolySlice this result.heap d
+        (Nat.min result.lenD result.k) remainder := by
+      have hmin : Nat.min result.lenD result.k = result.lenD :=
+        Nat.min_eq_left (by omega)
+      simpa [hmin] using
+        (show RawCanonicalPolySlice this result.heap d result.lenD remainder
+          from ⟨hRemainder.1, hRemainder.2.1, hRemainder.2.2.1⟩)
+    have hHighDZero : RawDensePolyRep this result.heap result.d0
+        result.lenD0 0 := by
+      simpa [hLenD0] using rawDensePolyRep_zero_length this result.heap
+        result.d0 (by simpa [hLenD0] using hD0Valid)
+    have hSplitD : remainder = remainder + Polynomial.X ^ result.k * 0 := by
+      simp
+    exact ⟨lowC, highC, remainder, 0, hLowCCanonical, hHighCResult,
+      hLowDCanonical, hHighDZero, hSplitC, hSplitD⟩
+
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/
 theorem rawDensePolyRep_one_of_read_one (this : DenseUPolyZp)

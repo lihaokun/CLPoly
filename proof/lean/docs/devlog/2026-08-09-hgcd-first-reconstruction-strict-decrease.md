@@ -144,3 +144,14 @@ workspace 会形成无法从真实执行导出的残留假设。
 保留 C++ 的固定乘积容量和正确 L2 乘积，不提前声称结果已规范化。零长度分支也从
 真实空切片推出零多项式。下一步将重构的乘积/加减链改用该接口，并只在实际
 normalise 调用之后恢复 `RawDensePolyRep`。
+
+## Middle 的完整低高分解
+
+`hgcdRecursiveMiddle_split_reps` 现从同一次真实 divrem 返回堆导出第二递归与最终
+重构需要的四个多项式表示。divisor/remainder 的低部使用允许尾零的
+`RawCanonicalPolySlice`，`c0/d0` 高部则由原规范化多项式的 suffix 性质得到
+`RawDensePolyRep`；两者分别满足精确的 `low + X^k * high` 分解。
+
+当 `k` 超过 remainder 长度时，证明按源码得到零长度 `d0`，从物理有效空切片
+推出零多项式，而不是补充一个规格侧零值。该桥消除了第二递归输入和 finish 低部
+之间原先缺失的语义联系。

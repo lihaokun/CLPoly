@@ -4923,14 +4923,10 @@ theorem hgcdRecursiveEarlyReturn_rawInvariant (this : DenseUPolyZp)
         hlenA, hcopied.1] using hLength.row2A
     · simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
         hlenB, hcopied.1] using hLength.row3B
-    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA, hlenB] using
-        hLength.order
     · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
         hLength.inputBound
-    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
-        hLength.positive
-    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
-        hLength.aboveHalf
+    · simpa [HgcdRecursiveEarlyResult.toResult, hlenB] using
+        hLength.stopped
 
 /-- Arithmetic closure for one Euclidean matrix step.  The quotient bound
 comes from the real generated divrem call and the four descriptor bounds
@@ -5556,14 +5552,10 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
         hgcdMatLenRaw, hgcdMatLen] using hResultLength2
       row3B := by simpa [HgcdRecursiveIterBranchResult.toResult,
         hgcdMatLenRaw, hgcdMatLen] using hResultLength3
-      order := by simpa [HgcdRecursiveIterBranchResult.toResult,
-        hResultLenA, hResultLenB] using hFinalOrder
       inputBound := by simpa [HgcdRecursiveIterBranchResult.toResult,
         hResultLenA] using hFinalInputBound
-      positive := by simpa [HgcdRecursiveIterBranchResult.toResult,
-        hResultLenA] using hFinalPositive
-      aboveHalf := by simpa [HgcdRecursiveIterBranchResult.toResult,
-        hResultLenA] using hFinalAbove }
+      stopped := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hResultLenB] using hStop }
   refine ⟨finalA, finalB, finalEntries, hResultValid, {
     aRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hAResult
     bRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hBResult
@@ -6896,8 +6888,8 @@ theorem hgcdRecursiveFirstReconstruct_lenB_le_input
         (max
           (lenR2 + Nat.min inputLength (inputLength / 2) - 1)
           (lenR0 + Nat.min inputLengthB (inputLength / 2) - 1)))
-    (hreturnedOrder : returnedLenB ≤ returnedLenA)
-    (hreturnedBound : returnedLenA ≤ inputLength - inputLength / 2)
+    (hreturnedStop : returnedLenB <
+      (inputLength - inputLength / 2) / 2 + 1)
     (hrow2 : lenR2 + returnedLenA ≤
       (inputLength - inputLength / 2) + 1)
     (hrow0 : lenR0 + returnedLenA ≤
@@ -6962,7 +6954,7 @@ theorem hgcdRecursiveFirstReconstruct_bound_of_invariant
     first.lenA first.lenB
     (hgcdMatLen first.matrix first.valid (2 : Fin 4))
     (hgcdMatLen first.matrix first.valid (0 : Fin 4)) hrefines.2.2.2.1
-    hinvariant.order hinvariant.inputBound
+    hinvariant.stopped
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row0A)
 
@@ -6976,7 +6968,7 @@ theorem hgcdRecursiveFinalReconstruct_lengths_le_input
     (hsplit : k + lenC0 = reconstructedLenB)
     (hreconstructed : reconstructedLenB ≤ outerLength)
     (hsecondBound : secondLenA ≤ lenC0)
-    (hsecondOrder : secondLenB ≤ secondLenA)
+    (hsecondStop : secondLenB < lenC0 / 2 + 1)
     (hrow0 : s0 + secondLenA ≤ lenC0 + 1)
     (hrow1 : s1 + secondLenB ≤ lenC0 + 1)
     (hrow2 : s2 + secondLenA ≤ lenC0 + 1)
@@ -7311,7 +7303,8 @@ theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
       (hgcdMatPtr M hM i) (identityEntryLen i))
     (hLeft : RawDensePolyRep this heap a lenA left)
     (hRight : RawDensePolyRep this heap b lenB right)
-    (horder : lenB ≤ lenA) (hlenAPos : 0 < lenA)
+    (horder : lenB ≤ lenA) (_hlenAPos : 0 < lenA)
+    (hstop : lenB < lenA / 2 + 1)
     (hrun : hgcdRecursiveBase M true A B a b lenA lenB heap = .ok result) :
     result.lenA = lenA ∧ result.lenB = lenB ∧ result.sgn = 1 ∧
       ∃ hResultM : result.matrix.Valid,
@@ -7358,14 +7351,10 @@ theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
         hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row2A
     · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
         hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row3B
-    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
-        hlenIA, hlenIB] using horder
     · simp [HgcdRecursiveBaseResult.toResult,
         HgcdIterState.toRecursiveBaseResult, hlenIA]
     · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
-        hlenIA] using hlenAPos
-    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
-        hlenIA] using (show lenA / 2 < lenA by omega)
+        hlenIB] using hstop
 
 /-- Semantic refinement of the exact `_hgcd_recursive` base branch used by
 GCD when matrix output is disabled.  No matrix call or matrix specification
@@ -7446,7 +7435,7 @@ theorem hgcdRecursiveBase_true_rawInvariant (this : DenseUPolyZp)
         (result.toResult hResultM) := by
   rcases hgcdRecursiveBase_true_refines this M A B a b lenA lenB heap result
       left right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a h3a h0b h3b
-      hAMatrix hBMatrix hMatrixValid hLeft hRight horder hlenAPos hrun with
+      hAMatrix hBMatrix hMatrixValid hLeft hRight horder hlenAPos hstop hrun with
     ⟨hlenA, hlenB, hsgn, hResultM, hMatrix, hARep, hBRep, hTransform,
       hDet, hLengths⟩
   refine ⟨hResultM, ?_⟩

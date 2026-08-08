@@ -330,7 +330,6 @@ def main() -> None:
         "HgcdRecursiveResult.value",
         "HgcdRecursiveResult.ext_value",
         "HgcdRecursiveLengthInvariant",
-        "aboveHalf",
         "hgcdRecursiveLengthInvariant_toResult_proof_irrel",
         "HgcdRecursiveCall",
         "HgcdRecursiveCallBelow",

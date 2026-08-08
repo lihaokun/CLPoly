@@ -1,5 +1,6 @@
 import CLPoly.Generated.StrictHGCD
 import CLPoly.Impl.StrictMulRefinement
+import CLPoly.Impl.StrictPolyAddSubRefinement
 
 set_option autoImplicit false
 
@@ -8,6 +9,8 @@ namespace CLPoly.Impl.StrictHGCDRawRefinement
 open Generated.StrictHGCD
 open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Impl.StrictDivremRefinement
+open CLPoly.Impl.StrictEuclidRefinement
+open CLPoly.Impl.StrictPolyAddSubRefinement
 
 /-- Bounds-safe accessors justified by the C array layout invariant. -/
 def hgcdMatPtr (M : HgcdMat) (hM : M.Valid) (i : Fin 4) : RawPtr UInt64 :=
@@ -160,7 +163,8 @@ theorem matRowUpdate_nonzero_success_shape (this : DenseUPolyZp)
     (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
     (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
     (heap : RawHeap) (result : MatRowUpdateResult) (hM : M.Valid)
-    (hQ : lenQ ≠ 0) (hEntry : hgcdMatLen M hM i0 ≠ 0)
+    (hne : i0 ≠ i1) (hQ : lenQ ≠ 0)
+    (hEntry : hgcdMatLen M hM i0 ≠ 0)
     (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
       lenT t scratch heap = .ok result) :
     ∃ heap1 heap2 sumLen,
@@ -175,9 +179,18 @@ theorem matRowUpdate_nonzero_success_shape (this : DenseUPolyZp)
         (lenQ + hgcdMatLen M hM i0 - 1) heap1 = .ok (heap2, sumLen) ∧
       result.heap = heap2 ∧ result.T = T ∧
       result.lenT = lenQ + hgcdMatLen M hM i0 - 1 ∧
-      result.t = hgcdMatPtr M hM i1 ∧ result.matrix.Valid := by
+      result.t = hgcdMatPtr M hM i1 ∧
+      ∃ hResult : result.matrix.Valid,
+        hgcdMatPtr result.matrix hResult i0 = t ∧
+        hgcdMatLen result.matrix hResult i0 = sumLen ∧
+        hgcdMatPtr result.matrix hResult i1 = hgcdMatPtr M hM i0 ∧
+        hgcdMatLen result.matrix hResult i1 = hgcdMatLen M hM i0 := by
   have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
     simpa [HgcdMat.Valid] using hM
+  have hneVal : i0.val ≠ i1.val := by
+    intro heq
+    apply hne
+    exact Fin.ext heq
   let p0 := hgcdMatPtr M hM i0
   let p1 := hgcdMatPtr M hM i1
   let l0 := hgcdMatLen M hM i0
@@ -243,6 +256,57 @@ theorem matRowUpdate_nonzero_success_shape (this : DenseUPolyZp)
           · simpa [p1, l0, l1, hgcdMatPtr, hgcdMatLen] using hadd
           · simp [l0, hgcdMatLen]
           · simp [p1, hgcdMatPtr]
-          · simp [HgcdMat.Valid, hvalid]
+          · have hResult :
+                ({
+                  poly := (M.poly.set i1.val p0 (by omega)).set i0.val t
+                    (by simp; omega)
+                  len := (M.len.set i1.val l0 (by omega)).set i0.val sumLen
+                    (by simp; omega)
+                } : HgcdMat).Valid := by
+              simp [HgcdMat.Valid, hvalid]
+            refine ⟨hResult, ?_, ?_, ?_, ?_⟩
+            · simp [hgcdMatPtr]
+            · simp [hgcdMatLen]
+            · simp only [hgcdMatPtr]
+              rw [Array.getElem_set_ne
+                (by simpa using (show i0.val < M.poly.size by
+                  rw [hvalid.1]; exact i0.isLt))
+                (by simpa using (show i1.val < M.poly.size by
+                  rw [hvalid.1]; exact i1.isLt)) hneVal,
+                Array.getElem_set_self]
+              rfl
+            · simp only [hgcdMatLen]
+              rw [Array.getElem_set_ne
+                (by simpa using (show i0.val < M.len.size by
+                  rw [hvalid.2]; exact i0.isLt))
+                (by simpa using (show i1.val < M.len.size by
+                  rw [hvalid.2]; exact i1.isLt)) hneVal,
+                Array.getElem_set_self]
+              rfl
+
+/-- Algebraic result of the actual add call exposed by the nonzero row-update
+branch.  The product premise is supplied by strict `_mul`; this theorem then
+binds the generated `_poly_add` result to the descriptor installed in M[i0]. -/
+theorem matRowUpdate_nonzero_sum_rep (this : DenseUPolyZp)
+    (M' : HgcdMat) (hM' : M'.Valid) (i0 : Fin 4)
+    (t p1 T : RawPtr UInt64) (l1 productLen sumLen : Nat)
+    (heap1 heap2 : RawHeap)
+    (entry1 product : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hOutput : heap1.ValidU64Slice t (max l1 productLen))
+    (hEntry1 : RawDensePolyRep this heap1 p1 l1 entry1)
+    (hProduct : RawDensePolyRep this heap1 T productLen product)
+    (hAliasEntry : ExactOrDisjoint t p1)
+    (hAliasProduct : ExactOrDisjoint t T)
+    (hadd : Generated.StrictPolyAddSub.dense_upoly_zp__poly_add_ir this t
+      p1 l1 T productLen heap1 = .ok (heap2, sumLen))
+    (hptr : hgcdMatPtr M' hM' i0 = t)
+    (hlen : hgcdMatLen M' hM' i0 = sumLen) :
+    RawDensePolyRep this heap2 (hgcdMatPtr M' hM' i0)
+      (hgcdMatLen M' hM' i0) (entry1 + product) := by
+  have hsum := polyAdd_refines this t p1 l1 T productLen heap1 heap2
+    sumLen entry1 product hp hOutput hEntry1 hProduct hAliasEntry
+    hAliasProduct hadd
+  simpa [hptr, hlen] using hsum
 
 end CLPoly.Impl.StrictHGCDRawRefinement

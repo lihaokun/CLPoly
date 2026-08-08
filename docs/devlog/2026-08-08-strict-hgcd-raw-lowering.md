@@ -21,6 +21,11 @@
   `_mul` 必先成功，随后同一 heap 上的 `_poly_add` 必成功，并精确恢复
   product length、返回 T/t 指针和更新后的四项矩阵 descriptor。该引理排除
   后续证明绕开这两次真实调用、只按规格构造矩阵结果的可能。
+- 强化成功分解以证明 descriptor 的精确落点：在 `i0 != i1` 下，新 `i0`
+  指向加法输出 t/`sumLen`，新 `i1` 指向旧 `i0`/旧长度。随后将真实
+  `_poly_add` 的 `RawDensePolyRep` 定理接到该落点，得到新行项精确表示
+  `old[i1] + product`。其中 product 将由严格 `_mul` 定理实例化为
+  `Q * old[i0]`，而不是在矩阵层重新计算。
 
 ## 下一步
 

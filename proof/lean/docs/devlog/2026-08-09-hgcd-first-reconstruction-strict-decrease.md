@@ -132,3 +132,15 @@ middle divrem 等式、第二次递归矩阵和 finish 返回记录装配成共�
 该定理不创建输出或终止事实：A/B raw 表示、可选矩阵表示、停止界和完整长度
 不变量都必须由实际 finish 执行及已有长度定理提供。它为下一步将
 middle、第二次良基 dispatch 和 finish 控制流闭合到完整 body 提供统一出口。
+
+## 定长低前缀的真实乘法语义
+
+检查第二次重构输入时发现，源码在 `k` 处取得的低前缀允许末尾系数为零，因此不能
+普遍满足“描述符长度已经 normalise”的 `RawDensePolyRep`。继续把该性质放进物理
+workspace 会形成无法从真实执行导出的残留假设。
+
+新增 `RawCanonicalPolySlice` 与 `hgcdRecursiveMulTerm_refines_slice`，直接调用乘法层
+已有的 `mul_refines_slice`：输入只要求有效、machine-canonical 且完整可观察，输出
+保留 C++ 的固定乘积容量和正确 L2 乘积，不提前声称结果已规范化。零长度分支也从
+真实空切片推出零多项式。下一步将重构的乘积/加减链改用该接口，并只在实际
+normalise 调用之后恢复 `RawDensePolyRep`。

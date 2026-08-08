@@ -1496,6 +1496,112 @@ structure HgcdMulTermWorkspace (heap : RawHeap)
   scratchRight : U64SlicesDisjoint scratch (8 * max lenLeft lenRight)
     right lenRight
 
+/-- Observable representation of a fixed-length C++ polynomial slice.  It
+permits trailing zero limbs and therefore matches low prefixes cut at the
+generated `k`; unlike `RawDensePolyRep`, it makes no normalization claim. -/
+def RawCanonicalPolySlice (this : DenseUPolyZp) (heap : RawHeap)
+    (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat)) : Prop :=
+  heap.ValidU64Slice ptr length ∧
+    CanonicalU64Prefix heap ptr length this._p ∧
+    SlicePolyRep heap ptr length this._p.toNat poly
+
+/-- Exact guarded multiplication for canonical fixed-length slices.  The
+positive branch retains the source capacity `lenLeft + lenRight - 1`; it does
+not claim that this capacity is already the normalized product length. -/
+theorem hgcdRecursiveMulTerm_refines_slice (this : DenseUPolyZp)
+    (dst left : RawPtr UInt64) (lenLeft : Nat)
+    (right : RawPtr UInt64) (lenRight : Nat)
+    (scratch : RawPtr UInt64) (heap : RawHeap)
+    (leftPoly rightPoly : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hwork : HgcdMulTermWorkspace heap dst left lenLeft right lenRight scratch)
+    (hLeft : RawCanonicalPolySlice this heap left lenLeft leftPoly)
+    (hRight : RawCanonicalPolySlice this heap right lenRight rightPoly) :
+    ∃ result, hgcdRecursiveMulTerm this dst left lenLeft right lenRight
+        scratch heap = .ok result ∧
+      RawHeap.SameLayout heap result.heap ∧
+      RawCanonicalPolySlice this result.heap dst result.length
+        (leftPoly * rightPoly) := by
+  by_cases hLeftPos : 0 < lenLeft
+  · by_cases hRightPos : 0 < lenRight
+    · by_cases horder : lenRight ≤ lenLeft
+      · have hmax : max lenLeft lenRight = lenLeft := Nat.max_eq_left horder
+        rcases mul_refines_slice this dst left lenLeft right lenRight scratch
+            heap leftPoly rightPoly hcfg hp hLeftPos hRightPos horder
+            (by simpa [hmax] using hwork.lengthFits)
+            (by simpa [hmax] using hwork.dstValid)
+            hLeft.1 hRight.1
+            (by simpa [hmax] using hwork.scratchValid)
+            (by simpa [hmax] using hwork.dstLeft)
+            (by simpa [hmax] using hwork.dstRight)
+            (by simpa [hmax] using hwork.dstScratch)
+            (by simpa [hmax] using hwork.scratchLeft)
+            (by simpa [hmax] using hwork.scratchRight)
+            hLeft.2.1 hRight.2.1 hLeft.2.2 hRight.2.2 with
+          ⟨heap1, hrun, hlayout, hrep, hcanonical⟩
+        refine ⟨{ heap := heap1, length := lenLeft + lenRight - 1 }, ?_,
+          hlayout, ?_⟩
+        · simp [hgcdRecursiveMulTerm, hLeftPos, hRightPos, horder, hrun]
+        · exact ⟨heap1.validU64Slice_mono dst (2 * lenLeft - 1)
+              (lenLeft + lenRight - 1)
+              ((hlayout dst _).mp (by simpa [hmax] using hwork.dstValid))
+              (by omega), hcanonical, hrep⟩
+      · have hreverse : lenLeft ≤ lenRight := by omega
+        have hmax : max lenLeft lenRight = lenRight :=
+          Nat.max_eq_right hreverse
+        rcases mul_refines_slice this dst right lenRight left lenLeft scratch
+            heap rightPoly leftPoly hcfg hp hRightPos hLeftPos hreverse
+            (by simpa [hmax] using hwork.lengthFits)
+            (by simpa [hmax] using hwork.dstValid)
+            hRight.1 hLeft.1
+            (by simpa [hmax] using hwork.scratchValid)
+            (by simpa [hmax] using hwork.dstRight)
+            (by simpa [hmax] using hwork.dstLeft)
+            (by simpa [hmax] using hwork.dstScratch)
+            (by simpa [hmax] using hwork.scratchRight)
+            (by simpa [hmax] using hwork.scratchLeft)
+            hRight.2.1 hLeft.2.1 hRight.2.2 hLeft.2.2 with
+          ⟨heap1, hrun, hlayout, hrep, hcanonical⟩
+        refine ⟨{ heap := heap1, length := lenLeft + lenRight - 1 }, ?_,
+          hlayout, ?_⟩
+        · simp [hgcdRecursiveMulTerm, hLeftPos, hRightPos, horder, hrun,
+            Nat.add_comm]
+        · refine ⟨heap1.validU64Slice_mono dst (2 * lenRight - 1)
+              (lenLeft + lenRight - 1)
+              ((hlayout dst _).mp (by simpa [hmax] using hwork.dstValid))
+              (by omega), ?_, ?_⟩
+          · simpa [Nat.add_comm] using hcanonical
+          · simpa [Nat.add_comm, mul_comm] using hrep
+    · have hlenRight : lenRight = 0 := by omega
+      subst lenRight
+      have hzero : rightPoly = 0 :=
+        slicePolyRep_zero_length heap right this._p.toNat rightPoly hRight.2.2
+      subst rightPoly
+      refine ⟨{ heap := heap, length := 0 }, ?_, (fun _ _ => Iff.rfl), ?_⟩
+      · simp [hgcdRecursiveMulTerm]
+      · have hz : RawCanonicalPolySlice this heap dst 0 0 := by
+          refine ⟨heap.validU64Slice_mono dst
+            (2 * max lenLeft 0 - 1) 0 hwork.dstValid (by omega), ?_, ?_⟩
+          · intro k value hk hread
+            omega
+          · exact slicePolyRep_zero_length_any heap dst this._p.toNat
+        simpa using hz
+  · have hlenLeft : lenLeft = 0 := by omega
+    subst lenLeft
+    have hzero : leftPoly = 0 :=
+      slicePolyRep_zero_length heap left this._p.toNat leftPoly hLeft.2.2
+    subst leftPoly
+    refine ⟨{ heap := heap, length := 0 }, ?_, (fun _ _ => Iff.rfl), ?_⟩
+    · simp [hgcdRecursiveMulTerm]
+    · have hz : RawCanonicalPolySlice this heap dst 0 0 := by
+        refine ⟨heap.validU64Slice_mono dst
+            (2 * max 0 lenRight - 1) 0 hwork.dstValid (by omega), ?_, ?_⟩
+        · intro k value hk hread
+          omega
+        · exact slicePolyRep_zero_length_any heap dst this._p.toNat
+      simpa using hz
+
 /-- The exact guarded C++ multiplication block computes the polynomial
 product.  In particular, a zero-length branch is justified directly from
 the raw input representation. -/

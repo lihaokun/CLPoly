@@ -322,6 +322,50 @@ def hgcdMatPtrRaw (M : HgcdMat) (hM : M.Valid) (i : Fin 4) :
 def hgcdMatLenRaw (M : HgcdMat) (hM : M.Valid) (i : Fin 4) : Nat :=
   M.len[i.val]'(by rw [hM.2]; exact i.isLt)
 
+/-- Source-order offset of an entry in the contiguous stabilization buffer.
+Indices at or beyond four denote the end of the four-entry block. -/
+def hgcdMatStageOffset (M : HgcdMat) (hM : M.Valid) : Nat → Nat
+  | 0 => 0
+  | 1 => hgcdMatLenRaw M hM ⟨0, by omega⟩
+  | 2 => hgcdMatLenRaw M hM ⟨0, by omega⟩ +
+      hgcdMatLenRaw M hM ⟨1, by omega⟩
+  | 3 => hgcdMatLenRaw M hM ⟨0, by omega⟩ +
+      hgcdMatLenRaw M hM ⟨1, by omega⟩ +
+      hgcdMatLenRaw M hM ⟨2, by omega⟩
+  | _ => hgcdMatLenRaw M hM ⟨0, by omega⟩ +
+      hgcdMatLenRaw M hM ⟨1, by omega⟩ +
+      hgcdMatLenRaw M hM ⟨2, by omega⟩ +
+      hgcdMatLenRaw M hM ⟨3, by omega⟩
+
+def hgcdMatStageSize (M : HgcdMat) (hM : M.Valid) : Nat :=
+  hgcdMatStageOffset M hM 4
+
+theorem hgcdMatStageOffset_step (M : HgcdMat) (hM : M.Valid)
+    (i : Nat) (hi : i < 4) :
+    hgcdMatStageOffset M hM (i + 1) = hgcdMatStageOffset M hM i +
+      hgcdMatLenRaw M hM ⟨i, hi⟩ := by
+  have hcases : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
+  rcases hcases with rfl | rfl | rfl | rfl <;>
+    simp [hgcdMatStageOffset] <;> omega
+
+theorem hgcdMatStageOffset_entry_le_size (M : HgcdMat) (hM : M.Valid)
+    (i : Nat) (hi : i < 4) :
+    hgcdMatStageOffset M hM i + hgcdMatLenRaw M hM ⟨i, hi⟩ ≤
+      hgcdMatStageSize M hM := by
+  have hcases : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
+  rcases hcases with rfl | rfl | rfl | rfl <;>
+    simp [hgcdMatStageSize, hgcdMatStageOffset] <;> omega
+
+theorem hgcdMatStageOffset_entry_le_later (M : HgcdMat) (hM : M.Valid)
+    (j i : Nat) (hj : j < i) (hi : i < 4) (hj4 : j < 4) :
+    hgcdMatStageOffset M hM j + hgcdMatLenRaw M hM ⟨j, hj4⟩ ≤
+      hgcdMatStageOffset M hM i := by
+  have hicases : i = 1 ∨ i = 2 ∨ i = 3 := by omega
+  have hjcases : j = 0 ∨ j = 1 ∨ j = 2 := by omega
+  rcases hicases with rfl | rfl | rfl <;>
+    rcases hjcases with rfl | rfl | rfl <;>
+    simp [hgcdMatStageOffset] <;> omega
+
 /-- Exact first `for (i=0; i<4; ++i)` stabilization loop: copy every live
 matrix entry to consecutive cells of the source `stage` buffer. -/
 def hgcdMatStageLoop (M : HgcdMat) (hM : M.Valid)
@@ -338,6 +382,36 @@ def hgcdMatStageLoop (M : HgcdMat) (hM : M.Valid)
     else
       .ok { heap := heap, off := off }
 termination_by i off heap => 4 - i
+decreasing_by omega
+
+/-- The actual first generated loop advances its offset by exactly the sum of
+the four live descriptor lengths. -/
+theorem hgcdMatStageLoop_final_off (M : HgcdMat) (hM : M.Valid)
+    (stage : RawPtr UInt64) (i off : Nat) (heap : RawHeap)
+    (result : HgcdMatStageResult) (hi : i ≤ 4)
+    (hrun : hgcdMatStageLoop M hM stage i off heap = .ok result) :
+    result.off + hgcdMatStageOffset M hM i =
+      off + hgcdMatStageSize M hM := by
+  rw [hgcdMatStageLoop] at hrun
+  split at hrun
+  next hlt =>
+    dsimp only at hrun
+    split at hrun
+    next fault hcopy => simp at hrun
+    next heap1 hcopy =>
+      have hrec := hgcdMatStageLoop_final_off M hM stage (i + 1)
+        (off + hgcdMatLenRaw M hM ⟨i, hlt⟩) heap1 result
+        (by omega) hrun
+      rw [hgcdMatStageOffset_step M hM i hlt] at hrec
+      omega
+  next hstop =>
+    have hi4 : i = 4 := by omega
+    subst i
+    have heq : ({ heap := heap, off := off } : HgcdMatStageResult) = result :=
+      Except.ok.inj hrun
+    subst result
+    simp [hgcdMatStageSize]
+termination_by 4 - i
 decreasing_by omega
 
 /-- Heap, restored descriptor, and accumulated offset after the second

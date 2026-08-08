@@ -2851,6 +2851,8 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
       RawDensePolyRep this result.heap b2 lenB2 divisor ∧
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < divisor.natDegree) ∧
+      result.lenQ ≤ lenA2 - (lenB2 - 1) ∧
+      result.lenD ≤ Nat.min lenA2 (lenB2 - 1) ∧
       result.lenD < lenB2 ∧ result.lenC0 < lenA ∧
       0 < result.lenC0 ∧ result.lenD0 < result.lenC0 ∧
       result.k = 2 * m - lenB2 + 1 ∧
@@ -2897,7 +2899,7 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
     ⟨hcpos, hdorder, hdecrease⟩
   refine ⟨result, quotient, remainder, hmiddle, hQRep, hQCanonical, hQNorm,
     hDRep, hDCanonical, hDNorm, hlayout, hQDense, hDDense, hBDense,
-    hidentity, hdegree, hlt,
+    hidentity, hdegree, hlenQ, hlenD, hlt,
     hdecrease, hcpos, hdorder, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- The nonempty second-call input is obtained by slicing the actual divisor
@@ -9772,5 +9774,306 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
             congrArg HgcdRecursiveResult.value (Except.ok.inj hrun)
         subst result
         exact ⟨finalA, finalB, hInvariant⟩
+
+/-- The complete non-early arm of the well-founded body, following the
+generated source from the first dispatch through reconstruction, middle
+divrem, second dispatch, and finish.  All semantic values are extracted from
+those successful executions; the extra premises are physical workspace and
+frame obligations only. -/
+theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right inputHighA inputHighB outputHighA outputHighB
+      lowPolyA lowPolyB : Polynomial (ZMod this._p.toNat))
+    (firstEntries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hp : 1 < this._p.toNat) (hcfg : DensePreinvConfigured this)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (firstLength : ∀ first,
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap hchildOrder hchildDecrease = .ok first →
+      HgcdRecursiveLengthInvariant high.lenA0 first)
+    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
+      scratch lenA lenB)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (middle : HgcdRecursiveMiddleResult)
+    (second : HgcdRecursiveResult)
+    (finished : HgcdRecursiveFinishResult)
+    (hbase : ¬ lenB < lenA / 2 + 1)
+    (hfirst :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap (hgcdRecursiveHighInput_order a b lenA lenB horder)
+          (by
+            rw [← hbound]
+            exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder
+              (by omega)) = .ok first)
+    (hFirst :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      HgcdRecursiveRawInvariant this inputHighA inputHighB outputHighA
+        outputHighB firstEntries true ws.a3 ws.b3 high.lenA0 first)
+    (hLowA : RawDensePolyRep this first.heap a
+      (Nat.min lenA (lenA / 2)) lowPolyA)
+    (hLowB : RawDensePolyRep this first.heap b
+      (Nat.min lenB (lenA / 2)) lowPolyB)
+    (hFullA : left = lowPolyA + Polynomial.X ^ (lenA / 2) * inputHighA)
+    (hFullB : right = lowPolyB + Polynomial.X ^ (lenA / 2) * inputHighB)
+    (reconstructWork :
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveReconstructPairWorkspaceProvider this ws.a2 ws.b2 ws.T0
+        a b ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
+        (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
+        first.matrix first.valid first.sgn first.heap)
+    (hreconstruct :
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
+        scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
+        first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
+        first.heap = .ok reconstructed)
+    (hearly : ¬ reconstructed.lenB < lenA / 2 + 1)
+    (hQValid :
+      let ws := hgcdRecursiveWorkspace W lenA
+      reconstructed.heap.ValidU64Slice ws.q
+        (reconstructed.lenA - (reconstructed.lenB - 1)))
+    (hDValid :
+      let ws := hgcdRecursiveWorkspace W lenA
+      reconstructed.heap.ValidU64Slice ws.d
+        (Nat.min reconstructed.lenA (reconstructed.lenB - 1)))
+    (hW3Valid :
+      let ws := hgcdRecursiveWorkspace W lenA
+      reconstructed.heap.ValidWord3Slice ws.W3 reconstructed.lenA)
+    (hqCapacity : reconstructed.lenA - (reconstructed.lenB - 1) < limbBase)
+    (hDA :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ws.d.region ≠ ws.a2.region)
+    (hWA :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ws.W3.region ≠ ws.a2.region)
+    (hWB :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ws.W3.region ≠ ws.b2.region)
+    (hQB :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ws.q.region ≠ ws.b2.region)
+    (hQW :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ws.q.region ≠ ws.W3.region)
+    (hDW :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ws.d.region ≠ ws.W3.region)
+    (hDQ :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ws.d.region ≠ ws.q.region)
+    (hDB :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ws.d.region ≠ ws.b2.region)
+    (hmiddle :
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2 reconstructed.lenA
+        reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap = .ok middle)
+    (hsecondOrder : middle.lenD0 < middle.lenC0)
+    (hsecondDecrease : middle.lenC0 < bound)
+    (middleMatrixPrefix :
+      let ws := hgcdRecursiveWorkspace W lenA
+      ∀ i : Fin 4, SameU64Prefix reconstructed.heap middle.heap
+        (hgcdMatPtr first.matrix first.valid i)
+        (hgcdMatLen first.matrix first.valid i))
+    (secondIterWorkspace : ∀ highC highD,
+      RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+      RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveDispatchIterWorkspace this ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1
+        scratch ws.a2 middle.heap highC highD)
+    (secondRecursiveRefines : ∀ highC highD,
+      RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+      RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.next scratch middle.heap
+        hsecondOrder hsecondDecrease highC highD)
+    (secondFrame :
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveSecondDispatchFrameProvider this bound recurse ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch
+        ws.a2 ws.next middle.heap hsecondOrder hsecondDecrease first.matrix
+        first.valid ws.q ws.b2 ws.d middle.lenQ
+        (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k))
+    (hsecond :
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveDispatchBelow this bound recurse ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch
+        ws.a2 ws.next middle.heap hsecondOrder hsecondDecrease = .ok second)
+    (finishWorkspace :
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveFinishWorkspaceProvider this M first.matrix second.matrix
+        hM first.valid second.valid A B ws.T0 ws.b2 ws.d ws.a3 ws.b3 ws.q
+        (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k)
+        second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch second.sgn
+        second.heap)
+    (hfinish :
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveFinish this M first.matrix second.matrix hM first.valid
+        second.valid computeM A B ws.T0 ws.b2 ws.d ws.a3 ws.b3 ws.q
+        (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k)
+        second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch first.sgn
+        second.sgn second.heap = .ok finished)
+    (hfinishStop : finished.lenB < lenA / 2 + 1)
+    (hfinishLength : computeM = true →
+      HgcdRecursiveLengthInvariant lenA finished.toResult)
+    (result : HgcdRecursiveResult)
+    (hrun : hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b
+      lenA lenB W scratch heap hbound horder firstLength reconstructionBound =
+        .ok result) :
+    ∃ finalA finalB entries,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
+        A B lenA result := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  let high := hgcdRecursiveHighInput a b lenA lenB
+  have hfirstLength : HgcdRecursiveLengthInvariant high.lenA0 first :=
+    firstLength first (hgcdRecursiveHighInput_order a b lenA lenB horder)
+      (by
+        rw [← hbound]
+        exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder (by omega))
+      hfirst
+  have hReconstructed : HgcdFirstReconstructionInvariant lenA first
+      reconstructed := reconstructionBound first reconstructed (by
+    simpa [high, hgcdRecursiveHighInput] using hfirstLength) hreconstruct
+  let currentA := hgcdReconstructedLowA firstEntries lowPolyA lowPolyB
+      first.sgn + Polynomial.X ^ (lenA / 2) * outputHighA
+  let currentB := hgcdReconstructedLowB firstEntries lowPolyA lowPolyB
+      first.sgn + Polynomial.X ^ (lenA / 2) * outputHighB
+  have hFirstReconstruct := hgcdRecursiveReconstructPair_preserves_input this
+    ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3 scratch
+    (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2)) (lenA / 2)
+    high.lenA0 first reconstructed firstEntries left right lowPolyA lowPolyB
+    inputHighA inputHighB outputHighA outputHighB hcfg hp reconstructWork
+    hFirst hLowA.toCanonicalSlice hLowB.toCanonicalSlice hFullA hFullB
+    hreconstruct
+  have hFirstMatrixAtReconstructed : HgcdMatRawDenseRep this
+      reconstructed.heap first.matrix firstEntries first.valid :=
+    hgcdRecursiveReconstructPair_preserves_matrix this ws.a2 ws.b2 ws.T0 a b
+      ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
+      (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
+      first.matrix first.valid first.sgn first.heap reconstructed firstEntries
+      reconstructWork (hFirst.matrixSemantics rfl).1 hreconstruct
+  rcases hgcdRecursiveMiddle_refines this ws.q ws.d ws.a2 ws.b2
+      reconstructed.lenA reconstructed.lenB (lenA / 2) lenA ws.W3
+      reconstructed.heap currentA currentB (by omega)
+      (by simpa [currentA] using hFirstReconstruct.1)
+      (by simpa [currentB] using hFirstReconstruct.2.1)
+      hQValid hDValid hW3Valid hqCapacity hDA hWA hWB hQB hQW hDW hDQ hDB
+      hcfg (Fact.out : Nat.Prime this._p.toNat) (by omega)
+      (Nat.le_of_lt hReconstructed.decreases) (by omega) (by omega) with
+    ⟨actualMiddle, quotient, remainder, hmiddle', _, _, _, _, _, _,
+      hMiddleLayout, hQRep, hDRep, hBRep, hDivision, _, hlenQ, hlenDCap, _, hlenC,
+      hlenCPos, hlenD0, hk, hcPtr, hcLen, hdPtr, hdLen⟩
+  have hMiddleEq : actualMiddle = middle :=
+    Except.ok.inj (hmiddle'.symm.trans hmiddle)
+  subst actualMiddle
+  have hMiddleSourceLayout := hgcdRecursiveMiddle_layout this ws.q ws.d
+    ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB (lenA / 2) ws.W3
+    reconstructed.heap middle hmiddle
+  have hkLtReconstructed : middle.k < reconstructed.lenB := by
+    rw [hMiddleSourceLayout.2.2.2.1] at hlenCPos
+    split at hlenCPos <;> omega
+  have hkCapacity : middle.k ≤
+      Nat.min reconstructed.lenA (reconstructed.lenB - 1) := by
+    apply Nat.le_min.mpr
+    constructor
+    · exact (Nat.le_of_lt hkLtReconstructed).trans hReconstructed.ordered
+    · omega
+  have hD0Valid : middle.heap.ValidU64Slice middle.d0 middle.lenD0 := by
+    rw [hMiddleSourceLayout.2.2.2.2.1,
+      hMiddleSourceLayout.2.2.2.2.2]
+    apply middle.heap.validU64Slice_add ws.d
+      (Nat.min reconstructed.lenA (reconstructed.lenB - 1)) middle.k
+      (if middle.lenD ≥ middle.k then middle.lenD - middle.k else 0)
+      ((hMiddleLayout ws.d
+        (Nat.min reconstructed.lenA (reconstructed.lenB - 1))).mp hDValid)
+    split <;> omega
+  rcases hgcdRecursiveMiddle_split_reps this ws.q ws.d ws.a2 ws.b2
+      reconstructed.lenA reconstructed.lenB (lenA / 2) ws.W3
+      reconstructed.heap middle currentB remainder hBRep hDRep hD0Valid
+      hlenCPos hmiddle with
+    ⟨lowC, highC, lowD, highD, hLowC, hHighC, hLowD, hHighD, hSplitC,
+      hSplitD⟩
+  have hFirstMatrixAtMiddle : HgcdMatRawDenseRep this middle.heap first.matrix
+      firstEntries first.valid := by
+    intro i
+    exact rawDensePolyRep_of_same_prefix this reconstructed.heap middle.heap
+      (hgcdMatPtr first.matrix first.valid i)
+      (hgcdMatLen first.matrix first.valid i) (firstEntries i) hMiddleLayout
+      (middleMatrixPrefix i) (hFirstMatrixAtReconstructed i)
+  have hTail := hgcdRecursiveSecondDispatchFinish_rawInvariant this bound
+    recurse M first.matrix ws.S hM first.valid
+    (hgcdRecursiveWorkspace_S_valid W lenA) computeM A B ws.T0 ws.b2 ws.d
+    ws.a3 ws.b3 ws.q middle.c0 middle.d0
+    (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k)
+    middle.k middle.lenQ ws.a2 ws.W3 ws.T1 scratch ws.a2 ws.next ws.a2
+    middle.lenC0 middle.lenD0 lenA middle.heap second finished left right
+    highC highD currentA currentB remainder quotient lowC lowD firstEntries
+    first.sgn hcfg hp hsecondOrder hsecondDecrease
+    (secondIterWorkspace highC highD hHighC hHighD)
+    (secondRecursiveRefines highC highD hHighC hHighD) secondFrame
+    hFirstMatrixAtMiddle hQRep hLowC hLowD hSplitC hSplitD
+    (by simpa [currentA, currentB] using hFirstReconstruct.2.2.1)
+    hFirstReconstruct.2.2.2.1 hDivision finishWorkspace hsecond hfinish
+    hfinishStop hfinishLength
+  rcases hTail with ⟨finalA, finalB, entries, hInvariant⟩
+  rw [hgcdRecursiveBodyBelow] at hrun
+  simp only [hbase, ↓reduceDIte] at hrun
+  split at hrun
+  next fault hfirstActual => simp at hrun
+  next actualFirst hfirstActual =>
+    have hFirstEq : actualFirst = first := Except.ok.inj
+      (hfirstActual.symm.trans (by convert hfirst using 1))
+    subst actualFirst
+    split at hrun
+    next fault hreconstructActual => simp at hrun
+    next actualReconstructed hreconstructActual =>
+      have hReconstructedEq : actualReconstructed = reconstructed :=
+        Except.ok.inj (hreconstructActual.symm.trans (by
+          convert hreconstruct using 1))
+      subst actualReconstructed
+      simp only [hearly, ↓reduceDIte] at hrun
+      split at hrun
+      next fault hmiddleActual => simp at hrun
+      next actualMiddle hmiddleActual =>
+        have hMiddleEq : actualMiddle = middle := Except.ok.inj
+          (hmiddleActual.symm.trans (by convert hmiddle using 1))
+        subst actualMiddle
+        split at hrun
+        next fault hsecondActual => simp at hrun
+        next actualSecond hsecondActual =>
+          have hSecondEq : actualSecond = second := Except.ok.inj
+            (hsecondActual.symm.trans (by convert hsecond using 1))
+          subst actualSecond
+          split at hrun
+          next fault hfinishActual => simp at hrun
+          next actualFinished hfinishActual =>
+            have hFinishedEq : actualFinished = finished := Except.ok.inj
+              (hfinishActual.symm.trans (by convert hfinish using 1))
+            subst actualFinished
+            have heq : finished.toResult = result := Except.ok.inj hrun
+            subst result
+            exact ⟨finalA, finalB, entries, hInvariant⟩
 
 end CLPoly.Impl.StrictHGCDRawRefinement

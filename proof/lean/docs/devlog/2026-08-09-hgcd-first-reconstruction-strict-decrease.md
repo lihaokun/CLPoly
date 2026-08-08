@@ -199,3 +199,17 @@ middle 的 `low + X^k * high` 等式提升第二 transform，并与第一次 tra
 divrem 等式及生成矩阵乘积组合成父级 raw 不变量。至此 middle 后半段的语义链已经
 闭合；下一步是在完整 `hgcdRecursiveBodyBelow` 展开中从 middle 执行直接构造这些
 表示和 frame 实例。
+
+## 完整非 early body 控制流
+
+`hgcdRecursiveBodyBelow_nonEarly_rawInvariant` 已展开完整良基递归体的非 early
+分支，并依次反演实际 first dispatch、第一次成对重构、middle divrem、第二
+dispatch 与 finish。middle 的 quotient/remainder、长度界和 `c0/d0` 切片均从同一
+成功 divrem 返回值提取；其中零长度 `d0` 的有效性使用源码分配容量与真实 remainder
+长度界证明，而不是把零 suffix 当作额外语义假设。
+
+第二 dispatch 的输入保持为实际 `middle.c0/middle.d0`，输出保持为实际
+workspace `a3/b3`，随后调用已闭合的 dispatch→finish 链。最后再次展开 body 并以
+每层 `Except.ok` 单射证明辅助定理中的 first/reconstructed/middle/second/finished
+正是 body 实际选中的记录，再把 `finished.toResult` 运输到最终返回值。因此当前定理
+覆盖完整生成控制流，而非只证明一组可独立选择的 helper 结果。

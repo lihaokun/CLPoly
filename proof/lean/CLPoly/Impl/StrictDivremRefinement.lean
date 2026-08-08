@@ -4246,4 +4246,139 @@ theorem polyDivrem_ok (this : DenseUPolyZp) (Q R A B : RawPtr UInt64)
       · simpa using hlenQ
       · simpa [Nat.min_eq_right hdleA] using hlenR
 
+/-- The complete generated `_poly_divrem` preserves every cell of an
+external UInt64 slice whose allocation is distinct from all three write
+regions (`Q`, `R`, and `W3`).  The proof follows the successful source
+execution through either its copy branch or all three generated loops. -/
+theorem polyDivrem_preserves_u64_region_ne (this : DenseUPolyZp)
+    (Q R A B other : RawPtr UInt64) (lenA lenB otherLen : Nat)
+    (W3 : RawPtr Word3) (heap heap' : RawHeap) (lenQ lenR : Nat)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hQ : heap.ValidU64Slice Q (lenA - (lenB - 1)))
+    (hR : heap.ValidU64Slice R (Nat.min lenA (lenB - 1)))
+    (hW3 : heap.ValidWord3Slice W3 lenA)
+    (hOther : heap.ValidU64Slice other otherLen)
+    (hQOther : Q.region ≠ other.region)
+    (hROther : R.region ≠ other.region)
+    (hWOther : W3.region ≠ other.region)
+    (hrun : dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3
+      heap = .ok (heap', lenQ, lenR)) :
+    RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' other otherLen := by
+  cases lenB with
+  | zero => simp [dense_upoly_zp__poly_divrem_ir] at hrun
+  | succ d =>
+    by_cases hshort : lenA < d + 1
+    · have hle : lenA ≤ d := by omega
+      have hRfull : heap.ValidU64Slice R lenA := by
+        simpa [Nat.min_eq_left hle] using hR
+      simp only [dense_upoly_zp__poly_divrem_ir, hshort, ↓reduceIte] at hrun
+      generalize hcopy : heap.copyU64 R A lenA = copyResult at hrun
+      cases copyResult with
+      | error fault => simp [hcopy] at hrun
+      | ok copied =>
+        have hrun' : (.ok (copied, 0, lenA) :
+            RawExec (RawHeap × Nat × Nat)) = .ok (heap', lenQ, lenR) := by
+          simpa [hcopy] using hrun
+        have hcopied : copied = heap' :=
+          congrArg Prod.fst (Except.ok.inj hrun')
+        subst copied
+        rcases copyU64_ok heap R A lenA hRfull hA with
+          ⟨actual, hactual, hlayout⟩
+        have hactualEq : actual = heap' :=
+          Except.ok.inj (hactual.symm.trans hcopy)
+        subst actual
+        refine ⟨hlayout, ?_⟩
+        intro k value hk hread
+        exact copyU64_preserves_read heap heap' R A other lenA k value
+          hRfull hA hread (by intro _ _; exact Or.inl hROther) hcopy
+    · have hdle : d ≤ lenA := by omega
+      have hQlong : heap.ValidU64Slice Q (lenA - d) := by simpa using hQ
+      have hRlong : heap.ValidU64Slice R d := by
+        simpa [Nat.min_eq_right hdle] using hR
+      simp only [dense_upoly_zp__poly_divrem_ir, hshort, ↓reduceIte] at hrun
+      generalize hlead : heap.readU64 B d = leadResult at hrun
+      cases leadResult with
+      | error fault => simp [hlead] at hrun
+      | ok lead =>
+        simp only [hlead] at hrun
+        generalize hinit : initW3Loop heap A W3 lenA 0 = initResult at hrun
+        cases initResult with
+        | error fault => simp [hinit] at hrun
+        | ok heap1 =>
+          simp only [hinit] at hrun
+          generalize hquot : quotientLoop this Q B W3 d
+            (Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead)
+              heap1 (lenA - d) =
+              quotResult at hrun
+          cases quotResult with
+          | error fault => simp [hquot] at hrun
+          | ok heap2 =>
+            simp only [hquot] at hrun
+            generalize hrem : remainderLoop this R W3 d 0 heap2 =
+              remResult at hrun
+            cases remResult with
+            | error fault => simp [hrem] at hrun
+            | ok heap3 =>
+              simp only [hrem] at hrun
+              generalize hnormQ : heap3.normaliseU64 Q (lenA - d) =
+                normQResult at hrun
+              cases normQResult with
+              | error fault => simp [hnormQ] at hrun
+              | ok observedQ =>
+                simp only [hnormQ] at hrun
+                generalize hnormR : heap3.normaliseU64 R d =
+                  normRResult at hrun
+                cases normRResult with
+                | error fault => simp [hnormR] at hrun
+                | ok observedR =>
+                  have hrun' : (.ok (heap3, observedQ, observedR) :
+                      RawExec (RawHeap × Nat × Nat)) =
+                      .ok (heap', lenQ, lenR) := by
+                    simpa [hnormR] using hrun
+                  have hheap3 : heap3 = heap' :=
+                    congrArg Prod.fst (Except.ok.inj hrun')
+                  subst heap3
+                  rcases initW3Loop_preserves_u64_region_ne heap A other W3
+                      lenA 0 otherLen hA hW3 hOther (Nat.zero_le _)
+                      hWOther with
+                    ⟨frame1, hinitFrame, _, _, hOther1, hlayout1, hsame1⟩
+                  have hframe1 : frame1 = heap1 :=
+                    Except.ok.inj (hinitFrame.symm.trans hinit)
+                  subst frame1
+                  have hB1 : heap1.ValidU64Slice B (d + 1) :=
+                    (hlayout1 B (d + 1)).mp hB
+                  have hQ1 : heap1.ValidU64Slice Q (lenA - d) :=
+                    (hlayout1 Q (lenA - d)).mp hQlong
+                  have hW31 : heap1.ValidWord3Slice W3 lenA :=
+                    (hlayout1 (RawPtr.reinterpret W3) (3 * lenA)).mp hW3
+                  rcases quotientLoop_preserves_u64_region_ne this Q B other
+                      W3 (lenA - d) d lenA otherLen
+                      (Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir
+                        this lead) heap1
+                      (lenA - d) hQ1 hB1 hW31 hOther1 (by omega)
+                      (by omega) hQOther hWOther with
+                    ⟨frame2, hquotFrame, _, _, hW32, hOther2, hlayout2,
+                      hsame2⟩
+                  have hframe2 : frame2 = heap2 :=
+                    Except.ok.inj (hquotFrame.symm.trans hquot)
+                  subst frame2
+                  have hR2 : heap2.ValidU64Slice R d :=
+                    (hlayout2 R d).mp ((hlayout1 R d).mp hRlong)
+                  rcases remainderLoop_preserves_u64_region_ne this R other
+                      W3 d lenA 0 otherLen heap2 hR2 hW32 hOther2
+                      (by omega) (Nat.zero_le _) hROther with
+                    ⟨frame3, hremFrame, _, _, _, hlayout3, hsame3⟩
+                  have hframe3 : frame3 = heap' :=
+                    Except.ok.inj (hremFrame.symm.trans hrem)
+                  subst frame3
+                  refine ⟨?_, ?_⟩
+                  · intro ptr length
+                    exact (hlayout1 ptr length).trans
+                      ((hlayout2 ptr length).trans (hlayout3 ptr length))
+                  · intro k value hk hread
+                    exact hsame3 k value hk
+                      (hsame2 k value hk (hsame1 k value hk hread))
+
 end CLPoly.Impl.StrictDivremRefinement

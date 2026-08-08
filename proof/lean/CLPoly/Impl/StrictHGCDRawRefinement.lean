@@ -607,6 +607,37 @@ theorem hgcdIterLoop_step_divrem_refines (this : DenseUPolyZp)
   exact ⟨heap1, lenQ, lenR, quotient, remainder, row23, row01, hdiv,
     hQRep, hBRep1, hRRep, hdivision, hgcd, hrow23, hrow01, htail, hlt⟩
 
+/-- The actual generated divrem call preserves all four live HGCD matrix
+entries when its three write allocations are physically distinct from every
+matrix allocation. -/
+theorem polyDivrem_preserves_hgcdMatRawDenseRep (this : DenseUPolyZp)
+    (M : HgcdMat) (Q R A B : RawPtr UInt64) (lenA lenB : Nat)
+    (W3 : RawPtr Word3) (heap heap' : RawHeap) (lenQ lenR : Nat)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat)) (hM : M.Valid)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hQ : heap.ValidU64Slice Q (lenA - (lenB - 1)))
+    (hR : heap.ValidU64Slice R (Nat.min lenA (lenB - 1)))
+    (hW3 : heap.ValidWord3Slice W3 lenA)
+    (hQMatrix : ∀ i : Fin 4,
+      Q.region ≠ (hgcdMatPtr M hM i).region)
+    (hRMatrix : ∀ i : Fin 4,
+      R.region ≠ (hgcdMatPtr M hM i).region)
+    (hW3Matrix : ∀ i : Fin 4,
+      W3.region ≠ (hgcdMatPtr M hM i).region)
+    (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
+    (hrun : Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q R
+      A lenA B lenB W3 heap = .ok (heap', lenQ, lenR)) :
+    HgcdMatRawDenseRep this heap' M entries hM := by
+  intro i
+  rcases polyDivrem_preserves_u64_region_ne this Q R A B
+      (hgcdMatPtr M hM i) lenA lenB (hgcdMatLen M hM i) W3 heap heap'
+      lenQ lenR hA hB hQ hR hW3 (hMatrix i).1 (hQMatrix i)
+      (hRMatrix i) (hW3Matrix i) hrun with ⟨hlayout, hsame⟩
+  exact rawDensePolyRep_of_same_prefix this heap heap'
+    (hgcdMatPtr M hM i) (hgcdMatLen M hM i) (entries i) hlayout hsame
+    (hMatrix i)
+
 /-- The source's zero-quotient/zero-entry branch performs exactly the two
 matrix-entry swaps and no heap access.  This exposes the real descriptor
 state consumed by the next HGCD iteration. -/
@@ -1889,5 +1920,109 @@ theorem hgcdTwoRowUpdates_preserve_guard (this : DenseUPolyZp)
     guard guardLen row23.heap row01 h23 quotient (entries 0) (entries 1)
     guardPoly (by decide) hcfg hp workspace01 guard01 hQ23 hE0_23 hE1_23
     hGuard23 hrow01
+
+/-- One complete nonterminal HGCD Euclidean iteration, from the actual
+generated divrem call through both actual row updates, preserves the raw
+state, matrix transform, signed determinant, normalized gcd, and the strict
+well-founded measure. -/
+theorem hgcdIterationCalls_refine (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (scratch A B R : RawPtr UInt64) (lenA lenB : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t : RawPtr UInt64)
+    (heap heap1 : RawHeap) (lenQ lenR : Nat)
+    (row23 row01 : MatRowUpdateResult) (hM : M.Valid)
+    (h23 : row23.matrix.Valid)
+    (left right dividend divisor : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (sgn : Int) (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat) (hlenB : 0 < lenB)
+    (hARep : RawDensePolyRep this heap A lenA dividend)
+    (hBRep : RawDensePolyRep this heap B lenB divisor)
+    (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
+    (htransform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right
+      dividend divisor (entries 0) (entries 1) (entries 2) (entries 3))
+    (hdet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgn
+      (entries 0) (entries 1) (entries 2) (entries 3))
+    (hQ : heap.ValidU64Slice Q (lenA - (lenB - 1)))
+    (hR : heap.ValidU64Slice R (Nat.min lenA (lenB - 1)))
+    (hW3 : heap.ValidWord3Slice W3 lenA)
+    (hqCapacity : lenA - (lenB - 1) < limbBase)
+    (hRA : R.region ≠ A.region) (hWA : W3.region ≠ A.region)
+    (hWB : W3.region ≠ B.region) (hQB : Q.region ≠ B.region)
+    (hQW : Q.region ≠ W3.region) (hRW : R.region ≠ W3.region)
+    (hRQ : R.region ≠ Q.region) (hRB : R.region ≠ B.region)
+    (hQMatrix : ∀ i : Fin 4, Q.region ≠ (hgcdMatPtr M hM i).region)
+    (hRMatrix : ∀ i : Fin 4, R.region ≠ (hgcdMatPtr M hM i).region)
+    (hW3Matrix : ∀ i : Fin 4, W3.region ≠ (hgcdMatPtr M hM i).region)
+    (workspace23 : MatRowUpdateWorkspace M (2 : Fin 4) (3 : Fin 4)
+      Q lenQ T t scratch heap1 hM)
+    (workspace01 : MatRowUpdateWorkspace row23.matrix (0 : Fin 4)
+      (1 : Fin 4) Q lenQ row23.T row23.t scratch row23.heap h23)
+    (divisorGuard23 : MatRowUpdateGuardWorkspace M (2 : Fin 4) Q lenQ
+      T t scratch B lenB hM)
+    (divisorGuard01 : MatRowUpdateGuardWorkspace row23.matrix (0 : Fin 4)
+      Q lenQ row23.T row23.t scratch B lenB h23)
+    (remainderGuard23 : MatRowUpdateGuardWorkspace M (2 : Fin 4) Q lenQ
+      T t scratch R lenR hM)
+    (remainderGuard01 : MatRowUpdateGuardWorkspace row23.matrix (0 : Fin 4)
+      Q lenQ row23.T row23.t scratch R lenR h23)
+    (hdiv : Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q R
+      A lenA B lenB W3 heap = .ok (heap1, lenQ, lenR))
+    (hrow23 : dense_upoly_zp__mat_row_update_ir this M (2 : Fin 4)
+      (3 : Fin 4) Q lenQ T lenT t scratch heap1 = .ok row23)
+    (hrow01 : dense_upoly_zp__mat_row_update_ir this row23.matrix
+      (0 : Fin 4) (1 : Fin 4) Q lenQ row23.T row23.lenT row23.t scratch
+      row23.heap = .ok row01) :
+    ∃ quotient remainder h01,
+      HgcdMatRawDenseRep this row01.heap row01.matrix
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
+        h01 ∧
+      RawDensePolyRep this row01.heap B lenB divisor ∧
+      RawDensePolyRep this row01.heap R lenR remainder ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right divisor
+        remainder
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 0)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 1)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 2)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 3) ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet (-sgn)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 0)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 1)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 2)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 3) ∧
+      normalize (EuclideanDomain.gcd dividend divisor) =
+        normalize (EuclideanDomain.gcd divisor remainder) ∧ lenR < lenB := by
+  rcases polyDivrem_next_state this Q R A B lenA lenB W3 heap dividend
+      divisor hlenB hARep hBRep hQ hR hW3 hqCapacity hRA hWA hWB hQB hQW
+      hRW hRQ hRB hcfg with
+    ⟨semanticHeap, semanticLenQ, semanticLenR, quotient, remainder,
+      hsemantic, hQRep, hBRep1, hRRep1, hdivision, hgcd, _, _, _, hlt⟩
+  have heq : (semanticHeap, semanticLenQ, semanticLenR) =
+      (heap1, lenQ, lenR) := Except.ok.inj (hsemantic.symm.trans hdiv)
+  cases heq
+  have hMatrix1 := polyDivrem_preserves_hgcdMatRawDenseRep this M Q R A B
+    lenA lenB W3 heap heap1 lenQ lenR entries hM hARep.1 hBRep.1 hQ hR
+    hW3 hQMatrix hRMatrix hW3Matrix hMatrix hdiv
+  rcases hgcdTwoRowUpdates_refine_matrix this M Q lenQ T lenT t scratch
+      heap1 row23 row01 hM h23 quotient entries hcfg hp workspace23
+      workspace01 hQRep hMatrix1 hrow23 hrow01 with ⟨h01, hMatrix01⟩
+  have hDivisor01 := hgcdTwoRowUpdates_preserve_guard this M Q lenQ T
+    lenT t scratch B lenB heap1 row23 row01 hM h23 quotient divisor entries
+    hcfg hp workspace23 divisorGuard23 workspace01 divisorGuard01 hQRep
+    hMatrix1 hBRep1 hrow23 hrow01
+  have hRemainder01 := hgcdTwoRowUpdates_preserve_guard this M Q lenQ T
+    lenT t scratch R lenR heap1 row23 row01 hM h23 quotient remainder
+    entries hcfg hp workspace23 remainderGuard23 workspace01
+    remainderGuard01 hQRep hMatrix1 hRRep1 hrow23 hrow01
+  have htransform' :=
+    CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries_preserves_transform
+      left right dividend divisor remainder quotient entries htransform
+      hdivision
+  have hdet' :=
+    CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries_preserves_signedDet
+      sgn quotient entries hdet
+  exact ⟨quotient, remainder, h01, hMatrix01, hDivisor01, hRemainder01,
+    htransform', hdet', hgcd, hlt⟩
 
 end CLPoly.Impl.StrictHGCDRawRefinement

@@ -277,4 +277,38 @@ theorem hgcdRecursiveWorkspace_layout (W : RawPtr UInt64) (lenA : Nat) :
     ws.next = W.add (6 * lenA + 10 * ((lenA + 1) / 2) + 3 * lenA) := by
   simp [hgcdRecursiveWorkspace, HgcdMat.Valid]
 
+/-- High-half input passed to the first recursive/iterator call in the
+non-base source branch. -/
+structure HgcdRecursiveHighInput where
+  m : Nat
+  a0 : RawPtr UInt64
+  lenA0 : Nat
+  b0 : RawPtr UInt64
+  lenB0 : Nat
+
+def hgcdRecursiveHighInput (a b : RawPtr UInt64) (lenA lenB : Nat) :
+    HgcdRecursiveHighInput :=
+  let m := lenA / 2
+  { m := m
+    a0 := a.add m
+    lenA0 := lenA - m
+    b0 := b.add m
+    lenB0 := if lenB ≥ m then lenB - m else 0 }
+
+theorem hgcdRecursiveHighInput_layout (a b : RawPtr UInt64)
+    (lenA lenB : Nat) :
+    let input := hgcdRecursiveHighInput a b lenA lenB
+    input.m = lenA / 2 ∧ input.a0 = a.add input.m ∧
+      input.lenA0 = lenA - input.m ∧ input.b0 = b.add input.m ∧
+      input.lenB0 = if lenB ≥ input.m then lenB - input.m else 0 := by
+  simp [hgcdRecursiveHighInput]
+
+/-- The first true recursive call decreases the source `len_a` measure. -/
+theorem hgcdRecursiveHighInput_len_lt (a b : RawPtr UInt64)
+    (lenA lenB : Nat) (horder : lenB < lenA)
+    (hnonbase : lenA / 2 + 1 ≤ lenB) :
+    (hgcdRecursiveHighInput a b lenA lenB).lenA0 < lenA := by
+  simp only [hgcdRecursiveHighInput]
+  omega
+
 end Generated.StrictHGCD

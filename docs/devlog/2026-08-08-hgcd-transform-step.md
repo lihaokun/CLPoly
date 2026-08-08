@@ -29,6 +29,7 @@
 - 开始 `_hgcd_recursive` 严格 lowering：提取并实现真实 base branch 的可选 `_mat_one` 与按源码顺序执行的 `A ← a`、`B ← b` raw copies；证明 compute-matrix 分支复用同一初始化执行并得到 identity 矩阵及两个输出 raw 表示。
 - 闭合 base branch 的 `compute_M=false` 路径：不调用任何矩阵规格或实现，直接跟随两次 raw copy，并用第一次 copy 对 `b` 的帧和第二次 copy 对 `A` 的帧证明源码声明的 `{B,a}` 别名安全顺序。
 - 严格降低非 base 分支的工作区切片：记录 `a2/b2/a3/b3/q/d/T0/T1`、R/S 八个矩阵条目、三肢 `W3` 和 `W_next` 的源码指针推进，并用 `hgcdRecursiveWorkspace_layout` 固定每个等式及两个矩阵描述符的四项布局。
+- 降低第一次递归/iterator 的高半部输入 `a0=a+m`、`b0=b+m` 及源码条件长度，并从非 base 条件与 `len_b < len_a` 证明 `len_a0 < len_a`，为 `_hgcd_recursive` 的真实良基递归提供下降证据。
 
 ## 为什么做
 

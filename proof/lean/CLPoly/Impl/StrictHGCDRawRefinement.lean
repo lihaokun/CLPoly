@@ -5987,6 +5987,67 @@ noncomputable def hgcdReconstructedLowA {p : Nat}
   if sgn < 0 then entries 1 * lowB - entries 3 * lowA
   else entries 3 * lowA - entries 1 * lowB
 
+/-- The source's sign-selected low reconstruction is the inverse of the
+actual HGCD matrix.  Adding the shifted high outputs therefore extends the
+high-half transform to the complete input polynomials. -/
+theorem hgcdReconstruction_preserves_transform
+    {R : Type*} [CommRing R]
+    (lowA lowB highLeft highRight highA highB shiftTerm : R)
+    (sgn : Int) (entries : Fin 4 → R)
+    (hHigh : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      highLeft highRight highA highB
+      (entries 0) (entries 1) (entries 2) (entries 3))
+    (hDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgn
+      (entries 0) (entries 1) (entries 2) (entries 3)) :
+    CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      (lowA + shiftTerm * highLeft) (lowB + shiftTerm * highRight)
+      ((if sgn < 0 then entries 1 * lowB - entries 3 * lowA
+        else entries 3 * lowA - entries 1 * lowB) + shiftTerm * highA)
+      ((if sgn < 0 then entries 2 * lowA - entries 0 * lowB
+        else entries 0 * lowB - entries 2 * lowA) + shiftTerm * highB)
+      (entries 0) (entries 1) (entries 2) (entries 3) := by
+  rcases hHigh with ⟨hHighLeft, hHighRight⟩
+  rcases hDet with ⟨hsgn, hdet⟩ | ⟨hsgn, hdet⟩
+  · subst sgn
+    constructor
+    · rw [hHighLeft]
+      simp
+      linear_combination -hdet * lowA
+    · rw [hHighRight]
+      simp
+      linear_combination -hdet * lowB
+  · subst sgn
+    constructor
+    · rw [hHighLeft]
+      simp
+      linear_combination hdet * lowA
+    · rw [hHighRight]
+      simp
+      linear_combination hdet * lowB
+
+/-- Polynomial specialization matching exactly the values returned by
+`hgcdRecursiveReconstructPair_refines`. -/
+theorem hgcdReconstructedPair_preserves_transform
+    {p : Nat} (lowA lowB highLeft highRight highA highB : Polynomial (ZMod p))
+    (shift : Nat) (sgn : Int)
+    (entries : Fin 4 → Polynomial (ZMod p))
+    (hHigh : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      highLeft highRight highA highB
+      (entries 0) (entries 1) (entries 2) (entries 3))
+    (hDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgn
+      (entries 0) (entries 1) (entries 2) (entries 3)) :
+    CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      (lowA + Polynomial.X ^ shift * highLeft)
+      (lowB + Polynomial.X ^ shift * highRight)
+      (hgcdReconstructedLowA entries lowA lowB sgn +
+        Polynomial.X ^ shift * highA)
+      (hgcdReconstructedLowB entries lowA lowB sgn +
+        Polynomial.X ^ shift * highB)
+      (entries 0) (entries 1) (entries 2) (entries 3) := by
+  simpa [hgcdReconstructedLowA, hgcdReconstructedLowB] using
+    hgcdReconstruction_preserves_transform lowA lowB highLeft highRight
+      highA highB (Polynomial.X ^ shift) sgn entries hHigh hDet
+
 /-- Physical obligations for the exact four-call reconstruction pair.  All
 frame fields mention only heap cells; no expected L2 polynomial occurs in
 this contract. -/

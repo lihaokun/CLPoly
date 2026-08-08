@@ -3689,6 +3689,88 @@ theorem polyDivrem_short_remainder_degree (heap : RawHeap)
         hB hrepB hreducedB hnormB hlenB]
     omega
 
+/-- Unified strict refinement of generated C++ `_poly_divrem`.  Both source
+branches return raw slices at their actual normalized lengths, satisfy the
+division identity, and produce a remainder strictly smaller than the
+normalized divisor. -/
+theorem polyDivrem_refines (this : DenseUPolyZp)
+    (Q R A B : RawPtr UInt64) (lenA lenB : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (dividend divisor : Polynomial (ZMod this._p.toNat))
+    (hlenB : 0 < lenB)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hQ : heap.ValidU64Slice Q (lenA - (lenB - 1)))
+    (hR : heap.ValidU64Slice R (Nat.min lenA (lenB - 1)))
+    (hW3 : heap.ValidWord3Slice W3 lenA)
+    (hcanonicalA : CanonicalU64Prefix heap A lenA this._p)
+    (hcanonicalB : CanonicalU64Prefix heap B lenB this._p)
+    (hdividend : SlicePolyRep heap A lenA this._p.toNat dividend)
+    (hdivisor : SlicePolyRep heap B lenB this._p.toNat divisor)
+    (hnormA : heap.normaliseU64 A lenA = .ok lenA)
+    (hnormB : heap.normaliseU64 B lenB = .ok lenB)
+    (hqCapacity : lenA - (lenB - 1) < limbBase)
+    (hRA : R.region ≠ A.region)
+    (hWA : W3.region ≠ A.region) (hWB : W3.region ≠ B.region)
+    (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
+    (hRW : R.region ≠ W3.region) (hRQ : R.region ≠ Q.region)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat) :
+    ∃ heap' lenQ lenR quotient remainder,
+      dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
+        .ok (heap', lenQ, lenR) ∧
+      SlicePolyRep heap' Q lenQ this._p.toNat quotient ∧
+      SlicePolyRep heap' R lenR this._p.toNat remainder ∧
+      dividend = quotient * divisor + remainder ∧
+      (remainder = 0 ∨ remainder.natDegree < divisor.natDegree) ∧
+      lenQ ≤ lenA - (lenB - 1) ∧ lenR < lenB := by
+  cases lenB with
+  | zero => omega
+  | succ d =>
+    by_cases hshort : lenA < d + 1
+    · have hlenAd : lenA ≤ d := by omega
+      have hRfull : heap.ValidU64Slice R lenA := by
+        simpa [Nat.min_eq_left hlenAd] using hR
+      rcases polyDivrem_short_refines this Q R A B lenA (d + 1) W3 heap
+        this._p.toNat dividend (by omega) hshort hA hRfull hRA hdividend with
+        ⟨heap', hrun, hlayout, hremainder⟩
+      have hQ' : heap'.ValidU64Slice Q (lenA - d) :=
+        (hlayout Q (lenA - d)).mp (by simpa using hQ)
+      have hQ0 := heap'.validU64Slice_mono Q (lenA - d) 0 hQ'
+        (Nat.zero_le _)
+      rcases slicePolyRep_exists_unique heap' Q 0 this._p.toNat hQ0 with
+        ⟨quotient, hquotient, _⟩
+      have hquotientZero := slicePolyRep_zero_length heap' Q this._p.toNat
+        quotient hquotient
+      subst quotient
+      have hdegree := polyDivrem_short_remainder_degree heap A B lenA
+        (d + 1) this._p.toNat dividend divisor hshort hA hB hdividend
+        hdivisor hcanonicalA hcanonicalB hnormA hnormB
+      refine ⟨heap', 0, lenA, 0, dividend, hrun, hquotient, hremainder,
+        ?_, hdegree, by omega, by omega⟩
+      simp
+    · have hlong : d < lenA := by omega
+      have hdleA : d ≤ lenA := Nat.le_of_lt hlong
+      have hRfull : heap.ValidU64Slice R d := by
+        simpa [Nat.min_eq_right hdleA] using hR
+      rcases polyDivrem_long_refines this Q R A B lenA d W3 heap dividend
+        divisor hlong hA hB (by simpa using hQ) hRfull hW3 hcanonicalA
+        hcanonicalB hdividend hdivisor hnormB (by simpa using hqCapacity)
+        hWA hWB hQB hQW hRW hRQ hcfg hprime with
+        ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
+          hremainder, halgebra, hdegree, hlenQ, hlenR⟩
+      have hdivisorDegree : divisor.natDegree = d := by
+        simpa using normaliseU64_poly_natDegree_eq heap B (d + 1)
+          this._p.toNat (d + 1) divisor hB hdivisor hcanonicalB hnormB
+          (by omega)
+      have hdegree' : remainder = 0 ∨
+          remainder.natDegree < divisor.natDegree := by
+        rcases hdegree with hzero | hlt
+        · exact Or.inl hzero
+        · exact Or.inr (by simpa [hdivisorDegree] using hlt)
+      exact ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
+        hremainder, halgebra, hdegree', by simpa using hlenQ, by omega⟩
+
 /-- Under exactly the capacities documented on the C++ raw API,
 `_poly_divrem` cannot take `RawFault`.  This theorem is only the termination
 and memory-safety bridge; the quotient/remainder algebraic invariant is the

@@ -187,6 +187,11 @@
   由 max 缩短，输出段由五分区不相交定理取得；后处理分别使用已证明的
   sub/copy/write/assemble slice frame。新增 `karMul_preserves_prefix` 将任意给定
   成功运行与唯一 ok heap 对齐后导出该完整帧性质。
+- 消除半区准备语义链剩余的四个 region 假设：t1/t2 与 A/B 的关系全部改为
+  地址级 slice 不相交。公共相加递归在每次 write 后以实际 i/j 地址保持 A/B，
+  完整准备层再把 h 长度合同缩短到 m、把输入长度缩短到 2m 后传入。
+  因此 P1 子递归中 t1/t2、其 recScratch 与上一层 scratch 同属一个 allocation
+  时仍可真实应用准备精化，不需要虚构不同 region。
 
 ## 当前边界
 

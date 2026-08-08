@@ -927,8 +927,10 @@ theorem karAddHalvesLoop_coeffs (this : DenseUPolyZp)
     (hT1 : heap.ValidU64Slice t1 m)
     (hT2 : heap.ValidU64Slice t2 m)
     (hT1T2 : U64SlicesDisjoint t1 m t2 m)
-    (hT1A : t1.region ≠ A.region) (hT1B : t1.region ≠ B.region)
-    (hT2A : t2.region ≠ A.region) (hT2B : t2.region ≠ B.region)
+    (hT1A : U64SlicesDisjoint t1 m A (2 * m))
+    (hT1B : U64SlicesDisjoint t1 m B (2 * m))
+    (hT2A : U64SlicesDisjoint t2 m A (2 * m))
+    (hT2B : U64SlicesDisjoint t2 m B (2 * m))
     (hCanonicalA : CanonicalU64Prefix heap A (2 * m) this._p)
     (hCanonicalB : CanonicalU64Prefix heap B (2 * m) this._p)
     (hRepA : SlicePolyRep heap A (2 * m) this._p.toNat left)
@@ -980,15 +982,15 @@ theorem karAddHalvesLoop_coeffs (this : DenseUPolyZp)
     have hsameA : SameU64Prefix heap heap2 A (2 * m) := by
       intro j old hj hread
       have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 A i j av old
-        hw1 hread (Or.inl hT1A)
+        hw1 hread (hT1A i hi j hj)
       exact RawHeap.readU64_writeU64_ne heap1 heap2 t2 A i j bv old
-        hw2 hread1 (Or.inl hT2A)
+        hw2 hread1 (hT2A i hi j hj)
     have hsameB : SameU64Prefix heap heap2 B (2 * m) := by
       intro j old hj hread
       have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 B i j av old
-        hw1 hread (Or.inl hT1B)
+        hw1 hread (hT1B i hi j hj)
       exact RawHeap.readU64_writeU64_ne heap1 heap2 t2 B i j bv old
-        hw2 hread1 (Or.inl hT2B)
+        hw2 hread1 (hT2B i hi j hj)
     have hCanonicalA2 : CanonicalU64Prefix heap2 A (2 * m) this._p := by
       intro j value hj hread2
       rcases heap.readU64_of_valid A (2 * m) j hA hj with ⟨old, hread⟩
@@ -2090,8 +2092,10 @@ theorem karAddHalvesLoop_refines_slices (this : DenseUPolyZp)
     (hT1 : heap.ValidU64Slice t1 m)
     (hT2 : heap.ValidU64Slice t2 m)
     (hT1T2 : U64SlicesDisjoint t1 m t2 m)
-    (hT1A : t1.region ≠ A.region) (hT1B : t1.region ≠ B.region)
-    (hT2A : t2.region ≠ A.region) (hT2B : t2.region ≠ B.region)
+    (hT1A : U64SlicesDisjoint t1 m A (2 * m))
+    (hT1B : U64SlicesDisjoint t1 m B (2 * m))
+    (hT2A : U64SlicesDisjoint t2 m A (2 * m))
+    (hT2B : U64SlicesDisjoint t2 m B (2 * m))
     (hCanonicalA : CanonicalU64Prefix heap A (2 * m) this._p)
     (hCanonicalB : CanonicalU64Prefix heap B (2 * m) this._p)
     (hRepA : SlicePolyRep heap A (2 * m) this._p.toNat left)
@@ -2325,8 +2329,10 @@ theorem karPrepareHalves_refines (this : DenseUPolyZp)
     (hT1 : heap.ValidU64Slice t1 h)
     (hT2 : heap.ValidU64Slice t2 h)
     (hT1T2 : U64SlicesDisjoint t1 h t2 h)
-    (hT1A : t1.region ≠ A.region) (hT1B : t1.region ≠ B.region)
-    (hT2A : t2.region ≠ A.region) (hT2B : t2.region ≠ B.region)
+    (hT1A : U64SlicesDisjoint t1 h A (m + h))
+    (hT1B : U64SlicesDisjoint t1 h B (m + h))
+    (hT2A : U64SlicesDisjoint t2 h A (m + h))
+    (hT2B : U64SlicesDisjoint t2 h B (m + h))
     (hCanonicalA : CanonicalU64Prefix heap A (m + h) this._p)
     (hCanonicalB : CanonicalU64Prefix heap B (m + h) this._p)
     (hRepA : SlicePolyRep heap A (m + h) this._p.toNat left)
@@ -2343,6 +2349,10 @@ theorem karPrepareHalves_refines (this : DenseUPolyZp)
   have hT1m := heap.validU64Slice_mono t1 h m hT1 hmh
   have hT2m := heap.validU64Slice_mono t2 h m hT2 hmh
   have hT1T2m := u64SlicesDisjoint_mono hT1T2 hmh hmh
+  have hT1A2m := u64SlicesDisjoint_mono hT1A hmh h2m
+  have hT1B2m := u64SlicesDisjoint_mono hT1B hmh h2m
+  have hT2A2m := u64SlicesDisjoint_mono hT2A hmh h2m
+  have hT2B2m := u64SlicesDisjoint_mono hT2B hmh h2m
   rcases slicePolyRep_prefix_exists heap A (m + h) (2 * m)
       this._p.toNat left hA h2m hRepA with
     ⟨leftPrefix, hRepAPrefix, hleftPrefix⟩
@@ -2361,7 +2371,7 @@ theorem karPrepareHalves_refines (this : DenseUPolyZp)
     exact hCanonicalB i value (by omega) hread
   rcases karAddHalvesLoop_refines_slices this A B t1 t2 m heap heap1
       leftPrefix rightPrefix hp hA2m hB2m hT1m hT2m hT1T2m
-      hT1A hT1B hT2A hT2B hCanonicalAPrefix hCanonicalBPrefix
+      hT1A2m hT1B2m hT2A2m hT2B2m hCanonicalAPrefix hCanonicalBPrefix
       hRepAPrefix hRepBPrefix hadd with
     ⟨hRepT1Prefix, hRepT2Prefix, hCanonicalT1, hCanonicalT2⟩
   have hsumLeft : karHalfSumPoly leftPrefix m = karHalfSumPoly left m :=
@@ -2374,19 +2384,19 @@ theorem karPrepareHalves_refines (this : DenseUPolyZp)
     intro i old hi hread
     apply karAddHalvesLoop_preserves_outside this A B t1 t2 A m 0 i
       heap heap1 old hA2m hB2m hT1m hT2m hread
-    · intro _ _ _
-      exact Or.inl hT1A
-    · intro _ _ _
-      exact Or.inl hT2A
+    · intro j _ hj
+      exact hT1A j (by omega) i hi
+    · intro j _ hj
+      exact hT2A j (by omega) i hi
     · exact hadd
   have hsameB : SameU64Prefix heap heap1 B (m + h) := by
     intro i old hi hread
     apply karAddHalvesLoop_preserves_outside this A B t1 t2 B m 0 i
       heap heap1 old hA2m hB2m hT1m hT2m hread
-    · intro _ _ _
-      exact Or.inl hT1B
-    · intro _ _ _
-      exact Or.inl hT2B
+    · intro j _ hj
+      exact hT1B j (by omega) i hi
+    · intro j _ hj
+      exact hT2B j (by omega) i hi
     · exact hadd
   have hA1 := (hlayout1 A (m + h)).mp hA
   have hB1 := (hlayout1 B (m + h)).mp hB

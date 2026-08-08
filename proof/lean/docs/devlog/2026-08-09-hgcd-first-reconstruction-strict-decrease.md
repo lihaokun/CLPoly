@@ -224,3 +224,11 @@ quotient-update 与四项矩阵乘法推出全部 row/coeff 界。
 
 因此父级 `HgcdRecursiveRawInvariant.lengths` 和 `stopped` 字段现在完全由生成执行与
 已证明算法不变量构造，不再是 body 调用者可任意提供的语义前提。
+
+## 良基 dispatch 的执行擦除
+
+新增 `hgcdRecursiveDispatchBelow_eq_dispatch`：当良基回调与源码形状回调在实际子
+调用上相等时，携带 `lenA` 严格下降证明的 dispatch 与生成的普通 dispatch 返回
+完全相同的 `RawExec`。小输入分支定义性地执行同一个 iterator；大输入分支只擦除
+两个 Prop 证明参数，没有计数器、额外 guard 或替代执行。这是后续证明完整良基
+body 与原生成 body 执行一致的第一层桥。

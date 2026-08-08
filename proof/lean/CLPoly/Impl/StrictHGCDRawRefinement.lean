@@ -10121,4 +10121,29 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
             subst result
             exact ⟨finalA, finalB, entries, hInvariant⟩
 
+/-- Erasing the strict-decrease arguments from one cutoff dispatch gives the
+same generated execution as the source-shaped callback dispatch, provided
+the two callbacks agree on that actual recursive call. -/
+theorem hgcdRecursiveDispatchBelow_eq_dispatch (this : DenseUPolyZp)
+    (bound : Nat) (below : HgcdRecursiveCallBelow bound)
+    (plain : HgcdRecursiveCall)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (hagrees : below matrix hMatrix true a3 b3 inputA inputB lenInputA
+      lenInputB WNext scratch heap horder hdecrease =
+        plain matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+          WNext scratch heap) :
+    hgcdRecursiveDispatchBelow this bound below matrix hMatrix a3 b3 inputA
+        inputB lenInputA lenInputB Q W3 T0 T1 scratch stage WNext heap horder
+        hdecrease =
+      hgcdRecursiveDispatch this plain matrix hMatrix a3 b3 inputA inputB
+        lenInputA lenInputB Q W3 T0 T1 scratch stage WNext heap := by
+  simp only [hgcdRecursiveDispatchBelow, hgcdRecursiveDispatch]
+  split
+  · rfl
+  · exact hagrees
+
 end CLPoly.Impl.StrictHGCDRawRefinement

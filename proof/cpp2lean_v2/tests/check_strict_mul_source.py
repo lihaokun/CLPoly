@@ -64,6 +64,7 @@ def main() -> None:
                      "karAddHalvesLoop_preserves_outside",
                      "karAddHalvesLoop_current_values",
                      "karAddHalvesLoop_current_coeffs",
+                     "karAddHalvesLoop_coeffs",
                      "karSubLoop_preserves_outside",
                      "karAssembleLoop_preserves_outside",
                      "classicalDotNat", "classicalDotNat_ok",

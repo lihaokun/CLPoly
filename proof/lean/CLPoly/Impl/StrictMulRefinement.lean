@@ -302,6 +302,101 @@ theorem karAddHalvesLoop_current_coeffs (this : DenseUPolyZp)
   · simpa [value2, UInt64.lt_iff_toNat_lt] using
       nmodAdd_lt this blo bhi hpWord hbloLt hbhiLt
 
+theorem karAddHalvesLoop_coeffs (this : DenseUPolyZp)
+    (A B t1 t2 : RawPtr UInt64) (m i : Nat) (heap heap' : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hp : 1 < this._p.toNat)
+    (hA : heap.ValidU64Slice A (2 * m))
+    (hB : heap.ValidU64Slice B (2 * m))
+    (hT1 : heap.ValidU64Slice t1 m)
+    (hT2 : heap.ValidU64Slice t2 m)
+    (hT1T2 : t1.region ≠ t2.region)
+    (hT1A : t1.region ≠ A.region) (hT1B : t1.region ≠ B.region)
+    (hT2A : t2.region ≠ A.region) (hT2B : t2.region ≠ B.region)
+    (hCanonicalA : CanonicalU64Prefix heap A (2 * m) this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B (2 * m) this._p)
+    (hRepA : SlicePolyRep heap A (2 * m) this._p.toNat left)
+    (hRepB : SlicePolyRep heap B (2 * m) this._p.toNat right)
+    (hrun : karAddHalvesLoop this A B t1 t2 m i heap = .ok heap') :
+    ∀ k, i ≤ k → k < m → ∃ value1 value2,
+      heap'.readU64 t1 k = .ok value1 ∧
+      heap'.readU64 t2 k = .ok value2 ∧
+      (value1.toNat : ZMod this._p.toNat) =
+        left.coeff k + left.coeff (m + k) ∧
+      (value2.toNat : ZMod this._p.toNat) =
+        right.coeff k + right.coeff (m + k) ∧
+      value1.toNat < this._p.toNat ∧ value2.toNat < this._p.toNat := by
+  intro k hik hkm
+  by_cases heq : k = i
+  · subst k
+    exact karAddHalvesLoop_current_coeffs this A B t1 t2 m i heap heap'
+      left right hp hA hB hT1 hT2 hT1T2 hCanonicalA hCanonicalB hRepA
+      hRepB hkm hrun
+  · have hik' : i + 1 ≤ k := by omega
+    unfold karAddHalvesLoop at hrun
+    have hi : i < m := by omega
+    simp only [hi, ↓reduceDIte] at hrun
+    rcases heap.readU64_of_valid A (2 * m) i hA (by omega) with ⟨alo, halo⟩
+    simp only [halo] at hrun
+    rcases heap.readU64_of_valid A (2 * m) (m + i) hA (by omega) with
+      ⟨ahi, hahi⟩
+    simp only [hahi] at hrun
+    rcases heap.readU64_of_valid B (2 * m) i hB (by omega) with ⟨blo, hblo⟩
+    simp only [hblo] at hrun
+    rcases heap.readU64_of_valid B (2 * m) (m + i) hB (by omega) with
+      ⟨bhi, hbhi⟩
+    simp only [hbhi] at hrun
+    let av := dense_upoly_zp_nmod_add_ir this alo ahi
+    rcases heap.writeU64_of_valid t1 m i av hT1 hi with ⟨heap1, hw1⟩
+    simp only [av, hw1] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 t1 i av hw1
+    let bv := dense_upoly_zp_nmod_add_ir this blo bhi
+    rcases heap1.writeU64_of_valid t2 m i bv ((hlayout1 t2 m).mp hT2) hi with
+      ⟨heap2, hw2⟩
+    simp only [bv, hw2] at hrun
+    have hlayout2 := RawHeap.writeU64_sameLayout heap1 heap2 t2 i bv hw2
+    have hA1 := (hlayout1 A (2 * m)).mp hA
+    have hB1 := (hlayout1 B (2 * m)).mp hB
+    have hA2 := (hlayout2 A (2 * m)).mp hA1
+    have hB2 := (hlayout2 B (2 * m)).mp hB1
+    have hT12 := (hlayout2 t1 m).mp ((hlayout1 t1 m).mp hT1)
+    have hT22 := (hlayout2 t2 m).mp ((hlayout1 t2 m).mp hT2)
+    have hsameA : SameU64Prefix heap heap2 A (2 * m) := by
+      intro j old hj hread
+      have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 A i j av old
+        hw1 hread (Or.inl hT1A)
+      exact RawHeap.readU64_writeU64_ne heap1 heap2 t2 A i j bv old
+        hw2 hread1 (Or.inl hT2A)
+    have hsameB : SameU64Prefix heap heap2 B (2 * m) := by
+      intro j old hj hread
+      have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 B i j av old
+        hw1 hread (Or.inl hT1B)
+      exact RawHeap.readU64_writeU64_ne heap1 heap2 t2 B i j bv old
+        hw2 hread1 (Or.inl hT2B)
+    have hCanonicalA2 : CanonicalU64Prefix heap2 A (2 * m) this._p := by
+      intro j value hj hread2
+      rcases heap.readU64_of_valid A (2 * m) j hA hj with ⟨old, hread⟩
+      have hpreserved := hsameA j old hj hread
+      have heq : value = old := Except.ok.inj (hread2.symm.trans hpreserved)
+      subst value
+      exact hCanonicalA j old hj hread
+    have hCanonicalB2 : CanonicalU64Prefix heap2 B (2 * m) this._p := by
+      intro j value hj hread2
+      rcases heap.readU64_of_valid B (2 * m) j hB hj with ⟨old, hread⟩
+      have hpreserved := hsameB j old hj hread
+      have heq : value = old := Except.ok.inj (hread2.symm.trans hpreserved)
+      subst value
+      exact hCanonicalB j old hj hread
+    have hRepA2 := slicePolyRep_of_same_prefix heap heap2 A (2 * m)
+      this._p.toNat left hA hA2 hsameA hRepA
+    have hRepB2 := slicePolyRep_of_same_prefix heap heap2 B (2 * m)
+      this._p.toNat right hB hB2 hsameB hRepB
+    exact karAddHalvesLoop_coeffs this A B t1 t2 m (i + 1) heap2 heap'
+      left right hp hA2 hB2 hT12 hT22 hT1T2 hT1A hT1B hT2A hT2B
+      hCanonicalA2 hCanonicalB2 hRepA2 hRepB2 hrun k hik' hkm
+termination_by m - i
+decreasing_by omega
+
 theorem karSubLoop_preserves_outside (this : DenseUPolyZp)
     (dst sub guard : RawPtr UInt64) (count i readIndex : Nat)
     (heap heap' : RawHeap) (old : UInt64)

@@ -71,6 +71,10 @@
   `nmod_add` 写入 t1/t2 后，由帧定理保持到循环结束。进一步从输入
   `SlicePolyRep` 与 `CanonicalU64Prefix` 推出两个输出分别表示对应低/高半
   L2 系数之和，并且实际机器值继续严格小于 p。
+- 将当前索引结论提升到完整剩余区间：每轮 t1/t2 写入后，利用 scratch 与
+  A/B allocation 不相交性逐 cell 构造 `SameU64Prefix`，重新传递输入
+  `SlicePolyRep` 和规范剩余，再对 `m-(i+1)` 做良基递归。由此从 i=0 可
+  得到全部 `k<m` 的 t1/t2 raw 值与 L2 半区和语义。
 
 ## 当前边界
 

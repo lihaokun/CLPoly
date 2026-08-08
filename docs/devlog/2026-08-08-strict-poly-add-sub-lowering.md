@@ -41,6 +41,9 @@
   的最终表示结论；没有用交换规格参数替代该 C++ 分支。
 - 按两长度的三歧关系合并等长和两个不等长分支，得到无长度限制的
   `polyAdd_refines`，可由 HGCD 原始矩阵操作直接消费。
+- 对减法 `lenA > lenB` 单独闭合跳过/复制 A 尾部的真实状态，再与共同前缀
+  模减、高位零系数和 normalization 合并，最终建立
+  `RawDensePolyRep (left - right)`。
 
 ## 当前边界
 

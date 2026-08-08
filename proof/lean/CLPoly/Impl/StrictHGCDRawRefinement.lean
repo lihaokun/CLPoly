@@ -6907,6 +6907,9 @@ structure HgcdRecursiveReconstructPairWorkspace (this : DenseUPolyZp)
   liftA : HgcdLiftHighWorkspace heap3 A highA lowLenA shift lenHighA
   finalBLayout : RawHeap.SameLayout liftedB.heap liftedA.heap
   finalBPrefix : SameU64Prefix liftedB.heap liftedA.heap B liftedB.length
+  finalMatrixLayout : RawHeap.SameLayout heap liftedA.heap
+  finalMatrixPrefix : ∀ i : Fin 4, SameU64Prefix heap liftedA.heap
+    (hgcdMatPtr M hM i) (hgcdMatLen M hM i)
 
 def HgcdRecursiveReconstructPairWorkspaceProvider (this : DenseUPolyZp)
     (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
@@ -6928,6 +6931,35 @@ def HgcdRecursiveReconstructPairWorkspaceProvider (this : DenseUPolyZp)
     HgcdRecursiveReconstructPairWorkspace this A B T0 lowA lowB highA highB
       scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap heap1
       lowLenB liftedB heap3 lowLenA liftedA
+
+/-- The four physical reconstruction calls do not overwrite the matrix
+returned by the first recursive child. -/
+theorem hgcdRecursiveReconstructPair_preserves_matrix (this : DenseUPolyZp)
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift : Nat)
+    (M : HgcdMat) (hM : M.Valid) (sgn : Int) (heap : RawHeap)
+    (result : HgcdRecursiveReconstructPairResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (physical : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
+      lowA lowB highA highB scratch lenLowA lenLowB lenHighA lenHighB shift
+      M hM sgn heap)
+    (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
+    (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
+      scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap =
+        .ok result) :
+    HgcdMatRawDenseRep this result.heap M entries hM := by
+  rcases hgcdRecursiveReconstructPair_exec this A B T0 lowA lowB highA
+      highB scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap
+      result hrun with
+    ⟨heap1, lowLenB, liftedB, heap3, lowLenA, liftedA,
+      hBRun, hLiftBRun, hARun, hLiftARun, hHeap, _, _⟩
+  have hwork := physical heap1 lowLenB liftedB heap3 lowLenA liftedA hBRun
+    hLiftBRun hARun hLiftARun
+  intro i
+  rw [hHeap]
+  exact rawDensePolyRep_of_same_prefix this heap liftedA.heap
+    (hgcdMatPtr M hM i) (hgcdMatLen M hM i) (entries i)
+    hwork.finalMatrixLayout (hwork.finalMatrixPrefix i) (hMatrix i)
 
 /-- Complete raw semantic refinement of the actual paired reconstruction.
 The returned polynomials arise from the four generated calls in source
@@ -8952,5 +8984,170 @@ theorem hgcdRecursiveBodyBelow_base_rawInvariant (this : DenseUPolyZp)
         using congrArg HgcdRecursiveResult.value (Except.ok.inj hrun)
     subst result
     exact ⟨entries, hInvariant⟩
+
+/-- The non-base early arm of the well-founded body carries the common raw
+invariant.  The first-child premise is the induction result for the actual
+dispatch execution; all remaining premises describe the actual source split,
+four-call reconstruction, and output-copy workspace. -/
+theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right inputHighA inputHighB outputHighA outputHighB
+      lowPolyA lowPolyB : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hp : 1 < this._p.toNat) (hcfg : DensePreinvConfigured this)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (firstLength : ∀ first,
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap hchildOrder hchildDecrease = .ok first →
+      HgcdRecursiveLengthInvariant high.lenA0 first)
+    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
+      scratch lenA lenB)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (early : HgcdRecursiveEarlyResult)
+    (hbase : ¬ lenB < lenA / 2 + 1)
+    (hfirst :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap (hgcdRecursiveHighInput_order a b lenA lenB horder)
+          (by
+            rw [← hbound]
+            exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder
+              (by omega)) = .ok first)
+    (hFirst :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      HgcdRecursiveRawInvariant this inputHighA inputHighB outputHighA
+        outputHighB entries true ws.a3 ws.b3 high.lenA0 first)
+    (hLowA :
+      let ws := hgcdRecursiveWorkspace W lenA
+      RawDensePolyRep this first.heap a (Nat.min lenA (lenA / 2)) lowPolyA)
+    (hLowB :
+      RawDensePolyRep this first.heap b (Nat.min lenB (lenA / 2)) lowPolyB)
+    (hFullA : left = lowPolyA + Polynomial.X ^ (lenA / 2) * inputHighA)
+    (hFullB : right = lowPolyB + Polynomial.X ^ (lenA / 2) * inputHighB)
+    (reconstructWork :
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveReconstructPairWorkspaceProvider this ws.a2 ws.b2 ws.T0
+        a b ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
+        (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
+        first.matrix first.valid first.sgn first.heap)
+    (hreconstruct :
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
+        scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
+        first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
+        first.heap = .ok reconstructed)
+    (hearlyGuard : reconstructed.lenB < lenA / 2 + 1)
+    (earlyWork :
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdEarlyReturnRefineWorkspace reconstructed.heap M first.matrix hM
+        first.valid A B ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB)
+    (hearly :
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveEarlyReturn M first.matrix hM first.valid computeM A B
+        ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB first.sgn
+        reconstructed.heap = .ok early)
+    (result : HgcdRecursiveResult)
+    (hrun : hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b
+      lenA lenB W scratch heap hbound horder firstLength reconstructionBound =
+        .ok result) :
+    ∃ finalA finalB,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
+        A B lenA result := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  let high := hgcdRecursiveHighInput a b lenA lenB
+  have hfirstLength : HgcdRecursiveLengthInvariant high.lenA0 first :=
+    firstLength first (hgcdRecursiveHighInput_order a b lenA lenB horder)
+      (by
+        rw [← hbound]
+        exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder (by omega))
+      hfirst
+  have hReconstructed : HgcdFirstReconstructionInvariant lenA first
+      reconstructed :=
+    reconstructionBound first reconstructed (by
+      simpa [high, hgcdRecursiveHighInput] using hfirstLength) hreconstruct
+  rcases hgcdRecursiveReconstructPair_preserves_input this ws.a2 ws.b2 ws.T0
+      a b ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
+      (Nat.min lenB (lenA / 2)) (lenA / 2) high.lenA0 first reconstructed
+      entries left right lowPolyA lowPolyB inputHighA inputHighB outputHighA
+      outputHighB hcfg hp reconstructWork hFirst hLowA hLowB hFullA hFullB
+      hreconstruct with
+    ⟨finalA, finalB, hARep, hBRep, hTransform, hDet, hGcd, _⟩
+  have hLength : HgcdRecursiveLengthInvariant lenA
+      ⟨reconstructed.heap, first.matrix, first.valid, reconstructed.lenA,
+        reconstructed.lenB, first.sgn⟩ :=
+    hgcdRecursiveEarly_lengthInvariant lenA high.lenA0 (lenA / 2) first
+      reconstructed reconstructed.heap first.sgn rfl (by
+        simp [high, hgcdRecursiveHighInput]) hfirstLength hReconstructed
+      hearlyGuard
+  have hMatrixAtReconstructed : HgcdMatRawDenseRep this reconstructed.heap
+      first.matrix entries first.valid :=
+    hgcdRecursiveReconstructPair_preserves_matrix this ws.a2 ws.b2 ws.T0 a
+      b ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
+      (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
+      first.matrix first.valid first.sgn first.heap reconstructed entries
+      reconstructWork (hFirst.matrixSemantics rfl).1 hreconstruct
+  rcases hgcdRecursiveEarlyReturn_rawInvariant this M first.matrix hM
+      first.valid computeM A B ws.a2 ws.b2 reconstructed.lenA
+      reconstructed.lenB lenA first.sgn left right finalA finalB entries
+      reconstructed.heap early earlyWork hARep hBRep
+      hMatrixAtReconstructed hTransform hDet hGcd hearlyGuard hLength
+      hearly with ⟨hEarlyValid, hInvariant⟩
+  rw [hgcdRecursiveBodyBelow] at hrun
+  simp only [hbase, ↓reduceDIte] at hrun
+  split at hrun
+  next fault hdispatch =>
+    simp at hrun
+  next actualFirst hdispatch =>
+    have hdispatchOk : (.ok actualFirst : RawExec HgcdRecursiveResult) =
+        .ok first := hdispatch.symm.trans (by
+          convert hfirst using 1)
+    have hFirstEq : actualFirst = first :=
+      Except.ok.inj hdispatchOk
+    subst actualFirst
+    split at hrun
+    next fault hreconstructActual =>
+      simp at hrun
+    next actualReconstructed hreconstructActual =>
+      have hreconstructOk :
+          (.ok actualReconstructed : RawExec
+            HgcdRecursiveReconstructPairResult) = .ok reconstructed :=
+        hreconstructActual.symm.trans (by
+          convert hreconstruct using 1)
+      have hReconstructedEq : actualReconstructed = reconstructed :=
+        Except.ok.inj hreconstructOk
+      subst actualReconstructed
+      simp only [hearlyGuard, ↓reduceDIte] at hrun
+      split at hrun
+      next fault hearlyActual =>
+        simp at hrun
+      next actualEarly hearlyActual =>
+        have hearlyOk : (.ok actualEarly : RawExec HgcdRecursiveEarlyResult) =
+            .ok early := hearlyActual.symm.trans (by
+              convert hearly using 1)
+        have hEarlyEq : actualEarly = early :=
+          Except.ok.inj hearlyOk
+        subst actualEarly
+        have heq : early.toResult hEarlyValid = result := by
+          apply HgcdRecursiveResult.ext_value
+          simpa only [HgcdRecursiveResult.value,
+              HgcdRecursiveEarlyResult.toResult] using
+            congrArg HgcdRecursiveResult.value (Except.ok.inj hrun)
+        subst result
+        exact ⟨finalA, finalB, hInvariant⟩
 
 end CLPoly.Impl.StrictHGCDRawRefinement

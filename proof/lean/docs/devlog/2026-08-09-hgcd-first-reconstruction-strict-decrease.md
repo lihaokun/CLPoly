@@ -108,3 +108,15 @@ above-half 推出操作数次序后导出；没有额外假设最终 B 已小于
 精确移位长度把第一子矩阵的四行配对界提升到外层输入，B/A 次序导出两条 row/B
 界，而第一子调用的系数界单调提升为外层系数界。该结构来自真实重构不变量和
 early guard，不作为 early workspace 的附加结果假设。
+
+## 完整递归体的 early-return 路径
+
+`hgcdRecursiveBodyBelow_early_rawInvariant` 现已把非 base 的 early-return
+控制流闭合为共同 raw 不变量。第一次子调用的语义来自实际
+`hgcdRecursiveDispatchBelow` 成功执行的良基归纳结果；随后用真实四调用成对重构
+推出完整输入的 transform、带符号行列式和 GCD 保持，再用真实输出 memcpy 与可选
+矩阵复制构造递归结果。
+
+证明最终通过 `HgcdRecursiveResult.ext_value` 将 early helper 的返回记录运输到
+完整 body 的实际返回值。物理 workspace 只描述有效性、分离性和前缀保持，不携带
+预先选定的 L2 结果；执行路径中也没有计数参数或规格回退。

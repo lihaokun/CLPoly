@@ -174,6 +174,12 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 最终矩阵组合，最后原样返回 `-(sgnR*sgnS)`。执行分解定理分别钉住
 `compute_M` 两个分支，因而良基主函数不能跳过重构或用规格矩阵替代可选调用。
 
+成对重构的 raw 语义现已闭合。`hgcdRecursiveReconstructPair_refines` 逐一消费
+真实的 `reconstructB`、B 的零填充/加高半部/归一化、`reconstructA`、A 的
+零填充/加高半部/归一化，并返回两个精确的 L2 多项式。B 跨后两次写操作的
+保持以及矩阵项/低半部/高半部跨调用的保持均由 heap layout/prefix frame
+给出；workspace/provider 不含最终 A、B 或任何预期多项式。
+
 完整四项 `_mat_mul` 的 raw 语义现已闭合。新的单项 frame 定理按真实的
 两次 guarded 乘法和 add/copy/skip 尾分支，保持两个输入矩阵以及先前已完成
 的输出项。`hgcdMatMulLoop_refines` 再沿生成的 `4-i` 递归逐项执行

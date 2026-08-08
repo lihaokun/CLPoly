@@ -5442,6 +5442,168 @@ theorem hgcdMatApplyQuotient_refines (this : DenseUPolyZp)
     hsecond
   simpa [hgcdMatApplyQuotientEntries] using hSecond
 
+/-- L2 low parts computed by the two sign-selected reconstruction blocks. -/
+noncomputable def hgcdReconstructedLowB {p : Nat}
+    (entries : Fin 4 → Polynomial (ZMod p))
+    (lowA lowB : Polynomial (ZMod p)) (sgn : Int) :=
+  if sgn < 0 then entries 2 * lowA - entries 0 * lowB
+  else entries 0 * lowB - entries 2 * lowA
+
+noncomputable def hgcdReconstructedLowA {p : Nat}
+    (entries : Fin 4 → Polynomial (ZMod p))
+    (lowA lowB : Polynomial (ZMod p)) (sgn : Int) :=
+  if sgn < 0 then entries 1 * lowB - entries 3 * lowA
+  else entries 3 * lowA - entries 1 * lowB
+
+/-- Physical obligations for the exact four-call reconstruction pair.  All
+frame fields mention only heap cells; no expected L2 polynomial occurs in
+this contract. -/
+structure HgcdRecursiveReconstructPairWorkspace (this : DenseUPolyZp)
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift : Nat)
+    (M : HgcdMat) (hM : M.Valid) (sgn : Int) (heap : RawHeap)
+    (heap1 : RawHeap) (lowLenB : Nat) (liftedB : HgcdLiftHighResult)
+    (heap3 : RawHeap) (lowLenA : Nat) (liftedA : HgcdLiftHighResult) : Prop where
+  reconstructB : HgcdReconstructWorkspace heap B T0
+    (hgcdMatPtr M hM (2 : Fin 4)) (hgcdMatLen M hM (2 : Fin 4)) lowA lenLowA
+    (hgcdMatPtr M hM (0 : Fin 4)) (hgcdMatLen M hM (0 : Fin 4)) lowB lenLowB
+    scratch
+  highBLayout : RawHeap.SameLayout heap heap1
+  highBPrefix : SameU64Prefix heap heap1 highB lenHighB
+  liftB : HgcdLiftHighWorkspace heap1 B highB lowLenB shift lenHighB
+  aInputLayout : RawHeap.SameLayout heap liftedB.heap
+  aMatrixPrefix : ∀ i : Fin 4, SameU64Prefix heap liftedB.heap
+    (hgcdMatPtr M hM i) (hgcdMatLen M hM i)
+  aLowAPrefix : SameU64Prefix heap liftedB.heap lowA lenLowA
+  aLowBPrefix : SameU64Prefix heap liftedB.heap lowB lenLowB
+  reconstructA : HgcdReconstructWorkspace liftedB.heap A T0
+    (hgcdMatPtr M hM (3 : Fin 4)) (hgcdMatLen M hM (3 : Fin 4)) lowA lenLowA
+    (hgcdMatPtr M hM (1 : Fin 4)) (hgcdMatLen M hM (1 : Fin 4)) lowB lenLowB
+    scratch
+  highALayout : RawHeap.SameLayout heap heap3
+  highAPrefix : SameU64Prefix heap heap3 highA lenHighA
+  liftA : HgcdLiftHighWorkspace heap3 A highA lowLenA shift lenHighA
+  finalBLayout : RawHeap.SameLayout liftedB.heap liftedA.heap
+  finalBPrefix : SameU64Prefix liftedB.heap liftedA.heap B liftedB.length
+
+def HgcdRecursiveReconstructPairWorkspaceProvider (this : DenseUPolyZp)
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift : Nat)
+    (M : HgcdMat) (hM : M.Valid) (sgn : Int) (heap : RawHeap) : Prop :=
+  ∀ heap1 lowLenB liftedB heap3 lowLenA liftedA,
+    hgcdRecursiveReconstructB this B T0 (hgcdMatPtr M hM (2 : Fin 4))
+        (hgcdMatPtr M hM (0 : Fin 4)) lowA lowB scratch
+        (hgcdMatLen M hM (2 : Fin 4)) (hgcdMatLen M hM (0 : Fin 4))
+        lenLowA lenLowB sgn heap = .ok (heap1, lowLenB) →
+    hgcdRecursiveLiftHigh this B highB lowLenB shift lenHighB heap1 =
+        .ok liftedB →
+    hgcdRecursiveReconstructA this A T0 (hgcdMatPtr M hM (3 : Fin 4))
+        (hgcdMatPtr M hM (1 : Fin 4)) lowA lowB scratch
+        (hgcdMatLen M hM (3 : Fin 4)) (hgcdMatLen M hM (1 : Fin 4))
+        lenLowA lenLowB sgn liftedB.heap = .ok (heap3, lowLenA) →
+    hgcdRecursiveLiftHigh this A highA lowLenA shift lenHighA heap3 =
+        .ok liftedA →
+    HgcdRecursiveReconstructPairWorkspace this A B T0 lowA lowB highA highB
+      scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap heap1
+      lowLenB liftedB heap3 lowLenA liftedA
+
+/-- Complete raw semantic refinement of the actual paired reconstruction.
+The returned polynomials arise from the four generated calls in source
+order, including both final normalizations. -/
+theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift : Nat)
+    (M : HgcdMat) (hM : M.Valid) (sgn : Int) (heap : RawHeap)
+    (result : HgcdRecursiveReconstructPairResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (polyLowA polyLowB polyHighA polyHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
+      lowA lowB highA highB scratch lenLowA lenLowB lenHighA lenHighB shift
+      M hM sgn heap)
+    (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
+    (hLowA : RawDensePolyRep this heap lowA lenLowA polyLowA)
+    (hLowB : RawDensePolyRep this heap lowB lenLowB polyLowB)
+    (hHighA : RawDensePolyRep this heap highA lenHighA polyHighA)
+    (hHighB : RawDensePolyRep this heap highB lenHighB polyHighB)
+    (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
+      scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap =
+      .ok result) :
+    RawDensePolyRep this result.heap A result.lenA
+        (hgcdReconstructedLowA entries polyLowA polyLowB sgn +
+          Polynomial.X ^ shift * polyHighA) ∧
+      RawDensePolyRep this result.heap B result.lenB
+        (hgcdReconstructedLowB entries polyLowA polyLowB sgn +
+          Polynomial.X ^ shift * polyHighB) := by
+  rcases hgcdRecursiveReconstructPair_exec this A B T0 lowA lowB highA
+      highB scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap
+      result hrun with
+    ⟨heap1, lowLenB, liftedB, heap3, lowLenA, liftedA,
+      hBRun, hLiftBRun, hARun, hLiftARun, hHeap, hLenA, hLenB⟩
+  have hwork := physical heap1 lowLenB liftedB heap3 lowLenA liftedA hBRun
+    hLiftBRun hARun hLiftARun
+  rcases hgcdRecursiveReconstructB_refines this B T0
+      (hgcdMatPtr M hM (2 : Fin 4)) (hgcdMatPtr M hM (0 : Fin 4)) lowA
+      lowB scratch (hgcdMatLen M hM (2 : Fin 4))
+      (hgcdMatLen M hM (0 : Fin 4)) lenLowA lenLowB sgn heap
+      (entries 2) (entries 0) polyLowA polyLowB hcfg hp
+      hwork.reconstructB (hMatrix 2) (hMatrix 0) hLowA hLowB with
+    ⟨heapB, lenB0, hBRun', _, hB0⟩
+  have hEqB : (heapB, lenB0) = (heap1, lowLenB) :=
+    Except.ok.inj (hBRun'.symm.trans hBRun)
+  cases hEqB
+  have hHighB1 := rawDensePolyRep_of_same_prefix this heap heap1 highB
+    lenHighB polyHighB hwork.highBLayout hwork.highBPrefix hHighB
+  have hpWord : this._p ≠ 0 := by
+    intro hzero
+    have := congrArg UInt64.toNat hzero
+    simp at this
+    omega
+  rcases hgcdRecursiveLiftHigh_refines this B highB lowLenB shift lenHighB
+      heap1 (hgcdReconstructedLowB entries polyLowA polyLowB sgn) polyHighB
+      hpWord hwork.liftB (by simpa [hgcdReconstructedLowB] using hB0)
+      hHighB1 with ⟨liftedB', hLiftBRun', _, hBFinal⟩
+  have hEqLiftB : liftedB' = liftedB :=
+    Except.ok.inj (hLiftBRun'.symm.trans hLiftBRun)
+  subst liftedB'
+  have matrixAtB (i : Fin 4) : RawDensePolyRep this liftedB.heap
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i) (entries i) :=
+    rawDensePolyRep_of_same_prefix this heap liftedB.heap
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i) (entries i)
+      hwork.aInputLayout (hwork.aMatrixPrefix i) (hMatrix i)
+  have lowAAtB := rawDensePolyRep_of_same_prefix this heap liftedB.heap lowA
+    lenLowA polyLowA hwork.aInputLayout hwork.aLowAPrefix hLowA
+  have lowBAtB := rawDensePolyRep_of_same_prefix this heap liftedB.heap lowB
+    lenLowB polyLowB hwork.aInputLayout hwork.aLowBPrefix hLowB
+  rcases hgcdRecursiveReconstructA_refines this A T0
+      (hgcdMatPtr M hM (3 : Fin 4)) (hgcdMatPtr M hM (1 : Fin 4)) lowA
+      lowB scratch (hgcdMatLen M hM (3 : Fin 4))
+      (hgcdMatLen M hM (1 : Fin 4)) lenLowA lenLowB sgn liftedB.heap
+      (entries 3) (entries 1) polyLowA polyLowB hcfg hp hwork.reconstructA
+      (matrixAtB 3) (matrixAtB 1) lowAAtB lowBAtB with
+    ⟨heapA, lenA0, hARun', _, hA0⟩
+  have hEqA : (heapA, lenA0) = (heap3, lowLenA) :=
+    Except.ok.inj (hARun'.symm.trans hARun)
+  cases hEqA
+  have hHighA3 := rawDensePolyRep_of_same_prefix this heap heap3 highA
+    lenHighA polyHighA hwork.highALayout hwork.highAPrefix hHighA
+  rcases hgcdRecursiveLiftHigh_refines this A highA lowLenA shift lenHighA
+      heap3 (hgcdReconstructedLowA entries polyLowA polyLowB sgn) polyHighA
+      hpWord hwork.liftA (by simpa [hgcdReconstructedLowA] using hA0)
+      hHighA3 with ⟨liftedA', hLiftARun', _, hAFinal⟩
+  have hEqLiftA : liftedA' = liftedA :=
+    Except.ok.inj (hLiftARun'.symm.trans hLiftARun)
+  subst liftedA'
+  have hBAtFinal := rawDensePolyRep_of_same_prefix this liftedB.heap
+    liftedA.heap B liftedB.length
+    (hgcdReconstructedLowB entries polyLowA polyLowB sgn +
+      Polynomial.X ^ shift * polyHighB) hwork.finalBLayout
+      hwork.finalBPrefix hBFinal
+  rw [hHeap, hLenA, hLenB]
+  exact ⟨hAFinal, hBAtFinal⟩
+
 /-- Purely physical obligations for the exact final matrix block.  Besides
 the two existing generated-call workspaces, the frame fields state that the
 quotient update does not alter any buffer of the left matrix `R`. -/

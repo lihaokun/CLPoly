@@ -1,5 +1,6 @@
 import CLPoly.Generated.StrictMul
 import CLPoly.Impl.StrictDivremRefinement
+import CLPoly.Impl.StrictEuclidRefinement
 
 set_option autoImplicit false
 
@@ -9,6 +10,7 @@ open Generated.StrictMul
 open CLPoly.Impl.StrictWordArithmetic
 open CLPoly.Impl.StrictDivremRefinement
 open CLPoly.Impl.RawPolynomialRep
+open CLPoly.Impl.StrictEuclidRefinement
 
 /-- Mathematical value of the exact raw cells visited by the C++ dot loop.
 It shares the loop's reads and failure behavior, but performs unbounded natural
@@ -438,7 +440,10 @@ theorem classicalReduced_source_eq_coeff (this : DenseUPolyZp)
       { lo := 0, mid := 0, hi := 0 } = .ok acc) :
     ((Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
       acc.hi acc.mid acc.lo this._p this._ninv this._norm).toNat :
-        ZMod this._p.toNat) = (left * right).coeff k := by
+        ZMod this._p.toNat) = (left * right).coeff k ∧
+      (Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        acc.hi acc.mid acc.lo this._p this._ninv this._norm).toNat <
+          this._p.toNat := by
   let jMin := if k ≥ lenB then k - lenB + 1 else 0
   let jMax := if k < lenA then k else lenA - 1
   have hkSource : k < lenA + lenB - 1 := by omega
@@ -458,19 +463,24 @@ theorem classicalReduced_source_eq_coeff (this : DenseUPolyZp)
   have hcount : jMax + 1 - jMin < limbBase := by
     have hjMaxA := hAIndex jMax hrange (Nat.le_refl _)
     omega
-  calc
-    ((Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
-      acc.hi acc.mid acc.lo this._p this._ninv this._norm).toNat :
-        ZMod this._p.toNat) = (sum : ZMod this._p.toNat) :=
-      classicalDotReduced_cast this heap A B lenA lenB k jMax jMin acc sum
-        hcfg hp hcount hA hB hCanonicalA hCanonicalB hAIndex hBIndex
-        (by simpa [jMin, jMax] using hdot) hsum
-    _ = classicalDotPoly left right k jMax jMin :=
-      classicalDotNat_cast_eq_poly heap A B lenA lenB this._p.toNat k
-        jMax jMin sum left right hRepA hRepB hAIndex hBIndex hsum
-    _ = (left * right).coeff k := by
-      simpa [jMin, jMax] using classicalDotPoly_source_eq_coeff heap A B
-        lenA lenB k left right hApos hRepA hRepB
+  constructor
+  · calc
+      ((Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        acc.hi acc.mid acc.lo this._p this._ninv this._norm).toNat :
+          ZMod this._p.toNat) = (sum : ZMod this._p.toNat) :=
+        classicalDotReduced_cast this heap A B lenA lenB k jMax jMin acc sum
+          hcfg hp hcount hA hB hCanonicalA hCanonicalB hAIndex hBIndex
+          (by simpa [jMin, jMax] using hdot) hsum
+      _ = classicalDotPoly left right k jMax jMin :=
+        classicalDotNat_cast_eq_poly heap A B lenA lenB this._p.toNat k
+          jMax jMin sum left right hRepA hRepB hAIndex hBIndex hsum
+      _ = (left * right).coeff k := by
+        simpa [jMin, jMax] using classicalDotPoly_source_eq_coeff heap A B
+          lenA lenB k left right hApos hRepA hRepB
+  · rw [classicalDotReduced_toNat this heap A B lenA lenB k jMax jMin acc sum
+      hcfg hp hcount hA hB hCanonicalA hCanonicalB hAIndex hBIndex
+      (by simpa [jMin, jMax] using hdot) hsum]
+    exact Nat.mod_lt sum (by omega)
 
 /-- The generated schoolbook outer loop writes only `C[k..lenC)`.  This
 memory fact keeps both source buffers and already-produced coefficients tied
@@ -555,7 +565,7 @@ def ClassicalCoeffPrefix {p : Nat} (heap : RawHeap)
     (C : RawPtr UInt64) (upto : Nat) (poly : Polynomial (ZMod p)) : Prop :=
   ∀ i, i < upto → ∃ value : UInt64,
     heap.readU64 C i = .ok value ∧
-      (value.toNat : ZMod p) = poly.coeff i
+      (value.toNat : ZMod p) = poly.coeff i ∧ value.toNat < p
 
 theorem slicePolyRep_of_classicalCoeffPrefix {p : Nat}
     (heap : RawHeap) (C : RawPtr UInt64) (length : Nat)
@@ -569,7 +579,7 @@ theorem slicePolyRep_of_classicalCoeffPrefix {p : Nat}
   have heq : observed = poly := by
     ext i
     by_cases hi : i < length
-    · rcases hprefix i hi with ⟨value, hread, hcoeff⟩
+    · rcases hprefix i hi with ⟨value, hread, hcoeff, _⟩
       rcases slicePolyRep_coeff heap C length p observed hObserved i hi with
         ⟨observedValue, hObservedRead, hObservedCoeff⟩
       have hvalue : observedValue = value :=
@@ -580,6 +590,35 @@ theorem slicePolyRep_of_classicalCoeffPrefix {p : Nat}
         hzero i (by omega)]
   rw [heq] at hObserved
   exact hObserved
+
+theorem canonicalU64Prefix_of_classicalCoeffPrefix
+    (heap : RawHeap) (C : RawPtr UInt64) (length : Nat)
+    (modulus : UInt64) (poly : Polynomial (ZMod modulus.toNat))
+    (hprefix : ClassicalCoeffPrefix heap C length poly) :
+    CanonicalU64Prefix heap C length modulus := by
+  intro i value hi hread
+  rcases hprefix i hi with ⟨stored, hstored, _, hstoredLt⟩
+  have heq : value = stored := Except.ok.inj (hread.symm.trans hstored)
+  subst value
+  exact hstoredLt
+
+theorem normaliseU64_eq_length_of_classicalCoeffPrefix {p : Nat}
+    (heap : RawHeap) (C : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod p))
+    (hpos : 0 < length)
+    (hprefix : ClassicalCoeffPrefix heap C length poly)
+    (hlast : poly.coeff (length - 1) ≠ 0) :
+    heap.normaliseU64 C length = .ok length := by
+  cases length with
+  | zero => omega
+  | succ n =>
+    rcases hprefix n (by omega) with ⟨value, hread, hcoeff, _⟩
+    have hvalue : value ≠ 0 := by
+      intro hzero
+      subst value
+      apply hlast
+      simpa using hcoeff.symm
+    simp [RawHeap.normaliseU64, hread, hvalue]
 
 theorem mul_coeff_zero_of_slice_lengths {p : Nat}
     (heap : RawHeap) (A B : RawPtr UInt64) (lenA lenB degree : Nat)
@@ -600,21 +639,51 @@ theorem mul_coeff_zero_of_slice_lengths {p : Nat}
     rw [slicePolyRep_coeff_zero_of_length_le heap B lenB p right hRepB
       pair.2 hright, mul_zero]
 
+theorem mul_last_coeff_ne_zero_of_rawDense (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (heap : RawHeap) (A B : RawPtr UInt64) (lenA lenB : Nat)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hApos : 0 < lenA) (hBpos : 0 < lenB)
+    (hLeft : RawDensePolyRep this heap A lenA left)
+    (hRight : RawDensePolyRep this heap B lenB right) :
+    (left * right).coeff (lenA + lenB - 1 - 1) ≠ 0 := by
+  rcases hLeft with ⟨hA, hCanonicalA, hRepA, hNormA⟩
+  rcases hRight with ⟨hB, hCanonicalB, hRepB, hNormB⟩
+  have hleftLast := normaliseU64_poly_last_coeff_ne_zero heap A lenA
+    this._p.toNat lenA left hA hRepA hCanonicalA hNormA
+    (Nat.ne_of_gt hApos)
+  have hrightLast := normaliseU64_poly_last_coeff_ne_zero heap B lenB
+    this._p.toNat lenB right hB hRepB hCanonicalB hNormB
+    (Nat.ne_of_gt hBpos)
+  have hleftDegree := normaliseU64_poly_natDegree_eq heap A lenA
+    this._p.toNat lenA left hA hRepA hCanonicalA hNormA
+    (Nat.ne_of_gt hApos)
+  have hrightDegree := normaliseU64_poly_natDegree_eq heap B lenB
+    this._p.toNat lenB right hB hRepB hCanonicalB hNormB
+    (Nat.ne_of_gt hBpos)
+  have hcoeff := Polynomial.coeff_mul_add_eq_of_natDegree_le
+    (show left.natDegree ≤ lenA - 1 by omega)
+    (show right.natDegree ≤ lenB - 1 by omega)
+  rw [show lenA + lenB - 1 - 1 = (lenA - 1) + (lenB - 1) by omega,
+    hcoeff]
+  exact mul_ne_zero hleftLast hrightLast
+
 theorem classicalCoeffPrefix_succ_of_write {p : Nat}
     (before after : RawHeap) (C : RawPtr UInt64) (upto : Nat)
     (poly : Polynomial (ZMod p)) (value : UInt64)
     (hprefix : ClassicalCoeffPrefix before C upto poly)
     (hwrite : before.writeU64 C upto value = .ok after)
-    (hvalue : (value.toNat : ZMod p) = poly.coeff upto) :
+    (hvalue : (value.toNat : ZMod p) = poly.coeff upto)
+    (hvalueLt : value.toNat < p) :
     ClassicalCoeffPrefix after C (upto + 1) poly := by
   intro i hi
   by_cases heq : i = upto
   · subst i
     exact ⟨value, RawHeap.readU64_writeU64_same before after C upto value
-      hwrite, hvalue⟩
+      hwrite, hvalue, hvalueLt⟩
   · have hiOld : i < upto := by omega
-    rcases hprefix i hiOld with ⟨old, hread, hold⟩
-    refine ⟨old, ?_, hold⟩
+    rcases hprefix i hiOld with ⟨old, hread, hold, holdLt⟩
+    refine ⟨old, ?_, hold, holdLt⟩
     exact RawHeap.readU64_writeU64_ne before after C C upto i value old
       hwrite hread (Or.inr (by omega))
 
@@ -630,8 +699,8 @@ theorem classicalOuterLoop_preserves_coeff_prefix {p : Nat}
       .ok heap') :
     ClassicalCoeffPrefix heap' C k poly := by
   intro i hi
-  rcases hprefix i hi with ⟨old, hread, hold⟩
-  refine ⟨old, ?_, hold⟩
+  rcases hprefix i hi with ⟨old, hread, hold, holdLt⟩
+  refine ⟨old, ?_, hold, holdLt⟩
   apply classicalOuterLoop_preserves_outside this C A B C lenA lenB lenC
     k i heap heap' old hC hA hB hread
   · intro target hktarget _
@@ -676,12 +745,14 @@ theorem classicalOuterLoop_refines_coeff_prefix (this : DenseUPolyZp)
     simp only [jMin, jMax, hdot]
     let value := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
       acc.hi acc.mid acc.lo this._p this._ninv this._norm
-    have hvalue : (value.toNat : ZMod this._p.toNat) =
-        (left * right).coeff k := by
+    have hvalueResult : (value.toNat : ZMod this._p.toNat) =
+          (left * right).coeff k ∧ value.toNat < this._p.toNat := by
       dsimp [value]
       exact classicalReduced_source_eq_coeff this heap A B lenA lenB lenC k
         left right acc hcfg hp hApos hBpos hLenAWord hlenC hk hA hB
         hCanonicalA hCanonicalB hRepA hRepB (by simpa [jMin, jMax] using hdot)
+    have hvalue := hvalueResult.1
+    have hvalueLt := hvalueResult.2
     rcases heap.writeU64_of_valid C lenC k value hC hk with ⟨heap1, hw⟩
     simp only [value, hw]
     have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 C k value hw
@@ -705,7 +776,7 @@ theorem classicalOuterLoop_refines_coeff_prefix (this : DenseUPolyZp)
     have hRepB1 := slicePolyRep_of_same_prefix heap heap1 B lenB
       this._p.toNat right hB hB1 hsameB hRepB
     have hprefix1 := classicalCoeffPrefix_succ_of_write heap heap1 C k
-      (left * right) value hprefix hw hvalue
+      (left * right) value hprefix hw hvalue hvalueLt
     rcases classicalOuterLoop_refines_coeff_prefix this C A B lenA lenB lenC
       (k + 1) heap1 left right hcfg hp hApos hBpos hLenAWord hlenC hC1
       hA1 hB1 hCA hCB hCanonicalA1 hCanonicalB1 hRepA1 hRepB1 hprefix1 with
@@ -813,6 +884,46 @@ theorem classicalMul_refines_slice (this : DenseUPolyZp)
       exact mul_coeff_zero_of_slice_lengths heap A B lenA lenB degree
         left right hApos hBpos hRepA hRepB hdegree)
   refine ⟨heap', ?_, hlayout, hslice⟩
+  simp [dense_upoly_zp__classical_mul_ir, Nat.ne_of_gt hApos,
+    Nat.ne_of_gt hBpos, hrun]
+
+theorem classicalMul_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
+    (heap : RawHeap) (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hApos : 0 < lenA) (hBpos : 0 < lenB)
+    (hLenAWord : lenA < limbBase)
+    (hC : heap.ValidU64Slice C (lenA + lenB - 1))
+    (hCA : C.region ≠ A.region) (hCB : C.region ≠ B.region)
+    (hLeft : RawDensePolyRep this heap A lenA left)
+    (hRight : RawDensePolyRep this heap B lenB right) :
+    ∃ heap', dense_upoly_zp__classical_mul_ir this C A lenA B lenB heap =
+        .ok heap' ∧ RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' C (lenA + lenB - 1) (left * right) := by
+  have hempty : ClassicalCoeffPrefix heap C 0 (left * right) := by
+    intro _ hi
+    omega
+  rcases classicalOuterLoop_refines_coeff_prefix this C A B lenA lenB
+      (lenA + lenB - 1) 0 heap left right hcfg hp hApos hBpos hLenAWord
+      rfl hC hLeft.1 hRight.1 hCA hCB hLeft.2.1 hRight.2.1
+      hLeft.2.2.1 hRight.2.2.1 hempty with
+    ⟨heap', hrun, hlayout, hprefix⟩
+  have hvalid' := (hlayout C (lenA + lenB - 1)).mp hC
+  have hcanonical' := canonicalU64Prefix_of_classicalCoeffPrefix heap' C
+    (lenA + lenB - 1) this._p (left * right) hprefix
+  have hslice' := slicePolyRep_of_classicalCoeffPrefix heap' C
+    (lenA + lenB - 1) (left * right) hvalid' hprefix
+    (by
+      intro degree hdegree
+      exact mul_coeff_zero_of_slice_lengths heap A B lenA lenB degree
+        left right hApos hBpos hLeft.2.2.1 hRight.2.2.1 hdegree)
+  have hlast := mul_last_coeff_ne_zero_of_rawDense this heap A B lenA lenB
+    left right hApos hBpos hLeft hRight
+  have hnorm' := normaliseU64_eq_length_of_classicalCoeffPrefix heap' C
+    (lenA + lenB - 1) (left * right) (by omega) hprefix hlast
+  refine ⟨heap', ?_, hlayout, hvalid', hcanonical', hslice', hnorm'⟩
   simp [dense_upoly_zp__classical_mul_ir, Nat.ne_of_gt hApos,
     Nat.ne_of_gt hBpos, hrun]
 

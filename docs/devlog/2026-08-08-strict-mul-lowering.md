@@ -48,15 +48,23 @@
   表示逐系数识别缓冲区内内容，再用卷积 antidiagonal 与 A/B 声明长度证明
   `lenA+lenB-1` 之外的所有乘积系数为零。由此得到 `_classical_mul` 的完整
   raw slice 到 L2 乘积精化定理。
+- 强化输出前缀不变式，使每个实际 `_lll_mod_preinv` 结果同时携带 `< p`
+  的规范剩余证明，从而得到完整输出 `CanonicalU64Prefix`。
+- 在素数模数下，从输入 `RawDensePolyRep` 的真实 normalization 结果推出
+  A/B 末系数非零；用卷积最高项公式证明乘积末系数非零，再直接展开实际
+  `normaliseU64` 的末 cell 分支，证明输出长度保持 `lenA+lenB-1`。
+- 最终定理 `classicalMul_refines` 已将真实 `_classical_mul` 从两个规范 raw
+  输入严格精化为 `RawDensePolyRep (left * right)`，包括终止执行、布局、
+  规范剩余、完整 L2 表示和规范长度。
 
 ## 当前边界
 
 本步只完成 schoolbook 执行层。Karatsuba 与 `_mul` 的源码身份已经锁定，
 但其零填充、scratch 布局、三次递归乘法、交叉项减法和组装尚未 lowering，
 因此不能称为 `_mul` 精化完成。下一步先证明 schoolbook 的终止执行、点积
-内容和完整输出表示，再进入 Karatsuba 的良基递归。当前实际 raw 点积、模
-归约、L2 区间和及标准乘法卷积系数已全部连通；还需要沿外层 raw writes
-证明每个输出 cell 表示该系数，并由输入首项非零证明乘积长度规范化。
+内容和完整输出表示已闭合。下一阶段进入 Karatsuba 的良基递归，覆盖源码的
+零填充、scratch 布局、三次递归乘法、交叉项减法与最终组装；在它完成前仍
+不能称为 `_mul` 精化完成。
 
 ## 涉及文件
 

@@ -241,6 +241,61 @@ theorem classicalDotLoop_exact_zero (heap : RawHeap) (A B : RawPtr UInt64)
     simpa [word3Value] using hmod
   exact hmod'.eq_of_lt_of_lt (word3Value_lt result) hsumLt
 
+theorem classicalDotReduced_toNat (this : DenseUPolyZp)
+    (heap : RawHeap) (A B : RawPtr UInt64)
+    (lenA lenB k stop j : Nat) (result : Word3) (sum : Nat)
+    (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hcount : stop + 1 - j < limbBase)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hCanonicalA : CanonicalU64Prefix heap A lenA this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B lenB this._p)
+    (hAIndex : ∀ t, j ≤ t → t ≤ stop → t < lenA)
+    (hBIndex : ∀ t, j ≤ t → t ≤ stop → k - t < lenB)
+    (hrun : classicalDotLoop heap A B k stop j
+      { lo := 0, mid := 0, hi := 0 } = .ok result)
+    (hsum : classicalDotNat heap A B k stop j = .ok sum) :
+    (Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      result.hi result.mid result.lo this._p this._ninv this._norm).toNat =
+      sum % this._p.toNat := by
+  have hexact := classicalDotLoop_exact_zero heap A B lenA lenB k stop j
+    this._p result sum hp hcount hA hB hCanonicalA hCanonicalB
+    hAIndex hBIndex hrun hsum
+  have hsumBound := classicalDotNat_bound heap A B lenA lenB k stop j
+    this._p sum hA hB hCanonicalA hCanonicalB hAIndex hBIndex hsum
+  have hlazy := lazyAccumulation_word3_budget this._p (stop + 1 - j) 0
+    hp hcount (by omega)
+  have hvalue : word3Value result < this._p.toNat * limbBase ^ 2 := by
+    rw [hexact]
+    exact lt_of_le_of_lt hsumBound (by simpa using hlazy)
+  have hhi : result.hi.toNat < this._p.toNat :=
+    word3_hi_lt_of_value_lt result this._p hvalue
+  rw [lll_mod_preinv_ir_correct_of_configured this result.hi result.mid
+    result.lo hcfg hhi, hexact]
+
+theorem classicalDotReduced_cast (this : DenseUPolyZp)
+    (heap : RawHeap) (A B : RawPtr UInt64)
+    (lenA lenB k stop j : Nat) (result : Word3) (sum : Nat)
+    (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hcount : stop + 1 - j < limbBase)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hCanonicalA : CanonicalU64Prefix heap A lenA this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B lenB this._p)
+    (hAIndex : ∀ t, j ≤ t → t ≤ stop → t < lenA)
+    (hBIndex : ∀ t, j ≤ t → t ≤ stop → k - t < lenB)
+    (hrun : classicalDotLoop heap A B k stop j
+      { lo := 0, mid := 0, hi := 0 } = .ok result)
+    (hsum : classicalDotNat heap A B k stop j = .ok sum) :
+    ((Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      result.hi result.mid result.lo this._p this._ninv this._norm).toNat :
+        ZMod this._p.toNat) = (sum : ZMod this._p.toNat) := by
+  rw [classicalDotReduced_toNat this heap A B lenA lenB k stop j result sum
+    hcfg hp hcount hA hB hCanonicalA hCanonicalB hAIndex hBIndex hrun hsum,
+    ZMod.natCast_mod]
+
 theorem classical_index_bounds (lenA lenB k j : Nat)
     (hApos : 0 < lenA) (hBpos : 0 < lenB)
     (hk : k < lenA + lenB - 1)

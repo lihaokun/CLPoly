@@ -61,6 +61,8 @@ def main() -> None:
                      "classicalDotNat_bound", "classicalDotLoop_modEq",
                      "classicalDotLoop_raw_sum",
                      "classicalDotLoop_exact_zero",
+                     "classicalDotReduced_toNat",
+                     "classicalDotReduced_cast",
                      "classicalOuterLoop_ok", "classicalMul_ok",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:

@@ -2097,7 +2097,7 @@ theorem hgcdRecursiveEarlyReturn_refines (this : DenseUPolyZp)
 record also exposes the exact `k`, `c0`, and `d0` passed to the second HGCD
 call, while quotient and remainder come from the same raw execution. -/
 theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
-    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m : Nat)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m lenA : Nat)
     (W3 : RawPtr Word3) (heap : RawHeap)
     (dividend divisor : Polynomial (ZMod this._p.toNat))
     (hlenB : 0 < lenB2)
@@ -2113,7 +2113,8 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
     (hDW : d.region ≠ W3.region) (hDQ : d.region ≠ q.region)
     (hDB : d.region ≠ b2.region)
     (hcfg : DensePreinvConfigured this)
-    (hprime : Nat.Prime this._p.toNat) :
+    (hprime : Nat.Prime this._p.toNat)
+    (hlenA : 0 < lenA) (hlenB2Bound : lenB2 ≤ lenA) :
     ∃ result quotient remainder,
       hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
         .ok result ∧
@@ -2126,7 +2127,8 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
       RawHeap.SameLayout heap result.heap ∧
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < divisor.natDegree) ∧
-      result.lenD < lenB2 ∧ result.k = 2 * m - lenB2 + 1 ∧
+      result.lenD < lenB2 ∧ result.lenC0 < lenA ∧
+      result.k = 2 * m - lenB2 + 1 ∧
       result.c0 = b2.add result.k ∧
       result.lenC0 = (if lenB2 ≥ result.k then lenB2 - result.k else 0) ∧
       result.d0 = d.add result.k ∧
@@ -2150,10 +2152,14 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
     d0 := d.add (2 * m - lenB2 + 1)
     lenD0 := if lenD ≥ 2 * m - lenB2 + 1 then
       lenD - (2 * m - lenB2 + 1) else 0 }
-  refine ⟨result, quotient, remainder, ?_, hQRep, hQCanonical, hQNorm,
+  have hmiddle : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3
+      heap = .ok result := by
+    simp [hgcdRecursiveMiddle, hdiv, result]
+  have hdecrease := hgcdRecursiveMiddle_lenC0_lt this q d a2 b2 lenA2
+    lenB2 m lenA W3 heap result hlenA hlenB2Bound hmiddle
+  refine ⟨result, quotient, remainder, hmiddle, hQRep, hQCanonical, hQNorm,
     hDRep, hDCanonical, hDNorm, hlayout, hidentity, hdegree, hlt,
-    rfl, rfl, rfl, rfl, rfl⟩
-  simp [hgcdRecursiveMiddle, hdiv, result]
+    hdecrease, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/

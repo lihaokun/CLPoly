@@ -206,6 +206,8 @@ def main() -> None:
         "HgcdRecursiveMiddleResult",
         "hgcdRecursiveMiddle",
         "hgcdRecursiveMiddle_layout",
+        "hgcdRecursiveMiddle_lenC0_lt",
+        "hgcdRecursiveMiddle_lenD0_lt_lenC0",
         "hgcdRecursiveMiddle_refines",
         "normalize_gcd_eq_of_hgcd_transform",
         "HgcdTransform",

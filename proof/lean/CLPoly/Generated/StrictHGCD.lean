@@ -801,6 +801,56 @@ theorem hgcdRecursiveMiddle_layout (this : DenseUPolyZp)
     subst result
     simp [hdiv]
 
+/-- The second recursive call also decreases the enclosing `len_a` measure.
+The source always chooses `k = 2*m-len_b2+1`, hence a nonempty `c0` is a
+strict suffix of `b2`; the reconstruction bound then places it below `len_a`. -/
+theorem hgcdRecursiveMiddle_lenC0_lt (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m lenA : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (result : HgcdRecursiveMiddleResult)
+    (hlenA : 0 < lenA) (hlenB2 : lenB2 ≤ lenA)
+    (hrun : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
+      .ok result) :
+    result.lenC0 < lenA := by
+  have hlayout := hgcdRecursiveMiddle_layout this q d a2 b2 lenA2 lenB2 m
+    W3 heap result hrun
+  rw [hlayout.2.2.2.1]
+  split
+  next hk =>
+    have hkPos : 0 < result.k := by
+      rw [hlayout.2.1]
+      omega
+    omega
+  next hk =>
+    omega
+
+/-- Shifting divisor and remainder by the same source offset preserves their
+strict length order whenever the divisor suffix is nonempty.  This is the
+ordering required by the second recursive HGCD branch. -/
+theorem hgcdRecursiveMiddle_lenD0_lt_lenC0 (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (result : HgcdRecursiveMiddleResult)
+    (hlenD : result.lenD < lenB2) (hlenC0 : 0 < result.lenC0)
+    (hrun : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
+      .ok result) :
+    result.lenD0 < result.lenC0 := by
+  have hlayout := hgcdRecursiveMiddle_layout this q d a2 b2 lenA2 lenB2 m
+    W3 heap result hrun
+  have hk := hlayout.2.1
+  have hc := hlayout.2.2.2.1
+  have hd := hlayout.2.2.2.2.2
+  rw [hk] at hc hd
+  rw [hc] at hlenC0
+  rw [hd, hc]
+  split at hlenC0
+  next hkB =>
+    split
+    next hkD => omega
+    next hkD => omega
+  next hkB =>
+    simp at hlenC0
+
 /-- Every successful suffix of the real restore loop returns a valid matrix
 and leaves the complete length descriptor byte-for-byte unchanged. -/
 theorem hgcdMatRestoreLoop_preserves_valid_len

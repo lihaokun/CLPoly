@@ -95,6 +95,12 @@ false 时证明返回矩阵就是原 M。返回的 `lenA/lenB/sgn` 也精确对�
 canonical/normalized 表示和第二次 HGCD 输入布局。这一步没有把 divrem
 替换为 EuclideanDomain 的规格计算。
 
+第二次 HGCD 调用的良基算术也已闭合：在重构输出长度不超过外层 `lenA`
+的物理界下，源码 `k` 使 `lenC0 < lenA`；若 `c0` 非空，则同一偏移作用于
+divisor/remainder，并由真实 divrem 的 `lenD < lenB2` 推出
+`lenD0 < lenC0`。中间精化定理现直接返回第一条下降事实，供最终
+`_hgcd_recursive` 的 `termination_by lenA` 使用。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

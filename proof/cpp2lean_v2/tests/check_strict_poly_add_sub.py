@@ -74,12 +74,13 @@ def main() -> None:
                      "addCommonLoop_preserves_input_tail",
                      "subCommonLoop_preserves_input_tail",
                      "addLeftLongTail", "addRightLongTail",
-                     "subLeftLongTail",
+                     "subLeftLongTail", "subRightLongTail",
                      "polyAdd_equalLength_refines",
                      "polySub_equalLength_refines",
                      "polyAdd_leftLong_refines",
                      "polyAdd_rightLong_refines", "polyAdd_refines",
                      "polySub_leftLong_refines",
+                     "polySub_rightLong_refines", "polySub_refines",
                      "RawDensePolyRep",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:

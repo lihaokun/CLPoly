@@ -44,6 +44,10 @@
 - 对减法 `lenA > lenB` 单独闭合跳过/复制 A 尾部的真实状态，再与共同前缀
   模减、高位零系数和 normalization 合并，最终建立
   `RawDensePolyRep (left - right)`。
+- 闭合 `lenB > lenA` 的实际模负长尾：循环保持低位结果，并把初始 B 高位
+  逐项变为规范模负值，最终同样建立 `RawDensePolyRep (left - right)`。
+- 合并等长和两个不等长分支，得到无长度限制的 `polySub_refines`。至此
+  HGCD 所需的原始 `_poly_add/_poly_sub` 均有完整 L1→L2 表示定理。
 
 ## 当前边界
 

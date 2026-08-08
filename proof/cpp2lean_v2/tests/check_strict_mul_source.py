@@ -49,6 +49,8 @@ def main() -> None:
         raise SystemExit(f"strict multiplication contains forbidden constructs: {found}")
     for fragment in ("classicalDotLoop", "classicalOuterLoop",
                      "dense_upoly_zp__classical_mul_ir", "RawExec",
+                     "karAddHalvesLoop", "karSubLoop", "karAssembleLoop",
+                     "dense_upoly_zp__kar_mul_ir", "copyU64",
                      "readU64", "writeU64", "termination_by"):
         if fragment not in source:
             raise SystemExit(f"strict multiplication drift: missing {fragment}")

@@ -56,15 +56,19 @@
 - 最终定理 `classicalMul_refines` 已将真实 `_classical_mul` 从两个规范 raw
   输入严格精化为 `RawDensePolyRep (left * right)`，包括终止执行、布局、
   规范剩余、完整 L2 表示和规范长度。
+- 新增 `_kar_mul` 的完整 RawHeap 生成层：按源码顺序执行半区模加、奇数
+  尾项复制、P0/P1/P2 三次递归、两轮原地模减、P0 `copyU64`、间隙清零和
+  交叉项原地模加。递归以 `n` 为良基度量，并从 `n≥16` 证明 `n/2` 与
+  `n-n/2` 都严格小于 `n`；没有引入执行次数参数。
 
 ## 当前边界
 
 本步只完成 schoolbook 执行层。Karatsuba 与 `_mul` 的源码身份已经锁定，
 但其零填充、scratch 布局、三次递归乘法、交叉项减法和组装尚未 lowering，
 因此不能称为 `_mul` 精化完成。下一步先证明 schoolbook 的终止执行、点积
-内容和完整输出表示已闭合。下一阶段进入 Karatsuba 的良基递归，覆盖源码的
-零填充、scratch 布局、三次递归乘法、交叉项减法与最终组装；在它完成前仍
-不能称为 `_mul` 精化完成。
+内容和完整输出表示已闭合。Karatsuba 的 raw 生成执行和良基递归现已落下；
+下一步证明各 helper 的终止/帧性质、scratch 分区不相交性及 Karatsuba 恒等式。
+在这些语义精化和 `_mul` 分派完成前仍不能称为 `_mul` 精化完成。
 
 ## 涉及文件
 

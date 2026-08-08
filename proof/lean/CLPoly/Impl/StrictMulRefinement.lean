@@ -1916,6 +1916,70 @@ theorem karAssembleLoop_refines_slice (this : DenseUPolyZp)
       (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalC degree base hd hbase)
       (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalP1 k cross hk hcross)
 
+/-- Lift the generated middle-range assembly to the complete output slice by
+framing and rejoining the untouched high tail. -/
+theorem karAssembleLoop_refines_full (this : DenseUPolyZp)
+    (C sP1 : RawPtr UInt64) (m count tailLength : Nat)
+    (heap heap' : RawHeap)
+    (basePoly crossPoly : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hC : heap.ValidU64Slice C ((m + count) + tailLength))
+    (hP1 : heap.ValidU64Slice sP1 count)
+    (hCP1 : U64SlicesDisjoint C (m + count) sP1 count)
+    (hCanonicalC : CanonicalU64Prefix heap C ((m + count) + tailLength)
+      this._p)
+    (hCanonicalP1 : CanonicalU64Prefix heap sP1 count this._p)
+    (hRepC : SlicePolyRep heap C ((m + count) + tailLength)
+      this._p.toNat basePoly)
+    (hRepP1 : SlicePolyRep heap sP1 count this._p.toNat crossPoly)
+    (hrun : karAssembleLoop this C sP1 m count 0 heap = .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' C ((m + count) + tailLength) this._p.toNat
+        (basePoly + Polynomial.X ^ m * crossPoly) ∧
+      CanonicalU64Prefix heap' C ((m + count) + tailLength) this._p := by
+  rcases splitSlicePolyRepCanonical heap C (m + count) tailLength
+      this._p.toNat basePoly this._p hC hRepC hCanonicalC with
+    ⟨lowPart, tail, hRepLow, hRepTail, hCanonicalLow, hCanonicalTail,
+      hsplit⟩
+  have hCPrefix := heap.validU64Slice_mono C ((m + count) + tailLength)
+    (m + count) hC (by omega)
+  rcases karAssembleLoop_refines_slice this C sP1 m count heap heap'
+      lowPart crossPoly hp hCPrefix hP1 hCP1 hCanonicalLow hCanonicalP1
+      hRepLow hRepP1 hrun with
+    ⟨hlayout, hRepLow', hCanonicalLow'⟩
+  have hTail := heap.validU64Slice_add C ((m + count) + tailLength)
+    (m + count) tailLength hC (by omega)
+  have hTail' := (hlayout (C.add (m + count)) tailLength).mp hTail
+  have hPrefixTail := u64SlicesDisjoint_adjacent C (m + count) tailLength
+  have hsameTail := karAssembleLoop_preserves_prefix this C sP1
+    (C.add (m + count)) m count tailLength heap heap' hCPrefix hP1
+    hPrefixTail hrun
+  have hRepTail' := slicePolyRep_of_same_prefix heap heap'
+    (C.add (m + count)) tailLength this._p.toNat tail hTail hTail'
+    hsameTail hRepTail
+  have hCanonicalTail' : CanonicalU64Prefix heap' (C.add (m + count))
+      tailLength this._p := by
+    intro k value hk hread'
+    rcases heap.readU64_of_valid (C.add (m + count)) tailLength k hTail hk with
+      ⟨old, hread⟩
+    have hvalue : value = old :=
+      Except.ok.inj (hread'.symm.trans (hsameTail k old hk hread))
+    subst value
+    exact hCanonicalTail k old hk hread
+  have hC' := (hlayout C ((m + count) + tailLength)).mp hC
+  have hRepJoined := slicePolyRep_join heap' C (m + count) tailLength
+    this._p.toNat (lowPart + Polynomial.X ^ m * crossPoly) tail hC'
+    hRepLow' hRepTail'
+  have hresult : lowPart + Polynomial.X ^ m * crossPoly +
+      Polynomial.X ^ (m + count) * tail =
+      basePoly + Polynomial.X ^ m * crossPoly := by
+    rw [hsplit]
+    ring
+  rw [hresult] at hRepJoined
+  exact ⟨hlayout, hRepJoined,
+    canonicalU64Prefix_join heap' C (m + count) tailLength this._p hC'
+      hCanonicalLow' hCanonicalTail'⟩
+
 theorem karPrepareHalves_preserves_outside (this : DenseUPolyZp)
     (A B t1 t2 guard : RawPtr UInt64) (m h guardLen : Nat)
     (heap heap' : RawHeap)

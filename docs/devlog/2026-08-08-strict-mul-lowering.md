@@ -253,6 +253,11 @@
   `karSubLoop_refines_slice`，用循环写地址 frame 保持尾段，然后重新拼接并
   证明结果精确为整个 `P1 - P0`。canonical 性也分段保持后拼接，
   没有把只执行 `2*m-1` 次的生成循环误当作全长减法。
+- 以同样的分割—frame—拼接方式闭合最终 Karatsuba 中段组装：
+  真实 `karAssembleLoop` 只更新 `C[m .. m+count)`，证明显式保持
+  `C[m+count ..]` 的高位 P2 尾段，再将更新前缀与该尾段拼接，
+  得到整个输出 slice 精确表示 `basePoly + X^m*crossPoly`，并保持全长
+  canonical 条件。
 
 ## 当前边界
 

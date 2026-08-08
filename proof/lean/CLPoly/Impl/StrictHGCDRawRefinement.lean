@@ -4544,6 +4544,167 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
     physical initial final left right (identityEntries this._p.toNat)
     hInitialM hInitialInvariant hloop
 
+/-- Purely physical obligations needed after one concrete iterator result to
+stabilize its matrix and normalize its two output pointers.  No polynomial
+or expected L2 result occurs in this contract. -/
+structure HgcdRecursiveIterFinalizeWorkspace
+    (original : HgcdMat) (hOriginal : original.Valid)
+    (a3 b3 stage : RawPtr UInt64)
+    (iter : HgcdIterState) (hIter : iter.matrix.Valid)
+    (stable : HgcdMatRestoreResult) (hStable : stable.matrix.Valid) : Prop where
+  stabilize : HgcdMatStabilizeWorkspace iter.heap original iter.matrix
+    hOriginal hIter stage
+  stageA : stage.region ≠ iter.A.region
+  stageB : stage.region ≠ iter.B.region
+  originalA : ∀ j : Fin 4,
+    (hgcdMatPtr original hOriginal j).region ≠ iter.A.region
+  originalB : ∀ j : Fin 4,
+    (hgcdMatPtr original hOriginal j).region ≠ iter.B.region
+  validA3 : iter.heap.ValidU64Slice a3 iter.lenA
+  validB3 : iter.heap.ValidU64Slice b3 iter.lenB
+  pAEq : (iter.A == a3) = true → iter.A = a3
+  pBEq : (iter.B == b3) = true → iter.B = b3
+  b3PB : U64SlicesDisjoint b3 iter.lenB iter.B iter.lenB
+  b3PA : U64SlicesDisjoint b3 iter.lenB iter.A iter.lenA
+  a3PA : U64SlicesDisjoint a3 iter.lenA iter.A iter.lenA
+  a3PB : U64SlicesDisjoint a3 iter.lenA iter.B iter.lenB
+  a3B3 : U64SlicesDisjoint a3 iter.lenA b3 iter.lenB
+  a3Matrix : ∀ j : Fin 4, U64SlicesDisjoint a3 iter.lenA
+    (hgcdMatPtr stable.matrix hStable j) (hgcdMatLen stable.matrix hStable j)
+  b3Matrix : ∀ j : Fin 4, U64SlicesDisjoint b3 iter.lenB
+    (hgcdMatPtr stable.matrix hStable j) (hgcdMatLen stable.matrix hStable j)
+
+/-- Separation-logic provider for the exact successful iterator and
+stabilization executions exposed by `hgcdRecursiveIterBranch_exec`. -/
+def HgcdRecursiveIterFinalizeWorkspaceProvider (this : DenseUPolyZp)
+    (original : HgcdMat) (hOriginal : original.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage : RawPtr UInt64) (heap : RawHeap) : Prop :=
+  ∀ (iter : HgcdIterState) (hIter : iter.matrix.Valid)
+    (stable : HgcdMatRestoreResult) (hStable : stable.matrix.Valid),
+    dense_upoly_zp__hgcd_iter_ir this original a3 b3 T0 T1 0 inputA
+        lenInputA inputB lenInputB Q W3 scratch heap = .ok iter →
+    hgcdMatStabilize original iter.matrix hOriginal hIter stage iter.heap =
+        .ok stable →
+    HgcdRecursiveIterFinalizeWorkspace original hOriginal a3 b3 stage iter
+      hIter stable hStable
+
+/-- End-to-end refinement of an actual recursive-HGCD iterator arm.  The
+proof consumes exactly the generated iterator, stabilization, and
+alias-sensitive store executions and returns their raw polynomial meaning,
+matrix transform, signed determinant, GCD invariant, and stopping bound. -/
+theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (original : HgcdMat) (hOriginal : original.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage : RawPtr UInt64) (heap : RawHeap)
+    (result : HgcdRecursiveIterBranchResult)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (loopPhysical : HgcdLoopWorkspaceProvider this (lenInputA / 2) Q W3
+      scratch)
+    (finalizePhysical : HgcdRecursiveIterFinalizeWorkspaceProvider this
+      original hOriginal a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1
+      scratch stage heap)
+    (h0 : heap.ValidU64Slice
+      (hgcdMatPtr original hOriginal (0 : Fin 4)) 1)
+    (h3 : heap.ValidU64Slice
+      (hgcdMatPtr original hOriginal (3 : Fin 4)) 1)
+    (h03 : U64SlicesDisjoint
+      (hgcdMatPtr original hOriginal (0 : Fin 4)) 1
+      (hgcdMatPtr original hOriginal (3 : Fin 4)) 1)
+    (hA3 : heap.ValidU64Slice a3 lenInputA)
+    (hB3 : heap.ValidU64Slice b3 lenInputB)
+    (hAInput : U64SlicesDisjoint a3 lenInputA inputA lenInputA)
+    (hBInput : U64SlicesDisjoint b3 lenInputB inputB lenInputB)
+    (hAInputB : U64SlicesDisjoint a3 lenInputA inputB lenInputB)
+    (hB3A3 : U64SlicesDisjoint b3 lenInputB a3 lenInputA)
+    (h0A : U64SlicesDisjoint
+      (hgcdMatPtr original hOriginal (0 : Fin 4)) 1 inputA lenInputA)
+    (h3A : U64SlicesDisjoint
+      (hgcdMatPtr original hOriginal (3 : Fin 4)) 1 inputA lenInputA)
+    (h0B : U64SlicesDisjoint
+      (hgcdMatPtr original hOriginal (0 : Fin 4)) 1 inputB lenInputB)
+    (h3B : U64SlicesDisjoint
+      (hgcdMatPtr original hOriginal (3 : Fin 4)) 1 inputB lenInputB)
+    (hA3Matrix : ∀ i : Fin 4, U64SlicesDisjoint a3 lenInputA
+      (hgcdMatPtr original hOriginal i) (identityEntryLen i))
+    (hB3Matrix : ∀ i : Fin 4, U64SlicesDisjoint b3 lenInputB
+      (hgcdMatPtr original hOriginal i) (identityEntryLen i))
+    (hMatrixValid : ∀ i : Fin 4, heap.ValidU64Slice
+      (hgcdMatPtr original hOriginal i) (identityEntryLen i))
+    (hLeft : RawDensePolyRep this heap inputA lenInputA left)
+    (hRight : RawDensePolyRep this heap inputB lenInputB right)
+    (hrun : hgcdRecursiveIterBranch this original hOriginal a3 b3 inputA
+      inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap = .ok result) :
+    ∃ finalA finalB finalEntries hResultM,
+      HgcdMatRawDenseRep this result.heap result.matrix finalEntries hResultM ∧
+      RawDensePolyRep this result.heap a3 result.lenA finalA ∧
+      RawDensePolyRep this result.heap b3 result.lenB finalB ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right finalA finalB
+        (finalEntries 0) (finalEntries 1) (finalEntries 2) (finalEntries 3) ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet result.sgn
+        (finalEntries 0) (finalEntries 1) (finalEntries 2) (finalEntries 3) ∧
+      normalize (EuclideanDomain.gcd left right) =
+        normalize (EuclideanDomain.gcd finalA finalB) ∧
+      result.lenB < lenInputA / 2 + 1 := by
+  rcases hgcdRecursiveIterBranch_exec this original hOriginal a3 b3 inputA
+      inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap result hrun with
+    ⟨iter, hIter, stable, hiter, hstable, hstore, hResultMatrix,
+      hResultLenA, hResultLenB, hResultSgn⟩
+  rcases hgcdIter_refines this original a3 b3 T0 T1 0 inputA lenInputA
+      inputB lenInputB Q W3 scratch heap iter left right hOriginal hcfg hp
+      loopPhysical h0 h3 h03 hA3 hB3 hAInput hBInput hAInputB hB3A3 h0A
+      h3A h0B h3B hA3Matrix hB3Matrix hMatrixValid hLeft hRight hiter with
+    ⟨finalA, finalB, finalEntries, hFinalIter,
+      hInvariant, hGcd, hStop⟩
+  have hStableValid : stable.matrix.Valid :=
+    (hgcdMatStabilize_preserves_descriptors original iter.matrix hOriginal
+      hIter stage iter.heap stable hstable).1
+  have hFinalize := finalizePhysical iter hIter stable hStableValid hiter hstable
+  rcases hgcdMatStabilize_refines this original iter.matrix hOriginal hIter
+      stage finalEntries iter.heap hFinalize.stabilize
+      hInvariant.matrixRep with
+    ⟨semanticStable, hSemanticStable, hSemanticValid, hStableMatrixRep⟩
+  have hStableEq : semanticStable = stable :=
+    Except.ok.inj (hSemanticStable.symm.trans hstable)
+  subst semanticStable
+  have hAFrame := hgcdMatStabilize_preserves_rawDenseRep this original
+    iter.matrix hOriginal hIter stage finalEntries iter.heap
+    hFinalize.stabilize hInvariant.matrixRep iter.A iter.lenA finalA
+    hFinalize.stageA hFinalize.originalA hInvariant.aRep stable hstable
+  have hBFrame := hgcdMatStabilize_preserves_rawDenseRep this original
+    iter.matrix hOriginal hIter stage finalEntries iter.heap
+    hFinalize.stabilize hInvariant.matrixRep iter.B iter.lenB finalB
+    hFinalize.stageB hFinalize.originalB hInvariant.bRep stable hstable
+  have hA3Stable : stable.heap.ValidU64Slice a3 iter.lenA :=
+    (hAFrame.1 a3 iter.lenA).mp hFinalize.validA3
+  have hB3Stable : stable.heap.ValidU64Slice b3 iter.lenB :=
+    (hBFrame.1 b3 iter.lenB).mp hFinalize.validB3
+  rcases hgcdRecursiveStoreIterOutputs_refines this a3 b3 iter.A iter.B
+      iter.lenA iter.lenB finalA finalB stable.heap hFinalize.pAEq
+      hFinalize.pBEq hA3Stable hB3Stable hAFrame.2 hBFrame.2
+      hFinalize.b3PB hFinalize.b3PA hFinalize.a3PA hFinalize.a3PB
+      hFinalize.a3B3 with
+    ⟨semanticHeap, hSemanticStore, hFinalARep, hFinalBRep⟩
+  have hHeapEq : semanticHeap = result.heap :=
+    Except.ok.inj (hSemanticStore.symm.trans hstore)
+  subst semanticHeap
+  have hMatrixAfter := hgcdRecursiveStoreIterOutputs_preserves_matrix this
+    a3 b3 iter.A iter.B iter.lenA iter.lenB stable.heap result.heap
+    stable.matrix finalEntries hSemanticValid hA3Stable hB3Stable
+    hAFrame.2.1 hBFrame.2.1 hFinalize.a3Matrix hFinalize.b3Matrix
+    hStableMatrixRep hstore
+  have hResultValid : result.matrix.Valid := by
+    rw [hResultMatrix]
+    exact hSemanticValid
+  refine ⟨finalA, finalB, finalEntries, hResultValid, ?_⟩
+  simpa only [hResultMatrix, hResultLenA, hResultLenB, hResultSgn] using
+    ⟨hMatrixAfter.2, hFinalARep, hFinalBRep, hInvariant.transform,
+      hInvariant.signedDet, hGcd, hStop⟩
+
 /-- The generated recursive-HGCD base helper with matrix computation enabled
 is exactly the already-refined iterator initialization prefix, modulo its
 smaller return record. -/

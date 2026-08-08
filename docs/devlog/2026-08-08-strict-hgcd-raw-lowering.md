@@ -138,3 +138,9 @@ descriptor 有效性链：`_mat_one`、每次 `_mat_row_update`、良基
 保持任意 `RawDensePolyRep`，并组合得到初末 heap 的 `SameLayout`。因此递归
 iterator 产生的 A/B 可穿过稳定化进入最终输出复制，无需把其 L2 内容作为
 workspace 字段或重新计算。
+
+递归 iterator arm 已端到端闭合：同一个成功的生成执行被强制分解为真实
+`_hgcd_iter`、真实矩阵稳定化和真实别名敏感输出复制；组合定理返回最终
+`a3/b3` raw 表示、稳定矩阵四项 raw 表示、输入输出线性变换、与源码 `sgn`
+同步的行列式、GCD 不变式以及 `lenB < lenInputA/2+1` 停止界。新增 finalize
+workspace/provider 只含容量、指针相等桥和分离条件，不含任何 L2 多项式值。

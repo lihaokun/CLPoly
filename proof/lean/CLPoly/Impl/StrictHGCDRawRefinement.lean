@@ -7398,6 +7398,105 @@ theorem hgcdRecursiveFinalReconstruct_lenB_lt_half
   · omega
   · apply max_lt <;> omega
 
+/-- Operand-length portion of the recursive contract returned by the real
+non-early finish branch.  Matrix descriptor fields are supplied separately
+by the concrete combine-matrix execution. -/
+structure HgcdRecursiveFinishOperandInvariant (outerLength : Nat)
+    (result : HgcdRecursiveFinishResult) : Prop where
+  inputBoundA : result.lenA ≤ outerLength
+  inputBoundB : result.lenB ≤ outerLength
+  positiveA : 0 < result.lenA
+  aboveHalf : outerLength / 2 < result.lenA
+  stopped : result.lenB < outerLength / 2 + 1
+
+set_option maxHeartbeats 800000 in
+/-- The exact second reconstruction executed inside `hgcdRecursiveFinish`
+establishes every operand-length field required by its recursive parent.
+All bounds are derived from the returned second-child invariant and the
+source formulas for `k`, `c0`, and the two low slices. -/
+theorem hgcdRecursiveFinish_operandInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid)
+    (computeM : Bool) (A B T0 lowA lowB highA highB q : RawPtr UInt64)
+    (outerLength m reconstructedLenB lenD k secondInputLength lenQ : Nat)
+    (a2 scratch : RawPtr UInt64) (sgnR : Int)
+    (second : HgcdRecursiveResult) (result : HgcdRecursiveFinishResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (polyLowA polyLowB polyHighA polyHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hinvariant : HgcdRecursiveLengthInvariant secondInputLength second)
+    (physical : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
+      lowA lowB highA highB scratch (Nat.min reconstructedLenB k)
+      (Nat.min lenD k) second.lenA second.lenB k second.matrix second.valid
+      second.sgn second.heap)
+    (hMatrix : HgcdMatRawDenseRep this second.heap second.matrix entries
+      second.valid)
+    (hLowA : RawDensePolyRep this second.heap lowA
+      (Nat.min reconstructedLenB k) polyLowA)
+    (hLowB : RawDensePolyRep this second.heap lowB
+      (Nat.min lenD k) polyLowB)
+    (hHighA : RawDensePolyRep this second.heap highA second.lenA polyHighA)
+    (hHighB : RawDensePolyRep this second.heap highB second.lenB polyHighB)
+    (hm : m = outerLength / 2)
+    (hk : k = 2 * m - reconstructedLenB + 1)
+    (hc : secondInputLength = reconstructedLenB - k)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hreconstructedUpper : reconstructedLenB < outerLength)
+    (hrun : hgcdRecursiveFinish this M R second.matrix hM hR second.valid
+      computeM A B T0 lowA lowB highA highB q
+      (Nat.min reconstructedLenB k) (Nat.min lenD k) second.lenA second.lenB
+      k lenQ a2 scratch sgnR second.sgn second.heap = .ok result) :
+    HgcdRecursiveFinishOperandInvariant outerLength result := by
+  rcases hgcdRecursiveFinish_exec this M R second.matrix hM hR second.valid
+      computeM A B T0 lowA lowB highA highB q
+      (Nat.min reconstructedLenB k) (Nat.min lenD k) second.lenA second.lenB
+      k lenQ a2 scratch sgnR second.sgn second.heap result hrun with
+    ⟨reconstructed, hreconstruct, hlenA, hlenB, _, _⟩
+  have hrefines := hgcdRecursiveReconstructPair_refines this A B T0 lowA
+    lowB highA highB scratch (Nat.min reconstructedLenB k)
+    (Nat.min lenD k) second.lenA second.lenB k second.matrix second.valid
+    second.sgn second.heap reconstructed entries polyLowA polyLowB polyHighA
+    polyHighB hcfg hp physical hMatrix hLowA hLowB hHighA hHighB hreconstruct
+  have hleading := hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant this A
+    B T0 lowA lowB highA highB scratch (Nat.min reconstructedLenB k)
+    (Nat.min lenD k) k secondInputLength second reconstructed entries polyLowA
+    polyLowB polyHighA polyHighB hcfg hp hinvariant (Nat.min_le_right _ _)
+    (Nat.min_le_right _ _) physical hMatrix hLowA hLowB hHighA hHighB
+    hreconstruct
+  have hlengths := hgcdRecursiveFinalReconstruct_lengths_le_input outerLength
+    reconstructedLenB k secondInputLength lenD second.lenA second.lenB
+    (hgcdMatLen second.matrix second.valid (0 : Fin 4))
+    (hgcdMatLen second.matrix second.valid (1 : Fin 4))
+    (hgcdMatLen second.matrix second.valid (2 : Fin 4))
+    (hgcdMatLen second.matrix second.valid (3 : Fin 4)) reconstructed.lenA
+    reconstructed.lenB (by omega) (Nat.le_of_lt hreconstructedUpper)
+    hinvariant.inputBound hinvariant.stopped
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row0A)
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row1B)
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row3B)
+    hrefines.2.2.1 hrefines.2.2.2.1
+  have habove := hgcdRecursiveFinalReconstruct_lenA_above_half outerLength m
+    reconstructedLenB k secondInputLength second.lenA reconstructed.lenA hm
+    hk hc hreconstructedLower hreconstructedUpper hinvariant.aboveHalf
+    hleading.1
+  have hstop := hgcdRecursiveFinalReconstruct_lenB_lt_half outerLength m
+    reconstructedLenB k secondInputLength lenD second.lenA second.lenB
+    (hgcdMatLen second.matrix second.valid (0 : Fin 4))
+    (hgcdMatLen second.matrix second.valid (2 : Fin 4)) reconstructed.lenB hm
+    hk hc hreconstructedLower hreconstructedUpper hinvariant.aboveHalf
+    hinvariant.stopped
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row0A)
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
+    hrefines.2.2.2.1
+  exact {
+    inputBoundA := by simpa [hlenA] using hlengths.1
+    inputBoundB := by simpa [hlenB] using hlengths.2
+    positiveA := by simpa [hlenA] using hleading.2
+    aboveHalf := by simpa [hlenA] using habove
+    stopped := by simpa [hlenB] using hstop }
+
 /-- Purely physical obligations for the exact final matrix block.  Besides
 the two existing generated-call workspaces, the frame fields state that the
 quotient update does not alter any buffer of the left matrix `R`. -/

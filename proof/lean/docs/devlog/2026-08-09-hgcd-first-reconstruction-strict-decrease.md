@@ -71,3 +71,11 @@
 次序和外层严格下降；`hgcdRecursiveBodyBelow` 的可执行分支仍完全相同，只从该
 擦除结构读取下降证明。后续中间 divrem 精化可以直接读取同一个执行事实，而不
 再另设 oracle 式前提。
+
+## 最终尾部的操作数契约
+
+真实 `hgcdRecursiveFinish` 成功执行现在直接导出最终 A/B 均不超过外层输入、
+A 为正且严格高于外层半长、B 满足外层停止界。证明展开同一次
+`hgcdRecursiveFinish_exec` 返回的第二重构，消费第二子调用的完整长度不变量和
+源码 `k/c0` 公式；没有把最终长度作为 finish workspace 的假设。矩阵描述符部分
+继续由实际 combine-matrix 执行定理提供，两部分将在总递归归纳步中合并。

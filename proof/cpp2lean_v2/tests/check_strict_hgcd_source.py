@@ -281,6 +281,8 @@ def main() -> None:
         "hgcdRecursiveReconstructPair_refines",
         "hgcdRecursiveFinalReconstruct_lengths_le_input",
         "hgcdRecursiveFinalReconstruct_lenB_lt_half",
+        "HgcdRecursiveFinishOperandInvariant",
+        "hgcdRecursiveFinish_operandInvariant",
         "hgcdRecursiveFinalReconstruct_lenA_eq",
         "hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant",
         "hgcdRecursiveFirstReconstruct_order_of_invariant",

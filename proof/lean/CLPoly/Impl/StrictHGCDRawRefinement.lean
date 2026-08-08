@@ -6296,28 +6296,59 @@ theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
       (hgcdMatPtr M hM i) (identityEntryLen i))
     (hLeft : RawDensePolyRep this heap a lenA left)
     (hRight : RawDensePolyRep this heap b lenB right)
+    (horder : lenB ≤ lenA) (hlenAPos : 0 < lenA)
     (hrun : hgcdRecursiveBase M true A B a b lenA lenB heap = .ok result) :
     result.lenA = lenA ∧ result.lenB = lenB ∧ result.sgn = 1 ∧
       ∃ hResultM : result.matrix.Valid,
         HgcdMatRawDenseRep this result.heap result.matrix
           (identityEntries this._p.toNat) hResultM ∧
         RawDensePolyRep this result.heap A result.lenA left ∧
-        RawDensePolyRep this result.heap B result.lenB right := by
+        RawDensePolyRep this result.heap B result.lenB right ∧
+        CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right left right
+          (identityEntries this._p.toNat 0)
+          (identityEntries this._p.toNat 1)
+          (identityEntries this._p.toNat 2)
+          (identityEntries this._p.toNat 3) ∧
+        CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet result.sgn
+          (identityEntries this._p.toNat 0)
+          (identityEntries this._p.toNat 1)
+          (identityEntries this._p.toNat 2)
+          (identityEntries this._p.toNat 3) ∧
+        HgcdRecursiveLengthInvariant lenA (result.toResult hResultM) := by
   rcases hgcdIterInit_refines this M A B A A 0 a lenA b lenB heap left
       right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a h3a h0b h3b
       hAMatrix hBMatrix hMatrixValid hLeft hRight with
     ⟨initial, hinit, hIA, hlenIA, hIB, hlenIB, _, _, _, hsgn,
       hInitialM, hMatrix,
-      hARep, hBRep, _, _⟩
+      hARep, hBRep, hTransform, hDet⟩
+  have hMatrixLengths := hgcdIterInit_matrixLengthInvariant M A B A A 0 a
+    lenA b lenB heap initial hInitialM horder hinit
   have hbase : hgcdRecursiveBase M true A B a b lenA lenB heap =
       .ok initial.toRecursiveBaseResult := by
     rw [hgcdRecursiveBase_true_eq_init, hinit]
     rfl
   have heq := Except.ok.inj (hbase.symm.trans hrun)
   subst result
-  refine ⟨hlenIA, hlenIB, hsgn, hInitialM, hMatrix, ?_, ?_⟩
+  refine ⟨hlenIA, hlenIB, hsgn, hInitialM, hMatrix, ?_, ?_,
+    hTransform, ?_, ?_⟩
   · simpa [HgcdIterState.toRecursiveBaseResult, hIA, hlenIA] using hARep
   · simpa [HgcdIterState.toRecursiveBaseResult, hIB, hlenIB] using hBRep
+  · simpa [HgcdIterState.toRecursiveBaseResult] using hDet
+  · constructor
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row0A
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row1B
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row2A
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row3B
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hlenIA, hlenIB] using horder
+    · simp [HgcdRecursiveBaseResult.toResult,
+        HgcdIterState.toRecursiveBaseResult, hlenIA]
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hlenIA] using hlenAPos
 
 /-- Semantic refinement of the exact `_hgcd_recursive` base branch used by
 GCD when matrix output is disabled.  No matrix call or matrix specification
@@ -6358,5 +6389,93 @@ theorem hgcdRecursiveBase_false_refines (this : DenseUPolyZp)
     Except.ok.inj (hactual.symm.trans hrun)
   subst result
   exact ⟨rfl, rfl, rfl, rfl, hA2, hB2⟩
+
+/-- The matrix-producing base arm establishes the same semantic package
+consumed by a recursive parent.  Every field comes from `_mat_one` and the
+two concrete source copies executed by `hgcdRecursiveBase`. -/
+theorem hgcdRecursiveBase_true_rawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (heap : RawHeap) (result : HgcdRecursiveBaseResult)
+    (left right : Polynomial (ZMod this._p.toNat)) (hM : M.Valid)
+    (hp : 1 < this._p.toNat)
+    (h0 : heap.ValidU64Slice (hgcdMatPtr M hM (0 : Fin 4)) 1)
+    (h3 : heap.ValidU64Slice (hgcdMatPtr M hM (3 : Fin 4)) 1)
+    (h03 : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1
+      (hgcdMatPtr M hM (3 : Fin 4)) 1)
+    (hA : heap.ValidU64Slice A lenA) (hB : heap.ValidU64Slice B lenB)
+    (hAa : U64SlicesDisjoint A lenA a lenA)
+    (hBb : U64SlicesDisjoint B lenB b lenB)
+    (hAb : U64SlicesDisjoint A lenA b lenB)
+    (hBA : U64SlicesDisjoint B lenB A lenA)
+    (h0a : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 a lenA)
+    (h3a : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 a lenA)
+    (h0b : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 b lenB)
+    (h3b : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 b lenB)
+    (hAMatrix : ∀ i : Fin 4, U64SlicesDisjoint A lenA
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hBMatrix : ∀ i : Fin 4, U64SlicesDisjoint B lenB
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hMatrixValid : ∀ i : Fin 4, heap.ValidU64Slice
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hLeft : RawDensePolyRep this heap a lenA left)
+    (hRight : RawDensePolyRep this heap b lenB right)
+    (horder : lenB ≤ lenA) (hlenAPos : 0 < lenA)
+    (hstop : lenB < lenA / 2 + 1)
+    (hrun : hgcdRecursiveBase M true A B a b lenA lenB heap = .ok result) :
+    ∃ hResultM : result.matrix.Valid,
+      HgcdRecursiveRawInvariant this left right left right
+        (identityEntries this._p.toNat) true A B lenA
+        (result.toResult hResultM) := by
+  rcases hgcdRecursiveBase_true_refines this M A B a b lenA lenB heap result
+      left right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a h3a h0b h3b
+      hAMatrix hBMatrix hMatrixValid hLeft hRight horder hlenAPos hrun with
+    ⟨hlenA, hlenB, hsgn, hResultM, hMatrix, hARep, hBRep, hTransform,
+      hDet, hLengths⟩
+  refine ⟨hResultM, ?_⟩
+  constructor
+  · exact hARep
+  · exact hBRep
+  · intro _
+    exact ⟨hMatrix, hTransform, hDet⟩
+  · rfl
+  · simpa [HgcdRecursiveBaseResult.toResult, hlenB] using hstop
+  · intro _
+    exact hLengths
+
+/-- The matrix-disabled base arm establishes the recursive semantic package
+without claiming matrix contents that the source did not compute. -/
+theorem hgcdRecursiveBase_false_rawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (heap : RawHeap) (result : HgcdRecursiveBaseResult)
+    (left right : Polynomial (ZMod this._p.toNat)) (hM : M.Valid)
+    (hA : heap.ValidU64Slice A lenA) (hB : heap.ValidU64Slice B lenB)
+    (hAa : U64SlicesDisjoint A lenA a lenA)
+    (hBb : U64SlicesDisjoint B lenB b lenB)
+    (hAb : U64SlicesDisjoint A lenA b lenB)
+    (hBA : U64SlicesDisjoint B lenB A lenA)
+    (hLeft : RawDensePolyRep this heap a lenA left)
+    (hRight : RawDensePolyRep this heap b lenB right)
+    (hstop : lenB < lenA / 2 + 1)
+    (hrun : hgcdRecursiveBase M false A B a b lenA lenB heap = .ok result) :
+    ∃ hResultM : result.matrix.Valid,
+      HgcdRecursiveRawInvariant this left right left right
+        (identityEntries this._p.toNat) false A B lenA
+        (result.toResult hResultM) := by
+  rcases hgcdRecursiveBase_false_refines this M A B a b lenA lenB heap result
+      left right hA hB hAa hBb hAb hBA hLeft hRight hrun with
+    ⟨hmatrix, hlenA, hlenB, hsgn, hARep, hBRep⟩
+  have hResultM : result.matrix.Valid := by simpa [hmatrix] using hM
+  refine ⟨hResultM, ?_⟩
+  constructor
+  · exact hARep
+  · exact hBRep
+  · intro hfalse
+    simp at hfalse
+  · rfl
+  · simpa [HgcdRecursiveBaseResult.toResult, hlenB] using hstop
+  · intro hfalse
+    simp at hfalse
 
 end CLPoly.Impl.StrictHGCDRawRefinement

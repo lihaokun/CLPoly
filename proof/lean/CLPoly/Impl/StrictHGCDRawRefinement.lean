@@ -1445,7 +1445,8 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
       RawHeap.SameLayout heap heap' ∧
       RawDensePolyRep this heap' b2 length
         (if sgn < 0 then polyR2 * polyALo - polyR0 * polyBLo
-         else polyR0 * polyBLo - polyR2 * polyALo) := by
+         else polyR0 * polyBLo - polyR2 * polyALo) ∧
+      length ≤ max (lenR2 + lenALo) (lenR0 + lenBLo) := by
   rcases hgcdRecursiveMulTerm_refines this b2 r2 lenR2 aLo lenALo
       scratch heap polyR2 polyALo hcfg hp hwork.first hR2 hALo with
     ⟨term1, hrun1, hlayout1, hTerm1⟩
@@ -1471,6 +1472,10 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
   have hLen1 := hgcdRecursiveMulTerm_length_le this b2 r2 lenR2 aLo
     lenALo scratch heap term1 hrun1
   have hLen2 := hgcdRecursiveMulTerm_length_le this T0 r0 lenR0 bLo
+    lenBLo scratch term1.heap term2 hrun2
+  have hLen1Sum := hgcdRecursiveMulTerm_length_le_sum this b2 r2 lenR2 aLo
+    lenALo scratch heap term1 hrun1
+  have hLen2Sum := hgcdRecursiveMulTerm_length_le_sum this T0 r0 lenR0 bLo
     lenBLo scratch term1.heap term2 hrun2
   have hTerm1Final : RawDensePolyRep this term2.heap b2 term1.length
       (polyR2 * polyALo) := by
@@ -1505,33 +1510,36 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
   by_cases hsgn : sgn < 0
   · rcases polySub_ok this b2 b2 term1.length T0 term2.length
         term2.heap hSubValid hTerm1Final.1 hTerm2.1 with
-      ⟨heap3, length, hsub, hlayout3, _⟩
+      ⟨heap3, length, hsub, hlayout3, hlength⟩
     have hrep := polySub_refines this b2 b2 term1.length T0 term2.length
       term2.heap heap3 length (polyR2 * polyALo) (polyR0 * polyBLo)
       hpWord hSubValid hTerm1Final hTerm2 (Or.inl rfl)
       hwork.subAliasTemp hsub
-    refine ⟨heap3, length, ?_, ?_, ?_⟩
+    refine ⟨heap3, length, ?_, ?_, ?_, ?_⟩
     · simp [hgcdRecursiveReconstructB, hrun1, hrun2, hsgn, hsub]
     · exact fun ptr count =>
         (hlayout1 ptr count).trans
           ((hlayout2 ptr count).trans (hlayout3 ptr count))
     · simpa [hsgn] using hrep
+    · exact hlength.trans (max_le_max hLen1Sum hLen2Sum)
 
   · rcases polySub_ok this b2 T0 term2.length b2 term1.length
         term2.heap (by simpa [max_comm] using hSubValid) hTerm2.1
         hTerm1Final.1 with
-      ⟨heap3, length, hsub, hlayout3, _⟩
+      ⟨heap3, length, hsub, hlayout3, hlength⟩
     have hrep := polySub_refines this b2 T0 term2.length b2 term1.length
       term2.heap heap3 length (polyR0 * polyBLo) (polyR2 * polyALo)
       hpWord (by simpa [max_comm] using hSubValid) hTerm2 hTerm1Final
       hwork.subAliasTemp
       (Or.inl rfl) hsub
-    refine ⟨heap3, length, ?_, ?_, ?_⟩
+    refine ⟨heap3, length, ?_, ?_, ?_, ?_⟩
     · simp [hgcdRecursiveReconstructB, hrun1, hrun2, hsgn, hsub]
     · exact fun ptr count =>
         (hlayout1 ptr count).trans
           ((hlayout2 ptr count).trans (hlayout3 ptr count))
     · simpa [hsgn] using hrep
+    · simpa [max_comm] using hlength.trans
+        (max_le_max hLen2Sum hLen1Sum)
 
 /-- Semantic refinement of the exact `a2` reconstruction block.  Its source
 differs from `b2` only by reversing the sign-selected subtraction, so the
@@ -1556,13 +1564,14 @@ theorem hgcdRecursiveReconstructA_refines (this : DenseUPolyZp)
       RawHeap.SameLayout heap heap' ∧
       RawDensePolyRep this heap' a2 length
         (if sgn < 0 then polyR1 * polyBLo - polyR3 * polyALo
-         else polyR3 * polyALo - polyR1 * polyBLo) := by
+         else polyR3 * polyALo - polyR1 * polyBLo) ∧
+      length ≤ max (lenR3 + lenALo) (lenR1 + lenBLo) := by
   let flippedSign : Int := if sgn < 0 then 0 else -1
   rcases hgcdRecursiveReconstructB_refines this a2 T0 r3 r1 aLo bLo
       scratch lenR3 lenR1 lenALo lenBLo flippedSign heap polyR3 polyR1
       polyALo polyBLo hcfg hp hwork hR3 hR1 hALo hBLo with
-    ⟨heap', length, hrun, hlayout, hrep⟩
-  refine ⟨heap', length, ?_, hlayout, ?_⟩
+    ⟨heap', length, hrun, hlayout, hrep, hlength⟩
+  refine ⟨heap', length, ?_, hlayout, ?_, hlength⟩
   · have hfunctions :
         hgcdRecursiveReconstructA this a2 T0 r3 r1 aLo bLo scratch
             lenR3 lenR1 lenALo lenBLo sgn heap =
@@ -5536,7 +5545,11 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
           Polynomial.X ^ shift * polyHighA) ∧
       RawDensePolyRep this result.heap B result.lenB
         (hgcdReconstructedLowB entries polyLowA polyLowB sgn +
-          Polynomial.X ^ shift * polyHighB) := by
+          Polynomial.X ^ shift * polyHighB) ∧
+      result.lenB ≤ max (shift + lenHighB)
+        (max
+          (hgcdMatLen M hM (2 : Fin 4) + lenLowA)
+          (hgcdMatLen M hM (0 : Fin 4) + lenLowB)) := by
   rcases hgcdRecursiveReconstructPair_exec this A B T0 lowA lowB highA
       highB scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap
       result hrun with
@@ -5550,7 +5563,7 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       (hgcdMatLen M hM (0 : Fin 4)) lenLowA lenLowB sgn heap
       (entries 2) (entries 0) polyLowA polyLowB hcfg hp
       hwork.reconstructB (hMatrix 2) (hMatrix 0) hLowA hLowB with
-    ⟨heapB, lenB0, hBRun', _, hB0⟩
+    ⟨heapB, lenB0, hBRun', _, hB0, hLowLenB⟩
   have hEqB : (heapB, lenB0) = (heap1, lowLenB) :=
     Except.ok.inj (hBRun'.symm.trans hBRun)
   cases hEqB
@@ -5561,6 +5574,13 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
     have := congrArg UInt64.toNat hzero
     simp at this
     omega
+  rcases hgcdRecursiveLiftHigh_terminates this B highB lowLenB shift lenHighB
+      heap1 (hgcdReconstructedLowB entries polyLowA polyLowB sgn) hpWord
+      hwork.liftB (by simpa [hgcdReconstructedLowB] using hB0) with
+    ⟨boundedB, hBoundedBRun, _, hBoundB⟩
+  have hEqBoundedB : boundedB = liftedB :=
+    Except.ok.inj (hBoundedBRun.symm.trans hLiftBRun)
+  subst boundedB
   rcases hgcdRecursiveLiftHigh_refines this B highB lowLenB shift lenHighB
       heap1 (hgcdReconstructedLowB entries polyLowA polyLowB sgn) polyHighB
       hpWord hwork.liftB (by simpa [hgcdReconstructedLowB] using hB0)
@@ -5583,7 +5603,7 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       (hgcdMatLen M hM (1 : Fin 4)) lenLowA lenLowB sgn liftedB.heap
       (entries 3) (entries 1) polyLowA polyLowB hcfg hp hwork.reconstructA
       (matrixAtB 3) (matrixAtB 1) lowAAtB lowBAtB with
-    ⟨heapA, lenA0, hARun', _, hA0⟩
+    ⟨heapA, lenA0, hARun', _, hA0, _⟩
   have hEqA : (heapA, lenA0) = (heap3, lowLenA) :=
     Except.ok.inj (hARun'.symm.trans hARun)
   cases hEqA
@@ -5602,7 +5622,22 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       Polynomial.X ^ shift * polyHighB) hwork.finalBLayout
       hwork.finalBPrefix hBFinal
   rw [hHeap, hLenA, hLenB]
-  exact ⟨hAFinal, hBAtFinal⟩
+  refine ⟨hAFinal, hBAtFinal, ?_⟩
+  exact hBoundB.trans (max_le_max (Nat.le_refl _) hLowLenB)
+
+/-- The physical paired-reconstruction bound closes against an enclosing
+input length once its shifted high part and both real low products fit that
+input.  This is the arithmetic form consumed by the well-founded recursive
+call, not a runtime decrease test. -/
+theorem hgcdRecursiveReconstructPair_lenB_le_input
+    (resultLen inputLength shift lenHighB lenR2 lenLowA lenR0 lenLowB : Nat)
+    (hresult : resultLen ≤ max (shift + lenHighB)
+      (max (lenR2 + lenLowA) (lenR0 + lenLowB)))
+    (hhigh : shift + lenHighB ≤ inputLength)
+    (hsecond : lenR2 + lenLowA ≤ inputLength)
+    (hzero : lenR0 + lenLowB ≤ inputLength) :
+    resultLen ≤ inputLength := by
+  exact hresult.trans (max_le hhigh (max_le hsecond hzero))
 
 /-- Purely physical obligations for the exact final matrix block.  Besides
 the two existing generated-call workspaces, the frame fields state that the

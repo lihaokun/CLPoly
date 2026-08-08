@@ -734,6 +734,33 @@ theorem hgcdRecursiveMulTerm_length_le (this : DenseUPolyZp)
     subst result
     exact Nat.zero_le _
 
+/-- Sharper source-length bound used by the enclosing recursive measure. -/
+theorem hgcdRecursiveMulTerm_length_le_sum (this : DenseUPolyZp)
+    (dst left : RawPtr UInt64) (lenLeft : Nat)
+    (right : RawPtr UInt64) (lenRight : Nat)
+    (scratch : RawPtr UInt64) (heap : RawHeap) (result : HgcdMulTermResult)
+    (hrun : hgcdRecursiveMulTerm this dst left lenLeft right lenRight
+      scratch heap = .ok result) :
+    result.length ≤ lenLeft + lenRight := by
+  simp only [hgcdRecursiveMulTerm] at hrun
+  split at hrun
+  next hnonzero =>
+    split at hrun
+    next fault hmul => simp at hrun
+    next heap1 hmul =>
+      have heq : result =
+          HgcdMulTermResult.mk heap1 (lenLeft + lenRight - 1) :=
+        (Except.ok.inj hrun).symm
+      subst result
+      change lenLeft + lenRight - 1 ≤ lenLeft + lenRight
+      omega
+  next hzero =>
+    have heq : result = HgcdMulTermResult.mk heap 0 :=
+      (Except.ok.inj hrun).symm
+    subst result
+    change 0 ≤ lenLeft + lenRight
+    omega
+
 /-- Exact `b2` low-half reconstruction block:
 `R[2]*a_lo` and `R[0]*b_lo`, followed by the sign-selected subtraction. -/
 def hgcdRecursiveReconstructB (this : DenseUPolyZp)

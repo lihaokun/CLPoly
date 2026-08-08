@@ -180,6 +180,14 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 保持以及矩阵项/低半部/高半部跨调用的保持均由 heap layout/prefix frame
 给出；workspace/provider 不含最终 A、B 或任何预期多项式。
 
+重构长度也不再只使用较松的 `2*max-1` 缓冲容量。生成层新增从真实 guard
+直接推出的 `mulTerm.length ≤ lenLeft+lenRight`；单次 A/B 重构再通过实际
+`_poly_sub` 的归一化长度界得到两个乘积长度之最大值，成对重构最后通过
+`liftHigh` 的真实归一化界得到
+`lenB ≤ max(shift+highLen, max(r2+lowA, r0+lowB))`。因此主递归只需从
+HGCD 不变式证明三个分量均不超过原输入长度，即可取得 `lenB2 ≤ lenA`，
+无需加入运行时 `hdec`。
+
 完整四项 `_mat_mul` 的 raw 语义现已闭合。新的单项 frame 定理按真实的
 两次 guarded 乘法和 add/copy/skip 尾分支，保持两个输入矩阵以及先前已完成
 的输出项。`hgcdMatMulLoop_refines` 再沿生成的 `4-i` 递归逐项执行

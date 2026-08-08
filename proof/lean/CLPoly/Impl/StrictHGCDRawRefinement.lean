@@ -4545,6 +4545,28 @@ structure HgcdMatrixLengthInvariant (inputLength : Nat)
   row3B : hgcdMatLen state.matrix hM (3 : Fin 4) + state.lenB ≤
     inputLength + 1
 
+/-- Unified induction result for the complete recursive HGCD call.  It
+contains only semantics derived from the returned raw heap plus the exact
+length facts required by the enclosing reconstruction and recursive calls. -/
+structure HgcdRecursiveRawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (left right finalA finalB : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (outA outB : RawPtr UInt64) (inputLength : Nat)
+    (result : HgcdRecursiveResult) : Prop where
+  matrixRep : HgcdMatRawDenseRep this result.heap result.matrix entries
+    result.valid
+  aRep : RawDensePolyRep this result.heap outA result.lenA finalA
+  bRep : RawDensePolyRep this result.heap outB result.lenB finalB
+  transform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right
+    finalA finalB (entries 0) (entries 1) (entries 2) (entries 3)
+  signedDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet result.sgn
+    (entries 0) (entries 1) (entries 2) (entries 3)
+  gcdPreserved : normalize (EuclideanDomain.gcd left right) =
+    normalize (EuclideanDomain.gcd finalA finalB)
+  stopped : result.lenB < inputLength / 2 + 1
+  lengths : HgcdRecursiveLengthInvariant inputLength result
+
 /-- Arithmetic closure for one Euclidean matrix step.  The quotient bound
 comes from the real generated divrem call and the four descriptor bounds
 come from the two real row updates. -/
@@ -5034,26 +5056,8 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
     (hrun : hgcdRecursiveIterBranch this original hOriginal a3 b3 inputA
       inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap = .ok result) :
     ∃ finalA finalB finalEntries hResultM,
-      HgcdMatRawDenseRep this result.heap result.matrix finalEntries hResultM ∧
-      RawDensePolyRep this result.heap a3 result.lenA finalA ∧
-      RawDensePolyRep this result.heap b3 result.lenB finalB ∧
-      CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right finalA finalB
-        (finalEntries 0) (finalEntries 1) (finalEntries 2) (finalEntries 3) ∧
-      CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet result.sgn
-        (finalEntries 0) (finalEntries 1) (finalEntries 2) (finalEntries 3) ∧
-      normalize (EuclideanDomain.gcd left right) =
-        normalize (EuclideanDomain.gcd finalA finalB) ∧
-      result.lenB < lenInputA / 2 + 1 ∧
-      hgcdMatLen result.matrix hResultM (0 : Fin 4) + result.lenA ≤
-        lenInputA + 1 ∧
-      hgcdMatLen result.matrix hResultM (1 : Fin 4) + result.lenB ≤
-        lenInputA + 1 ∧
-      hgcdMatLen result.matrix hResultM (2 : Fin 4) + result.lenA ≤
-        lenInputA + 1 ∧
-      hgcdMatLen result.matrix hResultM (3 : Fin 4) + result.lenB ≤
-        lenInputA + 1 ∧
-      result.lenB ≤ result.lenA ∧ result.lenA ≤ lenInputA ∧
-      0 < result.lenA := by
+      HgcdRecursiveRawInvariant this left right finalA finalB finalEntries
+        a3 b3 lenInputA (result.toResult hResultM) := by
   rcases hgcdRecursiveIterBranch_exec this original hOriginal a3 b3 inputA
       inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap result hrun with
     ⟨iter, hIter, stable, hiter, hstable, hstore, hResultMatrix,
@@ -5132,16 +5136,38 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
     simpa only [hResultLenA] using hFinalARep
   have hBResult : RawDensePolyRep this result.heap b3 result.lenB finalB := by
     simpa only [hResultLenB] using hFinalBRep
-  refine ⟨finalA, finalB, finalEntries, hResultValid, ?_⟩
-  refine ⟨hMatrixResult, hAResult, hBResult, ?_, ?_, hGcd, ?_,
-    hResultLength0, hResultLength1, hResultLength2, hResultLength3, ?_, ?_,
-    ?_⟩
-  · simpa only [hResultLenA, hResultLenB] using hInvariant.transform
-  · simpa only [hResultSgn] using hInvariant.signedDet
-  · simpa only [hResultLenB] using hStop
-  · simpa only [hResultLenA, hResultLenB] using hFinalOrder
-  · simpa only [hResultLenA] using hFinalInputBound
-  · simpa only [hResultLenA] using hFinalPositive
+  have hResultLengthInvariant : HgcdRecursiveLengthInvariant lenInputA
+      (result.toResult hResultValid) := by
+    exact {
+      row0A := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hgcdMatLenRaw, hgcdMatLen] using hResultLength0
+      row1B := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hgcdMatLenRaw, hgcdMatLen] using hResultLength1
+      row2A := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hgcdMatLenRaw, hgcdMatLen] using hResultLength2
+      row3B := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hgcdMatLenRaw, hgcdMatLen] using hResultLength3
+      order := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hResultLenA, hResultLenB] using hFinalOrder
+      inputBound := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hResultLenA] using hFinalInputBound
+      positive := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hResultLenA] using hFinalPositive }
+  refine ⟨finalA, finalB, finalEntries, hResultValid, {
+    matrixRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using
+      hMatrixResult
+    aRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hAResult
+    bRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hBResult
+    transform := by
+      simpa [HgcdRecursiveIterBranchResult.toResult, hResultLenA,
+        hResultLenB] using hInvariant.transform
+    signedDet := by
+      simpa [HgcdRecursiveIterBranchResult.toResult, hResultSgn] using
+        hInvariant.signedDet
+    gcdPreserved := hGcd
+    stopped := by
+      simpa [HgcdRecursiveIterBranchResult.toResult, hResultLenB] using hStop
+    lengths := hResultLengthInvariant }⟩
 
 /-- Physical obligations for the two concrete guarded products and the
 source-selected tail of one `_mat_mul_entry`. -/

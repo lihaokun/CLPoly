@@ -222,6 +222,14 @@ first 的 row 0/2 界、正长度、输入上界和操作数有序性推出
 `reconstructed.lenB≤原 lenA`。因此该终止前提已经落回现有真实精化证据，
 而不是未约束的外部假设。
 
+cutoff iterator arm 与递归归纳返回现已共享统一接口。原 iterator theorem 的
+四个行界、操作数有序、输入上界和正长度被收束为
+`HgcdRecursiveLengthInvariant`；完整 raw 语义则收束为
+`HgcdRecursiveRawInvariant`，同时携带 A/B、矩阵表示、变换、行列式符号、
+GCD 保持和停止界。针对 iterator 返回记录中 proof-only validity witness 的
+差异另有 proof-irrelevance 传输定理，因此 cutoff 分派结果可直接作为严格
+函数体的 `firstLength` 证据。
+
 最终矩阵合并块也已按源码顺序闭合：`hgcdRecursiveCombineMatrix` 先实际执行
 两列商矩阵更新，再把其返回的 matrix/heap 直接交给完整四项 `_mat_mul`。
 对应 raw 定理从两次生成调用分别取得 `[[q,1],[1,0]]*S` 与

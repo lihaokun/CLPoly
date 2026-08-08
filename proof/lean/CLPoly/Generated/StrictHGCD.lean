@@ -2108,6 +2108,16 @@ structure HgcdRecursiveLengthInvariant (inputLength : Nat)
   inputBound : result.lenA ≤ inputLength
   positive : 0 < result.lenA
 
+theorem hgcdRecursiveLengthInvariant_toResult_proof_irrel
+    (inputLength : Nat) (result : HgcdRecursiveIterBranchResult)
+    (hleft hright : result.matrix.Valid)
+    (hinvariant : HgcdRecursiveLengthInvariant inputLength
+      (result.toResult hleft)) :
+    HgcdRecursiveLengthInvariant inputLength (result.toResult hright) := by
+  have heq : hleft = hright := Subsingleton.elim _ _
+  subst hright
+  exact hinvariant
+
 /-- Proof-only algorithmic invariant needed between the two recursive call
 sites.  It applies only to a first result carrying the exact recursive length
 invariant, rather than quantifying over arbitrary matrices. -/

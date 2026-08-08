@@ -2617,6 +2617,209 @@ theorem quotientLoop_preserves_budget (this : DenseUPolyZp)
       intro ptr length
       exact (hlayout1 ptr length).trans (hlayout2 ptr length)
 
+/-- Full polynomial semantics of the generated descending quotient loop.
+The proof follows the raw recursion itself: every successor reads the current
+W3 cell, writes the computed C++ quotient limb, executes the generated
+multiply/add when that limb is nonzero, and then recurses on `i`. -/
+theorem quotientLoop_refines_polynomial (this : DenseUPolyZp)
+    (Q B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (qLen d lenW3 count : Nat) (invLc : UInt64)
+    (heap : RawHeap) (ii : Nat)
+    (divisor : Polynomial (ZMod this._p.toNat))
+    (hQ : heap.ValidU64Slice Q qLen)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hcanonical : CanonicalU64Prefix heap B (d + 1) this._p)
+    (hdivisor : SlicePolyRep heap B (d + 1) this._p.toNat divisor)
+    (hbudget : Word3AccumulationBudget heap W3 lenW3 this._p count)
+    (hstate : count + ii = qLen)
+    (hspan : qLen + d ≤ lenW3) (hqLen : qLen < limbBase)
+    (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
+    (hWB : W3.region ≠ B.region)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat) :
+    ∃ heap' quotient beforeValues afterValues,
+      quotientLoop this Q B W3 d invLc heap ii = .ok heap' ∧
+      heap'.ValidU64Slice Q qLen ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      CanonicalU64Prefix heap' B (d + 1) this._p ∧
+      Word3AccumulationBudget heap' W3 lenW3 this._p qLen ∧
+      SlicePolyRep heap' Q ii this._p.toNat quotient ∧
+      Word3SliceRep heap W3 lenW3 beforeValues ∧
+      Word3SliceRep heap' W3 lenW3 afterValues ∧
+      word3ArrayPoly this._p.toNat afterValues =
+        word3ArrayPoly this._p.toNat beforeValues - quotient * divisor := by
+  cases ii with
+  | zero =>
+      have hcount : count = qLen := by omega
+      subst count
+      have hQ0 : heap.ValidU64Slice Q 0 :=
+        heap.validU64Slice_mono Q qLen 0 hQ (Nat.zero_le _)
+      rcases slicePolyRep_exists_unique heap Q 0 this._p.toNat hQ0 with
+        ⟨quotient, hquotient, _⟩
+      have hquotientZero := slicePolyRep_zero_length heap Q this._p.toNat
+        quotient hquotient
+      rcases word3SliceRep_exists_unique heap W3 lenW3 hW3 with
+        ⟨values, hvalues, _⟩
+      refine ⟨heap, quotient, values, values, rfl, hQ, hB, hW3,
+        fun _ _ => Iff.rfl, hcanonical, hbudget, hquotient, hvalues,
+        hvalues, ?_⟩
+      rw [hquotientZero, zero_mul, sub_zero]
+  | succ i =>
+    have hiQ : i < qLen := by omega
+    have hiW : i + d < lenW3 := by omega
+    have hcountLt : count < limbBase := by omega
+    have hcountNext : count + 1 < limbBase := by omega
+    simp only [quotientLoop]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + d) hW3 hiW with
+      ⟨accum, hread⟩
+    simp only [hread]
+    let r := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      accum.hi accum.mid accum.lo this._p this._ninv this._norm
+    let qi := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r invLc
+    have hhi : accum.hi.toNat < this._p.toNat :=
+      word3_hi_lt_of_accumulation_budget heap W3 lenW3 count (i + d)
+        this._p accum hbudget hprime.two_le hcountLt hiW hread
+    have hrEq : r.toNat = word3Value accum % this._p.toNat := by
+      simpa [r] using lll_mod_preinv_ir_correct_of_configured this
+        accum.hi accum.mid accum.lo hcfg hhi
+    have hr : r.toNat < this._p.toNat := by
+      rw [hrEq]
+      exact Nat.mod_lt _ hprime.pos
+    have hqiEq : qi.toNat = (r.toNat * invLc.toNat) % this._p.toNat := by
+      simpa [qi] using nmod_mul_ir_correct_of_configured this r invLc hcfg hr
+    have hqi : qi.toNat < this._p.toNat := by
+      rw [hqiEq]
+      exact Nat.mod_lt _ hprime.pos
+    rcases word3SliceRep_exists_unique heap W3 lenW3 hW3 with
+      ⟨beforeValues, hbeforeValues, _⟩
+    rcases heap.writeU64_of_valid Q qLen i qi hQ hiQ with
+      ⟨heap1, hwrite⟩
+    dsimp [r, qi] at hwrite ⊢
+    simp only [hwrite]
+    have hQ1 : heap1.ValidU64Slice Q qLen :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite Q qLen).mp hQ
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite
+        (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 Q i _ hwrite
+    have hcanonical1 := canonicalPrefix_writeU64_region_ne heap heap1 Q B
+      i (d + 1) _ this._p hB hcanonical hQB hwrite
+    have hbudget1 := accumulationBudget_writeU64_region_ne heap heap1 Q W3
+      i lenW3 count _ this._p hW3 hbudget hQW hwrite
+    have hsameB1 : SameU64Prefix heap heap1 B (d + 1) := by
+      intro k value hk hreadOld
+      exact RawHeap.readU64_writeU64_ne heap heap1 Q B i k _ value hwrite
+        hreadOld (Or.inl hQB)
+    have hdivisor1 := slicePolyRep_of_same_prefix heap heap1 B (d + 1)
+      this._p.toNat divisor hB hB1 hsameB1 hdivisor
+    have hreadQ1 := RawHeap.readU64_writeU64_same heap heap1 Q i qi hwrite
+    split
+    next hnonzero =>
+      let r0 := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        accum.hi accum.mid accum.lo this._p this._ninv this._norm
+      let qi0 := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r0 invLc
+      have hqi0 : qi0.toNat < this._p.toNat := by simpa [qi0, r0] using hqi
+      have hc : (this._p - qi0).toNat < this._p.toNat := by
+        rw [UInt64.toNat_sub_of_le _ _ (Nat.le_of_lt hqi0)]
+        have hqi0ne : qi0 ≠ 0 := by simpa [qi0, r0] using hnonzero
+        have : qi0.toNat ≠ 0 := by
+          intro hz
+          apply hqi0ne
+          exact UInt64.toNat_inj.mp (by simpa using hz)
+        omega
+      rcases addMulLoop_refines_polynomial heap1 B W3 lenW3 i d count
+        this._p (this._p - qi0) divisor hB1 hW31 hbudget1 hcanonical1
+        hdivisor1 hiW hWB hprime.two_le hcountNext hc with
+        ⟨heap2, writeValues, addValues, hadd, hB2, hW32, hlayout2,
+          hsameB2, hwriteValues, haddValues, haddPoly⟩
+      simp only [qi0, r0] at hadd
+      simp only [hadd]
+      have hQ2 : heap2.ValidU64Slice Q qLen := (hlayout2 Q qLen).mp hQ1
+      have hcanonical2 : CanonicalU64Prefix heap2 B (d + 1) this._p := by
+        intro k value hk hread2
+        rcases heap1.readU64_of_valid B (d + 1) k hB1 hk with
+          ⟨old, hread1⟩
+        have : value = old := Except.ok.inj (hread2.symm.trans
+          (hsameB2 k old hk hread1))
+        subst value
+        exact hcanonical1 k old hk hread1
+      have hdivisor2 := slicePolyRep_of_same_prefix heap1 heap2 B (d + 1)
+        this._p.toNat divisor hB1 hB2 hsameB2 hdivisor1
+      rcases addMulLoop_preserves_budget heap1 B W3 lenW3 i d count
+        this._p (this._p - qi0) hB1 hW31 hcanonical1 hbudget1 hiW hWB
+        hprime.two_le hcountNext hc with
+        ⟨heapBudget, haddBudget, _, _, _, _, hbudget2⟩
+      have hheapBudget : heapBudget = heap2 :=
+        Except.ok.inj (haddBudget.symm.trans hadd)
+      subst heapBudget
+      rcases addMulLoop_preserves_u64_region_ne heap1 B Q W3 lenW3 i d 0
+        qLen (this._p - qi0) hB1 hW31 hQ1 hiW (by omega)
+        (Ne.symm hQW) with
+        ⟨heapQ, haddQ, _, _, _, _, hsameQ⟩
+      have hheapQ : heapQ = heap2 := Except.ok.inj (haddQ.symm.trans hadd)
+      subst heapQ
+      have hreadQ2 := hsameQ i qi (by omega) hreadQ1
+      rcases quotientLoop_refines_polynomial this Q B W3 qLen d lenW3
+        (count + 1) invLc heap2 i divisor hQ2 hB2 hW32 hcanonical2
+        hdivisor2 hbudget2 (by omega) hspan hqLen hQB hQW hWB hcfg hprime with
+        ⟨heap3, lowerQ, recValues, finalValues, hloop, hQ3, hB3, hW33,
+          hlayout3, hcanonical3, hbudget3, hlowerQ, hrecValues,
+          hfinalValues, hrecPoly⟩
+      rcases quotientLoop_preserves_Q_at_current this Q B W3 qLen d lenW3
+        i invLc qi heap2 hQ2 hB2 hW32 hiQ hspan hQW hreadQ2 with
+        ⟨heapRead, hloopRead, _, _, _, _, hreadFinal⟩
+      have hheapRead : heapRead = heap3 :=
+        Except.ok.inj (hloopRead.symm.trans hloop)
+      subst heapRead
+      rcases quotient_nonzero_successor_finalize heap heap1 heap2 heap3 Q W3
+        lenW3 i this._p.toNat this._p qi lowerQ divisor beforeValues
+        writeValues writeValues addValues recValues finalValues hW3
+        hbeforeValues hwriteValues hwriteValues haddValues hrecValues
+        hfinalValues hwrite hQW rfl (Nat.le_of_lt hqi) haddPoly hlowerQ
+        (heap3.validU64Slice_mono Q qLen (i + 1) hQ3 (by omega)) hreadFinal
+        hrecPoly with ⟨fullQ, hfullQ, halgebra⟩
+      refine ⟨heap3, fullQ, beforeValues, finalValues, hloop, hQ3, hB3,
+        hW33, ?_, hcanonical3, hbudget3, hfullQ, hbeforeValues,
+        hfinalValues, halgebra⟩
+      intro ptr length
+      exact (hlayout1 ptr length).trans
+        ((hlayout2 ptr length).trans (hlayout3 ptr length))
+    next hzero =>
+      have hbudgetNext : Word3AccumulationBudget heap1 W3 lenW3 this._p
+          (count + 1) := accumulationBudget_mono heap1 W3 lenW3 this._p
+            count (count + 1) hbudget1 (by omega)
+      rcases word3SliceRep_exists_unique heap1 W3 lenW3 hW31 with
+        ⟨writeValues, hwriteValues, _⟩
+      rcases quotientLoop_refines_polynomial this Q B W3 qLen d lenW3
+        (count + 1) invLc heap1 i divisor hQ1 hB1 hW31 hcanonical1
+        hdivisor1 hbudgetNext (by omega) hspan hqLen hQB hQW hWB hcfg
+        hprime with
+        ⟨heap2, lowerQ, recValues, finalValues, hloop, hQ2, hB2, hW32,
+          hlayout2, hcanonical2, hbudget2, hlowerQ, hrecValues,
+          hfinalValues, hrecPoly⟩
+      rcases quotientLoop_preserves_Q_at_current this Q B W3 qLen d lenW3
+        i invLc qi heap1 hQ1 hB1 hW31 hiQ hspan hQW hreadQ1 with
+        ⟨heapRead, hloopRead, _, _, _, _, hreadFinal⟩
+      have hheapRead : heapRead = heap2 :=
+        Except.ok.inj (hloopRead.symm.trans hloop)
+      subst heapRead
+      rcases quotient_zero_successor_finalize heap heap1 heap2 Q W3 lenW3
+        i this._p.toNat qi lowerQ divisor beforeValues writeValues recValues
+        finalValues hW3 hbeforeValues hwriteValues hrecValues hfinalValues
+        hwrite hQW (by simpa [qi, r] using hzero) hlowerQ
+        (heap2.validU64Slice_mono Q qLen (i + 1) hQ2 (by omega)) hreadFinal
+        hrecPoly with ⟨fullQ, hfullQ, halgebra⟩
+      refine ⟨heap2, fullQ, beforeValues, finalValues, hloop, hQ2, hB2,
+        hW32, ?_, hcanonical2, hbudget2, hfullQ, hbeforeValues,
+        hfinalValues, halgebra⟩
+      intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+
 /-- Strengthening of `quotientLoop_preserves_budget` with the descending
 leading-cell invariant.  Every processed high W3 cell is proved zero modulo
 the source prime, including the generated `qi = 0` branch. -/

@@ -6209,6 +6209,70 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
   refine ⟨hAFinal, hBAtFinal, ?_⟩
   exact hBoundB.trans (max_le_max (Nat.le_refl _) hLowLenB)
 
+/-- Semantic composition of a real first recursive result with the four-call
+paired reconstruction.  The full-input transform and GCD theorem are derived
+from the returned matrix, its signed determinant, and the actual low/high
+decompositions of the two source operands. -/
+theorem hgcdRecursiveReconstructPair_preserves_input (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB shift inputLength : Nat)
+    (first : HgcdRecursiveResult)
+    (result : HgcdRecursiveReconstructPairResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (fullA fullB polyLowA polyLowB polyInputHighA polyInputHighB
+      polyOutputHighA polyOutputHighB : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
+      lowA lowB highA highB scratch lenLowA lenLowB first.lenA first.lenB
+      shift first.matrix first.valid first.sgn first.heap)
+    (hFirst : HgcdRecursiveRawInvariant this polyInputHighA polyInputHighB
+      polyOutputHighA polyOutputHighB entries true highA highB inputLength
+      first)
+    (hLowA : RawDensePolyRep this first.heap lowA lenLowA polyLowA)
+    (hLowB : RawDensePolyRep this first.heap lowB lenLowB polyLowB)
+    (hFullA : fullA = polyLowA + Polynomial.X ^ shift * polyInputHighA)
+    (hFullB : fullB = polyLowB + Polynomial.X ^ shift * polyInputHighB)
+    (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
+      scratch lenLowA lenLowB first.lenA first.lenB shift first.matrix
+      first.valid first.sgn first.heap = .ok result) :
+    ∃ finalA finalB,
+      RawDensePolyRep this result.heap A result.lenA finalA ∧
+      RawDensePolyRep this result.heap B result.lenB finalB ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdTransform fullA fullB finalA finalB
+        (entries 0) (entries 1) (entries 2) (entries 3) ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet first.sgn
+        (entries 0) (entries 1) (entries 2) (entries 3) ∧
+      normalize (EuclideanDomain.gcd fullA fullB) =
+        normalize (EuclideanDomain.gcd finalA finalB) ∧
+      result.lenB ≤ max (shift + first.lenB)
+        (max
+          (hgcdMatLen first.matrix first.valid (2 : Fin 4) + lenLowA)
+          (hgcdMatLen first.matrix first.valid (0 : Fin 4) + lenLowB)) := by
+  have hMatrixSemantics := hFirst.matrixSemantics rfl
+  rcases hgcdRecursiveReconstructPair_refines this A B T0 lowA lowB highA
+      highB scratch lenLowA lenLowB first.lenA first.lenB shift first.matrix
+      first.valid first.sgn first.heap result entries polyLowA polyLowB
+      polyOutputHighA polyOutputHighB hcfg hp physical hMatrixSemantics.1
+      hLowA hLowB hFirst.aRep hFirst.bRep hrun with
+    ⟨hAResult, hBResult, hLength⟩
+  let finalA := hgcdReconstructedLowA entries polyLowA polyLowB first.sgn +
+    Polynomial.X ^ shift * polyOutputHighA
+  let finalB := hgcdReconstructedLowB entries polyLowA polyLowB first.sgn +
+    Polynomial.X ^ shift * polyOutputHighB
+  have hTransform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform fullA fullB
+      finalA finalB (entries 0) (entries 1) (entries 2) (entries 3) := by
+    rw [hFullA, hFullB]
+    exact hgcdReconstructedPair_preserves_transform polyLowA polyLowB
+      polyInputHighA polyInputHighB polyOutputHighA polyOutputHighB shift
+      first.sgn entries hMatrixSemantics.2.1 hMatrixSemantics.2.2
+  have hGcd :=
+    CLPoly.Impl.StrictHGCDRefinement.normalize_gcd_eq_of_hgcd_signed_transform
+      first.sgn fullA fullB finalA finalB (entries 0) (entries 1)
+      (entries 2) (entries 3) hTransform hMatrixSemantics.2.2
+  exact ⟨finalA, finalB, hAResult, hBResult, hTransform,
+    hMatrixSemantics.2.2, hGcd, hLength⟩
+
 /-- The physical paired-reconstruction bound closes against an enclosing
 input length once its shifted high part and both real low products fit that
 input.  This is the arithmetic form consumed by the well-founded recursive

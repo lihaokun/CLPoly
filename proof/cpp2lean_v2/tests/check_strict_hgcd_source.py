@@ -139,6 +139,7 @@ def main() -> None:
         "hgcdRecursiveEarlyReturn_rawInvariant",
         "hgcdReconstruction_preserves_transform",
         "hgcdReconstructedPair_preserves_transform",
+        "hgcdRecursiveReconstructPair_preserves_input",
         "HgcdRecursiveWorkspace",
         "hgcdRecursiveWorkspace",
         "hgcdRecursiveWorkspace_layout",

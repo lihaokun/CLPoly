@@ -658,6 +658,213 @@ theorem hgcdMatStabilize_refines (this : DenseUPolyZp)
   refine ⟨result, ?_, hResult, hResultRep⟩
   simp [hgcdMatStabilize, hstage, hrestore0]
 
+/-- The source's alias-protection branch really preserves both iterator
+outputs: `pB` is copied away first, the `pA` representation is framed across
+that write, and only then is `a3` overwritten from `pA`. -/
+theorem hgcdRecursiveStoreIterOutputs_cross_refines (this : DenseUPolyZp)
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (polyA polyB : Polynomial (ZMod this._p.toNat)) (heap : RawHeap)
+    (hcross : (!(pA == a3) && (pB == a3)) = true)
+    (hA3 : heap.ValidU64Slice a3 lenA3)
+    (hB3 : heap.ValidU64Slice b3 lenB3)
+    (hARep : RawDensePolyRep this heap pA lenA3 polyA)
+    (hBRep : RawDensePolyRep this heap pB lenB3 polyB)
+    (hB3PB : U64SlicesDisjoint b3 lenB3 pB lenB3)
+    (hB3PA : U64SlicesDisjoint b3 lenB3 pA lenA3)
+    (hA3PA : U64SlicesDisjoint a3 lenA3 pA lenA3)
+    (hA3B3 : U64SlicesDisjoint a3 lenA3 b3 lenB3) :
+    ∃ heap', hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap =
+        .ok heap' ∧
+      RawDensePolyRep this heap' a3 lenA3 polyA ∧
+      RawDensePolyRep this heap' b3 lenB3 polyB := by
+  rcases copyU64_refines_rawDense this heap b3 pB lenB3 polyB hB3 hB3PB
+      hBRep with ⟨heap1, hcopyB, hlayout1, hB3Rep⟩
+  have hARep1 := (copyU64_preserves_rawDenseRep this heap heap1 b3 pB lenB3
+    pA lenA3 polyA hB3 hBRep.1 hB3PA hcopyB hARep).2
+  have hA31 : heap1.ValidU64Slice a3 lenA3 :=
+    (hlayout1 a3 lenA3).mp hA3
+  rcases copyU64_refines_rawDense this heap1 a3 pA lenA3 polyA hA31 hA3PA
+      hARep1 with ⟨heap2, hcopyA, _, hA3Rep⟩
+  have hB3Rep2 := (copyU64_preserves_rawDenseRep this heap1 heap2 a3 pA lenA3
+    b3 lenB3 polyB hA31 hARep1.1 hA3B3 hcopyA hB3Rep).2
+  exact ⟨heap2,
+    hgcdRecursiveStoreIterOutputs_cross_exec a3 b3 pA pB lenA3 lenB3
+      heap heap1 heap2 hcross hcopyB hcopyA,
+    hA3Rep, hB3Rep2⟩
+
+/-- In the regular branch where both pointers need normalization, the two
+source-order copies also preserve both represented iterator outputs. -/
+theorem hgcdRecursiveStoreIterOutputs_regular_both_refines
+    (this : DenseUPolyZp)
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (polyA polyB : Polynomial (ZMod this._p.toNat)) (heap : RawHeap)
+    (hcross : (!(pA == a3) && (pB == a3)) = false)
+    (hPACopy : (pA == a3) = false) (hPBCopy : (pB == b3) = false)
+    (hA3 : heap.ValidU64Slice a3 lenA3)
+    (hB3 : heap.ValidU64Slice b3 lenB3)
+    (hARep : RawDensePolyRep this heap pA lenA3 polyA)
+    (hBRep : RawDensePolyRep this heap pB lenB3 polyB)
+    (hA3PA : U64SlicesDisjoint a3 lenA3 pA lenA3)
+    (hA3PB : U64SlicesDisjoint a3 lenA3 pB lenB3)
+    (hB3PB : U64SlicesDisjoint b3 lenB3 pB lenB3)
+    (hB3A3 : U64SlicesDisjoint b3 lenB3 a3 lenA3) :
+    ∃ heap', hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap =
+        .ok heap' ∧
+      RawDensePolyRep this heap' a3 lenA3 polyA ∧
+      RawDensePolyRep this heap' b3 lenB3 polyB := by
+  rcases copyU64_refines_rawDense this heap a3 pA lenA3 polyA hA3 hA3PA
+      hARep with ⟨heap1, hcopyA, hlayout1, hA3Rep⟩
+  have hBRep1 := (copyU64_preserves_rawDenseRep this heap heap1 a3 pA lenA3
+    pB lenB3 polyB hA3 hARep.1 hA3PB hcopyA hBRep).2
+  have hB31 : heap1.ValidU64Slice b3 lenB3 :=
+    (hlayout1 b3 lenB3).mp hB3
+  rcases copyU64_refines_rawDense this heap1 b3 pB lenB3 polyB hB31 hB3PB
+      hBRep1 with ⟨heap2, hcopyB, _, hB3Rep⟩
+  have hA3Rep2 := (copyU64_preserves_rawDenseRep this heap1 heap2 b3 pB lenB3
+    a3 lenA3 polyA hB31 hBRep1.1 hB3A3 hcopyB hA3Rep).2
+  have hfirst : (if (pA == a3) = false then heap.copyU64 a3 pA lenA3
+      else .ok heap) = .ok heap1 := by
+    simp [hPACopy, hcopyA]
+  have hsecond : (if (pB == b3) = false then heap1.copyU64 b3 pB lenB3
+      else .ok heap1) = .ok heap2 := by
+    simp [hPBCopy, hcopyB]
+  exact ⟨heap2,
+    hgcdRecursiveStoreIterOutputs_regular_exec a3 b3 pA pB lenA3 lenB3
+      heap heap1 heap2 hcross hfirst hsecond,
+    hA3Rep2, hB3Rep⟩
+
+theorem hgcdRecursiveStoreIterOutputs_regular_skip_a_refines
+    (this : DenseUPolyZp)
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (polyA polyB : Polynomial (ZMod this._p.toNat)) (heap : RawHeap)
+    (hcross : (!(pA == a3) && (pB == a3)) = false)
+    (hPASkip : (pA == a3) = true) (hpA : pA = a3)
+    (hPBCopy : (pB == b3) = false)
+    (hB3 : heap.ValidU64Slice b3 lenB3)
+    (hARep : RawDensePolyRep this heap pA lenA3 polyA)
+    (hBRep : RawDensePolyRep this heap pB lenB3 polyB)
+    (hB3PB : U64SlicesDisjoint b3 lenB3 pB lenB3)
+    (hB3A3 : U64SlicesDisjoint b3 lenB3 a3 lenA3) :
+    ∃ heap', hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap =
+        .ok heap' ∧
+      RawDensePolyRep this heap' a3 lenA3 polyA ∧
+      RawDensePolyRep this heap' b3 lenB3 polyB := by
+  have hA3Rep : RawDensePolyRep this heap a3 lenA3 polyA := by
+    simpa [hpA] using hARep
+  rcases copyU64_refines_rawDense this heap b3 pB lenB3 polyB hB3 hB3PB
+      hBRep with ⟨heap1, hcopyB, _, hB3Rep⟩
+  have hA3Rep1 := (copyU64_preserves_rawDenseRep this heap heap1 b3 pB lenB3
+    a3 lenA3 polyA hB3 hBRep.1 hB3A3 hcopyB hA3Rep).2
+  have hfirst : (if (pA == a3) = false then heap.copyU64 a3 pA lenA3
+      else .ok heap) = .ok heap := by simp [hPASkip]
+  have hsecond : (if (pB == b3) = false then heap.copyU64 b3 pB lenB3
+      else .ok heap) = .ok heap1 := by simp [hPBCopy, hcopyB]
+  exact ⟨heap1,
+    hgcdRecursiveStoreIterOutputs_regular_exec a3 b3 pA pB lenA3 lenB3
+      heap heap heap1 hcross hfirst hsecond,
+    hA3Rep1, hB3Rep⟩
+
+theorem hgcdRecursiveStoreIterOutputs_regular_skip_b_refines
+    (this : DenseUPolyZp)
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (polyA polyB : Polynomial (ZMod this._p.toNat)) (heap : RawHeap)
+    (hcross : (!(pA == a3) && (pB == a3)) = false)
+    (hPACopy : (pA == a3) = false)
+    (hPBSkip : (pB == b3) = true) (hpB : pB = b3)
+    (hA3 : heap.ValidU64Slice a3 lenA3)
+    (hARep : RawDensePolyRep this heap pA lenA3 polyA)
+    (hBRep : RawDensePolyRep this heap pB lenB3 polyB)
+    (hA3PA : U64SlicesDisjoint a3 lenA3 pA lenA3)
+    (hA3B3 : U64SlicesDisjoint a3 lenA3 b3 lenB3) :
+    ∃ heap', hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap =
+        .ok heap' ∧
+      RawDensePolyRep this heap' a3 lenA3 polyA ∧
+      RawDensePolyRep this heap' b3 lenB3 polyB := by
+  have hB3Rep : RawDensePolyRep this heap b3 lenB3 polyB := by
+    simpa [hpB] using hBRep
+  rcases copyU64_refines_rawDense this heap a3 pA lenA3 polyA hA3 hA3PA
+      hARep with ⟨heap1, hcopyA, _, hA3Rep⟩
+  have hB3Rep1 := (copyU64_preserves_rawDenseRep this heap heap1 a3 pA lenA3
+    b3 lenB3 polyB hA3 hARep.1 hA3B3 hcopyA hB3Rep).2
+  have hfirst : (if (pA == a3) = false then heap.copyU64 a3 pA lenA3
+      else .ok heap) = .ok heap1 := by simp [hPACopy, hcopyA]
+  have hsecond : (if (pB == b3) = false then heap1.copyU64 b3 pB lenB3
+      else .ok heap1) = .ok heap1 := by simp [hPBSkip]
+  exact ⟨heap1,
+    hgcdRecursiveStoreIterOutputs_regular_exec a3 b3 pA pB lenA3 lenB3
+      heap heap1 heap1 hcross hfirst hsecond,
+    hA3Rep, hB3Rep1⟩
+
+theorem hgcdRecursiveStoreIterOutputs_regular_skip_both_refines
+    (this : DenseUPolyZp)
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (polyA polyB : Polynomial (ZMod this._p.toNat)) (heap : RawHeap)
+    (hcross : (!(pA == a3) && (pB == a3)) = false)
+    (hPASkip : (pA == a3) = true) (hpA : pA = a3)
+    (hPBSkip : (pB == b3) = true) (hpB : pB = b3)
+    (hARep : RawDensePolyRep this heap pA lenA3 polyA)
+    (hBRep : RawDensePolyRep this heap pB lenB3 polyB) :
+    hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap = .ok heap ∧
+      RawDensePolyRep this heap a3 lenA3 polyA ∧
+      RawDensePolyRep this heap b3 lenB3 polyB := by
+  have hfirst : (if (pA == a3) = false then heap.copyU64 a3 pA lenA3
+      else .ok heap) = .ok heap := by simp [hPASkip]
+  have hsecond : (if (pB == b3) = false then heap.copyU64 b3 pB lenB3
+      else .ok heap) = .ok heap := by simp [hPBSkip]
+  exact ⟨hgcdRecursiveStoreIterOutputs_regular_exec a3 b3 pA pB lenA3 lenB3
+      heap heap heap hcross hfirst hsecond,
+    by simpa [hpA] using hARep, by simpa [hpB] using hBRep⟩
+
+/-- Complete raw refinement of all pointer-comparison branches in the source
+output-normalization block.  Equality bridges are facts about the concrete C++
+pointer comparison; the remaining hypotheses are only capacities and aliasing. -/
+theorem hgcdRecursiveStoreIterOutputs_refines (this : DenseUPolyZp)
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (polyA polyB : Polynomial (ZMod this._p.toNat)) (heap : RawHeap)
+    (hPAEq : (pA == a3) = true → pA = a3)
+    (hPBEq : (pB == b3) = true → pB = b3)
+    (hA3 : heap.ValidU64Slice a3 lenA3)
+    (hB3 : heap.ValidU64Slice b3 lenB3)
+    (hARep : RawDensePolyRep this heap pA lenA3 polyA)
+    (hBRep : RawDensePolyRep this heap pB lenB3 polyB)
+    (hB3PB : U64SlicesDisjoint b3 lenB3 pB lenB3)
+    (hB3PA : U64SlicesDisjoint b3 lenB3 pA lenA3)
+    (hA3PA : U64SlicesDisjoint a3 lenA3 pA lenA3)
+    (hA3PB : U64SlicesDisjoint a3 lenA3 pB lenB3)
+    (hA3B3 : U64SlicesDisjoint a3 lenA3 b3 lenB3) :
+    ∃ heap', hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap =
+        .ok heap' ∧
+      RawDensePolyRep this heap' a3 lenA3 polyA ∧
+      RawDensePolyRep this heap' b3 lenB3 polyB := by
+  by_cases hcross : (!(pA == a3) && (pB == a3)) = true
+  · exact hgcdRecursiveStoreIterOutputs_cross_refines this a3 b3 pA pB
+      lenA3 lenB3 polyA polyB heap hcross hA3 hB3 hARep hBRep hB3PB
+      hB3PA hA3PA hA3B3
+  · have hcrossFalse : (!(pA == a3) && (pB == a3)) = false := by
+      cases hvalue : (!(pA == a3) && (pB == a3)) <;> simp_all
+    cases hpa : pA == a3 with
+    | false =>
+      cases hpb : pB == b3 with
+      | false =>
+        exact hgcdRecursiveStoreIterOutputs_regular_both_refines this a3 b3
+          pA pB lenA3 lenB3 polyA polyB heap hcrossFalse hpa hpb hA3 hB3
+          hARep hBRep hA3PA hA3PB hB3PB (u64SlicesDisjoint_symm hA3B3)
+      | true =>
+        exact hgcdRecursiveStoreIterOutputs_regular_skip_b_refines this a3 b3
+          pA pB lenA3 lenB3 polyA polyB heap hcrossFalse hpa hpb (hPBEq hpb)
+          hA3 hARep hBRep hA3PA hA3B3
+    | true =>
+      cases hpb : pB == b3 with
+      | false =>
+        exact hgcdRecursiveStoreIterOutputs_regular_skip_a_refines this a3 b3
+          pA pB lenA3 lenB3 polyA polyB heap hcrossFalse hpa (hPAEq hpa) hpb
+          hB3 hARep hBRep hB3PB (u64SlicesDisjoint_symm hA3B3)
+      | true =>
+        have hboth := hgcdRecursiveStoreIterOutputs_regular_skip_both_refines
+          this a3 b3 pA pB lenA3 lenB3 polyA polyB heap hcrossFalse hpa
+          (hPAEq hpa) hpb (hPBEq hpb) hARep hBRep
+        exact ⟨heap, hboth.1, hboth.2.1, hboth.2.2⟩
+
 theorem slicePolyRep_zero_length_any (heap : RawHeap) (ptr : RawPtr UInt64)
     (p : Nat) : SlicePolyRep heap ptr 0 p 0 := by
   refine ⟨#[], rfl, rfl, ?_⟩

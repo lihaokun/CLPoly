@@ -1732,6 +1732,49 @@ theorem word3ArrayPoly_writeU64_region_ne (before after : RawHeap)
       simpa [hafter.1] using hdegree
     rw [dif_neg hafterDegree, dif_neg hbeforeDegree]
 
+/-- Algebraic/raw assembly of the actual `qi = 0` successor branch.  The
+generated Q write is retained even though no W3 addMul is executed. -/
+theorem quotient_zero_successor_finalize (before afterWrite final : RawHeap)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (length i p : Nat) (qi : UInt64)
+    (lowerQ divisor : Polynomial (ZMod p))
+    (beforeValues writeValues recValues finalValues : Array Word3)
+    (hvalidW : before.ValidWord3Slice W3 length)
+    (hbefore : Word3SliceRep before W3 length beforeValues)
+    (hwriteValues : Word3SliceRep afterWrite W3 length writeValues)
+    (hrecValues : Word3SliceRep afterWrite W3 length recValues)
+    (hfinalValues : Word3SliceRep final W3 length finalValues)
+    (hwrite : before.writeU64 Q i qi = .ok afterWrite)
+    (hQW : Q.region ≠ W3.region)
+    (hqi : qi = 0)
+    (hlower : SlicePolyRep final Q i p lowerQ)
+    (hvalidQ : final.ValidU64Slice Q (i + 1))
+    (hreadFinal : final.readU64 Q i = .ok qi)
+    (hrec : word3ArrayPoly p finalValues =
+      word3ArrayPoly p recValues - lowerQ * divisor) :
+    ∃ fullQ : Polynomial (ZMod p),
+      SlicePolyRep final Q (i + 1) p fullQ ∧
+      word3ArrayPoly p finalValues =
+        word3ArrayPoly p beforeValues - fullQ * divisor := by
+  have hwriteEq := word3ArrayPoly_writeU64_region_ne before afterWrite Q W3
+    i length p qi beforeValues writeValues hvalidW hbefore hwriteValues
+    hQW hwrite
+  have hrecValuesEq : recValues = writeValues :=
+    word3SliceRep_eq afterWrite W3 length recValues writeValues hrecValues
+      hwriteValues
+  have hstep : word3ArrayPoly p recValues =
+      word3ArrayPoly p beforeValues -
+        Polynomial.monomial i (qi.toNat : ZMod p) * divisor := by
+    subst qi
+    rw [hrecValuesEq, hwriteEq]
+    simp
+  rcases slicePolyRep_extend_exists final Q i p qi lowerQ hvalidQ hlower
+      hreadFinal with ⟨fullQ, hfull, _⟩
+  refine ⟨fullQ, hfull, ?_⟩
+  exact quotient_step_finalize final Q p i qi lowerQ fullQ
+    (word3ArrayPoly p beforeValues) (word3ArrayPoly p recValues)
+    (word3ArrayPoly p finalValues) divisor hlower hfull hreadFinal hstep hrec
+
 /-- Algebraic core of the source's leading-coefficient cancellation.  It is
 stated over naturals so the subsequent raw-memory theorem only has to supply
 the exact generated write and canonical UInt64 observations. -/

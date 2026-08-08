@@ -1492,6 +1492,34 @@ theorem hgcdRecursiveMulTerm_refines (this : DenseUPolyZp)
         (heap.validU64Slice_mono dst (2 * max 0 lenRight - 1) 0
           hwork.dstValid (by omega))
 
+/-- Exact product-capacity bound for the generated guarded multiplication.
+Unlike the older coarse sum bound, this retains the source's `- 1`, including
+the zero-input branches where truncated subtraction still makes the bound
+valid. -/
+theorem hgcdRecursiveMulTerm_length_le_product (this : DenseUPolyZp)
+    (dst left : RawPtr UInt64) (lenLeft : Nat)
+    (right : RawPtr UInt64) (lenRight : Nat)
+    (scratch : RawPtr UInt64) (heap : RawHeap) (result : HgcdMulTermResult)
+    (hrun : hgcdRecursiveMulTerm this dst left lenLeft right lenRight
+      scratch heap = .ok result) :
+    result.length ≤ lenLeft + lenRight - 1 := by
+  simp only [hgcdRecursiveMulTerm] at hrun
+  split at hrun
+  next hnonzero =>
+    split at hrun
+    next fault hmul => simp at hrun
+    next heap1 hmul =>
+      have heq : result =
+          HgcdMulTermResult.mk heap1 (lenLeft + lenRight - 1) :=
+        (Except.ok.inj hrun).symm
+      subst result
+      exact Nat.le_refl _
+  next hzero =>
+    have heq : result = HgcdMulTermResult.mk heap 0 :=
+      (Except.ok.inj hrun).symm
+    subst result
+    exact Nat.zero_le _
+
 /-- Frame rule for the exact guarded multiplication block.  It exposes that
 the generated execution writes only its destination and scratch areas, which
 is needed to sequence the two products in each reconstruction block. -/
@@ -1651,7 +1679,7 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
       RawDensePolyRep this heap' b2 length
         (if sgn < 0 then polyR2 * polyALo - polyR0 * polyBLo
          else polyR0 * polyBLo - polyR2 * polyALo) ∧
-      length ≤ max (lenR2 + lenALo) (lenR0 + lenBLo) := by
+      length ≤ max (lenR2 + lenALo - 1) (lenR0 + lenBLo - 1) := by
   rcases hgcdRecursiveMulTerm_refines this b2 r2 lenR2 aLo lenALo
       scratch heap polyR2 polyALo hcfg hp hwork.first hR2 hALo with
     ⟨term1, hrun1, hlayout1, hTerm1⟩
@@ -1678,9 +1706,9 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
     lenALo scratch heap term1 hrun1
   have hLen2 := hgcdRecursiveMulTerm_length_le this T0 r0 lenR0 bLo
     lenBLo scratch term1.heap term2 hrun2
-  have hLen1Sum := hgcdRecursiveMulTerm_length_le_sum this b2 r2 lenR2 aLo
+  have hLen1Product := hgcdRecursiveMulTerm_length_le_product this b2 r2 lenR2 aLo
     lenALo scratch heap term1 hrun1
-  have hLen2Sum := hgcdRecursiveMulTerm_length_le_sum this T0 r0 lenR0 bLo
+  have hLen2Product := hgcdRecursiveMulTerm_length_le_product this T0 r0 lenR0 bLo
     lenBLo scratch term1.heap term2 hrun2
   have hTerm1Final : RawDensePolyRep this term2.heap b2 term1.length
       (polyR2 * polyALo) := by
@@ -1726,7 +1754,7 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
         (hlayout1 ptr count).trans
           ((hlayout2 ptr count).trans (hlayout3 ptr count))
     · simpa [hsgn] using hrep
-    · exact hlength.trans (max_le_max hLen1Sum hLen2Sum)
+    · exact hlength.trans (max_le_max hLen1Product hLen2Product)
 
   · rcases polySub_ok this b2 T0 term2.length b2 term1.length
         term2.heap (by simpa [max_comm] using hSubValid) hTerm2.1
@@ -1744,7 +1772,7 @@ theorem hgcdRecursiveReconstructB_refines (this : DenseUPolyZp)
           ((hlayout2 ptr count).trans (hlayout3 ptr count))
     · simpa [hsgn] using hrep
     · simpa [max_comm] using hlength.trans
-        (max_le_max hLen2Sum hLen1Sum)
+        (max_le_max hLen2Product hLen1Product)
 
 /-- Semantic refinement of the exact `a2` reconstruction block.  Its source
 differs from `b2` only by reversing the sign-selected subtraction, so the
@@ -1770,7 +1798,7 @@ theorem hgcdRecursiveReconstructA_refines (this : DenseUPolyZp)
       RawDensePolyRep this heap' a2 length
         (if sgn < 0 then polyR1 * polyBLo - polyR3 * polyALo
          else polyR3 * polyALo - polyR1 * polyBLo) ∧
-      length ≤ max (lenR3 + lenALo) (lenR1 + lenBLo) := by
+      length ≤ max (lenR3 + lenALo - 1) (lenR1 + lenBLo - 1) := by
   let flippedSign : Int := if sgn < 0 then 0 else -1
   rcases hgcdRecursiveReconstructB_refines this a2 T0 r3 r1 aLo bLo
       scratch lenR3 lenR1 lenALo lenBLo flippedSign heap polyR3 polyR1
@@ -6553,10 +6581,14 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       RawDensePolyRep this result.heap B result.lenB
         (hgcdReconstructedLowB entries polyLowA polyLowB sgn +
           Polynomial.X ^ shift * polyHighB) ∧
+      result.lenA ≤ max (shift + lenHighA)
+        (max
+          (hgcdMatLen M hM (3 : Fin 4) + lenLowA - 1)
+          (hgcdMatLen M hM (1 : Fin 4) + lenLowB - 1)) ∧
       result.lenB ≤ max (shift + lenHighB)
         (max
-          (hgcdMatLen M hM (2 : Fin 4) + lenLowA)
-          (hgcdMatLen M hM (0 : Fin 4) + lenLowB)) := by
+          (hgcdMatLen M hM (2 : Fin 4) + lenLowA - 1)
+          (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1)) := by
   rcases hgcdRecursiveReconstructPair_exec this A B T0 lowA lowB highA
       highB scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap
       result hrun with
@@ -6610,12 +6642,19 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       (hgcdMatLen M hM (1 : Fin 4)) lenLowA lenLowB sgn liftedB.heap
       (entries 3) (entries 1) polyLowA polyLowB hcfg hp hwork.reconstructA
       (matrixAtB 3) (matrixAtB 1) lowAAtB lowBAtB with
-    ⟨heapA, lenA0, hARun', _, hA0, _⟩
+    ⟨heapA, lenA0, hARun', _, hA0, hLowLenA⟩
   have hEqA : (heapA, lenA0) = (heap3, lowLenA) :=
     Except.ok.inj (hARun'.symm.trans hARun)
   cases hEqA
   have hHighA3 := rawDensePolyRep_of_same_prefix this heap heap3 highA
     lenHighA polyHighA hwork.highALayout hwork.highAPrefix hHighA
+  rcases hgcdRecursiveLiftHigh_terminates this A highA lowLenA shift lenHighA
+      heap3 (hgcdReconstructedLowA entries polyLowA polyLowB sgn) hpWord
+      hwork.liftA (by simpa [hgcdReconstructedLowA] using hA0) with
+    ⟨boundedA, hBoundedARun, _, hBoundA⟩
+  have hEqBoundedA : boundedA = liftedA :=
+    Except.ok.inj (hBoundedARun.symm.trans hLiftARun)
+  subst boundedA
   rcases hgcdRecursiveLiftHigh_refines this A highA lowLenA shift lenHighA
       heap3 (hgcdReconstructedLowA entries polyLowA polyLowB sgn) polyHighA
       hpWord hwork.liftA (by simpa [hgcdReconstructedLowA] using hA0)
@@ -6629,8 +6668,9 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       Polynomial.X ^ shift * polyHighB) hwork.finalBLayout
       hwork.finalBPrefix hBFinal
   rw [hHeap, hLenA, hLenB]
-  refine ⟨hAFinal, hBAtFinal, ?_⟩
-  exact hBoundB.trans (max_le_max (Nat.le_refl _) hLowLenB)
+  refine ⟨hAFinal, hBAtFinal, ?_, ?_⟩
+  · exact hBoundA.trans (max_le_max (Nat.le_refl _) hLowLenA)
+  · exact hBoundB.trans (max_le_max (Nat.le_refl _) hLowLenB)
 
 /-- Semantic composition of a real first recursive result with the four-call
 paired reconstruction.  The full-input transform and GCD theorem are derived
@@ -6670,15 +6710,15 @@ theorem hgcdRecursiveReconstructPair_preserves_input (this : DenseUPolyZp)
         normalize (EuclideanDomain.gcd finalA finalB) ∧
       result.lenB ≤ max (shift + first.lenB)
         (max
-          (hgcdMatLen first.matrix first.valid (2 : Fin 4) + lenLowA)
-          (hgcdMatLen first.matrix first.valid (0 : Fin 4) + lenLowB)) := by
+          (hgcdMatLen first.matrix first.valid (2 : Fin 4) + lenLowA - 1)
+          (hgcdMatLen first.matrix first.valid (0 : Fin 4) + lenLowB - 1)) := by
   have hMatrixSemantics := hFirst.matrixSemantics rfl
   rcases hgcdRecursiveReconstructPair_refines this A B T0 lowA lowB highA
       highB scratch lenLowA lenLowB first.lenA first.lenB shift first.matrix
       first.valid first.sgn first.heap result entries polyLowA polyLowB
       polyOutputHighA polyOutputHighB hcfg hp physical hMatrixSemantics.1
       hLowA hLowB hFirst.aRep hFirst.bRep hrun with
-    ⟨hAResult, hBResult, hLength⟩
+    ⟨hAResult, hBResult, _, hLength⟩
   let finalA := hgcdReconstructedLowA entries polyLowA polyLowB first.sgn +
     Polynomial.X ^ shift * polyOutputHighA
   let finalB := hgcdReconstructedLowB entries polyLowA polyLowB first.sgn +
@@ -6703,10 +6743,10 @@ call, not a runtime decrease test. -/
 theorem hgcdRecursiveReconstructPair_lenB_le_input
     (resultLen inputLength shift lenHighB lenR2 lenLowA lenR0 lenLowB : Nat)
     (hresult : resultLen ≤ max (shift + lenHighB)
-      (max (lenR2 + lenLowA) (lenR0 + lenLowB)))
+      (max (lenR2 + lenLowA - 1) (lenR0 + lenLowB - 1)))
     (hhigh : shift + lenHighB ≤ inputLength)
-    (hsecond : lenR2 + lenLowA ≤ inputLength)
-    (hzero : lenR0 + lenLowB ≤ inputLength) :
+    (hsecond : lenR2 + lenLowA - 1 ≤ inputLength)
+    (hzero : lenR0 + lenLowB - 1 ≤ inputLength) :
     resultLen ≤ inputLength := by
   exact hresult.trans (max_le hhigh (max_le hsecond hzero))
 
@@ -6718,11 +6758,10 @@ theorem hgcdRecursiveFirstReconstruct_lenB_le_input
     (hresult : resultLen ≤
       max (inputLength / 2 + returnedLenB)
         (max
-          (lenR2 + Nat.min inputLength (inputLength / 2))
-          (lenR0 + Nat.min inputLengthB (inputLength / 2))))
+          (lenR2 + Nat.min inputLength (inputLength / 2) - 1)
+          (lenR0 + Nat.min inputLengthB (inputLength / 2) - 1)))
     (hreturnedOrder : returnedLenB ≤ returnedLenA)
     (hreturnedBound : returnedLenA ≤ inputLength - inputLength / 2)
-    (hreturnedPos : 0 < returnedLenA)
     (hrow2 : lenR2 + returnedLenA ≤
       (inputLength - inputLength / 2) + 1)
     (hrow0 : lenR0 + returnedLenA ≤
@@ -6731,12 +6770,12 @@ theorem hgcdRecursiveFirstReconstruct_lenB_le_input
   have hsplit : inputLength / 2 +
       (inputLength - inputLength / 2) = inputLength := by omega
   have hhigh : inputLength / 2 + returnedLenB ≤ inputLength := by omega
-  have hsecond : lenR2 + Nat.min inputLength (inputLength / 2) ≤
+  have hsecond : lenR2 + Nat.min inputLength (inputLength / 2) - 1 ≤
       inputLength := by
     have hmin : Nat.min inputLength (inputLength / 2) ≤
         inputLength / 2 := Nat.min_le_right _ _
     omega
-  have hzero : lenR0 + Nat.min inputLengthB (inputLength / 2) ≤
+  have hzero : lenR0 + Nat.min inputLengthB (inputLength / 2) - 1 ≤
       inputLength := by
     have hmin : Nat.min inputLengthB (inputLength / 2) ≤
         inputLength / 2 := Nat.min_le_right _ _
@@ -6786,10 +6825,47 @@ theorem hgcdRecursiveFirstReconstruct_bound_of_invariant
   exact hgcdRecursiveFirstReconstruct_lenB_le_input result.lenB lenA lenB
     first.lenA first.lenB
     (hgcdMatLen first.matrix first.valid (2 : Fin 4))
-    (hgcdMatLen first.matrix first.valid (0 : Fin 4)) hrefines.2.2
-    hinvariant.order hinvariant.inputBound hinvariant.positive
+    (hgcdMatLen first.matrix first.valid (0 : Fin 4)) hrefines.2.2.2
+    hinvariant.order hinvariant.inputBound
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row0A)
+
+/-- Arithmetic closure for the second paired reconstruction.  The source
+chooses `k` so that `k + lenC0` is exactly the reconstructed divisor length;
+the sharp product `- 1` bounds then fit both final operands inside the outer
+input length. -/
+theorem hgcdRecursiveFinalReconstruct_lengths_le_input
+    (outerLength reconstructedLenB k lenC0 lenD : Nat)
+    (secondLenA secondLenB s0 s1 s2 s3 resultLenA resultLenB : Nat)
+    (hsplit : k + lenC0 = reconstructedLenB)
+    (hreconstructed : reconstructedLenB ≤ outerLength)
+    (hsecondBound : secondLenA ≤ lenC0)
+    (hsecondOrder : secondLenB ≤ secondLenA)
+    (hrow0 : s0 + secondLenA ≤ lenC0 + 1)
+    (hrow1 : s1 + secondLenB ≤ lenC0 + 1)
+    (hrow2 : s2 + secondLenA ≤ lenC0 + 1)
+    (hrow3 : s3 + secondLenB ≤ lenC0 + 1)
+    (hresultA : resultLenA ≤ max (k + secondLenA)
+      (max
+        (s3 + Nat.min reconstructedLenB k - 1)
+        (s1 + Nat.min lenD k - 1)))
+    (hresultB : resultLenB ≤ max (k + secondLenB)
+      (max
+        (s2 + Nat.min reconstructedLenB k - 1)
+        (s0 + Nat.min lenD k - 1))) :
+    resultLenA ≤ outerLength ∧ resultLenB ≤ outerLength := by
+  have hminReconstructed : Nat.min reconstructedLenB k ≤ k :=
+    Nat.min_le_right _ _
+  have hminD : Nat.min lenD k ≤ k := Nat.min_le_right _ _
+  constructor
+  · apply hresultA.trans
+    apply max_le
+    · omega
+    · apply max_le <;> omega
+  · apply hresultB.trans
+    apply max_le
+    · omega
+    · apply max_le <;> omega
 
 /-- Purely physical obligations for the exact final matrix block.  Besides
 the two existing generated-call workspaces, the frame fields state that the

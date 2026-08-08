@@ -19,6 +19,7 @@
 - 为源码商矩阵更新 `top + quotient*bottom` 建立规范化 raw 长度界；零多项式分支和乘积次数分支都从描述符表示推出，不引入规格计算或备用实现。
 - 证明规范化 raw 描述符长度由其 L2 多项式唯一决定，并将商矩阵块的四项结果闭合为两条更新上界和两条精确保留等式，覆盖真实 row swap 与两次 guarded update。
 - 将商矩阵四项界与真实 `hgcdRecursiveCombineMatrix` 执行组合，导出实际中间矩阵及最终 `_mat_mul` 四项描述符界；中间对象来自生成执行返回值而非规格侧构造。
+- 保留真实 guarded multiplication 的精确 `lenLeft + lenRight - 1` 容量界，并让成对重构同时导出 A/B 两侧 normalization 返回长度上界；由源码恒等式 `k + lenC0 = reconstructed.lenB` 闭合最终两项均不超过外层输入长度。
 - 把两个统一基础分支定理加入严格 HGCD 源码门禁。
 
 ## 为什么做

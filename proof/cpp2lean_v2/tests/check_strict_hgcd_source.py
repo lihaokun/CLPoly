@@ -291,6 +291,7 @@ def main() -> None:
         "hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant",
         "hgcdRecursiveFirstReconstruct_order_of_invariant",
         "hgcdRecursiveFirstReconstruct_invariant_of_execution",
+        "hgcdRecursiveEarly_lengthInvariant",
         "hgcdRecursiveFinalReconstruct_lenA_above_half",
         "hgcdRecursiveReconstructPair_lenB_le_input",
         "hgcdRecursiveFirstReconstruct_lenB_lt_input",

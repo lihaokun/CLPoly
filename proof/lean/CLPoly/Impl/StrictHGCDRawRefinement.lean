@@ -7467,6 +7467,70 @@ theorem hgcdRecursiveFirstReconstruct_invariant_of_execution
       polyLowB polyHighA polyHighB hcfg hp hinputOrder hinvariant physical
       hMatrix hLowA hLowB hHighA hHighB hrun }
 
+/-- The first reconstructed pair already carries the complete parent length
+contract when the generated early-stop guard succeeds.  Matrix descriptors
+are those returned by the real first child; only the operand descriptors are
+the concrete reconstruction outputs. -/
+theorem hgcdRecursiveEarly_lengthInvariant
+    (outerLength highLength m : Nat) (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (heap : RawHeap) (sgn : Int)
+    (hm : m = outerLength / 2)
+    (hhigh : highLength = outerLength - m)
+    (hfirst : HgcdRecursiveLengthInvariant highLength first)
+    (hreconstructed : HgcdFirstReconstructionInvariant outerLength first
+      reconstructed)
+    (hearly : reconstructed.lenB < m + 1) :
+    HgcdRecursiveLengthInvariant outerLength
+      ⟨heap, first.matrix, first.valid, reconstructed.lenA,
+        reconstructed.lenB, sgn⟩ := by
+  have houter : highLength + m = outerLength := by omega
+  have hrow (i : Fin 4)
+      (h : hgcdMatLenRaw first.matrix first.valid i + first.lenA ≤
+        highLength + 1) :
+      hgcdMatLenRaw first.matrix first.valid i + reconstructed.lenA ≤
+        outerLength + 1 := by
+    rw [hreconstructed.leadingA]
+    omega
+  have hcoeff (i : Fin 4) :
+      hgcdMatLenRaw first.matrix first.valid i ≤
+        outerLength - outerLength / 2 := by
+    have := hfirst.coeffBound i
+    omega
+  exact {
+    row0A := hrow 0 hfirst.row0A
+    row1B := by
+      have hrow1 := hrow 1 hfirst.row1A
+      have hx : hgcdMatLenRaw first.matrix first.valid (1 : Fin 4) +
+          reconstructed.lenB ≤ outerLength + 1 := by
+        have := hreconstructed.ordered
+        omega
+      simpa using hx
+    row2A := hrow 2 hfirst.row2A
+    row3B := by
+      have hrow3 := hrow 3 hfirst.row3A
+      have hx : hgcdMatLenRaw first.matrix first.valid (3 : Fin 4) +
+          reconstructed.lenB ≤ outerLength + 1 := by
+        have := hreconstructed.ordered
+        omega
+      simpa using hx
+    row1A := hrow 1 hfirst.row1A
+    row3A := hrow 3 hfirst.row3A
+    inputBound := by
+      have hx : reconstructed.lenA ≤ outerLength := by
+        rw [hreconstructed.leadingA]
+        have hf := hfirst.inputBound
+        omega
+      simpa using hx
+    stopped := by simpa [hm] using hearly
+    positive := hreconstructed.positiveA
+    aboveHalf := by
+      have hx : outerLength / 2 < reconstructed.lenA := by
+        rw [hreconstructed.leadingA, ← hm]
+        exact Nat.lt_add_of_pos_right hfirst.positive
+      simpa using hx
+    coeffBound := hcoeff }
+
 /-- Substituting the exact source split `k = 2*m-lenB2+1` into the exact
 final-A reconstruction length shows that the complete recursive result stays
 strictly above the outer half-length threshold. -/

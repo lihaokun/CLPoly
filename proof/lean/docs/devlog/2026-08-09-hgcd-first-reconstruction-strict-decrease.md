@@ -103,3 +103,8 @@ above-half 推出操作数次序后导出；没有额外假设最终 B 已小于
 真实 base helper，分别覆盖 `computeM=true/false` 的矩阵初始化差异，并将两次
 原始复制的表示结果运输到 body 返回记录。该定理证明的是完整 body 分支，而不
 只是孤立 base helper。
+
+第一次重构命中 early guard 时，现在可直接构造完整父级长度不变量：最终 A 的
+精确移位长度把第一子矩阵的四行配对界提升到外层输入，B/A 次序导出两条 row/B
+界，而第一子调用的系数界单调提升为外层系数界。该结构来自真实重构不变量和
+early guard，不作为 early workspace 的附加结果假设。

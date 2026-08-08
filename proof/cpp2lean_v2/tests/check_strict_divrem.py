@@ -27,7 +27,7 @@ from pass1_parse import parse_pass
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictDivrem.lean"
 REFINEMENT_ROOT = V2_ROOT.parent / "lean" / "CLPoly" / "Refinement"
 AST_SHA256 = "6ed59f9a349887be5e6c3bc49f103a64d7df8d34ad0730f7a727ec9cb54f5c15"
-LEAN_SHA256 = "2a555b0c01958ebb35d2b4518ecde4ea1e7bed847daf91d63a6ee67bbc154cf0"
+LEAN_SHA256 = "1629135e031133893a2b51831e891724da5be6e332aaf7c98ee94cf55be4ca67"
 
 
 def digest(data: bytes) -> str:

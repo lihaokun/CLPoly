@@ -42,6 +42,10 @@
 
 ## 下一步
 
-继续闭合 `_mat_row_update` 的非零分支：接入已经完成的严格 `_mul` 和
-`_poly_add` 精化，证明新矩阵行精确为 `old[i1] + Q*old[i0]`。之后才能证明
-`_hgcd_iter` 每轮同时保持矩阵变换关系和 GCD。
+`_hgcd_iter` 已建立完整 reference-eliminated RawHeap lowering：保持 C++ 的
+`_mat_one`、A/B 两次 memcpy、真实 `_poly_divrem`、指针旋转和两次
+`_mat_row_update`。循环直接按当前 `lenB` 良基递归；下降证据由实际 divrem
+返回的 `lenR < lenB` 控制流定理提供，不使用 fuel 或额外运行时断言。
+
+下一步证明初始化 copy 的表示传递，以及每轮 divrem/两次行更新共同保持
+Euclid 对与矩阵变换关系，最终导出循环停止条件和 GCD 不变式。

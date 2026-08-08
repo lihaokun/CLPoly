@@ -1,5 +1,6 @@
 import CLPoly.Generated.StrictMul
 import CLPoly.Generated.StrictPolyAddSub
+import CLPoly.Generated.StrictDivrem
 
 set_option autoImplicit false
 
@@ -7,6 +8,7 @@ namespace Generated.StrictHGCD
 
 open Generated.StrictMul
 open Generated.StrictPolyAddSub
+open Generated.StrictDivrem
 
 /-- Raw lowering of the four field updates in C++ `_mat_one`.  The matrix
 descriptor itself is a value, while its polynomial entries live in RawHeap. -/
@@ -69,5 +71,94 @@ def dense_upoly_zp__mat_row_update_ir (this : DenseUPolyZp)
         ({ poly := poly', len := len' } : HgcdMat) T lenT t)
   else
     .error .assertionFailure
+
+/-- Reference-eliminated state of C++ `_hgcd_iter`.  The pointer fields are
+the current values of `*pA`, `*pB`, `*pT`, and `*pt`. -/
+structure HgcdIterState where
+  heap : RawHeap
+  matrix : HgcdMat
+  A : RawPtr UInt64
+  lenA : Nat
+  B : RawPtr UInt64
+  lenB : Nat
+  T : RawPtr UInt64
+  lenT : Nat
+  t : RawPtr UInt64
+  sgn : Int
+
+/-- Exact well-founded lowering of the C++ `_hgcd_iter` while-loop.  One
+iteration performs the real divrem, pointer rotation, and both matrix-row
+updates before recurring on the strictly shorter remainder. -/
+def hgcdIterLoop (this : DenseUPolyZp) (m : Nat) (Q : RawPtr UInt64)
+    (W3 : RawPtr Word3) (scratch : RawPtr UInt64) :
+    (state : HgcdIterState) → RawExec HgcdIterState
+  | state =>
+    if state.lenB ≥ m + 1 then
+      match hdiv : dense_upoly_zp__poly_divrem_ir this Q state.T state.A
+          state.lenA state.B state.lenB W3 state.heap with
+      | .error fault => .error fault
+      | .ok (heap1, lenQ, lenR) =>
+        let rotatedA := state.B
+        let rotatedB := state.T
+        let rotatedT := state.A
+        match dense_upoly_zp__mat_row_update_ir this state.matrix
+            ⟨2, by omega⟩ ⟨3, by omega⟩ Q lenQ rotatedT state.lenT
+            state.t scratch heap1 with
+        | .error fault => .error fault
+        | .ok row23 =>
+          match dense_upoly_zp__mat_row_update_ir this row23.matrix
+              ⟨0, by omega⟩ ⟨1, by omega⟩ Q lenQ row23.T row23.lenT
+              row23.t scratch row23.heap with
+          | .error fault => .error fault
+          | .ok row01 =>
+            hgcdIterLoop this m Q W3 scratch {
+              heap := row01.heap
+              matrix := row01.matrix
+              A := rotatedA
+              lenA := state.lenB
+              B := rotatedB
+              lenB := lenR
+              T := row01.T
+              lenT := row01.lenT
+              t := row01.t
+              sgn := -state.sgn
+            }
+    else
+      .ok state
+termination_by state => state.lenB
+decreasing_by
+  exact polyDivrem_remainder_lt this Q state.T state.A state.lenA state.B
+    state.lenB W3 state.heap heap1 lenQ lenR hdiv
+
+/-- Raw lowering of the complete C++ `_hgcd_iter` initialization followed by
+its well-founded Euclidean loop.  The source order of the two copies is kept
+because it is required for the documented `{B,a}` aliasing case. -/
+def dense_upoly_zp__hgcd_iter_ir (this : DenseUPolyZp) (M : HgcdMat)
+    (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (heap : RawHeap) : RawExec HgcdIterState :=
+  let m := lenA / 2
+  match dense_upoly_zp__mat_one_ir M heap with
+  | .error fault => .error fault
+  | .ok (heap1, matrix) =>
+    match heap1.copyU64 A a lenA with
+    | .error fault => .error fault
+    | .ok heap2 =>
+      match heap2.copyU64 B b lenB with
+      | .error fault => .error fault
+      | .ok heap3 =>
+        hgcdIterLoop this m Q W3 scratch {
+          heap := heap3
+          matrix := matrix
+          A := A
+          lenA := lenA
+          B := B
+          lenB := lenB
+          T := T
+          lenT := lenT
+          t := t
+          sgn := 1
+        }
 
 end Generated.StrictHGCD

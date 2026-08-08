@@ -38,6 +38,7 @@
 - 定义只含容量和别名条件的 `HgcdMatStabilizeWorkspace`；以生成循环的 `4-i` 良基度量逐次调用真实 `copyU64`，证明第一循环成功终止、保留当前矩阵 raw 表示，并在连续 stage 切片上建立全部四个规范化多项式表示。既有 stage 项通过相邻切片不重叠逐轮保持，workspace 不携带任何 L2 结果。
 - 对第二个生成 restore 循环建立同样以 `4-i` 递减的 raw 语义归纳：每轮从对应 stage 切片复制到保存的原始指针，保持整个 stage 和此前恢复的目标项，并同步跟随真实 descriptor 更新。
 - 从纯物理 workspace 单独证明 restore 循环必然成功终止，再与 descriptor 恢复定理组合，得到完整 `hgcdMatStabilize` 的总精化：两段实际循环执行成功，输出矩阵在恢复后的旧指针和 iterator 产生的新长度上表示同一组四个 L2 多项式。
+- 继续降低 iterator 后的交叉保护块：当 `pA != a3 && pB == a3` 时严格先执行 `b3 ← pB` 再执行 `a3 ← pA`，其余情况按源码分别跳过或执行两次条件 copy；两个执行形状定理固定了真实分支和错误传播顺序。
 
 ## 为什么做
 

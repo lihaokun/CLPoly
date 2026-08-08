@@ -456,6 +456,43 @@ def hgcdMatStabilize (original current : HgcdMat)
   | .ok staged => hgcdMatRestoreLoop original current hOriginal hCurrent
       stage 0 0 staged.heap
 
+/-- Exact post-iterator pointer normalization in `_hgcd_recursive`.  The
+cross-protection branch must save `pB = a3` into `b3` before overwriting `a3`
+from `pA`; all other branches retain the source's two conditional copies. -/
+def hgcdRecursiveStoreIterOutputs (a3 b3 pA pB : RawPtr UInt64)
+    (lenA3 lenB3 : Nat) (heap : RawHeap) : RawExec RawHeap :=
+  if !(pA == a3) && (pB == a3) then
+    match heap.copyU64 b3 pB lenB3 with
+    | .error fault => .error fault
+    | .ok heap1 => heap1.copyU64 a3 pA lenA3
+  else
+    match if !(pA == a3) then heap.copyU64 a3 pA lenA3 else .ok heap with
+    | .error fault => .error fault
+    | .ok heap1 =>
+      if !(pB == b3) then heap1.copyU64 b3 pB lenB3 else .ok heap1
+
+theorem hgcdRecursiveStoreIterOutputs_cross_exec
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (heap heap1 heap2 : RawHeap)
+    (hcross : (!(pA == a3) && (pB == a3)) = true)
+    (hcopyB : heap.copyU64 b3 pB lenB3 = .ok heap1)
+    (hcopyA : heap1.copyU64 a3 pA lenA3 = .ok heap2) :
+    hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap =
+      .ok heap2 := by
+  simp [hgcdRecursiveStoreIterOutputs, hcross, hcopyB, hcopyA]
+
+theorem hgcdRecursiveStoreIterOutputs_regular_exec
+    (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
+    (heap heap1 heap2 : RawHeap)
+    (hcross : (!(pA == a3) && (pB == a3)) = false)
+    (hfirst : (if (pA == a3) = false then heap.copyU64 a3 pA lenA3
+      else .ok heap) = .ok heap1)
+    (hsecond : (if (pB == b3) = false then heap1.copyU64 b3 pB lenB3
+      else .ok heap1) = .ok heap2) :
+    hgcdRecursiveStoreIterOutputs a3 b3 pA pB lenA3 lenB3 heap =
+      .ok heap2 := by
+  simp [hgcdRecursiveStoreIterOutputs, hcross, hfirst, hsecond]
+
 /-- Every successful suffix of the real restore loop returns a valid matrix
 and leaves the complete length descriptor byte-for-byte unchanged. -/
 theorem hgcdMatRestoreLoop_preserves_valid_len

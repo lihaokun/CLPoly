@@ -31,3 +31,15 @@
 `shift + highLength`，移位高部的最高项就不可能被低部抵消，输出长度精确等于
 `shift + highLength`。旧的 `lowLength ≤ shift` 版本保留为推论。这个推广
 直接对应最终重构所需的次数分离，不引入“结果非零”之类的规格前提。
+
+## 最终 A 首项保持
+
+对照 C++ 第二次重构公式，新增并从真实迭代执行证明统一矩阵系数界：
+四个 `_mat_one`/`_mat_row_update` 描述符长度均不超过
+`inputLength - inputLength / 2`。每一步证明只使用源循环守卫、真实 divrem
+商长度和两次真实行更新的长度结果。
+
+递归长度契约现在同时携带 `aboveHalf` 和该系数界。于是最终重构的
+`S[3] * lowA`、`S[1] * lowB` 均严格低于 `X^k * secondA` 的最高项，
+由规范化 raw 表示推出 `result.lenA = k + second.lenA`，特别得到
+`0 < result.lenA`。这不是对输出非零的假设，而是源矩阵更新与物理重构的推论。

@@ -2107,6 +2107,10 @@ structure HgcdRecursiveLengthInvariant (inputLength : Nat)
   inputBound : result.lenA ≤ inputLength
   stopped : result.lenB < inputLength / 2 + 1
   positive : 0 < result.lenA
+  aboveHalf : inputLength / 2 < result.lenA
+  coeffBound : ∀ i : Fin 4,
+    hgcdMatLenRaw result.matrix result.valid i ≤
+      inputLength - inputLength / 2
 
 theorem hgcdRecursiveLengthInvariant_toResult_proof_irrel
     (inputLength : Nat) (result : HgcdRecursiveIterBranchResult)

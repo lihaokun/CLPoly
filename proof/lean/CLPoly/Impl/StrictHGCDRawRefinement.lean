@@ -4861,6 +4861,14 @@ structure HgcdMatrixLengthInvariant (inputLength : Nat)
   row3B : hgcdMatLen state.matrix hM (3 : Fin 4) + state.lenB ≤
     inputLength + 1
 
+/-- Uniform coefficient bound valid while HGCD processes only operands above
+the source half-length threshold.  It is the degree-separation fact used by
+the final low/high reconstruction. -/
+def HgcdMatrixCoefficientBound (inputLength : Nat)
+    (state : HgcdIterState) (hM : state.matrix.Valid) : Prop :=
+  ∀ i : Fin 4,
+    hgcdMatLen state.matrix hM i ≤ inputLength - inputLength / 2
+
 /-- Unified induction result for the complete recursive HGCD call.  It
 contains only semantics derived from the returned raw heap plus the exact
 length facts required by the enclosing reconstruction and recursive calls. -/
@@ -4950,6 +4958,11 @@ theorem hgcdRecursiveEarlyReturn_rawInvariant (this : DenseUPolyZp)
         hLength.stopped
     · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
         hLength.positive
+    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
+        hLength.aboveHalf
+    · intro i
+      simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
+        hcopied.1] using hLength.coeffBound i
 
 /-- Arithmetic closure for one Euclidean matrix step.  The quotient bound
 comes from the real generated divrem call and the four descriptor bounds
@@ -5007,6 +5020,56 @@ theorem hgcdMatrixLengthInvariant_step
   · omega
   constructor <;> omega
 
+/-- One concrete divrem/row-update step preserves the uniform coefficient
+bound while the source loop guard keeps the divisor above half length. -/
+theorem hgcdMatrixCoefficientBound_step
+    (inputLength lenA lenB lenQ : Nat)
+    (M nextM : HgcdMat) (hM : M.Valid) (hNextM : nextM.Valid)
+    (hinvariant :
+      hgcdMatLen M hM (0 : Fin 4) + lenA ≤ inputLength + 1 ∧
+      hgcdMatLen M hM (2 : Fin 4) + lenA ≤ inputLength + 1)
+    (hcoeff : ∀ i : Fin 4,
+      hgcdMatLen M hM i ≤ inputLength - inputLength / 2)
+    (hguard : inputLength / 2 + 1 ≤ lenB)
+    (horder : lenB ≤ lenA)
+    (hlenQ : lenQ ≤ lenA - (lenB - 1))
+    (hlen0 : hgcdMatLen nextM hNextM (0 : Fin 4) ≤
+      max (hgcdMatLen M hM (1 : Fin 4))
+        (lenQ + hgcdMatLen M hM (0 : Fin 4) - 1))
+    (hlen1 : hgcdMatLen nextM hNextM (1 : Fin 4) =
+      hgcdMatLen M hM (0 : Fin 4))
+    (hlen2 : hgcdMatLen nextM hNextM (2 : Fin 4) ≤
+      max (hgcdMatLen M hM (3 : Fin 4))
+        (lenQ + hgcdMatLen M hM (2 : Fin 4) - 1))
+    (hlen3 : hgcdMatLen nextM hNextM (3 : Fin 4) =
+      hgcdMatLen M hM (2 : Fin 4)) :
+    ∀ i : Fin 4,
+      hgcdMatLen nextM hNextM i ≤ inputLength - inputLength / 2 := by
+  have hq0 : lenQ + hgcdMatLen M hM (0 : Fin 4) - 1 ≤
+      inputLength - inputLength / 2 := by
+    have := hinvariant.1
+    omega
+  have hq2 : lenQ + hgcdMatLen M hM (2 : Fin 4) - 1 ≤
+      inputLength - inputLength / 2 := by
+    have := hinvariant.2
+    omega
+  have h0 := hcoeff (0 : Fin 4)
+  have h1 := hcoeff (1 : Fin 4)
+  have h2 := hcoeff (2 : Fin 4)
+  have h3 := hcoeff (3 : Fin 4)
+  have hn0 : hgcdMatLen nextM hNextM (0 : Fin 4) ≤
+      inputLength - inputLength / 2 := by
+    exact hlen0.trans (max_le h1 hq0)
+  have hn2 : hgcdMatLen nextM hNextM (2 : Fin 4) ≤
+      inputLength - inputLength / 2 := by
+    exact hlen2.trans (max_le h3 hq2)
+  intro i
+  fin_cases i
+  · exact hn0
+  · simpa [hlen1] using h0
+  · exact hn2
+  · simpa [hlen3] using h2
+
 /-- The real `_mat_one` descriptor and the two source-ordered input copies
 establish the matrix-length invariant. -/
 theorem hgcdIterInit_matrixLengthInvariant
@@ -5021,6 +5084,22 @@ theorem hgcdIterInit_matrixLengthInvariant
   rcases hlens with ⟨hA, hB, hMatrix⟩
   constructor <;>
     simp [hgcdMatLen, hA, hB, hMatrix] <;> omega
+
+/-- The identity matrix created by the exact iterator initialization already
+satisfies the uniform half-length coefficient bound. -/
+theorem hgcdIterInit_matrixCoefficientBound
+    (M : HgcdMat) (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (heap : RawHeap) (initial : HgcdIterState) (hM : initial.matrix.Valid)
+    (hlenAPos : 0 < lenA)
+    (hrun : hgcdIterInit M A B T t lenT a lenA b lenB heap = .ok initial) :
+    HgcdMatrixCoefficientBound lenA initial hM := by
+  have hlens := hgcdIterInit_lengths M A B T t lenT a lenA b lenB heap
+    initial hrun
+  rcases hlens with ⟨_, _, hMatrix⟩
+  intro i
+  fin_cases i <;> simp [HgcdMatrixCoefficientBound, hgcdMatLen, hMatrix] <;>
+    omega
 
 /-- Purely physical obligations for one concrete successful nonterminal
 iteration.  Every field concerns validity, capacity, or allocation
@@ -5176,6 +5255,7 @@ theorem hgcdIterLoop_preserves_matrixLength (this : DenseUPolyZp)
     (scratch : RawPtr UInt64)
     (left right : Polynomial (ZMod this._p.toNat))
     (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hm : m = inputLength / 2)
     (physical : HgcdLoopWorkspaceProvider this m Q W3 scratch) :
     ∀ (state final : HgcdIterState)
       (currentA currentB : Polynomial (ZMod this._p.toNat))
@@ -5183,15 +5263,17 @@ theorem hgcdIterLoop_preserves_matrixLength (this : DenseUPolyZp)
       (hM : state.matrix.Valid),
       HgcdIterRawInvariant this left right currentA currentB entries state hM →
       HgcdMatrixLengthInvariant inputLength state hM →
+      HgcdMatrixCoefficientBound inputLength state hM →
       state.lenB ≤ state.lenA →
       state.lenA ≤ inputLength →
       0 < state.lenA →
       hgcdIterLoop this m Q W3 scratch state = .ok final →
       ∃ hFinalM : final.matrix.Valid,
         HgcdMatrixLengthInvariant inputLength final hFinalM ∧
-        final.lenB ≤ final.lenA ∧ final.lenA ≤ inputLength ∧ 0 < final.lenA
-  | state, final, currentA, currentB, entries, hM, hraw, hlength, horder,
-      hinputBound, hpositive, hrun => by
+        final.lenB ≤ final.lenA ∧ final.lenA ≤ inputLength ∧ 0 < final.lenA ∧
+        HgcdMatrixCoefficientBound inputLength final hFinalM
+  | state, final, currentA, currentB, entries, hM, hraw, hlength, hcoeff,
+      horder, hinputBound, hpositive, hrun => by
     by_cases hguard : state.lenB ≥ m + 1
     · rcases hgcdIterLoop_step_shape this m Q W3 scratch state final hguard
         hrun with
@@ -5242,19 +5324,25 @@ theorem hgcdIterLoop_preserves_matrixLength (this : DenseUPolyZp)
       have hnextLength : HgcdMatrixLengthInvariant inputLength next h01 := by
         exact ⟨hnextBounds.1, hnextBounds.2.1, hnextBounds.2.2.1,
           hnextBounds.2.2.2⟩
+      have hnextCoeff : HgcdMatrixCoefficientBound inputLength next h01 := by
+        exact hgcdMatrixCoefficientBound_step inputLength state.lenA
+          state.lenB lenQ state.matrix row01.matrix hM h01
+          ⟨hlength.row0A, hlength.row2A⟩ hcoeff (by omega) horder hlenQ
+          hlen0 hlen1 hlen2 hlen3
       have htail' : hgcdIterLoop this m Q W3 scratch next = .ok final := by
         simpa [next] using htail
       exact hgcdIterLoop_preserves_matrixLength this inputLength m Q W3
-        scratch left right hcfg hp physical next final currentB remainder
+        scratch left right hcfg hp hm physical next final currentB remainder
         (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
-        h01 hnextRaw hnextLength (by simpa [next] using hlenR.le)
+        h01 hnextRaw hnextLength hnextCoeff
+        (by simpa [next] using hlenR.le)
         (by simpa [next] using horder.trans hinputBound)
         (by simpa [next] using (show 0 < state.lenB by omega)) htail'
     · have hstop : state.lenB < m + 1 := by omega
       have hsame := hgcdIterLoop_stop this m Q W3 scratch state hstop
       have hfinal : state = final := Except.ok.inj (hsame.symm.trans hrun)
       subst final
-      exact ⟨hM, hlength, horder, hinputBound, hpositive⟩
+      exact ⟨hM, hlength, horder, hinputBound, hpositive, hcoeff⟩
 termination_by state => state.lenB
 decreasing_by exact hlt
 
@@ -5341,7 +5429,8 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
       final.lenB < lenA / 2 + 1 ∧
       HgcdMatrixLengthInvariant lenA final hFinalM ∧
       final.lenB ≤ final.lenA ∧ final.lenA ≤ lenA ∧ 0 < final.lenA ∧
-      lenA / 2 < final.lenA := by
+      lenA / 2 < final.lenA ∧
+      HgcdMatrixCoefficientBound lenA final hFinalM := by
   rcases hgcdIterInit_refines this M A B T t lenT a lenA b lenB heap left
       right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a h3a h0b h3b
       hAMatrix hBMatrix hMatrixValid hLeft hRight with
@@ -5356,6 +5445,8 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
     ⟨hInitialMatrix, hInitialA, hInitialB, hInitialTransform, hInitialDet⟩
   have hInitialLength := hgcdIterInit_matrixLengthInvariant M A B T t lenT
     a lenA b lenB heap initial hInitialM horder hinit
+  have hInitialCoeff := hgcdIterInit_matrixCoefficientBound M A B T t lenT
+    a lenA b lenB heap initial hInitialM hlenAPos hinit
   have hInitialOrder : initial.lenB ≤ initial.lenA := by
     have hlens := hgcdIterInit_lengths M A B T t lenT a lenA b lenB heap
       initial hinit
@@ -5370,9 +5461,9 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
       hInitialM hInitialInvariant hloop with
     ⟨finalA, finalB, finalEntries, hFinalM, hFinalRaw, hGcd, hStop⟩
   rcases hgcdIterLoop_preserves_matrixLength this lenA (lenA / 2) Q W3
-      scratch left right hcfg hp physical initial final left right
+      scratch left right hcfg hp rfl physical initial final left right
       (identityEntries this._p.toNat) hInitialM hInitialInvariant
-      hInitialLength hInitialOrder (by
+      hInitialLength hInitialCoeff hInitialOrder (by
         have hlens := hgcdIterInit_lengths M A B T t lenT a lenA b lenB heap
           initial hinit
         omega) (by
@@ -5380,11 +5471,12 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
           initial hinit
         omega) hloop with
     ⟨hFinalM', hFinalLength, hFinalOrder, hFinalInputBound,
-      hFinalPositive⟩
+      hFinalPositive, hFinalCoeff⟩
   have hhFinal : hFinalM' = hFinalM := Subsingleton.elim _ _
   subst hFinalM'
   exact ⟨finalA, finalB, finalEntries, hFinalM, hFinalRaw, hGcd, hStop,
-    hFinalLength, hFinalOrder, hFinalInputBound, hFinalPositive, hFinalAbove⟩
+    hFinalLength, hFinalOrder, hFinalInputBound, hFinalPositive, hFinalAbove,
+    hFinalCoeff⟩
 
 /-- Purely physical obligations needed after one concrete iterator result to
 stabilize its matrix and normalize its two output pointers.  No polynomial
@@ -5496,7 +5588,7 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
       h3A h0B h3B hA3Matrix hB3Matrix hMatrixValid hLeft hRight hiter with
     ⟨finalA, finalB, finalEntries, hFinalIter,
       hInvariant, hGcd, hStop, hMatrixLength, hFinalOrder,
-      hFinalInputBound, hFinalPositive, hFinalAbove⟩
+      hFinalInputBound, hFinalPositive, hFinalAbove, _hFinalCoeff⟩
   have hStableDescriptors := hgcdMatStabilize_preserves_descriptors original
     iter.matrix hOriginal hIter stage iter.heap stable hstable
   have hStableValid : stable.matrix.Valid := hStableDescriptors.1
@@ -5580,7 +5672,14 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
       stopped := by simpa [HgcdRecursiveIterBranchResult.toResult,
         hResultLenB] using hStop
       positive := by simpa [HgcdRecursiveIterBranchResult.toResult,
-        hResultLenA] using hFinalPositive }
+        hResultLenA] using hFinalPositive
+      aboveHalf := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hResultLenA] using hFinalAbove
+      coeffBound := by
+        intro i
+        simpa [HgcdRecursiveIterBranchResult.toResult, hgcdMatLenRaw,
+          hgcdMatLen, hResultMatrix, hStableDescriptors.2.2] using
+          _hFinalCoeff i }
   refine ⟨finalA, finalB, finalEntries, hResultValid, {
     aRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hAResult
     bRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hBResult
@@ -6718,11 +6817,13 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
           (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1)) ∧
       (max
           (hgcdMatLen M hM (3 : Fin 4) + lenLowA - 1)
-          (hgcdMatLen M hM (1 : Fin 4) + lenLowB - 1) ≤ shift →
+          (hgcdMatLen M hM (1 : Fin 4) + lenLowB - 1) <
+            shift + lenHighA →
         0 < lenHighA → result.lenA = shift + lenHighA) ∧
       (max
           (hgcdMatLen M hM (2 : Fin 4) + lenLowA - 1)
-          (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1) ≤ shift →
+          (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1) <
+            shift + lenHighB →
         0 < lenHighB → result.lenB = shift + lenHighB) := by
   rcases hgcdRecursiveReconstructPair_exec this A B T0 lowA lowB highA
       highB scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap
@@ -6804,22 +6905,24 @@ theorem hgcdRecursiveReconstructPair_refines (this : DenseUPolyZp)
       hwork.finalBPrefix hBFinal
   have hExactA : max
         (hgcdMatLen M hM (3 : Fin 4) + lenLowA - 1)
-        (hgcdMatLen M hM (1 : Fin 4) + lenLowB - 1) ≤ shift →
+        (hgcdMatLen M hM (1 : Fin 4) + lenLowB - 1) <
+          shift + lenHighA →
       0 < lenHighA → liftedA.length = shift + lenHighA := by
     intro hlow hhigh
-    exact rawDensePolyRep_add_shift_length_eq this heap3 heap3 liftedA.heap
+    exact rawDensePolyRep_add_shift_length_eq_of_lt this heap3 heap3 liftedA.heap
       A highA A lowLenA lenHighA liftedA.length shift
       (hgcdReconstructedLowA entries polyLowA polyLowB sgn) polyHighA hA0
-      hHighA3 hAFinal (hLowLenA.trans hlow) hhigh
+      hHighA3 hAFinal (hLowLenA.trans_lt hlow) hhigh
   have hExactB : max
         (hgcdMatLen M hM (2 : Fin 4) + lenLowA - 1)
-        (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1) ≤ shift →
+        (hgcdMatLen M hM (0 : Fin 4) + lenLowB - 1) <
+          shift + lenHighB →
       0 < lenHighB → liftedB.length = shift + lenHighB := by
     intro hlow hhigh
-    exact rawDensePolyRep_add_shift_length_eq this heap1 heap1 liftedB.heap
+    exact rawDensePolyRep_add_shift_length_eq_of_lt this heap1 heap1 liftedB.heap
       B highB B lowLenB lenHighB liftedB.length shift
       (hgcdReconstructedLowB entries polyLowA polyLowB sgn) polyHighB hB0
-      hHighB1 hBFinal (hLowLenB.trans hlow) hhigh
+      hHighB1 hBFinal (hLowLenB.trans_lt hlow) hhigh
   rw [hHeap, hLenA, hLenB]
   refine ⟨hAFinal, hBAtFinal, ?_, ?_, hExactA, hExactB⟩
   · exact hBoundA.trans (max_le_max (Nat.le_refl _) hLowLenA)
@@ -7019,6 +7122,72 @@ theorem hgcdRecursiveFinalReconstruct_lengths_le_input
     apply max_le
     · omega
     · apply max_le <;> omega
+
+/-- The second HGCD result's half-length coefficient bound makes its shifted
+leading A term strictly dominate both real low reconstruction products.  The
+normalized final A descriptor is therefore exactly `shift + secondLenA`. -/
+theorem hgcdRecursiveFinalReconstruct_lenA_eq
+    (inputLength shift sourceLenA sourceLenB secondLenA s1 s3 resultLenA : Nat)
+    (hsecondAbove : inputLength / 2 < secondLenA)
+    (hcoeff1 : s1 ≤ inputLength - inputLength / 2)
+    (hcoeff3 : s3 ≤ inputLength - inputLength / 2)
+    (hsourceA : sourceLenA ≤ shift) (hsourceB : sourceLenB ≤ shift)
+    (hexact : max
+        (s3 + sourceLenA - 1)
+        (s1 + sourceLenB - 1) < shift + secondLenA →
+      0 < secondLenA → resultLenA = shift + secondLenA) :
+    resultLenA = shift + secondLenA ∧ 0 < resultLenA := by
+  have hlow3 : s3 + sourceLenA - 1 <
+      shift + secondLenA := by omega
+  have hlow1 : s1 + sourceLenB - 1 <
+      shift + secondLenA := by omega
+  have heq := hexact (max_lt hlow3 hlow1) (by omega)
+  exact ⟨heq, by omega⟩
+
+/-- Concrete final-A leading proof for the real four-call paired
+reconstruction.  All polynomial and descriptor facts come from the returned
+second HGCD invariant and the successful raw execution. -/
+theorem hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB shift inputLength : Nat)
+    (second : HgcdRecursiveResult)
+    (result : HgcdRecursiveReconstructPairResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (polyLowA polyLowB polyHighA polyHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hinvariant : HgcdRecursiveLengthInvariant inputLength second)
+    (hlenLowA : lenLowA ≤ shift) (hlenLowB : lenLowB ≤ shift)
+    (physical : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
+      lowA lowB highA highB scratch lenLowA lenLowB second.lenA second.lenB
+      shift second.matrix second.valid second.sgn second.heap)
+    (hMatrix : HgcdMatRawDenseRep this second.heap second.matrix entries
+      second.valid)
+    (hLowA : RawDensePolyRep this second.heap lowA lenLowA polyLowA)
+    (hLowB : RawDensePolyRep this second.heap lowB lenLowB polyLowB)
+    (hHighA : RawDensePolyRep this second.heap highA second.lenA polyHighA)
+    (hHighB : RawDensePolyRep this second.heap highB second.lenB polyHighB)
+    (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
+      scratch lenLowA lenLowB second.lenA second.lenB shift second.matrix
+      second.valid second.sgn second.heap = .ok result) :
+    result.lenA = shift + second.lenA ∧ 0 < result.lenA := by
+  have hrefines := hgcdRecursiveReconstructPair_refines this A B T0 lowA
+    lowB highA highB scratch lenLowA lenLowB second.lenA second.lenB shift
+    second.matrix second.valid second.sgn second.heap result entries polyLowA
+    polyLowB polyHighA polyHighB hcfg hp physical hMatrix hLowA hLowB hHighA
+    hHighB hrun
+  exact hgcdRecursiveFinalReconstruct_lenA_eq inputLength shift lenLowA
+    lenLowB second.lenA
+    (hgcdMatLen second.matrix second.valid (1 : Fin 4))
+    (hgcdMatLen second.matrix second.valid (3 : Fin 4)) result.lenA
+    hinvariant.aboveHalf
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using
+      hinvariant.coeffBound (1 : Fin 4))
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using
+      hinvariant.coeffBound (3 : Fin 4))
+    hlenLowA hlenLowB
+    hrefines.2.2.2.2.1
 
 /-- The B output of the second reconstruction satisfies the outer HGCD stop
 threshold.  This uses the source's exact `k = 2*m-lenB2+1`, the second call's
@@ -7414,6 +7583,14 @@ theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
         hlenIB] using hstop
     · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
         hlenIA] using _hlenAPos
+    · simp [HgcdRecursiveBaseResult.toResult,
+        HgcdIterState.toRecursiveBaseResult, hlenIA]
+      omega
+    · intro i
+      simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hgcdMatLenRaw, hgcdMatLen] using
+        (hgcdIterInit_matrixCoefficientBound M A B A A 0 a lenA b lenB heap
+          initial hInitialM _hlenAPos hinit i)
 
 /-- Semantic refinement of the exact `_hgcd_recursive` base branch used by
 GCD when matrix output is disabled.  No matrix call or matrix specification

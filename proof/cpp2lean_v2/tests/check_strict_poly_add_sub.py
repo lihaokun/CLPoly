@@ -17,6 +17,8 @@ from build_strict_gcd import dense_method_ast
 from check_strict_divrem import stable_ast
 
 LEAN = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictPolyAddSub.lean"
+REFINEMENT = (V2_ROOT.parent / "lean" / "CLPoly" / "Impl" /
+              "StrictPolyAddSubRefinement.lean")
 
 EXPECTED = {
     "nmod_add": "fafffbacebad32ddb1ce8b2a6b02e3d1b054bde99618f7cfdddfa8e3f5360b61",
@@ -52,6 +54,15 @@ def main() -> None:
                      "RawExec", "copyU64", "normaliseU64"):
         if fragment not in source:
             raise SystemExit(f"strict add/sub drift: missing {fragment}")
+    refinement = REFINEMENT.read_text()
+    found = [token for token in forbidden if token in refinement]
+    if found:
+        raise SystemExit(f"strict add/sub refinement contains forbidden constructs: {found}")
+    for fragment in ("addCommonLoop_ok", "subCommonLoop_ok",
+                     "subNegTailLoop_ok", "polyAdd_ok", "polySub_ok",
+                     "RawHeap.SameLayout"):
+        if fragment not in refinement:
+            raise SystemExit(f"strict add/sub refinement drift: missing {fragment}")
     print("PASS: raw polynomial add/sub are pinned to exact C++ ASTs")
 
 

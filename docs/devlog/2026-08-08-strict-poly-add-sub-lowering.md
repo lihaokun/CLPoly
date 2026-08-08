@@ -12,16 +12,21 @@
 - 所有循环按未处理长度良基终止，没有使用非良基定义。
 - 新增门禁，固定 `nmod_add`、`nmod_sub`、`_poly_add`、`_poly_sub`
   四个 C++ 方法的稳定 AST 哈希。
+- 证明三个逐系数循环在有效容量下必然成功，并在每次真实写入后保持整个
+  RawHeap 的分配布局。
+- 证明 `_poly_add`、`_poly_sub` 完整入口（包括所有别名、复制、取负和
+  normalization 分支）必然成功，保持布局且返回长度不超过最大输入长度。
 
 ## 当前边界
 
-本步闭合了 HGCD 矩阵更新所调用的原始加减执行层，但尚未完成其 RawHeap
-输出到 L2 多项式加减的表示定理，因此不能单独称为加减精化完成。下一步将证明
-有效容量、别名分支、规范系数和 `SlicePolyRep` 在这些真实执行后成立，再接到
-`_mat_row_update`。
+本步闭合了 HGCD 矩阵更新所调用的原始加减执行层及终止执行桥，但尚未完成其
+RawHeap 输出到 L2 多项式加减的表示定理，因此不能单独称为加减精化完成。
+下一步将证明别名分支、规范系数和 `SlicePolyRep` 在这些真实执行后成立，再
+接到 `_mat_row_update`。
 
 ## 涉及文件
 
 - `proof/lean/CLPoly/Generated/StrictPolyAddSub.lean`
+- `proof/lean/CLPoly/Impl/StrictPolyAddSubRefinement.lean`
 - `proof/cpp2lean_v2/tests/check_strict_poly_add_sub.py`
 - `docs/devlog/2026-08-08-strict-poly-add-sub-lowering.md`

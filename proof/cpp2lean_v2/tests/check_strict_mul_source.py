@@ -50,6 +50,7 @@ def main() -> None:
     for fragment in ("classicalDotLoop", "classicalOuterLoop",
                      "dense_upoly_zp__classical_mul_ir", "RawExec",
                      "karAddHalvesLoop", "karSubLoop", "karAssembleLoop",
+                     "karOddTail",
                      "dense_upoly_zp__kar_mul_ir", "copyU64",
                      "readU64", "writeU64", "termination_by"):
         if fragment not in source:
@@ -61,6 +62,7 @@ def main() -> None:
     for fragment in ("classicalDotLoop_ok", "classical_index_bounds",
                      "karAddHalvesLoop_ok", "karSubLoop_ok",
                      "karAssembleLoop_ok",
+                     "karOddTail_ok", "karOddTail_preserves_region_ne",
                      "karAddHalvesLoop_preserves_outside",
                      "karAddHalvesLoop_current_values",
                      "karAddHalvesLoop_current_coeffs",

@@ -70,6 +70,21 @@ def karAssembleLoop (this : DenseUPolyZp) (C sP1 : RawPtr UInt64)
 termination_by count - i
 decreasing_by omega
 
+def karOddTail (A B t1 t2 : RawPtr UInt64) (m h : Nat)
+    (heap : RawHeap) : RawExec RawHeap :=
+  if h > m then
+    match heap.readU64 A (m + m) with
+    | .error fault => .error fault
+    | .ok aTail =>
+      match heap.readU64 B (m + m) with
+      | .error fault => .error fault
+      | .ok bTail =>
+        match heap.writeU64 t1 m aTail with
+        | .error fault => .error fault
+        | .ok heap1 => heap1.writeU64 t2 m bTail
+  else
+    .ok heap
+
 def classicalDotLoop (heap : RawHeap) (A B : RawPtr UInt64)
     (k stop j : Nat) (acc : Word3) : RawExec Word3 :=
   if h : j ≤ stop then
@@ -127,17 +142,7 @@ def dense_upoly_zp__kar_mul_ir (this : DenseUPolyZp)
     match karAddHalvesLoop this A B t1 t2 m 0 heap with
     | .error fault => .error fault
     | .ok heap1 =>
-      match (if h > m then
-          match heap1.readU64 A (m + m) with
-          | .error fault => .error fault
-          | .ok aTail =>
-            match heap1.readU64 B (m + m) with
-            | .error fault => .error fault
-            | .ok bTail =>
-              match heap1.writeU64 t1 m aTail with
-              | .error fault => .error fault
-              | .ok heap2 => heap2.writeU64 t2 m bTail
-        else .ok heap1 : RawExec RawHeap) with
+      match karOddTail A B t1 t2 m h heap1 with
       | .error fault => .error fault
       | .ok heap2 =>
         match dense_upoly_zp__kar_mul_ir this sP0 A B m recScratch heap2 with

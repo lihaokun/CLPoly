@@ -79,6 +79,10 @@
   唯一观测把区间结论提升为两个完整 `SlicePolyRep`，同时从每个实际
   `nmod_add` 输出 `<p` 得到两个 scratch slice 的 `CanonicalU64Prefix`。
   该定理覆盖长度 `2m` 的公共部分，奇数 n 的第 h 个尾项仍按源码分支另证。
+- 将源码内联的 `if (h>m)` 尾项块原样抽为 RawHeap helper `karOddTail`，主
+  `_kar_mul` 保持相同调用位置与故障传播。证明该块在 A/B 长度 `m+h`、
+  t1/t2 长度 h 下终止并保持布局；同时证明其两次写入保持所有与 t1/t2
+  allocation 不相交的 raw prefix，为输入和既有 scratch 前缀传递提供帧。
 
 ## 当前边界
 

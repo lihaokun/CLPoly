@@ -115,6 +115,70 @@ theorem karAssembleLoop_ok (this : DenseUPolyZp)
 termination_by count - i
 decreasing_by omega
 
+theorem karOddTail_ok (A B t1 t2 : RawPtr UInt64) (m h : Nat)
+    (heap : RawHeap)
+    (hA : heap.ValidU64Slice A (m + h))
+    (hB : heap.ValidU64Slice B (m + h))
+    (hT1 : heap.ValidU64Slice t1 h)
+    (hT2 : heap.ValidU64Slice t2 h) :
+    ∃ heap', karOddTail A B t1 t2 m h heap = .ok heap' ∧
+      RawHeap.SameLayout heap heap' := by
+  unfold karOddTail
+  split
+  next hodd =>
+    rcases heap.readU64_of_valid A (m + h) (m + m) hA (by omega) with
+      ⟨aTail, ha⟩
+    simp only [ha]
+    rcases heap.readU64_of_valid B (m + h) (m + m) hB (by omega) with
+      ⟨bTail, hb⟩
+    simp only [hb]
+    rcases heap.writeU64_of_valid t1 h m aTail hT1 hodd with ⟨heap1, hw1⟩
+    simp only [hw1]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 t1 m aTail hw1
+    rcases heap1.writeU64_of_valid t2 h m bTail ((hlayout1 t2 h).mp hT2)
+      hodd with ⟨heap2, hw2⟩
+    simp only [hw2]
+    have hlayout2 := RawHeap.writeU64_sameLayout heap1 heap2 t2 m bTail hw2
+    exact ⟨heap2, rfl, fun ptr length =>
+      (hlayout1 ptr length).trans (hlayout2 ptr length)⟩
+  next => exact ⟨heap, rfl, fun _ _ => Iff.rfl⟩
+
+theorem karOddTail_preserves_region_ne (A B t1 t2 guard : RawPtr UInt64)
+    (m h guardLen : Nat) (heap heap' : RawHeap)
+    (hA : heap.ValidU64Slice A (m + h))
+    (hB : heap.ValidU64Slice B (m + h))
+    (hT1 : heap.ValidU64Slice t1 h)
+    (hT2 : heap.ValidU64Slice t2 h)
+    (hT1Guard : t1.region ≠ guard.region)
+    (hT2Guard : t2.region ≠ guard.region)
+    (hrun : karOddTail A B t1 t2 m h heap = .ok heap') :
+    SameU64Prefix heap heap' guard guardLen := by
+  intro i old hi hread
+  unfold karOddTail at hrun
+  split at hrun
+  next hodd =>
+    rcases heap.readU64_of_valid A (m + h) (m + m) hA (by omega) with
+      ⟨aTail, ha⟩
+    simp only [ha] at hrun
+    rcases heap.readU64_of_valid B (m + h) (m + m) hB (by omega) with
+      ⟨bTail, hb⟩
+    simp only [hb] at hrun
+    rcases heap.writeU64_of_valid t1 h m aTail hT1 hodd with ⟨heap1, hw1⟩
+    simp only [hw1] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 t1 m aTail hw1
+    rcases heap1.writeU64_of_valid t2 h m bTail ((hlayout1 t2 h).mp hT2)
+      hodd with ⟨heap2, hw2⟩
+    simp only [hw2] at hrun
+    have heq : heap' = heap2 := Except.ok.inj hrun.symm
+    subst heap'
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 guard m i
+      aTail old hw1 hread (Or.inl hT1Guard)
+    exact RawHeap.readU64_writeU64_ne heap1 heap2 t2 guard m i bTail old
+      hw2 hread1 (Or.inl hT2Guard)
+  next hnot =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+
 theorem karAddHalvesLoop_preserves_outside (this : DenseUPolyZp)
     (A B t1 t2 guard : RawPtr UInt64) (m i readIndex : Nat)
     (heap heap' : RawHeap) (old : UInt64)

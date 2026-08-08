@@ -377,6 +377,11 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
           (identityEntries this._p.toNat ⟨0, by omega⟩)
           (identityEntries this._p.toNat ⟨1, by omega⟩)
           (identityEntries this._p.toNat ⟨2, by omega⟩)
+          (identityEntries this._p.toNat ⟨3, by omega⟩) ∧
+        CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet initial.sgn
+          (identityEntries this._p.toNat ⟨0, by omega⟩)
+          (identityEntries this._p.toNat ⟨1, by omega⟩)
+          (identityEntries this._p.toNat ⟨2, by omega⟩)
           (identityEntries this._p.toNat ⟨3, by omega⟩) := by
   rcases matOne_refines M heap this._p.toNat hM h0 h3 h03 with
     ⟨heap1, M1, hone, hlayout1, hpoly1, hlen1, hread0, hread3,
@@ -466,12 +471,14 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
     heap := heap3, matrix := M1, A := A, lenA := lenA, B := B,
     lenB := lenB, T := T, lenT := lenT, t := t, sgn := 1 }
   refine ⟨initial, ?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl,
-    hM1, ?_, ?_, ?_, ?_⟩
+    hM1, ?_, ?_, ?_, ?_, ?_⟩
   · simp [hgcdIterInit, hone, hcopyA, hcopyB, initial]
   · simpa [initial] using hMatrix3
   · simpa [initial] using hA3
   · simpa [initial] using hB3
   · simp [CLPoly.Impl.StrictHGCDRefinement.HgcdTransform, identityEntries]
+  · simp [initial, CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet,
+      identityEntries]
 
 /-- A stopped generated HGCD loop returns its state unchanged. -/
 theorem hgcdIterLoop_stop (this : DenseUPolyZp) (m : Nat)

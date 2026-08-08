@@ -43,6 +43,32 @@ theorem hgcdRowUpdate_determinant {R : Type*} [CommRing R]
       -(m00 * m11 - m01 * m10) := by
   ring
 
+/-- Meaning of the integer sign returned by C++ HGCD: it records whether the
+tracked polynomial matrix has determinant `1` or `-1`. -/
+def HgcdSignedDet {R : Type*} [CommRing R]
+    (sgn : Int) (m00 m01 m10 m11 : R) : Prop :=
+  (sgn = 1 ∧ m00 * m11 - m01 * m10 = 1) ∨
+    (sgn = -1 ∧ m00 * m11 - m01 * m10 = -1)
+
+/-- The two generated row updates and the source assignment `sgn = -sgn`
+preserve the signed-determinant invariant. -/
+theorem hgcdSignedDet_euclid_step {R : Type*} [CommRing R]
+    (sgn : Int) (quotient m00 m01 m10 m11 : R)
+    (hdet : HgcdSignedDet sgn m00 m01 m10 m11) :
+    HgcdSignedDet (-sgn)
+      (m01 + quotient * m00) m00
+      (m11 + quotient * m10) m10 := by
+  rcases hdet with ⟨hsgn, hdet⟩ | ⟨hsgn, hdet⟩
+  · right
+    constructor
+    · simp [hsgn]
+    · rw [hgcdRowUpdate_determinant, hdet]
+  · left
+    constructor
+    · simp [hsgn]
+    · rw [hgcdRowUpdate_determinant, hdet]
+      simp
+
 /-- Equality of normalized Euclidean gcds follows solely from equality of
 common divisors.  This does not execute either gcd algorithm. -/
 theorem normalize_gcd_eq_of_sameCommonDivisors
@@ -155,5 +181,22 @@ theorem normalize_gcd_eq_of_det_neg_one_transform
       m10 * (m00 * a + m01 * b) + -m00 * (m10 * a + m11 * b) =
           -(m00 * m11 - m01 * m10) * b := by ring
       _ = b := by rw [hdet]; ring
+
+/-- A represented HGCD transform with its actual signed determinant preserves
+the normalized gcd of the original and current polynomial pairs. -/
+theorem normalize_gcd_eq_of_hgcd_signed_transform
+    {R : Type*} [EuclideanDomain R] [NormalizationMonoid R] [DecidableEq R]
+    (sgn : Int) (left right currentA currentB m00 m01 m10 m11 : R)
+    (htransform : HgcdTransform left right currentA currentB
+      m00 m01 m10 m11)
+    (hdet : HgcdSignedDet sgn m00 m01 m10 m11) :
+    normalize (EuclideanDomain.gcd left right) =
+      normalize (EuclideanDomain.gcd currentA currentB) := by
+  rcases htransform with ⟨hleft, hright⟩
+  rcases hdet with ⟨_, hdet⟩ | ⟨_, hdet⟩
+  · exact (normalize_gcd_eq_of_det_one_transform currentA currentB left
+      right m00 m01 m10 m11 hleft hright hdet).symm
+  · exact (normalize_gcd_eq_of_det_neg_one_transform currentA currentB left
+      right m00 m01 m10 m11 hleft hright hdet).symm
 
 end CLPoly.Impl.StrictHGCDRefinement

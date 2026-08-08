@@ -105,6 +105,9 @@ def main() -> None:
         "HgcdTransform",
         "hgcdTransform_euclid_step",
         "hgcdRowUpdate_determinant",
+        "HgcdSignedDet",
+        "hgcdSignedDet_euclid_step",
+        "normalize_gcd_eq_of_hgcd_signed_transform",
         "normalize_gcd_eq_of_det_one_transform",
         "normalize_gcd_eq_of_det_neg_one_transform",
     )

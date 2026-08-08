@@ -585,6 +585,82 @@ def hgcdRecursiveStoreIterOutputs (a3 b3 pA pB : RawPtr UInt64)
     | .ok heap1 =>
       if !(pB == b3) then heap1.copyU64 b3 pB lenB3 else .ok heap1
 
+/-- Return state of either iterator arm inside `_hgcd_recursive`. -/
+structure HgcdRecursiveIterBranchResult where
+  heap : RawHeap
+  matrix : HgcdMat
+  lenA : Nat
+  lenB : Nat
+  sgn : Int
+
+/-- Exact source composition for an iterator arm of `_hgcd_recursive`:
+run `_hgcd_iter`, stabilize all four matrix entries at their saved pointers,
+then perform the alias-sensitive `pA/pB` copies. -/
+def hgcdRecursiveIterBranch (this : DenseUPolyZp)
+    (original : HgcdMat) (hOriginal : original.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage : RawPtr UInt64) (heap : RawHeap) :
+    RawExec HgcdRecursiveIterBranchResult :=
+  match hiter : dense_upoly_zp__hgcd_iter_ir this original a3 b3 T0 T1 0
+      inputA lenInputA inputB lenInputB Q W3 scratch heap with
+  | .error fault => .error fault
+  | .ok iterResult =>
+    have hIterValid : iterResult.matrix.Valid :=
+      hgcdIter_result_valid this original a3 b3 T0 T1 0 inputA lenInputA
+        inputB lenInputB Q W3 scratch heap iterResult hiter
+    match hgcdMatStabilize original iterResult.matrix hOriginal hIterValid
+        stage iterResult.heap with
+    | .error fault => .error fault
+    | .ok stable =>
+      match hgcdRecursiveStoreIterOutputs a3 b3 iterResult.A iterResult.B
+          iterResult.lenA iterResult.lenB stable.heap with
+      | .error fault => .error fault
+      | .ok heap1 => .ok {
+          heap := heap1
+          matrix := stable.matrix
+          lenA := iterResult.lenA
+          lenB := iterResult.lenB
+          sgn := iterResult.sgn }
+
+/-- A successful iterator arm necessarily contains those same three source
+executions, in order; this rules out later replacing stabilization or output
+copies with a specification-only result. -/
+theorem hgcdRecursiveIterBranch_exec (this : DenseUPolyZp)
+    (original : HgcdMat) (hOriginal : original.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage : RawPtr UInt64) (heap : RawHeap)
+    (result : HgcdRecursiveIterBranchResult)
+    (hrun : hgcdRecursiveIterBranch this original hOriginal a3 b3 inputA
+      inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap = .ok result) :
+    ∃ iterResult, ∃ hIterValid : iterResult.matrix.Valid, ∃ stable,
+      dense_upoly_zp__hgcd_iter_ir this original a3 b3 T0 T1 0 inputA
+          lenInputA inputB lenInputB Q W3 scratch heap = .ok iterResult ∧
+      hgcdMatStabilize original iterResult.matrix hOriginal
+          hIterValid
+          stage iterResult.heap = .ok stable ∧
+      hgcdRecursiveStoreIterOutputs a3 b3 iterResult.A iterResult.B
+          iterResult.lenA iterResult.lenB stable.heap = .ok result.heap ∧
+      result.matrix = stable.matrix ∧ result.lenA = iterResult.lenA ∧
+      result.lenB = iterResult.lenB ∧ result.sgn = iterResult.sgn := by
+  simp only [hgcdRecursiveIterBranch] at hrun
+  split at hrun
+  next fault hiter => simp at hrun
+  next iterResult hiter =>
+    split at hrun
+    next fault hstable => simp at hrun
+    next stable hstable =>
+      split at hrun
+      next fault hstore => simp at hrun
+      next heap1 hstore =>
+        have heq := Except.ok.inj hrun
+        cases heq
+        let hIterValid := hgcdIter_result_valid this original a3 b3 T0 T1 0
+          inputA lenInputA inputB lenInputB Q W3 scratch heap iterResult hiter
+        exact ⟨iterResult, hIterValid, stable, hiter, hstable, hstore,
+          rfl, rfl, rfl, rfl⟩
+
 theorem hgcdRecursiveStoreIterOutputs_cross_exec
     (a3 b3 pA pB : RawPtr UInt64) (lenA3 lenB3 : Nat)
     (heap heap1 heap2 : RawHeap)

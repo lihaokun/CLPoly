@@ -118,6 +118,11 @@ descriptor 有效性链：`_mat_one`、每次 `_mat_row_update`、良基
 `HgcdMat.Valid`。循环证明与执行使用相同的 `state.lenB` 终止度量，下降仍
 直接来自真实 divrem 返回的余式长度。
 
+递归函数的 iterator arm 现已组合为单一生成执行：先调用真实 `_hgcd_iter`，
+再以其已证有效的矩阵执行两阶段稳定化，最后执行带交叉保护的 `pA/pB`
+写回。成功分解定理强制暴露这三次同序执行及所有返回字段，防止后续精化
+绕开稳定化或 memcpy。该组合没有增加源码外的动态 descriptor guard。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

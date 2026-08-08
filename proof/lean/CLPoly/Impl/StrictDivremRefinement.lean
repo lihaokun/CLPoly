@@ -548,6 +548,19 @@ theorem stagedBudget_to_next_budget (heap : RawHeap)
         apply Nat.mul_le_mul_right
         omega
 
+theorem accumulationBudget_mono (heap : RawHeap) (W3 : RawPtr Word3)
+    (length : Nat) (p : UInt64) (small large : Nat)
+    (hbudget : Word3AccumulationBudget heap W3 length p small)
+    (hle : small ≤ large) :
+    Word3AccumulationBudget heap W3 length p large := by
+  intro k accum hk hread
+  calc
+    word3Value accum ≤
+        (p.toNat - 1) + small * (p.toNat - 1) ^ 2 :=
+      hbudget k accum hk hread
+    _ ≤ (p.toNat - 1) + large * (p.toNat - 1) ^ 2 := by
+      exact Nat.add_le_add_left (Nat.mul_le_mul_right _ hle) _
+
 /-- Zero-extension performed by the generated initialization loop establishes
 the zero-product instance of the accumulation budget. -/
 theorem initW3Prefix_budget (heap : RawHeap) (A : RawPtr UInt64)
@@ -843,6 +856,40 @@ theorem word3_hi_lt_of_accumulation_budget (heap : RawHeap)
   apply word3_hi_lt_of_value_lt accum p
   exact lt_of_le_of_lt hvalue hcapacity
 
+theorem accumulationBudget_writeU64_region_ne (heap heap' : RawHeap)
+    (dst : RawPtr UInt64) (W3 : RawPtr Word3)
+    (writeIndex length count : Nat) (value : UInt64) (p : UInt64)
+    (hvalid : heap.ValidWord3Slice W3 length)
+    (hbudget : Word3AccumulationBudget heap W3 length p count)
+    (hregions : dst.region ≠ W3.region)
+    (hwrite : heap.writeU64 dst writeIndex value = .ok heap') :
+    Word3AccumulationBudget heap' W3 length p count := by
+  intro k accum hk hread'
+  rcases heap.readWord3_of_valid W3 length k hvalid hk with
+    ⟨old, hread⟩
+  have hpreserved := RawHeap.readWord3_writeU64_region_ne heap heap'
+    dst W3 writeIndex k value old hwrite hread hregions
+  have heq : accum = old := Except.ok.inj (hread'.symm.trans hpreserved)
+  subst accum
+  exact hbudget k old hk hread
+
+theorem canonicalPrefix_writeU64_region_ne (heap heap' : RawHeap)
+    (dst src : RawPtr UInt64) (writeIndex length : Nat)
+    (value p : UInt64)
+    (hvalid : heap.ValidU64Slice src length)
+    (hcanonical : CanonicalU64Prefix heap src length p)
+    (hregions : dst.region ≠ src.region)
+    (hwrite : heap.writeU64 dst writeIndex value = .ok heap') :
+    CanonicalU64Prefix heap' src length p := by
+  intro k observed hk hread'
+  rcases heap.readU64_of_valid src length k hvalid hk with
+    ⟨old, hread⟩
+  have hpreserved := RawHeap.readU64_writeU64_ne heap heap' dst src
+    writeIndex k value old hwrite hread (Or.inl hregions)
+  have heq : observed = old := Except.ok.inj (hread'.symm.trans hpreserved)
+  subst observed
+  exact hcanonical k old hk hread
+
 /-- Exact staged transition for one inner-loop cell.  Only the cell at
 `offset + processed` receives the extra allowance; every other cell keeps the
 same bound. -/
@@ -1049,6 +1096,7 @@ theorem addMulLoop_preserves_staged_budget (heap : RawHeap)
     ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
       heap'.ValidU64Slice B (d + 1) ∧
       heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
       CanonicalU64Prefix heap' B (d + 1) p ∧
       Word3StagedBudget heap' W3 lenW3 p count i (d + 1) := by
   rw [addMulLoop]
@@ -1075,6 +1123,8 @@ theorem addMulLoop_preserves_staged_budget (heap : RawHeap)
     have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
       (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
         hwrite (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 (i + j)
+      accum' hwrite
     have hbj : bj.toNat < p.toNat := hcanonical j bj hjB hreadB
     have hstage1 : Word3StagedBudget heap1 W3 lenW3 p count i (j + 1) :=
       writeAddMul_preserves_staged_budget heap heap1 W3 lenW3 count i j
@@ -1093,12 +1143,14 @@ theorem addMulLoop_preserves_staged_budget (heap : RawHeap)
     rcases addMulLoop_preserves_staged_budget heap1 B W3 lenW3 i d
       (j + 1) count p c hB1 hW31 hcanonical1 hstage1 htop (by omega)
       hregions hp hcount hc with
-      ⟨heap2, hloop, hB2, hW32, hcanonical2, hstage2⟩
-    exact ⟨heap2, hloop, hB2, hW32, hcanonical2, hstage2⟩
+      ⟨heap2, hloop, hB2, hW32, hlayout2, hcanonical2, hstage2⟩
+    refine ⟨heap2, hloop, hB2, hW32, ?_, hcanonical2, hstage2⟩
+    intro ptr length
+    exact (hlayout1 ptr length).trans (hlayout2 ptr length)
   next hnot =>
     have hjeq : j = d + 1 := by omega
     subst j
-    exact ⟨heap, rfl, hB, hW3, hcanonical, hstage⟩
+    exact ⟨heap, rfl, hB, hW3, fun _ _ => Iff.rfl, hcanonical, hstage⟩
 termination_by d + 1 - j
 decreasing_by omega
 
@@ -1117,14 +1169,15 @@ theorem addMulLoop_preserves_budget (heap : RawHeap)
     ∃ heap', addMulLoop heap B W3 i d 0 c = .ok heap' ∧
       heap'.ValidU64Slice B (d + 1) ∧
       heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
       CanonicalU64Prefix heap' B (d + 1) p ∧
       Word3AccumulationBudget heap' W3 lenW3 p (count + 1) := by
   have hstage0 := accumulationBudget_to_staged_zero heap W3 lenW3 p
     count i hbudget
   rcases addMulLoop_preserves_staged_budget heap B W3 lenW3 i d 0 count
     p c hB hW3 hcanonical hstage0 htop (by omega) hregions hp hcount hc with
-    ⟨heap', hrun, hB', hW3', hcanonical', hstage'⟩
-  exact ⟨heap', hrun, hB', hW3', hcanonical',
+    ⟨heap', hrun, hB', hW3', hlayout, hcanonical', hstage'⟩
+  exact ⟨heap', hrun, hB', hW3', hlayout, hcanonical',
     stagedBudget_to_next_budget heap' W3 lenW3 p count i (d + 1) hstage'⟩
 
 /-- The descending quotient loop cannot fault when Q, B and W3 have the
@@ -1187,6 +1240,124 @@ theorem quotientLoop_ok (this : DenseUPolyZp) (Q B : RawPtr UInt64)
         hQ1 hB1 hW31 (by omega) hspan with
         ⟨heap2, hloop, hQ2, hB2, hW32, hlayout2⟩
       refine ⟨heap2, hloop, hQ2, hB2, hW32, ?_⟩
+      intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+
+/-- The generated descending quotient loop preserves the real lazy
+accumulation capacity.  `count + ii = qLen` ties the proof counter to the
+source loop state; zero quotient coefficients consume a conservative outer
+allowance without performing an add, while nonzero coefficients execute the
+certified generated inner loop. -/
+theorem quotientLoop_preserves_budget (this : DenseUPolyZp)
+    (Q B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (qLen d lenW3 count : Nat) (invLc : UInt64)
+    (heap : RawHeap) (ii : Nat)
+    (hQ : heap.ValidU64Slice Q qLen)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hcanonical : CanonicalU64Prefix heap B (d + 1) this._p)
+    (hbudget : Word3AccumulationBudget heap W3 lenW3 this._p count)
+    (hstate : count + ii = qLen)
+    (hspan : qLen + d ≤ lenW3) (hqLen : qLen < limbBase)
+    (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
+    (hWB : W3.region ≠ B.region)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat) :
+    ∃ heap', quotientLoop this Q B W3 d invLc heap ii = .ok heap' ∧
+      heap'.ValidU64Slice Q qLen ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      CanonicalU64Prefix heap' B (d + 1) this._p ∧
+      Word3AccumulationBudget heap' W3 lenW3 this._p qLen := by
+  cases ii with
+  | zero =>
+      have hcount : count = qLen := by omega
+      subst count
+      exact ⟨heap, rfl, hQ, hB, hW3, fun _ _ => Iff.rfl, hcanonical,
+        hbudget⟩
+  | succ i =>
+    have hiQ : i < qLen := by omega
+    have hiW : i + d < lenW3 := by omega
+    have hcountLt : count < limbBase := by omega
+    have hcountNext : count + 1 < limbBase := by omega
+    simp only [quotientLoop]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + d) hW3 hiW with
+      ⟨accum, hread⟩
+    simp only [hread]
+    let r := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      accum.hi accum.mid accum.lo this._p this._ninv this._norm
+    let qi := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r invLc
+    have hhi : accum.hi.toNat < this._p.toNat :=
+      word3_hi_lt_of_accumulation_budget heap W3 lenW3 count (i + d)
+        this._p accum hbudget hprime.two_le hcountLt hiW hread
+    have hrEq : r.toNat = word3Value accum % this._p.toNat := by
+      simpa [r] using lll_mod_preinv_ir_correct_of_configured this
+        accum.hi accum.mid accum.lo hcfg hhi
+    have hr : r.toNat < this._p.toNat := by
+      rw [hrEq]
+      exact Nat.mod_lt _ hprime.pos
+    have hqiEq : qi.toNat = (r.toNat * invLc.toNat) % this._p.toNat := by
+      simpa [qi] using nmod_mul_ir_correct_of_configured this r invLc hcfg hr
+    have hqi : qi.toNat < this._p.toNat := by
+      rw [hqiEq]
+      exact Nat.mod_lt _ hprime.pos
+    rcases heap.writeU64_of_valid Q qLen i qi hQ hiQ with
+      ⟨heap1, hwrite⟩
+    dsimp [r, qi] at hwrite ⊢
+    simp only [hwrite]
+    have hQ1 : heap1.ValidU64Slice Q qLen :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite Q qLen).mp hQ
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite
+        (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 Q i _ hwrite
+    have hcanonical1 := canonicalPrefix_writeU64_region_ne heap heap1 Q B
+      i (d + 1) _ this._p hB hcanonical hQB hwrite
+    have hbudget1 := accumulationBudget_writeU64_region_ne heap heap1 Q W3
+      i lenW3 count _ this._p hW3 hbudget hQW hwrite
+    split
+    next hnonzero =>
+      let r0 := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        accum.hi accum.mid accum.lo this._p this._ninv this._norm
+      let qi0 := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r0 invLc
+      have hqi0 : qi0.toNat < this._p.toNat := by simpa [qi0, r0] using hqi
+      have hqi0ne : qi0 ≠ 0 := by simpa [qi0, r0] using hnonzero
+      have hqi0pos : 0 < qi0.toNat := by
+        have : qi0.toNat ≠ 0 := by
+          intro hz
+          apply hqi0ne
+          exact UInt64.toNat_inj.mp (by simpa using hz)
+        omega
+      have hc : (this._p - qi0).toNat < this._p.toNat := by
+        rw [UInt64.toNat_sub_of_le _ _ (Nat.le_of_lt hqi0)]
+        omega
+      rcases addMulLoop_preserves_budget heap1 B W3 lenW3 i d count
+        this._p (this._p - qi0) hB1 hW31 hcanonical1 hbudget1 hiW hWB
+        hprime.two_le hcountNext hc with
+        ⟨heap2, hadd, hB2, hW32, hlayout2, hcanonical2, hbudget2⟩
+      simp only [qi0, r0] at hadd
+      simp only [hadd]
+      have hQ2 : heap2.ValidU64Slice Q qLen := (hlayout2 Q qLen).mp hQ1
+      rcases quotientLoop_preserves_budget this Q B W3 qLen d lenW3
+        (count + 1) invLc heap2 i hQ2 hB2 hW32 hcanonical2 hbudget2
+        (by omega) hspan hqLen hQB hQW hWB hcfg hprime with
+        ⟨heap3, hloop, hQ3, hB3, hW33, hlayout3, hcanonical3, hbudget3⟩
+      refine ⟨heap3, hloop, hQ3, hB3, hW33, ?_, hcanonical3, hbudget3⟩
+      intro ptr length
+      exact (hlayout1 ptr length).trans
+        ((hlayout2 ptr length).trans (hlayout3 ptr length))
+    next hzero =>
+      have hbudgetNext : Word3AccumulationBudget heap1 W3 lenW3 this._p
+          (count + 1) := accumulationBudget_mono heap1 W3 lenW3 this._p
+            count (count + 1) hbudget1 (by omega)
+      rcases quotientLoop_preserves_budget this Q B W3 qLen d lenW3
+        (count + 1) invLc heap1 i hQ1 hB1 hW31 hcanonical1 hbudgetNext
+        (by omega) hspan hqLen hQB hQW hWB hcfg hprime with
+        ⟨heap2, hloop, hQ2, hB2, hW32, hlayout2, hcanonical2, hbudget2⟩
+      refine ⟨heap2, hloop, hQ2, hB2, hW32, ?_, hcanonical2, hbudget2⟩
       intro ptr length
       exact (hlayout1 ptr length).trans (hlayout2 ptr length)
 

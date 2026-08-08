@@ -169,6 +169,12 @@
 - 新增 schoolbook 完整调用的地址级帧定理：从生成 `_classical_mul` 的成功
   执行还原真实 outer loop，并逐 guard cell 应用已有逐写帧，得到任意与 C
   输出 slice 不相交区域的 `SameU64Prefix`。这是 Karatsuba 递归基例的帧桥。
+- 证明总 slice 与 guard 地址不相交可下推到任意合法 `ptr.add start` 子 slice；
+  该引理把顶层 C/scratch 帧合同系统地传给 t1/t2/P0/P1/recScratch，而无需
+  为每一对指针重复展开地址算术。
+- 建立 `SameU64Prefix` 的跨 heap 传递，以及单次 raw write、真实 copyU64、
+  完整 karSubLoop、完整 karAssembleLoop 的 slice 级帧包装。每个包装仍调用
+  已证明的逐 read/write 定理；它们将用于按生成控制流组合递归 frame。
 
 ## 当前边界
 

@@ -67,6 +67,55 @@ theorem u64SlicesDisjoint_add_of_le (base : RawPtr UInt64)
   simp [RawPtr.add, hwidth]
   omega
 
+theorem u64SlicesDisjoint_add_left {base guard : RawPtr UInt64}
+    {length guardLength start count : Nat}
+    (h : U64SlicesDisjoint base length guard guardLength)
+    (hrange : start + count ≤ length) :
+    U64SlicesDisjoint (base.add start) count guard guardLength := by
+  intro i hi j hj
+  have hbase := h (start + i) (by omega) j hj
+  rcases hbase with hregion | hoffset
+  · exact Or.inl (by simpa [RawPtr.add] using hregion)
+  · right
+    have hwidth : RawLimbWidth.width UInt64 = 1 := rfl
+    simp [RawPtr.add, hwidth] at hoffset ⊢
+    omega
+
+theorem sameU64Prefix_trans {heap1 heap2 heap3 : RawHeap}
+    {ptr : RawPtr UInt64} {length : Nat}
+    (h12 : SameU64Prefix heap1 heap2 ptr length)
+    (h23 : SameU64Prefix heap2 heap3 ptr length) :
+    SameU64Prefix heap1 heap3 ptr length := by
+  intro i value hi hread
+  exact h23 i value hi (h12 i value hi hread)
+
+theorem writeU64_preserves_prefix (heap heap' : RawHeap)
+    (dst guard : RawPtr UInt64) (dstLength guardLength writeIndex : Nat)
+    (value : UInt64)
+    (hdisjoint : U64SlicesDisjoint dst dstLength guard guardLength)
+    (hwriteIndex : writeIndex < dstLength)
+    (hwrite : heap.writeU64 dst writeIndex value = .ok heap') :
+    SameU64Prefix heap heap' guard guardLength := by
+  intro readIndex old hreadIndex hread
+  exact RawHeap.readU64_writeU64_ne heap heap' dst guard writeIndex
+    readIndex value old hwrite hread
+    (hdisjoint writeIndex hwriteIndex readIndex hreadIndex)
+
+theorem copyU64_preserves_prefix (heap heap' : RawHeap)
+    (dst src guard : RawPtr UInt64) (count guardLength : Nat)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hdisjoint : U64SlicesDisjoint dst count guard guardLength)
+    (hcopy : heap.copyU64 dst src count = .ok heap') :
+    SameU64Prefix heap heap' guard guardLength := by
+  intro readIndex old hreadIndex hread
+  exact copyU64_preserves_read heap heap' dst src guard count readIndex old
+    hDst hSrc hread
+    (by
+      intro writeIndex hwriteIndex
+      exact hdisjoint writeIndex hwriteIndex readIndex hreadIndex)
+    hcopy
+
 theorem slicePolyRep_prefix_exists (heap : RawHeap) (ptr : RawPtr UInt64)
     (length prefixLength p : Nat) (poly : Polynomial (ZMod p))
     (hvalid : heap.ValidU64Slice ptr length)
@@ -1009,6 +1058,22 @@ theorem karSubLoop_preserves_outside (this : DenseUPolyZp)
 termination_by count - i
 decreasing_by omega
 
+theorem karSubLoop_preserves_prefix (this : DenseUPolyZp)
+    (dst sub guard : RawPtr UInt64) (count guardLength : Nat)
+    (heap heap' : RawHeap)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSub : heap.ValidU64Slice sub count)
+    (hDstGuard : U64SlicesDisjoint dst count guard guardLength)
+    (hrun : karSubLoop this dst sub count 0 heap = .ok heap') :
+    SameU64Prefix heap heap' guard guardLength := by
+  intro readIndex old hreadIndex hread
+  exact karSubLoop_preserves_outside this dst sub guard count 0 readIndex
+    heap heap' old hDst hSub hread
+    (by
+      intro writeIndex _ hwriteIndex
+      exact hDstGuard writeIndex hwriteIndex readIndex hreadIndex)
+    hrun
+
 theorem karSubLoop_refines_slice (this : DenseUPolyZp)
     (dst sub : RawPtr UInt64) (count : Nat) (heap heap' : RawHeap)
     (left right : Polynomial (ZMod this._p.toNat))
@@ -1111,6 +1176,22 @@ theorem karAssembleLoop_preserves_outside (this : DenseUPolyZp)
     simpa [heq] using hread
 termination_by count - i
 decreasing_by omega
+
+theorem karAssembleLoop_preserves_prefix (this : DenseUPolyZp)
+    (C sP1 guard : RawPtr UInt64) (m count guardLength : Nat)
+    (heap heap' : RawHeap)
+    (hC : heap.ValidU64Slice C (m + count))
+    (hP1 : heap.ValidU64Slice sP1 count)
+    (hCGuard : U64SlicesDisjoint C (m + count) guard guardLength)
+    (hrun : karAssembleLoop this C sP1 m count 0 heap = .ok heap') :
+    SameU64Prefix heap heap' guard guardLength := by
+  intro readIndex old hreadIndex hread
+  exact karAssembleLoop_preserves_outside this C sP1 guard m count 0
+    readIndex heap heap' old hC hP1 hread
+    (by
+      intro writeIndex _ hwriteIndex
+      exact hCGuard (m + writeIndex) (by omega) readIndex hreadIndex)
+    hrun
 
 theorem karAssembleLoop_value (this : DenseUPolyZp)
     (C sP1 : RawPtr UInt64) (m count i k : Nat)

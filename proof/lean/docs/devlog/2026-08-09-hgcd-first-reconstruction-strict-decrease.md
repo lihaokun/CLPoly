@@ -79,3 +79,15 @@ A 为正且严格高于外层半长、B 满足外层停止界。证明展开同�
 `hgcdRecursiveFinish_exec` 返回的第二重构，消费第二子调用的完整长度不变量和
 源码 `k/c0` 公式；没有把最终长度作为 finish workspace 的假设。矩阵描述符部分
 继续由实际 combine-matrix 执行定理提供，两部分将在总递归归纳步中合并。
+
+## 完整 finish 长度不变量
+
+最终矩阵界现已从“统一半长上界”加强为四个 sharp `row + finalA` 配对界。
+证明保留真实商长度、第一子调用的 `row + firstA`、第二子调用的
+`row + secondA`，以及源码恒等式 `k + c0 = reconstructedLenB`，并直接实例化
+到 quotient-update 与矩阵乘法返回的描述符。
+
+`hgcdRecursiveFinish_lengthInvariant` 随后在同一次 `hgcdRecursiveFinish_exec`
+轨迹上合并操作数契约、四行 sharp 界和四项系数界，得到完整
+`HgcdRecursiveLengthInvariant`。其中 `row1B/row3B` 由真实 B 停止界和 A
+above-half 推出操作数次序后导出；没有额外假设最终 B 已小于 A。

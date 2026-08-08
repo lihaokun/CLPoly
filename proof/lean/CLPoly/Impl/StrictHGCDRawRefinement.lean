@@ -7497,6 +7497,51 @@ theorem hgcdRecursiveFinish_operandInvariant (this : DenseUPolyZp)
     aboveHalf := by simpa [hlenA] using habove
     stopped := by simpa [hlenB] using hstop }
 
+/-- Assemble the common recursive length contract from the finish operand
+facts and the two descriptor facts returned by the real matrix block. -/
+theorem hgcdRecursiveLengthInvariant_of_finish
+    (outerLength : Nat) (result : HgcdRecursiveFinishResult)
+    (hOperands : HgcdRecursiveFinishOperandInvariant outerLength result)
+    (hRows : ∀ i : Fin 4,
+      hgcdMatLen result.matrix result.valid i + result.lenA ≤ outerLength + 1)
+    (hCoeff : ∀ i : Fin 4,
+      hgcdMatLen result.matrix result.valid i ≤
+        outerLength - outerLength / 2) :
+    HgcdRecursiveLengthInvariant outerLength result.toResult := by
+  have horder : result.lenB ≤ result.lenA := by
+    have hstop := hOperands.stopped
+    have habove := hOperands.aboveHalf
+    omega
+  exact {
+    row0A := by simpa [HgcdRecursiveFinishResult.toResult, hgcdMatLenRaw,
+      hgcdMatLen] using hRows (0 : Fin 4)
+    row1B := by
+      have := hRows (1 : Fin 4)
+      simpa [HgcdRecursiveFinishResult.toResult, hgcdMatLenRaw,
+        hgcdMatLen] using (show
+          hgcdMatLen result.matrix result.valid (1 : Fin 4) + result.lenB ≤
+            outerLength + 1 by omega)
+    row2A := by simpa [HgcdRecursiveFinishResult.toResult, hgcdMatLenRaw,
+      hgcdMatLen] using hRows (2 : Fin 4)
+    row3B := by
+      have := hRows (3 : Fin 4)
+      simpa [HgcdRecursiveFinishResult.toResult, hgcdMatLenRaw,
+        hgcdMatLen] using (show
+          hgcdMatLen result.matrix result.valid (3 : Fin 4) + result.lenB ≤
+            outerLength + 1 by omega)
+    row1A := by simpa [HgcdRecursiveFinishResult.toResult, hgcdMatLenRaw,
+      hgcdMatLen] using hRows (1 : Fin 4)
+    row3A := by simpa [HgcdRecursiveFinishResult.toResult, hgcdMatLenRaw,
+      hgcdMatLen] using hRows (3 : Fin 4)
+    inputBound := hOperands.inputBoundA
+    stopped := hOperands.stopped
+    positive := hOperands.positiveA
+    aboveHalf := hOperands.aboveHalf
+    coeffBound := by
+      intro i
+      simpa [HgcdRecursiveFinishResult.toResult, hgcdMatLenRaw,
+        hgcdMatLen] using hCoeff i }
+
 /-- Purely physical obligations for the exact final matrix block.  Besides
 the two existing generated-call workspaces, the frame fields state that the
 quotient update does not alter any buffer of the left matrix `R`. -/
@@ -7788,6 +7833,158 @@ theorem hgcdRecursiveCombined_all_coeff_bounds
   intro i
   fin_cases i <;> simp_all
 
+/-- Sharp row/A arithmetic for one product term of the final matrix.  Unlike
+the uniform half-capacity bound, this retains the exact second-child A
+length and is therefore strong enough for the recursive row/A contract. -/
+theorem hgcdCombinedRowTerm_add_finalA_le
+    (outerLength highLength m firstLenA reconstructedLenB lenQ k
+      secondInputLength secondLenA r s : Nat)
+    (houter : highLength + m = outerLength)
+    (hrA : r + firstLenA ≤ highLength + 1)
+    (hfirstBound : firstLenA ≤ highLength)
+    (hreconstructedOrder : reconstructedLenB ≤ m + firstLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hlenQ : lenQ ≤ m + firstLenA - (reconstructedLenB - 1))
+    (hsplit : k + secondInputLength = reconstructedLenB)
+    (hsA : s + secondLenA ≤ secondInputLength + 1) :
+    (r + s - 1) + (k + secondLenA) ≤ outerLength + 1 ∧
+      (r + (lenQ + s - 1) - 1) + (k + secondLenA) ≤
+        outerLength + 1 := by
+  have hqsum : lenQ + reconstructedLenB ≤ m + firstLenA + 1 := by
+    omega
+  have hdirectSum : r + s + k + secondLenA ≤ outerLength + 2 := by
+    omega
+  have hquotientSum : r + lenQ + s + k + secondLenA ≤
+      outerLength + 3 := by
+    omega
+  constructor
+  · by_cases hsum : r + s = 0
+    · simp [hsum]
+      omega
+    · omega
+  · by_cases hinner : lenQ + s = 0
+    · simp [hinner]
+      omega
+    · by_cases hsum : r + (lenQ + s - 1) = 0
+      · simp [hsum]
+        omega
+      · omega
+
+/-- Both rows of one concrete final-product column retain the sharp pairing
+with the final reconstructed A descriptor. -/
+theorem hgcdRecursiveCombinedColumn_rowA_bounds
+    (outerLength highLength m firstLenA reconstructedLenB lenQ k
+      secondInputLength secondLenA finalLenA r0 r1 r2 r3 sTop sBottom
+      uTop uBottom outTop outBottom : Nat)
+    (houter : highLength + m = outerLength)
+    (hr0A : r0 + firstLenA ≤ highLength + 1)
+    (hr1A : r1 + firstLenA ≤ highLength + 1)
+    (hr2A : r2 + firstLenA ≤ highLength + 1)
+    (hr3A : r3 + firstLenA ≤ highLength + 1)
+    (hfirstBound : firstLenA ≤ highLength)
+    (hreconstructedOrder : reconstructedLenB ≤ m + firstLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hlenQ : lenQ ≤ m + firstLenA - (reconstructedLenB - 1))
+    (hsplit : k + secondInputLength = reconstructedLenB)
+    (hsTopA : sTop + secondLenA ≤ secondInputLength + 1)
+    (hsBottomA : sBottom + secondLenA ≤ secondInputLength + 1)
+    (hfinalA : finalLenA = k + secondLenA)
+    (huTop : uTop ≤ max sBottom (lenQ + sTop - 1))
+    (huBottom : uBottom = sTop)
+    (houtTop : outTop ≤ max (r0 + uTop - 1) (r1 + uBottom - 1))
+    (houtBottom : outBottom ≤
+      max (r2 + uTop - 1) (r3 + uBottom - 1)) :
+    outTop + finalLenA ≤ outerLength + 1 ∧
+      outBottom + finalLenA ≤ outerLength + 1 := by
+  have boundUpdated (r : Nat) (hrA : r + firstLenA ≤ highLength + 1) :
+      (r + uTop - 1) + finalLenA ≤ outerLength + 1 := by
+    rw [hfinalA]
+    have hdirect := (hgcdCombinedRowTerm_add_finalA_le outerLength
+      highLength m firstLenA reconstructedLenB lenQ k secondInputLength
+      secondLenA r sBottom houter hrA hfirstBound hreconstructedOrder
+      hreconstructedLower hlenQ hsplit hsBottomA).1
+    have hquotient := (hgcdCombinedRowTerm_add_finalA_le outerLength
+      highLength m firstLenA reconstructedLenB lenQ k secondInputLength
+      secondLenA r sTop houter hrA hfirstBound hreconstructedOrder
+      hreconstructedLower
+      hlenQ hsplit hsTopA).2
+    rcases le_total sBottom (lenQ + sTop - 1) with hle | hle
+    · have hu : uTop ≤ lenQ + sTop - 1 := by
+        simpa [max_eq_right hle] using huTop
+      exact (Nat.add_le_add_right
+        (Nat.sub_le_sub_right (Nat.add_le_add_left hu r) 1)
+        (k + secondLenA)).trans hquotient
+    · have hu : uTop ≤ sBottom := by
+        simpa [max_eq_left hle] using huTop
+      exact (Nat.add_le_add_right
+        (Nat.sub_le_sub_right (Nat.add_le_add_left hu r) 1)
+        (k + secondLenA)).trans hdirect
+  have boundDirect (r : Nat) (hrA : r + firstLenA ≤ highLength + 1) :
+      (r + uBottom - 1) + finalLenA ≤ outerLength + 1 := by
+    rw [hfinalA, huBottom]
+    exact (hgcdCombinedRowTerm_add_finalA_le outerLength highLength m
+      firstLenA reconstructedLenB lenQ k secondInputLength secondLenA r
+      sTop houter hrA hfirstBound hreconstructedOrder hreconstructedLower
+      hlenQ hsplit hsTopA).1
+  have boundOutput (out left right : Nat)
+      (hout : out ≤ max left right)
+      (hleft : left + finalLenA ≤ outerLength + 1)
+      (hright : right + finalLenA ≤ outerLength + 1) :
+      out + finalLenA ≤ outerLength + 1 := by
+    rcases le_total left right with hle | hle
+    · have ho : out ≤ right := by simpa [max_eq_right hle] using hout
+      exact (Nat.add_le_add_right ho finalLenA).trans hright
+    · have ho : out ≤ left := by simpa [max_eq_left hle] using hout
+      exact (Nat.add_le_add_right ho finalLenA).trans hleft
+  constructor
+  · exact boundOutput outTop (r0 + uTop - 1) (r1 + uBottom - 1)
+      houtTop (boundUpdated r0 hr0A) (boundDirect r1 hr1A)
+  · exact boundOutput outBottom (r2 + uTop - 1) (r3 + uBottom - 1)
+      houtBottom (boundUpdated r2 hr2A) (boundDirect r3 hr3A)
+
+/-- Applying the sharp column argument twice closes the row/A pairing for
+all four entries of the final matrix. -/
+theorem hgcdRecursiveCombined_all_rowA_bounds
+    (outerLength highLength m firstLenA reconstructedLenB lenQ k
+      secondInputLength secondLenA finalLenA r0 r1 r2 r3 s0 s1 s2 s3
+      u0 u1 u2 u3 out0 out1 out2 out3 : Nat)
+    (houter : highLength + m = outerLength)
+    (hr0A : r0 + firstLenA ≤ highLength + 1)
+    (hr1A : r1 + firstLenA ≤ highLength + 1)
+    (hr2A : r2 + firstLenA ≤ highLength + 1)
+    (hr3A : r3 + firstLenA ≤ highLength + 1)
+    (hfirstBound : firstLenA ≤ highLength)
+    (hreconstructedOrder : reconstructedLenB ≤ m + firstLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hlenQ : lenQ ≤ m + firstLenA - (reconstructedLenB - 1))
+    (hsplit : k + secondInputLength = reconstructedLenB)
+    (hs0A : s0 + secondLenA ≤ secondInputLength + 1)
+    (hs1A : s1 + secondLenA ≤ secondInputLength + 1)
+    (hs2A : s2 + secondLenA ≤ secondInputLength + 1)
+    (hs3A : s3 + secondLenA ≤ secondInputLength + 1)
+    (hfinalA : finalLenA = k + secondLenA)
+    (hu0 : u0 ≤ max s2 (lenQ + s0 - 1))
+    (hu1 : u1 ≤ max s3 (lenQ + s1 - 1))
+    (hu2 : u2 = s0) (hu3 : u3 = s1)
+    (hout0 : out0 ≤ max (r0 + u0 - 1) (r1 + u2 - 1))
+    (hout1 : out1 ≤ max (r0 + u1 - 1) (r1 + u3 - 1))
+    (hout2 : out2 ≤ max (r2 + u0 - 1) (r3 + u2 - 1))
+    (hout3 : out3 ≤ max (r2 + u1 - 1) (r3 + u3 - 1)) :
+    ∀ i : Fin 4,
+      [out0, out1, out2, out3][i] + finalLenA ≤ outerLength + 1 := by
+  have heven := hgcdRecursiveCombinedColumn_rowA_bounds outerLength
+    highLength m firstLenA reconstructedLenB lenQ k secondInputLength
+    secondLenA finalLenA r0 r1 r2 r3 s0 s2 u0 u2 out0 out2 houter hr0A
+    hr1A hr2A hr3A hfirstBound hreconstructedOrder hreconstructedLower hlenQ
+    hsplit hs0A hs2A hfinalA hu0 hu2 hout0 hout2
+  have hodd := hgcdRecursiveCombinedColumn_rowA_bounds outerLength
+    highLength m firstLenA reconstructedLenB lenQ k secondInputLength
+    secondLenA finalLenA r0 r1 r2 r3 s1 s3 u1 u3 out1 out3 houter hr0A
+    hr1A hr2A hr3A hfirstBound hreconstructedOrder hreconstructedLower hlenQ
+    hsplit hs1A hs3A hfinalA hu1 hu3 hout1 hout3
+  intro i
+  fin_cases i <;> simp_all
+
 /-- The uniform bound above is realized by the descriptors returned from the
 actual generated quotient-update/matrix-product tail.  In particular, the
 intermediate `modified` matrix is obtained by executing
@@ -7846,6 +8043,72 @@ theorem hgcdRecursiveCombineMatrix_coeff_bounds (this : DenseUPolyZp)
     (hRRows 2) (hRRows 3) hreconstructedA hreconstructedOrder
     hreconstructedLower hlenQ hk hc (hSBound 0) (hSBound 1) (hSBound 2)
     (hSBound 3) hModified.row0 hModified.row1 hModified.row2
+    hModified.row3 (by simpa using hOutput (0 : Fin 4))
+    (by simpa using hOutput (1 : Fin 4))
+    (by simpa using hOutput (2 : Fin 4))
+    (by simpa using hOutput (3 : Fin 4))
+  intro i
+  fin_cases i
+  · simpa using hAll (0 : Fin 4)
+  · simpa using hAll (1 : Fin 4)
+  · simpa using hAll (2 : Fin 4)
+  · simpa using hAll (3 : Fin 4)
+
+/-- Execution-level sharp row/A bounds for the same generated final matrix
+block.  This is the descriptor half of the complete recursive length
+invariant; no specification matrix appears in the statement. -/
+theorem hgcdRecursiveCombineMatrix_rowA_bounds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : HgcdMatMulResult)
+    (right entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (outerLength highLength m firstLenA reconstructedLenB k
+      secondInputLength secondLenA finalLenA : Nat)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveCombineMatrixWorkspaceProvider this R S hR hS
+      q lenQ T a2 scratch heap)
+    (hRight : HgcdMatRawDenseRep this heap R right hR)
+    (hSRep : HgcdMatRawDenseRep this heap S entries hS)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (houter : highLength + m = outerLength)
+    (hRRows : ∀ i : Fin 4,
+      hgcdMatLen R hR i + firstLenA ≤ highLength + 1)
+    (hfirstBound : firstLenA ≤ highLength)
+    (hreconstructedOrder : reconstructedLenB ≤ m + firstLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hlenQ : lenQ ≤ m + firstLenA - (reconstructedLenB - 1))
+    (hsplit : k + secondInputLength = reconstructedLenB)
+    (hSRows : ∀ i : Fin 4,
+      hgcdMatLen S hS i + secondLenA ≤ secondInputLength + 1)
+    (hfinalA : finalLenA = k + secondLenA)
+    (hrun : hgcdRecursiveCombineMatrix this M R S hM hR hS q lenQ T a2
+      scratch heap = .ok result) :
+    ∃ hResult : result.matrix.Valid,
+      ∀ i : Fin 4,
+        hgcdMatLen result.matrix hResult i + finalLenA ≤ outerLength + 1 := by
+  rcases hgcdRecursiveCombineMatrix_length_bounds this M R S hM hR hS q
+      lenQ T a2 scratch heap result right entries quotient hcfg hp physical
+      hRight hSRep hQ hrun with ⟨modified, hResult, hModified, hOutput⟩
+  refine ⟨hResult, ?_⟩
+  have hAll := hgcdRecursiveCombined_all_rowA_bounds outerLength highLength m
+    firstLenA reconstructedLenB lenQ k secondInputLength secondLenA finalLenA
+    (hgcdMatLen R hR 0) (hgcdMatLen R hR 1)
+    (hgcdMatLen R hR 2) (hgcdMatLen R hR 3)
+    (hgcdMatLen S hS 0) (hgcdMatLen S hS 1)
+    (hgcdMatLen S hS 2) (hgcdMatLen S hS 3)
+    (hgcdMatLen modified.matrix modified.valid 0)
+    (hgcdMatLen modified.matrix modified.valid 1)
+    (hgcdMatLen modified.matrix modified.valid 2)
+    (hgcdMatLen modified.matrix modified.valid 3)
+    (hgcdMatLen result.matrix hResult 0)
+    (hgcdMatLen result.matrix hResult 1)
+    (hgcdMatLen result.matrix hResult 2)
+    (hgcdMatLen result.matrix hResult 3) houter (hRRows 0) (hRRows 1)
+    (hRRows 2) (hRRows 3) hfirstBound hreconstructedOrder
+    hreconstructedLower hlenQ hsplit (hSRows 0) (hSRows 1) (hSRows 2)
+    (hSRows 3) hfinalA hModified.row0 hModified.row1 hModified.row2
     hModified.row3 (by simpa using hOutput (0 : Fin 4))
     (by simpa using hOutput (1 : Fin 4))
     (by simpa using hOutput (2 : Fin 4))
@@ -7987,6 +8250,143 @@ theorem hgcdRecursiveFinish_refines (this : DenseUPolyZp)
     · simpa [htail.1, hlenB] using hBReconstructed
     · intro htrue
       simp [hfalse] at htrue
+
+set_option maxHeartbeats 1200000 in
+/-- Complete length invariant of the real matrix-producing non-early tail.
+The proof uses the exact reconstruction and combine executions exposed by
+`hgcdRecursiveFinish_exec`; every descriptor bound is transported through
+their concrete heaps and returned records. -/
+theorem hgcdRecursiveFinish_lengthInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid)
+    (A B T0 lowA lowB highA highB q : RawPtr UInt64)
+    (a2 scratch : RawPtr UInt64)
+    (outerLength highLength m reconstructedLenA reconstructedLenB lenD k
+      secondInputLength lenQ : Nat)
+    (first second : HgcdRecursiveResult)
+    (result : HgcdRecursiveFinishResult)
+    (right entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient polyLowA polyLowB polyHighA polyHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (firstLength : HgcdRecursiveLengthInvariant highLength first)
+    (secondLength : HgcdRecursiveLengthInvariant secondInputLength second)
+    (physical : HgcdRecursiveFinishWorkspaceProvider this M first.matrix
+      second.matrix hM first.valid second.valid A B T0 lowA lowB highA highB
+      q (Nat.min reconstructedLenB k) (Nat.min lenD k) second.lenA
+      second.lenB k lenQ a2 scratch second.sgn second.heap)
+    (hRRep : HgcdMatRawDenseRep this second.heap first.matrix right first.valid)
+    (hSRep : HgcdMatRawDenseRep this second.heap second.matrix entries
+      second.valid)
+    (hQ : RawDensePolyRep this second.heap q lenQ quotient)
+    (hLowA : RawDensePolyRep this second.heap lowA
+      (Nat.min reconstructedLenB k) polyLowA)
+    (hLowB : RawDensePolyRep this second.heap lowB
+      (Nat.min lenD k) polyLowB)
+    (hHighA : RawDensePolyRep this second.heap highA second.lenA polyHighA)
+    (hHighB : RawDensePolyRep this second.heap highB second.lenB polyHighB)
+    (hm : m = outerLength / 2)
+    (hhigh : highLength = outerLength - m)
+    (hreconstructedA : reconstructedLenA = m + first.lenA)
+    (hreconstructedOrder : reconstructedLenB ≤ reconstructedLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hreconstructedUpper : reconstructedLenB < outerLength)
+    (hlenQ : lenQ ≤ reconstructedLenA - (reconstructedLenB - 1))
+    (hk : k = 2 * m - reconstructedLenB + 1)
+    (hc : secondInputLength = reconstructedLenB - k)
+    (hrun : hgcdRecursiveFinish this M first.matrix second.matrix hM
+      first.valid second.valid true A B T0 lowA lowB highA highB q
+      (Nat.min reconstructedLenB k) (Nat.min lenD k) second.lenA second.lenB
+      k lenQ a2 scratch first.sgn second.sgn second.heap = .ok result) :
+    HgcdRecursiveLengthInvariant outerLength result.toResult := by
+  rcases hgcdRecursiveFinish_exec this M first.matrix second.matrix hM
+      first.valid second.valid true A B T0 lowA lowB highA highB q
+      (Nat.min reconstructedLenB k) (Nat.min lenD k) second.lenA second.lenB
+      k lenQ a2 scratch first.sgn second.sgn second.heap result hrun with
+    ⟨reconstructed, hreconstruct, hlenA, _, _, htail⟩
+  simp only [if_pos] at htail
+  rcases htail with ⟨combined, hcombine, _, hmatrix⟩
+  have hwork := physical reconstructed hreconstruct
+  have hcombineWork := hwork.combine combined hcombine
+  have hOperands := hgcdRecursiveFinish_operandInvariant this M first.matrix
+    hM first.valid true A B T0 lowA lowB highA highB q outerLength m
+    reconstructedLenB lenD k secondInputLength lenQ a2 scratch first.sgn
+    second result entries polyLowA polyLowB polyHighA polyHighB hcfg hp
+    secondLength hwork.reconstruct hSRep hLowA hLowB hHighA hHighB hm hk hc
+    hreconstructedLower hreconstructedUpper hrun
+  have hRReconstructed : HgcdMatRawDenseRep this reconstructed.heap
+      first.matrix right first.valid := by
+    intro i
+    exact rawDensePolyRep_of_same_prefix this second.heap reconstructed.heap
+      (hgcdMatPtr first.matrix first.valid i)
+      (hgcdMatLen first.matrix first.valid i) (right i) hwork.afterLayout
+      (hwork.rightPrefix i) (hRRep i)
+  have hSReconstructed : HgcdMatRawDenseRep this reconstructed.heap
+      second.matrix entries second.valid := by
+    intro i
+    exact rawDensePolyRep_of_same_prefix this second.heap reconstructed.heap
+      (hgcdMatPtr second.matrix second.valid i)
+      (hgcdMatLen second.matrix second.valid i) (entries i)
+      hwork.afterLayout (hwork.secondPrefix i) (hSRep i)
+  have hQReconstructed := rawDensePolyRep_of_same_prefix this second.heap
+    reconstructed.heap q lenQ quotient hwork.afterLayout hwork.quotientPrefix
+    hQ
+  have horder' : reconstructedLenB ≤ m + first.lenA := by
+    rwa [← hreconstructedA]
+  have hq' : lenQ ≤ m + first.lenA - (reconstructedLenB - 1) := by
+    rwa [← hreconstructedA]
+  have houter : highLength + m = outerLength := by
+    omega
+  have hsplit : k + secondInputLength = reconstructedLenB := by
+    omega
+  have hleading := hgcdRecursiveFinalReconstruct_lenA_eq_of_invariant this A
+    B T0 lowA lowB highA highB scratch (Nat.min reconstructedLenB k)
+    (Nat.min lenD k) k secondInputLength second reconstructed entries polyLowA
+    polyLowB polyHighA polyHighB hcfg hp secondLength (Nat.min_le_right _ _)
+    (Nat.min_le_right _ _) hwork.reconstruct hSRep hLowA hLowB hHighA hHighB
+    hreconstruct
+  have hRows := hgcdRecursiveCombineMatrix_rowA_bounds this M first.matrix
+    second.matrix hM first.valid second.valid q lenQ T0 a2 scratch
+    reconstructed.heap combined right entries quotient outerLength highLength m
+    first.lenA reconstructedLenB k secondInputLength second.lenA
+    reconstructed.lenA hcfg hp hcombineWork.1 hRReconstructed hSReconstructed
+    hQReconstructed houter
+    (fun i => by
+      fin_cases i
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using firstLength.row0A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using firstLength.row1A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using firstLength.row2A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using firstLength.row3A)
+    firstLength.inputBound horder' hreconstructedLower hq' hsplit
+    (fun i => by
+      fin_cases i
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using secondLength.row0A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using secondLength.row1A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using secondLength.row2A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using secondLength.row3A)
+    hleading.1 hcombine
+  have hCoeff := hgcdRecursiveCombineMatrix_coeff_bounds this M first.matrix
+    second.matrix hM first.valid second.valid q lenQ T0 a2 scratch
+    reconstructed.heap combined right entries quotient outerLength m highLength
+    first.lenA reconstructedLenA reconstructedLenB k secondInputLength hcfg hp
+    hcombineWork.1 hRReconstructed hSReconstructed hQReconstructed hm hhigh
+    (fun i => by
+      fin_cases i
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using firstLength.row0A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using firstLength.row1A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using firstLength.row2A
+      · simpa [hgcdMatLen, hgcdMatLenRaw] using firstLength.row3A)
+    hreconstructedA hreconstructedOrder hreconstructedLower hlenQ hk hc
+    (fun i => by
+      simpa [hgcdMatLen, hgcdMatLenRaw] using secondLength.coeffBound i)
+    hcombine
+  rcases hRows with ⟨hCombinedValid, hCombinedRows⟩
+  rcases hCoeff with ⟨hCombinedValid', hCombinedCoeff⟩
+  apply hgcdRecursiveLengthInvariant_of_finish outerLength result hOperands
+  · intro i
+    simpa [hmatrix, hlenA, hgcdMatLen] using hCombinedRows i
+  · intro i
+    simpa [hmatrix, hgcdMatLen] using hCombinedCoeff i
 
 /-- The generated recursive-HGCD base helper with matrix computation enabled
 is exactly the already-refined iterator initialization prefix, modulo its

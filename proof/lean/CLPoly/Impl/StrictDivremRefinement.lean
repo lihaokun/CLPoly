@@ -1775,6 +1775,75 @@ theorem quotient_zero_successor_finalize (before afterWrite final : RawHeap)
     (word3ArrayPoly p beforeValues) (word3ArrayPoly p recValues)
     (word3ArrayPoly p finalValues) divisor hlower hfull hreadFinal hstep hrec
 
+/-- Algebraic/raw assembly of the actual nonzero successor branch, including
+the generated complement addMul between the Q write and recursive call. -/
+theorem quotient_nonzero_successor_finalize
+    (before afterWrite afterAdd final : RawHeap)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (length i p : Nat) (modulus qi : UInt64)
+    (lowerQ divisor : Polynomial (ZMod p))
+    (beforeValues writeValues addBeforeValues addValues recValues
+      finalValues : Array Word3)
+    (hvalidW : before.ValidWord3Slice W3 length)
+    (hbefore : Word3SliceRep before W3 length beforeValues)
+    (hwriteValues : Word3SliceRep afterWrite W3 length writeValues)
+    (haddBefore : Word3SliceRep afterWrite W3 length addBeforeValues)
+    (haddValues : Word3SliceRep afterAdd W3 length addValues)
+    (hrecValues : Word3SliceRep afterAdd W3 length recValues)
+    (hfinalValues : Word3SliceRep final W3 length finalValues)
+    (hwrite : before.writeU64 Q i qi = .ok afterWrite)
+    (hQW : Q.region ≠ W3.region)
+    (hp : p = modulus.toNat)
+    (hqi : qi.toNat ≤ modulus.toNat)
+    (hadd : word3ArrayPoly p addValues =
+      word3ArrayPoly p addBeforeValues +
+        Polynomial.monomial i ((modulus - qi).toNat : ZMod p) * divisor)
+    (hlower : SlicePolyRep final Q i p lowerQ)
+    (hvalidQ : final.ValidU64Slice Q (i + 1))
+    (hreadFinal : final.readU64 Q i = .ok qi)
+    (hrec : word3ArrayPoly p finalValues =
+      word3ArrayPoly p recValues - lowerQ * divisor) :
+    ∃ fullQ : Polynomial (ZMod p),
+      SlicePolyRep final Q (i + 1) p fullQ ∧
+      word3ArrayPoly p finalValues =
+        word3ArrayPoly p beforeValues - fullQ * divisor := by
+  subst p
+  have hwriteEq := word3ArrayPoly_writeU64_region_ne before afterWrite Q W3
+    i length modulus.toNat qi beforeValues writeValues hvalidW hbefore
+    hwriteValues hQW hwrite
+  have haddBeforeEq : addBeforeValues = writeValues :=
+    word3SliceRep_eq afterWrite W3 length addBeforeValues writeValues
+      haddBefore hwriteValues
+  have hrecValuesEq : recValues = addValues :=
+    word3SliceRep_eq afterAdd W3 length recValues addValues hrecValues
+      haddValues
+  have hstepAdd : word3ArrayPoly modulus.toNat addValues =
+      word3ArrayPoly modulus.toNat beforeValues -
+        Polynomial.monomial i (qi.toNat : ZMod modulus.toNat) * divisor := by
+    calc
+      word3ArrayPoly modulus.toNat addValues =
+          word3ArrayPoly modulus.toNat beforeValues +
+            Polynomial.monomial i
+              ((modulus - qi).toNat : ZMod modulus.toNat) * divisor := by
+        rw [hadd, haddBeforeEq, hwriteEq]
+      _ = word3ArrayPoly modulus.toNat beforeValues -
+          Polynomial.monomial i (qi.toNat : ZMod modulus.toNat) * divisor :=
+        add_complement_monomial_mul_eq_sub modulus qi i
+          (word3ArrayPoly modulus.toNat beforeValues) divisor hqi
+  have hstep : word3ArrayPoly modulus.toNat recValues =
+      word3ArrayPoly modulus.toNat beforeValues -
+        Polynomial.monomial i (qi.toNat : ZMod modulus.toNat) * divisor := by
+    rw [hrecValuesEq]
+    exact hstepAdd
+  rcases slicePolyRep_extend_exists final Q i modulus.toNat qi lowerQ
+      hvalidQ hlower hreadFinal with ⟨fullQ, hfull, _⟩
+  refine ⟨fullQ, hfull, ?_⟩
+  exact quotient_step_finalize final Q modulus.toNat i qi lowerQ fullQ
+    (word3ArrayPoly modulus.toNat beforeValues)
+    (word3ArrayPoly modulus.toNat recValues)
+    (word3ArrayPoly modulus.toNat finalValues) divisor hlower hfull
+    hreadFinal hstep hrec
+
 /-- Algebraic core of the source's leading-coefficient cancellation.  It is
 stated over naturals so the subsequent raw-memory theorem only has to supply
 the exact generated write and canonical UInt64 observations. -/

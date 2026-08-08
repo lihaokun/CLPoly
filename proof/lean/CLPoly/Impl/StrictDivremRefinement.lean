@@ -185,6 +185,14 @@ theorem slicePolyRep_coeff_zero_of_length_le (heap : RawHeap)
   rw [coeff_coeffArrayPoly, dif_neg]
   simpa [hsize] using hdegree
 
+theorem slicePolyRep_zero_length (heap : RawHeap) (ptr : RawPtr UInt64)
+    (p : Nat) (poly : Polynomial (ZMod p))
+    (hrep : SlicePolyRep heap ptr 0 p poly) :
+    poly = 0 := by
+  ext degree
+  rw [slicePolyRep_coeff_zero_of_length_le heap ptr 0 p poly hrep degree
+    (Nat.zero_le _), Polynomial.coeff_zero]
+
 /-- Extending a raw coefficient prefix by its next actual C++ cell extends
 the represented polynomial by the corresponding monomial. -/
 theorem slicePolyRep_succ_eq_add_monomial (heap : RawHeap)
@@ -1934,6 +1942,9 @@ theorem addMulLoop_refines_polynomial (heap : RawHeap)
     (hc : c.toNat < p.toNat) :
     ∃ heap' beforeValues afterValues,
       addMulLoop heap B W3 i d 0 c = .ok heap' ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      SameU64Prefix heap heap' B (d + 1) ∧
       Word3SliceRep heap W3 lenW3 beforeValues ∧
       Word3SliceRep heap' W3 lenW3 afterValues ∧
       word3ArrayPoly p.toNat afterValues =
@@ -1943,7 +1954,7 @@ theorem addMulLoop_refines_polynomial (heap : RawHeap)
     ⟨beforeValues, hbefore, _⟩
   rcases addMulLoop_refines_exact heap B W3 lenW3 i d 0 count p c
       hB hW3 hbudget hcanonical htop (by omega) hregions hp hcount hc with
-    ⟨heap', hrun, hB', hW3', _, _, _, hrange⟩
+    ⟨heap', hrun, hB', hW3', _, hsameB, _, hrange⟩
   rcases addMulLoop_preserves_below heap B W3 lenW3 i d 0 c hB hW3
       htop (by omega) with
     ⟨heapBelow, hrunBelow, _, _, _, hbelow⟩
@@ -1958,7 +1969,8 @@ theorem addMulLoop_refines_polynomial (heap : RawHeap)
   subst heapAbove
   rcases word3SliceRep_exists_unique heap' W3 lenW3 hW3' with
     ⟨afterValues, hafter, _⟩
-  refine ⟨heap', beforeValues, afterValues, hrun, hbefore, hafter, ?_⟩
+  refine ⟨heap', beforeValues, afterValues, hrun, hB', hW3', hsameB,
+    hbefore, hafter, ?_⟩
   exact word3ArrayPoly_addMul heap heap' B W3 lenW3 i d p.toNat c
     beforeValues afterValues divisor hbefore hafter hdivisor hbelow habove
     hrange htop

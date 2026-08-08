@@ -209,6 +209,11 @@
   高位 slice，最终拼接出 `P0 + X^(2*m)*P2` 的完整 `SlicePolyRep`
   和规范前缀。整段证明逐次使用 copy/write 的实际 heap 与地址帧，
   没有用一次性规格替换生成控制流。
+- 将真实递归 `copyU64` 的内容语义从“不同 allocation region”推广到
+  逐地址不相交。证明在每次头 cell 写入后保持源尾段，然后对同一
+  allocation 的相邻尾 slices 继续递归，并把逐 cell 内容提升到
+  `SlicePolyRep` 与 canonical 结果。因此子层 Karatsuba 的 C/P0 都在父层
+  scratch allocation 中时也可直接应用，不再需要虚构 region 不等。
 
 ## 当前边界
 

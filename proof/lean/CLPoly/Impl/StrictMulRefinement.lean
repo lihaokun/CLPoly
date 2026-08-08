@@ -123,21 +123,111 @@ theorem copyU64_preserves_prefix (heap heap' : RawHeap)
       exact hdisjoint writeIndex hwriteIndex readIndex hreadIndex)
     hcopy
 
+/-- Content semantics for the actual recursive copy under address-level
+non-overlap.  Unlike the older region-level lemma, this also covers adjacent
+sub-slices of one Karatsuba scratch allocation. -/
+theorem copyU64_refines_disjoint (heap : RawHeap)
+    (dst src : RawPtr UInt64) (count : Nat)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hdisjoint : U64SlicesDisjoint dst count src count) :
+    ∃ heap', heap.copyU64 dst src count = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      CopyU64Contents heap heap' dst src count := by
+  cases count with
+  | zero =>
+    exact ⟨heap, rfl, fun _ _ => Iff.rfl, by intro k _ hk; omega⟩
+  | succ n =>
+    simp only [RawHeap.copyU64]
+    rcases heap.readU64_of_valid src (n + 1) 0 hSrc (by omega) with
+      ⟨value, hread⟩
+    simp only [hread]
+    rcases heap.writeU64_of_valid dst (n + 1) 0 value hDst (by omega) with
+      ⟨heap1, hwrite⟩
+    simp only [hwrite]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 dst 0 value hwrite
+    have hDstTail0 := heap.validU64Slice_add dst (n + 1) 1 n hDst (by omega)
+    have hSrcTail0 := heap.validU64Slice_add src (n + 1) 1 n hSrc (by omega)
+    have hDstTail1 := (hlayout1 (dst.add 1) n).mp hDstTail0
+    have hSrcTail1 := (hlayout1 (src.add 1) n).mp hSrcTail0
+    have htailDisjoint : U64SlicesDisjoint (dst.add 1) n (src.add 1) n := by
+      intro i hi j hj
+      simpa [RawPtr.add, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+        hdisjoint (i + 1) (by omega) (j + 1) (by omega)
+    rcases copyU64_refines_disjoint heap1 (dst.add 1) (src.add 1) n
+      hDstTail1 hSrcTail1 htailDisjoint with
+      ⟨heap2, hcopy, hlayout2, hcontents⟩
+    simp only [hcopy]
+    refine ⟨heap2, rfl, fun ptr length =>
+      (hlayout1 ptr length).trans (hlayout2 ptr length), ?_⟩
+    intro k old hk hold
+    cases k with
+    | zero =>
+      have hnow := RawHeap.readU64_writeU64_same heap heap1 dst 0 value hwrite
+      have hpres := copyU64_preserves_read heap1 heap2 (dst.add 1)
+        (src.add 1) dst n 0 value hDstTail1 hSrcTail1 hnow (by
+          intro j hj
+          right
+          dsimp [RawPtr.add]
+          change dst.limbOffset + 1 + j ≠ dst.limbOffset + 0
+          omega) hcopy
+      have holdEq : old = value := Except.ok.inj (hold.symm.trans hread)
+      simpa [holdEq] using hpres
+    | succ k =>
+      have hk' : k < n := by omega
+      have hold1 := RawHeap.readU64_writeU64_ne heap heap1 dst src
+        0 (k + 1) value old hwrite hold
+        (hdisjoint 0 (by omega) (k + 1) (by omega))
+      have htail := hcontents k old hk'
+      rw [RawHeap.readU64_add, RawHeap.readU64_add] at htail
+      have hout := htail (by simpa [Nat.add_comm] using hold1)
+      simpa [Nat.add_comm] using hout
+termination_by count
+
+theorem copyU64_slicePolyRep_disjoint (heap : RawHeap)
+    (dst src : RawPtr UInt64) (count p : Nat)
+    (poly : Polynomial (ZMod p))
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hdisjoint : U64SlicesDisjoint dst count src count)
+    (hrep : SlicePolyRep heap src count p poly) :
+    ∃ heap', heap.copyU64 dst src count = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' dst count p poly := by
+  rcases hrep with ⟨coeffs, hslice, hsize, hpoly⟩
+  rcases copyU64_refines_disjoint heap dst src count hDst hSrc hdisjoint with
+    ⟨heap', hcopy, hlayout, hcontents⟩
+  have hDst' := (hlayout dst count).mp hDst
+  rcases readU64s_ok heap' dst count hDst' with
+    ⟨other, hother, hotherSize⟩
+  have heq : other = coeffs := by
+    apply Array.ext (hotherSize.trans hsize.symm)
+    intro i hiOther hiCoeffs
+    have hi : i < count := by simpa [hsize] using hiCoeffs
+    have hsrc := readU64s_get heap src count coeffs hslice hsize i hi
+    have hdst := hcontents i coeffs[i] hi hsrc
+    have hdstOther := readU64s_get heap' dst count other hother
+      hotherSize i hi
+    exact Except.ok.inj (hdstOther.symm.trans hdst)
+  subst other
+  exact ⟨heap', hcopy, hlayout, coeffs, hother, hsize, hpoly⟩
+
 theorem copyU64_refines_slice_canonical (heap : RawHeap)
     (dst src : RawPtr UInt64) (count p : Nat)
     (poly : Polynomial (ZMod p)) (modulus : UInt64)
     (hDst : heap.ValidU64Slice dst count)
     (hSrc : heap.ValidU64Slice src count)
-    (hregions : dst.region ≠ src.region)
+    (hdisjoint : U64SlicesDisjoint dst count src count)
     (hrep : SlicePolyRep heap src count p poly)
     (hcanonical : CanonicalU64Prefix heap src count modulus) :
     ∃ heap', heap.copyU64 dst src count = .ok heap' ∧
       RawHeap.SameLayout heap heap' ∧
       SlicePolyRep heap' dst count p poly ∧
       CanonicalU64Prefix heap' dst count modulus := by
-  rcases copyU64_refines heap dst src count hDst hSrc hregions with
+  rcases copyU64_refines_disjoint heap dst src count hDst hSrc hdisjoint with
     ⟨heap', hcopy, hlayout, hcontents⟩
-  rcases copyU64_slicePolyRep heap dst src count p poly hDst hSrc hregions
+  rcases copyU64_slicePolyRep_disjoint heap dst src count p poly hDst hSrc
+      hdisjoint
       hrep with ⟨repHeap, hcopyRep, _, hrep'⟩
   have heq : repHeap = heap' := Except.ok.inj (hcopyRep.symm.trans hcopy)
   subst repHeap
@@ -333,7 +423,7 @@ theorem karCopyZero_refines_base (heap heap8 heap9 : RawHeap)
     (hm : 0 < m) (hmodulus : modulus ≠ 0)
     (hC : heap.ValidU64Slice C (2 * m + highLength))
     (hP0 : heap.ValidU64Slice P0 (2 * m - 1))
-    (hregions : C.region ≠ P0.region)
+    (hCP0 : U64SlicesDisjoint C (2 * m - 1) P0 (2 * m - 1))
     (hRepP0 : SlicePolyRep heap P0 (2 * m - 1) p lowPoly)
     (hCanonicalP0 : CanonicalU64Prefix heap P0 (2 * m - 1) modulus)
     (hRepHigh : SlicePolyRep heap (C.add (2 * m)) highLength p highPoly)
@@ -352,7 +442,7 @@ theorem karCopyZero_refines_base (heap heap8 heap9 : RawHeap)
   have hCHigh := heap.validU64Slice_add C (2 * m + highLength)
     (2 * m) highLength hC (by omega)
   rcases copyU64_refines_slice_canonical heap C P0 (2 * m - 1) p lowPoly
-      modulus hCPrefix hP0 hregions hRepP0 hCanonicalP0 with
+      modulus hCPrefix hP0 hCP0 hRepP0 hCanonicalP0 with
     ⟨copyHeap, hcopy', hlayout8, hRepLow8, hCanonicalLow8⟩
   have hcopyHeap : copyHeap = heap8 := Except.ok.inj (hcopy'.symm.trans hcopy)
   subst copyHeap

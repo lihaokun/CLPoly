@@ -80,6 +80,14 @@ HGCD source gate；下一步是将同一循环的四次 heap 写入组合成每�
 直接用于外围早退函数的 A/B 两次恢复，保证随后的可选矩阵复制不会覆盖
 刚写回的 A、B。
 
+`hgcdRecursiveEarlyReturn_refines` 现已端到端组合早退块：先由真实
+`copyU64 A a2` 得到重构后的 A，再 frame `b2` 和递归矩阵源；随后由真实
+`copyU64 B b2` 得到 B，并 frame A 与矩阵源。`computeM=true` 时继续调用
+同一个四项矩阵循环及其内容精化，同时利用通用 frame 定理保持 A/B；为
+false 时证明返回矩阵就是原 M。返回的 `lenA/lenB/sgn` 也精确对应 C++
+赋值。所有别名条件集中在纯物理 workspace 中，没有把预期 L2 值藏进执行
+合约。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

@@ -853,6 +853,35 @@ theorem polyAdd_ok (this : DenseUPolyZp) (C A : RawPtr UInt64)
       (hlayout1 ptr count).trans (hlayout2 ptr count)
   · simpa [maxLen] using hlength
 
+/-- The length returned by the generated `_poly_add` is obtained by running
+the actual normalization scan over its full physical output prefix. -/
+theorem polyAdd_result_normalise (this : DenseUPolyZp)
+    (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
+    (heap heap' : RawHeap) (length : Nat)
+    (hrun : dense_upoly_zp__poly_add_ir this C A lenA B lenB heap =
+      .ok (heap', length)) :
+    heap'.normaliseU64 C (max lenA lenB) = .ok length := by
+  simp only [dense_upoly_zp__poly_add_ir] at hrun
+  split at hrun
+  next fault hcommon => simp at hrun
+  next heap1 hcommon =>
+    split at hrun
+    next fault htail => simp at hrun
+    next heap2 htail =>
+      cases hnorm : heap2.normaliseU64 C (max lenA lenB) with
+      | error fault => simp [hnorm] at hrun
+      | ok observed =>
+        have hrun' : (Except.ok (heap2, observed) :
+            RawExec (RawHeap × Nat)) = Except.ok (heap', length) := by
+          simpa [hnorm] using hrun
+        have heq : (heap2, observed) = (heap', length) :=
+          Except.ok.inj hrun'
+        have hheap : heap2 = heap' := congrArg Prod.fst heq
+        have hlength : observed = length := congrArg Prod.snd heq
+        subst heap'
+        subst length
+        exact hnorm
+
 /-- A successful generated `_poly_add` changes only the allocation containing
 `C`.  This includes its common-prefix loop and either optional tail copy;
 the final normalization is read-only. -/

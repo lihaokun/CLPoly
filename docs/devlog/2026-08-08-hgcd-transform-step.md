@@ -48,6 +48,9 @@
 - 用仅含输出/高半部容量和 add 别名关系的 `HgcdLiftHighWorkspace` 证明该组合 raw 执行总能成功；零填充由实际写零循环归纳，add 与 normalization 分别使用其真实终止桥，并给出最终长度的物理上界。
 - 为高半部语义补齐相邻切片帧：将 `_poly_add` 的完整 common-loop/tail-copy/normalization 执行推广为地址区间不重叠即可保留任意 raw 前缀，覆盖同一 allocation 中的 `out[0:m]` 与 `out[m:]`，而非要求不同 region。
 - 从整段 `RawDensePolyRep` 的末肢非零事实证明任意合法切点后的 suffix 仍是 normalized raw 表示；零长度 suffix 单独由真实零长 slice 推出。这避免把源码临时补零后的整段错误地声明为 normalized。
+- 加强真实零填充循环的同 allocation 帧：循环从 `start` 起写零，因此逐次证明此前任意前缀保持不变；组合为 `hgcdLiftHigh_zero_refines`，同时保留原 normalized 低段并建立扩大后非规范化 slice 的同一多项式表示。
+- 暴露 `_poly_add` 返回长度确由其完整物理输出前缀上的 normalization scan 得到，并证明可用 scan 丢弃区间的真实零肢将 normalized 短表示重新扩展为完整 slice/canonical 表示。
+- 闭合 `hgcdRecursiveLiftHigh_refines`：拆分原低段为 `lowPart + X^m*existingHigh`，在相邻高段上执行真实原位 `_poly_add` 得到 `existingHigh + high`，保留低前缀后重新 join，并由源码最终 `_poly_normalise` 得到规范化 raw 表示 `low + X^m*high`。
 
 ## 为什么做
 

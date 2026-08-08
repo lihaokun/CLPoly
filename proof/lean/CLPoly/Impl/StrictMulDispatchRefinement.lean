@@ -104,6 +104,40 @@ theorem mulZeroPadLoop_preserves_prefix (bPad guard : RawPtr UInt64)
 termination_by count - i
 decreasing_by omega
 
+/-- The zero-fill loop starts at `start`, so every earlier cell of the same
+allocation is preserved.  This sharper frame is needed when a C++ buffer is
+extended in place. -/
+theorem mulZeroPadLoop_preserves_before_start (bPad : RawPtr UInt64)
+    (start count i prefixLength : Nat) (heap heap' : RawHeap)
+    (hprefix : prefixLength ≤ start)
+    (hPad : heap.ValidU64Slice bPad (start + count))
+    (hrun : mulZeroPadLoop bPad start count i heap = .ok heap') :
+    SameU64Prefix heap heap' bPad prefixLength := by
+  rw [mulZeroPadLoop] at hrun
+  split at hrun
+  next hmore =>
+    rcases heap.writeU64_of_valid bPad (start + count) (start + i) 0 hPad
+      (by omega) with ⟨heap1, hwrite⟩
+    simp only [hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 bPad
+      (start + i) 0 hwrite
+    have hPad1 := (hlayout1 bPad (start + count)).mp hPad
+    exact sameU64Prefix_trans
+      (by
+        intro k value hk hread
+        exact RawHeap.readU64_writeU64_ne heap heap1 bPad bPad
+          (start + i) k 0 value hwrite hread (by
+            right
+            omega))
+      (mulZeroPadLoop_preserves_before_start bPad start count (i + 1)
+        prefixLength heap1 heap' hprefix hPad1 hrun)
+  next hdone =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    subst heap'
+    exact fun _ _ _ hread => hread
+termination_by count - i
+decreasing_by omega
+
 theorem mulZeroPadLoop_sameLayout (bPad : RawPtr UInt64)
     (start count i : Nat) (heap heap' : RawHeap)
     (hPad : heap.ValidU64Slice bPad (start + count))

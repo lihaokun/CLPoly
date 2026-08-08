@@ -1301,6 +1301,8 @@ structure HgcdLiftHighWorkspace (heap : RawHeap)
     (out high : RawPtr UInt64) (lowLength m highLength : Nat) : Prop where
   outValid : heap.ValidU64Slice out (max (m + highLength) lowLength)
   highValid : heap.ValidU64Slice high highLength
+  zeroHighDisjoint : U64SlicesDisjoint out
+    (max (m + highLength) lowLength) high highLength
   addAliasHigh : ExactOrDisjoint (out.add m) high
 
 /-- Splitting a normalized raw polynomial at an in-range offset leaves a
@@ -1352,6 +1354,103 @@ theorem rawDensePolyRep_split_suffix (this : DenseUPolyZp)
       simpa using rawDensePolyRep_zero_length this heap (ptr.add length)
         (by simpa using hvalidHigh)
     exact ⟨low, 0, hLow, hzeroRep, by simpa using hsplit⟩
+
+/-- Semantic result of the conditional source `memset`: the original
+normalized prefix is framed, while the enlarged physical prefix represents
+the same polynomial with canonical zero limbs appended. -/
+theorem hgcdLiftHigh_zero_refines (this : DenseUPolyZp)
+    (out : RawPtr UInt64) (lowLength m highLength : Nat)
+    (heap : RawHeap) (lowPoly : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hOut : heap.ValidU64Slice out (max (m + highLength) lowLength))
+    (hLow : RawDensePolyRep this heap out lowLength lowPoly) :
+    ∃ heap1,
+      (if lowLength < m + highLength then
+        Generated.StrictMul.mulZeroPadLoop out lowLength
+          (m + highLength - lowLength) 0 heap
+       else (Except.ok heap : RawExec RawHeap)) = Except.ok heap1 ∧
+      RawHeap.SameLayout heap heap1 ∧
+      RawDensePolyRep this heap1 out lowLength lowPoly ∧
+      SlicePolyRep heap1 out (max (m + highLength) lowLength)
+        this._p.toNat lowPoly ∧
+      CanonicalU64Prefix heap1 out (max (m + highLength) lowLength)
+        this._p := by
+  by_cases hpad : lowLength < m + highLength
+  · have hsum : lowLength + (m + highLength - lowLength) =
+        m + highLength := by omega
+    have hmax : max (m + highLength) lowLength = m + highLength :=
+      Nat.max_eq_left (Nat.le_of_lt hpad)
+    have hvalid : heap.ValidU64Slice out
+        (lowLength + (m + highLength - lowLength)) := by
+      simpa [hsum, hmax] using hOut
+    rcases mulZeroPadLoop_refines out lowLength
+        (m + highLength - lowLength) 0 this._p.toNat heap lowPoly this._p
+        (Nat.zero_le _) hp hvalid (by simpa using hLow.2.2.1)
+        (by simpa using hLow.2.1) with
+      ⟨heap1, hrun, hlayout, hslice, hcanonical⟩
+    have hsame := mulZeroPadLoop_preserves_before_start out lowLength
+      (m + highLength - lowLength) 0 lowLength heap heap1
+      (Nat.le_refl _) hvalid hrun
+    have hLow1 := rawDensePolyRep_of_same_prefix this heap heap1 out
+      lowLength lowPoly hlayout hsame hLow
+    exact ⟨heap1, by simpa [hpad] using hrun, hlayout, hLow1,
+      by simpa [hsum, hmax] using hslice,
+      by simpa [hsum, hmax] using hcanonical⟩
+  · have hmax : max (m + highLength) lowLength = lowLength :=
+      Nat.max_eq_right (by omega)
+    exact ⟨heap, by simp [hpad], fun _ _ => Iff.rfl, hLow,
+      by simpa [hmax] using hLow.2.2.1,
+      by simpa [hmax] using hLow.2.1⟩
+
+/-- Re-expand a normalized raw result to the full prefix scanned by the
+actual normalization call.  The discarded suffix consists of physical zero
+limbs, so both the polynomial and canonical-residue properties extend. -/
+theorem rawDensePolyRep_extend_to_normalise_input (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (fullLength resultLength : Nat)
+    (poly : Polynomial (ZMod this._p.toNat)) (hp : this._p ≠ 0)
+    (hFull : heap.ValidU64Slice ptr fullLength)
+    (hResult : RawDensePolyRep this heap ptr resultLength poly)
+    (hnorm : heap.normaliseU64 ptr fullLength = .ok resultLength) :
+    SlicePolyRep heap ptr fullLength this._p.toNat poly ∧
+      CanonicalU64Prefix heap ptr fullLength this._p := by
+  rcases normaliseU64_spec heap ptr fullLength hFull with
+    ⟨observed, hobserved, hle, hzeros, _⟩
+  have heq : observed = resultLength :=
+    Except.ok.inj (hobserved.symm.trans hnorm)
+  subst observed
+  rcases slicePolyRep_exists_unique heap ptr fullLength this._p.toNat hFull with
+    ⟨actual, hActual, _⟩
+  have hpoly : actual = poly := by
+    ext degree
+    by_cases hshort : degree < resultLength
+    · rcases slicePolyRep_coeff heap ptr fullLength this._p.toNat actual
+          hActual degree (by omega) with ⟨v1, hr1, hc1⟩
+      rcases slicePolyRep_coeff heap ptr resultLength this._p.toNat poly
+          hResult.2.2.1 degree hshort with ⟨v2, hr2, hc2⟩
+      have hv : v1 = v2 := Except.ok.inj (hr1.symm.trans hr2)
+      simpa [hc1, hc2, hv]
+    · have hpolyZero := slicePolyRep_coeff_zero_of_length_le heap ptr
+          resultLength this._p.toNat poly hResult.2.2.1 degree (by omega)
+      by_cases hfull : degree < fullLength
+      · rcases slicePolyRep_coeff heap ptr fullLength this._p.toNat actual
+            hActual degree hfull with ⟨value, hread, hcoeff⟩
+        have hreadZero := hzeros degree (by omega) hfull
+        have hv : value = 0 := Except.ok.inj (hread.symm.trans hreadZero)
+        subst value
+        simpa [hcoeff] using hpolyZero.symm
+      · rw [slicePolyRep_coeff_zero_of_length_le heap ptr fullLength
+            this._p.toNat actual hActual degree (by omega), hpolyZero]
+  have hSlice : SlicePolyRep heap ptr fullLength this._p.toNat poly := by
+    simpa [hpoly] using hActual
+  refine ⟨hSlice, ?_⟩
+  intro k value hk hread
+  by_cases hshort : k < resultLength
+  · exact hResult.2.1 k value hshort hread
+  · have hreadZero := hzeros k (by omega) hk
+    have hv : value = 0 := Except.ok.inj (hread.symm.trans hreadZero)
+    subst value
+    have hpPos : 0 < this._p.toNat := UInt64.pos_iff_ne_zero.mpr hp
+    simpa using hpPos
 
 /-- Total raw execution bridge for zero-fill, shifted in-place addition, and
 whole-buffer normalization.  Every step is the corresponding generated L1
@@ -1420,6 +1519,161 @@ theorem hgcdRecursiveLiftHigh_terminates (this : DenseUPolyZp)
   · exact fun ptr count =>
       (hlayout1 ptr count).trans (hlayout2 ptr count)
   · simpa [fullLength, required] using hlength
+
+/-- Full semantic refinement of the generated shifted-high block.  The
+temporary padded whole is treated only as a slice representation; the result
+becomes normalized solely through the source's final `_poly_normalise`. -/
+theorem hgcdRecursiveLiftHigh_refines (this : DenseUPolyZp)
+    (out high : RawPtr UInt64) (lowLength m highLength : Nat)
+    (heap : RawHeap)
+    (lowPoly highPoly : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hwork : HgcdLiftHighWorkspace heap out high lowLength m highLength)
+    (hLow : RawDensePolyRep this heap out lowLength lowPoly)
+    (hHigh : RawDensePolyRep this heap high highLength highPoly) :
+    ∃ result,
+      hgcdRecursiveLiftHigh this out high lowLength m highLength heap =
+        .ok result ∧
+      RawHeap.SameLayout heap result.heap ∧
+      RawDensePolyRep this result.heap out result.length
+        (lowPoly + Polynomial.X ^ m * highPoly) := by
+  let fullLength := max (m + highLength) lowLength
+  let oldHighLength := if m ≤ lowLength then lowLength - m else 0
+  rcases hgcdLiftHigh_zero_refines this out lowLength m highLength heap
+      lowPoly hp hwork.outValid hLow with
+    ⟨heap1, hzero, hlayout1, hLow1, hFullSlice1, hFullCanonical1⟩
+  have hHigh1 : RawDensePolyRep this heap1 high highLength highPoly := by
+    by_cases hpad : lowLength < m + highLength
+    · have hrun : Generated.StrictMul.mulZeroPadLoop out lowLength
+          (m + highLength - lowLength) 0 heap = .ok heap1 := by
+        simpa [hpad] using hzero
+      have hvalid : heap.ValidU64Slice out
+          (lowLength + (m + highLength - lowLength)) := by
+        have hmax : max (m + highLength) lowLength = m + highLength :=
+          Nat.max_eq_left (Nat.le_of_lt hpad)
+        simpa [hmax, Nat.add_sub_of_le (Nat.le_of_lt hpad)] using
+          hwork.outValid
+      have hsame := mulZeroPadLoop_preserves_prefix out high lowLength
+        (m + highLength - lowLength) 0 highLength heap heap1 hvalid
+        (by
+          simpa [Nat.add_sub_of_le (Nat.le_of_lt hpad)] using
+            u64SlicesDisjoint_mono hwork.zeroHighDisjoint
+              (by omega) (Nat.le_refl _)) hrun
+      exact rawDensePolyRep_of_same_prefix this heap heap1 high highLength
+        highPoly hlayout1 hsame hHigh
+    · have heq : heap1 = heap := by
+        have : (Except.ok heap : RawExec RawHeap) = Except.ok heap1 := by
+          simpa [hpad] using hzero
+        exact (Except.ok.inj this).symm
+      subst heap1
+      exact hHigh
+  have hparts : ∃ lowPart existingHigh : Polynomial (ZMod this._p.toNat),
+      SlicePolyRep heap1 out m this._p.toNat lowPart ∧
+      RawDensePolyRep this heap1 (out.add m) oldHighLength existingHigh ∧
+      lowPoly = lowPart + Polynomial.X ^ m * existingHigh := by
+    by_cases hm : m ≤ lowLength
+    · simpa [oldHighLength, hm] using
+        rawDensePolyRep_split_suffix this heap1 out lowLength m lowPoly hm hLow1
+    · have hm' : lowLength < m := by omega
+      have hmFull : m ≤ fullLength := by
+        dsimp [fullLength]
+        omega
+      have hLowPrefix : SlicePolyRep heap1 out m this._p.toNat lowPoly :=
+        slicePolyRep_prefix_of_coeff_zero heap1 out fullLength m
+          this._p.toNat lowPoly
+          (by simpa [fullLength] using
+            (hlayout1 out fullLength).mp (by simpa [fullLength] using
+              hwork.outValid)) hmFull
+          (by simpa [fullLength] using hFullSlice1) (by
+            intro degree hdegree
+            exact slicePolyRep_coeff_zero_of_length_le heap1 out lowLength
+              this._p.toNat lowPoly hLow1.2.2.1 degree (by omega))
+      have hzeroValid : heap1.ValidU64Slice (out.add m) 0 := by
+        exact heap1.validU64Slice_add out fullLength m 0
+          ((hlayout1 out fullLength).mp (by simpa [fullLength] using
+            hwork.outValid)) (by omega)
+      refine ⟨lowPoly, 0, hLowPrefix, ?_, by simp⟩
+      simpa [oldHighLength, hm] using
+        rawDensePolyRep_zero_length this heap1 (out.add m) hzeroValid
+  rcases hparts with ⟨lowPart, existingHigh, hLowPart, hExisting, hsplit⟩
+  have hOut1 : heap1.ValidU64Slice out fullLength :=
+    (hlayout1 out fullLength).mp (by simpa [fullLength] using hwork.outValid)
+  have hAddOut1 : heap1.ValidU64Slice (out.add m)
+      (max oldHighLength highLength) := by
+    apply heap1.validU64Slice_add out fullLength m
+      (max oldHighLength highLength) hOut1
+    dsimp [fullLength, oldHighLength]
+    split <;> omega
+  rcases polyAdd_ok this (out.add m) (out.add m) oldHighLength high
+      highLength heap1 hAddOut1 hExisting.1 hHigh1.1 with
+    ⟨heap2, addLength, hadd, hlayout2, _⟩
+  have hAdded := polyAdd_refines this (out.add m) (out.add m)
+    oldHighLength high highLength heap1 heap2 addLength existingHigh highPoly
+    hp hAddOut1 hExisting hHigh1 (Or.inl rfl) hwork.addAliasHigh hadd
+  have hAddNorm := polyAdd_result_normalise this (out.add m) (out.add m)
+    oldHighLength high highLength heap1 heap2 addLength hadd
+  have hAddOut2 : heap2.ValidU64Slice (out.add m)
+      (max oldHighLength highLength) :=
+    (hlayout2 (out.add m) _).mp hAddOut1
+  have hAddedFull := rawDensePolyRep_extend_to_normalise_input this heap2
+    (out.add m) (max oldHighLength highLength) addLength
+    (existingHigh + highPoly) hp hAddOut2 hAdded hAddNorm
+  have hLowSame : SameU64Prefix heap1 heap2 out m :=
+    polyAdd_preserves_prefix_disjoint this (out.add m) (out.add m)
+      oldHighLength high out highLength m heap1 heap2 addLength hAddOut1
+      hExisting.1 hHigh1.1 (by
+        intro writeIndex _ readIndex _
+        right
+        have hwidth : RawLimbWidth.width UInt64 = 1 := rfl
+        simp [RawPtr.add, hwidth]
+        omega) hadd
+  have hLowPart2 : SlicePolyRep heap2 out m this._p.toNat lowPart :=
+    slicePolyRep_of_same_prefix heap1 heap2 out m this._p.toNat lowPart
+      (heap1.validU64Slice_mono out fullLength m hOut1 (by omega))
+      ((hlayout2 out m).mp
+        (heap1.validU64Slice_mono out fullLength m hOut1 (by omega)))
+      hLowSame hLowPart
+  have hCanonicalLow1 := canonicalU64Prefix_mono heap1 out fullLength m
+    this._p (by omega) (by simpa [fullLength] using hFullCanonical1)
+  have hCanonicalLow2 := canonicalU64Prefix_of_same_prefix heap1 heap2 out
+    m this._p (heap1.validU64Slice_mono out fullLength m hOut1 (by omega))
+    hLowSame hCanonicalLow1
+  have hlengthEq : m + max oldHighLength highLength = fullLength := by
+    dsimp [oldHighLength, fullLength]
+    split <;> omega
+  have hOut2 : heap2.ValidU64Slice out fullLength :=
+    (hlayout2 out fullLength).mp hOut1
+  have hWholeSlice : SlicePolyRep heap2 out fullLength this._p.toNat
+      (lowPoly + Polynomial.X ^ m * highPoly) := by
+    have hjoin := slicePolyRep_join heap2 out m
+      (max oldHighLength highLength) this._p.toNat lowPart
+      (existingHigh + highPoly) (by simpa [hlengthEq] using hOut2)
+      hLowPart2 hAddedFull.1
+    have hpoly : lowPart + Polynomial.X ^ m *
+          (existingHigh + highPoly) =
+        lowPoly + Polynomial.X ^ m * highPoly := by
+      rw [hsplit]
+      ring
+    simpa [hlengthEq, hpoly] using hjoin
+  have hWholeCanonical : CanonicalU64Prefix heap2 out fullLength this._p := by
+    have hjoin := canonicalU64Prefix_join heap2 out m
+      (max oldHighLength highLength) this._p
+      (by simpa [hlengthEq] using hOut2) hCanonicalLow2 hAddedFull.2
+    simpa [hlengthEq] using hjoin
+  rcases normaliseU64_ok heap2 out fullLength hOut2 with
+    ⟨length, hnorm, hlength⟩
+  let result := HgcdLiftHighResult.mk heap2 length
+  refine ⟨result, ?_, ?_, ?_⟩
+  · simp [result, hgcdRecursiveLiftHigh, fullLength, oldHighLength,
+      hzero, hadd, hnorm]
+  · exact fun ptr count =>
+      (hlayout1 ptr count).trans (hlayout2 ptr count)
+  · refine ⟨heap2.validU64Slice_mono out fullLength length hOut2 hlength,
+      canonicalU64Prefix_mono heap2 out fullLength length this._p hlength
+        hWholeCanonical,
+      slicePolyRep_of_normaliseU64 heap2 out fullLength this._p.toNat length
+        (lowPoly + Polynomial.X ^ m * highPoly) hOut2 hWholeSlice hnorm,
+      normaliseU64_result_fixed heap2 out fullLength length hOut2 hnorm⟩
 
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/

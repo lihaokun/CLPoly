@@ -17,6 +17,8 @@ from build_strict_gcd import dense_method_ast
 from check_strict_divrem import stable_ast
 
 LEAN = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictMul.lean"
+REFINEMENT = (V2_ROOT.parent / "lean" / "CLPoly" / "Impl" /
+              "StrictMulRefinement.lean")
 
 EXPECTED = {
     "_classical_mul": "0d701d8406109ef552a49a4538ed63c1776f63ae03bf3156e3f0083b76a47f06",
@@ -50,6 +52,15 @@ def main() -> None:
                      "readU64", "writeU64", "termination_by"):
         if fragment not in source:
             raise SystemExit(f"strict multiplication drift: missing {fragment}")
+    refinement = REFINEMENT.read_text()
+    found = [token for token in forbidden if token in refinement]
+    if found:
+        raise SystemExit(f"strict multiplication refinement contains forbidden constructs: {found}")
+    for fragment in ("classicalDotLoop_ok", "classical_index_bounds",
+                     "classicalOuterLoop_ok", "classicalMul_ok",
+                     "RawHeap.SameLayout"):
+        if fragment not in refinement:
+            raise SystemExit(f"strict multiplication refinement drift: missing {fragment}")
     print("PASS: multiplication source family is pinned and schoolbook raw lowering is strict")
 
 

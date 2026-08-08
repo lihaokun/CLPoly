@@ -10,6 +10,9 @@
   `_umul128` 和三字 `_add_carry3`。
 - 外层对每个累加结果调用真实 `_lll_mod_preinv`，随后写入 C。
 - 内外循环都以未处理区间为终止度量，并显式传播所有 RawHeap 故障。
+- 从源码的 `j_min/j_max` 条件表达式证明每个 `A[j]` 与 `B[k-j]` 索引合法。
+- 证明内层点积、外层逐系数写入及完整 schoolbook 入口在有效容量和非空输入
+  下必然成功，并在所有写入后保持 RawHeap 分配布局。
 
 ## 当前边界
 
@@ -21,5 +24,6 @@
 ## 涉及文件
 
 - `proof/lean/CLPoly/Generated/StrictMul.lean`
+- `proof/lean/CLPoly/Impl/StrictMulRefinement.lean`
 - `proof/cpp2lean_v2/tests/check_strict_mul_source.py`
 - `docs/devlog/2026-08-08-strict-mul-lowering.md`

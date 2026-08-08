@@ -67,7 +67,10 @@ def main() -> None:
                      "classicalDotPoly_eq_sum_Icc",
                      "classicalDotPoly_source_eq_coeff",
                      "classicalDotNat_cast_eq_poly",
+                     "classicalReduced_source_eq_coeff",
                      "classicalOuterLoop_preserves_outside",
+                     "classicalOuterLoop_same_prefix_region_ne",
+                     "canonicalU64Prefix_of_same_prefix",
                      "classicalOuterLoop_ok", "classicalMul_ok",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:

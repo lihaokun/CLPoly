@@ -418,6 +418,60 @@ theorem classical_index_bounds (lenA lenB k j : Nat)
     · omega
     · split at hjMin <;> omega
 
+theorem classicalReduced_source_eq_coeff (this : DenseUPolyZp)
+    (heap : RawHeap) (A B : RawPtr UInt64) (lenA lenB lenC k : Nat)
+    (left right : Polynomial (ZMod this._p.toNat)) (acc : Word3)
+    (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hApos : 0 < lenA) (hBpos : 0 < lenB)
+    (hLenAWord : lenA < limbBase)
+    (hlenC : lenC = lenA + lenB - 1) (hk : k < lenC)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hCanonicalA : CanonicalU64Prefix heap A lenA this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B lenB this._p)
+    (hRepA : SlicePolyRep heap A lenA this._p.toNat left)
+    (hRepB : SlicePolyRep heap B lenB this._p.toNat right)
+    (hdot : classicalDotLoop heap A B k
+      (if k < lenA then k else lenA - 1)
+      (if k ≥ lenB then k - lenB + 1 else 0)
+      { lo := 0, mid := 0, hi := 0 } = .ok acc) :
+    ((Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      acc.hi acc.mid acc.lo this._p this._ninv this._norm).toNat :
+        ZMod this._p.toNat) = (left * right).coeff k := by
+  let jMin := if k ≥ lenB then k - lenB + 1 else 0
+  let jMax := if k < lenA then k else lenA - 1
+  have hkSource : k < lenA + lenB - 1 := by omega
+  have hrange : jMin ≤ jMax := by
+    dsimp [jMin, jMax]
+    split <;> split <;> omega
+  have hAIndex : ∀ t, jMin ≤ t → t ≤ jMax → t < lenA := by
+    intro t hjt hts
+    exact (classical_index_bounds lenA lenB k t hApos hBpos hkSource
+      hjt hts).1
+  have hBIndex : ∀ t, jMin ≤ t → t ≤ jMax → k - t < lenB := by
+    intro t hjt hts
+    exact (classical_index_bounds lenA lenB k t hApos hBpos hkSource
+      hjt hts).2
+  rcases classicalDotNat_ok heap A B lenA lenB k jMax jMin hA hB
+    hAIndex hBIndex with ⟨sum, hsum⟩
+  have hcount : jMax + 1 - jMin < limbBase := by
+    have hjMaxA := hAIndex jMax hrange (Nat.le_refl _)
+    omega
+  calc
+    ((Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      acc.hi acc.mid acc.lo this._p this._ninv this._norm).toNat :
+        ZMod this._p.toNat) = (sum : ZMod this._p.toNat) :=
+      classicalDotReduced_cast this heap A B lenA lenB k jMax jMin acc sum
+        hcfg hp hcount hA hB hCanonicalA hCanonicalB hAIndex hBIndex
+        (by simpa [jMin, jMax] using hdot) hsum
+    _ = classicalDotPoly left right k jMax jMin :=
+      classicalDotNat_cast_eq_poly heap A B lenA lenB this._p.toNat k
+        jMax jMin sum left right hRepA hRepB hAIndex hBIndex hsum
+    _ = (left * right).coeff k := by
+      simpa [jMin, jMax] using classicalDotPoly_source_eq_coeff heap A B
+        lenA lenB k left right hApos hRepA hRepB
+
 /-- The generated schoolbook outer loop writes only `C[k..lenC)`.  This
 memory fact keeps both source buffers and already-produced coefficients tied
 to their original raw cells throughout the actual C++ loop. -/
@@ -463,6 +517,37 @@ theorem classicalOuterLoop_preserves_outside (this : DenseUPolyZp)
     simpa [heq] using hread
 termination_by lenC - k
 decreasing_by omega
+
+theorem classicalOuterLoop_same_prefix_region_ne (this : DenseUPolyZp)
+    (C A B guard : RawPtr UInt64) (lenA lenB lenC k guardLen : Nat)
+    (heap heap' : RawHeap)
+    (hC : heap.ValidU64Slice C lenC)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hregions : C.region ≠ guard.region)
+    (hrun : classicalOuterLoop this C A B lenA lenB lenC k heap =
+      .ok heap') :
+    SameU64Prefix heap heap' guard guardLen := by
+  intro i old hi hread
+  apply classicalOuterLoop_preserves_outside this C A B guard lenA lenB
+    lenC k i heap heap' old hC hA hB hread
+  · intro _ _ _
+    exact Or.inl hregions
+  · exact hrun
+
+theorem canonicalU64Prefix_of_same_prefix (before after : RawHeap)
+    (ptr : RawPtr UInt64) (length : Nat) (p : UInt64)
+    (hvalid : before.ValidU64Slice ptr length)
+    (hsame : SameU64Prefix before after ptr length)
+    (hcanonical : CanonicalU64Prefix before ptr length p) :
+    CanonicalU64Prefix after ptr length p := by
+  intro k value hk hreadAfter
+  rcases before.readU64_of_valid ptr length k
+      hvalid hk with ⟨old, hreadBefore⟩
+  have hpreserved := hsame k old hk hreadBefore
+  have hvalue : value = old := Except.ok.inj (hreadAfter.symm.trans hpreserved)
+  subst value
+  exact hcanonical k old hk hreadBefore
 
 theorem classicalOuterLoop_ok (this : DenseUPolyZp)
     (C A B : RawPtr UInt64) (lenA lenB lenC k : Nat) (heap : RawHeap)

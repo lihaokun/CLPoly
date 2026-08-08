@@ -4352,6 +4352,35 @@ structure HgcdIterRawInvariant (this : DenseUPolyZp)
   signedDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet state.sgn
     (entries 0) (entries 1) (entries 2) (entries 3)
 
+/-- Descriptor-length invariant needed by the enclosing recursive HGCD.
+Each matrix coefficient is paired with the current Euclidean operand whose
+degree it complements. -/
+structure HgcdMatrixLengthInvariant (inputLength : Nat)
+    (state : HgcdIterState) (hM : state.matrix.Valid) : Prop where
+  row0A : hgcdMatLen state.matrix hM (0 : Fin 4) + state.lenA ≤
+    inputLength + 1
+  row1B : hgcdMatLen state.matrix hM (1 : Fin 4) + state.lenB ≤
+    inputLength + 1
+  row2A : hgcdMatLen state.matrix hM (2 : Fin 4) + state.lenA ≤
+    inputLength + 1
+  row3B : hgcdMatLen state.matrix hM (3 : Fin 4) + state.lenB ≤
+    inputLength + 1
+
+/-- The real `_mat_one` descriptor and the two source-ordered input copies
+establish the matrix-length invariant. -/
+theorem hgcdIterInit_matrixLengthInvariant
+    (M : HgcdMat) (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (heap : RawHeap) (initial : HgcdIterState) (hM : initial.matrix.Valid)
+    (horder : lenB ≤ lenA)
+    (hrun : hgcdIterInit M A B T t lenT a lenA b lenB heap = .ok initial) :
+    HgcdMatrixLengthInvariant lenA initial hM := by
+  have hlens := hgcdIterInit_lengths M A B T t lenT a lenA b lenB heap
+    initial hrun
+  rcases hlens with ⟨hA, hB, hMatrix⟩
+  constructor <;>
+    simp [hgcdMatLen, hA, hB, hMatrix] <;> omega
+
 /-- Purely physical obligations for one concrete successful nonterminal
 iteration.  Every field concerns validity, capacity, or allocation
 separation of the exact buffers used by the generated calls. -/

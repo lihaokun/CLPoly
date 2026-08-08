@@ -188,6 +188,46 @@ theorem matOne_result_valid (M : HgcdMat) (heap heap' : RawHeap)
         exact ⟨hvalid.1, by simp⟩
   next hvalid => simp at hrun
 
+theorem matOne_result_len (M : HgcdMat) (heap heap' : RawHeap)
+    (matrix : HgcdMat)
+    (hrun : dense_upoly_zp__mat_one_ir M heap = .ok (heap', matrix)) :
+    matrix.len = #[1, 0, 0, 1] := by
+  simp only [dense_upoly_zp__mat_one_ir] at hrun
+  split at hrun
+  next hvalid =>
+    split at hrun
+    next fault hwrite0 => simp at hrun
+    next heap1 hwrite0 =>
+      split at hrun
+      next fault hwrite3 => simp at hrun
+      next heap2 hwrite3 =>
+        have heq := Except.ok.inj hrun
+        cases heq
+        rfl
+  next hvalid => simp at hrun
+
+/-- Descriptor and operand lengths installed by the real iterator prefix. -/
+theorem hgcdIterInit_lengths (M : HgcdMat)
+    (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (heap : RawHeap) (result : HgcdIterState)
+    (hrun : hgcdIterInit M A B T t lenT a lenA b lenB heap = .ok result) :
+    result.lenA = lenA ∧ result.lenB = lenB ∧
+      result.matrix.len = #[1, 0, 0, 1] := by
+  simp only [hgcdIterInit] at hrun
+  split at hrun
+  next fault hone => simp at hrun
+  next heap1 matrix hone =>
+    split at hrun
+    next fault hcopyA => simp at hrun
+    next heap2 hcopyA =>
+      split at hrun
+      next fault hcopyB => simp at hrun
+      next heap3 hcopyB =>
+        have heq := Except.ok.inj hrun
+        subst result
+        exact ⟨rfl, rfl, matOne_result_len M heap heap1 matrix hone⟩
+
 theorem matRowUpdate_result_valid (this : DenseUPolyZp)
     (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
     (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)

@@ -188,6 +188,12 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 HGCD 不变式证明三个分量均不超过原输入长度，即可取得 `lenB2 ≤ lenA`，
 无需加入运行时 `hdec`。
 
+矩阵 descriptor 的递归长度不变式现已建立初始端。生成层从真实 `_mat_one`
+和两次 copy 的返回值证明初态矩阵长度恰为 `[1,0,0,1]`、操作数长度仍为
+输入长度。raw 层据此建立四个互补界：每一行中与当前 A/B 配对的矩阵项
+长度之和不超过 `inputLength+1`。下一步沿真实 divrem 与两次 row update
+保持该不变式，以导出第一次 HGCD 返回的 `R[0]`、`R[2]` 分量界。
+
 完整四项 `_mat_mul` 的 raw 语义现已闭合。新的单项 frame 定理按真实的
 两次 guarded 乘法和 add/copy/skip 尾分支，保持两个输入矩阵以及先前已完成
 的输出项。`hgcdMatMulLoop_refines` 再沿生成的 `4-i` 递归逐项执行

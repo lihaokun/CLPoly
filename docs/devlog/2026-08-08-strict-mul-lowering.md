@@ -83,6 +83,10 @@
   `_kar_mul` 保持相同调用位置与故障传播。证明该块在 A/B 长度 `m+h`、
   t1/t2 长度 h 下终止并保持布局；同时证明其两次写入保持所有与 t1/t2
   allocation 不相交的 raw prefix，为输入和既有 scratch 前缀传递提供帧。
+- 在奇数分支逐条识别尾项执行：证明 A/B 的 `2m` 实际 reads 经 t1/t2 第 m
+  个 cell 的两次原样 writes 后保持到最终 heap；再由完整输入
+  `SlicePolyRep` 和规范剩余得到这两个 raw 值分别等于原 L2 的第 `2m`
+  个系数且严格小于 p。
 
 ## 当前边界
 

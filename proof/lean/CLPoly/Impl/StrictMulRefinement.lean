@@ -179,6 +179,76 @@ theorem karOddTail_preserves_region_ne (A B t1 t2 guard : RawPtr UInt64)
     have heq : heap' = heap := Except.ok.inj hrun.symm
     simpa [heq] using hread
 
+theorem karOddTail_values (A B t1 t2 : RawPtr UInt64) (m h : Nat)
+    (heap heap' : RawHeap)
+    (hA : heap.ValidU64Slice A (m + h))
+    (hB : heap.ValidU64Slice B (m + h))
+    (hT1 : heap.ValidU64Slice t1 h)
+    (hT2 : heap.ValidU64Slice t2 h)
+    (hT1T2 : t1.region ≠ t2.region)
+    (hodd : h > m)
+    (hrun : karOddTail A B t1 t2 m h heap = .ok heap') :
+    ∃ aTail bTail,
+      heap.readU64 A (m + m) = .ok aTail ∧
+      heap.readU64 B (m + m) = .ok bTail ∧
+      heap'.readU64 t1 m = .ok aTail ∧
+      heap'.readU64 t2 m = .ok bTail := by
+  unfold karOddTail at hrun
+  simp only [hodd, ↓reduceIte] at hrun
+  rcases heap.readU64_of_valid A (m + h) (m + m) hA (by omega) with
+    ⟨aTail, ha⟩
+  simp only [ha] at hrun
+  rcases heap.readU64_of_valid B (m + h) (m + m) hB (by omega) with
+    ⟨bTail, hb⟩
+  simp only [hb] at hrun
+  rcases heap.writeU64_of_valid t1 h m aTail hT1 hodd with ⟨heap1, hw1⟩
+  simp only [hw1] at hrun
+  have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 t1 m aTail hw1
+  rcases heap1.writeU64_of_valid t2 h m bTail ((hlayout1 t2 h).mp hT2)
+    hodd with ⟨heap2, hw2⟩
+  simp only [hw2] at hrun
+  have heq : heap' = heap2 := Except.ok.inj hrun.symm
+  subst heap'
+  have hread1 := RawHeap.readU64_writeU64_same heap heap1 t1 m aTail hw1
+  have hread1' := RawHeap.readU64_writeU64_ne heap1 heap2 t2 t1 m m
+    bTail aTail hw2 hread1 (Or.inl (Ne.symm hT1T2))
+  have hread2 := RawHeap.readU64_writeU64_same heap1 heap2 t2 m bTail hw2
+  exact ⟨aTail, bTail, ha, hb, hread1', hread2⟩
+
+theorem karOddTail_coeffs (this : DenseUPolyZp)
+    (A B t1 t2 : RawPtr UInt64) (m h : Nat) (heap heap' : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hA : heap.ValidU64Slice A (m + h))
+    (hB : heap.ValidU64Slice B (m + h))
+    (hT1 : heap.ValidU64Slice t1 h)
+    (hT2 : heap.ValidU64Slice t2 h)
+    (hT1T2 : t1.region ≠ t2.region)
+    (hCanonicalA : CanonicalU64Prefix heap A (m + h) this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B (m + h) this._p)
+    (hRepA : SlicePolyRep heap A (m + h) this._p.toNat left)
+    (hRepB : SlicePolyRep heap B (m + h) this._p.toNat right)
+    (hodd : h > m)
+    (hrun : karOddTail A B t1 t2 m h heap = .ok heap') :
+    ∃ aTail bTail,
+      heap'.readU64 t1 m = .ok aTail ∧
+      heap'.readU64 t2 m = .ok bTail ∧
+      (aTail.toNat : ZMod this._p.toNat) = left.coeff (m + m) ∧
+      (bTail.toNat : ZMod this._p.toNat) = right.coeff (m + m) ∧
+      aTail.toNat < this._p.toNat ∧ bTail.toNat < this._p.toNat := by
+  rcases karOddTail_values A B t1 t2 m h heap heap' hA hB hT1 hT2
+      hT1T2 hodd hrun with ⟨aTail, bTail, ha, hb, ht1, ht2⟩
+  rcases slicePolyRep_coeff heap A (m + h) this._p.toNat left hRepA
+      (m + m) (by omega) with ⟨a', ha', hcoeffA⟩
+  have haEq : a' = aTail := Except.ok.inj (ha'.symm.trans ha)
+  subst a'
+  rcases slicePolyRep_coeff heap B (m + h) this._p.toNat right hRepB
+      (m + m) (by omega) with ⟨b', hb', hcoeffB⟩
+  have hbEq : b' = bTail := Except.ok.inj (hb'.symm.trans hb)
+  subst b'
+  exact ⟨aTail, bTail, ht1, ht2, hcoeffA.symm, hcoeffB.symm,
+    hCanonicalA (m + m) aTail (by omega) ha,
+    hCanonicalB (m + m) bTail (by omega) hb⟩
+
 theorem karAddHalvesLoop_preserves_outside (this : DenseUPolyZp)
     (A B t1 t2 guard : RawPtr UInt64) (m i readIndex : Nat)
     (heap heap' : RawHeap) (old : UInt64)

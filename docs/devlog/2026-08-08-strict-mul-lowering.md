@@ -204,6 +204,11 @@
 - 闭合末尾补零写入：真实 `writeU64 ptr length 0` 保持旧 prefix，新增 cell
   读取恰为零，并把 `SlicePolyRep` 从 length 扩展到 length+1 而多项式不变；
   同时由非零 modulus 证明新零 cell 仍规范。这覆盖 P0 后的源码分隔零。
+- 闭合 Karatsuba 后处理的 copy/zero 基段：从真实 `copyU64 C P0
+  (2*m-1)` 和随后真实零写入出发，同时保持已在 `C+2*m` 中的 P2
+  高位 slice，最终拼接出 `P0 + X^(2*m)*P2` 的完整 `SlicePolyRep`
+  和规范前缀。整段证明逐次使用 copy/write 的实际 heap 与地址帧，
+  没有用一次性规格替换生成控制流。
 
 ## 当前边界
 

@@ -327,6 +327,91 @@ theorem writeZero_extends_slice (heap heap' : RawHeap)
       exact UInt64.toNat_inj.mp (by simpa using hzeroNat)
     simpa using hpositive
 
+theorem karCopyZero_refines_base (heap heap8 heap9 : RawHeap)
+    (C P0 : RawPtr UInt64) (m highLength p : Nat)
+    (lowPoly highPoly : Polynomial (ZMod p)) (modulus : UInt64)
+    (hm : 0 < m) (hmodulus : modulus ≠ 0)
+    (hC : heap.ValidU64Slice C (2 * m + highLength))
+    (hP0 : heap.ValidU64Slice P0 (2 * m - 1))
+    (hregions : C.region ≠ P0.region)
+    (hRepP0 : SlicePolyRep heap P0 (2 * m - 1) p lowPoly)
+    (hCanonicalP0 : CanonicalU64Prefix heap P0 (2 * m - 1) modulus)
+    (hRepHigh : SlicePolyRep heap (C.add (2 * m)) highLength p highPoly)
+    (hCanonicalHigh : CanonicalU64Prefix heap (C.add (2 * m))
+      highLength modulus)
+    (hcopy : heap.copyU64 C P0 (2 * m - 1) = .ok heap8)
+    (hzero : heap8.writeU64 C (2 * m - 1) 0 = .ok heap9) :
+    RawHeap.SameLayout heap heap9 ∧
+      SlicePolyRep heap9 C (2 * m + highLength) p
+        (lowPoly + Polynomial.X ^ (2 * m) * highPoly) ∧
+      CanonicalU64Prefix heap9 C (2 * m + highLength) modulus := by
+  have hCPrefix := heap.validU64Slice_mono C (2 * m + highLength)
+    (2 * m - 1) hC (by omega)
+  have hCThroughZero := heap.validU64Slice_mono C (2 * m + highLength)
+    ((2 * m - 1) + 1) hC (by omega)
+  have hCHigh := heap.validU64Slice_add C (2 * m + highLength)
+    (2 * m) highLength hC (by omega)
+  rcases copyU64_refines_slice_canonical heap C P0 (2 * m - 1) p lowPoly
+      modulus hCPrefix hP0 hregions hRepP0 hCanonicalP0 with
+    ⟨copyHeap, hcopy', hlayout8, hRepLow8, hCanonicalLow8⟩
+  have hcopyHeap : copyHeap = heap8 := Except.ok.inj (hcopy'.symm.trans hcopy)
+  subst copyHeap
+  have hLowHighDisjoint : U64SlicesDisjoint C (2 * m - 1)
+      (C.add (2 * m)) highLength := by
+    have h := u64SlicesDisjoint_add_of_le C 0 (2 * m - 1) (2 * m)
+      highLength (by omega)
+    simpa [RawPtr.add] using h
+  have hsameHigh8 := copyU64_preserves_prefix heap heap8 C P0
+    (C.add (2 * m)) (2 * m - 1) highLength hCPrefix hP0
+    hLowHighDisjoint hcopy
+  have hCHigh8 := (hlayout8 (C.add (2 * m)) highLength).mp hCHigh
+  have hRepHigh8 := slicePolyRep_of_same_prefix heap heap8 (C.add (2 * m))
+    highLength p highPoly hCHigh hCHigh8 hsameHigh8 hRepHigh
+  have hCanonicalHigh8 : CanonicalU64Prefix heap8 (C.add (2 * m))
+      highLength modulus := by
+    intro k value hk hread8
+    rcases heap.readU64_of_valid (C.add (2 * m)) highLength k hCHigh hk with
+      ⟨old, hread⟩
+    have hpreserved := hsameHigh8 k old hk hread
+    have hvalue : value = old := Except.ok.inj (hread8.symm.trans hpreserved)
+    subst value
+    exact hCanonicalHigh k old hk hread
+  have hCThroughZero8 := (hlayout8 C ((2 * m - 1) + 1)).mp hCThroughZero
+  rcases writeZero_extends_slice heap8 heap9 C (2 * m - 1) p modulus
+      lowPoly hmodulus hCThroughZero8 hRepLow8 hCanonicalLow8 hzero with
+    ⟨hlayout9, hRepLow9, hCanonicalLow9⟩
+  have hPrefixHighDisjoint : U64SlicesDisjoint C ((2 * m - 1) + 1)
+      (C.add (2 * m)) highLength := by
+    have h := u64SlicesDisjoint_add_of_le C 0 ((2 * m - 1) + 1)
+      (2 * m) highLength (by omega)
+    simpa [RawPtr.add] using h
+  have hsameHigh9 := writeU64_preserves_prefix heap8 heap9 C
+    (C.add (2 * m)) ((2 * m - 1) + 1) highLength (2 * m - 1) 0
+    hPrefixHighDisjoint (by omega) hzero
+  have hCHigh9 := (hlayout9 (C.add (2 * m)) highLength).mp hCHigh8
+  have hRepHigh9 := slicePolyRep_of_same_prefix heap8 heap9 (C.add (2 * m))
+    highLength p highPoly hCHigh8 hCHigh9 hsameHigh9 hRepHigh8
+  have hCanonicalHigh9 : CanonicalU64Prefix heap9 (C.add (2 * m))
+      highLength modulus := by
+    intro k value hk hread9
+    rcases heap8.readU64_of_valid (C.add (2 * m)) highLength k hCHigh8 hk with
+      ⟨old, hread⟩
+    have hpreserved := hsameHigh9 k old hk hread
+    have hvalue : value = old := Except.ok.inj (hread9.symm.trans hpreserved)
+    subst value
+    exact hCanonicalHigh8 k old hk hread
+  have hC9 := (hlayout9 C (2 * m + highLength)).mp
+    ((hlayout8 C (2 * m + highLength)).mp hC)
+  have hRepLow9' : SlicePolyRep heap9 C (2 * m) p lowPoly := by
+    simpa [Nat.sub_add_cancel (by omega : 1 ≤ 2 * m)] using hRepLow9
+  have hCanonicalLow9' : CanonicalU64Prefix heap9 C (2 * m) modulus := by
+    simpa [Nat.sub_add_cancel (by omega : 1 ≤ 2 * m)] using hCanonicalLow9
+  refine ⟨fun ptr length => (hlayout8 ptr length).trans (hlayout9 ptr length),
+    slicePolyRep_join heap9 C (2 * m) highLength p lowPoly highPoly hC9
+      hRepLow9' hRepHigh9,
+    canonicalU64Prefix_join heap9 C (2 * m) highLength modulus hC9
+      hCanonicalLow9' hCanonicalHigh9⟩
+
 /-- Exact number of UInt64 scratch cells reachable by the generated
 Karatsuba recursion.  The three child products share `recScratch`, so the
 recursive contribution is a maximum rather than a sum. -/

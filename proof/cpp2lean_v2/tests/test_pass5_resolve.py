@@ -32,6 +32,7 @@ from pass2_ref_elim import ref_elim_pass
 from pass3_lambda_lift import lambda_lift_pass
 from pass4_iter_recognize import iter_recognize_pass
 from pass5_operator_resolve import operator_resolve_pass, assert_hir4_invariant
+from constructor_map import resolve_constructor
 
 AST = V2_ROOT / "tests" / "ast_cache"
 
@@ -103,6 +104,14 @@ def test_invariant_rejects_compound():
         assert "CompoundAssignStmt" in e.reason
 
 
+def test_default_init_size_t_resolved():
+    """The GCD source's output-only ``size_t len_g`` has a total Lean
+    initialization before the dominating HGCD assignment."""
+    resolution = resolve_constructor("default_init_size_t", 0)
+    assert resolution is not None
+    assert resolution.template == "(0 : UInt64)"
+
+
 def test_smoke_all_65():
     """T-smoke: 65 函数全跑 Pass 1+2+3+4+5。"""
     from class_map import TRANSLATION_SCOPE
@@ -129,6 +138,7 @@ if __name__ == "__main__":
         test_factor_multivar_lit_strip,
         test_factor_zp_constructors_resolved,
         test_invariant_rejects_compound,
+        test_default_init_size_t_resolved,
         test_smoke_all_65,
     ]
     passed = 0; failed = 0

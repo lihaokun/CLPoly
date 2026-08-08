@@ -361,6 +361,7 @@ DEFAULT_INIT_MAP: dict[str, ConstructorResolution] = {
     # zero is the exact value-initialized representation used only until that
     # dominating assignment executes.
     "default_init_uint64_t": ConstructorResolution("(0 : UInt64)", is_default=True),
+    "default_init_size_t": ConstructorResolution("(0 : UInt64)", is_default=True),
     # 其他 default_init_* 走规则
 }
 

@@ -2027,6 +2027,15 @@ abbrev HgcdRecursiveCall :=
   (A B a b : RawPtr UInt64) → (lenA lenB : Nat) →
   (W scratch : RawPtr UInt64) → RawHeap → RawExec HgcdRecursiveResult
 
+/-- Recursive callback available while defining an invocation of measure
+`bound`.  Its type makes every recursive call carry a strict `lenA` decrease;
+there is no counter and no executable guard for this proof-only argument. -/
+abbrev HgcdRecursiveCallBelow (bound : Nat) :=
+  (M : HgcdMat) → M.Valid → (computeM : Bool) →
+  (A B a b : RawPtr UInt64) → (lenA lenB : Nat) →
+  (W scratch : RawPtr UInt64) → RawHeap → lenA < bound →
+  RawExec HgcdRecursiveResult
+
 def hgcdRecursiveCutoff : Nat := 100
 
 theorem hgcdRecursiveWorkspace_R_valid (W : RawPtr UInt64) (lenA : Nat) :
@@ -2058,6 +2067,124 @@ def hgcdRecursiveDispatch (this : DenseUPolyZp)
   else
     recurse matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
       WNext scratch heap
+
+/-- Strictly decreasing form of the same cutoff dispatch.  The small arm is
+definitionally the identical iterator block; the large arm can invoke the
+callback only with the supplied well-founded decrease proof. -/
+def hgcdRecursiveDispatchBelow (this : DenseUPolyZp) (bound : Nat)
+    (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
+    (hdecrease : lenInputA < bound) : RawExec HgcdRecursiveResult :=
+  if lenInputA < hgcdRecursiveCutoff then
+    match hrun : hgcdRecursiveIterBranch this matrix hMatrix a3 b3 inputA
+        inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap with
+    | .error fault => .error fault
+    | .ok result => .ok (result.toResult
+        (hgcdRecursiveIterBranch_result_valid this matrix hMatrix a3 b3
+          inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap
+          result hrun))
+  else
+    recurse matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+      WNext scratch heap hdecrease
+
+/-- Proof-only algorithmic invariant needed between the two recursive call
+sites: every successful first reconstruction produced from the concrete
+workspace fits the enclosing input length.  Raw refinement discharges this
+from the returned matrix-length invariant. -/
+def HgcdFirstReconstructionBoundProvider (this : DenseUPolyZp)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) : Prop :=
+  let ws := hgcdRecursiveWorkspace W lenA
+  ∀ (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult),
+    hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
+      scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
+      first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
+      first.heap = .ok reconstructed →
+    reconstructed.lenB ≤ lenA
+
+/-- Strictly decreasing version of the complete recursive body.  Both
+recursive dispatches receive a proof that their source `lenA` is smaller
+than the current one; the proofs are erased and introduce no executable
+counter or alternate branch. -/
+def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
+    (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (reconstructionBound :
+      HgcdFirstReconstructionBoundProvider this a b W scratch lenA lenB) :
+    RawExec HgcdRecursiveResult :=
+  let m := lenA / 2
+  if hbaseGuard : lenB < m + 1 then
+    match hbase : hgcdRecursiveBase M computeM A B a b lenA lenB heap with
+    | .error fault => .error fault
+    | .ok result => .ok (result.toResult
+        (hgcdRecursiveBase_result_valid M hM computeM A B a b lenA lenB heap
+          result hbase))
+  else
+    let ws := hgcdRecursiveWorkspace W lenA
+    have hR : ws.R.Valid := hgcdRecursiveWorkspace_R_valid W lenA
+    have hS : ws.S.Valid := hgcdRecursiveWorkspace_S_valid W lenA
+    let high := hgcdRecursiveHighInput a b lenA lenB
+    have hfirstDecrease : high.lenA0 < bound := by
+      rw [← hbound]
+      exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder (by omega)
+    match hfirst : hgcdRecursiveDispatchBelow this bound recurse ws.R hR ws.a3
+        ws.b3 high.a0 high.b0 high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1
+        scratch ws.a2 ws.next heap hfirstDecrease with
+    | .error fault => .error fault
+    | .ok first =>
+      match hreconstruct : hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0
+          a b ws.a3 ws.b3 scratch (Nat.min lenA m) (Nat.min lenB m)
+          first.lenA first.lenB m first.matrix first.valid first.sgn first.heap with
+      | .error fault => .error fault
+      | .ok reconstructed =>
+        if hearlyGuard : reconstructed.lenB < m + 1 then
+          match hearly : hgcdRecursiveEarlyReturn M first.matrix hM first.valid
+              computeM A B ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB
+              first.sgn reconstructed.heap with
+          | .error fault => .error fault
+          | .ok result => .ok (result.toResult
+              (hgcdRecursiveEarlyReturn_result_valid M first.matrix hM
+                first.valid computeM A B ws.a2 ws.b2 reconstructed.lenA
+                reconstructed.lenB first.sgn reconstructed.heap result hearly))
+        else
+          match hmiddle : hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2
+              reconstructed.lenA reconstructed.lenB m ws.W3 reconstructed.heap with
+          | .error fault => .error fault
+          | .ok middle =>
+            have hreconstructed : reconstructed.lenB ≤ lenA :=
+              reconstructionBound first reconstructed hreconstruct
+            have hremainder : middle.lenD < reconstructed.lenB :=
+              polyDivrem_remainder_lt this ws.q ws.d ws.a2 reconstructed.lenA
+                ws.b2 reconstructed.lenB ws.W3 reconstructed.heap middle.heap
+                middle.lenQ middle.lenD
+                (hgcdRecursiveMiddle_layout this ws.q ws.d ws.a2 ws.b2
+                  reconstructed.lenA reconstructed.lenB m ws.W3
+                  reconstructed.heap middle hmiddle).1
+            have hsecondBounds := hgcdRecursiveMiddle_second_call_bounds this
+              ws.q ws.d ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB m
+              lenA ws.W3 reconstructed.heap middle (by omega) (by omega)
+              hreconstructed (by omega) hremainder hmiddle
+            have hsecondDecrease : middle.lenC0 < bound := by
+              rw [← hbound]
+              exact hsecondBounds.2.2
+            match hgcdRecursiveDispatchBelow this bound recurse ws.S hS ws.a3
+                ws.b3 middle.c0 middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3
+                ws.T0 ws.T1 scratch ws.a2 ws.next middle.heap hsecondDecrease with
+            | .error fault => .error fault
+            | .ok second =>
+              match hgcdRecursiveFinish this M first.matrix second.matrix hM
+                  first.valid second.valid computeM A B ws.T0 ws.b2 ws.d ws.a3
+                  ws.b3 ws.q (Nat.min reconstructed.lenB middle.k)
+                  (Nat.min middle.lenD middle.k) second.lenA second.lenB middle.k
+                  middle.lenQ ws.a2 scratch first.sgn second.sgn second.heap with
+              | .error fault => .error fault
+              | .ok result => .ok result.toResult
 
 /-- The complete source body of `_hgcd_recursive`, parameterized only at its
 two genuine recursive call sites.  Every other operation is one of the exact

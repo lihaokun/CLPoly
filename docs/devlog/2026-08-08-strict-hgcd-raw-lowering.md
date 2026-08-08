@@ -202,6 +202,14 @@ HGCD 迭代的矩阵长度不变式现已贯穿完整的良基循环。证明先
 观察 heap、matrix、两项长度和符号，矩阵有效性证明仍保留给下一次真实调用，
 但不会成为 C++ 可观察语义的一部分。
 
+严格下降版本 `hgcdRecursiveBodyBelow` 已建立。其递归回调类型要求每次调用
+显式携带 `child.lenA < parent.lenA`：第一次由真实高半部切片定理给出，第二
+次由同一次重构长度界、middle divrem 余数界和统一 second-call 定理给出。
+唯一额外 provider 只量化实际第一次 `hgcdRecursiveReconstructPair` 的成功
+执行并陈述其 `lenB≤外层 lenA`；它不包含多项式结果，而 raw 层已具备从
+返回矩阵不变式消解该字段的定理。整个接口没有执行计数器、超限分支或替代
+语义。
+
 最终矩阵合并块也已按源码顺序闭合：`hgcdRecursiveCombineMatrix` 先实际执行
 两列商矩阵更新，再把其返回的 matrix/heap 直接交给完整四项 `_mat_mul`。
 对应 raw 定理从两次生成调用分别取得 `[[q,1],[1,0]]*S` 与

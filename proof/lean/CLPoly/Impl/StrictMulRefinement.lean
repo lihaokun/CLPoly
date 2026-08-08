@@ -156,6 +156,24 @@ theorem u64SlicesDisjoint_add_left {base guard : RawPtr UInt64}
     simp [RawPtr.add, hwidth] at hoffset ⊢
     omega
 
+theorem u64SlicesDisjoint_add_right {left base : RawPtr UInt64}
+    {leftLength length start count : Nat}
+    (h : U64SlicesDisjoint left leftLength base length)
+    (hrange : start + count ≤ length) :
+    U64SlicesDisjoint left leftLength (base.add start) count := by
+  exact u64SlicesDisjoint_symm
+    (u64SlicesDisjoint_add_left (u64SlicesDisjoint_symm h) hrange)
+
+theorem u64SlicesDisjoint_subslices {left right : RawPtr UInt64}
+    {leftLength rightLength leftStart leftCount rightStart rightCount : Nat}
+    (h : U64SlicesDisjoint left leftLength right rightLength)
+    (hleft : leftStart + leftCount ≤ leftLength)
+    (hright : rightStart + rightCount ≤ rightLength) :
+    U64SlicesDisjoint (left.add leftStart) leftCount
+      (right.add rightStart) rightCount := by
+  exact u64SlicesDisjoint_add_right
+    (u64SlicesDisjoint_add_left h hleft) hright
+
 theorem sameU64Prefix_trans {heap1 heap2 heap3 : RawHeap}
     {ptr : RawPtr UInt64} {length : Nat}
     (h12 : SameU64Prefix heap1 heap2 ptr length)

@@ -236,6 +236,10 @@
   `dense_upoly_zp__kar_mul_ir` 成功执行后同时保持 `SameLayout`、
   `SlicePolyRep` 和 `CanonicalU64Prefix`。这是 P0→P1→P2 阶段间传递
   t1/t2、旧乘积与高半输入的统一 heap 桥。
+- 新增地址不相交的右侧缩短与双侧子 slice 定理。顶层 C/scratch
+  与 A/B 的整段合同现在可直接下推到如 `C+2*m`、`A+m`、
+  `B+m` 与 recScratch 等任意双方子区间，为 P0/P1/P2 递归前提
+  提供单一可审计的来源。
 
 ## 当前边界
 

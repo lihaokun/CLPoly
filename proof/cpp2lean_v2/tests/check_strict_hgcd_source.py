@@ -190,6 +190,7 @@ def main() -> None:
         "HgcdEarlyMatrixResult",
         "hgcdEarlyMatrixLoop",
         "hgcdEarlyMatrixLoop_result_valid",
+        "hgcdEarlyMatrixLoop_lengths",
         "HgcdRecursiveEarlyResult",
         "hgcdRecursiveEarlyReturn",
         "HgcdEarlyMatrixWorkspace",

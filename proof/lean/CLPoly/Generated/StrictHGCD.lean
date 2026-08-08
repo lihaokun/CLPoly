@@ -656,6 +656,58 @@ theorem hgcdEarlyMatrixLoop_result_valid (M R : HgcdMat)
 termination_by 4 - i
 decreasing_by omega
 
+/-- Descriptor invariant of the real early matrix-copy loop.  At entry `i`,
+all earlier slots already carry `R`'s lengths; a successful suffix finishes
+all four slots. -/
+theorem hgcdEarlyMatrixLoop_lengths (M R : HgcdMat)
+    (hM : M.Valid) (hR : R.Valid) (i : Nat) (heap : RawHeap)
+    (result : HgcdEarlyMatrixResult)
+    (hdone : ∀ j : Fin 4, j.val < i →
+      hgcdMatLenRaw M hM j = hgcdMatLenRaw R hR j)
+    (hrun : hgcdEarlyMatrixLoop M R hM hR i heap = .ok result) :
+    result.matrix.len = R.len := by
+  rw [hgcdEarlyMatrixLoop] at hrun
+  split at hrun
+  next hi =>
+    dsimp only at hrun
+    split at hrun
+    next fault hcopy => simp at hrun
+    next heap1 hcopy =>
+      let index : Fin 4 := ⟨i, hi⟩
+      let nextLen := M.len.set i (hgcdMatLenRaw R hR index)
+        (by rw [hM.2]; exact hi)
+      let next : HgcdMat := { M with len := nextLen }
+      have hNext : next.Valid := by
+        exact ⟨hM.1, by simp [next, nextLen, hM.2]⟩
+      have hdoneNext : ∀ j : Fin 4, j.val < i + 1 →
+          hgcdMatLenRaw next hNext j = hgcdMatLenRaw R hR j := by
+        intro j hj
+        by_cases hji : j.val = i
+        · subst i
+          simp [hgcdMatLenRaw, next, nextLen, index, hM.2]
+        · have hold := hdone j (by omega)
+          simp only [hgcdMatLenRaw, next, nextLen]
+          rw [Array.getElem_set_ne
+            (by simpa [hM.2] using hi)
+            (by simpa [hM.2] using j.isLt)
+            (by exact Ne.symm hji)]
+          exact hold
+      exact hgcdEarlyMatrixLoop_lengths next R hNext hR (i + 1) heap1
+        result hdoneNext hrun
+  next hi =>
+    have heq : result = HgcdEarlyMatrixResult.mk heap M :=
+      (Except.ok.inj hrun).symm
+    subst result
+    apply Array.ext
+    · rw [hM.2, hR.2]
+    · intro k hkM hkR
+      have hk4 : k < 4 := by simpa [hR.2] using hkR
+      let j : Fin 4 := ⟨k, hk4⟩
+      have hj := hdone j (by omega)
+      simpa [hgcdMatLenRaw, j] using hj
+termination_by 4 - i
+decreasing_by omega
+
 structure HgcdRecursiveEarlyResult where
   heap : RawHeap
   matrix : HgcdMat

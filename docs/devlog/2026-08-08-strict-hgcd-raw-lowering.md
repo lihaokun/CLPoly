@@ -61,6 +61,13 @@
 下一步证明初始化 copy 的表示传递，以及每轮 divrem/两次行更新共同保持
 Euclid 对与矩阵变换关系，最终导出循环停止条件和 GCD 不变式。
 
+`_hgcd_recursive` 的早退矩阵复制现已建立长度描述符不变式：循环入口 `i`
+之前的槽位已与递归结果 `R` 相同，每次真实 `copyU64` 后同步执行对应的
+`Array.set`，成功完成四项后返回矩阵的整个 `len` 数组精确等于 `R.len`。
+递归度量仍为 `4 - i`，没有 fuel、规格执行或 L2 回退。该定理已加入严格
+HGCD source gate；下一步是将同一循环的四次 heap 写入组合成每个矩阵项的
+最终 `RawDensePolyRep`，从而闭合早退矩阵的完整语义。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

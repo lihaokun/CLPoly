@@ -68,6 +68,10 @@ def main() -> None:
                      "addCommonLoop_value", "subCommonLoop_value",
                      "nmodNeg", "nmodNeg_lt", "nmodNeg_cast",
                      "subNegTailLoop_value",
+                     "sameAddress_eq_true_iff",
+                     "region_ne_of_exactOrDisjoint_not_sameAddress",
+                     "polyAdd_equalLength_refines",
+                     "polySub_equalLength_refines", "RawDensePolyRep",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:
             raise SystemExit(f"strict add/sub refinement drift: missing {fragment}")

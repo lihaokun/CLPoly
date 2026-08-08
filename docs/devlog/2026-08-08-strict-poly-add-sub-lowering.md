@@ -25,6 +25,11 @@
   两个输入系数所执行的真实 `nmod_add/nmod_sub`，包括原位执行。
 - 证明减法长尾的 C++ 条件表达式在规范输入上仍产生规范系数，映射到
   `ZMod p` 后精确等于取负，并证明整个长尾循环在原位执行时逐系数成立。
+- 证明源码布尔地址比较为真当且仅当两个 RawPtr 完全相等；结合允许别名条件，
+  比较为假可推出复制分支所需的不同分配事实。
+- 完整闭合等长 `_poly_add/_poly_sub` 分支：从实际入口执行、逐系数循环到
+  normalization，最终分别建立 `RawDensePolyRep (left + right)` 与
+  `RawDensePolyRep (left - right)`。
 
 ## 当前边界
 

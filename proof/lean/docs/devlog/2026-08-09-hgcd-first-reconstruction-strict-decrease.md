@@ -91,3 +91,10 @@ A 为正且严格高于外层半长、B 满足外层停止界。证明展开同�
 轨迹上合并操作数契约、四行 sharp 界和四项系数界，得到完整
 `HgcdRecursiveLengthInvariant`。其中 `row1B/row3B` 由真实 B 停止界和 A
 above-half 推出操作数次序后导出；没有额外假设最终 B 已小于 A。
+
+## 良基 dispatch 归纳桥
+
+`hgcdRecursiveDispatchBelow_rawInvariant` 已覆盖源码的 cutoff 分派：小输入臂展开
+真实 iterator、stabilize 和 store 执行；大输入臂只消费严格更小 `lenA` 调用的
+语义归纳假设。成功结果通过 proof-erased value 相等运输，不替换堆、矩阵或长度
+字段。该桥把两个递归调用点统一为同一个无 fuel 归纳接口。

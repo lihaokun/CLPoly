@@ -5732,6 +5732,122 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
       simpa [HgcdRecursiveIterBranchResult.toResult, hResultLenB] using hStop
     lengths := fun _ => hResultLengthInvariant }⟩
 
+/-- Physical and representation facts needed when a recursive dispatch takes
+its generated iterator arm.  The large arm does not inspect these fields;
+they are retained so one parent workspace can serve either source branch. -/
+structure HgcdRecursiveDispatchIterWorkspace (this : DenseUPolyZp)
+    (original : HgcdMat) (hOriginal : original.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat)) : Prop where
+  inputAPos : 0 < lenInputA
+  loopPhysical : HgcdLoopWorkspaceProvider this (lenInputA / 2) Q W3 scratch
+  finalizePhysical : HgcdRecursiveIterFinalizeWorkspaceProvider this original
+    hOriginal a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch
+    stage heap
+  valid0 : heap.ValidU64Slice
+    (hgcdMatPtr original hOriginal (0 : Fin 4)) 1
+  valid3 : heap.ValidU64Slice
+    (hgcdMatPtr original hOriginal (3 : Fin 4)) 1
+  disjoint03 : U64SlicesDisjoint
+    (hgcdMatPtr original hOriginal (0 : Fin 4)) 1
+    (hgcdMatPtr original hOriginal (3 : Fin 4)) 1
+  validA3 : heap.ValidU64Slice a3 lenInputA
+  validB3 : heap.ValidU64Slice b3 lenInputB
+  a3InputA : U64SlicesDisjoint a3 lenInputA inputA lenInputA
+  b3InputB : U64SlicesDisjoint b3 lenInputB inputB lenInputB
+  a3InputB : U64SlicesDisjoint a3 lenInputA inputB lenInputB
+  b3A3 : U64SlicesDisjoint b3 lenInputB a3 lenInputA
+  row0InputA : U64SlicesDisjoint
+    (hgcdMatPtr original hOriginal (0 : Fin 4)) 1 inputA lenInputA
+  row3InputA : U64SlicesDisjoint
+    (hgcdMatPtr original hOriginal (3 : Fin 4)) 1 inputA lenInputA
+  row0InputB : U64SlicesDisjoint
+    (hgcdMatPtr original hOriginal (0 : Fin 4)) 1 inputB lenInputB
+  row3InputB : U64SlicesDisjoint
+    (hgcdMatPtr original hOriginal (3 : Fin 4)) 1 inputB lenInputB
+  a3Matrix : ∀ i : Fin 4, U64SlicesDisjoint a3 lenInputA
+    (hgcdMatPtr original hOriginal i) (identityEntryLen i)
+  b3Matrix : ∀ i : Fin 4, U64SlicesDisjoint b3 lenInputB
+    (hgcdMatPtr original hOriginal i) (identityEntryLen i)
+  matrixValid : ∀ i : Fin 4, heap.ValidU64Slice
+    (hgcdMatPtr original hOriginal i) (identityEntryLen i)
+  leftRep : RawDensePolyRep this heap inputA lenInputA left
+  rightRep : RawDensePolyRep this heap inputB lenInputB right
+
+/-- Semantic induction hypothesis at one strictly smaller recursive call.
+It is phrased over the actual callback execution, not a preselected result. -/
+def HgcdRecursiveCallbackRefinesAt (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)] (bound : Nat)
+    (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (WNext scratch : RawPtr UInt64) (heap : RawHeap)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (left right : Polynomial (ZMod this._p.toNat)) : Prop :=
+  ∀ result,
+    recurse matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+        WNext scratch heap horder hdecrease = .ok result →
+    ∃ finalA finalB entries,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries true
+        a3 b3 lenInputA result
+
+/-- Refinement of the exact cutoff dispatch used at both recursive call
+sites.  The small branch is discharged by its generated iterator execution;
+the large branch is exactly the well-founded induction hypothesis. -/
+theorem hgcdRecursiveDispatchBelow_rawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (iterWorkspace : HgcdRecursiveDispatchIterWorkspace this matrix hMatrix
+      a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap
+      left right)
+    (recursiveRefines : HgcdRecursiveCallbackRefinesAt this bound recurse
+      matrix hMatrix a3 b3 inputA inputB lenInputA lenInputB WNext scratch
+      heap horder hdecrease left right)
+    (result : HgcdRecursiveResult)
+    (hrun : hgcdRecursiveDispatchBelow this bound recurse matrix hMatrix a3
+      b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage WNext
+      heap horder hdecrease = .ok result) :
+    ∃ finalA finalB entries,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries true
+        a3 b3 lenInputA result := by
+  rw [hgcdRecursiveDispatchBelow] at hrun
+  split at hrun
+  next hsmall =>
+    split at hrun
+    next fault hiter => simp at hrun
+    next iter hiter =>
+      rcases hgcdRecursiveIterBranch_refines this matrix hMatrix a3 b3 inputA
+          inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap iter left
+          right hcfg hp (Nat.le_of_lt horder) iterWorkspace.inputAPos
+          iterWorkspace.loopPhysical iterWorkspace.finalizePhysical
+          iterWorkspace.valid0 iterWorkspace.valid3 iterWorkspace.disjoint03
+          iterWorkspace.validA3 iterWorkspace.validB3 iterWorkspace.a3InputA
+          iterWorkspace.b3InputB iterWorkspace.a3InputB iterWorkspace.b3A3
+          iterWorkspace.row0InputA iterWorkspace.row3InputA
+          iterWorkspace.row0InputB iterWorkspace.row3InputB
+          iterWorkspace.a3Matrix iterWorkspace.b3Matrix
+          iterWorkspace.matrixValid iterWorkspace.leftRep
+          iterWorkspace.rightRep hiter with
+        ⟨finalA, finalB, entries, hIterValid, hInvariant⟩
+      have heq : iter.toResult hIterValid = result := by
+        apply HgcdRecursiveResult.ext_value
+        simpa only [HgcdRecursiveResult.value,
+          HgcdRecursiveIterBranchResult.toResult] using
+          congrArg HgcdRecursiveResult.value (Except.ok.inj hrun)
+      subst result
+      exact ⟨finalA, finalB, entries, hInvariant⟩
+  next hlarge =>
+    exact recursiveRefines result hrun
+
 /-- Physical obligations for the two concrete guarded products and the
 source-selected tail of one `_mat_mul_entry`. -/
 structure HgcdMatMulEntryWorkspace

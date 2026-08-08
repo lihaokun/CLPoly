@@ -493,6 +493,64 @@ theorem hgcdRecursiveStoreIterOutputs_regular_exec
       .ok heap2 := by
   simp [hgcdRecursiveStoreIterOutputs, hcross, hfirst, hsecond]
 
+structure HgcdMulTermResult where
+  heap : RawHeap
+  length : Nat
+
+/-- Exact guarded multiplication idiom used four times while reconstructing
+the low halves after the first HGCD call. -/
+def hgcdRecursiveMulTerm (this : DenseUPolyZp) (dst left : RawPtr UInt64)
+    (lenLeft : Nat) (right : RawPtr UInt64) (lenRight : Nat)
+    (scratch : RawPtr UInt64) (heap : RawHeap) : RawExec HgcdMulTermResult :=
+  if lenLeft > 0 && lenRight > 0 then
+    let run := if lenLeft ≥ lenRight then
+      dense_upoly_zp__mul_ir this dst left lenLeft right lenRight scratch heap
+    else
+      dense_upoly_zp__mul_ir this dst right lenRight left lenLeft scratch heap
+    match run with
+    | .error fault => .error fault
+    | .ok heap1 => .ok { heap := heap1, length := lenLeft + lenRight - 1 }
+  else
+    .ok { heap := heap, length := 0 }
+
+/-- Exact `b2` low-half reconstruction block:
+`R[2]*a_lo` and `R[0]*b_lo`, followed by the sign-selected subtraction. -/
+def hgcdRecursiveReconstructB (this : DenseUPolyZp)
+    (b2 T0 r2 r0 aLo bLo scratch : RawPtr UInt64)
+    (lenR2 lenR0 lenALo lenBLo : Nat) (sgn : Int)
+    (heap : RawHeap) : RawExec (RawHeap × Nat) :=
+  match hgcdRecursiveMulTerm this b2 r2 lenR2 aLo lenALo scratch heap with
+  | .error fault => .error fault
+  | .ok term1 =>
+    match hgcdRecursiveMulTerm this T0 r0 lenR0 bLo lenBLo scratch term1.heap with
+    | .error fault => .error fault
+    | .ok term2 =>
+      if sgn < 0 then
+        dense_upoly_zp__poly_sub_ir this b2 b2 term1.length T0 term2.length
+          term2.heap
+      else
+        dense_upoly_zp__poly_sub_ir this b2 T0 term2.length b2 term1.length
+          term2.heap
+
+/-- Exact `a2` low-half reconstruction block:
+`R[3]*a_lo` and `R[1]*b_lo`, with the source's opposite sign orientation. -/
+def hgcdRecursiveReconstructA (this : DenseUPolyZp)
+    (a2 T0 r3 r1 aLo bLo scratch : RawPtr UInt64)
+    (lenR3 lenR1 lenALo lenBLo : Nat) (sgn : Int)
+    (heap : RawHeap) : RawExec (RawHeap × Nat) :=
+  match hgcdRecursiveMulTerm this a2 r3 lenR3 aLo lenALo scratch heap with
+  | .error fault => .error fault
+  | .ok term1 =>
+    match hgcdRecursiveMulTerm this T0 r1 lenR1 bLo lenBLo scratch term1.heap with
+    | .error fault => .error fault
+    | .ok term2 =>
+      if sgn < 0 then
+        dense_upoly_zp__poly_sub_ir this a2 T0 term2.length a2 term1.length
+          term2.heap
+      else
+        dense_upoly_zp__poly_sub_ir this a2 a2 term1.length T0 term2.length
+          term2.heap
+
 /-- Every successful suffix of the real restore loop returns a valid matrix
 and leaves the complete length descriptor byte-for-byte unchanged. -/
 theorem hgcdMatRestoreLoop_preserves_valid_len

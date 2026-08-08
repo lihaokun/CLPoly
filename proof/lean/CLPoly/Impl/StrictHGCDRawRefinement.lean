@@ -903,6 +903,197 @@ theorem rawDensePolyRep_zero_length (this : DenseUPolyZp)
     omega
   · simp [RawHeap.normaliseU64]
 
+/-- Physical buffer obligations for one guarded multiplication in the
+low-half reconstruction of `_hgcd_recursive`.  The maximum operand length
+matches the source's longer-first dispatch and does not encode an L2 value. -/
+structure HgcdMulTermWorkspace (heap : RawHeap)
+    (dst left : RawPtr UInt64) (lenLeft : Nat)
+    (right : RawPtr UInt64) (lenRight : Nat)
+    (scratch : RawPtr UInt64) : Prop where
+  lengthFits : max lenLeft lenRight < limbBase
+  dstValid : heap.ValidU64Slice dst (2 * max lenLeft lenRight - 1)
+  scratchValid : heap.ValidU64Slice scratch (8 * max lenLeft lenRight)
+  dstLeft : U64SlicesDisjoint dst (2 * max lenLeft lenRight - 1)
+    left lenLeft
+  dstRight : U64SlicesDisjoint dst (2 * max lenLeft lenRight - 1)
+    right lenRight
+  dstScratch : U64SlicesDisjoint dst (2 * max lenLeft lenRight - 1)
+    scratch (8 * max lenLeft lenRight)
+  scratchLeft : U64SlicesDisjoint scratch (8 * max lenLeft lenRight)
+    left lenLeft
+  scratchRight : U64SlicesDisjoint scratch (8 * max lenLeft lenRight)
+    right lenRight
+
+/-- The exact guarded C++ multiplication block computes the polynomial
+product.  In particular, a zero-length branch is justified directly from
+the raw input representation. -/
+theorem hgcdRecursiveMulTerm_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (dst left : RawPtr UInt64) (lenLeft : Nat)
+    (right : RawPtr UInt64) (lenRight : Nat)
+    (scratch : RawPtr UInt64) (heap : RawHeap)
+    (leftPoly rightPoly : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hwork : HgcdMulTermWorkspace heap dst left lenLeft right lenRight scratch)
+    (hLeft : RawDensePolyRep this heap left lenLeft leftPoly)
+    (hRight : RawDensePolyRep this heap right lenRight rightPoly) :
+    ∃ result, hgcdRecursiveMulTerm this dst left lenLeft right lenRight
+        scratch heap = .ok result ∧
+      RawHeap.SameLayout heap result.heap ∧
+      RawDensePolyRep this result.heap dst result.length
+        (leftPoly * rightPoly) := by
+  by_cases hLeftPos : 0 < lenLeft
+  · by_cases hRightPos : 0 < lenRight
+    · by_cases horder : lenRight ≤ lenLeft
+      · have hmax : max lenLeft lenRight = lenLeft := Nat.max_eq_left horder
+        rcases mul_refines_rawDense this dst left lenLeft right lenRight
+            scratch heap leftPoly rightPoly hcfg hp hLeftPos hRightPos horder
+            (by simpa [hmax] using hwork.lengthFits)
+            (by simpa [hmax] using hwork.dstValid)
+            (by simpa [hmax] using hwork.scratchValid)
+            (by simpa [hmax] using hwork.dstLeft)
+            (by simpa [hmax] using hwork.dstRight)
+            (by simpa [hmax] using hwork.dstScratch)
+            (by simpa [hmax] using hwork.scratchLeft)
+            (by simpa [hmax] using hwork.scratchRight)
+            hLeft hRight with ⟨heap1, hrun, hlayout, hrep⟩
+        refine ⟨{ heap := heap1, length := lenLeft + lenRight - 1 }, ?_,
+          hlayout, hrep⟩
+        simp [hgcdRecursiveMulTerm, hLeftPos, hRightPos, horder, hrun]
+      · have hreverse : lenLeft ≤ lenRight := by omega
+        have hmax : max lenLeft lenRight = lenRight := Nat.max_eq_right hreverse
+        rcases mul_refines_rawDense this dst right lenRight left lenLeft
+            scratch heap rightPoly leftPoly hcfg hp hRightPos hLeftPos hreverse
+            (by simpa [hmax] using hwork.lengthFits)
+            (by simpa [hmax] using hwork.dstValid)
+            (by simpa [hmax] using hwork.scratchValid)
+            (by simpa [hmax] using hwork.dstRight)
+            (by simpa [hmax] using hwork.dstLeft)
+            (by simpa [hmax] using hwork.dstScratch)
+            (by simpa [hmax] using hwork.scratchRight)
+            (by simpa [hmax] using hwork.scratchLeft)
+            hRight hLeft with ⟨heap1, hrun, hlayout, hrep⟩
+        refine ⟨{ heap := heap1, length := lenLeft + lenRight - 1 }, ?_,
+          hlayout, ?_⟩
+        · simp [hgcdRecursiveMulTerm, hLeftPos, hRightPos, horder, hrun,
+            Nat.add_comm]
+        · simpa [Nat.add_comm, mul_comm] using hrep
+    · have hlenRight : lenRight = 0 := by omega
+      subst lenRight
+      have hzero : rightPoly = 0 :=
+        slicePolyRep_zero_length heap right this._p.toNat rightPoly
+          hRight.2.2.1
+      subst rightPoly
+      refine ⟨{ heap := heap, length := 0 }, ?_, (fun _ _ => Iff.rfl),
+        ?_⟩
+      · simp [hgcdRecursiveMulTerm]
+      · simpa using rawDensePolyRep_zero_length this heap dst
+          (heap.validU64Slice_mono dst (2 * max lenLeft 0 - 1) 0
+            hwork.dstValid (by omega))
+  · have hlenLeft : lenLeft = 0 := by omega
+    subst lenLeft
+    have hzero : leftPoly = 0 :=
+      slicePolyRep_zero_length heap left this._p.toNat leftPoly
+        hLeft.2.2.1
+    subst leftPoly
+    refine ⟨{ heap := heap, length := 0 }, ?_, (fun _ _ => Iff.rfl),
+      ?_⟩
+    · simp [hgcdRecursiveMulTerm]
+    · simpa using rawDensePolyRep_zero_length this heap dst
+        (heap.validU64Slice_mono dst (2 * max 0 lenRight - 1) 0
+          hwork.dstValid (by omega))
+
+/-- Frame rule for the exact guarded multiplication block.  It exposes that
+the generated execution writes only its destination and scratch areas, which
+is needed to sequence the two products in each reconstruction block. -/
+theorem hgcdRecursiveMulTerm_preserves_guard (this : DenseUPolyZp)
+    (dst left : RawPtr UInt64) (lenLeft : Nat)
+    (right : RawPtr UInt64) (lenRight : Nat)
+    (scratch guard : RawPtr UInt64) (guardLen : Nat)
+    (heap : RawHeap) (result : HgcdMulTermResult)
+    (hwork : HgcdMulTermWorkspace heap dst left lenLeft right lenRight scratch)
+    (hLeft : heap.ValidU64Slice left lenLeft)
+    (hRight : heap.ValidU64Slice right lenRight)
+    (hDstGuard : U64SlicesDisjoint dst (2 * max lenLeft lenRight - 1)
+      guard guardLen)
+    (hScratchGuard : U64SlicesDisjoint scratch
+      (8 * max lenLeft lenRight) guard guardLen)
+    (hrun : hgcdRecursiveMulTerm this dst left lenLeft right lenRight
+      scratch heap = .ok result) :
+    SameU64Prefix heap result.heap guard guardLen := by
+  by_cases hLeftPos : 0 < lenLeft
+  · by_cases hRightPos : 0 < lenRight
+    · by_cases horder : lenRight ≤ lenLeft
+      · have hmax : max lenLeft lenRight = lenLeft := Nat.max_eq_left horder
+        cases hmul : Generated.StrictMul.dense_upoly_zp__mul_ir this dst left lenLeft right
+            lenRight scratch heap with
+        | error fault =>
+          simp [hgcdRecursiveMulTerm, hLeftPos, hRightPos, horder, hmul]
+            at hrun
+        | ok heap1 =>
+          have hactual :
+              (Except.ok (HgcdMulTermResult.mk heap1
+                (lenLeft + lenRight - 1)) : RawExec HgcdMulTermResult) =
+              Except.ok result := by
+            simpa [hgcdRecursiveMulTerm, hLeftPos, hRightPos, horder, hmul]
+              using hrun
+          have heq : result =
+              HgcdMulTermResult.mk heap1 (lenLeft + lenRight - 1) :=
+            (Except.ok.inj hactual).symm
+          subst result
+          exact mul_preserves_prefix this dst left lenLeft right lenRight
+            scratch guard guardLen heap heap1 hLeftPos hRightPos horder
+            (by simpa [hmax] using hwork.dstValid) hLeft hRight
+            (by simpa [hmax] using hwork.scratchValid)
+            (by simpa [hmax] using hwork.scratchRight)
+            (by simpa [hmax] using hDstGuard)
+            (by simpa [hmax] using hScratchGuard) hmul
+      · have hreverse : lenLeft ≤ lenRight := by omega
+        have hmax : max lenLeft lenRight = lenRight := Nat.max_eq_right hreverse
+        cases hmul : Generated.StrictMul.dense_upoly_zp__mul_ir this dst right lenRight left
+            lenLeft scratch heap with
+        | error fault =>
+          simp [hgcdRecursiveMulTerm, hLeftPos, hRightPos, horder, hmul]
+            at hrun
+        | ok heap1 =>
+          have hactual :
+              (Except.ok (HgcdMulTermResult.mk heap1
+                (lenLeft + lenRight - 1)) : RawExec HgcdMulTermResult) =
+              Except.ok result := by
+            simpa [hgcdRecursiveMulTerm, hLeftPos, hRightPos, horder, hmul]
+              using hrun
+          have heq : result =
+              HgcdMulTermResult.mk heap1 (lenLeft + lenRight - 1) :=
+            (Except.ok.inj hactual).symm
+          subst result
+          exact mul_preserves_prefix this dst right lenRight left lenLeft
+            scratch guard guardLen heap heap1 hRightPos hLeftPos hreverse
+            (by simpa [hmax] using hwork.dstValid) hRight hLeft
+            (by simpa [hmax] using hwork.scratchValid)
+            (by simpa [hmax] using hwork.scratchLeft)
+            (by simpa [hmax] using hDstGuard)
+            (by simpa [hmax] using hScratchGuard) hmul
+    · have hlenRight : lenRight = 0 := by omega
+      subst lenRight
+      have hactual :
+          (Except.ok (HgcdMulTermResult.mk heap 0) :
+            RawExec HgcdMulTermResult) = Except.ok result := by
+        simpa [hgcdRecursiveMulTerm] using hrun
+      have heq : result = HgcdMulTermResult.mk heap 0 :=
+        (Except.ok.inj hactual).symm
+      subst result
+      exact fun _ _ _ hread => hread
+  · have hlenLeft : lenLeft = 0 := by omega
+    subst lenLeft
+    have hactual :
+        (Except.ok (HgcdMulTermResult.mk heap 0) :
+          RawExec HgcdMulTermResult) = Except.ok result := by
+      simpa [hgcdRecursiveMulTerm] using hrun
+    have heq : result = HgcdMulTermResult.mk heap 0 :=
+      (Except.ok.inj hactual).symm
+    subst result
+    exact fun _ _ _ hread => hread
+
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/
 theorem rawDensePolyRep_one_of_read_one (this : DenseUPolyZp)

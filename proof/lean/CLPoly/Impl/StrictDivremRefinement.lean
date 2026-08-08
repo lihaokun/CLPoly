@@ -2238,6 +2238,30 @@ theorem quotientLoop_preserves_Q_above (this : DenseUPolyZp)
         exact hsameRec k value (by omega) hhigh
           (hsameWrite k value hlow hhigh hreadOld)
 
+/-- In particular, after the successor case writes `Q[i]`, the recursive
+call at state `i` returns with that exact raw coefficient still present. -/
+theorem quotientLoop_preserves_Q_at_current (this : DenseUPolyZp)
+    (Q B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (qLen d lenW3 i : Nat) (invLc value : UInt64)
+    (heap : RawHeap)
+    (hQ : heap.ValidU64Slice Q qLen)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hi : i < qLen) (hspan : qLen + d ≤ lenW3)
+    (hQW : Q.region ≠ W3.region)
+    (hread : heap.readU64 Q i = .ok value) :
+    ∃ heap', quotientLoop this Q B W3 d invLc heap i = .ok heap' ∧
+      heap'.ValidU64Slice Q qLen ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      heap'.readU64 Q i = .ok value := by
+  rcases quotientLoop_preserves_Q_above this Q B W3 qLen d lenW3 invLc
+      heap i hQ hB hW3 (by omega) hspan hQW with
+    ⟨heap', hrun, hQ', hB', hW3', hlayout, hsame⟩
+  exact ⟨heap', hrun, hQ', hB', hW3', hlayout,
+    hsame i value (Nat.le_refl _) hi hread⟩
+
 /-- The generated quotient loop only reads B.  Q writes are separated by the
 raw non-aliasing precondition and W3 writes preserve B through the certified
 inner-loop theorem. -/

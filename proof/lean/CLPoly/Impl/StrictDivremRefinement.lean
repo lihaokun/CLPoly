@@ -1665,6 +1665,25 @@ theorem quotient_step_compose (p : Nat)
   rw [hrec, hstep]
   ring
 
+/-- Semantic assembly used by the successor case of the generated descending
+quotient loop.  The newly written raw Q cell and the recursive lower prefix
+are joined before composing their two W3 subtraction steps. -/
+theorem quotient_step_finalize (heap : RawHeap) (Q : RawPtr UInt64)
+    (p i : Nat) (qi : UInt64)
+    (lowerQ fullQ before afterStep afterRec divisor : Polynomial (ZMod p))
+    (hlower : SlicePolyRep heap Q i p lowerQ)
+    (hfull : SlicePolyRep heap Q (i + 1) p fullQ)
+    (hread : heap.readU64 Q i = .ok qi)
+    (hstep : afterStep = before -
+      Polynomial.monomial i (qi.toNat : ZMod p) * divisor)
+    (hrec : afterRec = afterStep - lowerQ * divisor) :
+    afterRec = before - fullQ * divisor := by
+  have hq := slicePolyRep_succ_eq_add_monomial heap Q i p qi lowerQ
+    fullQ hlower hfull hread
+  rw [hq]
+  exact quotient_step_compose p before afterStep afterRec lowerQ
+    (Polynomial.monomial i (qi.toNat : ZMod p)) divisor hstep hrec
+
 /-- A non-aliasing raw Q write leaves the complete W3 polynomial observation
 unchanged.  Both sides are reconstructed from their respective heaps. -/
 theorem word3ArrayPoly_writeU64_region_ne (before after : RawHeap)

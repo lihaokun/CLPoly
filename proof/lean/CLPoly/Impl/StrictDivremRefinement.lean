@@ -859,6 +859,11 @@ def SameWord3Below (before after : RawHeap) (ptr : RawPtr Word3)
     (lower : Nat) : Prop :=
   ∀ k, k < lower → before.readWord3 ptr k = after.readWord3 ptr k
 
+def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
+    (length : Nat) : Prop :=
+  ∀ k value, k < length → before.readU64 ptr k = .ok value →
+    after.readU64 ptr k = .ok value
+
 theorem addMulLoop_ok (heap : RawHeap) (B : RawPtr UInt64)
     (W3 : RawPtr Word3) (lenW3 i d j : Nat) (c : UInt64)
     (other : RawPtr UInt64) (otherLen : Nat)
@@ -964,6 +969,69 @@ theorem addMulLoop_preserves_below (heap : RawHeap) (B : RawPtr UInt64)
       exact (hsame1 k hk).trans (hsame2 k hk)
   next hnot =>
     exact ⟨heap, rfl, hB, hW3, fun _ _ => Iff.rfl, fun _ _ => rfl⟩
+termination_by d + 1 - j
+decreasing_by omega
+
+/-- Every write performed by the generated inner loop targets W3.  Hence an
+actual non-aliasing UInt64 slice is preserved pointwise, not merely kept
+allocated. -/
+theorem addMulLoop_preserves_u64_region_ne (heap : RawHeap)
+    (B other : RawPtr UInt64) (W3 : RawPtr Word3)
+    (lenW3 i d j otherLen : Nat) (c : UInt64)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hOther : heap.ValidU64Slice other otherLen)
+    (htop : i + d < lenW3) (hj : j ≤ d + 1)
+    (hregions : W3.region ≠ other.region) :
+    ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      heap'.ValidU64Slice other otherLen ∧
+      RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' other otherLen := by
+  rw [addMulLoop]
+  split
+  next hle =>
+    have hjB : j < d + 1 := by omega
+    have hijW : i + j < lenW3 := by omega
+    rcases heap.readU64_of_valid B (d + 1) j hB hjB with ⟨bj, hreadB⟩
+    simp only [hreadB]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + j) hW3 hijW with
+      ⟨accum, hreadW⟩
+    simp only [hreadW]
+    let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 c bj
+    let accum' := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+      accum product.1 product.2
+    rcases heap.writeWord3_of_valid W3 lenW3 (i + j) accum' hW3 hijW with
+      ⟨heap1, hwrite⟩
+    dsimp [product, accum'] at hwrite ⊢
+    simp only [hwrite]
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hOther1 : heap1.ValidU64Slice other otherLen :=
+      (RawHeap.writeWord3_preserves_valid heap heap1 W3 (i + j) accum'
+        hwrite other otherLen).mp hOther
+    have hlayout1 := RawHeap.writeWord3_sameLayout heap heap1 W3 (i + j)
+      accum' hwrite
+    have hsame1 : SameU64Prefix heap heap1 other otherLen := by
+      intro k value hk hread
+      exact RawHeap.readU64_writeWord3_region_ne heap heap1 W3 other
+        (i + j) k accum' value hwrite hread hregions
+    rcases addMulLoop_preserves_u64_region_ne heap1 B other W3 lenW3 i d
+      (j + 1) otherLen c hB1 hW31 hOther1 htop (by omega) hregions with
+      ⟨heap2, hloop, hB2, hW32, hOther2, hlayout2, hsame2⟩
+    refine ⟨heap2, hloop, hB2, hW32, hOther2, ?_, ?_⟩
+    · intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+    · intro k value hk hread
+      exact hsame2 k value hk (hsame1 k value hk hread)
+  next hnot =>
+    exact ⟨heap, rfl, hB, hW3, hOther, fun _ _ => Iff.rfl,
+      fun _ _ _ hread => hread⟩
 termination_by d + 1 - j
 decreasing_by omega
 
@@ -1305,11 +1373,6 @@ theorem writeAddMul_preserves_staged_budget (heap heap' : RawHeap)
         · exact hnew.1
         · omega
       simpa [hin, hin'] using hold
-
-def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
-    (length : Nat) : Prop :=
-  ∀ k value, k < length → before.readU64 ptr k = .ok value →
-    after.readU64 ptr k = .ok value
 
 def SameWord3PrefixAt (before after : RawHeap) (ptr : RawPtr Word3)
     (offset length : Nat) : Prop :=

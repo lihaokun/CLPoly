@@ -324,8 +324,9 @@ theorem matRowUpdate_mul_result (this : DenseUPolyZp)
       (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatPtr M hM i0 else Q)
       (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatLen M hM i0 else lenQ)
       scratch heap = .ok heap1) :
-    RawDensePolyRep this heap1 T
-      (lenQ + hgcdMatLen M hM i0 - 1) (quotient * entry0) := by
+    RawHeap.SameLayout heap heap1 ∧
+      RawDensePolyRep this heap1 T
+        (lenQ + hgcdMatLen M hM i0 - 1) (quotient * entry0) := by
   by_cases horder : lenQ ≥ hgcdMatLen M hM i0
   · rcases mul_refines_rawDense this T Q lenQ (hgcdMatPtr M hM i0)
         (hgcdMatLen M hM i0) scratch heap quotient entry0 hcfg hp hQpos
@@ -338,10 +339,11 @@ theorem matRowUpdate_mul_result (this : DenseUPolyZp)
         (by simpa [max_eq_left horder] using hTScratch)
         (by simpa [max_eq_left horder] using hScratchQ)
         (by simpa [max_eq_left horder] using hScratchEntry)
-        hQRep hEntryRep with ⟨heap', hrun, _, hrep⟩
+        hQRep hEntryRep with ⟨heap', hrun, hlayout, hrep⟩
     have heq : heap' = heap1 := Except.ok.inj (hrun.symm.trans (by
       simpa [horder] using hmul))
-    simpa [heq] using hrep
+    subst heap'
+    exact ⟨hlayout, hrep⟩
   · have hle : lenQ ≤ hgcdMatLen M hM i0 := by omega
     rcases mul_refines_rawDense this T (hgcdMatPtr M hM i0)
         (hgcdMatLen M hM i0) Q lenQ scratch heap entry0 quotient hcfg hp
@@ -354,10 +356,11 @@ theorem matRowUpdate_mul_result (this : DenseUPolyZp)
         (by simpa [max_eq_right hle] using hTScratch)
         (by simpa [max_eq_right hle] using hScratchEntry)
         (by simpa [max_eq_right hle] using hScratchQ)
-        hEntryRep hQRep with ⟨heap', hrun, _, hrep⟩
+        hEntryRep hQRep with ⟨heap', hrun, hlayout, hrep⟩
     have heq : heap' = heap1 := Except.ok.inj (hrun.symm.trans (by
       simpa [horder] using hmul))
-    simpa [heq, mul_comm, Nat.add_comm] using hrep
+    subst heap'
+    exact ⟨hlayout, by simpa [mul_comm, Nat.add_comm] using hrep⟩
 
 /-- Algebraic result of the actual add call exposed by the nonzero row-update
 branch.  The product premise is supplied by strict `_mul`; this theorem then

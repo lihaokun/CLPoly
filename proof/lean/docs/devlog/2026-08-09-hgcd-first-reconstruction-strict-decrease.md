@@ -58,3 +58,5 @@
 `hgcdMatApplyQuotientEntries_length_bounds` 和
 `hgcdRecursiveCombineMatrix_length_bounds` 给出的真实 C++ 描述符关系；没有用
 规格矩阵、oracle、fuel 或 L2 结果替代生成代码的执行。
+`hgcdRecursiveCombineMatrix_coeff_bounds` 已把四项算术界直接实例化到该真实执行
+返回的 `modified` 与最终矩阵描述符，因而递归契约不再需要额外的规格侧矩阵界。

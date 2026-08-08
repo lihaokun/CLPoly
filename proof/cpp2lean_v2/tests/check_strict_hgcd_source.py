@@ -294,6 +294,7 @@ def main() -> None:
         "hgcdRecursiveCombinedColumn_coeff_bounds",
         "hgcdRecursiveCombined_odd_coeff_bounds",
         "hgcdRecursiveCombined_all_coeff_bounds",
+        "hgcdRecursiveCombineMatrix_coeff_bounds",
         "HgcdLiftHighWorkspace",
         "hgcdRecursiveLiftHigh_terminates",
         "polyAdd_preserves_prefix_disjoint",

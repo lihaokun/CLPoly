@@ -495,6 +495,39 @@ def InitW3Prefix (heap : RawHeap) (A : RawPtr UInt64)
     heap.readU64 A j = .ok value ∧
     heap.readWord3 W3 j = .ok { lo := value, mid := 0, hi := 0 }
 
+/-- Every raw coefficient in the declared C++ slice is a canonical residue.
+This is a representation invariant of `dense_upoly_zp`, not an L2 polynomial
+operation. -/
+def CanonicalU64Prefix (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length : Nat) (p : UInt64) : Prop :=
+  ∀ k value, k < length → heap.readU64 ptr k = .ok value →
+    value.toNat < p.toNat
+
+/-- Uniform capacity invariant for lazy C++ `word3` accumulation.  `count` is
+an upper bound on the number of quotient products already added to any cell.
+-/
+def Word3AccumulationBudget (heap : RawHeap) (W3 : RawPtr Word3)
+    (length : Nat) (p : UInt64) (count : Nat) : Prop :=
+  ∀ k accum, k < length → heap.readWord3 W3 k = .ok accum →
+    word3Value accum ≤ (p.toNat - 1) + count * (p.toNat - 1) ^ 2
+
+/-- Zero-extension performed by the generated initialization loop establishes
+the zero-product instance of the accumulation budget. -/
+theorem initW3Prefix_budget (heap : RawHeap) (A : RawPtr UInt64)
+    (W3 : RawPtr Word3) (length : Nat) (p : UInt64)
+    (hcanonical : CanonicalU64Prefix heap A length p)
+    (hprefix : InitW3Prefix heap A W3 length) :
+    Word3AccumulationBudget heap W3 length p 0 := by
+  intro k accum hk hreadW
+  rcases hprefix k hk with ⟨value, hreadA, hreadInit⟩
+  have haccum : accum = { lo := value, mid := 0, hi := 0 } :=
+    Except.ok.inj (hreadW.symm.trans hreadInit)
+  subst accum
+  have hvalue := hcanonical k value hk hreadA
+  simp only [word3Value, UInt64.toNat_zero, Nat.mul_zero, Nat.add_zero,
+    zero_mul]
+  omega
+
 /-- Content-level refinement of the generated initialization loop.  With
 the C++ non-aliasing allocation precondition, every output W3 cell is exactly
 the corresponding A limb zero-extended to three limbs. -/

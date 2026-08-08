@@ -441,7 +441,7 @@ theorem karOddTail_values (A B t1 t2 : RawPtr UInt64) (m h : Nat)
     (hB : heap.ValidU64Slice B (m + h))
     (hT1 : heap.ValidU64Slice t1 h)
     (hT2 : heap.ValidU64Slice t2 h)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 h t2 h)
     (hodd : h > m)
     (hrun : karOddTail A B t1 t2 m h heap = .ok heap') :
     ∃ aTail bTail,
@@ -467,7 +467,8 @@ theorem karOddTail_values (A B t1 t2 : RawPtr UInt64) (m h : Nat)
   subst heap'
   have hread1 := RawHeap.readU64_writeU64_same heap heap1 t1 m aTail hw1
   have hread1' := RawHeap.readU64_writeU64_ne heap1 heap2 t2 t1 m m
-    bTail aTail hw2 hread1 (Or.inl (Ne.symm hT1T2))
+    bTail aTail hw2 hread1
+      (u64SlicesDisjoint_symm hT1T2 m hodd m hodd)
   have hread2 := RawHeap.readU64_writeU64_same heap1 heap2 t2 m bTail hw2
   exact ⟨aTail, bTail, ha, hb, hread1', hread2⟩
 
@@ -477,7 +478,7 @@ theorem karOddTail_preserves_own_prefixes
     (hB : heap.ValidU64Slice B (m + h))
     (hT1 : heap.ValidU64Slice t1 h)
     (hT2 : heap.ValidU64Slice t2 h)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 h t2 h)
     (hrun : karOddTail A B t1 t2 m h heap = .ok heap') :
     SameU64Prefix heap heap' t1 m ∧ SameU64Prefix heap heap' t2 m := by
   constructor <;> intro i old hi hread
@@ -501,7 +502,7 @@ theorem karOddTail_preserves_own_prefixes
       have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 t1 m i
         aTail old hw1 hread (Or.inr (by omega))
       exact RawHeap.readU64_writeU64_ne heap1 heap2 t2 t1 m i bTail old
-        hw2 hread1 (Or.inl (Ne.symm hT1T2))
+        hw2 hread1 (u64SlicesDisjoint_symm hT1T2 m hodd i (by omega))
     next hnot =>
       have heq : heap' = heap := Except.ok.inj hrun.symm
       simpa [heq] using hread
@@ -523,7 +524,7 @@ theorem karOddTail_preserves_own_prefixes
       have heq : heap' = heap2 := Except.ok.inj hrun.symm
       subst heap'
       have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 t2 m i
-        aTail old hw1 hread (Or.inl hT1T2)
+        aTail old hw1 hread (hT1T2 m hodd i (by omega))
       exact RawHeap.readU64_writeU64_ne heap1 heap2 t2 t2 m i bTail old
         hw2 hread1 (Or.inr (by omega))
     next hnot =>
@@ -537,7 +538,7 @@ theorem karOddTail_coeffs (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B (m + h))
     (hT1 : heap.ValidU64Slice t1 h)
     (hT2 : heap.ValidU64Slice t2 h)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 h t2 h)
     (hCanonicalA : CanonicalU64Prefix heap A (m + h) this._p)
     (hCanonicalB : CanonicalU64Prefix heap B (m + h) this._p)
     (hRepA : SlicePolyRep heap A (m + h) this._p.toNat left)
@@ -627,7 +628,7 @@ theorem karAddHalvesLoop_current_values (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B (2 * m))
     (hT1 : heap.ValidU64Slice t1 m)
     (hT2 : heap.ValidU64Slice t2 m)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 m t2 m)
     (hi : i < m)
     (hrun : karAddHalvesLoop this A B t1 t2 m i heap = .ok heap') :
     ∃ alo ahi blo bhi,
@@ -662,7 +663,7 @@ theorem karAddHalvesLoop_current_values (this : DenseUPolyZp)
   have hlayout2 := RawHeap.writeU64_sameLayout heap1 heap2 t2 i bv hw2
   have hav1 := RawHeap.readU64_writeU64_same heap heap1 t1 i av hw1
   have hav2 := RawHeap.readU64_writeU64_ne heap1 heap2 t2 t1 i i bv av
-    hw2 hav1 (Or.inl (Ne.symm hT1T2))
+    hw2 hav1 (u64SlicesDisjoint_symm hT1T2 i hi i hi)
   have hbv2 := RawHeap.readU64_writeU64_same heap1 heap2 t2 i bv hw2
   have havFinal := karAddHalvesLoop_preserves_outside this A B t1 t2 t1 m
     (i + 1) i heap2 heap' av
@@ -671,14 +672,14 @@ theorem karAddHalvesLoop_current_values (this : DenseUPolyZp)
     ((hlayout2 t1 m).mp ((hlayout1 t1 m).mp hT1))
     ((hlayout2 t2 m).mp ((hlayout1 t2 m).mp hT2)) hav2
     (by intro j _ _; exact Or.inr (by omega))
-    (by intro _ _ _; exact Or.inl (Ne.symm hT1T2)) hrun
+    (by intro j _ hj; exact u64SlicesDisjoint_symm hT1T2 j hj i hi) hrun
   have hbvFinal := karAddHalvesLoop_preserves_outside this A B t1 t2 t2 m
     (i + 1) i heap2 heap' bv
     ((hlayout2 A (2 * m)).mp ((hlayout1 A (2 * m)).mp hA))
     ((hlayout2 B (2 * m)).mp ((hlayout1 B (2 * m)).mp hB))
     ((hlayout2 t1 m).mp ((hlayout1 t1 m).mp hT1))
     ((hlayout2 t2 m).mp ((hlayout1 t2 m).mp hT2)) hbv2
-    (by intro _ _ _; exact Or.inl hT1T2)
+    (by intro j _ hj; exact hT1T2 j hj i hi)
     (by intro j _ _; exact Or.inr (by omega)) hrun
   exact ⟨alo, ahi, blo, bhi, halo, hahi, hblo, hbhi,
     by simpa [av] using havFinal, by simpa [bv] using hbvFinal⟩
@@ -691,7 +692,7 @@ theorem karAddHalvesLoop_current_coeffs (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B (2 * m))
     (hT1 : heap.ValidU64Slice t1 m)
     (hT2 : heap.ValidU64Slice t2 m)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 m t2 m)
     (hCanonicalA : CanonicalU64Prefix heap A (2 * m) this._p)
     (hCanonicalB : CanonicalU64Prefix heap B (2 * m) this._p)
     (hRepA : SlicePolyRep heap A (2 * m) this._p.toNat left)
@@ -759,7 +760,7 @@ theorem karAddHalvesLoop_coeffs (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B (2 * m))
     (hT1 : heap.ValidU64Slice t1 m)
     (hT2 : heap.ValidU64Slice t2 m)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 m t2 m)
     (hT1A : t1.region ≠ A.region) (hT1B : t1.region ≠ B.region)
     (hT2A : t2.region ≠ A.region) (hT2B : t2.region ≠ B.region)
     (hCanonicalA : CanonicalU64Prefix heap A (2 * m) this._p)
@@ -1595,7 +1596,7 @@ theorem karAddHalvesLoop_refines_slices (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B (2 * m))
     (hT1 : heap.ValidU64Slice t1 m)
     (hT2 : heap.ValidU64Slice t2 m)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 m t2 m)
     (hT1A : t1.region ≠ A.region) (hT1B : t1.region ≠ B.region)
     (hT2A : t2.region ≠ A.region) (hT2B : t2.region ≠ B.region)
     (hCanonicalA : CanonicalU64Prefix heap A (2 * m) this._p)
@@ -1649,7 +1650,7 @@ theorem karOddTail_refines_slices_odd (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B (m + h))
     (hT1 : heap.ValidU64Slice t1 h)
     (hT2 : heap.ValidU64Slice t2 h)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 h t2 h)
     (hCanonicalA : CanonicalU64Prefix heap A (m + h) this._p)
     (hCanonicalB : CanonicalU64Prefix heap B (m + h) this._p)
     (hCanonicalT1 : CanonicalU64Prefix heap t1 m this._p)
@@ -1743,7 +1744,7 @@ theorem karPrepareHalves_refines (this : DenseUPolyZp)
     (hB : heap.ValidU64Slice B (m + h))
     (hT1 : heap.ValidU64Slice t1 h)
     (hT2 : heap.ValidU64Slice t2 h)
-    (hT1T2 : t1.region ≠ t2.region)
+    (hT1T2 : U64SlicesDisjoint t1 h t2 h)
     (hT1A : t1.region ≠ A.region) (hT1B : t1.region ≠ B.region)
     (hT2A : t2.region ≠ A.region) (hT2B : t2.region ≠ B.region)
     (hCanonicalA : CanonicalU64Prefix heap A (m + h) this._p)
@@ -1761,6 +1762,7 @@ theorem karPrepareHalves_refines (this : DenseUPolyZp)
   have hB2m := heap.validU64Slice_mono B (m + h) (2 * m) hB h2m
   have hT1m := heap.validU64Slice_mono t1 h m hT1 hmh
   have hT2m := heap.validU64Slice_mono t2 h m hT2 hmh
+  have hT1T2m := u64SlicesDisjoint_mono hT1T2 hmh hmh
   rcases slicePolyRep_prefix_exists heap A (m + h) (2 * m)
       this._p.toNat left hA h2m hRepA with
     ⟨leftPrefix, hRepAPrefix, hleftPrefix⟩
@@ -1778,7 +1780,7 @@ theorem karPrepareHalves_refines (this : DenseUPolyZp)
     intro i value hi hread
     exact hCanonicalB i value (by omega) hread
   rcases karAddHalvesLoop_refines_slices this A B t1 t2 m heap heap1
-      leftPrefix rightPrefix hp hA2m hB2m hT1m hT2m hT1T2
+      leftPrefix rightPrefix hp hA2m hB2m hT1m hT2m hT1T2m
       hT1A hT1B hT2A hT2B hCanonicalAPrefix hCanonicalBPrefix
       hRepAPrefix hRepBPrefix hadd with
     ⟨hRepT1Prefix, hRepT2Prefix, hCanonicalT1, hCanonicalT2⟩
@@ -1964,7 +1966,8 @@ theorem classicalOuterLoop_refines_coeff_prefix (this : DenseUPolyZp)
     (hC : heap.ValidU64Slice C lenC)
     (hA : heap.ValidU64Slice A lenA)
     (hB : heap.ValidU64Slice B lenB)
-    (hCA : C.region ≠ A.region) (hCB : C.region ≠ B.region)
+    (hCA : U64SlicesDisjoint C lenC A lenA)
+    (hCB : U64SlicesDisjoint C lenC B lenB)
     (hCanonicalA : CanonicalU64Prefix heap A lenA this._p)
     (hCanonicalB : CanonicalU64Prefix heap B lenB this._p)
     (hRepA : SlicePolyRep heap A lenA this._p.toNat left)
@@ -2008,11 +2011,11 @@ theorem classicalOuterLoop_refines_coeff_prefix (this : DenseUPolyZp)
     have hsameA : SameU64Prefix heap heap1 A lenA := by
       intro i old hi hread
       exact RawHeap.readU64_writeU64_ne heap heap1 C A k i value old hw
-        hread (Or.inl hCA)
+        hread (hCA k hk i hi)
     have hsameB : SameU64Prefix heap heap1 B lenB := by
       intro i old hi hread
       exact RawHeap.readU64_writeU64_ne heap heap1 C B k i value old hw
-        hread (Or.inl hCB)
+        hread (hCB k hk i hi)
     have hCanonicalA1 := canonicalU64Prefix_of_same_prefix heap heap1 A lenA
       this._p hA hsameA hCanonicalA
     have hCanonicalB1 := canonicalU64Prefix_of_same_prefix heap heap1 B lenB
@@ -2096,6 +2099,163 @@ theorem classicalMul_ok (this : DenseUPolyZp)
   simp [dense_upoly_zp__classical_mul_ir, Nat.ne_of_gt hApos,
     Nat.ne_of_gt hBpos, hrun]
 
+/-- The generated Karatsuba routine terminates on its exact raw slices.
+This follows the three C++ recursive calls and uses `n` itself as the
+well-founded measure with no auxiliary recursion counter. -/
+theorem karMul_ok (this : DenseUPolyZp)
+    (C A B : RawPtr UInt64) (n : Nat) (scratch : RawPtr UInt64)
+    (heap : RawHeap) (hn : 0 < n)
+    (hC : heap.ValidU64Slice C (2 * n - 1))
+    (hA : heap.ValidU64Slice A n)
+    (hB : heap.ValidU64Slice B n)
+    (hScratch : heap.ValidU64Slice scratch (karScratchNeed n)) :
+    ∃ heap', dense_upoly_zp__kar_mul_ir this C A B n scratch heap =
+        .ok heap' ∧ RawHeap.SameLayout heap heap' := by
+  unfold dense_upoly_zp__kar_mul_ir
+  split
+  next hbase =>
+    exact classicalMul_ok this C A n B n heap hn hn
+      (by simpa [two_mul] using hC) hA hB
+  next hrecCase =>
+    let m := n / 2
+    let h := n - m
+    let t1 := scratch
+    let t2 := t1.add h
+    let sP0 := t2.add h
+    let sP1 := sP0.add (2 * m - 1)
+    let recScratch := sP1.add (2 * h - 1)
+    have hn16 : 16 ≤ n := by omega
+    have hmPos : 0 < m := by
+      dsimp [m]
+      exact Nat.div_pos (by omega) (by omega)
+    have hhPos : 0 < h := by
+      dsimp [h, m]
+      omega
+    have hmLt : m < n := by
+      simpa [m] using (kar_split_children_lt n hn16).1
+    have hhLt : h < n := by
+      simpa [h, m] using (kar_split_children_lt n hn16).2
+    have hmh : m ≤ h := by
+      rcases kar_split_shape n with heven | hodd
+      · simpa [m, h] using le_of_eq heven.symm
+      · dsimp [m, h]
+        omega
+    rcases karScratchSlices heap scratch n hn16 hScratch with
+      ⟨hT1, hT2, hP0, hP1, hRec⟩
+    have hAm := heap.validU64Slice_mono A n m hA (by omega)
+    have hBm := heap.validU64Slice_mono B n m hB (by omega)
+    have hAh := heap.validU64Slice_add A n m h hA (by
+      dsimp [m, h]
+      omega)
+    have hBh := heap.validU64Slice_add B n m h hB (by
+      dsimp [m, h]
+      omega)
+    have hCHigh := heap.validU64Slice_add C (2 * n - 1) (2 * m)
+      (2 * h - 1) hC (by
+        dsimp [m, h]
+        omega)
+    have hRecM := heap.validU64Slice_mono recScratch
+      (max (karScratchNeed m) (karScratchNeed h)) (karScratchNeed m)
+      hRec (Nat.le_max_left _ _)
+    have hRecH := heap.validU64Slice_mono recScratch
+      (max (karScratchNeed m) (karScratchNeed h)) (karScratchNeed h)
+      hRec (Nat.le_max_right _ _)
+    have hmn : m + h = n := by
+      dsimp [m, h]
+      omega
+    have hAfull : heap.ValidU64Slice A (m + h) := by
+      rw [hmn]
+      exact hA
+    have hBfull : heap.ValidU64Slice B (m + h) := by
+      rw [hmn]
+      exact hB
+    rcases karPrepareHalves_ok this A B t1 t2 m h heap hmh
+      hAfull hBfull hT1 hT2 with
+      ⟨heap2, hprep, hlay2⟩
+    rcases karMul_ok this sP0 A B m recScratch heap2 hmPos
+      ((hlay2 sP0 (2 * m - 1)).mp hP0)
+      ((hlay2 A m).mp hAm) ((hlay2 B m).mp hBm)
+      ((hlay2 recScratch (karScratchNeed m)).mp hRecM) with
+      ⟨heap3, hp0, hlay3⟩
+    rcases karMul_ok this sP1 t1 t2 h recScratch heap3 hhPos
+      ((hlay3 sP1 (2 * h - 1)).mp ((hlay2 sP1 (2 * h - 1)).mp hP1))
+      ((hlay3 t1 h).mp ((hlay2 t1 h).mp hT1))
+      ((hlay3 t2 h).mp ((hlay2 t2 h).mp hT2))
+      ((hlay3 recScratch (karScratchNeed h)).mp
+        ((hlay2 recScratch (karScratchNeed h)).mp hRecH)) with
+      ⟨heap4, hp1, hlay4⟩
+    rcases karMul_ok this (C.add (2 * m)) (A.add m) (B.add m) h
+      recScratch heap4 hhPos
+      ((hlay4 (C.add (2 * m)) (2 * h - 1)).mp
+        ((hlay3 (C.add (2 * m)) (2 * h - 1)).mp
+          ((hlay2 (C.add (2 * m)) (2 * h - 1)).mp hCHigh)))
+      ((hlay4 (A.add m) h).mp ((hlay3 (A.add m) h).mp
+        ((hlay2 (A.add m) h).mp hAh)))
+      ((hlay4 (B.add m) h).mp ((hlay3 (B.add m) h).mp
+        ((hlay2 (B.add m) h).mp hBh)))
+      ((hlay4 recScratch (karScratchNeed h)).mp
+        ((hlay3 recScratch (karScratchNeed h)).mp
+          ((hlay2 recScratch (karScratchNeed h)).mp hRecH))) with
+      ⟨heap5, phigh, hlay5⟩
+    have hP1short := heap5.validU64Slice_mono sP1 (2 * h - 1)
+      (2 * m - 1)
+      ((hlay5 sP1 (2 * h - 1)).mp ((hlay4 sP1 (2 * h - 1)).mp
+        ((hlay3 sP1 (2 * h - 1)).mp ((hlay2 sP1 (2 * h - 1)).mp hP1))))
+      (by omega)
+    have hP05 := (hlay5 sP0 (2 * m - 1)).mp
+      ((hlay4 sP0 (2 * m - 1)).mp ((hlay3 sP0 (2 * m - 1)).mp
+        ((hlay2 sP0 (2 * m - 1)).mp hP0)))
+    rcases karSubLoop_ok this sP1 sP0 (2 * m - 1) 0 heap5 hP1short hP05 with
+      ⟨heap6, hsub0, hlay6⟩
+    have hP16 := (hlay6 sP1 (2 * h - 1)).mp
+      ((hlay5 sP1 (2 * h - 1)).mp ((hlay4 sP1 (2 * h - 1)).mp
+        ((hlay3 sP1 (2 * h - 1)).mp ((hlay2 sP1 (2 * h - 1)).mp hP1))))
+    have hCHigh6 := (hlay6 (C.add (2 * m)) (2 * h - 1)).mp
+      ((hlay5 (C.add (2 * m)) (2 * h - 1)).mp
+        ((hlay4 (C.add (2 * m)) (2 * h - 1)).mp
+          ((hlay3 (C.add (2 * m)) (2 * h - 1)).mp
+            ((hlay2 (C.add (2 * m)) (2 * h - 1)).mp hCHigh))))
+    rcases karSubLoop_ok this sP1 (C.add (2 * m)) (2 * h - 1) 0 heap6
+      hP16 hCHigh6 with ⟨heap7, hsub1, hlay7⟩
+    have hC7 := (hlay7 C (2 * n - 1)).mp ((hlay6 C (2 * n - 1)).mp
+      ((hlay5 C (2 * n - 1)).mp ((hlay4 C (2 * n - 1)).mp
+        ((hlay3 C (2 * n - 1)).mp ((hlay2 C (2 * n - 1)).mp hC)))))
+    have hCprefix := heap7.validU64Slice_mono C (2 * n - 1)
+      (2 * m - 1) hC7 (by omega)
+    have hP07 := (hlay7 sP0 (2 * m - 1)).mp ((hlay6 sP0 (2 * m - 1)).mp
+      ((hlay5 sP0 (2 * m - 1)).mp ((hlay4 sP0 (2 * m - 1)).mp
+        ((hlay3 sP0 (2 * m - 1)).mp ((hlay2 sP0 (2 * m - 1)).mp hP0)))))
+    rcases copyU64_ok heap7 C sP0 (2 * m - 1) hCprefix hP07 with
+      ⟨heap8, hcopy, hlay8⟩
+    rcases heap8.writeU64_of_valid C (2 * n - 1) (2 * m - 1) 0
+      ((hlay8 C (2 * n - 1)).mp hC7) (by omega) with
+      ⟨heap9, hzero⟩
+    have hlay9 := RawHeap.writeU64_sameLayout heap8 heap9 C (2 * m - 1) 0
+      hzero
+    have hCassemble := heap9.validU64Slice_mono C (2 * n - 1)
+      (m + (2 * h - 1)) ((hlay9 C (2 * n - 1)).mp
+        ((hlay8 C (2 * n - 1)).mp hC7)) (by
+          dsimp [m, h]
+          omega)
+    have hP19 := (hlay9 sP1 (2 * h - 1)).mp
+      ((hlay8 sP1 (2 * h - 1)).mp ((hlay7 sP1 (2 * h - 1)).mp hP16))
+    rcases karAssembleLoop_ok this C sP1 m (2 * h - 1) 0 heap9
+      hCassemble hP19 with ⟨heap10, hassemble, hlay10⟩
+    refine ⟨heap10, ?_, ?_⟩
+    · simp [m, h, t1, t2, sP0, sP1, recScratch, hprep, hp0, hp1,
+        phigh, hsub0, hsub1, hcopy, hzero, hassemble]
+    · intro ptr length
+      exact (hlay2 ptr length).trans ((hlay3 ptr length).trans
+        ((hlay4 ptr length).trans ((hlay5 ptr length).trans
+          ((hlay6 ptr length).trans ((hlay7 ptr length).trans
+            ((hlay8 ptr length).trans ((hlay9 ptr length).trans
+              (hlay10 ptr length))))))))
+termination_by n
+decreasing_by
+  · exact hmLt
+  · exact hhLt
+  · exact hhLt
+
 theorem classicalMul_refines_slice (this : DenseUPolyZp)
     (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
     (heap : RawHeap) (left right : Polynomial (ZMod this._p.toNat))
@@ -2106,7 +2266,8 @@ theorem classicalMul_refines_slice (this : DenseUPolyZp)
     (hC : heap.ValidU64Slice C (lenA + lenB - 1))
     (hA : heap.ValidU64Slice A lenA)
     (hB : heap.ValidU64Slice B lenB)
-    (hCA : C.region ≠ A.region) (hCB : C.region ≠ B.region)
+    (hCA : U64SlicesDisjoint C (lenA + lenB - 1) A lenA)
+    (hCB : U64SlicesDisjoint C (lenA + lenB - 1) B lenB)
     (hCanonicalA : CanonicalU64Prefix heap A lenA this._p)
     (hCanonicalB : CanonicalU64Prefix heap B lenB this._p)
     (hRepA : SlicePolyRep heap A lenA this._p.toNat left)
@@ -2153,7 +2314,9 @@ theorem classicalMul_refines (this : DenseUPolyZp)
     omega
   rcases classicalOuterLoop_refines_coeff_prefix this C A B lenA lenB
       (lenA + lenB - 1) 0 heap left right hcfg hp hApos hBpos hLenAWord
-      rfl hC hLeft.1 hRight.1 hCA hCB hLeft.2.1 hRight.2.1
+      rfl hC hLeft.1 hRight.1
+      (u64SlicesDisjoint_of_region_ne hCA)
+      (u64SlicesDisjoint_of_region_ne hCB) hLeft.2.1 hRight.2.1
       hLeft.2.2.1 hRight.2.2.1 hempty with
     ⟨heap', hrun, hlayout, hprefix⟩
   have hvalid' := (hlayout C (lenA + lenB - 1)).mp hC

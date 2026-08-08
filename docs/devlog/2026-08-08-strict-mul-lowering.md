@@ -129,6 +129,16 @@
   和同基址偏移区间引理。旧证明只用 region 不等表达不别名，无法描述 C++
   同一 scratch allocation 内的 t1/t2/P0/P1；后续 helper 与 schoolbook 帧定理
   将改用这一谓词，避免为套用旧定理而虚构独立 allocations。
+- 将 Karatsuba 半区准备的整条语义链改为地址级 slice 不相交：公共相加、奇数
+  尾项、自身前缀保持、完整 slice 构造及统一准备定理现在都直接接受同一
+  scratch allocation 内相邻的 t1/t2，不再要求事实上不成立的 region 不同。
+- schoolbook 的 coefficient-prefix 与 slice 精化同样推广到地址区间不相交；
+  原公开 raw 定理仍可从不同 allocation 推出该条件，而递归 P1 基例可直接
+  使用 scratch 内的偏移区间。
+- 闭合 `karMul_ok`：按生成 L1 的真实控制流依次执行半区准备、P0/P1/高半区
+  三次递归乘法、两次模减、P0 copy、边界补零和交叉项组装。每次调用都从
+  精确 scratch 分区与 SameLayout 传递实际 slice 有效性；基例执行已证明的
+  schoolbook。递归只以 n 良基下降到 m/h，没有 fuel 或 L2 回退。
 
 ## 当前边界
 

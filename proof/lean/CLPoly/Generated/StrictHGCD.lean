@@ -311,4 +311,75 @@ theorem hgcdRecursiveHighInput_len_lt (a b : RawPtr UInt64)
   simp only [hgcdRecursiveHighInput]
   omega
 
+/-- Heap and accumulated offset after the first matrix-stabilization loop. -/
+structure HgcdMatStageResult where
+  heap : RawHeap
+  off : Nat
+
+def hgcdMatPtrRaw (M : HgcdMat) (hM : M.Valid) (i : Fin 4) :
+    RawPtr UInt64 := M.poly[i.val]'(by rw [hM.1]; exact i.isLt)
+
+def hgcdMatLenRaw (M : HgcdMat) (hM : M.Valid) (i : Fin 4) : Nat :=
+  M.len[i.val]'(by rw [hM.2]; exact i.isLt)
+
+/-- Exact first `for (i=0; i<4; ++i)` stabilization loop: copy every live
+matrix entry to consecutive cells of the source `stage` buffer. -/
+def hgcdMatStageLoop (M : HgcdMat) (hM : M.Valid)
+    (stage : RawPtr UInt64) :
+    (i off : Nat) → (heap : RawHeap) → RawExec HgcdMatStageResult
+  | i, off, heap =>
+    if hi : i < 4 then
+      let index : Fin 4 := ⟨i, hi⟩
+      match heap.copyU64 (stage.add off) (hgcdMatPtrRaw M hM index)
+          (hgcdMatLenRaw M hM index) with
+      | .error fault => .error fault
+      | .ok heap1 => hgcdMatStageLoop M hM stage (i + 1)
+          (off + hgcdMatLenRaw M hM index) heap1
+    else
+      .ok { heap := heap, off := off }
+termination_by i off heap => 4 - i
+decreasing_by omega
+
+/-- Heap, restored descriptor, and accumulated offset after the second
+matrix-stabilization loop. -/
+structure HgcdMatRestoreResult where
+  heap : RawHeap
+  matrix : HgcdMat
+  off : Nat
+
+/-- Exact second stabilization loop: copy staged entries to the four saved
+pre-iterator pointers and restore each descriptor pointer after its copy. -/
+def hgcdMatRestoreLoop (original current : HgcdMat)
+    (hOriginal : original.Valid) (hCurrent : current.Valid)
+    (stage : RawPtr UInt64) :
+    (i off : Nat) → (heap : RawHeap) → RawExec HgcdMatRestoreResult
+  | i, off, heap =>
+    if hi : i < 4 then
+      let index : Fin 4 := ⟨i, hi⟩
+      match heap.copyU64 (hgcdMatPtrRaw original hOriginal index)
+          (stage.add off) (hgcdMatLenRaw current hCurrent index) with
+      | .error fault => .error fault
+      | .ok heap1 =>
+        let poly' := current.poly.set i (hgcdMatPtrRaw original hOriginal index)
+          (by rw [hCurrent.1]; omega)
+        let next : HgcdMat := { current with poly := poly' }
+        have hNext : next.Valid := by
+          exact ⟨by simp [next, poly', hCurrent.1], hCurrent.2⟩
+        hgcdMatRestoreLoop original next hOriginal hNext stage (i + 1)
+          (off + hgcdMatLenRaw current hCurrent index) heap1
+    else
+      .ok { heap := heap, matrix := current, off := off }
+termination_by i off heap => 4 - i
+decreasing_by omega
+
+/-- The complete two-loop stabilization block used after either iterator
+call in `_hgcd_recursive`. -/
+def hgcdMatStabilize (original current : HgcdMat)
+    (hOriginal : original.Valid) (hCurrent : current.Valid)
+    (stage : RawPtr UInt64) (heap : RawHeap) : RawExec HgcdMatRestoreResult :=
+  match hgcdMatStageLoop current hCurrent stage 0 0 heap with
+  | .error fault => .error fault
+  | .ok staged => hgcdMatRestoreLoop original current hOriginal hCurrent
+      stage 0 0 staged.heap
+
 end Generated.StrictHGCD

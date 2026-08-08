@@ -6,6 +6,100 @@ set_option autoImplicit false
 namespace CLPoly.Impl.StrictMulRefinement
 
 open Generated.StrictMul
+open CLPoly.Impl.StrictWordArithmetic
+
+/-- Mathematical value of the exact raw cells visited by the C++ dot loop.
+It shares the loop's reads and failure behavior, but performs unbounded natural
+addition so that machine accumulation can be related to it explicitly. -/
+def classicalDotNat (heap : RawHeap) (A B : RawPtr UInt64)
+    (k stop j : Nat) : RawExec Nat :=
+  if h : j ≤ stop then
+    match heap.readU64 A j with
+    | .error fault => .error fault
+    | .ok a =>
+      match heap.readU64 B (k - j) with
+      | .error fault => .error fault
+      | .ok b =>
+        match classicalDotNat heap A B k stop (j + 1) with
+        | .error fault => .error fault
+        | .ok tail => .ok (a.toNat * b.toNat + tail)
+  else
+    .ok 0
+termination_by stop + 1 - j
+decreasing_by omega
+
+theorem classicalDotLoop_modEq (heap : RawHeap) (A B : RawPtr UInt64)
+    (k stop j : Nat) (acc result : Word3) (sum : Nat)
+    (hrun : classicalDotLoop heap A B k stop j acc = .ok result)
+    (hsum : classicalDotNat heap A B k stop j = .ok sum) :
+    Nat.ModEq (limbBase ^ 3) (word3Value result)
+      (word3Value acc + sum) := by
+  unfold classicalDotLoop at hrun
+  unfold classicalDotNat at hsum
+  split at hrun
+  next hle =>
+    simp only [hle, ↓reduceDIte] at hsum
+    cases ha : heap.readU64 A j with
+    | error fault => simp [ha] at hrun
+    | ok a =>
+      simp only [ha] at hrun hsum
+      cases hb : heap.readU64 B (k - j) with
+      | error fault => simp [hb] at hrun
+      | ok b =>
+        simp only [hb] at hrun hsum
+        cases ht : classicalDotNat heap A B k stop (j + 1) with
+        | error fault => simp [ht] at hsum
+        | ok tail =>
+          simp only [ht] at hsum
+          have hsumEq : sum = a.toNat * b.toNat + tail :=
+            Except.ok.inj hsum.symm
+          let product := Generated.StrictGCD.dense_upoly_zp__umul128_ir 0 0 a b
+          let acc' := Generated.StrictGCD.dense_upoly_zp__add_carry3_ir
+            acc product.fst product.snd
+          have hrec := classicalDotLoop_modEq heap A B k stop (j + 1)
+            acc' result tail hrun ht
+          have hstep : Nat.ModEq (limbBase ^ 3) (word3Value acc')
+              (word3Value acc + a.toNat * b.toNat) := by
+            simpa [product, acc'] using addMulWord3_modEq acc a b
+          have htotal := hrec.trans (hstep.add_right tail)
+          simpa [hsumEq, Nat.add_assoc] using htotal
+  next hnot =>
+    simp only [hnot, ↓reduceDIte] at hsum
+    have hresult : result = acc := Except.ok.inj hrun.symm
+    have hzero : sum = 0 := Except.ok.inj hsum.symm
+    subst result
+    subst sum
+    simpa using (Nat.ModEq.refl (word3Value acc) :
+      Nat.ModEq (limbBase ^ 3) (word3Value acc) (word3Value acc))
+termination_by stop + 1 - j
+decreasing_by omega
+
+theorem classicalDotNat_ok (heap : RawHeap) (A B : RawPtr UInt64)
+    (lenA lenB k stop j : Nat)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hAIndex : ∀ t, j ≤ t → t ≤ stop → t < lenA)
+    (hBIndex : ∀ t, j ≤ t → t ≤ stop → k - t < lenB) :
+    ∃ sum, classicalDotNat heap A B k stop j = .ok sum := by
+  unfold classicalDotNat
+  split
+  next hle =>
+    rcases heap.readU64_of_valid A lenA j hA
+      (hAIndex j (Nat.le_refl _) hle) with ⟨a, ha⟩
+    simp only [ha]
+    rcases heap.readU64_of_valid B lenB (k - j) hB
+      (hBIndex j (Nat.le_refl _) hle) with ⟨b, hb⟩
+    simp only [hb]
+    rcases classicalDotNat_ok heap A B lenA lenB k stop (j + 1)
+      hA hB
+      (by intro t hjt hts; exact hAIndex t (by omega) hts)
+      (by intro t hjt hts; exact hBIndex t (by omega) hts) with
+      ⟨tail, htail⟩
+    rw [htail]
+    exact ⟨a.toNat * b.toNat + tail, rfl⟩
+  next => exact ⟨0, rfl⟩
+termination_by stop + 1 - j
+decreasing_by omega
 
 theorem classicalDotLoop_ok (heap : RawHeap) (A B : RawPtr UInt64)
     (lenA lenB k stop j : Nat) (acc : Word3)
@@ -35,6 +129,24 @@ theorem classicalDotLoop_ok (heap : RawHeap) (A B : RawPtr UInt64)
   next => exact ⟨acc, rfl⟩
 termination_by stop + 1 - j
 decreasing_by omega
+
+theorem classicalDotLoop_raw_sum (heap : RawHeap) (A B : RawPtr UInt64)
+    (lenA lenB k stop j : Nat) (acc : Word3)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hAIndex : ∀ t, j ≤ t → t ≤ stop → t < lenA)
+    (hBIndex : ∀ t, j ≤ t → t ≤ stop → k - t < lenB) :
+    ∃ result sum,
+      classicalDotLoop heap A B k stop j acc = .ok result ∧
+      classicalDotNat heap A B k stop j = .ok sum ∧
+      Nat.ModEq (limbBase ^ 3) (word3Value result)
+        (word3Value acc + sum) := by
+  rcases classicalDotLoop_ok heap A B lenA lenB k stop j acc hA hB
+    hAIndex hBIndex with ⟨result, hrun⟩
+  rcases classicalDotNat_ok heap A B lenA lenB k stop j hA hB
+    hAIndex hBIndex with ⟨sum, hsum⟩
+  exact ⟨result, sum, hrun, hsum,
+    classicalDotLoop_modEq heap A B k stop j acc result sum hrun hsum⟩
 
 theorem classical_index_bounds (lenA lenB k j : Nat)
     (hApos : 0 < lenA) (hBpos : 0 < lenB)

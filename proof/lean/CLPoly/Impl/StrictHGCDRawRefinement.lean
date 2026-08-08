@@ -2407,7 +2407,8 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
     (hDB : d.region ≠ b2.region)
     (hcfg : DensePreinvConfigured this)
     (hprime : Nat.Prime this._p.toNat)
-    (hlenA : 0 < lenA) (hlenB2Bound : lenB2 ≤ lenA) :
+    (hlenA : 0 < lenA) (hlenB2Bound : lenB2 ≤ lenA)
+    (hm : 0 < m) (hnonearly : m + 1 ≤ lenB2) :
     ∃ result quotient remainder,
       hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
         .ok result ∧
@@ -2424,6 +2425,7 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < divisor.natDegree) ∧
       result.lenD < lenB2 ∧ result.lenC0 < lenA ∧
+      0 < result.lenC0 ∧ result.lenD0 < result.lenC0 ∧
       result.k = 2 * m - lenB2 + 1 ∧
       result.c0 = b2.add result.k ∧
       result.lenC0 = (if lenB2 ≥ result.k then lenB2 - result.k else 0) ∧
@@ -2465,10 +2467,14 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
     divisor hlayout hsameB hB
   have hdecrease := hgcdRecursiveMiddle_lenC0_lt this q d a2 b2 lenA2
     lenB2 m lenA W3 heap result hlenA hlenB2Bound hmiddle
+  have hcpos := hgcdRecursiveMiddle_lenC0_pos this q d a2 b2 lenA2
+    lenB2 m W3 heap result hm hnonearly hmiddle
+  have hdorder := hgcdRecursiveMiddle_lenD0_lt_lenC0 this q d a2 b2
+    lenA2 lenB2 m W3 heap result hlt hcpos hmiddle
   refine ⟨result, quotient, remainder, hmiddle, hQRep, hQCanonical, hQNorm,
     hDRep, hDCanonical, hDNorm, hlayout, hQDense, hDDense, hBDense,
     hidentity, hdegree, hlt,
-    hdecrease, rfl, rfl, rfl, rfl, rfl⟩
+    hdecrease, hcpos, hdorder, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- The nonempty second-call input is obtained by slicing the actual divisor
 and remainder buffers at the generated `k`.  No heap write or L2 evaluation

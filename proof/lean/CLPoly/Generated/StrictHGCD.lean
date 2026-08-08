@@ -1635,6 +1635,25 @@ theorem hgcdRecursiveMiddle_lenC0_lt (this : DenseUPolyZp)
   next hk =>
     omega
 
+/-- Failure of the source's early-return guard makes the second-call
+divisor suffix nonempty.  This follows from the exact source choice
+`k = 2*m-lenB2+1`, including truncated natural subtraction. -/
+theorem hgcdRecursiveMiddle_lenC0_pos (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (result : HgcdRecursiveMiddleResult)
+    (hm : 0 < m)
+    (hnonearly : m + 1 ≤ lenB2)
+    (hrun : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
+      .ok result) :
+    0 < result.lenC0 := by
+  have hlayout := hgcdRecursiveMiddle_layout this q d a2 b2 lenA2 lenB2 m
+    W3 heap result hrun
+  rw [hlayout.2.2.2.1, hlayout.2.1]
+  split
+  next hk => omega
+  next hk => omega
+
 /-- Shifting divisor and remainder by the same source offset preserves their
 strict length order whenever the divisor suffix is nonempty.  This is the
 ordering required by the second recursive HGCD branch. -/

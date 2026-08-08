@@ -30,6 +30,9 @@
   顺序，覆盖 schoolbook 与良基 Karatsuba，并用执行确定性确认 dispatcher
   返回的就是行更新所观察到的同一个 heap。交换参数后仅使用乘法交换律统一
   为 `Q * old[i0]`；没有另造规格执行或 L2 回退。
+- 同一真实 `_mul` 的写区域 frame 现已证明旧 `i1` 项逐 cell 不变；由此
+  重新导出其有效切片、canonical 系数、L2 多项式表示和 normalization，
+  不再把“乘法后旧项仍可供 `_poly_add` 使用”留作语义假设。
 
 ## 下一步
 

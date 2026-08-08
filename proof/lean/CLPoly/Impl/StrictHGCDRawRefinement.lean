@@ -33,6 +33,25 @@ noncomputable def identityEntries (p : Nat) : Fin 4 → Polynomial (ZMod p)
   | ⟨2, _⟩ => 0
   | ⟨3, _⟩ => 1
 
+/-- A normalized raw polynomial survives any execution that preserves both
+its allocation layout and every cell in its declared prefix. -/
+theorem rawDensePolyRep_of_same_prefix (this : DenseUPolyZp)
+    (before after : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hlayout : RawHeap.SameLayout before after)
+    (hsame : SameU64Prefix before after ptr length)
+    (hrep : RawDensePolyRep this before ptr length poly) :
+    RawDensePolyRep this after ptr length poly := by
+  have hvalidAfter := (hlayout ptr length).mp hrep.1
+  refine ⟨hvalidAfter,
+    canonicalU64Prefix_of_same_prefix before after ptr length this._p
+      hrep.1 hsame hrep.2.1,
+    slicePolyRep_of_same_prefix before after ptr length this._p.toNat poly
+      hrep.1 hvalidAfter hsame hrep.2.2.1, ?_⟩
+  have hnorm := normaliseU64_eq_of_prefix_map before after ptr ptr length
+    hrep.1 hsame
+  exact hnorm.symm.trans hrep.2.2.2
+
 theorem slicePolyRep_zero_length_any (heap : RawHeap) (ptr : RawPtr UInt64)
     (p : Nat) : SlicePolyRep heap ptr 0 p 0 := by
   refine ⟨#[], rfl, rfl, ?_⟩
@@ -361,6 +380,70 @@ theorem matRowUpdate_mul_result (this : DenseUPolyZp)
       simpa [horder] using hmul))
     subst heap'
     exact ⟨hlayout, by simpa [mul_comm, Nat.add_comm] using hrep⟩
+
+/-- The same generated multiplication call leaves the old `i1` entry
+byte-for-byte unchanged when that entry is outside both writable areas. -/
+theorem matRowUpdate_mul_preserves_entry1 (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid) (i0 i1 : Fin 4)
+    (Q T scratch : RawPtr UInt64) (lenQ : Nat) (heap heap1 : RawHeap)
+    (entry1 : Polynomial (ZMod this._p.toNat))
+    (hQpos : 0 < lenQ) (hEntryPos : 0 < hgcdMatLen M hM i0)
+    (hT : heap.ValidU64Slice T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1))
+    (hScratch : heap.ValidU64Slice scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)))
+    (hQValid : heap.ValidU64Slice Q lenQ)
+    (hEntryValid : heap.ValidU64Slice (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0))
+    (hScratchQ : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)) Q lenQ)
+    (hScratchEntry : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0))
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0))
+    (hTEntry1 : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1)
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1))
+    (hScratchEntry1 : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0))
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1))
+    (hEntry1Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) entry1)
+    (hlayout : RawHeap.SameLayout heap heap1)
+    (hmul : Generated.StrictMul.dense_upoly_zp__mul_ir this T
+      (if lenQ ≥ hgcdMatLen M hM i0 then Q else hgcdMatPtr M hM i0)
+      (if lenQ ≥ hgcdMatLen M hM i0 then lenQ else hgcdMatLen M hM i0)
+      (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatPtr M hM i0 else Q)
+      (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatLen M hM i0 else lenQ)
+      scratch heap = .ok heap1) :
+    RawDensePolyRep this heap1 (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) entry1 := by
+  by_cases horder : lenQ ≥ hgcdMatLen M hM i0
+  · have hsame := mul_preserves_prefix this T Q lenQ
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0) scratch
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1) heap heap1 hQpos
+      hEntryPos horder
+      (by simpa [max_eq_left horder] using hT) hQValid hEntryValid
+      (by simpa [max_eq_left horder] using hScratch)
+      (by simpa [max_eq_left horder] using hScratchEntry)
+      (by simpa [max_eq_left horder] using hTEntry1)
+      (by simpa [max_eq_left horder] using hScratchEntry1)
+      (by simpa [horder] using hmul)
+    exact rawDensePolyRep_of_same_prefix this heap heap1
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1) entry1 hlayout hsame
+      hEntry1Rep
+  · have hle : lenQ ≤ hgcdMatLen M hM i0 := by omega
+    have hsame := mul_preserves_prefix this T (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) Q lenQ scratch (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) heap heap1 hEntryPos hQpos hle
+      (by simpa [max_eq_right hle] using hT) hEntryValid hQValid
+      (by simpa [max_eq_right hle] using hScratch)
+      (by simpa [max_eq_right hle] using hScratchQ)
+      (by simpa [max_eq_right hle] using hTEntry1)
+      (by simpa [max_eq_right hle] using hScratchEntry1)
+      (by simpa [horder] using hmul)
+    exact rawDensePolyRep_of_same_prefix this heap heap1
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1) entry1 hlayout hsame
+      hEntry1Rep
 
 /-- Algebraic result of the actual add call exposed by the nonzero row-update
 branch.  The product premise is supplied by strict `_mul`; this theorem then

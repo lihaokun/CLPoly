@@ -224,6 +224,10 @@
   真实执行的 `SameLayout`，并由每次 t1/t2 write 的地址帧证明 A/B 的
   `SlicePolyRep` 与 canonical 性在结果 heap 中保持。因此紧随其后的 P0
   递归不需要假设输入数组没有被改写。
+- 建立 Karatsuba 输入的联合 split 桥：从同一个长度 `m+h` 的真实 raw
+  slice 同时导出 low/high 的 `SlicePolyRep`、两段 canonical 条件，以及
+  `poly = low + X^m*high` 的精确 L2 分解。high 段的 canonical 证明通过
+  `readU64_add` 与原始数组地址对齐，不引入抽象数组切片。
 
 ## 当前边界
 

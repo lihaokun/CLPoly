@@ -378,6 +378,42 @@ theorem slicePolyRep_split_exists (heap : RawHeap) (ptr : RawPtr UInt64)
           highLength p high hrepHigh (degree - lowLength) (by omega),
         zero_add]
 
+theorem canonicalU64Prefix_split (heap : RawHeap)
+    (ptr : RawPtr UInt64) (lowLength highLength : Nat) (modulus : UInt64)
+    (hcanonical : CanonicalU64Prefix heap ptr (lowLength + highLength)
+      modulus) :
+    CanonicalU64Prefix heap ptr lowLength modulus ∧
+      CanonicalU64Prefix heap (ptr.add lowLength) highLength modulus := by
+  constructor
+  · intro k value hk hread
+    exact hcanonical k value (by omega) hread
+  · intro k value hk hread
+    apply hcanonical (lowLength + k) value (by omega)
+    rw [RawHeap.readU64_add] at hread
+    exact hread
+
+/-- Split a represented raw input exactly as one Karatsuba level consumes it,
+including both machine-canonical sub-slices and the L2 shift decomposition. -/
+theorem splitSlicePolyRepCanonical (heap : RawHeap)
+    (ptr : RawPtr UInt64) (lowLength highLength p : Nat)
+    (poly : Polynomial (ZMod p)) (modulus : UInt64)
+    (hvalid : heap.ValidU64Slice ptr (lowLength + highLength))
+    (hrep : SlicePolyRep heap ptr (lowLength + highLength) p poly)
+    (hcanonical : CanonicalU64Prefix heap ptr (lowLength + highLength)
+      modulus) :
+    ∃ low high : Polynomial (ZMod p),
+      SlicePolyRep heap ptr lowLength p low ∧
+      SlicePolyRep heap (ptr.add lowLength) highLength p high ∧
+      CanonicalU64Prefix heap ptr lowLength modulus ∧
+      CanonicalU64Prefix heap (ptr.add lowLength) highLength modulus ∧
+      poly = low + Polynomial.X ^ lowLength * high := by
+  rcases slicePolyRep_split_exists heap ptr lowLength highLength p poly hvalid
+      hrep with ⟨low, high, hrepLow, hrepHigh, hsplit⟩
+  rcases canonicalU64Prefix_split heap ptr lowLength highLength modulus
+      hcanonical with ⟨hcanonicalLow, hcanonicalHigh⟩
+  exact ⟨low, high, hrepLow, hrepHigh, hcanonicalLow, hcanonicalHigh,
+    hsplit⟩
+
 theorem slicePolyRep_join (heap : RawHeap) (ptr : RawPtr UInt64)
     (lowLength highLength p : Nat)
     (low high : Polynomial (ZMod p))

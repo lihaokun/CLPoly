@@ -2177,6 +2177,53 @@ theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
     hidentity, hdegree, hlt,
     hdecrease, rfl, rfl, rfl, rfl, rfl⟩
 
+/-- The nonempty second-call input is obtained by slicing the actual divisor
+and remainder buffers at the generated `k`.  No heap write or L2 evaluation
+is used to create `c0` or `d0`; a zero remainder suffix uses only its physical
+zero-length validity. -/
+theorem hgcdRecursiveMiddle_suffix_reps (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (result : HgcdRecursiveMiddleResult)
+    (divisor remainder : Polynomial (ZMod this._p.toNat))
+    (hDivisor : RawDensePolyRep this result.heap b2 lenB2 divisor)
+    (hRemainder : RawDensePolyRep this result.heap d result.lenD remainder)
+    (hD0Valid : result.heap.ValidU64Slice result.d0 result.lenD0)
+    (hC0Pos : 0 < result.lenC0)
+    (hrun : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
+      .ok result) :
+    ∃ cPoly dPoly : Polynomial (ZMod this._p.toNat),
+      RawDensePolyRep this result.heap result.c0 result.lenC0 cPoly ∧
+      RawDensePolyRep this result.heap result.d0 result.lenD0 dPoly := by
+  have hlayout := hgcdRecursiveMiddle_layout this q d a2 b2 lenA2 lenB2 m
+    W3 heap result hrun
+  have hkB : result.k ≤ lenB2 := by
+    rw [hlayout.2.2.2.1] at hC0Pos
+    split at hC0Pos
+    next hk => exact hk
+    next hk => simp at hC0Pos
+  rcases rawDensePolyRep_split_suffix this result.heap b2 lenB2 result.k
+      divisor hkB hDivisor with ⟨cLow, cPoly, hCLow, hCRep, hCSplit⟩
+  have hCResult : RawDensePolyRep this result.heap result.c0 result.lenC0
+      cPoly := by
+    rw [hlayout.2.2.1, hlayout.2.2.2.1]
+    simp [hkB]
+    exact hCRep
+  by_cases hkD : result.k ≤ result.lenD
+  · rcases rawDensePolyRep_split_suffix this result.heap d result.lenD
+        result.k remainder hkD hRemainder with
+      ⟨dLow, dPoly, hDLow, hDRep, hDSplit⟩
+    refine ⟨cPoly, dPoly, hCResult, ?_⟩
+    rw [hlayout.2.2.2.2.1, hlayout.2.2.2.2.2]
+    simp [hkD]
+    exact hDRep
+  · have hLenD0 : result.lenD0 = 0 := by
+      rw [hlayout.2.2.2.2.2]
+      simp [hkD]
+    have hZero := rawDensePolyRep_zero_length this result.heap result.d0
+      (by simpa [hLenD0] using hD0Valid)
+    exact ⟨cPoly, 0, hCResult, by simpa [hLenD0] using hZero⟩
+
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/
 theorem rawDensePolyRep_one_of_read_one (this : DenseUPolyZp)

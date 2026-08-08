@@ -209,6 +209,7 @@ def main() -> None:
         "hgcdRecursiveMiddle_lenC0_lt",
         "hgcdRecursiveMiddle_lenD0_lt_lenC0",
         "hgcdRecursiveMiddle_refines",
+        "hgcdRecursiveMiddle_suffix_reps",
         "normalize_gcd_eq_of_hgcd_transform",
         "HgcdTransform",
         "hgcdTransform_euclid_step",

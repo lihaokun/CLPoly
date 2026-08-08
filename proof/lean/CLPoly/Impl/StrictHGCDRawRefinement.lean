@@ -1868,6 +1868,60 @@ theorem hgcdEarlyMatrixLoop_zero_refines (this : DenseUPolyZp)
   rw [hLength]
   simpa [hgcdMatPtr, hgcdMatPtrRaw] using hcopies.2 j
 
+/-- A normalized polynomial outside all four matrix destinations is framed by
+the complete generated early-copy loop. -/
+theorem hgcdEarlyMatrixLoop_preserves_rawDenseRep (this : DenseUPolyZp)
+    (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid)
+    (i : Nat) (heap : RawHeap) (result : HgcdEarlyMatrixResult)
+    (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hwork : HgcdEarlyMatrixWorkspace heap M R hM hR)
+    (hframe : ∀ j : Fin 4, U64SlicesDisjoint
+      (hgcdMatPtrRaw M hM j) (hgcdMatLenRaw R hR j) ptr length)
+    (hrep : RawDensePolyRep this heap ptr length poly)
+    (hrun : hgcdEarlyMatrixLoop M R hM hR i heap = .ok result) :
+    RawDensePolyRep this result.heap ptr length poly := by
+  rw [hgcdEarlyMatrixLoop] at hrun
+  split at hrun
+  next hi =>
+    dsimp only at hrun
+    split at hrun
+    next fault hcopy => simp at hrun
+    next heap1 hcopy =>
+      let index : Fin 4 := ⟨i, hi⟩
+      have hcopyFrame := copyU64_preserves_rawDenseRep this heap heap1
+        (hgcdMatPtrRaw M hM index) (hgcdMatPtrRaw R hR index)
+        (hgcdMatLenRaw R hR index) ptr length poly
+        (hwork.targetValid index) (hwork.sourceValid index) (hframe index)
+        hcopy hrep
+      have hpreserved := hcopyFrame.2
+      let nextLen := M.len.set i (hgcdMatLenRaw R hR index)
+        (by rw [hM.2]; exact hi)
+      let next : HgcdMat := { M with len := nextLen }
+      have hNext : next.Valid := by
+        exact ⟨hM.1, by simp [next, nextLen, hM.2]⟩
+      have hwork1 : HgcdEarlyMatrixWorkspace heap1 next R hNext hR := by
+        exact {
+          targetValid := fun j => by
+            apply (hcopyFrame.1 _ _).mp
+            simpa [next, hgcdMatPtrRaw] using hwork.targetValid j
+          sourceValid := fun j => by
+            apply (hcopyFrame.1 _ _).mp
+            exact hwork.sourceValid j }
+      have hframe1 : ∀ j : Fin 4, U64SlicesDisjoint
+          (hgcdMatPtrRaw next hNext j) (hgcdMatLenRaw R hR j) ptr length := by
+        intro j
+        simpa [next, hgcdMatPtrRaw] using hframe j
+      exact hgcdEarlyMatrixLoop_preserves_rawDenseRep this next R hNext hR
+        (i + 1) heap1 result ptr length poly hwork1 hframe1 hpreserved hrun
+  next hi =>
+    have heq : result = HgcdEarlyMatrixResult.mk heap M :=
+      (Except.ok.inj hrun).symm
+    subst result
+    exact hrep
+termination_by 4 - i
+decreasing_by omega
+
 structure HgcdEarlyReturnWorkspace (heap : RawHeap)
     (M R : HgcdMat) (hM : M.Valid) (hR : R.Valid)
     (A B a2 b2 : RawPtr UInt64) (lenA2 lenB2 : Nat) : Prop where

@@ -198,6 +198,7 @@ def main() -> None:
         "hgcdEarlyMatrixLoop_terminates",
         "hgcdEarlyMatrixLoop_copies",
         "hgcdEarlyMatrixLoop_zero_refines",
+        "hgcdEarlyMatrixLoop_preserves_rawDenseRep",
         "HgcdEarlyReturnWorkspace",
         "hgcdRecursiveEarlyReturn_terminates",
         "normalize_gcd_eq_of_hgcd_transform",

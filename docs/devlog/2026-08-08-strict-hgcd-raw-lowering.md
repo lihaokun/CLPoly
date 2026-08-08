@@ -75,6 +75,11 @@ HGCD source gate；下一步是将同一循环的四次 heap 写入组合成每�
 `R` 的四个 L2 多项式。该证明没有从描述符相等推测 heap 内容，也没有调用
 任何规格 oracle 或 L2 执行回退。
 
+矩阵复制循环另有通用 raw frame 定理：只要一个活跃多项式切片与四个目标
+区域逐项不相交，真实循环成功后其完整 normalized 表示保持不变。该结论将
+直接用于外围早退函数的 A/B 两次恢复，保证随后的可选矩阵复制不会覆盖
+刚写回的 A、B。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

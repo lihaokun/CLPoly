@@ -76,7 +76,6 @@ theorem mulZeroPadLoop_refines (bPad : RawPtr UInt64)
 termination_by count - i
 decreasing_by omega
 
-/-- The generated zero loop only writes inside its destination slice. -/
 theorem mulZeroPadLoop_preserves_prefix (bPad guard : RawPtr UInt64)
     (start count i guardLength : Nat) (heap heap' : RawHeap)
     (hPad : heap.ValidU64Slice bPad (start + count))
@@ -104,6 +103,129 @@ theorem mulZeroPadLoop_preserves_prefix (bPad guard : RawPtr UInt64)
     exact hread
 termination_by count - i
 decreasing_by omega
+
+theorem mulZeroPadLoop_sameLayout (bPad : RawPtr UInt64)
+    (start count i : Nat) (heap heap' : RawHeap)
+    (hPad : heap.ValidU64Slice bPad (start + count))
+    (hrun : mulZeroPadLoop bPad start count i heap = .ok heap') :
+    RawHeap.SameLayout heap heap' := by
+  rw [mulZeroPadLoop] at hrun
+  split at hrun
+  next hmore =>
+    rcases heap.writeU64_of_valid bPad (start + count) (start + i) 0 hPad
+      (by omega) with ⟨heap1, hwrite⟩
+    simp only [hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 bPad
+      (start + i) 0 hwrite
+    have hPad1 := (hlayout1 bPad (start + count)).mp hPad
+    have hlayout2 := mulZeroPadLoop_sameLayout bPad start count (i + 1)
+      heap1 heap' hPad1 hrun
+    exact fun ptr length =>
+      (hlayout1 ptr length).trans (hlayout2 ptr length)
+  next hdone =>
+    simp only [Except.ok.injEq] at hrun
+    subst heap'
+    exact fun _ _ => Iff.rfl
+termination_by count - i
+decreasing_by omega
+
+/-- The complete generated `_mul` dispatcher only writes C and scratch. -/
+theorem mul_preserves_prefix (this : DenseUPolyZp)
+    (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
+    (scratch guard : RawPtr UInt64) (guardLen : Nat)
+    (heap heap' : RawHeap)
+    (hApos : 0 < lenA) (hBpos : 0 < lenB) (hBA : lenB ≤ lenA)
+    (hC : heap.ValidU64Slice C (2 * lenA - 1))
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hScratch : heap.ValidU64Slice scratch (8 * lenA))
+    (hScratchB : U64SlicesDisjoint scratch (8 * lenA) B lenB)
+    (hCGuard : U64SlicesDisjoint C (2 * lenA - 1) guard guardLen)
+    (hScratchGuard : U64SlicesDisjoint scratch (8 * lenA) guard guardLen)
+    (hrun : dense_upoly_zp__mul_ir this C A lenA B lenB scratch heap =
+      .ok heap') :
+    SameU64Prefix heap heap' guard guardLen := by
+  have hassert : lenB ≤ lenA ∧ 0 < lenB := ⟨hBA, hBpos⟩
+  by_cases hschool : lenB < 16
+  · have hrunSchool : dense_upoly_zp__classical_mul_ir this C A lenA B lenB
+        heap = .ok heap' := by
+      simpa [dense_upoly_zp__mul_ir, hassert, hschool] using hrun
+    exact classicalMul_preserves_outside this C A lenA B lenB guard guardLen
+      heap heap' hApos hBpos
+      (heap.validU64Slice_mono C (2 * lenA - 1) (lenA + lenB - 1) hC
+        (by omega)) hA hB
+      (u64SlicesDisjoint_mono hCGuard (by omega) (by omega)) hrunSchool
+  · let bPad := scratch
+    let karScratch := scratch.add lenA
+    cases hcopy : heap.copyU64 bPad B lenB with
+    | error fault =>
+        simp [dense_upoly_zp__mul_ir, hassert, hschool, bPad, karScratch,
+          hcopy] at hrun
+    | ok heap1 =>
+        cases hzero : mulZeroPadLoop bPad lenB (lenA - lenB) 0 heap1 with
+        | error fault =>
+            simp [dense_upoly_zp__mul_ir, hassert, hschool, bPad, karScratch,
+              hcopy, hzero] at hrun
+        | ok heap2 =>
+            have hkar : dense_upoly_zp__kar_mul_ir this C A bPad lenA
+                karScratch heap2 = .ok heap' := by
+              simpa [dense_upoly_zp__mul_ir, hassert, hschool, bPad,
+                karScratch, hcopy, hzero] using hrun
+            have hBPad : heap.ValidU64Slice bPad lenA := by
+              dsimp [bPad]
+              exact heap.validU64Slice_mono scratch (8 * lenA) lenA hScratch
+                (by omega)
+            have hBPadPrefix := heap.validU64Slice_mono bPad lenA lenB hBPad hBA
+            have hPadB : U64SlicesDisjoint bPad lenB B lenB := by
+              dsimp [bPad]
+              exact u64SlicesDisjoint_mono hScratchB (by omega) (by omega)
+            rcases copyU64_refines_disjoint heap bPad B lenB hBPadPrefix hB
+              hPadB with ⟨copyHeap, hcopy', hlayout1, _⟩
+            have heq1 : copyHeap = heap1 := Except.ok.inj (hcopy'.symm.trans hcopy)
+            subst copyHeap
+            have hBPad1 := (hlayout1 bPad lenA).mp hBPad
+            have hlayout2 := mulZeroPadLoop_sameLayout bPad lenB
+              (lenA - lenB) 0 heap1 heap2
+              (by simpa [Nat.add_sub_of_le hBA] using hBPad1) hzero
+            have hcopyGuard := copyU64_preserves_prefix heap heap1 bPad B guard
+              lenB guardLen hBPadPrefix hB
+              (by
+                dsimp [bPad]
+                exact u64SlicesDisjoint_mono hScratchGuard (by omega) (by omega))
+              hcopy
+            have hzeroGuard := mulZeroPadLoop_preserves_prefix bPad guard lenB
+              (lenA - lenB) 0 guardLen heap1 heap2
+              (by simpa [Nat.add_sub_of_le hBA] using hBPad1)
+              (by
+                dsimp [bPad]
+                simpa [Nat.add_sub_of_le hBA] using
+                  u64SlicesDisjoint_mono hScratchGuard
+                    (smallLeft := lenA) (smallRight := guardLen)
+                    (by omega) (by omega)) hzero
+            have hNeed := karScratchNeed_le_seven lenA
+            have hKarScratch : heap.ValidU64Slice karScratch
+                (karScratchNeed lenA) := by
+              dsimp [karScratch]
+              exact heap.validU64Slice_add scratch (8 * lenA) lenA
+                (karScratchNeed lenA) hScratch (by omega)
+            have hkarGuard := karMul_preserves_prefix this C A bPad lenA
+              karScratch guard guardLen heap2 heap' hApos
+              ((hlayout2 C (2 * lenA - 1)).mp
+                ((hlayout1 C (2 * lenA - 1)).mp hC))
+              ((hlayout2 A lenA).mp ((hlayout1 A lenA).mp hA))
+              ((hlayout2 bPad lenA).mp hBPad1)
+              ((hlayout2 karScratch (karScratchNeed lenA)).mp
+                ((hlayout1 karScratch (karScratchNeed lenA)).mp hKarScratch))
+              hCGuard
+              (by
+                dsimp [karScratch]
+                exact u64SlicesDisjoint_add_left hScratchGuard (by
+                  calc
+                    lenA + karScratchNeed lenA ≤ lenA + 7 * lenA :=
+                      Nat.add_le_add_left hNeed lenA
+                    _ = 8 * lenA := by omega)) hkar
+            exact sameU64Prefix_trans hcopyGuard
+              (sameU64Prefix_trans hzeroGuard hkarGuard)
 
 /-- Semantic refinement of the actual generated `_mul` dispatcher.  The
 Karatsuba branch copies and pads B in the C++ scratch allocation before

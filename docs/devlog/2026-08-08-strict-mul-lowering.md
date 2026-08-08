@@ -290,6 +290,10 @@
   两个输入 buffer 的真实 normalization 固定点推出两者最高系数非零，再由
   输出 `SlicePolyRep` 的末 cell 读取证明乘积末 cell 非零，最后展开实际
   `normaliseU64` 首次扫描得到固定长度；没有假设或调用 L2 normalization。
+- 新增完整 `_mul` dispatcher 的 guard frame：schoolbook 分支沿真实 outer
+  loop 保持 guard；Karatsuba 分支组合 B copy、零填充和 `_kar_mul` 三段的
+  逐 cell frame，并新增零填充的 `SameLayout` 良基证明。只要 guard 与 C、
+  scratch 地址不相交，整个调用保持其 raw 内容，供 HGCD 随后的矩阵加法使用。
 
 ## 当前边界
 

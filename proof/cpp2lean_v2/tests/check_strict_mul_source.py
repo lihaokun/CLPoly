@@ -143,6 +143,7 @@ def main() -> None:
             f"strict multiplication dispatcher contains forbidden constructs: {found}"
         )
     for fragment in ("mulZeroPadLoop_refines", "mul_refines_slice",
+                     "mulZeroPadLoop_sameLayout", "mul_preserves_prefix",
                      "mul_refines_rawDense",
                      "mul_last_coeff_ne_zero_of_rawDense"):
         if fragment not in dispatch_refinement:

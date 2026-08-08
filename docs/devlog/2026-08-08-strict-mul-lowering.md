@@ -146,6 +146,12 @@
   穿过更早 dst 写入保持不变，当前 cell 写入真实 `nmod_sub`，再穿过其余循环
   保持到最终 heap。由逐 cell 结论闭合完整 `SlicePolyRep (left-right)` 和输出
   `CanonicalU64Prefix`，可用于同一 scratch allocation 内相邻 P1/P0 分区。
+- 闭合 `karAssembleLoop_value`：更早的 C 写入保持目标 `C[m+k]` 与 P1[k]
+  原始 reads，当前迭代执行真实 `nmod_add` write，后续写入再保持该结果。C/P1
+  的帧条件采用地址级 slice 不相交，可直接对应输出 allocation 与 scratch。
+- 将组装逐 cell 结论提升为完整多项式表示：低于 m 的 C prefix 由真实帧保持，
+  `[m,m+count)` 逐项加入 P1，slice 外双方系数均为零，最终精确得到
+  `basePoly + X^m * crossPoly`；同时证明整个 C 输出区间仍为规范模 p cells。
 
 ## 当前边界
 

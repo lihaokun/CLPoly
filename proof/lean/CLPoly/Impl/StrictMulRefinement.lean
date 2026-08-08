@@ -1054,6 +1054,166 @@ theorem karAssembleLoop_preserves_outside (this : DenseUPolyZp)
 termination_by count - i
 decreasing_by omega
 
+theorem karAssembleLoop_value (this : DenseUPolyZp)
+    (C sP1 : RawPtr UInt64) (m count i k : Nat)
+    (heap heap' : RawHeap) (base cross : UInt64)
+    (hC : heap.ValidU64Slice C (m + count))
+    (hP1 : heap.ValidU64Slice sP1 count)
+    (hCP1 : U64SlicesDisjoint C (m + count) sP1 count)
+    (hik : i ≤ k) (hkc : k < count)
+    (hbase : heap.readU64 C (m + k) = .ok base)
+    (hcross : heap.readU64 sP1 k = .ok cross)
+    (hrun : karAssembleLoop this C sP1 m count i heap = .ok heap') :
+    heap'.readU64 C (m + k) =
+      .ok (dense_upoly_zp_nmod_add_ir this base cross) := by
+  unfold karAssembleLoop at hrun
+  split at hrun
+  next hi =>
+    rcases heap.readU64_of_valid C (m + count) (m + i) hC (by omega) with
+      ⟨baseI, hbaseI⟩
+    simp only [hbaseI] at hrun
+    rcases heap.readU64_of_valid sP1 count i hP1 hi with
+      ⟨crossI, hcrossI⟩
+    simp only [hcrossI] at hrun
+    let value := dense_upoly_zp_nmod_add_ir this baseI crossI
+    rcases heap.writeU64_of_valid C (m + count) (m + i) value hC
+      (by omega) with ⟨heap1, hw⟩
+    simp only [value, hw] at hrun
+    have hlayout := RawHeap.writeU64_sameLayout heap heap1 C (m + i) value hw
+    by_cases heq : k = i
+    · subst k
+      have hbaseEq : baseI = base := Except.ok.inj (hbaseI.symm.trans hbase)
+      have hcrossEq : crossI = cross := Except.ok.inj
+        (hcrossI.symm.trans hcross)
+      subst baseI
+      subst crossI
+      have hnow := RawHeap.readU64_writeU64_same heap heap1 C (m + i)
+        value hw
+      apply karAssembleLoop_preserves_outside this C sP1 C m count (i + 1)
+        (m + i) heap1 heap' value ((hlayout C (m + count)).mp hC)
+        ((hlayout sP1 count).mp hP1) hnow
+      · intro j _ _
+        exact Or.inr (by omega)
+      · simpa [value] using hrun
+    · have hik' : i + 1 ≤ k := by omega
+      have hbase1 := RawHeap.readU64_writeU64_ne heap heap1 C C (m + i)
+        (m + k) value base hw hbase (Or.inr (by omega))
+      have hcross1 := RawHeap.readU64_writeU64_ne heap heap1 C sP1
+        (m + i) k value cross hw hcross (hCP1 (m + i) (by omega) k hkc)
+      exact karAssembleLoop_value this C sP1 m count (i + 1) k heap1
+        heap' base cross ((hlayout C (m + count)).mp hC)
+        ((hlayout sP1 count).mp hP1) hCP1 hik' hkc hbase1 hcross1
+        (by simpa [value] using hrun)
+  next hdone => omega
+termination_by count - i
+decreasing_by omega
+
+theorem karAssembleLoop_refines_slice (this : DenseUPolyZp)
+    (C sP1 : RawPtr UInt64) (m count : Nat) (heap heap' : RawHeap)
+    (basePoly crossPoly : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hC : heap.ValidU64Slice C (m + count))
+    (hP1 : heap.ValidU64Slice sP1 count)
+    (hCP1 : U64SlicesDisjoint C (m + count) sP1 count)
+    (hCanonicalC : CanonicalU64Prefix heap C (m + count) this._p)
+    (hCanonicalP1 : CanonicalU64Prefix heap sP1 count this._p)
+    (hRepC : SlicePolyRep heap C (m + count) this._p.toNat basePoly)
+    (hRepP1 : SlicePolyRep heap sP1 count this._p.toNat crossPoly)
+    (hrun : karAssembleLoop this C sP1 m count 0 heap = .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' C (m + count) this._p.toNat
+        (basePoly + Polynomial.X ^ m * crossPoly) ∧
+      CanonicalU64Prefix heap' C (m + count) this._p := by
+  rcases karAssembleLoop_ok this C sP1 m count 0 heap hC hP1 with
+    ⟨okHeap, hok, hlayout⟩
+  have heq : okHeap = heap' := Except.ok.inj (hok.symm.trans hrun)
+  subst okHeap
+  have hC' := (hlayout C (m + count)).mp hC
+  rcases slicePolyRep_exists_unique heap' C (m + count) this._p.toNat hC' with
+    ⟨output, hRepOutput, _⟩
+  have houtput : output = basePoly + Polynomial.X ^ m * crossPoly := by
+    ext degree
+    by_cases hd : degree < m + count
+    · rcases slicePolyRep_coeff heap C (m + count) this._p.toNat basePoly
+        hRepC degree hd with ⟨base, hbase, hcoeffBase⟩
+      rcases slicePolyRep_coeff heap' C (m + count) this._p.toNat output
+        hRepOutput degree hd with ⟨result, hresult, hcoeffResult⟩
+      by_cases hdm : degree < m
+      · have hpreserved := karAssembleLoop_preserves_outside this C sP1 C
+          m count 0 degree heap heap' base hC hP1 hbase
+          (by
+            intro j _ _
+            exact Or.inr (by omega)) hrun
+        have hresultEq : result = base :=
+          Except.ok.inj (hresult.symm.trans hpreserved)
+        rw [Polynomial.coeff_add, Polynomial.coeff_X_pow_mul', if_neg (by omega),
+          hcoeffResult, hresultEq, hcoeffBase, add_zero]
+      · let k := degree - m
+        have hk : k < count := by
+          dsimp [k]
+          omega
+        have hdegree : m + k = degree := by
+          dsimp [k]
+          omega
+        rcases slicePolyRep_coeff heap sP1 count this._p.toNat crossPoly
+          hRepP1 k hk with ⟨cross, hcross, hcoeffCross⟩
+        have hvalue := karAssembleLoop_value this C sP1 m count 0 k heap
+          heap' base cross hC hP1 hCP1 (by omega) hk
+          (by simpa [hdegree] using hbase) hcross hrun
+        have hresultEq : result = dense_upoly_zp_nmod_add_ir this base cross :=
+          Except.ok.inj (hresult.symm.trans (by simpa [hdegree] using hvalue))
+        have hbaseLt : base < this._p := by
+          simpa [UInt64.lt_iff_toNat_lt] using
+            hCanonicalC degree base hd hbase
+        have hcrossLt : cross < this._p := by
+          simpa [UInt64.lt_iff_toNat_lt] using
+            hCanonicalP1 k cross hk hcross
+        rw [Polynomial.coeff_add, Polynomial.coeff_X_pow_mul', if_pos (by omega),
+          hcoeffResult, hresultEq, nmodAdd_cast this base cross hp hbaseLt
+            hcrossLt,
+          hcoeffBase]
+        simpa [k, hdegree] using hcoeffCross.symm
+    · rw [slicePolyRep_coeff_zero_of_length_le heap' C (m + count)
+          this._p.toNat output hRepOutput degree (by omega),
+        Polynomial.coeff_add,
+        slicePolyRep_coeff_zero_of_length_le heap C (m + count)
+          this._p.toNat basePoly hRepC degree (by omega),
+        Polynomial.coeff_X_pow_mul', if_pos (by omega),
+        slicePolyRep_coeff_zero_of_length_le heap sP1 count
+          this._p.toNat crossPoly hRepP1 (degree - m) (by omega), add_zero]
+  subst output
+  refine ⟨hlayout, hRepOutput, ?_⟩
+  intro degree value hd hread
+  rcases slicePolyRep_coeff heap C (m + count) this._p.toNat basePoly
+    hRepC degree hd with ⟨base, hbase, _⟩
+  by_cases hdm : degree < m
+  · have hpreserved := karAssembleLoop_preserves_outside this C sP1 C
+      m count 0 degree heap heap' base hC hP1 hbase
+      (by
+        intro j _ _
+        exact Or.inr (by omega)) hrun
+    have hvalueEq : value = base := Except.ok.inj (hread.symm.trans hpreserved)
+    subst value
+    exact hCanonicalC degree base hd hbase
+  · let k := degree - m
+    have hk : k < count := by
+      dsimp [k]
+      omega
+    have hdegree : m + k = degree := by
+      dsimp [k]
+      omega
+    rcases slicePolyRep_coeff heap sP1 count this._p.toNat crossPoly
+      hRepP1 k hk with ⟨cross, hcross, _⟩
+    have hresult := karAssembleLoop_value this C sP1 m count 0 k heap
+      heap' base cross hC hP1 hCP1 (by omega) hk
+      (by simpa [hdegree] using hbase) hcross hrun
+    have hvalueEq : value = dense_upoly_zp_nmod_add_ir this base cross :=
+      Except.ok.inj (hread.symm.trans (by simpa [hdegree] using hresult))
+    subst value
+    exact nmodAdd_lt this base cross hp
+      (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalC degree base hd hbase)
+      (by simpa [UInt64.lt_iff_toNat_lt] using hCanonicalP1 k cross hk hcross)
+
 theorem karPrepareHalves_preserves_region_ne (this : DenseUPolyZp)
     (A B t1 t2 guard : RawPtr UInt64) (m h guardLen : Nat)
     (heap heap' : RawHeap)

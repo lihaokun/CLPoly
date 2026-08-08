@@ -486,4 +486,69 @@ theorem hgcdMatRestoreLoop_poly_eq
 termination_by 4 - i
 decreasing_by omega
 
+/-- At the generated entry index, the pure descriptor effect is the four
+source-order pointer writes. -/
+theorem hgcdMatRestorePointers_zero_effect (original : HgcdMat)
+    (hOriginal : original.Valid) (poly : Array (RawPtr UInt64))
+    (hPoly : poly.size = 4) :
+    hgcdMatRestorePointers original hOriginal poly hPoly 0 =
+      (((poly.set 0 (hgcdMatPtrRaw original hOriginal ⟨0, by omega⟩)
+          (by omega)).set 1
+          (hgcdMatPtrRaw original hOriginal ⟨1, by omega⟩) (by simp [hPoly])).set 2
+          (hgcdMatPtrRaw original hOriginal ⟨2, by omega⟩) (by simp [hPoly])).set 3
+          (hgcdMatPtrRaw original hOriginal ⟨3, by omega⟩) (by simp [hPoly]) := by
+  simp [hgcdMatRestorePointers]
+
+/-- Consequently all four returned descriptors use the exact pointers saved
+before the iterator call. -/
+theorem hgcdMatRestorePointers_zero (original : HgcdMat)
+    (hOriginal : original.Valid) (poly : Array (RawPtr UInt64))
+    (hPoly : poly.size = 4) :
+    hgcdMatRestorePointers original hOriginal poly hPoly 0 = original.poly := by
+  rw [hgcdMatRestorePointers_zero_effect]
+  apply Array.ext
+  · simp [hPoly, hOriginal.1]
+  · intro i hleft hright
+    have hi : i < 4 := by simpa [hOriginal.1] using hright
+    have hcases : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
+    rcases hcases with rfl | rfl | rfl | rfl <;>
+      simp only [Array.getElem_set, hgcdMatPtrRaw] <;> simp
+
+/-- The complete second generated loop restores all saved pointers while
+retaining the iterator-produced lengths. -/
+theorem hgcdMatRestoreLoop_zero_descriptors
+    (original current : HgcdMat)
+    (hOriginal : original.Valid) (hCurrent : current.Valid)
+    (stage : RawPtr UInt64) (heap : RawHeap)
+    (result : HgcdMatRestoreResult)
+    (hrun : hgcdMatRestoreLoop original current hOriginal hCurrent stage
+      0 0 heap = .ok result) :
+    result.matrix.Valid ∧ result.matrix.poly = original.poly ∧
+      result.matrix.len = current.len := by
+  have hvalidLen := hgcdMatRestoreLoop_preserves_valid_len original current
+    hOriginal hCurrent stage 0 0 heap result hrun
+  have hpoly := hgcdMatRestoreLoop_poly_eq original current hOriginal hCurrent
+    stage 0 0 heap result hrun
+  exact ⟨hvalidLen.1,
+    hpoly.trans (hgcdMatRestorePointers_zero original hOriginal current.poly hCurrent.1),
+    hvalidLen.2⟩
+
+/-- Thus the exact two-loop source stabilization block restores the pre-call
+pointers and preserves the post-call lengths on every successful execution. -/
+theorem hgcdMatStabilize_preserves_descriptors
+    (original current : HgcdMat)
+    (hOriginal : original.Valid) (hCurrent : current.Valid)
+    (stage : RawPtr UInt64) (heap : RawHeap)
+    (result : HgcdMatRestoreResult)
+    (hrun : hgcdMatStabilize original current hOriginal hCurrent stage heap =
+      .ok result) :
+    result.matrix.Valid ∧ result.matrix.poly = original.poly ∧
+      result.matrix.len = current.len := by
+  rw [hgcdMatStabilize] at hrun
+  split at hrun
+  next fault hstage => simp at hrun
+  next staged hstage =>
+    exact hgcdMatRestoreLoop_zero_descriptors original current hOriginal hCurrent
+      stage staged.heap result hrun
+
 end Generated.StrictHGCD

@@ -27,6 +27,47 @@ def HgcdMatPolyRep (heap : RawHeap) (M : HgcdMat) (p : Nat)
   ∀ i : Fin 4, SlicePolyRep heap (hgcdMatPtr M hM i)
     (hgcdMatLen M hM i) p (entries i)
 
+/-- Pointwise heap-frame transport for all four matrix entries. -/
+theorem hgcdMatPolyRep_of_same_prefixes (before after : RawHeap)
+    (M : HgcdMat) (p : Nat) (entries : Fin 4 → Polynomial (ZMod p))
+    (hM : M.Valid) (hlayout : RawHeap.SameLayout before after)
+    (hvalid : ∀ i : Fin 4, before.ValidU64Slice
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i))
+    (hsame : ∀ i : Fin 4, SameU64Prefix before after
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i))
+    (hrep : HgcdMatPolyRep before M p entries hM) :
+    HgcdMatPolyRep after M p entries hM := by
+  intro i
+  exact slicePolyRep_of_same_prefix before after (hgcdMatPtr M hM i)
+    (hgcdMatLen M hM i) p (entries i) (hvalid i)
+    ((hlayout (hgcdMatPtr M hM i) (hgcdMatLen M hM i)).mp (hvalid i))
+    (hsame i) (hrep i)
+
+/-- A successful generated recursive memcpy preserves a represented HGCD
+matrix whenever its destination is disjoint from every live matrix slice. -/
+theorem copyU64_preserves_hgcdMatPolyRep (heap heap' : RawHeap)
+    (dst src : RawPtr UInt64) (count : Nat) (M : HgcdMat) (p : Nat)
+    (entries : Fin 4 → Polynomial (ZMod p)) (hM : M.Valid)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hValidMatrix : ∀ i : Fin 4, heap.ValidU64Slice
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i))
+    (hMatrix : ∀ i : Fin 4, U64SlicesDisjoint dst count
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i))
+    (hcopy : heap.copyU64 dst src count = .ok heap')
+    (hrep : HgcdMatPolyRep heap M p entries hM) :
+    RawHeap.SameLayout heap heap' ∧
+      HgcdMatPolyRep heap' M p entries hM := by
+  rcases copyU64_ok heap dst src count hDst hSrc with
+    ⟨copyHeap, hcopy', hlayout⟩
+  have heq : copyHeap = heap' := Except.ok.inj (hcopy'.symm.trans hcopy)
+  subst copyHeap
+  refine ⟨hlayout, hgcdMatPolyRep_of_same_prefixes heap heap' M p entries
+    hM hlayout hValidMatrix ?_ hrep⟩
+  intro i
+  exact copyU64_preserves_prefix heap heap' dst src (hgcdMatPtr M hM i)
+    count (hgcdMatLen M hM i) hDst hSrc (hMatrix i) hcopy
+
 noncomputable def identityEntries (p : Nat) : Fin 4 → Polynomial (ZMod p)
   | ⟨0, _⟩ => 1
   | ⟨1, _⟩ => 0

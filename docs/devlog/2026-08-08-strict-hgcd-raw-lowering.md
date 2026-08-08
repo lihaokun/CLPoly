@@ -52,6 +52,8 @@
 包括有效性、canonical、L2 slice 语义和 normalization。
 - `_mat_one` 的两次真实 `writeU64` 现已具备外部 prefix frame，因此后续
   初始化组合可证明单位矩阵写入不会改变 `a/b` 输入，而不是假设输入幸存。
+- 四项 `HgcdMatPolyRep` 现可由逐项 layout/prefix frame 整体传递，并已
+  专门连接到真实 recursive memcpy；矩阵切片有效性保持为显式 L1 条件。
 
 下一步证明初始化 copy 的表示传递，以及每轮 divrem/两次行更新共同保持
 Euclid 对与矩阵变换关系，最终导出循环停止条件和 GCD 不变式。

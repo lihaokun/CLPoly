@@ -25,6 +25,8 @@ from pass1_parse import parse_pass
 
 EXPECTED = {
     "_mat_one": "82467677117ac0f62183eb2d4ff8879c7297787a0ba8a5523150027b6aff03dc",
+    "_mat_mul_entry": "199e5d1816f26ac0bad8b73aa82635b819f076b04bff05059b34e1ab612b6743",
+    "_mat_mul": "a0662968653fa7e702dabc8c2f4bbfdcaa843e390ce829f07659a4993983388d",
     "_mat_row_update": "193d713664e9c1c8c08989e0c113a1c876a77be8ca8892ebe11cd972d03da8bf",
     "_hgcd_iter": "b4bdca04357c87b7f56b7ace1824b6bcd1c244b66f696638359134cce29a9a4d",
     "_hgcd_recursive": "a39dc9dc390042e7873087b671ff4721b1dd0ba1d9c7b25dbd4a12b6acf29191",
@@ -34,9 +36,12 @@ EXPECTED = {
 
 REQUIRED_CALLS = {
     "_mat_one": (),
+    "_mat_mul_entry": ("_mul", "_poly_add"),
+    "_mat_mul": ("_mat_mul_entry",),
     "_mat_row_update": ("_mul", "_poly_add"),
     "_hgcd_iter": ("_poly_divrem", "_mat_row_update"),
-    "_hgcd_recursive": ("_hgcd_iter", "_hgcd_recursive", "_poly_divrem"),
+    "_hgcd_recursive": ("_hgcd_iter", "_hgcd_recursive", "_poly_divrem",
+                         "_mat_mul"),
     "_gcd_hgcd": ("_poly_divrem", "_hgcd_recursive", "_gcd_euclid"),
     "_gcd_euclid": ("_poly_divrem",),
 }

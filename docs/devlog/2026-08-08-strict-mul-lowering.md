@@ -258,6 +258,16 @@
   `C[m+count ..]` 的高位 P2 尾段，再将更新前缀与该尾段拼接，
   得到整个输出 slice 精确表示 `basePoly + X^m*crossPoly`，并保持全长
   canonical 条件。
+- 正式闭合 `karMul_refines_slice`：定理直接对生成的
+  `dense_upoly_zp__kar_mul_ir` 以 n 做良基递归，基例执行真实
+  schoolbook，递归例按原控制流执行半区准备、P0/P1/P2 三次递归、
+  两次减法、P0 copy、分隔零写入和交叉项组装。三个子调用分别以
+  `m<n`、`h<n`、`h<n` 终止，没有辅助计数器或 L2 执行路径。
+- 每一 heap 边界均使用真实地址 frame 传递未写 slices；第一次短减法
+  与最终中段组装分别使用已证全长桥保留尾段。最终输出先得到
+  `P0 + X^(2m)P2 + X^m(P1-P0-P2)` 的完整 raw 表示，再由输入 split、
+  prepared-sum 等式与 Karatsuba 环恒等式改写为 `left*right`；同时返回
+  `SameLayout` 和全输出 `CanonicalU64Prefix`。
 
 ## 当前边界
 
@@ -272,5 +282,6 @@
 
 - `proof/lean/CLPoly/Generated/StrictMul.lean`
 - `proof/lean/CLPoly/Impl/StrictMulRefinement.lean`
+- `proof/lean/CLPoly/Impl/StrictKarMulRefinement.lean`
 - `proof/cpp2lean_v2/tests/check_strict_mul_source.py`
 - `docs/devlog/2026-08-08-strict-mul-lowering.md`

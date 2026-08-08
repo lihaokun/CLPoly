@@ -247,6 +247,7 @@ def main() -> None:
         "HgcdRecursiveReconstructPairWorkspaceProvider",
         "hgcdRecursiveReconstructPair_refines",
         "hgcdRecursiveReconstructPair_lenB_le_input",
+        "hgcdRecursiveFirstReconstruct_bound_of_invariant",
         "HgcdLiftHighWorkspace",
         "hgcdRecursiveLiftHigh_terminates",
         "polyAdd_preserves_prefix_disjoint",

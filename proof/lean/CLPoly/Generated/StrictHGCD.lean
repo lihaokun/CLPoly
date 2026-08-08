@@ -2091,15 +2091,32 @@ def hgcdRecursiveDispatchBelow (this : DenseUPolyZp) (bound : Nat)
     recurse matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
       WNext scratch heap horder hdecrease
 
+/-- Length facts exported by either real iterator arm or a recursively
+refined child.  They are exactly the facts consumed by reconstruction and
+the next well-founded call. -/
+structure HgcdRecursiveLengthInvariant (inputLength : Nat)
+    (result : HgcdRecursiveResult) : Prop where
+  row0A : hgcdMatLenRaw result.matrix result.valid (0 : Fin 4) + result.lenA ≤
+    inputLength + 1
+  row1B : hgcdMatLenRaw result.matrix result.valid (1 : Fin 4) + result.lenB ≤
+    inputLength + 1
+  row2A : hgcdMatLenRaw result.matrix result.valid (2 : Fin 4) + result.lenA ≤
+    inputLength + 1
+  row3B : hgcdMatLenRaw result.matrix result.valid (3 : Fin 4) + result.lenB ≤
+    inputLength + 1
+  order : result.lenB ≤ result.lenA
+  inputBound : result.lenA ≤ inputLength
+  positive : 0 < result.lenA
+
 /-- Proof-only algorithmic invariant needed between the two recursive call
-sites: every successful first reconstruction produced from the concrete
-workspace fits the enclosing input length.  Raw refinement discharges this
-from the returned matrix-length invariant. -/
+sites.  It applies only to a first result carrying the exact recursive length
+invariant, rather than quantifying over arbitrary matrices. -/
 def HgcdFirstReconstructionBoundProvider (this : DenseUPolyZp)
     (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) : Prop :=
   let ws := hgcdRecursiveWorkspace W lenA
   ∀ (first : HgcdRecursiveResult)
     (reconstructed : HgcdRecursiveReconstructPairResult),
+    HgcdRecursiveLengthInvariant (lenA - lenA / 2) first →
     hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
       scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
       first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
@@ -2116,6 +2133,16 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
     (A B a b : RawPtr UInt64) (lenA lenB : Nat)
     (W scratch : RawPtr UInt64) (heap : RawHeap)
     (hbound : lenA = bound) (horder : lenB < lenA)
+    (firstLength : ∀ first,
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap hchildOrder hchildDecrease = .ok first →
+      HgcdRecursiveLengthInvariant high.lenA0 first)
     (reconstructionBound :
       HgcdFirstReconstructionBoundProvider this a b W scratch lenA lenB) :
     RawExec HgcdRecursiveResult :=
@@ -2140,6 +2167,9 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
         (hgcdRecursiveHighInput_order a b lenA lenB horder) hfirstDecrease with
     | .error fault => .error fault
     | .ok first =>
+      have hfirstLength : HgcdRecursiveLengthInvariant high.lenA0 first :=
+        firstLength first (hgcdRecursiveHighInput_order a b lenA lenB horder)
+          hfirstDecrease hfirst
       match hreconstruct : hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0
           a b ws.a3 ws.b3 scratch (Nat.min lenA m) (Nat.min lenB m)
           first.lenA first.lenB m first.matrix first.valid first.sgn first.heap with
@@ -2160,7 +2190,9 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
           | .error fault => .error fault
           | .ok middle =>
             have hreconstructed : reconstructed.lenB ≤ lenA :=
-              reconstructionBound first reconstructed hreconstruct
+              reconstructionBound first reconstructed (by
+                simpa [high, hgcdRecursiveHighInput] using hfirstLength)
+                hreconstruct
             have hremainder : middle.lenD < reconstructed.lenB :=
               polyDivrem_remainder_lt this ws.q ws.d ws.a2 reconstructed.lenA
                 ws.b2 reconstructed.lenB ws.W3 reconstructed.heap middle.heap

@@ -6104,6 +6104,51 @@ theorem hgcdRecursiveFirstReconstruct_lenB_le_input
     (Nat.min inputLength (inputLength / 2)) lenR0
     (Nat.min inputLengthB (inputLength / 2)) hresult hhigh hsecond hzero
 
+/-- Concrete discharge of the proof-only first-reconstruction bound used by
+the strictly decreasing recursive body.  Every premise is either a raw
+representation, a physical workspace fact, or the length invariant returned
+by the real first HGCD call. -/
+theorem hgcdRecursiveFirstReconstruct_bound_of_invariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (A B T0 a b highA highB scratch : RawPtr UInt64)
+    (lenA lenB : Nat) (first : HgcdRecursiveResult)
+    (result : HgcdRecursiveReconstructPairResult)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (polyLowA polyLowB polyHighA polyHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hinvariant : HgcdRecursiveLengthInvariant (lenA - lenA / 2) first)
+    (physical : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
+      a b highA highB scratch (Nat.min lenA (lenA / 2))
+      (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
+      first.matrix first.valid first.sgn first.heap)
+    (hMatrix : HgcdMatRawDenseRep this first.heap first.matrix entries
+      first.valid)
+    (hLowA : RawDensePolyRep this first.heap a
+      (Nat.min lenA (lenA / 2)) polyLowA)
+    (hLowB : RawDensePolyRep this first.heap b
+      (Nat.min lenB (lenA / 2)) polyLowB)
+    (hHighA : RawDensePolyRep this first.heap highA first.lenA polyHighA)
+    (hHighB : RawDensePolyRep this first.heap highB first.lenB polyHighB)
+    (hrun : hgcdRecursiveReconstructPair this A B T0 a b highA highB scratch
+      (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2)) first.lenA
+      first.lenB (lenA / 2) first.matrix first.valid first.sgn first.heap =
+        .ok result) :
+    result.lenB ≤ lenA := by
+  have hrefines := hgcdRecursiveReconstructPair_refines this A B T0 a b
+    highA highB scratch (Nat.min lenA (lenA / 2))
+    (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
+    first.matrix first.valid first.sgn first.heap result entries polyLowA
+    polyLowB polyHighA polyHighB hcfg hp physical hMatrix hLowA hLowB
+    hHighA hHighB hrun
+  exact hgcdRecursiveFirstReconstruct_lenB_le_input result.lenB lenA lenB
+    first.lenA first.lenB
+    (hgcdMatLen first.matrix first.valid (2 : Fin 4))
+    (hgcdMatLen first.matrix first.valid (0 : Fin 4)) hrefines.2.2
+    hinvariant.order hinvariant.inputBound hinvariant.positive
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
+    (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row0A)
+
 /-- Purely physical obligations for the exact final matrix block.  Besides
 the two existing generated-call workspaces, the frame fields state that the
 quotient update does not alter any buffer of the left matrix `R`. -/

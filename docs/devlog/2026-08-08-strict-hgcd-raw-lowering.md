@@ -215,6 +215,13 @@ HGCD 迭代的矩阵长度不变式现已贯穿完整的良基循环。证明先
 `lend0<lenc0` 给出；因此严格接口既不能调用非下降参数，也不能调用无序的
 HGCD 输入。
 
+过强的“任意 first matrix 都能重构有界”条件已移除。严格函数体现在要求 first
+结果先携带 `HgcdRecursiveLengthInvariant`；raw 层新增的具体消解定理逐项消费
+真实 paired reconstruction、物理 workspace、矩阵与高低部 raw 表示，再从
+first 的 row 0/2 界、正长度、输入上界和操作数有序性推出
+`reconstructed.lenB≤原 lenA`。因此该终止前提已经落回现有真实精化证据，
+而不是未约束的外部假设。
+
 最终矩阵合并块也已按源码顺序闭合：`hgcdRecursiveCombineMatrix` 先实际执行
 两列商矩阵更新，再把其返回的 matrix/heap 直接交给完整四项 `_mat_mul`。
 对应 raw 定理从两次生成调用分别取得 `[[q,1],[1,0]]*S` 与

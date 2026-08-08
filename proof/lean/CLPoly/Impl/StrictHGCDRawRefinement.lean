@@ -1,6 +1,7 @@
 import CLPoly.Generated.StrictHGCD
 import CLPoly.Impl.StrictMulDispatchRefinement
 import CLPoly.Impl.StrictPolyAddSubRefinement
+import CLPoly.Impl.StrictHGCDRefinement
 
 set_option autoImplicit false
 
@@ -371,7 +372,12 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
         HgcdMatRawDenseRep this initial.heap initial.matrix
           (identityEntries this._p.toNat) hInitialM ∧
         RawDensePolyRep this initial.heap initial.A initial.lenA left ∧
-        RawDensePolyRep this initial.heap initial.B initial.lenB right := by
+        RawDensePolyRep this initial.heap initial.B initial.lenB right ∧
+        CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right left right
+          (identityEntries this._p.toNat ⟨0, by omega⟩)
+          (identityEntries this._p.toNat ⟨1, by omega⟩)
+          (identityEntries this._p.toNat ⟨2, by omega⟩)
+          (identityEntries this._p.toNat ⟨3, by omega⟩) := by
   rcases matOne_refines M heap this._p.toNat hM h0 h3 h03 with
     ⟨heap1, M1, hone, hlayout1, hpoly1, hlen1, hread0, hread3,
       hM1, hMatrix1⟩
@@ -460,11 +466,12 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
     heap := heap3, matrix := M1, A := A, lenA := lenA, B := B,
     lenB := lenB, T := T, lenT := lenT, t := t, sgn := 1 }
   refine ⟨initial, ?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl,
-    hM1, ?_, ?_, ?_⟩
+    hM1, ?_, ?_, ?_, ?_⟩
   · simp [hgcdIterInit, hone, hcopyA, hcopyB, initial]
   · simpa [initial] using hMatrix3
   · simpa [initial] using hA3
   · simpa [initial] using hB3
+  · simp [CLPoly.Impl.StrictHGCDRefinement.HgcdTransform, identityEntries]
 
 /-- A stopped generated HGCD loop returns its state unchanged. -/
 theorem hgcdIterLoop_stop (this : DenseUPolyZp) (m : Nat)

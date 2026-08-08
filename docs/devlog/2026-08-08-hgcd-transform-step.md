@@ -11,6 +11,7 @@
 - 闭合零分支语义：实际描述符交换表示 `[entry1 + quotient*entry0, entry0]`。
 - 统一零分支与非零 `_mul`/`_poly_add` 分支，得到覆盖生成函数全部控制流的 `matRowUpdate_refines`。
 - 将 identity 四个矩阵条目加强为规范化 `RawDensePolyRep`，并证明两个实际初始化 `memcpy` 保持该四条目不变式。
+- 将 identity raw 表示与代数方向合并，证明初始化状态满足“原始对 = identity × 当前对”。
 
 ## 为什么做
 

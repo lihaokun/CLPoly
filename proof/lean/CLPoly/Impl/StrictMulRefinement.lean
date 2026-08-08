@@ -3410,6 +3410,37 @@ theorem karMul_preserves_prefix (this : DenseUPolyZp)
   subst okHeap
   exact hframe guard guardLength hCGuard hScratchGuard
 
+theorem karMul_preserves_slice_canonical (this : DenseUPolyZp)
+    (C A B : RawPtr UInt64) (n : Nat) (scratch guard : RawPtr UInt64)
+    (guardLength p : Nat) (heap heap' : RawHeap)
+    (poly : Polynomial (ZMod p)) (modulus : UInt64)
+    (hn : 0 < n)
+    (hC : heap.ValidU64Slice C (2 * n - 1))
+    (hA : heap.ValidU64Slice A n)
+    (hB : heap.ValidU64Slice B n)
+    (hScratch : heap.ValidU64Slice scratch (karScratchNeed n))
+    (hGuard : heap.ValidU64Slice guard guardLength)
+    (hCGuard : U64SlicesDisjoint C (2 * n - 1) guard guardLength)
+    (hScratchGuard : U64SlicesDisjoint scratch (karScratchNeed n)
+      guard guardLength)
+    (hRepGuard : SlicePolyRep heap guard guardLength p poly)
+    (hCanonicalGuard : CanonicalU64Prefix heap guard guardLength modulus)
+    (hrun : dense_upoly_zp__kar_mul_ir this C A B n scratch heap = .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' guard guardLength p poly ∧
+      CanonicalU64Prefix heap' guard guardLength modulus := by
+  rcases karMul_ok this C A B n scratch heap hn hC hA hB hScratch with
+    ⟨okHeap, hok, hlayout, hframe⟩
+  have heq : okHeap = heap' := Except.ok.inj (hok.symm.trans hrun)
+  subst okHeap
+  have hsame := hframe guard guardLength hCGuard hScratchGuard
+  have hGuard' := (hlayout guard guardLength).mp hGuard
+  exact ⟨hlayout,
+    slicePolyRep_of_same_prefix heap heap' guard guardLength p poly
+      hGuard hGuard' hsame hRepGuard,
+    canonicalU64Prefix_of_same_prefix heap heap' guard guardLength modulus
+      hGuard hsame hCanonicalGuard⟩
+
 theorem classicalMul_refines_slice (this : DenseUPolyZp)
     (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
     (heap : RawHeap) (left right : Polynomial (ZMod this._p.toNat))

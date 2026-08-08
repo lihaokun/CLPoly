@@ -228,6 +228,11 @@
   slice 同时导出 low/high 的 `SlicePolyRep`、两段 canonical 条件，以及
   `poly = low + X^m*high` 的精确 L2 分解。high 段的 canonical 证明通过
   `readU64_add` 与原始数组地址对齐，不引入抽象数组切片。
+- 将 `karMul_ok` 的通用 guard frame 提升为 slice 语义保持定理：对任意
+  同时与当层输出、当层 scratch 地址不相交的 guard，一次真实
+  `dense_upoly_zp__kar_mul_ir` 成功执行后同时保持 `SameLayout`、
+  `SlicePolyRep` 和 `CanonicalU64Prefix`。这是 P0→P1→P2 阶段间传递
+  t1/t2、旧乘积与高半输入的统一 heap 桥。
 
 ## 当前边界
 

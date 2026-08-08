@@ -394,6 +394,63 @@ theorem addLeftLongTail (this : DenseUPolyZp) (C A B : RawPtr UInt64)
       simpa [Nat.add_sub_of_le hk] using hout (by
         simpa [Nat.add_sub_of_le hk] using htail)
 
+theorem addRightLongTail (this : DenseUPolyZp) (C A B : RawPtr UInt64)
+    (lenA lenB : Nat) (heap heap1 : RawHeap)
+    (hLong : lenA < lenB)
+    (hC : heap.ValidU64Slice C lenB)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hAliasB : ExactOrDisjoint C B)
+    (hloop : addCommonLoop this C A B lenA 0 heap = .ok heap1)
+    (hlayout1 : RawHeap.SameLayout heap heap1) :
+    ∃ heap2,
+      (if C.sameAddress B then .ok heap1
+       else heap1.copyU64 (C.add lenA) (B.add lenA) (lenB - lenA)) =
+        .ok heap2 ∧
+      RawHeap.SameLayout heap1 heap2 ∧
+      (∀ k value, k < lenA → heap1.readU64 C k = .ok value →
+        heap2.readU64 C k = .ok value) ∧
+      (∀ k value, lenA ≤ k → k < lenB →
+        heap.readU64 B k = .ok value → heap2.readU64 C k = .ok value) := by
+  by_cases hsame : C.sameAddress B = true
+  · have heq : C = B := (sameAddress_eq_true_iff C B).mp hsame
+    refine ⟨heap1, by simp [hsame], fun _ _ => Iff.rfl, ?_, ?_⟩
+    · intro k value hk hread
+      exact hread
+    · intro k value hk hkb hread
+      have htail := addCommonLoop_preserves_input_tail this C A B B lenA k
+        heap heap1 value
+        (heap.validU64Slice_mono C lenB lenA hC (by omega)) hA
+        (heap.validU64Slice_mono B lenB lenA hB (by omega))
+        hAliasB hk hread hloop
+      simpa [heq] using htail
+  · have hfalse : C.sameAddress B = false := Bool.eq_false_of_not_eq_true hsame
+    have hregions := region_ne_of_exactOrDisjoint_not_sameAddress hAliasB hfalse
+    have hC1 : heap1.ValidU64Slice C lenB := (hlayout1 C lenB).mp hC
+    have hB1 : heap1.ValidU64Slice B lenB := (hlayout1 B lenB).mp hB
+    have hDst := heap1.validU64Slice_add C lenB lenA (lenB - lenA)
+      hC1 (by omega)
+    have hSrc := heap1.validU64Slice_add B lenB lenA (lenB - lenA)
+      hB1 (by omega)
+    rcases copyU64_refines heap1 (C.add lenA) (B.add lenA)
+      (lenB - lenA) hDst hSrc (by simpa [RawPtr.add] using hregions) with
+      ⟨heap2, hcopy, hlayout2, hcontents⟩
+    refine ⟨heap2, by simp [hfalse, hcopy], hlayout2, ?_, ?_⟩
+    · intro k value hk hread
+      exact copyTail_preserves_prefix heap1 heap2 C B lenA
+        (lenB - lenA) k value hDst hSrc hk hread hcopy
+    · intro k value hk hkb hread
+      have htail := addCommonLoop_preserves_input_tail this C A B B lenA k
+        heap heap1 value
+        (heap.validU64Slice_mono C lenB lenA hC (by omega)) hA
+        (heap.validU64Slice_mono B lenB lenA hB (by omega))
+        hAliasB hk hread hloop
+      have hindex : k - lenA < lenB - lenA := by omega
+      have hout := hcontents (k - lenA) value hindex
+      rw [RawHeap.readU64_add, RawHeap.readU64_add] at hout
+      simpa [Nat.add_sub_of_le hk] using hout (by
+        simpa [Nat.add_sub_of_le hk] using htail)
+
 theorem subCommonLoop_ok (this : DenseUPolyZp) (C A B : RawPtr UInt64)
     (limit i : Nat) (heap : RawHeap)
     (hC : heap.ValidU64Slice C limit)
@@ -1020,5 +1077,146 @@ theorem polyAdd_leftLong_refines (this : DenseUPolyZp)
   · exact slicePolyRep_of_normaliseU64 heap2 C lenA this._p.toNat result
       (left + right) hC2 hrepOutput hnorm
   · exact normaliseU64_result_fixed heap2 C lenA result hC2 hnorm
+
+theorem polyAdd_rightLong_refines (this : DenseUPolyZp)
+    (C A B : RawPtr UInt64) (lenA lenB : Nat) (heap heap' : RawHeap)
+    (outLen : Nat) (left right : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0) (hLong : lenA < lenB)
+    (hC : heap.ValidU64Slice C lenB)
+    (hLeft : RawDensePolyRep this heap A lenA left)
+    (hRight : RawDensePolyRep this heap B lenB right)
+    (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B)
+    (hrun : dense_upoly_zp__poly_add_ir this C A lenA B lenB heap =
+      .ok (heap', outLen)) :
+    RawDensePolyRep this heap' C outLen (left + right) := by
+  rcases hLeft with ⟨hA, hcanonA, hrepA, hnormA⟩
+  rcases hRight with ⟨hB, hcanonB, hrepB, hnormB⟩
+  have hCMin := heap.validU64Slice_mono C lenB lenA hC (by omega)
+  have hBMin := heap.validU64Slice_mono B lenB lenA hB (by omega)
+  rcases addCommonLoop_ok this C A B lenA 0 heap
+    hCMin hA hBMin (by omega) with ⟨heap1, hloop, hlayout1⟩
+  rcases addRightLongTail this C A B lenA lenB heap heap1 hLong hC hA hB
+    hAliasB hloop hlayout1 with
+    ⟨heap2, htailRun, hlayout2, hprefix, htail⟩
+  have hC2 : heap2.ValidU64Slice C lenB :=
+    (hlayout2 C lenB).mp ((hlayout1 C lenB).mp hC)
+  rcases normaliseU64_ok heap2 C lenB hC2 with
+    ⟨result, hnorm, hresultLe⟩
+  have hrun' := hrun
+  simp only [dense_upoly_zp__poly_add_ir,
+    Nat.min_eq_left (Nat.le_of_lt hLong),
+    Nat.max_eq_right (Nat.le_of_lt hLong), hloop,
+    show ¬lenA > lenB by omega, hLong, ↓reduceIte, htailRun, hnorm] at hrun'
+  have hheap : heap' = heap2 := by
+    exact congrArg Prod.fst (Except.ok.inj hrun').symm
+  have hlen : outLen = result := by
+    exact congrArg Prod.snd (Except.ok.inj hrun').symm
+  subst heap'
+  subst outLen
+  rcases slicePolyRep_exists_unique heap2 C lenB this._p.toNat hC2 with
+    ⟨output, hrepOutput, _⟩
+  have houtput : output = left + right := by
+    ext degree
+    by_cases hdB : degree < lenB
+    · rcases slicePolyRep_coeff heap B lenB this._p.toNat right hrepB
+        degree hdB with ⟨b, hb, hcoeffB⟩
+      rcases slicePolyRep_coeff heap2 C lenB this._p.toNat output
+        hrepOutput degree hdB with ⟨c, hc, hcoeffC⟩
+      by_cases hdA : degree < lenA
+      · rcases slicePolyRep_coeff heap A lenA this._p.toNat left hrepA
+          degree hdA with ⟨a, ha, hcoeffA⟩
+        have hcommon := addCommonLoop_value this C A B lenA 0 degree
+          heap heap1 a b hCMin hA hBMin hAliasA hAliasB
+          (by omega) hdA ha hb hloop
+        have hfinal := hprefix degree
+          (dense_upoly_zp_nmod_add_ir this a b) hdA hcommon
+        have hcEq : c = dense_upoly_zp_nmod_add_ir this a b :=
+          Except.ok.inj (hc.symm.trans hfinal)
+        have haLt : a < this._p := by
+          simpa [UInt64.lt_iff_toNat_lt] using hcanonA degree a hdA ha
+        have hbLt : b < this._p := by
+          simpa [UInt64.lt_iff_toNat_lt] using hcanonB degree b hdB hb
+        rw [Polynomial.coeff_add, hcoeffC, hcEq,
+          nmodAdd_cast this a b hp haLt hbLt, hcoeffA, hcoeffB]
+      · have hfinal := htail degree b (by omega) hdB hb
+        have hcEq : c = b := Except.ok.inj (hc.symm.trans hfinal)
+        rw [Polynomial.coeff_add, hcoeffC, hcEq,
+          slicePolyRep_coeff_zero_of_length_le heap A lenA
+            this._p.toNat left hrepA degree (by omega), hcoeffB, zero_add]
+    · rw [slicePolyRep_coeff_zero_of_length_le heap2 C lenB
+          this._p.toNat output hrepOutput degree (by omega),
+        Polynomial.coeff_add,
+        slicePolyRep_coeff_zero_of_length_le heap A lenA
+          this._p.toNat left hrepA degree (by omega),
+        slicePolyRep_coeff_zero_of_length_le heap B lenB
+          this._p.toNat right hrepB degree (by omega), add_zero]
+  subst output
+  have hcanonicalFull : CanonicalU64Prefix heap2 C lenB this._p := by
+    intro k value hk hread
+    rcases slicePolyRep_coeff heap B lenB this._p.toNat right hrepB k hk with
+      ⟨b, hb, _⟩
+    by_cases hkA : k < lenA
+    · rcases slicePolyRep_coeff heap A lenA this._p.toNat left hrepA k hkA with
+        ⟨a, ha, _⟩
+      have hcommon := addCommonLoop_value this C A B lenA 0 k heap heap1
+        a b hCMin hA hBMin hAliasA hAliasB (by omega) hkA ha hb hloop
+      have hfinal := hprefix k (dense_upoly_zp_nmod_add_ir this a b) hkA hcommon
+      have heq : value = dense_upoly_zp_nmod_add_ir this a b :=
+        Except.ok.inj (hread.symm.trans hfinal)
+      subst value
+      exact (show dense_upoly_zp_nmod_add_ir this a b < this._p from
+        nmodAdd_lt this a b hp
+          (by simpa [UInt64.lt_iff_toNat_lt] using hcanonA k a hkA ha)
+          (by simpa [UInt64.lt_iff_toNat_lt] using hcanonB k b hk hb))
+    · have hfinal := htail k b (by omega) hk hb
+      have heq : value = b := Except.ok.inj (hread.symm.trans hfinal)
+      subst value
+      exact hcanonB k b hk hb
+  have hvalidResult := heap2.validU64Slice_mono C lenB result hC2 hresultLe
+  refine ⟨hvalidResult, ?_, ?_, ?_⟩
+  · intro k value hk hread
+    exact hcanonicalFull k value (lt_of_lt_of_le hk hresultLe) hread
+  · exact slicePolyRep_of_normaliseU64 heap2 C lenB this._p.toNat result
+      (left + right) hC2 hrepOutput hnorm
+  · exact normaliseU64_result_fixed heap2 C lenB result hC2 hnorm
+
+theorem polyAdd_refines (this : DenseUPolyZp)
+    (C A : RawPtr UInt64) (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat)
+    (heap heap' : RawHeap) (outLen : Nat)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hC : heap.ValidU64Slice C (max lenA lenB))
+    (hLeft : RawDensePolyRep this heap A lenA left)
+    (hRight : RawDensePolyRep this heap B lenB right)
+    (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B)
+    (hrun : dense_upoly_zp__poly_add_ir this C A lenA B lenB heap =
+      .ok (heap', outLen)) :
+    RawDensePolyRep this heap' C outLen (left + right) := by
+  rcases Nat.lt_trichotomy lenA lenB with hlt | heq | hgt
+  · apply polyAdd_rightLong_refines this C A B lenA lenB heap heap'
+      outLen left right hp hlt
+    · simpa [Nat.max_eq_right (Nat.le_of_lt hlt)] using hC
+    · exact hLeft
+    · exact hRight
+    · exact hAliasA
+    · exact hAliasB
+    · exact hrun
+  · subst lenB
+    apply polyAdd_equalLength_refines this C A B lenA heap heap'
+      outLen left right hp
+    · simpa using hC
+    · exact hLeft
+    · exact hRight
+    · exact hAliasA
+    · exact hAliasB
+    · exact hrun
+  · apply polyAdd_leftLong_refines this C A B lenA lenB heap heap'
+      outLen left right hp hgt
+    · simpa [Nat.max_eq_left (Nat.le_of_lt hgt)] using hC
+    · exact hLeft
+    · exact hRight
+    · exact hAliasA
+    · exact hAliasB
+    · exact hrun
 
 end CLPoly.Impl.StrictPolyAddSubRefinement

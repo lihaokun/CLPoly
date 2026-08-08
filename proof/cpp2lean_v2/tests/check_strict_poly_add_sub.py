@@ -73,10 +73,12 @@ def main() -> None:
                      "copyTail_preserves_prefix",
                      "addCommonLoop_preserves_input_tail",
                      "subCommonLoop_preserves_input_tail",
-                     "addLeftLongTail",
+                     "addLeftLongTail", "addRightLongTail",
                      "polyAdd_equalLength_refines",
                      "polySub_equalLength_refines",
-                     "polyAdd_leftLong_refines", "RawDensePolyRep",
+                     "polyAdd_leftLong_refines",
+                     "polyAdd_rightLong_refines", "polyAdd_refines",
+                     "RawDensePolyRep",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:
             raise SystemExit(f"strict add/sub refinement drift: missing {fragment}")

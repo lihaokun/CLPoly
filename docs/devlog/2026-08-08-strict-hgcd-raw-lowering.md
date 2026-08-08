@@ -168,3 +168,10 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 的输出项。`hgcdMatMulLoop_refines` 再沿生成的 `4-i` 递归逐项执行
 `hgcdMatMulEntry`，最终返四个精确的 L2 矩阵乘法项。workspace/provider
 只保存容量和分离事实，不含预期多项式或矩阵乘积。
+
+第二次递归后的 `S_modified = [[q,1],[1,0]] * S` 源块已开始独立降低。
+`hgcdMatSwapRows` 精确表示四次 descriptor swap；随后两次
+`hgcdMatQuotientEntry` 依次对两列执行源码中的非零 guard、按长度选择的真实
+`_mul`、原地 `_poly_add` 及单个长度更新。`hgcdMatApplyQuotient_exec` 固定两次
+实际执行的顺序和中间 heap/matrix，不复用会产生不同 descriptor swap 的
+`_mat_row_update`。下一步是为这两次执行建立完整 raw 矩阵语义与 frame。

@@ -1105,6 +1105,127 @@ theorem hgcdMatMul_result_valid (this : DenseUPolyZp)
   exact hgcdMatMulLoop_result_valid this A B hA hB T scratch C hC 0 heap
     result hrun
 
+/-- Result of one source column update in
+`[[q,1],[1,0]] * S`: `top := top + q * bottom`. -/
+structure HgcdMatQuotientEntryResult where
+  heap : RawHeap
+  matrix : HgcdMat
+  valid : matrix.Valid
+
+/-- Exact lowering of one of the two guarded quotient updates after the
+source has swapped the rows of `S`.  The multiplication operand order and
+the in-place `_poly_add` are retained verbatim. -/
+def hgcdMatQuotientEntry (this : DenseUPolyZp)
+    (S : HgcdMat) (hS : S.Valid) (top bottom : Fin 4)
+    (q : RawPtr UInt64) (lenQ : Nat) (T scratch : RawPtr UInt64)
+    (heap : RawHeap) : RawExec HgcdMatQuotientEntryResult :=
+  let bottomLen := hgcdMatLenRaw S hS bottom
+  if lenQ > 0 && bottomLen > 0 then
+    let left := if lenQ ≥ bottomLen then q else hgcdMatPtrRaw S hS bottom
+    let leftLen := if lenQ ≥ bottomLen then lenQ else bottomLen
+    let right := if lenQ ≥ bottomLen then hgcdMatPtrRaw S hS bottom else q
+    let rightLen := if lenQ ≥ bottomLen then bottomLen else lenQ
+    match dense_upoly_zp__mul_ir this T left leftLen right rightLen scratch
+        heap with
+    | .error fault => .error fault
+    | .ok heap1 =>
+      let lenT := lenQ + bottomLen - 1
+      match dense_upoly_zp__poly_add_ir this (hgcdMatPtrRaw S hS top)
+          (hgcdMatPtrRaw S hS top) (hgcdMatLenRaw S hS top) T lenT
+          heap1 with
+      | .error fault => .error fault
+      | .ok (heap2, sumLen) =>
+        let len' := S.len.set top.val sumLen (by rw [hS.2]; exact top.isLt)
+        let next : HgcdMat := { S with len := len' }
+        have hNext : next.Valid := ⟨hS.1, by simp [next, len', hS.2]⟩
+        .ok { heap := heap2, matrix := next, valid := hNext }
+  else
+    .ok { heap := heap, matrix := S, valid := hS }
+
+theorem hgcdMatQuotientEntry_result_valid (this : DenseUPolyZp)
+    (S : HgcdMat) (hS : S.Valid) (top bottom : Fin 4)
+    (q : RawPtr UInt64) (lenQ : Nat) (T scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : HgcdMatQuotientEntryResult)
+    (hrun : hgcdMatQuotientEntry this S hS top bottom q lenQ T scratch
+      heap = .ok result) : result.matrix.Valid := by
+  exact result.valid
+
+/-- Descriptor-only effect of the four source `std::swap` calls. -/
+def hgcdMatSwapRows (S : HgcdMat) (hS : S.Valid) : HgcdMat :=
+  { poly := #[hgcdMatPtrRaw S hS (2 : Fin 4),
+      hgcdMatPtrRaw S hS (3 : Fin 4),
+      hgcdMatPtrRaw S hS (0 : Fin 4),
+      hgcdMatPtrRaw S hS (1 : Fin 4)]
+    len := #[hgcdMatLenRaw S hS (2 : Fin 4),
+      hgcdMatLenRaw S hS (3 : Fin 4),
+      hgcdMatLenRaw S hS (0 : Fin 4),
+      hgcdMatLenRaw S hS (1 : Fin 4)] }
+
+theorem hgcdMatSwapRows_valid (S : HgcdMat) (hS : S.Valid) :
+    (hgcdMatSwapRows S hS).Valid := by
+  simp [hgcdMatSwapRows, HgcdMat.Valid]
+
+/-- Result of the exact source block constructing
+`S_modified = [[q,1],[1,0]] * S`. -/
+structure HgcdMatQuotientResult where
+  heap : RawHeap
+  matrix : HgcdMat
+  valid : matrix.Valid
+
+/-- Exact source-order composition: swap rows, update column zero, then
+update column one, reusing `T` and `scratch` exactly as C++ does. -/
+def hgcdMatApplyQuotient (this : DenseUPolyZp)
+    (S : HgcdMat) (hS : S.Valid) (q : RawPtr UInt64) (lenQ : Nat)
+    (T scratch : RawPtr UInt64) (heap : RawHeap) :
+    RawExec HgcdMatQuotientResult :=
+  let swapped := hgcdMatSwapRows S hS
+  have hSwapped : swapped.Valid := hgcdMatSwapRows_valid S hS
+  match hgcdMatQuotientEntry this swapped hSwapped (0 : Fin 4) (2 : Fin 4)
+      q lenQ T scratch heap with
+  | .error fault => .error fault
+  | .ok first =>
+    match hgcdMatQuotientEntry this first.matrix first.valid (1 : Fin 4)
+        (3 : Fin 4) q lenQ T scratch first.heap with
+    | .error fault => .error fault
+    | .ok second => .ok {
+        heap := second.heap, matrix := second.matrix, valid := second.valid }
+
+/-- Successful quotient application exposes the two real update executions
+and their generated validity witnesses. -/
+theorem hgcdMatApplyQuotient_exec (this : DenseUPolyZp)
+    (S : HgcdMat) (hS : S.Valid) (q : RawPtr UInt64) (lenQ : Nat)
+    (T scratch : RawPtr UInt64) (heap : RawHeap)
+    (result : HgcdMatQuotientResult)
+    (hrun : hgcdMatApplyQuotient this S hS q lenQ T scratch heap =
+      .ok result) :
+    let swapped := hgcdMatSwapRows S hS
+    let hSwapped := hgcdMatSwapRows_valid S hS
+    ∃ first,
+      hgcdMatQuotientEntry this swapped hSwapped (0 : Fin 4) (2 : Fin 4)
+          q lenQ T scratch heap = .ok first ∧
+      hgcdMatQuotientEntry this first.matrix first.valid (1 : Fin 4) (3 : Fin 4)
+          q lenQ T scratch first.heap =
+        .ok (HgcdMatQuotientEntryResult.mk result.heap result.matrix
+          result.valid) := by
+  simp only [hgcdMatApplyQuotient] at hrun
+  split at hrun
+  next fault hfirst => simp at hrun
+  next first hfirst =>
+    split at hrun
+    next fault hsecond => simp at hrun
+    next second hsecond =>
+      have heq := Except.ok.inj hrun
+      subst result
+      exact ⟨first, hfirst, hsecond⟩
+
+theorem hgcdMatApplyQuotient_result_valid (this : DenseUPolyZp)
+    (S : HgcdMat) (hS : S.Valid) (q : RawPtr UInt64) (lenQ : Nat)
+    (T scratch : RawPtr UInt64) (heap : RawHeap)
+    (result : HgcdMatQuotientResult)
+    (hrun : hgcdMatApplyQuotient this S hS q lenQ T scratch heap =
+      .ok result) : result.matrix.Valid := by
+  exact result.valid
+
 structure HgcdEarlyMatrixResult where
   heap : RawHeap
   matrix : HgcdMat

@@ -4929,6 +4929,8 @@ theorem hgcdRecursiveEarlyReturn_rawInvariant (this : DenseUPolyZp)
         hLength.inputBound
     · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
         hLength.positive
+    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
+        hLength.aboveHalf
 
 /-- Arithmetic closure for one Euclidean matrix step.  The quotient bound
 comes from the real generated divrem call and the four descriptor bounds
@@ -5237,6 +5239,44 @@ theorem hgcdIterLoop_preserves_matrixLength (this : DenseUPolyZp)
 termination_by state => state.lenB
 decreasing_by exact hlt
 
+/-- The real loop cannot stop with its leading operand below the cutoff.
+On every taken iteration the next A descriptor is exactly the old B
+descriptor that satisfied the source guard `m + 1 ≤ lenB`. -/
+theorem hgcdIterLoop_preserves_above_half (this : DenseUPolyZp)
+    (m : Nat) (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (scratch : RawPtr UInt64) :
+    ∀ (state final : HgcdIterState),
+      m < state.lenA →
+      hgcdIterLoop this m Q W3 scratch state = .ok final →
+      m < final.lenA
+  | state, final, habove, hrun => by
+    by_cases hguard : state.lenB ≥ m + 1
+    · rcases hgcdIterLoop_step_shape this m Q W3 scratch state final hguard
+        hrun with
+      ⟨heap1, lenQ, lenR, row23, row01, hdiv, hrow23, hrow01, htail, hlt⟩
+      let next : HgcdIterState := {
+        heap := row01.heap
+        matrix := row01.matrix
+        A := state.B
+        lenA := state.lenB
+        B := state.T
+        lenB := lenR
+        T := row01.T
+        lenT := row01.lenT
+        t := row01.t
+        sgn := -state.sgn }
+      have htail' : hgcdIterLoop this m Q W3 scratch next = .ok final := by
+        simpa [next] using htail
+      exact hgcdIterLoop_preserves_above_half this m Q W3 scratch next final
+        (by simpa [next] using hguard) htail'
+    · have hstop : state.lenB < m + 1 := by omega
+      have hsame := hgcdIterLoop_stop this m Q W3 scratch state hstop
+      have hfinal : state = final := Except.ok.inj (hsame.symm.trans hrun)
+      subst final
+      exact habove
+termination_by state => state.lenB
+decreasing_by exact hlt
+
 /-- End-to-end refinement of generated C++ `_hgcd_iter`: the exact identity
 initialization and ordered copies feed the exact well-founded loop theorem. -/
 theorem hgcdIter_refines (this : DenseUPolyZp)
@@ -5281,7 +5321,8 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
         normalize (EuclideanDomain.gcd finalA finalB) ∧
       final.lenB < lenA / 2 + 1 ∧
       HgcdMatrixLengthInvariant lenA final hFinalM ∧
-      final.lenB ≤ final.lenA ∧ final.lenA ≤ lenA ∧ 0 < final.lenA := by
+      final.lenB ≤ final.lenA ∧ final.lenA ≤ lenA ∧ 0 < final.lenA ∧
+      lenA / 2 < final.lenA := by
   rcases hgcdIterInit_refines this M A B T t lenT a lenA b lenB heap left
       right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a h3a h0b h3b
       hAMatrix hBMatrix hMatrixValid hLeft hRight with
@@ -5300,6 +5341,11 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
     have hlens := hgcdIterInit_lengths M A B T t lenT a lenA b lenB heap
       initial hinit
     omega
+  have hFinalAbove := hgcdIterLoop_preserves_above_half this (lenA / 2) Q
+    W3 scratch initial final (by
+      have hlens := hgcdIterInit_lengths M A B T t lenT a lenA b lenB heap
+        initial hinit
+      omega) hloop
   rcases hgcdIterLoop_refines this (lenA / 2) Q W3 scratch left right hcfg hp
       physical initial final left right (identityEntries this._p.toNat)
       hInitialM hInitialInvariant hloop with
@@ -5319,7 +5365,7 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
   have hhFinal : hFinalM' = hFinalM := Subsingleton.elim _ _
   subst hFinalM'
   exact ⟨finalA, finalB, finalEntries, hFinalM, hFinalRaw, hGcd, hStop,
-    hFinalLength, hFinalOrder, hFinalInputBound, hFinalPositive⟩
+    hFinalLength, hFinalOrder, hFinalInputBound, hFinalPositive, hFinalAbove⟩
 
 /-- Purely physical obligations needed after one concrete iterator result to
 stabilize its matrix and normalize its two output pointers.  No polynomial
@@ -5431,7 +5477,7 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
       h3A h0B h3B hA3Matrix hB3Matrix hMatrixValid hLeft hRight hiter with
     ⟨finalA, finalB, finalEntries, hFinalIter,
       hInvariant, hGcd, hStop, hMatrixLength, hFinalOrder,
-      hFinalInputBound, hFinalPositive⟩
+      hFinalInputBound, hFinalPositive, hFinalAbove⟩
   have hStableDescriptors := hgcdMatStabilize_preserves_descriptors original
     iter.matrix hOriginal hIter stage iter.heap stable hstable
   have hStableValid : stable.matrix.Valid := hStableDescriptors.1
@@ -5515,7 +5561,9 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
       inputBound := by simpa [HgcdRecursiveIterBranchResult.toResult,
         hResultLenA] using hFinalInputBound
       positive := by simpa [HgcdRecursiveIterBranchResult.toResult,
-        hResultLenA] using hFinalPositive }
+        hResultLenA] using hFinalPositive
+      aboveHalf := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hResultLenA] using hFinalAbove }
   refine ⟨finalA, finalB, finalEntries, hResultValid, {
     aRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hAResult
     bRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hBResult
@@ -7316,6 +7364,8 @@ theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
         HgcdIterState.toRecursiveBaseResult, hlenIA]
     · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
         hlenIA] using hlenAPos
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hlenIA] using (show lenA / 2 < lenA by omega)
 
 /-- Semantic refinement of the exact `_hgcd_recursive` base branch used by
 GCD when matrix output is disabled.  No matrix call or matrix specification

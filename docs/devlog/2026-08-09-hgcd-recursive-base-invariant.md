@@ -21,6 +21,7 @@
 - 将商矩阵四项界与真实 `hgcdRecursiveCombineMatrix` 执行组合，导出实际中间矩阵及最终 `_mat_mul` 四项描述符界；中间对象来自生成执行返回值而非规格侧构造。
 - 保留真实 guarded multiplication 的精确 `lenLeft + lenRight - 1` 容量界，并让成对重构同时导出 A/B 两侧 normalization 返回长度上界；由源码恒等式 `k + lenC0 = reconstructed.lenB` 闭合最终两项均不超过外层输入长度。
 - 从规范化 low/high/output 三个 raw 描述符证明：当 low 严格位于 shift 以下且 high 非空时，真实 `liftHigh` normalization 返回长度精确为 `shift + highLength`；成对重构现已保留可实例化的 A/B 精确长度条件。
+- 直接按真实 `hgcdIterLoop` 良基执行证明停止时 `inputLength/2 < lenA`：继续分支的下一 A 就是通过 source guard 的旧 B；该事实加入递归长度归纳结果，并在 iterator/base/early-copy 路径中真实传递。
 - 把两个统一基础分支定理加入严格 HGCD 源码门禁。
 
 ## 为什么做

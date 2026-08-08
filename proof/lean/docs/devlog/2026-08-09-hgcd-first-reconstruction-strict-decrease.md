@@ -120,3 +120,15 @@ early guard，不作为 early workspace 的附加结果假设。
 证明最终通过 `HgcdRecursiveResult.ext_value` 将 early helper 的返回记录运输到
 完整 body 的实际返回值。物理 workspace 只描述有效性、分离性和前缀保持，不携带
 预先选定的 L2 结果；执行路径中也没有计数参数或规格回退。
+
+## 非 early 尾部的统一语义出口
+
+新增 `hgcdRecursiveRawInvariant_of_finish_semantics`，把第一次递归矩阵、真实
+middle divrem 等式、第二次递归矩阵和 finish 返回记录装配成共同 raw 不变量。
+最终矩阵条目严格采用生成代码执行的
+`first * ([[quotient,1],[1,0]] * second)` 顺序；transform、返回符号对应的带符号
+行列式以及 GCD 保持均由该实际矩阵乘积推导。
+
+该定理不创建输出或终止事实：A/B raw 表示、可选矩阵表示、停止界和完整长度
+不变量都必须由实际 finish 执行及已有长度定理提供。它为下一步将
+middle、第二次良基 dispatch 和 finish 控制流闭合到完整 body 提供统一出口。

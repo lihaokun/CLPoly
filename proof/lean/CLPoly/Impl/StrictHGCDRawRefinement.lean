@@ -8463,6 +8463,79 @@ theorem hgcdRecursiveFinish_refines (this : DenseUPolyZp)
     · intro htrue
       simp [hfalse] at htrue
 
+/-- Assemble the semantic portion of the non-early recursive result after
+the real middle division, second recursive transform, and finish execution
+have supplied their concrete facts.  The returned matrix entries are exactly
+the quotient-updated second matrix multiplied by the first matrix. -/
+theorem hgcdRecursiveRawInvariant_of_finish_semantics (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (left right currentA currentB remainder quotient finalA finalB :
+      Polynomial (ZMod this._p.toNat))
+    (first second : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (sgnR sgnS : Int) (computeM : Bool)
+    (A B : RawPtr UInt64) (inputLength : Nat)
+    (result : HgcdRecursiveResult)
+    (hARep : RawDensePolyRep this result.heap A result.lenA finalA)
+    (hBRep : RawDensePolyRep this result.heap B result.lenB finalB)
+    (hMatrix : computeM = true →
+      HgcdMatRawDenseRep this result.heap result.matrix
+        (hgcdMatProductEntry first
+          (hgcdMatApplyQuotientEntries second quotient)) result.valid)
+    (hFirstTransform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      left right currentA currentB (first 0) (first 1) (first 2) (first 3))
+    (hFirstDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgnR
+      (first 0) (first 1) (first 2) (first 3))
+    (hDivision : currentA = quotient * currentB + remainder)
+    (hSecondTransform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform
+      currentB remainder finalA finalB (second 0) (second 1) (second 2)
+      (second 3))
+    (hSecondDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet sgnS
+      (second 0) (second 1) (second 2) (second 3))
+    (hsgn : result.sgn = -(sgnR * sgnS))
+    (hstop : result.lenB < inputLength / 2 + 1)
+    (hlengths : computeM = true →
+      HgcdRecursiveLengthInvariant inputLength result) :
+    HgcdRecursiveRawInvariant this left right finalA finalB
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient))
+      computeM A B inputLength result := by
+  have hTransform := hgcdRecursiveCombined_preserves_transform left right
+    currentA currentB remainder quotient finalA finalB first second
+    hFirstTransform hDivision hSecondTransform
+  have hDet := hgcdRecursiveCombined_preserves_signedDet sgnR sgnS quotient
+    first second hFirstDet hSecondDet
+  have hResultDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet result.sgn
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 0)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 1)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 2)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 3) := by
+    rw [hsgn]
+    exact hDet
+  have hGcd :=
+    CLPoly.Impl.StrictHGCDRefinement.normalize_gcd_eq_of_hgcd_signed_transform
+      result.sgn left right finalA finalB
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 0)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 1)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 2)
+      (hgcdMatProductEntry first
+        (hgcdMatApplyQuotientEntries second quotient) 3)
+      hTransform hResultDet
+  exact {
+    aRep := hARep
+    bRep := hBRep
+    matrixSemantics := fun hcompute =>
+      ⟨hMatrix hcompute, hTransform, hResultDet⟩
+    gcdPreserved := hGcd
+    stopped := hstop
+    lengths := hlengths }
+
 set_option maxHeartbeats 1200000 in
 /-- Complete length invariant of the real matrix-producing non-early tail.
 The proof uses the exact reconstruction and combine executions exposed by

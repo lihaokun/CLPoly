@@ -2241,4 +2241,83 @@ theorem hgcdIter_refines (this : DenseUPolyZp)
     physical initial final left right (identityEntries this._p.toNat)
     hInitialM hInitialInvariant hloop
 
+/-- The generated recursive-HGCD base helper with matrix computation enabled
+is exactly the already-refined iterator initialization prefix, modulo its
+smaller return record. -/
+theorem hgcdRecursiveBase_true_eq_init (M : HgcdMat)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap) :
+    hgcdRecursiveBase M true A B a b lenA lenB heap =
+      (hgcdIterInit M A B A A 0 a lenA b lenB heap).map
+        HgcdIterState.toRecursiveBaseResult := by
+  unfold hgcdRecursiveBase hgcdIterInit
+  generalize hone : dense_upoly_zp__mat_one_ir M heap = one
+  cases one with
+  | error fault =>
+    simp only [hone, ↓reduceIte, Except.map]
+  | ok pair =>
+    rcases pair with ⟨heap1, matrix⟩
+    generalize hcopyA : heap1.copyU64 A a lenA = copyA
+    cases copyA with
+    | error fault =>
+      simp only [hone, hcopyA, ↓reduceIte, Except.map]
+    | ok heap2 =>
+      generalize hcopyB : heap2.copyU64 B b lenB = copyB
+      cases copyB with
+      | error fault =>
+        simp only [hone, hcopyA, hcopyB, ↓reduceIte, Except.map]
+      | ok heap3 =>
+        simp only [hone, hcopyA, hcopyB, ↓reduceIte, Except.map,
+          HgcdIterState.toRecursiveBaseResult]
+
+/-- Semantic refinement of the exact `_hgcd_recursive` base branch when the
+source requests its matrix.  The two raw copies retain their C++ order. -/
+theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
+    (M : HgcdMat) (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (heap : RawHeap) (result : HgcdRecursiveBaseResult)
+    (left right : Polynomial (ZMod this._p.toNat)) (hM : M.Valid)
+    (hp : 1 < this._p.toNat)
+    (h0 : heap.ValidU64Slice (hgcdMatPtr M hM (0 : Fin 4)) 1)
+    (h3 : heap.ValidU64Slice (hgcdMatPtr M hM (3 : Fin 4)) 1)
+    (h03 : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1
+      (hgcdMatPtr M hM (3 : Fin 4)) 1)
+    (hA : heap.ValidU64Slice A lenA) (hB : heap.ValidU64Slice B lenB)
+    (hAa : U64SlicesDisjoint A lenA a lenA)
+    (hBb : U64SlicesDisjoint B lenB b lenB)
+    (hAb : U64SlicesDisjoint A lenA b lenB)
+    (hBA : U64SlicesDisjoint B lenB A lenA)
+    (h0a : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 a lenA)
+    (h3a : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 a lenA)
+    (h0b : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 b lenB)
+    (h3b : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 b lenB)
+    (hAMatrix : ∀ i : Fin 4, U64SlicesDisjoint A lenA
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hBMatrix : ∀ i : Fin 4, U64SlicesDisjoint B lenB
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hMatrixValid : ∀ i : Fin 4, heap.ValidU64Slice
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hLeft : RawDensePolyRep this heap a lenA left)
+    (hRight : RawDensePolyRep this heap b lenB right)
+    (hrun : hgcdRecursiveBase M true A B a b lenA lenB heap = .ok result) :
+    result.lenA = lenA ∧ result.lenB = lenB ∧ result.sgn = 1 ∧
+      ∃ hResultM : result.matrix.Valid,
+        HgcdMatRawDenseRep this result.heap result.matrix
+          (identityEntries this._p.toNat) hResultM ∧
+        RawDensePolyRep this result.heap A result.lenA left ∧
+        RawDensePolyRep this result.heap B result.lenB right := by
+  rcases hgcdIterInit_refines this M A B A A 0 a lenA b lenB heap left
+      right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a h3a h0b h3b
+      hAMatrix hBMatrix hMatrixValid hLeft hRight with
+    ⟨initial, hinit, hIA, hlenIA, hIB, hlenIB, _, _, _, hsgn,
+      hInitialM, hMatrix,
+      hARep, hBRep, _, _⟩
+  have hbase : hgcdRecursiveBase M true A B a b lenA lenB heap =
+      .ok initial.toRecursiveBaseResult := by
+    rw [hgcdRecursiveBase_true_eq_init, hinit]
+    rfl
+  have heq := Except.ok.inj (hbase.symm.trans hrun)
+  subst result
+  refine ⟨hlenIA, hlenIB, hsgn, hInitialM, hMatrix, ?_, ?_⟩
+  · simpa [HgcdIterState.toRecursiveBaseResult, hIA, hlenIA] using hARep
+  · simpa [HgcdIterState.toRecursiveBaseResult, hIB, hlenIB] using hBRep
+
 end CLPoly.Impl.StrictHGCDRawRefinement

@@ -170,4 +170,42 @@ def dense_upoly_zp__hgcd_iter_ir (this : DenseUPolyZp) (M : HgcdMat)
   | .error fault => .error fault
   | .ok initial => hgcdIterLoop this (lenA / 2) Q W3 scratch initial
 
+/-- Reference-eliminated return state of the source `_hgcd_recursive` base
+branch. -/
+structure HgcdRecursiveBaseResult where
+  heap : RawHeap
+  matrix : HgcdMat
+  lenA : Nat
+  lenB : Nat
+  sgn : Int
+
+def HgcdIterState.toRecursiveBaseResult (state : HgcdIterState) :
+    HgcdRecursiveBaseResult :=
+  .mk state.heap state.matrix state.lenA state.lenB state.sgn
+
+/-- Exact lowering of `_hgcd_recursive`'s `len_b < len_a / 2 + 1` branch.
+The optional identity initialization and the alias-sensitive order of the two
+source `memcpy` calls remain explicit. -/
+def hgcdRecursiveBase (M : HgcdMat) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap) :
+    RawExec HgcdRecursiveBaseResult :=
+  let continueWith (heap1 : RawHeap) (matrix : HgcdMat) :=
+    match heap1.copyU64 A a lenA with
+    | .error fault => .error fault
+    | .ok heap2 =>
+      match heap2.copyU64 B b lenB with
+      | .error fault => .error fault
+      | .ok heap3 => .ok {
+          heap := heap3
+          matrix := matrix
+          lenA := lenA
+          lenB := lenB
+          sgn := 1 }
+  if computeM then
+    match dense_upoly_zp__mat_one_ir M heap with
+    | .error fault => .error fault
+    | .ok (heap1, matrix) => continueWith heap1 matrix
+  else
+    continueWith heap M
+
 end Generated.StrictHGCD

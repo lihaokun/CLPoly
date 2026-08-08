@@ -398,7 +398,7 @@ theorem hgcdIterLoop_step_shape (this : DenseUPolyZp) (m : Nat)
         lenT := row01.lenT
         t := row01.t
         sgn := -state.sgn
-      } = .ok final := by
+      } = .ok final ∧ lenR < state.lenB := by
   rw [hgcdIterLoop] at hrun
   simp only [if_pos hguard] at hrun
   split at hrun
@@ -411,8 +411,11 @@ theorem hgcdIterLoop_step_shape (this : DenseUPolyZp) (m : Nat)
       split at hrun
       next fault hrow01 => simp at hrun
       next row01 hrow01 =>
+        have hlt := Generated.StrictDivrem.polyDivrem_remainder_lt this Q
+          state.T state.A
+          state.lenA state.B state.lenB W3 state.heap heap1 lenQ lenR hdiv
         exact ⟨heap1, lenQ, lenR, row23, row01, hdiv, hrow23,
-          hrow01, hrun⟩
+          hrow01, hrun, hlt⟩
 
 /-- The source's zero-quotient/zero-entry branch performs exactly the two
 matrix-entry swaps and no heap access.  This exposes the real descriptor

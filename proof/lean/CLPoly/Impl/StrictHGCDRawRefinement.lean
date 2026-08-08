@@ -6433,6 +6433,137 @@ theorem hgcdRecursiveCombineMatrix_refines (this : DenseUPolyZp)
     hRightModified hModified.1 hmul
   exact ⟨hProduct.1, hProduct.2.2⟩
 
+/-- Physical obligations that connect the real final reconstruction to the
+optional quotient/matrix-product block while framing both reconstructed
+output polynomials. -/
+structure HgcdRecursiveFinishWorkspace (this : DenseUPolyZp)
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (A B T0 lowA lowB highA highB q : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift lenQ : Nat)
+    (a2 scratch : RawPtr UInt64) (sgnS : Int) (heap : RawHeap)
+    (reconstructed : HgcdRecursiveReconstructPairResult) : Prop where
+  reconstruct : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
+    lowA lowB highA highB scratch lenLowA lenLowB lenHighA lenHighB shift
+    S hS sgnS heap
+  afterLayout : RawHeap.SameLayout heap reconstructed.heap
+  rightPrefix : ∀ i : Fin 4, SameU64Prefix heap reconstructed.heap
+    (hgcdMatPtr R hR i) (hgcdMatLen R hR i)
+  secondPrefix : ∀ i : Fin 4, SameU64Prefix heap reconstructed.heap
+    (hgcdMatPtr S hS i) (hgcdMatLen S hS i)
+  quotientPrefix : SameU64Prefix heap reconstructed.heap q lenQ
+  combine : ∀ (combined : HgcdMatMulResult),
+    hgcdRecursiveCombineMatrix this M R S hM hR hS q lenQ T0 a2 scratch
+        reconstructed.heap = .ok combined →
+    HgcdRecursiveCombineMatrixWorkspaceProvider this R S hR hS q lenQ T0
+      a2 scratch reconstructed.heap ∧
+    RawHeap.SameLayout reconstructed.heap combined.heap ∧
+    SameU64Prefix reconstructed.heap combined.heap A reconstructed.lenA ∧
+    SameU64Prefix reconstructed.heap combined.heap B reconstructed.lenB
+
+def HgcdRecursiveFinishWorkspaceProvider (this : DenseUPolyZp)
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (A B T0 lowA lowB highA highB q : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift lenQ : Nat)
+    (a2 scratch : RawPtr UInt64) (sgnS : Int) (heap : RawHeap) : Prop :=
+  ∀ reconstructed,
+    hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB scratch
+      lenLowA lenLowB lenHighA lenHighB shift S hS sgnS heap =
+        .ok reconstructed →
+    HgcdRecursiveFinishWorkspace this M R S hM hR hS A B T0 lowA lowB highA
+      highB q lenLowA lenLowB lenHighA lenHighB shift lenQ a2 scratch sgnS
+      heap reconstructed
+
+/-- Raw refinement of the exact final source tail.  Both reconstructed
+outputs are obtained from the four generated calls and are explicitly
+framed across the optional quotient update and full matrix multiplication. -/
+theorem hgcdRecursiveFinish_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (computeM : Bool) (A B T0 lowA lowB highA highB q : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift lenQ : Nat)
+    (a2 scratch : RawPtr UInt64) (sgnR sgnS : Int) (heap : RawHeap)
+    (result : HgcdRecursiveFinishResult)
+    (right entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient polyLowA polyLowB polyHighA polyHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveFinishWorkspaceProvider this M R S hM hR hS A
+      B T0 lowA lowB highA highB q lenLowA lenLowB lenHighA lenHighB shift
+      lenQ a2 scratch sgnS heap)
+    (hRRep : HgcdMatRawDenseRep this heap R right hR)
+    (hSRep : HgcdMatRawDenseRep this heap S entries hS)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hLowA : RawDensePolyRep this heap lowA lenLowA polyLowA)
+    (hLowB : RawDensePolyRep this heap lowB lenLowB polyLowB)
+    (hHighA : RawDensePolyRep this heap highA lenHighA polyHighA)
+    (hHighB : RawDensePolyRep this heap highB lenHighB polyHighB)
+    (hrun : hgcdRecursiveFinish this M R S hM hR hS computeM A B T0 lowA
+      lowB highA highB q lenLowA lenLowB lenHighA lenHighB shift lenQ a2
+      scratch sgnR sgnS heap = .ok result) :
+    ∃ finalA finalB,
+      RawDensePolyRep this result.heap A result.lenA finalA ∧
+      RawDensePolyRep this result.heap B result.lenB finalB ∧
+      result.sgn = -(sgnR * sgnS) ∧
+      (computeM = true →
+        HgcdMatRawDenseRep this result.heap result.matrix
+          (hgcdMatProductEntry right
+            (hgcdMatApplyQuotientEntries entries quotient)) result.valid) := by
+  rcases hgcdRecursiveFinish_exec this M R S hM hR hS computeM A B T0 lowA
+      lowB highA highB q lenLowA lenLowB lenHighA lenHighB shift lenQ a2
+      scratch sgnR sgnS heap result hrun with
+    ⟨reconstructed, hreconstruct, hlenA, hlenB, hsgn, htail⟩
+  have hwork := physical reconstructed hreconstruct
+  rcases hgcdRecursiveReconstructPair_refines this A B T0 lowA lowB highA
+      highB scratch lenLowA lenLowB lenHighA lenHighB shift S hS sgnS heap
+      reconstructed entries polyLowA polyLowB polyHighA polyHighB hcfg hp
+      hwork.reconstruct hSRep hLowA hLowB hHighA hHighB hreconstruct with
+    ⟨hAReconstructed, hBReconstructed, _⟩
+  let finalA := hgcdReconstructedLowA entries polyLowA polyLowB sgnS +
+    Polynomial.X ^ shift * polyHighA
+  let finalB := hgcdReconstructedLowB entries polyLowA polyLowB sgnS +
+    Polynomial.X ^ shift * polyHighB
+  by_cases hcompute : computeM = true
+  · simp [hcompute] at htail
+    rcases htail with ⟨combined, hcombine, hheap, hmatrix⟩
+    have hcombineWork := hwork.combine combined hcombine
+    have hRReconstructed : HgcdMatRawDenseRep this reconstructed.heap R right
+        hR := by
+      intro i
+      exact rawDensePolyRep_of_same_prefix this heap reconstructed.heap
+        (hgcdMatPtr R hR i) (hgcdMatLen R hR i) (right i)
+        hwork.afterLayout (hwork.rightPrefix i) (hRRep i)
+    have hSReconstructed : HgcdMatRawDenseRep this reconstructed.heap S entries
+        hS := by
+      intro i
+      exact rawDensePolyRep_of_same_prefix this heap reconstructed.heap
+        (hgcdMatPtr S hS i) (hgcdMatLen S hS i) (entries i)
+        hwork.afterLayout (hwork.secondPrefix i) (hSRep i)
+    have hQReconstructed := rawDensePolyRep_of_same_prefix this heap
+      reconstructed.heap q lenQ quotient hwork.afterLayout
+      hwork.quotientPrefix hQ
+    have hCombined := hgcdRecursiveCombineMatrix_refines this M R S hM hR hS
+      q lenQ T0 a2 scratch reconstructed.heap combined right entries quotient
+      hcfg hp hcombineWork.1 hRReconstructed hSReconstructed hQReconstructed
+      hcombine
+    have hACombined := rawDensePolyRep_of_same_prefix this reconstructed.heap
+      combined.heap A reconstructed.lenA finalA hcombineWork.2.1
+      hcombineWork.2.2.1 hAReconstructed
+    have hBCombined := rawDensePolyRep_of_same_prefix this reconstructed.heap
+      combined.heap B reconstructed.lenB finalB hcombineWork.2.1
+      hcombineWork.2.2.2 hBReconstructed
+    refine ⟨finalA, finalB, ?_, ?_, hsgn, ?_⟩
+    · simpa [hheap, hlenA] using hACombined
+    · simpa [hheap, hlenB] using hBCombined
+    · intro _
+      simpa [hheap, hmatrix] using hCombined.2.2
+  · have hfalse : computeM = false := by cases computeM <;> simp_all
+    simp [hfalse] at htail
+    refine ⟨finalA, finalB, ?_, ?_, hsgn, ?_⟩
+    · simpa [htail.1, hlenA] using hAReconstructed
+    · simpa [htail.1, hlenB] using hBReconstructed
+    · intro htrue
+      simp [hfalse] at htrue
+
 /-- The generated recursive-HGCD base helper with matrix computation enabled
 is exactly the already-refined iterator initialization prefix, modulo its
 smaller return record. -/

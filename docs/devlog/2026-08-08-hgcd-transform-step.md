@@ -25,6 +25,7 @@
 - 闭合完整 `_poly_divrem` 的任意外部 slice 帧，覆盖短输入 `copyU64` 与长输入三段循环，并据此证明四项 HGCD raw 矩阵跨真实 divrem 保持。
 - 将实际 divrem、两次实际 row update、raw 状态轮换、矩阵变换、signed determinant、规范化 gcd 及严格 `lenR < lenB` 组合成 `hgcdIterationCalls_refine` 单轮精化定理。
 - 定义不含 L2 结果的循环物理工作区 provider，并以生成函数相同的 `state.lenB` 度量证明完整 `hgcdIterLoop_refines`：每轮调用上述真实单轮定理，以实际 `lenR < lenB` 进入递归，最终得到停止条件、最终 raw 状态、transform、signed determinant 和全程 gcd 保持。
+- 将真实 `_mat_one`、两次有序 `copyU64` 初始化与良基循环组合为完整 `hgcdIter_refines`，从输入 raw 多项式直接得到生成 `_hgcd_iter` 最终状态的不变量、gcd 保持和源码停止界。
 
 ## 为什么做
 

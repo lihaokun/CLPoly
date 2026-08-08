@@ -2184,4 +2184,61 @@ theorem hgcdIterLoop_refines (this : DenseUPolyZp)
 termination_by state => state.lenB
 decreasing_by exact hlt'
 
+/-- End-to-end refinement of generated C++ `_hgcd_iter`: the exact identity
+initialization and ordered copies feed the exact well-founded loop theorem. -/
+theorem hgcdIter_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (A B T t : RawPtr UInt64) (lenT : Nat)
+    (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (heap : RawHeap) (final : HgcdIterState)
+    (left right : Polynomial (ZMod this._p.toNat)) (hM : M.Valid)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdLoopWorkspaceProvider this (lenA / 2) Q W3 scratch)
+    (h0 : heap.ValidU64Slice (hgcdMatPtr M hM (0 : Fin 4)) 1)
+    (h3 : heap.ValidU64Slice (hgcdMatPtr M hM (3 : Fin 4)) 1)
+    (h03 : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1
+      (hgcdMatPtr M hM (3 : Fin 4)) 1)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hAa : U64SlicesDisjoint A lenA a lenA)
+    (hBb : U64SlicesDisjoint B lenB b lenB)
+    (hAb : U64SlicesDisjoint A lenA b lenB)
+    (hBA : U64SlicesDisjoint B lenB A lenA)
+    (h0a : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 a lenA)
+    (h3a : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 a lenA)
+    (h0b : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 b lenB)
+    (h3b : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 b lenB)
+    (hAMatrix : ∀ i : Fin 4, U64SlicesDisjoint A lenA
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hBMatrix : ∀ i : Fin 4, U64SlicesDisjoint B lenB
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hMatrixValid : ∀ i : Fin 4, heap.ValidU64Slice
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hLeft : RawDensePolyRep this heap a lenA left)
+    (hRight : RawDensePolyRep this heap b lenB right)
+    (hrun : dense_upoly_zp__hgcd_iter_ir this M A B T t lenT a lenA b
+      lenB Q W3 scratch heap = .ok final) :
+    ∃ finalA finalB finalEntries hFinalM,
+      HgcdIterRawInvariant this left right finalA finalB finalEntries final
+        hFinalM ∧
+      normalize (EuclideanDomain.gcd left right) =
+        normalize (EuclideanDomain.gcd finalA finalB) ∧
+      final.lenB < lenA / 2 + 1 := by
+  rcases hgcdIterInit_refines this M A B T t lenT a lenA b lenB heap left
+      right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a h3a h0b h3b
+      hAMatrix hBMatrix hMatrixValid hLeft hRight with
+    ⟨initial, hinit, _, _, _, _, _, _, _, _, hInitialM,
+      hInitialMatrix, hInitialA, hInitialB, hInitialTransform,
+      hInitialDet⟩
+  have hloop : hgcdIterLoop this (lenA / 2) Q W3 scratch initial =
+      .ok final := by
+    simpa [dense_upoly_zp__hgcd_iter_ir, hinit] using hrun
+  have hInitialInvariant : HgcdIterRawInvariant this left right left right
+      (identityEntries this._p.toNat) initial hInitialM :=
+    ⟨hInitialMatrix, hInitialA, hInitialB, hInitialTransform, hInitialDet⟩
+  exact hgcdIterLoop_refines this (lenA / 2) Q W3 scratch left right hcfg hp
+    physical initial final left right (identityEntries this._p.toNat)
+    hInitialM hInitialInvariant hloop
+
 end CLPoly.Impl.StrictHGCDRawRefinement

@@ -118,6 +118,7 @@ def main() -> None:
         "HgcdIterationWorkspace",
         "HgcdLoopWorkspaceProvider",
         "hgcdIterLoop_refines",
+        "hgcdIter_refines",
         "normalize_gcd_eq_of_hgcd_transform",
         "HgcdTransform",
         "hgcdTransform_euclid_step",

@@ -144,3 +144,9 @@ workspace 字段或重新计算。
 `a3/b3` raw 表示、稳定矩阵四项 raw 表示、输入输出线性变换、与源码 `sgn`
 同步的行列式、GCD 不变式以及 `lenB < lenInputA/2+1` 停止界。新增 finalize
 workspace/provider 只含容量、指针相等桥和分离条件，不含任何 L2 多项式值。
+
+两处 A/B 重构共用的完整源码顺序现已生成化：`ReconstructB`、B 的
+`LiftHigh`、`ReconstructA`、A 的 `LiftHigh` 被组合成一个 raw helper；成功
+分解定理固定这四次执行的顺序，并将返回长度精确绑定到两次真实
+`normaliseU64` 的结果。以 `shift=m,R` 实例化第一处，以 `shift=k,S` 实例化
+第二处，不引入新的算法或规格执行。

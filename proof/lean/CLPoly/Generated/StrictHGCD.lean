@@ -799,6 +799,124 @@ def hgcdRecursiveLiftHigh (this : DenseUPolyZp)
       | .error fault => .error fault
       | .ok length => .ok { heap := heap2, length := length }
 
+/-- Return state of either complete A/B reconstruction pair in
+`_hgcd_recursive`. -/
+structure HgcdRecursiveReconstructPairResult where
+  heap : RawHeap
+  lenA : Nat
+  lenB : Nat
+
+/-- Exact source-order composition shared by both reconstruction sites:
+reconstruct and lift B first, then reconstruct and lift A.  Instantiating
+`shift=m` with the first matrix gives the first site; instantiating `shift=k`
+with the second matrix gives the final output site. -/
+def hgcdRecursiveReconstructPair (this : DenseUPolyZp)
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift : Nat)
+    (M : HgcdMat) (hM : M.Valid) (sgn : Int) (heap : RawHeap) :
+    RawExec HgcdRecursiveReconstructPairResult :=
+  match hgcdRecursiveReconstructB this B T0
+      (hgcdMatPtrRaw M hM (2 : Fin 4))
+      (hgcdMatPtrRaw M hM (0 : Fin 4)) lowA lowB scratch
+      (hgcdMatLenRaw M hM (2 : Fin 4))
+      (hgcdMatLenRaw M hM (0 : Fin 4)) lenLowA lenLowB sgn heap with
+  | .error fault => .error fault
+  | .ok (heap1, lowLenB) =>
+    match hgcdRecursiveLiftHigh this B highB lowLenB shift lenHighB heap1 with
+    | .error fault => .error fault
+    | .ok liftedB =>
+      match hgcdRecursiveReconstructA this A T0
+          (hgcdMatPtrRaw M hM (3 : Fin 4))
+          (hgcdMatPtrRaw M hM (1 : Fin 4)) lowA lowB scratch
+          (hgcdMatLenRaw M hM (3 : Fin 4))
+          (hgcdMatLenRaw M hM (1 : Fin 4)) lenLowA lenLowB sgn
+          liftedB.heap with
+      | .error fault => .error fault
+      | .ok (heap3, lowLenA) =>
+        match hgcdRecursiveLiftHigh this A highA lowLenA shift lenHighA
+            heap3 with
+        | .error fault => .error fault
+        | .ok liftedA => .ok {
+            heap := liftedA.heap
+            lenA := liftedA.length
+            lenB := liftedB.length }
+
+/-- Successful pair reconstruction exposes the exact four source blocks in
+their C++ order and pins both returned lengths to the two normalization
+results. -/
+theorem hgcdRecursiveReconstructPair_exec (this : DenseUPolyZp)
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift : Nat)
+    (M : HgcdMat) (hM : M.Valid) (sgn : Int) (heap : RawHeap)
+    (result : HgcdRecursiveReconstructPairResult)
+    (hrun : hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB
+      scratch lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap =
+        .ok result) :
+    ∃ heap1 lowLenB liftedB heap3 lowLenA liftedA,
+      hgcdRecursiveReconstructB this B T0
+          (hgcdMatPtrRaw M hM (2 : Fin 4))
+          (hgcdMatPtrRaw M hM (0 : Fin 4)) lowA lowB scratch
+          (hgcdMatLenRaw M hM (2 : Fin 4))
+          (hgcdMatLenRaw M hM (0 : Fin 4)) lenLowA lenLowB sgn heap =
+        .ok (heap1, lowLenB) ∧
+      hgcdRecursiveLiftHigh this B highB lowLenB shift lenHighB heap1 =
+        .ok liftedB ∧
+      hgcdRecursiveReconstructA this A T0
+          (hgcdMatPtrRaw M hM (3 : Fin 4))
+          (hgcdMatPtrRaw M hM (1 : Fin 4)) lowA lowB scratch
+          (hgcdMatLenRaw M hM (3 : Fin 4))
+          (hgcdMatLenRaw M hM (1 : Fin 4)) lenLowA lenLowB sgn
+          liftedB.heap = .ok (heap3, lowLenA) ∧
+      hgcdRecursiveLiftHigh this A highA lowLenA shift lenHighA heap3 =
+        .ok liftedA ∧
+      result.heap = liftedA.heap ∧ result.lenA = liftedA.length ∧
+      result.lenB = liftedB.length := by
+  simp only [hgcdRecursiveReconstructPair] at hrun
+  generalize hB : hgcdRecursiveReconstructB this B T0
+      (hgcdMatPtrRaw M hM (2 : Fin 4))
+      (hgcdMatPtrRaw M hM (0 : Fin 4)) lowA lowB scratch
+      (hgcdMatLenRaw M hM (2 : Fin 4))
+      (hgcdMatLenRaw M hM (0 : Fin 4)) lenLowA lenLowB sgn heap = runB
+    at hrun
+  cases runB with
+  | error fault => simp [hB] at hrun
+  | ok pairB =>
+    rcases pairB with ⟨heap1, lowLenB⟩
+    simp only [hB] at hrun
+    generalize hLiftB : hgcdRecursiveLiftHigh this B highB lowLenB shift
+      lenHighB heap1 = runLiftB at hrun
+    cases runLiftB with
+    | error fault => simp [hLiftB] at hrun
+    | ok liftedB =>
+      simp only [hLiftB] at hrun
+      generalize hA : hgcdRecursiveReconstructA this A T0
+          (hgcdMatPtrRaw M hM (3 : Fin 4))
+          (hgcdMatPtrRaw M hM (1 : Fin 4)) lowA lowB scratch
+          (hgcdMatLenRaw M hM (3 : Fin 4))
+          (hgcdMatLenRaw M hM (1 : Fin 4)) lenLowA lenLowB sgn
+          liftedB.heap = runA at hrun
+      cases runA with
+      | error fault => simp [hA] at hrun
+      | ok pairA =>
+        rcases pairA with ⟨heap3, lowLenA⟩
+        simp only [hA] at hrun
+        generalize hLiftA : hgcdRecursiveLiftHigh this A highA lowLenA shift
+          lenHighA heap3 = runLiftA at hrun
+        cases runLiftA with
+        | error fault => simp [hLiftA] at hrun
+        | ok liftedA =>
+          have hactual :
+              (Except.ok {
+                heap := liftedA.heap
+                lenA := liftedA.length
+                lenB := liftedB.length } :
+                RawExec HgcdRecursiveReconstructPairResult) = .ok result := by
+            simpa [hLiftA] using hrun
+          have heq := Except.ok.inj hactual
+          cases heq
+          exact ⟨heap1, lowLenB, liftedB, heap3, lowLenA, liftedA,
+            rfl, hLiftB, hA, hLiftA, rfl, rfl, rfl⟩
+
 structure HgcdEarlyMatrixResult where
   heap : RawHeap
   matrix : HgcdMat

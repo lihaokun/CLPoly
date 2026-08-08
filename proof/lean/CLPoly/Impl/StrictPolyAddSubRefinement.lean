@@ -39,6 +39,22 @@ theorem region_ne_of_exactOrDisjoint_not_sameAddress
     simp [RawPtr.sameAddress] at hne
   · exact hregions
 
+theorem copyTail_preserves_prefix (heap heap' : RawHeap)
+    (C source : RawPtr UInt64) (start count k : Nat) (value : UInt64)
+    (hDst : heap.ValidU64Slice (C.add start) count)
+    (hSrc : heap.ValidU64Slice (source.add start) count)
+    (hk : k < start) (hread : heap.readU64 C k = .ok value)
+    (hcopy : heap.copyU64 (C.add start) (source.add start) count = .ok heap') :
+    heap'.readU64 C k = .ok value := by
+  apply copyU64_preserves_read heap heap' (C.add start) (source.add start)
+    C count k value hDst hSrc hread
+  · intro j hj
+    right
+    simp only [RawPtr.add]
+    change C.limbOffset + start * 1 + j ≠ C.limbOffset + k
+    omega
+  · exact hcopy
+
 theorem nmodAdd_toNat (this : DenseUPolyZp) (a b : UInt64)
     (hp : this._p ≠ 0) (ha : a < this._p) (hb : b < this._p) :
     (dense_upoly_zp_nmod_add_ir this a b).toNat =
@@ -304,6 +320,80 @@ theorem addCommonLoop_value (this : DenseUPolyZp)
 termination_by limit - i
 decreasing_by omega
 
+theorem addCommonLoop_preserves_input_tail (this : DenseUPolyZp)
+    (C A B input : RawPtr UInt64) (limit tailIndex : Nat)
+    (heap heap' : RawHeap) (value : UInt64)
+    (hC : heap.ValidU64Slice C limit)
+    (hA : heap.ValidU64Slice A limit)
+    (hB : heap.ValidU64Slice B limit)
+    (hAlias : ExactOrDisjoint C input)
+    (htail : limit ≤ tailIndex)
+    (hread : heap.readU64 input tailIndex = .ok value)
+    (hrun : addCommonLoop this C A B limit 0 heap = .ok heap') :
+    heap'.readU64 input tailIndex = .ok value := by
+  apply addCommonLoop_preserves_outside this C A B input limit 0 tailIndex
+    heap heap' value hC hA hB hread
+  · intro k hk hkl
+    exact address_ne_of_exactOrDisjoint hAlias (by omega)
+  · exact hrun
+
+theorem addLeftLongTail (this : DenseUPolyZp) (C A B : RawPtr UInt64)
+    (lenA lenB : Nat) (heap heap1 : RawHeap)
+    (hLong : lenB < lenA)
+    (hC : heap.ValidU64Slice C lenA)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hAliasA : ExactOrDisjoint C A)
+    (hloop : addCommonLoop this C A B lenB 0 heap = .ok heap1)
+    (hlayout1 : RawHeap.SameLayout heap heap1) :
+    ∃ heap2,
+      (if C.sameAddress A then .ok heap1
+       else heap1.copyU64 (C.add lenB) (A.add lenB) (lenA - lenB)) =
+        .ok heap2 ∧
+      RawHeap.SameLayout heap1 heap2 ∧
+      (∀ k value, k < lenB → heap1.readU64 C k = .ok value →
+        heap2.readU64 C k = .ok value) ∧
+      (∀ k value, lenB ≤ k → k < lenA →
+        heap.readU64 A k = .ok value → heap2.readU64 C k = .ok value) := by
+  by_cases hsame : C.sameAddress A = true
+  · have heq : C = A := (sameAddress_eq_true_iff C A).mp hsame
+    refine ⟨heap1, by simp [hsame], fun _ _ => Iff.rfl, ?_, ?_⟩
+    · intro k value hk hread
+      exact hread
+    · intro k value hk hka hread
+      have htail := addCommonLoop_preserves_input_tail this C A B A lenB k
+        heap heap1 value
+        (heap.validU64Slice_mono C lenA lenB hC (by omega))
+        (heap.validU64Slice_mono A lenA lenB hA (by omega)) hB
+        hAliasA hk hread hloop
+      simpa [heq] using htail
+  · have hfalse : C.sameAddress A = false := Bool.eq_false_of_not_eq_true hsame
+    have hregions := region_ne_of_exactOrDisjoint_not_sameAddress hAliasA hfalse
+    have hC1 : heap1.ValidU64Slice C lenA := (hlayout1 C lenA).mp hC
+    have hA1 : heap1.ValidU64Slice A lenA := (hlayout1 A lenA).mp hA
+    have hDst := heap1.validU64Slice_add C lenA lenB (lenA - lenB)
+      hC1 (by omega)
+    have hSrc := heap1.validU64Slice_add A lenA lenB (lenA - lenB)
+      hA1 (by omega)
+    rcases copyU64_refines heap1 (C.add lenB) (A.add lenB)
+      (lenA - lenB) hDst hSrc (by simpa [RawPtr.add] using hregions) with
+      ⟨heap2, hcopy, hlayout2, hcontents⟩
+    refine ⟨heap2, by simp [hfalse, hcopy], hlayout2, ?_, ?_⟩
+    · intro k value hk hread
+      exact copyTail_preserves_prefix heap1 heap2 C A lenB
+        (lenA - lenB) k value hDst hSrc hk hread hcopy
+    · intro k value hk hka hread
+      have htail := addCommonLoop_preserves_input_tail this C A B A lenB k
+        heap heap1 value
+        (heap.validU64Slice_mono C lenA lenB hC (by omega))
+        (heap.validU64Slice_mono A lenA lenB hA (by omega)) hB
+        hAliasA hk hread hloop
+      have hindex : k - lenB < lenA - lenB := by omega
+      have hout := hcontents (k - lenB) value hindex
+      rw [RawHeap.readU64_add, RawHeap.readU64_add] at hout
+      simpa [Nat.add_sub_of_le hk] using hout (by
+        simpa [Nat.add_sub_of_le hk] using htail)
+
 theorem subCommonLoop_ok (this : DenseUPolyZp) (C A B : RawPtr UInt64)
     (limit i : Nat) (heap : RawHeap)
     (hC : heap.ValidU64Slice C limit)
@@ -423,6 +513,23 @@ theorem subCommonLoop_value (this : DenseUPolyZp)
   next hnot => omega
 termination_by limit - i
 decreasing_by omega
+
+theorem subCommonLoop_preserves_input_tail (this : DenseUPolyZp)
+    (C A B input : RawPtr UInt64) (limit tailIndex : Nat)
+    (heap heap' : RawHeap) (value : UInt64)
+    (hC : heap.ValidU64Slice C limit)
+    (hA : heap.ValidU64Slice A limit)
+    (hB : heap.ValidU64Slice B limit)
+    (hAlias : ExactOrDisjoint C input)
+    (htail : limit ≤ tailIndex)
+    (hread : heap.readU64 input tailIndex = .ok value)
+    (hrun : subCommonLoop this C A B limit 0 heap = .ok heap') :
+    heap'.readU64 input tailIndex = .ok value := by
+  apply subCommonLoop_preserves_outside this C A B input limit 0 tailIndex
+    heap heap' value hC hA hB hread
+  · intro k hk hkl
+    exact address_ne_of_exactOrDisjoint hAlias (by omega)
+  · exact hrun
 
 theorem subNegTailLoop_ok (this : DenseUPolyZp) (C B : RawPtr UInt64)
     (limit i : Nat) (heap : RawHeap)

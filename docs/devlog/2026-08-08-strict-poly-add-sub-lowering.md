@@ -30,6 +30,10 @@
 - 完整闭合等长 `_poly_add/_poly_sub` 分支：从实际入口执行、逐系数循环到
   normalization，最终分别建立 `RawDensePolyRep (left + right)` 与
   `RawDensePolyRep (left - right)`。
+- 证明共同前缀循环保持较长输入尚未消费的尾部，并证明随后的实际 `copyU64`
+  只改写 C 的高位尾部、保持已算好的低位前缀。
+- 闭合加法 `lenA > lenB` 的长尾状态：`C=A` 时源码跳过复制且保留原始尾部；
+  不同分配时真实复制产生完全相同的尾部内容，并保持 RawHeap 布局。
 
 ## 当前边界
 

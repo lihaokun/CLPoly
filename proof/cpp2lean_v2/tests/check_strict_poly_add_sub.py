@@ -70,6 +70,10 @@ def main() -> None:
                      "subNegTailLoop_value",
                      "sameAddress_eq_true_iff",
                      "region_ne_of_exactOrDisjoint_not_sameAddress",
+                     "copyTail_preserves_prefix",
+                     "addCommonLoop_preserves_input_tail",
+                     "subCommonLoop_preserves_input_tail",
+                     "addLeftLongTail",
                      "polyAdd_equalLength_refines",
                      "polySub_equalLength_refines", "RawDensePolyRep",
                      "RawHeap.SameLayout"):

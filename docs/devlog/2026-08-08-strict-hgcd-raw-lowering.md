@@ -132,3 +132,9 @@ descriptor 有效性链：`_mat_one`、每次 `_mat_row_update`、良基
 分支，还是分别跳过/执行 `a3`、`b3` 的条件复制，每次真实 `copyU64` 都保持
 四个稳定矩阵项的 raw 表示，且组合后给出初末 heap 的 `SameLayout`。该证明
 只依赖显式切片有效性与目标/矩阵项不相交，不对 heap 或矩阵内容作规格替换。
+
+矩阵稳定化现在也具有完整的 live-polynomial frame：证明分别沿生成的 staging
+与 restore 良基四步循环展开，每次由真实 `copyU64`、目标有效性和区域分离
+保持任意 `RawDensePolyRep`，并组合得到初末 heap 的 `SameLayout`。因此递归
+iterator 产生的 A/B 可穿过稳定化进入最终输出复制，无需把其 L2 内容作为
+workspace 字段或重新计算。

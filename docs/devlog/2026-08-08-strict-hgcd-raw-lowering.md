@@ -170,6 +170,13 @@ HGCD 迭代的矩阵长度不变式现已贯穿完整的良基循环。证明先
 停止分支以及递归 iterator arm 的 stabilization/store 也已接通，因此返回
 矩阵四项相对于原输入长度的界和 `result.lenB ≤ result.lenA` 都来自实际执行。
 
+迭代循环现还同步保持 `final.lenA ≤ inputLength` 和 `0 < final.lenA`；前者由
+每步 `next.lenA = old.lenB ≤ old.lenA`，后者由实际循环 guard 保证递归步的
+旧 B 非空。结合返回矩阵第 0/2 项的互补长度界，新的算术闭合定理已证明第一
+次成对重构的三个真实长度分量——移位高部、`R[2]*a_lo`、`R[0]*b_lo`——
+均不超过原 `len_a`，从而得到重构结果 `lenb2 ≤ len_a`。这正是中间真实
+`_poly_divrem` 已有严格余数下降定理的缺失前提。
+
 最终矩阵合并块也已按源码顺序闭合：`hgcdRecursiveCombineMatrix` 先实际执行
 两列商矩阵更新，再把其返回的 matrix/heap 直接交给完整四项 `_mat_mul`。
 对应 raw 定理从两次生成调用分别取得 `[[q,1],[1,0]]*S` 与

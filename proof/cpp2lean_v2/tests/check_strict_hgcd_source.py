@@ -139,6 +139,8 @@ def main() -> None:
         "HgcdRecursiveHighInput",
         "hgcdRecursiveHighInput",
         "hgcdRecursiveHighInput_len_lt",
+        "hgcdRecursiveHighInput_order",
+        "hgcdRecursiveHighInput_lenA_pos",
         "hgcdMatStageLoop",
         "hgcdMatStageOffset",
         "hgcdMatStageSize",

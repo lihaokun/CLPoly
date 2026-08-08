@@ -497,6 +497,21 @@ theorem hgcdRecursiveHighInput_len_lt (a b : RawPtr UInt64)
   simp only [hgcdRecursiveHighInput]
   omega
 
+/-- Removing the same source high-half offset preserves the strict operand
+length order required by the first recursive HGCD call. -/
+theorem hgcdRecursiveHighInput_order (a b : RawPtr UInt64)
+    (lenA lenB : Nat) (horder : lenB < lenA) :
+    (hgcdRecursiveHighInput a b lenA lenB).lenB0 <
+      (hgcdRecursiveHighInput a b lenA lenB).lenA0 := by
+  simp only [hgcdRecursiveHighInput]
+  split <;> omega
+
+theorem hgcdRecursiveHighInput_lenA_pos (a b : RawPtr UInt64)
+    (lenA lenB : Nat) (horder : lenB < lenA) :
+    0 < (hgcdRecursiveHighInput a b lenA lenB).lenA0 := by
+  simp only [hgcdRecursiveHighInput]
+  omega
+
 /-- Heap and accumulated offset after the first matrix-stabilization loop. -/
 structure HgcdMatStageResult where
   heap : RawHeap

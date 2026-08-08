@@ -7,6 +7,7 @@
 - 保留 `_hgcd_recursive` 矩阵基础分支真实 `_mat_one` 初始化已经建立的恒等变换、带符号行列式和矩阵长度界。
 - 将 `computeM = true` 的真实矩阵初始化及 A/B 拷贝封装为 `HgcdRecursiveRawInvariant`。
 - 将 `computeM = false` 的真实 A/B 拷贝封装为同一不变量；矩阵语义与长度义务仅在矩阵实际被请求时成立。
+- 增加按真实 `computeM` 分支统一入口的基础情形定理，供完整递归主体直接调用。
 - 把两个统一基础分支定理加入严格 HGCD 源码门禁。
 
 ## 为什么做

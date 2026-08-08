@@ -135,6 +135,7 @@ def main() -> None:
         "hgcdRecursiveBase_false_refines",
         "hgcdRecursiveBase_true_rawInvariant",
         "hgcdRecursiveBase_false_rawInvariant",
+        "hgcdRecursiveBase_rawInvariant",
         "HgcdRecursiveWorkspace",
         "hgcdRecursiveWorkspace",
         "hgcdRecursiveWorkspace_layout",

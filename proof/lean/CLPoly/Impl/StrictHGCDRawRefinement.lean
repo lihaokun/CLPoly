@@ -6478,4 +6478,55 @@ theorem hgcdRecursiveBase_false_rawInvariant (this : DenseUPolyZp)
   · intro hfalse
     simp at hfalse
 
+/-- Uniform refinement theorem for the exact source base branch.  Splitting
+on `computeM` follows the generated branch itself; the disabled arm does not
+inherit any matrix claim from the enabled arm. -/
+theorem hgcdRecursiveBase_rawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (heap : RawHeap) (result : HgcdRecursiveBaseResult)
+    (left right : Polynomial (ZMod this._p.toNat)) (hM : M.Valid)
+    (hp : 1 < this._p.toNat)
+    (h0 : heap.ValidU64Slice (hgcdMatPtr M hM (0 : Fin 4)) 1)
+    (h3 : heap.ValidU64Slice (hgcdMatPtr M hM (3 : Fin 4)) 1)
+    (h03 : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1
+      (hgcdMatPtr M hM (3 : Fin 4)) 1)
+    (hA : heap.ValidU64Slice A lenA) (hB : heap.ValidU64Slice B lenB)
+    (hAa : U64SlicesDisjoint A lenA a lenA)
+    (hBb : U64SlicesDisjoint B lenB b lenB)
+    (hAb : U64SlicesDisjoint A lenA b lenB)
+    (hBA : U64SlicesDisjoint B lenB A lenA)
+    (h0a : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 a lenA)
+    (h3a : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 a lenA)
+    (h0b : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 b lenB)
+    (h3b : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 b lenB)
+    (hAMatrix : ∀ i : Fin 4, U64SlicesDisjoint A lenA
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hBMatrix : ∀ i : Fin 4, U64SlicesDisjoint B lenB
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hMatrixValid : ∀ i : Fin 4, heap.ValidU64Slice
+      (hgcdMatPtr M hM i) (identityEntryLen i))
+    (hLeft : RawDensePolyRep this heap a lenA left)
+    (hRight : RawDensePolyRep this heap b lenB right)
+    (horder : lenB ≤ lenA) (hlenAPos : 0 < lenA)
+    (hstop : lenB < lenA / 2 + 1)
+    (hrun : hgcdRecursiveBase M computeM A B a b lenA lenB heap =
+      .ok result) :
+    ∃ entries hResultM,
+      HgcdRecursiveRawInvariant this left right left right entries computeM
+        A B lenA (result.toResult hResultM) := by
+  cases computeM with
+  | false =>
+      rcases hgcdRecursiveBase_false_rawInvariant this M A B a b lenA lenB
+        heap result left right hM hA hB hAa hBb hAb hBA hLeft hRight hstop
+        hrun with ⟨hResultM, hinvariant⟩
+      exact ⟨identityEntries this._p.toNat, hResultM, hinvariant⟩
+  | true =>
+      rcases hgcdRecursiveBase_true_rawInvariant this M A B a b lenA lenB
+        heap result left right hM hp h0 h3 h03 hA hB hAa hBb hAb hBA h0a
+        h3a h0b h3b hAMatrix hBMatrix hMatrixValid hLeft hRight horder
+        hlenAPos hstop hrun with ⟨hResultM, hinvariant⟩
+      exact ⟨identityEntries this._p.toNat, hResultM, hinvariant⟩
+
 end CLPoly.Impl.StrictHGCDRawRefinement

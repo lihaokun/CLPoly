@@ -8806,4 +8806,87 @@ theorem hgcdRecursiveBase_rawInvariant (this : DenseUPolyZp)
         hlenAPos hstop hrun with ⟨hResultM, hinvariant⟩
       exact ⟨identityEntries this._p.toNat, hResultM, hinvariant⟩
 
+/-- Physical facts for the exact base arm of the complete well-founded body.
+They describe only generated matrix initialization and the two source-order
+copies; no fact about a precomputed result is stored here. -/
+structure HgcdRecursiveBaseCallWorkspace (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid) (A B a b : RawPtr UInt64)
+    (lenA lenB : Nat) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat)) : Prop where
+  valid0 : heap.ValidU64Slice (hgcdMatPtr M hM (0 : Fin 4)) 1
+  valid3 : heap.ValidU64Slice (hgcdMatPtr M hM (3 : Fin 4)) 1
+  disjoint03 : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1
+    (hgcdMatPtr M hM (3 : Fin 4)) 1
+  validA : heap.ValidU64Slice A lenA
+  validB : heap.ValidU64Slice B lenB
+  Aa : U64SlicesDisjoint A lenA a lenA
+  Bb : U64SlicesDisjoint B lenB b lenB
+  Ab : U64SlicesDisjoint A lenA b lenB
+  BA : U64SlicesDisjoint B lenB A lenA
+  row0a : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 a lenA
+  row3a : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 a lenA
+  row0b : U64SlicesDisjoint (hgcdMatPtr M hM (0 : Fin 4)) 1 b lenB
+  row3b : U64SlicesDisjoint (hgcdMatPtr M hM (3 : Fin 4)) 1 b lenB
+  aMatrix : ∀ i : Fin 4, U64SlicesDisjoint A lenA
+    (hgcdMatPtr M hM i) (identityEntryLen i)
+  bMatrix : ∀ i : Fin 4, U64SlicesDisjoint B lenB
+    (hgcdMatPtr M hM i) (identityEntryLen i)
+  matrixValid : ∀ i : Fin 4, heap.ValidU64Slice
+    (hgcdMatPtr M hM i) (identityEntryLen i)
+  leftRep : RawDensePolyRep this heap a lenA left
+  rightRep : RawDensePolyRep this heap b lenB right
+
+/-- The base path of the complete strictly decreasing body establishes the
+common recursive raw invariant from its actual returned record. -/
+theorem hgcdRecursiveBodyBelow_base_rawInvariant (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (firstLength : ∀ first,
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap hchildOrder hchildDecrease = .ok first →
+      HgcdRecursiveLengthInvariant high.lenA0 first)
+    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
+      scratch lenA lenB)
+    (workspace : HgcdRecursiveBaseCallWorkspace this M hM A B a b lenA
+      lenB heap left right)
+    (hlenAPos : 0 < lenA) (hstop : lenB < lenA / 2 + 1)
+    (result : HgcdRecursiveResult)
+    (hrun : hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b
+      lenA lenB W scratch heap hbound horder firstLength reconstructionBound =
+        .ok result) :
+    ∃ entries,
+      HgcdRecursiveRawInvariant this left right left right entries computeM
+        A B lenA result := by
+  rw [hgcdRecursiveBodyBelow] at hrun
+  simp only [hstop, ↓reduceDIte] at hrun
+  split at hrun
+  next fault hbase => simp at hrun
+  next base hbase =>
+    rcases hgcdRecursiveBase_rawInvariant this M computeM A B a b lenA lenB
+        heap base left right hM hp workspace.valid0 workspace.valid3
+        workspace.disjoint03 workspace.validA workspace.validB workspace.Aa
+        workspace.Bb workspace.Ab workspace.BA workspace.row0a workspace.row3a
+        workspace.row0b workspace.row3b workspace.aMatrix workspace.bMatrix
+        workspace.matrixValid workspace.leftRep workspace.rightRep
+        (Nat.le_of_lt horder) hlenAPos hstop hbase with
+      ⟨entries, hBaseValid, hInvariant⟩
+    have heq : base.toResult hBaseValid = result := by
+      apply HgcdRecursiveResult.ext_value
+      simpa only [HgcdRecursiveResult.value, HgcdRecursiveBaseResult.toResult]
+        using congrArg HgcdRecursiveResult.value (Except.ok.inj hrun)
+    subst result
+    exact ⟨entries, hInvariant⟩
+
 end CLPoly.Impl.StrictHGCDRawRefinement

@@ -98,3 +98,8 @@ above-half 推出操作数次序后导出；没有额外假设最终 B 已小于
 真实 iterator、stabilize 和 store 执行；大输入臂只消费严格更小 `lenA` 调用的
 语义归纳假设。成功结果通过 proof-erased value 相等运输，不替换堆、矩阵或长度
 字段。该桥把两个递归调用点统一为同一个无 fuel 归纳接口。
+
+完整 `hgcdRecursiveBodyBelow` 的 base 路径也已闭合：从 body 的成功执行反演
+真实 base helper，分别覆盖 `computeM=true/false` 的矩阵初始化差异，并将两次
+原始复制的表示结果运输到 body 返回记录。该定理证明的是完整 body 分支，而不
+只是孤立 base helper。

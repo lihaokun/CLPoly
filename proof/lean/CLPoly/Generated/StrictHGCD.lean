@@ -208,4 +208,73 @@ def hgcdRecursiveBase (M : HgcdMat) (computeM : Bool)
   else
     continueWith heap M
 
+/-- Exact pointer slices created at the start of the non-base
+`_hgcd_recursive` branch. -/
+structure HgcdRecursiveWorkspace where
+  n : Nat
+  half : Nat
+  a2 : RawPtr UInt64
+  b2 : RawPtr UInt64
+  a3 : RawPtr UInt64
+  b3 : RawPtr UInt64
+  q : RawPtr UInt64
+  d : RawPtr UInt64
+  T0 : RawPtr UInt64
+  T1 : RawPtr UInt64
+  R : HgcdMat
+  S : HgcdMat
+  W3 : RawPtr Word3
+  next : RawPtr UInt64
+
+/-- Faithful lowering of the source's pointer-arithmetic workspace block.
+The zero length arrays are the total Lean value for C++ length slots that are
+written by the recursive/iterator call before any source read. -/
+def hgcdRecursiveWorkspace (W : RawPtr UInt64) (lenA : Nat) :
+    HgcdRecursiveWorkspace :=
+  let n := lenA
+  let half := (n + 1) / 2
+  let a2 := W
+  let b2 := a2.add n
+  let a3 := b2.add n
+  let b3 := a3.add n
+  let q := b3.add n
+  let d := q.add half
+  let T0 := d.add n
+  let T1 := T0.add n
+  let r0 := T1.add half
+  let r1 := r0.add half
+  let r2 := r1.add half
+  let r3 := r2.add half
+  let R : HgcdMat := { poly := #[r0, r1, r2, r3], len := #[0, 0, 0, 0] }
+  let s0 := r3.add half
+  let s1 := s0.add half
+  let s2 := s1.add half
+  let s3 := s2.add half
+  let S : HgcdMat := { poly := #[s0, s1, s2, s3], len := #[0, 0, 0, 0] }
+  let W3 : RawPtr Word3 := RawPtr.reinterpret (s3.add half)
+  let next := W.add (6 * n + 10 * half + 3 * n)
+  { n, half, a2, b2, a3, b3, q, d, T0, T1, R, S, W3, next }
+
+/-- Auditable equations for every source pointer slice and both four-entry
+matrix descriptors. -/
+theorem hgcdRecursiveWorkspace_layout (W : RawPtr UInt64) (lenA : Nat) :
+    let ws := hgcdRecursiveWorkspace W lenA
+    let r3 := (((ws.T1.add ws.half).add ws.half).add ws.half).add ws.half
+    ws.n = lenA ∧ ws.half = (lenA + 1) / 2 ∧
+    ws.a2 = W ∧ ws.b2 = ws.a2.add ws.n ∧
+    ws.a3 = ws.b2.add ws.n ∧ ws.b3 = ws.a3.add ws.n ∧
+    ws.q = ws.b3.add ws.n ∧ ws.d = ws.q.add ws.half ∧
+    ws.T0 = ws.d.add ws.n ∧ ws.T1 = ws.T0.add ws.n ∧
+    ws.R.poly = #[ws.T1.add ws.half,
+      (ws.T1.add ws.half).add ws.half,
+      ((ws.T1.add ws.half).add ws.half).add ws.half,
+      (((ws.T1.add ws.half).add ws.half).add ws.half).add ws.half] ∧
+    ws.S.poly = #[r3.add ws.half,
+        (r3.add ws.half).add ws.half,
+        ((r3.add ws.half).add ws.half).add ws.half,
+        (((r3.add ws.half).add ws.half).add ws.half).add ws.half]
+      ∧ ws.R.Valid ∧ ws.S.Valid ∧
+    ws.next = W.add (6 * lenA + 10 * ((lenA + 1) / 2) + 3 * lenA) := by
+  simp [hgcdRecursiveWorkspace, HgcdMat.Valid]
+
 end Generated.StrictHGCD

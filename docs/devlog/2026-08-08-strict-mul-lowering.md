@@ -192,6 +192,12 @@
   完整准备层再把 h 长度合同缩短到 m、把输入长度缩短到 2m 后传入。
   因此 P1 子递归中 t1/t2、其 recScratch 与上一层 scratch 同属一个 allocation
   时仍可真实应用准备精化，不需要虚构不同 region。
+- 强化 schoolbook slice 精化，使其除乘积 `SlicePolyRep` 外显式返回整个输出
+  区间的 `CanonicalU64Prefix`；该性质直接来自每个真实点积模约减写入形成的
+  `ClassicalCoeffPrefix`，递归基例输出可安全进入后续 nmod 运算。
+- 新增真实 `copyU64` 的 slice+canonical 联合精化：利用 copy 的逐 cell 内容
+  定理把源值与目标 read 对齐，同时传递源 `<modulus` 条件。P0 copy 到 C 后
+  因此保留完整 L2 表示和机器规范性，而非只证明 memcpy 成功。
 
 ## 当前边界
 

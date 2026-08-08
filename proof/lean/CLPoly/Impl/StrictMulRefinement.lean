@@ -123,6 +123,32 @@ theorem copyU64_preserves_prefix (heap heap' : RawHeap)
       exact hdisjoint writeIndex hwriteIndex readIndex hreadIndex)
     hcopy
 
+theorem copyU64_refines_slice_canonical (heap : RawHeap)
+    (dst src : RawPtr UInt64) (count p : Nat)
+    (poly : Polynomial (ZMod p)) (modulus : UInt64)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hregions : dst.region ≠ src.region)
+    (hrep : SlicePolyRep heap src count p poly)
+    (hcanonical : CanonicalU64Prefix heap src count modulus) :
+    ∃ heap', heap.copyU64 dst src count = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' dst count p poly ∧
+      CanonicalU64Prefix heap' dst count modulus := by
+  rcases copyU64_refines heap dst src count hDst hSrc hregions with
+    ⟨heap', hcopy, hlayout, hcontents⟩
+  rcases copyU64_slicePolyRep heap dst src count p poly hDst hSrc hregions
+      hrep with ⟨repHeap, hcopyRep, _, hrep'⟩
+  have heq : repHeap = heap' := Except.ok.inj (hcopyRep.symm.trans hcopy)
+  subst repHeap
+  refine ⟨heap', hcopy, hlayout, hrep', ?_⟩
+  intro i value hi hread
+  rcases heap.readU64_of_valid src count i hSrc hi with ⟨source, hsource⟩
+  have hcopied := hcontents i source hi hsource
+  have hvalue : value = source := Except.ok.inj (hread.symm.trans hcopied)
+  subst value
+  exact hcanonical i source hi hsource
+
 theorem slicePolyRep_prefix_exists (heap : RawHeap) (ptr : RawPtr UInt64)
     (length prefixLength p : Nat) (poly : Polynomial (ZMod p))
     (hvalid : heap.ValidU64Slice ptr length)
@@ -2964,7 +2990,8 @@ theorem classicalMul_refines_slice (this : DenseUPolyZp)
     ∃ heap', dense_upoly_zp__classical_mul_ir this C A lenA B lenB heap =
         .ok heap' ∧ RawHeap.SameLayout heap heap' ∧
       SlicePolyRep heap' C (lenA + lenB - 1) this._p.toNat
-        (left * right) := by
+        (left * right) ∧
+      CanonicalU64Prefix heap' C (lenA + lenB - 1) this._p := by
   have hempty : ClassicalCoeffPrefix heap C 0 (left * right) := by
     intro _ hi
     omega
@@ -2973,13 +3000,15 @@ theorem classicalMul_refines_slice (this : DenseUPolyZp)
       rfl hC hA hB hCA hCB hCanonicalA hCanonicalB hRepA hRepB hempty with
     ⟨heap', hrun, hlayout, hprefix⟩
   have hvalid' := (hlayout C (lenA + lenB - 1)).mp hC
+  have hcanonical' := canonicalU64Prefix_of_classicalCoeffPrefix heap' C
+    (lenA + lenB - 1) this._p (left * right) hprefix
   have hslice := slicePolyRep_of_classicalCoeffPrefix heap' C
     (lenA + lenB - 1) (left * right) hvalid' hprefix
     (by
       intro degree hdegree
       exact mul_coeff_zero_of_slice_lengths heap A B lenA lenB degree
         left right hApos hBpos hRepA hRepB hdegree)
-  refine ⟨heap', ?_, hlayout, hslice⟩
+  refine ⟨heap', ?_, hlayout, hslice, hcanonical'⟩
   simp [dense_upoly_zp__classical_mul_ir, Nat.ne_of_gt hApos,
     Nat.ne_of_gt hBpos, hrun]
 

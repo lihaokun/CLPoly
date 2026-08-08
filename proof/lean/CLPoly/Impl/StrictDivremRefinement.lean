@@ -89,6 +89,31 @@ def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
   ∀ k value, k < length → before.readU64 ptr k = .ok value →
     after.readU64 ptr k = .ok value
 
+/-- The generated normalization scan is invariant under an exact pointwise
+copy of its declared prefix, even when source and destination are different
+raw allocations. -/
+theorem normaliseU64_eq_of_prefix_map (before after : RawHeap)
+    (src dst : RawPtr UInt64) (length : Nat)
+    (hvalid : before.ValidU64Slice src length)
+    (hmap : ∀ k value, k < length →
+      before.readU64 src k = .ok value →
+      after.readU64 dst k = .ok value) :
+    before.normaliseU64 src length = after.normaliseU64 dst length := by
+  cases length with
+  | zero => rfl
+  | succ n =>
+    rcases before.readU64_of_valid src (n + 1) n hvalid (by omega) with
+      ⟨value, hread⟩
+    have hreadAfter := hmap n value (by omega) hread
+    simp only [RawHeap.normaliseU64, hread, hreadAfter]
+    split
+    next hzero =>
+      apply normaliseU64_eq_of_prefix_map before after src dst n
+      · exact before.validU64Slice_mono src (n + 1) n hvalid (by omega)
+      · intro k observed hk hreadObserved
+        exact hmap k observed (by omega) hreadObserved
+    next => rfl
+
 /-- A valid raw coefficient slice has a safe observation of exactly the C++
 declared length. -/
 theorem readU64s_ok (heap : RawHeap) (ptr : RawPtr UInt64) (count : Nat)
@@ -358,6 +383,30 @@ theorem normaliseU64_spec (heap : RawHeap) (ptr : RawPtr UInt64) (len : Nat)
         · intro j hjlow hjhigh
           omega
         · exact ⟨value, by simpa using hread, hvalue⟩
+
+/-- A length returned by the generated normalization scan is already a fixed
+point of that same scan.  This is a raw control-flow fact, not an L2
+normalization operation. -/
+theorem normaliseU64_result_fixed (heap : RawHeap) (ptr : RawPtr UInt64)
+    (len result : Nat) (hvalid : heap.ValidU64Slice ptr len)
+    (hrun : heap.normaliseU64 ptr len = .ok result) :
+    heap.normaliseU64 ptr result = .ok result := by
+  rcases normaliseU64_spec heap ptr len hvalid with
+    ⟨observed, hobserved, hle, _, hlast⟩
+  have hresult : observed = result :=
+    Except.ok.inj (hobserved.symm.trans hrun)
+  subst observed
+  rcases hlast with hzero | ⟨value, hread, hne⟩
+  · subst result
+    rfl
+  · cases result with
+    | zero => rfl
+    | succ n =>
+      simp only [RawHeap.normaliseU64]
+      have hread' : heap.readU64 ptr n = .ok value := by simpa using hread
+      simp only [hread']
+      have htest : (value == 0) = false := by simpa using hne
+      simp [htest]
 
 /-- L2 consequence of raw normalization: every coefficient at or above the
 returned prefix length is zero in the represented `Polynomial (ZMod p)`. -/
@@ -3286,6 +3335,22 @@ def RemainderModPrefix (this : DenseUPolyZp) (heap : RawHeap)
     heap.readU64 R j = .ok value ∧
     value.toNat = word3Value accum % this._p.toNat
 
+/-- The actual values written by the generated three-limb remainder reduction
+are canonical residues. -/
+theorem remainderModPrefix_canonical (this : DenseUPolyZp) (heap : RawHeap)
+    (R : RawPtr UInt64) (W3 : RawPtr Word3) (upto : Nat)
+    (hprefix : RemainderModPrefix this heap R W3 upto)
+    (hp : 0 < this._p.toNat) :
+    CanonicalU64Prefix heap R upto this._p := by
+  intro j value hj hread
+  rcases hprefix j hj with
+    ⟨accum, reduced, _, hreadReduced, hreduced⟩
+  have hvalue : value = reduced :=
+    Except.ok.inj (hread.symm.trans hreadReduced)
+  subst value
+  rw [hreduced]
+  exact Nat.mod_lt _ hp
+
 theorem remainderPrefix_to_mod (this : DenseUPolyZp) (heap : RawHeap)
     (R : RawPtr UInt64) (W3 : RawPtr Word3) (upto : Nat)
     (hprefix : RemainderPrefix this heap R W3 upto)
@@ -3466,6 +3531,7 @@ theorem remainderLoop_refines_polynomial (this : DenseUPolyZp)
       RawHeap.SameLayout heap heap' ∧
       Word3AccumulationBudget heap' W3 lenW3 this._p count ∧
       SlicePolyRep heap' R d this._p.toNat remainder ∧
+      CanonicalU64Prefix heap' R d this._p ∧
       Word3SliceRep heap' W3 lenW3 values ∧
       remainder = word3ArrayPoly this._p.toNat values := by
   have hempty : RemainderPrefix this heap R W3 0 := by
@@ -3500,8 +3566,10 @@ theorem remainderLoop_refines_polynomial (this : DenseUPolyZp)
     count hprefix hbudget' hdW hcount hcfg hprime
   rcases slicePolyRep_exists_unique heap' R d this._p.toNat hR' with
     ⟨remainder, hrep, _⟩
+  have hcanonical := remainderModPrefix_canonical this heap' R W3 d hmod
+    hprime.pos
   refine ⟨heap', remainder, hrun, hR', hW3', hlayout, hbudget', hrep,
-    hvalues', ?_⟩
+    hcanonical, hvalues', ?_⟩
   exact remainderModPrefix_poly_eq this heap' R W3 d lenW3 values
     remainder hmod hvalues' hrep hdW hzero'
 
@@ -3535,6 +3603,9 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
         .ok (heap', lenQ, lenR) ∧
       SlicePolyRep heap' Q lenQ this._p.toNat quotient ∧
       SlicePolyRep heap' R lenR this._p.toNat remainder ∧
+      CanonicalU64Prefix heap' R lenR this._p ∧
+      heap'.normaliseU64 R lenR = .ok lenR ∧
+      RawHeap.SameLayout heap heap' ∧
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < d) ∧
       lenQ ≤ lenA - d ∧ lenR ≤ d := by
@@ -3633,7 +3704,7 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
     heap2 quotientValues hR2 hW32 hquotientValues (by omega) hRW hbudget2
     hqLen hzero2' hcfg hprime with
     ⟨heap3, remainder, hrem, hR3, hW33, hlayout3, _, hremainder,
-      _, hremainderPoly⟩
+      hcanonicalR3, _, hremainderPoly⟩
   rcases remainderLoop_preserves_u64_region_ne this R Q W3 d lenA 0
     (lenA - d) heap2 hR2 hW32 hQ2 (by omega) (Nat.zero_le _) hRQ with
     ⟨heapQ, hremQ, _, _, hQ3, _, hsameQ⟩
@@ -3653,8 +3724,17 @@ theorem polyDivrem_long_refines (this : DenseUPolyZp)
     this._p.toNat lenQ quotient hQ3 hquotient3 hnormQ
   have hremainderNorm := slicePolyRep_of_normaliseU64 heap3 R d
     this._p.toNat lenR remainder hR3 hremainder hnormR
+  have hcanonicalRNorm : CanonicalU64Prefix heap3 R lenR this._p := by
+    intro k value hk hread
+    exact hcanonicalR3 k value (by omega) hread
+  have hnormRFixed := normaliseU64_result_fixed heap3 R d lenR hR3 hnormR
+  have hlayout : RawHeap.SameLayout heap heap3 := by
+    intro ptr length
+    exact (hlayout1 ptr length).trans
+      ((hlayout2 ptr length).trans (hlayout3 ptr length))
   refine ⟨heap3, lenQ, lenR, quotient, remainder, ?_, hquotientNorm,
-    hremainderNorm, halgebra, hdegree, hlenQ, hlenR⟩
+    hremainderNorm, hcanonicalRNorm, hnormRFixed, hlayout, halgebra, hdegree,
+    hlenQ, hlenR⟩
   simp [dense_upoly_zp__poly_divrem_ir, hlong, hreadLead, hinit, hquot,
     hrem, hnormQ, hnormR, invLc]
 
@@ -3683,6 +3763,52 @@ theorem polyDivrem_short_refines (this : DenseUPolyZp)
       hrep with ⟨heap', hcopy, hlayout, hrep'⟩
     refine ⟨heap', ?_, hlayout, hrep'⟩
     simp [dense_upoly_zp__poly_divrem_ir, hbranch, hcopy]
+
+/-- The short branch's raw `memcpy` preserves the dense-polynomial class
+invariants needed when its remainder buffer becomes the next Euclid divisor. -/
+theorem polyDivrem_short_refines_normalized (this : DenseUPolyZp)
+    (Q R A B : RawPtr UInt64) (lenA lenB : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (p : Nat) (dividend : Polynomial (ZMod p))
+    (hlenB : 0 < lenB) (hshort : lenA < lenB)
+    (hA : heap.ValidU64Slice A lenA)
+    (hR : heap.ValidU64Slice R lenA)
+    (hregions : R.region ≠ A.region)
+    (hcanonical : CanonicalU64Prefix heap A lenA this._p)
+    (hnormalized : heap.normaliseU64 A lenA = .ok lenA)
+    (hrep : SlicePolyRep heap A lenA p dividend) :
+    ∃ heap',
+      dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
+        .ok (heap', 0, lenA) ∧
+      RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' R lenA p dividend ∧
+      CanonicalU64Prefix heap' R lenA this._p ∧
+      heap'.normaliseU64 R lenA = .ok lenA := by
+  rcases copyU64_refines heap R A lenA hR hA hregions with
+    ⟨heap', hcopy, hlayout, hcontents⟩
+  rcases copyU64_slicePolyRep heap R A lenA p dividend hR hA hregions
+      hrep with ⟨heapRep, hcopyRep, _, hrep'⟩
+  have hheap : heapRep = heap' :=
+    Except.ok.inj (hcopyRep.symm.trans hcopy)
+  subst heapRep
+  have hcanonical' : CanonicalU64Prefix heap' R lenA this._p := by
+    intro k value hk hread
+    rcases heap.readU64_of_valid A lenA k hA hk with ⟨source, hsource⟩
+    have hcopied := hcontents k source hk hsource
+    have hvalue : value = source :=
+      Except.ok.inj (hread.symm.trans hcopied)
+    subst value
+    exact hcanonical k source hk hsource
+  have hnormaliseEq := normaliseU64_eq_of_prefix_map heap heap' A R lenA
+    hA hcontents
+  refine ⟨heap', ?_, hlayout, hrep', hcanonical', ?_⟩
+  · cases lenB with
+    | zero => omega
+    | succ d =>
+      have hbranch : lenA ≤ d := by omega
+      simp [dense_upoly_zp__poly_divrem_ir, hbranch, hcopy]
+  · rw [← hnormaliseEq]
+    exact hnormalized
 
 /-- The short branch also satisfies the mathematical remainder-degree side
 condition when the caller-provided C++ lengths are normalized canonical
@@ -3746,9 +3872,13 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
         .ok (heap', lenQ, lenR) ∧
       SlicePolyRep heap' Q lenQ this._p.toNat quotient ∧
       SlicePolyRep heap' R lenR this._p.toNat remainder ∧
+      CanonicalU64Prefix heap' R lenR this._p ∧
+      heap'.normaliseU64 R lenR = .ok lenR ∧
+      RawHeap.SameLayout heap heap' ∧
       dividend = quotient * divisor + remainder ∧
       (remainder = 0 ∨ remainder.natDegree < divisor.natDegree) ∧
-      lenQ ≤ lenA - (lenB - 1) ∧ lenR < lenB := by
+      lenQ ≤ lenA - (lenB - 1) ∧
+      lenR ≤ Nat.min lenA (lenB - 1) ∧ lenR < lenB := by
   cases lenB with
   | zero => omega
   | succ d =>
@@ -3756,9 +3886,10 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
     · have hlenAd : lenA ≤ d := by omega
       have hRfull : heap.ValidU64Slice R lenA := by
         simpa [Nat.min_eq_left hlenAd] using hR
-      rcases polyDivrem_short_refines this Q R A B lenA (d + 1) W3 heap
-        this._p.toNat dividend (by omega) hshort hA hRfull hRA hdividend with
-        ⟨heap', hrun, hlayout, hremainder⟩
+      rcases polyDivrem_short_refines_normalized this Q R A B lenA (d + 1)
+        W3 heap this._p.toNat dividend (by omega) hshort hA hRfull hRA
+        hcanonicalA hnormA hdividend with
+        ⟨heap', hrun, hlayout, hremainder, hcanonicalR, hnormR⟩
       have hQ' : heap'.ValidU64Slice Q (lenA - d) :=
         (hlayout Q (lenA - d)).mp (by simpa using hQ)
       have hQ0 := heap'.validU64Slice_mono Q (lenA - d) 0 hQ'
@@ -3772,7 +3903,8 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
         (d + 1) this._p.toNat dividend divisor hshort hA hB hdividend
         hdivisor hcanonicalA hcanonicalB hnormA hnormB
       refine ⟨heap', 0, lenA, 0, dividend, hrun, hquotient, hremainder,
-        ?_, hdegree, by omega, by omega⟩
+        hcanonicalR, hnormR, hlayout, ?_, hdegree, by omega,
+        by simp [Nat.min_eq_left hlenAd], by omega⟩
       simp
     · have hlong : d < lenA := by omega
       have hdleA : d ≤ lenA := Nat.le_of_lt hlong
@@ -3783,7 +3915,8 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
         hcanonicalB hdividend hdivisor hnormB (by simpa using hqCapacity)
         hWA hWB hQB hQW hRW hRQ hcfg hprime with
         ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
-          hremainder, halgebra, hdegree, hlenQ, hlenR⟩
+          hremainder, hcanonicalR, hnormR, hlayout, halgebra, hdegree,
+          hlenQ, hlenR⟩
       have hdivisorDegree : divisor.natDegree = d := by
         simpa using normaliseU64_poly_natDegree_eq heap B (d + 1)
           this._p.toNat (d + 1) divisor hB hdivisor hcanonicalB hnormB
@@ -3794,7 +3927,9 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
         · exact Or.inl hzero
         · exact Or.inr (by simpa [hdivisorDegree] using hlt)
       exact ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
-        hremainder, halgebra, hdegree', by simpa using hlenQ, by omega⟩
+        hremainder, hcanonicalR, hnormR, hlayout, halgebra, hdegree',
+        by simpa using hlenQ, by simpa [Nat.min_eq_right hdleA] using hlenR,
+        by omega⟩
 
 /-- The result length of every successful generated division call is smaller
 than the nonempty divisor length.  This is the proof-erased termination

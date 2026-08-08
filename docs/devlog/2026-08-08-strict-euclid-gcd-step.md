@@ -9,6 +9,11 @@
   保持规范化的数学 GCD。
 - 将该代数引理直接接到生成的 C++ `_poly_divrem` RawHeap 精化定理，得到
   带有真实执行、内存表示、余式降阶和 GCD 保持性质的单步结果。
+- 证明 normalization 返回长度是原始扫描的固定点。
+- 分别证明短分支 `memcpy` 与长分支三字 limb 约减都保持规范系数、标准
+  长度、物理容量及 heap layout。
+- 定义 `RawDensePolyRep`，并证明真实除法输出的 `R` 满足下一轮 Euclid
+  可直接消费的完整 raw 状态不变量。
 
 ## 为什么做
 
@@ -21,6 +26,8 @@ GCD 不变量，不能调用 L2 `%`、规格 oracle 或回退实现替代 C++ �
 - 先证明两组参数具有相同共同因子，再由互相整除得到关联性并规范化；这与
   C++ 的 `a = move(b); b = move(r)` 轮换完全对应。
 - 保留 `Fact (Nat.Prime p)` 作为多项式 Euclidean domain 实例的显式前提。
+- 不从 `Polynomial (ZMod p)` 的值反推 raw limb；规范性来自实际 `memcpy`
+  内容关系或生成三字约减的模等式，避免丢失机器表示信息。
 
 ## 遇到的问题与解决方式
 

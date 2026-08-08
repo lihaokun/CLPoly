@@ -60,3 +60,8 @@
 规格矩阵、oracle、fuel 或 L2 结果替代生成代码的执行。
 `hgcdRecursiveCombineMatrix_coeff_bounds` 已把四项算术界直接实例化到该真实执行
 返回的 `modified` 与最终矩阵描述符，因而递归契约不再需要额外的规格侧矩阵界。
+
+第一次成对重构现在还有执行级次序桥：同一次成功的四调用重构同时导出
+`result.lenA = lenA / 2 + first.lenA`、A 正长度以及
+`result.lenB ≤ result.lenA`。第二次递归调用因此可以直接消费真实描述符次序，
+无需规格侧补充“输入已经排好序”的假设。

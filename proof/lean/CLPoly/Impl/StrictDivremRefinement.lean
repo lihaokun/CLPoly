@@ -995,6 +995,62 @@ def AddMulRangeRep (before after : RawHeap) (B : RawPtr UInt64)
       Nat.ModEq (limbBase ^ 3) (word3Value accum')
         (word3Value accum + c.toNat * bj.toNat)
 
+def ExactAddMulRangeRep (before after : RawHeap) (B : RawPtr UInt64)
+    (W3 : RawPtr Word3) (offset start stop : Nat) (c : UInt64) : Prop :=
+  ∀ k, start ≤ k → k ≤ stop → ∀ bj accum,
+    before.readU64 B k = .ok bj →
+    before.readWord3 W3 (offset + k) = .ok accum →
+    ∃ accum', after.readWord3 W3 (offset + k) = .ok accum' ∧
+      word3Value accum' = word3Value accum + c.toNat * bj.toNat
+
+/-- A modular range observation of the generated loop is an ordinary exact
+addition range once the independently proved machine-capacity invariant is
+available. -/
+theorem addMulRangeRep_exact_of_budget (before after : RawHeap)
+    (B : RawPtr UInt64) (W3 : RawPtr Word3)
+    (length offset start stop count : Nat) (p c : UInt64)
+    (hrange : AddMulRangeRep before after B W3 offset start stop c)
+    (hbudget : Word3AccumulationBudget before W3 length p count)
+    (hcanonical : CanonicalU64Prefix before B (stop + 1) p)
+    (hspan : offset + stop < length)
+    (hp : 1 < p.toNat) (hcount : count + 1 < limbBase)
+    (hc : c.toNat < p.toNat) :
+    ExactAddMulRangeRep before after B W3 offset start stop c := by
+  intro k hstart hstop bj accum hreadB hreadW
+  rcases hrange k hstart hstop bj accum hreadB hreadW with
+    ⟨out, hreadOut, hmod⟩
+  have hkLength : offset + k < length := by omega
+  have hbase := hbudget (offset + k) accum hkLength hreadW
+  have hbj := hcanonical k bj (by omega) hreadB
+  have hc' : c.toNat ≤ p.toNat - 1 := by omega
+  have hbj' : bj.toNat ≤ p.toNat - 1 := by omega
+  have hproduct : c.toNat * bj.toNat ≤ (p.toNat - 1) ^ 2 := by
+    rw [pow_two]
+    exact Nat.mul_le_mul hc' hbj'
+  have hsum : word3Value accum + c.toNat * bj.toNat ≤
+      (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := by
+    calc
+      word3Value accum + c.toNat * bj.toNat ≤
+          ((p.toNat - 1) + count * (p.toNat - 1) ^ 2) +
+            (p.toNat - 1) ^ 2 := Nat.add_le_add hbase hproduct
+      _ = (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := by ring
+  have hcapacity := lazyAccumulation_word3_budget p (count + 1)
+    (p.toNat - 1) hp hcount (by omega)
+  have hpB : p.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt p
+  have hrhs : word3Value accum + c.toNat * bj.toNat < limbBase ^ 3 := by
+    calc
+      word3Value accum + c.toNat * bj.toNat ≤
+          (p.toNat - 1) + (count + 1) * (p.toNat - 1) ^ 2 := hsum
+      _ < p.toNat * limbBase ^ 2 := hcapacity
+      _ < limbBase ^ 3 := by
+        calc
+          p.toNat * limbBase ^ 2 < limbBase * limbBase ^ 2 :=
+            Nat.mul_lt_mul_of_pos_right hpB (pow_pos (by omega) 2)
+          _ = limbBase ^ 2 * limbBase := Nat.mul_comm _ _
+          _ = limbBase ^ 3 := by ring
+  exact ⟨out, hreadOut, hmod.eq_of_lt_of_lt (word3Value_lt out) hrhs⟩
+
 /-- Full content invariant for the generated multiply/add loop.  B is
 unchanged, cells before `j` are unchanged, and every processed cell in
 `j..d` is its input accumulator plus the corresponding `c*B[k]` product. -/
@@ -1078,6 +1134,33 @@ theorem addMulLoop_refines (heap : RawHeap) (B : RawPtr UInt64)
       omega
 termination_by d + 1 - j
 decreasing_by omega
+
+/-- Exact content theorem for the actual generated inner loop.  Unlike
+`addMulLoop_refines`, its conclusion is equality in `Nat`, justified by the
+raw capacity proof rather than merely equality modulo the word width. -/
+theorem addMulLoop_refines_exact (heap : RawHeap) (B : RawPtr UInt64)
+    (W3 : RawPtr Word3) (lenW3 i d j count : Nat) (p c : UInt64)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hbudget : Word3AccumulationBudget heap W3 lenW3 p count)
+    (hcanonical : CanonicalU64Prefix heap B (d + 1) p)
+    (htop : i + d < lenW3) (hj : j ≤ d + 1)
+    (hregions : W3.region ≠ B.region)
+    (hp : 1 < p.toNat) (hcount : count + 1 < limbBase)
+    (hc : c.toNat < p.toNat) :
+    ∃ heap', addMulLoop heap B W3 i d j c = .ok heap' ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' B (d + 1) ∧
+      SameWord3PrefixAt heap heap' W3 i j ∧
+      ExactAddMulRangeRep heap heap' B W3 i j d c := by
+  rcases addMulLoop_refines heap B W3 lenW3 i d j c hB hW3 htop hj
+    hregions with
+    ⟨heap', hrun, hB', hW3', hlayout, hsameB, hprefix, hrange⟩
+  have hexact := addMulRangeRep_exact_of_budget heap heap' B W3 lenW3
+    i j d count p c hrange hbudget hcanonical htop hp hcount hc
+  exact ⟨heap', hrun, hB', hW3', hlayout, hsameB, hprefix, hexact⟩
 
 /-- Capacity refinement of the complete generated inner multiply/add loop.
 The staged invariant ensures that this whole loop consumes exactly one outer

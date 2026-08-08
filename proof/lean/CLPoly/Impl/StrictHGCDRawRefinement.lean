@@ -535,6 +535,77 @@ theorem hgcdIterLoop_step_shape (this : DenseUPolyZp) (m : Nat)
         exact ⟨heap1, lenQ, lenR, row23, row01, hdiv, hrow23,
           hrow01, hrun, hlt⟩
 
+/-- Semantic divrem closure for one successful nonterminal HGCD iteration.
+All polynomial facts below concern the exact divrem result exposed by
+`hgcdIterLoop_step_shape`; no second or specification-level execution is
+substituted. -/
+theorem hgcdIterLoop_step_divrem_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (m : Nat) (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (scratch : RawPtr UInt64) (state final : HgcdIterState)
+    (dividend divisor : Polynomial (ZMod this._p.toNat))
+    (hguard : state.lenB ≥ m + 1)
+    (hARep : RawDensePolyRep this state.heap state.A state.lenA dividend)
+    (hBRep : RawDensePolyRep this state.heap state.B state.lenB divisor)
+    (hQ : state.heap.ValidU64Slice Q
+      (state.lenA - (state.lenB - 1)))
+    (hR : state.heap.ValidU64Slice state.T
+      (Nat.min state.lenA (state.lenB - 1)))
+    (hW3 : state.heap.ValidWord3Slice W3 state.lenA)
+    (hqCapacity : state.lenA - (state.lenB - 1) < limbBase)
+    (hRA : state.T.region ≠ state.A.region)
+    (hWA : W3.region ≠ state.A.region)
+    (hWB : W3.region ≠ state.B.region)
+    (hQB : Q.region ≠ state.B.region)
+    (hQW : Q.region ≠ W3.region)
+    (hRW : state.T.region ≠ W3.region)
+    (hRQ : state.T.region ≠ Q.region)
+    (hRB : state.T.region ≠ state.B.region)
+    (hcfg : DensePreinvConfigured this)
+    (hrun : hgcdIterLoop this m Q W3 scratch state = .ok final) :
+    ∃ heap1 lenQ lenR quotient remainder row23 row01,
+      Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+        state.A state.lenA state.B state.lenB W3 state.heap =
+          .ok (heap1, lenQ, lenR) ∧
+      RawDensePolyRep this heap1 Q lenQ quotient ∧
+      RawDensePolyRep this heap1 state.B state.lenB divisor ∧
+      RawDensePolyRep this heap1 state.T lenR remainder ∧
+      normalize (EuclideanDomain.gcd dividend divisor) =
+        normalize (EuclideanDomain.gcd divisor remainder) ∧
+      dense_upoly_zp__mat_row_update_ir this state.matrix
+        ⟨2, by omega⟩ ⟨3, by omega⟩ Q lenQ state.A state.lenT state.t
+        scratch heap1 = .ok row23 ∧
+      dense_upoly_zp__mat_row_update_ir this row23.matrix
+        ⟨0, by omega⟩ ⟨1, by omega⟩ Q lenQ row23.T row23.lenT row23.t
+        scratch row23.heap = .ok row01 ∧
+      hgcdIterLoop this m Q W3 scratch {
+        heap := row01.heap
+        matrix := row01.matrix
+        A := state.B
+        lenA := state.lenB
+        B := state.T
+        lenB := lenR
+        T := row01.T
+        lenT := row01.lenT
+        t := row01.t
+        sgn := -state.sgn
+      } = .ok final ∧
+      lenR < state.lenB := by
+  have hlenB : 0 < state.lenB := by omega
+  rcases hgcdIterLoop_step_shape this m Q W3 scratch state final hguard hrun
+      with ⟨heap1, lenQ, lenR, row23, row01, hdiv, hrow23, hrow01,
+        htail, hlt⟩
+  rcases polyDivrem_next_state this Q state.T state.A state.B state.lenA
+      state.lenB W3 state.heap dividend divisor hlenB hARep hBRep hQ hR
+      hW3 hqCapacity hRA hWA hWB hQB hQW hRW hRQ hRB hcfg with
+    ⟨semanticHeap, semanticLenQ, semanticLenR, quotient, remainder,
+      hsemantic, hQRep, hBRep1, hRRep, hgcd, _, _, _, _⟩
+  have heq : (semanticHeap, semanticLenQ, semanticLenR) =
+      (heap1, lenQ, lenR) := Except.ok.inj (hsemantic.symm.trans hdiv)
+  cases heq
+  exact ⟨heap1, lenQ, lenR, quotient, remainder, row23, row01, hdiv,
+    hQRep, hBRep1, hRRep, hgcd, hrow23, hrow01, htail, hlt⟩
+
 /-- The source's zero-quotient/zero-entry branch performs exactly the two
 matrix-entry swaps and no heap access.  This exposes the real descriptor
 state consumed by the next HGCD iteration. -/

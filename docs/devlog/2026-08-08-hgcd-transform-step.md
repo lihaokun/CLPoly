@@ -14,6 +14,7 @@
 - 将 identity raw 表示与代数方向合并，证明初始化状态满足“原始对 = identity × 当前对”。
 - 证明完整 row update 的通用内存帧：与 `T`、`scratch`、`t` 写区分离的 raw 多项式在零/非零全部执行分支中保持不变。
 - 将 C++ `sgn` 与矩阵行列式 `±1` 关联，证明行更新和符号取反同步保持，并由带符号变换推出规范化 gcd 保持。
+- 将非终止循环执行分解与 `polyDivrem_next_state` 合并，绑定同一个实际 divrem 返回值的 quotient/remainder raw 表示、gcd 保持、两次 row update 和递归尾调用。
 
 ## 为什么做
 

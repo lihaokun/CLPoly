@@ -743,6 +743,64 @@ def hgcdRecursiveEarlyReturn (M R : HgcdMat)
         lenB := lenB2
         sgn := sgn }
 
+/-- State produced by the real middle divrem and the source pointer arithmetic
+for the second high-half HGCD call. -/
+structure HgcdRecursiveMiddleResult where
+  heap : RawHeap
+  lenQ : Nat
+  lenD : Nat
+  k : Nat
+  c0 : RawPtr UInt64
+  lenC0 : Nat
+  d0 : RawPtr UInt64
+  lenD0 : Nat
+
+/-- Exact lowering of `_hgcd_recursive` from its failed early-stop test through
+the middle `_poly_divrem` and construction of `c0`/`d0`. -/
+def hgcdRecursiveMiddle (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap) :
+    RawExec HgcdRecursiveMiddleResult :=
+  match dense_upoly_zp__poly_divrem_ir this q d a2 lenA2 b2 lenB2 W3
+      heap with
+  | .error fault => .error fault
+  | .ok (heap1, lenQ, lenD) =>
+    let k := 2 * m - lenB2 + 1
+    .ok {
+      heap := heap1
+      lenQ := lenQ
+      lenD := lenD
+      k := k
+      c0 := b2.add k
+      lenC0 := if lenB2 ≥ k then lenB2 - k else 0
+      d0 := d.add k
+      lenD0 := if lenD ≥ k then lenD - k else 0 }
+
+theorem hgcdRecursiveMiddle_layout (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (result : HgcdRecursiveMiddleResult)
+    (hrun : hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
+      .ok result) :
+    dense_upoly_zp__poly_divrem_ir this q d a2 lenA2 b2 lenB2 W3 heap =
+        .ok (result.heap, result.lenQ, result.lenD) ∧
+      result.k = 2 * m - lenB2 + 1 ∧
+      result.c0 = b2.add result.k ∧
+      result.lenC0 = (if lenB2 ≥ result.k then lenB2 - result.k else 0) ∧
+      result.d0 = d.add result.k ∧
+      result.lenD0 = (if result.lenD ≥ result.k then
+        result.lenD - result.k else 0) := by
+  simp only [hgcdRecursiveMiddle] at hrun
+  generalize hdiv : dense_upoly_zp__poly_divrem_ir this q d a2 lenA2 b2
+    lenB2 W3 heap = divResult at hrun
+  cases divResult with
+  | error fault => simp at hrun
+  | ok value =>
+    rcases value with ⟨heap1, lenQ, lenD⟩
+    have heq := Except.ok.inj hrun
+    subst result
+    simp [hdiv]
+
 /-- Every successful suffix of the real restore loop returns a valid matrix
 and leaves the complete length descriptor byte-for-byte unchanged. -/
 theorem hgcdMatRestoreLoop_preserves_valid_len

@@ -88,6 +88,13 @@ false 时证明返回矩阵就是原 M。返回的 `lenA/lenB/sgn` 也精确对�
 赋值。所有别名条件集中在纯物理 workspace 中，没有把预期 L2 值藏进执行
 合约。
 
+非早退路径现已继续降低到中间 divrem：`hgcdRecursiveMiddle` 调用真实
+`dense_upoly_zp__poly_divrem_ir(q,d,a2,b2,...)`，随后严格按源码计算
+`k = 2*m-lenb2+1`、`c0=b2+k`、`d0=d+k` 及两个截断长度。精化定理从
+同一次 raw 执行导出商余式恒等式、余式次数下降、`lenD < lenB2`、商余式
+canonical/normalized 表示和第二次 HGCD 输入布局。这一步没有把 divrem
+替换为 EuclideanDomain 的规格计算。
+
 初始化 copy 的组合现已闭合为 `hgcdIterInit_refines`：从一次真实初始化执行
 同时导出 identity matrix、`A = a`、`B = b` 的最终 heap 表示，以及 A/B/T/t、
 长度和初始符号的精确状态。所有 copy/矩阵/input 非别名与切片有效性均为

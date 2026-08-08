@@ -2093,6 +2093,68 @@ theorem hgcdRecursiveEarlyReturn_refines (this : DenseUPolyZp)
     · intro _
       rfl
 
+/-- Strict semantic bridge for the middle source `_poly_divrem`.  Its result
+record also exposes the exact `k`, `c0`, and `d0` passed to the second HGCD
+call, while quotient and remainder come from the same raw execution. -/
+theorem hgcdRecursiveMiddle_refines (this : DenseUPolyZp)
+    (q d a2 b2 : RawPtr UInt64) (lenA2 lenB2 m : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (dividend divisor : Polynomial (ZMod this._p.toNat))
+    (hlenB : 0 < lenB2)
+    (hA : RawDensePolyRep this heap a2 lenA2 dividend)
+    (hB : RawDensePolyRep this heap b2 lenB2 divisor)
+    (hQ : heap.ValidU64Slice q (lenA2 - (lenB2 - 1)))
+    (hD : heap.ValidU64Slice d (Nat.min lenA2 (lenB2 - 1)))
+    (hW3 : heap.ValidWord3Slice W3 lenA2)
+    (hqCapacity : lenA2 - (lenB2 - 1) < limbBase)
+    (hDA : d.region ≠ a2.region)
+    (hWA : W3.region ≠ a2.region) (hWB : W3.region ≠ b2.region)
+    (hQB : q.region ≠ b2.region) (hQW : q.region ≠ W3.region)
+    (hDW : d.region ≠ W3.region) (hDQ : d.region ≠ q.region)
+    (hDB : d.region ≠ b2.region)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat) :
+    ∃ result quotient remainder,
+      hgcdRecursiveMiddle this q d a2 b2 lenA2 lenB2 m W3 heap =
+        .ok result ∧
+      SlicePolyRep result.heap q result.lenQ this._p.toNat quotient ∧
+      CanonicalU64Prefix result.heap q result.lenQ this._p ∧
+      result.heap.normaliseU64 q result.lenQ = .ok result.lenQ ∧
+      SlicePolyRep result.heap d result.lenD this._p.toNat remainder ∧
+      CanonicalU64Prefix result.heap d result.lenD this._p ∧
+      result.heap.normaliseU64 d result.lenD = .ok result.lenD ∧
+      RawHeap.SameLayout heap result.heap ∧
+      dividend = quotient * divisor + remainder ∧
+      (remainder = 0 ∨ remainder.natDegree < divisor.natDegree) ∧
+      result.lenD < lenB2 ∧ result.k = 2 * m - lenB2 + 1 ∧
+      result.c0 = b2.add result.k ∧
+      result.lenC0 = (if lenB2 ≥ result.k then lenB2 - result.k else 0) ∧
+      result.d0 = d.add result.k ∧
+      result.lenD0 = (if result.lenD ≥ result.k then
+        result.lenD - result.k else 0) := by
+  rcases polyDivrem_refines this q d a2 b2 lenA2 lenB2 W3 heap
+      dividend divisor hlenB hA.1 hB.1 hQ hD hW3 hA.2.1 hB.2.1
+      hA.2.2.1 hB.2.2.1 hA.2.2.2 hB.2.2.2 hqCapacity hDA hWA hWB
+      hQB hQW hDW hDQ hDB hcfg hprime with
+    ⟨heap1, lenQ, lenD, quotient, remainder, hdiv, hQRep, hQCanonical,
+      hQNorm, hDRep, hDCanonical, hDNorm, hlayout, hsameB, hidentity,
+      hdegree, hlenQ, hlenD, hlt⟩
+  let result : HgcdRecursiveMiddleResult := {
+    heap := heap1
+    lenQ := lenQ
+    lenD := lenD
+    k := 2 * m - lenB2 + 1
+    c0 := b2.add (2 * m - lenB2 + 1)
+    lenC0 := if lenB2 ≥ 2 * m - lenB2 + 1 then
+      lenB2 - (2 * m - lenB2 + 1) else 0
+    d0 := d.add (2 * m - lenB2 + 1)
+    lenD0 := if lenD ≥ 2 * m - lenB2 + 1 then
+      lenD - (2 * m - lenB2 + 1) else 0 }
+  refine ⟨result, quotient, remainder, ?_, hQRep, hQCanonical, hQNorm,
+    hDRep, hDCanonical, hDNorm, hlayout, hidentity, hdegree, hlt,
+    rfl, rfl, rfl, rfl, rfl⟩
+  simp [hgcdRecursiveMiddle, hdiv, result]
+
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/
 theorem rawDensePolyRep_one_of_read_one (this : DenseUPolyZp)

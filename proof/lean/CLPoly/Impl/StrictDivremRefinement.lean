@@ -255,6 +255,65 @@ theorem normaliseU64_poly_natDegree_eq (heap : RawHeap)
   exact normaliseU64_poly_last_coeff_ne_zero heap ptr len p result poly
     hvalid hrep hreduced hnorm hresult
 
+/-- Any polynomial represented by the C++ normalization buffer is either zero
+or has degree strictly below the physical buffer length. -/
+theorem normaliseU64_poly_degree_lt_length (heap : RawHeap)
+    (ptr : RawPtr UInt64) (len p result : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr len)
+    (hrep : SlicePolyRep heap ptr len p poly)
+    (hnorm : heap.normaliseU64 ptr len = .ok result) :
+    poly = 0 ∨ poly.natDegree < len := by
+  by_cases hresult : result = 0
+  · left
+    subst result
+    exact normaliseU64_poly_eq_zero heap ptr len p poly hvalid hrep hnorm
+  · right
+    rcases normaliseU64_ok heap ptr len hvalid with
+      ⟨result', hnorm', hresultLe⟩
+    have heq : result' = result := Except.ok.inj (hnorm'.symm.trans hnorm)
+    subst result'
+    have hdegree := normaliseU64_poly_natDegree_le heap ptr len p result
+      poly hvalid hrep hnorm
+    omega
+
+/-- Raw-to-safe output bridge for a generated remainder buffer after its
+source `_poly_normalise` call. -/
+theorem generated_remainder_output_degree (heap : RawHeap)
+    (R : RawPtr UInt64) (d p lenR : Nat)
+    (hR : heap.ValidU64Slice R d)
+    (hnorm : heap.normaliseU64 R d = .ok lenR) :
+    ∃ remainder : Polynomial (ZMod p),
+      SlicePolyRep heap R d p remainder ∧
+      (remainder = 0 ∨ remainder.natDegree < d) := by
+  rcases slicePolyRep_exists_unique heap R d p hR with
+    ⟨remainder, hrep, hunique⟩
+  exact ⟨remainder, hrep,
+    normaliseU64_poly_degree_lt_length heap R d p lenR remainder
+      hR hrep hnorm⟩
+
+/-- Degree side of strict long division, connected to the normalized raw
+divisor rather than merely its buffer length. -/
+theorem generated_remainder_degree_lt_divisor (heap : RawHeap)
+    (R B : RawPtr UInt64) (d p lenR : Nat)
+    (remainder divisor : Polynomial (ZMod p))
+    (hR : heap.ValidU64Slice R d)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hrepR : SlicePolyRep heap R d p remainder)
+    (hrepB : SlicePolyRep heap B (d + 1) p divisor)
+    (hreducedB : ∀ i value, i < d + 1 →
+      heap.readU64 B i = .ok value → value.toNat < p)
+    (hnormR : heap.normaliseU64 R d = .ok lenR)
+    (hnormB : heap.normaliseU64 B (d + 1) = .ok (d + 1)) :
+    remainder = 0 ∨ remainder.natDegree < divisor.natDegree := by
+  have hdegB : divisor.natDegree = d := by
+    simpa using normaliseU64_poly_natDegree_eq heap B (d + 1) p (d + 1)
+      divisor hB hrepB hreducedB hnormB (by omega)
+  rcases normaliseU64_poly_degree_lt_length heap R d p lenR remainder
+    hR hrepR hnormR with hzero | hdegree
+  · exact Or.inl hzero
+  · exact Or.inr (by simpa [hdegB] using hdegree)
+
 /-- Limb `memcpy` succeeds for valid source and destination slices.  The
 returned heap has exactly the same allocation layout as the input heap, so
 all caller slice invariants can be transported through the copy. -/

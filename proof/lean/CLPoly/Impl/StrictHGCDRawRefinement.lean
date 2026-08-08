@@ -6995,6 +6995,38 @@ theorem hgcdRecursiveFinalReconstruct_lengths_le_input
     · omega
     · apply max_le <;> omega
 
+/-- The B output of the second reconstruction satisfies the outer HGCD stop
+threshold.  This uses the source's exact `k = 2*m-lenB2+1`, the second call's
+leading-A/stop pair, and the two matrix rows that physically build B. -/
+theorem hgcdRecursiveFinalReconstruct_lenB_lt_half
+    (outerLength m reconstructedLenB k lenC0 lenD : Nat)
+    (secondLenA secondLenB s0 s2 resultLenB : Nat)
+    (hm : m = outerLength / 2)
+    (hk : k = 2 * m - reconstructedLenB + 1)
+    (hc : lenC0 = reconstructedLenB - k)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hreconstructedUpper : reconstructedLenB < outerLength)
+    (hsecondAbove : lenC0 / 2 < secondLenA)
+    (hsecondStop : secondLenB < lenC0 / 2 + 1)
+    (hrow0 : s0 + secondLenA ≤ lenC0 + 1)
+    (hrow2 : s2 + secondLenA ≤ lenC0 + 1)
+    (hresultB : resultLenB ≤ max (k + secondLenB)
+      (max
+        (s2 + Nat.min reconstructedLenB k - 1)
+        (s0 + Nat.min lenD k - 1))) :
+    resultLenB < outerLength / 2 + 1 := by
+  have hminReconstructed : Nat.min reconstructedLenB k ≤ k :=
+    Nat.min_le_right _ _
+  have hminD : Nat.min lenD k ≤ k := Nat.min_le_right _ _
+  have hkLe : k ≤ reconstructedLenB := by omega
+  have hsplit : k + lenC0 = reconstructedLenB := by omega
+  have hhalf : k + lenC0 / 2 ≤ m := by omega
+  rw [← hm]
+  apply lt_of_le_of_lt hresultB
+  apply max_lt
+  · omega
+  · apply max_lt <;> omega
+
 /-- Purely physical obligations for the exact final matrix block.  Besides
 the two existing generated-call workspaces, the frame fields state that the
 quotient update does not alter any buffer of the left matrix `R`. -/

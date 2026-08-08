@@ -23,6 +23,7 @@
 - 从规范化 low/high/output 三个 raw 描述符证明：当 low 严格位于 shift 以下且 high 非空时，真实 `liftHigh` normalization 返回长度精确为 `shift + highLength`；成对重构现已保留可实例化的 A/B 精确长度条件。
 - 直接按真实 `hgcdIterLoop` 良基执行证明停止时 `inputLength/2 < lenA`：继续分支的下一 A 就是通过 source guard 的旧 B；该事实加入递归长度归纳结果，并在 iterator/base/early-copy 路径中真实传递。
 - 审计父调用的实际消费点后，将递归长度接口从未由 C++ 接口承诺的全局 `lenB ≤ lenA`/正性强断言收缩为源码真实停止界 `lenB < inputLength/2+1`；第一次重构的下降证明现直接消费该停止界，矩阵四行界与 `lenA ≤ inputLength` 保持不变。iterator 的 leading-A 定理仍独立保留供最终停止算术使用。
+- 在第二子调用 leading-A 与停止界前提下，用源码精确 `k = 2*m-lenB2+1`、严格 `lenB2 < outerLength` 及构造 B 的第 0/2 矩阵行，证明最终真实 normalization 长度满足外层 `lenB < outerLength/2+1`。
 - 把两个统一基础分支定理加入严格 HGCD 源码门禁。
 
 ## 为什么做

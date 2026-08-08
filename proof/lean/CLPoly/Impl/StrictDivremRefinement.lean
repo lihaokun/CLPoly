@@ -171,6 +171,43 @@ theorem slicePolyRep_coeff_zero_of_length_le (heap : RawHeap)
   rw [coeff_coeffArrayPoly, dif_neg]
   simpa [hsize] using hdegree
 
+/-- Extending a raw coefficient prefix by its next actual C++ cell extends
+the represented polynomial by the corresponding monomial. -/
+theorem slicePolyRep_succ_eq_add_monomial (heap : RawHeap)
+    (ptr : RawPtr UInt64) (length p : Nat) (value : UInt64)
+    (prefixPoly full : Polynomial (ZMod p))
+    (hprefix : SlicePolyRep heap ptr length p prefixPoly)
+    (hfull : SlicePolyRep heap ptr (length + 1) p full)
+    (hread : heap.readU64 ptr length = .ok value) :
+    full = prefixPoly + Polynomial.monomial length (value.toNat : ZMod p) := by
+  ext degree
+  rw [Polynomial.coeff_add, Polynomial.coeff_monomial]
+  by_cases hdegree : degree < length
+  · rcases slicePolyRep_coeff heap ptr length p prefixPoly hprefix degree
+        hdegree with ⟨prefixValue, hreadPrefix, hcoeffPrefix⟩
+    rcases slicePolyRep_coeff heap ptr (length + 1) p full hfull degree
+        (by omega) with ⟨fullValue, hreadFull, hcoeffFull⟩
+    have hvalues : fullValue = prefixValue :=
+      Except.ok.inj (hreadFull.symm.trans hreadPrefix)
+    rw [hcoeffFull, hcoeffPrefix, hvalues]
+    rw [if_neg (show length ≠ degree by omega), add_zero]
+  · by_cases heq : degree = length
+    · subst degree
+      rcases slicePolyRep_coeff heap ptr (length + 1) p full hfull length
+          (by omega) with ⟨fullValue, hreadFull, hcoeffFull⟩
+      have hvalue : fullValue = value :=
+        Except.ok.inj (hreadFull.symm.trans hread)
+      rw [hcoeffFull, hvalue]
+      have hzero := slicePolyRep_coeff_zero_of_length_le heap ptr length p
+        prefixPoly hprefix length (Nat.le_refl _)
+      simp [hzero]
+    · have hdegreeHigh : length + 1 ≤ degree := by omega
+      rw [slicePolyRep_coeff_zero_of_length_le heap ptr (length + 1) p
+          full hfull degree hdegreeHigh,
+        slicePolyRep_coeff_zero_of_length_le heap ptr length p prefixPoly
+          hprefix degree (by omega)]
+      rw [if_neg (show length ≠ degree by omega), add_zero]
+
 /-- `_poly_normalise` only reads within its declared prefix.  Structural
 recursion on `len` proves both successful execution and the returned prefix
 bound; structural recursion produces no alternate execution result. -/

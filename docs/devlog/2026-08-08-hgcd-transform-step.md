@@ -27,6 +27,7 @@
 - 定义不含 L2 结果的循环物理工作区 provider，并以生成函数相同的 `state.lenB` 度量证明完整 `hgcdIterLoop_refines`：每轮调用上述真实单轮定理，以实际 `lenR < lenB` 进入递归，最终得到停止条件、最终 raw 状态、transform、signed determinant 和全程 gcd 保持。
 - 将真实 `_mat_one`、两次有序 `copyU64` 初始化与良基循环组合为完整 `hgcdIter_refines`，从输入 raw 多项式直接得到生成 `_hgcd_iter` 最终状态的不变量、gcd 保持和源码停止界。
 - 开始 `_hgcd_recursive` 严格 lowering：提取并实现真实 base branch 的可选 `_mat_one` 与按源码顺序执行的 `A ← a`、`B ← b` raw copies；证明 compute-matrix 分支复用同一初始化执行并得到 identity 矩阵及两个输出 raw 表示。
+- 闭合 base branch 的 `compute_M=false` 路径：不调用任何矩阵规格或实现，直接跟随两次 raw copy，并用第一次 copy 对 `b` 的帧和第二次 copy 对 `A` 的帧证明源码声明的 `{B,a}` 别名安全顺序。
 
 ## 为什么做
 

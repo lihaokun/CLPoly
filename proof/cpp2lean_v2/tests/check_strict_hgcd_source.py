@@ -122,6 +122,7 @@ def main() -> None:
         "HgcdRecursiveBaseResult",
         "hgcdRecursiveBase",
         "hgcdRecursiveBase_true_refines",
+        "hgcdRecursiveBase_false_refines",
         "normalize_gcd_eq_of_hgcd_transform",
         "HgcdTransform",
         "hgcdTransform_euclid_step",

@@ -2320,4 +2320,44 @@ theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
   · simpa [HgcdIterState.toRecursiveBaseResult, hIA, hlenIA] using hARep
   · simpa [HgcdIterState.toRecursiveBaseResult, hIB, hlenIB] using hBRep
 
+/-- Semantic refinement of the exact `_hgcd_recursive` base branch used by
+GCD when matrix output is disabled.  No matrix call or matrix specification
+is introduced; only the two source-ordered raw copies are executed. -/
+theorem hgcdRecursiveBase_false_refines (this : DenseUPolyZp)
+    (M : HgcdMat) (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (heap : RawHeap) (result : HgcdRecursiveBaseResult)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hA : heap.ValidU64Slice A lenA) (hB : heap.ValidU64Slice B lenB)
+    (hAa : U64SlicesDisjoint A lenA a lenA)
+    (hBb : U64SlicesDisjoint B lenB b lenB)
+    (hAb : U64SlicesDisjoint A lenA b lenB)
+    (hBA : U64SlicesDisjoint B lenB A lenA)
+    (hLeft : RawDensePolyRep this heap a lenA left)
+    (hRight : RawDensePolyRep this heap b lenB right)
+    (hrun : hgcdRecursiveBase M false A B a b lenA lenB heap = .ok result) :
+    result.matrix = M ∧ result.lenA = lenA ∧ result.lenB = lenB ∧
+      result.sgn = 1 ∧
+      RawDensePolyRep this result.heap A result.lenA left ∧
+      RawDensePolyRep this result.heap B result.lenB right := by
+  rcases copyU64_refines_rawDense this heap A a lenA left hA hAa hLeft with
+    ⟨heap1, hcopyA, hlayout1, hA1⟩
+  have hsameB1 := copyU64_preserves_prefix heap heap1 A a b lenA lenB hA
+    hLeft.1 hAb hcopyA
+  have hRight1 := rawDensePolyRep_of_same_prefix this heap heap1 b lenB
+    right hlayout1 hsameB1 hRight
+  have hB1 : heap1.ValidU64Slice B lenB := (hlayout1 B lenB).mp hB
+  rcases copyU64_refines_rawDense this heap1 B b lenB right hB1 hBb
+      hRight1 with ⟨heap2, hcopyB, hlayout2, hB2⟩
+  have hsameA2 := copyU64_preserves_prefix heap1 heap2 B b A lenB lenA
+    hB1 hRight1.1 hBA hcopyB
+  have hA2 := rawDensePolyRep_of_same_prefix this heap1 heap2 A lenA left
+    hlayout2 hsameA2 hA1
+  have hactual : hgcdRecursiveBase M false A B a b lenA lenB heap =
+      .ok (.mk heap2 M lenA lenB 1) := by
+    simp [hgcdRecursiveBase, hcopyA, hcopyB]
+  have heq : HgcdRecursiveBaseResult.mk heap2 M lenA lenB 1 = result :=
+    Except.ok.inj (hactual.symm.trans hrun)
+  subst result
+  exact ⟨rfl, rfl, rfl, rfl, hA2, hB2⟩
+
 end CLPoly.Impl.StrictHGCDRawRefinement

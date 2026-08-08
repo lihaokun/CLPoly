@@ -74,6 +74,7 @@ def main() -> None:
                      "ClassicalCoeffPrefix",
                      "classicalCoeffPrefix_succ_of_write",
                      "classicalOuterLoop_preserves_coeff_prefix",
+                     "classicalOuterLoop_refines_coeff_prefix",
                      "classicalOuterLoop_ok", "classicalMul_ok",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:

@@ -595,6 +595,88 @@ theorem classicalOuterLoop_preserves_coeff_prefix {p : Nat}
     exact Or.inr (by omega)
   · exact hrun
 
+theorem classicalOuterLoop_refines_coeff_prefix (this : DenseUPolyZp)
+    (C A B : RawPtr UInt64) (lenA lenB lenC k : Nat) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hApos : 0 < lenA) (hBpos : 0 < lenB)
+    (hLenAWord : lenA < limbBase)
+    (hlenC : lenC = lenA + lenB - 1)
+    (hC : heap.ValidU64Slice C lenC)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hCA : C.region ≠ A.region) (hCB : C.region ≠ B.region)
+    (hCanonicalA : CanonicalU64Prefix heap A lenA this._p)
+    (hCanonicalB : CanonicalU64Prefix heap B lenB this._p)
+    (hRepA : SlicePolyRep heap A lenA this._p.toNat left)
+    (hRepB : SlicePolyRep heap B lenB this._p.toNat right)
+    (hprefix : ClassicalCoeffPrefix heap C k (left * right)) :
+    ∃ heap', classicalOuterLoop this C A B lenA lenB lenC k heap =
+        .ok heap' ∧ RawHeap.SameLayout heap heap' ∧
+      ClassicalCoeffPrefix heap' C lenC (left * right) := by
+  unfold classicalOuterLoop
+  split
+  next hk =>
+    let jMin := if k ≥ lenB then k - lenB + 1 else 0
+    let jMax := if k < lenA then k else lenA - 1
+    rcases classicalDotLoop_ok heap A B lenA lenB k jMax jMin
+      { lo := 0, mid := 0, hi := 0 } hA hB
+      (by
+        intro t hjt hts
+        exact (classical_index_bounds lenA lenB k t hApos hBpos
+          (by omega) hjt hts).1)
+      (by
+        intro t hjt hts
+        exact (classical_index_bounds lenA lenB k t hApos hBpos
+          (by omega) hjt hts).2) with ⟨acc, hdot⟩
+    simp only [jMin, jMax, hdot]
+    let value := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      acc.hi acc.mid acc.lo this._p this._ninv this._norm
+    have hvalue : (value.toNat : ZMod this._p.toNat) =
+        (left * right).coeff k := by
+      dsimp [value]
+      exact classicalReduced_source_eq_coeff this heap A B lenA lenB lenC k
+        left right acc hcfg hp hApos hBpos hLenAWord hlenC hk hA hB
+        hCanonicalA hCanonicalB hRepA hRepB (by simpa [jMin, jMax] using hdot)
+    rcases heap.writeU64_of_valid C lenC k value hC hk with ⟨heap1, hw⟩
+    simp only [value, hw]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 C k value hw
+    have hC1 := (hlayout1 C lenC).mp hC
+    have hA1 := (hlayout1 A lenA).mp hA
+    have hB1 := (hlayout1 B lenB).mp hB
+    have hsameA : SameU64Prefix heap heap1 A lenA := by
+      intro i old hi hread
+      exact RawHeap.readU64_writeU64_ne heap heap1 C A k i value old hw
+        hread (Or.inl hCA)
+    have hsameB : SameU64Prefix heap heap1 B lenB := by
+      intro i old hi hread
+      exact RawHeap.readU64_writeU64_ne heap heap1 C B k i value old hw
+        hread (Or.inl hCB)
+    have hCanonicalA1 := canonicalU64Prefix_of_same_prefix heap heap1 A lenA
+      this._p hA hsameA hCanonicalA
+    have hCanonicalB1 := canonicalU64Prefix_of_same_prefix heap heap1 B lenB
+      this._p hB hsameB hCanonicalB
+    have hRepA1 := slicePolyRep_of_same_prefix heap heap1 A lenA
+      this._p.toNat left hA hA1 hsameA hRepA
+    have hRepB1 := slicePolyRep_of_same_prefix heap heap1 B lenB
+      this._p.toNat right hB hB1 hsameB hRepB
+    have hprefix1 := classicalCoeffPrefix_succ_of_write heap heap1 C k
+      (left * right) value hprefix hw hvalue
+    rcases classicalOuterLoop_refines_coeff_prefix this C A B lenA lenB lenC
+      (k + 1) heap1 left right hcfg hp hApos hBpos hLenAWord hlenC hC1
+      hA1 hB1 hCA hCB hCanonicalA1 hCanonicalB1 hRepA1 hRepB1 hprefix1 with
+      ⟨heap2, hrun, hlayout2, hfull⟩
+    rw [hrun]
+    exact ⟨heap2, rfl, fun ptr length =>
+      (hlayout1 ptr length).trans (hlayout2 ptr length), hfull⟩
+  next hnot =>
+    refine ⟨heap, rfl, fun _ _ => Iff.rfl, ?_⟩
+    intro i hi
+    exact hprefix i (by omega)
+termination_by lenC - k
+decreasing_by omega
+
 theorem classicalOuterLoop_ok (this : DenseUPolyZp)
     (C A B : RawPtr UInt64) (lenA lenB lenC k : Nat) (heap : RawHeap)
     (hApos : 0 < lenA) (hBpos : 0 < lenB)

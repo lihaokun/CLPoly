@@ -2104,6 +2104,10 @@ structure HgcdRecursiveLengthInvariant (inputLength : Nat)
     inputLength + 1
   row3B : hgcdMatLenRaw result.matrix result.valid (3 : Fin 4) + result.lenB ≤
     inputLength + 1
+  row1A : hgcdMatLenRaw result.matrix result.valid (1 : Fin 4) + result.lenA ≤
+    inputLength + 1
+  row3A : hgcdMatLenRaw result.matrix result.valid (3 : Fin 4) + result.lenA ≤
+    inputLength + 1
   inputBound : result.lenA ≤ inputLength
   stopped : result.lenB < inputLength / 2 + 1
   positive : 0 < result.lenA

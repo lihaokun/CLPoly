@@ -45,3 +45,16 @@
 `0 < result.lenA`。这不是对输出非零的假设，而是源矩阵更新与物理重构的推论。
 代入源码的 `k = 2*m-lenB2+1` 后还得到
 `outerLength / 2 < result.lenA`，因此该不变量可继续传给递归父调用。
+
+## 组合矩阵的完整系数界
+
+长度不变量进一步覆盖第 1、3 行与返回 A 的配对界；该界由真实
+`_mat_row_update` 步骤逐次保持，而不是在递归出口假设。结合首次重构的精确
+`lenA = m + first.lenA`，可以从真实 divrem 商界推出首次重构后的
+`lenB ≤ lenA`。
+
+最终的 quotient-update 先交换矩阵行，再分别更新两列。证明现在按列复用同一
+算术引理，并同时闭合输出 0、1、2、3 四个描述符的半长界。其前提精确对应
+`hgcdMatApplyQuotientEntries_length_bounds` 和
+`hgcdRecursiveCombineMatrix_length_bounds` 给出的真实 C++ 描述符关系；没有用
+规格矩阵、oracle、fuel 或 L2 结果替代生成代码的执行。

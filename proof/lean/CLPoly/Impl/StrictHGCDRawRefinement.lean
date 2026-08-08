@@ -4860,6 +4860,10 @@ structure HgcdMatrixLengthInvariant (inputLength : Nat)
     inputLength + 1
   row3B : hgcdMatLen state.matrix hM (3 : Fin 4) + state.lenB ≤
     inputLength + 1
+  row1A : hgcdMatLen state.matrix hM (1 : Fin 4) + state.lenA ≤
+    inputLength + 1
+  row3A : hgcdMatLen state.matrix hM (3 : Fin 4) + state.lenA ≤
+    inputLength + 1
 
 /-- Uniform coefficient bound valid while HGCD processes only operands above
 the source half-length threshold.  It is the degree-separation fact used by
@@ -4952,6 +4956,10 @@ theorem hgcdRecursiveEarlyReturn_rawInvariant (this : DenseUPolyZp)
         hlenA, hcopied.1] using hLength.row2A
     · simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
         hlenB, hcopied.1] using hLength.row3B
+    · simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
+        hlenA, hcopied.1] using hLength.row1A
+    · simpa [HgcdRecursiveEarlyResult.toResult, hgcdMatLenRaw,
+        hlenA, hcopied.1] using hLength.row3A
     · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
         hLength.inputBound
     · simpa [HgcdRecursiveEarlyResult.toResult, hlenB] using
@@ -5069,6 +5077,23 @@ theorem hgcdMatrixCoefficientBound_step
   · simpa [hlen1] using h0
   · exact hn2
   · simpa [hlen3] using h2
+
+/-- The odd matrix entries also complement the current leading operand.
+After a source Euclidean step they are the previous even entries, while the
+new A descriptor is the previous B descriptor. -/
+theorem hgcdMatrixOddALengthInvariant_step
+    (inputLength lenA lenB : Nat)
+    (M nextM : HgcdMat) (hM : M.Valid) (hNextM : nextM.Valid)
+    (hrow0A : hgcdMatLen M hM (0 : Fin 4) + lenA ≤ inputLength + 1)
+    (hrow2A : hgcdMatLen M hM (2 : Fin 4) + lenA ≤ inputLength + 1)
+    (horder : lenB ≤ lenA)
+    (hlen1 : hgcdMatLen nextM hNextM (1 : Fin 4) =
+      hgcdMatLen M hM (0 : Fin 4))
+    (hlen3 : hgcdMatLen nextM hNextM (3 : Fin 4) =
+      hgcdMatLen M hM (2 : Fin 4)) :
+    hgcdMatLen nextM hNextM (1 : Fin 4) + lenB ≤ inputLength + 1 ∧
+      hgcdMatLen nextM hNextM (3 : Fin 4) + lenB ≤ inputLength + 1 := by
+  constructor <;> omega
 
 /-- The real `_mat_one` descriptor and the two source-ordered input copies
 establish the matrix-length invariant. -/
@@ -5321,9 +5346,12 @@ theorem hgcdIterLoop_preserves_matrixLength (this : DenseUPolyZp)
         state.lenA state.lenB lenQ lenR state.matrix row01.matrix hM h01
         ⟨hlength.row0A, hlength.row1B, hlength.row2A, hlength.row3B⟩
         horder hlenQ hlenR hlen0 hlen1 hlen2 hlen3
+      have hnextOdd := hgcdMatrixOddALengthInvariant_step inputLength
+        state.lenA state.lenB state.matrix row01.matrix hM h01
+        hlength.row0A hlength.row2A horder hlen1 hlen3
       have hnextLength : HgcdMatrixLengthInvariant inputLength next h01 := by
         exact ⟨hnextBounds.1, hnextBounds.2.1, hnextBounds.2.2.1,
-          hnextBounds.2.2.2⟩
+          hnextBounds.2.2.2, hnextOdd.1, hnextOdd.2⟩
       have hnextCoeff : HgcdMatrixCoefficientBound inputLength next h01 := by
         exact hgcdMatrixCoefficientBound_step inputLength state.lenA
           state.lenB lenQ state.matrix row01.matrix hM h01
@@ -5667,6 +5695,14 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
         hgcdMatLenRaw, hgcdMatLen] using hResultLength2
       row3B := by simpa [HgcdRecursiveIterBranchResult.toResult,
         hgcdMatLenRaw, hgcdMatLen] using hResultLength3
+      row1A := by
+        simpa [HgcdRecursiveIterBranchResult.toResult, hgcdMatLenRaw,
+          hgcdMatLen, hResultMatrix, hStableDescriptors.2.2,
+          hResultLenA] using hMatrixLength.row1A
+      row3A := by
+        simpa [HgcdRecursiveIterBranchResult.toResult, hgcdMatLenRaw,
+          hgcdMatLen, hResultMatrix, hStableDescriptors.2.2,
+          hResultLenA] using hMatrixLength.row3A
       inputBound := by simpa [HgcdRecursiveIterBranchResult.toResult,
         hResultLenA] using hFinalInputBound
       stopped := by simpa [HgcdRecursiveIterBranchResult.toResult,
@@ -7086,6 +7122,31 @@ theorem hgcdRecursiveFirstReconstruct_bound_of_invariant
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row0A)
 
+/-- The actual first reconstruction retains Euclidean operand order.  Its A
+length is the shifted first-child A length, while every concrete B branch is
+bounded by the child stop and row-A descriptor invariants. -/
+theorem hgcdRecursiveFirstReconstruct_order
+    (inputLength inputLengthB highLength shift firstLenA firstLenB
+      r0 r2 resultLenA resultLenB : Nat)
+    (hhigh : highLength = inputLength - shift)
+    (hfirstAbove : highLength / 2 < firstLenA)
+    (hfirstStop : firstLenB < highLength / 2 + 1)
+    (hrow0A : r0 + firstLenA ≤ highLength + 1)
+    (hrow2A : r2 + firstLenA ≤ highLength + 1)
+    (hresultA : resultLenA = shift + firstLenA)
+    (hresultB : resultLenB ≤ max (shift + firstLenB)
+      (max
+        (r2 + Nat.min inputLength shift - 1)
+        (r0 + Nat.min inputLengthB shift - 1))) :
+    resultLenB ≤ resultLenA := by
+  have hminA : Nat.min inputLength shift ≤ shift := Nat.min_le_right _ _
+  have hminB : Nat.min inputLengthB shift ≤ shift := Nat.min_le_right _ _
+  apply hresultB.trans
+  rw [hresultA]
+  apply max_le
+  · omega
+  · apply max_le <;> omega
+
 /-- Arithmetic closure for the second paired reconstruction.  The source
 chooses `k` so that `k + lenC0` is exactly the reconstructed divisor length;
 the sharp product `- 1` bounds then fit both final operands inside the outer
@@ -7357,6 +7418,176 @@ theorem hgcdRecursiveCombineMatrix_length_bounds (this : DenseUPolyZp)
       (hgcdMatApplyQuotientEntries entries quotient) hProduct.1 hProduct.2.1
       hResultRep i
 
+/-- The source-selected second suffix has half-capacity no larger than the
+excess of the reconstructed divisor over the outer half split. -/
+theorem hgcdSecondInput_halfCapacity_le
+    (m reconstructedLenB k secondInputLength : Nat)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hk : k = 2 * m - reconstructedLenB + 1)
+    (hc : secondInputLength = reconstructedLenB - k) :
+    secondInputLength - secondInputLength / 2 ≤ reconstructedLenB - m := by
+  omega
+
+/-- A first-matrix row paired with its returned A descriptor fits both the
+direct second coefficient and the quotient-updated coefficient products. -/
+theorem hgcdCombinedRowTerm_le
+    (capacity firstLenA reconstructedLenB m lenQ r s : Nat)
+    (hrA : r + firstLenA ≤ capacity + 1)
+    (hreconstructedOrder : reconstructedLenB ≤ m + firstLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hlenQ : lenQ ≤ m + firstLenA - (reconstructedLenB - 1))
+    (hs : s ≤ reconstructedLenB - m) :
+    r + s - 1 ≤ capacity ∧
+      r + (lenQ + s - 1) - 1 ≤ capacity := by
+  have hqsum : lenQ + reconstructedLenB ≤ m + firstLenA + 1 := by
+    omega
+  have hssum : s + m ≤ reconstructedLenB := by
+    omega
+  constructor <;> omega
+
+/-- Both entries of one column of the exact final matrix product remain
+within the outer half-length capacity.  The statement is column-parametric:
+the source quotient update has the same descriptor shape for columns zero
+and one, so this lemma covers all four matrix entries without duplicating
+the arithmetic argument. -/
+theorem hgcdRecursiveCombinedColumn_coeff_bounds
+    (outerLength m highLength firstLenA reconstructedLenA reconstructedLenB
+      lenQ k secondInputLength r0 r1 r2 r3 s1 s3 u1 u3 out1 out3 : Nat)
+    (hm : m = outerLength / 2)
+    (hhigh : highLength = outerLength - m)
+    (hr0A : r0 + firstLenA ≤ highLength + 1)
+    (hr1A : r1 + firstLenA ≤ highLength + 1)
+    (hr2A : r2 + firstLenA ≤ highLength + 1)
+    (hr3A : r3 + firstLenA ≤ highLength + 1)
+    (hreconstructedA : reconstructedLenA = m + firstLenA)
+    (hreconstructedOrder : reconstructedLenB ≤ reconstructedLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hlenQ : lenQ ≤ reconstructedLenA - (reconstructedLenB - 1))
+    (hk : k = 2 * m - reconstructedLenB + 1)
+    (hc : secondInputLength = reconstructedLenB - k)
+    (hs1 : s1 ≤ secondInputLength - secondInputLength / 2)
+    (hs3 : s3 ≤ secondInputLength - secondInputLength / 2)
+    (hu1 : u1 ≤ max s3 (lenQ + s1 - 1))
+    (hu3 : u3 = s1)
+    (hout1 : out1 ≤ max (r0 + u1 - 1) (r1 + u3 - 1))
+    (hout3 : out3 ≤ max (r2 + u1 - 1) (r3 + u3 - 1)) :
+    out1 ≤ outerLength - outerLength / 2 ∧
+      out3 ≤ outerLength - outerLength / 2 := by
+  have htarget : outerLength - outerLength / 2 = highLength := by
+    rw [← hm]
+    exact hhigh.symm
+  have hcap := hgcdSecondInput_halfCapacity_le m reconstructedLenB k
+    secondInputLength hreconstructedLower hk hc
+  have hs1' : s1 ≤ reconstructedLenB - m := hs1.trans hcap
+  have hs3' : s3 ≤ reconstructedLenB - m := hs3.trans hcap
+  have horder' : reconstructedLenB ≤ m + firstLenA := by
+    rwa [← hreconstructedA]
+  have hq' : lenQ ≤ m + firstLenA - (reconstructedLenB - 1) := by
+    rwa [← hreconstructedA]
+  have boundU (r : Nat)
+      (hrA : r + firstLenA ≤ highLength + 1) :
+      r + u1 - 1 ≤ outerLength - outerLength / 2 := by
+    rw [htarget]
+    have hdirect := (hgcdCombinedRowTerm_le highLength firstLenA
+      reconstructedLenB m lenQ r s3 hrA horder' (by omega) hq' hs3').1
+    have hquotient := (hgcdCombinedRowTerm_le highLength firstLenA
+      reconstructedLenB m lenQ r s1 hrA horder' (by omega) hq' hs1').2
+    rcases le_total s3 (lenQ + s1 - 1) with hle | hle
+    · have hu : u1 ≤ lenQ + s1 - 1 := by
+        simpa [max_eq_right hle] using hu1
+      exact (Nat.sub_le_sub_right (Nat.add_le_add_left hu r) 1).trans
+        hquotient
+    · have hu : u1 ≤ s3 := by
+        simpa [max_eq_left hle] using hu1
+      exact (Nat.sub_le_sub_right (Nat.add_le_add_left hu r) 1).trans
+        hdirect
+  have boundOdd (r : Nat)
+      (hrA : r + firstLenA ≤ highLength + 1) :
+      r + u3 - 1 ≤ outerLength - outerLength / 2 := by
+    rw [htarget, hu3]
+    exact (hgcdCombinedRowTerm_le highLength firstLenA reconstructedLenB m
+      lenQ r s1 hrA horder' (by omega) hq' hs1').1
+  constructor
+  · exact hout1.trans (max_le (boundU r0 hr0A) (boundOdd r1 hr1A))
+  · exact hout3.trans (max_le (boundU r2 hr2A) (boundOdd r3 hr3A))
+
+/-- Entries 1 and 3 of the exact final matrix product remain within the
+outer half-length capacity.  This specialization records the generated
+matrix layout used by the recursive HGCD implementation. -/
+theorem hgcdRecursiveCombined_odd_coeff_bounds
+    (outerLength m highLength firstLenA reconstructedLenA reconstructedLenB
+      lenQ k secondInputLength r0 r1 r2 r3 s1 s3 u1 u3 out1 out3 : Nat)
+    (hm : m = outerLength / 2)
+    (hhigh : highLength = outerLength - m)
+    (hr0A : r0 + firstLenA ≤ highLength + 1)
+    (hr1A : r1 + firstLenA ≤ highLength + 1)
+    (hr2A : r2 + firstLenA ≤ highLength + 1)
+    (hr3A : r3 + firstLenA ≤ highLength + 1)
+    (hreconstructedA : reconstructedLenA = m + firstLenA)
+    (hreconstructedOrder : reconstructedLenB ≤ reconstructedLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hlenQ : lenQ ≤ reconstructedLenA - (reconstructedLenB - 1))
+    (hk : k = 2 * m - reconstructedLenB + 1)
+    (hc : secondInputLength = reconstructedLenB - k)
+    (hs1 : s1 ≤ secondInputLength - secondInputLength / 2)
+    (hs3 : s3 ≤ secondInputLength - secondInputLength / 2)
+    (hu1 : u1 ≤ max s3 (lenQ + s1 - 1))
+    (hu3 : u3 = s1)
+    (hout1 : out1 ≤ max (r0 + u1 - 1) (r1 + u3 - 1))
+    (hout3 : out3 ≤ max (r2 + u1 - 1) (r3 + u3 - 1)) :
+    out1 ≤ outerLength - outerLength / 2 ∧
+      out3 ≤ outerLength - outerLength / 2 := by
+  exact hgcdRecursiveCombinedColumn_coeff_bounds outerLength m highLength
+    firstLenA reconstructedLenA reconstructedLenB lenQ k secondInputLength
+    r0 r1 r2 r3 s1 s3 u1 u3 out1 out3 hm hhigh hr0A hr1A hr2A hr3A
+    hreconstructedA hreconstructedOrder hreconstructedLower hlenQ hk hc
+    hs1 hs3 hu1 hu3 hout1 hout3
+
+/-- The two column instances together give the uniform coefficient bound
+required by the recursive HGCD contract for every concrete output entry. -/
+theorem hgcdRecursiveCombined_all_coeff_bounds
+    (outerLength m highLength firstLenA reconstructedLenA reconstructedLenB
+      lenQ k secondInputLength r0 r1 r2 r3 s0 s1 s2 s3 u0 u1 u2 u3
+      out0 out1 out2 out3 : Nat)
+    (hm : m = outerLength / 2)
+    (hhigh : highLength = outerLength - m)
+    (hr0A : r0 + firstLenA ≤ highLength + 1)
+    (hr1A : r1 + firstLenA ≤ highLength + 1)
+    (hr2A : r2 + firstLenA ≤ highLength + 1)
+    (hr3A : r3 + firstLenA ≤ highLength + 1)
+    (hreconstructedA : reconstructedLenA = m + firstLenA)
+    (hreconstructedOrder : reconstructedLenB ≤ reconstructedLenA)
+    (hreconstructedLower : m + 1 ≤ reconstructedLenB)
+    (hlenQ : lenQ ≤ reconstructedLenA - (reconstructedLenB - 1))
+    (hk : k = 2 * m - reconstructedLenB + 1)
+    (hc : secondInputLength = reconstructedLenB - k)
+    (hs0 : s0 ≤ secondInputLength - secondInputLength / 2)
+    (hs1 : s1 ≤ secondInputLength - secondInputLength / 2)
+    (hs2 : s2 ≤ secondInputLength - secondInputLength / 2)
+    (hs3 : s3 ≤ secondInputLength - secondInputLength / 2)
+    (hu0 : u0 ≤ max s2 (lenQ + s0 - 1))
+    (hu1 : u1 ≤ max s3 (lenQ + s1 - 1))
+    (hu2 : u2 = s0)
+    (hu3 : u3 = s1)
+    (hout0 : out0 ≤ max (r0 + u0 - 1) (r1 + u2 - 1))
+    (hout1 : out1 ≤ max (r0 + u1 - 1) (r1 + u3 - 1))
+    (hout2 : out2 ≤ max (r2 + u0 - 1) (r3 + u2 - 1))
+    (hout3 : out3 ≤ max (r2 + u1 - 1) (r3 + u3 - 1)) :
+    ∀ i : Fin 4,
+      [out0, out1, out2, out3][i] ≤ outerLength - outerLength / 2 := by
+  have heven := hgcdRecursiveCombinedColumn_coeff_bounds outerLength m
+    highLength firstLenA reconstructedLenA reconstructedLenB lenQ k
+    secondInputLength r0 r1 r2 r3 s0 s2 u0 u2 out0 out2 hm hhigh hr0A
+    hr1A hr2A hr3A hreconstructedA hreconstructedOrder hreconstructedLower
+    hlenQ hk hc hs0 hs2 hu0 hu2 hout0 hout2
+  have hodd := hgcdRecursiveCombinedColumn_coeff_bounds outerLength m
+    highLength firstLenA reconstructedLenA reconstructedLenB lenQ k
+    secondInputLength r0 r1 r2 r3 s1 s3 u1 u3 out1 out3 hm hhigh hr0A
+    hr1A hr2A hr3A hreconstructedA hreconstructedOrder hreconstructedLower
+    hlenQ hk hc hs1 hs3 hu1 hu3 hout1 hout3
+  intro i
+  fin_cases i <;> simp_all
+
 /-- Physical obligations that connect the real final reconstruction to the
 optional quotient/matrix-product block while framing both reconstructed
 output polynomials. -/
@@ -7592,6 +7823,10 @@ theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
         hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row2A
     · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
         hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row3B
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row1A
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hgcdMatLen, hgcdMatLenRaw] using hMatrixLengths.row3A
     · simp [HgcdRecursiveBaseResult.toResult,
         HgcdIterState.toRecursiveBaseResult, hlenIA]
     · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,

@@ -36,6 +36,9 @@
 - 严格 `_poly_add` 现有完整外部 allocation frame；HGCD 用它证明加法后
   旧 `i0` 缓冲区仍保持 normalized polynomial 表示，因此 descriptor 交换
   到新 `i1` 后的内容语义也不再缺失。
+- 非零 `_mat_row_update` 已组合成单一端到端定理：从同一个生成函数成功
+  执行推出 `new[i0] = old[i1] + Q * old[i0]` 且
+  `new[i1] = old[i0]`，两项均为最终 heap 上的 `RawDensePolyRep`。
 
 ## 下一步
 

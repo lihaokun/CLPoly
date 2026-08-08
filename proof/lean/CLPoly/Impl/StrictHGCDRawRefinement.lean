@@ -496,4 +496,102 @@ theorem matRowUpdate_nonzero_sum_rep (this : DenseUPolyZp)
     hAliasProduct hadd
   simpa [hptr, hlen] using hsum
 
+/-- Complete semantic refinement of the successful nonzero C++ row update.
+Both installed matrix entries are tied to the same generated `_mul` and
+`_poly_add` executions exposed by `hrun`; no specification execution is
+substituted for either call. -/
+theorem matRowUpdate_nonzero_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : MatRowUpdateResult) (hM : M.Valid)
+    (quotient entry0 entry1 : Polynomial (ZMod this._p.toNat))
+    (hne : i0 ≠ i1) (hQpos : 0 < lenQ)
+    (hEntryPos : 0 < hgcdMatLen M hM i0)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hLenWord : max lenQ (hgcdMatLen M hM i0) < limbBase)
+    (hT : heap.ValidU64Slice T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1))
+    (hScratch : heap.ValidU64Slice scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)))
+    (hAddOutput : heap.ValidU64Slice t
+      (max (hgcdMatLen M hM i1)
+        (lenQ + hgcdMatLen M hM i0 - 1)))
+    (hTQ : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1) Q lenQ)
+    (hTEntry0 : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1)
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0))
+    (hTEntry1 : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1)
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1))
+    (hTScratch : U64SlicesDisjoint T
+      (2 * max lenQ (hgcdMatLen M hM i0) - 1) scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)))
+    (hScratchQ : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0)) Q lenQ)
+    (hScratchEntry0 : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0))
+      (hgcdMatPtr M hM i0) (hgcdMatLen M hM i0))
+    (hScratchEntry1 : U64SlicesDisjoint scratch
+      (8 * max lenQ (hgcdMatLen M hM i0))
+      (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1))
+    (hAliasEntry1 : ExactOrDisjoint t (hgcdMatPtr M hM i1))
+    (hAliasProduct : ExactOrDisjoint t T)
+    (htEntry0 : t.region ≠ (hgcdMatPtr M hM i0).region)
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hEntry0Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) entry0)
+    (hEntry1Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) entry1)
+    (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result) :
+    ∃ hResult : result.matrix.Valid,
+      RawDensePolyRep this result.heap
+        (hgcdMatPtr result.matrix hResult i0)
+        (hgcdMatLen result.matrix hResult i0)
+        (entry1 + quotient * entry0) ∧
+      RawDensePolyRep this result.heap
+        (hgcdMatPtr result.matrix hResult i1)
+        (hgcdMatLen result.matrix hResult i1) entry0 := by
+  rcases matRowUpdate_nonzero_success_shape this M i0 i1 Q lenQ T lenT t
+      scratch heap result hM hne (by omega) (by omega) hrun with
+    ⟨heap1, heap2, sumLen, hmul, hadd, hResultHeap, _, _, _,
+      hResult, hptr0, hlen0, hptr1, hlen1⟩
+  have hmulSemantic := matRowUpdate_mul_result this M hM i0 Q T scratch
+    lenQ heap heap1 quotient entry0 hcfg hp hQpos hEntryPos hLenWord hT
+    hScratch hTQ hTEntry0 hTScratch hScratchQ hScratchEntry0 hQRep
+    hEntry0Rep hmul
+  rcases hmulSemantic with ⟨hlayoutMul, hProduct1⟩
+  have hEntry1_1 := matRowUpdate_mul_preserves_entry1 this M hM i0 i1 Q T
+    scratch lenQ heap heap1 entry1 hQpos hEntryPos hT hScratch hQRep.1
+    hEntry0Rep.1 hScratchQ hScratchEntry0 hTEntry1 hScratchEntry1
+    hEntry1Rep hlayoutMul hmul
+  have hEntry0_1 := matRowUpdate_mul_preserves_entry1 this M hM i0 i0 Q T
+    scratch lenQ heap heap1 entry0 hQpos hEntryPos hT hScratch hQRep.1
+    hEntry0Rep.1 hScratchQ hScratchEntry0 hTEntry0 hScratchEntry0
+    hEntry0Rep hlayoutMul hmul
+  have hAddOutput1 := (hlayoutMul t
+    (max (hgcdMatLen M hM i1)
+      (lenQ + hgcdMatLen M hM i0 - 1))).mp hAddOutput
+  have hpWord : this._p ≠ 0 := by
+    intro hzero
+    have := congrArg UInt64.toNat hzero
+    simp at this
+    omega
+  have hNew0 := matRowUpdate_nonzero_sum_rep this result.matrix hResult i0
+    t (hgcdMatPtr M hM i1) T (hgcdMatLen M hM i1)
+    (lenQ + hgcdMatLen M hM i0 - 1) sumLen heap1 heap2 entry1
+    (quotient * entry0) hpWord hAddOutput1 hEntry1_1 hProduct1
+    hAliasEntry1 hAliasProduct hadd hptr0 hlen0
+  have hOld0_2 := matRowUpdate_add_preserves_entry0 this t
+    (hgcdMatPtr M hM i1) T (hgcdMatPtr M hM i0)
+    (hgcdMatLen M hM i1) (lenQ + hgcdMatLen M hM i0 - 1)
+    (hgcdMatLen M hM i0) sumLen heap1 heap2 entry0 entry1
+    (quotient * entry0) hAddOutput1 hEntry1_1 hProduct1 hEntry0_1
+    htEntry0 hadd
+  refine ⟨hResult, ?_, ?_⟩
+  · simpa [hResultHeap] using hNew0
+  · simpa [hResultHeap, hptr1, hlen1] using hOld0_2
+
 end CLPoly.Impl.StrictHGCDRawRefinement

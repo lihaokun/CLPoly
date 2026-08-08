@@ -79,6 +79,7 @@ def main() -> None:
         "matRowUpdate_mul_preserves_entry1",
         "matRowUpdate_add_preserves_entry0",
         "matRowUpdate_nonzero_sum_rep",
+        "matRowUpdate_nonzero_refines",
         "normalize_gcd_eq_of_hgcd_transform",
         "normalize_gcd_eq_of_det_one_transform",
         "normalize_gcd_eq_of_det_neg_one_transform",

@@ -10,6 +10,7 @@
 - 加强零分支执行定理，给出交换后两个矩阵描述符的精确指针和长度。
 - 闭合零分支语义：实际描述符交换表示 `[entry1 + quotient*entry0, entry0]`。
 - 统一零分支与非零 `_mul`/`_poly_add` 分支，得到覆盖生成函数全部控制流的 `matRowUpdate_refines`。
+- 将 identity 四个矩阵条目加强为规范化 `RawDensePolyRep`，并证明两个实际初始化 `memcpy` 保持该四条目不变式。
 
 ## 为什么做
 

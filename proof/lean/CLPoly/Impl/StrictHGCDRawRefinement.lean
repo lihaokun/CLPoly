@@ -99,6 +99,50 @@ theorem rawDensePolyRep_of_same_prefix (this : DenseUPolyZp)
     hrep.1 hsame
   exact hnorm.symm.trans hrep.2.2.2
 
+/-- Normalized raw representation of all four live HGCD matrix entries. -/
+def HgcdMatRawDenseRep (this : DenseUPolyZp) (heap : RawHeap)
+    (M : HgcdMat) (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hM : M.Valid) : Prop :=
+  ∀ i : Fin 4, RawDensePolyRep this heap (hgcdMatPtr M hM i)
+    (hgcdMatLen M hM i) (entries i)
+
+/-- Pointwise frame transport for the normalized raw matrix invariant. -/
+theorem hgcdMatRawDenseRep_of_same_prefixes (this : DenseUPolyZp)
+    (before after : RawHeap) (M : HgcdMat)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hM : M.Valid) (hlayout : RawHeap.SameLayout before after)
+    (hsame : ∀ i : Fin 4, SameU64Prefix before after
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i))
+    (hrep : HgcdMatRawDenseRep this before M entries hM) :
+    HgcdMatRawDenseRep this after M entries hM := by
+  intro i
+  exact rawDensePolyRep_of_same_prefix this before after
+    (hgcdMatPtr M hM i) (hgcdMatLen M hM i) (entries i) hlayout
+    (hsame i) (hrep i)
+
+/-- A real recursive memcpy preserves the normalized raw matrix invariant
+when its destination is disjoint from every live entry. -/
+theorem copyU64_preserves_hgcdMatRawDenseRep (this : DenseUPolyZp)
+    (heap heap' : RawHeap) (dst src : RawPtr UInt64) (count : Nat)
+    (M : HgcdMat) (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hM : M.Valid) (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hMatrix : ∀ i : Fin 4, U64SlicesDisjoint dst count
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i))
+    (hcopy : heap.copyU64 dst src count = .ok heap')
+    (hrep : HgcdMatRawDenseRep this heap M entries hM) :
+    RawHeap.SameLayout heap heap' ∧
+      HgcdMatRawDenseRep this heap' M entries hM := by
+  rcases copyU64_ok heap dst src count hDst hSrc with
+    ⟨copyHeap, hcopy', hlayout⟩
+  have heq : copyHeap = heap' := Except.ok.inj (hcopy'.symm.trans hcopy)
+  subst copyHeap
+  refine ⟨hlayout, hgcdMatRawDenseRep_of_same_prefixes this heap heap' M
+    entries hM hlayout ?_ hrep⟩
+  intro i
+  exact copyU64_preserves_prefix heap heap' dst src (hgcdMatPtr M hM i)
+    count (hgcdMatLen M hM i) hDst hSrc (hMatrix i) hcopy
+
 /-- The actual recursive RawHeap memcpy transports the complete normalized
 polynomial representation to a disjoint destination. -/
 theorem copyU64_refines_rawDense (this : DenseUPolyZp)
@@ -149,6 +193,35 @@ theorem slicePolyRep_one_of_read_one (heap : RawHeap) (ptr : RawPtr UInt64)
       simp [Polynomial.coeff_one, hd]
   simpa [heq] using hrep
 
+/-- A zero-length C++ coefficient slice is the normalized raw
+representation of the zero polynomial. -/
+theorem rawDensePolyRep_zero_length (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64)
+    (hvalid : heap.ValidU64Slice ptr 0) :
+    RawDensePolyRep this heap ptr 0 0 := by
+  refine ⟨hvalid, ?_, slicePolyRep_zero_length_any heap ptr this._p.toNat, ?_⟩
+  · intro k value hk _
+    omega
+  · simp [RawHeap.normaliseU64]
+
+/-- A readable limb `1` is the normalized raw representation of the constant
+one whenever the C++ modulus has at least two residues. -/
+theorem rawDensePolyRep_one_of_read_one (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64)
+    (hp : 1 < this._p.toNat)
+    (hvalid : heap.ValidU64Slice ptr 1)
+    (hread : heap.readU64 ptr 0 = .ok 1) :
+    RawDensePolyRep this heap ptr 1 1 := by
+  refine ⟨hvalid, ?_, slicePolyRep_one_of_read_one heap ptr
+    this._p.toNat hvalid hread, ?_⟩
+  · intro k value hk hvalue
+    have hk0 : k = 0 := by omega
+    subst k
+    have hv : value = 1 := Except.ok.inj (hvalue.symm.trans hread)
+    subst value
+    simpa using hp
+  · simp [RawHeap.normaliseU64, hread]
+
 theorem matOne_refines (M : HgcdMat) (heap : RawHeap) (p : Nat)
     (hM : M.Valid)
     (h0 : heap.ValidU64Slice (hgcdMatPtr M hM ⟨0, by omega⟩) 1)
@@ -159,6 +232,8 @@ theorem matOne_refines (M : HgcdMat) (heap : RawHeap) (p : Nat)
     ∃ heap' M', dense_upoly_zp__mat_one_ir M heap = .ok (heap', M') ∧
       RawHeap.SameLayout heap heap' ∧
       M'.poly = M.poly ∧ M'.len = #[1, 0, 0, 1] ∧
+      heap'.readU64 (hgcdMatPtr M hM ⟨0, by omega⟩) 0 = .ok 1 ∧
+      heap'.readU64 (hgcdMatPtr M hM ⟨3, by omega⟩) 0 = .ok 1 ∧
       ∃ hM' : M'.Valid,
         HgcdMatPolyRep heap' M' p (identityEntries p) hM' := by
   have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
@@ -179,8 +254,6 @@ theorem matOne_refines (M : HgcdMat) (heap : RawHeap) (p : Nat)
     simpa [p3, hgcdMatPtr] using hwrite3
   have hrun : dense_upoly_zp__mat_one_ir M heap = .ok (heap2, M') := by
     simp [dense_upoly_zp__mat_one_ir, hvalid, hwrite0', hwrite3', M']
-  refine ⟨heap2, M', hrun, fun ptr length =>
-    (hlayout1 ptr length).trans (hlayout2 ptr length), rfl, rfl, ?_⟩
   have hsame0 := CLPoly.Impl.StrictMulRefinement.writeU64_preserves_prefix
     heap1 heap2 p3 p0 1 1 0 1
     (by simpa [p0, p3] using
@@ -192,7 +265,9 @@ theorem matOne_refines (M : HgcdMat) (heap : RawHeap) (p : Nat)
   have hread3 : heap2.readU64 p3 0 = .ok 1 :=
     RawHeap.readU64_writeU64_same heap1 heap2 p3 0 1 hwrite3
   have hM' : M'.Valid := by simp [M', HgcdMat.Valid, hvalid.1]
-  refine ⟨hM', ?_⟩
+  refine ⟨heap2, M', hrun, fun ptr length =>
+    (hlayout1 ptr length).trans (hlayout2 ptr length), rfl, rfl,
+    (by simpa [p0]), (by simpa [p3]), hM', ?_⟩
   intro i
   fin_cases i
   · simpa [HgcdMatPolyRep, hgcdMatPtr, hgcdMatLen, M', identityEntries,
@@ -263,6 +338,7 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
     (a : RawPtr UInt64) (lenA : Nat) (b : RawPtr UInt64) (lenB : Nat)
     (heap : RawHeap) (left right : Polynomial (ZMod this._p.toNat))
     (hM : M.Valid)
+    (hp : 1 < this._p.toNat)
     (h0 : heap.ValidU64Slice (hgcdMatPtr M hM ⟨0, by omega⟩) 1)
     (h3 : heap.ValidU64Slice (hgcdMatPtr M hM ⟨3, by omega⟩) 1)
     (h03 : U64SlicesDisjoint (hgcdMatPtr M hM ⟨0, by omega⟩) 1
@@ -292,12 +368,13 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
       initial.T = T ∧ initial.lenT = lenT ∧ initial.t = t ∧
       initial.sgn = 1 ∧
       ∃ hInitialM : initial.matrix.Valid,
-        HgcdMatPolyRep initial.heap initial.matrix this._p.toNat
+        HgcdMatRawDenseRep this initial.heap initial.matrix
           (identityEntries this._p.toNat) hInitialM ∧
         RawDensePolyRep this initial.heap initial.A initial.lenA left ∧
         RawDensePolyRep this initial.heap initial.B initial.lenB right := by
   rcases matOne_refines M heap this._p.toNat hM h0 h3 h03 with
-    ⟨heap1, M1, hone, hlayout1, hpoly1, hlen1, hM1, hMatrix1⟩
+    ⟨heap1, M1, hone, hlayout1, hpoly1, hlen1, hread0, hread3,
+      hM1, hMatrix1⟩
   have hsameA := matOne_preserves_prefix M heap heap1 M1 a lenA hM
     h0a h3a hone
   have hsameB := matOne_preserves_prefix M heap heap1 M1 b lenB hM
@@ -318,6 +395,34 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
     intro i
     rw [hPtr1 i, hLen1 i]
     exact (hlayout1 _ _).mp (hMatrixValid i)
+  have hRawMatrix1 : HgcdMatRawDenseRep this heap1 M1
+      (identityEntries this._p.toNat) hM1 := by
+    intro i
+    fin_cases i
+    · simp only [identityEntries]
+      rw [hLen1 ⟨0, by omega⟩]
+      apply rawDensePolyRep_one_of_read_one this heap1 _ hp
+      · convert hValidMatrix1 ⟨0, by omega⟩ using 1
+        simpa [identityEntryLen] using (hLen1 ⟨0, by omega⟩).symm
+      · rw [hPtr1 ⟨0, by omega⟩]
+        exact hread0
+    · simp only [identityEntries]
+      rw [hLen1 ⟨1, by omega⟩]
+      apply rawDensePolyRep_zero_length this heap1
+      convert hValidMatrix1 ⟨1, by omega⟩ using 1
+      simpa [identityEntryLen] using (hLen1 ⟨1, by omega⟩).symm
+    · simp only [identityEntries]
+      rw [hLen1 ⟨2, by omega⟩]
+      apply rawDensePolyRep_zero_length this heap1
+      convert hValidMatrix1 ⟨2, by omega⟩ using 1
+      simpa [identityEntryLen] using (hLen1 ⟨2, by omega⟩).symm
+    · simp only [identityEntries]
+      rw [hLen1 ⟨3, by omega⟩]
+      apply rawDensePolyRep_one_of_read_one this heap1 _ hp
+      · convert hValidMatrix1 ⟨3, by omega⟩ using 1
+        simpa [identityEntryLen] using (hLen1 ⟨3, by omega⟩).symm
+      · rw [hPtr1 ⟨3, by omega⟩]
+        exact hread3
   have hA1 := (hlayout1 A lenA).mp hA
   rcases copyU64_refines_rawDense this heap1 A a lenA left hA1 hAa
       hLeft1 with ⟨heap2, hcopyA, hlayout2, hA2⟩
@@ -329,10 +434,9 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
       (hgcdMatPtr M1 hM1 i) (hgcdMatLen M1 hM1 i) := by
     intro i
     simpa [hPtr1 i, hLen1 i] using hAMatrix i
-  rcases copyU64_preserves_hgcdMatPolyRep heap1 heap2 A a lenA M1
-      this._p.toNat (identityEntries this._p.toNat) hM1 hA1 hLeft1.1
-      hValidMatrix1 hAMatrix1 hcopyA hMatrix1 with
-    ⟨_, hMatrix2⟩
+  rcases copyU64_preserves_hgcdMatRawDenseRep this heap1 heap2 A a lenA
+      M1 (identityEntries this._p.toNat) hM1 hA1 hLeft1.1 hAMatrix1
+      hcopyA hRawMatrix1 with ⟨_, hMatrix2⟩
   have hB2 := (hlayout2 B lenB).mp ((hlayout1 B lenB).mp hB)
   rcases copyU64_refines_rawDense this heap2 B b lenB right hB2 hBb
       hRight2 with ⟨heap3, hcopyB, hlayout3, hB3⟩
@@ -348,9 +452,9 @@ theorem hgcdIterInit_refines (this : DenseUPolyZp)
       (hgcdMatPtr M1 hM1 i) (hgcdMatLen M1 hM1 i) := by
     intro i
     simpa [hPtr1 i, hLen1 i] using hBMatrix i
-  rcases copyU64_preserves_hgcdMatPolyRep heap2 heap3 B b lenB M1
-      this._p.toNat (identityEntries this._p.toNat) hM1 hB2 hRight2.1
-      hValidMatrix2 hBMatrix1 hcopyB hMatrix2 with
+  rcases copyU64_preserves_hgcdMatRawDenseRep this heap2 heap3 B b lenB
+      M1 (identityEntries this._p.toNat) hM1 hB2 hRight2.1 hBMatrix1
+      hcopyB hMatrix2 with
     ⟨_, hMatrix3⟩
   let initial : HgcdIterState := {
     heap := heap3, matrix := M1, A := A, lenA := lenA, B := B,

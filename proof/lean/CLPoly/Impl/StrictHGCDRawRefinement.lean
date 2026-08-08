@@ -1294,6 +1294,83 @@ theorem hgcdRecursiveReconstructA_refines (this : DenseUPolyZp)
     · simpa [flippedSign, hsgn] using hrep
     · simpa [flippedSign, hsgn] using hrep
 
+/-- Purely physical buffers for the generated shifted-high reconstruction.
+The output covers both the existing low representation and the inserted high
+half; the alias condition is the one accepted by the real in-place add. -/
+structure HgcdLiftHighWorkspace (heap : RawHeap)
+    (out high : RawPtr UInt64) (lowLength m highLength : Nat) : Prop where
+  outValid : heap.ValidU64Slice out (max (m + highLength) lowLength)
+  highValid : heap.ValidU64Slice high highLength
+  addAliasHigh : ExactOrDisjoint (out.add m) high
+
+/-- Total raw execution bridge for zero-fill, shifted in-place addition, and
+whole-buffer normalization.  Every step is the corresponding generated L1
+operation; no expected L2 output is an input to the execution. -/
+theorem hgcdRecursiveLiftHigh_terminates (this : DenseUPolyZp)
+    (out high : RawPtr UInt64) (lowLength m highLength : Nat)
+    (heap : RawHeap) (lowPoly : Polynomial (ZMod this._p.toNat))
+    (hp : this._p ≠ 0)
+    (hwork : HgcdLiftHighWorkspace heap out high lowLength m highLength)
+    (hLow : RawDensePolyRep this heap out lowLength lowPoly) :
+    ∃ result,
+      hgcdRecursiveLiftHigh this out high lowLength m highLength heap =
+        .ok result ∧
+      RawHeap.SameLayout heap result.heap ∧
+      result.length ≤ max (m + highLength) lowLength := by
+  let required := m + highLength
+  let fullLength := max required lowLength
+  have hzero : ∃ heap1,
+      (if lowLength < required then
+        Generated.StrictMul.mulZeroPadLoop out lowLength
+          (required - lowLength) 0 heap
+       else (Except.ok heap : RawExec RawHeap)) = Except.ok heap1 ∧
+      RawHeap.SameLayout heap heap1 := by
+    by_cases hpad : lowLength < required
+    · have hsum : lowLength + (required - lowLength) = required := by omega
+      have hfull : fullLength = required := by
+        simp [fullLength, Nat.max_eq_left (Nat.le_of_lt hpad)]
+      have hvalidFull : heap.ValidU64Slice out fullLength := by
+        simpa [fullLength, required] using hwork.outValid
+      have hvalid : heap.ValidU64Slice out
+          (lowLength + (required - lowLength)) := by
+        simpa [hsum, hfull] using hvalidFull
+      rcases mulZeroPadLoop_refines out lowLength (required - lowLength) 0
+          this._p.toNat heap lowPoly this._p (Nat.zero_le _) hp hvalid
+          (by simpa using hLow.2.2.1) (by simpa using hLow.2.1) with
+        ⟨heap1, hrun, hlayout, _, _⟩
+      exact ⟨heap1, by simpa [hpad] using hrun, hlayout⟩
+    · exact ⟨heap, by simp [hpad], fun _ _ => Iff.rfl⟩
+  rcases hzero with ⟨heap1, hzeroRun, hlayout1⟩
+  let oldHighLength := if m ≤ lowLength then lowLength - m else 0
+  have hOut1 : heap1.ValidU64Slice out fullLength :=
+    (hlayout1 out fullLength).mp (by simpa [fullLength, required] using
+      hwork.outValid)
+  have hOutHigh1 : heap1.ValidU64Slice (out.add m) oldHighLength := by
+    apply heap1.validU64Slice_add out fullLength m oldHighLength hOut1
+    dsimp [oldHighLength, fullLength, required]
+    split <;> omega
+  have hHigh1 : heap1.ValidU64Slice high highLength :=
+    (hlayout1 high highLength).mp hwork.highValid
+  have hAddOut1 : heap1.ValidU64Slice (out.add m)
+      (max oldHighLength highLength) := by
+    apply heap1.validU64Slice_add out fullLength m
+      (max oldHighLength highLength) hOut1
+    dsimp [oldHighLength, fullLength, required]
+    split <;> omega
+  rcases polyAdd_ok this (out.add m) (out.add m) oldHighLength high
+      highLength heap1 hAddOut1 hOutHigh1 hHigh1 with
+    ⟨heap2, ignoredLength, hadd, hlayout2, _⟩
+  have hOut2 : heap2.ValidU64Slice out fullLength :=
+    (hlayout2 out fullLength).mp hOut1
+  rcases normaliseU64_ok heap2 out fullLength hOut2 with
+    ⟨length, hnorm, hlength⟩
+  refine ⟨HgcdLiftHighResult.mk heap2 length, ?_, ?_, ?_⟩
+  · simp [hgcdRecursiveLiftHigh, required, fullLength, oldHighLength,
+      hzeroRun, hadd, hnorm]
+  · exact fun ptr count =>
+      (hlayout1 ptr count).trans (hlayout2 ptr count)
+  · simpa [fullLength, required] using hlength
+
 /-- A readable limb `1` is the normalized raw representation of the constant
 one whenever the C++ modulus has at least two residues. -/
 theorem rawDensePolyRep_one_of_read_one (this : DenseUPolyZp)

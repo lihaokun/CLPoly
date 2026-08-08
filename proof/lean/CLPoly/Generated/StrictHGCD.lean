@@ -582,6 +582,33 @@ def hgcdRecursiveReconstructA (this : DenseUPolyZp)
         dense_upoly_zp__poly_sub_ir this a2 a2 term1.length T0 term2.length
           term2.heap
 
+structure HgcdLiftHighResult where
+  heap : RawHeap
+  length : Nat
+
+/-- Exact lowering of the two identical “zero-fill, add the shifted high
+half, normalize the whole buffer” blocks used for `b2` and `a2`. -/
+def hgcdRecursiveLiftHigh (this : DenseUPolyZp)
+    (out high : RawPtr UInt64) (lowLength m highLength : Nat)
+    (heap : RawHeap) : RawExec HgcdLiftHighResult :=
+  let required := m + highLength
+  let fullLength := max required lowLength
+  let zeroRun := if lowLength < required then
+    mulZeroPadLoop out lowLength (required - lowLength) 0 heap
+  else .ok heap
+  match zeroRun with
+  | .error fault => .error fault
+  | .ok heap1 =>
+    let outHigh := out.add m
+    let oldHighLength := if m ≤ lowLength then lowLength - m else 0
+    match dense_upoly_zp__poly_add_ir this outHigh outHigh oldHighLength
+        high highLength heap1 with
+    | .error fault => .error fault
+    | .ok (heap2, _) =>
+      match heap2.normaliseU64 out fullLength with
+      | .error fault => .error fault
+      | .ok length => .ok { heap := heap2, length := length }
+
 /-- Every successful suffix of the real restore loop returns a valid matrix
 and leaves the complete length descriptor byte-for-byte unchanged. -/
 theorem hgcdMatRestoreLoop_preserves_valid_len

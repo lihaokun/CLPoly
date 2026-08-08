@@ -44,6 +44,8 @@
 - 闭合共用乘法块的 raw 语义：纯物理 `HgcdMulTermWorkspace` 固定目标/八倍 scratch 容量及别名；两个非零次序都调用已证明的真实 `_mul` dispatcher，零长度分支则从输入 raw slice 推出对应 L2 多项式必为零。另证该块只改写目标与 scratch，为连续两次乘法提供任意 live slice 的帧规则。
 - 闭合 `b2` 低半部重构的完整 raw 执行：第一次真实乘法通过帧规则保留第二项输入，第二次真实乘法保留第一项输出，再由 `_poly_sub` 的实际终止执行与语义定理得到 `sgnR` 选择的差；所有容量由两项源长度的物理上界推出。
 - 将 `a2` 的相反符号方向归约到同一已验证执行骨架，并证明生成 `hgcdRecursiveReconstructA` 与翻转分支选择后的 `b2` 执行逐定义相等，从而复用两次 `_mul` 与 `_poly_sub` 的 raw 证据而不复制规格。
+- 严格降低两处相同的高半部加回块：按源码条件从当前长度到 `m + len_high` 执行真实逐肢零填充，在 `out + m` 上原位调用 `_poly_add`（忽略其局部返回长度，与 C++ 一致），最后对整个 `max (m + len_high, len_low)` 前缀调用 `_poly_normalise`。
+- 用仅含输出/高半部容量和 add 别名关系的 `HgcdLiftHighWorkspace` 证明该组合 raw 执行总能成功；零填充由实际写零循环归纳，add 与 normalization 分别使用其真实终止桥，并给出最终长度的物理上界。
 
 ## 为什么做
 

@@ -255,6 +255,8 @@ def main() -> None:
         "rawDensePolyRep_length_zero_iff",
         "rawDensePolyRep_natDegree_add_one",
         "rawDensePolyRep_length_le_of_degree_lt",
+        "rawDensePolyRep_mul_zero_or_degree_lt",
+        "rawDensePolyRep_sum_products_length_le",
         "HgcdRecursiveFinishResult",
         "hgcdRecursiveFinish",
         "hgcdRecursiveFinish_exec",

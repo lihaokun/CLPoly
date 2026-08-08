@@ -159,6 +159,74 @@ theorem rawDensePolyRep_length_le_of_degree_lt (this : DenseUPolyZp)
         poly hrep (Nat.pos_of_ne_zero hlength)
       omega
 
+/-- Degree bound for one product expressed solely in terms of the two exact
+normalized C++ descriptor lengths. -/
+theorem rawDensePolyRep_mul_zero_or_degree_lt (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (heap : RawHeap) (leftPtr rightPtr : RawPtr UInt64)
+    (leftLength rightLength : Nat)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hLeft : RawDensePolyRep this heap leftPtr leftLength left)
+    (hRight : RawDensePolyRep this heap rightPtr rightLength right) :
+    left * right = 0 ∨
+      (left * right).natDegree < leftLength + rightLength - 1 := by
+  by_cases hLeftLength : leftLength = 0
+  · left
+    rw [(rawDensePolyRep_length_zero_iff this heap leftPtr leftLength left
+      hLeft).mp hLeftLength, zero_mul]
+  · by_cases hRightLength : rightLength = 0
+    · left
+      rw [(rawDensePolyRep_length_zero_iff this heap rightPtr rightLength right
+        hRight).mp hRightLength, mul_zero]
+    · right
+      have hLeftDegree := rawDensePolyRep_natDegree_add_one this heap leftPtr
+        leftLength left hLeft (Nat.pos_of_ne_zero hLeftLength)
+      have hRightDegree := rawDensePolyRep_natDegree_add_one this heap rightPtr
+        rightLength right hRight (Nat.pos_of_ne_zero hRightLength)
+      have hLeftNonzero : left ≠ 0 := by
+        intro hzero
+        exact hLeftLength ((rawDensePolyRep_length_zero_iff this heap leftPtr
+          leftLength left hLeft).mpr hzero)
+      have hRightNonzero : right ≠ 0 := by
+        intro hzero
+        exact hRightLength ((rawDensePolyRep_length_zero_iff this heap rightPtr
+          rightLength right hRight).mpr hzero)
+      rw [Polynomial.natDegree_mul hLeftNonzero hRightNonzero]
+      omega
+
+/-- Exact normalized length bound for the polynomial produced by one real
+matrix-entry computation `P*Q + R*S`. -/
+theorem rawDensePolyRep_sum_products_length_le (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (heap : RawHeap) (pPtr qPtr rPtr sPtr outPtr : RawPtr UInt64)
+    (lenP lenQ lenR lenS outLength : Nat)
+    (P Q R S : Polynomial (ZMod this._p.toNat))
+    (hP : RawDensePolyRep this heap pPtr lenP P)
+    (hQ : RawDensePolyRep this heap qPtr lenQ Q)
+    (hR : RawDensePolyRep this heap rPtr lenR R)
+    (hS : RawDensePolyRep this heap sPtr lenS S)
+    (hOut : RawDensePolyRep this heap outPtr outLength (P * Q + R * S)) :
+    outLength ≤ max (lenP + lenQ - 1) (lenR + lenS - 1) := by
+  have hPQ := rawDensePolyRep_mul_zero_or_degree_lt this heap pPtr qPtr lenP
+    lenQ P Q hP hQ
+  have hRS := rawDensePolyRep_mul_zero_or_degree_lt this heap rPtr sPtr lenR
+    lenS R S hR hS
+  apply rawDensePolyRep_length_le_of_degree_lt this heap outPtr outLength
+    (max (lenP + lenQ - 1) (lenR + lenS - 1)) (P * Q + R * S) hOut
+  rcases hPQ with hPQ | hPQ <;> rcases hRS with hRS | hRS
+  · left
+    rw [hPQ, hRS, zero_add]
+  · right
+    rw [hPQ, zero_add]
+    exact hRS.trans_le (Nat.le_max_right _ _)
+  · right
+    rw [hRS, add_zero]
+    exact hPQ.trans_le (Nat.le_max_left _ _)
+  · right
+    exact (Polynomial.natDegree_add_le (P * Q) (R * S)).trans_lt (by
+      exact max_lt (hPQ.trans_le (Nat.le_max_left _ _))
+        (hRS.trans_le (Nat.le_max_right _ _)))
+
 /-- Normalized raw representation of all four live HGCD matrix entries. -/
 def HgcdMatRawDenseRep (this : DenseUPolyZp) (heap : RawHeap)
     (M : HgcdMat) (entries : Fin 4 → Polynomial (ZMod this._p.toNat))

@@ -4552,20 +4552,20 @@ structure HgcdRecursiveRawInvariant (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]
     (left right finalA finalB : Polynomial (ZMod this._p.toNat))
     (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
-    (outA outB : RawPtr UInt64) (inputLength : Nat)
+    (computeM : Bool) (outA outB : RawPtr UInt64) (inputLength : Nat)
     (result : HgcdRecursiveResult) : Prop where
-  matrixRep : HgcdMatRawDenseRep this result.heap result.matrix entries
-    result.valid
   aRep : RawDensePolyRep this result.heap outA result.lenA finalA
   bRep : RawDensePolyRep this result.heap outB result.lenB finalB
-  transform : CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right
-    finalA finalB (entries 0) (entries 1) (entries 2) (entries 3)
-  signedDet : CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet result.sgn
-    (entries 0) (entries 1) (entries 2) (entries 3)
+  matrixSemantics : computeM = true →
+    HgcdMatRawDenseRep this result.heap result.matrix entries result.valid ∧
+    CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right finalA finalB
+      (entries 0) (entries 1) (entries 2) (entries 3) ∧
+    CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet result.sgn
+      (entries 0) (entries 1) (entries 2) (entries 3)
   gcdPreserved : normalize (EuclideanDomain.gcd left right) =
     normalize (EuclideanDomain.gcd finalA finalB)
   stopped : result.lenB < inputLength / 2 + 1
-  lengths : HgcdRecursiveLengthInvariant inputLength result
+  lengths : computeM = true → HgcdRecursiveLengthInvariant inputLength result
 
 /-- Arithmetic closure for one Euclidean matrix step.  The quotient bound
 comes from the real generated divrem call and the four descriptor bounds
@@ -5057,7 +5057,7 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
       inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap = .ok result) :
     ∃ finalA finalB finalEntries hResultM,
       HgcdRecursiveRawInvariant this left right finalA finalB finalEntries
-        a3 b3 lenInputA (result.toResult hResultM) := by
+        true a3 b3 lenInputA (result.toResult hResultM) := by
   rcases hgcdRecursiveIterBranch_exec this original hOriginal a3 b3 inputA
       inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap result hrun with
     ⟨iter, hIter, stable, hiter, hstable, hstore, hResultMatrix,
@@ -5154,20 +5154,20 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
       positive := by simpa [HgcdRecursiveIterBranchResult.toResult,
         hResultLenA] using hFinalPositive }
   refine ⟨finalA, finalB, finalEntries, hResultValid, {
-    matrixRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using
-      hMatrixResult
     aRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hAResult
     bRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hBResult
-    transform := by
-      simpa [HgcdRecursiveIterBranchResult.toResult, hResultLenA,
-        hResultLenB] using hInvariant.transform
-    signedDet := by
-      simpa [HgcdRecursiveIterBranchResult.toResult, hResultSgn] using
-        hInvariant.signedDet
+    matrixSemantics := by
+      intro _
+      exact ⟨by simpa [HgcdRecursiveIterBranchResult.toResult] using
+          hMatrixResult,
+        by simpa [HgcdRecursiveIterBranchResult.toResult, hResultLenA,
+          hResultLenB] using hInvariant.transform,
+        by simpa [HgcdRecursiveIterBranchResult.toResult, hResultSgn] using
+          hInvariant.signedDet⟩
     gcdPreserved := hGcd
     stopped := by
       simpa [HgcdRecursiveIterBranchResult.toResult, hResultLenB] using hStop
-    lengths := hResultLengthInvariant }⟩
+    lengths := fun _ => hResultLengthInvariant }⟩
 
 /-- Physical obligations for the two concrete guarded products and the
 source-selected tail of one `_mat_mul_entry`. -/

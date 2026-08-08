@@ -230,6 +230,12 @@ GCD 保持和停止界。针对 iterator 返回记录中 proof-only validity wit
 差异另有 proof-irrelevance 传输定理，因此 cutoff 分派结果可直接作为严格
 函数体的 `firstLength` 证据。
 
+统一 raw 不变式现显式参数化 `compute_M`。A/B raw 表示、GCD 保持和停止界
+始终成立；矩阵表示、变换、行列式符号及矩阵长度界只在 `compute_M=true`
+时承诺。这与源码一致：递归子调用和 SQF 所需矩阵路径使用 true，而 GCD
+顶层的 false 路径不应被迫为未计算的矩阵提供语义。由此移除了一个会把
+非矩阵执行误报为已精化矩阵的残留风险。
+
 最终矩阵合并块也已按源码顺序闭合：`hgcdRecursiveCombineMatrix` 先实际执行
 两列商矩阵更新，再把其返回的 matrix/heap 直接交给完整四项 `_mat_mul`。
 对应 raw 定理从两次生成调用分别取得 `[[q,1],[1,0]]*S` 与

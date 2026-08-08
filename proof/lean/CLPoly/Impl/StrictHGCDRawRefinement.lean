@@ -152,6 +152,7 @@ theorem matOne_refines (M : HgcdMat) (heap : RawHeap) (p : Nat)
       (hgcdMatPtr M hM ⟨3, by omega⟩) 1) :
     ∃ heap' M', dense_upoly_zp__mat_one_ir M heap = .ok (heap', M') ∧
       RawHeap.SameLayout heap heap' ∧
+      M'.poly = M.poly ∧ M'.len = #[1, 0, 0, 1] ∧
       ∃ hM' : M'.Valid,
         HgcdMatPolyRep heap' M' p (identityEntries p) hM' := by
   have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := by
@@ -173,7 +174,7 @@ theorem matOne_refines (M : HgcdMat) (heap : RawHeap) (p : Nat)
   have hrun : dense_upoly_zp__mat_one_ir M heap = .ok (heap2, M') := by
     simp [dense_upoly_zp__mat_one_ir, hvalid, hwrite0', hwrite3', M']
   refine ⟨heap2, M', hrun, fun ptr length =>
-    (hlayout1 ptr length).trans (hlayout2 ptr length), ?_⟩
+    (hlayout1 ptr length).trans (hlayout2 ptr length), rfl, rfl, ?_⟩
   have hsame0 := CLPoly.Impl.StrictMulRefinement.writeU64_preserves_prefix
     heap1 heap2 p3 p0 1 1 0 1
     (by simpa [p0, p3] using

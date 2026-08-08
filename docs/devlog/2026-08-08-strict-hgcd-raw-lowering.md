@@ -52,6 +52,9 @@
 包括有效性、canonical、L2 slice 语义和 normalization。
 - `_mat_one` 的两次真实 `writeU64` 现已具备外部 prefix frame，因此后续
   初始化组合可证明单位矩阵写入不会改变 `a/b` 输入，而不是假设输入幸存。
+- `_mat_one` 精化结果现还显式给出 `poly` 指针数组不变且 `len` 精确为
+  `[1,0,0,1]`，使后续 memcpy 的矩阵非别名合约可直接由原始 allocation
+  条件实例化。
 - 四项 `HgcdMatPolyRep` 现可由逐项 layout/prefix frame 整体传递，并已
   专门连接到真实 recursive memcpy；矩阵切片有效性保持为显式 L1 条件。
 

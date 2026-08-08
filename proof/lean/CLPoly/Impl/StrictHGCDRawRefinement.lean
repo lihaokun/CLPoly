@@ -4927,6 +4927,8 @@ theorem hgcdRecursiveEarlyReturn_rawInvariant (this : DenseUPolyZp)
         hLength.inputBound
     · simpa [HgcdRecursiveEarlyResult.toResult, hlenB] using
         hLength.stopped
+    · simpa [HgcdRecursiveEarlyResult.toResult, hlenA] using
+        hLength.positive
 
 /-- Arithmetic closure for one Euclidean matrix step.  The quotient bound
 comes from the real generated divrem call and the four descriptor bounds
@@ -5555,7 +5557,9 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
       inputBound := by simpa [HgcdRecursiveIterBranchResult.toResult,
         hResultLenA] using hFinalInputBound
       stopped := by simpa [HgcdRecursiveIterBranchResult.toResult,
-        hResultLenB] using hStop }
+        hResultLenB] using hStop
+      positive := by simpa [HgcdRecursiveIterBranchResult.toResult,
+        hResultLenA] using hFinalPositive }
   refine ⟨finalA, finalB, finalEntries, hResultValid, {
     aRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hAResult
     bRep := by simpa [HgcdRecursiveIterBranchResult.toResult] using hBResult
@@ -6881,7 +6885,7 @@ theorem hgcdRecursiveReconstructPair_lenB_le_input
 /-- Close the first reconstruction bound from the returned first-HGCD
 matrix invariant.  Here `highLength = inputLength - inputLength / 2` and
 the low slices have exactly the lengths selected by the source. -/
-theorem hgcdRecursiveFirstReconstruct_lenB_le_input
+theorem hgcdRecursiveFirstReconstruct_lenB_lt_input
     (resultLen inputLength inputLengthB returnedLenA returnedLenB lenR2 lenR0 : Nat)
     (hresult : resultLen ≤
       max (inputLength / 2 + returnedLenB)
@@ -6890,28 +6894,27 @@ theorem hgcdRecursiveFirstReconstruct_lenB_le_input
           (lenR0 + Nat.min inputLengthB (inputLength / 2) - 1)))
     (hreturnedStop : returnedLenB <
       (inputLength - inputLength / 2) / 2 + 1)
+    (hreturnedPos : 0 < returnedLenA)
+    (hinputOrder : inputLengthB < inputLength)
     (hrow2 : lenR2 + returnedLenA ≤
       (inputLength - inputLength / 2) + 1)
     (hrow0 : lenR0 + returnedLenA ≤
       (inputLength - inputLength / 2) + 1) :
-    resultLen ≤ inputLength := by
+    resultLen < inputLength := by
   have hsplit : inputLength / 2 +
       (inputLength - inputLength / 2) = inputLength := by omega
-  have hhigh : inputLength / 2 + returnedLenB ≤ inputLength := by omega
-  have hsecond : lenR2 + Nat.min inputLength (inputLength / 2) - 1 ≤
+  have hhigh : inputLength / 2 + returnedLenB < inputLength := by omega
+  have hsecond : lenR2 + Nat.min inputLength (inputLength / 2) - 1 <
       inputLength := by
     have hmin : Nat.min inputLength (inputLength / 2) ≤
         inputLength / 2 := Nat.min_le_right _ _
     omega
-  have hzero : lenR0 + Nat.min inputLengthB (inputLength / 2) - 1 ≤
+  have hzero : lenR0 + Nat.min inputLengthB (inputLength / 2) - 1 <
       inputLength := by
     have hmin : Nat.min inputLengthB (inputLength / 2) ≤
         inputLength / 2 := Nat.min_le_right _ _
     omega
-  exact hgcdRecursiveReconstructPair_lenB_le_input resultLen inputLength
-    (inputLength / 2) returnedLenB lenR2
-    (Nat.min inputLength (inputLength / 2)) lenR0
-    (Nat.min inputLengthB (inputLength / 2)) hresult hhigh hsecond hzero
+  exact hresult.trans_lt (max_lt hhigh (max_lt hsecond hzero))
 
 /-- Concrete discharge of the proof-only first-reconstruction bound used by
 the strictly decreasing recursive body.  Every premise is either a raw
@@ -6926,6 +6929,7 @@ theorem hgcdRecursiveFirstReconstruct_bound_of_invariant
     (polyLowA polyLowB polyHighA polyHighB :
       Polynomial (ZMod this._p.toNat))
     (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hinputOrder : lenB < lenA)
     (hinvariant : HgcdRecursiveLengthInvariant (lenA - lenA / 2) first)
     (physical : HgcdRecursiveReconstructPairWorkspaceProvider this A B T0
       a b highA highB scratch (Nat.min lenA (lenA / 2))
@@ -6943,18 +6947,18 @@ theorem hgcdRecursiveFirstReconstruct_bound_of_invariant
       (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2)) first.lenA
       first.lenB (lenA / 2) first.matrix first.valid first.sgn first.heap =
         .ok result) :
-    result.lenB ≤ lenA := by
+    result.lenB < lenA := by
   have hrefines := hgcdRecursiveReconstructPair_refines this A B T0 a b
     highA highB scratch (Nat.min lenA (lenA / 2))
     (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
     first.matrix first.valid first.sgn first.heap result entries polyLowA
     polyLowB polyHighA polyHighB hcfg hp physical hMatrix hLowA hLowB
     hHighA hHighB hrun
-  exact hgcdRecursiveFirstReconstruct_lenB_le_input result.lenB lenA lenB
+  exact hgcdRecursiveFirstReconstruct_lenB_lt_input result.lenB lenA lenB
     first.lenA first.lenB
     (hgcdMatLen first.matrix first.valid (2 : Fin 4))
     (hgcdMatLen first.matrix first.valid (0 : Fin 4)) hrefines.2.2.2.1
-    hinvariant.stopped
+    hinvariant.stopped hinvariant.positive hinputOrder
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row2A)
     (by simpa [hgcdMatLen, hgcdMatLenRaw] using hinvariant.row0A)
 
@@ -7387,6 +7391,8 @@ theorem hgcdRecursiveBase_true_refines (this : DenseUPolyZp)
         HgcdIterState.toRecursiveBaseResult, hlenIA]
     · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
         hlenIB] using hstop
+    · simpa [HgcdRecursiveBaseResult.toResult, HgcdIterState.toRecursiveBaseResult,
+        hlenIA] using _hlenAPos
 
 /-- Semantic refinement of the exact `_hgcd_recursive` base branch used by
 GCD when matrix output is disabled.  No matrix call or matrix specification

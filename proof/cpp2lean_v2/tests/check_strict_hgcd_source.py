@@ -278,6 +278,7 @@ def main() -> None:
         "hgcdRecursiveFinalReconstruct_lengths_le_input",
         "hgcdRecursiveFinalReconstruct_lenB_lt_half",
         "hgcdRecursiveReconstructPair_lenB_le_input",
+        "hgcdRecursiveFirstReconstruct_lenB_lt_input",
         "hgcdRecursiveFirstReconstruct_bound_of_invariant",
         "HgcdLiftHighWorkspace",
         "hgcdRecursiveLiftHigh_terminates",

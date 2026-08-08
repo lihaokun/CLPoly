@@ -156,3 +156,9 @@ workspace/provider 只含容量、指针相等桥和分离条件，不含任何 
 `copyU64`、双零。`hgcdMatMulLoop` 再以 `4-i` 为度量按行列索引公式执行四
 项，逐项安装实际返回长度并证明最终 descriptor 有效；没有直接构造 L2
 矩阵乘积。
+
+`hgcdMatMulEntry_refines` 已将单项 raw 执行闭合为 `P*Q + R*S`。两个乘积
+均来自真实 guarded `_mul`；第一项跨第二次乘法由 prefix frame 保持。四个
+尾分支分别用真实 `_poly_add`、保持 PQ、真实 `copyU64` 或零长度表示完成，
+零乘积都从实际返回长度为零及 `SlicePolyRep` 推出。物理 provider 仅含容量、
+别名和分离条件。

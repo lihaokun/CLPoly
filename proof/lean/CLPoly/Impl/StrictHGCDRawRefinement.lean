@@ -4705,6 +4705,146 @@ theorem hgcdRecursiveIterBranch_refines (this : DenseUPolyZp)
     ⟨hMatrixAfter.2, hFinalARep, hFinalBRep, hInvariant.transform,
       hInvariant.signedDet, hGcd, hStop⟩
 
+/-- Physical obligations for the two concrete guarded products and the
+source-selected tail of one `_mat_mul_entry`. -/
+structure HgcdMatMulEntryWorkspace
+    (heap : RawHeap) (C P Q R S T scratch : RawPtr UInt64)
+    (lenP lenQ lenR lenS : Nat)
+    (productPQ productRS : HgcdMulTermResult) : Prop where
+  first : HgcdMulTermWorkspace heap C P lenP Q lenQ scratch
+  second : HgcdMulTermWorkspace productPQ.heap T R lenR S lenS scratch
+  firstDstR : U64SlicesDisjoint C (hgcdMulCapacity lenP lenQ) R lenR
+  firstScratchR : U64SlicesDisjoint scratch (8 * max lenP lenQ) R lenR
+  firstDstS : U64SlicesDisjoint C (hgcdMulCapacity lenP lenQ) S lenS
+  firstScratchS : U64SlicesDisjoint scratch (8 * max lenP lenQ) S lenS
+  secondDstC : U64SlicesDisjoint T (hgcdMulCapacity lenR lenS)
+    C productPQ.length
+  secondScratchC : U64SlicesDisjoint scratch (8 * max lenR lenS)
+    C productPQ.length
+  finalCValid : productRS.heap.ValidU64Slice C
+    (max productPQ.length productRS.length)
+  addAliasT : ExactOrDisjoint C T
+  copyCT : U64SlicesDisjoint C productRS.length T productRS.length
+
+def HgcdMatMulEntryWorkspaceProvider
+    (this : DenseUPolyZp) (heap : RawHeap)
+    (C P Q R S T scratch : RawPtr UInt64)
+    (lenP lenQ lenR lenS : Nat) : Prop :=
+  ∀ productPQ productRS,
+    hgcdRecursiveMulTerm this C P lenP Q lenQ scratch heap = .ok productPQ →
+    hgcdRecursiveMulTerm this T R lenR S lenS scratch productPQ.heap =
+      .ok productRS →
+    HgcdMatMulEntryWorkspace heap C P Q R S T scratch lenP lenQ lenR lenS
+      productPQ productRS
+
+/-- Complete raw semantic refinement of the actual `_mat_mul_entry` control
+flow.  All four source tails produce `P*Q + R*S`; zero products are derived
+from their real zero-length raw representations. -/
+theorem hgcdMatMulEntry_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (C P Q R S T scratch : RawPtr UInt64)
+    (lenP lenQ lenR lenS : Nat) (heap : RawHeap)
+    (result : HgcdMatMulEntryResult)
+    (polyP polyQ polyR polyS : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdMatMulEntryWorkspaceProvider this heap C P Q R S T
+      scratch lenP lenQ lenR lenS)
+    (hP : RawDensePolyRep this heap P lenP polyP)
+    (hQ : RawDensePolyRep this heap Q lenQ polyQ)
+    (hR : RawDensePolyRep this heap R lenR polyR)
+    (hS : RawDensePolyRep this heap S lenS polyS)
+    (hrun : hgcdMatMulEntry this C P Q R S T scratch lenP lenQ lenR lenS
+      heap = .ok result) :
+    RawDensePolyRep this result.heap C result.length
+      (polyP * polyQ + polyR * polyS) := by
+  rcases hgcdMatMulEntry_exec this C P Q R S T scratch lenP lenQ lenR lenS
+      heap result hrun with ⟨productPQ, productRS, hPQ, hRS, htail⟩
+  have hwork := physical productPQ productRS hPQ hRS
+  rcases hgcdRecursiveMulTerm_refines this C P lenP Q lenQ scratch heap
+      polyP polyQ hcfg hp hwork.first hP hQ with
+    ⟨semanticPQ, hSemanticPQ, hLayoutPQ, hPQRep⟩
+  have hPQEq : semanticPQ = productPQ :=
+    Except.ok.inj (hSemanticPQ.symm.trans hPQ)
+  subst semanticPQ
+  have hRPrefix := hgcdRecursiveMulTerm_preserves_guard this C P lenP Q lenQ
+    scratch R lenR heap productPQ hwork.first hP.1 hQ.1 hwork.firstDstR
+    hwork.firstScratchR hPQ
+  have hSPrefix := hgcdRecursiveMulTerm_preserves_guard this C P lenP Q lenQ
+    scratch S lenS heap productPQ hwork.first hP.1 hQ.1 hwork.firstDstS
+    hwork.firstScratchS hPQ
+  have hR1 := rawDensePolyRep_of_same_prefix this heap productPQ.heap R lenR
+    polyR hLayoutPQ hRPrefix hR
+  have hS1 := rawDensePolyRep_of_same_prefix this heap productPQ.heap S lenS
+    polyS hLayoutPQ hSPrefix hS
+  rcases hgcdRecursiveMulTerm_refines this T R lenR S lenS scratch
+      productPQ.heap polyR polyS hcfg hp hwork.second hR1 hS1 with
+    ⟨semanticRS, hSemanticRS, hLayoutRS, hRSRep⟩
+  have hRSEq : semanticRS = productRS :=
+    Except.ok.inj (hSemanticRS.symm.trans hRS)
+  subst semanticRS
+  have hCPrefix := hgcdRecursiveMulTerm_preserves_guard this T R lenR S lenS
+    scratch C productPQ.length productPQ.heap productRS hwork.second hR1.1
+    hS1.1 hwork.secondDstC hwork.secondScratchC hRS
+  have hPQRep2 := rawDensePolyRep_of_same_prefix this productPQ.heap
+    productRS.heap C productPQ.length (polyP * polyQ) hLayoutRS hCPrefix hPQRep
+  split at htail
+  next hboth =>
+    rcases htail with ⟨length, hadd, hlength⟩
+    subst length
+    have hpWord : this._p ≠ 0 := by
+      intro hzero
+      have hzeroNat := congrArg UInt64.toNat hzero
+      simp at hzeroNat
+      omega
+    exact polyAdd_refines this C C productPQ.length T productRS.length
+      productRS.heap result.heap result.length (polyP * polyQ)
+      (polyR * polyS) hpWord hwork.finalCValid hPQRep2 hRSRep
+      (Or.inl rfl) hwork.addAliasT hadd
+  next hnotBoth =>
+    split at htail
+    next hPQPos =>
+      rcases htail with ⟨hheap, hlength⟩
+      have hRSLength : productRS.length = 0 := by
+        simp at hnotBoth
+        omega
+      have hzeroRS : polyR * polyS = 0 :=
+        slicePolyRep_zero_length productRS.heap T this._p.toNat
+          (polyR * polyS) (by simpa [hRSLength] using hRSRep.2.2.1)
+      simpa [hheap, hlength, hzeroRS] using hPQRep2
+    next hPQZero =>
+      have hPQLength : productPQ.length = 0 := by omega
+      split at htail
+      next hRSPos =>
+        rcases htail with ⟨hcopy, hlength⟩
+        have hzeroPQ : polyP * polyQ = 0 :=
+          slicePolyRep_zero_length productRS.heap C this._p.toNat
+            (polyP * polyQ) (by simpa [hPQLength] using hPQRep2.2.2.1)
+        have hCValid : productRS.heap.ValidU64Slice C productRS.length :=
+          productRS.heap.validU64Slice_mono C
+            (max productPQ.length productRS.length) productRS.length
+            hwork.finalCValid (by omega)
+        rcases copyU64_refines_rawDense this productRS.heap C T
+            productRS.length (polyR * polyS) hCValid hwork.copyCT hRSRep with
+          ⟨heap', hcopy', _, hrep⟩
+        have heq : heap' = result.heap :=
+          Except.ok.inj (hcopy'.symm.trans hcopy)
+        subst heap'
+        simpa [hlength, hzeroPQ] using hrep
+      next hRSZero =>
+        rcases htail with ⟨hheap, hlength⟩
+        have hRSLength : productRS.length = 0 := by omega
+        have hzeroPQ : polyP * polyQ = 0 :=
+          slicePolyRep_zero_length productRS.heap C this._p.toNat
+            (polyP * polyQ) (by simpa [hPQLength] using hPQRep2.2.2.1)
+        have hzeroRS : polyR * polyS = 0 :=
+          slicePolyRep_zero_length productRS.heap T this._p.toNat
+            (polyR * polyS) (by simpa [hRSLength] using hRSRep.2.2.1)
+        simpa [hheap, hlength, hzeroPQ, hzeroRS] using
+          rawDensePolyRep_zero_length this productRS.heap C
+            (productRS.heap.validU64Slice_mono C
+              (max productPQ.length productRS.length) 0 hwork.finalCValid
+              (by omega))
+
 /-- The generated recursive-HGCD base helper with matrix computation enabled
 is exactly the already-refined iterator initialization prefix, modulo its
 smaller return record. -/

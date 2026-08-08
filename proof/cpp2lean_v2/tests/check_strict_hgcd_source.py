@@ -43,6 +43,7 @@ REQUIRED_CALLS = {
 
 LEAN_FILES = (
     V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictHGCD.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictPolyAddSubRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRawRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRefinement.lean",
 )
@@ -178,6 +179,8 @@ def main() -> None:
         "hgcdRecursiveLiftHigh",
         "HgcdLiftHighWorkspace",
         "hgcdRecursiveLiftHigh_terminates",
+        "polyAdd_preserves_prefix_disjoint",
+        "rawDensePolyRep_split_suffix",
         "normalize_gcd_eq_of_hgcd_transform",
         "HgcdTransform",
         "hgcdTransform_euclid_step",

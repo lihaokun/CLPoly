@@ -943,6 +943,108 @@ theorem polyAdd_preserves_prefix_region_ne (this : DenseUPolyZp)
               have : heap2 = heap1 := Except.ok.inj htail.symm
               simpa [this] using hread1
 
+/-- Address-disjoint frame rule for the complete generated `_poly_add`.
+Unlike the region-only convenience theorem above, this also handles adjacent
+sub-slices of the same C++ allocation. -/
+theorem polyAdd_preserves_prefix_disjoint (this : DenseUPolyZp)
+    (C A : RawPtr UInt64) (lenA : Nat) (B guard : RawPtr UInt64)
+    (lenB guardLen : Nat) (heap heap' : RawHeap) (length : Nat)
+    (hC : heap.ValidU64Slice C (max lenA lenB))
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B lenB)
+    (hdisjoint : ∀ writeIndex, writeIndex < max lenA lenB →
+      ∀ readIndex, readIndex < guardLen →
+        C.region ≠ guard.region ∨
+          C.limbOffset + writeIndex ≠ guard.limbOffset + readIndex)
+    (hrun : dense_upoly_zp__poly_add_ir this C A lenA B lenB heap =
+      .ok (heap', length)) :
+    SameU64Prefix heap heap' guard guardLen := by
+  let minLen := min lenA lenB
+  let maxLen := max lenA lenB
+  have hCMin := heap.validU64Slice_mono C maxLen minLen hC (by
+    simp [minLen, maxLen])
+  have hAMin := heap.validU64Slice_mono A lenA minLen hA (by simp [minLen])
+  have hBMin := heap.validU64Slice_mono B lenB minLen hB (by simp [minLen])
+  rcases addCommonLoop_ok this C A B minLen 0 heap hCMin hAMin hBMin
+      (by omega) with ⟨heap1, hloop, hlayout1⟩
+  let tail : RawExec RawHeap :=
+    if lenA > lenB then
+      if C.sameAddress A then .ok heap1
+      else heap1.copyU64 (C.add minLen) (A.add minLen) (lenA - minLen)
+    else if lenB > lenA then
+      if C.sameAddress B then .ok heap1
+      else heap1.copyU64 (C.add minLen) (B.add minLen) (lenB - minLen)
+    else .ok heap1
+  cases htail : tail with
+  | error fault =>
+      simp [dense_upoly_zp__poly_add_ir, minLen, maxLen, hloop, tail,
+        htail] at hrun
+  | ok heap2 =>
+      have hC1 : heap1.ValidU64Slice C maxLen :=
+        (hlayout1 C maxLen).mp hC
+      have hA1 : heap1.ValidU64Slice A lenA := (hlayout1 A lenA).mp hA
+      have hB1 : heap1.ValidU64Slice B lenB := (hlayout1 B lenB).mp hB
+      cases hnorm : heap2.normaliseU64 C maxLen with
+      | error fault =>
+          simp [dense_upoly_zp__poly_add_ir, minLen, maxLen, hloop, tail,
+            htail, hnorm] at hrun
+      | ok observedLength =>
+          have heq : heap' = heap2 := by
+            have hrun' : (.ok (heap2, observedLength) :
+                RawExec (RawHeap × Nat)) = .ok (heap', length) := by
+              simpa [dense_upoly_zp__poly_add_ir, minLen, maxLen, hloop,
+                tail, htail, hnorm] using hrun
+            exact (congrArg Prod.fst (Except.ok.inj hrun')).symm
+          subst heap'
+          intro k value hk hread
+          have hread1 := addCommonLoop_preserves_outside this C A B guard
+            minLen 0 k heap heap1 value hCMin hAMin hBMin hread
+            (by
+              intro writeIndex _ hwrite
+              exact hdisjoint writeIndex
+                (lt_of_lt_of_le hwrite (by omega)) k hk) hloop
+          dsimp [tail] at htail
+          split at htail
+          next hlongA =>
+            split at htail
+            next =>
+              have : heap2 = heap1 := Except.ok.inj htail.symm
+              simpa [this] using hread1
+            next =>
+              have hDst := heap1.validU64Slice_add C maxLen minLen
+                (lenA - minLen) hC1 (by simp [maxLen, minLen])
+              have hSrc := heap1.validU64Slice_add A lenA minLen
+                (lenA - minLen) hA1 (by omega)
+              exact copyU64_preserves_read heap1 heap2 (C.add minLen)
+                (A.add minLen) guard (lenA - minLen) k value hDst hSrc
+                hread1 (by
+                  intro writeIndex hwrite
+                  have hd := hdisjoint (minLen + writeIndex) (by omega) k hk
+                  have hwidth : RawLimbWidth.width UInt64 = 1 := rfl
+                  simpa [RawPtr.add, hwidth, Nat.add_assoc] using hd) htail
+          next hnotA =>
+            split at htail
+            next hlongB =>
+              split at htail
+              next =>
+                have : heap2 = heap1 := Except.ok.inj htail.symm
+                simpa [this] using hread1
+              next =>
+                have hDst := heap1.validU64Slice_add C maxLen minLen
+                  (lenB - minLen) hC1 (by simp [maxLen, minLen])
+                have hSrc := heap1.validU64Slice_add B lenB minLen
+                  (lenB - minLen) hB1 (by omega)
+                exact copyU64_preserves_read heap1 heap2 (C.add minLen)
+                  (B.add minLen) guard (lenB - minLen) k value hDst hSrc
+                  hread1 (by
+                    intro writeIndex hwrite
+                    have hd := hdisjoint (minLen + writeIndex) (by omega) k hk
+                    have hwidth : RawLimbWidth.width UInt64 = 1 := rfl
+                    simpa [RawPtr.add, hwidth, Nat.add_assoc] using hd) htail
+            next =>
+              have : heap2 = heap1 := Except.ok.inj htail.symm
+              simpa [this] using hread1
+
 theorem polySub_ok (this : DenseUPolyZp) (C A : RawPtr UInt64)
     (lenA : Nat) (B : RawPtr UInt64) (lenB : Nat) (heap : RawHeap)
     (hC : heap.ValidU64Slice C (max lenA lenB))

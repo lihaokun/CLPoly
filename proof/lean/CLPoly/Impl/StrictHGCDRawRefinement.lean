@@ -1303,6 +1303,56 @@ structure HgcdLiftHighWorkspace (heap : RawHeap)
   highValid : heap.ValidU64Slice high highLength
   addAliasHigh : ExactOrDisjoint (out.add m) high
 
+/-- Splitting a normalized raw polynomial at an in-range offset leaves a
+normalized suffix.  This is what permits the source's in-place `_poly_add`
+on `out + m` without inventing a normalized padded whole buffer. -/
+theorem rawDensePolyRep_split_suffix (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length m : Nat)
+    (poly : Polynomial (ZMod this._p.toNat)) (hm : m ≤ length)
+    (hrep : RawDensePolyRep this heap ptr length poly) :
+    ∃ low high : Polynomial (ZMod this._p.toNat),
+      SlicePolyRep heap ptr m this._p.toNat low ∧
+      RawDensePolyRep this heap (ptr.add m) (length - m) high ∧
+      poly = low + Polynomial.X ^ m * high := by
+  rcases slicePolyRep_split_exists heap ptr m (length - m) this._p.toNat
+      poly (by simpa [Nat.add_sub_of_le hm] using hrep.1)
+      (by simpa [Nat.add_sub_of_le hm] using hrep.2.2.1) with
+    ⟨low, high, hLow, hHigh, hsplit⟩
+  have hcanonical := canonicalU64Prefix_split heap ptr m (length - m)
+    this._p (by simpa [Nat.add_sub_of_le hm] using hrep.2.1)
+  have hvalidHigh := heap.validU64Slice_add ptr length m (length - m)
+    hrep.1 (by omega)
+  by_cases hstrict : m < length
+  · have hnormHigh : heap.normaliseU64 (ptr.add m) (length - m) =
+        .ok (length - m) := by
+      rcases normaliseU64_spec heap ptr length hrep.1 with
+        ⟨observed, hobserved, _, _, hlast⟩
+      have heq : observed = length :=
+        Except.ok.inj (hobserved.symm.trans hrep.2.2.2)
+      subst observed
+      rcases hlast with hzero | ⟨value, hread, hne⟩
+      · omega
+      · have hreadHigh : heap.readU64 (ptr.add m) (length - m - 1) =
+            .ok value := by
+          rw [RawHeap.readU64_add]
+          have hindex : m + (length - m - 1) = length - 1 := by omega
+          simpa [hindex] using hread
+        rw [show length - m = (length - m - 1) + 1 by omega]
+        simp [RawHeap.normaliseU64, hreadHigh, hne]
+    exact ⟨low, high, hLow,
+      ⟨hvalidHigh, hcanonical.2, hHigh, hnormHigh⟩, hsplit⟩
+  · have heq : m = length := by omega
+    subst m
+    have hhighZero : high = 0 :=
+      slicePolyRep_zero_length heap (ptr.add length) this._p.toNat high
+        (by simpa using hHigh)
+    subst high
+    have hzeroRep : RawDensePolyRep this heap (ptr.add length)
+        (length - length) 0 := by
+      simpa using rawDensePolyRep_zero_length this heap (ptr.add length)
+        (by simpa using hvalidHigh)
+    exact ⟨low, 0, hLow, hzeroRep, by simpa using hsplit⟩
+
 /-- Total raw execution bridge for zero-fill, shifted in-place addition, and
 whole-buffer normalization.  Every step is the corresponding generated L1
 operation; no expected L2 output is an input to the execution. -/

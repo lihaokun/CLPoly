@@ -46,6 +46,8 @@
 - 将 `a2` 的相反符号方向归约到同一已验证执行骨架，并证明生成 `hgcdRecursiveReconstructA` 与翻转分支选择后的 `b2` 执行逐定义相等，从而复用两次 `_mul` 与 `_poly_sub` 的 raw 证据而不复制规格。
 - 严格降低两处相同的高半部加回块：按源码条件从当前长度到 `m + len_high` 执行真实逐肢零填充，在 `out + m` 上原位调用 `_poly_add`（忽略其局部返回长度，与 C++ 一致），最后对整个 `max (m + len_high, len_low)` 前缀调用 `_poly_normalise`。
 - 用仅含输出/高半部容量和 add 别名关系的 `HgcdLiftHighWorkspace` 证明该组合 raw 执行总能成功；零填充由实际写零循环归纳，add 与 normalization 分别使用其真实终止桥，并给出最终长度的物理上界。
+- 为高半部语义补齐相邻切片帧：将 `_poly_add` 的完整 common-loop/tail-copy/normalization 执行推广为地址区间不重叠即可保留任意 raw 前缀，覆盖同一 allocation 中的 `out[0:m]` 与 `out[m:]`，而非要求不同 region。
+- 从整段 `RawDensePolyRep` 的末肢非零事实证明任意合法切点后的 suffix 仍是 normalized raw 表示；零长度 suffix 单独由真实零长 slice 推出。这避免把源码临时补零后的整段错误地声明为 normalized。
 
 ## 为什么做
 

@@ -19,6 +19,64 @@ def RawDensePolyRep (this : DenseUPolyZp) (heap : RawHeap)
     SlicePolyRep heap ptr length this._p.toNat poly ∧
     heap.normaliseU64 ptr length = .ok length
 
+/-- Pairwise non-aliasing of the five physical work areas used by the source
+Euclid loop. -/
+structure EuclidRegions (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (A B R : RawPtr UInt64) : Prop where
+  q_w3 : Q.region ≠ W3.region
+  q_a : Q.region ≠ A.region
+  q_b : Q.region ≠ B.region
+  q_r : Q.region ≠ R.region
+  w3_a : W3.region ≠ A.region
+  w3_b : W3.region ≠ B.region
+  w3_r : W3.region ≠ R.region
+  a_b : A.region ≠ B.region
+  a_r : A.region ≠ R.region
+  b_r : B.region ≠ R.region
+
+/-- Fixed physical capacities allocated for the whole source Euclid loop.
+Logical lengths shrink, while these allocations and their disjointness remain
+unchanged under `(A,B,R) → (B,R,A)`. -/
+structure EuclidWorkspace (heap : RawHeap) (Q : RawPtr UInt64)
+    (W3 : RawPtr Word3) (A B R : RawPtr UInt64) (capacity : Nat) : Prop where
+  validQ : heap.ValidU64Slice Q capacity
+  validW3 : heap.ValidWord3Slice W3 capacity
+  validA : heap.ValidU64Slice A capacity
+  validB : heap.ValidU64Slice B capacity
+  validR : heap.ValidU64Slice R capacity
+  regions : EuclidRegions Q W3 A B R
+
+theorem EuclidRegions.rotate {Q : RawPtr UInt64} {W3 : RawPtr Word3}
+    {A B R : RawPtr UInt64} (h : EuclidRegions Q W3 A B R) :
+    EuclidRegions Q W3 B R A := by
+  exact {
+    q_w3 := h.q_w3
+    q_a := h.q_b
+    q_b := h.q_r
+    q_r := h.q_a
+    w3_a := h.w3_b
+    w3_b := h.w3_r
+    w3_r := h.w3_a
+    a_b := h.b_r
+    a_r := h.a_b.symm
+    b_r := h.a_r.symm
+  }
+
+theorem EuclidWorkspace.rotate_of_sameLayout
+    {before after : RawHeap} {Q : RawPtr UInt64} {W3 : RawPtr Word3}
+    {A B R : RawPtr UInt64} {capacity : Nat}
+    (h : EuclidWorkspace before Q W3 A B R capacity)
+    (hlayout : RawHeap.SameLayout before after) :
+    EuclidWorkspace after Q W3 B R A capacity := by
+  exact {
+    validQ := (hlayout Q capacity).mp h.validQ
+    validW3 := (hlayout (RawPtr.reinterpret W3) (3 * capacity)).mp h.validW3
+    validA := (hlayout B capacity).mp h.validB
+    validB := (hlayout R capacity).mp h.validR
+    validR := (hlayout A capacity).mp h.validA
+    regions := h.regions.rotate
+  }
+
 /-- One source Euclid rotation preserves the normalized mathematical gcd.
 
 The premise is precisely the algebraic identity established for the output of
@@ -164,5 +222,68 @@ theorem polyDivrem_next_state (this : DenseUPolyZp)
     ⟨hBResult, hcanonicalBResult, hdivisorResult, hnormBResult⟩,
     ⟨hRResult, hcanonicalR, hremainder, hnormR⟩, hgcd, hlayout,
     hlenQ, hlenRCapacity, hlenR⟩
+
+/-- End-to-end semantic refinement of the actual well-founded raw Euclid
+loop.  The proof follows every generated `_poly_divrem` call and every source
+buffer rotation; no L2 loop, remainder oracle, fallback, or bounded execution
+counter is used. -/
+theorem strictEuclidLoop_refines (this : DenseUPolyZp)
+    [hprime : Fact (Nat.Prime this._p.toNat)]
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (capacity : Nat) :
+    (heap : RawHeap) → (A : RawPtr UInt64) → (lenA : Nat) →
+      (B : RawPtr UInt64) → (lenB : Nat) → (R : RawPtr UInt64) →
+      (dividend divisor : Polynomial (ZMod this._p.toNat)) →
+      EuclidWorkspace heap Q W3 A B R capacity →
+      lenA ≤ capacity → lenB ≤ capacity → capacity < limbBase →
+      RawDensePolyRep this heap A lenA dividend →
+      RawDensePolyRep this heap B lenB divisor →
+      DensePreinvConfigured this →
+      ∃ heap' out outLen result,
+        strictEuclidLoop this Q W3 heap A lenA B lenB R =
+          .ok (heap', out, outLen) ∧
+        RawDensePolyRep this heap' out outLen result ∧
+        normalize (EuclideanDomain.gcd dividend divisor) = normalize result ∧
+        RawHeap.SameLayout heap heap'
+  | heap, A, lenA, B, 0, R, dividend, divisor, hworkspace, hlenA, _, _,
+      hARep, hBRep, _ => by
+    have hdivisorZero : divisor = 0 :=
+      slicePolyRep_zero_length heap B this._p.toNat divisor hBRep.2.2.1
+    subst divisor
+    refine ⟨heap, A, lenA, dividend, ?_, hARep, ?_, fun _ _ => Iff.rfl⟩
+    · simp [strictEuclidLoop, Generated.StrictEuclidGCD.euclidLoop]
+    · rw [EuclideanDomain.gcd_zero_right]
+  | heap, A, lenA, B, lenB + 1, R, dividend, divisor, hworkspace, hlenA,
+      hlenB, hcapacity, hARep, hBRep, hcfg => by
+    have hQ : heap.ValidU64Slice Q (lenA - ((lenB + 1) - 1)) :=
+      heap.validU64Slice_mono Q capacity _ hworkspace.validQ (by omega)
+    have hR : heap.ValidU64Slice R (Nat.min lenA ((lenB + 1) - 1)) :=
+      heap.validU64Slice_mono R capacity _ hworkspace.validR
+        ((Nat.min_le_left lenA ((lenB + 1) - 1)).trans hlenA)
+    have hW3 : heap.ValidWord3Slice W3 lenA :=
+      heap.validU64Slice_mono (RawPtr.reinterpret W3) (3 * capacity)
+        (3 * lenA) hworkspace.validW3 (by omega)
+    have hqCapacity : lenA - ((lenB + 1) - 1) < limbBase := by omega
+    rcases polyDivrem_next_state this Q R A B lenA (lenB + 1) W3 heap
+        dividend divisor (by omega) hARep hBRep hQ hR hW3 hqCapacity
+        hworkspace.regions.a_r.symm hworkspace.regions.w3_a
+        hworkspace.regions.w3_b hworkspace.regions.q_b
+        hworkspace.regions.q_w3 hworkspace.regions.w3_r.symm
+        hworkspace.regions.q_r.symm hworkspace.regions.b_r.symm hcfg with
+      ⟨heap1, lenQ, lenR, quotient, remainder, hrun, _, hBRep1, hRRep1,
+        hgcdStep, hlayout1, _, _, hlenR⟩
+    have hworkspace1 := hworkspace.rotate_of_sameLayout hlayout1
+    rcases strictEuclidLoop_refines this Q W3 capacity heap1 B (lenB + 1) R
+        lenR A divisor remainder hworkspace1 hlenB (Nat.le_trans
+          (Nat.le_of_lt hlenR) hlenB) hcapacity hBRep1 hRRep1 hcfg with
+      ⟨heap2, out, outLen, result, hloop, hresult, hgcdRest, hlayout2⟩
+    refine ⟨heap2, out, outLen, result, ?_, hresult,
+      hgcdStep.trans hgcdRest, ?_⟩
+    · unfold strictEuclidLoop
+      rw [Generated.StrictEuclidGCD.euclidLoop, hrun]
+      simpa [strictEuclidLoop] using hloop
+    · intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+termination_by heap A lenA B lenB R dividend divisor => lenB
+decreasing_by exact hlenR
 
 end CLPoly.Impl.StrictEuclidRefinement

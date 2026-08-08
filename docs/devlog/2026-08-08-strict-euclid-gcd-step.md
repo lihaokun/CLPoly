@@ -18,6 +18,12 @@
   W3 初始化、quotient loop 与 remainder loop 的逐 cell 保持定理。
 - `polyDivrem_next_state` 同时返回轮换后 `A = old B` 与 `B = R` 的完整
   `RawDensePolyRep`，不再把源除数内容保持留作递归假设。
+- 定义固定容量、五工作区互不别名的 `EuclidWorkspace`，并证明实际
+  `(A,B,R) → (B,R,A)` 轮换保持该 workspace。
+- 完成 `strictEuclidLoop_refines`：按真实 `lenB` 良基递归，逐次消费生成
+  `_poly_divrem`，证明最终 raw 输出与 `normalize (gcd A B)` 关联。
+- 公理审计结果仅为 `propext`、`Classical.choice`、`Quot.sound`，无新增公理
+  或 `sorryAx`。
 
 ## 为什么做
 

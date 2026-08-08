@@ -40,6 +40,15 @@ theorem word3SliceRep_exists_unique (heap : RawHeap) (ptr : RawPtr Word3)
   exact Except.ok.inj ((hother.2 i hiOther).symm.trans
     (hread i (by simpa [values] using hiValues) hiValues))
 
+theorem word3SliceRep_eq (heap : RawHeap) (ptr : RawPtr Word3)
+    (length : Nat) (left right : Array Word3)
+    (hleft : Word3SliceRep heap ptr length left)
+    (hright : Word3SliceRep heap ptr length right) :
+    left = right := by
+  apply Array.ext (hleft.1.trans hright.1.symm)
+  intro i hiLeft hiRight
+  exact Except.ok.inj ((hleft.2 i hiLeft).symm.trans (hright.2 i hiRight))
+
 /-- Polynomial observation of a W3 accumulator array modulo the source
 prime. -/
 noncomputable def word3ArrayPoly (p : Nat) (values : Array Word3) :

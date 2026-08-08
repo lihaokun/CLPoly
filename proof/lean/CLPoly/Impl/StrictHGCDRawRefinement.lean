@@ -3927,6 +3927,67 @@ theorem matRowUpdate_refines_of_workspace (this : DenseUPolyZp)
     workspace.aliasProduct (workspace.tDisjointOther i0 hne)
     hQRep hEntry0Rep hEntry1Rep hrun
 
+/-- Descriptor-length effect of the same real row update.  The active branch
+uses the actual `_mul` heap transition and the actual `_poly_add`
+normalization bound; the inactive branch is the source's pure swap. -/
+theorem matRowUpdate_length_bound_of_workspace (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (result : MatRowUpdateResult) (hM : M.Valid)
+    (quotient entry0 entry1 : Polynomial (ZMod this._p.toNat))
+    (hne : i0 ≠ i1) (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (workspace : MatRowUpdateWorkspace M i0 i1 Q lenQ T t scratch heap hM)
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hEntry0Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) entry0)
+    (hEntry1Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) entry1)
+    (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result) :
+    ∃ hResult : result.matrix.Valid,
+      hgcdMatLen result.matrix hResult i0 ≤
+        max (hgcdMatLen M hM i1)
+          (lenQ + hgcdMatLen M hM i0 - 1) ∧
+      hgcdMatLen result.matrix hResult i1 = hgcdMatLen M hM i0 ∧
+      ∀ j : Fin 4, j ≠ i0 → j ≠ i1 →
+        hgcdMatLen result.matrix hResult j = hgcdMatLen M hM j := by
+  by_cases hzero : lenQ = 0 ∨ hgcdMatLen M hM i0 = 0
+  · rcases matRowUpdate_zero_exec this M i0 i1 Q lenQ T lenT t scratch
+      heap hM hne hzero with
+    ⟨actual, hactual, _, _, _, _, hActual, _, hlen0, _, hlen1, hother⟩
+    have heq : actual = result := Except.ok.inj (hactual.symm.trans hrun)
+    subst actual
+    exact ⟨hActual, hlen0.le.trans (le_max_left _ _), hlen1,
+      fun j hj0 hj1 => (hother j hj0 hj1).2⟩
+  · have hQPos : 0 < lenQ := by omega
+    have hEntryPos : 0 < hgcdMatLen M hM i0 := by omega
+    rcases matRowUpdate_nonzero_success_shape this M i0 i1 Q lenQ T lenT
+      t scratch heap result hM hne (by omega) (by omega) hrun with
+      ⟨heap1, heap2, sumLen, hmul, hadd, _, _, _, _, hResult,
+        _, hlen0, _, hlen1, hother⟩
+    have hProduct := matRowUpdate_mul_result this M hM i0 Q T scratch lenQ
+      heap heap1 quotient entry0 hcfg hp hQPos hEntryPos workspace.lenWord
+      workspace.validT workspace.validScratch workspace.disjointTQ
+      (workspace.disjointTMatrix i0) workspace.disjointTScratch
+      workspace.disjointScratchQ (workspace.disjointScratchMatrix i0)
+      hQRep hEntry0Rep hmul
+    have hOutput1 := (hProduct.1 _ _).mp workspace.validAddOutput
+    have hEntry1Valid1 :=
+      (hProduct.1 (hgcdMatPtr M hM i1) (hgcdMatLen M hM i1)).mp
+        hEntry1Rep.1
+    rcases polyAdd_ok this t (hgcdMatPtr M hM i1)
+        (hgcdMatLen M hM i1) T
+        (lenQ + hgcdMatLen M hM i0 - 1) heap1 hOutput1
+        hEntry1Valid1 hProduct.2.1 with
+      ⟨heapAdd, lenAdd, haddAdd, _, hsum⟩
+    have heqAdd : (heapAdd, lenAdd) = (heap2, sumLen) :=
+      Except.ok.inj (haddAdd.symm.trans hadd)
+    cases heqAdd
+    exact ⟨hResult, hlen0.le.trans hsum, hlen1,
+      fun j hj0 hj1 => (hother j hj0 hj1).2⟩
+
 /-- Any non-target raw polynomial covered by the same physical workspace
 survives the exact generated row-update execution. -/
 theorem matRowUpdate_preserves_matrix_entry_of_workspace

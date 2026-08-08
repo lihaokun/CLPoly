@@ -115,6 +115,7 @@ def main() -> None:
         "MatRowUpdateWorkspace",
         "MatRowUpdateGuardWorkspace",
         "matRowUpdate_refines_of_workspace",
+        "matRowUpdate_length_bound_of_workspace",
         "matRowUpdate_preserves_matrix_entry_of_workspace",
         "matRowUpdate_preserves_quotient_of_workspace",
         "matRowUpdate_preserves_guard_of_workspaces",

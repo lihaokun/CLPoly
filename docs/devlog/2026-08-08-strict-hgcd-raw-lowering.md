@@ -194,6 +194,12 @@ HGCD 不变式证明三个分量均不超过原输入长度，即可取得 `lenB
 长度之和不超过 `inputLength+1`。下一步沿真实 divrem 与两次 row update
 保持该不变式，以导出第一次 HGCD 返回的 `R[0]`、`R[2]` 分量界。
 
+单次 row update 的 descriptor 长度界已从真实执行闭合。零分支精确读取源码
+的两项交换；非零分支从同一次 `_mul` heap 过渡取得 product 的有效切片，再
+对同一次 `_poly_add` 使用归一化长度界。因此更新项长度不超过
+`max(oldOther, lenQ+oldCurrent-1)`，交换项等于旧 current，其余两项保持；
+没有把 sum 长度或 descriptor 结果作为 workspace 假设。
+
 完整四项 `_mat_mul` 的 raw 语义现已闭合。新的单项 frame 定理按真实的
 两次 guarded 乘法和 add/copy/skip 尾分支，保持两个输入矩阵以及先前已完成
 的输出项。`hgcdMatMulLoop_refines` 再沿生成的 `4-i` 递归逐项执行

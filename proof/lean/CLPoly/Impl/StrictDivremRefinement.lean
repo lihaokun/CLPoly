@@ -74,6 +74,11 @@ theorem coeff_word3ArrayPoly (p : Nat) (values : Array Word3) (degree : Nat) :
       simpa [heq] using index.isLt
     simp [Polynomial.coeff_monomial, hval]
 
+def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
+    (length : Nat) : Prop :=
+  ∀ k value, k < length → before.readU64 ptr k = .ok value →
+    after.readU64 ptr k = .ok value
+
 /-- A valid raw coefficient slice has a safe observation of exactly the C++
 declared length. -/
 theorem readU64s_ok (heap : RawHeap) (ptr : RawPtr UInt64) (count : Nat)
@@ -207,6 +212,36 @@ theorem slicePolyRep_succ_eq_add_monomial (heap : RawHeap)
         slicePolyRep_coeff_zero_of_length_le heap ptr length p prefixPoly
           hprefix degree (by omega)]
       rw [if_neg (show length ≠ degree by omega), add_zero]
+
+/-- Pointwise preservation of a raw UInt64 slice transports its L2
+polynomial representation without re-running any L2 algorithm. -/
+theorem slicePolyRep_of_same_prefix (before after : RawHeap)
+    (ptr : RawPtr UInt64) (length p : Nat)
+    (poly : Polynomial (ZMod p))
+    (hvalidBefore : before.ValidU64Slice ptr length)
+    (hvalidAfter : after.ValidU64Slice ptr length)
+    (hsame : SameU64Prefix before after ptr length)
+    (hrep : SlicePolyRep before ptr length p poly) :
+    SlicePolyRep after ptr length p poly := by
+  rcases slicePolyRep_exists_unique after ptr length p hvalidAfter with
+    ⟨afterPoly, hafterRep, _⟩
+  have heq : afterPoly = poly := by
+    ext degree
+    by_cases hdegree : degree < length
+    · rcases slicePolyRep_coeff before ptr length p poly hrep degree
+          hdegree with ⟨beforeValue, hreadBefore, hcoeffBefore⟩
+      rcases slicePolyRep_coeff after ptr length p afterPoly hafterRep degree
+          hdegree with ⟨afterValue, hreadAfter, hcoeffAfter⟩
+      have hreadPreserved := hsame degree beforeValue hdegree hreadBefore
+      have hvalue : afterValue = beforeValue :=
+        Except.ok.inj (hreadAfter.symm.trans hreadPreserved)
+      rw [hcoeffAfter, hcoeffBefore, hvalue]
+    · rw [slicePolyRep_coeff_zero_of_length_le after ptr length p
+          afterPoly hafterRep degree (by omega),
+        slicePolyRep_coeff_zero_of_length_le before ptr length p poly hrep
+          degree (by omega)]
+  rw [heq] at hafterRep
+  exact hafterRep
 
 /-- `_poly_normalise` only reads within its declared prefix.  Structural
 recursion on `len` proves both successful execution and the returned prefix
@@ -858,11 +893,6 @@ def SameWord3Above (before after : RawHeap) (ptr : RawPtr Word3)
 def SameWord3Below (before after : RawHeap) (ptr : RawPtr Word3)
     (lower : Nat) : Prop :=
   ∀ k, k < lower → before.readWord3 ptr k = after.readWord3 ptr k
-
-def SameU64Prefix (before after : RawHeap) (ptr : RawPtr UInt64)
-    (length : Nat) : Prop :=
-  ∀ k value, k < length → before.readU64 ptr k = .ok value →
-    after.readU64 ptr k = .ok value
 
 def SameU64Above (before after : RawHeap) (ptr : RawPtr UInt64)
     (lower upper : Nat) : Prop :=

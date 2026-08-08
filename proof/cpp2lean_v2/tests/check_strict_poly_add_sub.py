@@ -66,6 +66,8 @@ def main() -> None:
                      "subCommonLoop_preserves_outside",
                      "subNegTailLoop_preserves_outside",
                      "addCommonLoop_value", "subCommonLoop_value",
+                     "nmodNeg", "nmodNeg_lt", "nmodNeg_cast",
+                     "subNegTailLoop_value",
                      "RawHeap.SameLayout"):
         if fragment not in refinement:
             raise SystemExit(f"strict add/sub refinement drift: missing {fragment}")

@@ -21,6 +21,7 @@
 - 证明两个实际生成的 `_mat_row_update` 调用共同得到完整四条目 `hgcdStepEntries` raw 表示；证明过程中显式保持 quotient、未选中矩阵条目及描述符，而不是直接改写为数学矩阵公式。
 - 加强共享的 `polyDivrem_next_state` raw→safe 桥，保留真实 `_poly_divrem` 已证明的除法恒等式，并将它传入 HGCD 单轮接口；此前该接口只保留 gcd 等式，无法闭合矩阵变换不变量。
 - 定义外部 live polynomial 的 `MatRowUpdateGuardWorkspace`，并证明任意满足物理分离条件的 raw 多项式经过两次实际 row update 后保持；这将用于把当前 divisor 和 divrem remainder 传给下一轮 HGCD 状态。
+- 将 divrem 的递减 quotient recursion 内存帧从专用 divisor 推广到任意与 `Q/W3` allocation 分离的 UInt64 slice；证明逐次跟随实际 `Q` 写入、可选 `addMulLoop` 的 `W3` 写入及递归调用，为矩阵跨 divrem 保持奠定基础。
 
 ## 为什么做
 

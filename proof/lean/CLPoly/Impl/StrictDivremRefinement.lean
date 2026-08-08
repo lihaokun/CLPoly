@@ -2658,6 +2658,95 @@ theorem quotientLoop_preserves_B (this : DenseUPolyZp)
       · intro k value hk hreadOld
         exact hsameRec k value hk (hsameWrite k value hk hreadOld)
 
+/-- The quotient recursion preserves any live UInt64 slice whose allocation
+is distinct from both write regions `Q` and `W3`.  This generalizes the
+divisor-specific frame above for callers such as HGCD that keep matrix
+entries live across the actual division call. -/
+theorem quotientLoop_preserves_u64_region_ne (this : DenseUPolyZp)
+    (Q B other : RawPtr UInt64) (W3 : RawPtr Word3)
+    (qLen d lenW3 otherLen : Nat) (invLc : UInt64)
+    (heap : RawHeap) (ii : Nat)
+    (hQ : heap.ValidU64Slice Q qLen)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hOther : heap.ValidU64Slice other otherLen)
+    (hii : ii ≤ qLen) (hspan : qLen + d ≤ lenW3)
+    (hQOther : Q.region ≠ other.region)
+    (hWOther : W3.region ≠ other.region) :
+    ∃ heap', quotientLoop this Q B W3 d invLc heap ii = .ok heap' ∧
+      heap'.ValidU64Slice Q qLen ∧
+      heap'.ValidU64Slice B (d + 1) ∧
+      heap'.ValidWord3Slice W3 lenW3 ∧
+      heap'.ValidU64Slice other otherLen ∧
+      RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' other otherLen := by
+  cases ii with
+  | zero =>
+      exact ⟨heap, rfl, hQ, hB, hW3, hOther, fun _ _ => Iff.rfl,
+        fun _ _ _ hread => hread⟩
+  | succ i =>
+    have hiQ : i < qLen := by omega
+    have hiW : i + d < lenW3 := by omega
+    simp only [quotientLoop]
+    rcases heap.readWord3_of_valid W3 lenW3 (i + d) hW3 hiW with
+      ⟨accum, hread⟩
+    simp only [hread]
+    let r := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      accum.hi accum.mid accum.lo this._p this._ninv this._norm
+    let qi := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r invLc
+    rcases heap.writeU64_of_valid Q qLen i qi hQ hiQ with ⟨heap1, hwrite⟩
+    dsimp [r, qi] at hwrite ⊢
+    simp only [hwrite]
+    have hQ1 : heap1.ValidU64Slice Q qLen :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite Q qLen).mp hQ
+    have hB1 : heap1.ValidU64Slice B (d + 1) :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite B (d + 1)).mp hB
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite
+        (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hOther1 : heap1.ValidU64Slice other otherLen :=
+      (RawHeap.writeU64_preserves_valid heap heap1 Q i _ hwrite
+        other otherLen).mp hOther
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 Q i _ hwrite
+    have hsameWrite : SameU64Prefix heap heap1 other otherLen := by
+      intro k value hk hreadOld
+      exact RawHeap.readU64_writeU64_ne heap heap1 Q other i k _ value
+        hwrite hreadOld (Or.inl hQOther)
+    split
+    next hnonzero =>
+      let r0 := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+        accum.hi accum.mid accum.lo this._p this._ninv this._norm
+      let qi0 := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this r0 invLc
+      rcases addMulLoop_preserves_u64_region_ne heap1 B other W3 lenW3 i d
+          0 otherLen (this._p - qi0) hB1 hW31 hOther1 hiW (by omega)
+          hWOther with
+        ⟨heap2, hadd, hB2, hW32, hOther2, hlayout2, hsameAdd⟩
+      simp only [qi0, r0] at hadd
+      simp only [hadd]
+      have hQ2 : heap2.ValidU64Slice Q qLen := (hlayout2 Q qLen).mp hQ1
+      rcases quotientLoop_preserves_u64_region_ne this Q B other W3 qLen d
+          lenW3 otherLen invLc heap2 i hQ2 hB2 hW32 hOther2 (by omega)
+          hspan hQOther hWOther with
+        ⟨heap3, hloop, hQ3, hB3, hW33, hOther3, hlayout3, hsameRec⟩
+      refine ⟨heap3, hloop, hQ3, hB3, hW33, hOther3, ?_, ?_⟩
+      · intro ptr length
+        exact (hlayout1 ptr length).trans
+          ((hlayout2 ptr length).trans (hlayout3 ptr length))
+      · intro k value hk hreadOld
+        exact hsameRec k value hk
+          (hsameAdd k value hk (hsameWrite k value hk hreadOld))
+    next hzero =>
+      rcases quotientLoop_preserves_u64_region_ne this Q B other W3 qLen d
+          lenW3 otherLen invLc heap1 i hQ1 hB1 hW31 hOther1 (by omega)
+          hspan hQOther hWOther with
+        ⟨heap2, hloop, hQ2, hB2, hW32, hOther2, hlayout2, hsameRec⟩
+      refine ⟨heap2, hloop, hQ2, hB2, hW32, hOther2, ?_, ?_⟩
+      · intro ptr length
+        exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+      · intro k value hk hreadOld
+        exact hsameRec k value hk (hsameWrite k value hk hreadOld)
+termination_by ii
+
 /-- The generated descending quotient loop preserves the real lazy
 accumulation capacity.  `count + ii = qLen` ties the proof counter to the
 source loop state; zero quotient coefficients consume a conservative outer

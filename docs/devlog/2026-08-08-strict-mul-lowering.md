@@ -27,15 +27,18 @@
 - 定义与源码循环边界一致的 L2 系数递归和，并从 `SlicePolyRep` 的实际
   raw reads 逐项证明：无界 raw 点积和转换到 `ZMod p` 后，恰好等于同一
   区间上的 L2 系数乘积和。该桥没有调用 L2 乘法来代替 C++ 执行。
+- 证明递归系数和等于 `j_min..j_max` 闭区间上的有限和；再用输入的
+  `SlicePolyRep` 证明该区间外的每个标准卷积项均为零，最终得到源码点积
+  区间精确等于 `Polynomial.coeff (left * right) k`。
 
 ## 当前边界
 
 本步只完成 schoolbook 执行层。Karatsuba 与 `_mul` 的源码身份已经锁定，
 但其零填充、scratch 布局、三次递归乘法、交叉项减法和组装尚未 lowering，
 因此不能称为 `_mul` 精化完成。下一步先证明 schoolbook 的终止执行、点积
-内容和 L2 乘法表示，再进入 Karatsuba 的良基递归。当前已把实际 raw 和及
-模归约连接到同区间的 L2 系数和；还需要证明源码的 `j_min/j_max` 区间正好
-给出标准 `Polynomial.coeff (left * right) k` 的完整卷积系数。
+内容和完整输出表示，再进入 Karatsuba 的良基递归。当前实际 raw 点积、模
+归约、L2 区间和及标准乘法卷积系数已全部连通；还需要沿外层 raw writes
+证明每个输出 cell 表示该系数，并由输入首项非零证明乘积长度规范化。
 
 ## 涉及文件
 

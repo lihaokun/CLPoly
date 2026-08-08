@@ -64,6 +64,8 @@ def main() -> None:
                      "classicalDotReduced_toNat",
                      "classicalDotReduced_cast",
                      "classicalDotPoly",
+                     "classicalDotPoly_eq_sum_Icc",
+                     "classicalDotPoly_source_eq_coeff",
                      "classicalDotNat_cast_eq_poly",
                      "classicalOuterLoop_ok", "classicalMul_ok",
                      "RawHeap.SameLayout"):

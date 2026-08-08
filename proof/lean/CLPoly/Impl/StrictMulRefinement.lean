@@ -40,6 +40,61 @@ def classicalDotPoly {p : Nat} (left right : Polynomial (ZMod p))
 termination_by stop + 1 - j
 decreasing_by omega
 
+theorem classicalDotPoly_eq_sum_Icc {p : Nat}
+    (left right : Polynomial (ZMod p)) (k stop j : Nat) :
+    classicalDotPoly left right k stop j =
+      ∑ t ∈ Finset.Icc j stop, left.coeff t * right.coeff (k - t) := by
+  rw [classicalDotPoly]
+  split
+  next hle =>
+    rw [← Finset.insert_Icc_succ_left_eq_Icc hle]
+    simp
+    exact classicalDotPoly_eq_sum_Icc left right k stop (j + 1)
+  next hnot =>
+    symm
+    apply Finset.sum_eq_zero
+    intro t ht
+    simp only [Finset.mem_Icc] at ht
+    omega
+termination_by stop + 1 - j
+decreasing_by omega
+
+theorem classicalDotPoly_source_eq_coeff {p : Nat}
+    (heap : RawHeap) (A B : RawPtr UInt64) (lenA lenB k : Nat)
+    (left right : Polynomial (ZMod p))
+    (hLenA : 0 < lenA)
+    (hRepA : SlicePolyRep heap A lenA p left)
+    (hRepB : SlicePolyRep heap B lenB p right) :
+    classicalDotPoly left right k
+      (if k < lenA then k else lenA - 1)
+      (if k ≥ lenB then k - lenB + 1 else 0) =
+        (left * right).coeff k := by
+  rw [classicalDotPoly_eq_sum_Icc]
+  rw [Polynomial.coeff_mul,
+    Finset.Nat.sum_antidiagonal_eq_sum_range_succ_mk]
+  by_cases hkA : k < lenA <;> by_cases hkB : k ≥ lenB
+  all_goals simp only [hkA, hkB, if_true, if_false]
+  all_goals
+  apply Finset.sum_subset
+  · intro t ht
+    simp only [Finset.mem_Icc] at ht
+    simp only [Finset.mem_range]
+    omega
+  · intro t htRange htIcc
+    simp only [Finset.mem_range] at htRange
+    simp only [Finset.mem_Icc, not_and_or, not_le] at htIcc
+    rcases htIcc with hBelow | hAbove
+    · by_cases hkt : lenB ≤ k
+      · have hzero := slicePolyRep_coeff_zero_of_length_le heap B lenB p
+          right hRepB (k - t) (by omega)
+        rw [hzero, mul_zero]
+      · omega
+    · by_cases hkt : k < lenA
+      · omega
+      · have hzero := slicePolyRep_coeff_zero_of_length_le heap A lenA p
+          left hRepA t (by omega)
+        rw [hzero, zero_mul]
+
 theorem classicalDotNat_cast_eq_poly (heap : RawHeap)
     (A B : RawPtr UInt64) (lenA lenB p k stop j sum : Nat)
     (left right : Polynomial (ZMod p))

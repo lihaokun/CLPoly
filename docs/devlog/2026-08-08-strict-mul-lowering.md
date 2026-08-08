@@ -122,6 +122,13 @@
   增至 `8n`，HGCD 工作区同步调整；设计文档和 `_gcd_hgcd` AST 锁已更新。
 - 以 n 为良基度量证明 `karScratchNeed n ≤ 7n`。递归步分别使用 m/h 子结论、
   共享区的 max 上界以及 `h=m ∨ h=m+1`，覆盖全 Nat 范围。
+- 从一块长度为 `karScratchNeed n` 的真实 allocation 推导源码指针算术切出的
+  t1、t2、P0、P1 和共享 recScratch 五段全部有效；嵌套 `ptr.add` 的地址等式
+  也在 RawPtr 模型中逐项证明，没有把容量不等式当作指针有效性的替代。
+- 新增 UInt64 slice 的地址级不相交谓词及对称、缩短、不同 region、相邻区间
+  和同基址偏移区间引理。旧证明只用 region 不等表达不别名，无法描述 C++
+  同一 scratch allocation 内的 t1/t2/P0/P1；后续 helper 与 schoolbook 帧定理
+  将改用这一谓词，避免为套用旧定理而虚构独立 allocations。
 
 ## 当前边界
 

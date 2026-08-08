@@ -198,6 +198,12 @@
 - 新增真实 `copyU64` 的 slice+canonical 联合精化：利用 copy 的逐 cell 内容
   定理把源值与目标 read 对齐，同时传递源 `<modulus` 条件。P0 copy 到 C 后
   因此保留完整 L2 表示和机器规范性，而非只证明 memcpy 成功。
+- 建立相邻 raw slices 的反向拼接定理：长度 low/high 的表示可在同一连续
+  allocation 中合成为 `low + X^lowLength * high`；证明通过完整 slice 的唯一
+  表示与已证 split 桥对齐。相应规范前缀逐索引使用 `readU64_add` 拼接。
+- 闭合末尾补零写入：真实 `writeU64 ptr length 0` 保持旧 prefix，新增 cell
+  读取恰为零，并把 `SlicePolyRep` 从 length 扩展到 length+1 而多项式不变；
+  同时由非零 modulus 证明新零 cell 仍规范。这覆盖 P0 后的源码分隔零。
 
 ## 当前边界
 

@@ -228,6 +228,105 @@ theorem slicePolyRep_split_exists (heap : RawHeap) (ptr : RawPtr UInt64)
           highLength p high hrepHigh (degree - lowLength) (by omega),
         zero_add]
 
+theorem slicePolyRep_join (heap : RawHeap) (ptr : RawPtr UInt64)
+    (lowLength highLength p : Nat)
+    (low high : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr (lowLength + highLength))
+    (hrepLow : SlicePolyRep heap ptr lowLength p low)
+    (hrepHigh : SlicePolyRep heap (ptr.add lowLength) highLength p high) :
+    SlicePolyRep heap ptr (lowLength + highLength) p
+      (low + Polynomial.X ^ lowLength * high) := by
+  rcases slicePolyRep_exists_unique heap ptr (lowLength + highLength) p hvalid with
+    ⟨whole, hrepWhole, huniqueWhole⟩
+  rcases slicePolyRep_split_exists heap ptr lowLength highLength p whole hvalid
+      hrepWhole with ⟨actualLow, actualHigh, hrepActualLow,
+        hrepActualHigh, hsplit⟩
+  have hvalidLow := heap.validU64Slice_mono ptr (lowLength + highLength)
+    lowLength hvalid (by omega)
+  have hvalidHigh := heap.validU64Slice_add ptr (lowLength + highLength)
+    lowLength highLength hvalid (by omega)
+  rcases slicePolyRep_exists_unique heap ptr lowLength p hvalidLow with
+    ⟨canonicalLow, _, huniqueLow⟩
+  rcases slicePolyRep_exists_unique heap (ptr.add lowLength) highLength p
+      hvalidHigh with ⟨canonicalHigh, _, huniqueHigh⟩
+  have hlow : low = actualLow :=
+    (huniqueLow low hrepLow).trans (huniqueLow actualLow hrepActualLow).symm
+  have hhigh : high = actualHigh :=
+    (huniqueHigh high hrepHigh).trans
+      (huniqueHigh actualHigh hrepActualHigh).symm
+  have hwhole : whole = low + Polynomial.X ^ lowLength * high := by
+    simpa [hlow, hhigh] using hsplit
+  rw [← hwhole]
+  exact hrepWhole
+
+theorem canonicalU64Prefix_join (heap : RawHeap) (ptr : RawPtr UInt64)
+    (lowLength highLength : Nat) (modulus : UInt64)
+    (hvalid : heap.ValidU64Slice ptr (lowLength + highLength))
+    (hcanonicalLow : CanonicalU64Prefix heap ptr lowLength modulus)
+    (hcanonicalHigh : CanonicalU64Prefix heap (ptr.add lowLength)
+      highLength modulus) :
+    CanonicalU64Prefix heap ptr (lowLength + highLength) modulus := by
+  intro i value hi hread
+  by_cases hilow : i < lowLength
+  · exact hcanonicalLow i value hilow hread
+  · let j := i - lowLength
+    have hj : j < highLength := by
+      dsimp [j]
+      omega
+    have hij : lowLength + j = i := by
+      dsimp [j]
+      omega
+    apply hcanonicalHigh j value hj
+    rw [RawHeap.readU64_add, hij]
+    exact hread
+
+theorem writeZero_extends_slice (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (length p : Nat) (modulus : UInt64)
+    (poly : Polynomial (ZMod p))
+    (hmodulus : modulus ≠ 0)
+    (hvalid : heap.ValidU64Slice ptr (length + 1))
+    (hrep : SlicePolyRep heap ptr length p poly)
+    (hcanonical : CanonicalU64Prefix heap ptr length modulus)
+    (hwrite : heap.writeU64 ptr length 0 = .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' ptr (length + 1) p poly ∧
+      CanonicalU64Prefix heap' ptr (length + 1) modulus := by
+  have hlayout := RawHeap.writeU64_sameLayout heap heap' ptr length 0 hwrite
+  have hvalidPrefix := heap.validU64Slice_mono ptr (length + 1) length hvalid
+    (by omega)
+  have hvalid' := (hlayout ptr (length + 1)).mp hvalid
+  have hvalidPrefix' := (hlayout ptr length).mp hvalidPrefix
+  have hsame : SameU64Prefix heap heap' ptr length := by
+    intro i old hi hread
+    exact RawHeap.readU64_writeU64_ne heap heap' ptr ptr length i 0 old
+      hwrite hread (Or.inr (by omega))
+  have hrepPrefix' := slicePolyRep_of_same_prefix heap heap' ptr length p poly
+    hvalidPrefix hvalidPrefix' hsame hrep
+  have hzero := RawHeap.readU64_writeU64_same heap heap' ptr length 0 hwrite
+  rcases slicePolyRep_extend_exists heap' ptr length p 0 poly hvalid'
+      hrepPrefix' hzero with ⟨full, hrepFull, hfull⟩
+  have hfullEq : full = poly := by simpa using hfull
+  rw [hfullEq] at hrepFull
+  refine ⟨hlayout, hrepFull, ?_⟩
+  intro i value hi hread
+  by_cases hilength : i < length
+  · rcases heap.readU64_of_valid ptr length i hvalidPrefix hilength with
+      ⟨old, hold⟩
+    have hpreserved := hsame i old hilength hold
+    have heq : value = old := Except.ok.inj (hread.symm.trans hpreserved)
+    subst value
+    exact hcanonical i old hilength hold
+  · have hiEq : i = length := by omega
+    subst i
+    have heq : value = 0 := Except.ok.inj (hread.symm.trans hzero)
+    subst value
+    have hpositive : 0 < modulus.toNat := by
+      apply Nat.pos_of_ne_zero
+      intro hzeroNat
+      apply hmodulus
+      exact UInt64.toNat_inj.mp (by simpa using hzeroNat)
+    simpa using hpositive
+
 /-- Exact number of UInt64 scratch cells reachable by the generated
 Karatsuba recursion.  The three child products share `recScratch`, so the
 recursive contribution is a maximum rather than a sum. -/

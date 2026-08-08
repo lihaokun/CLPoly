@@ -3155,6 +3155,61 @@ theorem remainderLoop_preserves_W3 (this : DenseUPolyZp)
 termination_by d - i
 decreasing_by omega
 
+/-- The generated remainder loop also preserves every cell of an arbitrary
+UInt64 slice disjoint from R; this transports the quotient representation to
+the heap returned by `_poly_divrem`. -/
+theorem remainderLoop_preserves_u64_region_ne (this : DenseUPolyZp)
+    (R other : RawPtr UInt64) (W3 : RawPtr Word3)
+    (d lenW3 i otherLen : Nat) (heap : RawHeap)
+    (hR : heap.ValidU64Slice R d)
+    (hW3 : heap.ValidWord3Slice W3 lenW3)
+    (hOther : heap.ValidU64Slice other otherLen)
+    (hdW : d ≤ lenW3) (hi : i ≤ d)
+    (hregions : R.region ≠ other.region) :
+    ∃ heap', remainderLoop this R W3 d i heap = .ok heap' ∧
+      heap'.ValidU64Slice R d ∧ heap'.ValidWord3Slice W3 lenW3 ∧
+      heap'.ValidU64Slice other otherLen ∧ RawHeap.SameLayout heap heap' ∧
+      SameU64Prefix heap heap' other otherLen := by
+  rw [remainderLoop]
+  split
+  next hlt =>
+    have hiW : i < lenW3 := by omega
+    rcases heap.readWord3_of_valid W3 lenW3 i hW3 hiW with
+      ⟨accum, hread⟩
+    simp only [hread]
+    let value := Generated.StrictGCD.dense_upoly_zp__lll_mod_preinv_ir
+      accum.hi accum.mid accum.lo this._p this._ninv this._norm
+    rcases heap.writeU64_of_valid R d i value hR hlt with
+      ⟨heap1, hwrite⟩
+    dsimp [value] at hwrite ⊢
+    simp only [hwrite]
+    have hR1 : heap1.ValidU64Slice R d :=
+      (RawHeap.writeU64_preserves_valid heap heap1 R i value hwrite R d).mp hR
+    have hW31 : heap1.ValidWord3Slice W3 lenW3 :=
+      (RawHeap.writeU64_preserves_valid heap heap1 R i value hwrite
+        (RawPtr.reinterpret W3) (3 * lenW3)).mp hW3
+    have hOther1 : heap1.ValidU64Slice other otherLen :=
+      (RawHeap.writeU64_preserves_valid heap heap1 R i value hwrite
+        other otherLen).mp hOther
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 R i value hwrite
+    have hsame1 : SameU64Prefix heap heap1 other otherLen := by
+      intro k old hk hreadOld
+      exact RawHeap.readU64_writeU64_ne heap heap1 R other i k value old
+        hwrite hreadOld (Or.inl hregions)
+    rcases remainderLoop_preserves_u64_region_ne this R other W3 d lenW3
+      (i + 1) otherLen heap1 hR1 hW31 hOther1 hdW (by omega) hregions with
+      ⟨heap2, hloop, hR2, hW32, hOther2, hlayout2, hsame2⟩
+    refine ⟨heap2, hloop, hR2, hW32, hOther2, ?_, ?_⟩
+    · intro ptr length
+      exact (hlayout1 ptr length).trans (hlayout2 ptr length)
+    · intro k old hk hreadOld
+      exact hsame2 k old hk (hsame1 k old hk hreadOld)
+  next hnot =>
+    exact ⟨heap, rfl, hR, hW3, hOther, fun _ _ => Iff.rfl,
+      fun _ _ _ hread => hread⟩
+termination_by d - i
+decreasing_by omega
+
 /-- The completed remainder prefix contains exactly the outputs of the
 generated three-limb reduction on the corresponding W3 cells. -/
 def RemainderPrefix (this : DenseUPolyZp) (heap : RawHeap)

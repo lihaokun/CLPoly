@@ -3446,6 +3446,155 @@ theorem remainderLoop_refines_polynomial (this : DenseUPolyZp)
   exact remainderModPrefix_poly_eq this heap' R W3 d lenW3 values
     remainder hmod hvalues' hrep hdW hzero'
 
+/-- Genuine semantic refinement of the long branch of generated C++
+`_poly_divrem`.  The theorem follows the emitted initialization, quotient,
+remainder, and normalization calls and reconstructs both result polynomials
+from the final raw heap. -/
+theorem polyDivrem_long_refines (this : DenseUPolyZp)
+    (Q R A B : RawPtr UInt64) (lenA d : Nat)
+    (W3 : RawPtr Word3) (heap : RawHeap)
+    (dividend divisor : Polynomial (ZMod this._p.toNat))
+    (hlong : d < lenA)
+    (hA : heap.ValidU64Slice A lenA)
+    (hB : heap.ValidU64Slice B (d + 1))
+    (hQ : heap.ValidU64Slice Q (lenA - d))
+    (hR : heap.ValidU64Slice R d)
+    (hW3 : heap.ValidWord3Slice W3 lenA)
+    (hcanonicalA : CanonicalU64Prefix heap A lenA this._p)
+    (hcanonicalB : CanonicalU64Prefix heap B (d + 1) this._p)
+    (hdividend : SlicePolyRep heap A lenA this._p.toNat dividend)
+    (hdivisor : SlicePolyRep heap B (d + 1) this._p.toNat divisor)
+    (hnormB : heap.normaliseU64 B (d + 1) = .ok (d + 1))
+    (hqLen : lenA - d < limbBase)
+    (hWA : W3.region ≠ A.region) (hWB : W3.region ≠ B.region)
+    (hQB : Q.region ≠ B.region) (hQW : Q.region ≠ W3.region)
+    (hRW : R.region ≠ W3.region) (hRQ : R.region ≠ Q.region)
+    (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat) :
+    ∃ heap' lenQ lenR quotient remainder,
+      dense_upoly_zp__poly_divrem_ir this Q R A lenA B (d + 1) W3 heap =
+        .ok (heap', lenQ, lenR) ∧
+      SlicePolyRep heap' Q (lenA - d) this._p.toNat quotient ∧
+      SlicePolyRep heap' R d this._p.toNat remainder ∧
+      dividend = quotient * divisor + remainder ∧
+      (remainder = 0 ∨ remainder.natDegree < d) ∧
+      lenQ ≤ lenA - d ∧ lenR ≤ d := by
+  rcases heap.readU64_of_valid B (d + 1) d hB (by omega) with
+    ⟨lead, hreadLead⟩
+  have hleadLt : lead.toNat < this._p.toNat :=
+    hcanonicalB d lead (by omega) hreadLead
+  have hleadNe : lead ≠ 0 := by
+    rcases normaliseU64_spec heap B (d + 1) hB with
+      ⟨result, hnorm, _, _, hlast⟩
+    have hresult : result = d + 1 := Except.ok.inj (hnorm.symm.trans hnormB)
+    subst result
+    rcases hlast with hzero | ⟨last, hreadLast, hlastNe⟩
+    · omega
+    · have hlastEq : last = lead :=
+        have hreadLast' : heap.readU64 B d = .ok last := by
+          simpa using hreadLast
+        Except.ok.inj (hreadLast'.symm.trans hreadLead)
+      simpa [hlastEq] using hlastNe
+  have hleadPos : 0 < lead.toNat := by
+    have : lead.toNat ≠ 0 := by
+      intro hz
+      apply hleadNe
+      exact UInt64.toNat_inj.mp (by simpa using hz)
+    omega
+  have hempty : InitW3Prefix heap A W3 0 := by
+    intro _ h
+    omega
+  rcases initW3Loop_refines heap A W3 lenA 0 hA hW3 (Nat.zero_le _)
+    hWA hempty with
+    ⟨heap1, hinit, hA1, hW31, hlayout1, hprefix1⟩
+  rcases initW3Loop_preserves_u64_region_ne heap A B W3 lenA 0 (d + 1)
+    hA hW3 hB (Nat.zero_le _) hWB with
+    ⟨heapB, hinitB, _, _, hB1, _, hsameB⟩
+  have hheapB : heapB = heap1 := Except.ok.inj (hinitB.symm.trans hinit)
+  subst heapB
+  rcases initW3Loop_preserves_u64_region_ne heap A A W3 lenA 0 lenA
+    hA hW3 hA (Nat.zero_le _) hWA with
+    ⟨heapA, hinitA, _, _, _, _, hsameA⟩
+  have hheapA : heapA = heap1 := Except.ok.inj (hinitA.symm.trans hinit)
+  subst heapA
+  have hcanonicalA1 : CanonicalU64Prefix heap1 A lenA this._p := by
+    intro k value hk hread1
+    rcases heap.readU64_of_valid A lenA k hA hk with ⟨old, hread0⟩
+    have hvalue : value = old :=
+      Except.ok.inj (hread1.symm.trans (hsameA k old hk hread0))
+    subst value
+    exact hcanonicalA k old hk hread0
+  have hcanonicalB1 : CanonicalU64Prefix heap1 B (d + 1) this._p := by
+    intro k value hk hread1
+    rcases heap.readU64_of_valid B (d + 1) k hB hk with ⟨old, hread0⟩
+    have hvalue : value = old :=
+      Except.ok.inj (hread1.symm.trans (hsameB k old hk hread0))
+    subst value
+    exact hcanonicalB k old hk hread0
+  have hdividend1 := slicePolyRep_of_same_prefix heap heap1 A lenA
+    this._p.toNat dividend hA hA1 hsameA hdividend
+  have hdivisor1 := slicePolyRep_of_same_prefix heap heap1 B (d + 1)
+    this._p.toNat divisor hB hB1 hsameB hdivisor
+  have hQ1 : heap1.ValidU64Slice Q (lenA - d) :=
+    (hlayout1 Q (lenA - d)).mp hQ
+  have hR1 : heap1.ValidU64Slice R d := (hlayout1 R d).mp hR
+  have hbudget1 := initW3Prefix_budget heap1 A W3 lenA this._p
+    hcanonicalA1 hprefix1
+  rcases word3SliceRep_exists_unique heap1 W3 lenA hW31 with
+    ⟨initialValues, hinitialValues, _⟩
+  have hinitialPoly := initW3Prefix_word3ArrayPoly heap1 A W3 lenA
+    this._p.toNat initialValues dividend hprefix1 hinitialValues hdividend1
+  have hreadLead1 := hsameB d lead (by omega) hreadLead
+  let invLc := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+  rcases quotientLoop_refines_polynomial this Q B W3 (lenA - d) d lenA 0
+    invLc heap1 (lenA - d) divisor hQ1 hB1 hW31 hcanonicalB1 hdivisor1
+    hbudget1 (by omega) (by omega) hqLen hQB hQW hWB hcfg hprime with
+    ⟨heap2, quotient, beforeValues, quotientValues, hquot, hQ2, hB2,
+      hW32, hlayout2, hcanonicalB2, hbudget2, hquotient,
+      hbeforeValues, hquotientValues, hquotientPoly⟩
+  have hbeforeEq : beforeValues = initialValues :=
+    word3SliceRep_eq heap1 W3 lenA beforeValues initialValues
+      hbeforeValues hinitialValues
+  have hzeroStart : Word3ZeroModRange heap1 W3
+      ((lenA - d) + d) ((lenA - d) + d) this._p.toNat := by
+    intro _ _ hlow hhigh _
+    omega
+  rcases quotientLoop_zeroes_high_cells this Q B W3 (lenA - d) d lenA 0
+    lead invLc heap1 (lenA - d) hQ1 hB1 hW31 hcanonicalB1 hreadLead1
+    hbudget1 hzeroStart (by omega) (by omega) hqLen hQB hQW hWB hcfg
+    hprime hleadPos hleadLt rfl with
+    ⟨heapZero, hquotZero, _, _, _, _, _, _, hzero2⟩
+  have hheapZero : heapZero = heap2 :=
+    Except.ok.inj (hquotZero.symm.trans hquot)
+  subst heapZero
+  have hzero2' : Word3ZeroModRange heap2 W3 d lenA this._p.toNat := by
+    convert hzero2 using 1 <;> omega
+  have hR2 : heap2.ValidU64Slice R d := (hlayout2 R d).mp hR1
+  rcases remainderLoop_refines_polynomial this R W3 d lenA (lenA - d)
+    heap2 quotientValues hR2 hW32 hquotientValues (by omega) hRW hbudget2
+    hqLen hzero2' hcfg hprime with
+    ⟨heap3, remainder, hrem, hR3, hW33, hlayout3, _, hremainder,
+      _, hremainderPoly⟩
+  rcases remainderLoop_preserves_u64_region_ne this R Q W3 d lenA 0
+    (lenA - d) heap2 hR2 hW32 hQ2 (by omega) (Nat.zero_le _) hRQ with
+    ⟨heapQ, hremQ, _, _, hQ3, _, hsameQ⟩
+  have hheapQ : heapQ = heap3 := Except.ok.inj (hremQ.symm.trans hrem)
+  subst heapQ
+  have hquotient3 := slicePolyRep_of_same_prefix heap2 heap3 Q (lenA - d)
+    this._p.toNat quotient hQ2 hQ3 hsameQ hquotient
+  rcases normaliseU64_ok heap3 Q (lenA - d) hQ3 with
+    ⟨lenQ, hnormQ, hlenQ⟩
+  rcases normaliseU64_ok heap3 R d hR3 with ⟨lenR, hnormR, hlenR⟩
+  have halgebra : dividend = quotient * divisor + remainder := by
+    rw [hremainderPoly, hquotientPoly, hbeforeEq, hinitialPoly]
+    ring
+  have hdegree := normaliseU64_poly_degree_lt_length heap3 R d
+    this._p.toNat lenR remainder hR3 hremainder hnormR
+  refine ⟨heap3, lenQ, lenR, quotient, remainder, ?_, hquotient3,
+    hremainder, halgebra, hdegree, hlenQ, hlenR⟩
+  simp [dense_upoly_zp__poly_divrem_ir, hlong, hreadLead, hinit, hquot,
+    hrem, hnormQ, hnormR, invLc]
+
 /-- Complete content semantics of the C++ short-division branch: the
 generated function returns quotient length zero and copies the represented
 dividend, unchanged, into the remainder buffer. -/

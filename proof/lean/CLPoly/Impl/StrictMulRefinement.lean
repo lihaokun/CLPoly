@@ -7,10 +7,111 @@ set_option autoImplicit false
 namespace CLPoly.Impl.StrictMulRefinement
 
 open Generated.StrictMul
+open Generated.StrictPolyAddSub
 open CLPoly.Impl.StrictWordArithmetic
 open CLPoly.Impl.StrictDivremRefinement
 open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Impl.StrictEuclidRefinement
+
+theorem karAddHalvesLoop_ok (this : DenseUPolyZp)
+    (A B t1 t2 : RawPtr UInt64) (m i : Nat) (heap : RawHeap)
+    (hA : heap.ValidU64Slice A (2 * m))
+    (hB : heap.ValidU64Slice B (2 * m))
+    (hT1 : heap.ValidU64Slice t1 m)
+    (hT2 : heap.ValidU64Slice t2 m) :
+    ∃ heap', karAddHalvesLoop this A B t1 t2 m i heap = .ok heap' ∧
+      RawHeap.SameLayout heap heap' := by
+  unfold karAddHalvesLoop
+  split
+  next hi =>
+    rcases heap.readU64_of_valid A (2 * m) i hA (by omega) with ⟨alo, halo⟩
+    simp only [halo]
+    rcases heap.readU64_of_valid A (2 * m) (m + i) hA (by omega) with
+      ⟨ahi, hahi⟩
+    simp only [hahi]
+    rcases heap.readU64_of_valid B (2 * m) i hB (by omega) with ⟨blo, hblo⟩
+    simp only [hblo]
+    rcases heap.readU64_of_valid B (2 * m) (m + i) hB (by omega) with
+      ⟨bhi, hbhi⟩
+    simp only [hbhi]
+    let av := dense_upoly_zp_nmod_add_ir this alo ahi
+    rcases heap.writeU64_of_valid t1 m i av hT1 hi with ⟨heap1, hw1⟩
+    simp only [av, hw1]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 t1 i av hw1
+    let bv := dense_upoly_zp_nmod_add_ir this blo bhi
+    rcases heap1.writeU64_of_valid t2 m i bv ((hlayout1 t2 m).mp hT2) hi with
+      ⟨heap2, hw2⟩
+    simp only [bv, hw2]
+    have hlayout2 := RawHeap.writeU64_sameLayout heap1 heap2 t2 i bv hw2
+    rcases karAddHalvesLoop_ok this A B t1 t2 m (i + 1) heap2
+      ((hlayout2 A (2 * m)).mp ((hlayout1 A (2 * m)).mp hA))
+      ((hlayout2 B (2 * m)).mp ((hlayout1 B (2 * m)).mp hB))
+      ((hlayout2 t1 m).mp ((hlayout1 t1 m).mp hT1))
+      ((hlayout2 t2 m).mp ((hlayout1 t2 m).mp hT2)) with
+      ⟨heap3, hrun, hlayout3⟩
+    rw [hrun]
+    exact ⟨heap3, rfl, fun ptr length =>
+      (hlayout1 ptr length).trans
+        ((hlayout2 ptr length).trans (hlayout3 ptr length))⟩
+  next => exact ⟨heap, rfl, fun _ _ => Iff.rfl⟩
+termination_by m - i
+decreasing_by omega
+
+theorem karSubLoop_ok (this : DenseUPolyZp)
+    (dst sub : RawPtr UInt64) (count i : Nat) (heap : RawHeap)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSub : heap.ValidU64Slice sub count) :
+    ∃ heap', karSubLoop this dst sub count i heap = .ok heap' ∧
+      RawHeap.SameLayout heap heap' := by
+  unfold karSubLoop
+  split
+  next hi =>
+    rcases heap.readU64_of_valid dst count i hDst hi with ⟨a, ha⟩
+    simp only [ha]
+    rcases heap.readU64_of_valid sub count i hSub hi with ⟨b, hb⟩
+    simp only [hb]
+    let value := dense_upoly_zp_nmod_sub_ir this a b
+    rcases heap.writeU64_of_valid dst count i value hDst hi with ⟨heap1, hw⟩
+    simp only [value, hw]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 dst i value hw
+    rcases karSubLoop_ok this dst sub count (i + 1) heap1
+      ((hlayout1 dst count).mp hDst) ((hlayout1 sub count).mp hSub) with
+      ⟨heap2, hrun, hlayout2⟩
+    rw [hrun]
+    exact ⟨heap2, rfl, fun ptr length =>
+      (hlayout1 ptr length).trans (hlayout2 ptr length)⟩
+  next => exact ⟨heap, rfl, fun _ _ => Iff.rfl⟩
+termination_by count - i
+decreasing_by omega
+
+theorem karAssembleLoop_ok (this : DenseUPolyZp)
+    (C sP1 : RawPtr UInt64) (m count i : Nat) (heap : RawHeap)
+    (hC : heap.ValidU64Slice C (m + count))
+    (hP1 : heap.ValidU64Slice sP1 count) :
+    ∃ heap', karAssembleLoop this C sP1 m count i heap = .ok heap' ∧
+      RawHeap.SameLayout heap heap' := by
+  unfold karAssembleLoop
+  split
+  next hi =>
+    rcases heap.readU64_of_valid C (m + count) (m + i) hC (by omega) with
+      ⟨base, hbase⟩
+    simp only [hbase]
+    rcases heap.readU64_of_valid sP1 count i hP1 hi with ⟨cross, hcross⟩
+    simp only [hcross]
+    let value := dense_upoly_zp_nmod_add_ir this base cross
+    rcases heap.writeU64_of_valid C (m + count) (m + i) value hC (by omega) with
+      ⟨heap1, hw⟩
+    simp only [value, hw]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 C (m + i) value hw
+    rcases karAssembleLoop_ok this C sP1 m count (i + 1) heap1
+      ((hlayout1 C (m + count)).mp hC) ((hlayout1 sP1 count).mp hP1) with
+      ⟨heap2, hrun, hlayout2⟩
+    rw [hrun]
+    exact ⟨heap2, rfl, fun ptr length =>
+      (hlayout1 ptr length).trans (hlayout2 ptr length)⟩
+  next => exact ⟨heap, rfl, fun _ _ => Iff.rfl⟩
+termination_by count - i
+decreasing_by omega
 
 /-- Mathematical value of the exact raw cells visited by the C++ dot loop.
 It shares the loop's reads and failure behavior, but performs unbounded natural

@@ -59,6 +59,8 @@ def main() -> None:
     if found:
         raise SystemExit(f"strict multiplication refinement contains forbidden constructs: {found}")
     for fragment in ("classicalDotLoop_ok", "classical_index_bounds",
+                     "karAddHalvesLoop_ok", "karSubLoop_ok",
+                     "karAssembleLoop_ok",
                      "classicalDotNat", "classicalDotNat_ok",
                      "classicalDotNat_bound", "classicalDotLoop_modEq",
                      "classicalDotLoop_raw_sum",

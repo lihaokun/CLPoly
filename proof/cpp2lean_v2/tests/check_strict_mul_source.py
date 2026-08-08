@@ -62,6 +62,9 @@ def main() -> None:
         raise SystemExit(f"strict multiplication refinement contains forbidden constructs: {found}")
     for fragment in ("classicalDotLoop_ok", "classical_index_bounds",
                      "slicePolyRep_prefix_exists",
+                     "karScratchNeed", "karScratchNeed_base",
+                     "karScratchNeed_step", "kar_split_shape",
+                     "kar_split_children_lt",
                      "karAddHalvesLoop_ok", "karSubLoop_ok",
                      "karAssembleLoop_ok",
                      "karOddTail_ok", "karOddTail_preserves_region_ne",

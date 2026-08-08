@@ -36,6 +36,49 @@ theorem slicePolyRep_prefix_exists (heap : RawHeap) (ptr : RawPtr UInt64)
     Except.ok.inj (hreadPrefix.symm.trans hreadFull)
   rw [hcoeffPrefix, hcoeffFull, heq]
 
+/-- Exact number of UInt64 scratch cells reachable by the generated
+Karatsuba recursion.  The three child products share `recScratch`, so the
+recursive contribution is a maximum rather than a sum. -/
+def karScratchNeed (n : Nat) : Nat :=
+  if n < 16 then
+    0
+  else
+    let m := n / 2
+    let h := n - m
+    2 * h + (2 * m - 1) + (2 * h - 1) +
+      max (karScratchNeed m) (karScratchNeed h)
+termination_by n
+decreasing_by
+  all_goals
+    have hn : 0 < n := by omega
+    have hm : 0 < n / 2 := Nat.div_pos (by omega) (by omega)
+    omega
+
+theorem karScratchNeed_base (n : Nat) (hn : n < 16) :
+    karScratchNeed n = 0 := by
+  rw [karScratchNeed, if_pos hn]
+
+theorem karScratchNeed_step (n : Nat) (hn : ¬n < 16) :
+    karScratchNeed n =
+      let m := n / 2
+      let h := n - m
+      2 * h + (2 * m - 1) + (2 * h - 1) +
+        max (karScratchNeed m) (karScratchNeed h) := by
+  rw [karScratchNeed, if_neg hn]
+
+theorem kar_split_shape (n : Nat) :
+    let m := n / 2
+    let h := n - m
+    h = m ∨ h = m + 1 := by
+  omega
+
+theorem kar_split_children_lt (n : Nat) (hn : 16 ≤ n) :
+    n / 2 < n ∧ n - n / 2 < n := by
+  have hm : 0 < n / 2 := Nat.div_pos (by omega) (by omega)
+  constructor
+  · exact Nat.div_lt_self (by omega) (by omega)
+  · omega
+
 theorem karAddHalvesLoop_ok (this : DenseUPolyZp)
     (A B t1 t2 : RawPtr UInt64) (m i : Nat) (heap : RawHeap)
     (hA : heap.ValidU64Slice A (2 * m))

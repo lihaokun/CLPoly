@@ -1536,6 +1536,18 @@ structure MatRowUpdateWorkspace (M : HgcdMat) (i0 i1 : Fin 4)
   tDisjointOther : ∀ i : Fin 4, i ≠ i1 →
     t.region ≠ (hgcdMatPtr M hM i).region
 
+/-- Extra physical separation facts for one live polynomial outside the
+matrix.  These facts let the exact multiplication/addition execution frame
+that polynomial without assigning it any specification-level behavior. -/
+structure MatRowUpdateGuardWorkspace (M : HgcdMat) (i0 : Fin 4)
+    (Q : RawPtr UInt64) (lenQ : Nat) (T t scratch guard : RawPtr UInt64)
+    (guardLen : Nat) (hM : M.Valid) : Prop where
+  disjointT : U64SlicesDisjoint T
+    (2 * max lenQ (hgcdMatLen M hM i0) - 1) guard guardLen
+  disjointScratch : U64SlicesDisjoint scratch
+    (8 * max lenQ (hgcdMatLen M hM i0)) guard guardLen
+  disjointAddOutput : t.region ≠ guard.region
+
 /-- Apply the branch-complete semantic row-update theorem from the packaged
 L1 workspace invariant. -/
 theorem matRowUpdate_refines_of_workspace (this : DenseUPolyZp)
@@ -1637,6 +1649,40 @@ theorem matRowUpdate_preserves_quotient_of_workspace
     (workspace.disjointScratchMatrix i1) workspace.disjointTQ
     workspace.disjointScratchQ workspace.tDisjointQ hQRep hEntry0Rep
     hEntry1Rep hQRep hrun
+
+/-- Apply the general frame theorem using the packaged row workspace and the
+three additional separation facts for an external live polynomial. -/
+theorem matRowUpdate_preserves_guard_of_workspaces
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch guard : RawPtr UInt64)
+    (guardLen : Nat) (heap : RawHeap) (result : MatRowUpdateResult)
+    (hM : M.Valid)
+    (quotient entry0 entry1 guardPoly : Polynomial (ZMod this._p.toNat))
+    (hne : i0 ≠ i1) (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (workspace : MatRowUpdateWorkspace M i0 i1 Q lenQ T t scratch heap hM)
+    (guardWorkspace : MatRowUpdateGuardWorkspace M i0 Q lenQ T t scratch
+      guard guardLen hM)
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hEntry0Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) entry0)
+    (hEntry1Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) entry1)
+    (hGuardRep : RawDensePolyRep this heap guard guardLen guardPoly)
+    (hrun : dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result) :
+    RawDensePolyRep this result.heap guard guardLen guardPoly := by
+  exact matRowUpdate_preserves_guard this M i0 i1 Q lenQ T lenT t scratch
+    guard guardLen heap result hM quotient entry0 entry1 guardPoly hne hcfg
+    hp workspace.lenWord workspace.validT workspace.validScratch
+    workspace.validAddOutput workspace.disjointTQ
+    (workspace.disjointTMatrix i0) (workspace.disjointTMatrix i1)
+    workspace.disjointTScratch workspace.disjointScratchQ
+    (workspace.disjointScratchMatrix i0)
+    (workspace.disjointScratchMatrix i1) guardWorkspace.disjointT
+    guardWorkspace.disjointScratch guardWorkspace.disjointAddOutput hQRep
+    hEntry0Rep hEntry1Rep hGuardRep hrun
 
 /-- The two actual generated `_mat_row_update` calls refine the complete
 four-entry mathematical HGCD matrix step.  In particular, this theorem
@@ -1761,5 +1807,87 @@ theorem hgcdTwoRowUpdates_refine_matrix (this : DenseUPolyZp)
       (hgcdMatLen row01.matrix h01 (3 : Fin 4)) (entries 2)
     rw [hptr, hlen]
     exact hNew3
+
+/-- An arbitrary external live raw polynomial survives both actual generated
+row updates.  The proof follows the first call, reconstructs the unchanged
+`(0,1)` descriptors and representations, and then follows the second call. -/
+theorem hgcdTwoRowUpdates_preserve_guard (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch guard : RawPtr UInt64)
+    (guardLen : Nat) (heap : RawHeap) (row23 row01 : MatRowUpdateResult)
+    (hM : M.Valid) (h23 : row23.matrix.Valid)
+    (quotient guardPoly : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (workspace23 : MatRowUpdateWorkspace M (2 : Fin 4) (3 : Fin 4)
+      Q lenQ T t scratch heap hM)
+    (guard23 : MatRowUpdateGuardWorkspace M (2 : Fin 4) Q lenQ T t
+      scratch guard guardLen hM)
+    (workspace01 : MatRowUpdateWorkspace row23.matrix (0 : Fin 4)
+      (1 : Fin 4) Q lenQ row23.T row23.t scratch row23.heap h23)
+    (guard01 : MatRowUpdateGuardWorkspace row23.matrix (0 : Fin 4) Q
+      lenQ row23.T row23.t scratch guard guardLen h23)
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
+    (hGuardRep : RawDensePolyRep this heap guard guardLen guardPoly)
+    (hrow23 : dense_upoly_zp__mat_row_update_ir this M
+      (2 : Fin 4) (3 : Fin 4) Q lenQ T lenT t scratch heap = .ok row23)
+    (hrow01 : dense_upoly_zp__mat_row_update_ir this row23.matrix
+      (0 : Fin 4) (1 : Fin 4) Q lenQ row23.T row23.lenT row23.t
+      scratch row23.heap = .ok row01) :
+    RawDensePolyRep this row01.heap guard guardLen guardPoly := by
+  have hE0 := hMatrix (0 : Fin 4)
+  have hE1 := hMatrix (1 : Fin 4)
+  have hE2 := hMatrix (2 : Fin 4)
+  have hE3 := hMatrix (3 : Fin 4)
+  have hGuard23 := matRowUpdate_preserves_guard_of_workspaces this M
+    (2 : Fin 4) (3 : Fin 4) Q lenQ T lenT t scratch guard guardLen heap
+    row23 hM quotient (entries 2) (entries 3) guardPoly (by decide) hcfg hp
+    workspace23 guard23 hQRep hE2 hE3 hGuardRep hrow23
+  have hQ23 := matRowUpdate_preserves_quotient_of_workspace this M
+    (2 : Fin 4) (3 : Fin 4) Q lenQ T lenT t scratch heap row23 hM
+    quotient (entries 2) (entries 3) (by decide) hcfg hp workspace23
+    hQRep hE2 hE3 hrow23
+  have hE0Old23 := matRowUpdate_preserves_matrix_entry_of_workspace this M
+    (2 : Fin 4) (3 : Fin 4) (0 : Fin 4) Q lenQ T lenT t scratch heap
+    row23 hM quotient (entries 2) (entries 3) (entries 0) (by decide)
+    (by decide) hcfg hp workspace23 hQRep hE2 hE3 hE0 hrow23
+  have hE1Old23 := matRowUpdate_preserves_matrix_entry_of_workspace this M
+    (2 : Fin 4) (3 : Fin 4) (1 : Fin 4) Q lenQ T lenT t scratch heap
+    row23 hM quotient (entries 2) (entries 3) (entries 1) (by decide)
+    (by decide) hcfg hp workspace23 hQRep hE2 hE3 hE1 hrow23
+  rcases hgcdTwoRowUpdates_descriptor_frame this M Q lenQ T lenT t scratch
+      heap row23 row01 hM hrow23 hrow01 with
+    ⟨h23Frame, _, hframe23, _⟩
+  have hh23Frame : h23Frame = h23 := Subsingleton.elim _ _
+  subst h23Frame
+  have hE0_23 : RawDensePolyRep this row23.heap
+      (hgcdMatPtr row23.matrix h23 (0 : Fin 4))
+      (hgcdMatLen row23.matrix h23 (0 : Fin 4)) (entries 0) := by
+    have hptr : hgcdMatPtr row23.matrix h23 (0 : Fin 4) =
+        hgcdMatPtr M hM (0 : Fin 4) := by
+      simpa only using (hframe23 (0 : Fin 2)).1
+    have hlen : hgcdMatLen row23.matrix h23 (0 : Fin 4) =
+        hgcdMatLen M hM (0 : Fin 4) := by
+      simpa only using (hframe23 (0 : Fin 2)).2
+    rw [hptr, hlen]
+    exact hE0Old23
+  have hE1_23 : RawDensePolyRep this row23.heap
+      (hgcdMatPtr row23.matrix h23 (1 : Fin 4))
+      (hgcdMatLen row23.matrix h23 (1 : Fin 4)) (entries 1) := by
+    have hptr : hgcdMatPtr row23.matrix h23 (1 : Fin 4) =
+        hgcdMatPtr M hM (1 : Fin 4) := by
+      simpa only using (hframe23 (1 : Fin 2)).1
+    have hlen : hgcdMatLen row23.matrix h23 (1 : Fin 4) =
+        hgcdMatLen M hM (1 : Fin 4) := by
+      simpa only using (hframe23 (1 : Fin 2)).2
+    rw [hptr, hlen]
+    exact hE1Old23
+  exact matRowUpdate_preserves_guard_of_workspaces this row23.matrix
+    (0 : Fin 4) (1 : Fin 4) Q lenQ row23.T row23.lenT row23.t scratch
+    guard guardLen row23.heap row01 h23 quotient (entries 0) (entries 1)
+    guardPoly (by decide) hcfg hp workspace01 guard01 hQ23 hE0_23 hE1_23
+    hGuard23 hrow01
 
 end CLPoly.Impl.StrictHGCDRawRefinement

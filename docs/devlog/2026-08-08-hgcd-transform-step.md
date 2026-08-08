@@ -20,6 +20,7 @@
 - 将每次 row update 所需的缓冲区有效性和别名条件封装为纯 L1 的 `MatRowUpdateWorkspace`，不在其中预设任何 L2 运算结果。
 - 证明两个实际生成的 `_mat_row_update` 调用共同得到完整四条目 `hgcdStepEntries` raw 表示；证明过程中显式保持 quotient、未选中矩阵条目及描述符，而不是直接改写为数学矩阵公式。
 - 加强共享的 `polyDivrem_next_state` raw→safe 桥，保留真实 `_poly_divrem` 已证明的除法恒等式，并将它传入 HGCD 单轮接口；此前该接口只保留 gcd 等式，无法闭合矩阵变换不变量。
+- 定义外部 live polynomial 的 `MatRowUpdateGuardWorkspace`，并证明任意满足物理分离条件的 raw 多项式经过两次实际 row update 后保持；这将用于把当前 divisor 和 divrem remainder 传给下一轮 HGCD 状态。
 
 ## 为什么做
 

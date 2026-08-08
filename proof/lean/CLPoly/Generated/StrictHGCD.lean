@@ -417,4 +417,73 @@ theorem hgcdMatRestoreLoop_preserves_valid_len
 termination_by 4 - i
 decreasing_by omega
 
+/-- Pure descriptor effect of the generated restore loop.  Keeping it separate
+from the heap operation makes the exact four pointer writes explicit without
+assigning any polynomial meaning to the copied bytes. -/
+def hgcdMatRestorePointers (original : HgcdMat) (hOriginal : original.Valid) :
+    (poly : Array (RawPtr UInt64)) → (hPoly : poly.size = 4) →
+      (i : Nat) → Array (RawPtr UInt64)
+  | poly, hPoly, i =>
+    if hi : i < 4 then
+      hgcdMatRestorePointers original hOriginal
+        (poly.set i (hgcdMatPtrRaw original hOriginal ⟨i, hi⟩)
+          (by rw [hPoly]; exact hi))
+        (by simp [hPoly]) (i + 1)
+    else
+      poly
+termination_by poly hPoly i => 4 - i
+decreasing_by omega
+
+theorem hgcdMatRestorePointers_size (original : HgcdMat)
+    (hOriginal : original.Valid) (poly : Array (RawPtr UInt64))
+    (hPoly : poly.size = 4) (i : Nat) :
+    (hgcdMatRestorePointers original hOriginal poly hPoly i).size = poly.size := by
+  rw [hgcdMatRestorePointers]
+  split
+  next hi =>
+    rw [hgcdMatRestorePointers_size]
+    simp
+  next hstop => rfl
+termination_by 4 - i
+decreasing_by omega
+
+/-- A successful generated restore loop has exactly the descriptor-pointer
+effect described by `hgcdMatRestorePointers`. -/
+theorem hgcdMatRestoreLoop_poly_eq
+    (original current : HgcdMat)
+    (hOriginal : original.Valid) (hCurrent : current.Valid)
+    (stage : RawPtr UInt64) (i off : Nat) (heap : RawHeap)
+    (result : HgcdMatRestoreResult)
+    (hrun : hgcdMatRestoreLoop original current hOriginal hCurrent stage
+      i off heap = .ok result) :
+    result.matrix.poly = hgcdMatRestorePointers original hOriginal current.poly
+      hCurrent.1 i := by
+  rw [hgcdMatRestoreLoop] at hrun
+  split at hrun
+  next hi =>
+    dsimp only at hrun
+    split at hrun
+    next fault hcopy => simp at hrun
+    next heap1 hcopy =>
+      let index : Fin 4 := ⟨i, hi⟩
+      let poly' := current.poly.set i (hgcdMatPtrRaw original hOriginal index)
+        (by rw [hCurrent.1]; omega)
+      let next : HgcdMat := { current with poly := poly' }
+      have hNext : next.Valid := by
+        exact ⟨by simp [next, poly', hCurrent.1], hCurrent.2⟩
+      have hrec := hgcdMatRestoreLoop_poly_eq original next hOriginal hNext
+        stage (i + 1) (off + hgcdMatLenRaw current hCurrent index)
+        heap1 result hrun
+      rw [hgcdMatRestorePointers]
+      simp only [hi, ↓reduceDIte]
+      exact hrec
+  next hstop =>
+    have heq : ({ heap := heap, matrix := current, off := off } :
+        HgcdMatRestoreResult) = result := Except.ok.inj hrun
+    subst result
+    rw [hgcdMatRestorePointers]
+    simp only [hstop, ↓reduceDIte]
+termination_by 4 - i
+decreasing_by omega
+
 end Generated.StrictHGCD

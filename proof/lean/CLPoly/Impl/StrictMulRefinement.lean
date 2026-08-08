@@ -113,6 +113,135 @@ theorem karAssembleLoop_ok (this : DenseUPolyZp)
 termination_by count - i
 decreasing_by omega
 
+theorem karAddHalvesLoop_preserves_outside (this : DenseUPolyZp)
+    (A B t1 t2 guard : RawPtr UInt64) (m i readIndex : Nat)
+    (heap heap' : RawHeap) (old : UInt64)
+    (hA : heap.ValidU64Slice A (2 * m))
+    (hB : heap.ValidU64Slice B (2 * m))
+    (hT1 : heap.ValidU64Slice t1 m)
+    (hT2 : heap.ValidU64Slice t2 m)
+    (hread : heap.readU64 guard readIndex = .ok old)
+    (hout1 : ∀ j, i ≤ j → j < m → t1.region ≠ guard.region ∨
+      t1.limbOffset + j ≠ guard.limbOffset + readIndex)
+    (hout2 : ∀ j, i ≤ j → j < m → t2.region ≠ guard.region ∨
+      t2.limbOffset + j ≠ guard.limbOffset + readIndex)
+    (hrun : karAddHalvesLoop this A B t1 t2 m i heap = .ok heap') :
+    heap'.readU64 guard readIndex = .ok old := by
+  unfold karAddHalvesLoop at hrun
+  split at hrun
+  next hi =>
+    rcases heap.readU64_of_valid A (2 * m) i hA (by omega) with ⟨alo, halo⟩
+    simp only [halo] at hrun
+    rcases heap.readU64_of_valid A (2 * m) (m + i) hA (by omega) with
+      ⟨ahi, hahi⟩
+    simp only [hahi] at hrun
+    rcases heap.readU64_of_valid B (2 * m) i hB (by omega) with ⟨blo, hblo⟩
+    simp only [hblo] at hrun
+    rcases heap.readU64_of_valid B (2 * m) (m + i) hB (by omega) with
+      ⟨bhi, hbhi⟩
+    simp only [hbhi] at hrun
+    let av := dense_upoly_zp_nmod_add_ir this alo ahi
+    rcases heap.writeU64_of_valid t1 m i av hT1 hi with ⟨heap1, hw1⟩
+    simp only [av, hw1] at hrun
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 t1 guard i
+      readIndex av old hw1 hread (hout1 i (Nat.le_refl _) hi)
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 t1 i av hw1
+    let bv := dense_upoly_zp_nmod_add_ir this blo bhi
+    rcases heap1.writeU64_of_valid t2 m i bv ((hlayout1 t2 m).mp hT2) hi with
+      ⟨heap2, hw2⟩
+    simp only [bv, hw2] at hrun
+    have hread2 := RawHeap.readU64_writeU64_ne heap1 heap2 t2 guard i
+      readIndex bv old hw2 hread1 (hout2 i (Nat.le_refl _) hi)
+    have hlayout2 := RawHeap.writeU64_sameLayout heap1 heap2 t2 i bv hw2
+    apply karAddHalvesLoop_preserves_outside this A B t1 t2 guard m (i + 1)
+      readIndex heap2 heap' old
+      ((hlayout2 A (2 * m)).mp ((hlayout1 A (2 * m)).mp hA))
+      ((hlayout2 B (2 * m)).mp ((hlayout1 B (2 * m)).mp hB))
+      ((hlayout2 t1 m).mp ((hlayout1 t1 m).mp hT1))
+      ((hlayout2 t2 m).mp ((hlayout1 t2 m).mp hT2)) hread2
+    · intro j hij hjm
+      exact hout1 j (by omega) hjm
+    · intro j hij hjm
+      exact hout2 j (by omega) hjm
+    · exact hrun
+  next hnot =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+termination_by m - i
+decreasing_by omega
+
+theorem karSubLoop_preserves_outside (this : DenseUPolyZp)
+    (dst sub guard : RawPtr UInt64) (count i readIndex : Nat)
+    (heap heap' : RawHeap) (old : UInt64)
+    (hDst : heap.ValidU64Slice dst count)
+    (hSub : heap.ValidU64Slice sub count)
+    (hread : heap.readU64 guard readIndex = .ok old)
+    (hout : ∀ j, i ≤ j → j < count → dst.region ≠ guard.region ∨
+      dst.limbOffset + j ≠ guard.limbOffset + readIndex)
+    (hrun : karSubLoop this dst sub count i heap = .ok heap') :
+    heap'.readU64 guard readIndex = .ok old := by
+  unfold karSubLoop at hrun
+  split at hrun
+  next hi =>
+    rcases heap.readU64_of_valid dst count i hDst hi with ⟨a, ha⟩
+    simp only [ha] at hrun
+    rcases heap.readU64_of_valid sub count i hSub hi with ⟨b, hb⟩
+    simp only [hb] at hrun
+    let value := dense_upoly_zp_nmod_sub_ir this a b
+    rcases heap.writeU64_of_valid dst count i value hDst hi with ⟨heap1, hw⟩
+    simp only [value, hw] at hrun
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 dst guard i
+      readIndex value old hw hread (hout i (Nat.le_refl _) hi)
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 dst i value hw
+    apply karSubLoop_preserves_outside this dst sub guard count (i + 1)
+      readIndex heap1 heap' old ((hlayout1 dst count).mp hDst)
+      ((hlayout1 sub count).mp hSub) hread1
+    · intro j hij hjc
+      exact hout j (by omega) hjc
+    · exact hrun
+  next hnot =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+termination_by count - i
+decreasing_by omega
+
+theorem karAssembleLoop_preserves_outside (this : DenseUPolyZp)
+    (C sP1 guard : RawPtr UInt64) (m count i readIndex : Nat)
+    (heap heap' : RawHeap) (old : UInt64)
+    (hC : heap.ValidU64Slice C (m + count))
+    (hP1 : heap.ValidU64Slice sP1 count)
+    (hread : heap.readU64 guard readIndex = .ok old)
+    (hout : ∀ j, i ≤ j → j < count → C.region ≠ guard.region ∨
+      C.limbOffset + (m + j) ≠ guard.limbOffset + readIndex)
+    (hrun : karAssembleLoop this C sP1 m count i heap = .ok heap') :
+    heap'.readU64 guard readIndex = .ok old := by
+  unfold karAssembleLoop at hrun
+  split at hrun
+  next hi =>
+    rcases heap.readU64_of_valid C (m + count) (m + i) hC (by omega) with
+      ⟨base, hbase⟩
+    simp only [hbase] at hrun
+    rcases heap.readU64_of_valid sP1 count i hP1 hi with ⟨cross, hcross⟩
+    simp only [hcross] at hrun
+    let value := dense_upoly_zp_nmod_add_ir this base cross
+    rcases heap.writeU64_of_valid C (m + count) (m + i) value hC (by omega) with
+      ⟨heap1, hw⟩
+    simp only [value, hw] at hrun
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 C guard (m + i)
+      readIndex value old hw hread (hout i (Nat.le_refl _) hi)
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 C (m + i) value hw
+    apply karAssembleLoop_preserves_outside this C sP1 guard m count (i + 1)
+      readIndex heap1 heap' old ((hlayout1 C (m + count)).mp hC)
+      ((hlayout1 sP1 count).mp hP1) hread1
+    · intro j hij hjc
+      exact hout j (by omega) hjc
+    · exact hrun
+  next hnot =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+termination_by count - i
+decreasing_by omega
+
 /-- Mathematical value of the exact raw cells visited by the C++ dot loop.
 It shares the loop's reads and failure behavior, but performs unbounded natural
 addition so that machine accumulation can be related to it explicitly. -/

@@ -1,5 +1,6 @@
 import CLPoly.Impl.RawPolynomialRep
 import CLPoly.Impl.StrictWordArithmetic
+import CLPoly.Generated.StrictEuclidGCD
 
 namespace CLPoly.Impl.StrictDivremRefinement
 
@@ -294,6 +295,30 @@ theorem normaliseU64_ok (heap : RawHeap) (ptr : RawPtr UInt64) (len : Nat)
       rcases normaliseU64_ok heap ptr n hprefix with ⟨result, hresult, hle⟩
       exact ⟨result, hresult, by omega⟩
     next hnonzero => exact ⟨n + 1, rfl, Nat.le_refl _⟩
+
+/-- Any successful normalization result is bounded by its input length.  This
+control-flow fact does not require a separate validity premise. -/
+theorem normaliseU64_result_le (heap : RawHeap) (ptr : RawPtr UInt64)
+    (len result : Nat) (hrun : heap.normaliseU64 ptr len = .ok result) :
+    result ≤ len := by
+  cases len with
+  | zero =>
+      simp only [RawHeap.normaliseU64] at hrun
+      exact Nat.le_of_eq (Except.ok.inj hrun).symm
+  | succ n =>
+      simp only [RawHeap.normaliseU64] at hrun
+      generalize hread : heap.readU64 ptr n = readResult at hrun
+      cases readResult with
+      | error fault => simp [hread] at hrun
+      | ok value =>
+          simp only [hread] at hrun
+          split at hrun
+          next =>
+            exact Nat.le_trans
+              (normaliseU64_result_le heap ptr n result hrun) (by omega)
+          next =>
+            have heq : result = n + 1 := Except.ok.inj hrun.symm
+            omega
 
 /-- Exact content specification of generated `_poly_normalise`: the returned
 prefix discards only zero trailing limbs, and a nonempty returned prefix ends
@@ -3770,6 +3795,88 @@ theorem polyDivrem_refines (this : DenseUPolyZp)
         · exact Or.inr (by simpa [hdivisorDegree] using hlt)
       exact ⟨heap', lenQ, lenR, quotient, remainder, hrun, hquotient,
         hremainder, halgebra, hdegree', by simpa using hlenQ, by omega⟩
+
+/-- The result length of every successful generated division call is smaller
+than the nonempty divisor length.  This is the proof-erased termination
+certificate consumed by the raw Euclid loop. -/
+theorem polyDivrem_success_lenR_lt (this : DenseUPolyZp)
+    (Q R A B : RawPtr UInt64) (lenA lenB : Nat)
+    (W3 : RawPtr Word3) (heap heap' : RawHeap) (lenQ lenR : Nat)
+    (hlenB : 0 < lenB)
+    (hrun : dense_upoly_zp__poly_divrem_ir this Q R A lenA B lenB W3 heap =
+      .ok (heap', lenQ, lenR)) :
+    lenR < lenB := by
+  cases lenB with
+  | zero => omega
+  | succ d =>
+    simp only [dense_upoly_zp__poly_divrem_ir] at hrun
+    split at hrun
+    next hshort =>
+      generalize hcopy : heap.copyU64 R A lenA = copyResult at hrun
+      cases copyResult with
+      | error fault => simp [hcopy] at hrun
+      | ok copied =>
+          simp only [hcopy] at hrun
+          have hlen : lenR = lenA := by
+            exact congrArg (fun result => result.2.2) (Except.ok.inj hrun).symm
+          omega
+    next hlong =>
+      generalize hread : heap.readU64 B d = readResult at hrun
+      cases readResult with
+      | error fault => simp [hread] at hrun
+      | ok lead =>
+        simp only [hread] at hrun
+        let invLc := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+        generalize hinit : initW3Loop heap A W3 lenA 0 = initResult at hrun
+        cases initResult with
+        | error fault => simp [hinit] at hrun
+        | ok heap1 =>
+          simp only [hinit] at hrun
+          generalize hquot : quotientLoop this Q B W3 d invLc heap1
+              (lenA - d) = quotientResult at hrun
+          cases quotientResult with
+          | error fault => simp [hquot] at hrun
+          | ok heap2 =>
+            simp only [hquot] at hrun
+            generalize hrem : remainderLoop this R W3 d 0 heap2 =
+                remainderResult at hrun
+            cases remainderResult with
+            | error fault => simp [hrem] at hrun
+            | ok heap3 =>
+              simp only [hrem] at hrun
+              generalize hnormQ : heap3.normaliseU64 Q (lenA - d) =
+                  normQResult at hrun
+              cases normQResult with
+              | error fault => simp [hnormQ] at hrun
+              | ok resultQ =>
+                simp only [hnormQ] at hrun
+                generalize hnormR : heap3.normaliseU64 R d =
+                    normRResult at hrun
+                cases normRResult with
+                | error fault => simp [hnormR] at hrun
+                | ok resultR =>
+                  simp only [hnormR] at hrun
+                  have hresult : resultR = lenR := by
+                    exact congrArg (fun result => result.2.2)
+                      (Except.ok.inj hrun)
+                  have hle := normaliseU64_result_le heap3 R d resultR hnormR
+                  omega
+
+/-- Concrete well-foundedness certificate for the generated raw Euclid
+loop, obtained solely from the successful C++ division control flow. -/
+theorem euclidDivremLengthDecreases (this : DenseUPolyZp)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) :
+    Generated.StrictEuclidGCD.DivremLengthDecreases this Q W3 := by
+  intro heap A B R lenA lenB heap' lenQ lenR hlenB hrun
+  exact polyDivrem_success_lenR_lt this Q R A B lenA lenB W3 heap heap'
+    lenQ lenR hlenB hrun
+
+/-- The proof-instantiated raw Euclid execution used by strict GCD
+refinement. -/
+def strictEuclidLoop (this : DenseUPolyZp) (Q : RawPtr UInt64)
+    (W3 : RawPtr Word3) :=
+  Generated.StrictEuclidGCD.euclidLoop this Q W3
+    (euclidDivremLengthDecreases this Q W3)
 
 /-- Under exactly the capacities documented on the C++ raw API,
 `_poly_divrem` cannot take `RawFault`.  This theorem is only the termination

@@ -24,6 +24,7 @@ from pass1_parse import parse_pass
 
 
 AST_SHA256 = "1b6f7b4200ddd82c6c7a632c2b89c87cf7fd8781e1eee8816597db630b305656"
+LEAN = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictEuclidGCD.lean"
 
 
 def walk_statements(stmts):
@@ -67,6 +68,20 @@ def main() -> None:
         raise SystemExit(f"gcd Euclid buffer rotation drift: missing {missing}")
     if "<method>._gcd_hgcd" not in repr(hir.body):
         raise SystemExit("gcd no longer exposes the HGCD branch separately")
+    source = LEAN.read_text()
+    forbidden = ("sorry", "partial def", "fuel", "oracle", "fallback",
+                 "Generated.Corpus", "Array.get!", "Array.set!")
+    found = [token for token in forbidden if token in source]
+    if found:
+        raise SystemExit(f"strict Euclid lowering contains forbidden constructs: {found}")
+    required = (
+        "dense_upoly_zp__poly_divrem_ir this Q R A lenA B",
+        "euclidLoop this Q W3 hdec heap' B (lenB + 1) R lenR A",
+        "termination_by heap A lenA B lenB R => lenB",
+    )
+    missing_lean = [fragment for fragment in required if fragment not in source]
+    if missing_lean:
+        raise SystemExit(f"strict Euclid lowering drift: missing {missing_lean}")
     print("PASS: gcd AST has the admitted Euclid divrem/move rotation and HGCD split")
 
 

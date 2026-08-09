@@ -378,3 +378,11 @@ every generated range-for and recursive loop used by SQF.
   size 严格下降提升到 `pairVecDivVHCConsumeEqualDegree`，其结果直接满足
   后续 reverse reinsertion 所需的 `HeapChainsOwnedAway + LinReady`。
   下一步将此组合定理接入 outer iteration 的 activate/reinsert 分支。
+- outer iteration 的 activation 隔离缺口已闭合。`VHC_insert` 的完整
+  away 保持核心被推广为接受由表示不变量证明的显式 freshness；
+  protected-node 重插仍由原包装定理自动推出 freshness。对真实
+  `reset_h` activation 循环，`mono = none` 证明待激活节点不属于活动
+  `lin`，exact ownership 证明它不在 heap/owner 中；随后真实 activate
+  写入和 `VHC_insert` 保持同一个 `lin` protected set。按 `resetH`
+  良基递归，最终同时保留 `HeapChainsOwnedAway` 与 `LinReady`，可直接
+  交给已经闭合的 reverse reinsertion 定理。

@@ -2279,6 +2279,21 @@ theorem PairVecDivVHCCursorPrefixAbove.mono
   exact Nat.le_trans hlimits
     (hprefix i node hget q quotientTerm divisorTerm hq hquotient hdivisor)
 
+theorem PairVecDivVHCCursorPrefixAbove.earlier_product_degree_gt
+    (degreeLimit frontierDegree : Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient divisor : SparsePolyZp)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontierDegree < degreeLimit)
+    (i : Nat) (node : PairVecDivVHCNode) (hget : nodes[i]? = some node)
+    (q : Nat) (quotientTerm divisorTerm : UMonomial × Zp)
+    (hearlier : q < node.quotientIndex)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[node.divisorIndex]? = some divisorTerm) :
+    frontierDegree < quotientTerm.1.deg + divisorTerm.1.deg := by
+  have habove := hprefix i node hget q quotientTerm divisorTerm hearlier
+    hquotient hdivisor
+  omega
+
 theorem PairVecDivVHCCursorPrefixAbove.push
     (degreeLimit : Nat) (nodes : Array PairVecDivVHCNode)
     (quotient divisor : SparsePolyZp) (term : UMonomial × Zp)
@@ -3741,6 +3756,70 @@ theorem canonical_degree_lt_of_index_lt (p : Nat)
     (by simpa using hi) (by simpa using hj) hij
   rw [Array.getElem_toList hi, Array.getElem_toList hj] at horder
   exact horder
+
+theorem PairVecDivVHCNodeDenotes.later_product_degree_lt
+    (p : Nat) (quotient divisor : SparsePolyZp)
+    (node : PairVecDivVHCNode) (degree q : Nat)
+    (quotientTerm divisorTerm : UMonomial × Zp)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
+    (hmono : node.mono = some ⟨degree⟩)
+    (hlater : node.quotientIndex < q)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[node.divisorIndex]? = some divisorTerm) :
+    quotientTerm.1.deg + divisorTerm.1.deg < degree := by
+  rcases hdenotes with
+    ⟨currentQuotient, currentDivisor, hcurrentQuotient, hcurrentDivisor,
+      hstoredMono⟩
+  have hcurrentIndex : node.quotientIndex < quotient.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hcurrentQuotient
+    contradiction
+  have hq : q < quotient.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hquotient
+    contradiction
+  have hdegreeLt := canonical_degree_lt_of_index_lt p quotient hcanonical
+    node.quotientIndex q hcurrentIndex hq hlater
+  rw [Array.getElem?_eq_getElem hcurrentIndex] at hcurrentQuotient
+  rw [Array.getElem?_eq_getElem hq] at hquotient
+  simp only [Option.some.injEq] at hcurrentQuotient hquotient
+  have hcurrentDegree : currentQuotient.1.deg + currentDivisor.1.deg =
+      degree := by
+    rw [hmono] at hstoredMono
+    exact congrArg UMonomial.deg (Option.some.inj hstoredMono).symm
+  rw [hdivisor] at hcurrentDivisor
+  simp only [Option.some.injEq] at hcurrentDivisor
+  subst currentDivisor
+  subst currentQuotient
+  subst quotientTerm
+  omega
+
+theorem pairVecDivVHCProductAtFrontier_eq_cursor
+    (p degreeLimit frontierDegree : Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) (i q : Nat)
+    (node : PairVecDivVHCNode) (quotientTerm divisorTerm : UMonomial × Zp)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontierDegree < degreeLimit)
+    (hget : nodes[i]? = some node)
+    (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
+    (hmono : node.mono = some ⟨frontierDegree⟩)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[node.divisorIndex]? = some divisorTerm)
+    (hdegree : quotientTerm.1.deg + divisorTerm.1.deg = frontierDegree) :
+    q = node.quotientIndex := by
+  rcases Nat.lt_trichotomy q node.quotientIndex with hearlier | heq | hlater
+  · have habove := hprefix.earlier_product_degree_gt degreeLimit
+      frontierDegree nodes quotient divisor hfrontier i node hget q
+      quotientTerm divisorTerm hearlier hquotient hdivisor
+    omega
+  · exact heq
+  · have hbelow := hdenotes.later_product_degree_lt p quotient divisor node
+      frontierDegree q quotientTerm divisorTerm hcanonical hmono hlater
+      hquotient hdivisor
+    omega
 
 theorem pairVecDivVHCNode_advanced_degree_lt (p : Nat)
     (quotient divisor : SparsePolyZp)

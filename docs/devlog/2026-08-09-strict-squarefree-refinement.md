@@ -710,3 +710,17 @@ every generated range-for and recursive loop used by SQF.
   良基 outer-loop 下一轮的 strict upper bound。下一步将该不变式
   线程到完整 outer-loop，然后用 prefix+严格下降的 quotient 后缀
   闭合当前 frontier 卷积项的 completeness/no-duplicate。
+- 当前 frontier 卷积项已完成 cursor 定位的核心排他证明。对
+  任意真实 node 与其固定 divisor tail cell：若 quotient 下标严格
+  早于当前 cursor，processed-prefix 与上一轮 strict frontier bound 给出
+  乘积次数严格高于当前 frontier；若下标严格晚于 cursor，
+  quotient canonical 的严格次数递减与 `NodeDenotes` 给出乘积次数
+  严格低于当前 node mono/frontier。两侧合并后，新定理
+  `pairVecDivVHCProductAtFrontier_eq_cursor` 证明任何次数恰等于
+  frontier 的 quotient×divisor-tail 存储乘积，其 quotient 下标必然
+  精确等于该 node 的当前 cursor。这已排除同一 divisor row 中
+  prefix/suffix 遗漏或重复的可能。同时确认 outer-loop 还需显式
+  重建 reinsertion 后的 heap-chain homogeneity，不会将它作为未证假设
+  塞入递归。下一步用 node total coverage+fixed divisor indices 把该
+  row-local 定位提升到所有 divisor-tail rows，并补齐重插入后的
+  homogeneity 恢复。

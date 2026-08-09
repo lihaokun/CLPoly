@@ -6836,6 +6836,39 @@ theorem pairVecDivVHCSetNext_chainOwns_insert
           exact hfresh hi)
       simpa [hfresh] using htail'
 
+theorem pairVecDivVHCSetNext_chainAtDegree_insert
+    (nodeIndex : Nat) (next : Option Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (node : PairVecDivVHCNode) (mono : UMonomial) (tailOwner : Finset Nat)
+    (degree : Nat) (hnode : nodes[nodeIndex]? = some node)
+    (hmono : node.mono = some mono) (hmonoDegree : mono.deg = degree)
+    (hfresh : nodeIndex ∉ tailOwner)
+    (htail : PairVecDivVHCChainAtDegree next tailOwner nodes degree)
+    (hrun : pairVecDivVHCSetNext nodeIndex next nodes = .ok nodes') :
+    PairVecDivVHCChainAtDegree (some nodeIndex) (insert nodeIndex tailOwner)
+      nodes' degree := by
+  unfold pairVecDivVHCSetNext at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    simp only [Except.ok.injEq] at hrun
+    subst nodes'
+    rw [Array.getElem?_eq_getElem hn] at hnode
+    simp only [Option.some.injEq] at hnode
+    subst node
+    rw [PairVecDivVHCChainAtDegree]
+    simp only [Finset.mem_insert, true_or, ↓reduceDIte]
+    refine ⟨{ nodes[nodeIndex] with next := next }, mono, ?_, hmono,
+      hmonoDegree, ?_⟩
+    · rw [Array.getElem?_set_self hn]
+    · have htail' := pairVecDivVHCChainAtDegree_congr_on next tailOwner nodes
+        (nodes.set nodeIndex { nodes[nodeIndex] with next := next }) degree htail
+        (by
+          intro i hi
+          rw [Array.getElem?_set_ne hn]
+          intro heq
+          subst i
+          exact hfresh hi)
+      simpa [hfresh] using htail'
+
 theorem pairVecDivVHCSetNext_preserves_disjoint_chain
     (nodeIndex : Nat) (next : Option Nat) (nodes nodes' : Array PairVecDivVHCNode)
     (current : Option Nat) (owner : Finset Nat)
@@ -7102,6 +7135,16 @@ def PairVecDivVHCHeapChainsHomogeneous (heap : Array Nat)
   ∀ (slot head : Nat) (mono : UMonomial), heap[slot]? = some head →
     pairVecDivVHCMono head nodes = .ok mono →
       PairVecDivVHCChainAtDegree (some head) (owners head) nodes mono.deg
+
+theorem PairVecDivVHCHeapChainsHomogeneous.of_valuesFrom
+    (source target : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous source owners nodes)
+    (hfrom : PairVecDivVHCValuesFrom target source) :
+    PairVecDivVHCHeapChainsHomogeneous target owners nodes := by
+  intro slot head mono hget hmono
+  rcases hfrom slot head hget with ⟨sourceSlot, hsource⟩
+  exact hhomogeneous sourceSlot head mono hsource hmono
 
 theorem pairVecDivVHCRootOwner_subset_ownedNodesAtDegree
     (degree : Nat) (heap : Array Nat) (owners : Nat → Finset Nat)
@@ -8821,6 +8864,107 @@ theorem pairVecDivVHCSetNext_preserves_mono_read
           { nodes[nodeIndex] with next := next }).size := by
           simpa only [Array.size_set] using hi
       simp only [hi, hiSet, ↓reduceDIte]
+
+theorem pairVecDivVHCHeapChainsHomogeneous_push_fresh
+    (heap : Array Nat) (owners : Nat → Finset Nat) (newNode : Nat)
+    (nodes nodes' : Array PairVecDivVHCNode) (node : PairVecDivVHCNode)
+    (mono : UMonomial)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some mono)
+    (hfreshHead : ∀ slot : Nat, heap[slot]? ≠ some newNode)
+    (hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+      newNode ∉ owners head)
+    (hset : pairVecDivVHCSetNext newNode none nodes = .ok nodes') :
+    PairVecDivVHCHeapChainsHomogeneous (heap.push newNode)
+      (fun head => if head = newNode then {newNode} else owners head) nodes' := by
+  intro slot head headMono hget hheadMono
+  rw [Array.getElem?_push] at hget
+  by_cases hlast : slot = heap.size
+  · subst slot
+    simp only [ite_true, Option.some.injEq] at hget
+    subst head
+    have hnewRun : pairVecDivVHCMono newNode nodes = .ok mono :=
+      (pairVecDivVHCMono_eq_ok_iff newNode nodes mono).2 ⟨node, hnode, hmono⟩
+    rw [pairVecDivVHCSetNext_preserves_mono_read newNode none nodes nodes' hset
+      newNode, hnewRun] at hheadMono
+    have hdegree : mono.deg = headMono.deg :=
+      congrArg UMonomial.deg (Except.ok.inj hheadMono)
+    simpa only [hdegree] using
+      pairVecDivVHCSetNext_chainAtDegree_insert newNode none nodes
+      nodes' node mono ∅ mono.deg hnode hmono rfl (by simp)
+      (by simp [PairVecDivVHCChainAtDegree]) hset
+  · simp only [hlast, ↓reduceIte] at hget
+    have hheadNe : head ≠ newNode := by
+      intro heq
+      subst head
+      exact hfreshHead slot hget
+    simp only [hheadNe, ↓reduceIte]
+    rw [pairVecDivVHCSetNext_preserves_mono_read newNode none nodes nodes' hset
+      head] at hheadMono
+    have hold := hhomogeneous slot head headMono hget hheadMono
+    exact pairVecDivVHCChainAtDegree_congr_on (some head) (owners head) nodes
+      nodes' headMono.deg hold (by
+        intro i hi
+        exact pairVecDivVHCSetNext_get_ne newNode none nodes nodes' hset i
+          (by
+            intro heq
+            subst i
+            exact hfreshOwners slot head hget hi))
+
+theorem pairVecDivVHCHeapChainsHomogeneous_merge_fresh
+    (heap : Array Nat) (owners : Nat → Finset Nat) (slot newNode : Nat)
+    (nodes nodes' : Array PairVecDivVHCNode) (node : PairVecDivVHCNode)
+    (newMono oldMono : UMonomial) (hslot : slot < heap.size)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some newMono)
+    (holdMono : pairVecDivVHCMono heap[slot] nodes = .ok oldMono)
+    (hdegree : newMono.deg = oldMono.deg)
+    (hfreshHead : ∀ i : Nat, heap[i]? ≠ some newNode)
+    (hfreshOwners : ∀ (i head : Nat), heap[i]? = some head →
+      newNode ∉ owners head)
+    (hset : pairVecDivVHCSetNext newNode (some heap[slot]) nodes = .ok nodes') :
+    PairVecDivVHCHeapChainsHomogeneous (heap.set slot newNode)
+      (fun head => if head = newNode then insert newNode (owners heap[slot])
+        else owners head) nodes' := by
+  intro targetSlot head headMono hget hheadMono
+  by_cases hat : slot = targetSlot
+  · subst targetSlot
+    rw [Array.getElem?_set_self hslot] at hget
+    simp only [Option.some.injEq] at hget
+    subst head
+    have hnewRun : pairVecDivVHCMono newNode nodes = .ok newMono :=
+      (pairVecDivVHCMono_eq_ok_iff newNode nodes newMono).2
+        ⟨node, hnode, hmono⟩
+    rw [pairVecDivVHCSetNext_preserves_mono_read newNode
+      (some heap[slot]) nodes nodes' hset newNode, hnewRun] at hheadMono
+    have hheadDegree : newMono.deg = headMono.deg :=
+      congrArg UMonomial.deg (Except.ok.inj hheadMono)
+    have htail := hhomogeneous slot heap[slot] oldMono
+      (Array.getElem?_eq_getElem hslot) holdMono
+    have hnewDegree := pairVecDivVHCSetNext_chainAtDegree_insert newNode
+      (some heap[slot]) nodes nodes' node newMono (owners heap[slot])
+      oldMono.deg hnode hmono hdegree (hfreshOwners slot heap[slot]
+        (Array.getElem?_eq_getElem hslot)) htail hset
+    have holdHeadDegree : oldMono.deg = headMono.deg :=
+      hdegree.symm.trans hheadDegree
+    simpa only [holdHeadDegree] using hnewDegree
+  · rw [Array.getElem?_set_ne hslot hat] at hget
+    have hheadNe : head ≠ newNode := by
+      intro heq
+      subst head
+      exact hfreshHead targetSlot hget
+    simp only [hheadNe, ↓reduceIte]
+    rw [pairVecDivVHCSetNext_preserves_mono_read newNode
+      (some heap[slot]) nodes nodes' hset head] at hheadMono
+    have hold := hhomogeneous targetSlot head headMono hget hheadMono
+    exact pairVecDivVHCChainAtDegree_congr_on (some head) (owners head) nodes
+      nodes' headMono.deg hold (by
+        intro i hi
+        exact pairVecDivVHCSetNext_get_ne newNode (some heap[slot]) nodes nodes'
+          hset i (by
+            intro heq
+            subst i
+            exact hfreshOwners targetSlot head hget hi))
 
 theorem pairVecDivVHCSetNext_preserves_heapOrdered
     (nodeIndex : Nat) (next : Option Nat) (heap : Array Nat)

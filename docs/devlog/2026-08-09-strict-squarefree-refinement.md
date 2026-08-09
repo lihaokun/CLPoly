@@ -1192,3 +1192,13 @@ every generated range-for and recursive loop used by SQF.
   至此 outer loop 每轮所需的 heap 排列前提可以递归传递；下一步将它与
   homogeneous ownership、cursor prefix、processed quotient lead 和系数
   agreement 打包进全局良基递归证明。
+- equal-degree bucket 的底层 homogeneous 写入语义已闭合。
+  `pairVecDivVHCSetNext_chainAtDegree_insert` 直接证明真实 `set_next` 将新鲜
+  节点接到既有同次数 tail 后，整个扩展链仍在指定次数；
+  `pairVecDivVHCHeapChainsHomogeneous_push_fresh` 覆盖 `next := none` 的新
+  单节点 bucket，并用 owner freshness 将其他 bucket 穿过节点写入；
+  `pairVecDivVHCHeapChainsHomogeneous_merge_fresh` 覆盖 equal-root/anchor
+  合并，显式使用新旧 head 的次数相等，而非全局假设所有节点均 active。
+  `PairVecDivVHCHeapChainsHomogeneous.of_valuesFrom` 则允许 bubble 只重排
+  heap head 时运输该性质。下一步将三者按完整 insertion 分支组合，再
+  沿 activation/reinsertion/outer iteration 递归传递。

@@ -987,6 +987,323 @@ theorem hgcdMatApplyQuotient_succeeds (this : DenseUPolyZp)
   · simpa [result, hgcdMatApplyQuotientEntries] using hSecondSemantic.1
   · simpa [result] using hSecondSemantic.2
 
+/-- Non-circular physical stages for the two products and selected tail of
+one generated `_mat_mul_entry`. -/
+structure HgcdMatMulEntryTotalWorkspace (this : DenseUPolyZp)
+    (heap : RawHeap) (C P Q R S T scratch : RawPtr UInt64)
+    (lenP lenQ lenR lenS : Nat) : Type where
+  first : HgcdMulTermWorkspace heap C P lenP Q lenQ scratch
+  afterFirst : ∀ productPQ,
+    hgcdRecursiveMulTerm this C P lenP Q lenQ scratch heap = .ok productPQ →
+    HgcdMulTermWorkspace productPQ.heap T R lenR S lenS scratch ∧
+      U64SlicesDisjoint C (hgcdMulCapacity lenP lenQ) R lenR ∧
+      U64SlicesDisjoint scratch (8 * max lenP lenQ) R lenR ∧
+      U64SlicesDisjoint C (hgcdMulCapacity lenP lenQ) S lenS ∧
+      U64SlicesDisjoint scratch (8 * max lenP lenQ) S lenS
+  afterSecond : ∀ productPQ productRS,
+    hgcdRecursiveMulTerm this C P lenP Q lenQ scratch heap = .ok productPQ →
+    hgcdRecursiveMulTerm this T R lenR S lenS scratch productPQ.heap =
+      .ok productRS →
+    U64SlicesDisjoint T (hgcdMulCapacity lenR lenS) C productPQ.length ∧
+      U64SlicesDisjoint scratch (8 * max lenR lenS) C productPQ.length ∧
+      productRS.heap.ValidU64Slice C
+        (max productPQ.length productRS.length) ∧
+      ExactOrDisjoint C T ∧
+      U64SlicesDisjoint C productRS.length T productRS.length
+
+/-- Total semantic execution of both guarded products and the exact one of
+four source tails selected by their returned lengths. -/
+theorem hgcdMatMulEntry_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (C P Q R S T scratch : RawPtr UInt64)
+    (lenP lenQ lenR lenS : Nat) (heap : RawHeap)
+    (polyP polyQ polyR polyS : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdMatMulEntryTotalWorkspace this heap C P Q R S T scratch
+      lenP lenQ lenR lenS)
+    (hP : RawDensePolyRep this heap P lenP polyP)
+    (hQ : RawDensePolyRep this heap Q lenQ polyQ)
+    (hR : RawDensePolyRep this heap R lenR polyR)
+    (hS : RawDensePolyRep this heap S lenS polyS) :
+    ∃ result,
+      hgcdMatMulEntry this C P Q R S T scratch lenP lenQ lenR lenS heap =
+        .ok result ∧
+      RawDensePolyRep this result.heap C result.length
+        (polyP * polyQ + polyR * polyS) := by
+  rcases hgcdRecursiveMulTerm_refines this C P lenP Q lenQ scratch heap polyP
+      polyQ hcfg hp physical.first hP hQ with
+    ⟨productPQ, hPQ, hLayoutPQ, hPQRep⟩
+  rcases physical.afterFirst productPQ hPQ with
+    ⟨hSecondWork, hFirstDstR, hFirstScratchR, hFirstDstS, hFirstScratchS⟩
+  have hRPrefix := hgcdRecursiveMulTerm_preserves_guard this C P lenP Q lenQ
+    scratch R lenR heap productPQ physical.first hP.1 hQ.1 hFirstDstR
+    hFirstScratchR hPQ
+  have hSPrefix := hgcdRecursiveMulTerm_preserves_guard this C P lenP Q lenQ
+    scratch S lenS heap productPQ physical.first hP.1 hQ.1 hFirstDstS
+    hFirstScratchS hPQ
+  have hR1 :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      heap productPQ.heap R lenR polyR hLayoutPQ hRPrefix hR
+  have hS1 :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      heap productPQ.heap S lenS polyS hLayoutPQ hSPrefix hS
+  rcases hgcdRecursiveMulTerm_refines this T R lenR S lenS scratch
+      productPQ.heap polyR polyS hcfg hp hSecondWork hR1 hS1 with
+    ⟨productRS, hRS, hLayoutRS, hRSRep⟩
+  rcases physical.afterSecond productPQ productRS hPQ hRS with
+    ⟨hSecondDstC, hSecondScratchC, hFinalCValid, hAddAliasT, hCopyCT⟩
+  have hCPrefix := hgcdRecursiveMulTerm_preserves_guard this T R lenR S lenS
+    scratch C productPQ.length productPQ.heap productRS hSecondWork hR1.1
+    hS1.1 hSecondDstC hSecondScratchC hRS
+  have hPQRep2 :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      productPQ.heap productRS.heap C productPQ.length (polyP * polyQ)
+      hLayoutRS hCPrefix hPQRep
+  have oldPhysical : HgcdMatMulEntryWorkspaceProvider this heap C P Q R S T
+      scratch lenP lenQ lenR lenS := by
+    intro actualPQ actualRS hActualPQ hActualRS
+    have hpqEq : actualPQ = productPQ :=
+      Except.ok.inj (hActualPQ.symm.trans hPQ)
+    subst actualPQ
+    have hrsEq : actualRS = productRS :=
+      Except.ok.inj (hActualRS.symm.trans hRS)
+    subst actualRS
+    exact {
+      first := physical.first
+      second := hSecondWork
+      firstDstR := hFirstDstR
+      firstScratchR := hFirstScratchR
+      firstDstS := hFirstDstS
+      firstScratchS := hFirstScratchS
+      secondDstC := hSecondDstC
+      secondScratchC := hSecondScratchC
+      finalCValid := hFinalCValid
+      addAliasT := hAddAliasT
+      copyCT := hCopyCT }
+  by_cases hPQPos : 0 < productPQ.length
+  · by_cases hRSPos : 0 < productRS.length
+    · rcases polyAdd_succeeds this C C T productPQ.length productRS.length
+          productRS.heap hFinalCValid hPQRep2.1 hRSRep.1 (Or.inl rfl)
+          hAddAliasT with ⟨heap3, length, hadd, _⟩
+      let result : HgcdMatMulEntryResult := ⟨heap3, length⟩
+      have hrun : hgcdMatMulEntry this C P Q R S T scratch lenP lenQ lenR
+          lenS heap = .ok result := by
+        simp [result, hgcdMatMulEntry, hPQ, hRS, hPQPos, hRSPos, hadd]
+      exact ⟨result, hrun, hgcdMatMulEntry_refines this C P Q R S T scratch
+        lenP lenQ lenR lenS heap result polyP polyQ polyR polyS hcfg hp
+        oldPhysical hP hQ hR hS hrun⟩
+    · let result : HgcdMatMulEntryResult :=
+        ⟨productRS.heap, productPQ.length⟩
+      have hrun : hgcdMatMulEntry this C P Q R S T scratch lenP lenQ lenR
+          lenS heap = .ok result := by
+        simp [result, hgcdMatMulEntry, hPQ, hRS, hPQPos, hRSPos]
+      exact ⟨result, hrun, hgcdMatMulEntry_refines this C P Q R S T scratch
+        lenP lenQ lenR lenS heap result polyP polyQ polyR polyS hcfg hp
+        oldPhysical hP hQ hR hS hrun⟩
+  · by_cases hRSPos : 0 < productRS.length
+    · have hCValid := productRS.heap.validU64Slice_mono C
+          (max productPQ.length productRS.length) productRS.length
+          hFinalCValid (Nat.le_max_right _ _)
+      rcases copyU64_refines_rawDense this productRS.heap C T productRS.length
+          (polyR * polyS) hCValid hCopyCT hRSRep with
+        ⟨heap3, hcopy, _, _⟩
+      let result : HgcdMatMulEntryResult := ⟨heap3, productRS.length⟩
+      have hrun : hgcdMatMulEntry this C P Q R S T scratch lenP lenQ lenR
+          lenS heap = .ok result := by
+        simp [result, hgcdMatMulEntry, hPQ, hRS, hPQPos, hRSPos, hcopy]
+      exact ⟨result, hrun, hgcdMatMulEntry_refines this C P Q R S T scratch
+        lenP lenQ lenR lenS heap result polyP polyQ polyR polyS hcfg hp
+        oldPhysical hP hQ hR hS hrun⟩
+    · let result : HgcdMatMulEntryResult := ⟨productRS.heap, 0⟩
+      have hrun : hgcdMatMulEntry this C P Q R S T scratch lenP lenQ lenR
+          lenS heap = .ok result := by
+        simp [result, hgcdMatMulEntry, hPQ, hRS, hPQPos, hRSPos]
+      exact ⟨result, hrun, hgcdMatMulEntry_refines this C P Q R S T scratch
+        lenP lenQ lenR lenS heap result polyP polyQ polyR polyS hcfg hp
+        oldPhysical hP hQ hR hS hrun⟩
+
+/-- Total entry workspaces plus the purely spatial frame provider for every
+concrete state of the four-entry matrix multiplication loop. -/
+structure HgcdMatMulLoopTotalWorkspace (this : DenseUPolyZp)
+    (A B : HgcdMat) (hA : A.Valid) (hB : B.Valid)
+    (T scratch : RawPtr UInt64) : Type where
+  conditional : HgcdMatMulLoopWorkspaceProvider this A B hA hB T scratch
+  entry : ∀ (C : HgcdMat) (hC : C.Valid) (i : Nat) (hi : i < 4)
+    (heap : RawHeap),
+    HgcdMatMulEntryTotalWorkspace this heap
+      (hgcdMatPtr C hC ⟨i, hi⟩)
+      (hgcdMatPtr A hA ⟨2 * (i / 2), by omega⟩)
+      (hgcdMatPtr B hB ⟨i % 2, by omega⟩)
+      (hgcdMatPtr A hA ⟨2 * (i / 2) + 1, by omega⟩)
+      (hgcdMatPtr B hB ⟨2 + i % 2, by omega⟩) T scratch
+      (hgcdMatLen A hA ⟨2 * (i / 2), by omega⟩)
+      (hgcdMatLen B hB ⟨i % 2, by omega⟩)
+      (hgcdMatLen A hA ⟨2 * (i / 2) + 1, by omega⟩)
+      (hgcdMatLen B hB ⟨2 + i % 2, by omega⟩)
+
+/-- Total execution of the generated four-entry matrix loop. -/
+theorem hgcdMatMulLoop_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (A B : HgcdMat) (hA : A.Valid) (hB : B.Valid)
+    (T scratch : RawPtr UInt64)
+    (left right : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdMatMulLoopTotalWorkspace this A B hA hB T scratch) :
+    ∀ (C : HgcdMat) (hC : C.Valid) (i : Nat) (heap : RawHeap),
+      HgcdMatRawDenseRep this heap A left hA →
+      HgcdMatRawDenseRep this heap B right hB →
+      ∃ result,
+        hgcdMatMulLoop this A B hA hB T scratch C hC i heap = .ok result
+  | C, hC, i, heap, hLeft, hRight => by
+      by_cases hi : i < 4
+      · let out : Fin 4 := ⟨i, hi⟩
+        let rowBase : Fin 4 := ⟨2 * (i / 2), by omega⟩
+        let rowNext : Fin 4 := ⟨2 * (i / 2) + 1, by omega⟩
+        let col : Fin 4 := ⟨i % 2, by omega⟩
+        let lowerCol : Fin 4 := ⟨2 + i % 2, by omega⟩
+        have htotal := physical.entry C hC i hi heap
+        rcases hgcdMatMulEntry_succeeds this (hgcdMatPtr C hC out)
+            (hgcdMatPtr A hA rowBase) (hgcdMatPtr B hB col)
+            (hgcdMatPtr A hA rowNext) (hgcdMatPtr B hB lowerCol) T scratch
+            (hgcdMatLen A hA rowBase) (hgcdMatLen B hB col)
+            (hgcdMatLen A hA rowNext) (hgcdMatLen B hB lowerCol) heap
+            (left rowBase) (right col) (left rowNext) (right lowerCol) hcfg hp
+            htotal (hLeft rowBase) (hRight col) (hLeft rowNext)
+            (hRight lowerCol) with ⟨entry, hentry, _⟩
+        have hstep := physical.conditional C hC i hi heap
+        have hLeft1 : HgcdMatRawDenseRep this entry.heap A left hA := by
+          intro j
+          exact (hgcdMatMulEntry_preserves_rawDenseRep this
+            (hgcdMatPtr C hC out) (hgcdMatPtr A hA rowBase)
+            (hgcdMatPtr B hB col) (hgcdMatPtr A hA rowNext)
+            (hgcdMatPtr B hB lowerCol) T scratch (hgcdMatPtr A hA j)
+            (hgcdMatLen A hA rowBase) (hgcdMatLen B hB col)
+            (hgcdMatLen A hA rowNext) (hgcdMatLen B hB lowerCol)
+            (hgcdMatLen A hA j) heap entry (left rowBase) (right col)
+            (left rowNext) (right lowerCol) (left j) hcfg hp hstep.entry
+            (hstep.frameA j) (hLeft rowBase) (hRight col) (hLeft rowNext)
+            (hRight lowerCol) (hLeft j) hentry).2
+        have hRight1 : HgcdMatRawDenseRep this entry.heap B right hB := by
+          intro j
+          exact (hgcdMatMulEntry_preserves_rawDenseRep this
+            (hgcdMatPtr C hC out) (hgcdMatPtr A hA rowBase)
+            (hgcdMatPtr B hB col) (hgcdMatPtr A hA rowNext)
+            (hgcdMatPtr B hB lowerCol) T scratch (hgcdMatPtr B hB j)
+            (hgcdMatLen A hA rowBase) (hgcdMatLen B hB col)
+            (hgcdMatLen A hA rowNext) (hgcdMatLen B hB lowerCol)
+            (hgcdMatLen B hB j) heap entry (left rowBase) (right col)
+            (left rowNext) (right lowerCol) (right j) hcfg hp hstep.entry
+            (hstep.frameB j) (hLeft rowBase) (hRight col) (hLeft rowNext)
+            (hRight lowerCol) (hRight j) hentry).2
+        let nextLen := C.len.set i entry.length (by rw [hC.2]; exact hi)
+        let next : HgcdMat := { C with len := nextLen }
+        have hNext : next.Valid :=
+          ⟨hC.1, by simp [next, nextLen, hC.2]⟩
+        rcases hgcdMatMulLoop_succeeds this A B hA hB T scratch left right
+            hcfg hp physical next hNext (i + 1) entry.heap hLeft1 hRight1 with
+          ⟨result, htail⟩
+        refine ⟨result, ?_⟩
+        rw [hgcdMatMulLoop]
+        rw [dif_pos hi]
+        dsimp only
+        have hentryRaw : hgcdMatMulEntry this
+            (hgcdMatPtrRaw C hC out) (hgcdMatPtrRaw A hA rowBase)
+            (hgcdMatPtrRaw B hB col) (hgcdMatPtrRaw A hA rowNext)
+            (hgcdMatPtrRaw B hB lowerCol) T scratch
+            (hgcdMatLenRaw A hA rowBase) (hgcdMatLenRaw B hB col)
+            (hgcdMatLenRaw A hA rowNext) (hgcdMatLenRaw B hB lowerCol) heap =
+              .ok entry := by
+          simpa only [hgcdMatPtrRaw, hgcdMatPtr, hgcdMatLenRaw, hgcdMatLen]
+            using hentry
+        rw [hentryRaw]
+        simpa [next, nextLen, out, rowBase, rowNext, col, lowerCol] using htail
+      · refine ⟨⟨heap, C⟩, ?_⟩
+        rw [hgcdMatMulLoop, dif_neg hi]
+termination_by C _hC i heap _hLeft _hRight => 4 - i
+decreasing_by omega
+
+/-- Total semantic execution of the complete generated `_mat_mul`. -/
+theorem hgcdMatMul_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (C A B : HgcdMat) (hC : C.Valid) (hA : A.Valid) (hB : B.Valid)
+    (T scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdMatMulLoopTotalWorkspace this A B hA hB T scratch)
+    (hLeft : HgcdMatRawDenseRep this heap A left hA)
+    (hRight : HgcdMatRawDenseRep this heap B right hB) :
+    ∃ result hResult,
+      hgcdMatMul this C A B hC hA hB T scratch heap = .ok result ∧
+      HgcdMatRawDenseRep this result.heap result.matrix
+        (hgcdMatProductEntry left right) hResult := by
+  rcases hgcdMatMulLoop_succeeds this A B hA hB T scratch left right hcfg hp
+      physical C hC 0 heap hLeft hRight with ⟨result, hrun⟩
+  have hsemantic := hgcdMatMul_refines this C A B hC hA hB T scratch heap
+    result left right hcfg hp physical.conditional hLeft hRight (by
+      simpa [hgcdMatMul] using hrun)
+  rcases hsemantic.2.2 with ⟨hResult, hProduct⟩
+  exact ⟨result, hResult, by simpa [hgcdMatMul] using hrun, hProduct⟩
+
+/-- Physical facts and the remaining workspace after the quotient update in
+the final recursive combine block. -/
+structure HgcdRecursiveCombineMatrixAfterQuotient (this : DenseUPolyZp)
+    (R : HgcdMat) (hR : R.Valid) (a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) (modified : HgcdMatQuotientResult) : Type where
+  layout : RawHeap.SameLayout heap modified.heap
+  rightPrefix : ∀ i : Fin 4, SameU64Prefix heap modified.heap
+    (hgcdMatPtr R hR i) (hgcdMatLen R hR i)
+  multiply : HgcdMatMulLoopTotalWorkspace this R modified.matrix hR
+    modified.valid a2 scratch
+
+/-- Staged physical safety for the quotient update followed by the complete
+matrix multiplication in the final recursive combine block. -/
+structure HgcdRecursiveCombineMatrixTotalWorkspace (this : DenseUPolyZp)
+    (R S : HgcdMat) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) : Type where
+  quotient : HgcdMatApplyQuotientTotalWorkspace this S hS q lenQ T scratch
+    heap
+  afterQuotient : ∀ modified,
+    hgcdMatApplyQuotient this S hS q lenQ T scratch heap = .ok modified →
+    HgcdRecursiveCombineMatrixAfterQuotient this R hR a2 scratch heap modified
+
+/-- Total semantic execution of the exact quotient update and full matrix
+product selected by `_hgcd_recursive`. -/
+theorem hgcdRecursiveCombineMatrix_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M R S : HgcdMat) (hM : M.Valid) (hR : R.Valid) (hS : S.Valid)
+    (q : RawPtr UInt64) (lenQ : Nat) (T a2 scratch : RawPtr UInt64)
+    (heap : RawHeap) (right entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveCombineMatrixTotalWorkspace this R S hR hS q
+      lenQ T a2 scratch heap)
+    (hRight : HgcdMatRawDenseRep this heap R right hR)
+    (hSRep : HgcdMatRawDenseRep this heap S entries hS)
+    (hQ : RawDensePolyRep this heap q lenQ quotient) :
+    ∃ result hResult,
+      hgcdRecursiveCombineMatrix this M R S hM hR hS q lenQ T a2 scratch
+        heap = .ok result ∧
+      HgcdMatRawDenseRep this result.heap result.matrix
+        (hgcdMatProductEntry right
+          (hgcdMatApplyQuotientEntries entries quotient)) hResult := by
+  rcases hgcdMatApplyQuotient_succeeds this S hS q lenQ T scratch heap entries
+      quotient hcfg hp physical.quotient hQ hSRep with
+    ⟨modified, hmodified, hModifiedRep, _⟩
+  rcases physical.afterQuotient modified hmodified with
+    ⟨hLayout, hRightPrefix, hMultiply⟩
+  have hRightModified : HgcdMatRawDenseRep this modified.heap R right hR := by
+    intro i
+    exact CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix
+      this heap modified.heap (hgcdMatPtr R hR i) (hgcdMatLen R hR i)
+      (right i) hLayout (hRightPrefix i) (hRight i)
+  rcases hgcdMatMul_succeeds this M R modified.matrix hM hR modified.valid a2
+      scratch modified.heap right (hgcdMatApplyQuotientEntries entries quotient)
+      hcfg hp hMultiply hRightModified hModifiedRep with
+    ⟨result, hResult, hmul, hProduct⟩
+  refine ⟨result, hResult, ?_, hProduct⟩
+  simp [hgcdRecursiveCombineMatrix, hmodified, hmul]
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

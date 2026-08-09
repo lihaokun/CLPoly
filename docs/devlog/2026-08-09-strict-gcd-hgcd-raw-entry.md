@@ -162,9 +162,40 @@ and refine `(1,3)`.  The generated wrapper is exactly the second result with
 its validity witness, so this staged composition proves the complete quotient
 application total and semantic.
 
+### Staged matrix-entry totality proof draft
+
+For `_mat_mul_entry`, supply the first guarded-product workspace before any
+execution.  After its actual result, frame the second product's two inputs and
+supply its workspace.  After the actual second result, frame the stored first
+product and supply only the physical facts for the selected tail: common
+destination capacity, add aliasing, and copy disjointness.  If both products
+are nonzero, run total `_poly_add`; if only the first is nonzero, return its
+existing buffer; if only the second is nonzero, run the real copy; if both are
+zero, return length zero.  Repackage these staged facts as the older
+conditional semantic workspace only after both product executions have been
+constructed, then apply the exact-call semantic theorem.  Thus no product or
+tail success is assumed.
+
+For complete `_mat_mul`, provide both the staged total entry workspace and the
+existing purely spatial step frame at every concrete loop state.  Execute the
+entry for index `i`, use the frame theorem on that same execution to retain
+both input matrices, update only the generated output length descriptor, and
+continue at `i+1`.  The source loop has exactly four entries, so recursion is
+on `4-i`.  Once its total raw execution is constructed, apply the existing
+exact-run matrix refinement to obtain all four product entries from that same
+execution.
+
+For the final combine block, execute the now-total two-column quotient update
+on `S`.  Its actual result frames every entry of the left matrix `R` and
+supplies the total four-entry multiplication workspace for `R * modifiedS`.
+Run that generated matrix multiplication and package the two exact calls as
+`hgcdRecursiveCombineMatrix`; the returned raw matrix is the L2 product already
+proved for those same calls.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
+- `proof/lean/CLPoly/Impl/StrictGCDHGCDRefinement.lean`
 - `proof/cpp2lean_v2/tests/check_strict_hgcd_source.py`
 - `docs/devlog/2026-08-09-strict-gcd-hgcd-raw-entry.md`
 
@@ -178,3 +209,7 @@ application total and semantic.
   的阈值分派和 HGCD 主循环。
 - 本轮增量：约 2 小时、4 轮编译—修复、Lean 约 330 行；完成 staged
   单迭代总执行及真实余式长度上的完整 iterator 良基总执行。
+- 后续增量：约 2 小时、7 轮编译—修复、Lean 约 320 行；完成矩阵乘法
+  单项、四项循环以及最终商更新后矩阵组合块的 staged 总执行。所有成功
+  等式均由实际生成函数调用构造，旧的条件式语义工作空间只在调用成功后
+  用于提取 L2 语义。

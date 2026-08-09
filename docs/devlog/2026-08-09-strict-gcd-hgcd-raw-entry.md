@@ -115,6 +115,14 @@ the same concrete divrem execution.  The strict source gate, focused build,
 and axiom audit all pass; the new theorems depend only on `propext`,
 `Classical.choice`, and `Quot.sound`.
 
+For the enclosing `_hgcd_iter`, first execute the real identity-matrix
+initialization and the two ordered input copies using `hgcdIterInit_refines`.
+Those exact writes produce the initial raw identity transform.  Feed that
+returned state—not a reconstructed alternative—into the total loop theorem,
+then rewrite the generated `_hgcd_iter` match with the initialization equality
+and the returned loop equality.  This yields total execution and the final
+raw transform/gcd invariant for the complete generated helper.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

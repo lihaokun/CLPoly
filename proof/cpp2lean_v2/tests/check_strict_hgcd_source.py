@@ -402,6 +402,7 @@ def main() -> None:
         "hgcdIteration_succeeds",
         "HgcdIterTotalWorkspaceProvider",
         "hgcdIterLoop_succeeds",
+        "hgcdIter_succeeds",
         "GcdHgcdLoopEuclidWorkspaceProvider",
         "GcdHgcdDivremWorkspace",
         "GcdHgcdDynamicDivremWorkspaceProvider",

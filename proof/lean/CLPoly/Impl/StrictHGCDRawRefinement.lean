@@ -10704,6 +10704,37 @@ theorem hgcdRecursiveExec_ext_value
           exact congrArg Except.ok
             (HgcdRecursiveResult.ext_value leftResult rightResult hvalue)
 
+/-- View an ordinary source-shaped recursive call as a callback below any
+larger bound.  The two order/decrease witnesses are proof-only and do not
+change the generated execution. -/
+def hgcdRecursiveCallBelowOfCall (bound : Nat)
+    (plain : HgcdRecursiveCall) : HgcdRecursiveCallBelow bound :=
+  fun M hM computeM A B a b lenA lenB W scratch heap _ _ =>
+    plain M hM computeM A B a b lenA lenB W scratch heap
+
+/-- Proof erasure of `hgcdRecursiveCallBelowOfCall` is definitionally the
+ordinary callback execution at every actual smaller call. -/
+theorem hgcdRecursiveCallBelowOfCall_apply (bound : Nat)
+    (plain : HgcdRecursiveCall)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (horder : lenB < lenA) (hdecrease : lenA < bound) :
+    hgcdRecursiveCallBelowOfCall bound plain M hM computeM A B a b lenA lenB
+        W scratch heap horder hdecrease =
+      plain M hM computeM A B a b lenA lenB W scratch heap := rfl
+
+/-- A plain callback satisfies the generated HGCD recursive equation when
+each invocation unfolds to the exact source body with that same callback. -/
+def HgcdRecursiveCallUnfolds (this : DenseUPolyZp)
+    (plain : HgcdRecursiveCall) : Prop :=
+  ∀ (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap),
+    plain M hM computeM A B a b lenA lenB W scratch heap =
+      hgcdRecursiveBody this plain M hM computeM A B a b lenA lenB W scratch
+        heap
+
 /-- The proof-indexed well-founded body is the exact source-shaped body after
 erasing only its strict-decrease proofs. -/
 theorem hgcdRecursiveBodyBelow_eq_body (this : DenseUPolyZp)
@@ -11238,6 +11269,66 @@ theorem hgcdRecursiveBodyBranchAdmissible_eq_body (this : DenseUPolyZp)
     exact hgcdRecursiveBodyBelow_eq_body this bound below plain M hM computeM
       A B a b lenA lenB W scratch heap hbound horder
       (fun _ => providers.1) (fun _ => providers.2) hagrees
+
+/-- Specialization of branch-local admissibility to the proof-erased view of
+one ordinary recursive call.  The resulting execution is exactly the
+generated source body using that same call as its recursive callback. -/
+theorem hgcdRecursiveBodyBranchAdmissible_belowOfCall_eq_body
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (plain : HgcdRecursiveCall)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (nonBase : ¬ lenB < lenA / 2 + 1 →
+      HgcdRecursiveNonBasePackage this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB
+        heap)
+    (recursiveRefines : ∀ hbase,
+      HgcdRecursiveNonBaseCallbackRefines this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB
+        heap (nonBase hbase)) :
+    hgcdRecursiveBodyBranchAdmissible this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) M hM computeM A B a b lenA
+        lenB W scratch heap hcfg hp hbound horder nonBase recursiveRefines =
+      hgcdRecursiveBody this plain M hM computeM A B a b lenA lenB W scratch
+        heap := by
+  apply hgcdRecursiveBodyBranchAdmissible_eq_body this bound
+    (hgcdRecursiveCallBelowOfCall bound plain) plain M hM computeM A B a b
+    lenA lenB W scratch heap hcfg hp hbound horder nonBase recursiveRefines
+  intro matrix hMatrix a3 b3 inputA inputB lenInputA lenInputB WNext
+    childScratch childHeap hchildOrder hchildDecrease
+  rfl
+
+/-- If `plain` is a solution of the genuine generated recursive equation,
+the branch-admissible well-founded body computes exactly that recursive call.
+This is the execution equality used to transfer the strong-induction theorem
+back to the C++-shaped L1 entry. -/
+theorem hgcdRecursiveBodyBranchAdmissible_belowOfCall_eq_call
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (plain : HgcdRecursiveCall) (hunfold : HgcdRecursiveCallUnfolds this plain)
+    (bound : Nat) (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (nonBase : ¬ lenB < lenA / 2 + 1 →
+      HgcdRecursiveNonBasePackage this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB
+        heap)
+    (recursiveRefines : ∀ hbase,
+      HgcdRecursiveNonBaseCallbackRefines this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB
+        heap (nonBase hbase)) :
+    hgcdRecursiveBodyBranchAdmissible this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) M hM computeM A B a b lenA
+        lenB W scratch heap hcfg hp hbound horder nonBase recursiveRefines =
+      plain M hM computeM A B a b lenA lenB W scratch heap := by
+  exact (hgcdRecursiveBodyBranchAdmissible_belowOfCall_eq_body this bound plain
+    M hM computeM A B a b lenA lenB W scratch heap hcfg hp hbound horder
+    nonBase recursiveRefines).trans
+      (hunfold M hM computeM A B a b lenA lenB W scratch heap).symm
 
 /-- Uniform semantic theorem for one branch-admissible well-founded body.
 The caller supplies physical evidence only for the branch that the generated

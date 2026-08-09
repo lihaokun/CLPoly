@@ -19,6 +19,10 @@
 - Added a uniform theorem for the complete branch-admissible body.  It selects
   the base workspace or the successful non-base continuation from the actual
   generated guard and result.
+- Added the proof-erasing adapter from an ordinary recursive callback to a
+  strictly-smaller callback, the genuine generated recursive-equation
+  predicate, and execution equalities back to both the source body and any
+  callback satisfying that equation.
 
 ## Why
 
@@ -40,6 +44,8 @@ hypotheses.
 - The non-base package must prove that its reconstructed mathematical inputs
   are exactly the caller's represented polynomials; an arbitrary preselected
   specification value cannot be substituted.
+- The decrease witnesses passed through the adapter are erased (`rfl` at an
+  actual call), so this bridge adds no executable counter or alternate path.
 - No fuel parameter or L2 fallback was introduced.
 
 ## Problems and resolution

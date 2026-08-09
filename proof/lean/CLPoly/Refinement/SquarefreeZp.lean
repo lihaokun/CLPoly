@@ -2133,6 +2133,65 @@ theorem pairVecDivVHCConsumeNode_progress (this : DenseUPolyZp)
               right
               simp
 
+theorem pairVecDivVHCConsumeNode_coefficient_reduced
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp) (hp : this._p ≠ 0)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    k'.toNat < this._p.toNat := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+          quotient[nodes[nodeIndex].quotientIndex].2.val
+          divisor[nodes[nodeIndex].divisorIndex].2.val
+        have hquotientMem : quotient[nodes[nodeIndex].quotientIndex] ∈
+            quotient.toList := Array.getElem_mem_toList hq
+        have ha := (hcanonical.1 quotient[nodes[nodeIndex].quotientIndex]
+          hquotientMem).2
+        have hproductNat :=
+          CLPoly.Impl.StrictWordArithmetic.nmod_mul_ir_correct_of_configured
+            this quotient[nodes[nodeIndex].quotientIndex].2.val
+              divisor[nodes[nodeIndex].divisorIndex].2.val hcfg ha
+        change product.toNat = _ at hproductNat
+        have hpNat : 0 < this._p.toNat := by
+          by_contra hzero
+          have : this._p.toNat = 0 := by omega
+          exact hp (UInt64.toNat_inj.mp (by simpa using this))
+        have hproduct : product < this._p := by
+          rw [UInt64.lt_iff_toNat_lt, hproductNat]
+          exact Nat.mod_lt _ hpNat
+        have hkWord : k < this._p := by
+          simpa [UInt64.lt_iff_toNat_lt] using hk
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          have hlt := CLPoly.Impl.StrictPolyAddSubRefinement.nmodSub_lt this k
+            product hp hkWord hproduct
+          simpa [pairVecDivSubmulIR, UInt64.lt_iff_toNat_lt] using hlt
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              have hlt :=
+                CLPoly.Impl.StrictPolyAddSubRefinement.nmodSub_lt this k
+                  product hp hkWord hproduct
+              simpa [pairVecDivSubmulIR, UInt64.lt_iff_toNat_lt] using hlt
+
 theorem pairVecDivVHCConsumeNode_get_ne (this : DenseUPolyZp)
     (nodeIndex : Nat) (k k' : UInt64)
     (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
@@ -2261,6 +2320,61 @@ termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+theorem pairVecDivVHCConsumeChain_coefficient_reduced
+    (this : DenseUPolyZp) (current : Option Nat) (unvisited : Finset Nat)
+    (k : UInt64) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (resetH : Nat) (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCBucketResult) (hp : this._p ≠ 0)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    result.coefficient.toNat < this._p.toNat := by
+  cases current with
+  | none =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      exact hk
+  | some nodeIndex =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      split at hrun <;> try contradiction
+      next hmem =>
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            have hk' := pairVecDivVHCConsumeNode_coefficient_reduced this
+              nodeIndex k k' nodes nodes' lin lin' resetH resetH' next quotient
+              divisor hp hcfg hcanonical hk hconsume
+            exact pairVecDivVHCConsumeChain_coefficient_reduced this next
+              (unvisited.erase nodeIndex) k' nodes' lin' resetH' quotient
+              divisor result hp hcfg hcanonical hk' hrun
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeRootBucket_coefficient_reduced
+    (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (hp : this._p ≠ 0)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    result.coefficient.toNat < this._p.toNat := by
+  unfold pairVecDivVHCConsumeRootBucket at hrun
+  split at hrun <;> try contradiction
+  next hheap =>
+    exact pairVecDivVHCConsumeChain_coefficient_reduced this (some heap[0])
+      (Finset.range nodes.size) k nodes lin resetH quotient divisor result hp
+      hcfg hcanonical hk hrun
+
 /-- Result after the source has consumed every heap bucket whose root
 monomial equals the current outer-loop monomial. -/
 structure PairVecDivVHCEqualDegreeResult where
@@ -2310,6 +2424,56 @@ theorem pairVecDivVHCConsumeEqualDegree_empty (this : DenseUPolyZp)
         .ok (PairVecDivVHCEqualDegreeResult.mk #[] k nodes lin resetH) := by
   rw [pairVecDivVHCConsumeEqualDegree]
   simp
+
+theorem pairVecDivVHCConsumeEqualDegree_coefficient_reduced
+    (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult) (hp : this._p ≠ 0)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    result.coefficient.toNat < this._p.toNat := by
+  induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
+      nodes lin resetH result with
+  | h size ih =>
+      rw [pairVecDivVHCConsumeEqualDegree] at hrun
+      by_cases hheap : 0 < heap.size
+      · simp only [hheap, ↓reduceDIte] at hrun
+        cases hmono : pairVecDivVHCMono heap[0] nodes with
+        | error fault => simp [hmono] at hrun
+        | ok rootMono =>
+            simp only [hmono] at hrun
+            by_cases hequal : rootMono.deg = degree
+            · simp only [hequal, ↓reduceDIte] at hrun
+              cases hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes
+                  lin resetH quotient divisor with
+              | error fault => simp [hconsume] at hrun
+              | ok bucket =>
+                  simp only [dif_pos trivial, hconsume] at hrun
+                  cases hchecked : pairVecDivVHCExtractChecked heap
+                      bucket.nodes with
+                  | error fault => simp [hchecked] at hrun
+                  | ok extracted =>
+                      rw [hchecked] at hrun
+                      have hk' :=
+                        pairVecDivVHCConsumeRootBucket_coefficient_reduced this
+                          heap k nodes lin resetH quotient divisor bucket hp
+                          hcfg hcanonical hk hconsume
+                      have hsmaller : extracted.1.size < size := by
+                        rw [← hsize]
+                        omega
+                      exact ih extracted.1.size hsmaller extracted.1
+                        bucket.coefficient bucket.nodes bucket.lin bucket.resetH
+                        result hk' hrun rfl
+            · simp only [hequal, ↓reduceDIte, Except.ok.injEq] at hrun
+              subst result
+              exact hk
+      · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
+        subst result
+        exact hk
 
 structure PairVecDivVHCHeapState where
   heap : Array Nat
@@ -2429,6 +2593,45 @@ theorem pairVecDivVHCSelectFrontier_index (dividendIndex : Nat)
         simp only [Except.ok.injEq] at hrun
         subst frontier
         simp
+
+theorem pairVecDivVHCSelectFrontier_coefficient_reduced
+    (p dividendIndex : Nat) (dividend : SparsePolyZp) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (frontier : PairVecDivVHCFrontier)
+    (hp : 0 < p) (hcanonical : SparsePolyZp.Canonical p dividend)
+    (hrun : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    frontier.coefficient.toNat < p := by
+  unfold pairVecDivVHCSelectFrontier at hrun
+  split at hrun
+  next hdividend =>
+    have htermMem : dividend[dividendIndex] ∈ dividend.toList :=
+      Array.getElem_mem_toList hdividend
+    have hreduced := (hcanonical.1 dividend[dividendIndex] htermMem).2
+    split at hrun
+    next hheap =>
+      split at hrun <;> try contradiction
+      next rootMono hmono =>
+        split at hrun
+        next hdegree =>
+          simp only [Except.ok.injEq] at hrun
+          subst frontier
+          exact hreduced
+        next hdegree =>
+          simp only [Except.ok.injEq] at hrun
+          subst frontier
+          simpa using hp
+    next hheap =>
+      simp only [Except.ok.injEq] at hrun
+      subst frontier
+      exact hreduced
+  next hdividend =>
+    split at hrun <;> try contradiction
+    next hheap =>
+      split at hrun <;> try contradiction
+      next rootMono hmono =>
+        simp only [Except.ok.injEq] at hrun
+        subst frontier
+        simpa using hp
 
 /-- Every source candidate still reachable by the outer loop lies strictly
 below `degreeLimit`.  This is the termination component of the full heap

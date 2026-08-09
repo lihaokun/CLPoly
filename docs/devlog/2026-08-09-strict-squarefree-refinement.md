@@ -414,3 +414,11 @@ every generated range-for and recursive loop used by SQF.
   `FrontierBelow`，无需假定所有活动节点都已在 heap 中。单次
   outer iteration 现已同时传递 remaining-dividend bound、ownership 和
   全部节点不变式；canonical 非空 dividend 的初始上界也已闭合。
+- quotient emission 所需的 coefficient reducedness 已沿真实 accumulator
+  执行闭合。selector 返回 dividend 存储系数或零，其范围分别由
+  dividend canonicality 与模数正性推出。每个消费节点执行真实
+  generated modular multiply 与 subtraction；multiply 的 preinverse 正确性给出
+  product 范围，source subtraction 的 range theorem 给出新 accumulator
+  `< p`。该性质已按 owner-set card 良基递归提升到完整 next-chain，
+  再按 heap size 良基递归提升到完整 equal-degree 循环。下一步用它
+  证明 nonzero emitted quotient coefficient 是 canonical 系数。

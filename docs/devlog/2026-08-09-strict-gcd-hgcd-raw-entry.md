@@ -222,6 +222,14 @@ proof irrelevance only for generated validity witnesses.  This gives the
 parent a concrete first or second child instead of merely explaining a child
 whose success was assumed.
 
+For the first child of a non-base recursive body, instantiate that total
+dispatch at the source high-half lengths.  Use its actual heap frame to carry
+the untouched low halves forward, then execute the four generated paired
+reconstruction calls with the actual child matrix and high-half outputs.
+Finally apply the existing proof-only reconstruction bound to those same two
+executions.  The resulting strict outer decrease is therefore derived from
+the actual child and reconstruction, not supplied for a preselected record.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -252,3 +260,6 @@ whose success was assumed.
 - dispatch 增量：约 0.5 小时、2 轮编译—修复、Lean 约 70 行；以总执行
   callback 统一 cutoff 小分支和严格变小的大分支，使父调用得到实际 child
   结果及同一次执行的完整递归不变式。
+- first child 增量：约 1 小时、2 轮编译—修复、Lean 约 150 行；执行
+  第一次总 dispatch、保持原始低半部、完成四调用 paired reconstruction，
+  并从这两个实际执行导出严格的外层重构长度界。

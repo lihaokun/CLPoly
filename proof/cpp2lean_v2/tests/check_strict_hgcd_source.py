@@ -425,6 +425,8 @@ def main() -> None:
         "hgcdRecursiveIterBranch_succeeds",
         "HgcdRecursiveCallbackSucceedsAt",
         "hgcdRecursiveDispatchBelow_succeeds",
+        "HgcdRecursiveFirstCallTotalWorkspace",
+        "hgcdRecursiveFirstCall_succeeds",
         "GcdHgcdLoopEuclidWorkspaceProvider",
         "GcdHgcdDivremWorkspace",
         "GcdHgcdDynamicDivremWorkspaceProvider",

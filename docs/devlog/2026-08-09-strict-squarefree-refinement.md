@@ -685,3 +685,16 @@ every generated range-for and recursive loop used by SQF.
   更小 frontier 复用前缀证据。下一步证明 activate/set-next/heap
   insertion 不改变 cursor fields，把 append 后的 prefix 传过完整
   `ActivateReset` 与 reverse reinsertion。
+- processed-prefix 已穿过 emit 的全部真实状态变换。通用
+  `set_fields` 引理仅允许更新节点的 `mono/next`，并强制
+  quotient/divisor cursor 字段与原节点相等；它已分别绑定到
+  真实 `VHC_activate` 和 `VHC_set_next`。`VHC_insert` 的结论由已有
+  全分支 `Insert_nodes_result` 恢复本次实际 set-next，不重建抽象
+  heap 算法。完整 reverse-`lin` 循环按真实 `lin.pop` 大小良基
+  递归传递 prefix；完整 `ActivateReset` 则按真实 `resetH - 1`
+  依次执行 activate、insert 并递归。最后 `Emit` 的 coefficient=0、
+  degree guard、value=0 均从实际 unchanged 返回保持，唯一 append
+  分支先用 cursor bound 排除新尾进入旧 prefix，再调用完整
+  reset activation 定理。下一步从 outer-iteration components 恢复同一
+  consume/emit/reinsert 执行，组合 state-derived cursor bound 并把 prefix
+  传到严格更小的下一 frontier。

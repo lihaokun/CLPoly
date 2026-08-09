@@ -23,6 +23,8 @@
   strictly-smaller callback, the genuine generated recursive-equation
   predicate, and execution equalities back to both the source body and any
   callback satisfying that equation.
+- Added a reusable physical invocation node and a theorem transferring its
+  branch-local single-step invariant to an actual source-recursive call.
 
 ## Why
 
@@ -46,6 +48,10 @@ hypotheses.
   specification value cannot be substituted.
 - The decrease witnesses passed through the adapter are erased (`rfl` at an
   actual call), so this bridge adds no executable counter or alternate path.
+- Invocation nodes quantify over the first-child induction theorem instead of
+  storing one.  Consequently, recursive semantics still have to be supplied
+  by the forthcoming strong induction, while all memory evidence remains
+  reusable and non-semantic.
 - No fuel parameter or L2 fallback was introduced.
 
 ## Problems and resolution

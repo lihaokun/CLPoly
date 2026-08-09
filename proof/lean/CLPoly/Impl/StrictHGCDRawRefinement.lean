@@ -11429,4 +11429,111 @@ theorem hgcdRecursiveBodyBranchAdmissible_rawInvariant
     rcases nonBaseInput hbase with ⟨hleft, hright⟩
     simpa [package, hleft, hright] using hResult
 
+/-- Physical safety node for one invocation of a source-shaped recursive
+callback.  It is parameterized over every possible first-child induction
+proof, so the node cannot manufacture or store recursive polynomial
+semantics.  Its continuation is additionally tied to the exact successful
+execution obtained with that proof. -/
+structure HgcdRecursiveInvocationWorkspace (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (plain : HgcdRecursiveCall) (bound : Nat)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA) : Type where
+  positive : 0 < lenA
+  base : ∀ hbase : lenB < lenA / 2 + 1,
+    HgcdRecursiveBaseCallWorkspace this M hM A B a b lenA lenB heap left right
+  nonBase : ∀ hbase : ¬ lenB < lenA / 2 + 1,
+    HgcdRecursiveNonBasePackage this bound
+      (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB heap
+  nonBaseInput : ∀ hbase,
+    (nonBase hbase).inputA = left ∧ (nonBase hbase).inputB = right
+  continuation : ∀ (hbase : ¬ lenB < lenA / 2 + 1)
+    (firstRecursiveRefines :
+      HgcdRecursiveNonBaseCallbackRefines this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB
+        heap (nonBase hbase))
+    (result : HgcdRecursiveResult),
+    let package := nonBase hbase
+    let firstCall := package.admissible this bound
+      (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB heap
+      firstRecursiveRefines
+    let providers := hgcdRecursiveFirstCall_providers this bound
+      (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB heap
+      package.inputHighA package.inputHighB package.lowPolyA package.lowPolyB
+      hcfg hp horder firstCall.workspace firstCall.recursiveRefines
+    hgcdRecursiveBodyBelow this bound
+      (hgcdRecursiveCallBelowOfCall bound plain) M hM computeM A B a b lenA
+      lenB W scratch heap hbound horder (fun _ => providers.1)
+        (fun _ => providers.2) = .ok result →
+    HgcdRecursiveNonBaseContinuationWorkspace this bound
+      (hgcdRecursiveCallBelowOfCall bound plain) M hM computeM A B a b W
+      scratch lenA lenB heap package hbound horder hbase
+
+/-- Once strong induction supplies exactly the smaller-call semantics selected
+by a physical invocation node, the node proves the actual recursive call's
+raw invariant.  Execution is transferred through the generated unfolding
+equation, not through an L2 implementation. -/
+theorem HgcdRecursiveInvocationWorkspace.rawInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (plain : HgcdRecursiveCall) (hunfold : HgcdRecursiveCallUnfolds this plain)
+    (bound : Nat) (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (workspace : HgcdRecursiveInvocationWorkspace this plain bound M hM
+      computeM A B a b lenA lenB W scratch heap left right hcfg hp hbound
+      horder)
+    (firstRecursiveRefines : ∀ hbase,
+      HgcdRecursiveNonBaseCallbackRefines this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB
+        heap (workspace.nonBase hbase))
+    (secondRecursiveRefines : ∀ (hbase : ¬ lenB < lenA / 2 + 1)
+      (result : HgcdRecursiveResult)
+      (hrun :
+        let package := workspace.nonBase hbase
+        let firstCall := package.admissible this bound
+          (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB
+          heap (firstRecursiveRefines hbase)
+        let providers := hgcdRecursiveFirstCall_providers this bound
+          (hgcdRecursiveCallBelowOfCall bound plain) a b W scratch lenA lenB
+          heap package.inputHighA package.inputHighB package.lowPolyA
+          package.lowPolyB hcfg hp horder firstCall.workspace
+          firstCall.recursiveRefines
+        hgcdRecursiveBodyBelow this bound
+          (hgcdRecursiveCallBelowOfCall bound plain) M hM computeM A B a b lenA
+          lenB W scratch heap hbound horder (fun _ => providers.1)
+            (fun _ => providers.2) = .ok result),
+      HgcdRecursiveContinuationSecondRefines this bound
+        (hgcdRecursiveCallBelowOfCall bound plain) M hM computeM A B a b W
+        scratch lenA lenB heap (workspace.nonBase hbase) hbound horder hbase
+        (workspace.continuation hbase (firstRecursiveRefines hbase) result
+          hrun))
+    (result : HgcdRecursiveResult)
+    (hrun : plain M hM computeM A B a b lenA lenB W scratch heap =
+      .ok result) :
+    ∃ finalA finalB entries,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
+        A B lenA result := by
+  let recurse := hgcdRecursiveCallBelowOfCall bound plain
+  have hbody : hgcdRecursiveBodyBranchAdmissible this bound recurse M hM
+      computeM A B a b lenA lenB W scratch heap hcfg hp hbound horder
+        workspace.nonBase firstRecursiveRefines = .ok result := by
+    rw [hgcdRecursiveBodyBranchAdmissible_belowOfCall_eq_call this plain
+      hunfold bound M hM computeM A B a b lenA lenB W scratch heap hcfg hp
+      hbound horder workspace.nonBase firstRecursiveRefines]
+    exact hrun
+  exact hgcdRecursiveBodyBranchAdmissible_rawInvariant this bound recurse M hM
+    computeM A B a b lenA lenB W scratch heap left right hcfg hp hbound horder
+    workspace.positive workspace.base workspace.nonBase workspace.nonBaseInput
+    firstRecursiveRefines
+    (fun hbase result hrun =>
+      workspace.continuation hbase (firstRecursiveRefines hbase) result hrun)
+    secondRecursiveRefines result hbody
+
 end CLPoly.Impl.StrictHGCDRawRefinement

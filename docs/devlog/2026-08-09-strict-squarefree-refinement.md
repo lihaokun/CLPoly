@@ -187,6 +187,15 @@ every generated range-for and recursive loop used by SQF.
   空 heap 的一般分支初态确实满足 `head.degree + 1` 上界，而非把初始
   guard 当作假设。剩余工作是证明 outer iteration 把此不变式收紧并
   保持到本轮真实 frontier 次数，同时加入 quotient-product 守恒部分。
+- iteration preservation 的 dividend 半边现已闭合：从 canonical chain
+  得到任意两个实际数组索引 `i < j` 时后项次数严格更小；据此证明
+  selector 无论选择 dividend（iterator 前进一步）还是选择更大的 heap
+  root，返回 iterator 后的所有 dividend cell 都严格低于本轮 frontier。
+  heap 半边采用更强的全节点块不变式：所有已激活节点无论暂居 heap、
+  `next`、`lin` 或 retired suffix，其 monomial 都低于 frontier；该性质
+  立即推出 heap-side bound，并已证明单独修改 `next` 指针保持它。下一
+  步证明 insert/extract 保持全节点 monomial，再处理 consume/activate
+  唯一会重算 monomial 的两处。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

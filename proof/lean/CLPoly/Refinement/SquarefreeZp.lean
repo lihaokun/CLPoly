@@ -1564,6 +1564,141 @@ theorem canonical_degree_le_head (p : Nat) (dividend : SparsePolyZp)
     rw [Array.getElem_toList hnonempty, Array.getElem_toList hi] at horder
     exact Nat.le_of_lt horder
 
+theorem canonical_degree_lt_of_index_lt (p : Nat)
+    (dividend : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical p dividend)
+    (i j : Nat) (hi : i < dividend.size) (hj : j < dividend.size)
+    (hij : i < j) :
+    dividend[j].1.deg < dividend[i].1.deg := by
+  have hpairwise := List.isChain_iff_pairwise.mp hcanonical.2.1
+  have horder := List.pairwise_iff_getElem.mp hpairwise i j
+    (by simpa using hi) (by simpa using hj) hij
+  rw [Array.getElem_toList hi, Array.getElem_toList hj] at horder
+  exact horder
+
+theorem canonical_remaining_below_advanced (p : Nat)
+    (dividend : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical p dividend)
+    (dividendIndex : Nat) (hindex : dividendIndex < dividend.size) :
+    ∀ (i : Nat) (term : UMonomial × Zp), dividendIndex + 1 ≤ i →
+      dividend[i]? = some term →
+      term.1.deg < dividend[dividendIndex].1.deg := by
+  intro i term hafter hget
+  have hi : i < dividend.size := by
+    by_contra hnot
+    have hnone : dividend[i]? = none := Array.getElem?_eq_none (by omega)
+    rw [hnone] at hget
+    contradiction
+  rw [Array.getElem?_eq_getElem hi] at hget
+  simp only [Option.some.injEq] at hget
+  subst term
+  exact canonical_degree_lt_of_index_lt p dividend hcanonical
+    dividendIndex i hindex hi (by omega)
+
+theorem canonical_remaining_below_larger_frontier (p : Nat)
+    (dividend : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical p dividend)
+    (dividendIndex frontierDegree : Nat)
+    (hindex : dividendIndex < dividend.size)
+    (hfrontier : dividend[dividendIndex].1.deg < frontierDegree) :
+    ∀ (i : Nat) (term : UMonomial × Zp), dividendIndex ≤ i →
+      dividend[i]? = some term → term.1.deg < frontierDegree := by
+  intro i term hafter hget
+  by_cases heq : i = dividendIndex
+  · subst i
+    rw [Array.getElem?_eq_getElem hindex] at hget
+    simp only [Option.some.injEq] at hget
+    subst term
+    exact hfrontier
+  · have hstrict := canonical_remaining_below_advanced p dividend hcanonical
+      dividendIndex hindex i term (by omega) hget
+    exact lt_trans hstrict hfrontier
+
+theorem pairVecDivVHCSelectFrontier_remaining_dividend_below (p : Nat)
+    (dividend : SparsePolyZp) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hcanonical : SparsePolyZp.Canonical p dividend)
+    (dividendIndex : Nat) (frontier : PairVecDivVHCFrontier)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    ∀ (i : Nat) (term : UMonomial × Zp), frontier.dividendIndex ≤ i →
+      dividend[i]? = some term → term.1.deg < frontier.degree := by
+  unfold pairVecDivVHCSelectFrontier at hselect
+  split at hselect
+  next hdividend =>
+    split at hselect
+    next hheap =>
+      split at hselect <;> try contradiction
+      next rootMono hroot =>
+        split at hselect
+        next htakeDividend =>
+          simp only [Except.ok.injEq] at hselect
+          subst frontier
+          exact canonical_remaining_below_advanced p dividend hcanonical
+            dividendIndex hdividend
+        next htakeHeap =>
+          simp only [Except.ok.injEq] at hselect
+          subst frontier
+          exact canonical_remaining_below_larger_frontier p dividend hcanonical
+            dividendIndex rootMono.deg hdividend (by omega)
+    next hheap =>
+      simp only [Except.ok.injEq] at hselect
+      subst frontier
+      exact canonical_remaining_below_advanced p dividend hcanonical
+        dividendIndex hdividend
+  next hdividend =>
+    split at hselect <;> try contradiction
+    next hheap =>
+      split at hselect <;> try contradiction
+      next rootMono hroot =>
+        simp only [Except.ok.injEq] at hselect
+        subst frontier
+        intro i term hafter hget
+        have hstart : dividend.size ≤ dividendIndex := by omega
+        have hsize : dividend.size ≤ i := le_trans hstart hafter
+        have hnone : dividend[i]? = none := Array.getElem?_eq_none hsize
+        rw [hnone] at hget
+        contradiction
+
+/-- Strong heap-side termination invariant: every initialized node in the
+allocated block is below the current frontier, independently of its temporary
+location in `heap`, `next`, `lin`, or the retired suffix. -/
+def PairVecDivVHCAllActiveNodesBelow (degreeLimit : Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ (i : Nat) (node : PairVecDivVHCNode) (mono : UMonomial),
+    nodes[i]? = some node → node.mono = some mono → mono.deg < degreeLimit
+
+theorem pairVecDivVHCAllActiveNodesBelow.heapBelow (degreeLimit : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes) :
+    ∀ (slot nodeIndex : Nat) (node : PairVecDivVHCNode) (mono : UMonomial),
+      heap[slot]? = some nodeIndex → nodes[nodeIndex]? = some node →
+      node.mono = some mono → mono.deg < degreeLimit := by
+  intro slot nodeIndex node mono hheap hnode hmono
+  exact hbelow nodeIndex node mono hnode hmono
+
+theorem pairVecDivVHCSetNext_preserves_allActiveNodesBelow
+    (degreeLimit nodeIndex : Nat) (next : Option Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hrun : pairVecDivVHCSetNext nodeIndex next nodes = .ok nodes') :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes' := by
+  unfold pairVecDivVHCSetNext at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    simp only [Except.ok.injEq] at hrun
+    subst nodes'
+    intro i node mono hget hmono
+    by_cases heq : nodeIndex = i
+    · subst i
+      rw [Array.getElem?_set_self hn] at hget
+      simp only [Option.some.injEq] at hget
+      subst node
+      exact hbelow nodeIndex nodes[nodeIndex] mono
+        (Array.getElem?_eq_getElem hn) hmono
+    · rw [Array.getElem?_set_ne hn heq] at hget
+      exact hbelow i node mono hget hmono
+
 theorem pairVecDivVHCCanonicalInitialFrontierBelow (p : Nat)
     (dividend : SparsePolyZp) (nodes : Array PairVecDivVHCNode)
     (hcanonical : SparsePolyZp.Canonical p dividend)

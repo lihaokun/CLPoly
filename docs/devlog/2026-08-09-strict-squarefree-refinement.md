@@ -642,3 +642,15 @@ every generated range-for and recursive loop used by SQF.
   processed-prefix 不变量，把 node coverage 提升为每个 quotient×divisor
   product 在对应 frontier 恰好被消费一次，再建立 general division 的
   多项式等式，之后才能连接 SQF。
+- cursor processed-prefix 不变量已建立并闭合单节点消费。
+  `PairVecDivVHCCursorPrefixAbove degreeLimit` 对每个实际 node cursor 明确
+  量化所有 `q < node.quotientIndex` 的真实 quotient/divisor 存储项，要求
+  其乘积次数不低于当前 outer frontier bound；初始化时所有 cursor 的
+  quotientIndex 均为零，因此该前缀严格为空。通用 `set_advance` 定理证明
+  将 cursor 加一只新增旧 current cell，其余 prefix 与其他 nodes 通过
+  concrete array set 保持。对真实 `ConsumeNode` 的 advance/exhausted 两个
+  成功分支，利用 `NodeDenotes` 与当前 mono 次数精确证明新增 cell 的乘积
+  次数就是正在消费的 frontier，故 processed-prefix 保持；错误分支没有
+  伪造返回值。下一步沿 exact `next` chain 和 equal-degree heap loop 提升
+  该不变量，再结合 canonical quotient 的 cursor 后缀严格递减证明当前
+  frontier 的所有乘积只能落在当前 cursor heads 中。

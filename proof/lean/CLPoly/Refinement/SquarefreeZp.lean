@@ -2219,6 +2219,87 @@ def PairVecDivVHCNodeDenotes (quotient divisor : SparsePolyZp)
     divisor[node.divisorIndex]? = some divisorTerm ∧
     node.mono = some ⟨quotientTerm.1.deg + divisorTerm.1.deg⟩
 
+theorem PairVecDivVHCNodeDenotes.product_degree_eq
+    (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
+    (degree : Nat) (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
+    (hmono : node.mono = some ⟨degree⟩)
+    (quotientTerm divisorTerm : UMonomial × Zp)
+    (hquotient : quotient[node.quotientIndex]? = some quotientTerm)
+    (hdivisor : divisor[node.divisorIndex]? = some divisorTerm) :
+    quotientTerm.1.deg + divisorTerm.1.deg = degree := by
+  rcases hdenotes with
+    ⟨storedQuotient, storedDivisor, hstoredQuotient, hstoredDivisor,
+      hstoredMono⟩
+  rw [hquotient] at hstoredQuotient
+  rw [hdivisor] at hstoredDivisor
+  simp only [Option.some.injEq] at hstoredQuotient hstoredDivisor
+  subst storedQuotient
+  subst storedDivisor
+  rw [hmono] at hstoredMono
+  exact congrArg UMonomial.deg (Option.some.inj hstoredMono).symm
+
+/-- For every divisor-tail cursor, all quotient cells strictly before its
+current pointer have product degree at least the current outer-loop bound.
+This is the semantic statement that the cursor prefix has already been
+processed; unlike a fuel counter, the bound is the actual frontier degree
+used by the well-founded source loop. -/
+def PairVecDivVHCCursorPrefixAbove (degreeLimit : Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) : Prop :=
+  ∀ (i : Nat) (node : PairVecDivVHCNode), nodes[i]? = some node →
+    ∀ (q : Nat) (quotientTerm divisorTerm : UMonomial × Zp),
+      q < node.quotientIndex →
+      quotient[q]? = some quotientTerm →
+      divisor[node.divisorIndex]? = some divisorTerm →
+      degreeLimit ≤ quotientTerm.1.deg + divisorTerm.1.deg
+
+theorem pairVecDivVHCInit_cursorPrefixAbove
+    (degreeLimit : Nat) (quotient divisor : SparsePolyZp) :
+    PairVecDivVHCCursorPrefixAbove degreeLimit (pairVecDivVHCInit divisor)
+      quotient divisor := by
+  intro i node hget q quotientTerm divisorTerm hq hquotient hdivisor
+  have hi : i < divisor.size - 1 := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by
+      rw [pairVecDivVHCInit_size]
+      omega)] at hget
+    contradiction
+  rw [pairVecDivVHCInit_get divisor i hi] at hget
+  simp only [Option.some.injEq] at hget
+  subst node
+  simp [pairVecDivVHCInitialNode] at hq
+
+theorem PairVecDivVHCCursorPrefixAbove.set_advance
+    (degreeLimit nodeIndex : Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) (node updated : PairVecDivVHCNode)
+    (hn : nodeIndex < nodes.size) (hget : nodes[nodeIndex]? = some node)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hquotientIndex : updated.quotientIndex = node.quotientIndex + 1)
+    (hdivisorIndex : updated.divisorIndex = node.divisorIndex)
+    (hcurrent : ∀ (quotientTerm divisorTerm : UMonomial × Zp),
+      quotient[node.quotientIndex]? = some quotientTerm →
+      divisor[node.divisorIndex]? = some divisorTerm →
+      degreeLimit ≤ quotientTerm.1.deg + divisorTerm.1.deg) :
+    PairVecDivVHCCursorPrefixAbove degreeLimit
+      (nodes.set nodeIndex updated) quotient divisor := by
+  intro i current hcurrentGet q quotientTerm divisorTerm hq hquotient hdivisor
+  by_cases heq : nodeIndex = i
+  · subst i
+    rw [Array.getElem?_set_self hn] at hcurrentGet
+    simp only [Option.some.injEq] at hcurrentGet
+    subst current
+    rw [hquotientIndex] at hq
+    by_cases hbefore : q < node.quotientIndex
+    · exact hprefix nodeIndex node hget q quotientTerm divisorTerm hbefore
+        hquotient (by simpa [hdivisorIndex] using hdivisor)
+    · have hqeq : q = node.quotientIndex := by omega
+      subst q
+      exact hcurrent quotientTerm divisorTerm hquotient
+        (by simpa [hdivisorIndex] using hdivisor)
+  · rw [Array.getElem?_set_ne hn heq] at hcurrentGet
+    exact hprefix i current hcurrentGet q quotientTerm divisorTerm hq
+      hquotient hdivisor
+
 /-- All active heap slots are valid initialized node pointers. -/
 def PairVecDivVHCHeapPointersValid (heap : Array Nat)
     (nodes : Array PairVecDivVHCNode) : Prop :=
@@ -2346,6 +2427,54 @@ def pairVecDivVHCConsumeNode (this : DenseUPolyZp) (nodeIndex : Nat)
       .error .assertionFailure
   else
     .error .assertionFailure
+
+theorem pairVecDivVHCConsumeNode_preserves_cursorPrefixAbove
+    (this : DenseUPolyZp) (degree nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degree nodes quotient divisor)
+    (hget : nodes[nodeIndex]? = some node)
+    (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
+    (hmono : node.mono = some ⟨degree⟩)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    PairVecDivVHCCursorPrefixAbove degree nodes' quotient divisor := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    rw [Array.getElem?_eq_getElem hn] at hget
+    have hnodeEq : nodes[nodeIndex] = node := Option.some.inj hget
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          apply PairVecDivVHCCursorPrefixAbove.set_advance degree nodeIndex
+            nodes quotient divisor node _ hn
+            (by simpa [hnodeEq] using Array.getElem?_eq_getElem hn) hprefix
+            (by simp [hnodeEq]) (by simp [hnodeEq])
+          intro quotientTerm divisorTerm hquotient hdivisor
+          rw [hdenotes.product_degree_eq quotient divisor node
+            degree hmono quotientTerm divisorTerm hquotient hdivisor]
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              apply PairVecDivVHCCursorPrefixAbove.set_advance degree nodeIndex
+                nodes quotient divisor node _ hn
+                (by simpa [hnodeEq] using Array.getElem?_eq_getElem hn) hprefix
+                (by simp [hnodeEq]) (by simp [hnodeEq])
+              intro quotientTerm divisorTerm hquotient hdivisor
+              rw [hdenotes.product_degree_eq quotient divisor node
+                degree hmono quotientTerm divisorTerm hquotient hdivisor]
 
 theorem pairVecDivVHCConsumeNode_progress (this : DenseUPolyZp)
     (nodeIndex : Nat) (k k' : UInt64)

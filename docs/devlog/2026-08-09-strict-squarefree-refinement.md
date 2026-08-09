@@ -787,3 +787,11 @@ every generated range-for and recursive loop used by SQF.
   避免后续递归重复携带一个可推导的不变量。下一步仍需证明真正关键的
   `VHC_extract` heap-order preservation；这不能由 pointer validity 代替，
   也不会假设 checked extract 自动维持堆序。
+- extract 堆序证明的祖先侧已闭合。新增 one-edge 定理把 concrete
+  `HeapOrdered` 的 array/map 形式还原为 child mono 次数不大于 parent mono；
+  随后按实际 `pairVecDivVHCParent` 严格下降做强归纳，证明任意非根 slot
+  的次数都不大于 root 的某个直接子节点（槽 1 或 2）。父槽为 0 时通过
+  `(slot - 1) / 2 = 0` 的自然数除法边界精确推出 slot 只能是 1/2，未把
+  binary-heap 祖先关系当作算术自动事实。下一步证明 sift-down 递归只写
+  当前下降路径、不会回写更早槽，并据此识别 extract 新 root 为两直接
+  子节点/last sentinel 的最大者。

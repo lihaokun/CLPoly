@@ -2491,6 +2491,86 @@ theorem pairVecDivVHCHeapOrdered_slot_le_root
         exact Nat.le_trans hstep
           (ih parent hparentLt hparentSlot parentMono hparentRun hroot)
 
+theorem pairVecDivVHCHeapOrdered_child_le_parent
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (child : Nat) (hchild : child < heap.size) (hpos : 0 < child)
+    (hparent : pairVecDivVHCParent child < heap.size)
+    (childMono parentMono : UMonomial)
+    (hchildMono : pairVecDivVHCMono heap[child] nodes = .ok childMono)
+    (hparentMono : pairVecDivVHCMono heap[pairVecDivVHCParent child] nodes =
+      .ok parentMono) :
+    childMono.deg ≤ parentMono.deg := by
+  rcases (pairVecDivVHCMono_eq_ok_iff heap[child] nodes childMono).mp
+      hchildMono with ⟨childNode, hchildNode, hchildActive⟩
+  rcases (pairVecDivVHCMono_eq_ok_iff heap[pairVecDivVHCParent child] nodes
+      parentMono).mp hparentMono with
+    ⟨parentNode, hparentNode, hparentActive⟩
+  have hchildMap :
+      (nodes[heap[child]]?.map PairVecDivVHCNode.mono).join =
+        some childMono := by
+    rw [hchildNode]
+    simp [hchildActive]
+  have hparentMap :
+      (nodes[heap[pairVecDivVHCParent child]]?.map
+        PairVecDivVHCNode.mono).join = some parentMono := by
+    rw [hparentNode]
+    simp [hparentActive]
+  exact hordered child (pairVecDivVHCParent child) hchild rfl hpos
+    heap[child] heap[pairVecDivVHCParent child] childMono parentMono
+    (Array.getElem?_eq_getElem hchild) (Array.getElem?_eq_getElem hparent)
+    hchildMap hparentMap
+
+/-- Every non-root heap slot lies below one of the root's two direct children,
+and its active degree is bounded by that child's degree. -/
+theorem pairVecDivVHCHeapOrdered_slot_le_root_child
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (slot : Nat) (hslot : slot < heap.size) (hpos : 0 < slot)
+    (mono : UMonomial)
+    (hmono : pairVecDivVHCMono heap[slot] nodes = .ok mono) :
+    ∃ child head childMono,
+      (child = 1 ∨ child = 2) ∧ heap[child]? = some head ∧
+        pairVecDivVHCMono head nodes = .ok childMono ∧
+        mono.deg ≤ childMono.deg := by
+  induction slot using Nat.strong_induction_on generalizing mono with
+  | h slot ih =>
+      let parent := pairVecDivVHCParent slot
+      have hparentLt : parent < slot := pairVecDivVHCParent_lt slot hpos
+      have hparentSlot : parent < heap.size := Nat.lt_trans hparentLt hslot
+      rcases hvalid parent hparentSlot with
+        ⟨parentIndex, parentNode, parentMono, hheapParent, hparentNode,
+          hparentActive⟩
+      have hparentIndexEq : heap[parent] = parentIndex := by
+        rw [Array.getElem?_eq_getElem hparentSlot] at hheapParent
+        exact Option.some.inj hheapParent
+      have hparentRun : pairVecDivVHCMono heap[parent] nodes =
+          .ok parentMono := by
+        apply (pairVecDivVHCMono_eq_ok_iff heap[parent] nodes parentMono).mpr
+        rw [hparentIndexEq]
+        exact ⟨parentNode, hparentNode, hparentActive⟩
+      have hstep : mono.deg ≤ parentMono.deg :=
+        pairVecDivVHCHeapOrdered_child_le_parent heap nodes hordered slot
+          hslot hpos hparentSlot mono parentMono hmono
+          (by simpa [parent] using hparentRun)
+      by_cases hrootParent : parent = 0
+      · have hchild : slot = 1 ∨ slot = 2 := by
+          have hrootParent' : (slot - 1) / 2 = 0 := by
+            simpa [parent, pairVecDivVHCParent] using hrootParent
+          have hsmall : slot - 1 < 2 := by
+            apply (Nat.div_eq_zero_iff_lt (by omega : 0 < 2)).mp
+            exact hrootParent'
+          omega
+        exact ⟨slot, heap[slot], mono, hchild,
+          Array.getElem?_eq_getElem hslot, hmono, Nat.le_refl _⟩
+      · have hparentPos : 0 < parent := Nat.pos_of_ne_zero hrootParent
+        rcases ih parent hparentLt hparentSlot hparentPos parentMono hparentRun
+          with ⟨child, head, childMono, hchild, hchildGet, hchildRun,
+            hparentLe⟩
+        exact ⟨child, head, childMono, hchild, hchildGet, hchildRun,
+          Nat.le_trans hstep hparentLe⟩
+
 /-- Generated coefficient execution of the source
 `submul(k, new_v[q].second, divisor[d].second)`. -/
 def pairVecDivSubmulIR (this : DenseUPolyZp) (k a b : UInt64) : UInt64 :=

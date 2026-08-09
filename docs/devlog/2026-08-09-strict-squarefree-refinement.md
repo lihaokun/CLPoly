@@ -491,3 +491,14 @@ every generated range-for and recursive loop used by SQF.
   chain degree 同时保持。最后按 checked extract 给出的实际 heap-size
   严格下降完成 `ConsumeEqualDegree` 归纳。下一步用该不变量在每次循环
   迭代调用 root bucket 求和定理，并把各 bucket 的实际乘积 trace 串接。
+- 完整 equal-degree accumulator 语义已闭合。新增 denotation 的独立
+  chain/root 保持定理，使递归调用无需捎带无关表示假设；owner-chain
+  次数性质可单调扩张到真实 node-array range。主定理按 checked extract
+  的实际 heap size 强归纳：每轮从 `ConsumeRootBucket` 的真实执行 trace
+  取得本 bucket 的存储乘积列表，从递归执行取得后续列表，按执行顺序
+  用 `List.append` 拼接，并证明最终 coefficient 的 `ZMod` 值精确等于
+  初值减去拼接列表的乘积和。列表中的每个项均保持“来自真实
+  quotient/divisor 存储项且次数和等于当前 degree”。空 heap 与新 root
+  次数不同的真实退出分支都产生空列表。下一步把该 coefficient-level
+  等式与 sparse polynomial coefficient/evaluation 表示连接，形成 general
+  division 的多项式等式。

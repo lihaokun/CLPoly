@@ -5017,6 +5017,71 @@ decreasing_by
   simp only [Array.size_pop]
   omega
 
+theorem pairVecDivVHCReinsertLin_preserves_node_invariants
+    (degreeLimit resetH quotientSize : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (quotient divisor : SparsePolyZp) (state : PairVecDivVHCHeapState)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotientSize nodes)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hrun : pairVecDivVHCReinsertLin heap nodes lin = .ok state) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit state.nodes ∧
+      (∀ (i : Nat) (node : PairVecDivVHCNode),
+        state.nodes[i]? = some node → node.mono ≠ none →
+          PairVecDivVHCNodeDenotes quotient divisor node) ∧
+      PairVecDivVHCNodeDivisorIndicesFixed state.nodes ∧
+      PairVecDivVHCResetReady resetH quotientSize state.nodes := by
+  rw [pairVecDivVHCReinsertLin] at hrun
+  split at hrun
+  next hlin =>
+    dsimp only at hrun
+    cases hinsert : pairVecDivVHCInsert lin[lin.size - 1] heap nodes with
+    | error fault => simp [hinsert] at hrun
+    | ok inserted =>
+        rcases inserted with ⟨heap', nodes'⟩
+        rw [hinsert] at hrun
+        have hbelow' := pairVecDivVHCInsert_preserves_allActiveNodesBelow
+          degreeLimit lin[lin.size - 1] heap heap' nodes nodes' hbelow hinsert
+        have hdenotes' := pairVecDivVHCInsert_preserves_denotes
+          lin[lin.size - 1] heap heap' nodes nodes' quotient divisor hdenotes
+          hinsert
+        have hfixed' := pairVecDivVHCInsert_preserves_divisorIndicesFixed
+          lin[lin.size - 1] heap heap' nodes nodes' hfixed hinsert
+        have hlastMem := pairVecDivVHCLast_mem_toFinset lin hlin
+        have houtside : resetH ≤ lin[lin.size - 1] := by
+          by_contra hnot
+          have hlt : lin[lin.size - 1] < resetH := by omega
+          rcases hready.2 lin[lin.size - 1] hlt with
+            ⟨readyNode, hreadyNode, hq, hd, hnone⟩
+          rcases hlinReady.2 lin[lin.size - 1] (by
+            simpa only [List.mem_toFinset] using hlastMem) with
+            ⟨activeNode, mono, hactiveNode, hsome⟩
+          rw [hreadyNode] at hactiveNode
+          simp only [Option.some.injEq] at hactiveNode
+          subst activeNode
+          rw [hnone] at hsome
+          contradiction
+        have hready' := pairVecDivVHCInsert_preserves_resetReady
+          resetH quotientSize lin[lin.size - 1] heap heap' nodes nodes' hready
+          houtside hinsert
+        have hlinReady' := hlinReady.pop_after_insert lin heap heap' nodes
+          nodes' hlin hinsert
+        exact pairVecDivVHCReinsertLin_preserves_node_invariants degreeLimit
+          resetH quotientSize heap' nodes' lin.pop quotient divisor state
+          hbelow' hdenotes' hfixed' hready' hlinReady' hrun
+  next hlin =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    exact ⟨hbelow, hdenotes, hfixed, hready⟩
+termination_by lin.size
+decreasing_by
+  simp only [Array.size_pop]
+  omega
+
 theorem pairVecDivVHCConsumeNode_preserves_allActiveNodesBelow
     (this : DenseUPolyZp) (p degreeLimit nodeIndex : Nat)
     (currentMono : UMonomial) (k k' : UInt64)
@@ -6363,6 +6428,94 @@ theorem pairVecDivVHCEmit_preserves_away_linReady
     rcases hrun with ⟨rfl, rfl, rfl⟩
     exact ⟨haway, hlinReady⟩
 
+theorem pairVecDivVHCEmit_preserves_node_invariants
+    (this : DenseUPolyZp) (p degreeLimit : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' : Nat)
+    (hdivisorCanonical : SparsePolyZp.Canonical p divisor)
+    (hdivisor : 0 < divisor.size)
+    (hfrontierBelow : frontier.degree ≤ degreeLimit)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit consumed.nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      consumed.nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed consumed.nodes)
+    (hready : PairVecDivVHCResetReady consumed.resetH quotient.size
+      consumed.nodes)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit activated.nodes ∧
+      (∀ (i : Nat) (node : PairVecDivVHCNode),
+        activated.nodes[i]? = some node → node.mono ≠ none →
+          PairVecDivVHCNodeDenotes quotient' divisor node) ∧
+      PairVecDivVHCNodeDivisorIndicesFixed activated.nodes ∧
+      PairVecDivVHCResetReady resetH' quotient'.size activated.nodes := by
+  unfold pairVecDivVHCEmit at hrun
+  by_cases hcoefficient : consumed.coefficient ≠ 0
+  · rw [if_pos hcoefficient] at hrun
+    by_cases hdegree : divisor[0].1.deg ≤ frontier.degree
+    · rw [if_pos hdegree] at hrun
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor[0].2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        consumed.coefficient inverse
+      by_cases hvalue : value ≠ 0
+      · rw [if_pos hvalue] at hrun
+        let emitted := quotient.push
+          (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+        cases hactivate : pairVecDivVHCActivateReset consumed.resetH
+            consumed.heap consumed.nodes emitted divisor with
+        | error fault =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            contradiction
+        | ok state =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl⟩
+            have hdenotesEmitted : ∀ (i : Nat)
+                (node : PairVecDivVHCNode),
+                consumed.nodes[i]? = some node → node.mono ≠ none →
+                  PairVecDivVHCNodeDenotes emitted divisor node := by
+              intro i node hnode hmono
+              rcases hdenotes i node hnode hmono with
+                ⟨quotientTerm, divisorTerm, hquotientTerm, hdivisorTerm,
+                  hnodeMono⟩
+              refine ⟨quotientTerm, divisorTerm, ?_, hdivisorTerm,
+                hnodeMono⟩
+              rw [Array.getElem?_push]
+              have hne : node.quotientIndex ≠ quotient.size := by
+                intro heq
+                rw [heq, Array.getElem?_eq_none (Nat.le_refl _)] at hquotientTerm
+                contradiction
+              simp only [hne, ↓reduceIte, hquotientTerm]
+            have hinvariants :=
+              pairVecDivVHCActivateReset_preserves_node_invariants p
+                frontier.degree degreeLimit consumed.resetH quotient.size
+                consumed.heap consumed.nodes emitted divisor state
+                hdivisorCanonical hdivisor hdegree hfrontierBelow (by simp
+                  [emitted]) (by simp [emitted]) hbelow hdenotesEmitted hfixed
+                hready hactivate
+            refine ⟨hinvariants.1, hinvariants.2.1, hinvariants.2.2.1, ?_⟩
+            exact ⟨Nat.zero_le _, fun i hi => (Nat.not_lt_zero i hi).elim⟩
+      · rw [if_neg hvalue] at hrun
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl⟩
+        exact ⟨hbelow, hdenotes, hfixed, hready⟩
+    · rw [if_neg hdegree] at hrun
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl, rfl⟩
+      exact ⟨hbelow, hdenotes, hfixed, hready⟩
+  · rw [if_neg hcoefficient] at hrun
+    simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+    rcases hrun with ⟨rfl, rfl, rfl⟩
+    exact ⟨hbelow, hdenotes, hfixed, hready⟩
+
 theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
     (this : DenseUPolyZp) (p degreeLimit dividendIndex : Nat)
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
@@ -6370,6 +6523,9 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
     (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
     (hdivisor : 0 < divisor.size)
     (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hdivisorCanonical : SparsePolyZp.Canonical p divisor)
+    (hfrontierBelow : PairVecDivVHCFrontierBelow degreeLimit dividendIndex
+      dividend heap nodes)
     (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
     (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
       nodes[i]? = some node → node.mono ≠ none →
@@ -6379,7 +6535,13 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
     (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
     (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
       dividend divisor resetH = .ok result) :
-    PairVecDivVHCHeapChainsOwned result.heap result.nodes := by
+    PairVecDivVHCHeapChainsOwned result.heap result.nodes ∧
+      PairVecDivVHCAllActiveNodesBelow degreeLimit result.nodes ∧
+      (∀ (i : Nat) (node : PairVecDivVHCNode),
+        result.nodes[i]? = some node → node.mono ≠ none →
+          PairVecDivVHCNodeDenotes result.quotient divisor node) ∧
+      PairVecDivVHCNodeDivisorIndicesFixed result.nodes ∧
+      PairVecDivVHCResetReady result.resetH result.quotient.size result.nodes := by
   unfold pairVecDivVHCOuterIteration at hrun
   simp only [hdivisor, ↓reduceDIte] at hrun
   generalize hselect :
@@ -6391,6 +6553,8 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
       contradiction
   | ok frontier =>
       simp only [Bind.bind, Except.bind] at hrun
+      have hselectedBelow := pairVecDivVHCSelectFrontier_degree_lt degreeLimit
+        dividendIndex dividend heap nodes frontier hfrontierBelow hselect
       generalize hconsume : pairVecDivVHCConsumeEqualDegree this
           frontier.degree heap frontier.coefficient nodes #[] resetH quotient
           divisor = consumedExec at hrun
@@ -6429,6 +6593,13 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
                 pairVecDivVHCEmit_preserves_away_linReady this frontier consumed
                   quotient divisor quotient' activated resetH' hconsumed.1
                   hconsumed.2 hnodeInvariants.2.2.2 hdivisor hemit
+              have hemittedNodes :=
+                pairVecDivVHCEmit_preserves_node_invariants this p degreeLimit
+                  frontier consumed quotient divisor quotient' activated
+                  resetH' hdivisorCanonical hdivisor
+                  (Nat.le_of_lt hselectedBelow) hnodeInvariants.1
+                  hnodeInvariants.2.1 hnodeInvariants.2.2.1
+                  hnodeInvariants.2.2.2 hemit
               generalize hreinsert : pairVecDivVHCReinsertLin activated.heap
                   activated.nodes consumed.lin = reinsertExec at hrun
               cases reinsertExec with
@@ -6438,9 +6609,18 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
               | ok reinserted =>
                   simp only [Bind.bind, Except.bind] at hrun
                   rw [← Except.ok.inj hrun]
-                  exact pairVecDivVHCReinsertLin_preserves_heapChainsOwned
-                    activated.heap activated.nodes consumed.lin reinserted
-                    hemitted.1 hemitted.2 hreinsert
+                  have howned' :=
+                    pairVecDivVHCReinsertLin_preserves_heapChainsOwned
+                      activated.heap activated.nodes consumed.lin reinserted
+                      hemitted.1 hemitted.2 hreinsert
+                  have hinvariants' :=
+                    pairVecDivVHCReinsertLin_preserves_node_invariants
+                      degreeLimit resetH' quotient'.size activated.heap
+                      activated.nodes consumed.lin quotient' divisor reinserted
+                      hemittedNodes.1 hemittedNodes.2.1
+                      hemittedNodes.2.2.1 hemittedNodes.2.2.2 hemitted.2
+                      hreinsert
+                  exact ⟨howned', hinvariants'⟩
 
 /-- Complete general-path outer `while`.  `degreeLimit` is a proof-relevant
 strict upper bound on the next source frontier, not a step counter: after one

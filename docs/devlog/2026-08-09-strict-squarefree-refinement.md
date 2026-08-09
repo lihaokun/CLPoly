@@ -395,3 +395,13 @@ every generated range-for and recursive loop used by SQF.
   `lin` reinsertion，得到一次完整外层循环体保持 existential exact-chain
   ownership。下一步将这个保持定理提升到完整良基 outer loop，
   然后闭合 general division 语义。
+- outer iteration 的其余表示不变式已与 ownership 同步接通。
+  emit/activation 证明保持活动节点次数上界、节点对新 quotient
+  的 denotation、固定 divisor index 以及 `reset_h` ready 前缀；其中
+  显式证明了 quotient `push` 不改变所有旧项的可寻址性。reverse
+  `lin` reinsertion 也已按 `lin.size` 良基递归保持这四类不变式；
+  对于非零 `reset_h`，每个待重插节点在 ready 前缀之外是由
+  `lin` 活动性与 ready 前缀的 inactive 性质直接推出，不是附加假设。
+  完整单次 outer iteration 现返回 ownership 与全部节点不变式。
+  剩余 loop 缺口是将次数上界从旧 `degreeLimit` 收紧到实际
+  selected frontier，以供下一次良基调用。

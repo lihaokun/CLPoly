@@ -123,6 +123,23 @@ then rewrite the generated `_hgcd_iter` match with the initialization equality
 and the returned loop equality.  This yields total execution and the final
 raw transform/gcd invariant for the complete generated helper.
 
+### Staged reconstruction-pair totality proof draft
+
+The four leaf helpers used by the paired reconstruction are already total:
+the two sign-selected low reconstructions execute real multiplication and
+subtraction, while each shifted-high lift executes real zero fill, addition,
+and normalization.  The remaining circularity is only in the old pair
+provider, which returns its physical facts after all four calls have already
+succeeded.  Replace it with four stages.  The first gives the B reconstruction
+workspace.  Its actual returned heap frames the high-B input and supplies the
+B-lift workspace.  That actual lift frames the matrix and both low inputs and
+supplies the A-reconstruction workspace.  The returned A heap frames high A
+and supplies the A-lift workspace.  Final prefix facts frame the completed B
+output and the child matrix across the last two calls.  Each stage depends
+only on prior concrete executions, never on a later success or semantic
+result.  Composing the four existing total leaf theorems then constructs the
+exact generated pair result and its two raw polynomial representations.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

@@ -403,6 +403,8 @@ def main() -> None:
         "HgcdIterTotalWorkspaceProvider",
         "hgcdIterLoop_succeeds",
         "hgcdIter_succeeds",
+        "HgcdRecursiveReconstructPairTotalWorkspace",
+        "hgcdRecursiveReconstructPair_succeeds",
         "GcdHgcdLoopEuclidWorkspaceProvider",
         "GcdHgcdDivremWorkspace",
         "GcdHgcdDynamicDivremWorkspaceProvider",

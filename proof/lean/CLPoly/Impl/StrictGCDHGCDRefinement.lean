@@ -597,6 +597,206 @@ theorem hgcdIter_succeeds (this : DenseUPolyZp)
     hgcd, hstop⟩
   simp [dense_upoly_zp__hgcd_iter_ir, hinit, hloop]
 
+/-- Non-circular staged safety for the four source-ordered calls in one
+recursive reconstruction pair.  Every later workspace is indexed only by
+executions that precede it in the generated C++ control flow. -/
+structure HgcdRecursiveReconstructPairTotalWorkspace (this : DenseUPolyZp)
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift : Nat)
+    (M : HgcdMat) (hM : M.Valid) (sgn : Int) (heap : RawHeap) : Type where
+  reconstructB : HgcdReconstructWorkspace heap B T0
+    (hgcdMatPtr M hM (2 : Fin 4)) (hgcdMatLen M hM (2 : Fin 4)) lowA lenLowA
+    (hgcdMatPtr M hM (0 : Fin 4)) (hgcdMatLen M hM (0 : Fin 4)) lowB lenLowB
+    scratch
+  afterB : ∀ (heap1 : RawHeap) (lowLenB : Nat),
+    hgcdRecursiveReconstructB this B T0 (hgcdMatPtr M hM (2 : Fin 4))
+      (hgcdMatPtr M hM (0 : Fin 4)) lowA lowB scratch
+      (hgcdMatLen M hM (2 : Fin 4)) (hgcdMatLen M hM (0 : Fin 4))
+      lenLowA lenLowB sgn heap = .ok (heap1, lowLenB) →
+    RawHeap.SameLayout heap heap1 ∧
+      SameU64Prefix heap heap1 highB lenHighB ∧
+      HgcdLiftHighWorkspace heap1 B highB lowLenB shift lenHighB
+  afterLiftB : ∀ (heap1 : RawHeap) (lowLenB : Nat)
+    (liftedB : HgcdLiftHighResult),
+    hgcdRecursiveReconstructB this B T0 (hgcdMatPtr M hM (2 : Fin 4))
+      (hgcdMatPtr M hM (0 : Fin 4)) lowA lowB scratch
+      (hgcdMatLen M hM (2 : Fin 4)) (hgcdMatLen M hM (0 : Fin 4))
+      lenLowA lenLowB sgn heap = .ok (heap1, lowLenB) →
+    hgcdRecursiveLiftHigh this B highB lowLenB shift lenHighB heap1 =
+      .ok liftedB →
+    RawHeap.SameLayout heap liftedB.heap ∧
+      (∀ i : Fin 4, SameU64Prefix heap liftedB.heap
+        (hgcdMatPtr M hM i) (hgcdMatLen M hM i)) ∧
+      SameU64Prefix heap liftedB.heap lowA lenLowA ∧
+      SameU64Prefix heap liftedB.heap lowB lenLowB ∧
+      HgcdReconstructWorkspace liftedB.heap A T0
+        (hgcdMatPtr M hM (3 : Fin 4)) (hgcdMatLen M hM (3 : Fin 4))
+        lowA lenLowA (hgcdMatPtr M hM (1 : Fin 4))
+        (hgcdMatLen M hM (1 : Fin 4)) lowB lenLowB scratch
+  afterA : ∀ (heap1 : RawHeap) (lowLenB : Nat)
+    (liftedB : HgcdLiftHighResult) (heap3 : RawHeap) (lowLenA : Nat),
+    hgcdRecursiveReconstructB this B T0 (hgcdMatPtr M hM (2 : Fin 4))
+      (hgcdMatPtr M hM (0 : Fin 4)) lowA lowB scratch
+      (hgcdMatLen M hM (2 : Fin 4)) (hgcdMatLen M hM (0 : Fin 4))
+      lenLowA lenLowB sgn heap = .ok (heap1, lowLenB) →
+    hgcdRecursiveLiftHigh this B highB lowLenB shift lenHighB heap1 =
+      .ok liftedB →
+    hgcdRecursiveReconstructA this A T0 (hgcdMatPtr M hM (3 : Fin 4))
+      (hgcdMatPtr M hM (1 : Fin 4)) lowA lowB scratch
+      (hgcdMatLen M hM (3 : Fin 4)) (hgcdMatLen M hM (1 : Fin 4))
+      lenLowA lenLowB sgn liftedB.heap = .ok (heap3, lowLenA) →
+    RawHeap.SameLayout heap heap3 ∧
+      SameU64Prefix heap heap3 highA lenHighA ∧
+      HgcdLiftHighWorkspace heap3 A highA lowLenA shift lenHighA
+  finalFrame : ∀ (heap1 : RawHeap) (lowLenB : Nat)
+    (liftedB : HgcdLiftHighResult) (heap3 : RawHeap) (lowLenA : Nat)
+    (liftedA : HgcdLiftHighResult),
+    hgcdRecursiveReconstructB this B T0 (hgcdMatPtr M hM (2 : Fin 4))
+      (hgcdMatPtr M hM (0 : Fin 4)) lowA lowB scratch
+      (hgcdMatLen M hM (2 : Fin 4)) (hgcdMatLen M hM (0 : Fin 4))
+      lenLowA lenLowB sgn heap = .ok (heap1, lowLenB) →
+    hgcdRecursiveLiftHigh this B highB lowLenB shift lenHighB heap1 =
+      .ok liftedB →
+    hgcdRecursiveReconstructA this A T0 (hgcdMatPtr M hM (3 : Fin 4))
+      (hgcdMatPtr M hM (1 : Fin 4)) lowA lowB scratch
+      (hgcdMatLen M hM (3 : Fin 4)) (hgcdMatLen M hM (1 : Fin 4))
+      lenLowA lenLowB sgn liftedB.heap = .ok (heap3, lowLenA) →
+    hgcdRecursiveLiftHigh this A highA lowLenA shift lenHighA heap3 =
+      .ok liftedA →
+    RawHeap.SameLayout liftedB.heap liftedA.heap ∧
+      SameU64Prefix liftedB.heap liftedA.heap B liftedB.length ∧
+      RawHeap.SameLayout heap liftedA.heap ∧
+      (∀ i : Fin 4, SameU64Prefix heap liftedA.heap
+        (hgcdMatPtr M hM i) (hgcdMatLen M hM i))
+
+/-- Total semantic execution of the exact four-call reconstruction pair from
+the staged physical contract. -/
+theorem hgcdRecursiveReconstructPair_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (A B T0 lowA lowB highA highB scratch : RawPtr UInt64)
+    (lenLowA lenLowB lenHighA lenHighB shift : Nat)
+    (M : HgcdMat) (hM : M.Valid) (sgn : Int) (heap : RawHeap)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (polyLowA polyLowB polyHighA polyHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveReconstructPairTotalWorkspace this A B T0 lowA
+      lowB highA highB scratch lenLowA lenLowB lenHighA lenHighB shift M hM
+      sgn heap)
+    (hMatrix : HgcdMatRawDenseRep this heap M entries hM)
+    (hLowA : RawCanonicalPolySlice this heap lowA lenLowA polyLowA)
+    (hLowB : RawCanonicalPolySlice this heap lowB lenLowB polyLowB)
+    (hHighA : RawDensePolyRep this heap highA lenHighA polyHighA)
+    (hHighB : RawDensePolyRep this heap highB lenHighB polyHighB) :
+    ∃ result,
+      hgcdRecursiveReconstructPair this A B T0 lowA lowB highA highB scratch
+        lenLowA lenLowB lenHighA lenHighB shift M hM sgn heap = .ok result ∧
+      RawDensePolyRep this result.heap A result.lenA
+        (hgcdReconstructedLowA entries polyLowA polyLowB sgn +
+          Polynomial.X ^ shift * polyHighA) ∧
+      RawDensePolyRep this result.heap B result.lenB
+        (hgcdReconstructedLowB entries polyLowA polyLowB sgn +
+          Polynomial.X ^ shift * polyHighB) ∧
+      HgcdMatRawDenseRep this result.heap M entries hM := by
+  rcases hgcdRecursiveReconstructB_refines this B T0
+      (hgcdMatPtr M hM (2 : Fin 4)) (hgcdMatPtr M hM (0 : Fin 4)) lowA
+      lowB scratch (hgcdMatLen M hM (2 : Fin 4))
+      (hgcdMatLen M hM (0 : Fin 4)) lenLowA lenLowB sgn heap (entries 2)
+      (entries 0) polyLowA polyLowB hcfg hp physical.reconstructB
+      (hMatrix 2) (hMatrix 0) hLowA hLowB with
+    ⟨heap1, lowLenB, hBRun, _, hBReconstructed, _⟩
+  rcases physical.afterB heap1 lowLenB hBRun with
+    ⟨hLayoutB, hHighBPrefix, hLiftBWork⟩
+  have hHighB1 : RawDensePolyRep this heap1 highB lenHighB polyHighB :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      heap heap1 highB lenHighB polyHighB hLayoutB hHighBPrefix hHighB
+  have hpWord : this._p ≠ 0 := by
+    intro hzero
+    have hzeroNat := congrArg UInt64.toNat hzero
+    simp at hzeroNat
+    omega
+  rcases hgcdRecursiveLiftHigh_refines this B highB lowLenB shift lenHighB
+      heap1
+      (if sgn < 0 then entries 2 * polyLowA - entries 0 * polyLowB
+       else entries 0 * polyLowB - entries 2 * polyLowA)
+      polyHighB hpWord hLiftBWork hBReconstructed hHighB1 with
+    ⟨liftedB, hLiftBRun, _, hBFinal⟩
+  rcases physical.afterLiftB heap1 lowLenB liftedB hBRun hLiftBRun with
+    ⟨hLayoutLiftB, hMatrixPrefix, hLowAPrefix, hLowBPrefix, hReconstructA⟩
+  have hEntry3 : RawDensePolyRep this liftedB.heap
+      (hgcdMatPtr M hM (3 : Fin 4)) (hgcdMatLen M hM (3 : Fin 4))
+      (entries 3) :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      heap liftedB.heap
+      (hgcdMatPtr M hM (3 : Fin 4)) (hgcdMatLen M hM (3 : Fin 4))
+      (entries 3) hLayoutLiftB (hMatrixPrefix 3) (hMatrix 3)
+  have hEntry1 : RawDensePolyRep this liftedB.heap
+      (hgcdMatPtr M hM (1 : Fin 4)) (hgcdMatLen M hM (1 : Fin 4))
+      (entries 1) :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      heap liftedB.heap
+      (hgcdMatPtr M hM (1 : Fin 4)) (hgcdMatLen M hM (1 : Fin 4))
+      (entries 1) hLayoutLiftB (hMatrixPrefix 1) (hMatrix 1)
+  have hLowA2 := rawCanonicalPolySlice_of_same_prefix this heap liftedB.heap
+    lowA lenLowA polyLowA hLayoutLiftB hLowAPrefix hLowA
+  have hLowB2 := rawCanonicalPolySlice_of_same_prefix this heap liftedB.heap
+    lowB lenLowB polyLowB hLayoutLiftB hLowBPrefix hLowB
+  rcases hgcdRecursiveReconstructA_refines this A T0
+      (hgcdMatPtr M hM (3 : Fin 4)) (hgcdMatPtr M hM (1 : Fin 4)) lowA
+      lowB scratch (hgcdMatLen M hM (3 : Fin 4))
+      (hgcdMatLen M hM (1 : Fin 4)) lenLowA lenLowB sgn liftedB.heap
+      (entries 3) (entries 1) polyLowA polyLowB hcfg hp hReconstructA
+      hEntry3 hEntry1 hLowA2 hLowB2 with
+    ⟨heap3, lowLenA, hARun, _, hAReconstructed, _⟩
+  rcases physical.afterA heap1 lowLenB liftedB heap3 lowLenA hBRun hLiftBRun
+      hARun with ⟨hLayoutA, hHighAPrefix, hLiftAWork⟩
+  have hHighA3 : RawDensePolyRep this heap3 highA lenHighA polyHighA :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      heap heap3 highA lenHighA polyHighA hLayoutA hHighAPrefix hHighA
+  rcases hgcdRecursiveLiftHigh_refines this A highA lowLenA shift lenHighA
+      heap3
+      (if sgn < 0 then entries 1 * polyLowB - entries 3 * polyLowA
+       else entries 3 * polyLowA - entries 1 * polyLowB)
+      polyHighA hpWord hLiftAWork hAReconstructed hHighA3 with
+    ⟨liftedA, hLiftARun, _, hAFinal⟩
+  rcases physical.finalFrame heap1 lowLenB liftedB heap3 lowLenA liftedA
+      hBRun hLiftBRun hARun hLiftARun with
+    ⟨hFinalBLayout, hFinalBPrefix, hFinalMatrixLayout, hFinalMatrixPrefix⟩
+  let result : HgcdRecursiveReconstructPairResult :=
+    ⟨liftedA.heap, liftedA.length, liftedB.length⟩
+  have hBFinal' : RawDensePolyRep this liftedA.heap B liftedB.length
+      (hgcdReconstructedLowB entries polyLowA polyLowB sgn +
+        Polynomial.X ^ shift * polyHighB) :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      liftedB.heap liftedA.heap B liftedB.length _ hFinalBLayout
+      hFinalBPrefix (by
+        simpa [hgcdReconstructedLowB] using hBFinal)
+  have hMatrixFinal : HgcdMatRawDenseRep this liftedA.heap M entries hM := by
+    intro i
+    exact CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix
+      this heap liftedA.heap
+      (hgcdMatPtr M hM i) (hgcdMatLen M hM i) (entries i)
+      hFinalMatrixLayout (hFinalMatrixPrefix i) (hMatrix i)
+  have hBRunRaw : hgcdRecursiveReconstructB this B T0
+      (hgcdMatPtrRaw M hM (2 : Fin 4)) (hgcdMatPtrRaw M hM (0 : Fin 4))
+      lowA lowB scratch (hgcdMatLenRaw M hM (2 : Fin 4))
+      (hgcdMatLenRaw M hM (0 : Fin 4)) lenLowA lenLowB sgn heap =
+        .ok (heap1, lowLenB) := by
+    simpa only [hgcdMatPtrRaw, hgcdMatPtr, hgcdMatLenRaw, hgcdMatLen] using
+      hBRun
+  have hARunRaw : hgcdRecursiveReconstructA this A T0
+      (hgcdMatPtrRaw M hM (3 : Fin 4)) (hgcdMatPtrRaw M hM (1 : Fin 4))
+      lowA lowB scratch (hgcdMatLenRaw M hM (3 : Fin 4))
+      (hgcdMatLenRaw M hM (1 : Fin 4)) lenLowA lenLowB sgn liftedB.heap =
+        .ok (heap3, lowLenA) := by
+    simpa only [hgcdMatPtrRaw, hgcdMatPtr, hgcdMatLenRaw, hgcdMatLen] using
+      hARun
+  refine ⟨result, ?_, ?_, ?_, hMatrixFinal⟩
+  · simp [result, hgcdRecursiveReconstructPair, hBRunRaw, hLiftBRun, hARunRaw,
+      hLiftARun]
+  · simpa [result, hgcdReconstructedLowA] using hAFinal
+  · simpa [result] using hBFinal'
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

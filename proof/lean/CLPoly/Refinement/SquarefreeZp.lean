@@ -904,38 +904,57 @@ indices into the separately allocated node array; equal-degree entries are
 linked through `next`, exactly as in the source. -/
 def pairVecDivVHCInsert (newNode : Nat) (heap : Array Nat)
     (nodes : Array PairVecDivVHCNode) :
-    RawExec (Array Nat × Array PairVecDivVHCNode) := do
-  let newMono ← pairVecDivVHCMono newNode nodes
-  if hempty : heap.size = 0 then
-    let nodes' ← pairVecDivVHCSetNext newNode none nodes
-    .ok (#[newNode], nodes')
-  else
-    let rootNode := heap[0]'(Nat.pos_of_ne_zero hempty)
-    let rootMono ← pairVecDivVHCMono rootNode nodes
-    if hequal : newMono.deg = rootMono.deg then
-      let nodes' ← pairVecDivVHCSetNext newNode (some rootNode) nodes
-      .ok (heap.set 0 newNode, nodes')
-    else if hgreater : newMono.deg > rootMono.deg then
-      let nodes' ← pairVecDivVHCSetNext newNode none nodes
-      let heap' ← pairVecDivVHCBubble heap.size 0 newNode
-        (heap.push newNode)
-      .ok (heap', nodes')
-    else
-      let firstAnchor := pairVecDivVHCParent heap.size
-      let anchor ← pairVecDivVHCFindAnchor newMono.deg firstAnchor heap nodes
-      if ha : anchor < heap.size then
-        let anchorNode := heap[anchor]
-        let anchorMono ← pairVecDivVHCMono anchorNode nodes
-        if hequalAnchor : newMono.deg = anchorMono.deg then
-          let nodes' ← pairVecDivVHCSetNext newNode (some anchorNode) nodes
-          .ok (heap.set anchor newNode, nodes')
-        else
-          let nodes' ← pairVecDivVHCSetNext newNode none nodes
-          let heap' ← pairVecDivVHCBubbleBelow heap.size anchor newNode
-            (heap.push newNode)
-          .ok (heap', nodes')
+    RawExec (Array Nat × Array PairVecDivVHCNode) :=
+  match pairVecDivVHCMono newNode nodes with
+  | .error fault => .error fault
+  | .ok newMono =>
+      if hempty : heap.size = 0 then
+        match pairVecDivVHCSetNext newNode none nodes with
+        | .error fault => .error fault
+        | .ok nodes' => .ok (#[newNode], nodes')
       else
-        .error .assertionFailure
+        let rootNode := heap[0]'(Nat.pos_of_ne_zero hempty)
+        match pairVecDivVHCMono rootNode nodes with
+        | .error fault => .error fault
+        | .ok rootMono =>
+            if hequal : newMono.deg = rootMono.deg then
+              match pairVecDivVHCSetNext newNode (some rootNode) nodes with
+              | .error fault => .error fault
+              | .ok nodes' => .ok (heap.set 0 newNode, nodes')
+            else if hgreater : newMono.deg > rootMono.deg then
+              match pairVecDivVHCSetNext newNode none nodes with
+              | .error fault => .error fault
+              | .ok nodes' =>
+                  match pairVecDivVHCBubble heap.size 0 newNode
+                      (heap.push newNode) with
+                  | .error fault => .error fault
+                  | .ok heap' => .ok (heap', nodes')
+            else
+              let firstAnchor := pairVecDivVHCParent heap.size
+              match pairVecDivVHCFindAnchor newMono.deg firstAnchor heap nodes with
+              | .error fault => .error fault
+              | .ok anchor =>
+                  if ha : anchor < heap.size then
+                    let anchorNode := heap[anchor]
+                    match pairVecDivVHCMono anchorNode nodes with
+                    | .error fault => .error fault
+                    | .ok anchorMono =>
+                        if hequalAnchor : newMono.deg = anchorMono.deg then
+                          match pairVecDivVHCSetNext newNode (some anchorNode)
+                              nodes with
+                          | .error fault => .error fault
+                          | .ok nodes' =>
+                              .ok (heap.set anchor newNode, nodes')
+                        else
+                          match pairVecDivVHCSetNext newNode none nodes with
+                          | .error fault => .error fault
+                          | .ok nodes' =>
+                              match pairVecDivVHCBubbleBelow heap.size anchor
+                                  newNode (heap.push newNode) with
+                              | .error fault => .error fault
+                              | .ok heap' => .ok (heap', nodes')
+                  else
+                    .error .assertionFailure
 
 /-- Downward pointer-copy loop of `VHC_extract`.  `limit` is the decremented
 source `heap_size` (`s`), and `lastNode = heap[s]` remains readable as the

@@ -196,6 +196,13 @@ every generated range-for and recursive loop used by SQF.
   立即推出 heap-side bound，并已证明单独修改 `next` 指针保持它。下一
   步证明 insert/extract 保持全节点 monomial，再处理 consume/activate
   唯一会重算 monomial 的两处。
+- 已进一步把 selector 的 dividend 结论封装为完整保持定理：返回的
+  `frontier.dividendIndex` 之后每个实际 cell 都严格低于返回 frontier
+  次数，覆盖 dividend-selected、heap-selected 与 dividend-exhausted
+  三类真实分支。全节点 bound 的 `setNext` 保持证明也已闭合到具体
+  `Array.set` 的同址/异址两种读取。`VHC_insert` 的组合保持仍待证明；
+  其执行定义已从 do-notation 等价重写为逐调用的显式 raw match，五条
+  源码成功/错误路径均直接可见，后续保持证明不再依赖 monad 大展开。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

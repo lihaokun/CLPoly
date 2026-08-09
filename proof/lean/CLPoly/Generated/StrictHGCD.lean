@@ -2137,14 +2137,30 @@ structure HgcdFirstReconstructionInvariant (outerLength : Nat)
   ordered : reconstructed.lenB ≤ reconstructed.lenA
   decreases : reconstructed.lenB < outerLength
 
+/-- The successful result relation of the actual first cutoff dispatch. -/
+def HgcdFirstDispatchResult (this : DenseUPolyZp) (bound : Nat)
+    (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (first : HgcdRecursiveResult) : Prop :=
+  let ws := hgcdRecursiveWorkspace W lenA
+  let high := hgcdRecursiveHighInput a b lenA lenB
+  ∃ (hchildOrder : high.lenB0 < high.lenA0)
+    (hchildDecrease : high.lenA0 < bound),
+    hgcdRecursiveDispatchBelow this bound recurse ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+      high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+      heap hchildOrder hchildDecrease = .ok first
+
 /-- Proof-only algorithmic invariant needed between the two recursive call
-sites.  It applies only to a first result carrying the exact recursive length
-invariant, rather than quantifying over arbitrary matrices. -/
+sites.  The result must come from the actual first dispatch; this prevents a
+caller from supplying a bound for an unrelated, preselected record. -/
 def HgcdFirstReconstructionBoundProvider (this : DenseUPolyZp)
-    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) : Prop :=
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat)
+    (actualFirst : HgcdRecursiveResult → Prop) : Prop :=
   let ws := hgcdRecursiveWorkspace W lenA
   ∀ (first : HgcdRecursiveResult)
     (reconstructed : HgcdRecursiveReconstructPairResult),
+    actualFirst first →
     HgcdRecursiveLengthInvariant (lenA - lenA / 2) first →
     hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
       scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
@@ -2172,8 +2188,9 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
         high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
         heap hchildOrder hchildDecrease = .ok first →
       HgcdRecursiveLengthInvariant high.lenA0 first)
-    (reconstructionBound :
-      HgcdFirstReconstructionBoundProvider this a b W scratch lenA lenB) :
+    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
+      scratch lenA lenB (HgcdFirstDispatchResult this bound recurse a b W
+        scratch lenA lenB heap)) :
     RawExec HgcdRecursiveResult :=
   let m := lenA / 2
   if hbaseGuard : lenB < m + 1 then
@@ -2206,7 +2223,7 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
       | .ok reconstructed =>
         have hreconstructedInvariant :
             HgcdFirstReconstructionInvariant lenA first reconstructed :=
-          reconstructionBound first reconstructed (by
+          reconstructionBound first reconstructed ⟨_, _, hfirst⟩ (by
             simpa [high, hgcdRecursiveHighInput] using hfirstLength)
             hreconstruct
         if hearlyGuard : reconstructed.lenB < m + 1 then

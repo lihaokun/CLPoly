@@ -5976,6 +5976,61 @@ structure HgcdRecursiveDispatchIterWorkspace (this : DenseUPolyZp)
   leftRep : RawDensePolyRep this heap inputA lenInputA left
   rightRep : RawDensePolyRep this heap inputB lenInputB right
 
+/-- Concrete frame retained across the first cutoff dispatch.  These are the
+two source low prefixes consumed by the immediately following reconstruction;
+no semantic result is stored in this frame. -/
+structure HgcdRecursiveFirstDispatchFrame
+    (lowA lowB : RawPtr UInt64) (lenLowA lenLowB : Nat)
+    (before : RawHeap) (result : HgcdRecursiveResult) : Prop where
+  layout : RawHeap.SameLayout before result.heap
+  lowAPrefix : SameU64Prefix before result.heap lowA lenLowA
+  lowBPrefix : SameU64Prefix before result.heap lowB lenLowB
+
+/-- Physical frame provider for the actual first dispatch execution. -/
+def HgcdRecursiveFirstDispatchFrameProvider
+    (this : DenseUPolyZp) (bound : Nat)
+    (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (lowA lowB : RawPtr UInt64) (lenLowA lenLowB : Nat) : Prop :=
+  ∀ result,
+    hgcdRecursiveDispatchBelow this bound recurse matrix hMatrix a3 b3 inputA
+      inputB lenInputA lenInputB Q W3 T0 T1 scratch stage WNext heap horder
+      hdecrease = .ok result →
+    HgcdRecursiveFirstDispatchFrame lowA lowB lenLowA lenLowB heap result
+
+/-- The first dispatch frame transports exactly the two low polynomial
+prefixes needed by the generated paired reconstruction. -/
+theorem hgcdRecursiveFirstDispatch_preserves_low_reps
+    (this : DenseUPolyZp) (bound : Nat)
+    (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (lowA lowB : RawPtr UInt64) (lenLowA lenLowB : Nat)
+    (polyLowA polyLowB : Polynomial (ZMod this._p.toNat))
+    (frame : HgcdRecursiveFirstDispatchFrameProvider this bound recurse matrix
+      hMatrix a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch
+      stage WNext heap horder hdecrease lowA lowB lenLowA lenLowB)
+    (hLowA : RawDensePolyRep this heap lowA lenLowA polyLowA)
+    (hLowB : RawDensePolyRep this heap lowB lenLowB polyLowB)
+    (result : HgcdRecursiveResult)
+    (hrun : hgcdRecursiveDispatchBelow this bound recurse matrix hMatrix a3
+      b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage WNext
+      heap horder hdecrease = .ok result) :
+    RawDensePolyRep this result.heap lowA lenLowA polyLowA ∧
+      RawDensePolyRep this result.heap lowB lenLowB polyLowB := by
+  have hframe := frame result hrun
+  exact ⟨rawDensePolyRep_of_same_prefix this heap result.heap lowA lenLowA
+      polyLowA hframe.layout hframe.lowAPrefix hLowA,
+    rawDensePolyRep_of_same_prefix this heap result.heap lowB lenLowB
+      polyLowB hframe.layout hframe.lowBPrefix hLowB⟩
+
 /-- Semantic induction hypothesis at one strictly smaller recursive call.
 It is phrased over the actual callback execution, not a preselected result. -/
 def HgcdRecursiveCallbackRefinesAt (this : DenseUPolyZp)
@@ -7816,6 +7871,61 @@ theorem hgcdRecursiveFirstReconstruct_invariant_of_execution
       polyLowB polyHighA polyHighB hcfg hp hinputOrder hinvariant physical
       hMatrix hLowA hLowB hHighA hHighB hrun }
 
+/-- Physical workspace for the reconstruction that follows an actual first
+dispatch result. -/
+def HgcdRecursiveFirstReconstructWorkspaceProvider (this : DenseUPolyZp)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat)
+    (actualFirst : HgcdRecursiveResult → Prop) : Prop :=
+  let ws := hgcdRecursiveWorkspace W lenA
+  ∀ first, actualFirst first →
+    HgcdRecursiveReconstructPairWorkspaceProvider this ws.a2 ws.b2 ws.T0 a b
+      ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
+      (Nat.min lenB (lenA / 2)) first.lenA first.lenB (lenA / 2)
+      first.matrix first.valid first.sgn first.heap
+
+/-- Construct the first-reconstruction bound from the actual child execution,
+its induction invariant, and physical frame/workspace facts. -/
+theorem hgcdFirstReconstructionBoundProvider_of_actual_dispatch
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (actualFirst : HgcdRecursiveResult → Prop)
+    (lowPolyA lowPolyB : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (horder : lenB < lenA)
+    (hLowA : RawDensePolyRep this heap a (Nat.min lenA (lenA / 2)) lowPolyA)
+    (hLowB : RawDensePolyRep this heap b (Nat.min lenB (lenA / 2)) lowPolyB)
+    (frame : ∀ first, actualFirst first →
+      HgcdRecursiveFirstDispatchFrame a b (Nat.min lenA (lenA / 2))
+        (Nat.min lenB (lenA / 2)) heap first)
+    (reconstructWorkspace :
+      HgcdRecursiveFirstReconstructWorkspaceProvider this a b W scratch lenA
+        lenB actualFirst)
+    (firstInvariant : ∀ first, actualFirst first →
+      ∃ inputHighA inputHighB outputHighA outputHighB entries,
+        let ws := hgcdRecursiveWorkspace W lenA
+        HgcdRecursiveRawInvariant this inputHighA inputHighB outputHighA
+          outputHighB entries true ws.a3 ws.b3 (lenA - lenA / 2) first) :
+    HgcdFirstReconstructionBoundProvider this a b W scratch lenA lenB
+      actualFirst := by
+  intro first reconstructed hactual hlength hreconstruct
+  let ws := hgcdRecursiveWorkspace W lenA
+  rcases firstInvariant first hactual with
+    ⟨inputHighA, inputHighB, outputHighA, outputHighB, entries, hFirst⟩
+  have hframe := frame first hactual
+  have hLowAAfter : RawDensePolyRep this first.heap a
+      (Nat.min lenA (lenA / 2)) lowPolyA :=
+    rawDensePolyRep_of_same_prefix this heap first.heap a
+      (Nat.min lenA (lenA / 2)) lowPolyA hframe.layout hframe.lowAPrefix hLowA
+  have hLowBAfter : RawDensePolyRep this first.heap b
+      (Nat.min lenB (lenA / 2)) lowPolyB :=
+    rawDensePolyRep_of_same_prefix this heap first.heap b
+      (Nat.min lenB (lenA / 2)) lowPolyB hframe.layout hframe.lowBPrefix hLowB
+  exact hgcdRecursiveFirstReconstruct_invariant_of_execution this ws.a2 ws.b2
+    ws.T0 a b ws.a3 ws.b3 scratch lenA lenB first reconstructed entries
+    lowPolyA lowPolyB outputHighA outputHighB hcfg hp horder hlength
+    (reconstructWorkspace first hactual) (hFirst.matrixSemantics rfl).1
+    hLowAAfter hLowBAfter hFirst.aRep hFirst.bRep hreconstruct
+
 /-- The first reconstructed pair already carries the complete parent length
 contract when the generated early-stop guard succeeds.  Matrix descriptors
 are those returned by the real first child; only the operand descriptors are
@@ -9574,7 +9684,8 @@ theorem hgcdRecursiveBodyBelow_base_rawInvariant (this : DenseUPolyZp)
         heap hchildOrder hchildDecrease = .ok first →
       HgcdRecursiveLengthInvariant high.lenA0 first)
     (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
-      scratch lenA lenB)
+      scratch lenA lenB (HgcdFirstDispatchResult this bound recurse a b W
+        scratch lenA lenB heap))
     (workspace : HgcdRecursiveBaseCallWorkspace this M hM A B a b lenA
       lenB heap left right)
     (hlenAPos : 0 < lenA) (hstop : lenB < lenA / 2 + 1)
@@ -9631,7 +9742,8 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
         heap hchildOrder hchildDecrease = .ok first →
       HgcdRecursiveLengthInvariant high.lenA0 first)
     (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
-      scratch lenA lenB)
+      scratch lenA lenB (HgcdFirstDispatchResult this bound recurse a b W
+        scratch lenA lenB heap))
     (first : HgcdRecursiveResult)
     (reconstructed : HgcdRecursiveReconstructPairResult)
     (early : HgcdRecursiveEarlyResult)
@@ -9698,7 +9810,7 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
       hfirst
   have hReconstructed : HgcdFirstReconstructionInvariant lenA first
       reconstructed :=
-    reconstructionBound first reconstructed (by
+    reconstructionBound first reconstructed ⟨_, _, hfirst⟩ (by
       simpa [high, hgcdRecursiveHighInput] using hfirstLength) hreconstruct
   let finalA := hgcdReconstructedLowA entries lowPolyA lowPolyB first.sgn +
     Polynomial.X ^ (lenA / 2) * outputHighA
@@ -9802,7 +9914,8 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
         heap hchildOrder hchildDecrease = .ok first →
       HgcdRecursiveLengthInvariant high.lenA0 first)
     (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
-      scratch lenA lenB)
+      scratch lenA lenB (HgcdFirstDispatchResult this bound recurse a b W
+        scratch lenA lenB heap))
     (first : HgcdRecursiveResult)
     (reconstructed : HgcdRecursiveReconstructPairResult)
     (middle : HgcdRecursiveMiddleResult)
@@ -9951,7 +10064,7 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
         exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder (by omega))
       hfirst
   have hReconstructed : HgcdFirstReconstructionInvariant lenA first
-      reconstructed := reconstructionBound first reconstructed (by
+      reconstructed := reconstructionBound first reconstructed ⟨_, _, hfirst⟩ (by
     simpa [high, hgcdRecursiveHighInput] using hfirstLength) hreconstruct
   let currentA := hgcdReconstructedLowA firstEntries lowPolyA lowPolyB
       first.sgn + Polynomial.X ^ (lenA / 2) * outputHighA
@@ -10197,8 +10310,9 @@ theorem hgcdRecursiveBodyBelow_eq_body (this : DenseUPolyZp)
         high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
         heap hchildOrder hchildDecrease = .ok first →
       HgcdRecursiveLengthInvariant high.lenA0 first)
-    (reconstructionBound :
-      HgcdFirstReconstructionBoundProvider this a b W scratch lenA lenB)
+    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
+      scratch lenA lenB (HgcdFirstDispatchResult this bound below a b W
+        scratch lenA lenB heap))
     (hagrees : ∀ (matrix : HgcdMat) (hMatrix : matrix.Valid)
       (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
       (WNext childScratch : RawPtr UInt64) (childHeap : RawHeap)

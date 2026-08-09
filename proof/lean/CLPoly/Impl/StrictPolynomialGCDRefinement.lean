@@ -1647,6 +1647,124 @@ theorem rawDense_gcd_result_nonzero (this : DenseUPolyZp)
       ((CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_length_zero_iff
         this heap ptr length result hresult).mp hlength)⟩
 
+/-- The normalized raw GCD descriptor cannot be longer than a nonzero input
+descriptor, because the represented GCD actually divides that input. -/
+theorem rawDense_gcd_result_length_le_left (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (leftHeap resultHeap : RawHeap) (leftPtr resultPtr : RawPtr UInt64)
+    (leftLength resultLength : Nat)
+    (left right result : Polynomial (ZMod this._p.toNat))
+    (hleft : RawDensePolyRep this leftHeap leftPtr leftLength left)
+    (hresult : RawDensePolyRep this resultHeap resultPtr resultLength result)
+    (hleftNonzero : left ≠ 0)
+    (hgcd : normalize (EuclideanDomain.gcd left right) = normalize result) :
+    resultLength ≤ leftLength := by
+  have hresultNonzero :=
+    (rawDense_gcd_result_nonzero this resultHeap resultPtr resultLength left right
+      result hleftNonzero hresult hgcd).1
+  have hresultDivides : result ∣ left := by
+    apply normalize_dvd_iff.mp
+    rw [← hgcd]
+    exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left left right)
+  have hdegree : result.natDegree ≤ left.natDegree :=
+    Polynomial.natDegree_le_of_dvd hresultDivides hleftNonzero
+  have hleftLength :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_natDegree_add_one this
+      leftHeap leftPtr leftLength left hleft
+      (Nat.pos_of_ne_zero fun hzero => hleftNonzero
+        ((CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_length_zero_iff
+          this leftHeap leftPtr leftLength left hleft).mp hzero))
+  have hresultLength :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_natDegree_add_one this
+      resultHeap resultPtr resultLength result hresult
+      (Nat.pos_of_ne_zero fun hzero => hresultNonzero
+        ((CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_length_zero_iff
+          this resultHeap resultPtr resultLength result hresult).mp hzero))
+  omega
+
+theorem Int64.ofNat_not_lt_of_le {a b : Nat}
+    (ha : a < 2 ^ 63) (hb : b < 2 ^ 63) (hab : a ≤ b) :
+    ¬Int64.ofNat b < Int64.ofNat a := by
+  have htoa : (Int64.ofNat a).toInt = a := by
+    change (BitVec.ofNat 64 a).toInt = (a : Int)
+    rw [BitVec.toInt_eq_toNat_bmod, BitVec.toNat_ofNat, Int.bmod_def]
+    omega
+  have htob : (Int64.ofNat b).toInt = b := by
+    change (BitVec.ofNat 64 b).toInt = (b : Int)
+    rw [BitVec.toInt_eq_toNat_bmod, BitVec.toNat_ofNat, Int.bmod_def]
+    omega
+  rw [Int64.lt_iff_toInt_lt, htoa, htob]
+  omega
+
+/-- Exact signed degree bound computed by the nonempty public wrapper. -/
+def polynomialGCDDegreeBound (left right : SparsePolyZp) : Int64 :=
+  Int64.ofNat (Nat.min (sparseDenseLength left - 1)
+    (sparseDenseLength right - 1))
+
+/-- The source `d > deg` guard is false for a genuine dense GCD result. -/
+theorem rawDense_gcd_degree_guard_safe (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (inputHeap resultHeap : RawHeap)
+    (leftPtr rightPtr resultPtr : RawPtr UInt64)
+    (leftLength rightLength resultLength : Nat)
+    (left right result : Polynomial (ZMod this._p.toNat))
+    (hleft : RawDensePolyRep this inputHeap leftPtr leftLength left)
+    (hright : RawDensePolyRep this inputHeap rightPtr rightLength right)
+    (hresult : RawDensePolyRep this resultHeap resultPtr resultLength result)
+    (hleftNonzero : left ≠ 0) (hrightNonzero : right ≠ 0)
+    (hleftBound : leftLength ≤ 2 ^ 63)
+    (hrightBound : rightLength ≤ 2 ^ 63)
+    (hgcd : normalize (EuclideanDomain.gcd left right) = normalize result) :
+    ¬Int64.ofNat (Nat.min (leftLength - 1) (rightLength - 1)) <
+      Int64.ofNat (resultLength - 1) := by
+  have hresultLeft := rawDense_gcd_result_length_le_left this inputHeap
+    resultHeap leftPtr resultPtr leftLength resultLength left right result
+    hleft hresult
+    hleftNonzero hgcd
+  have hgcdComm : normalize (EuclideanDomain.gcd right left) =
+      normalize result := by
+    have hcomm : normalize (EuclideanDomain.gcd right left) =
+        normalize (EuclideanDomain.gcd left right) :=
+      normalize_eq_normalize
+        (EuclideanDomain.dvd_gcd
+          (EuclideanDomain.gcd_dvd_right right left)
+          (EuclideanDomain.gcd_dvd_left right left))
+        (EuclideanDomain.dvd_gcd
+          (EuclideanDomain.gcd_dvd_right left right)
+          (EuclideanDomain.gcd_dvd_left left right))
+    exact hcomm.trans hgcd
+  have hresultRight := rawDense_gcd_result_length_le_left this inputHeap
+    resultHeap rightPtr resultPtr rightLength resultLength right left result
+    hright hresult
+    hrightNonzero hgcdComm
+  have hresultNonzero :=
+    (rawDense_gcd_result_nonzero this resultHeap resultPtr resultLength left right
+      result hleftNonzero hresult hgcd).2
+  have hresultPositive : 0 < resultLength := Nat.pos_of_ne_zero hresultNonzero
+  have hleftPositive : 0 < leftLength := by
+    by_contra hzero
+    apply hleftNonzero
+    exact (CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_length_zero_iff
+      this inputHeap leftPtr leftLength left hleft).mp
+        (Nat.eq_zero_of_not_pos hzero)
+  have hrightPositive : 0 < rightLength := by
+    by_contra hzero
+    apply hrightNonzero
+    exact (CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_length_zero_iff
+      this inputHeap rightPtr rightLength right hright).mp
+        (Nat.eq_zero_of_not_pos hzero)
+  have hresultDegreeLeft : resultLength - 1 ≤ leftLength - 1 := by omega
+  have hresultDegreeRight : resultLength - 1 ≤ rightLength - 1 := by omega
+  have hresultDegreeMin : resultLength - 1 ≤
+      Nat.min (leftLength - 1) (rightLength - 1) :=
+    Nat.le_min.mpr ⟨hresultDegreeLeft, hresultDegreeRight⟩
+  have hminLeft := Nat.min_le_left (leftLength - 1) (rightLength - 1)
+  have hleftDegreeBound : leftLength - 1 < 2 ^ 63 := by omega
+  apply Int64.ofNat_not_lt_of_le
+  · omega
+  · exact Nat.lt_of_le_of_lt hminLeft hleftDegreeBound
+  · exact hresultDegreeMin
+
 /-- Observable success payload of the source `__polynomial_GCD` wrapper.
 `output = none` is exactly the early degree-bound return, which leaves the
 caller-owned sparse output unchanged. -/
@@ -2002,7 +2120,12 @@ theorem polynomial_GCD_nonempty_raw_ir_refines
         (sparseDenseLength right) (sparseDenseLength left) finalHeap
         (SparsePolyZp.toPoly this._p.toNat right)
         (SparsePolyZp.toPoly this._p.toNat left))
-    (hbound : ∀ finalHeap gcdResult,
+    (hbound : ∀ finalHeap,
+      RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+          (SparsePolyZp.toPoly this._p.toNat left) →
+      RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+          (SparsePolyZp.toPoly this._p.toNat right) →
+      ∀ gcdResult,
       dense_upoly_zp_gcd_raw_ir this M hM resultPtr leftPtr rightPtr aBuf bBuf
         J Q R W3 W scratch euclidQ euclidR euclidW3
         (sparseDenseLength left) (sparseDenseLength right) loopDecrease
@@ -2028,6 +2151,83 @@ theorem polynomial_GCD_nonempty_raw_ir_refines
     leftPtr rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
     left right degreeBound loopDecrease heap leftHeap finalHeap hcfg hp
     hrunLeft hrunRight hleftNonzero (readyAB finalHeap hleftRep hrightRep)
-    (readyBA finalHeap hleftRep hrightRep) (hbound finalHeap)
+    (readyBA finalHeap hleftRep hrightRep)
+    (hbound finalHeap hleftRep hrightRep)
+
+/-- The complete nonempty public path with the exact source `min` degree
+bound; no separate guard-safety premise remains. -/
+theorem polynomial_GCD_nonempty_raw_ir_refines_source_bound
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (left right : SparsePolyZp)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hleftValid : heap.ValidU64Slice leftPtr (sparseDenseLength left))
+    (hrightValid : heap.ValidU64Slice rightPtr (sparseDenseLength right))
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonzero : SparsePolyZp.toPoly this._p.toNat left ≠ 0)
+    (hrightNonzero : SparsePolyZp.toPoly this._p.toNat right ≠ 0)
+    (hleftBound : sparseDenseLength left ≤ 2 ^ 63)
+    (hrightBound : sparseDenseLength right ≤ 2 ^ 63)
+    (hdisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint rightPtr
+      (sparseDenseLength right) leftPtr (sparseDenseLength left))
+    (readyAB : ∀ finalHeap,
+      RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+          (SparsePolyZp.toPoly this._p.toNat left) →
+      RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+          (SparsePolyZp.toPoly this._p.toNat right) →
+      DenseGcdOrderedReady this hcfg hp M hM resultPtr leftPtr rightPtr aBuf
+        bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength left) (sparseDenseLength right) finalHeap
+        (SparsePolyZp.toPoly this._p.toNat left)
+        (SparsePolyZp.toPoly this._p.toNat right))
+    (readyBA : ∀ finalHeap,
+      RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+          (SparsePolyZp.toPoly this._p.toNat left) →
+      RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+          (SparsePolyZp.toPoly this._p.toNat right) →
+      DenseGcdOrderedReady this hcfg hp M hM resultPtr rightPtr leftPtr aBuf
+        bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength right) (sparseDenseLength left) finalHeap
+        (SparsePolyZp.toPoly this._p.toNat right)
+        (SparsePolyZp.toPoly this._p.toNat left)) :
+    ∃ out sparse,
+      polynomial_GCD_nonempty_raw_ir this M hM resultPtr leftPtr rightPtr
+          aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
+          (polynomialGCDDegreeBound left right) loopDecrease heap = .ok out ∧
+      out.output = some sparse ∧
+      SparsePolyZp.toPoly this._p.toNat sparse = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right)) := by
+  apply polynomial_GCD_nonempty_raw_ir_refines this M hM resultPtr leftPtr
+    rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
+    (polynomialGCDDegreeBound left right) loopDecrease heap hcfg hp hleftValid
+    hrightValid hleftCanonical hrightCanonical hleftNonzero hdisjoint readyAB
+    readyBA
+  intro finalHeap hleftRep hrightRep gcdResult hrun
+  rcases dense_upoly_zp_gcd_raw_ir_refines this hcfg hp M hM resultPtr
+      leftPtr rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+      (sparseDenseLength left) (sparseDenseLength right) loopDecrease
+      finalHeap (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right)
+      (readyAB finalHeap hleftRep hrightRep)
+      (readyBA finalHeap hleftRep hrightRep) with
+    ⟨actual, result, hrunActual, hresult, hgcd⟩
+  have heq : actual = gcdResult :=
+    Except.ok.inj (hrunActual.symm.trans hrun)
+  subst actual
+  simpa [polynomialGCDDegreeBound] using
+    rawDense_gcd_degree_guard_safe this finalHeap gcdResult.heap leftPtr
+      rightPtr resultPtr
+      (sparseDenseLength left) (sparseDenseLength right) gcdResult.lenG
+      (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right) result hleftRep hrightRep
+      hresult hleftNonzero hrightNonzero hleftBound hrightBound hgcd
 
 end CLPoly.Impl.StrictPolynomialGCDRefinement

@@ -177,6 +177,11 @@ polynomial operation may replace any of these executions.
 - Proved its raw-to-safe refinement under concrete workspace readiness: every
   execution succeeds in the accepted degree branch and the emitted canonical
   sparse polynomial denotes the normalized Euclidean gcd.
+- Proved the raw GCD descriptor length is bounded by both nonzero input
+  descriptors from actual divisibility and `natDegree + 1 = raw length`.
+- Connected those Nat bounds to the signed `Int64` source comparison under the
+  C++ degree range and discharged the exact `min(deg F, deg G)` guard; the
+  source-bound refinement theorem no longer accepts a guard-safety premise.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

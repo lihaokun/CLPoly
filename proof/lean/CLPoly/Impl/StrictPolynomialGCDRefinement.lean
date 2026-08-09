@@ -2230,4 +2230,34 @@ theorem polynomial_GCD_nonempty_raw_ir_refines_source_bound
       (SparsePolyZp.toPoly this._p.toNat right) result hleftRep hrightRep
       hresult hleftNonzero hrightNonzero hleftBound hrightBound hgcd
 
+/-- Exact forward reference-mutation loop used by the public sparse monic
+normalization.  Bounds are carried from the source range-for condition, and
+`Array.set` models the same in-place element replacement. -/
+def sparseMonicLoop (index : Nat) (poly : SparsePolyZp) (lcInv : Zp) :
+    SparsePolyZp :=
+  if h : index < poly.size then
+    let term := poly[index]
+    let next := poly.set index (term.1, term.2 * lcInv) h
+    sparseMonicLoop (index + 1) next lcInv
+  else
+    poly
+termination_by poly.size - index
+decreasing_by
+  simp only [Array.size_set]
+  omega
+
+theorem sparseMonicLoop_size (index : Nat) (poly : SparsePolyZp)
+    (lcInv : Zp) :
+    (sparseMonicLoop index poly lcInv).size = poly.size := by
+  rw [sparseMonicLoop]
+  split
+  next hmore =>
+    rw [sparseMonicLoop_size]
+    exact Array.size_set hmore
+  next hdone => rfl
+termination_by poly.size - index
+decreasing_by
+  simp only [Array.size_set]
+  omega
+
 end CLPoly.Impl.StrictPolynomialGCDRefinement

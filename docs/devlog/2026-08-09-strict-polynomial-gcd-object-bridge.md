@@ -122,6 +122,18 @@ obtain the same polynomial as an actual sparse output.  Each heap transition
 must frame both input allocations and all still-live workspaces; no abstract
 polynomial operation may replace any of these executions.
 
+For the outer public `polynomial_GCD`, split on the two source `empty()`
+guards in their written order.  In either empty branch copy the other sparse
+array, read its first coefficient only when the copy is nonempty, compute the
+actual `Zp::inv`, and traverse every term with a forward safe array write whose
+measure is `array.size - index`; array writes preserve size.  In the nonempty
+branch execute the completed internal raw path with the exact source minimum
+degree bound, then still execute the source's second sparse monic loop even
+though the internal result is already monic.  The loop invariant preserves
+monomial degrees and scales the polynomial denotation by the same inverse;
+canonical nonzero coefficients ensure the resulting sparse array remains
+canonical and its leading coefficient is one.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -182,6 +194,9 @@ polynomial operation may replace any of these executions.
 - Connected those Nat bounds to the signed `Int64` source comparison under the
   C++ degree range and discharged the exact `min(deg F, deg G)` guard; the
   source-bound refinement theorem no longer accepts a guard-safety premise.
+- Began the outer public wrapper with its exact forward sparse monic mutation
+  loop, using `Array.set` under the range-for bound and measure
+  `poly.size - index`; proved every iteration preserves vector size.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

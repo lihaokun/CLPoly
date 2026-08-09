@@ -39,6 +39,21 @@ every generated range-for and recursive loop used by SQF.
    agrees with Nat division, so the final sparse denotation is the L2
    Frobenius contraction used by `sqfZp`.
 
+### Derivative loop
+
+1. Traverse the immutable sparse source in order and skip degree-zero terms.
+2. Reproduce `Zp * int64_t` as written by current C++: reduce the nonnegative
+   degree into the coefficient modulus, call the generated normalized modular
+   multiply, skip a zero product, and append degree minus one otherwise.
+3. Use `source.size - index` as the well-founded measure and maintain that the
+   output suffix is the exact `filterMap` image of the visited source prefix.
+4. The proved generated modular-multiply theorem identifies each emitted word
+   with coefficient times degree in `ZMod p`; termwise differentiation and
+   additivity then identify the final sparse polynomial with the L2 derivative.
+5. Strictly descending source degrees remain strictly descending after
+   subtraction by one, while filtering preserves order; generated reduction
+   and the explicit zero test establish canonical output.
+
 ### Recursive-result exponent loops
 
 1. Traverse the returned factor array using the source range-for index.
@@ -79,8 +94,11 @@ every generated range-for and recursive loop used by SQF.
 
 - 终止度量：数组循环使用 `source.size - index`；Yun 使用
   `degree(w) + degree(c)`；递归 SQF 使用输入首项次数加一。
-- 当前迭代：4 轮单文件编译—修复。
+- 当前迭代：10 轮单文件编译—修复。
 - 当前状态：公共非空 raw GCD 已闭合；`__upoly_make_monic` 的真实
   分支、`__extract_pth_root` 的前向 append 循环、两个递归结果指数缩放
   循环已经以良基定义形式化，并证明最终数组列表等于对实际已访问前缀
   的精确映射。
+- 当前 C++ derivative 的前向循环也已闭合：系数计算调用已认证的生成
+  preinverse 模乘，输出保持 canonical，其 `toPoly` 精确等于 L2
+  derivative，并且实际 `isEmpty()` 判定与 L2 derivative 为零等价。

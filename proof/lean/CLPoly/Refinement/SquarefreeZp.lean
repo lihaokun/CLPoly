@@ -2192,6 +2192,96 @@ theorem pairVecDivVHCConsumeNode_coefficient_reduced
                   product hp hkWord hproduct
               simpa [pairVecDivSubmulIR, UInt64.lt_iff_toNat_lt] using hlt
 
+theorem pairVecDivVHCConsumeNode_coefficient_toZMod
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hn : nodeIndex < nodes.size)
+    (hq : nodes[nodeIndex].quotientIndex < quotient.size)
+    (hd : nodes[nodeIndex].divisorIndex < divisor.size)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    (k'.toNat : ZMod this._p.toNat) =
+      (k.toNat : ZMod this._p.toNat) -
+        Zp.toZMod this._p.toNat
+            quotient[nodes[nodeIndex].quotientIndex].2 *
+          Zp.toZMod this._p.toNat
+            divisor[nodes[nodeIndex].divisorIndex].2 := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  simp only [hn, ↓reduceDIte] at hrun
+  simp only [hq, hd, ↓reduceDIte] at hrun
+  have hquotientMem : quotient[nodes[nodeIndex].quotientIndex] ∈
+      quotient.toList := Array.getElem_mem_toList hq
+  have ha := (hcanonical.1 quotient[nodes[nodeIndex].quotientIndex]
+    hquotientMem).2
+  have hsubmul := pairVecDivSubmulIR_toZMod this k
+    quotient[nodes[nodeIndex].quotientIndex].2.val
+    divisor[nodes[nodeIndex].divisorIndex].2.val hcfg hk ha
+  split at hrun
+  next hadvance =>
+    simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+    rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+    simpa [Zp.toZMod] using hsubmul
+  next hadvance =>
+    split at hrun <;> try contradiction
+    next hexhausted =>
+      split at hrun <;> try contradiction
+      next horder =>
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+        simpa [Zp.toZMod] using hsubmul
+
+theorem pairVecDivVHCConsumeNode_indices
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    ∃ hn : nodeIndex < nodes.size,
+      nodes[nodeIndex].quotientIndex < quotient.size ∧
+        nodes[nodeIndex].divisorIndex < divisor.size := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd => exact ⟨hn, hq, hd⟩
+
+theorem pairVecDivVHCConsumeNode_coefficient_semantics
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    ∃ hn : nodeIndex < nodes.size,
+      ∃ hq : nodes[nodeIndex].quotientIndex < quotient.size,
+      ∃ hd : nodes[nodeIndex].divisorIndex < divisor.size,
+        (k'.toNat : ZMod this._p.toNat) =
+          (k.toNat : ZMod this._p.toNat) -
+            Zp.toZMod this._p.toNat
+                quotient[nodes[nodeIndex].quotientIndex].2 *
+              Zp.toZMod this._p.toNat
+                divisor[nodes[nodeIndex].divisorIndex].2 := by
+  rcases pairVecDivVHCConsumeNode_indices this nodeIndex k k' nodes nodes' lin
+      lin' resetH resetH' next quotient divisor hrun with ⟨hn, hq, hd⟩
+  exact ⟨hn, hq, hd,
+    pairVecDivVHCConsumeNode_coefficient_toZMod this nodeIndex k k' nodes
+      nodes' lin lin' resetH resetH' next quotient divisor hn hq hd hcfg
+      hcanonical hk hrun⟩
+
 theorem pairVecDivVHCConsumeNode_get_ne (this : DenseUPolyZp)
     (nodeIndex : Nat) (k k' : UInt64)
     (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)

@@ -446,3 +446,11 @@ every generated range-for and recursive loop used by SQF.
   证明传递 canonicality/ownership/节点不变式，再从下一次真实
   selector guard 推出 quotient-degree invariant。因此递归前提由成功执行
   本身建立，未引入 fuel、oracle 或“假定下一轮正确”。
+- general division 的第一个系数语义原子已闭合。从一次成功的
+  `pairVecDivVHCConsumeNode` 执行中，现可推出 node、quotient 和
+  divisor 三个真实访问均在界内。在 prime/preinverse 配置与 canonical
+  quotient 前提下，generated `submul` 正确性给出精确等式：
+  输出 accumulator 的 `ZMod p` 值等于输入值减去该 node 当前
+  `quotientIndex` 与固定 `divisorIndex` 指向的两个存储系数之积。
+  该定理直接描述真实节点字段和真实执行，不是事后把差值定义为
+  “语义”。下一步将其沿 next-chain 消费轨迹求和。

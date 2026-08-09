@@ -967,3 +967,13 @@ every generated range-for and recursive loop used by SQF.
   无损搬回初始 nodes。空 heap 与 root guard 不匹配两个 base 分支
   均已证明目标集为空。下一步只需将这个以 cursor nodes 索引的
   有限和通过 frontier-row 唯一性改写为 L2 polynomial multiplication 系数。
+- 纯 L2 的稀疏列表乘积系数桥已闭合。新定义
+  `pairVecDivVHCListProductCoeffValue p degree xs ys` 对 `xs × ys`
+  的每个具体索引项对逐一遍历，仅在 monomial degree 之和命中目标
+  时累加系数乘积。通过先对固定 quotient monomial 归纳 divisor
+  rows，再归纳 quotient rows，证明该有限和精确等于
+  `(listSum p xs * listSum p ys).coeff degree`。已给出完整
+  quotient/divisor `toPoly` 版本和 divisor-tail 版本。该引理不依赖
+  系数对值的唯一性，因而天然保留所有索引重数。下一步是唯一
+  剩余的双射：目标-degree owner cursor nodes 与 `quotient.toList ×
+  divisor.toList.tail` 中 degree 命中项对一一对应。

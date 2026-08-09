@@ -8389,6 +8389,75 @@ def pairVecDivVHCNodeProductValue (p : Nat)
             (divisorTerm.2.val.toNat : ZMod p)
       | _, _ => 0
 
+def pairVecDivVHCListProductCoeffValue (p degree : Nat) :
+    List (UMonomial × Zp) → List (UMonomial × Zp) → ZMod p
+  | [], _ => 0
+  | quotientTerm :: quotientTerms, divisorTerms =>
+      divisorTerms.foldr (fun divisorTerm sum =>
+        if quotientTerm.1.deg + divisorTerm.1.deg = degree then
+          (quotientTerm.2.val.toNat : ZMod p) *
+              (divisorTerm.2.val.toNat : ZMod p) + sum
+        else sum) 0 +
+        pairVecDivVHCListProductCoeffValue p degree quotientTerms divisorTerms
+
+theorem pairVecDivVHCListProductCoeffValue_row (p degree : Nat)
+    (quotientMono : UMonomial) (quotientCoefficient : Zp)
+    (divisorTerms : List (UMonomial × Zp)) :
+    divisorTerms.foldr (fun divisorTerm sum =>
+        if quotientMono.deg + divisorTerm.1.deg = degree then
+          (quotientCoefficient.val.toNat : ZMod p) *
+              (divisorTerm.2.val.toNat : ZMod p) + sum
+        else sum) 0 =
+      (Polynomial.monomial quotientMono.deg
+          (quotientCoefficient.val.toNat : ZMod p) *
+        listSum p divisorTerms).coeff degree := by
+  induction divisorTerms with
+  | nil => simp
+  | cons divisorTerm divisorTerms ih =>
+      rcases divisorTerm with ⟨divisorMono, divisorCoefficient⟩
+      simp only [List.foldr_cons, listSum_cons, mul_add,
+        Polynomial.coeff_add, ih]
+      by_cases hdegree : quotientMono.deg + divisorMono.deg = degree
+      · simp only [hdegree, if_pos]
+        subst degree
+        simp [Zp.toZMod, Polynomial.monomial_mul_monomial]
+      · simp only [hdegree, if_neg]
+        rw [Polynomial.monomial_mul_monomial, Polynomial.coeff_monomial]
+        simp [hdegree]
+
+theorem pairVecDivVHCListProductCoeffValue_eq_coeff (p degree : Nat)
+    (quotientTerms divisorTerms : List (UMonomial × Zp)) :
+    pairVecDivVHCListProductCoeffValue p degree quotientTerms divisorTerms =
+      (listSum p quotientTerms * listSum p divisorTerms).coeff degree := by
+  induction quotientTerms with
+  | nil => simp [pairVecDivVHCListProductCoeffValue]
+  | cons quotientTerm quotientTerms ih =>
+      rcases quotientTerm with ⟨quotientMono, quotientCoefficient⟩
+      simp only [pairVecDivVHCListProductCoeffValue, listSum_cons, add_mul,
+        Polynomial.coeff_add, ih]
+      have hrow := pairVecDivVHCListProductCoeffValue_row p degree quotientMono
+        quotientCoefficient divisorTerms
+      simpa [Zp.toZMod] using congrArg
+        (fun value => value +
+          (listSum p quotientTerms * listSum p divisorTerms).coeff degree) hrow
+
+theorem pairVecDivVHCListProductCoeffValue_toPoly (p degree : Nat)
+    (quotient divisor : SparsePolyZp) :
+    pairVecDivVHCListProductCoeffValue p degree quotient.toList divisor.toList =
+      (SparsePolyZp.toPoly p quotient *
+        SparsePolyZp.toPoly p divisor).coeff degree := by
+  exact pairVecDivVHCListProductCoeffValue_eq_coeff p degree quotient.toList
+    divisor.toList
+
+theorem pairVecDivVHCListProductCoeffValue_divisorTail (p degree : Nat)
+    (quotient divisor : SparsePolyZp) :
+    pairVecDivVHCListProductCoeffValue p degree quotient.toList
+        divisor.toList.tail =
+      (SparsePolyZp.toPoly p quotient *
+        listSum p divisor.toList.tail).coeff degree := by
+  exact pairVecDivVHCListProductCoeffValue_eq_coeff p degree quotient.toList
+    divisor.toList.tail
+
 theorem pairVecDivVHCConsumeChain_preserves_linReady
     (this : DenseUPolyZp) (current : Option Nat)
     (owner unvisited : Finset Nat) (k : UInt64)

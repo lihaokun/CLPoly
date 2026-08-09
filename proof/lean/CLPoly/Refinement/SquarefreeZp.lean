@@ -12,7 +12,7 @@
   of this boundary.
 -/
 import CLPoly.Algorithm.SquarefreeZp
-import CLPoly.Impl.StrictDivremRefinement
+import CLPoly.Impl.StrictPolynomialGCDRefinement
 
 set_option autoImplicit false
 

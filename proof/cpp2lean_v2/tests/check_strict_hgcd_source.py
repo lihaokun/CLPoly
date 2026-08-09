@@ -62,6 +62,7 @@ LEAN_FILES = (
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDContinuationRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDCheckedRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictGCDHGCDRefinement.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictPolynomialGCDRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRefinement.lean",
 )
 
@@ -457,6 +458,9 @@ def main() -> None:
         "gcdHgcdLoop_dynamic_hgcd_step_succeeds",
         "gcdHgcdLoop_succeeds_wf",
         "dense_upoly_zp__gcd_hgcd_raw_ir_succeeds",
+        "SparseRawDenseRep",
+        "RawDenseSparseResult",
+        "RawDenseSparseResult.toPoly_unique",
         "GcdHgcdRawResult",
         "HgcdGcdLoopLengthDecreases",
         "gcdHgcdLoop",

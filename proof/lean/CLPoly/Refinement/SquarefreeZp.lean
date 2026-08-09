@@ -15813,6 +15813,125 @@ theorem pairVecDivVHCProduct_coeff_eq_zero_of_gap
       hcanonical hprefix hfrontier htarget hselect]
   simp
 
+/-- When the generated outer loop has exhausted both source queues, every
+dividend coefficient below the current well-founded bound is zero.  This is
+read directly from the consumed-prefix invariant and the concrete source
+index; no divisibility specification is used. -/
+theorem pairVecDivVHCDividend_coeff_eq_zero_of_done
+    (p degreeLimit targetDegree dividendIndex : Nat)
+    (dividend : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical p dividend)
+    (hconsumed : PairVecDivVHCConsumedDividendAbove degreeLimit dividendIndex
+      dividend)
+    (hdone : dividend.size ≤ dividendIndex)
+    (htarget : targetDegree < degreeLimit) :
+    (SparsePolyZp.toPoly p dividend).coeff targetDegree = 0 := by
+  unfold SparsePolyZp.toPoly
+  suffices habsent : ∀ term ∈ dividend.toList,
+      term.1.deg ≠ targetDegree by
+    have go : ∀ terms : List (UMonomial × Zp),
+        (∀ term ∈ terms, term.1.deg ≠ targetDegree) →
+        (listSum p terms).coeff targetDegree = 0 := by
+      intro terms hterms
+      induction terms with
+      | nil => simp [listSum]
+      | cons term rest ih =>
+          rw [listSum_cons, Polynomial.coeff_add,
+            Polynomial.coeff_monomial,
+            if_neg (hterms term List.mem_cons_self),
+            ih (by
+              intro item hitem
+              exact hterms item (List.mem_cons_of_mem term hitem))]
+          simp
+    exact go dividend.toList habsent
+  intro term hterm
+  rcases List.getElem_of_mem hterm with ⟨i, hiList, htermEq⟩
+  have hi : i < dividend.size := by simpa using hiList
+  have htermEq' : term = dividend[i] := by
+    rw [← Array.getElem_toList hi]
+    exact htermEq.symm
+  have habove := hconsumed i dividend[i] (by omega)
+    (Array.getElem?_eq_getElem hi)
+  rw [htermEq']
+  omega
+
+/-- At a concrete terminal heap state every divisor-tail product has already
+crossed the cursor.  Consequently no such product can occur below the current
+outer-loop bound. -/
+theorem pairVecDivVHCTail_product_coeff_eq_zero_of_done
+    (p degreeLimit targetDegree resetH : Nat)
+    (quotient divisor : SparsePolyZp) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : PairVecDivVHCStateCovered #[] nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership #[] owners nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (htarget : targetDegree < degreeLimit) :
+    (SparsePolyZp.toPoly p quotient *
+      listSum p divisor.toList.tail).coeff targetDegree = 0 := by
+  rw [← pairVecDivVHCTargetPairSum_eq_productCoeffTail p targetDegree
+    quotient divisor]
+  suffices hempty : PairVecDivVHCTargetPairsAtDegree targetDegree quotient
+      divisor = ∅ by simp [hempty]
+  rw [← Finset.not_nonempty_iff_eq_empty]
+  rintro ⟨⟨q, d⟩, hpair⟩
+  rw [PairVecDivVHCTargetPairsAtDegree] at hpair
+  rcases Finset.mem_filter.mp hpair with ⟨hindices, hdegree⟩
+  rcases Finset.mem_product.mp hindices with ⟨hq, hd⟩
+  rw [Finset.mem_range] at hq
+  rw [Finset.mem_Ico] at hd
+  rcases hd with ⟨hdpos, hd⟩
+  have hquotient : quotient[q]? = some quotient[q] :=
+    Array.getElem?_eq_getElem hq
+  have hdivisor : divisor[d]? = some divisor[d] :=
+    Array.getElem?_eq_getElem hd
+  simp [PairVecDivVHCPairAtDegree, hquotient, hdivisor] at hdegree
+  rcases hfixed.node_for_tail nodes divisor.size d hsize hdpos hd with
+    ⟨node, hnode, hnodeD⟩
+  have hnodeIndex : d - 1 < nodes.size := by rw [hsize]; omega
+  have hcovered := hstate.covered_with #[] nodes #[] resetH owners hownership
+  rcases hcovered (d - 1) hnodeIndex with hreset | hlin | howned
+  · rcases hresetReady.2 (d - 1) hreset with
+      ⟨readyNode, hreadyNode, hcursor, hreadyD, hmono⟩
+    rw [hnode] at hreadyNode
+    simp only [Option.some.injEq] at hreadyNode
+    subst readyNode
+    have habove := hprefix (d - 1) node hnode q quotient[q] divisor[d]
+      (by omega) hquotient (by simpa [hnodeD] using hdivisor)
+    omega
+  · simp at hlin
+  · rcases howned with ⟨slot, head, hheap, _⟩
+    simp at hheap
+
+/-- The complete generated product has no coefficient below the current bound
+once both concrete outer-loop queues are exhausted. -/
+theorem pairVecDivVHCProduct_coeff_eq_zero_of_done
+    (p degreeLimit targetDegree resetH : Nat)
+    (quotient divisor : SparsePolyZp) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (hdivisor : 0 < divisor.size)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : PairVecDivVHCStateCovered #[] nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership #[] owners nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hprocessed : PairVecDivVHCQuotientLeadAbove degreeLimit
+      divisor[0].1.deg quotient)
+    (htarget : targetDegree < degreeLimit) :
+    (SparsePolyZp.toPoly p quotient * SparsePolyZp.toPoly p divisor).coeff
+      targetDegree = 0 := by
+  rw [sparsePolyZp_toPoly_eq_head_add_tail p divisor hdivisor, mul_add,
+    Polynomial.coeff_add,
+    pairVecDivVHCQuotient_mul_lead_coeff_eq_zero_below_processed p
+      degreeLimit targetDegree divisor[0].1.deg quotient divisor[0].2
+      hprocessed htarget,
+    pairVecDivVHCTail_product_coeff_eq_zero_of_done p degreeLimit targetDegree
+      resetH quotient divisor nodes owners hsize hfixed hstate hownership
+      hresetReady hprefix htarget]
+  simp
+
 theorem pairVecDivVHCEmitted_monomial_mul_tail_coeff_eq_zero
     (p frontierDegree : Nat) (divisor : SparsePolyZp)
     (coefficient : ZMod p) (hdivisor : 0 < divisor.size)

@@ -1232,3 +1232,13 @@ every generated range-for and recursive loop used by SQF.
   上的精确 ownership 与 homogeneous。至此单轮系数桥所需的 heap order
   与 homogeneous 均可递归传递。下一步完成全局 `OuterLoop` 的良基
   `ProductAgreesAbove` 归纳及 done-state 全次数结论。
+- generated outer loop 的 terminal coefficient 语义已闭合。
+  `pairVecDivVHCDividend_coeff_eq_zero_of_done` 从真实 source index 已到数组
+  末尾及 consumed-prefix 不变量证明当前界以下没有 dividend 项；
+  `pairVecDivVHCTail_product_coeff_eq_zero_of_done` 从空 heap、`StateCovered`、
+  `ResetReady` 和 cursor prefix 证明每个 divisor-tail 行都已经越过全部商项，
+  因而当前界以下不存在目标乘积；
+  `pairVecDivVHCProduct_coeff_eq_zero_of_done` 再与 processed quotient/lead
+  不变量组合，得到完整 `quotient * divisor` 的低次系数为零。该结论不引用
+  可除性规格、预期商或任何 L2 回退；下一步把它作为 `OuterLoop` 良基归纳
+  的 done 分支，并在 step 分支递归传递全部表示不变量。

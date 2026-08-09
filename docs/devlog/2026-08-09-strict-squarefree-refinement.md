@@ -908,3 +908,16 @@ every generated range-for and recursive loop used by SQF.
   真实完整堆序前提。下一步用这个循环不变式将已有的
   root-dominance 与 bucket product completeness 提升为整段 equal-degree products
   completeness。
+- 整段 equal-degree products completeness 已闭合。新谓词
+  `PairVecDivVHCProductsCoverDegreeOwners` 对每个初始 heap slot/head、
+  每个处于目标 degree 的 owner chain 及其每个具体 node，要求该
+  node 真实 cursor 指向的 quotient/divisor 系数对出现在 products 中。
+  强定理沿实际 `heap.size` 良基下降：当 root degree 匹配时，
+  root owner 由 bucket trace 的逐节点 coverage 处理，其他 owner 通过
+  disjoint-chain 的精确 lookup 保持和 extract surviving-head 见证进入递归；
+  当 root degree 不匹配时，完整 heap order 与全局 degree 上界排除
+  任何更深的目标-degree chain。最终同一个 `rootProducts ++
+  tailProducts` 同时满足模系数等式、每项 soundness 和所有 owner
+  行的 completeness，不是两个无关的存在性列表。下一步将
+  frontier-row owned-cursor 定理与该 coverage 组合，将 products value 替换为
+  L2 polynomial multiplication 在 frontier degree 的系数。

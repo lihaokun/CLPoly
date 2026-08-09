@@ -9464,6 +9464,21 @@ theorem pairVecDivVHCConsumeRootBucket_products_complete
     (Finset.range nodes.size) owner k nodes lin resetH result products howns
     hdenotes
 
+/-- Every row in every heap-owned chain at `degree` contributes its concrete
+coefficient pair to `products`. -/
+def PairVecDivVHCProductsCoverDegreeOwners (degree : Nat)
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (products : List (UInt64 × UInt64)) : Prop :=
+  ∀ (slot head : Nat), heap[slot]? = some head →
+    PairVecDivVHCChainAtDegree (some head) (owners head) nodes degree →
+    ∀ i ∈ owners head, ∃ node quotientTerm divisorTerm,
+      nodes[i]? = some node ∧
+        quotient[node.quotientIndex]? = some quotientTerm ∧
+        divisor[node.divisorIndex]? = some divisorTerm ∧
+        (quotientTerm.2.val, divisorTerm.2.val) ∈ products
+
 theorem pairVecDivVHCConsumeChain_preserves_cursorPrefixAbove
     (this : DenseUPolyZp) (degree : Nat) (current : Option Nat)
     (unvisited : Finset Nat) (k : UInt64)
@@ -10780,6 +10795,219 @@ theorem pairVecDivVHCConsumeEqualDegree_coefficient_semantics
         subst result
         refine ⟨[], ?_, by simp⟩
         simp [pairVecDivVHCProductsValue]
+
+/-- Full equal-degree coefficient semantics: the existential trace is both
+sound and complete for every initially heap-owned chain at the target degree. -/
+theorem pairVecDivVHCConsumeEqualDegree_products_complete
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult) (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hmax : ∀ (slot head : Nat) (mono : UMonomial), heap[slot]? = some head →
+      pairVecDivVHCMono head nodes = .ok mono → mono.deg ≤ degree)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∃ products : List (UInt64 × UInt64),
+      (result.coefficient.toNat : ZMod this._p.toNat) =
+          (k.toNat : ZMod this._p.toNat) -
+            pairVecDivVHCProductsValue this._p.toNat products ∧
+      (∀ product ∈ products,
+        PairVecDivVHCStoredProductAtDegree degree quotient divisor product) ∧
+      PairVecDivVHCProductsCoverDegreeOwners degree heap owners nodes quotient
+        divisor products := by
+  induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
+      nodes lin resetH result with
+  | h size ih =>
+      rw [pairVecDivVHCConsumeEqualDegree] at hrun
+      by_cases hheap : 0 < heap.size
+      · simp only [hheap, ↓reduceDIte] at hrun
+        cases hmono : pairVecDivVHCMono heap[0] nodes with
+        | error fault => simp [hmono] at hrun
+        | ok rootMono =>
+            simp only [hmono] at hrun
+            by_cases hequal : rootMono.deg = degree
+            · simp only [hequal, ↓reduceDIte] at hrun
+              cases hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes
+                  lin resetH quotient divisor with
+              | error fault => simp [hconsume] at hrun
+              | ok bucket =>
+                  simp only [dif_pos trivial, hconsume] at hrun
+                  cases hchecked : pairVecDivVHCExtractChecked heap bucket.nodes with
+                  | error fault => simp [hchecked] at hrun
+                  | ok extracted =>
+                      rw [hchecked] at hrun
+                      have hrootOwns :=
+                        pairVecDivVHCHeapChainOwnership_root_owns heap owners
+                          nodes hownership hheap
+                      have hrootDegree := hhomogeneous 0 heap[0] rootMono
+                        (Array.getElem?_eq_getElem hheap) hmono
+                      rw [hequal] at hrootDegree
+                      rcases pairVecDivVHCConsumeRootBucket_products_complete
+                          this degree heap k nodes lin resetH quotient divisor
+                          bucket (owners heap[0]) hheap hrootOwns hrootDegree
+                          hdenotes hcfg hcanonical hk hconsume with
+                        ⟨rootProducts, hrootTrace, hrootCoefficient, hrootSound,
+                          hrootCover⟩
+                      have hraw := pairVecDivVHCExtractChecked_raw heap
+                        bucket.nodes extracted hchecked
+                      have hownership' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hconsume hraw
+                      have hhomogeneous' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapChainsHomogeneous
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hhomogeneous
+                          hconsume hraw
+                      have hordered' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapOrdered
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hordered
+                          hconsume hraw
+                      have hdenotes' :=
+                        pairVecDivVHCConsumeRootBucket_preserves_denotes this
+                          heap k nodes lin resetH quotient divisor bucket
+                          hdenotes hconsume
+                      have hp : this._p ≠ 0 := by
+                        intro hp
+                        have hz : this._p.toNat = 0 := congrArg UInt64.toNat hp
+                        exact (Fact.out : Nat.Prime this._p.toNat).ne_zero hz
+                      have hk' :=
+                        pairVecDivVHCConsumeRootBucket_coefficient_reduced this
+                          heap k nodes lin resetH quotient divisor bucket hp
+                          hcfg hcanonical hk hconsume
+                      have hsurvives :=
+                        pairVecDivVHCExtract_preserves_nonroot_head heap
+                          extracted.1 bucket.nodes hheap hownership.2.1 hraw
+                      have hsameOther :=
+                        pairVecDivVHCConsumeRootBucket_preserves_disjoint_chainAtDegree
+                      have hmax' : ∀ (slot head : Nat) (mono : UMonomial),
+                          extracted.1[slot]? = some head →
+                          pairVecDivVHCMono head bucket.nodes = .ok mono →
+                          mono.deg ≤ degree := by
+                        intro slot head mono hget hrunMono
+                        rcases pairVecDivVHCExtract_valuesFrom heap extracted.1
+                            bucket.nodes hraw slot head hget with
+                          ⟨oldSlot, hold⟩
+                        have hslotPos : 0 < oldSlot := by
+                          by_contra hz
+                          have : oldSlot = 0 := by omega
+                          subst oldSlot
+                          have hgone := pairVecDivVHCExtract_excludes_root heap
+                            extracted.1 bucket.nodes hheap
+                            (pairVecDivVHCHeapChainOwnership_root_onlyAt heap
+                              owners nodes hownership hheap) hraw slot
+                          have hheadRoot : head = heap[0] := by
+                            rw [Array.getElem?_eq_getElem hheap] at hold
+                            exact (Option.some.inj hold).symm
+                          exact hgone (by simpa [hheadRoot] using hget)
+                        have hsource :=
+                          (pairVecDivVHCConsumeRootBucket_nonroot_mono_iff this
+                            heap k nodes lin resetH quotient divisor bucket
+                            owners hheap hownership hconsume oldSlot head
+                            hslotPos hold mono).mpr hrunMono
+                        exact hmax oldSlot head mono hold hsource
+                      have hsmaller : extracted.1.size < size := by
+                        rw [← hsize]
+                        omega
+                      rcases ih extracted.1.size hsmaller extracted.1
+                          bucket.coefficient bucket.nodes bucket.lin
+                          bucket.resetH result hownership' hhomogeneous'
+                          hordered' hmax' hdenotes' hk' hrun rfl with
+                        ⟨tailProducts, htailCoefficient, htailSound,
+                          htailCover⟩
+                      refine ⟨rootProducts ++ tailProducts, ?_, ?_, ?_⟩
+                      · rw [pairVecDivVHCProductsValue_append,
+                          htailCoefficient, hrootCoefficient]
+                        ring
+                      · intro product hproduct
+                        rw [List.mem_append] at hproduct
+                        exact hproduct.elim (hrootSound product)
+                          (htailSound product)
+                      · intro slot head hhead hdegree i hi
+                        by_cases hrootHead : head = heap[0]
+                        · subst head
+                          rcases hrootCover i hi with
+                            ⟨node, quotientTerm, divisorTerm, hnode,
+                              hquotient, hdivisor, hproduct⟩
+                          exact ⟨node, quotientTerm, divisorTerm, hnode,
+                            hquotient, hdivisor,
+                            List.mem_append_left _ hproduct⟩
+                        · rcases hsurvives slot head hhead hrootHead with
+                            ⟨newSlot, hnewHead⟩
+                          have hrootOwns' := hrootOwns
+                          have hotherOwns := hownership.1 slot head hhead
+                          have hdisjoint : Disjoint (owners head)
+                              (owners heap[0]) := by
+                            have hslot : slot < heap.size := by
+                              by_contra hn
+                              rw [Array.getElem?_eq_none (by omega)] at hhead
+                              contradiction
+                            have hheadEq : heap[slot] = head := by
+                              rw [Array.getElem?_eq_getElem hslot] at hhead
+                              exact Option.some.inj hhead
+                            exact hownership.2.2 slot 0 head heap[0] hhead
+                              (Array.getElem?_eq_getElem hheap) hrootHead
+                          have hpreserved := hsameOther this heap k nodes lin
+                            resetH quotient divisor bucket (owners heap[0])
+                            (owners head) (some head) degree hheap hrootOwns'
+                            hotherOwns hdegree hdisjoint hconsume
+                          rcases htailCover newSlot head hnewHead hpreserved.2
+                              i hi with
+                            ⟨node, quotientTerm, divisorTerm, hnode,
+                              hquotient, hdivisor, hproduct⟩
+                          rw [hpreserved.1 i hi] at hnode
+                          exact ⟨node, quotientTerm, divisorTerm, hnode,
+                            hquotient, hdivisor,
+                            List.mem_append_right _ hproduct⟩
+            · simp only [hequal, ↓reduceDIte, Except.ok.injEq] at hrun
+              subst result
+              refine ⟨[], ?_, by simp, ?_⟩
+              · simp [pairVecDivVHCProductsValue]
+              · intro slot head hhead hdegree
+                rw [PairVecDivVHCChainAtDegree] at hdegree
+                split at hdegree <;> try contradiction
+                next hmem =>
+                  rcases hdegree with
+                    ⟨headNode, headMono, hheadNode, hheadMono,
+                      hheadDegree, htail⟩
+                  have hheadRun : pairVecDivVHCMono head nodes =
+                      .ok headMono :=
+                    (pairVecDivVHCMono_eq_ok_iff head nodes headMono).2
+                      ⟨headNode, hheadNode, hheadMono⟩
+                  have hslot : slot < heap.size := by
+                    by_contra hn
+                    rw [Array.getElem?_eq_none (by omega)] at hhead
+                    contradiction
+                  have hheadEq : heap[slot] = head := by
+                    rw [Array.getElem?_eq_getElem hslot] at hhead
+                    exact Option.some.inj hhead
+                  have hslotRun : pairVecDivVHCMono heap[slot] nodes =
+                      .ok headMono := by simpa [hheadEq] using hheadRun
+                  have hleRoot := pairVecDivVHCHeapOrdered_slot_le_root heap
+                    nodes (hownership.heapPointersValid heap owners nodes)
+                    hordered slot hslot headMono rootMono hslotRun hmono
+                  have hrootLe := hmax 0 heap[0] rootMono
+                    (Array.getElem?_eq_getElem hheap) hmono
+                  have : rootMono.deg = degree := by omega
+                  exact (hequal this).elim
+      · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
+        subst result
+        refine ⟨[], ?_, by simp, ?_⟩
+        · simp [pairVecDivVHCProductsValue]
+        · intro slot head hget
+          rw [Array.getElem?_eq_none (by omega)] at hget
+          contradiction
 
 theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainsOwned
     (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)

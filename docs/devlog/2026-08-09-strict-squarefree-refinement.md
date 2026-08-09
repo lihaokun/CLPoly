@@ -814,3 +814,14 @@ every generated range-for and recursive loop used by SQF.
   consume/extract 桥：旧 heap order 在消费前 nodes 上成立，sift 在消费后
   nodes 上运行；需用 root-owner 与其他 owner 的 disjoint 更新保持证明，
   将所有非根 head mono lookup 搬到消费后 nodes 后应用本定理。
+- consume→extract 的双 storage 桥已闭合。`Extract_root_dominates` 现显式
+  区分提供旧 heap order 的 `sourceNodes` 与实际执行 sift 的 `nodes`，只
+  要每个非根 heap head 的 mono 成功读取在两者间等价即可。该等价由真实
+  root-bucket consume 推出：root owner 与其他 owner disjoint，consume
+  trace 的 unvisited 集覆盖其他 owner，且每个 unvisited node lookup
+  原样保持；特别得到所有非根 head 的 mono iff。组合定理现直接证明
+  `ConsumeRootBucket` 后以 `bucket.nodes` 执行 `VHC_extract`，新 root 支配
+  返回 heap 的全部槽，没有要求已消费旧 root 仍 active。下一步需要将
+  这一 root-max 结果加强为完整 parent/child heap order preservation；否则
+  第二次及后续 extract 仍无法合法复用 heap-order 前提，不能提前宣称
+  full equal-degree completeness。

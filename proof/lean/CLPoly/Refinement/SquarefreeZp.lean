@@ -2744,11 +2744,15 @@ theorem pairVecDivVHCHeapOrdered_slot_le_root_child
           Nat.le_trans hstep hparentLe⟩
 
 theorem pairVecDivVHCExtract_root_dominates
-    (heap heap' : Array Nat) (nodes : Array PairVecDivVHCNode)
-    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
-    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (heap heap' : Array Nat) (sourceNodes nodes : Array PairVecDivVHCNode)
+    (hvalid : PairVecDivVHCHeapPointersValid heap sourceNodes)
+    (hordered : PairVecDivVHCHeapOrdered heap sourceNodes)
     (hunique : ∀ (left right head : Nat), heap[left]? = some head →
       heap[right]? = some head → left = right)
+    (hsame : ∀ (slot head : Nat), 0 < slot →
+      heap[slot]? = some head → ∀ mono,
+        pairVecDivVHCMono head sourceNodes = .ok mono ↔
+          pairVecDivVHCMono head nodes = .ok mono)
     (hresult : 0 < heap'.size)
     (hrun : pairVecDivVHCExtract heap nodes = .ok heap')
     (slot : Nat) (hslot : slot < heap'.size) (mono rootMono : UMonomial)
@@ -2784,20 +2788,28 @@ theorem pairVecDivVHCExtract_root_dominates
     have hlastHead : heap[heap.size - 1] = lastHead := by
       rw [Array.getElem?_eq_getElem (by omega)] at hlastHeap
       exact Option.some.inj hlastHeap
-    have hleftRun : pairVecDivVHCMono heap[1] nodes = .ok leftMono := by
-      apply (pairVecDivVHCMono_eq_ok_iff heap[1] nodes leftMono).mpr
+    have hleftSource : pairVecDivVHCMono heap[1] sourceNodes =
+        .ok leftMono := by
+      apply (pairVecDivVHCMono_eq_ok_iff heap[1] sourceNodes leftMono).mpr
       rw [hleftHead]
       exact ⟨leftNode, hleftNode, hleftActive⟩
-    have hrightRun : pairVecDivVHCMono heap[2] nodes = .ok rightMono := by
-      apply (pairVecDivVHCMono_eq_ok_iff heap[2] nodes rightMono).mpr
+    have hrightSource : pairVecDivVHCMono heap[2] sourceNodes =
+        .ok rightMono := by
+      apply (pairVecDivVHCMono_eq_ok_iff heap[2] sourceNodes rightMono).mpr
       rw [hrightHead]
       exact ⟨rightNode, hrightNode, hrightActive⟩
-    have hlastRun : pairVecDivVHCMono heap[heap.size - 1] nodes =
+    have hlastSource : pairVecDivVHCMono heap[heap.size - 1] sourceNodes =
         .ok lastMono := by
-      apply (pairVecDivVHCMono_eq_ok_iff heap[heap.size - 1] nodes
+      apply (pairVecDivVHCMono_eq_ok_iff heap[heap.size - 1] sourceNodes
         lastMono).mpr
       rw [hlastHead]
       exact ⟨lastNode, hlastNode, hlastActive⟩
+    have hleftRun := (hsame 1 heap[1] (by omega)
+      (Array.getElem?_eq_getElem (by omega)) leftMono).mp hleftSource
+    have hrightRun := (hsame 2 heap[2] (by omega)
+      (Array.getElem?_eq_getElem (by omega)) rightMono).mp hrightSource
+    have hlastRun := (hsame (heap.size - 1) heap[heap.size - 1] (by omega)
+      (Array.getElem?_eq_getElem (by omega)) lastMono).mp hlastSource
     rcases pairVecDivVHCExtract_root_dominates_candidates heap heap' nodes
         leftMono rightMono lastMono hmany hleftRun hrightRun hlastRun hrun with
       ⟨newRootHead, newRootMono, hnewRoot, hnewRootRun, hleftLe,
@@ -2830,22 +2842,25 @@ theorem pairVecDivVHCExtract_root_dominates
       have hexcludes := pairVecDivVHCExtract_excludes_root heap heap' nodes
         hsourceNonempty hrootOnly hrun
       exact hexcludes slot (by simpa [hrootHead] using htargetGet)
-    have holdRun : pairVecDivVHCMono heap[oldSlot] nodes = .ok mono := by
+    have holdRunCurrent : pairVecDivVHCMono heap[oldSlot] nodes =
+        .ok mono := by
       rw [holdHead]
       exact hmono
-    rcases pairVecDivVHCHeapOrdered_slot_le_root_child heap nodes hvalid
+    have holdRun := (hsame oldSlot heap[oldSlot] holdPos
+      (Array.getElem?_eq_getElem holdSlot) mono).mpr holdRunCurrent
+    rcases pairVecDivVHCHeapOrdered_slot_le_root_child heap sourceNodes hvalid
         hordered oldSlot holdSlot holdPos mono holdRun with
       ⟨child, childHead, childMono, hchild, hchildGet, hchildRun, hmonoLe⟩
     rcases hchild with rfl | rfl
     · rw [Array.getElem?_eq_getElem (by omega)] at hchildGet
       have hheadEq := Option.some.inj hchildGet
-      rw [← hheadEq, hleftRun] at hchildRun
+      rw [← hheadEq, hleftSource] at hchildRun
       have hmonoEq := Except.ok.inj hchildRun
       subst childMono
       exact Nat.le_trans hmonoLe hleftLe
     · rw [Array.getElem?_eq_getElem (by omega)] at hchildGet
       have hheadEq := Option.some.inj hchildGet
-      rw [← hheadEq, hrightRun] at hchildRun
+      rw [← hheadEq, hrightSource] at hchildRun
       have hmonoEq := Except.ok.inj hchildRun
       subst childMono
       exact Nat.le_trans hmonoLe hrightLe
@@ -9042,8 +9057,81 @@ theorem pairVecDivVHCConsumeRootBucket_preserves_other_heap_chains
   exact (pairVecDivVHCConsumeRootBucket_preserves_disjoint_chain this heap k
     nodes lin resetH quotient divisor result (owners heap[0])
     (owners head) (some head) hheap hrootOwns hotherOwns (by simpa [hhead]
-      using hdisjoint)
+    using hdisjoint)
     hrun).2
+
+theorem pairVecDivVHCConsumeRootBucket_nonroot_mono_iff
+    (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∀ (slot head : Nat), 0 < slot → heap[slot]? = some head →
+      ∀ mono, pairVecDivVHCMono head nodes = .ok mono ↔
+        pairVecDivVHCMono head result.nodes = .ok mono := by
+  intro slot head hslotPos hget mono
+  have hslot : slot < heap.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  have hrootGet : heap[0]? = some heap[0] :=
+    Array.getElem?_eq_getElem hheap
+  have hne : head ≠ heap[0] := by
+    intro heq
+    subst head
+    exact (by omega : slot ≠ 0) (hownership.2.1 slot 0 heap[0] hget hrootGet)
+  have hrootOwns := pairVecDivVHCHeapChainOwnership_root_owns heap owners nodes
+    hownership hheap
+  have hotherOwns := hownership.1 slot head hget
+  have hdisjoint : Disjoint (owners head) (owners heap[0]) :=
+    hownership.2.2 slot 0 head heap[0] hget hrootGet hne
+  have hpreserved := pairVecDivVHCConsumeRootBucket_preserves_disjoint_chain
+    this heap k nodes lin resetH quotient divisor result (owners heap[0])
+    (owners head) (some head) hheap hrootOwns hotherOwns hdisjoint hrun
+  have hunvisited := pairVecDivVHCConsumeRootBucket_unvisited this heap k nodes
+    lin resetH quotient divisor result hheap hrun
+  have hheadMem := pairVecDivVHCChainOwns_head_mem head (owners head) nodes
+    hotherOwns
+  have hsame : result.nodes[head]? = nodes[head]? :=
+    hunvisited.2 head (hpreserved.1 hheadMem)
+  constructor
+  · intro hmono
+    rcases (pairVecDivVHCMono_eq_ok_iff head nodes mono).mp hmono with
+      ⟨node, hnode, hactive⟩
+    apply (pairVecDivVHCMono_eq_ok_iff head result.nodes mono).mpr
+    refine ⟨node, ?_, hactive⟩
+    rw [hsame]
+    exact hnode
+  · intro hmono
+    rcases (pairVecDivVHCMono_eq_ok_iff head result.nodes mono).mp hmono with
+      ⟨node, hnode, hactive⟩
+    apply (pairVecDivVHCMono_eq_ok_iff head nodes mono).mpr
+    refine ⟨node, ?_, hactive⟩
+    rw [← hsame]
+    exact hnode
+
+theorem pairVecDivVHCConsumeRootExtract_root_dominates
+    (this : DenseUPolyZp) (heap heap' : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (bucket : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok bucket)
+    (hextract : pairVecDivVHCExtract heap bucket.nodes = .ok heap')
+    (hresult : 0 < heap'.size) (slot : Nat) (hslot : slot < heap'.size)
+    (mono rootMono : UMonomial)
+    (hmono : pairVecDivVHCMono heap'[slot] bucket.nodes = .ok mono)
+    (hroot : pairVecDivVHCMono heap'[0] bucket.nodes = .ok rootMono) :
+    mono.deg ≤ rootMono.deg := by
+  apply pairVecDivVHCExtract_root_dominates heap heap' nodes bucket.nodes
+    (hownership.heapPointersValid heap owners nodes) hordered hownership.2.1
+    (pairVecDivVHCConsumeRootBucket_nonroot_mono_iff this heap k nodes lin
+      resetH quotient divisor bucket owners hheap hownership hconsume)
+    hresult hextract slot hslot mono rootMono hmono hroot
 
 /-- After consuming and extracting the root bucket, the surviving heap again
 has exact, unique, pairwise-disjoint chain ownership. -/

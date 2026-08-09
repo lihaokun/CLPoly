@@ -140,6 +140,13 @@ only on prior concrete executions, never on a later success or semantic
 result.  Composing the four existing total leaf theorems then constructs the
 exact generated pair result and its two raw polynomial representations.
 
+For the middle block between recursive children, run the generated divrem
+directly from `HgcdRecursiveMiddleWorkspace`.  Package its actual heap and
+lengths with the source pointer arithmetic for `k`, `c0`, and `d0`; divrem's
+own theorem supplies quotient/remainder representations, gcd preservation,
+layout preservation, and the strict remainder decrease.  No separate middle
+result or success witness is accepted as input.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

@@ -797,6 +797,64 @@ theorem hgcdRecursiveReconstructPair_succeeds (this : DenseUPolyZp)
   · simpa [result, hgcdReconstructedLowA] using hAFinal
   · simpa [result] using hBFinal'
 
+/-- Total execution of the exact middle divrem and source pointer arithmetic
+between the two recursive HGCD children. -/
+theorem hgcdRecursiveMiddle_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (W : RawPtr UInt64) (lenA m : Nat)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (polyA polyB : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this)
+    (physical : HgcdRecursiveMiddleWorkspace W lenA reconstructed)
+    (hlenB : 0 < reconstructed.lenB)
+    (hA : RawDensePolyRep this reconstructed.heap
+      (hgcdRecursiveWorkspace W lenA).a2 reconstructed.lenA polyA)
+    (hB : RawDensePolyRep this reconstructed.heap
+      (hgcdRecursiveWorkspace W lenA).b2 reconstructed.lenB polyB) :
+    ∃ result quotient remainder,
+      hgcdRecursiveMiddle this (hgcdRecursiveWorkspace W lenA).q
+        (hgcdRecursiveWorkspace W lenA).d
+        (hgcdRecursiveWorkspace W lenA).a2
+        (hgcdRecursiveWorkspace W lenA).b2 reconstructed.lenA
+        reconstructed.lenB m (hgcdRecursiveWorkspace W lenA).W3
+        reconstructed.heap = .ok result ∧
+      RawDensePolyRep this result.heap (hgcdRecursiveWorkspace W lenA).q
+        result.lenQ quotient ∧
+      RawDensePolyRep this result.heap (hgcdRecursiveWorkspace W lenA).b2
+        reconstructed.lenB polyB ∧
+      RawDensePolyRep this result.heap (hgcdRecursiveWorkspace W lenA).d
+        result.lenD remainder ∧
+      normalize (EuclideanDomain.gcd polyA polyB) =
+        normalize (EuclideanDomain.gcd polyB remainder) ∧
+      RawHeap.SameLayout reconstructed.heap result.heap ∧
+      result.lenD < reconstructed.lenB := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  rcases polyDivrem_next_state this ws.q ws.d ws.a2 ws.b2
+      reconstructed.lenA reconstructed.lenB ws.W3 reconstructed.heap polyA
+      polyB hlenB hA hB physical.validQ physical.validD physical.validW3
+      physical.quotientCapacity physical.dA physical.wA physical.wB
+      physical.qB physical.qW physical.dW physical.dQ physical.dB hcfg with
+    ⟨heap1, lenQ, lenD, quotient, remainder, hdiv, hQRep, hBRep, hDRep, _,
+      hgcd, hlayout, _, _, hlt⟩
+  let result : HgcdRecursiveMiddleResult := {
+    heap := heap1
+    lenQ := lenQ
+    lenD := lenD
+    k := 2 * m - reconstructed.lenB + 1
+    c0 := ws.b2.add (2 * m - reconstructed.lenB + 1)
+    lenC0 := if reconstructed.lenB ≥ 2 * m - reconstructed.lenB + 1 then
+      reconstructed.lenB - (2 * m - reconstructed.lenB + 1) else 0
+    d0 := ws.d.add (2 * m - reconstructed.lenB + 1)
+    lenD0 := if lenD ≥ 2 * m - reconstructed.lenB + 1 then
+      lenD - (2 * m - reconstructed.lenB + 1) else 0 }
+  refine ⟨result, quotient, remainder, ?_, ?_, ?_, ?_, hgcd, ?_, ?_⟩
+  · simp [result, hgcdRecursiveMiddle, ws, hdiv]
+  · simpa [result, ws] using hQRep
+  · simpa [result, ws] using hBRep
+  · simpa [result, ws] using hDRep
+  · simpa [result] using hlayout
+  · simpa [result] using hlt
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

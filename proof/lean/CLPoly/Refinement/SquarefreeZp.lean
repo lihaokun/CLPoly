@@ -3228,6 +3228,86 @@ termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem hmem
 
+def PairVecDivVHCChainAtDegree (current : Option Nat)
+    (unvisited : Finset Nat) (nodes : Array PairVecDivVHCNode)
+    (degree : Nat) : Prop :=
+  match current with
+  | none => True
+  | some nodeIndex =>
+      if hmem : nodeIndex ∈ unvisited then
+        ∃ node mono, nodes[nodeIndex]? = some node ∧
+          node.mono = some mono ∧ mono.deg = degree ∧
+          PairVecDivVHCChainAtDegree node.next (unvisited.erase nodeIndex)
+            nodes degree
+      else
+        False
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem hmem
+
+theorem pairVecDivVHCChainAtDegree_congr_on
+    (current : Option Nat) (unvisited : Finset Nat)
+    (nodes nodes' : Array PairVecDivVHCNode) (degree : Nat)
+    (hdegree : PairVecDivVHCChainAtDegree current unvisited nodes degree)
+    (hsame : ∀ i ∈ unvisited, nodes'[i]? = nodes[i]?) :
+    PairVecDivVHCChainAtDegree current unvisited nodes' degree := by
+  cases current with
+  | none => simp [PairVecDivVHCChainAtDegree]
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainAtDegree] at hdegree ⊢
+      split at hdegree <;> try contradiction
+      next hmem =>
+        simp only [hmem, ↓reduceDIte]
+        rcases hdegree with ⟨node, mono, hget, hmono, hmonoDegree, htail⟩
+        refine ⟨node, mono, ?_, hmono, hmonoDegree, ?_⟩
+        · rw [hsame nodeIndex hmem]
+          exact hget
+        · exact pairVecDivVHCChainAtDegree_congr_on node.next
+            (unvisited.erase nodeIndex) nodes nodes' degree htail (by
+              intro i hi
+              exact hsame i (Finset.mem_of_mem_erase hi))
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCChainValid_atDegree_of_nextValid
+    (nodeIndex : Nat) (unvisited : Finset Nat)
+    (nodes : Array PairVecDivVHCNode) (degree : Nat)
+    (hvalid : PairVecDivVHCChainValid (some nodeIndex) unvisited nodes)
+    (hnextValid : PairVecDivVHCNextValid nodes)
+    (hhead : ∃ node mono, nodes[nodeIndex]? = some node ∧
+      node.mono = some mono ∧ mono.deg = degree) :
+    PairVecDivVHCChainAtDegree (some nodeIndex) unvisited nodes degree := by
+  rw [PairVecDivVHCChainValid] at hvalid
+  rw [PairVecDivVHCChainAtDegree]
+  split at hvalid <;> try contradiction
+  next hmem =>
+    simp only [hmem, ↓reduceDIte]
+    rcases hvalid with ⟨node, mono, hget, hmono, htail⟩
+    rcases hhead with ⟨headNode, headMono, hheadGet, hheadMono,
+      hheadDegree⟩
+    rw [hget] at hheadGet
+    simp only [Option.some.injEq] at hheadGet
+    subst headNode
+    rw [hmono] at hheadMono
+    simp only [Option.some.injEq] at hheadMono
+    subst headMono
+    refine ⟨node, mono, hget, hmono, hheadDegree, ?_⟩
+    cases hnext : node.next with
+    | none => simp [PairVecDivVHCChainAtDegree]
+    | some nextIndex =>
+        rcases hnextValid nodeIndex node nextIndex hget hnext with
+          ⟨nextNode, hnextGet, hmonoEq⟩
+        apply pairVecDivVHCChainValid_atDegree_of_nextValid nextIndex
+          (unvisited.erase nodeIndex) nodes degree (by simpa [hnext] using htail)
+          hnextValid
+        refine ⟨nextNode, mono, hnextGet, ?_, hheadDegree⟩
+        rw [hmono] at hmonoEq
+        exact hmonoEq.symm
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
 /-- Exact ownership variant of `PairVecDivVHCChainValid`: after following the
 whole `next` chain, no owner node remains.  This makes disjoint heap buckets
 stable under destructive consumption. -/
@@ -5213,6 +5293,34 @@ theorem pairVecDivVHCConsumeNode_next
             simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
             exact hrun.2.2.2.2.symm
 
+theorem pairVecDivVHCConsumeNode_preserves_chainAtDegree_tail
+    (this : DenseUPolyZp) (nodeIndex : Nat) (unvisited : Finset Nat)
+    (degree : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp) (hn : nodeIndex < nodes.size)
+    (htail : PairVecDivVHCChainAtDegree nodes[nodeIndex].next
+      (unvisited.erase nodeIndex) nodes degree)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    PairVecDivVHCChainAtDegree next (unvisited.erase nodeIndex) nodes'
+      degree := by
+  have hnext := pairVecDivVHCConsumeNode_next this nodeIndex k k' nodes nodes'
+    lin lin' resetH resetH' next quotient divisor hn hrun
+  rw [hnext]
+  exact pairVecDivVHCChainAtDegree_congr_on nodes[nodeIndex].next
+    (unvisited.erase nodeIndex) nodes nodes' degree htail (by
+      intro i hi
+      exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k' nodes nodes'
+        lin lin' resetH resetH' next quotient divisor hrun i
+          (Finset.mem_erase.mp hi).1.symm)
+
+def PairVecDivVHCStoredProductAtDegree (degree : Nat)
+    (quotient divisor : SparsePolyZp) (product : UInt64 × UInt64) : Prop :=
+  ∃ quotientTerm ∈ quotient.toList, ∃ divisorTerm ∈ divisor.toList,
+    quotientTerm.2.val = product.1 ∧ divisorTerm.2.val = product.2 ∧
+      quotientTerm.1.deg + divisorTerm.1.deg = degree
+
 theorem pairVecDivVHCConsumeChain_preserves_linReady
     (this : DenseUPolyZp) (current : Option Nat)
     (owner unvisited : Finset Nat) (k : UInt64)
@@ -5681,6 +5789,68 @@ theorem pairVecDivVHCConsumeNode_preserves_denotes
                 contradiction
               · rw [Array.getElem?_set_ne hn heq] at hget
                 exact hdenotes i node hget hactive
+
+theorem PairVecDivVHCConsumeTrace.products_at_degree
+    (this : DenseUPolyZp) (quotient divisor : SparsePolyZp)
+    (current : Option Nat) (unvisited : Finset Nat) (degree : Nat)
+    (k : UInt64) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (resetH : Nat) (result : PairVecDivVHCBucketResult)
+    (products : List (UInt64 × UInt64))
+    (hdegree : PairVecDivVHCChainAtDegree current unvisited nodes degree)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (htrace : PairVecDivVHCConsumeTrace this quotient divisor current unvisited
+      k nodes lin resetH result products) :
+    ∀ product ∈ products,
+      PairVecDivVHCStoredProductAtDegree degree quotient divisor product := by
+  induction htrace with
+  | done => simp
+  | @step nodeIndex unvisited k k' nodes nodes' lin lin' resetH resetH' next
+      result products hmem hn hq hd hconsume htail ih =>
+      rw [PairVecDivVHCChainAtDegree] at hdegree
+      simp only [hmem, ↓reduceDIte] at hdegree
+      rcases hdegree with
+        ⟨node, mono, hnodeGet, hnodeMono, hmonoDegree, hchainTail⟩
+      have hnodeEq : nodes[nodeIndex] = node := by
+        rw [Array.getElem?_eq_getElem hn] at hnodeGet
+        exact Option.some.inj hnodeGet
+      subst node
+      have hnodeDenotes := hdenotes nodeIndex nodes[nodeIndex]
+        (Array.getElem?_eq_getElem hn) (by rw [hnodeMono]; simp)
+      rcases hnodeDenotes with
+        ⟨quotientTerm, divisorTerm, hquotientGet, hdivisorGet, hdenotesMono⟩
+      have hquotientEq : quotient[nodes[nodeIndex].quotientIndex] =
+          quotientTerm := by
+        rw [Array.getElem?_eq_getElem hq] at hquotientGet
+        exact Option.some.inj hquotientGet
+      have hdivisorEq : divisor[nodes[nodeIndex].divisorIndex] =
+          divisorTerm := by
+        rw [Array.getElem?_eq_getElem hd] at hdivisorGet
+        exact Option.some.inj hdivisorGet
+      have htailDegree :=
+        pairVecDivVHCConsumeNode_preserves_chainAtDegree_tail this nodeIndex
+          unvisited degree k k' nodes nodes' lin lin' resetH resetH' next
+          quotient divisor hn hchainTail hconsume
+      have hdenotes' := pairVecDivVHCConsumeNode_preserves_denotes this
+        nodeIndex k k' nodes nodes' lin lin' resetH resetH' next quotient
+        divisor hdenotes hconsume
+      intro product hproduct
+      simp only [List.mem_cons] at hproduct
+      rcases hproduct with rfl | hproduct
+      · refine ⟨quotientTerm, ?_, divisorTerm, ?_, ?_, ?_, ?_⟩
+        · rw [← hquotientEq]
+          exact Array.getElem_mem_toList hq
+        · rw [← hdivisorEq]
+          exact Array.getElem_mem_toList hd
+        · exact congrArg (fun term => term.2.val) hquotientEq.symm
+        · exact congrArg (fun term => term.2.val) hdivisorEq.symm
+        · rw [hnodeMono] at hdenotesMono
+          have hmonoEq := Option.some.inj hdenotesMono
+          have hdegreeEq := congrArg UMonomial.deg hmonoEq
+          change quotientTerm.1.deg + divisorTerm.1.deg = degree
+          simpa using hdegreeEq.symm.trans hmonoDegree
+      · exact ih htailDegree hdenotes' product hproduct
 
 theorem pairVecDivVHCConsumeNode_preserves_divisorIndicesFixed
     (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)

@@ -463,3 +463,14 @@ every generated range-for and recursive loop used by SQF.
   `result.coefficient = initial coefficient - Σ(qᵢ·dᵢ)` 的精确 `ZMod`
   等式。下一缺口是显式保持 next-edge 的 equal-monomial 性质，以证明
   该求和中每个乘积都属于当前 frontier 次数。
+- next-chain 中每个真实乘积的 frontier 次数归属已闭合。新增的
+  `PairVecDivVHCChainAtDegree` 按实际 `next` 指针和 owner 集合良基递归，
+  并由 `PairVecDivVHCChainValid + PairVecDivVHCNextValid` 以及真实 head
+  单项式推出整条链同次数。单节点消费只改写当前节点，因而保持实际
+  `next` 指向的尾链次数；结合 node denotation 的保持定理，对真实
+  `PairVecDivVHCConsumeTrace` 归纳证明每个记录的 coefficient pair 都确实
+  来自 quotient/divisor 中可寻址的存储项，且两项次数之和等于当前
+  frontier。这里没有构造规格乘积列表，也没有用输出倒推输入。
+  下一缺口是把该定理提升到 root bucket/equal-degree 循环，并补齐执行
+  过程中 `PairVecDivVHCNextValid` 的保持，使每个被取出的 bucket 都能建立
+  同次数前提。

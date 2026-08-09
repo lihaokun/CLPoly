@@ -3191,6 +3191,233 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.slot_le_root
         exact Nat.le_trans hstep
           (ih parent hparentLt hparentSlot parentMono hparentMono hroot)
 
+/-- Root entry for sift after the old root bucket has been consumed.  It only
+assumes order on edges strictly below the root; the first concrete root write
+re-establishes the two missing root edges from the source comparisons. -/
+theorem pairVecDivVHCSiftDown_root_of_nonroot_order
+    (limit lastNode : Nat) (heap shifted : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (lastMono : UMonomial)
+    (hroot : 0 < heap.size) (hlimit : limit < heap.size)
+    (hlastSlot : heap[limit]? = some lastNode)
+    (hlastMono : pairVecDivVHCMono lastNode nodes = .ok lastMono)
+    (haway : ∀ (child : Nat), child < limit → 0 < child →
+      0 < pairVecDivVHCParent child →
+      ∀ childHead parentHead childMono parentMono,
+        heap[child]? = some childHead →
+        heap[pairVecDivVHCParent child]? = some parentHead →
+        pairVecDivVHCMono childHead nodes = .ok childMono →
+        pairVecDivVHCMono parentHead nodes = .ok parentMono →
+        childMono.deg ≤ parentMono.deg)
+    (hrun : pairVecDivVHCSiftDown 0 1 limit lastNode heap nodes =
+      .ok shifted) :
+    PairVecDivVHCHeapDegreesOrderedUpTo limit shifted nodes := by
+  have rootSetOrdered (newHead : Nat) (newMono : UMonomial)
+      (hnewMono : pairVecDivVHCMono newHead nodes = .ok newMono)
+      (hchildren : ∀ child < limit, 0 < child →
+        pairVecDivVHCParent child = 0 →
+        ∀ childHead childMono, heap[child]? = some childHead →
+          pairVecDivVHCMono childHead nodes = .ok childMono →
+          childMono.deg ≤ newMono.deg) :
+      PairVecDivVHCHeapDegreesOrderedUpTo limit
+        (heap.set 0 newHead) nodes := by
+    intro child hchild hpos childHead parentHead childMono parentMono
+      hchildGet hparentGet hchildMono hparentMono
+    by_cases hpzero : pairVecDivVHCParent child = 0
+    · rw [hpzero, Array.getElem?_set_self hroot] at hparentGet
+      have hparentHead : parentHead = newHead :=
+        (Option.some.inj hparentGet).symm
+      subst parentHead
+      rw [hnewMono] at hparentMono
+      have hm : parentMono = newMono :=
+        (Except.ok.inj hparentMono).symm
+      subst parentMono
+      rw [Array.getElem?_set_ne hroot (by omega)] at hchildGet
+      exact hchildren child hchild hpos hpzero childHead childMono hchildGet
+        hchildMono
+    · have hparentPos : 0 < pairVecDivVHCParent child :=
+        Nat.pos_of_ne_zero hpzero
+      rw [Array.getElem?_set_ne hroot (by omega)] at hchildGet
+      rw [Array.getElem?_set_ne hroot (fun heq => hpzero heq.symm)] at hparentGet
+      exact haway child hchild hpos hparentPos childHead parentHead childMono
+        parentMono hchildGet hparentGet hchildMono hparentMono
+  rw [pairVecDivVHCSiftDown] at hrun
+  simp only [hroot, hlimit, hlastMono] at hrun
+  by_cases hchild : 1 < limit
+  · simp only [hchild, ↓reduceDIte] at hrun
+    have hleftSize : 1 < heap.size := by omega
+    have hrightSize : 2 < heap.size := by omega
+    cases hleftMono : pairVecDivVHCMono heap[1] nodes with
+    | error fault => simp [hleftMono] at hrun
+    | ok leftMono =>
+      cases hrightMono : pairVecDivVHCMono heap[2] nodes with
+      | error fault => simp [hleftMono, hrightMono] at hrun
+      | ok rightMono =>
+        simp only [hleftMono, hrightMono] at hrun
+        by_cases hselected : leftMono.deg > rightMono.deg
+        · simp only [hselected, ↓reduceIte] at hrun
+          by_cases hgreater : leftMono.deg > lastMono.deg
+          · simp only [hgreater, ↓reduceDIte] at hrun
+            have hordered' := rootSetOrdered heap[1] leftMono hleftMono (by
+              intro child hchild' hpos hp childHead childMono hget hmono
+              rcases (pairVecDivVHCParent_eq_iff_children 0 child hpos).1 hp
+                with hc | hc
+              · have : child = 1 := by omega
+                rw [this, Array.getElem?_eq_getElem hleftSize] at hget
+                have hh : childHead = heap[1] :=
+                  (Option.some.inj hget).symm
+                subst childHead
+                rw [hleftMono] at hmono
+                have hm : childMono = leftMono :=
+                  (Except.ok.inj hmono).symm
+                subst childMono
+                exact Nat.le_refl _
+              · have : child = 2 := by omega
+                rw [this, Array.getElem?_eq_getElem hrightSize] at hget
+                have hh : childHead = heap[2] :=
+                  (Option.some.inj hget).symm
+                subst childHead
+                rw [hrightMono] at hmono
+                have hm : childMono = rightMono :=
+                  (Except.ok.inj hmono).symm
+                subst childMono
+                exact Nat.le_of_lt hselected)
+            exact pairVecDivVHCSiftDown_degreesOrderedUpTo 1 3 limit
+              lastNode (heap.set 0 heap[1]) shifted nodes leftMono lastMono
+              rfl (by simpa) (by simpa using hlimit) (by
+                rw [Array.getElem?_set_ne hroot (by omega)]
+                exact hlastSlot)
+              (by simpa [Array.getElem_set, hroot] using hleftMono)
+              hlastMono hordered' (by
+                intro parentHead parentMono hget hmono
+                have hp : pairVecDivVHCParent 1 = 0 := by
+                  simp [pairVecDivVHCParent]
+                rw [hp, Array.getElem?_set_self hroot] at hget
+                have hh : parentHead = heap[1] :=
+                  (Option.some.inj hget).symm
+                subst parentHead
+                rw [hleftMono] at hmono
+                have hm : parentMono = leftMono :=
+                  (Except.ok.inj hmono).symm
+                subst parentMono
+                exact Nat.le_of_lt hgreater) hrun
+          · simp only [hgreater, ↓reduceDIte, Except.ok.injEq] at hrun
+            subst shifted
+            exact rootSetOrdered lastNode lastMono hlastMono (by
+              intro child hchild' hpos hp childHead childMono hget hmono
+              rcases (pairVecDivVHCParent_eq_iff_children 0 child hpos).1 hp
+                with hc | hc
+              · have : child = 1 := by omega
+                rw [this, Array.getElem?_eq_getElem hleftSize] at hget
+                have hh : childHead = heap[1] :=
+                  (Option.some.inj hget).symm
+                subst childHead
+                rw [hleftMono] at hmono
+                have hm : childMono = leftMono :=
+                  (Except.ok.inj hmono).symm
+                subst childMono
+                exact Nat.le_of_not_gt hgreater
+              · have : child = 2 := by omega
+                rw [this, Array.getElem?_eq_getElem hrightSize] at hget
+                have hh : childHead = heap[2] :=
+                  (Option.some.inj hget).symm
+                subst childHead
+                rw [hrightMono] at hmono
+                have hm : childMono = rightMono :=
+                  (Except.ok.inj hmono).symm
+                subst childMono
+                exact Nat.le_trans (Nat.le_of_lt hselected)
+                  (Nat.le_of_not_gt hgreater))
+        · simp only [hselected, ↓reduceIte] at hrun
+          by_cases hgreater : rightMono.deg > lastMono.deg
+          · simp only [hgreater, ↓reduceDIte] at hrun
+            have hselectedLimit : 2 < limit := by
+              by_contra hnot
+              have heq : 2 = limit := by omega
+              have hsaved : heap[2]? = some lastNode := by
+                simpa [heq] using hlastSlot
+              rw [Array.getElem?_eq_getElem hrightSize] at hsaved
+              have hh : heap[2] = lastNode := Option.some.inj hsaved
+              rw [hh, hlastMono] at hrightMono
+              have hm : rightMono = lastMono :=
+                (Except.ok.inj hrightMono).symm
+              subst rightMono
+              omega
+            have hordered' := rootSetOrdered heap[2] rightMono hrightMono (by
+              intro child hchild' hpos hp childHead childMono hget hmono
+              rcases (pairVecDivVHCParent_eq_iff_children 0 child hpos).1 hp
+                with hc | hc
+              · have : child = 1 := by omega
+                rw [this, Array.getElem?_eq_getElem hleftSize] at hget
+                have hh : childHead = heap[1] :=
+                  (Option.some.inj hget).symm
+                subst childHead
+                rw [hleftMono] at hmono
+                have hm : childMono = leftMono :=
+                  (Except.ok.inj hmono).symm
+                subst childMono
+                exact Nat.le_of_not_gt hselected
+              · have : child = 2 := by omega
+                rw [this, Array.getElem?_eq_getElem hrightSize] at hget
+                have hh : childHead = heap[2] :=
+                  (Option.some.inj hget).symm
+                subst childHead
+                rw [hrightMono] at hmono
+                have hm : childMono = rightMono :=
+                  (Except.ok.inj hmono).symm
+                subst childMono
+                exact Nat.le_refl _)
+            exact pairVecDivVHCSiftDown_degreesOrderedUpTo 2 5 limit
+              lastNode (heap.set 0 heap[2]) shifted nodes rightMono lastMono
+              rfl (by simpa) (by simpa using hlimit) (by
+                rw [Array.getElem?_set_ne hroot (by omega)]
+                exact hlastSlot)
+              (by simpa [Array.getElem_set, hroot] using hrightMono)
+              hlastMono hordered' (by
+                intro parentHead parentMono hget hmono
+                have hp : pairVecDivVHCParent 2 = 0 := by
+                  simp [pairVecDivVHCParent]
+                rw [hp, Array.getElem?_set_self hroot] at hget
+                have hh : parentHead = heap[2] :=
+                  (Option.some.inj hget).symm
+                subst parentHead
+                rw [hrightMono] at hmono
+                have hm : parentMono = rightMono :=
+                  (Except.ok.inj hmono).symm
+                subst parentMono
+                exact Nat.le_of_lt hgreater) hrun
+          · simp only [hgreater, ↓reduceDIte, Except.ok.injEq] at hrun
+            subst shifted
+            exact rootSetOrdered lastNode lastMono hlastMono (by
+              intro child hchild' hpos hp childHead childMono hget hmono
+              rcases (pairVecDivVHCParent_eq_iff_children 0 child hpos).1 hp
+                with hc | hc
+              · have : child = 1 := by omega
+                rw [this, Array.getElem?_eq_getElem hleftSize] at hget
+                have hh : childHead = heap[1] :=
+                  (Option.some.inj hget).symm
+                subst childHead
+                rw [hleftMono] at hmono
+                have hm : childMono = leftMono :=
+                  (Except.ok.inj hmono).symm
+                subst childMono
+                exact Nat.le_trans (Nat.le_of_not_gt hselected)
+                  (Nat.le_of_not_gt hgreater)
+              · have : child = 2 := by omega
+                rw [this, Array.getElem?_eq_getElem hrightSize] at hget
+                have hh : childHead = heap[2] :=
+                  (Option.some.inj hget).symm
+                subst childHead
+                rw [hrightMono] at hmono
+                have hm : childMono = rightMono :=
+                  (Except.ok.inj hmono).symm
+                subst childMono
+                exact Nat.le_of_not_gt hgreater)
+  · simp only [hchild, ↓reduceDIte, Except.ok.injEq] at hrun
+    subst shifted
+    exact rootSetOrdered lastNode lastMono hlastMono (by
+      intro child hchild' hpos hp
+      omega)
+
 /-- A successful generated extract preserves the complete source max-heap
 order after the concrete `pop`. -/
 theorem pairVecDivVHCExtract_preserves_heapOrdered
@@ -9831,6 +10058,71 @@ theorem pairVecDivVHCConsumeRootBucket_preserves_nonroot_heap_order
     hchildPos childHead parentHead childMono parentMono hchildGet hparentGet
     hchildSource hparentSource
 
+/-- Consuming the root chain and then executing the generated extract restores
+a complete heap order in the updated node array, despite the old root having
+become inactive. -/
+theorem pairVecDivVHCConsumeRootExtract_preserves_heapOrdered
+    (this : DenseUPolyZp) (heap heap' : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (bucket : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok bucket)
+    (hextract : pairVecDivVHCExtract heap bucket.nodes = .ok heap') :
+    PairVecDivVHCHeapOrdered heap' bucket.nodes := by
+  have hsize := pairVecDivVHCExtract_size heap heap' bucket.nodes hextract
+  by_cases hone : heap.size = 1
+  · apply PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+    intro child hchild'
+    have : heap'.size = 0 := by omega
+    omega
+  · have hlimit : heap.size - 1 < heap.size := by omega
+    have hlimitPos : 0 < heap.size - 1 := by omega
+    have hvalid := hownership.heapPointersValid heap owners nodes
+    rcases hvalid (heap.size - 1) hlimit with
+      ⟨lastHead, lastNode, lastMono, hlastGet, hlastNode, hlastActive⟩
+    have hlastHead : heap[heap.size - 1] = lastHead := by
+      rw [Array.getElem?_eq_getElem hlimit] at hlastGet
+      exact Option.some.inj hlastGet
+    have hlastSource : pairVecDivVHCMono heap[heap.size - 1] nodes =
+        .ok lastMono := by
+      apply (pairVecDivVHCMono_eq_ok_iff heap[heap.size - 1] nodes lastMono).2
+      rw [hlastHead]
+      exact ⟨lastNode, hlastNode, hlastActive⟩
+    have hlastRun : pairVecDivVHCMono heap[heap.size - 1] bucket.nodes =
+        .ok lastMono :=
+      (pairVecDivVHCConsumeRootBucket_nonroot_mono_iff this heap k nodes lin
+        resetH quotient divisor bucket owners hheap hownership hconsume
+        (heap.size - 1) heap[heap.size - 1] hlimitPos
+        (Array.getElem?_eq_getElem hlimit) lastMono).1 hlastSource
+    unfold pairVecDivVHCExtract at hextract
+    simp only [hheap, ↓reduceDIte] at hextract
+    cases hsift : pairVecDivVHCSiftDown 0 1 (heap.size - 1)
+        heap[heap.size - 1] heap bucket.nodes with
+    | error fault => simp [hsift] at hextract
+    | ok shifted =>
+        rw [hsift] at hextract
+        simp only [Except.ok.injEq] at hextract
+        subst heap'
+        have haway :=
+          pairVecDivVHCConsumeRootBucket_preserves_nonroot_heap_order this
+            heap k nodes lin resetH quotient divisor bucket owners hheap
+            hownership hordered hconsume
+        have hsiftOrdered := pairVecDivVHCSiftDown_root_of_nonroot_order
+          (heap.size - 1) heap[heap.size - 1] heap shifted bucket.nodes
+          lastMono hheap hlimit (Array.getElem?_eq_getElem hlimit) hlastRun
+          (by
+            intro child hchild hpos hparentPos
+            exact haway child (by omega) hpos hparentPos) hsift
+        have hshiftSize := pairVecDivVHCSiftDown_size 0 1 (heap.size - 1)
+          heap[heap.size - 1] heap shifted bucket.nodes hsift
+        have hsiftOrdered' : PairVecDivVHCHeapDegreesOrderedUpTo
+            (shifted.size - 1) shifted bucket.nodes := by
+          simpa [hshiftSize] using hsiftOrdered
+        exact hsiftOrdered'.pop shifted bucket.nodes |>.toHeapOrdered
+
 theorem pairVecDivVHCConsumeRootExtract_root_dominates
     (this : DenseUPolyZp) (heap heap' : Array Nat) (k : UInt64)
     (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
@@ -10111,6 +10403,64 @@ theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainOwnership
       · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
         subst result
         exact hownership
+
+/-- The complete well-founded equal-degree loop carries both exact chain
+ownership and the max-heap order needed by every subsequent extraction. -/
+theorem pairVecDivVHCConsumeEqualDegree_preserves_heapOwnershipOrdered
+    (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult) (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCHeapChainOwnership result.heap owners result.nodes ∧
+      PairVecDivVHCHeapOrdered result.heap result.nodes := by
+  induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
+      nodes lin resetH result with
+  | h size ih =>
+      rw [pairVecDivVHCConsumeEqualDegree] at hrun
+      by_cases hheap : 0 < heap.size
+      · simp only [hheap, ↓reduceDIte] at hrun
+        cases hmono : pairVecDivVHCMono heap[0] nodes with
+        | error fault => simp [hmono] at hrun
+        | ok rootMono =>
+            simp only [hmono] at hrun
+            by_cases hequal : rootMono.deg = degree
+            · simp only [hequal, ↓reduceDIte] at hrun
+              cases hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes
+                  lin resetH quotient divisor with
+              | error fault => simp [hconsume] at hrun
+              | ok bucket =>
+                  simp only [dif_pos trivial, hconsume] at hrun
+                  cases hchecked : pairVecDivVHCExtractChecked heap bucket.nodes with
+                  | error fault => simp [hchecked] at hrun
+                  | ok extracted =>
+                      rw [hchecked] at hrun
+                      have hraw := pairVecDivVHCExtractChecked_raw heap
+                        bucket.nodes extracted hchecked
+                      have hownership' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hconsume hraw
+                      have hordered' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapOrdered
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hordered
+                          hconsume hraw
+                      have hsmaller : extracted.1.size < size := by
+                        rw [← hsize]
+                        omega
+                      exact ih extracted.1.size hsmaller extracted.1
+                        bucket.coefficient bucket.nodes bucket.lin bucket.resetH
+                        result hownership' hordered' hrun rfl
+            · simp only [hequal, ↓reduceDIte, Except.ok.injEq] at hrun
+              subst result
+              exact ⟨hownership, hordered⟩
+      · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
+        subst result
+        exact ⟨hownership, hordered⟩
 
 theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainsHomogeneous
     (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)

@@ -897,3 +897,14 @@ every generated range-for and recursive loop used by SQF.
   消费前 nodes，再应用旧完整堆序。这为 consume→extract 组合
   建立了正确分解：新 root 边由 extract root-dominance 处理，非根边
   由本定理和 sift path frame 处理，而不会把失活 root 塞回不变式。
+- consume→extract 与完整 equal-degree 良基循环的 heap order 已闭合。
+  新的 root-sift 定理不要求已消费旧 root 仍 active：第一次真实
+  `Array.set 0 selected/last` 直接由 left/right/last 比较重建两条
+  root 边，非根边由上阶段 consume 搬运定理保持；如果继续
+  下沉，新 hole 已是 active selected child，因而无损进入完整良基
+  sift 定理。该结果经真实 pop 转回 `HeapOrdered`，再与 exact
+  chain ownership 一起沿 `heap.size` 严格下降的
+  `pairVecDivVHCConsumeEqualDegree` 归纳，使每一次重复 extract 都拥有
+  真实完整堆序前提。下一步用这个循环不变式将已有的
+  root-dominance 与 bucket product completeness 提升为整段 equal-degree products
+  completeness。

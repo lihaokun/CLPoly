@@ -208,6 +208,12 @@ every generated range-for and recursive loop used by SQF.
   循环也已用其实际数组长度作良基归纳，证明任意多次真实 insert 均保持
   该上界。下一步只剩两类会重算节点 monomial 的状态变化：消费节点时
   推进 quotient 指针，以及 append 新 quotient 后的 `reset_h` 激活。
+- 消费节点推进 quotient 指针的核心语义现已闭合：由 quotient canonical
+  严格降次与节点的真实 `quotientIndex`/`divisorIndex` 表示，证明重算后的
+  乘积 monomial 严格小于原节点；据此 `pairVecDivVHCConsumeNode` 保持全
+  节点 frontier 上界，同时保持每个活跃节点确实表示对应 quotient/divisor
+  数组单元乘积。接下来把这两个性质沿良基 `next` chain 抬升，再处理
+  `reset_h` 激活。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

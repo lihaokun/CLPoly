@@ -247,6 +247,12 @@ every generated range-for and recursive loop used by SQF.
   身份，已证明任意成功 consume node 保持 `ResetReady`，并进一步沿有限
   `next` chain 良基递归抬升；完整 chain 结果现在同时保持 frontier、
   denotation、节点身份和 reset 前缀四项不变量。
+- reset 前缀的收缩侧也已闭合到完整源码循环：建立了“缩短前缀并在前缀
+  外写一个节点”的通用保持引理，证明 activate 写入 `resetH - 1` 后剩余
+  前缀仍 ready，随后真实 insert 的 `next` 写入也不影响该前缀；以实际
+  `resetH` 良基递归得到 `pairVecDivVHCActivateReset` 成功后
+  `ResetReady 0`。下一步把单节点已有的 frontier/denotation 保持与此
+  收缩证明同步组合，再抬升 equal-degree heap bucket。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

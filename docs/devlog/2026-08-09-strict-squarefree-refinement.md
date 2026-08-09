@@ -737,3 +737,14 @@ every generated range-for and recursive loop used by SQF.
   inactive nodes。下一步处理 coverage 的 heap-owned 分支：需用
   heap root dominance+chain homogeneity 证明当前 cursor mono 不高于选中
   frontier，再同 row-local 定位合并。
+- heap-owned 节点到选中 frontier 的次数上界已从真实堆序推出。新增
+  `pairVecDivVHCParent_lt` 证明每个非根槽的父槽严格更小，并以槽下标的
+  强归纳将 `PairVecDivVHCHeapOrdered` 沿实际 parent 链提升为“任意有效槽
+  次数不大于 root 次数”。随后直接展开真实 `pairVecDivVHCSelectFrontier`
+  的 dividend/heap 分支，证明 root 次数不大于实际返回 frontier；组合后
+  得到任意有效 heap slot 的 active mono 次数不大于本轮 frontier。
+  这些结论要求 concrete heap pointer validity、heap order、成功 mono read
+  和成功 selector run，没有引入 L2 oracle、fuel 或默认结果。下一步把
+  state coverage 恢复出的 owner chain、chain homogeneity 和这个 slot 上界
+  合并，排除 heap-owned row 的 cursor 前后两侧，从而证明每个 frontier
+  product 都确实位于本轮被消费的唯一 cursor。

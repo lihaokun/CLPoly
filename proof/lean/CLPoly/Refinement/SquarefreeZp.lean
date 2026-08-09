@@ -2433,6 +2433,64 @@ def PairVecDivVHCInvariant (heap : Array Nat)
       nodes[i]? = some node → node.mono ≠ none →
       PairVecDivVHCNodeDenotes quotient divisor node)
 
+theorem pairVecDivVHCParent_lt (i : Nat) (hi : 0 < i) :
+    pairVecDivVHCParent i < i := by
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem pairVecDivVHCHeapOrdered_slot_le_root
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (slot : Nat) (hslot : slot < heap.size)
+    (mono rootMono : UMonomial)
+    (hmono : pairVecDivVHCMono heap[slot] nodes = .ok mono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono) :
+    mono.deg ≤ rootMono.deg := by
+  induction slot using Nat.strong_induction_on generalizing mono with
+  | h slot ih =>
+      by_cases hzero : slot = 0
+      · subst slot
+        rw [hroot] at hmono
+        simp only [Except.ok.injEq] at hmono
+        subst mono
+        exact Nat.le_refl _
+      · have hpos : 0 < slot := Nat.pos_of_ne_zero hzero
+        let parent := pairVecDivVHCParent slot
+        have hparentLt : parent < slot := pairVecDivVHCParent_lt slot hpos
+        have hparentSlot : parent < heap.size := Nat.lt_trans hparentLt hslot
+        rcases hvalid parent hparentSlot with
+          ⟨parentIndex, parentNode, parentMono, hheapParent, hparentNode,
+            hparentActive⟩
+        have hparentIndexEq : heap[parent] = parentIndex := by
+          rw [Array.getElem?_eq_getElem hparentSlot] at hheapParent
+          exact Option.some.inj hheapParent
+        have hparentRun : pairVecDivVHCMono heap[parent] nodes =
+            .ok parentMono := by
+          apply (pairVecDivVHCMono_eq_ok_iff heap[parent] nodes
+            parentMono).mpr
+          rw [hparentIndexEq]
+          exact ⟨parentNode, hparentNode, hparentActive⟩
+        rcases (pairVecDivVHCMono_eq_ok_iff heap[slot] nodes mono).mp hmono with
+          ⟨childNode, hchildNode, hchildActive⟩
+        have hchildMap :
+            (nodes[heap[slot]]?.map PairVecDivVHCNode.mono).join =
+              some mono := by
+          rw [hchildNode]
+          simp [hchildActive]
+        have hparentMap :
+            (nodes[heap[parent]]?.map PairVecDivVHCNode.mono).join =
+              some parentMono := by
+          rw [hparentIndexEq, hparentNode]
+          simp [hparentActive]
+        have hstep := hordered slot parent hslot rfl hpos heap[slot]
+          heap[parent] mono parentMono
+          (Array.getElem?_eq_getElem hslot)
+          (Array.getElem?_eq_getElem hparentSlot) hchildMap hparentMap
+        exact Nat.le_trans hstep
+          (ih parent hparentLt hparentSlot parentMono hparentRun hroot)
+
 /-- Generated coefficient execution of the source
 `submul(k, new_v[q].second, divisor[d].second)`. -/
 def pairVecDivSubmulIR (this : DenseUPolyZp) (k a b : UInt64) : UInt64 :=
@@ -3524,6 +3582,55 @@ theorem pairVecDivVHCSelectFrontier_has_source (dividendIndex : Nat)
         rw [← hrun]
         exact PairVecDivVHCFrontierSource.heap hheap rootMono hmono
           (fun hindex => by omega)
+
+theorem pairVecDivVHCSelectFrontier_root_degree_le
+    (dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (frontier : PairVecDivVHCFrontier) (rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hrun : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    rootMono.deg ≤ frontier.degree := by
+  unfold pairVecDivVHCSelectFrontier at hrun
+  by_cases hdividend : dividendIndex < dividend.size
+  · rw [dif_pos hdividend, dif_pos hheap, hroot] at hrun
+    by_cases hdegree : rootMono.deg ≤ dividend[dividendIndex].1.deg
+    · simp only [Except.bind, hdegree, if_pos] at hrun
+      rw [← Except.ok.inj hrun]
+      exact hdegree
+    · simp only [Except.bind, hdegree, if_neg] at hrun
+      rw [← Except.ok.inj hrun]
+  · rw [dif_neg hdividend, dif_pos hheap, hroot] at hrun
+    simp only [Except.bind] at hrun
+    rw [← Except.ok.inj hrun]
+
+theorem pairVecDivVHCSelectFrontier_heap_slot_degree_le
+    (dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (frontier : PairVecDivVHCFrontier)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (slot : Nat) (hslot : slot < heap.size) (mono : UMonomial)
+    (hmono : pairVecDivVHCMono heap[slot] nodes = .ok mono)
+    (hrun : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    mono.deg ≤ frontier.degree := by
+  have hheap : 0 < heap.size := Nat.lt_of_le_of_lt (Nat.zero_le slot) hslot
+  rcases hvalid 0 hheap with
+    ⟨rootIndex, rootNode, rootMono, hrootHeap, hrootNode, hrootActive⟩
+  have hrootIndexEq : heap[0] = rootIndex := by
+    rw [Array.getElem?_eq_getElem hheap] at hrootHeap
+    exact Option.some.inj hrootHeap
+  have hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono := by
+    apply (pairVecDivVHCMono_eq_ok_iff heap[0] nodes rootMono).mpr
+    rw [hrootIndexEq]
+    exact ⟨rootNode, hrootNode, hrootActive⟩
+  exact Nat.le_trans
+    (pairVecDivVHCHeapOrdered_slot_le_root heap nodes hvalid hordered slot
+      hslot mono rootMono hmono hroot)
+    (pairVecDivVHCSelectFrontier_root_degree_le dividendIndex dividend heap
+      nodes frontier rootMono hheap hroot hrun)
 
 theorem pairVecDivVHCSelectFrontier_coefficient_reduced
     (p dividendIndex : Nat) (dividend : SparsePolyZp) (heap : Array Nat)

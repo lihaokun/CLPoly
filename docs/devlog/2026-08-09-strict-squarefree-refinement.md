@@ -354,3 +354,13 @@ every generated range-for and recursive loop used by SQF.
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。
+- `lin` 反向重插的表示不变式现已严格闭合。完整真实 `VHC_insert`
+  的空堆、新 root 上浮、anchor 下方上浮、root/anchor 等次数合链分支，
+  均会把待处理 protected 集合精确缩小到尚未重插的节点，并保持它们
+  与所有 heap chain owner 不交。新增 `PairVecDivVHCLinReady` 记录
+  `lin` 节点无重复且全部处于活动状态；证明每次 `lin.pop` 删除的恰是
+  当前末节点，其他节点的数组内容不受 `SetNext` 写入影响。最终对真实
+  `pairVecDivVHCReinsertLin` 按 `lin.size` 作良基递归，得到重插结束后的
+  完整 existential heap-chain ownership；未使用执行步数参数、规格结果
+  或替代算法。下一步把 equal-degree 消费产生的 `lin`/heap 状态直接
+  证明满足 `Away + LinReady`，从而接通 outer iteration。

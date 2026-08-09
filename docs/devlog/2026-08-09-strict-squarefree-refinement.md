@@ -1181,3 +1181,14 @@ every generated range-for and recursive loop used by SQF.
   沿 generated `resetH` 良基递归组合每一次 activate+insert。
   这关闭了 emit 的 activation 阶段可能改变比较键的真实表示风险；
   下一步直接装配完整 outer iteration 的 heap order。
+- 完整 outer iteration 的 heap-order 保持已闭合。
+  `pairVecDivVHCEmit_preserves_heapOrdered` 对 emit 的四条真实控制流分别
+  证明：不发射分支原样保持 consumed heap；发射分支由完整
+  `ActivateReset` 定理保持。`pairVecDivVHCOuterIteration_preserves_heapOrdered`
+  使用 `OuterIteration_components` 提取 generated consume、emit、reinsert
+  的实际成功执行，先由 equal-degree consume 得到 ownership/order 与
+  reset-ready，再用 protected `lin` 不变量穿过 emit，最后调用 reverse
+  reinsertion 定理得到 iteration 返回 heap 的 order。
+  至此 outer loop 每轮所需的 heap 排列前提可以递归传递；下一步将它与
+  homogeneous ownership、cursor prefix、processed quotient lead 和系数
+  agreement 打包进全局良基递归证明。

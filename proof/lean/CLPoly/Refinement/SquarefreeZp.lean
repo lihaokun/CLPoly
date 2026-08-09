@@ -14433,6 +14433,122 @@ theorem pairVecDivVHCEmit_preserves_away_linReady
     rcases hrun with ⟨rfl, rfl, rfl⟩
     exact ⟨haway, hlinReady⟩
 
+theorem pairVecDivVHCEmit_preserves_heapOrdered
+    (this : DenseUPolyZp) (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' : Nat)
+    (howned : PairVecDivVHCHeapChainsOwned consumed.heap consumed.nodes)
+    (hready : PairVecDivVHCResetReady consumed.resetH quotient.size
+      consumed.nodes)
+    (hordered : PairVecDivVHCHeapOrdered consumed.heap consumed.nodes)
+    (hdivisor : 0 < divisor.size)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    PairVecDivVHCHeapOrdered activated.heap activated.nodes := by
+  unfold pairVecDivVHCEmit at hrun
+  by_cases hcoefficient : consumed.coefficient ≠ 0
+  · rw [if_pos hcoefficient] at hrun
+    by_cases hdegree : divisor[0].1.deg ≤ frontier.degree
+    · rw [if_pos hdegree] at hrun
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor[0].2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        consumed.coefficient inverse
+      by_cases hvalue : value ≠ 0
+      · rw [if_pos hvalue] at hrun
+        let emitted := quotient.push
+          (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+        cases hactivate : pairVecDivVHCActivateReset consumed.resetH
+            consumed.heap consumed.nodes emitted divisor with
+        | error fault =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            contradiction
+        | ok state =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            have hstateOrdered :=
+              pairVecDivVHCActivateReset_preserves_heapOrdered consumed.resetH
+                quotient.size consumed.heap consumed.nodes emitted divisor state
+                howned hready hordered hactivate
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl⟩
+            exact hstateOrdered
+      · rw [if_neg hvalue] at hrun
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl⟩
+        exact hordered
+    · rw [if_neg hdegree] at hrun
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl, rfl⟩
+      exact hordered
+  · rw [if_neg hcoefficient] at hrun
+    simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+    rcases hrun with ⟨rfl, rfl, rfl⟩
+    exact hordered
+
+/-- One complete generated outer iteration preserves max-heap order through
+consume/extract, optional emission activation, and reverse reinsertion. -/
+theorem pairVecDivVHCOuterIteration_preserves_heapOrdered
+    (this : DenseUPolyZp) (p degreeLimit dividendIndex : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
+    (hdivisor : 0 < divisor.size)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    PairVecDivVHCHeapOrdered result.heap result.nodes := by
+  rcases pairVecDivVHCOuterIteration_components this dividendIndex heap nodes
+      quotient dividend divisor resetH frontier result hdivisor hselect hrun with
+    ⟨consumed, quotient', activated, resetH', reinserted, hconsume, hemit,
+      hreinsert, hresult⟩
+  have hconsumedOrder :=
+    pairVecDivVHCConsumeEqualDegree_preserves_heapOwnershipOrdered this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed owners hownership hordered hconsume
+  have hconsumedNodes :=
+    pairVecDivVHCConsumeEqualDegree_preserves_node_invariants this p degreeLimit
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient divisor
+      consumed owners hcanonical hbelow hdenotes hfixed hready hownership
+      hconsume
+  have haway0 : PairVecDivVHCHeapChainsOwnedAway heap nodes
+      (#[] : Array Nat).toList.toFinset := by
+    simpa using (show PairVecDivVHCHeapChainsOwned heap nodes from
+      ⟨owners, hownership⟩).away_empty heap nodes
+  have hlin0 : PairVecDivVHCLinReady (#[] : Array Nat) nodes := by
+    simp [PairVecDivVHCLinReady]
+  have hconsumedAway :=
+    pairVecDivVHCConsumeEqualDegree_preserves_away_linReady this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient divisor
+      consumed haway0 hlin0 hconsume
+  have hemittedAway := pairVecDivVHCEmit_preserves_away_linReady this frontier
+    consumed quotient divisor quotient' activated resetH' hconsumedAway.1
+    hconsumedAway.2 hconsumedNodes.2.2.2 hdivisor hemit
+  have hemittedOrder := pairVecDivVHCEmit_preserves_heapOrdered this frontier
+    consumed quotient divisor quotient' activated resetH'
+    ⟨owners, hconsumedOrder.1⟩ hconsumedNodes.2.2.2 hconsumedOrder.2
+    hdivisor hemit
+  have hreinsertedOrder := pairVecDivVHCReinsertLin_preserves_heapOrdered
+    activated.heap activated.nodes consumed.lin reinserted hemittedAway.1
+    hemittedAway.2 hemittedOrder hreinsert
+  rw [hresult]
+  exact hreinsertedOrder
+
 theorem pairVecDivVHCEmit_preserves_stateCovered
     (this : DenseUPolyZp) (frontier : PairVecDivVHCFrontier)
     (consumed : PairVecDivVHCEqualDegreeResult)

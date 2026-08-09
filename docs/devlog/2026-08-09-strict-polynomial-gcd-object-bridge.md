@@ -80,6 +80,14 @@ outside the slice are zero on both sides.  Polynomial extensionality therefore
 shows that writing into a previously zero cell adds exactly the corresponding
 monomial.
 
+For the final normalization fact, isolate a frame lemma for one selected raw
+cell across the remaining sparse iterator.  Every later canonical term has a
+strictly smaller degree than the first term, hence its write address differs
+from the leading cell.  The first successful write is read back directly and
+the frame lemma transports that read through all remaining writes.  Because
+the canonical leading residue is nonzero and its degree plus one is the dense
+constructor length, the concrete `normaliseU64` scan returns that exact length.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -98,6 +106,10 @@ monomial.
   raw reads/writes and canonical descending sparse degrees.
 - Proved the completed constructor buffer is a canonical raw polynomial slice
   denoting exactly the input sparse polynomial.
+- Proved the leading raw write survives every later distinct-degree write and
+  forces the concrete normalization scan to return the constructor length.
+- Closed both empty and nonempty source-derived constructor branches as a full
+  `SparseRawDenseRep`, ready for the raw dense GCD call.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why
@@ -115,7 +127,7 @@ boundary is required before replacing its current typeclass GCD call.
 
 - 耗时：约 0.5 小时（源码控制流核对、接口设计、形式化与构建）
 - 迭代：1 轮编译—修复
-- Lean 新增/修改行数：约 370 行
+- Lean 新增/修改行数：约 580 行
 - 对应 C++ 行数：约 55 行（两个 sparse/dense 转换及 GCD 包装）
 - 放弃的方案：直接证明当前 `SparsePolyZp.gcd` 正确；它不是 C++ dense
   GCD 的执行，不能用于严格 L1→L2 精化。

@@ -171,6 +171,15 @@ def sparse_upoly_zp_to_dense_raw_ir (ptr : RawPtr UInt64) (length : Nat)
   | .error fault => .error fault
   | .ok heap' => sparseToDenseWriteLoop ptr length sparse 0 heap'
 
+/-- Dense vector length selected by the source sparse constructor. -/
+def sparseDenseLength (sparse : SparsePolyZp) : Nat :=
+  if h : 0 < sparse.size then sparse[0].1.deg + 1 else 0
+
+/-- Object-level constructor entry with its source-derived vector length. -/
+def sparse_upoly_zp_dense_constructor_raw_ir (ptr : RawPtr UInt64)
+    (sparse : SparsePolyZp) (heap : RawHeap) : RawExec RawHeap :=
+  sparse_upoly_zp_to_dense_raw_ir ptr (sparseDenseLength sparse) sparse heap
+
 /-- The actual sparse-term loop cannot fault when the target allocation is
 valid and every source degree lies inside the constructor length. -/
 theorem sparseToDenseWriteLoop_succeeds (ptr : RawPtr UInt64) (length : Nat)
@@ -302,6 +311,90 @@ theorem sparseToDenseWriteLoop_canonical (ptr : RawPtr UInt64)
     simpa [heq] using hcanonical
 termination_by sparse.size - index
 decreasing_by omega
+
+/-- A selected raw cell is framed by the remainder of the sparse iterator
+when no remaining source term targets that degree. -/
+theorem sparseToDenseWriteLoop_preserves_read (ptr : RawPtr UInt64)
+    (length : Nat) (sparse : SparsePolyZp) (index guard : Nat)
+    (heap heap' : RawHeap) (value : UInt64)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hne : ∀ i (hi : i < sparse.size), index ≤ i →
+      sparse[i].1.deg ≠ guard)
+    (hread : heap.readU64 ptr guard = .ok value)
+    (hrun : sparseToDenseWriteLoop ptr length sparse index heap = .ok heap') :
+    heap'.readU64 ptr guard = .ok value := by
+  rw [sparseToDenseWriteLoop] at hrun
+  split at hrun
+  next hmore =>
+    let term := sparse[index]
+    have htermDegree : term.1.deg < length := hdegree index hmore
+    rcases heap.writeU64_of_valid ptr length term.1.deg term.2.val hvalid
+        htermDegree with ⟨heap1, hwrite⟩
+    simp only [term, hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr
+      term.1.deg term.2.val hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 ptr ptr
+      term.1.deg guard term.2.val value hwrite hread (Or.inr (by
+        have htarget := hne index hmore le_rfl
+        intro habsolute
+        apply htarget
+        exact Nat.add_left_cancel habsolute))
+    apply sparseToDenseWriteLoop_preserves_read ptr length sparse
+      (index + 1) guard heap1 heap' value hvalid1 hdegree
+    · intro i hi hle
+      exact hne i hi (by omega)
+    · exact hread1
+    · exact hrun
+  next hdone =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+termination_by sparse.size - index
+decreasing_by omega
+
+/-- The first sparse term's concrete coefficient write remains observable at
+the end of the iterator because canonical later degrees are strictly lower. -/
+theorem sparseToDenseWriteLoop_leading_read (ptr : RawPtr UInt64)
+    (length p : Nat) (sparse : SparsePolyZp) (heap heap' : RawHeap)
+    (hnonempty : 0 < sparse.size)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hcanonical : SparsePolyZp.Canonical p sparse)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hrun : sparseToDenseWriteLoop ptr length sparse 0 heap = .ok heap') :
+    heap'.readU64 ptr sparse[0].1.deg = .ok sparse[0].2.val := by
+  rw [sparseToDenseWriteLoop] at hrun
+  split at hrun
+  next hmore =>
+    let leading := sparse[0]
+    have hleadingDegree : leading.1.deg < length := hdegree 0 hmore
+    rcases heap.writeU64_of_valid ptr length leading.1.deg leading.2.val
+        hvalid hleadingDegree with ⟨heap1, hwrite⟩
+    simp only [leading, hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr
+      leading.1.deg leading.2.val hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    have hread1 := RawHeap.readU64_writeU64_same heap heap1 ptr
+      leading.1.deg leading.2.val hwrite
+    apply sparseToDenseWriteLoop_preserves_read ptr length sparse 1
+      leading.1.deg heap1 heap' leading.2.val hvalid1 hdegree
+    · intro i hi hpositive
+      have hpairwise : List.Pairwise
+          (fun a b : UMonomial × Zp => a.1.deg > b.1.deg) sparse.toList :=
+        List.isChain_iff_pairwise.mp hcanonical.2.1
+      have hrel := hpairwise.rel_get_of_lt
+        (a := ⟨0, by simpa using hnonempty⟩)
+        (b := ⟨i, by simpa using hi⟩) (by simpa using hpositive)
+      have hzeroGet : sparse.toList[0] = sparse[0] :=
+        Array.getElem_toList hmore
+      have hiGet : sparse.toList[i] = sparse[i] :=
+        Array.getElem_toList hi
+      simp only [List.get_eq_getElem] at hrel
+      rw [hzeroGet, hiGet] at hrel
+      exact Nat.ne_of_lt hrel
+    · exact hread1
+    · exact hrun
+  next hdone => omega
 
 /-- Both physical phases of the sparse-to-dense constructor terminate without
 a raw access fault under their exact allocation and degree bounds. -/
@@ -435,6 +528,85 @@ theorem sparse_upoly_zp_to_dense_raw_ir_canonicalSlice
     sparse_upoly_zp_to_dense_raw_ir_canonical this ptr length sparse heap
       heap' hmodulus hvalid hcanonical hdegree hrun,
     hslice⟩
+
+/-- For a nonempty canonical sparse input, the constructor length is one past
+the first degree, so the real leading write makes raw normalization return the
+entire dense vector. -/
+theorem sparse_upoly_zp_to_dense_raw_ir_rawDense_nonempty
+    (this : DenseUPolyZp) (ptr : RawPtr UInt64) (length : Nat)
+    (sparse : SparsePolyZp) (heap : RawHeap)
+    (hmodulus : this._p ≠ 0)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat sparse)
+    (hnonempty : 0 < sparse.size)
+    (hlength : length = sparse[0].1.deg + 1) :
+    ∃ heap', sparse_upoly_zp_to_dense_raw_ir ptr length sparse heap =
+        .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' ptr length
+        (SparsePolyZp.toPoly this._p.toNat sparse) := by
+  have hdegree : ∀ i (hi : i < sparse.size),
+      sparse[i].1.deg < length := by
+    intro i hi
+    by_cases hizero : i = 0
+    · subst i
+      omega
+    · have hpairwise : List.Pairwise
+          (fun a b : UMonomial × Zp => a.1.deg > b.1.deg) sparse.toList :=
+        List.isChain_iff_pairwise.mp hcanonical.2.1
+      have hrel := hpairwise.rel_get_of_lt
+        (a := ⟨0, by simpa using hnonempty⟩)
+        (b := ⟨i, by simpa using hi⟩) (by
+          simp
+          omega)
+      simp only [List.get_eq_getElem] at hrel
+      have hzeroGet : sparse.toList[0] = sparse[0] :=
+        Array.getElem_toList hnonempty
+      have hiGet : sparse.toList[i] = sparse[i] := Array.getElem_toList hi
+      rw [hzeroGet, hiGet] at hrel
+      omega
+  rcases sparse_upoly_zp_to_dense_raw_ir_canonicalSlice this ptr length
+      sparse heap hmodulus hvalid hcanonical hdegree with
+    ⟨heap', hrun, hlayout, hslice⟩
+  rcases CLPoly.Impl.StrictMulRefinement.mulZeroPadLoop_refines ptr 0 length 0
+      this._p.toNat heap 0 this._p (by omega) hmodulus
+      (by simpa using hvalid)
+      (CLPoly.Impl.StrictHGCDRawRefinement.slicePolyRep_zero_length_any
+        heap ptr this._p.toNat)
+      (by
+        intro i value hi
+        omega) with ⟨heap1, hzero, hlayoutZero, _, _⟩
+  have hvalid1 := (hlayoutZero ptr length).mp hvalid
+  have hwrites : sparseToDenseWriteLoop ptr length sparse 0 heap1 =
+      .ok heap' := by
+    simpa [sparse_upoly_zp_to_dense_raw_ir, hzero] using hrun
+  have hleadRead := sparseToDenseWriteLoop_leading_read ptr length
+    this._p.toNat sparse heap1 heap' hnonempty hvalid1 hcanonical hdegree
+    hwrites
+  have hleadNonzero : sparse[0].2.val ≠ 0 := by
+    apply hcanonical.2.2 sparse[0]
+    simp
+  have hnormalise : heap'.normaliseU64 ptr length = .ok length := by
+    rw [hlength]
+    simp [RawHeap.normaliseU64, hleadRead, hleadNonzero]
+  exact ⟨heap', hrun, hlayout, hslice.1, hslice.2.1, hslice.2.2,
+    hnormalise⟩
+
+theorem sparse_upoly_zp_to_dense_raw_ir_rawDense_empty
+    (this : DenseUPolyZp) (ptr : RawPtr UInt64) (heap : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr 0) :
+    sparse_upoly_zp_to_dense_raw_ir ptr 0 #[] heap = .ok heap ∧
+      RawDensePolyRep this heap ptr 0
+        (SparsePolyZp.toPoly this._p.toNat #[]) := by
+  constructor
+  · simp [sparse_upoly_zp_to_dense_raw_ir, mulZeroPadLoop,
+      sparseToDenseWriteLoop]
+  · refine ⟨hvalid, ?_, ?_, rfl⟩
+    · intro i value hi
+      omega
+    · simpa using
+        (CLPoly.Impl.StrictHGCDRawRefinement.slicePolyRep_zero_length_any
+          heap ptr this._p.toNat)
 
 /-- Exact raw lowering of the reverse coefficient scan in
 `dense_upoly_zp::to_upoly`. -/
@@ -665,6 +837,41 @@ theorem SparseRawDenseRep.raw (this : DenseUPolyZp)
     RawDensePolyRep this heap ptr length
       (SparsePolyZp.toPoly this._p.toNat sparse) :=
   hrep.dense
+
+/-- The complete source-derived sparse constructor produces the strict input
+relation consumed by the raw dense GCD path. -/
+theorem sparse_upoly_zp_dense_constructor_raw_ir_result
+    (this : DenseUPolyZp) (ptr : RawPtr UInt64) (sparse : SparsePolyZp)
+    (heap : RawHeap) (hmodulus : this._p ≠ 0)
+    (hvalid : heap.ValidU64Slice ptr (sparseDenseLength sparse))
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat sparse) :
+    ∃ heap', sparse_upoly_zp_dense_constructor_raw_ir ptr sparse heap =
+        .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      SparseRawDenseRep this heap' ptr (sparseDenseLength sparse) sparse := by
+  by_cases hnonempty : 0 < sparse.size
+  · have hlength : sparseDenseLength sparse = sparse[0].1.deg + 1 := by
+      simp [sparseDenseLength, hnonempty]
+    rcases sparse_upoly_zp_to_dense_raw_ir_rawDense_nonempty this ptr
+        (sparseDenseLength sparse) sparse heap hmodulus hvalid hcanonical
+        hnonempty hlength with ⟨heap', hrun, hlayout, hdense⟩
+    exact ⟨heap', by
+      simpa [sparse_upoly_zp_dense_constructor_raw_ir] using hrun,
+      hlayout, hcanonical, hdense⟩
+  · have hsize : sparse.size = 0 := Nat.eq_zero_of_not_pos hnonempty
+    have hsparse : sparse = #[] := by
+      apply Array.ext
+      · simp [hsize]
+      · intro i hiSparse hiEmpty
+        omega
+    subst sparse
+    rcases sparse_upoly_zp_to_dense_raw_ir_rawDense_empty this ptr heap
+        (by simpa [sparseDenseLength] using hvalid) with ⟨hrun, hdense⟩
+    exact ⟨heap, by
+      simpa [sparse_upoly_zp_dense_constructor_raw_ir, sparseDenseLength]
+        using hrun,
+      fun _ _ => Iff.rfl, hcanonical, by
+        simpa [sparseDenseLength] using hdense⟩
 
 theorem RawDenseSparseResult.toPoly_unique (this : DenseUPolyZp)
     (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)

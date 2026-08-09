@@ -890,3 +890,10 @@ every generated range-for and recursive loop used by SQF.
   size 定理单独覆盖。因此后续每次 extract 都可重新获得完整
   堆序前提；下一步将它与 consume 后 nodes 的非根 mono 保持桥
   组合，恢复重复 equal-degree consume 的不变式。
+- consume 后的非根 heap edge 堆序已从消费前 nodes 严格搬运到
+  `bucket.nodes`。证明不假设已消费 root 仍 pointer-valid；它只对
+  `parent child > 0` 的真实 heap lookup 使用 root-owner 与其他 owner
+  disjoint 推出的 mono iff，将 child/parent 两个成功读取还原到
+  消费前 nodes，再应用旧完整堆序。这为 consume→extract 组合
+  建立了正确分解：新 root 边由 extract root-dominance 处理，非根边
+  由本定理和 sift path frame 处理，而不会把失活 root 塞回不变式。

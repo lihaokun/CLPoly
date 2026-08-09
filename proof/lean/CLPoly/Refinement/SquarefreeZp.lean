@@ -9792,6 +9792,45 @@ theorem pairVecDivVHCConsumeRootBucket_nonroot_mono_iff
     rw [← hsame]
     exact hnode
 
+/-- Consuming the root bucket leaves every old heap edge whose parent is not
+the root ordered in the updated node array.  The root itself is intentionally
+excluded: its chain has just been consumed and may no longer be active. -/
+theorem pairVecDivVHCConsumeRootBucket_preserves_nonroot_heap_order
+    (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∀ (child : Nat), child < heap.size → 0 < child →
+      0 < pairVecDivVHCParent child →
+      ∀ childHead parentHead childMono parentMono,
+        heap[child]? = some childHead →
+        heap[pairVecDivVHCParent child]? = some parentHead →
+        pairVecDivVHCMono childHead result.nodes = .ok childMono →
+        pairVecDivVHCMono parentHead result.nodes = .ok parentMono →
+        childMono.deg ≤ parentMono.deg := by
+  intro child hchild hchildPos hparentPos childHead parentHead childMono
+    parentMono hchildGet hparentGet hchildMono hparentMono
+  have hchildSource :=
+    (pairVecDivVHCConsumeRootBucket_nonroot_mono_iff this heap k nodes lin
+      resetH quotient divisor result owners hheap hownership hrun child
+      childHead hchildPos hchildGet childMono).mpr hchildMono
+  have hparentSlot : pairVecDivVHCParent child < heap.size := by
+    have hparentLt : pairVecDivVHCParent child < child :=
+      pairVecDivVHCParent_lt child hchildPos
+    exact Nat.lt_trans hparentLt hchild
+  have hparentSource :=
+    (pairVecDivVHCConsumeRootBucket_nonroot_mono_iff this heap k nodes lin
+      resetH quotient divisor result owners hheap hownership hrun
+      (pairVecDivVHCParent child) parentHead hparentPos hparentGet
+      parentMono).mpr hparentMono
+  exact hordered.degreesUpTo heap nodes heap.size (Nat.le_refl _) child hchild
+    hchildPos childHead parentHead childMono parentMono hchildGet hparentGet
+    hchildSource hparentSource
+
 theorem pairVecDivVHCConsumeRootExtract_root_dominates
     (this : DenseUPolyZp) (heap heap' : Array Nat) (k : UInt64)
     (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)

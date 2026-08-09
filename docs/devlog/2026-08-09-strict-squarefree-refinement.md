@@ -545,3 +545,14 @@ every generated range-for and recursive loop used by SQF.
   ownership 与实际返回 `next`，没有用节点计数相等替代成员覆盖。
   下一步把此“已消费 owner 重分类”与未消费 heap bucket 的 disjoint
   ownership 合并，建立全 node block 的 `heap ∪ lin ∪ reset` 完整分区。
+- 全 node block 覆盖谓词已建立并完成入口桥。
+  `PairVecDivVHCNodesCovered` 明确要求每个已分配节点落在 reset 前缀、
+  `lin` 栈或某个真实 heap slot 的 exact owner 中；区域间唯一性继续由
+  已有 `ResetReady + LinReady + HeapChainsOwnedAway` 提供。初始化时
+  `nodes.size = divisor.size - 1 = reset_h`，因此全部节点真实位于 reset
+  前缀。反向查询定理进一步证明：在覆盖、reset-ready 条件下，任何
+  `mono ≠ none` 且不在 `lin` 的节点必由实际 heap bucket 持有，reset
+  情形因其真实 `mono = none` 直接矛盾。此外已证明 ConsumeNode 及完整
+  ConsumeChain 始终保持 node-array size，后续覆盖传递不会偷换节点域。
+  下一步补强 `VHC_extract`：不仅新 head 来自旧 heap，还要证明每个非 root
+  旧 head 都存活；然后即可组合 root owner 重分类得到覆盖保持。

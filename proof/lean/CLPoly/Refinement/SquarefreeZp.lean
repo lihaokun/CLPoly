@@ -2226,6 +2226,36 @@ theorem pairVecDivVHCConsumeNode_next_of_success
             simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
             exact hrun.2.2.2.2.symm
 
+theorem pairVecDivVHCConsumeNode_nodes_size
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    nodes'.size = nodes.size := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          simp
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              simp
+
 theorem pairVecDivVHCConsumeNode_coefficient_reduced
     (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
     (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
@@ -2686,6 +2716,39 @@ theorem pairVecDivVHCConsumeChain_location_monotone
               divisor result hrun
             exact ⟨Finset.Subset.trans hstep.1 htail.1,
               Nat.le_trans hstep.2.1 htail.2⟩
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeChain_nodes_size
+    (this : DenseUPolyZp) (current : Option Nat)
+    (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    result.nodes.size = nodes.size := by
+  cases current with
+  | none =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      rfl
+  | some nodeIndex =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      split at hrun <;> try contradiction
+      next hmem =>
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            rw [pairVecDivVHCConsumeChain_nodes_size this next
+              (unvisited.erase nodeIndex) k' nodes' lin' resetH' quotient
+              divisor result hrun]
+            exact pairVecDivVHCConsumeNode_nodes_size this nodeIndex k k' nodes
+              nodes' lin lin' resetH resetH' next quotient divisor hconsume
 termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
@@ -4026,6 +4089,52 @@ def PairVecDivVHCHeapChainOwnership (heap : Array Nat)
     (∀ (left right leftHead rightHead : Nat), heap[left]? = some leftHead →
       heap[right]? = some rightHead → leftHead ≠ rightHead →
       Disjoint (owners leftHead) (owners rightHead))
+
+/-- Total location coverage of the allocated divisor-tail cursor block.
+Every node is either in the exhausted `reset_h` prefix, on the temporary
+reverse-reinsertion stack, or owned by one concrete heap bucket.  Uniqueness
+and separation of these regions are supplied by `ResetReady`, `LinReady`, and
+`HeapChainsOwnedAway`; this predicate records the missing totality direction. -/
+def PairVecDivVHCNodesCovered (heap : Array Nat)
+    (owners : Nat → Finset Nat) (lin : Array Nat) (resetH : Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ i : Nat, i < nodes.size →
+    i < resetH ∨ i ∈ lin.toList.toFinset ∨
+      ∃ (slot head : Nat), heap[slot]? = some head ∧ i ∈ owners head
+
+theorem pairVecDivVHCInit_nodesCovered (divisor : SparsePolyZp)
+    (owners : Nat → Finset Nat) :
+    PairVecDivVHCNodesCovered #[] owners #[] (divisor.size - 1)
+      (pairVecDivVHCInit divisor) := by
+  intro i hi
+  left
+  rw [pairVecDivVHCInit_size] at hi
+  exact hi
+
+theorem PairVecDivVHCNodesCovered.owned_of_active_not_lin
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (lin : Array Nat) (resetH quotientSize : Nat)
+    (nodes : Array PairVecDivVHCNode) (nodeIndex : Nat)
+    (node : PairVecDivVHCNode)
+    (hcovered : PairVecDivVHCNodesCovered heap owners lin resetH nodes)
+    (hready : PairVecDivVHCResetReady resetH quotientSize nodes)
+    (hget : nodes[nodeIndex]? = some node) (hactive : node.mono ≠ none)
+    (hnotLin : nodeIndex ∉ lin.toList.toFinset) :
+    ∃ (slot head : Nat), heap[slot]? = some head ∧
+      nodeIndex ∈ owners head := by
+  have hn : nodeIndex < nodes.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  rcases hcovered nodeIndex hn with hreset | hlin | howned
+  · rcases hready.2 nodeIndex hreset with
+      ⟨readyNode, hreadyGet, hquotientIndex, hdivisorIndex, hmono⟩
+    rw [hget] at hreadyGet
+    simp only [Option.some.injEq] at hreadyGet
+    subst readyNode
+    exact (hactive hmono).elim
+  · exact (hnotLin hlin).elim
+  · exact howned
 
 /-- Every currently heap-owned bucket is homogeneous at the degree reported
 by its actual head read.  This deliberately excludes nodes already moved to

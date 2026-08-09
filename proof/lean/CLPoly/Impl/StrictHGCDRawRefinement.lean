@@ -10797,6 +10797,10 @@ structure HgcdRecursiveNonBasePackage (this : DenseUPolyZp)
   inputHighB : Polynomial (ZMod this._p.toNat)
   lowPolyA : Polynomial (ZMod this._p.toNat)
   lowPolyB : Polynomial (ZMod this._p.toNat)
+  inputA : Polynomial (ZMod this._p.toNat)
+  inputB : Polynomial (ZMod this._p.toNat)
+  splitA : inputA = lowPolyA + Polynomial.X ^ (lenA / 2) * inputHighA
+  splitB : inputB = lowPolyB + Polynomial.X ^ (lenA / 2) * inputHighB
   workspace : HgcdRecursiveFirstCallWorkspace this bound recurse a b W
     scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB
 

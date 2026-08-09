@@ -869,3 +869,14 @@ every generated range-for and recursive loop used by SQF.
   保持。这一步使用的是实际 `Array.set i selectedHead`，没有以 L2
   结果回填或使用 fuel。下一步把该单步与 leaf last-write 沿
   `pairVecDivVHCSiftDown` 的良基递归组合，得到整段 sift 的堆序保持。
+- 整段生成的 `pairVecDivVHCSiftDown` 已证明保持 active-prefix degree
+  heap order。证明与实现使用同一个 `termination_by limit - child`
+  的良基度量，逐个展开 left/right selection 和 greater/stop 分支。
+  递归分支先用真实 selected-child `Array.set` 保持堆序，再把
+  `lastMono < selectedMono` 作为下一个 hole 的向上不变式；stop
+  分支则直接证明 `Array.set i lastNode` 的上下边。特别单独
+  处理了 `right = limit`：生成代码确实读取该 sentinel，但它不被
+  偷算为 active heap child，只有真正选中并递归的节点才要求
+  `< limit`。下一步从 extract 入口的旧堆序和 last-slot lookup 构造
+  该定理的初始 root/parent 前提，然后经 `pop` 转回完整
+  `PairVecDivVHCHeapOrdered`。

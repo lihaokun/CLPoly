@@ -2766,7 +2766,8 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.set_leaf
     (hi : i < heap.size)
     (hordered : PairVecDivVHCHeapDegreesOrderedUpTo limit heap nodes)
     (hnewMono : pairVecDivVHCMono newHead nodes = .ok newMono)
-    (hnoChildren : ∀ child < limit, pairVecDivVHCParent child ≠ i)
+    (hnoChildren : ∀ child < limit, 0 < child →
+      pairVecDivVHCParent child ≠ i)
     (hup : ∀ parentHead parentMono,
       heap[pairVecDivVHCParent i]? = some parentHead →
       pairVecDivVHCMono parentHead nodes = .ok parentMono →
@@ -2788,7 +2789,7 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.set_leaf
       omega
     rw [Array.getElem?_set_ne hi (by omega)] at hparentGet
     exact hup parentHead parentMono hparentGet hparentMono
-  · exact False.elim (hnoChildren child hchild hparentEq)
+  · exact False.elim (hnoChildren child hchild hpos hparentEq)
 
 theorem PairVecDivVHCHeapDegreesOrderedUpTo.set_parent
     (limit i newHead : Nat) (heap : Array Nat)
@@ -2865,7 +2866,7 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.copy_selected_child
     (nodes : Array PairVecDivVHCNode)
     (holeMono leftMono rightMono selectedMono : UMonomial)
     (hi : i < heap.size) (hileft : left = i * 2 + 1)
-    (hrightLimit : left + 1 < limit)
+    (hrightBound : left + 1 ≤ limit) (hselectedLimit : selected < limit)
     (hordered : PairVecDivVHCHeapDegreesOrderedUpTo limit heap nodes)
     (hholeGet : heap[i]? = some holeHead)
     (hholeMono : pairVecDivVHCMono holeHead nodes = .ok holeMono)
@@ -2881,7 +2882,6 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.copy_selected_child
     PairVecDivVHCHeapDegreesOrderedUpTo limit
       (heap.set i selectedHead) nodes := by
   have hiLimit : i < limit := by omega
-  have hselectedLimit : selected < limit := by rcases hselected with rfl | rfl <;> omega
   have hselectedPos : 0 < selected := by rcases hselected with rfl | rfl <;> omega
   have hselectedParent : pairVecDivVHCParent selected = i := by
     apply (pairVecDivVHCParent_eq_iff_children i selected hselectedPos).mpr
@@ -2936,6 +2936,196 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.copy_selected_child
         (Except.ok.inj hchildMono).symm
       subst childMono
       exact hrightLe
+
+/-- The generated well-founded sift loop preserves degree heap order on the
+active prefix.  `lastNode` is the source sentinel at `limit`; `hup` records
+the only order fact needed when that sentinel is finally written into the
+current hole. -/
+theorem pairVecDivVHCSiftDown_degreesOrderedUpTo
+    (i child limit lastNode : Nat) (heap shifted : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (holeMono lastMono : UMonomial)
+    (hchildEq : child = i * 2 + 1)
+    (hi : i < heap.size) (hlimit : limit < heap.size)
+    (hlastSlot : heap[limit]? = some lastNode)
+    (hholeMono : pairVecDivVHCMono heap[i] nodes = .ok holeMono)
+    (hlastMono : pairVecDivVHCMono lastNode nodes = .ok lastMono)
+    (hordered : PairVecDivVHCHeapDegreesOrderedUpTo limit heap nodes)
+    (hup : ∀ parentHead parentMono,
+      heap[pairVecDivVHCParent i]? = some parentHead →
+      pairVecDivVHCMono parentHead nodes = .ok parentMono →
+      lastMono.deg ≤ parentMono.deg)
+    (hrun : pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok shifted) :
+    PairVecDivVHCHeapDegreesOrderedUpTo limit shifted nodes := by
+  rw [pairVecDivVHCSiftDown] at hrun
+  simp only [hi, hlimit, hlastMono, true_and] at hrun
+  by_cases hchild : child < limit
+  · simp only [hchild, ↓reduceDIte] at hrun
+    have hrightSize : child + 1 < heap.size := by omega
+    cases hleftMono : pairVecDivVHCMono heap[child] nodes with
+    | error fault => simp [hleftMono] at hrun
+    | ok leftMono =>
+      cases hrightMono : pairVecDivVHCMono heap[child + 1] nodes with
+      | error fault => simp [hleftMono, hrightMono] at hrun
+      | ok rightMono =>
+        simp only [hleftMono, hrightMono] at hrun
+        by_cases hselected : leftMono.deg > rightMono.deg
+        · simp only [hselected, ↓reduceIte] at hrun
+          by_cases hgreater : leftMono.deg > lastMono.deg
+          · simp only [hgreater, ↓reduceDIte] at hrun
+            have hcopy := hordered.copy_selected_child limit i child child
+              heap[i] heap[child] heap[child + 1] heap[child] heap nodes
+              holeMono leftMono rightMono leftMono hi hchildEq (by omega) hchild
+              (Array.getElem?_eq_getElem hi)
+              hholeMono
+              (Array.getElem?_eq_getElem (by omega)) hleftMono
+              (Array.getElem?_eq_getElem hrightSize) hrightMono
+              (Or.inl rfl) (Array.getElem?_eq_getElem (by omega)) hleftMono
+              (Nat.le_refl _) (Nat.le_of_lt hselected)
+            exact pairVecDivVHCSiftDown_degreesOrderedUpTo child
+              (child * 2 + 1) limit lastNode (heap.set i heap[child]) shifted
+              nodes leftMono lastMono rfl
+              (by simpa using (show child < heap.size by omega))
+              (by simpa using hlimit) (by
+                rw [Array.getElem?_set_ne hi (by omega)]
+                exact hlastSlot)
+              (by simpa [Array.getElem_set, hi] using hleftMono)
+              hlastMono hcopy (by
+                  intro parentHead parentMono hparentGet hparentMono
+                  have hp : pairVecDivVHCParent child = i :=
+                    (pairVecDivVHCParent_eq_iff_children i child (by omega)).2
+                      (Or.inl hchildEq)
+                  rw [hp, Array.getElem?_set_self hi] at hparentGet
+                  have hhead : parentHead = heap[child] :=
+                    (Option.some.inj hparentGet).symm
+                  subst parentHead
+                  rw [hleftMono] at hparentMono
+                  have hm : parentMono = leftMono :=
+                    (Except.ok.inj hparentMono).symm
+                  subst parentMono
+                  exact Nat.le_of_lt hgreater) hrun
+          · simp only [hgreater, ↓reduceDIte, Except.ok.injEq] at hrun
+            subst shifted
+            apply hordered.set_parent limit i lastNode heap nodes lastMono hi
+              hlastMono hup
+            intro active hactive hpos hparent activeHead activeMono
+              hactiveGet hactiveMono
+            rcases (pairVecDivVHCParent_eq_iff_children i active hpos).1
+              hparent with hleft | hright
+            · have : active = child := by omega
+              rw [this] at hactiveGet
+              rw [Array.getElem?_eq_getElem (by omega)] at hactiveGet
+              have hh : activeHead = heap[child] :=
+                (Option.some.inj hactiveGet).symm
+              subst activeHead
+              rw [hleftMono] at hactiveMono
+              have hm : activeMono = leftMono :=
+                (Except.ok.inj hactiveMono).symm
+              subst activeMono
+              exact Nat.le_trans (Nat.le_refl _)
+                (Nat.le_of_not_gt hgreater)
+            · have : active = child + 1 := by omega
+              rw [this] at hactiveGet
+              rw [Array.getElem?_eq_getElem hrightSize] at hactiveGet
+              have hh : activeHead = heap[child + 1] :=
+                (Option.some.inj hactiveGet).symm
+              subst activeHead
+              rw [hrightMono] at hactiveMono
+              have hm : activeMono = rightMono :=
+                (Except.ok.inj hactiveMono).symm
+              subst activeMono
+              exact Nat.le_trans (Nat.le_of_lt hselected)
+                (Nat.le_of_not_gt hgreater)
+        · simp only [hselected, ↓reduceIte] at hrun
+          by_cases hgreater : rightMono.deg > lastMono.deg
+          · simp only [hgreater, ↓reduceDIte] at hrun
+            have hselectedLimit : child + 1 < limit := by
+              by_contra hnot
+              have heq : child + 1 = limit := by omega
+              have hrightHead : heap[child + 1]? = some lastNode := by
+                simpa [heq] using hlastSlot
+              have harray : heap[child + 1]? = some heap[child + 1] :=
+                Array.getElem?_eq_getElem hrightSize
+              rw [hrightHead] at harray
+              have hheadEq : heap[child + 1] = lastNode :=
+                (Option.some.inj harray).symm
+              rw [hheadEq, hlastMono] at hrightMono
+              have hm : rightMono = lastMono :=
+                (Except.ok.inj hrightMono).symm
+              subst rightMono
+              omega
+            have hcopy := hordered.copy_selected_child limit i child
+              (child + 1) heap[i] heap[child] heap[child + 1]
+              heap[child + 1] heap nodes holeMono leftMono rightMono rightMono
+              hi hchildEq (by omega) hselectedLimit
+              (Array.getElem?_eq_getElem hi) hholeMono
+              (Array.getElem?_eq_getElem (by omega)) hleftMono
+              (Array.getElem?_eq_getElem hrightSize) hrightMono
+              (Or.inr rfl) (Array.getElem?_eq_getElem hrightSize) hrightMono
+              (Nat.le_of_not_gt hselected) (Nat.le_refl _)
+            exact pairVecDivVHCSiftDown_degreesOrderedUpTo (child + 1)
+              ((child + 1) * 2 + 1) limit lastNode
+              (heap.set i heap[child + 1]) shifted nodes rightMono lastMono rfl
+              (by simpa using (show child + 1 < heap.size by omega))
+              (by simpa using hlimit) (by
+                rw [Array.getElem?_set_ne hi (by omega)]
+                exact hlastSlot)
+              (by simpa [Array.getElem_set, hi] using hrightMono)
+              hlastMono hcopy (by
+                  intro parentHead parentMono hparentGet hparentMono
+                  have hp : pairVecDivVHCParent (child + 1) = i :=
+                    (pairVecDivVHCParent_eq_iff_children i (child + 1)
+                      (by omega)).2 (Or.inr (by omega))
+                  rw [hp, Array.getElem?_set_self hi] at hparentGet
+                  have hhead : parentHead = heap[child + 1] :=
+                    (Option.some.inj hparentGet).symm
+                  subst parentHead
+                  rw [hrightMono] at hparentMono
+                  have hm : parentMono = rightMono :=
+                    (Except.ok.inj hparentMono).symm
+                  subst parentMono
+                  exact Nat.le_of_lt hgreater) hrun
+          · simp only [hgreater, ↓reduceDIte, Except.ok.injEq] at hrun
+            subst shifted
+            apply hordered.set_parent limit i lastNode heap nodes lastMono hi
+              hlastMono hup
+            intro active hactive hpos hparent activeHead activeMono
+              hactiveGet hactiveMono
+            rcases (pairVecDivVHCParent_eq_iff_children i active hpos).1
+              hparent with hleft | hright
+            · have heq : active = child := by omega
+              rw [heq] at hactiveGet
+              rw [Array.getElem?_eq_getElem (by omega)] at hactiveGet
+              have hh : activeHead = heap[child] :=
+                (Option.some.inj hactiveGet).symm
+              subst activeHead
+              rw [hleftMono] at hactiveMono
+              have hm : activeMono = leftMono :=
+                (Except.ok.inj hactiveMono).symm
+              subst activeMono
+              exact Nat.le_trans (Nat.le_of_not_gt hselected)
+                (Nat.le_of_not_gt hgreater)
+            · have heq : active = child + 1 := by omega
+              rw [heq] at hactiveGet
+              rw [Array.getElem?_eq_getElem hrightSize] at hactiveGet
+              have hh : activeHead = heap[child + 1] :=
+                (Option.some.inj hactiveGet).symm
+              subst activeHead
+              rw [hrightMono] at hactiveMono
+              have hm : activeMono = rightMono :=
+                (Except.ok.inj hactiveMono).symm
+              subst activeMono
+              exact Nat.le_of_not_gt hgreater
+  · simp only [hchild, ↓reduceDIte, Except.ok.injEq] at hrun
+    subst shifted
+    apply hordered.set_leaf limit i lastNode heap nodes lastMono hi hlastMono
+    · intro active hactive hpos hparent
+      rcases (pairVecDivVHCParent_eq_iff_children i active hpos).1 hparent with
+        hleft | hright <;> omega
+    · exact hup
+termination_by limit - child
+decreasing_by
+  all_goals omega
 
 /-- A `next` edge is a valid equal-monomial bucket link. -/
 def PairVecDivVHCNextValid (nodes : Array PairVecDivVHCNode) : Prop :=

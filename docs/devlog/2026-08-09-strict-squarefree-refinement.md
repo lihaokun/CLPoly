@@ -296,6 +296,11 @@ every generated range-for and recursive loop used by SQF.
   provenance、root 彻底移除、其他 chain 不变组合，得到单次
   root-consume-plus-extract 对完整 heap chain ownership 的保持。下一步沿
   heap-size 严格下降将它提升到整个 equal-degree 良基循环。
+- 完整 `pairVecDivVHCConsumeEqualDegree` 的 heap chain ownership 保持已
+  闭合。证明直接对真实活动 heap size 做强归纳，每次递归使用
+  `pairVecDivVHCExtractChecked` 包装的原始 extract 执行以及严格
+  `size` 下降证据。因此该循环现保持每个存活 bucket 的精确
+  owner、head 唯一性和 owner 两两不交；未引入 fuel 或替代循环。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

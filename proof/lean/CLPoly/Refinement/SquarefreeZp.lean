@@ -3742,6 +3742,58 @@ theorem pairVecDivVHCExtractChecked_raw
       exact congrArg Subtype.val (Except.ok.inj hrun)
     simpa [hval] using hraw
 
+/-- The full equal-degree source loop preserves exact heap-chain ownership.
+The induction measure is the real active heap size, strictly decreased by
+the checked execution of `VHC_extract`. -/
+theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainOwnership
+    (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult) (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCHeapChainOwnership result.heap owners result.nodes := by
+  induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
+      nodes lin resetH result with
+  | h size ih =>
+      rw [pairVecDivVHCConsumeEqualDegree] at hrun
+      by_cases hheap : 0 < heap.size
+      · simp only [hheap, ↓reduceDIte] at hrun
+        cases hmono : pairVecDivVHCMono heap[0] nodes with
+        | error fault => simp [hmono] at hrun
+        | ok rootMono =>
+            simp only [hmono] at hrun
+            by_cases hequal : rootMono.deg = degree
+            · simp only [hequal, ↓reduceDIte] at hrun
+              cases hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes
+                  lin resetH quotient divisor with
+              | error fault => simp [hconsume] at hrun
+              | ok bucket =>
+                  simp only [dif_pos trivial, hconsume] at hrun
+                  cases hchecked : pairVecDivVHCExtractChecked heap bucket.nodes with
+                  | error fault => simp [hchecked] at hrun
+                  | ok extracted =>
+                      rw [hchecked] at hrun
+                      have hraw := pairVecDivVHCExtractChecked_raw heap
+                        bucket.nodes extracted hchecked
+                      have hownership' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hconsume hraw
+                      have hsmaller : extracted.1.size < size := by
+                        rw [← hsize]
+                        omega
+                      exact ih extracted.1.size hsmaller extracted.1
+                        bucket.coefficient bucket.nodes bucket.lin bucket.resetH
+                        result hownership' hrun rfl
+            · simp only [hequal, ↓reduceDIte, Except.ok.injEq] at hrun
+              subst result
+              exact hownership
+      · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
+        subst result
+        exact hownership
+
 theorem pairVecDivVHCActivatedTail_degree_lt_frontier (p frontierDegree : Nat)
     (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
     (hdivisorCanonical : SparsePolyZp.Canonical p divisor)

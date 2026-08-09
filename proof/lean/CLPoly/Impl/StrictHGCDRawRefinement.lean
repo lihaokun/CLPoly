@@ -11239,4 +11239,103 @@ theorem hgcdRecursiveBodyBranchAdmissible_eq_body (this : DenseUPolyZp)
       A B a b lenA lenB W scratch heap hbound horder
       (fun _ => providers.1) (fun _ => providers.2) hagrees
 
+/-- Uniform semantic theorem for one branch-admissible well-founded body.
+The caller supplies physical evidence only for the branch that the generated
+guard actually takes.  Recursive polynomial semantics are separate smaller-
+length hypotheses, and successful continuation evidence is tied to the exact
+body execution rather than to a preselected result. -/
+theorem hgcdRecursiveBodyBranchAdmissible_rawInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (hlenAPos : 0 < lenA)
+    (baseWorkspace : lenB < lenA / 2 + 1 →
+      HgcdRecursiveBaseCallWorkspace this M hM A B a b lenA lenB heap left
+        right)
+    (nonBase : ∀ hbase : ¬ lenB < lenA / 2 + 1,
+      HgcdRecursiveNonBasePackage this bound recurse a b W scratch lenA lenB
+        heap)
+    (nonBaseInput : ∀ hbase,
+      (nonBase hbase).inputA = left ∧ (nonBase hbase).inputB = right)
+    (firstRecursiveRefines : ∀ hbase,
+      HgcdRecursiveNonBaseCallbackRefines this bound recurse a b W scratch
+        lenA lenB heap (nonBase hbase))
+    (continuation : ∀ (hbase : ¬ lenB < lenA / 2 + 1)
+      (result : HgcdRecursiveResult),
+      let package := nonBase hbase
+      let firstCall := package.admissible this bound recurse a b W scratch
+        lenA lenB heap (firstRecursiveRefines hbase)
+      let providers := hgcdRecursiveFirstCall_providers this bound recurse a b
+        W scratch lenA lenB heap package.inputHighA package.inputHighB
+        package.lowPolyA package.lowPolyB hcfg hp horder firstCall.workspace
+        firstCall.recursiveRefines
+      hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
+        lenB W scratch heap hbound horder (fun _ => providers.1)
+          (fun _ => providers.2) = .ok result →
+      HgcdRecursiveNonBaseContinuationWorkspace this bound recurse M hM
+        computeM A B a b W scratch lenA lenB heap package hbound horder hbase)
+    (secondRecursiveRefines : ∀ (hbase : ¬ lenB < lenA / 2 + 1)
+      (result : HgcdRecursiveResult)
+      (hrun :
+        let package := nonBase hbase
+        let firstCall := package.admissible this bound recurse a b W scratch
+          lenA lenB heap (firstRecursiveRefines hbase)
+        let providers := hgcdRecursiveFirstCall_providers this bound recurse a
+          b W scratch lenA lenB heap package.inputHighA package.inputHighB
+          package.lowPolyA package.lowPolyB hcfg hp horder firstCall.workspace
+          firstCall.recursiveRefines
+        hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
+          lenB W scratch heap hbound horder (fun _ => providers.1)
+            (fun _ => providers.2) = .ok result),
+      HgcdRecursiveContinuationSecondRefines this bound recurse M hM computeM
+        A B a b W scratch lenA lenB heap (nonBase hbase) hbound horder hbase
+        (continuation hbase result hrun))
+    (result : HgcdRecursiveResult)
+    (hrun : hgcdRecursiveBodyBranchAdmissible this bound recurse M hM computeM
+      A B a b lenA lenB W scratch heap hcfg hp hbound horder nonBase
+        firstRecursiveRefines = .ok result) :
+    ∃ finalA finalB entries,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
+        A B lenA result := by
+  by_cases hbase : lenB < lenA / 2 + 1
+  · have hrunBelow :
+        hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
+          lenB W scratch heap hbound horder
+            (fun hnonbase => False.elim (hnonbase hbase))
+            (fun hnonbase => False.elim (hnonbase hbase)) = .ok result := by
+      simpa [hgcdRecursiveBodyBranchAdmissible, hbase] using hrun
+    rcases hgcdRecursiveBodyBelow_base_rawInvariant this bound recurse M hM
+        computeM A B a b lenA lenB W scratch heap left right hp hbound horder
+        (baseWorkspace hbase) hlenAPos hbase result hrunBelow with
+      ⟨entries, hInvariant⟩
+    exact ⟨left, right, entries, hInvariant⟩
+  · let package := nonBase hbase
+    let firstRefines := firstRecursiveRefines hbase
+    let firstCall := package.admissible this bound recurse a b W scratch lenA
+      lenB heap firstRefines
+    let providers := hgcdRecursiveFirstCall_providers this bound recurse a b W
+      scratch lenA lenB heap package.inputHighA package.inputHighB
+      package.lowPolyA package.lowPolyB hcfg hp horder firstCall.workspace
+      firstCall.recursiveRefines
+    have hrunBelow :
+        hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
+          lenB W scratch heap hbound horder (fun _ => providers.1)
+            (fun _ => providers.2) = .ok result := by
+      simpa [hgcdRecursiveBodyBranchAdmissible, hbase, package, firstRefines,
+        firstCall, providers] using hrun
+    let next := continuation hbase result (by
+      simpa [package, firstRefines, firstCall, providers] using hrunBelow)
+    have hSecond := secondRecursiveRefines hbase result (by
+      simpa [package, firstRefines, firstCall, providers] using hrunBelow)
+    have hResult := next.rawInvariant this bound recurse M hM computeM A B a b
+      lenA lenB W scratch heap hcfg hp hbound horder hbase package firstRefines
+      (by simpa [next, package] using hSecond) result hrunBelow
+    rcases nonBaseInput hbase with ⟨hleft, hright⟩
+    simpa [package, hleft, hright] using hResult
+
 end CLPoly.Impl.StrictHGCDRawRefinement

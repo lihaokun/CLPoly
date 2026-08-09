@@ -16,6 +16,9 @@
 - Added a dependent physical sum over the early and non-early continuations,
   with a branch-selected second-child obligation and one uniform raw-invariant
   theorem.
+- Added a uniform theorem for the complete branch-admissible body.  It selects
+  the base workspace or the successful non-base continuation from the actual
+  generated guard and result.
 
 ## Why
 
@@ -34,6 +37,9 @@ hypotheses.
   indexed by the actual smaller input length used by its generated call.
 - The dependent sum reduces the second-child obligation to `True` on the
   actual early branch; no unused recursive premise is demanded there.
+- The non-base package must prove that its reconstructed mathematical inputs
+  are exactly the caller's represented polynomials; an arbitrary preselected
+  specification value cannot be substituted.
 - No fuel parameter or L2 fallback was introduced.
 
 ## Problems and resolution

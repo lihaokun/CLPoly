@@ -7979,6 +7979,60 @@ theorem pairVecDivVHCSetNext_get_ne
     subst nodes'
     rw [Array.getElem?_set_ne hn hne]
 
+theorem pairVecDivVHCSetNext_preserves_mono_read
+    (nodeIndex : Nat) (next : Option Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hrun : pairVecDivVHCSetNext nodeIndex next nodes = .ok nodes')
+    (i : Nat) :
+    pairVecDivVHCMono i nodes' = pairVecDivVHCMono i nodes := by
+  unfold pairVecDivVHCSetNext at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    simp only [Except.ok.injEq] at hrun
+    subst nodes'
+    unfold pairVecDivVHCMono
+    by_cases hi : i < nodes.size
+    · simp only [Array.size_set, hi, ↓reduceDIte]
+      by_cases heq : nodeIndex = i
+      · subst i
+        rw [Array.getElem_set_self]
+      · rw [Array.getElem_set_ne hn hi heq]
+    · have hiSet : ¬ i < (nodes.set nodeIndex
+          { nodes[nodeIndex] with next := next }).size := by
+          simpa only [Array.size_set] using hi
+      simp only [hi, hiSet, ↓reduceDIte]
+
+theorem pairVecDivVHCSetNext_preserves_heapOrdered
+    (nodeIndex : Nat) (next : Option Nat) (heap : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hrun : pairVecDivVHCSetNext nodeIndex next nodes = .ok nodes') :
+    PairVecDivVHCHeapOrdered heap nodes' := by
+  apply PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+  intro child hchild hpos childHead parentHead childMono parentMono
+      hchildGet hparentGet hchildMono hparentMono
+  rw [pairVecDivVHCSetNext_preserves_mono_read nodeIndex next nodes nodes'
+    hrun childHead] at hchildMono
+  rw [pairVecDivVHCSetNext_preserves_mono_read nodeIndex next nodes nodes'
+    hrun parentHead] at hparentMono
+  exact hordered.degreesUpTo heap nodes heap.size (Nat.le_refl _) child hchild
+    hpos childHead parentHead childMono parentMono hchildGet hparentGet
+    hchildMono hparentMono
+
+/-- The node-array side effect of insertion changes only `next`; consequently
+any heap ordering established for the returned heap against the pre-write
+monomial array transports to the actual returned node array. -/
+theorem pairVecDivVHCInsert_nodes_preserve_heapOrdered
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hordered : PairVecDivVHCHeapOrdered heap' nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCHeapOrdered heap' nodes' := by
+  rcases pairVecDivVHCInsert_nodes_result newNode heap heap' nodes nodes' hrun
+    with ⟨next, hset⟩
+  exact pairVecDivVHCSetNext_preserves_heapOrdered newNode next heap' nodes
+    nodes' hordered hset
+
 theorem pairVecDivVHCSetNext_preserves_cursorPrefixAbove
     (degreeLimit nodeIndex : Nat) (next : Option Nat)
     (nodes nodes' : Array PairVecDivVHCNode)

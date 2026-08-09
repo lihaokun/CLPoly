@@ -1079,3 +1079,12 @@ every generated range-for and recursive loop used by SQF.
   reinsertion 对 heap order 与 equal-degree chain homogeneous 的保持，
   以便每个递归状态都满足该单步定理的表示前提；这些前提不会被
   当作假设跳过。
+- `VHC_insert` 的节点写入与 heap 排列责任已正式解耦。
+  `pairVecDivVHCSetNext_preserves_mono_read` 直接展开生成的 checked
+  `set_next`，证明无论读取被写节点还是其他节点，比较器看到的
+  monomial 完全不变；`pairVecDivVHCSetNext_preserves_heapOrdered` 因而
+  将任意已建立的 heap order 穿过真实 `next` 写入。进一步的
+  `pairVecDivVHCInsert_nodes_preserve_heapOrdered` 使用 insertion 的真实
+  `nodes_result` 分解，将这个事实应用到完整 insertion 返回节点数组。
+  这样剩余 heap-order 证明只需验证 `Bubble`/`BubbleBelow` 对 heap 槽位
+  的父子次数关系，不再把节点链指针副作用混入数组排列证明。

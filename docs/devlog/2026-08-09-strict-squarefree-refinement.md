@@ -336,6 +336,14 @@ every generated range-for and recursive loop used by SQF.
   是 activation/reinsert 提供的新节点 freshness。下一步从旧节点
   `mono = none` 和现有 exact-chain ownership 推出该 freshness，并将定理接入
   activation/reinsert 良基循环。
+- freshness 现已从表示不变式自动推出：exact chain 的每个 owner
+  成员都必然是 `mono = some _` 的活动节点，因此
+  `reset_h` 前缀中 `mono = none` 的节点不可能已在 heap 或任一
+  活动 owner 中。利用该结论，完整 `pairVecDivVHCActivateReset`
+  循环已证明 existential heap ownership 保持：每步执行真实
+  activate 写入，再执行真实 `VHC_insert`，并以 `resetH - 1` 作为
+  良基下降。剩余表示层缺口是为 `lin` 反向重插证明其节点
+  两两唯一且不在当前 heap owners 中。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

@@ -3048,6 +3048,42 @@ termination_by owner.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+theorem pairVecDivVHCChainOwns_mem_active
+    (current : Option Nat) (owner : Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (i : Nat) (hi : i ∈ owner) :
+    ∃ node mono, nodes[i]? = some node ∧ node.mono = some mono := by
+  cases current with
+  | none =>
+      simp [PairVecDivVHCChainOwns] at howns
+      subst owner
+      simp at hi
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at howns
+      split at howns <;> try contradiction
+      next hmem =>
+        rcases howns with ⟨node, mono, hget, hmono, htail⟩
+        by_cases heq : i = nodeIndex
+        · subst i
+          exact ⟨node, mono, hget, hmono⟩
+        · exact pairVecDivVHCChainOwns_mem_active node.next
+            (owner.erase nodeIndex) nodes htail i
+            (Finset.mem_erase.mpr ⟨heq, hi⟩)
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCChainOwns_head_mem
+    (nodeIndex : Nat) (owner : Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (howns : PairVecDivVHCChainOwns (some nodeIndex) owner nodes) :
+    nodeIndex ∈ owner := by
+  rw [PairVecDivVHCChainOwns] at howns
+  split at howns
+  next hmem => exact hmem
+  next hmem => contradiction
+
 /-- Linking a fresh node in front of an existing exact chain transfers
 ownership to the inserted head.  This is the ownership effect of the real
 `VHC::next` field write used by heap insertion. -/
@@ -3537,6 +3573,103 @@ theorem pairVecDivVHCHeapChainOwnership_root_disjoint
   howns.2.2 slot 0 heap[slot] heap[0]
     (by rw [Array.getElem?_eq_getElem hslot])
     (by rw [Array.getElem?_eq_getElem hnonempty]) hne
+
+theorem pairVecDivVHCHeapChainOwnership_fresh_of_mono_none
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode) (nodeIndex : Nat)
+    (node : PairVecDivVHCNode)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnode : nodes[nodeIndex]? = some node) (hmono : node.mono = none) :
+    (∀ (slot : Nat), heap[slot]? ≠ some nodeIndex) ∧
+      (∀ (slot head : Nat), heap[slot]? = some head →
+        nodeIndex ∉ owners head) := by
+  have hnotActive : ¬ ∃ activeNode mono,
+      nodes[nodeIndex]? = some activeNode ∧ activeNode.mono = some mono := by
+    rintro ⟨activeNode, mono, hactiveGet, hactiveMono⟩
+    rw [hnode] at hactiveGet
+    simp only [Option.some.injEq] at hactiveGet
+    subst activeNode
+    rw [hmono] at hactiveMono
+    contradiction
+  refine ⟨?_, ?_⟩
+  · intro slot hget
+    have hchain := hownership.1 slot nodeIndex hget
+    have hmem := pairVecDivVHCChainOwns_head_mem nodeIndex
+      (owners nodeIndex) nodes hchain
+    exact hnotActive (pairVecDivVHCChainOwns_mem_active (some nodeIndex)
+      (owners nodeIndex) nodes hchain nodeIndex hmem)
+  · intro slot head hget hmem
+    have hchain := hownership.1 slot head hget
+    exact hnotActive (pairVecDivVHCChainOwns_mem_active (some head)
+      (owners head) nodes hchain nodeIndex hmem)
+
+theorem pairVecDivVHCActivate_get_ne
+    (nodeIndex : Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCActivate nodeIndex nodes quotient divisor = .ok nodes')
+    (i : Nat) (hne : nodeIndex ≠ i) :
+    nodes'[i]? = nodes[i]? := by
+  unfold pairVecDivVHCActivate at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        simp only [Except.ok.injEq] at hrun
+        subst nodes'
+        exact Array.getElem?_set_ne hn hne
+
+theorem pairVecDivVHCActivateInsert_preserves_heapChainsOwned
+    (nodeIndex : Nat) (heap heap' : Array Nat)
+    (nodes activated inserted : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) (oldNode : PairVecDivVHCNode)
+    (howned : PairVecDivVHCHeapChainsOwned heap nodes)
+    (hold : nodes[nodeIndex]? = some oldNode) (hinactive : oldNode.mono = none)
+    (hactivate : pairVecDivVHCActivate nodeIndex nodes quotient divisor =
+      .ok activated)
+    (hinsert : pairVecDivVHCInsert nodeIndex heap activated =
+      .ok (heap', inserted)) :
+    PairVecDivVHCHeapChainsOwned heap' inserted := by
+  rcases howned with ⟨owners, hownership⟩
+  have hfresh := pairVecDivVHCHeapChainOwnership_fresh_of_mono_none heap owners
+    nodes nodeIndex oldNode hownership hold hinactive
+  have hownershipActivated :
+      PairVecDivVHCHeapChainOwnership heap owners activated := by
+    refine ⟨?_, hownership.2.1, hownership.2.2⟩
+    intro slot head hget
+    have hchain := hownership.1 slot head hget
+    exact pairVecDivVHCChainOwns_congr_on (some head) (owners head) nodes
+      activated hchain (by
+        intro i hi
+        exact pairVecDivVHCActivate_get_ne nodeIndex nodes activated quotient
+          divisor hactivate i (by
+            intro heq
+            subst i
+            exact hfresh.2 slot head hget hi))
+  rcases pairVecDivVHCActivate_get nodeIndex nodes activated quotient divisor
+    hactivate with ⟨hn, hq, hd, hnewGet⟩
+  have holdEq : nodes[nodeIndex] = oldNode := by
+    rw [Array.getElem?_eq_getElem hn] at hold
+    exact Option.some.inj hold
+  have hqOld : oldNode.quotientIndex < quotient.size := by
+    simpa [holdEq] using hq
+  have hdOld : oldNode.divisorIndex < divisor.size := by
+    simpa [holdEq] using hd
+  let newNode : PairVecDivVHCNode := { oldNode with
+    mono := some ⟨(quotient[oldNode.quotientIndex]'hqOld).1.deg +
+      (divisor[oldNode.divisorIndex]'hdOld).1.deg⟩
+    next := none }
+  have hnewGet' : activated[nodeIndex]? = some newNode := by
+    simpa [newNode, holdEq] using hnewGet
+  have hnewMono : newNode.mono = some
+      ⟨(quotient[oldNode.quotientIndex]'hqOld).1.deg +
+        (divisor[oldNode.divisorIndex]'hdOld).1.deg⟩ := by
+    rfl
+  exact pairVecDivVHCInsert_preserves_heapChainOwnership_of_fresh nodeIndex
+    heap heap' activated inserted owners newNode _ hownershipActivated hnewGet'
+    hnewMono hfresh.1 hfresh.2 hinsert
 
 theorem pairVecDivVHCAllActiveNodesBelow.heapBelow (degreeLimit : Nat)
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
@@ -4876,6 +5009,51 @@ theorem pairVecDivVHCActivateReset_clears_resetReady
     simp only [Except.ok.injEq] at hrun
     subst state
     simpa [PairVecDivVHCResetReady]
+termination_by resetH
+decreasing_by omega
+
+theorem pairVecDivVHCActivateReset_preserves_heapChainsOwned
+    (resetH quotientSize : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient divisor : SparsePolyZp)
+    (state : PairVecDivVHCHeapState)
+    (howned : PairVecDivVHCHeapChainsOwned heap nodes)
+    (hready : PairVecDivVHCResetReady resetH quotientSize nodes)
+    (hrun : pairVecDivVHCActivateReset resetH heap nodes quotient divisor =
+      .ok state) :
+    PairVecDivVHCHeapChainsOwned state.heap state.nodes := by
+  rw [pairVecDivVHCActivateReset] at hrun
+  split at hrun
+  next hreset =>
+    dsimp only at hrun
+    have hindex : resetH - 1 < resetH := by omega
+    rcases hready.2 (resetH - 1) hindex with
+      ⟨oldNode, holdGet, hqIndex, hdIndex, hinactive⟩
+    cases hactivate : pairVecDivVHCActivate (resetH - 1) nodes quotient
+        divisor with
+    | error fault => simp [hactivate] at hrun
+    | ok activated =>
+        simp only [hactivate] at hrun
+        cases hinsert : pairVecDivVHCInsert (resetH - 1) heap activated with
+        | error fault => simp [hinsert] at hrun
+        | ok inserted =>
+            rcases inserted with ⟨heap', nodes'⟩
+            simp only [hinsert] at hrun
+            have howned' := pairVecDivVHCActivateInsert_preserves_heapChainsOwned
+              (resetH - 1) heap heap' nodes activated nodes' quotient divisor
+              oldNode howned holdGet hinactive hactivate hinsert
+            have hready' := pairVecDivVHCActivate_shrinks_resetReady resetH
+              (resetH - 1) quotientSize (resetH - 1) nodes activated quotient
+              divisor hready (by omega) (Nat.le_refl _) hactivate
+            have hready'' := pairVecDivVHCInsert_preserves_resetReady
+              (resetH - 1) quotientSize (resetH - 1) heap heap' activated
+              nodes' hready' (Nat.le_refl _) hinsert
+            exact pairVecDivVHCActivateReset_preserves_heapChainsOwned
+              (resetH - 1) quotientSize heap' nodes' quotient divisor state
+              howned' hready'' hrun
+  next hreset =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    exact howned
 termination_by resetH
 decreasing_by omega
 

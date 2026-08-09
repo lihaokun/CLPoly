@@ -1105,3 +1105,12 @@ every generated range-for and recursive loop used by SQF.
   insertion 的 greater-root 分支。现在该分支已有“返回 root 是新节点”
   及“所有返回键不超过新根”两部分；剩余局部责任是证明非根父子边
   在祖先路径复制后仍有序。
+- upward-bubble 的单次祖先复制保持完整 max-heap order。
+  `pairVecDivVHCSet_child_to_parent_preserves_heapOrdered` 直接针对生成实现
+  的 `heap.set slot parentHead`：新槽与其父节点键相同；其子节点先由旧
+  heap order 小于等于被覆盖的旧键，再由旧槽到父槽的边传递到复制的
+  新键；所有未受影响边由通用 `set_parent` 框架保留。该证明使用真实
+  数组读取、有效节点的 `VHC_mono` 成功语义和两级父子次数关系，没有
+  引入 L2 oracle、fuel 或额外语义假设。下一步把此单步引理沿
+  `pairVecDivVHCBubble` 的良基递归组合，并在根写入处使用已证明的全局
+  新根上界，从而关闭 greater-root insertion 的完整 heap-order 保持。

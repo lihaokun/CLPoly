@@ -3546,6 +3546,58 @@ theorem pairVecDivVHCParent_lt (i : Nat) (hi : 0 < i) :
   have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
   omega
 
+/-- Copying a heap parent into its child slot, as one upward-bubble step does,
+preserves max-heap order.  The overwritten head already dominated its children,
+and its parent dominates it, so the copied parent also dominates those children. -/
+theorem pairVecDivVHCSet_child_to_parent_preserves_heapOrdered
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (slot parentHead : Nat)
+    (hslot : slot < heap.size) (hpos : 0 < slot)
+    (hparentGet : heap[pairVecDivVHCParent slot]? = some parentHead)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes) :
+    PairVecDivVHCHeapOrdered (heap.set slot parentHead) nodes := by
+  rcases hvalid (pairVecDivVHCParent slot)
+      (Nat.lt_trans (pairVecDivVHCParent_lt slot hpos) hslot) with
+    ⟨actualParentHead, parentNode, parentMono, hactualParentGet,
+      hparentNode, hparentActive⟩
+  have hparentHeadEq : actualParentHead = parentHead := by
+    rw [hparentGet] at hactualParentGet
+    exact (Option.some.inj hactualParentGet).symm
+  subst actualParentHead
+  have hparentMono : pairVecDivVHCMono parentHead nodes = .ok parentMono := by
+    exact (pairVecDivVHCMono_eq_ok_iff parentHead nodes parentMono).mpr
+      ⟨parentNode, hparentNode, hparentActive⟩
+  have hdegrees := hordered.degreesUpTo heap nodes heap.size (Nat.le_refl _)
+  apply PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+  have hsetOrdered : PairVecDivVHCHeapDegreesOrderedUpTo heap.size
+      (heap.set slot parentHead) nodes := by
+    apply hdegrees.set_parent heap.size slot parentHead heap nodes parentMono
+      hslot hparentMono
+    · intro grandparentHead grandparentMono hgrandparentGet hgrandparentMono
+      rw [hparentGet] at hgrandparentGet
+      have hheadEq : grandparentHead = parentHead :=
+        (Option.some.inj hgrandparentGet).symm
+      subst grandparentHead
+      rw [hparentMono] at hgrandparentMono
+      exact Nat.le_of_eq
+        (congrArg UMonomial.deg (Except.ok.inj hgrandparentMono))
+    · intro child hchild hchildPos hchildParent childHead childMono
+        hchildGet hchildMono
+      rcases hvalid slot hslot with
+        ⟨oldHead, oldNode, oldMono, holdHeadGet, holdNode, holdActive⟩
+      have holdMono : pairVecDivVHCMono oldHead nodes = .ok oldMono :=
+        (pairVecDivVHCMono_eq_ok_iff oldHead nodes oldMono).mpr
+          ⟨oldNode, holdNode, holdActive⟩
+      have hchildLeOld : childMono.deg ≤ oldMono.deg :=
+        hdegrees child hchild hchildPos childHead oldHead childMono oldMono
+          hchildGet (by simpa [hchildParent] using holdHeadGet) hchildMono holdMono
+      have holdLeParent : oldMono.deg ≤ parentMono.deg :=
+        hdegrees slot hslot hpos oldHead parentHead oldMono parentMono
+          holdHeadGet hparentGet holdMono hparentMono
+      exact Nat.le_trans hchildLeOld holdLeParent
+  simpa only [Array.size_set] using hsetOrdered
+
 theorem pairVecDivVHCHeapOrdered_slot_le_root
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
     (hvalid : PairVecDivVHCHeapPointersValid heap nodes)

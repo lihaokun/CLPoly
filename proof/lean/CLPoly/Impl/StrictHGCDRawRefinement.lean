@@ -11473,6 +11473,35 @@ structure HgcdRecursiveInvocationWorkspace (this : DenseUPolyZp)
       (hgcdRecursiveCallBelowOfCall bound plain) M hM computeM A B a b W
       scratch lenA lenB heap package hbound horder hbase
 
+/-- Hereditary physical safety for every strictly smaller represented call
+reachable below one invocation length.  The provider is conditional on the
+actual raw polynomial representations, so it grants nothing for arbitrary or
+invalid pointers. -/
+def HgcdRecursiveInvocationWorkspaceProviderBelow (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (plain : HgcdRecursiveCall) (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat) (limit : Nat) : Type :=
+  ∀ (childLen : Nat), childLen < limit →
+    ∀ (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+      (A B a b : RawPtr UInt64) (lenB : Nat)
+      (W scratch : RawPtr UInt64) (heap : RawHeap)
+      (left right : Polynomial (ZMod this._p.toNat))
+      (horder : lenB < childLen),
+    RawDensePolyRep this heap a childLen left →
+    RawDensePolyRep this heap b lenB right →
+    HgcdRecursiveInvocationWorkspace this plain childLen M hM computeM A B a b
+      childLen lenB W scratch heap left right hcfg hp rfl horder
+
+/-- Restrict a hereditary workspace provider to a strictly smaller limit. -/
+def HgcdRecursiveInvocationWorkspaceProviderBelow.mono
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (plain : HgcdRecursiveCall) (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat) (large small : Nat) (hlt : small < large)
+    (provider : HgcdRecursiveInvocationWorkspaceProviderBelow this plain hcfg
+      hp large) :
+    HgcdRecursiveInvocationWorkspaceProviderBelow this plain hcfg hp small :=
+  fun childLen hchild => provider childLen (hchild.trans hlt)
+
 /-- Once strong induction supplies exactly the smaller-call semantics selected
 by a physical invocation node, the node proves the actual recursive call's
 raw invariant.  Execution is transferred through the generated unfolding
@@ -11535,5 +11564,116 @@ theorem HgcdRecursiveInvocationWorkspace.rawInvariant
     (fun hbase result hrun =>
       workspace.continuation hbase (firstRecursiveRefines hbase) result hrun)
     secondRecursiveRefines result hbody
+
+/-- Genuine well-founded refinement of a source-recursive HGCD call.  Both
+recursive callback obligations are discharged by recursive theorem calls at
+the strictly smaller generated `lenA`; `termination_by` is the source length,
+not an executable recursion counter. -/
+theorem hgcdRecursiveCall_rawInvariant_wf
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (plain : HgcdRecursiveCall) (hunfold : HgcdRecursiveCallUnfolds this plain)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (horder : lenB < lenA)
+    (workspace : HgcdRecursiveInvocationWorkspace this plain lenA M hM
+      computeM A B a b lenA lenB W scratch heap left right hcfg hp rfl horder)
+    (provider : HgcdRecursiveInvocationWorkspaceProviderBelow this plain hcfg
+      hp lenA)
+    (result : HgcdRecursiveResult)
+    (hrun : plain M hM computeM A B a b lenA lenB W scratch heap =
+      .ok result) :
+    ∃ finalA finalB entries,
+      HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
+        A B lenA result := by
+  let recurse := hgcdRecursiveCallBelowOfCall lenA plain
+  let firstRecursiveRefines : ∀ hbase,
+      HgcdRecursiveNonBaseCallbackRefines this lenA recurse a b W scratch lenA
+        lenB heap (workspace.nonBase hbase) := by
+    intro hbase
+    let package := workspace.nonBase hbase
+    let ws := hgcdRecursiveWorkspace W lenA
+    let high := hgcdRecursiveHighInput a b lenA lenB
+    dsimp [HgcdRecursiveNonBaseCallbackRefines]
+    intro hchildOrder hchildDecrease
+    dsimp [HgcdRecursiveCallbackRefinesAt]
+    intro childResult hchildRun
+    let childWorkspace := provider high.lenA0 hchildDecrease ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) true ws.a3 ws.b3 high.a0
+      high.b0 high.lenB0 ws.next scratch heap package.inputHighA
+      package.inputHighB hchildOrder package.workspace.iter.leftRep
+      package.workspace.iter.rightRep
+    have hchildPlain : plain ws.R (hgcdRecursiveWorkspace_R_valid W lenA) true
+        ws.a3 ws.b3 high.a0 high.b0 high.lenA0 high.lenB0 ws.next scratch
+        heap = .ok childResult := by
+      simpa [recurse, hgcdRecursiveCallBelowOfCall] using hchildRun
+    exact hgcdRecursiveCall_rawInvariant_wf this plain hunfold hcfg hp ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) true ws.a3 ws.b3 high.a0
+      high.b0 high.lenA0 high.lenB0 ws.next scratch heap package.inputHighA
+      package.inputHighB hchildOrder childWorkspace
+      (provider.mono this plain hcfg hp lenA high.lenA0 hchildDecrease)
+      childResult hchildPlain
+  let secondRecursiveRefines : ∀ (hbase : ¬ lenB < lenA / 2 + 1)
+      (result : HgcdRecursiveResult)
+      (hrunBody :
+        let package := workspace.nonBase hbase
+        let firstCall := package.admissible this lenA recurse a b W scratch
+          lenA lenB heap (firstRecursiveRefines hbase)
+        let providers := hgcdRecursiveFirstCall_providers this lenA recurse a b
+          W scratch lenA lenB heap package.inputHighA package.inputHighB
+          package.lowPolyA package.lowPolyB hcfg hp horder firstCall.workspace
+          firstCall.recursiveRefines
+        hgcdRecursiveBodyBelow this lenA recurse M hM computeM A B a b lenA
+          lenB W scratch heap rfl horder (fun _ => providers.1)
+            (fun _ => providers.2) = .ok result),
+      HgcdRecursiveContinuationSecondRefines this lenA recurse M hM computeM
+        A B a b W scratch lenA lenB heap (workspace.nonBase hbase) rfl horder
+        hbase (workspace.continuation hbase (firstRecursiveRefines hbase)
+          result hrunBody) := by
+    intro hbase bodyResult hrunBody
+    let next := workspace.continuation hbase (firstRecursiveRefines hbase)
+      bodyResult hrunBody
+    change HgcdRecursiveContinuationSecondRefines this lenA recurse M hM
+      computeM A B a b W scratch lenA lenB heap (workspace.nonBase hbase) rfl
+      horder hbase next
+    cases next with
+    | early earlyWorkspace =>
+        trivial
+    | nonEarly nonEarlyWorkspace =>
+        dsimp [HgcdRecursiveContinuationSecondRefines,
+          HgcdRecursiveSecondCallbackRefines, HgcdRecursiveCallbackRefinesAt]
+        intro highC highD hHighC hHighD childResult hchildRun
+        let ws := hgcdRecursiveWorkspace W lenA
+        let childWorkspace := provider nonEarlyWorkspace.middle.lenC0
+          nonEarlyWorkspace.secondDecrease ws.S
+          (hgcdRecursiveWorkspace_S_valid W lenA) true ws.a3 ws.b3
+          nonEarlyWorkspace.middle.c0 nonEarlyWorkspace.middle.d0
+          nonEarlyWorkspace.middle.lenD0 ws.next scratch
+          nonEarlyWorkspace.middle.heap highC highD
+          nonEarlyWorkspace.secondOrder hHighC hHighD
+        have hchildPlain : plain ws.S (hgcdRecursiveWorkspace_S_valid W lenA)
+            true ws.a3 ws.b3 nonEarlyWorkspace.middle.c0
+            nonEarlyWorkspace.middle.d0 nonEarlyWorkspace.middle.lenC0
+            nonEarlyWorkspace.middle.lenD0 ws.next scratch
+            nonEarlyWorkspace.middle.heap = .ok childResult := by
+          simpa [recurse, hgcdRecursiveCallBelowOfCall] using hchildRun
+        exact hgcdRecursiveCall_rawInvariant_wf this plain hunfold hcfg hp ws.S
+          (hgcdRecursiveWorkspace_S_valid W lenA) true ws.a3 ws.b3
+          nonEarlyWorkspace.middle.c0 nonEarlyWorkspace.middle.d0
+          nonEarlyWorkspace.middle.lenC0 nonEarlyWorkspace.middle.lenD0
+          ws.next scratch nonEarlyWorkspace.middle.heap highC highD
+          nonEarlyWorkspace.secondOrder childWorkspace
+          (provider.mono this plain hcfg hp lenA
+            nonEarlyWorkspace.middle.lenC0
+            nonEarlyWorkspace.secondDecrease) childResult hchildPlain
+  exact workspace.rawInvariant this plain hunfold lenA M hM computeM A B a b
+    lenA lenB W scratch heap left right hcfg hp rfl horder
+    firstRecursiveRefines secondRecursiveRefines result hrun
+termination_by lenA
+decreasing_by
+  · exact hchildDecrease
+  · exact nonEarlyWorkspace.secondDecrease
 
 end CLPoly.Impl.StrictHGCDRawRefinement

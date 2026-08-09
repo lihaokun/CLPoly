@@ -25,6 +25,8 @@
   callback satisfying that equation.
 - Added a reusable physical invocation node and a theorem transferring its
   branch-local single-step invariant to an actual source-recursive call.
+- Added the hereditary smaller-call workspace provider and the complete
+  well-founded source-call refinement theorem.
 
 ## Why
 
@@ -52,6 +54,10 @@ hypotheses.
   storing one.  Consequently, recursive semantics still have to be supplied
   by the forthcoming strong induction, while all memory evidence remains
   reusable and non-semantic.
+- `hgcdRecursiveCall_rawInvariant_wf` recursively discharges both generated
+  child calls.  Its termination measure is the actual `lenA`; the two
+  decrease obligations are the source-derived first-child bound and
+  `middle.lenC0 < lenA`.  No fuel or executable termination guard exists.
 - No fuel parameter or L2 fallback was introduced.
 
 ## Problems and resolution

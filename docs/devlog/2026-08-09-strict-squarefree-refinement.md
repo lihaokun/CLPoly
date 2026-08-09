@@ -758,3 +758,14 @@ every generated range-for and recursive loop used by SQF.
   精确落在当前 cursor。下一步用 `StateCovered` 在空 `lin` 状态下对每个
   divisor-tail row 分解 reset/heap-owned 两种情况，得到全 row completeness，
   再对接本轮 equal-degree consume 的 exact owner chain。
+- 全 divisor-tail row 的 frontier 定位已由 `StateCovered` 闭合。在真实 outer
+  边界 `lin = #[]` 下，固定的 row 槽 `d - 1` 不可能处于临时栈；若处于
+  reset prefix，则此前的 reset-row 定理推出该具体 quotient/divisor cell
+  乘积次数严格高于 frontier，与目标次数相等矛盾；因此它必由某个实际
+  heap slot 的 exact owner chain 持有。结合 heap-owned row 定位，新定理
+  返回 concrete slot/head/node、owner membership、永久 divisor index 和
+  `q = node.quotientIndex`。这覆盖所有 `0 < d < divisor.size` 的实际存储
+  cell，不跳过 inactive rows。下一步增强 execution-indexed `ConsumeTrace`
+  的 products completeness（现有定理只证明每个 trace product 的
+  soundness），再沿真实 heap-size 良基 equal-degree loop 汇总所有这些
+  唯一 cursor。

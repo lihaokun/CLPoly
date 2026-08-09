@@ -5066,6 +5066,70 @@ theorem pairVecDivVHCOwnedRow_productAtFrontier_eq_cursor
     divisorTerm hcanonical hprefix hfrontier hget hdenotes hmono hmonoLe
     hquotient hdivisor hdegree
 
+/-- At an outer-loop state with no deferred `lin` nodes, every concrete
+divisor-tail product at the selected frontier belongs to a live heap bucket
+and is exactly at that row's current quotient cursor. -/
+theorem pairVecDivVHCFrontierProduct_owned_cursor
+    (p degreeLimit dividendIndex resetH d q : Nat)
+    (dividend quotient divisor : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (frontier : PairVecDivVHCFrontier)
+    (quotientTerm divisorTerm : UMonomial × Zp)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : PairVecDivVHCStateCovered heap nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontier.degree < degreeLimit)
+    (hdpos : 0 < d) (hd : d < divisor.size)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[d]? = some divisorTerm)
+    (hdegree : quotientTerm.1.deg + divisorTerm.1.deg = frontier.degree)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    ∃ (slot head : Nat) (node : PairVecDivVHCNode),
+      heap[slot]? = some head ∧ nodes[d - 1]? = some node ∧
+        d - 1 ∈ owners head ∧ node.divisorIndex = d ∧
+        q = node.quotientIndex := by
+  rcases hfixed.node_for_tail nodes divisor.size d hsize hdpos hd with
+    ⟨node, hnode, hnodeD⟩
+  have hi : d - 1 < nodes.size := by
+    rw [hsize]
+    omega
+  have hcovered := hstate.covered_with heap nodes #[] resetH owners
+    hownership
+  rcases hcovered (d - 1) hi with hreset | hlin | howned
+  · have habove := pairVecDivVHCResetRow_product_degree_gt_frontier
+      degreeLimit frontier.degree resetH d q nodes quotient divisor
+      quotientTerm divisorTerm hsize hfixed hresetReady hprefix hfrontier
+      hdpos hd hreset hquotient hdivisor
+    omega
+  · simp at hlin
+  · rcases howned with ⟨slot, head, hheap, hmem⟩
+    rcases pairVecDivVHCChainOwns_mem_active (some head) (owners head) nodes
+        (hownership.1 slot head hheap) (d - 1) hmem with
+      ⟨activeNode, mono, hactiveGet, hactiveMono⟩
+    rw [hnode] at hactiveGet
+    simp only [Option.some.injEq] at hactiveGet
+    subst activeNode
+    have hnodeDenotes := hdenotes (d - 1) node hnode (by
+      simp [hactiveMono])
+    have hcursor := pairVecDivVHCOwnedRow_productAtFrontier_eq_cursor p
+      degreeLimit dividendIndex dividend heap nodes owners frontier quotient
+      divisor slot head (d - 1) q node quotientTerm divisorTerm hownership
+      hhomogeneous hvalid hordered hcanonical hprefix hfrontier hheap hmem
+      hnode hnodeDenotes hquotient (by simpa [hnodeD] using hdivisor) hdegree
+      hselect
+    exact ⟨slot, head, node, hheap, hnode, hmem, hnodeD, hcursor⟩
+
 theorem pairVecDivVHCHeapChainsHomogeneous_of_nextValid
     (heap : Array Nat) (owners : Nat → Finset Nat)
     (nodes : Array PairVecDivVHCNode)

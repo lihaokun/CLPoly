@@ -163,6 +163,9 @@ polynomial operation may replace any of these executions.
 - Proved the public `Lc_gcd = 1` tail is total for a nonzero normalized GCD,
   retains its raw length, emits a canonical sparse polynomial, and denotes
   exactly the normalized L2 Euclidean GCD.
+- Proved the sparse term-write loop frames every disjoint live raw prefix,
+  supplying the missing preservation step for sequential construction of the
+  two dense GCD inputs.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

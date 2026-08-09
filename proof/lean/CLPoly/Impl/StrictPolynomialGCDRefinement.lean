@@ -907,6 +907,42 @@ theorem sparseToDenseWriteLoop_preserves_read (ptr : RawPtr UInt64)
 termination_by sparse.size - index
 decreasing_by omega
 
+/-- The sparse constructor's term writes frame every disjoint live raw
+polynomial allocation. -/
+theorem sparseToDenseWriteLoop_preserves_prefix
+    (ptr guard : RawPtr UInt64) (length guardLength : Nat)
+    (sparse : SparsePolyZp) (index : Nat) (heap heap' : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hdisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint ptr length
+      guard guardLength)
+    (hrun : sparseToDenseWriteLoop ptr length sparse index heap = .ok heap') :
+    SameU64Prefix heap heap' guard guardLength := by
+  rw [sparseToDenseWriteLoop] at hrun
+  split at hrun
+  next hmore =>
+    let term := sparse[index]
+    have htermDegree : term.1.deg < length := hdegree index hmore
+    rcases heap.writeU64_of_valid ptr length term.1.deg term.2.val hvalid
+        htermDegree with ⟨heap1, hwrite⟩
+    simp only [term, hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr term.1.deg
+      term.2.val hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    exact CLPoly.Impl.StrictMulRefinement.sameU64Prefix_trans
+      (CLPoly.Impl.StrictMulRefinement.writeU64_preserves_prefix heap heap1
+        ptr guard length guardLength term.1.deg term.2.val hdisjoint
+        htermDegree hwrite)
+      (sparseToDenseWriteLoop_preserves_prefix ptr guard length guardLength
+        sparse (index + 1) heap1 heap' hvalid1 hdegree hdisjoint hrun)
+  next hdone =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    subst heap'
+    intro _ _ _ hread
+    exact hread
+termination_by sparse.size - index
+decreasing_by omega
+
 /-- The first sparse term's concrete coefficient write remains observable at
 the end of the iterator because canonical later degrees are strictly lower. -/
 theorem sparseToDenseWriteLoop_leading_read (ptr : RawPtr UInt64)

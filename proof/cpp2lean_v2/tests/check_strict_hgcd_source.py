@@ -388,6 +388,8 @@ def main() -> None:
         "dense_upoly_zp__gcd_euclid_raw_ir",
         "euclidDivremLengthDecreases",
         "strictEuclidLoop_refines",
+        "strictGcdEuclidRaw",
+        "strictGcdEuclidRaw_refines",
         "HgcdRecursiveIterFinalizeWorkspace",
         "HgcdRecursiveIterFinalizeWorkspaceProvider",
         "hgcdRecursiveIterBranch_refines",

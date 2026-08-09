@@ -5,6 +5,7 @@ set_option autoImplicit false
 namespace CLPoly.Impl.StrictEuclidRefinement
 
 open Generated.StrictDivrem
+open Generated.StrictEuclidGCD
 open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Impl.StrictDivremRefinement
 open CLPoly.Impl.StrictWordArithmetic
@@ -27,6 +28,85 @@ def RawCanonicalPolySlice (this : DenseUPolyZp) (heap : RawHeap)
   heap.ValidU64Slice ptr length ∧
     CanonicalU64Prefix heap ptr length this._p ∧
     SlicePolyRep heap ptr length this._p.toNat poly
+
+/-- A normalized raw polynomial survives a heap transition that preserves
+its allocation and every coefficient in its declared prefix. -/
+theorem rawDensePolyRep_of_same_prefix (this : DenseUPolyZp)
+    (before after : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hlayout : RawHeap.SameLayout before after)
+    (hsame : SameU64Prefix before after ptr length)
+    (hrep : RawDensePolyRep this before ptr length poly) :
+    RawDensePolyRep this after ptr length poly := by
+  have hvalidAfter := (hlayout ptr length).mp hrep.1
+  refine ⟨hvalidAfter, ?_,
+    slicePolyRep_of_same_prefix before after ptr length this._p.toNat poly
+      hrep.1 hvalidAfter hsame hrep.2.2.1, ?_⟩
+  · intro k value hk hreadAfter
+    rcases before.readU64_of_valid ptr length k hrep.1 hk with
+      ⟨old, hreadBefore⟩
+    have hreadOld := hsame k old hk hreadBefore
+    have hvalue : value = old := Except.ok.inj (hreadAfter.symm.trans hreadOld)
+    subst value
+    exact hrep.2.1 k old hk hreadBefore
+  · have hnorm := normaliseU64_eq_of_prefix_map before after ptr ptr length
+      hrep.1 hsame
+    exact hnorm.symm.trans hrep.2.2.2
+
+/-- The source `memcpy` transports the complete normalized polynomial
+representation between distinct C++ allocations. -/
+theorem copyU64_refines_rawDense_of_region_ne (this : DenseUPolyZp)
+    (heap : RawHeap) (dst src : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hDst : heap.ValidU64Slice dst length)
+    (hregion : dst.region ≠ src.region)
+    (hrep : RawDensePolyRep this heap src length poly) :
+    ∃ heap', heap.copyU64 dst src length = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' dst length poly := by
+  rcases copyU64_refines heap dst src length hDst hrep.1 hregion with
+    ⟨heap', hcopy, hlayout, hcontents⟩
+  rcases copyU64_slicePolyRep heap dst src length this._p.toNat poly hDst
+      hrep.1 hregion hrep.2.2.1 with
+    ⟨repHeap, hcopyRep, _, hslice⟩
+  have heq : repHeap = heap' := Except.ok.inj (hcopyRep.symm.trans hcopy)
+  subst repHeap
+  have hvalidDst := (hlayout dst length).mp hDst
+  have hcanonical : CanonicalU64Prefix heap' dst length this._p := by
+    intro k value hk hreadAfter
+    rcases heap.readU64_of_valid src length k hrep.1 hk with
+      ⟨old, hreadBefore⟩
+    have hreadOld := hcontents k old hk hreadBefore
+    have hvalue : value = old := Except.ok.inj (hreadAfter.symm.trans hreadOld)
+    subst value
+    exact hrep.2.1 k old hk hreadBefore
+  have hnorm := normaliseU64_eq_of_prefix_map heap heap' src dst length
+    hrep.1 hcontents
+  exact ⟨heap', hcopy, hlayout, hvalidDst, hcanonical, hslice,
+    hnorm.symm.trans hrep.2.2.2⟩
+
+/-- A represented polynomial in an allocation distinct from the destination
+is a frame of the actual source `memcpy`. -/
+theorem copyU64_preserves_rawDense_of_region_ne (this : DenseUPolyZp)
+    (heap heap' : RawHeap) (dst src : RawPtr UInt64) (count : Nat)
+    (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hDst : heap.ValidU64Slice dst count)
+    (hSrc : heap.ValidU64Slice src count)
+    (hregion : dst.region ≠ ptr.region)
+    (hcopy : heap.copyU64 dst src count = .ok heap')
+    (hrep : RawDensePolyRep this heap ptr length poly) :
+    RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' ptr length poly := by
+  rcases copyU64_ok heap dst src count hDst hSrc with
+    ⟨copyHeap, hcopy', hlayout⟩
+  have heq : copyHeap = heap' := Except.ok.inj (hcopy'.symm.trans hcopy)
+  subst copyHeap
+  refine ⟨hlayout, rawDensePolyRep_of_same_prefix this heap heap' ptr length
+    poly hlayout ?_ hrep⟩
+  intro k value hk hread
+  exact copyU64_preserves_read heap heap' dst src ptr count k value hDst hSrc
+    hread (by intro _ _; exact Or.inl hregion) hcopy
 
 theorem RawDensePolyRep.toCanonicalSlice (this : DenseUPolyZp)
     (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
@@ -91,6 +171,21 @@ theorem EuclidWorkspace.rotate_of_sameLayout
     validB := (hlayout R capacity).mp h.validR
     validR := (hlayout A capacity).mp h.validA
     regions := h.regions.rotate
+  }
+
+theorem EuclidWorkspace.of_sameLayout
+    {before after : RawHeap} {Q : RawPtr UInt64} {W3 : RawPtr Word3}
+    {A B R : RawPtr UInt64} {capacity : Nat}
+    (h : EuclidWorkspace before Q W3 A B R capacity)
+    (hlayout : RawHeap.SameLayout before after) :
+    EuclidWorkspace after Q W3 A B R capacity := by
+  exact {
+    validQ := (hlayout Q capacity).mp h.validQ
+    validW3 := (hlayout (RawPtr.reinterpret W3) (3 * capacity)).mp h.validW3
+    validA := (hlayout A capacity).mp h.validA
+    validB := (hlayout B capacity).mp h.validB
+    validR := (hlayout R capacity).mp h.validR
+    regions := h.regions
   }
 
 /-- One source Euclid rotation preserves the normalized mathematical gcd.
@@ -305,5 +400,138 @@ theorem strictEuclidLoop_refines (this : DenseUPolyZp)
       exact (hlayout1 ptr length).trans (hlayout2 ptr length)
 termination_by heap A lenA B lenB R dividend divisor => lenB
 decreasing_by exact hlenR
+
+/-- The final live buffer of the generated Euclid rotation is one of its
+three physical polynomial work regions, and its logical length never exceeds
+their common capacity.  This follows the source pointer rotation itself. -/
+theorem euclidLoop_output_mem_and_length (this : DenseUPolyZp)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (hdec : DivremLengthDecreases this Q W3) (capacity : Nat) :
+    (heap : RawHeap) → (A : RawPtr UInt64) → (lenA : Nat) →
+      (B : RawPtr UInt64) → (lenB : Nat) → (R : RawPtr UInt64) →
+      (heap' : RawHeap) → (out : RawPtr UInt64) → (outLen : Nat) →
+      lenA ≤ capacity → lenB ≤ capacity →
+      euclidLoop this Q W3 hdec heap A lenA B lenB R =
+        .ok (heap', out, outLen) →
+      (out = A ∨ out = B ∨ out = R) ∧ outLen ≤ capacity
+  | heap, A, lenA, B, 0, R, heap', out, outLen, hlenA, _, hrun => by
+      simp only [euclidLoop] at hrun
+      have heq : (heap', out, outLen) = (heap, A, lenA) :=
+        Except.ok.inj hrun.symm
+      cases heq
+      exact ⟨Or.inl rfl, hlenA⟩
+  | heap, A, lenA, B, lenB + 1, R, heap', out, outLen, hlenA, hlenB,
+      hrun => by
+      rw [euclidLoop] at hrun
+      generalize hcall : dense_upoly_zp__poly_divrem_ir this Q R A lenA B
+        (lenB + 1) W3 heap = call at hrun
+      cases call with
+      | error fault => simp at hrun
+      | ok result =>
+          rcases result with ⟨heap1, lenQ, lenR⟩
+          simp only at hrun
+          have hlenR : lenR < lenB + 1 :=
+            hdec heap A B R lenA (lenB + 1) heap1 lenQ lenR (by omega) hcall
+          rcases euclidLoop_output_mem_and_length this Q W3 hdec capacity
+              heap1 B (lenB + 1) R lenR A heap' out outLen hlenB
+              (by omega) hrun with ⟨hloc, houtLen⟩
+          exact ⟨by rcases hloc with hB | hR | hA
+                    · exact Or.inr (Or.inl hB)
+                    · exact Or.inr (Or.inr hR)
+                    · exact Or.inl hA,
+            houtLen⟩
+termination_by heap A lenA B lenB R heap' out outLen => lenB
+decreasing_by exact hlenR
+
+/-- Physical allocation contract for the complete C++ `_gcd_euclid`
+helper, including its two local input copies and final copy to `G`. -/
+structure GcdEuclidRawWorkspace (heap : RawHeap)
+    (G A B aBuf bBuf Q R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (capacity : Nat) : Prop where
+  validG : heap.ValidU64Slice G capacity
+  euclid : EuclidWorkspace heap Q W3 aBuf bBuf R capacity
+  aBuf_A : aBuf.region ≠ A.region
+  aBuf_B : aBuf.region ≠ B.region
+  bBuf_B : bBuf.region ≠ B.region
+  bBuf_aBuf : bBuf.region ≠ aBuf.region
+  G_aBuf : G.region ≠ aBuf.region
+  G_bBuf : G.region ≠ bBuf.region
+  G_R : G.region ≠ R.region
+
+/-- Proof-instantiated execution of the exact generated raw helper. -/
+def strictGcdEuclidRaw (this : DenseUPolyZp)
+    (G A B aBuf bBuf Q R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (lenA lenB : Nat) (heap : RawHeap) : RawExec GcdEuclidRawResult :=
+  dense_upoly_zp__gcd_euclid_raw_ir this G A B aBuf bBuf Q R W3 lenA lenB
+    (euclidDivremLengthDecreases this Q W3) heap
+
+/-- End-to-end L1-to-L2 refinement of the actual C++ `_gcd_euclid` raw
+execution.  Every copy and every division step is executed in `RawHeap`; the
+L2 gcd appears only in the postcondition. -/
+theorem strictGcdEuclidRaw_refines (this : DenseUPolyZp)
+    [hprime : Fact (Nat.Prime this._p.toNat)]
+    (G A B aBuf bBuf Q R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (lenA lenB capacity : Nat) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hworkspace : GcdEuclidRawWorkspace heap G A B aBuf bBuf Q R W3 capacity)
+    (hlenA : lenA ≤ capacity) (hlenB : lenB ≤ capacity)
+    (hcapacity : capacity < limbBase)
+    (hleft : RawDensePolyRep this heap A lenA left)
+    (hright : RawDensePolyRep this heap B lenB right)
+    (hcfg : DensePreinvConfigured this) :
+    ∃ heap' lenG result,
+      strictGcdEuclidRaw this G A B aBuf bBuf Q R W3 lenA lenB heap =
+        .ok ⟨heap', lenG⟩ ∧
+      RawDensePolyRep this heap' G lenG result ∧
+      normalize (EuclideanDomain.gcd left right) = normalize result ∧
+      RawHeap.SameLayout heap heap' := by
+  have haValid := heap.validU64Slice_mono aBuf capacity lenA
+    hworkspace.euclid.validA hlenA
+  rcases copyU64_refines_rawDense_of_region_ne this heap aBuf A lenA left
+      haValid hworkspace.aBuf_A hleft with
+    ⟨heap1, hcopyA, hlayout1, hleft1⟩
+  have hright1 := (copyU64_preserves_rawDense_of_region_ne this heap heap1
+    aBuf A lenA B lenB right haValid hleft.1 hworkspace.aBuf_B hcopyA
+    hright).2
+  have hworkspace1 := hworkspace.euclid.of_sameLayout hlayout1
+  have hbValid := heap1.validU64Slice_mono bBuf capacity lenB
+    hworkspace1.validB hlenB
+  rcases copyU64_refines_rawDense_of_region_ne this heap1 bBuf B lenB right
+      hbValid hworkspace.bBuf_B hright1 with
+    ⟨heap2, hcopyB, hlayout2, hright2⟩
+  have hleft2 := (copyU64_preserves_rawDense_of_region_ne this heap1 heap2
+    bBuf B lenB aBuf lenA left hbValid hright1.1 hworkspace.bBuf_aBuf
+    hcopyB hleft1).2
+  have hworkspace2 := hworkspace1.of_sameLayout hlayout2
+  rcases strictEuclidLoop_refines this Q W3 capacity heap2 aBuf lenA bBuf
+      lenB R left right hworkspace2 hlenA hlenB hcapacity hleft2 hright2
+      hcfg with
+    ⟨heap3, out, outLen, result, hloop, hresult, hgcd, hlayout3⟩
+  have hout := euclidLoop_output_mem_and_length this Q W3
+    (euclidDivremLengthDecreases this Q W3) capacity heap2 aBuf lenA bBuf
+    lenB R heap3 out outLen hlenA hlenB hloop
+  have hGValid0 := heap.validU64Slice_mono G capacity outLen
+    hworkspace.validG hout.2
+  have hGValid1 := (hlayout1 G outLen).mp hGValid0
+  have hGValid2 := (hlayout2 G outLen).mp hGValid1
+  have hGValid3 := (hlayout3 G outLen).mp hGValid2
+  have hGOut : G.region ≠ out.region := by
+    rcases hout.1 with rfl | rfl | rfl
+    · exact hworkspace.G_aBuf
+    · exact hworkspace.G_bBuf
+    · exact hworkspace.G_R
+  rcases copyU64_refines_rawDense_of_region_ne this heap3 G out outLen result
+      hGValid3 hGOut hresult with
+    ⟨heap4, hcopyG, hlayout4, hresultG⟩
+  refine ⟨heap4, outLen, result, ?_, hresultG, hgcd, ?_⟩
+  · unfold strictGcdEuclidRaw dense_upoly_zp__gcd_euclid_raw_ir
+    simp only [hcopyA]
+    simp only [hcopyB]
+    change euclidLoop this Q W3 (euclidDivremLengthDecreases this Q W3)
+      heap2 aBuf lenA bBuf lenB R = .ok (heap3, out, outLen) at hloop
+    simp only [hloop, hcopyG]
+  · intro ptr length
+    exact (hlayout1 ptr length).trans ((hlayout2 ptr length).trans
+      ((hlayout3 ptr length).trans (hlayout4 ptr length)))
 
 end CLPoly.Impl.StrictEuclidRefinement

@@ -2932,6 +2932,65 @@ def GcdHgcdDynamicHgcdWorkspaceProvider (this : DenseUPolyZp)
     GcdHgcdDynamicHgcdWorkspace this hcfg hp M hM G J R W scratch heap lenJ
       lenR divisor remainder horder
 
+/-- Physical node for the entry's first checked HGCD call.  Its source input
+is `B/R`, unlike the loop large branch's `J/R` input. -/
+structure GcdHgcdInitialHgcdWorkspace (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (M : HgcdMat) (hM : M.Valid) (G J B R : RawPtr UInt64)
+    (W scratch : RawPtr UInt64) (heap : RawHeap) (lenB lenR : Nat)
+    (divisor remainder : Polynomial (ZMod this._p.toNat))
+    (horder : lenR < lenB) : Type where
+  invocation : HgcdRecursiveInvocationTotalWorkspace this M hM false G J B R
+    lenB lenR W scratch heap divisor remainder hcfg hp horder
+  descendants : HgcdRecursiveInvocationTotalWorkspaceProviderBelow this hcfg
+    hp lenB
+
+/-- Dynamic physical provider for the exact first HGCD call reached after the
+entry division. -/
+def GcdHgcdInitialHgcdWorkspaceProvider (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (M : HgcdMat) (hM : M.Valid) (G J B R : RawPtr UInt64)
+    (W scratch : RawPtr UInt64) (lenB : Nat) : Type :=
+  ∀ (heap : RawHeap) (lenR : Nat)
+    (divisor remainder : Polynomial (ZMod this._p.toNat))
+    (horder : lenR < lenB),
+    RawDensePolyRep this heap B lenB divisor →
+    RawDensePolyRep this heap R lenR remainder →
+    GcdHgcdInitialHgcdWorkspace this hcfg hp M hM G J B R W scratch heap lenB
+      lenR divisor remainder horder
+
+/-- The entry's actual first checked HGCD call succeeds and preserves the
+represented pair's normalized gcd, without a preselected result. -/
+theorem gcdHgcdInitial_hgcd_step_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (M : HgcdMat) (hM : M.Valid) (G J B R : RawPtr UInt64)
+    (W scratch : RawPtr UInt64) (lenB : Nat)
+    (physical : GcdHgcdInitialHgcdWorkspaceProvider this hcfg hp M hM G J B R
+      W scratch lenB)
+    (heap : RawHeap) (lenR : Nat)
+    (divisor remainder : Polynomial (ZMod this._p.toNat))
+    (horder : lenR < lenB)
+    (hdivisor : RawDensePolyRep this heap B lenB divisor)
+    (hremainder : RawDensePolyRep this heap R lenR remainder) :
+    ∃ (result : HgcdRecursiveResult)
+      (finalG finalJ : Polynomial (ZMod this._p.toNat)),
+      hgcdRecursiveCallChecked this M hM false G J B R lenB lenR W scratch
+          heap = .ok result ∧
+      RawDensePolyRep this result.heap G result.lenA finalG ∧
+      RawDensePolyRep this result.heap J result.lenB finalJ ∧
+      normalize (EuclideanDomain.gcd divisor remainder) =
+        normalize (EuclideanDomain.gcd finalG finalJ) := by
+  let node := physical heap lenR divisor remainder horder hdivisor hremainder
+  rcases hgcdRecursiveCallChecked_succeeds_wf this hcfg hp M hM false G J B R
+      lenB lenR W scratch heap divisor remainder horder node.invocation
+      node.descendants with
+    ⟨result, finalG, finalJ, entries, hrun, hInvariant⟩
+  exact ⟨result, finalG, finalJ, hrun, hInvariant.aRep, hInvariant.bRep,
+    hInvariant.gcdPreserved⟩
+
 /-- Dynamic form of the loop-head divrem refinement. -/
 theorem gcdHgcdLoop_dynamic_divrem_step (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]

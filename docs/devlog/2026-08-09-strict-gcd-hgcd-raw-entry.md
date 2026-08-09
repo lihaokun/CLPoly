@@ -315,6 +315,15 @@ result or polynomial semantics; the theorem independently proves success from
 dynamic physical providers, and its recursive decrease is the actual
 `result.lenB < lenJ` returned by the large step.
 
+Model the entry's first HGCD call separately from loop iterations.  Its input
+pair is the actual `B/R` pair produced by the entry divrem, while its output
+pair is `G/J`; reusing the loop's `J/R` workspace would conflate distinct C++
+pointers.  Supply a total invocation node only after the actual remainder and
+its raw representation exist, invoke checked HGCD totality once, and return
+the actual result together with `G/J` representations and normalized-GCD
+preservation.  Unlike loop large steps, this initial bridge needs no cutoff
+claim or loop-decrease conclusion.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

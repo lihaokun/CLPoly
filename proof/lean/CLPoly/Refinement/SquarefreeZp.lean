@@ -4613,6 +4613,148 @@ theorem pairVecDivVHCConsumeNode_preserves_linReady
             intro i hmem
             exact Finset.mem_insert_of_mem hmem
 
+theorem pairVecDivVHCConsumeNode_next
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp) (hn : nodeIndex < nodes.size)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    next = nodes[nodeIndex].next := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  simp only [hn, ↓reduceDIte] at hrun
+  split at hrun <;> try contradiction
+  next hq =>
+    split at hrun <;> try contradiction
+    next hd =>
+      split at hrun
+      next hadvance =>
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        exact hrun.2.2.2.2.symm
+      next hadvance =>
+        split at hrun <;> try contradiction
+        next hexhausted =>
+          split at hrun <;> try contradiction
+          next horder =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            exact hrun.2.2.2.2.symm
+
+theorem pairVecDivVHCConsumeChain_preserves_linReady
+    (this : DenseUPolyZp) (current : Option Nat)
+    (owner unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (hownerSubset : owner ⊆ unvisited)
+    (hdisjoint : Disjoint lin.toList.toFinset owner)
+    (hready : PairVecDivVHCLinReady lin nodes)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    PairVecDivVHCLinReady result.lin result.nodes ∧
+      result.lin.toList.toFinset ⊆ lin.toList.toFinset ∪ owner := by
+  cases current with
+  | none =>
+      rw [PairVecDivVHCChainOwns] at howns
+      subst owner
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      exact ⟨hready, by simp⟩
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at howns
+      split at howns <;> try contradiction
+      next hownerMem =>
+        rcases howns with ⟨node, mono, hget, hmono, htailOwns⟩
+        have hmem : nodeIndex ∈ unvisited := hownerSubset hownerMem
+        have hn : nodeIndex < nodes.size := by
+          by_contra hnot
+          rw [Array.getElem?_eq_none (by omega)] at hget
+          contradiction
+        rw [Array.getElem?_eq_getElem hn] at hget
+        simp only [Option.some.injEq] at hget
+        subst node
+        have houtside : nodeIndex ∉ lin.toList := by
+          intro hlinMem
+          exact Finset.disjoint_left.mp hdisjoint
+            (by simpa only [List.mem_toFinset] using hlinMem) hownerMem
+        rw [pairVecDivVHCConsumeChain] at hrun
+        simp only [hmem, ↓reduceDIte] at hrun
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            have hnext := pairVecDivVHCConsumeNode_next this nodeIndex k k'
+              nodes nodes' lin lin' resetH resetH' next quotient divisor hn
+              hconsume
+            subst next
+            have hlinStep := pairVecDivVHCConsumeNode_preserves_linReady this
+              nodeIndex mono k k' nodes nodes' lin lin' resetH resetH'
+              nodes[nodeIndex].next quotient divisor hn hmono houtside hready
+              hconsume
+            have htailOwns' := pairVecDivVHCChainOwns_congr_on
+              nodes[nodeIndex].next (owner.erase nodeIndex) nodes nodes'
+              htailOwns (by
+                intro i hi
+                exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k'
+                  nodes nodes' lin lin' resetH resetH' nodes[nodeIndex].next
+                  quotient divisor hconsume i
+                  (Finset.mem_erase.mp hi).1.symm)
+            have hownerErase : owner.erase nodeIndex ⊆
+                unvisited.erase nodeIndex := by
+              intro i hi
+              exact Finset.mem_erase.mpr ⟨(Finset.mem_erase.mp hi).1,
+                hownerSubset (Finset.mem_of_mem_erase hi)⟩
+            have hdisjoint' : Disjoint lin'.toList.toFinset
+                (owner.erase nodeIndex) := by
+              exact Finset.disjoint_left.mpr (by
+                intro i hiLin hiOwner
+                have hiStep := hlinStep.2 hiLin
+                rw [Finset.mem_insert] at hiStep
+                rcases hiStep with rfl | hiOld
+                · exact (Finset.mem_erase.mp hiOwner).1 rfl
+                · exact Finset.disjoint_left.mp hdisjoint hiOld
+                    (Finset.mem_of_mem_erase hiOwner))
+            have ih := pairVecDivVHCConsumeChain_preserves_linReady this
+              nodes[nodeIndex].next (owner.erase nodeIndex)
+              (unvisited.erase nodeIndex) k' nodes' lin' resetH' quotient
+              divisor result htailOwns' hownerErase hdisjoint' hlinStep.1 hrun
+            refine ⟨ih.1, ?_⟩
+            intro i hi
+            have hiResult := ih.2 hi
+            rw [Finset.mem_union] at hiResult ⊢
+            rcases hiResult with hiLin | hiOwner
+            · have hiStep := hlinStep.2 hiLin
+              rw [Finset.mem_insert] at hiStep
+              rcases hiStep with rfl | hiOld
+              · exact Or.inr hownerMem
+              · exact Or.inl hiOld
+            · exact Or.inr (Finset.mem_of_mem_erase hiOwner)
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeRootBucket_preserves_linReady
+    (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (rootOwner : Finset Nat) (hheap : 0 < heap.size)
+    (hrootOwns : PairVecDivVHCChainOwns (some heap[0]) rootOwner nodes)
+    (hdisjoint : Disjoint lin.toList.toFinset rootOwner)
+    (hready : PairVecDivVHCLinReady lin nodes)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCLinReady result.lin result.nodes ∧
+      result.lin.toList.toFinset ⊆ lin.toList.toFinset ∪ rootOwner := by
+  unfold pairVecDivVHCConsumeRootBucket at hrun
+  simp only [hheap, ↓reduceDIte] at hrun
+  exact pairVecDivVHCConsumeChain_preserves_linReady this (some heap[0])
+    rootOwner (Finset.range nodes.size) k nodes lin resetH quotient divisor
+    result hrootOwns
+    (pairVecDivVHCChainOwns_subset_range _ _ _ hrootOwns) hdisjoint hready
+    hrun
+
 theorem pairVecDivVHCLast_mem_toFinset (lin : Array Nat)
     (hlin : 0 < lin.size) :
     lin[lin.size - 1] ∈ lin.toList.toFinset := by
@@ -5299,6 +5441,65 @@ theorem pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership
     obtain ⟨oldRight, holdRight⟩ := hfrom right rightHead hright
     exact hownership.2.2 oldLeft oldRight leftHead rightHead holdLeft holdRight hne
 
+theorem pairVecDivVHCConsumeRootExtract_preserves_away_linReady
+    (this : DenseUPolyZp) (heap heap' : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (bucket : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hseparated : ∀ (slot head : Nat), heap[slot]? = some head →
+      Disjoint lin.toList.toFinset (owners head) ∧
+        head ∉ lin.toList.toFinset)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok bucket)
+    (hextract : pairVecDivVHCExtract heap bucket.nodes = .ok heap') :
+    PairVecDivVHCHeapChainsOwnedAway heap' bucket.nodes
+        bucket.lin.toList.toFinset ∧
+      PairVecDivVHCLinReady bucket.lin bucket.nodes := by
+  have hrootGet : heap[0]? = some heap[0] := by
+    rw [Array.getElem?_eq_getElem hheap]
+  have hrootOwns := pairVecDivVHCHeapChainOwnership_root_owns heap owners nodes
+    hownership hheap
+  have hlin := pairVecDivVHCConsumeRootBucket_preserves_linReady this heap k
+    nodes lin resetH quotient divisor bucket (owners heap[0]) hheap hrootOwns
+    (hseparated 0 heap[0] hrootGet).1 hlinReady hconsume
+  have hownership' :=
+    pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership this heap
+      heap' k nodes lin resetH quotient divisor bucket owners hheap hownership
+      hconsume hextract
+  have hfrom := pairVecDivVHCExtract_valuesFrom heap heap' bucket.nodes hextract
+  have hrootOnly := pairVecDivVHCHeapChainOwnership_root_onlyAt heap owners nodes
+    hownership hheap
+  have hrootGone := pairVecDivVHCExtract_excludes_root heap heap' bucket.nodes
+    hheap hrootOnly hextract
+  refine ⟨⟨owners, hownership', ?_⟩, hlin.1⟩
+  intro slot head hget
+  obtain ⟨oldSlot, holdGet⟩ := hfrom slot head hget
+  have hne : head ≠ heap[0] := by
+    intro heq
+    subst head
+    exact hrootGone slot hget
+  have holdSeparated := hseparated oldSlot head holdGet
+  have hrootDisjoint : Disjoint (owners heap[0]) (owners head) :=
+    hownership.2.2 0 oldSlot heap[0] head hrootGet holdGet hne.symm
+  have hheadOwns := hownership.1 oldSlot head holdGet
+  have hheadMem := pairVecDivVHCChainOwns_head_mem head (owners head) nodes
+    hheadOwns
+  refine ⟨Finset.disjoint_left.mpr ?_, ?_⟩
+  · intro i hiLin hiOwner
+    have hiSource := hlin.2 hiLin
+    rw [Finset.mem_union] at hiSource
+    rcases hiSource with hiOld | hiRoot
+    · exact Finset.disjoint_left.mp holdSeparated.1 hiOld hiOwner
+    · exact Finset.disjoint_left.mp hrootDisjoint hiRoot hiOwner
+  · intro hheadLin
+    have hheadSource := hlin.2 hheadLin
+    rw [Finset.mem_union] at hheadSource
+    rcases hheadSource with hheadOld | hheadRoot
+    · exact holdSeparated.2 hheadOld
+    · exact Finset.disjoint_left.mp hrootDisjoint hheadRoot hheadMem
+
 theorem pairVecDivVHCExtractChecked_raw
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
     (extracted : { heap' : Array Nat // heap'.size + 1 = heap.size })
@@ -5376,6 +5577,61 @@ theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainsOwned
   exact ⟨owners,
     pairVecDivVHCConsumeEqualDegree_preserves_heapChainOwnership this degree
       heap k nodes lin resetH quotient divisor result owners hownership hrun⟩
+
+theorem pairVecDivVHCConsumeEqualDegree_preserves_away_linReady
+    (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult)
+    (haway : PairVecDivVHCHeapChainsOwnedAway heap nodes
+      lin.toList.toFinset)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCHeapChainsOwnedAway result.heap result.nodes
+        result.lin.toList.toFinset ∧
+      PairVecDivVHCLinReady result.lin result.nodes := by
+  induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
+      nodes lin resetH result with
+  | h size ih =>
+      rw [pairVecDivVHCConsumeEqualDegree] at hrun
+      by_cases hheap : 0 < heap.size
+      · simp only [hheap, ↓reduceDIte] at hrun
+        cases hmono : pairVecDivVHCMono heap[0] nodes with
+        | error fault => simp [hmono] at hrun
+        | ok rootMono =>
+            simp only [hmono] at hrun
+            by_cases hequal : rootMono.deg = degree
+            · simp only [hequal, ↓reduceDIte] at hrun
+              cases hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes
+                  lin resetH quotient divisor with
+              | error fault => simp [hconsume] at hrun
+              | ok bucket =>
+                  simp only [dif_pos trivial, hconsume] at hrun
+                  cases hchecked : pairVecDivVHCExtractChecked heap bucket.nodes with
+                  | error fault => simp [hchecked] at hrun
+                  | ok extracted =>
+                      rw [hchecked] at hrun
+                      have hraw := pairVecDivVHCExtractChecked_raw heap
+                        bucket.nodes extracted hchecked
+                      rcases haway with ⟨owners, hownership, hseparated⟩
+                      have hstep :=
+                        pairVecDivVHCConsumeRootExtract_preserves_away_linReady
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hseparated
+                          hlinReady hconsume hraw
+                      have hsmaller : extracted.1.size < size := by
+                        rw [← hsize]
+                        omega
+                      exact ih extracted.1.size hsmaller extracted.1
+                        bucket.coefficient bucket.nodes bucket.lin bucket.resetH
+                        result hstep.1 hstep.2 hrun rfl
+            · simp only [hequal, ↓reduceDIte, Except.ok.injEq] at hrun
+              subst result
+              exact ⟨haway, hlinReady⟩
+      · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
+        subst result
+        exact ⟨haway, hlinReady⟩
 
 theorem pairVecDivVHCConsumeEqualDegree_preserves_node_invariants
     (this : DenseUPolyZp) (p degreeLimit degree : Nat)

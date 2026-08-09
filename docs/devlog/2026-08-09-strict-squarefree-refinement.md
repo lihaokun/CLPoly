@@ -370,3 +370,11 @@ every generated range-for and recursive loop used by SQF.
   则证明 `lin` 中既有活动节点不受该写入影响；两分支还给出输出
   `lin` 集合只可能增加当前节点的精确上界。下一步沿 exact chain owner
   的良基消费归纳提升到整个 root bucket。
+- `Away + LinReady` 已从单节点提升到完整 equal-degree 良基循环。
+  `pairVecDivVHCConsumeChain` 证明输出 `lin` 只来自入口 `lin` 与当前
+  exact chain owner；因此节点不重复且保持活动。root bucket 消费后，
+  真实 `VHC_extract` 删除当前 head，并借助不同 bucket owner 两两不交，
+  证明存活 heap chain 与扩展后的 `lin` 仍完全隔离。最终按真实 heap
+  size 严格下降提升到 `pairVecDivVHCConsumeEqualDegree`，其结果直接满足
+  后续 reverse reinsertion 所需的 `HeapChainsOwnedAway + LinReady`。
+  下一步将此组合定理接入 outer iteration 的 activate/reinsert 分支。

@@ -1015,3 +1015,15 @@ every generated range-for and recursive loop used by SQF.
   系数为零时则证明源分支不修改商，与零单项式增量一致。
   因此 emit 的首项贡献已不再只有 canonical 属性，而是已有
   可直接合并到完整 divisor 乘积系数的 L2 等式。
+- 单次外层迭代的完整乘积系数等式已闭合。先通过
+  `pairVecDivVHCQuotient_mul_lead_coeff_eq_zero` 使用 quotient-above
+  不变式排除旧商与 divisor 首项在当前 frontier 的贡献；
+  再通过 `pairVecDivVHCEmitted_monomial_mul_tail_coeff_eq_zero`
+  使用 canonical divisor 的严格降次性，排除新商单项式与
+  divisor tail 在该次数的贡献。对剩余首项乘积使用有限域
+  `div_mul_cancel₀`，与上一阶段的 heap tail-product 消费等式合并。
+  最终 `pairVecDivVHCOuterIteration_product_coefficient` 证明真实
+  `pairVecDivVHCOuterIteration` 运行后
+  `(result.quotient * divisor).coeff frontier.degree = dividend.coeff
+  frontier.degree`。下一步将该单步等式提升为良基外层循环
+  的全局 processed-degree 不变式。

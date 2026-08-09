@@ -13,6 +13,7 @@
 -/
 import CLPoly.Algorithm.SquarefreeZp
 import CLPoly.Impl.StrictPolynomialGCDRefinement
+import CLPoly.Refinement.Basic
 
 set_option autoImplicit false
 
@@ -610,6 +611,23 @@ theorem scaleMultiplicityLoop_size (index : Nat)
     omega
 termination_by source.size - index
 decreasing_by omega
+
+theorem scaleMultiplicityLoop_toPolyList (p : Nat)
+    (source : Array (SparsePolyZp × UInt64)) (prime : UInt64)
+    (hprime : prime.toNat = p)
+    (hnowrap : ∀ item ∈ source.toList,
+      item.2.toNat * prime.toNat < UInt64.size) :
+    toPolyList (scaleMultiplicityLoop 0 source #[] prime) p =
+      (toPolyList source p).map (fun item => (item.1, item.2 * p)) := by
+  unfold toPolyList
+  rw [Array.toList_map, scaleMultiplicityLoop_toList]
+  simp only [List.drop_zero, List.nil_append, List.map_map]
+  rw [Array.toList_map, List.map_map]
+  apply List.map_congr_left
+  intro item hitem
+  simp only [Function.comp_apply]
+  congr 2
+  rw [UInt64.toNat_mul, Nat.mod_eq_of_lt (hnowrap item hitem), hprime]
 
 end StrictSquarefreeZp
 end Refinement

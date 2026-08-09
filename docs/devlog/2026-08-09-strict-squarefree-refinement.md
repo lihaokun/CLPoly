@@ -106,3 +106,6 @@ every generated range-for and recursive loop used by SQF.
   `int64_t` 次数范围内等于 Nat 除法；derivative 为零推出每个实际
   canonical 项次数可被特征整除；提取结果保持 canonical，且其
   `toPoly` 精确等于 `Polynomial.contract`。
+- 递归结果 copy 循环的 multiplicity 语义也已闭合：在明确的
+  `UInt64` 无回绕前提下，实际 `e * prime` 的 `toNat` 精确对应 L2
+  列表中的 `e * p`；因子多项式保持逐项相同。

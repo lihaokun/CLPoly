@@ -1275,12 +1275,47 @@ theorem pairVecDivVHCConsumeNode_progress (this : DenseUPolyZp)
               right
               simp
 
+theorem pairVecDivVHCConsumeNode_get_ne (this : DenseUPolyZp)
+    (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next))
+    (i : Nat) (hne : nodeIndex ≠ i) :
+    nodes'[i]? = nodes[i]? := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          exact Array.getElem?_set_ne hn hne
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              exact Array.getElem?_set_ne hn hne
+
 /-- Result of consuming one complete equal-monomial `next` bucket. -/
 structure PairVecDivVHCBucketResult where
   coefficient : UInt64
   nodes : Array PairVecDivVHCNode
   lin : Array Nat
   resetH : Nat
+  /-- Proof-visible remainder of the finite node ownership set.  The C++
+  result does not observe this field; it records exactly which `next`-chain
+  nodes the safe execution consumed. -/
+  unvisited : Finset Nat
 
 /-- Exact `while (heap[0] != nullptr)` execution.  `unvisited` is the safe
 ownership view of the allocated node block.  Removing the current node is the
@@ -1292,7 +1327,7 @@ def pairVecDivVHCConsumeChain (this : DenseUPolyZp)
     (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
     (quotient divisor : SparsePolyZp) : RawExec PairVecDivVHCBucketResult :=
   match current with
-  | none => .ok (PairVecDivVHCBucketResult.mk k nodes lin resetH)
+  | none => .ok (PairVecDivVHCBucketResult.mk k nodes lin resetH unvisited)
   | some nodeIndex =>
       if hmem : nodeIndex ∈ unvisited then
         match pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
@@ -1323,8 +1358,50 @@ theorem pairVecDivVHCConsumeChain_none (this : DenseUPolyZp)
     (quotient divisor : SparsePolyZp) :
     pairVecDivVHCConsumeChain this none unvisited k nodes lin resetH
       quotient divisor =
-        .ok (PairVecDivVHCBucketResult.mk k nodes lin resetH) := by
+        .ok (PairVecDivVHCBucketResult.mk k nodes lin resetH unvisited) := by
   rw [pairVecDivVHCConsumeChain]
+
+theorem pairVecDivVHCConsumeChain_unvisited (this : DenseUPolyZp)
+    (current : Option Nat) (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    result.unvisited ⊆ unvisited ∧
+      ∀ i ∈ result.unvisited, result.nodes[i]? = nodes[i]? := by
+  cases current with
+  | none =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      exact ⟨Finset.Subset.rfl, by simp⟩
+  | some nodeIndex =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      split at hrun <;> try contradiction
+      next hmem =>
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            have ih := pairVecDivVHCConsumeChain_unvisited this next
+              (unvisited.erase nodeIndex) k' nodes' lin' resetH' quotient
+              divisor result hrun
+            refine ⟨?_, ?_⟩
+            · intro i hi
+              exact Finset.mem_of_mem_erase (ih.1 hi)
+            · intro i hi
+              have hiErase := ih.1 hi
+              have hine : nodeIndex ≠ i := by
+                exact (Finset.mem_erase.mp hiErase).1.symm
+              rw [ih.2 i hi]
+              exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k' nodes
+                nodes' lin lin' resetH resetH' next quotient divisor hconsume
+                i hine
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
 
 /-- Result after the source has consumed every heap bucket whose root
 monomial equals the current outer-loop monomial. -/
@@ -1862,6 +1939,31 @@ theorem pairVecDivVHCChainValid_set_of_not_mem
         · exact pairVecDivVHCChainValid_set_of_not_mem node.next
             (unvisited.erase currentIndex) nodes nodeIndex updated hn
             (by simp [hnotmem]) htail
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCChainValid_congr_on
+    (current : Option Nat) (unvisited : Finset Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hvalid : PairVecDivVHCChainValid current unvisited nodes)
+    (hsame : ∀ i ∈ unvisited, nodes'[i]? = nodes[i]?) :
+    PairVecDivVHCChainValid current unvisited nodes' := by
+  cases current with
+  | none => simp [PairVecDivVHCChainValid]
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainValid] at hvalid ⊢
+      split at hvalid <;> try contradiction
+      next hmem =>
+        simp only [hmem, ↓reduceDIte]
+        rcases hvalid with ⟨node, mono, hget, hmono, htail⟩
+        refine ⟨node, mono, ?_, hmono, ?_⟩
+        · rw [hsame nodeIndex hmem]
+          exact hget
+        · exact pairVecDivVHCChainValid_congr_on node.next
+            (unvisited.erase nodeIndex) nodes nodes' htail (by
+              intro i hi
+              exact hsame i (Finset.mem_of_mem_erase hi))
 termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
@@ -2745,6 +2847,20 @@ theorem pairVecDivVHCConsumeRootBucket_preserves_node_invariants
   exact pairVecDivVHCConsumeChain_preserves_node_invariants this p degreeLimit
     (some heap[0]) (Finset.range nodes.size) k nodes lin resetH quotient
     divisor result hcanonical hbelow hdenotes hfixed hready hchain hrun
+
+theorem pairVecDivVHCConsumeRootBucket_unvisited (this : DenseUPolyZp)
+    (heap : Array Nat) (k : UInt64) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCBucketResult)
+    (hheap : 0 < heap.size)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    result.unvisited ⊆ Finset.range nodes.size ∧
+      ∀ i ∈ result.unvisited, result.nodes[i]? = nodes[i]? := by
+  unfold pairVecDivVHCConsumeRootBucket at hrun
+  simp only [hheap, ↓reduceDIte] at hrun
+  exact pairVecDivVHCConsumeChain_unvisited this (some heap[0])
+    (Finset.range nodes.size) k nodes lin resetH quotient divisor result hrun
 
 theorem pairVecDivVHCActivatedTail_degree_lt_frontier (p frontierDegree : Nat)
     (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)

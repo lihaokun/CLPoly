@@ -264,6 +264,12 @@ every generated range-for and recursive loop used by SQF.
   `Finset.range nodes.size` 所有权集合执行，不再要求上层展开 chain
   实现。下一步需要加强 heap ownership，使 `VHC_extract` 后的新 root
   自动取得未被当前 bucket 修改的合法 chain，而不是由调用端逐轮提供。
+- bucket safe 结果现增加纯证明可见的剩余 `unvisited` 集合，不改变任何
+  C++ 可观察字段。已沿良基 consume chain 证明：结果集合包含于入口集合，
+  且其中每个节点在结果数组中逐点等于入口数组；root-bucket 边界也已
+  得到对应定理。另证明 `ChainValid` 对所有权集合内逐点相等封闭。这样
+  heap ownership 下一步只需证明其他 bucket 的不交集合仍包含在剩余
+  `unvisited` 中，即可把其 chain 合法性传过当前 bucket 的节点修改。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

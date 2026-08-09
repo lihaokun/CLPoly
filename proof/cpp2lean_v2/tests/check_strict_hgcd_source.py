@@ -47,7 +47,10 @@ REQUIRED_CALLS = {
 }
 
 LEAN_FILES = (
+    V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictEuclidGCD.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictHGCD.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictDivremRefinement.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictEuclidRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictPolyAddSubRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictMulDispatchRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRawRefinement.lean",
@@ -381,6 +384,10 @@ def main() -> None:
         "HgcdRecursiveInvocationWorkspace",
         "HgcdRecursiveInvocationWorkspaceProviderBelow",
         "hgcdRecursiveCall_rawInvariant_wf",
+        "GcdEuclidRawResult",
+        "dense_upoly_zp__gcd_euclid_raw_ir",
+        "euclidDivremLengthDecreases",
+        "strictEuclidLoop_refines",
         "HgcdRecursiveIterFinalizeWorkspace",
         "HgcdRecursiveIterFinalizeWorkspaceProvider",
         "hgcdRecursiveIterBranch_refines",

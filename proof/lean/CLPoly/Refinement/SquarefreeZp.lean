@@ -6796,8 +6796,8 @@ theorem pairVecDivVHCEmit_preserves_canonical
     (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
     (hcoefficientReduced : consumed.coefficient.toNat < this._p.toNat)
     (hdivisor : 0 < divisor.size)
-    (hdegrees : ∀ term ∈ quotient.toList,
-      frontier.degree - divisor[0].1.deg < term.1.deg)
+    (hdegrees : PairVecDivVHCQuotientAbove frontier.degree divisor[0].1.deg
+      quotient)
     (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
       .ok (quotient', activated, resetH')) :
     SparsePolyZp.Canonical this._p.toNat quotient' := by
@@ -6837,7 +6837,7 @@ theorem pairVecDivVHCEmit_preserves_canonical
             exact
               CLPoly.Impl.StrictPolynomialGCDRefinement.canonical_push_lower
                 this._p quotient (frontier.degree - divisor[0].1.deg) value
-                hcanonical hdegrees hvalueReduced hvalue
+                hcanonical (hdegrees hdegree) hvalueReduced hvalue
       · rw [if_neg hvalue] at hrun
         simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
         rcases hrun with ⟨rfl, rfl, rfl⟩
@@ -6919,13 +6919,20 @@ theorem pairVecDivVHCEmit_preserves_quotientAbove_of_lt
     exact hold
 
 theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
-    (this : DenseUPolyZp) (p degreeLimit dividendIndex : Nat)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (degreeLimit dividendIndex : Nat)
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
     (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
     (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
     (hdivisor : 0 < divisor.size)
-    (hcanonical : SparsePolyZp.Canonical p quotient)
-    (hdivisorCanonical : SparsePolyZp.Canonical p divisor)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hquotientReady : ∀ frontier : PairVecDivVHCFrontier,
+      pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+        .ok frontier →
+      PairVecDivVHCQuotientAbove frontier.degree divisor[0].1.deg quotient)
     (hremaining : PairVecDivVHCRemainingDividendBelow degreeLimit
       dividendIndex dividend)
     (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
@@ -6937,7 +6944,8 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
     (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
     (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
       dividend divisor resetH = .ok result) :
-    PairVecDivVHCHeapChainsOwned result.heap result.nodes ∧
+    SparsePolyZp.Canonical this._p.toNat result.quotient ∧
+      PairVecDivVHCHeapChainsOwned result.heap result.nodes ∧
       PairVecDivVHCRemainingDividendBelow degreeLimit result.dividendIndex
         dividend ∧
       PairVecDivVHCAllActiveNodesBelow degreeLimit result.nodes ∧
@@ -6965,6 +6973,11 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
       have hremaining' :=
         pairVecDivVHCSelectFrontier_preserves_remaining_below degreeLimit
           dividendIndex dividend heap nodes frontier hremaining hselect
+      have hfrontierCoefficient :=
+        pairVecDivVHCSelectFrontier_coefficient_reduced this._p.toNat
+          dividendIndex dividend heap nodes frontier
+          (Fact.out : Nat.Prime this._p.toNat).pos hdividendCanonical hselect
+      have hquotientAbove := hquotientReady frontier hselect
       generalize hconsume : pairVecDivVHCConsumeEqualDegree this
           frontier.degree heap frontier.coefficient nodes #[] resetH quotient
           divisor = consumedExec at hrun
@@ -6986,8 +6999,9 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
               frontier.degree heap frontier.coefficient nodes #[] resetH
               quotient divisor consumed haway0 hlin0 hconsume
           have hnodeInvariants :=
-            pairVecDivVHCConsumeEqualDegree_preserves_node_invariants this p
-              degreeLimit frontier.degree heap frontier.coefficient nodes #[]
+            pairVecDivVHCConsumeEqualDegree_preserves_node_invariants this
+              this._p.toNat degreeLimit frontier.degree heap
+              frontier.coefficient nodes #[]
               resetH quotient divisor consumed owners hcanonical hbelow
               hdenotes hfixed hready hownership hconsume
           generalize hemit : pairVecDivVHCEmit this frontier consumed quotient
@@ -7004,12 +7018,26 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
                   quotient divisor quotient' activated resetH' hconsumed.1
                   hconsumed.2 hnodeInvariants.2.2.2 hdivisor hemit
               have hemittedNodes :=
-                pairVecDivVHCEmit_preserves_node_invariants this p degreeLimit
-                  frontier consumed quotient divisor quotient' activated
-                  resetH' hdivisorCanonical hdivisor
+                pairVecDivVHCEmit_preserves_node_invariants this this._p.toNat
+                  degreeLimit frontier consumed quotient divisor quotient'
+                  activated resetH' hdivisorCanonical hdivisor
                   (Nat.le_of_lt hselectedBelow) hnodeInvariants.1
                   hnodeInvariants.2.1 hnodeInvariants.2.2.1
                   hnodeInvariants.2.2.2 hemit
+              have hconsumedCoefficient :=
+                pairVecDivVHCConsumeEqualDegree_coefficient_reduced this
+                  frontier.degree heap frontier.coefficient nodes #[] resetH
+                  quotient divisor consumed
+                  (by
+                    intro hp
+                    have hzero : this._p.toNat = 0 :=
+                      congrArg UInt64.toNat hp
+                    exact (Fact.out : Nat.Prime this._p.toNat).ne_zero hzero)
+                  hcfg hcanonical hfrontierCoefficient hconsume
+              have hemittedCanonical := pairVecDivVHCEmit_preserves_canonical
+                this frontier consumed quotient divisor quotient' activated
+                resetH' hcfg hcanonical hconsumedCoefficient hdivisor
+                hquotientAbove hemit
               generalize hreinsert : pairVecDivVHCReinsertLin activated.heap
                   activated.nodes consumed.lin = reinsertExec at hrun
               cases reinsertExec with
@@ -7030,7 +7058,49 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
                       hemittedNodes.1 hemittedNodes.2.1
                       hemittedNodes.2.2.1 hemittedNodes.2.2.2 hemitted.2
                       hreinsert
-                  exact ⟨howned', hremaining', hinvariants'⟩
+                  exact ⟨hemittedCanonical, howned', hremaining',
+                    hinvariants'⟩
+
+theorem pairVecDivVHCOuterIteration_preserves_quotientAbove_of_lt
+    (this : DenseUPolyZp) (dividendIndex nextDegree : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (hdivisor : 0 < divisor.size)
+    (habove : PairVecDivVHCQuotientAbove frontier.degree divisor[0].1.deg
+      quotient)
+    (hnext : nextDegree < frontier.degree)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    PairVecDivVHCQuotientAbove nextDegree divisor[0].1.deg result.quotient := by
+  unfold pairVecDivVHCOuterIteration at hrun
+  simp only [hdivisor, ↓reduceDIte, hselect, Bind.bind, Except.bind] at hrun
+  generalize hconsume : pairVecDivVHCConsumeEqualDegree this frontier.degree
+      heap frontier.coefficient nodes #[] resetH quotient divisor =
+        consumedExec at hrun
+  cases consumedExec with
+  | error fault => contradiction
+  | ok consumed =>
+      simp only [Bind.bind, Except.bind] at hrun
+      generalize hemit : pairVecDivVHCEmit this frontier consumed quotient
+          divisor hdivisor = emitExec at hrun
+      cases emitExec with
+      | error fault => contradiction
+      | ok emitted =>
+          simp only [Bind.bind, Except.bind] at hrun
+          rcases emitted with ⟨quotient', activated, resetH'⟩
+          generalize hreinsert : pairVecDivVHCReinsertLin activated.heap
+              activated.nodes consumed.lin = reinsertExec at hrun
+          cases reinsertExec with
+          | error fault => contradiction
+          | ok reinserted =>
+              simp only [Bind.bind, Except.bind] at hrun
+              rw [← Except.ok.inj hrun]
+              exact pairVecDivVHCEmit_preserves_quotientAbove_of_lt this
+                nextDegree frontier consumed quotient divisor quotient'
+                activated resetH' hdivisor habove hnext hemit
 
 /-- Complete general-path outer `while`.  `degreeLimit` is a proof-relevant
 strict upper bound on the next source frontier, not a step counter: after one

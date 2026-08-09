@@ -430,3 +430,11 @@ every generated range-for and recursive loop used by SQF.
   quotient。同时已证明：对任意严格低于当前 selected frontier 的
   下一次数，emit 后的所有 quotient 项仍严格位于其上。剩余工作是
   将该次数与下一次真实 selector 执行关联。
+- canonical quotient 已接入完整单次 outer iteration。真实 selector
+  从 canonical dividend 得到初始 coefficient 范围，equal-degree 消费循环
+  保持 accumulator reducedness，emit 再由 preinverse-configured generated multiply
+  与 quotient-degree invariant 证明输出 quotient canonical。reverse reinsertion
+  不改变 quotient。此外新增完整 iteration 级别的 look-ahead 定理：
+  给定下一 selector 次数严格更低，重放真实 consume/emit/reinsert 执行
+  即可证明输出 quotient 的所有项仍严格高于下一 frontier。这是
+  完整良基 outer loop 递归传递 canonicality 的最后局部桥。

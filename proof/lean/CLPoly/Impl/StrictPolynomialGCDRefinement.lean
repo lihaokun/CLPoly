@@ -1878,4 +1878,156 @@ theorem internal_polynomial_GCD_postconstruct_raw_ir_monic_refines
     simp [internal_polynomial_GCD_postconstruct_raw_ir, hrunGcd, hfinish],
     houtput, hsparse, hsemantic.trans hgcd.symm⟩
 
+/-- Exact nonempty public path beginning at the two sparse constructors and
+continuing through the complete internal monic GCD execution. -/
+def polynomial_GCD_nonempty_raw_ir (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (left right : SparsePolyZp) (degreeBound : Int64)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) : RawExec InternalPolynomialGCDRawResult :=
+  match sparse_upoly_zp_dense_constructor_raw_ir leftPtr left heap with
+  | .error fault => .error fault
+  | .ok leftHeap =>
+    match sparse_upoly_zp_dense_constructor_raw_ir rightPtr right leftHeap with
+    | .error fault => .error fault
+    | .ok finalHeap =>
+      internal_polynomial_GCD_postconstruct_raw_ir this M hM resultPtr leftPtr
+        rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength left) (sparseDenseLength right) 1 degreeBound
+        loopDecrease finalHeap
+
+/-- End-to-end semantic composition for the actual nonempty constructor/GCD/
+monic/conversion path, given the concrete workspace readiness at the heap
+where both constructors have finished. -/
+theorem polynomial_GCD_nonempty_raw_ir_refines_of_runs
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (left right : SparsePolyZp) (degreeBound : Int64)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap leftHeap finalHeap : RawHeap)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hrunLeft : sparse_upoly_zp_dense_constructor_raw_ir leftPtr left heap =
+      .ok leftHeap)
+    (hrunRight : sparse_upoly_zp_dense_constructor_raw_ir rightPtr right
+      leftHeap = .ok finalHeap)
+    (hleftNonzero : SparsePolyZp.toPoly this._p.toNat left ≠ 0)
+    (readyAB : DenseGcdOrderedReady this hcfg hp M hM resultPtr leftPtr
+      rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+      (sparseDenseLength left) (sparseDenseLength right) finalHeap
+      (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right))
+    (readyBA : DenseGcdOrderedReady this hcfg hp M hM resultPtr rightPtr
+      leftPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+      (sparseDenseLength right) (sparseDenseLength left) finalHeap
+      (SparsePolyZp.toPoly this._p.toNat right)
+      (SparsePolyZp.toPoly this._p.toNat left))
+    (hbound : ∀ gcdResult,
+      dense_upoly_zp_gcd_raw_ir this M hM resultPtr leftPtr rightPtr aBuf bBuf
+        J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength left) (sparseDenseLength right) loopDecrease
+        finalHeap = .ok gcdResult →
+      ¬degreeBound < Int64.ofNat (gcdResult.lenG - 1)) :
+    ∃ out sparse,
+      polynomial_GCD_nonempty_raw_ir this M hM resultPtr leftPtr rightPtr
+          aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
+          degreeBound loopDecrease heap = .ok out ∧
+      out.output = some sparse ∧
+      SparsePolyZp.toPoly this._p.toNat sparse = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right)) := by
+  rcases dense_upoly_zp_gcd_raw_ir_refines this hcfg hp M hM resultPtr
+      leftPtr rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+      (sparseDenseLength left) (sparseDenseLength right) loopDecrease
+      finalHeap (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right) readyAB readyBA with
+    ⟨gcdResult, result, hrunGcd, hresult, hgcd⟩
+  rcases internal_polynomial_GCD_postconstruct_raw_ir_monic_refines this M hM
+      resultPtr leftPtr rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR
+      euclidW3 (sparseDenseLength left) (sparseDenseLength right) degreeBound
+      loopDecrease finalHeap gcdResult
+      (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right) result hcfg hp hrunGcd hresult
+      hgcd hleftNonzero (hbound gcdResult hrunGcd) with
+    ⟨out, sparse, hpost, houtput, _, hsemantic⟩
+  exact ⟨out, sparse, by
+    simp [polynomial_GCD_nonempty_raw_ir, hrunLeft, hrunRight, hpost],
+    houtput, hsemantic⟩
+
+/-- Raw-to-safe bridge for the complete nonempty public path.  Constructor
+termination and preservation are proved internally; callers provide only the
+physical GCD workspace facts for the resulting same-layout heap. -/
+theorem polynomial_GCD_nonempty_raw_ir_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (left right : SparsePolyZp) (degreeBound : Int64)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hleftValid : heap.ValidU64Slice leftPtr (sparseDenseLength left))
+    (hrightValid : heap.ValidU64Slice rightPtr (sparseDenseLength right))
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonzero : SparsePolyZp.toPoly this._p.toNat left ≠ 0)
+    (hdisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint rightPtr
+      (sparseDenseLength right) leftPtr (sparseDenseLength left))
+    (readyAB : ∀ finalHeap,
+      RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+          (SparsePolyZp.toPoly this._p.toNat left) →
+      RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+          (SparsePolyZp.toPoly this._p.toNat right) →
+      DenseGcdOrderedReady this hcfg hp M hM resultPtr leftPtr rightPtr aBuf
+        bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength left) (sparseDenseLength right) finalHeap
+        (SparsePolyZp.toPoly this._p.toNat left)
+        (SparsePolyZp.toPoly this._p.toNat right))
+    (readyBA : ∀ finalHeap,
+      RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+          (SparsePolyZp.toPoly this._p.toNat left) →
+      RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+          (SparsePolyZp.toPoly this._p.toNat right) →
+      DenseGcdOrderedReady this hcfg hp M hM resultPtr rightPtr leftPtr aBuf
+        bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength right) (sparseDenseLength left) finalHeap
+        (SparsePolyZp.toPoly this._p.toNat right)
+        (SparsePolyZp.toPoly this._p.toNat left))
+    (hbound : ∀ finalHeap gcdResult,
+      dense_upoly_zp_gcd_raw_ir this M hM resultPtr leftPtr rightPtr aBuf bBuf
+        J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength left) (sparseDenseLength right) loopDecrease
+        finalHeap = .ok gcdResult →
+      ¬degreeBound < Int64.ofNat (gcdResult.lenG - 1)) :
+    ∃ out sparse,
+      polynomial_GCD_nonempty_raw_ir this M hM resultPtr leftPtr rightPtr
+          aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
+          degreeBound loopDecrease heap = .ok out ∧
+      out.output = some sparse ∧
+      SparsePolyZp.toPoly this._p.toNat sparse = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right)) := by
+  have hmodulus : this._p ≠ 0 := by
+    intro hzero
+    have : this._p.toNat = 0 := by simp [hzero]
+    omega
+  rcases two_sparse_dense_constructors_result this leftPtr rightPtr left right
+      heap hmodulus hleftValid hrightValid hleftCanonical hrightCanonical
+      hdisjoint with
+    ⟨leftHeap, finalHeap, hrunLeft, hrunRight, hleftRep, hrightRep⟩
+  exact polynomial_GCD_nonempty_raw_ir_refines_of_runs this M hM resultPtr
+    leftPtr rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+    left right degreeBound loopDecrease heap leftHeap finalHeap hcfg hp
+    hrunLeft hrunRight hleftNonzero (readyAB finalHeap hleftRep hrightRep)
+    (readyBA finalHeap hleftRep hrightRep) (hbound finalHeap)
+
 end CLPoly.Impl.StrictPolynomialGCDRefinement

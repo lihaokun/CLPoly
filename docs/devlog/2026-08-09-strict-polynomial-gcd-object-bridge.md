@@ -171,6 +171,12 @@ polynomial operation may replace any of these executions.
 - Closed sequential F/G construction: both actual constructor executions now
   terminate and their two dense representations coexist on the same final
   heap, ready for one concrete GCD dispatch.
+- Added the complete nonempty public raw entry, whose nested matches execute
+  both sparse constructors followed by the real GCD/monic/guard/conversion
+  chain.
+- Proved its raw-to-safe refinement under concrete workspace readiness: every
+  execution succeeds in the accepted degree branch and the emitted canonical
+  sparse polynomial denotes the normalized Euclidean gcd.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

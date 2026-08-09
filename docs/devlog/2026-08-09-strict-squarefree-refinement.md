@@ -1223,3 +1223,12 @@ every generated range-for and recursive loop used by SQF.
   因而能沿 `lin.size` 良基递归同时传递 ownership 与 homogeneous。
   下一步将 consume、emit activation 与 reinsertion 的 homogeneous 结果
   合成 outer iteration，并进入全局 outer-loop 系数归纳。
+- 完整 outer iteration 的 ownership+homogeneous 保持已闭合。
+  `pairVecDivVHCEmit_preserves_heapChainsHomogeneous` 对 emit 的真实分支
+  分别保留原 owner map或采用 `ActivateReset` 产生的新 map；
+  `pairVecDivVHCOuterIteration_preserves_heapChainsHomogeneous` 从实际
+  components 提取 consume/emit/reinsert 执行，逐阶段用 ownership 唯一性
+  协调 existential owner witnesses，并最终返回 iteration 结果 heap/nodes
+  上的精确 ownership 与 homogeneous。至此单轮系数桥所需的 heap order
+  与 homogeneous 均可递归传递。下一步完成全局 `OuterLoop` 的良基
+  `ProductAgreesAbove` 归纳及 done-state 全次数结论。

@@ -576,3 +576,12 @@ every generated range-for and recursive loop used by SQF.
   建立该状态，equal-degree 消费则复用刚闭合的 ownership+coverage 联合
   定理保留同一个见证。下一步必须让 activation/reinsert 的每次真实
   `VHC_insert` 构造新的共同见证，再沿各自的良基循环归纳。
+- exact chain 的 owner 唯一性已闭合。对固定 node array 与 chain head，
+  `PairVecDivVHCChainOwns` 的 owner finset 现在按真实 `next` 链良基递归证明
+  唯一；由此得到任意两个合法 heap ownership 映射在每个实际 heap head
+  上必相等。`NodesCovered.congr_owners` 进一步证明覆盖可以安全地换到同一
+  heap/node 状态上的任意 ownership 见证，`StateCovered.covered_with` 将该
+  事实封装为后续 insertion 证明的消去规则。这一步没有假定 owner 映射
+  全局函数相等，只在真实 heap slot 对应的 head 上使用 chain 唯一性。
+  下一步追踪 insertion 对 heap head 集合的改变：普通 bubble 保留旧 heads
+  并加入新 head，merge 则以新 head 的 `next` chain 取代被合并旧 head。

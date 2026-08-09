@@ -3758,6 +3758,42 @@ termination_by owner.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem hmem
 
+/-- Exact chain ownership is functional: for fixed concrete node storage and
+head, following `next` determines the owner set uniquely.  This lets later
+insertion proofs reconcile a freshly constructed ownership witness with the
+owner sets used by total node coverage. -/
+theorem pairVecDivVHCChainOwns_unique
+    (current : Option Nat) (left right : Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hleft : PairVecDivVHCChainOwns current left nodes)
+    (hright : PairVecDivVHCChainOwns current right nodes) :
+    left = right := by
+  cases current with
+  | none =>
+      simp only [PairVecDivVHCChainOwns] at hleft hright
+      rw [hleft, hright]
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at hleft hright
+      split at hleft <;> try contradiction
+      next hleftMem =>
+        split at hright <;> try contradiction
+        next hrightMem =>
+          rcases hleft with
+            ⟨leftNode, leftMono, hleftGet, hleftMono, hleftTail⟩
+          rcases hright with
+            ⟨rightNode, rightMono, hrightGet, hrightMono, hrightTail⟩
+          rw [hleftGet] at hrightGet
+          simp only [Option.some.injEq] at hrightGet
+          subst rightNode
+          have htailEq := pairVecDivVHCChainOwns_unique leftNode.next
+            (left.erase nodeIndex) (right.erase nodeIndex) nodes hleftTail
+            hrightTail
+          rw [← Finset.insert_erase hleftMem,
+            ← Finset.insert_erase hrightMem, htailEq]
+termination_by left.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
 theorem pairVecDivVHCChainValid_set_of_not_mem
     (current : Option Nat) (unvisited : Finset Nat)
     (nodes : Array PairVecDivVHCNode) (nodeIndex : Nat)
@@ -4193,6 +4229,17 @@ def PairVecDivVHCHeapChainOwnership (heap : Array Nat)
       heap[right]? = some rightHead → leftHead ≠ rightHead →
       Disjoint (owners leftHead) (owners rightHead))
 
+theorem pairVecDivVHCHeapChainOwnership_owner_eq_at
+    (heap : Array Nat) (leftOwners rightOwners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hleft : PairVecDivVHCHeapChainOwnership heap leftOwners nodes)
+    (hright : PairVecDivVHCHeapChainOwnership heap rightOwners nodes)
+    (slot head : Nat) (hget : heap[slot]? = some head) :
+    leftOwners head = rightOwners head :=
+  pairVecDivVHCChainOwns_unique (some head) (leftOwners head)
+    (rightOwners head) nodes (hleft.1 slot head hget)
+    (hright.1 slot head hget)
+
 /-- Total location coverage of the allocated divisor-tail cursor block.
 Every node is either in the exhausted `reset_h` prefix, on the temporary
 reverse-reinsertion stack, or owned by one concrete heap bucket.  Uniqueness
@@ -4205,6 +4252,24 @@ def PairVecDivVHCNodesCovered (heap : Array Nat)
     i < resetH ∨ i ∈ lin.toList.toFinset ∨
       ∃ (slot head : Nat), heap[slot]? = some head ∧ i ∈ owners head
 
+theorem PairVecDivVHCNodesCovered.congr_owners
+    (heap : Array Nat) (leftOwners rightOwners : Nat → Finset Nat)
+    (lin : Array Nat) (resetH : Nat) (nodes : Array PairVecDivVHCNode)
+    (hleftOwnership :
+      PairVecDivVHCHeapChainOwnership heap leftOwners nodes)
+    (hrightOwnership :
+      PairVecDivVHCHeapChainOwnership heap rightOwners nodes)
+    (hcovered : PairVecDivVHCNodesCovered heap leftOwners lin resetH nodes) :
+    PairVecDivVHCNodesCovered heap rightOwners lin resetH nodes := by
+  intro i hi
+  rcases hcovered i hi with hreset | hlin | ⟨slot, head, hget, hmem⟩
+  · exact Or.inl hreset
+  · exact Or.inr (Or.inl hlin)
+  · refine Or.inr (Or.inr ⟨slot, head, hget, ?_⟩)
+    rw [← pairVecDivVHCHeapChainOwnership_owner_eq_at heap leftOwners
+      rightOwners nodes hleftOwnership hrightOwnership slot head hget]
+    exact hmem
+
 /-- A single ownership witness must justify both the concrete heap chains and
 total coverage of the allocated node block.  Keeping the existential outside
 the conjunction is essential: heap insertion can replace a bucket head and
@@ -4215,6 +4280,16 @@ def PairVecDivVHCStateCovered (heap : Array Nat) (nodes : Array PairVecDivVHCNod
   ∃ owners : Nat → Finset Nat,
     PairVecDivVHCHeapChainOwnership heap owners nodes ∧
       PairVecDivVHCNodesCovered heap owners lin resetH nodes
+
+theorem PairVecDivVHCStateCovered.covered_with
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (owners : Nat → Finset Nat)
+    (hstate : PairVecDivVHCStateCovered heap nodes lin resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes) :
+    PairVecDivVHCNodesCovered heap owners lin resetH nodes := by
+  rcases hstate with ⟨stateOwners, hstateOwnership, hcovered⟩
+  exact hcovered.congr_owners heap stateOwners owners lin resetH nodes
+    hstateOwnership hownership
 
 theorem pairVecDivVHCInit_nodesCovered (divisor : SparsePolyZp)
     (owners : Nat → Finset Nat) :

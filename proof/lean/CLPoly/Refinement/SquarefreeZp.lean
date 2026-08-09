@@ -8461,6 +8461,243 @@ def pairVecDivVHCNodeProductValue (p : Nat)
             (divisorTerm.2.val.toNat : ZMod p)
       | _, _ => 0
 
+def PairVecDivVHCPairAtDegree (degree : Nat)
+    (quotient divisor : SparsePolyZp) (pair : Nat × Nat) : Prop :=
+  match quotient[pair.1]?, divisor[pair.2]? with
+  | some quotientTerm, some divisorTerm =>
+      quotientTerm.1.deg + divisorTerm.1.deg = degree
+  | _, _ => False
+
+instance (degree : Nat) (quotient divisor : SparsePolyZp) (pair : Nat × Nat) :
+    Decidable (PairVecDivVHCPairAtDegree degree quotient divisor pair) := by
+  unfold PairVecDivVHCPairAtDegree
+  split <;> infer_instance
+
+/-- Concrete indexed quotient/divisor-tail pairs whose monomial degrees hit
+the current source frontier.  Indices, rather than term values, are retained
+so equal coefficients in different rows remain distinct contributions. -/
+def PairVecDivVHCTargetPairsAtDegree (degree : Nat)
+    (quotient divisor : SparsePolyZp) : Finset (Nat × Nat) :=
+  ((Finset.range quotient.size).product (Finset.Ico 1 divisor.size)).filter
+    fun pair => PairVecDivVHCPairAtDegree degree quotient divisor pair
+
+/-- Coefficient contribution of one concrete indexed source pair. -/
+def pairVecDivVHCIndexedPairProductValue (p : Nat)
+    (quotient divisor : SparsePolyZp) (pair : Nat × Nat) : ZMod p :=
+  match quotient[pair.1]?, divisor[pair.2]? with
+  | some quotientTerm, some divisorTerm =>
+      (quotientTerm.2.val.toNat : ZMod p) *
+        (divisorTerm.2.val.toNat : ZMod p)
+  | _, _ => 0
+
+/-- Source-index pair stored in a cursor node; invalid indices receive the
+irrelevant default pair and are excluded by ownership invariants. -/
+def pairVecDivVHCNodeSourcePair (nodes : Array PairVecDivVHCNode)
+    (nodeIndex : Nat) : Nat × Nat :=
+  match nodes[nodeIndex]? with
+  | some node => (node.quotientIndex, node.divisorIndex)
+  | none => (0, 0)
+
+theorem pairVecDivVHCTargetPairsAtDegree_mem_iff
+    (degree q d : Nat) (quotient divisor : SparsePolyZp)
+    (quotientTerm divisorTerm : UMonomial × Zp)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[d]? = some divisorTerm) :
+    (q, d) ∈ PairVecDivVHCTargetPairsAtDegree degree quotient divisor ↔
+      0 < d ∧
+        quotientTerm.1.deg + divisorTerm.1.deg = degree := by
+  have hq : q < quotient.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hquotient
+    contradiction
+  have hd : d < divisor.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hdivisor
+    contradiction
+  rw [Array.getElem?_eq_getElem hq] at hquotient
+  rw [Array.getElem?_eq_getElem hd] at hdivisor
+  simp only [Option.some.injEq] at hquotient hdivisor
+  subst quotientTerm
+  subst divisorTerm
+  simp [PairVecDivVHCTargetPairsAtDegree, PairVecDivVHCPairAtDegree,
+    hq, hd] <;> omega
+
+theorem pairVecDivVHCIndexedPairProductValue_of_get
+    (p q d : Nat) (quotient divisor : SparsePolyZp)
+    (quotientTerm divisorTerm : UMonomial × Zp)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[d]? = some divisorTerm) :
+    pairVecDivVHCIndexedPairProductValue p quotient divisor (q, d) =
+      (quotientTerm.2.val.toNat : ZMod p) *
+        (divisorTerm.2.val.toNat : ZMod p) := by
+  simp [pairVecDivVHCIndexedPairProductValue, hquotient, hdivisor]
+
+/-- Conversely, every heap-owned node at `degree` stores a genuine indexed
+quotient/divisor-tail pair at that degree.  The fixed allocation identity
+also recovers the node index from the divisor index, giving the inverse map
+needed for a multiplicity-preserving finite-sum bijection. -/
+theorem pairVecDivVHCOwnedNode_sourcePairAtDegree
+    (p degree i : Nat) (quotient divisor : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hdenotes : ∀ (j : Nat) (node : PairVecDivVHCNode),
+      nodes[j]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hi : i ∈ PairVecDivVHCHeapOwnedNodesAtDegree degree heap owners nodes) :
+    pairVecDivVHCNodeSourcePair nodes i ∈
+        PairVecDivVHCTargetPairsAtDegree degree quotient divisor ∧
+      (pairVecDivVHCNodeSourcePair nodes i).2 - 1 = i ∧
+      pairVecDivVHCIndexedPairProductValue p quotient divisor
+          (pairVecDivVHCNodeSourcePair nodes i) =
+        pairVecDivVHCNodeProductValue p nodes quotient divisor i := by
+  simp only [PairVecDivVHCHeapOwnedNodesAtDegree, Finset.mem_filter,
+    PairVecDivVHCHeapOwnedNodes, Finset.mem_biUnion, List.mem_toFinset,
+    pairVecDivVHCNodeAtDegree_iff] at hi
+  rcases hi with ⟨⟨_, _, _⟩, mono, hmonoRun, hmonoDegree⟩
+  rcases (pairVecDivVHCMono_eq_ok_iff i nodes mono).1 hmonoRun with
+    ⟨node, hnode, hnodeMono⟩
+  rcases hdenotes i node hnode (by simp [hnodeMono]) with
+    ⟨quotientTerm, divisorTerm, hquotient, hdivisor, hstoredMono⟩
+  have hdivisorIndex := hfixed i node hnode
+  have hdpos : 0 < node.divisorIndex := by omega
+  have hsourceDegree :
+      quotientTerm.1.deg + divisorTerm.1.deg = degree := by
+    rw [hnodeMono] at hstoredMono
+    have hdegrees := congrArg UMonomial.deg (Option.some.inj hstoredMono)
+    exact hdegrees.symm.trans hmonoDegree
+  have hpairMem :=
+    (pairVecDivVHCTargetPairsAtDegree_mem_iff degree node.quotientIndex
+      node.divisorIndex quotient divisor quotientTerm divisorTerm hquotient
+      hdivisor).2 ⟨hdpos, hsourceDegree⟩
+  have hsourcePair : pairVecDivVHCNodeSourcePair nodes i =
+      (node.quotientIndex, node.divisorIndex) := by
+    simp [pairVecDivVHCNodeSourcePair, hnode]
+  rw [hsourcePair]
+  refine ⟨hpairMem, by omega, ?_⟩
+  rw [pairVecDivVHCIndexedPairProductValue_of_get p node.quotientIndex
+    node.divisorIndex quotient divisor quotientTerm divisorTerm hquotient
+    hdivisor]
+  simp [pairVecDivVHCNodeProductValue, hnode, hquotient, hdivisor]
+
+/-- The reverse half of the indexed bijection: a target pair maps to its
+fixed divisor-row node, and reading that node recovers the original pair and
+the identical coefficient contribution. -/
+theorem pairVecDivVHCTargetPair_ownedNode
+    (p degreeLimit dividendIndex resetH : Nat)
+    (dividend quotient divisor : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (frontier : PairVecDivVHCFrontier)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : PairVecDivVHCStateCovered heap nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontier.degree < degreeLimit)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (pair : Nat × Nat)
+    (hpair : pair ∈ PairVecDivVHCTargetPairsAtDegree frontier.degree
+      quotient divisor) :
+    pair.2 - 1 ∈ PairVecDivVHCHeapOwnedNodesAtDegree frontier.degree heap
+        owners nodes ∧
+      pairVecDivVHCNodeSourcePair nodes (pair.2 - 1) = pair ∧
+      pairVecDivVHCNodeProductValue p nodes quotient divisor (pair.2 - 1) =
+        pairVecDivVHCIndexedPairProductValue p quotient divisor pair := by
+  rcases pair with ⟨q, d⟩
+  rw [PairVecDivVHCTargetPairsAtDegree] at hpair
+  rcases Finset.mem_filter.mp hpair with ⟨hindices, hdegree⟩
+  rcases Finset.mem_product.mp hindices with ⟨hq, hd⟩
+  rw [Finset.mem_range] at hq
+  rw [Finset.mem_Ico] at hd
+  rcases hd with ⟨hdpos, hd⟩
+  have hquotient : quotient[q]? = some quotient[q] :=
+    Array.getElem?_eq_getElem hq
+  have hdivisor : divisor[d]? = some divisor[d] :=
+    Array.getElem?_eq_getElem hd
+  simp [PairVecDivVHCPairAtDegree, hquotient, hdivisor] at hdegree
+  rcases pairVecDivVHCFrontierProduct_owned_cursor p degreeLimit dividendIndex
+      resetH d q dividend quotient divisor heap nodes owners frontier
+      quotient[q] divisor[d] hsize hfixed hstate hownership hhomogeneous
+      hresetReady hordered hdenotes hcanonical hprefix hfrontier hdpos hd
+      hquotient hdivisor hdegree hselect with
+    ⟨slot, head, node, hheap, hnode, hmem, hnodeD, hcursor⟩
+  have howned := pairVecDivVHCFrontierProduct_mem_ownedNodesAtDegree p
+    degreeLimit dividendIndex resetH d q dividend quotient divisor heap nodes
+    owners frontier quotient[q] divisor[d] hsize hfixed hstate hownership
+    hhomogeneous hresetReady hordered hdenotes hcanonical hprefix hfrontier
+    hdpos hd hquotient hdivisor hdegree hselect
+  refine ⟨howned, ?_, ?_⟩
+  · simp [pairVecDivVHCNodeSourcePair, hnode, ← hcursor, hnodeD]
+  · simp [pairVecDivVHCNodeProductValue,
+      pairVecDivVHCIndexedPairProductValue, hnode, ← hcursor, hnodeD,
+      hquotient, hdivisor]
+
+/-- Exact change of variables from generated-C++ heap owner nodes to the L2
+indexed quotient/divisor-tail pairs.  Both inverse laws are explicit, so this
+is a true bijective sum rewrite rather than a set-level coverage argument. -/
+theorem pairVecDivVHCHeapOwnerSum_eq_targetPairSum
+    (p degreeLimit dividendIndex resetH : Nat)
+    (dividend quotient divisor : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (frontier : PairVecDivVHCFrontier)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : PairVecDivVHCStateCovered heap nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontier.degree < degreeLimit)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    (∑ i ∈ PairVecDivVHCHeapOwnedNodesAtDegree frontier.degree heap owners
+        nodes, pairVecDivVHCNodeProductValue p nodes quotient divisor i) =
+      ∑ pair ∈ PairVecDivVHCTargetPairsAtDegree frontier.degree quotient
+        divisor, pairVecDivVHCIndexedPairProductValue p quotient divisor pair := by
+  symm
+  refine Finset.sum_bij'
+    (s := PairVecDivVHCTargetPairsAtDegree frontier.degree quotient divisor)
+    (t := PairVecDivVHCHeapOwnedNodesAtDegree frontier.degree heap owners nodes)
+    (f := pairVecDivVHCIndexedPairProductValue p quotient divisor)
+    (g := pairVecDivVHCNodeProductValue p nodes quotient divisor)
+    (fun pair _ => pair.2 - 1)
+    (fun i _ => pairVecDivVHCNodeSourcePair nodes i)
+    ?_ ?_ ?_ ?_ ?_
+  · intro pair hpair
+    exact (pairVecDivVHCTargetPair_ownedNode p degreeLimit dividendIndex resetH
+      dividend quotient divisor heap nodes owners frontier hsize hfixed hstate
+      hownership hhomogeneous hresetReady hordered hdenotes hcanonical hprefix
+      hfrontier hselect pair hpair).1
+  · intro i hi
+    exact (pairVecDivVHCOwnedNode_sourcePairAtDegree p frontier.degree i
+      quotient divisor heap nodes owners hfixed hdenotes hi).1
+  · intro pair hpair
+    exact (pairVecDivVHCTargetPair_ownedNode p degreeLimit dividendIndex resetH
+      dividend quotient divisor heap nodes owners frontier hsize hfixed hstate
+      hownership hhomogeneous hresetReady hordered hdenotes hcanonical hprefix
+      hfrontier hselect pair hpair).2.1
+  · intro i hi
+    exact (pairVecDivVHCOwnedNode_sourcePairAtDegree p frontier.degree i
+      quotient divisor heap nodes owners hfixed hdenotes hi).2.1
+  · intro pair hpair
+    exact (pairVecDivVHCTargetPair_ownedNode p degreeLimit dividendIndex resetH
+      dividend quotient divisor heap nodes owners frontier hsize hfixed hstate
+      hownership hhomogeneous hresetReady hordered hdenotes hcanonical hprefix
+      hfrontier hselect pair hpair).2.2.symm
+
 def pairVecDivVHCListProductCoeffValue (p degree : Nat) :
     List (UMonomial × Zp) → List (UMonomial × Zp) → ZMod p
   | [], _ => 0

@@ -985,3 +985,13 @@ every generated range-for and recursive loop used by SQF.
   reset 排除、堆所有权、行次数齐性、固定 divisor 指针和
   cursor-prefix 不变式，并保留具体节点索引，不会因相同系数值
   合并重数。下一步是证明 owner 方向的唯一项对并改写有限和。
+- owner cursor nodes 与 L2 索引项对的真正双射已闭合。新的
+  `PairVecDivVHCTargetPairsAtDegree` 以 `(quotientIndex,
+  divisorIndex)` 而非系数值保存目标次数项对，且只包含 divisor
+  tail。`pairVecDivVHCOwnedNode_sourcePairAtDegree` 从每个 owner
+  节点恢复真实源索引、次数命中与相同系数积；反向定理从
+  每个索引项对恢复固定行节点。
+  `pairVecDivVHCHeapOwnerSum_eq_targetPairSum` 使用显式左右逆
+  映射的 `Finset.sum_bij'` 证明两个有限和完全相等，因而
+  同时证明无遗漏、无重复和索引重数保持。下一步只剩将该
+  indexed pair sum 展开成已证明的 L2 list product coefficient。

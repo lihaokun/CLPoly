@@ -2158,6 +2158,74 @@ theorem pairVecDivVHCConsumeNode_progress (this : DenseUPolyZp)
               right
               simp
 
+/-- A consumed node is never lost from the source cursor partition: an
+advanced cursor is appended to `lin`, while an exhausted cursor is exactly
+the old `reset_h` slot and therefore enters the enlarged reset prefix.  Both
+destination regions grow monotonically. -/
+theorem pairVecDivVHCConsumeNode_location_progress
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    lin.toList.toFinset ⊆ lin'.toList.toFinset ∧
+      resetH ≤ resetH' ∧
+      (nodeIndex ∈ lin'.toList.toFinset ∨ nodeIndex < resetH') := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          refine ⟨?_, Nat.le_refl _, Or.inl ?_⟩
+          · intro i hi
+            simp only [List.mem_toFinset, Array.toList_push,
+              List.mem_append, List.mem_singleton] at hi ⊢
+            exact Or.inl hi
+          · simp
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              refine ⟨Finset.Subset.rfl, by omega, Or.inr ?_⟩
+              omega
+
+theorem pairVecDivVHCConsumeNode_next_of_success
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp) (hn : nodeIndex < nodes.size)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    next = nodes[nodeIndex].next := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  simp only [hn, ↓reduceDIte] at hrun
+  split at hrun <;> try contradiction
+  next hq =>
+    split at hrun <;> try contradiction
+    next hd =>
+      split at hrun
+      next hadvance =>
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        exact hrun.2.2.2.2.symm
+      next hadvance =>
+        split at hrun <;> try contradiction
+        next hexhausted =>
+          split at hrun <;> try contradiction
+          next horder =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            exact hrun.2.2.2.2.symm
+
 theorem pairVecDivVHCConsumeNode_coefficient_reduced
     (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
     (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
@@ -2581,6 +2649,43 @@ theorem pairVecDivVHCConsumeChain_unvisited (this : DenseUPolyZp)
               exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k' nodes
                 nodes' lin lin' resetH resetH' next quotient divisor hconsume
                 i hine
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeChain_location_monotone
+    (this : DenseUPolyZp) (current : Option Nat)
+    (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    lin.toList.toFinset ⊆ result.lin.toList.toFinset ∧
+      resetH ≤ result.resetH := by
+  cases current with
+  | none =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      exact ⟨Finset.Subset.rfl, Nat.le_refl _⟩
+  | some nodeIndex =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      split at hrun <;> try contradiction
+      next hmem =>
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            have hstep := pairVecDivVHCConsumeNode_location_progress this
+              nodeIndex k k' nodes nodes' lin lin' resetH resetH' next quotient
+              divisor hconsume
+            have htail := pairVecDivVHCConsumeChain_location_monotone this next
+              (unvisited.erase nodeIndex) k' nodes' lin' resetH' quotient
+              divisor result hrun
+            exact ⟨Finset.Subset.trans hstep.1 htail.1,
+              Nat.le_trans hstep.2.1 htail.2⟩
 termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
@@ -3587,6 +3692,81 @@ theorem pairVecDivVHCChainOwns_congr_on
             (owner.erase nodeIndex) nodes nodes' htail (by
               intro i hi
               exact hsame i (Finset.mem_of_mem_erase hi))
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeChain_owner_reclassified
+    (this : DenseUPolyZp) (current : Option Nat)
+    (owner unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (hownerSubset : owner ⊆ unvisited)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    owner ⊆ result.lin.toList.toFinset ∪ Finset.range result.resetH := by
+  cases current with
+  | none =>
+      rw [PairVecDivVHCChainOwns] at howns
+      subst owner
+      simp
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at howns
+      split at howns <;> try contradiction
+      next hownerMem =>
+        rcases howns with ⟨node, mono, hget, hmono, htailOwns⟩
+        have hmem : nodeIndex ∈ unvisited := hownerSubset hownerMem
+        rw [pairVecDivVHCConsumeChain] at hrun
+        simp only [hmem, ↓reduceDIte] at hrun
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            have hn : nodeIndex < nodes.size := by
+              by_contra hnot
+              rw [Array.getElem?_eq_none (by omega)] at hget
+              contradiction
+            have hnext := pairVecDivVHCConsumeNode_next_of_success this nodeIndex k k'
+              nodes nodes' lin lin' resetH resetH' next quotient divisor hn
+              hconsume
+            have hnodeEq : nodes[nodeIndex] = node := by
+              rw [Array.getElem?_eq_getElem hn] at hget
+              exact Option.some.inj hget
+            rw [hnodeEq] at hnext
+            subst next
+            have htailOwns' := pairVecDivVHCChainOwns_congr_on node.next
+              (owner.erase nodeIndex) nodes nodes' htailOwns (by
+                intro i hi
+                exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k'
+                  nodes nodes' lin lin' resetH resetH' node.next quotient
+                  divisor hconsume i (Finset.mem_erase.mp hi).1.symm)
+            have hownerErase : owner.erase nodeIndex ⊆
+                unvisited.erase nodeIndex := by
+              intro i hi
+              exact Finset.mem_erase.mpr ⟨(Finset.mem_erase.mp hi).1,
+                hownerSubset (Finset.mem_of_mem_erase hi)⟩
+            have ih := pairVecDivVHCConsumeChain_owner_reclassified this
+              node.next (owner.erase nodeIndex) (unvisited.erase nodeIndex) k'
+              nodes' lin' resetH' quotient divisor result htailOwns'
+              hownerErase hrun
+            have hstep := pairVecDivVHCConsumeNode_location_progress this
+              nodeIndex k k' nodes nodes' lin lin' resetH resetH' node.next
+              quotient divisor hconsume
+            have htailMonotone := pairVecDivVHCConsumeChain_location_monotone
+              this node.next (unvisited.erase nodeIndex) k' nodes' lin'
+              resetH' quotient divisor result hrun
+            intro i hi
+            by_cases heq : i = nodeIndex
+            · subst i
+              rcases hstep.2.2 with hlin | hreset
+              · exact Finset.mem_union_left _ (htailMonotone.1 hlin)
+              · exact Finset.mem_union_right _ (by
+                  rw [Finset.mem_range]
+                  exact Nat.lt_of_lt_of_le hreset htailMonotone.2)
+            · exact ih (Finset.mem_erase.mpr ⟨heq, hi⟩)
 termination_by owner.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)

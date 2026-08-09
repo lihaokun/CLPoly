@@ -536,3 +536,12 @@ every generated range-for and recursive loop used by SQF.
   frontier 的证据。下一步必须加强 heap/owner 表示为卷积覆盖不变量，
   证明这份执行 trace 不仅 sound，而且对当前 quotient×divisor 尾项
   complete 且无重复。
+- 卷积覆盖证明的节点位置基础已闭合。对一次真实 `ConsumeNode`，现精确
+  证明：advance 分支把当前节点加入 `lin`，exhausted 分支利用源断言
+  `nodeIndex = reset_h` 把它纳入扩张后的 reset 前缀；同时旧 `lin` 集合
+  与旧 `reset_h` 上界都单调保持。该性质沿实际 `next` 链按 owner card
+  良基递归提升：exact owner 中每个节点在完整消费结束后必定位于最终
+  `lin` 或最终 reset 前缀。递归中使用真实 node update 后的 tail chain
+  ownership 与实际返回 `next`，没有用节点计数相等替代成员覆盖。
+  下一步把此“已消费 owner 重分类”与未消费 heap bucket 的 disjoint
+  ownership 合并，建立全 node block 的 `heap ∪ lin ∪ reset` 完整分区。

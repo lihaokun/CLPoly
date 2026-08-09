@@ -2434,6 +2434,52 @@ termination_by owner.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+/-- Exact ownership of every active heap bucket, keyed by its head node.
+The source heap contains each head once, and different heads own disjoint
+`next` chains. -/
+def PairVecDivVHCHeapChainOwnership (heap : Array Nat)
+    (owners : Nat → Finset Nat) (nodes : Array PairVecDivVHCNode) : Prop :=
+  (∀ (slot head : Nat), heap[slot]? = some head →
+      PairVecDivVHCChainOwns (some head) (owners head) nodes) ∧
+    (∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right) ∧
+    (∀ (left right leftHead rightHead : Nat), heap[left]? = some leftHead →
+      heap[right]? = some rightHead → leftHead ≠ rightHead →
+      Disjoint (owners leftHead) (owners rightHead))
+
+theorem pairVecDivVHCHeapChainOwnership_root_onlyAt
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (howns : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnonempty : 0 < heap.size) :
+    PairVecDivVHCOnlyAt heap heap[0] 0 := by
+  intro slot hget
+  have hslot : slot < heap.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  exact howns.2.1 slot 0 heap[0] hget
+    (by rw [Array.getElem?_eq_getElem hnonempty])
+
+theorem pairVecDivVHCHeapChainOwnership_root_owns
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (howns : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnonempty : 0 < heap.size) :
+    PairVecDivVHCChainOwns (some heap[0]) (owners heap[0]) nodes :=
+  howns.1 0 heap[0] (by rw [Array.getElem?_eq_getElem hnonempty])
+
+theorem pairVecDivVHCHeapChainOwnership_root_disjoint
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (howns : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnonempty : 0 < heap.size) (slot : Nat) (hslot : slot < heap.size)
+    (hne : heap[slot] ≠ heap[0]) :
+    Disjoint (owners heap[slot]) (owners heap[0]) :=
+  howns.2.2 slot 0 heap[slot] heap[0]
+    (by rw [Array.getElem?_eq_getElem hslot])
+    (by rw [Array.getElem?_eq_getElem hnonempty]) hne
+
 theorem pairVecDivVHCAllActiveNodesBelow.heapBelow (degreeLimit : Nat)
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
     (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes) :
@@ -3350,6 +3396,39 @@ theorem pairVecDivVHCConsumeRootBucket_preserves_disjoint_chain
     (pairVecDivVHCChainOwns_subset_range _ _ _ hotherOwns) hdisjoint hrun
   exact ⟨hpreserved.1, pairVecDivVHCChainOwns_congr_on otherCurrent
     otherOwner nodes result.nodes hotherOwns hpreserved.2⟩
+
+/-- Consuming the real root bucket preserves every other heap bucket's exact
+chain ownership.  This is the heap-wide lifting of the local destructive
+update isolation theorem. -/
+theorem pairVecDivVHCConsumeRootBucket_preserves_other_heap_chains
+    (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat)
+    (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∀ (slot head : Nat), heap[slot]? = some head → head ≠ heap[0] →
+      PairVecDivVHCChainOwns (some head) (owners head) result.nodes := by
+  intro slot head hget hne
+  have hslot : slot < heap.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  have hrootOwns := pairVecDivVHCHeapChainOwnership_root_owns heap owners nodes
+    hownership hheap
+  have hotherOwns := hownership.1 slot head hget
+  have hhead : heap[slot] = head := by
+    rw [Array.getElem?_eq_getElem hslot] at hget
+    exact Option.some.inj hget
+  have hdisjoint := pairVecDivVHCHeapChainOwnership_root_disjoint heap owners
+    nodes hownership hheap slot hslot (by simpa [hhead] using hne)
+  exact (pairVecDivVHCConsumeRootBucket_preserves_disjoint_chain this heap k
+    nodes lin resetH quotient divisor result (owners heap[0])
+    (owners head) (some head) hheap hrootOwns hotherOwns (by simpa [hhead]
+      using hdisjoint)
+    hrun).2
 
 theorem pairVecDivVHCActivatedTail_degree_lt_frontier (p frontierDegree : Nat)
     (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)

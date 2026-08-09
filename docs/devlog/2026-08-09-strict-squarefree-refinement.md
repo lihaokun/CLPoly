@@ -283,6 +283,12 @@ every generated range-for and recursive loop used by SQF.
   sift-down 的 child-copy 和 saved-last-node 写入，没有把 extract 替换成
   抽象排序。剩余局部缺口是证明这些写入不复制存活 head，以得到
   slot 唯一性的 extract 保持。
+- 全 heap 的 bucket 所有权现已用 `PairVecDivVHCHeapChainOwnership`
+  显式建模：每个 head 精确拥有一条会耗尽 owner 集合的 `next`
+  chain，head slot 唯一，不同 head 的 owner 两两不交。由此已将
+  root-bucket 的局部隔离定理提升到全 heap：真实消费 root chain
+  后，所有其他活动 head 仍精确拥有原 chain。下一步仅需把
+  extract 的 slot 唯一性保持与已有 provenance/root-removal 引理组合。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

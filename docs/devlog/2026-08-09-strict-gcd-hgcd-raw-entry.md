@@ -61,6 +61,20 @@ semantic lemmas tied to their exact raw executions.  The remaining work is to
 thread these lemmas through one well-founded loop theorem and replace the
 raw entry's freely supplied decrease contract with that construction.
 
+Fixed-capacity providers were then generalized to exact-size dynamic
+providers, because checked HGCD returns new descriptor lengths in a new heap.
+The dynamic contracts expose precisely the divrem slices, the nested Euclid
+allocation, and the concrete recursive HGCD invocation/descendant workspaces
+at each represented reached state.  The divrem, Euclid, and HGCD branch
+theorems now have dynamic forms with no inherited-capacity premise.
+
+Composition also exposed that the checked-HGCD invariant theorem was still
+conditional on a successful raw return.  The first totality bridge now proves
+that the exact generated recursive base arm succeeds from its physical base
+workspace, for both `computeM` values.  Non-base totality remains to be built
+well-foundedly from the two smaller child executions and the stored concrete
+continuation executions before the main GCD loop can be called total.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

@@ -328,6 +328,14 @@ every generated range-for and recursive loop used by SQF.
   `BubbleBelow` 执行迁移到最终 heap，两条新 bucket 入堆分支的
   表示不变式核心已闭合。剩余 `VHC_insert` 局部缺口是 root/anchor
   等 monomial 时的 owner-union 合链。
+- root/anchor 等 monomial 的 owner-union 合链现已闭合：旧 head 被唯一
+  fresh head 替换，新 owner 为 `{newNode} ∪ oldOwner`，其他 bucket
+  owner 不变；证明包括新链精确性、替换后 head 唯一性与所有
+  跨 bucket 不交性。在此基础上，完整 `pairVecDivVHCInsert`
+  的所有真实分支已统一证明 existential heap ownership 保持，前提
+  是 activation/reinsert 提供的新节点 freshness。下一步从旧节点
+  `mono = none` 和现有 exact-chain ownership 推出该 freshness，并将定理接入
+  activation/reinsert 良基循环。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

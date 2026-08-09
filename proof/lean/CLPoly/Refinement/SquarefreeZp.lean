@@ -1465,6 +1465,33 @@ theorem pairVecDivVHCPush_preserves_unique
     · simp only [hrightLast, ↓reduceIte] at hright
       exact hunique left right head hleft hright
 
+theorem pairVecDivVHCSet_fresh_preserves_unique
+    (heap : Array Nat) (slot newNode : Nat) (hslot : slot < heap.size)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hfresh : ∀ (i : Nat), heap[i]? ≠ some newNode) :
+    ∀ (left right head : Nat), (heap.set slot newNode)[left]? = some head →
+      (heap.set slot newNode)[right]? = some head → left = right := by
+  intro left right head hleft hright
+  by_cases hleftSlot : slot = left
+  · subst left
+    rw [Array.getElem?_set_self hslot] at hleft
+    simp only [Option.some.injEq] at hleft
+    subst head
+    by_cases hrightSlot : slot = right
+    · exact hrightSlot
+    · rw [Array.getElem?_set_ne hslot hrightSlot] at hright
+      exact False.elim (hfresh right hright)
+  · rw [Array.getElem?_set_ne hslot hleftSlot] at hleft
+    by_cases hrightSlot : slot = right
+    · subst right
+      rw [Array.getElem?_set_self hslot] at hright
+      simp only [Option.some.injEq] at hright
+      subst head
+      exact False.elim (hfresh left hleft)
+    · rw [Array.getElem?_set_ne hslot hrightSlot] at hright
+      exact hunique left right head hleft hright
+
 theorem pairVecDivVHCBubble_push_preserves_unique
     (stop newNode : Nat) (heap heap' : Array Nat)
     (hunique : ∀ (left right head : Nat), heap[left]? = some head →
@@ -3257,6 +3284,226 @@ theorem pairVecDivVHCHeapChainOwnership_bubbleBelow_fresh
     owners' nodes' hpush hfrom
     (pairVecDivVHCBubbleBelow_push_preserves_unique anchor newNode heap heap'
       hownership.2.1 hfreshHead hbubble)
+
+theorem pairVecDivVHCHeapChainOwnership_merge_fresh
+    (heap : Array Nat) (owners : Nat → Finset Nat) (slot newNode : Nat)
+    (nodes nodes' : Array PairVecDivVHCNode) (node : PairVecDivVHCNode)
+    (mono : UMonomial) (hslot : slot < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some mono)
+    (hfreshHead : ∀ (i : Nat), heap[i]? ≠ some newNode)
+    (hfreshOwners : ∀ (i head : Nat), heap[i]? = some head →
+      newNode ∉ owners head)
+    (hset : pairVecDivVHCSetNext newNode (some heap[slot]) nodes = .ok nodes') :
+    PairVecDivVHCHeapChainOwnership (heap.set slot newNode)
+      (fun head => if head = newNode then insert newNode (owners heap[slot])
+        else owners head) nodes' := by
+  let owners' := fun head => if head = newNode then
+    insert newNode (owners heap[slot]) else owners head
+  have holdGet : heap[slot]? = some heap[slot] := by
+    rw [Array.getElem?_eq_getElem hslot]
+  have holdOwns := hownership.1 slot heap[slot] holdGet
+  have hfreshOld := hfreshOwners slot heap[slot] holdGet
+  have hnewOwns := pairVecDivVHCSetNext_chainOwns_insert newNode
+    (some heap[slot]) nodes nodes' node mono (owners heap[slot]) hnode hmono
+    hfreshOld holdOwns hset
+  refine ⟨?_, pairVecDivVHCSet_fresh_preserves_unique heap slot newNode hslot
+    hownership.2.1 hfreshHead, ?_⟩
+  · intro targetSlot head hget
+    by_cases hat : slot = targetSlot
+    · subst targetSlot
+      rw [Array.getElem?_set_self hslot] at hget
+      simp only [Option.some.injEq] at hget
+      subst head
+      simpa [owners'] using hnewOwns
+    · rw [Array.getElem?_set_ne hslot hat] at hget
+      have hne : head ≠ newNode := by
+        intro heq
+        subst head
+        exact hfreshHead targetSlot hget
+      have hold := hownership.1 targetSlot head hget
+      have hold' := pairVecDivVHCSetNext_preserves_disjoint_chain newNode
+        (some heap[slot]) nodes nodes' (some head) (owners head)
+        (hfreshOwners targetSlot head hget) hold hset
+      simpa [owners', hne] using hold'
+  · intro left right leftHead rightHead hleft hright hne
+    by_cases hleftNew : leftHead = newNode
+    · subst leftHead
+      have hrightNew : rightHead ≠ newNode := fun heq => hne heq.symm
+      have hrightNotSlot : slot ≠ right := by
+        intro heq
+        subst right
+        rw [Array.getElem?_set_self hslot] at hright
+        exact hrightNew (Option.some.inj hright).symm
+      rw [Array.getElem?_set_ne hslot hrightNotSlot] at hright
+      have hrightOldNe : rightHead ≠ heap[slot] := by
+        intro heq
+        subst rightHead
+        have := hownership.2.1 right slot heap[slot] hright holdGet
+        exact hrightNotSlot this.symm
+      simp only [owners', if_pos rfl, hrightNew, ↓reduceIte]
+      exact Finset.disjoint_left.mpr (by
+        intro x hx hxo
+        rw [Finset.mem_insert] at hx
+        rcases hx with rfl | hx
+        · exact hfreshOwners right rightHead hright hxo
+        · exact Finset.disjoint_left.mp
+            (hownership.2.2 slot right heap[slot] rightHead holdGet hright
+              hrightOldNe.symm) hx hxo)
+    · by_cases hrightNew : rightHead = newNode
+      · subst rightHead
+        have hleftNotSlot : slot ≠ left := by
+          intro heq
+          subst left
+          rw [Array.getElem?_set_self hslot] at hleft
+          exact hleftNew (Option.some.inj hleft).symm
+        rw [Array.getElem?_set_ne hslot hleftNotSlot] at hleft
+        have hleftOldNe : leftHead ≠ heap[slot] := by
+          intro heq
+          subst leftHead
+          have := hownership.2.1 left slot heap[slot] hleft holdGet
+          exact hleftNotSlot this.symm
+        simp only [owners', hleftNew, ↓reduceIte, if_pos rfl]
+        exact Finset.disjoint_left.mpr (by
+          intro x hxo hx
+          rw [Finset.mem_insert] at hx
+          rcases hx with rfl | hx
+          · exact hfreshOwners left leftHead hleft hxo
+          · exact Finset.disjoint_left.mp
+              (hownership.2.2 left slot leftHead heap[slot] hleft holdGet
+                hleftOldNe) hxo hx)
+      · have hleftNotSlot : slot ≠ left := by
+          intro heq
+          subst left
+          rw [Array.getElem?_set_self hslot] at hleft
+          exact hleftNew (Option.some.inj hleft).symm
+        have hrightNotSlot : slot ≠ right := by
+          intro heq
+          subst right
+          rw [Array.getElem?_set_self hslot] at hright
+          exact hrightNew (Option.some.inj hright).symm
+        rw [Array.getElem?_set_ne hslot hleftNotSlot] at hleft
+        rw [Array.getElem?_set_ne hslot hrightNotSlot] at hright
+        simpa [owners', hleftNew, hrightNew] using
+          hownership.2.2 left right leftHead rightHead hleft hright hne
+
+theorem pairVecDivVHCInsert_preserves_heapChainOwnership_of_fresh
+    (newNode : Nat) (heap heap' : Array Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (node : PairVecDivVHCNode) (mono : UMonomial)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some mono)
+    (hfreshHead : ∀ (slot : Nat), heap[slot]? ≠ some newNode)
+    (hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+      newNode ∉ owners head)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCHeapChainsOwned heap' nodes' := by
+  cases hnew : pairVecDivVHCMono newNode nodes with
+  | error fault => simp [pairVecDivVHCInsert, hnew] at hrun
+  | ok newMono =>
+      by_cases hempty : heap.size = 0
+      · have heq : heap = #[] := Array.eq_empty_of_size_eq_zero hempty
+        subst heap
+        unfold pairVecDivVHCInsert at hrun
+        simp only [hnew, Array.size_empty, ↓reduceDIte] at hrun
+        cases hset : pairVecDivVHCSetNext newNode none nodes with
+        | error fault => simp [hset] at hrun
+        | ok updated =>
+            rw [hset] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl⟩
+            exact ⟨_, pairVecDivVHCHeapChainOwnership_push_fresh #[] owners
+              newNode nodes updated node mono hownership hnode hmono
+              (by simp) (by simp) hset⟩
+      · have hheap : 0 < heap.size := Nat.pos_of_ne_zero hempty
+        cases hroot : pairVecDivVHCMono heap[0] nodes with
+        | error fault =>
+            simp [pairVecDivVHCInsert, hnew, hempty, hroot] at hrun
+        | ok rootMono =>
+            by_cases hequal : newMono.deg = rootMono.deg
+            · unfold pairVecDivVHCInsert at hrun
+              simp only [hnew, hempty, ↓reduceDIte, hroot, hequal] at hrun
+              cases hset : pairVecDivVHCSetNext newNode (some heap[0]) nodes with
+              | error fault => simp [hset] at hrun
+              | ok updated =>
+                  rw [hset] at hrun
+                  simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                  rcases hrun with ⟨rfl, rfl⟩
+                  exact ⟨_, pairVecDivVHCHeapChainOwnership_merge_fresh heap
+                    owners 0 newNode nodes updated node mono hheap hownership
+                    hnode hmono hfreshHead hfreshOwners hset⟩
+            · by_cases hgreater : newMono.deg > rootMono.deg
+              · unfold pairVecDivVHCInsert at hrun
+                simp only [hnew, hempty, ↓reduceDIte, hroot, hequal,
+                  hgreater] at hrun
+                cases hset : pairVecDivVHCSetNext newNode none nodes with
+                | error fault => simp [hset] at hrun
+                | ok updated =>
+                    rw [hset] at hrun
+                    cases hbubble : pairVecDivVHCBubble heap.size 0 newNode
+                        (heap.push newNode) with
+                    | error fault => simp [hbubble] at hrun
+                    | ok shifted =>
+                        rw [hbubble] at hrun
+                        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                        rcases hrun with ⟨rfl, rfl⟩
+                        exact ⟨_,
+                          pairVecDivVHCHeapChainOwnership_bubble_fresh heap
+                            shifted owners 0 newNode nodes updated node mono
+                            hownership hnode hmono hfreshHead hfreshOwners hset
+                            hbubble⟩
+              · cases hanchor : pairVecDivVHCFindAnchor newMono.deg
+                    (pairVecDivVHCParent heap.size) heap nodes with
+                | error fault =>
+                    simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
+                      hgreater, hanchor] at hrun
+                | ok anchor =>
+                    by_cases ha : anchor < heap.size
+                    · cases hanchorMono : pairVecDivVHCMono heap[anchor] nodes with
+                      | error fault =>
+                          simp [pairVecDivVHCInsert, hnew, hempty, hroot,
+                            hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                      | ok anchorMono =>
+                          by_cases hequalAnchor :
+                              newMono.deg = anchorMono.deg
+                          · unfold pairVecDivVHCInsert at hrun
+                            simp only [hnew, hempty, ↓reduceDIte, hroot,
+                              hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                            simp only [hequalAnchor] at hrun
+                            cases hset : pairVecDivVHCSetNext newNode
+                                (some heap[anchor]) nodes with
+                            | error fault => simp [hset] at hrun
+                            | ok updated =>
+                                rw [hset] at hrun
+                                simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                                rcases hrun with ⟨rfl, rfl⟩
+                                exact ⟨_,
+                                  pairVecDivVHCHeapChainOwnership_merge_fresh
+                                    heap owners anchor newNode nodes nodes' node
+                                    mono ha hownership hnode hmono hfreshHead
+                                    hfreshOwners hset⟩
+                          · unfold pairVecDivVHCInsert at hrun
+                            simp only [hnew, hempty, ↓reduceDIte, hroot,
+                              hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                            simp only [hequalAnchor] at hrun
+                            cases hset : pairVecDivVHCSetNext newNode none nodes with
+                            | error fault => simp [hset] at hrun
+                            | ok updated =>
+                                rw [hset] at hrun
+                                cases hbubble : pairVecDivVHCBubbleBelow
+                                    heap.size anchor newNode (heap.push newNode) with
+                                | error fault => simp [hbubble] at hrun
+                                | ok shifted =>
+                                    rw [hbubble] at hrun
+                                    simp only [Except.ok.injEq,
+                                      Prod.mk.injEq] at hrun
+                                    rcases hrun with ⟨rfl, rfl⟩
+                                    exact ⟨_,
+                                      pairVecDivVHCHeapChainOwnership_bubbleBelow_fresh
+                                        heap heap' owners anchor newNode nodes
+                                        nodes' node mono hownership hnode hmono
+                                        hfreshHead hfreshOwners hset hbubble⟩
+                    · simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
+                        hgreater, hanchor, ha] at hrun
 
 theorem pairVecDivVHCHeapChainOwnership_root_onlyAt
     (heap : Array Nat) (owners : Nat → Finset Nat)

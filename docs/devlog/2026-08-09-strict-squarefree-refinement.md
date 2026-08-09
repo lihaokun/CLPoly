@@ -921,3 +921,14 @@ every generated range-for and recursive loop used by SQF.
   行的 completeness，不是两个无关的存在性列表。下一步将
   frontier-row owned-cursor 定理与该 coverage 组合，将 products value 替换为
   L2 polynomial multiplication 在 frontier degree 的系数。
+- products coverage 已从集合式 membership 进一步加强到精确重数语义。
+  新定义 `pairVecDivVHCNodeProductValue` 直接从真实 node cursor 读取
+  quotient/divisor 系数并在 `ZMod p` 中相乘。对任意具体
+  `PairVecDivVHCConsumeTrace`，新定理证明 `ProductsValue products`
+  精确等于 owner Finset 上的 node-product 求和。证明沿 trace 归纳，
+  用 `owner = insert nodeIndex (owner.erase nodeIndex)` 分离当前行，并用
+  consume-node 对其余 owner lookup 的精确保持搬运尾和。因此即使
+  多个不同行恰好产生相同系数对，也会按行数重复计入，不会把
+  membership coverage 误当成 multiset equality。下一步沿 equal-degree
+  extract 循环对这个 owner-sum 等式做 disjoint union，再与所有 frontier
+  rows 的唯一 cursor 对应连接。

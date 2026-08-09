@@ -8181,6 +8181,21 @@ def PairVecDivVHCStoredProductAtDegree (degree : Nat)
     quotientTerm.2.val = product.1 ∧ divisorTerm.2.val = product.2 ∧
       quotientTerm.1.deg + divisorTerm.1.deg = degree
 
+/-- The concrete coefficient product currently named by one cursor node.
+Invalid storage contributes zero; refinement invariants rule that case out for
+owned active nodes. -/
+def pairVecDivVHCNodeProductValue (p : Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient divisor : SparsePolyZp)
+    (nodeIndex : Nat) : ZMod p :=
+  match nodes[nodeIndex]? with
+  | none => 0
+  | some node =>
+      match quotient[node.quotientIndex]?, divisor[node.divisorIndex]? with
+      | some quotientTerm, some divisorTerm =>
+          (quotientTerm.2.val.toNat : ZMod p) *
+            (divisorTerm.2.val.toNat : ZMod p)
+      | _, _ => 0
+
 theorem pairVecDivVHCConsumeChain_preserves_linReady
     (this : DenseUPolyZp) (current : Option Nat)
     (owner unvisited : Finset Nat) (k : UInt64)
@@ -9424,6 +9439,69 @@ theorem PairVecDivVHCConsumeTrace.products_cover_owner
           rw [hsame] at hnode
           exact ⟨node, quotientTerm, divisorTerm, hnode, hquotient, hdivisor,
             List.mem_cons_of_mem _ hproduct⟩
+
+/-- A consume trace counts every owned row exactly once, including duplicate
+coefficient values.  This is the multiplicity-strengthened form of owner
+coverage needed for polynomial coefficients. -/
+theorem PairVecDivVHCConsumeTrace.productsValue_eq_owner_sum
+    (this : DenseUPolyZp) (p : Nat)
+    (quotient divisor : SparsePolyZp) (current : Option Nat)
+    (unvisited owner : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (result : PairVecDivVHCBucketResult)
+    (products : List (UInt64 × UInt64))
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (htrace : PairVecDivVHCConsumeTrace this quotient divisor current unvisited
+      k nodes lin resetH result products) :
+    pairVecDivVHCProductsValue p products =
+      ∑ i ∈ owner, pairVecDivVHCNodeProductValue p nodes quotient divisor i := by
+  induction htrace generalizing owner with
+  | done =>
+      simp only [PairVecDivVHCChainOwns] at howns
+      subst owner
+      simp [pairVecDivVHCProductsValue]
+  | @step nodeIndex unvisited k k' nodes nodes' lin lin' resetH resetH' next
+      result products hmem hn hq hd hconsume htail ih =>
+      rw [PairVecDivVHCChainOwns] at howns
+      split at howns <;> try contradiction
+      next hownerMem =>
+        rcases howns with ⟨node, mono, hnodeGet, hnodeMono, htailOwns⟩
+        have hnodeEq : nodes[nodeIndex] = node := by
+          rw [Array.getElem?_eq_getElem hn] at hnodeGet
+          exact Option.some.inj hnodeGet
+        subst node
+        have hnext := pairVecDivVHCConsumeNode_next this nodeIndex k k' nodes
+          nodes' lin lin' resetH resetH' next quotient divisor hn hconsume
+        have htailOwns' : PairVecDivVHCChainOwns next
+            (owner.erase nodeIndex) nodes' := by
+          rw [hnext]
+          exact pairVecDivVHCChainOwns_congr_on nodes[nodeIndex].next
+            (owner.erase nodeIndex) nodes nodes' htailOwns (by
+              intro i hi
+              exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k' nodes
+                nodes' lin lin' resetH resetH' next quotient divisor hconsume
+                i (Finset.mem_erase.mp hi).1.symm)
+        have htailValue := ih (owner.erase nodeIndex) htailOwns'
+        have htailSame :
+            (∑ i ∈ owner.erase nodeIndex,
+                pairVecDivVHCNodeProductValue p nodes' quotient divisor i) =
+              ∑ i ∈ owner.erase nodeIndex,
+                pairVecDivVHCNodeProductValue p nodes quotient divisor i := by
+          apply Finset.sum_congr rfl
+          intro i hi
+          have hne : nodeIndex ≠ i := (Finset.mem_erase.mp hi).1.symm
+          unfold pairVecDivVHCNodeProductValue
+          rw [pairVecDivVHCConsumeNode_get_ne this nodeIndex k k' nodes nodes'
+            lin lin' resetH resetH' next quotient divisor hconsume i hne]
+        have hownerEq : owner = insert nodeIndex (owner.erase nodeIndex) := by
+          exact (Finset.insert_erase hownerMem).symm
+        rw [hownerEq, Finset.sum_insert (by simp)]
+        simp only [pairVecDivVHCProductsValue]
+        rw [htailValue, htailSame]
+        unfold pairVecDivVHCNodeProductValue
+        rw [Array.getElem?_eq_getElem hn]
+        simp [Array.getElem?_eq_getElem hq,
+          Array.getElem?_eq_getElem hd]
 
 theorem pairVecDivVHCConsumeRootBucket_products_complete
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]

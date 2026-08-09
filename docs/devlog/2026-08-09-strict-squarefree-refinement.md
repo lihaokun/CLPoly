@@ -253,6 +253,12 @@ every generated range-for and recursive loop used by SQF.
   `resetH` 良基递归得到 `pairVecDivVHCActivateReset` 成功后
   `ResetReady 0`。下一步把单节点已有的 frontier/denotation 保持与此
   收缩证明同步组合，再抬升 equal-degree heap bucket。
+- `ActivateReset` 现已从单纯前缀终止加强为四项组合保持定理：在新
+  quotient 尾项次数等于 `frontier - divisorLead` 的真实 append 关系下，
+  每次 activate 利用 canonical divisor 尾项严格降次证明新 heap product
+  低于 frontier；随后的 insert 同时保持 frontier、denotation、永久
+  divisor 身份和剩余 reset 前缀。完整良基循环最终给出四项性质及
+  `ResetReady 0`，不再把语义保持留给调用端假设。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

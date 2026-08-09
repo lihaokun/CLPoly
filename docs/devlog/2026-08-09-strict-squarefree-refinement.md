@@ -514,3 +514,14 @@ every generated range-for and recursive loop used by SQF.
   下一步利用 canonical 严格次数顺序，把这一前缀/后缀分割转成
   `toPoly.coeff frontier.degree` 的精确读取定理，再与 equal-degree 乘积和
   合并。
+- selector coefficient 已接到真实 dividend 多项式系数。heap-source
+  构造子现在同时记录源比较器给出的严格事实：只要 dividend 指针仍在
+  界内，当前 dividend 项次数严格小于所选 root 次数。对 dividend-source
+  分支，canonical chain 的成员系数定理直接证明机器 word 转入 `ZMod`
+  后等于 `toPoly.coeff`。对 heap-source 分支，证明遍历任意真实
+  `dividend.toList` 成员并恢复其数组索引：指针前的成员由
+  `ConsumedDividendAbove + decrease` 严格高于 root；指针处及之后的成员
+  由 selector 比较与 canonical index order 严格低于 root。因此该次数
+  完全不存在于 dividend，`listSum` 系数确为零。这排除了把 heap 分支的
+  零初值当作无条件规格默认值。下一步把该等式与 equal-degree trace
+  求和合并成 outer iteration 当前次数的 residual coefficient 等式。

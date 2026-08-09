@@ -2867,7 +2867,9 @@ inductive PairVecDivVHCFrontierSource (dividendIndex : Nat)
         (PairVecDivVHCFrontier.mk dividend[dividendIndex].1.deg
           dividend[dividendIndex].2.val (dividendIndex + 1))
   | heap (hheap : 0 < heap.size) (rootMono : UMonomial)
-      (hmono : pairVecDivVHCMono heap[0] nodes = .ok rootMono) :
+      (hmono : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+      (hdominates : ∀ hindex : dividendIndex < dividend.size,
+        dividend[dividendIndex].1.deg < rootMono.deg) :
       PairVecDivVHCFrontierSource dividendIndex dividend heap nodes
         (PairVecDivVHCFrontier.mk rootMono.deg 0 dividendIndex)
 
@@ -2896,6 +2898,7 @@ theorem pairVecDivVHCSelectFrontier_has_source (dividendIndex : Nat)
           simp only [Except.ok.injEq] at hrun
           rw [← hrun]
           exact PairVecDivVHCFrontierSource.heap hheap rootMono hmono
+            (fun _ => Nat.lt_of_not_ge hdegree)
     next hheap =>
       simp only [Except.ok.injEq] at hrun
       rw [← hrun]
@@ -2908,6 +2911,7 @@ theorem pairVecDivVHCSelectFrontier_has_source (dividendIndex : Nat)
         simp only [Except.ok.injEq] at hrun
         rw [← hrun]
         exact PairVecDivVHCFrontierSource.heap hheap rootMono hmono
+          (fun hindex => by omega)
 
 theorem pairVecDivVHCSelectFrontier_coefficient_reduced
     (p dividendIndex : Nat) (dividend : SparsePolyZp) (heap : Array Nat)
@@ -3005,7 +3009,7 @@ theorem pairVecDivVHCSelectFrontier_preserves_consumed_above
       · have hold : i < dividendIndex := by omega
         exact Nat.le_trans (Nat.le_of_lt hdecrease)
           (hconsumed i term hold hget)
-  | heap hheap rootMono hmono =>
+  | heap hheap rootMono hmono hdominates =>
       intro i term hi hget
       change i < dividendIndex at hi
       exact Nat.le_trans (Nat.le_of_lt hdecrease)
@@ -8539,6 +8543,80 @@ theorem listSum_coeff_of_mem_chain (p : Nat)
           chain_gt_all_after_head head rest hchain term hrest
         rw [if_neg (by omega), zero_add]
         exact ih hchain.tail hrest
+
+theorem listSum_coeff_zero_of_degree_absent (p degree : Nat)
+    (terms : List (UMonomial × Zp))
+    (habsent : ∀ term ∈ terms, term.1.deg ≠ degree) :
+    (listSum p terms).coeff degree = 0 := by
+  induction terms with
+  | nil => simp [listSum]
+  | cons term rest ih =>
+      rw [listSum_cons, Polynomial.coeff_add, Polynomial.coeff_monomial,
+        if_neg (habsent term List.mem_cons_self),
+        ih (by
+          intro item hitem
+          exact habsent item (List.mem_cons_of_mem term hitem))]
+      simp
+
+/-- The selector's machine-word coefficient is the actual dividend
+polynomial coefficient at the selected degree.  In the heap-source case the
+proof excludes that degree from both sides of the concrete dividend pointer:
+the processed prefix is above the strict loop bound, while canonical ordering
+and the selector comparison put the unprocessed suffix below the heap root. -/
+theorem pairVecDivVHCSelectFrontier_coefficient_toPoly
+    (p degreeLimit dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (frontier : PairVecDivVHCFrontier)
+    (hcanonical : SparsePolyZp.Canonical p dividend)
+    (hconsumed : PairVecDivVHCConsumedDividendAbove degreeLimit dividendIndex
+      dividend)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hrun : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    (frontier.coefficient.toNat : ZMod p) =
+      (SparsePolyZp.toPoly p dividend).coeff frontier.degree := by
+  have hsource := pairVecDivVHCSelectFrontier_has_source dividendIndex
+    dividend heap nodes frontier hrun
+  cases hsource with
+  | dividend hindex =>
+      have htermMem : dividend[dividendIndex] ∈ dividend.toList :=
+        Array.getElem_mem_toList hindex
+      have hcoefficient := listSum_coeff_of_mem_chain p dividend.toList
+        dividend[dividendIndex] hcanonical.2.1 htermMem
+      unfold SparsePolyZp.toPoly
+      rw [hcoefficient]
+      rfl
+  | heap hheap rootMono hmono hdominates =>
+      change rootMono.deg < degreeLimit at hdecrease
+      change ((0 : UInt64).toNat : ZMod p) =
+        (SparsePolyZp.toPoly p dividend).coeff rootMono.deg
+      rw [show (0 : UInt64).toNat = 0 by rfl, Nat.cast_zero]
+      symm
+      unfold SparsePolyZp.toPoly
+      apply listSum_coeff_zero_of_degree_absent
+      intro term hterm
+      rcases List.getElem_of_mem hterm with ⟨i, hiList, hgetList⟩
+      have hi : i < dividend.size := by simpa using hiList
+      have htermEq : term = dividend[i] := by
+        rw [← Array.getElem_toList hi]
+        exact hgetList.symm
+      clear hgetList hterm
+      subst term
+      have hget : dividend[i]? = some dividend[i] :=
+        Array.getElem?_eq_getElem hi
+      by_cases hprefix : i < dividendIndex
+      · have habove := hconsumed i dividend[i] hprefix hget
+        omega
+      · have hsuffix : dividendIndex ≤ i := by omega
+        have hindex : dividendIndex < dividend.size :=
+          Nat.lt_of_le_of_lt hsuffix hi
+        have hheadBelow := hdominates hindex
+        by_cases heq : i = dividendIndex
+        · subst i
+          omega
+        · have htail := canonical_degree_lt_of_index_lt p dividend
+            hcanonical dividendIndex i hindex hi (by omega)
+          omega
 
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)

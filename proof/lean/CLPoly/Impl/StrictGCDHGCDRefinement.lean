@@ -205,6 +205,339 @@ theorem matRowUpdate_succeeds (this : DenseUPolyZp)
     rw [if_neg hactiveRaw]
     rfl
 
+/-- Non-circular physical precondition for one complete HGCD iterator step.
+The row workspaces are exposed only after the preceding *actual* generated
+call has returned.  No field assumes either row update succeeds and no field
+contains an L2 polynomial or result record. -/
+structure HgcdIterationTotalWorkspace (this : DenseUPolyZp)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (state : HgcdIterState) (hM : state.matrix.Valid) : Type where
+  validQ : state.heap.ValidU64Slice Q
+    (state.lenA - (state.lenB - 1))
+  validR : state.heap.ValidU64Slice state.T
+    (Nat.min state.lenA (state.lenB - 1))
+  validW3 : state.heap.ValidWord3Slice W3 state.lenA
+  quotientCapacity : state.lenA - (state.lenB - 1) < limbBase
+  rA : state.T.region ≠ state.A.region
+  wA : W3.region ≠ state.A.region
+  wB : W3.region ≠ state.B.region
+  qB : Q.region ≠ state.B.region
+  qW : Q.region ≠ W3.region
+  rW : state.T.region ≠ W3.region
+  rQ : state.T.region ≠ Q.region
+  rB : state.T.region ≠ state.B.region
+  qMatrix : ∀ i : Fin 4,
+    Q.region ≠ (hgcdMatPtr state.matrix hM i).region
+  rMatrix : ∀ i : Fin 4,
+    state.T.region ≠ (hgcdMatPtr state.matrix hM i).region
+  wMatrix : ∀ i : Fin 4,
+    W3.region ≠ (hgcdMatPtr state.matrix hM i).region
+  row23Workspace : ∀ (heap1 : RawHeap) (lenQ lenR : Nat),
+    Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+      state.A state.lenA state.B state.lenB W3 state.heap =
+        .ok (heap1, lenQ, lenR) →
+    MatRowUpdateWorkspace state.matrix (2 : Fin 4) (3 : Fin 4) Q lenQ
+      state.A state.t scratch heap1 hM
+  row01Workspace : ∀ (heap1 : RawHeap) (lenQ lenR : Nat)
+    (row23 : MatRowUpdateResult) (h23 : row23.matrix.Valid),
+    Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+      state.A state.lenA state.B state.lenB W3 state.heap =
+        .ok (heap1, lenQ, lenR) →
+    dense_upoly_zp__mat_row_update_ir this state.matrix (2 : Fin 4)
+      (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1 =
+        .ok row23 →
+    MatRowUpdateWorkspace row23.matrix (0 : Fin 4) (1 : Fin 4) Q lenQ
+      row23.T row23.t scratch row23.heap h23
+  divisorGuard23 : ∀ (heap1 : RawHeap) (lenQ lenR : Nat)
+    (row23 : MatRowUpdateResult) (_h23 : row23.matrix.Valid),
+    Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+      state.A state.lenA state.B state.lenB W3 state.heap =
+        .ok (heap1, lenQ, lenR) →
+    dense_upoly_zp__mat_row_update_ir this state.matrix (2 : Fin 4)
+      (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1 =
+        .ok row23 →
+    MatRowUpdateGuardWorkspace state.matrix (2 : Fin 4) Q lenQ state.A
+      state.t scratch state.B state.lenB hM
+  divisorGuard01 : ∀ (heap1 : RawHeap) (lenQ lenR : Nat)
+    (row23 : MatRowUpdateResult) (h23 : row23.matrix.Valid),
+    Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+      state.A state.lenA state.B state.lenB W3 state.heap =
+        .ok (heap1, lenQ, lenR) →
+    dense_upoly_zp__mat_row_update_ir this state.matrix (2 : Fin 4)
+      (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1 =
+        .ok row23 →
+    MatRowUpdateGuardWorkspace row23.matrix (0 : Fin 4) Q lenQ row23.T
+      row23.t scratch state.B state.lenB h23
+  remainderGuard23 : ∀ (heap1 : RawHeap) (lenQ lenR : Nat)
+    (row23 : MatRowUpdateResult) (_h23 : row23.matrix.Valid),
+    Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+      state.A state.lenA state.B state.lenB W3 state.heap =
+        .ok (heap1, lenQ, lenR) →
+    dense_upoly_zp__mat_row_update_ir this state.matrix (2 : Fin 4)
+      (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1 =
+        .ok row23 →
+    MatRowUpdateGuardWorkspace state.matrix (2 : Fin 4) Q lenQ state.A
+      state.t scratch state.T lenR hM
+  remainderGuard01 : ∀ (heap1 : RawHeap) (lenQ lenR : Nat)
+    (row23 : MatRowUpdateResult) (h23 : row23.matrix.Valid),
+    Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+      state.A state.lenA state.B state.lenB W3 state.heap =
+        .ok (heap1, lenQ, lenR) →
+    dense_upoly_zp__mat_row_update_ir this state.matrix (2 : Fin 4)
+      (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1 =
+        .ok row23 →
+    MatRowUpdateGuardWorkspace row23.matrix (0 : Fin 4) Q lenQ row23.T
+      row23.t scratch state.T lenR h23
+
+/-- One nonterminal generated HGCD iterator step is total from staged physical
+safety.  The returned semantic state is extracted from the same divrem and row
+update executions exhibited by the theorem. -/
+theorem hgcdIteration_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3) (scratch : RawPtr UInt64)
+    (left right currentA currentB : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (state : HgcdIterState) (hM : state.matrix.Valid)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hinvariant : HgcdIterRawInvariant this left right currentA currentB
+      entries state hM)
+    (hlenB : 0 < state.lenB)
+    (physical : HgcdIterationTotalWorkspace this Q W3 scratch state hM) :
+    ∃ heap1 lenQ lenR row23 row01 quotient remainder h01,
+      Generated.StrictDivrem.dense_upoly_zp__poly_divrem_ir this Q state.T
+        state.A state.lenA state.B state.lenB W3 state.heap =
+          .ok (heap1, lenQ, lenR) ∧
+      dense_upoly_zp__mat_row_update_ir this state.matrix (2 : Fin 4)
+        (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1 =
+          .ok row23 ∧
+      dense_upoly_zp__mat_row_update_ir this row23.matrix (0 : Fin 4)
+        (1 : Fin 4) Q lenQ row23.T row23.lenT row23.t scratch row23.heap =
+          .ok row01 ∧
+      HgcdMatRawDenseRep this row01.heap row01.matrix
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
+        h01 ∧
+      RawDensePolyRep this row01.heap state.B state.lenB currentB ∧
+      RawDensePolyRep this row01.heap state.T lenR remainder ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdTransform left right currentB
+        remainder
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 0)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 1)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 2)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 3) ∧
+      CLPoly.Impl.StrictHGCDRefinement.HgcdSignedDet (-state.sgn)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 0)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 1)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 2)
+        (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries 3) ∧
+      normalize (EuclideanDomain.gcd currentA currentB) =
+        normalize (EuclideanDomain.gcd currentB remainder) ∧
+      lenR < state.lenB := by
+  rcases polyDivrem_next_state this Q state.T state.A state.B state.lenA
+      state.lenB W3 state.heap currentA currentB hlenB hinvariant.aRep
+      hinvariant.bRep physical.validQ physical.validR physical.validW3
+      physical.quotientCapacity physical.rA physical.wA physical.wB
+      physical.qB physical.qW physical.rW physical.rQ physical.rB hcfg with
+    ⟨heap1, lenQ, lenR, quotient, remainder, hdiv, hQRep, hBRep1, hRRep1,
+      _, _, _, _, _, hlt⟩
+  have hMatrix1 := polyDivrem_preserves_hgcdMatRawDenseRep this state.matrix
+    Q state.T state.A state.B state.lenA state.lenB W3 state.heap heap1 lenQ
+    lenR entries hM hinvariant.aRep.1 hinvariant.bRep.1 physical.validQ
+    physical.validR physical.validW3 physical.qMatrix physical.rMatrix
+    physical.wMatrix hinvariant.matrixRep hdiv
+  have hws23 := physical.row23Workspace heap1 lenQ lenR hdiv
+  rcases matRowUpdate_succeeds this state.matrix (2 : Fin 4) (3 : Fin 4) Q
+      lenQ state.A state.lenT state.t scratch heap1 hM quotient (entries 2)
+      (entries 3) hcfg hp hws23 hQRep (hMatrix1 2) (hMatrix1 3) with
+    ⟨row23, hrow23⟩
+  have h23 := matRowUpdate_result_valid this state.matrix (2 : Fin 4)
+    (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1 row23 hrow23
+  have hQ23 := matRowUpdate_preserves_quotient_of_workspace this state.matrix
+    (2 : Fin 4) (3 : Fin 4) Q lenQ state.A state.lenT state.t scratch heap1
+    row23 hM quotient (entries 2) (entries 3) (by decide) hcfg hp hws23
+    hQRep (hMatrix1 2) (hMatrix1 3) hrow23
+  have hE0Old23 := matRowUpdate_preserves_matrix_entry_of_workspace this
+    state.matrix (2 : Fin 4) (3 : Fin 4) (0 : Fin 4) Q lenQ state.A
+    state.lenT state.t scratch heap1 row23 hM quotient (entries 2)
+    (entries 3) (entries 0) (by decide) (by decide) hcfg hp hws23 hQRep
+    (hMatrix1 2) (hMatrix1 3) (hMatrix1 0) hrow23
+  have hE1Old23 := matRowUpdate_preserves_matrix_entry_of_workspace this
+    state.matrix (2 : Fin 4) (3 : Fin 4) (1 : Fin 4) Q lenQ state.A
+    state.lenT state.t scratch heap1 row23 hM quotient (entries 2)
+    (entries 3) (entries 1) (by decide) (by decide) hcfg hp hws23 hQRep
+    (hMatrix1 2) (hMatrix1 3) (hMatrix1 1) hrow23
+  rcases matRowUpdate_preserves_other_descriptor this state.matrix
+      (2 : Fin 4) (3 : Fin 4) (0 : Fin 4) Q lenQ state.A state.lenT state.t
+      scratch heap1 row23 hM (by decide) (by decide) (by decide) hrow23 with
+    ⟨h23zero, hptr0, hlen0⟩
+  have hh23zero : h23zero = h23 := Subsingleton.elim _ _
+  subst h23zero
+  rcases matRowUpdate_preserves_other_descriptor this state.matrix
+      (2 : Fin 4) (3 : Fin 4) (1 : Fin 4) Q lenQ state.A state.lenT state.t
+      scratch heap1 row23 hM (by decide) (by decide) (by decide) hrow23 with
+    ⟨h23one, hptr1, hlen1⟩
+  have hh23one : h23one = h23 := Subsingleton.elim _ _
+  subst h23one
+  have hE0_23 : RawDensePolyRep this row23.heap
+      (hgcdMatPtr row23.matrix h23 (0 : Fin 4))
+      (hgcdMatLen row23.matrix h23 (0 : Fin 4)) (entries 0) := by
+    rw [hptr0, hlen0]
+    exact hE0Old23
+  have hE1_23 : RawDensePolyRep this row23.heap
+      (hgcdMatPtr row23.matrix h23 (1 : Fin 4))
+      (hgcdMatLen row23.matrix h23 (1 : Fin 4)) (entries 1) := by
+    rw [hptr1, hlen1]
+    exact hE1Old23
+  have hws01 := physical.row01Workspace heap1 lenQ lenR row23 h23 hdiv
+    hrow23
+  rcases matRowUpdate_succeeds this row23.matrix (0 : Fin 4) (1 : Fin 4) Q
+      lenQ row23.T row23.lenT row23.t scratch row23.heap h23 quotient
+      (entries 0) (entries 1) hcfg hp hws01 hQ23 hE0_23 hE1_23 with
+    ⟨row01, hrow01⟩
+  let hworkspace : HgcdIterationWorkspace this Q W3 scratch state heap1 lenQ
+      lenR row23 row01 hM := {
+    validQ := physical.validQ
+    validR := physical.validR
+    validW3 := physical.validW3
+    quotientCapacity := physical.quotientCapacity
+    rA := physical.rA
+    wA := physical.wA
+    wB := physical.wB
+    qB := physical.qB
+    qW := physical.qW
+    rW := physical.rW
+    rQ := physical.rQ
+    rB := physical.rB
+    qMatrix := physical.qMatrix
+    rMatrix := physical.rMatrix
+    wMatrix := physical.wMatrix
+    matrix23Valid := h23
+    row23Workspace := hws23
+    row01Workspace := hws01
+    divisorGuard23 := physical.divisorGuard23 heap1 lenQ lenR row23 h23
+      hdiv hrow23
+    divisorGuard01 := physical.divisorGuard01 heap1 lenQ lenR row23 h23
+      hdiv hrow23
+    remainderGuard23 := physical.remainderGuard23 heap1 lenQ lenR row23 h23
+      hdiv hrow23
+    remainderGuard01 := physical.remainderGuard01 heap1 lenQ lenR row23 h23
+      hdiv hrow23 }
+  rcases hgcdIterationCalls_refine this state.matrix Q W3 scratch state.A
+      state.B state.T state.lenA state.lenB state.A state.lenT state.t
+      state.heap heap1 lenQ lenR row23 row01 hM h23 left right currentA
+      currentB entries state.sgn hcfg hp hlenB hinvariant.aRep
+      hinvariant.bRep hinvariant.matrixRep hinvariant.transform
+      hinvariant.signedDet hworkspace.validQ hworkspace.validR
+      hworkspace.validW3 hworkspace.quotientCapacity hworkspace.rA
+      hworkspace.wA hworkspace.wB hworkspace.qB hworkspace.qW hworkspace.rW
+      hworkspace.rQ hworkspace.rB hworkspace.qMatrix hworkspace.rMatrix
+      hworkspace.wMatrix hworkspace.row23Workspace hworkspace.row01Workspace
+      hworkspace.divisorGuard23 hworkspace.divisorGuard01
+      hworkspace.remainderGuard23 hworkspace.remainderGuard01 hdiv hrow23
+      hrow01 with
+    ⟨quotient', remainder', h01, _, _, hMatrix01, hDivisor01,
+      hRemainder01, htransform, hdet, hgcd, _, hlt'⟩
+  exact ⟨heap1, lenQ, lenR, row23, row01, quotient', remainder', h01, hdiv,
+    hrow23, hrow01, hMatrix01, hDivisor01, hRemainder01, htransform, hdet,
+    hgcd, hlt'⟩
+
+/-- Staged allocation safety at every semantically represented state reached
+by the generated iterator.  The provider returns only the non-circular
+physical record above. -/
+def HgcdIterTotalWorkspaceProvider (this : DenseUPolyZp) (m : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (scratch : RawPtr UInt64) : Type :=
+  ∀ (left right currentA currentB : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (state : HgcdIterState) (hM : state.matrix.Valid),
+    state.lenB ≥ m + 1 →
+    HgcdIterRawInvariant this left right currentA currentB entries state hM →
+    HgcdIterationTotalWorkspace this Q W3 scratch state hM
+
+/-- Total semantic execution of the actual well-founded generated HGCD
+iterator.  Recursion follows the source state and is justified by the
+remainder length returned by that same raw divrem call. -/
+theorem hgcdIterLoop_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (m : Nat) (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (scratch : RawPtr UInt64)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdIterTotalWorkspaceProvider this m Q W3 scratch) :
+    ∀ (left right currentA currentB : Polynomial (ZMod this._p.toNat))
+      (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+      (state : HgcdIterState) (hM : state.matrix.Valid),
+      HgcdIterRawInvariant this left right currentA currentB entries state hM →
+      ∃ final finalA finalB finalEntries hFinalM,
+        hgcdIterLoop this m Q W3 scratch state = .ok final ∧
+        HgcdIterRawInvariant this left right finalA finalB finalEntries final
+          hFinalM ∧
+        normalize (EuclideanDomain.gcd currentA currentB) =
+          normalize (EuclideanDomain.gcd finalA finalB) ∧
+        final.lenB < m + 1
+  | left, right, currentA, currentB, entries, state, hM, hinvariant => by
+      by_cases hguard : state.lenB ≥ m + 1
+      · have hlenB : 0 < state.lenB := by omega
+        have hphysical := physical left right currentA currentB entries state
+          hM hguard hinvariant
+        rcases hgcdIteration_succeeds this Q W3 scratch left right currentA
+            currentB entries state hM hcfg hp hinvariant hlenB hphysical with
+          ⟨heap1, lenQ, lenR, row23, row01, quotient, remainder, h01, hdiv,
+            hrow23, hrow01, hMatrix01, hDivisor01, hRemainder01, htransform,
+            hdet, hgcdStep, hlt⟩
+        let next : HgcdIterState := {
+          heap := row01.heap
+          matrix := row01.matrix
+          A := state.B
+          lenA := state.lenB
+          B := state.T
+          lenB := lenR
+          T := row01.T
+          lenT := row01.lenT
+          t := row01.t
+          sgn := -state.sgn }
+        have hnext : HgcdIterRawInvariant this left right currentB remainder
+            (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
+            next h01 := ⟨hMatrix01, hDivisor01, hRemainder01, htransform, hdet⟩
+        rcases hgcdIterLoop_succeeds this m Q W3 scratch hcfg hp physical left
+            right currentB remainder
+            (CLPoly.Impl.StrictHGCDRefinement.hgcdStepEntries quotient entries)
+            next h01 hnext with
+          ⟨final, finalA, finalB, finalEntries, hFinalM, htail,
+            hfinalInvariant, hgcdRest, hstop⟩
+        have hrow23Any : ∀ (i j : Fin 4), i.val = 2 → j.val = 3 →
+            dense_upoly_zp__mat_row_update_ir this state.matrix i j Q lenQ
+              state.A state.lenT state.t scratch heap1 = .ok row23 := by
+          intro i j hi hj
+          have hieq : i = (2 : Fin 4) := Fin.ext hi
+          have hjeq : j = (3 : Fin 4) := Fin.ext hj
+          subst i
+          subst j
+          exact hrow23
+        have hrow01Any : ∀ (i j : Fin 4), i.val = 0 → j.val = 1 →
+            dense_upoly_zp__mat_row_update_ir this row23.matrix i j Q lenQ
+              row23.T row23.lenT row23.t scratch row23.heap = .ok row01 := by
+          intro i j hi hj
+          have hieq : i = (0 : Fin 4) := Fin.ext hi
+          have hjeq : j = (1 : Fin 4) := Fin.ext hj
+          subst i
+          subst j
+          exact hrow01
+        refine ⟨final, finalA, finalB, finalEntries, hFinalM, ?_,
+          hfinalInvariant, hgcdStep.trans hgcdRest, hstop⟩
+        rw [hgcdIterLoop]
+        rw [if_pos hguard, hdiv]
+        simp only
+        rw [hrow23Any _ _ rfl rfl]
+        simp only
+        rw [hrow01Any _ _ rfl rfl]
+        simpa only [next] using htail
+      · have hstop : state.lenB < m + 1 := by omega
+        refine ⟨state, currentA, currentB, entries, hM, ?_, hinvariant, rfl,
+          hstop⟩
+        rw [hgcdIterLoop, if_neg hguard]
+termination_by left right currentA currentB entries state hM _hinvariant =>
+  state.lenB
+decreasing_by exact hlt
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

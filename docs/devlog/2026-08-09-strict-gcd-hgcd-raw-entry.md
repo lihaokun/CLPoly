@@ -82,6 +82,39 @@ and this addition result, `_mat_row_update` is total in both its inactive
 descriptor-swap branch and its active raw-multiply/raw-add branch.  Neither
 theorem accepts an execution equality as a premise.
 
+### Staged HGCD iteration totality proof draft
+
+The existing loop workspace provider is intentionally useful for conditional
+semantic refinement, but it is indexed by an already successful division and
+two already successful row updates.  It therefore cannot establish totality.
+For totality, use a staged physical provider instead.  Its first stage contains
+only the source heap's division buffers and separation facts.  After the real
+division returns its concrete heap and lengths, the second stage supplies the
+physical workspace for row `(2,3)`.  After that real row update returns its
+concrete matrix and heap, the third stage supplies the workspace for row
+`(0,1)` and the four external-polynomial frame guards.  No stage supplies a
+polynomial value, output length, result record, or execution equality.
+
+Run the generated divrem from the represented operands.  Its refinement gives
+the quotient and remainder representations, preserves every matrix entry, and
+proves the actual `lenR < lenB`.  Run row `(2,3)` using total
+`_mat_row_update`; frame the quotient and the untouched entries `(0,1)`, then
+translate those representations through the returned descriptor equalities.
+Run row `(0,1)` using the same total theorem.  The staged guard workspaces now
+form the old conditional iteration workspace, so the existing exact-call
+semantic theorem yields the next matrix transform, determinant sign, gcd, and
+raw operand representations.  Thus one source iteration both succeeds and
+returns the invariant required for a recursive call on the strictly smaller
+real remainder length; no fuel or alternate semantic execution is involved.
+
+This construction is now formalized by `hgcdIteration_succeeds` and lifted to
+the complete generated while-loop by `hgcdIterLoop_succeeds`.  The latter is a
+well-founded Lean definition whose measure is the current raw state's `lenB`;
+its recursive obligation is discharged by the `lenR < lenB` fact returned by
+the same concrete divrem execution.  The strict source gate, focused build,
+and axiom audit all pass; the new theorems depend only on `propext`,
+`Classical.choice`, and `Quot.sound`.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -96,3 +129,5 @@ theorem accepts an execution equality as a premise.
 - 对应 C++ 行数：约 85 行（`_gcd_hgcd`）
 - 放弃的方案：把整个 HGCD GCD 改写成单纯 Euclid；该方案不对应 C++
   的阈值分派和 HGCD 主循环。
+- 本轮增量：约 2 小时、4 轮编译—修复、Lean 约 330 行；完成 staged
+  单迭代总执行及真实余式长度上的完整 iterator 良基总执行。

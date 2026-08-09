@@ -769,3 +769,13 @@ every generated range-for and recursive loop used by SQF.
   的 products completeness（现有定理只证明每个 trace product 的
   soundness），再沿真实 heap-size 良基 equal-degree loop 汇总所有这些
   唯一 cursor。
+- concrete bucket trace 的 products completeness 已建立。新定理直接对
+  execution-indexed `PairVecDivVHCConsumeTrace` 归纳，并与 exact
+  `ChainOwns` 同步：head step 的实际 quotient/divisor 数组读取就是 trace
+  新增的 coefficient pair；tail step 使用真实 `ConsumeNode_next` 和
+  非当前槽保持定理，把剩余 owner chain 与 `NodeDenotes` 搬到更新后的
+  nodes 后递归。因此 owner 中每个节点的当前存储乘积都确实出现在 trace
+  products 中，而不只是证明 trace 已有元素合法。root-bucket 包装现在
+  同时返回 coefficient 等式、products soundness 和 owner completeness。
+  下一步沿 checked extract 后严格减小的 heap size 汇总各 root trace，证明
+  full equal-degree products 对初始所有 frontier buckets 完备。

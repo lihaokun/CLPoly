@@ -8064,6 +8064,112 @@ termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+theorem PairVecDivVHCConsumeTrace.products_cover_owner
+    (this : DenseUPolyZp) (quotient divisor : SparsePolyZp)
+    (current : Option Nat) (unvisited owner : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (result : PairVecDivVHCBucketResult)
+    (products : List (UInt64 × UInt64))
+    (htrace : PairVecDivVHCConsumeTrace this quotient divisor current unvisited
+      k nodes lin resetH result products)
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node) :
+    ∀ i ∈ owner, ∃ node quotientTerm divisorTerm,
+      nodes[i]? = some node ∧
+        quotient[node.quotientIndex]? = some quotientTerm ∧
+        divisor[node.divisorIndex]? = some divisorTerm ∧
+        (quotientTerm.2.val, divisorTerm.2.val) ∈ products := by
+  induction htrace generalizing owner with
+  | done unvisited k nodes lin resetH =>
+      simp only [PairVecDivVHCChainOwns] at howns
+      subst owner
+      simp
+  | @step nodeIndex unvisited k k' nodes nodes' lin lin' resetH resetH' next
+      result products hmem hn hq hd hconsume htail ih =>
+      rw [PairVecDivVHCChainOwns] at howns
+      split at howns <;> try contradiction
+      next hownerMem =>
+        rcases howns with ⟨ownerNode, ownerMono, hownerGet, hownerMono,
+          htailOwns⟩
+        have hownerEq : ownerNode = nodes[nodeIndex] := by
+          rw [Array.getElem?_eq_getElem hn] at hownerGet
+          exact (Option.some.inj hownerGet).symm
+        subst ownerNode
+        intro i hi
+        by_cases heq : i = nodeIndex
+        · subst i
+          refine ⟨nodes[nodeIndex], quotient[nodes[nodeIndex].quotientIndex],
+            divisor[nodes[nodeIndex].divisorIndex],
+            Array.getElem?_eq_getElem hn, Array.getElem?_eq_getElem hq,
+            Array.getElem?_eq_getElem hd, ?_⟩
+          exact List.mem_cons_self
+        · have hnext := pairVecDivVHCConsumeNode_next this nodeIndex k k'
+            nodes nodes' lin lin' resetH resetH' next quotient divisor hn
+            hconsume
+          have htailOwns' : PairVecDivVHCChainOwns next
+              (owner.erase nodeIndex) nodes' := by
+            rw [hnext]
+            exact pairVecDivVHCChainOwns_congr_on nodes[nodeIndex].next
+              (owner.erase nodeIndex) nodes nodes' htailOwns (by
+                intro j hj
+                exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k'
+                  nodes nodes' lin lin' resetH resetH' next quotient divisor
+                  hconsume j (Finset.mem_erase.mp hj).1.symm)
+          have hdenotes' := pairVecDivVHCConsumeNode_preserves_denotes this
+            nodeIndex k k' nodes nodes' lin lin' resetH resetH' next quotient
+            divisor hdenotes hconsume
+          rcases ih (owner.erase nodeIndex) htailOwns' hdenotes' i
+              (Finset.mem_erase.mpr ⟨heq, hi⟩) with
+            ⟨node, quotientTerm, divisorTerm, hnode, hquotient, hdivisor,
+              hproduct⟩
+          have hsame := pairVecDivVHCConsumeNode_get_ne this nodeIndex k k'
+            nodes nodes' lin lin' resetH resetH' next quotient divisor hconsume
+            i (fun h => heq h.symm)
+          rw [hsame] at hnode
+          exact ⟨node, quotientTerm, divisorTerm, hnode, hquotient, hdivisor,
+            List.mem_cons_of_mem _ hproduct⟩
+
+theorem pairVecDivVHCConsumeRootBucket_products_complete
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (owner : Finset Nat) (hheap : 0 < heap.size)
+    (howns : PairVecDivVHCChainOwns (some heap[0]) owner nodes)
+    (hchainDegree : PairVecDivVHCChainAtDegree (some heap[0]) owner nodes
+      degree)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∃ products : List (UInt64 × UInt64),
+      PairVecDivVHCConsumeTrace this quotient divisor (some heap[0])
+          (Finset.range nodes.size) k nodes lin resetH result products ∧
+        (result.coefficient.toNat : ZMod this._p.toNat) =
+          (k.toNat : ZMod this._p.toNat) -
+            pairVecDivVHCProductsValue this._p.toNat products ∧
+        (∀ product ∈ products,
+          PairVecDivVHCStoredProductAtDegree degree quotient divisor product) ∧
+        ∀ i ∈ owner, ∃ node quotientTerm divisorTerm,
+          nodes[i]? = some node ∧
+            quotient[node.quotientIndex]? = some quotientTerm ∧
+            divisor[node.divisorIndex]? = some divisorTerm ∧
+            (quotientTerm.2.val, divisorTerm.2.val) ∈ products := by
+  rcases pairVecDivVHCConsumeRootBucket_coefficient_semantics_of_chainDegree
+      this degree heap k nodes lin resetH quotient divisor result owner hheap
+      howns hchainDegree hdenotes hcfg hcanonical hk hrun with
+    ⟨products, htrace, hcoefficient, hsound⟩
+  refine ⟨products, htrace, hcoefficient, hsound, ?_⟩
+  exact htrace.products_cover_owner this quotient divisor (some heap[0])
+    (Finset.range nodes.size) owner k nodes lin resetH result products howns
+    hdenotes
+
 theorem pairVecDivVHCConsumeChain_preserves_cursorPrefixAbove
     (this : DenseUPolyZp) (degree : Nat) (current : Option Nat)
     (unvisited : Finset Nat) (k : UInt64)

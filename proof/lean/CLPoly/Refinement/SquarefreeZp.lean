@@ -1989,6 +1989,57 @@ theorem pairVecDivVHCExtract_size (heap heap' : Array Nat)
       rw [Array.size_pop, hsize]
       omega
 
+theorem pairVecDivVHCExtract_two_root (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (hsize : heap.size = 2)
+    (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
+    heap'[0]? = some heap[1] := by
+  have hnonempty : 0 < heap.size := by omega
+  have hlimit : heap.size - 1 < heap.size := by omega
+  have hchild : ¬1 < heap.size - 1 := by omega
+  unfold pairVecDivVHCExtract at hrun
+  simp only [hnonempty, ↓reduceDIte] at hrun
+  rw [pairVecDivVHCSiftDown] at hrun
+  simp only [hnonempty, hlimit, hchild, ↓reduceDIte,
+    Except.ok.injEq] at hrun
+  subst heap'
+  rw [Array.getElem?_pop]
+  simp only [Array.size_set, hsize, Nat.reduceSub, Nat.reduceLT,
+    ↓reduceDIte, Array.getElem?_set_self hnonempty]
+  simp
+
+theorem pairVecDivVHCExtract_root_dominates_candidates
+    (heap heap' : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (leftMono rightMono lastMono : UMonomial) (hsize : 2 < heap.size)
+    (hleft : pairVecDivVHCMono heap[1] nodes = .ok leftMono)
+    (hright : pairVecDivVHCMono heap[2] nodes = .ok rightMono)
+    (hlast : pairVecDivVHCMono heap[heap.size - 1] nodes = .ok lastMono)
+    (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
+    ∃ rootHead rootMono,
+      heap'[0]? = some rootHead ∧
+        pairVecDivVHCMono rootHead nodes = .ok rootMono ∧
+        leftMono.deg ≤ rootMono.deg ∧ rightMono.deg ≤ rootMono.deg ∧
+        lastMono.deg ≤ rootMono.deg := by
+  have hnonempty : 0 < heap.size := by omega
+  unfold pairVecDivVHCExtract at hrun
+  simp only [hnonempty, ↓reduceDIte] at hrun
+  cases hsift : pairVecDivVHCSiftDown 0 1 (heap.size - 1)
+      heap[heap.size - 1] heap nodes with
+  | error fault => simp [hsift] at hrun
+  | ok shifted =>
+      rw [hsift] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst heap'
+      rcases pairVecDivVHCSiftDown_root_dominates_candidates heap shifted
+          nodes leftMono rightMono lastMono hsize hleft hright hlast hsift with
+        ⟨rootHead, rootMono, hroot, hrootMono, hleftLe, hrightLe, hlastLe⟩
+      refine ⟨rootHead, rootMono, ?_, hrootMono, hleftLe, hrightLe, hlastLe⟩
+      rw [Array.getElem?_pop]
+      have hshiftSize := pairVecDivVHCSiftDown_size 0 1 (heap.size - 1)
+        heap[heap.size - 1] heap shifted nodes hsift
+      have hpop : 0 < heap.size - 1 := by omega
+      simp only [hshiftSize, hpop, ↓reduceDIte]
+      exact hroot
+
 theorem pairVecDivVHCExtract_valuesFrom (heap heap' : Array Nat)
     (nodes : Array PairVecDivVHCNode)
     (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
@@ -2691,6 +2742,113 @@ theorem pairVecDivVHCHeapOrdered_slot_le_root_child
             hparentLe⟩
         exact ⟨child, head, childMono, hchild, hchildGet, hchildRun,
           Nat.le_trans hstep hparentLe⟩
+
+theorem pairVecDivVHCExtract_root_dominates
+    (heap heap' : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hresult : 0 < heap'.size)
+    (hrun : pairVecDivVHCExtract heap nodes = .ok heap')
+    (slot : Nat) (hslot : slot < heap'.size) (mono rootMono : UMonomial)
+    (hmono : pairVecDivVHCMono heap'[slot] nodes = .ok mono)
+    (hroot : pairVecDivVHCMono heap'[0] nodes = .ok rootMono) :
+    mono.deg ≤ rootMono.deg := by
+  have hsourceSize := pairVecDivVHCExtract_size heap heap' nodes hrun
+  have hsourceNonempty : 0 < heap.size := by omega
+  have hrootOnly : PairVecDivVHCOnlyAt heap heap[0] 0 := by
+    intro i hget
+    exact hunique i 0 heap[0] hget
+      (Array.getElem?_eq_getElem hsourceNonempty)
+  by_cases htwo : heap.size = 2
+  · have htargetZero : slot = 0 := by omega
+    subst slot
+    rw [hroot] at hmono
+    exact Nat.le_of_eq (congrArg UMonomial.deg
+      (Except.ok.inj hmono).symm)
+  · have hmany : 2 < heap.size := by omega
+    rcases hvalid 1 (by omega) with
+      ⟨leftHead, leftNode, leftMono, hleftHeap, hleftNode, hleftActive⟩
+    rcases hvalid 2 (by omega) with
+      ⟨rightHead, rightNode, rightMono, hrightHeap, hrightNode,
+        hrightActive⟩
+    rcases hvalid (heap.size - 1) (by omega) with
+      ⟨lastHead, lastNode, lastMono, hlastHeap, hlastNode, hlastActive⟩
+    have hleftHead : heap[1] = leftHead := by
+      rw [Array.getElem?_eq_getElem (by omega)] at hleftHeap
+      exact Option.some.inj hleftHeap
+    have hrightHead : heap[2] = rightHead := by
+      rw [Array.getElem?_eq_getElem (by omega)] at hrightHeap
+      exact Option.some.inj hrightHeap
+    have hlastHead : heap[heap.size - 1] = lastHead := by
+      rw [Array.getElem?_eq_getElem (by omega)] at hlastHeap
+      exact Option.some.inj hlastHeap
+    have hleftRun : pairVecDivVHCMono heap[1] nodes = .ok leftMono := by
+      apply (pairVecDivVHCMono_eq_ok_iff heap[1] nodes leftMono).mpr
+      rw [hleftHead]
+      exact ⟨leftNode, hleftNode, hleftActive⟩
+    have hrightRun : pairVecDivVHCMono heap[2] nodes = .ok rightMono := by
+      apply (pairVecDivVHCMono_eq_ok_iff heap[2] nodes rightMono).mpr
+      rw [hrightHead]
+      exact ⟨rightNode, hrightNode, hrightActive⟩
+    have hlastRun : pairVecDivVHCMono heap[heap.size - 1] nodes =
+        .ok lastMono := by
+      apply (pairVecDivVHCMono_eq_ok_iff heap[heap.size - 1] nodes
+        lastMono).mpr
+      rw [hlastHead]
+      exact ⟨lastNode, hlastNode, hlastActive⟩
+    rcases pairVecDivVHCExtract_root_dominates_candidates heap heap' nodes
+        leftMono rightMono lastMono hmany hleftRun hrightRun hlastRun hrun with
+      ⟨newRootHead, newRootMono, hnewRoot, hnewRootRun, hleftLe,
+        hrightLe, hlastLe⟩
+    have hnewRootEq : heap'[0] = newRootHead := by
+      rw [Array.getElem?_eq_getElem hresult] at hnewRoot
+      exact Option.some.inj hnewRoot
+    have hrootMonoEq : rootMono = newRootMono := by
+      rw [hnewRootEq, hnewRootRun] at hroot
+      exact (Except.ok.inj hroot).symm
+    subst newRootMono
+    have htargetGet : heap'[slot]? = some heap'[slot] :=
+      Array.getElem?_eq_getElem hslot
+    rcases pairVecDivVHCExtract_valuesFrom heap heap' nodes hrun slot
+        heap'[slot] htargetGet with ⟨oldSlot, holdGet⟩
+    have holdSlot : oldSlot < heap.size := by
+      by_contra hnot
+      rw [Array.getElem?_eq_none (by omega)] at holdGet
+      contradiction
+    have holdHead : heap[oldSlot] = heap'[slot] := by
+      rw [Array.getElem?_eq_getElem holdSlot] at holdGet
+      exact Option.some.inj holdGet
+    have holdPos : 0 < oldSlot := by
+      by_contra hnot
+      have holdZero : oldSlot = 0 := by omega
+      subst oldSlot
+      have hrootHead : heap'[slot] = heap[0] := by
+        rw [Array.getElem?_eq_getElem hsourceNonempty] at holdGet
+        exact (Option.some.inj holdGet).symm
+      have hexcludes := pairVecDivVHCExtract_excludes_root heap heap' nodes
+        hsourceNonempty hrootOnly hrun
+      exact hexcludes slot (by simpa [hrootHead] using htargetGet)
+    have holdRun : pairVecDivVHCMono heap[oldSlot] nodes = .ok mono := by
+      rw [holdHead]
+      exact hmono
+    rcases pairVecDivVHCHeapOrdered_slot_le_root_child heap nodes hvalid
+        hordered oldSlot holdSlot holdPos mono holdRun with
+      ⟨child, childHead, childMono, hchild, hchildGet, hchildRun, hmonoLe⟩
+    rcases hchild with rfl | rfl
+    · rw [Array.getElem?_eq_getElem (by omega)] at hchildGet
+      have hheadEq := Option.some.inj hchildGet
+      rw [← hheadEq, hleftRun] at hchildRun
+      have hmonoEq := Except.ok.inj hchildRun
+      subst childMono
+      exact Nat.le_trans hmonoLe hleftLe
+    · rw [Array.getElem?_eq_getElem (by omega)] at hchildGet
+      have hheadEq := Option.some.inj hchildGet
+      rw [← hheadEq, hrightRun] at hchildRun
+      have hmonoEq := Except.ok.inj hchildRun
+      subst childMono
+      exact Nat.le_trans hmonoLe hrightLe
 
 /-- Generated coefficient execution of the source
 `submul(k, new_v[q].second, divisor[d].second)`. -/

@@ -804,3 +804,13 @@ every generated range-for and recursive loop used by SQF.
   root head/mono 同时支配 left、right、last 三个候选。下一步把 sift result
   的 slot 0 穿过真实 `pop`，并结合所有旧非根 slot 到 left/right 的上界，
   得到 checked extract 后 root 对全部 surviving heads 的支配。
+- `pop`/extract 层的新 root 全局支配已闭合。长度二的真实执行单独展开，
+  证明 sift child guard 直接把 last 写到 root 后 pop；长度至少三时将上一
+  阶段的 left/right/last 支配穿过 `Array.pop`。对任意返回 slot，真实
+  `Extract_valuesFrom` 找回旧 slot，root-exclusion 与 heap-head uniqueness
+  排除旧 slot 0，再用旧 slot 到直接 root child 的支配和新 root 对两个
+  child 的支配传递得到最终上界。新定理因此证明成功 extract 的新 root
+  支配全部 surviving heads，而不仅是输出值来自旧 heap。下一步建立实际
+  consume/extract 桥：旧 heap order 在消费前 nodes 上成立，sift 在消费后
+  nodes 上运行；需用 root-owner 与其他 owner 的 disjoint 更新保持证明，
+  将所有非根 head mono lookup 搬到消费后 nodes 后应用本定理。

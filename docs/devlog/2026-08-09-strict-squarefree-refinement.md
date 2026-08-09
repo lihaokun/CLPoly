@@ -1161,3 +1161,13 @@ every generated range-for and recursive loop used by SQF.
   任意成功 insertion 的统一 heap-order 定理。至此 insertion 的排列
   不变量不再是 outer-loop 的缺口；下一步证明 equal-degree `next` 链
   homogeneous 与指针有效性的完整 insertion 保持，并装配主 invariant。
+- reverse-`lin` reinsertion 的完整 heap-order 保持已闭合。
+  `pairVecDivVHCReinsertLin_preserves_heapOrdered` 沿 generated
+  `pairVecDivVHCReinsertLin` 的 `lin.size` 良基递归：每步从实际
+  `HeapChainOwnership` 推出 heap-pointer validity，调用完整
+  `pairVecDivVHCInsert_preserves_heapOrdered`，再用已有 protected-set
+  ownership 与 `LinReady.pop_after_insert` 为下一递归状态重建前提。
+  因此 consume 后暂存到 `lin` 的节点全部按源码逆序插回时，不会在任何
+  中间步骤丢失 heap order；没有执行预算或规格层替代循环。下一步把
+  consume 的有序性、emit/activation 的非干扰性与此 reinsertion 定理
+  合成为 outer iteration 的 heap-order 保持。

@@ -10859,6 +10859,52 @@ decreasing_by
   simp only [Array.size_pop]
   omega
 
+/-- The literal reverse-`lin` reinsertion loop preserves max-heap order at
+every generated insertion step. -/
+theorem pairVecDivVHCReinsertLin_preserves_heapOrdered
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (state : PairVecDivVHCHeapState)
+    (haway : PairVecDivVHCHeapChainsOwnedAway heap nodes
+      lin.toList.toFinset)
+    (hready : PairVecDivVHCLinReady lin nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hrun : pairVecDivVHCReinsertLin heap nodes lin = .ok state) :
+    PairVecDivVHCHeapOrdered state.heap state.nodes := by
+  rw [pairVecDivVHCReinsertLin] at hrun
+  split at hrun
+  next hlin =>
+    dsimp only at hrun
+    cases hinsert : pairVecDivVHCInsert lin[lin.size - 1] heap nodes with
+    | error fault => simp [hinsert] at hrun
+    | ok inserted =>
+        rcases inserted with ⟨heap', nodes'⟩
+        rw [hinsert] at hrun
+        have hlastMem := pairVecDivVHCLast_mem_toFinset lin hlin
+        rcases hready.2 lin[lin.size - 1]
+            (by simpa only [List.mem_toFinset] using hlastMem) with
+          ⟨node, mono, hnode, hmono⟩
+        rcases haway with ⟨owners, hownership, hseparated⟩
+        have hordered' := pairVecDivVHCInsert_preserves_heapOrdered
+          lin[lin.size - 1] heap heap' nodes nodes'
+          (hownership.heapPointersValid heap owners nodes) hordered hinsert
+        have haway' := pairVecDivVHCInsert_preserves_away_of_protected
+          lin[lin.size - 1] heap heap' nodes nodes' lin.toList.toFinset
+          lin.pop.toList.toFinset owners node mono hownership hseparated
+          hlastMem (pairVecDivVHCPop_toFinset_subset lin)
+          (pairVecDivVHCLast_not_mem_pop lin hlin hready.1) hnode hmono hinsert
+        have hready' := hready.pop_after_insert lin heap heap' nodes nodes'
+          hlin hinsert
+        exact pairVecDivVHCReinsertLin_preserves_heapOrdered heap' nodes'
+          lin.pop state haway' hready' hordered' hrun
+  next hlin =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    exact hordered
+termination_by lin.size
+decreasing_by
+  simp only [Array.size_pop]
+  omega
+
 theorem pairVecDivVHCReinsertLin_preserves_cursorPrefixAbove
     (degreeLimit : Nat) (heap : Array Nat)
     (nodes : Array PairVecDivVHCNode) (lin : Array Nat)

@@ -1095,3 +1095,13 @@ every generated range-for and recursive loop used by SQF.
   `newDegree > rootDegree` 分支、真实 `set_next` 与 `Bubble` 调用，证明
   返回 heap 的根确为新 node。这为 new-root 分支的 max-heap 证明固定
   了根键；下一步需证明沿祖先路径下移的旧节点保持所有局部父子边。
+- upward-bubble 返回 heap 的全局根上界已闭合。
+  `pairVecDivVHCBubble_new_root_bounds_all` 使用真实 bubble 的
+  `ValuesFrom` 定理，将每个返回槽位反向追溯到 `oldHeap.push newNode`：
+  若来自旧 heap，则由原 `HeapOrdered` 的 slot-to-root 定理及
+  `oldRoot ≤ newMono` 得到上界；若来自 push 的最后槽，则通过实际
+  `VHC_mono` 读取证明其键就是 `newMono`。
+  `pairVecDivVHCInsert_new_root_bounds_all` 将该结果接回完整 generated
+  insertion 的 greater-root 分支。现在该分支已有“返回 root 是新节点”
+  及“所有返回键不超过新根”两部分；剩余局部责任是证明非根父子边
+  在祖先路径复制后仍有序。

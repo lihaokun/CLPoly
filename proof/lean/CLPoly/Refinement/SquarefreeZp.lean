@@ -3678,6 +3678,53 @@ theorem pairVecDivVHCHeapOrdered_slot_le_root_child
         exact ⟨child, head, childMono, hchild, hchildGet, hchildRun,
           Nat.le_trans hstep hparentLe⟩
 
+theorem pairVecDivVHCBubble_new_root_bounds_all
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (newMono rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hrootLe : rootMono.deg ≤ newMono.deg)
+    (hrun : pairVecDivVHCBubble heap.size 0 newNode
+      (heap.push newNode) = .ok heap') :
+    ∀ (slot head : Nat) (mono : UMonomial),
+      heap'[slot]? = some head → pairVecDivVHCMono head nodes = .ok mono →
+        mono.deg ≤ newMono.deg := by
+  have hfrom := pairVecDivVHCBubble_valuesFrom heap.size 0 newNode
+    (heap.push newNode) heap' (heap.push newNode)
+    (pairVecDivVHCValuesFrom_refl _) ⟨heap.size, by simp⟩ hrun
+  intro slot head mono hget hmono
+  rcases hfrom slot head hget with ⟨sourceSlot, hsource⟩
+  have hsourceBound : sourceSlot < (heap.push newNode).size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hsource
+    contradiction
+  by_cases hold : sourceSlot < heap.size
+  · have hsourceOld : heap[sourceSlot]? = some head := by
+      have hne : sourceSlot ≠ heap.size := by omega
+      simp only [Array.getElem?_push, hne, ↓reduceIte] at hsource
+      exact hsource
+    have hheadEq : heap[sourceSlot] = head := by
+      rw [Array.getElem?_eq_getElem hold] at hsourceOld
+      exact Option.some.inj hsourceOld
+    have hslotMono : pairVecDivVHCMono heap[sourceSlot] nodes = .ok mono := by
+      simpa [hheadEq] using hmono
+    have hleRoot := pairVecDivVHCHeapOrdered_slot_le_root heap nodes hvalid
+      hordered sourceSlot hold mono rootMono hslotMono hroot
+    exact Nat.le_trans hleRoot hrootLe
+  · have heq : sourceSlot = heap.size := by
+      simp only [Array.size_push] at hsourceBound
+      omega
+    subst sourceSlot
+    simp only [Array.getElem?_push, ↓reduceIte, if_pos rfl] at hsource
+    have hheadEq : head = newNode := (Option.some.inj hsource).symm
+    subst head
+    rw [hnew] at hmono
+    exact Nat.le_of_eq (congrArg UMonomial.deg
+      (Except.ok.inj hmono).symm)
+
 theorem pairVecDivVHCExtract_root_dominates
     (heap heap' : Array Nat) (sourceNodes nodes : Array PairVecDivVHCNode)
     (hvalid : PairVecDivVHCHeapPointersValid heap sourceNodes)
@@ -8021,6 +8068,39 @@ theorem pairVecDivVHCInsert_root_of_greater
           rcases hrun with ⟨rfl, rfl⟩
           exact pairVecDivVHCBubble_stop_get heap.size 0 newNode
             (heap.push newNode) shifted hbubble
+
+theorem pairVecDivVHCInsert_new_root_bounds_all
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (newMono rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hgreater : rootMono.deg < newMono.deg)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    ∀ (slot head : Nat) (mono : UMonomial),
+      heap'[slot]? = some head → pairVecDivVHCMono head nodes = .ok mono →
+        mono.deg ≤ newMono.deg := by
+  have hempty : heap.size ≠ 0 := Nat.ne_of_gt hheap
+  have hequal : newMono.deg ≠ rootMono.deg := by omega
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, hempty, ↓reduceDIte, hroot, hequal, hgreater] at hrun
+  cases hset : pairVecDivVHCSetNext newNode none nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      cases hbubble : pairVecDivVHCBubble heap.size 0 newNode
+          (heap.push newNode) with
+      | error fault => simp [hbubble] at hrun
+      | ok shifted =>
+          rw [hbubble] at hrun
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl⟩
+          exact pairVecDivVHCBubble_new_root_bounds_all newNode heap shifted
+            nodes newMono rootMono hheap hvalid hordered hnew hroot
+            (Nat.le_of_lt hgreater) hbubble
 
 theorem pairVecDivVHCSetNext_get_ne
     (nodeIndex : Nat) (next : Option Nat)

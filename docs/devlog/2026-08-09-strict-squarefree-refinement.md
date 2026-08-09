@@ -1052,3 +1052,17 @@ every generated range-for and recursive loop used by SQF.
   下一步还需携带 quotient 首项贡献的 processed-bound 不变式，才能
   把这两条零系数结论与单步当前次数闭合、高次数保持合并为完整
   良基循环系数归纳。
+- quotient 首项的 processed-bound 已作为独立机器状态不变式补齐。
+  `PairVecDivVHCQuotientLeadAbove degreeLimit leadDegree quotient` 记录每个
+  已发射商项与 divisor 首项相乘后的次数至少为当前旧界限。
+  `pairVecDivVHCEmit_quotient_eq_or_push` 直接展开真实 emit，证明输出商
+  要么不变，要么仅 push 当前 `frontier - leadDegree` 项；由此
+  `pairVecDivVHCEmit_preserves_quotientLeadAbove` 与完整 outer-iteration
+  版本证明良基递归下降时该不变式更新到当前 frontier。
+  `pairVecDivVHCQuotient_mul_lead_coeff_eq_zero_below_processed` 排除旧商
+  首项乘积落入次数空隙，最终
+  `pairVecDivVHCProduct_coeff_eq_zero_of_gap` 将首项与前一提交的真实
+  heap tail 结论合并，证明完整 `quotient * divisor` 在
+  `(frontier, oldLimit)` 的系数为零。至此单步全次数覆盖已齐，下一步
+  是用强归纳将“旧界限以上相等、空隙为零、frontier 当前相等”贯穿
+  `pairVecDivVHCOuterLoop`。

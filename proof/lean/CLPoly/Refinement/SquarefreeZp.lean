@@ -12948,6 +12948,99 @@ theorem PairVecDivVHCQuotientAbove.empty (frontierDegree leadDegree : Nat) :
   intro hlead term hterm
   simp at hterm
 
+/-- Every emitted quotient term still present at an outer-loop state names a
+lead-product degree already processed at or above `degreeLimit`. -/
+def PairVecDivVHCQuotientLeadAbove (degreeLimit leadDegree : Nat)
+    (quotient : SparsePolyZp) : Prop :=
+  ∀ term ∈ quotient.toList, degreeLimit ≤ term.1.deg + leadDegree
+
+theorem PairVecDivVHCQuotientLeadAbove.empty
+    (degreeLimit leadDegree : Nat) :
+    PairVecDivVHCQuotientLeadAbove degreeLimit leadDegree #[] := by
+  intro term hterm
+  simp at hterm
+
+theorem pairVecDivVHCEmit_quotient_eq_or_push
+    (this : DenseUPolyZp) (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' : Nat)
+    (hdivisor : 0 < divisor.size)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    quotient' = quotient ∨
+      divisor[0].1.deg ≤ frontier.degree ∧
+        ∃ value : UInt64, value ≠ 0 ∧
+          quotient' = quotient.push
+            (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩) := by
+  unfold pairVecDivVHCEmit at hrun
+  by_cases hcoefficient : consumed.coefficient ≠ 0
+  · rw [if_pos hcoefficient] at hrun
+    by_cases hdegree : divisor[0].1.deg ≤ frontier.degree
+    · rw [if_pos hdegree] at hrun
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor[0].2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        consumed.coefficient inverse
+      by_cases hvalue : value ≠ 0
+      · rw [if_pos hvalue] at hrun
+        let emitted := quotient.push
+          (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+        cases hactivate : pairVecDivVHCActivateReset consumed.resetH
+            consumed.heap consumed.nodes emitted divisor with
+        | error fault =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            contradiction
+        | ok state =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl⟩
+            exact Or.inr ⟨hdegree, value, hvalue, rfl⟩
+      · rw [if_neg hvalue] at hrun
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        exact Or.inl hrun.1.symm
+    · rw [if_neg hdegree] at hrun
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      exact Or.inl hrun.1.symm
+  · rw [if_neg hcoefficient] at hrun
+    simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+    exact Or.inl hrun.1.symm
+
+theorem pairVecDivVHCEmit_preserves_quotientLeadAbove
+    (this : DenseUPolyZp) (degreeLimit : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' : Nat)
+    (hdivisor : 0 < divisor.size)
+    (hprocessed : PairVecDivVHCQuotientLeadAbove degreeLimit
+      divisor[0].1.deg quotient)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    PairVecDivVHCQuotientLeadAbove frontier.degree divisor[0].1.deg
+      quotient' := by
+  rcases pairVecDivVHCEmit_quotient_eq_or_push this frontier consumed quotient
+      divisor quotient' activated resetH' hdivisor hrun with
+    hsame | ⟨hlead, value, hvalue, hpush⟩
+  · subst quotient'
+    intro term hterm
+    exact Nat.le_trans (Nat.le_of_lt hdecrease)
+      (hprocessed term hterm)
+  · subst quotient'
+    intro term hterm
+    simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hterm
+    rcases hterm with hold | hnew
+    · exact Nat.le_trans (Nat.le_of_lt hdecrease)
+        (hprocessed term hold)
+    · subst term
+      dsimp only
+      omega
+
 /-- One complete body of the general `pair_vec_div` outer loop, including
 frontier selection, equal-degree bucket subtraction, quotient emission,
 `reset_h` activation, and the final reverse `lin` reinsertion. -/
@@ -13652,6 +13745,75 @@ theorem pairVecDivVHCQuotient_mul_lead_coeff_eq_zero
         have hdegree : term.1.deg + leadDegree ≠ frontierDegree := by omega
         simp [pairVecDivVHCListProductCoeffValue, hdegree, ih hrestAbove]
   exact go quotient.toList hdegrees
+
+theorem pairVecDivVHCQuotient_mul_lead_coeff_eq_zero_below_processed
+    (p degreeLimit targetDegree leadDegree : Nat)
+    (quotient : SparsePolyZp) (leadCoefficient : Zp)
+    (hprocessed : PairVecDivVHCQuotientLeadAbove degreeLimit leadDegree
+      quotient)
+    (htarget : targetDegree < degreeLimit) :
+    (SparsePolyZp.toPoly p quotient *
+      Polynomial.monomial leadDegree (Zp.toZMod p leadCoefficient)).coeff
+        targetDegree = 0 := by
+  unfold SparsePolyZp.toPoly
+  rw [show Polynomial.monomial leadDegree (Zp.toZMod p leadCoefficient) =
+      listSum p [(⟨leadDegree⟩, leadCoefficient)] by
+    simp [listSum, Zp.toZMod]]
+  rw [← pairVecDivVHCListProductCoeffValue_eq_coeff p targetDegree
+    quotient.toList [(⟨leadDegree⟩, leadCoefficient)]]
+  have go : ∀ terms : List (UMonomial × Zp),
+      (∀ term ∈ terms, degreeLimit ≤ term.1.deg + leadDegree) →
+      pairVecDivVHCListProductCoeffValue p targetDegree terms
+        [(⟨leadDegree⟩, leadCoefficient)] = 0 := by
+    intro terms hterms
+    induction terms with
+    | nil => simp [pairVecDivVHCListProductCoeffValue]
+    | cons term terms ih =>
+        have htermAbove := hterms term List.mem_cons_self
+        have hrestAbove : ∀ item ∈ terms,
+            degreeLimit ≤ item.1.deg + leadDegree := by
+          intro item hitem
+          exact hterms item (List.mem_cons_of_mem term hitem)
+        have hdegree : term.1.deg + leadDegree ≠ targetDegree := by omega
+        simp [pairVecDivVHCListProductCoeffValue, hdegree, ih hrestAbove]
+  exact go quotient.toList hprocessed
+
+theorem pairVecDivVHCProduct_coeff_eq_zero_of_gap
+    (p degreeLimit targetDegree dividendIndex resetH : Nat)
+    (dividend quotient divisor : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (frontier : PairVecDivVHCFrontier)
+    (hdivisor : 0 < divisor.size)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : PairVecDivVHCStateCovered heap nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hprocessed : PairVecDivVHCQuotientLeadAbove degreeLimit
+      divisor[0].1.deg quotient)
+    (hfrontier : frontier.degree < targetDegree)
+    (htarget : targetDegree < degreeLimit)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    (SparsePolyZp.toPoly p quotient *
+      SparsePolyZp.toPoly p divisor).coeff targetDegree = 0 := by
+  rw [sparsePolyZp_toPoly_eq_head_add_tail p divisor hdivisor, mul_add,
+    Polynomial.coeff_add,
+    pairVecDivVHCQuotient_mul_lead_coeff_eq_zero_below_processed p
+      degreeLimit targetDegree divisor[0].1.deg quotient divisor[0].2
+      hprocessed htarget,
+    pairVecDivVHCTail_product_coeff_eq_zero_of_gap p degreeLimit targetDegree
+      dividendIndex resetH dividend quotient divisor heap nodes owners frontier
+      hsize hfixed hstate hownership hhomogeneous hresetReady hordered hdenotes
+      hcanonical hprefix hfrontier htarget hselect]
+  simp
 
 theorem pairVecDivVHCEmitted_monomial_mul_tail_coeff_eq_zero
     (p frontierDegree : Nat) (divisor : SparsePolyZp)
@@ -14777,6 +14939,32 @@ theorem pairVecDivVHCOuterIteration_product_coeff_above
     hdivisorCanonical hcoefficientReduced hdivisor hlead habove hemit
   rw [hresult]
   exact hemitAbove
+
+theorem pairVecDivVHCOuterIteration_preserves_quotientLeadAbove
+    (this : DenseUPolyZp) (degreeLimit dividendIndex : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult)
+    (hdivisor : 0 < divisor.size)
+    (hprocessed : PairVecDivVHCQuotientLeadAbove degreeLimit
+      divisor[0].1.deg quotient)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    PairVecDivVHCQuotientLeadAbove frontier.degree divisor[0].1.deg
+      result.quotient := by
+  rcases pairVecDivVHCOuterIteration_components this dividendIndex heap nodes
+      quotient dividend divisor resetH frontier result hdivisor hselect hrun with
+    ⟨consumed, quotient', activated, resetH', reinserted, hconsume, hemit,
+      hreinsert, hresult⟩
+  have hemitted := pairVecDivVHCEmit_preserves_quotientLeadAbove this
+    degreeLimit frontier consumed quotient divisor quotient' activated resetH'
+    hdivisor hprocessed hdecrease hemit
+  rw [hresult]
+  exact hemitted
 
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)

@@ -1038,3 +1038,17 @@ every generated range-for and recursive loop used by SQF.
   共同构成全局 processed-degree 归纳的单步核心。下一步仍需证明
   frontier 之间可能出现的次数空隙也为零，再将不变式穿过良基
   `pairVecDivVHCOuterLoop`，最后用整除性消去低于 divisor 首项的余式。
+- 已闭合稀疏 outer-loop 不跳过来源次数的核心空隙引理。
+  `pairVecDivVHCTargetPairsAtDegree_eq_empty_of_gap` 不把堆替换为规格
+  集合，而是对每个真实 divisor-tail 行使用 `StateCovered` 分类：
+  reset 行的现有 quotient 索引严格位于 cursor 前，因此乘积次数
+  至少为旧 loop bound；heap-owned 行则按索引在 cursor 前、等于
+  cursor、或在 cursor 后三分，分别由 cursor-prefix、selector 最大值
+  和 canonical quotient 降次性排除 `(frontier, oldLimit)` 空隙。
+  由有限 indexed pair sum 桥得到
+  `pairVecDivVHCTail_product_coeff_eq_zero_of_gap`。同时
+  `pairVecDivVHCDividend_coeff_eq_zero_of_gap` 对 selector 的 dividend/
+  heap 两种真实来源分支证明 dividend 在同一空隙的 L2 系数为零。
+  下一步还需携带 quotient 首项贡献的 processed-bound 不变式，才能
+  把这两条零系数结论与单步当前次数闭合、高次数保持合并为完整
+  良基循环系数归纳。

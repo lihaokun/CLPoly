@@ -1242,3 +1242,13 @@ every generated range-for and recursive loop used by SQF.
   不变量组合，得到完整 `quotient * divisor` 的低次系数为零。该结论不引用
   可除性规格、预期商或任何 L2 回退；下一步把它作为 `OuterLoop` 良基归纳
   的 done 分支，并在 step 分支递归传递全部表示不变量。
+- VHC 节点块长度已沿完整 generated iteration 保持。
+  `pairVecDivVHCInsert_nodes_size` 复用 insertion 的真实 `SetNext` 执行见证，
+  证明所有 heap 分支都只改写预分配节点；随后
+  `pairVecDivVHCConsumeEqualDegree_nodes_size` 沿 heap-size 良基递归组合
+  bucket consume，`pairVecDivVHCActivateReset_nodes_size` 与
+  `pairVecDivVHCReinsertLin_nodes_size` 分别沿 reset/lin 的真实良基递归组合
+  activate+insert，`pairVecDivVHCEmit_nodes_size` 覆盖所有发射分支，最终
+  `pairVecDivVHCOuterIteration_nodes_size` 贯通 consume/emit/reinsert。
+  因而 `nodes.size = divisor.size - 1` 可在全局 outer loop 中逐轮传递，
+  无需把长度保持作为外加 oracle 假设。

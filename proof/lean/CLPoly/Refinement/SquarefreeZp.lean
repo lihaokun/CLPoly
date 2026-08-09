@@ -6163,12 +6163,38 @@ def PairVecDivVHCHeapOwnedNodes (heap : Array Nat)
     (owners : Nat → Finset Nat) : Finset Nat :=
   heap.toList.toFinset.biUnion owners
 
+def PairVecDivVHCNodeAtDegree (degree i : Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  match pairVecDivVHCMono i nodes with
+  | .ok mono => mono.deg = degree
+  | .error _ => False
+
+instance (degree i : Nat) (nodes : Array PairVecDivVHCNode) :
+    Decidable (PairVecDivVHCNodeAtDegree degree i nodes) := by
+  unfold PairVecDivVHCNodeAtDegree
+  split <;> infer_instance
+
+theorem pairVecDivVHCNodeAtDegree_iff (degree i : Nat)
+    (nodes : Array PairVecDivVHCNode) :
+    PairVecDivVHCNodeAtDegree degree i nodes ↔
+      ∃ mono, pairVecDivVHCMono i nodes = .ok mono ∧ mono.deg = degree := by
+  unfold PairVecDivVHCNodeAtDegree
+  cases hmono : pairVecDivVHCMono i nodes with
+  | error fault => simp [hmono]
+  | ok mono => simp [hmono]
+
+def PairVecDivVHCHeapOwnedNodesAtDegree (degree : Nat)
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode) : Finset Nat :=
+  (PairVecDivVHCHeapOwnedNodes heap owners).filter fun i =>
+    PairVecDivVHCNodeAtDegree degree i nodes
+
 /-- A real extract removes exactly the old root owner from the finite union of
 heap-owned nodes. -/
 theorem pairVecDivVHCExtract_heapOwnedNodes
-    (heap heap' : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (heap heap' : Array Nat) (sourceNodes nodes : Array PairVecDivVHCNode)
     (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
-    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners sourceNodes)
     (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
     PairVecDivVHCHeapOwnedNodes heap' owners =
       PairVecDivVHCHeapOwnedNodes heap owners \ owners heap[0] := by
@@ -6365,6 +6391,34 @@ def PairVecDivVHCHeapChainsHomogeneous (heap : Array Nat)
   ∀ (slot head : Nat) (mono : UMonomial), heap[slot]? = some head →
     pairVecDivVHCMono head nodes = .ok mono →
       PairVecDivVHCChainAtDegree (some head) (owners head) nodes mono.deg
+
+theorem pairVecDivVHCRootOwner_subset_ownedNodesAtDegree
+    (degree : Nat) (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode) (rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hrootMono : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hdegree : rootMono.deg = degree) :
+    owners heap[0] ⊆
+      PairVecDivVHCHeapOwnedNodesAtDegree degree heap owners nodes := by
+  intro i hi
+  have hrootGet : heap[0]? = some heap[0] :=
+    Array.getElem?_eq_getElem hheap
+  have howns := hownership.1 0 heap[0] hrootGet
+  have hchain := hhomogeneous 0 heap[0] rootMono hrootGet hrootMono
+  rcases pairVecDivVHCChainOwns_mem_degree (some heap[0]) (owners heap[0])
+      nodes rootMono.deg i howns hchain hi with
+    ⟨node, mono, hnode, hmono, hmonoDegree⟩
+  simp only [PairVecDivVHCHeapOwnedNodesAtDegree, Finset.mem_filter,
+    pairVecDivVHCNodeAtDegree_iff]
+  refine ⟨?_, mono, ?_, ?_⟩
+  · simp only [PairVecDivVHCHeapOwnedNodes, Finset.mem_biUnion,
+      List.mem_toFinset]
+    exact ⟨heap[0], Array.getElem_mem_toList hheap, hi⟩
+  · exact (pairVecDivVHCMono_eq_ok_iff i nodes mono).2
+      ⟨node, hnode, hmono⟩
+  · omega
 
 theorem pairVecDivVHCOwnedNode_degree_le_frontier
     (dividendIndex : Nat) (dividend : SparsePolyZp)
@@ -10230,6 +10284,85 @@ theorem pairVecDivVHCConsumeRootBucket_preserves_nonroot_heap_order
   exact hordered.degreesUpTo heap nodes heap.size (Nat.le_refl _) child hchild
     hchildPos childHead parentHead childMono parentMono hchildGet hparentGet
     hchildSource hparentSource
+
+theorem pairVecDivVHCConsumeRootBucket_owned_nonroot_get
+    (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∀ i ∈ PairVecDivVHCHeapOwnedNodes heap owners \ owners heap[0],
+      result.nodes[i]? = nodes[i]? := by
+  intro i hi
+  rcases Finset.mem_sdiff.mp hi with ⟨hiOwned, hiRoot⟩
+  simp only [PairVecDivVHCHeapOwnedNodes, Finset.mem_biUnion,
+    List.mem_toFinset] at hiOwned
+  rcases hiOwned with ⟨head, hheadMem, hiHead⟩
+  rcases List.getElem_of_mem hheadMem with ⟨slot, hslot, hvalue⟩
+  have hslotBound : slot < heap.size := by simpa using hslot
+  have harrayValue : heap[slot] = head := by
+    rw [← Array.getElem_toList hslotBound]
+    exact hvalue
+  have hheadGet : heap[slot]? = some head := by
+    rw [Array.getElem?_eq_getElem hslotBound, harrayValue]
+  have hheadNe : head ≠ heap[0] := by
+    intro heq
+    apply hiRoot
+    rw [← heq]
+    exact hiHead
+  have hrootOwns := pairVecDivVHCHeapChainOwnership_root_owns heap owners nodes
+    hownership hheap
+  have hotherOwns := hownership.1 slot head hheadGet
+  have hdisjoint : Disjoint (owners head) (owners heap[0]) :=
+    hownership.2.2 slot 0 head heap[0] hheadGet
+      (Array.getElem?_eq_getElem hheap) hheadNe
+  have hpreserved := pairVecDivVHCConsumeRootBucket_preserves_disjoint_chain
+    this heap k nodes lin resetH quotient divisor result (owners heap[0])
+    (owners head) (some head) hheap hrootOwns hotherOwns hdisjoint hrun
+  have hunvisited := pairVecDivVHCConsumeRootBucket_unvisited this heap k nodes
+    lin resetH quotient divisor result hheap hrun
+  exact hunvisited.2 i (hpreserved.1 hiHead)
+
+theorem pairVecDivVHCConsumeRootExtract_ownedNodesAtDegree
+    (this : DenseUPolyZp) (degree : Nat) (heap heap' : Array Nat)
+    (k : UInt64) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (resetH : Nat) (quotient divisor : SparsePolyZp)
+    (bucket : PairVecDivVHCBucketResult) (owners : Nat → Finset Nat)
+    (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok bucket)
+    (hextract : pairVecDivVHCExtract heap bucket.nodes = .ok heap') :
+    PairVecDivVHCHeapOwnedNodesAtDegree degree heap' owners bucket.nodes =
+      PairVecDivVHCHeapOwnedNodesAtDegree degree heap owners nodes \
+        owners heap[0] := by
+  have howned := pairVecDivVHCExtract_heapOwnedNodes heap heap' nodes
+    bucket.nodes owners hheap hownership hextract
+  have hsame := pairVecDivVHCConsumeRootBucket_owned_nonroot_get this heap k
+    nodes lin resetH quotient divisor bucket owners hheap hownership hconsume
+  apply Finset.ext
+  intro i
+  unfold PairVecDivVHCHeapOwnedNodesAtDegree
+  rw [howned]
+  simp only [Finset.mem_filter, Finset.mem_sdiff,
+    pairVecDivVHCNodeAtDegree_iff]
+  constructor
+  · rintro ⟨⟨hiOwned, hiRoot⟩, mono, hmono, hdegree⟩
+    refine ⟨⟨hiOwned, ?_⟩, hiRoot⟩
+    rcases (pairVecDivVHCMono_eq_ok_iff i bucket.nodes mono).1 hmono with
+      ⟨node, hnode, hactive⟩
+    rw [hsame i (Finset.mem_sdiff.mpr ⟨hiOwned, hiRoot⟩)] at hnode
+    exact ⟨mono, (pairVecDivVHCMono_eq_ok_iff i nodes mono).2
+      ⟨node, hnode, hactive⟩, hdegree⟩
+  · rintro ⟨⟨hiOwned, mono, hmono, hdegree⟩, hiRoot⟩
+    refine ⟨⟨hiOwned, hiRoot⟩, mono, ?_, hdegree⟩
+    rcases (pairVecDivVHCMono_eq_ok_iff i nodes mono).1 hmono with
+      ⟨node, hnode, hactive⟩
+    rw [← hsame i (Finset.mem_sdiff.mpr ⟨hiOwned, hiRoot⟩)] at hnode
+    exact (pairVecDivVHCMono_eq_ok_iff i bucket.nodes mono).2
+      ⟨node, hnode, hactive⟩
 
 /-- Consuming the root chain and then executing the generated extract restores
 a complete heap order in the updated node array, despite the old root having

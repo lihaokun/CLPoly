@@ -940,3 +940,12 @@ every generated range-for and recursive loop used by SQF.
   surviving slot 见证，所以这不是只能支持 soundness 的子集关系。
   配合 owner 之间的 disjointness，下一步可将每个 root trace 的精确
   owner-sum 沿 equal-degree 循环分解为不交求和。
+- 目标-degree heap-owned 节点集的精确递推已闭合。新的
+  `PairVecDivVHCNodeAtDegree` 以真实 `pairVecDivVHCMono` 成功读取
+  定义节点 degree，`HeapOwnedNodesAtDegree` 则在真实 owner 并集上
+  过滤。consume→extract 后的该集合精确等于旧集合减去 root owner：
+  非根 owner 的节点 lookup 通过 unvisited/disjoint-chain 证明前后完全
+  相同，所以 degree 过滤也前后等价。另外，当真实 root mono
+  degree 命中目标时，chain homogeneity 与 exact ownership 证明整个
+  `owners heap[0]` 都包含于目标集。下一步可直接把 root trace 的
+  owner-sum 与递归尾的 set-difference sum 合并为初始目标集的完整求和。

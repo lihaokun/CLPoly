@@ -3978,6 +3978,75 @@ def PairVecDivVHCNodeDivisorIndicesFixed
   ∀ (i : Nat) (node : PairVecDivVHCNode),
     nodes[i]? = some node → node.divisorIndex = i + 1
 
+theorem PairVecDivVHCNodeDivisorIndicesFixed.node_for_tail
+    (nodes : Array PairVecDivVHCNode) (divisorSize d : Nat)
+    (hsize : nodes.size = divisorSize - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hdpos : 0 < d) (hd : d < divisorSize) :
+    ∃ node, nodes[d - 1]? = some node ∧ node.divisorIndex = d := by
+  have hi : d - 1 < nodes.size := by
+    rw [hsize]
+    omega
+  let node := nodes[d - 1]
+  have hget : nodes[d - 1]? = some node := Array.getElem?_eq_getElem hi
+  refine ⟨node, hget, ?_⟩
+  rw [hfixed (d - 1) node hget]
+  omega
+
+theorem PairVecDivVHCNodeDivisorIndicesFixed.index_eq_of_divisorIndex
+    (nodes : Array PairVecDivVHCNode) (i d : Nat)
+    (node : PairVecDivVHCNode)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hget : nodes[i]? = some node) (hd : node.divisorIndex = d) :
+    i = d - 1 := by
+  have hidentity := hfixed i node hget
+  omega
+
+theorem PairVecDivVHCNodeDivisorIndicesFixed.unique_for_tail
+    (nodes : Array PairVecDivVHCNode) (left right d : Nat)
+    (leftNode rightNode : PairVecDivVHCNode)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hleft : nodes[left]? = some leftNode)
+    (hright : nodes[right]? = some rightNode)
+    (hleftD : leftNode.divisorIndex = d)
+    (hrightD : rightNode.divisorIndex = d) :
+    left = right := by
+  rw [hfixed left leftNode hleft] at hleftD
+  rw [hfixed right rightNode hright] at hrightD
+  omega
+
+theorem pairVecDivVHCResetRow_product_degree_gt_frontier
+    (degreeLimit frontierDegree resetH d q : Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (quotientTerm divisorTerm : UMonomial × Zp)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontierDegree < degreeLimit)
+    (hdpos : 0 < d) (hd : d < divisor.size)
+    (hreset : d - 1 < resetH)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[d]? = some divisorTerm) :
+    frontierDegree < quotientTerm.1.deg + divisorTerm.1.deg := by
+  rcases hfixed.node_for_tail nodes divisor.size d hsize hdpos hd with
+    ⟨node, hnode, hnodeD⟩
+  rcases hready.2 (d - 1) hreset with
+    ⟨readyNode, hreadyNode, hcursor, hreadyD, hmono⟩
+  rw [hnode] at hreadyNode
+  simp only [Option.some.injEq] at hreadyNode
+  subst readyNode
+  have hq : q < quotient.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hquotient
+    contradiction
+  have hearlier : q < node.quotientIndex := by omega
+  apply hprefix.earlier_product_degree_gt degreeLimit frontierDegree nodes
+    quotient divisor hfrontier (d - 1) node hnode q quotientTerm divisorTerm
+    hearlier hquotient
+  simpa [hnodeD] using hdivisor
+
 theorem PairVecDivVHCNodeDivisorIndicesFixed.set
     (nodes : Array PairVecDivVHCNode) (nodeIndex : Nat)
     (updated : PairVecDivVHCNode) (hn : nodeIndex < nodes.size)

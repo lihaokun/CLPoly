@@ -724,3 +724,16 @@ every generated range-for and recursive loop used by SQF.
   塞入递归。下一步用 node total coverage+fixed divisor indices 把该
   row-local 定位提升到所有 divisor-tail rows，并补齐重插入后的
   homogeneity 恢复。
+- divisor-tail row 与 source node 的总映射/单射已形式化。在
+  `nodes.size = divisor.size - 1` 与永久 `divisorIndex = i + 1`
+  不变式下，每个 `0 < d < divisor.size` 都由真实数组槽
+  `d - 1` 表示，且任何两个声称表示同一 `d` 的节点槽必然
+  相等。对 total coverage 的 reset 分支，`ResetReady` 给出该 row
+  cursor 精确等于 `quotient.size`；因而任意实际 quotient lookup
+  的下标都严格位于 cursor 之前，由 processed-prefix+上轮 strict
+  bound 得到其与该 divisor cell 的乘积次数严格高于当前
+  frontier。所以 inactive/reset rows 不可能包含本轮应消费的
+  frontier product，该结论来自真实 one-past-end cursor，不是忽略
+  inactive nodes。下一步处理 coverage 的 heap-owned 分支：需用
+  heap root dominance+chain homogeneity 证明当前 cursor mono 不高于选中
+  frontier，再同 row-local 定位合并。

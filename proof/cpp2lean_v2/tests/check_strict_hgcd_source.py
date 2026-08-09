@@ -49,11 +49,17 @@ REQUIRED_CALLS = {
 LEAN_FILES = (
     V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictEuclidGCD.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictHGCD.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictHGCDChecked.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictDivremRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictEuclidRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictPolyAddSubRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictMulDispatchRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRawRefinement.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDFirstCallRefinement.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDReconstructRefinement.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRecursiveRefinement.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDContinuationRefinement.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDCheckedRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRefinement.lean",
 )
 
@@ -75,7 +81,9 @@ def main() -> None:
 
     source = "\n".join(path.read_text() for path in LEAN_FILES)
     forbidden = ("sorry", "partial def", "fuel", "oracle", "fallback",
-                 "Generated.Corpus", "Array.get!", "Array.set!")
+                 "Generated.Corpus", "Array.get!", "Array.set!",
+                 "HgcdRecursiveCallUnfolds",
+                 "hgcdRecursiveCall_rawInvariant_wf")
     found = [token for token in forbidden if token in source]
     if found:
         raise SystemExit(f"strict HGCD invariant contains forbidden constructs: {found}")
@@ -379,11 +387,11 @@ def main() -> None:
         "HgcdRecursiveNonBaseContinuationWorkspace",
         "hgcdRecursiveBodyBranchAdmissible_rawInvariant",
         "hgcdRecursiveCallBelowOfCall",
-        "HgcdRecursiveCallUnfolds",
-        "hgcdRecursiveBodyBranchAdmissible_belowOfCall_eq_call",
+        "hgcdRecursiveCallChecked",
+        "hgcdRecursiveCallChecked_eq_branchAdmissible",
         "HgcdRecursiveInvocationWorkspace",
         "HgcdRecursiveInvocationWorkspaceProviderBelow",
-        "hgcdRecursiveCall_rawInvariant_wf",
+        "hgcdRecursiveCallChecked_rawInvariant_wf",
         "GcdEuclidRawResult",
         "dense_upoly_zp__gcd_euclid_raw_ir",
         "euclidDivremLengthDecreases",

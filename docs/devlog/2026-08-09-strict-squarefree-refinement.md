@@ -673,3 +673,15 @@ every generated range-for and recursive loop used by SQF.
   fallback 或语义神谕。下一步处理 emit 导致的 quotient append 与
   frontier bound 变化，再把 prefix 传过 activation/reinsertion 和完整 outer
   iteration。
+- emit 前的 quotient append 边界已语义化。新增
+  `PairVecDivVHCCursorIndicesBounded` 表达每个真实 cursor 最多处在
+  quotient 的 one-past-end；从同一 witness 的 state coverage 出发，
+  reset prefix 通过 `ResetReady` 得到精确等于 size，lin 与 heap-owned
+  nodes 则分别通过 `LinReady`/exact chain ownership 恢复 active mono，
+  再由 `NodeDenotes` 的真实 quotient lookup 得到严格小于 size。
+  在该边界上已证明 quotient `push` 保持旧 processed-prefix：任何
+  `q < cursor` 都不可能是新尾下标，所以 lookup 必然回到原
+  quotient cell。同时加入 frontier bound 单调性，为下一轮严格
+  更小 frontier 复用前缀证据。下一步证明 activate/set-next/heap
+  insertion 不改变 cursor fields，把 append 后的 prefix 传过完整
+  `ActivateReset` 与 reverse reinsertion。

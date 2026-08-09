@@ -2219,6 +2219,15 @@ def PairVecDivVHCNodeDenotes (quotient divisor : SparsePolyZp)
     divisor[node.divisorIndex]? = some divisorTerm ∧
     node.mono = some ⟨quotientTerm.1.deg + divisorTerm.1.deg⟩
 
+theorem PairVecDivVHCNodeDenotes.quotientIndex_lt
+    (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
+    (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node) :
+    node.quotientIndex < quotient.size := by
+  rcases hdenotes with ⟨quotientTerm, _, hquotient, _, _⟩
+  by_contra hnot
+  rw [Array.getElem?_eq_none (by omega)] at hquotient
+  contradiction
+
 theorem PairVecDivVHCNodeDenotes.product_degree_eq
     (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
     (degree : Nat) (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
@@ -2253,6 +2262,38 @@ def PairVecDivVHCCursorPrefixAbove (degreeLimit : Nat)
       divisor[node.divisorIndex]? = some divisorTerm →
       degreeLimit ≤ quotientTerm.1.deg + divisorTerm.1.deg
 
+/-- Every concrete cursor is either within the current quotient or exactly at
+its one-past-the-end reset position. -/
+def PairVecDivVHCCursorIndicesBounded (quotientSize : Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ (i : Nat) (node : PairVecDivVHCNode), nodes[i]? = some node →
+    node.quotientIndex ≤ quotientSize
+
+theorem PairVecDivVHCCursorPrefixAbove.mono
+    (largeLimit smallLimit : Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hprefix : PairVecDivVHCCursorPrefixAbove largeLimit nodes quotient divisor)
+    (hlimits : smallLimit ≤ largeLimit) :
+    PairVecDivVHCCursorPrefixAbove smallLimit nodes quotient divisor := by
+  intro i node hget q quotientTerm divisorTerm hq hquotient hdivisor
+  exact Nat.le_trans hlimits
+    (hprefix i node hget q quotientTerm divisorTerm hq hquotient hdivisor)
+
+theorem PairVecDivVHCCursorPrefixAbove.push
+    (degreeLimit : Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) (term : UMonomial × Zp)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hbounded : PairVecDivVHCCursorIndicesBounded quotient.size nodes) :
+    PairVecDivVHCCursorPrefixAbove degreeLimit nodes (quotient.push term)
+      divisor := by
+  intro i node hget q quotientTerm divisorTerm hq hquotient hdivisor
+  rw [Array.getElem?_push] at hquotient
+  have hne : q ≠ quotient.size := by
+    have hcursor := hbounded i node hget
+    omega
+  simp only [hne, ↓reduceIte] at hquotient
+  exact hprefix i node hget q quotientTerm divisorTerm hq hquotient hdivisor
+
 theorem pairVecDivVHCInit_cursorPrefixAbove
     (degreeLimit : Nat) (quotient divisor : SparsePolyZp) :
     PairVecDivVHCCursorPrefixAbove degreeLimit (pairVecDivVHCInit divisor)
@@ -2268,6 +2309,20 @@ theorem pairVecDivVHCInit_cursorPrefixAbove
   simp only [Option.some.injEq] at hget
   subst node
   simp [pairVecDivVHCInitialNode] at hq
+
+theorem pairVecDivVHCInit_cursorIndicesBounded (divisor : SparsePolyZp) :
+    PairVecDivVHCCursorIndicesBounded 0 (pairVecDivVHCInit divisor) := by
+  intro i node hget
+  have hi : i < divisor.size - 1 := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by
+      rw [pairVecDivVHCInit_size]
+      omega)] at hget
+    contradiction
+  rw [pairVecDivVHCInit_get divisor i hi] at hget
+  simp only [Option.some.injEq] at hget
+  subst node
+  simp [pairVecDivVHCInitialNode]
 
 theorem PairVecDivVHCCursorPrefixAbove.set_advance
     (degreeLimit nodeIndex : Nat) (nodes : Array PairVecDivVHCNode)
@@ -6121,6 +6176,43 @@ def PairVecDivVHCLinReady (lin : Array Nat)
   lin.toList.Nodup ∧
     ∀ nodeIndex ∈ lin.toList,
       ∃ node mono, nodes[nodeIndex]? = some node ∧ node.mono = some mono
+
+theorem pairVecDivVHCCursorIndicesBounded_of_state
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp)
+    (hstate : PairVecDivVHCStateCovered heap nodes lin resetH)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node) :
+    PairVecDivVHCCursorIndicesBounded quotient.size nodes := by
+  rcases hstate with ⟨owners, hownership, hcovered⟩
+  intro i node hget
+  have hi : i < nodes.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  rcases hcovered i hi with hreset | hlin | ⟨slot, head, hheap, hmem⟩
+  · rcases hresetReady.2 i hreset with
+      ⟨readyNode, hreadyGet, hquotientIndex, _, _⟩
+    rw [hget] at hreadyGet
+    simp only [Option.some.injEq] at hreadyGet
+    subst readyNode
+    exact hquotientIndex.le
+  · rcases hlinReady.2 i (by simpa using hlin) with
+      ⟨activeNode, mono, hactiveGet, hactiveMono⟩
+    rw [hget] at hactiveGet
+    simp only [Option.some.injEq] at hactiveGet
+    subst activeNode
+    exact (hdenotes i node hget (by simp [hactiveMono])).quotientIndex_lt.le
+  · have howns := hownership.1 slot head hheap
+    rcases pairVecDivVHCChainOwns_mem_active (some head) (owners head) nodes
+        howns i hmem with ⟨activeNode, mono, hactiveGet, hactiveMono⟩
+    rw [hget] at hactiveGet
+    simp only [Option.some.injEq] at hactiveGet
+    subst activeNode
+    exact (hdenotes i node hget (by simp [hactiveMono])).quotientIndex_lt.le
 
 theorem PairVecDivVHCLinReady.set_outside
     (lin : Array Nat) (nodes : Array PairVecDivVHCNode)

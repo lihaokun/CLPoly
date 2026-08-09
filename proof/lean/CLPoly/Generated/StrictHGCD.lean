@@ -2178,7 +2178,7 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
     (A B a b : RawPtr UInt64) (lenA lenB : Nat)
     (W scratch : RawPtr UInt64) (heap : RawHeap)
     (hbound : lenA = bound) (horder : lenB < lenA)
-    (firstLength : ∀ first,
+    (firstLength : ¬ lenB < lenA / 2 + 1 → ∀ first,
       let ws := hgcdRecursiveWorkspace W lenA
       let high := hgcdRecursiveHighInput a b lenA lenB
       ∀ (hchildOrder : high.lenB0 < high.lenA0)
@@ -2188,7 +2188,8 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
         high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
         heap hchildOrder hchildDecrease = .ok first →
       HgcdRecursiveLengthInvariant high.lenA0 first)
-    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
+    (reconstructionBound : ¬ lenB < lenA / 2 + 1 →
+      HgcdFirstReconstructionBoundProvider this a b W
       scratch lenA lenB (HgcdFirstDispatchResult this bound recurse a b W
         scratch lenA lenB heap)) :
     RawExec HgcdRecursiveResult :=
@@ -2214,7 +2215,8 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
     | .error fault => .error fault
     | .ok first =>
       have hfirstLength : HgcdRecursiveLengthInvariant high.lenA0 first :=
-        firstLength first (hgcdRecursiveHighInput_order a b lenA lenB horder)
+        firstLength hbaseGuard first
+          (hgcdRecursiveHighInput_order a b lenA lenB horder)
           hfirstDecrease hfirst
       match hreconstruct : hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0
           a b ws.a3 ws.b3 scratch (Nat.min lenA m) (Nat.min lenB m)
@@ -2223,7 +2225,7 @@ def hgcdRecursiveBodyBelow (this : DenseUPolyZp) (bound : Nat)
       | .ok reconstructed =>
         have hreconstructedInvariant :
             HgcdFirstReconstructionInvariant lenA first reconstructed :=
-          reconstructionBound first reconstructed ⟨_, _, hfirst⟩ (by
+          reconstructionBound hbaseGuard first reconstructed ⟨_, _, hfirst⟩ (by
             simpa [high, hgcdRecursiveHighInput] using hfirstLength)
             hreconstruct
         if hearlyGuard : reconstructed.lenB < m + 1 then

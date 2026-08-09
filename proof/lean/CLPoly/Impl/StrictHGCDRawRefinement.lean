@@ -9992,25 +9992,14 @@ theorem hgcdRecursiveBodyBelow_base_rawInvariant (this : DenseUPolyZp)
     (left right : Polynomial (ZMod this._p.toNat))
     (hp : 1 < this._p.toNat)
     (hbound : lenA = bound) (horder : lenB < lenA)
-    (firstLength : ∀ first,
-      let ws := hgcdRecursiveWorkspace W lenA
-      let high := hgcdRecursiveHighInput a b lenA lenB
-      ∀ (hchildOrder : high.lenB0 < high.lenA0)
-        (hchildDecrease : high.lenA0 < bound),
-      hgcdRecursiveDispatchBelow this bound recurse ws.R
-        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
-        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
-        heap hchildOrder hchildDecrease = .ok first →
-      HgcdRecursiveLengthInvariant high.lenA0 first)
-    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
-      scratch lenA lenB (HgcdFirstDispatchResult this bound recurse a b W
-        scratch lenA lenB heap))
     (workspace : HgcdRecursiveBaseCallWorkspace this M hM A B a b lenA
       lenB heap left right)
     (hlenAPos : 0 < lenA) (hstop : lenB < lenA / 2 + 1)
     (result : HgcdRecursiveResult)
     (hrun : hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b
-      lenA lenB W scratch heap hbound horder firstLength reconstructionBound =
+      lenA lenB W scratch heap hbound horder
+        (fun hnonbase => False.elim (hnonbase hstop))
+        (fun hnonbase => False.elim (hnonbase hstop)) =
         .ok result) :
     ∃ entries,
       HgcdRecursiveRawInvariant this left right left right entries computeM
@@ -10096,7 +10085,8 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
         W scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg
         hp horder firstCall.workspace firstCall.recursiveRefines
       hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
-        lenB W scratch heap hbound horder providers.1 providers.2 = .ok result) :
+        lenB W scratch heap hbound horder (fun _ => providers.1)
+          (fun _ => providers.2) = .ok result) :
     ∃ finalA finalB entries,
       HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
         A B lenA result := by
@@ -10106,7 +10096,8 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
     scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp
     horder firstCall.workspace firstCall.recursiveRefines
   change hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
-    lenB W scratch heap hbound horder providers.1 providers.2 = .ok result
+    lenB W scratch heap hbound horder (fun _ => providers.1)
+      (fun _ => providers.2) = .ok result
     at hrun
   rcases hgcdRecursiveFirstCall_refines this bound recurse a b W scratch lenA
       lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp firstCall first
@@ -10364,7 +10355,8 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
         W scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg
         hp horder firstCall.workspace firstCall.recursiveRefines
       hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
-        lenB W scratch heap hbound horder providers.1 providers.2 = .ok result) :
+        lenB W scratch heap hbound horder (fun _ => providers.1)
+          (fun _ => providers.2) = .ok result) :
     ∃ finalA finalB entries,
       HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
         A B lenA result := by
@@ -10374,7 +10366,8 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
     scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp
     horder firstCall.workspace firstCall.recursiveRefines
   change hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
-    lenB W scratch heap hbound horder providers.1 providers.2 = .ok result
+    lenB W scratch heap hbound horder (fun _ => providers.1)
+      (fun _ => providers.2) = .ok result
     at hrun
   rcases hgcdRecursiveFirstCall_refines this bound recurse a b W scratch lenA
       lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp firstCall first
@@ -10627,7 +10620,7 @@ theorem hgcdRecursiveBodyBelow_eq_body (this : DenseUPolyZp)
     (A B a b : RawPtr UInt64) (lenA lenB : Nat)
     (W scratch : RawPtr UInt64) (heap : RawHeap)
     (hbound : lenA = bound) (horder : lenB < lenA)
-    (firstLength : ∀ first,
+    (firstLength : ¬ lenB < lenA / 2 + 1 → ∀ first,
       let ws := hgcdRecursiveWorkspace W lenA
       let high := hgcdRecursiveHighInput a b lenA lenB
       ∀ (hchildOrder : high.lenB0 < high.lenA0)
@@ -10637,7 +10630,8 @@ theorem hgcdRecursiveBodyBelow_eq_body (this : DenseUPolyZp)
         high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
         heap hchildOrder hchildDecrease = .ok first →
       HgcdRecursiveLengthInvariant high.lenA0 first)
-    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
+    (reconstructionBound : ¬ lenB < lenA / 2 + 1 →
+      HgcdFirstReconstructionBoundProvider this a b W
       scratch lenA lenB (HgcdFirstDispatchResult this bound below a b W
         scratch lenA lenB heap))
     (hagrees : ∀ (matrix : HgcdMat) (hMatrix : matrix.Valid)
@@ -10683,7 +10677,8 @@ def hgcdRecursiveBodyAdmissible (this : DenseUPolyZp)
     scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp
     horder admissible.workspace admissible.recursiveRefines
   hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA lenB
-    W scratch heap hbound horder providers.1 providers.2
+    W scratch heap hbound horder (fun _ => providers.1)
+      (fun _ => providers.2)
 
 /-- The admissible wrapper erases to the exact generated source body whenever
 the well-founded child callback erases to the plain recursive callback. -/

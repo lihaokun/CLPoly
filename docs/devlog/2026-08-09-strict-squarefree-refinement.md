@@ -214,6 +214,14 @@ every generated range-for and recursive loop used by SQF.
   节点 frontier 上界，同时保持每个活跃节点确实表示对应 quotient/divisor
   数组单元乘积。接下来把这两个性质沿良基 `next` chain 抬升，再处理
   `reset_h` 激活。
+- 在沿 chain 抬升时重新逐行核对 `basic.hh`，发现并修正了 exhausted
+  分支的真实性缺口：源码的 `++v1_ptr` 即使到达 `v_size` 也会留下
+  one-past-end 指针，旧安全模型却保留了旧 quotient 索引。现在该分支
+  保存递增后的索引，并把直到 `reset_h` 激活前不可观察的陈旧
+  `mono`/`next` 标成 `none`；这既匹配源码可观察行为，也使无效指针状态
+  无法被误读。可达 `next` 链已建立独立的 Finset 所有权不变量，允许
+  真实未初始化 reset 后缀，并已证明单节点更新保持其剩余链；完整 chain
+  执行现保持 frontier 上界和活跃节点 denotation。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

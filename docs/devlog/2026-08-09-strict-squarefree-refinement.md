@@ -1027,3 +1027,14 @@ every generated range-for and recursive loop used by SQF.
   `(result.quotient * divisor).coeff frontier.degree = dividend.coeff
   frontier.degree`。下一步将该单步等式提升为良基外层循环
   的全局 processed-degree 不变式。
+- 已证明真实外层迭代不会破坏高于当前 frontier 的乘积系数。
+  `pairVecDivVHCEmitted_monomial_mul_divisor_coeff_eq_zero_above`
+  将新发射商单项式分别对 divisor 首项和严格降次 tail 展开，
+  证明其乘积在任意更高次数上的系数为零；由此
+  `pairVecDivVHCEmit_product_coeff_above` 证明真实 emit 保持这些
+  系数，`pairVecDivVHCOuterIteration_product_coeff_above` 再经由
+  select/consume/reinsert 的真实执行分解，将保持性提升到完整
+  单次 outer iteration。该结果与当前 frontier 的系数闭合定理
+  共同构成全局 processed-degree 归纳的单步核心。下一步仍需证明
+  frontier 之间可能出现的次数空隙也为零，再将不变式穿过良基
+  `pairVecDivVHCOuterLoop`，最后用整除性消去低于 divisor 首项的余式。

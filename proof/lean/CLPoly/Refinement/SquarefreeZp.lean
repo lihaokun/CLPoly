@@ -13506,6 +13506,74 @@ theorem pairVecDivVHCEmitted_monomial_mul_tail_coeff_eq_zero
         simp
   exact go divisor.toList.tail htailDegree
 
+theorem pairVecDivVHCEmitted_monomial_mul_divisor_coeff_eq_zero_above
+    (p frontierDegree targetDegree : Nat) (divisor : SparsePolyZp)
+    (coefficient : ZMod p) (hdivisor : 0 < divisor.size)
+    (hcanonical : SparsePolyZp.Canonical p divisor)
+    (hlead : divisor[0].1.deg ≤ frontierDegree)
+    (habove : frontierDegree < targetDegree) :
+    (Polynomial.monomial (frontierDegree - divisor[0].1.deg) coefficient *
+      SparsePolyZp.toPoly p divisor).coeff targetDegree = 0 := by
+  have htermDegree : ∀ term ∈ divisor.toList,
+      term.1.deg ≤ divisor[0].1.deg := by
+    intro term hterm
+    rcases List.getElem_of_mem hterm with ⟨i, hi, htermEq⟩
+    have hiArray : i < divisor.size := by simpa using hi
+    have hget : divisor[i]? = some term := by
+      rw [Array.getElem?_eq_getElem hiArray]
+      rw [← Array.getElem_toList hiArray]
+      exact congrArg some htermEq
+    exact canonical_degree_le_head p divisor hcanonical hdivisor i term hget
+  unfold SparsePolyZp.toPoly
+  have go : ∀ terms : List (UMonomial × Zp),
+      (∀ term ∈ terms, term.1.deg ≤ divisor[0].1.deg) →
+      (Polynomial.monomial (frontierDegree - divisor[0].1.deg) coefficient *
+        listSum p terms).coeff targetDegree = 0 := by
+    intro terms hterms
+    induction terms with
+    | nil => simp [listSum]
+    | cons term terms ih =>
+        have htermLe := hterms term List.mem_cons_self
+        have hrest : ∀ item ∈ terms,
+            item.1.deg ≤ divisor[0].1.deg := by
+          intro item hitem
+          exact hterms item (List.mem_cons_of_mem term hitem)
+        have hdegree : frontierDegree - divisor[0].1.deg + term.1.deg ≠
+            targetDegree := by omega
+        rw [listSum_cons, mul_add, Polynomial.coeff_add,
+          Polynomial.monomial_mul_monomial, Polynomial.coeff_monomial,
+          if_neg hdegree, ih hrest]
+        simp
+  exact go divisor.toList htermDegree
+
+theorem pairVecDivVHCEmit_product_coeff_above
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' targetDegree : Nat)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hcoefficientReduced : consumed.coefficient.toNat < this._p.toNat)
+    (hdivisor : 0 < divisor.size)
+    (hlead : divisor[0].1.deg ≤ frontier.degree)
+    (habove : frontier.degree < targetDegree)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    (SparsePolyZp.toPoly this._p.toNat quotient' *
+        SparsePolyZp.toPoly this._p.toNat divisor).coeff targetDegree =
+      (SparsePolyZp.toPoly this._p.toNat quotient *
+        SparsePolyZp.toPoly this._p.toNat divisor).coeff targetDegree := by
+  rw [pairVecDivVHCEmit_toPoly_of_lead_le this frontier consumed quotient
+    divisor quotient' activated resetH' hcfg hdivisorCanonical
+    hcoefficientReduced hdivisor hlead hrun, add_mul,
+    Polynomial.coeff_add,
+    pairVecDivVHCEmitted_monomial_mul_divisor_coeff_eq_zero_above
+      this._p.toNat frontier.degree targetDegree divisor
+      (Zp.toZMod this._p.toNat ⟨consumed.coefficient, this._p⟩ /
+        Zp.toZMod this._p.toNat divisor[0].2) hdivisor hdivisorCanonical
+      hlead habove, add_zero]
+
 theorem pairVecDivVHCEmit_preserves_quotientAbove_of_lt
     (this : DenseUPolyZp) (nextDegree : Nat)
     (frontier : PairVecDivVHCFrontier)
@@ -14471,6 +14539,49 @@ theorem pairVecDivVHCOuterIteration_product_coefficient
   change _ + (consumed.coefficient.toNat : ZMod this._p.toNat) = _
   rw [hresidual]
   ring
+
+theorem pairVecDivVHCOuterIteration_product_coeff_above
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividendIndex targetDegree : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult)
+    (hdivisor : 0 < divisor.size)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hquotientCanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hlead : divisor[0].1.deg ≤ frontier.degree)
+    (habove : frontier.degree < targetDegree)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    (SparsePolyZp.toPoly this._p.toNat result.quotient *
+        SparsePolyZp.toPoly this._p.toNat divisor).coeff targetDegree =
+      (SparsePolyZp.toPoly this._p.toNat quotient *
+        SparsePolyZp.toPoly this._p.toNat divisor).coeff targetDegree := by
+  rcases pairVecDivVHCOuterIteration_components this dividendIndex heap nodes
+      quotient dividend divisor resetH frontier result hdivisor hselect hrun with
+    ⟨consumed, quotient', activated, resetH', reinserted, hconsume, hemit,
+      hreinsert, hresult⟩
+  have hk := pairVecDivVHCSelectFrontier_coefficient_reduced
+    this._p.toNat dividendIndex dividend heap nodes frontier
+      (Fact.out : Nat.Prime this._p.toNat).pos hdividendCanonical hselect
+  have hp : this._p ≠ 0 := by
+    intro hp
+    have hz : this._p.toNat = 0 := congrArg UInt64.toNat hp
+    exact (Fact.out : Nat.Prime this._p.toNat).ne_zero hz
+  have hcoefficientReduced :=
+    pairVecDivVHCConsumeEqualDegree_coefficient_reduced this frontier.degree
+      heap frontier.coefficient nodes #[] resetH quotient divisor consumed hp
+      hcfg hquotientCanonical hk hconsume
+  have hemitAbove := pairVecDivVHCEmit_product_coeff_above this frontier
+    consumed quotient divisor quotient' activated resetH' targetDegree hcfg
+    hdivisorCanonical hcoefficientReduced hdivisor hlead habove hemit
+  rw [hresult]
+  exact hemitAbove
 
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)

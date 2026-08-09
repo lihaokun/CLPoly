@@ -1504,6 +1504,92 @@ def pairVecDivVHCOuterIteration (this : DenseUPolyZp)
   else
     .error .assertionFailure
 
+/-- Complete general-path outer `while`.  `degreeLimit` is a proof-relevant
+strict upper bound on the next source frontier, not a step counter: after one
+body the recursive limit becomes the degree that was actually selected.
+Failure of the decrease check exposes a broken heap/canonical invariant rather
+than silently truncating execution. -/
+def pairVecDivVHCOuterLoop (this : DenseUPolyZp) (degreeLimit : Nat)
+    (dividendIndex : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient dividend divisor : SparsePolyZp)
+    (resetH : Nat) : RawExec SparsePolyZp :=
+  if hdone : dividend.size ≤ dividendIndex ∧ heap.size = 0 then
+    .ok quotient
+  else
+    match pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes with
+    | .error fault => .error fault
+    | .ok frontier =>
+        if hdecrease : frontier.degree < degreeLimit then
+          match pairVecDivVHCOuterIteration this dividendIndex heap nodes
+              quotient dividend divisor resetH with
+          | .error fault => .error fault
+          | .ok next =>
+              pairVecDivVHCOuterLoop this frontier.degree next.dividendIndex
+                next.heap next.nodes next.quotient dividend divisor next.resetH
+        else
+          .error .assertionFailure
+termination_by degreeLimit
+decreasing_by exact hdecrease
+
+theorem pairVecDivVHCOuterLoop_done (this : DenseUPolyZp)
+    (degreeLimit dividendIndex : Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (hdone : dividend.size ≤ dividendIndex) :
+    pairVecDivVHCOuterLoop this degreeLimit dividendIndex #[] nodes quotient
+      dividend divisor resetH = .ok quotient := by
+  rw [pairVecDivVHCOuterLoop]
+  simp [hdone]
+
+/-- Checked entry to the current C++ general priority-heap branch.  The source
+has already ruled out empty/single-term divisors and empty dividends. -/
+def pairVecDivGeneralBranchIR (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) : RawExec SparsePolyZp :=
+  if hdividend : 0 < dividend.size then
+    if hdivisor : 1 < divisor.size then
+      let nodes := pairVecDivVHCInit divisor
+      pairVecDivVHCOuterLoop this (dividend[0].1.deg + 1) 0 #[] nodes #[]
+        dividend divisor (divisor.size - 1)
+    else
+      .error .assertionFailure
+  else
+    .error .assertionFailure
+
+/-- Non-aliasing source entry used by SQF.  Its branch order is the current
+C++ `pair_vec_div`: reject zero divisor, clear the fresh output and return for
+zero dividend, execute the size-one loop, otherwise pass the compile-time
+false univariate compression hook and enter the priority heap. -/
+def pairVecDivIR (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) : RawExec SparsePolyZp :=
+  if hdivisorEmpty : divisor.size = 0 then
+    .error .assertionFailure
+  else if hdividendEmpty : dividend.size = 0 then
+    .ok #[]
+  else if hsingle : divisor.size = 1 then
+    pairVecDivSingleBranchIR this dividend divisor
+  else
+    pairVecDivGeneralBranchIR this dividend divisor
+
+theorem pairVecDivIR_empty_dividend (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp)
+    (hdividend : dividend.size = 0) (hdivisor : divisor.size ≠ 0) :
+    pairVecDivIR this dividend divisor = .ok #[] := by
+  simp [pairVecDivIR, hdivisor, hdividend]
+
+theorem pairVecDivIR_single (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp)
+    (hdividend : dividend.size ≠ 0) (hdivisor : divisor.size = 1) :
+    pairVecDivIR this dividend divisor =
+      pairVecDivSingleBranchIR this dividend divisor := by
+  simp [pairVecDivIR, hdividend, hdivisor]
+
+theorem pairVecDivIR_general (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp)
+    (hdividend : dividend.size ≠ 0) (hdivisor : 1 < divisor.size) :
+    pairVecDivIR this dividend divisor =
+      pairVecDivGeneralBranchIR this dividend divisor := by
+  simp [pairVecDivIR, hdividend, Nat.ne_of_gt (lt_trans Nat.zero_lt_one
+    hdivisor), Nat.ne_of_gt hdivisor]
+
 /-- Exact source-order range-for loop of `__extract_pth_root`. -/
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=
   (UMonomial.mk ((term.1.deg.toUInt64 / prime).toInt64), term.2)

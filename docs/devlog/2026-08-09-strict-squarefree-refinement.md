@@ -171,6 +171,15 @@ every generated range-for and recursive loop used by SQF.
   `lin` 逆序重插。已证明 frontier 选择只会保持或恰好推进一次实际
   dividend iterator。下一步建立本次迭代后最大 frontier 次数严格下降
   的不变式，用它定义完整 outer while 的良基递归。
+- 完整 outer while 与统一 dispatch 已形成可编译执行。while 每轮读取
+  真实 frontier，并用“上一实际 frontier 的严格次数上界”作为良基
+  参数；递归参数更新为本轮真实次数，不是迭代计数或 fuel。若次数不
+  下降则返回 checked assertion failure，后续语义证明必须从 canonical
+  frontier/heap 不变式排除该分支。一般分支入口以 dividend 首项次数
+  加一建立初始上界，并创建真实 `divisor.size - 1` 节点/reset_h。
+  dispatch 现按源码覆盖 zero divisor、zero dividend、single divisor 和
+  compression-false general heap；下一步证明 decrease guard 恒成功及
+  quotient-product frontier 守恒，尚未据此宣告一般除法精化完成。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

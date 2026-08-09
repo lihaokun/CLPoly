@@ -224,6 +224,11 @@ canonical and its leading coefficient is one.
   nonempty public execution theorem now returns the canonical normalized L2
   Euclidean gcd only after the source's second monic traversal has actually
   run.
+- Replaced the legacy object-level inverse in that public tail with the
+  generated `inv_prime` execution already certified by strict word
+  arithmetic.  Even though the incoming leading word is proved to be one,
+  the executable path now performs the same inverse implementation as current
+  C++ before entering the second sparse traversal.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

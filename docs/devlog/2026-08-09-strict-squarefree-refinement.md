@@ -136,3 +136,6 @@ every generated range-for and recursive loop used by SQF.
   append 均保留；输出保持 canonical，满足 `quotient * divisor =
   dividend`，并在 monic exact-division 前提下精确等于 L2
   `divByMonic`。一般 divisor 的 priority-heap branch 仍待闭合。
+- 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
+  inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
+  execution；monic 早退分支仍按真实 stored-word comparison 执行。

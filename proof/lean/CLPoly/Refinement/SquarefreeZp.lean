@@ -25,25 +25,29 @@ open CLPoly.Impl.StrictPolynomialGCDRefinement
 open CLPoly.Math
 
 /-- Exact checked entry for the source `__upoly_make_monic`. -/
-def upolyMakeMonicIR (f : SparsePolyZp) : RawExec (Zp × SparsePolyZp) :=
+def upolyMakeMonicIR (this : DenseUPolyZp) (f : SparsePolyZp) :
+    RawExec (Zp × SparsePolyZp) :=
   if hnonempty : 0 < f.size then
     let lc := f[0].2
     if lc.val == 1 then
       .ok (lc, f)
     else
-      let lcInv := Zp.inv lc
+      let lcInv := generatedZpInvIR this lc
       .ok (lc, sparseMonicLoop 0 f lcInv)
   else
     .error .assertionFailure
 
 /-- A concrete monic sparse input takes the actual early-return comparison in
 `__upoly_make_monic`; no mutation loop is erased from the definition. -/
-theorem upolyMakeMonicIR_eq_of_monic (p : Nat) [Fact (Nat.Prime p)]
-    (f : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p f)
-    (hnonempty : 0 < f.size) (hmonic : (SparsePolyZp.toPoly p f).Monic) :
-    upolyMakeMonicIR f = .ok (f[0].2, f) := by
-  have hlead := sparse_leading_val_eq_one_of_monic p f hcanonical hnonempty
-    hmonic
+theorem upolyMakeMonicIR_eq_of_monic (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (f : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hnonempty : 0 < f.size)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat f).Monic) :
+    upolyMakeMonicIR this f = .ok (f[0].2, f) := by
+  have hlead := sparse_leading_val_eq_one_of_monic this._p.toNat f hcanonical
+    hnonempty hmonic
   simp [upolyMakeMonicIR, hnonempty, hlead]
 
 /-- One observable iteration of the current C++ `derivative` template.  The

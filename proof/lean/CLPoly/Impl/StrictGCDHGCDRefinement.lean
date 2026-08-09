@@ -855,6 +855,138 @@ theorem hgcdRecursiveMiddle_succeeds (this : DenseUPolyZp)
   · simpa [result] using hlayout
   · simpa [result] using hlt
 
+/-- Total execution of one generated quotient-matrix column update.  The
+active arithmetic is the same real raw multiplication/addition sequence used
+by `_mat_row_update`; only the final descriptor construction differs. -/
+theorem hgcdMatQuotientEntry_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (S : HgcdMat) (hS : S.Valid) (top bottom : Fin 4)
+    (q : RawPtr UInt64) (lenQ : Nat) (T scratch : RawPtr UInt64)
+    (heap : RawHeap) (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hne : top ≠ bottom)
+    (workspace : HgcdMatQuotientEntryWorkspace S hS top bottom q lenQ T
+      scratch heap)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hMatrix : HgcdMatRawDenseRep this heap S entries hS) :
+    ∃ result,
+      hgcdMatQuotientEntry this S hS top bottom q lenQ T scratch heap =
+        .ok result := by
+  by_cases hactive : 0 < lenQ ∧ 0 < hgcdMatLen S hS bottom
+  · rcases matRowUpdate_succeeds this S bottom top q lenQ T 0
+      (hgcdMatPtr S hS top) scratch heap hS quotient (entries bottom)
+      (entries top) hcfg hp workspace hQ (hMatrix bottom) (hMatrix top) with
+      ⟨row, hrow⟩
+    rcases matRowUpdate_nonzero_success_shape this S bottom top q lenQ T 0
+        (hgcdMatPtr S hS top) scratch heap row hS hne.symm
+        (Nat.ne_of_gt hactive.1) (Nat.ne_of_gt hactive.2) hrow with
+      ⟨heap1, heap2, sumLen, hmul, hadd, _, _, _, _, _⟩
+    let len' := S.len.set top.val sumLen (by rw [hS.2]; exact top.isLt)
+    let next : HgcdMat := { S with len := len' }
+    have hNext : next.Valid := ⟨hS.1, by simp [next, len', hS.2]⟩
+    let result : HgcdMatQuotientEntryResult := ⟨heap2, next, hNext⟩
+    refine ⟨result, ?_⟩
+    have hguardRaw : 0 < lenQ ∧ 0 < hgcdMatLenRaw S hS bottom := by
+      simpa [hgcdMatLenRaw, hgcdMatLen] using hactive
+    have hguardBool : (decide (lenQ > 0) &&
+        decide (hgcdMatLenRaw S hS bottom > 0)) = true := by
+      simp [hguardRaw]
+    have hmulRaw : Generated.StrictMul.dense_upoly_zp__mul_ir this T
+        (if lenQ ≥ hgcdMatLenRaw S hS bottom then q else
+          hgcdMatPtrRaw S hS bottom)
+        (if lenQ ≥ hgcdMatLenRaw S hS bottom then lenQ else
+          hgcdMatLenRaw S hS bottom)
+        (if lenQ ≥ hgcdMatLenRaw S hS bottom then
+          hgcdMatPtrRaw S hS bottom else q)
+        (if lenQ ≥ hgcdMatLenRaw S hS bottom then
+          hgcdMatLenRaw S hS bottom else lenQ) scratch heap = .ok heap1 := by
+      simpa only [hgcdMatPtrRaw, hgcdMatPtr, hgcdMatLenRaw, hgcdMatLen] using
+        hmul
+    have haddRaw : dense_upoly_zp__poly_add_ir this
+        (hgcdMatPtrRaw S hS top) (hgcdMatPtrRaw S hS top)
+        (hgcdMatLenRaw S hS top) T
+        (lenQ + hgcdMatLenRaw S hS bottom - 1) heap1 =
+          .ok (heap2, sumLen) := by
+      simpa only [hgcdMatPtrRaw, hgcdMatPtr, hgcdMatLenRaw, hgcdMatLen] using
+        hadd
+    rw [hgcdMatQuotientEntry]
+    rw [if_pos hguardBool]
+    dsimp only
+    rw [hmulRaw]
+    dsimp only
+    rw [haddRaw]
+  · let result : HgcdMatQuotientEntryResult := ⟨heap, S, hS⟩
+    refine ⟨result, ?_⟩
+    have hguardRaw : ¬(0 < lenQ ∧ 0 < hgcdMatLenRaw S hS bottom) := by
+      simpa [hgcdMatLenRaw, hgcdMatLen] using hactive
+    have hguardBool : (decide (lenQ > 0) &&
+        decide (hgcdMatLenRaw S hS bottom > 0)) ≠ true := by
+      simpa [Bool.and_eq_true] using hguardRaw
+    rw [hgcdMatQuotientEntry, if_neg hguardBool]
+
+/-- Staged, non-circular workspace for the two concrete quotient columns. -/
+structure HgcdMatApplyQuotientTotalWorkspace (this : DenseUPolyZp)
+    (S : HgcdMat) (hS : S.Valid) (q : RawPtr UInt64) (lenQ : Nat)
+    (T scratch : RawPtr UInt64) (heap : RawHeap) : Type where
+  first : HgcdMatQuotientEntryWorkspace (hgcdMatSwapRows S hS)
+    (hgcdMatSwapRows_valid S hS) (0 : Fin 4) (2 : Fin 4) q lenQ T scratch
+    heap
+  second : ∀ first,
+    hgcdMatQuotientEntry this (hgcdMatSwapRows S hS)
+      (hgcdMatSwapRows_valid S hS) (0 : Fin 4) (2 : Fin 4) q lenQ T scratch
+      heap = .ok first →
+    HgcdMatQuotientEntryWorkspace first.matrix first.valid (1 : Fin 4)
+      (3 : Fin 4) q lenQ T scratch first.heap
+
+/-- Total semantic execution of the exact row swap and two generated quotient
+column updates. -/
+theorem hgcdMatApplyQuotient_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (S : HgcdMat) (hS : S.Valid) (q : RawPtr UInt64) (lenQ : Nat)
+    (T scratch : RawPtr UInt64) (heap : RawHeap)
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdMatApplyQuotientTotalWorkspace this S hS q lenQ T
+      scratch heap)
+    (hQ : RawDensePolyRep this heap q lenQ quotient)
+    (hMatrix : HgcdMatRawDenseRep this heap S entries hS) :
+    ∃ result,
+      hgcdMatApplyQuotient this S hS q lenQ T scratch heap = .ok result ∧
+      HgcdMatRawDenseRep this result.heap result.matrix
+        (hgcdMatApplyQuotientEntries entries quotient) result.valid ∧
+      RawDensePolyRep this result.heap q lenQ quotient := by
+  let swapped := hgcdMatSwapRows S hS
+  let hSwapped := hgcdMatSwapRows_valid S hS
+  have hSwappedRep := hgcdMatSwapRows_refines this S hS entries heap hMatrix
+  rcases hgcdMatQuotientEntry_succeeds this swapped hSwapped (0 : Fin 4)
+      (2 : Fin 4) q lenQ T scratch heap (hgcdMatSwapEntries entries)
+      quotient hcfg hp (by decide) physical.first hQ hSwappedRep with
+    ⟨first, hfirst⟩
+  have hFirstSemantic := hgcdMatQuotientEntry_refines this swapped hSwapped
+    (0 : Fin 4) (2 : Fin 4) q lenQ T scratch heap first
+    (hgcdMatSwapEntries entries) quotient hcfg hp physical.first hQ
+    hSwappedRep hfirst
+  have hSecondWork := physical.second first hfirst
+  rcases hgcdMatQuotientEntry_succeeds this first.matrix first.valid
+      (1 : Fin 4) (3 : Fin 4) q lenQ T scratch first.heap
+      (hgcdMatQuotientUpdateEntries (hgcdMatSwapEntries entries) quotient
+        (0 : Fin 4) (2 : Fin 4))
+      quotient hcfg hp (by decide) hSecondWork hFirstSemantic.2
+      hFirstSemantic.1 with ⟨second, hsecond⟩
+  have hSecondSemantic := hgcdMatQuotientEntry_refines this first.matrix
+    first.valid (1 : Fin 4) (3 : Fin 4) q lenQ T scratch first.heap second
+    (hgcdMatQuotientUpdateEntries (hgcdMatSwapEntries entries) quotient
+      (0 : Fin 4) (2 : Fin 4))
+    quotient hcfg hp hSecondWork hFirstSemantic.2 hFirstSemantic.1 hsecond
+  let result : HgcdMatQuotientResult :=
+    ⟨second.heap, second.matrix, second.valid⟩
+  refine ⟨result, ?_, ?_, ?_⟩
+  · simp [result, hgcdMatApplyQuotient, swapped, hfirst, hsecond]
+  · simpa [result, hgcdMatApplyQuotientEntries] using hSecondSemantic.1
+  · simpa [result] using hSecondSemantic.2
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

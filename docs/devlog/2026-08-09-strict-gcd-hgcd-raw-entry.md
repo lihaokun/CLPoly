@@ -147,6 +147,21 @@ own theorem supplies quotient/remainder representations, gcd preservation,
 layout preservation, and the strict remainder decrease.  No separate middle
 result or success witness is accepted as input.
 
+For one quotient-matrix entry, reuse the already total raw row-update
+arithmetic with `bottom` as the multiplied entry and `top` as the in-place add
+destination.  In the active branch, extract the exact multiplication and
+addition executions from that call and replay them through the generated
+quotient-entry constructor, whose only descriptor change is `top.len`.  In the
+inactive branch the generated helper returns the input matrix immediately.
+This proves totality without assuming a quotient-entry result.
+
+For the two-column quotient application, provide the first column workspace
+up front and the second only after the actual first result.  Execute and refine
+column `(0,2)`, then use its returned matrix and preserved quotient to execute
+and refine `(1,3)`.  The generated wrapper is exactly the second result with
+its validity witness, so this staged composition proves the complete quotient
+application total and semantic.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

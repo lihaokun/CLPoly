@@ -2717,6 +2717,35 @@ termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+theorem pairVecDivVHCConsumeRootBucket_preserves_node_invariants
+    (this : DenseUPolyZp) (p degreeLimit : Nat)
+    (heap : Array Nat) (k : UInt64) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCBucketResult)
+    (hheap : 0 < heap.size)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hchain : PairVecDivVHCChainValid (some heap[0])
+      (Finset.range nodes.size) nodes)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit result.nodes ∧
+      (∀ (i : Nat) (node : PairVecDivVHCNode),
+        result.nodes[i]? = some node → node.mono ≠ none →
+          PairVecDivVHCNodeDenotes quotient divisor node) ∧
+      PairVecDivVHCNodeDivisorIndicesFixed result.nodes ∧
+      PairVecDivVHCResetReady result.resetH quotient.size result.nodes := by
+  unfold pairVecDivVHCConsumeRootBucket at hrun
+  simp only [hheap, ↓reduceDIte] at hrun
+  exact pairVecDivVHCConsumeChain_preserves_node_invariants this p degreeLimit
+    (some heap[0]) (Finset.range nodes.size) k nodes lin resetH quotient
+    divisor result hcanonical hbelow hdenotes hfixed hready hchain hrun
+
 theorem pairVecDivVHCActivatedTail_degree_lt_frontier (p frontierDegree : Nat)
     (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
     (hdivisorCanonical : SparsePolyZp.Canonical p divisor)

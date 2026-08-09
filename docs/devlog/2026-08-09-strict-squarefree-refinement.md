@@ -259,6 +259,11 @@ every generated range-for and recursive loop used by SQF.
   低于 frontier；随后的 insert 同时保持 frontier、denotation、永久
   divisor 身份和剩余 reset 前缀。完整良基循环最终给出四项性质及
   `ResetReady 0`，不再把语义保持留给调用端假设。
+- `next` chain 的四项组合定理现已封装到真实
+  `pairVecDivVHCConsumeRootBucket` 调用边界：从非空 heap 的实际 root 和
+  `Finset.range nodes.size` 所有权集合执行，不再要求上层展开 chain
+  实现。下一步需要加强 heap ownership，使 `VHC_extract` 后的新 root
+  自动取得未被当前 bucket 修改的合法 chain，而不是由调用端逐轮提供。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

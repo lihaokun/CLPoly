@@ -2723,6 +2723,39 @@ termination_by owner.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+/-- Linking a fresh node in front of an existing exact chain transfers
+ownership to the inserted head.  This is the ownership effect of the real
+`VHC::next` field write used by heap insertion. -/
+theorem pairVecDivVHCSetNext_chainOwns_insert
+    (nodeIndex : Nat) (next : Option Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (node : PairVecDivVHCNode) (mono : UMonomial) (tailOwner : Finset Nat)
+    (hnode : nodes[nodeIndex]? = some node) (hmono : node.mono = some mono)
+    (hfresh : nodeIndex ∉ tailOwner)
+    (htail : PairVecDivVHCChainOwns next tailOwner nodes)
+    (hrun : pairVecDivVHCSetNext nodeIndex next nodes = .ok nodes') :
+    PairVecDivVHCChainOwns (some nodeIndex) (insert nodeIndex tailOwner)
+      nodes' := by
+  unfold pairVecDivVHCSetNext at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    simp only [Except.ok.injEq] at hrun
+    subst nodes'
+    rw [Array.getElem?_eq_getElem hn] at hnode
+    simp only [Option.some.injEq] at hnode
+    subst node
+    rw [PairVecDivVHCChainOwns]
+    simp only [Finset.mem_insert, true_or, ↓reduceDIte]
+    refine ⟨{ nodes[nodeIndex] with next := next }, mono, ?_, hmono, ?_⟩
+    · rw [Array.getElem?_set_self hn]
+    · have htail' := pairVecDivVHCChainOwns_congr_on next tailOwner nodes
+        (nodes.set nodeIndex { nodes[nodeIndex] with next := next }) htail (by
+          intro i hi
+          rw [Array.getElem?_set_ne hn]
+          intro heq
+          subst i
+          exact hfresh hi)
+      simpa [hfresh] using htail'
+
 /-- Exact ownership of every active heap bucket, keyed by its head node.
 The source heap contains each head once, and different heads own disjoint
 `next` chains. -/
@@ -2735,6 +2768,25 @@ def PairVecDivVHCHeapChainOwnership (heap : Array Nat)
     (∀ (left right leftHead rightHead : Nat), heap[left]? = some leftHead →
       heap[right]? = some rightHead → leftHead ≠ rightHead →
       Disjoint (owners leftHead) (owners rightHead))
+
+/-- Topology-independent ownership invariant used across insertion: the owner
+map may change when a newly activated head is linked in front of an existing
+equal-monomial bucket. -/
+def PairVecDivVHCHeapChainsOwned (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∃ owners : Nat → Finset Nat,
+    PairVecDivVHCHeapChainOwnership heap owners nodes
+
+theorem pairVecDivVHCHeapChainsOwned_empty (nodes : Array PairVecDivVHCNode) :
+    PairVecDivVHCHeapChainsOwned #[] nodes := by
+  refine ⟨fun _ => ∅, ?_⟩
+  refine ⟨?_, ?_, ?_⟩
+  · intro slot head hget
+    simp at hget
+  · intro left right head hleft
+    simp at hleft
+  · intro left right leftHead rightHead hleft
+    simp at hleft
 
 theorem pairVecDivVHCHeapChainOwnership_root_onlyAt
     (heap : Array Nat) (owners : Nat → Finset Nat)
@@ -3818,6 +3870,20 @@ theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainOwnership
       · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
         subst result
         exact hownership
+
+theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainsOwned
+    (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult)
+    (howned : PairVecDivVHCHeapChainsOwned heap nodes)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCHeapChainsOwned result.heap result.nodes := by
+  rcases howned with ⟨owners, hownership⟩
+  exact ⟨owners,
+    pairVecDivVHCConsumeEqualDegree_preserves_heapChainOwnership this degree
+      heap k nodes lin resetH quotient divisor result owners hownership hrun⟩
 
 theorem pairVecDivVHCConsumeEqualDegree_preserves_node_invariants
     (this : DenseUPolyZp) (p degreeLimit degree : Nat)

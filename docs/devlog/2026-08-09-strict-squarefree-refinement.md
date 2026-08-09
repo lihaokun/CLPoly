@@ -307,6 +307,13 @@ every generated range-for and recursive loop used by SQF.
   `reset_h` 前缀的一步越界状态。root chain 合法性不再作为额外
   假设，而是由全 heap 精确 ownership 及 owner 落在节点数组范围自动
   推出。
+- 为处理 activation/reinsert 会改变 bucket 链拓扑的事实，全局
+  不变式已提升为“存在当前 owner 映射”的
+  `PairVecDivVHCHeapChainsOwned`；空 heap 初始化和整个 equal-degree
+  循环对它的保持已闭合。同时已证明真实 `VHC::next` 写入的
+  ownership 效果：将一个 fresh node 链到旧 chain 前方，新 head 精确
+  拥有 `insert nodeIndex tailOwner`。这是下一步证明真实
+  `VHC_insert` 保持 existential heap ownership 的核心链接引理。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

@@ -50,6 +50,27 @@ source guard supplies `value != 0`.  Combine this proof with the semantic
 proof by uniqueness of the actual successful scan, yielding the complete
 `RawDenseSparseResult` for one executable output.
 
+For sparse-to-dense execution, model the constructor in its two physical
+phases.  First run the same forward zero-write loop as the vector resize so
+every coefficient cell in the allocated length is initialized.  Then scan
+the actual sparse array from index zero and write each term's stored residue
+to the cell selected by its monomial degree.  Both loops recurse on
+`bound - index`; the sparse canonical invariant and the constructor length
+show that every selected degree is in bounds.  Each successful write
+preserves the allocation layout, so these bounds remain available at the
+next iteration.
+
+The semantic invariant for the second phase is stated directly on raw reads:
+after processing a sparse prefix, a cell contains the coefficient of the
+corresponding term when that degree occurs in the prefix, and otherwise it
+still contains zero.  Strictly descending degrees make the selected cell
+unique and ensure later writes cannot overwrite an earlier term.  At loop
+termination this read invariant gives `SlicePolyRep` for the exact sparse
+`toPoly`; reduced residues give `CanonicalU64Prefix`, while the nonempty
+leading term at degree `length - 1` gives the exact normalization result.
+The empty input is handled separately with length zero.  These facts together
+establish `SparseRawDenseRep` for the heap returned by the concrete writes.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -61,6 +82,9 @@ proof by uniqueness of the actual successful scan, yielding the complete
   with the normalized raw input polynomial.
 - Proved canonical output and combined both properties for the same actual
   `to_upoly` execution.
+- Added the exact zero-initialize/term-write sparse-to-dense constructor path.
+- Proved both constructor phases terminate on their real decreasing indices,
+  preserve allocation layout, and return a valid target slice.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why
@@ -78,7 +102,7 @@ boundary is required before replacing its current typeclass GCD call.
 
 - 耗时：约 0.5 小时（源码控制流核对、接口设计、形式化与构建）
 - 迭代：1 轮编译—修复
-- Lean 新增/修改行数：约 55 行
+- Lean 新增/修改行数：约 180 行
 - 对应 C++ 行数：约 55 行（两个 sparse/dense 转换及 GCD 包装）
 - 放弃的方案：直接证明当前 `SparsePolyZp.gcd` 正确；它不是 C++ dense
   GCD 的执行，不能用于严格 L1→L2 精化。

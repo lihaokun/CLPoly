@@ -9,6 +9,131 @@ open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Impl.StrictDivremRefinement
 open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Math
+open Generated.StrictMul
+
+/-- Exact raw lowering of the sparse-term write loop in the
+`dense_upoly_zp(upolynomial,Zp)` constructor.  The preceding vector resize is
+represented by `mulZeroPadLoop` below, which performs the same forward zero
+writes on the allocated coefficient buffer. -/
+def sparseToDenseWriteLoop (ptr : RawPtr UInt64) (length : Nat)
+    (sparse : SparsePolyZp) (index : Nat) (heap : RawHeap) : RawExec RawHeap :=
+  if h : index < sparse.size then
+    let term := sparse[index]
+    match heap.writeU64 ptr term.1.deg term.2.val with
+    | .error fault => .error fault
+    | .ok heap' =>
+        sparseToDenseWriteLoop ptr length sparse (index + 1) heap'
+  else
+    .ok heap
+termination_by sparse.size - index
+decreasing_by omega
+
+/-- Exact raw constructor path: zero-initialize the resized dense vector,
+then write every stored sparse coefficient at its source degree. -/
+def sparse_upoly_zp_to_dense_raw_ir (ptr : RawPtr UInt64) (length : Nat)
+    (sparse : SparsePolyZp) (heap : RawHeap) : RawExec RawHeap :=
+  match mulZeroPadLoop ptr 0 length 0 heap with
+  | .error fault => .error fault
+  | .ok heap' => sparseToDenseWriteLoop ptr length sparse 0 heap'
+
+/-- The actual sparse-term loop cannot fault when the target allocation is
+valid and every source degree lies inside the constructor length. -/
+theorem sparseToDenseWriteLoop_succeeds (ptr : RawPtr UInt64) (length : Nat)
+    (sparse : SparsePolyZp) (index : Nat) (heap : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length) :
+    ∃ heap', sparseToDenseWriteLoop ptr length sparse index heap = .ok heap' := by
+  rw [sparseToDenseWriteLoop]
+  split
+  next hmore =>
+    let term := sparse[index]
+    have htermDegree : term.1.deg < length := hdegree index hmore
+    rcases heap.writeU64_of_valid ptr length term.1.deg term.2.val hvalid
+        htermDegree with ⟨heap1, hwrite⟩
+    simp only [term, hwrite]
+    have hvalid1 : heap1.ValidU64Slice ptr length :=
+      (RawHeap.writeU64_preserves_valid heap heap1 ptr term.1.deg term.2.val
+        hwrite ptr length).mp hvalid
+    exact sparseToDenseWriteLoop_succeeds ptr length sparse (index + 1)
+      heap1 hvalid1 hdegree
+  next hdone => exact ⟨heap, rfl⟩
+termination_by sparse.size - index
+decreasing_by omega
+
+/-- Sparse coefficient writes change values only; all raw allocations retain
+their exact layout throughout the generated constructor loop. -/
+theorem sparseToDenseWriteLoop_sameLayout (ptr : RawPtr UInt64)
+    (length : Nat) (sparse : SparsePolyZp) (index : Nat)
+    (heap heap' : RawHeap) (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hrun : sparseToDenseWriteLoop ptr length sparse index heap = .ok heap') :
+    RawHeap.SameLayout heap heap' := by
+  rw [sparseToDenseWriteLoop] at hrun
+  split at hrun
+  next hmore =>
+    let term := sparse[index]
+    have htermDegree : term.1.deg < length := hdegree index hmore
+    rcases heap.writeU64_of_valid ptr length term.1.deg term.2.val hvalid
+        htermDegree with ⟨heap1, hwrite⟩
+    simp only [term, hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr
+      term.1.deg term.2.val hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    have hlayout2 := sparseToDenseWriteLoop_sameLayout ptr length sparse
+      (index + 1) heap1 heap' hvalid1 hdegree hrun
+    exact fun other count =>
+      (hlayout1 other count).trans (hlayout2 other count)
+  next hdone =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    subst heap'
+    exact fun _ _ => Iff.rfl
+termination_by sparse.size - index
+decreasing_by omega
+
+/-- Both physical phases of the sparse-to-dense constructor terminate without
+a raw access fault under their exact allocation and degree bounds. -/
+theorem sparse_upoly_zp_to_dense_raw_ir_succeeds
+    (ptr : RawPtr UInt64) (length : Nat) (sparse : SparsePolyZp)
+    (heap : RawHeap) (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length) :
+    ∃ heap', sparse_upoly_zp_to_dense_raw_ir ptr length sparse heap =
+      .ok heap' := by
+  rcases CLPoly.Impl.StrictMulRefinement.mulZeroPadLoop_refines ptr 0 length 0
+      1 heap 0 1 (by omega) (by decide) (by simpa using hvalid)
+      (CLPoly.Impl.StrictHGCDRawRefinement.slicePolyRep_zero_length_any
+        heap ptr 1)
+      (by
+        intro i value hi
+        omega) with ⟨heap1, hzero, hlayout, _, _⟩
+  have hvalid1 := (hlayout ptr length).mp hvalid
+  rcases sparseToDenseWriteLoop_succeeds ptr length sparse 0 heap1 hvalid1
+      hdegree with ⟨heap2, hwrites⟩
+  exact ⟨heap2, by
+    simp [sparse_upoly_zp_to_dense_raw_ir, hzero, hwrites]⟩
+
+/-- The concrete constructor result keeps the target dense allocation valid;
+this is the raw→safe boundary needed by the following representation proof. -/
+theorem sparse_upoly_zp_to_dense_raw_ir_valid
+    (ptr : RawPtr UInt64) (length : Nat) (sparse : SparsePolyZp)
+    (heap heap' : RawHeap) (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hrun : sparse_upoly_zp_to_dense_raw_ir ptr length sparse heap =
+      .ok heap') :
+    heap'.ValidU64Slice ptr length := by
+  rcases CLPoly.Impl.StrictMulRefinement.mulZeroPadLoop_refines ptr 0 length 0
+      1 heap 0 1 (by omega) (by decide) (by simpa using hvalid)
+      (CLPoly.Impl.StrictHGCDRawRefinement.slicePolyRep_zero_length_any
+        heap ptr 1)
+      (by
+        intro i value hi
+        omega) with ⟨heap1, hzero, hlayoutZero, _, _⟩
+  have hvalid1 := (hlayoutZero ptr length).mp hvalid
+  have hwrites : sparseToDenseWriteLoop ptr length sparse 0 heap1 =
+      .ok heap' := by
+    simpa [sparse_upoly_zp_to_dense_raw_ir, hzero] using hrun
+  have hlayoutWrites := sparseToDenseWriteLoop_sameLayout ptr length sparse
+    0 heap1 heap' hvalid1 hdegree hwrites
+  exact (hlayoutWrites ptr length).mp hvalid1
 
 /-- Exact raw lowering of the reverse coefficient scan in
 `dense_upoly_zp::to_upoly`. -/

@@ -427,6 +427,7 @@ def main() -> None:
         "hgcdRecursiveDispatchBelow_succeeds",
         "HgcdRecursiveFirstCallTotalWorkspace",
         "hgcdRecursiveFirstCall_succeeds",
+        "hgcdRecursiveEarlyStage_succeeds",
         "GcdHgcdLoopEuclidWorkspaceProvider",
         "GcdHgcdDivremWorkspace",
         "GcdHgcdDynamicDivremWorkspaceProvider",

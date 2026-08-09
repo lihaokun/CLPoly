@@ -230,6 +230,13 @@ Finally apply the existing proof-only reconstruction bound to those same two
 executions.  The resulting strict outer decrease is therefore derived from
 the actual child and reconstruction, not supplied for a preselected record.
 
+For the early continuation, recover the full-input transform, signed
+determinant, and GCD relation from that same first child and reconstruction.
+Use the reconstructed stopping guard to derive the outer length invariant,
+then execute the generated early-return copies (A, B, and optionally four
+matrix entries).  Package that actual result as the common recursive
+invariant; no successful early result is accepted as an input premise.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -263,3 +270,6 @@ the actual child and reconstruction, not supplied for a preselected record.
 - first child 增量：约 1 小时、2 轮编译—修复、Lean 约 150 行；执行
   第一次总 dispatch、保持原始低半部、完成四调用 paired reconstruction，
   并从这两个实际执行导出严格的外层重构长度界。
+- early 增量：约 1 小时、2 轮编译—修复、Lean 约 130 行；从 first child
+  与重构的实际执行恢复完整输入变换/GCD，再执行 A、B 与可选矩阵复制，
+  生成同一次 early result 的公共递归不变式。

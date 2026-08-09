@@ -1867,6 +1867,118 @@ theorem hgcdRecursiveFirstCall_succeeds (this : DenseUPolyZp)
     by simpa [ws] using hAReconstructed, by simpa [ws] using hBReconstructed,
     by simpa [ws] using hMatrixReconstructed, hReconstructionInvariant⟩
 
+/-- Total execution and common recursive invariant for the generated early
+continuation selected after the first paired reconstruction. -/
+theorem hgcdRecursiveEarlyStage_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (package : HgcdRecursiveNonBasePackage this bound recurse a b W scratch
+      lenA lenB heap)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (outputHighA outputHighB : Polynomial (ZMod this._p.toNat))
+    (entries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (hchildOrder :
+      (hgcdRecursiveHighInput a b lenA lenB).lenB0 <
+        (hgcdRecursiveHighInput a b lenA lenB).lenA0)
+    (hchildDecrease :
+      (hgcdRecursiveHighInput a b lenA lenB).lenA0 < bound)
+    (hfirst :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap hchildOrder hchildDecrease = .ok first)
+    (hFirstInvariant :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      HgcdRecursiveRawInvariant this package.inputHighA package.inputHighB
+        outputHighA outputHighB entries true ws.a3 ws.b3 high.lenA0 first)
+    (hreconstruct :
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
+        scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
+        first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
+        first.heap = .ok reconstructed)
+    (hReconstructed : HgcdFirstReconstructionInvariant lenA first
+      reconstructed)
+    (hMatrixReconstructed :
+      HgcdMatRawDenseRep this reconstructed.heap first.matrix entries
+        first.valid)
+    (hearly : reconstructed.lenB < lenA / 2 + 1)
+    (earlyWork :
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdEarlyReturnRefineWorkspace reconstructed.heap M first.matrix hM
+        first.valid A B ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB) :
+    ∃ early hEarlyValid,
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveEarlyReturn M first.matrix hM first.valid computeM A B
+          ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB first.sgn
+          reconstructed.heap = .ok early ∧
+      HgcdRecursiveRawInvariant this package.inputA package.inputB
+        (hgcdReconstructedLowA entries package.lowPolyA package.lowPolyB
+            first.sgn + Polynomial.X ^ (lenA / 2) * outputHighA)
+        (hgcdReconstructedLowB entries package.lowPolyA package.lowPolyB
+            first.sgn + Polynomial.X ^ (lenA / 2) * outputHighB)
+        entries computeM A B lenA (early.toResult hEarlyValid) := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  let high := hgcdRecursiveHighInput a b lenA lenB
+  have hactual : HgcdFirstDispatchResult this bound recurse a b W scratch
+      lenA lenB heap first :=
+    ⟨hchildOrder, hchildDecrease, by simpa [ws, high] using hfirst⟩
+  have hframe := package.workspace.frame hchildOrder hchildDecrease first
+    hfirst
+  have hLowAFirst : RawDensePolyRep this first.heap a
+      (Nat.min lenA (lenA / 2)) package.lowPolyA :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      heap first.heap a (Nat.min lenA (lenA / 2)) package.lowPolyA
+      hframe.layout hframe.lowAPrefix package.workspace.lowA
+  have hLowBFirst : RawDensePolyRep this first.heap b
+      (Nat.min lenB (lenA / 2)) package.lowPolyB :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      heap first.heap b (Nat.min lenB (lenA / 2)) package.lowPolyB
+      hframe.layout hframe.lowBPrefix package.workspace.lowB
+  have hOldReconstruct := package.workspace.reconstruct first hactual
+  rcases hgcdRecursiveReconstructPair_preserves_input this ws.a2 ws.b2 ws.T0
+      a b ws.a3 ws.b3 scratch (Nat.min lenA (lenA / 2))
+      (Nat.min lenB (lenA / 2)) (lenA / 2) high.lenA0 first reconstructed
+      entries package.inputA package.inputB package.lowPolyA package.lowPolyB
+      package.inputHighA package.inputHighB outputHighA outputHighB hcfg hp
+      hOldReconstruct hFirstInvariant hLowAFirst.toCanonicalSlice
+      hLowBFirst.toCanonicalSlice package.splitA package.splitB hreconstruct
+      with
+    ⟨hARep, hBRep, hTransform, hDet, hGcd, _⟩
+  have hLength : HgcdRecursiveLengthInvariant lenA
+      ⟨reconstructed.heap, first.matrix, first.valid, reconstructed.lenA,
+        reconstructed.lenB, first.sgn⟩ :=
+    hgcdRecursiveEarly_lengthInvariant lenA high.lenA0 (lenA / 2) first
+      reconstructed reconstructed.heap first.sgn rfl (by
+        simp [high, hgcdRecursiveHighInput])
+      (by simpa [high, hgcdRecursiveHighInput] using
+        hFirstInvariant.lengths rfl)
+      hReconstructed hearly
+  let finalA := hgcdReconstructedLowA entries package.lowPolyA
+    package.lowPolyB first.sgn + Polynomial.X ^ (lenA / 2) * outputHighA
+  let finalB := hgcdReconstructedLowB entries package.lowPolyA
+    package.lowPolyB first.sgn + Polynomial.X ^ (lenA / 2) * outputHighB
+  rcases hgcdRecursiveEarlyReturn_refines this M first.matrix hM first.valid
+      computeM A B ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB
+      first.sgn finalA finalB entries reconstructed.heap earlyWork hARep hBRep
+      hMatrixReconstructed with
+    ⟨early, hearlyRun, _⟩
+  rcases hgcdRecursiveEarlyReturn_rawInvariant this M first.matrix hM
+      first.valid computeM A B ws.a2 ws.b2 reconstructed.lenA
+      reconstructed.lenB lenA first.sgn package.inputA package.inputB finalA
+      finalB entries reconstructed.heap early earlyWork hARep hBRep
+      hMatrixReconstructed hTransform hDet hGcd hearly hLength hearlyRun with
+    ⟨hEarlyValid, hInvariant⟩
+  exact ⟨early, hEarlyValid, by simpa [ws] using hearlyRun,
+    by simpa [ws, finalA, finalB] using hInvariant⟩
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

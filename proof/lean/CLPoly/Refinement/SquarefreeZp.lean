@@ -2443,6 +2443,30 @@ def PairVecDivVHCFrontierBelow (degreeLimit dividendIndex : Nat)
       heap[slot]? = some nodeIndex → nodes[nodeIndex]? = some node →
       node.mono = some mono → mono.deg < degreeLimit)
 
+def PairVecDivVHCRemainingDividendBelow (degreeLimit dividendIndex : Nat)
+    (dividend : SparsePolyZp) : Prop :=
+  ∀ (i : Nat) (term : UMonomial × Zp), dividendIndex ≤ i →
+    dividend[i]? = some term → term.1.deg < degreeLimit
+
+theorem pairVecDivVHCSelectFrontier_preserves_remaining_below
+    (degreeLimit dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (frontier : PairVecDivVHCFrontier)
+    (hremaining : PairVecDivVHCRemainingDividendBelow degreeLimit
+      dividendIndex dividend)
+    (hrun : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    PairVecDivVHCRemainingDividendBelow degreeLimit frontier.dividendIndex
+      dividend := by
+  have hindex := pairVecDivVHCSelectFrontier_index dividendIndex dividend heap
+    nodes frontier hrun
+  have hle : dividendIndex ≤ frontier.dividendIndex := by
+    rcases hindex with hsame | hnext
+    · omega
+    · omega
+  intro i term hi hterm
+  exact hremaining i term (Nat.le_trans hle hi) hterm
+
 theorem pairVecDivVHCSelectFrontier_degree_lt (degreeLimit dividendIndex : Nat)
     (dividend : SparsePolyZp) (heap : Array Nat)
     (nodes : Array PairVecDivVHCNode) (frontier : PairVecDivVHCFrontier)
@@ -3149,6 +3173,31 @@ def PairVecDivVHCHeapChainOwnership (heap : Array Nat)
     (∀ (left right leftHead rightHead : Nat), heap[left]? = some leftHead →
       heap[right]? = some rightHead → leftHead ≠ rightHead →
       Disjoint (owners leftHead) (owners rightHead))
+
+theorem pairVecDivVHCFrontierBelow_of_remaining_owned
+    (degreeLimit dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat)
+    (hremaining : PairVecDivVHCRemainingDividendBelow degreeLimit
+      dividendIndex dividend)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes) :
+    PairVecDivVHCFrontierBelow degreeLimit dividendIndex dividend heap nodes := by
+  refine ⟨hremaining, ?_⟩
+  intro slot nodeIndex node mono hheap hnode hmono
+  have howns := hownership.1 slot nodeIndex hheap
+  have hheadMem := pairVecDivVHCChainOwns_head_mem nodeIndex
+    (owners nodeIndex) nodes howns
+  rcases pairVecDivVHCChainOwns_mem_active (some nodeIndex)
+      (owners nodeIndex) nodes howns nodeIndex hheadMem with
+    ⟨ownedNode, ownedMono, hownedNode, hownedMono⟩
+  rw [hnode] at hownedNode
+  simp only [Option.some.injEq] at hownedNode
+  subst ownedNode
+  rw [hmono] at hownedMono
+  simp only [Option.some.injEq] at hownedMono
+  subst ownedMono
+  exact hbelow nodeIndex node mono hnode hmono
 
 /-- Topology-independent ownership invariant used across insertion: the owner
 map may change when a newly activated head is linked in front of an existing
@@ -6296,6 +6345,14 @@ theorem pairVecDivVHCCanonicalInitialFrontierBelow (p : Nat)
   pairVecDivVHCInitialFrontierBelow dividend nodes hnonempty
     (canonical_degree_le_head p dividend hcanonical hnonempty)
 
+theorem pairVecDivVHCCanonicalInitialRemainingBelow (p : Nat)
+    (dividend : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p dividend)
+    (hnonempty : 0 < dividend.size) :
+    PairVecDivVHCRemainingDividendBelow (dividend[0].1.deg + 1) 0
+      dividend := by
+  exact (pairVecDivVHCCanonicalInitialFrontierBelow p dividend #[] hcanonical
+    hnonempty).1
+
 /-- The selector's well-founded guard is a theorem consequence of the
 frontier-bound invariant; it is not an independently assumed execution
 budget. -/
@@ -6524,8 +6581,8 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
     (hdivisor : 0 < divisor.size)
     (hcanonical : SparsePolyZp.Canonical p quotient)
     (hdivisorCanonical : SparsePolyZp.Canonical p divisor)
-    (hfrontierBelow : PairVecDivVHCFrontierBelow degreeLimit dividendIndex
-      dividend heap nodes)
+    (hremaining : PairVecDivVHCRemainingDividendBelow degreeLimit
+      dividendIndex dividend)
     (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
     (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
       nodes[i]? = some node → node.mono ≠ none →
@@ -6536,6 +6593,8 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
     (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
       dividend divisor resetH = .ok result) :
     PairVecDivVHCHeapChainsOwned result.heap result.nodes ∧
+      PairVecDivVHCRemainingDividendBelow degreeLimit result.dividendIndex
+        dividend ∧
       PairVecDivVHCAllActiveNodesBelow degreeLimit result.nodes ∧
       (∀ (i : Nat) (node : PairVecDivVHCNode),
         result.nodes[i]? = some node → node.mono ≠ none →
@@ -6553,8 +6612,14 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
       contradiction
   | ok frontier =>
       simp only [Bind.bind, Except.bind] at hrun
+      have hfrontierBelow := pairVecDivVHCFrontierBelow_of_remaining_owned
+        degreeLimit dividendIndex dividend heap nodes owners hremaining hbelow
+        hownership
       have hselectedBelow := pairVecDivVHCSelectFrontier_degree_lt degreeLimit
         dividendIndex dividend heap nodes frontier hfrontierBelow hselect
+      have hremaining' :=
+        pairVecDivVHCSelectFrontier_preserves_remaining_below degreeLimit
+          dividendIndex dividend heap nodes frontier hremaining hselect
       generalize hconsume : pairVecDivVHCConsumeEqualDegree this
           frontier.degree heap frontier.coefficient nodes #[] resetH quotient
           divisor = consumedExec at hrun
@@ -6620,7 +6685,7 @@ theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
                       hemittedNodes.1 hemittedNodes.2.1
                       hemittedNodes.2.2.1 hemittedNodes.2.2.2 hemitted.2
                       hreinsert
-                  exact ⟨howned', hinvariants'⟩
+                  exact ⟨howned', hremaining', hinvariants'⟩
 
 /-- Complete general-path outer `while`.  `degreeLimit` is a proof-relevant
 strict upper bound on the next source frontier, not a step counter: after one

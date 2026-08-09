@@ -405,3 +405,12 @@ every generated range-for and recursive loop used by SQF.
   完整单次 outer iteration 现返回 ownership 与全部节点不变式。
   剩余 loop 缺口是将次数上界从旧 `degreeLimit` 收紧到实际
   selected frontier，以供下一次良基调用。
+- 完整 loop 所需的 global frontier-bound 骨架已建立。新不变式
+  `PairVecDivVHCRemainingDividendBelow` 记录当前 source index 之后的
+  所有 dividend 项都低于固定全局上界；selector 只会保持或递增
+  source index，因此该不变式可直接传递。对 heap 侧，exact-chain
+  ownership 证明每个可见 head 是真实活动节点，再由
+  `AllActiveNodesBelow` 得到 head 上界；两者组合生成 selector 所需
+  `FrontierBelow`，无需假定所有活动节点都已在 heap 中。单次
+  outer iteration 现已同时传递 remaining-dividend bound、ownership 和
+  全部节点不变式；canonical 非空 dividend 的初始上界也已闭合。

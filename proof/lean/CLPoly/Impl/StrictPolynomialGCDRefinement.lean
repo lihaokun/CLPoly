@@ -729,6 +729,25 @@ def sparse_upoly_zp_to_dense_raw_ir (ptr : RawPtr UInt64) (length : Nat)
 def sparseDenseLength (sparse : SparsePolyZp) : Nat :=
   if h : 0 < sparse.size then sparse[0].1.deg + 1 else 0
 
+theorem sparse_degree_lt_denseLength (p : Nat) (sparse : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical p sparse) :
+    ∀ i (hi : i < sparse.size), sparse[i].1.deg < sparseDenseLength sparse := by
+  intro i hi
+  have hnonempty : 0 < sparse.size := Nat.zero_lt_of_lt hi
+  rw [sparseDenseLength, dif_pos hnonempty]
+  by_cases hizero : i = 0
+  · subst i
+    omega
+  · have hpairwise : List.Pairwise
+        (fun a b : UMonomial × Zp => a.1.deg > b.1.deg) sparse.toList :=
+      List.isChain_iff_pairwise.mp hcanonical.2.1
+    have hrel := hpairwise.rel_get_of_lt
+      (a := ⟨0, by simpa using hnonempty⟩)
+      (b := ⟨i, by simpa using hi⟩) (by simp; omega)
+    simp only [List.get_eq_getElem] at hrel
+    rw [Array.getElem_toList hnonempty, Array.getElem_toList hi] at hrel
+    omega
+
 /-- Object-level constructor entry with its source-derived vector length. -/
 def sparse_upoly_zp_dense_constructor_raw_ir (ptr : RawPtr UInt64)
     (sparse : SparsePolyZp) (heap : RawHeap) : RawExec RawHeap :=
@@ -942,6 +961,50 @@ theorem sparseToDenseWriteLoop_preserves_prefix
     exact hread
 termination_by sparse.size - index
 decreasing_by omega
+
+/-- The complete zero-fill/term-write sparse constructor frames every
+disjoint live coefficient prefix. -/
+theorem sparse_upoly_zp_to_dense_raw_ir_preserves_prefix
+    (ptr guard : RawPtr UInt64) (length guardLength : Nat)
+    (sparse : SparsePolyZp) (heap heap' : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hdisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint ptr length
+      guard guardLength)
+    (hrun : sparse_upoly_zp_to_dense_raw_ir ptr length sparse heap =
+      .ok heap') :
+    SameU64Prefix heap heap' guard guardLength := by
+  rcases CLPoly.Impl.StrictMulRefinement.mulZeroPadLoop_refines ptr 0 length 0
+      1 heap 0 1 (by omega) (by decide) (by simpa using hvalid)
+      (CLPoly.Impl.StrictHGCDRawRefinement.slicePolyRep_zero_length_any
+        heap ptr 1)
+      (by intro i value hi; omega) with
+    ⟨heap1, hzero, hlayoutZero, _, _⟩
+  have hvalid1 := (hlayoutZero ptr length).mp hvalid
+  have hwrites : sparseToDenseWriteLoop ptr length sparse 0 heap1 =
+      .ok heap' := by
+    simpa [sparse_upoly_zp_to_dense_raw_ir, hzero] using hrun
+  exact CLPoly.Impl.StrictMulRefinement.sameU64Prefix_trans
+    (CLPoly.Impl.StrictMulRefinement.mulZeroPadLoop_preserves_prefix ptr guard
+      0 length 0 guardLength heap heap1 (by simpa using hvalid)
+      (by simpa using hdisjoint) hzero)
+    (sparseToDenseWriteLoop_preserves_prefix ptr guard length guardLength
+      sparse 0 heap1 heap' hvalid1 hdegree hdisjoint hwrites)
+
+theorem sparse_upoly_zp_dense_constructor_raw_ir_preserves_prefix
+    (p : Nat) (ptr guard : RawPtr UInt64) (guardLength : Nat)
+    (sparse : SparsePolyZp) (heap heap' : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr (sparseDenseLength sparse))
+    (hcanonical : SparsePolyZp.Canonical p sparse)
+    (hdisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint ptr
+      (sparseDenseLength sparse) guard guardLength)
+    (hrun : sparse_upoly_zp_dense_constructor_raw_ir ptr sparse heap =
+      .ok heap') :
+    SameU64Prefix heap heap' guard guardLength := by
+  apply sparse_upoly_zp_to_dense_raw_ir_preserves_prefix ptr guard
+    (sparseDenseLength sparse) guardLength sparse heap heap' hvalid
+    (sparse_degree_lt_denseLength p sparse hcanonical) hdisjoint
+  simpa [sparse_upoly_zp_dense_constructor_raw_ir] using hrun
 
 /-- The first sparse term's concrete coefficient write remains observable at
 the end of the iterator because canonical later degrees are strictly lower. -/
@@ -1462,6 +1525,70 @@ theorem sparse_upoly_zp_dense_constructor_raw_ir_result
         using hrun,
       fun _ _ => Iff.rfl, hcanonical, by
         simpa [sparseDenseLength] using hdense⟩
+
+/-- Sequential construction of the second dense input preserves the complete
+normalized representation of a disjoint first input. -/
+theorem sparse_upoly_zp_dense_constructor_raw_ir_preserves_rawDense
+    (this : DenseUPolyZp) (ptr guard : RawPtr UInt64)
+    (sparse : SparsePolyZp) (heap heap' : RawHeap)
+    (guardLength : Nat) (guardPoly : Polynomial (ZMod this._p.toNat))
+    (hmodulus : this._p ≠ 0)
+    (hvalid : heap.ValidU64Slice ptr (sparseDenseLength sparse))
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat sparse)
+    (hdisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint ptr
+      (sparseDenseLength sparse) guard guardLength)
+    (hguard : RawDensePolyRep this heap guard guardLength guardPoly)
+    (hrun : sparse_upoly_zp_dense_constructor_raw_ir ptr sparse heap =
+      .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      RawDensePolyRep this heap' guard guardLength guardPoly := by
+  rcases sparse_upoly_zp_dense_constructor_raw_ir_result this ptr sparse heap
+      hmodulus hvalid hcanonical with ⟨resultHeap, hrunResult, hlayout, _⟩
+  have heq : resultHeap = heap' :=
+    Except.ok.inj (hrunResult.symm.trans hrun)
+  subst resultHeap
+  have hprefix :=
+    sparse_upoly_zp_dense_constructor_raw_ir_preserves_prefix
+      this._p.toNat ptr guard guardLength sparse heap heap' hvalid hcanonical
+      hdisjoint hrun
+  exact ⟨hlayout, rawDensePolyRep_of_same_prefix this heap heap' guard
+    guardLength guardPoly hlayout hprefix hguard⟩
+
+/-- Exact sequential construction state for the two source sparse inputs. -/
+theorem two_sparse_dense_constructors_result
+    (this : DenseUPolyZp) (leftPtr rightPtr : RawPtr UInt64)
+    (left right : SparsePolyZp) (heap : RawHeap)
+    (hmodulus : this._p ≠ 0)
+    (hleftValid : heap.ValidU64Slice leftPtr (sparseDenseLength left))
+    (hrightValid : heap.ValidU64Slice rightPtr (sparseDenseLength right))
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hdisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint rightPtr
+      (sparseDenseLength right) leftPtr (sparseDenseLength left)) :
+    ∃ leftHeap finalHeap,
+      sparse_upoly_zp_dense_constructor_raw_ir leftPtr left heap =
+        .ok leftHeap ∧
+      sparse_upoly_zp_dense_constructor_raw_ir rightPtr right leftHeap =
+        .ok finalHeap ∧
+      RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+        (SparsePolyZp.toPoly this._p.toNat left) ∧
+      RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+        (SparsePolyZp.toPoly this._p.toNat right) := by
+  rcases sparse_upoly_zp_dense_constructor_raw_ir_result this leftPtr left
+      heap hmodulus hleftValid hleftCanonical with
+    ⟨leftHeap, hrunLeft, hlayoutLeft, hleftRep⟩
+  have hrightValid' :=
+    (hlayoutLeft rightPtr (sparseDenseLength right)).mp hrightValid
+  rcases sparse_upoly_zp_dense_constructor_raw_ir_result this rightPtr right
+      leftHeap hmodulus hrightValid' hrightCanonical with
+    ⟨finalHeap, hrunRight, _, hrightRep⟩
+  have hleftPreserved :=
+    sparse_upoly_zp_dense_constructor_raw_ir_preserves_rawDense this rightPtr
+      leftPtr right leftHeap finalHeap (sparseDenseLength left)
+      (SparsePolyZp.toPoly this._p.toNat left) hmodulus hrightValid'
+      hrightCanonical hdisjoint hleftRep.dense hrunRight
+  exact ⟨leftHeap, finalHeap, hrunLeft, hrunRight, hleftPreserved.2,
+    hrightRep.dense⟩
 
 theorem RawDenseSparseResult.toPoly_unique (this : DenseUPolyZp)
     (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)

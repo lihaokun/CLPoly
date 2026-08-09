@@ -166,6 +166,11 @@ polynomial operation may replace any of these executions.
 - Proved the sparse term-write loop frames every disjoint live raw prefix,
   supplying the missing preservation step for sequential construction of the
   two dense GCD inputs.
+- Extended that frame through the constructor's zero-fill phase and lifted it
+  from raw prefixes to complete normalized `RawDensePolyRep` objects.
+- Closed sequential F/G construction: both actual constructor executions now
+  terminate and their two dense representations coexist on the same final
+  heap, ready for one concrete GCD dispatch.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

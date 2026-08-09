@@ -5419,6 +5419,23 @@ theorem pairVecDivVHCActivate_get_ne
         subst nodes'
         exact Array.getElem?_set_ne hn hne
 
+theorem pairVecDivVHCActivate_nodes_size
+    (nodeIndex : Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCActivate nodeIndex nodes quotient divisor = .ok nodes') :
+    nodes'.size = nodes.size := by
+  unfold pairVecDivVHCActivate at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        simp only [Except.ok.injEq] at hrun
+        subst nodes'
+        simp
+
 theorem pairVecDivVHCActivateInsert_preserves_heapChainsOwned
     (nodeIndex : Nat) (heap heap' : Array Nat)
     (nodes activated inserted : Array PairVecDivVHCNode)
@@ -6567,6 +6584,136 @@ theorem pairVecDivVHCInsert_preserves_stateCovered_pop
                                           hownership.2.1 hfreshHead hbubble)
                     · simp only [ha, ↓reduceDIte] at hrun
                       contradiction
+
+/-- One concrete reset activation followed by its concrete heap insertion
+moves exactly `resetH - 1` out of the inactive prefix and into the heap while
+preserving the pre-existing `lin` stack.  The proof reuses the complete
+`VHC_insert` branch theorem by representing the intermediate location as
+`lin.push nodeIndex`. -/
+theorem pairVecDivVHCActivateInsert_preserves_stateCovered
+    (resetH : Nat) (heap heap' : Array Nat)
+    (nodes activated inserted : Array PairVecDivVHCNode)
+    (lin : Array Nat) (quotient divisor : SparsePolyZp)
+    (hreset : 0 < resetH)
+    (haway : PairVecDivVHCHeapChainsOwnedAway heap nodes
+      lin.toList.toFinset)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hcovered : PairVecDivVHCStateCovered heap nodes lin resetH)
+    (hactivate : pairVecDivVHCActivate (resetH - 1) nodes quotient divisor =
+      .ok activated)
+    (hinsert : pairVecDivVHCInsert (resetH - 1) heap activated =
+      .ok (heap', inserted)) :
+    PairVecDivVHCStateCovered heap' inserted lin (resetH - 1) := by
+  let nodeIndex := resetH - 1
+  have hindex : nodeIndex < resetH := by omega
+  rcases hresetReady.2 nodeIndex hindex with
+    ⟨oldNode, holdGet, hqIndex, hdIndex, hinactive⟩
+  have hnotLin : nodeIndex ∉ lin.toList := by
+    intro hmem
+    rcases hlinReady.2 nodeIndex hmem with
+      ⟨activeNode, activeMono, hactiveGet, hactiveMono⟩
+    rw [holdGet] at hactiveGet
+    simp only [Option.some.injEq] at hactiveGet
+    subst activeNode
+    rw [hinactive] at hactiveMono
+    contradiction
+  rcases haway with ⟨owners, hownership, hseparated⟩
+  have hfresh := pairVecDivVHCHeapChainOwnership_fresh_of_mono_none heap
+    owners nodes nodeIndex oldNode hownership holdGet hinactive
+  have hownershipActivated :
+      PairVecDivVHCHeapChainOwnership heap owners activated := by
+    refine ⟨?_, hownership.2.1, hownership.2.2⟩
+    intro slot head hget
+    exact pairVecDivVHCChainOwns_congr_on (some head) (owners head) nodes
+      activated (hownership.1 slot head hget) (by
+        intro i hi
+        exact pairVecDivVHCActivate_get_ne nodeIndex nodes activated quotient
+          divisor hactivate i (by
+            intro heq
+            subst i
+            exact hfresh.2 slot head hget hi))
+  rcases pairVecDivVHCActivate_get nodeIndex nodes activated quotient divisor
+      hactivate with ⟨hn, hq, hd, hnewGet⟩
+  let activeMono : UMonomial :=
+    ⟨quotient[nodes[nodeIndex].quotientIndex].1.deg +
+      divisor[nodes[nodeIndex].divisorIndex].1.deg⟩
+  let newNode : PairVecDivVHCNode := { nodes[nodeIndex] with
+    mono := some activeMono
+    next := none }
+  have hnewGet' : activated[nodeIndex]? = some newNode := by
+    simpa [newNode, activeMono] using hnewGet
+  have hnewMono : newNode.mono = some activeMono := by rfl
+  have hlinReadyPush :
+      PairVecDivVHCLinReady (lin.push nodeIndex) activated := by
+    refine ⟨?_, ?_⟩
+    · simp only [Array.toList_push, List.nodup_append, hlinReady.1,
+        List.nodup_singleton, true_and, List.mem_singleton]
+      intro i hi j hj
+      subst j
+      intro heq
+      subst i
+      exact hnotLin hi
+    · intro i hi
+      simp only [Array.toList_push, List.mem_append,
+        List.mem_singleton] at hi
+      rcases hi with hi | rfl
+      · rcases hlinReady.2 i hi with
+          ⟨oldActive, oldMono, hget, hmono⟩
+        refine ⟨oldActive, oldMono, ?_, hmono⟩
+        rw [pairVecDivVHCActivate_get_ne nodeIndex nodes activated quotient
+          divisor hactivate i (by
+            intro heq
+            subst i
+            exact hnotLin hi)]
+        exact hget
+      · exact ⟨newNode, activeMono, hnewGet', hnewMono⟩
+  have hprotected : (lin.push nodeIndex).toList.toFinset =
+      insert nodeIndex lin.toList.toFinset := by
+    ext i
+    simp [Array.toList_push, or_comm]
+  have hawayPush : PairVecDivVHCHeapChainsOwnedAway heap activated
+      (lin.push nodeIndex).toList.toFinset := by
+    refine ⟨owners, hownershipActivated, ?_⟩
+    intro slot head hget
+    have hold := hseparated slot head hget
+    rw [hprotected]
+    constructor
+    · exact Finset.disjoint_left.mpr (by
+        intro i hi howner
+        simp only [Finset.mem_insert] at hi
+        rcases hi with rfl | hi
+        · exact hfresh.2 slot head hget howner
+        · exact Finset.disjoint_left.mp hold.1 hi howner)
+    · intro hi
+      simp only [Finset.mem_insert] at hi
+      rcases hi with heq | hi
+      · subst head
+        exact hfresh.1 slot hget
+      · exact hold.2 hi
+  have hnodesCovered := hcovered.covered_with heap nodes lin resetH owners
+    hownership
+  have hstatePush : PairVecDivVHCStateCovered heap activated
+      (lin.push nodeIndex) nodeIndex := by
+    refine ⟨owners, hownershipActivated, ?_⟩
+    intro i hi
+    have hsize := pairVecDivVHCActivate_nodes_size nodeIndex nodes activated
+      quotient divisor hactivate
+    have hiOld : i < nodes.size := by omega
+    rcases hnodesCovered i hiOld with hprefix | hlin | hheap
+    · by_cases heq : i = nodeIndex
+      · subst i
+        exact Or.inr (Or.inl (by simp [Array.toList_push]))
+      · exact Or.inl (by omega)
+    · exact Or.inr (Or.inl (by
+        simp only [List.mem_toFinset, Array.toList_push,
+          List.mem_append, List.mem_singleton]
+        exact Or.inl (by simpa only [List.mem_toFinset] using hlin)))
+    · exact Or.inr (Or.inr hheap)
+  have hstep := pairVecDivVHCInsert_preserves_stateCovered_pop heap heap'
+    activated inserted (lin.push nodeIndex) nodeIndex (by simp) hawayPush
+    hlinReadyPush hstatePush (by simpa [nodeIndex] using hinsert)
+  simpa [Array.pop_push] using hstep
 
 theorem PairVecDivVHCLinReady.pop_after_insert
     (lin : Array Nat) (heap heap' : Array Nat)
@@ -8503,6 +8650,86 @@ theorem pairVecDivVHCActivateReset_preserves_away_linReady
     simp only [Except.ok.injEq] at hrun
     subst state
     exact ⟨haway, hlinReady⟩
+termination_by resetH
+decreasing_by omega
+
+theorem pairVecDivVHCActivateReset_preserves_stateCovered
+    (resetH : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (quotient divisor : SparsePolyZp) (state : PairVecDivVHCHeapState)
+    (haway : PairVecDivVHCHeapChainsOwnedAway heap nodes
+      lin.toList.toFinset)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hcovered : PairVecDivVHCStateCovered heap nodes lin resetH)
+    (hrun : pairVecDivVHCActivateReset resetH heap nodes quotient divisor =
+      .ok state) :
+    PairVecDivVHCStateCovered state.heap state.nodes lin 0 := by
+  rw [pairVecDivVHCActivateReset] at hrun
+  split at hrun
+  next hreset =>
+    dsimp only at hrun
+    have hindex : resetH - 1 < resetH := by omega
+    rcases hready.2 (resetH - 1) hindex with
+      ⟨oldNode, holdGet, hqIndex, hdIndex, hinactive⟩
+    have hnotLin : resetH - 1 ∉ lin.toList := by
+      intro hmem
+      rcases hlinReady.2 (resetH - 1) hmem with
+        ⟨activeNode, mono, hactiveGet, hactiveMono⟩
+      rw [holdGet] at hactiveGet
+      simp only [Option.some.injEq] at hactiveGet
+      subst activeNode
+      rw [hinactive] at hactiveMono
+      contradiction
+    cases hactivate : pairVecDivVHCActivate (resetH - 1) nodes quotient
+        divisor with
+    | error fault => simp [hactivate] at hrun
+    | ok activated =>
+        simp only [hactivate] at hrun
+        cases hinsert : pairVecDivVHCInsert (resetH - 1) heap activated with
+        | error fault => simp [hinsert] at hrun
+        | ok inserted =>
+            rcases inserted with ⟨heap', nodes'⟩
+            simp only [hinsert] at hrun
+            have haway' := pairVecDivVHCActivateInsert_preserves_away
+              (resetH - 1) heap heap' nodes activated nodes' quotient divisor
+              oldNode lin.toList.toFinset haway (by
+                intro i hi
+                exact hlinReady.2 i (by
+                  simpa only [List.mem_toFinset] using hi)) holdGet hinactive
+              hactivate hinsert
+            have hlinReady' : PairVecDivVHCLinReady lin nodes' := by
+              refine ⟨hlinReady.1, ?_⟩
+              intro i hi
+              rcases hlinReady.2 i hi with ⟨node, mono, hnode, hmono⟩
+              have hne : resetH - 1 ≠ i := by
+                intro heq
+                subst i
+                exact hnotLin hi
+              refine ⟨node, mono, ?_, hmono⟩
+              rw [pairVecDivVHCInsert_get_ne (resetH - 1) heap heap'
+                activated nodes' hinsert i hne]
+              rw [pairVecDivVHCActivate_get_ne (resetH - 1) nodes activated
+                quotient divisor hactivate i hne]
+              exact hnode
+            have hready' := pairVecDivVHCActivate_shrinks_resetReady resetH
+              (resetH - 1) quotient.size (resetH - 1) nodes activated quotient
+              divisor hready (by omega) (Nat.le_refl _) hactivate
+            have hready'' := pairVecDivVHCInsert_preserves_resetReady
+              (resetH - 1) quotient.size (resetH - 1) heap heap' activated
+              nodes' hready' (Nat.le_refl _) hinsert
+            have hcovered' :=
+              pairVecDivVHCActivateInsert_preserves_stateCovered resetH heap
+                heap' nodes activated nodes' lin quotient divisor hreset haway
+                hlinReady hready hcovered hactivate hinsert
+            exact pairVecDivVHCActivateReset_preserves_stateCovered
+              (resetH - 1) heap' nodes' lin quotient divisor state haway'
+              hlinReady' hready'' hcovered' hrun
+  next hreset =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    have hzero : resetH = 0 := by omega
+    simpa [hzero] using hcovered
 termination_by resetH
 decreasing_by omega
 

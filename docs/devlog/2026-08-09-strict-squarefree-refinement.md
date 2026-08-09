@@ -604,3 +604,16 @@ every generated range-for and recursive loop used by SQF.
   `lin = #[]` 且同一 witness 同时满足 exact heap ownership 与全 node
   coverage。下一步对 reset activation 建立对应的“reset 前缀减一并把该
   node 激活插入 heap”组合覆盖循环，再接入 outer iteration。
+- reset activation 的组合覆盖循环已闭合。单步证明把真实
+  `nodeIndex = resetH - 1` 从 inactive reset 前缀重分类到
+  `lin.push nodeIndex`，执行生成的 `pairVecDivVHCActivate` 后证明旧 heap
+  chains 不受该 fresh node 写入影响，并建立临时 lin 的 active/nodup 与
+  heap-away 条件；随后直接调用已覆盖全部控制流的真实 `VHC_insert`
+  定理，得到 node 进入 heap 且 reset 前缀精确缩为 `resetH - 1`。完整
+  `pairVecDivVHCActivateReset` 再按实际 `resetH` 良基递归，同时传递
+  away、lin-ready、reset-ready 和同一 witness 的 ownership+coverage，
+  返回时 reset 前缀严格为零。这里临时 `lin.push` 只是节点位置不变量的
+  表达，执行仍是原始 activate 后直接 insert，没有新增算法步骤或 fuel。
+  下一步把 equal-degree consume、emit activation、reverse reinsertion 的
+  三段组合覆盖接入一次完整 outer iteration，并恢复下一轮入口的
+  `lin = #[] / resetH` 全分区。

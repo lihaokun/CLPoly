@@ -245,6 +245,19 @@ into canonical low pieces and normalized high pieces.  These exact high
 pieces are the inputs to the second recursive dispatch; the low pieces are
 retained for the final reconstruction.
 
+For the second child, instantiate the total cutoff dispatch at the exact
+`middle.c0/d0` pointers and lengths returned above.  Feed it the normalized
+high-suffix representations and the strict order/decrease just proved.  Its
+actual result carries the second matrix and transformed high halves needed
+by finish; no separate child result or termination contract is assumed.
+
+After the actual second child, frame the first matrix, middle quotient, and
+both low pieces into the returned child heap.  Combine those framed values
+with the second child's matrix and high-output representations, then invoke
+the already-total recursive finish block.  This reconstructs the final A/B
+and, when requested, performs the quotient update and matrix product using
+only actual generated calls.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -284,3 +297,6 @@ retained for the final reconstruction.
 - middle 增量：约 1 小时、1 轮编译、Lean 约 100 行；执行真实 divrem，
   从其 `k/c0/d0` 描述符证明第二 child 的顺序和严格下降，并构造供第二
   dispatch 与 finish 共用的 canonical low / normalized high 分割表示。
+- second/finish 增量：约 1 小时、1 轮编译、Lean 约 150 行；在真实
+  `c0/d0` 上执行第二次总 dispatch，保持 first matrix、quotient 与低半部，
+  再调用 total finish 完成最终 A/B 重构和可选矩阵组合。

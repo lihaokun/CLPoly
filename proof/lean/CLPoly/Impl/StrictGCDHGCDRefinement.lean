@@ -2063,6 +2063,159 @@ theorem hgcdRecursiveMiddleStage_succeeds (this : DenseUPolyZp)
   · simpa [ws] using hmiddle
   · simpa [hbound] using hsecondDecreaseOuter
 
+/-- Total second-child dispatch at the exact high suffixes returned by the
+middle divrem stage. -/
+theorem hgcdRecursiveSecondCall_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (W scratch : RawPtr UInt64) (lenA : Nat)
+    (middle : HgcdRecursiveMiddleResult)
+    (highC highD : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hsecondOrder : middle.lenD0 < middle.lenC0)
+    (hsecondDecrease : middle.lenC0 < bound)
+    (iterPhysical :
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveIterBranchTotalWorkspace this ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch
+        ws.a2 middle.heap highC highD)
+    (recursiveSucceeds :
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveCallbackSucceedsAt this bound recurse ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.next scratch middle.heap
+        hsecondOrder hsecondDecrease highC highD) :
+    ∃ second finalHighA finalHighB entries,
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveDispatchBelow this bound recurse ws.S
+          (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+          middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1
+          scratch ws.a2 ws.next middle.heap hsecondOrder hsecondDecrease =
+        .ok second ∧
+      HgcdRecursiveRawInvariant this highC highD finalHighA finalHighB entries
+        true ws.a3 ws.b3 middle.lenC0 second := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  rcases hgcdRecursiveDispatchBelow_succeeds this bound recurse ws.S
+      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
+      middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+      middle.heap highC highD hcfg hp hsecondOrder hsecondDecrease iterPhysical
+      recursiveSucceeds with
+    ⟨second, finalHighA, finalHighB, entries, hsecond, hInvariant⟩
+  exact ⟨second, finalHighA, finalHighB, entries, by simpa [ws] using hsecond,
+    by simpa [ws] using hInvariant⟩
+
+/-- Frames and total finish workspace available after the actual second
+recursive dispatch. -/
+structure HgcdRecursiveAfterSecondTotalWorkspace (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B W scratch : RawPtr UInt64) (lenA : Nat)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (middle : HgcdRecursiveMiddleResult) (second : HgcdRecursiveResult) :
+    Type where
+  layout : RawHeap.SameLayout middle.heap second.heap
+  firstMatrixPrefix : ∀ i : Fin 4, SameU64Prefix middle.heap second.heap
+    (hgcdMatPtr first.matrix first.valid i)
+    (hgcdMatLen first.matrix first.valid i)
+  quotientPrefix :
+    let ws := hgcdRecursiveWorkspace W lenA
+    SameU64Prefix middle.heap second.heap ws.q middle.lenQ
+  lowCPrefix :
+    let ws := hgcdRecursiveWorkspace W lenA
+    SameU64Prefix middle.heap second.heap ws.b2
+      (Nat.min reconstructed.lenB middle.k)
+  lowDPrefix :
+    let ws := hgcdRecursiveWorkspace W lenA
+    SameU64Prefix middle.heap second.heap ws.d
+      (Nat.min middle.lenD middle.k)
+  finish :
+    let ws := hgcdRecursiveWorkspace W lenA
+    HgcdRecursiveFinishTotalWorkspace this M first.matrix second.matrix hM
+      first.valid second.valid computeM A B ws.T0 ws.b2 ws.d ws.a3 ws.b3
+      ws.q (Nat.min reconstructed.lenB middle.k)
+      (Nat.min middle.lenD middle.k) second.lenA second.lenB middle.k
+      middle.lenQ ws.a2 scratch second.sgn second.heap
+
+/-- Total final reconstruction and optional matrix combination after the
+actual second child. -/
+theorem hgcdRecursiveFinishStage_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B W scratch : RawPtr UInt64) (lenA : Nat)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (middle : HgcdRecursiveMiddleResult) (second : HgcdRecursiveResult)
+    (firstEntries secondEntries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (quotient lowC lowD highC highD finalHighA finalHighB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (physical : HgcdRecursiveAfterSecondTotalWorkspace this M hM computeM A B
+      W scratch lenA first reconstructed middle second)
+    (hFirstMatrix : HgcdMatRawDenseRep this middle.heap first.matrix
+      firstEntries first.valid)
+    (hQ : RawDensePolyRep this middle.heap (hgcdRecursiveWorkspace W lenA).q
+      middle.lenQ quotient)
+    (hLowC : RawCanonicalPolySlice this middle.heap
+      (hgcdRecursiveWorkspace W lenA).b2
+      (Nat.min reconstructed.lenB middle.k) lowC)
+    (hLowD : RawCanonicalPolySlice this middle.heap
+      (hgcdRecursiveWorkspace W lenA).d (Nat.min middle.lenD middle.k) lowD)
+    (hSecond : HgcdRecursiveRawInvariant this highC highD finalHighA
+      finalHighB secondEntries true (hgcdRecursiveWorkspace W lenA).a3
+      (hgcdRecursiveWorkspace W lenA).b3 middle.lenC0 second) :
+    ∃ finished,
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveFinish this M first.matrix second.matrix hM first.valid
+          second.valid computeM A B ws.T0 ws.b2 ws.d ws.a3 ws.b3 ws.q
+          (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k)
+          second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch first.sgn
+          second.sgn second.heap = .ok finished ∧
+      RawDensePolyRep this finished.heap A finished.lenA
+        (hgcdReconstructedLowA secondEntries lowC lowD second.sgn +
+          Polynomial.X ^ middle.k * finalHighA) ∧
+      RawDensePolyRep this finished.heap B finished.lenB
+        (hgcdReconstructedLowB secondEntries lowC lowD second.sgn +
+          Polynomial.X ^ middle.k * finalHighB) ∧
+      finished.sgn = -(first.sgn * second.sgn) ∧
+      (computeM = true →
+        HgcdMatRawDenseRep this finished.heap finished.matrix
+          (hgcdMatProductEntry firstEntries
+            (hgcdMatApplyQuotientEntries secondEntries quotient))
+          finished.valid) := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  have hFirstSecond : HgcdMatRawDenseRep this second.heap first.matrix
+      firstEntries first.valid := by
+    intro i
+    exact CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix
+      this middle.heap second.heap (hgcdMatPtr first.matrix first.valid i)
+      (hgcdMatLen first.matrix first.valid i) (firstEntries i) physical.layout
+      (physical.firstMatrixPrefix i) (hFirstMatrix i)
+  have hQSecond : RawDensePolyRep this second.heap ws.q middle.lenQ quotient :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix this
+      middle.heap second.heap ws.q middle.lenQ quotient physical.layout
+      physical.quotientPrefix hQ
+  have hLowCSecond : RawCanonicalPolySlice this second.heap ws.b2
+      (Nat.min reconstructed.lenB middle.k) lowC :=
+    rawCanonicalPolySlice_of_same_prefix this middle.heap second.heap ws.b2
+      (Nat.min reconstructed.lenB middle.k) lowC physical.layout
+      physical.lowCPrefix hLowC
+  have hLowDSecond : RawCanonicalPolySlice this second.heap ws.d
+      (Nat.min middle.lenD middle.k) lowD :=
+    rawCanonicalPolySlice_of_same_prefix this middle.heap second.heap ws.d
+      (Nat.min middle.lenD middle.k) lowD physical.layout physical.lowDPrefix
+      hLowD
+  rcases hgcdRecursiveFinish_succeeds this M first.matrix second.matrix hM
+      first.valid second.valid computeM A B ws.T0 ws.b2 ws.d ws.a3 ws.b3 ws.q
+      (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k)
+      second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch first.sgn
+      second.sgn second.heap firstEntries secondEntries quotient lowC lowD
+      finalHighA finalHighB hcfg hp physical.finish hFirstSecond
+      (hSecond.matrixSemantics rfl).1 hQSecond hLowCSecond hLowDSecond
+      hSecond.aRep hSecond.bRep with
+    ⟨finished, hfinish, hA, hB, hsgn, hmatrix⟩
+  exact ⟨finished, by simpa [ws] using hfinish, hA, hB, hsgn, hmatrix⟩
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

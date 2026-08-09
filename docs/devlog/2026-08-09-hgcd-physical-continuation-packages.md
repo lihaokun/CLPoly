@@ -27,6 +27,9 @@
   branch-local single-step invariant to an actual source-recursive call.
 - Added the hereditary smaller-call workspace provider and the complete
   well-founded source-call refinement theorem.
+- Strengthened the pinned-source gate so deletion of any physical
+  continuation, source-call equality, invocation workspace, or final
+  well-founded theorem fails CI.
 
 ## Why
 
@@ -69,4 +72,5 @@ assumption reconstructed later.
 ## Files
 
 - `proof/lean/CLPoly/Impl/StrictHGCDRawRefinement.lean`
+- `proof/cpp2lean_v2/tests/check_strict_hgcd_source.py`
 - `docs/devlog/2026-08-09-hgcd-physical-continuation-packages.md`

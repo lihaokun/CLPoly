@@ -243,6 +243,328 @@ theorem dense_upoly_zp_gcd_raw_ir_refines (this : DenseUPolyZp)
       simpa [dense_upoly_zp_gcd_raw_ir, hswap] using hrun,
       hresult, hgcd⟩
 
+structure DenseScalarRawResult where
+  heap : RawHeap
+  length : Nat
+
+/-- Exact forward coefficient loop in `dense_upoly_zp::scalar_mul`. -/
+def denseScalarMulLoop (this : DenseUPolyZp) (ptr : RawPtr UInt64)
+    (length : Nat) (scalar : UInt64) (index : Nat)
+    (heap : RawHeap) : RawExec RawHeap :=
+  if index < length then
+    match heap.readU64 ptr index with
+    | .error fault => .error fault
+    | .ok coeff =>
+      match heap.writeU64 ptr index
+          (Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this coeff scalar) with
+      | .error fault => .error fault
+      | .ok heap' => denseScalarMulLoop this ptr length scalar (index + 1) heap'
+  else
+    .ok heap
+termination_by length - index
+decreasing_by omega
+
+/-- Exact zero/one/general dispatch of the source scalar multiplication. -/
+def dense_upoly_zp_scalar_mul_raw_ir (this : DenseUPolyZp)
+    (ptr : RawPtr UInt64) (length : Nat) (scalar : UInt64)
+    (heap : RawHeap) : RawExec DenseScalarRawResult :=
+  if scalar = 0 then
+    .ok ⟨heap, 0⟩
+  else if scalar = 1 then
+    .ok ⟨heap, length⟩
+  else
+    match denseScalarMulLoop this ptr length scalar 0 heap with
+    | .error fault => .error fault
+    | .ok heap' => .ok ⟨heap', length⟩
+
+theorem denseScalarMulLoop_succeeds (this : DenseUPolyZp)
+    (ptr : RawPtr UInt64) (length : Nat) (scalar : UInt64)
+    (index : Nat) (heap : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr length) :
+    ∃ heap', denseScalarMulLoop this ptr length scalar index heap =
+      .ok heap' := by
+  rw [denseScalarMulLoop]
+  split
+  next hmore =>
+    rcases heap.readU64_of_valid ptr length index hvalid hmore with
+      ⟨coeff, hread⟩
+    simp only [hread]
+    let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this coeff
+      scalar
+    rcases heap.writeU64_of_valid ptr length index product hvalid hmore with
+      ⟨heap1, hwrite⟩
+    simp only [product, hwrite]
+    have hvalid1 : heap1.ValidU64Slice ptr length :=
+      (RawHeap.writeU64_preserves_valid heap heap1 ptr index product hwrite
+        ptr length).mp hvalid
+    exact denseScalarMulLoop_succeeds this ptr length scalar (index + 1)
+      heap1 hvalid1
+  next hdone => exact ⟨heap, rfl⟩
+termination_by length - index
+decreasing_by omega
+
+theorem denseScalarMulLoop_preserves_read_before (this : DenseUPolyZp)
+    (ptr : RawPtr UInt64) (length : Nat) (scalar : UInt64)
+    (index guard : Nat) (heap heap' : RawHeap) (value : UInt64)
+    (hvalid : heap.ValidU64Slice ptr length) (hguard : guard < index)
+    (hread : heap.readU64 ptr guard = .ok value)
+    (hrun : denseScalarMulLoop this ptr length scalar index heap = .ok heap') :
+    heap'.readU64 ptr guard = .ok value := by
+  rw [denseScalarMulLoop] at hrun
+  split at hrun
+  next hmore =>
+    rcases heap.readU64_of_valid ptr length index hvalid hmore with
+      ⟨coeff, hcoeff⟩
+    simp only [hcoeff] at hrun
+    let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this coeff
+      scalar
+    rcases heap.writeU64_of_valid ptr length index product hvalid hmore with
+      ⟨heap1, hwrite⟩
+    simp only [product, hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr index product
+      hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    have hread1 := RawHeap.readU64_writeU64_ne heap heap1 ptr ptr index guard
+      product value hwrite hread (Or.inr (by omega))
+    exact denseScalarMulLoop_preserves_read_before this ptr length scalar
+      (index + 1) guard heap1 heap' value hvalid1 (by omega) hread1 hrun
+  next hdone =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hread
+termination_by length - index
+decreasing_by omega
+
+/-- Every coefficient read before the concrete scalar loop is transformed by
+the exact generated modular multiplication at the same raw cell. -/
+theorem denseScalarMulLoop_reads (this : DenseUPolyZp)
+    (ptr : RawPtr UInt64) (length : Nat) (scalar : UInt64)
+    (index : Nat) (heap heap' : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hrun : denseScalarMulLoop this ptr length scalar index heap = .ok heap') :
+    ∀ k coeff, index ≤ k → k < length →
+      heap.readU64 ptr k = .ok coeff →
+      heap'.readU64 ptr k = .ok
+        (Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this coeff scalar) := by
+  intro k original hindex hk hreadOriginal
+  rw [denseScalarMulLoop] at hrun
+  split at hrun
+  next hmore =>
+    rcases heap.readU64_of_valid ptr length index hvalid hmore with
+      ⟨coeff, hcoeff⟩
+    simp only [hcoeff] at hrun
+    let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this coeff
+      scalar
+    rcases heap.writeU64_of_valid ptr length index product hvalid hmore with
+      ⟨heap1, hwrite⟩
+    simp only [product, hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr index product
+      hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    by_cases heq : k = index
+    · subst k
+      have hcoeffEq : original = coeff :=
+        Except.ok.inj (hreadOriginal.symm.trans hcoeff)
+      subst original
+      have hreadNow := RawHeap.readU64_writeU64_same heap heap1 ptr index
+        product hwrite
+      exact denseScalarMulLoop_preserves_read_before this ptr length scalar
+        (index + 1) index heap1 heap' product hvalid1 (by omega) hreadNow hrun
+    · have hread1 := RawHeap.readU64_writeU64_ne heap heap1 ptr ptr index k
+          product original hwrite hreadOriginal (Or.inr (by omega))
+      exact denseScalarMulLoop_reads this ptr length scalar (index + 1)
+        heap1 heap' hvalid1 hrun k original (by omega) hk hread1
+  next hdone => omega
+termination_by length - index
+decreasing_by omega
+
+theorem denseScalarMulLoop_sameLayout (this : DenseUPolyZp)
+    (ptr : RawPtr UInt64) (length : Nat) (scalar : UInt64)
+    (index : Nat) (heap heap' : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hrun : denseScalarMulLoop this ptr length scalar index heap = .ok heap') :
+    RawHeap.SameLayout heap heap' := by
+  rw [denseScalarMulLoop] at hrun
+  split at hrun
+  next hmore =>
+    rcases heap.readU64_of_valid ptr length index hvalid hmore with
+      ⟨coeff, hcoeff⟩
+    simp only [hcoeff] at hrun
+    let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this coeff
+      scalar
+    rcases heap.writeU64_of_valid ptr length index product hvalid hmore with
+      ⟨heap1, hwrite⟩
+    simp only [product, hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr index product
+      hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    have hlayout2 := denseScalarMulLoop_sameLayout this ptr length scalar
+      (index + 1) heap1 heap' hvalid1 hrun
+    exact fun other count =>
+      (hlayout1 other count).trans (hlayout2 other count)
+  next hdone =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    subst heap'
+    exact fun _ _ => Iff.rfl
+termination_by length - index
+decreasing_by omega
+
+/-- Semantic and residue invariant of the concrete general scalar loop. -/
+theorem denseScalarMulLoop_refines (this : DenseUPolyZp)
+    (ptr : RawPtr UInt64) (length : Nat) (scalar : UInt64)
+    (heap heap' : RawHeap) (poly : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 0 < this._p.toNat)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hcanonical : CanonicalU64Prefix heap ptr length this._p)
+    (hrep : SlicePolyRep heap ptr length this._p.toNat poly)
+    (hrun : denseScalarMulLoop this ptr length scalar 0 heap = .ok heap') :
+    RawHeap.SameLayout heap heap' ∧
+      RawCanonicalPolySlice this heap' ptr length
+        (Polynomial.C (scalar.toNat : ZMod this._p.toNat) * poly) := by
+  have hlayout := denseScalarMulLoop_sameLayout this ptr length scalar 0 heap
+    heap' hvalid hrun
+  have hvalid' := (hlayout ptr length).mp hvalid
+  rcases slicePolyRep_exists_unique heap' ptr length this._p.toNat hvalid' with
+    ⟨resultPoly, hresultRep, hunique⟩
+  have hpolyEq : Polynomial.C (scalar.toNat : ZMod this._p.toNat) * poly =
+      resultPoly := by
+    ext degree
+    by_cases hdegree : degree < length
+    · rcases slicePolyRep_coeff heap ptr length this._p.toNat poly hrep
+          degree hdegree with ⟨old, hreadOld, hcoeffOld⟩
+      let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this old
+        scalar
+      have hreadProduct := denseScalarMulLoop_reads this ptr length scalar 0
+        heap heap' hvalid hrun degree old (Nat.zero_le _) hdegree hreadOld
+      rcases slicePolyRep_coeff heap' ptr length this._p.toNat resultPoly
+          hresultRep degree hdegree with
+        ⟨observed, hreadObserved, hcoeffObserved⟩
+      have hobserved : observed = product :=
+        Except.ok.inj (hreadObserved.symm.trans hreadProduct)
+      subst observed
+      have hproduct := nmod_mul_ir_correct_of_configured this old scalar hcfg
+        (hcanonical degree old hdegree hreadOld)
+      rw [Polynomial.coeff_C_mul, hcoeffOld, hcoeffObserved]
+      change (scalar.toNat : ZMod this._p.toNat) * old.toNat =
+        (product.toNat : ZMod this._p.toNat)
+      rw [hproduct]
+      simp [ZMod.natCast_mod, mul_comm]
+    · rw [slicePolyRep_coeff_zero_of_length_le heap' ptr length
+          this._p.toNat resultPoly hresultRep degree (by omega)]
+      have hzero := slicePolyRep_coeff_zero_of_length_le heap ptr length
+        this._p.toNat poly hrep degree (by omega)
+      simp [hzero]
+  have hscaledRep : SlicePolyRep heap' ptr length this._p.toNat
+      (Polynomial.C (scalar.toNat : ZMod this._p.toNat) * poly) := by
+    rw [hpolyEq]
+    exact hresultRep
+  have hcanonical' : CanonicalU64Prefix heap' ptr length this._p := by
+    intro degree observed hdegree hreadObserved
+    rcases heap.readU64_of_valid ptr length degree hvalid hdegree with
+      ⟨old, hreadOld⟩
+    let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this old
+      scalar
+    have hreadProduct := denseScalarMulLoop_reads this ptr length scalar 0
+      heap heap' hvalid hrun degree old (Nat.zero_le _) hdegree hreadOld
+    have hobserved : observed = product :=
+      Except.ok.inj (hreadObserved.symm.trans hreadProduct)
+    subst observed
+    rw [nmod_mul_ir_correct_of_configured this old scalar hcfg
+      (hcanonical degree old hdegree hreadOld)]
+    exact Nat.mod_lt _ hp
+  exact ⟨hlayout, hvalid', hcanonical', hscaledRep⟩
+
+theorem dense_upoly_zp_scalar_mul_raw_ir_succeeds (this : DenseUPolyZp)
+    (ptr : RawPtr UInt64) (length : Nat) (scalar : UInt64)
+    (heap : RawHeap) (hvalid : heap.ValidU64Slice ptr length) :
+    ∃ result, dense_upoly_zp_scalar_mul_raw_ir this ptr length scalar heap =
+      .ok result := by
+  by_cases hzero : scalar = 0
+  · exact ⟨⟨heap, 0⟩, by
+      simp [dense_upoly_zp_scalar_mul_raw_ir, hzero]⟩
+  · by_cases hone : scalar = 1
+    · exact ⟨⟨heap, length⟩, by
+        simp [dense_upoly_zp_scalar_mul_raw_ir, hone]⟩
+    · rcases denseScalarMulLoop_succeeds this ptr length scalar 0 heap
+          hvalid with ⟨heap', hrun⟩
+      exact ⟨⟨heap', length⟩, by
+        simp [dense_upoly_zp_scalar_mul_raw_ir, hzero, hone, hrun]⟩
+
+/-- The exact three-way source scalar dispatcher preserves the normalized raw
+representation and denotes multiplication by the supplied canonical residue. -/
+theorem dense_upoly_zp_scalar_mul_raw_ir_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (ptr : RawPtr UInt64) (length : Nat) (scalar : UInt64)
+    (heap : RawHeap) (poly : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 0 < this._p.toNat)
+    (hscalar : scalar.toNat < this._p.toNat)
+    (hrep : RawDensePolyRep this heap ptr length poly) :
+    ∃ result,
+      dense_upoly_zp_scalar_mul_raw_ir this ptr length scalar heap =
+        .ok result ∧
+      RawDensePolyRep this result.heap ptr result.length
+        (Polynomial.C (scalar.toNat : ZMod this._p.toNat) * poly) := by
+  by_cases hzero : scalar = 0
+  · subst scalar
+    have hvalid0 : heap.ValidU64Slice ptr 0 :=
+      heap.validU64Slice_mono ptr length 0 hrep.1 (Nat.zero_le _)
+    have hzeroRep :=
+      CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_zero_length
+        this heap ptr hvalid0
+    exact ⟨⟨heap, 0⟩, by
+      simp [dense_upoly_zp_scalar_mul_raw_ir],
+      by simpa using hzeroRep⟩
+  · by_cases hone : scalar = 1
+    · subst scalar
+      exact ⟨⟨heap, length⟩, by
+        simp [dense_upoly_zp_scalar_mul_raw_ir], by simpa using hrep⟩
+    · rcases denseScalarMulLoop_succeeds this ptr length scalar 0 heap hrep.1
+          with ⟨heap', hrun⟩
+      have hscaled := denseScalarMulLoop_refines this ptr length scalar heap
+        heap' poly hcfg hp hrep.1 hrep.2.1 hrep.2.2.1 hrun
+      have hnormalise : heap'.normaliseU64 ptr length = .ok length := by
+        by_cases hlength : length = 0
+        · subst length
+          simp [denseScalarMulLoop] at hrun
+          subst heap'
+          exact hrep.2.2.2
+        · have hlast := normaliseU64_poly_last_coeff_ne_zero heap ptr length
+            this._p.toNat length poly hrep.1 hrep.2.2.1 hrep.2.1
+            hrep.2.2.2 hlength
+          have hscalarPos : 0 < scalar.toNat := by
+            apply Nat.pos_of_ne_zero
+            intro hscalarZero
+            apply hzero
+            apply UInt64.toNat_inj.mp
+            simpa using hscalarZero
+          have hscalarCast : (scalar.toNat : ZMod this._p.toNat) ≠ 0 := by
+            intro hcast
+            have hdvd : this._p.toNat ∣ scalar.toNat :=
+              (ZMod.natCast_eq_zero_iff scalar.toNat this._p.toNat).mp hcast
+            exact (Nat.not_dvd_of_pos_of_lt hscalarPos hscalar) hdvd
+          have hlastScaled :
+              (Polynomial.C (scalar.toNat : ZMod this._p.toNat) * poly).coeff
+                  (length - 1) ≠ 0 := by
+            rw [Polynomial.coeff_C_mul]
+            exact mul_ne_zero hscalarCast hlast
+          rcases slicePolyRep_coeff heap' ptr length this._p.toNat
+              (Polynomial.C (scalar.toNat : ZMod this._p.toNat) * poly)
+              hscaled.2.2.2 (length - 1) (by omega) with
+            ⟨value, hread, hcoeff⟩
+          have hvalue : value ≠ 0 := by
+            intro hvalueZero
+            subst value
+            apply hlastScaled
+            simpa using hcoeff.symm
+          cases length with
+          | zero => contradiction
+          | succ n =>
+            have hread' : heap'.readU64 ptr n = .ok value := by
+              simpa using hread
+            simp [RawHeap.normaliseU64, hread', hvalue]
+      exact ⟨⟨heap', length⟩, by
+        simp [dense_upoly_zp_scalar_mul_raw_ir, hzero, hone, hrun],
+        hscaled.2.1, hscaled.2.2.1, hscaled.2.2.2, hnormalise⟩
+
 /-- One concrete raw coefficient write into a zero coefficient adds exactly
 the corresponding L2 monomial. -/
 theorem slicePolyRep_write_add_monomial (heap heap' : RawHeap)

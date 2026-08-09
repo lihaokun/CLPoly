@@ -98,6 +98,15 @@ with zero, while the Euclid and HGCD branches reuse their raw refinement
 theorems.  Thus the object dispatcher contains no independent polynomial GCD
 implementation.
 
+For `scalar_mul`, keep all three source branches observable.  A zero scalar
+changes the logical vector length to zero without reading the allocation; one
+returns the input heap and length unchanged; every other scalar runs a forward
+read/`nmod_mul`/write loop over the exact logical length.  The loop measure is
+`length - index`.  Validity is transported across each successful write, so
+the concrete loop is total for the GCD result allocation.  Its later semantic
+invariant relates each processed raw coefficient to multiplication by the
+same field element and retains the nonzero leading coefficient.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -127,6 +136,11 @@ implementation.
 - Closed the source length-comparison swap, with separate physical readiness
   evidence for both pointer orderings and a proved normalized Euclidean-GCD
   commutation step.
+- Added the exact zero/one/general `scalar_mul` dispatcher and its forward raw
+  read/modular-multiply/write loop with measure `length - index`.
+- Proved loop totality, allocation preservation, coefficient semantics,
+  canonical residues, and preservation of the normalized leading length for
+  every canonical scalar input.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why
@@ -143,7 +157,7 @@ boundary is required before replacing its current typeclass GCD call.
 ## 度量
 
 - 耗时：约 0.5 小时（源码控制流核对、接口设计、形式化与构建）
-- 迭代：1 轮编译—修复
+- 迭代：5 轮编译—修复
 - Lean 新增/修改行数：约 850 行
 - 对应 C++ 行数：约 55 行（两个 sparse/dense 转换及 GCD 包装）
 - 放弃的方案：直接证明当前 `SparsePolyZp.gcd` 正确；它不是 C++ dense

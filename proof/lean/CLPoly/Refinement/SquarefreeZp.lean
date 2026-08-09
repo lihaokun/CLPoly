@@ -3728,6 +3728,47 @@ theorem pairVecDivVHCSet_child_to_parent_preserves_heapOrdered
       exact Nat.le_trans hchildLeOld holdLeParent
   simpa only [Array.size_set] using hsetOrdered
 
+/-- Replacing a heap head by another active head of the same degree preserves
+all parent-child comparisons.  This is the heap side of equal-degree bucketing. -/
+theorem pairVecDivVHCSet_sameDegree_preserves_heapOrdered
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (slot newHead oldHead : Nat) (newMono oldMono : UMonomial)
+    (hslot : slot < heap.size) (holdGet : heap[slot]? = some oldHead)
+    (hnew : pairVecDivVHCMono newHead nodes = .ok newMono)
+    (hold : pairVecDivVHCMono oldHead nodes = .ok oldMono)
+    (hdegree : newMono.deg = oldMono.deg)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes) :
+    PairVecDivVHCHeapOrdered (heap.set slot newHead) nodes := by
+  have hdegrees := hordered.degreesUpTo heap nodes heap.size (Nat.le_refl _)
+  apply PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+  have hsetOrdered : PairVecDivVHCHeapDegreesOrderedUpTo heap.size
+      (heap.set slot newHead) nodes := by
+    apply hdegrees.set_parent heap.size slot newHead heap nodes newMono hslot hnew
+    · intro parentHead parentMono hparentGet hparentMono
+      by_cases hzero : slot = 0
+      · subst slot
+        simp only [pairVecDivVHCParent] at hparentGet
+        rw [holdGet] at hparentGet
+        have hparentHeadEq : parentHead = oldHead :=
+          (Option.some.inj hparentGet).symm
+        subst parentHead
+        rw [hold] at hparentMono
+        have hparentMonoEq : parentMono = oldMono :=
+          (Except.ok.inj hparentMono).symm
+        subst parentMono
+        exact Nat.le_of_eq hdegree
+      · have hpos : 0 < slot := Nat.pos_of_ne_zero hzero
+        have holdLeParent := hdegrees slot hslot hpos oldHead parentHead
+          oldMono parentMono holdGet hparentGet hold hparentMono
+        exact hdegree.le.trans holdLeParent
+    · intro child hchild hchildPos hchildParent childHead childMono
+        hchildGet hchildMono
+      have hchildLeOld := hdegrees child hchild hchildPos childHead oldHead
+        childMono oldMono hchildGet (by simpa [hchildParent] using holdGet)
+        hchildMono hold
+      exact hchildLeOld.trans (Nat.le_of_eq hdegree.symm)
+  simpa only [Array.size_set] using hsetOrdered
+
 /-- A pointwise degree bound on every active head currently stored in a heap. -/
 def PairVecDivVHCHeapBoundedBy (heap : Array Nat)
     (nodes : Array PairVecDivVHCNode) (bound : UMonomial) : Prop :=
@@ -8660,7 +8701,9 @@ theorem pairVecDivVHCInsert_root_of_greater
       | ok shifted =>
           rw [hbubble] at hrun
           simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
-          rcases hrun with ⟨rfl, rfl⟩
+          rcases hrun with ⟨hheapResult, hnodesResult⟩
+          subst heap'
+          subst nodes'
           exact pairVecDivVHCBubble_stop_get heap.size 0 newNode
             (heap.push newNode) shifted hbubble
 
@@ -8799,6 +8842,116 @@ theorem pairVecDivVHCInsert_newRoot_preserves_heapOrdered
               (Nat.le_of_lt hgreater) hbubble
           exact pairVecDivVHCSetNext_preserves_heapOrdered newNode none shifted
             nodes updated hshifted hset
+
+/-- The generated unequal-anchor insertion branch preserves max-heap order,
+using the exact comparison trace of its preceding `FindAnchor` execution. -/
+theorem pairVecDivVHCInsert_bubbleBelow_preserves_heapOrdered
+    (newNode anchor : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (newMono rootMono anchorMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hnequal : newMono.deg ≠ rootMono.deg)
+    (hgreater : ¬ newMono.deg > rootMono.deg)
+    (hanchor : pairVecDivVHCFindAnchor newMono.deg
+      (pairVecDivVHCParent heap.size) heap nodes = .ok anchor)
+    (ha : anchor < heap.size)
+    (hanchorMono : pairVecDivVHCMono heap[anchor] nodes = .ok anchorMono)
+    (hnequalAnchor : newMono.deg ≠ anchorMono.deg)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCHeapOrdered heap' nodes' := by
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, Nat.ne_of_gt hheap, ↓reduceDIte, hroot, hnequal,
+    hgreater, hanchor, ha, hanchorMono] at hrun
+  simp only [hnequalAnchor] at hrun
+  cases hset : pairVecDivVHCSetNext newNode none nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      cases hbubble : pairVecDivVHCBubbleBelow heap.size anchor newNode
+          (heap.push newNode) with
+      | error fault => simp [hbubble] at hrun
+      | ok shifted =>
+          rw [hbubble] at hrun
+          have htrace := pairVecDivVHCFindAnchor_trace newMono.deg
+            (pairVecDivVHCParent heap.size) anchor heap nodes hanchor
+          have hshifted : PairVecDivVHCHeapOrdered shifted nodes :=
+            pairVecDivVHCBubbleBelow_push_trace_preserves_heapOrdered anchor
+              newNode heap shifted nodes newMono hheap hvalid hordered hnew
+              htrace hbubble
+          have hactual := pairVecDivVHCSetNext_preserves_heapOrdered newNode
+            none shifted nodes updated hshifted hset
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl⟩
+          exact hactual
+
+theorem pairVecDivVHCInsert_equalRoot_preserves_heapOrdered
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (newMono rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hequal : newMono.deg = rootMono.deg)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCHeapOrdered heap' nodes' := by
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, Nat.ne_of_gt hheap, ↓reduceDIte, hroot, hequal] at hrun
+  cases hset : pairVecDivVHCSetNext newNode (some heap[0]) nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      have hheapOrdered : PairVecDivVHCHeapOrdered
+          (heap.set 0 newNode) nodes :=
+        pairVecDivVHCSet_sameDegree_preserves_heapOrdered heap nodes 0 newNode
+          heap[0] newMono rootMono hheap
+          (Array.getElem?_eq_getElem hheap) hnew hroot hequal hordered
+      have hactual := pairVecDivVHCSetNext_preserves_heapOrdered newNode
+        (some heap[0]) (heap.set 0 newNode) nodes updated hheapOrdered hset
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl⟩
+      exact hactual
+
+theorem pairVecDivVHCInsert_equalAnchor_preserves_heapOrdered
+    (newNode anchor : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (newMono rootMono anchorMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hnequal : newMono.deg ≠ rootMono.deg)
+    (hgreater : ¬ newMono.deg > rootMono.deg)
+    (hanchor : pairVecDivVHCFindAnchor newMono.deg
+      (pairVecDivVHCParent heap.size) heap nodes = .ok anchor)
+    (ha : anchor < heap.size)
+    (hanchorMono : pairVecDivVHCMono heap[anchor] nodes = .ok anchorMono)
+    (hequalAnchor : newMono.deg = anchorMono.deg)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCHeapOrdered heap' nodes' := by
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, Nat.ne_of_gt hheap, ↓reduceDIte, hroot, hnequal,
+    hgreater, hanchor, ha, hanchorMono] at hrun
+  simp only [hequalAnchor] at hrun
+  cases hset : pairVecDivVHCSetNext newNode (some heap[anchor]) nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      have hheapOrdered : PairVecDivVHCHeapOrdered
+          (heap.set anchor newNode) nodes :=
+        pairVecDivVHCSet_sameDegree_preserves_heapOrdered heap nodes anchor
+          newNode heap[anchor] newMono anchorMono ha
+          (Array.getElem?_eq_getElem ha) hnew hanchorMono hequalAnchor hordered
+      have hactual := pairVecDivVHCSetNext_preserves_heapOrdered newNode
+        (some heap[anchor]) (heap.set anchor newNode) nodes updated hheapOrdered
+        hset
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl⟩
+      exact hactual
 
 theorem pairVecDivVHCSetNext_preserves_cursorPrefixAbove
     (degreeLimit nodeIndex : Nat) (next : Option Nat)
@@ -9077,6 +9230,72 @@ theorem pairVecDivVHCInsert_preserves_allActiveNodesBelow
                                 nodes' newMono rootMono anchorMono hheap hnew
                                 hroot hequal hgreater hanchor ha hanchorMono
                                 hequalAnchor hbelow hrun
+                    · simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
+                        hgreater, hanchor, ha] at hrun
+
+/-- Complete heap-order preservation for every successful generated insertion
+branch. -/
+theorem pairVecDivVHCInsert_preserves_heapOrdered
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCHeapOrdered heap' nodes' := by
+  cases hnew : pairVecDivVHCMono newNode nodes with
+  | error fault => simp [pairVecDivVHCInsert, hnew] at hrun
+  | ok newMono =>
+      by_cases hempty : heap.size = 0
+      · unfold pairVecDivVHCInsert at hrun
+        simp only [hnew, hempty, ↓reduceDIte] at hrun
+        cases hset : pairVecDivVHCSetNext newNode none nodes with
+        | error fault => simp [hset] at hrun
+        | ok updated =>
+            rw [hset] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl⟩
+            intro child parent hchild hparent hpos
+            simp at hchild
+            omega
+      · have hheap : 0 < heap.size := Nat.pos_of_ne_zero hempty
+        cases hroot : pairVecDivVHCMono heap[0] nodes with
+        | error fault =>
+            simp [pairVecDivVHCInsert, hnew, hempty, hroot] at hrun
+        | ok rootMono =>
+            by_cases hequal : newMono.deg = rootMono.deg
+            · exact pairVecDivVHCInsert_equalRoot_preserves_heapOrdered
+                newNode heap heap' nodes nodes' newMono rootMono hheap hordered
+                hnew hroot hequal hrun
+            · by_cases hgreater : newMono.deg > rootMono.deg
+              · exact pairVecDivVHCInsert_newRoot_preserves_heapOrdered
+                  newNode heap heap' nodes nodes' newMono rootMono hheap hvalid
+                  hordered hnew hroot hgreater hrun
+              · cases hanchor : pairVecDivVHCFindAnchor newMono.deg
+                    (pairVecDivVHCParent heap.size) heap nodes with
+                | error fault =>
+                    simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
+                      hgreater, hanchor] at hrun
+                | ok anchor =>
+                    by_cases ha : anchor < heap.size
+                    · cases hanchorMono : pairVecDivVHCMono heap[anchor] nodes with
+                      | error fault =>
+                          simp [pairVecDivVHCInsert, hnew, hempty, hroot,
+                            hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                      | ok anchorMono =>
+                          by_cases hequalAnchor :
+                              newMono.deg = anchorMono.deg
+                          · exact
+                              pairVecDivVHCInsert_equalAnchor_preserves_heapOrdered
+                                newNode anchor heap heap' nodes nodes' newMono
+                                rootMono anchorMono hheap hordered hnew hroot
+                                hequal hgreater hanchor ha hanchorMono
+                                hequalAnchor hrun
+                          · exact
+                              pairVecDivVHCInsert_bubbleBelow_preserves_heapOrdered
+                                newNode anchor heap heap' nodes nodes' newMono
+                                rootMono anchorMono hheap hvalid hordered hnew
+                                hroot hequal hgreater hanchor ha hanchorMono
+                                hequalAnchor hrun
                     · simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
                         hgreater, hanchor, ha] at hrun
 

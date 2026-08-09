@@ -1149,3 +1149,15 @@ every generated range-for and recursive loop used by SQF.
   first-parent 的零次复制分支。至此非根 bubble 本体不再缺 heap-order
   语义；下一步将 trace 从完整 `VHC_insert` 的 `FindAnchor` 执行接入其
   unequal-anchor 分支，并处理 equal-anchor 的链式替换。
+- 完整 generated `VHC_insert` 的 max-heap order 保持已闭合。
+  `pairVecDivVHCSet_sameDegree_preserves_heapOrdered` 证明 equal-degree
+  bucketing 用同次数新 head 替换 root/anchor 时，上下所有父子边均保持；
+  随后的 `set_next` 只改链字段，已由 monomial-read 不变性运输到实际
+  返回节点数组。`pairVecDivVHCInsert_bubbleBelow_preserves_heapOrdered`
+  则展开 unequal-anchor 分支，把真实 `FindAnchor` 执行生成的 trace 接到
+  完整 appended `BubbleBelow` 证明。
+  最终 `pairVecDivVHCInsert_preserves_heapOrdered` 对 empty、equal-root、
+  greater-root、equal-anchor、unequal-anchor 逐个展开 raw 成功路径，给出
+  任意成功 insertion 的统一 heap-order 定理。至此 insertion 的排列
+  不变量不再是 outer-loop 的缺口；下一步证明 equal-degree `next` 链
+  homogeneous 与指针有效性的完整 insertion 保持，并装配主 invariant。

@@ -42,6 +42,14 @@ branch drops a zero monomial; the nonzero branch uses `Array.push` and
 `listSum_append` to add that exact monomial.  Thus the final sparse `toPoly`
 equals the complete raw `SlicePolyRep`, with no reconstruction oracle.
 
+For canonicality, carry the additional scan invariant that every accumulated
+term has degree at least `remaining`.  A nonzero read at index `remaining-1`
+is therefore strictly below all accumulated terms; appending it preserves
+strict descending order.  Raw canonicality supplies `value < p`, and the
+source guard supplies `value != 0`.  Combine this proof with the semantic
+proof by uniqueness of the actual successful scan, yielding the complete
+`RawDenseSparseResult` for one executable output.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -51,6 +59,8 @@ equals the complete raw `SlicePolyRep`, with no reconstruction oracle.
   theorem.
 - Proved the scan's accumulator invariant and end-to-end `toPoly` equality
   with the normalized raw input polynomial.
+- Proved canonical output and combined both properties for the same actual
+  `to_upoly` execution.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

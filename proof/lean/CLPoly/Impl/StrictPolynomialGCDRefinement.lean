@@ -121,6 +121,99 @@ theorem dense_upoly_zp_to_upoly_raw_ir_refines (this : DenseUPolyZp)
       hrep.2.2.1 with ⟨result, hrun, hsem⟩
   exact ⟨result, hrun, by simpa using hsem⟩
 
+/-- Appending the next lower nonzero raw coefficient preserves the canonical
+descending sparse representation. -/
+theorem canonical_push_lower (p : UInt64) (output : SparsePolyZp)
+    (degree : Nat) (value : UInt64)
+    (hcanonical : SparsePolyZp.Canonical p.toNat output)
+    (hdegrees : ∀ term ∈ output.toList, degree < term.1.deg)
+    (hvalue : value.toNat < p.toNat) (hnonzero : value ≠ 0) :
+    SparsePolyZp.Canonical p.toNat
+      (output.push (⟨degree⟩, ⟨value, p⟩)) := by
+  rcases hcanonical with ⟨hreduced, hchain, hnonzeroOutput⟩
+  constructor
+  · intro term hterm
+    simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hterm
+    rcases hterm with hterm | rfl
+    · exact hreduced term hterm
+    · exact ⟨rfl, hvalue⟩
+  constructor
+  · rw [Array.toList_push, List.isChain_append]
+    refine ⟨hchain, by simp, ?_⟩
+    intro left hleft right hright
+    have hrightEq : right = (⟨degree⟩, ⟨value, p⟩) := by
+      symm
+      simpa using hright
+    subst right
+    exact hdegrees left (List.mem_of_mem_getLast? hleft)
+  · intro term hterm
+    simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hterm
+    rcases hterm with hterm | rfl
+    · exact hnonzeroOutput term hterm
+    · exact hnonzero
+
+/-- Shape invariant of the reverse scan.  Existing output terms are exactly
+the already-scanned higher coefficients, hence all lie above `remaining`. -/
+theorem denseToSparseLoop_canonical (this : DenseUPolyZp) (heap : RawHeap)
+    (ptr : RawPtr UInt64) (length remaining : Nat) (output : SparsePolyZp)
+    (hvalid : heap.ValidU64Slice ptr length) (hremaining : remaining ≤ length)
+    (hrawCanonical : CanonicalU64Prefix heap ptr length this._p)
+    (houtput : SparsePolyZp.Canonical this._p.toNat output)
+    (hdegrees : ∀ term ∈ output.toList, remaining ≤ term.1.deg) :
+    ∃ result,
+      denseToSparseLoop this heap ptr remaining output = .ok result ∧
+      SparsePolyZp.Canonical this._p.toNat result := by
+  induction remaining generalizing output with
+  | zero => exact ⟨output, rfl, houtput⟩
+  | succ remaining ih =>
+      rcases heap.readU64_of_valid ptr length remaining hvalid (by omega) with
+        ⟨value, hread⟩
+      have hvalue : value.toNat < this._p.toNat :=
+        hrawCanonical remaining value (by omega) hread
+      by_cases hzero : value = 0
+      · rcases ih output (by omega) houtput
+          (fun term hterm => by
+            exact Nat.le_trans (Nat.le_succ remaining) (hdegrees term hterm)) with
+          ⟨result, hrun, hcanonical⟩
+        exact ⟨result, by
+          simp [denseToSparseLoop, hread, hzero, hrun], hcanonical⟩
+      · let output' := output.push (⟨remaining⟩, ⟨value, this._p⟩)
+        have houtput' : SparsePolyZp.Canonical this._p.toNat output' :=
+          canonical_push_lower this._p output remaining value houtput
+            (fun term hterm => Nat.lt_of_succ_le (hdegrees term hterm))
+            hvalue hzero
+        have hdegrees' : ∀ term ∈ output'.toList,
+            remaining ≤ term.1.deg := by
+          intro term hterm
+          simp only [output', Array.toList_push, List.mem_append,
+            List.mem_singleton] at hterm
+          rcases hterm with hterm | rfl
+          · exact Nat.le_trans (Nat.le_succ remaining) (hdegrees term hterm)
+          · exact le_rfl
+        rcases ih output' (by omega) houtput' hdegrees' with
+          ⟨result, hrun, hcanonical⟩
+        exact ⟨result, by
+          simp [denseToSparseLoop, hread, hzero, output', hrun], hcanonical⟩
+
+/-- The exact dense-to-sparse scan produces canonical descending sparse
+terms when the raw dense coefficients are canonical residues. -/
+theorem dense_upoly_zp_to_upoly_raw_ir_canonical (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hcanonical : CanonicalU64Prefix heap ptr length this._p) :
+    ∃ result,
+      dense_upoly_zp_to_upoly_raw_ir this heap ptr length = .ok result ∧
+      SparsePolyZp.Canonical this._p.toNat result := by
+  apply denseToSparseLoop_canonical this heap ptr length length #[] hvalid
+    le_rfl hcanonical
+  · exact ⟨by
+      intro term hterm
+      simp at hterm,
+      by simp,
+      by simp⟩
+  · intro term hterm
+    simp at hterm
+
 /-- A canonical sparse C++ polynomial and the normalized raw dense buffer
 created from it denote exactly the same mathematical polynomial.  This is a
 representation relation only; it performs no GCD computation. -/
@@ -159,5 +252,24 @@ theorem RawDenseSparseResult.toPoly_unique (this : DenseUPolyZp)
       hleft.dense.1 with ⟨poly, _, hunique⟩
   exact (hunique _ hleft.dense.2.2.1).trans
     (hunique _ hright.dense.2.2.1).symm
+
+/-- The actual `to_upoly` result satisfies the complete canonical
+dense-to-sparse output relation. -/
+theorem dense_upoly_zp_to_upoly_raw_ir_result (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hrep : RawDensePolyRep this heap ptr length poly) :
+    ∃ result,
+      dense_upoly_zp_to_upoly_raw_ir this heap ptr length = .ok result ∧
+      RawDenseSparseResult this heap ptr length result := by
+  rcases dense_upoly_zp_to_upoly_raw_ir_refines this heap ptr length poly hrep
+      with ⟨semanticResult, hsemanticRun, hsemantic⟩
+  rcases dense_upoly_zp_to_upoly_raw_ir_canonical this heap ptr length hrep.1
+      hrep.2.1 with ⟨canonicalResult, hcanonicalRun, hcanonical⟩
+  have heq : canonicalResult = semanticResult :=
+    Except.ok.inj (hcanonicalRun.symm.trans hsemanticRun)
+  subst canonicalResult
+  exact ⟨semanticResult, hsemanticRun, hcanonical, by
+    simpa [hsemantic] using hrep⟩
 
 end CLPoly.Impl.StrictPolynomialGCDRefinement

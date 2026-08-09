@@ -1,4 +1,4 @@
-"""Generate the admitted strict C++ foundations used by polynomial_GCD.
+"""Generate the strict raw C++ foundations used by polynomial_GCD.
 
 Every definition in this file starts from a concrete Clang AST body in
 ``dense_upoly_zp.hh``.  Buffer-manipulating routines, divrem, Euclid/HGCD and

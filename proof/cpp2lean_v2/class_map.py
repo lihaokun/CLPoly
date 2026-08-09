@@ -973,8 +973,8 @@ TRANSLATION_SCOPE = {
     "__select_eval_point", "__si_theta_array_eval",
     "__symmetric_mod_poly", "__taylor_coeff_zp",
     "__wang_core", "__wang_leading_coeff",
-    # GCD 模块：仅 sqf 翻译；polynomial_GCD/cont 等翻译路径试过但 survey_ast
-    # 单 template instance 限制 + dense_upoly_zp basis 缺口 → 不走翻译路线，
-    # 改 Phase F-impl-A（数学 spec + L1 placeholder/真实现）。详 docs/devlog
+    # GCD 模块：稀疏 SQF 入口仍单独提取；polynomial_GCD 必须经
+    # dense_upoly_zp 的显式 raw heap 闭包（StrictGCD/StrictHGCD）接回，禁止
+    # 映射到数学规格或 L1 占位实现。详 strict GCD/HGCD source gates。
     "squarefreefactorize",
 }

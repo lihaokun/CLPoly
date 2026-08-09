@@ -30,6 +30,9 @@
 - Strengthened the pinned-source gate so deletion of any physical
   continuation, source-call equality, invocation workspace, or final
   well-founded theorem fails CI.
+- Removed stale translator documentation that described the GCD route as a
+  mathematical-spec/L1-placeholder path; it now points exclusively at the
+  strict raw-heap GCD/HGCD closure.
 
 ## Why
 
@@ -73,4 +76,6 @@ assumption reconstructed later.
 
 - `proof/lean/CLPoly/Impl/StrictHGCDRawRefinement.lean`
 - `proof/cpp2lean_v2/tests/check_strict_hgcd_source.py`
+- `proof/cpp2lean_v2/tests/build_strict_gcd.py`
+- `proof/cpp2lean_v2/class_map.py`
 - `docs/devlog/2026-08-09-hgcd-physical-continuation-packages.md`

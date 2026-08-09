@@ -29,6 +29,24 @@ can use them.  Stopping at either helper would omit the source main loop.
 - The small branch invokes the actual raw `_gcd_euclid` execution.
 - No L2 operation occurs in this execution definition.
 
+## Main-loop refinement proof draft
+
+For every large-loop HGCD call, use the polynomial representations produced
+by the immediately preceding raw divrem call together with the physical
+recursive-invocation workspace.  Apply the refinement theorem for the exact
+successful `hgcdRecursiveCallChecked` execution.  Its returned invariant says
+that the actual output second length is less than `lenJ / 2 + 1`.  The source
+large branch establishes `hgcdRecursiveCutoff <= lenJ`; since the cutoff is
+100, arithmetic gives `lenJ / 2 + 1 < lenJ`.  Transitivity therefore proves
+that the exact returned `lenB` strictly decreases the source loop measure.
+No alternative execution or semantic result is chosen in this argument.
+
+The semantic loop proof then follows the source branches by well-founded
+induction on `lenJ`: raw divrem changes `(G,J)` to `(J,R)` while preserving the
+normalized gcd; zero remainder copies `J`; the small branch invokes the exact
+raw Euclid refinement; the large branch invokes the concrete checked HGCD
+refinement and recurses on its strictly smaller returned second length.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

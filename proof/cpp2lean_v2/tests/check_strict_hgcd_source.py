@@ -61,6 +61,7 @@ LEAN_FILES = (
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRecursiveRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDContinuationRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDCheckedRefinement.lean",
+    V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictGCDHGCDRefinement.lean",
     V2_ROOT.parent / "lean" / "CLPoly" / "Impl" / "StrictHGCDRefinement.lean",
 )
 
@@ -393,6 +394,7 @@ def main() -> None:
         "HgcdRecursiveInvocationWorkspace",
         "HgcdRecursiveInvocationWorkspaceProviderBelow",
         "hgcdRecursiveCallChecked_rawInvariant_wf",
+        "hgcdRecursiveCallChecked_lenB_lt_of_large",
         "GcdHgcdRawResult",
         "HgcdGcdLoopLengthDecreases",
         "gcdHgcdLoop",

@@ -1718,6 +1718,224 @@ theorem pairVecDivVHCSetNext_preserves_allActiveNodesBelow
     · rw [Array.getElem?_set_ne hn heq] at hget
       exact hbelow i node mono hget hmono
 
+theorem pairVecDivVHCInsert_empty_preserves_allActiveNodesBelow
+    (degreeLimit newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hempty : heap.size = 0)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes' := by
+  unfold pairVecDivVHCInsert at hrun
+  cases hmono : pairVecDivVHCMono newNode nodes with
+  | error fault => simp [hmono] at hrun
+  | ok mono =>
+      simp only [hmono, hempty, ↓reduceDIte] at hrun
+      cases hset : pairVecDivVHCSetNext newNode none nodes with
+      | error fault => simp [hset] at hrun
+      | ok updated =>
+          rw [hset] at hrun
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl⟩
+          exact pairVecDivVHCSetNext_preserves_allActiveNodesBelow
+            degreeLimit newNode none nodes updated hbelow hset
+
+theorem pairVecDivVHCInsert_equalRoot_preserves_allActiveNodesBelow
+    (degreeLimit newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode) (newMono rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hequal : newMono.deg = rootMono.deg)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes' := by
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, Nat.ne_of_gt hheap, ↓reduceDIte, hroot, hequal] at hrun
+  cases hset : pairVecDivVHCSetNext newNode (some heap[0]) nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl⟩
+      exact pairVecDivVHCSetNext_preserves_allActiveNodesBelow
+        degreeLimit newNode (some heap[0]) nodes updated hbelow hset
+
+theorem pairVecDivVHCInsert_newRoot_preserves_allActiveNodesBelow
+    (degreeLimit newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode) (newMono rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hnequal : newMono.deg ≠ rootMono.deg)
+    (hgreater : newMono.deg > rootMono.deg)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes' := by
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, Nat.ne_of_gt hheap, ↓reduceDIte, hroot, hnequal,
+    hgreater] at hrun
+  cases hset : pairVecDivVHCSetNext newNode none nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      cases hbubble : pairVecDivVHCBubble heap.size 0 newNode
+          (heap.push newNode) with
+      | error fault => simp [hbubble] at hrun
+      | ok shifted =>
+          rw [hbubble] at hrun
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl⟩
+          exact pairVecDivVHCSetNext_preserves_allActiveNodesBelow
+            degreeLimit newNode none nodes updated hbelow hset
+
+theorem pairVecDivVHCInsert_equalAnchor_preserves_allActiveNodesBelow
+    (degreeLimit newNode anchor : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (newMono rootMono anchorMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hnequal : newMono.deg ≠ rootMono.deg)
+    (hgreater : ¬ newMono.deg > rootMono.deg)
+    (hanchor : pairVecDivVHCFindAnchor newMono.deg
+      (pairVecDivVHCParent heap.size) heap nodes = .ok anchor)
+    (ha : anchor < heap.size)
+    (hanchorMono : pairVecDivVHCMono heap[anchor] nodes = .ok anchorMono)
+    (hequalAnchor : newMono.deg = anchorMono.deg)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes' := by
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, Nat.ne_of_gt hheap, ↓reduceDIte, hroot, hnequal,
+    hgreater, hanchor, ha, hanchorMono] at hrun
+  simp only [hequalAnchor] at hrun
+  cases hset : pairVecDivVHCSetNext newNode (some heap[anchor]) nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl⟩
+      exact pairVecDivVHCSetNext_preserves_allActiveNodesBelow
+        degreeLimit newNode (some heap[anchor]) nodes nodes' hbelow hset
+
+theorem pairVecDivVHCInsert_bubbleBelow_preserves_allActiveNodesBelow
+    (degreeLimit newNode anchor : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (newMono rootMono anchorMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hnequal : newMono.deg ≠ rootMono.deg)
+    (hgreater : ¬ newMono.deg > rootMono.deg)
+    (hanchor : pairVecDivVHCFindAnchor newMono.deg
+      (pairVecDivVHCParent heap.size) heap nodes = .ok anchor)
+    (ha : anchor < heap.size)
+    (hanchorMono : pairVecDivVHCMono heap[anchor] nodes = .ok anchorMono)
+    (hnequalAnchor : newMono.deg ≠ anchorMono.deg)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes' := by
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, Nat.ne_of_gt hheap, ↓reduceDIte, hroot, hnequal,
+    hgreater, hanchor, ha, hanchorMono] at hrun
+  simp only [hnequalAnchor] at hrun
+  cases hset : pairVecDivVHCSetNext newNode none nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      cases hbubble : pairVecDivVHCBubbleBelow heap.size anchor newNode
+          (heap.push newNode) with
+      | error fault => simp [hbubble] at hrun
+      | ok shifted =>
+          rw [hbubble] at hrun
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl⟩
+          exact pairVecDivVHCSetNext_preserves_allActiveNodesBelow
+            degreeLimit newNode none nodes nodes' hbelow hset
+
+theorem pairVecDivVHCInsert_preserves_allActiveNodesBelow
+    (degreeLimit newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes' := by
+  cases hnew : pairVecDivVHCMono newNode nodes with
+  | error fault => simp [pairVecDivVHCInsert, hnew] at hrun
+  | ok newMono =>
+      by_cases hempty : heap.size = 0
+      · exact pairVecDivVHCInsert_empty_preserves_allActiveNodesBelow
+          degreeLimit newNode heap heap' nodes nodes' hempty hbelow hrun
+      · have hheap : 0 < heap.size := Nat.pos_of_ne_zero hempty
+        cases hroot : pairVecDivVHCMono heap[0] nodes with
+        | error fault =>
+            simp [pairVecDivVHCInsert, hnew, hempty, hroot] at hrun
+        | ok rootMono =>
+            by_cases hequal : newMono.deg = rootMono.deg
+            · exact pairVecDivVHCInsert_equalRoot_preserves_allActiveNodesBelow
+                degreeLimit newNode heap heap' nodes nodes' newMono rootMono
+                hheap hnew hroot hequal hbelow hrun
+            · by_cases hgreater : newMono.deg > rootMono.deg
+              · exact pairVecDivVHCInsert_newRoot_preserves_allActiveNodesBelow
+                  degreeLimit newNode heap heap' nodes nodes' newMono rootMono
+                  hheap hnew hroot hequal hgreater hbelow hrun
+              · cases hanchor : pairVecDivVHCFindAnchor newMono.deg
+                    (pairVecDivVHCParent heap.size) heap nodes with
+                | error fault =>
+                    simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
+                      hgreater, hanchor] at hrun
+                | ok anchor =>
+                    by_cases ha : anchor < heap.size
+                    · cases hanchorMono : pairVecDivVHCMono heap[anchor] nodes with
+                      | error fault =>
+                          simp [pairVecDivVHCInsert, hnew, hempty, hroot,
+                            hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                      | ok anchorMono =>
+                          by_cases hequalAnchor :
+                              newMono.deg = anchorMono.deg
+                          · exact
+                              pairVecDivVHCInsert_equalAnchor_preserves_allActiveNodesBelow
+                                degreeLimit newNode anchor heap heap' nodes
+                                nodes' newMono rootMono anchorMono hheap hnew
+                                hroot hequal hgreater hanchor ha hanchorMono
+                                hequalAnchor hbelow hrun
+                          · exact
+                              pairVecDivVHCInsert_bubbleBelow_preserves_allActiveNodesBelow
+                                degreeLimit newNode anchor heap heap' nodes
+                                nodes' newMono rootMono anchorMono hheap hnew
+                                hroot hequal hgreater hanchor ha hanchorMono
+                                hequalAnchor hbelow hrun
+                    · simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
+                        hgreater, hanchor, ha] at hrun
+
+theorem pairVecDivVHCReinsertLin_preserves_allActiveNodesBelow
+    (degreeLimit : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (state : PairVecDivVHCHeapState)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hrun : pairVecDivVHCReinsertLin heap nodes lin = .ok state) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit state.nodes := by
+  rw [pairVecDivVHCReinsertLin] at hrun
+  split at hrun
+  next hlin =>
+    dsimp only at hrun
+    cases hinsert : pairVecDivVHCInsert lin[lin.size - 1] heap nodes with
+    | error fault => simp [hinsert] at hrun
+    | ok inserted =>
+        rcases inserted with ⟨heap', nodes'⟩
+        rw [hinsert] at hrun
+        have hbelow' := pairVecDivVHCInsert_preserves_allActiveNodesBelow
+          degreeLimit lin[lin.size - 1] heap heap' nodes nodes' hbelow hinsert
+        exact pairVecDivVHCReinsertLin_preserves_allActiveNodesBelow
+          degreeLimit heap' nodes' lin.pop state hbelow' hrun
+  next hlin =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    exact hbelow
+termination_by lin.size
+decreasing_by
+  simp only [Array.size_pop]
+  omega
+
 theorem pairVecDivVHCCanonicalInitialFrontierBelow (p : Nat)
     (dividend : SparsePolyZp) (nodes : Array PairVecDivVHCNode)
     (hcanonical : SparsePolyZp.Canonical p dividend)

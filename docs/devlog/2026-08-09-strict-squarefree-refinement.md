@@ -136,6 +136,12 @@ every generated range-for and recursive loop used by SQF.
   append 均保留；输出保持 canonical，满足 `quotient * divisor =
   dividend`，并在 monic exact-division 前提下精确等于 L2
   `divByMonic`。一般 divisor 的 priority-heap branch 仍待闭合。
+- 一般 divisor 路径已经开始按源布局建模：每个 non-leading divisor
+  cell 对应一个 `VHC` 节点，quotient/divisor 指针转成有界索引，尚未
+  激活的未初始化 `mono` 明确表示为 `none`；节点分配循环及其精确
+  长度/列表定理已经闭合。`reset_h` 的单节点激活也已实现为 checked
+  raw→safe 步骤，并证明只写目标节点、保持节点数组长度。下一检查点
+  是完全对应源代码的 `VHC_insert`/`VHC_extract` 和 `next` 等次数桶。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

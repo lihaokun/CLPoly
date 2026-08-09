@@ -630,6 +630,144 @@ theorem pairVecDivSingleBranchIR_refines_divByMonic
   exact ⟨quotient, hrun, hcanonical,
     eq_divByMonic_of_mul_eq _ _ _ hdivisorMonic hdivisorDvd hmul⟩
 
+/-! ### General `pair_vec_div` priority-heap path
+
+The source allocates one `VHC` node for every non-leading divisor term.  A
+node is not assigned a monomial until `reset_h` activates it, so reading that
+field earlier would be undefined C++.  The safe execution records this fact
+with `Option`; an active node always has `some mono`.  Array indices replace
+the three source pointer fields without changing their observable meaning.
+-/
+
+/-- Safe representation of the source
+`VHC<umonomial, size_t, divisor_iterator>` allocation. -/
+structure PairVecDivVHCNode where
+  mono : Option UMonomial
+  quotientIndex : Nat
+  divisorIndex : Nat
+  next : Option Nat
+  deriving Repr
+
+/-- Exact initial value of node `i`: `v1_ptr = 0`, while `v2_ptr` points to
+the `(i + 1)`th divisor cell.  `mono` and `next` are not observable before the
+node is activated by the `reset_h` loop. -/
+def pairVecDivVHCInitialNode (i : Nat) : PairVecDivVHCNode where
+  mono := none
+  quotientIndex := 0
+  divisorIndex := i + 1
+  next := none
+
+/-- The source node-allocation loop, with `divisor.size - 1` nodes. -/
+def pairVecDivVHCInitLoop (i count : Nat)
+    (nodes : Array PairVecDivVHCNode) : Array PairVecDivVHCNode :=
+  if h : i < count then
+    pairVecDivVHCInitLoop (i + 1) count
+      (nodes.push (pairVecDivVHCInitialNode i))
+  else
+    nodes
+termination_by count - i
+decreasing_by omega
+
+def pairVecDivVHCInit (divisor : SparsePolyZp) :
+    Array PairVecDivVHCNode :=
+  pairVecDivVHCInitLoop 0 (divisor.size - 1) #[]
+
+theorem pairVecDivVHCInitLoop_toList (i count : Nat)
+    (nodes : Array PairVecDivVHCNode) :
+    (pairVecDivVHCInitLoop i count nodes).toList =
+      nodes.toList ++
+        (List.range' i (count - i)).map pairVecDivVHCInitialNode := by
+  rw [pairVecDivVHCInitLoop]
+  split
+  next hmore =>
+    rw [pairVecDivVHCInitLoop_toList]
+    rw [Array.toList_push, List.append_assoc]
+    congr 1
+    rw [show count - i = (count - (i + 1)) + 1 by omega,
+      List.range'_succ]
+    simp
+  next hdone =>
+    have hzero : count - i = 0 := Nat.sub_eq_zero_of_le (by omega)
+    simp [hzero]
+termination_by count - i
+decreasing_by omega
+
+theorem pairVecDivVHCInit_toList (divisor : SparsePolyZp) :
+    (pairVecDivVHCInit divisor).toList =
+      (List.range (divisor.size - 1)).map pairVecDivVHCInitialNode := by
+  simp [pairVecDivVHCInit, pairVecDivVHCInitLoop_toList, List.range_eq_range']
+
+theorem pairVecDivVHCInit_size (divisor : SparsePolyZp) :
+    (pairVecDivVHCInit divisor).size = divisor.size - 1 := by
+  simpa using congrArg List.length (pairVecDivVHCInit_toList divisor)
+
+/-- One execution of the source `reset_h` activation body.  The checked
+indices are precisely the three pointer/array dereferences in that body. -/
+def pairVecDivVHCActivate (nodeIndex : Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient divisor : SparsePolyZp) :
+    RawExec (Array PairVecDivVHCNode) :=
+  if hn : nodeIndex < nodes.size then
+    let node := nodes[nodeIndex]
+    if hq : node.quotientIndex < quotient.size then
+      if hd : node.divisorIndex < divisor.size then
+        let updated := { node with
+          mono := some ⟨quotient[node.quotientIndex].1.deg +
+            divisor[node.divisorIndex].1.deg⟩
+          next := none }
+        .ok (nodes.set nodeIndex updated)
+      else
+        .error .assertionFailure
+    else
+      .error .assertionFailure
+  else
+    .error .assertionFailure
+
+theorem pairVecDivVHCActivate_size (nodeIndex : Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCActivate nodeIndex nodes quotient divisor =
+      .ok nodes') :
+    nodes'.size = nodes.size := by
+  unfold pairVecDivVHCActivate at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        simp only [Except.ok.injEq] at hrun
+        subst nodes'
+        simp
+
+theorem pairVecDivVHCActivate_get (nodeIndex : Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCActivate nodeIndex nodes quotient divisor =
+      .ok nodes') :
+    ∃ hn : nodeIndex < nodes.size,
+      ∃ hq : nodes[nodeIndex].quotientIndex < quotient.size,
+      ∃ hd : nodes[nodeIndex].divisorIndex < divisor.size,
+        nodes'[nodeIndex]? = some { nodes[nodeIndex] with
+            mono := some ⟨quotient[nodes[nodeIndex].quotientIndex].1.deg +
+              divisor[nodes[nodeIndex].divisorIndex].1.deg⟩
+            next := none } := by
+  unfold pairVecDivVHCActivate at hrun
+  split at hrun
+  next hn =>
+    dsimp only at hrun
+    split at hrun
+    next hq =>
+      split at hrun
+      next hd =>
+        simp only [Except.ok.injEq] at hrun
+        subst nodes'
+        refine ⟨hn, hq, hd, ?_⟩
+        simp
+      next hd => contradiction
+    next hq => contradiction
+  next hn => contradiction
+
 /-- Exact source-order range-for loop of `__extract_pth_root`. -/
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=
   (UMonomial.mk ((term.1.deg.toUInt64 / prime).toInt64), term.2)

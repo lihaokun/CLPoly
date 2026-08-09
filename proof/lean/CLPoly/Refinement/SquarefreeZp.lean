@@ -9890,6 +9890,75 @@ theorem pairVecDivVHCEmit_preserves_node_invariants
     rcases hrun with ⟨rfl, rfl, rfl⟩
     exact ⟨hbelow, hdenotes, hfixed, hready⟩
 
+theorem pairVecDivVHCOuterIteration_preserves_cursorPrefixAbove
+    (this : DenseUPolyZp) (p degreeLimit dividendIndex : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
+    (hdivisor : 0 < divisor.size)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hstate : PairVecDivVHCStateCovered heap nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    PairVecDivVHCCursorPrefixAbove frontier.degree result.nodes
+      result.quotient divisor := by
+  rcases pairVecDivVHCOuterIteration_components this dividendIndex heap nodes
+      quotient dividend divisor resetH frontier result hdivisor hselect hrun with
+    ⟨consumed, quotient', activated, resetH', reinserted, hconsume, hemit,
+      hreinsert, hresult⟩
+  have hprefixCurrent := hprefix.mono degreeLimit frontier.degree nodes
+    quotient divisor (Nat.le_of_lt hdecrease)
+  have hconsumedPrefix :=
+    pairVecDivVHCConsumeEqualDegree_preserves_cursorPrefixAbove this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed owners hownership hhomogeneous hprefixCurrent hdenotes
+      hconsume
+  have hconsumedState :=
+    pairVecDivVHCConsumeEqualDegree_preserves_stateCovered this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed hstate hconsume
+  have howned : PairVecDivVHCHeapChainsOwned heap nodes :=
+    ⟨owners, hownership⟩
+  have haway0 : PairVecDivVHCHeapChainsOwnedAway heap nodes
+      (#[] : Array Nat).toList.toFinset := by
+    simpa using howned.away_empty
+  have hlin0 : PairVecDivVHCLinReady (#[] : Array Nat) nodes := by
+    simp [PairVecDivVHCLinReady]
+  have hconsumedAway :=
+    pairVecDivVHCConsumeEqualDegree_preserves_away_linReady this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed haway0 hlin0 hconsume
+  have hconsumedInvariants :=
+    pairVecDivVHCConsumeEqualDegree_preserves_node_invariants this p
+      degreeLimit frontier.degree heap frontier.coefficient nodes #[] resetH
+      quotient divisor consumed owners hcanonical hbelow hdenotes hfixed
+      hready hownership hconsume
+  have hbounded := pairVecDivVHCCursorIndicesBounded_of_state consumed.heap
+    consumed.nodes consumed.lin consumed.resetH quotient divisor hconsumedState
+    hconsumedAway.2 hconsumedInvariants.2.2.2 hconsumedInvariants.2.1
+  have hemittedPrefix := pairVecDivVHCEmit_preserves_cursorPrefixAbove this
+    frontier consumed quotient divisor quotient' activated resetH'
+    hconsumedPrefix hbounded hdivisor hemit
+  have hreinsertedPrefix :=
+    pairVecDivVHCReinsertLin_preserves_cursorPrefixAbove frontier.degree
+      activated.heap activated.nodes consumed.lin quotient' divisor reinserted
+      hemittedPrefix hreinsert
+  subst result
+  exact hreinsertedPrefix
+
 theorem pairVecDivVHCEmit_preserves_canonical
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (frontier : PairVecDivVHCFrontier)

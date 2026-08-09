@@ -698,3 +698,15 @@ every generated range-for and recursive loop used by SQF.
   reset activation 定理。下一步从 outer-iteration components 恢复同一
   consume/emit/reinsert 执行，组合 state-derived cursor bound 并把 prefix
   传到严格更小的下一 frontier。
+- processed-prefix 已接入完整 outer iteration。新定理从同一次
+  `OuterIteration_components` 恢复实际 consume、emit 和 reverse-reinsert
+  结果；先用选中 frontier 对上轮的 strict upper bound 做单调
+  收紧，再依赖 exact heap ownership+homogeneity 把 prefix 穿过完整
+  equal-degree consume。consume 后的 cursor bound 不是作为新假设，而是
+  从同一返回状态的 `StateCovered`、`LinReady`、`ResetReady` 和
+  `NodeDenotes` 现场推导，然后才用于 quotient append/emit，最后
+  经真实 reverse reinsertion 返回 `result.nodes/result.quotient`。返回
+  prefix 的 bound 正是本轮实际 `frontier.degree`，因此可直接作为
+  良基 outer-loop 下一轮的 strict upper bound。下一步将该不变式
+  线程到完整 outer-loop，然后用 prefix+严格下降的 quotient 后缀
+  闭合当前 frontier 卷积项的 completeness/no-duplicate。

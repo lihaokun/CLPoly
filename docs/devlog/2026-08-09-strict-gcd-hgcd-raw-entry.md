@@ -324,6 +324,16 @@ the actual result together with `G/J` representations and normalized-GCD
 preservation.  Unlike loop large steps, this initial bridge needs no cutoff
 claim or loop-decrease conclusion.
 
+Compose the complete raw entry in exact source order.  Execute the entry
+divrem on `A/B`; on zero remainder, preserve `G` allocation through the
+divrem layout and execute the source `B -> G` copy.  On nonzero remainder,
+execute the distinct initial `B/R -> G/J` HGCD call and then invoke the total
+generated loop on the actual returned heap and lengths.  Chain the divrem,
+HGCD, and loop normalized-GCD equalities.  Recover the observable
+`GcdHgcdRawResult` from the exact generated matches, using success uniqueness
+only to identify their actual returned records; never construct an L2 result
+as an executable substitute.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -376,3 +386,6 @@ claim or loop-decrease conclusion.
 - GCD loop 增量：约 1 小时、3 轮编译—修复、Lean 约 145 行；按真实
   `lenJ` 闭合生成循环的零余式、raw Euclid 与 total HGCD 三条路径，并
   组合每一步实际执行的 normalized-GCD 不变式。
+- raw entry 增量：约 1 小时、1 轮编译、Lean 约 105 行；组合入口真实
+  divrem、`B -> G` 零余式出口、首次 `B/R -> G/J` HGCD 及完整循环，
+  得到实际 raw 返回值与 `G` 区域 normalized-GCD 后置条件。

@@ -502,3 +502,15 @@ every generated range-for and recursive loop used by SQF.
   次数不同的真实退出分支都产生空列表。下一步把该 coefficient-level
   等式与 sparse polynomial coefficient/evaluation 表示连接，形成 general
   division 的多项式等式。
+- dividend 指针的次数分割不变量已建立。新的 execution-indexed
+  `PairVecDivVHCFrontierSource` 证明 selector 成功时只能来自两种真实
+  C++ 读取：读取当前 `dividend[dividendIndex]` 并将指针加一，或读取
+  实际 heap root monomial 并以零初始化 coefficient、保持指针不变；
+  不允许凭规格任意选择次数。`PairVecDivVHCConsumedDividendAbove` 与已有
+  `RemainingDividendBelow` 配对，记录指针前的已处理项均不低于下一
+  frontier、指针后的未处理项均低于旧严格界。selector 的真实 decrease
+  guard 保持此前缀性质，且 outer iteration 的实际返回 index 被证明精确
+  等于 selector 返回 index，因此该不变量已经接通一次完整循环体。
+  下一步利用 canonical 严格次数顺序，把这一前缀/后缀分割转成
+  `toPoly.coeff frontier.degree` 的精确读取定理，再与 equal-degree 乘积和
+  合并。

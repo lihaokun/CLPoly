@@ -2859,6 +2859,56 @@ theorem pairVecDivVHCSelectFrontier_index (dividendIndex : Nat)
         subst frontier
         simp
 
+inductive PairVecDivVHCFrontierSource (dividendIndex : Nat)
+    (dividend : SparsePolyZp) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : PairVecDivVHCFrontier → Prop
+  | dividend (hindex : dividendIndex < dividend.size) :
+      PairVecDivVHCFrontierSource dividendIndex dividend heap nodes
+        (PairVecDivVHCFrontier.mk dividend[dividendIndex].1.deg
+          dividend[dividendIndex].2.val (dividendIndex + 1))
+  | heap (hheap : 0 < heap.size) (rootMono : UMonomial)
+      (hmono : pairVecDivVHCMono heap[0] nodes = .ok rootMono) :
+      PairVecDivVHCFrontierSource dividendIndex dividend heap nodes
+        (PairVecDivVHCFrontier.mk rootMono.deg 0 dividendIndex)
+
+/-- A successful selector result is exactly one of the two concrete source
+reads.  In particular, a zero coefficient is tied to an actual heap-root
+monomial; it is not a specification-level default for an arbitrary degree. -/
+theorem pairVecDivVHCSelectFrontier_has_source (dividendIndex : Nat)
+    (dividend : SparsePolyZp) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (frontier : PairVecDivVHCFrontier)
+    (hrun : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    PairVecDivVHCFrontierSource dividendIndex dividend heap nodes frontier := by
+  unfold pairVecDivVHCSelectFrontier at hrun
+  split at hrun
+  next hdividend =>
+    split at hrun
+    next hheap =>
+      split at hrun <;> try contradiction
+      next rootMono hmono =>
+        split at hrun
+        next hdegree =>
+          simp only [Except.ok.injEq] at hrun
+          rw [← hrun]
+          exact PairVecDivVHCFrontierSource.dividend hdividend
+        next hdegree =>
+          simp only [Except.ok.injEq] at hrun
+          rw [← hrun]
+          exact PairVecDivVHCFrontierSource.heap hheap rootMono hmono
+    next hheap =>
+      simp only [Except.ok.injEq] at hrun
+      rw [← hrun]
+      exact PairVecDivVHCFrontierSource.dividend hdividend
+  next hdividend =>
+    split at hrun <;> try contradiction
+    next hheap =>
+      split at hrun <;> try contradiction
+      next rootMono hmono =>
+        simp only [Except.ok.injEq] at hrun
+        rw [← hrun]
+        exact PairVecDivVHCFrontierSource.heap hheap rootMono hmono
+
 theorem pairVecDivVHCSelectFrontier_coefficient_reduced
     (p dividendIndex : Nat) (dividend : SparsePolyZp) (heap : Array Nat)
     (nodes : Array PairVecDivVHCNode) (frontier : PairVecDivVHCFrontier)
@@ -2915,6 +2965,51 @@ def PairVecDivVHCRemainingDividendBelow (degreeLimit dividendIndex : Nat)
     (dividend : SparsePolyZp) : Prop :=
   ∀ (i : Nat) (term : UMonomial × Zp), dividendIndex ≤ i →
     dividend[i]? = some term → term.1.deg < degreeLimit
+
+/-- Every dividend cell before the source pointer belongs to an already
+processed degree, hence is at or above the next strict frontier bound. -/
+def PairVecDivVHCConsumedDividendAbove (degreeLimit dividendIndex : Nat)
+    (dividend : SparsePolyZp) : Prop :=
+  ∀ (i : Nat) (term : UMonomial × Zp), i < dividendIndex →
+    dividend[i]? = some term → degreeLimit ≤ term.1.deg
+
+theorem pairVecDivVHCConsumedDividendAbove_zero (degreeLimit : Nat)
+    (dividend : SparsePolyZp) :
+    PairVecDivVHCConsumedDividendAbove degreeLimit 0 dividend := by
+  intro i term hi
+  omega
+
+theorem pairVecDivVHCSelectFrontier_preserves_consumed_above
+    (degreeLimit dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (frontier : PairVecDivVHCFrontier)
+    (hconsumed : PairVecDivVHCConsumedDividendAbove degreeLimit
+      dividendIndex dividend)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hrun : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    PairVecDivVHCConsumedDividendAbove frontier.degree
+      frontier.dividendIndex dividend := by
+  have hsource := pairVecDivVHCSelectFrontier_has_source dividendIndex
+    dividend heap nodes frontier hrun
+  cases hsource with
+  | dividend hindex =>
+      intro i term hi hget
+      change i < dividendIndex + 1 at hi
+      by_cases heq : i = dividendIndex
+      · subst i
+        rw [Array.getElem?_eq_getElem hindex] at hget
+        simp only [Option.some.injEq] at hget
+        subst term
+        exact Nat.le_refl _
+      · have hold : i < dividendIndex := by omega
+        exact Nat.le_trans (Nat.le_of_lt hdecrease)
+          (hconsumed i term hold hget)
+  | heap hheap rootMono hmono =>
+      intro i term hi hget
+      change i < dividendIndex at hi
+      exact Nat.le_trans (Nat.le_of_lt hdecrease)
+        (hconsumed i term hi hget)
 
 theorem pairVecDivVHCSelectFrontier_preserves_remaining_below
     (degreeLimit dividendIndex : Nat) (dividend : SparsePolyZp)
@@ -7528,6 +7623,62 @@ def pairVecDivVHCOuterIteration (this : DenseUPolyZp)
       reinserted.heap reinserted.nodes quotient' resetH')
   else
     .error .assertionFailure
+
+theorem pairVecDivVHCOuterIteration_dividendIndex
+    (this : DenseUPolyZp) (dividendIndex : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient dividend divisor : SparsePolyZp)
+    (resetH : Nat) (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (hdivisor : 0 < divisor.size)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    result.dividendIndex = frontier.dividendIndex := by
+  unfold pairVecDivVHCOuterIteration at hrun
+  simp only [hdivisor, ↓reduceDIte, hselect, Bind.bind, Except.bind] at hrun
+  generalize hconsume : pairVecDivVHCConsumeEqualDegree this frontier.degree
+      heap frontier.coefficient nodes #[] resetH quotient divisor =
+        consumeExec at hrun
+  cases consumeExec with
+  | error fault => contradiction
+  | ok consumed =>
+      simp only [Bind.bind, Except.bind] at hrun
+      generalize hemit : pairVecDivVHCEmit this frontier consumed quotient
+          divisor hdivisor = emitExec at hrun
+      cases emitExec with
+      | error fault => contradiction
+      | ok emitted =>
+          rcases emitted with ⟨quotient', activated, resetH'⟩
+          simp only [Bind.bind, Except.bind] at hrun
+          generalize hreinsert : pairVecDivVHCReinsertLin activated.heap
+              activated.nodes consumed.lin = reinsertExec at hrun
+          cases reinsertExec with
+          | error fault => contradiction
+          | ok reinserted =>
+              simp only [Bind.bind, Except.bind, Except.ok.injEq] at hrun
+              rw [← hrun]
+
+theorem pairVecDivVHCOuterIteration_preserves_consumed_above
+    (this : DenseUPolyZp) (degreeLimit dividendIndex : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (hdivisor : 0 < divisor.size)
+    (hconsumed : PairVecDivVHCConsumedDividendAbove degreeLimit dividendIndex
+      dividend)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    PairVecDivVHCConsumedDividendAbove frontier.degree result.dividendIndex
+      dividend := by
+  have hnext := pairVecDivVHCSelectFrontier_preserves_consumed_above
+    degreeLimit dividendIndex dividend heap nodes frontier hconsumed hdecrease
+    hselect
+  rw [pairVecDivVHCOuterIteration_dividendIndex this dividendIndex heap nodes
+    quotient dividend divisor resetH frontier result hdivisor hselect hrun]
+  exact hnext
 
 theorem pairVecDivVHCEmit_preserves_away_linReady
     (this : DenseUPolyZp) (frontier : PairVecDivVHCFrontier)

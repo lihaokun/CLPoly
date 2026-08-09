@@ -289,6 +289,13 @@ every generated range-for and recursive loop used by SQF.
   root-bucket 的局部隔离定理提升到全 heap：真实消费 root chain
   后，所有其他活动 head 仍精确拥有原 chain。下一步仅需把
   extract 的 slot 唯一性保持与已有 provenance/root-removal 引理组合。
+- extract 的 slot 唯一性现已闭合。证明使用真实 sift-down 路径
+  上的“前缀唯一，仅当前 hole 可临时重复”不变式：child 被复制
+  到 hole 后将例外转移到 child，最后 saved-last-node 写入 hole，
+  `pop` 删除 sentinel 位置后恢复全前缀唯一。该定理已与 head
+  provenance、root 彻底移除、其他 chain 不变组合，得到单次
+  root-consume-plus-extract 对完整 heap chain ownership 的保持。下一步沿
+  heap-size 严格下降将它提升到整个 equal-degree 良基循环。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

@@ -1095,6 +1095,112 @@ def PairVecDivVHCValuesFrom (target source : Array Nat) : Prop :=
   ∀ (i value : Nat), target[i]? = some value →
     ∃ j : Nat, source[j]? = some value
 
+/-- Values below `limit` are unique, except that the current sift hole may
+temporarily duplicate the child that was copied into it. -/
+def PairVecDivVHCPrefixUniqueExcept (heap : Array Nat)
+    (limit hole : Nat) : Prop :=
+  ∀ (left right value : Nat), left < limit → right < limit →
+    heap[left]? = some value → heap[right]? = some value →
+    left = right ∨ left = hole ∨ right = hole
+
+def PairVecDivVHCPrefixUnique (heap : Array Nat) (limit : Nat) : Prop :=
+  ∀ (left right value : Nat), left < limit → right < limit →
+    heap[left]? = some value → heap[right]? = some value → left = right
+
+/-- Within the active prefix, the saved last node may occur only at the
+current hole.  Initially it lies just outside the prefix. -/
+def PairVecDivVHCPrefixOnlyAt (heap : Array Nat) (limit saved hole : Nat) :
+    Prop :=
+  ∀ (slot : Nat), slot < limit → heap[slot]? = some saved → slot = hole
+
+theorem pairVecDivVHCSet_child_prefixUniqueExcept
+    (heap : Array Nat) (limit hole child : Nat)
+    (hhole : hole < heap.size) (hchild : child < heap.size)
+    (hchildLimit : child < limit) (hne : hole ≠ child)
+    (hunique : PairVecDivVHCPrefixUniqueExcept heap limit hole) :
+    PairVecDivVHCPrefixUniqueExcept (heap.set hole heap[child]) limit child := by
+  intro left right value hleft hright hleftValue hrightValue
+  by_cases hleftHole : hole = left
+  · subst left
+    by_cases hrightHole : hole = right
+    · exact Or.inl hrightHole
+    · rw [Array.getElem?_set_ne hhole hrightHole] at hrightValue
+      have hcopied : heap[child]? = some value := by
+        have heq : heap[child] = value := by
+          simpa [Array.getElem?_set, hhole] using hleftValue
+        rw [Array.getElem?_eq_getElem hchild, heq]
+      rcases hunique child right value hchildLimit hright hcopied
+        hrightValue with heq | heq | heq
+      · exact Or.inr (Or.inr heq.symm)
+      · exact False.elim (hne heq.symm)
+      · exact False.elim (hrightHole heq.symm)
+  · rw [Array.getElem?_set_ne hhole hleftHole] at hleftValue
+    by_cases hrightHole : hole = right
+    · subst right
+      have hcopied : heap[child]? = some value := by
+        have heq : heap[child] = value := by
+          simpa [Array.getElem?_set, hhole] using hrightValue
+        rw [Array.getElem?_eq_getElem hchild, heq]
+      rcases hunique left child value hleft hchildLimit hleftValue
+        hcopied with heq | heq | heq
+      · exact Or.inr (Or.inl heq)
+      · exact False.elim (hleftHole heq.symm)
+      · exact False.elim (hne heq.symm)
+    · rw [Array.getElem?_set_ne hhole hrightHole] at hrightValue
+      rcases hunique left right value hleft hright hleftValue
+        hrightValue with heq | heq | heq
+      · exact Or.inl heq
+      · exact False.elim (hleftHole heq.symm)
+      · exact False.elim (hrightHole heq.symm)
+
+theorem pairVecDivVHCSet_child_prefixOnlyAt
+    (heap : Array Nat) (limit saved hole child : Nat)
+    (hhole : hole < heap.size) (hchild : child < heap.size)
+    (hchildLimit : child < limit)
+    (hne : hole ≠ child)
+    (hsaved : PairVecDivVHCPrefixOnlyAt heap limit saved hole) :
+    PairVecDivVHCPrefixOnlyAt (heap.set hole heap[child]) limit saved child := by
+  intro slot hslot hvalue
+  by_cases hslotHole : hole = slot
+  · subst slot
+    have hchildSaved : heap[child]? = some saved := by
+      have heq : heap[child] = saved := by
+        simpa [Array.getElem?_set, hhole] using hvalue
+      rw [Array.getElem?_eq_getElem hchild, heq]
+    exact False.elim (hne (hsaved child hchildLimit hchildSaved).symm)
+  · rw [Array.getElem?_set_ne hhole hslotHole] at hvalue
+    exact False.elim (hslotHole (hsaved slot hslot hvalue).symm)
+
+theorem pairVecDivVHCSet_saved_prefixUnique
+    (heap : Array Nat) (limit saved hole : Nat)
+    (hhole : hole < heap.size) (hholeLimit : hole < limit)
+    (hunique : PairVecDivVHCPrefixUniqueExcept heap limit hole)
+    (hsaved : PairVecDivVHCPrefixOnlyAt heap limit saved hole) :
+    PairVecDivVHCPrefixUnique (heap.set hole saved) limit := by
+  intro left right value hleft hright hleftValue hrightValue
+  by_cases hleftHole : hole = left
+  · subst left
+    have hvalueSaved : saved = value := by
+      simpa [Array.getElem?_set, hhole] using hleftValue
+    subst value
+    by_cases hrightHole : hole = right
+    · exact hrightHole
+    · rw [Array.getElem?_set_ne hhole hrightHole] at hrightValue
+      exact (hsaved right hright hrightValue).symm
+  · rw [Array.getElem?_set_ne hhole hleftHole] at hleftValue
+    by_cases hrightHole : hole = right
+    · subst right
+      have hvalueSaved : saved = value := by
+        simpa [Array.getElem?_set, hhole] using hrightValue
+      subst value
+      exact hsaved left hleft hleftValue
+    · rw [Array.getElem?_set_ne hhole hrightHole] at hrightValue
+      rcases hunique left right value hleft hright hleftValue hrightValue with
+        heq | heq | heq
+      · exact heq
+      · exact False.elim (hleftHole heq.symm)
+      · exact False.elim (hrightHole heq.symm)
+
 theorem pairVecDivVHCValuesFrom_refl (heap : Array Nat) :
     PairVecDivVHCValuesFrom heap heap := by
   intro i value hi
@@ -1199,6 +1305,107 @@ theorem pairVecDivVHCSiftDown_valuesFrom
         simp only [Except.ok.injEq] at hrun
         subst heap'
         exact pairVecDivVHCSet_valuesFrom heap source i lastNode hi hfrom hlast
+termination_by limit - child
+decreasing_by
+  all_goals omega
+
+theorem pairVecDivVHCSiftDown_prefixUnique
+    (i child limit lastNode : Nat) (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hlimit : limit ≤ heap.size) (hiLimit : i < limit)
+    (hichild : i < child)
+    (hunique : PairVecDivVHCPrefixUniqueExcept heap limit i)
+    (hsaved : PairVecDivVHCPrefixOnlyAt heap limit lastNode i)
+    (hlastSlot : heap[limit]? = some lastNode)
+    (hrun : pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok heap') :
+    PairVecDivVHCPrefixUnique heap' limit := by
+  rw [pairVecDivVHCSiftDown] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hlimitGuard =>
+      split at hrun
+      next hchildGuard =>
+        dsimp only at hrun
+        cases hleft : pairVecDivVHCMono heap[child] nodes with
+        | error fault => simp [hleft] at hrun
+        | ok leftMono =>
+          cases hright : pairVecDivVHCMono heap[child + 1] nodes with
+          | error fault => simp [hleft, hright] at hrun
+          | ok rightMono =>
+            cases hlastMono : pairVecDivVHCMono lastNode nodes with
+            | error fault => simp [hleft, hright, hlastMono] at hrun
+            | ok lastMono =>
+              simp only [hleft, hright, hlastMono] at hrun
+              have hleftBound : child < heap.size := by omega
+              have hrightBound : child + 1 < heap.size := by omega
+              have hleftLimit : child < limit := hchildGuard
+              have hiLeft : i ≠ child := Nat.ne_of_lt hichild
+              have hleftUnique := pairVecDivVHCSet_child_prefixUniqueExcept heap
+                limit i child hi hleftBound hleftLimit hiLeft hunique
+              have hleftSaved := pairVecDivVHCSet_child_prefixOnlyAt heap limit
+                lastNode i child hi hleftBound hleftLimit hiLeft hsaved
+              have hleftLast : (heap.set i heap[child])[limit]? =
+                  some lastNode := by
+                rw [Array.getElem?_set_ne hi (by omega)]
+                exact hlastSlot
+              by_cases hselected : leftMono.deg > rightMono.deg
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  exact pairVecDivVHCSiftDown_prefixUnique child
+                    (child * 2 + 1) limit lastNode (heap.set i heap[child])
+                    heap' nodes (by simpa using hlimit) hleftLimit (by omega)
+                    hleftUnique hleftSaved hleftLast hrun
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  exact pairVecDivVHCSet_saved_prefixUnique heap limit lastNode i
+                    hi hiLimit hunique hsaved
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  have hrightLimit : child + 1 < limit := by
+                    by_contra hnot
+                    have heq : child + 1 = limit := by omega
+                    have hrightNode : heap[child + 1] = lastNode := by
+                      have hlastGet : heap[limit] = lastNode := by
+                        rw [Array.getElem?_eq_getElem hlimitGuard] at hlastSlot
+                        exact Option.some.inj hlastSlot
+                      simpa [heq] using hlastGet
+                    have hmonoEq : rightMono = lastMono := by
+                      rw [hrightNode] at hright
+                      rw [hright] at hlastMono
+                      exact Except.ok.inj hlastMono
+                    subst rightMono
+                    omega
+                  have hiRight : i ≠ child + 1 := by omega
+                  have hrightUnique :=
+                    pairVecDivVHCSet_child_prefixUniqueExcept heap limit i
+                      (child + 1) hi hrightBound hrightLimit hiRight hunique
+                  have hrightSaved := pairVecDivVHCSet_child_prefixOnlyAt heap
+                    limit lastNode i (child + 1) hi hrightBound hrightLimit
+                    hiRight hsaved
+                  have hrightLast : (heap.set i heap[child + 1])[limit]? =
+                      some lastNode := by
+                    rw [Array.getElem?_set_ne hi (by omega)]
+                    exact hlastSlot
+                  exact pairVecDivVHCSiftDown_prefixUnique (child + 1)
+                    ((child + 1) * 2 + 1) limit lastNode
+                    (heap.set i heap[child + 1]) heap' nodes
+                    (by simpa using hlimit) hrightLimit (by omega)
+                    hrightUnique hrightSaved hrightLast hrun
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  exact pairVecDivVHCSet_saved_prefixUnique heap limit lastNode i
+                    hi hiLimit hunique hsaved
+      next hchildGuard =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        exact pairVecDivVHCSet_saved_prefixUnique heap limit lastNode i hi
+          hiLimit hunique hsaved
 termination_by limit - child
 decreasing_by
   all_goals omega
@@ -1364,6 +1571,63 @@ theorem pairVecDivVHCExtract_excludes_root (heap heap' : Array Nat)
         split at hi
         · exact hexcludes i hi
         · contradiction
+
+/-- The pointer-copy sift followed by dropping the saved sentinel preserves
+uniqueness of every surviving heap head. -/
+theorem pairVecDivVHCExtract_preserves_unique (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
+    ∀ (left right head : Nat), heap'[left]? = some head →
+      heap'[right]? = some head → left = right := by
+  unfold pairVecDivVHCExtract at hrun
+  split at hrun <;> try contradiction
+  next hnonempty =>
+    dsimp only at hrun
+    cases hsift : pairVecDivVHCSiftDown 0 1 (heap.size - 1)
+        heap[heap.size - 1] heap nodes with
+    | error fault => simp [hsift] at hrun
+    | ok shifted =>
+        rw [hsift] at hrun
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        have hshiftSize := pairVecDivVHCSiftDown_size 0 1 (heap.size - 1)
+          heap[heap.size - 1] heap shifted nodes hsift
+        by_cases hone : heap.size = 1
+        · intro left right head hleft hright
+          rw [Array.getElem?_pop] at hleft
+          split at hleft <;> try contradiction
+          next hleftBound =>
+            rw [hshiftSize, hone] at hleftBound
+            omega
+        · have hlimitBound : heap.size - 1 < heap.size := by omega
+          have hprefixExcept : PairVecDivVHCPrefixUniqueExcept heap
+              (heap.size - 1) 0 := by
+            intro left right head hleft hright hleftGet hrightGet
+            exact Or.inl (hunique left right head hleftGet hrightGet)
+          have hsaved : PairVecDivVHCPrefixOnlyAt heap (heap.size - 1)
+              heap[heap.size - 1] 0 := by
+            intro slot hslot hget
+            have hlastGet : heap[heap.size - 1]? =
+                some heap[heap.size - 1] := by
+              rw [Array.getElem?_eq_getElem hlimitBound]
+            have heq := hunique slot (heap.size - 1) heap[heap.size - 1]
+              hget hlastGet
+            omega
+          have hprefix := pairVecDivVHCSiftDown_prefixUnique 0 1
+            (heap.size - 1) heap[heap.size - 1] heap shifted nodes (by omega)
+            (by omega) (by omega) hprefixExcept hsaved
+            (by rw [Array.getElem?_eq_getElem hlimitBound]) hsift
+          intro left right head hleft hright
+          rw [Array.getElem?_pop] at hleft hright
+          split at hleft <;> try contradiction
+          next hleftBound =>
+            split at hright <;> try contradiction
+            next hrightBound =>
+              exact hprefix left right head
+                (by simpa [hshiftSize] using hleftBound)
+                (by simpa [hshiftSize] using hrightBound) hleft hright
 
 /-- Proof-carrying safe boundary for `VHC_extract`; it executes the same raw
 definition and packages its established logical-size decrement. -/
@@ -3429,6 +3693,54 @@ theorem pairVecDivVHCConsumeRootBucket_preserves_other_heap_chains
     (owners head) (some head) hheap hrootOwns hotherOwns (by simpa [hhead]
       using hdisjoint)
     hrun).2
+
+/-- After consuming and extracting the root bucket, the surviving heap again
+has exact, unique, pairwise-disjoint chain ownership. -/
+theorem pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership
+    (this : DenseUPolyZp) (heap heap' : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (bucket : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat)
+    (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok bucket)
+    (hextract : pairVecDivVHCExtract heap bucket.nodes = .ok heap') :
+    PairVecDivVHCHeapChainOwnership heap' owners bucket.nodes := by
+  have hfrom := pairVecDivVHCExtract_valuesFrom heap heap' bucket.nodes hextract
+  have hrootOnly := pairVecDivVHCHeapChainOwnership_root_onlyAt heap owners nodes
+    hownership hheap
+  have hrootGone := pairVecDivVHCExtract_excludes_root heap heap' bucket.nodes
+    hheap hrootOnly hextract
+  have hsurvives :=
+    pairVecDivVHCConsumeRootBucket_preserves_other_heap_chains this heap k nodes
+      lin resetH quotient divisor bucket owners hheap hownership hconsume
+  refine ⟨?_, ?_, ?_⟩
+  · intro slot head hget
+    obtain ⟨oldSlot, holdGet⟩ := hfrom slot head hget
+    have hne : head ≠ heap[0] := by
+      intro heq
+      subst head
+      exact hrootGone slot hget
+    exact hsurvives oldSlot head holdGet hne
+  · exact pairVecDivVHCExtract_preserves_unique heap heap' bucket.nodes
+      hownership.2.1 hextract
+  · intro left right leftHead rightHead hleft hright hne
+    obtain ⟨oldLeft, holdLeft⟩ := hfrom left leftHead hleft
+    obtain ⟨oldRight, holdRight⟩ := hfrom right rightHead hright
+    exact hownership.2.2 oldLeft oldRight leftHead rightHead holdLeft holdRight hne
+
+theorem pairVecDivVHCExtractChecked_raw
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (extracted : { heap' : Array Nat // heap'.size + 1 = heap.size })
+    (hrun : pairVecDivVHCExtractChecked heap nodes = .ok extracted) :
+    pairVecDivVHCExtract heap nodes = .ok extracted.1 := by
+  unfold pairVecDivVHCExtractChecked at hrun
+  split at hrun <;> try contradiction
+  next heap' hraw =>
+    have hval : heap' = extracted.1 := by
+      exact congrArg Subtype.val (Except.ok.inj hrun)
+    simpa [hval] using hraw
 
 theorem pairVecDivVHCActivatedTail_degree_lt_frontier (p frontierDegree : Nat)
     (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)

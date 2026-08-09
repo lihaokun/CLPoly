@@ -180,6 +180,13 @@ every generated range-for and recursive loop used by SQF.
   dispatch 现按源码覆盖 zero divisor、zero dividend、single divisor 和
   compression-false general heap；下一步证明 decrease guard 恒成功及
   quotient-product frontier 守恒，尚未据此宣告一般除法精化完成。
+- decrease guard 的第一层语义现已闭合：显式 frontier-bound 不变式
+  同时约束所有未消费 dividend cell 与所有活跃 heap node 的次数；已
+  证明真实 selector 的结果严格低于该上界。canonical sparse dividend
+  的严格降序链进一步证明每个实际数组 cell 的次数不超过首项，因此
+  空 heap 的一般分支初态确实满足 `head.degree + 1` 上界，而非把初始
+  guard 当作假设。剩余工作是证明 outer iteration 把此不变式收紧并
+  保持到本轮真实 frontier 次数，同时加入 quotient-product 守恒部分。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

@@ -525,3 +525,14 @@ every generated range-for and recursive loop used by SQF.
   完全不存在于 dividend，`listSum` 系数确为零。这排除了把 heap 分支的
   零初值当作无条件规格默认值。下一步把该等式与 equal-degree trace
   求和合并成 outer iteration 当前次数的 residual coefficient 等式。
+- 单次 outer iteration 的 residual coefficient 等式已闭合。新增组件分解
+  定理从一次成功的真实 iteration 中同时恢复同一次
+  `ConsumeEqualDegree`、`Emit`、reverse `ReinsertLin` 执行及最终状态等式，
+  防止只证明一个与主执行无关的辅助 consume。随后对该真实 consume
+  应用 equal-degree 求和语义，并用 selector 的 dividend coefficient 桥
+  改写初值，得到
+  `consumed.coefficient = dividend.coeff(frontier) - Σ(qTail·dTail)`。
+  乘积列表仍逐项携带真实 quotient/divisor 存储成员和次数和等于
+  frontier 的证据。下一步必须加强 heap/owner 表示为卷积覆盖不变量，
+  证明这份执行 trace 不仅 sound，而且对当前 quotient×divisor 尾项
+  complete 且无重复。

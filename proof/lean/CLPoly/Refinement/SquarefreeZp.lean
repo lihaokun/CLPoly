@@ -7662,6 +7662,47 @@ theorem pairVecDivVHCOuterIteration_dividendIndex
               simp only [Bind.bind, Except.bind, Except.ok.injEq] at hrun
               rw [← hrun]
 
+theorem pairVecDivVHCOuterIteration_components
+    (this : DenseUPolyZp) (dividendIndex : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient dividend divisor : SparsePolyZp)
+    (resetH : Nat) (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (hdivisor : 0 < divisor.size)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    ∃ consumed quotient' activated resetH' reinserted,
+      pairVecDivVHCConsumeEqualDegree this frontier.degree heap
+          frontier.coefficient nodes #[] resetH quotient divisor =
+        .ok consumed ∧
+      pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+        .ok (quotient', activated, resetH') ∧
+      pairVecDivVHCReinsertLin activated.heap activated.nodes consumed.lin =
+        .ok reinserted ∧
+      result = PairVecDivVHCIterationResult.mk frontier.dividendIndex
+        reinserted.heap reinserted.nodes quotient' resetH' := by
+  unfold pairVecDivVHCOuterIteration at hrun
+  simp only [hdivisor, ↓reduceDIte, hselect, Bind.bind, Except.bind] at hrun
+  cases hconsume : pairVecDivVHCConsumeEqualDegree this frontier.degree heap
+      frontier.coefficient nodes #[] resetH quotient divisor with
+  | error fault => simp [hconsume] at hrun
+  | ok consumed =>
+      simp only [hconsume, Bind.bind, Except.bind] at hrun
+      cases hemit : pairVecDivVHCEmit this frontier consumed quotient divisor
+          hdivisor with
+      | error fault => simp [hemit] at hrun
+      | ok emitted =>
+          rcases emitted with ⟨quotient', activated, resetH'⟩
+          simp only [hemit, Bind.bind, Except.bind] at hrun
+          cases hreinsert : pairVecDivVHCReinsertLin activated.heap
+              activated.nodes consumed.lin with
+          | error fault => simp [hreinsert] at hrun
+          | ok reinserted =>
+              simp only [hreinsert, Bind.bind, Except.bind,
+                Except.ok.injEq] at hrun
+              exact ⟨consumed, quotient', activated, resetH', reinserted,
+                rfl, hemit, hreinsert, hrun.symm⟩
+
 theorem pairVecDivVHCOuterIteration_preserves_consumed_above
     (this : DenseUPolyZp) (degreeLimit dividendIndex : Nat)
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
@@ -8617,6 +8658,57 @@ theorem pairVecDivVHCSelectFrontier_coefficient_toPoly
         · have htail := canonical_degree_lt_of_index_lt p dividend
             hcanonical dividendIndex i hindex hi (by omega)
           omega
+
+theorem pairVecDivVHCOuterIteration_residual_coefficient
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (degreeLimit dividendIndex : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
+    (hdivisor : 0 < divisor.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hquotientCanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hconsumed : PairVecDivVHCConsumedDividendAbove degreeLimit dividendIndex
+      dividend)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    ∃ consumed products,
+      pairVecDivVHCConsumeEqualDegree this frontier.degree heap
+          frontier.coefficient nodes #[] resetH quotient divisor =
+        .ok consumed ∧
+      (consumed.coefficient.toNat : ZMod this._p.toNat) =
+        (SparsePolyZp.toPoly this._p.toNat dividend).coeff frontier.degree -
+          pairVecDivVHCProductsValue this._p.toNat products ∧
+      ∀ product ∈ products,
+        PairVecDivVHCStoredProductAtDegree frontier.degree quotient divisor
+          product := by
+  rcases pairVecDivVHCOuterIteration_components this dividendIndex heap nodes
+      quotient dividend divisor resetH frontier result hdivisor hselect hrun with
+    ⟨consumed, quotient', activated, resetH', reinserted, hconsume, hemit,
+      hreinsert, hresult⟩
+  have hk := pairVecDivVHCSelectFrontier_coefficient_reduced
+    this._p.toNat dividendIndex dividend heap nodes frontier
+      (Fact.out : Nat.Prime this._p.toNat).pos hdividendCanonical hselect
+  rcases pairVecDivVHCConsumeEqualDegree_coefficient_semantics this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed owners hownership hhomogeneous hdenotes hcfg
+      hquotientCanonical hk hconsume with
+    ⟨products, hcoefficient, hproducts⟩
+  have hfrontier := pairVecDivVHCSelectFrontier_coefficient_toPoly
+    this._p.toNat degreeLimit dividendIndex dividend heap nodes frontier
+      hdividendCanonical hconsumed hdecrease hselect
+  rw [hfrontier] at hcoefficient
+  exact ⟨consumed, products, hconsume, hcoefficient, hproducts⟩
 
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)

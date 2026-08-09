@@ -5852,6 +5852,63 @@ theorem PairVecDivVHCConsumeTrace.products_at_degree
           simpa using hdegreeEq.symm.trans hmonoDegree
       · exact ih htailDegree hdenotes' product hproduct
 
+theorem pairVecDivVHCConsumeRootBucket_coefficient_semantics_at_degree
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (rootMono : UMonomial) (owner : Finset Nat)
+    (hheap : 0 < heap.size)
+    (hmono : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hdegree : rootMono.deg = degree)
+    (howns : PairVecDivVHCChainOwns (some heap[0]) owner nodes)
+    (hnextValid : PairVecDivVHCNextValid nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∃ products : List (UInt64 × UInt64),
+      PairVecDivVHCConsumeTrace this quotient divisor (some heap[0])
+          (Finset.range nodes.size) k nodes lin resetH result products ∧
+        (result.coefficient.toNat : ZMod this._p.toNat) =
+          (k.toNat : ZMod this._p.toNat) -
+            pairVecDivVHCProductsValue this._p.toNat products ∧
+        ∀ product ∈ products,
+          PairVecDivVHCStoredProductAtDegree degree quotient divisor
+            product := by
+  have hownerSubset : owner ⊆ Finset.range nodes.size := by
+    exact pairVecDivVHCChainOwns_subset_range (some heap[0]) owner nodes howns
+  have hvalidOwner := pairVecDivVHCChainOwns_valid (some heap[0]) owner nodes
+    howns
+  have hvalid := pairVecDivVHCChainValid_mono (some heap[0]) owner
+    (Finset.range nodes.size) nodes hvalidOwner hownerSubset
+  unfold pairVecDivVHCMono at hmono
+  split at hmono <;> try contradiction
+  next hn =>
+    split at hmono <;> try contradiction
+    next mono hnodeMono =>
+      simp only [Except.ok.injEq] at hmono
+      subst mono
+      have hchainDegree :=
+        pairVecDivVHCChainValid_atDegree_of_nextValid heap[0]
+          (Finset.range nodes.size) nodes degree hvalid hnextValid
+          ⟨nodes[heap[0]], rootMono, Array.getElem?_eq_getElem hn,
+            hnodeMono, hdegree⟩
+      unfold pairVecDivVHCConsumeRootBucket at hrun
+      simp only [hheap, ↓reduceDIte] at hrun
+      rcases pairVecDivVHCConsumeChain_coefficient_semantics this
+          (some heap[0]) (Finset.range nodes.size) k nodes lin resetH quotient
+          divisor result hcfg hcanonical hk hrun with
+        ⟨products, htrace, hcoefficient⟩
+      exact ⟨products, htrace, hcoefficient,
+        htrace.products_at_degree this quotient divisor (some heap[0])
+          (Finset.range nodes.size) degree k nodes lin resetH result products
+          hchainDegree hdenotes⟩
+
 theorem pairVecDivVHCConsumeNode_preserves_divisorIndicesFixed
     (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
     (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)

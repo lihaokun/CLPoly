@@ -474,3 +474,11 @@ every generated range-for and recursive loop used by SQF.
   下一缺口是把该定理提升到 root bucket/equal-degree 循环，并补齐执行
   过程中 `PairVecDivVHCNextValid` 的保持，使每个被取出的 bucket 都能建立
   同次数前提。
+- root bucket 的真实 coefficient 语义现已组合闭合。给定 heap root 的
+  实际 `pairVecDivVHCMono` 读取、exact chain owner、入口 `NextValid` 与
+  node denotation，先把 owner 链扩张到真实 node-array range，再证明整条
+  root 链与 selector 次数相同；随后重放 `ConsumeRootBucket`，同时得到
+  实际消费 trace、`ZMod` 累加器求和等式，以及 trace 中每个存储乘积的
+  frontier 次数归属。审查中确认全局 `NextValid` 在消费中并不应被保持：
+  C++ 会让已消费/待重插节点暂时保留陈旧 `next`。后续提升将只给仍由
+  heap 拥有且彼此不交的链携带同次数性质，忠实覆盖这种中间态。

@@ -702,6 +702,16 @@ theorem pairVecDivVHCInit_size (divisor : SparsePolyZp) :
     (pairVecDivVHCInit divisor).size = divisor.size - 1 := by
   simpa using congrArg List.length (pairVecDivVHCInit_toList divisor)
 
+theorem pairVecDivVHCInit_get (divisor : SparsePolyZp) (i : Nat)
+    (hi : i < divisor.size - 1) :
+    (pairVecDivVHCInit divisor)[i]? = some (pairVecDivVHCInitialNode i) := by
+  have harr : pairVecDivVHCInit divisor =
+      (Array.range (divisor.size - 1)).map pairVecDivVHCInitialNode := by
+    apply Array.toList_inj.mp
+    simp [pairVecDivVHCInit_toList]
+  rw [harr]
+  simp [hi]
+
 /-- One execution of the source `reset_h` activation body.  The checked
 indices are precisely the three pointer/array dereferences in that body. -/
 def pairVecDivVHCActivate (nodeIndex : Nat)
@@ -1726,6 +1736,27 @@ def PairVecDivVHCAllActiveNodesBelow (degreeLimit : Nat)
     (nodes : Array PairVecDivVHCNode) : Prop :=
   ∀ (i : Nat) (node : PairVecDivVHCNode) (mono : UMonomial),
     nodes[i]? = some node → node.mono = some mono → mono.deg < degreeLimit
+
+/-- The source `reset_h` prefix consists exactly of nodes whose incremented
+quotient pointer is one-past the old quotient and whose product fields are
+therefore not observable until activation after the next append. -/
+def PairVecDivVHCResetReady (resetH quotientSize : Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  resetH ≤ nodes.size ∧
+    ∀ (i : Nat), i < resetH →
+      ∃ node, nodes[i]? = some node ∧
+        node.quotientIndex = quotientSize ∧
+        node.divisorIndex = i + 1 ∧ node.mono = none
+
+theorem pairVecDivVHCInit_resetReady (divisor : SparsePolyZp) :
+    PairVecDivVHCResetReady (divisor.size - 1) 0
+      (pairVecDivVHCInit divisor) := by
+  refine ⟨?_, ?_⟩
+  · rw [pairVecDivVHCInit_size]
+  · intro i hi
+    refine ⟨pairVecDivVHCInitialNode i,
+      pairVecDivVHCInit_get divisor i hi, ?_⟩
+    simp [pairVecDivVHCInitialNode]
 
 /-- Precisely the initialized `next` chain owned by the inner source loop.
 Unlike a blanket node-block premise, this permits the genuine uninitialized

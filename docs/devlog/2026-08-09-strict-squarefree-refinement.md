@@ -228,6 +228,11 @@ every generated range-for and recursive loop used by SQF.
   严格尾项降次证明关键算术桥：新 quotient 次数为
   `frontier - divisorLead` 时，它与任意非首 divisor 项的乘积次数严格低于
   frontier。下一步把 reset 前缀的 one-past-end 指针关系沿激活循环保持。
+- reset 前缀关系现已显式化为 `PairVecDivVHCResetReady`：前缀中每个节点
+  的 quotient 索引等于旧 quotient 长度、divisor 索引保持 `i + 1`，且
+  product monomial 尚不可观察。节点初始化数组已证明满足该关系（包括
+  每个具体数组索引的精确初值），为后续证明 exhausted 扩张与 activate
+  收缩同一个真实 `reset_h` 前缀提供了基例。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

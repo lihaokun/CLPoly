@@ -995,3 +995,14 @@ every generated range-for and recursive loop used by SQF.
   映射的 `Finset.sum_bij'` 证明两个有限和完全相等，因而
   同时证明无遗漏、无重复和索引重数保持。下一步只剩将该
   indexed pair sum 展开成已证明的 L2 list product coefficient。
+- indexed pair sum 到 L2 polynomial coefficient 的改写已闭合。先证明
+  list 双重 `foldr` 等于以 `Fin` 索引的双重和，再对 divisor
+  tail 使用显式 `d ↔ d + 1` 双射，将其与 C++ 中非首
+  divisor 行的 `Ico 1 divisor.size` 严格对齐。由此
+  `pairVecDivVHCHeapOwnerSum_eq_productCoeffTail` 直接证明堆所有者
+  消费和等于 `(quotient * divisor.tail).coeff frontier.degree`。
+  新的 `pairVecDivVHCOuterIteration_residual_coefficient_toPoly` 已将这个
+  结果接入真实 `pairVecDivVHCOuterIteration` 执行，得到其消费
+  结果系数等于 dividend 系数减去完整 L2 tail-product 系数。
+  该路径未使用规格 oracle、L2 回退或 fuel。下一步是将首项发射
+  部分合并进完整 divisor 乘积不变式，并闭合外层除法等式。

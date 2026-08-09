@@ -8478,7 +8478,7 @@ the current source frontier.  Indices, rather than term values, are retained
 so equal coefficients in different rows remain distinct contributions. -/
 def PairVecDivVHCTargetPairsAtDegree (degree : Nat)
     (quotient divisor : SparsePolyZp) : Finset (Nat × Nat) :=
-  ((Finset.range quotient.size).product (Finset.Ico 1 divisor.size)).filter
+  ((Finset.range quotient.size) ×ˢ (Finset.Ico 1 divisor.size)).filter
     fun pair => PairVecDivVHCPairAtDegree degree quotient divisor pair
 
 /-- Coefficient contribution of one concrete indexed source pair. -/
@@ -8709,6 +8709,162 @@ def pairVecDivVHCListProductCoeffValue (p degree : Nat) :
         else sum) 0 +
         pairVecDivVHCListProductCoeffValue p degree quotientTerms divisorTerms
 
+theorem pairVecDivVHCListProductCoeffValue_row_eq_finSum
+    (p degree : Nat) (quotientTerm : UMonomial × Zp)
+    (divisorTerms : List (UMonomial × Zp)) :
+    divisorTerms.foldr (fun divisorTerm sum =>
+        if quotientTerm.1.deg + divisorTerm.1.deg = degree then
+          (quotientTerm.2.val.toNat : ZMod p) *
+              (divisorTerm.2.val.toNat : ZMod p) + sum
+        else sum) 0 =
+      ∑ d : Fin divisorTerms.length,
+        if quotientTerm.1.deg + divisorTerms[d].1.deg = degree then
+          (quotientTerm.2.val.toNat : ZMod p) *
+            (divisorTerms[d].2.val.toNat : ZMod p)
+        else 0 := by
+  rw [← List.sum_ofFn]
+  change _ = (List.ofFn ((fun divisorTerm =>
+    if quotientTerm.1.deg + divisorTerm.1.deg = degree then
+      (quotientTerm.2.val.toNat : ZMod p) *
+        (divisorTerm.2.val.toNat : ZMod p)
+    else 0) ∘ divisorTerms.get)).sum
+  rw [← List.map_ofFn, List.ofFn_get]
+  induction divisorTerms with
+  | nil => simp
+  | cons divisorTerm divisorTerms ih =>
+      by_cases hdegree :
+          quotientTerm.1.deg + divisorTerm.1.deg = degree
+      · simp [hdegree, ih]
+      · simp [hdegree, ih]
+
+theorem pairVecDivVHCListProductCoeffValue_eq_finSum
+    (p degree : Nat) (quotientTerms divisorTerms : List (UMonomial × Zp)) :
+    pairVecDivVHCListProductCoeffValue p degree quotientTerms divisorTerms =
+      ∑ q : Fin quotientTerms.length, ∑ d : Fin divisorTerms.length,
+        if quotientTerms[q].1.deg + divisorTerms[d].1.deg = degree then
+          (quotientTerms[q].2.val.toNat : ZMod p) *
+            (divisorTerms[d].2.val.toNat : ZMod p)
+        else 0 := by
+  rw [← List.sum_ofFn]
+  change _ = (List.ofFn ((fun quotientTerm =>
+    ∑ d : Fin divisorTerms.length,
+      if quotientTerm.1.deg + divisorTerms[d].1.deg = degree then
+        (quotientTerm.2.val.toNat : ZMod p) *
+          (divisorTerms[d].2.val.toNat : ZMod p)
+      else 0) ∘ quotientTerms.get)).sum
+  rw [← List.map_ofFn, List.ofFn_get]
+  induction quotientTerms with
+  | nil => simp [pairVecDivVHCListProductCoeffValue]
+  | cons quotientTerm quotientTerms ih =>
+      simp [pairVecDivVHCListProductCoeffValue, ih,
+        pairVecDivVHCListProductCoeffValue_row_eq_finSum]
+
+theorem pairVecDivVHCTargetPairSum_eq_listProductCoeffValue
+    (p degree : Nat) (quotient divisor : SparsePolyZp) :
+    (∑ pair ∈ PairVecDivVHCTargetPairsAtDegree degree quotient divisor,
+        pairVecDivVHCIndexedPairProductValue p quotient divisor pair) =
+      pairVecDivVHCListProductCoeffValue p degree quotient.toList
+        divisor.toList.tail := by
+  rw [pairVecDivVHCListProductCoeffValue_eq_finSum]
+  rw [PairVecDivVHCTargetPairsAtDegree, Finset.sum_filter]
+  rw [Finset.sum_product (Finset.range quotient.size)
+    (Finset.Ico 1 divisor.size) (fun pair =>
+      if PairVecDivVHCPairAtDegree degree quotient divisor pair then
+        pairVecDivVHCIndexedPairProductValue p quotient divisor pair
+      else 0)]
+  rw [Finset.sum_fin_eq_sum_range]
+  apply Finset.sum_congr (by simp)
+  intro q hqMem
+  have hq : q < quotient.size := Finset.mem_range.mp hqMem
+  simp only [Array.length_toList, hq, dif_pos]
+  have hfinRows :
+      (∑ d : Fin divisor.toList.tail.length,
+        if quotient[q].1.deg +
+            divisor.toList.tail[d].1.deg = degree then
+          (quotient[q].2.val.toNat : ZMod p) *
+            (divisor.toList.tail[d].2.val.toNat : ZMod p)
+        else 0) =
+      ∑ d : Fin divisor.toList.tail.length,
+        if quotient[q].1.deg +
+            (divisor[d.val + 1]'(by
+              have hdlt := d.isLt
+              simp only [List.length_tail, Array.length_toList] at hdlt
+              omega)).1.deg = degree then
+          (quotient[q].2.val.toNat : ZMod p) *
+            ((divisor[d.val + 1]'(by
+              have hdlt := d.isLt
+              simp only [List.length_tail, Array.length_toList] at hdlt
+              omega)).2.val.toNat : ZMod p)
+        else 0 := by
+    apply Finset.sum_congr rfl
+    intro d _
+    have hd : d.val + 1 < divisor.size := by
+      have hdlt := d.isLt
+      simp only [List.length_tail, Array.length_toList] at hdlt
+      omega
+    have htailGet : divisor.toList.tail[d] = divisor[d.val + 1] := by
+      change divisor.toList.tail[d.val] = divisor[d.val + 1]
+      rw [List.getElem_tail d.isLt, Array.getElem_toList hd]
+    rw [htailGet]
+  let qFin : Fin quotient.toList.length := ⟨q, by simpa using hq⟩
+  have hquotientGet : quotient.toList[qFin] = quotient[q] := by
+    change quotient.toList[qFin.val] = quotient[q]
+    exact Array.getElem_toList hq
+  rw [hquotientGet]
+  rw [hfinRows]
+  refine Finset.sum_bij'
+    (s := Finset.Ico 1 divisor.size)
+    (t := (Finset.univ : Finset (Fin divisor.toList.tail.length)))
+    (f := fun d =>
+      if PairVecDivVHCPairAtDegree degree quotient divisor (q, d) then
+        pairVecDivVHCIndexedPairProductValue p quotient divisor (q, d)
+      else 0)
+    (g := fun d =>
+      if quotient[q].1.deg +
+          (divisor[d.val + 1]'(by
+            have hdlt := d.isLt
+            simp only [List.length_tail, Array.length_toList] at hdlt
+            omega)).1.deg = degree then
+        (quotient[q].2.val.toNat : ZMod p) *
+          ((divisor[d.val + 1]'(by
+            have hdlt := d.isLt
+            simp only [List.length_tail, Array.length_toList] at hdlt
+            omega)).2.val.toNat : ZMod p)
+      else 0)
+    (fun d hd => ⟨d - 1, by
+      simp only [Finset.mem_Ico] at hd
+      simp only [List.length_tail, Array.length_toList]
+      omega⟩)
+    (fun d _ => d.val + 1)
+    ?_ ?_ ?_ ?_ ?_
+  · intro d hd
+    simp
+  · intro d hd
+    simp only [Finset.mem_univ, Finset.mem_Ico]
+    have hlength : divisor.toList.tail.length = divisor.size - 1 := by simp
+    have hdBound := d.isLt
+    omega
+  · intro d hd
+    simp only [Finset.mem_Ico] at hd
+    exact Nat.sub_add_cancel hd.1
+  · intro d hd
+    apply Fin.ext
+    simp
+  · intro d hd
+    simp only [Finset.mem_Ico] at hd
+    have hdpos : 0 < d := by omega
+    have hdbound : d < divisor.size := by omega
+    have hquotient := Array.getElem?_eq_getElem hq
+    have hdivisor := Array.getElem?_eq_getElem hdbound
+    have hsucc : d - 1 + 1 = d := by omega
+    have hsourceBound : d - 1 + 1 < divisor.size := by omega
+    have hsourceGet : divisor[d - 1 + 1]'hsourceBound = divisor[d] :=
+      getElem_congr rfl hsucc _
+    dsimp
+    rw [hsourceGet]
+    simp [PairVecDivVHCPairAtDegree,
+      pairVecDivVHCIndexedPairProductValue, hquotient, hdivisor]
+
 theorem pairVecDivVHCListProductCoeffValue_row (p degree : Nat)
     (quotientMono : UMonomial) (quotientCoefficient : Zp)
     (divisorTerms : List (UMonomial × Zp)) :
@@ -8766,6 +8922,49 @@ theorem pairVecDivVHCListProductCoeffValue_divisorTail (p degree : Nat)
         listSum p divisor.toList.tail).coeff degree := by
   exact pairVecDivVHCListProductCoeffValue_eq_coeff p degree quotient.toList
     divisor.toList.tail
+
+theorem pairVecDivVHCTargetPairSum_eq_productCoeffTail
+    (p degree : Nat) (quotient divisor : SparsePolyZp) :
+    (∑ pair ∈ PairVecDivVHCTargetPairsAtDegree degree quotient divisor,
+        pairVecDivVHCIndexedPairProductValue p quotient divisor pair) =
+      (SparsePolyZp.toPoly p quotient *
+        listSum p divisor.toList.tail).coeff degree := by
+  rw [pairVecDivVHCTargetPairSum_eq_listProductCoeffValue,
+    pairVecDivVHCListProductCoeffValue_divisorTail]
+
+/-- End-to-end coefficient bridge for the heap frontier: the exact sum of
+products consumed from generated-C++ owner chains is the corresponding L2
+coefficient of `quotient * divisor.tail`. -/
+theorem pairVecDivVHCHeapOwnerSum_eq_productCoeffTail
+    (p degreeLimit dividendIndex resetH : Nat)
+    (dividend quotient divisor : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (frontier : PairVecDivVHCFrontier)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : PairVecDivVHCStateCovered heap nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontier.degree < degreeLimit)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    (∑ i ∈ PairVecDivVHCHeapOwnedNodesAtDegree frontier.degree heap owners
+        nodes, pairVecDivVHCNodeProductValue p nodes quotient divisor i) =
+      (SparsePolyZp.toPoly p quotient *
+        listSum p divisor.toList.tail).coeff frontier.degree := by
+  rw [pairVecDivVHCHeapOwnerSum_eq_targetPairSum p degreeLimit dividendIndex
+    resetH dividend quotient divisor heap nodes owners frontier hsize hfixed
+    hstate hownership hhomogeneous hresetReady hordered hdenotes hcanonical
+    hprefix hfrontier hselect]
+  exact pairVecDivVHCTargetPairSum_eq_productCoeffTail p frontier.degree
+    quotient divisor
 
 theorem pairVecDivVHCConsumeChain_preserves_linReady
     (this : DenseUPolyZp) (current : Option Nat)
@@ -13908,6 +14107,86 @@ theorem pairVecDivVHCOuterIteration_residual_coefficient
       hdividendCanonical hconsumed hdecrease hselect
   rw [hfrontier] at hcoefficient
   exact ⟨consumed, products, hconsume, hcoefficient, hproducts⟩
+
+/-- Polynomial form of the real outer-iteration subtraction.  Unlike the
+legacy product-list statement, this theorem uses exact owner multiplicities
+and the cursor/index bijection to identify the generated heap consumption
+with the L2 coefficient of `quotient * divisor.tail`. -/
+theorem pairVecDivVHCOuterIteration_residual_coefficient_toPoly
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (degreeLimit dividendIndex : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
+    (hdivisor : 0 < divisor.size)
+    (hsize : nodes.size = divisor.size - 1)
+    (hstate : PairVecDivVHCStateCovered heap nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hquotientCanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hconsumed : PairVecDivVHCConsumedDividendAbove degreeLimit dividendIndex
+      dividend)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    ∃ consumed,
+      pairVecDivVHCConsumeEqualDegree this frontier.degree heap
+          frontier.coefficient nodes #[] resetH quotient divisor =
+        .ok consumed ∧
+      (consumed.coefficient.toNat : ZMod this._p.toNat) =
+        (SparsePolyZp.toPoly this._p.toNat dividend).coeff frontier.degree -
+          (SparsePolyZp.toPoly this._p.toNat quotient *
+            listSum this._p.toNat divisor.toList.tail).coeff
+              frontier.degree := by
+  rcases pairVecDivVHCOuterIteration_components this dividendIndex heap nodes
+      quotient dividend divisor resetH frontier result hdivisor hselect hrun with
+    ⟨consumed, quotient', activated, resetH', reinserted, hconsume, hemit,
+      hreinsert, hresult⟩
+  have hk := pairVecDivVHCSelectFrontier_coefficient_reduced
+    this._p.toNat dividendIndex dividend heap nodes frontier
+      (Fact.out : Nat.Prime this._p.toNat).pos hdividendCanonical hselect
+  have hmax : ∀ (slot head : Nat) (mono : UMonomial),
+      heap[slot]? = some head → pairVecDivVHCMono head nodes = .ok mono →
+        mono.deg ≤ frontier.degree := by
+    intro slot head mono hheap hmono
+    have hslot : slot < heap.size := by
+      by_contra hnot
+      rw [Array.getElem?_eq_none (by omega)] at hheap
+      contradiction
+    have hheadEq : heap[slot] = head := by
+      rw [Array.getElem?_eq_getElem hslot] at hheap
+      exact Option.some.inj hheap
+    have hslotMono : pairVecDivVHCMono heap[slot] nodes = .ok mono := by
+      simpa [hheadEq] using hmono
+    exact pairVecDivVHCSelectFrontier_heap_slot_degree_le dividendIndex
+      dividend heap nodes frontier (hownership.heapPointersValid heap owners
+        nodes) hordered slot hslot mono hslotMono hselect
+  rcases pairVecDivVHCConsumeEqualDegree_products_complete this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed owners hownership hhomogeneous hordered hmax hdenotes
+      hcfg hquotientCanonical hk hconsume with
+    ⟨products, hcoefficient, hsound, hcover, hproductsValue⟩
+  have hfrontierCoefficient := pairVecDivVHCSelectFrontier_coefficient_toPoly
+    this._p.toNat degreeLimit dividendIndex dividend heap nodes frontier
+      hdividendCanonical hconsumed hdecrease hselect
+  have hownerCoefficient := pairVecDivVHCHeapOwnerSum_eq_productCoeffTail
+    this._p.toNat degreeLimit dividendIndex resetH dividend quotient divisor
+    heap nodes owners frontier hsize hfixed hstate hownership hhomogeneous
+    hresetReady hordered hdenotes hquotientCanonical hprefix hdecrease hselect
+  refine ⟨consumed, hconsume, ?_⟩
+  rw [hcoefficient, hproductsValue, hfrontierCoefficient, hownerCoefficient]
 
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)

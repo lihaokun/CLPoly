@@ -148,6 +148,14 @@ every generated range-for and recursive loop used by SQF.
   的 Nat 度量。heap pointer、max-order、等次 `next` 链及节点乘积含义
   的组合不变式已经显式定义；下一步证明 insert/extract 保持这些
   不变式，再接 inner bucket consumption。
+- inner `while (heap[0] != nullptr)` 已开始闭合：单节点执行使用 generated
+  `nmod_mul` 后接 generated `nmod_sub` 实现真实 `submul`，其 ZMod 语义
+  已证明为 `k - qCoeff * divisorCoeff`；节点随后严格按源码二分为推进
+  `quotientIndex` 并压入 `lin`，或耗尽并增加 `reset_h`，且证明两种
+  进展恰有一种发生。完整 `next` 链使用未消费节点有限所有权集作
+  良基度量，每步删除当前节点并检查环，不使用 fuel。下一步先给
+  sift/extract 建立保持长度/严格缩短定理，再闭合相同 monomial 的外层
+  bucket 循环和 `lin` 逆序重插。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

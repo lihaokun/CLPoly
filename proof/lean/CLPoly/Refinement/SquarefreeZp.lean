@@ -13,6 +13,7 @@
 -/
 import CLPoly.Algorithm.SquarefreeZp
 import CLPoly.Impl.StrictPolynomialGCDRefinement
+import CLPoly.Impl.StrictPolyAddSubRefinement
 import CLPoly.Refinement.Basic
 
 set_option autoImplicit false
@@ -1043,6 +1044,164 @@ def PairVecDivVHCInvariant (heap : Array Nat)
     (∀ (i : Nat) (node : PairVecDivVHCNode),
       nodes[i]? = some node → node.mono ≠ none →
       PairVecDivVHCNodeDenotes quotient divisor node)
+
+/-- Generated coefficient execution of the source
+`submul(k, new_v[q].second, divisor[d].second)`. -/
+def pairVecDivSubmulIR (this : DenseUPolyZp) (k a b : UInt64) : UInt64 :=
+  let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this a b
+  Generated.StrictPolyAddSub.dense_upoly_zp_nmod_sub_ir this k product
+
+theorem pairVecDivSubmulIR_toZMod (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)] (k a b : UInt64)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hk : k.toNat < this._p.toNat) (ha : a.toNat < this._p.toNat) :
+    ((pairVecDivSubmulIR this k a b).toNat : ZMod this._p.toNat) =
+      (k.toNat : ZMod this._p.toNat) -
+        (a.toNat : ZMod this._p.toNat) *
+          (b.toNat : ZMod this._p.toNat) := by
+  let product := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this a b
+  have hpPos : 0 < this._p.toNat := (Fact.out : Nat.Prime this._p.toNat).pos
+  have hpWord : this._p ≠ 0 := by
+    intro hp
+    have : this._p.toNat = 0 := congrArg UInt64.toNat hp
+    omega
+  have hproductNat :=
+    CLPoly.Impl.StrictWordArithmetic.nmod_mul_ir_correct_of_configured
+      this a b hcfg ha
+  change product.toNat = (a.toNat * b.toNat) % this._p.toNat at hproductNat
+  have hproductLtNat : product.toNat < this._p.toNat := by
+    rw [hproductNat]
+    exact Nat.mod_lt _ hpPos
+  have hkWord : k < this._p := by
+    simpa [UInt64.lt_iff_toNat_lt] using hk
+  have hproductWord : product < this._p := by
+    simpa [UInt64.lt_iff_toNat_lt] using hproductLtNat
+  have hsub := CLPoly.Impl.StrictPolyAddSubRefinement.nmodSub_cast
+    this k product hpWord hkWord hproductWord
+  change ((pairVecDivSubmulIR this k a b).toNat : ZMod this._p.toNat) = _
+  rw [show pairVecDivSubmulIR this k a b =
+      Generated.StrictPolyAddSub.dense_upoly_zp_nmod_sub_ir this k product
+    by rfl, hsub]
+  congr 1
+  rw [hproductNat, ZMod.natCast_mod]
+  push_cast
+  rfl
+
+/-- One pass through a non-null node in the source inner `while (heap[0])`
+bucket chain.  The heap root itself is represented by the returned `next`:
+the C++ code temporarily allows it to become null before `VHC_extract`.
+Nodes that advance are appended to `lin`; exhausted nodes increment
+`reset_h`. -/
+def pairVecDivVHCConsumeNode (this : DenseUPolyZp) (nodeIndex : Nat)
+    (k : UInt64) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (resetH : Nat) (quotient divisor : SparsePolyZp) :
+    RawExec (UInt64 × Array PairVecDivVHCNode × Array Nat × Nat × Option Nat) :=
+  if hn : nodeIndex < nodes.size then
+    let node := nodes[nodeIndex]
+    if hq : node.quotientIndex < quotient.size then
+      if hd : node.divisorIndex < divisor.size then
+        let k' := pairVecDivSubmulIR this k
+          quotient[node.quotientIndex].2.val divisor[node.divisorIndex].2.val
+        let quotientIndex' := node.quotientIndex + 1
+        if hadvance : quotientIndex' < quotient.size then
+          let node' := { node with
+            quotientIndex := quotientIndex'
+            mono := some ⟨quotient[quotientIndex'].1.deg +
+              divisor[node.divisorIndex].1.deg⟩ }
+          .ok (k', nodes.set nodeIndex node', lin.push nodeIndex,
+            resetH, node.next)
+        else if hexhausted : quotientIndex' = quotient.size then
+          .ok (k', nodes, lin, resetH + 1, node.next)
+        else
+          .error .assertionFailure
+      else
+        .error .assertionFailure
+    else
+      .error .assertionFailure
+  else
+    .error .assertionFailure
+
+theorem pairVecDivVHCConsumeNode_progress (this : DenseUPolyZp)
+    (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    (lin'.size = lin.size + 1 ∧ resetH' = resetH) ∨
+      (lin'.size = lin.size ∧ resetH' = resetH + 1) := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          left
+          simp
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            right
+            simp
+
+/-- Result of consuming one complete equal-monomial `next` bucket. -/
+structure PairVecDivVHCBucketResult where
+  coefficient : UInt64
+  nodes : Array PairVecDivVHCNode
+  lin : Array Nat
+  resetH : Nat
+
+/-- Exact `while (heap[0] != nullptr)` execution.  `unvisited` is the safe
+ownership view of the allocated node block.  Removing the current node is the
+well-founded measure and detects a malformed cyclic `next` chain; it is not a
+step bound and does not truncate any source execution satisfying the heap
+invariant. -/
+def pairVecDivVHCConsumeChain (this : DenseUPolyZp)
+    (current : Option Nat) (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) : RawExec PairVecDivVHCBucketResult :=
+  match current with
+  | none => .ok (PairVecDivVHCBucketResult.mk k nodes lin resetH)
+  | some nodeIndex =>
+      if hmem : nodeIndex ∈ unvisited then
+        match pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+            quotient divisor with
+        | .error fault => .error fault
+        | .ok (k', nodes', lin', resetH', next) =>
+            pairVecDivVHCConsumeChain this next (unvisited.erase nodeIndex)
+              k' nodes' lin' resetH' quotient divisor
+      else
+        .error .assertionFailure
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem hmem
+
+def pairVecDivVHCConsumeRootBucket (this : DenseUPolyZp)
+    (heap : Array Nat) (k : UInt64) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp) :
+    RawExec PairVecDivVHCBucketResult :=
+  if hheap : 0 < heap.size then
+    pairVecDivVHCConsumeChain this (some heap[0])
+      (Finset.range nodes.size) k nodes lin resetH quotient divisor
+  else
+    .error .assertionFailure
+
+theorem pairVecDivVHCConsumeChain_none (this : DenseUPolyZp)
+    (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) :
+    pairVecDivVHCConsumeChain this none unvisited k nodes lin resetH
+      quotient divisor =
+        .ok (PairVecDivVHCBucketResult.mk k nodes lin resetH) := by
+  rw [pairVecDivVHCConsumeChain]
 
 /-- Exact source-order range-for loop of `__extract_pth_root`. -/
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=

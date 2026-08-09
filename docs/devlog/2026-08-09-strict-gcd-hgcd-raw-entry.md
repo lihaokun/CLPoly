@@ -237,6 +237,14 @@ then execute the generated early-return copies (A, B, and optionally four
 matrix entries).  Package that actual result as the common recursive
 invariant; no successful early result is accepted as an input premise.
 
+For the non-early middle stage, execute the generated divrem on the actual
+reconstructed operands.  Derive `k`, `c0`, `d0`, their positive/order bounds,
+and the strict second-child decrease from that execution.  Establish the
+physical suffix slice for `d0`, then split the actual divisor and remainder
+into canonical low pieces and normalized high pieces.  These exact high
+pieces are the inputs to the second recursive dispatch; the low pieces are
+retained for the final reconstruction.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -273,3 +281,6 @@ invariant; no successful early result is accepted as an input premise.
 - early 增量：约 1 小时、2 轮编译—修复、Lean 约 130 行；从 first child
   与重构的实际执行恢复完整输入变换/GCD，再执行 A、B 与可选矩阵复制，
   生成同一次 early result 的公共递归不变式。
+- middle 增量：约 1 小时、1 轮编译、Lean 约 100 行；执行真实 divrem，
+  从其 `k/c0/d0` 描述符证明第二 child 的顺序和严格下降，并构造供第二
+  dispatch 与 finish 共用的 canonical low / normalized high 分割表示。

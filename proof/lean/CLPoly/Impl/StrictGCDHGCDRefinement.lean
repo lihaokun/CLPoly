@@ -1979,6 +1979,90 @@ theorem hgcdRecursiveEarlyStage_succeeds (this : DenseUPolyZp)
   exact ⟨early, hEarlyValid, by simpa [ws] using hearlyRun,
     by simpa [ws, finalA, finalB] using hInvariant⟩
 
+/-- Total middle divrem, exact low/high split, and the two strict bounds used
+by the second well-founded recursive dispatch. -/
+theorem hgcdRecursiveMiddleStage_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (W : RawPtr UInt64) (lenA lenB : Nat)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (polyA polyB : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (houterNonBase : ¬ lenB < lenA / 2 + 1)
+    (hReconstructed : HgcdFirstReconstructionInvariant lenA first
+      reconstructed)
+    (hnonearly : ¬ reconstructed.lenB < lenA / 2 + 1)
+    (physical : HgcdRecursiveMiddleWorkspace W lenA reconstructed)
+    (hA : RawDensePolyRep this reconstructed.heap
+      (hgcdRecursiveWorkspace W lenA).a2 reconstructed.lenA polyA)
+    (hB : RawDensePolyRep this reconstructed.heap
+      (hgcdRecursiveWorkspace W lenA).b2 reconstructed.lenB polyB) :
+    ∃ middle quotient remainder lowC highC lowD highD,
+      let ws := hgcdRecursiveWorkspace W lenA
+      hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2 reconstructed.lenA
+          reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap =
+        .ok middle ∧
+      RawDensePolyRep this middle.heap ws.q middle.lenQ quotient ∧
+      RawDensePolyRep this middle.heap ws.b2 reconstructed.lenB polyB ∧
+      RawDensePolyRep this middle.heap ws.d middle.lenD remainder ∧
+      RawHeap.SameLayout reconstructed.heap middle.heap ∧
+      middle.lenD0 < middle.lenC0 ∧ middle.lenC0 < bound ∧
+      RawCanonicalPolySlice this middle.heap ws.b2
+        (Nat.min reconstructed.lenB middle.k) lowC ∧
+      RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC ∧
+      RawCanonicalPolySlice this middle.heap ws.d
+        (Nat.min middle.lenD middle.k) lowD ∧
+      RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD ∧
+      polyB = lowC + Polynomial.X ^ middle.k * highC ∧
+      remainder = lowD + Polynomial.X ^ middle.k * highD := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  have hlenAPos : 0 < lenA := by omega
+  have hmPos : 0 < lenA / 2 := by omega
+  have hlenBPos : 0 < reconstructed.lenB := by omega
+  rcases hgcdRecursiveMiddle_refines this ws.q ws.d ws.a2 ws.b2
+      reconstructed.lenA reconstructed.lenB (lenA / 2) lenA ws.W3
+      reconstructed.heap polyA polyB hlenBPos hA hB physical.validQ
+      physical.validD physical.validW3 physical.quotientCapacity physical.dA
+      physical.wA physical.wB physical.qB physical.qW physical.dW physical.dQ
+      physical.dB hcfg (Fact.out : Nat.Prime this._p.toNat) hlenAPos
+      (Nat.le_of_lt hReconstructed.decreases) hmPos (by omega) with
+    ⟨middle, quotient, remainder, hmiddle, _, _, _, _, _, _, hLayout, hQRep,
+      hDRep, hBRep, _, _, _, _, _, hsecondDecreaseOuter, hlenCPos,
+      hsecondOrder, _, _, _, _, _⟩
+  have hSourceLayout := hgcdRecursiveMiddle_layout this ws.q ws.d ws.a2 ws.b2
+    reconstructed.lenA reconstructed.lenB (lenA / 2) ws.W3
+    reconstructed.heap middle hmiddle
+  have hkLt : middle.k < reconstructed.lenB := by
+    rw [hSourceLayout.2.2.2.1] at hlenCPos
+    split at hlenCPos <;> omega
+  have hkCapacity : middle.k ≤
+      Nat.min reconstructed.lenA (reconstructed.lenB - 1) := by
+    apply Nat.le_min.mpr
+    constructor
+    · exact (Nat.le_of_lt hkLt).trans hReconstructed.ordered
+    · omega
+  have hD0Valid : middle.heap.ValidU64Slice middle.d0 middle.lenD0 := by
+    rw [hSourceLayout.2.2.2.2.1, hSourceLayout.2.2.2.2.2]
+    apply middle.heap.validU64Slice_add ws.d
+      (Nat.min reconstructed.lenA (reconstructed.lenB - 1)) middle.k
+      (if middle.lenD ≥ middle.k then middle.lenD - middle.k else 0)
+      ((hLayout ws.d
+        (Nat.min reconstructed.lenA (reconstructed.lenB - 1))).mp
+          physical.validD)
+    split <;> omega
+  rcases hgcdRecursiveMiddle_split_reps this ws.q ws.d ws.a2 ws.b2
+      reconstructed.lenA reconstructed.lenB (lenA / 2) ws.W3
+      reconstructed.heap middle polyB remainder hBRep hDRep hD0Valid hlenCPos
+      hmiddle with
+    ⟨lowC, highC, lowD, highD, hLowC, hHighC, hLowD, hHighD, hSplitC,
+      hSplitD⟩
+  refine ⟨middle, quotient, remainder, lowC, highC, lowD, highD, ?_, hQRep,
+    hBRep, hDRep, hLayout, hsecondOrder, ?_, hLowC, hHighC, hLowD, hHighD,
+    hSplitC, hSplitD⟩
+  · simpa [ws] using hmiddle
+  · simpa [hbound] using hsecondDecreaseOuter
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

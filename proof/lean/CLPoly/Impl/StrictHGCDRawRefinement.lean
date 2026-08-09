@@ -8086,6 +8086,87 @@ theorem hgcdFirstReconstructionBoundProvider_of_dispatch
     exact ⟨inputHighA, inputHighB, outputHighA, outputHighB, entries, by
       simpa [high, hgcdRecursiveHighInput] using hInvariant⟩
 
+/-- Admissible physical/representation workspace for the first child call of
+one recursive body.  Recursive semantics are deliberately not stored here;
+they are supplied only by the well-founded induction hypothesis. -/
+structure HgcdRecursiveFirstCallWorkspace (this : DenseUPolyZp)
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat)) : Prop where
+  iter :
+    let ws := hgcdRecursiveWorkspace W lenA
+    let high := hgcdRecursiveHighInput a b lenA lenB
+    HgcdRecursiveDispatchIterWorkspace this ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+      high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 heap
+      inputHighA inputHighB
+  frame :
+    let ws := hgcdRecursiveWorkspace W lenA
+    let high := hgcdRecursiveHighInput a b lenA lenB
+    ∀ (hchildOrder : high.lenB0 < high.lenA0)
+      (hchildDecrease : high.lenA0 < bound),
+    HgcdRecursiveFirstDispatchFrameProvider this bound recurse ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+      high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+      heap hchildOrder hchildDecrease a b (Nat.min lenA (lenA / 2))
+      (Nat.min lenB (lenA / 2))
+  reconstruct : HgcdRecursiveFirstReconstructWorkspaceProvider this a b W
+    scratch lenA lenB
+      (HgcdFirstDispatchResult this bound recurse a b W scratch lenA lenB heap)
+  lowA : RawDensePolyRep this heap a (Nat.min lenA (lenA / 2)) lowPolyA
+  lowB : RawDensePolyRep this heap b (Nat.min lenB (lenA / 2)) lowPolyB
+
+/-- A first-call admissible workspace plus the child induction hypothesis
+supplies exactly both proof arguments consumed by `hgcdRecursiveBodyBelow`. -/
+theorem hgcdRecursiveFirstCall_providers (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (horder : lenB < lenA)
+    (workspace : HgcdRecursiveFirstCallWorkspace this bound recurse a b W
+      scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB)
+    (recursiveRefines :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      HgcdRecursiveCallbackRefinesAt this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
+        inputHighA inputHighB) :
+    (∀ first,
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap hchildOrder hchildDecrease = .ok first →
+      HgcdRecursiveLengthInvariant high.lenA0 first) ∧
+    HgcdFirstReconstructionBoundProvider this a b W scratch lenA lenB
+      (HgcdFirstDispatchResult this bound recurse a b W scratch lenA lenB
+        heap) := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  let high := hgcdRecursiveHighInput a b lenA lenB
+  constructor
+  · intro first
+    dsimp only
+    intro hchildOrder hchildDecrease hrun
+    exact hgcdRecursiveDispatchBelow_lengthInvariant this bound recurse ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+      high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+      heap inputHighA inputHighB hcfg hp workspace.iter recursiveRefines first
+      hchildOrder hchildDecrease hrun
+  · exact hgcdFirstReconstructionBoundProvider_of_dispatch this bound
+      recurse a b W scratch lenA lenB heap inputHighA inputHighB lowPolyA
+      lowPolyB hcfg hp horder workspace.iter recursiveRefines workspace.frame
+      workspace.reconstruct workspace.lowA workspace.lowB
+
 /-- The first reconstructed pair already carries the complete parent length
 contract when the generated early-stop guard succeeds.  Matrix descriptors
 are those returned by the real first child; only the operand descriptors are
@@ -10496,5 +10577,79 @@ theorem hgcdRecursiveBodyBelow_eq_body (this : DenseUPolyZp)
     split <;> simp_all
     split <;> simp_all
     split <;> simp_all
+
+/-- First-call data available at one well-founded body invocation.  The
+semantic field is precisely the smaller-call induction hypothesis. -/
+structure HgcdRecursiveFirstCallAdmissible (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat)) : Prop where
+  workspace : HgcdRecursiveFirstCallWorkspace this bound recurse a b W
+    scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB
+  recursiveRefines :
+    let ws := hgcdRecursiveWorkspace W lenA
+    let high := hgcdRecursiveHighInput a b lenA lenB
+    ∀ (hchildOrder : high.lenB0 < high.lenA0)
+      (hchildDecrease : high.lenA0 < bound),
+    HgcdRecursiveCallbackRefinesAt this bound recurse ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+      high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
+      inputHighA inputHighB
+
+/-- Invoke the genuine well-founded body from admissible first-call data.
+Neither of the body's semantic proof providers is accepted from the caller. -/
+def hgcdRecursiveBodyAdmissible (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (admissible : HgcdRecursiveFirstCallAdmissible this bound recurse a b W
+      scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB) :
+    RawExec HgcdRecursiveResult :=
+  let providers := hgcdRecursiveFirstCall_providers this bound recurse a b W
+    scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp
+    horder admissible.workspace admissible.recursiveRefines
+  hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA lenB
+    W scratch heap hbound horder providers.1 providers.2
+
+/-- The admissible wrapper erases to the exact generated source body whenever
+the well-founded child callback erases to the plain recursive callback. -/
+theorem hgcdRecursiveBodyAdmissible_eq_body (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (below : HgcdRecursiveCallBelow bound)
+    (plain : HgcdRecursiveCall)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (admissible : HgcdRecursiveFirstCallAdmissible this bound below a b W
+      scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB)
+    (hagrees : ∀ (matrix : HgcdMat) (hMatrix : matrix.Valid)
+      (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+      (WNext childScratch : RawPtr UInt64) (childHeap : RawHeap)
+      (hchildOrder : lenInputB < lenInputA)
+      (hchildDecrease : lenInputA < bound),
+      below matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+          WNext childScratch childHeap hchildOrder hchildDecrease =
+        plain matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+          WNext childScratch childHeap) :
+    hgcdRecursiveBodyAdmissible this bound below M hM computeM A B a b lenA
+        lenB W scratch heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp
+        hbound horder admissible =
+      hgcdRecursiveBody this plain M hM computeM A B a b lenA lenB W scratch
+        heap := by
+  unfold hgcdRecursiveBodyAdmissible
+  exact hgcdRecursiveBodyBelow_eq_body this bound below plain M hM computeM A
+    B a b lenA lenB W scratch heap hbound horder _ _ hagrees
 
 end CLPoly.Impl.StrictHGCDRawRefinement

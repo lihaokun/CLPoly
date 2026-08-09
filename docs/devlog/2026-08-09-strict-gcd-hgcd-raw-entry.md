@@ -213,6 +213,15 @@ iterator-arm contract to reuse its length, transform, determinant, and GCD
 semantic theorem.  Thus the cutoff arm becomes total without assuming the
 success of the iterator, stabilization, or output copies.
 
+For either cutoff dispatch, use a total callback contract for the large arm:
+it returns an actual smaller generated execution together with the invariant
+of that same result.  If the source cutoff selects the small arm, invoke the
+total iterator-arm theorem; otherwise invoke that smaller-call contract.
+Package the exact branch selected by `hgcdRecursiveDispatchBelow`, using
+proof irrelevance only for generated validity witnesses.  This gives the
+parent a concrete first or second child instead of merely explaining a child
+whose success was assumed.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -240,3 +249,6 @@ success of the iterator, stabilization, or output copies.
 - cutoff iterator 增量：约 1.5 小时、3 轮编译—修复、Lean 约 230 行；
   将良基 iterator、真实矩阵稳定化和别名敏感输出复制组成一个总执行，
   再从同一执行提取递归长度、变换、行列式与 GCD 不变式。
+- dispatch 增量：约 0.5 小时、2 轮编译—修复、Lean 约 70 行；以总执行
+  callback 统一 cutoff 小分支和严格变小的大分支，使父调用得到实际 child
+  结果及同一次执行的完整递归不变式。

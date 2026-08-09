@@ -1665,6 +1665,73 @@ theorem hgcdRecursiveIterBranch_succeeds (this : DenseUPolyZp)
     ⟨finalA', finalB', entries', hResultM, hInvariant⟩
   exact ⟨result, finalA', finalB', entries', hResultM, hbranch, hInvariant⟩
 
+/-- Total well-founded induction contract at one strictly smaller recursive
+call.  Unlike the older conditional refinement contract, it constructs the
+actual child execution as well as its semantic invariant. -/
+def HgcdRecursiveCallbackSucceedsAt (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)] (bound : Nat)
+    (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (WNext scratch : RawPtr UInt64) (heap : RawHeap)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (left right : Polynomial (ZMod this._p.toNat)) : Prop :=
+  ∃ result finalA finalB entries,
+    recurse matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+        WNext scratch heap horder hdecrease = .ok result ∧
+    HgcdRecursiveRawInvariant this left right finalA finalB entries true a3
+      b3 lenInputA result
+
+/-- Total execution of the exact cutoff dispatch.  The small source arm is
+the generated iterator block; the large arm is the strictly smaller
+well-founded recursive call. -/
+theorem hgcdRecursiveDispatchBelow_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (matrix : HgcdMat) (hMatrix : matrix.Valid)
+    (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+    (Q : RawPtr UInt64) (W3 : RawPtr Word3)
+    (T0 T1 scratch stage WNext : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (horder : lenInputB < lenInputA) (hdecrease : lenInputA < bound)
+    (iterPhysical : HgcdRecursiveIterBranchTotalWorkspace this matrix hMatrix
+      a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap
+      left right)
+    (recursiveSucceeds : HgcdRecursiveCallbackSucceedsAt this bound recurse
+      matrix hMatrix a3 b3 inputA inputB lenInputA lenInputB WNext scratch
+      heap horder hdecrease left right) :
+    ∃ result finalA finalB entries,
+      hgcdRecursiveDispatchBelow this bound recurse matrix hMatrix a3 b3
+          inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch stage WNext
+          heap horder hdecrease = .ok result ∧
+      HgcdRecursiveRawInvariant this left right finalA finalB entries true a3
+        b3 lenInputA result := by
+  by_cases hsmall : lenInputA < hgcdRecursiveCutoff
+  · rcases hgcdRecursiveIterBranch_succeeds this matrix hMatrix a3 b3 inputA
+        inputB lenInputA lenInputB Q W3 T0 T1 scratch stage heap left right
+        hcfg hp horder iterPhysical with
+      ⟨iter, finalA, finalB, entries, hIterValid, hiter, hInvariant⟩
+    let hGeneratedValid := hgcdRecursiveIterBranch_result_valid this matrix
+      hMatrix a3 b3 inputA inputB lenInputA lenInputB Q W3 T0 T1 scratch
+      stage heap iter hiter
+    let result := iter.toResult hGeneratedValid
+    refine ⟨result, finalA, finalB, entries, ?_, ?_⟩
+    · rw [hgcdRecursiveDispatchBelow, if_pos hsmall]
+      split
+      next fault hiter' => simp [hiter] at hiter'
+      next iter' hiter' =>
+        have hiterEq : iter' = iter := Except.ok.inj (hiter'.symm.trans hiter)
+        subst iter'
+        apply congrArg Except.ok
+        apply HgcdRecursiveResult.ext_value
+        rfl
+    · simpa [result] using hInvariant
+  · rcases recursiveSucceeds with
+      ⟨result, finalA, finalB, entries, hrun, hInvariant⟩
+    exact ⟨result, finalA, finalB, entries, by
+      simpa [hgcdRecursiveDispatchBelow, hsmall] using hrun, hInvariant⟩
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

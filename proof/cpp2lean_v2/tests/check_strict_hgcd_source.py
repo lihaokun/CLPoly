@@ -423,6 +423,8 @@ def main() -> None:
         "HgcdRecursiveIterBranchAfterIter",
         "HgcdRecursiveIterBranchTotalWorkspace",
         "hgcdRecursiveIterBranch_succeeds",
+        "HgcdRecursiveCallbackSucceedsAt",
+        "hgcdRecursiveDispatchBelow_succeeds",
         "GcdHgcdLoopEuclidWorkspaceProvider",
         "GcdHgcdDivremWorkspace",
         "GcdHgcdDynamicDivremWorkspaceProvider",

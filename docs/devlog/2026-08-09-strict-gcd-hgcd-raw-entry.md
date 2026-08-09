@@ -203,6 +203,16 @@ across its actual result.  The theorem therefore constructs every success
 equation before extracting its polynomial or matrix semantics; it assumes no
 success of the finish block or either of its children.
 
+For a cutoff dispatch's iterator arm, execute the complete well-founded
+iterator first.  Its actual matrix and operand descriptors determine the
+physical stabilization workspace.  Run the generated four-entry stage and
+restore loops, then use the actual stable heap to run the generated
+alias-sensitive output normalization.  Only after all three calls have been
+constructed, repackage their staged workspaces as the older conditional
+iterator-arm contract to reuse its length, transform, determinant, and GCD
+semantic theorem.  Thus the cutoff arm becomes total without assuming the
+success of the iterator, stabilization, or output copies.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -227,3 +237,6 @@ success of the finish block or either of its children.
 - finish 增量：约 1 小时、5 轮编译—修复、Lean 约 160 行；完成真实
   四调用重构、`computeM` 两分支和可选最终矩阵块的总执行，并在矩阵写入
   前后显式保持重构后的 A/B 表示。
+- cutoff iterator 增量：约 1.5 小时、3 轮编译—修复、Lean 约 230 行；
+  将良基 iterator、真实矩阵稳定化和别名敏感输出复制组成一个总执行，
+  再从同一执行提取递归长度、变换、行列式与 GCD 不变式。

@@ -27,11 +27,21 @@ This separation prevents either conversion from being replaced by a
 noncomputable polynomial encoder and prevents `SparsePolyZp.gcd` from serving
 as the executable implementation.
 
+For dense-to-sparse execution, mirror `dense_upoly_zp::to_upoly` with a
+structurally recursive reverse scan.  With `remaining = n+1`, read exactly
+`coeffs[n]`; skip zero, otherwise append `(n, Zp(value,p))`, then recurse with
+`n`.  Validity of the complete raw slice gives validity of every actual read,
+so induction on `remaining` proves the scan cannot fault.  The returned array
+is produced solely by those reads and pushes; its polynomial and canonical
+properties are proved in the following refinement stage.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
 - Added projection and uniqueness lemmas used by the forthcoming generated
   conversion loops.
+- Added the exact reverse dense-to-sparse scan and its total raw execution
+  theorem.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

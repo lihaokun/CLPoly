@@ -825,3 +825,11 @@ every generated range-for and recursive loop used by SQF.
   这一 root-max 结果加强为完整 parent/child heap order preservation；否则
   第二次及后续 extract 仍无法合法复用 heap-order 前提，不能提前宣称
   full equal-degree completeness。
+- sift 的候选支配已从初始 root 推广到每个递归 hole。新定理接受实际
+  `i/child/limit/lastNode`，在 `child < limit < heap.size` 下逐分支展开同一
+  source recursion；selected child 继续下降时，早先槽保持定理确保更深
+  recursion 不会回写当前 `i`，停止时则直接读取 `heap.set i lastNode`。
+  因而每层最终写入 hole 的 mono 同时支配该层 left、right 与 saved last。
+  这是完整 heap-order preservation 的局部核心：下一步对递归路径上的
+  parent/child 边使用此定理，对路径外边使用 concrete set/get 保持，按
+  `limit - child` 归纳组合成 sift 后全部父子边有序。

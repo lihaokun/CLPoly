@@ -1237,6 +1237,62 @@ theorem pairVecDivVHCSiftDown_root_dominates_candidates
           (Nat.le_of_not_gt hgreater)
       · exact Nat.le_of_not_gt hgreater
 
+/-- The root-candidate argument holds at every recursive sift hole.  The
+value finally stored at `i` dominates both children inspected at that level
+and the saved last sentinel. -/
+theorem pairVecDivVHCSiftDown_hole_dominates_candidates
+    (i child limit lastNode : Nat) (heap shifted : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (leftMono rightMono lastMono : UMonomial)
+    (hipath : i < child) (hchildLimit : child < limit)
+    (hlimitBound : limit < heap.size)
+    (hleft : pairVecDivVHCMono heap[child] nodes = .ok leftMono)
+    (hright : pairVecDivVHCMono heap[child + 1] nodes = .ok rightMono)
+    (hlast : pairVecDivVHCMono lastNode nodes = .ok lastMono)
+    (hrun : pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok shifted) :
+    ∃ holeHead holeMono,
+      shifted[i]? = some holeHead ∧
+        pairVecDivVHCMono holeHead nodes = .ok holeMono ∧
+        leftMono.deg ≤ holeMono.deg ∧ rightMono.deg ≤ holeMono.deg ∧
+        lastMono.deg ≤ holeMono.deg := by
+  rw [pairVecDivVHCSiftDown] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+      simp only [hleft, hright, hlast] at hrun
+      by_cases hselected : leftMono.deg > rightMono.deg
+      · simp only [hselected, ↓reduceIte] at hrun
+        by_cases hgreater : leftMono.deg > lastMono.deg
+        · simp only [hgreater, ↓reduceDIte] at hrun
+          have hroot := pairVecDivVHCSiftDown_get_before child
+            (child * 2 + 1) limit lastNode (heap.set i heap[child]) shifted
+            nodes (by omega) hrun i hipath
+          rw [Array.getElem?_set_self hi] at hroot
+          exact ⟨heap[child], leftMono, hroot, hleft, Nat.le_refl _,
+            Nat.le_of_lt hselected, Nat.le_of_lt hgreater⟩
+        · simp only [hgreater, ↓reduceDIte, Except.ok.injEq] at hrun
+          subst shifted
+          exact ⟨lastNode, lastMono, Array.getElem?_set_self hi, hlast,
+            Nat.le_of_not_gt hgreater,
+            Nat.le_trans (Nat.le_of_lt hselected)
+              (Nat.le_of_not_gt hgreater), Nat.le_refl _⟩
+      · simp only [hselected, ↓reduceIte] at hrun
+        by_cases hgreater : rightMono.deg > lastMono.deg
+        · simp only [hgreater, ↓reduceDIte] at hrun
+          have hroot := pairVecDivVHCSiftDown_get_before (child + 1)
+            ((child + 1) * 2 + 1) limit lastNode
+            (heap.set i heap[child + 1]) shifted nodes (by omega) hrun i
+            (by omega)
+          rw [Array.getElem?_set_self hi] at hroot
+          exact ⟨heap[child + 1], rightMono, hroot, hright,
+            Nat.le_of_not_gt hselected, Nat.le_refl _, Nat.le_of_lt hgreater⟩
+        · simp only [hgreater, ↓reduceDIte, Except.ok.injEq] at hrun
+          subst shifted
+          exact ⟨lastNode, lastMono, Array.getElem?_set_self hi, hlast,
+            Nat.le_trans (Nat.le_of_not_gt hselected)
+              (Nat.le_of_not_gt hgreater), Nat.le_of_not_gt hgreater,
+            Nat.le_refl _⟩
+
 /-- A value occurs in an array only at one distinguished slot.  This is the
 local form of heap-head uniqueness needed to show that extracting slot zero
 cannot leave the consumed bucket head elsewhere in the active heap. -/

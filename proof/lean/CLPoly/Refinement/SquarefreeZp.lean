@@ -6252,6 +6252,38 @@ structure PairVecDivVHCIterationResult where
   quotient : SparsePolyZp
   resetH : Nat
 
+/-- Exact quotient-emission sub-block of one outer iteration. -/
+def pairVecDivVHCEmit (this : DenseUPolyZp)
+    (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor : SparsePolyZp) (hdivisor : 0 < divisor.size) :
+    RawExec (SparsePolyZp × PairVecDivVHCHeapState × Nat) :=
+  if consumed.coefficient ≠ 0 then
+    if divisor[0].1.deg ≤ frontier.degree then
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor[0].2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        consumed.coefficient inverse
+      if value ≠ 0 then
+        let quotient' := quotient.push
+          (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+        match pairVecDivVHCActivateReset consumed.resetH consumed.heap
+            consumed.nodes quotient' divisor with
+        | .error fault => .error fault
+        | .ok activated => .ok (quotient', activated, 0)
+      else
+        .ok (quotient,
+          PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
+          consumed.resetH)
+    else
+      .ok (quotient,
+        PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
+        consumed.resetH)
+  else
+    .ok (quotient,
+      PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
+      consumed.resetH)
+
 /-- One complete body of the general `pair_vec_div` outer loop, including
 frontier selection, equal-degree bucket subtraction, quotient emission,
 `reset_h` activation, and the final reverse `lin` reinsertion. -/
@@ -6263,39 +6295,152 @@ def pairVecDivVHCOuterIteration (this : DenseUPolyZp)
     let frontier ← pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes
     let consumed ← pairVecDivVHCConsumeEqualDegree this frontier.degree heap
       frontier.coefficient nodes #[] resetH quotient divisor
-    let emit : RawExec (SparsePolyZp × PairVecDivVHCHeapState × Nat) :=
-      if hcoefficient : consumed.coefficient ≠ 0 then
-        if hdegree : divisor[0].1.deg ≤ frontier.degree then
-          let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
-            divisor[0].2.val
-          let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
-            consumed.coefficient inverse
-          if hvalue : value ≠ 0 then
-            let quotient' := quotient.push
-              (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
-            match pairVecDivVHCActivateReset consumed.resetH consumed.heap
-                consumed.nodes quotient' divisor with
-            | .error fault => .error fault
-            | .ok activated => .ok (quotient', activated, 0)
-          else
-            .ok (quotient,
-              PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
-              consumed.resetH)
-        else
-          .ok (quotient,
-            PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
-            consumed.resetH)
-      else
-        .ok (quotient,
-          PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
-          consumed.resetH)
-    let (quotient', activated, resetH') ← emit
+    let (quotient', activated, resetH') ←
+      pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor
     let reinserted ← pairVecDivVHCReinsertLin activated.heap activated.nodes
       consumed.lin
     .ok (PairVecDivVHCIterationResult.mk frontier.dividendIndex
       reinserted.heap reinserted.nodes quotient' resetH')
   else
     .error .assertionFailure
+
+theorem pairVecDivVHCEmit_preserves_away_linReady
+    (this : DenseUPolyZp) (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' : Nat)
+    (haway : PairVecDivVHCHeapChainsOwnedAway consumed.heap consumed.nodes
+      consumed.lin.toList.toFinset)
+    (hlinReady : PairVecDivVHCLinReady consumed.lin consumed.nodes)
+    (hready : PairVecDivVHCResetReady consumed.resetH quotient.size
+      consumed.nodes)
+    (hdivisor : 0 < divisor.size)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    PairVecDivVHCHeapChainsOwnedAway activated.heap activated.nodes
+        consumed.lin.toList.toFinset ∧
+      PairVecDivVHCLinReady consumed.lin activated.nodes := by
+  unfold pairVecDivVHCEmit at hrun
+  by_cases hcoefficient : consumed.coefficient ≠ 0
+  · rw [if_pos hcoefficient] at hrun
+    by_cases hdegree : divisor[0].1.deg ≤ frontier.degree
+    · rw [if_pos hdegree] at hrun
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor[0].2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        consumed.coefficient inverse
+      by_cases hvalue : value ≠ 0
+      · rw [if_pos hvalue] at hrun
+        let emitted := quotient.push
+          (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+        cases hactivate : pairVecDivVHCActivateReset consumed.resetH
+            consumed.heap consumed.nodes emitted divisor with
+        | error fault =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            contradiction
+        | ok state =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl⟩
+            exact pairVecDivVHCActivateReset_preserves_away_linReady
+              consumed.resetH quotient.size consumed.heap consumed.nodes
+              consumed.lin emitted divisor state haway hlinReady hready
+              hactivate
+      · rw [if_neg hvalue] at hrun
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl⟩
+        exact ⟨haway, hlinReady⟩
+    · rw [if_neg hdegree] at hrun
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl, rfl⟩
+      exact ⟨haway, hlinReady⟩
+  · rw [if_neg hcoefficient] at hrun
+    simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+    rcases hrun with ⟨rfl, rfl, rfl⟩
+    exact ⟨haway, hlinReady⟩
+
+theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
+    (this : DenseUPolyZp) (p degreeLimit dividendIndex : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
+    (hdivisor : 0 < divisor.size)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    PairVecDivVHCHeapChainsOwned result.heap result.nodes := by
+  unfold pairVecDivVHCOuterIteration at hrun
+  simp only [hdivisor, ↓reduceDIte] at hrun
+  generalize hselect :
+      pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes = selected
+      at hrun
+  cases selected with
+  | error fault =>
+      simp only [Bind.bind, Except.bind] at hrun
+      contradiction
+  | ok frontier =>
+      simp only [Bind.bind, Except.bind] at hrun
+      generalize hconsume : pairVecDivVHCConsumeEqualDegree this
+          frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+          divisor = consumedExec at hrun
+      cases consumedExec with
+      | error fault =>
+          simp only [Bind.bind, Except.bind] at hrun
+          contradiction
+      | ok consumed =>
+          simp only [Bind.bind, Except.bind] at hrun
+          have howned : PairVecDivVHCHeapChainsOwned heap nodes :=
+            ⟨owners, hownership⟩
+          have haway0 : PairVecDivVHCHeapChainsOwnedAway heap nodes
+              (#[] : Array Nat).toList.toFinset := by
+            simpa using howned.away_empty
+          have hlin0 : PairVecDivVHCLinReady (#[] : Array Nat) nodes := by
+            simp [PairVecDivVHCLinReady]
+          have hconsumed :=
+            pairVecDivVHCConsumeEqualDegree_preserves_away_linReady this
+              frontier.degree heap frontier.coefficient nodes #[] resetH
+              quotient divisor consumed haway0 hlin0 hconsume
+          have hnodeInvariants :=
+            pairVecDivVHCConsumeEqualDegree_preserves_node_invariants this p
+              degreeLimit frontier.degree heap frontier.coefficient nodes #[]
+              resetH quotient divisor consumed owners hcanonical hbelow
+              hdenotes hfixed hready hownership hconsume
+          generalize hemit : pairVecDivVHCEmit this frontier consumed quotient
+              divisor hdivisor = emitExec at hrun
+          cases emitExec with
+          | error fault =>
+              simp only [Bind.bind, Except.bind] at hrun
+              contradiction
+          | ok emitted =>
+              simp only [Bind.bind, Except.bind] at hrun
+              rcases emitted with ⟨quotient', activated, resetH'⟩
+              have hemitted :=
+                pairVecDivVHCEmit_preserves_away_linReady this frontier consumed
+                  quotient divisor quotient' activated resetH' hconsumed.1
+                  hconsumed.2 hnodeInvariants.2.2.2 hdivisor hemit
+              generalize hreinsert : pairVecDivVHCReinsertLin activated.heap
+                  activated.nodes consumed.lin = reinsertExec at hrun
+              cases reinsertExec with
+              | error fault =>
+                  simp only [Bind.bind, Except.bind] at hrun
+                  contradiction
+              | ok reinserted =>
+                  simp only [Bind.bind, Except.bind] at hrun
+                  rw [← Except.ok.inj hrun]
+                  exact pairVecDivVHCReinsertLin_preserves_heapChainsOwned
+                    activated.heap activated.nodes consumed.lin reinserted
+                    hemitted.1 hemitted.2 hreinsert
 
 /-- Complete general-path outer `while`.  `degreeLimit` is a proof-relevant
 strict upper bound on the next source frontier, not a step counter: after one

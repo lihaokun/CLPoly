@@ -386,3 +386,12 @@ every generated range-for and recursive loop used by SQF.
   写入和 `VHC_insert` 保持同一个 `lin` protected set。按 `resetH`
   良基递归，最终同时保留 `HeapChainsOwnedAway` 与 `LinReady`，可直接
   交给已经闭合的 reverse reinsertion 定理。
+- 完整 outer iteration 的 heap-chain ownership 现已闭合。商项
+  emission 被提取为与原始 C++ 分支一致的 `pairVecDivVHCEmit`：
+  它显式携带 divisor 非空证明，执行真实 modular inverse/multiply、
+  quotient push 与 `reset_h` activation，不用规格结果替换计算。
+  `pairVecDivVHCOuterIteration_preserves_heapChainsOwned` 现在直接组合
+  frontier selection、equal-degree consumption、emit/activation 与良基 reverse
+  `lin` reinsertion，得到一次完整外层循环体保持 existential exact-chain
+  ownership。下一步将这个保持定理提升到完整良基 outer loop，
+  然后闭合 general division 语义。

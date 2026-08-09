@@ -1116,6 +1116,127 @@ termination_by limit - child
 decreasing_by
   all_goals omega
 
+/-- Sift-down only writes its current path.  Every slot strictly before the
+current node is unchanged by the complete recursive execution. -/
+theorem pairVecDivVHCSiftDown_get_before
+    (i child limit lastNode : Nat) (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (hipath : i < child)
+    (hrun : pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok heap') :
+    ∀ j < i, heap'[j]? = heap[j]? := by
+  rw [pairVecDivVHCSiftDown] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hlimit =>
+      split at hrun
+      next hchild =>
+        dsimp only at hrun
+        cases hleft : pairVecDivVHCMono heap[child] nodes with
+        | error fault => simp [hleft] at hrun
+        | ok leftMono =>
+          cases hright : pairVecDivVHCMono heap[child + 1] nodes with
+          | error fault => simp [hleft, hright] at hrun
+          | ok rightMono =>
+            cases hlast : pairVecDivVHCMono lastNode nodes with
+            | error fault => simp [hleft, hright, hlast] at hrun
+            | ok lastMono =>
+              simp only [hleft, hright, hlast] at hrun
+              by_cases hselected : leftMono.deg > rightMono.deg
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  intro j hj
+                  have hrec := pairVecDivVHCSiftDown_get_before child
+                    (child * 2 + 1) limit lastNode
+                    (heap.set i heap[child]) heap' nodes (by omega) hrun j
+                    (by omega)
+                  rw [hrec, Array.getElem?_set_ne hi (by omega)]
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  intro j hj
+                  rw [Array.getElem?_set_ne hi (by omega)]
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  intro j hj
+                  have hrec := pairVecDivVHCSiftDown_get_before (child + 1)
+                    ((child + 1) * 2 + 1) limit lastNode
+                    (heap.set i heap[child + 1]) heap' nodes (by omega) hrun j
+                    (by omega)
+                  rw [hrec, Array.getElem?_set_ne hi (by omega)]
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  intro j hj
+                  rw [Array.getElem?_set_ne hi (by omega)]
+      next hchild =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        intro j hj
+        rw [Array.getElem?_set_ne hi (by omega)]
+termination_by limit - child
+decreasing_by
+  all_goals omega
+
+/-- On a heap with both root children present, the first source sift step
+writes the maximum of the two children and the saved last sentinel at slot
+zero; recursive descent cannot overwrite that slot. -/
+theorem pairVecDivVHCSiftDown_root_dominates_candidates
+    (heap shifted : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (leftMono rightMono lastMono : UMonomial)
+    (hsize : 2 < heap.size)
+    (hleft : pairVecDivVHCMono heap[1] nodes = .ok leftMono)
+    (hright : pairVecDivVHCMono heap[2] nodes = .ok rightMono)
+    (hlast : pairVecDivVHCMono heap[heap.size - 1] nodes = .ok lastMono)
+    (hrun : pairVecDivVHCSiftDown 0 1 (heap.size - 1)
+      heap[heap.size - 1] heap nodes = .ok shifted) :
+    ∃ rootHead rootMono,
+      shifted[0]? = some rootHead ∧
+        pairVecDivVHCMono rootHead nodes = .ok rootMono ∧
+        leftMono.deg ≤ rootMono.deg ∧ rightMono.deg ≤ rootMono.deg ∧
+        lastMono.deg ≤ rootMono.deg := by
+  have hzero : 0 < heap.size := by omega
+  have hlimit : heap.size - 1 < heap.size := by omega
+  have hchild : 1 < heap.size - 1 := by omega
+  rw [pairVecDivVHCSiftDown] at hrun
+  simp only [hzero, hlimit, hchild, ↓reduceDIte] at hrun
+  simp only [hleft, hright, hlast] at hrun
+  by_cases hselected : leftMono.deg > rightMono.deg
+  · simp only [hselected, ↓reduceIte] at hrun
+    by_cases hgreater : leftMono.deg > lastMono.deg
+    · simp only [hgreater, ↓reduceDIte] at hrun
+      have hroot := pairVecDivVHCSiftDown_get_before 1 3
+        (heap.size - 1) heap[heap.size - 1]
+        (heap.set 0 heap[1]) shifted nodes (by omega) hrun 0 (by omega)
+      rw [Array.getElem?_set_self hzero] at hroot
+      exact ⟨heap[1], leftMono, hroot, hleft, Nat.le_refl _,
+        Nat.le_of_lt hselected, Nat.le_of_lt hgreater⟩
+    · simp only [hgreater, ↓reduceDIte, Except.ok.injEq] at hrun
+      subst shifted
+      refine ⟨heap[heap.size - 1], lastMono,
+        Array.getElem?_set_self hzero, hlast, ?_, ?_, Nat.le_refl _⟩
+      · exact Nat.le_of_not_gt hgreater
+      · exact Nat.le_trans (Nat.le_of_lt hselected)
+          (Nat.le_of_not_gt hgreater)
+  · simp only [hselected, ↓reduceIte] at hrun
+    by_cases hgreater : rightMono.deg > lastMono.deg
+    · simp only [hgreater, ↓reduceDIte] at hrun
+      have hroot := pairVecDivVHCSiftDown_get_before 2 5
+        (heap.size - 1) heap[heap.size - 1]
+        (heap.set 0 heap[2]) shifted nodes (by omega) hrun 0 (by omega)
+      rw [Array.getElem?_set_self hzero] at hroot
+      exact ⟨heap[2], rightMono, hroot, hright, Nat.le_of_not_gt hselected,
+        Nat.le_refl _, Nat.le_of_lt hgreater⟩
+    · simp only [hgreater, ↓reduceDIte, Except.ok.injEq] at hrun
+      subst shifted
+      refine ⟨heap[heap.size - 1], lastMono,
+        Array.getElem?_set_self hzero, hlast, ?_, ?_, Nat.le_refl _⟩
+      · exact Nat.le_trans (Nat.le_of_not_gt hselected)
+          (Nat.le_of_not_gt hgreater)
+      · exact Nat.le_of_not_gt hgreater
+
 /-- A value occurs in an array only at one distinguished slot.  This is the
 local form of heap-head uniqueness needed to show that extracting slot zero
 cannot leave the consumed bucket head elsewhere in the active heap. -/

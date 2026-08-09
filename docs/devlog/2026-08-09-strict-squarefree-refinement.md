@@ -795,3 +795,12 @@ every generated range-for and recursive loop used by SQF.
   binary-heap 祖先关系当作算术自动事实。下一步证明 sift-down 递归只写
   当前下降路径、不会回写更早槽，并据此识别 extract 新 root 为两直接
   子节点/last sentinel 的最大者。
+- sift-down 的 root 写入语义已闭合。良基 `get_before` 定理逐分支展开真实
+  `pairVecDivVHCSiftDown`，证明递归只会写当前节点及其严格后代，所有早于
+  当前节点的 array lookup 保持；度量仍是源码的 `limit - child`。在初始
+  `i=0, child=1` 且左右子存在时，随后按源码比较分别处理 left/right
+  selection 与 selected/last comparison：若递归下降，`get_before` 保证
+  slot 0 保持第一次写入；若停止，slot 0 就是 last sentinel。所得真实
+  root head/mono 同时支配 left、right、last 三个候选。下一步把 sift result
+  的 slot 0 穿过真实 `pop`，并结合所有旧非根 slot 到 left/right 的上界，
+  得到 checked extract 后 root 对全部 surviving heads 的支配。

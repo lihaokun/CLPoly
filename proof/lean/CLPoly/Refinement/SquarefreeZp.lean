@@ -2643,6 +2643,94 @@ def PairVecDivVHCHeapOrdered (heap : Array Nat)
           some parentMono →
         childMono.deg ≤ parentMono.deg
 
+/-- Degree-level form of heap order on the observable prefix.  It names the
+actual heap heads and successful mono reads, which makes concrete `Array.set`
+effects during sift-down tractable. -/
+def PairVecDivVHCHeapDegreesOrderedUpTo (limit : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ (child : Nat), child < limit → 0 < child →
+    ∀ childHead parentHead childMono parentMono,
+      heap[child]? = some childHead →
+      heap[pairVecDivVHCParent child]? = some parentHead →
+      pairVecDivVHCMono childHead nodes = .ok childMono →
+      pairVecDivVHCMono parentHead nodes = .ok parentMono →
+      childMono.deg ≤ parentMono.deg
+
+theorem PairVecDivVHCHeapOrdered.degreesUpTo
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (limit : Nat) (hlimit : limit ≤ heap.size)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes) :
+    PairVecDivVHCHeapDegreesOrderedUpTo limit heap nodes := by
+  intro child hchild hpos childHead parentHead childMono parentMono
+    hchildGet hparentGet hchildMono hparentMono
+  have hchildSlot : child < heap.size := Nat.lt_of_lt_of_le hchild hlimit
+  have hparentSlot : pairVecDivVHCParent child < heap.size :=
+    Nat.lt_trans (by
+      unfold pairVecDivVHCParent
+      have hhalf : (child - 1) / 2 ≤ child - 1 := Nat.div_le_self _ _
+      omega) hchildSlot
+  have hchildEq : heap[child] = childHead := by
+    rw [Array.getElem?_eq_getElem hchildSlot] at hchildGet
+    exact Option.some.inj hchildGet
+  have hparentEq : heap[pairVecDivVHCParent child] = parentHead := by
+    rw [Array.getElem?_eq_getElem hparentSlot] at hparentGet
+    exact Option.some.inj hparentGet
+  rw [← hchildEq] at hchildMono
+  rw [← hparentEq] at hparentMono
+  rcases (pairVecDivVHCMono_eq_ok_iff childHead nodes childMono).mp
+      (by simpa [hchildEq] using hchildMono) with
+    ⟨childNode, hchildNode, hchildActive⟩
+  rcases (pairVecDivVHCMono_eq_ok_iff parentHead nodes parentMono).mp
+      (by simpa [hparentEq] using hparentMono) with
+    ⟨parentNode, hparentNode, hparentActive⟩
+  have hchildMap :
+      (nodes[childHead]?.map PairVecDivVHCNode.mono).join =
+        some childMono := by
+    rw [hchildNode]
+    simp [hchildActive]
+  have hparentMap :
+      (nodes[parentHead]?.map PairVecDivVHCNode.mono).join =
+        some parentMono := by
+    rw [hparentNode]
+    simp [hparentActive]
+  exact hordered child (pairVecDivVHCParent child) hchildSlot rfl hpos
+    childHead parentHead childMono parentMono hchildGet hparentGet hchildMap
+    hparentMap
+
+theorem PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hordered : PairVecDivVHCHeapDegreesOrderedUpTo heap.size heap nodes) :
+    PairVecDivVHCHeapOrdered heap nodes := by
+  intro child parent hchild hparent hpos childHead parentHead childMono
+    parentMono hchildGet hparentGet hchildMap hparentMap
+  subst parent
+  have hchildMono : pairVecDivVHCMono childHead nodes = .ok childMono := by
+    apply (pairVecDivVHCMono_eq_ok_iff childHead nodes childMono).mpr
+    cases hnode : nodes[childHead]? with
+    | none => simp [hnode] at hchildMap
+    | some node =>
+        cases hactive : node.mono with
+        | none => simp [hnode, hactive] at hchildMap
+        | some mono =>
+            simp only [hnode, hactive, Option.map_some, Option.join_some,
+              Option.some.injEq] at hchildMap
+            subst mono
+            exact ⟨node, rfl, hactive⟩
+  have hparentMono : pairVecDivVHCMono parentHead nodes = .ok parentMono := by
+    apply (pairVecDivVHCMono_eq_ok_iff parentHead nodes parentMono).mpr
+    cases hnode : nodes[parentHead]? with
+    | none => simp [hnode] at hparentMap
+    | some node =>
+        cases hactive : node.mono with
+        | none => simp [hnode, hactive] at hparentMap
+        | some mono =>
+            simp only [hnode, hactive, Option.map_some, Option.join_some,
+              Option.some.injEq] at hparentMap
+            subst mono
+            exact ⟨node, rfl, hactive⟩
+  exact hordered child hchild hpos childHead parentHead childMono parentMono
+    hchildGet hparentGet hchildMono hparentMono
+
 /-- A `next` edge is a valid equal-monomial bucket link. -/
 def PairVecDivVHCNextValid (nodes : Array PairVecDivVHCNode) : Prop :=
   ∀ (i : Nat) (node : PairVecDivVHCNode) (next : Nat),

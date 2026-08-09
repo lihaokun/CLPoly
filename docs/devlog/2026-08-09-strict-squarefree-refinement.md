@@ -833,3 +833,12 @@ every generated range-for and recursive loop used by SQF.
   这是完整 heap-order preservation 的局部核心：下一步对递归路径上的
   parent/child 边使用此定理，对路径外边使用 concrete set/get 保持，按
   `limit - child` 归纳组合成 sift 后全部父子边有序。
+- heap order 已建立可逆的 degree/read 前缀表示。
+  `PairVecDivVHCHeapDegreesOrderedUpTo limit` 对每个 `child < limit` 直接量化
+  concrete child/parent heap head lookup 与两次成功 mono read，表达同一
+  次数不等式；旧 `HeapOrdered` 在 `limit ≤ heap.size` 时推出它，反向在
+  `limit = heap.size` 时通过逐个还原 node lookup/active mono 与 map/join
+  证据无损重建原谓词。该转换不是降低验证标准，而是把 sift 中的
+  `Array.set` 局部效应从嵌套 Option map 形式解耦出来。下一步在这个等价
+  前缀谓词上证明单次 child-copy 与最终 last-write 保持所有未受影响边，
+  再转回现有 `HeapOrdered` 供 equal-degree 递归使用。

@@ -779,3 +779,11 @@ every generated range-for and recursive loop used by SQF.
   同时返回 coefficient 等式、products soundness 和 owner completeness。
   下一步沿 checked extract 后严格减小的 heap size 汇总各 root trace，证明
   full equal-degree products 对初始所有 frontier buckets 完备。
+- heap pointer validity 已不再作为 frontier completeness 的独立外部假设。
+  新定理从 concrete `HeapChainOwnership` 本身推出每个实际 heap slot 都指向
+  owner chain 的 active head：exact `ChainOwns` 给出 head membership，随后
+  owner-member active 定理恢复真实 node/mono lookup。所有 heap-owned row
+  与全 row frontier 定位定理现只要求 ownership、homogeneity 和 heap order，
+  避免后续递归重复携带一个可推导的不变量。下一步仍需证明真正关键的
+  `VHC_extract` heap-order preservation；这不能由 pointer validity 代替，
+  也不会假设 checked extract 自动维持堆序。

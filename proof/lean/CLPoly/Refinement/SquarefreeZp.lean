@@ -4877,6 +4877,21 @@ def PairVecDivVHCHeapChainOwnership (heap : Array Nat)
       heap[right]? = some rightHead → leftHead ≠ rightHead →
       Disjoint (owners leftHead) (owners rightHead))
 
+theorem PairVecDivVHCHeapChainOwnership.heapPointersValid
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes) :
+    PairVecDivVHCHeapPointersValid heap nodes := by
+  intro slot hslot
+  let head := heap[slot]
+  have hheap : heap[slot]? = some head := Array.getElem?_eq_getElem hslot
+  have howns := hownership.1 slot head hheap
+  have hheadMem := pairVecDivVHCChainOwns_head_mem head (owners head) nodes
+    howns
+  rcases pairVecDivVHCChainOwns_mem_active (some head) (owners head) nodes
+      howns head hheadMem with ⟨node, mono, hnode, hmono⟩
+  exact ⟨head, node, mono, hheap, hnode, hmono⟩
+
 theorem pairVecDivVHCHeapChainOwnership_owner_eq_at
     (heap : Array Nat) (leftOwners rightOwners : Nat → Finset Nat)
     (nodes : Array PairVecDivVHCNode)
@@ -4996,7 +5011,6 @@ theorem pairVecDivVHCOwnedNode_degree_le_frontier
     (owners : Nat → Finset Nat) (frontier : PairVecDivVHCFrontier)
     (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
     (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
-    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
     (hordered : PairVecDivVHCHeapOrdered heap nodes)
     (slot head i : Nat) (node : PairVecDivVHCNode)
     (hheap : heap[slot]? = some head) (hmem : i ∈ owners head)
@@ -5004,6 +5018,7 @@ theorem pairVecDivVHCOwnedNode_degree_le_frontier
     (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
       .ok frontier) :
     ∃ mono, node.mono = some mono ∧ mono.deg ≤ frontier.degree := by
+  have hvalid := hownership.heapPointersValid heap owners nodes
   have hslot : slot < heap.size := by
     by_contra hnot
     rw [Array.getElem?_eq_none (by omega)] at hheap
@@ -5044,7 +5059,6 @@ theorem pairVecDivVHCOwnedRow_productAtFrontier_eq_cursor
     (quotientTerm divisorTerm : UMonomial × Zp)
     (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
     (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
-    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
     (hordered : PairVecDivVHCHeapOrdered heap nodes)
     (hcanonical : SparsePolyZp.Canonical p quotient)
     (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
@@ -5059,7 +5073,7 @@ theorem pairVecDivVHCOwnedRow_productAtFrontier_eq_cursor
       .ok frontier) :
     q = node.quotientIndex := by
   rcases pairVecDivVHCOwnedNode_degree_le_frontier dividendIndex dividend heap
-      nodes owners frontier hownership hhomogeneous hvalid hordered slot head i
+      nodes owners frontier hownership hhomogeneous hordered slot head i
       node hheap hmem hget hselect with ⟨mono, hmono, hmonoLe⟩
   exact pairVecDivVHCProductAtFrontier_eq_cursor_of_mono_le p degreeLimit
     frontier.degree nodes quotient divisor i q node mono quotientTerm
@@ -5081,7 +5095,6 @@ theorem pairVecDivVHCFrontierProduct_owned_cursor
     (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
     (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
     (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
-    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
     (hordered : PairVecDivVHCHeapOrdered heap nodes)
     (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
       nodes[i]? = some node → node.mono ≠ none →
@@ -5125,7 +5138,7 @@ theorem pairVecDivVHCFrontierProduct_owned_cursor
     have hcursor := pairVecDivVHCOwnedRow_productAtFrontier_eq_cursor p
       degreeLimit dividendIndex dividend heap nodes owners frontier quotient
       divisor slot head (d - 1) q node quotientTerm divisorTerm hownership
-      hhomogeneous hvalid hordered hcanonical hprefix hfrontier hheap hmem
+      hhomogeneous hordered hcanonical hprefix hfrontier hheap hmem
       hnode hnodeDenotes hquotient (by simpa [hnodeD] using hdivisor) hdegree
       hselect
     exact ⟨slot, head, node, hheap, hnode, hmem, hnodeD, hcursor⟩

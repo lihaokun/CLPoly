@@ -232,3 +232,12 @@ quotient-update 与四项矩阵乘法推出全部 row/coeff 界。
 完全相同的 `RawExec`。小输入分支定义性地执行同一个 iterator；大输入分支只擦除
 两个 Prop 证明参数，没有计数器、额外 guard 或替代执行。这是后续证明完整良基
 body 与原生成 body 执行一致的第一层桥。
+
+## 完整良基 body 的执行擦除
+
+`hgcdRecursiveBodyBelow_eq_body` 现已覆盖两个 dispatch 以及中间的成对重构、
+early return、divrem 和 finish。证明先投影掉 `HgcdRecursiveResult.valid`
+这个纯证明字段，沿真实 `Except` 控制流对齐所有分支，再由
+`hgcdRecursiveExec_ext_value` 恢复为完整 `RawExec HgcdRecursiveResult` 相等。
+投影保留 fault、heap、matrix、lenA、lenB 和 sgn，因此没有弱化任何
+C++ 可观察执行状态；唯一擦除的是良基下降证明与矩阵有效性证明。

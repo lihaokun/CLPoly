@@ -6420,6 +6420,65 @@ theorem pairVecDivVHCRootOwner_subset_ownedNodesAtDegree
       ⟨node, hnode, hmono⟩
   · omega
 
+theorem pairVecDivVHCHeapOwnedNodesAtDegree_eq_empty_of_root_ne
+    (degree : Nat) (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode) (rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hrootMono : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hmax : ∀ (slot head : Nat) (mono : UMonomial),
+      heap[slot]? = some head → pairVecDivVHCMono head nodes = .ok mono →
+        mono.deg ≤ degree)
+    (hne : rootMono.deg ≠ degree) :
+    PairVecDivVHCHeapOwnedNodesAtDegree degree heap owners nodes = ∅ := by
+  apply Finset.ext
+  intro i
+  simp
+  intro hi
+  simp only [PairVecDivVHCHeapOwnedNodesAtDegree, Finset.mem_filter,
+    PairVecDivVHCHeapOwnedNodes, Finset.mem_biUnion, List.mem_toFinset,
+    pairVecDivVHCNodeAtDegree_iff] at hi
+  rcases hi with ⟨⟨head, hheadMem, hiOwner⟩, nodeMono, hnodeMono,
+    hnodeDegree⟩
+  rcases List.getElem_of_mem hheadMem with ⟨slot, hslot, hvalue⟩
+  have hslotBound : slot < heap.size := by simpa using hslot
+  have hheadEq : heap[slot] = head := by
+    rw [← Array.getElem_toList hslotBound]
+    exact hvalue
+  have hheadGet : heap[slot]? = some head := by
+    rw [Array.getElem?_eq_getElem hslotBound, hheadEq]
+  rcases hownership.heapPointersValid heap owners nodes slot hslotBound with
+    ⟨validHead, headNode, headMono, hvalidGet, hheadNode, hheadActive⟩
+  rw [hheadGet] at hvalidGet
+  have hvalidHead : validHead = head := (Option.some.inj hvalidGet).symm
+  subst validHead
+  have hheadMono : pairVecDivVHCMono head nodes = .ok headMono :=
+    (pairVecDivVHCMono_eq_ok_iff head nodes headMono).2
+      ⟨headNode, hheadNode, hheadActive⟩
+  have howns := hownership.1 slot head hheadGet
+  have hchain := hhomogeneous slot head headMono hheadGet hheadMono
+  rcases pairVecDivVHCChainOwns_mem_degree (some head) (owners head) nodes
+      headMono.deg i howns hchain hiOwner with
+    ⟨ownedNode, ownedMono, hownedNode, hownedMono, hownedDegree⟩
+  have hmonoEq : ownedMono = nodeMono := by
+    have hownedRun := (pairVecDivVHCMono_eq_ok_iff i nodes ownedMono).2
+      ⟨ownedNode, hownedNode, hownedMono⟩
+    rw [hnodeMono] at hownedRun
+    exact (Except.ok.inj hownedRun).symm
+  have hheadDegree : headMono.deg = degree := by
+    rw [hmonoEq, hnodeDegree] at hownedDegree
+    exact hownedDegree.symm
+  have hslotRun : pairVecDivVHCMono heap[slot] nodes = .ok headMono := by
+    simpa [hheadEq] using hheadMono
+  have hleRoot := pairVecDivVHCHeapOrdered_slot_le_root heap nodes
+    (hownership.heapPointersValid heap owners nodes) hordered slot hslotBound
+    headMono rootMono hslotRun hrootMono
+  have hrootLe := hmax 0 heap[0] rootMono
+    (Array.getElem?_eq_getElem hheap) hrootMono
+  exact hne (by omega)
+
 theorem pairVecDivVHCOwnedNode_degree_le_frontier
     (dividendIndex : Nat) (dividend : SparsePolyZp)
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)

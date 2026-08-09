@@ -949,3 +949,10 @@ every generated range-for and recursive loop used by SQF.
   degree 命中目标时，chain homogeneity 与 exact ownership 证明整个
   `owners heap[0]` 都包含于目标集。下一步可直接把 root trace 的
   owner-sum 与递归尾的 set-difference sum 合并为初始目标集的完整求和。
+- equal-degree 循环的非匹配停止分支已证明目标 owner 集为空。
+  对任意假设存在的目标-degree owned node，exact ownership 找到其
+  heap head，chain homogeneity 将该 node degree 与 head degree 对齐，完整
+  heap order 再给出 `head ≤ root`。结合所有 head 的全局 `≤ target`
+  上界，得到 root degree 必等于 target，与实际循环的
+  `rootMono.deg ≠ degree` 停止 guard 矛盾。这闭合了全循环 owner-sum
+  归纳的 base/stop 情形，不需要任何规格层“无剩余乘积”假设。

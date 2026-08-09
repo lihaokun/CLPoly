@@ -81,6 +81,28 @@ every generated range-for and recursive loop used by SQF.
    root and recurse on strictly smaller degree, then execute the exponent-copy
    loop.  This matches L2 contraction followed by multiplicity scaling.
 
+### Sparse `pair_vec_div`
+
+1. Preserve the source branch order: reject an empty divisor, handle aliasing,
+   clear the destination, return on an empty dividend, then split the
+   single-term divisor and general priority-heap paths.
+2. In the single-term path traverse every dividend term, run the actual
+   univariate monomial divisibility test, and for divisible terms compute the
+   coefficient with the generated inverse and normalized modular multiplier
+   before appending it.
+3. In the general path represent each C++ heap node by its divisor-tail index
+   and quotient index.  The heap invariant identifies every live node with the
+   product of those two concrete sparse cells; equal monomials form the linked
+   bucket consumed by the inner loop.
+4. The outer invariant states that `new_v * divisor` plus the unconsumed
+   dividend/heap frontier has the same polynomial denotation as the original
+   dividend.  Each subtraction bucket preserves this equality, and emitting a
+   quotient cell advances the leading frontier.
+5. Termination is lexicographic on the finite unconsumed dividend cells, live
+   node advances, and remaining output degree.  Exact-division call sites prove
+   the final frontier empty and identify the emitted quotient with L2
+   `divByMonic`.
+
 ## Required evidence
 
 - `lake env lean CLPoly/Refinement/SquarefreeZp.lean`
@@ -109,3 +131,8 @@ every generated range-for and recursive loop used by SQF.
 - 递归结果 copy 循环的 multiplicity 语义也已闭合：在明确的
   `UInt64` 无回绕前提下，实际 `e * prime` 的 `toNat` 精确对应 L2
   列表中的 `e * p`；因子多项式保持逐项相同。
+- `pair_vec_div` 的 single-divisor source branch 已闭合：逐项 monomial
+  divisibility test、generated inverse、generated preinverse multiply 与
+  append 均保留；输出保持 canonical，满足 `quotient * divisor =
+  dividend`，并在 monic exact-division 前提下精确等于 L2
+  `divByMonic`。一般 divisor 的 priority-heap branch 仍待闭合。

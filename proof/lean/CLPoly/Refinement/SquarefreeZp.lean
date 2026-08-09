@@ -311,6 +311,321 @@ theorem derivativeIR_isEmpty_iff (this : DenseUPolyZp)
   rw [Array.isEmpty_iff]
   exact derivativeIR_eq_empty_iff this source hcfg hcanonical hdegree
 
+/-- Concrete quotient cell produced by the C++ `v2_.size()==1` branch of
+`pair_vec_div`. -/
+def pairVecDivSingleTermIR (this : DenseUPolyZp)
+    (divisor term : UMonomial × Zp) : Option (UMonomial × Zp) :=
+  if divisor.1.deg ≤ term.1.deg then
+    let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+      divisor.2.val
+    let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+      term.2.val inverse
+    some (⟨term.1.deg - divisor.1.deg⟩, ⟨value, term.2.prime⟩)
+  else
+    none
+
+def pairVecDivSingleLoopIR (this : DenseUPolyZp) (index : Nat)
+    (output dividend : SparsePolyZp) (divisor : UMonomial × Zp) :
+    SparsePolyZp :=
+  if h : index < dividend.size then
+    let next := match pairVecDivSingleTermIR this divisor dividend[index] with
+      | none => output
+      | some term => output.push term
+    pairVecDivSingleLoopIR this (index + 1) next dividend divisor
+  else
+    output
+termination_by dividend.size - index
+decreasing_by omega
+
+theorem pairVecDivSingleLoopIR_toList (this : DenseUPolyZp) (index : Nat)
+    (output dividend : SparsePolyZp) (divisor : UMonomial × Zp) :
+    (pairVecDivSingleLoopIR this index output dividend divisor).toList =
+      output.toList ++ (dividend.toList.drop index).filterMap
+        (pairVecDivSingleTermIR this divisor) := by
+  rw [pairVecDivSingleLoopIR]
+  split
+  next hmore =>
+    rw [pairVecDivSingleLoopIR_toList]
+    have hdrop := List.drop_eq_getElem_cons
+      (l := dividend.toList) (i := index) (by simpa using hmore)
+    rw [hdrop, List.filterMap_cons, Array.getElem_toList hmore]
+    cases hterm : pairVecDivSingleTermIR this divisor dividend[index] with
+    | none => simp
+    | some term => simp [List.append_assoc]
+  next hdone =>
+    have hindex : dividend.toList.length ≤ index := by simpa using hdone
+    rw [List.drop_eq_nil_iff.mpr hindex]
+    simp
+termination_by dividend.size - index
+decreasing_by omega
+
+theorem pairVecDivSingleTermIR_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (divisor term output : UMonomial × Zp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdivisorReduced : Zp.Reduced this._p.toNat divisor.2)
+    (htermReduced : Zp.Reduced this._p.toNat term.2)
+    (hdivisorNonzero : divisor.2.val ≠ 0)
+    (htermNonzero : term.2.val ≠ 0)
+    (hrun : pairVecDivSingleTermIR this divisor term = some output) :
+    output.1.deg = term.1.deg - divisor.1.deg ∧
+      Zp.Reduced this._p.toNat output.2 ∧ output.2.val ≠ 0 ∧
+      Zp.toZMod this._p.toNat output.2 =
+        Zp.toZMod this._p.toNat term.2 /
+          Zp.toZMod this._p.toNat divisor.2 := by
+  unfold pairVecDivSingleTermIR at hrun
+  split at hrun
+  next hdegree =>
+    dsimp only at hrun
+    simp only [Option.some.injEq] at hrun
+    subst output
+    let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+      divisor.2.val
+    let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+      term.2.val inverse
+    have hdivisorPos : 0 < divisor.2.val.toNat := by
+      exact Nat.pos_of_ne_zero (fun hzero => hdivisorNonzero
+        (UInt64.toNat_inj.mp (by simpa using hzero)))
+    have hquotient :=
+      CLPoly.Impl.StrictWordArithmetic.quotientCoeff_eliminates_lead this
+        term.2.val divisor.2.val hcfg
+        (Fact.out : Nat.Prime this._p.toNat) htermReduced.2 hdivisorPos
+        hdivisorReduced.2
+    change value.toNat < this._p.toNat ∧
+      (value.toNat * divisor.2.val.toNat) % this._p.toNat =
+        term.2.val.toNat at hquotient
+    have hfieldMul : (value.toNat : ZMod this._p.toNat) *
+        (divisor.2.val.toNat : ZMod this._p.toNat) =
+          (term.2.val.toNat : ZMod this._p.toNat) := by
+      rw [← Nat.cast_mul, ← ZMod.natCast_mod]
+      exact congrArg (fun n : Nat => (n : ZMod this._p.toNat)) hquotient.2
+    have hdivisorFieldNonzero : Zp.toZMod this._p.toNat divisor.2 ≠ 0 :=
+      Zp.toZMod_ne_zero_of_val_ne_zero this._p.toNat divisor.2
+        hdivisorReduced hdivisorNonzero
+    have hvalueField : (value.toNat : ZMod this._p.toNat) =
+        Zp.toZMod this._p.toNat term.2 /
+          Zp.toZMod this._p.toNat divisor.2 := by
+      apply (eq_div_iff hdivisorFieldNonzero).2
+      unfold Zp.toZMod
+      exact hfieldMul
+    have hvalueNonzero : value ≠ 0 := by
+      intro hzero
+      have htermFieldNonzero := Zp.toZMod_ne_zero_of_val_ne_zero
+        this._p.toNat term.2 htermReduced htermNonzero
+      have hquotientFieldNonzero := div_ne_zero htermFieldNonzero
+        hdivisorFieldNonzero
+      apply hquotientFieldNonzero
+      rw [← hvalueField, hzero]
+      simp
+    refine ⟨rfl, ⟨htermReduced.1, hquotient.1⟩, ?_, ?_⟩
+    · exact hvalueNonzero
+    · exact hvalueField
+  next hdegree => simp at hrun
+
+theorem pairVecDivSingleTermIR_some_degree (this : DenseUPolyZp)
+    (divisor term output : UMonomial × Zp)
+    (hrun : pairVecDivSingleTermIR this divisor term = some output) :
+    output.1.deg = term.1.deg - divisor.1.deg ∧
+      divisor.1.deg ≤ term.1.deg := by
+  unfold pairVecDivSingleTermIR at hrun
+  split at hrun
+  next hdegree =>
+    dsimp only at hrun
+    simp only [Option.some.injEq] at hrun
+    subst output
+    exact ⟨rfl, hdegree⟩
+  next hdegree => simp at hrun
+
+theorem pairVecDivSingleLoopIR_zero_canonical (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (dividend : SparsePolyZp) (divisor : UMonomial × Zp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorReduced : Zp.Reduced this._p.toNat divisor.2)
+    (hdivisorNonzero : divisor.2.val ≠ 0) :
+    SparsePolyZp.Canonical this._p.toNat
+      (pairVecDivSingleLoopIR this 0 #[] dividend divisor) := by
+  rw [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr,
+    pairVecDivSingleLoopIR_toList]
+  simp only [List.drop_zero, List.nil_append]
+  refine ⟨?_, ?_, ?_⟩
+  · intro output houtput
+    rw [List.mem_filterMap] at houtput
+    rcases houtput with ⟨term, hterm, hrun⟩
+    exact (pairVecDivSingleTermIR_refines this divisor term output hcfg
+      hdivisorReduced (hdividendCanonical.1 term hterm) hdivisorNonzero
+      (hdividendCanonical.2.2 term hterm) hrun).2.1
+  · rw [List.isChain_iff_pairwise]
+    apply List.Pairwise.filterMap
+      (R := fun a b : UMonomial × Zp => a.1.deg > b.1.deg)
+      (S := fun a b : UMonomial × Zp => a.1.deg > b.1.deg)
+      (pairVecDivSingleTermIR this divisor)
+    · intro left right horder leftOut hleft rightOut hright
+      have hleftDegree := pairVecDivSingleTermIR_some_degree this divisor
+        left leftOut hleft
+      have hrightDegree := pairVecDivSingleTermIR_some_degree this divisor
+        right rightOut hright
+      rw [hleftDegree.1, hrightDegree.1]
+      omega
+    · exact List.isChain_iff_pairwise.mp hdividendCanonical.2.1
+  · intro output houtput
+    rw [List.mem_filterMap] at houtput
+    rcases houtput with ⟨term, hterm, hrun⟩
+    exact (pairVecDivSingleTermIR_refines this divisor term output hcfg
+      hdivisorReduced (hdividendCanonical.1 term hterm) hdivisorNonzero
+      (hdividendCanonical.2.2 term hterm) hrun).2.2.1
+
+theorem pairVecDivSingleTermIR_monomial_mul (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (divisor term output : UMonomial × Zp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdivisorReduced : Zp.Reduced this._p.toNat divisor.2)
+    (htermReduced : Zp.Reduced this._p.toNat term.2)
+    (hdivisorNonzero : divisor.2.val ≠ 0)
+    (htermNonzero : term.2.val ≠ 0)
+    (hrun : pairVecDivSingleTermIR this divisor term = some output) :
+    Polynomial.monomial output.1.deg
+          (Zp.toZMod this._p.toNat output.2) *
+        Polynomial.monomial divisor.1.deg
+          (Zp.toZMod this._p.toNat divisor.2) =
+      Polynomial.monomial term.1.deg
+        (Zp.toZMod this._p.toNat term.2) := by
+  have hrefines := pairVecDivSingleTermIR_refines this divisor term output
+    hcfg hdivisorReduced htermReduced hdivisorNonzero htermNonzero hrun
+  have hdivisorFieldNonzero : Zp.toZMod this._p.toNat divisor.2 ≠ 0 :=
+    Zp.toZMod_ne_zero_of_val_ne_zero this._p.toNat divisor.2
+      hdivisorReduced hdivisorNonzero
+  rw [Polynomial.monomial_mul_monomial, hrefines.1,
+    Nat.sub_add_cancel (pairVecDivSingleTermIR_some_degree this divisor term
+      output hrun).2, hrefines.2.2.2,
+    div_mul_cancel₀ _ hdivisorFieldNonzero]
+
+theorem listSum_pairVecDivSingleTermIR_mul (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (divisor : UMonomial × Zp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdivisorReduced : Zp.Reduced this._p.toNat divisor.2)
+    (hdivisorNonzero : divisor.2.val ≠ 0) :
+    ∀ terms : List (UMonomial × Zp),
+      (∀ term ∈ terms, Zp.Reduced this._p.toNat term.2) →
+      (∀ term ∈ terms, term.2.val ≠ 0) →
+      (∀ term ∈ terms, divisor.1.deg ≤ term.1.deg) →
+      listSum this._p.toNat
+          (terms.filterMap (pairVecDivSingleTermIR this divisor)) *
+        Polynomial.monomial divisor.1.deg
+          (Zp.toZMod this._p.toNat divisor.2) =
+      listSum this._p.toNat terms := by
+  intro terms hreduced hnonzero hdegree
+  induction terms with
+  | nil => simp [listSum]
+  | cons term rest ih =>
+      have htermReduced := hreduced term List.mem_cons_self
+      have htermNonzero := hnonzero term List.mem_cons_self
+      have htermDegree := hdegree term List.mem_cons_self
+      have hrestReduced : ∀ item ∈ rest,
+          Zp.Reduced this._p.toNat item.2 := by
+        intro item hitem
+        exact hreduced item (List.mem_cons_of_mem term hitem)
+      have hrestNonzero : ∀ item ∈ rest, item.2.val ≠ 0 := by
+        intro item hitem
+        exact hnonzero item (List.mem_cons_of_mem term hitem)
+      have hrestDegree : ∀ item ∈ rest, divisor.1.deg ≤ item.1.deg := by
+        intro item hitem
+        exact hdegree item (List.mem_cons_of_mem term hitem)
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor.2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        term.2.val inverse
+      let output : UMonomial × Zp :=
+        (⟨term.1.deg - divisor.1.deg⟩, ⟨value, term.2.prime⟩)
+      have hrun : pairVecDivSingleTermIR this divisor term = some output := by
+        simp [pairVecDivSingleTermIR, htermDegree, output, value, inverse]
+      rw [List.filterMap_cons, hrun, listSum_cons, add_mul,
+        pairVecDivSingleTermIR_monomial_mul this divisor term output hcfg
+          hdivisorReduced htermReduced hdivisorNonzero htermNonzero hrun,
+        ih hrestReduced hrestNonzero hrestDegree, listSum_cons]
+
+def pairVecDivSingleBranchIR (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) : RawExec SparsePolyZp :=
+  if hone : divisor.size = 1 then
+    .ok (pairVecDivSingleLoopIR this 0 #[] dividend divisor[0])
+  else
+    .error .assertionFailure
+
+theorem pairVecDivSingleBranchIR_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hdivisorSize : divisor.size = 1)
+    (hdegree : ∀ term ∈ dividend.toList,
+      divisor[0].1.deg ≤ term.1.deg) :
+    ∃ quotient,
+      pairVecDivSingleBranchIR this dividend divisor = .ok quotient ∧
+      SparsePolyZp.Canonical this._p.toNat quotient ∧
+      SparsePolyZp.toPoly this._p.toNat quotient *
+          SparsePolyZp.toPoly this._p.toNat divisor =
+        SparsePolyZp.toPoly this._p.toNat dividend := by
+  rcases Array.size_eq_one_iff.mp hdivisorSize with ⟨divisorTerm, rfl⟩
+  have hdivisorMem : divisorTerm ∈ (#[divisorTerm] : SparsePolyZp).toList := by
+    simp
+  have hdivisorReduced := hdivisorCanonical.1 divisorTerm hdivisorMem
+  have hdivisorNonzero := hdivisorCanonical.2.2 divisorTerm hdivisorMem
+  let quotient := pairVecDivSingleLoopIR this 0 #[] dividend divisorTerm
+  refine ⟨quotient, by simp [pairVecDivSingleBranchIR, quotient], ?_, ?_⟩
+  · exact pairVecDivSingleLoopIR_zero_canonical this dividend divisorTerm hcfg
+      hdividendCanonical hdivisorReduced hdivisorNonzero
+  · unfold SparsePolyZp.toPoly quotient
+    rw [pairVecDivSingleLoopIR_toList]
+    simp only [List.drop_zero, List.nil_append]
+    have hdivisorPoly : listSum this._p.toNat [divisorTerm] =
+        Polynomial.monomial divisorTerm.1.deg
+          (Zp.toZMod this._p.toNat divisorTerm.2) := by
+      simp [listSum]
+    rw [hdivisorPoly]
+    rw [listSum_pairVecDivSingleTermIR_mul this divisorTerm hcfg
+      hdivisorReduced hdivisorNonzero dividend.toList hdividendCanonical.1
+      hdividendCanonical.2.2 (by simpa using hdegree)]
+
+theorem eq_divByMonic_of_mul_eq {p : Nat}
+    [Fact (Nat.Prime p)]
+    (quotient dividend divisor : Polynomial (ZMod p))
+    (hdivisorMonic : divisor.Monic) (hdivisorDvd : divisor ∣ dividend)
+    (hmul : quotient * divisor = dividend) :
+    quotient = dividend /ₘ divisor := by
+  have hmodZero : dividend %ₘ divisor = 0 :=
+    (Polynomial.modByMonic_eq_zero_iff_dvd hdivisorMonic).2 hdivisorDvd
+  have hstandard := Polynomial.modByMonic_add_div dividend divisor
+  rw [hmodZero, zero_add] at hstandard
+  apply mul_left_cancel₀ hdivisorMonic.ne_zero
+  rw [mul_comm divisor quotient, hmul]
+  exact hstandard.symm
+
+theorem pairVecDivSingleBranchIR_refines_divByMonic
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hdivisorSize : divisor.size = 1)
+    (hdegree : ∀ term ∈ dividend.toList,
+      divisor[0].1.deg ≤ term.1.deg)
+    (hdivisorMonic : (SparsePolyZp.toPoly this._p.toNat divisor).Monic)
+    (hdivisorDvd : SparsePolyZp.toPoly this._p.toNat divisor ∣
+      SparsePolyZp.toPoly this._p.toNat dividend) :
+    ∃ quotient,
+      pairVecDivSingleBranchIR this dividend divisor = .ok quotient ∧
+      SparsePolyZp.Canonical this._p.toNat quotient ∧
+      SparsePolyZp.toPoly this._p.toNat quotient =
+        SparsePolyZp.toPoly this._p.toNat dividend /ₘ
+          SparsePolyZp.toPoly this._p.toNat divisor := by
+  rcases pairVecDivSingleBranchIR_refines this dividend divisor hcfg
+      hdividendCanonical hdivisorCanonical hdivisorSize hdegree with
+    ⟨quotient, hrun, hcanonical, hmul⟩
+  exact ⟨quotient, hrun, hcanonical,
+    eq_divByMonic_of_mul_eq _ _ _ hdivisorMonic hdivisorDvd hmul⟩
+
 /-- Exact source-order range-for loop of `__extract_pth_root`. -/
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=
   (UMonomial.mk ((term.1.deg.toUInt64 / prime).toInt64), term.2)

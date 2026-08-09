@@ -1066,3 +1066,16 @@ every generated range-for and recursive loop used by SQF.
   `(frontier, oldLimit)` 的系数为零。至此单步全次数覆盖已齐，下一步
   是用强归纳将“旧界限以上相等、空隙为零、frontier 当前相等”贯穿
   `pairVecDivVHCOuterLoop`。
+- 单步全区间系数扩展已闭合。
+  `PairVecDivVHCProductAgreesAbove` 表示 `quotient * divisor` 与 dividend
+  在某个次数界限以上逐系数相等；
+  `pairVecDivVHCOuterIteration_extends_productAgreement` 对任意目标次数
+  作三分：等于 frontier 时使用真实 consume/emit 的完整系数定理，
+  严格位于 frontier 与旧界限之间时使用 dividend、lead-product 与
+  heap-tail 三条空隙排除定理，高于旧界限时使用旧相等不变式；真实
+  emit 的高次数保持把三种情形统一到 iteration 输出商。
+  因而单次生成 C++ body 已能把 L2 相等区间从 old limit 严格扩展到
+  selected frontier。全局强归纳现在剩下的是证明 activation/insertion/
+  reinsertion 对 heap order 与 equal-degree chain homogeneous 的保持，
+  以便每个递归状态都满足该单步定理的表示前提；这些前提不会被
+  当作假设跳过。

@@ -14940,6 +14940,82 @@ theorem pairVecDivVHCOuterIteration_product_coeff_above
   rw [hresult]
   exact hemitAbove
 
+def PairVecDivVHCProductAgreesAbove (p degreeLimit : Nat)
+    (quotient dividend divisor : SparsePolyZp) : Prop :=
+  ∀ degree, degreeLimit ≤ degree →
+    (SparsePolyZp.toPoly p quotient * SparsePolyZp.toPoly p divisor).coeff
+        degree =
+      (SparsePolyZp.toPoly p dividend).coeff degree
+
+/-- One real outer iteration extends coefficient agreement from the previous
+strict bound down through the selected frontier.  Degrees above the old bound
+use the induction hypothesis, the open sparse gap uses the concrete
+dividend/heap exclusion lemmas, and the selected degree uses the full
+generated consume/emit coefficient theorem. -/
+theorem pairVecDivVHCOuterIteration_extends_productAgreement
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (degreeLimit dividendIndex : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
+    (hdivisor : 0 < divisor.size)
+    (hsize : nodes.size = divisor.size - 1)
+    (hstate : PairVecDivVHCStateCovered heap nodes #[] resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hresetReady : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hprocessed : PairVecDivVHCQuotientLeadAbove degreeLimit
+      divisor[0].1.deg quotient)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hquotientCanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (habove : PairVecDivVHCQuotientAbove frontier.degree divisor[0].1.deg
+      quotient)
+    (hconsumed : PairVecDivVHCConsumedDividendAbove degreeLimit dividendIndex
+      dividend)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hlead : divisor[0].1.deg ≤ frontier.degree)
+    (hagrees : PairVecDivVHCProductAgreesAbove this._p.toNat degreeLimit
+      quotient dividend divisor)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    PairVecDivVHCProductAgreesAbove this._p.toNat frontier.degree
+      result.quotient dividend divisor := by
+  intro degree hdegree
+  by_cases heq : degree = frontier.degree
+  · subst degree
+    exact pairVecDivVHCOuterIteration_product_coefficient this degreeLimit
+      dividendIndex heap nodes quotient dividend divisor resetH frontier result
+      owners hdivisor hsize hstate hownership hhomogeneous hordered hdenotes
+      hfixed hresetReady hprefix hcfg hquotientCanonical hdividendCanonical
+      hdivisorCanonical habove hconsumed hdecrease hlead hselect hrun
+  · have hstrict : frontier.degree < degree := by omega
+    rw [pairVecDivVHCOuterIteration_product_coeff_above this dividendIndex degree
+      heap nodes quotient dividend divisor resetH frontier result hdivisor hcfg
+      hquotientCanonical hdividendCanonical hdivisorCanonical hlead hstrict
+      hselect hrun]
+    by_cases hold : degreeLimit ≤ degree
+    · exact hagrees degree hold
+    · have hgapProduct := pairVecDivVHCProduct_coeff_eq_zero_of_gap
+        this._p.toNat degreeLimit degree dividendIndex resetH dividend quotient
+        divisor heap nodes owners frontier hdivisor hsize hfixed hstate
+        hownership hhomogeneous hresetReady hordered hdenotes
+        hquotientCanonical hprefix hprocessed hstrict (by omega) hselect
+      have hgapDividend := pairVecDivVHCDividend_coeff_eq_zero_of_gap
+        this._p.toNat degreeLimit degree dividendIndex dividend heap nodes
+        frontier hdividendCanonical hconsumed hstrict (by omega) hselect
+      rw [hgapProduct, hgapDividend]
+
 theorem pairVecDivVHCOuterIteration_preserves_quotientLeadAbove
     (this : DenseUPolyZp) (degreeLimit dividendIndex : Nat)
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)

@@ -124,6 +124,9 @@ implementation.
   source cutoff of 340, with no alternate dense GCD computation.
 - Proved the complete already-ordered dispatcher refines normalized L2 GCD in
   all three concrete branches.
+- Closed the source length-comparison swap, with separate physical readiness
+  evidence for both pointer orderings and a proved normalized Euclidean-GCD
+  commutation step.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why
@@ -141,7 +144,7 @@ boundary is required before replacing its current typeclass GCD call.
 
 - 耗时：约 0.5 小时（源码控制流核对、接口设计、形式化与构建）
 - 迭代：1 轮编译—修复
-- Lean 新增/修改行数：约 720 行
+- Lean 新增/修改行数：约 850 行
 - 对应 C++ 行数：约 55 行（两个 sparse/dense 转换及 GCD 包装）
 - 放弃的方案：直接证明当前 `SparsePolyZp.gcd` 正确；它不是 C++ dense
   GCD 的执行，不能用于严格 L1→L2 精化。

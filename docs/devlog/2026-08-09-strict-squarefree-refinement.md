@@ -482,3 +482,12 @@ every generated range-for and recursive loop used by SQF.
   frontier 次数归属。审查中确认全局 `NextValid` 在消费中并不应被保持：
   C++ 会让已消费/待重插节点暂时保留陈旧 `next`。后续提升将只给仍由
   heap 拥有且彼此不交的链携带同次数性质，忠实覆盖这种中间态。
+- heap-owned bucket 的同次数不变量已贯穿完整 equal-degree 循环。
+  `PairVecDivVHCHeapChainsHomogeneous` 只量化真实 heap slot 及其 exact
+  owner chain；入口可由全局 `NextValid` 一次性建立，但消费之后不再要求
+  已移入 `lin` 的暂态节点满足陈旧 `next` 关系。root chain 消费利用 owner
+  两两不交证明其他 bucket 的每个节点读取完全未变，真实 `VHC_extract`
+  又证明新 heap 的每个 head 都来自旧的非 root slot，因此 ownership 与
+  chain degree 同时保持。最后按 checked extract 给出的实际 heap-size
+  严格下降完成 `ConsumeEqualDegree` 归纳。下一步用该不变量在每次循环
+  迭代调用 root bucket 求和定理，并把各 bucket 的实际乘积 trace 串接。

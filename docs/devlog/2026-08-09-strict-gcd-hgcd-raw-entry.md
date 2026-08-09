@@ -294,6 +294,15 @@ generated high-half bound and the middle division's proved `lenC0 < lenA`.
 There is no fuel counter, partial definition, specification oracle, or L2
 execution fallback.
 
+At each large `_gcd_hgcd` loop state, instantiate that total checked-call
+theorem from the dynamic physical provider and the divisor/remainder raw
+representations returned by the immediately preceding generated divrem.  The
+large-step theorem must return the actual HGCD result and its new represented
+pair, GCD preservation, and `result.lenB < lenJ`; it must not accept either a
+preselected result or a successful-run premise.  This turns the generated
+loop's proof-only decrease callback into a consequence of reachable physical
+states and prepares the full loop recursion to execute without an oracle.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

@@ -2911,11 +2911,10 @@ structure GcdHgcdDynamicHgcdWorkspace (this : DenseUPolyZp)
     (W scratch : RawPtr UInt64) (heap : RawHeap) (lenJ lenR : Nat)
     (divisor remainder : Polynomial (ZMod this._p.toNat))
     (horder : lenR < lenJ) : Type where
-  invocation : HgcdRecursiveInvocationWorkspace this
-    (hgcdRecursiveCallChecked this) lenJ M hM false G J J R lenJ lenR W
-    scratch heap divisor remainder hcfg hp rfl horder
-  descendants : HgcdRecursiveInvocationWorkspaceProviderBelow this
-    (hgcdRecursiveCallChecked this) hcfg hp lenJ
+  invocation : HgcdRecursiveInvocationTotalWorkspace this M hM false G J J R
+    lenJ lenR W scratch heap divisor remainder hcfg hp horder
+  descendants : HgcdRecursiveInvocationTotalWorkspaceProviderBelow this hcfg
+    hp lenJ
 
 /-- Dynamic physical provider for every represented large-branch state.  It
 contains recursive allocation safety but neither an HGCD result nor a length
@@ -3142,9 +3141,9 @@ theorem hgcdRecursiveCallChecked_gcd_step_of_large
     omega
   exact hinvariant.stopped.trans hhalf
 
-/-- Reachable large-branch termination and semantics are derived from the
-dynamic physical provider and the one actual checked HGCD result. -/
-theorem gcdHgcdLoop_dynamic_hgcd_step (this : DenseUPolyZp)
+/-- Reachable large-branch execution, termination, and semantics are all
+derived from physical safety.  No successful HGCD call is assumed. -/
+theorem gcdHgcdLoop_dynamic_hgcd_step_succeeds (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]
     (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
     (M : HgcdMat) (hM : M.Valid) (G J R : RawPtr UInt64)
@@ -3155,11 +3154,11 @@ theorem gcdHgcdLoop_dynamic_hgcd_step (this : DenseUPolyZp)
     (divisor remainder : Polynomial (ZMod this._p.toNat))
     (horder : lenR < lenJ) (hlarge : ¬ lenJ < hgcdRecursiveCutoff)
     (hdivisor : RawDensePolyRep this heap J lenJ divisor)
-    (hremainder : RawDensePolyRep this heap R lenR remainder)
-    (result : HgcdRecursiveResult)
-    (hrun : hgcdRecursiveCallChecked this M hM false G J J R lenJ lenR W
-      scratch heap = .ok result) :
-    ∃ (finalG finalJ : Polynomial (ZMod this._p.toNat)),
+    (hremainder : RawDensePolyRep this heap R lenR remainder) :
+    ∃ (result : HgcdRecursiveResult)
+      (finalG finalJ : Polynomial (ZMod this._p.toNat)),
+      hgcdRecursiveCallChecked this M hM false G J J R lenJ lenR W scratch
+        heap = .ok result ∧
       RawDensePolyRep this result.heap G result.lenA finalG ∧
       RawDensePolyRep this result.heap J result.lenB finalJ ∧
       normalize (EuclideanDomain.gcd divisor remainder) =
@@ -3167,8 +3166,14 @@ theorem gcdHgcdLoop_dynamic_hgcd_step (this : DenseUPolyZp)
       result.lenB < lenJ := by
   let node := physical heap lenJ lenR divisor remainder horder hdivisor
     hremainder
-  exact hgcdRecursiveCallChecked_gcd_step_of_large this hcfg hp M hM G J R
-    lenJ lenR W scratch heap divisor remainder horder hlarge node.invocation
-    node.descendants result hrun
+  rcases hgcdRecursiveCallChecked_succeeds_wf this hcfg hp M hM false G J J R
+      lenJ lenR W scratch heap divisor remainder horder node.invocation
+      node.descendants with
+    ⟨result, finalG, finalJ, entries, hrun, hInvariant⟩
+  have hhalf : lenJ / 2 + 1 < lenJ := by
+    simp only [hgcdRecursiveCutoff] at hlarge
+    omega
+  exact ⟨result, finalG, finalJ, hrun, hInvariant.aRep, hInvariant.bRep,
+    hInvariant.gcdPreserved, hInvariant.stopped.trans hhalf⟩
 
 end CLPoly.Impl.StrictGCDHGCDRefinement

@@ -851,3 +851,12 @@ every generated range-for and recursive loop used by SQF.
   no-children 证据矛盾。下一步实例化非 leaf 的 child-copy：用 selected
   对左右候选的支配证明两条下边，用旧 child≤parent 链证明写入值仍不
   超过 hole 的旧 parent，然后递归到 selected hole。
+- 非 leaf 单槽写入的通用父/子 frame 已闭合。首先从源码 parent 公式
+  `(child - 1) / 2` 精确证明其逆像只有 `2*i+1` 与 `2*i+2`，包含自然数
+  除法上下界证明。随后 `set_parent` 将受影响边分开：`child=i` 的向上边
+  由新 mono 的显式 parent 上界恢复；`parent child=i` 的向下边先把
+  parent lookup 对齐到新 head/mono，再将 child lookup 通过 set-ne 还原，
+  使用新 mono 对该 child 的显式支配。结合上一阶段 frame，所有其他边
+  自动保持。下一步用 source selection 的 left/right 比较实例化 `hdown`，
+  并从旧堆序的 `selected→i→parent(i)` 链实例化 `hup`，得到实际
+  child-copy 后的前缀堆序。

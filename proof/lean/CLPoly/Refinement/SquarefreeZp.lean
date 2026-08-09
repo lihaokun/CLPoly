@@ -2790,6 +2790,55 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.set_leaf
     exact hup parentHead parentMono hparentGet hparentMono
   · exact False.elim (hnoChildren child hchild hparentEq)
 
+theorem PairVecDivVHCHeapDegreesOrderedUpTo.set_parent
+    (limit i newHead : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (newMono : UMonomial)
+    (hi : i < heap.size)
+    (hordered : PairVecDivVHCHeapDegreesOrderedUpTo limit heap nodes)
+    (hnewMono : pairVecDivVHCMono newHead nodes = .ok newMono)
+    (hup : ∀ parentHead parentMono,
+      heap[pairVecDivVHCParent i]? = some parentHead →
+      pairVecDivVHCMono parentHead nodes = .ok parentMono →
+      newMono.deg ≤ parentMono.deg)
+    (hdown : ∀ child < limit, pairVecDivVHCParent child = i →
+      ∀ childHead childMono,
+        heap[child]? = some childHead →
+        pairVecDivVHCMono childHead nodes = .ok childMono →
+        childMono.deg ≤ newMono.deg) :
+    PairVecDivVHCHeapDegreesOrderedUpTo limit (heap.set i newHead) nodes := by
+  apply hordered.set_of_affected limit i newHead heap nodes hi
+  intro child hchild hpos hchanged childHead parentHead childMono parentMono
+    hchildGet hparentGet hchildMono hparentMono
+  rcases hchanged with rfl | hparentEq
+  · rw [Array.getElem?_set_self hi] at hchildGet
+    have hchildHeadEq : childHead = newHead := (Option.some.inj hchildGet).symm
+    subst childHead
+    rw [hnewMono] at hchildMono
+    have hchildMonoEq : childMono = newMono := (Except.ok.inj hchildMono).symm
+    subst childMono
+    have hparentLt : pairVecDivVHCParent child < child := by
+      unfold pairVecDivVHCParent
+      have hhalf : (child - 1) / 2 ≤ child - 1 := Nat.div_le_self _ _
+      omega
+    rw [Array.getElem?_set_ne hi (by omega)] at hparentGet
+    exact hup parentHead parentMono hparentGet hparentMono
+  · rw [hparentEq, Array.getElem?_set_self hi] at hparentGet
+    have hparentHeadEq : parentHead = newHead :=
+      (Option.some.inj hparentGet).symm
+    subst parentHead
+    rw [hnewMono] at hparentMono
+    have hparentMonoEq : parentMono = newMono :=
+      (Except.ok.inj hparentMono).symm
+    subst parentMono
+    have hchildNe : i ≠ child := by
+      have hparentLt : pairVecDivVHCParent child < child := by
+        unfold pairVecDivVHCParent
+        have hhalf : (child - 1) / 2 ≤ child - 1 := Nat.div_le_self _ _
+        omega
+      omega
+    rw [Array.getElem?_set_ne hi hchildNe] at hchildGet
+    exact hdown child hchild hparentEq childHead childMono hchildGet hchildMono
+
 /-- A `next` edge is a valid equal-monomial bucket link. -/
 def PairVecDivVHCNextValid (nodes : Array PairVecDivVHCNode) : Prop :=
   ∀ (i : Nat) (node : PairVecDivVHCNode) (next : Nat),
@@ -2813,6 +2862,26 @@ theorem pairVecDivVHCParent_lt (i : Nat) (hi : 0 < i) :
   unfold pairVecDivVHCParent
   have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
   omega
+
+theorem pairVecDivVHCParent_eq_iff_children (i child : Nat)
+    (hchild : 0 < child) :
+    pairVecDivVHCParent child = i ↔
+      child = i * 2 + 1 ∨ child = i * 2 + 2 := by
+  constructor
+  · intro hparent
+    have hdiv : (child - 1) / 2 = i := by
+      simpa [pairVecDivVHCParent] using hparent
+    have hlower : i * 2 ≤ child - 1 := by
+      apply (Nat.le_div_iff_mul_le (by omega : 0 < 2)).mp
+      rw [hdiv]
+    have hupper : child - 1 < (i + 1) * 2 := by
+      apply (Nat.div_lt_iff_lt_mul (by omega : 0 < 2)).mp
+      rw [hdiv]
+      omega
+    omega
+  · intro hchildren
+    rcases hchildren with rfl | rfl <;>
+      unfold pairVecDivVHCParent <;> omega
 
 theorem pairVecDivVHCHeapOrdered_slot_le_root
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)

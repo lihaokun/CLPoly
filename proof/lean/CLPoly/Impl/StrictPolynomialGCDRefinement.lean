@@ -2503,6 +2503,24 @@ def publicPolynomialGCDMonicFinish
     else
       .error .assertionFailure
 
+/-- The complete source-written nonempty public wrapper: execute the internal
+raw GCD with the exact minimum degree bound and then execute its second sparse
+monic traversal. -/
+def polynomialGCDPublicNonemptyRawIR (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (left right : SparsePolyZp)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) : RawExec InternalPolynomialGCDRawResult :=
+  match polynomial_GCD_nonempty_raw_ir this M hM resultPtr leftPtr rightPtr
+      aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
+      (polynomialGCDDegreeBound left right) loopDecrease heap with
+  | .error fault => .error fault
+  | .ok out => publicPolynomialGCDMonicFinish out
+
 theorem publicPolynomialGCDMonicFinish_refines
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (out : InternalPolynomialGCDRawResult) (sparse : SparsePolyZp)
@@ -2571,5 +2589,130 @@ theorem publicPolynomialGCDMonicFinish_refines
   · simp [publicPolynomialGCDMonicFinish, houtput, hsparseNonempty, result,
       lcInv]
   · simpa [result, hlcField] using hresultSemantic
+
+theorem polynomialGCDPublicNonemptyRawIR_refines_of_internal
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (left right : SparsePolyZp)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) (out : InternalPolynomialGCDRawResult)
+    (sparse : SparsePolyZp)
+    (hrun : polynomial_GCD_nonempty_raw_ir this M hM resultPtr leftPtr
+      rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left
+      right (polynomialGCDDegreeBound left right) loopDecrease heap = .ok out)
+    (houtput : out.output = some sparse)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat sparse)
+    (hsemantic : SparsePolyZp.toPoly this._p.toNat sparse = normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+        (SparsePolyZp.toPoly this._p.toNat right)))
+    (htargetNonzero : normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+        (SparsePolyZp.toPoly this._p.toNat right)) ≠ 0)
+    (hp : 1 < this._p.toNat) :
+    ∃ final result,
+      polynomialGCDPublicNonemptyRawIR this M hM resultPtr leftPtr rightPtr
+          aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
+          loopDecrease heap = .ok final ∧
+      final.output = some result ∧
+      SparsePolyZp.Canonical this._p.toNat result ∧
+      SparsePolyZp.toPoly this._p.toNat result = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right)) := by
+  have hsparseNonzero : SparsePolyZp.toPoly this._p.toNat sparse ≠ 0 := by
+    rw [hsemantic]
+    exact htargetNonzero
+  have htargetMonic : (normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+        (SparsePolyZp.toPoly this._p.toNat right))).Monic :=
+    Polynomial.monic_normalize (by
+      simpa [normalize_eq_zero] using htargetNonzero)
+  have hsparseMonic : (SparsePolyZp.toPoly this._p.toNat sparse).Monic := by
+    rw [hsemantic]
+    exact htargetMonic
+  rcases publicPolynomialGCDMonicFinish_refines this out sparse houtput
+      hcanonical hsparseNonzero hsparseMonic hp with
+    ⟨final, hfinish, _, _, _, result, hfinalOutput, hresultCanonical,
+      hresultSemantic⟩
+  exact ⟨final, result, by
+    simp [polynomialGCDPublicNonemptyRawIR, hrun, hfinish],
+    hfinalOutput, hresultCanonical, hresultSemantic.trans hsemantic⟩
+
+theorem polynomialGCDPublicNonemptyRawIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (left right : SparsePolyZp)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) (hcfg : DensePreinvConfigured this)
+    (hp : 1 < this._p.toNat)
+    (hleftValid : heap.ValidU64Slice leftPtr (sparseDenseLength left))
+    (hrightValid : heap.ValidU64Slice rightPtr (sparseDenseLength right))
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonzero : SparsePolyZp.toPoly this._p.toNat left ≠ 0)
+    (hrightNonzero : SparsePolyZp.toPoly this._p.toNat right ≠ 0)
+    (hleftBound : sparseDenseLength left ≤ 2 ^ 63)
+    (hrightBound : sparseDenseLength right ≤ 2 ^ 63)
+    (hdisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint rightPtr
+      (sparseDenseLength right) leftPtr (sparseDenseLength left))
+    (readyAB : ∀ finalHeap,
+      RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+          (SparsePolyZp.toPoly this._p.toNat left) →
+      RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+          (SparsePolyZp.toPoly this._p.toNat right) →
+      DenseGcdOrderedReady this hcfg hp M hM resultPtr leftPtr rightPtr aBuf
+        bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength left) (sparseDenseLength right) finalHeap
+        (SparsePolyZp.toPoly this._p.toNat left)
+        (SparsePolyZp.toPoly this._p.toNat right))
+    (readyBA : ∀ finalHeap,
+      RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+          (SparsePolyZp.toPoly this._p.toNat left) →
+      RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+          (SparsePolyZp.toPoly this._p.toNat right) →
+      DenseGcdOrderedReady this hcfg hp M hM resultPtr rightPtr leftPtr aBuf
+        bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+        (sparseDenseLength right) (sparseDenseLength left) finalHeap
+        (SparsePolyZp.toPoly this._p.toNat right)
+        (SparsePolyZp.toPoly this._p.toNat left)) :
+    ∃ final result,
+      polynomialGCDPublicNonemptyRawIR this M hM resultPtr leftPtr rightPtr
+          aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
+          loopDecrease heap = .ok final ∧
+      final.output = some result ∧
+      SparsePolyZp.Canonical this._p.toNat result ∧
+      SparsePolyZp.toPoly this._p.toNat result = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right)) := by
+  rcases polynomial_GCD_nonempty_raw_ir_refines_source_bound this M hM
+      resultPtr leftPtr rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR
+      euclidW3 left right loopDecrease heap hcfg hp hleftValid hrightValid
+      hleftCanonical hrightCanonical hleftNonzero hrightNonzero hleftBound
+      hrightBound hdisjoint readyAB readyBA with
+    ⟨out, sparse, hrun, houtput, hcanonical, hsemantic⟩
+  have hgcdNonzero : EuclideanDomain.gcd
+      (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right) ≠ 0 := by
+    intro hzero
+    apply hleftNonzero
+    exact zero_dvd_iff.mp
+      (hzero ▸ EuclideanDomain.gcd_dvd_left
+        (SparsePolyZp.toPoly this._p.toNat left)
+        (SparsePolyZp.toPoly this._p.toNat right))
+  have htargetNonzero : normalize (EuclideanDomain.gcd
+      (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right)) ≠ 0 := by
+    simpa [normalize_eq_zero] using hgcdNonzero
+  exact polynomialGCDPublicNonemptyRawIR_refines_of_internal this M hM
+    resultPtr leftPtr rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR
+    euclidW3 left right loopDecrease heap out sparse hrun houtput hcanonical
+    hsemantic htargetNonzero hp
 
 end CLPoly.Impl.StrictPolynomialGCDRefinement

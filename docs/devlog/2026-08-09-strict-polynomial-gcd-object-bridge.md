@@ -219,6 +219,11 @@ canonical and its leading coefficient is one.
   second range-for mutation.  Its refinement theorem proves that this actual
   traversal succeeds, preserves the raw result metadata and canonical sparse
   representation, and leaves the already-monic L2 polynomial unchanged.
+- Composed that tail with both real sparse constructors and the complete raw
+  internal GCD path under the exact source minimum-degree guard.  The exported
+  nonempty public execution theorem now returns the canonical normalized L2
+  Euclidean gcd only after the source's second monic traversal has actually
+  run.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

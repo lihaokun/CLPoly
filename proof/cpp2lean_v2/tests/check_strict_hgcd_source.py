@@ -452,6 +452,7 @@ def main() -> None:
         "gcdHgcdLoop_zero_step",
         "hgcdRecursiveCallChecked_gcd_step_of_large",
         "gcdHgcdLoop_dynamic_hgcd_step_succeeds",
+        "gcdHgcdLoop_succeeds_wf",
         "GcdHgcdRawResult",
         "HgcdGcdLoopLengthDecreases",
         "gcdHgcdLoop",

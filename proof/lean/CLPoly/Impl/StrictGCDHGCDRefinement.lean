@@ -3176,4 +3176,146 @@ theorem gcdHgcdLoop_dynamic_hgcd_step_succeeds (this : DenseUPolyZp)
   exact ⟨result, finalG, finalJ, hrun, hInvariant.aRep, hInvariant.bRep,
     hInvariant.gcdPreserved, hInvariant.stopped.trans hhalf⟩
 
+/-- Total refinement of every represented state of the exact generated
+`_gcd_hgcd` loop.  The recursion measure is exactly the source variable
+`lenJ`, and execution remains the generated raw control flow. -/
+theorem gcdHgcdLoop_succeeds_wf (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (M : HgcdMat) (hM : M.Valid)
+    (G J Q R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (W scratch : RawPtr UInt64)
+    (euclidA euclidB euclidQ euclidR : RawPtr UInt64)
+    (euclidW3 : RawPtr Word3)
+    (euclidDecrease : Generated.StrictEuclidGCD.DivremLengthDecreases this
+      euclidQ euclidW3)
+    (loopDecrease : HgcdGcdLoopLengthDecreases this M hM W scratch)
+    (divremPhysical : GcdHgcdDynamicDivremWorkspaceProvider this G J Q R W3)
+    (euclidPhysical : GcdHgcdDynamicEuclidWorkspaceProvider this G J R
+      euclidA euclidB euclidQ euclidR euclidW3)
+    (hgcdPhysical : GcdHgcdDynamicHgcdWorkspaceProvider this hcfg hp M hM G J
+      R W scratch)
+    (heap : RawHeap) (lenG lenJ : Nat)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hleft : RawDensePolyRep this heap G lenG left)
+    (hright : RawDensePolyRep this heap J lenJ right) :
+    ∃ (out : GcdHgcdRawResult)
+      (result : Polynomial (ZMod this._p.toNat)),
+      gcdHgcdLoop this M hM G J Q R W3 W scratch euclidA euclidB euclidQ
+          euclidR euclidW3 euclidDecrease loopDecrease heap lenG lenJ =
+        .ok out ∧
+      RawDensePolyRep this out.heap G out.lenG result ∧
+      normalize (EuclideanDomain.gcd left right) = normalize result := by
+  cases lenJ with
+  | zero =>
+      have hrightZero : right = 0 :=
+        slicePolyRep_zero_length heap J this._p.toNat right hright.2.2.1
+      subst right
+      refine ⟨⟨heap, lenG⟩, left, ?_, hleft, ?_⟩
+      · rw [gcdHgcdLoop]
+      · rw [EuclideanDomain.gcd_zero_right]
+  | succ prior =>
+      have hlenJPos : 0 < prior + 1 := by omega
+      rcases gcdHgcdLoop_dynamic_divrem_step this G J Q R W3 lenG
+          (prior + 1) heap left right divremPhysical hlenJPos hleft hright hcfg
+          with
+        ⟨heap1, lenQ, lenR, quotient, remainder, hdiv, hQ, hJ, hR, hgcdDiv,
+          hlayout, hlenR⟩
+      by_cases hzero : lenR = 0
+      · subst lenR
+        have ws := divremPhysical heap lenG (prior + 1) left right hleft hright
+        have hG1 : heap1.ValidU64Slice G (prior + 1) :=
+          (hlayout G (prior + 1)).mp ws.validGForDivisor
+        rcases gcdHgcdLoop_zero_step this G J R (prior + 1) heap1 right
+            remainder hG1 ws.g_j hJ hR with
+          ⟨heap2, hcopy, hG, hgcdZero, _⟩
+        refine ⟨⟨heap2, prior + 1⟩, right, ?_, hG, hgcdDiv.trans hgcdZero⟩
+        rw [gcdHgcdLoop]
+        split
+        next fault hactual =>
+          have hfalse := hactual.symm.trans hdiv
+          simp at hfalse
+        next actualHeap actualLenQ actualLenR hactual =>
+          have heq : (actualHeap, actualLenQ, actualLenR) =
+              (heap1, lenQ, 0) := Except.ok.inj (hactual.symm.trans hdiv)
+          cases heq
+          simp only [↓reduceIte]
+          split
+          next fault hactualCopy =>
+            have hfalse := hactualCopy.symm.trans hcopy
+            simp at hfalse
+          next actualHeap2 hactualCopy =>
+            have heq : actualHeap2 = heap2 :=
+              Except.ok.inj (hactualCopy.symm.trans hcopy)
+            subst actualHeap2
+            rfl
+      · by_cases hsmall : prior + 1 < hgcdRecursiveCutoff
+        · rcases gcdHgcdLoop_dynamic_euclid_step this G J R euclidA euclidB
+              euclidQ euclidR euclidW3 (prior + 1) lenR heap1 right remainder
+              euclidPhysical hJ hR hcfg with
+            ⟨heap2, lenOut, result, heuclid, hResult, hgcdEuclid, _⟩
+          refine ⟨⟨heap2, lenOut⟩, result, ?_, hResult,
+            hgcdDiv.trans hgcdEuclid⟩
+          have heuclid' :
+              Generated.StrictEuclidGCD.dense_upoly_zp__gcd_euclid_raw_ir
+                this G J R euclidA euclidB euclidQ euclidR euclidW3
+                (prior + 1) lenR euclidDecrease heap1 =
+                  .ok ⟨heap2, lenOut⟩ := by
+            simpa [strictGcdEuclidRaw] using heuclid
+          rw [gcdHgcdLoop]
+          split
+          next fault hactual =>
+            have hfalse := hactual.symm.trans hdiv
+            simp at hfalse
+          next actualHeap actualLenQ actualLenR hactual =>
+            have heq : (actualHeap, actualLenQ, actualLenR) =
+                (heap1, lenQ, lenR) :=
+              Except.ok.inj (hactual.symm.trans hdiv)
+            cases heq
+            simp only [hzero, hsmall, ↓reduceIte]
+            split
+            next fault hactualEuclid =>
+              have hfalse := hactualEuclid.symm.trans heuclid'
+              simp at hfalse
+            next actualEuclid hactualEuclid =>
+              have heq : actualEuclid = ⟨heap2, lenOut⟩ :=
+                Except.ok.inj (hactualEuclid.symm.trans heuclid')
+              subst actualEuclid
+              rfl
+        · rcases gcdHgcdLoop_dynamic_hgcd_step_succeeds this hcfg hp M hM G J
+              R W scratch hgcdPhysical heap1 (prior + 1) lenR right remainder
+              hlenR hsmall hJ hR with
+            ⟨next, nextG, nextJ, hhgcd, hNextG, hNextJ, hgcdHgcd,
+              hnextDecrease⟩
+          rcases gcdHgcdLoop_succeeds_wf this hcfg hp M hM G J Q R W3 W
+              scratch euclidA euclidB euclidQ euclidR euclidW3 euclidDecrease
+              loopDecrease divremPhysical euclidPhysical hgcdPhysical
+              next.heap next.lenA next.lenB nextG nextJ hNextG hNextJ with
+            ⟨out, result, hloop, hResult, hgcdRest⟩
+          refine ⟨out, result, ?_, hResult,
+            hgcdDiv.trans (hgcdHgcd.trans hgcdRest)⟩
+          rw [gcdHgcdLoop]
+          split
+          next fault hactual =>
+            have hfalse := hactual.symm.trans hdiv
+            simp at hfalse
+          next actualHeap actualLenQ actualLenR hactual =>
+            have heq : (actualHeap, actualLenQ, actualLenR) =
+                (heap1, lenQ, lenR) :=
+              Except.ok.inj (hactual.symm.trans hdiv)
+            cases heq
+            simp only [hzero, hsmall, ↓reduceIte]
+            split
+            next fault hactualHgcd =>
+              have hfalse := hactualHgcd.symm.trans hhgcd
+              simp at hfalse
+            next actualNext hactualHgcd =>
+              have heq : actualNext = next :=
+                Except.ok.inj (hactualHgcd.symm.trans hhgcd)
+              subst actualNext
+              exact hloop
+termination_by lenJ
+decreasing_by
+  omega
+
 end CLPoly.Impl.StrictGCDHGCDRefinement

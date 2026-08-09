@@ -303,6 +303,18 @@ preselected result or a successful-run premise.  This turns the generated
 loop's proof-only decrease callback into a consequence of reachable physical
 states and prepares the full loop recursion to execute without an oracle.
 
+Prove the complete generated `gcdHgcdLoop` by well-founded recursion on its
+actual source variable `lenJ`.  At each nonzero loop head, run the generated
+divrem and retain the represented quotient, divisor, and remainder.  If the
+remainder length is zero, execute the source copy into `G`; if below the HGCD
+cutoff, execute the exact raw Euclid helper; otherwise execute the new total
+HGCD large step and recurse on its actual returned pair.  Compose normalized
+GCD equalities in source order.  The generated proof-only decrease argument
+may remain a parameter of this equality theorem, but it supplies no execution
+result or polynomial semantics; the theorem independently proves success from
+dynamic physical providers, and its recursive decrease is the actual
+`result.lenB < lenJ` returned by the large step.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -352,3 +364,6 @@ states and prepares the full loop recursion to execute without an oracle.
 - checked recursion 增量：约 1 小时、3 轮编译—修复、Lean 约 250 行；
   用实际 `lenA` 良基递归闭合 checked call 的两次子调用，总执行与 raw
   invariant 同时产出，不使用 enclosing-run 假设、fuel 或 L2 回退。
+- GCD loop 增量：约 1 小时、3 轮编译—修复、Lean 约 145 行；按真实
+  `lenJ` 闭合生成循环的零余式、raw Euclid 与 total HGCD 三条路径，并
+  组合每一步实际执行的 normalized-GCD 不变式。

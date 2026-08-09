@@ -950,6 +950,136 @@ decreasing_by
   have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
   omega
 
+/-- Exact comparison trace of the generated upward anchor search.  A climb
+records that the visited key is strictly below the new degree; the stop records
+the first ancestor whose key is at least the new degree. -/
+inductive PairVecDivVHCFindAnchorTrace (newDegree : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) : Nat → Nat → Prop
+  | stop (i head : Nat) (mono : UMonomial)
+      (hhead : heap[i]? = some head)
+      (hmono : pairVecDivVHCMono head nodes = .ok mono)
+      (hle : newDegree ≤ mono.deg) :
+      PairVecDivVHCFindAnchorTrace newDegree heap nodes i i
+  | climb (i head anchor : Nat) (mono : UMonomial)
+      (hhead : heap[i]? = some head)
+      (hmono : pairVecDivVHCMono head nodes = .ok mono)
+      (hlt : mono.deg < newDegree) (hpos : 0 < i)
+      (htail : PairVecDivVHCFindAnchorTrace newDegree heap nodes
+        (pairVecDivVHCParent i) anchor) :
+      PairVecDivVHCFindAnchorTrace newDegree heap nodes i anchor
+
+theorem pairVecDivVHCFindAnchor_trace
+    (newDegree i anchor : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hrun : pairVecDivVHCFindAnchor newDegree i heap nodes = .ok anchor) :
+    PairVecDivVHCFindAnchorTrace newDegree heap nodes i anchor := by
+  unfold pairVecDivVHCFindAnchor at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    cases hread : pairVecDivVHCMono heap[i] nodes with
+    | error fault => simp [hread] at hrun
+    | ok mono =>
+        simp only [hread] at hrun
+        split at hrun
+        next hgreater =>
+          split at hrun <;> try contradiction
+          next hzero =>
+            apply PairVecDivVHCFindAnchorTrace.climb i heap[i] anchor mono
+              (Array.getElem?_eq_getElem hi) hread (by omega)
+              (Nat.pos_of_ne_zero hzero)
+            exact pairVecDivVHCFindAnchor_trace newDegree
+              (pairVecDivVHCParent i) anchor heap nodes hrun
+        next hgreater =>
+          simp only [Except.ok.injEq] at hrun
+          subst anchor
+          exact PairVecDivVHCFindAnchorTrace.stop i heap[i] mono
+            (Array.getElem?_eq_getElem hi) hread (by omega)
+termination_by i
+decreasing_by
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem PairVecDivVHCFindAnchorTrace.anchor_read
+    (newDegree : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (i anchor : Nat)
+    (htrace : PairVecDivVHCFindAnchorTrace newDegree heap nodes i anchor) :
+    ∃ head mono, heap[anchor]? = some head ∧
+      pairVecDivVHCMono head nodes = .ok mono ∧ newDegree ≤ mono.deg := by
+  induction htrace with
+  | stop i head mono hhead hmono hle => exact ⟨head, mono, hhead, hmono, hle⟩
+  | climb i head anchor mono hhead hmono hlt hpos htail ih => exact ih
+
+theorem PairVecDivVHCFindAnchorTrace.anchor_le_start
+    (newDegree : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (i anchor : Nat)
+    (htrace : PairVecDivVHCFindAnchorTrace newDegree heap nodes i anchor) :
+    anchor ≤ i := by
+  induction htrace with
+  | stop => exact Nat.le_refl _
+  | climb i head anchor mono hhead hmono hlt hpos htail ih =>
+      have hparentLt : pairVecDivVHCParent i < i := by
+        unfold pairVecDivVHCParent
+        have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+        omega
+      exact Nat.le_trans ih (Nat.le_of_lt hparentLt)
+
+/-- A write strictly below the remaining ancestor-search path cannot change
+that path's recorded comparisons. -/
+theorem PairVecDivVHCFindAnchorTrace.set_above
+    (newDegree : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (i anchor target replacement : Nat)
+    (htarget : target < heap.size) (hiTarget : i < target)
+    (htrace : PairVecDivVHCFindAnchorTrace newDegree heap nodes i anchor) :
+    PairVecDivVHCFindAnchorTrace newDegree (heap.set target replacement)
+      nodes i anchor := by
+  induction htrace with
+  | stop i head mono hhead hmono hle =>
+      apply PairVecDivVHCFindAnchorTrace.stop i head mono
+      · rw [Array.getElem?_set_ne htarget (by omega)]
+        exact hhead
+      · exact hmono
+      · exact hle
+  | climb i head anchor mono hhead hmono hlt hpos htail ih =>
+      apply PairVecDivVHCFindAnchorTrace.climb i head anchor mono
+      · rw [Array.getElem?_set_ne htarget (by omega)]
+        exact hhead
+      · exact hmono
+      · exact hlt
+      · exact hpos
+      · apply ih
+        have hparentLt : pairVecDivVHCParent i < i := by
+          unfold pairVecDivVHCParent
+          have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+          omega
+        exact Nat.lt_trans hparentLt hiTarget
+
+theorem PairVecDivVHCFindAnchorTrace.push
+    (newDegree : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (i anchor replacement : Nat)
+    (hi : i < heap.size)
+    (htrace : PairVecDivVHCFindAnchorTrace newDegree heap nodes i anchor) :
+    PairVecDivVHCFindAnchorTrace newDegree (heap.push replacement)
+      nodes i anchor := by
+  induction htrace with
+  | stop i head mono hhead hmono hle =>
+      apply PairVecDivVHCFindAnchorTrace.stop i head mono
+      · simpa [Array.getElem?_push, Nat.ne_of_lt hi] using hhead
+      · exact hmono
+      · exact hle
+  | climb i head anchor mono hhead hmono hlt hpos htail ih =>
+      apply PairVecDivVHCFindAnchorTrace.climb i head anchor mono
+      · simpa [Array.getElem?_push, Nat.ne_of_lt hi] using hhead
+      · exact hmono
+      · exact hlt
+      · exact hpos
+      · apply ih
+        have hparentLt : pairVecDivVHCParent i < i := by
+          unfold pairVecDivVHCParent
+          have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+          omega
+        exact Nat.lt_trans hparentLt hi
+
 /-- Internal insertion shift.  Unlike root insertion, the source stops when
 the *parent* is `anchor`, then writes the new node into the current child. -/
 def pairVecDivVHCBubbleBelow (i anchor newNode : Nat)
@@ -3707,6 +3837,54 @@ theorem pairVecDivVHCPush_parent_preserves_heapOrdered
       hchildOld hpos childHead targetParentHead childMono parentMono
       hchildGet htargetParentGet hchildMono hparentMono
 
+theorem pairVecDivVHCPush_le_parent_preserves_heapOrdered
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (newHead expectedParentHead : Nat)
+    (newMono parentMono : UMonomial) (hheap : 0 < heap.size)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newHead nodes = .ok newMono)
+    (hparentGet : heap[pairVecDivVHCParent heap.size]? = some expectedParentHead)
+    (hparent : pairVecDivVHCMono expectedParentHead nodes = .ok parentMono)
+    (hle : newMono.deg ≤ parentMono.deg) :
+    PairVecDivVHCHeapOrdered (heap.push newHead) nodes := by
+  apply PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+  intro child hchild hpos childHead actualParentHead childMono targetParentMono
+    hchildGet hactualParentGet hchildMono htargetParentMono
+  by_cases hlast : child = heap.size
+  · subst child
+    simp only [Array.getElem?_push, if_pos rfl] at hchildGet
+    have hchildHeadEq : childHead = newHead :=
+      (Option.some.inj hchildGet).symm
+    subst childHead
+    rw [hnew] at hchildMono
+    have hchildMonoEq : childMono = newMono :=
+      (Except.ok.inj hchildMono).symm
+    subst childMono
+    have hparentSlot : pairVecDivVHCParent heap.size < heap.size :=
+      pairVecDivVHCParent_lt heap.size hheap
+    simp only [Array.getElem?_push,
+      if_neg (Nat.ne_of_lt hparentSlot)] at hactualParentGet
+    rw [hparentGet] at hactualParentGet
+    have hparentHeadEq : actualParentHead = expectedParentHead :=
+      (Option.some.inj hactualParentGet).symm
+    subst actualParentHead
+    rw [hparent] at htargetParentMono
+    have hparentMonoEq : targetParentMono = parentMono :=
+      (Except.ok.inj htargetParentMono).symm
+    subst targetParentMono
+    exact hle
+  · have hchildOld : child < heap.size := by
+      simp only [Array.size_push] at hchild
+      omega
+    have hparentOld : pairVecDivVHCParent child < heap.size :=
+      Nat.lt_trans (pairVecDivVHCParent_lt child hpos) hchildOld
+    simp only [Array.getElem?_push, if_neg hlast] at hchildGet
+    simp only [Array.getElem?_push,
+      if_neg (Nat.ne_of_lt hparentOld)] at hactualParentGet
+    exact (hordered.degreesUpTo heap nodes heap.size (Nat.le_refl _)) child
+      hchildOld hpos childHead actualParentHead childMono targetParentMono
+      hchildGet hactualParentGet hchildMono htargetParentMono
+
 /-- Root-directed pointer-copying bubble preserves heap order once its current
 hole state is ordered and every stored key is bounded by the inserted key. -/
 theorem pairVecDivVHCBubble_to_root_preserves_heapOrdered
@@ -3777,6 +3955,137 @@ theorem pairVecDivVHCBubble_to_root_preserves_heapOrdered
 termination_by i
 decreasing_by
   exact pairVecDivVHCParent_lt i (by omega)
+
+/-- `BubbleBelow` preserves max-heap order when driven by the exact comparison
+trace produced by `FindAnchor`.  The climb comparison bounds the overwritten
+slot's children below the inserted key, while the trace's stop comparison
+bounds the inserted key below its anchor parent. -/
+theorem pairVecDivVHCBubbleBelow_trace_preserves_heapOrdered
+    (i anchor newNode : Nat) (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (newMono : UMonomial)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (htrace : PairVecDivVHCFindAnchorTrace newMono.deg heap nodes i anchor)
+    (hne : i ≠ anchor)
+    (hrun : pairVecDivVHCBubbleBelow i anchor newNode heap = .ok heap') :
+    PairVecDivVHCHeapOrdered heap' nodes := by
+  cases htrace with
+  | stop i head mono hhead hmono hle => exact False.elim (hne rfl)
+  | climb i head anchor mono hhead hmono hlt hpos htail =>
+      rw [pairVecDivVHCBubbleBelow] at hrun
+      split at hrun <;> try contradiction
+      next hi =>
+          dsimp only at hrun
+          split at hrun
+          next hparentAnchor =>
+            simp only [Except.ok.injEq] at hrun
+            subst heap'
+            rcases htail.anchor_read newMono.deg heap nodes
+                (pairVecDivVHCParent i) anchor with
+              ⟨anchorHead, anchorMono, hanchorHead, hanchorMono, hnewLeAnchor⟩
+            have hdegrees := hordered.degreesUpTo heap nodes heap.size
+              (Nat.le_refl _)
+            apply PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+            have hsetOrdered : PairVecDivVHCHeapDegreesOrderedUpTo heap.size
+                (heap.set i newNode) nodes := by
+              apply hdegrees.set_parent heap.size i newNode heap nodes newMono
+                hi hnew
+              · intro parentHead parentMono hparentGet hparentMono
+                rw [hparentAnchor, hanchorHead] at hparentGet
+                have hparentHeadEq : parentHead = anchorHead :=
+                  (Option.some.inj hparentGet).symm
+                subst parentHead
+                rw [hanchorMono] at hparentMono
+                have hparentMonoEq : parentMono = anchorMono :=
+                  (Except.ok.inj hparentMono).symm
+                subst parentMono
+                exact hnewLeAnchor
+              · intro child hchild hchildPos hchildParent childHead childMono
+                  hchildGet hchildMono
+                have hchildLeOld : childMono.deg ≤ mono.deg :=
+                  hdegrees child hchild hchildPos childHead head childMono mono
+                    hchildGet (by simpa [hchildParent] using hhead)
+                    hchildMono hmono
+                exact Nat.le_trans hchildLeOld (Nat.le_of_lt hlt)
+            simpa only [Array.size_set] using hsetOrdered
+          next hparentAnchor =>
+            split at hrun <;> try contradiction
+            next hp =>
+              let parent := pairVecDivVHCParent i
+              have hparentLt : parent < i := pairVecDivVHCParent_lt i hpos
+              have htail' : PairVecDivVHCFindAnchorTrace newMono.deg
+                  (heap.set i heap[parent]) nodes parent anchor := by
+                exact htail.set_above newMono.deg heap nodes parent anchor i
+                  heap[parent] hi hparentLt
+              have hnextValid : PairVecDivVHCHeapPointersValid
+                  (heap.set i heap[parent]) nodes :=
+                hvalid.set_from_slot heap nodes i parent hi (by simpa [parent])
+              have hnextOrdered : PairVecDivVHCHeapOrdered
+                  (heap.set i heap[parent]) nodes := by
+                apply pairVecDivVHCSet_child_to_parent_preserves_heapOrdered
+                  heap nodes i heap[parent] hi hpos
+                · simpa [parent, Array.getElem?_eq_getElem hp]
+                · exact hvalid
+                · exact hordered
+              exact pairVecDivVHCBubbleBelow_trace_preserves_heapOrdered parent
+                anchor newNode (heap.set i heap[parent]) heap' nodes newMono
+                hnextValid hnextOrdered hnew htail'
+                (by simpa [parent] using hparentAnchor) (by simpa [parent] using hrun)
+termination_by i
+decreasing_by
+  apply pairVecDivVHCParent_lt
+  omega
+
+/-- Complete non-root bubble from the appended last slot, driven by the trace
+of the preceding generated `FindAnchor` call. -/
+theorem pairVecDivVHCBubbleBelow_push_trace_preserves_heapOrdered
+    (anchor newNode : Nat) (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (newMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (htrace : PairVecDivVHCFindAnchorTrace newMono.deg heap nodes
+      (pairVecDivVHCParent heap.size) anchor)
+    (hrun : pairVecDivVHCBubbleBelow heap.size anchor newNode
+      (heap.push newNode) = .ok heap') :
+    PairVecDivVHCHeapOrdered heap' nodes := by
+  let first := pairVecDivVHCParent heap.size
+  have hfirst : first < heap.size := pairVecDivVHCParent_lt heap.size hheap
+  rw [pairVecDivVHCBubbleBelow] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    dsimp only at hrun
+    split at hrun
+    next hfirstAnchor =>
+      simp only [Array.set_push, lt_self_iff_false, ↓reduceDIte,
+        Except.ok.injEq] at hrun
+      subst heap'
+      rcases htrace.anchor_read newMono.deg heap nodes first anchor with
+        ⟨anchorHead, anchorMono, hanchorGet, hanchorMono, hle⟩
+      have hparentGet : heap[pairVecDivVHCParent heap.size]? =
+          some anchorHead := by
+        simpa [first, hfirstAnchor] using hanchorGet
+      exact pairVecDivVHCPush_le_parent_preserves_heapOrdered heap nodes
+        newNode anchorHead newMono anchorMono hheap hordered hnew hparentGet
+        hanchorMono hle
+    next hfirstAnchor =>
+      split at hrun <;> try contradiction
+      next hp =>
+        rw [Array.getElem_push_lt hfirst] at hrun
+        have hrun' : pairVecDivVHCBubbleBelow first anchor newNode
+            (heap.push heap[first]) = .ok heap' := by
+          simpa [first, Array.set_push, hfirst] using hrun
+        have htracePush : PairVecDivVHCFindAnchorTrace newMono.deg
+            (heap.push heap[first]) nodes first anchor :=
+          htrace.push newMono.deg heap nodes first anchor heap[first] hfirst
+        exact pairVecDivVHCBubbleBelow_trace_preserves_heapOrdered first anchor
+          newNode (heap.push heap[first]) heap' nodes newMono
+          (hvalid.push_from_slot heap nodes first hfirst)
+          (pairVecDivVHCPush_parent_preserves_heapOrdered heap nodes heap[first]
+            hordered (by simpa [first, Array.getElem?_eq_getElem hfirst]))
+          hnew htracePush (by simpa [first] using hfirstAnchor) hrun'
 
 theorem pairVecDivVHCHeapOrdered_slot_le_root
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)

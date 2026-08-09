@@ -1134,3 +1134,18 @@ every generated range-for and recursive loop used by SQF.
   运输到 insertion 实际返回的节点数组。由此不只 standalone bubble，
   而是完整 C++ insertion greater-root 分支已有表示不变量结论。
   下一步集中闭合 `FindAnchor`/`BubbleBelow` 非根分支。
+- `FindAnchor` 到 `BubbleBelow` 的真实比较路径已闭合为 heap-order 证明。
+  `PairVecDivVHCFindAnchorTrace` 精确记录 generated anchor search：每个
+  climb 都带有实际 heap/node 读取及 `oldDegree < newDegree`，stop 则带
+  `newDegree ≤ anchorDegree`；`pairVecDivVHCFindAnchor_trace` 从成功 raw
+  执行递归地产生该 trace，而不是把路径比较当作外部前提。
+  trace 的 `set_above`/`push` 引理证明后续 heap 指针写入不会伪造或丢失
+  尚未消费的祖先比较。
+  `pairVecDivVHCBubbleBelow_trace_preserves_heapOrdered` 沿 generated
+  `BubbleBelow` 的良基递归消费 climb：祖先复制使用真实 `Array.set`
+  保持定理，最终写入用 climb 的严格下界支配旧槽子树、用 stop 的上界
+  保持 anchor 父边。`pairVecDivVHCBubbleBelow_push_trace_preserves_heapOrdered`
+  进一步覆盖从 appended last slot 开始的完整调用，包括 anchor 就是
+  first-parent 的零次复制分支。至此非根 bubble 本体不再缺 heap-order
+  语义；下一步将 trace 从完整 `VHC_insert` 的 `FindAnchor` 执行接入其
+  unequal-anchor 分支，并处理 equal-anchor 的链式替换。

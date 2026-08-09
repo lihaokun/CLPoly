@@ -197,6 +197,9 @@ canonical and its leading coefficient is one.
 - Began the outer public wrapper with its exact forward sparse monic mutation
   loop, using `Array.set` under the range-for bound and measure
   `poly.size - index`; proved every iteration preserves vector size.
+- Proved the loop's pointwise execution invariant: prior cells are preserved,
+  every remaining coefficient is multiplied exactly once, and every monomial
+  is unchanged; derived equality with the corresponding full `Array.map`.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

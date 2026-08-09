@@ -2260,4 +2260,52 @@ decreasing_by
   simp only [Array.size_set]
   omega
 
+/-- Pointwise invariant of the source sparse monic loop.  Cells below the
+current iterator were already processed; every remaining cell is multiplied
+exactly once and retains its monomial. -/
+theorem sparseMonicLoop_getElem (index : Nat) (poly : SparsePolyZp)
+    (lcInv : Zp) (k : Nat) (hk : k < poly.size) :
+    (sparseMonicLoop index poly lcInv)[k]? =
+      if k < index then some poly[k]
+      else some (poly[k].1, poly[k].2 * lcInv) := by
+  rw [sparseMonicLoop.eq_1]
+  split
+  next hmore =>
+    let term := poly[index]
+    let next := poly.set index (term.1, term.2 * lcInv) hmore
+    have hkNext : k < next.size := by simpa [next] using hk
+    rw [sparseMonicLoop_getElem (index + 1) next lcInv k hkNext]
+    by_cases hkBefore : k < index
+    · have hkNe : index ≠ k := by omega
+      rw [if_pos (by omega), if_pos hkBefore]
+      simpa [next] using Array.getElem_set_ne hmore hk hkNe
+    · by_cases hkEq : k = index
+      · subst k
+        rw [if_pos (by omega), if_neg (by omega)]
+        simp [next, term]
+      · have hkAfter : index < k := by omega
+        have hkNe : index ≠ k := Nat.ne_of_lt hkAfter
+        rw [if_neg (by omega), if_neg hkBefore]
+        have hnext := Array.getElem_set_ne (v := (term.1, term.2 * lcInv))
+          hmore hk hkNe
+        rw [hnext]
+  next hdone =>
+    rw [if_pos (by omega)]
+    simp [hk]
+termination_by poly.size - index
+decreasing_by
+  simp only [Array.size_set]
+  omega
+
+theorem sparseMonicLoop_zero_eq_map (poly : SparsePolyZp) (lcInv : Zp) :
+    sparseMonicLoop 0 poly lcInv =
+      poly.map (fun term => (term.1, term.2 * lcInv)) := by
+  apply Array.ext
+  · simp [sparseMonicLoop_size]
+  · intro index hleft hright
+    have hpoint := sparseMonicLoop_getElem 0 poly lcInv index (by
+      simpa using hright)
+    simp [hleft] at hpoint
+    simpa using hpoint
+
 end CLPoly.Impl.StrictPolynomialGCDRefinement

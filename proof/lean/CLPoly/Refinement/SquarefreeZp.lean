@@ -1221,6 +1221,304 @@ theorem pairVecDivVHCSet_valuesFrom (target source : Array Nat)
   · rw [Array.getElem?_set_ne hslot hislot] at hi
     exact hfrom i value hi
 
+theorem pairVecDivVHCBubble_valuesFrom
+    (i stop newNode : Nat) (heap heap' source : Array Nat)
+    (hfrom : PairVecDivVHCValuesFrom heap source)
+    (hnew : ∃ slot : Nat, source[slot]? = some newNode)
+    (hrun : pairVecDivVHCBubble i stop newNode heap = .ok heap') :
+    PairVecDivVHCValuesFrom heap' source := by
+  rw [pairVecDivVHCBubble] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hstop =>
+      split at hrun
+      next heq =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        exact pairVecDivVHCSet_valuesFrom heap source i newNode hi hfrom hnew
+      next heq =>
+        dsimp only at hrun
+        split at hrun <;> try contradiction
+        next hp =>
+          have hparent := hfrom (pairVecDivVHCParent i)
+            heap[pairVecDivVHCParent i] (by
+              rw [Array.getElem?_eq_getElem hp])
+          exact pairVecDivVHCBubble_valuesFrom (pairVecDivVHCParent i) stop
+            newNode (heap.set i heap[pairVecDivVHCParent i]) heap' source
+            (pairVecDivVHCSet_valuesFrom heap source i
+              heap[pairVecDivVHCParent i] hi hfrom hparent) hnew hrun
+termination_by i
+decreasing_by
+  have hipos : 0 < i := by omega
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem pairVecDivVHCBubbleBelow_valuesFrom
+    (i anchor newNode : Nat) (heap heap' source : Array Nat)
+    (hfrom : PairVecDivVHCValuesFrom heap source)
+    (hnew : ∃ slot : Nat, source[slot]? = some newNode)
+    (hrun : pairVecDivVHCBubbleBelow i anchor newNode heap = .ok heap') :
+    PairVecDivVHCValuesFrom heap' source := by
+  rw [pairVecDivVHCBubbleBelow] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hpos =>
+      dsimp only at hrun
+      split at hrun
+      next heq =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        exact pairVecDivVHCSet_valuesFrom heap source i newNode hi hfrom hnew
+      next heq =>
+        split at hrun <;> try contradiction
+        next hp =>
+          have hparent := hfrom (pairVecDivVHCParent i)
+            heap[pairVecDivVHCParent i] (by
+              rw [Array.getElem?_eq_getElem hp])
+          exact pairVecDivVHCBubbleBelow_valuesFrom (pairVecDivVHCParent i)
+            anchor newNode (heap.set i heap[pairVecDivVHCParent i]) heap'
+            source (pairVecDivVHCSet_valuesFrom heap source i
+              heap[pairVecDivVHCParent i] hi hfrom hparent) hnew hrun
+termination_by i
+decreasing_by
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem pairVecDivVHCBubbleBelow_size (i anchor newNode : Nat)
+    (heap heap' : Array Nat)
+    (hrun : pairVecDivVHCBubbleBelow i anchor newNode heap = .ok heap') :
+    heap'.size = heap.size := by
+  rw [pairVecDivVHCBubbleBelow] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hpos =>
+      dsimp only at hrun
+      split at hrun
+      next heq =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        simp
+      next heq =>
+        split at hrun <;> try contradiction
+        next hp =>
+          have hrec := pairVecDivVHCBubbleBelow_size
+            (pairVecDivVHCParent i) anchor newNode
+            (heap.set i heap[pairVecDivVHCParent i]) heap' hrun
+          simpa using hrec
+termination_by i
+decreasing_by
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem pairVecDivVHCBubble_prefixUnique
+    (i stop newNode limit : Nat) (heap heap' : Array Nat)
+    (hlimit : limit ≤ heap.size) (hiLimit : i < limit)
+    (hunique : PairVecDivVHCPrefixUniqueExcept heap limit i)
+    (hnewOnly : PairVecDivVHCPrefixOnlyAt heap limit newNode i)
+    (hrun : pairVecDivVHCBubble i stop newNode heap = .ok heap') :
+    PairVecDivVHCPrefixUnique heap' limit := by
+  rw [pairVecDivVHCBubble] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hstop =>
+      split at hrun
+      next heq =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        exact pairVecDivVHCSet_saved_prefixUnique heap limit newNode i hi
+          hiLimit hunique hnewOnly
+      next heq =>
+        dsimp only at hrun
+        split at hrun <;> try contradiction
+        next hp =>
+          have hipos : 0 < i := by omega
+          have hparentLt : pairVecDivVHCParent i < i := by
+            unfold pairVecDivVHCParent
+            have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+            omega
+          have hparentLimit : pairVecDivVHCParent i < limit :=
+            Nat.lt_trans hparentLt hiLimit
+          have hunique' := pairVecDivVHCSet_child_prefixUniqueExcept heap
+            limit i (pairVecDivVHCParent i) hi hp hparentLimit
+            (Nat.ne_of_gt hparentLt) hunique
+          have hnewOnly' := pairVecDivVHCSet_child_prefixOnlyAt heap limit
+            newNode i (pairVecDivVHCParent i) hi hp hparentLimit
+            (Nat.ne_of_gt hparentLt) hnewOnly
+          exact pairVecDivVHCBubble_prefixUnique (pairVecDivVHCParent i) stop
+            newNode limit (heap.set i heap[pairVecDivVHCParent i]) heap'
+            (by simpa using hlimit) hparentLimit hunique' hnewOnly' hrun
+termination_by i
+decreasing_by
+  have hipos : 0 < i := by omega
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem pairVecDivVHCBubbleBelow_prefixUnique
+    (i anchor newNode limit : Nat) (heap heap' : Array Nat)
+    (hlimit : limit ≤ heap.size) (hiLimit : i < limit)
+    (hunique : PairVecDivVHCPrefixUniqueExcept heap limit i)
+    (hnewOnly : PairVecDivVHCPrefixOnlyAt heap limit newNode i)
+    (hrun : pairVecDivVHCBubbleBelow i anchor newNode heap = .ok heap') :
+    PairVecDivVHCPrefixUnique heap' limit := by
+  rw [pairVecDivVHCBubbleBelow] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hpos =>
+      dsimp only at hrun
+      have hparentLt : pairVecDivVHCParent i < i := by
+        unfold pairVecDivVHCParent
+        have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+        omega
+      have hparentLimit : pairVecDivVHCParent i < limit :=
+        Nat.lt_trans hparentLt hiLimit
+      split at hrun
+      next heq =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        exact pairVecDivVHCSet_saved_prefixUnique heap limit newNode i hi
+          hiLimit hunique hnewOnly
+      next heq =>
+        split at hrun <;> try contradiction
+        next hp =>
+          have hunique' := pairVecDivVHCSet_child_prefixUniqueExcept heap
+            limit i (pairVecDivVHCParent i) hi hp hparentLimit
+            (Nat.ne_of_gt hparentLt) hunique
+          have hnewOnly' := pairVecDivVHCSet_child_prefixOnlyAt heap limit
+            newNode i (pairVecDivVHCParent i) hi hp hparentLimit
+            (Nat.ne_of_gt hparentLt) hnewOnly
+          exact pairVecDivVHCBubbleBelow_prefixUnique
+            (pairVecDivVHCParent i) anchor newNode limit
+            (heap.set i heap[pairVecDivVHCParent i]) heap'
+            (by simpa using hlimit) hparentLimit hunique' hnewOnly' hrun
+termination_by i
+decreasing_by
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem pairVecDivVHCPush_prefixUniqueExcept
+    (heap : Array Nat) (newNode : Nat)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hfresh : ∀ (slot : Nat), heap[slot]? ≠ some newNode) :
+    PairVecDivVHCPrefixUniqueExcept (heap.push newNode)
+      (heap.push newNode).size heap.size := by
+  intro left right head hleft hright hleftGet hrightGet
+  rw [Array.getElem?_push] at hleftGet hrightGet
+  by_cases hleftLast : left = heap.size
+  · subst left
+    simp only [ite_true, Option.some.injEq] at hleftGet
+    subst head
+    by_cases hrightLast : right = heap.size
+    · exact Or.inl hrightLast.symm
+    · simp only [hrightLast, ↓reduceIte] at hrightGet
+      exact False.elim (hfresh right hrightGet)
+  · simp only [hleftLast, ↓reduceIte] at hleftGet
+    by_cases hrightLast : right = heap.size
+    · exact Or.inr (Or.inr hrightLast)
+    · simp only [hrightLast, ↓reduceIte] at hrightGet
+      exact Or.inl (hunique left right head hleftGet hrightGet)
+
+theorem pairVecDivVHCPush_prefixOnlyAt (heap : Array Nat) (newNode : Nat)
+    (hfresh : ∀ (slot : Nat), heap[slot]? ≠ some newNode) :
+    PairVecDivVHCPrefixOnlyAt (heap.push newNode) (heap.push newNode).size
+      newNode heap.size := by
+  intro slot hslot hget
+  rw [Array.getElem?_push] at hget
+  by_cases hlast : slot = heap.size
+  · exact hlast
+  · simp only [hlast, ↓reduceIte] at hget
+    exact False.elim (hfresh slot hget)
+
+theorem pairVecDivVHCPush_preserves_unique
+    (heap : Array Nat) (newNode : Nat)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hfresh : ∀ (slot : Nat), heap[slot]? ≠ some newNode) :
+    ∀ (left right head : Nat), (heap.push newNode)[left]? = some head →
+      (heap.push newNode)[right]? = some head → left = right := by
+  intro left right head hleft hright
+  rw [Array.getElem?_push] at hleft hright
+  by_cases hleftLast : left = heap.size
+  · subst left
+    simp only [ite_true, Option.some.injEq] at hleft
+    subst head
+    by_cases hrightLast : right = heap.size
+    · exact hrightLast.symm
+    · simp only [hrightLast, ↓reduceIte] at hright
+      exact False.elim (hfresh right hright)
+  · simp only [hleftLast, ↓reduceIte] at hleft
+    by_cases hrightLast : right = heap.size
+    · subst right
+      simp only [ite_true, Option.some.injEq] at hright
+      subst head
+      exact False.elim (hfresh left hleft)
+    · simp only [hrightLast, ↓reduceIte] at hright
+      exact hunique left right head hleft hright
+
+theorem pairVecDivVHCBubble_push_preserves_unique
+    (stop newNode : Nat) (heap heap' : Array Nat)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hfresh : ∀ (slot : Nat), heap[slot]? ≠ some newNode)
+    (hrun : pairVecDivVHCBubble heap.size stop newNode (heap.push newNode) =
+      .ok heap') :
+    ∀ (left right head : Nat), heap'[left]? = some head →
+      heap'[right]? = some head → left = right := by
+  have hprefix := pairVecDivVHCBubble_prefixUnique heap.size stop newNode
+    (heap.push newNode).size (heap.push newNode) heap' (by omega) (by simp)
+    (pairVecDivVHCPush_prefixUniqueExcept heap newNode hunique hfresh)
+    (pairVecDivVHCPush_prefixOnlyAt heap newNode hfresh) hrun
+  have hsize := pairVecDivVHCBubble_size heap.size stop newNode
+    (heap.push newNode) heap' hrun
+  intro left right head hleft hright
+  have hleftBound : left < heap'.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hleft
+    contradiction
+  have hrightBound : right < heap'.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hright
+    contradiction
+  exact hprefix left right head (by simpa [hsize] using hleftBound)
+    (by simpa [hsize] using hrightBound) hleft hright
+
+theorem pairVecDivVHCBubbleBelow_push_preserves_unique
+    (anchor newNode : Nat) (heap heap' : Array Nat)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hfresh : ∀ (slot : Nat), heap[slot]? ≠ some newNode)
+    (hrun : pairVecDivVHCBubbleBelow heap.size anchor newNode
+      (heap.push newNode) = .ok heap') :
+    ∀ (left right head : Nat), heap'[left]? = some head →
+      heap'[right]? = some head → left = right := by
+  have hprefix := pairVecDivVHCBubbleBelow_prefixUnique heap.size anchor newNode
+    (heap.push newNode).size (heap.push newNode) heap' (by omega) (by simp)
+    (pairVecDivVHCPush_prefixUniqueExcept heap newNode hunique hfresh)
+    (pairVecDivVHCPush_prefixOnlyAt heap newNode hfresh) hrun
+  have hsize := pairVecDivVHCBubbleBelow_size heap.size anchor newNode
+    (heap.push newNode) heap' hrun
+  intro left right head hleft hright
+  have hleftBound : left < heap'.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hleft
+    contradiction
+  have hrightBound : right < heap'.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hright
+    contradiction
+  exact hprefix left right head (by simpa [hsize] using hleftBound)
+    (by simpa [hsize] using hrightBound) hleft hright
+
 theorem pairVecDivVHCSet_excludes_of_onlyAt
     (heap : Array Nat) (nodeIndex slot replacement : Nat)
     (hslot : slot < heap.size)
@@ -2756,6 +3054,26 @@ theorem pairVecDivVHCSetNext_chainOwns_insert
           exact hfresh hi)
       simpa [hfresh] using htail'
 
+theorem pairVecDivVHCSetNext_preserves_disjoint_chain
+    (nodeIndex : Nat) (next : Option Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (current : Option Nat) (owner : Finset Nat)
+    (hfresh : nodeIndex ∉ owner)
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (hrun : pairVecDivVHCSetNext nodeIndex next nodes = .ok nodes') :
+    PairVecDivVHCChainOwns current owner nodes' := by
+  unfold pairVecDivVHCSetNext at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    simp only [Except.ok.injEq] at hrun
+    subst nodes'
+    exact pairVecDivVHCChainOwns_congr_on current owner nodes
+      (nodes.set nodeIndex { nodes[nodeIndex] with next := next }) howns (by
+        intro i hi
+        rw [Array.getElem?_set_ne hn]
+        intro heq
+        subst i
+        exact hfresh hi)
+
 /-- Exact ownership of every active heap bucket, keyed by its head node.
 The source heap contains each head once, and different heads own disjoint
 `next` chains. -/
@@ -2787,6 +3105,26 @@ theorem pairVecDivVHCHeapChainsOwned_empty (nodes : Array PairVecDivVHCNode) :
     simp at hleft
   · intro left right leftHead rightHead hleft
     simp at hleft
+
+/-- Ownership is invariant under a head-array reordering once provenance and
+target uniqueness have been proved for the concrete pointer-copy routine. -/
+theorem pairVecDivVHCHeapChainOwnership_of_valuesFrom
+    (source target : Array Nat) (owners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hownership : PairVecDivVHCHeapChainOwnership source owners nodes)
+    (hfrom : PairVecDivVHCValuesFrom target source)
+    (hunique : ∀ (left right head : Nat), target[left]? = some head →
+      target[right]? = some head → left = right) :
+    PairVecDivVHCHeapChainOwnership target owners nodes := by
+  refine ⟨?_, hunique, ?_⟩
+  · intro slot head hget
+    obtain ⟨sourceSlot, hsource⟩ := hfrom slot head hget
+    exact hownership.1 sourceSlot head hsource
+  · intro left right leftHead rightHead hleft hright hne
+    obtain ⟨sourceLeft, hsourceLeft⟩ := hfrom left leftHead hleft
+    obtain ⟨sourceRight, hsourceRight⟩ := hfrom right rightHead hright
+    exact hownership.2.2 sourceLeft sourceRight leftHead rightHead hsourceLeft
+      hsourceRight hne
 
 theorem pairVecDivVHCHeapChainOwnership_root_onlyAt
     (heap : Array Nat) (owners : Nat → Finset Nat)

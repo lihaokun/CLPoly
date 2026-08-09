@@ -314,6 +314,13 @@ every generated range-for and recursive loop used by SQF.
   ownership 效果：将一个 fresh node 链到旧 chain 前方，新 head 精确
   拥有 `insert nodeIndex tailOwner`。这是下一步证明真实
   `VHC_insert` 保持 existential heap ownership 的核心链接引理。
+- 两条真实指针复制路径 `pairVecDivVHCBubble` 和
+  `pairVecDivVHCBubbleBelow` 现已证明保持 head provenance、数组长度与
+  唯一性。唯一性证明跟踪“只有当前 hole 可临时与 parent
+  重复”和“fresh head 只在当前 hole”两个前缀不变式，直到最终
+  head 写入。另补充了一般 heap-reordering ownership 迁移定理以及
+  `SetNext` 对不交 chain 的保持。剩余 insert 工作是在等次合链
+  与 fresh singleton 入堆分支中构造新 owner 映射。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

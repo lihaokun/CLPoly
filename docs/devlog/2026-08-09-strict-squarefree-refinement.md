@@ -932,3 +932,11 @@ every generated range-for and recursive loop used by SQF.
   membership coverage 误当成 multiset equality。下一步沿 equal-degree
   extract 循环对这个 owner-sum 等式做 disjoint union，再与所有 frontier
   rows 的唯一 cursor 对应连接。
+- extract 对 heap-owned 节点有限集的精确差分已闭合。新定义
+  `PairVecDivVHCHeapOwnedNodes` 将真实 `heap.toList` 中每个 head 的
+  owner Finset 取 `biUnion`。对任意成功 `VHC_extract`，证明返回
+  heap 的 owner 并集精确等于旧并集减去 `owners heap[0]`。正向使用
+  extract values-from 和 root exclusion，反向使用每个非根 head 的具体
+  surviving slot 见证，所以这不是只能支持 soundness 的子集关系。
+  配合 owner 之间的 disjointness，下一步可将每个 root trace 的精确
+  owner-sum 沿 equal-degree 循环分解为不交求和。

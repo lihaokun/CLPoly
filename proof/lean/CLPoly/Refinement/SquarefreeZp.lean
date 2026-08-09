@@ -6158,6 +6158,86 @@ def PairVecDivVHCHeapChainOwnership (heap : Array Nat)
       heap[right]? = some rightHead → leftHead ≠ rightHead →
       Disjoint (owners leftHead) (owners rightHead))
 
+/-- The finite union of node owners named by the concrete active heap heads. -/
+def PairVecDivVHCHeapOwnedNodes (heap : Array Nat)
+    (owners : Nat → Finset Nat) : Finset Nat :=
+  heap.toList.toFinset.biUnion owners
+
+/-- A real extract removes exactly the old root owner from the finite union of
+heap-owned nodes. -/
+theorem pairVecDivVHCExtract_heapOwnedNodes
+    (heap heap' : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
+    PairVecDivVHCHeapOwnedNodes heap' owners =
+      PairVecDivVHCHeapOwnedNodes heap owners \ owners heap[0] := by
+  apply Finset.ext
+  intro i
+  simp only [PairVecDivVHCHeapOwnedNodes, Finset.mem_sdiff,
+    Finset.mem_biUnion, List.mem_toFinset]
+  constructor
+  · rintro ⟨head, hheadMem, hi⟩
+    rcases List.getElem_of_mem hheadMem with ⟨slot, hslot, hvalue⟩
+    have hslotBound : slot < heap'.size := by simpa using hslot
+    have harrayValue : heap'[slot] = head := by
+      rw [← Array.getElem_toList hslotBound]
+      exact hvalue
+    have hheadGet : heap'[slot]? = some head := by
+      rw [Array.getElem?_eq_getElem hslotBound, harrayValue]
+    rcases pairVecDivVHCExtract_valuesFrom heap heap' nodes hrun slot head
+        hheadGet with ⟨oldSlot, holdGet⟩
+    have holdBound : oldSlot < heap.size := by
+      by_contra hn
+      rw [Array.getElem?_eq_none (by omega)] at holdGet
+      contradiction
+    have hrootNe : head ≠ heap[0] := by
+      intro heq
+      have hrootOnly : PairVecDivVHCOnlyAt heap heap[0] 0 := by
+        intro current hget
+        exact hownership.2.1 current 0 heap[0] hget
+          (Array.getElem?_eq_getElem hheap)
+      have hgone := pairVecDivVHCExtract_excludes_root heap heap' nodes hheap
+        hrootOnly hrun slot
+      apply hgone
+      rw [hheadGet, heq]
+    refine ⟨⟨head, ?_, hi⟩, ?_⟩
+    · have hvalueEq : heap[oldSlot] = head := by
+        rw [Array.getElem?_eq_getElem holdBound] at holdGet
+        exact Option.some.inj holdGet
+      rw [← hvalueEq]
+      exact Array.getElem_mem_toList holdBound
+    · have hdisjoint : Disjoint (owners head) (owners heap[0]) :=
+        hownership.2.2 oldSlot 0 head heap[0] holdGet
+          (Array.getElem?_eq_getElem hheap) hrootNe
+      exact fun hrootMem => Finset.disjoint_left.mp hdisjoint hi hrootMem
+  · rintro ⟨⟨head, hheadMem, hi⟩, hnotRoot⟩
+    rcases List.getElem_of_mem hheadMem with ⟨slot, hslot, hvalue⟩
+    have hslotBound : slot < heap.size := by simpa using hslot
+    have harrayValue : heap[slot] = head := by
+      rw [← Array.getElem_toList hslotBound]
+      exact hvalue
+    have hheadGet : heap[slot]? = some head := by
+      rw [Array.getElem?_eq_getElem hslotBound, harrayValue]
+    have hrootNe : head ≠ heap[0] := by
+      intro heq
+      apply hnotRoot
+      rw [← heq]
+      exact hi
+    rcases pairVecDivVHCExtract_preserves_nonroot_head heap heap' nodes hheap
+        hownership.2.1 hrun slot head hheadGet hrootNe with
+      ⟨newSlot, hnewGet⟩
+    have hnewBound : newSlot < heap'.size := by
+      by_contra hn
+      rw [Array.getElem?_eq_none (by omega)] at hnewGet
+      contradiction
+    refine ⟨head, ?_, hi⟩
+    have hvalueEq : heap'[newSlot] = head := by
+      rw [Array.getElem?_eq_getElem hnewBound] at hnewGet
+      exact Option.some.inj hnewGet
+    rw [← hvalueEq]
+    exact Array.getElem_mem_toList hnewBound
+
 theorem PairVecDivVHCHeapChainOwnership.heapPointersValid
     (heap : Array Nat) (owners : Nat → Finset Nat)
     (nodes : Array PairVecDivVHCNode)

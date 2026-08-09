@@ -13,6 +13,9 @@
 - Added wrapper theorems that attach the first and second strictly-smaller
   recursive semantic hypotheses to those physical packages and derive the
   common raw HGCD invariant.
+- Added a dependent physical sum over the early and non-early continuations,
+  with a branch-selected second-child obligation and one uniform raw-invariant
+  theorem.
 
 ## Why
 
@@ -29,6 +32,8 @@ hypotheses.
   wrapper theorem.
 - The non-early package requires exactly two semantic hypotheses, each
   indexed by the actual smaller input length used by its generated call.
+- The dependent sum reduces the second-child obligation to `True` on the
+  actual early branch; no unused recursive premise is demanded there.
 - No fuel parameter or L2 fallback was introduced.
 
 ## Problems and resolution

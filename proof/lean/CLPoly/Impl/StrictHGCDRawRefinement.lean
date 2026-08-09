@@ -11070,6 +11070,94 @@ theorem HgcdRecursiveNonEarlyContinuationWorkspace.rawInvariant
     continuation.secondWorkspace secondRecursiveRefines continuation.secondExec
     continuation.finishExec result hrun
 
+/-- The two successful continuations of a generated non-base body.  This is a
+physical sum: neither constructor contains a recursive semantic conclusion. -/
+inductive HgcdRecursiveNonBaseContinuationWorkspace (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (W scratch : RawPtr UInt64)
+    (lenA lenB : Nat) (heap : RawHeap)
+    (package : HgcdRecursiveNonBasePackage this bound recurse a b W scratch
+      lenA lenB heap)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (hbase : ¬ lenB < lenA / 2 + 1) : Type where
+  | early
+      (workspace : HgcdRecursiveEarlyContinuationWorkspace this bound recurse
+        M hM computeM A B a b W scratch lenA lenB heap package hbound horder
+        hbase)
+  | nonEarly
+      (workspace : HgcdRecursiveNonEarlyContinuationWorkspace this bound
+        recurse M hM computeM A B a b W scratch lenA lenB heap package hbound
+        horder hbase)
+
+/-- The semantic obligation selected by an actual continuation: the early
+constructor has no second child, while the non-early constructor receives the
+strictly-smaller second-child induction theorem. -/
+def HgcdRecursiveContinuationSecondRefines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (W scratch : RawPtr UInt64)
+    (lenA lenB : Nat) (heap : RawHeap)
+    (package : HgcdRecursiveNonBasePackage this bound recurse a b W scratch
+      lenA lenB heap)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (hbase : ¬ lenB < lenA / 2 + 1)
+    (continuation : HgcdRecursiveNonBaseContinuationWorkspace this bound
+      recurse M hM computeM A B a b W scratch lenA lenB heap package hbound
+      horder hbase) : Prop :=
+  match continuation with
+  | .early _ => True
+  | .nonEarly workspace =>
+      HgcdRecursiveSecondCallbackRefines this bound recurse W scratch lenA
+        workspace.middle workspace.secondOrder workspace.secondDecrease
+
+/-- A successful physical non-base continuation plus exactly its selected
+well-founded child hypotheses proves the common raw invariant. -/
+theorem HgcdRecursiveNonBaseContinuationWorkspace.rawInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (hbase : ¬ lenB < lenA / 2 + 1)
+    (package : HgcdRecursiveNonBasePackage this bound recurse a b W scratch
+      lenA lenB heap)
+    (firstRecursiveRefines : HgcdRecursiveNonBaseCallbackRefines this bound
+      recurse a b W scratch lenA lenB heap package)
+    (continuation : HgcdRecursiveNonBaseContinuationWorkspace this bound
+      recurse M hM computeM A B a b W scratch lenA lenB heap package hbound
+      horder hbase)
+    (secondRecursiveRefines : HgcdRecursiveContinuationSecondRefines this bound
+      recurse M hM computeM A B a b W scratch lenA lenB heap package hbound
+      horder hbase continuation)
+    (result : HgcdRecursiveResult)
+    (hrun :
+      let firstCall := package.admissible this bound recurse a b W scratch
+        lenA lenB heap firstRecursiveRefines
+      let providers := hgcdRecursiveFirstCall_providers this bound recurse a b
+        W scratch lenA lenB heap package.inputHighA package.inputHighB
+        package.lowPolyA package.lowPolyB hcfg hp horder firstCall.workspace
+        firstCall.recursiveRefines
+      hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
+        lenB W scratch heap hbound horder (fun _ => providers.1)
+          (fun _ => providers.2) = .ok result) :
+    ∃ finalA finalB entries,
+      HgcdRecursiveRawInvariant this package.inputA package.inputB finalA
+        finalB entries computeM A B lenA result := by
+  cases continuation with
+  | early workspace =>
+      exact workspace.rawInvariant this bound recurse M hM computeM A B a b
+        lenA lenB W scratch heap hcfg hp hbound horder hbase package
+        firstRecursiveRefines result hrun
+  | nonEarly workspace =>
+      exact workspace.rawInvariant this bound recurse M hM computeM A B a b
+        lenA lenB W scratch heap hcfg hp hbound horder hbase package
+        firstRecursiveRefines secondRecursiveRefines result hrun
+
 /-- Invoke the well-founded body with recursive admissibility demanded only
 on the source's actual non-base branch.  Thus the base execution carries no
 child workspace or unexecuted recursive premise. -/

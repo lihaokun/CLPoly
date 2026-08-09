@@ -556,3 +556,15 @@ every generated range-for and recursive loop used by SQF.
   ConsumeChain 始终保持 node-array size，后续覆盖传递不会偷换节点域。
   下一步补强 `VHC_extract`：不仅新 head 来自旧 heap，还要证明每个非 root
   旧 head 都存活；然后即可组合 root owner 重分类得到覆盖保持。
+- `VHC_extract` 的双向 head 守恒及 equal-degree 全覆盖保持已闭合。
+  heap slot 唯一性先被转成 `heap.toList.Nodup`；结合 extract 精确 size
+  减一、新 head 单向来自旧 heap、以及新 heap 排除唯一 root，证明新
+  head finset 精确等于旧 head finset 删除 root。因此每个非 root 旧 head
+  都恢复出新 heap 中的具体 slot。利用该反向存活定理，root owner 的
+  所有节点由 chain 重分类定理进入最终 `lin/reset`，旧 `lin/reset` 由
+  单调性保持，其他 owner 则随非 root head 留在新 heap；node-array size
+  保持用于统一量化域。最后按 checked extract 的实际 heap size 强归纳，
+  `ConsumeEqualDegree` 同时保持 exact ownership 与
+  `PairVecDivVHCNodesCovered`。下一步把覆盖继续穿过 emit activation 和
+  reverse reinsertion，使下一轮 outer loop 重新得到 `lin = []` 的完整
+  heap/reset 分区。

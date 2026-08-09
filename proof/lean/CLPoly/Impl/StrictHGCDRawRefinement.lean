@@ -10785,9 +10785,9 @@ theorem hgcdRecursiveBodyAdmissible_eq_body (this : DenseUPolyZp)
   exact hgcdRecursiveBodyBelow_eq_body this bound below plain M hM computeM A
     B a b lenA lenB W scratch heap hbound horder _ _ hagrees
 
-/-- Existentially package the mathematical split and the physical/recursive
-data for the first child of a genuinely non-base invocation.  The package is
-never requested by the generated base branch. -/
+/-- Existentially package the mathematical split and physical workspace for
+the first child of a genuinely non-base invocation.  The package is never
+requested by the generated base branch and contains no recursive semantics. -/
 structure HgcdRecursiveNonBasePackage (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]
     (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
@@ -10797,8 +10797,43 @@ structure HgcdRecursiveNonBasePackage (this : DenseUPolyZp)
   inputHighB : Polynomial (ZMod this._p.toNat)
   lowPolyA : Polynomial (ZMod this._p.toNat)
   lowPolyB : Polynomial (ZMod this._p.toNat)
-  admissible : HgcdRecursiveFirstCallAdmissible this bound recurse a b W
+  workspace : HgcdRecursiveFirstCallWorkspace this bound recurse a b W
     scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB
+
+/-- The one semantic fact intentionally excluded from a non-base physical
+package.  A top-level well-founded construction supplies it from the smaller
+`lenA` induction result. -/
+def HgcdRecursiveNonBaseCallbackRefines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (package : HgcdRecursiveNonBasePackage this bound recurse a b W scratch
+      lenA lenB heap) : Prop :=
+  let ws := hgcdRecursiveWorkspace W lenA
+  let high := hgcdRecursiveHighInput a b lenA lenB
+  ∀ (hchildOrder : high.lenB0 < high.lenA0)
+    (hchildDecrease : high.lenA0 < bound),
+  HgcdRecursiveCallbackRefinesAt this bound recurse ws.R
+    (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+    high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
+    package.inputHighA package.inputHighB
+
+/-- A physical non-base package becomes first-call admissible only after the
+smaller-call semantic theorem has been supplied. -/
+theorem HgcdRecursiveNonBasePackage.admissible (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (package : HgcdRecursiveNonBasePackage this bound recurse a b W scratch
+      lenA lenB heap)
+    (recursiveRefines : HgcdRecursiveNonBaseCallbackRefines this bound recurse
+      a b W scratch lenA lenB heap package) :
+    HgcdRecursiveFirstCallAdmissible this bound recurse a b W scratch lenA
+      lenB heap package.inputHighA package.inputHighB package.lowPolyA
+      package.lowPolyB :=
+  package.workspace.admissible this bound recurse a b W scratch lenA lenB
+    heap package.inputHighA package.inputHighB package.lowPolyA
+    package.lowPolyB recursiveRefines
 
 /-- Invoke the well-founded body with recursive admissibility demanded only
 on the source's actual non-base branch.  Thus the base execution carries no
@@ -10813,7 +10848,10 @@ def hgcdRecursiveBodyBranchAdmissible (this : DenseUPolyZp)
     (hbound : lenA = bound) (horder : lenB < lenA)
     (nonBase : ¬ lenB < lenA / 2 + 1 →
       HgcdRecursiveNonBasePackage this bound recurse a b W scratch lenA lenB
-        heap) : RawExec HgcdRecursiveResult :=
+        heap)
+    (recursiveRefines : ∀ hbase,
+      HgcdRecursiveNonBaseCallbackRefines this bound recurse a b W scratch
+        lenA lenB heap (nonBase hbase)) : RawExec HgcdRecursiveResult :=
   if hbase : lenB < lenA / 2 + 1 then
     hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA lenB
       W scratch heap hbound horder
@@ -10824,7 +10862,7 @@ def hgcdRecursiveBodyBranchAdmissible (this : DenseUPolyZp)
     let providers := hgcdRecursiveFirstCall_providers this bound recurse a b W
       scratch lenA lenB heap package.inputHighA package.inputHighB
       package.lowPolyA package.lowPolyB hcfg hp horder
-      package.admissible.workspace package.admissible.recursiveRefines
+      package.workspace (recursiveRefines hbase)
     hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA lenB
       W scratch heap hbound horder (fun _ => providers.1)
         (fun _ => providers.2)
@@ -10844,6 +10882,9 @@ theorem hgcdRecursiveBodyBranchAdmissible_eq_body (this : DenseUPolyZp)
     (nonBase : ¬ lenB < lenA / 2 + 1 →
       HgcdRecursiveNonBasePackage this bound below a b W scratch lenA lenB
         heap)
+    (recursiveRefines : ∀ hbase,
+      HgcdRecursiveNonBaseCallbackRefines this bound below a b W scratch lenA
+        lenB heap (nonBase hbase))
     (hagrees : ∀ (matrix : HgcdMat) (hMatrix : matrix.Valid)
       (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
       (WNext childScratch : RawPtr UInt64) (childHeap : RawHeap)
@@ -10854,7 +10895,8 @@ theorem hgcdRecursiveBodyBranchAdmissible_eq_body (this : DenseUPolyZp)
         plain matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
           WNext childScratch childHeap) :
     hgcdRecursiveBodyBranchAdmissible this bound below M hM computeM A B a b
-        lenA lenB W scratch heap hcfg hp hbound horder nonBase =
+        lenA lenB W scratch heap hcfg hp hbound horder nonBase
+        recursiveRefines =
       hgcdRecursiveBody this plain M hM computeM A B a b lenA lenB W scratch
         heap := by
   unfold hgcdRecursiveBodyBranchAdmissible
@@ -10869,7 +10911,7 @@ theorem hgcdRecursiveBodyBranchAdmissible_eq_body (this : DenseUPolyZp)
     let providers := hgcdRecursiveFirstCall_providers this bound below a b W
       scratch lenA lenB heap package.inputHighA package.inputHighB
       package.lowPolyA package.lowPolyB hcfg hp horder
-      package.admissible.workspace package.admissible.recursiveRefines
+      package.workspace (recursiveRefines hbase)
     exact hgcdRecursiveBodyBelow_eq_body this bound below plain M hM computeM
       A B a b lenA lenB W scratch heap hbound horder
       (fun _ => providers.1) (fun _ => providers.2) hagrees

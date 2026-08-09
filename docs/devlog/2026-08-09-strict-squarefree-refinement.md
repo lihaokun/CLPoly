@@ -663,3 +663,13 @@ every generated range-for and recursive loop used by SQF.
   source 使用的 `Finset.range nodes.size` chain 直接接入这一归纳。下一步
   结合 exact owner subset-range 与 heap-chain homogeneity，把该结论沿每次
   checked extract 的 heap-size 严格下降提升到完整 equal-degree loop。
+- processed-prefix 已沿完整 equal-degree heap loop 提升。新定理不是仅
+  对 bucket 做列表归纳，而是展开真实 `ConsumeEqualDegree` 控制流：从
+  root 的 exact owner 和 heap-chain homogeneity 恢复整条 source chain
+  的目标次数，执行真实 root-bucket consume 后传递 prefix 与
+  `NodeDenotes`，再经过 checked extract 传递 ownership/homogeneity，
+  最后以返回 heap 的严格 size 下降作良基归纳。次数不匹配和
+  empty heap 分支均从实际返回值直接保持不变式，没有 fuel、
+  fallback 或语义神谕。下一步处理 emit 导致的 quotient append 与
+  frontier bound 变化，再把 prefix 传过 activation/reinsertion 和完整 outer
+  iteration。

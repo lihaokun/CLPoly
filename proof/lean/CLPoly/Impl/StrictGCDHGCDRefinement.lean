@@ -2578,6 +2578,259 @@ theorem hgcdRecursiveNonBaseBody_succeeds (this : DenseUPolyZp)
     exact ⟨result, finalA, finalB, entries,
       by simpa [firstRefines, firstCall, providers] using hbody, hInvariant⟩
 
+/-- Purely physical node for one complete checked recursive invocation.  No
+field is indexed by success of the enclosing call and no field contains a
+recursive semantic result. -/
+structure HgcdRecursiveInvocationTotalWorkspace (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (horder : lenB < lenA) : Type where
+  positive : 0 < lenA
+  base : ∀ hbase : lenB < lenA / 2 + 1,
+    HgcdRecursiveBaseCallWorkspace this M hM A B a b lenA lenB heap left right
+  nonBase : ∀ hbase : ¬ lenB < lenA / 2 + 1,
+    HgcdRecursiveNonBasePackage this lenA
+      (hgcdRecursiveCallBelowOfCall lenA (hgcdRecursiveCallChecked this))
+      a b W scratch lenA lenB heap
+  nonBaseInput : ∀ hbase,
+    (nonBase hbase).inputA = left ∧ (nonBase hbase).inputB = right
+  body : ∀ hbase : ¬ lenB < lenA / 2 + 1,
+    HgcdRecursiveBodyTotalWorkspace this lenA
+      (hgcdRecursiveCallBelowOfCall lenA (hgcdRecursiveCallChecked this))
+      M hM computeM A B a b W scratch lenA lenB heap (nonBase hbase)
+
+/-- Hereditary physical nodes for every represented strictly smaller checked
+call.  Polynomial representations are premises, not caller-selected results. -/
+def HgcdRecursiveInvocationTotalWorkspaceProviderBelow
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (limit : Nat) : Type :=
+  ∀ (childLen : Nat), childLen < limit →
+    ∀ (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+      (A B a b : RawPtr UInt64) (lenB : Nat)
+      (W scratch : RawPtr UInt64) (heap : RawHeap)
+      (left right : Polynomial (ZMod this._p.toNat))
+      (horder : lenB < childLen),
+    RawDensePolyRep this heap a childLen left →
+    RawDensePolyRep this heap b lenB right →
+    HgcdRecursiveInvocationTotalWorkspace this M hM computeM A B a b
+      childLen lenB W scratch heap left right hcfg hp horder
+
+/-- Restrict a total physical provider to a smaller recursion bound. -/
+def HgcdRecursiveInvocationTotalWorkspaceProviderBelow.mono
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (large small : Nat) (hlt : small < large)
+    (provider : HgcdRecursiveInvocationTotalWorkspaceProviderBelow this hcfg
+      hp large) :
+    HgcdRecursiveInvocationTotalWorkspaceProviderBelow this hcfg hp small :=
+  fun childLen hchild => provider childLen (hchild.trans hlt)
+
+/-- The exact generated base arm cannot fault when its physical workspace is
+valid.  The outer theorem uses this result without assuming a successful
+call. -/
+theorem hgcdRecursiveBase_succeeds
+    (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (hp : 1 < this._p.toNat)
+    (workspace : HgcdRecursiveBaseCallWorkspace this M hM A B a b lenA lenB
+      heap left right) :
+    ∃ result, hgcdRecursiveBase M computeM A B a b lenA lenB heap =
+      .ok result := by
+  cases computeM with
+  | false =>
+      rcases copyU64_refines_rawDense this heap A a lenA left
+          workspace.validA workspace.Aa workspace.leftRep with
+        ⟨heap1, hcopyA, hlayout1, _⟩
+      have hright1 :=
+        CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix
+          this heap heap1 b lenB right hlayout1
+        (copyU64_preserves_prefix heap heap1 A a b lenA lenB
+          workspace.validA workspace.leftRep.1 workspace.Ab hcopyA)
+        workspace.rightRep
+      have hB1 : heap1.ValidU64Slice B lenB :=
+        (hlayout1 B lenB).mp workspace.validB
+      rcases copyU64_refines_rawDense this heap1 B b lenB right hB1
+          workspace.Bb hright1 with ⟨heap2, hcopyB, _, _⟩
+      exact ⟨⟨heap2, M, lenA, lenB, 1⟩, by
+        simp [hgcdRecursiveBase, hcopyA, hcopyB]⟩
+  | true =>
+      rcases hgcdIterInit_refines this M A B A A 0 a lenA b lenB heap left
+          right hM hp workspace.valid0 workspace.valid3 workspace.disjoint03
+          workspace.validA workspace.validB workspace.Aa workspace.Bb
+          workspace.Ab workspace.BA workspace.row0a workspace.row3a
+          workspace.row0b workspace.row3b workspace.aMatrix workspace.bMatrix
+          workspace.matrixValid workspace.leftRep workspace.rightRep with
+        ⟨initial, hinit, _⟩
+      refine ⟨initial.toRecursiveBaseResult, ?_⟩
+      rw [hgcdRecursiveBase_true_eq_init, hinit]
+      rfl
+
+/-- Total execution and semantic refinement of the concrete checked HGCD
+recursion.  Termination is the source length `lenA`; both recursive calls use
+strict decreases proved by the generated high split and middle division. -/
+theorem hgcdRecursiveCallChecked_succeeds_wf (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (left right : Polynomial (ZMod this._p.toNat))
+    (horder : lenB < lenA)
+    (workspace : HgcdRecursiveInvocationTotalWorkspace this M hM computeM A B
+      a b lenA lenB W scratch heap left right hcfg hp horder)
+    (provider : HgcdRecursiveInvocationTotalWorkspaceProviderBelow this hcfg
+      hp lenA) :
+    ∃ result finalA finalB entries,
+      hgcdRecursiveCallChecked this M hM computeM A B a b lenA lenB W scratch
+          heap = .ok result ∧
+      HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
+        A B lenA result := by
+  let recurse := hgcdRecursiveCallBelowOfCall lenA
+    (hgcdRecursiveCallChecked this)
+  let firstTotal : ∀ hbase : ¬ lenB < lenA / 2 + 1,
+      let package := workspace.nonBase hbase
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < lenA),
+      HgcdRecursiveCallbackSucceedsAt this lenA recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
+        package.inputHighA package.inputHighB := by
+    intro hbase
+    dsimp only
+    intro hchildOrder hchildDecrease
+    let package := workspace.nonBase hbase
+    let ws := hgcdRecursiveWorkspace W lenA
+    let high := hgcdRecursiveHighInput a b lenA lenB
+    let childWorkspace := provider high.lenA0 hchildDecrease ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) true ws.a3 ws.b3 high.a0
+      high.b0 high.lenB0 ws.next scratch heap package.inputHighA
+      package.inputHighB hchildOrder package.workspace.iter.leftRep
+      package.workspace.iter.rightRep
+    rcases hgcdRecursiveCallChecked_succeeds_wf this hcfg hp ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) true ws.a3 ws.b3 high.a0
+        high.b0 high.lenA0 high.lenB0 ws.next scratch heap package.inputHighA
+        package.inputHighB hchildOrder childWorkspace
+        (provider.mono this hcfg hp lenA high.lenA0 hchildDecrease) with
+      ⟨result, finalA, finalB, entries, hrun, hInvariant⟩
+    exact ⟨result, finalA, finalB, entries,
+      by simpa [recurse, hgcdRecursiveCallBelowOfCall] using hrun, hInvariant⟩
+  let firstRefines : ∀ hbase,
+      HgcdRecursiveNonBaseCallbackRefines this lenA recurse a b W scratch lenA
+        lenB heap (workspace.nonBase hbase) := by
+    intro hbase childOrder childDecrease child hrun
+    rcases firstTotal hbase childOrder childDecrease with
+      ⟨actual, finalA, finalB, entries, hactual, hInvariant⟩
+    have heq : actual = child := Except.ok.inj (hactual.symm.trans hrun)
+    subst actual
+    exact ⟨finalA, finalB, entries, hInvariant⟩
+  by_cases hbase : lenB < lenA / 2 + 1
+  · rcases hgcdRecursiveBase_succeeds this M hM computeM A B a b lenA lenB
+        heap left right hp (workspace.base hbase) with ⟨base, hbaseRun⟩
+    let hValid := hgcdRecursiveBase_result_valid M hM computeM A B a b lenA
+      lenB heap base hbaseRun
+    let result := base.toResult hValid
+    have hbranch : hgcdRecursiveBodyBranchAdmissible this lenA recurse M hM
+        computeM A B a b lenA lenB W scratch heap hcfg hp rfl horder
+        workspace.nonBase firstRefines = .ok result := by
+      simp only [hgcdRecursiveBodyBranchAdmissible, hbase, ↓reduceDIte]
+      rw [hgcdRecursiveBodyBelow]
+      simp only [hbase, ↓reduceDIte]
+      split
+      next fault hactual =>
+        have hfalse := hactual.symm.trans hbaseRun
+        simp at hfalse
+      next actual hactual =>
+        have heq : actual = base := Except.ok.inj (hactual.symm.trans hbaseRun)
+        subst actual
+        apply congrArg Except.ok
+        apply HgcdRecursiveResult.ext_value
+        rfl
+    have hchecked : hgcdRecursiveCallChecked this M hM computeM A B a b lenA
+        lenB W scratch heap = .ok result := by
+      rw [hgcdRecursiveCallChecked_eq_branchAdmissible this lenA M hM computeM
+        A B a b lenA lenB W scratch heap hcfg hp rfl horder
+        workspace.nonBase firstRefines]
+      exact hbranch
+    rcases hgcdRecursiveBodyBelow_base_rawInvariant this lenA recurse M hM
+        computeM A B a b lenA lenB W scratch heap left right hp rfl horder
+        (workspace.base hbase) workspace.positive hbase result (by
+          simpa [hgcdRecursiveBodyBranchAdmissible, hbase] using hbranch) with
+      ⟨entries, hInvariant⟩
+    exact ⟨result, left, right, entries, hchecked, hInvariant⟩
+  · have secondTotal : ∀ (first : HgcdRecursiveResult)
+        (reconstructed : HgcdRecursiveReconstructPairResult)
+        (middle : HgcdRecursiveMiddleResult)
+        (highC highD : Polynomial (ZMod this._p.toNat))
+        (_hfirst : HgcdFirstDispatchResult this lenA recurse a b W scratch
+          lenA lenB heap first),
+        (
+          let ws := hgcdRecursiveWorkspace W lenA
+          hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
+            scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
+            first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
+            first.heap = .ok reconstructed) →
+        (
+          let ws := hgcdRecursiveWorkspace W lenA
+          hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2 reconstructed.lenA
+            reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap =
+              .ok middle) →
+        RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+        RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+        ∀ (hsecondOrder : middle.lenD0 < middle.lenC0)
+          (hsecondDecrease : middle.lenC0 < lenA),
+        HgcdRecursiveCallbackSucceedsAt this lenA recurse
+          (hgcdRecursiveWorkspace W lenA).S
+          (hgcdRecursiveWorkspace_S_valid W lenA)
+          (hgcdRecursiveWorkspace W lenA).a3
+          (hgcdRecursiveWorkspace W lenA).b3 middle.c0 middle.d0
+          middle.lenC0 middle.lenD0 (hgcdRecursiveWorkspace W lenA).next
+          scratch middle.heap hsecondOrder hsecondDecrease highC highD := by
+      intro first reconstructed middle highC highD _hfirst _hreconstruct
+        _hmiddle hC hD hsecondOrder hsecondDecrease
+      let ws := hgcdRecursiveWorkspace W lenA
+      let childWorkspace := provider middle.lenC0 hsecondDecrease ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) true ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenD0 ws.next scratch middle.heap highC highD
+        hsecondOrder hC hD
+      rcases hgcdRecursiveCallChecked_succeeds_wf this hcfg hp ws.S
+          (hgcdRecursiveWorkspace_S_valid W lenA) true ws.a3 ws.b3 middle.c0
+          middle.d0 middle.lenC0 middle.lenD0 ws.next scratch middle.heap highC
+          highD hsecondOrder childWorkspace
+          (provider.mono this hcfg hp lenA middle.lenC0 hsecondDecrease) with
+        ⟨result, finalA, finalB, entries, hrun, hInvariant⟩
+      exact ⟨result, finalA, finalB, entries,
+        by simpa [recurse, hgcdRecursiveCallBelowOfCall] using hrun, hInvariant⟩
+    rcases hgcdRecursiveNonBaseBody_succeeds this lenA recurse M hM computeM A
+        B a b W scratch lenA lenB heap hcfg hp rfl horder hbase
+        (workspace.nonBase hbase) (workspace.body hbase) (firstTotal hbase)
+        secondTotal with ⟨result, finalA, finalB, entries, hbody, hInvariant⟩
+    have hbranch : hgcdRecursiveBodyBranchAdmissible this lenA recurse M hM
+        computeM A B a b lenA lenB W scratch heap hcfg hp rfl horder
+        workspace.nonBase firstRefines = .ok result := by
+      simpa [hgcdRecursiveBodyBranchAdmissible, hbase] using hbody
+    have hchecked : hgcdRecursiveCallChecked this M hM computeM A B a b lenA
+        lenB W scratch heap = .ok result := by
+      rw [hgcdRecursiveCallChecked_eq_branchAdmissible this lenA M hM computeM
+        A B a b lenA lenB W scratch heap hcfg hp rfl horder
+        workspace.nonBase firstRefines]
+      exact hbranch
+    rcases workspace.nonBaseInput hbase with ⟨hleft, hright⟩
+    exact ⟨result, finalA, finalB, entries, hchecked,
+      by simpa [hleft, hright] using hInvariant⟩
+termination_by lenA
+decreasing_by
+  · exact hchildDecrease
+  · exact hsecondDecrease
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/
@@ -2679,47 +2932,6 @@ def GcdHgcdDynamicHgcdWorkspaceProvider (this : DenseUPolyZp)
     RawDensePolyRep this heap R lenR remainder →
     GcdHgcdDynamicHgcdWorkspace this hcfg hp M hM G J R W scratch heap lenJ
       lenR divisor remainder horder
-
-/-- The exact generated base arm cannot fault when its physical workspace is
-valid.  This is the first total-execution component needed to upgrade checked
-HGCD from conditional semantic correctness to total raw refinement. -/
-theorem hgcdRecursiveBase_succeeds (this : DenseUPolyZp)
-    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
-    (A B a b : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
-    (left right : Polynomial (ZMod this._p.toNat))
-    (hp : 1 < this._p.toNat)
-    (workspace : HgcdRecursiveBaseCallWorkspace this M hM A B a b lenA lenB
-      heap left right) :
-    ∃ result, hgcdRecursiveBase M computeM A B a b lenA lenB heap =
-      .ok result := by
-  cases computeM with
-  | false =>
-      rcases copyU64_refines_rawDense this heap A a lenA left
-          workspace.validA workspace.Aa workspace.leftRep with
-        ⟨heap1, hcopyA, hlayout1, hARep⟩
-      have hright1 :=
-        CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix
-          this heap heap1 b lenB right hlayout1
-        (copyU64_preserves_prefix heap heap1 A a b lenA lenB
-          workspace.validA workspace.leftRep.1 workspace.Ab hcopyA)
-        workspace.rightRep
-      have hB1 : heap1.ValidU64Slice B lenB :=
-        (hlayout1 B lenB).mp workspace.validB
-      rcases copyU64_refines_rawDense this heap1 B b lenB right hB1
-          workspace.Bb hright1 with ⟨heap2, hcopyB, _, _⟩
-      exact ⟨⟨heap2, M, lenA, lenB, 1⟩, by
-        simp [hgcdRecursiveBase, hcopyA, hcopyB]⟩
-  | true =>
-      rcases hgcdIterInit_refines this M A B A A 0 a lenA b lenB heap left
-          right hM hp workspace.valid0 workspace.valid3 workspace.disjoint03
-          workspace.validA workspace.validB workspace.Aa workspace.Bb
-          workspace.Ab workspace.BA workspace.row0a workspace.row3a
-          workspace.row0b workspace.row3b workspace.aMatrix workspace.bMatrix
-          workspace.matrixValid workspace.leftRep workspace.rightRep with
-        ⟨initial, hinit, _⟩
-      refine ⟨initial.toRecursiveBaseResult, ?_⟩
-      rw [hgcdRecursiveBase_true_eq_init, hinit]
-      rfl
 
 /-- Dynamic form of the loop-head divrem refinement. -/
 theorem gcdHgcdLoop_dynamic_divrem_step (this : DenseUPolyZp)

@@ -273,6 +273,27 @@ non-early `hgcdRecursiveBodyBelow` result from the source calls in order, and
 then extract the common transform/GCD/length invariant.  The enclosing body
 success is now a conclusion rather than an index of its workspace.
 
+Close the outer checked recursive call by strong recursion on the exact
+source descriptor length `lenA`.  A new invocation-total workspace selects
+the base allocation or the non-base staged allocation only after the actual
+half-length guard is known.  Its hereditary provider supplies the same purely
+physical node for every represented child whose source-derived length is
+strictly smaller.  In the non-base branch, invoke the induction hypothesis on
+the actual first high-half descriptors and, after the actual middle division,
+on the actual second high-half descriptors.  Feed those two successful child
+executions to `hgcdRecursiveNonBaseBody_succeeds`; do not assume a successful
+enclosing body or store recursive semantic results in the workspace.
+
+For the base branch, execute `hgcdRecursiveBase` from its allocation contract
+and recover the common raw invariant from that same result.  For the non-base
+branch, use the total body theorem's returned execution and invariant.  In
+both cases, identify `hgcdRecursiveCallChecked` with the exact
+branch-admissible generated body through the existing unfolding equality.
+The recursion measure is only `lenA`; its two decreasing obligations are the
+generated high-half bound and the middle division's proved `lenC0 < lenA`.
+There is no fuel counter, partial definition, specification oracle, or L2
+execution fallback.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -319,3 +340,6 @@ success is now a conclusion rather than an index of its workspace.
   引入不按 enclosing body 成功索引的 staged workspace，组合 early 与
   non-early 全控制流，并由实际 first/reconstruct/middle/second/finish 调用
   构造 `hgcdRecursiveBodyBelow` 成功及公共递归语义不变式。
+- checked recursion 增量：约 1 小时、3 轮编译—修复、Lean 约 250 行；
+  用实际 `lenA` 良基递归闭合 checked call 的两次子调用，总执行与 raw
+  invariant 同时产出，不使用 enclosing-run 假设、fuel 或 L2 回退。

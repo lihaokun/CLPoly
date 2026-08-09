@@ -977,3 +977,11 @@ every generated range-for and recursive loop used by SQF.
   系数对值的唯一性，因而天然保留所有索引重数。下一步是唯一
   剩余的双射：目标-degree owner cursor nodes 与 `quotient.toList ×
   divisor.toList.tail` 中 degree 命中项对一一对应。
+- 双射的 L2 项对→C++ owner 方向已下沉到精确有限集成员
+  定理 `pairVecDivVHCFrontierProduct_mem_ownedNodesAtDegree`。对任意
+  真实 quotient 索引和非首 divisor 索引，若次数和等于当前
+  frontier，则固定分配行 `d - 1` 必属于生成 C++ 堆循环实际
+  消费的 `HeapOwnedNodesAtDegree`；证明同时使用 nodes 全覆盖、
+  reset 排除、堆所有权、行次数齐性、固定 divisor 指针和
+  cursor-prefix 不变式，并保留具体节点索引，不会因相同系数值
+  合并重数。下一步是证明 owner 方向的唯一项对并改写有限和。

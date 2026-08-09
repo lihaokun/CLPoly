@@ -277,6 +277,12 @@ every generated range-for and recursive loop used by SQF.
   `unvisited`，对应节点逐点未变，因而 `ChainOwns` 自动迁移到结果节点
   数组。下一步把每个 heap slot 配上两两不交 owner，再证明 extract 只
   重排这些 slot/head，不改变 owner 对应关系。
+- `VHC_extract` 的真实 sift-down 执行现已补齐两个关键语义引理：
+  结果每个活动 head 都有旧 heap slot 来源；若旧 root head 唯一，
+  extract 后它在整个活动 heap 中完全消失。证明逐步跟踪了 C++
+  sift-down 的 child-copy 和 saved-last-node 写入，没有把 extract 替换成
+  抽象排序。剩余局部缺口是证明这些写入不复制存活 head，以得到
+  slot 唯一性的 extract 保持。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

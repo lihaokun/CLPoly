@@ -1079,6 +1079,209 @@ termination_by limit - child
 decreasing_by
   all_goals omega
 
+/-- A value occurs in an array only at one distinguished slot.  This is the
+local form of heap-head uniqueness needed to show that extracting slot zero
+cannot leave the consumed bucket head elsewhere in the active heap. -/
+def PairVecDivVHCOnlyAt (heap : Array Nat) (nodeIndex slot : Nat) : Prop :=
+  ∀ (i : Nat), heap[i]? = some nodeIndex → i = slot
+
+/-- A node index is absent from every observable array slot. -/
+def PairVecDivVHCExcludes (heap : Array Nat) (nodeIndex : Nat) : Prop :=
+  ∀ (i : Nat), heap[i]? ≠ some nodeIndex
+
+/-- Every active value in `target` originates at an active slot of `source`.
+This intentionally records provenance rather than merely a range bound. -/
+def PairVecDivVHCValuesFrom (target source : Array Nat) : Prop :=
+  ∀ (i value : Nat), target[i]? = some value →
+    ∃ j : Nat, source[j]? = some value
+
+theorem pairVecDivVHCValuesFrom_refl (heap : Array Nat) :
+    PairVecDivVHCValuesFrom heap heap := by
+  intro i value hi
+  exact ⟨i, hi⟩
+
+theorem pairVecDivVHCSet_valuesFrom (target source : Array Nat)
+    (slot replacement : Nat) (hslot : slot < target.size)
+    (hfrom : PairVecDivVHCValuesFrom target source)
+    (hreplacement : ∃ j : Nat, source[j]? = some replacement) :
+    PairVecDivVHCValuesFrom (target.set slot replacement) source := by
+  intro i value hi
+  by_cases hislot : slot = i
+  · subst i
+    have hvalue : replacement = value := by
+      simpa [Array.getElem?_set, hslot] using hi
+    subst value
+    exact hreplacement
+  · rw [Array.getElem?_set_ne hslot hislot] at hi
+    exact hfrom i value hi
+
+theorem pairVecDivVHCSet_excludes_of_onlyAt
+    (heap : Array Nat) (nodeIndex slot replacement : Nat)
+    (hslot : slot < heap.size)
+    (honly : PairVecDivVHCOnlyAt heap nodeIndex slot)
+    (hne : replacement ≠ nodeIndex) :
+    PairVecDivVHCExcludes (heap.set slot replacement) nodeIndex := by
+  intro i hi
+  by_cases hislot : slot = i
+  · subst i
+    have hvalue : replacement = nodeIndex := by
+      simpa [Array.getElem?_set, hslot] using hi
+    exact hne hvalue
+  · rw [Array.getElem?_set_ne hslot hislot] at hi
+    exact hislot (honly i hi).symm
+
+theorem pairVecDivVHCExcludes_onlyAt (heap : Array Nat) (nodeIndex slot : Nat)
+    (hexcludes : PairVecDivVHCExcludes heap nodeIndex) :
+    PairVecDivVHCOnlyAt heap nodeIndex slot := by
+  intro i hi
+  exact False.elim (hexcludes i hi)
+
+theorem pairVecDivVHCSiftDown_valuesFrom
+    (i child limit lastNode : Nat) (heap heap' source : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hfrom : PairVecDivVHCValuesFrom heap source)
+    (hlast : ∃ j : Nat, source[j]? = some lastNode)
+    (hrun : pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok heap') :
+    PairVecDivVHCValuesFrom heap' source := by
+  rw [pairVecDivVHCSiftDown] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hlimit =>
+      split at hrun
+      next hchild =>
+        dsimp only at hrun
+        cases hleft : pairVecDivVHCMono heap[child] nodes with
+        | error fault => simp [hleft] at hrun
+        | ok leftMono =>
+          cases hright : pairVecDivVHCMono heap[child + 1] nodes with
+          | error fault => simp [hleft, hright] at hrun
+          | ok rightMono =>
+            cases hlastMono : pairVecDivVHCMono lastNode nodes with
+            | error fault => simp [hleft, hright, hlastMono] at hrun
+            | ok lastMono =>
+              simp only [hleft, hright, hlastMono] at hrun
+              have hleftFrom := hfrom child heap[child] (by
+                rw [Array.getElem?_eq_getElem (by omega)])
+              have hrightFrom := hfrom (child + 1) heap[child + 1] (by
+                rw [Array.getElem?_eq_getElem (by omega)])
+              by_cases hselected : leftMono.deg > rightMono.deg
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  exact pairVecDivVHCSiftDown_valuesFrom child
+                    (child * 2 + 1) limit lastNode (heap.set i heap[child])
+                    heap' source nodes
+                    (pairVecDivVHCSet_valuesFrom heap source i heap[child] hi
+                      hfrom hleftFrom)
+                    hlast hrun
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  exact pairVecDivVHCSet_valuesFrom heap source i lastNode hi
+                    hfrom hlast
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  exact pairVecDivVHCSiftDown_valuesFrom (child + 1)
+                    ((child + 1) * 2 + 1) limit lastNode
+                    (heap.set i heap[child + 1]) heap' source nodes
+                    (pairVecDivVHCSet_valuesFrom heap source i heap[child + 1]
+                      hi hfrom hrightFrom)
+                    hlast hrun
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  exact pairVecDivVHCSet_valuesFrom heap source i lastNode hi
+                    hfrom hlast
+      next hchild =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        exact pairVecDivVHCSet_valuesFrom heap source i lastNode hi hfrom hlast
+termination_by limit - child
+decreasing_by
+  all_goals omega
+
+/-- `sift_down` removes the distinguished value at its current hole.  The
+proof follows the real recursive writes: a child is copied into the hole and
+the saved last node is eventually installed, neither of which can be the
+removed root under heap-head uniqueness. -/
+theorem pairVecDivVHCSiftDown_excludes_of_onlyAt
+    (i child limit lastNode root : Nat) (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hichild : i < child)
+    (honly : PairVecDivVHCOnlyAt heap root i)
+    (hlast : lastNode ≠ root)
+    (hrun : pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok heap') :
+    PairVecDivVHCExcludes heap' root := by
+  rw [pairVecDivVHCSiftDown] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hlimit =>
+      split at hrun
+      next hchild =>
+        dsimp only at hrun
+        cases hleft : pairVecDivVHCMono heap[child] nodes with
+        | error fault => simp [hleft] at hrun
+        | ok leftMono =>
+          cases hright : pairVecDivVHCMono heap[child + 1] nodes with
+          | error fault => simp [hleft, hright] at hrun
+          | ok rightMono =>
+            cases hlastMono : pairVecDivVHCMono lastNode nodes with
+            | error fault => simp [hleft, hright, hlastMono] at hrun
+            | ok lastMono =>
+              simp only [hleft, hright, hlastMono] at hrun
+              have hchildNe : heap[child] ≠ root := by
+                intro heq
+                have hget : heap[child]? = some root := by
+                  rw [Array.getElem?_eq_getElem (by omega), heq]
+                exact (Nat.ne_of_lt hichild) (honly child hget).symm
+              have hchildSet := pairVecDivVHCSet_excludes_of_onlyAt heap root i
+                heap[child] hi honly hchildNe
+              by_cases hselected : leftMono.deg > rightMono.deg
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  exact pairVecDivVHCSiftDown_excludes_of_onlyAt child
+                    (child * 2 + 1) limit lastNode root
+                    (heap.set i heap[child]) heap' nodes (by omega)
+                    (pairVecDivVHCExcludes_onlyAt _ _ _ hchildSet) hlast hrun
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  exact pairVecDivVHCSet_excludes_of_onlyAt heap root i
+                    lastNode hi honly hlast
+              · simp only [hselected, ↓reduceIte] at hrun
+                have hrightNe : heap[child + 1] ≠ root := by
+                  intro heq
+                  have hget : heap[child + 1]? = some root := by
+                    rw [Array.getElem?_eq_getElem (by omega), heq]
+                  exact (by omega : child + 1 ≠ i) (honly (child + 1) hget)
+                have hrightSet := pairVecDivVHCSet_excludes_of_onlyAt heap root
+                  i heap[child + 1] hi honly hrightNe
+                split at hrun
+                next hgreater =>
+                  exact pairVecDivVHCSiftDown_excludes_of_onlyAt (child + 1)
+                    ((child + 1) * 2 + 1) limit lastNode root
+                    (heap.set i heap[child + 1]) heap' nodes (by omega)
+                    (pairVecDivVHCExcludes_onlyAt _ _ _ hrightSet) hlast hrun
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  exact pairVecDivVHCSet_excludes_of_onlyAt heap root i
+                    lastNode hi honly hlast
+      next hchild =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        exact pairVecDivVHCSet_excludes_of_onlyAt heap root i lastNode hi honly
+          hlast
+termination_by limit - child
+decreasing_by
+  all_goals omega
+
 theorem pairVecDivVHCExtract_size (heap heap' : Array Nat)
     (nodes : Array PairVecDivVHCNode)
     (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
@@ -1095,6 +1298,72 @@ theorem pairVecDivVHCExtract_size (heap heap' : Array Nat)
         heap[heap.size - 1] heap shifted nodes hsift
       rw [Array.size_pop, hsize]
       omega
+
+theorem pairVecDivVHCExtract_valuesFrom (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
+    PairVecDivVHCValuesFrom heap' heap := by
+  unfold pairVecDivVHCExtract at hrun
+  split at hrun <;> try contradiction
+  next hnonempty =>
+    dsimp only at hrun
+    cases hsift : pairVecDivVHCSiftDown 0 1 (heap.size - 1)
+        heap[heap.size - 1] heap nodes with
+    | error fault => simp [hsift] at hrun
+    | ok shifted =>
+        rw [hsift] at hrun
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        have hlastBound : heap.size - 1 < heap.size := by omega
+        have hshifted := pairVecDivVHCSiftDown_valuesFrom 0 1
+          (heap.size - 1) heap[heap.size - 1] heap shifted heap nodes
+          (pairVecDivVHCValuesFrom_refl heap)
+          ⟨heap.size - 1, by
+            rw [Array.getElem?_eq_getElem hlastBound]⟩ hsift
+        intro i value hi
+        rw [Array.getElem?_pop] at hi
+        split at hi
+        · exact hshifted i value hi
+        · contradiction
+
+/-- Extracting a unique heap root removes that node index from the whole
+active heap, not merely from slot zero. -/
+theorem pairVecDivVHCExtract_excludes_root (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hnonempty : 0 < heap.size)
+    (hunique : PairVecDivVHCOnlyAt heap heap[0] 0)
+    (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
+    PairVecDivVHCExcludes heap' heap[0] := by
+  have hsize := pairVecDivVHCExtract_size heap heap' nodes hrun
+  by_cases hone : heap.size = 1
+  · intro i
+    have hempty : heap'.size = 0 := by omega
+    rw [Array.getElem?_eq_none (by omega)]
+    simp
+  · unfold pairVecDivVHCExtract at hrun
+    simp only [hnonempty, ↓reduceDIte] at hrun
+    cases hsift : pairVecDivVHCSiftDown 0 1 (heap.size - 1)
+        heap[heap.size - 1] heap nodes with
+    | error fault => simp [hsift] at hrun
+    | ok shifted =>
+        rw [hsift] at hrun
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        have hlastNe : heap[heap.size - 1] ≠ heap[0] := by
+          intro heq
+          have hlastBound : heap.size - 1 < heap.size := by omega
+          have hget : heap[heap.size - 1]? = some heap[0] := by
+            rw [Array.getElem?_eq_getElem hlastBound, heq]
+          have := hunique (heap.size - 1) hget
+          omega
+        have hexcludes := pairVecDivVHCSiftDown_excludes_of_onlyAt 0 1
+          (heap.size - 1) heap[heap.size - 1] heap[0] heap shifted nodes
+          (by omega) hunique hlastNe hsift
+        intro i hi
+        rw [Array.getElem?_pop] at hi
+        split at hi
+        · exact hexcludes i hi
+        · contradiction
 
 /-- Proof-carrying safe boundary for `VHC_extract`; it executes the same raw
 definition and packages its established logical-size decrement. -/

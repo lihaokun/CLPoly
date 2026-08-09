@@ -163,6 +163,14 @@ every generated range-for and recursive loop used by SQF.
   重插和新 quotient cell 触发的 `--reset_h` 节点激活/插入也已按源码
   顺序实现，分别以 `lin.size` 与 `reset_h` 终止。下一步组合一次完整
   outer iteration，并建立 quotient-product frontier 不变式。
+- 一次完整 outer iteration 现已组合为 checked 执行：严格按 source
+  tie-breaking 在 dividend cell 与 heap root 中选择 frontier（相同次数
+  先推进 dividend iterator），消费等次 bucket，执行非零与 monomial
+  divisibility 分支，以 generated inverse/multiply 生成 quotient cell，
+  仅在真实 `value != 0` 分支 append，随后依次运行 `reset_h` 激活和
+  `lin` 逆序重插。已证明 frontier 选择只会保持或恰好推进一次实际
+  dividend iterator。下一步建立本次迭代后最大 frontier 次数严格下降
+  的不变式，用它定义完整 outer while 的良基递归。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

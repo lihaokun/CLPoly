@@ -1389,6 +1389,121 @@ theorem pairVecDivVHCActivateReset_zero (heap : Array Nat)
   rw [pairVecDivVHCActivateReset]
   simp
 
+structure PairVecDivVHCFrontier where
+  degree : Nat
+  coefficient : UInt64
+  dividendIndex : Nat
+
+/-- Source choice between `v1_ptr` and the heap root.  For the univariate
+comparator, `!comp(heapRoot, dividendTerm)` is exactly
+`heapRoot.degree ≤ dividendTerm.degree`; ties therefore consume the dividend
+cell first, as in C++. -/
+def pairVecDivVHCSelectFrontier (dividendIndex : Nat)
+    (dividend : SparsePolyZp) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : RawExec PairVecDivVHCFrontier :=
+  if hdividend : dividendIndex < dividend.size then
+    if hheap : 0 < heap.size then
+      match pairVecDivVHCMono heap[0] nodes with
+      | .error fault => .error fault
+      | .ok rootMono =>
+          if rootMono.deg ≤ dividend[dividendIndex].1.deg then
+            .ok (PairVecDivVHCFrontier.mk dividend[dividendIndex].1.deg
+              dividend[dividendIndex].2.val (dividendIndex + 1))
+          else
+            .ok (PairVecDivVHCFrontier.mk rootMono.deg 0 dividendIndex)
+    else
+      .ok (PairVecDivVHCFrontier.mk dividend[dividendIndex].1.deg
+        dividend[dividendIndex].2.val (dividendIndex + 1))
+  else if hheap : 0 < heap.size then
+    match pairVecDivVHCMono heap[0] nodes with
+    | .error fault => .error fault
+    | .ok rootMono =>
+        .ok (PairVecDivVHCFrontier.mk rootMono.deg 0 dividendIndex)
+  else
+    .error .assertionFailure
+
+theorem pairVecDivVHCSelectFrontier_index (dividendIndex : Nat)
+    (dividend : SparsePolyZp) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (frontier : PairVecDivVHCFrontier)
+    (hrun : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    frontier.dividendIndex = dividendIndex ∨
+      frontier.dividendIndex = dividendIndex + 1 := by
+  unfold pairVecDivVHCSelectFrontier at hrun
+  split at hrun
+  next hdividend =>
+    split at hrun
+    next hheap =>
+      split at hrun <;> try contradiction
+      next rootMono hmono =>
+        split at hrun <;>
+          simp only [Except.ok.injEq] at hrun <;>
+          subst frontier <;> simp
+    next hheap =>
+      simp only [Except.ok.injEq] at hrun
+      subst frontier
+      simp
+  next hdividend =>
+    split at hrun <;> try contradiction
+    next hheap =>
+      split at hrun <;> try contradiction
+      next rootMono hmono =>
+        simp only [Except.ok.injEq] at hrun
+        subst frontier
+        simp
+
+structure PairVecDivVHCIterationResult where
+  dividendIndex : Nat
+  heap : Array Nat
+  nodes : Array PairVecDivVHCNode
+  quotient : SparsePolyZp
+  resetH : Nat
+
+/-- One complete body of the general `pair_vec_div` outer loop, including
+frontier selection, equal-degree bucket subtraction, quotient emission,
+`reset_h` activation, and the final reverse `lin` reinsertion. -/
+def pairVecDivVHCOuterIteration (this : DenseUPolyZp)
+    (dividendIndex : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient dividend divisor : SparsePolyZp)
+    (resetH : Nat) : RawExec PairVecDivVHCIterationResult := do
+  if hdivisor : 0 < divisor.size then
+    let frontier ← pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes
+    let consumed ← pairVecDivVHCConsumeEqualDegree this frontier.degree heap
+      frontier.coefficient nodes #[] resetH quotient divisor
+    let emit : RawExec (SparsePolyZp × PairVecDivVHCHeapState × Nat) :=
+      if hcoefficient : consumed.coefficient ≠ 0 then
+        if hdegree : divisor[0].1.deg ≤ frontier.degree then
+          let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+            divisor[0].2.val
+          let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+            consumed.coefficient inverse
+          if hvalue : value ≠ 0 then
+            let quotient' := quotient.push
+              (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+            match pairVecDivVHCActivateReset consumed.resetH consumed.heap
+                consumed.nodes quotient' divisor with
+            | .error fault => .error fault
+            | .ok activated => .ok (quotient', activated, 0)
+          else
+            .ok (quotient,
+              PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
+              consumed.resetH)
+        else
+          .ok (quotient,
+            PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
+            consumed.resetH)
+      else
+        .ok (quotient,
+          PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
+          consumed.resetH)
+    let (quotient', activated, resetH') ← emit
+    let reinserted ← pairVecDivVHCReinsertLin activated.heap activated.nodes
+      consumed.lin
+    .ok (PairVecDivVHCIterationResult.mk frontier.dividendIndex
+      reinserted.heap reinserted.nodes quotient' resetH')
+  else
+    .error .assertionFailure
+
 /-- Exact source-order range-for loop of `__extract_pth_root`. -/
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=
   (UMonomial.mk ((term.1.deg.toUInt64 / prime).toInt64), term.2)

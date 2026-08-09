@@ -2488,4 +2488,88 @@ theorem zp_inv_one (prime : UInt64) (hp : 1 < prime.toNat) :
   simp [Zp.inv, Zp.modInv, Zp.extGcdAux,
     Int.emod_eq_of_lt (by omega) hpInt]
 
+/-- Exact nonempty tail of the public sparse `polynomial_GCD`: inspect the
+internal output, read its front coefficient, call the concrete `Zp::inv`, and
+execute the second source-written range-for traversal. -/
+def publicPolynomialGCDMonicFinish
+    (out : InternalPolynomialGCDRawResult) :
+    RawExec InternalPolynomialGCDRawResult :=
+  match out.output with
+  | none => .error .assertionFailure
+  | some sparse =>
+    if hnonempty : 0 < sparse.size then
+      let lcInv := Zp.inv sparse[0].2
+      .ok { out with output := some (sparseMonicLoop 0 sparse lcInv) }
+    else
+      .error .assertionFailure
+
+theorem publicPolynomialGCDMonicFinish_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (out : InternalPolynomialGCDRawResult) (sparse : SparsePolyZp)
+    (houtput : out.output = some sparse)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat sparse)
+    (hnonzero : SparsePolyZp.toPoly this._p.toNat sparse ≠ 0)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat sparse).Monic)
+    (hp : 1 < this._p.toNat) :
+    ∃ final,
+      publicPolynomialGCDMonicFinish out = .ok final ∧
+      final.heap = out.heap ∧ final.denseLength = out.denseLength ∧
+      final.returnCode = out.returnCode ∧
+      ∃ result,
+        final.output = some result ∧
+        SparsePolyZp.Canonical this._p.toNat result ∧
+        SparsePolyZp.toPoly this._p.toNat result =
+          SparsePolyZp.toPoly this._p.toNat sparse := by
+  have hsparseNonempty : 0 < sparse.size := by
+    by_contra hempty
+    have hsize : sparse.size = 0 := Nat.eq_zero_of_not_pos hempty
+    apply hnonzero
+    have hsparse : sparse = #[] := Array.size_eq_zero_iff.mp hsize
+    simp [hsparse]
+  have hleadVal := sparse_leading_val_eq_one_of_monic this._p.toNat sparse
+    hcanonical hsparseNonempty hmonic
+  have hleadMem : sparse[0] ∈ sparse.toList := by
+    have hget := Array.getElem_toList hsparseNonempty
+    rw [← hget]
+    exact List.getElem_mem (by simpa using hsparseNonempty)
+  have hleadPrimeNat := (hcanonical.1 sparse[0] hleadMem).1
+  have hleadPrime : sparse[0].2.prime = this._p :=
+    UInt64.toNat_inj.mp hleadPrimeNat
+  have hlead : sparse[0].2 = (⟨1, this._p⟩ : Zp) := by
+    cases hsource : sparse[0].2 with
+    | mk value prime =>
+        rw [hsource] at hleadVal hleadPrime
+        simp only at hleadVal hleadPrime ⊢
+        subst value
+        subst prime
+        rfl
+  have hinv : Zp.inv sparse[0].2 = (⟨1, this._p⟩ : Zp) := by
+    rw [hlead]
+    exact zp_inv_one this._p hp
+  let lcInv : Zp := Zp.inv sparse[0].2
+  have hlcReduced : Zp.Reduced this._p.toNat lcInv := by
+    change Zp.Reduced this._p.toNat (Zp.inv sparse[0].2)
+    rw [hinv]
+    exact ⟨rfl, by simpa using hp⟩
+  have hlcNe : lcInv.val ≠ 0 := by
+    change (Zp.inv sparse[0].2).val ≠ 0
+    rw [hinv]
+    simp
+  have hpWord : this._p.toNat < UInt64.size := UInt64.toNat_lt_size this._p
+  let result := sparseMonicLoop 0 sparse lcInv
+  have hresultCanonical := sparseMonicLoop_canonical this._p.toNat sparse
+    lcInv hcanonical hlcReduced hlcNe hpWord
+  have hresultSemantic := sparseMonicLoop_toPoly this._p.toNat sparse lcInv
+    hcanonical hlcReduced.1 (Fact.out : Nat.Prime this._p.toNat).pos hpWord
+  have hlcField : Zp.toZMod this._p.toNat lcInv = 1 := by
+    change Zp.toZMod this._p.toNat (Zp.inv sparse[0].2) = 1
+    rw [hinv]
+    unfold Zp.toZMod
+    simp
+  refine ⟨{ out with output := some result }, ?_, rfl, rfl, rfl,
+    result, rfl, hresultCanonical, ?_⟩
+  · simp [publicPolynomialGCDMonicFinish, houtput, hsparseNonempty, result,
+      lcInv]
+  · simpa [result, hlcField] using hresultSemantic
+
 end CLPoly.Impl.StrictPolynomialGCDRefinement

@@ -214,6 +214,11 @@ canonical and its leading coefficient is one.
   actual well-founded `Zp::inv` model on that value.  This prepares the
   source-written second public monic traversal rather than deleting it as a
   mathematical no-op.
+- Added the exact public nonempty monic tail: it observes the internal sparse
+  output, performs the concrete front access and `Zp::inv`, and runs the
+  second range-for mutation.  Its refinement theorem proves that this actual
+  traversal succeeds, preserves the raw result metadata and canonical sparse
+  representation, and leaves the already-monic L2 polynomial unchanged.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

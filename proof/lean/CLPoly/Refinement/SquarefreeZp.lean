@@ -13329,6 +13329,84 @@ theorem pairVecDivVHCEmit_preserves_canonical
     rcases hrun with ⟨rfl, rfl, rfl⟩
     exact hcanonical
 
+/-- Exact polynomial delta of the generated emit branch whenever the divisor
+lead monomial divides the selected frontier monomial.  The coefficient is
+computed by the same generated modular inverse/multiply operations used by
+the source; `pairVecDivSingleTermIR_refines` supplies their field semantics. -/
+theorem pairVecDivVHCEmit_toPoly_of_lead_le
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' : Nat)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hcoefficientReduced : consumed.coefficient.toNat < this._p.toNat)
+    (hdivisor : 0 < divisor.size)
+    (hlead : divisor[0].1.deg ≤ frontier.degree)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    SparsePolyZp.toPoly this._p.toNat quotient' =
+      SparsePolyZp.toPoly this._p.toNat quotient +
+        Polynomial.monomial (frontier.degree - divisor[0].1.deg)
+          (Zp.toZMod this._p.toNat ⟨consumed.coefficient, this._p⟩ /
+            Zp.toZMod this._p.toNat divisor[0].2) := by
+  have hdivisorMem : divisor[0] ∈ divisor.toList :=
+    Array.getElem_mem_toList hdivisor
+  have hdivisorReduced := hdivisorCanonical.1 divisor[0] hdivisorMem
+  have hdivisorNonzero := hdivisorCanonical.2.2 divisor[0] hdivisorMem
+  unfold pairVecDivVHCEmit at hrun
+  by_cases hcoefficient : consumed.coefficient ≠ 0
+  · rw [if_pos hcoefficient, if_pos hlead] at hrun
+    let sourceTerm : UMonomial × Zp :=
+      (⟨frontier.degree⟩, ⟨consumed.coefficient, this._p⟩)
+    let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+      divisor[0].2.val
+    let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+      consumed.coefficient inverse
+    let emittedTerm : UMonomial × Zp :=
+      (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+    have hsourceReduced : Zp.Reduced this._p.toNat sourceTerm.2 := by
+      exact ⟨rfl, hcoefficientReduced⟩
+    have hsourceNonzero : sourceTerm.2.val ≠ 0 := hcoefficient
+    have hsingle : pairVecDivSingleTermIR this divisor[0] sourceTerm =
+        some emittedTerm := by
+      simp [pairVecDivSingleTermIR, sourceTerm, emittedTerm, inverse, value,
+        hlead]
+    have hrefines := pairVecDivSingleTermIR_refines this divisor[0] sourceTerm
+      emittedTerm hcfg hdivisorReduced hsourceReduced hdivisorNonzero
+      hsourceNonzero hsingle
+    have hvalue : value ≠ 0 := by
+      exact hrefines.2.2.1
+    have hvalueField : (value.toNat : ZMod this._p.toNat) =
+        Zp.toZMod this._p.toNat ⟨consumed.coefficient, this._p⟩ /
+          Zp.toZMod this._p.toNat divisor[0].2 := by
+      simpa [Zp.toZMod, emittedTerm, sourceTerm] using hrefines.2.2.2
+    rw [if_pos hvalue] at hrun
+    let emitted := quotient.push emittedTerm
+    cases hactivate : pairVecDivVHCActivateReset consumed.resetH consumed.heap
+        consumed.nodes emitted divisor with
+    | error fault =>
+        dsimp only [emitted, emittedTerm] at hactivate
+        dsimp only at hrun
+        rw [hactivate] at hrun
+        contradiction
+    | ok state =>
+        dsimp only [emitted, emittedTerm] at hactivate
+        dsimp only at hrun
+        rw [hactivate] at hrun
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl⟩
+        rw [CLPoly.Impl.StrictPolynomialGCDRefinement.sparseToPoly_push_raw]
+        rw [hvalueField]
+  · rw [if_neg hcoefficient] at hrun
+    simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+    rcases hrun with ⟨rfl, rfl, rfl⟩
+    have hzero : consumed.coefficient = 0 := by
+      exact Decidable.not_not.mp hcoefficient
+    rw [hzero]
+    simp [Zp.toZMod]
+
 theorem pairVecDivVHCEmit_preserves_quotientAbove_of_lt
     (this : DenseUPolyZp) (nextDegree : Nat)
     (frontier : PairVecDivVHCFrontier)

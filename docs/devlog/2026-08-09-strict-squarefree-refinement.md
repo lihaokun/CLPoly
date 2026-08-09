@@ -1006,3 +1006,12 @@ every generated range-for and recursive loop used by SQF.
   结果系数等于 dividend 系数减去完整 L2 tail-product 系数。
   该路径未使用规格 oracle、L2 回退或 fuel。下一步是将首项发射
   部分合并进完整 divisor 乘积不变式，并闭合外层除法等式。
+- 真实 emit 分支的商多项式增量语义已闭合。
+  `pairVecDivVHCEmit_toPoly_of_lead_le` 对 divisor 首项可整除
+  frontier 次数的情形，证明运行后商精确增加
+  `monomial (frontier.degree - leadDegree) (consumed / leadCoeff)`。
+  证明展开了同一个生成 `nmod_inv_ir`/`nmod_mul_ir` 计算，
+  并复用 single-term 真实精化定理证明域除法语义及非零性；
+  系数为零时则证明源分支不修改商，与零单项式增量一致。
+  因此 emit 的首项贡献已不再只有 canonical 属性，而是已有
+  可直接合并到完整 divisor 乘积系数的 L2 等式。

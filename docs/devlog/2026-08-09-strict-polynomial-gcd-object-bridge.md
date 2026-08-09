@@ -88,6 +88,16 @@ the frame lemma transports that read through all remaining writes.  Because
 the canonical leading residue is nonzero and its degree plus one is the dense
 constructor length, the concrete `normaliseU64` scan returns that exact length.
 
+At the dense GCD object boundary, preserve the source dispatch literally.
+Select `a,b` by comparing the two constructor lengths, return a physical copy
+of `a` when `b` is empty, call the raw Euclid helper when `len_b < 340`, and
+otherwise call the already-total raw HGCD helper.  Both helper results are
+projected into one `(heap,lenG)` result without changing their execution.
+The refinement proof splits on those same guards: the zero branch uses gcd
+with zero, while the Euclid and HGCD branches reuse their raw refinement
+theorems.  Thus the object dispatcher contains no independent polynomial GCD
+implementation.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -110,6 +120,10 @@ constructor length, the concrete `normaliseU64` scan returns that exact length.
   forces the concrete normalization scan to return the constructor length.
 - Closed both empty and nonempty source-derived constructor branches as a full
   `SparseRawDenseRep`, ready for the raw dense GCD call.
+- Added the exact object-level length swap, zero/Euclid/HGCD dispatch at the
+  source cutoff of 340, with no alternate dense GCD computation.
+- Proved the complete already-ordered dispatcher refines normalized L2 GCD in
+  all three concrete branches.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why
@@ -127,7 +141,7 @@ boundary is required before replacing its current typeclass GCD call.
 
 - 耗时：约 0.5 小时（源码控制流核对、接口设计、形式化与构建）
 - 迭代：1 轮编译—修复
-- Lean 新增/修改行数：约 580 行
+- Lean 新增/修改行数：约 720 行
 - 对应 C++ 行数：约 55 行（两个 sparse/dense 转换及 GCD 包装）
 - 放弃的方案：直接证明当前 `SparsePolyZp.gcd` 正确；它不是 C++ dense
   GCD 的执行，不能用于严格 L1→L2 精化。

@@ -7,9 +7,133 @@ namespace CLPoly.Impl.StrictPolynomialGCDRefinement
 
 open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Impl.StrictDivremRefinement
+open CLPoly.Impl.StrictGCDHGCDRefinement
+open CLPoly.Impl.StrictWordArithmetic
 open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Math
 open Generated.StrictMul
+
+/-- Observable result shared by the three object-level dense GCD branches. -/
+structure DenseGcdRawResult where
+  heap : RawHeap
+  lenG : Nat
+
+def denseGcdCutoff : Nat := 340
+
+/-- Exact object-level dense GCD dispatch after the source degree-order swap
+has selected `large` and `small`. -/
+def dense_upoly_zp_gcd_ordered_raw_ir (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid)
+    (G large small aBuf bBuf J Q R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (lenLarge lenSmall : Nat)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) : RawExec DenseGcdRawResult :=
+  if lenSmall = 0 then
+    match heap.copyU64 G large lenLarge with
+    | .error fault => .error fault
+    | .ok heap' => .ok ⟨heap', lenLarge⟩
+  else if lenSmall < denseGcdCutoff then
+    match CLPoly.Impl.StrictEuclidRefinement.strictGcdEuclidRaw this G large
+        small aBuf bBuf Q R W3 lenLarge lenSmall heap with
+    | .error fault => .error fault
+    | .ok result => .ok ⟨result.heap, result.lenG⟩
+  else
+    match Generated.StrictGCDHGCD.dense_upoly_zp__gcd_hgcd_raw_ir this M hM
+        G large small J Q R W3 W scratch aBuf bBuf euclidQ euclidR euclidW3
+        lenLarge lenSmall
+        (CLPoly.Impl.StrictDivremRefinement.euclidDivremLengthDecreases this
+          euclidQ euclidW3)
+        loopDecrease heap with
+    | .error fault => .error fault
+    | .ok result => .ok ⟨result.heap, result.lenG⟩
+
+/-- Exact source swap followed by the ordered dense GCD dispatcher. -/
+def dense_upoly_zp_gcd_raw_ir (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid)
+    (G A B aBuf bBuf J Q R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (lenA lenB : Nat)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) : RawExec DenseGcdRawResult :=
+  if lenA < lenB then
+    dense_upoly_zp_gcd_ordered_raw_ir this M hM G B A aBuf bBuf J Q R W3 W
+      scratch euclidQ euclidR euclidW3 lenB lenA loopDecrease heap
+  else
+    dense_upoly_zp_gcd_ordered_raw_ir this M hM G A B aBuf bBuf J Q R W3 W
+      scratch euclidQ euclidR euclidW3 lenA lenB loopDecrease heap
+
+/-- Refinement of the exact already-ordered object dispatcher. -/
+theorem dense_upoly_zp_gcd_ordered_raw_ir_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (M : HgcdMat) (hM : M.Valid)
+    (G large small aBuf bBuf J Q R : RawPtr UInt64) (W3 : RawPtr Word3)
+    (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (lenLarge lenSmall capacity : Nat)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (initialDivrem : GcdHgcdDynamicDivremWorkspaceProvider this large small
+      Q R W3)
+    (initialHgcd : GcdHgcdInitialHgcdWorkspaceProvider this hcfg hp M hM G J
+      small R W scratch lenSmall)
+    (loopDivrem : GcdHgcdDynamicDivremWorkspaceProvider this G J Q R W3)
+    (loopEuclid : GcdHgcdDynamicEuclidWorkspaceProvider this G J R aBuf bBuf
+      euclidQ euclidR euclidW3)
+    (loopHgcd : GcdHgcdDynamicHgcdWorkspaceProvider this hcfg hp M hM G J R W
+      scratch)
+    (heap : RawHeap) (left right : Polynomial (ZMod this._p.toNat))
+    (hleft : RawDensePolyRep this heap large lenLarge left)
+    (hright : RawDensePolyRep this heap small lenSmall right)
+    (hGlarge : heap.ValidU64Slice G lenLarge)
+    (hGsmall : heap.ValidU64Slice G lenSmall)
+    (hGlargeRegion : G.region ≠ large.region)
+    (hGsmallRegion : G.region ≠ small.region)
+    (heuclid : GcdEuclidRawWorkspace heap G large small aBuf bBuf Q R W3
+      capacity)
+    (hlenLarge : lenLarge ≤ capacity) (hlenSmall : lenSmall ≤ capacity)
+    (hcapacity : capacity < limbBase) :
+    ∃ out result,
+      dense_upoly_zp_gcd_ordered_raw_ir this M hM G large small aBuf bBuf J
+          Q R W3 W scratch euclidQ euclidR euclidW3 lenLarge lenSmall
+          loopDecrease heap = .ok out ∧
+      RawDensePolyRep this out.heap G out.lenG result ∧
+      normalize (EuclideanDomain.gcd left right) = normalize result := by
+  by_cases hzero : lenSmall = 0
+  · have hrightZero : right = 0 :=
+      slicePolyRep_zero_length heap small this._p.toNat right (by
+        simpa [hzero] using hright.2.2.1)
+    subst right
+    rcases copyU64_refines_rawDense_of_region_ne this heap G large lenLarge
+        left hGlarge hGlargeRegion hleft with
+      ⟨heap', hcopy, _, hresult⟩
+    exact ⟨⟨heap', lenLarge⟩, left, by
+      simp [dense_upoly_zp_gcd_ordered_raw_ir, hzero, hcopy],
+      hresult, by simp⟩
+  · by_cases hsmall : lenSmall < denseGcdCutoff
+    · rcases strictGcdEuclidRaw_refines this G large small aBuf bBuf Q R
+          W3 lenLarge lenSmall capacity heap left right heuclid hlenLarge
+          hlenSmall hcapacity hleft hright hcfg with
+        ⟨heap', lenG, result, hrun, hresult, hgcd, _⟩
+      exact ⟨⟨heap', lenG⟩, result, by
+        simp [dense_upoly_zp_gcd_ordered_raw_ir, hzero, hsmall, hrun],
+        hresult, hgcd⟩
+    · rcases dense_upoly_zp__gcd_hgcd_raw_ir_succeeds this hcfg hp M hM
+          G large small J Q R W3 W scratch aBuf bBuf euclidQ euclidR
+          euclidW3 lenLarge lenSmall
+          (CLPoly.Impl.StrictDivremRefinement.euclidDivremLengthDecreases this
+            euclidQ euclidW3)
+          loopDecrease initialDivrem initialHgcd loopDivrem loopEuclid loopHgcd
+          heap left right (Nat.pos_of_ne_zero hzero) hleft hright hGsmall
+          hGsmallRegion with ⟨raw, result, hrun, hresult, hgcd⟩
+      exact ⟨⟨raw.heap, raw.lenG⟩, result, by
+        simp [dense_upoly_zp_gcd_ordered_raw_ir, hzero, hsmall, hrun],
+        hresult, hgcd⟩
 
 /-- One concrete raw coefficient write into a zero coefficient adds exactly
 the corresponding L2 monomial. -/

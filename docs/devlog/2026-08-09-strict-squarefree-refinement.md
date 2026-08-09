@@ -1171,3 +1171,13 @@ every generated range-for and recursive loop used by SQF.
   中间步骤丢失 heap order；没有执行预算或规格层替代循环。下一步把
   consume 的有序性、emit/activation 的非干扰性与此 reinsertion 定理
   合成为 outer iteration 的 heap-order 保持。
+- activation/reset 的完整 heap-order 保持已闭合。
+  `pairVecDivVHCActivate_preserves_mono_read_ne` 从真实 checked activation
+  的数组写入证明其他节点的 comparator 读取不变；结合 ownership 对
+  inactive reset 节点的 fresh-head/fresh-chain 结论，
+  `pairVecDivVHCActivate_preserves_heapOrdered_of_freshHead` 保留旧 heap 的
+  每条边。`pairVecDivVHCActivateInsert_preserves_heapOrdered` 随后接入完整
+  insertion 定理，而 `pairVecDivVHCActivateReset_preserves_heapOrdered`
+  沿 generated `resetH` 良基递归组合每一次 activate+insert。
+  这关闭了 emit 的 activation 阶段可能改变比较键的真实表示风险；
+  下一步直接装配完整 outer iteration 的 heap order。

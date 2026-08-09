@@ -422,3 +422,11 @@ every generated range-for and recursive loop used by SQF.
   `< p`。该性质已按 owner-set card 良基递归提升到完整 next-chain，
   再按 heap size 良基递归提升到完整 equal-degree 循环。下一步用它
   证明 nonzero emitted quotient coefficient 是 canonical 系数。
+- quotient emission 的 canonicality 已闭合到真实 emit 执行。generated
+  modular multiply 在已证 accumulator `< p` 的前提下给出 emitted
+  value `< p`；`value ≠ 0` 是 source 真实 push 分支的 guard；已有
+  quotient 项次数严格更高时，`canonical_push_lower` 证明真实
+  `Array.push` 保持 canonical sparse representation。其他 emit 分支不改变
+  quotient。同时已证明：对任意严格低于当前 selected frontier 的
+  下一次数，emit 后的所有 quotient 项仍严格位于其上。剩余工作是
+  将该次数与下一次真实 selector 执行关联。

@@ -6609,6 +6609,16 @@ def pairVecDivVHCEmit (this : DenseUPolyZp)
       PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
       consumed.resetH)
 
+def PairVecDivVHCQuotientAbove (frontierDegree leadDegree : Nat)
+    (quotient : SparsePolyZp) : Prop :=
+  leadDegree ≤ frontierDegree →
+    ∀ term ∈ quotient.toList, frontierDegree - leadDegree < term.1.deg
+
+theorem PairVecDivVHCQuotientAbove.empty (frontierDegree leadDegree : Nat) :
+    PairVecDivVHCQuotientAbove frontierDegree leadDegree #[] := by
+  intro hlead term hterm
+  simp at hterm
+
 /-- One complete body of the general `pair_vec_div` outer loop, including
 frontier selection, equal-degree bucket subtraction, quotient emission,
 `reset_h` activation, and the final reverse `lin` reinsertion. -/
@@ -6775,6 +6785,138 @@ theorem pairVecDivVHCEmit_preserves_node_invariants
     simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
     rcases hrun with ⟨rfl, rfl, rfl⟩
     exact ⟨hbelow, hdenotes, hfixed, hready⟩
+
+theorem pairVecDivVHCEmit_preserves_canonical
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' : Nat)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hcoefficientReduced : consumed.coefficient.toNat < this._p.toNat)
+    (hdivisor : 0 < divisor.size)
+    (hdegrees : ∀ term ∈ quotient.toList,
+      frontier.degree - divisor[0].1.deg < term.1.deg)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    SparsePolyZp.Canonical this._p.toNat quotient' := by
+  unfold pairVecDivVHCEmit at hrun
+  by_cases hcoefficient : consumed.coefficient ≠ 0
+  · rw [if_pos hcoefficient] at hrun
+    by_cases hdegree : divisor[0].1.deg ≤ frontier.degree
+    · rw [if_pos hdegree] at hrun
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor[0].2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        consumed.coefficient inverse
+      have hvalueNat :=
+        CLPoly.Impl.StrictWordArithmetic.nmod_mul_ir_correct_of_configured this
+          consumed.coefficient inverse hcfg hcoefficientReduced
+      change value.toNat = _ at hvalueNat
+      have hvalueReduced : value.toNat < this._p.toNat := by
+        rw [hvalueNat]
+        exact Nat.mod_lt _ (Fact.out : Nat.Prime this._p.toNat).pos
+      by_cases hvalue : value ≠ 0
+      · rw [if_pos hvalue] at hrun
+        let emitted := quotient.push
+          (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+        cases hactivate : pairVecDivVHCActivateReset consumed.resetH
+            consumed.heap consumed.nodes emitted divisor with
+        | error fault =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            contradiction
+        | ok state =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl⟩
+            exact
+              CLPoly.Impl.StrictPolynomialGCDRefinement.canonical_push_lower
+                this._p quotient (frontier.degree - divisor[0].1.deg) value
+                hcanonical hdegrees hvalueReduced hvalue
+      · rw [if_neg hvalue] at hrun
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl⟩
+        exact hcanonical
+    · rw [if_neg hdegree] at hrun
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl, rfl⟩
+      exact hcanonical
+  · rw [if_neg hcoefficient] at hrun
+    simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+    rcases hrun with ⟨rfl, rfl, rfl⟩
+    exact hcanonical
+
+theorem pairVecDivVHCEmit_preserves_quotientAbove_of_lt
+    (this : DenseUPolyZp) (nextDegree : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor quotient' : SparsePolyZp)
+    (activated : PairVecDivVHCHeapState) (resetH' : Nat)
+    (hdivisor : 0 < divisor.size)
+    (habove : PairVecDivVHCQuotientAbove frontier.degree divisor[0].1.deg
+      quotient)
+    (hnext : nextDegree < frontier.degree)
+    (hrun : pairVecDivVHCEmit this frontier consumed quotient divisor hdivisor =
+      .ok (quotient', activated, resetH')) :
+    PairVecDivVHCQuotientAbove nextDegree divisor[0].1.deg quotient' := by
+  have hold : PairVecDivVHCQuotientAbove nextDegree divisor[0].1.deg
+      quotient := by
+    intro hleadNext term hterm
+    have hleadFrontier : divisor[0].1.deg ≤ frontier.degree :=
+      Nat.le_trans hleadNext (Nat.le_of_lt hnext)
+    have htermDegree := habove hleadFrontier term hterm
+    omega
+  unfold pairVecDivVHCEmit at hrun
+  by_cases hcoefficient : consumed.coefficient ≠ 0
+  · rw [if_pos hcoefficient] at hrun
+    by_cases hdegree : divisor[0].1.deg ≤ frontier.degree
+    · rw [if_pos hdegree] at hrun
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor[0].2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        consumed.coefficient inverse
+      by_cases hvalue : value ≠ 0
+      · rw [if_pos hvalue] at hrun
+        let emitted := quotient.push
+          (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+        cases hactivate : pairVecDivVHCActivateReset consumed.resetH
+            consumed.heap consumed.nodes emitted divisor with
+        | error fault =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            contradiction
+        | ok state =>
+            dsimp only [emitted] at hactivate
+            dsimp only at hrun
+            rw [hactivate] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl⟩
+            intro hleadNext term hterm
+            simp only [Array.toList_push, List.mem_append,
+              List.mem_singleton] at hterm
+            rcases hterm with hterm | rfl
+            · exact hold hleadNext term hterm
+            · change nextDegree - divisor[0].1.deg <
+                frontier.degree - divisor[0].1.deg
+              omega
+      · rw [if_neg hvalue] at hrun
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl⟩
+        exact hold
+    · rw [if_neg hdegree] at hrun
+      simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+      rcases hrun with ⟨rfl, rfl, rfl⟩
+      exact hold
+  · rw [if_neg hcoefficient] at hrun
+    simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+    rcases hrun with ⟨rfl, rfl, rfl⟩
+    exact hold
 
 theorem pairVecDivVHCOuterIteration_preserves_heapChainsOwned
     (this : DenseUPolyZp) (p degreeLimit dividendIndex : Nat)

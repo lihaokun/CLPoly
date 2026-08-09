@@ -222,6 +222,12 @@ every generated range-for and recursive loop used by SQF.
   无法被误读。可达 `next` 链已建立独立的 Finset 所有权不变量，允许
   真实未初始化 reset 后缀，并已证明单节点更新保持其剩余链；完整 chain
   执行现保持 frontier 上界和活跃节点 denotation。
+- `reset_h` 单节点激活的两项局部保持也已闭合：真实 activate 写入的新
+  monomial 在给定本轮界时保持全节点 frontier 上界，并重新建立该节点
+  对 quotient/divisor 单元乘积的 denotation。另已从 divisor canonical
+  严格尾项降次证明关键算术桥：新 quotient 次数为
+  `frontier - divisorLead` 时，它与任意非首 divisor 项的乘积次数严格低于
+  frontier。下一步把 reset 前缀的 one-past-end 指针关系沿激活循环保持。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

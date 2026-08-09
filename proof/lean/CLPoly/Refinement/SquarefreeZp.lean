@@ -2242,6 +2242,92 @@ termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+theorem pairVecDivVHCActivatedTail_degree_lt_frontier (p frontierDegree : Nat)
+    (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
+    (hdivisorCanonical : SparsePolyZp.Canonical p divisor)
+    (hdivisorNonempty : 0 < divisor.size)
+    (hq : node.quotientIndex < quotient.size)
+    (hd : node.divisorIndex < divisor.size)
+    (htail : 0 < node.divisorIndex)
+    (hlead : divisor[0].1.deg ≤ frontierDegree)
+    (hquotientDegree : quotient[node.quotientIndex].1.deg =
+      frontierDegree - divisor[0].1.deg) :
+    quotient[node.quotientIndex].1.deg +
+        divisor[node.divisorIndex].1.deg < frontierDegree := by
+  have htailDegree := canonical_degree_lt_of_index_lt p divisor
+    hdivisorCanonical 0 node.divisorIndex hdivisorNonempty hd htail
+  omega
+
+theorem pairVecDivVHCActivate_preserves_allActiveNodesBelow
+    (degreeLimit nodeIndex : Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hbelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hnewBelow : ∀ (node : PairVecDivVHCNode),
+      nodes[nodeIndex]? = some node →
+      ∀ (hq : node.quotientIndex < quotient.size)
+        (hd : node.divisorIndex < divisor.size),
+        quotient[node.quotientIndex].1.deg +
+          divisor[node.divisorIndex].1.deg < degreeLimit)
+    (hrun : pairVecDivVHCActivate nodeIndex nodes quotient divisor =
+      .ok nodes') :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes' := by
+  unfold pairVecDivVHCActivate at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        simp only [Except.ok.injEq] at hrun
+        subst nodes'
+        intro i node mono hget hmono
+        by_cases heq : nodeIndex = i
+        · subst i
+          rw [Array.getElem?_set_self hn] at hget
+          simp only [Option.some.injEq] at hget
+          subst node
+          have hdegree := hnewBelow nodes[nodeIndex]
+            (Array.getElem?_eq_getElem hn) hq hd
+          have hmonoDegree := congrArg UMonomial.deg (Option.some.inj hmono)
+          dsimp only at hmonoDegree
+          omega
+        · rw [Array.getElem?_set_ne hn heq] at hget
+          exact hbelow i node mono hget hmono
+
+theorem pairVecDivVHCActivate_preserves_denotes
+    (nodeIndex : Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hrun : pairVecDivVHCActivate nodeIndex nodes quotient divisor =
+      .ok nodes') :
+    ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes'[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node := by
+  unfold pairVecDivVHCActivate at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        simp only [Except.ok.injEq] at hrun
+        subst nodes'
+        intro i node hget hactive
+        by_cases heq : nodeIndex = i
+        · subst i
+          rw [Array.getElem?_set_self hn] at hget
+          simp only [Option.some.injEq] at hget
+          subst node
+          exact ⟨quotient[nodes[nodeIndex].quotientIndex],
+            divisor[nodes[nodeIndex].divisorIndex],
+            Array.getElem?_eq_getElem hq, Array.getElem?_eq_getElem hd, rfl⟩
+        · rw [Array.getElem?_set_ne hn heq] at hget
+          exact hdenotes i node hget hactive
+
 theorem pairVecDivVHCCanonicalInitialFrontierBelow (p : Nat)
     (dividend : SparsePolyZp) (nodes : Array PairVecDivVHCNode)
     (hcanonical : SparsePolyZp.Canonical p dividend)

@@ -47,6 +47,20 @@ normalized gcd; zero remainder copies `J`; the small branch invokes the exact
 raw Euclid refinement; the large branch invokes the concrete checked HGCD
 refinement and recurses on its strictly smaller returned second length.
 
+The loop-level physical providers are deliberately conditional on the raw
+representations at the currently reached heap.  They provide only capacity
+and non-aliasing for divrem and the nested Euclid helper.  They do not contain
+quotient, remainder, gcd, output lengths, or an execution result.  A bundled
+large-step lemma now obtains both gcd preservation and strict decrease from
+one and the same successful checked HGCD call.
+
+The first composition layer now has branch-local theorems for the actual
+loop-head divrem, the zero-remainder copy, and the small raw-Euclid dispatch.
+Together with the bundled checked-HGCD theorem, all four source branches have
+semantic lemmas tied to their exact raw executions.  The remaining work is to
+thread these lemmas through one well-founded loop theorem and replace the
+raw entry's freely supplied decrease contract with that construction.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

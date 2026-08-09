@@ -593,3 +593,14 @@ every generated range-for and recursive loop used by SQF.
   与 uniqueness 定理，不把单向复制关系误当作排列。下一步用这些反向
   存活见证传递普通插入分支的 node coverage，并单独处理 merge 分支中
   被旧 head 替换为 `newNode -> oldHead` 的 chain 扩张。
+- reverse `lin` reinsertion 的完整组合覆盖已闭合。首先证明 `lin.pop`
+  精确保留除末元素外的所有成员，并证明真实 `VHC_set_next` 以及所有
+  `VHC_insert` 成功分支不改变 node-array size。随后将 insertion 分成两类
+  精确处理：equal-degree merge 把具体 slot 的旧 head 替成 `newNode`，其
+  owner 严格为 `insert newNode oldOwner`；empty/root-bubble/bubble-below
+  路径则建立 singleton 新 owner，并用反向 head 守恒搬运每个旧 bucket。
+  组合定理覆盖了 `VHC_insert` 的全部真实控制流。最后沿实际 `lin.pop`
+  的 size 递减做良基递归，证明完整 `pairVecDivVHCReinsertLin` 返回时
+  `lin = #[]` 且同一 witness 同时满足 exact heap ownership 与全 node
+  coverage。下一步对 reset activation 建立对应的“reset 前缀减一并把该
+  node 激活插入 heap”组合覆盖循环，再接入 outer iteration。

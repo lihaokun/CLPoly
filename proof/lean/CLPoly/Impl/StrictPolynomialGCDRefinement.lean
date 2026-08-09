@@ -2058,6 +2058,7 @@ theorem polynomial_GCD_nonempty_raw_ir_refines_of_runs
           aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
           degreeBound loopDecrease heap = .ok out ∧
       out.output = some sparse ∧
+      SparsePolyZp.Canonical this._p.toNat sparse ∧
       SparsePolyZp.toPoly this._p.toNat sparse = normalize
         (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
           (SparsePolyZp.toPoly this._p.toNat right)) := by
@@ -2074,10 +2075,10 @@ theorem polynomial_GCD_nonempty_raw_ir_refines_of_runs
       (SparsePolyZp.toPoly this._p.toNat left)
       (SparsePolyZp.toPoly this._p.toNat right) result hcfg hp hrunGcd hresult
       hgcd hleftNonzero (hbound gcdResult hrunGcd) with
-    ⟨out, sparse, hpost, houtput, _, hsemantic⟩
+    ⟨out, sparse, hpost, houtput, hsparse, hsemantic⟩
   exact ⟨out, sparse, by
     simp [polynomial_GCD_nonempty_raw_ir, hrunLeft, hrunRight, hpost],
-    houtput, hsemantic⟩
+    houtput, hsparse.canonical, hsemantic⟩
 
 /-- Raw-to-safe bridge for the complete nonempty public path.  Constructor
 termination and preservation are proved internally; callers provide only the
@@ -2136,6 +2137,7 @@ theorem polynomial_GCD_nonempty_raw_ir_refines
           aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
           degreeBound loopDecrease heap = .ok out ∧
       out.output = some sparse ∧
+      SparsePolyZp.Canonical this._p.toNat sparse ∧
       SparsePolyZp.toPoly this._p.toNat sparse = normalize
         (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
           (SparsePolyZp.toPoly this._p.toNat right)) := by
@@ -2202,6 +2204,7 @@ theorem polynomial_GCD_nonempty_raw_ir_refines_source_bound
           aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 left right
           (polynomialGCDDegreeBound left right) loopDecrease heap = .ok out ∧
       out.output = some sparse ∧
+      SparsePolyZp.Canonical this._p.toNat sparse ∧
       SparsePolyZp.toPoly this._p.toNat sparse = normalize
         (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
           (SparsePolyZp.toPoly this._p.toNat right)) := by
@@ -2307,5 +2310,182 @@ theorem sparseMonicLoop_zero_eq_map (poly : SparsePolyZp) (lcInv : Zp) :
       simpa using hright)
     simp [hleft] at hpoint
     simpa using hpoint
+
+/-- `Zp` multiplication has the expected field semantics for every positive
+modulus stored in a `UInt64`; the product itself is computed in `Nat` before
+reduction, so no artificial square-modulus bound is needed. -/
+theorem zp_toZMod_mul_same_prime (p : Nat) (a b : Zp)
+    (ha : a.prime.toNat = p) (_hb : b.prime.toNat = p)
+    (hp : 0 < p) (hpWord : p < UInt64.size) :
+    Zp.toZMod p (a * b) = Zp.toZMod p a * Zp.toZMod p b := by
+  show Zp.toZMod p
+      ⟨((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64, a.prime⟩ = _
+  unfold Zp.toZMod
+  have hmodLtP : (a.val.toNat * b.val.toNat) % a.prime.toNat < p := by
+    rw [ha]
+    exact Nat.mod_lt _ hp
+  have hmodLtWord :
+      (a.val.toNat * b.val.toNat) % a.prime.toNat < UInt64.size :=
+    Nat.lt_trans hmodLtP hpWord
+  have hvalue :
+      (((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64).toNat =
+        (a.val.toNat * b.val.toNat) % p := by
+    change (OfNat.ofNat _ : UInt64).toNat = _
+    rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt hmodLtWord, ha]
+  rw [hvalue, ZMod.natCast_mod]
+  push_cast
+  rfl
+
+theorem listSum_map_coeff_mul (p : Nat) (lcInv : Zp)
+    (hlcPrime : lcInv.prime.toNat = p) (hp : 0 < p)
+    (hpWord : p < UInt64.size) :
+    ∀ terms : List (UMonomial × Zp),
+      (∀ term ∈ terms, term.2.prime.toNat = p) →
+      listSum p (terms.map (fun term => (term.1, term.2 * lcInv))) =
+        Polynomial.C (Zp.toZMod p lcInv) * listSum p terms := by
+  intro terms hprime
+  induction terms with
+  | nil => simp [listSum]
+  | cons term rest ih =>
+      have htermPrime := hprime term List.mem_cons_self
+      have hrestPrime : ∀ item ∈ rest, item.2.prime.toNat = p := by
+        intro item hitem
+        exact hprime item (List.mem_cons_of_mem term hitem)
+      rw [List.map_cons, listSum_cons, listSum_cons,
+        zp_toZMod_mul_same_prime p term.2 lcInv htermPrime hlcPrime hp hpWord,
+        ih hrestPrime, mul_add]
+      simp [Polynomial.C_mul_monomial, mul_comm]
+
+/-- Polynomial denotation of the complete concrete sparse monic loop. -/
+theorem sparseMonicLoop_toPoly (p : Nat) (poly : SparsePolyZp)
+    (lcInv : Zp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hlcPrime : lcInv.prime.toNat = p) (hp : 0 < p)
+    (hpWord : p < UInt64.size) :
+    SparsePolyZp.toPoly p (sparseMonicLoop 0 poly lcInv) =
+      Polynomial.C (Zp.toZMod p lcInv) * SparsePolyZp.toPoly p poly := by
+  rw [sparseMonicLoop_zero_eq_map]
+  unfold SparsePolyZp.toPoly
+  rw [Array.toList_map]
+  apply listSum_map_coeff_mul p lcInv hlcPrime hp hpWord poly.toList
+  intro term hterm
+  exact (hcanonical.1 term hterm).1
+
+theorem zp_mul_reduced (p : Nat) (a b : Zp)
+    (ha : Zp.Reduced p a) (_hb : Zp.Reduced p b)
+    (hp : 0 < p) (hpWord : p < UInt64.size) :
+    Zp.Reduced p (a * b) := by
+  refine ⟨ha.1, ?_⟩
+  show (((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64).toNat < p
+  have hmodLtP : (a.val.toNat * b.val.toNat) % a.prime.toNat < p := by
+    rw [ha.1]
+    exact Nat.mod_lt _ hp
+  have hmodLtWord :
+      (a.val.toNat * b.val.toNat) % a.prime.toNat < UInt64.size :=
+    Nat.lt_trans hmodLtP hpWord
+  change (OfNat.ofNat
+      ((a.val.toNat * b.val.toNat) % a.prime.toNat) : UInt64).toNat < p
+  rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt hmodLtWord]
+  exact hmodLtP
+
+theorem zp_mul_val_ne_zero (p : Nat) [Fact (Nat.Prime p)] (a b : Zp)
+    (ha : Zp.Reduced p a) (hb : Zp.Reduced p b)
+    (haNe : a.val ≠ 0) (hbNe : b.val ≠ 0)
+    (hpWord : p < UInt64.size) :
+    (a * b).val ≠ 0 := by
+  have hp : 0 < p := (Fact.out : Nat.Prime p).pos
+  have habReduced := zp_mul_reduced p a b ha hb hp hpWord
+  have haField := Zp.toZMod_ne_zero_of_val_ne_zero p a ha haNe
+  have hbField := Zp.toZMod_ne_zero_of_val_ne_zero p b hb hbNe
+  intro habZero
+  have habFieldZero : Zp.toZMod p (a * b) = 0 := by
+    unfold Zp.toZMod
+    rw [habZero]
+    simp
+  rw [zp_toZMod_mul_same_prime p a b ha.1 hb.1 hp hpWord] at habFieldZero
+  exact mul_ne_zero haField hbField habFieldZero
+
+theorem sparseMonicLoop_canonical (p : Nat) [Fact (Nat.Prime p)]
+    (poly : SparsePolyZp) (lcInv : Zp)
+    (hcanonical : SparsePolyZp.Canonical p poly)
+    (hlcReduced : Zp.Reduced p lcInv) (hlcNe : lcInv.val ≠ 0)
+    (hpWord : p < UInt64.size) :
+    SparsePolyZp.Canonical p (sparseMonicLoop 0 poly lcInv) := by
+  rw [sparseMonicLoop_zero_eq_map]
+  obtain ⟨hwellFormed, hchain, hnonzero⟩ := hcanonical
+  refine ⟨?_, ?_, ?_⟩
+  · intro term hterm
+    rw [Array.toList_map, List.mem_map] at hterm
+    rcases hterm with ⟨source, hsource, rfl⟩
+    exact zp_mul_reduced p source.2 lcInv (hwellFormed source hsource)
+      hlcReduced (Fact.out : Nat.Prime p).pos hpWord
+  · rw [Array.toList_map]
+    rw [List.isChain_map]
+    simpa using hchain
+  · intro term hterm
+    rw [Array.toList_map, List.mem_map] at hterm
+    rcases hterm with ⟨source, hsource, rfl⟩
+    exact zp_mul_val_ne_zero p source.2 lcInv
+      (hwellFormed source hsource) hlcReduced
+      (hnonzero source hsource) hlcNe hpWord
+
+theorem sparse_leading_val_eq_one_of_monic (p : Nat) [Fact (Nat.Prime p)]
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size)
+    (hmonic : (SparsePolyZp.toPoly p poly).Monic) :
+    poly[0].2.val = 1 := by
+  have hlistNonempty : poly.toList ≠ [] := by
+    intro hempty
+    have hlength := congrArg List.length hempty
+    have hsizeZero : poly.size = 0 := by simpa using hlength
+    exact (Nat.ne_of_gt hnonempty) hsizeZero
+  obtain ⟨head, rest, hlist⟩ := List.exists_cons_of_ne_nil hlistNonempty
+  have hheadEq : head = poly[0] := by
+    have hget := Array.getElem_toList hnonempty
+    simpa [hlist] using hget
+  have hheadMem : head ∈ poly.toList := by simp [hlist]
+  have hheadReduced : Zp.Reduced p head.2 := hcanonical.1 head hheadMem
+  have hheadNe : head.2.val ≠ 0 := hcanonical.2.2 head hheadMem
+  have hheadFieldNe : Zp.toZMod p head.2 ≠ 0 :=
+    Zp.toZMod_ne_zero_of_val_ne_zero p head.2 hheadReduced hheadNe
+  have hchain : List.IsChain
+      (fun a b : UMonomial × Zp => a.1.deg > b.1.deg) (head :: rest) := by
+    simpa [hlist] using hcanonical.2.1
+  have hrestLt : ∀ item ∈ rest, item.1.deg < head.1.deg :=
+    chain_gt_all_after_head head rest hchain
+  have hrestDegree : (listSum p rest).degree < head.1.deg := by
+    rw [Polynomial.degree_lt_iff_coeff_zero]
+    intro degree hdegree
+    apply listSum_coeff_zero_of_all_lt
+    intro item hitem
+    exact Nat.lt_of_lt_of_le (hrestLt item hitem) hdegree
+  have hheadDegree :
+      (Polynomial.monomial head.1.deg (Zp.toZMod p head.2)).degree =
+        head.1.deg := Polynomial.degree_monomial _ hheadFieldNe
+  have hdegree : (SparsePolyZp.toPoly p poly).degree = head.1.deg := by
+    unfold SparsePolyZp.toPoly
+    rw [hlist, listSum_cons,
+      Polynomial.degree_add_eq_left_of_degree_lt (by
+        simpa [hheadDegree] using hrestDegree), hheadDegree]
+  have hnatDegree : (SparsePolyZp.toPoly p poly).natDegree = head.1.deg :=
+    Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  have hfieldOne : Zp.toZMod p head.2 = 1 := by
+    have hcoeff := hmonic.coeff_natDegree
+    rw [hnatDegree] at hcoeff
+    rw [← listSum_coeff_at_head p head rest hchain]
+    simpa [SparsePolyZp.toPoly, hlist] using hcoeff
+  have hvalNat : head.2.val.toNat = 1 := by
+    have hval := congrArg ZMod.val hfieldOne
+    unfold Zp.toZMod at hval
+    rw [ZMod.val_natCast, Nat.mod_eq_of_lt hheadReduced.2] at hval
+    letI : Fact (1 < p) := ⟨(Fact.out : Nat.Prime p).one_lt⟩
+    exact hval.trans (ZMod.val_one p)
+  rw [← hheadEq]
+  exact UInt64.toNat_inj.mp (by simpa using hvalNat)
+
+theorem zp_inv_one (prime : UInt64) (hp : 1 < prime.toNat) :
+    Zp.inv ⟨1, prime⟩ = (⟨1, prime⟩ : Zp) := by
+  have hpInt : (1 : Int) < (prime.toNat : Int) := by exact_mod_cast hp
+  simp [Zp.inv, Zp.modInv, Zp.extGcdAux,
+    Int.emod_eq_of_lt (by omega) hpInt]
 
 end CLPoly.Impl.StrictPolynomialGCDRefinement

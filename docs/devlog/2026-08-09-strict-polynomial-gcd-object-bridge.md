@@ -200,6 +200,20 @@ canonical and its leading coefficient is one.
 - Proved the loop's pointwise execution invariant: prior cells are preserved,
   every remaining coefficient is multiplied exactly once, and every monomial
   is unchanged; derived equality with the corresponding full `Array.map`.
+- Proved the full sparse monic loop denotes multiplication by the concrete
+  loop scalar, without imposing the obsolete `p * p` machine-word bound: the
+  `Zp` multiplication reduces its `Nat` product before converting back to a
+  word.
+- Proved the loop preserves reduced coefficients, strict degree order, and
+  nonzero coefficients whenever its concrete scalar is nonzero; consequently
+  it preserves the complete sparse canonical invariant.
+- Strengthened every nonempty public-GCD refinement result to expose the
+  canonical evidence already produced by the real reverse dense scan.
+- Proved that a nonempty canonical sparse representation whose L2 denotation
+  is monic has concrete leading word value exactly one, and evaluated the
+  actual well-founded `Zp::inv` model on that value.  This prepares the
+  source-written second public monic traversal rather than deleting it as a
+  mathematical no-op.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why
@@ -216,8 +230,8 @@ boundary is required before replacing its current typeclass GCD call.
 ## 度量
 
 - 耗时：约 0.5 小时（源码控制流核对、接口设计、形式化与构建）
-- 迭代：10 轮编译—修复
-- Lean 新增/修改行数：约 850 行
+- 迭代：14 轮编译—修复
+- Lean 新增/修改行数：约 970 行
 - 对应 C++ 行数：约 55 行（两个 sparse/dense 转换及 GCD 包装）
 - 放弃的方案：直接证明当前 `SparsePolyZp.gcd` 正确；它不是 C++ dense
   GCD 的执行，不能用于严格 L1→L2 精化。

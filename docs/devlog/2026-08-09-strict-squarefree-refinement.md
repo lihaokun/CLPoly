@@ -270,6 +270,13 @@ every generated range-for and recursive loop used by SQF.
   得到对应定理。另证明 `ChainValid` 对所有权集合内逐点相等封闭。这样
   heap ownership 下一步只需证明其他 bucket 的不交集合仍包含在剩余
   `unvisited` 中，即可把其 chain 合法性传过当前 bucket 的节点修改。
+- chain ownership 已从“合法可达”加强为精确 `PairVecDivVHCChainOwns`：
+  沿 `next` 走完时 owner 集合必须恰好耗尽，并证明其所有索引都落在真实
+  节点数组范围内。核心隔离定理现已闭合：任意与当前 root owner 不交的
+  另一 chain，在真实 root-bucket 消费后，其 owner 全部仍属于结果
+  `unvisited`，对应节点逐点未变，因而 `ChainOwns` 自动迁移到结果节点
+  数组。下一步把每个 heap slot 配上两两不交 owner，再证明 extract 只
+  重排这些 slot/head，不改变 owner 对应关系。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

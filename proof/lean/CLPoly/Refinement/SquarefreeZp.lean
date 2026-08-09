@@ -1914,6 +1914,24 @@ termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem hmem
 
+/-- Exact ownership variant of `PairVecDivVHCChainValid`: after following the
+whole `next` chain, no owner node remains.  This makes disjoint heap buckets
+stable under destructive consumption. -/
+def PairVecDivVHCChainOwns (current : Option Nat) (owner : Finset Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  match current with
+  | none => owner = ∅
+  | some nodeIndex =>
+      if hmem : nodeIndex ∈ owner then
+        ∃ node mono, nodes[nodeIndex]? = some node ∧
+          node.mono = some mono ∧
+          PairVecDivVHCChainOwns node.next (owner.erase nodeIndex) nodes
+      else
+        False
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem hmem
+
 theorem pairVecDivVHCChainValid_set_of_not_mem
     (current : Option Nat) (unvisited : Finset Nat)
     (nodes : Array PairVecDivVHCNode) (nodeIndex : Nat)
@@ -1965,6 +1983,185 @@ theorem pairVecDivVHCChainValid_congr_on
               intro i hi
               exact hsame i (Finset.mem_of_mem_erase hi))
 termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCChainOwns_congr_on
+    (current : Option Nat) (owner : Finset Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (hsame : ∀ i ∈ owner, nodes'[i]? = nodes[i]?) :
+    PairVecDivVHCChainOwns current owner nodes' := by
+  cases current with
+  | none => simpa [PairVecDivVHCChainOwns] using howns
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at howns ⊢
+      split at howns <;> try contradiction
+      next hmem =>
+        simp only [hmem, ↓reduceDIte]
+        rcases howns with ⟨node, mono, hget, hmono, htail⟩
+        refine ⟨node, mono, ?_, hmono, ?_⟩
+        · rw [hsame nodeIndex hmem]
+          exact hget
+        · exact pairVecDivVHCChainOwns_congr_on node.next
+            (owner.erase nodeIndex) nodes nodes' htail (by
+              intro i hi
+              exact hsame i (Finset.mem_of_mem_erase hi))
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeChain_preserves_disjoint_owner
+    (this : DenseUPolyZp) (current : Option Nat)
+    (owner protectedSet unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (hownerSubset : owner ⊆ unvisited)
+    (hprotectedSubset : protectedSet ⊆ unvisited)
+    (hdisjoint : Disjoint protectedSet owner)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    protectedSet ⊆ result.unvisited ∧
+      ∀ i ∈ protectedSet, result.nodes[i]? = nodes[i]? := by
+  cases current with
+  | none =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      exact ⟨hprotectedSubset, by simp⟩
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at howns
+      split at howns <;> try contradiction
+      next hownerMem =>
+        rcases howns with ⟨node, mono, hget, hmono, htailOwns⟩
+        have hmem : nodeIndex ∈ unvisited := hownerSubset hownerMem
+        rw [pairVecDivVHCConsumeChain] at hrun
+        simp only [hmem, ↓reduceDIte] at hrun
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            have hnext : next = node.next := by
+              unfold pairVecDivVHCConsumeNode at hconsume
+              have hn : nodeIndex < nodes.size := by
+                by_contra hnot
+                rw [Array.getElem?_eq_none (by omega)] at hget
+                contradiction
+              simp only [hn, ↓reduceDIte] at hconsume
+              rw [Array.getElem?_eq_getElem hn] at hget
+              simp only [Option.some.injEq] at hget
+              subst node
+              split at hconsume <;> try contradiction
+              next hq =>
+                split at hconsume <;> try contradiction
+                next hd =>
+                  split at hconsume
+                  next hadvance =>
+                    simp only [Except.ok.injEq, Prod.mk.injEq] at hconsume
+                    exact hconsume.2.2.2.2.symm
+                  next hadvance =>
+                    split at hconsume <;> try contradiction
+                    next hexhausted =>
+                      split at hconsume <;> try contradiction
+                      next horder =>
+                        simp only [Except.ok.injEq, Prod.mk.injEq] at hconsume
+                        exact hconsume.2.2.2.2.symm
+            subst next
+            have htailOwns' := pairVecDivVHCChainOwns_congr_on node.next
+              (owner.erase nodeIndex) nodes nodes' htailOwns (by
+                intro i hi
+                exact (pairVecDivVHCConsumeNode_get_ne this nodeIndex k k'
+                  nodes nodes' lin lin' resetH resetH' node.next quotient
+                  divisor hconsume i (Finset.mem_erase.mp hi).1.symm))
+            have hnodeNotProtected : nodeIndex ∉ protectedSet := by
+              intro hp
+              exact Finset.disjoint_left.mp hdisjoint hp hownerMem
+            have hprotectedErase : protectedSet ⊆ unvisited.erase nodeIndex := by
+              intro i hi
+              exact Finset.mem_erase.mpr ⟨by
+                intro heq
+                subst i
+                exact hnodeNotProtected hi, hprotectedSubset hi⟩
+            have hownerErase : owner.erase nodeIndex ⊆
+                unvisited.erase nodeIndex := by
+              intro i hi
+              exact Finset.mem_erase.mpr ⟨(Finset.mem_erase.mp hi).1,
+                hownerSubset (Finset.mem_of_mem_erase hi)⟩
+            have hdisjointErase : Disjoint protectedSet
+                (owner.erase nodeIndex) := by
+              exact Finset.disjoint_left.mpr (by
+                intro i hp ho
+                exact Finset.disjoint_left.mp hdisjoint hp
+                  (Finset.mem_of_mem_erase ho))
+            have ih := pairVecDivVHCConsumeChain_preserves_disjoint_owner this
+              node.next (owner.erase nodeIndex) protectedSet
+              (unvisited.erase nodeIndex) k' nodes' lin' resetH' quotient
+              divisor result htailOwns' hownerErase hprotectedErase
+              hdisjointErase hrun
+            refine ⟨ih.1, ?_⟩
+            intro i hi
+            rw [ih.2 i hi]
+            exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k' nodes
+              nodes' lin lin' resetH resetH' node.next quotient divisor
+              hconsume i (by
+                intro heq
+                subst i
+                exact hnodeNotProtected hi)
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCChainOwns_valid
+    (current : Option Nat) (owner : Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (howns : PairVecDivVHCChainOwns current owner nodes) :
+    PairVecDivVHCChainValid current owner nodes := by
+  cases current with
+  | none => simp [PairVecDivVHCChainValid]
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at howns
+      rw [PairVecDivVHCChainValid]
+      split at howns <;> try contradiction
+      next hmem =>
+        simp only [hmem, ↓reduceDIte]
+        rcases howns with ⟨node, mono, hget, hmono, htail⟩
+        exact ⟨node, mono, hget, hmono,
+          pairVecDivVHCChainOwns_valid node.next (owner.erase nodeIndex)
+            nodes htail⟩
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCChainOwns_subset_range
+    (current : Option Nat) (owner : Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (howns : PairVecDivVHCChainOwns current owner nodes) :
+    owner ⊆ Finset.range nodes.size := by
+  cases current with
+  | none =>
+      simp [PairVecDivVHCChainOwns] at howns
+      subst owner
+      simp
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at howns
+      split at howns <;> try contradiction
+      next hmem =>
+        rcases howns with ⟨node, mono, hget, hmono, htail⟩
+        have hn : nodeIndex < nodes.size := by
+          by_contra hnot
+          rw [Array.getElem?_eq_none (by omega)] at hget
+          contradiction
+        have htailSubset := pairVecDivVHCChainOwns_subset_range node.next
+          (owner.erase nodeIndex) nodes htail
+        intro i hi
+        by_cases heq : i = nodeIndex
+        · subst i
+          simpa using hn
+        · exact htailSubset (Finset.mem_erase.mpr ⟨heq, hi⟩)
+termination_by owner.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
@@ -2861,6 +3058,29 @@ theorem pairVecDivVHCConsumeRootBucket_unvisited (this : DenseUPolyZp)
   simp only [hheap, ↓reduceDIte] at hrun
   exact pairVecDivVHCConsumeChain_unvisited this (some heap[0])
     (Finset.range nodes.size) k nodes lin resetH quotient divisor result hrun
+
+theorem pairVecDivVHCConsumeRootBucket_preserves_disjoint_chain
+    (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (rootOwner otherOwner : Finset Nat) (otherCurrent : Option Nat)
+    (hheap : 0 < heap.size)
+    (hrootOwns : PairVecDivVHCChainOwns (some heap[0]) rootOwner nodes)
+    (hotherOwns : PairVecDivVHCChainOwns otherCurrent otherOwner nodes)
+    (hdisjoint : Disjoint otherOwner rootOwner)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    otherOwner ⊆ result.unvisited ∧
+      PairVecDivVHCChainOwns otherCurrent otherOwner result.nodes := by
+  unfold pairVecDivVHCConsumeRootBucket at hrun
+  simp only [hheap, ↓reduceDIte] at hrun
+  have hpreserved := pairVecDivVHCConsumeChain_preserves_disjoint_owner this
+    (some heap[0]) rootOwner otherOwner (Finset.range nodes.size) k nodes lin
+    resetH quotient divisor result hrootOwns
+    (pairVecDivVHCChainOwns_subset_range _ _ _ hrootOwns)
+    (pairVecDivVHCChainOwns_subset_range _ _ _ hotherOwns) hdisjoint hrun
+  exact ⟨hpreserved.1, pairVecDivVHCChainOwns_congr_on otherCurrent
+    otherOwner nodes result.nodes hotherOwns hpreserved.2⟩
 
 theorem pairVecDivVHCActivatedTail_degree_lt_frontier (p frontierDegree : Nat)
     (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)

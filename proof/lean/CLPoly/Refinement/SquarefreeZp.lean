@@ -3928,6 +3928,34 @@ theorem pairVecDivVHCProductAtFrontier_eq_cursor
       hquotient hdivisor
     omega
 
+theorem pairVecDivVHCProductAtFrontier_eq_cursor_of_mono_le
+    (p degreeLimit frontierDegree : Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) (i q : Nat)
+    (node : PairVecDivVHCNode) (mono : UMonomial)
+    (quotientTerm divisorTerm : UMonomial × Zp)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontierDegree < degreeLimit)
+    (hget : nodes[i]? = some node)
+    (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
+    (hmono : node.mono = some mono)
+    (hmonoLe : mono.deg ≤ frontierDegree)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[node.divisorIndex]? = some divisorTerm)
+    (hdegree : quotientTerm.1.deg + divisorTerm.1.deg = frontierDegree) :
+    q = node.quotientIndex := by
+  rcases Nat.lt_trichotomy q node.quotientIndex with hearlier | heq | hlater
+  · have habove := hprefix.earlier_product_degree_gt degreeLimit
+      frontierDegree nodes quotient divisor hfrontier i node hget q
+      quotientTerm divisorTerm hearlier hquotient hdivisor
+    omega
+  · exact heq
+  · have hbelow := hdenotes.later_product_degree_lt p quotient divisor node
+      mono.deg q quotientTerm divisorTerm hcanonical hmono hlater hquotient
+      hdivisor
+    omega
+
 theorem pairVecDivVHCNode_advanced_degree_lt (p : Nat)
     (quotient divisor : SparsePolyZp)
     (node : PairVecDivVHCNode) (currentMono : UMonomial)
@@ -4734,6 +4762,45 @@ termination_by owner.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+theorem pairVecDivVHCChainOwns_mem_degree
+    (current : Option Nat) (owner : Finset Nat)
+    (nodes : Array PairVecDivVHCNode) (degree i : Nat)
+    (howns : PairVecDivVHCChainOwns current owner nodes)
+    (hdegree : PairVecDivVHCChainAtDegree current owner nodes degree)
+    (hi : i ∈ owner) :
+    ∃ node mono, nodes[i]? = some node ∧ node.mono = some mono ∧
+      mono.deg = degree := by
+  cases current with
+  | none =>
+      simp [PairVecDivVHCChainOwns] at howns
+      subst owner
+      simp at hi
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainOwns] at howns
+      rw [PairVecDivVHCChainAtDegree] at hdegree
+      split at howns <;> try contradiction
+      next hmem =>
+        simp only [hmem, ↓reduceDIte] at hdegree
+        rcases howns with ⟨node, mono, hget, hmono, htailOwns⟩
+        rcases hdegree with
+          ⟨degreeNode, degreeMono, hdegreeGet, hdegreeMono,
+            hmonoDegree, htailDegree⟩
+        rw [hget] at hdegreeGet
+        simp only [Option.some.injEq] at hdegreeGet
+        subst degreeNode
+        rw [hmono] at hdegreeMono
+        simp only [Option.some.injEq] at hdegreeMono
+        subst degreeMono
+        by_cases heq : i = nodeIndex
+        · subst i
+          exact ⟨node, mono, hget, hmono, hmonoDegree⟩
+        · exact pairVecDivVHCChainOwns_mem_degree node.next
+            (owner.erase nodeIndex) nodes degree i htailOwns htailDegree
+            (Finset.mem_erase.mpr ⟨heq, hi⟩)
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
 theorem pairVecDivVHCChainOwns_head_mem
     (nodeIndex : Nat) (owner : Finset Nat)
     (nodes : Array PairVecDivVHCNode)
@@ -4922,6 +4989,82 @@ def PairVecDivVHCHeapChainsHomogeneous (heap : Array Nat)
   ∀ (slot head : Nat) (mono : UMonomial), heap[slot]? = some head →
     pairVecDivVHCMono head nodes = .ok mono →
       PairVecDivVHCChainAtDegree (some head) (owners head) nodes mono.deg
+
+theorem pairVecDivVHCOwnedNode_degree_le_frontier
+    (dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (frontier : PairVecDivVHCFrontier)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (slot head i : Nat) (node : PairVecDivVHCNode)
+    (hheap : heap[slot]? = some head) (hmem : i ∈ owners head)
+    (hget : nodes[i]? = some node)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    ∃ mono, node.mono = some mono ∧ mono.deg ≤ frontier.degree := by
+  have hslot : slot < heap.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hheap
+    contradiction
+  rcases hvalid slot hslot with
+    ⟨validHead, headNode, headMono, hvalidHeap, hheadNode, hheadActive⟩
+  rw [hheap] at hvalidHeap
+  simp only [Option.some.injEq] at hvalidHeap
+  subst validHead
+  have hheadRun : pairVecDivVHCMono head nodes = .ok headMono := by
+    apply (pairVecDivVHCMono_eq_ok_iff head nodes headMono).mpr
+    exact ⟨headNode, hheadNode, hheadActive⟩
+  have hchainDegree := hhomogeneous slot head headMono hheap hheadRun
+  have howns := hownership.1 slot head hheap
+  rcases pairVecDivVHCChainOwns_mem_degree (some head) (owners head) nodes
+      headMono.deg i howns hchainDegree hmem with
+    ⟨ownedNode, mono, hownedGet, hmono, hmonoDegree⟩
+  rw [hget] at hownedGet
+  simp only [Option.some.injEq] at hownedGet
+  subst ownedNode
+  refine ⟨mono, hmono, ?_⟩
+  rw [hmonoDegree]
+  have hslotRun : pairVecDivVHCMono heap[slot] nodes = .ok headMono := by
+    have hheadEq : heap[slot] = head := by
+      rw [Array.getElem?_eq_getElem hslot] at hheap
+      exact Option.some.inj hheap
+    rw [hheadEq]
+    exact hheadRun
+  exact pairVecDivVHCSelectFrontier_heap_slot_degree_le dividendIndex dividend
+    heap nodes frontier hvalid hordered slot hslot headMono hslotRun hselect
+
+theorem pairVecDivVHCOwnedRow_productAtFrontier_eq_cursor
+    (p degreeLimit dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (frontier : PairVecDivVHCFrontier)
+    (quotient divisor : SparsePolyZp) (slot head i q : Nat)
+    (node : PairVecDivVHCNode)
+    (quotientTerm divisorTerm : UMonomial × Zp)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degreeLimit nodes quotient divisor)
+    (hfrontier : frontier.degree < degreeLimit)
+    (hheap : heap[slot]? = some head) (hmem : i ∈ owners head)
+    (hget : nodes[i]? = some node)
+    (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
+    (hquotient : quotient[q]? = some quotientTerm)
+    (hdivisor : divisor[node.divisorIndex]? = some divisorTerm)
+    (hdegree : quotientTerm.1.deg + divisorTerm.1.deg = frontier.degree)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier) :
+    q = node.quotientIndex := by
+  rcases pairVecDivVHCOwnedNode_degree_le_frontier dividendIndex dividend heap
+      nodes owners frontier hownership hhomogeneous hvalid hordered slot head i
+      node hheap hmem hget hselect with ⟨mono, hmono, hmonoLe⟩
+  exact pairVecDivVHCProductAtFrontier_eq_cursor_of_mono_le p degreeLimit
+    frontier.degree nodes quotient divisor i q node mono quotientTerm
+    divisorTerm hcanonical hprefix hfrontier hget hdenotes hmono hmonoLe
+    hquotient hdivisor hdegree
 
 theorem pairVecDivVHCHeapChainsHomogeneous_of_nextValid
     (heap : Array Nat) (owners : Nat → Finset Nat)

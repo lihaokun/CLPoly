@@ -748,3 +748,13 @@ every generated range-for and recursive loop used by SQF.
   state coverage 恢复出的 owner chain、chain homogeneity 和这个 slot 上界
   合并，排除 heap-owned row 的 cursor 前后两侧，从而证明每个 frontier
   product 都确实位于本轮被消费的唯一 cursor。
+- heap-owned row 的 cursor 定位已闭合。新良基引理同步递归 exact
+  `ChainOwns` 与 `ChainAtDegree`，证明 owner 集中的每个真实节点均 active
+  且次数等于 bucket head；再用上一阶段的 slot-to-frontier 上界得到该节点
+  mono 次数不大于实际 selector frontier。推广后的 row-local 排他证明只
+  需要这个上界：cursor 之前的 product 由 processed-prefix 严格高于
+  frontier，cursor 之后的 product 由 quotient canonicality 严格低于
+  node mono、进而不高于 frontier，所以次数等于 frontier 的存储乘积只能
+  精确落在当前 cursor。下一步用 `StateCovered` 在空 `lin` 状态下对每个
+  divisor-tail row 分解 reset/heap-owned 两种情况，得到全 row completeness，
+  再对接本轮 equal-degree consume 的 exact owner chain。

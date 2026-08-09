@@ -102,3 +102,7 @@ every generated range-for and recursive loop used by SQF.
 - 当前 C++ derivative 的前向循环也已闭合：系数计算调用已认证的生成
   preinverse 模乘，输出保持 canonical，其 `toPoly` 精确等于 L2
   derivative，并且实际 `isEmpty()` 判定与 L2 derivative 为零等价。
+- `p`-th-root 路径已从数组映射加强为完整语义桥：机器次数转换在
+  `int64_t` 次数范围内等于 Nat 除法；derivative 为零推出每个实际
+  canonical 项次数可被特征整除；提取结果保持 canonical，且其
+  `toPoly` 精确等于 `Polynomial.contract`。

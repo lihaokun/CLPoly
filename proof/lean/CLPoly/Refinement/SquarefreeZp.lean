@@ -314,6 +314,23 @@ theorem derivativeIR_isEmpty_iff (this : DenseUPolyZp)
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=
   (UMonomial.mk ((term.1.deg.toUInt64 / prime).toInt64), term.2)
 
+theorem pthRootTerm_degree (prime : UInt64) (term : UMonomial × Zp)
+    (hdegree : term.1.deg < 2 ^ 63) :
+    (pthRootTerm prime term).1.deg = term.1.deg / prime.toNat := by
+  have hdegreeWord : term.1.deg.toUInt64.toNat = term.1.deg := by
+    change (OfNat.ofNat term.1.deg : UInt64).toNat = term.1.deg
+    rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt]
+    omega
+  have hquotient : (term.1.deg.toUInt64 / prime).toNat =
+      term.1.deg / prime.toNat := by
+    rw [UInt64.toNat_div, hdegreeWord]
+  have hquotientBound : (term.1.deg.toUInt64 / prime).toNat < 2 ^ 63 := by
+    rw [hquotient]
+    exact Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hdegree
+  change (term.1.deg.toUInt64 / prime).toInt64.toNatClampNeg = _
+  rw [UInt64_toInt64_toNatClampNeg_eq_toNat_of_lt hquotientBound,
+    hquotient]
+
 def extractPthRootLoop (index : Nat) (output source : SparsePolyZp)
     (prime : UInt64) : SparsePolyZp :=
   if h : index < source.size then
@@ -344,11 +361,190 @@ theorem extractPthRootLoop_toList (index : Nat)
 termination_by source.size - index
 decreasing_by omega
 
+theorem extractPthRootLoop_zero_canonical (p : Nat) (prime : UInt64)
+    (source : SparsePolyZp) (hprime : prime.toNat = p) (hp : 0 < p)
+    (hcanonical : SparsePolyZp.Canonical p source)
+    (hdegree : ∀ term ∈ source.toList, term.1.deg < 2 ^ 63)
+    (hdivisible : ∀ term ∈ source.toList, p ∣ term.1.deg) :
+    SparsePolyZp.Canonical p (extractPthRootLoop 0 #[] source prime) := by
+  rw [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr,
+    extractPthRootLoop_toList]
+  simp only [List.drop_zero, List.nil_append]
+  refine ⟨?_, ?_, ?_⟩
+  · intro output houtput
+    rw [List.mem_map] at houtput
+    rcases houtput with ⟨term, hterm, rfl⟩
+    exact hcanonical.1 term hterm
+  · rw [List.isChain_iff_pairwise, List.pairwise_map]
+    have hpairwise := List.isChain_iff_pairwise.mp hcanonical.2.1
+    apply hpairwise.imp_of_mem
+    intro left right hleft hright horder
+    rw [pthRootTerm_degree prime left (hdegree left hleft),
+      pthRootTerm_degree prime right (hdegree right hright), hprime]
+    rcases hdivisible left hleft with ⟨leftQ, hleftQ⟩
+    rcases hdivisible right hright with ⟨rightQ, hrightQ⟩
+    have hmulOrder : p * rightQ < p * leftQ := by
+      simpa [hleftQ, hrightQ] using horder
+    have hquotientOrder : leftQ > rightQ :=
+      (Nat.mul_lt_mul_left hp).mp hmulOrder
+    rw [hleftQ, hrightQ]
+    simpa [Nat.mul_div_cancel_left _ hp] using hquotientOrder
+  · intro output houtput
+    rw [List.mem_map] at houtput
+    rcases houtput with ⟨term, hterm, rfl⟩
+    exact hcanonical.2.2 term hterm
+
+theorem contract_monomial_of_dvd {R : Type} [CommSemiring R]
+    (p degree : Nat) (coefficient : R) (hp : 0 < p) (hdiv : p ∣ degree) :
+    Polynomial.contract p (Polynomial.monomial degree coefficient) =
+      Polynomial.monomial (degree / p) coefficient := by
+  ext exponent
+  rw [Polynomial.coeff_contract (Nat.ne_of_gt hp)]
+  simp only [Polynomial.coeff_monomial]
+  rcases hdiv with ⟨quotient, rfl⟩
+  rw [Nat.mul_div_cancel_left quotient hp]
+  by_cases heq : p * quotient = exponent * p
+  · have hquotient : quotient = exponent :=
+      Nat.mul_left_cancel hp (heq.trans (Nat.mul_comm exponent p))
+    subst quotient
+    simp [Nat.mul_comm]
+  · have hquotient : quotient ≠ exponent := by
+      intro h
+      apply heq
+      simp [h, Nat.mul_comm]
+    simp [heq, hquotient]
+
+theorem listSum_pthRootTerm (p : Nat) (prime : UInt64)
+    (hprime : prime.toNat = p) (hp : 0 < p) :
+    ∀ terms : List (UMonomial × Zp),
+      (∀ term ∈ terms, term.1.deg < 2 ^ 63) →
+      (∀ term ∈ terms, p ∣ term.1.deg) →
+      listSum p (terms.map (pthRootTerm prime)) =
+        Polynomial.contract p (listSum p terms) := by
+  intro terms hdegree hdivisible
+  induction terms with
+  | nil => simp [listSum, Polynomial.contract]
+  | cons term rest ih =>
+      have htermDegree := hdegree term List.mem_cons_self
+      have hrestDegree : ∀ item ∈ rest, item.1.deg < 2 ^ 63 := by
+        intro item hitem
+        exact hdegree item (List.mem_cons_of_mem term hitem)
+      have htermDiv := hdivisible term List.mem_cons_self
+      have hrestDiv : ∀ item ∈ rest, p ∣ item.1.deg := by
+        intro item hitem
+        exact hdivisible item (List.mem_cons_of_mem term hitem)
+      rw [List.map_cons, listSum_cons, listSum_cons,
+        pthRootTerm_degree prime term htermDegree,
+        hprime,
+        Polynomial.contract_add (Nat.ne_of_gt hp), ih hrestDegree hrestDiv,
+        contract_monomial_of_dvd p term.1.deg
+          (Zp.toZMod p term.2) hp htermDiv]
+      rfl
+
 def extractPthRootIR (f : SparsePolyZp) : RawExec SparsePolyZp :=
   if hnonempty : 0 < f.size then
     .ok (extractPthRootLoop 0 #[] f f[0].2.prime)
   else
     .error .assertionFailure
+
+theorem extractPthRootIR_refines (p : Nat) [Fact (Nat.Prime p)]
+    (source : SparsePolyZp) (hnonempty : 0 < source.size)
+    (hcanonical : SparsePolyZp.Canonical p source)
+    (hdegree : ∀ term ∈ source.toList, term.1.deg < 2 ^ 63)
+    (hdivisible : ∀ term ∈ source.toList, p ∣ term.1.deg) :
+    ∃ root,
+      extractPthRootIR source = .ok root ∧
+      SparsePolyZp.Canonical p root ∧
+      SparsePolyZp.toPoly p root =
+        Polynomial.contract p (SparsePolyZp.toPoly p source) := by
+  have hheadMem : source[0] ∈ source.toList := by
+    have hget := Array.getElem_toList hnonempty
+    rw [← hget]
+    exact List.getElem_mem (by simpa using hnonempty)
+  have hprime : source[0].2.prime.toNat = p :=
+    (hcanonical.1 source[0] hheadMem).1
+  let root := extractPthRootLoop 0 #[] source source[0].2.prime
+  refine ⟨root, by simp [extractPthRootIR, hnonempty, root], ?_, ?_⟩
+  · exact extractPthRootLoop_zero_canonical p source[0].2.prime source
+      hprime (Fact.out : Nat.Prime p).pos hcanonical hdegree hdivisible
+  · unfold SparsePolyZp.toPoly root
+    rw [extractPthRootLoop_toList]
+    simp only [List.drop_zero, List.nil_append]
+    exact listSum_pthRootTerm p source[0].2.prime hprime
+      (Fact.out : Nat.Prime p).pos source.toList hdegree hdivisible
+
+theorem listSum_coeff_of_mem_chain (p : Nat)
+    (terms : List (UMonomial × Zp)) (term : UMonomial × Zp)
+    (hchain : List.IsChain
+      (fun left right : UMonomial × Zp => left.1.deg > right.1.deg) terms)
+    (hterm : term ∈ terms) :
+    (listSum p terms).coeff term.1.deg = Zp.toZMod p term.2 := by
+  induction terms with
+  | nil => simp at hterm
+  | cons head rest ih =>
+      rcases List.mem_cons.mp hterm with heq | hrest
+      · subst head
+        exact listSum_coeff_at_head p term rest hchain
+      · rw [listSum_cons, Polynomial.coeff_add,
+          Polynomial.coeff_monomial]
+        have hheadGreater : head.1.deg > term.1.deg :=
+          chain_gt_all_after_head head rest hchain term hrest
+        rw [if_neg (by omega), zero_add]
+        exact ih hchain.tail hrest
+
+theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
+    [Fact (Nat.Prime p)] (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical p source)
+    (hderivative : Polynomial.derivative (SparsePolyZp.toPoly p source) = 0) :
+    ∀ term ∈ source.toList, p ∣ term.1.deg := by
+  intro term hterm
+  by_cases hdegreeZero : term.1.deg = 0
+  · simp [hdegreeZero]
+  have hcoefficient := listSum_coeff_of_mem_chain p source.toList term
+    hcanonical.2.1 hterm
+  have hcoefficientNonzero :
+      (SparsePolyZp.toPoly p source).coeff term.1.deg ≠ 0 := by
+    unfold SparsePolyZp.toPoly
+    rw [hcoefficient]
+    exact Zp.toZMod_ne_zero_of_val_ne_zero p term.2
+      (hcanonical.1 term hterm) (hcanonical.2.2 term hterm)
+  have hderivativeCoefficient := congrArg
+    (fun poly : Polynomial (ZMod p) => poly.coeff (term.1.deg - 1))
+    hderivative
+  change (Polynomial.derivative (SparsePolyZp.toPoly p source)).coeff
+      (term.1.deg - 1) = 0 at hderivativeCoefficient
+  rw [Polynomial.coeff_derivative] at hderivativeCoefficient
+  have hindex : term.1.deg - 1 + 1 = term.1.deg := by omega
+  rw [hindex] at hderivativeCoefficient
+  have hfactor : ((term.1.deg - 1 : Nat) : ZMod p) + 1 =
+      (term.1.deg : ZMod p) := by
+    calc
+      ((term.1.deg - 1 : Nat) : ZMod p) + 1 =
+          ((term.1.deg - 1 : Nat) : ZMod p) + ((1 : Nat) : ZMod p) := by
+        norm_num
+      _ = ((term.1.deg - 1 + 1 : Nat) : ZMod p) := by push_cast; rfl
+      _ = (term.1.deg : ZMod p) := congrArg (fun n : Nat => (n : ZMod p)) hindex
+  rw [hfactor] at hderivativeCoefficient
+  have hdegreeCast : (term.1.deg : ZMod p) = 0 := by
+    rcases mul_eq_zero.mp hderivativeCoefficient with hbad | hzero
+    · exact False.elim (hcoefficientNonzero hbad)
+    · exact hzero
+  exact (ZMod.natCast_eq_zero_iff term.1.deg p).mp hdegreeCast
+
+theorem extractPthRootIR_refines_of_derivative_zero (p : Nat)
+    [Fact (Nat.Prime p)] (source : SparsePolyZp)
+    (hnonempty : 0 < source.size)
+    (hcanonical : SparsePolyZp.Canonical p source)
+    (hdegree : ∀ term ∈ source.toList, term.1.deg < 2 ^ 63)
+    (hderivative : Polynomial.derivative (SparsePolyZp.toPoly p source) = 0) :
+    ∃ root,
+      extractPthRootIR source = .ok root ∧
+      SparsePolyZp.Canonical p root ∧
+      SparsePolyZp.toPoly p root =
+        Polynomial.contract p (SparsePolyZp.toPoly p source) := by
+  apply extractPthRootIR_refines p source hnonempty hcanonical hdegree
+  exact canonical_degrees_dvd_of_derivative_eq_zero p source hcanonical
+    hderivative
 
 theorem extractPthRootLoop_size (index : Nat) (output source : SparsePolyZp)
     (prime : UInt64) :

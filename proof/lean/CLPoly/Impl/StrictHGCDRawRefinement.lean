@@ -10262,24 +10262,12 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
     (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
     (A B a b : RawPtr UInt64) (lenA lenB : Nat)
     (W scratch : RawPtr UInt64) (heap : RawHeap)
-    (left right inputHighA inputHighB outputHighA outputHighB
-      lowPolyA lowPolyB : Polynomial (ZMod this._p.toNat))
-    (firstEntries : Fin 4 → Polynomial (ZMod this._p.toNat))
+    (left right inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat))
     (hp : 1 < this._p.toNat) (hcfg : DensePreinvConfigured this)
     (hbound : lenA = bound) (horder : lenB < lenA)
-    (firstLength : ∀ first,
-      let ws := hgcdRecursiveWorkspace W lenA
-      let high := hgcdRecursiveHighInput a b lenA lenB
-      ∀ (hchildOrder : high.lenB0 < high.lenA0)
-        (hchildDecrease : high.lenA0 < bound),
-      hgcdRecursiveDispatchBelow this bound recurse ws.R
-        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
-        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
-        heap hchildOrder hchildDecrease = .ok first →
-      HgcdRecursiveLengthInvariant high.lenA0 first)
-    (reconstructionBound : HgcdFirstReconstructionBoundProvider this a b W
-      scratch lenA lenB (HgcdFirstDispatchResult this bound recurse a b W
-        scratch lenA lenB heap))
+    (firstCall : HgcdRecursiveFirstCallAdmissible this bound recurse a b W
+      scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB)
     (first : HgcdRecursiveResult)
     (reconstructed : HgcdRecursiveReconstructPairResult)
     (middle : HgcdRecursiveMiddleResult)
@@ -10297,15 +10285,6 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
             rw [← hbound]
             exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder
               (by omega)) = .ok first)
-    (hFirst :
-      let ws := hgcdRecursiveWorkspace W lenA
-      let high := hgcdRecursiveHighInput a b lenA lenB
-      HgcdRecursiveRawInvariant this inputHighA inputHighB outputHighA
-        outputHighB firstEntries true ws.a3 ws.b3 high.lenA0 first)
-    (hLowA : RawDensePolyRep this first.heap a
-      (Nat.min lenA (lenA / 2)) lowPolyA)
-    (hLowB : RawDensePolyRep this first.heap b
-      (Nat.min lenB (lenA / 2)) lowPolyB)
     (hFullA : left = lowPolyA + Polynomial.X ^ (lenA / 2) * inputHighA)
     (hFullB : right = lowPolyB + Polynomial.X ^ (lenA / 2) * inputHighB)
     (reconstructWork :
@@ -10380,22 +10359,39 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
         second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch first.sgn
         second.sgn second.heap = .ok finished)
     (result : HgcdRecursiveResult)
-    (hrun : hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b
-      lenA lenB W scratch heap hbound horder firstLength reconstructionBound =
-        .ok result) :
+    (hrun :
+      let providers := hgcdRecursiveFirstCall_providers this bound recurse a b
+        W scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg
+        hp horder firstCall.workspace firstCall.recursiveRefines
+      hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
+        lenB W scratch heap hbound horder providers.1 providers.2 = .ok result) :
     ∃ finalA finalB entries,
       HgcdRecursiveRawInvariant this left right finalA finalB entries computeM
         A B lenA result := by
   let ws := hgcdRecursiveWorkspace W lenA
   let high := hgcdRecursiveHighInput a b lenA lenB
+  let providers := hgcdRecursiveFirstCall_providers this bound recurse a b W
+    scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp
+    horder firstCall.workspace firstCall.recursiveRefines
+  change hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
+    lenB W scratch heap hbound horder providers.1 providers.2 = .ok result
+    at hrun
+  rcases hgcdRecursiveFirstCall_refines this bound recurse a b W scratch lenA
+      lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp firstCall first
+      (hgcdRecursiveHighInput_order a b lenA lenB horder)
+      (by
+        rw [← hbound]
+        exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder (by omega))
+      hfirst with
+    ⟨outputHighA, outputHighB, firstEntries, hFirst, hLowA, hLowB⟩
   have hfirstLength : HgcdRecursiveLengthInvariant high.lenA0 first :=
-    firstLength first (hgcdRecursiveHighInput_order a b lenA lenB horder)
+    providers.1 first (hgcdRecursiveHighInput_order a b lenA lenB horder)
       (by
         rw [← hbound]
         exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder (by omega))
       hfirst
   have hReconstructed : HgcdFirstReconstructionInvariant lenA first
-      reconstructed := reconstructionBound first reconstructed ⟨_, _, hfirst⟩ (by
+      reconstructed := providers.2 first reconstructed ⟨_, _, hfirst⟩ (by
     simpa [high, hgcdRecursiveHighInput] using hfirstLength) hreconstruct
   let currentA := hgcdReconstructedLowA firstEntries lowPolyA lowPolyB
       first.sgn + Polynomial.X ^ (lenA / 2) * outputHighA

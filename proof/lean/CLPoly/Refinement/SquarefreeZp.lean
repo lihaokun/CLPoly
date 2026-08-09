@@ -2349,6 +2349,145 @@ termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem hmem
 
+/-- Execution-indexed record of the concrete coefficient pairs subtracted by
+one real `next`-chain traversal.  Each `step` stores the values read before
+`ConsumeNode` advances or retires that node. -/
+inductive PairVecDivVHCConsumeTrace (this : DenseUPolyZp)
+    (quotient divisor : SparsePolyZp) :
+    Option Nat → Finset Nat → UInt64 → Array PairVecDivVHCNode →
+      Array Nat → Nat → PairVecDivVHCBucketResult →
+      List (UInt64 × UInt64) → Prop
+  | done (unvisited : Finset Nat) (k : UInt64)
+      (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat) :
+      PairVecDivVHCConsumeTrace this quotient divisor none unvisited k nodes
+        lin resetH
+        (PairVecDivVHCBucketResult.mk k nodes lin resetH unvisited) []
+  | step (nodeIndex : Nat) (unvisited : Finset Nat) (k k' : UInt64)
+      (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+      (resetH resetH' : Nat) (next : Option Nat)
+      (result : PairVecDivVHCBucketResult)
+      (products : List (UInt64 × UInt64))
+      (hmem : nodeIndex ∈ unvisited) (hn : nodeIndex < nodes.size)
+      (hq : nodes[nodeIndex].quotientIndex < quotient.size)
+      (hd : nodes[nodeIndex].divisorIndex < divisor.size)
+      (hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+        quotient divisor = .ok (k', nodes', lin', resetH', next))
+      (htail : PairVecDivVHCConsumeTrace this quotient divisor next
+        (unvisited.erase nodeIndex) k' nodes' lin' resetH' result products) :
+      PairVecDivVHCConsumeTrace this quotient divisor (some nodeIndex)
+        unvisited k nodes lin resetH result
+        ((quotient[nodes[nodeIndex].quotientIndex].2.val,
+          divisor[nodes[nodeIndex].divisorIndex].2.val) :: products)
+
+theorem pairVecDivVHCConsumeChain_has_trace
+    (this : DenseUPolyZp) (current : Option Nat) (unvisited : Finset Nat)
+    (k : UInt64) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (resetH : Nat) (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCBucketResult)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    ∃ products : List (UInt64 × UInt64),
+      PairVecDivVHCConsumeTrace this quotient divisor current unvisited k nodes
+        lin resetH result products := by
+  cases current with
+  | none =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      exact ⟨[], PairVecDivVHCConsumeTrace.done unvisited k nodes lin resetH⟩
+  | some nodeIndex =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      split at hrun <;> try contradiction
+      next hmem =>
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            rcases pairVecDivVHCConsumeNode_indices this nodeIndex k k' nodes
+                nodes' lin lin' resetH resetH' next quotient divisor hconsume
+              with ⟨hn, hq, hd⟩
+            rcases pairVecDivVHCConsumeChain_has_trace this next
+                (unvisited.erase nodeIndex) k' nodes' lin' resetH' quotient
+                divisor result hrun with ⟨products, htrace⟩
+            exact ⟨_, PairVecDivVHCConsumeTrace.step nodeIndex unvisited k k'
+              nodes nodes' lin lin' resetH resetH' next result products hmem hn
+              hq hd hconsume htrace⟩
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+def pairVecDivVHCProductsValue (p : Nat) :
+    List (UInt64 × UInt64) → ZMod p
+  | [] => 0
+  | product :: products =>
+      (product.1.toNat : ZMod p) * (product.2.toNat : ZMod p) +
+        pairVecDivVHCProductsValue p products
+
+theorem PairVecDivVHCConsumeTrace.coefficient_semantics
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (quotient divisor : SparsePolyZp) (current : Option Nat)
+    (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (result : PairVecDivVHCBucketResult)
+    (products : List (UInt64 × UInt64))
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (htrace : PairVecDivVHCConsumeTrace this quotient divisor current unvisited
+      k nodes lin resetH result products) :
+    (result.coefficient.toNat : ZMod this._p.toNat) =
+      (k.toNat : ZMod this._p.toNat) -
+        pairVecDivVHCProductsValue this._p.toNat products := by
+  induction htrace with
+  | done => simp [pairVecDivVHCProductsValue]
+  | @step nodeIndex unvisited k k' nodes nodes' lin lin' resetH resetH' next
+      result products hmem hn hq hd hconsume htail ih =>
+      have hk' := pairVecDivVHCConsumeNode_coefficient_reduced this nodeIndex
+        k k' nodes nodes' lin lin' resetH resetH' next quotient divisor
+        (by
+          intro hp
+          have hzero : this._p.toNat = 0 := congrArg UInt64.toNat hp
+          exact (Fact.out : Nat.Prime this._p.toNat).ne_zero hzero)
+        hcfg hcanonical hk hconsume
+      have hnode := pairVecDivVHCConsumeNode_coefficient_toZMod this nodeIndex
+        k k' nodes nodes' lin lin' resetH resetH' next quotient divisor hn hq
+        hd hcfg hcanonical hk hconsume
+      calc
+        (result.coefficient.toNat : ZMod this._p.toNat) =
+            (k'.toNat : ZMod this._p.toNat) -
+              pairVecDivVHCProductsValue this._p.toNat products := ih hk'
+        _ = (k.toNat : ZMod this._p.toNat) -
+              pairVecDivVHCProductsValue this._p.toNat
+                ((quotient[nodes[nodeIndex].quotientIndex].2.val,
+                  divisor[nodes[nodeIndex].divisorIndex].2.val) :: products) := by
+            rw [hnode]
+            simp only [pairVecDivVHCProductsValue, Zp.toZMod]
+            ring
+
+theorem pairVecDivVHCConsumeChain_coefficient_semantics
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (current : Option Nat) (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat quotient)
+    (hk : k.toNat < this._p.toNat)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    ∃ products : List (UInt64 × UInt64),
+      PairVecDivVHCConsumeTrace this quotient divisor current unvisited k nodes
+          lin resetH result products ∧
+        (result.coefficient.toNat : ZMod this._p.toNat) =
+          (k.toNat : ZMod this._p.toNat) -
+            pairVecDivVHCProductsValue this._p.toNat products := by
+  rcases pairVecDivVHCConsumeChain_has_trace this current unvisited k nodes lin
+      resetH quotient divisor result hrun with ⟨products, htrace⟩
+  exact ⟨products, htrace,
+    htrace.coefficient_semantics this quotient divisor current unvisited k
+      nodes lin resetH result products hcfg hcanonical hk⟩
+
 def pairVecDivVHCConsumeRootBucket (this : DenseUPolyZp)
     (heap : Array Nat) (k : UInt64) (nodes : Array PairVecDivVHCNode)
     (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp) :

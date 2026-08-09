@@ -454,3 +454,12 @@ every generated range-for and recursive loop used by SQF.
   `quotientIndex` 与固定 `divisorIndex` 指向的两个存储系数之积。
   该定理直接描述真实节点字段和真实执行，不是事后把差值定义为
   “语义”。下一步将其沿 next-chain 消费轨迹求和。
+- next-chain 的 coefficient 求和语义已闭合。新建立的
+  `PairVecDivVHCConsumeTrace` 与真实 `ConsumeChain` 一步一一对应：
+  done 构造子对应 null head；step 构造子携带真实 `ConsumeNode`
+  成功等式、owner-set membership、三个数组边界证明，并记录节点在
+  更新前实际读取的 quotient/divisor coefficient pair。按 `unvisited.card`
+  良基递归证明每次成功 chain 执行都产生该轨迹；再按轨迹归纳得到
+  `result.coefficient = initial coefficient - Σ(qᵢ·dᵢ)` 的精确 `ZMod`
+  等式。下一缺口是显式保持 next-edge 的 equal-monomial 性质，以证明
+  该求和中每个乘积都属于当前 frontier 次数。

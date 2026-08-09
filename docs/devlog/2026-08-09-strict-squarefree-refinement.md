@@ -321,6 +321,13 @@ every generated range-for and recursive loop used by SQF.
   head 写入。另补充了一般 heap-reordering ownership 迁移定理以及
   `SetNext` 对不交 chain 的保持。剩余 insert 工作是在等次合链
   与 fresh singleton 入堆分支中构造新 owner 映射。
+- fresh singleton 入堆的 owner 映射现已构造完成：新 head 的 owner
+  为 `{newNode}`，旧 head 保留原 owner。证明同时要求并使用了新
+  node 不在旧 heap 和任一旧 owner 中的 freshness，因此新 singleton
+  与旧 chain 两两不交。该 ownership 已沿真实 `Bubble` 和
+  `BubbleBelow` 执行迁移到最终 heap，两条新 bucket 入堆分支的
+  表示不变式核心已闭合。剩余 `VHC_insert` 局部缺口是 root/anchor
+  等 monomial 时的 owner-union 合链。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

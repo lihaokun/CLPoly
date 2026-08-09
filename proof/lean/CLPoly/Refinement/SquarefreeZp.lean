@@ -3126,6 +3126,138 @@ theorem pairVecDivVHCHeapChainOwnership_of_valuesFrom
     exact hownership.2.2 sourceLeft sourceRight leftHead rightHead hsourceLeft
       hsourceRight hne
 
+theorem pairVecDivVHCHeapChainOwnership_push_fresh
+    (heap : Array Nat) (owners : Nat → Finset Nat)
+    (newNode : Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (node : PairVecDivVHCNode) (mono : UMonomial)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some mono)
+    (hfreshHead : ∀ (slot : Nat), heap[slot]? ≠ some newNode)
+    (hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+      newNode ∉ owners head)
+    (hset : pairVecDivVHCSetNext newNode none nodes = .ok nodes') :
+    PairVecDivVHCHeapChainOwnership (heap.push newNode)
+      (fun head => if head = newNode then {newNode} else owners head) nodes' := by
+  let owners' := fun head => if head = newNode then {newNode} else owners head
+  have hnewOwns : PairVecDivVHCChainOwns (some newNode) {newNode} nodes' := by
+    simpa using pairVecDivVHCSetNext_chainOwns_insert newNode none nodes nodes'
+      node mono ∅ hnode hmono (by simp) (by simp [PairVecDivVHCChainOwns]) hset
+  refine ⟨?_, pairVecDivVHCPush_preserves_unique heap newNode
+    hownership.2.1 hfreshHead, ?_⟩
+  · intro slot head hget
+    rw [Array.getElem?_push] at hget
+    by_cases hlast : slot = heap.size
+    · subst slot
+      simp only [ite_true, Option.some.injEq] at hget
+      subst head
+      simpa [owners'] using hnewOwns
+    · simp only [hlast, ↓reduceIte] at hget
+      have hne : head ≠ newNode := by
+        intro heq
+        subst head
+        exact hfreshHead slot hget
+      have hold := hownership.1 slot head hget
+      have hold' := pairVecDivVHCSetNext_preserves_disjoint_chain newNode none
+        nodes nodes' (some head) (owners head) (hfreshOwners slot head hget)
+        hold hset
+      simpa [owners', hne] using hold'
+  · intro left right leftHead rightHead hleft hright hne
+    rw [Array.getElem?_push] at hleft hright
+    by_cases hleftNew : leftHead = newNode
+    · subst leftHead
+      have hrightNew : rightHead ≠ newNode := by
+        exact fun heq => hne heq.symm
+      have hrightOld : right ≠ heap.size := by
+        intro heq
+        subst right
+        simp only [ite_true, Option.some.injEq] at hright
+        exact hrightNew hright.symm
+      simp only [hrightOld, ↓reduceIte] at hright
+      simp only [owners', if_pos rfl, hrightNew, ↓reduceIte]
+      exact Finset.disjoint_left.mpr (by
+        intro x hx hxo
+        simp only [Finset.mem_singleton] at hx
+        subst x
+        exact hfreshOwners right rightHead hright hxo)
+    · by_cases hrightNew : rightHead = newNode
+      · subst rightHead
+        have hleftOld : left ≠ heap.size := by
+          intro heq
+          subst left
+          simp only [ite_true, Option.some.injEq] at hleft
+          exact hleftNew hleft.symm
+        simp only [hleftOld, ↓reduceIte] at hleft
+        simp only [owners', hleftNew, ↓reduceIte, if_pos rfl]
+        exact Finset.disjoint_left.mpr (by
+          intro x hxo hx
+          simp only [Finset.mem_singleton] at hx
+          subst x
+          exact hfreshOwners left leftHead hleft hxo)
+      · have hleftOld : left ≠ heap.size := by
+          intro heq
+          subst left
+          simp only [ite_true, Option.some.injEq] at hleft
+          exact hleftNew hleft.symm
+        have hrightOld : right ≠ heap.size := by
+          intro heq
+          subst right
+          simp only [ite_true, Option.some.injEq] at hright
+          exact hrightNew hright.symm
+        simp only [hleftOld, ↓reduceIte] at hleft
+        simp only [hrightOld, ↓reduceIte] at hright
+        simpa [owners', hleftNew, hrightNew] using
+          hownership.2.2 left right leftHead rightHead hleft hright hne
+
+theorem pairVecDivVHCHeapChainOwnership_bubble_fresh
+    (heap heap' : Array Nat) (owners : Nat → Finset Nat)
+    (stop newNode : Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (node : PairVecDivVHCNode) (mono : UMonomial)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some mono)
+    (hfreshHead : ∀ (slot : Nat), heap[slot]? ≠ some newNode)
+    (hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+      newNode ∉ owners head)
+    (hset : pairVecDivVHCSetNext newNode none nodes = .ok nodes')
+    (hbubble : pairVecDivVHCBubble heap.size stop newNode
+      (heap.push newNode) = .ok heap') :
+    PairVecDivVHCHeapChainOwnership heap'
+      (fun head => if head = newNode then {newNode} else owners head) nodes' := by
+  let owners' := fun head => if head = newNode then {newNode} else owners head
+  have hpush := pairVecDivVHCHeapChainOwnership_push_fresh heap owners newNode
+    nodes nodes' node mono hownership hnode hmono hfreshHead hfreshOwners hset
+  have hfrom := pairVecDivVHCBubble_valuesFrom heap.size stop newNode
+    (heap.push newNode) heap' (heap.push newNode)
+    (pairVecDivVHCValuesFrom_refl _) ⟨heap.size, by simp⟩ hbubble
+  exact pairVecDivVHCHeapChainOwnership_of_valuesFrom (heap.push newNode) heap'
+    owners' nodes' hpush hfrom
+    (pairVecDivVHCBubble_push_preserves_unique stop newNode heap heap'
+      hownership.2.1 hfreshHead hbubble)
+
+theorem pairVecDivVHCHeapChainOwnership_bubbleBelow_fresh
+    (heap heap' : Array Nat) (owners : Nat → Finset Nat)
+    (anchor newNode : Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (node : PairVecDivVHCNode) (mono : UMonomial)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some mono)
+    (hfreshHead : ∀ (slot : Nat), heap[slot]? ≠ some newNode)
+    (hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+      newNode ∉ owners head)
+    (hset : pairVecDivVHCSetNext newNode none nodes = .ok nodes')
+    (hbubble : pairVecDivVHCBubbleBelow heap.size anchor newNode
+      (heap.push newNode) = .ok heap') :
+    PairVecDivVHCHeapChainOwnership heap'
+      (fun head => if head = newNode then {newNode} else owners head) nodes' := by
+  let owners' := fun head => if head = newNode then {newNode} else owners head
+  have hpush := pairVecDivVHCHeapChainOwnership_push_fresh heap owners newNode
+    nodes nodes' node mono hownership hnode hmono hfreshHead hfreshOwners hset
+  have hfrom := pairVecDivVHCBubbleBelow_valuesFrom heap.size anchor newNode
+    (heap.push newNode) heap' (heap.push newNode)
+    (pairVecDivVHCValuesFrom_refl _) ⟨heap.size, by simp⟩ hbubble
+  exact pairVecDivVHCHeapChainOwnership_of_valuesFrom (heap.push newNode) heap'
+    owners' nodes' hpush hfrom
+    (pairVecDivVHCBubbleBelow_push_preserves_unique anchor newNode heap heap'
+      hownership.2.1 hfreshHead hbubble)
+
 theorem pairVecDivVHCHeapChainOwnership_root_onlyAt
     (heap : Array Nat) (owners : Nat → Finset Nat)
     (nodes : Array PairVecDivVHCNode)

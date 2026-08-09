@@ -880,3 +880,13 @@ every generated range-for and recursive loop used by SQF.
   `< limit`。下一步从 extract 入口的旧堆序和 last-slot lookup 构造
   该定理的初始 root/parent 前提，然后经 `pop` 转回完整
   `PairVecDivVHCHeapOrdered`。
+- `VHC_extract` 的完整 heap-order preservation 已闭合。从 heap pointer
+  validity 取出真实 root/last node 及 active mono，用旧堆序的
+  parent 链证明 saved last 不超过旧 root，以此初始化上一阶段
+  良基 sift 定理。得到 shifted 的 active-prefix 堆序后，新增
+  `HeapDegreesOrderedUpTo.pop` 通过真实 `Array.getElem?_pop` 将每条
+  child/parent lookup 还原到 shifted，最后无损转回现有
+  `PairVecDivVHCHeapOrdered`。单元素 heap 的空结果也由真实 extract
+  size 定理单独覆盖。因此后续每次 extract 都可重新获得完整
+  堆序前提；下一步将它与 consume 后 nodes 的非根 mono 保持桥
+  组合，恢复重复 equal-degree consume 的不变式。

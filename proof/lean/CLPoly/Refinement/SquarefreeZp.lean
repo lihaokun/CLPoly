@@ -1748,6 +1748,31 @@ def PairVecDivVHCResetReady (resetH quotientSize : Nat)
         node.quotientIndex = quotientSize ∧
         node.divisorIndex = i + 1 ∧ node.mono = none
 
+/-- Allocation identity of every source node: array slot `i` permanently
+points at divisor tail cell `i + 1`.  No source transition mutates `v2_ptr`. -/
+def PairVecDivVHCNodeDivisorIndicesFixed
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ (i : Nat) (node : PairVecDivVHCNode),
+    nodes[i]? = some node → node.divisorIndex = i + 1
+
+theorem PairVecDivVHCNodeDivisorIndicesFixed.set
+    (nodes : Array PairVecDivVHCNode) (nodeIndex : Nat)
+    (updated : PairVecDivVHCNode) (hn : nodeIndex < nodes.size)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hsame : updated.divisorIndex = nodes[nodeIndex].divisorIndex) :
+    PairVecDivVHCNodeDivisorIndicesFixed (nodes.set nodeIndex updated) := by
+  intro i node hget
+  by_cases heq : nodeIndex = i
+  · subst i
+    rw [Array.getElem?_set_self hn] at hget
+    simp only [Option.some.injEq] at hget
+    subst node
+    rw [hsame]
+    exact hfixed nodeIndex nodes[nodeIndex]
+      (Array.getElem?_eq_getElem hn)
+  · rw [Array.getElem?_set_ne hn heq] at hget
+    exact hfixed i node hget
+
 theorem pairVecDivVHCInit_resetReady (divisor : SparsePolyZp) :
     PairVecDivVHCResetReady (divisor.size - 1) 0
       (pairVecDivVHCInit divisor) := by
@@ -1757,6 +1782,20 @@ theorem pairVecDivVHCInit_resetReady (divisor : SparsePolyZp) :
     refine ⟨pairVecDivVHCInitialNode i,
       pairVecDivVHCInit_get divisor i hi, ?_⟩
     simp [pairVecDivVHCInitialNode]
+
+theorem pairVecDivVHCInit_divisorIndicesFixed (divisor : SparsePolyZp) :
+    PairVecDivVHCNodeDivisorIndicesFixed (pairVecDivVHCInit divisor) := by
+  intro i node hget
+  have hi : i < divisor.size - 1 := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by
+      rw [pairVecDivVHCInit_size]
+      omega)] at hget
+    contradiction
+  rw [pairVecDivVHCInit_get divisor i hi] at hget
+  simp only [Option.some.injEq] at hget
+  subst node
+  rfl
 
 /-- Precisely the initialized `next` chain owned by the inner source loop.
 Unlike a blanket node-block premise, this permits the genuine uninitialized
@@ -1836,6 +1875,127 @@ theorem pairVecDivVHCSetNext_preserves_allActiveNodesBelow
         (Array.getElem?_eq_getElem hn) hmono
     · rw [Array.getElem?_set_ne hn heq] at hget
       exact hbelow i node mono hget hmono
+
+theorem pairVecDivVHCSetNext_preserves_divisorIndicesFixed
+    (nodeIndex : Nat) (next : Option Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hrun : pairVecDivVHCSetNext nodeIndex next nodes = .ok nodes') :
+    PairVecDivVHCNodeDivisorIndicesFixed nodes' := by
+  unfold pairVecDivVHCSetNext at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    simp only [Except.ok.injEq] at hrun
+    subst nodes'
+    exact PairVecDivVHCNodeDivisorIndicesFixed.set nodes nodeIndex _ hn hfixed
+      rfl
+
+theorem pairVecDivVHCInsert_nodes_result
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    ∃ next, pairVecDivVHCSetNext newNode next nodes = .ok nodes' := by
+  cases hnew : pairVecDivVHCMono newNode nodes with
+  | error fault => simp [pairVecDivVHCInsert, hnew] at hrun
+  | ok newMono =>
+      by_cases hempty : heap.size = 0
+      · unfold pairVecDivVHCInsert at hrun
+        simp only [hnew, hempty, ↓reduceDIte] at hrun
+        cases hset : pairVecDivVHCSetNext newNode none nodes with
+        | error fault => simp [hset] at hrun
+        | ok updated =>
+            rw [hset] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl⟩
+            exact ⟨none, hset⟩
+      · have hheap : 0 < heap.size := Nat.pos_of_ne_zero hempty
+        cases hroot : pairVecDivVHCMono heap[0] nodes with
+        | error fault =>
+            simp [pairVecDivVHCInsert, hnew, hempty, hroot] at hrun
+        | ok rootMono =>
+            by_cases hequal : newMono.deg = rootMono.deg
+            · unfold pairVecDivVHCInsert at hrun
+              simp only [hnew, hempty, ↓reduceDIte, hroot, hequal] at hrun
+              cases hset : pairVecDivVHCSetNext newNode (some heap[0]) nodes with
+              | error fault => simp [hset] at hrun
+              | ok updated =>
+                  rw [hset] at hrun
+                  simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                  rcases hrun with ⟨rfl, rfl⟩
+                  exact ⟨some heap[0], hset⟩
+            · by_cases hgreater : newMono.deg > rootMono.deg
+              · unfold pairVecDivVHCInsert at hrun
+                simp only [hnew, hempty, ↓reduceDIte, hroot, hequal,
+                  hgreater] at hrun
+                cases hset : pairVecDivVHCSetNext newNode none nodes with
+                | error fault => simp [hset] at hrun
+                | ok updated =>
+                    rw [hset] at hrun
+                    cases hbubble : pairVecDivVHCBubble heap.size 0 newNode
+                        (heap.push newNode) with
+                    | error fault => simp [hbubble] at hrun
+                    | ok shifted =>
+                        rw [hbubble] at hrun
+                        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                        rcases hrun with ⟨rfl, rfl⟩
+                        exact ⟨none, hset⟩
+              · cases hanchor : pairVecDivVHCFindAnchor newMono.deg
+                    (pairVecDivVHCParent heap.size) heap nodes with
+                | error fault =>
+                    simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
+                      hgreater, hanchor] at hrun
+                | ok anchor =>
+                    by_cases ha : anchor < heap.size
+                    · cases hanchorMono : pairVecDivVHCMono heap[anchor] nodes with
+                      | error fault =>
+                          simp [pairVecDivVHCInsert, hnew, hempty, hroot,
+                            hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                      | ok anchorMono =>
+                          by_cases hequalAnchor :
+                              newMono.deg = anchorMono.deg
+                          · unfold pairVecDivVHCInsert at hrun
+                            simp only [hnew, hempty, ↓reduceDIte, hroot,
+                              hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                            simp only [hequalAnchor] at hrun
+                            cases hset : pairVecDivVHCSetNext newNode
+                                (some heap[anchor]) nodes with
+                            | error fault => simp [hset] at hrun
+                            | ok updated =>
+                                rw [hset] at hrun
+                                simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                                rcases hrun with ⟨rfl, rfl⟩
+                                exact ⟨some heap[anchor], hset⟩
+                          · unfold pairVecDivVHCInsert at hrun
+                            simp only [hnew, hempty, ↓reduceDIte, hroot,
+                              hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                            simp only [hequalAnchor] at hrun
+                            cases hset : pairVecDivVHCSetNext newNode none nodes with
+                            | error fault => simp [hset] at hrun
+                            | ok updated =>
+                                rw [hset] at hrun
+                                cases hbubble : pairVecDivVHCBubbleBelow
+                                    heap.size anchor newNode
+                                    (heap.push newNode) with
+                                | error fault => simp [hbubble] at hrun
+                                | ok shifted =>
+                                    rw [hbubble] at hrun
+                                    simp only [Except.ok.injEq,
+                                      Prod.mk.injEq] at hrun
+                                    rcases hrun with ⟨rfl, rfl⟩
+                                    exact ⟨none, hset⟩
+                    · simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
+                        hgreater, hanchor, ha] at hrun
+
+theorem pairVecDivVHCInsert_preserves_divisorIndicesFixed
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCNodeDivisorIndicesFixed nodes' := by
+  rcases pairVecDivVHCInsert_nodes_result newNode heap heap' nodes nodes' hrun
+    with ⟨next, hset⟩
+  exact pairVecDivVHCSetNext_preserves_divisorIndicesFixed newNode next nodes
+    nodes' hfixed hset
 
 theorem pairVecDivVHCInsert_empty_preserves_allActiveNodesBelow
     (degreeLimit newNode : Nat) (heap heap' : Array Nat)
@@ -2055,6 +2215,34 @@ decreasing_by
   simp only [Array.size_pop]
   omega
 
+theorem pairVecDivVHCReinsertLin_preserves_divisorIndicesFixed
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (state : PairVecDivVHCHeapState)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hrun : pairVecDivVHCReinsertLin heap nodes lin = .ok state) :
+    PairVecDivVHCNodeDivisorIndicesFixed state.nodes := by
+  rw [pairVecDivVHCReinsertLin] at hrun
+  split at hrun
+  next hlin =>
+    dsimp only at hrun
+    cases hinsert : pairVecDivVHCInsert lin[lin.size - 1] heap nodes with
+    | error fault => simp [hinsert] at hrun
+    | ok inserted =>
+        rcases inserted with ⟨heap', nodes'⟩
+        rw [hinsert] at hrun
+        have hfixed' := pairVecDivVHCInsert_preserves_divisorIndicesFixed
+          lin[lin.size - 1] heap heap' nodes nodes' hfixed hinsert
+        exact pairVecDivVHCReinsertLin_preserves_divisorIndicesFixed heap'
+          nodes' lin.pop state hfixed' hrun
+  next hlin =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    exact hfixed
+termination_by lin.size
+decreasing_by
+  simp only [Array.size_pop]
+  omega
+
 theorem pairVecDivVHCConsumeNode_preserves_allActiveNodesBelow
     (this : DenseUPolyZp) (p degreeLimit nodeIndex : Nat)
     (currentMono : UMonomial) (k k' : UInt64)
@@ -2170,6 +2358,37 @@ theorem pairVecDivVHCConsumeNode_preserves_denotes
             · rw [Array.getElem?_set_ne hn heq] at hget
               exact hdenotes i node hget hactive
 
+theorem pairVecDivVHCConsumeNode_preserves_divisorIndicesFixed
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    PairVecDivVHCNodeDivisorIndicesFixed nodes' := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          exact PairVecDivVHCNodeDivisorIndicesFixed.set nodes nodeIndex _ hn
+            hfixed rfl
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            exact PairVecDivVHCNodeDivisorIndicesFixed.set nodes nodeIndex _ hn
+              hfixed rfl
+
 theorem pairVecDivVHCConsumeNode_preserves_chain_tail
     (this : DenseUPolyZp) (nodeIndex : Nat) (unvisited : Finset Nat)
     (k k' : UInt64) (nodes nodes' : Array PairVecDivVHCNode)
@@ -2211,6 +2430,55 @@ theorem pairVecDivVHCConsumeNode_preserves_chain_tail
               next := none }
             hn (by simp) htail
 
+theorem pairVecDivVHCConsumeNode_exhausted_preserves_resetReady
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hn : nodeIndex < nodes.size)
+    (hnodeIndex : nodeIndex = resetH)
+    (hdivisorIndex : nodes[nodeIndex].divisorIndex = nodeIndex + 1)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hlin : lin'.size = lin.size)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    PairVecDivVHCResetReady resetH' quotient.size nodes' := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  simp only [hn, ↓reduceDIte] at hrun
+  split at hrun <;> try contradiction
+  next hq =>
+    split at hrun <;> try contradiction
+    next hd =>
+      split at hrun
+      next hadvance =>
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+        simp at hlin
+      next hadvance =>
+        split at hrun <;> try contradiction
+        next hexhausted =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          subst nodeIndex
+          refine ⟨?_, ?_⟩
+          · simpa using hn
+          · intro i hi
+            by_cases hold : i < resetH
+            · rcases hready.2 i hold with ⟨node, hget, hqIndex,
+                hdIndex, hmono⟩
+              refine ⟨node, ?_, hqIndex, hdIndex, hmono⟩
+              rw [Array.getElem?_set_ne hn (by omega)]
+              exact hget
+            · have heq : i = resetH := by omega
+              subst i
+              refine ⟨{ nodes[resetH] with
+                  quotientIndex := nodes[resetH].quotientIndex + 1
+                  mono := none
+                  next := none }, ?_, ?_, ?_, rfl⟩
+              · exact Array.getElem?_set_self hn
+              · exact hexhausted
+              · exact hdivisorIndex
+
 theorem pairVecDivVHCConsumeChain_preserves_node_invariants
     (this : DenseUPolyZp) (p degreeLimit : Nat)
     (current : Option Nat) (unvisited : Finset Nat) (k : UInt64)
@@ -2221,19 +2489,21 @@ theorem pairVecDivVHCConsumeChain_preserves_node_invariants
     (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
       nodes[i]? = some node → node.mono ≠ none →
         PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
     (hchain : PairVecDivVHCChainValid current unvisited nodes)
     (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
       resetH quotient divisor = .ok result) :
     PairVecDivVHCAllActiveNodesBelow degreeLimit result.nodes ∧
       (∀ (i : Nat) (node : PairVecDivVHCNode),
         result.nodes[i]? = some node → node.mono ≠ none →
-          PairVecDivVHCNodeDenotes quotient divisor node) := by
+          PairVecDivVHCNodeDenotes quotient divisor node) ∧
+      PairVecDivVHCNodeDivisorIndicesFixed result.nodes := by
   cases current with
   | none =>
       rw [pairVecDivVHCConsumeChain] at hrun
       simp only [Except.ok.injEq] at hrun
       subst result
-      exact ⟨hbelow, hdenotes⟩
+      exact ⟨hbelow, hdenotes, hfixed⟩
   | some nodeIndex =>
       rw [pairVecDivVHCConsumeChain] at hrun
       split at hrun <;> try contradiction
@@ -2262,13 +2532,17 @@ theorem pairVecDivVHCConsumeChain_preserves_node_invariants
             have hdenotes' := pairVecDivVHCConsumeNode_preserves_denotes this
               nodeIndex k k' nodes nodes' lin lin' resetH resetH' next
               quotient divisor hdenotes hconsume
+            have hfixed' :=
+              pairVecDivVHCConsumeNode_preserves_divisorIndicesFixed this
+                nodeIndex k k' nodes nodes' lin lin' resetH resetH' next
+                quotient divisor hfixed hconsume
             have htail' := pairVecDivVHCConsumeNode_preserves_chain_tail this
               nodeIndex unvisited k k' nodes nodes' lin lin' resetH resetH'
               next quotient divisor hn htail hconsume
             exact pairVecDivVHCConsumeChain_preserves_node_invariants this p
               degreeLimit next (unvisited.erase nodeIndex) k' nodes' lin'
               resetH' quotient divisor result hcanonical hbelow' hdenotes'
-              htail' hrun
+              hfixed' htail' hrun
 termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
@@ -2358,6 +2632,61 @@ theorem pairVecDivVHCActivate_preserves_denotes
             Array.getElem?_eq_getElem hq, Array.getElem?_eq_getElem hd, rfl⟩
         · rw [Array.getElem?_set_ne hn heq] at hget
           exact hdenotes i node hget hactive
+
+theorem pairVecDivVHCActivate_preserves_divisorIndicesFixed
+    (nodeIndex : Nat) (nodes nodes' : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hrun : pairVecDivVHCActivate nodeIndex nodes quotient divisor =
+      .ok nodes') :
+    PairVecDivVHCNodeDivisorIndicesFixed nodes' := by
+  unfold pairVecDivVHCActivate at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        simp only [Except.ok.injEq] at hrun
+        subst nodes'
+        exact PairVecDivVHCNodeDivisorIndicesFixed.set nodes nodeIndex _ hn
+          hfixed rfl
+
+theorem pairVecDivVHCActivateReset_preserves_divisorIndicesFixed
+    (resetH : Nat) (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) (state : PairVecDivVHCHeapState)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hrun : pairVecDivVHCActivateReset resetH heap nodes quotient divisor =
+      .ok state) :
+    PairVecDivVHCNodeDivisorIndicesFixed state.nodes := by
+  rw [pairVecDivVHCActivateReset] at hrun
+  split at hrun
+  next hreset =>
+    dsimp only at hrun
+    cases hactivate : pairVecDivVHCActivate (resetH - 1) nodes quotient
+        divisor with
+    | error fault => simp [hactivate] at hrun
+    | ok nodes' =>
+        simp only [hactivate] at hrun
+        cases hinsert : pairVecDivVHCInsert (resetH - 1) heap nodes' with
+        | error fault => simp [hinsert] at hrun
+        | ok inserted =>
+            rcases inserted with ⟨heap', nodes''⟩
+            simp only [hinsert] at hrun
+            have hfixed' :=
+              pairVecDivVHCActivate_preserves_divisorIndicesFixed
+                (resetH - 1) nodes nodes' quotient divisor hfixed hactivate
+            have hfixed'' := pairVecDivVHCInsert_preserves_divisorIndicesFixed
+              (resetH - 1) heap heap' nodes' nodes'' hfixed' hinsert
+            exact pairVecDivVHCActivateReset_preserves_divisorIndicesFixed
+              (resetH - 1) heap' nodes'' quotient divisor state hfixed'' hrun
+  next hreset =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    exact hfixed
+termination_by resetH
+decreasing_by omega
 
 theorem pairVecDivVHCCanonicalInitialFrontierBelow (p : Nat)
     (dividend : SparsePolyZp) (nodes : Array PairVecDivVHCNode)

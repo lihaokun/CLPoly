@@ -233,6 +233,13 @@ every generated range-for and recursive loop used by SQF.
   product monomial 尚不可观察。节点初始化数组已证明满足该关系（包括
   每个具体数组索引的精确初值），为后续证明 exhausted 扩张与 activate
   收缩同一个真实 `reset_h` 前缀提供了基例。
+- 源码中永久不变的 `v2_ptr` 现对应独立不变量
+  `PairVecDivVHCNodeDivisorIndicesFixed`，精确陈述节点槽 `i` 始终指向
+  divisor 尾项 `i + 1`。该性质已从节点分配证明，并贯穿 consume 的推进/
+  exhausted 两支、`setNext`、五分支 insert、`lin` 良基重插、activate，
+  以及完整 `ActivateReset` 良基循环。另已证明在 consumed node 恰为当前
+  `resetH` 时，真实 exhausted 分支把 reset-ready 前缀从 `resetH` 扩为
+  `resetH + 1`；剩余关键点是从 heap/bucket 次序证明这一节点编号条件。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

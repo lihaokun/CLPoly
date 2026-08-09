@@ -11174,7 +11174,10 @@ theorem pairVecDivVHCConsumeEqualDegree_products_complete
       (∀ product ∈ products,
         PairVecDivVHCStoredProductAtDegree degree quotient divisor product) ∧
       PairVecDivVHCProductsCoverDegreeOwners degree heap owners nodes quotient
-        divisor products := by
+        divisor products ∧
+      pairVecDivVHCProductsValue this._p.toNat products =
+        ∑ i ∈ PairVecDivVHCHeapOwnedNodesAtDegree degree heap owners nodes,
+          pairVecDivVHCNodeProductValue this._p.toNat nodes quotient divisor i := by
   induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
       nodes lin resetH result with
   | h size ih =>
@@ -11275,8 +11278,43 @@ theorem pairVecDivVHCConsumeEqualDegree_products_complete
                           bucket.resetH result hownership' hhomogeneous'
                           hordered' hmax' hdenotes' hk' hrun rfl with
                         ⟨tailProducts, htailCoefficient, htailSound,
-                          htailCover⟩
-                      refine ⟨rootProducts ++ tailProducts, ?_, ?_, ?_⟩
+                          htailCover, htailValue⟩
+                      have hrootValue :=
+                        hrootTrace.productsValue_eq_owner_sum this
+                          this._p.toNat quotient divisor (some heap[0])
+                          (Finset.range nodes.size) (owners heap[0]) k nodes lin
+                          resetH bucket rootProducts hrootOwns
+                      have htargetStep :=
+                        pairVecDivVHCConsumeRootExtract_ownedNodesAtDegree this
+                          degree heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hconsume hraw
+                      have hsame :=
+                        pairVecDivVHCConsumeRootBucket_owned_nonroot_get this
+                          heap k nodes lin resetH quotient divisor bucket owners
+                          hheap hownership hconsume
+                      have htailSame :
+                          (∑ i ∈ PairVecDivVHCHeapOwnedNodesAtDegree degree
+                              heap owners nodes \ owners heap[0],
+                            pairVecDivVHCNodeProductValue this._p.toNat
+                              bucket.nodes quotient divisor i) =
+                          ∑ i ∈ PairVecDivVHCHeapOwnedNodesAtDegree degree
+                              heap owners nodes \ owners heap[0],
+                            pairVecDivVHCNodeProductValue this._p.toNat nodes
+                              quotient divisor i := by
+                        apply Finset.sum_congr rfl
+                        intro i hi
+                        unfold pairVecDivVHCNodeProductValue
+                        rw [hsame i (Finset.mem_sdiff.mpr ⟨
+                          (Finset.mem_filter.mp (Finset.mem_sdiff.mp hi).1).1,
+                          (Finset.mem_sdiff.mp hi).2⟩)]
+                      have hrootSubset :=
+                        pairVecDivVHCRootOwner_subset_ownedNodesAtDegree degree
+                          heap owners nodes rootMono hheap hownership
+                          hhomogeneous hmono hequal
+                      have hsplit := Finset.sum_sdiff
+                        (f := pairVecDivVHCNodeProductValue this._p.toNat nodes
+                          quotient divisor) hrootSubset
+                      refine ⟨rootProducts ++ tailProducts, ?_, ?_, ?_, ?_⟩
                       · rw [pairVecDivVHCProductsValue_append,
                           htailCoefficient, hrootCoefficient]
                         ring
@@ -11320,9 +11358,13 @@ theorem pairVecDivVHCConsumeEqualDegree_products_complete
                           exact ⟨node, quotientTerm, divisorTerm, hnode,
                             hquotient, hdivisor,
                             List.mem_append_right _ hproduct⟩
+                      · rw [pairVecDivVHCProductsValue_append, hrootValue,
+                          htailValue, htargetStep, htailSame]
+                        rw [add_comm]
+                        exact hsplit
             · simp only [hequal, ↓reduceDIte, Except.ok.injEq] at hrun
               subst result
-              refine ⟨[], ?_, by simp, ?_⟩
+              refine ⟨[], ?_, by simp, ?_, ?_⟩
               · simp [pairVecDivVHCProductsValue]
               · intro slot head hhead hdegree
                 rw [PairVecDivVHCChainAtDegree] at hdegree
@@ -11351,13 +11393,24 @@ theorem pairVecDivVHCConsumeEqualDegree_products_complete
                     (Array.getElem?_eq_getElem hheap) hmono
                   have : rootMono.deg = degree := by omega
                   exact (hequal this).elim
+              · have hempty :=
+                  pairVecDivVHCHeapOwnedNodesAtDegree_eq_empty_of_root_ne
+                    degree heap owners nodes rootMono hheap hownership
+                    hhomogeneous hordered hmono hmax hequal
+                simp [pairVecDivVHCProductsValue, hempty]
       · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
         subst result
-        refine ⟨[], ?_, by simp, ?_⟩
+        refine ⟨[], ?_, by simp, ?_, ?_⟩
         · simp [pairVecDivVHCProductsValue]
         · intro slot head hget
           rw [Array.getElem?_eq_none (by omega)] at hget
           contradiction
+        · have hempty : heap.size = 0 := by omega
+          have heq : heap = #[] := Array.eq_empty_of_size_eq_zero hempty
+          subst heap
+          simp [pairVecDivVHCProductsValue,
+            PairVecDivVHCHeapOwnedNodesAtDegree,
+            PairVecDivVHCHeapOwnedNodes]
 
 theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainsOwned
     (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)

@@ -956,3 +956,14 @@ every generated range-for and recursive loop used by SQF.
   上界，得到 root degree 必等于 target，与实际循环的
   `rootMono.deg ≠ degree` 停止 guard 矛盾。这闭合了全循环 owner-sum
   归纳的 base/stop 情形，不需要任何规格层“无剩余乘积”假设。
+- 整段 equal-degree 循环的精确重数 owner-sum 已闭合。
+  `pairVecDivVHCConsumeEqualDegree_products_complete` 返回的同一个
+  products 列表现在同时证明：执行系数等式、每个产品的
+  degree soundness、每个 owner 行的 coverage，以及 `ProductsValue`
+  精确等于所有初始目标-degree owned nodes 的 node-product 有限和。
+  递归分支将 root trace 的 owner sum 与尾循环的目标集差分和组合，
+  用 root-owner subset 和 `Finset.sum_sdiff` 恢复初始完整和；同时用
+  consume 对非根 owner lookup 的精确保持，把尾和从 `bucket.nodes`
+  无损搬回初始 nodes。空 heap 与 root guard 不匹配两个 base 分支
+  均已证明目标集为空。下一步只需将这个以 cursor nodes 索引的
+  有限和通过 frontier-row 唯一性改写为 L2 polynomial multiplication 系数。

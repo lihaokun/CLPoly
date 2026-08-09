@@ -10128,6 +10128,56 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
         subst result
         exact ⟨finalA, finalB, hInvariant⟩
 
+/-- All data tied to the actual second recursive call and the following
+finish.  The semantic callback field is exactly the smaller-call induction
+hypothesis; every other field is a physical workspace or frame fact. -/
+structure HgcdRecursiveSecondCallAdmissible (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (A B : RawPtr UInt64)
+    (W scratch : RawPtr UInt64) (lenA : Nat)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (middle : HgcdRecursiveMiddleResult) (second : HgcdRecursiveResult)
+    (hsecondOrder : middle.lenD0 < middle.lenC0)
+    (hsecondDecrease : middle.lenC0 < bound) : Prop where
+  matrixPrefix :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ∀ i : Fin 4, SameU64Prefix reconstructed.heap middle.heap
+      (hgcdMatPtr first.matrix first.valid i)
+      (hgcdMatLen first.matrix first.valid i)
+  iterWorkspace : ∀ highC highD,
+    RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+    RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+    let ws := hgcdRecursiveWorkspace W lenA
+    HgcdRecursiveDispatchIterWorkspace this ws.S
+      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
+      middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch ws.a2
+      middle.heap highC highD
+  recursiveRefines : ∀ highC highD,
+    RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+    RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+    let ws := hgcdRecursiveWorkspace W lenA
+    HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
+      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
+      middle.lenC0 middle.lenD0 ws.next scratch middle.heap hsecondOrder
+      hsecondDecrease highC highD
+  frame :
+    let ws := hgcdRecursiveWorkspace W lenA
+    HgcdRecursiveSecondDispatchFrameProvider this bound recurse ws.S
+      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
+      middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+      middle.heap hsecondOrder hsecondDecrease first.matrix first.valid ws.q
+      ws.b2 ws.d middle.lenQ (Nat.min reconstructed.lenB middle.k)
+      (Nat.min middle.lenD middle.k)
+  finish :
+    let ws := hgcdRecursiveWorkspace W lenA
+    HgcdRecursiveFinishWorkspaceProvider this M first.matrix second.matrix hM
+      first.valid second.valid A B ws.T0 ws.b2 ws.d ws.a3 ws.b3 ws.q
+      (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k)
+      second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch second.sgn
+      second.heap
+
 /-- The complete non-early arm of the well-founded body, following the
 generated source from the first dispatch through reconstruction, middle
 divrem, second dispatch, and finish.  All semantic values are extracted from
@@ -10240,48 +10290,15 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
         reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap = .ok middle)
     (hsecondOrder : middle.lenD0 < middle.lenC0)
     (hsecondDecrease : middle.lenC0 < bound)
-    (middleMatrixPrefix :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ∀ i : Fin 4, SameU64Prefix reconstructed.heap middle.heap
-        (hgcdMatPtr first.matrix first.valid i)
-        (hgcdMatLen first.matrix first.valid i))
-    (secondIterWorkspace : ∀ highC highD,
-      RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
-      RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
-      let ws := hgcdRecursiveWorkspace W lenA
-      HgcdRecursiveDispatchIterWorkspace this ws.S
-        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
-        middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1
-        scratch ws.a2 middle.heap highC highD)
-    (secondRecursiveRefines : ∀ highC highD,
-      RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
-      RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
-      let ws := hgcdRecursiveWorkspace W lenA
-      HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
-        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
-        middle.d0 middle.lenC0 middle.lenD0 ws.next scratch middle.heap
-        hsecondOrder hsecondDecrease highC highD)
-    (secondFrame :
-      let ws := hgcdRecursiveWorkspace W lenA
-      HgcdRecursiveSecondDispatchFrameProvider this bound recurse ws.S
-        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
-        middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch
-        ws.a2 ws.next middle.heap hsecondOrder hsecondDecrease first.matrix
-        first.valid ws.q ws.b2 ws.d middle.lenQ
-        (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k))
+    (secondCall : HgcdRecursiveSecondCallAdmissible this bound recurse M hM A
+      B W scratch lenA first reconstructed middle second hsecondOrder
+      hsecondDecrease)
     (hsecond :
       let ws := hgcdRecursiveWorkspace W lenA
       hgcdRecursiveDispatchBelow this bound recurse ws.S
         (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
         middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch
         ws.a2 ws.next middle.heap hsecondOrder hsecondDecrease = .ok second)
-    (finishWorkspace :
-      let ws := hgcdRecursiveWorkspace W lenA
-      HgcdRecursiveFinishWorkspaceProvider this M first.matrix second.matrix
-        hM first.valid second.valid A B ws.T0 ws.b2 ws.d ws.a3 ws.b3 ws.q
-        (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k)
-        second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch second.sgn
-        second.heap)
     (hfinish :
       let ws := hgcdRecursiveWorkspace W lenA
       hgcdRecursiveFinish this M first.matrix second.matrix hM first.valid
@@ -10372,7 +10389,7 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
     exact rawDensePolyRep_of_same_prefix this reconstructed.heap middle.heap
       (hgcdMatPtr first.matrix first.valid i)
       (hgcdMatLen first.matrix first.valid i) (firstEntries i) hMiddleLayout
-      (middleMatrixPrefix i) (hFirstMatrixAtReconstructed i)
+      (secondCall.matrixPrefix i) (hFirstMatrixAtReconstructed i)
   rcases hgcdRecursiveSecondDispatch_refines this bound recurse ws.S
       (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
       middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch ws.a2
@@ -10380,8 +10397,8 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
       middle.lenQ (Nat.min reconstructed.lenB middle.k)
       (Nat.min middle.lenD middle.k) firstEntries quotient lowC lowD hcfg hp
       hsecondOrder hsecondDecrease
-      (secondIterWorkspace highC highD hHighC hHighD)
-      (secondRecursiveRefines highC highD hHighC hHighD) secondFrame
+      (secondCall.iterWorkspace highC highD hHighC hHighD)
+      (secondCall.recursiveRefines highC highD hHighC hHighD) secondCall.frame
       hFirstMatrixAtMiddle hQRep hLowC hLowD second hsecond with
     ⟨finalHighA, finalHighB, secondEntries, hSecond, hRAfter, hQAfter,
       hLowCAfter, hLowDAfter⟩
@@ -10396,7 +10413,7 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
       (Nat.min middle.lenD middle.k) second.lenA second.lenB middle.k
       middle.lenQ ws.a2 scratch first.sgn second.sgn second.heap finished
       hfinish with ⟨finishReconstructed, hfinishReconstruct, _, _, _, _⟩
-  have hFinishWork := finishWorkspace finishReconstructed hfinishReconstruct
+  have hFinishWork := secondCall.finish finishReconstructed hfinishReconstruct
   have hFinishOperands := hgcdRecursiveFinish_operandInvariant this M
     first.matrix hM first.valid computeM A B ws.T0 ws.b2 ws.d ws.a3 ws.b3
     ws.q lenA (lenA / 2) reconstructed.lenB middle.lenD middle.k
@@ -10416,7 +10433,7 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
       reconstructed.lenA reconstructed.lenB middle.lenD middle.k
       middle.lenC0 middle.lenQ first second finished firstEntries secondEntries
       quotient lowC lowD finalHighA finalHighB hcfg hp hfirstLength
-      hSecondLength finishWorkspace hRAfter (hSecond.matrixSemantics rfl).1
+      hSecondLength secondCall.finish hRAfter (hSecond.matrixSemantics rfl).1
       hQAfter hLowCAfter hLowDAfter hSecond.aRep hSecond.bRep rfl
       (by simp [high, hgcdRecursiveHighInput]) hReconstructed.leadingA
       hReconstructed.ordered (by omega) hReconstructed.decreases hlenQ hk
@@ -10430,11 +10447,11 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
     middle.lenC0 middle.lenD0 lenA middle.heap second finished left right
     highC highD currentA currentB remainder quotient lowC lowD firstEntries
     first.sgn hcfg hp hsecondOrder hsecondDecrease
-    (secondIterWorkspace highC highD hHighC hHighD)
-    (secondRecursiveRefines highC highD hHighC hHighD) secondFrame
+    (secondCall.iterWorkspace highC highD hHighC hHighD)
+    (secondCall.recursiveRefines highC highD hHighC hHighD) secondCall.frame
     hFirstMatrixAtMiddle hQRep hLowC hLowD hSplitC hSplitD
     (by simpa [currentA, currentB] using hFirstReconstruct.2.2.1)
-    hFirstReconstruct.2.2.2.1 hDivision finishWorkspace hsecond hfinish
+    hFirstReconstruct.2.2.2.1 hDivision secondCall.finish hsecond hfinish
     hFinishStop hFinishLength
   rcases hTail with ⟨finalA, finalB, entries, hInvariant⟩
   rw [hgcdRecursiveBodyBelow] at hrun

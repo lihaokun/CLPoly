@@ -996,6 +996,86 @@ def pairVecDivVHCExtract (heap : Array Nat)
   else
     .error .assertionFailure
 
+theorem pairVecDivVHCSiftDown_size (i child limit lastNode : Nat)
+    (heap heap' : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hrun : pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok heap') :
+    heap'.size = heap.size := by
+  rw [pairVecDivVHCSiftDown] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hlimit =>
+      split at hrun
+      next hchild =>
+        dsimp only at hrun
+        cases hleft : pairVecDivVHCMono heap[child] nodes with
+        | error fault => simp [hleft] at hrun
+        | ok leftMono =>
+          cases hright : pairVecDivVHCMono heap[child + 1] nodes with
+          | error fault => simp [hleft, hright] at hrun
+          | ok rightMono =>
+            cases hlast : pairVecDivVHCMono lastNode nodes with
+            | error fault => simp [hleft, hright, hlast] at hrun
+            | ok lastMono =>
+              simp only [hleft, hright, hlast] at hrun
+              by_cases hselected : leftMono.deg > rightMono.deg
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  have hrec := pairVecDivVHCSiftDown_size
+                    child (child * 2 + 1) limit lastNode
+                    (heap.set i heap[child]) heap' nodes hrun
+                  simpa using hrec
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  simp
+              · simp only [hselected, ↓reduceIte] at hrun
+                split at hrun
+                next hgreater =>
+                  have hrec := pairVecDivVHCSiftDown_size
+                    (child + 1) ((child + 1) * 2 + 1) limit lastNode
+                    (heap.set i heap[child + 1]) heap' nodes hrun
+                  simpa using hrec
+                next hgreater =>
+                  simp only [Except.ok.injEq] at hrun
+                  subst heap'
+                  simp
+      next hchild =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        simp
+termination_by limit - child
+decreasing_by
+  all_goals omega
+
+theorem pairVecDivVHCExtract_size (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hrun : pairVecDivVHCExtract heap nodes = .ok heap') :
+    heap'.size + 1 = heap.size := by
+  unfold pairVecDivVHCExtract at hrun
+  split at hrun <;> try contradiction
+  next hnonempty =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next shifted hsift =>
+      simp only [Except.ok.injEq] at hrun
+      subst heap'
+      have hsize := pairVecDivVHCSiftDown_size 0 1 (heap.size - 1)
+        heap[heap.size - 1] heap shifted nodes hsift
+      rw [Array.size_pop, hsize]
+      omega
+
+/-- Proof-carrying safe boundary for `VHC_extract`; it executes the same raw
+definition and packages its established logical-size decrement. -/
+def pairVecDivVHCExtractChecked (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) :
+    RawExec { heap' : Array Nat // heap'.size + 1 = heap.size } :=
+  match hrun : pairVecDivVHCExtract heap nodes with
+  | .error fault => .error fault
+  | .ok heap' => .ok ⟨heap', pairVecDivVHCExtract_size heap heap' nodes hrun⟩
+
 /-- Every active heap node denotes the concrete product cell addressed by its
 two source pointer fields. -/
 def PairVecDivVHCNodeDenotes (quotient divisor : SparsePolyZp)
@@ -1202,6 +1282,112 @@ theorem pairVecDivVHCConsumeChain_none (this : DenseUPolyZp)
       quotient divisor =
         .ok (PairVecDivVHCBucketResult.mk k nodes lin resetH) := by
   rw [pairVecDivVHCConsumeChain]
+
+/-- Result after the source has consumed every heap bucket whose root
+monomial equals the current outer-loop monomial. -/
+structure PairVecDivVHCEqualDegreeResult where
+  heap : Array Nat
+  coefficient : UInt64
+  nodes : Array PairVecDivVHCNode
+  lin : Array Nat
+  resetH : Nat
+
+/-- Exact source loop
+`while (heap_size > 0 && heap[0]->mono == m)`: consume the root `next` chain,
+then execute `VHC_extract`, and repeat only while the new root has the same
+degree. -/
+def pairVecDivVHCConsumeEqualDegree (this : DenseUPolyZp) (degree : Nat)
+    (heap : Array Nat) (k : UInt64) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp) :
+    RawExec PairVecDivVHCEqualDegreeResult :=
+  if hheap : 0 < heap.size then
+    match pairVecDivVHCMono heap[0] nodes with
+    | .error fault => .error fault
+    | .ok rootMono =>
+        if hequal : rootMono.deg = degree then
+          match pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+              quotient divisor with
+          | .error fault => .error fault
+          | .ok bucket =>
+              match pairVecDivVHCExtractChecked heap bucket.nodes with
+              | .error fault => .error fault
+              | .ok extracted =>
+                  pairVecDivVHCConsumeEqualDegree this degree extracted.1
+                    bucket.coefficient bucket.nodes bucket.lin bucket.resetH
+                    quotient divisor
+        else
+          .ok (PairVecDivVHCEqualDegreeResult.mk heap k nodes lin resetH)
+  else
+    .ok (PairVecDivVHCEqualDegreeResult.mk heap k nodes lin resetH)
+termination_by heap.size
+decreasing_by
+  have hsize := extracted.2
+  omega
+
+theorem pairVecDivVHCConsumeEqualDegree_empty (this : DenseUPolyZp)
+    (degree : Nat) (k : UInt64) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp) :
+    pairVecDivVHCConsumeEqualDegree this degree #[] k nodes lin resetH
+      quotient divisor =
+        .ok (PairVecDivVHCEqualDegreeResult.mk #[] k nodes lin resetH) := by
+  rw [pairVecDivVHCConsumeEqualDegree]
+  simp
+
+structure PairVecDivVHCHeapState where
+  heap : Array Nat
+  nodes : Array PairVecDivVHCNode
+
+/-- Exact source loop `while (lin_size > 0) VHC_insert(...,
+lin[--lin_size], ...)`. -/
+def pairVecDivVHCReinsertLin (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) :
+    RawExec PairVecDivVHCHeapState :=
+  if hlin : 0 < lin.size then
+    let nodeIndex := lin[lin.size - 1]
+    match pairVecDivVHCInsert nodeIndex heap nodes with
+    | .error fault => .error fault
+    | .ok (heap', nodes') =>
+        pairVecDivVHCReinsertLin heap' nodes' lin.pop
+  else
+    .ok (PairVecDivVHCHeapState.mk heap nodes)
+termination_by lin.size
+decreasing_by
+  simp only [Array.size_pop]
+  omega
+
+theorem pairVecDivVHCReinsertLin_empty (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) :
+    pairVecDivVHCReinsertLin heap nodes #[] =
+      .ok (PairVecDivVHCHeapState.mk heap nodes) := by
+  rw [pairVecDivVHCReinsertLin]
+  simp
+
+/-- Exact `while (reset_h > 0)` activation loop after emitting a quotient
+cell: decrement `reset_h`, compute that node's concrete product monomial, and
+insert it with the real `VHC_insert`. -/
+def pairVecDivVHCActivateReset (resetH : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient divisor : SparsePolyZp) :
+    RawExec PairVecDivVHCHeapState :=
+  if hreset : 0 < resetH then
+    let nodeIndex := resetH - 1
+    match pairVecDivVHCActivate nodeIndex nodes quotient divisor with
+    | .error fault => .error fault
+    | .ok nodes' =>
+        match pairVecDivVHCInsert nodeIndex heap nodes' with
+        | .error fault => .error fault
+        | .ok (heap', nodes'') =>
+            pairVecDivVHCActivateReset nodeIndex heap' nodes'' quotient divisor
+  else
+    .ok (PairVecDivVHCHeapState.mk heap nodes)
+termination_by resetH
+decreasing_by omega
+
+theorem pairVecDivVHCActivateReset_zero (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient divisor : SparsePolyZp) :
+    pairVecDivVHCActivateReset 0 heap nodes quotient divisor =
+      .ok (PairVecDivVHCHeapState.mk heap nodes) := by
+  rw [pairVecDivVHCActivateReset]
+  simp
 
 /-- Exact source-order range-for loop of `__extract_pth_root`. -/
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=

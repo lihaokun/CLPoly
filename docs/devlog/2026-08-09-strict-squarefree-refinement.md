@@ -156,6 +156,13 @@ every generated range-for and recursive loop used by SQF.
   良基度量，每步删除当前节点并检查环，不使用 fuel。下一步先给
   sift/extract 建立保持长度/严格缩短定理，再闭合相同 monomial 的外层
   bucket 循环和 `lin` 逆序重插。
+- 上述 heap 控制流现已闭合：手工归纳证明 sift 仅改写槽位、保持数组
+  长度，进而证明每次成功 extract 恰好把逻辑 heap 大小减一，并形成
+  proof-carrying checked extract。相同 monomial 的外层 bucket 循环因此
+  直接以实际 `heap.size` 良基递归。迭代末尾的 `lin[--lin_size]` 逆序
+  重插和新 quotient cell 触发的 `--reset_h` 节点激活/插入也已按源码
+  顺序实现，分别以 `lin.size` 与 `reset_h` 终止。下一步组合一次完整
+  outer iteration，并建立 quotient-product frontier 不变式。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

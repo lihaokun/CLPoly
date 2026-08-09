@@ -396,6 +396,8 @@ def main() -> None:
         "hgcdRecursiveCallChecked_rawInvariant_wf",
         "hgcdRecursiveCallChecked_lenB_lt_of_large",
         "GcdHgcdLoopDivremWorkspaceProvider",
+        "polyAdd_succeeds",
+        "matRowUpdate_succeeds",
         "GcdHgcdLoopEuclidWorkspaceProvider",
         "GcdHgcdDivremWorkspace",
         "GcdHgcdDynamicDivremWorkspaceProvider",

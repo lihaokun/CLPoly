@@ -8,12 +8,202 @@ namespace CLPoly.Impl.StrictGCDHGCDRefinement
 
 open Generated.StrictHGCD
 open Generated.StrictGCDHGCD
+open Generated.StrictPolyAddSub
 open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Impl.StrictDivremRefinement
 open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Impl.StrictHGCDRawRefinement
 open CLPoly.Impl.StrictMulRefinement
+open CLPoly.Impl.StrictPolyAddSubRefinement
 open CLPoly.Impl.StrictWordArithmetic
+
+/-- Total raw execution of generated `_poly_add` from allocation and aliasing
+safety.  The proof follows its common loop, selected tail copy, and final
+normalization; it does not assume a successful run. -/
+theorem polyAdd_succeeds (this : DenseUPolyZp)
+    (C A B : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (hC : heap.ValidU64Slice C (max lenA lenB))
+    (hA : heap.ValidU64Slice A lenA) (hB : heap.ValidU64Slice B lenB)
+    (hAliasA : ExactOrDisjoint C A) (hAliasB : ExactOrDisjoint C B) :
+    ∃ heap' outLen,
+      dense_upoly_zp__poly_add_ir this C A lenA B lenB heap =
+        .ok (heap', outLen) ∧ RawHeap.SameLayout heap heap' := by
+  rcases Nat.lt_trichotomy lenA lenB with hlt | heq | hgt
+  · have hmin : min lenA lenB = lenA := Nat.min_eq_left (Nat.le_of_lt hlt)
+    have hmax : max lenA lenB = lenB := Nat.max_eq_right (Nat.le_of_lt hlt)
+    have hCFull : heap.ValidU64Slice C lenB := by simpa [hmax] using hC
+    rcases addCommonLoop_ok this C A B lenA 0 heap
+        (heap.validU64Slice_mono C lenB lenA hCFull (Nat.le_of_lt hlt)) hA
+        (heap.validU64Slice_mono B lenB lenA hB (Nat.le_of_lt hlt))
+        (by omega) with ⟨heap1, hloop, hlayout1⟩
+    rcases addRightLongTail this C A B lenA lenB heap heap1 hlt
+        hCFull hA hB hAliasB hloop hlayout1 with
+      ⟨heap2, htail, hlayout2, _, _⟩
+    have hC2 : heap2.ValidU64Slice C lenB :=
+      (hlayout2 C lenB).mp ((hlayout1 C lenB).mp hCFull)
+    rcases normaliseU64_ok heap2 C lenB hC2 with ⟨outLen, hnorm, _⟩
+    refine ⟨heap2, outLen, ?_, fun ptr length =>
+      (hlayout1 ptr length).trans (hlayout2 ptr length)⟩
+    simp [dense_upoly_zp__poly_add_ir, hmin, hmax, hloop, hlt, htail]
+    simp [show ¬ lenB < lenA by omega, hnorm]
+  · subst lenB
+    rcases addCommonLoop_ok this C A B lenA 0 heap (by simpa using hC) hA hB
+        (by omega) with ⟨heap1, hloop, hlayout1⟩
+    have hC1 : heap1.ValidU64Slice C lenA :=
+      (hlayout1 C lenA).mp (by simpa using hC)
+    rcases normaliseU64_ok heap1 C lenA hC1 with ⟨outLen, hnorm, _⟩
+    refine ⟨heap1, outLen, ?_, hlayout1⟩
+    simp [dense_upoly_zp__poly_add_ir, hloop, hnorm]
+  · have hmin : min lenA lenB = lenB := Nat.min_eq_right (Nat.le_of_lt hgt)
+    have hmax : max lenA lenB = lenA := Nat.max_eq_left (Nat.le_of_lt hgt)
+    have hCFull : heap.ValidU64Slice C lenA := by simpa [hmax] using hC
+    rcases addCommonLoop_ok this C A B lenB 0 heap
+        (heap.validU64Slice_mono C lenA lenB hCFull (Nat.le_of_lt hgt))
+        (heap.validU64Slice_mono A lenA lenB hA (Nat.le_of_lt hgt)) hB
+        (by omega) with ⟨heap1, hloop, hlayout1⟩
+    rcases addLeftLongTail this C A B lenA lenB heap heap1 hgt
+        hCFull hA hB hAliasA hloop hlayout1 with
+      ⟨heap2, htail, hlayout2, _, _⟩
+    have hC2 : heap2.ValidU64Slice C lenA :=
+      (hlayout2 C lenA).mp ((hlayout1 C lenA).mp hCFull)
+    rcases normaliseU64_ok heap2 C lenA hC2 with ⟨outLen, hnorm, _⟩
+    refine ⟨heap2, outLen, ?_, fun ptr length =>
+      (hlayout1 ptr length).trans (hlayout2 ptr length)⟩
+    simp [dense_upoly_zp__poly_add_ir, hmin, hmax, hloop, hgt, htail,
+      hnorm]
+
+/-- Total raw execution of generated `_mat_row_update`.  The inactive branch
+is the descriptor swap; the active branch executes the real raw multiplication
+and then the total raw addition proved above. -/
+theorem matRowUpdate_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (i0 i1 : Fin 4) (Q : RawPtr UInt64) (lenQ : Nat)
+    (T : RawPtr UInt64) (lenT : Nat) (t scratch : RawPtr UInt64)
+    (heap : RawHeap) (hM : M.Valid)
+    (quotient entry0 entry1 : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (workspace : MatRowUpdateWorkspace M i0 i1 Q lenQ T t scratch heap hM)
+    (hQRep : RawDensePolyRep this heap Q lenQ quotient)
+    (hEntry0Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i0)
+      (hgcdMatLen M hM i0) entry0)
+    (hEntry1Rep : RawDensePolyRep this heap (hgcdMatPtr M hM i1)
+      (hgcdMatLen M hM i1) entry1) :
+    ∃ result, dense_upoly_zp__mat_row_update_ir this M i0 i1 Q lenQ T
+      lenT t scratch heap = .ok result := by
+  let p0 := hgcdMatPtr M hM i0
+  let p1 := hgcdMatPtr M hM i1
+  let l0 := hgcdMatLen M hM i0
+  let l1 := hgcdMatLen M hM i1
+  by_cases hactive : lenQ ≠ 0 ∧ l0 ≠ 0
+  · have hQPos : 0 < lenQ := Nat.pos_of_ne_zero hactive.1
+    have h0Pos : 0 < l0 := Nat.pos_of_ne_zero hactive.2
+    have hmul : ∃ heap1,
+        Generated.StrictMul.dense_upoly_zp__mul_ir this T
+          (if lenQ ≥ hgcdMatLen M hM i0 then Q else hgcdMatPtr M hM i0)
+          (if lenQ ≥ hgcdMatLen M hM i0 then lenQ else
+            hgcdMatLen M hM i0)
+          (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatPtr M hM i0 else Q)
+          (if lenQ ≥ hgcdMatLen M hM i0 then hgcdMatLen M hM i0 else
+            lenQ) scratch heap =
+            .ok heap1 ∧ RawHeap.SameLayout heap heap1 := by
+      by_cases hge : lenQ ≥ l0
+      · have hge' : lenQ ≥ hgcdMatLen M hM i0 := by simpa [l0] using hge
+        rcases CLPoly.Impl.StrictMulRefinement.mul_refines_rawDense
+            this T Q lenQ p0 l0 scratch heap quotient entry0 hcfg hp hQPos
+            h0Pos hge (lt_of_le_of_lt (Nat.le_max_left _ _)
+              workspace.lenWord)
+            (by simpa [l0, Nat.max_eq_left hge'] using workspace.validT)
+            (by simpa [l0, Nat.max_eq_left hge'] using workspace.validScratch)
+            (by simpa [l0, Nat.max_eq_left hge'] using workspace.disjointTQ)
+            (by simpa [p0, l0, Nat.max_eq_left hge'] using
+              workspace.disjointTMatrix i0)
+            (by simpa [l0, Nat.max_eq_left hge'] using
+              workspace.disjointTScratch)
+            (by simpa [l0, Nat.max_eq_left hge'] using
+              workspace.disjointScratchQ)
+            (by simpa [p0, l0, Nat.max_eq_left hge'] using
+              workspace.disjointScratchMatrix i0)
+            hQRep (by simpa [p0, l0] using hEntry0Rep) with
+          ⟨heap1, hrun, hlayout, _⟩
+        exact ⟨heap1, by simpa [hge', p0, l0] using hrun,
+          hlayout⟩
+      · have hle : lenQ ≤ l0 := by omega
+        have hge' : ¬ lenQ ≥ hgcdMatLen M hM i0 := by simpa [l0] using hge
+        have hle' : lenQ ≤ hgcdMatLen M hM i0 := by simpa [l0] using hle
+        rcases CLPoly.Impl.StrictMulRefinement.mul_refines_rawDense
+            this T p0 l0 Q lenQ scratch heap entry0 quotient hcfg hp h0Pos
+            hQPos hle (lt_of_le_of_lt (Nat.le_max_right _ _)
+              workspace.lenWord)
+            (by simpa [l0, Nat.max_eq_right hle'] using workspace.validT)
+            (by simpa [l0, Nat.max_eq_right hle'] using workspace.validScratch)
+            (by simpa [p0, l0, Nat.max_eq_right hle'] using
+              workspace.disjointTMatrix i0)
+            (by simpa [l0, Nat.max_eq_right hle'] using workspace.disjointTQ)
+            (by simpa [l0, Nat.max_eq_right hle'] using
+              workspace.disjointTScratch)
+            (by simpa [p0, l0, Nat.max_eq_right hle'] using
+              workspace.disjointScratchMatrix i0)
+            (by simpa [l0, Nat.max_eq_right hle'] using
+              workspace.disjointScratchQ)
+            (by simpa [p0, l0] using hEntry0Rep) hQRep with
+          ⟨heap1, hrun, hlayout, _⟩
+        exact ⟨heap1, by simpa [hge', p0, l0] using hrun, hlayout⟩
+    rcases hmul with ⟨heap1, hmul, hlayoutMul⟩
+    have hEntry1After := matRowUpdate_mul_preserves_entry1 this M hM i0 i1 Q
+      T scratch lenQ heap heap1 entry1 hQPos h0Pos workspace.validT
+      workspace.validScratch hQRep.1 hEntry0Rep.1 workspace.disjointScratchQ
+      (workspace.disjointScratchMatrix i0) (workspace.disjointTMatrix i1)
+      (workspace.disjointScratchMatrix i1) hEntry1Rep hlayoutMul (by
+        simpa using hmul)
+    have hProduct := matRowUpdate_mul_result this M hM i0 Q T scratch lenQ
+      heap heap1 quotient entry0 hcfg hp hQPos h0Pos workspace.lenWord
+      workspace.validT workspace.validScratch workspace.disjointTQ
+      (workspace.disjointTMatrix i0) workspace.disjointTScratch
+      workspace.disjointScratchQ (workspace.disjointScratchMatrix i0) hQRep
+      hEntry0Rep (by simpa using hmul)
+    have hAddOut := (hlayoutMul t
+      (max l1 (lenQ + l0 - 1))).mp (by
+        simpa [l0, l1] using workspace.validAddOutput)
+    rcases polyAdd_succeeds this t p1 T l1 (lenQ + l0 - 1) heap1 hAddOut
+        (by simpa [p1, l1] using hEntry1After.1) hProduct.2.1
+        workspace.aliasEntry1 workspace.aliasProduct with
+      ⟨heap2, sumLen, hadd, _⟩
+    refine ⟨⟨heap2,
+      { poly := (M.poly.set i1.val p0 (by rw [hM.1]; exact i1.isLt)).set
+          i0.val t (by simp [hM.1]),
+        len := (M.len.set i1.val l0 (by rw [hM.2]; exact i1.isLt)).set
+          i0.val sumLen (by simp [hM.2]) },
+      T, lenQ + l0 - 1, p1⟩, ?_⟩
+    have hactiveRaw : lenQ ≠ 0 ∧
+        M.len[i0.val]'(by rw [hM.2]; exact i0.isLt) ≠ 0 := by
+      simpa [l0, hgcdMatLen] using hactive
+    have hmulRaw := hmul
+    simp only [hgcdMatPtr, hgcdMatLen] at hmulRaw
+    have haddRaw := hadd
+    simp only [p1, l1, l0, hgcdMatPtr, hgcdMatLen] at haddRaw
+    have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := hM
+    rw [dense_upoly_zp__mat_row_update_ir]
+    rw [dif_pos hvalid]
+    dsimp only
+    rw [if_pos hactiveRaw, hmulRaw]
+    simp only
+    rw [haddRaw]
+    rfl
+  · refine ⟨⟨heap,
+      { poly := (M.poly.set i1.val p0 (by rw [hM.1]; exact i1.isLt)).set
+          i0.val p1 (by simp [hM.1]),
+        len := (M.len.set i1.val l0 (by rw [hM.2]; exact i1.isLt)).set
+          i0.val l1 (by simp [hM.2]) },
+      T, lenT, t⟩, ?_⟩
+    have hactiveRaw : ¬ (lenQ ≠ 0 ∧
+        M.len[i0.val]'(by rw [hM.2]; exact i0.isLt) ≠ 0) := by
+      simpa [l0, hgcdMatLen] using hactive
+    have hvalid : M.poly.size = 4 ∧ M.len.size = 4 := hM
+    rw [dense_upoly_zp__mat_row_update_ir]
+    rw [dif_pos hvalid]
+    dsimp only
+    rw [if_neg hactiveRaw]
+    rfl
 
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing

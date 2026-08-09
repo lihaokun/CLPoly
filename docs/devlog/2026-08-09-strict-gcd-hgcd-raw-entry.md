@@ -75,6 +75,13 @@ workspace, for both `computeM` values.  Non-base totality remains to be built
 well-foundedly from the two smaller child executions and the stored concrete
 continuation executions before the main GCD loop can be called total.
 
+The totality stack now also contains generated `_poly_add`: its common loop,
+selected long-input tail copy, and final normalization are each constructed
+from raw slice validity.  Using the existing total raw multiplication theorem
+and this addition result, `_mat_row_update` is total in both its inactive
+descriptor-swap branch and its active raw-multiply/raw-add branch.  Neither
+theorem accepts an execution equality as a premise.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`

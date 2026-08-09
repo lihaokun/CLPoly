@@ -10178,4 +10178,49 @@ theorem hgcdRecursiveExec_ext_value
           exact congrArg Except.ok
             (HgcdRecursiveResult.ext_value leftResult rightResult hvalue)
 
+/-- The proof-indexed well-founded body is the exact source-shaped body after
+erasing only its strict-decrease proofs. -/
+theorem hgcdRecursiveBodyBelow_eq_body (this : DenseUPolyZp)
+    (bound : Nat) (below : HgcdRecursiveCallBelow bound)
+    (plain : HgcdRecursiveCall)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b : RawPtr UInt64) (lenA lenB : Nat)
+    (W scratch : RawPtr UInt64) (heap : RawHeap)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (firstLength : ∀ first,
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      hgcdRecursiveDispatchBelow this bound below ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap hchildOrder hchildDecrease = .ok first →
+      HgcdRecursiveLengthInvariant high.lenA0 first)
+    (reconstructionBound :
+      HgcdFirstReconstructionBoundProvider this a b W scratch lenA lenB)
+    (hagrees : ∀ (matrix : HgcdMat) (hMatrix : matrix.Valid)
+      (a3 b3 inputA inputB : RawPtr UInt64) (lenInputA lenInputB : Nat)
+      (WNext childScratch : RawPtr UInt64) (childHeap : RawHeap)
+      (hchildOrder : lenInputB < lenInputA)
+      (hchildDecrease : lenInputA < bound),
+      below matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+          WNext childScratch childHeap hchildOrder hchildDecrease =
+        plain matrix hMatrix true a3 b3 inputA inputB lenInputA lenInputB
+          WNext childScratch childHeap) :
+    hgcdRecursiveBodyBelow this bound below M hM computeM A B a b lenA lenB
+        W scratch heap hbound horder firstLength reconstructionBound =
+      hgcdRecursiveBody this plain M hM computeM A B a b lenA lenB W scratch
+        heap := by
+  apply hgcdRecursiveExec_ext_value
+  rw [hgcdRecursiveBodyBelow, hgcdRecursiveBody]
+  split
+  · rfl
+  · simp only [hgcdRecursiveExecValue, hgcdRecursiveDispatchBelow,
+      hgcdRecursiveDispatch, hagrees]
+    split <;> simp_all
+    split <;> simp_all
+    split <;> simp_all
+    split <;> simp_all
+
 end CLPoly.Impl.StrictHGCDRawRefinement

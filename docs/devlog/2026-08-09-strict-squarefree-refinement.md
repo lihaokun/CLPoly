@@ -240,6 +240,13 @@ every generated range-for and recursive loop used by SQF.
   以及完整 `ActivateReset` 良基循环。另已证明在 consumed node 恰为当前
   `resetH` 时，真实 exhausted 分支把 reset-ready 前缀从 `resetH` 扩为
   `resetH + 1`；剩余关键点是从 heap/bucket 次序证明这一节点编号条件。
+- exhausted 对源码裸 `++reset_h` 的行序依赖现已提升为 checked raw guard
+  `nodeIndex = resetH`。这不是额外执行预算：合法 C++ 状态仍须由 heap
+  枚举不变量证明 guard 恒成立；但任何成功 safe 执行从此无法绕过该
+  义务。利用 guard、活跃节点不可能位于 reset 前缀以及永久 `v2_ptr`
+  身份，已证明任意成功 consume node 保持 `ResetReady`，并进一步沿有限
+  `next` chain 良基递归抬升；完整 chain 结果现在同时保持 frontier、
+  denotation、节点身份和 reset 前缀四项不变量。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

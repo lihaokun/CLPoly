@@ -1220,16 +1220,19 @@ def pairVecDivVHCConsumeNode (this : DenseUPolyZp) (nodeIndex : Nat)
           .ok (k', nodes.set nodeIndex node', lin.push nodeIndex,
             resetH, node.next)
         else if hexhausted : quotientIndex' = quotient.size then
-          /- The C++ preincrement leaves `v1_ptr` one-past-end before placing
-          this node in the `reset_h` suffix.  Its stale `mono`/`next` fields
-          are unobservable until activation rewrites both, so the safe state
-          marks them uninitialized instead of pretending the old product
-          still denotes the advanced pointer. -/
-          let node' := { node with
-            quotientIndex := quotientIndex'
-            mono := none
-            next := none }
-          .ok (k', nodes.set nodeIndex node', lin, resetH + 1, node.next)
+          if horder : nodeIndex = resetH then
+            /- The C++ preincrement leaves `v1_ptr` one-past-end before
+            placing this node in the `reset_h` prefix.  The checked equality
+            exposes the row-order invariant on which the source's bare
+            `++reset_h` relies.  Its stale `mono`/`next` fields are
+            unobservable until activation rewrites both. -/
+            let node' := { node with
+              quotientIndex := quotientIndex'
+              mono := none
+              next := none }
+            .ok (k', nodes.set nodeIndex node', lin, resetH + 1, node.next)
+          else
+            .error .assertionFailure
         else
           .error .assertionFailure
       else
@@ -1265,10 +1268,12 @@ theorem pairVecDivVHCConsumeNode_progress (this : DenseUPolyZp)
         next hadvance =>
           split at hrun <;> try contradiction
           next hexhausted =>
-            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
-            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
-            right
-            simp
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              right
+              simp
 
 /-- Result of consuming one complete equal-monomial `next` bucket. -/
 structure PairVecDivVHCBucketResult where
@@ -2294,17 +2299,19 @@ theorem pairVecDivVHCConsumeNode_preserves_allActiveNodesBelow
       next hadvance =>
         split at hrun <;> try contradiction
         next hexhausted =>
-          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
-          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
-          intro i node mono hget hmono
-          by_cases heq : nodeIndex = i
-          · subst i
-            rw [Array.getElem?_set_self hn] at hget
-            simp only [Option.some.injEq] at hget
-            subst node
-            contradiction
-          · rw [Array.getElem?_set_ne hn heq] at hget
-            exact hbelow i node mono hget hmono
+          split at hrun <;> try contradiction
+          next horder =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            intro i node mono hget hmono
+            by_cases heq : nodeIndex = i
+            · subst i
+              rw [Array.getElem?_set_self hn] at hget
+              simp only [Option.some.injEq] at hget
+              subst node
+              contradiction
+            · rw [Array.getElem?_set_ne hn heq] at hget
+              exact hbelow i node mono hget hmono
 
 theorem pairVecDivVHCConsumeNode_preserves_denotes
     (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
@@ -2346,17 +2353,19 @@ theorem pairVecDivVHCConsumeNode_preserves_denotes
         next hadvance =>
           split at hrun <;> try contradiction
           next hexhausted =>
-            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
-            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
-            intro i node hget hactive
-            by_cases heq : nodeIndex = i
-            · subst i
-              rw [Array.getElem?_set_self hn] at hget
-              simp only [Option.some.injEq] at hget
-              subst node
-              contradiction
-            · rw [Array.getElem?_set_ne hn heq] at hget
-              exact hdenotes i node hget hactive
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              intro i node hget hactive
+              by_cases heq : nodeIndex = i
+              · subst i
+                rw [Array.getElem?_set_self hn] at hget
+                simp only [Option.some.injEq] at hget
+                subst node
+                contradiction
+              · rw [Array.getElem?_set_ne hn heq] at hget
+                exact hdenotes i node hget hactive
 
 theorem pairVecDivVHCConsumeNode_preserves_divisorIndicesFixed
     (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
@@ -2384,10 +2393,12 @@ theorem pairVecDivVHCConsumeNode_preserves_divisorIndicesFixed
         next hadvance =>
           split at hrun <;> try contradiction
           next hexhausted =>
-            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
-            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
-            exact PairVecDivVHCNodeDivisorIndicesFixed.set nodes nodeIndex _ hn
-              hfixed rfl
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              exact PairVecDivVHCNodeDivisorIndicesFixed.set nodes nodeIndex _ hn
+                hfixed rfl
 
 theorem pairVecDivVHCConsumeNode_preserves_chain_tail
     (this : DenseUPolyZp) (nodeIndex : Nat) (unvisited : Finset Nat)
@@ -2420,15 +2431,17 @@ theorem pairVecDivVHCConsumeNode_preserves_chain_tail
       next hadvance =>
         split at hrun <;> try contradiction
         next hexhausted =>
-          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
-          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
-          exact pairVecDivVHCChainValid_set_of_not_mem nodes[nodeIndex].next
-            (unvisited.erase nodeIndex) nodes nodeIndex
-            { nodes[nodeIndex] with
-              quotientIndex := nodes[nodeIndex].quotientIndex + 1
-              mono := none
-              next := none }
-            hn (by simp) htail
+          split at hrun <;> try contradiction
+          next horder =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            exact pairVecDivVHCChainValid_set_of_not_mem nodes[nodeIndex].next
+              (unvisited.erase nodeIndex) nodes nodeIndex
+              { nodes[nodeIndex] with
+                quotientIndex := nodes[nodeIndex].quotientIndex + 1
+                mono := none
+                next := none }
+              hn (by simp) htail
 
 theorem pairVecDivVHCConsumeNode_exhausted_preserves_resetReady
     (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
@@ -2436,7 +2449,6 @@ theorem pairVecDivVHCConsumeNode_exhausted_preserves_resetReady
     (resetH resetH' : Nat) (next : Option Nat)
     (quotient divisor : SparsePolyZp)
     (hn : nodeIndex < nodes.size)
-    (hnodeIndex : nodeIndex = resetH)
     (hdivisorIndex : nodes[nodeIndex].divisorIndex = nodeIndex + 1)
     (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
     (hlin : lin'.size = lin.size)
@@ -2457,12 +2469,80 @@ theorem pairVecDivVHCConsumeNode_exhausted_preserves_resetReady
       next hadvance =>
         split at hrun <;> try contradiction
         next hexhausted =>
-          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
-          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
-          subst nodeIndex
-          refine ⟨?_, ?_⟩
-          · simpa using hn
-          · intro i hi
+          split at hrun <;> try contradiction
+          next horder =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            subst nodeIndex
+            refine ⟨?_, ?_⟩
+            · simpa using hn
+            · intro i hi
+              by_cases hold : i < resetH
+              · rcases hready.2 i hold with ⟨node, hget, hqIndex,
+                  hdIndex, hmono⟩
+                refine ⟨node, ?_, hqIndex, hdIndex, hmono⟩
+                rw [Array.getElem?_set_ne hn (by omega)]
+                exact hget
+              · have heq : i = resetH := by omega
+                subst i
+                refine ⟨{ nodes[resetH] with
+                    quotientIndex := nodes[resetH].quotientIndex + 1
+                    mono := none
+                    next := none }, ?_, ?_, ?_, rfl⟩
+                · exact Array.getElem?_set_self hn
+                · exact hexhausted
+                · exact hdivisorIndex
+
+theorem pairVecDivVHCConsumeNode_preserves_resetReady
+    (this : DenseUPolyZp) (nodeIndex : Nat) (currentMono : UMonomial)
+    (k k' : UInt64) (nodes nodes' : Array PairVecDivVHCNode)
+    (lin lin' : Array Nat) (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hn : nodeIndex < nodes.size)
+    (hactive : nodes[nodeIndex].mono = some currentMono)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    PairVecDivVHCResetReady resetH' quotient.size nodes' := by
+  have hnotPrefix : ¬ nodeIndex < resetH := by
+    intro hlt
+    rcases hready.2 nodeIndex hlt with ⟨node, hget, hqIndex,
+      hdIndex, hmono⟩
+    rw [Array.getElem?_eq_getElem hn] at hget
+    simp only [Option.some.injEq] at hget
+    subst node
+    rw [hactive] at hmono
+    contradiction
+  unfold pairVecDivVHCConsumeNode at hrun
+  simp only [hn, ↓reduceDIte] at hrun
+  split at hrun <;> try contradiction
+  next hq =>
+    split at hrun <;> try contradiction
+    next hd =>
+      split at hrun
+      next hadvance =>
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+        refine ⟨by simpa using hready.1, ?_⟩
+        intro i hi
+        rcases hready.2 i hi with ⟨node, hget, hqIndex,
+          hdIndex, hmono⟩
+        refine ⟨node, ?_, hqIndex, hdIndex, hmono⟩
+        rw [Array.getElem?_set_ne hn (by omega)]
+        exact hget
+      next hadvance =>
+        split at hrun <;> try contradiction
+        next hexhausted =>
+          split at hrun <;> try contradiction
+          next horder =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            have hdivisorIndex := hfixed nodeIndex nodes[nodeIndex]
+              (Array.getElem?_eq_getElem hn)
+            subst nodeIndex
+            refine ⟨by simpa using hn, ?_⟩
+            intro i hi
             by_cases hold : i < resetH
             · rcases hready.2 i hold with ⟨node, hget, hqIndex,
                 hdIndex, hmono⟩
@@ -2474,10 +2554,8 @@ theorem pairVecDivVHCConsumeNode_exhausted_preserves_resetReady
               refine ⟨{ nodes[resetH] with
                   quotientIndex := nodes[resetH].quotientIndex + 1
                   mono := none
-                  next := none }, ?_, ?_, ?_, rfl⟩
-              · exact Array.getElem?_set_self hn
-              · exact hexhausted
-              · exact hdivisorIndex
+                  next := none }, Array.getElem?_set_self hn,
+                hexhausted, hdivisorIndex, rfl⟩
 
 theorem pairVecDivVHCConsumeChain_preserves_node_invariants
     (this : DenseUPolyZp) (p degreeLimit : Nat)
@@ -2490,6 +2568,7 @@ theorem pairVecDivVHCConsumeChain_preserves_node_invariants
       nodes[i]? = some node → node.mono ≠ none →
         PairVecDivVHCNodeDenotes quotient divisor node)
     (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
     (hchain : PairVecDivVHCChainValid current unvisited nodes)
     (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
       resetH quotient divisor = .ok result) :
@@ -2497,13 +2576,14 @@ theorem pairVecDivVHCConsumeChain_preserves_node_invariants
       (∀ (i : Nat) (node : PairVecDivVHCNode),
         result.nodes[i]? = some node → node.mono ≠ none →
           PairVecDivVHCNodeDenotes quotient divisor node) ∧
-      PairVecDivVHCNodeDivisorIndicesFixed result.nodes := by
+      PairVecDivVHCNodeDivisorIndicesFixed result.nodes ∧
+      PairVecDivVHCResetReady result.resetH quotient.size result.nodes := by
   cases current with
   | none =>
       rw [pairVecDivVHCConsumeChain] at hrun
       simp only [Except.ok.injEq] at hrun
       subst result
-      exact ⟨hbelow, hdenotes, hfixed⟩
+      exact ⟨hbelow, hdenotes, hfixed, hready⟩
   | some nodeIndex =>
       rw [pairVecDivVHCConsumeChain] at hrun
       split at hrun <;> try contradiction
@@ -2536,13 +2616,16 @@ theorem pairVecDivVHCConsumeChain_preserves_node_invariants
               pairVecDivVHCConsumeNode_preserves_divisorIndicesFixed this
                 nodeIndex k k' nodes nodes' lin lin' resetH resetH' next
                 quotient divisor hfixed hconsume
+            have hready' := pairVecDivVHCConsumeNode_preserves_resetReady this
+              nodeIndex mono k k' nodes nodes' lin lin' resetH resetH' next
+              quotient divisor hn hactive hready hfixed hconsume
             have htail' := pairVecDivVHCConsumeNode_preserves_chain_tail this
               nodeIndex unvisited k k' nodes nodes' lin lin' resetH resetH'
               next quotient divisor hn htail hconsume
             exact pairVecDivVHCConsumeChain_preserves_node_invariants this p
               degreeLimit next (unvisited.erase nodeIndex) k' nodes' lin'
               resetH' quotient divisor result hcanonical hbelow' hdenotes'
-              hfixed' htail' hrun
+              hfixed' hready' htail' hrun
 termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)

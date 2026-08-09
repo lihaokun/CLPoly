@@ -8966,6 +8966,192 @@ theorem pairVecDivVHCHeapChainsHomogeneous_merge_fresh
             subst i
             exact hfreshOwners targetSlot head hget hi))
 
+theorem pairVecDivVHCInsert_preserves_heapChainsHomogeneous_of_fresh
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat) (node : PairVecDivVHCNode) (mono : UMonomial)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some mono)
+    (hfreshHead : ∀ slot : Nat, heap[slot]? ≠ some newNode)
+    (hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+      newNode ∉ owners head)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    ∃ owners', PairVecDivVHCHeapChainOwnership heap' owners' nodes' ∧
+      PairVecDivVHCHeapChainsHomogeneous heap' owners' nodes' := by
+  cases hnew : pairVecDivVHCMono newNode nodes with
+  | error fault => simp [pairVecDivVHCInsert, hnew] at hrun
+  | ok newMono =>
+      have hmonoRun : pairVecDivVHCMono newNode nodes = .ok mono :=
+        (pairVecDivVHCMono_eq_ok_iff newNode nodes mono).2 ⟨node, hnode, hmono⟩
+      rw [hmonoRun] at hnew
+      have hnewEq : newMono = mono := (Except.ok.inj hnew).symm
+      subst newMono
+      by_cases hempty : heap.size = 0
+      · have heq : heap = #[] := Array.eq_empty_of_size_eq_zero hempty
+        subst heap
+        unfold pairVecDivVHCInsert at hrun
+        simp only [hmonoRun, Array.size_empty, ↓reduceDIte] at hrun
+        cases hset : pairVecDivVHCSetNext newNode none nodes with
+        | error fault => simp [hset] at hrun
+        | ok updated =>
+            rw [hset] at hrun
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl⟩
+            let owners' := fun head => if head = newNode then {newNode}
+              else owners head
+            exact ⟨owners',
+              pairVecDivVHCHeapChainOwnership_push_fresh #[] owners newNode
+                nodes updated node mono hownership hnode hmono (by simp)
+                (by simp) hset,
+              pairVecDivVHCHeapChainsHomogeneous_push_fresh #[] owners newNode
+                nodes updated node mono hhomogeneous hnode hmono (by simp)
+                (by simp) hset⟩
+      · have hheap : 0 < heap.size := Nat.pos_of_ne_zero hempty
+        cases hroot : pairVecDivVHCMono heap[0] nodes with
+        | error fault =>
+            simp [pairVecDivVHCInsert, hmonoRun, hempty, hroot] at hrun
+        | ok rootMono =>
+            by_cases hequal : mono.deg = rootMono.deg
+            · unfold pairVecDivVHCInsert at hrun
+              simp only [hmonoRun, hempty, ↓reduceDIte, hroot, hequal] at hrun
+              cases hset : pairVecDivVHCSetNext newNode (some heap[0]) nodes with
+              | error fault => simp [hset] at hrun
+              | ok updated =>
+                  rw [hset] at hrun
+                  simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                  rcases hrun with ⟨rfl, rfl⟩
+                  let owners' := fun head => if head = newNode then
+                    insert newNode (owners heap[0]) else owners head
+                  exact ⟨owners',
+                    pairVecDivVHCHeapChainOwnership_merge_fresh heap owners 0
+                      newNode nodes updated node mono hheap hownership hnode
+                      hmono hfreshHead hfreshOwners hset,
+                    pairVecDivVHCHeapChainsHomogeneous_merge_fresh heap owners 0
+                      newNode nodes updated node mono rootMono hheap
+                      hhomogeneous hnode hmono hroot hequal hfreshHead
+                      hfreshOwners hset⟩
+            · by_cases hgreater : mono.deg > rootMono.deg
+              · unfold pairVecDivVHCInsert at hrun
+                simp only [hmonoRun, hempty, ↓reduceDIte, hroot, hequal,
+                  hgreater] at hrun
+                cases hset : pairVecDivVHCSetNext newNode none nodes with
+                | error fault => simp [hset] at hrun
+                | ok updated =>
+                    rw [hset] at hrun
+                    cases hbubble : pairVecDivVHCBubble heap.size 0 newNode
+                        (heap.push newNode) with
+                    | error fault => simp [hbubble] at hrun
+                    | ok shifted =>
+                        rw [hbubble] at hrun
+                        let owners' := fun head => if head = newNode then
+                          {newNode} else owners head
+                        have hpushHomogeneous :=
+                          pairVecDivVHCHeapChainsHomogeneous_push_fresh heap
+                            owners newNode nodes updated node mono hhomogeneous
+                            hnode hmono hfreshHead hfreshOwners hset
+                        have hfrom := pairVecDivVHCBubble_valuesFrom heap.size 0
+                          newNode (heap.push newNode) shifted (heap.push newNode)
+                          (pairVecDivVHCValuesFrom_refl _) ⟨heap.size, by simp⟩
+                          hbubble
+                        have hshiftHomogeneous := hpushHomogeneous.of_valuesFrom
+                          (heap.push newNode) shifted owners' updated hfrom
+                        have hshiftOwnership :=
+                          pairVecDivVHCHeapChainOwnership_bubble_fresh heap
+                            shifted owners 0 newNode nodes updated node mono
+                            hownership hnode hmono hfreshHead hfreshOwners hset
+                            hbubble
+                        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                        rcases hrun with ⟨rfl, rfl⟩
+                        exact ⟨owners', hshiftOwnership, hshiftHomogeneous⟩
+              · cases hanchor : pairVecDivVHCFindAnchor mono.deg
+                    (pairVecDivVHCParent heap.size) heap nodes with
+                | error fault =>
+                    simp [pairVecDivVHCInsert, hmonoRun, hempty, hroot, hequal,
+                      hgreater, hanchor] at hrun
+                | ok anchor =>
+                    by_cases ha : anchor < heap.size
+                    · cases hanchorMono : pairVecDivVHCMono heap[anchor] nodes with
+                      | error fault =>
+                          simp [pairVecDivVHCInsert, hmonoRun, hempty, hroot,
+                            hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                      | ok anchorMono =>
+                          by_cases hequalAnchor : mono.deg = anchorMono.deg
+                          · unfold pairVecDivVHCInsert at hrun
+                            simp only [hmonoRun, hempty, ↓reduceDIte, hroot,
+                              hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                            simp only [hequalAnchor] at hrun
+                            cases hset : pairVecDivVHCSetNext newNode
+                                (some heap[anchor]) nodes with
+                            | error fault => simp [hset] at hrun
+                            | ok updated =>
+                                rw [hset] at hrun
+                                let owners' := fun head => if head = newNode then
+                                  insert newNode (owners heap[anchor])
+                                  else owners head
+                                have hresult :
+                                    PairVecDivVHCHeapChainOwnership
+                                        (heap.set anchor newNode) owners' updated ∧
+                                      PairVecDivVHCHeapChainsHomogeneous
+                                        (heap.set anchor newNode) owners' updated := ⟨
+                                  pairVecDivVHCHeapChainOwnership_merge_fresh
+                                    heap owners anchor newNode nodes updated node
+                                    mono ha hownership hnode hmono hfreshHead
+                                    hfreshOwners hset,
+                                  pairVecDivVHCHeapChainsHomogeneous_merge_fresh
+                                    heap owners anchor newNode nodes updated node
+                                    mono anchorMono ha hhomogeneous hnode hmono
+                                    hanchorMono hequalAnchor hfreshHead
+                                    hfreshOwners hset⟩
+                                simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+                                rcases hrun with ⟨rfl, rfl⟩
+                                exact ⟨owners', hresult⟩
+                          · unfold pairVecDivVHCInsert at hrun
+                            simp only [hmonoRun, hempty, ↓reduceDIte, hroot,
+                              hequal, hgreater, hanchor, ha, hanchorMono] at hrun
+                            simp only [hequalAnchor] at hrun
+                            cases hset : pairVecDivVHCSetNext newNode none nodes with
+                            | error fault => simp [hset] at hrun
+                            | ok updated =>
+                                rw [hset] at hrun
+                                cases hbubble : pairVecDivVHCBubbleBelow
+                                    heap.size anchor newNode
+                                    (heap.push newNode) with
+                                | error fault => simp [hbubble] at hrun
+                                | ok shifted =>
+                                    rw [hbubble] at hrun
+                                    let owners' := fun head =>
+                                      if head = newNode then {newNode}
+                                      else owners head
+                                    have hpushHomogeneous :=
+                                      pairVecDivVHCHeapChainsHomogeneous_push_fresh
+                                        heap owners newNode nodes updated node mono
+                                        hhomogeneous hnode hmono hfreshHead
+                                        hfreshOwners hset
+                                    have hfrom :=
+                                      pairVecDivVHCBubbleBelow_valuesFrom
+                                        heap.size anchor newNode
+                                        (heap.push newNode) shifted
+                                        (heap.push newNode)
+                                        (pairVecDivVHCValuesFrom_refl _)
+                                        ⟨heap.size, by simp⟩ hbubble
+                                    have hshiftHomogeneous :=
+                                      hpushHomogeneous.of_valuesFrom
+                                        (heap.push newNode) shifted owners'
+                                        updated hfrom
+                                    have hshiftOwnership :=
+                                      pairVecDivVHCHeapChainOwnership_bubbleBelow_fresh
+                                        heap shifted owners anchor newNode nodes
+                                        updated node mono hownership hnode hmono
+                                        hfreshHead hfreshOwners hset hbubble
+                                    simp only [Except.ok.injEq,
+                                      Prod.mk.injEq] at hrun
+                                    rcases hrun with ⟨rfl, rfl⟩
+                                    exact ⟨owners', hshiftOwnership,
+                                      hshiftHomogeneous⟩
+                    · simp [pairVecDivVHCInsert, hmonoRun, hempty, hroot,
+                        hequal, hgreater, hanchor, ha] at hrun
+
 theorem pairVecDivVHCSetNext_preserves_heapOrdered
     (nodeIndex : Nat) (next : Option Nat) (heap : Array Nat)
     (nodes nodes' : Array PairVecDivVHCNode)

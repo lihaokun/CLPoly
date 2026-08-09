@@ -1202,3 +1202,12 @@ every generated range-for and recursive loop used by SQF.
   `PairVecDivVHCHeapChainsHomogeneous.of_valuesFrom` 则允许 bubble 只重排
   heap head 时运输该性质。下一步将三者按完整 insertion 分支组合，再
   沿 activation/reinsertion/outer iteration 递归传递。
+- 完整 generated insertion 的 ownership+homogeneous 保持已闭合。
+  `pairVecDivVHCInsert_preserves_heapChainsHomogeneous_of_fresh` 与真实
+  insertion 控制流逐支对应：empty/greater/unequal 分支建立 `{newNode}`
+  单节点 owner，equal-root/equal-anchor 分支建立
+  `insert newNode oldOwner`；bubble 分支通过真实 `Bubble`/`BubbleBelow`
+  values-from 运输 head-chain 的次数性质。新节点的比较 monomial 由
+  checked `VHC_mono` 与实际节点读取相等推出，equal 分支的次数相等
+  直接来自源码分支条件。下一步沿 `ActivateReset` 和 reverse `lin`
+  递归携带该定理，形成 outer iteration 的新 owner+homogeneous 对。

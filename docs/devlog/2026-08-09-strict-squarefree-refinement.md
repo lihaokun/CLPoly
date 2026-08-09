@@ -617,3 +617,16 @@ every generated range-for and recursive loop used by SQF.
   下一步把 equal-degree consume、emit activation、reverse reinsertion 的
   三段组合覆盖接入一次完整 outer iteration，并恢复下一轮入口的
   `lin = #[] / resetH` 全分区。
+- 一次完整 outer iteration 的组合覆盖已接通。`Emit` 的新定理逐分支
+  对齐真实代码：仅在 nonzero coefficient、degree guard、nonzero quotient
+  cell 三个条件同时成立时调用实际 `ActivateReset`，其余路径保持原
+  state/resetH；activation 的 reset-ready 参数被正确保留为 append 前的
+  `quotient.size`，没有错误等同于新 quotient 的 size。outer theorem 从
+  `pairVecDivVHCOuterIteration_components` 恢复同一次 consume、emit、
+  reinsert 执行，依次应用 equal-degree coverage、emit coverage 和完整
+  reverse-lin coverage，最终证明返回状态重新满足 `lin = #[]` 的同一
+  witness ownership+全 node coverage。所需 reset-ready 来自同一次 consume
+  的 node invariant 定理，未用独立假设替换中间执行状态。下一步把该
+  不变量沿 outer loop 的严格 frontier degree 递减传播，并利用全覆盖+
+  disjoint ownership 证明每个 quotient×divisor cursor 对被处理恰好一次，
+  闭合卷积 trace 的 complete/no-duplicate 方向。

@@ -654,3 +654,12 @@ every generated range-for and recursive loop used by SQF.
   伪造返回值。下一步沿 exact `next` chain 和 equal-degree heap loop 提升
   该不变量，再结合 canonical quotient 的 cursor 后缀严格递减证明当前
   frontier 的所有乘积只能落在当前 cursor heads 中。
+- processed-prefix 已沿完整 bucket chain 提升。新定理同时携带
+  `ChainAtDegree`、全局 `NodeDenotes` 与 prefix invariant，按实际
+  `unvisited.erase nodeIndex` 的 finset card 严格递减：每步从 concrete
+  chain 节点恢复当前 mono 次数，调用单节点 advance/exhausted 保持，使用
+  `ConsumeNode_get_ne` 把 tail 的 degree 证据搬到更新数组，并用真实
+  `ConsumeNode_preserves_denotes` 为递归状态重建语义。root-bucket 包装再把
+  source 使用的 `Finset.range nodes.size` chain 直接接入这一归纳。下一步
+  结合 exact owner subset-range 与 heap-chain homogeneity，把该结论沿每次
+  checked extract 的 heap-size 严格下降提升到完整 equal-degree loop。

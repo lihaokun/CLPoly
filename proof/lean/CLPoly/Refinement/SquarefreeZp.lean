@@ -7410,6 +7410,102 @@ termination_by unvisited.card
 decreasing_by
   exact Finset.card_erase_lt_of_mem (by assumption)
 
+theorem pairVecDivVHCConsumeChain_preserves_cursorPrefixAbove
+    (this : DenseUPolyZp) (degree : Nat) (current : Option Nat)
+    (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (hdegree : PairVecDivVHCChainAtDegree current unvisited nodes degree)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degree nodes quotient divisor)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    PairVecDivVHCCursorPrefixAbove degree result.nodes quotient divisor := by
+  cases current with
+  | none =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      exact hprefix
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainAtDegree] at hdegree
+      split at hdegree <;> try contradiction
+      next hmem =>
+        rcases hdegree with
+          ⟨node, mono, hget, hmono, hmonoDegree, htailDegree⟩
+        rw [pairVecDivVHCConsumeChain] at hrun
+        simp only [hmem, ↓reduceDIte] at hrun
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            have hnodeDenotes := hdenotes nodeIndex node hget (by
+              rw [hmono]
+              simp)
+            have hmonoEq : mono = ⟨degree⟩ := by
+              cases mono with
+              | mk monoDegree =>
+                  simp only [UMonomial.deg] at hmonoDegree
+                  subst monoDegree
+                  rfl
+            have hprefix' :=
+              pairVecDivVHCConsumeNode_preserves_cursorPrefixAbove this degree
+                nodeIndex k k' nodes nodes' lin lin' resetH resetH' next
+                quotient divisor node hprefix hget hnodeDenotes (by
+                  simpa [hmonoEq] using hmono) hconsume
+            have hn : nodeIndex < nodes.size := by
+              by_contra hnot
+              rw [Array.getElem?_eq_none (by omega)] at hget
+              contradiction
+            have hnodeEq : nodes[nodeIndex] = node := by
+              rw [Array.getElem?_eq_getElem hn] at hget
+              exact Option.some.inj hget
+            have hnext := pairVecDivVHCConsumeNode_next this nodeIndex k k'
+              nodes nodes' lin lin' resetH resetH' next quotient divisor
+              hn hconsume
+            have htailDegree' : PairVecDivVHCChainAtDegree next
+                (unvisited.erase nodeIndex) nodes' degree := by
+              rw [hnext, hnodeEq]
+              exact pairVecDivVHCChainAtDegree_congr_on node.next
+                (unvisited.erase nodeIndex) nodes nodes' degree htailDegree (by
+                  intro i hi
+                  exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k'
+                    nodes nodes' lin lin' resetH resetH' next quotient divisor
+                    hconsume i (Finset.mem_erase.mp hi).1.symm)
+            have hdenotes' := pairVecDivVHCConsumeNode_preserves_denotes this
+              nodeIndex k k' nodes nodes' lin lin' resetH resetH' next quotient
+              divisor hdenotes hconsume
+            exact pairVecDivVHCConsumeChain_preserves_cursorPrefixAbove this
+              degree next (unvisited.erase nodeIndex) k' nodes' lin' resetH'
+              quotient divisor result htailDegree' hprefix' hdenotes' hrun
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeRootBucket_preserves_cursorPrefixAbove
+    (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (hheap : 0 < heap.size)
+    (hdegree : PairVecDivVHCChainAtDegree (some heap[0])
+      (Finset.range nodes.size) nodes degree)
+    (hprefix : PairVecDivVHCCursorPrefixAbove degree nodes quotient divisor)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCCursorPrefixAbove degree result.nodes quotient divisor := by
+  unfold pairVecDivVHCConsumeRootBucket at hrun
+  simp only [hheap, ↓reduceDIte] at hrun
+  exact pairVecDivVHCConsumeChain_preserves_cursorPrefixAbove this degree
+    (some heap[0]) (Finset.range nodes.size) k nodes lin resetH quotient
+    divisor result hdegree hprefix hdenotes hrun
+
 theorem pairVecDivVHCConsumeRootBucket_preserves_denotes
     (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
     (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)

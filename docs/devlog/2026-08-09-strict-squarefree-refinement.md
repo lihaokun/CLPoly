@@ -568,3 +568,11 @@ every generated range-for and recursive loop used by SQF.
   `PairVecDivVHCNodesCovered`。下一步把覆盖继续穿过 emit activation 和
   reverse reinsertion，使下一轮 outer loop 重新得到 `lin = []` 的完整
   heap/reset 分区。
+- 覆盖不变量已提升为单一见证的组合状态。新增
+  `PairVecDivVHCStateCovered`，要求同一个 `owners` 映射同时证明真实 heap
+  chain ownership 和整个 node block 的 `heap/lin/reset` 覆盖；这排除了在
+  insertion 改换 bucket head 后，分别挑选两个互不相关的存在见证并误称
+  覆盖已传递的漏洞。初始化由空 heap 与真实 `pairVecDivVHCInit` 大小直接
+  建立该状态，equal-degree 消费则复用刚闭合的 ownership+coverage 联合
+  定理保留同一个见证。下一步必须让 activation/reinsert 的每次真实
+  `VHC_insert` 构造新的共同见证，再沿各自的良基循环归纳。

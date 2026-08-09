@@ -4205,6 +4205,17 @@ def PairVecDivVHCNodesCovered (heap : Array Nat)
     i < resetH ∨ i ∈ lin.toList.toFinset ∨
       ∃ (slot head : Nat), heap[slot]? = some head ∧ i ∈ owners head
 
+/-- A single ownership witness must justify both the concrete heap chains and
+total coverage of the allocated node block.  Keeping the existential outside
+the conjunction is essential: heap insertion can replace a bucket head and
+therefore changes the owner map, so two unrelated existential witnesses would
+not be strong enough to transport coverage through the real execution. -/
+def PairVecDivVHCStateCovered (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) : Prop :=
+  ∃ owners : Nat → Finset Nat,
+    PairVecDivVHCHeapChainOwnership heap owners nodes ∧
+      PairVecDivVHCNodesCovered heap owners lin resetH nodes
+
 theorem pairVecDivVHCInit_nodesCovered (divisor : SparsePolyZp)
     (owners : Nat → Finset Nat) :
     PairVecDivVHCNodesCovered #[] owners #[] (divisor.size - 1)
@@ -4213,6 +4224,14 @@ theorem pairVecDivVHCInit_nodesCovered (divisor : SparsePolyZp)
   left
   rw [pairVecDivVHCInit_size] at hi
   exact hi
+
+theorem pairVecDivVHCInit_stateCovered (divisor : SparsePolyZp) :
+    PairVecDivVHCStateCovered #[] (pairVecDivVHCInit divisor) #[]
+      (divisor.size - 1) := by
+  refine ⟨fun _ => ∅, ?_, pairVecDivVHCInit_nodesCovered divisor _⟩
+  constructor
+  · simp
+  constructor <;> simp
 
 theorem PairVecDivVHCNodesCovered.owned_of_active_not_lin
     (heap : Array Nat) (owners : Nat → Finset Nat)
@@ -7350,6 +7369,22 @@ theorem pairVecDivVHCConsumeEqualDegree_preserves_nodesCovered
       · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
         subst result
         exact ⟨hownership, hcovered⟩
+
+theorem pairVecDivVHCConsumeEqualDegree_preserves_stateCovered
+    (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult)
+    (hcovered : PairVecDivVHCStateCovered heap nodes lin resetH)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCStateCovered result.heap result.nodes result.lin
+      result.resetH := by
+  rcases hcovered with ⟨owners, hownership, hnodesCovered⟩
+  rcases pairVecDivVHCConsumeEqualDegree_preserves_nodesCovered this degree
+      heap k nodes lin resetH quotient divisor result owners hownership
+      hnodesCovered hrun with ⟨hownership', hnodesCovered'⟩
+  exact ⟨owners, hownership', hnodesCovered'⟩
 
 theorem pairVecDivVHCConsumeEqualDegree_coefficient_semantics
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]

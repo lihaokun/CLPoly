@@ -438,3 +438,11 @@ every generated range-for and recursive loop used by SQF.
   给定下一 selector 次数严格更低，重放真实 consume/emit/reinsert 执行
   即可证明输出 quotient 的所有项仍严格高于下一 frontier。这是
   完整良基 outer loop 递归传递 canonicality 的最后局部桥。
+- 完整良基 outer loop 的 quotient canonicality 已闭合。成功的非终止
+  loop 执行现可分解为：真实 selector guard 严格下降、一次真实
+  outer iteration 成功、以及真实递归 loop 成功。另一执行桥证明
+  任何成功 loop 中实际 selector 的次数必严格小于该调用的
+  `degreeLimit`。主定理按 `degreeLimit` 做强归纳：用当前 iteration
+  证明传递 canonicality/ownership/节点不变式，再从下一次真实
+  selector guard 推出 quotient-degree invariant。因此递归前提由成功执行
+  本身建立，未引入 fuel、oracle 或“假定下一轮正确”。

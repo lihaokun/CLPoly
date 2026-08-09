@@ -8455,6 +8455,42 @@ theorem pairVecDivVHCInsert_nodes_preserve_heapOrdered
   exact pairVecDivVHCSetNext_preserves_heapOrdered newNode next heap' nodes
     nodes' hordered hset
 
+/-- The generated greater-root insertion branch preserves max-heap order all
+the way through its `next := none` node write and root bubble. -/
+theorem pairVecDivVHCInsert_newRoot_preserves_heapOrdered
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (newMono rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hgreater : rootMono.deg < newMono.deg)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCHeapOrdered heap' nodes' := by
+  have hempty : heap.size ≠ 0 := Nat.ne_of_gt hheap
+  have hequal : newMono.deg ≠ rootMono.deg := by omega
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, hempty, ↓reduceDIte, hroot, hequal, hgreater] at hrun
+  cases hset : pairVecDivVHCSetNext newNode none nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      cases hbubble : pairVecDivVHCBubble heap.size 0 newNode
+          (heap.push newNode) with
+      | error fault => simp [hbubble] at hrun
+      | ok shifted =>
+          rw [hbubble] at hrun
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl⟩
+          have hshifted : PairVecDivVHCHeapOrdered shifted nodes :=
+            pairVecDivVHCBubble_new_root_preserves_heapOrdered newNode heap
+              shifted nodes newMono rootMono hheap hvalid hordered hnew hroot
+              (Nat.le_of_lt hgreater) hbubble
+          exact pairVecDivVHCSetNext_preserves_heapOrdered newNode none shifted
+            nodes updated hshifted hset
+
 theorem pairVecDivVHCSetNext_preserves_cursorPrefixAbove
     (degreeLimit nodeIndex : Nat) (next : Option Nat)
     (nodes nodes' : Array PairVecDivVHCNode)

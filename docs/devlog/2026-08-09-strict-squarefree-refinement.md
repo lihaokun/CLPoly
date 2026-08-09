@@ -1127,3 +1127,10 @@ every generated range-for and recursive loop used by SQF.
   greater-root 调用。全程没有 fuel、规格 oracle 或 L2 回退。
   下一步把该定理接入 `pairVecDivVHCInsert` greater-root 分支，并处理
   `FindAnchor`/`BubbleBelow` 的非根 insertion 分支。
+- greater-root heap-order 结果已接回完整 generated `VHC_insert`。
+  `pairVecDivVHCInsert_newRoot_preserves_heapOrdered` 展开真实分支判定、
+  `set_next newNode none` 与 `Bubble` 执行，先在写入前节点数组上应用
+  完整 root-bubble 定理，再用已证的 monomial-read 不变性把 heap order
+  运输到 insertion 实际返回的节点数组。由此不只 standalone bubble，
+  而是完整 C++ insertion greater-root 分支已有表示不变量结论。
+  下一步集中闭合 `FindAnchor`/`BubbleBelow` 非根分支。

@@ -842,3 +842,12 @@ every generated range-for and recursive loop used by SQF.
   `Array.set` 局部效应从嵌套 Option map 形式解耦出来。下一步在这个等价
   前缀谓词上证明单次 child-copy 与最终 last-write 保持所有未受影响边，
   再转回现有 `HeapOrdered` 供 equal-degree 递归使用。
+- 单槽更新的 heap-order frame 与 leaf write 已闭合。通用
+  `set_of_affected` 把 `(heap.set i newHead)` 的证明精确分成
+  `child = i`、`parent child = i` 两类受影响边；其他边通过两个真实
+  `Array.getElem?_set_ne` lookup 还原到旧前缀堆序。`set_leaf` 再处理没有
+  active children 的最终 write：唯一可能受影响的是 `i → parent i`，从
+  新 mono 到旧 parent 的显式上界恢复；若有边声称 parent 为 leaf，则与
+  no-children 证据矛盾。下一步实例化非 leaf 的 child-copy：用 selected
+  对左右候选的支配证明两条下边，用旧 child≤parent 链证明写入值仍不
+  超过 hole 的旧 parent，然后递归到 selected hole。

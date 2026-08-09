@@ -1459,4 +1459,260 @@ theorem dense_upoly_zp_to_upoly_raw_ir_result (this : DenseUPolyZp)
   exact ⟨semanticResult, hsemanticRun, hcanonical, by
     simpa [hsemantic] using hrep⟩
 
+/-- A raw normalized GCD result is nonzero whenever either source input is
+nonzero.  This discharges the concrete `lead()` access in
+`__polynomial_GCD`; it is not an additional algorithm. -/
+theorem rawDense_gcd_result_nonzero (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (left right result : Polynomial (ZMod this._p.toNat))
+    (hleft : left ≠ 0)
+    (hresult : RawDensePolyRep this heap ptr length result)
+    (hgcd : normalize (EuclideanDomain.gcd left right) = normalize result) :
+    result ≠ 0 ∧ length ≠ 0 := by
+  have hresultNonzero : result ≠ 0 := by
+    intro hresultZero
+    have hgcdZero : EuclideanDomain.gcd left right = 0 := by
+      apply normalize_eq_zero.mp
+      rw [hgcd, hresultZero]
+      simp
+    have hdivides : (0 : Polynomial (ZMod this._p.toNat)) ∣ left := by
+      simpa [hgcdZero] using EuclideanDomain.gcd_dvd_left left right
+    exact hleft (zero_dvd_iff.mp hdivides)
+  exact ⟨hresultNonzero, fun hlength =>
+    hresultNonzero
+      ((CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_length_zero_iff
+        this heap ptr length result hresult).mp hlength)⟩
+
+/-- Observable success payload of the source `__polynomial_GCD` wrapper.
+`output = none` is exactly the early degree-bound return, which leaves the
+caller-owned sparse output unchanged. -/
+structure InternalPolynomialGCDRawResult where
+  heap : RawHeap
+  denseLength : Nat
+  returnCode : Int64
+  output : Option SparsePolyZp
+
+/-- The source tail after dense GCD has produced its normalized result. -/
+def internalPolynomialGCDFinishRaw (this : DenseUPolyZp)
+    (resultPtr : RawPtr UInt64) (gcdResult : DenseGcdRawResult)
+    (lcGcd : UInt64) (degreeBound : Int64) :
+    RawExec InternalPolynomialGCDRawResult :=
+  match gcdResult.heap.readU64 resultPtr (gcdResult.lenG - 1) with
+  | .error fault => .error fault
+  | .ok lead =>
+    let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+    let scale := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this inverse
+      lcGcd
+    match dense_upoly_zp_scalar_mul_raw_ir this resultPtr gcdResult.lenG scale
+        gcdResult.heap with
+    | .error fault => .error fault
+    | .ok scaled =>
+      let degree : Int64 := (scaled.length - 1).toUInt64.toInt64
+      if degree > degreeBound then
+        .ok ⟨scaled.heap, scaled.length, (-1 : Int64), none⟩
+      else
+        match dense_upoly_zp_to_upoly_raw_ir this scaled.heap resultPtr
+            scaled.length with
+        | .error fault => .error fault
+        | .ok sparse =>
+          .ok ⟨scaled.heap, scaled.length, degree, some sparse⟩
+
+theorem dense_upoly_zp_scalar_mul_raw_ir_length_of_ne_zero
+    (this : DenseUPolyZp) (ptr : RawPtr UInt64) (length : Nat)
+    (scalar : UInt64) (heap : RawHeap) (result : DenseScalarRawResult)
+    (hscalar : scalar ≠ 0)
+    (hrun : dense_upoly_zp_scalar_mul_raw_ir this ptr length scalar heap =
+      .ok result) :
+    result.length = length := by
+  by_cases hone : scalar = 1
+  · subst scalar
+    simp [dense_upoly_zp_scalar_mul_raw_ir] at hrun
+    rw [← hrun]
+  · simp [dense_upoly_zp_scalar_mul_raw_ir, hscalar, hone] at hrun
+    split at hrun
+    · contradiction
+    · have heq : (⟨_, length⟩ : DenseScalarRawResult) = result :=
+        Except.ok.inj hrun
+      rw [← heq]
+
+/-- With the public wrapper's target leading coefficient `1`, every concrete
+operation in the post-GCD tail succeeds and the degree-accepted branch emits
+the actual reverse-scan result. -/
+theorem internalPolynomialGCDFinishRaw_monic_succeeds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (resultPtr : RawPtr UInt64) (gcdResult : DenseGcdRawResult)
+    (degreeBound : Int64) (result : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hresult : RawDensePolyRep this gcdResult.heap resultPtr gcdResult.lenG
+      result)
+    (hresultNonzero : result ≠ 0)
+    (hbound : ¬degreeBound < Int64.ofNat (gcdResult.lenG - 1)) :
+    ∃ out sparse,
+      internalPolynomialGCDFinishRaw this resultPtr gcdResult 1 degreeBound =
+        .ok out ∧
+      out.output = some sparse ∧
+      out.denseLength = gcdResult.lenG ∧
+      RawDenseSparseResult this out.heap resultPtr out.denseLength sparse ∧
+      SparsePolyZp.toPoly this._p.toNat sparse = normalize result := by
+  have hlength : gcdResult.lenG ≠ 0 := fun hzero =>
+    hresultNonzero
+      ((CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_length_zero_iff
+        this gcdResult.heap resultPtr gcdResult.lenG result hresult).mp hzero)
+  rcases gcdResult.heap.readU64_of_valid resultPtr gcdResult.lenG
+      (gcdResult.lenG - 1) hresult.1 (by omega) with ⟨lead, hreadLead⟩
+  have hleadCoeff := normaliseU64_poly_last_coeff_ne_zero gcdResult.heap
+    resultPtr gcdResult.lenG this._p.toNat gcdResult.lenG result hresult.1
+    hresult.2.2.1 hresult.2.1 hresult.2.2.2 hlength
+  rcases slicePolyRep_coeff gcdResult.heap resultPtr gcdResult.lenG
+      this._p.toNat result hresult.2.2.1 (gcdResult.lenG - 1) (by omega) with
+    ⟨observed, hreadObserved, hcoeffObserved⟩
+  have hobserved : observed = lead :=
+    Except.ok.inj (hreadObserved.symm.trans hreadLead)
+  subst observed
+  have hleadPos : 0 < lead.toNat := by
+    apply Nat.pos_of_ne_zero
+    intro hzeroNat
+    apply hleadCoeff
+    rw [hcoeffObserved]
+    have hleadZero : lead = 0 := UInt64.toNat_inj.mp (by simpa using hzeroNat)
+    simp [hleadZero]
+  have hleadLt : lead.toNat < this._p.toNat :=
+    hresult.2.1 (gcdResult.lenG - 1) lead (by omega) hreadLead
+  let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this lead
+  have hinverse := dense_upoly_zp_nmod_inv_ir_correct this lead
+    (Fact.out : Nat.Prime this._p.toNat) hleadPos hleadLt
+  change inverse.toNat < this._p.toNat ∧
+    (inverse.toNat : ZMod this._p.toNat) *
+      (lead.toNat : ZMod this._p.toNat) = 1 at hinverse
+  let scale := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this inverse 1
+  have hscaleNat := nmod_mul_ir_correct_of_configured this inverse 1 hcfg
+    hinverse.1
+  have hscaleLt : scale.toNat < this._p.toNat := by
+    rw [hscaleNat]
+    exact Nat.mod_lt _ (by omega)
+  have hscaleCast : (scale.toNat : ZMod this._p.toNat) =
+      (inverse.toNat : ZMod this._p.toNat) := by
+    rw [hscaleNat]
+    simp [ZMod.natCast_mod]
+  have hinverseNonzero : (inverse.toNat : ZMod this._p.toNat) ≠ 0 := by
+    intro hzero
+    have hbad := hinverse.2
+    rw [hzero, zero_mul] at hbad
+    exact zero_ne_one hbad
+  have hscaleCastNonzero : (scale.toNat : ZMod this._p.toNat) ≠ 0 := by
+    intro hzero
+    exact hinverseNonzero (hscaleCast.symm.trans hzero)
+  have hscaleNonzero : scale ≠ 0 := by
+    intro hzero
+    apply hscaleCastNonzero
+    simp [hzero]
+  have hnatDegree :=
+    CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_natDegree_add_one
+      this gcdResult.heap resultPtr gcdResult.lenG result hresult
+      (Nat.pos_of_ne_zero hlength)
+  have hleading : result.leadingCoeff =
+      (lead.toNat : ZMod this._p.toNat) := by
+    rw [← Polynomial.coeff_natDegree]
+    rw [show result.natDegree = gcdResult.lenG - 1 by omega,
+      hcoeffObserved]
+  have hinverseEq : (inverse.toNat : ZMod this._p.toNat) =
+      (lead.toNat : ZMod this._p.toNat)⁻¹ :=
+    eq_inv_of_mul_eq_one_left hinverse.2
+  have hscaledNormalize :
+      Polynomial.C (scale.toNat : ZMod this._p.toNat) * result =
+        normalize result := by
+    rw [normalize_apply, Polynomial.coe_normUnit,
+      CommGroupWithZero.coe_normUnit _
+        (Polynomial.leadingCoeff_ne_zero.mpr hresultNonzero), hleading]
+    rw [hscaleCast, hinverseEq]
+    ac_rfl
+  rcases dense_upoly_zp_scalar_mul_raw_ir_refines this resultPtr
+      gcdResult.lenG scale gcdResult.heap result hcfg (by omega)
+      hscaleLt hresult with ⟨scaled, hrunScaled, hscaledRep⟩
+  have hscaledLength := dense_upoly_zp_scalar_mul_raw_ir_length_of_ne_zero
+    this resultPtr gcdResult.lenG scale gcdResult.heap scaled hscaleNonzero
+    hrunScaled
+  have hscaledRep' : RawDensePolyRep this scaled.heap resultPtr
+      scaled.length
+      (Polynomial.C (scale.toNat : ZMod this._p.toNat) * result) := hscaledRep
+  rcases dense_upoly_zp_to_upoly_raw_ir_result this scaled.heap resultPtr
+      scaled.length
+      (Polynomial.C (scale.toNat : ZMod this._p.toNat) * result) hscaledRep'
+      with ⟨sparse, hrunSparse, hsparse⟩
+  let out : InternalPolynomialGCDRawResult :=
+    ⟨scaled.heap, scaled.length,
+      (scaled.length - 1).toUInt64.toInt64, some sparse⟩
+  have hrunSparse' : dense_upoly_zp_to_upoly_raw_ir this scaled.heap
+      resultPtr gcdResult.lenG = .ok sparse := by
+    simpa [hscaledLength] using hrunSparse
+  have houtputSemantic : SparsePolyZp.toPoly this._p.toNat sparse =
+      Polynomial.C (scale.toNat : ZMod this._p.toNat) * result := by
+    rcases slicePolyRep_exists_unique scaled.heap resultPtr scaled.length
+        this._p.toNat hsparse.dense.1 with ⟨observed, _, hunique⟩
+    exact (hunique _ hsparse.dense.2.2.1).trans
+      (hunique _ hscaledRep'.2.2.1).symm
+  refine ⟨out, sparse, ?_, rfl, hscaledLength, hsparse,
+    houtputSemantic.trans hscaledNormalize⟩
+  simp [internalPolynomialGCDFinishRaw, hreadLead, inverse, scale,
+    hrunScaled, hscaledLength, hbound, hrunSparse', out]
+
+/-- Exact post-constructor control flow of `__polynomial_GCD`: dense GCD,
+leading-cell read, generated inverse and multiply, concrete scalar loop,
+signed degree guard, then the real reverse dense scan. -/
+def internal_polynomial_GCD_postconstruct_raw_ir (this : DenseUPolyZp)
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (lenLeft lenRight : Nat) (lcGcd : UInt64) (degreeBound : Int64)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) : RawExec InternalPolynomialGCDRawResult :=
+  match dense_upoly_zp_gcd_raw_ir this M hM resultPtr leftPtr rightPtr aBuf
+      bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 lenLeft lenRight
+      loopDecrease heap with
+  | .error fault => .error fault
+  | .ok gcdResult => internalPolynomialGCDFinishRaw this resultPtr gcdResult
+      lcGcd degreeBound
+
+/-- Composition bridge from one witnessed real dense-GCD execution through
+the complete public-monic tail. -/
+theorem internal_polynomial_GCD_postconstruct_raw_ir_monic_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (M : HgcdMat) (hM : M.Valid)
+    (resultPtr leftPtr rightPtr aBuf bBuf J Q R : RawPtr UInt64)
+    (W3 : RawPtr Word3) (W scratch : RawPtr UInt64)
+    (euclidQ euclidR : RawPtr UInt64) (euclidW3 : RawPtr Word3)
+    (lenLeft lenRight : Nat) (degreeBound : Int64)
+    (loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+      this M hM W scratch)
+    (heap : RawHeap) (gcdResult : DenseGcdRawResult)
+    (left right result : Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hrunGcd : dense_upoly_zp_gcd_raw_ir this M hM resultPtr leftPtr rightPtr
+      aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3 lenLeft lenRight
+      loopDecrease heap = .ok gcdResult)
+    (hresult : RawDensePolyRep this gcdResult.heap resultPtr gcdResult.lenG
+      result)
+    (hgcd : normalize (EuclideanDomain.gcd left right) = normalize result)
+    (hleftNonzero : left ≠ 0)
+    (hbound : ¬degreeBound < Int64.ofNat (gcdResult.lenG - 1)) :
+    ∃ out sparse,
+      internal_polynomial_GCD_postconstruct_raw_ir this M hM resultPtr
+          leftPtr rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR
+          euclidW3 lenLeft lenRight 1 degreeBound loopDecrease heap = .ok out ∧
+      out.output = some sparse ∧
+      RawDenseSparseResult this out.heap resultPtr out.denseLength sparse ∧
+      SparsePolyZp.toPoly this._p.toNat sparse =
+        normalize (EuclideanDomain.gcd left right) := by
+  have hnonzero := rawDense_gcd_result_nonzero this gcdResult.heap resultPtr
+    gcdResult.lenG left right result hleftNonzero hresult hgcd
+  rcases internalPolynomialGCDFinishRaw_monic_succeeds this resultPtr
+      gcdResult degreeBound result hcfg hp hresult hnonzero.1 hbound with
+    ⟨out, sparse, hfinish, houtput, _, hsparse, hsemantic⟩
+  exact ⟨out, sparse, by
+    simp [internal_polynomial_GCD_postconstruct_raw_ir, hrunGcd, hfinish],
+    houtput, hsparse, hsemantic.trans hgcd.symm⟩
+
 end CLPoly.Impl.StrictPolynomialGCDRefinement

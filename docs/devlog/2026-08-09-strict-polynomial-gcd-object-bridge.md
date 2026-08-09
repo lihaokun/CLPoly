@@ -107,6 +107,21 @@ the concrete loop is total for the GCD result allocation.  Its later semantic
 invariant relates each processed raw coefficient to multiplication by the
 same field element and retains the nonzero leading coefficient.
 
+For the internal `__polynomial_GCD` wrapper, execute the already-proved dense
+dispatcher first and retain its concrete output heap and logical length.  The
+nonempty input premise makes the normalized field gcd nonzero, so its raw
+length is positive and the source `lead()` read is in bounds.  Apply the exact
+generated `nmod_inv` theorem to that canonical nonzero leading residue, then
+the exact generated `nmod_mul` theorem with `Lc_gcd`.  Feed that concrete scale
+to the scalar dispatcher proved above.  At the L2 level the scale coefficient
+times the gcd leading coefficient is `Lc_gcd`; for the public wrapper this is
+one, hence the result is monic.  The source degree guard is then discharged
+from gcd divisibility and the caller's `min(deg F, deg G)` bound.  Finally run
+the reverse dense scan and use its semantic and canonicality invariants to
+obtain the same polynomial as an actual sparse output.  Each heap transition
+must frame both input allocations and all still-live workspaces; no abstract
+polynomial operation may replace any of these executions.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -141,6 +156,13 @@ same field element and retains the nonzero leading coefficient.
 - Proved loop totality, allocation preservation, coefficient semantics,
   canonical residues, and preservation of the normalized leading length for
   every canonical scalar input.
+- Added the exact post-constructor `__polynomial_GCD` control flow through raw
+  GCD, leading-cell read, generated inverse/multiply, scalar execution, signed
+  degree guard, and reverse dense scan, including the `-1`/unchanged-output
+  branch.
+- Proved the public `Lc_gcd = 1` tail is total for a nonzero normalized GCD,
+  retains its raw length, emits a canonical sparse polynomial, and denotes
+  exactly the normalized L2 Euclidean GCD.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why
@@ -157,7 +179,7 @@ boundary is required before replacing its current typeclass GCD call.
 ## 度量
 
 - 耗时：约 0.5 小时（源码控制流核对、接口设计、形式化与构建）
-- 迭代：5 轮编译—修复
+- 迭代：10 轮编译—修复
 - Lean 新增/修改行数：约 850 行
 - 对应 C++ 行数：约 55 行（两个 sparse/dense 转换及 GCD 包装）
 - 放弃的方案：直接证明当前 `SparsePolyZp.gcd` 正确；它不是 C++ dense

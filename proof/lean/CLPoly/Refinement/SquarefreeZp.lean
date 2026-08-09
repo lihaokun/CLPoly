@@ -9719,6 +9719,7 @@ theorem pairVecDivVHCOuterLoop_preserves_canonical_of_success
     (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
     (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
     (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hcovered : PairVecDivVHCStateCovered heap nodes #[] resetH)
     (hrun : pairVecDivVHCOuterLoop this degreeLimit dividendIndex heap nodes
       quotient dividend divisor resetH = .ok output) :
     SparsePolyZp.Canonical this._p.toNat output := by
@@ -9747,6 +9748,11 @@ theorem pairVecDivVHCOuterLoop_preserves_canonical_of_success
                 resetH next owners hdivisor hcfg hcanonical
                 hdividendCanonical hdivisorCanonical hquotientReady hremaining
                 hbelow hdenotes hfixed hready hownership hiteration
+            have hnextCovered :=
+              pairVecDivVHCOuterIteration_preserves_stateCovered this
+                this._p.toNat globalLimit dividendIndex heap nodes quotient
+                dividend divisor resetH frontier next hdivisor hselect
+                hcanonical hbelow hdenotes hfixed hready hcovered hiteration
             rcases hiterationInv with
               ⟨hnextCanonical, ⟨nextOwners, hnextOwnership⟩,
                 hnextRemaining, hnextBelow, hnextDenotes, hnextFixed,
@@ -9772,7 +9778,7 @@ theorem pairVecDivVHCOuterLoop_preserves_canonical_of_success
             exact ih frontier.degree hdecrease next.dividendIndex next.heap
               next.nodes next.quotient next.resetH nextOwners hnextCanonical
               hnextQuotientReady hnextRemaining hnextBelow hnextDenotes
-              hnextFixed hnextReady hnextOwnership hrecursive
+              hnextFixed hnextReady hnextOwnership hnextCovered hrecursive
 
 /-- Checked entry to the current C++ general priority-heap branch.  The source
 has already ruled out empty/single-term divisors and empty dividends. -/

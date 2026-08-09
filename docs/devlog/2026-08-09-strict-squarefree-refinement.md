@@ -630,3 +630,15 @@ every generated range-for and recursive loop used by SQF.
   不变量沿 outer loop 的严格 frontier degree 递减传播，并利用全覆盖+
   disjoint ownership 证明每个 quotient×divisor cursor 对被处理恰好一次，
   闭合卷积 trace 的 complete/no-duplicate 方向。
+- outer-loop 归纳现在强制携带组合覆盖。现有 canonical-success 定理新增
+  `PairVecDivVHCStateCovered heap nodes #[] resetH` 前提，并在每次真实
+  iteration 后调用完整覆盖定理，把返回的共同 owner/coverage witness
+  传入严格 frontier-degree 递减的递归调用。因此后续 general-division
+  refinement 无法只使用 canonical/denotes 等单向不变量而绕开 node block
+  totality。重新审计顶层接口后确认：当前文件仍没有 general
+  `pairVecDivIR_refines`，只有 single-divisor refinement、general executor、
+  canonical preservation 与单次 residual soundness；所以 heap 基础设施的
+  高完成度不能视作整个 SQF refinement 已接近闭合。下一步必须新增 cursor
+  processed-prefix 不变量，把 node coverage 提升为每个 quotient×divisor
+  product 在对应 frontier 恰好被消费一次，再建立 general division 的
+  多项式等式，之后才能连接 SQF。

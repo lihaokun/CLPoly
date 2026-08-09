@@ -192,6 +192,17 @@ Run that generated matrix multiplication and package the two exact calls as
 `hgcdRecursiveCombineMatrix`; the returned raw matrix is the L2 product already
 proved for those same calls.
 
+For the complete recursive finish block, first execute the four-call
+reconstruction pair unconditionally, because that is the first operation in
+the generated C++ tail.  Frame `R`, `S`, and the quotient across that actual
+execution.  When `computeM` is false, return the reconstructed operands and
+the incoming matrix exactly as the generated branch does.  When it is true,
+feed the actual reconstructed heap to the total quotient/matrix-combine
+workspace, execute that block, and frame both reconstructed output operands
+across its actual result.  The theorem therefore constructs every success
+equation before extracting its polynomial or matrix semantics; it assumes no
+success of the finish block or either of its children.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -213,3 +224,6 @@ proved for those same calls.
   单项、四项循环以及最终商更新后矩阵组合块的 staged 总执行。所有成功
   等式均由实际生成函数调用构造，旧的条件式语义工作空间只在调用成功后
   用于提取 L2 语义。
+- finish 增量：约 1 小时、5 轮编译—修复、Lean 约 160 行；完成真实
+  四调用重构、`computeM` 两分支和可选最终矩阵块的总执行，并在矩阵写入
+  前后显式保持重构后的 A/B 表示。

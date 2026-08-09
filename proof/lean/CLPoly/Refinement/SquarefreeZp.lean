@@ -7146,6 +7146,18 @@ theorem PairVecDivVHCHeapChainsHomogeneous.of_valuesFrom
   rcases hfrom slot head hget with ⟨sourceSlot, hsource⟩
   exact hhomogeneous sourceSlot head mono hsource hmono
 
+theorem PairVecDivVHCHeapChainsHomogeneous.congr_owners
+    (heap : Array Nat) (leftOwners rightOwners : Nat → Finset Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hleftOwnership : PairVecDivVHCHeapChainOwnership heap leftOwners nodes)
+    (hrightOwnership : PairVecDivVHCHeapChainOwnership heap rightOwners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap leftOwners nodes) :
+    PairVecDivVHCHeapChainsHomogeneous heap rightOwners nodes := by
+  intro slot head mono hget hmono
+  rw [← pairVecDivVHCHeapChainOwnership_owner_eq_at heap leftOwners
+    rightOwners nodes hleftOwnership hrightOwnership slot head hget]
+  exact hhomogeneous slot head mono hget hmono
+
 theorem pairVecDivVHCRootOwner_subset_ownedNodesAtDegree
     (degree : Nat) (heap : Array Nat) (owners : Nat → Finset Nat)
     (nodes : Array PairVecDivVHCNode) (rootMono : UMonomial)
@@ -8464,6 +8476,33 @@ theorem pairVecDivVHCActivate_preserves_heapOrdered_of_freshHead
     hpos childHead parentHead childMono parentMono hchildGet hparentGet
     hchildMono hparentMono
 
+theorem pairVecDivVHCActivate_preserves_heapChainsHomogeneous_of_fresh
+    (nodeIndex : Nat) (heap : Array Nat) (owners : Nat → Finset Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hfreshHead : ∀ slot : Nat, heap[slot]? ≠ some nodeIndex)
+    (hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+      nodeIndex ∉ owners head)
+    (hrun : pairVecDivVHCActivate nodeIndex nodes quotient divisor = .ok nodes') :
+    PairVecDivVHCHeapChainsHomogeneous heap owners nodes' := by
+  intro slot head mono hget hmono
+  have hheadNe : nodeIndex ≠ head := by
+    intro heq
+    subst head
+    exact hfreshHead slot hget
+  rw [pairVecDivVHCActivate_preserves_mono_read_ne nodeIndex nodes nodes'
+    quotient divisor hrun head hheadNe] at hmono
+  have hold := hhomogeneous slot head mono hget hmono
+  exact pairVecDivVHCChainAtDegree_congr_on (some head) (owners head) nodes
+    nodes' mono.deg hold (by
+      intro i hi
+      exact pairVecDivVHCActivate_get_ne nodeIndex nodes nodes' quotient divisor
+        hrun i (by
+          intro heq
+          subst i
+          exact hfreshOwners slot head hget hi))
+
 theorem pairVecDivVHCActivate_preserves_cursorPrefixAbove
     (degreeLimit nodeIndex : Nat) (nodes nodes' : Array PairVecDivVHCNode)
     (quotient divisor : SparsePolyZp)
@@ -9709,6 +9748,61 @@ theorem pairVecDivVHCActivateInsert_preserves_heapOrdered
   exact pairVecDivVHCInsert_preserves_heapOrdered nodeIndex heap heap' activated
     inserted (hownershipActivated.heapPointersValid heap owners activated)
     hactivatedOrdered hinsert
+
+theorem pairVecDivVHCActivateInsert_preserves_heapChainsHomogeneous
+    (nodeIndex : Nat) (heap heap' : Array Nat)
+    (nodes activated inserted : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) (oldNode : PairVecDivVHCNode)
+    (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hold : nodes[nodeIndex]? = some oldNode) (hinactive : oldNode.mono = none)
+    (hactivate : pairVecDivVHCActivate nodeIndex nodes quotient divisor =
+      .ok activated)
+    (hinsert : pairVecDivVHCInsert nodeIndex heap activated =
+      .ok (heap', inserted)) :
+    ∃ owners', PairVecDivVHCHeapChainOwnership heap' owners' inserted ∧
+      PairVecDivVHCHeapChainsHomogeneous heap' owners' inserted := by
+  have hfresh := pairVecDivVHCHeapChainOwnership_fresh_of_mono_none heap owners
+    nodes nodeIndex oldNode hownership hold hinactive
+  have hownershipActivated :
+      PairVecDivVHCHeapChainOwnership heap owners activated := by
+    refine ⟨?_, hownership.2.1, hownership.2.2⟩
+    intro slot head hget
+    have hchain := hownership.1 slot head hget
+    exact pairVecDivVHCChainOwns_congr_on (some head) (owners head) nodes
+      activated hchain (by
+        intro i hi
+        exact pairVecDivVHCActivate_get_ne nodeIndex nodes activated quotient
+          divisor hactivate i (by
+            intro heq
+            subst i
+            exact hfresh.2 slot head hget hi))
+  have hhomogeneousActivated :=
+    pairVecDivVHCActivate_preserves_heapChainsHomogeneous_of_fresh nodeIndex
+      heap owners nodes activated quotient divisor hhomogeneous hfresh.1
+      hfresh.2 hactivate
+  rcases pairVecDivVHCActivate_get nodeIndex nodes activated quotient divisor
+      hactivate with ⟨hn, hq, hd, hnewGet⟩
+  have holdEq : nodes[nodeIndex] = oldNode := by
+    rw [Array.getElem?_eq_getElem hn] at hold
+    exact Option.some.inj hold
+  have hqOld : oldNode.quotientIndex < quotient.size := by
+    simpa [holdEq] using hq
+  have hdOld : oldNode.divisorIndex < divisor.size := by
+    simpa [holdEq] using hd
+  let newRecord : PairVecDivVHCNode := { oldNode with
+    mono := some ⟨(quotient[oldNode.quotientIndex]'hqOld).1.deg +
+      (divisor[oldNode.divisorIndex]'hdOld).1.deg⟩
+    next := none }
+  have hnewGet' : activated[nodeIndex]? = some newRecord := by
+    simpa [newRecord, holdEq] using hnewGet
+  have hnewMono : newRecord.mono = some
+      ⟨(quotient[oldNode.quotientIndex]'hqOld).1.deg +
+        (divisor[oldNode.divisorIndex]'hdOld).1.deg⟩ := rfl
+  exact pairVecDivVHCInsert_preserves_heapChainsHomogeneous_of_fresh nodeIndex
+    heap heap' activated inserted owners newRecord _ hownershipActivated
+    hhomogeneousActivated hnewGet' hnewMono hfresh.1 hfresh.2 hinsert
 
 /-- Every deferred source node occurs exactly once in `lin` and is already
 active.  This is the proof state required by the literal reverse reinsertion
@@ -11311,6 +11405,66 @@ theorem pairVecDivVHCReinsertLin_preserves_heapOrdered
     simp only [Except.ok.injEq] at hrun
     subst state
     exact hordered
+termination_by lin.size
+decreasing_by
+  simp only [Array.size_pop]
+  omega
+
+theorem pairVecDivVHCReinsertLin_preserves_heapChainsHomogeneous
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (state : PairVecDivVHCHeapState) (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hseparated : ∀ (slot head : Nat), heap[slot]? = some head →
+      Disjoint lin.toList.toFinset (owners head) ∧
+        head ∉ lin.toList.toFinset)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hready : PairVecDivVHCLinReady lin nodes)
+    (hrun : pairVecDivVHCReinsertLin heap nodes lin = .ok state) :
+    ∃ owners', PairVecDivVHCHeapChainOwnership state.heap owners' state.nodes ∧
+      PairVecDivVHCHeapChainsHomogeneous state.heap owners' state.nodes := by
+  rw [pairVecDivVHCReinsertLin] at hrun
+  split at hrun
+  next hlin =>
+    dsimp only at hrun
+    cases hinsert : pairVecDivVHCInsert lin[lin.size - 1] heap nodes with
+    | error fault => simp [hinsert] at hrun
+    | ok inserted =>
+        rcases inserted with ⟨heap', nodes'⟩
+        rw [hinsert] at hrun
+        have hlastMem := pairVecDivVHCLast_mem_toFinset lin hlin
+        rcases hready.2 lin[lin.size - 1]
+            (by simpa only [List.mem_toFinset] using hlastMem) with
+          ⟨node, mono, hnode, hmono⟩
+        have hfreshHead : ∀ slot : Nat,
+            heap[slot]? ≠ some lin[lin.size - 1] := by
+          intro slot hget
+          exact (hseparated slot lin[lin.size - 1] hget).2 hlastMem
+        have hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+            lin[lin.size - 1] ∉ owners head := by
+          intro slot head hget hmem
+          exact Finset.disjoint_left.mp (hseparated slot head hget).1
+            hlastMem hmem
+        rcases pairVecDivVHCInsert_preserves_heapChainsHomogeneous_of_fresh
+            lin[lin.size - 1] heap heap' nodes nodes' owners node mono
+            hownership hhomogeneous hnode hmono hfreshHead hfreshOwners hinsert
+          with ⟨homOwners, hhomOwnership, hhomogeneous'⟩
+        have haway' := pairVecDivVHCInsert_preserves_away_of_protected
+          lin[lin.size - 1] heap heap' nodes nodes' lin.toList.toFinset
+          lin.pop.toList.toFinset owners node mono hownership hseparated
+          hlastMem (pairVecDivVHCPop_toFinset_subset lin)
+          (pairVecDivVHCLast_not_mem_pop lin hlin hready.1) hnode hmono hinsert
+        rcases haway' with ⟨nextOwners, hnextOwnership, hnextSeparated⟩
+        have hnextHomogeneous := hhomogeneous'.congr_owners heap' homOwners
+          nextOwners nodes' hhomOwnership hnextOwnership
+        have hready' := hready.pop_after_insert lin heap heap' nodes nodes'
+          hlin hinsert
+        exact pairVecDivVHCReinsertLin_preserves_heapChainsHomogeneous heap'
+          nodes' lin.pop state nextOwners hnextOwnership hnextSeparated
+          hnextHomogeneous hready' hrun
+  next hlin =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    exact ⟨owners, hownership, hhomogeneous⟩
 termination_by lin.size
 decreasing_by
   simp only [Array.size_pop]
@@ -14108,6 +14262,55 @@ theorem pairVecDivVHCActivateReset_preserves_heapChainsOwned
     simp only [Except.ok.injEq] at hrun
     subst state
     exact howned
+termination_by resetH
+decreasing_by omega
+
+theorem pairVecDivVHCActivateReset_preserves_heapChainsHomogeneous
+    (resetH quotientSize : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient divisor : SparsePolyZp)
+    (state : PairVecDivVHCHeapState) (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hready : PairVecDivVHCResetReady resetH quotientSize nodes)
+    (hrun : pairVecDivVHCActivateReset resetH heap nodes quotient divisor =
+      .ok state) :
+    ∃ owners', PairVecDivVHCHeapChainOwnership state.heap owners' state.nodes ∧
+      PairVecDivVHCHeapChainsHomogeneous state.heap owners' state.nodes := by
+  rw [pairVecDivVHCActivateReset] at hrun
+  split at hrun
+  next hreset =>
+    dsimp only at hrun
+    have hindex : resetH - 1 < resetH := by omega
+    rcases hready.2 (resetH - 1) hindex with
+      ⟨oldNode, holdGet, hqIndex, hdIndex, hinactive⟩
+    cases hactivate : pairVecDivVHCActivate (resetH - 1) nodes quotient
+        divisor with
+    | error fault => simp [hactivate] at hrun
+    | ok activated =>
+        simp only [hactivate] at hrun
+        cases hinsert : pairVecDivVHCInsert (resetH - 1) heap activated with
+        | error fault => simp [hinsert] at hrun
+        | ok inserted =>
+            rcases inserted with ⟨heap', nodes'⟩
+            simp only [hinsert] at hrun
+            rcases pairVecDivVHCActivateInsert_preserves_heapChainsHomogeneous
+                (resetH - 1) heap heap' nodes activated nodes' quotient divisor
+                oldNode owners hownership hhomogeneous holdGet hinactive
+                hactivate hinsert with
+              ⟨owners', hownership', hhomogeneous'⟩
+            have hready' := pairVecDivVHCActivate_shrinks_resetReady resetH
+              (resetH - 1) quotientSize (resetH - 1) nodes activated quotient
+              divisor hready (by omega) (Nat.le_refl _) hactivate
+            have hready'' := pairVecDivVHCInsert_preserves_resetReady
+              (resetH - 1) quotientSize (resetH - 1) heap heap' activated
+              nodes' hready' (Nat.le_refl _) hinsert
+            exact pairVecDivVHCActivateReset_preserves_heapChainsHomogeneous
+              (resetH - 1) quotientSize heap' nodes' quotient divisor state
+              owners' hownership' hhomogeneous' hready'' hrun
+  next hreset =>
+    simp only [Except.ok.injEq] at hrun
+    subst state
+    exact ⟨owners, hownership, hhomogeneous⟩
 termination_by resetH
 decreasing_by omega
 

@@ -1211,3 +1211,15 @@ every generated range-for and recursive loop used by SQF.
   checked `VHC_mono` 与实际节点读取相等推出，equal 分支的次数相等
   直接来自源码分支条件。下一步沿 `ActivateReset` 和 reverse `lin`
   递归携带该定理，形成 outer iteration 的新 owner+homogeneous 对。
+- homogeneous ownership 已穿过 activation 与 reverse reinsertion。
+  `pairVecDivVHCActivate_preserves_heapChainsHomogeneous_of_fresh` 证明 inactive
+  reset 节点的真实 monomial 写入对所有现有 owner chain 不可见；
+  `pairVecDivVHCActivateInsert_preserves_heapChainsHomogeneous` 将其接到完整
+  insertion，`pairVecDivVHCActivateReset_preserves_heapChainsHomogeneous`
+  再沿 `resetH` 良基递归返回每步更新后的精确 owner map。
+  对 reverse `lin`，`PairVecDivVHCHeapChainsHomogeneous.congr_owners` 利用
+  `ChainOwns` 的 owner 唯一性，证明不同辅助定理产生的 owner 函数在实际
+  heap head 上一致；`pairVecDivVHCReinsertLin_preserves_heapChainsHomogeneous`
+  因而能沿 `lin.size` 良基递归同时传递 ownership 与 homogeneous。
+  下一步将 consume、emit activation 与 reinsertion 的 homogeneous 结果
+  合成 outer iteration，并进入全局 outer-loop 系数归纳。

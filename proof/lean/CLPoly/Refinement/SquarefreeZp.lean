@@ -4526,6 +4526,93 @@ def PairVecDivVHCLinReady (lin : Array Nat)
     ∀ nodeIndex ∈ lin.toList,
       ∃ node mono, nodes[nodeIndex]? = some node ∧ node.mono = some mono
 
+theorem PairVecDivVHCLinReady.set_outside
+    (lin : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (nodeIndex : Nat) (updated : PairVecDivVHCNode)
+    (hn : nodeIndex < nodes.size)
+    (houtside : nodeIndex ∉ lin.toList)
+    (hready : PairVecDivVHCLinReady lin nodes) :
+    PairVecDivVHCLinReady lin (nodes.set nodeIndex updated) := by
+  refine ⟨hready.1, ?_⟩
+  intro i hmem
+  rcases hready.2 i hmem with ⟨node, mono, hnode, hmono⟩
+  refine ⟨node, mono, ?_, hmono⟩
+  rw [Array.getElem?_set_ne hn (by
+    intro heq
+    subst i
+    exact houtside hmem)]
+  exact hnode
+
+theorem PairVecDivVHCLinReady.push_set
+    (lin : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (nodeIndex : Nat) (updated : PairVecDivVHCNode) (mono : UMonomial)
+    (hn : nodeIndex < nodes.size)
+    (houtside : nodeIndex ∉ lin.toList)
+    (hready : PairVecDivVHCLinReady lin nodes)
+    (hmono : updated.mono = some mono) :
+    PairVecDivVHCLinReady (lin.push nodeIndex)
+      (nodes.set nodeIndex updated) := by
+  refine ⟨?_, ?_⟩
+  · simp only [Array.toList_push, List.nodup_append, hready.1,
+      List.nodup_singleton, true_and, List.mem_singleton]
+    intro a ha b hb
+    subst b
+    intro heq
+    subst a
+    exact houtside ha
+  · intro i hmem
+    simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hmem
+    rcases hmem with hmem | rfl
+    · rcases hready.2 i hmem with ⟨node, oldMono, hnode, holdMono⟩
+      refine ⟨node, oldMono, ?_, holdMono⟩
+      rw [Array.getElem?_set_ne hn (by
+        intro heq
+        subst i
+        exact houtside hmem)]
+      exact hnode
+    · exact ⟨updated, mono, Array.getElem?_set_self hn, hmono⟩
+
+theorem pairVecDivVHCConsumeNode_preserves_linReady
+    (this : DenseUPolyZp) (nodeIndex : Nat) (currentMono : UMonomial)
+    (k k' : UInt64) (nodes nodes' : Array PairVecDivVHCNode)
+    (lin lin' : Array Nat) (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hn : nodeIndex < nodes.size)
+    (hactive : nodes[nodeIndex].mono = some currentMono)
+    (houtside : nodeIndex ∉ lin.toList)
+    (hready : PairVecDivVHCLinReady lin nodes)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    PairVecDivVHCLinReady lin' nodes' ∧
+      lin'.toList.toFinset ⊆ insert nodeIndex lin.toList.toFinset := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  simp only [hn, ↓reduceDIte] at hrun
+  split at hrun <;> try contradiction
+  next hq =>
+    split at hrun <;> try contradiction
+    next hd =>
+      split at hrun
+      next hadvance =>
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+        refine ⟨PairVecDivVHCLinReady.push_set lin nodes nodeIndex _ _ hn
+          houtside hready rfl, ?_⟩
+        intro i hmem
+        simp only [Array.toList_push, List.mem_toFinset, List.mem_append,
+          List.mem_singleton, Finset.mem_insert] at hmem ⊢
+        exact hmem.symm
+      next hadvance =>
+        split at hrun <;> try contradiction
+        next hexhausted =>
+          split at hrun <;> try contradiction
+          next horder =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            refine ⟨PairVecDivVHCLinReady.set_outside lin nodes nodeIndex _
+              hn houtside hready, ?_⟩
+            intro i hmem
+            exact Finset.mem_insert_of_mem hmem
+
 theorem pairVecDivVHCLast_mem_toFinset (lin : Array Nat)
     (hlin : 0 < lin.size) :
     lin[lin.size - 1] ∈ lin.toList.toFinset := by

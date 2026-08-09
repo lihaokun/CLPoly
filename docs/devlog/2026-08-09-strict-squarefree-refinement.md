@@ -364,3 +364,9 @@ every generated range-for and recursive loop used by SQF.
   完整 existential heap-chain ownership；未使用执行步数参数、规格结果
   或替代算法。下一步把 equal-degree 消费产生的 `lin`/heap 状态直接
   证明满足 `Away + LinReady`，从而接通 outer iteration。
+- equal-degree 输出不变量的第一层现已闭合到真实单节点消费：若当前
+  chain 节点尚未进入 `lin`，`pairVecDivVHCConsumeNode` 的 advance 分支
+  对真实 `nodes.set` 与 `lin.push` 同时保持 `LinReady`，exhausted 分支
+  则证明 `lin` 中既有活动节点不受该写入影响；两分支还给出输出
+  `lin` 集合只可能增加当前节点的精确上界。下一步沿 exact chain owner
+  的良基消费归纳提升到整个 root bucket。

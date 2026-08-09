@@ -895,6 +895,34 @@ decreasing_by
   have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
   omega
 
+theorem pairVecDivVHCBubble_stop_get
+    (i stop newNode : Nat) (heap heap' : Array Nat)
+    (hrun : pairVecDivVHCBubble i stop newNode heap = .ok heap') :
+    heap'[stop]? = some newNode := by
+  rw [pairVecDivVHCBubble] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hstop =>
+      split at hrun
+      next heq =>
+        subst i
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        exact Array.getElem?_set_self hi
+      next heq =>
+        dsimp only at hrun
+        split at hrun <;> try contradiction
+        next hp =>
+          exact pairVecDivVHCBubble_stop_get (pairVecDivVHCParent i) stop
+            newNode (heap.set i heap[pairVecDivVHCParent i]) heap' hrun
+termination_by i
+decreasing_by
+  have hipos : 0 < i := by omega
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
 /-- The source search
 `for (i1 = (heap_size-1)>>1; comp(new, heap[i1]); i1=(i1-1)>>1)`.
 The root comparison performed by the caller makes reaching `i1 = 0` with a
@@ -7965,6 +7993,34 @@ theorem pairVecDivVHCInsert_nodes_result
                                     exact ⟨none, hset⟩
                     · simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
                         hgreater, hanchor, ha] at hrun
+
+theorem pairVecDivVHCInsert_root_of_greater
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode)
+    (newMono rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hgreater : rootMono.deg < newMono.deg)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    heap'[0]? = some newNode := by
+  have hempty : heap.size ≠ 0 := Nat.ne_of_gt hheap
+  have hequal : newMono.deg ≠ rootMono.deg := by omega
+  unfold pairVecDivVHCInsert at hrun
+  simp only [hnew, hempty, ↓reduceDIte, hroot, hequal, hgreater] at hrun
+  cases hset : pairVecDivVHCSetNext newNode none nodes with
+  | error fault => simp [hset] at hrun
+  | ok updated =>
+      rw [hset] at hrun
+      cases hbubble : pairVecDivVHCBubble heap.size 0 newNode
+          (heap.push newNode) with
+      | error fault => simp [hbubble] at hrun
+      | ok shifted =>
+          rw [hbubble] at hrun
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl⟩
+          exact pairVecDivVHCBubble_stop_get heap.size 0 newNode
+            (heap.push newNode) shifted hbubble
 
 theorem pairVecDivVHCSetNext_get_ne
     (nodeIndex : Nat) (next : Option Nat)

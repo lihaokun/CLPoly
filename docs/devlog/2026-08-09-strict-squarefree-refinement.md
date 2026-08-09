@@ -1088,3 +1088,10 @@ every generated range-for and recursive loop used by SQF.
   `nodes_result` 分解，将这个事实应用到完整 insertion 返回节点数组。
   这样剩余 heap-order 证明只需验证 `Bubble`/`BubbleBelow` 对 heap 槽位
   的父子次数关系，不再把节点链指针副作用混入数组排列证明。
+- root-bubble 的终点语义已从真实递归执行中提取。
+  `pairVecDivVHCBubble_stop_get` 对 generated pointer-copying recursion 作
+  与源码相同的良基递归证明：成功返回时 `stop` 槽必精确包含待插入
+  node。`pairVecDivVHCInsert_root_of_greater` 随后展开 insertion 的
+  `newDegree > rootDegree` 分支、真实 `set_next` 与 `Bubble` 调用，证明
+  返回 heap 的根确为新 node。这为 new-root 分支的 max-heap 证明固定
+  了根键；下一步需证明沿祖先路径下移的旧节点保持所有局部父子边。

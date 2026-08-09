@@ -35,6 +35,13 @@ so induction on `remaining` proves the scan cannot fault.  The returned array
 is produced solely by those reads and pushes; its polynomial and canonical
 properties are proved in the following refinement stage.
 
+For semantic refinement, strengthen the scan induction over an arbitrary
+already-produced high-degree accumulator.  A represented prefix of length
+`n+1` is its length-`n` prefix plus the monomial read at index `n`.  The zero
+branch drops a zero monomial; the nonzero branch uses `Array.push` and
+`listSum_append` to add that exact monomial.  Thus the final sparse `toPoly`
+equals the complete raw `SlicePolyRep`, with no reconstruction oracle.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -42,6 +49,8 @@ properties are proved in the following refinement stage.
   conversion loops.
 - Added the exact reverse dense-to-sparse scan and its total raw execution
   theorem.
+- Proved the scan's accumulator invariant and end-to-end `toPoly` equality
+  with the normalized raw input polynomial.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why

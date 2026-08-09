@@ -7,6 +7,7 @@ namespace CLPoly.Impl.StrictPolynomialGCDRefinement
 
 open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Impl.StrictDivremRefinement
+open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Math
 
 /-- Exact raw lowering of the reverse coefficient scan in
@@ -54,6 +55,71 @@ theorem dense_upoly_zp_to_upoly_raw_ir_succeeds (this : DenseUPolyZp)
     (hvalid : heap.ValidU64Slice ptr length) :
     ∃ result, dense_upoly_zp_to_upoly_raw_ir this heap ptr length = .ok result :=
   denseToSparseLoop_succeeds this heap ptr length length #[] hvalid le_rfl
+
+theorem sparseToPoly_push_raw (p : UInt64) (output : SparsePolyZp)
+    (degree : Nat) (value : UInt64) :
+    SparsePolyZp.toPoly p.toNat
+        (output.push (⟨degree⟩, ⟨value, p⟩)) =
+      SparsePolyZp.toPoly p.toNat output +
+        Polynomial.monomial degree (value.toNat : ZMod p.toNat) := by
+  simp [SparsePolyZp.toPoly, Array.toList_push, listSum_append, listSum,
+    Zp.toZMod, add_comm]
+
+/-- Semantic invariant of the reverse scan: scanning a represented low
+prefix appends exactly that prefix polynomial after the already accumulated
+higher sparse terms. -/
+theorem denseToSparseLoop_refines (this : DenseUPolyZp) (heap : RawHeap)
+    (ptr : RawPtr UInt64) (remaining : Nat) (output : SparsePolyZp)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hvalid : heap.ValidU64Slice ptr remaining)
+    (hrep : SlicePolyRep heap ptr remaining this._p.toNat poly) :
+    ∃ result,
+      denseToSparseLoop this heap ptr remaining output = .ok result ∧
+      SparsePolyZp.toPoly this._p.toNat result =
+        SparsePolyZp.toPoly this._p.toNat output + poly := by
+  induction remaining generalizing output poly with
+  | zero =>
+      have hpoly : poly = 0 :=
+        slicePolyRep_zero_length heap ptr this._p.toNat poly hrep
+      subst poly
+      exact ⟨output, rfl, by simp⟩
+  | succ remaining ih =>
+      have hvalidPrefix : heap.ValidU64Slice ptr remaining :=
+        heap.validU64Slice_mono ptr (remaining + 1) remaining hvalid (by omega)
+      rcases slicePolyRep_exists_unique heap ptr remaining this._p.toNat
+          hvalidPrefix with ⟨prefixPoly, hprefix, _⟩
+      rcases heap.readU64_of_valid ptr (remaining + 1) remaining hvalid
+          (by omega) with ⟨value, hread⟩
+      have hpolyStep := slicePolyRep_succ_eq_add_monomial heap ptr remaining
+        this._p.toNat value prefixPoly poly hprefix hrep hread
+      by_cases hzero : value = 0
+      · subst value
+        rcases ih output prefixPoly hvalidPrefix hprefix with
+          ⟨result, hrun, hsem⟩
+        refine ⟨result, ?_, ?_⟩
+        · simp [denseToSparseLoop, hread, hrun]
+        · rw [hsem, hpolyStep]
+          simp
+      · let output' := output.push (⟨remaining⟩, ⟨value, this._p⟩)
+        rcases ih output' prefixPoly hvalidPrefix hprefix with
+          ⟨result, hrun, hsem⟩
+        refine ⟨result, ?_, ?_⟩
+        · simp [denseToSparseLoop, hread, hzero, output', hrun]
+        · rw [hsem, sparseToPoly_push_raw, hpolyStep]
+          ac_rfl
+
+/-- The exact dense-to-sparse execution denotes the same polynomial as its
+normalized raw input buffer. -/
+theorem dense_upoly_zp_to_upoly_raw_ir_refines (this : DenseUPolyZp)
+    (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (poly : Polynomial (ZMod this._p.toNat))
+    (hrep : RawDensePolyRep this heap ptr length poly) :
+    ∃ result,
+      dense_upoly_zp_to_upoly_raw_ir this heap ptr length = .ok result ∧
+      SparsePolyZp.toPoly this._p.toNat result = poly := by
+  rcases denseToSparseLoop_refines this heap ptr length #[] poly hrep.1
+      hrep.2.2.1 with ⟨result, hrun, hsem⟩
+  exact ⟨result, hrun, by simpa using hsem⟩
 
 /-- A canonical sparse C++ polynomial and the normalized raw dense buffer
 created from it denote exactly the same mathematical polynomial.  This is a

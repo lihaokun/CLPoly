@@ -464,6 +464,8 @@ def main() -> None:
         "denseToSparseLoop",
         "dense_upoly_zp_to_upoly_raw_ir",
         "dense_upoly_zp_to_upoly_raw_ir_succeeds",
+        "denseToSparseLoop_refines",
+        "dense_upoly_zp_to_upoly_raw_ir_refines",
         "GcdHgcdRawResult",
         "HgcdGcdLoopLengthDecreases",
         "gcdHgcdLoop",

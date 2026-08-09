@@ -141,7 +141,13 @@ every generated range-for and recursive loop used by SQF.
   激活的未初始化 `mono` 明确表示为 `none`；节点分配循环及其精确
   长度/列表定理已经闭合。`reset_h` 的单节点激活也已实现为 checked
   raw→safe 步骤，并证明只写目标节点、保持节点数组长度。下一检查点
-  是完全对应源代码的 `VHC_insert`/`VHC_extract` 和 `next` 等次数桶。
+  中，`VHC_insert`/`VHC_extract` 已进一步形成可编译的 checked 执行：
+  插入保留空 heap、root 等次桶、新最大 root、内部 anchor 等次桶与
+  普通上浮五条分支；extract 保留末槽 sentinel、左右 child 比较、
+  下沉复制和最终逻辑 pop。父节点搜索、两种上浮与下沉均有严格下降
+  的 Nat 度量。heap pointer、max-order、等次 `next` 链及节点乘积含义
+  的组合不变式已经显式定义；下一步证明 insert/extract 保持这些
+  不变式，再接 inner bucket consumption。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

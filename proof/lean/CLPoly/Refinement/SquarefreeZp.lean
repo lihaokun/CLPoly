@@ -768,6 +768,282 @@ theorem pairVecDivVHCActivate_get (nodeIndex : Nat)
     next hq => contradiction
   next hn => contradiction
 
+/-- Checked write of the source `VHC::next` pointer field. -/
+def pairVecDivVHCSetNext (nodeIndex : Nat) (next : Option Nat)
+    (nodes : Array PairVecDivVHCNode) :
+    RawExec (Array PairVecDivVHCNode) :=
+  if hn : nodeIndex < nodes.size then
+    .ok (nodes.set nodeIndex { nodes[nodeIndex] with next := next })
+  else
+    .error .assertionFailure
+
+/-- Checked active monomial read.  A `none` monomial is exactly an attempted
+read of a source node before its first `reset_h` activation. -/
+def pairVecDivVHCMono (nodeIndex : Nat)
+    (nodes : Array PairVecDivVHCNode) : RawExec UMonomial :=
+  if hn : nodeIndex < nodes.size then
+    match nodes[nodeIndex].mono with
+    | some mono => .ok mono
+    | none => .error .assertionFailure
+  else
+    .error .assertionFailure
+
+/-- Source parent-slot calculation `(i - 1) >> 1`. -/
+def pairVecDivVHCParent (i : Nat) : Nat := (i - 1) / 2
+
+/-- The pointer-copying `for` body shared by the two non-bucket insertion
+branches.  `stop` is the source slot `0` or `i1`; the newly appended final
+slot makes every write valid. -/
+def pairVecDivVHCBubble (i stop newNode : Nat) (heap : Array Nat) :
+    RawExec (Array Nat) :=
+  if hi : i < heap.size then
+    if hstop : stop ≤ i then
+      if heq : i = stop then
+        .ok (heap.set i newNode)
+      else
+        let parent := pairVecDivVHCParent i
+        if hp : parent < heap.size then
+          pairVecDivVHCBubble parent stop newNode
+            (heap.set i heap[parent])
+        else
+          .error .assertionFailure
+    else
+      .error .assertionFailure
+  else
+    .error .assertionFailure
+termination_by i
+decreasing_by
+  have hipos : 0 < i := by omega
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem pairVecDivVHCBubble_size (i stop newNode : Nat)
+    (heap heap' : Array Nat)
+    (hrun : pairVecDivVHCBubble i stop newNode heap = .ok heap') :
+    heap'.size = heap.size := by
+  rw [pairVecDivVHCBubble] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hstop =>
+      split at hrun
+      next heq =>
+        simp only [Except.ok.injEq] at hrun
+        subst heap'
+        simp
+      next heq =>
+        dsimp only at hrun
+        split at hrun <;> try contradiction
+        next hp =>
+          have hrec := pairVecDivVHCBubble_size
+            (pairVecDivVHCParent i) stop newNode
+            (heap.set i heap[pairVecDivVHCParent i]) heap' hrun
+          simpa using hrec
+termination_by i
+decreasing_by
+  have hipos : 0 < i := by omega
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+/-- The source search
+`for (i1 = (heap_size-1)>>1; comp(new, heap[i1]); i1=(i1-1)>>1)`.
+The root comparison performed by the caller makes reaching `i1 = 0` with a
+strict comparison an invariant failure rather than unsigned wraparound. -/
+def pairVecDivVHCFindAnchor (newDegree i : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : RawExec Nat :=
+  if hi : i < heap.size then
+    match pairVecDivVHCMono heap[i] nodes with
+    | .error fault => .error fault
+    | .ok mono =>
+        if newDegree > mono.deg then
+          if hzero : i = 0 then
+            .error .assertionFailure
+          else
+            pairVecDivVHCFindAnchor newDegree (pairVecDivVHCParent i)
+              heap nodes
+        else
+          .ok i
+  else
+    .error .assertionFailure
+termination_by i
+decreasing_by
+  have hipos : 0 < i := Nat.pos_of_ne_zero hzero
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+/-- Internal insertion shift.  Unlike root insertion, the source stops when
+the *parent* is `anchor`, then writes the new node into the current child. -/
+def pairVecDivVHCBubbleBelow (i anchor newNode : Nat)
+    (heap : Array Nat) : RawExec (Array Nat) :=
+  if hi : i < heap.size then
+    if hpos : 0 < i then
+      let parent := pairVecDivVHCParent i
+      if heq : parent = anchor then
+        .ok (heap.set i newNode)
+      else if hp : parent < heap.size then
+        pairVecDivVHCBubbleBelow parent anchor newNode
+          (heap.set i heap[parent])
+      else
+        .error .assertionFailure
+    else
+      .error .assertionFailure
+  else
+    .error .assertionFailure
+termination_by i
+decreasing_by
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+/-- Exact checked execution of current C++ `VHC_insert`.  Heap cells contain
+indices into the separately allocated node array; equal-degree entries are
+linked through `next`, exactly as in the source. -/
+def pairVecDivVHCInsert (newNode : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) :
+    RawExec (Array Nat × Array PairVecDivVHCNode) := do
+  let newMono ← pairVecDivVHCMono newNode nodes
+  if hempty : heap.size = 0 then
+    let nodes' ← pairVecDivVHCSetNext newNode none nodes
+    .ok (#[newNode], nodes')
+  else
+    let rootNode := heap[0]'(Nat.pos_of_ne_zero hempty)
+    let rootMono ← pairVecDivVHCMono rootNode nodes
+    if hequal : newMono.deg = rootMono.deg then
+      let nodes' ← pairVecDivVHCSetNext newNode (some rootNode) nodes
+      .ok (heap.set 0 newNode, nodes')
+    else if hgreater : newMono.deg > rootMono.deg then
+      let nodes' ← pairVecDivVHCSetNext newNode none nodes
+      let heap' ← pairVecDivVHCBubble heap.size 0 newNode
+        (heap.push newNode)
+      .ok (heap', nodes')
+    else
+      let firstAnchor := pairVecDivVHCParent heap.size
+      let anchor ← pairVecDivVHCFindAnchor newMono.deg firstAnchor heap nodes
+      if ha : anchor < heap.size then
+        let anchorNode := heap[anchor]
+        let anchorMono ← pairVecDivVHCMono anchorNode nodes
+        if hequalAnchor : newMono.deg = anchorMono.deg then
+          let nodes' ← pairVecDivVHCSetNext newNode (some anchorNode) nodes
+          .ok (heap.set anchor newNode, nodes')
+        else
+          let nodes' ← pairVecDivVHCSetNext newNode none nodes
+          let heap' ← pairVecDivVHCBubbleBelow heap.size anchor newNode
+            (heap.push newNode)
+          .ok (heap', nodes')
+      else
+        .error .assertionFailure
+
+/-- Downward pointer-copy loop of `VHC_extract`.  `limit` is the decremented
+source `heap_size` (`s`), and `lastNode = heap[s]` remains readable as the
+sentinel until the loop finishes. -/
+def pairVecDivVHCSiftDown (i child limit lastNode : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) :
+    RawExec (Array Nat) :=
+  if hi : i < heap.size then
+    if hlimit : limit < heap.size then
+      if hchild : child < limit then
+        have hright : child + 1 < heap.size := by omega
+        let leftNode := heap[child]
+        let rightNode := heap[child + 1]
+        match pairVecDivVHCMono leftNode nodes,
+            pairVecDivVHCMono rightNode nodes,
+            pairVecDivVHCMono lastNode nodes with
+        | .ok leftMono, .ok rightMono, .ok lastMono =>
+            let selected := if leftMono.deg > rightMono.deg then
+              child else child + 1
+            have hselected : selected < heap.size := by
+              dsimp only [selected]
+              split <;> omega
+            let selectedNode := heap[selected]
+            let selectedMono := if leftMono.deg > rightMono.deg then
+              leftMono else rightMono
+            if hgreater : selectedMono.deg > lastMono.deg then
+              pairVecDivVHCSiftDown selected (selected * 2 + 1) limit
+                lastNode (heap.set i selectedNode) nodes
+            else
+              .ok (heap.set i lastNode)
+        | .error fault, _, _ => .error fault
+        | _, .error fault, _ => .error fault
+        | _, _, .error fault => .error fault
+      else
+        .ok (heap.set i lastNode)
+    else
+      .error .assertionFailure
+  else
+    .error .assertionFailure
+termination_by limit - child
+decreasing_by
+  have hselected : child ≤ selected := by
+    simp only [selected]
+    split <;> omega
+  omega
+
+/-- Exact checked execution of current C++ `VHC_extract`.  The returned array
+is the active prefix after `--heap_size`; storage beyond that logical size is
+unobservable and is removed with `pop`. -/
+def pairVecDivVHCExtract (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : RawExec (Array Nat) :=
+  if hnonempty : 0 < heap.size then
+    let limit := heap.size - 1
+    let lastNode := heap[limit]
+    match pairVecDivVHCSiftDown 0 1 limit lastNode heap nodes with
+    | .ok shifted => .ok shifted.pop
+    | .error fault => .error fault
+  else
+    .error .assertionFailure
+
+/-- Every active heap node denotes the concrete product cell addressed by its
+two source pointer fields. -/
+def PairVecDivVHCNodeDenotes (quotient divisor : SparsePolyZp)
+    (node : PairVecDivVHCNode) : Prop :=
+  ∃ quotientTerm divisorTerm,
+    quotient[node.quotientIndex]? = some quotientTerm ∧
+    divisor[node.divisorIndex]? = some divisorTerm ∧
+    node.mono = some ⟨quotientTerm.1.deg + divisorTerm.1.deg⟩
+
+/-- All active heap slots are valid initialized node pointers. -/
+def PairVecDivVHCHeapPointersValid (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ slot : Nat, slot < heap.size →
+    ∃ nodeIndex node mono,
+      heap[slot]? = some nodeIndex ∧ nodes[nodeIndex]? = some node ∧
+      node.mono = some mono
+
+/-- Binary max-heap order used by the source comparator. -/
+def PairVecDivVHCHeapOrdered (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ child parent : Nat, child < heap.size →
+    parent = pairVecDivVHCParent child → 0 < child →
+    ∀ childNode parentNode childMono parentMono,
+        heap[child]? = some childNode →
+        heap[parent]? = some parentNode →
+        (nodes[childNode]?.map PairVecDivVHCNode.mono).join =
+          some childMono →
+        (nodes[parentNode]?.map PairVecDivVHCNode.mono).join =
+          some parentMono →
+        childMono.deg ≤ parentMono.deg
+
+/-- A `next` edge is a valid equal-monomial bucket link. -/
+def PairVecDivVHCNextValid (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ (i : Nat) (node : PairVecDivVHCNode) (next : Nat),
+    nodes[i]? = some node → node.next = some next →
+    ∃ nextNode, nodes[next]? = some nextNode ∧ node.mono = nextNode.mono
+
+/-- Main representation invariant for the source general-division heap. -/
+def PairVecDivVHCInvariant (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) : Prop :=
+  nodes.size = divisor.size - 1 ∧
+    PairVecDivVHCHeapPointersValid heap nodes ∧
+    PairVecDivVHCHeapOrdered heap nodes ∧
+    PairVecDivVHCNextValid nodes ∧
+    (∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+      PairVecDivVHCNodeDenotes quotient divisor node)
+
 /-- Exact source-order range-for loop of `__extract_pth_root`. -/
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=
   (UMonomial.mk ((term.1.deg.toUInt64 / prime).toInt64), term.2)

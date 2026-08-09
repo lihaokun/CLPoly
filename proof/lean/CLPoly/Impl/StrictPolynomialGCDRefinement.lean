@@ -11,6 +11,141 @@ open CLPoly.Impl.RawPolynomialRep
 open CLPoly.Math
 open Generated.StrictMul
 
+/-- One concrete raw coefficient write into a zero coefficient adds exactly
+the corresponding L2 monomial. -/
+theorem slicePolyRep_write_add_monomial (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (length p degree : Nat) (value : UInt64)
+    (poly : Polynomial (ZMod p))
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : degree < length)
+    (hrep : SlicePolyRep heap ptr length p poly)
+    (hzero : poly.coeff degree = 0)
+    (hwrite : heap.writeU64 ptr degree value = .ok heap') :
+    SlicePolyRep heap' ptr length p
+      (poly + Polynomial.monomial degree (value.toNat : ZMod p)) := by
+  have hvalid' : heap'.ValidU64Slice ptr length :=
+    (RawHeap.writeU64_preserves_valid heap heap' ptr degree value hwrite
+      ptr length).mp hvalid
+  rcases slicePolyRep_exists_unique heap' ptr length p hvalid' with
+    ⟨resultPoly, hresultRep, hunique⟩
+  have heq : poly + Polynomial.monomial degree
+      (value.toNat : ZMod p) = resultPoly := by
+    ext observedDegree
+    by_cases hobserved : observedDegree < length
+    · rcases slicePolyRep_coeff heap ptr length p poly hrep observedDegree
+          hobserved with ⟨old, hreadOld, hcoeffOld⟩
+      rcases slicePolyRep_coeff heap' ptr length p resultPoly hresultRep
+          observedDegree hobserved with ⟨observed, hreadObserved, hcoeffObserved⟩
+      by_cases heqDegree : observedDegree = degree
+      · subst observedDegree
+        have hreadNow := RawHeap.readU64_writeU64_same heap heap' ptr degree
+          value hwrite
+        have hvalue : observed = value :=
+          Except.ok.inj (hreadObserved.symm.trans hreadNow)
+        subst observed
+        rw [Polynomial.coeff_add, hzero, Polynomial.coeff_monomial]
+        simp [hcoeffObserved]
+      · have hreadStill := RawHeap.readU64_writeU64_ne heap heap' ptr ptr
+          degree observedDegree value old hwrite hreadOld
+          (Or.inr (by omega))
+        have hvalue : observed = old :=
+          Except.ok.inj (hreadObserved.symm.trans hreadStill)
+        subst observed
+        rw [Polynomial.coeff_add, hcoeffOld, hcoeffObserved,
+          Polynomial.coeff_monomial]
+        simp [show degree ≠ observedDegree by omega]
+    · rw [Polynomial.coeff_add,
+        slicePolyRep_coeff_zero_of_length_le heap ptr length p poly hrep
+          observedDegree (by omega),
+        slicePolyRep_coeff_zero_of_length_le heap' ptr length p resultPoly
+          hresultRep observedDegree (by omega)]
+      simp [Polynomial.coeff_monomial,
+        show degree ≠ observedDegree by omega]
+  rw [heq]
+  exact hresultRep
+
+theorem canonicalU64Prefix_write (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (length degree : Nat) (value modulus : UInt64)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hcanonical : CanonicalU64Prefix heap ptr length modulus)
+    (hvalue : value.toNat < modulus.toNat)
+    (hwrite : heap.writeU64 ptr degree value = .ok heap') :
+    CanonicalU64Prefix heap' ptr length modulus := by
+  intro index observed hindex hreadObserved
+  by_cases heq : index = degree
+  · subst index
+    have hreadNow := RawHeap.readU64_writeU64_same heap heap' ptr degree
+      value hwrite
+    have hobserved : observed = value :=
+      Except.ok.inj (hreadObserved.symm.trans hreadNow)
+    simpa [hobserved] using hvalue
+  · rcases heap.readU64_of_valid ptr length index hvalid hindex with
+      ⟨old, hreadOld⟩
+    have hreadStill := RawHeap.readU64_writeU64_ne heap heap' ptr ptr degree
+      index value old hwrite hreadOld (Or.inr (by omega))
+    have hobserved : observed = old :=
+      Except.ok.inj (hreadObserved.symm.trans hreadStill)
+    subst observed
+    exact hcanonical index old hindex hreadOld
+
+/-- L2 polynomial denoted by the sparse terms already consumed by the source
+forward iterator. -/
+noncomputable def sparsePrefixPoly (p : Nat) (sparse : SparsePolyZp)
+    (index : Nat) : Polynomial (ZMod p) :=
+  SparsePolyZp.toPoly p (sparse.extract 0 index)
+
+/-- Extending the consumed sparse prefix by its next actual array element
+adds exactly that element's monomial. -/
+theorem sparsePrefixPoly_succ (p : Nat) (sparse : SparsePolyZp)
+    (index : Nat) (hindex : index < sparse.size) :
+    sparsePrefixPoly p sparse (index + 1) =
+      sparsePrefixPoly p sparse index +
+        Polynomial.monomial sparse[index].1.deg
+          (Zp.toZMod p sparse[index].2) := by
+  simp [sparsePrefixPoly, SparsePolyZp.toPoly, Array.toList_extract,
+    List.extract, List.take_add_one, hindex, listSum_append, listSum]
+
+theorem sparsePrefixPoly_size (p : Nat) (sparse : SparsePolyZp) :
+    sparsePrefixPoly p sparse sparse.size = SparsePolyZp.toPoly p sparse := by
+  simp [sparsePrefixPoly]
+
+theorem listSum_coeff_zero_of_all_gt (p degree : Nat)
+    (terms : List (UMonomial × Zp))
+    (hgreater : ∀ term ∈ terms, degree < term.1.deg) :
+    (listSum p terms).coeff degree = 0 := by
+  induction terms with
+  | nil => simp [listSum]
+  | cons term rest ih =>
+      have hterm := hgreater term List.mem_cons_self
+      have hrest : ∀ item ∈ rest, degree < item.1.deg := by
+        intro item hitem
+        exact hgreater item (List.mem_cons_of_mem term hitem)
+      rw [listSum_cons, Polynomial.coeff_add, Polynomial.coeff_monomial,
+        ih hrest]
+      simp [show term.1.deg ≠ degree by omega]
+
+/-- Strict descending canonical degrees establish the fresh-cell premise used
+by the raw sparse iterator. -/
+theorem sparsePrefixPoly_coeff_current_eq_zero (p : Nat)
+    (sparse : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p sparse)
+    (index : Nat) (hindex : index < sparse.size) :
+    (sparsePrefixPoly p sparse index).coeff sparse[index].1.deg = 0 := by
+  unfold sparsePrefixPoly SparsePolyZp.toPoly
+  apply listSum_coeff_zero_of_all_gt
+  intro term hterm
+  have htermTake : term ∈ sparse.toList.take index := by
+    simpa [Array.toList_extract, List.extract] using hterm
+  have hcurrentDrop : sparse[index] ∈ sparse.toList.drop index := by
+    have hlistIndex : sparse.toList[index] = sparse[index] :=
+      Array.getElem_toList hindex
+    rw [← hlistIndex]
+    apply List.mem_drop_iff_getElem.mpr
+    exact ⟨0, by simpa, rfl⟩
+  have hpairwise : List.Pairwise
+      (fun a b : UMonomial × Zp => a.1.deg > b.1.deg) sparse.toList :=
+    List.isChain_iff_pairwise.mp hcanonical.2.1
+  exact hpairwise.rel_of_mem_take_of_mem_drop htermTake hcurrentDrop
+
 /-- Exact raw lowering of the sparse-term write loop in the
 `dense_upoly_zp(upolynomial,Zp)` constructor.  The preceding vector resize is
 represented by `mulZeroPadLoop` below, which performs the same forward zero
@@ -90,6 +225,84 @@ theorem sparseToDenseWriteLoop_sameLayout (ptr : RawPtr UInt64)
 termination_by sparse.size - index
 decreasing_by omega
 
+/-- Semantic invariant of the actual sparse write loop.  The explicit
+fresh-degree premise records that the canonical source iterator never writes
+the same monomial degree twice. -/
+theorem sparseToDenseWriteLoop_refines (ptr : RawPtr UInt64) (length p : Nat)
+    (sparse : SparsePolyZp) (index : Nat) (heap : RawHeap)
+    (hindex : index ≤ sparse.size)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hfresh : ∀ i (hi : i < sparse.size),
+      (sparsePrefixPoly p sparse i).coeff sparse[i].1.deg = 0)
+    (hrep : SlicePolyRep heap ptr length p
+      (sparsePrefixPoly p sparse index)) :
+    ∃ heap', sparseToDenseWriteLoop ptr length sparse index heap = .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' ptr length p (SparsePolyZp.toPoly p sparse) := by
+  rw [sparseToDenseWriteLoop]
+  split
+  next hmore =>
+    let term := sparse[index]
+    have htermDegree : term.1.deg < length := hdegree index hmore
+    rcases heap.writeU64_of_valid ptr length term.1.deg term.2.val hvalid
+        htermDegree with ⟨heap1, hwrite⟩
+    simp only [term, hwrite]
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr
+      term.1.deg term.2.val hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    have hrep1 : SlicePolyRep heap1 ptr length p
+        (sparsePrefixPoly p sparse (index + 1)) := by
+      rw [sparsePrefixPoly_succ p sparse index hmore]
+      simpa [term, Zp.toZMod] using
+        slicePolyRep_write_add_monomial heap heap1 ptr length p
+          term.1.deg term.2.val (sparsePrefixPoly p sparse index) hvalid
+          htermDegree hrep (hfresh index hmore) hwrite
+    rcases sparseToDenseWriteLoop_refines ptr length p sparse (index + 1)
+        heap1 (by omega) hvalid1 hdegree hfresh hrep1 with
+      ⟨heap2, hrun, hlayout2, hresult⟩
+    exact ⟨heap2, hrun, fun other count =>
+      (hlayout1 other count).trans (hlayout2 other count), hresult⟩
+  next hdone =>
+    have heq : index = sparse.size := by omega
+    subst index
+    exact ⟨heap, rfl, fun _ _ => Iff.rfl, by
+      simpa [sparsePrefixPoly_size] using hrep⟩
+termination_by sparse.size - index
+decreasing_by omega
+
+theorem sparseToDenseWriteLoop_canonical (ptr : RawPtr UInt64)
+    (length : Nat) (modulus : UInt64) (sparse : SparsePolyZp)
+    (index : Nat) (heap heap' : RawHeap)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hreduced : ∀ i (hi : i < sparse.size),
+      sparse[i].2.val.toNat < modulus.toNat)
+    (hcanonical : CanonicalU64Prefix heap ptr length modulus)
+    (hrun : sparseToDenseWriteLoop ptr length sparse index heap = .ok heap') :
+    CanonicalU64Prefix heap' ptr length modulus := by
+  rw [sparseToDenseWriteLoop] at hrun
+  split at hrun
+  next hmore =>
+    let term := sparse[index]
+    have htermDegree : term.1.deg < length := hdegree index hmore
+    rcases heap.writeU64_of_valid ptr length term.1.deg term.2.val hvalid
+        htermDegree with ⟨heap1, hwrite⟩
+    simp only [term, hwrite] at hrun
+    have hlayout1 := RawHeap.writeU64_sameLayout heap heap1 ptr
+      term.1.deg term.2.val hwrite
+    have hvalid1 := (hlayout1 ptr length).mp hvalid
+    have hcanonical1 := canonicalU64Prefix_write heap heap1 ptr length
+      term.1.deg term.2.val modulus hvalid hcanonical
+      (hreduced index hmore) hwrite
+    exact sparseToDenseWriteLoop_canonical ptr length modulus sparse
+      (index + 1) heap1 heap' hvalid1 hdegree hreduced hcanonical1 hrun
+  next hdone =>
+    have heq : heap' = heap := Except.ok.inj hrun.symm
+    simpa [heq] using hcanonical
+termination_by sparse.size - index
+decreasing_by omega
+
 /-- Both physical phases of the sparse-to-dense constructor terminate without
 a raw access fault under their exact allocation and degree bounds. -/
 theorem sparse_upoly_zp_to_dense_raw_ir_succeeds
@@ -134,6 +347,94 @@ theorem sparse_upoly_zp_to_dense_raw_ir_valid
   have hlayoutWrites := sparseToDenseWriteLoop_sameLayout ptr length sparse
     0 heap1 heap' hvalid1 hdegree hwrites
   exact (hlayoutWrites ptr length).mp hvalid1
+
+/-- End-to-end semantic result of the concrete sparse-to-dense writes. -/
+theorem sparse_upoly_zp_to_dense_raw_ir_refines
+    (ptr : RawPtr UInt64) (length p : Nat) (sparse : SparsePolyZp)
+    (heap : RawHeap) (hvalid : heap.ValidU64Slice ptr length)
+    (hcanonical : SparsePolyZp.Canonical p sparse)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length) :
+    ∃ heap', sparse_upoly_zp_to_dense_raw_ir ptr length sparse heap =
+        .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      SlicePolyRep heap' ptr length p (SparsePolyZp.toPoly p sparse) := by
+  rcases CLPoly.Impl.StrictMulRefinement.mulZeroPadLoop_refines ptr 0 length 0
+      p heap 0 1 (by omega) (by decide) (by simpa using hvalid)
+      (CLPoly.Impl.StrictHGCDRawRefinement.slicePolyRep_zero_length_any
+        heap ptr p)
+      (by
+        intro i value hi
+        omega) with ⟨heap1, hzero, hlayoutZero, hzeroRep, _⟩
+  have hvalid1 := (hlayoutZero ptr length).mp hvalid
+  have hprefixZero : sparsePrefixPoly p sparse 0 = 0 := by
+    simp [sparsePrefixPoly, SparsePolyZp.toPoly]
+  have hprefixRep : SlicePolyRep heap1 ptr length p
+      (sparsePrefixPoly p sparse 0) := by
+    simpa [hprefixZero] using hzeroRep
+  rcases sparseToDenseWriteLoop_refines ptr length p sparse 0 heap1
+      (Nat.zero_le _) hvalid1 hdegree
+      (sparsePrefixPoly_coeff_current_eq_zero p sparse hcanonical)
+      hprefixRep with ⟨heap2, hwrites, hlayoutWrites, hresult⟩
+  exact ⟨heap2, by
+    simp [sparse_upoly_zp_to_dense_raw_ir, hzero, hwrites],
+    fun other count =>
+      (hlayoutZero other count).trans (hlayoutWrites other count), hresult⟩
+
+/-- Every raw value produced by the constructor is either its explicit zero
+initialization or a reduced residue copied from a canonical sparse term. -/
+theorem sparse_upoly_zp_to_dense_raw_ir_canonical
+    (this : DenseUPolyZp) (ptr : RawPtr UInt64) (length : Nat)
+    (sparse : SparsePolyZp) (heap heap' : RawHeap)
+    (hmodulus : this._p ≠ 0)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat sparse)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length)
+    (hrun : sparse_upoly_zp_to_dense_raw_ir ptr length sparse heap =
+      .ok heap') :
+    CanonicalU64Prefix heap' ptr length this._p := by
+  rcases CLPoly.Impl.StrictMulRefinement.mulZeroPadLoop_refines ptr 0 length 0
+      this._p.toNat heap 0 this._p (by omega) hmodulus
+      (by simpa using hvalid)
+      (CLPoly.Impl.StrictHGCDRawRefinement.slicePolyRep_zero_length_any
+        heap ptr this._p.toNat)
+      (by
+        intro i value hi
+        omega) with ⟨heap1, hzero, hlayoutZero, _, hzeroCanonical⟩
+  have hvalid1 := (hlayoutZero ptr length).mp hvalid
+  have hwrites : sparseToDenseWriteLoop ptr length sparse 0 heap1 =
+      .ok heap' := by
+    simpa [sparse_upoly_zp_to_dense_raw_ir, hzero] using hrun
+  apply sparseToDenseWriteLoop_canonical ptr length this._p sparse 0 heap1
+    heap' hvalid1 hdegree
+  · intro i hi
+    have hmember : sparse[i] ∈ sparse.toList := by simp
+    exact (hcanonical.1 sparse[i] hmember).2
+  · simpa using hzeroCanonical
+  · exact hwrites
+
+/-- Before the constructor's final normalization check, the returned physical
+slice already has the exact polynomial and canonical residue semantics. -/
+theorem sparse_upoly_zp_to_dense_raw_ir_canonicalSlice
+    (this : DenseUPolyZp) (ptr : RawPtr UInt64) (length : Nat)
+    (sparse : SparsePolyZp) (heap : RawHeap)
+    (hmodulus : this._p ≠ 0)
+    (hvalid : heap.ValidU64Slice ptr length)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat sparse)
+    (hdegree : ∀ i (hi : i < sparse.size), sparse[i].1.deg < length) :
+    ∃ heap', sparse_upoly_zp_to_dense_raw_ir ptr length sparse heap =
+        .ok heap' ∧
+      RawHeap.SameLayout heap heap' ∧
+      RawCanonicalPolySlice this heap' ptr length
+        (SparsePolyZp.toPoly this._p.toNat sparse) := by
+  rcases sparse_upoly_zp_to_dense_raw_ir_refines ptr length this._p.toNat
+      sparse heap hvalid hcanonical hdegree with
+    ⟨heap', hrun, hlayout, hslice⟩
+  exact ⟨heap', hrun, hlayout,
+    sparse_upoly_zp_to_dense_raw_ir_valid ptr length sparse heap heap'
+      hvalid hdegree hrun,
+    sparse_upoly_zp_to_dense_raw_ir_canonical this ptr length sparse heap
+      heap' hmodulus hvalid hcanonical hdegree hrun,
+    hslice⟩
 
 /-- Exact raw lowering of the reverse coefficient scan in
 `dense_upoly_zp::to_upoly`. -/

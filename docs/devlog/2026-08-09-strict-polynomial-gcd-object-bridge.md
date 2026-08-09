@@ -71,6 +71,15 @@ leading term at degree `length - 1` gives the exact normalization result.
 The empty input is handled separately with length zero.  These facts together
 establish `SparseRawDenseRep` for the heap returned by the concrete writes.
 
+The local update lemma used by that induction is derived from raw execution,
+not postulated: after one successful `writeU64`, obtain the unique polynomial
+represented by the still-valid slice.  At the selected degree,
+`readU64_writeU64_same` identifies the new coefficient; at every other degree,
+`readU64_writeU64_ne` identifies the unchanged coefficient.  Coefficients
+outside the slice are zero on both sides.  Polynomial extensionality therefore
+shows that writing into a previously zero cell adds exactly the corresponding
+monomial.
+
 ## What changed
 
 - Added strict sparse/raw-dense input and output representation relations.
@@ -85,6 +94,10 @@ establish `SparseRawDenseRep` for the heap returned by the concrete writes.
 - Added the exact zero-initialize/term-write sparse-to-dense constructor path.
 - Proved both constructor phases terminate on their real decreasing indices,
   preserve allocation layout, and return a valid target slice.
+- Proved the term-write loop's polynomial accumulator invariant from concrete
+  raw reads/writes and canonical descending sparse degrees.
+- Proved the completed constructor buffer is a canonical raw polynomial slice
+  denoting exactly the input sparse polynomial.
 - Imported the completed raw HGCD-GCD refinement at the squarefree boundary.
 
 ## Why
@@ -102,7 +115,7 @@ boundary is required before replacing its current typeclass GCD call.
 
 - 耗时：约 0.5 小时（源码控制流核对、接口设计、形式化与构建）
 - 迭代：1 轮编译—修复
-- Lean 新增/修改行数：约 180 行
+- Lean 新增/修改行数：约 370 行
 - 对应 C++ 行数：约 55 行（两个 sparse/dense 转换及 GCD 包装）
 - 放弃的方案：直接证明当前 `SparsePolyZp.gcd` 正确；它不是 C++ dense
   GCD 的执行，不能用于严格 L1→L2 精化。

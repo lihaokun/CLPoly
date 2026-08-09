@@ -258,6 +258,21 @@ the already-total recursive finish block.  This reconstructs the final A/B
 and, when requested, performs the quotient update and matrix product using
 only actual generated calls.
 
+Replace the old invocation continuation, which was indexed by success of the
+entire recursive body, with source-ordered staged workspaces.  The early
+workspace may depend only on the actual first dispatch and reconstruction.
+The non-early workspace exposes middle safety first, second-dispatch safety
+only after the actual middle result and high-suffix representations, and
+finish/semantic frame safety only after the actual second result.  No field
+may contain or require a successful enclosing body execution.
+
+Compose the non-base body from those stages.  Convert total child contracts
+to the older conditional semantic contracts only after each actual child has
+been constructed, by uniqueness of `Except.ok`.  Build the exact early or
+non-early `hgcdRecursiveBodyBelow` result from the source calls in order, and
+then extract the common transform/GCD/length invariant.  The enclosing body
+success is now a conclusion rather than an index of its workspace.
+
 ## Files
 
 - `proof/lean/CLPoly/Generated/StrictGCDHGCD.lean`
@@ -300,3 +315,7 @@ only actual generated calls.
 - second/finish 增量：约 1 小时、1 轮编译、Lean 约 150 行；在真实
   `c0/d0` 上执行第二次总 dispatch，保持 first matrix、quotient 与低半部，
   再调用 total finish 完成最终 A/B 重构和可选矩阵组合。
+- body composition 增量：约 2 小时、3 轮编译—修复、Lean 约 340 行；
+  引入不按 enclosing body 成功索引的 staged workspace，组合 early 与
+  non-early 全控制流，并由实际 first/reconstruct/middle/second/finish 调用
+  构造 `hgcdRecursiveBodyBelow` 成功及公共递归语义不变式。

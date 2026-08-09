@@ -2216,6 +2216,368 @@ theorem hgcdRecursiveFinishStage_succeeds (this : DenseUPolyZp)
     ⟨finished, hfinish, hA, hB, hsgn, hmatrix⟩
   exact ⟨finished, by simpa [ws] using hfinish, hA, hB, hsgn, hmatrix⟩
 
+/-- Source-ordered physical stages for the non-early continuation.  Every
+later field is indexed only by concrete executions and representations
+produced by the preceding stage. -/
+structure HgcdRecursiveNonEarlyTotalWorkspace (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B W scratch : RawPtr UInt64) (lenA : Nat)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult) : Type where
+  middle : HgcdRecursiveMiddleWorkspace W lenA reconstructed
+  secondIter : ∀ (middle : HgcdRecursiveMiddleResult)
+    (highC highD : Polynomial (ZMod this._p.toNat)),
+    let ws := hgcdRecursiveWorkspace W lenA
+    hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2 reconstructed.lenA
+        reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap = .ok middle →
+    RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+    RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+    ∀ (_hsecondOrder : middle.lenD0 < middle.lenC0)
+      (_hsecondDecrease : middle.lenC0 < bound),
+    HgcdRecursiveIterBranchTotalWorkspace this ws.S
+      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
+      middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch ws.a2
+      middle.heap highC highD
+  afterSecond : ∀ (middle : HgcdRecursiveMiddleResult)
+    (second : HgcdRecursiveResult),
+    let ws := hgcdRecursiveWorkspace W lenA
+    hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2 reconstructed.lenA
+        reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap = .ok middle →
+    ∀ (hsecondOrder : middle.lenD0 < middle.lenC0)
+      (hsecondDecrease : middle.lenC0 < bound),
+    hgcdRecursiveDispatchBelow this bound recurse ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch
+        ws.a2 ws.next middle.heap hsecondOrder hsecondDecrease = .ok second →
+    HgcdRecursiveAfterSecondTotalWorkspace this M hM computeM A B W scratch
+      lenA first reconstructed middle second
+  semanticSecond : ∀ (middle : HgcdRecursiveMiddleResult)
+    (second : HgcdRecursiveResult),
+    let ws := hgcdRecursiveWorkspace W lenA
+    hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2 reconstructed.lenA
+        reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap = .ok middle →
+    ∀ (hsecondOrder : middle.lenD0 < middle.lenC0)
+      (hsecondDecrease : middle.lenC0 < bound),
+    hgcdRecursiveDispatchBelow this bound recurse ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch
+        ws.a2 ws.next middle.heap hsecondOrder hsecondDecrease = .ok second →
+    HgcdRecursiveSecondCallWorkspace this bound recurse M hM A B W scratch
+      lenA first reconstructed middle second hsecondOrder hsecondDecrease
+
+/-- Non-circular physical workspace for one complete source-shaped recursive
+body.  In particular, no field is indexed by success of the enclosing body. -/
+structure HgcdRecursiveBodyTotalWorkspace (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (package : HgcdRecursiveNonBasePackage this bound recurse a b W scratch
+      lenA lenB heap) : Type where
+  first : HgcdRecursiveFirstCallTotalWorkspace this bound recurse a b W
+    scratch lenA lenB heap package
+  early : ∀ (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult),
+    HgcdFirstDispatchResult this bound recurse a b W scratch lenA lenB heap
+        first →
+    let ws := hgcdRecursiveWorkspace W lenA
+    hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
+        scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
+        first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
+        first.heap = .ok reconstructed →
+    reconstructed.lenB < lenA / 2 + 1 →
+    HgcdEarlyReturnRefineWorkspace reconstructed.heap M first.matrix hM
+      first.valid A B ws.a2 ws.b2 reconstructed.lenA reconstructed.lenB
+  nonEarly : ∀ (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult),
+    HgcdFirstDispatchResult this bound recurse a b W scratch lenA lenB heap
+        first →
+    let ws := hgcdRecursiveWorkspace W lenA
+    hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
+        scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
+        first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
+        first.heap = .ok reconstructed →
+    ¬ reconstructed.lenB < lenA / 2 + 1 →
+    HgcdRecursiveNonEarlyTotalWorkspace this bound recurse M hM computeM A B
+      W scratch lenA first reconstructed
+
+/-- Total semantic execution of one genuinely non-base well-founded body. -/
+theorem hgcdRecursiveNonBaseBody_succeeds (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (computeM : Bool)
+    (A B a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (hbound : lenA = bound) (horder : lenB < lenA)
+    (hbase : ¬ lenB < lenA / 2 + 1)
+    (package : HgcdRecursiveNonBasePackage this bound recurse a b W scratch
+      lenA lenB heap)
+    (physical : HgcdRecursiveBodyTotalWorkspace this bound recurse M hM
+      computeM A B a b W scratch lenA lenB heap package)
+    (firstRecursiveSucceeds :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      HgcdRecursiveCallbackSucceedsAt this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
+        package.inputHighA package.inputHighB)
+    (secondRecursiveSucceeds : ∀ (first : HgcdRecursiveResult)
+      (reconstructed : HgcdRecursiveReconstructPairResult)
+      (middle : HgcdRecursiveMiddleResult)
+      (highC highD : Polynomial (ZMod this._p.toNat)),
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdFirstDispatchResult this bound recurse a b W scratch lenA lenB heap
+          first →
+      hgcdRecursiveReconstructPair this ws.a2 ws.b2 ws.T0 a b ws.a3 ws.b3
+          scratch (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2))
+          first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
+          first.heap = .ok reconstructed →
+      hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2 reconstructed.lenA
+          reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap = .ok middle →
+      RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+      RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+      ∀ (hsecondOrder : middle.lenD0 < middle.lenC0)
+        (hsecondDecrease : middle.lenC0 < bound),
+      HgcdRecursiveCallbackSucceedsAt this bound recurse ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.next scratch middle.heap
+        hsecondOrder hsecondDecrease highC highD) :
+    ∃ result finalA finalB entries,
+      let firstRefines : HgcdRecursiveNonBaseCallbackRefines this bound recurse
+          a b W scratch lenA lenB heap package := by
+        intro hchildOrder hchildDecrease child hrun
+        rcases firstRecursiveSucceeds hchildOrder hchildDecrease with
+          ⟨actual, finalA, finalB, entries, hactual, hInvariant⟩
+        have heq : actual = child := Except.ok.inj (hactual.symm.trans hrun)
+        subst actual
+        exact ⟨finalA, finalB, entries, hInvariant⟩
+      let firstCall := package.admissible this bound recurse a b W scratch
+        lenA lenB heap firstRefines
+      let providers := hgcdRecursiveFirstCall_providers this bound recurse a b
+        W scratch lenA lenB heap package.inputHighA package.inputHighB
+        package.lowPolyA package.lowPolyB hcfg hp horder firstCall.workspace
+        firstCall.recursiveRefines
+      hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a b lenA
+          lenB W scratch heap hbound horder (fun _ => providers.1)
+          (fun _ => providers.2) = .ok result ∧
+      HgcdRecursiveRawInvariant this package.inputA package.inputB finalA
+        finalB entries computeM A B lenA result := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  let high := hgcdRecursiveHighInput a b lenA lenB
+  have hchildOrder : high.lenB0 < high.lenA0 :=
+    hgcdRecursiveHighInput_order a b lenA lenB horder
+  have hchildDecrease : high.lenA0 < bound := by
+    rw [← hbound]
+    exact hgcdRecursiveHighInput_len_lt a b lenA lenB horder (by omega)
+  let firstRefines : HgcdRecursiveNonBaseCallbackRefines this bound recurse a
+      b W scratch lenA lenB heap package := by
+    intro childOrder childDecrease child hrun
+    rcases firstRecursiveSucceeds childOrder childDecrease with
+      ⟨actual, finalA, finalB, entries, hactual, hInvariant⟩
+    have heq : actual = child := Except.ok.inj (hactual.symm.trans hrun)
+    subst actual
+    exact ⟨finalA, finalB, entries, hInvariant⟩
+  let firstCall := package.admissible this bound recurse a b W scratch lenA
+    lenB heap firstRefines
+  let providers := hgcdRecursiveFirstCall_providers this bound recurse a b W
+    scratch lenA lenB heap package.inputHighA package.inputHighB
+    package.lowPolyA package.lowPolyB hcfg hp horder firstCall.workspace
+    firstCall.recursiveRefines
+  rcases hgcdRecursiveFirstCall_succeeds this bound recurse a b W scratch lenA
+      lenB heap hcfg hp hbound horder hbase package physical.first
+      firstRecursiveSucceeds with
+    ⟨first, reconstructed, outputHighA, outputHighB, firstEntries,
+      hchildOrder', hchildDecrease', hfirst, hreconstruct, hFirstInvariant,
+      hAReconstructed, hBReconstructed, hMatrixReconstructed,
+      hReconstructed⟩
+  have hActualFirst : HgcdFirstDispatchResult this bound recurse a b W scratch
+      lenA lenB heap first :=
+    ⟨hchildOrder', hchildDecrease', by simpa [ws, high] using hfirst⟩
+  by_cases hearly : reconstructed.lenB < lenA / 2 + 1
+  · have hEarlyWork := physical.early first reconstructed hActualFirst
+      (by simpa [ws] using hreconstruct) hearly
+    rcases hgcdRecursiveEarlyStage_succeeds this bound recurse M hM computeM A
+        B a b W scratch lenA lenB heap hcfg hp package first reconstructed
+        outputHighA outputHighB firstEntries hchildOrder' hchildDecrease'
+        (by simpa [ws, high] using hfirst)
+        (by simpa [ws, high] using hFirstInvariant)
+        (by simpa [ws] using hreconstruct) hReconstructed
+        hMatrixReconstructed hearly hEarlyWork with
+      ⟨early, hEarlyValid, hearlyRun, hEarlyInvariant⟩
+    let hGeneratedValid := hgcdRecursiveEarlyReturn_result_valid M
+      first.matrix hM first.valid computeM A B ws.a2 ws.b2
+      reconstructed.lenA reconstructed.lenB first.sgn reconstructed.heap early
+      (by simpa [ws] using hearlyRun)
+    let result := early.toResult hGeneratedValid
+    have hbody : hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a
+        b lenA lenB W scratch heap hbound horder (fun _ => providers.1)
+          (fun _ => providers.2) = .ok result := by
+      rw [hgcdRecursiveBodyBelow]
+      simp only [hbase, ↓reduceDIte]
+      split
+      next fault hfirstActual =>
+        have hfalse := hfirstActual.symm.trans (by convert hfirst using 1)
+        simp at hfalse
+      next actualFirst hfirstActual =>
+        have hFirstEq : actualFirst = first := Except.ok.inj
+          (hfirstActual.symm.trans (by convert hfirst using 1))
+        subst actualFirst
+        split
+        next fault hreconstructActual =>
+          have hfalse := hreconstructActual.symm.trans (by
+            convert hreconstruct using 1)
+          simp at hfalse
+        next actualReconstructed hreconstructActual =>
+          have hReconstructedEq : actualReconstructed = reconstructed :=
+            Except.ok.inj (hreconstructActual.symm.trans (by
+              convert hreconstruct using 1))
+          subst actualReconstructed
+          simp only [hearly, ↓reduceDIte]
+          split
+          next fault hearlyActual =>
+            have hfalse := hearlyActual.symm.trans (by
+              convert hearlyRun using 1)
+            simp at hfalse
+          next actualEarly hearlyActual =>
+            have hEarlyEq : actualEarly = early := Except.ok.inj
+              (hearlyActual.symm.trans (by convert hearlyRun using 1))
+            subst actualEarly
+            apply congrArg Except.ok
+            apply HgcdRecursiveResult.ext_value
+            rfl
+    refine ⟨result,
+      hgcdReconstructedLowA firstEntries package.lowPolyA package.lowPolyB
+          first.sgn + Polynomial.X ^ (lenA / 2) * outputHighA,
+      hgcdReconstructedLowB firstEntries package.lowPolyA package.lowPolyB
+          first.sgn + Polynomial.X ^ (lenA / 2) * outputHighB,
+      firstEntries, ?_, ?_⟩
+    · simpa [firstRefines, firstCall, providers] using hbody
+    · simpa [result] using hEarlyInvariant
+  · have hNonEarly := physical.nonEarly first reconstructed hActualFirst
+      (by simpa [ws] using hreconstruct) hearly
+    let currentA := hgcdReconstructedLowA firstEntries package.lowPolyA
+      package.lowPolyB first.sgn + Polynomial.X ^ (lenA / 2) * outputHighA
+    let currentB := hgcdReconstructedLowB firstEntries package.lowPolyA
+      package.lowPolyB first.sgn + Polynomial.X ^ (lenA / 2) * outputHighB
+    rcases hgcdRecursiveMiddleStage_succeeds this bound W lenA lenB first
+        reconstructed currentA currentB hcfg hbound horder hbase
+        hReconstructed hearly hNonEarly.middle
+        (by simpa [currentA, ws] using hAReconstructed)
+        (by simpa [currentB, ws] using hBReconstructed) with
+      ⟨middle, quotient, remainder, lowC, highC, lowD, highD, hmiddle, hQ,
+        hCurrentBMiddle, hD, hMiddleLayout, hsecondOrder, hsecondDecrease,
+        hLowC, hHighC, hLowD, hHighD, hSplitC, hSplitD⟩
+    have hSecondIter := hNonEarly.secondIter middle highC highD
+      (by simpa [ws] using hmiddle) hHighC hHighD hsecondOrder hsecondDecrease
+    have hSecondTotal := secondRecursiveSucceeds first reconstructed middle
+      highC highD hActualFirst (by simpa [ws] using hreconstruct)
+      (by simpa [ws] using hmiddle) hHighC hHighD hsecondOrder hsecondDecrease
+    rcases hgcdRecursiveSecondCall_succeeds this bound recurse W scratch lenA
+        middle highC highD hcfg hp hsecondOrder hsecondDecrease hSecondIter
+        hSecondTotal with
+      ⟨second, finalHighA, finalHighB, secondEntries, hsecond,
+        hSecondInvariant⟩
+    have hSemanticSecond := hNonEarly.semanticSecond middle second
+      (by simpa [ws] using hmiddle) hsecondOrder hsecondDecrease
+      (by simpa [ws] using hsecond)
+    have hFirstMatrixMiddle : HgcdMatRawDenseRep this middle.heap first.matrix
+        firstEntries first.valid := by
+      intro i
+      exact CLPoly.Impl.StrictHGCDRawRefinement.rawDensePolyRep_of_same_prefix
+        this reconstructed.heap middle.heap (hgcdMatPtr first.matrix first.valid i)
+        (hgcdMatLen first.matrix first.valid i) (firstEntries i) hMiddleLayout
+        (hSemanticSecond.matrixPrefix i) (hMatrixReconstructed i)
+    have hAfterSecond := hNonEarly.afterSecond middle second
+      (by simpa [ws] using hmiddle) hsecondOrder hsecondDecrease
+      (by simpa [ws] using hsecond)
+    rcases hgcdRecursiveFinishStage_succeeds this M hM computeM A B W scratch
+        lenA first reconstructed middle second firstEntries secondEntries
+        quotient lowC lowD highC highD finalHighA finalHighB hcfg hp
+        hAfterSecond hFirstMatrixMiddle hQ hLowC hLowD hSecondInvariant with
+      ⟨finished, hfinish, _, _, _, _⟩
+    let secondRefines : HgcdRecursiveSecondCallbackRefines this bound recurse W
+        scratch lenA middle hsecondOrder hsecondDecrease := by
+      dsimp [HgcdRecursiveSecondCallbackRefines]
+      intro semanticC semanticD hC hD child hrun
+      rcases secondRecursiveSucceeds first reconstructed middle semanticC
+          semanticD hActualFirst (by simpa [ws] using hreconstruct)
+          (by simpa [ws] using hmiddle) hC hD hsecondOrder hsecondDecrease with
+        ⟨actual, finalA, finalB, entries, hactual, hInvariant⟩
+      have heq : actual = child := Except.ok.inj (hactual.symm.trans hrun)
+      subst actual
+      exact ⟨finalA, finalB, entries, hInvariant⟩
+    let result := finished.toResult
+    have hbody : hgcdRecursiveBodyBelow this bound recurse M hM computeM A B a
+        b lenA lenB W scratch heap hbound horder (fun _ => providers.1)
+          (fun _ => providers.2) = .ok result := by
+      rw [hgcdRecursiveBodyBelow]
+      simp only [hbase, ↓reduceDIte]
+      split
+      next fault hfirstActual =>
+        have hfalse := hfirstActual.symm.trans (by convert hfirst using 1)
+        simp at hfalse
+      next actualFirst hfirstActual =>
+        have hFirstEq : actualFirst = first := Except.ok.inj
+          (hfirstActual.symm.trans (by convert hfirst using 1))
+        subst actualFirst
+        split
+        next fault hreconstructActual =>
+          have hfalse := hreconstructActual.symm.trans (by
+            convert hreconstruct using 1)
+          simp at hfalse
+        next actualReconstructed hreconstructActual =>
+          have hReconstructedEq : actualReconstructed = reconstructed :=
+            Except.ok.inj (hreconstructActual.symm.trans (by
+              convert hreconstruct using 1))
+          subst actualReconstructed
+          simp only [hearly, ↓reduceDIte]
+          split
+          next fault hmiddleActual =>
+            have hfalse := hmiddleActual.symm.trans (by
+              convert hmiddle using 1)
+            simp at hfalse
+          next actualMiddle hmiddleActual =>
+            have hMiddleEq : actualMiddle = middle := Except.ok.inj
+              (hmiddleActual.symm.trans (by convert hmiddle using 1))
+            subst actualMiddle
+            split
+            next fault hsecondActual =>
+              have hfalse := hsecondActual.symm.trans (by
+                convert hsecond using 1)
+              simp at hfalse
+            next actualSecond hsecondActual =>
+              have hSecondEq : actualSecond = second := Except.ok.inj
+                (hsecondActual.symm.trans (by convert hsecond using 1))
+              subst actualSecond
+              split
+              next fault hfinishActual =>
+                have hfalse := hfinishActual.symm.trans (by
+                  convert hfinish using 1)
+                simp at hfalse
+              next actualFinished hfinishActual =>
+                have hFinishedEq : actualFinished = finished := Except.ok.inj
+                  (hfinishActual.symm.trans (by convert hfinish using 1))
+                subst actualFinished
+                rfl
+    rcases hgcdRecursiveBodyBelow_nonEarly_rawInvariant this bound recurse M hM
+        computeM A B a b lenA lenB W scratch heap package.inputA package.inputB
+        package.inputHighA package.inputHighB package.lowPolyA package.lowPolyB
+        hp hcfg hbound horder firstCall first reconstructed middle second
+        finished hbase (by convert hfirst using 1) package.splitA package.splitB
+        (package.workspace.reconstruct first hActualFirst)
+        (by simpa [ws] using hreconstruct) hearly hNonEarly.middle
+        (by simpa [ws] using hmiddle) hsecondOrder hsecondDecrease
+        hSemanticSecond secondRefines (by simpa [ws] using hsecond)
+        (by simpa [ws] using hfinish) result
+        (by simpa [firstRefines, firstCall, providers] using hbody) with
+      ⟨finalA, finalB, entries, hInvariant⟩
+    exact ⟨result, finalA, finalB, entries,
+      by simpa [firstRefines, firstCall, providers] using hbody, hInvariant⟩
+
 /-- Physical divrem storage available at every represented state reached by
 the source HGCD-GCD loop.  The provider supplies only allocation and aliasing
 facts; quotient and remainder semantics still come from the actual raw call. -/

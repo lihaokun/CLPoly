@@ -3158,6 +3158,15 @@ def PairVecDivVHCHeapChainsOwned (heap : Array Nat)
   ∃ owners : Nat → Finset Nat,
     PairVecDivVHCHeapChainOwnership heap owners nodes
 
+/-- Heap ownership together with a protected set (used for the source `lin`
+stack) that is absent from every active bucket and from every heap head. -/
+def PairVecDivVHCHeapChainsOwnedAway (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (protectedSet : Finset Nat) : Prop :=
+  ∃ owners : Nat → Finset Nat,
+    PairVecDivVHCHeapChainOwnership heap owners nodes ∧
+      ∀ (slot head : Nat), heap[slot]? = some head →
+        Disjoint protectedSet (owners head) ∧ head ∉ protectedSet
+
 theorem pairVecDivVHCHeapChainsOwned_empty (nodes : Array PairVecDivVHCNode) :
     PairVecDivVHCHeapChainsOwned #[] nodes := by
   refine ⟨fun _ => ∅, ?_⟩
@@ -3168,6 +3177,37 @@ theorem pairVecDivVHCHeapChainsOwned_empty (nodes : Array PairVecDivVHCNode) :
     simp at hleft
   · intro left right leftHead rightHead hleft
     simp at hleft
+
+theorem pairVecDivVHCHeapChainsOwnedAway_empty
+    (nodes : Array PairVecDivVHCNode) (protectedSet : Finset Nat) :
+    PairVecDivVHCHeapChainsOwnedAway #[] nodes protectedSet := by
+  rcases pairVecDivVHCHeapChainsOwned_empty nodes with ⟨owners, hownership⟩
+  refine ⟨owners, hownership, ?_⟩
+  intro slot head hget
+  simp at hget
+
+theorem pairVecDivVHCHeapChainsOwnedAway.owned
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (protectedSet : Finset Nat)
+    (haway : PairVecDivVHCHeapChainsOwnedAway heap nodes protectedSet) :
+    PairVecDivVHCHeapChainsOwned heap nodes := by
+  rcases haway with ⟨owners, hownership, hprotected⟩
+  exact ⟨owners, hownership⟩
+
+theorem pairVecDivVHCHeapChainsOwnedAway.mono
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (small large : Finset Nat)
+    (haway : PairVecDivVHCHeapChainsOwnedAway heap nodes large)
+    (hsubset : small ⊆ large) :
+    PairVecDivVHCHeapChainsOwnedAway heap nodes small := by
+  rcases haway with ⟨owners, hownership, hprotected⟩
+  refine ⟨owners, hownership, ?_⟩
+  intro slot head hget
+  have hold := hprotected slot head hget
+  exact ⟨Finset.disjoint_left.mpr (by
+    intro i hiSmall hiOwner
+    exact Finset.disjoint_left.mp hold.1 (hsubset hiSmall) hiOwner),
+    fun hiSmall => hold.2 (hsubset hiSmall)⟩
 
 /-- Ownership is invariant under a head-array reordering once provenance and
 target uniqueness have been proved for the concrete pointer-copy routine. -/
@@ -3540,6 +3580,27 @@ theorem pairVecDivVHCInsert_preserves_heapChainOwnership_of_fresh
                                         hfreshHead hfreshOwners hset hbubble⟩
                     · simp [pairVecDivVHCInsert, hnew, hempty, hroot, hequal,
                         hgreater, hanchor, ha] at hrun
+
+theorem pairVecDivVHCInsert_preserves_owned_of_away
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes nodes' : Array PairVecDivVHCNode) (protectedSet : Finset Nat)
+    (node : PairVecDivVHCNode) (mono : UMonomial)
+    (haway : PairVecDivVHCHeapChainsOwnedAway heap nodes protectedSet)
+    (hprotected : newNode ∈ protectedSet)
+    (hnode : nodes[newNode]? = some node) (hmono : node.mono = some mono)
+    (hrun : pairVecDivVHCInsert newNode heap nodes = .ok (heap', nodes')) :
+    PairVecDivVHCHeapChainsOwned heap' nodes' := by
+  rcases haway with ⟨owners, hownership, hseparated⟩
+  have hfreshHead : ∀ (slot : Nat), heap[slot]? ≠ some newNode := by
+    intro slot hget
+    exact (hseparated slot newNode hget).2 hprotected
+  have hfreshOwners : ∀ (slot head : Nat), heap[slot]? = some head →
+      newNode ∉ owners head := by
+    intro slot head hget hmem
+    exact Finset.disjoint_left.mp (hseparated slot head hget).1 hprotected hmem
+  exact pairVecDivVHCInsert_preserves_heapChainOwnership_of_fresh newNode heap
+    heap' nodes nodes' owners node mono hownership hnode hmono hfreshHead
+    hfreshOwners hrun
 
 theorem pairVecDivVHCHeapChainOwnership_root_onlyAt
     (heap : Array Nat) (owners : Nat → Finset Nat)

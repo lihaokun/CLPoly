@@ -344,6 +344,13 @@ every generated range-for and recursive loop used by SQF.
   activate 写入，再执行真实 `VHC_insert`，并以 `resetH - 1` 作为
   良基下降。剩余表示层缺口是为 `lin` 反向重插证明其节点
   两两唯一且不在当前 heap owners 中。
+- 为 `lin` 反向重插建立了
+  `PairVecDivVHCHeapChainsOwnedAway protectedSet`：除精确 heap
+  ownership 外，显式记录 protected 节点不是 heap head，且与每个
+  bucket owner 不交。已证明空 heap 初始化、protected 集合缩小及
+  从 protected 中取出一个活动节点时的 `VHC_insert` freshness/
+  ownership 结论。下一步将 insert 后的 away 集合精确更新为
+  `protectedSet.erase newNode`，以便对 `lin.pop` 做良基归纳。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

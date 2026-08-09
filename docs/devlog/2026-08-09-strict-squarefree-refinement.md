@@ -585,3 +585,11 @@ every generated range-for and recursive loop used by SQF.
   全局函数相等，只在真实 heap slot 对应的 head 上使用 chain 唯一性。
   下一步追踪 insertion 对 heap head 集合的改变：普通 bubble 保留旧 heads
   并加入新 head，merge 则以新 head 的 `next` chain 取代被合并旧 head。
+- insertion 的 bubble 路径已补齐反向 head 守恒。新增通用定理证明：若
+  target heap 与 source heap 等长、每个 target 值来自 source，且两边 slot
+  值均唯一，则两者的 head finset 精确相等，所以每个 source head 都能恢复
+  出 target 中的具体 slot。该结论分别应用于真实 `VHC_bubble` 与
+  `VHC_bubble_below` 执行；证明使用两段生成循环已有的 size、values-from
+  与 uniqueness 定理，不把单向复制关系误当作排列。下一步用这些反向
+  存活见证传递普通插入分支的 node coverage，并单独处理 merge 分支中
+  被旧 head 替换为 `newNode -> oldHead` 的 chain 扩张。

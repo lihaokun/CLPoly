@@ -1995,6 +1995,113 @@ theorem pairVecDivVHCHeapUnique_toList_nodup (heap : Array Nat)
       rw [Array.getElem?_eq_getElem hright, ← hvalueEq])
   exact Fin.ext hslots
 
+/-- A same-size heap rewrite that only copies source values and preserves slot
+uniqueness is a permutation of the concrete heads.  Hence every source head
+has a concrete target slot; this supplies the reverse direction absent from
+`PairVecDivVHCValuesFrom`. -/
+theorem pairVecDivVHCValuesFrom_preserves_every_head
+    (target source : Array Nat)
+    (hfrom : PairVecDivVHCValuesFrom target source)
+    (hsize : target.size = source.size)
+    (hsourceUnique : ∀ (left right head : Nat),
+      source[left]? = some head → source[right]? = some head → left = right)
+    (htargetUnique : ∀ (left right head : Nat),
+      target[left]? = some head → target[right]? = some head → left = right) :
+    ∀ (slot head : Nat), source[slot]? = some head →
+      ∃ targetSlot : Nat, target[targetSlot]? = some head := by
+  have hsourceNodup :=
+    pairVecDivVHCHeapUnique_toList_nodup source hsourceUnique
+  have htargetNodup :=
+    pairVecDivVHCHeapUnique_toList_nodup target htargetUnique
+  have hsubset : target.toList.toFinset ⊆ source.toList.toFinset := by
+    intro head hhead
+    simp only [List.mem_toFinset] at hhead ⊢
+    rcases List.getElem_of_mem hhead with ⟨slot, hslotList, hslotValue⟩
+    have hslot : slot < target.size := by simpa using hslotList
+    have hget : target[slot]? = some head := by
+      rw [Array.getElem?_eq_getElem hslot, ← Array.getElem_toList hslot]
+      exact congrArg some hslotValue
+    rcases hfrom slot head hget with ⟨sourceSlot, hsourceGet⟩
+    have hsourceBound : sourceSlot < source.size := by
+      by_contra hnot
+      rw [Array.getElem?_eq_none (by omega)] at hsourceGet
+      contradiction
+    rw [Array.getElem?_eq_getElem hsourceBound] at hsourceGet
+    have hsourceEq := Option.some.inj hsourceGet
+    rw [← hsourceEq]
+    exact Array.getElem_mem_toList hsourceBound
+  have htargetCard : target.toList.toFinset.card = target.size := by
+    rw [List.toFinset_card_of_nodup htargetNodup]
+    rfl
+  have hsourceCard : source.toList.toFinset.card = source.size := by
+    rw [List.toFinset_card_of_nodup hsourceNodup]
+    rfl
+  have hsets : target.toList.toFinset = source.toList.toFinset := by
+    apply Finset.eq_of_subset_of_card_le hsubset
+    rw [htargetCard, hsourceCard, hsize]
+  intro slot head hget
+  have hslot : slot < source.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  have hheadSource : head ∈ source.toList.toFinset := by
+    simp only [List.mem_toFinset]
+    rw [Array.getElem?_eq_getElem hslot] at hget
+    have hheadEq := Option.some.inj hget
+    rw [← hheadEq]
+    exact Array.getElem_mem_toList hslot
+  have hheadTarget : head ∈ target.toList.toFinset := by
+    rw [hsets]
+    exact hheadSource
+  simp only [List.mem_toFinset] at hheadTarget
+  rcases List.getElem_of_mem hheadTarget with
+    ⟨targetSlot, htargetBound, htargetValue⟩
+  refine ⟨targetSlot, ?_⟩
+  have htargetSlot : targetSlot < target.size := by simpa using htargetBound
+  rw [Array.getElem?_eq_getElem htargetSlot,
+    ← Array.getElem_toList htargetSlot]
+  exact congrArg some htargetValue
+
+theorem pairVecDivVHCBubble_push_preserves_every_head
+    (stop newNode : Nat) (heap heap' : Array Nat)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hfresh : ∀ (slot : Nat), heap[slot]? ≠ some newNode)
+    (hrun : pairVecDivVHCBubble heap.size stop newNode (heap.push newNode) =
+      .ok heap') :
+    ∀ (slot head : Nat), (heap.push newNode)[slot]? = some head →
+      ∃ targetSlot : Nat, heap'[targetSlot]? = some head := by
+  have hfrom := pairVecDivVHCBubble_valuesFrom heap.size stop newNode
+    (heap.push newNode) heap' (heap.push newNode)
+    (pairVecDivVHCValuesFrom_refl _) ⟨heap.size, by simp⟩ hrun
+  exact pairVecDivVHCValuesFrom_preserves_every_head heap'
+    (heap.push newNode) hfrom
+    (pairVecDivVHCBubble_size heap.size stop newNode (heap.push newNode)
+      heap' hrun)
+    (pairVecDivVHCPush_preserves_unique heap newNode hunique hfresh)
+    (pairVecDivVHCBubble_push_preserves_unique stop newNode heap heap'
+      hunique hfresh hrun)
+
+theorem pairVecDivVHCBubbleBelow_push_preserves_every_head
+    (anchor newNode : Nat) (heap heap' : Array Nat)
+    (hunique : ∀ (left right head : Nat), heap[left]? = some head →
+      heap[right]? = some head → left = right)
+    (hfresh : ∀ (slot : Nat), heap[slot]? ≠ some newNode)
+    (hrun : pairVecDivVHCBubbleBelow heap.size anchor newNode
+      (heap.push newNode) = .ok heap') :
+    ∀ (slot head : Nat), (heap.push newNode)[slot]? = some head →
+      ∃ targetSlot : Nat, heap'[targetSlot]? = some head := by
+  have hfrom := pairVecDivVHCBubbleBelow_valuesFrom heap.size anchor newNode
+    (heap.push newNode) heap' (heap.push newNode)
+    (pairVecDivVHCValuesFrom_refl _) ⟨heap.size, by simp⟩ hrun
+  exact pairVecDivVHCValuesFrom_preserves_every_head heap'
+    (heap.push newNode) hfrom
+    (pairVecDivVHCBubbleBelow_size heap.size anchor newNode
+      (heap.push newNode) heap' hrun)
+    (pairVecDivVHCPush_preserves_unique heap newNode hunique hfresh)
+    (pairVecDivVHCBubbleBelow_push_preserves_unique anchor newNode heap heap'
+      hunique hfresh hrun)
+
 /-- The checked extract removes exactly the unique old root: every other old
 heap head occurs at some concrete slot of the returned heap.  This is the
 reverse direction missing from `pairVecDivVHCExtract_valuesFrom`. -/

@@ -10215,6 +10215,48 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
         subst result
         exact ⟨finalA, finalB, entries, hInvariant⟩
 
+/-- Physical division workspace used between the two recursive HGCD calls.
+Every field describes an allocation or non-aliasing fact consumed by the
+actual generated `hgcdRecursiveMiddle` execution. -/
+structure HgcdRecursiveMiddleWorkspace (W : RawPtr UInt64) (lenA : Nat)
+    (reconstructed : HgcdRecursiveReconstructPairResult) : Prop where
+  validQ :
+    let ws := hgcdRecursiveWorkspace W lenA
+    reconstructed.heap.ValidU64Slice ws.q
+      (reconstructed.lenA - (reconstructed.lenB - 1))
+  validD :
+    let ws := hgcdRecursiveWorkspace W lenA
+    reconstructed.heap.ValidU64Slice ws.d
+      (Nat.min reconstructed.lenA (reconstructed.lenB - 1))
+  validW3 :
+    let ws := hgcdRecursiveWorkspace W lenA
+    reconstructed.heap.ValidWord3Slice ws.W3 reconstructed.lenA
+  quotientCapacity : reconstructed.lenA - (reconstructed.lenB - 1) < limbBase
+  dA :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ws.d.region ≠ ws.a2.region
+  wA :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ws.W3.region ≠ ws.a2.region
+  wB :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ws.W3.region ≠ ws.b2.region
+  qB :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ws.q.region ≠ ws.b2.region
+  qW :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ws.q.region ≠ ws.W3.region
+  dW :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ws.d.region ≠ ws.W3.region
+  dQ :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ws.d.region ≠ ws.q.region
+  dB :
+    let ws := hgcdRecursiveWorkspace W lenA
+    ws.d.region ≠ ws.b2.region
+
 /-- Physical data tied to the actual second recursive call and the following
 finish.  It contains no claim about the recursive callback's polynomial
 semantics; that claim is supplied separately by well-founded induction. -/
@@ -10257,6 +10299,24 @@ structure HgcdRecursiveSecondCallWorkspace (this : DenseUPolyZp)
       second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch second.sgn
       second.heap
 
+/-- The semantic fact excluded from the second-call physical workspace.  It is
+obtained from well-founded induction at `middle.lenC0 < bound`. -/
+def HgcdRecursiveSecondCallbackRefines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (W scratch : RawPtr UInt64) (lenA : Nat)
+    (middle : HgcdRecursiveMiddleResult)
+    (hsecondOrder : middle.lenD0 < middle.lenC0)
+    (hsecondDecrease : middle.lenC0 < bound) : Prop :=
+  ∀ highC highD,
+    RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+    RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+    let ws := hgcdRecursiveWorkspace W lenA
+    HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
+      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
+      middle.lenC0 middle.lenD0 ws.next scratch middle.heap hsecondOrder
+      hsecondDecrease highC highD
+
 /-- All data tied to the actual second recursive call and the following
 finish.  Its semantic field is exactly the smaller-call induction hypothesis;
 all remaining fields are bundled in `workspace`. -/
@@ -10273,14 +10333,8 @@ structure HgcdRecursiveSecondCallAdmissible (this : DenseUPolyZp)
   workspace : HgcdRecursiveSecondCallWorkspace this bound recurse M hM A B W
     scratch lenA first reconstructed middle second hsecondOrder
     hsecondDecrease
-  recursiveRefines : ∀ highC highD,
-    RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
-    RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
-    let ws := hgcdRecursiveWorkspace W lenA
-    HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
-      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
-      middle.lenC0 middle.lenD0 ws.next scratch middle.heap hsecondOrder
-      hsecondDecrease highC highD
+  recursiveRefines : HgcdRecursiveSecondCallbackRefines this bound recurse W
+    scratch lenA middle hsecondOrder hsecondDecrease
 
 /-- Attach only the well-founded child semantic theorem to an already
 established physical second-call workspace. -/
@@ -10297,14 +10351,8 @@ theorem HgcdRecursiveSecondCallWorkspace.admissible (this : DenseUPolyZp)
     (workspace : HgcdRecursiveSecondCallWorkspace this bound recurse M hM A B
       W scratch lenA first reconstructed middle second hsecondOrder
       hsecondDecrease)
-    (recursiveRefines : ∀ highC highD,
-      RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
-      RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
-      let ws := hgcdRecursiveWorkspace W lenA
-      HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
-        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
-        middle.d0 middle.lenC0 middle.lenD0 ws.next scratch middle.heap
-        hsecondOrder hsecondDecrease highC highD) :
+    (recursiveRefines : HgcdRecursiveSecondCallbackRefines this bound recurse W
+      scratch lenA middle hsecondOrder hsecondDecrease) :
     HgcdRecursiveSecondCallAdmissible this bound recurse M hM A B W scratch
       lenA first reconstructed middle second hsecondOrder hsecondDecrease :=
   ⟨workspace, recursiveRefines⟩
@@ -10358,51 +10406,18 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
         first.lenA first.lenB (lenA / 2) first.matrix first.valid first.sgn
         first.heap = .ok reconstructed)
     (hearly : ¬ reconstructed.lenB < lenA / 2 + 1)
-    (hQValid :
-      let ws := hgcdRecursiveWorkspace W lenA
-      reconstructed.heap.ValidU64Slice ws.q
-        (reconstructed.lenA - (reconstructed.lenB - 1)))
-    (hDValid :
-      let ws := hgcdRecursiveWorkspace W lenA
-      reconstructed.heap.ValidU64Slice ws.d
-        (Nat.min reconstructed.lenA (reconstructed.lenB - 1)))
-    (hW3Valid :
-      let ws := hgcdRecursiveWorkspace W lenA
-      reconstructed.heap.ValidWord3Slice ws.W3 reconstructed.lenA)
-    (hqCapacity : reconstructed.lenA - (reconstructed.lenB - 1) < limbBase)
-    (hDA :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ws.d.region ≠ ws.a2.region)
-    (hWA :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ws.W3.region ≠ ws.a2.region)
-    (hWB :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ws.W3.region ≠ ws.b2.region)
-    (hQB :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ws.q.region ≠ ws.b2.region)
-    (hQW :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ws.q.region ≠ ws.W3.region)
-    (hDW :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ws.d.region ≠ ws.W3.region)
-    (hDQ :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ws.d.region ≠ ws.q.region)
-    (hDB :
-      let ws := hgcdRecursiveWorkspace W lenA
-      ws.d.region ≠ ws.b2.region)
+    (middleWork : HgcdRecursiveMiddleWorkspace W lenA reconstructed)
     (hmiddle :
       let ws := hgcdRecursiveWorkspace W lenA
       hgcdRecursiveMiddle this ws.q ws.d ws.a2 ws.b2 reconstructed.lenA
         reconstructed.lenB (lenA / 2) ws.W3 reconstructed.heap = .ok middle)
     (hsecondOrder : middle.lenD0 < middle.lenC0)
     (hsecondDecrease : middle.lenC0 < bound)
-    (secondCall : HgcdRecursiveSecondCallAdmissible this bound recurse M hM A
-      B W scratch lenA first reconstructed middle second hsecondOrder
+    (secondWork : HgcdRecursiveSecondCallWorkspace this bound recurse M hM A B
+      W scratch lenA first reconstructed middle second hsecondOrder
       hsecondDecrease)
+    (secondRecursiveRefines : HgcdRecursiveSecondCallbackRefines this bound
+      recurse W scratch lenA middle hsecondOrder hsecondDecrease)
     (hsecond :
       let ws := hgcdRecursiveWorkspace W lenA
       hgcdRecursiveDispatchBelow this bound recurse ws.S
@@ -10429,6 +10444,9 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
         A B lenA result := by
   let ws := hgcdRecursiveWorkspace W lenA
   let high := hgcdRecursiveHighInput a b lenA lenB
+  let secondCall := secondWork.admissible this bound recurse M hM A B W scratch
+    lenA first reconstructed middle second hsecondOrder hsecondDecrease
+    secondRecursiveRefines
   let providers := hgcdRecursiveFirstCall_providers this bound recurse a b W
     scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB hcfg hp
     horder firstCall.workspace firstCall.recursiveRefines
@@ -10476,7 +10494,9 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
       reconstructed.heap currentA currentB (by omega)
       (by simpa [currentA] using hFirstReconstruct.1)
       (by simpa [currentB] using hFirstReconstruct.2.1)
-      hQValid hDValid hW3Valid hqCapacity hDA hWA hWB hQB hQW hDW hDQ hDB
+      middleWork.validQ middleWork.validD middleWork.validW3
+      middleWork.quotientCapacity middleWork.dA middleWork.wA middleWork.wB
+      middleWork.qB middleWork.qW middleWork.dW middleWork.dQ middleWork.dB
       hcfg (Fact.out : Nat.Prime this._p.toNat) (by omega)
       (Nat.le_of_lt hReconstructed.decreases) (by omega) (by omega) with
     ⟨actualMiddle, quotient, remainder, hmiddle', _, _, _, _, _, _,
@@ -10504,7 +10524,8 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
       (Nat.min reconstructed.lenA (reconstructed.lenB - 1)) middle.k
       (if middle.lenD ≥ middle.k then middle.lenD - middle.k else 0)
       ((hMiddleLayout ws.d
-        (Nat.min reconstructed.lenA (reconstructed.lenB - 1))).mp hDValid)
+        (Nat.min reconstructed.lenA (reconstructed.lenB - 1))).mp
+          middleWork.validD)
     split <;> omega
   rcases hgcdRecursiveMiddle_split_reps this ws.q ws.d ws.a2 ws.b2
       reconstructed.lenA reconstructed.lenB (lenA / 2) ws.W3

@@ -8117,6 +8117,26 @@ structure HgcdRecursiveFirstCallWorkspace (this : DenseUPolyZp)
   lowA : RawDensePolyRep this heap a (Nat.min lenA (lenA / 2)) lowPolyA
   lowB : RawDensePolyRep this heap b (Nat.min lenB (lenA / 2)) lowPolyB
 
+/-- First-call data available at one well-founded body invocation.  The
+semantic field is precisely the smaller-call induction hypothesis. -/
+structure HgcdRecursiveFirstCallAdmissible (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat)) : Prop where
+  workspace : HgcdRecursiveFirstCallWorkspace this bound recurse a b W
+    scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB
+  recursiveRefines :
+    let ws := hgcdRecursiveWorkspace W lenA
+    let high := hgcdRecursiveHighInput a b lenA lenB
+    ∀ (hchildOrder : high.lenB0 < high.lenA0)
+      (hchildDecrease : high.lenA0 < bound),
+    HgcdRecursiveCallbackRefinesAt this bound recurse ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+      high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
+      inputHighA inputHighB
+
 /-- A first-call admissible workspace plus the child induction hypothesis
 supplies exactly both proof arguments consumed by `hgcdRecursiveBodyBelow`. -/
 theorem hgcdRecursiveFirstCall_providers (this : DenseUPolyZp)
@@ -8166,6 +8186,64 @@ theorem hgcdRecursiveFirstCall_providers (this : DenseUPolyZp)
       recurse a b W scratch lenA lenB heap inputHighA inputHighB lowPolyA
       lowPolyB hcfg hp horder workspace.iter recursiveRefines workspace.frame
       workspace.reconstruct workspace.lowA workspace.lowB
+
+/-- The actual first dispatch simultaneously supplies its recursive semantic
+invariant and transports both source low prefixes into the returned heap. -/
+theorem hgcdRecursiveFirstCall_refines (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat))
+    (hcfg : DensePreinvConfigured this) (hp : 1 < this._p.toNat)
+    (admissible : HgcdRecursiveFirstCallAdmissible this bound recurse a b W
+      scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB)
+    (first : HgcdRecursiveResult)
+    (hchildOrder :
+      (hgcdRecursiveHighInput a b lenA lenB).lenB0 <
+        (hgcdRecursiveHighInput a b lenA lenB).lenA0)
+    (hchildDecrease :
+      (hgcdRecursiveHighInput a b lenA lenB).lenA0 < bound)
+    (hrun :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      hgcdRecursiveDispatchBelow this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+        heap hchildOrder hchildDecrease = .ok first) :
+    ∃ outputHighA outputHighB entries,
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      HgcdRecursiveRawInvariant this inputHighA inputHighB outputHighA
+          outputHighB entries true ws.a3 ws.b3 high.lenA0 first ∧
+        RawDensePolyRep this first.heap a (Nat.min lenA (lenA / 2)) lowPolyA ∧
+        RawDensePolyRep this first.heap b (Nat.min lenB (lenA / 2)) lowPolyB := by
+  let ws := hgcdRecursiveWorkspace W lenA
+  let high := hgcdRecursiveHighInput a b lenA lenB
+  rcases hgcdRecursiveDispatchBelow_rawInvariant this bound recurse ws.R
+      (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+      high.lenA0 high.lenB0 ws.q ws.W3 ws.T0 ws.T1 scratch ws.a2 ws.next
+      heap inputHighA inputHighB hcfg hp hchildOrder hchildDecrease
+      admissible.workspace.iter
+      (admissible.recursiveRefines hchildOrder hchildDecrease) first hrun with
+    ⟨outputHighA, outputHighB, entries, hInvariant⟩
+  refine ⟨outputHighA, outputHighB, entries, ?_⟩
+  dsimp only
+  refine ⟨hInvariant, ?_⟩
+  have hframe : HgcdRecursiveFirstDispatchFrame a b
+      (Nat.min lenA (lenA / 2)) (Nat.min lenB (lenA / 2)) heap first := by
+    exact admissible.workspace.frame hchildOrder hchildDecrease first hrun
+  have hLowAAfter : RawDensePolyRep this first.heap a
+      (Nat.min lenA (lenA / 2)) lowPolyA :=
+    rawDensePolyRep_of_same_prefix this heap first.heap a
+    (Nat.min lenA (lenA / 2)) lowPolyA hframe.layout hframe.lowAPrefix
+    admissible.workspace.lowA
+  have hLowBAfter : RawDensePolyRep this first.heap b
+      (Nat.min lenB (lenA / 2)) lowPolyB :=
+    rawDensePolyRep_of_same_prefix this heap first.heap b
+    (Nat.min lenB (lenA / 2)) lowPolyB hframe.layout hframe.lowBPrefix
+    admissible.workspace.lowB
+  exact ⟨hLowAAfter, hLowBAfter⟩
 
 /-- The first reconstructed pair already carries the complete parent length
 contract when the generated early-stop guard succeeds.  Matrix descriptors
@@ -10594,26 +10672,6 @@ theorem hgcdRecursiveBodyBelow_eq_body (this : DenseUPolyZp)
     split <;> simp_all
     split <;> simp_all
     split <;> simp_all
-
-/-- First-call data available at one well-founded body invocation.  The
-semantic field is precisely the smaller-call induction hypothesis. -/
-structure HgcdRecursiveFirstCallAdmissible (this : DenseUPolyZp)
-    [Fact (Nat.Prime this._p.toNat)]
-    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
-    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
-    (inputHighA inputHighB lowPolyA lowPolyB :
-      Polynomial (ZMod this._p.toNat)) : Prop where
-  workspace : HgcdRecursiveFirstCallWorkspace this bound recurse a b W
-    scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB
-  recursiveRefines :
-    let ws := hgcdRecursiveWorkspace W lenA
-    let high := hgcdRecursiveHighInput a b lenA lenB
-    ∀ (hchildOrder : high.lenB0 < high.lenA0)
-      (hchildDecrease : high.lenA0 < bound),
-    HgcdRecursiveCallbackRefinesAt this bound recurse ws.R
-      (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
-      high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
-      inputHighA inputHighB
 
 /-- Invoke the genuine well-founded body from admissible first-call data.
 Neither of the body's semantic proof providers is accepted from the caller. -/

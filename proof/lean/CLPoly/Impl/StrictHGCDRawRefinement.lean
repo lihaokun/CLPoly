@@ -8137,6 +8137,29 @@ structure HgcdRecursiveFirstCallAdmissible (this : DenseUPolyZp)
       high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
       inputHighA inputHighB
 
+/-- Attach only the well-founded child semantic theorem to an already
+established physical first-call workspace. -/
+theorem HgcdRecursiveFirstCallWorkspace.admissible (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (a b W scratch : RawPtr UInt64) (lenA lenB : Nat) (heap : RawHeap)
+    (inputHighA inputHighB lowPolyA lowPolyB :
+      Polynomial (ZMod this._p.toNat))
+    (workspace : HgcdRecursiveFirstCallWorkspace this bound recurse a b W
+      scratch lenA lenB heap inputHighA inputHighB lowPolyA lowPolyB)
+    (recursiveRefines :
+      let ws := hgcdRecursiveWorkspace W lenA
+      let high := hgcdRecursiveHighInput a b lenA lenB
+      ∀ (hchildOrder : high.lenB0 < high.lenA0)
+        (hchildDecrease : high.lenA0 < bound),
+      HgcdRecursiveCallbackRefinesAt this bound recurse ws.R
+        (hgcdRecursiveWorkspace_R_valid W lenA) ws.a3 ws.b3 high.a0 high.b0
+        high.lenA0 high.lenB0 ws.next scratch heap hchildOrder hchildDecrease
+        inputHighA inputHighB) :
+    HgcdRecursiveFirstCallAdmissible this bound recurse a b W scratch lenA
+      lenB heap inputHighA inputHighB lowPolyA lowPolyB :=
+  ⟨workspace, recursiveRefines⟩
+
 /-- A first-call admissible workspace plus the child induction hypothesis
 supplies exactly both proof arguments consumed by `hgcdRecursiveBodyBelow`. -/
 theorem hgcdRecursiveFirstCall_providers (this : DenseUPolyZp)
@@ -10192,10 +10215,10 @@ theorem hgcdRecursiveBodyBelow_early_rawInvariant (this : DenseUPolyZp)
         subst result
         exact ⟨finalA, finalB, entries, hInvariant⟩
 
-/-- All data tied to the actual second recursive call and the following
-finish.  The semantic callback field is exactly the smaller-call induction
-hypothesis; every other field is a physical workspace or frame fact. -/
-structure HgcdRecursiveSecondCallAdmissible (this : DenseUPolyZp)
+/-- Physical data tied to the actual second recursive call and the following
+finish.  It contains no claim about the recursive callback's polynomial
+semantics; that claim is supplied separately by well-founded induction. -/
+structure HgcdRecursiveSecondCallWorkspace (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]
     (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
     (M : HgcdMat) (hM : M.Valid) (A B : RawPtr UInt64)
@@ -10218,14 +10241,6 @@ structure HgcdRecursiveSecondCallAdmissible (this : DenseUPolyZp)
       (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
       middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch ws.a2
       middle.heap highC highD
-  recursiveRefines : ∀ highC highD,
-    RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
-    RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
-    let ws := hgcdRecursiveWorkspace W lenA
-    HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
-      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
-      middle.lenC0 middle.lenD0 ws.next scratch middle.heap hsecondOrder
-      hsecondDecrease highC highD
   frame :
     let ws := hgcdRecursiveWorkspace W lenA
     HgcdRecursiveSecondDispatchFrameProvider this bound recurse ws.S
@@ -10241,6 +10256,58 @@ structure HgcdRecursiveSecondCallAdmissible (this : DenseUPolyZp)
       (Nat.min reconstructed.lenB middle.k) (Nat.min middle.lenD middle.k)
       second.lenA second.lenB middle.k middle.lenQ ws.a2 scratch second.sgn
       second.heap
+
+/-- All data tied to the actual second recursive call and the following
+finish.  Its semantic field is exactly the smaller-call induction hypothesis;
+all remaining fields are bundled in `workspace`. -/
+structure HgcdRecursiveSecondCallAdmissible (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (A B : RawPtr UInt64)
+    (W scratch : RawPtr UInt64) (lenA : Nat)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (middle : HgcdRecursiveMiddleResult) (second : HgcdRecursiveResult)
+    (hsecondOrder : middle.lenD0 < middle.lenC0)
+    (hsecondDecrease : middle.lenC0 < bound) : Prop where
+  workspace : HgcdRecursiveSecondCallWorkspace this bound recurse M hM A B W
+    scratch lenA first reconstructed middle second hsecondOrder
+    hsecondDecrease
+  recursiveRefines : ∀ highC highD,
+    RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+    RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+    let ws := hgcdRecursiveWorkspace W lenA
+    HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
+      (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
+      middle.lenC0 middle.lenD0 ws.next scratch middle.heap hsecondOrder
+      hsecondDecrease highC highD
+
+/-- Attach only the well-founded child semantic theorem to an already
+established physical second-call workspace. -/
+theorem HgcdRecursiveSecondCallWorkspace.admissible (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (bound : Nat) (recurse : HgcdRecursiveCallBelow bound)
+    (M : HgcdMat) (hM : M.Valid) (A B : RawPtr UInt64)
+    (W scratch : RawPtr UInt64) (lenA : Nat)
+    (first : HgcdRecursiveResult)
+    (reconstructed : HgcdRecursiveReconstructPairResult)
+    (middle : HgcdRecursiveMiddleResult) (second : HgcdRecursiveResult)
+    (hsecondOrder : middle.lenD0 < middle.lenC0)
+    (hsecondDecrease : middle.lenC0 < bound)
+    (workspace : HgcdRecursiveSecondCallWorkspace this bound recurse M hM A B
+      W scratch lenA first reconstructed middle second hsecondOrder
+      hsecondDecrease)
+    (recursiveRefines : ∀ highC highD,
+      RawDensePolyRep this middle.heap middle.c0 middle.lenC0 highC →
+      RawDensePolyRep this middle.heap middle.d0 middle.lenD0 highD →
+      let ws := hgcdRecursiveWorkspace W lenA
+      HgcdRecursiveCallbackRefinesAt this bound recurse ws.S
+        (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0
+        middle.d0 middle.lenC0 middle.lenD0 ws.next scratch middle.heap
+        hsecondOrder hsecondDecrease highC highD) :
+    HgcdRecursiveSecondCallAdmissible this bound recurse M hM A B W scratch
+      lenA first reconstructed middle second hsecondOrder hsecondDecrease :=
+  ⟨workspace, recursiveRefines⟩
 
 /-- The complete non-early arm of the well-founded body, following the
 generated source from the first dispatch through reconstruction, middle
@@ -10451,7 +10518,7 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
     exact rawDensePolyRep_of_same_prefix this reconstructed.heap middle.heap
       (hgcdMatPtr first.matrix first.valid i)
       (hgcdMatLen first.matrix first.valid i) (firstEntries i) hMiddleLayout
-      (secondCall.matrixPrefix i) (hFirstMatrixAtReconstructed i)
+      (secondCall.workspace.matrixPrefix i) (hFirstMatrixAtReconstructed i)
   rcases hgcdRecursiveSecondDispatch_refines this bound recurse ws.S
       (hgcdRecursiveWorkspace_S_valid W lenA) ws.a3 ws.b3 middle.c0 middle.d0
       middle.lenC0 middle.lenD0 ws.a2 ws.W3 ws.T0 ws.T1 scratch ws.a2
@@ -10459,8 +10526,9 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
       middle.lenQ (Nat.min reconstructed.lenB middle.k)
       (Nat.min middle.lenD middle.k) firstEntries quotient lowC lowD hcfg hp
       hsecondOrder hsecondDecrease
-      (secondCall.iterWorkspace highC highD hHighC hHighD)
-      (secondCall.recursiveRefines highC highD hHighC hHighD) secondCall.frame
+      (secondCall.workspace.iterWorkspace highC highD hHighC hHighD)
+      (secondCall.recursiveRefines highC highD hHighC hHighD)
+      secondCall.workspace.frame
       hFirstMatrixAtMiddle hQRep hLowC hLowD second hsecond with
     ⟨finalHighA, finalHighB, secondEntries, hSecond, hRAfter, hQAfter,
       hLowCAfter, hLowDAfter⟩
@@ -10475,7 +10543,8 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
       (Nat.min middle.lenD middle.k) second.lenA second.lenB middle.k
       middle.lenQ ws.a2 scratch first.sgn second.sgn second.heap finished
       hfinish with ⟨finishReconstructed, hfinishReconstruct, _, _, _, _⟩
-  have hFinishWork := secondCall.finish finishReconstructed hfinishReconstruct
+  have hFinishWork := secondCall.workspace.finish finishReconstructed
+    hfinishReconstruct
   have hFinishOperands := hgcdRecursiveFinish_operandInvariant this M
     first.matrix hM first.valid computeM A B ws.T0 ws.b2 ws.d ws.a3 ws.b3
     ws.q lenA (lenA / 2) reconstructed.lenB middle.lenD middle.k
@@ -10495,7 +10564,8 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
       reconstructed.lenA reconstructed.lenB middle.lenD middle.k
       middle.lenC0 middle.lenQ first second finished firstEntries secondEntries
       quotient lowC lowD finalHighA finalHighB hcfg hp hfirstLength
-      hSecondLength secondCall.finish hRAfter (hSecond.matrixSemantics rfl).1
+      hSecondLength secondCall.workspace.finish hRAfter
+      (hSecond.matrixSemantics rfl).1
       hQAfter hLowCAfter hLowDAfter hSecond.aRep hSecond.bRep rfl
       (by simp [high, hgcdRecursiveHighInput]) hReconstructed.leadingA
       hReconstructed.ordered (by omega) hReconstructed.decreases hlenQ hk
@@ -10509,11 +10579,13 @@ theorem hgcdRecursiveBodyBelow_nonEarly_rawInvariant (this : DenseUPolyZp)
     middle.lenC0 middle.lenD0 lenA middle.heap second finished left right
     highC highD currentA currentB remainder quotient lowC lowD firstEntries
     first.sgn hcfg hp hsecondOrder hsecondDecrease
-    (secondCall.iterWorkspace highC highD hHighC hHighD)
-    (secondCall.recursiveRefines highC highD hHighC hHighD) secondCall.frame
+    (secondCall.workspace.iterWorkspace highC highD hHighC hHighD)
+    (secondCall.recursiveRefines highC highD hHighC hHighD)
+    secondCall.workspace.frame
     hFirstMatrixAtMiddle hQRep hLowC hLowD hSplitC hSplitD
     (by simpa [currentA, currentB] using hFirstReconstruct.2.2.1)
-    hFirstReconstruct.2.2.2.1 hDivision secondCall.finish hsecond hfinish
+    hFirstReconstruct.2.2.2.1 hDivision secondCall.workspace.finish hsecond
+    hfinish
     hFinishStop hFinishLength
   rcases hTail with ⟨finalA, finalB, entries, hInvariant⟩
   rw [hgcdRecursiveBodyBelow] at hrun

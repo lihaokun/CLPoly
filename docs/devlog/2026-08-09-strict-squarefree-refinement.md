@@ -301,6 +301,12 @@ every generated range-for and recursive loop used by SQF.
   `pairVecDivVHCExtractChecked` 包装的原始 extract 执行以及严格
   `size` 下降证据。因此该循环现保持每个存活 bucket 的精确
   owner、head 唯一性和 owner 两两不交；未引入 fuel 或替代循环。
+- equal-degree 良基循环现亦同步保持四类后续除法所需不变式：
+  所有活动节点的 frontier 次数界、节点对具体 quotient/divisor
+  product cell 的 denotation、节点到 divisor 行的固定对应，以及
+  `reset_h` 前缀的一步越界状态。root chain 合法性不再作为额外
+  假设，而是由全 heap 精确 ownership 及 owner 落在节点数组范围自动
+  推出。
 - 审计源码后修正了 monic helper 的逆元执行：不再调用旧对象模型的
   inverse，而是构造 `Zp` 结果于已经认证的 generated `inv_prime` word
   execution；monic 早退分支仍按真实 stored-word comparison 执行。

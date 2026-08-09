@@ -860,3 +860,12 @@ every generated range-for and recursive loop used by SQF.
   自动保持。下一步用 source selection 的 left/right 比较实例化 `hdown`，
   并从旧堆序的 `selected→i→parent(i)` 链实例化 `hup`，得到实际
   child-copy 后的前缀堆序。
+- 真实 selected-child copy 的前缀堆序保持已闭合。引理显式接收 hole、
+  left、right 和 selected 的 heap head 及各自真实 lookup/
+  `pairVecDivVHCMono` 结果；selected 必须是左右子之一，且比较分支
+  必须给出它对两个候选的 degree 支配。向上边由旧堆序的
+  `selected → hole → parent(hole)` 传递恢复，向下边用 parent 逆像
+  只能是 left/right 的定理逐支恢复，未受影响边继续由 set frame
+  保持。这一步使用的是实际 `Array.set i selectedHead`，没有以 L2
+  结果回填或使用 fuel。下一步把该单步与 leaf last-write 沿
+  `pairVecDivVHCSiftDown` 的良基递归组合，得到整段 sift 的堆序保持。

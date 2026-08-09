@@ -2800,7 +2800,7 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.set_parent
       heap[pairVecDivVHCParent i]? = some parentHead →
       pairVecDivVHCMono parentHead nodes = .ok parentMono →
       newMono.deg ≤ parentMono.deg)
-    (hdown : ∀ child < limit, pairVecDivVHCParent child = i →
+    (hdown : ∀ child < limit, 0 < child → pairVecDivVHCParent child = i →
       ∀ childHead childMono,
         heap[child]? = some childHead →
         pairVecDivVHCMono childHead nodes = .ok childMono →
@@ -2837,7 +2837,105 @@ theorem PairVecDivVHCHeapDegreesOrderedUpTo.set_parent
         omega
       omega
     rw [Array.getElem?_set_ne hi hchildNe] at hchildGet
-    exact hdown child hchild hparentEq childHead childMono hchildGet hchildMono
+    exact hdown child hchild hpos hparentEq childHead childMono hchildGet hchildMono
+
+theorem pairVecDivVHCParent_eq_iff_children (i child : Nat)
+    (hchild : 0 < child) :
+    pairVecDivVHCParent child = i ↔
+      child = i * 2 + 1 ∨ child = i * 2 + 2 := by
+  constructor
+  · intro hparent
+    have hdiv : (child - 1) / 2 = i := by
+      simpa [pairVecDivVHCParent] using hparent
+    have hlower : i * 2 ≤ child - 1 := by
+      apply (Nat.le_div_iff_mul_le (by omega : 0 < 2)).mp
+      rw [hdiv]
+    have hupper : child - 1 < (i + 1) * 2 := by
+      apply (Nat.div_lt_iff_lt_mul (by omega : 0 < 2)).mp
+      rw [hdiv]
+      omega
+    omega
+  · intro hchildren
+    rcases hchildren with rfl | rfl <;>
+      unfold pairVecDivVHCParent <;> omega
+
+theorem PairVecDivVHCHeapDegreesOrderedUpTo.copy_selected_child
+    (limit i left selected holeHead leftHead rightHead selectedHead : Nat)
+    (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (holeMono leftMono rightMono selectedMono : UMonomial)
+    (hi : i < heap.size) (hileft : left = i * 2 + 1)
+    (hrightLimit : left + 1 < limit)
+    (hordered : PairVecDivVHCHeapDegreesOrderedUpTo limit heap nodes)
+    (hholeGet : heap[i]? = some holeHead)
+    (hholeMono : pairVecDivVHCMono holeHead nodes = .ok holeMono)
+    (hleftGet : heap[left]? = some leftHead)
+    (hleftMono : pairVecDivVHCMono leftHead nodes = .ok leftMono)
+    (hrightGet : heap[left + 1]? = some rightHead)
+    (hrightMono : pairVecDivVHCMono rightHead nodes = .ok rightMono)
+    (hselected : selected = left ∨ selected = left + 1)
+    (hselectedGet : heap[selected]? = some selectedHead)
+    (hselectedMono : pairVecDivVHCMono selectedHead nodes = .ok selectedMono)
+    (hleftLe : leftMono.deg ≤ selectedMono.deg)
+    (hrightLe : rightMono.deg ≤ selectedMono.deg) :
+    PairVecDivVHCHeapDegreesOrderedUpTo limit
+      (heap.set i selectedHead) nodes := by
+  have hiLimit : i < limit := by omega
+  have hselectedLimit : selected < limit := by rcases hselected with rfl | rfl <;> omega
+  have hselectedPos : 0 < selected := by rcases hselected with rfl | rfl <;> omega
+  have hselectedParent : pairVecDivVHCParent selected = i := by
+    apply (pairVecDivVHCParent_eq_iff_children i selected hselectedPos).mpr
+    rcases hselected with rfl | rfl
+    · exact Or.inl hileft
+    · exact Or.inr (by omega)
+  have hselectedLeHole : selectedMono.deg ≤ holeMono.deg :=
+    hordered selected hselectedLimit hselectedPos selectedHead holeHead
+      selectedMono holeMono hselectedGet (by simpa [hselectedParent] using hholeGet)
+      hselectedMono hholeMono
+  apply hordered.set_parent limit i selectedHead heap nodes selectedMono hi
+    hselectedMono
+  · intro parentHead parentMono hparentGet hparentMono
+    by_cases hizero : i = 0
+    · have hparentZero : pairVecDivVHCParent i = i := by
+        simp [hizero, pairVecDivVHCParent]
+      rw [hparentZero] at hparentGet
+      rw [hholeGet] at hparentGet
+      have hheadEq : parentHead = holeHead := (Option.some.inj hparentGet).symm
+      subst parentHead
+      rw [hholeMono] at hparentMono
+      have hmonoEq : parentMono = holeMono :=
+        (Except.ok.inj hparentMono).symm
+      subst parentMono
+      exact hselectedLeHole
+    · have hipos : 0 < i := Nat.pos_of_ne_zero hizero
+      exact Nat.le_trans hselectedLeHole
+        (hordered i hiLimit hipos holeHead parentHead holeMono parentMono
+          hholeGet hparentGet hholeMono hparentMono)
+  · intro child hchild hpos hparent childHead childMono hchildGet hchildMono
+    rcases (pairVecDivVHCParent_eq_iff_children i child hpos).mp hparent with
+      hchildEq | hchildEq
+    · have heq : child = left := by omega
+      rw [← heq] at hleftGet
+      rw [hleftGet] at hchildGet
+      have hheadEq : childHead = leftHead :=
+        (Option.some.inj hchildGet).symm
+      subst childHead
+      rw [hleftMono] at hchildMono
+      have hmonoEq : childMono = leftMono :=
+        (Except.ok.inj hchildMono).symm
+      subst childMono
+      exact hleftLe
+    · have heq : child = left + 1 := by omega
+      rw [← heq] at hrightGet
+      rw [hrightGet] at hchildGet
+      have hheadEq : childHead = rightHead :=
+        (Option.some.inj hchildGet).symm
+      subst childHead
+      rw [hrightMono] at hchildMono
+      have hmonoEq : childMono = rightMono :=
+        (Except.ok.inj hchildMono).symm
+      subst childMono
+      exact hrightLe
 
 /-- A `next` edge is a valid equal-monomial bucket link. -/
 def PairVecDivVHCNextValid (nodes : Array PairVecDivVHCNode) : Prop :=
@@ -2862,26 +2960,6 @@ theorem pairVecDivVHCParent_lt (i : Nat) (hi : 0 < i) :
   unfold pairVecDivVHCParent
   have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
   omega
-
-theorem pairVecDivVHCParent_eq_iff_children (i child : Nat)
-    (hchild : 0 < child) :
-    pairVecDivVHCParent child = i ↔
-      child = i * 2 + 1 ∨ child = i * 2 + 2 := by
-  constructor
-  · intro hparent
-    have hdiv : (child - 1) / 2 = i := by
-      simpa [pairVecDivVHCParent] using hparent
-    have hlower : i * 2 ≤ child - 1 := by
-      apply (Nat.le_div_iff_mul_le (by omega : 0 < 2)).mp
-      rw [hdiv]
-    have hupper : child - 1 < (i + 1) * 2 := by
-      apply (Nat.div_lt_iff_lt_mul (by omega : 0 < 2)).mp
-      rw [hdiv]
-      omega
-    omega
-  · intro hchildren
-    rcases hchildren with rfl | rfl <;>
-      unfold pairVecDivVHCParent <;> omega
 
 theorem pairVecDivVHCHeapOrdered_slot_le_root
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)

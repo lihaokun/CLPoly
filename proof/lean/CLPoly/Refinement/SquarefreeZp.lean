@@ -3598,6 +3598,186 @@ theorem pairVecDivVHCSet_child_to_parent_preserves_heapOrdered
       exact Nat.le_trans hchildLeOld holdLeParent
   simpa only [Array.size_set] using hsetOrdered
 
+/-- A pointwise degree bound on every active head currently stored in a heap. -/
+def PairVecDivVHCHeapBoundedBy (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (bound : UMonomial) : Prop :=
+  ∀ (slot head : Nat) (mono : UMonomial), heap[slot]? = some head →
+    pairVecDivVHCMono head nodes = .ok mono → mono.deg ≤ bound.deg
+
+theorem PairVecDivVHCHeapPointersValid.set_from_slot
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (target source : Nat) (htarget : target < heap.size)
+    (hsource : source < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes) :
+    PairVecDivVHCHeapPointersValid (heap.set target heap[source]) nodes := by
+  intro slot hslot
+  by_cases heq : target = slot
+  · subst slot
+    rw [Array.getElem?_set_self htarget]
+    simpa [Array.getElem?_eq_getElem hsource] using hvalid source hsource
+  · rw [Array.getElem?_set_ne htarget heq]
+    exact hvalid slot (by simpa only [Array.size_set] using hslot)
+
+theorem PairVecDivVHCHeapBoundedBy.set_from_slot
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) (bound : UMonomial)
+    (target source : Nat) (htarget : target < heap.size)
+    (hsource : source < heap.size)
+    (hbound : PairVecDivVHCHeapBoundedBy heap nodes bound) :
+    PairVecDivVHCHeapBoundedBy (heap.set target heap[source]) nodes bound := by
+  intro slot head mono hget hmono
+  by_cases heq : target = slot
+  · subst slot
+    rw [Array.getElem?_set_self htarget] at hget
+    exact hbound source head mono
+      (by simpa [Array.getElem?_eq_getElem hsource] using hget) hmono
+  · rw [Array.getElem?_set_ne htarget heq] at hget
+    exact hbound slot head mono hget hmono
+
+theorem PairVecDivVHCHeapPointersValid.push_from_slot
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (source : Nat) (hsource : source < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes) :
+    PairVecDivVHCHeapPointersValid (heap.push heap[source]) nodes := by
+  intro slot hslot
+  by_cases heq : slot = heap.size
+  · subst slot
+    simp only [Array.getElem?_push, if_pos rfl]
+    simpa [Array.getElem?_eq_getElem hsource] using hvalid source hsource
+  · have hold : slot < heap.size := by
+      simp only [Array.size_push] at hslot
+      omega
+    simp only [Array.getElem?_push, if_neg heq]
+    exact hvalid slot hold
+
+theorem PairVecDivVHCHeapBoundedBy.push_from_slot
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) (bound : UMonomial)
+    (source : Nat) (hsource : source < heap.size)
+    (hbound : PairVecDivVHCHeapBoundedBy heap nodes bound) :
+    PairVecDivVHCHeapBoundedBy (heap.push heap[source]) nodes bound := by
+  intro slot head mono hget hmono
+  by_cases heq : slot = heap.size
+  · subst slot
+    simp only [Array.getElem?_push, if_pos rfl] at hget
+    exact hbound source head mono
+      (by simpa [Array.getElem?_eq_getElem hsource] using hget) hmono
+  · have hold : slot < heap.size := by
+      have hslot : slot < (heap.push heap[source]).size :=
+        Array.getElem?_eq_some_iff.mp hget |>.1
+      simp only [Array.size_push] at hslot
+      omega
+    simp only [Array.getElem?_push, if_neg heq] at hget
+    exact hbound slot head mono hget hmono
+
+/-- Appending a duplicate of the future last slot's parent preserves heap
+order.  This is the ordered state after the first pointer copy of root bubble. -/
+theorem pairVecDivVHCPush_parent_preserves_heapOrdered
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) (parentHead : Nat)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hparent : heap[pairVecDivVHCParent heap.size]? = some parentHead) :
+    PairVecDivVHCHeapOrdered (heap.push parentHead) nodes := by
+  apply PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+  intro child hchild hpos childHead targetParentHead childMono parentMono
+    hchildGet htargetParentGet hchildMono hparentMono
+  by_cases hlast : child = heap.size
+  · subst child
+    simp only [Array.getElem?_push, if_pos rfl] at hchildGet
+    have hchildHeadEq : childHead = parentHead :=
+      (Option.some.inj hchildGet).symm
+    subst childHead
+    have hparentSlot : pairVecDivVHCParent heap.size < heap.size :=
+      pairVecDivVHCParent_lt heap.size hpos
+    simp only [Array.getElem?_push,
+      if_neg (Nat.ne_of_lt hparentSlot)] at htargetParentGet
+    rw [hparent] at htargetParentGet
+    have htargetHeadEq : targetParentHead = parentHead :=
+      (Option.some.inj htargetParentGet).symm
+    subst targetParentHead
+    rw [hchildMono] at hparentMono
+    exact Nat.le_of_eq
+      (congrArg UMonomial.deg (Except.ok.inj hparentMono))
+  · have hchildOld : child < heap.size := by
+      simp only [Array.size_push] at hchild
+      omega
+    have hparentOld : pairVecDivVHCParent child < heap.size :=
+      Nat.lt_trans (pairVecDivVHCParent_lt child hpos) hchildOld
+    simp only [Array.getElem?_push, if_neg hlast] at hchildGet
+    simp only [Array.getElem?_push,
+      if_neg (Nat.ne_of_lt hparentOld)] at htargetParentGet
+    exact (hordered.degreesUpTo heap nodes heap.size (Nat.le_refl _)) child
+      hchildOld hpos childHead targetParentHead childMono parentMono
+      hchildGet htargetParentGet hchildMono hparentMono
+
+/-- Root-directed pointer-copying bubble preserves heap order once its current
+hole state is ordered and every stored key is bounded by the inserted key. -/
+theorem pairVecDivVHCBubble_to_root_preserves_heapOrdered
+    (i newNode : Nat) (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (newMono : UMonomial)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hbound : PairVecDivVHCHeapBoundedBy heap nodes newMono)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hrun : pairVecDivVHCBubble i 0 newNode heap = .ok heap') :
+    PairVecDivVHCHeapOrdered heap' nodes := by
+  rw [pairVecDivVHCBubble] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hstop =>
+      split at hrun
+      next heq =>
+        simp only [Except.ok.injEq] at hrun
+        subst i
+        subst heap'
+        apply PairVecDivVHCHeapDegreesOrderedUpTo.toHeapOrdered
+        intro child hchild hpos childHead parentHead childMono parentMono
+          hchildGet hparentGet hchildMono hparentMono
+        have hchildOld : child < heap.size := by
+          simpa only [Array.size_set] using hchild
+        have hrootNeChild : 0 ≠ child := Nat.ne_of_lt hpos
+        rw [Array.getElem?_set_ne hi hrootNeChild] at hchildGet
+        by_cases hparentRoot : pairVecDivVHCParent child = 0
+        · rw [hparentRoot, Array.getElem?_set_self hi] at hparentGet
+          have hparentHeadEq : parentHead = newNode :=
+            (Option.some.inj hparentGet).symm
+          subst parentHead
+          rw [hnew] at hparentMono
+          have hparentMonoEq : parentMono = newMono :=
+            (Except.ok.inj hparentMono).symm
+          subst parentMono
+          exact hbound child childHead childMono hchildGet hchildMono
+        · have hrootNeParent : 0 ≠ pairVecDivVHCParent child :=
+            Ne.symm hparentRoot
+          rw [Array.getElem?_set_ne hi hrootNeParent] at hparentGet
+          exact (hordered.degreesUpTo heap nodes heap.size (Nat.le_refl _))
+            child hchildOld hpos childHead parentHead childMono parentMono
+            hchildGet hparentGet hchildMono hparentMono
+      next heq =>
+        dsimp only at hrun
+        split at hrun <;> try contradiction
+        next hp =>
+          have hpos : 0 < i := by omega
+          let parent := pairVecDivVHCParent i
+          have hnextValid : PairVecDivVHCHeapPointersValid
+              (heap.set i heap[parent]) nodes := by
+            exact hvalid.set_from_slot heap nodes i parent hi (by simpa [parent])
+          have hnextOrdered : PairVecDivVHCHeapOrdered
+              (heap.set i heap[parent]) nodes := by
+            apply pairVecDivVHCSet_child_to_parent_preserves_heapOrdered
+              heap nodes i heap[parent] hi hpos
+            · simpa [parent, Array.getElem?_eq_getElem hp]
+            · exact hvalid
+            · exact hordered
+          have hnextBound : PairVecDivVHCHeapBoundedBy
+              (heap.set i heap[parent]) nodes newMono := by
+            exact hbound.set_from_slot heap nodes newMono i parent hi
+              (by simpa [parent])
+          exact pairVecDivVHCBubble_to_root_preserves_heapOrdered parent newNode
+            (heap.set i heap[parent]) heap' nodes newMono hnextValid
+            hnextOrdered hnextBound hnew (by simpa [parent] using hrun)
+termination_by i
+decreasing_by
+  exact pairVecDivVHCParent_lt i (by omega)
+
 theorem pairVecDivVHCHeapOrdered_slot_le_root
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
     (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
@@ -3776,6 +3956,60 @@ theorem pairVecDivVHCBubble_new_root_bounds_all
     rw [hnew] at hmono
     exact Nat.le_of_eq (congrArg UMonomial.deg
       (Except.ok.inj hmono).symm)
+
+/-- The complete generated greater-root bubble, including its initially
+unordered appended key, returns a max-heap. -/
+theorem pairVecDivVHCBubble_new_root_preserves_heapOrdered
+    (newNode : Nat) (heap heap' : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (newMono rootMono : UMonomial)
+    (hheap : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hnew : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hroot : pairVecDivVHCMono heap[0] nodes = .ok rootMono)
+    (hrootLe : rootMono.deg ≤ newMono.deg)
+    (hrun : pairVecDivVHCBubble heap.size 0 newNode
+      (heap.push newNode) = .ok heap') :
+    PairVecDivVHCHeapOrdered heap' nodes := by
+  have holdBound : PairVecDivVHCHeapBoundedBy heap nodes newMono := by
+    intro slot head mono hget hmono
+    have hslot : slot < heap.size := Array.getElem?_eq_some_iff.mp hget |>.1
+    have hheadEq : heap[slot] = head := by
+      rw [Array.getElem?_eq_getElem hslot] at hget
+      exact Option.some.inj hget
+    have hslotMono : pairVecDivVHCMono heap[slot] nodes = .ok mono := by
+      simpa [hheadEq] using hmono
+    exact Nat.le_trans
+      (pairVecDivVHCHeapOrdered_slot_le_root heap nodes hvalid hordered slot
+        hslot mono rootMono hslotMono hroot) hrootLe
+  let parent := pairVecDivVHCParent heap.size
+  have hparentOld : parent < heap.size := by
+    exact pairVecDivVHCParent_lt heap.size hheap
+  have hparentGet : heap[parent]? = some heap[parent] :=
+    Array.getElem?_eq_getElem hparentOld
+  rw [pairVecDivVHCBubble] at hrun
+  split at hrun <;> try contradiction
+  next hi =>
+    split at hrun <;> try contradiction
+    next hstop =>
+      split at hrun
+      next heq => omega
+      next heq =>
+        dsimp only at hrun
+        split at hrun <;> try contradiction
+        next hp =>
+          rw [Array.getElem_push_lt hparentOld] at hrun
+          have hrun' : pairVecDivVHCBubble parent 0 newNode
+              (heap.push heap[parent]) = .ok heap' := by
+            simpa [parent, Array.set_push, hparentOld] using hrun
+          apply pairVecDivVHCBubble_to_root_preserves_heapOrdered parent
+            newNode (heap.push heap[parent]) heap' nodes newMono
+          · exact hvalid.push_from_slot heap nodes parent hparentOld
+          · exact pairVecDivVHCPush_parent_preserves_heapOrdered heap nodes
+              heap[parent] hordered (by simpa [parent] using hparentGet)
+          · exact holdBound.push_from_slot heap nodes newMono parent hparentOld
+          · exact hnew
+          · exact hrun'
 
 theorem pairVecDivVHCExtract_root_dominates
     (heap heap' : Array Nat) (sourceNodes nodes : Array PairVecDivVHCNode)

@@ -1114,3 +1114,16 @@ every generated range-for and recursive loop used by SQF.
   引入 L2 oracle、fuel 或额外语义假设。下一步把此单步引理沿
   `pairVecDivVHCBubble` 的良基递归组合，并在根写入处使用已证明的全局
   新根上界，从而关闭 greater-root insertion 的完整 heap-order 保持。
+- greater-root `Bubble` 的完整 max-heap order 保持已闭合。
+  新增的 `PairVecDivVHCHeapBoundedBy` 及真实 `set`/`push` 保持引理记录
+  当前 heap 中每个活动键均不超过待插入键；
+  `pairVecDivVHCPush_parent_preserves_heapOrdered` 证明 append 后第一次把
+  父指针复制到末槽立即恢复 heap order。
+  `pairVecDivVHCBubble_to_root_preserves_heapOrdered` 随生成函数的
+  `termination_by i` 做良基递归：每次祖先复制使用上一提交的局部保持
+  定理，最终 `i = 0` 的真实根写入则逐条验证所有受影响根边。
+  `pairVecDivVHCBubble_new_root_preserves_heapOrdered` 从原 heap order 推出
+  全局新键上界并组合首次复制与递归尾部，覆盖完整 generated
+  greater-root 调用。全程没有 fuel、规格 oracle 或 L2 回退。
+  下一步把该定理接入 `pairVecDivVHCInsert` greater-root 分支，并处理
+  `FindAnchor`/`BubbleBelow` 的非根 insertion 分支。

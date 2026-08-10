@@ -1252,3 +1252,16 @@ every generated range-for and recursive loop used by SQF.
   `pairVecDivVHCOuterIteration_nodes_size` 贯通 consume/emit/reinsert。
   因而 `nodes.size = divisor.size - 1` 可在全局 outer loop 中逐轮传递，
   无需把长度保持作为外加 oracle 假设。
+- general heap division 的全局良基高次系数语义已闭合。
+  `pairVecDivVHCOuterIteration_quotient_eq_of_frontier_lt_lead` 从真实 emit
+  分支证明 frontier 低于 divisor lead 时单轮不追加 quotient；
+  `pairVecDivVHCOuterLoop_quotient_eq_of_limit_le_lead` 沿 generated
+  `degreeLimit` 良基递归证明其后所有实际循环均保持 quotient。
+  `pairVecDivVHCOuterLoop_productAgreesAbove_lead_of_success` 随后对完整
+  `OuterLoop` 作强归纳：lead 以上的 frontier 使用真实 consume/emit 系数桥
+  并递归传递 canonical、ownership、coverage、node-size、homogeneous、heap
+  order、cursor prefix、processed lead 与 consumed dividend；低于 lead 的
+  frontier 仍执行到终止，但用 quotient 不变与 sparse-gap 定理闭合所有
+  lead 以上系数。该定理准确刻画 quotient-with-remainder，而没有把任意
+  非整除输入伪装成完整乘积等式。下一步在 SQF 调用点用真实整除前提消去
+  低次余数并推出完整多项式等式。

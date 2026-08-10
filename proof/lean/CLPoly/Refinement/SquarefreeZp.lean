@@ -20774,7 +20774,10 @@ theorem strictYunLoopIR_refines_yunLoop
       SparsePolyZp.toPoly this._p.toNat cOut =
         (yunLoop (SparsePolyZp.toPoly this._p.toNat w)
           (SparsePolyZp.toPoly this._p.toNat c) multiplicity.toNat
-          (toPolyList result this._p.toNat) hcMonic.ne_zero).2 := by
+          (toPolyList result this._p.toNat) hcMonic.ne_zero).2 ∧
+      SparsePolyZp.Canonical this._p.toNat cOut ∧
+      (SparsePolyZp.toPoly this._p.toNat cOut).Monic ∧
+      sparseDenseLength cOut ≤ 2 ^ 63 := by
   have hwSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat w
     hwMonic.ne_zero
   have hcSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat c
@@ -20841,8 +20844,10 @@ theorem strictYunLoopIR_refines_yunLoop
         cNext nextResult hyCanonical hcNextCanonical hyMonic hcNextMonic
         hnextBounds.1 hnextBounds.2 (by
           simpa [Nat.add_assoc, hnextBudget.1] using hnextBudget.2) with
-      ⟨cOut, resultOut, hrecursive, hrecursiveList, hrecursiveC⟩
-    refine ⟨cOut, resultOut, ?_, ?_, ?_⟩
+      ⟨cOut, resultOut, hrecursive, hrecursiveList, hrecursiveC,
+        hcOutCanonical, hcOutMonic, hcOutBound⟩
+    refine ⟨cOut, resultOut, ?_, ?_, ?_, hcOutCanonical, hcOutMonic,
+      hcOutBound⟩
     · rw [strictYunLoopIR, hguard, if_pos rfl]
       dsimp only
       simp only [hgcdRun, hyOutput, hzRun, hzNorm]
@@ -20914,7 +20919,8 @@ theorem strictYunLoopIR_refines_yunLoop
       Bool.eq_false_of_not_eq_true hguardNotTrue
     have hwZero : (SparsePolyZp.toPoly this._p.toNat w).natDegree = 0 :=
       Nat.eq_zero_of_not_pos hwPositive
-    refine ⟨c, result, by simp [strictYunLoopIR, hguardFalse], ?_, ?_⟩
+    refine ⟨c, result, by simp [strictYunLoopIR, hguardFalse], ?_, ?_,
+      hcCanonical, hcMonic, hcBound⟩
     · rw [yunLoop, dif_pos hwZero]
     · rw [yunLoop, dif_pos hwZero]
 termination_by Generated.squarefreeMeasure w + Generated.squarefreeMeasure c
@@ -20939,7 +20945,7 @@ theorem strictYunLoopIR_succeeds
         .ok (cOut, resultOut) := by
   rcases strictYunLoopIR_refines_yunLoop this hcfg physical multiplicity w c
       result hwCanonical hcCanonical hwMonic hcMonic hwBound hcBound hbudget
-    with ⟨cOut, resultOut, hrun, _, _⟩
+    with ⟨cOut, resultOut, hrun, _, _, _, _, _⟩
   exact ⟨cOut, resultOut, hrun⟩
 
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)

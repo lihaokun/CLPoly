@@ -20996,6 +20996,45 @@ theorem extractPthRootIR_refines_of_derivative_zero (p : Nat)
   exact canonical_degrees_dvd_of_derivative_eq_zero p source hcanonical
     hderivative
 
+/-- In the derivative-zero branch, contraction preserves monicity.  This is
+the algebraic fact that makes the concrete `__upoly_make_monic` call take its
+proved early-return path after `extractPthRootIR`. -/
+theorem contract_monic_of_derivative_zero (p : Nat) [Fact (Nat.Prime p)]
+    (f : Polynomial (ZMod p)) (hmonic : f.Monic)
+    (hderivative : Polynomial.derivative f = 0) :
+    (Polynomial.contract p f).Monic := by
+  have hp := (Fact.out : Nat.Prime p)
+  have hexpand : Polynomial.expand (ZMod p) p (Polynomial.contract p f) = f :=
+    Polynomial.expand_contract p hderivative hp.ne_zero
+  apply (Polynomial.monic_expand_iff hp.pos).mp
+  rw [hexpand]
+  exact hmonic
+
+/-- The source recursion's contraction branch strictly decreases L2 degree;
+this is the mathematical termination argument used by the generated-measure
+recursion, with no fuel parameter. -/
+theorem natDegree_contract_lt_of_derivative_zero (p : Nat)
+    [Fact (Nat.Prime p)] (f : Polynomial (ZMod p))
+    (hpositive : 0 < f.natDegree)
+    (hderivative : Polynomial.derivative f = 0) :
+    (Polynomial.contract p f).natDegree < f.natDegree := by
+  have hp := (Fact.out : Nat.Prime p)
+  have hexpand : Polynomial.expand (ZMod p) p (Polynomial.contract p f) = f :=
+    Polynomial.expand_contract p hderivative hp.ne_zero
+  have hdegree : f.natDegree = (Polynomial.contract p f).natDegree * p := by
+    conv_lhs => rw [← hexpand]
+    rw [Polynomial.natDegree_expand]
+  have hcontractPositive : 0 < (Polynomial.contract p f).natDegree := by
+    by_contra hnot
+    have hzero : (Polynomial.contract p f).natDegree = 0 :=
+      Nat.eq_zero_of_not_pos hnot
+    rw [hzero, zero_mul] at hdegree
+    omega
+  have hmul : (Polynomial.contract p f).natDegree * 1 <
+      (Polynomial.contract p f).natDegree * p :=
+    Nat.mul_lt_mul_of_pos_left hp.one_lt hcontractPositive
+  simpa [hdegree] using hmul
+
 theorem extractPthRootLoop_size (index : Nat) (output source : SparsePolyZp)
     (prime : UInt64) :
     (extractPthRootLoop index output source prime).size =

@@ -20109,10 +20109,63 @@ theorem pairVecDivGeneralBranchIR_refines_divByMonic
   exact ⟨hcanonicalOut, eq_divByMonic_of_mul_eq _ _ _ hdivisorMonic
     hdivisorDvd hmul⟩
 
+/-- Exact divisibility by a canonical one-term sparse polynomial forces every
+stored dividend term to lie at or above the divisor degree.  Thus the source
+single-term range-for branch needs no unproved call-site precondition. -/
+theorem singleDivisor_dvd_implies_term_degrees (p : Nat)
+    [Fact (Nat.Prime p)] (dividend divisor : SparsePolyZp)
+    (hdividendCanonical : SparsePolyZp.Canonical p dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical p divisor)
+    (hsingle : divisor.size = 1)
+    (hdivisorDvd : SparsePolyZp.toPoly p divisor ∣
+      SparsePolyZp.toPoly p dividend) :
+    ∀ term ∈ dividend.toList, divisor[0].1.deg ≤ term.1.deg := by
+  rcases Array.size_eq_one_iff.mp hsingle with ⟨divisorTerm, rfl⟩
+  intro term hterm
+  have hdivisorMem : divisorTerm ∈ (#[divisorTerm] : SparsePolyZp).toList := by
+    simp
+  have hdivisorFieldNonzero : Zp.toZMod p divisorTerm.2 ≠ 0 :=
+    Zp.toZMod_ne_zero_of_val_ne_zero p divisorTerm.2
+      (hdivisorCanonical.1 divisorTerm hdivisorMem)
+      (hdivisorCanonical.2.2 divisorTerm hdivisorMem)
+  have hdivisorPoly : SparsePolyZp.toPoly p (#[divisorTerm] : SparsePolyZp) =
+      Polynomial.monomial divisorTerm.1.deg
+        (Zp.toZMod p divisorTerm.2) := by
+    simp [SparsePolyZp.toPoly, listSum]
+  have htermCoefficient :
+      (SparsePolyZp.toPoly p dividend).coeff term.1.deg ≠ 0 := by
+    unfold SparsePolyZp.toPoly
+    rw [listSum_coeff_of_mem_chain p dividend.toList term
+      hdividendCanonical.2.1 hterm]
+    exact Zp.toZMod_ne_zero_of_val_ne_zero p term.2
+      (hdividendCanonical.1 term hterm)
+      (hdividendCanonical.2.2 term hterm)
+  rcases hdivisorDvd with ⟨quotient, hquotient⟩
+  have hquotientNonzero : quotient ≠ 0 := by
+    intro hzero
+    rw [hzero, mul_zero] at hquotient
+    rw [hquotient] at htermCoefficient
+    exact htermCoefficient (by simp)
+  have htrailing :
+      (SparsePolyZp.toPoly p dividend).natTrailingDegree =
+        divisorTerm.1.deg + quotient.natTrailingDegree := by
+    rw [hquotient, hdivisorPoly,
+      Polynomial.natTrailingDegree_mul
+        (by
+          intro hzero
+          have hcoeff := congrArg
+            (fun poly : Polynomial (ZMod p) =>
+              poly.coeff divisorTerm.1.deg) hzero
+          apply hdivisorFieldNonzero
+          simpa using hcoeff)
+        hquotientNonzero,
+      Polynomial.natTrailingDegree_monomial hdivisorFieldNonzero]
+  have htermLower := Polynomial.natTrailingDegree_le_of_ne_zero
+    htermCoefficient
+  simpa using (show divisorTerm.1.deg ≤ term.1.deg by omega)
+
 /-- Total semantic refinement of the complete generated `pair_vec_div` entry,
-including its zero-dividend, one-term-divisor, and VHC branches.  The extra
-degree premise is exactly the source precondition needed by the one-term
-range-for traversal; exact Yun divisions establish it at that call site. -/
+including its zero-dividend, one-term-divisor, and VHC branches. -/
 theorem pairVecDivIR_refines_divByMonic
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (dividend divisor : SparsePolyZp)
@@ -20120,8 +20173,6 @@ theorem pairVecDivIR_refines_divByMonic
     (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
     (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
     (hdivisor : 0 < divisor.size)
-    (hsingleDegree : divisor.size = 1 → ∀ term ∈ dividend.toList,
-      divisor[0].1.deg ≤ term.1.deg)
     (hdivisorMonic : (SparsePolyZp.toPoly this._p.toNat divisor).Monic)
     (hdivisorDvd : SparsePolyZp.toPoly this._p.toNat divisor ∣
       SparsePolyZp.toPoly this._p.toNat dividend) :
@@ -20139,7 +20190,9 @@ theorem pairVecDivIR_refines_divByMonic
   · by_cases hsingle : divisor.size = 1
     · rcases pairVecDivSingleBranchIR_refines_divByMonic this dividend divisor
           hcfg hdividendCanonical hdivisorCanonical hsingle
-          (hsingleDegree hsingle) hdivisorMonic hdivisorDvd with
+          (singleDivisor_dvd_implies_term_degrees this._p.toNat dividend
+            divisor hdividendCanonical hdivisorCanonical hsingle hdivisorDvd)
+          hdivisorMonic hdivisorDvd with
         ⟨quotient, hrun, hcanonical, hsemantic⟩
       exact ⟨quotient,
         (pairVecDivIR_single this dividend divisor hdividend hsingle).trans

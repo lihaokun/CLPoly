@@ -283,14 +283,17 @@ theorem {theorem_name}
     (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
     (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
     (hnonempty : 0 < source.size)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
     (hbound : CLPoly.Impl.StrictPolynomialGCDRefinement.sparseDenseLength source ≤ 2 ^ 63) :
     ∃ factors,
-      StrictSquarefreeZp.strictSquarefreeZpIR this hcfg physical source =
-          .ok factors ∧
+      Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
+          (StrictSquarefreeGenerated.strictSQFRawOps this hcfg physical)
+          source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
+            hbound⟩) = .ok factors ∧
       toPolyList factors this._p.toNat =
         sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
   exact {proof_theorem} this hcfg physical source hcanonical hmonic
-    hnonempty hbound
+    hnonempty hpositive hbound
 
 end Refinement
 """

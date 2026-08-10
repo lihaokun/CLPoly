@@ -859,12 +859,12 @@ REFINEMENT_MAP = {
         # Keep the original C++ spelling (including its leading `__`) in the
         # theorem name so generated contracts remain mechanically traceable.
         "verified_contract": {
-            "theorem_name": "__squarefree_Zp_ir_refines_sqfZp",
+            "theorem_name": "__squarefree_Zp_raw_ir_refines_sqfZp",
             "output_file": "SquarefreeZp",
-            "proof_import": "CLPoly.Refinement.SquarefreeZp",
+            "proof_import": "CLPoly.Refinement.StrictSquarefreeGenerated",
             "proof_theorem": (
-                "Refinement.StrictSquarefreeZp."
-                "strictSquarefreeZpIR_refines_sqfZp"
+                "Refinement.StrictSquarefreeGenerated."
+                "__squarefree_Zp_raw_ir_refines_sqfZp"
             ),
             "kind": "strict_squarefree_zp",
         },

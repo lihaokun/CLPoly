@@ -152,7 +152,7 @@ theorem derivativeZeroStep
     rw [← heq]
     exact lt_trans (Nat.lt_of_lt_of_le
       (sparse_degree_lt_denseLength this._p.toNat f hinvariant.canonical
-        index hi) hinvariant.denseBound) (by native_decide)
+        index hi) hinvariant.denseBound) (by norm_num [UInt64.size])
   have hderivativeEq : derivativeIR this f = #[] := by
     have hsize : (derivativeIR this f).size = 0 := by
       simpa [Array.isEmpty] using hderivative
@@ -223,7 +223,7 @@ theorem yunInitial
     rw [← heq]
     exact lt_trans (Nat.lt_of_lt_of_le
       (sparse_degree_lt_denseLength this._p.toNat f hinvariant.canonical
-        index hi) hinvariant.denseBound) (by native_decide)
+        index hi) hinvariant.denseBound) (by norm_num [UInt64.size])
   have hderivativeSemantic : Polynomial.derivative
       (SparsePolyZp.toPoly this._p.toNat f) ≠ 0 := by
     intro hzero
@@ -966,7 +966,7 @@ theorem generatedSQFDerivativeZero_refines
     rw [← heq]
     exact lt_trans (Nat.lt_of_lt_of_le
       (sparse_degree_lt_denseLength this._p.toNat source hentry.canonical
-        index hi) hentry.denseBound) (by native_decide)
+        index hi) hentry.denseBound) (by norm_num [UInt64.size])
   have hderivativeEq : derivativeIR this source = #[] :=
     (derivativeIR_eq_empty_iff this source hcfg hentry.canonical
       hdegreeWord).mpr hderivative
@@ -1003,7 +1003,7 @@ theorem generatedSQFDerivativeZero_refines
     rw [hsourceMeasure.1, hsourceMeasure.2] at hbound
     exact lt_trans (by omega :
       (SparsePolyZp.toPoly this._p.toNat source).natDegree < 2 ^ 63)
-      (by native_decide)
+      (by norm_num [UInt64.size])
   refine ⟨factors, ?_, ?_⟩
   · rw [Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir_state.eq_1]
     simp only [strictSQFRawOps]
@@ -1075,7 +1075,7 @@ theorem generatedSQFNonzeroDerivative_refines
     rw [← heq]
     exact lt_trans (Nat.lt_of_lt_of_le
       (sparse_degree_lt_denseLength this._p.toNat source hentry.canonical
-        index hi) hentry.denseBound) (by native_decide)
+        index hi) hentry.denseBound) (by norm_num [UInt64.size])
   have hderivativeSemantic := derivativeIR_toPoly this source hcfg
     hentry.canonical hdegreeWord
   have hderivativeNotEmpty : (derivativeIR this source).isEmpty = false := by
@@ -1172,7 +1172,7 @@ theorem generatedSQFNonzeroDerivative_refines
         rw [hsourceLength, hsourceMeasure] at hbound
         omega
       exact lt_trans (lt_of_le_of_lt hcDegree hsourceDegreeLt)
-        (by native_decide)
+        (by norm_num [UInt64.size])
     refine ⟨factors, ?_, ?_⟩
     · rw [Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir_state.eq_1]
       simp only [strictSQFRawOps]

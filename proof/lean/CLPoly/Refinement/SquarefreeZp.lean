@@ -21445,7 +21445,7 @@ theorem strictSquarefreeZpIR_derivativeZero_refines
     have hlt63 := Nat.lt_of_lt_of_le
       (sparse_degree_lt_denseLength this._p.toNat source hcanonical index
         hsourceIndex) hbound
-    exact lt_trans hlt63 (by native_decide)
+    exact lt_trans hlt63 (by norm_num [UInt64.size])
   have hderivativeEmpty : derivativeIR this source = #[] :=
     (derivativeIR_eq_empty_iff this source hcfg hcanonical hdegree).mpr
       hderivative
@@ -21628,7 +21628,7 @@ theorem sqfNonzeroDerivativeIR_prepares_yun
     have hlt63 := Nat.lt_of_lt_of_le
       (sparse_degree_lt_denseLength this._p.toNat source hcanonical index
         hsourceIndex) hbound
-    exact lt_trans hlt63 (by native_decide)
+    exact lt_trans hlt63 (by norm_num [UInt64.size])
   have hderivativeSemantic : SparsePolyZp.toPoly this._p.toNat derivative =
       Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source) :=
     derivativeIR_toPoly this source hcfg hcanonical hdegreeWord
@@ -21710,7 +21710,7 @@ theorem sqfNonzeroDerivativeIR_prepares_yun
       this._p.toNat source hcanonical hnonempty with ⟨hsourceLength,
         hsourceMeasure⟩
     rw [hsourceLength, hsourceMeasure] at hbound
-    have hhalf : 2 ^ 63 + 2 < UInt64.size := by native_decide
+    have hhalf : 2 ^ 63 + 2 < UInt64.size := by norm_num [UInt64.size]
     omega
   exact ⟨gcdOut, c, w, hgcdRun, hcOutput, hwRun,
     sparsePolyZp_normalization_eq_of_canonical this._p.toNat w hwCanonical,
@@ -21917,7 +21917,7 @@ theorem strictSquarefreeZpIR_nonzeroDerivative_refines
     rw [← heq]
     exact lt_trans (Nat.lt_of_lt_of_le
       (sparse_degree_lt_denseLength this._p.toNat source hcanonical index hi)
-      hbound) (by native_decide)
+      hbound) (by norm_num [UInt64.size])
   have hderivativeSemantic := derivativeIR_toPoly this source hcfg hcanonical
     hdegreeWord
   have hderivativeNotEmpty : derivative.isEmpty = false := by
@@ -21963,7 +21963,7 @@ theorem strictSquarefreeZpIR_nonzeroDerivative_refines
         rw [hsourceLength, hsourceMeasure] at hbound
         omega
       exact lt_trans (lt_of_le_of_lt hcRemDegreeLe hsourceDegreeLt)
-        (by native_decide)
+        (by norm_num [UInt64.size])
     let factors := scaleMultiplicityLoop 0 subfactors yunResult
       source[0]!.2.prime
     refine ⟨factors, ?_, ?_⟩

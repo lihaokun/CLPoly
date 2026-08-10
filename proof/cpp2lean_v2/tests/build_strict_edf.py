@@ -123,6 +123,7 @@ structure EDFRawOps (State : Type) where
   splitStep : ∀ (f : SparsePolyZp) (d : UInt64)
       (g hRaw gMonic hMonic : SparsePolyZp),
     EntryInvariant f d →
+    get_deg g > 0 ∧ get_deg g < get_deg f →
     exactDiv f g = .ok hRaw →
     makeMonic g = .ok gMonic →
     makeMonic hRaw.normalization = .ok hMonic →
@@ -269,7 +270,7 @@ def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State)
           | .error fault => .error fault
           | .ok hhMonic =>
             have hstep := ops.splitStep state.f state.d split.factor hhRaw.val
-              hgMonic.val hhMonic.val state.valid hhRaw.property
+              hgMonic.val hhMonic.val state.valid split.proper hhRaw.property
               hgMonic.property hhMonic.property
             match __edf_Zp_raw_ir_state ops termination
                 ⟨state.result, hgMonic.val, state.d, split.rng, hstep.1⟩ with

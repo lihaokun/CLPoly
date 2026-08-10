@@ -4571,6 +4571,47 @@ def pairVecDivVHCConsumeNode (this : DenseUPolyZp) (nodeIndex : Nat)
   else
     .error .assertionFailure
 
+/-- Exact raw-to-safe boundary for one generated bucket-chain node.  Node
+denotation supplies all checked array bounds.  The only additional source
+ordering obligation is the literal C++ `nodeIndex == reset_h` assertion when
+advancing the cursor reaches one-past-end. -/
+theorem pairVecDivVHCConsumeNode_succeeds
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
+    (hget : nodes[nodeIndex]? = some node)
+    (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
+    (hexhaustionOrder : node.quotientIndex + 1 = quotient.size →
+      nodeIndex = resetH) :
+    ∃ k' nodes' lin' resetH' next,
+      pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH quotient
+        divisor = .ok (k', nodes', lin', resetH', next) := by
+  have hn : nodeIndex < nodes.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  have hnodeEq : nodes[nodeIndex] = node := by
+    rw [Array.getElem?_eq_getElem hn] at hget
+    exact Option.some.inj hget
+  rcases hdenotes with ⟨quotientTerm, divisorTerm, hquotient, hdivisor, hmono⟩
+  have hqNode : node.quotientIndex < quotient.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hquotient
+    contradiction
+  have hdNode : node.divisorIndex < divisor.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hdivisor
+    contradiction
+  unfold pairVecDivVHCConsumeNode
+  simp only [hn, ↓reduceDIte, hnodeEq, hqNode, hdNode]
+  by_cases hadvance : node.quotientIndex + 1 < quotient.size
+  · simp only [hadvance, ↓reduceDIte]
+    exact ⟨_, _, _, _, _, rfl⟩
+  · simp only [hadvance, ↓reduceDIte]
+    have hexhausted : node.quotientIndex + 1 = quotient.size := by omega
+    simp only [hexhausted, ↓reduceIte, hexhaustionOrder hexhausted]
+    exact ⟨_, _, _, _, _, rfl⟩
+
 theorem pairVecDivVHCConsumeNode_preserves_cursorPrefixAbove
     (this : DenseUPolyZp) (degree nodeIndex : Nat) (k k' : UInt64)
     (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)

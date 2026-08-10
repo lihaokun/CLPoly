@@ -1277,3 +1277,10 @@ every generated range-for and recursive loop used by SQF.
   chain 保证是有效 active 节点，所有 dividend 读取则由分支边界保证。
   下一步继续闭合 consume/extract、emit activation 与 reinsertion 的成功性，
   最终组合为 OuterIteration/OuterLoop 的存在性定理。
+- 单个 bucket-chain 节点的 raw→safe 成功边界已精确闭合。
+  `pairVecDivVHCConsumeNode_succeeds` 从真实 node denotation 推出 node、
+  quotient cursor 与 divisor cursor 的全部 checked bounds，并证明 advance
+  与 exhausted 两条实际写回分支均返回 `.ok`。定理没有隐藏源码的关键
+  assertion：当 cursor 恰好到达 quotient 末尾时，唯一剩余前提被明确收敛
+  为 `nodeIndex = resetH`。因此后续 chain/root 成功性证明的真正任务已经
+  精确定位为 exhausted rows 的顺序不变量，而不是泛化的“不会出错”假设。

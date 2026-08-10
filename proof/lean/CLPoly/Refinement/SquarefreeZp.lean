@@ -21025,6 +21025,73 @@ def scaleMultiplicityLoop (index : Nat)
 termination_by source.size - index
 decreasing_by omega
 
+/-- Strict checked execution of the complete generated `__squarefree_Zp`
+control flow.  Every algebraic primitive is an L1 execution proved above;
+`sqfZp` is not referenced by this definition. -/
+def strictSquarefreeZpIR
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (f : SparsePolyZp) : RawExec (Array (SparsePolyZp × UInt64)) :=
+  if f.isEmpty then
+    .error .assertionFailure
+  else
+    let prime := f[0]!.2.prime
+    let derivative := derivativeIR this f
+    if derivative.isEmpty then
+      match extractPthRootIR f with
+      | .error fault => .error fault
+      | .ok root =>
+        match upolyMakeMonicIR this root with
+        | .error fault => .error fault
+        | .ok (_, rootMonic) =>
+          let sub : RawExec (Array (SparsePolyZp × UInt64)) :=
+            if hdec : Generated.squarefreeMeasure rootMonic <
+                Generated.squarefreeMeasure f then
+              strictSquarefreeZpIR this hcfg physical rootMonic
+            else
+              .ok #[]
+          match sub with
+          | .error fault => .error fault
+          | .ok factors => .ok (scaleMultiplicityLoop 0 factors #[] prime)
+    else
+      let workspace := physical f derivative
+      match yunRawGCDIR this hcfg f derivative workspace with
+      | .error fault => .error fault
+      | .ok gcdOut =>
+        match gcdOut.output with
+        | none => .error .assertionFailure
+        | some c =>
+          match pairVecDivIR this f c with
+          | .error fault => .error fault
+          | .ok wRaw =>
+            let w := SparsePolyZp.normalization wRaw
+            match strictYunLoopIR this hcfg physical 1 w c #[] with
+            | .error fault => .error fault
+            | .ok (cRem, result) =>
+              if ((! Array.isEmpty cRem) &&
+                  decide (get_deg cRem > (0 : Int64))) then
+                match extractPthRootIR cRem with
+                | .error fault => .error fault
+                | .ok root =>
+                  match upolyMakeMonicIR this root with
+                  | .error fault => .error fault
+                  | .ok (_, rootMonic) =>
+                    let sub : RawExec (Array (SparsePolyZp × UInt64)) :=
+                      if hdec : Generated.squarefreeMeasure rootMonic <
+                          Generated.squarefreeMeasure f then
+                        strictSquarefreeZpIR this hcfg physical rootMonic
+                      else
+                        .ok #[]
+                    match sub with
+                    | .error fault => .error fault
+                    | .ok factors =>
+                      .ok (scaleMultiplicityLoop 0 factors result prime)
+              else
+                .ok result
+termination_by Generated.squarefreeMeasure f
+decreasing_by all_goals exact hdec
+
 set_option maxHeartbeats 800000 in
 /-- The derivative-zero branch's generated result-copy loop is exactly the
 safe multiplicity-scaling loop. -/

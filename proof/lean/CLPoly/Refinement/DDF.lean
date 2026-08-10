@@ -665,6 +665,90 @@ theorem strictPowmodLoopIR_refines
                   rw [heform]
                   congr 1 <;> ring
 
+private lemma singletonOne_refines (q : UInt64)
+    [Fact (Nat.Prime q.toNat)] :
+    SparsePolyZp.Canonical q.toNat
+        (#[(UMonomial.mk 0,
+          Generated.StrictDDF.__make_zp_ir 1 q)] : SparsePolyZp) ∧
+      SparsePolyZp.toPoly q.toNat
+        (#[(UMonomial.mk 0,
+          Generated.StrictDDF.__make_zp_ir 1 q)] : SparsePolyZp) = 1 := by
+  have hqgt : 1 < q.toNat := (Fact.out : Nat.Prime q.toNat).one_lt
+  have hmod : (1 : Int) % (q.toNat : Int) = 1 := by
+    apply Int.emod_eq_of_lt
+    · norm_num
+    · exact_mod_cast hqgt
+  simp [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr,
+    SparsePolyZp.AllReduced, SparsePolyZp.toPoly, listSum,
+    Generated.StrictDDF.__make_zp_ir, Zp.Reduced, Zp.ofInt, Zp.toZMod,
+    hmod, hqgt]
+
+set_option maxHeartbeats 0 in
+/-- End-to-end semantic refinement of the actual strict powmod entry. -/
+theorem strictPowmodIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (base : SparsePolyZp) (e : Nat) (modulus : SparsePolyZp)
+    (mulProvider : RawMulWorkspaceProvider this)
+    (modProvider : RawModWorkspaceProvider this modulus)
+    (hbaseCanonical : SparsePolyZp.Canonical this._p.toNat base)
+    (hmodulusCanonical : SparsePolyZp.Canonical this._p.toNat modulus)
+    (hmodulusNonempty : 0 < modulus.size)
+    (hmodulusMonic : (SparsePolyZp.toPoly this._p.toNat modulus).Monic)
+    (hmodulusDegree : 0 <
+      (SparsePolyZp.toPoly this._p.toNat modulus).natDegree) :
+    ∃ output,
+      strictPowmodIR this base e modulus mulProvider modProvider = .ok output ∧
+      SparsePolyZp.Canonical this._p.toNat output ∧
+      SparsePolyZp.toPoly this._p.toNat output =
+        SparsePolyZp.toPoly this._p.toNat base ^ e %ₘ
+          SparsePolyZp.toPoly this._p.toNat modulus := by
+  have hindex : 0 < modulus.size := hmodulusNonempty
+  have hmember : modulus[0] ∈ modulus.toList := by
+    simpa using Array.getElem_mem modulus 0 hindex
+  have hprime : modulus[0].2.prime.toNat = this._p.toNat :=
+    (hmodulusCanonical.1 modulus[0] hmember).1
+  have hprimeWord : modulus[0].2.prime = this._p := by
+    exact UInt64.toNat_inj.mp hprime
+  rcases strictModIR_refines_modByMonic this hcfg base modulus
+      (modProvider.workspace base) hbaseCanonical hmodulusCanonical
+      hmodulusNonempty hmodulusMonic with
+    ⟨reducedBase, hbaseRun, hreducedBaseCanonical,
+      hreducedBaseSemantic⟩
+  have hreducedBaseReduced :
+      SparsePolyZp.toPoly this._p.toNat reducedBase %ₘ
+          SparsePolyZp.toPoly this._p.toNat modulus =
+        SparsePolyZp.toPoly this._p.toNat reducedBase := by
+    rw [hreducedBaseSemantic]
+    exact modByMonic_idem _ _ hmodulusMonic
+  let one : SparsePolyZp := #[(UMonomial.mk 0,
+    Generated.StrictDDF.__make_zp_ir 1 modulus[0].2.prime)]
+  have honeData : SparsePolyZp.Canonical this._p.toNat one ∧
+      SparsePolyZp.toPoly this._p.toNat one = 1 := by
+    dsimp [one]
+    rw [hprimeWord]
+    exact singletonOne_refines this._p
+  have honeReduced : SparsePolyZp.toPoly this._p.toNat one %ₘ
+      SparsePolyZp.toPoly this._p.toNat modulus =
+        SparsePolyZp.toPoly this._p.toNat one := by
+    rw [honeData.2]
+    apply (Polynomial.modByMonic_eq_self_iff hmodulusMonic).mpr
+    have hmodulusNonzero :
+        SparsePolyZp.toPoly this._p.toNat modulus ≠ 0 := by
+      intro hzero
+      simp [hzero] at hmodulusDegree
+    simp [Polynomial.degree_eq_natDegree hmodulusNonzero, hmodulusDegree]
+  rcases strictPowmodLoopIR_refines this hcfg modulus mulProvider modProvider
+      hmodulusCanonical hmodulusNonempty hmodulusMonic e reducedBase one
+      hreducedBaseCanonical honeData.1 hreducedBaseReduced honeReduced with
+    ⟨output, hloopRun, houtputCanonical, houtputSemantic⟩
+  refine ⟨output, ?_, houtputCanonical, houtputSemantic.trans ?_⟩
+  · simp [strictPowmodIR, hmodulusNonempty, hbaseRun, one, hloopRun]
+  · rw [honeData.2, one_mul]
+    exact pow_modByMonic_congr
+      (by rw [hreducedBaseSemantic,
+        modByMonic_idem _ _ hmodulusMonic]) e
+
 end StrictDDF
 
 end Refinement

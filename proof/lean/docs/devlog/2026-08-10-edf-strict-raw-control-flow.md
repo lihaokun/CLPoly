@@ -37,3 +37,10 @@ abstract operation record.  The generator now emits the exact
 the unprocessed input-array suffix.  `candidateRun` calls this generated entry
 directly, so a future operation-record instance cannot substitute an oracle or
 an L2 subtraction for this C++ step.
+
+The first structural loop invariant is proved in
+`CLPoly/Refinement/EDFSubtractOne.lean`: after the unique constant term has
+been processed, the exact generated loop preserves `found = true` and copies
+the remaining concrete array suffix verbatim.  The proof unfolds the generated
+well-founded recursion and tracks `Array.toList`; it assumes no polynomial
+semantic result.

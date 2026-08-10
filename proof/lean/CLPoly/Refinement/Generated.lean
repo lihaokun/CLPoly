@@ -33,7 +33,9 @@ theorem __squarefree_Zp_raw_ir_refines_sqfZp
           source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
             hbound⟩) = .ok factors ∧
       toPolyList factors this._p.toNat =
-        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) ∧
+      ∀ item ∈ factors.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1 := by
   exact Refinement.StrictSquarefreeGenerated.__squarefree_Zp_raw_ir_refines_sqfZp this hcfg physical source hcanonical hmonic
     hnonempty hpositive hbound
 
@@ -56,7 +58,12 @@ theorem __ddf_Zp_raw_ir_refines_ddf
             f[0]!.2.prime hfPrime
             hfCanonical hfDegree hfMonic hfSquarefree) = .ok output ∧
       StrictDDF.ddfResultToL2 this._p.toNat output =
-        ddf (SparsePolyZp.toPoly this._p.toNat f) := by
+        ddf (SparsePolyZp.toPoly this._p.toNat f) ∧
+      (∀ item ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1) ∧
+      (∀ item ∈ output.toList,
+        0 < (SparsePolyZp.toPoly this._p.toNat item.1).natDegree) ∧
+      ∀ item ∈ output.toList, 0 < item.2.toNat := by
   exact Refinement.StrictDDF.strictDDFEntryIR_refines_ddf this providers f hfPrime
     hfCanonical hfDegree hfMonic hfSquarefree
 

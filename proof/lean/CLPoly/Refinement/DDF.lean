@@ -933,6 +933,9 @@ structure DDFLoopInvariant (this : DenseUPolyZp)
   h_degree_bound : ∀ term ∈ h.toList, term.1.deg < 2 ^ 62
   result_canonical : ∀ item ∈ result.toList,
     SparsePolyZp.Canonical this._p.toNat item.1
+  result_degree_positive : ∀ item ∈ result.toList,
+    0 < (SparsePolyZp.toPoly this._p.toNat item.1).natDegree
+  result_index_positive : ∀ item ∈ result.toList, 0 < item.2.toNat
   p0 : 1 ≤ d.toNat
   p1 : original = SparsePolyZp.toPoly this._p.toNat fStar *
     ((ddfResultToL2 this._p.toNat result).map Prod.fst).prod
@@ -974,7 +977,7 @@ theorem DDFLoopInvariant.initial
         Generated.StrictDDF.__make_zp_ir (1 : Int64) q)] : SparsePolyZp) =
       Polynomial.X := by
     simpa [Generated.StrictDDF.__make_zp_ir] using hx.2
-  refine ⟨hq, ?_, hfCanonical, hxCanonical, hfDegree, ?_, ?_,
+  refine ⟨hq, ?_, hfCanonical, hxCanonical, hfDegree, ?_, ?_, ?_, ?_,
     ?_, ?_, ?_, hfMonic, hfSquarefree, ?_, ?_⟩
   · change (1 : Nat) < 2 ^ 62
     norm_num
@@ -986,6 +989,10 @@ theorem DDFLoopInvariant.initial
     subst term
     change (1 : Nat) < 2 ^ 62
     norm_num
+  · intro item hitem
+    simp at hitem
+  · intro item hitem
+    simp at hitem
   · intro item hitem
     simp at hitem
   · change (1 : Nat) ≤ 1
@@ -1162,6 +1169,7 @@ theorem DDFLoopInvariant.noSplit
   refine ⟨⟨hinvariant.prime_eq, hdNextBound,
     hinvariant.fStar_canonical, hPowCanonical,
     hinvariant.fStar_degree_bound, hPowTerms, hinvariant.result_canonical,
+    hinvariant.result_degree_positive, hinvariant.result_index_positive,
     ?_, hinvariant.p1, hcongNext, hinvariant.p3, hinvariant.p4,
     hp5Next, hinvariant.p6⟩, hmeasure⟩
   rw [hdIncrement]
@@ -1393,7 +1401,7 @@ theorem DDFLoopInvariant.split
     rw [hgetF, hgetNext, hdIncrement]
     omega
   refine ⟨⟨hinvariant.prime_eq, hdNextBound, hfNextCanonical,
-    hNextCanonical, hfNextTerms, hNextTerms, ?_, ?_, hprodNext,
+    hNextCanonical, hfNextTerms, hNextTerms, ?_, ?_, ?_, ?_, hprodNext,
     hcongNext, hfNextMonic, hfNextSquarefree, hp5Next, hp6Next⟩,
     hmeasure⟩
   · intro item hitem
@@ -1401,6 +1409,16 @@ theorem DDFLoopInvariant.split
     rcases hitem with hOld | rfl
     · exact hinvariant.result_canonical item hOld
     · exact hgdCanonical
+  · intro item hitem
+    simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hitem
+    rcases hitem with hOld | rfl
+    · exact hinvariant.result_degree_positive item hOld
+    · exact hgdPositive
+  · intro item hitem
+    simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hitem
+    rcases hitem with hOld | rfl
+    · exact hinvariant.result_index_positive item hOld
+    · exact hinvariant.p0
   · rw [hdIncrement]
     omega
 
@@ -2321,7 +2339,12 @@ theorem strictDDFEntryIR_refines_ddf
           (fun _ => DDFLoopInvariant.initial this f f[0]!.2.prime hfPrime
             hfCanonical hfDegree hfMonic hfSquarefree) = .ok output ∧
       ddfResultToL2 this._p.toNat output =
-        ddf (SparsePolyZp.toPoly this._p.toNat f) := by
+        ddf (SparsePolyZp.toPoly this._p.toNat f) ∧
+      (∀ item ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1) ∧
+      (∀ item ∈ output.toList,
+        0 < (SparsePolyZp.toPoly this._p.toNat item.1).natDegree) ∧
+      ∀ item ∈ output.toList, 0 < item.2.toNat := by
   have hfNonzero : SparsePolyZp.toPoly this._p.toNat f ≠ 0 :=
     hfMonic.ne_zero
   have hfNonempty : 0 < f.size :=
@@ -2377,7 +2400,8 @@ theorem strictDDFEntryIR_refines_ddf
         (!finalState.fStar.isEmpty && get_deg finalState.fStar > 0) = true := by
       simp [hfinalNotEmpty, hpositiveIff.mpr hpositive]
     refine ⟨finalState.result.push
-        (finalState.fStar, (get_deg finalState.fStar).toUInt64), ?_, ?_⟩
+        (finalState.fStar, (get_deg finalState.fStar).toUInt64), ?_, ?_,
+          ?_, ?_, ?_⟩
     · simp only [Generated.StrictDDF.__ddf_Zp_raw_ir, hfNotEmpty,
         Bool.false_eq_true, ↓reduceDIte]
       simp only [hfPrime]
@@ -2398,10 +2422,33 @@ theorem strictDDFEntryIR_refines_ddf
       rfl
     · rw [ddfResultToL2_push, hdegreeWord, hddfSemantic]
       simp [ddfRawFinishToL2, hpositive]
+    · intro item hitem
+      rw [Array.toList_push, List.mem_append] at hitem
+      rcases hitem with hprevious | hlast
+      · exact finalState.valid.result_canonical item hprevious
+      · simp only [List.mem_singleton] at hlast
+        rw [hlast]
+        exact finalState.valid.fStar_canonical
+    · intro item hitem
+      rw [Array.toList_push, List.mem_append] at hitem
+      rcases hitem with hprevious | hlast
+      · exact finalState.valid.result_degree_positive item hprevious
+      · simp only [List.mem_singleton] at hlast
+        rw [hlast]
+        exact hpositive
+    · intro item hitem
+      rw [Array.toList_push, List.mem_append] at hitem
+      rcases hitem with hprevious | hlast
+      · exact finalState.valid.result_index_positive item hprevious
+      · simp only [List.mem_singleton] at hlast
+        rw [hlast, hdegreeWord]
+        exact hpositive
   · have hguard :
         (!finalState.fStar.isEmpty && get_deg finalState.fStar > 0) = false := by
       simp [hfinalNotEmpty, (not_congr hpositiveIff).mpr hpositive]
-    refine ⟨finalState.result, ?_, ?_⟩
+    refine ⟨finalState.result, ?_, ?_, finalState.valid.result_canonical,
+      finalState.valid.result_degree_positive,
+      finalState.valid.result_index_positive⟩
     · simp only [Generated.StrictDDF.__ddf_Zp_raw_ir, hfNotEmpty,
         Bool.false_eq_true, ↓reduceDIte]
       simp only [hfPrime]

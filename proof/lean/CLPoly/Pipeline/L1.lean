@@ -239,9 +239,100 @@ theorem strictSQFStage
           source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
             hbound⟩) = .ok factors ∧
       toPolyList factors this._p.toNat =
-        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) ∧
+      ∀ item ∈ factors.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1 := by
   exact Refinement.__squarefree_Zp_raw_ir_refines_sqfZp this hcfg physical
     source hcanonical hmonic hnonempty hpositive hbound
+
+/-- Exact representation and L2 facts required to pass one concrete SQF
+output factor to the generated DDF entry. -/
+structure StrictSQFFactorDDFReady (this : DenseUPolyZp)
+    (factor : SparsePolyZp) : Prop where
+  primeMatches : factor[0]!.2.prime = this._p
+  canonical : SparsePolyZp.Canonical this._p.toNat factor
+  degreeBound : ∀ term ∈ factor.toList, term.1.deg < 2 ^ 62
+  monic : (SparsePolyZp.toPoly this._p.toNat factor).Monic
+  squarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat factor)
+
+private theorem sqfZp_factor_natDegree_le
+    {q : Nat} [Fact (Nat.Prime q)] (f : Polynomial (ZMod q))
+    (hf : f ≠ 0) (item : Polynomial (ZMod q) × Nat)
+    (hitem : item ∈ sqfZp f) : item.1.natDegree ≤ f.natDegree := by
+  have hcorrect := sqf_correct f hf
+  have hexponent : 1 ≤ item.2 := hcorrect.2.2.1 item hitem
+  have hpowMem : item.1 ^ item.2 ∈
+      (sqfZp f).map (fun factor => factor.1 ^ factor.2) :=
+    List.mem_map.mpr ⟨item, hitem, rfl⟩
+  have hfactorDvdPow : item.1 ∣ item.1 ^ item.2 :=
+    dvd_pow_self item.1 (Nat.one_le_iff_ne_zero.mp hexponent)
+  have hfactorDvd : item.1 ∣ f := hfactorDvdPow.trans
+    ((List.dvd_prod hpowMem).trans hcorrect.1.symm.dvd)
+  exact Polynomial.natDegree_le_of_dvd hfactorDvd hf
+
+/-- The concrete result array produced by strict SQF carries every condition
+needed by strict DDF.  No property is reconstructed by changing the result:
+the proof follows membership in the actual generated array. -/
+theorem strictSQFStage_preparesDDF
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : Refinement.StrictSquarefreeZp.YunRawGCDWorkspaceProvider
+      this hcfg)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
+    (hbound : CLPoly.Impl.StrictPolynomialGCDRefinement.sparseDenseLength
+      source ≤ 2 ^ 63)
+    (hsourceDegree :
+      (SparsePolyZp.toPoly this._p.toNat source).natDegree < 2 ^ 62) :
+    ∃ factors,
+      Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
+          (Refinement.StrictSquarefreeGenerated.strictSQFRawOps
+            this hcfg physical)
+          source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
+            hbound⟩) = .ok factors ∧
+      toPolyList factors this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) ∧
+      ∀ item ∈ factors.toList,
+        StrictSQFFactorDDFReady this item.1 := by
+  rcases strictSQFStage this hcfg physical source hcanonical hmonic
+      hnonempty hpositive hbound with
+    ⟨factors, hrun, hsemantic, hresultCanonical⟩
+  refine ⟨factors, hrun, hsemantic, ?_⟩
+  intro item hitem
+  have hdecoded :
+      (SparsePolyZp.toPoly this._p.toNat item.1, item.2.toNat) ∈
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+    rw [← hsemantic]
+    unfold toPolyList
+    simp only [Array.toList_map]
+    exact List.mem_map.mpr ⟨item, hitem, rfl⟩
+  have hproperties :=
+    (sqf_correct (SparsePolyZp.toPoly this._p.toNat source)
+      hmonic.ne_zero).2.1 _ hdecoded
+  have hitemCanonical := hresultCanonical item hitem
+  have hitemNonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat item.1 hproperties.2.ne_zero
+  have hheadMem : item.1[0] ∈ item.1.toList := by
+    simpa using Array.getElem_mem item.1 0 hitemNonempty
+  have hhead : item.1[0]! = item.1[0] := by
+    rw [getElem!_def, getElem?_def]
+    simp [hitemNonempty]
+  have hprimeNat : item.1[0]!.2.prime.toNat = this._p.toNat := by
+    rw [hhead]
+    exact (hitemCanonical.1 item.1[0] hheadMem).1
+  refine ⟨UInt64.toNat_inj.mp hprimeNat, hitemCanonical, ?_,
+    hproperties.2, hproperties.1⟩
+  intro term hterm
+  have htermLe := Refinement.StrictDDF.canonical_term_degree_le_natDegree
+    this._p.toNat item.1 hitemCanonical term hterm
+  have hfactorLe := sqfZp_factor_natDegree_le
+    (SparsePolyZp.toPoly this._p.toNat source) hmonic.ne_zero
+    (SparsePolyZp.toPoly this._p.toNat item.1, item.2.toNat) hdecoded
+  exact lt_of_le_of_lt (htermLe.trans hfactorLe) hsourceDegree
 
 /-- Pipeline boundary for the exact generated C++ `__ddf_Zp` entry. -/
 theorem strictDDFStage
@@ -260,9 +351,140 @@ theorem strictDDFStage
             f[0]!.2.prime hfPrime hfCanonical hfDegree hfMonic
             hfSquarefree) = .ok output ∧
       Refinement.StrictDDF.ddfResultToL2 this._p.toNat output =
-        ddf (SparsePolyZp.toPoly this._p.toNat f) := by
+        ddf (SparsePolyZp.toPoly this._p.toNat f) ∧
+      (∀ item ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1) ∧
+      (∀ item ∈ output.toList,
+        0 < (SparsePolyZp.toPoly this._p.toNat item.1).natDegree) ∧
+      ∀ item ∈ output.toList, 0 < item.2.toNat := by
   exact Refinement.__ddf_Zp_raw_ir_refines_ddf this providers f hfPrime
     hfCanonical hfDegree hfMonic hfSquarefree
+
+/-- Genuine SQF-to-DDF execution composition.  Every concrete sparse factor
+returned by the generated SQF run is passed unchanged to a generated DDF run;
+the existential output is the result of that raw execution. -/
+theorem strictSQFStage_runsDDF
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : Refinement.StrictSquarefreeZp.YunRawGCDWorkspaceProvider
+      this hcfg)
+    (providers : Refinement.StrictDDF.DDFRawProviders this)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
+    (hbound : CLPoly.Impl.StrictPolynomialGCDRefinement.sparseDenseLength
+      source ≤ 2 ^ 63)
+    (hsourceDegree :
+      (SparsePolyZp.toPoly this._p.toNat source).natDegree < 2 ^ 62) :
+    ∃ factors,
+      Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
+          (Refinement.StrictSquarefreeGenerated.strictSQFRawOps
+            this hcfg physical)
+          source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
+            hbound⟩) = .ok factors ∧
+      toPolyList factors this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) ∧
+      ∀ item ∈ factors.toList,
+        ∃ (hfactorReady : StrictSQFFactorDDFReady this item.1)
+          (output : Array (SparsePolyZp × UInt64)),
+          Generated.StrictDDF.__ddf_Zp_raw_ir
+              (Refinement.StrictDDF.strictDDFRawOps this providers
+                (SparsePolyZp.toPoly this._p.toNat item.1)) item.1
+              (fun _ => Refinement.StrictDDF.DDFLoopInvariant.initial
+                this item.1 item.1[0]!.2.prime
+                hfactorReady.primeMatches hfactorReady.canonical
+                hfactorReady.degreeBound hfactorReady.monic
+                hfactorReady.squarefree) = .ok output ∧
+          Refinement.StrictDDF.ddfResultToL2 this._p.toNat output =
+            ddf (SparsePolyZp.toPoly this._p.toNat item.1) ∧
+          (∀ component ∈ output.toList,
+            SparsePolyZp.Canonical this._p.toNat component.1) ∧
+          (∀ component ∈ output.toList,
+            0 < (SparsePolyZp.toPoly this._p.toNat component.1).natDegree) ∧
+          ∀ component ∈ output.toList, 0 < component.2.toNat := by
+  rcases strictSQFStage_preparesDDF this hcfg physical source hcanonical
+      hmonic hnonempty hpositive hbound hsourceDegree with
+    ⟨factors, hsqfRun, hsqfSemantic, hready⟩
+  refine ⟨factors, hsqfRun, hsqfSemantic, ?_⟩
+  intro item hitem
+  have hfactorReady := hready item hitem
+  rcases strictDDFStage this providers item.1 hfactorReady.primeMatches
+      hfactorReady.canonical hfactorReady.degreeBound hfactorReady.monic
+      hfactorReady.squarefree with
+    ⟨output, hrun, hsemantic, hcanonicalOutput, hdegreePositive,
+      hindexPositive⟩
+  exact ⟨hfactorReady, output, hrun, hsemantic, hcanonicalOutput,
+    hdegreePositive, hindexPositive⟩
+
+/-- A generated DDF execution prepares every concrete output component for
+the generated EDF entry.  The equal-degree property comes from DDF semantics;
+all representation facts remain attached to the actual raw output array. -/
+theorem strictDDFStage_preparesEDF
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : Refinement.StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (hready : StrictSQFFactorDDFReady this f) :
+    ∃ output,
+      Generated.StrictDDF.__ddf_Zp_raw_ir
+          (Refinement.StrictDDF.strictDDFRawOps this providers
+            (SparsePolyZp.toPoly this._p.toNat f)) f
+          (fun _ => Refinement.StrictDDF.DDFLoopInvariant.initial this f
+            f[0]!.2.prime hready.primeMatches hready.canonical
+            hready.degreeBound hready.monic hready.squarefree) = .ok output ∧
+      Refinement.StrictDDF.ddfResultToL2 this._p.toNat output =
+        ddf (SparsePolyZp.toPoly this._p.toNat f) ∧
+      ∀ item ∈ output.toList,
+        Refinement.StrictEDF.EDFEntryInvariant this item.1 item.2 := by
+  rcases strictDDFStage this providers f hready.primeMatches
+      hready.canonical hready.degreeBound hready.monic hready.squarefree with
+    ⟨output, hrun, hsemantic, hcanonical, hdegreePositive,
+      hindexPositive⟩
+  refine ⟨output, hrun, hsemantic, ?_⟩
+  intro item hitem
+  have hdecoded :
+      (SparsePolyZp.toPoly this._p.toNat item.1, item.2.toNat) ∈
+        ddf (SparsePolyZp.toPoly this._p.toNat f) := by
+    rw [← hsemantic]
+    unfold Refinement.StrictDDF.ddfResultToL2
+    exact List.mem_map.mpr ⟨item, hitem, rfl⟩
+  have hcorrect := ddf_correct (SparsePolyZp.toPoly this._p.toNat f)
+    hready.monic hready.squarefree
+  have hcomponentDvd := hcorrect.1 _ hdecoded
+  have hcomponentMonic := hcorrect.2.2.2.2 _ hdecoded
+  have hcomponentCanonical := hcanonical item hitem
+  have hcomponentPositive := hdegreePositive item hitem
+  have hcomponentNonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat item.1 hcomponentMonic.ne_zero
+  have hheadMem : item.1[0] ∈ item.1.toList := by
+    simpa using Array.getElem_mem item.1 0 hcomponentNonempty
+  have hhead : item.1[0]! = item.1[0] := by
+    rw [getElem!_def, getElem?_def]
+    simp [hcomponentNonempty]
+  have hprimeNat : item.1[0]!.2.prime.toNat = this._p.toNat := by
+    rw [hhead]
+    exact (hcomponentCanonical.1 item.1[0] hheadMem).1
+  have hfDegree := Refinement.StrictDDF.canonical_natDegree_lt_of_terms_lt
+    this._p.toNat f hready.canonical hready.monic.ne_zero (2 ^ 62)
+    hready.degreeBound
+  have hcomponentDegree :
+      (SparsePolyZp.toPoly this._p.toNat item.1).natDegree < 2 ^ 62 :=
+    lt_of_le_of_lt
+      (Polynomial.natDegree_le_of_dvd hcomponentDvd hready.monic.ne_zero)
+      hfDegree
+  refine ⟨hcomponentCanonical, ?_, ?_, hcomponentMonic,
+    hcomponentPositive, hindexPositive item hitem,
+    hready.squarefree.squarefree_of_dvd hcomponentDvd, ?_⟩
+  · intro _
+    exact UInt64.toNat_inj.mp hprimeNat
+  · intro term hterm
+    exact lt_of_le_of_lt
+      (Refinement.StrictDDF.canonical_term_degree_le_natDegree
+        this._p.toNat item.1 hcomponentCanonical term hterm)
+      hcomponentDegree
+  · intro q hq hqDvd
+    exact hcorrect.2.1 _ hdecoded q hq hqDvd
 
 /-- Pipeline boundary for the exact generated C++ `__edf_Zp` entry,
 including the concrete RNG transition. -/
@@ -285,6 +507,51 @@ theorem strictEDFStage
       EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
   exact Refinement.__edf_Zp_raw_ir_refines_edf engine this providers
     termination result f d rng hinvariant
+
+/-- Genuine DDF-to-EDF execution composition.  Each concrete DDF component
+is fed unchanged to the generated EDF entry, for an arbitrary incoming RNG
+state; the outgoing RNG state is the one returned by that raw execution. -/
+theorem strictDDFStage_runsEDF
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : Refinement.StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (Refinement.StrictEDF.strictEDFRawOps engine this providers))
+    (f : SparsePolyZp) (hready : StrictSQFFactorDDFReady this f) :
+    ∃ ddfOutput,
+      Generated.StrictDDF.__ddf_Zp_raw_ir
+          (Refinement.StrictDDF.strictDDFRawOps this providers
+            (SparsePolyZp.toPoly this._p.toNat f)) f
+          (fun _ => Refinement.StrictDDF.DDFLoopInvariant.initial this f
+            f[0]!.2.prime hready.primeMatches hready.canonical
+            hready.degreeBound hready.monic hready.squarefree) =
+        .ok ddfOutput ∧
+      Refinement.StrictDDF.ddfResultToL2 this._p.toNat ddfOutput =
+        ddf (SparsePolyZp.toPoly this._p.toNat f) ∧
+      ∀ component ∈ ddfOutput.toList, ∀ rng : State,
+        ∃ (hinvariant : Refinement.StrictEDF.EDFEntryInvariant this
+              component.1 component.2)
+          (edfOutput : Array SparsePolyZp) (rng' : State)
+          (factors : List (Polynomial (ZMod this._p.toNat))),
+          Generated.StrictEDF.__edf_Zp_raw_ir
+              (Refinement.StrictEDF.strictEDFRawOps engine this providers)
+              (Refinement.StrictEDF.strictEDFSplitLaw engine this providers)
+              termination #[] component.1 component.2 rng hinvariant =
+            .ok (edfOutput, rng') ∧
+          Refinement.StrictEDF.edfResultToL2 this._p.toNat edfOutput =
+            factors ∧
+          EDFCorrect (SparsePolyZp.toPoly this._p.toNat component.1)
+            component.2.toNat factors := by
+  rcases strictDDFStage_preparesEDF this providers f hready with
+    ⟨ddfOutput, hddfRun, hddfSemantic, hreadyEDF⟩
+  refine ⟨ddfOutput, hddfRun, hddfSemantic, ?_⟩
+  intro component hcomponent rng
+  have hinvariant := hreadyEDF component hcomponent
+  rcases strictEDFStage engine this providers termination #[] component.1
+      component.2 rng hinvariant with
+    ⟨edfOutput, rng', factors, hedfRun, hedfSemantic, hcorrect⟩
+  refine ⟨hinvariant, edfOutput, rng', factors, hedfRun, ?_, hcorrect⟩
+  simpa using hedfSemantic
 
 /-- Pipeline boundary for the exact generated C++ quadratic
 `__hensel_step` entry. -/

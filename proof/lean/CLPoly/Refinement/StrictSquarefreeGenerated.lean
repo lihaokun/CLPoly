@@ -897,6 +897,40 @@ theorem certifyBool_eq (value result : Bool) (hvalue : value = result) :
   subst value
   rfl
 
+/-- The nonzero-derivative L2 branch, expressed through the deterministic
+target carried by the generated Yun invariant. -/
+theorem sqfZp_eq_sourceYunTarget
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (source : SparsePolyZp)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
+    (hderivative : Polynomial.derivative
+      (SparsePolyZp.toPoly this._p.toNat source) ≠ 0) :
+    sqfZp (SparsePolyZp.toPoly this._p.toNat source) =
+      if 0 < (sourceYunTarget this source).2.natDegree then
+        (sourceYunTarget this source).1 ++
+          (sqfZp (Polynomial.contract this._p.toNat
+            (sourceYunTarget this source).2)).map
+              (fun item => (item.1, item.2 * this._p.toNat))
+      else
+        (sourceYunTarget this source).1 := by
+  have hsourceNonzero : SparsePolyZp.toPoly this._p.toNat source ≠ 0 := by
+    intro hzero
+    rw [hzero] at hpositive
+    simp at hpositive
+  have hcNonzero : sourceYunC this source ≠ 0 := by
+    unfold sourceYunC
+    intro hnormalize
+    have hgcdZero := normalize_eq_zero.mp hnormalize
+    exact hsourceNonzero
+      (zero_dvd_iff.mp (hgcdZero ▸ EuclideanDomain.gcd_dvd_left
+        (SparsePolyZp.toPoly this._p.toNat source)
+        (Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source))))
+  rw [sqfZp, dif_neg (Nat.ne_of_gt hpositive), dif_neg hderivative]
+  unfold sourceYunTarget
+  rw [dif_pos hcNonzero]
+  unfold sourceYunC
+  simp only
+
 set_option maxHeartbeats 800000 in
 /-- Semantic composition of the generated top-level derivative-zero branch.
 The recursive premise is itself the generated raw state entry. -/
@@ -1004,5 +1038,276 @@ theorem generatedSQFDerivativeZero_refines
       rw [sqfZp, dif_neg (Nat.ne_of_gt hentry.positive),
         dif_pos hderivative]
     rw [hsourceSqf, ← hrootSemantic]
+
+set_option maxHeartbeats 1600000 in
+/-- Semantic composition of the generated nonzero-derivative branch.  The
+raw prefix and generated Yun loop are executed before the optional recursive
+contraction call; the accumulator is the actual generated result array. -/
+theorem generatedSQFNonzeroDerivative_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp) (hentry : EntryInvariant this source)
+    (hderivative : Polynomial.derivative
+      (SparsePolyZp.toPoly this._p.toNat source) ≠ 0)
+    (hrecursive : ∀ root (hrootEntry : EntryInvariant this root),
+      Generated.StrictSquarefreeZp.squarefreeMeasure root <
+        Generated.StrictSquarefreeZp.squarefreeMeasure source →
+      ∃ factors,
+        Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir_state
+            (strictSQFRawOps this hcfg physical) ⟨root, hrootEntry⟩ =
+          .ok factors ∧
+        toPolyList factors this._p.toNat =
+          sqfZp (SparsePolyZp.toPoly this._p.toNat root)) :
+    ∃ factors,
+      Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir_state
+          (strictSQFRawOps this hcfg physical) ⟨source, hentry⟩ = .ok factors ∧
+      toPolyList factors this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+  have hdegreeWord : ∀ term ∈ source.toList,
+      term.1.deg < UInt64.size := by
+    intro term hterm
+    obtain ⟨index, hindex, htermEq⟩ := List.mem_iff_getElem.mp hterm
+    have hi : index < source.size := by simpa using hindex
+    have heq : source[index] = term := by
+      rw [← Array.getElem_toList hi]
+      exact htermEq
+    rw [← heq]
+    exact lt_trans (Nat.lt_of_lt_of_le
+      (sparse_degree_lt_denseLength this._p.toNat source hentry.canonical
+        index hi) hentry.denseBound) (by native_decide)
+  have hderivativeSemantic := derivativeIR_toPoly this source hcfg
+    hentry.canonical hdegreeWord
+  have hderivativeNotEmpty : (derivativeIR this source).isEmpty = false := by
+    have hne : derivativeIR this source ≠ #[] := by
+      intro hempty
+      apply hderivative
+      rw [← hderivativeSemantic]
+      simp [hempty]
+    simpa [Array.isEmpty_iff, hne]
+  rcases sqfNonzeroDerivativeIR_prepares_yun this hcfg physical source
+      hentry.canonical hentry.monic hentry.nonempty hentry.denseBound
+      hderivative with
+    ⟨gcdOut, c, wRaw, hgcdCore, hcOutput, hwRun, hwNorm,
+      hcCanonical, hwCanonical, hcMonic, hwMonic, hcBound, hwBound,
+      hbudget, hcSemantic, hwSemantic⟩
+  have hgcdRun : gcdRawIR this hcfg physical source
+      (derivativeIR this source) = .ok c := by
+    simp [gcdRawIR, hgcdCore, hcOutput]
+  have hyunInitial := yunInitial this hcfg physical source
+    (derivativeIR this source) c wRaw hentry hderivativeNotEmpty rfl
+    hgcdRun hwRun
+  let initialState : Generated.StrictSquarefreeZp.YunRawState
+      (strictSQFRawOps this hcfg physical) source :=
+    ⟨1, wRaw.normalization, c, #[], hyunInitial⟩
+  rcases generatedYunLoopState_refines this hcfg physical source
+      initialState with
+    ⟨finalState, hyunRun, hresultSemantic, hcRemSemantic⟩
+  have hcRemSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat
+    finalState.state.c finalState.state.valid.cMonic.ne_zero
+  have hcRemHeadBound : finalState.state.c[0].1.deg < 2 ^ 63 := by
+    have hdense : sparseDenseLength finalState.state.c =
+        finalState.state.c[0].1.deg + 1 := by
+      simp [sparseDenseLength, hcRemSize]
+    have hbound := finalState.state.valid.cBound
+    rw [hdense] at hbound
+    omega
+  have hcGuardIff := generated_yun_guard_eq_true_iff this._p.toNat
+    finalState.state.c finalState.state.valid.cCanonical hcRemSize
+    hcRemHeadBound
+  have hprime : source[0]!.2.prime.toNat = this._p.toNat := by
+    have hsourceNonempty := hentry.nonempty
+    have hmem : source[0] ∈ source.toList :=
+      Array.getElem_mem_toList hsourceNonempty
+    have hp := (hentry.canonical.1 source[0] hmem).1
+    simpa [getElem!_pos source 0 hsourceNonempty] using hp
+  by_cases hcPositive : 0 <
+      (SparsePolyZp.toPoly this._p.toNat finalState.state.c).natDegree
+  · have hcGuard : (!finalState.state.c.isEmpty &&
+        get_deg finalState.state.c > 0) = true := hcGuardIff.mpr hcPositive
+    have hcDerivative : Polynomial.derivative
+        (SparsePolyZp.toPoly this._p.toNat finalState.state.c) = 0 := by
+      rw [hcRemSemantic]
+      exact finalState.state.valid.targetDerivativeZero
+    have hcDegree : (SparsePolyZp.toPoly this._p.toNat
+        finalState.state.c).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat source).natDegree := by
+      rw [hcRemSemantic]
+      exact finalState.state.valid.targetDegreeLeSource
+    rcases sqfPostYunIR_prepares_recursive_call this hcfg source
+        finalState.state.c hentry.canonical hentry.nonempty
+        finalState.state.valid.cCanonical finalState.state.valid.cMonic
+        hcPositive finalState.state.valid.cBound hcDerivative hcDegree with
+      ⟨root, hrootRun, hrootCanonical, hrootSemantic, hrootMonic,
+        hmonicCore, hmeasure, hrootBound⟩
+    have hmonicRun : makeMonicRawIR this root = .ok root := by
+      simp [makeMonicRawIR, hmonicCore]
+    have hstep := remainderRootStep this hcfg source
+      (derivativeIR this source) finalState.state.multiplicity
+      finalState.state.w finalState.state.c finalState.state.result root root
+      hentry hderivativeNotEmpty finalState.state.valid finalState.done
+      hcGuard hrootRun hmonicRun
+    rcases hrecursive root hstep.1 (by simpa using hstep.2) with
+      ⟨subfactors, hsubRun, hsubSemantic⟩
+    let factors := Generated.StrictSquarefreeZp.scaleMultiplicityLoop 0
+      subfactors finalState.state.result source[0]!.2.prime
+    have hscaledDegree :
+        (SparsePolyZp.toPoly this._p.toNat root).natDegree *
+          this._p.toNat < UInt64.size := by
+      have hp := (Fact.out : Nat.Prime this._p.toNat)
+      have hexpand := Polynomial.expand_contract this._p.toNat hcDerivative
+        hp.ne_zero
+      have heq : (SparsePolyZp.toPoly this._p.toNat root).natDegree *
+          this._p.toNat =
+          (SparsePolyZp.toPoly this._p.toNat finalState.state.c).natDegree := by
+        rw [hrootSemantic, ← Polynomial.natDegree_expand
+          (R := ZMod this._p.toNat) (p := this._p.toNat), hexpand]
+      rw [heq]
+      have hsourceDegreeLt :
+          (SparsePolyZp.toPoly this._p.toNat source).natDegree < 2 ^ 63 := by
+        rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+          this._p.toNat source hentry.canonical hentry.nonempty with
+          ⟨hsourceLength, hsourceMeasure⟩
+        have hbound := hentry.denseBound
+        rw [hsourceLength, hsourceMeasure] at hbound
+        omega
+      exact lt_trans (lt_of_le_of_lt hcDegree hsourceDegreeLt)
+        (by native_decide)
+    refine ⟨factors, ?_, ?_⟩
+    · rw [Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir_state.eq_1]
+      simp only [strictSQFRawOps]
+      rw [certifyBool_eq _ false hderivativeNotEmpty]
+      simp only
+      rw [certifyRawExec_ok _ c hgcdRun]
+      simp only
+      rw [certifyRawExec_ok _ wRaw hwRun]
+      simp only
+      have hyunRunExpanded := hyunRun
+      simp only [strictSQFRawOps, initialState] at hyunRunExpanded
+      rw [hyunRunExpanded]
+      simp only
+      rw [certifyBool_eq _ true hcGuard]
+      simp only
+      rw [certifyRawExec_ok _ root hrootRun]
+      simp only
+      rw [certifyRawExec_ok _ root hmonicRun]
+      simp only
+      have hsubRunExpanded := hsubRun
+      simp only [strictSQFRawOps] at hsubRunExpanded
+      rw [hsubRunExpanded]
+    · change toPolyList
+        (Generated.StrictSquarefreeZp.scaleMultiplicityLoop 0 subfactors
+          finalState.state.result source[0]!.2.prime) this._p.toNat = _
+      rw [generated_scaleMultiplicityLoop_eq]
+      have hscaled := scaleMultiplicityLoop_toPolyList_sqfZp_append
+        this._p.toNat subfactors finalState.state.result
+        source[0]!.2.prime (SparsePolyZp.toPoly this._p.toNat root)
+        hprime hsubSemantic hscaledDegree
+      rw [hscaled, hresultSemantic]
+      rw [sqfZp_eq_sourceYunTarget this source hentry.positive hderivative,
+        if_pos (by simpa [hcRemSemantic] using hcPositive), hrootSemantic,
+        hcRemSemantic]
+  · have hcGuardFalse : (!finalState.state.c.isEmpty &&
+        get_deg finalState.state.c > 0) = false :=
+      Bool.eq_false_of_not_eq_true (fun htrue =>
+        hcPositive (hcGuardIff.mp htrue))
+    refine ⟨finalState.state.result, ?_, ?_⟩
+    · rw [Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir_state.eq_1]
+      simp only [strictSQFRawOps]
+      rw [certifyBool_eq _ false hderivativeNotEmpty]
+      simp only
+      rw [certifyRawExec_ok _ c hgcdRun]
+      simp only
+      rw [certifyRawExec_ok _ wRaw hwRun]
+      simp only
+      have hyunRunExpanded := hyunRun
+      simp only [strictSQFRawOps, initialState] at hyunRunExpanded
+      rw [hyunRunExpanded]
+      simp only
+      rw [certifyBool_eq _ false hcGuardFalse]
+    · rw [hresultSemantic,
+        sqfZp_eq_sourceYunTarget this source hentry.positive hderivative,
+        if_neg (by simpa [hcRemSemantic] using hcPositive)]
+
+set_option maxHeartbeats 2000000 in
+/-- The complete generated outer state recursion refines `sqfZp`. -/
+theorem generatedSQFState_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg) :
+    ∀ state : Generated.StrictSquarefreeZp.SQFRawState
+        (strictSQFRawOps this hcfg physical),
+      ∃ factors,
+        Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir_state
+            (strictSQFRawOps this hcfg physical) state = .ok factors ∧
+        toPolyList factors this._p.toNat =
+          sqfZp (SparsePolyZp.toPoly this._p.toNat state.f) := by
+  suffices hstrong : ∀ n state,
+      Generated.StrictSquarefreeZp.sqfStateMeasure state = n →
+      ∃ factors,
+        Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir_state
+            (strictSQFRawOps this hcfg physical) state = .ok factors ∧
+        toPolyList factors this._p.toNat =
+          sqfZp (SparsePolyZp.toPoly this._p.toNat state.f) by
+    intro state
+    exact hstrong (Generated.StrictSquarefreeZp.sqfStateMeasure state)
+      state rfl
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+      intro state hmeasureEq
+      rcases state with ⟨source, hentry⟩
+      by_cases hderivative : Polynomial.derivative
+          (SparsePolyZp.toPoly this._p.toNat source) = 0
+      · apply generatedSQFDerivativeZero_refines this hcfg physical source
+          hentry hderivative
+        intro root hrootEntry hdecrease
+        apply ih (Generated.StrictSquarefreeZp.sqfStateMeasure
+          (⟨root, hrootEntry⟩ : Generated.StrictSquarefreeZp.SQFRawState
+            (strictSQFRawOps this hcfg physical)))
+        · simpa [Generated.StrictSquarefreeZp.sqfStateMeasure] using
+            hdecrease.trans_le (Nat.le_of_eq hmeasureEq)
+        · rfl
+      · apply generatedSQFNonzeroDerivative_refines this hcfg physical source
+          hentry hderivative
+        intro root hrootEntry hdecrease
+        apply ih (Generated.StrictSquarefreeZp.sqfStateMeasure
+          (⟨root, hrootEntry⟩ : Generated.StrictSquarefreeZp.SQFRawState
+            (strictSQFRawOps this hcfg physical)))
+        · simpa [Generated.StrictSquarefreeZp.sqfStateMeasure] using
+            hdecrease.trans_le (Nat.le_of_eq hmeasureEq)
+        · rfl
+
+/-- Public genuine C++ L1 → Lean L2 refinement contract.  Its name retains
+the original C++ `__squarefree_Zp` spelling, including both underscores. -/
+theorem __squarefree_Zp_raw_ir_refines_sqfZp
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
+    (hbound : sparseDenseLength source ≤ 2 ^ 63) :
+    ∃ factors,
+      Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
+          (strictSQFRawOps this hcfg physical) source
+          (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive, hbound⟩) =
+        .ok factors ∧
+      toPolyList factors this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+  let hentry : EntryInvariant this source :=
+    ⟨hcanonical, hmonic, hnonempty, hpositive, hbound⟩
+  rcases generatedSQFState_refines this hcfg physical
+      (⟨source, hentry⟩ : Generated.StrictSquarefreeZp.SQFRawState
+        (strictSQFRawOps this hcfg physical)) with
+    ⟨factors, hrun, hsemantic⟩
+  have hnotEmpty : source.isEmpty = false := by
+    simp [Array.isEmpty, Nat.ne_of_gt hnonempty]
+  refine ⟨factors, ?_, hsemantic⟩
+  simp only [Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir,
+    hnotEmpty]
+  simpa [hentry] using hrun
 
 end Refinement.StrictSquarefreeGenerated

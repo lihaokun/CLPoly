@@ -15,6 +15,7 @@ import CLPoly.Algorithm.EDF
 import CLPoly.Generated.StrictEDF
 import CLPoly.Refinement.Basic
 import CLPoly.Refinement.DDF
+import CLPoly.Refinement.EDFRandom
 import CLPoly.Refinement.EDFSubtractOne
 
 set_option autoImplicit false

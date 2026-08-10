@@ -52,6 +52,34 @@ def __upoly_subtract_one_raw_ir (h : SparsePolyZp) (p : UInt64) :
   else
     .ok loopResult.2
 
+/-- Well-founded lowering of the descending degree loop in
+`__upoly_random`.  Coefficients are drawn from the requested modulus range;
+zero coefficients are omitted exactly as in the C++ sparse constructor. -/
+def _loop___upoly_random_0_raw_ir (remaining degree : Nat)
+    (result : SparsePolyZp) (p : UInt64) (rng : Rng) :
+    SparsePolyZp × Rng :=
+  if hremaining : remaining = 0 then
+    (result, rng)
+  else
+    let draw := Rng.next_advance rng p
+    let coefficient := draw.1
+    let result' := if coefficient != 0 then
+      result.push (UMonomial.mk degree, Zp.ofInt coefficient.toInt p)
+    else result
+    _loop___upoly_random_0_raw_ir (remaining - 1) (degree - 1)
+      result' p draw.2
+termination_by remaining
+decreasing_by omega
+
+/-- Exact total entry for the source `__upoly_random` loop. -/
+def __upoly_random_raw_ir (maxDegree : Int64) (p : UInt64) (rng : Rng) :
+    RawExec (SparsePolyZp × Rng) :=
+  if hpositive : 0 < maxDegree then
+    let count := maxDegree.toNatClampNeg
+    .ok (_loop___upoly_random_0_raw_ir count (count - 1) #[] p rng)
+  else
+    .ok (#[], rng)
+
 structure EDFRawOps where
   random : Int64 → UInt64 → Rng → RawExec (SparsePolyZp × Rng)
   modPoly : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp

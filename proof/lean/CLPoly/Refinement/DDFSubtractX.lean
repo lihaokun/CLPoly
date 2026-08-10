@@ -121,6 +121,26 @@ lemma normalization_toPoly (f : SparsePolyZp) :
       · simpa [hc, listSum, Zp.toZMod] using ih
       · simp [hc, listSum, ih]
 
+/-- Filtering zero coefficients is enough to turn an already ordered and
+reduced intermediate array into the canonical sparse representation expected
+by the raw dense constructor.  This isolates the exact invariant needed from
+the generated subtract-X loop; it does not appeal to polynomial semantics. -/
+theorem normalization_canonical_of_chain_allReduced (f : SparsePolyZp)
+    (hchain : List.IsChain
+      (fun a b : UMonomial × Zp => a.fst.deg > b.fst.deg) f.toList)
+    (hreduced : SparsePolyZp.AllReduced p f.toList) :
+    SparsePolyZp.Canonical p (SparsePolyZp.normalization f) := by
+  unfold SparsePolyZp.Canonical SparsePolyZp.WellFormed_arr
+    SparsePolyZp.normalization
+  rw [Array.toList_filter]
+  refine ⟨?_, ?_, ?_⟩
+  · intro x hx
+    exact hreduced x (List.mem_of_mem_filter hx)
+  · exact hchain.filter _
+  · intro x hx
+    have hkeep := (List.mem_filter.mp hx).2
+    simpa [bne_iff_ne] using hkeep
+
 private theorem zp_toZMod_sub (h2p : 2 * p ≤ UInt64.size) (a b : Zp)
     (ha_prime : a.prime.toNat = p) (hb_prime : b.prime.toNat = p)
     (ha_red : a.val.toNat < p) (hb_red : b.val.toNat < p) :

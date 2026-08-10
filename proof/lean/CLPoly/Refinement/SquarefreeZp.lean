@@ -16175,6 +16175,56 @@ def pairVecDivVHCEmit (this : DenseUPolyZp)
       PairVecDivVHCHeapState.mk consumed.heap consumed.nodes,
       consumed.resetH)
 
+/-- Totality of the exact generated quotient-emission block.  The only
+potentially failing branch pushes the concrete quotient cell and then runs the
+already-total reset activation loop against that enlarged array. -/
+theorem pairVecDivVHCEmit_succeeds
+    (this : DenseUPolyZp) (frontier : PairVecDivVHCFrontier)
+    (consumed : PairVecDivVHCEqualDegreeResult)
+    (quotient divisor : SparsePolyZp)
+    (hnodeSize : consumed.nodes.size = divisor.size - 1)
+    (howned : PairVecDivVHCHeapChainsOwned consumed.heap consumed.nodes)
+    (hready : PairVecDivVHCResetReady consumed.resetH quotient.size
+      consumed.nodes)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed consumed.nodes)
+    (hdivisor : 0 < divisor.size) :
+    ∃ result, pairVecDivVHCEmit this frontier consumed quotient divisor
+      hdivisor = .ok result := by
+  unfold pairVecDivVHCEmit
+  by_cases hcoefficient : consumed.coefficient ≠ 0
+  · rw [if_pos hcoefficient]
+    by_cases hdegree : divisor[0].1.deg ≤ frontier.degree
+    · rw [if_pos hdegree]
+      let inverse := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        divisor[0].2.val
+      let value := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+        consumed.coefficient inverse
+      by_cases hvalue : value ≠ 0
+      · rw [if_pos hvalue]
+        let emitted := quotient.push
+          (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩)
+        have hemittedSize : emitted.size = quotient.size + 1 := by
+          simp [emitted]
+        rcases pairVecDivVHCActivateReset_succeeds consumed.resetH
+            quotient.size consumed.heap consumed.nodes emitted divisor
+            hemittedSize hnodeSize howned hready hfixed with
+          ⟨activated, hactivate⟩
+        have hactivate' : pairVecDivVHCActivateReset consumed.resetH
+            consumed.heap consumed.nodes
+              (quotient.push
+                (⟨frontier.degree - divisor[0].1.deg⟩, ⟨value, this._p⟩))
+              divisor = .ok activated := by
+          simpa only [emitted] using hactivate
+        dsimp only [value, inverse] at hactivate'
+        simp only [hactivate']
+        exact ⟨_, rfl⟩
+      · rw [if_neg hvalue]
+        exact ⟨_, rfl⟩
+    · rw [if_neg hdegree]
+      exact ⟨_, rfl⟩
+  · rw [if_neg hcoefficient]
+    exact ⟨_, rfl⟩
+
 def PairVecDivVHCQuotientAbove (frontierDegree leadDegree : Nat)
     (quotient : SparsePolyZp) : Prop :=
   leadDegree ≤ frontierDegree →

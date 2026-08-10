@@ -52,6 +52,30 @@ theorem upolyMakeMonicIR_eq_of_monic (this : DenseUPolyZp)
     hnonempty hmonic
   simp [upolyMakeMonicIR, hnonempty, hlead]
 
+/-- A canonical sparse polynomial contains no stored zero coefficient, so the
+source `normalization` filter is an actual array identity, not merely a
+polynomial-level equivalence. -/
+theorem sparsePolyZp_normalization_eq_of_canonical (p : Nat)
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly) :
+    SparsePolyZp.normalization poly = poly := by
+  apply Array.filter_eq_self.mpr
+  intro term hterm
+  have hnonzero := hcanonical.2.2 term (by simpa using hterm)
+  simpa [SparsePolyZp.normalization] using hnonzero
+
+/-- The generated `__upoly_make_monic` call takes its concrete early-return
+branch on a canonical monic input and returns the original sparse array. -/
+theorem generated_upolyMakeMonic_eq_of_monic (p : Nat)
+    [Fact (Nat.Prime p)]
+    (f : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p f)
+    (hnonempty : 0 < f.size) (hmonic : (SparsePolyZp.toPoly p f).Monic) :
+    Generated.__upoly_make_monic_ir_def f = (f[0].2, f) := by
+  have hlead := sparse_leading_val_eq_one_of_monic p f hcanonical hnonempty
+    hmonic
+  have hone : (1 : UInt64) = (1 : Int64).toUInt64 := by decide
+  simp [Generated.__upoly_make_monic_ir_def, SparsePolyZp.front!,
+    getElem!_pos f 0 hnonempty, hlead, hone]
+
 /-- One observable iteration of the current C++ `derivative` template.  The
 integer degree is first constructed as a `Zp` residue, then the generated
 normalized modular multiplier is executed. -/

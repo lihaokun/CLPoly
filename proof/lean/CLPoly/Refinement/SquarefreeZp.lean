@@ -21669,5 +21669,54 @@ theorem sqfNonzeroDerivativeIR_prepares_yun
     hcCanonical, hwCanonical, hcMonic, hwMonic, hcBound, hwBound, hbudget,
     hcSemantic, hwSemantic⟩
 
+/-- The concrete remainder returned by strict Yun has exactly the post-loop
+guard and inseparability property used by the generated top-level SQF code. -/
+theorem strictYunRemainder_guard_and_derivative
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (source w c cRem : SparsePolyZp)
+    (hsourceMonic :
+      (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hcMonic : (SparsePolyZp.toPoly this._p.toNat c).Monic)
+    (hcRemCanonical : SparsePolyZp.Canonical this._p.toNat cRem)
+    (hcRemMonic : (SparsePolyZp.toPoly this._p.toNat cRem).Monic)
+    (hcRemBound : sparseDenseLength cRem ≤ 2 ^ 63)
+    (hcSemantic : SparsePolyZp.toPoly this._p.toNat c = normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat source)
+        (Polynomial.derivative
+          (SparsePolyZp.toPoly this._p.toNat source))))
+    (hwSemantic : SparsePolyZp.toPoly this._p.toNat w = normalize
+      (SparsePolyZp.toPoly this._p.toNat source /ₘ
+        SparsePolyZp.toPoly this._p.toNat c))
+    (hcRemSemantic : SparsePolyZp.toPoly this._p.toNat cRem =
+      (yunLoop (SparsePolyZp.toPoly this._p.toNat w)
+        (SparsePolyZp.toPoly this._p.toNat c) 1 [] hcMonic.ne_zero).2) :
+    (((! Array.isEmpty cRem) &&
+        decide (get_deg cRem > (0 : Int64))) = true ↔
+      0 < (SparsePolyZp.toPoly this._p.toNat cRem).natDegree) ∧
+    Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat cRem) = 0 := by
+  have hcRemSize : 0 < cRem.size :=
+    sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat cRem
+      hcRemMonic.ne_zero
+  have hcRemHeadBound : cRem[0].1.deg < 2 ^ 63 := by
+    have hdense : sparseDenseLength cRem = cRem[0].1.deg + 1 := by
+      simp [sparseDenseLength, hcRemSize]
+    rw [hdense] at hcRemBound
+    omega
+  refine ⟨generated_yun_guard_eq_true_iff this._p.toNat cRem
+    hcRemCanonical hcRemSize hcRemHeadBound, ?_⟩
+  have hsourceNonzero : SparsePolyZp.toPoly this._p.toNat source ≠ 0 :=
+    hsourceMonic.ne_zero
+  have hcInitialNonzero : normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat source)
+        (Polynomial.derivative
+          (SparsePolyZp.toPoly this._p.toNat source))) ≠ 0 := by
+    rw [← hcSemantic]
+    exact hcMonic.ne_zero
+  have hremainder := yunLoop_sqf_remainder_derivative_zero
+    (SparsePolyZp.toPoly this._p.toNat source) hsourceNonzero
+    hcInitialNonzero
+  rw [hcRemSemantic]
+  simpa only [hcSemantic, hwSemantic] using hremainder
+
 end StrictSquarefreeZp
 end Refinement

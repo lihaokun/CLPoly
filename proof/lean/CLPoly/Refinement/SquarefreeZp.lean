@@ -20274,6 +20274,38 @@ theorem rawGCDOutput_yun_invariants (p : Nat) [Fact (Nat.Prime p)]
       (EuclideanDomain.gcd_dvd_right (SparsePolyZp.toPoly p w)
         (SparsePolyZp.toPoly p c))
 
+/-- Exact division of a monic polynomial by a monic divisor is monic. -/
+theorem divByMonic_monic_of_monic_of_dvd {p : Nat}
+    [Fact (Nat.Prime p)] (w y : Polynomial (ZMod p))
+    (hwMonic : w.Monic) (hyMonic : y.Monic) (hyDvd : y ∣ w) :
+    (w /ₘ y).Monic := by
+  have hwNonzero : w ≠ 0 := hwMonic.ne_zero
+  have hdegree : y.degree ≤ w.degree := Polynomial.degree_le_of_dvd hyDvd
+    hwNonzero
+  change (w /ₘ y).leadingCoeff = 1
+  rw [Polynomial.leadingCoeff_divByMonic_of_monic hyMonic hdegree,
+    hwMonic.leadingCoeff]
+
+/-- Appending one concrete source result corresponds exactly to appending its
+L2 polynomial and the mathematical value of the UInt64 multiplicity. -/
+theorem toPolyList_push (p : Nat)
+    (result : Array (SparsePolyZp × UInt64))
+    (poly : SparsePolyZp) (multiplicity : UInt64) :
+    toPolyList (result.push (poly, multiplicity)) p =
+      toPolyList result p ++
+        [(SparsePolyZp.toPoly p poly, multiplicity.toNat)] := by
+  simp [toPolyList]
+
+/-- The source multiplicity increment agrees with Nat addition whenever the
+next value is representable, ruling out silent UInt64 wraparound in Yun. -/
+theorem UInt64_toNat_add_one_of_lt (value : UInt64)
+    (hbound : value.toNat + 1 < UInt64.size) :
+    (value + 1).toNat = value.toNat + 1 := by
+  rw [UInt64.toNat_add]
+  have hone : (1 : UInt64).toNat = 1 := by decide
+  rw [hone]
+  exact Nat.mod_eq_of_lt hbound
+
 /-- Once the strict raw GCD output is supplied, both source `pair_vec_div`
 calls in a Yun body execute successfully through their complete branch tree.
 Their concrete sparse outputs are canonical, survive source normalization

@@ -15,6 +15,7 @@ import CLPoly.Algorithm.DDF
 import CLPoly.Generated.StrictDDF
 import CLPoly.Impl.StrictDivremRefinement
 import CLPoly.Impl.StrictPolynomialGCDRefinement
+import CLPoly.Impl.StrictMulDispatchRefinement
 
 set_option autoImplicit false
 
@@ -197,6 +198,63 @@ theorem strictModIR_refines_modByMonic
   refine ⟨remainder, ?_, hcanonical, ?_⟩
   · simp [strictModIR, hdividendRun, hdivisorRun, hdivRun, hremainderRun]
   · rw [hremainderSemantic, ← hmod]
+
+/-- Physical buffers for an ordered sparse multiplication.  As with raw
+modular reduction, no semantic product is stored in the workspace. -/
+structure RawMulWorkspace (this : DenseUPolyZp)
+    (left right : SparsePolyZp) where
+  heap : RawHeap
+  leftPtr : RawPtr UInt64
+  rightPtr : RawPtr UInt64
+  outputPtr : RawPtr UInt64
+  scratchPtr : RawPtr UInt64
+  leftValid : heap.ValidU64Slice leftPtr (sparseDenseLength left)
+  rightValid : heap.ValidU64Slice rightPtr (sparseDenseLength right)
+  outputValid : heap.ValidU64Slice outputPtr
+    (2 * sparseDenseLength left - 1)
+  scratchValid : heap.ValidU64Slice scratchPtr
+    (8 * sparseDenseLength left)
+  inputsDisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint
+    rightPtr (sparseDenseLength right) leftPtr (sparseDenseLength left)
+  outputLeftDisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint
+    outputPtr (2 * sparseDenseLength left - 1) leftPtr
+      (sparseDenseLength left)
+  outputRightDisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint
+    outputPtr (2 * sparseDenseLength left - 1) rightPtr
+      (sparseDenseLength right)
+  outputScratchDisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint
+    outputPtr (2 * sparseDenseLength left - 1) scratchPtr
+      (8 * sparseDenseLength left)
+  scratchLeftDisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint
+    scratchPtr (8 * sparseDenseLength left) leftPtr
+      (sparseDenseLength left)
+  scratchRightDisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint
+    scratchPtr (8 * sparseDenseLength left) rightPtr
+      (sparseDenseLength right)
+  leftLengthWord : sparseDenseLength left <
+    CLPoly.Impl.StrictWordArithmetic.limbBase
+
+/-- Actual sparse→dense, generated `_mul`, dense→sparse execution.  Callers
+order operands by dense length before choosing this entry. -/
+def strictMulOrderedIR (this : DenseUPolyZp)
+    (left right : SparsePolyZp) (workspace : RawMulWorkspace this left right) :
+    RawExec SparsePolyZp :=
+  match sparse_upoly_zp_dense_constructor_raw_ir workspace.leftPtr left
+      workspace.heap with
+  | .error fault => .error fault
+  | .ok leftHeap =>
+    match sparse_upoly_zp_dense_constructor_raw_ir workspace.rightPtr right
+        leftHeap with
+    | .error fault => .error fault
+    | .ok inputHeap =>
+      match Generated.StrictMul.dense_upoly_zp__mul_ir this
+          workspace.outputPtr workspace.leftPtr (sparseDenseLength left)
+          workspace.rightPtr (sparseDenseLength right) workspace.scratchPtr
+          inputHeap with
+      | .error fault => .error fault
+      | .ok outputHeap =>
+        dense_upoly_zp_to_upoly_raw_ir this outputHeap workspace.outputPtr
+          (sparseDenseLength left + sparseDenseLength right - 1)
 
 end StrictDDF
 

@@ -27,6 +27,39 @@ namespace Refinement
 
 namespace StrictEDF
 
+/-- Concrete invariant carried by every recursive C++ EDF call.  It combines
+the sparse representation obligations needed by raw operations with the L2
+equal-degree hypotheses needed to prove the returned factor list correct. -/
+structure EDFEntryInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (f : SparsePolyZp) (d : UInt64) : Prop where
+  canonical : SparsePolyZp.Canonical this._p.toNat f
+  primeMatches : 0 < f.size → f[0]!.2.prime = this._p
+  degreeBound : ∀ term ∈ f.toList, term.1.deg < 2 ^ 62
+  monic : (SparsePolyZp.toPoly this._p.toNat f).Monic
+  degreePositive : 0 < (SparsePolyZp.toPoly this._p.toNat f).natDegree
+  dPositive : 0 < d.toNat
+  squarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)
+  equalDegree : ∀ q : Polynomial (ZMod this._p.toNat),
+    Irreducible q → q ∣ SparsePolyZp.toPoly this._p.toNat f →
+      q.natDegree = d.toNat
+
+theorem EDFEntryInvariant.nonempty
+    {this : DenseUPolyZp} [Fact (Nat.Prime this._p.toNat)]
+    {f : SparsePolyZp} {d : UInt64} (h : EDFEntryInvariant this f d) :
+    0 < f.size := by
+  exact Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+    this._p.toNat f h.monic.ne_zero
+
+theorem EDFEntryInvariant.natDegree_lt
+    {this : DenseUPolyZp} [Fact (Nat.Prime this._p.toNat)]
+    {f : SparsePolyZp} {d : UInt64} (h : EDFEntryInvariant this f d) :
+    (SparsePolyZp.toPoly this._p.toNat f).natDegree < 2 ^ 63 := by
+  exact lt_trans
+    (StrictDDF.canonical_natDegree_lt_of_terms_lt this._p.toNat f
+      h.canonical h.monic.ne_zero (2 ^ 62) h.degreeBound)
+    (by norm_num)
+
 /-- Decode the concrete C++ EDF accumulator without manufacturing or replacing
 any factor. -/
 noncomputable def edfResultToL2 (p : Nat) (result : Array SparsePolyZp) :

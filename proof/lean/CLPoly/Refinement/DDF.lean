@@ -333,6 +333,81 @@ theorem strictMulOrderedIR_refines_mul
   refine ⟨product, ?_, hcanonical, hproductSemantic⟩
   simp [strictMulOrderedIR, hleftRun, hrightRun, hmulRun, hproductRun]
 
+/-- A physical allocator for multiplication calls whose operands are known
+nonempty.  It cannot inspect or prescribe the semantic product. -/
+structure RawMulWorkspaceProvider (this : DenseUPolyZp) where
+  workspace : ∀ (left right : SparsePolyZp), 0 < left.size →
+    0 < right.size → RawMulWorkspace this left right
+
+/-- Total sparse multiplication boundary used by strict powmod.  The empty
+branches are the representation-level short circuit of sparse multiplication;
+every nonempty branch executes the generated dense `_mul`. -/
+def strictMulIR (this : DenseUPolyZp) (left right : SparsePolyZp)
+    (provider : RawMulWorkspaceProvider this) : RawExec SparsePolyZp :=
+  if hleft : 0 < left.size then
+    if hright : 0 < right.size then
+      if sparseDenseLength right ≤ sparseDenseLength left then
+        strictMulOrderedIR this left right
+          (provider.workspace left right hleft hright)
+      else
+        strictMulOrderedIR this right left
+          (provider.workspace right left hright hleft)
+    else
+      .ok #[]
+  else
+    .ok #[]
+
+/-- Total semantic refinement of the representation-level multiplication
+dispatcher. -/
+theorem strictMulIR_refines_mul
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (left right : SparsePolyZp) (provider : RawMulWorkspaceProvider this)
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right) :
+    ∃ product,
+      strictMulIR this left right provider = .ok product ∧
+      SparsePolyZp.Canonical this._p.toNat product ∧
+      SparsePolyZp.toPoly this._p.toNat product =
+        SparsePolyZp.toPoly this._p.toNat left *
+          SparsePolyZp.toPoly this._p.toNat right := by
+  by_cases hleft : 0 < left.size
+  · by_cases hright : 0 < right.size
+    · by_cases horder : sparseDenseLength right ≤ sparseDenseLength left
+      · rcases strictMulOrderedIR_refines_mul this hcfg left right
+          (provider.workspace left right hleft hright) hleftCanonical
+          hrightCanonical hleft hright horder with
+          ⟨product, hrun, hcanonical, hsemantic⟩
+        exact ⟨product, by simp [strictMulIR, hleft, hright, horder, hrun],
+          hcanonical, hsemantic⟩
+      · have hreverse : sparseDenseLength left ≤ sparseDenseLength right :=
+          Nat.le_of_not_ge horder
+        rcases strictMulOrderedIR_refines_mul this hcfg right left
+            (provider.workspace right left hright hleft) hrightCanonical
+            hleftCanonical hright hleft hreverse with
+          ⟨product, hrun, hcanonical, hsemantic⟩
+        refine ⟨product, by simp [strictMulIR, hleft, hright, horder, hrun],
+          hcanonical, ?_⟩
+        simpa [mul_comm] using hsemantic
+    · have hrightSize : right.size = 0 := Nat.eq_zero_of_not_pos hright
+      have hrightEmpty : right = #[] := Array.size_eq_zero_iff.mp hrightSize
+      refine ⟨#[], by simp [strictMulIR, hleft, hright], ?_, ?_⟩
+      · refine ⟨?_, ?_, ?_⟩
+        · intro x hx; simp at hx
+        · simp
+        · intro x hx; simp at hx
+      · subst right
+        simp [SparsePolyZp.toPoly]
+  · have hleftSize : left.size = 0 := Nat.eq_zero_of_not_pos hleft
+    have hleftEmpty : left = #[] := Array.size_eq_zero_iff.mp hleftSize
+    refine ⟨#[], by simp [strictMulIR, hleft], ?_, ?_⟩
+    · refine ⟨?_, ?_, ?_⟩
+      · intro x hx; simp at hx
+      · simp
+      · intro x hx; simp at hx
+    · subst left
+      simp [SparsePolyZp.toPoly]
+
 end StrictDDF
 
 end Refinement

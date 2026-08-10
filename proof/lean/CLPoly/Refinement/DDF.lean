@@ -316,6 +316,57 @@ def strictMakeMonicIR (this : DenseUPolyZp) (f : SparsePolyZp) :
   | .error fault => .error fault
   | .ok (_, monic) => .ok monic
 
+/-- The exact two public C++ `polynomial_GCD` branches needed by DDF.  A zero
+left operand takes the source wrapper's copy-and-monic path; otherwise the
+verified dense Euclidean implementation is executed. -/
+def strictDDFGCDIR (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (left right : SparsePolyZp)
+    (workspace : RawGCDWorkspace this left right) : RawExec SparsePolyZp :=
+  if left.isEmpty then strictMakeMonicIR this right
+  else strictGCDIR this left right workspace
+
+/-- Semantic refinement of the public GCD call in `__ddf_Zp`, including the
+source-level zero-left branch that the nonempty dense GCD entry cannot take. -/
+theorem strictDDFGCDIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (left right : SparsePolyZp)
+    (workspace : RawGCDWorkspace this left right)
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hrightNonempty : 0 < right.size)
+    (hrightMonic : (SparsePolyZp.toPoly this._p.toNat right).Monic) :
+    ∃ result,
+      strictDDFGCDIR this left right workspace = .ok result ∧
+      SparsePolyZp.Canonical this._p.toNat result ∧
+      SparsePolyZp.toPoly this._p.toNat result = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right)) := by
+  by_cases hleftEmpty : left.isEmpty
+  · have hleftSize : left.size = 0 := by
+      simpa [Array.isEmpty] using hleftEmpty
+    have hleftEq : left = #[] := Array.size_eq_zero_iff.mp hleftSize
+    have hrun := Refinement.StrictSquarefreeZp.upolyMakeMonicIR_eq_of_monic
+      this right hrightCanonical hrightNonempty hrightMonic
+    refine ⟨right, ?_, hrightCanonical, ?_⟩
+    · simp [strictDDFGCDIR, hleftEmpty, strictMakeMonicIR, hrun]
+    · subst left
+      simpa using hrightMonic.normalize_eq_self.symm
+  · have hleftNonempty : 0 < left.size := by
+      apply Nat.pos_of_ne_zero
+      simpa [Array.isEmpty] using hleftEmpty
+    have hleftNonzero : SparsePolyZp.toPoly this._p.toNat left ≠ 0 := by
+      intro hzero
+      have hdegree :=
+        Refinement.StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+          this._p.toNat left hleftCanonical hleftNonempty
+      rw [hzero] at hdegree
+      simp at hdegree
+    rcases strictGCDIR_refines this left right workspace hleftCanonical
+        hrightCanonical hleftNonzero hrightMonic.ne_zero with
+      ⟨result, hrun, hcanonical, hsemantic⟩
+    exact ⟨result, by simp [strictDDFGCDIR, hleftEmpty, hrun],
+      hcanonical, hsemantic⟩
+
 theorem strictExactDivIR_refines
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (dividend divisor : SparsePolyZp)
@@ -647,7 +698,7 @@ structure DDFRawProviders (this : DenseUPolyZp)
   powmod_eq : ops.powmod = fun base e modulus =>
     strictPowmodIR this base e modulus mul (mod modulus)
   gcd_eq : ops.gcd = fun left right =>
-    strictGCDIR this left right (gcd left right)
+    strictDDFGCDIR this left right (gcd left right)
   makeMonic_eq : ops.makeMonic = strictMakeMonicIR this
   exactDiv_eq : ops.exactDiv = strictExactDivIR this
   mod_eq : ops.mod = fun dividend divisor =>
@@ -1019,26 +1070,23 @@ theorem __upoly_subtract_x_ir_refines
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (h2p : 2 * this._p.toNat ≤ UInt64.size) (h : SparsePolyZp)
     (hcanonical : SparsePolyZp.Canonical this._p.toNat h)
-    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
+    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 63) :
     SparsePolyZp.Canonical this._p.toNat
         (Generated.StrictDDF.__upoly_subtract_x_ir h this._p) ∧
       SparsePolyZp.toPoly this._p.toNat
           (Generated.StrictDDF.__upoly_subtract_x_ir h this._p) =
         SparsePolyZp.toPoly this._p.toNat h - Polynomial.X := by
-  have hdegree64 : ∀ x ∈ h.toList, x.1.deg < 2 ^ 63 := by
-    intro x hx
-    exact lt_trans (hdegree x hx) (by norm_num)
-  refine ⟨__upoly_subtract_x_ir_canonical h this._p rfl hcanonical hdegree64,
+  refine ⟨__upoly_subtract_x_ir_canonical h this._p rfl hcanonical hdegree,
     ?_⟩
   exact strict_upoly_subtract_x_refines h2p h this._p rfl
-    ((canonicalRep_iff_canonical h).mpr hcanonical) hdegree64
+    ((canonicalRep_iff_canonical h).mpr hcanonical) hdegree
 
 /-- Compatibility projection of `__upoly_subtract_x_ir_refines`. -/
 theorem strictSubtractXIR_refines
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (h2p : 2 * this._p.toNat ≤ UInt64.size) (h : SparsePolyZp)
     (hcanonical : SparsePolyZp.Canonical this._p.toNat h)
-    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
+    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 63) :
     SparsePolyZp.toPoly this._p.toNat
         (Generated.StrictDDF.__upoly_subtract_x_ir h this._p) =
       SparsePolyZp.toPoly this._p.toNat h - Polynomial.X := by

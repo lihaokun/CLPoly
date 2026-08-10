@@ -12496,6 +12496,63 @@ theorem PairVecDivVHCLinReady.pop_after_insert
       hinsert nodeIndex hne]
     exact hnode
 
+/-- Totality of the literal reverse-`lin` source loop.  Each selected last
+node is active by `LinReady` and is absent from every old heap chain by
+`HeapChainsOwnedAway`; these are exactly the concrete preconditions needed by
+the generated insertion, and the protected set shrinks to `lin.pop` after the
+write. -/
+theorem pairVecDivVHCReinsertLin_succeeds
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (haway : PairVecDivVHCHeapChainsOwnedAway heap nodes
+      lin.toList.toFinset)
+    (hready : PairVecDivVHCLinReady lin nodes) :
+    ∃ state, pairVecDivVHCReinsertLin heap nodes lin = .ok state := by
+  rw [pairVecDivVHCReinsertLin]
+  by_cases hlin : 0 < lin.size
+  · simp only [hlin, ↓reduceDIte]
+    have hlastMem := pairVecDivVHCLast_mem_toFinset lin hlin
+    rcases hready.2 lin[lin.size - 1]
+        (by simpa only [List.mem_toFinset] using hlastMem) with
+      ⟨node, mono, hnode, hmono⟩
+    have hnodeBound : lin[lin.size - 1] < nodes.size := by
+      by_contra hnot
+      rw [Array.getElem?_eq_none (by omega)] at hnode
+      contradiction
+    have hnewMono : pairVecDivVHCMono lin[lin.size - 1] nodes = .ok mono :=
+      (pairVecDivVHCMono_eq_ok_iff lin[lin.size - 1] nodes mono).2
+        ⟨node, hnode, hmono⟩
+    rcases haway with ⟨owners, hownership, hseparated⟩
+    have hreads : ∀ (slot : Nat) (hslot : slot < heap.size),
+        ∃ storedMono,
+          pairVecDivVHCMono (heap[slot]'hslot) nodes = .ok storedMono := by
+      intro slot hslot
+      rcases hownership.heapPointersValid heap owners nodes slot hslot with
+        ⟨head, storedNode, storedMono, hhead, hstored, hactive⟩
+      have hheadEq : heap[slot] = head := by
+        rw [Array.getElem?_eq_getElem hslot] at hhead
+        exact Option.some.inj hhead
+      refine ⟨storedMono, ?_⟩
+      rw [hheadEq]
+      exact (pairVecDivVHCMono_eq_ok_iff head nodes storedMono).2
+        ⟨storedNode, hstored, hactive⟩
+    rcases pairVecDivVHCInsert_succeeds lin[lin.size - 1] heap nodes mono
+        hnodeBound hnewMono hreads with ⟨heap', nodes', hinsert⟩
+    simp only [hinsert]
+    have haway' := pairVecDivVHCInsert_preserves_away_of_protected
+      lin[lin.size - 1] heap heap' nodes nodes' lin.toList.toFinset
+      lin.pop.toList.toFinset owners node mono hownership hseparated hlastMem
+      (pairVecDivVHCPop_toFinset_subset lin)
+      (pairVecDivVHCLast_not_mem_pop lin hlin hready.1) hnode hmono hinsert
+    have hready' := hready.pop_after_insert lin heap heap' nodes nodes' hlin
+      hinsert
+    exact pairVecDivVHCReinsertLin_succeeds heap' nodes' lin.pop haway' hready'
+  · simp only [hlin, ↓reduceDIte]
+    exact ⟨_, rfl⟩
+termination_by lin.size
+decreasing_by
+  simp only [Array.size_pop]
+  omega
+
 /-- The literal C++ reverse-`lin` loop restores exact ownership of every heap
 chain.  Termination is Lean's well-founded recursion on `lin.size`; the
 statement and proof use only the concrete generated execution state. -/

@@ -1391,3 +1391,11 @@ every generated range-for and recursive loop used by SQF.
   长度，并以源码实际递减的 `resetH - 1` 作为结构度量。该证明
   无 fuel、无成功 trace 前提、无规格 oracle 或 L2 回退。下一步闭合
   `ReinsertLin`，再把两个执行桥接入 `Emit` 和 outer iteration。
+- generated reverse-`lin` reinsertion 循环的 raw→safe totality 已闭合。
+  `pairVecDivVHCReinsertLin_succeeds` 从 `LinReady` 直接取得当前末节点的
+  真实 active monomial 与数组边界，从 `HeapChainsOwnedAway` 取得旧 heap
+  的全部 active head 读取以及该 deferred 节点不在任何旧 chain 中的
+  分离性，然后调用真实 `VHCInsert` totality。每轮写回后把 protected
+  set 精确收缩为 `lin.pop`，并以 `lin.size` 为良基度量处理源码的
+  `lin[--lin_size]` 顺序。无 fuel、无预设成功结果、无 L2 回退。
+  下一步把 `ActivateReset` 接入 `Emit`，再组合 outer iteration。

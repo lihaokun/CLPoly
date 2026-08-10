@@ -20618,6 +20618,72 @@ theorem yunNext_sparseDenseLength_bounds
   rw [hyLength, hyMeasure, hcNextLength, hcNextMeasure]
   constructor <;> omega
 
+/-- The first Yun quotient also inherits the signed dense-length bound needed
+to interpret its generated `get_deg` output guard. -/
+theorem yunQuotient_sparseDenseLength_bound
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (w y z : SparsePolyZp)
+    (hwCanonical : SparsePolyZp.Canonical this._p.toNat w)
+    (hzCanonical : SparsePolyZp.Canonical this._p.toNat z)
+    (hwSize : 0 < w.size)
+    (hzMonic : (SparsePolyZp.toPoly this._p.toNat z).Monic)
+    (hyMonic : (SparsePolyZp.toPoly this._p.toNat y).Monic)
+    (hzSemantic : SparsePolyZp.toPoly this._p.toNat z =
+      SparsePolyZp.toPoly this._p.toNat w /ₘ
+        SparsePolyZp.toPoly this._p.toNat y)
+    (hwBound : sparseDenseLength w ≤ 2 ^ 63) :
+    sparseDenseLength z ≤ 2 ^ 63 := by
+  have hzSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat z
+    hzMonic.ne_zero
+  have hzDegree : (SparsePolyZp.toPoly this._p.toNat z).natDegree ≤
+      (SparsePolyZp.toPoly this._p.toNat w).natDegree := by
+    rw [hzSemantic, Polynomial.natDegree_divByMonic _ hyMonic]
+    exact Nat.sub_le _ _
+  rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat w hwCanonical hwSize with ⟨hwLength, hwMeasure⟩
+  rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat z hzCanonical hzSize with ⟨hzLength, hzMeasure⟩
+  rw [hwLength, hwMeasure] at hwBound
+  rw [hzLength, hzMeasure]
+  omega
+
+/-- The source conditional push in one Yun body is exactly the L2 accumulator
+update, including the generated signed-degree guard and UInt64 multiplicity. -/
+theorem yunNextResult_toPolyList
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (result : Array (SparsePolyZp × UInt64)) (z : SparsePolyZp)
+    (multiplicity : UInt64)
+    (hzCanonical : SparsePolyZp.Canonical this._p.toNat z)
+    (hzMonic : (SparsePolyZp.toPoly this._p.toNat z).Monic)
+    (hzBound : sparseDenseLength z ≤ 2 ^ 63) :
+    let zGuard := ((! Array.isEmpty z) &&
+      decide (get_deg z > (0 : Int64)))
+    let nextResult := if zGuard then result.push (z, multiplicity) else result
+    toPolyList nextResult this._p.toNat =
+      if 0 < (SparsePolyZp.toPoly this._p.toNat z).natDegree then
+        toPolyList result this._p.toNat ++
+          [(SparsePolyZp.toPoly this._p.toNat z, multiplicity.toNat)]
+      else toPolyList result this._p.toNat := by
+  have hzSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat z
+    hzMonic.ne_zero
+  have hzHeadBound : z[0].1.deg < 2 ^ 63 := by
+    have hdense : sparseDenseLength z = z[0].1.deg + 1 := by
+      simp [sparseDenseLength, hzSize]
+    rw [hdense] at hzBound
+    omega
+  have hguardIff := generated_yun_guard_eq_true_iff this._p.toNat z
+    hzCanonical hzSize hzHeadBound
+  by_cases hzPositive : 0 < (SparsePolyZp.toPoly this._p.toNat z).natDegree
+  · have hguard := hguardIff.mpr hzPositive
+    simp [hguard, hzPositive, toPolyList_push]
+  · have hguardNot : ¬(((! Array.isEmpty z) &&
+        decide (get_deg z > (0 : Int64))) = true) :=
+      fun htrue => hzPositive (hguardIff.mp htrue)
+    have hguardFalse : ((! Array.isEmpty z) &&
+        decide (get_deg z > (0 : Int64))) = false :=
+      Bool.eq_false_of_not_eq_true hguardNot
+    simp [hguardFalse, hzPositive]
+
 /-- Once the strict raw GCD output is supplied, both source `pair_vec_div`
 calls in a Yun body execute successfully through their complete branch tree.
 Their concrete sparse outputs are canonical, survive source normalization

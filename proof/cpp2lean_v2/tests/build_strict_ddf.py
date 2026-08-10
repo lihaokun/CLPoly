@@ -55,6 +55,7 @@ structure DDFRawOps where
     Array (SparsePolyZp × UInt64) → UInt64 → Prop
   splitStep : ∀ d fStar h result p hPow gdRaw gd quotient hNext,
     Invariant d fStar h result p →
+    ¬get_deg fStar < (2 * d).toInt64 →
     powmod h p.toNat fStar = .ok hPow →
     gcd (__upoly_subtract_x_ir hPow p) fStar = .ok gdRaw →
     (!gdRaw.isEmpty && get_deg gdRaw > 0) = true →
@@ -67,6 +68,7 @@ structure DDFRawOps where
         ddfRawMeasure fStar d
   noSplitStep : ∀ d fStar h result p hPow gdRaw,
     Invariant d fStar h result p →
+    ¬get_deg fStar < (2 * d).toInt64 →
     powmod h p.toNat fStar = .ok hPow →
     gcd (__upoly_subtract_x_ir hPow p) fStar = .ok gdRaw →
     (!gdRaw.isEmpty && get_deg gdRaw > 0) = false →
@@ -100,7 +102,7 @@ def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
               | .error fault => .error fault
               | .ok hNext =>
                 have hstep := ops.splitStep d fStar h result p hPow gdRaw gd
-                  quotient hNext hvalid hpow hgcd hsplit hmonic hdiv hmod
+                  quotient hNext hvalid hterm hpow hgcd hsplit hmonic hdiv hmod
                 _loop___ddf_Zp_raw_ir ops (d + 1) fNext hNext
                   (result.push (gd, d)) p hstep.1
         else
@@ -108,7 +110,7 @@ def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
               (!gdRaw.isEmpty && get_deg gdRaw > 0) = false := by
             cases hb : (!gdRaw.isEmpty && get_deg gdRaw > 0) <;> simp_all
           have hstep := ops.noSplitStep d fStar h result p hPow gdRaw hvalid
-            hpow hgcd hsplitFalse
+            hterm hpow hgcd hsplitFalse
           _loop___ddf_Zp_raw_ir ops (d + 1) fStar hPow result p hstep.1
 termination_by ddfRawMeasure fStar d
 decreasing_by

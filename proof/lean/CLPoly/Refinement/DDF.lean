@@ -731,6 +731,52 @@ noncomputable def ddfResultToL2 (p : Nat)
   result.toList.map fun item =>
     (SparsePolyZp.toPoly p item.1, item.2.toNat)
 
+/-- Every stored term of a canonical sparse polynomial occurs as a nonzero
+coefficient of its L2 denotation, hence lies below its natural degree. -/
+theorem canonical_term_degree_le_natDegree (p : Nat) [Fact (Nat.Prime p)]
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly) :
+    ∀ term ∈ poly.toList,
+      term.1.deg ≤ (SparsePolyZp.toPoly p poly).natDegree := by
+  intro term hterm
+  have hcoefficient :
+      (SparsePolyZp.toPoly p poly).coeff term.1.deg ≠ 0 := by
+    unfold SparsePolyZp.toPoly
+    rw [Refinement.StrictSquarefreeZp.listSum_coeff_of_mem_chain
+      p poly.toList term
+      hcanonical.2.1 hterm]
+    exact Zp.toZMod_ne_zero_of_val_ne_zero p term.2
+      (hcanonical.1 term hterm) (hcanonical.2.2 term hterm)
+  exact Polynomial.le_natDegree_of_ne_zero hcoefficient
+
+/-- On a canonical sparse polynomial whose degree fits signed 64 bits, the
+C++ `get_deg` positivity test is exactly L2 positive natural degree. -/
+theorem strict_get_deg_pos_iff_natDegree_pos (p : Nat) [Fact (Nat.Prime p)]
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hdegree : (SparsePolyZp.toPoly p poly).natDegree < 2 ^ 63) :
+    get_deg poly > 0 ↔ 0 < (SparsePolyZp.toPoly p poly).natDegree := by
+  by_cases hempty : poly.isEmpty
+  · have hsize : poly.size = 0 := by simpa [Array.isEmpty] using hempty
+    have hpoly : poly = #[] := Array.size_eq_zero_iff.mp hsize
+    subst poly
+    simp [get_deg]
+  · have hnonempty : 0 < poly.size := by
+      apply Nat.pos_of_ne_zero
+      simpa [Array.isEmpty] using hempty
+    have hdegreeHead :=
+      Refinement.StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+        p poly hcanonical hnonempty
+    have hpolyNonzero : SparsePolyZp.toPoly p poly ≠ 0 := by
+      intro hzero
+      rw [hzero] at hdegreeHead
+      simp at hdegreeHead
+    have hnatDegree : (SparsePolyZp.toPoly p poly).natDegree =
+        poly[0].1.deg := by
+      rw [Polynomial.degree_eq_natDegree hpolyNonzero] at hdegreeHead
+      exact WithBot.coe_eq_coe.mp hdegreeHead
+    rw [hnatDegree] at hdegree
+    exact Refinement.StrictSquarefreeZp.generated_getDeg_pos_iff_natDegree_pos
+      p poly hcanonical hnonempty hdegree
+
 /-- Full representation-and-mathematical invariant for the generated DDF
 loop.  The final seven fields are exactly P0–P6 of `ddfLoop_correct`; the
 preceding fields justify every machine-word and sparse-array operation. -/

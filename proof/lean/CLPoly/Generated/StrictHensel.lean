@@ -45,6 +45,57 @@ def pushNonzero (result : SparsePolyZZ) (degree : Nat)
   if coefficient != 0 then result.push (UMonomial.mk degree, coefficient)
   else result
 
+/-- Exact lowering of `pair_vec_add` for the canonical univariate vectors
+used by `basic_polynomial::operator+`.  The two source iterator positions are
+explicit and every recursive branch advances at least one iterator. -/
+def pairVecAddLoop (a b : SparsePolyZZ) (aIndex bIndex : Nat)
+    (result : SparsePolyZZ) : SparsePolyZZ :=
+  if hmore : aIndex < a.size ∨ bIndex < b.size then
+    if haDone : aIndex ≥ a.size then
+      pairVecAddLoop a b aIndex (bIndex + 1) (result.push b[bIndex]!)
+    else if hbDone : bIndex ≥ b.size then
+      pairVecAddLoop a b (aIndex + 1) bIndex (result.push a[aIndex]!)
+    else if hdegree : b[bIndex]!.1.deg > a[aIndex]!.1.deg then
+      pairVecAddLoop a b aIndex (bIndex + 1) (result.push b[bIndex]!)
+    else if hequal : b[bIndex]!.1.deg = a[aIndex]!.1.deg then
+      pairVecAddLoop a b (aIndex + 1) (bIndex + 1)
+        (pushNonzero result a[aIndex]!.1.deg
+          (b[bIndex]!.2 + a[aIndex]!.2))
+    else
+      pairVecAddLoop a b (aIndex + 1) bIndex (result.push a[aIndex]!)
+  else result
+termination_by (a.size - aIndex) + (b.size - bIndex)
+decreasing_by all_goals simp_wf; omega
+
+def __upoly_add_raw_ir (a b : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  .ok (pairVecAddLoop a b 0 0 #[])
+
+/-- Exact lowering of `pair_vec_sub`.  Terms consumed only from the right
+source are negated, matching the C++ implementation. -/
+def pairVecSubLoop (a b : SparsePolyZZ) (aIndex bIndex : Nat)
+    (result : SparsePolyZZ) : SparsePolyZZ :=
+  if hmore : aIndex < a.size ∨ bIndex < b.size then
+    if haDone : aIndex ≥ a.size then
+      pairVecSubLoop a b aIndex (bIndex + 1)
+        (result.push (b[bIndex]!.1, -b[bIndex]!.2))
+    else if hbDone : bIndex ≥ b.size then
+      pairVecSubLoop a b (aIndex + 1) bIndex (result.push a[aIndex]!)
+    else if hdegree : b[bIndex]!.1.deg > a[aIndex]!.1.deg then
+      pairVecSubLoop a b aIndex (bIndex + 1)
+        (result.push (b[bIndex]!.1, -b[bIndex]!.2))
+    else if hequal : b[bIndex]!.1.deg = a[aIndex]!.1.deg then
+      pairVecSubLoop a b (aIndex + 1) (bIndex + 1)
+        (pushNonzero result a[aIndex]!.1.deg
+          (a[aIndex]!.2 - b[bIndex]!.2))
+    else
+      pairVecSubLoop a b (aIndex + 1) bIndex (result.push a[aIndex]!)
+  else result
+termination_by (a.size - aIndex) + (b.size - bIndex)
+decreasing_by all_goals simp_wf; omega
+
+def __upoly_sub_raw_ir (a b : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  .ok (pairVecSubLoop a b 0 0 #[])
+
 /-- The inner ordered merge implementing
 `r -= coefficient * x^degreeShift * g`.  Each branch advances at least one
 source iterator, so termination is structural on the two remaining suffixes. -/

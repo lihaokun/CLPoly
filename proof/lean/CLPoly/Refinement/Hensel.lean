@@ -102,6 +102,181 @@ private theorem drop_eq_getElem_cons {α : Type} [Inhabited α] (input : Array �
   rw [hget] at hdrop
   exact hdrop
 
+set_option maxHeartbeats 0 in
+/-- Semantic invariant of the generated C++ `pair_vec_add` iterator merge.
+The output accumulator plus both unconsumed suffixes is preserved in every
+source branch. -/
+theorem pairVecAddLoop_toPolyMod (m : Nat) (a b : SparsePolyZZ) :
+    ∀ (aIndex bIndex : Nat) (result : SparsePolyZZ),
+      toPolyMod m
+          (Generated.StrictHensel.pairVecAddLoop a b aIndex bIndex result) =
+        toPolyMod m result + termsToPolyMod m (a.toList.drop aIndex) +
+          termsToPolyMod m (b.toList.drop bIndex) := by
+  intro aIndex bIndex result
+  refine Generated.StrictHensel.pairVecAddLoop.induct a b
+    (motive := fun aIndex bIndex result =>
+      toPolyMod m
+          (Generated.StrictHensel.pairVecAddLoop a b aIndex bIndex result) =
+        toPolyMod m result + termsToPolyMod m (a.toList.drop aIndex) +
+          termsToPolyMod m (b.toList.drop bIndex)) ?_ ?_ ?_ ?_ ?_ ?_
+    aIndex bIndex result
+  · intro ai bi acc hmore haDone ih
+    have hbi : bi < b.size := by omega
+    have hbDrop := drop_eq_getElem_cons b bi hbi
+    have haDrop : a.toList.drop ai = [] := by
+      apply List.drop_eq_nil_of_le
+      simpa using haDone
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haDone]
+    rw [ih, toPolyMod_push, haDrop, hbDrop, termsToPolyMod_cons,
+      termsToPolyMod_nil]
+    ring
+  · intro ai bi acc hmore haMore hbDone ih
+    have hai : ai < a.size := by omega
+    have haDrop := drop_eq_getElem_cons a ai hai
+    have hbDrop : b.toList.drop bi = [] := by
+      apply List.drop_eq_nil_of_le
+      simpa using hbDone
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haMore, hbDone]
+    rw [ih, toPolyMod_push, haDrop, hbDrop, termsToPolyMod_cons,
+      termsToPolyMod_nil]
+    ring
+  · intro ai bi acc hmore haMore hbMore hdegree ih
+    have hbi : bi < b.size := by omega
+    have hbDrop := drop_eq_getElem_cons b bi hbi
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haMore, hbMore, hdegree]
+    rw [ih, toPolyMod_push, hbDrop, termsToPolyMod_cons]
+    ring
+  · intro ai bi acc hmore haMore hbMore hnotGreater hequal ih
+    have hai : ai < a.size := by omega
+    have hbi : bi < b.size := by omega
+    have haDrop := drop_eq_getElem_cons a ai hai
+    have hbDrop := drop_eq_getElem_cons b bi hbi
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haMore, hbMore, hnotGreater, hequal]
+    rw [ih, pushNonzero_toPolyMod, haDrop, hbDrop,
+      termsToPolyMod_cons]
+    simp only [Int.cast_add, termsToPolyMod_cons]
+    rw [hequal]
+    rw [Polynomial.monomial_add]
+    ring
+  · intro ai bi acc hmore haMore hbMore hnotGreater hnotEqual ih
+    have hai : ai < a.size := by omega
+    have haDrop := drop_eq_getElem_cons a ai hai
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haMore, hbMore, hnotGreater, hnotEqual]
+    rw [ih, toPolyMod_push, haDrop, termsToPolyMod_cons]
+    ring
+  · intro ai bi acc hdone
+    have haDrop : a.toList.drop ai = [] := by
+      apply List.drop_eq_nil_of_le
+      simp only [not_or] at hdone
+      simpa using hdone.1
+    have hbDrop : b.toList.drop bi = [] := by
+      apply List.drop_eq_nil_of_le
+      simp only [not_or] at hdone
+      simpa using hdone.2
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hdone, haDrop, hbDrop]
+
+theorem __upoly_add_raw_ir_refines (m : Nat) (a b : SparsePolyZZ) :
+    ∃ output,
+      Generated.StrictHensel.__upoly_add_raw_ir a b = .ok output ∧
+      toPolyMod m output = toPolyMod m a + toPolyMod m b := by
+  refine ⟨Generated.StrictHensel.pairVecAddLoop a b 0 0 #[], rfl, ?_⟩
+  rw [pairVecAddLoop_toPolyMod]
+  simp [toPolyMod_eq_termsToPolyMod]
+
+set_option maxHeartbeats 0 in
+/-- Semantic invariant of the generated C++ `pair_vec_sub` iterator merge. -/
+theorem pairVecSubLoop_toPolyMod (m : Nat) (a b : SparsePolyZZ) :
+    ∀ (aIndex bIndex : Nat) (result : SparsePolyZZ),
+      toPolyMod m
+          (Generated.StrictHensel.pairVecSubLoop a b aIndex bIndex result) =
+        toPolyMod m result + termsToPolyMod m (a.toList.drop aIndex) -
+          termsToPolyMod m (b.toList.drop bIndex) := by
+  intro aIndex bIndex result
+  refine Generated.StrictHensel.pairVecSubLoop.induct a b
+    (motive := fun aIndex bIndex result =>
+      toPolyMod m
+          (Generated.StrictHensel.pairVecSubLoop a b aIndex bIndex result) =
+        toPolyMod m result + termsToPolyMod m (a.toList.drop aIndex) -
+          termsToPolyMod m (b.toList.drop bIndex)) ?_ ?_ ?_ ?_ ?_ ?_
+    aIndex bIndex result
+  · intro ai bi acc hmore haDone ih
+    have hbi : bi < b.size := by omega
+    have hbDrop := drop_eq_getElem_cons b bi hbi
+    have haDrop : a.toList.drop ai = [] := by
+      apply List.drop_eq_nil_of_le
+      simpa using haDone
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp [hmore, haDone]
+    rw [ih, toPolyMod_push, haDrop, hbDrop, termsToPolyMod_cons,
+      termsToPolyMod_nil]
+    simp only [Int.cast_neg, Prod.fst, Prod.snd]
+    rw [Polynomial.monomial_neg]
+    ring
+  · intro ai bi acc hmore haMore hbDone ih
+    have hai : ai < a.size := by omega
+    have haDrop := drop_eq_getElem_cons a ai hai
+    have hbDrop : b.toList.drop bi = [] := by
+      apply List.drop_eq_nil_of_le
+      simpa using hbDone
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp [hmore, haMore, hbDone]
+    rw [ih, toPolyMod_push, haDrop, hbDrop, termsToPolyMod_cons,
+      termsToPolyMod_nil]
+    ring
+  · intro ai bi acc hmore haMore hbMore hdegree ih
+    have hbi : bi < b.size := by omega
+    have hbDrop := drop_eq_getElem_cons b bi hbi
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp [hmore, haMore, hbMore, hdegree]
+    rw [ih, toPolyMod_push, hbDrop, termsToPolyMod_cons]
+    simp only [Int.cast_neg, Prod.fst, Prod.snd]
+    rw [Polynomial.monomial_neg]
+    ring
+  · intro ai bi acc hmore haMore hbMore hnotGreater hequal ih
+    have hai : ai < a.size := by omega
+    have hbi : bi < b.size := by omega
+    have haDrop := drop_eq_getElem_cons a ai hai
+    have hbDrop := drop_eq_getElem_cons b bi hbi
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp [hmore, haMore, hbMore, hnotGreater, hequal]
+    rw [ih, pushNonzero_toPolyMod, haDrop, hbDrop,
+      termsToPolyMod_cons]
+    simp only [Int.cast_sub, termsToPolyMod_cons]
+    rw [hequal, Polynomial.monomial_sub]
+    ring
+  · intro ai bi acc hmore haMore hbMore hnotGreater hnotEqual ih
+    have hai : ai < a.size := by omega
+    have haDrop := drop_eq_getElem_cons a ai hai
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp [hmore, haMore, hbMore, hnotGreater, hnotEqual]
+    rw [ih, toPolyMod_push, haDrop, termsToPolyMod_cons]
+    ring
+  · intro ai bi acc hdone
+    have haDrop : a.toList.drop ai = [] := by
+      apply List.drop_eq_nil_of_le
+      simp only [not_or] at hdone
+      simpa using hdone.1
+    have hbDrop : b.toList.drop bi = [] := by
+      apply List.drop_eq_nil_of_le
+      simp only [not_or] at hdone
+      simpa using hdone.2
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp [hdone, haDrop, hbDrop]
+
+theorem __upoly_sub_raw_ir_refines (m : Nat) (a b : SparsePolyZZ) :
+    ∃ output,
+      Generated.StrictHensel.__upoly_sub_raw_ir a b = .ok output ∧
+      toPolyMod m output = toPolyMod m a - toPolyMod m b := by
+  refine ⟨Generated.StrictHensel.pairVecSubLoop a b 0 0 #[], rfl, ?_⟩
+  rw [pairVecSubLoop_toPolyMod]
+  simp [toPolyMod_eq_termsToPolyMod]
+
 /-- Shifting a concrete divisor term by the current quotient degree and
 scaling it by the quotient coefficient is exactly multiplication by the
 corresponding monomial in `ZMod m`. -/

@@ -583,6 +583,50 @@ private theorem strict_subtract_x_loop_before_insert_toList
       simpa using (by omega : input.size ≤ i)
     simp [hdropEmpty, subtractXTerms, Array.toList_push]
 
+/-- The generated C++ entry point itself is exactly normalization of the
+structural subtract-X trace.  In particular, this theorem relates the actual
+generated array program to its trace; it is not an L2 semantic fallback. -/
+theorem __upoly_subtract_x_ir_eq_normalization_trace
+    (h : SparsePolyZp) (q : UInt64)
+    (hh : SparsePolyZp.Canonical p h)
+    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
+    Generated.StrictDDF.__upoly_subtract_x_ir h q =
+      SparsePolyZp.normalization (subtractXTerms q h.toList).toArray := by
+  let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+    0 false SparsePolyZp.empty h q
+  let pre : SparsePolyZp := if !out.2.1 then
+      out.2.2.push (UMonomial.mk (1 : Int32),
+        Zp.ofInt ((q - (1 : UInt64)).toInt) q)
+    else out.2.2
+  have hpreList : pre.toList = subtractXTerms q h.toList := by
+    have htrace := strict_subtract_x_loop_before_insert_toList q 0
+      SparsePolyZp.empty h (by simpa using hh.2.1.pairwise) hdegree
+    simpa only [pre, apply_ite, Array.toList_push, out,
+      SparsePolyZp.empty, Array.toList_empty, List.nil_append,
+      List.drop_zero, Bool.not_eq_true] using htrace
+  have hpre : pre = (subtractXTerms q h.toList).toArray := by
+    apply Array.toList_inj.mp
+    simpa using hpreList
+  simp only [Generated.StrictDDF.__upoly_subtract_x_ir]
+  change (if !out.2.1 then
+      SparsePolyZp.normalization
+        (out.2.2.push (UMonomial.mk (1 : Int32),
+          Zp.ofInt ((q - (1 : UInt64)).toInt) q))
+    else SparsePolyZp.normalization out.2.2) = _
+  by_cases hins : out.2.1 = true
+  · have hpre' : out.2.2 = (subtractXTerms q h.toList).toArray := by
+      simpa [pre, hins] using hpre
+    simp [hins, hpre']
+  · have hinsfalse : out.2.1 = false := Bool.eq_false_of_not_eq_true hins
+    have hpre' :
+        out.2.2.push (UMonomial.mk (1 : Int32),
+          Zp.ofInt ((q - (1 : UInt64)).toInt) q) =
+            (subtractXTerms q h.toList).toArray := by
+      simpa [pre, hinsfalse] using hpre
+    simp only [hinsfalse, Bool.not_false, ↓reduceIte]
+    norm_num at hpre' ⊢
+    exact congrArg SparsePolyZp.normalization hpre'
+
 private theorem zp_toZMod_sub (h2p : 2 * p ≤ UInt64.size) (a b : Zp)
     (ha_prime : a.prime.toNat = p) (hb_prime : b.prime.toNat = p)
     (ha_red : a.val.toNat < p) (hb_red : b.val.toNat < p) :
@@ -1156,6 +1200,30 @@ theorem strict_upoly_subtract_x_allReduced
     simp only [hinsfalse, Bool.not_false, ↓reduceIte]
     apply normalization_allReduced
     exact allReduced_push out.2.2 _ hout (strict_minus_one_reduced q hq)
+
+/-- Direct representation invariant for the generated C++ function.  The
+double-underscore theorem name deliberately preserves the original function
+name emitted by cpp2lean. -/
+theorem __upoly_subtract_x_ir_canonical
+    (h : SparsePolyZp) (q : UInt64) (hq : q.toNat = p)
+    (hh : SparsePolyZp.Canonical p h)
+    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
+    SparsePolyZp.Canonical p
+      (Generated.StrictDDF.__upoly_subtract_x_ir h q) := by
+  have heq := __upoly_subtract_x_ir_eq_normalization_trace
+    (p := p) h q hh hdegree
+  have hpair := subtractXTerms_pairwise q h.toList hh.2.1.pairwise
+  refine ⟨strict_upoly_subtract_x_allReduced h q hq hh hdegree, ?_, ?_⟩
+  · rw [heq]
+    unfold SparsePolyZp.normalization
+    rw [Array.toList_filter]
+    exact (hpair.filter _).isChain
+  · rw [heq]
+    unfold SparsePolyZp.normalization
+    rw [Array.toList_filter]
+    intro x hx
+    have hkeep := (List.mem_filter.mp hx).2
+    simpa [bne_iff_ne] using hkeep
 
 set_option maxHeartbeats 0 in
 /-- Once `inserted` is true and the remaining suffix contains no linear term,

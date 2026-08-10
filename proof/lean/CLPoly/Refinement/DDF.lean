@@ -750,8 +750,25 @@ theorem strictPowmodIR_refines
       (by rw [hreducedBaseSemantic,
         modByMonic_idem _ _ hmodulusMonic]) e
 
-/-- Current structured-canonical wrapper around the fully generated
-subtract-X loop theorem. -/
+/-- Public refinement contract named after the exact cpp2lean-generated C++
+entry point.  It proves both representation safety and L2 polynomial
+semantics for the generated implementation. -/
+theorem __upoly_subtract_x_ir_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (h2p : 2 * this._p.toNat ≤ UInt64.size) (h : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat h)
+    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
+    SparsePolyZp.Canonical this._p.toNat
+        (Generated.StrictDDF.__upoly_subtract_x_ir h this._p) ∧
+      SparsePolyZp.toPoly this._p.toNat
+          (Generated.StrictDDF.__upoly_subtract_x_ir h this._p) =
+        SparsePolyZp.toPoly this._p.toNat h - Polynomial.X := by
+  refine ⟨__upoly_subtract_x_ir_canonical h this._p rfl hcanonical hdegree,
+    ?_⟩
+  exact strict_upoly_subtract_x_refines h2p h this._p rfl
+    ((canonicalRep_iff_canonical h).mpr hcanonical) hdegree
+
+/-- Compatibility projection of `__upoly_subtract_x_ir_refines`. -/
 theorem strictSubtractXIR_refines
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (h2p : 2 * this._p.toNat ≤ UInt64.size) (h : SparsePolyZp)
@@ -760,8 +777,7 @@ theorem strictSubtractXIR_refines
     SparsePolyZp.toPoly this._p.toNat
         (Generated.StrictDDF.__upoly_subtract_x_ir h this._p) =
       SparsePolyZp.toPoly this._p.toNat h - Polynomial.X := by
-  exact strict_upoly_subtract_x_refines h2p h this._p rfl
-    ((canonicalRep_iff_canonical h).mpr hcanonical) hdegree
+  exact (__upoly_subtract_x_ir_refines this h2p h hcanonical hdegree).2
 
 /-- Representation half of the generated subtract-X refinement.  This is the
 coefficient invariant consumed by the raw sparse-to-dense GCD constructor. -/
@@ -772,7 +788,7 @@ theorem strictSubtractXIR_allReduced
     (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
     SparsePolyZp.AllReduced this._p.toNat
       (Generated.StrictDDF.__upoly_subtract_x_ir h this._p).toList := by
-  exact strict_upoly_subtract_x_allReduced h this._p rfl hcanonical hdegree
+  exact (__upoly_subtract_x_ir_canonical h this._p rfl hcanonical hdegree).1
 
 end StrictDDF
 

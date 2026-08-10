@@ -91,6 +91,113 @@ theorem map_toPolyMod_of_dvd {smaller larger : Nat}
   ext coefficient
   simp [ZMod.castHom_apply, ZMod.cast_intCast hdiv]
 
+/-- In `ZMod (m²)`, multiplying a coefficient that vanishes modulo `m` by
+`m` gives zero.  This is the exact algebraic fact used by quadratic Hensel
+correction; it does not appeal to the L2 Hensel implementation. -/
+theorem zmod_scale_eq_zero_of_cast_eq_zero (m : Nat) (hm : 0 < m)
+    (a : ZMod (m ^ 2))
+    (ha : ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0))
+      (ZMod m) a = 0) :
+    (m : ZMod (m ^ 2)) * a = 0 := by
+  haveI : NeZero (m ^ 2) := ⟨by positivity⟩
+  simp only [ZMod.castHom_apply] at ha
+  rw [ZMod.cast_eq_val, ZMod.natCast_eq_zero_iff] at ha
+  obtain ⟨k, hk⟩ := ha
+  have ha' : a = ((m * k : Nat) : ZMod (m ^ 2)) := by
+    rw [← hk, ZMod.natCast_zmod_val]
+  rw [ha']
+  push_cast
+  have hmm : (m : ZMod (m ^ 2)) * (m : ZMod (m ^ 2)) = 0 := by
+    rw [← Nat.cast_mul, show m * m = m ^ 2 by ring]
+    exact ZMod.natCast_self (m ^ 2)
+  rw [← mul_assoc, hmm, zero_mul]
+
+/-- Polynomial form of `zmod_scale_eq_zero_of_cast_eq_zero`. -/
+theorem C_scale_mul_eq_zero_of_map_eq_zero (m : Nat) (hm : 0 < m)
+    (p : Polynomial (ZMod (m ^ 2)))
+    (hp : Polynomial.map
+      (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m)) p = 0) :
+    Polynomial.C (m : ZMod (m ^ 2)) * p = 0 := by
+  ext degree
+  rw [Polynomial.coeff_C_mul, Polynomial.coeff_zero]
+  apply zmod_scale_eq_zero_of_cast_eq_zero m hm
+  have hcoeff := congrArg (fun q => q.coeff degree) hp
+  simpa [Polynomial.coeff_map] using hcoeff
+
+/-- Algebraic core of the concrete factor-correction phase.  Every premise
+is exactly one semantic fact supplied by a generated raw operation: the
+integer error quotient, modular long division, and the `tau` construction.
+There is no existentially selected correction polynomial. -/
+theorem henselFactorCorrection_algebra
+    (m : Nat) (hm : 0 < m)
+    (F G H S T E Q R Tau : Polynomial (ZMod (m ^ 2)))
+    (herror : F = G * H + Polynomial.C (m : ZMod (m ^ 2)) * E)
+    (hbezout : Polynomial.map
+      (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m))
+      (S * G + T * H) = 1)
+    (hdivmod : Polynomial.map
+      (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m))
+      (R + Q * H) =
+      Polynomial.map
+        (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m))
+        (S * E))
+    (htau : Polynomial.map
+      (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m)) Tau =
+      Polynomial.map
+        (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m))
+        (T * E + Q * G)) :
+    (G + Polynomial.C (m : ZMod (m ^ 2)) * Tau) *
+        (H + Polynomial.C (m : ZMod (m ^ 2)) * R) = F := by
+  let π := ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m)
+  let c : Polynomial (ZMod (m ^ 2)) :=
+    Polynomial.C (m : ZMod (m ^ 2))
+  have hcMap : Polynomial.map π c = 0 := by
+    ext degree
+    simp [π, c, ZMod.castHom_apply]
+  have hcc : c * c = 0 :=
+    C_scale_mul_eq_zero_of_map_eq_zero m hm c hcMap
+  let delta := G * R + Tau * H - E
+  have hdeltaMap : Polynomial.map π delta = 0 := by
+    simp only [delta, Polynomial.map_sub, Polynomial.map_add,
+      Polynomial.map_mul]
+    have hbezout' :
+        Polynomial.map π S * Polynomial.map π G +
+            Polynomial.map π T * Polynomial.map π H = 1 := by
+      simpa [π, Polynomial.map_add, Polynomial.map_mul] using hbezout
+    have hdivmod' :
+        Polynomial.map π R + Polynomial.map π Q * Polynomial.map π H =
+          Polynomial.map π S * Polynomial.map π E := by
+      simpa [π, Polynomial.map_add, Polynomial.map_mul] using hdivmod
+    have htau' : Polynomial.map π Tau =
+        Polynomial.map π T * Polynomial.map π E +
+          Polynomial.map π Q * Polynomial.map π G := by
+      simpa [π, Polynomial.map_add, Polynomial.map_mul] using htau
+    rw [htau']
+    calc
+      Polynomial.map π G * Polynomial.map π R +
+            (Polynomial.map π T * Polynomial.map π E +
+              Polynomial.map π Q * Polynomial.map π G) *
+              Polynomial.map π H - Polynomial.map π E =
+          Polynomial.map π G *
+              (Polynomial.map π R +
+                Polynomial.map π Q * Polynomial.map π H) +
+            Polynomial.map π T * Polynomial.map π H *
+              Polynomial.map π E - Polynomial.map π E := by ring
+      _ = (Polynomial.map π S * Polynomial.map π G +
+              Polynomial.map π T * Polynomial.map π H - 1) *
+            Polynomial.map π E := by rw [hdivmod']; ring
+      _ = 0 := by rw [hbezout']; simp
+  have hcdelta : c * delta = 0 :=
+    C_scale_mul_eq_zero_of_map_eq_zero m hm delta hdeltaMap
+  change (G + c * Tau) * (H + c * R) = F
+  calc
+    (G + c * Tau) * (H + c * R) =
+        G * H + c * delta + c * E + (c * c) * (Tau * R) := by
+          simp only [delta]
+          ring
+    _ = G * H + c * E := by rw [hcdelta, hcc]; simp
+    _ = F := herror.symm
+
 @[simp] theorem termsToPolyMod_nil (m : Nat) :
     termsToPolyMod m [] = 0 := by
   simp [termsToPolyMod]

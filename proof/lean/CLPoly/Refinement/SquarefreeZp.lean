@@ -19876,6 +19876,121 @@ theorem pairVecDivVHCProduct_eq_of_agreesAbove_lead_of_dvd
   dsimp only [residual] at hresidualZero
   exact sub_eq_zero.mp hresidualZero |>.symm
 
+/-- Semantic refinement of a successful generated general `pair_vec_div`
+execution.  The quotient is derived from the concrete VHC trace and only then
+identified with Lean's monic division; no expected quotient is supplied to
+the executable algorithm. -/
+theorem pairVecDivGeneralBranchIR_refines_divByMonic
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor quotient : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hdividend : 0 < dividend.size) (hdivisor : 1 < divisor.size)
+    (hdivisorMonic : (SparsePolyZp.toPoly this._p.toNat divisor).Monic)
+    (hdivisorDvd : SparsePolyZp.toPoly this._p.toNat divisor ∣
+      SparsePolyZp.toPoly this._p.toNat dividend)
+    (hrun : pairVecDivGeneralBranchIR this dividend divisor = .ok quotient) :
+    SparsePolyZp.Canonical this._p.toNat quotient ∧
+      SparsePolyZp.toPoly this._p.toNat quotient =
+        SparsePolyZp.toPoly this._p.toNat dividend /ₘ
+          SparsePolyZp.toPoly this._p.toNat divisor := by
+  let nodes := pairVecDivVHCInit divisor
+  rcases pairVecDivVHCInit_stateCovered divisor with
+    ⟨owners, hownership0, hcovered0⟩
+  have hownership : PairVecDivVHCHeapChainOwnership #[] owners nodes := by
+    simpa [nodes] using hownership0
+  have hcovered : PairVecDivVHCNodesCovered #[] owners #[]
+      (divisor.size - 1) nodes := by simpa [nodes] using hcovered0
+  have hstate : PairVecDivVHCStateCovered #[] nodes #[]
+      (divisor.size - 1) := ⟨owners, hownership, hcovered⟩
+  have hinactive : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono = none := by
+    intro i node hget
+    have hi : i < divisor.size - 1 := by
+      by_contra hn
+      rw [Array.getElem?_eq_none (by
+        rw [show nodes.size = divisor.size - 1 by
+          simp [nodes, pairVecDivVHCInit_size]]
+        omega)] at hget
+      contradiction
+    rw [show nodes[i]? = some (pairVecDivVHCInitialNode i) by
+      simpa [nodes] using pairVecDivVHCInit_get divisor i hi] at hget
+    simp only [Option.some.injEq] at hget
+    subst node
+    rfl
+  let limit := dividend[0].1.deg + 1
+  have hbelow : PairVecDivVHCAllActiveNodesBelow limit nodes := by
+    intro i node mono hget hmono
+    rw [hinactive i node hget] at hmono
+    contradiction
+  have hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes (#[] : SparsePolyZp) divisor node := by
+    intro i node hget hactive
+    exact (hactive (hinactive i node hget)).elim
+  have hhomogeneous : PairVecDivVHCHeapChainsHomogeneous #[] owners nodes := by
+    intro slot head mono hget
+    simp at hget
+  have hordered : PairVecDivVHCHeapOrdered #[] nodes := by
+    intro child parent hchild
+    simp at hchild
+  have hcanonical : SparsePolyZp.Canonical this._p.toNat
+      (#[] : SparsePolyZp) := by
+    rw [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr]
+    refine ⟨?_, by simp, ?_⟩
+    · intro term hterm; simp at hterm
+    · intro term hterm; simp at hterm
+  have hremaining : PairVecDivVHCRemainingDividendBelow limit 0 dividend := by
+    exact pairVecDivVHCCanonicalInitialRemainingBelow this._p.toNat dividend
+      hdividendCanonical hdividend
+  have hquotientReady : ∀ frontier : PairVecDivVHCFrontier,
+      pairVecDivVHCSelectFrontier 0 dividend #[] nodes = .ok frontier →
+        PairVecDivVHCQuotientAbove frontier.degree divisor[0].1.deg
+          (#[] : SparsePolyZp) := by
+    intro frontier hselect
+    exact PairVecDivVHCQuotientAbove.empty _ _
+  have houter : pairVecDivVHCOuterLoop this limit 0 #[] nodes #[] dividend
+      divisor (divisor.size - 1) = .ok quotient := by
+    simpa [pairVecDivGeneralBranchIR, hdividend, hdivisor, limit, nodes]
+      using hrun
+  have hinitialAgrees : PairVecDivVHCProductAgreesAbove this._p.toNat limit
+      #[] dividend divisor := by
+    intro degree hdegree
+    have hpolyDegree := sparsePolyZp_toPoly_degree_eq_head this._p.toNat
+      dividend hdividendCanonical hdividend
+    have hdegreeLt : (SparsePolyZp.toPoly this._p.toNat dividend).degree <
+        degree := by
+      rw [hpolyDegree]
+      change dividend[0].1.deg + 1 ≤ degree at hdegree
+      exact_mod_cast Nat.lt_of_succ_le hdegree
+    rw [Polynomial.degree_lt_iff_coeff_zero] at hdegreeLt
+    have hzero := hdegreeLt degree (Nat.le_refl degree)
+    simpa [SparsePolyZp.toPoly, listSum] using hzero.symm
+  have hagrees := pairVecDivVHCOuterLoop_productAgreesAbove_lead_of_success
+    this limit limit 0 #[] nodes #[] dividend divisor quotient
+    (divisor.size - 1) owners (by omega) hcfg hcanonical hdividendCanonical
+    hdivisorCanonical hquotientReady hremaining hbelow hdenotes
+    (by simpa [nodes] using pairVecDivVHCInit_divisorIndicesFixed divisor)
+    (by simpa [nodes] using pairVecDivVHCInit_resetReady divisor)
+    hownership hstate (by simp [nodes, pairVecDivVHCInit_size]) hhomogeneous
+    hordered (by simpa [nodes] using
+      (pairVecDivVHCInit_cursorPrefixAbove limit (#[] : SparsePolyZp) divisor))
+    (PairVecDivVHCQuotientLeadAbove.empty limit divisor[0].1.deg)
+    (pairVecDivVHCConsumedDividendAbove_zero limit dividend) hinitialAgrees houter
+  have hcanonicalOut := pairVecDivVHCOuterLoop_preserves_canonical_of_success
+    this limit limit 0 #[] nodes #[] dividend divisor quotient
+    (divisor.size - 1) owners (by omega) hcfg hcanonical hdividendCanonical
+    hdivisorCanonical hquotientReady hremaining hbelow hdenotes
+    (by simpa [nodes] using pairVecDivVHCInit_divisorIndicesFixed divisor)
+    (by simpa [nodes] using pairVecDivVHCInit_resetReady divisor)
+    hownership hstate houter
+  have hmul := pairVecDivVHCProduct_eq_of_agreesAbove_lead_of_dvd
+    this._p.toNat quotient dividend divisor (by omega) hdivisorCanonical
+    hdivisorDvd hagrees
+  exact ⟨hcanonicalOut, eq_divByMonic_of_mul_eq _ _ _ hdivisorMonic
+    hdivisorDvd hmul⟩
+
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)
     (hcanonical : SparsePolyZp.Canonical p source)

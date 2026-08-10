@@ -13,11 +13,19 @@ polynomial empty and make retry progress impossible. A direct theorem proves
 the new raw entry always returns its computed polynomial and advanced RNG
 state.
 
+The follow-up invariant proof inspects those concrete draws. It proves that
+every retained coefficient is reduced modulo `p`, every retained coefficient
+is nonzero, and the descending `Array.push` order preserves
+`SparsePolyZp.Canonical`. Consequently
+`__upoly_random_raw_ir_canonical` certifies the exact generated output without
+post-normalization or an L2 replacement.
+
 Verification:
 
 ```text
 python3 ../cpp2lean_v2/tests/build_strict_edf.py --check
 lake build CLPoly.Generated.StrictEDF CLPoly.Refinement.EDFRandom
+lake build CLPoly.Refinement.EDF
 ```
 
 Files changed:

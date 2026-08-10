@@ -14,6 +14,7 @@
 import CLPoly.Algorithm.EDF
 import CLPoly.Generated.StrictEDF
 import CLPoly.Refinement.Basic
+import CLPoly.Refinement.DDF
 import CLPoly.Refinement.EDFSubtractOne
 
 set_option autoImplicit false
@@ -110,6 +111,81 @@ theorem candidateRun_odd_run
   simp only
   rw [certifyRawExec_ok_eq _ _ hminusRun]
   simp [hgcdRun]
+
+/-- Concrete odd-characteristic candidate pipeline assembled exclusively from
+strict C++ raw boundaries already used by DDF, plus the generated EDF
+subtract-one entry. -/
+noncomputable def strictOddCandidateIR
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64) (r : SparsePolyZp) :
+    RawExec SparsePolyZp := do
+  let exponent := (f[0]!.2.prime.toNat ^ d.toNat - 1) / 2
+  let hpow ← StrictDDF.strictPowmodIR this r exponent f providers.mul
+    (providers.mod f)
+  let hminus ← Generated.StrictEDF.__upoly_subtract_one_raw_ir hpow
+    f[0]!.2.prime
+  StrictDDF.strictDDFGCDIR this hminus f (providers.gcd hminus f)
+
+/-- End-to-end semantics of the concrete odd-characteristic candidate
+pipeline.  The returned candidate is the normalized GCD of the actual raw
+powmod result minus one with the input polynomial. -/
+theorem strictOddCandidateIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64) (r : SparsePolyZp)
+    (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hrCanonical : SparsePolyZp.Canonical this._p.toNat r)
+    (hfNonempty : 0 < f.size)
+    (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic)
+    (hfDegree : 0 < (SparsePolyZp.toPoly this._p.toNat f).natDegree) :
+    ∃ factor,
+      strictOddCandidateIR this providers f d r = .ok factor ∧
+      SparsePolyZp.Canonical this._p.toNat factor ∧
+      SparsePolyZp.toPoly this._p.toNat factor = normalize
+        (EuclideanDomain.gcd
+          ((SparsePolyZp.toPoly this._p.toNat r ^
+              ((this._p.toNat ^ d.toNat - 1) / 2) %ₘ
+                SparsePolyZp.toPoly this._p.toNat f) - 1)
+          (SparsePolyZp.toPoly this._p.toNat f)) := by
+  have hfHeadMem : f[0] ∈ f.toList := by
+    simpa using Array.getElem_mem f 0 hfNonempty
+  have hhead : f[0]! = f[0] := by
+    rw [getElem!_def, getElem?_def]
+    simp [hfNonempty]
+  have hprimeNat : f[0]!.2.prime.toNat = this._p.toNat := by
+    rw [hhead]
+    exact (hfCanonical.1 f[0] hfHeadMem).1
+  have hprime : f[0]!.2.prime = this._p := UInt64.toNat_inj.mp hprimeNat
+  let exponent := (f[0]!.2.prime.toNat ^ d.toNat - 1) / 2
+  rcases StrictDDF.strictPowmodIR_refines this providers.hcfg r exponent f
+      providers.mul (providers.mod f) hrCanonical hfCanonical hfNonempty
+      hfMonic hfDegree with
+    ⟨hpow, hpowRun, hpowCanonical, hpowSemantic⟩
+  rcases __upoly_subtract_one_raw_ir_certified hpow this._p
+      providers.h2p hpowCanonical with
+    ⟨hminus, hminusRun, hminusSemantic, hminusCanonical⟩
+  have hminusRunHead :
+      Generated.StrictEDF.__upoly_subtract_one_raw_ir hpow
+        f[0]!.2.prime = .ok hminus := by
+    simpa [hprime] using hminusRun
+  rcases StrictDDF.strictDDFGCDIR_refines this hminus f
+      (providers.gcd hminus f) hminusCanonical
+      hfCanonical hfNonempty hfMonic with
+    ⟨factor, hgcdRun, hfactorCanonical, hfactorSemantic⟩
+  refine ⟨factor, ?_, hfactorCanonical, ?_⟩
+  · unfold strictOddCandidateIR
+    dsimp only
+    rw [hpowRun]
+    change (do
+      let hminus ← Generated.StrictEDF.__upoly_subtract_one_raw_ir hpow
+        f[0]!.2.prime
+      StrictDDF.strictDDFGCDIR this hminus f
+        (providers.gcd hminus f)) = .ok factor
+    rw [hminusRunHead]
+    simpa using hgcdRun
+  · rw [hfactorSemantic, hminusSemantic, hpowSemantic]
+    simp only [exponent, hprimeNat]
 
 end StrictEDF
 

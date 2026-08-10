@@ -497,6 +497,174 @@ def strictPowmodIR (this : DenseUPolyZp) (base : SparsePolyZp) (e : Nat)
   else
     .error .assertionFailure
 
+private lemma modByMonic_idem {p : Nat} [Fact (Nat.Prime p)]
+    (a m : Polynomial (ZMod p))
+    (hm : m.Monic) : (a %ₘ m) %ₘ m = a %ₘ m :=
+  (Polynomial.modByMonic_eq_self_iff hm).mpr
+    (Polynomial.degree_modByMonic_lt a hm)
+
+private lemma mul_modByMonic_congr {p : Nat} [Fact (Nat.Prime p)]
+    {a a' b b' m : Polynomial (ZMod p)}
+    (ha : a %ₘ m = a' %ₘ m) (hb : b %ₘ m = b' %ₘ m) :
+    (a * b) %ₘ m = (a' * b') %ₘ m := by
+  calc
+    (a * b) %ₘ m = (a %ₘ m) * (b %ₘ m) %ₘ m :=
+      Polynomial.mul_modByMonic _ _ _
+    _ = (a' %ₘ m) * (b' %ₘ m) %ₘ m := by rw [ha, hb]
+    _ = (a' * b') %ₘ m := (Polynomial.mul_modByMonic _ _ _).symm
+
+private lemma pow_modByMonic_congr {p : Nat} [Fact (Nat.Prime p)]
+    {a b m : Polynomial (ZMod p)} (h : a %ₘ m = b %ₘ m) :
+    ∀ n : Nat, (a ^ n) %ₘ m = (b ^ n) %ₘ m := by
+  intro n
+  induction n with
+  | zero => simp
+  | succ n ih =>
+      rw [pow_succ, pow_succ]
+      exact mul_modByMonic_congr ih h
+
+set_option maxHeartbeats 0 in
+/-- Strong-induction invariant for the actual well-founded binary-powmod
+execution. -/
+theorem strictPowmodLoopIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (modulus : SparsePolyZp) (mulProvider : RawMulWorkspaceProvider this)
+    (modProvider : RawModWorkspaceProvider this modulus)
+    (hmodulusCanonical : SparsePolyZp.Canonical this._p.toNat modulus)
+    (hmodulusNonempty : 0 < modulus.size)
+    (hmodulusMonic : (SparsePolyZp.toPoly this._p.toNat modulus).Monic) :
+    ∀ (e : Nat) (base result : SparsePolyZp),
+      SparsePolyZp.Canonical this._p.toNat base →
+      SparsePolyZp.Canonical this._p.toNat result →
+      SparsePolyZp.toPoly this._p.toNat base %ₘ
+          SparsePolyZp.toPoly this._p.toNat modulus =
+        SparsePolyZp.toPoly this._p.toNat base →
+      SparsePolyZp.toPoly this._p.toNat result %ₘ
+          SparsePolyZp.toPoly this._p.toNat modulus =
+        SparsePolyZp.toPoly this._p.toNat result →
+      ∃ output,
+        strictPowmodLoopIR this modulus mulProvider modProvider e base result =
+          .ok output ∧
+        SparsePolyZp.Canonical this._p.toNat output ∧
+        SparsePolyZp.toPoly this._p.toNat output =
+          (SparsePolyZp.toPoly this._p.toNat result *
+            SparsePolyZp.toPoly this._p.toNat base ^ e) %ₘ
+              SparsePolyZp.toPoly this._p.toNat modulus := by
+  intro e
+  induction e using Nat.strongRecOn with
+  | ind e ih =>
+      intro base result hbaseCanonical hresultCanonical hbaseReduced
+        hresultReduced
+      by_cases hezero : e = 0
+      · subst e
+        refine ⟨result, by simp [strictPowmodLoopIR], hresultCanonical, ?_⟩
+        simpa using hresultReduced.symm
+      · have hepos : 0 < e := Nat.pos_of_ne_zero hezero
+        let k := e / 2
+        have hklt : k < e := Nat.div_lt_self hepos (by omega)
+        by_cases hodd : e % 2 ≠ 0
+        · have hoddOne : e % 2 = 1 := by omega
+          rcases strictMulModIR_refines this hcfg result base modulus
+              mulProvider modProvider hresultCanonical hbaseCanonical
+              hmodulusCanonical hmodulusNonempty hmodulusMonic with
+            ⟨result', hresultRun, hresult'Canonical, hresult'Semantic⟩
+          have hresult'Reduced :
+              SparsePolyZp.toPoly this._p.toNat result' %ₘ
+                  SparsePolyZp.toPoly this._p.toNat modulus =
+                SparsePolyZp.toPoly this._p.toNat result' := by
+            rw [hresult'Semantic]
+            exact modByMonic_idem _ _ hmodulusMonic
+          by_cases hkpos : 0 < k
+          · rcases strictMulModIR_refines this hcfg base base modulus
+                mulProvider modProvider hbaseCanonical hbaseCanonical
+                hmodulusCanonical hmodulusNonempty hmodulusMonic with
+              ⟨base', hbaseRun, hbase'Canonical, hbase'Semantic⟩
+            have hbase'Reduced :
+                SparsePolyZp.toPoly this._p.toNat base' %ₘ
+                    SparsePolyZp.toPoly this._p.toNat modulus =
+                  SparsePolyZp.toPoly this._p.toNat base' := by
+              rw [hbase'Semantic]
+              exact modByMonic_idem _ _ hmodulusMonic
+            rcases ih k hklt base' result' hbase'Canonical hresult'Canonical
+                hbase'Reduced hresult'Reduced with
+              ⟨output, hrecursiveRun, houtputCanonical, houtputSemantic⟩
+            refine ⟨output, ?_, houtputCanonical, houtputSemantic.trans ?_⟩
+            · rw [strictPowmodLoopIR]
+              simp [hezero, hodd, hresultRun, k, hkpos, hbaseRun,
+                ]
+              simpa [k] using hrecursiveRun
+            · have heform : e = 2 * k + 1 := by omega
+              calc
+                (SparsePolyZp.toPoly this._p.toNat result' *
+                    SparsePolyZp.toPoly this._p.toNat base' ^ k) %ₘ
+                      SparsePolyZp.toPoly this._p.toNat modulus =
+                    ((SparsePolyZp.toPoly this._p.toNat result *
+                        SparsePolyZp.toPoly this._p.toNat base) *
+                      (SparsePolyZp.toPoly this._p.toNat base *
+                        SparsePolyZp.toPoly this._p.toNat base) ^ k) %ₘ
+                      SparsePolyZp.toPoly this._p.toNat modulus :=
+                    mul_modByMonic_congr
+                      (by rw [hresult'Semantic,
+                        modByMonic_idem _ _ hmodulusMonic])
+                      (pow_modByMonic_congr
+                        (by rw [hbase'Semantic,
+                          modByMonic_idem _ _ hmodulusMonic]) k)
+                _ = (SparsePolyZp.toPoly this._p.toNat result *
+                      SparsePolyZp.toPoly this._p.toNat base ^ e) %ₘ
+                        SparsePolyZp.toPoly this._p.toNat modulus := by
+                    rw [heform]
+                    congr 1 <;> ring
+          · have hkzero : k = 0 := Nat.eq_zero_of_not_pos hkpos
+            have heone : e = 1 := by omega
+            subst e
+            refine ⟨result', ?_, hresult'Canonical, ?_⟩
+            · rw [strictPowmodLoopIR]
+              simp only [↓reduceIte, Nat.one_mod, one_ne_zero, hresultRun,
+                Nat.reduceDiv, lt_self_iff_false]
+              change strictPowmodLoopIR this modulus mulProvider modProvider
+                0 base result' = .ok result'
+              rw [strictPowmodLoopIR]
+              rfl
+            · simpa using hresult'Semantic
+        · have heven : e % 2 = 0 := by omega
+          have hkpos : 0 < k := by dsimp [k]; omega
+          rcases strictMulModIR_refines this hcfg base base modulus
+              mulProvider modProvider hbaseCanonical hbaseCanonical
+              hmodulusCanonical hmodulusNonempty hmodulusMonic with
+            ⟨base', hbaseRun, hbase'Canonical, hbase'Semantic⟩
+          have hbase'Reduced :
+              SparsePolyZp.toPoly this._p.toNat base' %ₘ
+                  SparsePolyZp.toPoly this._p.toNat modulus =
+                SparsePolyZp.toPoly this._p.toNat base' := by
+            rw [hbase'Semantic]
+            exact modByMonic_idem _ _ hmodulusMonic
+          rcases ih k hklt base' result hbase'Canonical hresultCanonical
+              hbase'Reduced hresultReduced with
+            ⟨output, hrecursiveRun, houtputCanonical, houtputSemantic⟩
+          refine ⟨output, ?_, houtputCanonical, houtputSemantic.trans ?_⟩
+          · rw [strictPowmodLoopIR]
+            simp [hezero, hodd, k, hkpos, hbaseRun]
+            simpa [k] using hrecursiveRun
+          · have heform : e = 2 * k := by omega
+            calc
+              (SparsePolyZp.toPoly this._p.toNat result *
+                  SparsePolyZp.toPoly this._p.toNat base' ^ k) %ₘ
+                    SparsePolyZp.toPoly this._p.toNat modulus =
+                  (SparsePolyZp.toPoly this._p.toNat result *
+                    (SparsePolyZp.toPoly this._p.toNat base *
+                      SparsePolyZp.toPoly this._p.toNat base) ^ k) %ₘ
+                    SparsePolyZp.toPoly this._p.toNat modulus :=
+                  mul_modByMonic_congr rfl
+                    (pow_modByMonic_congr
+                      (by rw [hbase'Semantic,
+                        modByMonic_idem _ _ hmodulusMonic]) k)
+              _ = (SparsePolyZp.toPoly this._p.toNat result *
+                    SparsePolyZp.toPoly this._p.toNat base ^ e) %ₘ
+                      SparsePolyZp.toPoly this._p.toNat modulus := by
+                  rw [heform]
+                  congr 1 <;> ring
+
 end StrictDDF
 
 end Refinement

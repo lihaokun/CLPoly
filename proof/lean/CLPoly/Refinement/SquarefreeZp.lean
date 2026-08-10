@@ -20119,6 +20119,31 @@ theorem generated_scaleMultiplicityLoop0_eq (index : Nat)
 termination_by source.size - index
 decreasing_by omega
 
+theorem array_setBang_getElem_self {Alpha : Type} [Inhabited Alpha]
+    (source : Array Alpha) (index : Nat) (hindex : index < source.size) :
+    source.set! index source[index] = source := by
+  rw [Array.set!_eq_setIfInBounds, Array.setIfInBounds_def]
+  simp only [hindex, dite_true]
+  exact Array.set_getElem_self hindex
+
+set_option maxHeartbeats 800000 in
+/-- The post-Yun generated result-copy loop also equals the same safe scaling
+loop; its apparent source mutation is a proved self-write. -/
+theorem generated_scaleMultiplicityLoop2_eq (index : Nat)
+    (source output : Array (SparsePolyZp × UInt64)) (prime : UInt64) :
+    (Generated._loop___squarefree_Zp_2_ir_def index source output prime).2.2 =
+      scaleMultiplicityLoop index source output prime := by
+  rw [Generated._loop___squarefree_Zp_2_ir_def, scaleMultiplicityLoop]
+  by_cases hmore : index < source.size
+  · simp only [hmore, if_pos]
+    rw [getElem!_pos source index hmore,
+      array_setBang_getElem_self source index hmore]
+    exact generated_scaleMultiplicityLoop2_eq (index + 1) source
+      (output.push (source[index].1, source[index].2 * prime)) prime
+  · simp [hmore]
+termination_by source.size - index
+decreasing_by omega
+
 theorem scaleMultiplicityLoop_toList (index : Nat)
     (source output : Array (SparsePolyZp × UInt64)) (prime : UInt64) :
     (scaleMultiplicityLoop index source output prime).toList =

@@ -22,8 +22,8 @@ from pass8_codegen import codegen_corpus
 
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictDDF.lean"
 CONTRACT_OUT = (
-    V2_ROOT.parent / "lean" / "CLPoly" / "Generated" /
-    "StrictDDFRefinement.lean"
+    V2_ROOT.parent / "lean" / "CLPoly" / "Refinement" / "Generated" /
+    "DDF.lean"
 )
 CPP_ENTRY = "__ddf_Zp_raw_ir"
 STRICT_DDF_ROOTS = {
@@ -220,7 +220,7 @@ import CLPoly.Refinement.DDF
 
 set_option autoImplicit false
 
-namespace Refinement.StrictDDF
+namespace Refinement
 
 open CLPoly.Math
 
@@ -228,7 +228,7 @@ open CLPoly.Math
 The double underscores are retained verbatim from the original C++ symbol. -/
 theorem {theorem_name}
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
-    (providers : DDFRawProviders this) (f : SparsePolyZp)
+    (providers : StrictDDF.DDFRawProviders this) (f : SparsePolyZp)
     (hfPrime : f[0]!.2.prime = this._p)
     (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
     (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 62)
@@ -236,16 +236,17 @@ theorem {theorem_name}
     (hfSquarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)) :
     ∃ output,
       Generated.StrictDDF.{CPP_ENTRY}
-          (strictDDFRawOps this providers
+          (StrictDDF.strictDDFRawOps this providers
             (SparsePolyZp.toPoly this._p.toNat f)) f
-          (fun _ => DDFLoopInvariant.initial this f f[0]!.2.prime hfPrime
+          (fun _ => StrictDDF.DDFLoopInvariant.initial this f
+            f[0]!.2.prime hfPrime
             hfCanonical hfDegree hfMonic hfSquarefree) = .ok output ∧
-      ddfResultToL2 this._p.toNat output =
+      StrictDDF.ddfResultToL2 this._p.toNat output =
         ddf (SparsePolyZp.toPoly this._p.toNat f) := by
-  exact strictDDFEntryIR_refines_ddf this providers f hfPrime hfCanonical
-    hfDegree hfMonic hfSquarefree
+  exact StrictDDF.strictDDFEntryIR_refines_ddf this providers f hfPrime
+    hfCanonical hfDegree hfMonic hfSquarefree
 
-end Refinement.StrictDDF
+end Refinement
 '''
 
 

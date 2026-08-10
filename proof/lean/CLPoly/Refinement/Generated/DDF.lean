@@ -3,7 +3,7 @@ import CLPoly.Refinement.DDF
 
 set_option autoImplicit false
 
-namespace Refinement.StrictDDF
+namespace Refinement
 
 open CLPoly.Math
 
@@ -11,7 +11,7 @@ open CLPoly.Math
 The double underscores are retained verbatim from the original C++ symbol. -/
 theorem __ddf_Zp_raw_ir_refines_ddf
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
-    (providers : DDFRawProviders this) (f : SparsePolyZp)
+    (providers : StrictDDF.DDFRawProviders this) (f : SparsePolyZp)
     (hfPrime : f[0]!.2.prime = this._p)
     (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
     (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 62)
@@ -19,13 +19,14 @@ theorem __ddf_Zp_raw_ir_refines_ddf
     (hfSquarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)) :
     ∃ output,
       Generated.StrictDDF.__ddf_Zp_raw_ir
-          (strictDDFRawOps this providers
+          (StrictDDF.strictDDFRawOps this providers
             (SparsePolyZp.toPoly this._p.toNat f)) f
-          (fun _ => DDFLoopInvariant.initial this f f[0]!.2.prime hfPrime
+          (fun _ => StrictDDF.DDFLoopInvariant.initial this f
+            f[0]!.2.prime hfPrime
             hfCanonical hfDegree hfMonic hfSquarefree) = .ok output ∧
-      ddfResultToL2 this._p.toNat output =
+      StrictDDF.ddfResultToL2 this._p.toNat output =
         ddf (SparsePolyZp.toPoly this._p.toNat f) := by
-  exact strictDDFEntryIR_refines_ddf this providers f hfPrime hfCanonical
-    hfDegree hfMonic hfSquarefree
+  exact StrictDDF.strictDDFEntryIR_refines_ddf this providers f hfPrime
+    hfCanonical hfDegree hfMonic hfSquarefree
 
-end Refinement.StrictDDF
+end Refinement

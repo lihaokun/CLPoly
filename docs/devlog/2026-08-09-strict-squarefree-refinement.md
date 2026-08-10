@@ -1265,3 +1265,15 @@ every generated range-for and recursive loop used by SQF.
   lead 以上系数。该定理准确刻画 quotient-with-remainder，而没有把任意
   非整除输入伪装成完整乘积等式。下一步在 SQF 调用点用真实整除前提消去
   低次余数并推出完整多项式等式。
+- exact-division 余数消去与 raw selector 成功性已闭合。
+  `sparsePolyZp_toPoly_degree_eq_head` 从 canonical sparse 首项的非零系数
+  与严格降次链证明 L2 polynomial degree 等于数组首项次数；
+  `pairVecDivVHCProduct_eq_of_agreesAbove_lead_of_dvd` 将全局高次系数一致
+  改写为 `degree (dividend - quotient*divisor) < degree divisor`，再由 SQF
+  调用点的真实 `divisor ∣ dividend` 推出该余数同时被 divisor 整除，故只能
+  为零。这没有向执行器提供预期商。
+  raw→safe 方向上，`pairVecDivVHCSelectFrontier_succeeds` 从非终止条件和
+  heap chain ownership 推出 selector 必返回 `.ok`：非空 heap root 由 owner
+  chain 保证是有效 active 节点，所有 dividend 读取则由分支边界保证。
+  下一步继续闭合 consume/extract、emit activation 与 reinsertion 的成功性，
+  最终组合为 OuterIteration/OuterLoop 的存在性定理。

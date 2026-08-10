@@ -7023,6 +7023,49 @@ theorem PairVecDivVHCHeapChainOwnership.heapPointersValid
       howns head hheadMem with ⟨node, mono, hnode, hmono⟩
   exact ⟨head, node, mono, hheap, hnode, hmono⟩
 
+/-- The selector cannot fault in a nonterminal represented heap state: a
+nonempty heap root is an owned active node, while the other branches read only
+an in-bounds dividend cell. -/
+theorem pairVecDivVHCSelectFrontier_succeeds
+    (dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (owners : Nat → Finset Nat)
+    (hnotDone : ¬ (dividend.size ≤ dividendIndex ∧ heap.size = 0))
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes) :
+    ∃ frontier, pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier := by
+  by_cases hdividend : dividendIndex < dividend.size
+  · by_cases hheap : 0 < heap.size
+    · rcases hownership.heapPointersValid heap owners nodes 0 hheap with
+        ⟨head, node, mono, hhead, hnode, hmono⟩
+      have hheadEq : head = heap[0] := by
+        rw [Array.getElem?_eq_getElem hheap] at hhead
+        exact (Option.some.inj hhead).symm
+      subst head
+      have hmonoRun : pairVecDivVHCMono heap[0] nodes = .ok mono :=
+        (pairVecDivVHCMono_eq_ok_iff heap[0] nodes mono).2 ⟨node, hnode, hmono⟩
+      unfold pairVecDivVHCSelectFrontier
+      simp only [hdividend, hheap, ↓reduceDIte, hmonoRun]
+      split <;> exact ⟨_, rfl⟩
+    · refine ⟨PairVecDivVHCFrontier.mk dividend[dividendIndex].1.deg
+          dividend[dividendIndex].2.val (dividendIndex + 1), ?_⟩
+      simp [pairVecDivVHCSelectFrontier, hdividend, hheap]
+  · have hdividendDone : dividend.size ≤ dividendIndex := by omega
+    have hheap : 0 < heap.size := by
+      by_contra hnot
+      have hzero : heap.size = 0 := by omega
+      exact hnotDone ⟨hdividendDone, hzero⟩
+    rcases hownership.heapPointersValid heap owners nodes 0 hheap with
+      ⟨head, node, mono, hhead, hnode, hmono⟩
+    have hheadEq : head = heap[0] := by
+      rw [Array.getElem?_eq_getElem hheap] at hhead
+      exact (Option.some.inj hhead).symm
+    subst head
+    have hmonoRun : pairVecDivVHCMono heap[0] nodes = .ok mono :=
+      (pairVecDivVHCMono_eq_ok_iff heap[0] nodes mono).2 ⟨node, hnode, hmono⟩
+    exact ⟨PairVecDivVHCFrontier.mk mono.deg 0 dividendIndex, by
+      simp [pairVecDivVHCSelectFrontier, hdividend, hheap, hmonoRun]⟩
+
 theorem pairVecDivVHCHeapChainOwnership_owner_eq_at
     (heap : Array Nat) (leftOwners rightOwners : Nat → Finset Nat)
     (nodes : Array PairVecDivVHCNode)
@@ -17600,6 +17643,76 @@ theorem pairVecDivVHCOuterLoop_productAgreesAbove_lead_of_success
                   pairVecDivVHCDividend_coeff_eq_zero_of_gap this._p.toNat
                     degreeLimit degree dividendIndex dividend heap nodes frontier
                     hdividendCanonical hconsumed (by omega) (by omega) hselect]
+
+theorem sparsePolyZp_toPoly_degree_eq_head (p : Nat)
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size) :
+    (SparsePolyZp.toPoly p poly).degree = poly[0].1.deg := by
+  have hlistNonempty : poly.toList ≠ [] := by
+    intro hempty
+    have hlength := congrArg List.length hempty
+    have hsizeZero : poly.size = 0 := by simpa using hlength
+    omega
+  obtain ⟨head, rest, hlist⟩ := List.exists_cons_of_ne_nil hlistNonempty
+  have hheadEq : head = poly[0] := by
+    have hget := Array.getElem_toList hnonempty
+    simpa [hlist] using hget
+  have hheadMem : head ∈ poly.toList := by simp [hlist]
+  have hheadFieldNe : Zp.toZMod p head.2 ≠ 0 :=
+    Zp.toZMod_ne_zero_of_val_ne_zero p head.2
+      (hcanonical.1 head hheadMem) (hcanonical.2.2 head hheadMem)
+  have hchain : List.IsChain
+      (fun a b : UMonomial × Zp => a.1.deg > b.1.deg) (head :: rest) := by
+    simpa [hlist] using hcanonical.2.1
+  have hrestLt : ∀ item ∈ rest, item.1.deg < head.1.deg :=
+    chain_gt_all_after_head head rest hchain
+  have hrestDegree : (listSum p rest).degree < head.1.deg := by
+    rw [Polynomial.degree_lt_iff_coeff_zero]
+    intro degree hdegree
+    apply listSum_coeff_zero_of_all_lt
+    intro item hitem
+    exact Nat.lt_of_lt_of_le (hrestLt item hitem) hdegree
+  have hheadDegree :
+      (Polynomial.monomial head.1.deg (Zp.toZMod p head.2)).degree =
+        head.1.deg := Polynomial.degree_monomial _ hheadFieldNe
+  unfold SparsePolyZp.toPoly
+  rw [hlist, listSum_cons,
+    Polynomial.degree_add_eq_left_of_degree_lt (by
+      simpa [hheadDegree] using hrestDegree), hheadDegree, hheadEq]
+
+/-- High-coefficient agreement is the exact quotient-with-remainder result.
+At an exact-division call site, divisibility forces that low-degree remainder
+to vanish, yielding full polynomial equality without supplying an expected
+quotient to the generated algorithm. -/
+theorem pairVecDivVHCProduct_eq_of_agreesAbove_lead_of_dvd
+    (p : Nat) [Fact (Nat.Prime p)]
+    (quotient dividend divisor : SparsePolyZp)
+    (hdivisor : 0 < divisor.size)
+    (hdivisorCanonical : SparsePolyZp.Canonical p divisor)
+    (hdivisorDvd : SparsePolyZp.toPoly p divisor ∣
+      SparsePolyZp.toPoly p dividend)
+    (hagrees : PairVecDivVHCProductAgreesAbove p divisor[0].1.deg quotient
+      dividend divisor) :
+    SparsePolyZp.toPoly p quotient * SparsePolyZp.toPoly p divisor =
+      SparsePolyZp.toPoly p dividend := by
+  let residual := SparsePolyZp.toPoly p dividend -
+    SparsePolyZp.toPoly p quotient * SparsePolyZp.toPoly p divisor
+  have hresidualDegree : residual.degree < divisor[0].1.deg := by
+    rw [Polynomial.degree_lt_iff_coeff_zero]
+    intro degree hdegree
+    dsimp only [residual]
+    rw [Polynomial.coeff_sub, hagrees degree hdegree, sub_self]
+  have hdivisorDegree := sparsePolyZp_toPoly_degree_eq_head p divisor
+    hdivisorCanonical hdivisor
+  have hresidualDvd : SparsePolyZp.toPoly p divisor ∣ residual := by
+    apply dvd_sub hdivisorDvd
+    exact ⟨SparsePolyZp.toPoly p quotient, by
+      rw [mul_comm]⟩
+  have hresidualZero : residual = 0 :=
+    Polynomial.eq_zero_of_dvd_of_degree_lt hresidualDvd (by
+      simpa [hdivisorDegree] using hresidualDegree)
+  dsimp only [residual] at hresidualZero
+  exact sub_eq_zero.mp hresidualZero |>.symm
 
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)

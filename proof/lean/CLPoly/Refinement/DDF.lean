@@ -65,7 +65,62 @@ structure RawModWorkspace (this : DenseUPolyZp)
   remainderDivisorDisjoint : remainderPtr.region ≠ divisorPtr.region
   quotientCapacity : sparseDenseLength dividend -
       (sparseDenseLength divisor - 1) <
-    CLPoly.Impl.StrictWordArithmetic.limbBase
+      CLPoly.Impl.StrictWordArithmetic.limbBase
+
+/-- Concrete raw storage and readiness obligations for one nonempty public
+C++ `polynomial_GCD` call.  This package contains no polynomial result and no
+semantic oracle: every output is obtained by executing the generated dense
+GCD/HGCD/Euclid path. -/
+structure RawGCDWorkspace (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (left right : SparsePolyZp) where
+  M : HgcdMat
+  hM : M.Valid
+  resultPtr : RawPtr UInt64
+  leftPtr : RawPtr UInt64
+  rightPtr : RawPtr UInt64
+  aBuf : RawPtr UInt64
+  bBuf : RawPtr UInt64
+  J : RawPtr UInt64
+  Q : RawPtr UInt64
+  R : RawPtr UInt64
+  W3 : RawPtr Word3
+  W : RawPtr UInt64
+  scratch : RawPtr UInt64
+  euclidQ : RawPtr UInt64
+  euclidR : RawPtr UInt64
+  euclidW3 : RawPtr Word3
+  heap : RawHeap
+  hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this
+  hp : 1 < this._p.toNat
+  loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+    this M hM W scratch
+  leftValid : heap.ValidU64Slice leftPtr (sparseDenseLength left)
+  rightValid : heap.ValidU64Slice rightPtr (sparseDenseLength right)
+  leftBound : sparseDenseLength left ≤ 2 ^ 63
+  rightBound : sparseDenseLength right ≤ 2 ^ 63
+  inputsDisjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint rightPtr
+    (sparseDenseLength right) leftPtr (sparseDenseLength left)
+  readyAB : ∀ finalHeap,
+    RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+        (SparsePolyZp.toPoly this._p.toNat left) →
+    RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+        (SparsePolyZp.toPoly this._p.toNat right) →
+    DenseGcdOrderedReady this hcfg hp M hM resultPtr leftPtr rightPtr aBuf
+      bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+      (sparseDenseLength left) (sparseDenseLength right) finalHeap
+      (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right)
+  readyBA : ∀ finalHeap,
+    RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+        (SparsePolyZp.toPoly this._p.toNat left) →
+    RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+        (SparsePolyZp.toPoly this._p.toNat right) →
+    DenseGcdOrderedReady this hcfg hp M hM resultPtr rightPtr leftPtr aBuf
+      bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+      (sparseDenseLength right) (sparseDenseLength left) finalHeap
+      (SparsePolyZp.toPoly this._p.toNat right)
+      (SparsePolyZp.toPoly this._p.toNat left)
 
 /-- Actual raw execution of one DDF modular reduction: construct both dense
 inputs, execute generated `_poly_divrem`, then run the concrete reverse
@@ -199,6 +254,52 @@ theorem strictModIR_refines_modByMonic
   refine ⟨remainder, ?_, hcanonical, ?_⟩
   · simp [strictModIR, hdividendRun, hdivisorRun, hdivRun, hremainderRun]
   · rw [hremainderSemantic, ← hmod]
+
+/-- Execute the complete nonempty public C++ GCD boundary and project its
+concrete sparse result. -/
+def strictGCDIR (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (left right : SparsePolyZp)
+    (workspace : RawGCDWorkspace this left right) : RawExec SparsePolyZp :=
+  match polynomialGCDPublicNonemptyRawIR this workspace.M workspace.hM
+      workspace.resultPtr workspace.leftPtr workspace.rightPtr
+      workspace.aBuf workspace.bBuf workspace.J workspace.Q workspace.R
+      workspace.W3 workspace.W workspace.scratch workspace.euclidQ
+      workspace.euclidR workspace.euclidW3 left right workspace.loopDecrease
+      workspace.heap with
+  | .error fault => .error fault
+  | .ok final =>
+    match final.output with
+    | none => .error .assertionFailure
+    | some result => .ok result
+
+/-- End-to-end raw execution and semantics of the concrete public C++ GCD.
+No `SparsePolyZp.gcd` implementation occurs in this execution path. -/
+theorem strictGCDIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (left right : SparsePolyZp)
+    (workspace : RawGCDWorkspace this left right)
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonzero : SparsePolyZp.toPoly this._p.toNat left ≠ 0)
+    (hrightNonzero : SparsePolyZp.toPoly this._p.toNat right ≠ 0) :
+    ∃ result,
+      strictGCDIR this left right workspace = .ok result ∧
+      SparsePolyZp.Canonical this._p.toNat result ∧
+      SparsePolyZp.toPoly this._p.toNat result = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right)) := by
+  rcases polynomialGCDPublicNonemptyRawIR_refines this workspace.M
+      workspace.hM workspace.resultPtr workspace.leftPtr workspace.rightPtr
+      workspace.aBuf workspace.bBuf workspace.J workspace.Q workspace.R
+      workspace.W3 workspace.W workspace.scratch workspace.euclidQ
+      workspace.euclidR workspace.euclidW3 left right workspace.loopDecrease
+      workspace.heap workspace.hcfg workspace.hp workspace.leftValid
+      workspace.rightValid hleftCanonical hrightCanonical hleftNonzero
+      hrightNonzero workspace.leftBound workspace.rightBound
+      workspace.inputsDisjoint workspace.readyAB workspace.readyBA with
+    ⟨final, result, hrun, houtput, hcanonical, hsemantic⟩
+  refine ⟨result, ?_, hcanonical, hsemantic⟩
+  simp [strictGCDIR, hrun, houtput]
 
 /-- Physical buffers for an ordered sparse multiplication.  As with raw
 modular reduction, no semantic product is stored in the workspace. -/

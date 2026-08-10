@@ -9980,6 +9980,105 @@ theorem PairVecDivVHCLinBelow.empty (degree : Nat)
     PairVecDivVHCLinBelow degree #[] nodes := by
   simp [PairVecDivVHCLinBelow]
 
+/-- In a fully represented selected frontier, an active row at that frontier
+can reach one-past-end only when it is exactly the next source `resetH` row.
+This discharges the literal C++ exhaustion assertion from concrete coverage,
+heap maximality, and canonical row-order dominance. -/
+theorem pairVecDivVHCExhaustedNode_eq_resetH
+    (p dividendIndex : Nat) (dividend : SparsePolyZp)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (owners : Nat → Finset Nat)
+    (quotient divisor : SparsePolyZp) (frontier : PairVecDivVHCFrontier)
+    (nodeIndex : Nat) (node : PairVecDivVHCNode) (mono : UMonomial)
+    (hstate : PairVecDivVHCStateCovered heap nodes lin resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hlinBelow : PairVecDivVHCLinBelow frontier.degree lin nodes)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hdenotes : ∀ (i : Nat) (record : PairVecDivVHCNode),
+      nodes[i]? = some record → record.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor record)
+    (hquotient : SparsePolyZp.Canonical p quotient)
+    (hdivisor : SparsePolyZp.Canonical p divisor)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hnode : nodes[nodeIndex]? = some node)
+    (hmono : node.mono = some mono)
+    (hdegree : mono.deg = frontier.degree)
+    (hexhausted : node.quotientIndex + 1 = quotient.size) :
+    nodeIndex = resetH := by
+  have hnodeBound : nodeIndex < nodes.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hnode
+    contradiction
+  have hnotPrefix : ¬ nodeIndex < resetH := by
+    intro hlt
+    rcases hready.2 nodeIndex hlt with
+      ⟨readyNode, hreadyNode, hq, hd, hnone⟩
+    rw [hnode] at hreadyNode
+    simp only [Option.some.injEq] at hreadyNode
+    subst readyNode
+    rw [hmono] at hnone
+    contradiction
+  by_contra hne
+  have hresetLt : resetH < nodeIndex := by omega
+  have hresetBound : resetH < nodes.size := by omega
+  have hcovered := hstate.covered_with heap nodes lin resetH owners hownership
+  rcases hcovered resetH hresetBound with hprefix | hlin | hheap
+  · omega
+  · have hlinMem : resetH ∈ lin.toList := by
+      simpa only [List.mem_toFinset] using hlin
+    rcases hlinReady.2 resetH hlinMem with
+      ⟨resetNode, resetMono, hresetNode, hresetMono⟩
+    have hresetDenotes := hdenotes resetH resetNode hresetNode (by
+      rw [hresetMono]
+      simp)
+    have hnodeDenotes := hdenotes nodeIndex node hnode (by
+      rw [hmono]
+      simp)
+    have hresetQBound := hresetDenotes.quotientIndex_lt
+    have hqLe : resetNode.quotientIndex ≤ node.quotientIndex := by omega
+    have hresetD := hfixed resetH resetNode hresetNode
+    have hnodeD := hfixed nodeIndex node hnode
+    have hdominates :=
+      pairVecDivVHCNode_product_degree_gt_of_cursor_le_of_divisor_lt p
+        quotient divisor resetNode node resetMono mono hquotient hdivisor
+        hresetDenotes hnodeDenotes hresetMono hmono hqLe (by omega)
+    have hbelow := hlinBelow resetH hlinMem resetNode resetMono hresetNode
+      hresetMono
+    omega
+  · rcases hheap with ⟨slot, head, hheapGet, hmem⟩
+    have howns := hownership.1 slot head hheapGet
+    rcases pairVecDivVHCChainOwns_mem_active (some head) (owners head) nodes
+        howns resetH hmem with
+      ⟨resetNode, resetMono, hresetNode, hresetMono⟩
+    have hresetDenotes := hdenotes resetH resetNode hresetNode (by
+      rw [hresetMono]
+      simp)
+    have hnodeDenotes := hdenotes nodeIndex node hnode (by
+      rw [hmono]
+      simp)
+    have hresetQBound := hresetDenotes.quotientIndex_lt
+    have hqLe : resetNode.quotientIndex ≤ node.quotientIndex := by omega
+    have hresetD := hfixed resetH resetNode hresetNode
+    have hnodeD := hfixed nodeIndex node hnode
+    have hdominates :=
+      pairVecDivVHCNode_product_degree_gt_of_cursor_le_of_divisor_lt p
+        quotient divisor resetNode node resetMono mono hquotient hdivisor
+        hresetDenotes hnodeDenotes hresetMono hmono hqLe (by omega)
+    rcases pairVecDivVHCOwnedNode_degree_le_frontier dividendIndex dividend
+        heap nodes owners frontier hownership hhomogeneous hordered slot head
+        resetH resetNode hheapGet hmem hresetNode hselect with
+      ⟨ownedMono, hownedMono, hownedDegree⟩
+    have hownedEq : ownedMono = resetMono := by
+      rw [hresetMono] at hownedMono
+      exact (Option.some.inj hownedMono).symm
+    subst ownedMono
+    omega
+
 theorem pairVecDivVHCConsumeNode_preserves_linBelow
     (this : DenseUPolyZp) (p degree nodeIndex : Nat) (currentMono : UMonomial)
     (k k' : UInt64) (nodes nodes' : Array PairVecDivVHCNode)

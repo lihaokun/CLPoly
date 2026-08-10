@@ -1301,3 +1301,12 @@ every generated range-for and recursive loop used by SQF.
   `nodeIndex == reset_h` assertion 从外加前提转化为可证明运行时不变量的
   数学核心。下一步将它与 `StateCovered`、`LinBelow` 和 selector heap-max
   组合，分别排除 `resetH` 行位于 lin 与 heap 的两种越序情形。
+- selected frontier 上的耗尽顺序断言已从状态不变量推出。
+  `pairVecDivVHCExhaustedNode_eq_resetH` 对任意当前 active frontier 节点
+  证明：若其 quotient cursor 的后继恰为数组末尾，则节点索引必等于
+  `resetH`。证明先由 `ResetReady` 排除节点位于已耗尽前缀，再由
+  `StateCovered` 定位真实 `resetH` 行：若它在 deferred `lin`，行序次数
+  支配与 `LinBelow` 矛盾；若它仍由 heap chain 拥有，则与 selector 的 heap
+  最大次数矛盾。该结论完全消除了顺序 assertion 作为数学假设的必要性；
+  下一步沿 ConsumeChain 的未访问集合运输入口快照，把此定理应用到每个
+  尚未改写的真实 chain 节点。

@@ -1327,3 +1327,11 @@ every generated range-for and recursive loop used by SQF.
   有效性实例化该定理，`pairVecDivVHCExtractChecked_succeeds` 再接通携带真实
   size-decrement 证明的 wrapper。整个证明不预设 extract trace 或成功结果；
   下一步可在 heap-size 良基的 `ConsumeEqualDegree` 中直接构造每轮 extract。
+- deferred-node 的严格低次性质已沿完整 bucket chain 运输。
+  `pairVecDivVHCConsumeNode_lin_subset_insert` 精确刻画单步后 `lin` 只可能
+  新增当前节点；`pairVecDivVHCConsumeChain_preserves_linBelow` 同时沿 owner
+  集合的擦除作良基递归，用 owner/lin 分离证明当前节点从未提前出现于
+  deferred stack，并用 canonical quotient 的后继严格降次闭合 advance
+  分支。`pairVecDivVHCConsumeRootBucket_preserves_linBelow` 已接通 root owner。
+  因而 EqualDegree 的下一轮可继续使用同一 frontier 的耗尽顺序定理，而
+  无需重置或弱化 `LinBelow`。

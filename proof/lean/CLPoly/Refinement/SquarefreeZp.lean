@@ -10450,6 +10450,163 @@ theorem pairVecDivVHCConsumeNode_preserves_linBelow
         next hnotExhausted =>
           omega
 
+theorem pairVecDivVHCConsumeNode_lin_subset_insert
+    (this : DenseUPolyZp) (nodeIndex : Nat) (k k' : UInt64)
+    (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
+    (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    lin'.toList.toFinset ⊆ insert nodeIndex lin.toList.toFinset := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          intro i hi
+          simp only [Array.toList_push, List.mem_toFinset, List.mem_append,
+            List.mem_singleton, Finset.mem_insert] at hi ⊢
+          exact hi.symm
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              exact Finset.subset_insert nodeIndex lin.toList.toFinset
+
+theorem pairVecDivVHCConsumeChain_preserves_linBelow
+    (this : DenseUPolyZp) (p degree : Nat) (current : Option Nat)
+    (owner unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (hdegree : PairVecDivVHCChainAtDegree current owner nodes degree)
+    (hownerSubset : owner ⊆ unvisited)
+    (hdisjoint : Disjoint lin.toList.toFinset owner)
+    (hbelow : PairVecDivVHCLinBelow degree lin nodes)
+    (hdenotes : ∀ (i : Nat), i ∈ owner → ∀ record : PairVecDivVHCNode,
+      nodes[i]? = some record → record.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor record)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hrun : pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result) :
+    PairVecDivVHCLinBelow degree result.lin result.nodes := by
+  cases current with
+  | none =>
+      rw [pairVecDivVHCConsumeChain] at hrun
+      simp only [Except.ok.injEq] at hrun
+      subst result
+      exact hbelow
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainAtDegree] at hdegree
+      split at hdegree <;> try contradiction
+      next hownerMem =>
+        rcases hdegree with
+          ⟨node, mono, hget, hmono, hmonoDegree, htailDegree⟩
+        have hmem : nodeIndex ∈ unvisited := hownerSubset hownerMem
+        have hn : nodeIndex < nodes.size := by
+          by_contra hnot
+          rw [Array.getElem?_eq_none (by omega)] at hget
+          contradiction
+        have houtside : nodeIndex ∉ lin.toList := by
+          intro hlinMem
+          exact Finset.disjoint_left.mp hdisjoint
+            (by simpa only [List.mem_toFinset] using hlinMem) hownerMem
+        rw [pairVecDivVHCConsumeChain] at hrun
+        simp only [hmem, ↓reduceDIte] at hrun
+        cases hconsume : pairVecDivVHCConsumeNode this nodeIndex k nodes lin
+            resetH quotient divisor with
+        | error fault => simp [hconsume] at hrun
+        | ok step =>
+            rcases step with ⟨k', nodes', lin', resetH', next⟩
+            rw [hconsume] at hrun
+            have hnodeDenotes := hdenotes nodeIndex hownerMem node hget (by
+              rw [hmono]
+              simp)
+            have hbelow' := pairVecDivVHCConsumeNode_preserves_linBelow this p
+              degree nodeIndex mono k k' nodes nodes' lin lin' resetH resetH'
+              next quotient divisor node hn hget hmono hmonoDegree hnodeDenotes
+              hcanonical houtside hbelow hconsume
+            have hnext := pairVecDivVHCConsumeNode_next_of_success this
+              nodeIndex k k'
+              nodes nodes' lin lin' resetH resetH' next quotient divisor hn
+              hconsume
+            have hnodeEq : nodes[nodeIndex] = node := by
+              rw [Array.getElem?_eq_getElem hn] at hget
+              exact Option.some.inj hget
+            rw [hnodeEq] at hnext
+            subst next
+            have htailDegree' := pairVecDivVHCChainAtDegree_congr_on node.next
+              (owner.erase nodeIndex) nodes nodes' degree htailDegree (by
+                intro i hi
+                exact pairVecDivVHCConsumeNode_get_ne this nodeIndex k k'
+                  nodes nodes' lin lin' resetH resetH' node.next quotient
+                  divisor hconsume i (Finset.mem_erase.mp hi).1.symm)
+            have hownerSubset' : owner.erase nodeIndex ⊆
+                unvisited.erase nodeIndex := by
+              intro i hi
+              exact Finset.mem_erase.mpr ⟨(Finset.mem_erase.mp hi).1,
+                hownerSubset (Finset.mem_of_mem_erase hi)⟩
+            have hlinStep := pairVecDivVHCConsumeNode_lin_subset_insert this
+              nodeIndex k k' nodes nodes' lin lin' resetH resetH' node.next
+              quotient divisor hconsume
+            have hdisjoint' : Disjoint lin'.toList.toFinset
+                (owner.erase nodeIndex) := by
+              exact Finset.disjoint_left.mpr (by
+                intro i hiLin hiOwner
+                have hiStep := hlinStep hiLin
+                rw [Finset.mem_insert] at hiStep
+                rcases hiStep with rfl | hiOld
+                · exact (Finset.mem_erase.mp hiOwner).1 rfl
+                · exact Finset.disjoint_left.mp hdisjoint hiOld
+                    (Finset.mem_of_mem_erase hiOwner))
+            exact pairVecDivVHCConsumeChain_preserves_linBelow this p degree
+              node.next (owner.erase nodeIndex) (unvisited.erase nodeIndex) k'
+              nodes' lin' resetH' quotient divisor result htailDegree'
+              hownerSubset' hdisjoint' hbelow' (by
+                intro i hi record hrecord hactive
+                have hine : nodeIndex ≠ i := (Finset.mem_erase.mp hi).1.symm
+                rw [pairVecDivVHCConsumeNode_get_ne this nodeIndex k k' nodes
+                  nodes' lin lin' resetH resetH' node.next quotient divisor
+                  hconsume i hine] at hrecord
+                exact hdenotes i (Finset.mem_of_mem_erase hi) record hrecord
+                  hactive) hcanonical hrun
+termination_by owner.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeRootBucket_preserves_linBelow
+    (this : DenseUPolyZp) (p degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (rootOwner : Finset Nat) (hheap : 0 < heap.size)
+    (howns : PairVecDivVHCChainOwns (some heap[0]) rootOwner nodes)
+    (hdegree : PairVecDivVHCChainAtDegree (some heap[0]) rootOwner nodes degree)
+    (hdisjoint : Disjoint lin.toList.toFinset rootOwner)
+    (hbelow : PairVecDivVHCLinBelow degree lin nodes)
+    (hdenotes : ∀ (i : Nat) (record : PairVecDivVHCNode),
+      nodes[i]? = some record → record.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor record)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCLinBelow degree result.lin result.nodes := by
+  unfold pairVecDivVHCConsumeRootBucket at hrun
+  simp only [hheap, ↓reduceDIte] at hrun
+  exact pairVecDivVHCConsumeChain_preserves_linBelow this p degree
+    (some heap[0]) rootOwner (Finset.range nodes.size) k nodes lin resetH
+    quotient divisor result hdegree
+    (pairVecDivVHCChainOwns_subset_range _ _ _ howns) hdisjoint hbelow
+    (by intro i hi; exact hdenotes i) hcanonical hrun
+
 theorem pairVecDivVHCCursorIndicesBounded_of_state
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
     (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp)

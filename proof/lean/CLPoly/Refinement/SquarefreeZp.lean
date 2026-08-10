@@ -12,6 +12,7 @@
   of this boundary.
 -/
 import CLPoly.Algorithm.SquarefreeZp
+import CLPoly.Generated.Corpus
 import CLPoly.Impl.StrictPolynomialGCDRefinement
 import CLPoly.Impl.StrictPolyAddSubRefinement
 import CLPoly.Refinement.Basic
@@ -18956,6 +18957,33 @@ def extractPthRootLoop (index : Nat) (output source : SparsePolyZp)
 termination_by source.size - index
 decreasing_by omega
 
+set_option maxHeartbeats 800000 in
+/-- The safe p-th-root loop is definitionally the value component of the
+actual cpp2lean-generated range-for loop. -/
+theorem generated_extractPthRootLoop_eq (index : Nat)
+    (output source : SparsePolyZp) (prime : UInt64) :
+    (Generated._loop___extract_pth_root_0_ir_def index output source prime).2 =
+      extractPthRootLoop index output source prime := by
+  rw [Generated._loop___extract_pth_root_0_ir_def, extractPthRootLoop]
+  by_cases hmore : index < source.size
+  · simp only [hmore, if_pos]
+    rw [getElem!_pos source index hmore]
+    exact generated_extractPthRootLoop_eq (index + 1)
+      (output.push (pthRootTerm prime source[index])) source prime
+  · simp [hmore]
+termination_by source.size - index
+decreasing_by omega
+
+theorem generated_extractPthRoot_eq (source : SparsePolyZp)
+    (hnonempty : 0 < source.size) :
+    Generated.__extract_pth_root_ir_def source =
+      extractPthRootLoop 0 #[] source source[0].2.prime := by
+  unfold Generated.__extract_pth_root_ir_def
+  simp only [SparsePolyZp.front!]
+  rw [getElem!_pos source 0 hnonempty]
+  simpa [SparsePolyZp.empty] using
+    (generated_extractPthRootLoop_eq 0 #[] source source[0].2.prime)
+
 theorem extractPthRootLoop_toList (index : Nat)
     (output source : SparsePolyZp) (prime : UInt64) :
     (extractPthRootLoop index output source prime).toList =
@@ -20071,6 +20099,23 @@ def scaleMultiplicityLoop (index : Nat)
       (output.push (item.1, item.2 * prime)) prime
   else
     output
+termination_by source.size - index
+decreasing_by omega
+
+set_option maxHeartbeats 800000 in
+/-- The derivative-zero branch's generated result-copy loop is exactly the
+safe multiplicity-scaling loop. -/
+theorem generated_scaleMultiplicityLoop0_eq (index : Nat)
+    (source output : Array (SparsePolyZp × UInt64)) (prime : UInt64) :
+    (Generated._loop___squarefree_Zp_0_ir_def index source output prime).2.2 =
+      scaleMultiplicityLoop index source output prime := by
+  rw [Generated._loop___squarefree_Zp_0_ir_def, scaleMultiplicityLoop]
+  by_cases hmore : index < source.size
+  · simp only [hmore, if_pos]
+    rw [getElem!_pos source index hmore]
+    exact generated_scaleMultiplicityLoop0_eq (index + 1) source
+      (output.push (source[index].1, source[index].2 * prime)) prime
+  · simp [hmore]
 termination_by source.size - index
 decreasing_by omega
 

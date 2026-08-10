@@ -21312,5 +21312,34 @@ theorem scaleMultiplicityLoop_toPolyList (p : Nat)
   congr 2
   rw [UInt64.toNat_mul, Nat.mod_eq_of_lt (hnowrap item hitem), hprime]
 
+/-- Multiplicity scaling cannot wrap when its source array already refines the
+recursive SQF result and the reconstructed parent-degree bound fits in a
+machine word.  The bound is derived from the L2 SQF exponent theorem, not
+assumed separately for every concrete output cell. -/
+theorem scaleMultiplicityLoop_toPolyList_sqfZp (p : Nat)
+    [Fact (Nat.Prime p)]
+    (source : Array (SparsePolyZp × UInt64)) (prime : UInt64)
+    (g : Polynomial (ZMod p))
+    (hprime : prime.toNat = p)
+    (hsemantic : toPolyList source p = sqfZp g)
+    (hscaledBound : g.natDegree * p < UInt64.size) :
+    toPolyList (scaleMultiplicityLoop 0 source #[] prime) p =
+      (sqfZp g).map (fun item => (item.1, item.2 * p)) := by
+  have hnowrap : ∀ item ∈ source.toList,
+      item.2.toNat * prime.toNat < UInt64.size := by
+    intro item hitem
+    have hmapped :
+        (SparsePolyZp.toPoly p item.1, item.2.toNat) ∈ toPolyList source p := by
+      unfold toPolyList
+      rw [Array.toList_map]
+      exact List.mem_map.mpr ⟨item, hitem, rfl⟩
+    rw [hsemantic] at hmapped
+    have hexponent := sqfZp_exponent_le_natDegree g
+      (SparsePolyZp.toPoly p item.1, item.2.toNat) hmapped
+    rw [hprime]
+    exact lt_of_le_of_lt (Nat.mul_le_mul_right p hexponent) hscaledBound
+  rw [scaleMultiplicityLoop_toPolyList p source prime hprime hnowrap,
+    hsemantic]
+
 end StrictSquarefreeZp
 end Refinement

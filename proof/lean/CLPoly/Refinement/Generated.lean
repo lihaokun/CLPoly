@@ -2,6 +2,7 @@
 -- Do not edit: all completed public L1 → L2 contracts live here.
 
 import CLPoly.Refinement.DDF
+import CLPoly.Refinement.EDF
 import CLPoly.Refinement.StrictSquarefreeGenerated
 
 set_option autoImplicit false
@@ -57,5 +58,28 @@ theorem __ddf_Zp_raw_ir_refines_ddf
         ddf (SparsePolyZp.toPoly this._p.toNat f) := by
   exact Refinement.StrictDDF.strictDDFEntryIR_refines_ddf this providers f hfPrime
     hfCanonical hfDegree hfMonic hfSquarefree
+
+/-- Generated public contract for the original C++ `__edf_Zp` entry.
+The executable side is the strict, well-founded L1 semantics, including its
+exact RNG transition; every newly appended concrete factor satisfies the L2
+`EDFCorrect` specification. -/
+theorem __edf_Zp_raw_ir_refines_edf
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (StrictEDF.strictEDFRawOps engine this providers))
+    (result : Array SparsePolyZp) (f : SparsePolyZp) (d : UInt64)
+    (rng : State) (hinvariant : StrictEDF.EDFEntryInvariant this f d) :
+    ∃ output rng' factors,
+      Generated.StrictEDF.__edf_Zp_raw_ir
+          (StrictEDF.strictEDFRawOps engine this providers)
+          (StrictEDF.strictEDFSplitLaw engine this providers) termination
+          result f d rng hinvariant = .ok (output, rng') ∧
+      StrictEDF.edfResultToL2 this._p.toNat output =
+        StrictEDF.edfResultToL2 this._p.toNat result ++ factors ∧
+      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
+  exact Refinement.StrictEDF.strictEDFEntryIR_refines_edf engine this providers termination result f d rng
+    hinvariant
 
 end Refinement

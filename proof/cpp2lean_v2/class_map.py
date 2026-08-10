@@ -884,6 +884,22 @@ REFINEMENT_MAP = {
             "kind": "strict_ddf_zp",
         },
     },
+    "__edf_Zp": {
+        "l1_name": "__edf_Zp_ir",
+        "l2_name": "EDFCorrect",
+        "l2_call": "EDFCorrect (SparsePolyZp.toPoly p f) d.toNat factors",
+        "l2_import": "CLPoly.Algorithm.EDF",
+        "refinement_file": "EDF",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_zp.hh",
+        "doc": "等次数因子分解（Cantor--Zassenhaus）",
+        "verified_contract": {
+            "theorem_name": "__edf_Zp_raw_ir_refines_edf",
+            "proof_import": "CLPoly.Refinement.EDF",
+            "proof_theorem": "Refinement.StrictEDF.strictEDFEntryIR_refines_edf",
+            "kind": "strict_edf_zp",
+        },
+    },
     "__make_zp": {
         "l1_name": "__make_zp_ir",
         "l2_name": "Zp.ofInt",

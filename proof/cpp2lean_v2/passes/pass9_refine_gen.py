@@ -45,7 +45,6 @@ from ir_types import (
 # ============================================================
 
 REFINEMENT_DIR = Path(__file__).resolve().parent.parent.parent / "lean" / "CLPoly" / "Refinement"
-SKELETON_DIR = REFINEMENT_DIR / "GeneratedSkeletons"
 
 
 # ============================================================
@@ -303,6 +302,30 @@ theorem {theorem_name}
   exact {proof_theorem} this providers f hfPrime
     hfCanonical hfDegree hfMonic hfSquarefree
 """
+    if contract["kind"] == "strict_edf_zp":
+        return f"""/-- Generated public contract for the original C++ `__edf_Zp` entry.
+The executable side is the strict, well-founded L1 semantics, including its
+exact RNG transition; every newly appended concrete factor satisfies the L2
+`EDFCorrect` specification. -/
+theorem {theorem_name}
+    {{State : Type}} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (StrictEDF.strictEDFRawOps engine this providers))
+    (result : Array SparsePolyZp) (f : SparsePolyZp) (d : UInt64)
+    (rng : State) (hinvariant : StrictEDF.EDFEntryInvariant this f d) :
+    ∃ output rng' factors,
+      Generated.StrictEDF.__edf_Zp_raw_ir
+          (StrictEDF.strictEDFRawOps engine this providers)
+          (StrictEDF.strictEDFSplitLaw engine this providers) termination
+          result f d rng hinvariant = .ok (output, rng') ∧
+      StrictEDF.edfResultToL2 this._p.toNat output =
+        StrictEDF.edfResultToL2 this._p.toNat result ++ factors ∧
+      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
+  exact {proof_theorem} engine this providers termination result f d rng
+    hinvariant
+"""
     raise ValueError(f"unsupported verified contract kind: {contract['kind']}")
 
 
@@ -341,26 +364,9 @@ def refine_gen_pass(top_funcs: Optional[list[MIRFunc]] = None) -> None:
         for f in top_funcs:
             mir_index[f.base_name] = f
 
-    file_groups: dict[str, dict] = {}
-    for base_name, info in REFINEMENT_MAP.items():
-        rfile = info["refinement_file"]
-        if rfile not in file_groups:
-            file_groups[rfile] = {"info": info, "funcs": [], "base_names": []}
-        file_groups[rfile]["base_names"].append(base_name)
-        if base_name in mir_index:
-            file_groups[rfile]["funcs"].append(mir_index[base_name])
-        else:
-            file_groups[rfile]["funcs"].append(None)
-
-    SKELETON_DIR.mkdir(parents=True, exist_ok=True)
-    for rfile, group in sorted(file_groups.items()):
-        src = _emit_refinement_file(
-            group["funcs"], group["base_names"], rfile)
-        out_path = SKELETON_DIR / f"{rfile}.lean"
-        out_path.write_text(src)
-        n_thms = len(group["base_names"])
-        print(f"  Refinement: {out_path} ({n_thms} theorems)", file=sys.stderr)
-
+    # Public refinement output is deliberately centralized.  Incomplete
+    # per-algorithm skeletons used to obscure which contracts were actually
+    # proved and introduced `sorry` declarations beside the checked API.
     out_path = REFINEMENT_DIR / "Generated.lean"
     out_path.write_text(_emit_verified_contracts_file(list(REFINEMENT_MAP.values())))
     print(f"  Verified refinements: {out_path}", file=sys.stderr)

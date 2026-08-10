@@ -648,6 +648,179 @@ theorem strictCandidateRun_factor
       exact strictCandidateRun_charTwo_factor engine this providers f d r
         hinvariant hrCanonical hbudget hcharacteristic
 
+/-- Invert the successful random and candidate executions retained by a retry
+trace.  This identifies the specific returned candidate with the strict branch
+certificate, rather than merely proving that some candidate exists. -/
+theorem strictSuccessfulCandidate_factor
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64)
+    (rngBefore rngAfter : State) (r g : SparsePolyZp)
+    (hinvariant : EDFEntryInvariant this f d)
+    (hrandom : (strictEDFRawOps engine this providers).random
+      (get_deg f) f[0]!.2.prime rngBefore = .ok (r, rngAfter))
+    (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size)
+    (hcandidate : Generated.StrictEDF.candidateRun
+      (strictEDFRawOps engine this providers) f d r hbudget = .ok g) :
+    SparsePolyZp.Canonical this._p.toNat g ∧
+      (SparsePolyZp.toPoly this._p.toNat g).Monic ∧
+      SparsePolyZp.toPoly this._p.toNat g ∣
+        SparsePolyZp.toPoly this._p.toNat f := by
+  have hfNonempty := hinvariant.nonempty
+  have hprime : f[0]!.2.prime = this._p :=
+    hinvariant.primeMatches hfNonempty
+  have hpWord : 0 < f[0]!.2.prime := by
+    simpa [hprime, UInt64.lt_iff_toNat_lt] using
+      (Fact.out : Nat.Prime this._p.toNat).pos
+  have hrandomStrict :
+      Generated.StrictEDF.__upoly_random_raw_ir engine (get_deg f)
+        f[0]!.2.prime rngBefore = .ok (r, rngAfter) := by
+    simpa [strictEDFRawOps] using hrandom
+  rcases __upoly_random_raw_ir_canonical engine (get_deg f)
+      f[0]!.2.prime rngBefore hpWord with
+    ⟨randomOutput, randomNext, hrandomCanonicalRun,
+      hrandomCanonical, _hrandomDegree⟩
+  rw [hrandomStrict] at hrandomCanonicalRun
+  have hrandomPair := Except.ok.inj hrandomCanonicalRun
+  have hrandomOutputEq : r = randomOutput := congrArg Prod.fst hrandomPair
+  subst randomOutput
+  have hrCanonical : SparsePolyZp.Canonical this._p.toNat r := by
+    simpa [hprime] using hrandomCanonical
+  rcases strictCandidateRun_factor engine this providers f d r hinvariant
+      hrCanonical hbudget with
+    ⟨candidate, hcandidateStrict, hcanonical, hmonic, hdivides⟩
+  rw [hcandidate] at hcandidateStrict
+  injection hcandidateStrict with hcandidateEq
+  subst candidate
+  exact ⟨hcanonical, hmonic, hdivides⟩
+
+/-- The exact division and two make-monic calls used by a successful split
+preserve the concrete factor and quotient, whose L2 product is the input. -/
+theorem strictSplitCalls_product
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64)
+    (rngBefore rngAfter : State) (r g hRaw gMonic hMonic : SparsePolyZp)
+    (hinvariant : EDFEntryInvariant this f d)
+    (hrandom : (strictEDFRawOps engine this providers).random
+      (get_deg f) f[0]!.2.prime rngBefore = .ok (r, rngAfter))
+    (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size)
+    (hcandidate : Generated.StrictEDF.candidateRun
+      (strictEDFRawOps engine this providers) f d r hbudget = .ok g)
+    (hdivRun : (strictEDFRawOps engine this providers).exactDiv f g =
+      .ok hRaw)
+    (hgMonicRun : (strictEDFRawOps engine this providers).makeMonic g =
+      .ok gMonic)
+    (hhMonicRun : (strictEDFRawOps engine this providers).makeMonic
+      hRaw.normalization = .ok hMonic) :
+    SparsePolyZp.toPoly this._p.toNat gMonic *
+        SparsePolyZp.toPoly this._p.toNat hMonic =
+      SparsePolyZp.toPoly this._p.toNat f := by
+  rcases strictSuccessfulCandidate_factor engine this providers f d rngBefore
+      rngAfter r g hinvariant hrandom hbudget hcandidate with
+    ⟨hgCanonical, hgMonic, hgDivides⟩
+  have hgNonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat g hgMonic.ne_zero
+  rcases StrictDDF.strictExactDivIR_refines this f g providers.hcfg
+      hinvariant.canonical hgCanonical hgNonempty hgMonic hgDivides with
+    ⟨quotient, hquotientRun, hquotientCanonical, hquotientSemantic⟩
+  have hdivRunStrict : StrictDDF.strictExactDivIR this f g = .ok hRaw := by
+    simpa [strictEDFRawOps] using hdivRun
+  rw [hdivRunStrict] at hquotientRun
+  injection hquotientRun with hquotientEq
+  subst quotient
+  have hquotientMonic :
+      (SparsePolyZp.toPoly this._p.toNat hRaw).Monic := by
+    rw [hquotientSemantic]
+    exact StrictSquarefreeZp.divByMonic_monic_of_monic_of_dvd
+      (SparsePolyZp.toPoly this._p.toNat f)
+      (SparsePolyZp.toPoly this._p.toNat g) hinvariant.monic hgMonic
+      hgDivides
+  have hhNonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat hRaw hquotientMonic.ne_zero
+  have hgMonicExact := StrictDDF.strictMakeMonicIR_eq_of_monic this g
+    hgCanonical hgNonempty hgMonic
+  have hgMonicRunStrict : StrictDDF.strictMakeMonicIR this g =
+      .ok gMonic := by
+    simpa [strictEDFRawOps] using hgMonicRun
+  rw [hgMonicExact] at hgMonicRunStrict
+  injection hgMonicRunStrict with hgMonicEq
+  subst gMonic
+  have hnormalizeRaw : hRaw.normalization = hRaw :=
+    StrictSquarefreeZp.sparsePolyZp_normalization_eq_of_canonical
+      this._p.toNat hRaw hquotientCanonical
+  have hhMonicExact := StrictDDF.strictMakeMonicIR_eq_of_monic this hRaw
+    hquotientCanonical hhNonempty hquotientMonic
+  have hhMonicRunStrict : StrictDDF.strictMakeMonicIR this
+      hRaw.normalization = .ok hMonic := by
+    simpa [strictEDFRawOps] using hhMonicRun
+  rw [hnormalizeRaw, hhMonicExact] at hhMonicRunStrict
+  injection hhMonicRunStrict with hhMonicEq
+  subst hMonic
+  rw [hquotientSemantic]
+  have hmod : SparsePolyZp.toPoly this._p.toNat f %ₘ
+      SparsePolyZp.toPoly this._p.toNat g = 0 :=
+    (Polynomial.modByMonic_eq_zero_iff_dvd hgMonic).mpr hgDivides
+  have hdivision := Polynomial.modByMonic_add_div
+    (SparsePolyZp.toPoly this._p.toNat f)
+    (SparsePolyZp.toPoly this._p.toNat g)
+  rw [hmod, zero_add] at hdivision
+  exact hdivision
+
+/-- All raw calls following a successful retry terminate on the concrete
+strict implementations.  The witnesses are precisely the exact quotient and
+the already-monic factor/quotient consumed by the generated state machine. -/
+theorem strictSplitCalls_terminate
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64)
+    (split : Generated.StrictEDF.SplitState
+      (strictEDFRawOps engine this providers) f d)
+    (hinvariant : EDFEntryInvariant this f d) :
+    ∃ hRaw gMonic hMonic,
+      (strictEDFRawOps engine this providers).exactDiv f split.factor =
+          .ok hRaw ∧
+      (strictEDFRawOps engine this providers).makeMonic split.factor =
+          .ok gMonic ∧
+      (strictEDFRawOps engine this providers).makeMonic
+          hRaw.normalization = .ok hMonic := by
+  rcases split.candidateRun with ⟨hbudget, hcandidate⟩
+  rcases strictSuccessfulCandidate_factor engine this providers f d
+      split.rngBefore split.rng split.randomPoly split.factor hinvariant
+      split.randomRun hbudget hcandidate with
+    ⟨hgCanonical, hgMonic, hgDivides⟩
+  have hgNonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat split.factor hgMonic.ne_zero
+  rcases StrictDDF.strictExactDivIR_refines this f split.factor providers.hcfg
+      hinvariant.canonical hgCanonical hgNonempty hgMonic hgDivides with
+    ⟨hRaw, hdivRun, hhCanonical, hhSemantic⟩
+  have hhMonic : (SparsePolyZp.toPoly this._p.toNat hRaw).Monic := by
+    rw [hhSemantic]
+    exact StrictSquarefreeZp.divByMonic_monic_of_monic_of_dvd
+      (SparsePolyZp.toPoly this._p.toNat f)
+      (SparsePolyZp.toPoly this._p.toNat split.factor)
+      hinvariant.monic hgMonic hgDivides
+  have hhNonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat hRaw hhMonic.ne_zero
+  have hgMonicRun := StrictDDF.strictMakeMonicIR_eq_of_monic this
+    split.factor hgCanonical hgNonempty hgMonic
+  have hnormalizeRaw : hRaw.normalization = hRaw :=
+    StrictSquarefreeZp.sparsePolyZp_normalization_eq_of_canonical
+      this._p.toNat hRaw hhCanonical
+  have hhMonicRun := StrictDDF.strictMakeMonicIR_eq_of_monic this hRaw
+    hhCanonical hhNonempty hhMonic
+  refine ⟨hRaw, split.factor, hRaw, ?_, ?_, ?_⟩
+  · simpa [strictEDFRawOps] using hdivRun
+  · simpa [strictEDFRawOps] using hgMonicRun
+  · simpa [strictEDFRawOps, hnormalizeRaw] using hhMonicRun
+
 /-- On canonical nonempty inputs, the generated recursive measure is exactly
 one more than the L2 natural degree. -/
 theorem edfMeasure_eq_natDegree_succ
@@ -868,9 +1041,159 @@ noncomputable def strictEDFSplitLaw
           hfNonempty]
       exact Nat.add_lt_add_right hpolySplit.hDegreeLt 1
 
-end StrictEDF
+/-- The well-founded generated EDF state machine terminates along its exact
+retry traces and appends a genuine `EDFCorrect` factorization of the current
+input to the existing raw accumulator. -/
+theorem strictEDFState_refines
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (strictEDFRawOps engine this providers))
+    (state : Generated.StrictEDF.EDFState
+      (strictEDFRawOps engine this providers)) :
+    ∃ output rng factors,
+      Generated.StrictEDF.__edf_Zp_raw_ir_state
+          (strictEDFRawOps engine this providers)
+          (strictEDFSplitLaw engine this providers) termination state =
+        .ok (output, rng) ∧
+      edfResultToL2 this._p.toNat output =
+        edfResultToL2 this._p.toNat state.result ++ factors ∧
+      EDFCorrect (SparsePolyZp.toPoly this._p.toNat state.f)
+        state.d.toNat factors := by
+  generalize hmeasure : Generated.StrictEDF.edfMeasure state.f = measure
+  induction measure using Nat.strong_induction_on generalizing state with
+  | h measure ih =>
+      have hvalid : EDFEntryInvariant this state.f state.d := state.valid
+      have hfNonempty := hvalid.nonempty
+      have hfDegreeBound := hvalid.natDegree_lt
+      rw [Generated.StrictEDF.__edf_Zp_raw_ir_state.eq_1]
+      split
+      next hbase =>
+        have hdegreeWord := StrictDDF.strict_get_deg_toUInt64_toNat
+          this._p.toNat state.f hvalid.canonical hfNonempty
+          hfDegreeBound
+        have hwordEq : (get_deg state.f).toUInt64 = state.d := by
+          simpa using hbase
+        have hdegreeEq :
+            (SparsePolyZp.toPoly this._p.toNat state.f).natDegree =
+              state.d.toNat := by
+          have := congrArg UInt64.toNat hwordEq
+          omega
+        have hmake := StrictDDF.strictMakeMonicIR_eq_of_monic this state.f
+          hvalid.canonical hfNonempty hvalid.monic
+        have hmakeOps :
+            (strictEDFRawOps engine this providers).makeMonic state.f =
+              .ok state.f := by
+          simpa [strictEDFRawOps] using hmake
+        rw [certifyRawExec_ok_eq _ _ hmakeOps]
+        refine ⟨state.result.push state.f, state.rng,
+          [SparsePolyZp.toPoly this._p.toNat state.f], rfl, ?_, ?_⟩
+        · simp
+        · exact base_factor_correct
+            (SparsePolyZp.toPoly this._p.toNat state.f) state.d.toNat
+            hvalid.monic hvalid.dPositive hdegreeEq hvalid.equalDegree
+      next hnotBase =>
+        split
+        next hnonpositive =>
+          have hpositive : get_deg state.f > 0 :=
+            (StrictDDF.strict_get_deg_pos_iff_natDegree_pos
+              this._p.toNat state.f hvalid.canonical
+              hfDegreeBound).mpr hvalid.degreePositive
+          have hpositiveInt : (0 : Int64).toInt < (get_deg state.f).toInt :=
+            Int64.lt_iff_toInt_lt.mp hpositive
+          have hnonpositiveInt : (get_deg state.f).toInt ≤ (0 : Int64).toInt :=
+            Int64.le_iff_toInt_le.mp hnonpositive
+          omega
+        next hpositiveBranch =>
+          rcases retryLoop_terminates
+              (strictEDFRawOps engine this providers) state.f state.d
+              state.rng
+              (termination.retryTrace state.f state.d state.rng hvalid) with
+            ⟨splitState, hretryRun⟩
+          rw [hretryRun]
+          rcases strictSplitCalls_terminate engine this providers state.f
+              state.d splitState hvalid with
+            ⟨hRaw, gMonic, hMonic, hdivRun, hgMonicRun, hhMonicRun⟩
+          simp only
+          rw [certifyRawExec_ok_eq _ _ hdivRun]
+          simp only
+          rw [certifyRawExec_ok_eq _ _ hgMonicRun]
+          simp only
+          rw [certifyRawExec_ok_eq _ _ hhMonicRun]
+          simp only
+          have hstep := (strictEDFSplitLaw engine this providers).splitStep
+            state.f state.d splitState.rngBefore splitState.rng
+            splitState.randomPoly splitState.factor hRaw gMonic hMonic
+            hvalid splitState.randomRun splitState.candidateRun
+            splitState.proper hdivRun hgMonicRun hhMonicRun
+          let leftState : Generated.StrictEDF.EDFState
+              (strictEDFRawOps engine this providers) :=
+            ⟨state.result, gMonic, state.d, splitState.rng, hstep.1⟩
+          have hleftMeasure :
+              Generated.StrictEDF.edfMeasure leftState.f < measure := by
+            dsimp [leftState]
+            rw [← hmeasure]
+            exact hstep.2.2.1
+          rcases ih _ hleftMeasure leftState rfl with
+            ⟨leftOutput, leftRng, leftFactors, hleftRun,
+              hleftDecode, hleftCorrect⟩
+          rw [hleftRun]
+          let rightState : Generated.StrictEDF.EDFState
+              (strictEDFRawOps engine this providers) :=
+            ⟨leftOutput, hMonic, state.d, leftRng, hstep.2.1⟩
+          have hrightMeasure :
+              Generated.StrictEDF.edfMeasure rightState.f < measure := by
+            dsimp [rightState]
+            rw [← hmeasure]
+            exact hstep.2.2.2
+          rcases ih _ hrightMeasure rightState rfl with
+            ⟨output, rng, rightFactors, hrightRun,
+              hrightDecode, hrightCorrect⟩
+          have hproduct := strictSplitCalls_product engine this providers
+            state.f state.d splitState.rngBefore splitState.rng
+            splitState.randomPoly splitState.factor hRaw gMonic hMonic
+            hvalid splitState.randomRun splitState.candidateRun.choose
+            splitState.candidateRun.choose_spec hdivRun hgMonicRun hhMonicRun
+          have hassociated : Associated
+              (SparsePolyZp.toPoly this._p.toNat state.f)
+              (SparsePolyZp.toPoly this._p.toNat gMonic *
+                SparsePolyZp.toPoly this._p.toNat hMonic) := by
+            rw [hproduct]
+          have hcorrect := edf_combine
+            (SparsePolyZp.toPoly this._p.toNat state.f)
+            (SparsePolyZp.toPoly this._p.toNat gMonic)
+            (SparsePolyZp.toPoly this._p.toNat hMonic) state.d.toNat
+            hassociated leftFactors rightFactors hleftCorrect hrightCorrect
+          refine ⟨output, rng, leftFactors ++ rightFactors, hrightRun, ?_,
+            hcorrect⟩
+          rw [hrightDecode, hleftDecode]
+          simp [rightState, leftState, List.append_assoc]
 
--- The public L1→L2 EDF theorem remains deliberately absent until the retry
--- and recursive split simulations below this base layer are closed.
+/-- Exact entry-point refinement for the cpp2lean-generated C++ `__edf_Zp`
+semantics.  The concrete accumulator and RNG transition are preserved, while
+the newly appended concrete factors decode to an `EDFCorrect` L2 result. -/
+theorem strictEDFEntryIR_refines_edf
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (strictEDFRawOps engine this providers))
+    (result : Array SparsePolyZp) (f : SparsePolyZp) (d : UInt64)
+    (rng : State) (hinvariant : EDFEntryInvariant this f d) :
+    ∃ output rng' factors,
+      Generated.StrictEDF.__edf_Zp_raw_ir
+          (strictEDFRawOps engine this providers)
+          (strictEDFSplitLaw engine this providers) termination
+          result f d rng hinvariant = .ok (output, rng') ∧
+      edfResultToL2 this._p.toNat output =
+        edfResultToL2 this._p.toNat result ++ factors ∧
+      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
+  simpa [Generated.StrictEDF.__edf_Zp_raw_ir] using
+    strictEDFState_refines engine this providers termination
+      (⟨result, f, d, rng, hinvariant⟩ : Generated.StrictEDF.EDFState
+        (strictEDFRawOps engine this providers))
+
+end StrictEDF
 
 end Refinement

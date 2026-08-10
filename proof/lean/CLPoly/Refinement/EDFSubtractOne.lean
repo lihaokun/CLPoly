@@ -306,4 +306,53 @@ theorem subtractOneRaw_no_constant_refines
   rw [strict_minus_one_toZMod p rfl]
   simp [sub_eq_add_neg]
 
+/-- The exact generated C++ entry always terminates on a canonical sparse
+input and decodes to subtraction by one.  Both source epilogue branches are
+covered: normalization is used only when the generated loop found no constant
+term, exactly as in `__upoly_subtract_one_raw_ir`. -/
+theorem __upoly_subtract_one_raw_ir_refines
+    (h : SparsePolyZp) (p : UInt64) [Fact (Nat.Prime p.toNat)]
+    (h2p : 2 * p.toNat ≤ UInt64.size)
+    (hcanonical : SparsePolyZp.Canonical p.toNat h) :
+    ∃ output,
+      Generated.StrictEDF.__upoly_subtract_one_raw_ir h p = .ok output ∧
+      SparsePolyZp.toPoly p.toNat output =
+        SparsePolyZp.toPoly p.toNat h - 1 := by
+  let out := Generated.StrictEDF._loop___upoly_subtract_one_0_raw_ir
+    0 false #[] h p
+  have htrace := subtractOneLoop_trace p 0 #[] h
+    (List.isChain_iff_pairwise.mp hcanonical.2.1)
+  change (if !out.1 then
+      (out.2.push (UMonomial.mk 0,
+        Zp.ofInt (p - 1).toInt p)).toList
+    else out.2.toList) = subtractOneTerms p h.toList at htrace
+  by_cases hfound : out.1 = true
+  · refine ⟨out.2, ?_, ?_⟩
+    · simp [Generated.StrictEDF.__upoly_subtract_one_raw_ir, out,
+        hfound]
+    · simp [hfound] at htrace
+      change listSum p.toNat out.2.toList =
+        listSum p.toNat h.toList - 1
+      rw [htrace]
+      exact subtractOneTerms_toPoly p h2p h.toList hcanonical.1
+  · have hnotFound : out.1 = false := Bool.eq_false_of_not_eq_true hfound
+    let output := SparsePolyZp.normalization
+      (out.2.push (UMonomial.mk 0, Zp.ofInt (p - 1).toInt p))
+    refine ⟨output, ?_, ?_⟩
+    · simp [Generated.StrictEDF.__upoly_subtract_one_raw_ir, out,
+        hnotFound, output]
+    · rw [show SparsePolyZp.toPoly p.toNat output =
+          SparsePolyZp.toPoly p.toNat
+            (out.2.push (UMonomial.mk 0,
+              Zp.ofInt (p - 1).toInt p)) by
+          exact normalization_toPoly _]
+      simp [hnotFound] at htrace
+      change listSum p.toNat
+          (out.2.push (UMonomial.mk 0,
+            Zp.ofInt (p - 1).toInt p)).toList =
+        listSum p.toNat h.toList - 1
+      rw [Array.toList_push]
+      rw [htrace]
+      exact subtractOneTerms_toPoly p h2p h.toList hcanonical.1
+
 end Refinement.StrictEDF

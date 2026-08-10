@@ -422,6 +422,39 @@ def strictMulModIR (this : DenseUPolyZp) (left right modulus : SparsePolyZp)
   let product ← strictMulIR this left right mulProvider
   strictModIR this product modulus (modProvider.workspace product)
 
+/-- Semantic composition of one actual raw multiply and one actual raw
+division/remainder call. -/
+theorem strictMulModIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (left right modulus : SparsePolyZp)
+    (mulProvider : RawMulWorkspaceProvider this)
+    (modProvider : RawModWorkspaceProvider this modulus)
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hmodulusCanonical : SparsePolyZp.Canonical this._p.toNat modulus)
+    (hmodulusNonempty : 0 < modulus.size)
+    (hmodulusMonic : (SparsePolyZp.toPoly this._p.toNat modulus).Monic) :
+    ∃ reduced,
+      strictMulModIR this left right modulus mulProvider modProvider =
+        .ok reduced ∧
+      SparsePolyZp.Canonical this._p.toNat reduced ∧
+      SparsePolyZp.toPoly this._p.toNat reduced =
+        (SparsePolyZp.toPoly this._p.toNat left *
+          SparsePolyZp.toPoly this._p.toNat right) %ₘ
+            SparsePolyZp.toPoly this._p.toNat modulus := by
+  rcases strictMulIR_refines_mul this hcfg left right mulProvider
+      hleftCanonical hrightCanonical with
+    ⟨product, hmul, hproductCanonical, hproductSemantic⟩
+  rcases strictModIR_refines_modByMonic this hcfg product modulus
+      (modProvider.workspace product) hproductCanonical hmodulusCanonical
+      hmodulusNonempty hmodulusMonic with
+    ⟨reduced, hmod, hreducedCanonical, hreducedSemantic⟩
+  refine ⟨reduced, ?_, hreducedCanonical, ?_⟩
+  · rw [strictMulModIR, hmul]
+    exact hmod
+  · rw [hreducedSemantic, hproductSemantic]
+
 /-- The source binary-powmod loop, expressed as well-founded recursion on the
 natural exponent.  Its only arithmetic calls are the strict raw multiplication
 and raw division/remainder boundaries above. -/

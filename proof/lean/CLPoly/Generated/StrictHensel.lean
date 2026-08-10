@@ -15,6 +15,9 @@ def certifyRawExec {α : Type} (run : RawExec α) :
 /-- Exact lowering of the source coefficient loop implementing
 `coefficient := fdiv_q(coefficient,m); coefficient := fdiv_r(coefficient,m)`
 followed by the in-place zero compaction. -/
+def divideCoeffs (f : SparsePolyZZ) (m : ZZ) : SparsePolyZZ :=
+  f.map fun term => (term.fst, ZZ.fdiv_q term.snd term.snd m)
+
 def divideThenReduceCoeffs (f : SparsePolyZZ) (m : ZZ) : SparsePolyZZ :=
   f.filterMap fun term =>
     let quotient := ZZ.fdiv_q term.snd term.snd m

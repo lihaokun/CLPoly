@@ -20109,6 +20109,54 @@ theorem pairVecDivGeneralBranchIR_refines_divByMonic
   exact ⟨hcanonicalOut, eq_divByMonic_of_mul_eq _ _ _ hdivisorMonic
     hdivisorDvd hmul⟩
 
+/-- Total semantic refinement of the complete generated `pair_vec_div` entry,
+including its zero-dividend, one-term-divisor, and VHC branches.  The extra
+degree premise is exactly the source precondition needed by the one-term
+range-for traversal; exact Yun divisions establish it at that call site. -/
+theorem pairVecDivIR_refines_divByMonic
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hdivisor : 0 < divisor.size)
+    (hsingleDegree : divisor.size = 1 → ∀ term ∈ dividend.toList,
+      divisor[0].1.deg ≤ term.1.deg)
+    (hdivisorMonic : (SparsePolyZp.toPoly this._p.toNat divisor).Monic)
+    (hdivisorDvd : SparsePolyZp.toPoly this._p.toNat divisor ∣
+      SparsePolyZp.toPoly this._p.toNat dividend) :
+    ∃ quotient,
+      pairVecDivIR this dividend divisor = .ok quotient ∧
+      SparsePolyZp.Canonical this._p.toNat quotient ∧
+      SparsePolyZp.toPoly this._p.toNat quotient =
+        SparsePolyZp.toPoly this._p.toNat dividend /ₘ
+          SparsePolyZp.toPoly this._p.toNat divisor := by
+  by_cases hdividend : dividend.size = 0
+  · have hdividendEmpty : dividend = #[] := Array.size_eq_zero_iff.mp hdividend
+    subst dividend
+    refine ⟨#[], pairVecDivIR_empty_dividend this #[] divisor rfl
+      (Nat.ne_of_gt hdivisor), hdividendCanonical, by simp⟩
+  · by_cases hsingle : divisor.size = 1
+    · rcases pairVecDivSingleBranchIR_refines_divByMonic this dividend divisor
+          hcfg hdividendCanonical hdivisorCanonical hsingle
+          (hsingleDegree hsingle) hdivisorMonic hdivisorDvd with
+        ⟨quotient, hrun, hcanonical, hsemantic⟩
+      exact ⟨quotient,
+        (pairVecDivIR_single this dividend divisor hdividend hsingle).trans
+          hrun,
+        hcanonical, hsemantic⟩
+    · have hgeneral : 1 < divisor.size := by omega
+      rcases pairVecDivGeneralBranchIR_succeeds this dividend divisor hcfg
+          hdividendCanonical hdivisorCanonical (Nat.pos_of_ne_zero hdividend)
+          hgeneral with ⟨quotient, hrun⟩
+      have hrefines := pairVecDivGeneralBranchIR_refines_divByMonic this
+        dividend divisor quotient hcfg hdividendCanonical hdivisorCanonical
+        (Nat.pos_of_ne_zero hdividend) hgeneral hdivisorMonic hdivisorDvd hrun
+      exact ⟨quotient,
+        (pairVecDivIR_general this dividend divisor hdividend hgeneral).trans
+          hrun,
+        hrefines.1, hrefines.2⟩
+
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)
     (hcanonical : SparsePolyZp.Canonical p source)

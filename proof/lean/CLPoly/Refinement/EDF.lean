@@ -66,7 +66,7 @@ private theorem certifyRawExec_ok_eq {α : Type} (run : RawExec α)
 the generated state machine itself and to the concrete `makeMonic` run; it is
 not an L2 execution fallback. -/
 theorem rawState_base_run
-    (ops : Generated.StrictEDF.EDFRawOps)
+    {State : Type} (ops : Generated.StrictEDF.EDFRawOps State)
     (law : Generated.StrictEDF.EDFRetryLaw ops)
     (state : Generated.StrictEDF.EDFState ops)
     (hdegree : ((get_deg state.f).toUInt64 == state.d) = true)
@@ -96,7 +96,7 @@ The theorem requires, in source order, the actual powmod execution, the actual
 generated subtract-one execution, and the actual GCD execution.  No
 intermediate result can be replaced by an L2 witness. -/
 theorem candidateRun_odd_run
-    (ops : Generated.StrictEDF.EDFRawOps)
+    {State : Type} (ops : Generated.StrictEDF.EDFRawOps State)
     (f : SparsePolyZp) (d : UInt64) (r hpow hminus factor : SparsePolyZp)
     (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size)
     (hodd : (f[0]!.2.prime == 2) = false)

@@ -22,18 +22,6 @@ private theorem zpOfRandomReduced (p coefficient : UInt64)
     · omega
     · exact_mod_cast hcoefficient
 
-private theorem rngNextLt (p rng : UInt64) (hp : 0 < p) :
-    Rng.next rng p < p := by
-  unfold Rng.next
-  have hp0 : p ≠ 0 := by
-    intro h
-    subst p
-    simp at hp
-  have hb : (p == 0) = false := beq_eq_false_iff_ne.mpr hp0
-  rw [hb]
-  simp only [Bool.false_eq_true, ↓reduceIte]
-  exact UInt64.mod_lt _ hp
-
 private theorem canonicalPushDescending (p degree : Nat)
     (result : SparsePolyZp) (coefficient : Zp)
     (hresult : SparsePolyZp.Canonical p result)
@@ -67,14 +55,16 @@ private theorem canonicalPushDescending (p degree : Nat)
       subst term
       exact hnonzero
 
-private theorem randomLoopCanonical (remaining degree : Nat)
-    (result : SparsePolyZp) (p : UInt64) (rng : Rng)
+private theorem randomLoopCanonical {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (remaining degree : Nat)
+    (result : SparsePolyZp) (p : UInt64) (rng : State)
     (hp : 0 < p)
     (hposition : remaining = 0 ∨ degree + 1 = remaining)
     (hcanonical : SparsePolyZp.Canonical p.toNat result)
     (hdegrees : ∀ term ∈ result.toList, degree < term.1.deg) :
     SparsePolyZp.Canonical p.toNat
-      (Generated.StrictEDF._loop___upoly_random_0_raw_ir
+      (Generated.StrictEDF._loop___upoly_random_0_raw_ir engine
         remaining degree result p rng).1 := by
   induction remaining generalizing degree result rng with
   | zero =>
@@ -84,32 +74,34 @@ private theorem randomLoopCanonical (remaining degree : Nat)
       subst degree
       rw [Generated.StrictEDF._loop___upoly_random_0_raw_ir]
       simp only [Nat.succ_ne_zero, ↓reduceDIte]
-      by_cases hzero : Rng.next rng p = 0
-      · have hb : (Rng.next rng p != 0) = false :=
+      by_cases hzero : (engine.nextAdvance rng p).1 = 0
+      · have hb : ((engine.nextAdvance rng p).1 != 0) = false :=
           bne_eq_false_iff_eq.mpr hzero
-        simp only [Rng.next_advance, hb, Bool.false_eq_true, ↓reduceIte,
+        simp only [hb, Bool.false_eq_true, ↓reduceIte,
           Nat.succ_sub_one]
         apply ih (degree := remaining - 1) (result := result)
-          (rng := Rng.step rng)
+          (rng := (engine.nextAdvance rng p).2)
         · omega
         · exact hcanonical
         · intro term hterm
           exact lt_of_le_of_lt (Nat.sub_le _ _) (hdegrees term hterm)
-      · let coefficient := Zp.ofInt (Rng.next rng p).toInt p
+      · let coefficient := Zp.ofInt (engine.nextAdvance rng p).1.toInt p
         have hcoefficientReduced : Zp.Reduced p.toNat coefficient :=
-          zpOfRandomReduced p (Rng.next rng p) (rngNextLt p rng hp)
+          zpOfRandomReduced p (engine.nextAdvance rng p).1
+            (engine.nextLt rng p hp)
         have hcoefficientNonzero : coefficient.val ≠ 0 := by
           intro h
-          have hvalue : coefficient.val.toNat = (Rng.next rng p).toNat := by
+          have hvalue : coefficient.val.toNat =
+              (engine.nextAdvance rng p).1.toNat := by
             unfold coefficient
             simp only [Zp.ofInt, UInt64.toInt]
             rw [Int.emod_eq_of_lt]
-            · change (Rng.next rng p).toNat.toUInt64.toNat =
-                (Rng.next rng p).toNat
+            · change (engine.nextAdvance rng p).1.toNat.toUInt64.toNat =
+                (engine.nextAdvance rng p).1.toNat
               simp
             · omega
-            · exact_mod_cast rngNextLt p rng hp
-          have : (Rng.next rng p).toNat = 0 := by
+            · exact_mod_cast engine.nextLt rng p hp
+          have : (engine.nextAdvance rng p).1.toNat = 0 := by
             rw [← hvalue, h]
             rfl
           exact hzero (UInt64.toNat_inj.mp this)
@@ -117,22 +109,22 @@ private theorem randomLoopCanonical (remaining degree : Nat)
             (result.push (UMonomial.mk remaining, coefficient)) :=
           canonicalPushDescending p.toNat remaining result coefficient
             hcanonical hdegrees hcoefficientReduced hcoefficientNonzero
-        have hb : (Rng.next rng p != 0) = true :=
+        have hb : ((engine.nextAdvance rng p).1 != 0) = true :=
           Bool.eq_true_of_not_eq_false (fun hb =>
             hzero (bne_eq_false_iff_eq.mp hb))
-        simp only [Rng.next_advance, hb, ↓reduceIte, Nat.succ_sub_one]
+        simp only [hb, ↓reduceIte, Nat.succ_sub_one]
         change SparsePolyZp.Canonical p.toNat
-          (Generated.StrictEDF._loop___upoly_random_0_raw_ir remaining
+          (Generated.StrictEDF._loop___upoly_random_0_raw_ir engine remaining
             (remaining - 1)
             (result.push (UMonomial.mk remaining, coefficient)) p
-            (Rng.step rng)).1
+            (engine.nextAdvance rng p).2).1
         by_cases hremaining : remaining = 0
         · subst remaining
           simpa [Generated.StrictEDF._loop___upoly_random_0_raw_ir] using
             hnextCanonical
         apply ih (degree := remaining - 1)
           (result := result.push (UMonomial.mk remaining, coefficient))
-          (rng := Rng.step rng)
+          (rng := (engine.nextAdvance rng p).2)
         · omega
         · exact hnextCanonical
         · intro term hterm
@@ -144,13 +136,15 @@ private theorem randomLoopCanonical (remaining degree : Nat)
             simp
             exact Nat.pos_of_ne_zero hremaining
 
-private theorem randomLoopDegreeBound (upper remaining degree : Nat)
-    (result : SparsePolyZp) (p : UInt64) (rng : Rng)
+private theorem randomLoopDegreeBound {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (upper remaining degree : Nat)
+    (result : SparsePolyZp) (p : UInt64) (rng : State)
     (hposition : remaining = 0 ∨ degree + 1 = remaining)
     (hcursor : remaining = 0 ∨ degree < upper)
     (hresult : ∀ term ∈ result.toList, term.1.deg < upper) :
     ∀ term ∈
-      (Generated.StrictEDF._loop___upoly_random_0_raw_ir
+      (Generated.StrictEDF._loop___upoly_random_0_raw_ir engine
         remaining degree result p rng).1.toList,
       term.1.deg < upper := by
   induction remaining generalizing degree result rng with
@@ -161,14 +155,14 @@ private theorem randomLoopDegreeBound (upper remaining degree : Nat)
       have hdegreeUpper : degree < upper := by omega
       subst degree
       rw [Generated.StrictEDF._loop___upoly_random_0_raw_ir]
-      simp only [Nat.succ_ne_zero, ↓reduceDIte, Rng.next_advance,
+      simp only [Nat.succ_ne_zero, ↓reduceDIte,
         Nat.succ_sub_one]
-      by_cases hnonzero : (Rng.next rng p != 0) = true
+      by_cases hnonzero : ((engine.nextAdvance rng p).1 != 0) = true
       · simp only [hnonzero, ↓reduceIte]
         apply ih (degree := remaining - 1)
           (result := result.push (UMonomial.mk remaining,
-            Zp.ofInt (Rng.next rng p).toInt p))
-          (rng := Rng.step rng)
+            Zp.ofInt (engine.nextAdvance rng p).1.toInt p))
+          (rng := (engine.nextAdvance rng p).2)
         · omega
         · omega
         · intro term hterm
@@ -178,11 +172,11 @@ private theorem randomLoopDegreeBound (upper remaining degree : Nat)
           · simp only [List.mem_singleton] at hterm
             subst term
             exact hdegreeUpper
-      · have hzero : (Rng.next rng p != 0) = false :=
+      · have hzero : ((engine.nextAdvance rng p).1 != 0) = false :=
           Bool.eq_false_of_not_eq_true hnonzero
         simp only [hzero, Bool.false_eq_true, ↓reduceIte]
         apply ih (degree := remaining - 1) (result := result)
-          (rng := Rng.step rng)
+          (rng := (engine.nextAdvance rng p).2)
         · omega
         · omega
         · exact hresult
@@ -190,9 +184,10 @@ private theorem randomLoopDegreeBound (upper remaining degree : Nat)
 /-- The exact generated random-polynomial entry is total.  Its output and
 advanced RNG state are the values computed by the well-founded source loop. -/
 theorem __upoly_random_raw_ir_terminates
-    (maxDegree : Int64) (p : UInt64) (rng : Rng) :
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (maxDegree : Int64) (p : UInt64) (rng : State) :
     ∃ output rngNext,
-      Generated.StrictEDF.__upoly_random_raw_ir maxDegree p rng =
+      Generated.StrictEDF.__upoly_random_raw_ir engine maxDegree p rng =
         .ok (output, rngNext) := by
   unfold Generated.StrictEDF.__upoly_random_raw_ir
   split
@@ -203,9 +198,10 @@ theorem __upoly_random_raw_ir_terminates
 is proved from its actual coefficient draws and descending push order; no
 normalization or L2 result substitution is inserted after execution. -/
 theorem __upoly_random_raw_ir_canonical
-    (maxDegree : Int64) (p : UInt64) (rng : Rng) (hp : 0 < p) :
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (maxDegree : Int64) (p : UInt64) (rng : State) (hp : 0 < p) :
     ∃ output rngNext,
-      Generated.StrictEDF.__upoly_random_raw_ir maxDegree p rng =
+      Generated.StrictEDF.__upoly_random_raw_ir engine maxDegree p rng =
         .ok (output, rngNext) ∧
       SparsePolyZp.Canonical p.toNat output ∧
       (∀ term ∈ output.toList,
@@ -213,15 +209,15 @@ theorem __upoly_random_raw_ir_canonical
   unfold Generated.StrictEDF.__upoly_random_raw_ir
   split
   · let count := maxDegree.toNatClampNeg
-    let run := Generated.StrictEDF._loop___upoly_random_0_raw_ir
+    let run := Generated.StrictEDF._loop___upoly_random_0_raw_ir engine
       count (count - 1) #[] p rng
     refine ⟨run.1, run.2, rfl, ?_, ?_⟩
-    · apply randomLoopCanonical count (count - 1) #[] p rng hp
+    · apply randomLoopCanonical engine count (count - 1) #[] p rng hp
       · omega
       · simp [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr,
           SparsePolyZp.AllReduced]
       · simp
-    · apply randomLoopDegreeBound count count (count - 1) #[] p rng
+    · apply randomLoopDegreeBound engine count count (count - 1) #[] p rng
       · omega
       · omega
       · simp

@@ -27,6 +27,13 @@ set_option maxErrors 2000
 
 namespace Generated.StrictEDF
 
+/-- Source RNG boundary used by the generated EDF translation.  `State` is
+the concrete C++ engine state; an implementation must provide the actual
+uniform draw-and-advance operation and prove its `[0, upper)` range. -/
+structure RandomEngine (State : Type) where
+  nextAdvance : State → UInt64 → UInt64 × State
+  nextLt : ∀ state upper, 0 < upper → (nextAdvance state upper).1 < upper
+
 def edfMeasure (f : SparsePolyZp) : Nat :=
   if f.isEmpty then 0 else f[0]!.fst.deg + 1
 
@@ -76,33 +83,35 @@ def __upoly_subtract_one_raw_ir (h : SparsePolyZp) (p : UInt64) :
 /-- Well-founded lowering of the descending degree loop in
 `__upoly_random`.  Coefficients are drawn from the requested modulus range;
 zero coefficients are omitted exactly as in the C++ sparse constructor. -/
-def _loop___upoly_random_0_raw_ir (remaining degree : Nat)
-    (result : SparsePolyZp) (p : UInt64) (rng : Rng) :
-    SparsePolyZp × Rng :=
+def _loop___upoly_random_0_raw_ir {State : Type}
+    (engine : RandomEngine State) (remaining degree : Nat)
+    (result : SparsePolyZp) (p : UInt64) (rng : State) :
+    SparsePolyZp × State :=
   if hremaining : remaining = 0 then
     (result, rng)
   else
-    let draw := Rng.next_advance rng p
+    let draw := engine.nextAdvance rng p
     let coefficient := draw.1
     let result' := if coefficient != 0 then
       result.push (UMonomial.mk degree, Zp.ofInt coefficient.toInt p)
     else result
-    _loop___upoly_random_0_raw_ir (remaining - 1) (degree - 1)
+    _loop___upoly_random_0_raw_ir engine (remaining - 1) (degree - 1)
       result' p draw.2
 termination_by remaining
 decreasing_by omega
 
 /-- Exact total entry for the source `__upoly_random` loop. -/
-def __upoly_random_raw_ir (maxDegree : Int64) (p : UInt64) (rng : Rng) :
-    RawExec (SparsePolyZp × Rng) :=
+def __upoly_random_raw_ir {State : Type} (engine : RandomEngine State)
+    (maxDegree : Int64) (p : UInt64) (rng : State) :
+    RawExec (SparsePolyZp × State) :=
   if hpositive : 0 < maxDegree then
     let count := maxDegree.toNatClampNeg
-    .ok (_loop___upoly_random_0_raw_ir count (count - 1) #[] p rng)
+    .ok (_loop___upoly_random_0_raw_ir engine count (count - 1) #[] p rng)
   else
     .ok (#[], rng)
 
-structure EDFRawOps where
-  random : Int64 → UInt64 → Rng → RawExec (SparsePolyZp × Rng)
+structure EDFRawOps (State : Type) where
+  random : Int64 → UInt64 → State → RawExec (SparsePolyZp × State)
   modPoly : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
   squareAddMod : SparsePolyZp → SparsePolyZp → SparsePolyZp →
     RawExec SparsePolyZp
@@ -121,7 +130,7 @@ structure EDFRawOps where
       edfMeasure gMonic < edfMeasure f ∧
       edfMeasure hMonic < edfMeasure f
 
-def traceLoop (ops : EDFRawOps) (d : UInt64) (f r : SparsePolyZp)
+def traceLoop {State : Type} (ops : EDFRawOps State) (d : UInt64) (f r : SparsePolyZp)
     (i : UInt64) (g : SparsePolyZp)
     (hbudget : i.toNat ≤ d.toNat ∧ d.toNat < UInt64.size) :
     RawExec SparsePolyZp :=
@@ -147,7 +156,7 @@ decreasing_by
   simp [UInt64.toNat_add, Nat.mod_eq_of_lt hiSize]
   omega
 
-def candidateRun (ops : EDFRawOps) (f : SparsePolyZp) (d : UInt64)
+def candidateRun {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (d : UInt64)
     (r : SparsePolyZp) (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size) :
     RawExec SparsePolyZp :=
   if f[0]!.2.prime == 2 then
@@ -166,22 +175,22 @@ def candidateRun (ops : EDFRawOps) (f : SparsePolyZp) (d : UInt64)
       | .error fault => .error fault
       | .ok hminus => ops.gcd hminus.val f
 
-structure EDFRetryLaw (ops : EDFRawOps) where
-  RetryInvariant : SparsePolyZp → UInt64 → Rng → Prop
-  retryRank : SparsePolyZp → UInt64 → Rng → Nat
-  retryDegreePositive : ∀ (f : SparsePolyZp) (d : UInt64) (rng : Rng),
+structure EDFRetryLaw {State : Type} (ops : EDFRawOps State) where
+  RetryInvariant : SparsePolyZp → UInt64 → State → Prop
+  retryRank : SparsePolyZp → UInt64 → State → Nat
+  retryDegreePositive : ∀ (f : SparsePolyZp) (d : UInt64) (rng : State),
     RetryInvariant f d rng → 0 < d.toNat
-  retryInitial : ∀ (f : SparsePolyZp) (d : UInt64) (rng : Rng),
+  retryInitial : ∀ (f : SparsePolyZp) (d : UInt64) (rng : State),
     ops.EntryInvariant f d → RetryInvariant f d rng
-  emptyRetry : ∀ (f : SparsePolyZp) (d : UInt64) (rng : Rng)
-      (r : SparsePolyZp) (rngNext : Rng),
+  emptyRetry : ∀ (f : SparsePolyZp) (d : UInt64) (rng : State)
+      (r : SparsePolyZp) (rngNext : State),
     RetryInvariant f d rng →
     ops.random (get_deg f) f[0]!.2.prime rng = .ok (r, rngNext) →
     r.isEmpty = true →
     RetryInvariant f d rngNext ∧
       retryRank f d rngNext < retryRank f d rng
-  failedRetry : ∀ (f : SparsePolyZp) (d : UInt64) (rng : Rng)
-      (r : SparsePolyZp) (rngNext : Rng) (candidate : SparsePolyZp)
+  failedRetry : ∀ (f : SparsePolyZp) (d : UInt64) (rng : State)
+      (r : SparsePolyZp) (rngNext : State) (candidate : SparsePolyZp)
       (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size),
     RetryInvariant f d rng →
     ops.random (get_deg f) f[0]!.2.prime rng = .ok (r, rngNext) →
@@ -191,15 +200,15 @@ structure EDFRetryLaw (ops : EDFRawOps) where
     RetryInvariant f d rngNext ∧
       retryRank f d rngNext < retryRank f d rng
 
-structure RetryState (ops : EDFRawOps) (law : EDFRetryLaw ops)
+structure RetryState {State : Type} (ops : EDFRawOps State) (law : EDFRetryLaw ops)
     (f : SparsePolyZp) (d : UInt64) where
-  rng : Rng
+  rng : State
   valid : law.RetryInvariant f d rng
 
-structure SplitState (ops : EDFRawOps) (f : SparsePolyZp) (d : UInt64) where
+structure SplitState {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (d : UInt64) where
   factor : SparsePolyZp
-  rngBefore : Rng
-  rng : Rng
+  rngBefore : State
+  rng : State
   randomPoly : SparsePolyZp
   randomRun : ops.random (get_deg f) f[0]!.2.prime rngBefore = .ok (randomPoly, rng)
   candidateRun : ∃ hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size,
@@ -207,7 +216,7 @@ structure SplitState (ops : EDFRawOps) (f : SparsePolyZp) (d : UInt64) where
   nonempty : factor.isEmpty = false
   proper : get_deg factor > 0 ∧ get_deg factor < get_deg f
 
-def retryLoop (ops : EDFRawOps) (law : EDFRetryLaw ops)
+def retryLoop {State : Type} (ops : EDFRawOps State) (law : EDFRetryLaw ops)
     (f : SparsePolyZp) (d : UInt64)
     (state : RetryState ops law f d) : RawExec (SplitState ops f d) :=
   match certifyRawExec (ops.random (get_deg f) f[0]!.2.prime state.rng) with
@@ -255,16 +264,16 @@ def retryLoop (ops : EDFRawOps) (law : EDFRetryLaw ops)
 termination_by law.retryRank f d state.rng
 decreasing_by all_goals exact hretry.2
 
-structure EDFState (ops : EDFRawOps) where
+structure EDFState {State : Type} (ops : EDFRawOps State) where
   result : Array SparsePolyZp
   f : SparsePolyZp
   d : UInt64
-  rng : Rng
+  rng : State
   valid : ops.EntryInvariant f d
 
-def __edf_Zp_raw_ir_state (ops : EDFRawOps) (law : EDFRetryLaw ops)
+def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State) (law : EDFRetryLaw ops)
     (state : EDFState ops) :
-    RawExec (Array SparsePolyZp × Rng) :=
+    RawExec (Array SparsePolyZp × State) :=
   if (get_deg state.f).toUInt64 == state.d then
     match certifyRawExec (ops.makeMonic state.f) with
     | .error fault => .error fault
@@ -299,10 +308,10 @@ decreasing_by
   · exact hstep.2.2.1
   · exact hstep.2.2.2
 
-def __edf_Zp_raw_ir (ops : EDFRawOps) (law : EDFRetryLaw ops)
+def __edf_Zp_raw_ir {State : Type} (ops : EDFRawOps State) (law : EDFRetryLaw ops)
     (result : Array SparsePolyZp)
-    (f : SparsePolyZp) (d : UInt64) (rng : Rng)
-    (hinitial : ops.EntryInvariant f d) : RawExec (Array SparsePolyZp × Rng) :=
+    (f : SparsePolyZp) (d : UInt64) (rng : State)
+    (hinitial : ops.EntryInvariant f d) : RawExec (Array SparsePolyZp × State) :=
   __edf_Zp_raw_ir_state ops law ⟨result, f, d, rng, hinitial⟩
 
 end Generated.StrictEDF

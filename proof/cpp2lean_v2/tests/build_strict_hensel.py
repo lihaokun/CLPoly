@@ -50,11 +50,18 @@ multiply every coefficient by `m`. -/
 def scaleCoeffs (f : SparsePolyZZ) (m : ZZ) : SparsePolyZZ :=
   f.map fun term => (term.fst, term.snd * m)
 
+/-- Exact total lowering of C++ `__upoly_mod_coeff`: floor remainder on every
+coefficient followed by removal of zero terms. -/
+def __upoly_mod_coeff_raw_ir (f : SparsePolyZZ) (m : ZZ) :
+    RawExec SparsePolyZZ :=
+  .ok (f.filterMap fun term =>
+    let coefficient := ZZ.fdiv_r term.snd term.snd m
+    if coefficient != 0 then some (term.fst, coefficient) else none)
+
 structure HenselStepRawOps where
   mul : SparsePolyZZ → SparsePolyZZ → RawExec SparsePolyZZ
   add : SparsePolyZZ → SparsePolyZZ → RawExec SparsePolyZZ
   sub : SparsePolyZZ → SparsePolyZZ → RawExec SparsePolyZZ
-  modCoeff : SparsePolyZZ → ZZ → RawExec SparsePolyZZ
   divmodMod : SparsePolyZZ → SparsePolyZZ → ZZ →
     RawExec (SparsePolyZZ × SparsePolyZZ)
 
@@ -71,11 +78,11 @@ def __hensel_step_raw_ir (ops : HenselStepRawOps) (node : HenselNode)
   let te ← ops.mul node.t e
   let qg ← ops.mul qr.1 node.g
   let tauRaw ← ops.add te qg
-  let tau ← ops.modCoeff tauRaw m
+  let tau ← __upoly_mod_coeff_raw_ir tauRaw m
   let gRaw ← ops.add node.g (scaleCoeffs tau m)
-  let gNew ← ops.modCoeff gRaw m2
+  let gNew ← __upoly_mod_coeff_raw_ir gRaw m2
   let hRaw ← ops.add node.h (scaleCoeffs qr.2 m)
-  let hNew ← ops.modCoeff hRaw m2
+  let hNew ← __upoly_mod_coeff_raw_ir hRaw m2
   let factorNode := { node with g := gNew, h := hNew }
   let sg ← ops.mul factorNode.s factorNode.g
   let th ← ops.mul factorNode.t factorNode.h
@@ -86,13 +93,13 @@ def __hensel_step_raw_ir (ops : HenselStepRawOps) (node : HenselNode)
   let sep ← ops.mul factorNode.s ep
   let qrBezout ← ops.divmodMod sep factorNode.h m
   let sRaw ← ops.add factorNode.s (scaleCoeffs qrBezout.2 m)
-  let sNew ← ops.modCoeff sRaw m2
+  let sNew ← __upoly_mod_coeff_raw_ir sRaw m2
   let tep ← ops.mul factorNode.t ep
   let qpg ← ops.mul qrBezout.1 factorNode.g
   let tau2Raw ← ops.add tep qpg
-  let tau2 ← ops.modCoeff tau2Raw m
+  let tau2 ← __upoly_mod_coeff_raw_ir tau2Raw m
   let tRaw ← ops.add factorNode.t (scaleCoeffs tau2 m)
-  let tNew ← ops.modCoeff tRaw m2
+  let tNew ← __upoly_mod_coeff_raw_ir tRaw m2
   return { factorNode with s := sNew, t := tNew }
 
 end Generated.StrictHensel

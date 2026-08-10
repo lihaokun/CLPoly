@@ -29,6 +29,40 @@ private theorem intCast_fmod_natCast (m : Nat) (q : Int) :
   have h := Int.mul_ediv_add_emod q (m : Int)
   omega
 
+/-- The concrete generated `__upoly_mod_coeff` call always succeeds and
+preserves the decoded polynomial modulo the requested modulus. -/
+theorem __upoly_mod_coeff_raw_ir_refines (f : SparsePolyZZ) (m : Nat) :
+    ∃ output,
+      Generated.StrictHensel.__upoly_mod_coeff_raw_ir f (m : Int) =
+        .ok output ∧
+      toPolyMod m output = toPolyMod m f := by
+  let output := f.filterMap fun term =>
+    let coefficient := ZZ.fdiv_r term.snd term.snd (m : Int)
+    if coefficient != 0 then some (term.fst, coefficient) else none
+  refine ⟨output, rfl, ?_⟩
+  unfold toPolyMod output
+  simp only [SparsePolyZZ.toPoly, Array.toList_filterMap]
+  induction f.toList with
+  | nil => simp
+  | cons term terms ih =>
+      have ihtail := ih
+      simp only [ZZ.fdiv_r, bne_iff_ne, ne_eq] at ihtail
+      rw [show (fun x : UMonomial × Int =>
+          if ¬x.2.fmod (m : Int) = 0 then
+            some (x.1, x.2.fmod (m : Int)) else none) =
+          (fun x => if x.2.fmod (m : Int) = 0 then none
+            else some (x.1, x.2.fmod (m : Int))) by
+            funext x
+            simp [ite_not]] at ihtail
+      have hcast : ((Int.fmod term.2 (m : Int) : Int) : ZMod m) =
+          (term.2 : ZMod m) := intCast_fmod_natCast m term.2
+      by_cases hz : Int.fmod term.2 (m : Int) = 0
+      · have htermzero : (term.2 : ZMod m) = 0 := by
+          rw [← hcast, hz]
+          simp
+        simp [ZZ.fdiv_r, hz, htermzero, ihtail]
+      · simp [ZZ.fdiv_r, hz, hcast, ihtail]
+
 /-- The generated divide/reduce/compact loop represents the exact coefficient
 quotient modulo `m`; removing coefficients whose residues are zero does not
 change the decoded `ZMod m` polynomial. -/

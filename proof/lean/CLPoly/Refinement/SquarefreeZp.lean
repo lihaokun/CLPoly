@@ -19870,6 +19870,50 @@ theorem sparsePolyZp_toPoly_degree_eq_head (p : Nat)
     Polynomial.degree_add_eq_left_of_degree_lt (by
       simpa [hheadDegree] using hrestDegree), hheadDegree, hheadEq]
 
+/-- On a canonical nonempty sparse polynomial, the termination measure emitted
+for the generated SQF control flow is exactly one more than the L2 degree.
+This is the bridge used to justify the source recursion without fuel. -/
+theorem generated_squarefreeMeasure_eq_natDegree_succ (p : Nat)
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size) :
+    Generated.squarefreeMeasure poly =
+      (SparsePolyZp.toPoly p poly).natDegree + 1 := by
+  have hdegree := sparsePolyZp_toPoly_degree_eq_head p poly hcanonical
+    hnonempty
+  have hnatDegree : (SparsePolyZp.toPoly p poly).natDegree =
+      poly[0].1.deg := Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  have hne : poly ≠ #[] := by
+    intro hempty
+    subst poly
+    simp at hnonempty
+  simp [Generated.squarefreeMeasure, Array.isEmpty_iff, hne,
+    getElem!_pos poly 0 hnonempty, hnatDegree]
+
+/-- Consequently, strict descent of the generated two-polynomial Yun measure
+is precisely strict descent of the L2 `natDegree` sum whenever all four sparse
+states are canonical and nonempty. -/
+theorem generated_squarefreeMeasure_sum_lt_iff (p : Nat)
+    (nextW nextC w c : SparsePolyZp)
+    (hnextWCanonical : SparsePolyZp.Canonical p nextW)
+    (hnextCCanonical : SparsePolyZp.Canonical p nextC)
+    (hwCanonical : SparsePolyZp.Canonical p w)
+    (hcCanonical : SparsePolyZp.Canonical p c)
+    (hnextW : 0 < nextW.size) (hnextC : 0 < nextC.size)
+    (hw : 0 < w.size) (hc : 0 < c.size) :
+    Generated.squarefreeMeasure nextW + Generated.squarefreeMeasure nextC <
+        Generated.squarefreeMeasure w + Generated.squarefreeMeasure c ↔
+      (SparsePolyZp.toPoly p nextW).natDegree +
+          (SparsePolyZp.toPoly p nextC).natDegree <
+        (SparsePolyZp.toPoly p w).natDegree +
+          (SparsePolyZp.toPoly p c).natDegree := by
+  rw [generated_squarefreeMeasure_eq_natDegree_succ p nextW
+      hnextWCanonical hnextW,
+    generated_squarefreeMeasure_eq_natDegree_succ p nextC
+      hnextCCanonical hnextC,
+    generated_squarefreeMeasure_eq_natDegree_succ p w hwCanonical hw,
+    generated_squarefreeMeasure_eq_natDegree_succ p c hcCanonical hc]
+  omega
+
 /-- High-coefficient agreement is the exact quotient-with-remainder result.
 At an exact-division call site, divisibility forces that low-degree remainder
 to vanish, yielding full polynomial equality without supplying an expected

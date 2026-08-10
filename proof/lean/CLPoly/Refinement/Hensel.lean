@@ -2830,6 +2830,176 @@ theorem __hensel_lift_recursive_raw_ir_refines
       HenselLiftRecursiveCorrect termination m tree nodes target output :=
   henselLiftRecursiveRefinesAux termination m tree nodes target hinvariant
 
+/-- A concrete prefix of the source quadratic-precision loop.  Every edge is
+anchored to an exact generated tree-traversal equation; the relation contains
+no predicted output or L2 computation. -/
+inductive HenselLiftLoopPrefix
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target : Nat) (initialM : Nat) (initialNodes : Array HenselNode) :
+    Nat → Array HenselNode → Prop
+  | refl : HenselLiftLoopPrefix termination tree f target initialM initialNodes
+      initialM initialNodes
+  | step
+      (m : Nat) (nodes nextNodes : Array HenselNode)
+      (hprefix : HenselLiftLoopPrefix termination tree f target initialM
+        initialNodes m nodes)
+      (hcontinue : m ≤ target)
+      (hrun : Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+        (strictHenselRawOps termination) tree nodes f (m : Int) =
+          .ok nextNodes) :
+      HenselLiftLoopPrefix termination tree f target initialM initialNodes
+        (m * m) nextNodes
+
+/-- Safety assumptions for all states actually reachable through the exact
+raw loop.  Universality over `HenselLiftLoopPrefix` prevents the invariant
+from choosing a convenient sequence of node arrays. -/
+structure HenselLiftLoopExecutionInvariant
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target initialM : Nat) (initialNodes : Array HenselNode) : Prop where
+  initialM_ge_two : 2 ≤ initialM
+  iterationReady : ∀ m nodes,
+    HenselLiftLoopPrefix termination tree f target initialM initialNodes
+      m nodes →
+    m ≤ target →
+    HenselLiftRecursiveExecutionInvariant termination tree nodes f (m : Int)
+
+private theorem henselLiftLoopTerminatesAux
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target initialM : Nat) (initialNodes : Array HenselNode)
+    (hinvariant : HenselLiftLoopExecutionInvariant termination tree f target
+      initialM initialNodes)
+    (m : Nat) (hm : 2 ≤ m) (nodes : Array HenselNode)
+    (hprefix : HenselLiftLoopPrefix termination tree f target initialM
+      initialNodes m nodes) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_loop_raw_ir
+        (strictHenselRawOps termination) tree f target m hm nodes =
+          .ok output := by
+  rw [Generated.StrictHensel.__hensel_lift_loop_raw_ir]
+  split
+  · rename_i hcontinue
+    rcases __hensel_lift_recursive_raw_ir_terminates termination tree nodes f
+        (m : Int) (hinvariant.iterationReady m nodes hprefix hcontinue) with
+      ⟨nextNodes, hrun⟩
+    simp only [hrun, bind, Except.bind]
+    have hnextM : 2 ≤ m * m := by
+      have hmul := Nat.mul_le_mul_left m hm
+      omega
+    exact henselLiftLoopTerminatesAux termination tree f target initialM
+      initialNodes hinvariant (m * m) hnextM nextNodes
+      (.step m nodes nextNodes hprefix hcontinue hrun)
+  · exact ⟨(nodes, m), rfl⟩
+termination_by target + 1 - m
+decreasing_by
+  have hmul := Nat.mul_le_mul_left m hm
+  have hgrow : m < m * m := by omega
+  omega
+
+theorem __hensel_lift_loop_raw_ir_terminates
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target initialM : Nat) (initialNodes : Array HenselNode)
+    (hinvariant : HenselLiftLoopExecutionInvariant termination tree f target
+      initialM initialNodes) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_loop_raw_ir
+        (strictHenselRawOps termination) tree f target initialM
+          hinvariant.initialM_ge_two initialNodes = .ok output :=
+  henselLiftLoopTerminatesAux termination tree f target initialM initialNodes
+    hinvariant initialM hinvariant.initialM_ge_two initialNodes .refl
+
+/-- Semantic trace for the exact outer precision loop. -/
+inductive HenselLiftLoopCorrect
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target : Nat) :
+    Nat → Array HenselNode → Array HenselNode → Nat → Prop
+  | done
+      (m : Nat) (nodes : Array HenselNode) (hstop : ¬ m ≤ target) :
+      HenselLiftLoopCorrect termination tree f target m nodes nodes m
+  | step
+      (m : Nat) (nodes nextNodes outputNodes : Array HenselNode)
+      (outputM : Nat) (hcontinue : m ≤ target)
+      (hrun : Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+        (strictHenselRawOps termination) tree nodes f (m : Int) =
+          .ok nextNodes)
+      (hiteration : HenselLiftRecursiveCorrect termination m tree nodes f
+        nextNodes)
+      (htail : HenselLiftLoopCorrect termination tree f target (m * m)
+        nextNodes outputNodes outputM) :
+      HenselLiftLoopCorrect termination tree f target m nodes outputNodes
+        outputM
+
+structure HenselLiftLoopRefinementInvariant
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target initialM : Nat) (initialNodes : Array HenselNode) : Prop where
+  initialM_ge_two : 2 ≤ initialM
+  iterationReady : ∀ m nodes,
+    HenselLiftLoopPrefix termination tree f target initialM initialNodes
+      m nodes →
+    m ≤ target →
+    HenselLiftRecursiveRefinementInvariant termination tree nodes f m
+
+private theorem henselLiftLoopRefinesAux
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target initialM : Nat) (initialNodes : Array HenselNode)
+    (hinvariant : HenselLiftLoopRefinementInvariant termination tree f target
+      initialM initialNodes)
+    (m : Nat) (hm : 2 ≤ m) (nodes : Array HenselNode)
+    (hprefix : HenselLiftLoopPrefix termination tree f target initialM
+      initialNodes m nodes) :
+    ∃ outputNodes outputM,
+      Generated.StrictHensel.__hensel_lift_loop_raw_ir
+        (strictHenselRawOps termination) tree f target m hm nodes =
+          .ok (outputNodes, outputM) ∧
+      HenselLiftLoopCorrect termination tree f target m nodes outputNodes
+        outputM := by
+  rw [Generated.StrictHensel.__hensel_lift_loop_raw_ir]
+  split
+  · rename_i hcontinue
+    rcases __hensel_lift_recursive_raw_ir_refines termination tree nodes f m
+        (hinvariant.iterationReady m nodes hprefix hcontinue) with
+      ⟨nextNodes, hrun, hiteration⟩
+    simp only [hrun, bind, Except.bind]
+    have hnextM : 2 ≤ m * m := by
+      have hmul := Nat.mul_le_mul_left m hm
+      omega
+    rcases henselLiftLoopRefinesAux termination tree f target initialM
+        initialNodes hinvariant (m * m) hnextM nextNodes
+        (.step m nodes nextNodes hprefix hcontinue hrun) with
+      ⟨outputNodes, outputM, htailRun, htailCorrect⟩
+    exact ⟨outputNodes, outputM, htailRun,
+      .step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+        htailCorrect⟩
+  · rename_i hstop
+    exact ⟨nodes, m, rfl, .done m nodes hstop⟩
+termination_by target + 1 - m
+decreasing_by
+  have hmul := Nat.mul_le_mul_left m hm
+  have hgrow : m < m * m := by omega
+  omega
+
+theorem __hensel_lift_loop_raw_ir_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target initialM : Nat) (initialNodes : Array HenselNode)
+    (hinvariant : HenselLiftLoopRefinementInvariant termination tree f target
+      initialM initialNodes) :
+    ∃ outputNodes outputM,
+      Generated.StrictHensel.__hensel_lift_loop_raw_ir
+        (strictHenselRawOps termination) tree f target initialM
+          hinvariant.initialM_ge_two initialNodes =
+            .ok (outputNodes, outputM) ∧
+      HenselLiftLoopCorrect termination tree f target initialM initialNodes
+        outputNodes outputM :=
+  henselLiftLoopRefinesAux termination tree f target initialM initialNodes
+    hinvariant initialM hinvariant.initialM_ge_two initialNodes .refl
+
 end StrictHensel
 
 -- The discoverable public wrapper for the completed theorem above is emitted

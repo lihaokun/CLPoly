@@ -365,4 +365,27 @@ def __hensel_lift_recursive_raw_ir (ops : HenselStepRawOps) :
               | some child =>
                   __hensel_lift_recursive_raw_ir ops child nodes parent.h m
 
+/-- Exact lowering of the quadratic-precision `while (m <= target)` loop in
+C++ `__hensel_lift`.  The natural-number parameters are the nonnegative view
+of the source `ZZ` values; `hm` is erased termination evidence, not fuel.
+Each successful iteration executes the strict tree traversal before replacing
+`m` by `m * m`, exactly as in the source. -/
+def __hensel_lift_loop_raw_ir (ops : HenselStepRawOps)
+    (tree : HenselLiftTree) (f : SparsePolyZZ) (target : Nat) :
+    (m : Nat) → 2 ≤ m → Array HenselNode →
+      RawExec (Array HenselNode × Nat)
+  | m, hm, nodes =>
+      if hcontinue : m ≤ target then do
+        let nodes ← __hensel_lift_recursive_raw_ir ops tree nodes f (m : Int)
+        __hensel_lift_loop_raw_ir ops tree f target (m * m) (by
+          have hmul := Nat.mul_le_mul_left m hm
+          omega) nodes
+      else
+        .ok (nodes, m)
+termination_by m hm nodes => target + 1 - m
+decreasing_by
+  have hmul := Nat.mul_le_mul_left m hm
+  have hgrow : m < m * m := by omega
+  omega
+
 end Generated.StrictHensel

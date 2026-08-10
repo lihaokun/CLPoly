@@ -274,6 +274,315 @@ private theorem subtractXTerms_pairwise (q : UInt64) :
               omega
           · exact hs
 
+/-- Array indexing used by the generated range loop agrees with the head of
+the corresponding unprocessed `List.drop`. -/
+private lemma drop_eq_getElem_cons (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size) :
+    input.toList.drop i = input[i]! :: input.toList.drop (i + 1) := by
+  have hlen : i < input.toList.length := by simpa using hi
+  have hdrop := drop_eq_get_cons_general input.toList i hlen
+  have hget : input.toList.get ⟨i, hlen⟩ = input[i]! := by
+    calc
+      input.toList.get ⟨i, hlen⟩ = input[i] := by simp
+      _ = input[i]! := by
+        rw [getElem!_def, getElem?_def]
+        simp [hi]
+  rw [hget] at hdrop
+  exact hdrop
+
+private lemma pairwise_drop_tail (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size)
+    (hs : (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg)) :
+    (input.toList.drop (i + 1)).Pairwise
+      (fun a b => b.1.deg < a.1.deg) := by
+  rw [drop_eq_getElem_cons input i hi, List.pairwise_cons] at hs
+  exact hs.2
+
+private lemma tail_degree_lt_current (input : SparsePolyZp) (i : Nat)
+    (hi : i < input.size)
+    (hs : (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg)) :
+    ∀ x ∈ input.toList.drop (i + 1), x.1.deg < input[i]!.1.deg := by
+  rw [drop_eq_getElem_cons input i hi, List.pairwise_cons] at hs
+  exact hs.1
+
+private lemma no_linear_degree_in_tail_of_current_le_one
+    (input : SparsePolyZp) (i : Nat) (hi : i < input.size)
+    (hs : (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg))
+    (hcur : input[i]!.1.deg ≤ 1) :
+    ∀ x ∈ input.toList.drop (i + 1), x.1.deg ≠ 1 := by
+  intro x hx hlinear
+  have hlt := tail_degree_lt_current input i hi hs x hx
+  omega
+
+private lemma int32_ofNat_eq_one_iff (d : Nat) (hd : d < 2 ^ 31) :
+    Int32.ofNat d = (1 : Int32) ↔ d = 1 := by
+  constructor
+  · intro h
+    have hval := congrArg (fun x : Int32 => x.toUInt32.toNat) h
+    change (UInt32.ofNat d).toNat = (1 : Int32).toUInt32.toNat at hval
+    have hd32 : d < 2 ^ 32 := lt_trans hd (by norm_num)
+    have hone : (1 : Int32).toUInt32.toNat = 1 := by decide
+    rw [hone] at hval
+    change (BitVec.ofNat 32 d).toNat = 1 at hval
+    rw [BitVec.toNat_ofNat] at hval
+    norm_num at hd32
+    rw [Nat.mod_eq_of_lt hd32] at hval
+    exact hval
+  · rintro rfl
+    rfl
+
+private lemma no_generated_linear_in_tail_of_current_le_one
+    (input : SparsePolyZp) (i : Nat) (hi : i < input.size)
+    (hs : (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg))
+    (hcur : input[i]!.1.deg ≤ 1)
+    (hdeg : ∀ x ∈ input.toList.drop (i + 1), x.1.deg < 2 ^ 31) :
+    ∀ x ∈ input.toList.drop (i + 1),
+      x.1.deg.toUInt32.toInt32 ≠ (1 : Int32) := by
+  intro x hx hlinear
+  have hlinear' : Int32.ofNat x.1.deg = (1 : Int32) := by
+    simpa [Int32.ofNat, Nat.toUInt32] using hlinear
+  have hxdeg : x.1.deg = 1 :=
+    (int32_ofNat_eq_one_iff x.1.deg (hdeg x hx)).mp hlinear'
+  exact (no_linear_degree_in_tail_of_current_le_one input i hi hs hcur x hx)
+    hxdeg
+
+set_option maxHeartbeats 0 in
+/-- Once the generated loop has inserted or updated the linear term, a valid
+strictly ordered suffix contains no further linear term.  The actual generated
+array loop therefore appends that suffix verbatim. -/
+private theorem strict_subtract_x_loop_after_insert_toList
+    (q : UInt64) : ∀ (i : Nat) (result input : SparsePolyZp),
+    (∀ x ∈ input.toList.drop i,
+      x.1.deg.toUInt32.toInt32 ≠ (1 : Int32)) →
+    let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+      i true result input q
+    out.2.1 = true ∧
+      out.2.2.toList = result.toList ++ input.toList.drop i := by
+  intro i result input
+  refine Generated.StrictDDF._loop___upoly_subtract_x_0_ir.induct
+    (motive := fun i inserted result input q =>
+      inserted = true →
+      (∀ x ∈ input.toList.drop i,
+        x.1.deg.toUInt32.toInt32 ≠ (1 : Int32)) →
+      let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+        i inserted result input q
+      out.2.1 = true ∧
+        out.2.2.toList = result.toList ++ input.toList.drop i)
+    ?_ ?_ ?_ i true result input q rfl
+  · intro i inserted result input q hi term hbefore ih hins hno
+    subst inserted
+    simp at hbefore
+  · intro i inserted result input q hi term hbefore ih hins hno
+    subst inserted
+    have hdrop : input.toList.drop i = term :: input.toList.drop (i + 1) := by
+      simpa [term] using drop_eq_getElem_cons input i hi
+    have hlinear : term.1.deg.toUInt32.toInt32 ≠ (1 : Int32) :=
+      hno term (by rw [hdrop]; simp)
+    have hlinearInput :
+        (input[i]!.1.deg.toUInt32.toInt32 == (1 : Int32)) ≠ true := by
+      simpa [term] using hlinear
+    have hnoTail : ∀ x ∈ input.toList.drop (i + 1),
+        x.1.deg.toUInt32.toInt32 ≠ (1 : Int32) := by
+      intro x hx
+      exact hno x (by rw [hdrop]; exact List.mem_cons_of_mem _ hx)
+    have hdec : input.size - (i + 1) < input.size - i := by omega
+    have hrec := ih (i + 1) true (result.push term) input q hdec rfl hnoTail
+    rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+    simp only [hi, ↓reduceIte, Bool.not_true, Bool.false_and,
+      Bool.false_eq_true, hbefore, term]
+    rw [if_neg hlinearInput]
+    simp only [hdec, dif_pos]
+    refine ⟨hrec.1, ?_⟩
+    rw [hrec.2, Array.toList_push, hdrop]
+    simp [List.append_assoc]
+  · intro i inserted result input q hi ih hins hno
+    subst inserted
+    rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+    simp only [hi, ↓reduceIte]
+    have hdropEmpty : input.toList.drop i = [] := by
+      apply List.drop_eq_nil_of_le
+      simpa using (by omega : input.size ≤ i)
+    simp [hdropEmpty]
+
+set_option maxHeartbeats 0 in
+/-- Starting with `inserted = false`, the generated array loop plus its source
+epilogue produces exactly the structural trace `subtractXTerms`. -/
+private theorem strict_subtract_x_loop_before_insert_toList
+    (q : UInt64) : ∀ (i : Nat) (result input : SparsePolyZp),
+    (input.toList.drop i).Pairwise
+      (fun a b => b.1.deg < a.1.deg) →
+    (∀ x ∈ input.toList.drop i, x.1.deg < 2 ^ 31) →
+    let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+      i false result input q
+    (if !out.2.1 then
+      (out.2.2.push (UMonomial.mk (1 : Int32),
+        Zp.ofInt ((q - (1 : UInt64)).toInt) q)).toList
+    else out.2.2.toList) =
+      result.toList ++ subtractXTerms q (input.toList.drop i) := by
+  intro i result input
+  refine Generated.StrictDDF._loop___upoly_subtract_x_0_ir.induct
+    (motive := fun i inserted result input q =>
+      inserted = false →
+      (input.toList.drop i).Pairwise
+        (fun a b => b.1.deg < a.1.deg) →
+      (∀ x ∈ input.toList.drop i, x.1.deg < 2 ^ 31) →
+      let out := Generated.StrictDDF._loop___upoly_subtract_x_0_ir
+        i inserted result input q
+      (if !out.2.1 then
+        (out.2.2.push (UMonomial.mk (1 : Int32),
+          Zp.ofInt ((q - (1 : UInt64)).toInt) q)).toList
+      else out.2.2.toList) =
+        result.toList ++ subtractXTerms q (input.toList.drop i))
+    ?_ ?_ ?_ i false result input q rfl
+  · intro i inserted result input q hi term hbefore ih hins hs hdegree
+    subst inserted
+    have hdrop : input.toList.drop i = term :: input.toList.drop (i + 1) := by
+      simpa [term] using drop_eq_getElem_cons input i hi
+    have hcurLt : term.1.deg < 1 := by
+      simp at hbefore
+      convert hbefore using 1 <;> norm_num
+    have hcurBound := hdegree term (by rw [hdrop]; simp)
+    have hnotlinear : term.1.deg.toUInt32.toInt32 ≠ (1 : Int32) := by
+      intro heq
+      have : term.1.deg = 1 :=
+        (int32_ofNat_eq_one_iff term.1.deg hcurBound).mp (by
+          simpa [Int32.ofNat, Nat.toUInt32] using heq)
+      omega
+    have hnotlinearInput :
+        (input[i]!.1.deg.toUInt32.toInt32 == (1 : Int32)) ≠ true := by
+      simpa [term] using hnotlinear
+    have hsTail := pairwise_drop_tail input i hi hs
+    have hdegreeTail : ∀ x ∈ input.toList.drop (i + 1),
+        x.1.deg < 2 ^ 31 := by
+      intro x hx
+      exact hdegree x (by rw [hdrop]; exact List.mem_cons_of_mem _ hx)
+    have hnoTail := no_generated_linear_in_tail_of_current_le_one input i hi
+      hs (by omega : term.1.deg ≤ 1) hdegreeTail
+    let minusX := (UMonomial.mk (1 : Int32),
+      Zp.ofInt ((q - (1 : UInt64)).toInt) q)
+    let result' := (result.push minusX).push term
+    have hpost := strict_subtract_x_loop_after_insert_toList q (i + 1)
+      result' input hnoTail
+    dsimp only at hpost
+    simp only [result', minusX, term] at hpost
+    have hdec : input.size - (i + 1) < input.size - i := by omega
+    rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+    simp only [hi, ↓reduceIte, hbefore, term]
+    rw [if_neg hnotlinearInput]
+    simp only [hdec, dif_pos]
+    simp only [hpost.1, Bool.not_true, Bool.false_eq_true, ↓reduceIte,
+      hpost.2, hdrop, subtractXTerms]
+    have hhigh : ¬1 < term.1.deg := by omega
+    have hlinear : ¬term.1.deg = 1 := by omega
+    rw [if_neg hhigh, if_neg hlinear]
+    simp [result', minusX, Array.toList_push, List.append_assoc]
+    rfl
+  · intro i inserted result input q hi term hbefore ih hins hs hdegree
+    subst inserted
+    have hdrop : input.toList.drop i = term :: input.toList.drop (i + 1) := by
+      simpa [term] using drop_eq_getElem_cons input i hi
+    have hsTail := pairwise_drop_tail input i hi hs
+    have hdegreeTail : ∀ x ∈ input.toList.drop (i + 1),
+        x.1.deg < 2 ^ 31 := by
+      intro x hx
+      exact hdegree x (by rw [hdrop]; exact List.mem_cons_of_mem _ hx)
+    have hdec : input.size - (i + 1) < input.size - i := by omega
+    by_cases hlinear : term.1.deg.toUInt32.toInt32 = (1 : Int32)
+    · have hlinearInput :
+          (input[i]!.1.deg.toUInt32.toInt32 == (1 : Int32)) = true := by
+        simpa [term] using hlinear
+      have hcur : term.1.deg = 1 :=
+        (int32_ofNat_eq_one_iff term.1.deg
+          (hdegree term (by rw [hdrop]; simp))).mp (by
+            simpa [Int32.ofNat, Nat.toUInt32] using hlinear)
+      have hnoTail := no_generated_linear_in_tail_of_current_le_one input i hi
+        hs (by omega : term.1.deg ≤ 1) hdegreeTail
+      let c' := term.2 - Generated.StrictDDF.__make_zp_ir (1 : Int64) q
+      let nextResult := if c'.val = 0 then result
+        else result.push (UMonomial.mk (1 : Int32), c')
+      have hpost := strict_subtract_x_loop_after_insert_toList q (i + 1)
+        nextResult input hnoTail
+      dsimp only at hpost
+      rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+      simp only [hi, ↓reduceIte, hbefore, term]
+      simp only [Bool.false_eq_true, ↓reduceIte]
+      rw [if_pos hlinearInput]
+      simp only [hdec, dif_pos]
+      by_cases hz : c'.val = 0
+      · have hzraw :
+            (input[i]!.2 - Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val =
+              (0 : Int64).toUInt64 := by
+          norm_num
+          simpa [c', term] using hz
+        simp [hzraw]
+        have hnext : nextResult = result := by simp [nextResult, hz]
+        rw [hnext] at hpost
+        simp only [hpost.1, Bool.not_true, Bool.false_eq_true, ↓reduceIte,
+          hpost.2, hnext, hdrop, subtractXTerms]
+        rw [if_neg (by omega : ¬1 < term.1.deg), if_pos hcur]
+        simp [c', hz]
+      · have hzraw :
+            (input[i]!.2 - Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val ≠
+              (0 : Int64).toUInt64 := by
+          norm_num
+          simpa [c', term] using hz
+        have hzrawGenerated :
+            (input[i]!.2 - Generated.StrictDDF.__make_zp_ir
+              ((1 : Int32).toInt64) q).val ≠
+                ((0 : Int32).toInt64).toUInt64 := by
+          norm_num
+          exact hzraw
+        simp only [bne_iff_ne, ne_eq, ite_not, hzrawGenerated,
+          ↓reduceIte]
+        have hnext : nextResult = result.push
+            (UMonomial.mk (1 : Int32), c') := by simp [nextResult, hz]
+        rw [hnext] at hpost
+        norm_num at hpost ⊢
+        rw [hdrop, subtractXTerms]
+        rw [if_neg (by omega : ¬1 < term.1.deg), if_pos hcur]
+        rw [hpost.1]
+        simp only [Bool.true_eq_false, ↓reduceIte]
+        have hzterm :
+            (term.2 - Generated.StrictDDF.__make_zp_ir (1 : Int64) q).val ≠ 0 := by
+          simpa [c'] using hz
+        rw [if_neg hzterm]
+        simpa [term, c', Array.toList_push, List.append_assoc] using hpost.2
+    · have hlinearInput :
+          (input[i]!.1.deg.toUInt32.toInt32 == (1 : Int32)) ≠ true := by
+        simpa [term] using hlinear
+      have hcurNe : term.1.deg ≠ 1 := by
+        intro heq
+        apply hlinear
+        simpa [heq]
+      have hnotLow : ¬term.1.deg < 1 := by
+        intro hlow
+        apply hbefore
+        simp only [Bool.not_false, Bool.true_and]
+        apply decide_eq_true
+        convert hlow using 1 <;> norm_num
+      have hhigh : 1 < term.1.deg := by omega
+      have hrec := ih (i + 1) false (result.push term) input q hdec rfl
+        hsTail hdegreeTail
+      rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+      simp only [hi, ↓reduceIte, hbefore, term]
+      simp only [Bool.false_eq_true, ↓reduceIte]
+      rw [if_neg hlinearInput]
+      simp only [hdec, dif_pos]
+      rw [hrec, hdrop]
+      simp [subtractXTerms, hhigh, Array.toList_push, List.append_assoc]
+  · intro i inserted result input q hi ih hins hs hdegree
+    subst inserted
+    rw [Generated.StrictDDF._loop___upoly_subtract_x_0_ir.eq_1]
+    simp only [hi, ↓reduceIte, Bool.not_false, ↓reduceIte]
+    have hdropEmpty : input.toList.drop i = [] := by
+      apply List.drop_eq_nil_of_le
+      simpa using (by omega : input.size ≤ i)
+    simp [hdropEmpty, subtractXTerms, Array.toList_push]
+
 private theorem zp_toZMod_sub (h2p : 2 * p ≤ UInt64.size) (a b : Zp)
     (ha_prime : a.prime.toNat = p) (hb_prime : b.prime.toNat = p)
     (ha_red : a.val.toNat < p) (hb_red : b.val.toNat < p) :
@@ -594,22 +903,6 @@ theorem strict_subtract_x_singleton_constant (m : UMonomial) (c : Zp)
   rw [Polynomial.monomial_one_one_eq_X]
   ring
 
-/-- Array indexing used by the generated range loop agrees with the head of
-the corresponding unprocessed `List.drop`. -/
-private lemma drop_eq_getElem_cons (input : SparsePolyZp) (i : Nat)
-    (hi : i < input.size) :
-    input.toList.drop i = input[i]! :: input.toList.drop (i + 1) := by
-  have hlen : i < input.toList.length := by simpa using hi
-  have hdrop := drop_eq_get_cons_general input.toList i hlen
-  have hget : input.toList.get ⟨i, hlen⟩ = input[i]! := by
-    calc
-      input.toList.get ⟨i, hlen⟩ = input[i] := by simp
-      _ = input[i]! := by
-        rw [getElem!_def, getElem?_def]
-        simp [hi]
-  rw [hget] at hdrop
-  exact hdrop
-
 private lemma getElem_mem_drop (input : SparsePolyZp) (i : Nat)
     (hi : i < input.size) : input[i]! ∈ input.toList.drop i := by
   rw [drop_eq_getElem_cons input i hi]
@@ -643,73 +936,6 @@ private lemma pairwise_degrees_of_sortedListB :
       have hs' := (SparsePolyZp.sortedListB_iff a rest).mp hs
       rw [List.pairwise_cons]
       exact ⟨hs'.1, ih hs'.2⟩
-
-private lemma pairwise_drop_tail (input : SparsePolyZp) (i : Nat)
-    (hi : i < input.size)
-    (hs : (input.toList.drop i).Pairwise
-      (fun a b => b.1.deg < a.1.deg)) :
-    (input.toList.drop (i + 1)).Pairwise
-      (fun a b => b.1.deg < a.1.deg) := by
-  rw [drop_eq_getElem_cons input i hi, List.pairwise_cons] at hs
-  exact hs.2
-
-private lemma tail_degree_lt_current (input : SparsePolyZp) (i : Nat)
-    (hi : i < input.size)
-    (hs : (input.toList.drop i).Pairwise
-      (fun a b => b.1.deg < a.1.deg)) :
-    ∀ x ∈ input.toList.drop (i + 1), x.1.deg < input[i]!.1.deg := by
-  rw [drop_eq_getElem_cons input i hi, List.pairwise_cons] at hs
-  exact hs.1
-
-/-- In a strictly descending sparse suffix, once the current degree is at
-most one, no later term can be linear.  This is the ordering fact that makes
-the C++ `inserted` flag permanent after either insertion branch. -/
-private lemma no_linear_degree_in_tail_of_current_le_one
-    (input : SparsePolyZp) (i : Nat) (hi : i < input.size)
-    (hs : (input.toList.drop i).Pairwise
-      (fun a b => b.1.deg < a.1.deg))
-    (hcur : input[i]!.1.deg ≤ 1) :
-    ∀ x ∈ input.toList.drop (i + 1), x.1.deg ≠ 1 := by
-  intro x hx hlinear
-  have hlt := tail_degree_lt_current input i hi hs x hx
-  omega
-
-/-- Under the signed-degree precondition used by the C++ interface, the
-generated narrowing conversion recognizes degree one exactly. -/
-private lemma int32_ofNat_eq_one_iff (d : Nat) (hd : d < 2 ^ 31) :
-    Int32.ofNat d = (1 : Int32) ↔ d = 1 := by
-  constructor
-  · intro h
-    have hval := congrArg (fun x : Int32 => x.toUInt32.toNat) h
-    change (UInt32.ofNat d).toNat = (1 : Int32).toUInt32.toNat at hval
-    have hd32 : d < 2 ^ 32 := lt_trans hd (by norm_num)
-    have hone : (1 : Int32).toUInt32.toNat = 1 := by decide
-    rw [hone] at hval
-    change (BitVec.ofNat 32 d).toNat = 1 at hval
-    rw [BitVec.toNat_ofNat] at hval
-    norm_num at hd32
-    rw [Nat.mod_eq_of_lt hd32] at hval
-    exact hval
-  · rintro rfl
-    rfl
-
-/-- Version of the preceding ordering fact in the exact narrowed `Int32`
-test used by the generated C++ loop. -/
-private lemma no_generated_linear_in_tail_of_current_le_one
-    (input : SparsePolyZp) (i : Nat) (hi : i < input.size)
-    (hs : (input.toList.drop i).Pairwise
-      (fun a b => b.1.deg < a.1.deg))
-    (hcur : input[i]!.1.deg ≤ 1)
-    (hdeg : ∀ x ∈ input.toList.drop (i + 1), x.1.deg < 2 ^ 31) :
-    ∀ x ∈ input.toList.drop (i + 1),
-      x.1.deg.toUInt32.toInt32 ≠ (1 : Int32) := by
-  intro x hx hlinear
-  have hlinear' : Int32.ofNat x.1.deg = (1 : Int32) := by
-    simpa [Int32.ofNat, Nat.toUInt32] using hlinear
-  have hxdeg : x.1.deg = 1 :=
-    (int32_ofNat_eq_one_iff x.1.deg (hdeg x hx)).mp hlinear'
-  exact (no_linear_degree_in_tail_of_current_le_one input i hi hs hcur x hx)
-    hxdeg
 
 private noncomputable def pendingX (inserted : Bool) : Polynomial (ZMod p) :=
   if inserted then 0 else X

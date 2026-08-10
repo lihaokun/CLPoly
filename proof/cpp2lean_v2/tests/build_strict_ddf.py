@@ -75,46 +75,68 @@ structure DDFRawOps where
     Invariant (d + 1) fStar hPow result p ∧
       ddfRawMeasure fStar (d + 1) < ddfRawMeasure fStar d
 
-def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
-    (fStar h : SparsePolyZp)
-    (result : Array (SparsePolyZp × UInt64)) (p : UInt64)
-    (hvalid : ops.Invariant d fStar h result p) :
+structure DDFRawState (ops : DDFRawOps) (p : UInt64) where
+  d : UInt64
+  fStar : SparsePolyZp
+  h : SparsePolyZp
+  result : Array (SparsePolyZp × UInt64)
+  valid : ops.Invariant d fStar h result p
+
+def ddfRawStateMeasure {ops : DDFRawOps} {p : UInt64}
+    (state : DDFRawState ops p) : Nat :=
+  ddfRawMeasure state.fStar state.d
+
+/-- Pack the dependent invariant with its runtime state.  This keeps match
+equations out of the recursive function's type while preserving the same
+well-founded proof and exactly the same C++ control flow. -/
+def _loop___ddf_Zp_raw_ir_state (ops : DDFRawOps) (p : UInt64)
+    (state : DDFRawState ops p) :
     RawExec (SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
-  if hterm : get_deg fStar < (2 * d).toInt64 then
-    .ok (fStar, result)
+  if hterm : get_deg state.fStar < (2 * state.d).toInt64 then
+    .ok (state.fStar, state.result)
   else
-    match hpow : ops.powmod h p.toNat fStar with
+    match hpow : ops.powmod state.h p.toNat state.fStar with
     | .error fault => .error fault
     | .ok hPow =>
       let hMinusX := __upoly_subtract_x_ir hPow p
-      match hgcd : ops.gcd hMinusX fStar with
+      match hgcd : ops.gcd hMinusX state.fStar with
       | .error fault => .error fault
       | .ok gdRaw =>
         if hsplit : !gdRaw.isEmpty && get_deg gdRaw > 0 then
           match hmonic : ops.makeMonic gdRaw with
           | .error fault => .error fault
           | .ok gd =>
-            match hdiv : ops.exactDiv fStar gd with
+            match hdiv : ops.exactDiv state.fStar gd with
             | .error fault => .error fault
             | .ok quotient =>
               let fNext := SparsePolyZp.normalization quotient
               match hmod : ops.mod hPow fNext with
               | .error fault => .error fault
               | .ok hNext =>
-                have hstep := ops.splitStep d fStar h result p hPow gdRaw gd
-                  quotient hNext hvalid hterm hpow hgcd hsplit hmonic hdiv hmod
-                _loop___ddf_Zp_raw_ir ops (d + 1) fNext hNext
-                  (result.push (gd, d)) p hstep.1
+                have hstep := ops.splitStep state.d state.fStar state.h
+                  state.result p hPow gdRaw gd quotient hNext state.valid hterm
+                  hpow hgcd hsplit hmonic hdiv hmod
+                _loop___ddf_Zp_raw_ir_state ops p
+                  ⟨state.d + 1, fNext, hNext,
+                    state.result.push (gd, state.d), hstep.1⟩
         else
           have hsplitFalse :
               (!gdRaw.isEmpty && get_deg gdRaw > 0) = false := by
             cases hb : (!gdRaw.isEmpty && get_deg gdRaw > 0) <;> simp_all
-          have hstep := ops.noSplitStep d fStar h result p hPow gdRaw hvalid
-            hterm hpow hgcd hsplitFalse
-          _loop___ddf_Zp_raw_ir ops (d + 1) fStar hPow result p hstep.1
-termination_by ddfRawMeasure fStar d
+          have hstep := ops.noSplitStep state.d state.fStar state.h
+            state.result p hPow gdRaw state.valid hterm hpow hgcd hsplitFalse
+          _loop___ddf_Zp_raw_ir_state ops p
+            ⟨state.d + 1, state.fStar, hPow, state.result, hstep.1⟩
+termination_by ddfRawStateMeasure state
 decreasing_by
   all_goals exact hstep.2
+
+def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
+    (fStar h : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64)) (p : UInt64)
+    (hvalid : ops.Invariant d fStar h result p) :
+    RawExec (SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
+  _loop___ddf_Zp_raw_ir_state ops p ⟨d, fStar, h, result, hvalid⟩
 
 def __ddf_Zp_raw_ir (ops : DDFRawOps) (f : SparsePolyZp)
     (hinitial : ¬f.isEmpty →

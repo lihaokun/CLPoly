@@ -17557,6 +17557,104 @@ theorem pairVecDivVHCEmit_preserves_node_invariants
     rcases hrun with ⟨rfl, rfl, rfl⟩
     exact ⟨hbelow, hdenotes, hfixed, hready⟩
 
+/-- One successful generated outer iteration leaves every remaining concrete
+source strictly below the frontier it selected.  This combines the canonical
+dividend cursor advance with the real equal-degree heap consumes, deferred
+`lin` tails, reset activation, and final reinsertion. -/
+theorem pairVecDivVHCOuterIteration_frontierBelow
+    (this : DenseUPolyZp) (p activeLimit dividendIndex : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (result : PairVecDivVHCIterationResult) (owners : Nat → Finset Nat)
+    (hdivisor : 0 < divisor.size)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hquotientCanonical : SparsePolyZp.Canonical p quotient)
+    (hdividendCanonical : SparsePolyZp.Canonical p dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical p divisor)
+    (hactiveBelow : PairVecDivVHCAllActiveNodesBelow activeLimit nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hcovered : PairVecDivVHCNodesCovered heap owners #[] resetH nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hrun : pairVecDivVHCOuterIteration this dividendIndex heap nodes quotient
+      dividend divisor resetH = .ok result) :
+    PairVecDivVHCFrontierBelow frontier.degree result.dividendIndex dividend
+      result.heap result.nodes := by
+  rcases pairVecDivVHCOuterIteration_components this dividendIndex heap nodes
+      quotient dividend divisor resetH frontier result hdivisor hselect hrun with
+    ⟨consumed, quotient', activated, resetH', reinserted, hconsume, hemit,
+      hreinsert, hresult⟩
+  have hmax : ∀ (slot head : Nat) (mono : UMonomial),
+      heap[slot]? = some head →
+      pairVecDivVHCMono head nodes = .ok mono →
+      mono.deg ≤ frontier.degree := by
+    intro slot head mono hget hmono
+    have hslot : slot < heap.size := by
+      by_contra hnot
+      rw [Array.getElem?_eq_none (by omega)] at hget
+      contradiction
+    have hhead : heap[slot] = head := by
+      rw [Array.getElem?_eq_getElem hslot] at hget
+      exact Option.some.inj hget
+    exact pairVecDivVHCSelectFrontier_heap_slot_degree_le dividendIndex
+      dividend heap nodes frontier
+      (hownership.heapPointersValid heap owners nodes) hordered slot hslot mono
+      (by simpa [hhead] using hmono) hselect
+  have hheadsBelow :=
+    pairVecDivVHCConsumeEqualDegree_heap_heads_below this frontier.degree heap
+      frontier.coefficient nodes #[] resetH quotient divisor consumed owners
+      hownership hordered hmax hconsume
+  have haway0 : ∀ (slot head : Nat), heap[slot]? = some head →
+      Disjoint (#[] : Array Nat).toList.toFinset (owners head) ∧
+        head ∉ (#[] : Array Nat).toList.toFinset := by
+    simp
+  have hlinReady0 : PairVecDivVHCLinReady (#[] : Array Nat) nodes := by
+    simp [PairVecDivVHCLinReady]
+  have hlinBelow0 : PairVecDivVHCLinBelow frontier.degree
+      (#[] : Array Nat) nodes := PairVecDivVHCLinBelow.empty _ _
+  have hconsumedLinBelow :=
+    pairVecDivVHCConsumeEqualDegree_preserves_linBelow this p frontier.degree
+      heap frontier.coefficient nodes #[] resetH quotient divisor consumed
+      owners hownership hhomogeneous haway0 hlinReady0 hlinBelow0 hdenotes
+      hquotientCanonical hconsume
+  have hconsumedCovered :=
+    pairVecDivVHCConsumeEqualDegree_preserves_nodesCovered this frontier.degree
+      heap frontier.coefficient nodes #[] resetH quotient divisor consumed
+      owners hownership hcovered hconsume
+  have hconsumedHomogeneous :=
+    pairVecDivVHCConsumeEqualDegree_preserves_heapChainsHomogeneous this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed owners hownership hhomogeneous hconsume
+  have hconsumedNodes :=
+    pairVecDivVHCConsumeEqualDegree_preserves_node_invariants this p activeLimit
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed owners hquotientCanonical hactiveBelow hdenotes hfixed
+      hready hownership hconsume
+  have hconsumedBelow := pairVecDivVHCAllActiveNodesBelow_of_covered
+    frontier.degree consumed.resetH quotient.size consumed.heap consumed.nodes
+    consumed.lin owners hconsumedCovered.1 hconsumedCovered.2
+    hconsumedHomogeneous.2 hconsumedNodes.2.2.2 hconsumedLinBelow hheadsBelow
+  have hemitted := pairVecDivVHCEmit_preserves_node_invariants this p
+    frontier.degree frontier consumed quotient divisor quotient' activated
+    resetH' hdivisorCanonical hdivisor (Nat.le_refl _) hconsumedBelow
+    hconsumedNodes.2.1 hconsumedNodes.2.2.1 hconsumedNodes.2.2.2 hemit
+  have hreinsertedBelow :=
+    pairVecDivVHCReinsertLin_preserves_allActiveNodesBelow frontier.degree
+      activated.heap activated.nodes consumed.lin reinserted hemitted.1 hreinsert
+  rw [hresult]
+  refine ⟨?_, ?_⟩
+  · exact pairVecDivVHCSelectFrontier_remaining_dividend_below p dividend
+      heap nodes hdividendCanonical dividendIndex frontier hselect
+  · intro slot nodeIndex node mono hheap hnode hmono
+    exact hreinsertedBelow nodeIndex node mono hnode hmono
+
 theorem pairVecDivVHCOuterIteration_preserves_cursorPrefixAbove
     (this : DenseUPolyZp) (p activeLimit degreeLimit dividendIndex : Nat)
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)

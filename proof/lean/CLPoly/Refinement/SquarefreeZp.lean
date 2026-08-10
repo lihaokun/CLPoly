@@ -779,6 +779,25 @@ theorem pairVecDivVHCActivate_get (nodeIndex : Nat)
     next hq => contradiction
   next hn => contradiction
 
+theorem pairVecDivVHCActivate_succeeds
+    (nodeIndex : Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
+    (hget : nodes[nodeIndex]? = some node)
+    (hq : node.quotientIndex < quotient.size)
+    (hd : node.divisorIndex < divisor.size) :
+    ∃ nodes', pairVecDivVHCActivate nodeIndex nodes quotient divisor =
+      .ok nodes' := by
+  have hn : nodeIndex < nodes.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  have hnodeEq : nodes[nodeIndex] = node := by
+    rw [Array.getElem?_eq_getElem hn] at hget
+    exact Option.some.inj hget
+  unfold pairVecDivVHCActivate
+  simp only [hn, ↓reduceDIte, hnodeEq, hq, hd]
+  exact ⟨_, rfl⟩
+
 /-- Checked write of the source `VHC::next` pointer field. -/
 def pairVecDivVHCSetNext (nodeIndex : Nat) (next : Option Nat)
     (nodes : Array PairVecDivVHCNode) :
@@ -787,6 +806,14 @@ def pairVecDivVHCSetNext (nodeIndex : Nat) (next : Option Nat)
     .ok (nodes.set nodeIndex { nodes[nodeIndex] with next := next })
   else
     .error .assertionFailure
+
+theorem pairVecDivVHCSetNext_succeeds
+    (nodeIndex : Nat) (next : Option Nat)
+    (nodes : Array PairVecDivVHCNode) (hn : nodeIndex < nodes.size) :
+    ∃ nodes', pairVecDivVHCSetNext nodeIndex next nodes = .ok nodes' := by
+  unfold pairVecDivVHCSetNext
+  simp only [hn, ↓reduceDIte]
+  exact ⟨_, rfl⟩
 
 theorem pairVecDivVHCSetNext_nodes_size
     (nodeIndex : Nat) (next : Option Nat)
@@ -862,6 +889,31 @@ def pairVecDivVHCBubble (i stop newNode : Nat) (heap : Array Nat) :
 termination_by i
 decreasing_by
   have hipos : 0 < i := by omega
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
+theorem pairVecDivVHCBubble_to_root_succeeds
+    (i newNode : Nat) (heap : Array Nat) (hi : i < heap.size) :
+    ∃ heap', pairVecDivVHCBubble i 0 newNode heap = .ok heap' := by
+  rw [pairVecDivVHCBubble]
+  simp only [hi, Nat.zero_le, ↓reduceDIte]
+  by_cases heq : i = 0
+  · simp only [heq, ↓reduceIte]
+    exact ⟨_, rfl⟩
+  · simp only [heq, ↓reduceIte]
+    have hpos : 0 < i := Nat.pos_of_ne_zero heq
+    have hparentLt : pairVecDivVHCParent i < i := by
+      unfold pairVecDivVHCParent
+      have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+      omega
+    have hp : pairVecDivVHCParent i < heap.size := Nat.lt_trans hparentLt hi
+    simp only [hp, ↓reduceDIte]
+    exact pairVecDivVHCBubble_to_root_succeeds (pairVecDivVHCParent i)
+      newNode (heap.set i heap[pairVecDivVHCParent i])
+      (by simpa only [Array.size_set] using hp)
+termination_by i
+decreasing_by
   unfold pairVecDivVHCParent
   have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
   omega

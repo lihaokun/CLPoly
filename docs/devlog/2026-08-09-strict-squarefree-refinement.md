@@ -1360,3 +1360,10 @@ every generated range-for and recursive loop used by SQF.
   bound、node denotation、固定 divisor 行、`ResetReady`、`LinReady`、
   `LinBelow` 与精确 selector。extract subtype 携带的 size 等式提供严格下降，
   没有 fuel、成功 trace 假设或规格结果参与执行构造。
+- emit/reinsert 所需的基础 mutation totality 已开始闭合。
+  `pairVecDivVHCActivate_succeeds` 从具体 reset-row 记录及 quotient/divisor
+  cursor bounds 构造真实 activation；`pairVecDivVHCSetNext_succeeds` 从节点
+  数组界构造真实 next 写回；`pairVecDivVHCBubble_to_root_succeeds` 沿生成
+  bubble 相同的 parent 严格下降递归，证明 root-directed insertion shift 不会
+  fault。下一步闭合 `FindAnchor` 与 trace-directed `BubbleBelow`，再组合完整
+  `VHCInsert`、ActivateReset 和 ReinsertLin。

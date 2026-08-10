@@ -21341,5 +21341,100 @@ theorem scaleMultiplicityLoop_toPolyList_sqfZp (p : Nat)
   rw [scaleMultiplicityLoop_toPolyList p source prime hprime hnowrap,
     hsemantic]
 
+set_option maxHeartbeats 800000 in
+/-- Complete semantic composition of the positive-degree derivative-zero
+branch.  Its only recursive premise is for the concrete, strictly smaller
+state prepared by the actual p-th-root and make-monic executions. -/
+theorem strictSquarefreeZpIR_derivativeZero_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
+    (hbound : sparseDenseLength source ≤ 2 ^ 63)
+    (hderivative :
+      Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source) = 0)
+    (hrecursive : ∀ root,
+      SparsePolyZp.Canonical this._p.toNat root →
+      SparsePolyZp.toPoly this._p.toNat root =
+        Polynomial.contract this._p.toNat
+          (SparsePolyZp.toPoly this._p.toNat source) →
+      (SparsePolyZp.toPoly this._p.toNat root).Monic →
+      sparseDenseLength root ≤ 2 ^ 63 →
+      Generated.squarefreeMeasure root <
+        Generated.squarefreeMeasure source →
+      ∃ factors,
+        strictSquarefreeZpIR this hcfg physical root = .ok factors ∧
+        toPolyList factors this._p.toNat =
+          sqfZp (SparsePolyZp.toPoly this._p.toNat root)) :
+    ∃ factors,
+      strictSquarefreeZpIR this hcfg physical source = .ok factors ∧
+      toPolyList factors this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+  rcases sqfDerivativeZeroIR_prepares_recursive_call this hcfg source
+      hcanonical hmonic hnonempty hpositive hbound hderivative with
+    ⟨root, hrootRun, hrootCanonical, hrootSemantic, hrootMonic,
+      hmonicRun, hmeasureLt, hrootBound, hprime⟩
+  rcases hrecursive root hrootCanonical hrootSemantic hrootMonic hrootBound
+      hmeasureLt with ⟨subfactors, hsubRun, hsubSemantic⟩
+  have hdegree : ∀ term ∈ source.toList, term.1.deg < UInt64.size := by
+    intro term hterm
+    obtain ⟨index, hindex, htermEq⟩ := List.mem_iff_getElem.mp hterm
+    have hsourceIndex : index < source.size := by simpa using hindex
+    have harrayEq : source[index] = term := by
+      rw [← Array.getElem_toList hsourceIndex]
+      exact htermEq
+    rw [← harrayEq]
+    have hlt63 := Nat.lt_of_lt_of_le
+      (sparse_degree_lt_denseLength this._p.toNat source hcanonical index
+        hsourceIndex) hbound
+    exact lt_trans hlt63 (by native_decide)
+  have hderivativeEmpty : derivativeIR this source = #[] :=
+    (derivativeIR_eq_empty_iff this source hcfg hcanonical hdegree).mpr
+      hderivative
+  have hsourceNotEmpty : source.isEmpty = false := by
+    have hsourceNe : source ≠ #[] := by
+      intro hempty
+      subst source
+      simp at hnonempty
+    simpa [Array.isEmpty_iff, hsourceNe]
+  have hscaledDegree :
+      (SparsePolyZp.toPoly this._p.toNat root).natDegree * this._p.toNat <
+        UInt64.size := by
+    have hp := (Fact.out : Nat.Prime this._p.toNat)
+    have hexpand := Polynomial.expand_contract this._p.toNat hderivative
+      hp.ne_zero
+    have heq : (SparsePolyZp.toPoly this._p.toNat root).natDegree *
+        this._p.toNat =
+        (SparsePolyZp.toPoly this._p.toNat source).natDegree := by
+      rw [hrootSemantic, ← Polynomial.natDegree_expand
+        (R := ZMod this._p.toNat) (p := this._p.toNat), hexpand]
+    rw [heq]
+    have hsourceMeasure := sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat source hcanonical hnonempty
+    rw [hsourceMeasure.1, hsourceMeasure.2] at hbound
+    exact lt_trans (by omega :
+      (SparsePolyZp.toPoly this._p.toNat source).natDegree < 2 ^ 63)
+      (by native_decide)
+  let factors := scaleMultiplicityLoop 0 subfactors #[] source[0]!.2.prime
+  refine ⟨factors, ?_, ?_⟩
+  · simp [strictSquarefreeZpIR, hsourceNotEmpty, hderivativeEmpty, hrootRun,
+      hmonicRun, hmeasureLt, hsubRun, factors]
+  · have hscaled := scaleMultiplicityLoop_toPolyList_sqfZp
+      this._p.toNat subfactors source[0]!.2.prime
+      (SparsePolyZp.toPoly this._p.toNat root)
+      (congrArg UInt64.toNat hprime) hsubSemantic hscaledDegree
+    rw [show factors = scaleMultiplicityLoop 0 subfactors #[]
+        source[0]!.2.prime by rfl, hscaled]
+    have hsourceSqf : sqfZp (SparsePolyZp.toPoly this._p.toNat source) =
+        (sqfZp (Polynomial.contract this._p.toNat
+          (SparsePolyZp.toPoly this._p.toNat source))).map
+            (fun item => (item.1, item.2 * this._p.toNat)) := by
+      rw [sqfZp, dif_neg (Nat.ne_of_gt hpositive), dif_pos hderivative]
+    rw [hsourceSqf, ← hrootSemantic]
+
 end StrictSquarefreeZp
 end Refinement

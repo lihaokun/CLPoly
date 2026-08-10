@@ -541,6 +541,113 @@ theorem strictCandidateRun_charTwo_factor
   · rw [hfactorSemantic, normalize_dvd_iff]
     exact hgcdDivides
 
+/-- The generated odd-characteristic branch is exactly the previously
+certified strict powmod/subtract-one/GCD pipeline.  The only representation
+bridge is the equality between the source `Int` exponent converted by the raw
+operation record and the corresponding nonnegative `Nat` exponent. -/
+theorem strictCandidateRun_odd_factor
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64) (r : SparsePolyZp)
+    (hinvariant : EDFEntryInvariant this f d)
+    (hrCanonical : SparsePolyZp.Canonical this._p.toNat r)
+    (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size)
+    (hodd : (f[0]!.2.prime == 2) = false) :
+    ∃ factor,
+      Generated.StrictEDF.candidateRun
+          (strictEDFRawOps engine this providers) f d r hbudget = .ok factor ∧
+      SparsePolyZp.Canonical this._p.toNat factor ∧
+      (SparsePolyZp.toPoly this._p.toNat factor).Monic ∧
+      SparsePolyZp.toPoly this._p.toNat factor ∣
+        SparsePolyZp.toPoly this._p.toNat f := by
+  have hfNonempty := hinvariant.nonempty
+  have hprime : f[0]!.2.prime = this._p :=
+    hinvariant.primeMatches hfNonempty
+  have honeLePow : 1 ≤ this._p.toNat ^ d.toNat :=
+    Nat.one_le_pow d.toNat this._p.toNat
+      ((Fact.out : Nat.Prime this._p.toNat).pos)
+  have hexponentInt :
+      (((this._p.toNat : Int) ^ d.toNat - 1) / 2) =
+        (((this._p.toNat ^ d.toNat - 1) / 2 : Nat) : Int) := by
+    rw [← Int.natCast_pow]
+    calc
+      ((this._p.toNat ^ d.toNat : Int) - 1) / 2 =
+          ((this._p.toNat ^ d.toNat - 1 : Nat) : Int) / 2 := by
+            rw [Int.ofNat_sub honeLePow]
+            norm_num
+      _ = (((this._p.toNat ^ d.toNat - 1) / 2 : Nat) : Int) :=
+        (Int.natCast_ediv _ _).symm
+  have hexponentToNat :
+      ((((f[0]!.2.prime.toNat : Int) ^ d.toNat - 1) / 2).toNat) =
+        (f[0]!.2.prime.toNat ^ d.toNat - 1) / 2 := by
+    rw [hprime]
+    rw [hexponentInt]
+    exact Int.toNat_natCast _
+  rcases strictOddCandidateIR_factor this providers f d r
+      hinvariant.canonical hrCanonical hfNonempty hinvariant.monic
+      hinvariant.degreePositive with
+    ⟨factor, hrun, hfactorCanonical, hfactorMonic, hfactorDivides⟩
+  unfold strictOddCandidateIR at hrun
+  dsimp only at hrun
+  generalize hpowRun :
+      StrictDDF.strictPowmodIR this r
+          ((f[0]!.2.prime.toNat ^ d.toNat - 1) / 2) f providers.mul
+          (providers.mod f) = powRun at hrun
+  cases powRun with
+  | error fault =>
+      simp only [Bind.bind, Except.bind] at hrun
+      contradiction
+  | ok hpow =>
+      simp only [Bind.bind, Except.bind] at hrun
+      generalize hminusRun :
+          Generated.StrictEDF.__upoly_subtract_one_raw_ir hpow
+            f[0]!.2.prime = minusRun at hrun
+      cases minusRun with
+      | error fault =>
+          contradiction
+      | ok hminus =>
+          have hpowOps :
+              (strictEDFRawOps engine this providers).powmod r
+                  (((f[0]!.2.prime.toNat : Int) ^ d.toNat - 1) / 2) f =
+                .ok hpow := by
+            simpa [strictEDFRawOps, hexponentToNat] using hpowRun
+          have hgcdOps :
+              (strictEDFRawOps engine this providers).gcd hminus f =
+                .ok factor := by
+            simpa [strictEDFRawOps] using hrun
+          refine ⟨factor, ?_, hfactorCanonical, hfactorMonic,
+            hfactorDivides⟩
+          exact candidateRun_odd_run
+            (strictEDFRawOps engine this providers) f d r hpow hminus factor
+            hbudget hodd hpowOps hminusRun hgcdOps
+
+/-- Uniform correctness of the exact generated candidate execution.  The
+proof follows the source characteristic test and delegates to the two strict
+raw branches above. -/
+theorem strictCandidateRun_factor
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64) (r : SparsePolyZp)
+    (hinvariant : EDFEntryInvariant this f d)
+    (hrCanonical : SparsePolyZp.Canonical this._p.toNat r)
+    (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size) :
+    ∃ factor,
+      Generated.StrictEDF.candidateRun
+          (strictEDFRawOps engine this providers) f d r hbudget = .ok factor ∧
+      SparsePolyZp.Canonical this._p.toNat factor ∧
+      (SparsePolyZp.toPoly this._p.toNat factor).Monic ∧
+      SparsePolyZp.toPoly this._p.toNat factor ∣
+        SparsePolyZp.toPoly this._p.toNat f := by
+  cases hcharacteristic : (f[0]!.2.prime == 2) with
+  | false =>
+      exact strictCandidateRun_odd_factor engine this providers f d r
+        hinvariant hrCanonical hbudget hcharacteristic
+  | true =>
+      exact strictCandidateRun_charTwo_factor engine this providers f d r
+        hinvariant hrCanonical hbudget hcharacteristic
+
 end StrictEDF
 
 -- The public L1→L2 EDF theorem remains deliberately absent until the retry

@@ -410,6 +410,147 @@ theorem eraseLeading_of_divmodCoefficient_zero (m : Nat)
   rw [hrFull]
   simp [hcancel]
 
+/-- Every concrete exponent fits the signed degree range used by the C++
+long-division loop. -/
+def DegreesBound (f : SparsePolyZZ) : Prop :=
+  ∀ term ∈ f.toList, term.1.deg < 2 ^ 63
+
+/-- The first array term is a genuine maximum exponent, as required by the
+source sparse-polynomial representation. -/
+def HeadDominates (f : SparsePolyZZ) : Prop :=
+  ∀ term ∈ f.toList, term.1.deg ≤ f[0]!.1.deg
+
+private theorem degreesBound_pushNonzero (f : SparsePolyZZ)
+    (degree : Nat) (coefficient : Int) (hf : DegreesBound f)
+    (hdegree : degree < 2 ^ 63) :
+    DegreesBound (Generated.StrictHensel.pushNonzero f degree coefficient) := by
+  intro term hterm
+  by_cases hzero : coefficient = 0
+  · simp [Generated.StrictHensel.pushNonzero, hzero] at hterm
+    exact hf term (by simpa using hterm)
+  · simp [Generated.StrictHensel.pushNonzero, hzero] at hterm
+    rcases hterm with hterm | rfl
+    · exact hf term (by simpa using hterm)
+    · exact hdegree
+
+/-- Degree-range preservation for all six branches of the concrete merge.
+The assumptions describe exactly the two input suffix sources: raw remainder
+terms and shifted divisor terms. -/
+theorem divmodMergeLoop_degreesBound (r g : SparsePolyZZ)
+    (coefficient m : Int) (degreeShift : Nat)
+    (hr : DegreesBound r)
+    (hgShift : ∀ term ∈ g.toList,
+      term.1.deg + degreeShift < 2 ^ 63) :
+    ∀ (rIndex gIndex : Nat) (result : SparsePolyZZ),
+      DegreesBound result →
+      DegreesBound (Generated.StrictHensel.divmodMergeLoop r g coefficient m
+        degreeShift rIndex gIndex result) := by
+  intro rIndex gIndex result
+  refine Generated.StrictHensel.divmodMergeLoop.induct r g coefficient m
+    degreeShift
+    (motive := fun rIndex gIndex result => DegreesBound result →
+      DegreesBound (Generated.StrictHensel.divmodMergeLoop r g coefficient m
+        degreeShift rIndex gIndex result)) ?_ ?_ ?_ ?_ ?_ ?_
+    rIndex gIndex result
+  · intro ri gi acc hmore hgDone
+    dsimp only
+    intro ih hacc
+    have hri : ri < r.size := by omega
+    have hrmem : r[ri]! ∈ r.toList := by
+      rw [getElem!_pos r ri hri]
+      exact Array.getElem_mem_toList hri
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp [hmore, hgDone]
+    exact ih (degreesBound_pushNonzero acc r[ri]!.1.deg _ hacc
+      (hr r[ri]! hrmem))
+  · intro ri gi acc hmore hgMore hrDone
+    dsimp only
+    intro ih hacc
+    have hgi : gi < g.size := by omega
+    have hgmem : g[gi]! ∈ g.toList := by
+      rw [getElem!_pos g gi hgi]
+      exact Array.getElem_mem_toList hgi
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp [hmore, hgMore, hrDone]
+    simp only [Int.emod_emod] at ih
+    exact ih (degreesBound_pushNonzero acc
+      (g[gi]!.1.deg + degreeShift) _ hacc (hgShift g[gi]! hgmem))
+  · intro ri gi acc hmore hgMore hrMore
+    dsimp only
+    intro hdegree ih hacc
+    have hri : ri < r.size := by omega
+    have hrmem : r[ri]! ∈ r.toList := by
+      rw [getElem!_pos r ri hri]
+      exact Array.getElem_mem_toList hri
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp [hmore, hgMore, hrMore, hdegree]
+    exact ih (degreesBound_pushNonzero acc r[ri]!.1.deg _ hacc
+      (hr r[ri]! hrmem))
+  · intro ri gi acc hmore hgMore hrMore
+    dsimp only
+    intro hnotGreater hless ih hacc
+    have hgi : gi < g.size := by omega
+    have hgmem : g[gi]! ∈ g.toList := by
+      rw [getElem!_pos g gi hgi]
+      exact Array.getElem_mem_toList hgi
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp [hmore, hgMore, hrMore, hnotGreater, hless]
+    simp only [Int.emod_emod] at ih
+    exact ih (degreesBound_pushNonzero acc
+      (g[gi]!.1.deg + degreeShift) _ hacc (hgShift g[gi]! hgmem))
+  · intro ri gi acc hmore hgMore hrMore
+    dsimp only
+    intro hnotGreater hnotLess ih hacc
+    have hri : ri < r.size := by omega
+    have hrmem : r[ri]! ∈ r.toList := by
+      rw [getElem!_pos r ri hri]
+      exact Array.getElem_mem_toList hri
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp [hmore, hgMore, hrMore, hnotGreater, hnotLess]
+    exact ih (degreesBound_pushNonzero acc r[ri]!.1.deg _ hacc
+      (hr r[ri]! hrmem))
+  · intro ri gi acc hdone hacc
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simpa [hdone] using hacc
+
+theorem divmodRemainder_degreesBound (r g : SparsePolyZZ)
+    (coefficient m : Int) (hr : 0 < r.size) (hg : 0 < g.size)
+    (hrBound : DegreesBound r) (hgHead : HeadDominates g)
+    (hrDegree : r[0]!.1.deg < 2 ^ 63)
+    (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hactive : get_deg r ≥ get_deg g) :
+    DegreesBound (Generated.StrictHensel.divmodRemainder r g coefficient m
+      (get_deg r - get_deg g).toNatClampNeg) := by
+  have hdegree := get_deg_sub_toNatClampNeg_eq_shift r g hr hg hrDegree
+    hgDegree hactive
+  have hgShift : ∀ term ∈ g.toList,
+      term.1.deg + (get_deg r - get_deg g).toNatClampNeg < 2 ^ 63 := by
+    intro term hterm
+    have hle := hgHead term hterm
+    omega
+  rw [Generated.StrictHensel.divmodRemainder]
+  apply divmodMergeLoop_degreesBound r g coefficient m _ hrBound hgShift
+  simp [DegreesBound]
+
+theorem degreesBound_eraseIdxIfInBounds (f : SparsePolyZZ) (i : Nat)
+    (hf : DegreesBound f) : DegreesBound (f.eraseIdxIfInBounds i) := by
+  intro term hterm
+  rw [Array.toList_eraseIdxIfInBounds] at hterm
+  exact hf term (List.mem_of_mem_eraseIdx hterm)
+
+theorem modCoeffOutput_degreesBound (f : SparsePolyZZ) (m : Int)
+    (hf : DegreesBound f) :
+    DegreesBound (Generated.StrictHensel.modCoeffOutput f m) := by
+  intro term hterm
+  simp only [Generated.StrictHensel.modCoeffOutput,
+    Array.toList_filterMap, List.mem_filterMap] at hterm
+  rcases hterm with ⟨source, hsource, hterm⟩
+  split at hterm
+  · injection hterm with hterm
+    subst term
+    exact hf source (by simpa using hsource)
+  · simp_all
+
 /-- Representation facts needed at every active state of the exact generated
 division trace.  This predicate contains no result polynomial: it certifies
 only that the source's signed degree arithmetic is within range. -/
@@ -424,6 +565,61 @@ def DivmodTraceDegreeSafe (g : SparsePolyZZ) (inverse : Int) (m : Nat) :
       0 < r.size ∧ r[0]!.1.deg < 2 ^ 63 ∧ get_deg r ≥ get_deg g ∧
         DivmodTraceDegreeSafe g inverse m next
 
+/-- The machine-degree certificate is derived from the concrete trace and
+the ordinary sparse-representation bounds.  In particular, neither the trace
+provider nor the public refinement theorem needs to supply this certificate
+as an independent assumption. -/
+theorem divmodTrace_degreeSafe (m : Nat) (g : SparsePolyZZ)
+    (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hgHead : HeadDominates g) :
+    ∀ {r q : SparsePolyZZ}
+      (trace : Generated.StrictHensel.DivmodTrace g
+        (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) r q),
+      DegreesBound r →
+      DivmodTraceDegreeSafe g
+        (ZZ.invert 0 g[0]!.2 (m : Int)).2 m trace := by
+  intro r q trace hrBound
+  induction trace with
+  | done r q inactive =>
+      trivial
+  | vanished r q active zero next ih =>
+      have hactive : r.isEmpty = false ∧ get_deg r ≥ get_deg g := by
+        simpa using active
+      have hr : 0 < r.size := by
+        have hrne : r ≠ #[] := by
+          simpa [Array.isEmpty_iff] using hactive.1
+        have : r.size ≠ 0 := by
+          intro hzero
+          apply hrne
+          exact Array.eq_empty_of_size_eq_zero hzero
+        omega
+      have hrmem : r[0]! ∈ r.toList := by
+        rw [getElem!_pos r 0 hr]
+        exact Array.getElem_mem_toList hr
+      simp only [DivmodTraceDegreeSafe]
+      exact ⟨hr, hrBound r[0]! hrmem, hactive.2,
+        ih (degreesBound_eraseIdxIfInBounds r 0 hrBound)⟩
+  | subtract r q active nonzero next ih =>
+      have hactive : r.isEmpty = false ∧ get_deg r ≥ get_deg g := by
+        simpa using active
+      have hr : 0 < r.size := by
+        have hrne : r ≠ #[] := by
+          simpa [Array.isEmpty_iff] using hactive.1
+        have : r.size ≠ 0 := by
+          intro hzero
+          apply hrne
+          exact Array.eq_empty_of_size_eq_zero hzero
+        omega
+      have hrmem : r[0]! ∈ r.toList := by
+        rw [getElem!_pos r 0 hr]
+        exact Array.getElem_mem_toList hr
+      have hrDegree := hrBound r[0]! hrmem
+      simp only [DivmodTraceDegreeSafe]
+      exact ⟨hr, hrDegree, hactive.2, ih
+        (divmodRemainder_degreesBound r g
+          (Generated.StrictHensel.divmodCoefficient r
+            (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int))
+          (m : Int) hr hg hrBound hgHead hrDegree hgDegree hactive.2)⟩
 /-- Induction over the exact finite C++ long-division trace preserves the
 decoded equation `remainder + quotient * divisor`.  Both recursive branches
 use their concrete array updates. -/
@@ -464,6 +660,23 @@ theorem divmodLoop_preserves (m : Nat) (g : SparsePolyZZ)
         hsafe.1 hg hdegree hcoefficient.symm]
       rw [toPolyMod_push]
       ring
+
+/-- Publicly usable form of trace conservation: the trace safety certificate
+is reconstructed from the concrete initial remainder representation. -/
+theorem divmodLoop_preserves_of_bounds (m : Nat) (g : SparsePolyZZ)
+    (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hgHead : HeadDominates g)
+    (hinvert : (ZZ.invert 0 g[0]!.2 (m : Int)).1 = true)
+    {r q : SparsePolyZZ}
+    (trace : Generated.StrictHensel.DivmodTrace g
+      (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) r q)
+    (hrBound : DegreesBound r) :
+    let output := Generated.StrictHensel.divmodLoop g
+      (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) trace
+    toPolyMod m output.2 + toPolyMod m output.1 * toPolyMod m g =
+      toPolyMod m r + toPolyMod m q * toPolyMod m g := by
+  exact divmodLoop_preserves m g hg hgDegree hinvert trace
+    (divmodTrace_degreeSafe m g hg hgDegree hgHead trace hrBound)
 
 /-- The concrete generated `__upoly_mod_coeff` call always succeeds and
 preserves the decoded polynomial modulo the requested modulus. -/
@@ -517,6 +730,47 @@ theorem __upoly_divmod_mod_raw_ir_terminates
   refine ⟨output.1, output.2, ?_⟩
   simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hg, hinvert,
     Generated.StrictHensel.__upoly_mod_coeff_raw_ir, reduced, output]
+
+/-- Full semantic refinement of the generated C++ modular long-division
+entry.  The returned concrete arrays satisfy the quotient/remainder equation;
+execution is the exact finite trace and not an L2 division call. -/
+theorem __upoly_divmod_mod_raw_ir_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f g : SparsePolyZZ) (m : Nat)
+    (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hgHead : HeadDominates g) (hfBound : DegreesBound f)
+    (hinvert : (ZZ.invert 0 g[0]!.2 (m : Int)).1 = true) :
+    ∃ q r,
+      Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination f g
+          (m : Int) = .ok (q, r) ∧
+      toPolyMod m r + toPolyMod m q * toPolyMod m g = toPolyMod m f := by
+  let reduced := Generated.StrictHensel.modCoeffOutput f (m : Int)
+  let trace := termination.trace f g reduced (m : Int) (by rfl)
+  let output := Generated.StrictHensel.divmodLoop g
+    (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) trace
+  have hgFalse : g.isEmpty = false := by
+    simpa [Array.isEmpty_iff] using (show g ≠ #[] by
+      intro hempty
+      subst g
+      simp at hg)
+  have hrun :
+      Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination f g
+          (m : Int) = .ok (output.1, output.2) := by
+    simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hgFalse,
+      hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+      reduced, trace, output]
+  have hpreserve := divmodLoop_preserves_of_bounds m g hg hgDegree hgHead
+    hinvert trace (modCoeffOutput_degreesBound f (m : Int) hfBound)
+  have hmod : toPolyMod m reduced = toPolyMod m f := by
+    obtain ⟨modOutput, hmodRun, hmodPoly⟩ :=
+      __upoly_mod_coeff_raw_ir_refines f m
+    have : modOutput = reduced := by
+      simpa [Generated.StrictHensel.__upoly_mod_coeff_raw_ir, reduced] using
+        hmodRun.symm
+    subst modOutput
+    exact hmodPoly
+  refine ⟨output.1, output.2, hrun, ?_⟩
+  simpa [output, trace, hmod] using hpreserve
 
 /-- The generated divide/reduce/compact loop represents the exact coefficient
 quotient modulo `m`; removing coefficients whose residues are zero does not

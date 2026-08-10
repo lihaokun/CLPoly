@@ -20234,6 +20234,88 @@ theorem pairVecDivIR_refines_divByMonic
           hrun,
         hrefines.1, hrefines.2⟩
 
+/-- The semantic payload returned by the strict raw public GCD proof provides
+exactly the algebraic invariants required by one Yun iteration. -/
+theorem rawGCDOutput_yun_invariants (p : Nat) [Fact (Nat.Prime p)]
+    (w c y : SparsePolyZp)
+    (hwNonzero : SparsePolyZp.toPoly p w ≠ 0)
+    (hySemantic : SparsePolyZp.toPoly p y = normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly p w)
+        (SparsePolyZp.toPoly p c))) :
+    0 < y.size ∧
+      (SparsePolyZp.toPoly p y).Monic ∧
+      SparsePolyZp.toPoly p y ∣ SparsePolyZp.toPoly p w ∧
+      SparsePolyZp.toPoly p y ∣ SparsePolyZp.toPoly p c := by
+  have hgcdNonzero : EuclideanDomain.gcd (SparsePolyZp.toPoly p w)
+      (SparsePolyZp.toPoly p c) ≠ 0 := by
+    intro hzero
+    apply hwNonzero
+    exact zero_dvd_iff.mp
+      (hzero ▸ EuclideanDomain.gcd_dvd_left
+        (SparsePolyZp.toPoly p w) (SparsePolyZp.toPoly p c))
+  have hyNonzero : SparsePolyZp.toPoly p y ≠ 0 := by
+    rw [hySemantic]
+    simpa [normalize_eq_zero] using hgcdNonzero
+  have hySize : 0 < y.size := by
+    by_contra hnot
+    have hempty : y = #[] := Array.size_eq_zero_iff.mp
+      (Nat.eq_zero_of_not_pos hnot)
+    subst y
+    exact hyNonzero (by simp)
+  refine ⟨hySize, ?_, ?_, ?_⟩
+  · rw [hySemantic]
+    exact Polynomial.monic_normalize hgcdNonzero
+  · rw [hySemantic]
+    exact normalize_dvd_iff.mpr
+      (EuclideanDomain.gcd_dvd_left (SparsePolyZp.toPoly p w)
+        (SparsePolyZp.toPoly p c))
+  · rw [hySemantic]
+    exact normalize_dvd_iff.mpr
+      (EuclideanDomain.gcd_dvd_right (SparsePolyZp.toPoly p w)
+        (SparsePolyZp.toPoly p c))
+
+/-- Once the strict raw GCD output is supplied, both source `pair_vec_div`
+calls in a Yun body execute successfully through their complete branch tree.
+Their concrete sparse outputs are canonical, survive source normalization
+unchanged, and denote the two L2 monic quotients. -/
+theorem yunPairDivisionsIR_refine
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (w c y : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hwCanonical : SparsePolyZp.Canonical this._p.toNat w)
+    (hcCanonical : SparsePolyZp.Canonical this._p.toNat c)
+    (hyCanonical : SparsePolyZp.Canonical this._p.toNat y)
+    (hwNonzero : SparsePolyZp.toPoly this._p.toNat w ≠ 0)
+    (hySemantic : SparsePolyZp.toPoly this._p.toNat y = normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat w)
+        (SparsePolyZp.toPoly this._p.toNat c))) :
+    ∃ z cNext,
+      pairVecDivIR this w y = .ok z ∧
+      pairVecDivIR this c y = .ok cNext ∧
+      SparsePolyZp.Canonical this._p.toNat z ∧
+      SparsePolyZp.Canonical this._p.toNat cNext ∧
+      SparsePolyZp.normalization z = z ∧
+      SparsePolyZp.normalization cNext = cNext ∧
+      SparsePolyZp.toPoly this._p.toNat z =
+        SparsePolyZp.toPoly this._p.toNat w /ₘ
+          SparsePolyZp.toPoly this._p.toNat y ∧
+      SparsePolyZp.toPoly this._p.toNat cNext =
+        SparsePolyZp.toPoly this._p.toNat c /ₘ
+          SparsePolyZp.toPoly this._p.toNat y := by
+  rcases rawGCDOutput_yun_invariants this._p.toNat w c y hwNonzero
+      hySemantic with ⟨hySize, hyMonic, hyDvdW, hyDvdC⟩
+  rcases pairVecDivIR_refines_divByMonic this w y hcfg hwCanonical
+      hyCanonical hySize hyMonic hyDvdW with
+    ⟨z, hzRun, hzCanonical, hzSemantic⟩
+  rcases pairVecDivIR_refines_divByMonic this c y hcfg hcCanonical
+      hyCanonical hySize hyMonic hyDvdC with
+    ⟨cNext, hcRun, hcNextCanonical, hcNextSemantic⟩
+  exact ⟨z, cNext, hzRun, hcRun, hzCanonical, hcNextCanonical,
+    sparsePolyZp_normalization_eq_of_canonical this._p.toNat z hzCanonical,
+    sparsePolyZp_normalization_eq_of_canonical this._p.toNat cNext
+      hcNextCanonical,
+    hzSemantic, hcNextSemantic⟩
+
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)
     (hcanonical : SparsePolyZp.Canonical p source)

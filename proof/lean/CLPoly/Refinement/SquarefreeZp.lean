@@ -20306,6 +20306,78 @@ theorem UInt64_toNat_add_one_of_lt (value : UInt64)
   rw [hone]
   exact Nat.mod_eq_of_lt hbound
 
+theorem sparsePolyZp_size_pos_of_toPoly_ne_zero (p : Nat)
+    (poly : SparsePolyZp) (hnonzero : SparsePolyZp.toPoly p poly ≠ 0) :
+    0 < poly.size := by
+  by_contra hnot
+  have hempty : poly = #[] := Array.size_eq_zero_iff.mp
+    (Nat.eq_zero_of_not_pos hnot)
+  subst poly
+  exact hnonzero (by simp)
+
+/-- The algebraic state produced by one raw-GCD/two-division Yun body strictly
+decreases the same degree-sum measure as L2. -/
+theorem yunNext_natDegree_sum_lt {p : Nat} [Fact (Nat.Prime p)]
+    (w c y cNext : Polynomial (ZMod p))
+    (hwPositive : 0 < w.natDegree)
+    (hcMonic : c.Monic) (hyMonic : y.Monic) (hyDvdC : y ∣ c)
+    (hcNextSemantic : cNext = c /ₘ y) :
+    y.natDegree + cNext.natDegree < w.natDegree + c.natDegree := by
+  have hcNonzero : c ≠ 0 := hcMonic.ne_zero
+  have hcNextMonic : cNext.Monic := by
+    rw [hcNextSemantic]
+    exact divByMonic_monic_of_monic_of_dvd c y hcMonic hyMonic hyDvdC
+  have hcEq : y * (c /ₘ y) = c := by
+    have hdivision := Polynomial.modByMonic_add_div c y
+    rw [(Polynomial.modByMonic_eq_zero_iff_dvd hyMonic).mpr hyDvdC,
+      zero_add] at hdivision
+    exact hdivision
+  have hdegree := Polynomial.natDegree_mul hyMonic.ne_zero
+    hcNextMonic.ne_zero
+  rw [hcNextSemantic] at hdegree
+  rw [hcEq] at hdegree
+  rw [hcNextSemantic]
+  omega
+
+/-- Via the proved sparse/L2 measure bridge, the exact next sparse state also
+passes the generated `hdec` test. -/
+theorem yunNext_generatedMeasure_lt
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (w c y cNext : SparsePolyZp)
+    (hwCanonical : SparsePolyZp.Canonical this._p.toNat w)
+    (hcCanonical : SparsePolyZp.Canonical this._p.toNat c)
+    (hyCanonical : SparsePolyZp.Canonical this._p.toNat y)
+    (hcNextCanonical : SparsePolyZp.Canonical this._p.toNat cNext)
+    (hwSize : 0 < w.size) (hcSize : 0 < c.size)
+    (hwPositive : 0 < (SparsePolyZp.toPoly this._p.toNat w).natDegree)
+    (hcMonic : (SparsePolyZp.toPoly this._p.toNat c).Monic)
+    (hyMonic : (SparsePolyZp.toPoly this._p.toNat y).Monic)
+    (hyDvdC : SparsePolyZp.toPoly this._p.toNat y ∣
+      SparsePolyZp.toPoly this._p.toNat c)
+    (hcNextSemantic : SparsePolyZp.toPoly this._p.toNat cNext =
+      SparsePolyZp.toPoly this._p.toNat c /ₘ
+        SparsePolyZp.toPoly this._p.toNat y) :
+    Generated.squarefreeMeasure y + Generated.squarefreeMeasure cNext <
+      Generated.squarefreeMeasure w + Generated.squarefreeMeasure c := by
+  have hySize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat y
+    hyMonic.ne_zero
+  have hcNextMonic : (SparsePolyZp.toPoly this._p.toNat cNext).Monic := by
+    rw [hcNextSemantic]
+    exact divByMonic_monic_of_monic_of_dvd
+      (SparsePolyZp.toPoly this._p.toNat c)
+      (SparsePolyZp.toPoly this._p.toNat y) hcMonic hyMonic hyDvdC
+  have hcNextSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat
+    cNext hcNextMonic.ne_zero
+  apply (generated_squarefreeMeasure_sum_lt_iff this._p.toNat y cNext w c
+    hyCanonical hcNextCanonical hwCanonical hcCanonical hySize hcNextSize
+    hwSize hcSize).2
+  exact yunNext_natDegree_sum_lt
+    (SparsePolyZp.toPoly this._p.toNat w)
+    (SparsePolyZp.toPoly this._p.toNat c)
+    (SparsePolyZp.toPoly this._p.toNat y)
+    (SparsePolyZp.toPoly this._p.toNat cNext) hwPositive hcMonic hyMonic
+    hyDvdC hcNextSemantic
+
 /-- Once the strict raw GCD output is supplied, both source `pair_vec_div`
 calls in a Yun body execute successfully through their complete branch tree.
 Their concrete sparse outputs are canonical, survive source normalization

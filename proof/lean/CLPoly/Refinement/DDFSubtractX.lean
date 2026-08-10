@@ -714,7 +714,7 @@ private lemma strict_sub_one_toZMod (h2p : 2 * p ≤ UInt64.size)
   rw [zp_toZMod_sub h2p c _ hc_prime hone_prime hc_red hone_red,
     strict_make_zp_one_toZMod q hq]
 
-private lemma strict_minus_one_toZMod (q : UInt64) (hq : q.toNat = p) :
+lemma strict_minus_one_toZMod (q : UInt64) (hq : q.toNat = p) :
     Zp.toZMod p (Zp.ofInt ((q - (1 : UInt64)).toInt) q) = -1 := by
   subst p
   have hqgt : 1 < q.toNat := hp.out.one_lt
@@ -745,7 +745,7 @@ private lemma strict_minus_one_toZMod (q : UInt64) (hq : q.toNat = p) :
   push_cast [Nat.cast_sub (by omega : 1 ≤ q.toNat)]
   simp
 
-private lemma strict_minus_one_reduced (q : UInt64) (hq : q.toNat = p) :
+lemma strict_minus_one_reduced (q : UInt64) (hq : q.toNat = p) :
     Zp.Reduced p (Zp.ofInt ((q - (1 : UInt64)).toInt) q) := by
   subst p
   have hqgt : 1 < q.toNat := hp.out.one_lt

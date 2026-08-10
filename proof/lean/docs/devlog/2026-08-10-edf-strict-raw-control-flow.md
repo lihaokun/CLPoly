@@ -44,3 +44,11 @@ been processed, the exact generated loop preserves `found = true` and copies
 the remaining concrete array suffix verbatim.  The proof unfolds the generated
 well-founded recursion and tracks `Array.toList`; it assumes no polynomial
 semantic result.
+
+The complementary `found = false` invariant is also closed for inputs whose
+suffix contains no constant term.  From the exact loop trace and exact
+normalization epilogue, the proof now derives an actual successful raw-entry
+equation and the L2 identity `toPoly output = toPoly input - 1`.  This covers
+the source branch that appends the concrete `p - 1` coefficient; the existing
+finite-field coefficient lemma was made reusable rather than reproved or
+replaced by an oracle.

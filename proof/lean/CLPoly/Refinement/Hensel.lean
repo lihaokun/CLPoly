@@ -589,6 +589,41 @@ theorem strictHenselRawOps_sub_refines
       toPolyMod m output = toPolyMod m a - toPolyMod m b :=
   __upoly_sub_raw_ir_refines m a b
 
+/-- Deterministic, explicit-output forms used when threading a successful raw
+execution through the generated `do` sequence. -/
+theorem strictHenselRawOps_mul_refines_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (m : Nat) (a b output : SparsePolyZZ)
+    (hrun : (strictHenselRawOps termination).mul a b = .ok output) :
+    toPolyMod m output = toPolyMod m a * toPolyMod m b := by
+  rcases strictHenselRawOps_mul_refines termination m a b with
+    ⟨actual, hactual, hsemantic⟩
+  rw [hrun] at hactual
+  cases hactual
+  exact hsemantic
+
+theorem strictHenselRawOps_add_refines_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (m : Nat) (a b output : SparsePolyZZ)
+    (hrun : (strictHenselRawOps termination).add a b = .ok output) :
+    toPolyMod m output = toPolyMod m a + toPolyMod m b := by
+  rcases strictHenselRawOps_add_refines termination m a b with
+    ⟨actual, hactual, hsemantic⟩
+  rw [hrun] at hactual
+  cases hactual
+  exact hsemantic
+
+theorem strictHenselRawOps_sub_refines_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (m : Nat) (a b output : SparsePolyZZ)
+    (hrun : (strictHenselRawOps termination).sub a b = .ok output) :
+    toPolyMod m output = toPolyMod m a - toPolyMod m b := by
+  rcases strictHenselRawOps_sub_refines termination m a b with
+    ⟨actual, hactual, hsemantic⟩
+  rw [hrun] at hactual
+  cases hactual
+  exact hsemantic
+
 /-- Shifting a concrete divisor term by the current quotient degree and
 scaling it by the quotient coefficient is exactly multiplication by the
 corresponding monomial in `ZMod m`. -/
@@ -1298,6 +1333,22 @@ theorem __upoly_divmod_mod_raw_ir_refines
   refine ⟨output.1, output.2, hrun, ?_⟩
   simpa [output, trace, hmod] using hpreserve
 
+/-- Explicit-output form of modular long-division refinement. -/
+theorem __upoly_divmod_mod_raw_ir_refines_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f g q r : SparsePolyZZ) (m : Nat)
+    (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hgHead : HeadDominates g) (hfBound : DegreesBound f)
+    (hinvert : (ZZ.invert 0 g[0]!.2 (m : Int)).1 = true)
+    (hrun : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      f g (m : Int) = .ok (q, r)) :
+    toPolyMod m r + toPolyMod m q * toPolyMod m g = toPolyMod m f := by
+  rcases __upoly_divmod_mod_raw_ir_refines termination f g m hg hgDegree
+      hgHead hfBound hinvert with ⟨actualQ, actualR, hactual, hsemantic⟩
+  rw [hrun] at hactual
+  cases hactual
+  exact hsemantic
+
 /-- The generated divide/reduce/compact loop represents the exact coefficient
 quotient modulo `m`; removing coefficients whose residues are zero does not
 change the decoded `ZMod m` polynomial. -/
@@ -1407,6 +1458,74 @@ theorem divideThenReduceCoeffs_certificate (f : SparsePolyZZ) (m : Nat)
   · exact divideThenReduceCoeffs_toPolyMod f m
   · rw [← scaleCoeffs_toPoly,
       scaleCoeffs_divideCoeffs f m hdivisible]
+
+/-- The exact source error quotient remains exact modulo `m²` after the C++
+loop reduces and compacts the quotient coefficients modulo `m`.  This rules
+out replacing the generated quotient by an independently chosen L2 witness. -/
+theorem divideThenReduceCoeffs_scaled_toPolyMod_sq
+    (f : SparsePolyZZ) (m : Nat) (hm : 0 < m)
+    (hdivisible : ∀ term ∈ f.toList, (m : Int) ∣ term.2) :
+    Polynomial.C (m : ZMod (m ^ 2)) *
+        toPolyMod (m ^ 2)
+          (Generated.StrictHensel.divideThenReduceCoeffs f (m : Int)) =
+      toPolyMod (m ^ 2) f := by
+  let quotient := Generated.StrictHensel.divideCoeffs f (m : Int)
+  let reduced :=
+    Generated.StrictHensel.divideThenReduceCoeffs f (m : Int)
+  have hcertificate := divideThenReduceCoeffs_certificate f m hdivisible
+  have hexact := congrArg
+    (Polynomial.map (Int.castRingHom (ZMod (m ^ 2)))) hcertificate.2
+  have hexact' :
+      Polynomial.C (m : ZMod (m ^ 2)) * toPolyMod (m ^ 2) quotient =
+        toPolyMod (m ^ 2) f := by
+    simpa [toPolyMod, quotient, Polynomial.map_mul, Polynomial.map_C] using
+      hexact
+  let π := ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m)
+  have hproject : Polynomial.map π
+      (toPolyMod (m ^ 2) reduced - toPolyMod (m ^ 2) quotient) = 0 := by
+    rw [Polynomial.map_sub,
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0))]
+    exact sub_eq_zero.mpr hcertificate.1
+  have hdiscarded : Polynomial.C (m : ZMod (m ^ 2)) *
+      (toPolyMod (m ^ 2) reduced - toPolyMod (m ^ 2) quotient) = 0 := by
+    exact C_scale_mul_eq_zero_of_map_eq_zero m hm _ hproject
+  calc
+    Polynomial.C (m : ZMod (m ^ 2)) * toPolyMod (m ^ 2) reduced =
+        Polynomial.C (m : ZMod (m ^ 2)) * toPolyMod (m ^ 2) quotient +
+          Polynomial.C (m : ZMod (m ^ 2)) *
+            (toPolyMod (m ^ 2) reduced - toPolyMod (m ^ 2) quotient) := by
+              ring
+    _ = Polynomial.C (m : ZMod (m ^ 2)) *
+        toPolyMod (m ^ 2) quotient := by rw [hdiscarded, add_zero]
+    _ = toPolyMod (m ^ 2) f := hexact'
+
+/-- Concrete error equation obtained by composing the generated heap
+multiplication, generated sparse subtraction, and generated coefficient
+division loops. -/
+theorem factorError_from_raw_runs
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f gh difference : SparsePolyZZ)
+    (m : Nat) (hm : 0 < m)
+    (hgh : (strictHenselRawOps termination).mul node.g node.h = .ok gh)
+    (hdifference :
+      (strictHenselRawOps termination).sub f gh = .ok difference)
+    (hdivisible : ∀ term ∈ difference.toList, (m : Int) ∣ term.2) :
+    toPolyMod (m ^ 2) f =
+      toPolyMod (m ^ 2) node.g * toPolyMod (m ^ 2) node.h +
+        Polynomial.C (m : ZMod (m ^ 2)) *
+          toPolyMod (m ^ 2)
+            (Generated.StrictHensel.divideThenReduceCoeffs
+              difference (m : Int)) := by
+  have hghSemantic := strictHenselRawOps_mul_refines_of_run
+    termination (m ^ 2) node.g node.h gh hgh
+  have hdifferenceSemantic := strictHenselRawOps_sub_refines_of_run
+    termination (m ^ 2) f gh difference hdifference
+  have hscaled := divideThenReduceCoeffs_scaled_toPolyMod_sq
+    difference m hm hdivisible
+  rw [hdifferenceSemantic, hghSemantic] at hscaled
+  rw [hscaled]
+  ring
 
 /-- The first contiguous source phase has a genuine raw-to-safe execution
 bridge.  Its only possible source assertion is the modular division by `h`;

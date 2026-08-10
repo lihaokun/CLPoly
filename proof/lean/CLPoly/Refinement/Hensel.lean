@@ -2067,6 +2067,163 @@ theorem __hensel_step_factor_phase_raw_ir_refines
     rfl
   · simpa [factorNode] using hsemantic
 
+set_option maxHeartbeats 0 in
+/-- The complete generated Bezout phase refines its L2 certificate invariant.
+Every local is definitionally produced by the generated raw operations and
+the supplied finite well-founded division trace. -/
+theorem __hensel_step_bezout_phase_raw_ir_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (factorNode : HenselNode) (m : Nat) (hm : 0 < m)
+    (hh : 0 < factorNode.h.size)
+    (hhDegree : factorNode.h[0]!.1.deg < 2 ^ 63)
+    (hhHead : HeadDominates factorNode.h)
+    (hinvert : (ZZ.invert 0 factorNode.h[0]!.2 (m : Int)).1 = true)
+    (hdivisible :
+      let sg := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g)
+        #[]
+      let th := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h)
+        #[]
+      let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+        (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+      let difference := Generated.StrictHensel.pairVecSubLoop
+        oneMinusSg th 0 0 #[]
+      ∀ term ∈ difference.toList, (m : Int) ∣ term.2)
+    (hsepBound :
+      let sg := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g)
+        #[]
+      let th := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h)
+        #[]
+      let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+        (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+      let difference := Generated.StrictHensel.pairVecSubLoop
+        oneMinusSg th 0 0 #[]
+      let ep := Generated.StrictHensel.divideThenReduceCoeffs
+        difference (m : Int)
+      let sep := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
+      DegreesBound sep)
+    (hbezoutInput :
+      toPolyMod m factorNode.s * toPolyMod m factorNode.g +
+        toPolyMod m factorNode.t * toPolyMod m factorNode.h = 1) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir
+          (strictHenselRawOps termination) factorNode (m : Int) = .ok output ∧
+      toPolyMod (m ^ 2) output.s * toPolyMod (m ^ 2) output.g +
+          toPolyMod (m ^ 2) output.t * toPolyMod (m ^ 2) output.h = 1 ∧
+      toPolyMod m output.s = toPolyMod m factorNode.s ∧
+      toPolyMod m output.t = toPolyMod m factorNode.t := by
+  let sg := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g) #[]
+  let th := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h) #[]
+  let one : SparsePolyZZ := #[(UMonomial.mk 0, 1)]
+  let oneMinusSg := Generated.StrictHensel.pairVecSubLoop one sg 0 0 #[]
+  let difference := Generated.StrictHensel.pairVecSubLoop oneMinusSg th 0 0 #[]
+  let ep := Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)
+  let sep := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
+  let reduced := Generated.StrictHensel.modCoeffOutput sep (m : Int)
+  let trace := termination.trace sep factorNode.h reduced (m : Int) (by rfl)
+  let qr := Generated.StrictHensel.divmodLoop factorNode.h
+    (ZZ.invert 0 factorNode.h[0]!.2 (m : Int)).2 (m : Int) trace
+  let sRaw := Generated.StrictHensel.pairVecAddLoop factorNode.s
+    (Generated.StrictHensel.scaleCoeffs qr.2 (m : Int)) 0 0 #[]
+  let sNew := Generated.StrictHensel.modCoeffOutput sRaw (m ^ 2 : Int)
+  let tep := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts factorNode.t ep) #[]
+  let qpg := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts qr.1 factorNode.g) #[]
+  let tauRaw := Generated.StrictHensel.pairVecAddLoop tep qpg 0 0 #[]
+  let tau := Generated.StrictHensel.modCoeffOutput tauRaw (m : Int)
+  let tRaw := Generated.StrictHensel.pairVecAddLoop factorNode.t
+    (Generated.StrictHensel.scaleCoeffs tau (m : Int)) 0 0 #[]
+  let tNew := Generated.StrictHensel.modCoeffOutput tRaw (m ^ 2 : Int)
+  let output : HenselNode := { factorNode with s := sNew, t := tNew }
+  have hhFalse : factorNode.h.isEmpty = false := by
+    simpa [Array.isEmpty_iff] using (show factorNode.h ≠ #[] by
+      intro hempty
+      have hsize : factorNode.h.size = 0 := by rw [hempty]; rfl
+      exact (Nat.ne_of_gt hh) hsize)
+  have hsgRun : (strictHenselRawOps termination).mul factorNode.s
+      factorNode.g = .ok sg := rfl
+  have hthRun : (strictHenselRawOps termination).mul factorNode.t
+      factorNode.h = .ok th := rfl
+  have honeMinusRun : (strictHenselRawOps termination).sub one sg =
+      .ok oneMinusSg := rfl
+  have hdifferenceRun : (strictHenselRawOps termination).sub oneMinusSg th =
+      .ok difference := rfl
+  have hsepRun : (strictHenselRawOps termination).mul factorNode.s ep =
+      .ok sep := rfl
+  have hdivmodRun :
+      Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination sep
+        factorNode.h (m : Int) = .ok qr := by
+    simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hhFalse,
+      hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+      reduced, trace, qr]
+  have hsRawRun : (strictHenselRawOps termination).add factorNode.s
+      (Generated.StrictHensel.scaleCoeffs qr.2 (m : Int)) = .ok sRaw := rfl
+  have hsNewRun : Generated.StrictHensel.__upoly_mod_coeff_raw_ir sRaw
+      (m ^ 2 : Int) = .ok sNew := rfl
+  have htepRun : (strictHenselRawOps termination).mul factorNode.t ep =
+      .ok tep := rfl
+  have hqpgRun : (strictHenselRawOps termination).mul qr.1 factorNode.g =
+      .ok qpg := rfl
+  have htauRawRun : (strictHenselRawOps termination).add tep qpg =
+      .ok tauRaw := rfl
+  have htauRun : Generated.StrictHensel.__upoly_mod_coeff_raw_ir tauRaw
+      (m : Int) = .ok tau := rfl
+  have htRawRun : (strictHenselRawOps termination).add factorNode.t
+      (Generated.StrictHensel.scaleCoeffs tau (m : Int)) = .ok tRaw := rfl
+  have htNewRun : Generated.StrictHensel.__upoly_mod_coeff_raw_ir tRaw
+      (m ^ 2 : Int) = .ok tNew := rfl
+  have hsemantic := henselBezoutCorrection_from_raw_runs termination factorNode
+    m hm sg th oneMinusSg difference sep qr.1 qr.2 sRaw sNew tep qpg
+    tauRaw tau tRaw tNew hsgRun hthRun (by simpa [one] using honeMinusRun)
+    hdifferenceRun (by
+      simpa [sg, th, one, oneMinusSg, difference] using hdivisible)
+    hsepRun hh hhDegree hhHead (by
+      simpa [sg, th, one, oneMinusSg, difference, ep, sep] using hsepBound)
+    hinvert hdivmodRun hsRawRun hsNewRun htepRun hqpgRun htauRawRun htauRun
+    htRawRun htNewRun hbezoutInput
+  refine ⟨output, ?_, ?_⟩
+  · have hm2 : (m : Int) * (m : Int) = (m ^ 2 : Int) := by
+      norm_num [pow_two]
+    rw [Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir]
+    dsimp only [strictHenselRawOps, Generated.StrictHensel.__upoly_mul_raw_ir,
+      Generated.StrictHensel.__upoly_add_raw_ir,
+      Generated.StrictHensel.__upoly_sub_raw_ir]
+    simp only [Bind.bind, Except.bind]
+    rw [show Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+        (Generated.StrictHensel.pairVecMulHeapLoop
+          (Generated.StrictHensel.pairVecMulProducts factorNode.s
+            (Generated.StrictHensel.divideThenReduceCoeffs
+              (Generated.StrictHensel.pairVecSubLoop
+                (Generated.StrictHensel.pairVecSubLoop one sg 0 0 #[])
+                th 0 0 #[]) (m : Int))) #[])
+        factorNode.h (m : Int) = .ok qr by
+          simpa [oneMinusSg, difference, ep, sep] using hdivmodRun]
+    simp only [Except.bind]
+    rw [hm2]
+    rw [show Generated.StrictHensel.__upoly_mod_coeff_raw_ir
+        (Generated.StrictHensel.pairVecAddLoop factorNode.s
+          (Generated.StrictHensel.scaleCoeffs qr.2 (m : Int)) 0 0 #[])
+        (m ^ 2 : Int) = .ok sNew by simpa [sRaw] using hsNewRun]
+    simp only [Except.bind]
+    rw [show Generated.StrictHensel.__upoly_mod_coeff_raw_ir
+        (Generated.StrictHensel.pairVecAddLoop tep qpg 0 0 #[]) (m : Int) =
+          .ok tau by simpa [tauRaw] using htauRun]
+    simp only [Except.bind]
+    rw [show Generated.StrictHensel.__upoly_mod_coeff_raw_ir
+        (Generated.StrictHensel.pairVecAddLoop factorNode.t
+          (Generated.StrictHensel.scaleCoeffs tau (m : Int)) 0 0 #[])
+        (m ^ 2 : Int) = .ok tNew by simpa [tRaw] using htNewRun]
+    rfl
+  · simpa [output] using hsemantic
+
 /-- The first contiguous source phase has a genuine raw-to-safe execution
 bridge.  Its only possible source assertion is the modular division by `h`;
 all generated heap arithmetic and coefficient-reduction calls are total. -/

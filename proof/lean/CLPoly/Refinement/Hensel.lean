@@ -1661,6 +1661,148 @@ theorem bezoutError_from_raw_runs
   rw [hscaled]
   ring
 
+/-- Full semantic composition of every concrete raw operation in the second
+contiguous `__hensel_step` phase. -/
+theorem henselBezoutCorrection_from_raw_runs
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (factorNode : HenselNode) (m : Nat) (hm : 0 < m)
+    (sg th oneMinusSg difference sep q r sRaw sNew tep qpg tauRaw tau
+      tRaw tNew : SparsePolyZZ)
+    (hsg : (strictHenselRawOps termination).mul factorNode.s factorNode.g =
+      .ok sg)
+    (hth : (strictHenselRawOps termination).mul factorNode.t factorNode.h =
+      .ok th)
+    (honeMinus : (strictHenselRawOps termination).sub
+      (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg = .ok oneMinusSg)
+    (hdifference : (strictHenselRawOps termination).sub oneMinusSg th =
+      .ok difference)
+    (hdivisible : ∀ term ∈ difference.toList, (m : Int) ∣ term.2)
+    (hsep : (strictHenselRawOps termination).mul factorNode.s
+      (Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)) =
+        .ok sep)
+    (hh : 0 < factorNode.h.size)
+    (hhDegree : factorNode.h[0]!.1.deg < 2 ^ 63)
+    (hhHead : HeadDominates factorNode.h) (hsepBound : DegreesBound sep)
+    (hinvert : (ZZ.invert 0 factorNode.h[0]!.2 (m : Int)).1 = true)
+    (hdivmod : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      sep factorNode.h (m : Int) = .ok (q, r))
+    (hsRaw : (strictHenselRawOps termination).add factorNode.s
+      (Generated.StrictHensel.scaleCoeffs r (m : Int)) = .ok sRaw)
+    (hsNew : Generated.StrictHensel.__upoly_mod_coeff_raw_ir sRaw
+      (m ^ 2 : Int) = .ok sNew)
+    (htep : (strictHenselRawOps termination).mul factorNode.t
+      (Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)) =
+        .ok tep)
+    (hqpg : (strictHenselRawOps termination).mul q factorNode.g = .ok qpg)
+    (htauRaw : (strictHenselRawOps termination).add tep qpg = .ok tauRaw)
+    (htau : Generated.StrictHensel.__upoly_mod_coeff_raw_ir tauRaw
+      (m : Int) = .ok tau)
+    (htRaw : (strictHenselRawOps termination).add factorNode.t
+      (Generated.StrictHensel.scaleCoeffs tau (m : Int)) = .ok tRaw)
+    (htNew : Generated.StrictHensel.__upoly_mod_coeff_raw_ir tRaw
+      (m ^ 2 : Int) = .ok tNew)
+    (hbezoutInput :
+      toPolyMod m factorNode.s * toPolyMod m factorNode.g +
+        toPolyMod m factorNode.t * toPolyMod m factorNode.h = 1) :
+    toPolyMod (m ^ 2) sNew * toPolyMod (m ^ 2) factorNode.g +
+        toPolyMod (m ^ 2) tNew * toPolyMod (m ^ 2) factorNode.h = 1 ∧
+      toPolyMod m sNew = toPolyMod m factorNode.s ∧
+      toPolyMod m tNew = toPolyMod m factorNode.t := by
+  let ep := Generated.StrictHensel.divideThenReduceCoeffs
+    difference (m : Int)
+  have herror := bezoutError_from_raw_runs termination factorNode sg th
+    oneMinusSg difference m hm hsg hth honeMinus hdifference hdivisible
+  have hsepSemantic := strictHenselRawOps_mul_refines_of_run termination m
+    factorNode.s ep sep hsep
+  have hdivmodSemantic := __upoly_divmod_mod_raw_ir_refines_of_run termination
+    sep factorNode.h q r m hh hhDegree hhHead hsepBound hinvert hdivmod
+  rw [hsepSemantic] at hdivmodSemantic
+  have htepSemantic := strictHenselRawOps_mul_refines_of_run termination m
+    factorNode.t ep tep htep
+  have hqpgSemantic := strictHenselRawOps_mul_refines_of_run termination m
+    q factorNode.g qpg hqpg
+  have htauRawSemantic := strictHenselRawOps_add_refines_of_run termination m
+    tep qpg tauRaw htauRaw
+  have htauReduce := __upoly_mod_coeff_raw_ir_refines_of_run tauRaw tau m htau
+  have htauSemantic : toPolyMod m tau =
+      toPolyMod m factorNode.t * toPolyMod m ep +
+        toPolyMod m q * toPolyMod m factorNode.g := by
+    rw [htauReduce, htauRawSemantic, htepSemantic, hqpgSemantic]
+  let π := ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m)
+  have hbezoutMap : Polynomial.map π
+      (toPolyMod (m ^ 2) factorNode.s * toPolyMod (m ^ 2) factorNode.g +
+        toPolyMod (m ^ 2) factorNode.t * toPolyMod (m ^ 2) factorNode.h) =
+      1 := by
+    simp only [Polynomial.map_add, Polynomial.map_mul]
+    rw [map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0))]
+    exact hbezoutInput
+  have hdivmodMap : Polynomial.map π
+      (toPolyMod (m ^ 2) r +
+        toPolyMod (m ^ 2) q * toPolyMod (m ^ 2) factorNode.h) =
+      Polynomial.map π
+        (toPolyMod (m ^ 2) factorNode.s * toPolyMod (m ^ 2) ep) := by
+    simp only [Polynomial.map_add, Polynomial.map_mul]
+    rw [map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0))]
+    exact hdivmodSemantic
+  have htauMap : Polynomial.map π (toPolyMod (m ^ 2) tau) =
+      Polynomial.map π
+        (toPolyMod (m ^ 2) factorNode.t * toPolyMod (m ^ 2) ep +
+          toPolyMod (m ^ 2) q * toPolyMod (m ^ 2) factorNode.g) := by
+    simp only [Polynomial.map_add, Polynomial.map_mul]
+    rw [map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0)),
+      map_toPolyMod_of_dvd (dvd_pow_self m (by omega : 2 ≠ 0))]
+    exact htauSemantic
+  have halgebra := henselBezoutCorrection_algebra m hm
+    (toPolyMod (m ^ 2) factorNode.g) (toPolyMod (m ^ 2) factorNode.h)
+    (toPolyMod (m ^ 2) factorNode.s) (toPolyMod (m ^ 2) factorNode.t)
+    (toPolyMod (m ^ 2) ep) (toPolyMod (m ^ 2) q)
+    (toPolyMod (m ^ 2) r) (toPolyMod (m ^ 2) tau) herror hbezoutMap
+    hdivmodMap htauMap
+  have hsRawSemantic := strictHenselRawOps_add_refines_of_run termination
+    (m ^ 2) factorNode.s
+      (Generated.StrictHensel.scaleCoeffs r (m : Int)) sRaw hsRaw
+  rw [scaleCoeffs_toPolyMod] at hsRawSemantic
+  have hsNewSemantic := __upoly_mod_coeff_raw_ir_refines_of_run sRaw sNew
+    (m ^ 2) hsNew
+  have htRawSemantic := strictHenselRawOps_add_refines_of_run termination
+    (m ^ 2) factorNode.t
+      (Generated.StrictHensel.scaleCoeffs tau (m : Int)) tRaw htRaw
+  rw [scaleCoeffs_toPolyMod] at htRawSemantic
+  have htNewSemantic := __upoly_mod_coeff_raw_ir_refines_of_run tRaw tNew
+    (m ^ 2) htNew
+  constructor
+  · rw [hsNewSemantic, htNewSemantic, hsRawSemantic, htRawSemantic]
+    simpa using halgebra
+  constructor
+  · calc
+      toPolyMod m sNew = toPolyMod m sRaw :=
+        __upoly_mod_coeff_raw_ir_preserves_divisor_of_run
+          (dvd_pow_self m (by omega : 2 ≠ 0)) sRaw sNew hsNew
+      _ = toPolyMod m factorNode.s + toPolyMod m
+          (Generated.StrictHensel.scaleCoeffs r (m : Int)) :=
+        strictHenselRawOps_add_refines_of_run termination m factorNode.s _
+          sRaw hsRaw
+      _ = toPolyMod m factorNode.s := by rw [scaleCoeffs_toPolyMod]; simp
+  · calc
+      toPolyMod m tNew = toPolyMod m tRaw :=
+        __upoly_mod_coeff_raw_ir_preserves_divisor_of_run
+          (dvd_pow_self m (by omega : 2 ≠ 0)) tRaw tNew htNew
+      _ = toPolyMod m factorNode.t + toPolyMod m
+          (Generated.StrictHensel.scaleCoeffs tau (m : Int)) :=
+        strictHenselRawOps_add_refines_of_run termination m factorNode.t _
+          tRaw htRaw
+      _ = toPolyMod m factorNode.t := by rw [scaleCoeffs_toPolyMod]; simp
+
 /-- Full semantic composition of every concrete raw operation in the first
 contiguous `__hensel_step` phase.  The named intermediates are not witnesses
 chosen by the proof: every one is fixed by an accompanying generated raw-run

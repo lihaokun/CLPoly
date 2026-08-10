@@ -21999,5 +21999,65 @@ theorem strictSquarefreeZpIR_nonzeroDerivative_refines
       simp only [hcSemantic, hwSemantic] at hcRemSemantic' ⊢
       rw [← hcRemSemantic', if_neg hcRemPositive]
 
+set_option maxHeartbeats 1600000 in
+/-- Final genuine L1→L2 SQF refinement.  The executable side is the complete
+strict generated control flow backed by raw GCD/division executions; recursion
+is justified by the generated source measure and contains no fuel or L2
+fallback. -/
+theorem strictSquarefreeZpIR_refines_sqfZp
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hbound : sparseDenseLength source ≤ 2 ^ 63) :
+    ∃ factors,
+      strictSquarefreeZpIR this hcfg physical source = .ok factors ∧
+      toPolyList factors this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+  generalize hmeasure : Generated.squarefreeMeasure source = measure
+  induction measure using Nat.strong_induction_on generalizing source with
+  | h measure ih =>
+      by_cases hdegreeZero :
+          (SparsePolyZp.toPoly this._p.toNat source).natDegree = 0
+      · rcases strictSquarefreeZpIR_constant_refines this hcfg physical source
+          hcanonical hmonic hnonempty hdegreeZero hbound with
+          ⟨hrun, hsemantic⟩
+        exact ⟨#[], hrun, hsemantic⟩
+      · have hpositive :
+            0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree :=
+          Nat.pos_of_ne_zero hdegreeZero
+        by_cases hderivativeZero : Polynomial.derivative
+            (SparsePolyZp.toPoly this._p.toNat source) = 0
+        · apply strictSquarefreeZpIR_derivativeZero_refines this hcfg physical
+            source hcanonical hmonic hnonempty hpositive hbound
+            hderivativeZero
+          intro root hrootCanonical _ hrootMonic hrootBound hrootDecrease
+          have hrootNonempty := sparsePolyZp_size_pos_of_toPoly_ne_zero
+            this._p.toNat root hrootMonic.ne_zero
+          apply ih (Generated.squarefreeMeasure root)
+          · simpa [hmeasure] using hrootDecrease
+          · exact hrootCanonical
+          · exact hrootMonic
+          · exact hrootNonempty
+          · exact hrootBound
+          · rfl
+        · apply strictSquarefreeZpIR_nonzeroDerivative_refines this hcfg
+            physical source hcanonical hmonic hnonempty hpositive hbound
+            hderivativeZero
+          intro cRem root hrootCanonical _ hrootMonic hrootBound
+            hrootDecrease
+          have hrootNonempty := sparsePolyZp_size_pos_of_toPoly_ne_zero
+            this._p.toNat root hrootMonic.ne_zero
+          apply ih (Generated.squarefreeMeasure root)
+          · simpa [hmeasure] using hrootDecrease
+          · exact hrootCanonical
+          · exact hrootMonic
+          · exact hrootNonempty
+          · exact hrootBound
+          · rfl
+
 end StrictSquarefreeZp
 end Refinement

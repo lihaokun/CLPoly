@@ -20684,6 +20684,27 @@ theorem yunNextResult_toPolyList
       Bool.eq_false_of_not_eq_true hguardNot
     simp [hguardFalse, hzPositive]
 
+/-- One unfolded L2 Yun step, stated with the concrete polynomials produced by
+the strict raw operations. -/
+theorem yunLoop_eq_concrete_step {p : Nat} [Fact (Nat.Prime p)]
+    (w c y z cNext : Polynomial (ZMod p)) (multiplicity : Nat)
+    (acc : List (Polynomial (ZMod p) × Nat))
+    (hc : c ≠ 0) (hcNext : cNext ≠ 0)
+    (hwPositive : 0 < w.natDegree)
+    (hy : y = normalize (EuclideanDomain.gcd w c))
+    (hz : z = normalize (w /ₘ y))
+    (hcNextEq : cNext = normalize (c /ₘ y)) :
+    yunLoop w c multiplicity acc hc =
+      yunLoop y cNext (multiplicity + 1)
+        (if 0 < z.natDegree then acc ++ [(z, multiplicity)] else acc)
+        hcNext := by
+  rw [yunLoop, dif_neg (Nat.ne_of_gt hwPositive)]
+  simp only
+  subst y
+  subst z
+  subst cNext
+  rfl
+
 /-- Once the strict raw GCD output is supplied, both source `pair_vec_div`
 calls in a Yun body execute successfully through their complete branch tree.
 Their concrete sparse outputs are canonical, survive source normalization
@@ -20729,7 +20750,7 @@ theorem yunPairDivisionsIR_refine
 set_option maxHeartbeats 1600000 in
 /-- Totality of the strict well-founded Yun execution.  Every recursive call
 is justified by the next state returned by the actual raw operations. -/
-theorem strictYunLoopIR_succeeds
+theorem strictYunLoopIR_refines_yunLoop
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
     (physical : YunRawGCDWorkspaceProvider this hcfg)
@@ -20745,7 +20766,15 @@ theorem strictYunLoopIR_succeeds
       Generated.squarefreeMeasure c < UInt64.size) :
     ∃ cOut resultOut,
       strictYunLoopIR this hcfg physical multiplicity w c result =
-        .ok (cOut, resultOut) := by
+        .ok (cOut, resultOut) ∧
+      toPolyList resultOut this._p.toNat =
+        (yunLoop (SparsePolyZp.toPoly this._p.toNat w)
+          (SparsePolyZp.toPoly this._p.toNat c) multiplicity.toNat
+          (toPolyList result this._p.toNat) hcMonic.ne_zero).1 ∧
+      SparsePolyZp.toPoly this._p.toNat cOut =
+        (yunLoop (SparsePolyZp.toPoly this._p.toNat w)
+          (SparsePolyZp.toPoly this._p.toNat c) multiplicity.toNat
+          (toPolyList result this._p.toNat) hcMonic.ne_zero).2 := by
   have hwSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat w
     hwMonic.ne_zero
   have hcSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat c
@@ -20807,34 +20836,111 @@ theorem strictYunLoopIR_succeeds
       (Generated.squarefreeMeasure w + Generated.squarefreeMeasure c)
       (Generated.squarefreeMeasure y + Generated.squarefreeMeasure cNext)
       hdecrease (by simpa [Nat.add_assoc] using hbudget)
-    rcases strictYunLoopIR_succeeds this hcfg physical (multiplicity + 1) y
+    rcases strictYunLoopIR_refines_yunLoop this hcfg physical
+        (multiplicity + 1) y
         cNext nextResult hyCanonical hcNextCanonical hyMonic hcNextMonic
         hnextBounds.1 hnextBounds.2 (by
           simpa [Nat.add_assoc, hnextBudget.1] using hnextBudget.2) with
-      ⟨cOut, resultOut, hrecursive⟩
-    refine ⟨cOut, resultOut, ?_⟩
-    rw [strictYunLoopIR, hguard, if_pos rfl]
-    dsimp only
-    simp only [hgcdRun, hyOutput, hzRun, hzNorm]
-    change (match (if zGuard then
-        match upolyMakeMonicIR this z with
+      ⟨cOut, resultOut, hrecursive, hrecursiveList, hrecursiveC⟩
+    refine ⟨cOut, resultOut, ?_, ?_, ?_⟩
+    · rw [strictYunLoopIR, hguard, if_pos rfl]
+      dsimp only
+      simp only [hgcdRun, hyOutput, hzRun, hzNorm]
+      change (match (if zGuard then
+          match upolyMakeMonicIR this z with
+          | Except.error fault => Except.error fault
+          | Except.ok (_, zMonic) =>
+              Except.ok (result.push (zMonic, multiplicity))
+        else Except.ok result) with
         | Except.error fault => Except.error fault
-        | Except.ok (_, zMonic) =>
-            Except.ok (result.push (zMonic, multiplicity))
-      else Except.ok result) with
-      | Except.error fault => Except.error fault
-      | Except.ok nextResult' => _) = _
-    simpa only [hresultExec, hcRun, hcNextNorm, hdecrease, dif_pos]
-      using hrecursive
+        | Except.ok nextResult' => _) = _
+      simpa only [hresultExec, hcRun, hcNextNorm, hdecrease, dif_pos]
+        using hrecursive
+    · have hzBound := yunQuotient_sparseDenseLength_bound this w y z
+        hwCanonical hzCanonical hwSize hzMonic hyMonic hzSemantic hwBound
+      have hnextList := yunNextResult_toPolyList this result z multiplicity
+        hzCanonical hzMonic hzBound
+      have hzConcrete : SparsePolyZp.toPoly this._p.toNat z = normalize
+          (SparsePolyZp.toPoly this._p.toNat w /ₘ
+            SparsePolyZp.toPoly this._p.toNat y) := by
+        rw [← hzSemantic, hzMonic.normalize_eq_self]
+      have hcNextConcrete : SparsePolyZp.toPoly this._p.toNat cNext =
+          normalize (SparsePolyZp.toPoly this._p.toNat c /ₘ
+            SparsePolyZp.toPoly this._p.toNat y) := by
+        rw [← hcNextSemantic, hcNextMonic.normalize_eq_self]
+      have hstep := yunLoop_eq_concrete_step
+        (SparsePolyZp.toPoly this._p.toNat w)
+        (SparsePolyZp.toPoly this._p.toNat c)
+        (SparsePolyZp.toPoly this._p.toNat y)
+        (SparsePolyZp.toPoly this._p.toNat z)
+        (SparsePolyZp.toPoly this._p.toNat cNext) multiplicity.toNat
+        (toPolyList result this._p.toNat) hcMonic.ne_zero
+        hcNextMonic.ne_zero hwPositive hySemantic hzConcrete
+        hcNextConcrete
+      rw [hstep]
+      rw [hnextBudget.1] at hrecursiveList
+      rw [hnextList] at hrecursiveList
+      exact hrecursiveList
+    · have hzConcrete : SparsePolyZp.toPoly this._p.toNat z = normalize
+          (SparsePolyZp.toPoly this._p.toNat w /ₘ
+            SparsePolyZp.toPoly this._p.toNat y) := by
+        rw [← hzSemantic, hzMonic.normalize_eq_self]
+      have hcNextConcrete : SparsePolyZp.toPoly this._p.toNat cNext =
+          normalize (SparsePolyZp.toPoly this._p.toNat c /ₘ
+            SparsePolyZp.toPoly this._p.toNat y) := by
+        rw [← hcNextSemantic, hcNextMonic.normalize_eq_self]
+      have hstep := yunLoop_eq_concrete_step
+        (SparsePolyZp.toPoly this._p.toNat w)
+        (SparsePolyZp.toPoly this._p.toNat c)
+        (SparsePolyZp.toPoly this._p.toNat y)
+        (SparsePolyZp.toPoly this._p.toNat z)
+        (SparsePolyZp.toPoly this._p.toNat cNext) multiplicity.toNat
+        (toPolyList result this._p.toNat) hcMonic.ne_zero
+        hcNextMonic.ne_zero hwPositive hySemantic hzConcrete
+        hcNextConcrete
+      rw [hstep]
+      rw [hnextBudget.1] at hrecursiveC
+      have hzBound := yunQuotient_sparseDenseLength_bound this w y z
+        hwCanonical hzCanonical hwSize hzMonic hyMonic hzSemantic hwBound
+      have hnextList := yunNextResult_toPolyList this result z multiplicity
+        hzCanonical hzMonic hzBound
+      rw [hnextList] at hrecursiveC
+      exact hrecursiveC
   · have hguardNotTrue : ¬(((! Array.isEmpty w) &&
         decide (get_deg w > (0 : Int64))) = true) := by
       exact fun htrue => hwPositive (hguardIff.mp htrue)
     have hguardFalse : ((! Array.isEmpty w) &&
         decide (get_deg w > (0 : Int64))) = false :=
       Bool.eq_false_of_not_eq_true hguardNotTrue
-    exact ⟨c, result, by simp [strictYunLoopIR, hguardFalse]⟩
+    have hwZero : (SparsePolyZp.toPoly this._p.toNat w).natDegree = 0 :=
+      Nat.eq_zero_of_not_pos hwPositive
+    refine ⟨c, result, by simp [strictYunLoopIR, hguardFalse], ?_, ?_⟩
+    · rw [yunLoop, dif_pos hwZero]
+    · rw [yunLoop, dif_pos hwZero]
 termination_by Generated.squarefreeMeasure w + Generated.squarefreeMeasure c
 decreasing_by exact hdecrease
+
+theorem strictYunLoopIR_succeeds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (multiplicity : UInt64) (w c : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64))
+    (hwCanonical : SparsePolyZp.Canonical this._p.toNat w)
+    (hcCanonical : SparsePolyZp.Canonical this._p.toNat c)
+    (hwMonic : (SparsePolyZp.toPoly this._p.toNat w).Monic)
+    (hcMonic : (SparsePolyZp.toPoly this._p.toNat c).Monic)
+    (hwBound : sparseDenseLength w ≤ 2 ^ 63)
+    (hcBound : sparseDenseLength c ≤ 2 ^ 63)
+    (hbudget : multiplicity.toNat + Generated.squarefreeMeasure w +
+      Generated.squarefreeMeasure c < UInt64.size) :
+    ∃ cOut resultOut,
+      strictYunLoopIR this hcfg physical multiplicity w c result =
+        .ok (cOut, resultOut) := by
+  rcases strictYunLoopIR_refines_yunLoop this hcfg physical multiplicity w c
+      result hwCanonical hcCanonical hwMonic hcMonic hwBound hcBound hbudget
+    with ⟨cOut, resultOut, hrun, _, _⟩
+  exact ⟨cOut, resultOut, hrun⟩
 
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)

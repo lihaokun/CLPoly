@@ -63,6 +63,25 @@ theorem __upoly_mod_coeff_raw_ir_refines (f : SparsePolyZZ) (m : Nat) :
         simp [ZZ.fdiv_r, hz, htermzero, ihtail]
       · simp [ZZ.fdiv_r, hz, hcast, ihtail]
 
+/-- A valid divisor and successful concrete GMP inverse make the strict
+generated modular long-division entry execute to the unique result obtained
+from its exact finite source trace. -/
+theorem __upoly_divmod_mod_raw_ir_terminates
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f g : SparsePolyZZ) (m : ZZ)
+    (hg : g.isEmpty = false)
+    (hinvert : (ZZ.invert 0 g[0]!.2 m).1 = true) :
+    ∃ q r,
+      Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination f g m =
+        .ok (q, r) := by
+  let reduced := Generated.StrictHensel.modCoeffOutput f m
+  let output := Generated.StrictHensel.divmodLoop g
+    (ZZ.invert 0 g[0]!.2 m).2 m
+      (termination.trace f g reduced m (by rfl))
+  refine ⟨output.1, output.2, ?_⟩
+  simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hg, hinvert,
+    Generated.StrictHensel.__upoly_mod_coeff_raw_ir, reduced, output]
+
 /-- The generated divide/reduce/compact loop represents the exact coefficient
 quotient modulo `m`; removing coefficients whose residues are zero does not
 change the decoded `ZMod m` polynomial. -/

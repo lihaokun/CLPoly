@@ -1288,6 +1288,89 @@ def pairVecDivVHCInsert (newNode : Nat) (heap : Array Nat)
                   else
                     .error .assertionFailure
 
+theorem pairVecDivVHCInsert_succeeds
+    (newNode : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (newMono : UMonomial)
+    (hnewBound : newNode < nodes.size)
+    (hnewMono : pairVecDivVHCMono newNode nodes = .ok newMono)
+    (hreads : ∀ (slot : Nat) (hslot : slot < heap.size),
+      ∃ mono, pairVecDivVHCMono (heap[slot]'hslot) nodes = .ok mono) :
+    ∃ heap' nodes', pairVecDivVHCInsert newNode heap nodes =
+      .ok (heap', nodes') := by
+  unfold pairVecDivVHCInsert
+  simp only [hnewMono]
+  by_cases hempty : heap.size = 0
+  · simp only [hempty, ↓reduceIte]
+    rcases pairVecDivVHCSetNext_succeeds newNode none nodes hnewBound with
+      ⟨nodes', hset⟩
+    simp only [hset]
+    exact ⟨_, nodes', rfl⟩
+  · simp only [hempty, ↓reduceIte]
+    have hheap : 0 < heap.size := Nat.pos_of_ne_zero hempty
+    rcases hreads 0 hheap with ⟨rootMono, hrootMono⟩
+    simp only [hrootMono]
+    by_cases hequal : newMono.deg = rootMono.deg
+    · simp only [hequal, ↓reduceIte]
+      rcases pairVecDivVHCSetNext_succeeds newNode (some heap[0]) nodes
+          hnewBound with ⟨nodes', hset⟩
+      simp only [hset]
+      exact ⟨_, nodes', rfl⟩
+    · simp only [hequal, ↓reduceIte]
+      by_cases hgreater : newMono.deg > rootMono.deg
+      · simp only [hgreater, ↓reduceIte]
+        rcases pairVecDivVHCSetNext_succeeds newNode none nodes hnewBound with
+          ⟨nodes', hset⟩
+        simp only [hset]
+        rcases pairVecDivVHCBubble_to_root_succeeds heap.size newNode
+            (heap.push newNode) (by simp) with ⟨heap', hbubble⟩
+        simp only [hbubble]
+        exact ⟨heap', nodes', rfl⟩
+      · simp only [hgreater, ↓reduceIte]
+        let firstAnchor := pairVecDivVHCParent heap.size
+        have hfirst : firstAnchor < heap.size := by
+          dsimp only [firstAnchor]
+          unfold pairVecDivVHCParent
+          have hhalf : (heap.size - 1) / 2 ≤ heap.size - 1 :=
+            Nat.div_le_self _ _
+          omega
+        rcases pairVecDivVHCFindAnchor_succeeds newMono.deg firstAnchor heap
+            nodes rootMono hfirst hheap hreads hrootMono (by omega) with
+          ⟨anchor, hanchor⟩
+        have hanchorRaw : pairVecDivVHCFindAnchor newMono.deg
+            (pairVecDivVHCParent heap.size) heap nodes = .ok anchor := by
+          simpa only [firstAnchor] using hanchor
+        rw [hanchorRaw]
+        have htrace := pairVecDivVHCFindAnchor_trace newMono.deg firstAnchor
+          anchor heap nodes hanchor
+        rcases htrace.anchor_read newMono.deg heap nodes firstAnchor anchor with
+          ⟨anchorNode, anchorMono, hanchorGet, hanchorMono, hanchorLe⟩
+        have ha : anchor < heap.size := by
+          by_contra hnot
+          rw [Array.getElem?_eq_none (by omega)] at hanchorGet
+          contradiction
+        have hanchorValue : heap[anchor] = anchorNode := by
+          rw [Array.getElem?_eq_getElem ha] at hanchorGet
+          exact Option.some.inj hanchorGet
+        have hanchorMonoRaw : pairVecDivVHCMono heap[anchor] nodes =
+            .ok anchorMono := by
+          rw [hanchorValue]
+          exact hanchorMono
+        by_cases hequalAnchor : newMono.deg = anchorMono.deg
+        · rcases pairVecDivVHCSetNext_succeeds newNode (some heap[anchor]) nodes
+              hnewBound with ⟨nodes', hset⟩
+          simp only [ha, ↓reduceDIte, hanchorMonoRaw, hequalAnchor,
+            ↓reduceIte, hset]
+          exact ⟨_, nodes', rfl⟩
+        · rcases pairVecDivVHCSetNext_succeeds newNode none nodes hnewBound with
+            ⟨nodes', hset⟩
+          have hparent : pairVecDivVHCParent heap.size = firstAnchor := rfl
+          rcases htrace.bubbleBelow_succeeds newMono.deg heap nodes firstAnchor
+              anchor heap.size newNode (heap.push newNode) (by simp) hheap
+              hparent with ⟨heap', hbubble⟩
+          simp only [ha, ↓reduceDIte, hanchorMonoRaw, hequalAnchor,
+            ↓reduceIte, hset, hbubble]
+          exact ⟨heap', nodes', rfl⟩
+
 /-- Downward pointer-copy loop of `VHC_extract`.  `limit` is the decremented
 source `heap_size` (`s`), and `lastNode = heap[s]` remains readable as the
 sentinel until the loop finishes. -/

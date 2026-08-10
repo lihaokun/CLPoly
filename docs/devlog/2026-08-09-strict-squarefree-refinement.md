@@ -1375,3 +1375,10 @@ every generated range-for and recursive loop used by SQF.
   对成功搜索产生的 concrete comparison trace 归纳，证明 appended hole 的
   parent 恰沿 trace 走到 anchor，并在真实 stop 条件写入新节点。两者均未
   引入搜索步数预算或预定 anchor。
+- 完整 generated `VHCInsert` raw→safe totality 已闭合。
+  `pairVecDivVHCInsert_succeeds` 从新节点的 concrete active mono、节点数组界
+  与现有 heap slot 的真实 mono 可读性出发，逐一构造 empty、equal-root、
+  new-root、anchor-equal、below-anchor 五类源码分支。非 root 插入分支先用
+  `FindAnchor` totality 得到实际 anchor，再从 trace 的 `anchor_read` 推出
+  `anchor < heap.size` 与 anchor mono，最后分别执行 SetNext 或 trace-driven
+  BubbleBelow。定理没有把 freshness/heap-order 后置性质冒充执行成功前提。

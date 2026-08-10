@@ -748,6 +748,26 @@ theorem canonical_term_degree_le_natDegree (p : Nat) [Fact (Nat.Prime p)]
       (hcanonical.1 term hterm) (hcanonical.2.2 term hterm)
   exact Polynomial.le_natDegree_of_ne_zero hcoefficient
 
+/-- A nonzero canonical sparse polynomial inherits a uniform stored-degree
+bound as an L2 natural-degree bound. -/
+theorem canonical_natDegree_lt_of_terms_lt (p : Nat) [Fact (Nat.Prime p)]
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonzero : SparsePolyZp.toPoly p poly ≠ 0) (bound : Nat)
+    (hterms : ∀ term ∈ poly.toList, term.1.deg < bound) :
+    (SparsePolyZp.toPoly p poly).natDegree < bound := by
+  have hnonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      p poly hnonzero
+  have hheadMem : poly[0] ∈ poly.toList := by
+    simpa using Array.getElem_mem poly 0 hnonempty
+  have hdegree :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+      p poly hcanonical hnonempty
+  have hnatDegree : (SparsePolyZp.toPoly p poly).natDegree =
+      poly[0].1.deg := Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  rw [hnatDegree]
+  exact hterms poly[0] hheadMem
+
 /-- On a canonical sparse polynomial whose degree fits signed 64 bits, the
 C++ `get_deg` positivity test is exactly L2 positive natural degree. -/
 theorem strict_get_deg_pos_iff_natDegree_pos (p : Nat) [Fact (Nat.Prime p)]
@@ -777,6 +797,83 @@ theorem strict_get_deg_pos_iff_natDegree_pos (p : Nat) [Fact (Nat.Prime p)]
     exact Refinement.StrictSquarefreeZp.generated_getDeg_pos_iff_natDegree_pos
       p poly hcanonical hnonempty hdegree
 
+/-- Exact natural value of the signed C++ degree word on a nonempty canonical
+polynomial. -/
+theorem strict_get_deg_toNatClampNeg (p : Nat) [Fact (Nat.Prime p)]
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size)
+    (hdegree : (SparsePolyZp.toPoly p poly).natDegree < 2 ^ 63) :
+    (get_deg poly).toNatClampNeg =
+      (SparsePolyZp.toPoly p poly).natDegree := by
+  have hne : poly ≠ #[] := by
+    intro hempty
+    subst poly
+    simp at hnonempty
+  have hdegreeEq :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+      p poly hcanonical hnonempty
+  have hnatDegree : (SparsePolyZp.toPoly p poly).natDegree =
+      poly[0].1.deg := Polynomial.natDegree_eq_of_degree_eq_some hdegreeEq
+  have hwordNat : poly[0].1.deg.toUInt64.toNat = poly[0].1.deg := by
+    change (OfNat.ofNat poly[0].1.deg : UInt64).toNat = poly[0].1.deg
+    rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt]
+    omega
+  have hheadBound : poly[0].1.deg < 2 ^ 63 := by
+    rw [← hnatDegree]
+    exact hdegree
+  have hsignedNat : poly[0].1.deg.toUInt64.toInt64.toNatClampNeg =
+      poly[0].1.deg := by
+    rw [UInt64_toInt64_toNatClampNeg_eq_toNat_of_lt (by
+      simpa [hwordNat] using hheadBound), hwordNat]
+  have hget : get_deg poly = poly[0].1.deg.toUInt64.toInt64 := by
+    simp [get_deg, Array.isEmpty_iff, hne, getElem!_pos poly 0 hnonempty]
+  rw [hget, hsignedNat, hnatDegree]
+
+/-- The source expression `(2 * d).toInt64` denotes mathematical `2*d`
+under the DDF loop's explicit no-overflow budget. -/
+theorem strict_twice_degree_toNatClampNeg (d : UInt64)
+    (hbound : d.toNat < 2 ^ 62) :
+    ((2 * d).toInt64).toNatClampNeg = 2 * d.toNat := by
+  have hproduct64 : 2 * d.toNat < 2 ^ 64 := by omega
+  have hproduct63 : 2 * d.toNat < 2 ^ 63 := by omega
+  have htoNat : (2 * d).toNat = 2 * d.toNat := by
+    rw [UInt64.toNat_mul]
+    norm_num
+    exact Nat.mod_eq_of_lt hproduct64
+  rw [UInt64_toInt64_toNatClampNeg_eq_toNat_of_lt (by
+    rw [htoNat]
+    exact hproduct63), htoNat]
+
+/-- Taking the generated recursive branch implies the corresponding L2
+degree guard is false. -/
+theorem strict_ddf_active_degree_ge (p : Nat) [Fact (Nat.Prime p)]
+    (d : UInt64) (fStar : SparsePolyZp)
+    (hd : d.toNat < 2 ^ 62)
+    (hdPos : 0 < d.toNat)
+    (hfCanonical : SparsePolyZp.Canonical p fStar)
+    (hfNonempty : 0 < fStar.size)
+    (hfDegree : (SparsePolyZp.toPoly p fStar).natDegree < 2 ^ 63)
+    (hactive : ¬get_deg fStar < (2 * d).toInt64) :
+    2 * d.toNat ≤ (SparsePolyZp.toPoly p fStar).natDegree := by
+  have hleft := strict_get_deg_toNatClampNeg p fStar hfCanonical
+    hfNonempty hfDegree
+  have hright := strict_twice_degree_toNatClampNeg d hd
+  have hactiveInt : ¬(get_deg fStar).toInt < (2 * d).toInt64.toInt := by
+    simpa only [Int64.lt_iff_toInt_lt] using hactive
+  have hleInt : (2 * d).toInt64.toInt ≤ (get_deg fStar).toInt :=
+    Int.not_lt.mp hactiveInt
+  change (get_deg fStar).toInt.toNat =
+    (SparsePolyZp.toPoly p fStar).natDegree at hleft
+  change (2 * d).toInt64.toInt.toNat = 2 * d.toNat at hright
+  have hrightIntNonneg : 0 ≤ (2 * d).toInt64.toInt := by
+    have hrightNatPos : 0 < (2 * d).toInt64.toInt.toNat := by
+      rw [hright]
+      omega
+    omega
+  have hleftIntNonneg : 0 ≤ (get_deg fStar).toInt :=
+    le_trans hrightIntNonneg hleInt
+  omega
+
 /-- Full representation-and-mathematical invariant for the generated DDF
 loop.  The final seven fields are exactly P0–P6 of `ddfLoop_correct`; the
 preceding fields justify every machine-word and sparse-array operation. -/
@@ -785,11 +882,11 @@ structure DDFLoopInvariant (this : DenseUPolyZp)
     (d : UInt64) (fStar h : SparsePolyZp)
     (result : Array (SparsePolyZp × UInt64)) (prime : UInt64) : Prop where
   prime_eq : prime = this._p
-  d_bound : d.toNat < 2 ^ 63
+  d_bound : d.toNat < 2 ^ 62
   fStar_canonical : SparsePolyZp.Canonical this._p.toNat fStar
   h_canonical : SparsePolyZp.Canonical this._p.toNat h
-  fStar_degree_bound : ∀ term ∈ fStar.toList, term.1.deg < 2 ^ 63
-  h_degree_bound : ∀ term ∈ h.toList, term.1.deg < 2 ^ 63
+  fStar_degree_bound : ∀ term ∈ fStar.toList, term.1.deg < 2 ^ 62
+  h_degree_bound : ∀ term ∈ h.toList, term.1.deg < 2 ^ 62
   result_canonical : ∀ item ∈ result.toList,
     SparsePolyZp.Canonical this._p.toNat item.1
   p0 : 1 ≤ d.toNat
@@ -814,7 +911,7 @@ theorem DDFLoopInvariant.initial
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (f : SparsePolyZp) (q : UInt64) (hq : q = this._p)
     (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
-    (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 63)
+    (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 62)
     (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic)
     (hfSquarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)) :
     DDFLoopInvariant this (SparsePolyZp.toPoly this._p.toNat f) 1 f
@@ -835,7 +932,7 @@ theorem DDFLoopInvariant.initial
     simpa [Generated.StrictDDF.__make_zp_ir] using hx.2
   refine ⟨hq, ?_, hfCanonical, hxCanonical, hfDegree, ?_, ?_,
     ?_, ?_, ?_, hfMonic, hfSquarefree, ?_, ?_⟩
-  · change (1 : Nat) < 2 ^ 63
+  · change (1 : Nat) < 2 ^ 62
     norm_num
   · intro term hterm
     have htermEq : term =
@@ -843,7 +940,7 @@ theorem DDFLoopInvariant.initial
           Generated.StrictDDF.__make_zp_ir (1 : Int64) q) := by
       simpa using hterm
     subst term
-    change (1 : Nat) < 2 ^ 63
+    change (1 : Nat) < 2 ^ 62
     norm_num
   · intro item hitem
     simp at hitem
@@ -856,6 +953,168 @@ theorem DDFLoopInvariant.initial
     exact Irreducible.natDegree_pos hirreducible
   · intro item hitem
     simp [ddfResultToL2] at hitem
+
+/-- The concrete no-split recursive call advances the unsigned counter
+without wraparound and strictly decreases the generated raw measure. -/
+theorem strict_ddf_noSplit_machine_step
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (original : Polynomial (ZMod this._p.toNat))
+    (d : UInt64) (fStar h : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64)) (prime : UInt64)
+    (hinvariant : DDFLoopInvariant this original d fStar h result prime)
+    (hactive : ¬get_deg fStar < (2 * d).toInt64) :
+    (d + 1).toNat = d.toNat + 1 ∧
+      (d + 1).toNat < 2 ^ 62 ∧
+      Generated.StrictDDF.ddfRawMeasure fStar (d + 1) <
+        Generated.StrictDDF.ddfRawMeasure fStar d := by
+  have hfNonzero : SparsePolyZp.toPoly this._p.toNat fStar ≠ 0 :=
+    hinvariant.p3.ne_zero
+  have hfNonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat fStar hfNonzero
+  have hfDegree : (SparsePolyZp.toPoly this._p.toNat fStar).natDegree <
+      2 ^ 62 := canonical_natDegree_lt_of_terms_lt this._p.toNat fStar
+        hinvariant.fStar_canonical hfNonzero (2 ^ 62)
+        hinvariant.fStar_degree_bound
+  have hactiveNat := strict_ddf_active_degree_ge this._p.toNat d fStar
+    hinvariant.d_bound (lt_of_lt_of_le hinvariant.p0 (Nat.le_refl _))
+    hinvariant.fStar_canonical hfNonempty (lt_trans hfDegree (by norm_num))
+    hactive
+  have hdIncrement :=
+    Refinement.StrictSquarefreeZp.UInt64_toNat_add_one_of_lt d (by
+      have : d.toNat + 1 < UInt64.size := by
+        simpa [UInt64.size] using
+          (show d.toNat + 1 < 2 ^ 64 by omega)
+      exact this)
+  have hdNextBound : (d + 1).toNat < 2 ^ 62 := by
+    rw [hdIncrement]
+    omega
+  have hfNotEmpty : fStar.isEmpty = false := by
+    simp [Array.isEmpty, Nat.ne_of_gt hfNonempty]
+  have hgetDegree := strict_get_deg_toNatClampNeg this._p.toNat fStar
+    hinvariant.fStar_canonical hfNonempty (lt_trans hfDegree (by norm_num))
+  refine ⟨hdIncrement, hdNextBound, ?_⟩
+  simp only [Generated.StrictDDF.ddfRawMeasure, hfNotEmpty,
+    Bool.false_eq_true, ↓reduceIte, Int64.toNat]
+  rw [hgetDegree, hdIncrement]
+  omega
+
+/-- Full no-split transition of the generated DDF loop.  Its hypotheses are
+exactly the successful raw-call observations supplied by `DDFRawOps`; the
+conclusion re-establishes the concrete representation conditions and L2
+P0–P6, together with the generated well-founded decrease. -/
+set_option maxHeartbeats 0 in
+theorem DDFLoopInvariant.noSplit
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (original : Polynomial (ZMod this._p.toNat))
+    (d : UInt64) (fStar h : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64)) (prime : UInt64)
+    (hPow gdRaw : SparsePolyZp)
+    (hinvariant : DDFLoopInvariant this original d fStar h result prime)
+    (hactive : ¬get_deg fStar < (2 * d).toInt64)
+    (hPowCanonical : SparsePolyZp.Canonical this._p.toNat hPow)
+    (hPowSemantic : SparsePolyZp.toPoly this._p.toNat hPow =
+      SparsePolyZp.toPoly this._p.toNat h ^ this._p.toNat %ₘ
+        SparsePolyZp.toPoly this._p.toNat fStar)
+    (hgdCanonical : SparsePolyZp.Canonical this._p.toNat gdRaw)
+    (hgdSemantic : SparsePolyZp.toPoly this._p.toNat gdRaw = normalize
+      (EuclideanDomain.gcd
+        (SparsePolyZp.toPoly this._p.toNat hPow - Polynomial.X)
+        (SparsePolyZp.toPoly this._p.toNat fStar)))
+    (hnoSplit : (!gdRaw.isEmpty && get_deg gdRaw > 0) = false) :
+    DDFLoopInvariant this original (d + 1) fStar hPow result prime ∧
+      Generated.StrictDDF.ddfRawMeasure fStar (d + 1) <
+        Generated.StrictDDF.ddfRawMeasure fStar d := by
+  rcases strict_ddf_noSplit_machine_step this original d fStar h result
+      prime hinvariant hactive with ⟨hdIncrement, hdNextBound, hmeasure⟩
+  have hfNonzero : SparsePolyZp.toPoly this._p.toNat fStar ≠ 0 :=
+    hinvariant.p3.ne_zero
+  have hfDegree : (SparsePolyZp.toPoly this._p.toNat fStar).natDegree <
+      2 ^ 62 := canonical_natDegree_lt_of_terms_lt this._p.toNat fStar
+        hinvariant.fStar_canonical hfNonzero (2 ^ 62)
+        hinvariant.fStar_degree_bound
+  have hPowDegreeLe :
+      (SparsePolyZp.toPoly this._p.toNat hPow).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat fStar).natDegree := by
+    rw [hPowSemantic]
+    exact Polynomial.natDegree_modByMonic_le _ hinvariant.p3
+  have hPowDegree :
+      (SparsePolyZp.toPoly this._p.toNat hPow).natDegree < 2 ^ 62 :=
+    lt_of_le_of_lt hPowDegreeLe hfDegree
+  have hPowTerms : ∀ term ∈ hPow.toList, term.1.deg < 2 ^ 62 := by
+    intro term hterm
+    exact lt_of_le_of_lt
+      (canonical_term_degree_le_natDegree this._p.toNat hPow
+        hPowCanonical term hterm) hPowDegree
+  have hcongNext : SparsePolyZp.toPoly this._p.toNat fStar ∣
+      (SparsePolyZp.toPoly this._p.toNat hPow -
+        Polynomial.X ^ (this._p.toNat ^ ((d + 1).toNat - 1))) := by
+    rw [hdIncrement, Nat.add_sub_cancel]
+    rw [hPowSemantic]
+    exact ddf_h_cong_step
+      (SparsePolyZp.toPoly this._p.toNat h)
+      (SparsePolyZp.toPoly this._p.toNat fStar) d.toNat
+      hinvariant.p0 hinvariant.p3 hinvariant.p2
+  have hgcdRawNonzero : EuclideanDomain.gcd
+      (SparsePolyZp.toPoly this._p.toNat hPow - Polynomial.X)
+      (SparsePolyZp.toPoly this._p.toNat fStar) ≠ 0 := by
+    intro hzero
+    have hdiv := EuclideanDomain.gcd_dvd_right
+      (SparsePolyZp.toPoly this._p.toNat hPow - Polynomial.X)
+      (SparsePolyZp.toPoly this._p.toNat fStar)
+    rw [hzero] at hdiv
+    exact hfNonzero (zero_dvd_iff.mp hdiv)
+  have hgdNonzero : SparsePolyZp.toPoly this._p.toNat gdRaw ≠ 0 := by
+    rw [hgdSemantic]
+    exact mt normalize_eq_zero.mp hgcdRawNonzero
+  have hgdDvd : SparsePolyZp.toPoly this._p.toNat gdRaw ∣
+      SparsePolyZp.toPoly this._p.toNat fStar := by
+    rw [hgdSemantic]
+    exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right _ _)
+  have hgdDegreeLe :
+      (SparsePolyZp.toPoly this._p.toNat gdRaw).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat fStar).natDegree :=
+    Polynomial.natDegree_le_of_dvd hgdDvd hfNonzero
+  have hgdDegree :
+      (SparsePolyZp.toPoly this._p.toNat gdRaw).natDegree < 2 ^ 63 :=
+    lt_of_le_of_lt hgdDegreeLe (lt_trans hfDegree (by norm_num))
+  have hgdDegreeZero :
+      (SparsePolyZp.toPoly this._p.toNat gdRaw).natDegree = 0 := by
+    apply Nat.eq_zero_of_not_pos
+    intro hpositive
+    have hgetPositive :=
+      (strict_get_deg_pos_iff_natDegree_pos this._p.toNat gdRaw
+        hgdCanonical hgdDegree).mpr hpositive
+    have hgdNonempty :=
+      Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+        this._p.toNat gdRaw hgdNonzero
+    have hnotEmpty : gdRaw.isEmpty = false := by
+      simp [Array.isEmpty, Nat.ne_of_gt hgdNonempty]
+    simp [hnotEmpty, hgetPositive] at hnoSplit
+  have hp5Next : ∀ q : Polynomial (ZMod this._p.toNat),
+      Irreducible q → q ∣ SparsePolyZp.toPoly this._p.toNat fStar →
+        (d + 1).toNat ≤ q.natDegree := by
+    intro q hq hqfs
+    rw [hdIncrement]
+    by_contra hnot
+    have hdegreeEq : q.natDegree = d.toNat := by
+      have := hinvariant.p5 q hq hqfs
+      omega
+    have hqgd := (ddf_gd_irred_characterization
+      (SparsePolyZp.toPoly this._p.toNat fStar)
+      (SparsePolyZp.toPoly this._p.toNat hPow) d.toNat hinvariant.p0
+      hinvariant.p3 hinvariant.p4 hcongNext hinvariant.p5 q hq).mpr
+        ⟨hqfs, hdegreeEq⟩
+    have hle := Polynomial.natDegree_le_of_dvd hqgd hgdNonzero
+    rw [hgdDegreeZero] at hle
+    exact (Irreducible.natDegree_pos hq).not_le hle
+  refine ⟨⟨hinvariant.prime_eq, hdNextBound,
+    hinvariant.fStar_canonical, hPowCanonical,
+    hinvariant.fStar_degree_bound, hPowTerms, hinvariant.result_canonical,
+    ?_, hinvariant.p1, hcongNext, hinvariant.p3, hinvariant.p4,
+    hp5Next, hinvariant.p6⟩, hmeasure⟩
+  rw [hdIncrement]
+  omega
 
 private lemma modByMonic_idem {p : Nat} [Fact (Nat.Prime p)]
     (a m : Polynomial (ZMod p))

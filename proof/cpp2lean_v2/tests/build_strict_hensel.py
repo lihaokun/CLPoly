@@ -298,9 +298,10 @@ structure HenselStepRawOps where
   sub : SparsePolyZZ → SparsePolyZZ → RawExec SparsePolyZZ
   divmodTermination : DivmodTermination
 
-/-- Strict sequential translation of C++ `__hensel_step`.  It neither calls
-the L2 Hensel model nor manufactures an output when a raw operation fails. -/
-def __hensel_step_raw_ir (ops : HenselStepRawOps) (node : HenselNode)
+/-- First contiguous source phase of `__hensel_step`: correct `g` and `h`
+from the factorization error, while leaving the Bezout coefficients intact. -/
+def __hensel_step_factor_phase_raw_ir (ops : HenselStepRawOps)
+    (node : HenselNode)
     (f : SparsePolyZZ) (m : ZZ) : RawExec HenselNode := do
   let m2 := m * m
   let gh ← ops.mul node.g node.h
@@ -316,7 +317,13 @@ def __hensel_step_raw_ir (ops : HenselStepRawOps) (node : HenselNode)
   let gNew ← __upoly_mod_coeff_raw_ir gRaw m2
   let hRaw ← ops.add node.h (scaleCoeffs qr.2 m)
   let hNew ← __upoly_mod_coeff_raw_ir hRaw m2
-  let factorNode := { node with g := gNew, h := hNew }
+  return { node with g := gNew, h := hNew }
+
+/-- Second contiguous source phase of `__hensel_step`: correct `s` and `t`
+for the already-updated factor node. -/
+def __hensel_step_bezout_phase_raw_ir (ops : HenselStepRawOps)
+    (factorNode : HenselNode) (m : ZZ) : RawExec HenselNode := do
+  let m2 := m * m
   let sg ← ops.mul factorNode.s factorNode.g
   let th ← ops.mul factorNode.t factorNode.h
   let one : SparsePolyZZ := #[(UMonomial.mk 0, 1)]
@@ -335,6 +342,15 @@ def __hensel_step_raw_ir (ops : HenselStepRawOps) (node : HenselNode)
   let tRaw ← ops.add factorNode.t (scaleCoeffs tau2 m)
   let tNew ← __upoly_mod_coeff_raw_ir tRaw m2
   return { factorNode with s := sNew, t := tNew }
+
+/-- Strict sequential translation of C++ `__hensel_step`.  It neither calls
+the L2 Hensel model nor manufactures an output when a raw operation fails.
+The two binds above are only proof-visible boundaries between contiguous
+source statement ranges; they preserve the exact source operation order. -/
+def __hensel_step_raw_ir (ops : HenselStepRawOps) (node : HenselNode)
+    (f : SparsePolyZZ) (m : ZZ) : RawExec HenselNode := do
+  let factorNode ← __hensel_step_factor_phase_raw_ir ops node f m
+  __hensel_step_bezout_phase_raw_ir ops factorNode m
 
 end Generated.StrictHensel
 '''

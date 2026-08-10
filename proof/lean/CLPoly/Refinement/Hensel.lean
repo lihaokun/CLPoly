@@ -77,6 +77,20 @@ theorem toPolyMod_eq_termsToPolyMod (m : Nat) (f : SparsePolyZZ) :
   | nil => simp
   | cons term terms ih => simp [ih]
 
+/-- Decoding commutes with the canonical projection from a stronger modulus
+to a divisor modulus.  This is the raw representation bridge needed to show
+that every quadratic update still reduces to its input modulo `m`. -/
+theorem map_toPolyMod_of_dvd {smaller larger : Nat}
+    (hdiv : smaller ∣ larger) (f : SparsePolyZZ) :
+    Polynomial.map (ZMod.castHom hdiv (ZMod smaller))
+        (toPolyMod larger f) =
+      toPolyMod smaller f := by
+  unfold toPolyMod
+  rw [Polynomial.map_map]
+  congr 1
+  ext coefficient
+  simp [ZMod.castHom_apply, ZMod.cast_intCast hdiv]
+
 @[simp] theorem termsToPolyMod_nil (m : Nat) :
     termsToPolyMod m [] = 0 := by
   simp [termsToPolyMod]
@@ -1099,6 +1113,24 @@ theorem __upoly_mod_coeff_raw_ir_refines (f : SparsePolyZZ) (m : Nat) :
         simp [ZZ.fdiv_r, hz, htermzero, ihtail]
       · simp [ZZ.fdiv_r, hz, hcast, ihtail]
 
+/-- Reducing coefficients modulo a stronger modulus also preserves the
+represented polynomial at every divisor modulus.  In particular, the `m²`
+stores performed by `__hensel_step` preserve all four fields modulo `m`. -/
+theorem __upoly_mod_coeff_raw_ir_preserves_divisor
+    {smaller larger : Nat} (hdiv : smaller ∣ larger)
+    (f : SparsePolyZZ) :
+    ∃ output,
+      Generated.StrictHensel.__upoly_mod_coeff_raw_ir f (larger : Int) =
+        .ok output ∧
+      toPolyMod smaller output = toPolyMod smaller f := by
+  rcases __upoly_mod_coeff_raw_ir_refines f larger with
+    ⟨output, hrun, hsem⟩
+  refine ⟨output, hrun, ?_⟩
+  have projected := congrArg
+    (Polynomial.map (ZMod.castHom hdiv (ZMod smaller))) hsem
+  rw [map_toPolyMod_of_dvd hdiv, map_toPolyMod_of_dvd hdiv] at projected
+  exact projected
+
 /-- A valid divisor and successful concrete GMP inverse make the strict
 generated modular long-division entry execute to the unique result obtained
 from its exact finite source trace. -/
@@ -1243,6 +1275,17 @@ theorem scaleCoeffs_toPoly (f : SparsePolyZZ) (m : ZZ) :
       exact (Polynomial.C_mul_monomial (R := ℤ) (a := m)
         (b := term.2) (n := term.1.deg)).symm
 
+/-- Modular decoding of the same generated coefficient-scaling loop.  The
+target modulus is intentionally independent of the integer scale: the
+quadratic step uses this once at `m` and once at `m²`. -/
+theorem scaleCoeffs_toPolyMod (f : SparsePolyZZ) (scale : ZZ)
+    (modulus : Nat) :
+    toPolyMod modulus (Generated.StrictHensel.scaleCoeffs f scale) =
+      Polynomial.C (scale : ZMod modulus) * toPolyMod modulus f := by
+  unfold toPolyMod
+  rw [scaleCoeffs_toPoly, Polynomial.map_mul, Polynomial.map_C]
+  rfl
+
 /-- Complete semantic certificate for the source error-coefficient loop: its
 unreduced quotient reconstructs the input exactly, and the concrete compacted
 output is that quotient modulo `m`. -/
@@ -1257,6 +1300,81 @@ theorem divideThenReduceCoeffs_certificate (f : SparsePolyZZ) (m : Nat)
   · exact divideThenReduceCoeffs_toPolyMod f m
   · rw [← scaleCoeffs_toPoly,
       scaleCoeffs_divideCoeffs f m hdivisible]
+
+/-- The first contiguous source phase has a genuine raw-to-safe execution
+bridge.  Its only possible source assertion is the modular division by `h`;
+all generated heap arithmetic and coefficient-reduction calls are total. -/
+theorem __hensel_step_factor_phase_raw_ir_terminates
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : ZZ)
+    (hh : node.h.isEmpty = false)
+    (hinvert : (ZZ.invert 0 node.h[0]!.2 m).1 = true) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
+          (strictHenselRawOps termination) node f m = .ok output := by
+  simp [Generated.StrictHensel.__hensel_step_factor_phase_raw_ir,
+    strictHenselRawOps, Generated.StrictHensel.__upoly_mul_raw_ir,
+    Generated.StrictHensel.__upoly_add_raw_ir,
+    Generated.StrictHensel.__upoly_sub_raw_ir,
+    Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hh, hinvert,
+    Generated.StrictHensel.__upoly_mod_coeff_raw_ir]
+  exact ⟨_, rfl⟩
+
+/-- Matching raw-to-safe bridge for the second contiguous source phase. -/
+theorem __hensel_step_bezout_phase_raw_ir_terminates
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (factorNode : HenselNode) (m : ZZ)
+    (hh : factorNode.h.isEmpty = false)
+    (hinvert : (ZZ.invert 0 factorNode.h[0]!.2 m).1 = true) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir
+          (strictHenselRawOps termination) factorNode m = .ok output := by
+  simp [Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir,
+    strictHenselRawOps, Generated.StrictHensel.__upoly_mul_raw_ir,
+    Generated.StrictHensel.__upoly_add_raw_ir,
+    Generated.StrictHensel.__upoly_sub_raw_ir,
+    Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hh, hinvert,
+    Generated.StrictHensel.__upoly_mod_coeff_raw_ir]
+  exact ⟨_, rfl⟩
+
+/-- Safety-only invariant at the proof-visible boundary between the two
+contiguous statement ranges.  It contains no output specification and cannot
+manufacture a result: both fields merely discharge the second concrete C++
+division assertion for the uniquely produced factor-phase node. -/
+structure HenselStepExecutionInvariant
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : ZZ) : Prop where
+  inputHNonempty : node.h.isEmpty = false
+  inputHInvertible : (ZZ.invert 0 node.h[0]!.2 m).1 = true
+  factorHReady : ∀ factorNode,
+    Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
+        (strictHenselRawOps termination) node f m = .ok factorNode →
+    factorNode.h.isEmpty = false ∧
+      (ZZ.invert 0 factorNode.h[0]!.2 m).1 = true
+
+set_option maxHeartbeats 0 in
+/-- Complete raw-to-safe bridge for the generated `__hensel_step` entry.
+The witness is obtained only by executing the two exact raw source phases. -/
+theorem __hensel_step_raw_ir_terminates
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : ZZ)
+    (hinvariant : HenselStepExecutionInvariant termination node f m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_step_raw_ir
+          (strictHenselRawOps termination) node f m = .ok output := by
+  rcases __hensel_step_factor_phase_raw_ir_terminates termination node f m
+      hinvariant.inputHNonempty hinvariant.inputHInvertible with
+    ⟨factorNode, hfactor⟩
+  have hready := hinvariant.factorHReady factorNode hfactor
+  rcases __hensel_step_bezout_phase_raw_ir_terminates termination factorNode m
+      hready.1 hready.2 with ⟨output, hbezout⟩
+  refine ⟨output, ?_⟩
+  change (Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
+      (strictHenselRawOps termination) node f m >>= fun factorNode =>
+        Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir
+          (strictHenselRawOps termination) factorNode m) = .ok output
+  rw [hfactor]
+  exact hbezout
 
 end StrictHensel
 

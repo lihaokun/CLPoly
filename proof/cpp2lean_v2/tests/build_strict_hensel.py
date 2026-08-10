@@ -61,7 +61,7 @@ def __upoly_mod_coeff_raw_ir (f : SparsePolyZZ) (m : ZZ) :
     RawExec SparsePolyZZ :=
   .ok (modCoeffOutput f m)
 
-private def pushNonzero (result : SparsePolyZZ) (degree : Nat)
+def pushNonzero (result : SparsePolyZZ) (degree : Nat)
     (coefficient : ZZ) : SparsePolyZZ :=
   if coefficient != 0 then result.push (UMonomial.mk degree, coefficient)
   else result

@@ -21436,5 +21436,92 @@ theorem strictSquarefreeZpIR_derivativeZero_refines
       rw [sqfZp, dif_neg (Nat.ne_of_gt hpositive), dif_pos hderivative]
     rw [hsourceSqf, ← hrootSemantic]
 
+set_option maxHeartbeats 800000 in
+/-- A nonempty constant input follows the concrete derivative-zero prefix but
+does not recurse: contraction has the same generated measure, so the source's
+well-founded guard selects the empty result, exactly as L2 `sqfZp`. -/
+theorem strictSquarefreeZpIR_constant_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hdegreeZero :
+      (SparsePolyZp.toPoly this._p.toNat source).natDegree = 0)
+    (hbound : sparseDenseLength source ≤ 2 ^ 63) :
+    strictSquarefreeZpIR this hcfg physical source = .ok #[] ∧
+      toPolyList (#[] : Array (SparsePolyZp × UInt64)) this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+  have hderivative :
+      Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source) = 0 := by
+    rw [Polynomial.eq_C_of_natDegree_eq_zero hdegreeZero]
+    simp
+  have hdegree63 : ∀ term ∈ source.toList, term.1.deg < 2 ^ 63 := by
+    intro term hterm
+    obtain ⟨index, hindex, htermEq⟩ := List.mem_iff_getElem.mp hterm
+    have hsourceIndex : index < source.size := by simpa using hindex
+    have harrayEq : source[index] = term := by
+      rw [← Array.getElem_toList hsourceIndex]
+      exact htermEq
+    rw [← harrayEq]
+    exact Nat.lt_of_lt_of_le (sparse_degree_lt_denseLength this._p.toNat
+      source hcanonical index hsourceIndex) hbound
+  rcases extractPthRootIR_refines_of_derivative_zero this._p.toNat source
+      hnonempty hcanonical hdegree63 hderivative with
+    ⟨root, hrootRun, hrootCanonical, hrootSemantic⟩
+  have hrootMonic : (SparsePolyZp.toPoly this._p.toNat root).Monic := by
+    rw [hrootSemantic]
+    exact contract_monic_of_derivative_zero this._p.toNat
+      (SparsePolyZp.toPoly this._p.toNat source) hmonic hderivative
+  have hrootNonempty : 0 < root.size :=
+    sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat root
+      hrootMonic.ne_zero
+  have hmonicRunBang : upolyMakeMonicIR this root =
+      .ok (root[0]!.2, root) := by
+    have hrun := upolyMakeMonicIR_eq_of_monic this root hrootCanonical
+      hrootNonempty hrootMonic
+    rw [getElem!_pos root 0 hrootNonempty]
+    exact hrun
+  have hrootDegreeZero :
+      (SparsePolyZp.toPoly this._p.toNat root).natDegree = 0 := by
+    have hp := (Fact.out : Nat.Prime this._p.toNat)
+    have hexpand := Polynomial.expand_contract this._p.toNat hderivative
+      hp.ne_zero
+    have heq : (SparsePolyZp.toPoly this._p.toNat source).natDegree =
+        (SparsePolyZp.toPoly this._p.toNat root).natDegree * this._p.toNat := by
+      rw [hrootSemantic, ← Polynomial.natDegree_expand
+        (R := ZMod this._p.toNat) (p := this._p.toNat), hexpand]
+    rw [hdegreeZero] at heq
+    rcases Nat.mul_eq_zero.mp heq.symm with hrootZero | hpZero
+    · exact hrootZero
+    · exact False.elim (hp.ne_zero hpZero)
+  have hnotDecrease : ¬ Generated.squarefreeMeasure root <
+      Generated.squarefreeMeasure source := by
+    rw [generated_squarefreeMeasure_eq_natDegree_succ this._p.toNat root
+        hrootCanonical hrootNonempty,
+      generated_squarefreeMeasure_eq_natDegree_succ this._p.toNat source
+        hcanonical hnonempty,
+      hrootDegreeZero, hdegreeZero]
+    simp
+  have hdegreeWord : ∀ term ∈ source.toList,
+      term.1.deg < UInt64.size := by
+    intro term hterm
+    exact lt_trans (hdegree63 term hterm) (by native_decide)
+  have hderivativeEmpty : derivativeIR this source = #[] :=
+    (derivativeIR_eq_empty_iff this source hcfg hcanonical hdegreeWord).mpr
+      hderivative
+  have hsourceNotEmpty : source.isEmpty = false := by
+    have hsourceNe : source ≠ #[] := by
+      intro hempty
+      subst source
+      simp at hnonempty
+    simpa [Array.isEmpty_iff, hsourceNe]
+  constructor
+  · simp [strictSquarefreeZpIR, hsourceNotEmpty, hderivativeEmpty, hrootRun,
+      hmonicRunBang, hnotDecrease, scaleMultiplicityLoop]
+  · simp [sqfZp, hdegreeZero]
+
 end StrictSquarefreeZp
 end Refinement

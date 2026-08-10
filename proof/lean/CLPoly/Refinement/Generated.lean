@@ -3,6 +3,7 @@
 
 import CLPoly.Refinement.DDF
 import CLPoly.Refinement.EDF
+import CLPoly.Refinement.Hensel
 import CLPoly.Refinement.StrictSquarefreeGenerated
 
 set_option autoImplicit false
@@ -81,5 +82,20 @@ theorem __edf_Zp_raw_ir_refines_edf
       EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
   exact Refinement.StrictEDF.strictEDFEntryIR_refines_edf engine this providers termination result f d rng
     hinvariant
+
+/-- Generated public contract for the original C++ `__hensel_step` entry.
+The executable side is the exact strict raw L1 program, and its output
+satisfies the L2 quadratic Hensel-step invariant without a model fallback. -/
+theorem __hensel_step_raw_ir_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : Nat)
+    (hinvariant : StrictHensel.HenselStepRefinementInvariant
+      termination node f m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_step_raw_ir
+          (StrictHensel.strictHenselRawOps termination)
+          node f (m : Int) = .ok output ∧
+      StrictHensel.HenselStepCorrect f m node output := by
+  exact Refinement.StrictHensel.__hensel_step_raw_ir_refines termination node f m hinvariant
 
 end Refinement

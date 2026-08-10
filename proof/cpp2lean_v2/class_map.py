@@ -900,6 +900,24 @@ REFINEMENT_MAP = {
             "kind": "strict_edf_zp",
         },
     },
+    "__hensel_step": {
+        "l1_name": "__hensel_step_raw_ir",
+        "l2_name": "HenselStepCorrect",
+        "l2_call": "HenselStepCorrect f m node output",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "二次 Hensel 提升步骤",
+        "verified_contract": {
+            "theorem_name": "__hensel_step_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel.__hensel_step_raw_ir_refines"
+            ),
+            "kind": "strict_hensel_step",
+        },
+    },
     "__make_zp": {
         "l1_name": "__make_zp_ir",
         "l2_name": "Zp.ofInt",

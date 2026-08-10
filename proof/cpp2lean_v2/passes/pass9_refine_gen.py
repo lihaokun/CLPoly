@@ -326,6 +326,22 @@ theorem {theorem_name}
   exact {proof_theorem} engine this providers termination result f d rng
     hinvariant
 """
+    if contract["kind"] == "strict_hensel_step":
+        return f"""/-- Generated public contract for the original C++ `__hensel_step` entry.
+The executable side is the exact strict raw L1 program, and its output
+satisfies the L2 quadratic Hensel-step invariant without a model fallback. -/
+theorem {theorem_name}
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : Nat)
+    (hinvariant : StrictHensel.HenselStepRefinementInvariant
+      termination node f m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_step_raw_ir
+          (StrictHensel.strictHenselRawOps termination)
+          node f (m : Int) = .ok output ∧
+      StrictHensel.HenselStepCorrect f m node output := by
+  exact {proof_theorem} termination node f m hinvariant
+"""
     raise ValueError(f"unsupported verified contract kind: {contract['kind']}")
 
 

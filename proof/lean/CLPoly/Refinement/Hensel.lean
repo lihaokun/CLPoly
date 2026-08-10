@@ -1969,7 +1969,8 @@ theorem __hensel_step_factor_phase_raw_ir_refines
       toPolyMod (m ^ 2) factorNode.g *
           toPolyMod (m ^ 2) factorNode.h = toPolyMod (m ^ 2) f ∧
       toPolyMod m factorNode.g = toPolyMod m node.g ∧
-      toPolyMod m factorNode.h = toPolyMod m node.h := by
+      toPolyMod m factorNode.h = toPolyMod m node.h ∧
+      factorNode.s = node.s ∧ factorNode.t = node.t := by
   let gh := Generated.StrictHensel.pairVecMulHeapLoop
     (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
   let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
@@ -2065,7 +2066,7 @@ theorem __hensel_step_factor_phase_raw_ir_refines
           (Generated.StrictHensel.scaleCoeffs qr.2 (m : Int)) 0 0 #[])
         (m ^ 2 : Int) = .ok hNew by simpa [hRaw] using hhNewRun]
     rfl
-  · simpa [factorNode] using hsemantic
+  · exact ⟨hsemantic.1, hsemantic.2.1, hsemantic.2.2, rfl, rfl⟩
 
 set_option maxHeartbeats 0 in
 /-- The complete generated Bezout phase refines its L2 certificate invariant.
@@ -2115,7 +2116,8 @@ theorem __hensel_step_bezout_phase_raw_ir_refines
       toPolyMod (m ^ 2) output.s * toPolyMod (m ^ 2) output.g +
           toPolyMod (m ^ 2) output.t * toPolyMod (m ^ 2) output.h = 1 ∧
       toPolyMod m output.s = toPolyMod m factorNode.s ∧
-      toPolyMod m output.t = toPolyMod m factorNode.t := by
+      toPolyMod m output.t = toPolyMod m factorNode.t ∧
+      output.g = factorNode.g ∧ output.h = factorNode.h := by
   let sg := Generated.StrictHensel.pairVecMulHeapLoop
     (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g) #[]
   let th := Generated.StrictHensel.pairVecMulHeapLoop
@@ -2222,7 +2224,125 @@ theorem __hensel_step_bezout_phase_raw_ir_refines
           (Generated.StrictHensel.scaleCoeffs tau (m : Int)) 0 0 #[])
         (m ^ 2 : Int) = .ok tNew by simpa [tRaw] using htNewRun]
     rfl
-  · simpa [output] using hsemantic
+  · exact ⟨hsemantic.1, hsemantic.2.1, hsemantic.2.2, rfl, rfl⟩
+
+/-- Safety and exact-divisibility facts required by the second source phase.
+This structure contains no semantic output or correction witness. -/
+structure BezoutPhasePreconditions
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (factorNode : HenselNode) (m : Nat) : Prop where
+  hNonempty : 0 < factorNode.h.size
+  hDegree : factorNode.h[0]!.1.deg < 2 ^ 63
+  hHead : HeadDominates factorNode.h
+  hInvertible : (ZZ.invert 0 factorNode.h[0]!.2 (m : Int)).1 = true
+  differenceDivisible :
+    let sg := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g) #[]
+    let th := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h) #[]
+    let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+      (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+    let difference := Generated.StrictHensel.pairVecSubLoop oneMinusSg th 0 0 #[]
+    ∀ term ∈ difference.toList, (m : Int) ∣ term.2
+  sepBound :
+    let sg := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g) #[]
+    let th := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h) #[]
+    let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+      (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+    let difference := Generated.StrictHensel.pairVecSubLoop oneMinusSg th 0 0 #[]
+    let ep := Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)
+    let sep := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
+    DegreesBound sep
+
+/-- Complete algorithm invariant for the generated quadratic Hensel step.
+It records only source safety, representation bounds, exact divisibility, and
+the input L2 invariant.  The intermediate factor node is universally tied to
+the unique generated first-phase execution. -/
+structure HenselStepRefinementInvariant
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : Nat) : Prop where
+  positiveModulus : 0 < m
+  inputInvariant : HenselNodeInvariant f m node
+  hNonempty : 0 < node.h.size
+  hDegree : node.h[0]!.1.deg < 2 ^ 63
+  hHead : HeadDominates node.h
+  hInvertible : (ZZ.invert 0 node.h[0]!.2 (m : Int)).1 = true
+  factorDifferenceDivisible :
+    let gh := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
+    let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
+    ∀ term ∈ difference.toList, (m : Int) ∣ term.2
+  factorSeBound :
+    let gh := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
+    let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
+    let e := Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)
+    let se := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
+    DegreesBound se
+  bezoutReady : ∀ factorNode,
+    Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
+        (strictHenselRawOps termination) node f (m : Int) = .ok factorNode →
+    BezoutPhasePreconditions termination factorNode m
+
+set_option maxHeartbeats 0 in
+/-- Final strict refinement of the generated C++ `__hensel_step` entry.
+The output is obtained solely by executing its two generated raw phases. -/
+theorem __hensel_step_raw_ir_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : Nat)
+    (hinvariant : HenselStepRefinementInvariant termination node f m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_step_raw_ir
+          (strictHenselRawOps termination) node f (m : Int) = .ok output ∧
+      HenselStepCorrect f m node output := by
+  rcases __hensel_step_factor_phase_raw_ir_refines termination node f m
+      hinvariant.positiveModulus hinvariant.hNonempty hinvariant.hDegree
+      hinvariant.hHead hinvariant.hInvertible
+      hinvariant.factorDifferenceDivisible hinvariant.factorSeBound
+      hinvariant.inputInvariant with
+    ⟨factorNode, hfactorRun, hfactorProduct, hgPreserved, hhPreserved,
+      hsUnchanged, htUnchanged⟩
+  have hready := hinvariant.bezoutReady factorNode hfactorRun
+  have hfactorBezout :
+      toPolyMod m factorNode.s * toPolyMod m factorNode.g +
+        toPolyMod m factorNode.t * toPolyMod m factorNode.h = 1 := by
+    rw [hsUnchanged, htUnchanged, hgPreserved, hhPreserved]
+    exact hinvariant.inputInvariant.2
+  rcases __hensel_step_bezout_phase_raw_ir_refines termination factorNode m
+      hinvariant.positiveModulus hready.hNonempty hready.hDegree hready.hHead
+      hready.hInvertible hready.differenceDivisible hready.sepBound
+      hfactorBezout with
+    ⟨output, hbezoutRun, hbezout, hsPreserved, htPreserved,
+      hgUnchanged, hhUnchanged⟩
+  refine ⟨output, ?_, ?_⟩
+  · change (Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
+        (strictHenselRawOps termination) node f (m : Int) >>= fun factorNode =>
+      Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir
+        (strictHenselRawOps termination) factorNode (m : Int)) = .ok output
+    rw [hfactorRun]
+    exact hbezoutRun
+  · constructor
+    · constructor
+      · rw [hgUnchanged, hhUnchanged]
+        exact hfactorProduct
+      · exact hbezout
+    constructor
+    · rw [hgUnchanged]
+      exact hgPreserved
+    constructor
+    · rw [hhUnchanged]
+      exact hhPreserved
+    constructor
+    · calc
+        toPolyMod m output.s = toPolyMod m factorNode.s := hsPreserved
+        _ = toPolyMod m node.s := by rw [hsUnchanged]
+    · calc
+        toPolyMod m output.t = toPolyMod m factorNode.t := htPreserved
+        _ = toPolyMod m node.t := by rw [htUnchanged]
 
 /-- The first contiguous source phase has a genuine raw-to-safe execution
 bridge.  Its only possible source assertion is the modular division by `h`;
@@ -2301,7 +2421,7 @@ theorem __hensel_step_raw_ir_terminates
 
 end StrictHensel
 
--- No Hensel L1→L2 theorem or legacy candidate is exported until a strict
--- cpp2lean-generated entry and its direct execution proof are available.
+-- The discoverable public wrapper for the completed theorem above is emitted
+-- by cpp2lean Pass 9 into `CLPoly.Refinement.Generated`.
 
 end Refinement

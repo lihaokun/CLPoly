@@ -860,7 +860,6 @@ REFINEMENT_MAP = {
         # theorem name so generated contracts remain mechanically traceable.
         "verified_contract": {
             "theorem_name": "__squarefree_Zp_raw_ir_refines_sqfZp",
-            "output_file": "SquarefreeZp",
             "proof_import": "CLPoly.Refinement.StrictSquarefreeGenerated",
             "proof_theorem": (
                 "Refinement.StrictSquarefreeGenerated."
@@ -878,6 +877,12 @@ REFINEMENT_MAP = {
         "result_kind": "map_eq",
         "cpp_source": "clpoly/polynomial_factorize_zp.hh",
         "doc": "不同度数因子分解",
+        "verified_contract": {
+            "theorem_name": "__ddf_Zp_raw_ir_refines_ddf",
+            "proof_import": "CLPoly.Refinement.DDF",
+            "proof_theorem": "Refinement.StrictDDF.strictDDFEntryIR_refines_ddf",
+            "kind": "strict_ddf_zp",
+        },
     },
     "__make_zp": {
         "l1_name": "__make_zp_ir",

@@ -189,6 +189,91 @@ private lemma allReduced_drop (xs : List (UMonomial × Zp)) (i : Nat)
   intro x hx
   exact hxs x (List.mem_of_mem_drop hx)
 
+/-- List-level trace of the source subtract-X control flow.  It records only
+the generated branch order and is not an L2 polynomial implementation. -/
+private def subtractXTerms (q : UInt64) :
+    List (UMonomial × Zp) → List (UMonomial × Zp)
+  | [] => [(UMonomial.mk (1 : Int32),
+      Zp.ofInt ((q - (1 : UInt64)).toInt) q)]
+  | term :: rest =>
+      if 1 < term.1.deg then term :: subtractXTerms q rest
+      else if term.1.deg = 1 then
+        let c' := term.2 - Generated.StrictDDF.__make_zp_ir (1 : Int64) q
+        if c'.val = 0 then rest else (UMonomial.mk (1 : Int32), c') :: rest
+      else
+        (UMonomial.mk (1 : Int32),
+          Zp.ofInt ((q - (1 : UInt64)).toInt) q) :: term :: rest
+
+private lemma subtractXTerms_degree_mem (q : UInt64)
+    (xs : List (UMonomial × Zp)) (x : UMonomial × Zp)
+    (hx : x ∈ subtractXTerms q xs) :
+    x.1.deg = 1 ∨ ∃ y ∈ xs, x.1.deg = y.1.deg := by
+  induction xs with
+  | nil =>
+      simp [subtractXTerms] at hx
+      left
+      simpa using congrArg (fun z => z.1.deg) hx
+  | cons term rest ih =>
+      simp only [subtractXTerms] at hx
+      split at hx
+      · rcases List.mem_cons.mp hx with rfl | hx
+        · exact Or.inr ⟨x, List.mem_cons_self, rfl⟩
+        · rcases ih hx with hx | ⟨y, hy, hdeg⟩
+          · exact Or.inl hx
+          · exact Or.inr ⟨y, List.mem_cons_of_mem _ hy, hdeg⟩
+      · split at hx
+        · split at hx
+          · exact Or.inr ⟨x, List.mem_cons_of_mem _ hx, rfl⟩
+          · rcases List.mem_cons.mp hx with rfl | hx
+            · left; rfl
+            · exact Or.inr ⟨x, List.mem_cons_of_mem _ hx, rfl⟩
+        · rcases List.mem_cons.mp hx with rfl | hx
+          · left; rfl
+          · exact Or.inr ⟨x, hx, rfl⟩
+
+private theorem subtractXTerms_pairwise (q : UInt64) :
+    ∀ xs : List (UMonomial × Zp),
+      xs.Pairwise (fun a b => b.1.deg < a.1.deg) →
+      (subtractXTerms q xs).Pairwise
+        (fun a b => b.1.deg < a.1.deg) := by
+  intro xs hs
+  induction xs with
+  | nil => simp [subtractXTerms]
+  | cons term rest ih =>
+      have hrest := (List.pairwise_cons.mp hs).2
+      have hhead := (List.pairwise_cons.mp hs).1
+      simp only [subtractXTerms]
+      by_cases hhigh : 1 < term.1.deg
+      · rw [if_pos hhigh, List.pairwise_cons]
+        refine ⟨?_, ih hrest⟩
+        intro x hx
+        rcases subtractXTerms_degree_mem q rest x hx with hx | ⟨y, hy, hxy⟩
+        · simpa [hx] using hhigh
+        · rw [hxy]
+          exact hhead y hy
+      · rw [if_neg hhigh]
+        by_cases hlinear : term.1.deg = 1
+        · rw [if_pos hlinear]
+          split
+          · exact hrest
+          · rw [List.pairwise_cons]
+            refine ⟨?_, hrest⟩
+            intro x hx
+            simpa [hlinear, show (Int64.toUInt64 1).toNat = 1 by rfl] using
+              hhead x hx
+        · rw [if_neg hlinear, List.pairwise_cons]
+          have hzero : term.1.deg = 0 := by omega
+          refine ⟨?_, ?_⟩
+          · intro x hx
+            rcases List.mem_cons.mp hx with hx | hx
+            · subst x
+              change term.1.deg < 1
+              rw [hzero]
+              omega
+            · have := hhead x hx
+              omega
+          · exact hs
+
 private theorem zp_toZMod_sub (h2p : 2 * p ≤ UInt64.size) (a b : Zp)
     (ha_prime : a.prime.toNat = p) (hb_prime : b.prime.toNat = p)
     (ha_red : a.val.toNat < p) (hb_red : b.val.toNat < p) :

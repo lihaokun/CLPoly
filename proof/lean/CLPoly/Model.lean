@@ -2260,16 +2260,6 @@ instance : HasPolyGCDEEA SparsePolyZp where
 #eval (#[(⟨2⟩, Zp.ofInt 2 7), (⟨1⟩, Zp.ofInt 3 7)] : SparsePolyZp) *
       (#[] : SparsePolyZp)
 -- 期望: #[]
--- 用具体 array element 类型避免 abbrev 透明度问题
-instance instHMulSparsePolyZZ :
-    HMul (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
-  hMul a b := a ++ b
-instance instHAddSparsePolyZZ :
-    HAdd (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
-  hAdd a b := a ++ b
-instance instHSubSparsePolyZZ :
-    HSub (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
-  hSub a b := a ++ b
 instance : HPow Int UInt64 Int where
   hPow base e := base ^ e.toNat
 instance : HPow ZZ UInt64 ZZ where
@@ -2965,6 +2955,23 @@ def SparsePolyZZ.addReal (f g : SparsePolyZZ) : SparsePolyZZ :=
 def SparsePolyZZ.subReal (f g : SparsePolyZZ) : SparsePolyZZ :=
   let neg_g := g.map (fun (m, c) => (m, -c))
   SparsePolyZZ.normalization (f ++ neg_g)
+
+-- 真乘法：枚举所有单项式乘积，再合并同次项。这是
+-- `basic_polynomial::operator*` / `pair_vec_multiplies` 的数学结果；
+-- 精化层还需要单独证明生成的 C++ 控制流产生该结果。
+def SparsePolyZZ.mulReal (f g : SparsePolyZZ) : SparsePolyZZ :=
+  SparsePolyZZ.normalization <|
+    f.flatMap fun (mf, cf) =>
+      g.map fun (mg, cg) => (⟨mf.deg + mg.deg⟩, cf * cg)
+
+instance instHMulSparsePolyZZ : HMul SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hMul := SparsePolyZZ.mulReal
+
+instance instHAddSparsePolyZZ : HAdd SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hAdd := SparsePolyZZ.addReal
+
+instance instHSubSparsePolyZZ : HSub SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hSub := SparsePolyZZ.subReal
 
 -- 伪余数：lc(G)^k * F mod G, k = deg(F) - deg(G) + 1
 -- 通过迭代单步消首项实现（每步乘 lc(G) 然后消首项）

@@ -4612,6 +4612,47 @@ theorem pairVecDivVHCConsumeNode_succeeds
     simp only [hexhausted, ↓reduceIte, hexhaustionOrder hexhausted]
     exact ⟨_, _, _, _, _, rfl⟩
 
+/-- A successful node step either leaves the entry `resetH` unchanged or has
+consumed that entry from the well-founded unvisited set.  This small transport
+fact lets the chain proof reuse the entry-state exhaustion theorem without a
+fuel counter. -/
+theorem pairVecDivVHCConsumeNode_preserves_base_reset_or_erased
+    (this : DenseUPolyZp) (base nodeIndex : Nat) (unvisited : Finset Nat)
+    (k k' : UInt64) (nodes nodes' : Array PairVecDivVHCNode)
+    (lin lin' : Array Nat) (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp)
+    (hinvariant : resetH = base ∨ base ∉ unvisited)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    resetH' = base ∨ base ∉ unvisited.erase nodeIndex := by
+  unfold pairVecDivVHCConsumeNode at hrun
+  split at hrun <;> try contradiction
+  next hn =>
+    dsimp only at hrun
+    split at hrun <;> try contradiction
+    next hq =>
+      split at hrun <;> try contradiction
+      next hd =>
+        split at hrun
+        next hadvance =>
+          simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+          rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+          rcases hinvariant with rfl | hgone
+          · exact Or.inl rfl
+          · exact Or.inr (fun hmem => hgone (Finset.mem_of_mem_erase hmem))
+        next hadvance =>
+          split at hrun <;> try contradiction
+          next hexhausted =>
+            split at hrun <;> try contradiction
+            next horder =>
+              simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+              rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+              rcases hinvariant with hbase | hgone
+              · right
+                subst nodeIndex
+                simpa [hbase]
+              · exact Or.inr (fun hmem => hgone (Finset.mem_of_mem_erase hmem))
+
 theorem pairVecDivVHCConsumeNode_preserves_cursorPrefixAbove
     (this : DenseUPolyZp) (degree nodeIndex : Nat) (k k' : UInt64)
     (nodes nodes' : Array PairVecDivVHCNode) (lin lin' : Array Nat)
@@ -10078,6 +10119,149 @@ theorem pairVecDivVHCExhaustedNode_eq_resetH
       exact (Option.some.inj hownedMono).symm
     subst ownedMono
     omega
+
+/-- The genuine well-founded chain traversal is total for a selected,
+represented frontier.  `sourceNodes` is the bucket-entry snapshot; recursion
+only rewrites the erased current node, so every unvisited cursor still has the
+entry denotation needed by `pairVecDivVHCExhaustedNode_eq_resetH`. -/
+theorem pairVecDivVHCConsumeChain_succeeds
+    (this : DenseUPolyZp) (p dividendIndex : Nat)
+    (dividend : SparsePolyZp) (heap : Array Nat)
+    (sourceNodes : Array PairVecDivVHCNode) (sourceLin : Array Nat)
+    (baseResetH : Nat) (owners : Nat → Finset Nat)
+    (frontier : PairVecDivVHCFrontier)
+    (current : Option Nat) (unvisited : Finset Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (hstate : PairVecDivVHCStateCovered heap sourceNodes sourceLin baseResetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners sourceNodes)
+    (hhomogeneous :
+      PairVecDivVHCHeapChainsHomogeneous heap owners sourceNodes)
+    (hordered : PairVecDivVHCHeapOrdered heap sourceNodes)
+    (hready : PairVecDivVHCResetReady baseResetH quotient.size sourceNodes)
+    (hlinReady : PairVecDivVHCLinReady sourceLin sourceNodes)
+    (hlinBelow :
+      PairVecDivVHCLinBelow frontier.degree sourceLin sourceNodes)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed sourceNodes)
+    (hdenotes : ∀ (i : Nat) (record : PairVecDivVHCNode),
+      sourceNodes[i]? = some record → record.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor record)
+    (hquotient : SparsePolyZp.Canonical p quotient)
+    (hdivisor : SparsePolyZp.Canonical p divisor)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap
+      sourceNodes = .ok frontier)
+    (hchain : PairVecDivVHCChainAtDegree current unvisited sourceNodes
+      frontier.degree)
+    (hsame : ∀ i ∈ unvisited, nodes[i]? = sourceNodes[i]?)
+    (hresetInvariant : resetH = baseResetH ∨ baseResetH ∉ unvisited) :
+    ∃ result, pairVecDivVHCConsumeChain this current unvisited k nodes lin
+      resetH quotient divisor = .ok result := by
+  cases current with
+  | none =>
+      exact ⟨_, pairVecDivVHCConsumeChain_none this unvisited k nodes lin
+        resetH quotient divisor⟩
+  | some nodeIndex =>
+      rw [PairVecDivVHCChainAtDegree] at hchain
+      split at hchain <;> try contradiction
+      next hmem =>
+        rcases hchain with
+          ⟨sourceNode, mono, hsourceNode, hsourceMono, hdegree, htail⟩
+        have hliveNode : nodes[nodeIndex]? = some sourceNode := by
+          rw [hsame nodeIndex hmem]
+          exact hsourceNode
+        have hn : nodeIndex < nodes.size := by
+          by_contra hnot
+          rw [Array.getElem?_eq_none (by omega)] at hliveNode
+          contradiction
+        have hsourceDenotes := hdenotes nodeIndex sourceNode hsourceNode (by
+          rw [hsourceMono]
+          simp)
+        have hexhaustionOrder :
+            sourceNode.quotientIndex + 1 = quotient.size →
+              nodeIndex = resetH := by
+          intro hexhausted
+          have hbase := pairVecDivVHCExhaustedNode_eq_resetH p dividendIndex
+            dividend heap sourceNodes sourceLin baseResetH owners quotient
+            divisor frontier nodeIndex sourceNode mono hstate hownership
+            hhomogeneous hordered hready hlinReady hlinBelow hfixed hdenotes
+            hquotient hdivisor hselect hsourceNode hsourceMono hdegree
+            hexhausted
+          rcases hresetInvariant with hresetEq | hbaseGone
+          · omega
+          · exact False.elim (hbaseGone (hbase ▸ hmem))
+        rcases pairVecDivVHCConsumeNode_succeeds this nodeIndex k nodes lin
+            resetH quotient divisor sourceNode hliveNode hsourceDenotes
+            hexhaustionOrder with
+          ⟨k', nodes', lin', resetH', next, hconsume⟩
+        have hnext := pairVecDivVHCConsumeNode_next_of_success this nodeIndex k
+          k' nodes nodes' lin lin' resetH resetH' next quotient divisor hn
+          hconsume
+        have hliveEq : nodes[nodeIndex] = sourceNode := by
+          rw [Array.getElem?_eq_getElem hn] at hliveNode
+          exact Option.some.inj hliveNode
+        rw [hliveEq] at hnext
+        subst next
+        have hsame' : ∀ i ∈ unvisited.erase nodeIndex,
+            nodes'[i]? = sourceNodes[i]? := by
+          intro i hi
+          have hine : nodeIndex ≠ i := (Finset.mem_erase.mp hi).1.symm
+          rw [pairVecDivVHCConsumeNode_get_ne this nodeIndex k k' nodes nodes'
+            lin lin' resetH resetH' sourceNode.next quotient divisor hconsume
+            i hine]
+          exact hsame i (Finset.mem_of_mem_erase hi)
+        have hresetInvariant' :=
+          pairVecDivVHCConsumeNode_preserves_base_reset_or_erased this
+            baseResetH nodeIndex unvisited k k' nodes nodes' lin lin' resetH
+            resetH' sourceNode.next quotient divisor hresetInvariant hconsume
+        rcases pairVecDivVHCConsumeChain_succeeds this p dividendIndex dividend
+            heap sourceNodes sourceLin baseResetH owners frontier
+            sourceNode.next (unvisited.erase nodeIndex) k' nodes' lin' resetH'
+            quotient divisor hstate hownership hhomogeneous hordered hready
+            hlinReady hlinBelow hfixed hdenotes hquotient hdivisor hselect
+            htail hsame' hresetInvariant' with ⟨result, hrun⟩
+        rw [pairVecDivVHCConsumeChain]
+        simp only [hmem, ↓reduceDIte, hconsume]
+        exact ⟨result, hrun⟩
+termination_by unvisited.card
+decreasing_by
+  exact Finset.card_erase_lt_of_mem (by assumption)
+
+theorem pairVecDivVHCConsumeRootBucket_succeeds
+    (this : DenseUPolyZp) (p dividendIndex : Nat) (k : UInt64)
+    (dividend : SparsePolyZp) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (owners : Nat → Finset Nat) (quotient divisor : SparsePolyZp)
+    (frontier : PairVecDivVHCFrontier)
+    (hheap : 0 < heap.size)
+    (hstate : PairVecDivVHCStateCovered heap nodes lin resetH)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hlinBelow : PairVecDivVHCLinBelow frontier.degree lin nodes)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hdenotes : ∀ (i : Nat) (record : PairVecDivVHCNode),
+      nodes[i]? = some record → record.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor record)
+    (hquotient : SparsePolyZp.Canonical p quotient)
+    (hdivisor : SparsePolyZp.Canonical p divisor)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hchain : PairVecDivVHCChainAtDegree (some heap[0])
+      (Finset.range nodes.size) nodes frontier.degree) :
+    ∃ result, pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result := by
+  rcases pairVecDivVHCConsumeChain_succeeds this p dividendIndex dividend heap
+      nodes lin resetH owners frontier (some heap[0])
+      (Finset.range nodes.size) k nodes lin resetH quotient divisor hstate
+      hownership hhomogeneous hordered hready hlinReady hlinBelow hfixed
+      hdenotes hquotient hdivisor hselect hchain (by simp) (Or.inl rfl) with
+    ⟨result, hrun⟩
+  refine ⟨result, ?_⟩
+  unfold pairVecDivVHCConsumeRootBucket
+  simp only [hheap, ↓reduceDIte]
+  exact hrun
 
 theorem pairVecDivVHCConsumeNode_preserves_linBelow
     (this : DenseUPolyZp) (p degree nodeIndex : Nat) (currentMono : UMonomial)

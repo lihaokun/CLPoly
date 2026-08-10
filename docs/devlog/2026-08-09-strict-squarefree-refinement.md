@@ -1310,3 +1310,12 @@ every generated range-for and recursive loop used by SQF.
   最大次数矛盾。该结论完全消除了顺序 assertion 作为数学假设的必要性；
   下一步沿 ConsumeChain 的未访问集合运输入口快照，把此定理应用到每个
   尚未改写的真实 chain 节点。
+- bucket chain 的 raw→safe 成功性已沿真实良基递归闭合。
+  `pairVecDivVHCConsumeNode_preserves_base_reset_or_erased` 记录每步执行后
+  entry `resetH` 要么尚未改变，要么对应节点已经从 `unvisited` 擦除；
+  `pairVecDivVHCConsumeChain_succeeds` 以具体 `unvisited.card` 为终止度量，
+  并运输“所有未访问节点仍等于 bucket 入口快照”。因此每次实际
+  `ConsumeNode` 调用都能用入口状态的耗尽顺序定理消除 assertion，而不是
+  使用步数预算或假定 raw 调用成功。`pairVecDivVHCConsumeRootBucket_succeeds`
+  已将结论接到真实 root bucket 包装层。下一步组合 heap-size 良基的
+  `ConsumeEqualDegree` 与 checked extract 成功性。

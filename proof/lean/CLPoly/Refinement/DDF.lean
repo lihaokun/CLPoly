@@ -256,6 +256,83 @@ def strictMulOrderedIR (this : DenseUPolyZp)
         dense_upoly_zp_to_upoly_raw_ir this outputHeap workspace.outputPtr
           (sparseDenseLength left + sparseDenseLength right - 1)
 
+/-- Total semantic refinement of the ordered raw multiplication execution. -/
+theorem strictMulOrderedIR_refines_mul
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (left right : SparsePolyZp)
+    (workspace : RawMulWorkspace this left right)
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonempty : 0 < left.size)
+    (hrightNonempty : 0 < right.size)
+    (horder : sparseDenseLength right ≤ sparseDenseLength left) :
+    ∃ product,
+      strictMulOrderedIR this left right workspace = .ok product ∧
+      SparsePolyZp.Canonical this._p.toNat product ∧
+      SparsePolyZp.toPoly this._p.toNat product =
+        SparsePolyZp.toPoly this._p.toNat left *
+          SparsePolyZp.toPoly this._p.toNat right := by
+  have hpNonzero : this._p ≠ 0 := by
+    intro hzero
+    apply (Fact.out : Nat.Prime this._p.toNat).ne_zero
+    simpa using congrArg UInt64.toNat hzero
+  rcases sparse_upoly_zp_dense_constructor_raw_ir_result this
+      workspace.leftPtr left workspace.heap hpNonzero workspace.leftValid
+      hleftCanonical with ⟨leftHeap, hleftRun, hleftLayout, hleftRep⟩
+  have hrightValid' : leftHeap.ValidU64Slice workspace.rightPtr
+      (sparseDenseLength right) :=
+    (hleftLayout workspace.rightPtr _).mp workspace.rightValid
+  rcases sparse_upoly_zp_dense_constructor_raw_ir_result this
+      workspace.rightPtr right leftHeap hpNonzero hrightValid'
+      hrightCanonical with
+    ⟨inputHeap, hrightRun, hrightLayout, hrightRep⟩
+  have hleftDense :=
+    sparse_upoly_zp_dense_constructor_raw_ir_preserves_rawDense this
+      workspace.rightPtr workspace.leftPtr right leftHeap inputHeap
+      (sparseDenseLength left) (SparsePolyZp.toPoly this._p.toNat left)
+      hpNonzero hrightValid' hrightCanonical workspace.inputsDisjoint
+      hleftRep.dense hrightRun
+  have hlayout : RawHeap.SameLayout workspace.heap inputHeap :=
+    fun ptr length => (hleftLayout ptr length).trans
+      (hrightLayout ptr length)
+  have houtputValid :=
+    (hlayout workspace.outputPtr _).mp workspace.outputValid
+  have hscratchValid :=
+    (hlayout workspace.scratchPtr _).mp workspace.scratchValid
+  have hleftLengthPositive : 0 < sparseDenseLength left := by
+    simp [sparseDenseLength, hleftNonempty]
+  have hrightLengthPositive : 0 < sparseDenseLength right := by
+    simp [sparseDenseLength, hrightNonempty]
+  rcases CLPoly.Impl.StrictMulRefinement.mul_refines_rawDense this
+      workspace.outputPtr workspace.leftPtr (sparseDenseLength left)
+      workspace.rightPtr (sparseDenseLength right) workspace.scratchPtr
+      inputHeap (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right) hcfg
+      (Fact.out : Nat.Prime this._p.toNat).one_lt hleftLengthPositive
+      hrightLengthPositive horder workspace.leftLengthWord houtputValid
+      hscratchValid workspace.outputLeftDisjoint
+      workspace.outputRightDisjoint workspace.outputScratchDisjoint
+      workspace.scratchLeftDisjoint workspace.scratchRightDisjoint
+      hleftDense.2 hrightRep.dense with
+    ⟨outputHeap, hmulRun, hmulLayout, hproductRep⟩
+  rcases dense_upoly_zp_to_upoly_raw_ir_refines this outputHeap
+      workspace.outputPtr
+      (sparseDenseLength left + sparseDenseLength right - 1)
+      (SparsePolyZp.toPoly this._p.toNat left *
+        SparsePolyZp.toPoly this._p.toNat right) hproductRep with
+    ⟨product, hproductRun, hproductSemantic⟩
+  rcases dense_upoly_zp_to_upoly_raw_ir_canonical this outputHeap
+      workspace.outputPtr
+      (sparseDenseLength left + sparseDenseLength right - 1)
+      hproductRep.1 hproductRep.2.1 with
+    ⟨canonicalProduct, hcanonicalRun, hcanonical⟩
+  have hsame : canonicalProduct = product :=
+    Except.ok.inj (hcanonicalRun.symm.trans hproductRun)
+  subst canonicalProduct
+  refine ⟨product, ?_, hcanonical, hproductSemantic⟩
+  simp [strictMulOrderedIR, hleftRun, hrightRun, hmulRun, hproductRun]
+
 end StrictDDF
 
 end Refinement

@@ -28,6 +28,7 @@ from pass8_codegen import codegen_corpus
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictDDF.lean"
 STRICT_DDF_ROOTS = {
     "__make_zp",
+    "__upoly_subtract_x",
 }
 
 

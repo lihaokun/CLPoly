@@ -893,10 +893,13 @@ theorem __upoly_subtract_x_ir_refines
       SparsePolyZp.toPoly this._p.toNat
           (Generated.StrictDDF.__upoly_subtract_x_ir h this._p) =
         SparsePolyZp.toPoly this._p.toNat h - Polynomial.X := by
-  refine ⟨__upoly_subtract_x_ir_canonical h this._p rfl hcanonical hdegree,
+  have hdegree64 : ∀ x ∈ h.toList, x.1.deg < 2 ^ 63 := by
+    intro x hx
+    exact lt_trans (hdegree x hx) (by norm_num)
+  refine ⟨__upoly_subtract_x_ir_canonical h this._p rfl hcanonical hdegree64,
     ?_⟩
   exact strict_upoly_subtract_x_refines h2p h this._p rfl
-    ((canonicalRep_iff_canonical h).mpr hcanonical) hdegree
+    ((canonicalRep_iff_canonical h).mpr hcanonical) hdegree64
 
 /-- Compatibility projection of `__upoly_subtract_x_ir_refines`. -/
 theorem strictSubtractXIR_refines
@@ -918,7 +921,10 @@ theorem strictSubtractXIR_allReduced
     (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
     SparsePolyZp.AllReduced this._p.toNat
       (Generated.StrictDDF.__upoly_subtract_x_ir h this._p).toList := by
-  exact (__upoly_subtract_x_ir_canonical h this._p rfl hcanonical hdegree).1
+  have hdegree64 : ∀ x ∈ h.toList, x.1.deg < 2 ^ 63 := by
+    intro x hx
+    exact lt_trans (hdegree x hx) (by norm_num)
+  exact (__upoly_subtract_x_ir_canonical h this._p rfl hcanonical hdegree64).1
 
 end StrictDDF
 

@@ -317,6 +317,154 @@ theorem divmodCoefficient_mul_leading (m : Nat) (r g : SparsePolyZZ)
   rw [hinv]
   simp
 
+/-- Exact natural value of the signed C++ degree word for a nonempty sparse
+integer polynomial whose leading exponent fits the source's signed range. -/
+theorem get_deg_toNatClampNeg_eq_head (f : SparsePolyZZ)
+    (hnonempty : 0 < f.size) (hdegree : f[0]!.1.deg < 2 ^ 63) :
+    (get_deg f).toNatClampNeg = f[0]!.1.deg := by
+  have hne : f ≠ #[] := by
+    intro hempty
+    subst f
+    simp at hnonempty
+  have hwordNat : f[0]!.1.deg.toUInt64.toNat = f[0]!.1.deg := by
+    change (OfNat.ofNat f[0]!.1.deg : UInt64).toNat = f[0]!.1.deg
+    rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt]
+    omega
+  have hsignedNat : f[0]!.1.deg.toUInt64.toInt64.toNatClampNeg =
+      f[0]!.1.deg := by
+    rw [UInt64_toInt64_toNatClampNeg_eq_toNat_of_lt (by
+      simpa [hwordNat] using hdegree), hwordNat]
+  have hget : get_deg f = f[0]!.1.deg.toUInt64.toInt64 := by
+    simp [get_deg, Array.isEmpty_iff, hne, getElem!_pos f 0 hnonempty]
+  rw [hget, hsignedNat]
+
+private theorem int64_sub_toNatClampNeg (a b : Int64)
+    (hb : (0 : Int64) ≤ b) (hba : b ≤ a) :
+    (a - b).toNatClampNeg = a.toNatClampNeg - b.toNatClampNeg := by
+  change (a - b).toInt.toNat = a.toInt.toNat - b.toInt.toNat
+  rw [Int64.toInt_sub, Int.bmod_eq_of_le]
+  · have hbInt : 0 ≤ b.toInt := by
+      simpa [Int64.le_iff_toInt_le] using hb
+    have hbaInt : b.toInt ≤ a.toInt := by
+      simpa [Int64.le_iff_toInt_le] using hba
+    omega
+  · have hbInt : 0 ≤ b.toInt := by
+      simpa [Int64.le_iff_toInt_le] using hb
+    have hbaInt : b.toInt ≤ a.toInt := by
+      simpa [Int64.le_iff_toInt_le] using hba
+    have haUpper := Int64.toInt_lt a
+    omega
+  · have hbInt : 0 ≤ b.toInt := by
+      simpa [Int64.le_iff_toInt_le] using hb
+    have hbaInt : b.toInt ≤ a.toInt := by
+      simpa [Int64.le_iff_toInt_le] using hba
+    have haUpper := Int64.toInt_lt a
+    omega
+
+/-- The source's signed degree subtraction and clamp compute the exact
+natural exponent shift used to cancel the current leading term. -/
+theorem get_deg_sub_toNatClampNeg_eq_shift (r g : SparsePolyZZ)
+    (hr : 0 < r.size) (hg : 0 < g.size)
+    (hrDegree : r[0]!.1.deg < 2 ^ 63)
+    (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hactive : get_deg r ≥ get_deg g) :
+    r[0]!.1.deg = g[0]!.1.deg +
+      (get_deg r - get_deg g).toNatClampNeg := by
+  have hrNat := get_deg_toNatClampNeg_eq_head r hr hrDegree
+  have hgNat := get_deg_toNatClampNeg_eq_head g hg hgDegree
+  have hgNonneg : (0 : Int64) ≤ get_deg g := by
+    by_cases hz : g[0]!.1.deg = 0
+    · have hgne : g ≠ #[] := by
+        intro hempty
+        subst g
+        simp at hg
+      have hget : get_deg g = g[0]!.1.deg.toUInt64.toInt64 := by
+        simp [get_deg, Array.isEmpty_iff, hgne, getElem!_pos g 0 hg]
+      rw [hget, hz]
+      decide
+    · have hpos : 0 < (get_deg g).toNatClampNeg := by omega
+      exact Int64.le_of_lt
+        ((Int64.toNatClampNeg_pos_iff (get_deg g)).mp hpos)
+  rw [int64_sub_toNatClampNeg _ _ hgNonneg hactive, hrNat, hgNat]
+  have hnat : g[0]!.1.deg ≤ r[0]!.1.deg := by
+    rw [← hgNat, ← hrNat]
+    exact Int64.toNatClampNeg_le hactive
+  omega
+
+/-- The source's zero-quotient branch erases a leading term whose coefficient
+is zero modulo `m`; therefore the decoded polynomial is unchanged. -/
+theorem eraseLeading_of_divmodCoefficient_zero (m : Nat)
+    (r g : SparsePolyZZ) (hr : 0 < r.size)
+    (hinvert : (ZZ.invert 0 g[0]!.2 (m : Int)).1 = true)
+    (hzero : Generated.StrictHensel.divmodCoefficient r
+      (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) = 0) :
+    toPolyMod m (r.eraseIdxIfInBounds 0) = toPolyMod m r := by
+  have hcancel := divmodCoefficient_mul_leading m r g hinvert
+  rw [hzero] at hcancel
+  simp only [Int.cast_zero, zero_mul] at hcancel
+  have hrDrop := drop_eq_getElem_cons r 0 hr
+  have hrFull : r.toList = r[0]! :: r.toList.drop 1 := by
+    simpa using hrDrop
+  rw [toPolyMod_eq_termsToPolyMod, toPolyMod_eq_termsToPolyMod]
+  simp only [Array.toList_eraseIdxIfInBounds, List.eraseIdx_zero]
+  rw [hrFull]
+  simp [hcancel]
+
+/-- Representation facts needed at every active state of the exact generated
+division trace.  This predicate contains no result polynomial: it certifies
+only that the source's signed degree arithmetic is within range. -/
+def DivmodTraceDegreeSafe (g : SparsePolyZZ) (inverse : Int) (m : Nat) :
+    {r q : SparsePolyZZ} →
+      Generated.StrictHensel.DivmodTrace g inverse (m : Int) r q → Prop
+  | _, _, .done _ _ _ => True
+  | _, _, .vanished r _ _ _ next =>
+      0 < r.size ∧ r[0]!.1.deg < 2 ^ 63 ∧ get_deg r ≥ get_deg g ∧
+        DivmodTraceDegreeSafe g inverse m next
+  | _, _, .subtract r _ _ _ next =>
+      0 < r.size ∧ r[0]!.1.deg < 2 ^ 63 ∧ get_deg r ≥ get_deg g ∧
+        DivmodTraceDegreeSafe g inverse m next
+
+/-- Induction over the exact finite C++ long-division trace preserves the
+decoded equation `remainder + quotient * divisor`.  Both recursive branches
+use their concrete array updates. -/
+theorem divmodLoop_preserves (m : Nat) (g : SparsePolyZZ)
+    (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hinvert : (ZZ.invert 0 g[0]!.2 (m : Int)).1 = true) :
+    ∀ {r q : SparsePolyZZ}
+      (trace : Generated.StrictHensel.DivmodTrace g
+        (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) r q),
+      DivmodTraceDegreeSafe g
+          (ZZ.invert 0 g[0]!.2 (m : Int)).2 m trace →
+      let output := Generated.StrictHensel.divmodLoop g
+        (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) trace
+      toPolyMod m output.2 + toPolyMod m output.1 * toPolyMod m g =
+        toPolyMod m r + toPolyMod m q * toPolyMod m g := by
+  intro r q trace hsafe
+  induction trace with
+  | done r q inactive =>
+      rfl
+  | vanished r q active zero next ih =>
+      simp only [DivmodTraceDegreeSafe] at hsafe
+      rw [Generated.StrictHensel.divmodLoop]
+      dsimp only
+      rw [ih hsafe.2.2.2]
+      rw [eraseLeading_of_divmodCoefficient_zero m r g hsafe.1 hinvert zero]
+  | subtract r q active nonzero next ih =>
+      simp only [DivmodTraceDegreeSafe] at hsafe
+      rw [Generated.StrictHensel.divmodLoop]
+      dsimp only
+      rw [ih hsafe.2.2.2]
+      have hdegree := get_deg_sub_toNatClampNeg_eq_shift r g hsafe.1 hg
+        hsafe.2.1 hgDegree hsafe.2.2.1
+      have hcoefficient := divmodCoefficient_mul_leading m r g hinvert
+      rw [divmodRemainder_eq_sub m
+        (get_deg r - get_deg g).toNatClampNeg r g
+        (Generated.StrictHensel.divmodCoefficient r
+          (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int))
+        hsafe.1 hg hdegree hcoefficient.symm]
+      rw [toPolyMod_push]
+      ring
+
 /-- The concrete generated `__upoly_mod_coeff` call always succeeds and
 preserves the decoded polynomial modulo the requested modulus. -/
 theorem __upoly_mod_coeff_raw_ir_refines (f : SparsePolyZZ) (m : Nat) :

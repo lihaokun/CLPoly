@@ -17,6 +17,7 @@ import CLPoly.Impl.StrictDivremRefinement
 import CLPoly.Impl.StrictPolynomialGCDRefinement
 import CLPoly.Impl.StrictMulDispatchRefinement
 import CLPoly.Refinement.DDFSubtractX
+import CLPoly.Refinement.SquarefreeZp
 
 set_option autoImplicit false
 
@@ -300,6 +301,34 @@ theorem strictGCDIR_refines
     ⟨final, result, hrun, houtput, hcanonical, hsemantic⟩
   refine ⟨result, ?_, hcanonical, hsemantic⟩
   simp [strictGCDIR, hrun, houtput]
+
+/-- Exact source `pair_vec_div` call used by the DDF factor-removal branch.
+The implementation is the already verified generated VHC/single-term C++
+control flow, not polynomial division from the L2 model. -/
+def strictExactDivIR (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) : RawExec SparsePolyZp :=
+  Refinement.StrictSquarefreeZp.pairVecDivIR this dividend divisor
+
+theorem strictExactDivIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hdivisorNonempty : 0 < divisor.size)
+    (hdivisorMonic :
+      (SparsePolyZp.toPoly this._p.toNat divisor).Monic)
+    (hdivides : SparsePolyZp.toPoly this._p.toNat divisor ∣
+      SparsePolyZp.toPoly this._p.toNat dividend) :
+    ∃ quotient,
+      strictExactDivIR this dividend divisor = .ok quotient ∧
+      SparsePolyZp.Canonical this._p.toNat quotient ∧
+      SparsePolyZp.toPoly this._p.toNat quotient =
+        SparsePolyZp.toPoly this._p.toNat dividend /ₘ
+          SparsePolyZp.toPoly this._p.toNat divisor := by
+  exact Refinement.StrictSquarefreeZp.pairVecDivIR_refines_divByMonic
+    this dividend divisor hcfg hdividendCanonical hdivisorCanonical
+    hdivisorNonempty hdivisorMonic hdivides
 
 /-- Physical buffers for an ordered sparse multiplication.  As with raw
 modular reduction, no semantic product is stored in the workspace. -/

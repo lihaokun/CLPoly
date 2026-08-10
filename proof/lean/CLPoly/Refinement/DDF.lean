@@ -763,6 +763,17 @@ theorem strictSubtractXIR_refines
   exact strict_upoly_subtract_x_refines h2p h this._p rfl
     ((canonicalRep_iff_canonical h).mpr hcanonical) hdegree
 
+/-- Representation half of the generated subtract-X refinement.  This is the
+coefficient invariant consumed by the raw sparse-to-dense GCD constructor. -/
+theorem strictSubtractXIR_allReduced
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (h : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat h)
+    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
+    SparsePolyZp.AllReduced this._p.toNat
+      (Generated.StrictDDF.__upoly_subtract_x_ir h this._p).toList := by
+  exact strict_upoly_subtract_x_allReduced h this._p rfl hcanonical hdegree
+
 end StrictDDF
 
 end Refinement

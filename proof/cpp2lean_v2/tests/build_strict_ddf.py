@@ -32,6 +32,89 @@ STRICT_DDF_ROOTS = {
 }
 
 
+def _raw_ddf_adapter() -> str:
+    """Generated effectful shell for the source DDF control flow.
+
+    Pass 8 still emits pure calls for allocation-owning C++ helpers.  The
+    strict artifact instead exposes those calls as ``RawExec`` operations;
+    refinement instantiates them only with the proved raw implementations.
+    The two decrease fields are execution invariants, not result or semantic
+    oracles.
+    """
+    return r'''
+def ddfRawMeasure (fStar : SparsePolyZp) (d : UInt64) : Nat :=
+  if fStar.isEmpty then 0 else (get_deg fStar).toNat + 1 - 2 * d.toNat
+
+structure DDFRawOps where
+  powmod : SparsePolyZp → Nat → SparsePolyZp → RawExec SparsePolyZp
+  gcd : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
+  makeMonic : SparsePolyZp → RawExec SparsePolyZp
+  exactDiv : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
+  mod : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
+  splitDecrease : ∀ d fStar gd quotient,
+    exactDiv fStar gd = .ok quotient →
+    ddfRawMeasure (SparsePolyZp.normalization quotient) (d + 1) <
+      ddfRawMeasure fStar d
+  noSplitDecrease : ∀ d fStar,
+    ¬get_deg fStar < (2 * d).toInt64 →
+    ddfRawMeasure fStar (d + 1) < ddfRawMeasure fStar d
+
+def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
+    (fStar h : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64)) (p : UInt64) :
+    RawExec (SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
+  if hterm : get_deg fStar < (2 * d).toInt64 then
+    .ok (fStar, result)
+  else
+    match ops.powmod h p.toNat fStar with
+    | .error fault => .error fault
+    | .ok hPow =>
+      let hMinusX := __upoly_subtract_x_ir hPow p
+      match ops.gcd hMinusX fStar with
+      | .error fault => .error fault
+      | .ok gdRaw =>
+        if hsplit : !gdRaw.isEmpty && get_deg gdRaw > 0 then
+          match ops.makeMonic gdRaw with
+          | .error fault => .error fault
+          | .ok gd =>
+            match hdiv : ops.exactDiv fStar gd with
+            | .error fault => .error fault
+            | .ok quotient =>
+              let fNext := SparsePolyZp.normalization quotient
+              match ops.mod hPow fNext with
+              | .error fault => .error fault
+              | .ok hNext =>
+                _loop___ddf_Zp_raw_ir ops (d + 1) fNext hNext
+                  (result.push (gd, d)) p
+        else
+          have hdec := ops.noSplitDecrease d fStar hterm
+          _loop___ddf_Zp_raw_ir ops (d + 1) fStar hPow result p
+termination_by ddfRawMeasure fStar d
+decreasing_by
+  · exact ops.splitDecrease d fStar gd quotient hdiv
+  · assumption
+
+def __ddf_Zp_raw_ir (ops : DDFRawOps) (f : SparsePolyZp) :
+    RawExec (Array (SparsePolyZp × UInt64)) :=
+  if hf : f.isEmpty then
+    .error .assertionFailure
+  else
+    let p := f[0]!.2.prime
+    let h : SparsePolyZp :=
+      #[(UMonomial.mk (1 : Int64), __make_zp_ir (1 : Int64) p)]
+    match _loop___ddf_Zp_raw_ir ops 1 f h #[] p with
+    | .error fault => .error fault
+    | .ok (fStar, result) =>
+      if !fStar.isEmpty && get_deg fStar > 0 then
+        match ops.makeMonic fStar with
+        | .error fault => .error fault
+        | .ok monic =>
+          .ok (result.push (monic, get_deg monic |>.toUInt64))
+      else
+        .ok result
+'''
+
+
 def generate_strict_ddf() -> str:
     _, skipped, roots = generate_corpus()
     if skipped:
@@ -43,6 +126,10 @@ def generate_strict_ddf() -> str:
     if missing:
         raise RuntimeError(f"missing strict DDF roots: {sorted(missing)}")
     source = codegen_corpus(selected, namespace="Generated.StrictDDF")
+    marker = "end Generated.StrictDDF"
+    if not source.endswith(marker):
+        raise RuntimeError("strict DDF namespace footer changed")
+    source = source.removesuffix(marker) + _raw_ddf_adapter() + "\n" + marker
     if "sorry" in source or "partial def" in source or "      default" in source:
         raise RuntimeError("strict DDF output contains an opaque placeholder")
     if "polynomial_GCD" in source:

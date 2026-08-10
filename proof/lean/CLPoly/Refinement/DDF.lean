@@ -309,6 +309,13 @@ def strictExactDivIR (this : DenseUPolyZp)
     (dividend divisor : SparsePolyZp) : RawExec SparsePolyZp :=
   Refinement.StrictSquarefreeZp.pairVecDivIR this dividend divisor
 
+/-- Project the mutated polynomial from the checked C++ make-monic entry. -/
+def strictMakeMonicIR (this : DenseUPolyZp) (f : SparsePolyZp) :
+    RawExec SparsePolyZp :=
+  match Refinement.StrictSquarefreeZp.upolyMakeMonicIR this f with
+  | .error fault => .error fault
+  | .ok (_, monic) => .ok monic
+
 theorem strictExactDivIR_refines
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (dividend divisor : SparsePolyZp)
@@ -627,6 +634,47 @@ def strictPowmodIR (this : DenseUPolyZp) (base : SparsePolyZp) (e : Nat)
         modProvider e reducedBase one
   else
     .error .assertionFailure
+
+/-- Physical providers and termination invariants used to instantiate the
+cpp2lean-generated effectful DDF shell.  The fields select raw workspaces;
+they do not contain factorization results. -/
+structure DDFRawProviders (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)] where
+  mul : RawMulWorkspaceProvider this
+  mod : ∀ modulus, RawModWorkspaceProvider this modulus
+  gcd : ∀ left right, RawGCDWorkspace this left right
+  splitDecrease : ∀ d fStar gd quotient,
+    strictExactDivIR this fStar gd = .ok quotient →
+    Generated.StrictDDF.ddfRawMeasure
+        (SparsePolyZp.normalization quotient) (d + 1) <
+      Generated.StrictDDF.ddfRawMeasure fStar d
+  noSplitDecrease : ∀ d fStar,
+    ¬get_deg fStar < (2 * d).toInt64 →
+    Generated.StrictDDF.ddfRawMeasure fStar (d + 1) <
+      Generated.StrictDDF.ddfRawMeasure fStar d
+
+/-- Instantiate every generated DDF operation with its concrete raw execution
+boundary. -/
+def strictDDFRawOps (this : DenseUPolyZp)
+    [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this) : Generated.StrictDDF.DDFRawOps where
+  powmod := fun base e modulus =>
+    strictPowmodIR this base e modulus providers.mul (providers.mod modulus)
+  gcd := fun left right => strictGCDIR this left right (providers.gcd left right)
+  makeMonic := strictMakeMonicIR this
+  exactDiv := strictExactDivIR this
+  mod := fun dividend divisor =>
+    strictModIR this dividend divisor
+      ((providers.mod divisor).workspace dividend)
+  splitDecrease := providers.splitDecrease
+  noSplitDecrease := providers.noSplitDecrease
+
+/-- The concrete generated DDF entry with all allocation-owning C++ calls
+bound to raw implementations. -/
+def strictDDFIR (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this) (f : SparsePolyZp) :
+    RawExec (Array (SparsePolyZp × UInt64)) :=
+  Generated.StrictDDF.__ddf_Zp_raw_ir (strictDDFRawOps this providers) f
 
 private lemma modByMonic_idem {p : Nat} [Fact (Nat.Prime p)]
     (a m : Polynomial (ZMod p))

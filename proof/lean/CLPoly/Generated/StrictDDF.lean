@@ -59,4 +59,76 @@ def __upoly_subtract_x_ir (h : SparsePolyZp) (p : UInt64) : SparsePolyZp :=
   else
     bb_17 result_2
 
+
+def ddfRawMeasure (fStar : SparsePolyZp) (d : UInt64) : Nat :=
+  if fStar.isEmpty then 0 else (get_deg fStar).toNat + 1 - 2 * d.toNat
+
+structure DDFRawOps where
+  powmod : SparsePolyZp → Nat → SparsePolyZp → RawExec SparsePolyZp
+  gcd : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
+  makeMonic : SparsePolyZp → RawExec SparsePolyZp
+  exactDiv : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
+  mod : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
+  splitDecrease : ∀ d fStar gd quotient,
+    exactDiv fStar gd = .ok quotient →
+    ddfRawMeasure (SparsePolyZp.normalization quotient) (d + 1) <
+      ddfRawMeasure fStar d
+  noSplitDecrease : ∀ d fStar,
+    ¬get_deg fStar < (2 * d).toInt64 →
+    ddfRawMeasure fStar (d + 1) < ddfRawMeasure fStar d
+
+def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
+    (fStar h : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64)) (p : UInt64) :
+    RawExec (SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
+  if hterm : get_deg fStar < (2 * d).toInt64 then
+    .ok (fStar, result)
+  else
+    match ops.powmod h p.toNat fStar with
+    | .error fault => .error fault
+    | .ok hPow =>
+      let hMinusX := __upoly_subtract_x_ir hPow p
+      match ops.gcd hMinusX fStar with
+      | .error fault => .error fault
+      | .ok gdRaw =>
+        if hsplit : !gdRaw.isEmpty && get_deg gdRaw > 0 then
+          match ops.makeMonic gdRaw with
+          | .error fault => .error fault
+          | .ok gd =>
+            match hdiv : ops.exactDiv fStar gd with
+            | .error fault => .error fault
+            | .ok quotient =>
+              let fNext := SparsePolyZp.normalization quotient
+              match ops.mod hPow fNext with
+              | .error fault => .error fault
+              | .ok hNext =>
+                _loop___ddf_Zp_raw_ir ops (d + 1) fNext hNext
+                  (result.push (gd, d)) p
+        else
+          have hdec := ops.noSplitDecrease d fStar hterm
+          _loop___ddf_Zp_raw_ir ops (d + 1) fStar hPow result p
+termination_by ddfRawMeasure fStar d
+decreasing_by
+  · exact ops.splitDecrease d fStar gd quotient hdiv
+  · assumption
+
+def __ddf_Zp_raw_ir (ops : DDFRawOps) (f : SparsePolyZp) :
+    RawExec (Array (SparsePolyZp × UInt64)) :=
+  if hf : f.isEmpty then
+    .error .assertionFailure
+  else
+    let p := f[0]!.2.prime
+    let h : SparsePolyZp :=
+      #[(UMonomial.mk (1 : Int64), __make_zp_ir (1 : Int64) p)]
+    match _loop___ddf_Zp_raw_ir ops 1 f h #[] p with
+    | .error fault => .error fault
+    | .ok (fStar, result) =>
+      if !fStar.isEmpty && get_deg fStar > 0 then
+        match ops.makeMonic fStar with
+        | .error fault => .error fault
+        | .ok monic =>
+          .ok (result.push (monic, get_deg monic |>.toUInt64))
+      else
+        .ok result
+
 end Generated.StrictDDF

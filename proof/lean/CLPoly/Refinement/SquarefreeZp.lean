@@ -14752,6 +14752,103 @@ theorem pairVecDivVHCConsumeEqualDegree_heap_heads_below
         rw [Array.getElem?_eq_none (by omega)] at hget
         contradiction
 
+/-- The actual equal-degree consume/extract loop preserves the strict degree
+bound on every deferred `lin` node.  In each consuming step the newly deferred
+tail comes from the homogeneous root chain at exactly `degree`; surviving
+deferred nodes stay disjoint from that chain.  The recursive call is justified
+by the checked extract's exact heap-size decrease. -/
+theorem pairVecDivVHCConsumeEqualDegree_preserves_linBelow
+    (this : DenseUPolyZp) (p degree : Nat)
+    (heap : Array Nat) (k : UInt64) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult) (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hseparated : ∀ (slot head : Nat), heap[slot]? = some head →
+      Disjoint lin.toList.toFinset (owners head) ∧
+        head ∉ lin.toList.toFinset)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hlinBelow : PairVecDivVHCLinBelow degree lin nodes)
+    (hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    PairVecDivVHCLinBelow degree result.lin result.nodes := by
+  induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
+      nodes lin resetH result owners with
+  | h size ih =>
+      rw [pairVecDivVHCConsumeEqualDegree] at hrun
+      by_cases hheap : 0 < heap.size
+      · simp only [hheap, ↓reduceDIte] at hrun
+        cases hmono : pairVecDivVHCMono heap[0] nodes with
+        | error fault => simp [hmono] at hrun
+        | ok rootMono =>
+            simp only [hmono] at hrun
+            by_cases hequal : rootMono.deg = degree
+            · simp only [hequal, ↓reduceDIte] at hrun
+              cases hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes
+                  lin resetH quotient divisor with
+              | error fault => simp [hconsume] at hrun
+              | ok bucket =>
+                  simp only [dif_pos trivial, hconsume] at hrun
+                  cases hchecked : pairVecDivVHCExtractChecked heap bucket.nodes with
+                  | error fault => simp [hchecked] at hrun
+                  | ok extracted =>
+                      rw [hchecked] at hrun
+                      have hrootOwns :=
+                        pairVecDivVHCHeapChainOwnership_root_owns heap owners
+                          nodes hownership hheap
+                      have hrootDegree := hhomogeneous 0 heap[0] rootMono
+                        (Array.getElem?_eq_getElem hheap) hmono
+                      have hlinBelow' :=
+                        pairVecDivVHCConsumeRootBucket_preserves_linBelow this p
+                          degree heap k nodes lin resetH quotient divisor bucket
+                          (owners heap[0]) hheap hrootOwns
+                          (by simpa [hequal] using hrootDegree)
+                          (hseparated 0 heap[0]
+                            (Array.getElem?_eq_getElem hheap)).1
+                          hlinBelow hdenotes hcanonical hconsume
+                      have hdenotes' :=
+                        pairVecDivVHCConsumeRootBucket_preserves_denotes this heap
+                          k nodes lin resetH quotient divisor bucket hdenotes
+                          hconsume
+                      have hraw := pairVecDivVHCExtractChecked_raw heap
+                        bucket.nodes extracted hchecked
+                      have hownershipOld :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hconsume hraw
+                      have hhomogeneousOld :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapChainsHomogeneous
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hhomogeneous
+                          hconsume hraw
+                      have haway' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_away_linReady
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hseparated
+                          hlinReady hconsume hraw
+                      rcases haway'.1 with
+                        ⟨nextOwners, hnextOwnership, hnextSeparated⟩
+                      have hnextHomogeneous := hhomogeneousOld.congr_owners
+                        extracted.1 owners nextOwners bucket.nodes hownershipOld
+                        hnextOwnership
+                      have hsmaller : extracted.1.size < size := by
+                        rw [← hsize]
+                        omega
+                      exact ih extracted.1.size hsmaller extracted.1
+                        bucket.coefficient bucket.nodes bucket.lin bucket.resetH
+                        result nextOwners hnextOwnership hnextHomogeneous
+                        hnextSeparated haway'.2 hlinBelow' hdenotes' hrun rfl
+            · simp only [hequal, ↓reduceDIte, Except.ok.injEq] at hrun
+              subst result
+              exact hlinBelow
+      · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
+        subst result
+        exact hlinBelow
+
 /-- Coverage turns strict bounds on the three concrete location classes
 (reset prefix, deferred stack, and heap-owned chains) into a bound on every
 active allocated node. -/

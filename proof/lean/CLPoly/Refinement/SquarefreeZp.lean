@@ -20288,6 +20288,26 @@ structure YunRawGCDWorkspace
       (SparsePolyZp.toPoly this._p.toNat right)
       (SparsePolyZp.toPoly this._p.toNat left)
 
+/-- Allocation service for Yun iterations.  It chooses only physical memory
+layouts; no field can choose or predict a GCD result. -/
+abbrev YunRawGCDWorkspaceProvider
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this) :=
+  ∀ left right : SparsePolyZp, YunRawGCDWorkspace this hcfg left right
+
+/-- The exact checked public raw GCD selected by one physical workspace. -/
+def yunRawGCDIR
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (left right : SparsePolyZp)
+    (workspace : YunRawGCDWorkspace this hcfg left right) :
+    RawExec InternalPolynomialGCDRawResult :=
+  polynomialGCDPublicNonemptyRawIR this workspace.M workspace.hM
+    workspace.resultPtr workspace.leftPtr workspace.rightPtr workspace.aBuf
+    workspace.bBuf workspace.J workspace.Q workspace.R workspace.W3
+    workspace.W workspace.scratch workspace.euclidQ workspace.euclidR
+    workspace.euclidW3 left right workspace.loopDecrease workspace.heap
+
 /-- A physical Yun workspace forces the actual public raw GCD call to succeed;
 the existential result is read from that execution and then related to L2. -/
 theorem yunRawGCDWorkspace_succeeds
@@ -20301,12 +20321,7 @@ theorem yunRawGCDWorkspace_succeeds
     (hleftBound : sparseDenseLength left ≤ 2 ^ 63)
     (hrightBound : sparseDenseLength right ≤ 2 ^ 63) :
     ∃ final result,
-      polynomialGCDPublicNonemptyRawIR this workspace.M workspace.hM
-          workspace.resultPtr workspace.leftPtr workspace.rightPtr
-          workspace.aBuf workspace.bBuf workspace.J workspace.Q workspace.R
-          workspace.W3 workspace.W workspace.scratch workspace.euclidQ
-          workspace.euclidR workspace.euclidW3 left right
-          workspace.loopDecrease workspace.heap = .ok final ∧
+      yunRawGCDIR this hcfg left right workspace = .ok final ∧
       final.output = some result ∧
       SparsePolyZp.Canonical this._p.toNat result ∧
       SparsePolyZp.toPoly this._p.toNat result = normalize
@@ -20321,6 +20336,57 @@ theorem yunRawGCDWorkspace_succeeds
     workspace.rightValid hleftCanonical hrightCanonical hleftNonzero
     hrightNonzero hleftBound hrightBound workspace.disjoint workspace.readyAB
     workspace.readyBA
+
+/-- Strict executable Yun loop.  This follows the generated source control
+flow but replaces its model-level `polynomial_GCD` and `pair_vec_div` dispatch
+with the proved checked raw GCD and complete concrete division entry. -/
+def strictYunLoopIR
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (multiplicity : UInt64) (w c : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64)) :
+    RawExec (SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
+  if ((! Array.isEmpty w) && decide (get_deg w > (0 : Int64))) then
+    let workspace := physical w c
+    match yunRawGCDIR this hcfg w c workspace with
+    | .error fault => .error fault
+    | .ok gcdOut =>
+      match gcdOut.output with
+      | none => .error .assertionFailure
+      | some y =>
+        match pairVecDivIR this w y with
+        | .error fault => .error fault
+        | .ok zRaw =>
+          let z := SparsePolyZp.normalization zRaw
+          let nextResultExec : RawExec (Array (SparsePolyZp × UInt64)) :=
+            if ((! Array.isEmpty z) && decide (get_deg z > (0 : Int64))) then
+              match upolyMakeMonicIR this z with
+              | .error fault => .error fault
+              | .ok (_, zMonic) => .ok (result.push (zMonic, multiplicity))
+            else
+              .ok result
+          match nextResultExec with
+          | .error fault => .error fault
+          | .ok nextResult =>
+            match pairVecDivIR this c y with
+            | .error fault => .error fault
+            | .ok cRaw =>
+              let cNext := SparsePolyZp.normalization cRaw
+              let wNext := y
+              let multiplicityNext := multiplicity + 1
+              if hdec : Generated.squarefreeMeasure wNext +
+                    Generated.squarefreeMeasure cNext <
+                  Generated.squarefreeMeasure w +
+                    Generated.squarefreeMeasure c then
+                strictYunLoopIR this hcfg physical multiplicityNext wNext
+                  cNext nextResult
+              else
+                .ok (cNext, nextResult)
+  else
+    .ok (c, result)
+termination_by Generated.squarefreeMeasure w + Generated.squarefreeMeasure c
+decreasing_by exact hdec
 
 /-- The semantic payload returned by the strict raw public GCD proof provides
 exactly the algebraic invariants required by one Yun iteration. -/

@@ -466,6 +466,81 @@ noncomputable def strictEDFRawOps
   makeMonic := StrictDDF.strictMakeMonicIR this
   EntryInvariant := EDFEntryInvariant this
 
+/-- The generated characteristic-two candidate branch terminates through the
+actual mod/trace/GCD calls and returns a canonical monic divisor of the input.
+The factor is the concrete raw GCD output; no L2 witness is substituted. -/
+theorem strictCandidateRun_charTwo_factor
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64) (r : SparsePolyZp)
+    (hinvariant : EDFEntryInvariant this f d)
+    (hrCanonical : SparsePolyZp.Canonical this._p.toNat r)
+    (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size)
+    (hcharTwo : (f[0]!.2.prime == 2) = true) :
+    ∃ factor,
+      Generated.StrictEDF.candidateRun
+          (strictEDFRawOps engine this providers) f d r hbudget = .ok factor ∧
+      SparsePolyZp.Canonical this._p.toNat factor ∧
+      (SparsePolyZp.toPoly this._p.toNat factor).Monic ∧
+      SparsePolyZp.toPoly this._p.toNat factor ∣
+        SparsePolyZp.toPoly this._p.toNat f := by
+  have hfNonempty := hinvariant.nonempty
+  have hprime : f[0]!.2.prime = this._p :=
+    hinvariant.primeMatches hfNonempty
+  rcases StrictDDF.strictModIR_refines_modByMonic this providers.hcfg r f
+      ((providers.mod f).workspace r) hrCanonical hinvariant.canonical
+      hfNonempty hinvariant.monic with
+    ⟨g0, hg0Run, hg0Canonical, _hg0Semantic⟩
+  have hsquare : ∀ current,
+      SparsePolyZp.Canonical f[0]!.2.prime.toNat current →
+      ∃ next,
+        (strictEDFRawOps engine this providers).squareAddMod current r f =
+            .ok next ∧
+        SparsePolyZp.Canonical f[0]!.2.prime.toNat next := by
+    intro current hcurrent
+    rcases strictSquareAddModIR_refines this providers current r f
+        (by simpa [hprime] using hcurrent) hrCanonical hinvariant.canonical
+        hfNonempty hinvariant.monic with
+      ⟨next, hnextRun, hnextCanonical, _hnextSemantic⟩
+    exact ⟨next, hnextRun, by simpa [hprime] using hnextCanonical⟩
+  rcases traceLoop_terminates_canonical
+      (strictEDFRawOps engine this providers) d f r 1 g0
+      ⟨by simpa using hbudget.1, hbudget.2⟩
+      (by simpa [hprime] using hg0Canonical) hsquare with
+    ⟨trace, htraceRun, htraceCanonical⟩
+  rcases StrictDDF.strictDDFGCDIR_refines this trace f
+      (providers.gcd trace f) (by simpa [hprime] using htraceCanonical)
+      hinvariant.canonical hfNonempty hinvariant.monic with
+    ⟨factor, hgcdRun, hfactorCanonical, hfactorSemantic⟩
+  have hgcdDivides :
+      EuclideanDomain.gcd
+          (SparsePolyZp.toPoly this._p.toNat trace)
+          (SparsePolyZp.toPoly this._p.toNat f) ∣
+        SparsePolyZp.toPoly this._p.toNat f :=
+    EuclideanDomain.gcd_dvd_right _ _
+  have hgcdNonzero :
+      EuclideanDomain.gcd
+          (SparsePolyZp.toPoly this._p.toNat trace)
+          (SparsePolyZp.toPoly this._p.toNat f) ≠ 0 := by
+    intro hzero
+    rw [hzero, zero_dvd_iff] at hgcdDivides
+    exact hinvariant.monic.ne_zero hgcdDivides
+  refine ⟨factor, ?_, hfactorCanonical, ?_, ?_⟩
+  · unfold Generated.StrictEDF.candidateRun
+    simp only [hcharTwo, ↓reduceIte]
+    have hg0Ops :
+        (strictEDFRawOps engine this providers).modPoly r f = .ok g0 := by
+      simpa [strictEDFRawOps] using hg0Run
+    rw [certifyRawExec_ok_eq _ _ hg0Ops]
+    simp only
+    rw [htraceRun]
+    simpa [strictEDFRawOps] using hgcdRun
+  · rw [hfactorSemantic]
+    exact Polynomial.monic_normalize hgcdNonzero
+  · rw [hfactorSemantic, normalize_dvd_iff]
+    exact hgcdDivides
+
 end StrictEDF
 
 -- The public L1→L2 EDF theorem remains deliberately absent until the retry

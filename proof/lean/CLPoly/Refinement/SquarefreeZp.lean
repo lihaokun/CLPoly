@@ -21035,6 +21035,92 @@ theorem natDegree_contract_lt_of_derivative_zero (p : Nat)
     Nat.mul_lt_mul_of_pos_left hp.one_lt hcontractPositive
   simpa [hdegree] using hmul
 
+/-- The complete concrete prefix of the derivative-zero SQF branch prepares
+the strictly smaller recursive state.  In particular, the p-th-root loop is
+executed, its sparse result is related to contraction, and the following
+source make-monic call is proved to take its actual early-return branch. -/
+theorem sqfDerivativeZeroIR_prepares_recursive_call
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
+    (hbound : sparseDenseLength source ≤ 2 ^ 63)
+    (hderivative :
+      Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source) = 0) :
+    ∃ root,
+      extractPthRootIR source = .ok root ∧
+      SparsePolyZp.Canonical this._p.toNat root ∧
+      SparsePolyZp.toPoly this._p.toNat root =
+        Polynomial.contract this._p.toNat
+          (SparsePolyZp.toPoly this._p.toNat source) ∧
+      (SparsePolyZp.toPoly this._p.toNat root).Monic ∧
+      upolyMakeMonicIR this root = .ok (root[0]!.2, root) ∧
+      Generated.squarefreeMeasure root <
+        Generated.squarefreeMeasure source ∧
+      sparseDenseLength root ≤ 2 ^ 63 ∧
+      source[0]!.2.prime = this._p := by
+  have hdegree : ∀ term ∈ source.toList, term.1.deg < 2 ^ 63 := by
+    intro term hterm
+    obtain ⟨index, hindex, htermEq⟩ := List.mem_iff_getElem.mp hterm
+    have hsourceIndex : index < source.size := by simpa using hindex
+    have harrayEq : source[index] = term := by
+      rw [← Array.getElem_toList hsourceIndex]
+      exact htermEq
+    rw [← harrayEq]
+    exact Nat.lt_of_lt_of_le (sparse_degree_lt_denseLength this._p.toNat
+      source hcanonical index hsourceIndex) hbound
+  rcases extractPthRootIR_refines_of_derivative_zero this._p.toNat source
+      hnonempty hcanonical hdegree hderivative with
+    ⟨root, hrootRun, hrootCanonical, hrootSemantic⟩
+  have hrootMonic : (SparsePolyZp.toPoly this._p.toNat root).Monic := by
+    rw [hrootSemantic]
+    exact contract_monic_of_derivative_zero this._p.toNat
+      (SparsePolyZp.toPoly this._p.toNat source) hmonic hderivative
+  have hrootNonempty : 0 < root.size :=
+    sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat root
+      hrootMonic.ne_zero
+  have hrootDegreeLt :
+      (SparsePolyZp.toPoly this._p.toNat root).natDegree <
+        (SparsePolyZp.toPoly this._p.toNat source).natDegree := by
+    rw [hrootSemantic]
+    exact natDegree_contract_lt_of_derivative_zero this._p.toNat
+      (SparsePolyZp.toPoly this._p.toNat source) hpositive hderivative
+  have hmeasureSource := generated_squarefreeMeasure_eq_natDegree_succ
+    this._p.toNat source hcanonical hnonempty
+  have hmeasureRoot := generated_squarefreeMeasure_eq_natDegree_succ
+    this._p.toNat root hrootCanonical hrootNonempty
+  have hmeasureLt : Generated.squarefreeMeasure root <
+      Generated.squarefreeMeasure source := by
+    rw [hmeasureRoot, hmeasureSource]
+    omega
+  have hrootBound : sparseDenseLength root ≤ 2 ^ 63 := by
+    rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat source hcanonical hnonempty with ⟨hsourceLength, _⟩
+    rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat root hrootCanonical hrootNonempty with ⟨hrootLength, _⟩
+    rw [hsourceLength] at hbound
+    rw [hrootLength]
+    exact Nat.le_trans (Nat.le_of_lt hmeasureLt) hbound
+  have hsourceZeroMem : source[0] ∈ source.toList := by
+    exact Array.getElem_mem_toList hnonempty
+  have hprimeNat : source[0].2.prime.toNat = this._p.toNat :=
+    (hcanonical.1 source[0] hsourceZeroMem).1
+  have hprime : source[0]!.2.prime = this._p := by
+    rw [getElem!_pos source 0 hnonempty]
+    exact UInt64.toNat_inj.mp hprimeNat
+  have hmonicRun := upolyMakeMonicIR_eq_of_monic this root hrootCanonical
+    hrootNonempty hrootMonic
+  have hmonicRunBang : upolyMakeMonicIR this root =
+      .ok (root[0]!.2, root) := by
+    rw [getElem!_pos root 0 hrootNonempty]
+    exact hmonicRun
+  exact ⟨root, hrootRun, hrootCanonical, hrootSemantic, hrootMonic,
+    hmonicRunBang,
+    hmeasureLt, hrootBound, hprime⟩
+
 theorem extractPthRootLoop_size (index : Nat) (output source : SparsePolyZp)
     (prime : UInt64) :
     (extractPthRootLoop index output source prime).size =

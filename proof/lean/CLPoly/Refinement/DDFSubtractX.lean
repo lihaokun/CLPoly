@@ -693,7 +693,7 @@ private lemma strict_make_zp_one_reduced (q : UInt64) (hq : q.toNat = p) :
     (UMonomial.mk (0 : Int64), Zp.ofInt (1 : Int) q) (by simp)
   simpa [Generated.StrictDDF.__make_zp_ir] using h
 
-private lemma strict_sub_one_toZMod (h2p : 2 * p ≤ UInt64.size)
+lemma strict_sub_one_toZMod (h2p : 2 * p ≤ UInt64.size)
     (c : Zp) (q : UInt64) (hc_prime : c.prime.toNat = p)
     (hc_red : c.val.toNat < p) (hq : q.toNat = p) :
     Zp.toZMod p

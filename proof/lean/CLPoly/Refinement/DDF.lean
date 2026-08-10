@@ -643,38 +643,34 @@ structure DDFRawProviders (this : DenseUPolyZp)
   mul : RawMulWorkspaceProvider this
   mod : ∀ modulus, RawModWorkspaceProvider this modulus
   gcd : ∀ left right, RawGCDWorkspace this left right
-  splitDecrease : ∀ d fStar gd quotient,
-    strictExactDivIR this fStar gd = .ok quotient →
-    Generated.StrictDDF.ddfRawMeasure
-        (SparsePolyZp.normalization quotient) (d + 1) <
-      Generated.StrictDDF.ddfRawMeasure fStar d
-  noSplitDecrease : ∀ d fStar,
-    ¬get_deg fStar < (2 * d).toInt64 →
-    Generated.StrictDDF.ddfRawMeasure fStar (d + 1) <
-      Generated.StrictDDF.ddfRawMeasure fStar d
+  ops : Generated.StrictDDF.DDFRawOps
+  powmod_eq : ops.powmod = fun base e modulus =>
+    strictPowmodIR this base e modulus mul (mod modulus)
+  gcd_eq : ops.gcd = fun left right =>
+    strictGCDIR this left right (gcd left right)
+  makeMonic_eq : ops.makeMonic = strictMakeMonicIR this
+  exactDiv_eq : ops.exactDiv = strictExactDivIR this
+  mod_eq : ops.mod = fun dividend divisor =>
+    strictModIR this dividend divisor ((mod divisor).workspace dividend)
 
 /-- Instantiate every generated DDF operation with its concrete raw execution
 boundary. -/
 def strictDDFRawOps (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)]
-    (providers : DDFRawProviders this) : Generated.StrictDDF.DDFRawOps where
-  powmod := fun base e modulus =>
-    strictPowmodIR this base e modulus providers.mul (providers.mod modulus)
-  gcd := fun left right => strictGCDIR this left right (providers.gcd left right)
-  makeMonic := strictMakeMonicIR this
-  exactDiv := strictExactDivIR this
-  mod := fun dividend divisor =>
-    strictModIR this dividend divisor
-      ((providers.mod divisor).workspace dividend)
-  splitDecrease := providers.splitDecrease
-  noSplitDecrease := providers.noSplitDecrease
+    (providers : DDFRawProviders this) : Generated.StrictDDF.DDFRawOps :=
+  providers.ops
 
 /-- The concrete generated DDF entry with all allocation-owning C++ calls
 bound to raw implementations. -/
 def strictDDFIR (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
-    (providers : DDFRawProviders this) (f : SparsePolyZp) :
+    (providers : DDFRawProviders this) (f : SparsePolyZp)
+    (hinitial : ¬f.isEmpty →
+      providers.ops.Invariant 1 f
+        #[(UMonomial.mk (1 : Int64), Generated.StrictDDF.__make_zp_ir
+          (1 : Int64) f[0]!.2.prime)] f[0]!.2.prime) :
     RawExec (Array (SparsePolyZp × UInt64)) :=
   Generated.StrictDDF.__ddf_Zp_raw_ir (strictDDFRawOps this providers) f
+    hinitial
 
 private lemma modByMonic_idem {p : Nat} [Fact (Nat.Prime p)]
     (a m : Polynomial (ZMod p))

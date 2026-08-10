@@ -24,6 +24,7 @@ namespace Refinement
 namespace StrictSquarefreeZp
 
 open CLPoly.Impl.StrictPolynomialGCDRefinement
+open CLPoly.Impl.StrictEuclidRefinement
 open CLPoly.Math
 
 /-- Exact checked entry for the source `__upoly_make_monic`. -/
@@ -20233,6 +20234,93 @@ theorem pairVecDivIR_refines_divByMonic
         (pairVecDivIR_general this dividend divisor hdividend hgeneral).trans
           hrun,
         hrefines.1, hrefines.2⟩
+
+/-- Purely physical allocation package for the exact public raw GCD call made
+by one Yun iteration.  It contains no result polynomial and no semantic GCD
+operation; the output below must be produced by the checked raw execution. -/
+structure YunRawGCDWorkspace
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (left right : SparsePolyZp) where
+  M : HgcdMat
+  hM : M.Valid
+  resultPtr : RawPtr UInt64
+  leftPtr : RawPtr UInt64
+  rightPtr : RawPtr UInt64
+  aBuf : RawPtr UInt64
+  bBuf : RawPtr UInt64
+  J : RawPtr UInt64
+  Q : RawPtr UInt64
+  R : RawPtr UInt64
+  W3 : RawPtr Word3
+  W : RawPtr UInt64
+  scratch : RawPtr UInt64
+  euclidQ : RawPtr UInt64
+  euclidR : RawPtr UInt64
+  euclidW3 : RawPtr Word3
+  heap : RawHeap
+  loopDecrease : Generated.StrictGCDHGCD.HgcdGcdLoopLengthDecreases
+    this M hM W scratch
+  leftValid : heap.ValidU64Slice leftPtr (sparseDenseLength left)
+  rightValid : heap.ValidU64Slice rightPtr (sparseDenseLength right)
+  disjoint : CLPoly.Impl.StrictMulRefinement.U64SlicesDisjoint rightPtr
+    (sparseDenseLength right) leftPtr (sparseDenseLength left)
+  readyAB : ∀ finalHeap,
+    RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+        (SparsePolyZp.toPoly this._p.toNat left) →
+    RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+        (SparsePolyZp.toPoly this._p.toNat right) →
+    DenseGcdOrderedReady this hcfg
+      (Fact.out : Nat.Prime this._p.toNat).one_lt M hM resultPtr leftPtr
+      rightPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+      (sparseDenseLength left) (sparseDenseLength right) finalHeap
+      (SparsePolyZp.toPoly this._p.toNat left)
+      (SparsePolyZp.toPoly this._p.toNat right)
+  readyBA : ∀ finalHeap,
+    RawDensePolyRep this finalHeap leftPtr (sparseDenseLength left)
+        (SparsePolyZp.toPoly this._p.toNat left) →
+    RawDensePolyRep this finalHeap rightPtr (sparseDenseLength right)
+        (SparsePolyZp.toPoly this._p.toNat right) →
+    DenseGcdOrderedReady this hcfg
+      (Fact.out : Nat.Prime this._p.toNat).one_lt M hM resultPtr rightPtr
+      leftPtr aBuf bBuf J Q R W3 W scratch euclidQ euclidR euclidW3
+      (sparseDenseLength right) (sparseDenseLength left) finalHeap
+      (SparsePolyZp.toPoly this._p.toNat right)
+      (SparsePolyZp.toPoly this._p.toNat left)
+
+/-- A physical Yun workspace forces the actual public raw GCD call to succeed;
+the existential result is read from that execution and then related to L2. -/
+theorem yunRawGCDWorkspace_succeeds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (left right : SparsePolyZp) (workspace : YunRawGCDWorkspace this hcfg left right)
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonzero : SparsePolyZp.toPoly this._p.toNat left ≠ 0)
+    (hrightNonzero : SparsePolyZp.toPoly this._p.toNat right ≠ 0)
+    (hleftBound : sparseDenseLength left ≤ 2 ^ 63)
+    (hrightBound : sparseDenseLength right ≤ 2 ^ 63) :
+    ∃ final result,
+      polynomialGCDPublicNonemptyRawIR this workspace.M workspace.hM
+          workspace.resultPtr workspace.leftPtr workspace.rightPtr
+          workspace.aBuf workspace.bBuf workspace.J workspace.Q workspace.R
+          workspace.W3 workspace.W workspace.scratch workspace.euclidQ
+          workspace.euclidR workspace.euclidW3 left right
+          workspace.loopDecrease workspace.heap = .ok final ∧
+      final.output = some result ∧
+      SparsePolyZp.Canonical this._p.toNat result ∧
+      SparsePolyZp.toPoly this._p.toNat result = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right)) := by
+  exact polynomialGCDPublicNonemptyRawIR_refines this workspace.M workspace.hM
+    workspace.resultPtr workspace.leftPtr workspace.rightPtr workspace.aBuf
+    workspace.bBuf workspace.J workspace.Q workspace.R workspace.W3
+    workspace.W workspace.scratch workspace.euclidQ workspace.euclidR
+    workspace.euclidW3 left right workspace.loopDecrease workspace.heap hcfg
+    (Fact.out : Nat.Prime this._p.toNat).one_lt workspace.leftValid
+    workspace.rightValid hleftCanonical hrightCanonical hleftNonzero
+    hrightNonzero hleftBound hrightBound workspace.disjoint workspace.readyAB
+    workspace.readyBA
 
 /-- The semantic payload returned by the strict raw public GCD proof provides
 exactly the algebraic invariants required by one Yun iteration. -/

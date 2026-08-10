@@ -648,6 +648,226 @@ theorem strictCandidateRun_factor
       exact strictCandidateRun_charTwo_factor engine this providers f d r
         hinvariant hrCanonical hbudget hcharacteristic
 
+/-- On canonical nonempty inputs, the generated recursive measure is exactly
+one more than the L2 natural degree. -/
+theorem edfMeasure_eq_natDegree_succ
+    (p : Nat) [Fact (Nat.Prime p)] (f : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical p f) (hnonempty : 0 < f.size) :
+    Generated.StrictEDF.edfMeasure f =
+      (SparsePolyZp.toPoly p f).natDegree + 1 := by
+  have hdegree :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+      p f hcanonical hnonempty
+  have hnatDegree : (SparsePolyZp.toPoly p f).natDegree = f[0].1.deg :=
+    Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  have hnotEmpty : f.isEmpty = false := by
+    simp [Array.isEmpty, Nat.ne_of_gt hnonempty]
+  simp [Generated.StrictEDF.edfMeasure, hnotEmpty,
+    getElem!_pos f 0 hnonempty, hnatDegree]
+
+/-- A positive signed C++ degree comparison is an exact L2 natural-degree
+comparison when both canonical degrees fit the signed word range. -/
+theorem strict_get_deg_lt_implies_natDegree_lt
+    (p : Nat) [Fact (Nat.Prime p)] (g f : SparsePolyZp)
+    (hgCanonical : SparsePolyZp.Canonical p g)
+    (hfCanonical : SparsePolyZp.Canonical p f)
+    (hgNonempty : 0 < g.size) (hfNonempty : 0 < f.size)
+    (hgBound : (SparsePolyZp.toPoly p g).natDegree < 2 ^ 63)
+    (hfBound : (SparsePolyZp.toPoly p f).natDegree < 2 ^ 63)
+    (hgPositive : get_deg g > 0) (hlt : get_deg g < get_deg f) :
+    (SparsePolyZp.toPoly p g).natDegree <
+      (SparsePolyZp.toPoly p f).natDegree := by
+  have hltInt : (get_deg g).toInt < (get_deg f).toInt :=
+    Int64.lt_iff_toInt_lt.mp hlt
+  have hgPosInt : 0 < (get_deg g).toInt := by
+    simpa [Int64.lt_iff_toInt_lt] using hgPositive
+  have hfPosInt : 0 < (get_deg f).toInt := lt_trans hgPosInt hltInt
+  have hclampLt : (get_deg g).toNatClampNeg <
+      (get_deg f).toNatClampNeg := by
+    change (get_deg g).toInt.toNat < (get_deg f).toInt.toNat
+    have hgNat := Int.toNat_of_nonneg (le_of_lt hgPosInt)
+    have hfNat := Int.toNat_of_nonneg (le_of_lt hfPosInt)
+    omega
+  rw [StrictDDF.strict_get_deg_toNatClampNeg p g hgCanonical hgNonempty
+      hgBound,
+    StrictDDF.strict_get_deg_toNatClampNeg p f hfCanonical hfNonempty
+      hfBound] at hclampLt
+  exact hclampLt
+
+/-- Concrete split law for the generated strict EDF shell.  It derives the
+random polynomial from the actual engine transition, the divisor from the
+actual candidate execution, and both recursive children from the supplied
+exact-div and make-monic executions. -/
+noncomputable def strictEDFSplitLaw
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this) :
+    Generated.StrictEDF.EDFSplitLaw
+      (strictEDFRawOps engine this providers) where
+  splitStep := by
+    intro f d rngBefore rngAfter r g hRaw gMonic hMonic
+      hinvariant hrandom hcandidate hproper hdivRun hgMonicRun hhMonicRun
+    change EDFEntryInvariant this f d at hinvariant
+    have hfNonempty := hinvariant.nonempty
+    have hprime : f[0]!.2.prime = this._p :=
+      hinvariant.primeMatches hfNonempty
+    have hpWord : 0 < f[0]!.2.prime := by
+      simpa [hprime, UInt64.lt_iff_toNat_lt] using
+        (Fact.out : Nat.Prime this._p.toNat).pos
+    have hrandomStrict :
+        Generated.StrictEDF.__upoly_random_raw_ir engine (get_deg f)
+          f[0]!.2.prime rngBefore = .ok (r, rngAfter) := by
+      simpa [strictEDFRawOps] using hrandom
+    rcases __upoly_random_raw_ir_canonical engine (get_deg f)
+        f[0]!.2.prime rngBefore hpWord with
+      ⟨randomOutput, randomNext, hrandomCanonicalRun,
+        hrandomCanonical, _hrandomDegree⟩
+    rw [hrandomStrict] at hrandomCanonicalRun
+    have hrandomPair := Except.ok.inj hrandomCanonicalRun
+    have hrandomOutputEq : r = randomOutput :=
+      congrArg Prod.fst hrandomPair
+    have hrandomNextEq : rngAfter = randomNext :=
+      congrArg Prod.snd hrandomPair
+    subst randomOutput
+    subst randomNext
+    have hrCanonical : SparsePolyZp.Canonical this._p.toNat r := by
+      simpa [hprime] using hrandomCanonical
+    rcases hcandidate with ⟨hbudget, hcandidateRun⟩
+    rcases strictCandidateRun_factor engine this providers f d r hinvariant
+        hrCanonical hbudget with
+      ⟨candidate, hcandidateStrict, hgCanonical, hgMonic, hgDivides⟩
+    rw [hcandidateRun] at hcandidateStrict
+    injection hcandidateStrict with hcandidateEq
+    subst candidate
+    have hgNonempty :=
+      Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+        this._p.toNat g hgMonic.ne_zero
+    have hfDegreeBound :
+        (SparsePolyZp.toPoly this._p.toNat f).natDegree < 2 ^ 62 :=
+      StrictDDF.canonical_natDegree_lt_of_terms_lt this._p.toNat f
+        hinvariant.canonical hinvariant.monic.ne_zero (2 ^ 62)
+        hinvariant.degreeBound
+    have hgDegreeLe : (SparsePolyZp.toPoly this._p.toNat g).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat f).natDegree :=
+      Polynomial.natDegree_le_of_dvd hgDivides hinvariant.monic.ne_zero
+    have hgDegreeBound :
+        (SparsePolyZp.toPoly this._p.toNat g).natDegree < 2 ^ 63 := by
+      omega
+    have hfDegreeBound63 :
+        (SparsePolyZp.toPoly this._p.toNat f).natDegree < 2 ^ 63 := by
+      omega
+    have hgDegreePositive :
+        0 < (SparsePolyZp.toPoly this._p.toNat g).natDegree :=
+      (StrictDDF.strict_get_deg_pos_iff_natDegree_pos this._p.toNat g
+        hgCanonical hgDegreeBound).mp hproper.1
+    have hgDegreeLt : (SparsePolyZp.toPoly this._p.toNat g).natDegree <
+        (SparsePolyZp.toPoly this._p.toNat f).natDegree :=
+      strict_get_deg_lt_implies_natDegree_lt this._p.toNat g f hgCanonical
+        hinvariant.canonical hgNonempty hfNonempty hgDegreeBound
+        hfDegreeBound63 hproper.1 hproper.2
+    rcases StrictDDF.strictExactDivIR_refines this f g providers.hcfg
+        hinvariant.canonical hgCanonical hgNonempty hgMonic hgDivides with
+      ⟨quotient, hquotientRun, hquotientCanonical, hquotientSemantic⟩
+    have hdivRunStrict : StrictDDF.strictExactDivIR this f g = .ok hRaw := by
+      simpa [strictEDFRawOps] using hdivRun
+    rw [hdivRunStrict] at hquotientRun
+    injection hquotientRun with hquotientEq
+    subst quotient
+    have hdivByMonicMonic :
+        (SparsePolyZp.toPoly this._p.toNat f /ₘ
+          SparsePolyZp.toPoly this._p.toNat g).Monic :=
+      StrictSquarefreeZp.divByMonic_monic_of_monic_of_dvd
+        (SparsePolyZp.toPoly this._p.toNat f)
+        (SparsePolyZp.toPoly this._p.toNat g) hinvariant.monic hgMonic
+        hgDivides
+    have hquotientMonic :
+        (SparsePolyZp.toPoly this._p.toNat hRaw).Monic := by
+      rw [hquotientSemantic]
+      exact hdivByMonicMonic
+    have hhNonempty :=
+      Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+        this._p.toNat hRaw hquotientMonic.ne_zero
+    have hgMonicExact :=
+      StrictDDF.strictMakeMonicIR_eq_of_monic this g hgCanonical hgNonempty
+        hgMonic
+    have hgMonicRunStrict : StrictDDF.strictMakeMonicIR this g =
+        .ok gMonic := by
+      simpa [strictEDFRawOps] using hgMonicRun
+    rw [hgMonicExact] at hgMonicRunStrict
+    injection hgMonicRunStrict with hgMonicEq
+    subst gMonic
+    have hnormalizeRaw : hRaw.normalization = hRaw :=
+      StrictSquarefreeZp.sparsePolyZp_normalization_eq_of_canonical
+        this._p.toNat hRaw hquotientCanonical
+    have hhMonicExact :=
+      StrictDDF.strictMakeMonicIR_eq_of_monic this hRaw hquotientCanonical
+        hhNonempty hquotientMonic
+    have hhMonicRunStrict :
+        StrictDDF.strictMakeMonicIR this hRaw.normalization = .ok hMonic := by
+      simpa [strictEDFRawOps] using hhMonicRun
+    rw [hnormalizeRaw, hhMonicExact] at hhMonicRunStrict
+    injection hhMonicRunStrict with hhMonicEq
+    subst hMonic
+    have hpolySplit := edfPolynomialSplit_of_properDivisor
+      (SparsePolyZp.toPoly this._p.toNat f)
+      (SparsePolyZp.toPoly this._p.toNat g) d.toNat hinvariant.monic
+      hinvariant.squarefree hinvariant.equalDegree hgMonic hgDivides
+      hgDegreePositive hgDegreeLt
+    have hnormalizeQuotient : normalize
+        (SparsePolyZp.toPoly this._p.toNat f /ₘ
+          SparsePolyZp.toPoly this._p.toNat g) =
+        SparsePolyZp.toPoly this._p.toNat hRaw := by
+      rw [hquotientSemantic]
+      exact hdivByMonicMonic.normalize_eq_self
+    rw [hnormalizeQuotient] at hpolySplit
+    have hgDegreeTerms : ∀ term ∈ g.toList, term.1.deg < 2 ^ 62 := by
+      intro term hterm
+      have := StrictDDF.canonical_term_degree_le_natDegree
+        this._p.toNat g hgCanonical term hterm
+      omega
+    have hhDegreeTerms : ∀ term ∈ hRaw.toList,
+        term.1.deg < 2 ^ 62 := by
+      intro term hterm
+      have htermDegree := StrictDDF.canonical_term_degree_le_natDegree
+        this._p.toNat hRaw hquotientCanonical term hterm
+      exact lt_of_le_of_lt htermDegree
+        (lt_trans hpolySplit.hDegreeLt hfDegreeBound)
+    have hgPrimeMatches : 0 < g.size → g[0]!.2.prime = this._p := by
+      intro hnonempty
+      have hheadMem : g[0] ∈ g.toList := by
+        simpa using Array.getElem_mem g 0 hnonempty
+      have hprimeNat := (hgCanonical.1 g[0] hheadMem).1
+      rw [getElem!_pos g 0 hnonempty]
+      exact UInt64.toNat_inj.mp hprimeNat
+    have hhPrimeMatches : 0 < hRaw.size →
+        hRaw[0]!.2.prime = this._p := by
+      intro hnonempty
+      have hheadMem : hRaw[0] ∈ hRaw.toList := by
+        simpa using Array.getElem_mem hRaw 0 hnonempty
+      have hprimeNat := (hquotientCanonical.1 hRaw[0] hheadMem).1
+      rw [getElem!_pos hRaw 0 hnonempty]
+      exact UInt64.toNat_inj.mp hprimeNat
+    let hgInvariant : EDFEntryInvariant this g d :=
+      ⟨hgCanonical, hgPrimeMatches, hgDegreeTerms, hpolySplit.gMonic,
+        hpolySplit.gDegreePositive, hinvariant.dPositive,
+        hpolySplit.gSquarefree, hpolySplit.gEqualDegree⟩
+    let hhInvariant : EDFEntryInvariant this hRaw d :=
+      ⟨hquotientCanonical, hhPrimeMatches, hhDegreeTerms,
+        hpolySplit.hMonic, hpolySplit.hDegreePositive,
+        hinvariant.dPositive, hpolySplit.hSquarefree,
+        hpolySplit.hEqualDegree⟩
+    refine ⟨hgInvariant, hhInvariant, ?_, ?_⟩
+    · rw [edfMeasure_eq_natDegree_succ this._p.toNat g hgCanonical
+          hgNonempty,
+        edfMeasure_eq_natDegree_succ this._p.toNat f hinvariant.canonical
+          hfNonempty]
+      exact Nat.add_lt_add_right hpolySplit.gDegreeLt 1
+    · rw [edfMeasure_eq_natDegree_succ this._p.toNat hRaw
+          hquotientCanonical hhNonempty,
+        edfMeasure_eq_natDegree_succ this._p.toNat f hinvariant.canonical
+          hfNonempty]
+      exact Nat.add_lt_add_right hpolySplit.hDegreeLt 1
+
 end StrictEDF
 
 -- The public L1→L2 EDF theorem remains deliberately absent until the retry

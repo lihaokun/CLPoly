@@ -1,9 +1,9 @@
 """Generate strict well-founded raw control flow for C++ ``__edf_Zp``.
 
 The source random retry loop has no unconditional termination argument.  The
-generated state therefore requires a rank on concrete RNG states and proofs
-that every failed retry decreases it.  This is a termination contract for the
-real RNG execution, not a fuel counter or an L2 factor oracle.
+generated state therefore consumes an exact finite trace of concrete RNG and
+candidate executions.  This is conditional termination evidence for the real
+source execution, not a fuel counter, invented rank, or L2 factor oracle.
 """
 
 from __future__ import annotations
@@ -170,9 +170,10 @@ def candidateRun {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (d : 
 division/monic calls that create the two recursive inputs. -/
 structure EDFSplitLaw {State : Type} (ops : EDFRawOps State) where
   splitStep : ∀ (f : SparsePolyZp) (d : UInt64)
-      (g hRaw gMonic hMonic : SparsePolyZp),
+      (rngBefore rngAfter : State) (r g hRaw gMonic hMonic : SparsePolyZp),
     ops.EntryInvariant f d →
-    (∃ r hbudget, candidateRun ops f d r hbudget = .ok g) →
+    ops.random (get_deg f) f[0]!.2.prime rngBefore = .ok (r, rngAfter) →
+    (∃ hbudget, candidateRun ops f d r hbudget = .ok g) →
     get_deg g > 0 ∧ get_deg g < get_deg f →
     ops.exactDiv f g = .ok hRaw →
     ops.makeMonic g = .ok gMonic →
@@ -275,9 +276,9 @@ def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State)
           match certifyRawExec (ops.makeMonic hhRaw.val.normalization) with
           | .error fault => .error fault
           | .ok hhMonic =>
-            have hstep := splitLaw.splitStep state.f state.d split.factor
-              hhRaw.val hgMonic.val hhMonic.val state.valid
-              ⟨split.randomPoly, split.candidateRun⟩ split.proper
+            have hstep := splitLaw.splitStep state.f state.d split.rngBefore
+              split.rng split.randomPoly split.factor hhRaw.val hgMonic.val
+              hhMonic.val state.valid split.randomRun split.candidateRun split.proper
               hhRaw.property hgMonic.property hhMonic.property
             match __edf_Zp_raw_ir_state ops splitLaw termination
                 ⟨state.result, hgMonic.val, state.d, split.rng, hstep.1⟩ with

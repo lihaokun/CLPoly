@@ -149,9 +149,10 @@ def candidateRun {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (d : 
 division/monic calls that create the two recursive inputs. -/
 structure EDFSplitLaw {State : Type} (ops : EDFRawOps State) where
   splitStep : ∀ (f : SparsePolyZp) (d : UInt64)
-      (g hRaw gMonic hMonic : SparsePolyZp),
+      (rngBefore rngAfter : State) (r g hRaw gMonic hMonic : SparsePolyZp),
     ops.EntryInvariant f d →
-    (∃ r hbudget, candidateRun ops f d r hbudget = .ok g) →
+    ops.random (get_deg f) f[0]!.2.prime rngBefore = .ok (r, rngAfter) →
+    (∃ hbudget, candidateRun ops f d r hbudget = .ok g) →
     get_deg g > 0 ∧ get_deg g < get_deg f →
     ops.exactDiv f g = .ok hRaw →
     ops.makeMonic g = .ok gMonic →
@@ -254,9 +255,9 @@ def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State)
           match certifyRawExec (ops.makeMonic hhRaw.val.normalization) with
           | .error fault => .error fault
           | .ok hhMonic =>
-            have hstep := splitLaw.splitStep state.f state.d split.factor
-              hhRaw.val hgMonic.val hhMonic.val state.valid
-              ⟨split.randomPoly, split.candidateRun⟩ split.proper
+            have hstep := splitLaw.splitStep state.f state.d split.rngBefore
+              split.rng split.randomPoly split.factor hhRaw.val hgMonic.val
+              hhMonic.val state.valid split.randomRun split.candidateRun split.proper
               hhRaw.property hgMonic.property hhMonic.property
             match __edf_Zp_raw_ir_state ops splitLaw termination
                 ⟨state.result, hgMonic.val, state.d, split.rng, hstep.1⟩ with

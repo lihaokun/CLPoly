@@ -16,6 +16,7 @@ import CLPoly.Generated.StrictDDF
 import CLPoly.Impl.StrictDivremRefinement
 import CLPoly.Impl.StrictPolynomialGCDRefinement
 import CLPoly.Impl.StrictMulDispatchRefinement
+import CLPoly.Refinement.DDFSubtractX
 
 set_option autoImplicit false
 
@@ -748,6 +749,19 @@ theorem strictPowmodIR_refines
     exact pow_modByMonic_congr
       (by rw [hreducedBaseSemantic,
         modByMonic_idem _ _ hmodulusMonic]) e
+
+/-- Current structured-canonical wrapper around the fully generated
+subtract-X loop theorem. -/
+theorem strictSubtractXIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (h2p : 2 * this._p.toNat ≤ UInt64.size) (h : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat h)
+    (hdegree : ∀ x ∈ h.toList, x.1.deg < 2 ^ 31) :
+    SparsePolyZp.toPoly this._p.toNat
+        (Generated.StrictDDF.__upoly_subtract_x_ir h this._p) =
+      SparsePolyZp.toPoly this._p.toNat h - Polynomial.X := by
+  exact strict_upoly_subtract_x_refines h2p h this._p rfl
+    ((canonicalRep_iff_canonical h).mpr hcanonical) hdegree
 
 end StrictDDF
 

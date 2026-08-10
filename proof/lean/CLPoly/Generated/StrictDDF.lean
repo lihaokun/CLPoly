@@ -6,62 +6,65 @@ set_option maxErrors 2000
 
 namespace Generated.StrictDDF
 
-def __make_zp_ir (val : Int64) (p : UInt64) : Zp :=
-  (Zp.ofInt (val).toInt p)
+def ddfWellFoundedMeasure (fStar : SparsePolyZp) (d : UInt64) : Nat :=
+  if fStar.isEmpty then 0 else (get_deg fStar).toNat + 1 - 2 * d.toNat
 
-def _loop___upoly_subtract_x_0_ir (__rangefor_idx_0_2 : Nat)
-    (inserted_2 : Bool) (result_2 : SparsePolyZp)
-    (__rangefor_cont_0_1 : SparsePolyZp) (p : UInt64) :
-    (Int64 × Bool × SparsePolyZp) :=
+def __make_zp_ir (val : Int64) (p : UInt64) : Zp :=
+  Zp.ofInt val.toInt p
+
+def _loop___upoly_subtract_x_0_ir (__rangefor_idx_0_2 : Nat) (inserted_2 : Bool) (result_2 : SparsePolyZp) (__rangefor_cont_0_1 : SparsePolyZp) (p : UInt64) : (Int64 × Bool × SparsePolyZp) :=
   let recur := fun idx_next inserted_next result_next cont_next p_next =>
     if hdec : Array.size cont_next - idx_next <
         Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2 then
-      _loop___upoly_subtract_x_0_ir idx_next inserted_next result_next
-        cont_next p_next
+      _loop___upoly_subtract_x_0_ir idx_next inserted_next result_next cont_next p_next
     else
       default
-  let bb_3 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_5
-      result_5 =>
-    let __rangefor_idx_0_3 : Nat := __rangefor_idx_0_2 + 1
+  let bb_3 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_5 result_5 =>
+    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
     recur __rangefor_idx_0_3 inserted_5 result_5 __rangefor_cont_0_1 p
   let bb_13 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_7 =>
     let inserted_6 : Bool := true
     bb_3 __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_6 result_7
-  let bb_7 := fun term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1
-      inserted_4 result_4 =>
-    if term_1.fst.deg == (1 : Int32) then
-      let new_c_1 : Zp := term_1.snd - __make_zp_ir 1 p
-      if new_c_1.val != (0 : Int32) then
-        let result_6 : SparsePolyZp := result_4.push
-          (UMonomial.mk 1, new_c_1)
+  let bb_7 := fun term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_4 result_4 =>
+    if (term_1.fst.deg == (1 : Int32)) then
+      let new_c_1 : Zp := (term_1.snd - (__make_zp_ir (1 : Int32) p))
+      if (new_c_1.val != (0 : Int32)) then
+        let result_6 : SparsePolyZp := (Array.push result_4 (Prod.mk (UMonomial.mk (1 : Int32)) new_c_1))
         bb_13 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_6
       else
         bb_13 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_4
     else
-      let result_8 : SparsePolyZp := result_4.push term_1
+      let result_8 : SparsePolyZp := (Array.push result_4 term_1)
       bb_3 __rangefor_idx_0_2 __rangefor_cont_0_1 p inserted_4 result_8
-  if __rangefor_idx_0_2 < __rangefor_cont_0_1.size then
-    let term_1 := __rangefor_cont_0_1[__rangefor_idx_0_2]!
-    if (!inserted_2) && term_1.fst.deg < (1 : Int32) then
-      let result_3 : SparsePolyZp := result_2.push
-        (UMonomial.mk 1, Zp.ofInt (p - 1).toInt p)
-      bb_7 term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 true result_3
+  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
+    let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
+    if ((! inserted_2) && (term_1.fst.deg < (1 : Int32))) then
+      let result_3 : SparsePolyZp := (Array.push result_2 (Prod.mk (UMonomial.mk (1 : Int32)) (Zp.ofInt ((p - (1 : UInt64))).toInt p)))
+      let inserted_3 : Bool := true
+      bb_7 term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_3 result_3
     else
-      bb_7 term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_2
-        result_2
+      bb_7 term_1 p __rangefor_idx_0_2 __rangefor_cont_0_1 inserted_2 result_2
   else
-    (0, inserted_2, result_2)
+    ((0 : Int64), inserted_2, result_2)
 termination_by Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2
 decreasing_by exact hdec
 
 def __upoly_subtract_x_ir (h : SparsePolyZp) (p : UInt64) : SparsePolyZp :=
-  let finish := fun result => SparsePolyZp.normalization result
-  let loopResult := _loop___upoly_subtract_x_0_ir 0 false #[] h p
-  let inserted := loopResult.2.1
-  let result := loopResult.2.2
-  if !inserted then
-    finish (result.push (UMonomial.mk 1, Zp.ofInt (p - 1).toInt p))
+  let bb_17 := fun result_10 =>
+    let result_11 : SparsePolyZp := (SparsePolyZp.normalization result_10)
+    result_11
+  let result_1 : SparsePolyZp := (SparsePolyZp.empty)
+  let inserted_1 : Bool := false
+  let __rangefor_cont_0_1 : SparsePolyZp := h
+  let __rangefor_idx_0_1 : Nat := (0 : Nat)
+  let __loop_ret___upoly_subtract_x_0_1 : (Int64 × Bool × SparsePolyZp) := (_loop___upoly_subtract_x_0_ir __rangefor_idx_0_1 inserted_1 result_1 __rangefor_cont_0_1 p)
+  let inserted_2 : Bool := __loop_ret___upoly_subtract_x_0_1.2.1
+  let result_2 : SparsePolyZp := __loop_ret___upoly_subtract_x_0_1.2.2
+  if (! inserted_2) then
+    let result_9 : SparsePolyZp := (Array.push result_2 (Prod.mk (UMonomial.mk (1 : Int32)) (Zp.ofInt ((p - (1 : UInt64))).toInt p)))
+    bb_17 result_9
   else
-    finish result
+    bb_17 result_2
+
 
 end Generated.StrictDDF

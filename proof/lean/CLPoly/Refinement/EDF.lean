@@ -356,6 +356,58 @@ theorem strictOddCandidateIR_factor
     exact hgcdDivides
   exact ⟨factor, hrun, hcanonical, hfactorMonic, hfactorDivides⟩
 
+/-- Exact characteristic-two trace-map iteration: execute the verified raw
+multiplication, the sparse C++-level addition, then the verified raw modular
+reduction, in source order. -/
+def strictSquareAddModIR
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (g r f : SparsePolyZp) : RawExec SparsePolyZp := do
+  let square ← StrictDDF.strictMulIR this g g providers.mul
+  let sum := square + r
+  StrictDDF.strictModIR this sum f ((providers.mod f).workspace sum)
+
+/-- Semantic refinement of one concrete characteristic-two trace-map
+iteration. -/
+theorem strictSquareAddModIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (g r f : SparsePolyZp)
+    (hgCanonical : SparsePolyZp.Canonical this._p.toNat g)
+    (hrCanonical : SparsePolyZp.Canonical this._p.toNat r)
+    (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hfNonempty : 0 < f.size)
+    (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic) :
+    ∃ next,
+      strictSquareAddModIR this providers g r f = .ok next ∧
+      SparsePolyZp.Canonical this._p.toNat next ∧
+      SparsePolyZp.toPoly this._p.toNat next =
+        (SparsePolyZp.toPoly this._p.toNat g ^ 2 +
+          SparsePolyZp.toPoly this._p.toNat r) %ₘ
+            SparsePolyZp.toPoly this._p.toNat f := by
+  rcases StrictDDF.strictMulIR_refines_mul this providers.hcfg g g
+      providers.mul hgCanonical hgCanonical with
+    ⟨square, hsquareRun, hsquareCanonical, hsquareSemantic⟩
+  let sum := square + r
+  have hsumCanonical : SparsePolyZp.Canonical this._p.toNat sum :=
+    SparsePolyZp.Canonical.add this._p.toNat square r
+      hsquareCanonical hrCanonical
+  have hsumSemantic : SparsePolyZp.toPoly this._p.toNat sum =
+      SparsePolyZp.toPoly this._p.toNat square +
+        SparsePolyZp.toPoly this._p.toNat r := by
+    exact SparsePolyZp.toPoly_add this._p.toNat providers.h2p square r
+      hsquareCanonical.1 hrCanonical.1
+  rcases StrictDDF.strictModIR_refines_modByMonic this providers.hcfg sum f
+      ((providers.mod f).workspace sum) hsumCanonical hfCanonical hfNonempty
+      hfMonic with
+    ⟨next, hmodRun, hnextCanonical, hnextSemantic⟩
+  refine ⟨next, ?_, hnextCanonical, ?_⟩
+  · unfold strictSquareAddModIR
+    rw [hsquareRun]
+    exact hmodRun
+  · rw [hnextSemantic, hsumSemantic, hsquareSemantic]
+    ring_nf
+
 end StrictEDF
 
 -- The public L1→L2 EDF theorem remains deliberately absent until the retry

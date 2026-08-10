@@ -15950,6 +15950,104 @@ termination_by resetH
 decreasing_by
   omega
 
+/-- Totality of the generated post-emission reset loop.  The old one-past-end
+cursor recorded by `ResetReady` becomes the newly pushed quotient cell; every
+iteration activates that concrete row, inserts it, and recurses on `resetH-1`.
+-/
+theorem pairVecDivVHCActivateReset_succeeds
+    (resetH oldQuotientSize : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (quotient divisor : SparsePolyZp)
+    (hquotientSize : quotient.size = oldQuotientSize + 1)
+    (hnodeSize : nodes.size = divisor.size - 1)
+    (howned : PairVecDivVHCHeapChainsOwned heap nodes)
+    (hready : PairVecDivVHCResetReady resetH oldQuotientSize nodes)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes) :
+    ∃ state, pairVecDivVHCActivateReset resetH heap nodes quotient divisor =
+      .ok state := by
+  rw [pairVecDivVHCActivateReset]
+  by_cases hreset : 0 < resetH
+  · simp only [hreset, ↓reduceDIte]
+    let nodeIndex := resetH - 1
+    have hindex : nodeIndex < resetH := by
+      dsimp only [nodeIndex]
+      omega
+    rcases hready.2 nodeIndex hindex with
+      ⟨oldNode, holdGet, hqIndex, hdIndex, hinactive⟩
+    have hq : oldNode.quotientIndex < quotient.size := by omega
+    have hnodeBound : nodeIndex < nodes.size := by
+      exact Nat.lt_of_lt_of_le hindex hready.1
+    have hd : oldNode.divisorIndex < divisor.size := by
+      rw [hdIndex]
+      omega
+    rcases pairVecDivVHCActivate_succeeds nodeIndex nodes quotient divisor
+        oldNode holdGet hq hd with ⟨activated, hactivate⟩
+    simp only [nodeIndex, hactivate]
+    rcases pairVecDivVHCActivate_get nodeIndex nodes activated quotient divisor
+        hactivate with ⟨hn, hqa, hda, hactivatedGet⟩
+    let activatedNode := { nodes[nodeIndex] with
+      mono := some ⟨quotient[nodes[nodeIndex].quotientIndex].1.deg +
+        divisor[nodes[nodeIndex].divisorIndex].1.deg⟩
+      next := none }
+    have hactivatedMono : pairVecDivVHCMono nodeIndex activated = .ok
+        ⟨quotient[nodes[nodeIndex].quotientIndex].1.deg +
+          divisor[nodes[nodeIndex].divisorIndex].1.deg⟩ := by
+      apply (pairVecDivVHCMono_eq_ok_iff nodeIndex activated _).2
+      exact ⟨activatedNode, by simpa [activatedNode] using hactivatedGet, rfl⟩
+    rcases howned with ⟨owners, hownership⟩
+    have hreads : ∀ (slot : Nat) (hslot : slot < heap.size),
+        ∃ mono, pairVecDivVHCMono (heap[slot]'hslot) activated = .ok mono := by
+      intro slot hslot
+      rcases hownership.heapPointersValid heap owners nodes slot hslot with
+        ⟨head, node, mono, hhead, hnode, hmono⟩
+      have hheadEq : heap[slot] = head := by
+        rw [Array.getElem?_eq_getElem hslot] at hhead
+        exact Option.some.inj hhead
+      have hne : nodeIndex ≠ head := by
+        intro heq
+        have hnodeAtIndex : nodes[nodeIndex]? = some node := by
+          simpa [heq] using hnode
+        rw [holdGet] at hnodeAtIndex
+        simp only [Option.some.injEq] at hnodeAtIndex
+        subst node
+        rw [hinactive] at hmono
+        contradiction
+      refine ⟨mono, ?_⟩
+      rw [hheadEq, pairVecDivVHCActivate_preserves_mono_read_ne nodeIndex nodes
+        activated quotient divisor hactivate head hne]
+      exact (pairVecDivVHCMono_eq_ok_iff head nodes mono).2
+        ⟨node, hnode, hmono⟩
+    have hactivatedSize := pairVecDivVHCActivate_nodes_size nodeIndex nodes
+      activated quotient divisor hactivate
+    have hnewBound : nodeIndex < activated.size := by omega
+    rcases pairVecDivVHCInsert_succeeds nodeIndex heap activated _ hnewBound
+        hactivatedMono hreads with ⟨heap', nodes', hinsert⟩
+    simp only [nodeIndex, hinsert]
+    have howned' := pairVecDivVHCActivateInsert_preserves_heapChainsOwned
+      nodeIndex heap heap' nodes activated nodes' quotient divisor oldNode
+      ⟨owners, hownership⟩ holdGet hinactive hactivate hinsert
+    have hready' := pairVecDivVHCActivate_shrinks_resetReady resetH nodeIndex
+      oldQuotientSize nodeIndex nodes activated quotient divisor hready
+      (by dsimp [nodeIndex]; omega) (Nat.le_refl _) hactivate
+    have hready'' := pairVecDivVHCInsert_preserves_resetReady nodeIndex
+      oldQuotientSize nodeIndex heap heap' activated nodes' hready'
+      (Nat.le_refl _) hinsert
+    have hfixed' := pairVecDivVHCActivate_preserves_divisorIndicesFixed
+      nodeIndex nodes activated quotient divisor hfixed hactivate
+    have hfixed'' := pairVecDivVHCInsert_preserves_divisorIndicesFixed
+      nodeIndex heap heap' activated nodes' hfixed' hinsert
+    have hnodesSize : nodes'.size = nodes.size := by
+      rcases pairVecDivVHCInsert_nodes_result nodeIndex heap heap' activated
+          nodes' hinsert with ⟨next, hset⟩
+      exact (pairVecDivVHCSetNext_nodes_size nodeIndex next activated nodes'
+        hset).trans hactivatedSize
+    exact pairVecDivVHCActivateReset_succeeds nodeIndex oldQuotientSize heap'
+      nodes' quotient divisor hquotientSize (by omega) howned' hready'' hfixed''
+  · simp only [hreset, ↓reduceDIte]
+    exact ⟨_, rfl⟩
+termination_by resetH
+decreasing_by
+  omega
+
 theorem pairVecDivVHCCanonicalInitialFrontierBelow (p : Nat)
     (dividend : SparsePolyZp) (nodes : Array PairVecDivVHCNode)
     (hcanonical : SparsePolyZp.Canonical p dividend)

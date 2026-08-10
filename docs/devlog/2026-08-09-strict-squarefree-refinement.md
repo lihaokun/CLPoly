@@ -1382,3 +1382,12 @@ every generated range-for and recursive loop used by SQF.
   `FindAnchor` totality 得到实际 anchor，再从 trace 的 `anchor_read` 推出
   `anchor < heap.size` 与 anchor mono，最后分别执行 SetNext 或 trace-driven
   BubbleBelow。定理没有把 freshness/heap-order 后置性质冒充执行成功前提。
+- generated post-emission `ActivateReset` 循环的 raw→safe totality 已闭合。
+  `pairVecDivVHCActivateReset_succeeds` 从 `ResetReady` 取得每个未激活行的
+  真实 quotient/divisor cursor，利用新推入的 quotient cell 和固定 divisor
+  行边界构造 `Activate`；再由 heap-chain ownership 证明所有旧 heap
+  头的 monomial 在 activation 后仍可读，调用已闭合的 `VHCInsert`。
+  每次执行后运输 ownership、`ResetReady`、固定 divisor 行与节点数组
+  长度，并以源码实际递减的 `resetH - 1` 作为结构度量。该证明
+  无 fuel、无成功 trace 前提、无规格 oracle 或 L2 回退。下一步闭合
+  `ReinsertLin`，再把两个执行桥接入 `Emit` 和 outer iteration。

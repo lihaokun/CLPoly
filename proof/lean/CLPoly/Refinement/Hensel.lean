@@ -198,6 +198,75 @@ theorem henselFactorCorrection_algebra
     _ = G * H + c * E := by rw [hcdelta, hcc]; simp
     _ = F := herror.symm
 
+/-- Algebraic core of the second generated phase.  It lifts the stored
+Bezout identity from `m` to `m²` using exactly the correction returned by the
+second concrete modular divmod. -/
+theorem henselBezoutCorrection_algebra
+    (m : Nat) (hm : 0 < m)
+    (G H S T E Q R Tau : Polynomial (ZMod (m ^ 2)))
+    (herror : (1 : Polynomial (ZMod (m ^ 2))) =
+      S * G + T * H + Polynomial.C (m : ZMod (m ^ 2)) * E)
+    (hbezout : Polynomial.map
+      (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m))
+      (S * G + T * H) = 1)
+    (hdivmod : Polynomial.map
+      (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m))
+      (R + Q * H) =
+      Polynomial.map
+        (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m))
+        (S * E))
+    (htau : Polynomial.map
+      (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m)) Tau =
+      Polynomial.map
+        (ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m))
+        (T * E + Q * G)) :
+    (S + Polynomial.C (m : ZMod (m ^ 2)) * R) * G +
+      (T + Polynomial.C (m : ZMod (m ^ 2)) * Tau) * H = 1 := by
+  let π := ZMod.castHom (dvd_pow_self m (by omega : 2 ≠ 0)) (ZMod m)
+  let c : Polynomial (ZMod (m ^ 2)) :=
+    Polynomial.C (m : ZMod (m ^ 2))
+  let delta := R * G + Tau * H - E
+  have hdeltaMap : Polynomial.map π delta = 0 := by
+    simp only [delta, Polynomial.map_sub, Polynomial.map_add,
+      Polynomial.map_mul]
+    have hbezout' :
+        Polynomial.map π S * Polynomial.map π G +
+            Polynomial.map π T * Polynomial.map π H = 1 := by
+      simpa [π, Polynomial.map_add, Polynomial.map_mul] using hbezout
+    have hdivmod' :
+        Polynomial.map π R + Polynomial.map π Q * Polynomial.map π H =
+          Polynomial.map π S * Polynomial.map π E := by
+      simpa [π, Polynomial.map_add, Polynomial.map_mul] using hdivmod
+    have htau' : Polynomial.map π Tau =
+        Polynomial.map π T * Polynomial.map π E +
+          Polynomial.map π Q * Polynomial.map π G := by
+      simpa [π, Polynomial.map_add, Polynomial.map_mul] using htau
+    rw [htau']
+    calc
+      Polynomial.map π R * Polynomial.map π G +
+            (Polynomial.map π T * Polynomial.map π E +
+              Polynomial.map π Q * Polynomial.map π G) *
+              Polynomial.map π H - Polynomial.map π E =
+          Polynomial.map π G *
+              (Polynomial.map π R +
+                Polynomial.map π Q * Polynomial.map π H) +
+            Polynomial.map π T * Polynomial.map π H *
+              Polynomial.map π E - Polynomial.map π E := by ring
+      _ = (Polynomial.map π S * Polynomial.map π G +
+              Polynomial.map π T * Polynomial.map π H - 1) *
+            Polynomial.map π E := by rw [hdivmod']; ring
+      _ = 0 := by rw [hbezout']; simp
+  have hcdelta : c * delta = 0 :=
+    C_scale_mul_eq_zero_of_map_eq_zero m hm delta hdeltaMap
+  change (S + c * R) * G + (T + c * Tau) * H = 1
+  calc
+    (S + c * R) * G + (T + c * Tau) * H =
+        S * G + T * H + c * E + c * delta := by
+          simp only [delta]
+          ring
+    _ = S * G + T * H + c * E := by rw [hcdelta, add_zero]
+    _ = 1 := herror.symm
+
 @[simp] theorem termsToPolyMod_nil (m : Nat) :
     termsToPolyMod m [] = 0 := by
   simp [termsToPolyMod]
@@ -1547,6 +1616,48 @@ theorem factorError_from_raw_runs
   have hscaled := divideThenReduceCoeffs_scaled_toPolyMod_sq
     difference m hm hdivisible
   rw [hdifferenceSemantic, hghSemantic] at hscaled
+  rw [hscaled]
+  ring
+
+/-- Concrete Bezout-error equation obtained from the generated `s*g`, `t*h`,
+two sparse subtractions, and the same exact coefficient quotient loop. -/
+theorem bezoutError_from_raw_runs
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (factorNode : HenselNode)
+    (sg th oneMinusSg difference : SparsePolyZZ)
+    (m : Nat) (hm : 0 < m)
+    (hsg : (strictHenselRawOps termination).mul factorNode.s factorNode.g =
+      .ok sg)
+    (hth : (strictHenselRawOps termination).mul factorNode.t factorNode.h =
+      .ok th)
+    (honeMinus : (strictHenselRawOps termination).sub
+      (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg = .ok oneMinusSg)
+    (hdifference : (strictHenselRawOps termination).sub oneMinusSg th =
+      .ok difference)
+    (hdivisible : ∀ term ∈ difference.toList, (m : Int) ∣ term.2) :
+    (1 : Polynomial (ZMod (m ^ 2))) =
+      toPolyMod (m ^ 2) factorNode.s * toPolyMod (m ^ 2) factorNode.g +
+        toPolyMod (m ^ 2) factorNode.t * toPolyMod (m ^ 2) factorNode.h +
+        Polynomial.C (m : ZMod (m ^ 2)) *
+          toPolyMod (m ^ 2)
+            (Generated.StrictHensel.divideThenReduceCoeffs
+              difference (m : Int)) := by
+  have hsgSemantic := strictHenselRawOps_mul_refines_of_run termination
+    (m ^ 2) factorNode.s factorNode.g sg hsg
+  have hthSemantic := strictHenselRawOps_mul_refines_of_run termination
+    (m ^ 2) factorNode.t factorNode.h th hth
+  have honeMinusSemantic := strictHenselRawOps_sub_refines_of_run termination
+    (m ^ 2) (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg oneMinusSg
+    honeMinus
+  have hone : toPolyMod (m ^ 2)
+      (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) = 1 := by
+    simp [toPolyMod, SparsePolyZZ.toPoly]
+  rw [hone] at honeMinusSemantic
+  have hdifferenceSemantic := strictHenselRawOps_sub_refines_of_run
+    termination (m ^ 2) oneMinusSg th difference hdifference
+  have hscaled := divideThenReduceCoeffs_scaled_toPolyMod_sq difference m hm
+    hdivisible
+  rw [hdifferenceSemantic, honeMinusSemantic, hsgSemantic, hthSemantic] at hscaled
   rw [hscaled]
   ring
 

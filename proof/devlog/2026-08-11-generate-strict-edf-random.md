@@ -18,7 +18,9 @@ every retained coefficient is reduced modulo `p`, every retained coefficient
 is nonzero, and the descending `Array.push` order preserves
 `SparsePolyZp.Canonical`. Consequently
 `__upoly_random_raw_ir_canonical` certifies the exact generated output without
-post-normalization or an L2 replacement.
+post-normalization or an L2 replacement. The same certified result also proves
+that every stored monomial degree is strictly below the requested
+`maxDegree`, which is the bound required by later raw polynomial operations.
 
 Verification:
 

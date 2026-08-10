@@ -144,6 +144,49 @@ private theorem randomLoopCanonical (remaining degree : Nat)
             simp
             exact Nat.pos_of_ne_zero hremaining
 
+private theorem randomLoopDegreeBound (upper remaining degree : Nat)
+    (result : SparsePolyZp) (p : UInt64) (rng : Rng)
+    (hposition : remaining = 0 ∨ degree + 1 = remaining)
+    (hcursor : remaining = 0 ∨ degree < upper)
+    (hresult : ∀ term ∈ result.toList, term.1.deg < upper) :
+    ∀ term ∈
+      (Generated.StrictEDF._loop___upoly_random_0_raw_ir
+        remaining degree result p rng).1.toList,
+      term.1.deg < upper := by
+  induction remaining generalizing degree result rng with
+  | zero =>
+      simpa [Generated.StrictEDF._loop___upoly_random_0_raw_ir] using hresult
+  | succ remaining ih =>
+      have hdegree : degree = remaining := by omega
+      have hdegreeUpper : degree < upper := by omega
+      subst degree
+      rw [Generated.StrictEDF._loop___upoly_random_0_raw_ir]
+      simp only [Nat.succ_ne_zero, ↓reduceDIte, Rng.next_advance,
+        Nat.succ_sub_one]
+      by_cases hnonzero : (Rng.next rng p != 0) = true
+      · simp only [hnonzero, ↓reduceIte]
+        apply ih (degree := remaining - 1)
+          (result := result.push (UMonomial.mk remaining,
+            Zp.ofInt (Rng.next rng p).toInt p))
+          (rng := Rng.step rng)
+        · omega
+        · omega
+        · intro term hterm
+          rw [Array.toList_push] at hterm
+          rcases List.mem_append.mp hterm with hterm | hterm
+          · exact hresult term hterm
+          · simp only [List.mem_singleton] at hterm
+            subst term
+            exact hdegreeUpper
+      · have hzero : (Rng.next rng p != 0) = false :=
+          Bool.eq_false_of_not_eq_true hnonzero
+        simp only [hzero, Bool.false_eq_true, ↓reduceIte]
+        apply ih (degree := remaining - 1) (result := result)
+          (rng := Rng.step rng)
+        · omega
+        · omega
+        · exact hresult
+
 /-- The exact generated random-polynomial entry is total.  Its output and
 advanced RNG state are the values computed by the well-founded source loop. -/
 theorem __upoly_random_raw_ir_terminates
@@ -164,20 +207,27 @@ theorem __upoly_random_raw_ir_canonical
     ∃ output rngNext,
       Generated.StrictEDF.__upoly_random_raw_ir maxDegree p rng =
         .ok (output, rngNext) ∧
-      SparsePolyZp.Canonical p.toNat output := by
+      SparsePolyZp.Canonical p.toNat output ∧
+      (∀ term ∈ output.toList,
+        term.1.deg < maxDegree.toNatClampNeg) := by
   unfold Generated.StrictEDF.__upoly_random_raw_ir
   split
   · let count := maxDegree.toNatClampNeg
     let run := Generated.StrictEDF._loop___upoly_random_0_raw_ir
       count (count - 1) #[] p rng
-    refine ⟨run.1, run.2, rfl, ?_⟩
-    apply randomLoopCanonical count (count - 1) #[] p rng hp
-    · omega
+    refine ⟨run.1, run.2, rfl, ?_, ?_⟩
+    · apply randomLoopCanonical count (count - 1) #[] p rng hp
+      · omega
+      · simp [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr,
+          SparsePolyZp.AllReduced]
+      · simp
+    · apply randomLoopDegreeBound count count (count - 1) #[] p rng
+      · omega
+      · omega
+      · simp
+  · refine ⟨#[], rng, rfl, ?_, ?_⟩
     · simp [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr,
         SparsePolyZp.AllReduced]
     · simp
-  · refine ⟨#[], rng, rfl, ?_⟩
-    simp [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr,
-      SparsePolyZp.AllReduced]
 
 end Refinement.StrictEDF

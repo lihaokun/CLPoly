@@ -149,7 +149,7 @@ private lemma normalization_allReduced (f : SparsePolyZp)
   intro x hx
   exact hf x (List.mem_of_mem_filter hx)
 
-private lemma zp_sub_reduced (a b : Zp) (ha : Zp.Reduced p a) :
+lemma zp_sub_reduced (a b : Zp) (ha : Zp.Reduced p a) :
     Zp.Reduced p (a - b) := by
   have hp : 0 < p := lt_of_le_of_lt (Nat.zero_le _) ha.2
   have hmod :

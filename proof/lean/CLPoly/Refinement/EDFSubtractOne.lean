@@ -103,6 +103,140 @@ theorem subtractOneTerms_toPoly (q : UInt64) [Fact (Nat.Prime q.toNat)]
       · rw [subtractOneTerms, if_neg hzero, listSum, ih hrest, listSum]
         ring
 
+private lemma strict_minus_one_nonzero (q : UInt64)
+    [Fact (Nat.Prime q.toNat)] :
+    (Zp.ofInt (q - 1).toInt q).val ≠ 0 := by
+  intro hz
+  have hzero : Zp.toZMod q.toNat
+      (Zp.ofInt (q - 1).toInt q) = 0 := by
+    simp [Zp.toZMod, hz]
+  have hminus := strict_minus_one_toZMod q rfl
+  rw [hzero] at hminus
+  have hone : (1 : ZMod q.toNat) = 0 := neg_eq_zero.mp hminus.symm
+  exact one_ne_zero hone
+
+private theorem subtractOneTerms_degree_lt (q : UInt64) (bound : Nat) :
+    ∀ terms : List (UMonomial × Zp),
+      0 < bound →
+      (∀ x ∈ terms, x.1.deg < bound) →
+      ∀ x ∈ subtractOneTerms q terms, x.1.deg < bound := by
+  intro terms
+  induction terms with
+  | nil =>
+      intro hbound _ x hx
+      simp [subtractOneTerms] at hx
+      rcases hx with rfl
+      exact hbound
+  | cons term rest ih =>
+      intro hboundPos hbound x hx
+      have hterm := hbound term List.mem_cons_self
+      have hrest : ∀ y ∈ rest, y.1.deg < bound :=
+        fun y hy => hbound y (List.mem_cons_of_mem _ hy)
+      by_cases hzero : term.1.deg = 0
+      · by_cases hc :
+            (term.2 - Generated.StrictEDF.__make_zp_ir 1 q).val = 0
+        · exact hrest x (by
+            simpa [subtractOneTerms, hzero, hc] using hx)
+        · simp [subtractOneTerms, hzero, hc] at hx
+          rcases hx with rfl | hx
+          · exact hboundPos
+          · exact hrest x hx
+      · simp [subtractOneTerms, hzero] at hx
+        rcases hx with rfl | hx
+        · exact hterm
+        · exact ih hboundPos hrest x hx
+
+private theorem subtractOneTerms_pairwise (q : UInt64) :
+    ∀ terms : List (UMonomial × Zp),
+      terms.Pairwise (fun a b => b.1.deg < a.1.deg) →
+      (subtractOneTerms q terms).Pairwise
+        (fun a b => b.1.deg < a.1.deg) := by
+  intro terms
+  induction terms with
+  | nil => simp [subtractOneTerms]
+  | cons term rest ih =>
+      intro hs
+      rw [List.pairwise_cons] at hs
+      by_cases hzero : term.1.deg = 0
+      · let coefficient :=
+          term.2 - Generated.StrictEDF.__make_zp_ir 1 q
+        by_cases hc : coefficient.val = 0
+        · simpa [subtractOneTerms, hzero, coefficient, hc] using hs.2
+        · rw [subtractOneTerms, if_pos hzero, if_neg hc,
+            List.pairwise_cons]
+          exact ⟨by
+            intro x hx
+            have := hs.1 x hx
+            simpa [hzero] using this, hs.2⟩
+      · rw [subtractOneTerms, if_neg hzero, List.pairwise_cons]
+        refine ⟨?_, ih hs.2⟩
+        exact subtractOneTerms_degree_lt q term.1.deg rest
+          (Nat.pos_of_ne_zero hzero) hs.1
+
+private theorem subtractOneTerms_allReduced (q : UInt64)
+    [Fact (Nat.Prime q.toNat)] :
+    ∀ terms : List (UMonomial × Zp),
+      SparsePolyZp.AllReduced q.toNat terms →
+      SparsePolyZp.AllReduced q.toNat (subtractOneTerms q terms) := by
+  intro terms
+  induction terms with
+  | nil =>
+      intro _ x hx
+      simp [subtractOneTerms] at hx
+      subst x
+      exact strict_minus_one_reduced q rfl
+  | cons term rest ih =>
+      intro hreduced
+      have hterm := hreduced term List.mem_cons_self
+      have hrest : SparsePolyZp.AllReduced q.toNat rest :=
+        fun x hx => hreduced x (List.mem_cons_of_mem _ hx)
+      by_cases hzero : term.1.deg = 0
+      · let coefficient :=
+          term.2 - Generated.StrictEDF.__make_zp_ir 1 q
+        by_cases hc : coefficient.val = 0
+        · simpa [subtractOneTerms, hzero, coefficient, hc] using hrest
+        · rw [subtractOneTerms, if_pos hzero, if_neg hc]
+          intro x hx
+          rcases List.mem_cons.mp hx with rfl | hx
+          · exact zp_sub_reduced term.2 _ hterm
+          · exact hrest x hx
+      · rw [subtractOneTerms, if_neg hzero]
+        intro x hx
+        rcases List.mem_cons.mp hx with rfl | hx
+        · exact hterm
+        · exact ih hrest x hx
+
+private theorem subtractOneTerms_nonzero (q : UInt64)
+    [Fact (Nat.Prime q.toNat)] :
+    ∀ terms : List (UMonomial × Zp),
+      (∀ x ∈ terms, x.2.val ≠ 0) →
+      ∀ x ∈ subtractOneTerms q terms, x.2.val ≠ 0 := by
+  intro terms
+  induction terms with
+  | nil =>
+      intro _ x hx
+      simp [subtractOneTerms] at hx
+      subst x
+      exact strict_minus_one_nonzero q
+  | cons term rest ih =>
+      intro hnz x hx
+      have hterm := hnz term List.mem_cons_self
+      have hrest : ∀ y ∈ rest, y.2.val ≠ 0 :=
+        fun y hy => hnz y (List.mem_cons_of_mem _ hy)
+      by_cases hzero : term.1.deg = 0
+      · by_cases hc :
+            (term.2 - Generated.StrictEDF.__make_zp_ir 1 q).val = 0
+        · exact hrest x (by
+            simpa [subtractOneTerms, hzero, hc] using hx)
+        · simp [subtractOneTerms, hzero, hc] at hx
+          rcases hx with rfl | hx
+          · exact hc
+          · exact hrest x hx
+      · simp [subtractOneTerms, hzero] at hx
+        rcases hx with rfl | hx
+        · exact hterm
+        · exact ih hrest x hx
+
 /-- Once the constant term has been processed, strict ordering means the
 remaining suffix has no second constant term.  The generated loop therefore
 copies that suffix verbatim. -/
@@ -354,5 +488,73 @@ theorem __upoly_subtract_one_raw_ir_refines
       rw [Array.toList_push]
       rw [htrace]
       exact subtractOneTerms_toPoly p h2p h.toList hcanonical.1
+
+/-- Every successful result of the exact generated entry is a canonical sparse
+representation.  This is a representation theorem, not a consequence of the
+semantic polynomial equality above. -/
+theorem __upoly_subtract_one_raw_ir_canonical
+    (h : SparsePolyZp) (p : UInt64) [Fact (Nat.Prime p.toNat)]
+    (hcanonical : SparsePolyZp.Canonical p.toNat h)
+    (output : SparsePolyZp)
+    (hrun : Generated.StrictEDF.__upoly_subtract_one_raw_ir h p =
+      .ok output) :
+    SparsePolyZp.Canonical p.toNat output := by
+  let out := Generated.StrictEDF._loop___upoly_subtract_one_0_raw_ir
+    0 false #[] h p
+  have htrace := subtractOneLoop_trace p 0 #[] h
+    (List.isChain_iff_pairwise.mp hcanonical.2.1)
+  change (if !out.1 then
+      (out.2.push (UMonomial.mk 0,
+        Zp.ofInt (p - 1).toInt p)).toList
+    else out.2.toList) = subtractOneTerms p h.toList at htrace
+  have hpair := subtractOneTerms_pairwise p h.toList
+    (List.isChain_iff_pairwise.mp hcanonical.2.1)
+  have hreduced := subtractOneTerms_allReduced p h.toList hcanonical.1
+  have hnonzero := subtractOneTerms_nonzero p h.toList hcanonical.2.2
+  by_cases hfound : out.1 = true
+  · have hout : output = out.2 := by
+      simpa [Generated.StrictEDF.__upoly_subtract_one_raw_ir, out,
+        hfound] using hrun.symm
+    subst output
+    simp [hfound] at htrace
+    refine ⟨?_, ?_, ?_⟩
+    · change SparsePolyZp.AllReduced p.toNat out.2.toList
+      rw [htrace]
+      exact hreduced
+    · rw [htrace]
+      exact hpair.isChain
+    · rw [htrace]
+      exact hnonzero
+  · have hnotFound : out.1 = false := Bool.eq_false_of_not_eq_true hfound
+    let pending := out.2.push
+      (UMonomial.mk 0, Zp.ofInt (p - 1).toInt p)
+    have hout : output = SparsePolyZp.normalization pending := by
+      simpa [Generated.StrictEDF.__upoly_subtract_one_raw_ir, out,
+        hnotFound, pending] using hrun.symm
+    subst output
+    simp [hnotFound] at htrace
+    have hpending : pending.toList = subtractOneTerms p h.toList := by
+      simpa [pending, Array.toList_push] using htrace
+    apply normalization_canonical_of_chain_allReduced pending
+    · rw [hpending]
+      exact hpair.isChain
+    · rw [hpending]
+      exact hreduced
+
+/-- Combined execution contract consumed by the strict EDF raw-operations
+instance. -/
+theorem __upoly_subtract_one_raw_ir_certified
+    (h : SparsePolyZp) (p : UInt64) [Fact (Nat.Prime p.toNat)]
+    (h2p : 2 * p.toNat ≤ UInt64.size)
+    (hcanonical : SparsePolyZp.Canonical p.toNat h) :
+    ∃ output,
+      Generated.StrictEDF.__upoly_subtract_one_raw_ir h p = .ok output ∧
+      SparsePolyZp.toPoly p.toNat output =
+        SparsePolyZp.toPoly p.toNat h - 1 ∧
+      SparsePolyZp.Canonical p.toNat output := by
+  rcases __upoly_subtract_one_raw_ir_refines h p h2p hcanonical with
+    ⟨output, hrun, hsem⟩
+  exact ⟨output, hrun, hsem,
+    __upoly_subtract_one_raw_ir_canonical h p hcanonical output hrun⟩
 
 end Refinement.StrictEDF

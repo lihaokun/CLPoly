@@ -14640,6 +14640,176 @@ theorem pairVecDivVHCConsumeEqualDegree_preserves_heapOwnershipOrdered
         subst result
         exact ⟨hownership, hordered⟩
 
+/-- Once the generated equal-degree loop returns, every surviving concrete
+heap head has degree strictly below the degree just consumed.  The proof
+follows the actual checked extracts and transports the entry upper bound only
+through non-root slots; the consumed root is explicitly excluded. -/
+theorem pairVecDivVHCConsumeEqualDegree_heap_heads_below
+    (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp)
+    (result : PairVecDivVHCEqualDegreeResult) (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hmax : ∀ (slot head : Nat) (mono : UMonomial),
+      heap[slot]? = some head →
+      pairVecDivVHCMono head nodes = .ok mono → mono.deg ≤ degree)
+    (hrun : pairVecDivVHCConsumeEqualDegree this degree heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∀ (slot head : Nat) (mono : UMonomial),
+      result.heap[slot]? = some head →
+      pairVecDivVHCMono head result.nodes = .ok mono → mono.deg < degree := by
+  induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
+      nodes lin resetH result with
+  | h size ih =>
+      rw [pairVecDivVHCConsumeEqualDegree] at hrun
+      by_cases hheap : 0 < heap.size
+      · simp only [hheap, ↓reduceDIte] at hrun
+        cases hmono : pairVecDivVHCMono heap[0] nodes with
+        | error fault => simp [hmono] at hrun
+        | ok rootMono =>
+            simp only [hmono] at hrun
+            by_cases hequal : rootMono.deg = degree
+            · simp only [hequal, ↓reduceDIte] at hrun
+              cases hconsume : pairVecDivVHCConsumeRootBucket this heap k nodes
+                  lin resetH quotient divisor with
+              | error fault => simp [hconsume] at hrun
+              | ok bucket =>
+                  simp only [dif_pos trivial, hconsume] at hrun
+                  cases hchecked : pairVecDivVHCExtractChecked heap bucket.nodes with
+                  | error fault => simp [hchecked] at hrun
+                  | ok extracted =>
+                      rw [hchecked] at hrun
+                      have hraw := pairVecDivVHCExtractChecked_raw heap
+                        bucket.nodes extracted hchecked
+                      have hownership' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hconsume hraw
+                      have hordered' :=
+                        pairVecDivVHCConsumeRootExtract_preserves_heapOrdered
+                          this heap extracted.1 k nodes lin resetH quotient
+                          divisor bucket owners hheap hownership hordered
+                          hconsume hraw
+                      have hrootOnly :=
+                        pairVecDivVHCHeapChainOwnership_root_onlyAt heap owners
+                          nodes hownership hheap
+                      have hrootGone := pairVecDivVHCExtract_excludes_root heap
+                        extracted.1 bucket.nodes hheap hrootOnly hraw
+                      have hmax' : ∀ (slot head : Nat) (mono : UMonomial),
+                          extracted.1[slot]? = some head →
+                          pairVecDivVHCMono head bucket.nodes = .ok mono →
+                          mono.deg ≤ degree := by
+                        intro slot head mono hget hmonoNew
+                        rcases pairVecDivVHCExtract_valuesFrom heap extracted.1
+                            bucket.nodes hraw slot head hget with
+                          ⟨oldSlot, hold⟩
+                        have hpos : 0 < oldSlot := by
+                          by_contra hnot
+                          have hzero : oldSlot = 0 := by omega
+                          subst oldSlot
+                          have hheadRoot : head = heap[0] := by
+                            rw [Array.getElem?_eq_getElem hheap] at hold
+                            exact (Option.some.inj hold).symm
+                          exact hrootGone slot (by
+                            simpa [hheadRoot] using hget)
+                        have hmonoOld :=
+                          (pairVecDivVHCConsumeRootBucket_nonroot_mono_iff this
+                            heap k nodes lin resetH quotient divisor bucket
+                            owners hheap hownership hconsume oldSlot head hpos
+                            hold mono).mpr hmonoNew
+                        exact hmax oldSlot head mono hold hmonoOld
+                      have hsmaller : extracted.1.size < size := by
+                        rw [← hsize]
+                        omega
+                      exact ih extracted.1.size hsmaller extracted.1
+                        bucket.coefficient bucket.nodes bucket.lin bucket.resetH
+                        result hownership' hordered' hmax' hrun rfl
+            · simp only [hequal, ↓reduceDIte, Except.ok.injEq] at hrun
+              subst result
+              intro slot head mono hget hmonoSlot
+              change heap[slot]? = some head at hget
+              change pairVecDivVHCMono head nodes = .ok mono at hmonoSlot
+              have hslot : slot < heap.size := by
+                by_contra hnot
+                rw [Array.getElem?_eq_none (by omega)] at hget
+                contradiction
+              have hheadEq : heap[slot] = head := by
+                rw [Array.getElem?_eq_getElem hslot] at hget
+                exact Option.some.inj hget
+              have hslotMono : pairVecDivVHCMono heap[slot] nodes = .ok mono := by
+                simpa [hheadEq] using hmonoSlot
+              have hleRoot := pairVecDivVHCHeapOrdered_slot_le_root heap nodes
+                (hownership.heapPointersValid heap owners nodes) hordered slot
+                hslot mono rootMono hslotMono hmono
+              have hrootLe := hmax 0 heap[0] rootMono
+                (Array.getElem?_eq_getElem hheap) hmono
+              omega
+      · simp only [hheap, ↓reduceDIte, Except.ok.injEq] at hrun
+        subst result
+        intro slot head mono hget
+        change heap[slot]? = some head at hget
+        rw [Array.getElem?_eq_none (by omega)] at hget
+        contradiction
+
+/-- Coverage turns strict bounds on the three concrete location classes
+(reset prefix, deferred stack, and heap-owned chains) into a bound on every
+active allocated node. -/
+theorem pairVecDivVHCAllActiveNodesBelow_of_covered
+    (degreeLimit resetH quotientSize : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat)
+    (owners : Nat → Finset Nat)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hcovered : PairVecDivVHCNodesCovered heap owners lin resetH nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hready : PairVecDivVHCResetReady resetH quotientSize nodes)
+    (hlinBelow : PairVecDivVHCLinBelow degreeLimit lin nodes)
+    (hheadsBelow : ∀ (slot head : Nat) (headMono : UMonomial),
+      heap[slot]? = some head →
+      pairVecDivVHCMono head nodes = .ok headMono →
+      headMono.deg < degreeLimit) :
+    PairVecDivVHCAllActiveNodesBelow degreeLimit nodes := by
+  intro i node mono hget hmono
+  have hi : i < nodes.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hget
+    contradiction
+  rcases hcovered i hi with hreset | hlin | ⟨slot, head, hheap, hmem⟩
+  · rcases hready.2 i hreset with
+      ⟨readyNode, hreadyGet, hq, hd, hinactive⟩
+    rw [hget] at hreadyGet
+    simp only [Option.some.injEq] at hreadyGet
+    subst readyNode
+    rw [hmono] at hinactive
+    contradiction
+  · exact hlinBelow i (by simpa only [List.mem_toFinset] using hlin) node
+      mono hget hmono
+  · have hslot : slot < heap.size := by
+      by_contra hnot
+      rw [Array.getElem?_eq_none (by omega)] at hheap
+      contradiction
+    rcases hownership.heapPointersValid heap owners nodes slot hslot with
+      ⟨validHead, headNode, headMono, hvalidHeap, hheadNode, hheadActive⟩
+    rw [hheap] at hvalidHeap
+    simp only [Option.some.injEq] at hvalidHeap
+    subst validHead
+    have hheadRun : pairVecDivVHCMono head nodes = .ok headMono :=
+      (pairVecDivVHCMono_eq_ok_iff head nodes headMono).2
+        ⟨headNode, hheadNode, hheadActive⟩
+    have hchain := hhomogeneous slot head headMono hheap hheadRun
+    have howns := hownership.1 slot head hheap
+    rcases pairVecDivVHCChainOwns_mem_degree (some head) (owners head) nodes
+        headMono.deg i howns hchain hmem with
+      ⟨ownedNode, ownedMono, hownedGet, hownedMono, hownedDegree⟩
+    rw [hget] at hownedGet
+    simp only [Option.some.injEq] at hownedGet
+    subst ownedNode
+    rw [hmono] at hownedMono
+    simp only [Option.some.injEq] at hownedMono
+    subst ownedMono
+    rw [hownedDegree]
+    exact hheadsBelow slot head headMono hheap hheadRun
+
 theorem pairVecDivVHCConsumeEqualDegree_preserves_heapChainsHomogeneous
     (this : DenseUPolyZp) (degree : Nat) (heap : Array Nat) (k : UInt64)
     (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)

@@ -1415,3 +1415,13 @@ every generated range-for and recursive loop used by SQF.
   依次构造 `Emit` 和 `ReinsertLin`，最后化简实际 do-block。四个 raw
   子调用都是证明内生成的 `.ok`，而非定理前提；无 fuel、无 oracle、
   无 L2 回退。下一步沿 frontier degree 的真实严格下降闭合 outer loop。
+- outer-loop 严格下降的 heap 侧核心已建立。
+  `pairVecDivVHCConsumeEqualDegree_heap_heads_below` 沿真实 checked-extract 的 heap-size
+  良基递归证明：同次 bucket 循环返回时，每个存活 heap head 的
+  次数都严格低于刚消费的 frontier。递归步显式排除已消费 root，
+  只对 extract 来源中的 non-root slot 运输入口上界；终止步由 max-heap
+  顺序和 `root.degree ≠ frontier.degree` 得到严格不等式。
+  `pairVecDivVHCAllActiveNodesBelow_of_covered` 再把 reset prefix、deferred `lin` 和
+  heap-owned chain 三个 concrete location class 的界组合成整个 node block 的 active
+  次数界。下一步运输 equal-degree 后的 `LinBelow`，从而得到完整
+  iteration 后的 `AllActiveNodesBelow frontier.degree`。

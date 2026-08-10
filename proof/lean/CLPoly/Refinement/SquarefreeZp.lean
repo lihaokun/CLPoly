@@ -20660,6 +20660,116 @@ theorem yunPairDivisionsIR_refine
       hcNextCanonical,
     hzSemantic, hcNextSemantic⟩
 
+set_option maxHeartbeats 1600000 in
+/-- Totality of the strict well-founded Yun execution.  Every recursive call
+is justified by the next state returned by the actual raw operations. -/
+theorem strictYunLoopIR_succeeds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (multiplicity : UInt64) (w c : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64))
+    (hwCanonical : SparsePolyZp.Canonical this._p.toNat w)
+    (hcCanonical : SparsePolyZp.Canonical this._p.toNat c)
+    (hwMonic : (SparsePolyZp.toPoly this._p.toNat w).Monic)
+    (hcMonic : (SparsePolyZp.toPoly this._p.toNat c).Monic)
+    (hwBound : sparseDenseLength w ≤ 2 ^ 63)
+    (hcBound : sparseDenseLength c ≤ 2 ^ 63)
+    (hbudget : multiplicity.toNat + Generated.squarefreeMeasure w +
+      Generated.squarefreeMeasure c < UInt64.size) :
+    ∃ cOut resultOut,
+      strictYunLoopIR this hcfg physical multiplicity w c result =
+        .ok (cOut, resultOut) := by
+  have hwSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat w
+    hwMonic.ne_zero
+  have hcSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat c
+    hcMonic.ne_zero
+  have hwHeadBound : w[0].1.deg < 2 ^ 63 := by
+    have hdense : sparseDenseLength w = w[0].1.deg + 1 := by
+      simp [sparseDenseLength, hwSize]
+    rw [hdense] at hwBound
+    omega
+  have hguardIff := generated_yun_guard_eq_true_iff this._p.toNat w
+    hwCanonical hwSize hwHeadBound
+  by_cases hwPositive : 0 < (SparsePolyZp.toPoly this._p.toNat w).natDegree
+  · have hguard : ((! Array.isEmpty w) &&
+        decide (get_deg w > (0 : Int64))) = true := hguardIff.mpr hwPositive
+    rcases yunRawGCDWorkspace_succeeds this hcfg w c (physical w c) hwCanonical
+        hcCanonical hwMonic.ne_zero hcMonic.ne_zero hwBound hcBound with
+      ⟨gcdOut, y, hgcdRun, hyOutput, hyCanonical, hySemantic⟩
+    rcases rawGCDOutput_yun_invariants this._p.toNat w c y hwMonic.ne_zero
+        hySemantic with ⟨hySize, hyMonic, hyDvdW, hyDvdC⟩
+    rcases yunPairDivisionsIR_refine this w c y hcfg hwCanonical hcCanonical
+        hyCanonical hwMonic.ne_zero hySemantic with
+      ⟨z, cNext, hzRun, hcRun, hzCanonical, hcNextCanonical, hzNorm,
+        hcNextNorm, hzSemantic, hcNextSemantic⟩
+    have hzMonic : (SparsePolyZp.toPoly this._p.toNat z).Monic := by
+      rw [hzSemantic]
+      exact divByMonic_monic_of_monic_of_dvd
+        (SparsePolyZp.toPoly this._p.toNat w)
+        (SparsePolyZp.toPoly this._p.toNat y) hwMonic hyMonic hyDvdW
+    have hzSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat z
+      hzMonic.ne_zero
+    let zGuard := ((! Array.isEmpty z) &&
+      decide (get_deg z > (0 : Int64)))
+    let nextResult := if zGuard then result.push (z, multiplicity) else result
+    have hresultExec :
+        (if zGuard then
+          match upolyMakeMonicIR this z with
+          | .error fault => .error fault
+          | .ok (_, zMonic) => .ok (result.push (zMonic, multiplicity))
+        else .ok result) = (.ok nextResult : RawExec _) := by
+      by_cases hzGuard : zGuard = true
+      · have hmonicRun := upolyMakeMonicIR_eq_of_monic this z hzCanonical
+          hzSize hzMonic
+        simp [hzGuard, hmonicRun, nextResult]
+      · have hzFalse : zGuard = false := Bool.eq_false_of_not_eq_true hzGuard
+        simp [hzFalse, nextResult]
+    have hcNextMonic :
+        (SparsePolyZp.toPoly this._p.toNat cNext).Monic := by
+      rw [hcNextSemantic]
+      exact divByMonic_monic_of_monic_of_dvd
+        (SparsePolyZp.toPoly this._p.toNat c)
+        (SparsePolyZp.toPoly this._p.toNat y) hcMonic hyMonic hyDvdC
+    have hdecrease := yunNext_generatedMeasure_lt this w c y cNext
+      hwCanonical hcCanonical hyCanonical hcNextCanonical hwSize hcSize
+      hwPositive hcMonic hyMonic hyDvdC hcNextSemantic
+    have hnextBounds := yunNext_sparseDenseLength_bounds this w c y cNext
+      hwCanonical hcCanonical hyCanonical hcNextCanonical hwSize hcSize
+      hwMonic hcMonic hyMonic hyDvdW hyDvdC hcNextSemantic hwBound hcBound
+    have hnextBudget := yunMultiplicityBudget_step multiplicity
+      (Generated.squarefreeMeasure w + Generated.squarefreeMeasure c)
+      (Generated.squarefreeMeasure y + Generated.squarefreeMeasure cNext)
+      hdecrease (by simpa [Nat.add_assoc] using hbudget)
+    rcases strictYunLoopIR_succeeds this hcfg physical (multiplicity + 1) y
+        cNext nextResult hyCanonical hcNextCanonical hyMonic hcNextMonic
+        hnextBounds.1 hnextBounds.2 (by
+          simpa [Nat.add_assoc, hnextBudget.1] using hnextBudget.2) with
+      ⟨cOut, resultOut, hrecursive⟩
+    refine ⟨cOut, resultOut, ?_⟩
+    rw [strictYunLoopIR, hguard, if_pos rfl]
+    dsimp only
+    simp only [hgcdRun, hyOutput, hzRun, hzNorm]
+    change (match (if zGuard then
+        match upolyMakeMonicIR this z with
+        | Except.error fault => Except.error fault
+        | Except.ok (_, zMonic) =>
+            Except.ok (result.push (zMonic, multiplicity))
+      else Except.ok result) with
+      | Except.error fault => Except.error fault
+      | Except.ok nextResult' => _) = _
+    simpa only [hresultExec, hcRun, hcNextNorm, hdecrease, dif_pos]
+      using hrecursive
+  · have hguardNotTrue : ¬(((! Array.isEmpty w) &&
+        decide (get_deg w > (0 : Int64))) = true) := by
+      exact fun htrue => hwPositive (hguardIff.mp htrue)
+    have hguardFalse : ((! Array.isEmpty w) &&
+        decide (get_deg w > (0 : Int64))) = false :=
+      Bool.eq_false_of_not_eq_true hguardNotTrue
+    exact ⟨c, result, by simp [strictYunLoopIR, hguardFalse]⟩
+termination_by Generated.squarefreeMeasure w + Generated.squarefreeMeasure c
+decreasing_by exact hdecrease
+
 theorem canonical_degrees_dvd_of_derivative_eq_zero (p : Nat)
     [Fact (Nat.Prime p)] (source : SparsePolyZp)
     (hcanonical : SparsePolyZp.Canonical p source)

@@ -21813,5 +21813,36 @@ theorem sqfPostYunIR_prepares_recursive_call
   exact ⟨root, hrootRun, hrootCanonical, hrootSemantic, hrootMonic,
     hmonicRun, lt_of_lt_of_le hrootLtRem hremMeasureLe, hrootBound⟩
 
+/-- The concrete strict-Yun remainder is degree-bounded by the original SQF
+input, via its exact L2 remainder semantics and the actual raw GCD divisor. -/
+theorem strictYunRemainder_natDegree_le_source
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (source w c cRem : SparsePolyZp)
+    (hsourceNonzero : SparsePolyZp.toPoly this._p.toNat source ≠ 0)
+    (hcMonic : (SparsePolyZp.toPoly this._p.toNat c).Monic)
+    (hcSemantic : SparsePolyZp.toPoly this._p.toNat c = normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat source)
+        (Polynomial.derivative
+          (SparsePolyZp.toPoly this._p.toNat source))))
+    (hcRemSemantic : SparsePolyZp.toPoly this._p.toNat cRem =
+      (yunLoop (SparsePolyZp.toPoly this._p.toNat w)
+        (SparsePolyZp.toPoly this._p.toNat c) 1 [] hcMonic.ne_zero).2) :
+    (SparsePolyZp.toPoly this._p.toNat cRem).natDegree ≤
+      (SparsePolyZp.toPoly this._p.toNat source).natDegree := by
+  have hremLeC := yunLoop_c_natDegree_le
+    (SparsePolyZp.toPoly this._p.toNat w)
+    (SparsePolyZp.toPoly this._p.toNat c) 1 [] hcMonic.ne_zero
+  have hcDvdSource : SparsePolyZp.toPoly this._p.toNat c ∣
+      SparsePolyZp.toPoly this._p.toNat source := by
+    rw [hcSemantic]
+    exact normalize_dvd_iff.mpr
+      (EuclideanDomain.gcd_dvd_left
+        (SparsePolyZp.toPoly this._p.toNat source)
+        (Polynomial.derivative
+          (SparsePolyZp.toPoly this._p.toNat source)))
+  rw [hcRemSemantic]
+  exact hremLeC.trans
+    (Polynomial.natDegree_le_of_dvd hcDvdSource hsourceNonzero)
+
 end StrictSquarefreeZp
 end Refinement

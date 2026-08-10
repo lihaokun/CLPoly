@@ -59,7 +59,7 @@ structure SQFRawOps where
   gcd : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
   exactDiv : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
   EntryInvariant : SparsePolyZp → Prop
-  YunInvariant : UInt64 → SparsePolyZp → SparsePolyZp →
+  YunInvariant : SparsePolyZp → UInt64 → SparsePolyZp → SparsePolyZp →
     Array (SparsePolyZp × UInt64) → Prop
   derivativeZeroStep : ∀ (f root rootMonic : SparsePolyZp),
     EntryInvariant f →
@@ -71,13 +71,14 @@ structure SQFRawOps where
   yunInitial : ∀ (f derivativeOut c wRaw : SparsePolyZp),
     EntryInvariant f →
     (derivative f).isEmpty = false →
+    derivativeOut = derivative f →
     gcd f derivativeOut = .ok c →
     exactDiv f c = .ok wRaw →
-    YunInvariant 1 (SparsePolyZp.normalization wRaw) c #[]
-  yunFactorStep : ∀ (multiplicity : UInt64) (w c : SparsePolyZp)
+    YunInvariant f 1 (SparsePolyZp.normalization wRaw) c #[]
+  yunFactorStep : ∀ (source : SparsePolyZp) (multiplicity : UInt64) (w c : SparsePolyZp)
       (result : Array (SparsePolyZp × UInt64))
       (y zRaw zMonic cRaw : SparsePolyZp),
-    YunInvariant multiplicity w c result →
+    YunInvariant source multiplicity w c result →
     (!w.isEmpty && get_deg w > 0) = true →
     gcd w c = .ok y →
     exactDiv w y = .ok zRaw →
@@ -85,21 +86,21 @@ structure SQFRawOps where
       get_deg zRaw.normalization > 0) = true →
     makeMonic zRaw.normalization = .ok zMonic →
     exactDiv c y = .ok cRaw →
-    YunInvariant (multiplicity + 1) y cRaw.normalization
+    YunInvariant source (multiplicity + 1) y cRaw.normalization
       (result.push (zMonic, multiplicity)) ∧
     squarefreeMeasure y + squarefreeMeasure cRaw.normalization <
       squarefreeMeasure w + squarefreeMeasure c
-  yunNoFactorStep : ∀ (multiplicity : UInt64) (w c : SparsePolyZp)
+  yunNoFactorStep : ∀ (source : SparsePolyZp) (multiplicity : UInt64) (w c : SparsePolyZp)
       (result : Array (SparsePolyZp × UInt64))
       (y zRaw cRaw : SparsePolyZp),
-    YunInvariant multiplicity w c result →
+    YunInvariant source multiplicity w c result →
     (!w.isEmpty && get_deg w > 0) = true →
     gcd w c = .ok y →
     exactDiv w y = .ok zRaw →
     (!zRaw.normalization.isEmpty &&
       get_deg zRaw.normalization > 0) = false →
     exactDiv c y = .ok cRaw →
-    YunInvariant (multiplicity + 1) y cRaw.normalization result ∧
+    YunInvariant source (multiplicity + 1) y cRaw.normalization result ∧
     squarefreeMeasure y + squarefreeMeasure cRaw.normalization <
       squarefreeMeasure w + squarefreeMeasure c
   remainderRootStep : ∀ (f derivativeOut : SparsePolyZp)
@@ -108,25 +109,32 @@ structure SQFRawOps where
       (root rootMonic : SparsePolyZp),
     EntryInvariant f →
     (derivative f).isEmpty = false →
-    YunInvariant multiplicity w c result →
+    YunInvariant f multiplicity w c result →
+    (!w.isEmpty && get_deg w > 0) = false →
     (!c.isEmpty && get_deg c > 0) = true →
     extractPthRoot c = .ok root →
     makeMonic root = .ok rootMonic →
     EntryInvariant rootMonic ∧
       squarefreeMeasure rootMonic < squarefreeMeasure f
 
-structure YunRawState (ops : SQFRawOps) where
+structure YunRawState (ops : SQFRawOps) (source : SparsePolyZp) where
   multiplicity : UInt64
   w : SparsePolyZp
   c : SparsePolyZp
   result : Array (SparsePolyZp × UInt64)
-  valid : ops.YunInvariant multiplicity w c result
+  valid : ops.YunInvariant source multiplicity w c result
 
-def yunStateMeasure {ops : SQFRawOps} (state : YunRawState ops) : Nat :=
+def yunStateMeasure {ops : SQFRawOps} {source : SparsePolyZp}
+    (state : YunRawState ops source) : Nat :=
   squarefreeMeasure state.w + squarefreeMeasure state.c
 
+structure YunRawFinalState (ops : SQFRawOps) (source : SparsePolyZp) where
+  state : YunRawState ops source
+  done : (!state.w.isEmpty && get_deg state.w > 0) = false
+
 def _loop___squarefree_Zp_1_raw_ir_state (ops : SQFRawOps)
-    (state : YunRawState ops) : RawExec (YunRawState ops) :=
+    {source : SparsePolyZp} (state : YunRawState ops source) :
+    RawExec (YunRawFinalState ops source) :=
   match certifyBool (!state.w.isEmpty && get_deg state.w > 0) with
   | ⟨true, hguard⟩ =>
     match certifyRawExec (ops.gcd state.w state.c) with
@@ -152,7 +160,7 @@ def _loop___squarefree_Zp_1_raw_ir_state (ops : SQFRawOps)
             | .ok hcRun =>
               let cRaw := hcRun.val
               have hc := hcRun.property
-              have hstep := ops.yunFactorStep state.multiplicity state.w
+              have hstep := ops.yunFactorStep source state.multiplicity state.w
                 state.c state.result y zRaw zMonic cRaw state.valid hguard
                 hy hz hzGuard hmonic hc
               _loop___squarefree_Zp_1_raw_ir_state ops
@@ -164,27 +172,27 @@ def _loop___squarefree_Zp_1_raw_ir_state (ops : SQFRawOps)
           | .ok hcRun =>
             let cRaw := hcRun.val
             have hc := hcRun.property
-            have hstep := ops.yunNoFactorStep state.multiplicity state.w
+            have hstep := ops.yunNoFactorStep source state.multiplicity state.w
               state.c state.result y zRaw cRaw state.valid hguard hy hz
               hzGuardFalse hc
             _loop___squarefree_Zp_1_raw_ir_state ops
               ⟨state.multiplicity + 1, y, cRaw.normalization,
                 state.result, hstep.1⟩
-  | ⟨false, _⟩ =>
-    .ok state
+  | ⟨false, hguardFalse⟩ =>
+    .ok ⟨state, hguardFalse⟩
 termination_by yunStateMeasure state
 decreasing_by
   all_goals exact hstep.2
 
 def _loop___squarefree_Zp_1_raw_ir (ops : SQFRawOps)
-    (multiplicity : UInt64) (w c : SparsePolyZp)
+    (source : SparsePolyZp) (multiplicity : UInt64) (w c : SparsePolyZp)
     (result : Array (SparsePolyZp × UInt64))
-    (hvalid : ops.YunInvariant multiplicity w c result) :
+    (hvalid : ops.YunInvariant source multiplicity w c result) :
     RawExec (SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
   match _loop___squarefree_Zp_1_raw_ir_state ops
       ⟨multiplicity, w, c, result, hvalid⟩ with
   | .error fault => .error fault
-  | .ok finalState => .ok (finalState.c, finalState.result)
+  | .ok finalState => .ok (finalState.state.c, finalState.state.result)
 
 structure SQFRawState (ops : SQFRawOps) where
   f : SparsePolyZp
@@ -229,15 +237,15 @@ def __squarefree_Zp_raw_ir_state (ops : SQFRawOps)
         have hw := hwRun.property
         let w := wRaw.normalization
         have hyunInitial := ops.yunInitial f derivativeOut c wRaw state.valid
-          hderivativeFalse hc hw
+          hderivativeFalse rfl hc hw
         match _loop___squarefree_Zp_1_raw_ir_state ops
             ⟨1, w, c, #[], hyunInitial⟩ with
         | .error fault => .error fault
         | .ok finalState =>
-          match certifyBool (!finalState.c.isEmpty &&
-              get_deg finalState.c > 0) with
+          match certifyBool (!finalState.state.c.isEmpty &&
+              get_deg finalState.state.c > 0) with
           | ⟨true, hguard⟩ =>
-            match certifyRawExec (ops.extractPthRoot finalState.c) with
+            match certifyRawExec (ops.extractPthRoot finalState.state.c) with
             | .error fault => .error fault
             | .ok hrootRun =>
               let root := hrootRun.val
@@ -248,16 +256,18 @@ def __squarefree_Zp_raw_ir_state (ops : SQFRawOps)
                 let rootMonic := hmonicRun.val
                 have hmonic := hmonicRun.property
                 have hstep := ops.remainderRootStep f derivativeOut
-                  finalState.multiplicity finalState.w finalState.c
-                  finalState.result root rootMonic state.valid
-                  hderivativeFalse finalState.valid hguard hroot hmonic
+                  finalState.state.multiplicity finalState.state.w
+                  finalState.state.c finalState.state.result root rootMonic
+                  state.valid hderivativeFalse finalState.state.valid
+                  finalState.done hguard hroot hmonic
                 match __squarefree_Zp_raw_ir_state ops
                     ⟨rootMonic, hstep.1⟩ with
                 | .error fault => .error fault
                 | .ok factors =>
-                  .ok (scaleMultiplicityLoop 0 factors finalState.result prime)
+                  .ok (scaleMultiplicityLoop 0 factors
+                    finalState.state.result prime)
           | ⟨false, _⟩ =>
-            .ok finalState.result
+            .ok finalState.state.result
 termination_by sqfStateMeasure state
 decreasing_by
   all_goals exact hstep.2

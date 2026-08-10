@@ -854,6 +854,20 @@ REFINEMENT_MAP = {
         "result_kind": "map_eq",
         "cpp_source": "clpoly/polynomial_factorize_zp.hh",
         "doc": "无平方因子分解（Yun 算法）",
+        # Pass 9 emits this public, proved contract after the strict semantic
+        # implementation has been discharged in Refinement/SquarefreeZp.lean.
+        # Keep the original C++ spelling (including its leading `__`) in the
+        # theorem name so generated contracts remain mechanically traceable.
+        "verified_contract": {
+            "theorem_name": "__squarefree_Zp_ir_refines_sqfZp",
+            "output_file": "SquarefreeZp",
+            "proof_import": "CLPoly.Refinement.SquarefreeZp",
+            "proof_theorem": (
+                "Refinement.StrictSquarefreeZp."
+                "strictSquarefreeZpIR_refines_sqfZp"
+            ),
+            "kind": "strict_squarefree_zp",
+        },
     },
     "__ddf_Zp": {
         "l1_name": "__ddf_Zp_ir",

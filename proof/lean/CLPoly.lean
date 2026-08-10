@@ -34,6 +34,6 @@ import CLPoly.Experiment.E3_ZModPkDiv
 import CLPoly.Refinement.Basic
 import CLPoly.Refinement.DDF
 import CLPoly.Refinement.SquarefreeZp
-import CLPoly.Refinement.Generated.SquarefreeZp
+import CLPoly.Refinement.Generated
 import CLPoly.Refinement.ZZArith
 import CLPoly.Refinement.ZpArith

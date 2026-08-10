@@ -818,6 +818,33 @@ theorem strict_get_deg_toNatClampNeg (p : Nat) [Fact (Nat.Prime p)]
     simp [get_deg, Array.isEmpty_iff, hne, getElem!_pos poly 0 hnonempty]
   rw [hget, hsignedNat, hnatDegree]
 
+/-- The unsigned degree stored by the C++ DDF result pair is the exact L2
+natural degree, not a wrapped machine value. -/
+theorem strict_get_deg_toUInt64_toNat (p : Nat) [Fact (Nat.Prime p)]
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size)
+    (hdegree : (SparsePolyZp.toPoly p poly).natDegree < 2 ^ 63) :
+    (get_deg poly).toUInt64.toNat =
+      (SparsePolyZp.toPoly p poly).natDegree := by
+  have hne : poly ≠ #[] := by
+    intro hempty
+    subst poly
+    simp at hnonempty
+  have hdegreeEq :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+      p poly hcanonical hnonempty
+  have hnatDegree : (SparsePolyZp.toPoly p poly).natDegree =
+      poly[0].1.deg := Polynomial.natDegree_eq_of_degree_eq_some hdegreeEq
+  have hwordNat : poly[0].1.deg.toUInt64.toNat = poly[0].1.deg := by
+    change (OfNat.ofNat poly[0].1.deg : UInt64).toNat = poly[0].1.deg
+    rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt]
+    omega
+  have hget : get_deg poly = poly[0].1.deg.toUInt64.toInt64 := by
+    simp [get_deg, Array.isEmpty_iff, hne, getElem!_pos poly 0 hnonempty]
+  rw [hget]
+  change poly[0].1.deg.toUInt64.toNat = _
+  rw [hwordNat, hnatDegree]
+
 /-- The source expression `(2 * d).toInt64` denotes mathematical `2*d`
 under the DDF loop's explicit no-overflow budget. -/
 theorem strict_twice_degree_toNatClampNeg (d : UInt64)
@@ -2051,6 +2078,350 @@ noncomputable def ddfRawFinishToL2 (p : Nat) (fStar : SparsePolyZp)
       ddfResultToL2 p result ++
         [(SparsePolyZp.toPoly p factor, d.toNat)] := by
   simp [ddfResultToL2, Array.toList_push]
+
+theorem certifyRawExec_ok {α : Type} (run : RawExec α) (output : α)
+    (hrun : run = .ok output) :
+    Generated.StrictDDF.certifyRawExec run = .ok ⟨output, hrun⟩ := by
+  subst run
+  rfl
+
+theorem certifyBool_eq (value result : Bool) (hvalue : value = result) :
+    Generated.StrictDDF.certifyBool value = ⟨result, hvalue⟩ := by
+  subst value
+  rfl
+
+/-- The packaged cpp2lean-generated state loop terminates and denotes exactly
+the L2 DDF loop.  Induction is on the generated well-founded measure; no fuel
+or L2 execution is used. -/
+theorem strictDDFLoopStateIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this)
+    (original : Polynomial (ZMod this._p.toNat)) :
+    ∀ state : Generated.StrictDDF.DDFRawState
+        (strictDDFRawOps this providers original) this._p,
+      ∃ finalState : Generated.StrictDDF.DDFRawState
+          (strictDDFRawOps this providers original) this._p,
+        Generated.StrictDDF._loop___ddf_Zp_raw_ir_state
+            (strictDDFRawOps this providers original) this._p state =
+          .ok (finalState.fStar, finalState.result) ∧
+        get_deg finalState.fStar < (2 * finalState.d).toInt64 ∧
+        ddfLoop (SparsePolyZp.toPoly this._p.toNat state.h)
+            (SparsePolyZp.toPoly this._p.toNat state.fStar) state.d.toNat
+            (ddfResultToL2 this._p.toNat state.result) =
+          ddfRawFinishToL2 this._p.toNat finalState.fStar finalState.result := by
+  suffices hstrong : ∀ n state,
+      Generated.StrictDDF.ddfRawStateMeasure state = n →
+      ∃ finalState : Generated.StrictDDF.DDFRawState
+          (strictDDFRawOps this providers original) this._p,
+        Generated.StrictDDF._loop___ddf_Zp_raw_ir_state
+            (strictDDFRawOps this providers original) this._p state =
+          .ok (finalState.fStar, finalState.result) ∧
+        get_deg finalState.fStar < (2 * finalState.d).toInt64 ∧
+        ddfLoop (SparsePolyZp.toPoly this._p.toNat state.h)
+            (SparsePolyZp.toPoly this._p.toNat state.fStar) state.d.toNat
+            (ddfResultToL2 this._p.toNat state.result) =
+          ddfRawFinishToL2 this._p.toNat finalState.fStar finalState.result by
+    intro state
+    exact hstrong (Generated.StrictDDF.ddfRawStateMeasure state) state rfl
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+      intro state hmeasureEq
+      rcases state with ⟨d, fStar, h, result, hinvariant⟩
+      have hfNonzero : SparsePolyZp.toPoly this._p.toNat fStar ≠ 0 :=
+        hinvariant.p3.ne_zero
+      have hfNonempty :=
+        Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+          this._p.toNat fStar hfNonzero
+      have hfDegree : (SparsePolyZp.toPoly this._p.toNat fStar).natDegree <
+          2 ^ 62 := canonical_natDegree_lt_of_terms_lt this._p.toNat fStar
+            hinvariant.fStar_canonical hfNonzero (2 ^ 62)
+            hinvariant.fStar_degree_bound
+      by_cases hterm : get_deg fStar < (2 * d).toInt64
+      · have htermNat := strict_ddf_term_degree_lt this._p.toNat d fStar
+          hinvariant.d_bound (lt_of_lt_of_le hinvariant.p0 (Nat.le_refl _))
+          hinvariant.fStar_canonical hfNonempty
+          (lt_trans hfDegree (by norm_num)) hterm
+        refine ⟨⟨d, fStar, h, result, hinvariant⟩, ?_, hterm, ?_⟩
+        · rw [Generated.StrictDDF._loop___ddf_Zp_raw_ir_state.eq_1]
+          rw [dif_pos hterm]
+        · rw [ddfLoop]
+          simp only [dif_pos htermNat]
+          by_cases hpositive :
+              0 < (SparsePolyZp.toPoly this._p.toNat fStar).natDegree
+          · simp [ddfRawFinishToL2, hpositive]
+          · simp [ddfRawFinishToL2, hpositive]
+      · have hactiveNat := strict_ddf_active_degree_ge this._p.toNat d
+          fStar hinvariant.d_bound
+          (lt_of_lt_of_le hinvariant.p0 (Nat.le_refl _))
+          hinvariant.fStar_canonical hfNonempty
+          (lt_trans hfDegree (by norm_num)) hterm
+        rcases strictDDFRawPrefix this providers original d fStar h result
+            this._p hinvariant hterm with
+          ⟨hPow, gdRaw, hpowRun, hgcdRun, hPowCanonical, hPowSemantic,
+            hgdCanonical, hgdSemantic⟩
+        by_cases hsplit : (!gdRaw.isEmpty && get_deg gdRaw > 0) = true
+        · rcases strictDDFRawSplitSuffix this providers original d fStar h
+              result this._p hPow gdRaw hinvariant hterm hPowCanonical
+              hPowSemantic hgdCanonical hgdSemantic hsplit with
+            ⟨quotient, hNext, hmonicRun, hdivRun, hnormalization,
+              hmodRun, hquotientCanonical, hquotientSemantic,
+              hNextCanonical, hNextSemantic, hnextInvariant, hdecrease⟩
+          have hgdPositive :
+              0 < (SparsePolyZp.toPoly this._p.toNat gdRaw).natDegree := by
+            have hparts : gdRaw.isEmpty = false ∧ get_deg gdRaw > 0 := by
+              simpa using hsplit
+            have hgdDegreeLe :
+                (SparsePolyZp.toPoly this._p.toNat gdRaw).natDegree ≤
+                  (SparsePolyZp.toPoly this._p.toNat fStar).natDegree := by
+              rw [hgdSemantic]
+              exact Polynomial.natDegree_le_of_dvd
+                (normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right _ _))
+                hfNonzero
+            exact (strict_get_deg_pos_iff_natDegree_pos this._p.toNat gdRaw
+              hgdCanonical (lt_of_le_of_lt hgdDegreeLe
+                (lt_trans hfDegree (by norm_num)))).mp hparts.2
+          have hdIncrement : (d + 1).toNat = d.toNat + 1 :=
+            Refinement.StrictSquarefreeZp.UInt64_toNat_add_one_of_lt d (by
+              simpa [UInt64.size] using
+                (show d.toNat + 1 < 2 ^ 64 by omega))
+          let nextState : Generated.StrictDDF.DDFRawState
+              (strictDDFRawOps this providers original) this._p :=
+            ⟨d + 1, quotient, hNext, result.push (gdRaw, d), hnextInvariant⟩
+          rcases ih (Generated.StrictDDF.ddfRawStateMeasure nextState)
+              (by simpa [nextState, Generated.StrictDDF.ddfRawStateMeasure]
+                using hdecrease.trans_le (Nat.le_of_eq hmeasureEq))
+              nextState rfl with
+            ⟨finalState, hrecursiveRun, hfinalTerm, hrecursiveSemantic⟩
+          refine ⟨finalState, ?_, hfinalTerm, ?_⟩
+          · rw [Generated.StrictDDF._loop___ddf_Zp_raw_ir_state.eq_1]
+            rw [dif_neg hterm]
+            have hpowCertified := certifyRawExec_ok _ _ hpowRun
+            have hgcdCertified := certifyRawExec_ok _ _ hgcdRun
+            have hsplitCertified := certifyBool_eq _ true hsplit
+            have hmonicCertified := certifyRawExec_ok _ _ hmonicRun
+            have hdivCertified := certifyRawExec_ok _ _ hdivRun
+            have hmodCertified := certifyRawExec_ok _ _ hmodRun
+            simp only [strictDDFRawOps]
+            rw [hpowCertified]
+            simp only
+            rw [hgcdCertified]
+            simp only
+            rw [hsplitCertified]
+            simp only
+            rw [hmonicCertified]
+            simp only
+            rw [hdivCertified]
+            simp only
+            rw [hmodCertified]
+            simp only
+            simpa [nextState, hnormalization] using hrecursiveRun
+          · rw [ddfLoop]
+            simp only [dif_neg (not_lt_of_ge hactiveNat)]
+            rw [show (SparsePolyZp.toPoly this._p.toNat h ^
+                  this._p.toNat %ₘ SparsePolyZp.toPoly this._p.toNat fStar) =
+                SparsePolyZp.toPoly this._p.toNat hPow from hPowSemantic.symm]
+            rw [show normalize (EuclideanDomain.gcd
+                  (SparsePolyZp.toPoly this._p.toNat hPow - Polynomial.X)
+                  (SparsePolyZp.toPoly this._p.toNat fStar)) =
+                SparsePolyZp.toPoly this._p.toNat gdRaw from hgdSemantic.symm]
+            simp only [dif_pos hgdPositive]
+            simpa [nextState, hquotientSemantic, hNextSemantic, hdIncrement]
+              using hrecursiveSemantic
+        · have hnoSplit :
+              (!gdRaw.isEmpty && get_deg gdRaw > 0) = false := by
+            cases hb : (!gdRaw.isEmpty && get_deg gdRaw > 0) <;> simp_all
+          have hstep := DDFLoopInvariant.noSplit this original d fStar h
+            result this._p hPow gdRaw hinvariant hterm hPowCanonical
+            hPowSemantic hgdCanonical hgdSemantic hnoSplit
+          have hgdDegreeZero := strictDDFRawNoSplit_degree_zero this original
+            d fStar h result this._p hPow gdRaw hinvariant hgdCanonical
+            hgdSemantic hnoSplit
+          have hdIncrement : (d + 1).toNat = d.toNat + 1 :=
+            Refinement.StrictSquarefreeZp.UInt64_toNat_add_one_of_lt d (by
+              simpa [UInt64.size] using
+                (show d.toNat + 1 < 2 ^ 64 by omega))
+          let nextState : Generated.StrictDDF.DDFRawState
+              (strictDDFRawOps this providers original) this._p :=
+            ⟨d + 1, fStar, hPow, result, hstep.1⟩
+          rcases ih (Generated.StrictDDF.ddfRawStateMeasure nextState)
+              (by simpa [nextState, Generated.StrictDDF.ddfRawStateMeasure]
+                using hstep.2.trans_le (Nat.le_of_eq hmeasureEq))
+              nextState rfl with
+            ⟨finalState, hrecursiveRun, hfinalTerm, hrecursiveSemantic⟩
+          refine ⟨finalState, ?_, hfinalTerm, ?_⟩
+          · rw [Generated.StrictDDF._loop___ddf_Zp_raw_ir_state.eq_1]
+            rw [dif_neg hterm]
+            have hpowCertified := certifyRawExec_ok _ _ hpowRun
+            have hgcdCertified := certifyRawExec_ok _ _ hgcdRun
+            have hsplitCertified := certifyBool_eq _ false hnoSplit
+            simp only [strictDDFRawOps]
+            rw [hpowCertified]
+            simp only
+            rw [hgcdCertified]
+            simp only
+            rw [hsplitCertified]
+            simp only
+            simpa [nextState] using hrecursiveRun
+          · rw [ddfLoop]
+            simp only [dif_neg (not_lt_of_ge hactiveNat)]
+            rw [show (SparsePolyZp.toPoly this._p.toNat h ^
+                  this._p.toNat %ₘ SparsePolyZp.toPoly this._p.toNat fStar) =
+                SparsePolyZp.toPoly this._p.toNat hPow from hPowSemantic.symm]
+            rw [show normalize (EuclideanDomain.gcd
+                  (SparsePolyZp.toPoly this._p.toNat hPow - Polynomial.X)
+                  (SparsePolyZp.toPoly this._p.toNat fStar)) =
+                SparsePolyZp.toPoly this._p.toNat gdRaw from hgdSemantic.symm]
+            rw [hgdDegreeZero]
+            simp only [dif_neg (Nat.not_lt.mpr (Nat.zero_le _))]
+            simpa [nextState, hdIncrement] using hrecursiveSemantic
+
+/-- Refinement of the cpp2lean-generated wrapper loop, retaining the exact
+C++ function spelling (including its double underscores). -/
+theorem _loop___ddf_Zp_raw_ir_refines_ddfLoop
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this)
+    (original : Polynomial (ZMod this._p.toNat))
+    (d : UInt64) (fStar h : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64))
+    (hinvariant : DDFLoopInvariant this original d fStar h result this._p) :
+    ∃ finalState : Generated.StrictDDF.DDFRawState
+        (strictDDFRawOps this providers original) this._p,
+      Generated.StrictDDF._loop___ddf_Zp_raw_ir
+          (strictDDFRawOps this providers original) d fStar h result this._p
+          hinvariant = .ok (finalState.fStar, finalState.result) ∧
+      get_deg finalState.fStar < (2 * finalState.d).toInt64 ∧
+      ddfLoop (SparsePolyZp.toPoly this._p.toNat h)
+          (SparsePolyZp.toPoly this._p.toNat fStar) d.toNat
+          (ddfResultToL2 this._p.toNat result) =
+        ddfRawFinishToL2 this._p.toNat finalState.fStar
+          finalState.result := by
+  simpa [Generated.StrictDDF._loop___ddf_Zp_raw_ir] using
+    strictDDFLoopStateIR_refines this providers original
+      (⟨d, fStar, h, result, hinvariant⟩ :
+        Generated.StrictDDF.DDFRawState
+          (strictDDFRawOps this providers original) this._p)
+
+/-- The exact cpp2lean-generated C++ DDF entry terminates successfully and
+decodes to the L2 `ddf` algorithm.  The execution is the generated raw entry;
+the proof uses its well-founded loop and concrete raw callees, with no fuel,
+specification oracle, or L2 execution fallback. -/
+theorem strictDDFEntryIR_refines_ddf
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this) (f : SparsePolyZp)
+    (hfPrime : f[0]!.2.prime = this._p)
+    (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 62)
+    (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic)
+    (hfSquarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)) :
+    ∃ output,
+      Generated.StrictDDF.__ddf_Zp_raw_ir
+          (strictDDFRawOps this providers
+            (SparsePolyZp.toPoly this._p.toNat f)) f
+          (fun _ => DDFLoopInvariant.initial this f f[0]!.2.prime hfPrime
+            hfCanonical hfDegree hfMonic hfSquarefree) = .ok output ∧
+      ddfResultToL2 this._p.toNat output =
+        ddf (SparsePolyZp.toPoly this._p.toNat f) := by
+  have hfNonzero : SparsePolyZp.toPoly this._p.toNat f ≠ 0 :=
+    hfMonic.ne_zero
+  have hfNonempty : 0 < f.size :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat f hfNonzero
+  have hfNotEmpty : f.isEmpty = false := by
+    simp [Array.isEmpty, Nat.ne_of_gt hfNonempty]
+  let initialH : SparsePolyZp :=
+    #[(UMonomial.mk (1 : Int64),
+      Generated.StrictDDF.__make_zp_ir (1 : Int64) this._p)]
+  have hinitial : DDFLoopInvariant this
+      (SparsePolyZp.toPoly this._p.toNat f) 1 f initialH #[] this._p := by
+    simpa [initialH] using DDFLoopInvariant.initial this f this._p rfl
+      hfCanonical hfDegree hfMonic hfSquarefree
+  rcases _loop___ddf_Zp_raw_ir_refines_ddfLoop this providers
+      (SparsePolyZp.toPoly this._p.toNat f) 1 f initialH #[] hinitial with
+    ⟨finalState, hloopRun, hfinalTerm, hloopSemantic⟩
+  have hfinalNonzero :
+      SparsePolyZp.toPoly this._p.toNat finalState.fStar ≠ 0 :=
+    finalState.valid.p3.ne_zero
+  have hfinalNonempty : 0 < finalState.fStar.size :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat finalState.fStar hfinalNonzero
+  have hfinalDegree :
+      (SparsePolyZp.toPoly this._p.toNat finalState.fStar).natDegree <
+        2 ^ 62 :=
+    canonical_natDegree_lt_of_terms_lt this._p.toNat finalState.fStar
+      finalState.valid.fStar_canonical hfinalNonzero (2 ^ 62)
+      finalState.valid.fStar_degree_bound
+  have hdegreeWord := strict_get_deg_toUInt64_toNat this._p.toNat
+    finalState.fStar finalState.valid.fStar_canonical hfinalNonempty
+    (lt_trans hfinalDegree (by norm_num))
+  have hpositiveIff := strict_get_deg_pos_iff_natDegree_pos this._p.toNat
+    finalState.fStar finalState.valid.fStar_canonical
+    (lt_trans hfinalDegree (by norm_num))
+  have hfinalNotEmpty : finalState.fStar.isEmpty = false := by
+    simp [Array.isEmpty, Nat.ne_of_gt hfinalNonempty]
+  have hmonicRun := strictMakeMonicIR_eq_of_monic this finalState.fStar
+    finalState.valid.fStar_canonical hfinalNonempty finalState.valid.p3
+  have hx := Refinement.strict_singleton_x_data
+    (p := this._p.toNat) this._p rfl
+  have hinitialSemantic : SparsePolyZp.toPoly this._p.toNat initialH =
+      Polynomial.X := by
+    simpa [initialH, Generated.StrictDDF.__make_zp_ir] using hx.2
+  have hddfSemantic :
+      ddf (SparsePolyZp.toPoly this._p.toNat f) =
+        ddfRawFinishToL2 this._p.toNat finalState.fStar
+          finalState.result := by
+    simpa [ddf, hinitialSemantic, ddfResultToL2] using hloopSemantic
+  by_cases hpositive :
+      0 < (SparsePolyZp.toPoly this._p.toNat finalState.fStar).natDegree
+  · have hguard :
+        (!finalState.fStar.isEmpty && get_deg finalState.fStar > 0) = true := by
+      simp [hfinalNotEmpty, hpositiveIff.mpr hpositive]
+    refine ⟨finalState.result.push
+        (finalState.fStar, (get_deg finalState.fStar).toUInt64), ?_, ?_⟩
+    · simp only [Generated.StrictDDF.__ddf_Zp_raw_ir, hfNotEmpty,
+        Bool.false_eq_true, ↓reduceDIte]
+      simp only [hfPrime]
+      change (match Generated.StrictDDF._loop___ddf_Zp_raw_ir
+          (strictDDFRawOps this providers
+            (SparsePolyZp.toPoly this._p.toNat f)) 1 f initialH #[] this._p
+            hinitial with
+        | Except.error fault => Except.error fault
+        | Except.ok (fStar, result) =>
+          if !fStar.isEmpty && get_deg fStar > 0 then
+            match strictMakeMonicIR this fStar with
+            | Except.error fault => Except.error fault
+            | Except.ok monic => Except.ok (result.push (monic, (get_deg monic).toUInt64))
+          else Except.ok result) = _
+      rw [hloopRun]
+      simp only
+      rw [hguard, hmonicRun]
+      rfl
+    · rw [ddfResultToL2_push, hdegreeWord, hddfSemantic]
+      simp [ddfRawFinishToL2, hpositive]
+  · have hguard :
+        (!finalState.fStar.isEmpty && get_deg finalState.fStar > 0) = false := by
+      simp [hfinalNotEmpty, (not_congr hpositiveIff).mpr hpositive]
+    refine ⟨finalState.result, ?_, ?_⟩
+    · simp only [Generated.StrictDDF.__ddf_Zp_raw_ir, hfNotEmpty,
+        Bool.false_eq_true, ↓reduceDIte]
+      simp only [hfPrime]
+      change (match Generated.StrictDDF._loop___ddf_Zp_raw_ir
+          (strictDDFRawOps this providers
+            (SparsePolyZp.toPoly this._p.toNat f)) 1 f initialH #[] this._p
+            hinitial with
+        | Except.error fault => Except.error fault
+        | Except.ok (fStar, result) =>
+          if !fStar.isEmpty && get_deg fStar > 0 then
+            match strictMakeMonicIR this fStar with
+            | Except.error fault => Except.error fault
+            | Except.ok monic => Except.ok (result.push (monic, (get_deg monic).toUInt64))
+          else Except.ok result) = _
+      rw [hloopRun]
+      simp only
+      rw [hguard]
+      simp
+    · rw [hddfSemantic]
+      simp [ddfRawFinishToL2, hpositive]
 
 /-- Public refinement contract named after the exact cpp2lean-generated C++
 entry point.  It proves both representation safety and L2 polynomial

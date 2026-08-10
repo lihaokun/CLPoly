@@ -1,13 +1,8 @@
-"""Generate only the currently honest strict C++ L1 dependencies for DDF.
+"""Generate the strict DDF C++ L1 entry and its proved L1→L2 contract.
 
-The DDF entry itself must not be emitted until its C++ ``polynomial_GCD``
-dependency is translated as L1.  Mapping that call to ``CLPoly.Model`` would
-silently turn the purported L1 proof into an L2 fallback.
-
-The same restriction applies to ``__upoly_mod`` and ``__upoly_powmod``: their
-current translation reaches ``pair_vec_div5`` and hence the hand-written L2
-``SparsePolyZp.divmod`` instance.  They are deliberately excluded until the
-raw four-loop division implementation is connected to their source call.
+Allocation-owning calls remain explicit ``RawExec`` operations and are bound
+by the refinement layer to verified raw implementations.  The generated entry
+therefore never dispatches to the hand-written L2 polynomial algorithms.
 """
 
 from __future__ import annotations
@@ -26,6 +21,11 @@ from pass8_codegen import codegen_corpus
 
 
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictDDF.lean"
+CONTRACT_OUT = (
+    V2_ROOT.parent / "lean" / "CLPoly" / "Generated" /
+    "StrictDDFRefinement.lean"
+)
+CPP_ENTRY = "__ddf_Zp_raw_ir"
 STRICT_DDF_ROOTS = {
     "__make_zp",
     "__upoly_subtract_x",
@@ -86,6 +86,19 @@ def ddfRawStateMeasure {ops : DDFRawOps} {p : UInt64}
     (state : DDFRawState ops p) : Nat :=
   ddfRawMeasure state.fStar state.d
 
+/-- Turn a raw execution into the same execution with its successful result
+certified by the actual run equation.  The proof is erased; the runtime
+operation and error behavior are unchanged. -/
+def certifyRawExec {α : Type} (run : RawExec α) :
+    RawExec { output : α // run = .ok output } :=
+  match hrun : run with
+  | .error fault => .error fault
+  | .ok output => .ok ⟨output, by simpa using hrun⟩
+
+/-- Carry the evaluated C++ boolean together with its equality. -/
+def certifyBool (value : Bool) : { result : Bool // value = result } :=
+  ⟨value, rfl⟩
+
 /-- Pack the dependent invariant with its runtime state.  This keeps match
 equations out of the recursive function's type while preserving the same
 well-founded proof and exactly the same C++ control flow. -/
@@ -95,34 +108,42 @@ def _loop___ddf_Zp_raw_ir_state (ops : DDFRawOps) (p : UInt64)
   if hterm : get_deg state.fStar < (2 * state.d).toInt64 then
     .ok (state.fStar, state.result)
   else
-    match hpow : ops.powmod state.h p.toNat state.fStar with
+    match certifyRawExec (ops.powmod state.h p.toNat state.fStar) with
     | .error fault => .error fault
-    | .ok hPow =>
+    | .ok hPowRun =>
+      let hPow := hPowRun.val
+      have hpow := hPowRun.property
       let hMinusX := __upoly_subtract_x_ir hPow p
-      match hgcd : ops.gcd hMinusX state.fStar with
+      match certifyRawExec (ops.gcd hMinusX state.fStar) with
       | .error fault => .error fault
-      | .ok gdRaw =>
-        if hsplit : !gdRaw.isEmpty && get_deg gdRaw > 0 then
-          match hmonic : ops.makeMonic gdRaw with
+      | .ok hgcdRun =>
+        let gdRaw := hgcdRun.val
+        have hgcd := hgcdRun.property
+        match certifyBool (!gdRaw.isEmpty && get_deg gdRaw > 0) with
+        | ⟨true, hsplit⟩ =>
+          match certifyRawExec (ops.makeMonic gdRaw) with
           | .error fault => .error fault
-          | .ok gd =>
-            match hdiv : ops.exactDiv state.fStar gd with
+          | .ok hmonicRun =>
+            let gd := hmonicRun.val
+            have hmonic := hmonicRun.property
+            match certifyRawExec (ops.exactDiv state.fStar gd) with
             | .error fault => .error fault
-            | .ok quotient =>
+            | .ok hdivRun =>
+              let quotient := hdivRun.val
+              have hdiv := hdivRun.property
               let fNext := SparsePolyZp.normalization quotient
-              match hmod : ops.mod hPow fNext with
+              match certifyRawExec (ops.mod hPow fNext) with
               | .error fault => .error fault
-              | .ok hNext =>
+              | .ok hmodRun =>
+                let hNext := hmodRun.val
+                have hmod := hmodRun.property
                 have hstep := ops.splitStep state.d state.fStar state.h
                   state.result p hPow gdRaw gd quotient hNext state.valid hterm
                   hpow hgcd hsplit hmonic hdiv hmod
                 _loop___ddf_Zp_raw_ir_state ops p
                   ⟨state.d + 1, fNext, hNext,
                     state.result.push (gd, state.d), hstep.1⟩
-        else
-          have hsplitFalse :
-              (!gdRaw.isEmpty && get_deg gdRaw > 0) = false := by
-            cases hb : (!gdRaw.isEmpty && get_deg gdRaw > 0) <;> simp_all
+        | ⟨false, hsplitFalse⟩ =>
           have hstep := ops.noSplitStep state.d state.fStar state.h
             state.result p hPow gdRaw state.valid hterm hpow hgcd hsplitFalse
           _loop___ddf_Zp_raw_ir_state ops p
@@ -191,21 +212,76 @@ def generate_strict_ddf() -> str:
     return source
 
 
+def generate_strict_ddf_contract() -> str:
+    """Emit the public theorem under the exact original C++ entry name."""
+    theorem_name = f"{CPP_ENTRY}_refines_ddf"
+    return f'''-- Auto-generated strict refinement contract for `{CPP_ENTRY}`.
+import CLPoly.Refinement.DDF
+
+set_option autoImplicit false
+
+namespace Refinement.StrictDDF
+
+open CLPoly.Math
+
+/-- The cpp2lean-generated C++ DDF entry terminates and decodes to L2 `ddf`.
+The double underscores are retained verbatim from the original C++ symbol. -/
+theorem {theorem_name}
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this) (f : SparsePolyZp)
+    (hfPrime : f[0]!.2.prime = this._p)
+    (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 62)
+    (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic)
+    (hfSquarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)) :
+    ∃ output,
+      Generated.StrictDDF.{CPP_ENTRY}
+          (strictDDFRawOps this providers
+            (SparsePolyZp.toPoly this._p.toNat f)) f
+          (fun _ => DDFLoopInvariant.initial this f f[0]!.2.prime hfPrime
+            hfCanonical hfDegree hfMonic hfSquarefree) = .ok output ∧
+      ddfResultToL2 this._p.toNat output =
+        ddf (SparsePolyZp.toPoly this._p.toNat f) := by
+  exact strictDDFEntryIR_refines_ddf this providers f hfPrime hfCanonical
+    hfDegree hfMonic hfSquarefree
+
+end Refinement.StrictDDF
+'''
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=OUT)
+    parser.add_argument("--contract-output", type=Path, default=CONTRACT_OUT)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     source = generate_strict_ddf()
+    contract = generate_strict_ddf_contract()
     if args.check:
         if not args.output.exists() or args.output.read_text() != source:
             print(f"FAIL: {args.output} is not reproducible", file=sys.stderr)
             return 1
-        print(f"PASS: {args.output} is reproducible and placeholder-free")
+        if (not args.contract_output.exists() or
+                args.contract_output.read_text() != contract):
+            print(
+                f"FAIL: {args.contract_output} is not reproducible",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            f"PASS: {args.output} and {args.contract_output} are "
+            "reproducible and placeholder-free"
+        )
         return 0
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(source)
+    args.contract_output.parent.mkdir(parents=True, exist_ok=True)
+    args.contract_output.write_text(contract)
     print(f"generated {args.output} ({source.count(chr(10)) + 1} lines)")
+    print(
+        f"generated {args.contract_output} "
+        f"({contract.count(chr(10)) + 1} lines)"
+    )
     return 0
 
 

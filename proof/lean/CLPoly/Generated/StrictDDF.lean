@@ -104,6 +104,19 @@ def ddfRawStateMeasure {ops : DDFRawOps} {p : UInt64}
     (state : DDFRawState ops p) : Nat :=
   ddfRawMeasure state.fStar state.d
 
+/-- Turn a raw execution into the same execution with its successful result
+certified by the actual run equation.  The proof is erased; the runtime
+operation and error behavior are unchanged. -/
+def certifyRawExec {α : Type} (run : RawExec α) :
+    RawExec { output : α // run = .ok output } :=
+  match hrun : run with
+  | .error fault => .error fault
+  | .ok output => .ok ⟨output, by simpa using hrun⟩
+
+/-- Carry the evaluated C++ boolean together with its equality. -/
+def certifyBool (value : Bool) : { result : Bool // value = result } :=
+  ⟨value, rfl⟩
+
 /-- Pack the dependent invariant with its runtime state.  This keeps match
 equations out of the recursive function's type while preserving the same
 well-founded proof and exactly the same C++ control flow. -/
@@ -113,34 +126,42 @@ def _loop___ddf_Zp_raw_ir_state (ops : DDFRawOps) (p : UInt64)
   if hterm : get_deg state.fStar < (2 * state.d).toInt64 then
     .ok (state.fStar, state.result)
   else
-    match hpow : ops.powmod state.h p.toNat state.fStar with
+    match certifyRawExec (ops.powmod state.h p.toNat state.fStar) with
     | .error fault => .error fault
-    | .ok hPow =>
+    | .ok hPowRun =>
+      let hPow := hPowRun.val
+      have hpow := hPowRun.property
       let hMinusX := __upoly_subtract_x_ir hPow p
-      match hgcd : ops.gcd hMinusX state.fStar with
+      match certifyRawExec (ops.gcd hMinusX state.fStar) with
       | .error fault => .error fault
-      | .ok gdRaw =>
-        if hsplit : !gdRaw.isEmpty && get_deg gdRaw > 0 then
-          match hmonic : ops.makeMonic gdRaw with
+      | .ok hgcdRun =>
+        let gdRaw := hgcdRun.val
+        have hgcd := hgcdRun.property
+        match certifyBool (!gdRaw.isEmpty && get_deg gdRaw > 0) with
+        | ⟨true, hsplit⟩ =>
+          match certifyRawExec (ops.makeMonic gdRaw) with
           | .error fault => .error fault
-          | .ok gd =>
-            match hdiv : ops.exactDiv state.fStar gd with
+          | .ok hmonicRun =>
+            let gd := hmonicRun.val
+            have hmonic := hmonicRun.property
+            match certifyRawExec (ops.exactDiv state.fStar gd) with
             | .error fault => .error fault
-            | .ok quotient =>
+            | .ok hdivRun =>
+              let quotient := hdivRun.val
+              have hdiv := hdivRun.property
               let fNext := SparsePolyZp.normalization quotient
-              match hmod : ops.mod hPow fNext with
+              match certifyRawExec (ops.mod hPow fNext) with
               | .error fault => .error fault
-              | .ok hNext =>
+              | .ok hmodRun =>
+                let hNext := hmodRun.val
+                have hmod := hmodRun.property
                 have hstep := ops.splitStep state.d state.fStar state.h
                   state.result p hPow gdRaw gd quotient hNext state.valid hterm
                   hpow hgcd hsplit hmonic hdiv hmod
                 _loop___ddf_Zp_raw_ir_state ops p
                   ⟨state.d + 1, fNext, hNext,
                     state.result.push (gd, state.d), hstep.1⟩
-        else
-          have hsplitFalse :
-              (!gdRaw.isEmpty && get_deg gdRaw > 0) = false := by
-            cases hb : (!gdRaw.isEmpty && get_deg gdRaw > 0) <;> simp_all
+        | ⟨false, hsplitFalse⟩ =>
           have hstep := ops.noSplitStep state.d state.fStar state.h
             state.result p hPow gdRaw state.valid hterm hpow hgcd hsplitFalse
           _loop___ddf_Zp_raw_ir_state ops p

@@ -1406,3 +1406,12 @@ every generated range-for and recursive loop used by SQF.
   `push` 的精确长度实例化 `ActivateReset` totality，并直接处理该执行结果。
   该桥没有调用规格商、L2 除法或外加成功假设。下一步组合 selector、
   `ConsumeEqualDegree`、`Emit` 与 `ReinsertLin` 的完整 outer iteration。
+- 完整 generated outer-iteration body 的 raw→safe totality 已闭合。
+  `pairVecDivVHCOuterIteration_succeeds` 从入口的 concrete heap-chain ownership、
+  total coverage、homogeneous/max-heap order、active-degree bound、node denotation、
+  固定 divisor 行、`ResetReady` 与 canonical quotient/divisor 出发，先构造
+  真实 `ConsumeEqualDegree` 执行。然后从该执行的保持定理导出节点
+  数组长度、ownership、`ResetReady`、固定行与 deferred-stack 分离性，
+  依次构造 `Emit` 和 `ReinsertLin`，最后化简实际 do-block。四个 raw
+  子调用都是证明内生成的 `.ok`，而非定理前提；无 fuel、无 oracle、
+  无 L2 回退。下一步沿 frontier degree 的真实严格下降闭合 outer loop。

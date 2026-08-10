@@ -16703,6 +16703,78 @@ theorem pairVecDivVHCEmit_preserves_away_linReady
     rcases hrun with ⟨rfl, rfl, rfl⟩
     exact ⟨haway, hlinReady⟩
 
+/-- Totality of one literal generated outer-loop body.  Every raw subcall is
+constructed from the concrete representation invariants threaded by the
+previous subcall; no successful intermediate execution is assumed. -/
+theorem pairVecDivVHCOuterIteration_succeeds
+    (this : DenseUPolyZp) (p degreeLimit dividendIndex : Nat)
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (quotient dividend divisor : SparsePolyZp) (resetH : Nat)
+    (frontier : PairVecDivVHCFrontier) (owners : Nat → Finset Nat)
+    (hdivisorSize : 0 < divisor.size)
+    (hnodeSize : nodes.size = divisor.size - 1)
+    (hselect : pairVecDivVHCSelectFrontier dividendIndex dividend heap nodes =
+      .ok frontier)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hcovered : PairVecDivVHCNodesCovered heap owners #[] resetH nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hactiveBelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hdenotes : ∀ (i : Nat) (record : PairVecDivVHCNode),
+      nodes[i]? = some record → record.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor record)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hquotient : SparsePolyZp.Canonical p quotient)
+    (hdivisor : SparsePolyZp.Canonical p divisor) :
+    ∃ result, pairVecDivVHCOuterIteration this dividendIndex heap nodes
+      quotient dividend divisor resetH = .ok result := by
+  have haway : PairVecDivVHCHeapChainsOwnedAway heap nodes
+      (#[] : Array Nat).toList.toFinset := by
+    simpa using (PairVecDivVHCHeapChainsOwned.away_empty heap nodes
+      ⟨owners, hownership⟩)
+  have hlinReady : PairVecDivVHCLinReady #[] nodes := by
+    simp [PairVecDivVHCLinReady]
+  have hlinBelow : PairVecDivVHCLinBelow frontier.degree #[] nodes :=
+    PairVecDivVHCLinBelow.empty frontier.degree nodes
+  rcases pairVecDivVHCConsumeEqualDegree_succeeds this p degreeLimit
+      dividendIndex dividend heap nodes frontier heap frontier.coefficient
+      nodes #[] resetH owners quotient divisor hselect hownership
+      (by intro slot head hget; simp) hcovered hhomogeneous hordered
+      hactiveBelow hdenotes hfixed hready hlinReady hlinBelow hquotient
+      hdivisor with ⟨consumed, hconsume⟩
+  have hconsumedSize : consumed.nodes.size = divisor.size - 1 :=
+    (pairVecDivVHCConsumeEqualDegree_nodes_size this frontier.degree heap
+      frontier.coefficient nodes #[] resetH quotient divisor consumed
+      hconsume).trans hnodeSize
+  have hconsumedOwned := pairVecDivVHCConsumeEqualDegree_preserves_heapChainsOwned
+    this frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+    divisor consumed ⟨owners, hownership⟩ hconsume
+  have hconsumedInvariants :=
+    pairVecDivVHCConsumeEqualDegree_preserves_node_invariants this p
+      degreeLimit frontier.degree heap frontier.coefficient nodes #[] resetH
+      quotient divisor consumed owners hquotient hactiveBelow hdenotes hfixed
+      hready hownership hconsume
+  have hconsumedAway :=
+    pairVecDivVHCConsumeEqualDegree_preserves_away_linReady this
+      frontier.degree heap frontier.coefficient nodes #[] resetH quotient
+      divisor consumed haway hlinReady hconsume
+  rcases pairVecDivVHCEmit_succeeds this frontier consumed quotient divisor
+      hconsumedSize hconsumedOwned hconsumedInvariants.2.2.2
+      hconsumedInvariants.2.2.1 hdivisorSize with
+    ⟨emitted, hemit⟩
+  rcases emitted with ⟨quotient', activated, resetH'⟩
+  have hemittedAway := pairVecDivVHCEmit_preserves_away_linReady this frontier
+    consumed quotient divisor quotient' activated resetH' hconsumedAway.1
+    hconsumedAway.2 hconsumedInvariants.2.2.2 hdivisorSize hemit
+  rcases pairVecDivVHCReinsertLin_succeeds activated.heap activated.nodes
+      consumed.lin hemittedAway.1 hemittedAway.2 with
+    ⟨reinserted, hreinsert⟩
+  unfold pairVecDivVHCOuterIteration
+  simp only [hdivisorSize, ↓reduceDIte, hselect, Bind.bind, Except.bind,
+    hconsume, hemit, hreinsert]
+  exact ⟨_, rfl⟩
+
 theorem pairVecDivVHCEmit_preserves_heapOrdered
     (this : DenseUPolyZp) (frontier : PairVecDivVHCFrontier)
     (consumed : PairVecDivVHCEqualDegreeResult)

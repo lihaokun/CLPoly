@@ -15,10 +15,7 @@ import CLPoly.Algorithm.EDF
 import CLPoly.Algorithm.SquarefreeZp
 import CLPoly.Algorithm.DDF
 import CLPoly.Refinement.Basic
-import CLPoly.Refinement.SquarefreeZp
-import CLPoly.Refinement.DDF
-import CLPoly.Refinement.EDF
-import CLPoly.Refinement.Hensel
+import CLPoly.Refinement.Generated
 import CLPoly.Refinement.Recombine
 import CLPoly.Algorithm.Hensel
 import CLPoly.Algorithm.Recombine
@@ -217,11 +214,95 @@ lemma toSparsePolyZp_deg_le (f : (ZMod p)[X]) :
   rw [← hn_eq]
   exact Polynomial.le_natDegree_of_mem_supp n ((Finset.mem_sort _).mp hn_mem)
 
--- No L1 algorithm wrapper is exported here until it targets a total,
--- cpp2lean-generated execution tree with a direct refinement theorem.
+-- ============================================================
+-- §2. Strict generated stage contracts consumed by the pipeline
+-- ============================================================
 
-/- DDF, EDF, Hensel, recombination, and end-to-end L1 exports are intentionally
-omitted until their cpp2lean-generated entries have direct refinement proofs.
-No L2 algorithm or existence witness is used as an implementation fallback. -/
+/-- Pipeline boundary for the exact generated C++ `__squarefree_Zp` entry.
+The proof source remains the centralized generated refinement contract. -/
+theorem strictSQFStage
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : Refinement.StrictSquarefreeZp.YunRawGCDWorkspaceProvider
+      this hcfg)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
+    (hbound : CLPoly.Impl.StrictPolynomialGCDRefinement.sparseDenseLength
+      source ≤ 2 ^ 63) :
+    ∃ factors,
+      Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
+          (Refinement.StrictSquarefreeGenerated.strictSQFRawOps
+            this hcfg physical)
+          source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
+            hbound⟩) = .ok factors ∧
+      toPolyList factors this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+  exact Refinement.__squarefree_Zp_raw_ir_refines_sqfZp this hcfg physical
+    source hcanonical hmonic hnonempty hpositive hbound
+
+/-- Pipeline boundary for the exact generated C++ `__ddf_Zp` entry. -/
+theorem strictDDFStage
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : Refinement.StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (hfPrime : f[0]!.2.prime = this._p)
+    (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 62)
+    (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic)
+    (hfSquarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)) :
+    ∃ output,
+      Generated.StrictDDF.__ddf_Zp_raw_ir
+          (Refinement.StrictDDF.strictDDFRawOps this providers
+            (SparsePolyZp.toPoly this._p.toNat f)) f
+          (fun _ => Refinement.StrictDDF.DDFLoopInvariant.initial this f
+            f[0]!.2.prime hfPrime hfCanonical hfDegree hfMonic
+            hfSquarefree) = .ok output ∧
+      Refinement.StrictDDF.ddfResultToL2 this._p.toNat output =
+        ddf (SparsePolyZp.toPoly this._p.toNat f) := by
+  exact Refinement.__ddf_Zp_raw_ir_refines_ddf this providers f hfPrime
+    hfCanonical hfDegree hfMonic hfSquarefree
+
+/-- Pipeline boundary for the exact generated C++ `__edf_Zp` entry,
+including the concrete RNG transition. -/
+theorem strictEDFStage
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : Refinement.StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (Refinement.StrictEDF.strictEDFRawOps engine this providers))
+    (result : Array SparsePolyZp) (f : SparsePolyZp) (d : UInt64)
+    (rng : State)
+    (hinvariant : Refinement.StrictEDF.EDFEntryInvariant this f d) :
+    ∃ output rng' factors,
+      Generated.StrictEDF.__edf_Zp_raw_ir
+          (Refinement.StrictEDF.strictEDFRawOps engine this providers)
+          (Refinement.StrictEDF.strictEDFSplitLaw engine this providers)
+          termination result f d rng hinvariant = .ok (output, rng') ∧
+      Refinement.StrictEDF.edfResultToL2 this._p.toNat output =
+        Refinement.StrictEDF.edfResultToL2 this._p.toNat result ++ factors ∧
+      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
+  exact Refinement.__edf_Zp_raw_ir_refines_edf engine this providers
+    termination result f d rng hinvariant
+
+/-- Pipeline boundary for the exact generated C++ quadratic
+`__hensel_step` entry. -/
+theorem strictHenselStepStage
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : Nat)
+    (hinvariant : Refinement.StrictHensel.HenselStepRefinementInvariant
+      termination node f m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_step_raw_ir
+          (Refinement.StrictHensel.strictHenselRawOps termination)
+          node f (m : Int) = .ok output ∧
+      Refinement.StrictHensel.HenselStepCorrect f m node output := by
+  exact Refinement.__hensel_step_raw_ir_refines termination node f m
+    hinvariant
+
+/- The next end-to-end wrapper must compose these concrete stage executions.
+It is deliberately not reconstructed from the L2-only existence functions in
+`FactorZpInstantiate` or `FactorZZInstantiate`. -/
 
 end L1Pipeline

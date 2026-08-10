@@ -12,12 +12,20 @@
   of this boundary.
 -/
 import CLPoly.Algorithm.SquarefreeZp
-import CLPoly.Generated.Corpus
+import CLPoly.Generated.StrictSquarefreeZp
 import CLPoly.Impl.StrictPolynomialGCDRefinement
 import CLPoly.Impl.StrictPolyAddSubRefinement
 import CLPoly.Refinement.Basic
 
 set_option autoImplicit false
+
+namespace Generated
+
+/-- Compatibility spelling used by the established SQF invariant library,
+now definitionally tied to the strict generated control-flow measure. -/
+abbrev squarefreeMeasure := StrictSquarefreeZp.squarefreeMeasure
+
+end Generated
 
 namespace Refinement
 
@@ -63,19 +71,6 @@ theorem sparsePolyZp_normalization_eq_of_canonical (p : Nat)
   intro term hterm
   have hnonzero := hcanonical.2.2 term (by simpa using hterm)
   simpa [SparsePolyZp.normalization] using hnonzero
-
-/-- The generated `__upoly_make_monic` call takes its concrete early-return
-branch on a canonical monic input and returns the original sparse array. -/
-theorem generated_upolyMakeMonic_eq_of_monic (p : Nat)
-    [Fact (Nat.Prime p)]
-    (f : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p f)
-    (hnonempty : 0 < f.size) (hmonic : (SparsePolyZp.toPoly p f).Monic) :
-    Generated.__upoly_make_monic_ir_def f = (f[0].2, f) := by
-  have hlead := sparse_leading_val_eq_one_of_monic p f hcanonical hnonempty
-    hmonic
-  have hone : (1 : UInt64) = (1 : Int64).toUInt64 := by decide
-  simp [Generated.__upoly_make_monic_ir_def, SparsePolyZp.front!,
-    getElem!_pos f 0 hnonempty, hlead, hone]
 
 /-- One observable iteration of the current C++ `derivative` template.  The
 integer degree is first constructed as a `Zp` residue, then the generated
@@ -18982,33 +18977,6 @@ def extractPthRootLoop (index : Nat) (output source : SparsePolyZp)
 termination_by source.size - index
 decreasing_by omega
 
-set_option maxHeartbeats 800000 in
-/-- The safe p-th-root loop is definitionally the value component of the
-actual cpp2lean-generated range-for loop. -/
-theorem generated_extractPthRootLoop_eq (index : Nat)
-    (output source : SparsePolyZp) (prime : UInt64) :
-    (Generated._loop___extract_pth_root_0_ir_def index output source prime).2 =
-      extractPthRootLoop index output source prime := by
-  rw [Generated._loop___extract_pth_root_0_ir_def, extractPthRootLoop]
-  by_cases hmore : index < source.size
-  · simp only [hmore, if_pos]
-    rw [getElem!_pos source index hmore]
-    exact generated_extractPthRootLoop_eq (index + 1)
-      (output.push (pthRootTerm prime source[index])) source prime
-  · simp [hmore]
-termination_by source.size - index
-decreasing_by omega
-
-theorem generated_extractPthRoot_eq (source : SparsePolyZp)
-    (hnonempty : 0 < source.size) :
-    Generated.__extract_pth_root_ir_def source =
-      extractPthRootLoop 0 #[] source source[0].2.prime := by
-  unfold Generated.__extract_pth_root_ir_def
-  simp only [SparsePolyZp.front!]
-  rw [getElem!_pos source 0 hnonempty]
-  simpa [SparsePolyZp.empty] using
-    (generated_extractPthRootLoop_eq 0 #[] source source[0].2.prime)
-
 theorem extractPthRootLoop_toList (index : Nat)
     (output source : SparsePolyZp) (prime : UInt64) :
     (extractPthRootLoop index output source prime).toList =
@@ -19911,7 +19879,8 @@ theorem generated_squarefreeMeasure_eq_natDegree_succ (p : Nat)
     intro hempty
     subst poly
     simp at hnonempty
-  simp [Generated.squarefreeMeasure, Array.isEmpty_iff, hne,
+  simp [Generated.squarefreeMeasure,
+    Generated.StrictSquarefreeZp.squarefreeMeasure, Array.isEmpty_iff, hne,
     getElem!_pos poly 0 hnonempty, hnatDegree]
 
 /-- On the same valid source states, the dense constructor length, generated
@@ -21223,47 +21192,12 @@ def strictSquarefreeZpIR
 termination_by Generated.squarefreeMeasure f
 decreasing_by all_goals exact hdec
 
-set_option maxHeartbeats 800000 in
-/-- The derivative-zero branch's generated result-copy loop is exactly the
-safe multiplicity-scaling loop. -/
-theorem generated_scaleMultiplicityLoop0_eq (index : Nat)
-    (source output : Array (SparsePolyZp × UInt64)) (prime : UInt64) :
-    (Generated._loop___squarefree_Zp_0_ir_def index source output prime).2.2 =
-      scaleMultiplicityLoop index source output prime := by
-  rw [Generated._loop___squarefree_Zp_0_ir_def, scaleMultiplicityLoop]
-  by_cases hmore : index < source.size
-  · simp only [hmore, if_pos]
-    rw [getElem!_pos source index hmore]
-    exact generated_scaleMultiplicityLoop0_eq (index + 1) source
-      (output.push (source[index].1, source[index].2 * prime)) prime
-  · simp [hmore]
-termination_by source.size - index
-decreasing_by omega
-
 theorem array_setBang_getElem_self {Alpha : Type} [Inhabited Alpha]
     (source : Array Alpha) (index : Nat) (hindex : index < source.size) :
     source.set! index source[index] = source := by
   rw [Array.set!_eq_setIfInBounds, Array.setIfInBounds_def]
   simp only [hindex, dite_true]
   exact Array.set_getElem_self hindex
-
-set_option maxHeartbeats 800000 in
-/-- The post-Yun generated result-copy loop also equals the same safe scaling
-loop; its apparent source mutation is a proved self-write. -/
-theorem generated_scaleMultiplicityLoop2_eq (index : Nat)
-    (source output : Array (SparsePolyZp × UInt64)) (prime : UInt64) :
-    (Generated._loop___squarefree_Zp_2_ir_def index source output prime).2.2 =
-      scaleMultiplicityLoop index source output prime := by
-  rw [Generated._loop___squarefree_Zp_2_ir_def, scaleMultiplicityLoop]
-  by_cases hmore : index < source.size
-  · simp only [hmore, if_pos]
-    rw [getElem!_pos source index hmore,
-      array_setBang_getElem_self source index hmore]
-    exact generated_scaleMultiplicityLoop2_eq (index + 1) source
-      (output.push (source[index].1, source[index].2 * prime)) prime
-  · simp [hmore]
-termination_by source.size - index
-decreasing_by omega
 
 theorem scaleMultiplicityLoop_toList (index : Nat)
     (source output : Array (SparsePolyZp × UInt64)) (prime : UInt64) :

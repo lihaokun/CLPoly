@@ -2787,6 +2787,117 @@ def PairVecDivVHCHeapPointersValid (heap : Array Nat)
       heap[slot]? = some nodeIndex ∧ nodes[nodeIndex]? = some node ∧
       node.mono = some mono
 
+/-- Pointer validity makes every checked read in the generated downward
+heap walk succeed.  Recursion follows the concrete selected child and uses
+the same `limit - child` well-founded measure as the executable definition. -/
+theorem pairVecDivVHCSiftDown_succeeds
+    (i child limit lastNode : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (lastMono : UMonomial)
+    (hi : i < heap.size) (hlimit : limit < heap.size)
+    (hlast : pairVecDivVHCMono lastNode nodes = .ok lastMono)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes) :
+    ∃ shifted, pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok shifted := by
+  rw [pairVecDivVHCSiftDown]
+  simp only [hi, hlimit, ↓reduceDIte]
+  by_cases hchild : child < limit
+  · simp only [hchild, ↓reduceDIte]
+    have hleftBound : child < heap.size := by omega
+    have hrightBound : child + 1 < heap.size := by omega
+    rcases hvalid child hleftBound with
+      ⟨leftIndex, leftNode, leftMono, hleftIndex, hleftNode, hleftActive⟩
+    rcases hvalid (child + 1) hrightBound with
+      ⟨rightIndex, rightNode, rightMono, hrightIndex, hrightNode,
+        hrightActive⟩
+    have hleftValue : heap[child] = leftIndex := by
+      rw [Array.getElem?_eq_getElem hleftBound] at hleftIndex
+      exact Option.some.inj hleftIndex
+    have hrightValue : heap[child + 1] = rightIndex := by
+      rw [Array.getElem?_eq_getElem hrightBound] at hrightIndex
+      exact Option.some.inj hrightIndex
+    have hleftMono : pairVecDivVHCMono heap[child] nodes = .ok leftMono := by
+      apply (pairVecDivVHCMono_eq_ok_iff heap[child] nodes leftMono).2
+      rw [hleftValue]
+      exact ⟨leftNode, hleftNode, hleftActive⟩
+    have hrightMono : pairVecDivVHCMono heap[child + 1] nodes =
+        .ok rightMono := by
+      apply (pairVecDivVHCMono_eq_ok_iff heap[child + 1] nodes rightMono).2
+      rw [hrightValue]
+      exact ⟨rightNode, hrightNode, hrightActive⟩
+    simp only [hleftMono, hrightMono, hlast]
+    let selected := if leftMono.deg > rightMono.deg then child else child + 1
+    have hselectedGe : child ≤ selected := by
+      dsimp only [selected]
+      split <;> omega
+    have hselectedBound : selected < heap.size := by
+      dsimp only [selected]
+      split <;> omega
+    by_cases hgreater :
+        (if leftMono.deg > rightMono.deg then leftMono else rightMono).deg >
+          lastMono.deg
+    · simp only [hgreater, ↓reduceDIte]
+      have hvalid' : PairVecDivVHCHeapPointersValid
+          (heap.set i heap[selected]) nodes := by
+        intro slot hslot
+        by_cases heq : i = slot
+        · subst slot
+          rw [Array.getElem?_set_self hi]
+          simpa [Array.getElem?_eq_getElem hselectedBound] using
+            hvalid selected hselectedBound
+        · rw [Array.getElem?_set_ne hi heq]
+          exact hvalid slot (by simpa only [Array.size_set] using hslot)
+      exact pairVecDivVHCSiftDown_succeeds selected (selected * 2 + 1) limit
+        lastNode (heap.set i heap[selected]) nodes lastMono
+        (by simpa only [Array.size_set] using hselectedBound)
+        (by simpa only [Array.size_set] using hlimit) hlast hvalid'
+    · simp only [hgreater, ↓reduceDIte]
+      exact ⟨_, rfl⟩
+  · simp only [hchild, ↓reduceDIte]
+    exact ⟨_, rfl⟩
+termination_by limit - child
+decreasing_by
+  exact Nat.sub_lt_sub_left hchild (by omega)
+
+/-- A nonempty heap whose concrete pointers are valid cannot fault in the
+generated extract or its proof-carrying checked wrapper. -/
+theorem pairVecDivVHCExtract_succeeds
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hnonempty : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes) :
+    ∃ heap', pairVecDivVHCExtract heap nodes = .ok heap' := by
+  have hlimit : heap.size - 1 < heap.size := by omega
+  rcases hvalid (heap.size - 1) hlimit with
+    ⟨lastIndex, lastNode, lastMono, hlastIndex, hlastNode, hlastActive⟩
+  have hlastValue : heap[heap.size - 1] = lastIndex := by
+    rw [Array.getElem?_eq_getElem hlimit] at hlastIndex
+    exact Option.some.inj hlastIndex
+  have hlastMono : pairVecDivVHCMono heap[heap.size - 1] nodes =
+      .ok lastMono := by
+    apply (pairVecDivVHCMono_eq_ok_iff heap[heap.size - 1] nodes lastMono).2
+    rw [hlastValue]
+    exact ⟨lastNode, hlastNode, hlastActive⟩
+  rcases pairVecDivVHCSiftDown_succeeds 0 1 (heap.size - 1)
+      heap[heap.size - 1] heap nodes lastMono hnonempty hlimit hlastMono hvalid
+    with ⟨shifted, hsift⟩
+  refine ⟨shifted.pop, ?_⟩
+  unfold pairVecDivVHCExtract
+  simp only [hnonempty, ↓reduceDIte, hsift]
+
+theorem pairVecDivVHCExtractChecked_succeeds
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hnonempty : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValid heap nodes) :
+    ∃ extracted, pairVecDivVHCExtractChecked heap nodes = .ok extracted := by
+  rcases pairVecDivVHCExtract_succeeds heap nodes hnonempty hvalid with
+    ⟨heap', hsuccess⟩
+  unfold pairVecDivVHCExtractChecked
+  split
+  next fault hrun =>
+    rw [hsuccess] at hrun
+    contradiction
+  next shifted hrun =>
+    exact ⟨_, rfl⟩
+
 /-- Binary max-heap order used by the source comparator. -/
 def PairVecDivVHCHeapOrdered (heap : Array Nat)
     (nodes : Array PairVecDivVHCNode) : Prop :=

@@ -1319,3 +1319,11 @@ every generated range-for and recursive loop used by SQF.
   使用步数预算或假定 raw 调用成功。`pairVecDivVHCConsumeRootBucket_succeeds`
   已将结论接到真实 root bucket 包装层。下一步组合 heap-size 良基的
   `ConsumeEqualDegree` 与 checked extract 成功性。
+- generated heap extract 的 raw→safe totality 已闭合。
+  `pairVecDivVHCSiftDown_succeeds` 从 concrete heap pointer validity 推出
+  left/right/sentinel 三次 monomial 读取均成功，并沿执行器相同的
+  `limit - child` 良基度量递归到实际选中的 child；每次覆盖 hole 后逐点
+  运输 pointer validity。`pairVecDivVHCExtract_succeeds` 从非空 heap 的末项
+  有效性实例化该定理，`pairVecDivVHCExtractChecked_succeeds` 再接通携带真实
+  size-decrement 证明的 wrapper。整个证明不预设 extract trace 或成功结果；
+  下一步可在 heap-size 良基的 `ConsumeEqualDegree` 中直接构造每轮 extract。

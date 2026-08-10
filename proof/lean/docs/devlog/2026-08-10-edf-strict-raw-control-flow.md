@@ -18,3 +18,13 @@ This commit establishes the strict executable L1 side. It does not yet claim the
 final L1-to-L2 EDF refinement theorem; the next step is to instantiate the raw
 operations and discharge their semantic invariants in `CLPoly/Refinement/EDF.lean`,
 then publish the generated contract under `CLPoly/Refinement/Generated/EDF.lean`.
+
+## Semantic base branch
+
+The first direct generated-execution bridge is now in
+`CLPoly/Refinement/EDF.lean`.  It proves that the exact generated degree-equals-
+`d` branch executes its concrete `makeMonic` call and pushes that exact sparse
+factor.  The accompanying L2 lemma proves the pushed monic equal-degree factor
+is irreducible and satisfies `EDFCorrect`.  The public theorem remains absent:
+retry and recursive split simulation still have to be proved before exporting
+the generated contract.

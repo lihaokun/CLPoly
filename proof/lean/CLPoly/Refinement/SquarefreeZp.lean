@@ -2787,6 +2787,13 @@ def PairVecDivVHCHeapPointersValid (heap : Array Nat)
       heap[slot]? = some nodeIndex ∧ nodes[nodeIndex]? = some node ∧
       node.mono = some mono
 
+def PairVecDivVHCHeapPointersValidExcept (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (hole : Nat) : Prop :=
+  ∀ slot : Nat, slot < heap.size → slot ≠ hole →
+    ∃ nodeIndex node mono,
+      heap[slot]? = some nodeIndex ∧ nodes[nodeIndex]? = some node ∧
+      node.mono = some mono
+
 /-- Pointer validity makes every checked read in the generated downward
 heap walk succeed.  Recursion follows the concrete selected child and uses
 the same `limit - child` well-founded measure as the executable definition. -/
@@ -2858,6 +2865,86 @@ termination_by limit - child
 decreasing_by
   exact Nat.sub_lt_sub_left hchild (by omega)
 
+/-- Initial extract enters sift with the consumed root as a hole.  No read of
+that retired pointer is required: if children exist, they and the saved last
+slot are valid; after copying the selected child into the hole, ordinary full
+pointer validity holds for the recursive suffix. -/
+theorem pairVecDivVHCSiftDown_succeeds_except_hole
+    (i child limit lastNode : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode)
+    (hi : i < heap.size) (hichild : i < child)
+    (hlimit : limit < heap.size)
+    (hlast : lastNode = heap[limit])
+    (hvalid : PairVecDivVHCHeapPointersValidExcept heap nodes i) :
+    ∃ shifted, pairVecDivVHCSiftDown i child limit lastNode heap nodes =
+      .ok shifted := by
+  rw [pairVecDivVHCSiftDown]
+  simp only [hi, hlimit, ↓reduceDIte]
+  by_cases hchild : child < limit
+  · simp only [hchild, ↓reduceDIte]
+    have hleftBound : child < heap.size := by omega
+    have hrightBound : child + 1 < heap.size := by omega
+    rcases hvalid child hleftBound (by omega) with
+      ⟨leftIndex, leftNode, leftMono, hleftIndex, hleftNode, hleftActive⟩
+    rcases hvalid (child + 1) hrightBound (by omega) with
+      ⟨rightIndex, rightNode, rightMono, hrightIndex, hrightNode,
+        hrightActive⟩
+    rcases hvalid limit hlimit (by omega) with
+      ⟨lastIndex, savedNode, lastMono, hlastIndex, hlastNode, hlastActive⟩
+    have hleftValue : heap[child] = leftIndex := by
+      rw [Array.getElem?_eq_getElem hleftBound] at hleftIndex
+      exact Option.some.inj hleftIndex
+    have hrightValue : heap[child + 1] = rightIndex := by
+      rw [Array.getElem?_eq_getElem hrightBound] at hrightIndex
+      exact Option.some.inj hrightIndex
+    have hlastValue : heap[limit] = lastIndex := by
+      rw [Array.getElem?_eq_getElem hlimit] at hlastIndex
+      exact Option.some.inj hlastIndex
+    have hleftMono : pairVecDivVHCMono heap[child] nodes = .ok leftMono :=
+      (pairVecDivVHCMono_eq_ok_iff heap[child] nodes leftMono).2 (by
+        rw [hleftValue]
+        exact ⟨leftNode, hleftNode, hleftActive⟩)
+    have hrightMono : pairVecDivVHCMono heap[child + 1] nodes =
+        .ok rightMono :=
+      (pairVecDivVHCMono_eq_ok_iff heap[child + 1] nodes rightMono).2 (by
+        rw [hrightValue]
+        exact ⟨rightNode, hrightNode, hrightActive⟩)
+    have hlastMono : pairVecDivVHCMono lastNode nodes = .ok lastMono := by
+      rw [hlast, hlastValue]
+      exact (pairVecDivVHCMono_eq_ok_iff lastIndex nodes lastMono).2
+        ⟨savedNode, hlastNode, hlastActive⟩
+    simp only [hleftMono, hrightMono, hlastMono]
+    let selected := if leftMono.deg > rightMono.deg then child else child + 1
+    have hselectedGe : child ≤ selected := by
+      dsimp only [selected]
+      split <;> omega
+    have hselectedBound : selected < heap.size := by
+      dsimp only [selected]
+      split <;> omega
+    by_cases hgreater :
+        (if leftMono.deg > rightMono.deg then leftMono else rightMono).deg >
+          lastMono.deg
+    · simp only [hgreater, ↓reduceDIte]
+      have hvalid' : PairVecDivVHCHeapPointersValid
+          (heap.set i heap[selected]) nodes := by
+        intro slot hslot
+        by_cases heq : i = slot
+        · subst slot
+          rw [Array.getElem?_set_self hi]
+          simpa [Array.getElem?_eq_getElem hselectedBound] using
+            hvalid selected hselectedBound (by omega)
+        · rw [Array.getElem?_set_ne hi heq]
+          exact hvalid slot (by simpa only [Array.size_set] using hslot)
+            (Ne.symm heq)
+      exact pairVecDivVHCSiftDown_succeeds selected (selected * 2 + 1) limit
+        lastNode (heap.set i heap[selected]) nodes lastMono
+        (by simpa only [Array.size_set] using hselectedBound)
+        (by simpa only [Array.size_set] using hlimit) hlastMono hvalid'
+    · simp only [hgreater, ↓reduceDIte]
+      exact ⟨_, rfl⟩
+  · simp only [hchild, ↓reduceDIte]
+    exact ⟨_, rfl⟩
+
 /-- A nonempty heap whose concrete pointers are valid cannot fault in the
 generated extract or its proof-carrying checked wrapper. -/
 theorem pairVecDivVHCExtract_succeeds
@@ -2890,6 +2977,34 @@ theorem pairVecDivVHCExtractChecked_succeeds
     ∃ extracted, pairVecDivVHCExtractChecked heap nodes = .ok extracted := by
   rcases pairVecDivVHCExtract_succeeds heap nodes hnonempty hvalid with
     ⟨heap', hsuccess⟩
+  unfold pairVecDivVHCExtractChecked
+  split
+  next fault hrun =>
+    rw [hsuccess] at hrun
+    contradiction
+  next shifted hrun =>
+    exact ⟨_, rfl⟩
+
+theorem pairVecDivVHCExtract_succeeds_except_root
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hnonempty : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValidExcept heap nodes 0) :
+    ∃ heap', pairVecDivVHCExtract heap nodes = .ok heap' := by
+  have hlimit : heap.size - 1 < heap.size := by omega
+  rcases pairVecDivVHCSiftDown_succeeds_except_hole 0 1 (heap.size - 1)
+      heap[heap.size - 1] heap nodes hnonempty (by omega) hlimit rfl hvalid with
+    ⟨shifted, hsift⟩
+  refine ⟨shifted.pop, ?_⟩
+  unfold pairVecDivVHCExtract
+  simp only [hnonempty, ↓reduceDIte, hsift]
+
+theorem pairVecDivVHCExtractChecked_succeeds_except_root
+    (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
+    (hnonempty : 0 < heap.size)
+    (hvalid : PairVecDivVHCHeapPointersValidExcept heap nodes 0) :
+    ∃ extracted, pairVecDivVHCExtractChecked heap nodes = .ok extracted := by
+  rcases pairVecDivVHCExtract_succeeds_except_root heap nodes hnonempty hvalid
+    with ⟨heap', hsuccess⟩
   unfold pairVecDivVHCExtractChecked
   split
   next fault hrun =>
@@ -13578,6 +13693,32 @@ theorem pairVecDivVHCConsumeRootBucket_nonroot_mono_iff
     refine ⟨node, ?_, hactive⟩
     rw [← hsame]
     exact hnode
+
+theorem pairVecDivVHCConsumeRootBucket_extractChecked_succeeds
+    (this : DenseUPolyZp) (heap : Array Nat) (k : UInt64)
+    (nodes : Array PairVecDivVHCNode) (lin : Array Nat) (resetH : Nat)
+    (quotient divisor : SparsePolyZp) (result : PairVecDivVHCBucketResult)
+    (owners : Nat → Finset Nat) (hheap : 0 < heap.size)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hrun : pairVecDivVHCConsumeRootBucket this heap k nodes lin resetH
+      quotient divisor = .ok result) :
+    ∃ extracted, pairVecDivVHCExtractChecked heap result.nodes = .ok extracted := by
+  have hvalid : PairVecDivVHCHeapPointersValidExcept heap result.nodes 0 := by
+    intro slot hslot hne
+    have hpos : 0 < slot := by omega
+    rcases hownership.heapPointersValid heap owners nodes slot hslot with
+      ⟨head, node, mono, hhead, hnode, hactive⟩
+    have hmono : pairVecDivVHCMono head nodes = .ok mono :=
+      (pairVecDivVHCMono_eq_ok_iff head nodes mono).2 ⟨node, hnode, hactive⟩
+    have hmono' :=
+      (pairVecDivVHCConsumeRootBucket_nonroot_mono_iff this heap k nodes lin
+        resetH quotient divisor result owners hheap hownership hrun slot head
+        hpos hhead mono).mp hmono
+    rcases (pairVecDivVHCMono_eq_ok_iff head result.nodes mono).1 hmono' with
+      ⟨updated, hupdated, hupdatedMono⟩
+    exact ⟨head, updated, mono, hhead, hupdated, hupdatedMono⟩
+  exact pairVecDivVHCExtractChecked_succeeds_except_root heap result.nodes
+    hheap hvalid
 
 /-- Consuming the root bucket leaves every old heap edge whose parent is not
 the root ordered in the updated node array.  The root itself is intentionally

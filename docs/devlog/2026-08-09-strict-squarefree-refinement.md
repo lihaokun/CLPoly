@@ -1342,3 +1342,12 @@ every generated range-for and recursive loop used by SQF.
   cursor。该桥覆盖 dividend 胜出、heap 胜出、次数 tie 与 dividend exhausted
   四类真实分支；EqualDegree 的 heap-size 递归因此可以在每个同次 root 上
   复用入口 selector 见证，而无需引入规格级 frontier。
+- root consume 后的真实 heap-hole extract totality 已闭合。
+  新谓词 `PairVecDivVHCHeapPointersValidExcept` 准确表达旧 root 已退休、其余
+  heap slot 仍有效的瞬间状态。`pairVecDivVHCSiftDown_succeeds_except_hole`
+  证明 size=1 时不读取 hole；存在 children 时只读取非 hole 的 left/right 与
+  saved-last，第一次 child copy 后恢复完整 pointer validity，再调用普通
+  sift 良基递归。随后 `pairVecDivVHCExtractChecked_succeeds_except_root` 与
+  `pairVecDivVHCConsumeRootBucket_extractChecked_succeeds` 从非 root chain 的
+  真实保持定理接通 consume→extract。这避免了错误声称退休 root 仍 active
+  的过强不变量。

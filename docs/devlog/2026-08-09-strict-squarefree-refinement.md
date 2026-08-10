@@ -1335,3 +1335,10 @@ every generated range-for and recursive loop used by SQF.
   分支。`pairVecDivVHCConsumeRootBucket_preserves_linBelow` 已接通 root owner。
   因而 EqualDegree 的下一轮可继续使用同一 frontier 的耗尽顺序定理，而
   无需重置或弱化 `LinBelow`。
+- selector 已可跨 root-bucket extract 精确运输。
+  `pairVecDivVHCSelectFrontier_eq_of_root_degree_eq` 逐分支展开 generated
+  selector，证明任何非空目标 heap 只要 root 次数等于原 frontier 次数，
+  就会重新得到完全相同的 frontier record，包括 coefficient 与 dividend
+  cursor。该桥覆盖 dividend 胜出、heap 胜出、次数 tie 与 dividend exhausted
+  四类真实分支；EqualDegree 的 heap-size 递归因此可以在每个同次 root 上
+  复用入口 selector 见证，而无需引入规格级 frontier。

@@ -5714,6 +5714,63 @@ theorem pairVecDivVHCSelectFrontier_index (dividendIndex : Nat)
         subst frontier
         simp
 
+/-- Replacing the heap by another nonempty heap with the same root degree
+preserves the exact selected source frontier (including coefficient and
+dividend cursor). -/
+theorem pairVecDivVHCSelectFrontier_eq_of_root_degree_eq
+    (dividendIndex : Nat) (dividend : SparsePolyZp)
+    (sourceHeap targetHeap : Array Nat)
+    (sourceNodes targetNodes : Array PairVecDivVHCNode)
+    (frontier : PairVecDivVHCFrontier) (targetRoot : UMonomial)
+    (htargetHeap : 0 < targetHeap.size)
+    (htargetRoot : pairVecDivVHCMono targetHeap[0] targetNodes = .ok targetRoot)
+    (hdegree : targetRoot.deg = frontier.degree)
+    (hsource : pairVecDivVHCSelectFrontier dividendIndex dividend sourceHeap
+      sourceNodes = .ok frontier) :
+    pairVecDivVHCSelectFrontier dividendIndex dividend targetHeap targetNodes =
+      .ok frontier := by
+  unfold pairVecDivVHCSelectFrontier at hsource ⊢
+  by_cases hdividend : dividendIndex < dividend.size
+  · simp only [hdividend, htargetHeap, ↓reduceDIte, htargetRoot]
+    by_cases hsourceHeap : 0 < sourceHeap.size
+    · simp only [hdividend, hsourceHeap, ↓reduceDIte] at hsource
+      cases hsourceRoot : pairVecDivVHCMono sourceHeap[0] sourceNodes with
+      | error fault => simp [hsourceRoot] at hsource
+      | ok sourceRoot =>
+          simp only [hsourceRoot] at hsource
+          by_cases hle : sourceRoot.deg ≤ dividend[dividendIndex].1.deg
+          · simp only [hle, ↓reduceIte, Except.ok.injEq] at hsource
+            subst frontier
+            simp only at hdegree
+            have htargetLe : targetRoot.deg ≤
+                dividend[dividendIndex].1.deg := by omega
+            simp only [htargetLe, ↓reduceIte]
+          · simp only [hle, ↓reduceIte, Except.ok.injEq] at hsource
+            subst frontier
+            simp only at hdegree
+            have htargetNotLe : ¬ targetRoot.deg ≤
+                dividend[dividendIndex].1.deg := by omega
+            simp only [htargetNotLe, ↓reduceIte]
+            congr
+    · simp only [hdividend, hsourceHeap, ↓reduceDIte, Except.ok.injEq] at hsource
+      subst frontier
+      simp only at hdegree
+      have htargetLe : targetRoot.deg ≤ dividend[dividendIndex].1.deg := by
+        omega
+      simp only [htargetLe, ↓reduceIte]
+  · by_cases hsourceHeap : 0 < sourceHeap.size
+    · simp only [hdividend, hsourceHeap, ↓reduceDIte] at hsource
+      cases hsourceRoot : pairVecDivVHCMono sourceHeap[0] sourceNodes with
+      | error fault => simp [hsourceRoot] at hsource
+      | ok sourceRoot =>
+          simp only [hsourceRoot, Except.ok.injEq] at hsource
+          subst frontier
+          simp only at hdegree
+          simp only [hdividend, htargetHeap, ↓reduceDIte, htargetRoot]
+          congr
+    · simp only [hdividend, hsourceHeap, ↓reduceDIte] at hsource
+      contradiction
+
 inductive PairVecDivVHCFrontierSource (dividendIndex : Nat)
     (dividend : SparsePolyZp) (heap : Array Nat)
     (nodes : Array PairVecDivVHCNode) : PairVecDivVHCFrontier → Prop

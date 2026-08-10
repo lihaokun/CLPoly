@@ -18782,6 +18782,86 @@ def pairVecDivGeneralBranchIR (this : DenseUPolyZp)
   else
     .error .assertionFailure
 
+/-- The checked general priority-heap entry cannot fault on canonical
+nonempty inputs with a genuine divisor tail.  Its fresh heap/quotient state is
+proved to satisfy every concrete VHC invariant before invoking the
+well-founded generated outer loop. -/
+theorem pairVecDivGeneralBranchIR_succeeds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hdividend : 0 < dividend.size) (hdivisor : 1 < divisor.size) :
+    ∃ quotient, pairVecDivGeneralBranchIR this dividend divisor =
+      .ok quotient := by
+  let nodes := pairVecDivVHCInit divisor
+  rcases pairVecDivVHCInit_stateCovered divisor with
+    ⟨stateOwners, hstateOwnership, hstateCovered⟩
+  have hownership : PairVecDivVHCHeapChainOwnership #[] stateOwners nodes := by
+    simpa [nodes] using hstateOwnership
+  have hcovered : PairVecDivVHCNodesCovered #[] stateOwners #[]
+      (divisor.size - 1) nodes := by
+    simpa [nodes] using hstateCovered
+  have hinactive : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono = none := by
+    intro i node hget
+    have hi : i < divisor.size - 1 := by
+      by_contra hnot
+      rw [Array.getElem?_eq_none (by
+        simpa [nodes, pairVecDivVHCInit_size] using hnot)] at hget
+      contradiction
+    rw [show nodes[i]? = some (pairVecDivVHCInitialNode i) by
+      simpa [nodes] using pairVecDivVHCInit_get divisor i hi] at hget
+    simp only [Option.some.injEq] at hget
+    subst node
+    rfl
+  have hactiveBelow : PairVecDivVHCAllActiveNodesBelow
+      (dividend[0].1.deg + 1) nodes := by
+    intro i node mono hget hmono
+    rw [hinactive i node hget] at hmono
+    contradiction
+  have hdenotes : ∀ (i : Nat) (node : PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        PairVecDivVHCNodeDenotes (#[] : SparsePolyZp) divisor node := by
+    intro i node hget hactive
+    exact (hactive (hinactive i node hget)).elim
+  have hhomogeneous : PairVecDivVHCHeapChainsHomogeneous #[] stateOwners nodes := by
+    intro slot head mono hget
+    simp at hget
+  have hordered : PairVecDivVHCHeapOrdered #[] nodes := by
+    intro child parent hchild
+    simp at hchild
+  have hquotientCanonical : SparsePolyZp.Canonical this._p.toNat
+      (#[] : SparsePolyZp) := by
+    rw [SparsePolyZp.Canonical, SparsePolyZp.WellFormed_arr]
+    refine ⟨?_, by simp, ?_⟩
+    · intro term hterm
+      simp at hterm
+    · intro term hterm
+      simp at hterm
+  have hremaining := pairVecDivVHCCanonicalInitialRemainingBelow
+    this._p.toNat dividend hdividendCanonical hdividend
+  have hquotientReady : ∀ frontier : PairVecDivVHCFrontier,
+      pairVecDivVHCSelectFrontier 0 dividend #[] nodes = .ok frontier →
+        PairVecDivVHCQuotientAbove frontier.degree divisor[0].1.deg
+          (#[] : SparsePolyZp) := by
+    intro frontier hselect
+    exact PairVecDivVHCQuotientAbove.empty _ _
+  rcases pairVecDivVHCOuterLoop_succeeds this
+      (dividend[0].1.deg + 1) 0 #[] nodes #[] dividend divisor
+      (divisor.size - 1) stateOwners (by omega)
+      (by simp [nodes, pairVecDivVHCInit_size]) hcfg hquotientCanonical
+      hdividendCanonical hdivisorCanonical hquotientReady hremaining
+      hactiveBelow hdenotes (by
+        simpa [nodes] using pairVecDivVHCInit_divisorIndicesFixed divisor)
+      (by simpa [nodes] using pairVecDivVHCInit_resetReady divisor)
+      hownership hcovered hhomogeneous hordered with ⟨quotient, hrun⟩
+  refine ⟨quotient, ?_⟩
+  simp only [pairVecDivGeneralBranchIR, hdividend, hdivisor, ↓reduceDIte,
+    nodes]
+  exact hrun
+
 /-- Non-aliasing source entry used by SQF.  Its branch order is the current
 C++ `pair_vec_div`: reject zero divisor, clear the fresh output and return for
 zero dividend, execute the size-one loop, otherwise pass the compile-time
@@ -18817,6 +18897,32 @@ theorem pairVecDivIR_general (this : DenseUPolyZp)
       pairVecDivGeneralBranchIR this dividend divisor := by
   simp [pairVecDivIR, hdividend, Nat.ne_of_gt (lt_trans Nat.zero_lt_one
     hdivisor), Nat.ne_of_gt hdivisor]
+
+/-- Totality of the complete non-aliasing generated `pair_vec_div` entry used
+by SQF.  The zero-dividend and one-term branches execute directly; the general
+branch enters the proved well-founded VHC loop. -/
+theorem pairVecDivIR_succeeds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : SparsePolyZp.Canonical this._p.toNat dividend)
+    (hdivisorCanonical : SparsePolyZp.Canonical this._p.toNat divisor)
+    (hdivisor : 0 < divisor.size) :
+    ∃ quotient, pairVecDivIR this dividend divisor = .ok quotient := by
+  by_cases hdividend : dividend.size = 0
+  · exact ⟨#[], pairVecDivIR_empty_dividend this dividend divisor hdividend
+      (Nat.ne_of_gt hdivisor)⟩
+  · by_cases hsingle : divisor.size = 1
+    · let quotient := pairVecDivSingleLoopIR this 0 #[] dividend divisor[0]
+      refine ⟨quotient, ?_⟩
+      rw [pairVecDivIR_single this dividend divisor hdividend hsingle]
+      simp [pairVecDivSingleBranchIR, hsingle, quotient]
+    · have hgeneral : 1 < divisor.size := by omega
+      rcases pairVecDivGeneralBranchIR_succeeds this dividend divisor hcfg
+          hdividendCanonical hdivisorCanonical (Nat.pos_of_ne_zero hdividend)
+          hgeneral with ⟨quotient, hrun⟩
+      exact ⟨quotient, (pairVecDivIR_general this dividend divisor hdividend
+        hgeneral).trans hrun⟩
 
 /-- Exact source-order range-for loop of `__extract_pth_root`. -/
 def pthRootTerm (prime : UInt64) (term : UMonomial × Zp) : UMonomial × Zp :=

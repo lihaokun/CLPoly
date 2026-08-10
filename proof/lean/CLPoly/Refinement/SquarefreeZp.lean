@@ -21844,5 +21844,160 @@ theorem strictYunRemainder_natDegree_le_source
   exact hremLeC.trans
     (Polynomial.natDegree_le_of_dvd hcDvdSource hsourceNonzero)
 
+set_option maxHeartbeats 1600000 in
+/-- Complete composition of the nonzero-derivative top-level branch, assuming
+the refinement theorem only for the concrete strictly smaller post-Yun root. -/
+theorem strictSquarefreeZpIR_nonzeroDerivative_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hpositive : 0 < (SparsePolyZp.toPoly this._p.toNat source).natDegree)
+    (hbound : sparseDenseLength source ≤ 2 ^ 63)
+    (hderivative :
+      Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source) ≠ 0)
+    (hrecursive : ∀ cRem root,
+      SparsePolyZp.Canonical this._p.toNat root →
+      SparsePolyZp.toPoly this._p.toNat root =
+        Polynomial.contract this._p.toNat
+          (SparsePolyZp.toPoly this._p.toNat cRem) →
+      (SparsePolyZp.toPoly this._p.toNat root).Monic →
+      sparseDenseLength root ≤ 2 ^ 63 →
+      Generated.squarefreeMeasure root <
+        Generated.squarefreeMeasure source →
+      ∃ factors,
+        strictSquarefreeZpIR this hcfg physical root = .ok factors ∧
+        toPolyList factors this._p.toNat =
+          sqfZp (SparsePolyZp.toPoly this._p.toNat root)) :
+    ∃ factors,
+      strictSquarefreeZpIR this hcfg physical source = .ok factors ∧
+      toPolyList factors this._p.toNat =
+        sqfZp (SparsePolyZp.toPoly this._p.toNat source) := by
+  let derivative := derivativeIR this source
+  rcases sqfNonzeroDerivativeIR_prepares_yun this hcfg physical source
+      hcanonical hmonic hnonempty hbound hderivative with
+    ⟨gcdOut, c, w, hgcdRun, hcOutput, hwRun, hwNorm, hcCanonical,
+      hwCanonical, hcMonic, hwMonic, hcBound, hwBound, hbudget,
+      hcSemantic, hwSemantic⟩
+  rcases strictYunLoopIR_refines_yunLoop this hcfg physical 1 w c #[]
+      hwCanonical hcCanonical hwMonic hcMonic hwBound hcBound
+      (by simpa using hbudget) with
+    ⟨cRem, yunResult, hyunRun, hyunResultSemantic, hcRemSemantic,
+      hcRemCanonical, hcRemMonic, hcRemBound⟩
+  have hyunResultSemantic' : toPolyList yunResult this._p.toNat =
+      (yunLoop (SparsePolyZp.toPoly this._p.toNat w)
+        (SparsePolyZp.toPoly this._p.toNat c) 1 [] hcMonic.ne_zero).1 := by
+    simpa using hyunResultSemantic
+  have hcRemSemantic' : SparsePolyZp.toPoly this._p.toNat cRem =
+      (yunLoop (SparsePolyZp.toPoly this._p.toNat w)
+        (SparsePolyZp.toPoly this._p.toNat c) 1 [] hcMonic.ne_zero).2 := by
+    simpa using hcRemSemantic
+  have hpost := strictYunRemainder_guard_and_derivative this source w c cRem
+    hmonic hcMonic hcRemCanonical hcRemMonic hcRemBound hcSemantic hwSemantic
+    hcRemSemantic'
+  have hcRemDegreeLe := strictYunRemainder_natDegree_le_source this source w c
+    cRem hmonic.ne_zero hcMonic hcSemantic hcRemSemantic'
+  have hsourceNotEmpty : source.isEmpty = false := by
+    have hne : source ≠ #[] := by
+      intro hempty
+      subst source
+      simp at hnonempty
+    simpa [Array.isEmpty_iff, hne]
+  have hdegreeWord : ∀ term ∈ source.toList,
+      term.1.deg < UInt64.size := by
+    intro term hterm
+    obtain ⟨index, hindex, htermEq⟩ := List.mem_iff_getElem.mp hterm
+    have hi : index < source.size := by simpa using hindex
+    have heq : source[index] = term := by
+      rw [← Array.getElem_toList hi]
+      exact htermEq
+    rw [← heq]
+    exact lt_trans (Nat.lt_of_lt_of_le
+      (sparse_degree_lt_denseLength this._p.toNat source hcanonical index hi)
+      hbound) (by native_decide)
+  have hderivativeSemantic := derivativeIR_toPoly this source hcfg hcanonical
+    hdegreeWord
+  have hderivativeNotEmpty : derivative.isEmpty = false := by
+    have hne : derivative ≠ #[] := by
+      intro hempty
+      apply hderivative
+      rw [← hderivativeSemantic]
+      simp [derivative, hempty]
+    simpa [Array.isEmpty_iff, hne]
+  have hprime : source[0]!.2.prime.toNat = this._p.toNat := by
+    have hmem : source[0] ∈ source.toList := Array.getElem_mem_toList hnonempty
+    have hp := (hcanonical.1 source[0] hmem).1
+    simpa [getElem!_pos source 0 hnonempty] using hp
+  by_cases hcRemPositive :
+      0 < (SparsePolyZp.toPoly this._p.toNat cRem).natDegree
+  · have hguard : ((! Array.isEmpty cRem) &&
+        decide (get_deg cRem > (0 : Int64))) = true := hpost.1.mpr hcRemPositive
+    rcases sqfPostYunIR_prepares_recursive_call this hcfg source cRem
+        hcanonical hnonempty hcRemCanonical hcRemMonic hcRemPositive
+        hcRemBound hpost.2 hcRemDegreeLe with
+      ⟨root, hrootRun, hrootCanonical, hrootSemantic, hrootMonic,
+        hmonicRun, hrootDecrease, hrootBound⟩
+    rcases hrecursive cRem root hrootCanonical hrootSemantic hrootMonic
+        hrootBound hrootDecrease with
+      ⟨subfactors, hsubRun, hsubSemantic⟩
+    have hscaledDegree :
+        (SparsePolyZp.toPoly this._p.toNat root).natDegree *
+          this._p.toNat < UInt64.size := by
+      have hp := (Fact.out : Nat.Prime this._p.toNat)
+      have hexpand := Polynomial.expand_contract this._p.toNat hpost.2
+        hp.ne_zero
+      have heq : (SparsePolyZp.toPoly this._p.toNat root).natDegree *
+          this._p.toNat =
+          (SparsePolyZp.toPoly this._p.toNat cRem).natDegree := by
+        rw [hrootSemantic, ← Polynomial.natDegree_expand
+          (R := ZMod this._p.toNat) (p := this._p.toNat), hexpand]
+      rw [heq]
+      have hsourceDegreeLt :
+          (SparsePolyZp.toPoly this._p.toNat source).natDegree < 2 ^ 63 := by
+        rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+          this._p.toNat source hcanonical hnonempty with
+          ⟨hsourceLength, hsourceMeasure⟩
+        rw [hsourceLength, hsourceMeasure] at hbound
+        omega
+      exact lt_trans (lt_of_le_of_lt hcRemDegreeLe hsourceDegreeLt)
+        (by native_decide)
+    let factors := scaleMultiplicityLoop 0 subfactors yunResult
+      source[0]!.2.prime
+    refine ⟨factors, ?_, ?_⟩
+    · simp [strictSquarefreeZpIR, hsourceNotEmpty, derivative,
+        hderivativeNotEmpty, hgcdRun, hcOutput, hwRun, hwNorm, hyunRun,
+        hguard, hrootRun, hmonicRun, hrootDecrease, hsubRun, factors]
+    · have hscaled := scaleMultiplicityLoop_toPolyList_sqfZp_append
+        this._p.toNat subfactors yunResult source[0]!.2.prime
+        (SparsePolyZp.toPoly this._p.toNat root) hprime hsubSemantic
+        hscaledDegree
+      rw [show factors = scaleMultiplicityLoop 0 subfactors yunResult
+          source[0]!.2.prime by rfl, hscaled, hyunResultSemantic']
+      have hsourSqf := show sqfZp
+          (SparsePolyZp.toPoly this._p.toNat source) = _ by
+        rw [sqfZp, dif_neg (Nat.ne_of_gt hpositive), dif_neg hderivative]
+      rw [hsourSqf]
+      simp only [hcSemantic, hwSemantic] at hcRemSemantic' hyunResultSemantic' ⊢
+      rw [← hyunResultSemantic', ← hcRemSemantic', if_pos hcRemPositive,
+        ← hrootSemantic]
+  · have hguardFalse : ((! Array.isEmpty cRem) &&
+        decide (get_deg cRem > (0 : Int64))) = false :=
+      Bool.eq_false_of_not_eq_true (fun htrue =>
+        hcRemPositive (hpost.1.mp htrue))
+    refine ⟨yunResult, ?_, ?_⟩
+    · simp [strictSquarefreeZpIR, hsourceNotEmpty, derivative,
+        hderivativeNotEmpty, hgcdRun, hcOutput, hwRun, hwNorm, hyunRun,
+        hguardFalse]
+    · rw [hyunResultSemantic']
+      have hsourSqf := show sqfZp
+          (SparsePolyZp.toPoly this._p.toNat source) = _ by
+        rw [sqfZp, dif_neg (Nat.ne_of_gt hpositive), dif_neg hderivative]
+      rw [hsourSqf]
+      simp only [hcSemantic, hwSemantic] at hcRemSemantic' ⊢
+      rw [← hcRemSemantic', if_neg hcRemPositive]
+
 end StrictSquarefreeZp
 end Refinement

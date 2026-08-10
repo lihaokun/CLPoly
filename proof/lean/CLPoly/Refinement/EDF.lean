@@ -51,6 +51,15 @@ private theorem certifyRawExec_ok {α : Type} (run : RawExec α) (output : α)
       cases hrun
       exact ⟨⟨output, rfl⟩, rfl, rfl⟩
 
+private theorem certifyRawExec_ok_eq {α : Type} (run : RawExec α)
+    (output : α) (hrun : run = .ok output) :
+    Generated.StrictEDF.certifyRawExec run = .ok ⟨output, hrun⟩ := by
+  cases run with
+  | error fault => simp at hrun
+  | ok value =>
+      cases hrun
+      rfl
+
 /-- Exact execution of the generated C++ base branch.  The theorem refers to
 the generated state machine itself and to the concrete `makeMonic` run; it is
 not an L2 execution fallback. -/
@@ -79,6 +88,28 @@ theorem base_factor_correct
     EDFCorrect f d [f] := by
   have hirreducible := edf_base_irred f d hmonic hd hdegree hfactors
   exact ⟨by simp, by simp [hirreducible, hmonic, hdegree]⟩
+
+/-- Exact raw-to-safe bridge for the odd-characteristic candidate branch.
+The theorem requires, in source order, the actual powmod execution, the actual
+generated subtract-one execution, and the actual GCD execution.  No
+intermediate result can be replaced by an L2 witness. -/
+theorem candidateRun_odd_run
+    (ops : Generated.StrictEDF.EDFRawOps)
+    (f : SparsePolyZp) (d : UInt64) (r hpow hminus factor : SparsePolyZp)
+    (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size)
+    (hodd : (f[0]!.2.prime == 2) = false)
+    (hpowRun : ops.powmod r
+      (((f[0]!.2.prime.toNat : Int) ^ d.toNat - 1) / 2) f = .ok hpow)
+    (hminusRun : Generated.StrictEDF.__upoly_subtract_one_raw_ir hpow
+      f[0]!.2.prime = .ok hminus)
+    (hgcdRun : ops.gcd hminus f = .ok factor) :
+    Generated.StrictEDF.candidateRun ops f d r hbudget = .ok factor := by
+  unfold Generated.StrictEDF.candidateRun
+  simp only [hodd, Bool.false_eq_true, ↓reduceIte]
+  rw [certifyRawExec_ok_eq _ _ hpowRun]
+  simp only
+  rw [certifyRawExec_ok_eq _ _ hminusRun]
+  simp [hgcdRun]
 
 end StrictEDF
 

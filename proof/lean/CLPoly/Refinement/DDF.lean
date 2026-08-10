@@ -316,6 +316,19 @@ def strictMakeMonicIR (this : DenseUPolyZp) (f : SparsePolyZp) :
   | .error fault => .error fault
   | .ok (_, monic) => .ok monic
 
+/-- A canonical monic input takes the actual source early-return branch of
+`__upoly_make_monic` and is returned unchanged. -/
+theorem strictMakeMonicIR_eq_of_monic
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (f : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hnonempty : 0 < f.size)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat f).Monic) :
+    strictMakeMonicIR this f = .ok f := by
+  have hrun := Refinement.StrictSquarefreeZp.upolyMakeMonicIR_eq_of_monic
+    this f hcanonical hnonempty hmonic
+  simp [strictMakeMonicIR, hrun]
+
 /-- The exact two public C++ `polynomial_GCD` branches needed by DDF.  A zero
 left operand takes the source wrapper's copy-and-monic path; otherwise the
 verified dense Euclidean implementation is executed. -/
@@ -691,37 +704,11 @@ cpp2lean-generated effectful DDF shell.  The fields select raw workspaces;
 they do not contain factorization results. -/
 structure DDFRawProviders (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)] where
+  hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this
+  h2p : 2 * this._p.toNat ≤ UInt64.size
   mul : RawMulWorkspaceProvider this
   mod : ∀ modulus, RawModWorkspaceProvider this modulus
   gcd : ∀ left right, RawGCDWorkspace this left right
-  ops : Generated.StrictDDF.DDFRawOps
-  powmod_eq : ops.powmod = fun base e modulus =>
-    strictPowmodIR this base e modulus mul (mod modulus)
-  gcd_eq : ops.gcd = fun left right =>
-    strictDDFGCDIR this left right (gcd left right)
-  makeMonic_eq : ops.makeMonic = strictMakeMonicIR this
-  exactDiv_eq : ops.exactDiv = strictExactDivIR this
-  mod_eq : ops.mod = fun dividend divisor =>
-    strictModIR this dividend divisor ((mod divisor).workspace dividend)
-
-/-- Instantiate every generated DDF operation with its concrete raw execution
-boundary. -/
-def strictDDFRawOps (this : DenseUPolyZp)
-    [Fact (Nat.Prime this._p.toNat)]
-    (providers : DDFRawProviders this) : Generated.StrictDDF.DDFRawOps :=
-  providers.ops
-
-/-- The concrete generated DDF entry with all allocation-owning C++ calls
-bound to raw implementations. -/
-def strictDDFIR (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
-    (providers : DDFRawProviders this) (f : SparsePolyZp)
-    (hinitial : ¬f.isEmpty →
-      providers.ops.Invariant 1 f
-        #[(UMonomial.mk (1 : Int64), Generated.StrictDDF.__make_zp_ir
-          (1 : Int64) f[0]!.2.prime)] #[] f[0]!.2.prime) :
-    RawExec (Array (SparsePolyZp × UInt64)) :=
-  Generated.StrictDDF.__ddf_Zp_raw_ir (strictDDFRawOps this providers) f
-    hinitial
 
 /-- Decode the concrete C++ accumulator into the L2 list consumed by
 `ddfLoop_correct`. -/
@@ -1345,6 +1332,241 @@ theorem DDFLoopInvariant.split
     · exact hgdCanonical
   · rw [hdIncrement]
     omega
+
+/-- Execute and refine the common powmod/subtract-X/public-GCD prefix of one
+active generated DDF iteration.  Every returned witness is identified by an
+actual `.ok` execution equation. -/
+set_option maxHeartbeats 0 in
+theorem strictDDFRawPrefix
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this)
+    (original : Polynomial (ZMod this._p.toNat))
+    (d : UInt64) (fStar h : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64)) (prime : UInt64)
+    (hinvariant : DDFLoopInvariant this original d fStar h result prime)
+    (hactive : ¬get_deg fStar < (2 * d).toInt64) :
+    ∃ hPow gdRaw,
+      strictPowmodIR this h prime.toNat fStar providers.mul
+          (providers.mod fStar) = .ok hPow ∧
+      strictDDFGCDIR this
+          (Generated.StrictDDF.__upoly_subtract_x_ir hPow prime) fStar
+          (providers.gcd
+            (Generated.StrictDDF.__upoly_subtract_x_ir hPow prime) fStar) =
+        .ok gdRaw ∧
+      SparsePolyZp.Canonical this._p.toNat hPow ∧
+      SparsePolyZp.toPoly this._p.toNat hPow =
+        SparsePolyZp.toPoly this._p.toNat h ^ this._p.toNat %ₘ
+          SparsePolyZp.toPoly this._p.toNat fStar ∧
+      SparsePolyZp.Canonical this._p.toNat gdRaw ∧
+      SparsePolyZp.toPoly this._p.toNat gdRaw = normalize
+        (EuclideanDomain.gcd
+          (SparsePolyZp.toPoly this._p.toNat hPow - Polynomial.X)
+          (SparsePolyZp.toPoly this._p.toNat fStar)) := by
+  have hprime : prime = this._p := hinvariant.prime_eq
+  have hfNonzero : SparsePolyZp.toPoly this._p.toNat fStar ≠ 0 :=
+    hinvariant.p3.ne_zero
+  have hfNonempty :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+      this._p.toNat fStar hfNonzero
+  have hfDegree : (SparsePolyZp.toPoly this._p.toNat fStar).natDegree <
+      2 ^ 62 := canonical_natDegree_lt_of_terms_lt this._p.toNat fStar
+        hinvariant.fStar_canonical hfNonzero (2 ^ 62)
+        hinvariant.fStar_degree_bound
+  have hactiveNat := strict_ddf_active_degree_ge this._p.toNat d fStar
+    hinvariant.d_bound (lt_of_lt_of_le hinvariant.p0 (Nat.le_refl _))
+    hinvariant.fStar_canonical hfNonempty (lt_trans hfDegree (by norm_num))
+    hactive
+  have hfPositive : 0 <
+      (SparsePolyZp.toPoly this._p.toNat fStar).natDegree := by
+    have := hinvariant.p0
+    omega
+  rcases strictPowmodIR_refines this providers.hcfg h prime.toNat fStar
+      providers.mul (providers.mod fStar) hinvariant.h_canonical
+      hinvariant.fStar_canonical hfNonempty hinvariant.p3 hfPositive with
+    ⟨hPow, hpowRun, hPowCanonical, hPowSemanticRaw⟩
+  have hPowSemantic : SparsePolyZp.toPoly this._p.toNat hPow =
+      SparsePolyZp.toPoly this._p.toNat h ^ this._p.toNat %ₘ
+        SparsePolyZp.toPoly this._p.toNat fStar := by
+    simpa [hprime] using hPowSemanticRaw
+  have hPowDegreeLe :
+      (SparsePolyZp.toPoly this._p.toNat hPow).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat fStar).natDegree := by
+    rw [hPowSemantic]
+    exact Polynomial.natDegree_modByMonic_le _ hinvariant.p3
+  have hPowDegree :
+      (SparsePolyZp.toPoly this._p.toNat hPow).natDegree < 2 ^ 62 :=
+    lt_of_le_of_lt hPowDegreeLe hfDegree
+  have hPowTerms : ∀ term ∈ hPow.toList, term.1.deg < 2 ^ 63 := by
+    intro term hterm
+    exact lt_trans (lt_of_le_of_lt
+      (canonical_term_degree_le_natDegree this._p.toNat hPow
+        hPowCanonical term hterm) hPowDegree) (by norm_num)
+  have hprimeNat : prime.toNat = this._p.toNat := by rw [hprime]
+  have hsubtractCanonical := __upoly_subtract_x_ir_canonical hPow prime
+    hprime hPowCanonical hPowTerms
+  have hsubtractSemantic := strict_upoly_subtract_x_refines providers.h2p
+    hPow prime hprimeNat ((canonicalRep_iff_canonical hPow).mpr
+      hPowCanonical) hPowTerms
+  rcases strictDDFGCDIR_refines this
+      (Generated.StrictDDF.__upoly_subtract_x_ir hPow this._p) fStar
+      (providers.gcd
+        (Generated.StrictDDF.__upoly_subtract_x_ir hPow this._p) fStar)
+      (by simpa [hprime] using hsubtractCanonical)
+      hinvariant.fStar_canonical hfNonempty hinvariant.p3 with
+    ⟨gdRaw, hgcdRun, hgdCanonical, hgdSemanticRaw⟩
+  have hgcdRunPrime : strictDDFGCDIR this
+      (Generated.StrictDDF.__upoly_subtract_x_ir hPow prime) fStar
+      (providers.gcd
+        (Generated.StrictDDF.__upoly_subtract_x_ir hPow prime) fStar) =
+      .ok gdRaw := by simpa [hprime] using hgcdRun
+  refine ⟨hPow, gdRaw, hpowRun, hgcdRunPrime, hPowCanonical,
+    hPowSemantic, hgdCanonical, ?_⟩
+  rw [hgdSemanticRaw]
+  simpa [hprime] using congrArg (fun poly => normalize
+    (EuclideanDomain.gcd poly
+      (SparsePolyZp.toPoly this._p.toNat fStar))) hsubtractSemantic
+
+/-- The unique concrete operation record supplied to the generated DDF shell.
+All computational fields execute raw C++ refinements; both proof fields are
+discharged from those executions and `DDFLoopInvariant`, not supplied by a
+caller. -/
+set_option maxHeartbeats 0 in
+noncomputable def strictDDFRawOps
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this)
+    (original : Polynomial (ZMod this._p.toNat)) :
+    Generated.StrictDDF.DDFRawOps where
+  powmod := fun base e modulus =>
+    strictPowmodIR this base e modulus providers.mul (providers.mod modulus)
+  gcd := fun left right =>
+    strictDDFGCDIR this left right (providers.gcd left right)
+  makeMonic := strictMakeMonicIR this
+  exactDiv := strictExactDivIR this
+  mod := fun dividend divisor =>
+    strictModIR this dividend divisor
+      ((providers.mod divisor).workspace dividend)
+  Invariant := DDFLoopInvariant this original
+  splitStep := by
+    intro d fStar h result prime hPow gdRaw gd quotient hNext
+    intro hinvariant hactive hpowRun hgcdRun hsplit hmonicRun hdivRun hmodRun
+    rcases strictDDFRawPrefix this providers original d fStar h result prime
+        hinvariant hactive with
+      ⟨hPow', gdRaw', hpowRun', hgcdRun', hPowCanonical,
+        hPowSemantic, hgdCanonical, hgdSemantic⟩
+    have hPowEq : hPow' = hPow :=
+      Except.ok.inj (hpowRun'.symm.trans hpowRun)
+    subst hPow'
+    have hgdEq : gdRaw' = gdRaw :=
+      Except.ok.inj (hgcdRun'.symm.trans hgcdRun)
+    subst gdRaw'
+    have hfNonzero : SparsePolyZp.toPoly this._p.toNat fStar ≠ 0 :=
+      hinvariant.p3.ne_zero
+    have hfDegree : (SparsePolyZp.toPoly this._p.toNat fStar).natDegree <
+        2 ^ 62 := canonical_natDegree_lt_of_terms_lt this._p.toNat fStar
+          hinvariant.fStar_canonical hfNonzero (2 ^ 62)
+          hinvariant.fStar_degree_bound
+    have hgcdRawNonzero : EuclideanDomain.gcd
+        (SparsePolyZp.toPoly this._p.toNat hPow - Polynomial.X)
+        (SparsePolyZp.toPoly this._p.toNat fStar) ≠ 0 := by
+      intro hzero
+      have hright := EuclideanDomain.gcd_dvd_right
+        (SparsePolyZp.toPoly this._p.toNat hPow - Polynomial.X)
+        (SparsePolyZp.toPoly this._p.toNat fStar)
+      rw [hzero] at hright
+      exact hfNonzero (zero_dvd_iff.mp hright)
+    have hgdNonzero : SparsePolyZp.toPoly this._p.toNat gdRaw ≠ 0 := by
+      rw [hgdSemantic]
+      exact mt normalize_eq_zero.mp hgcdRawNonzero
+    have hgdMonic : (SparsePolyZp.toPoly this._p.toNat gdRaw).Monic := by
+      rw [hgdSemantic]
+      exact Polynomial.monic_normalize hgcdRawNonzero
+    have hgdDvd : SparsePolyZp.toPoly this._p.toNat gdRaw ∣
+        SparsePolyZp.toPoly this._p.toNat fStar := by
+      rw [hgdSemantic]
+      exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right _ _)
+    have hgdDegreeLe :
+        (SparsePolyZp.toPoly this._p.toNat gdRaw).natDegree ≤
+          (SparsePolyZp.toPoly this._p.toNat fStar).natDegree :=
+      Polynomial.natDegree_le_of_dvd hgdDvd hfNonzero
+    have hgdDegree :
+        (SparsePolyZp.toPoly this._p.toNat gdRaw).natDegree < 2 ^ 63 :=
+      lt_of_le_of_lt hgdDegreeLe (lt_trans hfDegree (by norm_num))
+    have hsplitParts : gdRaw.isEmpty = false ∧ get_deg gdRaw > 0 := by
+      simpa using hsplit
+    have hgdPositive :
+        0 < (SparsePolyZp.toPoly this._p.toNat gdRaw).natDegree :=
+      (strict_get_deg_pos_iff_natDegree_pos this._p.toNat gdRaw
+        hgdCanonical hgdDegree).mp hsplitParts.2
+    have hgdNonempty :=
+      Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+        this._p.toNat gdRaw hgdNonzero
+    have hmonicActual := strictMakeMonicIR_eq_of_monic this gdRaw
+      hgdCanonical hgdNonempty hgdMonic
+    have hgdOutEq : gd = gdRaw :=
+      Except.ok.inj (hmonicRun.symm.trans hmonicActual)
+    subst gd
+    rcases strictExactDivIR_refines this fStar gdRaw providers.hcfg
+        hinvariant.fStar_canonical hgdCanonical hgdNonempty hgdMonic hgdDvd with
+      ⟨quotient', hdivRun', hquotientCanonical, hquotientSemantic⟩
+    have hquotientEq : quotient' = quotient :=
+      Except.ok.inj (hdivRun'.symm.trans hdivRun)
+    subst quotient'
+    have hnormalization : SparsePolyZp.normalization quotient = quotient :=
+      Refinement.StrictSquarefreeZp.sparsePolyZp_normalization_eq_of_canonical
+        this._p.toNat quotient hquotientCanonical
+    have hfNextMonic :
+        (SparsePolyZp.toPoly this._p.toNat quotient).Monic := by
+      rw [hquotientSemantic]
+      exact Refinement.StrictSquarefreeZp.divByMonic_monic_of_monic_of_dvd
+        (SparsePolyZp.toPoly this._p.toNat fStar)
+        (SparsePolyZp.toPoly this._p.toNat gdRaw) hinvariant.p3
+        hgdMonic hgdDvd
+    have hfNextNonempty :=
+      Refinement.StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+        this._p.toNat quotient hfNextMonic.ne_zero
+    rcases strictModIR_refines_modByMonic this providers.hcfg hPow quotient
+        ((providers.mod quotient).workspace hPow) hPowCanonical
+        hquotientCanonical hfNextNonempty hfNextMonic with
+      ⟨hNext', hmodRun', hNextCanonical, hNextSemantic⟩
+    have hNextEq : hNext' = hNext :=
+      Except.ok.inj (hmodRun'.symm.trans (by
+        simpa [hnormalization] using hmodRun))
+    subst hNext'
+    simpa [hnormalization] using
+      DDFLoopInvariant.split this original d fStar h result prime hPow
+        gdRaw quotient hNext hinvariant hactive hPowCanonical hPowSemantic
+        hgdCanonical hgdSemantic hgdPositive hquotientCanonical
+        hquotientSemantic hNextCanonical hNextSemantic
+  noSplitStep := by
+    intro d fStar h result prime hPow gdRaw
+    intro hinvariant hactive hpowRun hgcdRun hnoSplit
+    rcases strictDDFRawPrefix this providers original d fStar h result prime
+        hinvariant hactive with
+      ⟨hPow', gdRaw', hpowRun', hgcdRun', hPowCanonical,
+        hPowSemantic, hgdCanonical, hgdSemantic⟩
+    have hPowEq : hPow' = hPow :=
+      Except.ok.inj (hpowRun'.symm.trans hpowRun)
+    subst hPow'
+    have hgdEq : gdRaw' = gdRaw :=
+      Except.ok.inj (hgcdRun'.symm.trans hgcdRun)
+    subst gdRaw'
+    exact DDFLoopInvariant.noSplit this original d fStar h result prime
+      hPow gdRaw hinvariant hactive hPowCanonical hPowSemantic
+      hgdCanonical hgdSemantic hnoSplit
+
+/-- The concrete generated DDF entry with every allocation-owning call bound
+to its raw implementation and every recursive obligation discharged by the
+proved invariant. -/
+noncomputable def strictDDFIR
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : DDFRawProviders this)
+    (original : Polynomial (ZMod this._p.toNat)) (f : SparsePolyZp)
+    (hinitial : ¬f.isEmpty → DDFLoopInvariant this original 1 f
+      #[(UMonomial.mk (1 : Int64), Generated.StrictDDF.__make_zp_ir
+        (1 : Int64) f[0]!.2.prime)] #[] f[0]!.2.prime) :
+    RawExec (Array (SparsePolyZp × UInt64)) :=
+  Generated.StrictDDF.__ddf_Zp_raw_ir
+    (strictDDFRawOps this providers original) f hinitial
 
 private lemma modByMonic_idem {p : Nat} [Fact (Nat.Prime p)]
     (a m : Polynomial (ZMod p))

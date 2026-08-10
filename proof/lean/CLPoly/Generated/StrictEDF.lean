@@ -154,36 +154,6 @@ def candidateRun {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (d : 
       | .error fault => .error fault
       | .ok hminus => ops.gcd hminus.val f
 
-structure EDFRetryLaw {State : Type} (ops : EDFRawOps State) where
-  RetryInvariant : SparsePolyZp → UInt64 → State → Prop
-  retryRank : SparsePolyZp → UInt64 → State → Nat
-  retryDegreePositive : ∀ (f : SparsePolyZp) (d : UInt64) (rng : State),
-    RetryInvariant f d rng → 0 < d.toNat
-  retryInitial : ∀ (f : SparsePolyZp) (d : UInt64) (rng : State),
-    ops.EntryInvariant f d → RetryInvariant f d rng
-  emptyRetry : ∀ (f : SparsePolyZp) (d : UInt64) (rng : State)
-      (r : SparsePolyZp) (rngNext : State),
-    RetryInvariant f d rng →
-    ops.random (get_deg f) f[0]!.2.prime rng = .ok (r, rngNext) →
-    r.isEmpty = true →
-    RetryInvariant f d rngNext ∧
-      retryRank f d rngNext < retryRank f d rng
-  failedRetry : ∀ (f : SparsePolyZp) (d : UInt64) (rng : State)
-      (r : SparsePolyZp) (rngNext : State) (candidate : SparsePolyZp)
-      (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size),
-    RetryInvariant f d rng →
-    ops.random (get_deg f) f[0]!.2.prime rng = .ok (r, rngNext) →
-    r.isEmpty = false →
-    candidateRun ops f d r hbudget = .ok candidate →
-    ¬(get_deg candidate > 0 ∧ get_deg candidate < get_deg f) →
-    RetryInvariant f d rngNext ∧
-      retryRank f d rngNext < retryRank f d rng
-
-structure RetryState {State : Type} (ops : EDFRawOps State) (law : EDFRetryLaw ops)
-    (f : SparsePolyZp) (d : UInt64) where
-  rng : State
-  valid : law.RetryInvariant f d rng
-
 structure SplitState {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (d : UInt64) where
   factor : SparsePolyZp
   rngBefore : State
@@ -195,53 +165,51 @@ structure SplitState {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (
   nonempty : factor.isEmpty = false
   proper : get_deg factor > 0 ∧ get_deg factor < get_deg f
 
-def retryLoop {State : Type} (ops : EDFRawOps State) (law : EDFRetryLaw ops)
-    (f : SparsePolyZp) (d : UInt64)
-    (state : RetryState ops law f d) : RawExec (SplitState ops f d) :=
-  match certifyRawExec (ops.random (get_deg f) f[0]!.2.prime state.rng) with
-  | .error fault => .error fault
-  | .ok hrandom =>
-    let r := hrandom.val.1
-    let rngNext := hrandom.val.2
-    have hrandomRun := hrandom.property
-    match certifyBool r.isEmpty with
-    | ⟨true, hrempty⟩ =>
-      have hretry := law.emptyRetry f d state.rng r rngNext state.valid
-        hrandomRun hrempty
-      retryLoop ops law f d ⟨rngNext, hretry.1⟩
-    | ⟨false, hrnonempty⟩ =>
-      have hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size :=
-        ⟨law.retryDegreePositive f d state.rng state.valid, d.toNat_lt_size⟩
-      match certifyRawExec (candidateRun ops f d r hbudget) with
-      | .error fault => .error fault
-      | .ok hcandidate =>
-        let candidate := hcandidate.val
-        match certifyBool (!candidate.isEmpty && get_deg candidate > 0 &&
-            get_deg candidate < get_deg f) with
-        | ⟨true, hproper⟩ =>
-          have hp : (candidate.isEmpty = false ∧ get_deg candidate > 0) ∧
-              get_deg candidate < get_deg f := by
-            simpa [Bool.and_eq_true] using hproper
-          .ok ⟨candidate, state.rng, rngNext, r, hrandomRun,
-            ⟨hbudget, hcandidate.property⟩, hp.1.1, ⟨hp.1.2, hp.2⟩⟩
-        | ⟨false, hfailed⟩ =>
-          have hretry := law.failedRetry f d state.rng r rngNext candidate
-            hbudget state.valid hrandomRun hrnonempty hcandidate.property (by
-              intro hproper
-              have hcne : candidate ≠ #[] := by
-                intro hempty
-                rw [hempty] at hproper
-                simp [get_deg] at hproper
-              have hcempty : candidate.isEmpty = false := by
-                simpa [Array.isEmpty_iff]
-              have : (!candidate.isEmpty && get_deg candidate > 0 &&
-                  get_deg candidate < get_deg f) = true := by
-                simp [hcempty, hproper]
-              rw [hfailed] at this
-              contradiction)
-          retryLoop ops law f d ⟨rngNext, hretry.1⟩
-termination_by law.retryRank f d state.rng
-decreasing_by all_goals exact hretry.2
+/-- Finite, exact big-step evidence for one terminating execution of the C++
+`while (true)` retry loop.  Every constructor stores the concrete random and
+candidate executions.  Recursion is structural on this trace, not on a
+bounded retry counter or
+an externally invented rank. -/
+inductive RetryTrace {State : Type} (ops : EDFRawOps State)
+    (f : SparsePolyZp) (d : UInt64) : State → Type
+  | empty (rng : State) (r : SparsePolyZp) (rngNext : State)
+      (randomRun : ops.random (get_deg f) f[0]!.2.prime rng =
+        .ok (r, rngNext))
+      (isEmpty : r.isEmpty = true)
+      (next : RetryTrace ops f d rngNext) : RetryTrace ops f d rng
+  | failed (rng : State) (r : SparsePolyZp) (rngNext : State)
+      (candidate : SparsePolyZp)
+      (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size)
+      (randomRun : ops.random (get_deg f) f[0]!.2.prime rng =
+        .ok (r, rngNext))
+      (randomNonempty : r.isEmpty = false)
+      (candidateExec : candidateRun ops f d r hbudget = .ok candidate)
+      (notProper : ¬(get_deg candidate > 0 ∧
+        get_deg candidate < get_deg f))
+      (next : RetryTrace ops f d rngNext) : RetryTrace ops f d rng
+  | success (rng : State) (r : SparsePolyZp) (rngNext : State)
+      (candidate : SparsePolyZp)
+      (hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size)
+      (randomRun : ops.random (get_deg f) f[0]!.2.prime rng =
+        .ok (r, rngNext))
+      (randomNonempty : r.isEmpty = false)
+      (candidateExec : candidateRun ops f d r hbudget = .ok candidate)
+      (candidateNonempty : candidate.isEmpty = false)
+      (proper : get_deg candidate > 0 ∧ get_deg candidate < get_deg f) :
+      RetryTrace ops f d rng
+
+/-- Execute the retry loop by structurally consuming its exact C++ trace. -/
+def retryLoop {State : Type} (ops : EDFRawOps State)
+    (f : SparsePolyZp) (d : UInt64) (rng : State)
+    (trace : RetryTrace ops f d rng) : RawExec (SplitState ops f d) :=
+  match trace with
+  | .empty _ _ rngNext _ _ next => retryLoop ops f d rngNext next
+  | .failed _ _ rngNext _ _ _ _ _ _ next =>
+      retryLoop ops f d rngNext next
+  | .success rng r rngNext candidate hbudget randomRun _ candidateExec
+      candidateNonempty proper =>
+      .ok ⟨candidate, rng, rngNext, r, randomRun,
+        ⟨hbudget, candidateExec⟩, candidateNonempty, proper⟩
 
 structure EDFState {State : Type} (ops : EDFRawOps State) where
   result : Array SparsePolyZp
@@ -250,7 +218,13 @@ structure EDFState {State : Type} (ops : EDFRawOps State) where
   rng : State
   valid : ops.EntryInvariant f d
 
-def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State) (law : EDFRetryLaw ops)
+/-- Termination evidence for each retry loop reached by recursive EDF.  Its
+only payload is an exact finite source execution trace. -/
+structure EDFTermination {State : Type} (ops : EDFRawOps State) where
+  retryTrace : ∀ f d rng, ops.EntryInvariant f d → RetryTrace ops f d rng
+
+def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State)
+    (termination : EDFTermination ops)
     (state : EDFState ops) :
     RawExec (Array SparsePolyZp × State) :=
   if (get_deg state.f).toUInt64 == state.d then
@@ -260,8 +234,8 @@ def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State) (law : EDFRetry
   else if get_deg state.f ≤ 0 then
     .ok (state.result, state.rng)
   else
-    match retryLoop ops law state.f state.d
-        ⟨state.rng, law.retryInitial state.f state.d state.rng state.valid⟩ with
+    match retryLoop ops state.f state.d state.rng
+        (termination.retryTrace state.f state.d state.rng state.valid) with
     | .error fault => .error fault
     | .ok split =>
       match certifyRawExec (ops.exactDiv state.f split.factor) with
@@ -276,21 +250,22 @@ def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State) (law : EDFRetry
             have hstep := ops.splitStep state.f state.d split.factor hhRaw.val
               hgMonic.val hhMonic.val state.valid hhRaw.property
               hgMonic.property hhMonic.property
-            match __edf_Zp_raw_ir_state ops law
+            match __edf_Zp_raw_ir_state ops termination
                 ⟨state.result, hgMonic.val, state.d, split.rng, hstep.1⟩ with
             | .error fault => .error fault
             | .ok leftRun =>
-              __edf_Zp_raw_ir_state ops law
+              __edf_Zp_raw_ir_state ops termination
                 ⟨leftRun.1, hhMonic.val, state.d, leftRun.2, hstep.2.1⟩
 termination_by edfMeasure state.f
 decreasing_by
   · exact hstep.2.2.1
   · exact hstep.2.2.2
 
-def __edf_Zp_raw_ir {State : Type} (ops : EDFRawOps State) (law : EDFRetryLaw ops)
+def __edf_Zp_raw_ir {State : Type} (ops : EDFRawOps State)
+    (termination : EDFTermination ops)
     (result : Array SparsePolyZp)
     (f : SparsePolyZp) (d : UInt64) (rng : State)
     (hinitial : ops.EntryInvariant f d) : RawExec (Array SparsePolyZp × State) :=
-  __edf_Zp_raw_ir_state ops law ⟨result, f, d, rng, hinitial⟩
+  __edf_Zp_raw_ir_state ops termination ⟨result, f, d, rng, hinitial⟩
 
 end Generated.StrictEDF

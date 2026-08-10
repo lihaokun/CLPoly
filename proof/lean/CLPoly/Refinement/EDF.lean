@@ -67,11 +67,11 @@ the generated state machine itself and to the concrete `makeMonic` run; it is
 not an L2 execution fallback. -/
 theorem rawState_base_run
     {State : Type} (ops : Generated.StrictEDF.EDFRawOps State)
-    (law : Generated.StrictEDF.EDFRetryLaw ops)
+    (termination : Generated.StrictEDF.EDFTermination ops)
     (state : Generated.StrictEDF.EDFState ops)
     (hdegree : ((get_deg state.f).toUInt64 == state.d) = true)
     (hmonic : ops.makeMonic state.f = .ok state.f) :
-    Generated.StrictEDF.__edf_Zp_raw_ir_state ops law state =
+    Generated.StrictEDF.__edf_Zp_raw_ir_state ops termination state =
       .ok (state.result.push state.f, state.rng) := by
   rw [Generated.StrictEDF.__edf_Zp_raw_ir_state.eq_1]
   simp only [hdegree, ↓reduceIte]
@@ -112,6 +112,26 @@ theorem candidateRun_odd_run
   simp only
   rw [certifyRawExec_ok_eq _ _ hminusRun]
   simp [hgcdRun]
+
+/-- A finite exact retry trace is the raw-to-safe termination bridge for the
+C++ `while (true)` loop.  The returned split retains the successful random
+and candidate executions; the theorem does not synthesize a factor. -/
+theorem retryLoop_terminates
+    {State : Type} (ops : Generated.StrictEDF.EDFRawOps State)
+    (f : SparsePolyZp) (d : UInt64) (rng : State)
+    (trace : Generated.StrictEDF.RetryTrace ops f d rng) :
+    ∃ split,
+      Generated.StrictEDF.retryLoop ops f d rng trace = .ok split := by
+  induction trace with
+  | empty rng r rngNext randomRun isEmpty next ih =>
+      simpa [Generated.StrictEDF.retryLoop] using ih
+  | failed rng r rngNext candidate hbudget randomRun randomNonempty
+      candidateExec notProper next ih =>
+      simpa [Generated.StrictEDF.retryLoop] using ih
+  | success rng r rngNext candidate hbudget randomRun randomNonempty
+      candidateExec candidateNonempty proper =>
+      exact ⟨⟨candidate, rng, rngNext, r, randomRun,
+        ⟨hbudget, candidateExec⟩, candidateNonempty, proper⟩, rfl⟩
 
 /-- Concrete odd-characteristic candidate pipeline assembled exclusively from
 strict C++ raw boundaries already used by DDF, plus the generated EDF

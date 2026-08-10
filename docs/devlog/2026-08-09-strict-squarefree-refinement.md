@@ -1367,3 +1367,11 @@ every generated range-for and recursive loop used by SQF.
   bubble 相同的 parent 严格下降递归，证明 root-directed insertion shift 不会
   fault。下一步闭合 `FindAnchor` 与 trace-directed `BubbleBelow`，再组合完整
   `VHCInsert`、ActivateReset 和 ReinsertLin。
+- insertion 的 anchor-search 与 below-anchor shift totality 已闭合。
+  `pairVecDivVHCFindAnchor_succeeds` 从每个 heap slot 的真实 active-mono
+  读取及 `newDegree ≤ rootDegree` 推出搜索必返回：若比较一直严格上升到
+  root，root 上界直接排除源码的 zero-index assertionFailure；递归度量是
+  实际 parent index。`PairVecDivVHCFindAnchorTrace.bubbleBelow_succeeds` 随后
+  对成功搜索产生的 concrete comparison trace 归纳，证明 appended hole 的
+  parent 恰沿 trace 走到 anchor，并在真实 stop 条件写入新节点。两者均未
+  引入搜索步数预算或预定 anchor。

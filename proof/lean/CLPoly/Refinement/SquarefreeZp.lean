@@ -1002,6 +1002,46 @@ decreasing_by
   have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
   omega
 
+theorem pairVecDivVHCFindAnchor_succeeds
+    (newDegree i : Nat) (heap : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (rootMono : UMonomial)
+    (hi : i < heap.size)
+    (hnonempty : 0 < heap.size)
+    (hreads : ∀ (slot : Nat) (hslot : slot < heap.size),
+      ∃ mono, pairVecDivVHCMono (heap[slot]'hslot) nodes = .ok mono)
+    (hroot : pairVecDivVHCMono (heap[0]'hnonempty) nodes = .ok rootMono)
+    (hleRoot : newDegree ≤ rootMono.deg) :
+    ∃ anchor, pairVecDivVHCFindAnchor newDegree i heap nodes = .ok anchor := by
+  rw [pairVecDivVHCFindAnchor]
+  simp only [hi, ↓reduceDIte]
+  rcases hreads i hi with ⟨mono, hmono⟩
+  simp only [hmono]
+  by_cases hgreater : newDegree > mono.deg
+  · simp only [hgreater, ↓reduceIte]
+    have hne : i ≠ 0 := by
+      intro heq
+      subst i
+      rw [hroot] at hmono
+      have hm : mono = rootMono := (Except.ok.inj hmono).symm
+      subst mono
+      omega
+    simp only [hne, ↓reduceIte]
+    have hpos : 0 < i := Nat.pos_of_ne_zero hne
+    have hparentLt : pairVecDivVHCParent i < i := by
+      unfold pairVecDivVHCParent
+      have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+      omega
+    exact pairVecDivVHCFindAnchor_succeeds newDegree
+      (pairVecDivVHCParent i) heap nodes rootMono (Nat.lt_trans hparentLt hi)
+      hnonempty hreads hroot hleRoot
+  · simp only [hgreater, ↓reduceIte]
+    exact ⟨i, rfl⟩
+termination_by i
+decreasing_by
+  unfold pairVecDivVHCParent
+  have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+  omega
+
 /-- Exact comparison trace of the generated upward anchor search.  A climb
 records that the visited key is strictly below the new degree; the stop records
 the first ancestor whose key is at least the new degree. -/
@@ -1155,6 +1195,41 @@ decreasing_by
   unfold pairVecDivVHCParent
   have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
   omega
+
+theorem PairVecDivVHCFindAnchorTrace.bubbleBelow_succeeds
+    (newDegree : Nat) (source : Array Nat)
+    (nodes : Array PairVecDivVHCNode) (current anchor : Nat)
+    (htrace : PairVecDivVHCFindAnchorTrace newDegree source nodes current anchor)
+    (i newNode : Nat) (heap : Array Nat)
+    (hi : i < heap.size) (hpos : 0 < i)
+    (hparent : pairVecDivVHCParent i = current) :
+    ∃ heap', pairVecDivVHCBubbleBelow i anchor newNode heap = .ok heap' := by
+  induction htrace generalizing i heap with
+  | stop current head mono hhead hmono hle =>
+      rw [pairVecDivVHCBubbleBelow]
+      simp only [hi, hpos, ↓reduceDIte, hparent, ↓reduceIte]
+      exact ⟨_, rfl⟩
+  | climb current head anchor mono hhead hmono hlt hcurrentPos htail ih =>
+      rw [pairVecDivVHCBubbleBelow]
+      simp only [hi, hpos, ↓reduceDIte, hparent]
+      have hparentCurrentLt : pairVecDivVHCParent current < current := by
+        unfold pairVecDivVHCParent
+        have hhalf : (current - 1) / 2 ≤ current - 1 := Nat.div_le_self _ _
+        omega
+      have hanchorLeParent := htail.anchor_le_start newDegree source nodes
+        (pairVecDivVHCParent current) anchor
+      have hne : current ≠ anchor := by omega
+      simp only [hne, ↓reduceIte]
+      have hcurrentBound : current < heap.size := by
+        rw [← hparent]
+        have hparentLt : pairVecDivVHCParent i < i := by
+          unfold pairVecDivVHCParent
+          have hhalf : (i - 1) / 2 ≤ i - 1 := Nat.div_le_self _ _
+          omega
+        exact Nat.lt_trans hparentLt hi
+      simp only [hcurrentBound, ↓reduceDIte]
+      exact ih current (heap.set i heap[current])
+        (by simpa only [Array.size_set] using hcurrentBound) hcurrentPos rfl
 
 /-- Exact checked execution of current C++ `VHC_insert`.  Heap cells contain
 indices into the separately allocated node array; equal-degree entries are

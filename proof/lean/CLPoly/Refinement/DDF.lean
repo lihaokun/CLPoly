@@ -667,10 +667,98 @@ def strictDDFIR (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hinitial : ¬f.isEmpty →
       providers.ops.Invariant 1 f
         #[(UMonomial.mk (1 : Int64), Generated.StrictDDF.__make_zp_ir
-          (1 : Int64) f[0]!.2.prime)] f[0]!.2.prime) :
+          (1 : Int64) f[0]!.2.prime)] #[] f[0]!.2.prime) :
     RawExec (Array (SparsePolyZp × UInt64)) :=
   Generated.StrictDDF.__ddf_Zp_raw_ir (strictDDFRawOps this providers) f
     hinitial
+
+/-- Decode the concrete C++ accumulator into the L2 list consumed by
+`ddfLoop_correct`. -/
+noncomputable def ddfResultToL2 (p : Nat)
+    (result : Array (SparsePolyZp × UInt64)) :
+    List (Polynomial (ZMod p) × Nat) :=
+  result.toList.map fun item =>
+    (SparsePolyZp.toPoly p item.1, item.2.toNat)
+
+/-- Full representation-and-mathematical invariant for the generated DDF
+loop.  The final seven fields are exactly P0–P6 of `ddfLoop_correct`; the
+preceding fields justify every machine-word and sparse-array operation. -/
+structure DDFLoopInvariant (this : DenseUPolyZp)
+    (original : Polynomial (ZMod this._p.toNat))
+    (d : UInt64) (fStar h : SparsePolyZp)
+    (result : Array (SparsePolyZp × UInt64)) (prime : UInt64) : Prop where
+  prime_eq : prime = this._p
+  d_bound : d.toNat < 2 ^ 63
+  fStar_canonical : SparsePolyZp.Canonical this._p.toNat fStar
+  h_canonical : SparsePolyZp.Canonical this._p.toNat h
+  fStar_degree_bound : ∀ term ∈ fStar.toList, term.1.deg < 2 ^ 63
+  h_degree_bound : ∀ term ∈ h.toList, term.1.deg < 2 ^ 63
+  result_canonical : ∀ item ∈ result.toList,
+    SparsePolyZp.Canonical this._p.toNat item.1
+  p0 : 1 ≤ d.toNat
+  p1 : original = SparsePolyZp.toPoly this._p.toNat fStar *
+    ((ddfResultToL2 this._p.toNat result).map Prod.fst).prod
+  p2 : SparsePolyZp.toPoly this._p.toNat fStar ∣
+    (SparsePolyZp.toPoly this._p.toNat h -
+      Polynomial.X ^ (this._p.toNat ^ (d.toNat - 1)))
+  p3 : (SparsePolyZp.toPoly this._p.toNat fStar).Monic
+  p4 : Squarefree (SparsePolyZp.toPoly this._p.toNat fStar)
+  p5 : ∀ q : Polynomial (ZMod this._p.toNat),
+    Irreducible q → q ∣ SparsePolyZp.toPoly this._p.toNat fStar →
+      d.toNat ≤ q.natDegree
+  p6 : ∀ item ∈ ddfResultToL2 this._p.toNat result,
+    item.1 ∣ original ∧ item.1.Monic ∧
+      (∀ q : Polynomial (ZMod this._p.toNat),
+        Irreducible q → q ∣ item.1 → q.natDegree = item.2)
+
+/-- The exact C++ initial state `d = 1`, `fStar = f`, `h = X`, empty
+accumulator satisfies every representation condition and P0–P6. -/
+theorem DDFLoopInvariant.initial
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (f : SparsePolyZp) (q : UInt64) (hq : q = this._p)
+    (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 63)
+    (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic)
+    (hfSquarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)) :
+    DDFLoopInvariant this (SparsePolyZp.toPoly this._p.toNat f) 1 f
+      #[(UMonomial.mk (1 : Int64),
+        Generated.StrictDDF.__make_zp_ir (1 : Int64) q)] #[] q := by
+  have hqNat : q.toNat = this._p.toNat := by rw [hq]
+  have hx := Refinement.strict_singleton_x_data
+    (p := this._p.toNat) q hqNat
+  have hxCanonical : SparsePolyZp.Canonical this._p.toNat
+      (#[(UMonomial.mk (1 : Int64),
+        Generated.StrictDDF.__make_zp_ir (1 : Int64) q)] : SparsePolyZp) := by
+    apply (canonicalRep_iff_canonical _).mp
+    simpa [Generated.StrictDDF.__make_zp_ir] using hx.1
+  have hxSemantic : SparsePolyZp.toPoly this._p.toNat
+      (#[(UMonomial.mk (1 : Int64),
+        Generated.StrictDDF.__make_zp_ir (1 : Int64) q)] : SparsePolyZp) =
+      Polynomial.X := by
+    simpa [Generated.StrictDDF.__make_zp_ir] using hx.2
+  refine ⟨hq, ?_, hfCanonical, hxCanonical, hfDegree, ?_, ?_,
+    ?_, ?_, ?_, hfMonic, hfSquarefree, ?_, ?_⟩
+  · change (1 : Nat) < 2 ^ 63
+    norm_num
+  · intro term hterm
+    have htermEq : term =
+        (UMonomial.mk (1 : Int64),
+          Generated.StrictDDF.__make_zp_ir (1 : Int64) q) := by
+      simpa using hterm
+    subst term
+    change (1 : Nat) < 2 ^ 63
+    norm_num
+  · intro item hitem
+    simp at hitem
+  · change (1 : Nat) ≤ 1
+    exact le_rfl
+  · simp [ddfResultToL2]
+  · rw [hxSemantic]
+    simp
+  · intro irreducible hirreducible _
+    exact Irreducible.natDegree_pos hirreducible
+  · intro item hitem
+    simp [ddfResultToL2] at hitem
 
 private lemma modByMonic_idem {p : Nat} [Fact (Nat.Prime p)]
     (a m : Polynomial (ZMod p))

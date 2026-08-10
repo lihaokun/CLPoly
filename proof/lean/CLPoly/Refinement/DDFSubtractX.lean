@@ -775,7 +775,7 @@ private lemma strict_minus_one_reduced (q : UInt64) (hq : q.toNat = p) :
     Int.toNat_natCast, htoNat]
   omega
 
-private lemma singleton_x_data (q : UInt64) (hq : q.toNat = p) :
+theorem strict_singleton_x_data (q : UInt64) (hq : q.toNat = p) :
     CanonicalRep p
         (#[(UMonomial.mk (1 : Int64), Zp.ofInt (1 : Int) q)] : SparsePolyZp) ∧
       SparsePolyZp.toPoly p

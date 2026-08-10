@@ -69,30 +69,32 @@ structure DDFRawOps where
   makeMonic : SparsePolyZp → RawExec SparsePolyZp
   exactDiv : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
   mod : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
-  Invariant : UInt64 → SparsePolyZp → SparsePolyZp → UInt64 → Prop
-  splitStep : ∀ d fStar h p hPow gdRaw gd quotient hNext,
-    Invariant d fStar h p →
+  Invariant : UInt64 → SparsePolyZp → SparsePolyZp →
+    Array (SparsePolyZp × UInt64) → UInt64 → Prop
+  splitStep : ∀ d fStar h result p hPow gdRaw gd quotient hNext,
+    Invariant d fStar h result p →
     powmod h p.toNat fStar = .ok hPow →
     gcd (__upoly_subtract_x_ir hPow p) fStar = .ok gdRaw →
     (!gdRaw.isEmpty && get_deg gdRaw > 0) = true →
     makeMonic gdRaw = .ok gd →
     exactDiv fStar gd = .ok quotient →
     mod hPow (SparsePolyZp.normalization quotient) = .ok hNext →
-    Invariant (d + 1) (SparsePolyZp.normalization quotient) hNext p ∧
+    Invariant (d + 1) (SparsePolyZp.normalization quotient) hNext
+        (result.push (gd, d)) p ∧
       ddfRawMeasure (SparsePolyZp.normalization quotient) (d + 1) <
         ddfRawMeasure fStar d
-  noSplitStep : ∀ d fStar h p hPow gdRaw,
-    Invariant d fStar h p →
+  noSplitStep : ∀ d fStar h result p hPow gdRaw,
+    Invariant d fStar h result p →
     powmod h p.toNat fStar = .ok hPow →
     gcd (__upoly_subtract_x_ir hPow p) fStar = .ok gdRaw →
     (!gdRaw.isEmpty && get_deg gdRaw > 0) = false →
-    Invariant (d + 1) fStar hPow p ∧
+    Invariant (d + 1) fStar hPow result p ∧
       ddfRawMeasure fStar (d + 1) < ddfRawMeasure fStar d
 
 def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
     (fStar h : SparsePolyZp)
     (result : Array (SparsePolyZp × UInt64)) (p : UInt64)
-    (hvalid : ops.Invariant d fStar h p) :
+    (hvalid : ops.Invariant d fStar h result p) :
     RawExec (SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
   if hterm : get_deg fStar < (2 * d).toInt64 then
     .ok (fStar, result)
@@ -115,7 +117,7 @@ def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
               match hmod : ops.mod hPow fNext with
               | .error fault => .error fault
               | .ok hNext =>
-                have hstep := ops.splitStep d fStar h p hPow gdRaw gd
+                have hstep := ops.splitStep d fStar h result p hPow gdRaw gd
                   quotient hNext hvalid hpow hgcd hsplit hmonic hdiv hmod
                 _loop___ddf_Zp_raw_ir ops (d + 1) fNext hNext
                   (result.push (gd, d)) p hstep.1
@@ -123,7 +125,7 @@ def _loop___ddf_Zp_raw_ir (ops : DDFRawOps) (d : UInt64)
           have hsplitFalse :
               (!gdRaw.isEmpty && get_deg gdRaw > 0) = false := by
             cases hb : (!gdRaw.isEmpty && get_deg gdRaw > 0) <;> simp_all
-          have hstep := ops.noSplitStep d fStar h p hPow gdRaw hvalid
+          have hstep := ops.noSplitStep d fStar h result p hPow gdRaw hvalid
             hpow hgcd hsplitFalse
           _loop___ddf_Zp_raw_ir ops (d + 1) fStar hPow result p hstep.1
 termination_by ddfRawMeasure fStar d
@@ -134,7 +136,7 @@ def __ddf_Zp_raw_ir (ops : DDFRawOps) (f : SparsePolyZp)
     (hinitial : ¬f.isEmpty →
       ops.Invariant 1 f
         #[(UMonomial.mk (1 : Int64),
-          __make_zp_ir (1 : Int64) f[0]!.2.prime)] f[0]!.2.prime) :
+          __make_zp_ir (1 : Int64) f[0]!.2.prime)] #[] f[0]!.2.prime) :
     RawExec (Array (SparsePolyZp × UInt64)) :=
   if hf : f.isEmpty then
     .error .assertionFailure

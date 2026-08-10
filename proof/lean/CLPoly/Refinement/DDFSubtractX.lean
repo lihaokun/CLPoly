@@ -163,6 +163,18 @@ private lemma zp_sub_reduced (a b : Zp) (ha : Zp.Reduced p a) :
   rw [htoNat, ← ha.1]
   exact hmod
 
+private lemma allReduced_push (f : SparsePolyZp) (term : UMonomial × Zp)
+    (hf : SparsePolyZp.AllReduced p f.toList)
+    (hterm : Zp.Reduced p term.2) :
+    SparsePolyZp.AllReduced p (f.push term).toList := by
+  rw [Array.toList_push]
+  intro x hx
+  rcases List.mem_append.mp hx with hx | hx
+  · exact hf x hx
+  · simp only [List.mem_singleton] at hx
+    subst x
+    exact hterm
+
 private theorem zp_toZMod_sub (h2p : 2 * p ≤ UInt64.size) (a b : Zp)
     (ha_prime : a.prime.toNat = p) (hb_prime : b.prime.toNat = p)
     (ha_red : a.val.toNat < p) (hb_red : b.val.toNat < p) :

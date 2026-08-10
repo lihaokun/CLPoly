@@ -408,6 +408,64 @@ theorem strictSquareAddModIR_refines
   · rw [hnextSemantic, hsumSemantic, hsquareSemantic]
     ring_nf
 
+/-- The generated characteristic-two trace loop terminates with a canonical
+array whenever its concrete square/add/mod operation does.  The induction is
+on the source loop distance `d-i`. -/
+theorem traceLoop_terminates_canonical
+    {State : Type} (ops : Generated.StrictEDF.EDFRawOps State)
+    (d : UInt64) (f r : SparsePolyZp) (i : UInt64) (g : SparsePolyZp)
+    (hbudget : i.toNat ≤ d.toNat ∧ d.toNat < UInt64.size)
+    (hgCanonical : SparsePolyZp.Canonical f[0]!.2.prime.toNat g)
+    (hsquare : ∀ current,
+      SparsePolyZp.Canonical f[0]!.2.prime.toNat current →
+      ∃ next,
+        ops.squareAddMod current r f = .ok next ∧
+        SparsePolyZp.Canonical f[0]!.2.prime.toNat next) :
+    ∃ trace,
+      Generated.StrictEDF.traceLoop ops d f r i g hbudget = .ok trace ∧
+      SparsePolyZp.Canonical f[0]!.2.prime.toNat trace := by
+  generalize hdistance : d.toNat - i.toNat = distance
+  induction distance using Nat.strong_induction_on generalizing i g with
+  | h distance ih =>
+      rw [Generated.StrictEDF.traceLoop]
+      split
+      next hmore =>
+        rcases hsquare g hgCanonical with ⟨next, hnextRun, hnextCanonical⟩
+        rw [certifyRawExec_ok_eq _ _ hnextRun]
+        apply ih (d.toNat - (i + 1).toNat)
+        · have hi : i.toNat < d.toNat := by simpa using hmore
+          have hiSize : i.toNat + 1 < UInt64.size :=
+            Nat.lt_of_le_of_lt (Nat.succ_le_of_lt hi) hbudget.2
+          simp [UInt64.toNat_add, Nat.mod_eq_of_lt hiSize]
+          rw [← hdistance]
+          omega
+        · exact hnextCanonical
+        · rfl
+      next hdone =>
+        exact ⟨g, rfl, hgCanonical⟩
+
+/-- The unique concrete operation record used by the strict generated EDF
+shell.  Every computational field is an executable L1 boundary; proof
+obligations live separately in `EDFSplitLaw`. -/
+noncomputable def strictEDFRawOps
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this) :
+    Generated.StrictEDF.EDFRawOps State where
+  random := Generated.StrictEDF.__upoly_random_raw_ir engine
+  modPoly := fun dividend modulus =>
+    StrictDDF.strictModIR this dividend modulus
+      ((providers.mod modulus).workspace dividend)
+  squareAddMod := strictSquareAddModIR this providers
+  powmod := fun base exponent modulus =>
+    StrictDDF.strictPowmodIR this base exponent.toNat modulus providers.mul
+      (providers.mod modulus)
+  gcd := fun left right =>
+    StrictDDF.strictDDFGCDIR this left right (providers.gcd left right)
+  exactDiv := StrictDDF.strictExactDivIR this
+  makeMonic := StrictDDF.strictMakeMonicIR this
+  EntryInvariant := EDFEntryInvariant this
+
 end StrictEDF
 
 -- The public L1→L2 EDF theorem remains deliberately absent until the retry

@@ -28,3 +28,12 @@ factor.  The accompanying L2 lemma proves the pushed monic equal-degree factor
 is irreducible and satisfies `EDFCorrect`.  The public theorem remains absent:
 retry and recursive split simulation still have to be proved before exporting
 the generated contract.
+
+## Concrete subtract-one primitive
+
+The odd-characteristic candidate path no longer obtains `subtractOne` from an
+abstract operation record.  The generator now emits the exact
+`__upoly_subtract_one` range-for control flow as a total function, decreasing on
+the unprocessed input-array suffix.  `candidateRun` calls this generated entry
+directly, so a future operation-record instance cannot substitute an oracle or
+an L2 subtraction for this C++ step.

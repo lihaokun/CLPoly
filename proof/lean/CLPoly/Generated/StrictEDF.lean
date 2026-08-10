@@ -18,13 +18,46 @@ def certifyRawExec {α : Type} (run : RawExec α) :
 def certifyBool (value : Bool) : { result : Bool // value = result } :=
   ⟨value, rfl⟩
 
+def __make_zp_ir (val : Int64) (p : UInt64) : Zp :=
+  Zp.ofInt val.toInt p
+
+/-- Total lowering of the generated range-for loop in
+`__upoly_subtract_one`. -/
+def _loop___upoly_subtract_one_0_raw_ir (idx : Nat) (found : Bool)
+    (result input : SparsePolyZp) (p : UInt64) : Bool × SparsePolyZp :=
+  if hidx : idx < input.size then
+    let term := input[idx]
+    let next :=
+      if term.fst.deg == (0 : Int64) then
+        let newCoefficient := term.snd - __make_zp_ir 1 p
+        if newCoefficient.val != 0 then
+          (true, result.push (UMonomial.mk 0, newCoefficient))
+        else
+          (true, result)
+      else
+        (found, result.push term)
+    _loop___upoly_subtract_one_0_raw_ir (idx + 1) next.1 next.2 input p
+  else
+    (found, result)
+termination_by input.size - idx
+decreasing_by omega
+
+/-- Exact generated `__upoly_subtract_one` control flow, now total. -/
+def __upoly_subtract_one_raw_ir (h : SparsePolyZp) (p : UInt64) :
+    RawExec SparsePolyZp :=
+  let loopResult := _loop___upoly_subtract_one_0_raw_ir 0 false #[] h p
+  if !loopResult.1 then
+    .ok (SparsePolyZp.normalization (loopResult.2.push
+      (UMonomial.mk 0, Zp.ofInt (p - 1).toInt p)))
+  else
+    .ok loopResult.2
+
 structure EDFRawOps where
   random : Int64 → UInt64 → Rng → RawExec (SparsePolyZp × Rng)
   modPoly : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
   squareAddMod : SparsePolyZp → SparsePolyZp → SparsePolyZp →
     RawExec SparsePolyZp
   powmod : SparsePolyZp → Int → SparsePolyZp → RawExec SparsePolyZp
-  subtractOne : SparsePolyZp → UInt64 → RawExec SparsePolyZp
   gcd : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
   exactDiv : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
   makeMonic : SparsePolyZp → RawExec SparsePolyZp
@@ -80,7 +113,7 @@ def candidateRun (ops : EDFRawOps) (f : SparsePolyZp) (d : UInt64)
     match certifyRawExec (ops.powmod r exponent f) with
     | .error fault => .error fault
     | .ok hpow =>
-      match certifyRawExec (ops.subtractOne hpow.val f[0]!.2.prime) with
+      match certifyRawExec (__upoly_subtract_one_raw_ir hpow.val f[0]!.2.prime) with
       | .error fault => .error fault
       | .ok hminus => ops.gcd hminus.val f
 

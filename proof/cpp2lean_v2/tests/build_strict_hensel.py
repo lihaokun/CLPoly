@@ -16,6 +16,32 @@ OUT = (
     Path(__file__).resolve().parents[2] / "lean" / "CLPoly" / "Generated" /
     "StrictHensel.lean"
 )
+ROOT = Path(__file__).resolve().parents[3]
+HENSEL_SOURCE = ROOT / "clpoly" / "polynomial_factorize_univar.hh"
+POLY_SOURCE = ROOT / "clpoly" / "basic.hh"
+
+
+def validate_cpp_source() -> None:
+    """Refuse to generate if the source control-flow anchors have changed."""
+    hensel = HENSEL_SOURCE.read_text()
+    polynomial = POLY_SOURCE.read_text()
+    for fragment in (
+        "inline void __hensel_step(",
+        "upolynomial_<ZZ> gh = node.g * node.h;",
+        "__upoly_divmod_mod(q_se, r_se, se, node.h, m);",
+        "__upoly_divmod_mod(q_sep, r_sep, sep, node.h, m);",
+    ):
+        if fragment not in hensel:
+            raise SystemExit(f"strict Hensel source anchor missing: {fragment}")
+    for fragment in (
+        "void pair_vec_multiplies",
+        "while (heap_size!=0)",
+        "addmul(k,heap[0]->v1_ptr->second,heap[0]->v2_ptr->second);",
+        "while (heap_size>0 && heap[0]->mono==m)",
+        "if (!zore_check<T2>()(k))",
+    ):
+        if fragment not in polynomial:
+            raise SystemExit(f"strict multiplication source anchor missing: {fragment}")
 
 
 def generate_strict_hensel() -> str:
@@ -116,6 +142,63 @@ decreasing_by all_goals simp_wf; omega
 
 def __upoly_sub_raw_ir (a b : SparsePolyZZ) : RawExec SparsePolyZZ :=
   .ok (pairVecSubLoop a b 0 0 #[])
+
+/-- One pending `addmul` contribution in the C++ multiplication heap. -/
+structure MulProduct where
+  degree : Nat
+  coefficient : ZZ
+deriving DecidableEq
+
+def pairVecMulProducts (a b : SparsePolyZZ) : List MulProduct :=
+  a.toList.flatMap fun ta =>
+    b.toList.map fun tb =>
+      ⟨ta.1.deg + tb.1.deg, ta.2 * tb.2⟩
+
+def mulMaxDegree (products : List MulProduct) : Nat :=
+  (products.map (fun product => product.degree)).max?.getD 0
+
+def mulDegreeCoefficient (degree : Nat) : List MulProduct → ZZ
+  | [] => 0
+  | product :: products =>
+      if product.degree = degree then
+        product.coefficient + mulDegreeCoefficient degree products
+      else mulDegreeCoefficient degree products
+
+/-- Semantic lowering of the observable C++ multiplication heap loop.  A
+step extracts the maximum monomial, performs every `addmul` attached to that
+heap key, conditionally appends the coefficient, and leaves the other heap
+frontier entries for the next extraction. -/
+def pairVecMulHeapLoop (products : List MulProduct)
+    (result : SparsePolyZZ) : SparsePolyZZ :=
+  if hempty : products = [] then result
+  else
+    let degree := mulMaxDegree products
+    let coefficient := mulDegreeCoefficient degree products
+    let remaining := products.filter fun product => product.degree != degree
+    pairVecMulHeapLoop remaining (pushNonzero result degree coefficient)
+termination_by products.length
+decreasing_by
+  simp_wf
+  have hsome :
+      (products.map (fun product => product.degree)).max? =
+        some (mulMaxDegree products) := by
+    unfold mulMaxDegree
+    cases hmax : (products.map (fun product => product.degree)).max? with
+    | none =>
+        have := List.max?_eq_none_iff.mp hmax
+        simp at this
+        contradiction
+    | some maximum => simp [hmax]
+  have hdegreeMem : mulMaxDegree products ∈
+      products.map (fun product => product.degree) :=
+    List.max?_mem hsome
+  have hexists : ∃ product ∈ products,
+      product.degree = mulMaxDegree products := by
+    exact List.mem_map.mp hdegreeMem
+  exact hexists
+
+def __upoly_mul_raw_ir (a b : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  .ok (pairVecMulHeapLoop (pairVecMulProducts a b) #[])
 
 /-- The inner ordered merge implementing
 `r -= coefficient * x^degreeShift * g`.  Each branch advances at least one
@@ -261,6 +344,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
+    validate_cpp_source()
     generated = generate_strict_hensel()
     if args.check:
         if not OUT.exists() or OUT.read_text() != generated:

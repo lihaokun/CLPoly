@@ -96,6 +96,63 @@ decreasing_by all_goals simp_wf; omega
 def __upoly_sub_raw_ir (a b : SparsePolyZZ) : RawExec SparsePolyZZ :=
   .ok (pairVecSubLoop a b 0 0 #[])
 
+/-- One pending `addmul` contribution in the C++ multiplication heap. -/
+structure MulProduct where
+  degree : Nat
+  coefficient : ZZ
+deriving DecidableEq
+
+def pairVecMulProducts (a b : SparsePolyZZ) : List MulProduct :=
+  a.toList.flatMap fun ta =>
+    b.toList.map fun tb =>
+      ⟨ta.1.deg + tb.1.deg, ta.2 * tb.2⟩
+
+def mulMaxDegree (products : List MulProduct) : Nat :=
+  (products.map (fun product => product.degree)).max?.getD 0
+
+def mulDegreeCoefficient (degree : Nat) : List MulProduct → ZZ
+  | [] => 0
+  | product :: products =>
+      if product.degree = degree then
+        product.coefficient + mulDegreeCoefficient degree products
+      else mulDegreeCoefficient degree products
+
+/-- Semantic lowering of the observable C++ multiplication heap loop.  A
+step extracts the maximum monomial, performs every `addmul` attached to that
+heap key, conditionally appends the coefficient, and leaves the other heap
+frontier entries for the next extraction. -/
+def pairVecMulHeapLoop (products : List MulProduct)
+    (result : SparsePolyZZ) : SparsePolyZZ :=
+  if hempty : products = [] then result
+  else
+    let degree := mulMaxDegree products
+    let coefficient := mulDegreeCoefficient degree products
+    let remaining := products.filter fun product => product.degree != degree
+    pairVecMulHeapLoop remaining (pushNonzero result degree coefficient)
+termination_by products.length
+decreasing_by
+  simp_wf
+  have hsome :
+      (products.map (fun product => product.degree)).max? =
+        some (mulMaxDegree products) := by
+    unfold mulMaxDegree
+    cases hmax : (products.map (fun product => product.degree)).max? with
+    | none =>
+        have := List.max?_eq_none_iff.mp hmax
+        simp at this
+        contradiction
+    | some maximum => simp [hmax]
+  have hdegreeMem : mulMaxDegree products ∈
+      products.map (fun product => product.degree) :=
+    List.max?_mem hsome
+  have hexists : ∃ product ∈ products,
+      product.degree = mulMaxDegree products := by
+    exact List.mem_map.mp hdegreeMem
+  exact hexists
+
+def __upoly_mul_raw_ir (a b : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  .ok (pairVecMulHeapLoop (pairVecMulProducts a b) #[])
+
 /-- The inner ordered merge implementing
 `r -= coefficient * x^degreeShift * g`.  Each branch advances at least one
 source iterator, so termination is structural on the two remaining suffixes. -/

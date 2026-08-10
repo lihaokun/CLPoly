@@ -277,6 +277,197 @@ theorem __upoly_sub_raw_ir_refines (m : Nat) (a b : SparsePolyZZ) :
   rw [pairVecSubLoop_toPolyMod]
   simp [toPolyMod_eq_termsToPolyMod]
 
+noncomputable def mulProductsToPolyMod (m : Nat) :
+    List Generated.StrictHensel.MulProduct → Polynomial (ZMod m)
+  | [] => 0
+  | product :: products =>
+      Polynomial.monomial product.degree (product.coefficient : ZMod m) +
+        mulProductsToPolyMod m products
+
+theorem mulProductsToPolyMod_append (m : Nat)
+    (left right : List Generated.StrictHensel.MulProduct) :
+    mulProductsToPolyMod m (left ++ right) =
+      mulProductsToPolyMod m left + mulProductsToPolyMod m right := by
+  induction left with
+  | nil => simp [mulProductsToPolyMod]
+  | cons product products ih =>
+      simp [mulProductsToPolyMod, ih, add_assoc]
+
+/-- The `addmul` accumulator for one heap key is exactly the polynomial sum
+of all frontier contributions with that degree. -/
+theorem mulDegreeCoefficient_toPolyMod (m degree : Nat)
+    (products : List Generated.StrictHensel.MulProduct) :
+    Polynomial.monomial degree
+        (Generated.StrictHensel.mulDegreeCoefficient degree products : ZMod m) =
+      mulProductsToPolyMod m
+        (products.filter fun product => product.degree = degree) := by
+  induction products with
+  | nil => simp [mulProductsToPolyMod,
+      Generated.StrictHensel.mulDegreeCoefficient]
+  | cons product products ih =>
+      by_cases hdegree : product.degree = degree
+      · simp [hdegree, mulProductsToPolyMod,
+          Generated.StrictHensel.mulDegreeCoefficient,
+          Polynomial.monomial_add, ih]
+      · simp [hdegree, mulProductsToPolyMod,
+          Generated.StrictHensel.mulDegreeCoefficient, ih]
+
+/-- Partitioning the heap frontier at one degree preserves its represented
+polynomial. -/
+theorem mulProducts_partition (m degree : Nat)
+    (products : List Generated.StrictHensel.MulProduct) :
+    mulProductsToPolyMod m products =
+      mulProductsToPolyMod m
+          (products.filter fun product => product.degree = degree) +
+        mulProductsToPolyMod m
+          (products.filter fun product => product.degree != degree) := by
+  induction products with
+  | nil => simp [mulProductsToPolyMod]
+  | cons product products ih =>
+      by_cases hdegree : product.degree = degree
+      · simp [mulProductsToPolyMod, hdegree]
+        rw [ih]
+        ring
+      · simp [mulProductsToPolyMod, hdegree]
+        rw [ih]
+        ring
+
+set_option maxHeartbeats 0 in
+/-- Conservation law of the generated multiplication heap loop. -/
+theorem pairVecMulHeapLoop_toPolyMod (m : Nat) :
+    ∀ (products : List Generated.StrictHensel.MulProduct)
+      (result : SparsePolyZZ),
+      toPolyMod m
+          (Generated.StrictHensel.pairVecMulHeapLoop products result) =
+        toPolyMod m result + mulProductsToPolyMod m products := by
+  intro products result
+  refine Generated.StrictHensel.pairVecMulHeapLoop.induct
+    (motive := fun products result =>
+      toPolyMod m
+          (Generated.StrictHensel.pairVecMulHeapLoop products result) =
+        toPolyMod m result + mulProductsToPolyMod m products) ?_ ?_
+    products result
+  · intro result
+    rw [Generated.StrictHensel.pairVecMulHeapLoop.eq_1]
+    simp [mulProductsToPolyMod]
+  · intro products result hempty
+    dsimp only
+    intro ih
+    rw [Generated.StrictHensel.pairVecMulHeapLoop.eq_1]
+    simp [hempty]
+    have ih' :
+        toPolyMod m
+            (Generated.StrictHensel.pairVecMulHeapLoop
+              (products.filter fun product =>
+                product.degree != Generated.StrictHensel.mulMaxDegree products)
+              (Generated.StrictHensel.pushNonzero result
+                (Generated.StrictHensel.mulMaxDegree products)
+                (Generated.StrictHensel.mulDegreeCoefficient
+                  (Generated.StrictHensel.mulMaxDegree products) products))) =
+          toPolyMod m
+              (Generated.StrictHensel.pushNonzero result
+                (Generated.StrictHensel.mulMaxDegree products)
+                (Generated.StrictHensel.mulDegreeCoefficient
+                  (Generated.StrictHensel.mulMaxDegree products) products)) +
+            mulProductsToPolyMod m
+              (products.filter fun product =>
+                product.degree != Generated.StrictHensel.mulMaxDegree products) := by
+      simpa using ih
+    rw [ih', pushNonzero_toPolyMod,
+      mulDegreeCoefficient_toPolyMod]
+    rw [mulProducts_partition m
+      (Generated.StrictHensel.mulMaxDegree products) products]
+    ring
+
+private theorem mulProductsForTerm_toPolyMod (m : Nat)
+    (term : UMonomial × Int) (terms : List (UMonomial × Int)) :
+    mulProductsToPolyMod m
+        (terms.map fun other : UMonomial × Int =>
+          Generated.StrictHensel.MulProduct.mk
+            (term.1.deg + other.1.deg) (term.2 * other.2)) =
+      Polynomial.monomial term.1.deg (term.2 : ZMod m) *
+        termsToPolyMod m terms := by
+  induction terms with
+  | nil => simp [mulProductsToPolyMod]
+  | cons other terms ih =>
+      simp only [List.map_cons, mulProductsToPolyMod,
+        termsToPolyMod_cons, Int.cast_mul]
+      rw [ih, mul_add, Polynomial.monomial_mul_monomial]
+
+theorem pairVecMulProducts_toPolyMod (m : Nat) (a b : SparsePolyZZ) :
+    mulProductsToPolyMod m
+        (Generated.StrictHensel.pairVecMulProducts a b) =
+      toPolyMod m a * toPolyMod m b := by
+  rw [toPolyMod_eq_termsToPolyMod, toPolyMod_eq_termsToPolyMod]
+  unfold Generated.StrictHensel.pairVecMulProducts
+  induction a.toList with
+  | nil => simp [mulProductsToPolyMod]
+  | cons term terms ih =>
+      simp only [List.flatMap_cons, termsToPolyMod_cons]
+      rw [show mulProductsToPolyMod m
+          ((b.toList.map fun tb =>
+              Generated.StrictHensel.MulProduct.mk
+                (term.1.deg + tb.1.deg) (term.2 * tb.2)) ++
+            terms.flatMap fun ta =>
+              b.toList.map fun tb =>
+                Generated.StrictHensel.MulProduct.mk
+                  (ta.1.deg + tb.1.deg) (ta.2 * tb.2)) =
+          mulProductsToPolyMod m
+              (b.toList.map fun tb =>
+                Generated.StrictHensel.MulProduct.mk
+                  (term.1.deg + tb.1.deg) (term.2 * tb.2)) +
+            mulProductsToPolyMod m
+              (terms.flatMap fun ta =>
+                b.toList.map fun tb =>
+                  Generated.StrictHensel.MulProduct.mk
+                    (ta.1.deg + tb.1.deg) (ta.2 * tb.2)) by
+        exact mulProductsToPolyMod_append m _ _]
+      rw [mulProductsForTerm_toPolyMod, ih, add_mul]
+
+theorem __upoly_mul_raw_ir_refines (m : Nat) (a b : SparsePolyZZ) :
+    ∃ output,
+      Generated.StrictHensel.__upoly_mul_raw_ir a b = .ok output ∧
+      toPolyMod m output = toPolyMod m a * toPolyMod m b := by
+  refine ⟨Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts a b) #[], rfl, ?_⟩
+  rw [pairVecMulHeapLoop_toPolyMod, pairVecMulProducts_toPolyMod]
+  rw [toPolyMod_empty, zero_add]
+
+/-- The sole concrete operation bundle used by the strict Hensel entry.  All
+three arithmetic fields execute generated C++ L1 control flow; none points to
+the `SparsePolyZZ` model instances or an L2 polynomial operation. -/
+def strictHenselRawOps
+    (termination : Generated.StrictHensel.DivmodTermination) :
+    Generated.StrictHensel.HenselStepRawOps where
+  mul := Generated.StrictHensel.__upoly_mul_raw_ir
+  add := Generated.StrictHensel.__upoly_add_raw_ir
+  sub := Generated.StrictHensel.__upoly_sub_raw_ir
+  divmodTermination := termination
+
+theorem strictHenselRawOps_mul_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (m : Nat) (a b : SparsePolyZZ) :
+    ∃ output,
+      (strictHenselRawOps termination).mul a b = .ok output ∧
+      toPolyMod m output = toPolyMod m a * toPolyMod m b :=
+  __upoly_mul_raw_ir_refines m a b
+
+theorem strictHenselRawOps_add_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (m : Nat) (a b : SparsePolyZZ) :
+    ∃ output,
+      (strictHenselRawOps termination).add a b = .ok output ∧
+      toPolyMod m output = toPolyMod m a + toPolyMod m b :=
+  __upoly_add_raw_ir_refines m a b
+
+theorem strictHenselRawOps_sub_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (m : Nat) (a b : SparsePolyZZ) :
+    ∃ output,
+      (strictHenselRawOps termination).sub a b = .ok output ∧
+      toPolyMod m output = toPolyMod m a - toPolyMod m b :=
+  __upoly_sub_raw_ir_refines m a b
+
 /-- Shifting a concrete divisor term by the current quotient degree and
 scaling it by the quotient coefficient is exactly multiplication by the
 corresponding monomial in `ZMod m`. -/

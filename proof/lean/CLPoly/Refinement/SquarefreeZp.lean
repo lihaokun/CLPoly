@@ -21718,5 +21718,52 @@ theorem strictYunRemainder_guard_and_derivative
   rw [hcRemSemantic]
   simpa only [hcSemantic, hwSemantic] using hremainder
 
+/-- A positive-degree concrete Yun remainder prepares a genuine top-level SQF
+recursive call.  Local contraction descent is lifted to the original source
+measure using the Yun remainder degree bound. -/
+theorem sqfPostYunIR_prepares_recursive_call
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (source cRem : SparsePolyZp)
+    (hsourceCanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hsourceNonempty : 0 < source.size)
+    (hcRemCanonical : SparsePolyZp.Canonical this._p.toNat cRem)
+    (hcRemMonic : (SparsePolyZp.toPoly this._p.toNat cRem).Monic)
+    (hcRemPositive :
+      0 < (SparsePolyZp.toPoly this._p.toNat cRem).natDegree)
+    (hcRemBound : sparseDenseLength cRem ≤ 2 ^ 63)
+    (hcRemDerivative :
+      Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat cRem) = 0)
+    (hcRemDegreeLe :
+      (SparsePolyZp.toPoly this._p.toNat cRem).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat source).natDegree) :
+    ∃ root,
+      extractPthRootIR cRem = .ok root ∧
+      SparsePolyZp.Canonical this._p.toNat root ∧
+      SparsePolyZp.toPoly this._p.toNat root =
+        Polynomial.contract this._p.toNat
+          (SparsePolyZp.toPoly this._p.toNat cRem) ∧
+      (SparsePolyZp.toPoly this._p.toNat root).Monic ∧
+      upolyMakeMonicIR this root = .ok (root[0]!.2, root) ∧
+      Generated.squarefreeMeasure root <
+        Generated.squarefreeMeasure source ∧
+      sparseDenseLength root ≤ 2 ^ 63 := by
+  have hcRemSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat
+    cRem hcRemMonic.ne_zero
+  rcases sqfDerivativeZeroIR_prepares_recursive_call this hcfg cRem
+      hcRemCanonical hcRemMonic hcRemSize hcRemPositive hcRemBound
+      hcRemDerivative with
+    ⟨root, hrootRun, hrootCanonical, hrootSemantic, hrootMonic,
+      hmonicRun, hrootLtRem, hrootBound, _⟩
+  have hremMeasureLe : Generated.squarefreeMeasure cRem ≤
+      Generated.squarefreeMeasure source := by
+    rw [generated_squarefreeMeasure_eq_natDegree_succ this._p.toNat cRem
+        hcRemCanonical hcRemSize,
+      generated_squarefreeMeasure_eq_natDegree_succ this._p.toNat source
+        hsourceCanonical hsourceNonempty]
+    omega
+  exact ⟨root, hrootRun, hrootCanonical, hrootSemantic, hrootMonic,
+    hmonicRun, lt_of_lt_of_le hrootLtRem hremMeasureLe, hrootBound⟩
+
 end StrictSquarefreeZp
 end Refinement

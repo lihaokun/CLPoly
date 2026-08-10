@@ -20,6 +20,26 @@ structure EntryInvariant
   positive : 0 < (SparsePolyZp.toPoly this._p.toNat f).natDegree
   denseBound : sparseDenseLength f ≤ 2 ^ 63
 
+noncomputable def sourceYunC
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (source : SparsePolyZp) :
+    Polynomial (ZMod this._p.toNat) :=
+  normalize (EuclideanDomain.gcd
+    (SparsePolyZp.toPoly this._p.toNat source)
+    (Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source)))
+
+noncomputable def sourceYunTarget
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (source : SparsePolyZp) :
+    List (Polynomial (ZMod this._p.toNat) × Nat) ×
+      Polynomial (ZMod this._p.toNat) :=
+  let c := sourceYunC this source
+  if hc : c ≠ 0 then
+    yunLoop (normalize (SparsePolyZp.toPoly this._p.toNat source /ₘ c))
+      c 1 [] hc
+  else
+    ([], c)
+
 /-- Local representation and machine-word invariant for the generated Yun
 state.  Semantic accumulator fields will be added when the loop simulation is
 connected; these fields already suffice to execute every raw primitive. -/
@@ -38,15 +58,15 @@ structure YunInvariant
       Generated.StrictSquarefreeZp.squarefreeMeasure c < UInt64.size
   resultCanonical : ∀ item ∈ result.toList,
     SparsePolyZp.Canonical this._p.toNat item.1
-  semanticContinuation : ∃
-      (targetResult : List (Polynomial (ZMod this._p.toNat) × Nat))
-      (targetRemainder : Polynomial (ZMod this._p.toNat)),
+  semanticContinuation :
     yunLoop (SparsePolyZp.toPoly this._p.toNat w)
         (SparsePolyZp.toPoly this._p.toNat c) multiplicity.toNat
         (toPolyList result this._p.toNat) cMonic.ne_zero =
-      (targetResult, targetRemainder) ∧
-    Polynomial.derivative targetRemainder = 0 ∧
-    targetRemainder.natDegree ≤
+      sourceYunTarget this source
+  targetDerivativeZero :
+    Polynomial.derivative (sourceYunTarget this source).2 = 0
+  targetDegreeLeSource :
+    (sourceYunTarget this source).2.natDegree ≤
       (SparsePolyZp.toPoly this._p.toNat source).natDegree
 
 /-- Project the sparse result of the checked C++ make-monic entry. -/
@@ -249,13 +269,27 @@ theorem yunInitial
       (SparsePolyZp.toPoly this._p.toNat preparedC) 1 []
       hcMonic.ne_zero).trans
       (Polynomial.natDegree_le_of_dvd hcDvdSource hinvariant.monic.ne_zero)
+  have hsourceTarget : sourceYunTarget this f = target := by
+    rw [sourceYunTarget, dif_pos (by
+      unfold sourceYunC
+      rw [← hcSemantic]
+      exact hcMonic.ne_zero)]
+    simp only [sourceYunC]
+    simpa only [← hcSemantic, ← hwSemantic] using (show
+      yunLoop (SparsePolyZp.toPoly this._p.toNat preparedW)
+        (SparsePolyZp.toPoly this._p.toNat preparedC) 1 []
+          hcMonic.ne_zero = target from rfl)
   refine ⟨hwCanonical, hcCanonical, hwMonic, hcMonic, hwBound, hcBound,
-    ?_, ?_, ⟨target.1, target.2, ?_, htargetDerivative,
-      htargetDegree⟩⟩
+    ?_, ?_, ?_, ?_, ?_⟩
   · simpa using hbudget
   · intro item hitem
     simp at hitem
-  · simp [target]
+  · rw [hsourceTarget]
+    simp [target]
+  · rw [hsourceTarget]
+    exact htargetDerivative
+  · rw [hsourceTarget]
+    exact htargetDegree
 
 /-- Common semantic and machine payload of one generated Yun body.  Every
 property is derived after identifying the actual raw GCD/division outputs. -/
@@ -433,19 +467,17 @@ theorem yunFactorStep
     (toPolyList result this._p.toNat) hinvariant.cMonic.ne_zero
     hcMonic.ne_zero hwPositive hySemantic hzConcrete hcConcrete
   rw [← hnextList, ← hincrement] at hloopStep
-  rcases hinvariant.semanticContinuation with
-    ⟨targetResult, targetRemainder, htarget, hderivative, hdegree⟩
   have hcontinuation : yunLoop (SparsePolyZp.toPoly this._p.toNat y)
       (SparsePolyZp.toPoly this._p.toNat cRaw)
       (multiplicity + 1).toNat
       (toPolyList (result.push (zRaw, multiplicity)) this._p.toNat)
       hcMonic.ne_zero =
-        (targetResult, targetRemainder) :=
-    hloopStep.symm.trans htarget
+        sourceYunTarget this source :=
+    hloopStep.symm.trans hinvariant.semanticContinuation
   rw [hcNorm]
   refine ⟨⟨hyCanonical, hcCanonical, hyMonic, hcMonic, hyBound, hcBound,
-    ?_, ?_, ⟨targetResult, targetRemainder, ?_, hderivative,
-      hdegree⟩⟩, ?_⟩
+    ?_, ?_, ?_, hinvariant.targetDerivativeZero,
+      hinvariant.targetDegreeLeSource⟩, ?_⟩
   · simpa [Nat.add_assoc] using hbudget
   · intro item hitem
     rw [Array.toList_push] at hitem
@@ -517,19 +549,17 @@ theorem yunNoFactorStep
     (toPolyList result this._p.toNat) hinvariant.cMonic.ne_zero
     hcMonic.ne_zero hwPositive hySemantic hzConcrete hcConcrete
   rw [← hnextList, ← hincrement] at hloopStep
-  rcases hinvariant.semanticContinuation with
-    ⟨targetResult, targetRemainder, htarget, hderivative, hdegree⟩
   have hcontinuation : yunLoop (SparsePolyZp.toPoly this._p.toNat y)
       (SparsePolyZp.toPoly this._p.toNat cRaw)
       (multiplicity + 1).toNat (toPolyList result this._p.toNat)
       hcMonic.ne_zero =
-        (targetResult, targetRemainder) :=
-    hloopStep.symm.trans htarget
+        sourceYunTarget this source :=
+    hloopStep.symm.trans hinvariant.semanticContinuation
   rw [hcNorm]
   exact ⟨⟨hyCanonical, hcCanonical, hyMonic, hcMonic, hyBound, hcBound,
     by simpa [Nat.add_assoc] using hbudget, hinvariant.resultCanonical,
-    ⟨targetResult, targetRemainder,
-      by simpa [hcNorm] using hcontinuation, hderivative, hdegree⟩⟩,
+    by simpa [hcNorm] using hcontinuation,
+    hinvariant.targetDerivativeZero, hinvariant.targetDegreeLeSource⟩,
     by simpa using hdecrease⟩
 
 /-- The generated Yun loop can enter the post-loop p-th-root branch only
@@ -570,20 +600,18 @@ theorem remainderRootStep
     contradiction
   have hwDegree : (SparsePolyZp.toPoly this._p.toNat w).natDegree = 0 :=
     Nat.eq_zero_of_not_pos hwNotPositive
-  rcases hinvariant.semanticContinuation with
-    ⟨targetResult, targetRemainder, hcontinuation, htargetDerivative,
-      htargetDegree⟩
+  have hcontinuation := hinvariant.semanticContinuation
   rw [yunLoop, dif_pos hwDegree] at hcontinuation
   have hcSemantic : SparsePolyZp.toPoly this._p.toNat c =
-      targetRemainder := congrArg Prod.snd hcontinuation
+      (sourceYunTarget this f).2 := congrArg Prod.snd hcontinuation
   have hcDerivative : Polynomial.derivative
       (SparsePolyZp.toPoly this._p.toNat c) = 0 := by
     rw [hcSemantic]
-    exact htargetDerivative
+    exact hinvariant.targetDerivativeZero
   have hcDegree : (SparsePolyZp.toPoly this._p.toNat c).natDegree ≤
       (SparsePolyZp.toPoly this._p.toNat f).natDegree := by
     rw [hcSemantic]
-    exact htargetDegree
+    exact hinvariant.targetDegreeLeSource
   have hcSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat c
     hinvariant.cMonic.ne_zero
   have hcHeadBound : c[0].1.deg < 2 ^ 63 := by
@@ -659,6 +687,179 @@ noncomputable def strictSQFRawOps
       rootMonic hentry hderivative hinvariant hdone hcGuard hroot hmonic =>
     remainderRootStep this hcfg f derivativeOut multiplicity w c result root
       rootMonic hentry hderivative hinvariant hdone hcGuard hroot hmonic
+
+theorem sqfCertifyRawExec_ok {α : Type} (run : RawExec α) (output : α)
+    (hrun : run = .ok output) :
+    Generated.StrictSquarefreeZp.certifyRawExec run =
+      .ok ⟨output, hrun⟩ := by
+  subst run
+  rfl
+
+theorem sqfCertifyBool_eq (value result : Bool)
+    (hvalue : value = result) :
+    Generated.StrictSquarefreeZp.certifyBool value = ⟨result, hvalue⟩ := by
+  subst value
+  rfl
+
+/-- The generated well-founded Yun state loop really executes to a terminal
+state.  This proof follows every generated raw call and recurses only through
+the strict source measure supplied by the transition invariant. -/
+theorem generatedYunLoopState_executes
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp) :
+    ∀ state : Generated.StrictSquarefreeZp.YunRawState
+        (strictSQFRawOps this hcfg physical) source,
+      ∃ finalState : Generated.StrictSquarefreeZp.YunRawFinalState
+          (strictSQFRawOps this hcfg physical) source,
+        Generated.StrictSquarefreeZp._loop___squarefree_Zp_1_raw_ir_state
+            (strictSQFRawOps this hcfg physical) state = .ok finalState := by
+  suffices hstrong : ∀ n state,
+      Generated.StrictSquarefreeZp.yunStateMeasure state = n →
+      ∃ finalState : Generated.StrictSquarefreeZp.YunRawFinalState
+          (strictSQFRawOps this hcfg physical) source,
+        Generated.StrictSquarefreeZp._loop___squarefree_Zp_1_raw_ir_state
+            (strictSQFRawOps this hcfg physical) state = .ok finalState by
+    intro state
+    exact hstrong (Generated.StrictSquarefreeZp.yunStateMeasure state)
+      state rfl
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+      intro state hmeasureEq
+      rcases state with ⟨multiplicity, w, c, result, hinvariant⟩
+      by_cases hguard : (!w.isEmpty && get_deg w > 0) = true
+      · rcases gcdRawIR_refines this hcfg physical w c
+            hinvariant.wCanonical hinvariant.cCanonical
+            hinvariant.wMonic.ne_zero hinvariant.cMonic.ne_zero
+            hinvariant.wBound hinvariant.cBound with
+          ⟨y, hyRun, hyCanonical, hySemantic⟩
+        rcases yunPairDivisionsIR_refine this w c y hcfg
+            hinvariant.wCanonical hinvariant.cCanonical hyCanonical
+            hinvariant.wMonic.ne_zero hySemantic with
+          ⟨zRaw, cRaw, hzRun, hcRun, hzCanonical, hcCanonical,
+            hzNorm, hcNorm, _hzSemantic, _hcSemantic⟩
+        have hprepared := yunRawStep_prepares this hcfg physical source
+          multiplicity w c result y zRaw cRaw hinvariant hguard hyRun hzRun
+          hcRun
+        rcases hprepared with
+          ⟨_hyCanonical, _hzCanonical, _hcCanonical, _hzNorm, _hcNorm,
+            _hyMonic, hzMonic, _hcMonic, _hyBound, _hcBound, _hdecrease,
+            _hincrement, _hbudget, _hySemantic, _hzSemantic',
+            _hcSemantic'⟩
+        by_cases hzGuard : (!zRaw.normalization.isEmpty &&
+            get_deg zRaw.normalization > 0) = true
+        · have hzSize := sparsePolyZp_size_pos_of_toPoly_ne_zero
+            this._p.toNat zRaw hzMonic.ne_zero
+          have hmakeCore := upolyMakeMonicIR_eq_of_monic this zRaw
+            hzCanonical hzSize hzMonic
+          have hmake : makeMonicRawIR this zRaw.normalization = .ok zRaw := by
+            simp [hzNorm, makeMonicRawIR, hmakeCore]
+          have hstep := yunFactorStep this hcfg physical source multiplicity
+            w c result y zRaw zRaw cRaw hinvariant hguard hyRun hzRun
+            hzGuard hmake hcRun
+          let nextState : Generated.StrictSquarefreeZp.YunRawState
+              (strictSQFRawOps this hcfg physical) source :=
+            ⟨multiplicity + 1, y, cRaw.normalization,
+              result.push (zRaw, multiplicity), hstep.1⟩
+          rcases ih (Generated.StrictSquarefreeZp.yunStateMeasure nextState)
+              (by simpa [nextState,
+                Generated.StrictSquarefreeZp.yunStateMeasure] using
+                  hstep.2.trans_le (Nat.le_of_eq hmeasureEq))
+              nextState rfl with ⟨finalState, hrecursive⟩
+          refine ⟨finalState, ?_⟩
+          rw [Generated.StrictSquarefreeZp._loop___squarefree_Zp_1_raw_ir_state.eq_1]
+          rw [sqfCertifyBool_eq _ true hguard]
+          simp only [strictSQFRawOps]
+          rw [sqfCertifyRawExec_ok _ y hyRun]
+          simp only
+          rw [sqfCertifyRawExec_ok _ zRaw hzRun]
+          simp only
+          rw [sqfCertifyBool_eq _ true hzGuard]
+          simp only
+          rw [sqfCertifyRawExec_ok _ zRaw hmake]
+          simp only
+          rw [sqfCertifyRawExec_ok _ cRaw hcRun]
+          simp only
+          simpa [nextState] using hrecursive
+        · have hzGuardFalse : (!zRaw.normalization.isEmpty &&
+              get_deg zRaw.normalization > 0) = false := by
+            exact Bool.eq_false_of_not_eq_true hzGuard
+          have hstep := yunNoFactorStep this hcfg physical source multiplicity
+            w c result y zRaw cRaw hinvariant hguard hyRun hzRun
+            hzGuardFalse hcRun
+          let nextState : Generated.StrictSquarefreeZp.YunRawState
+              (strictSQFRawOps this hcfg physical) source :=
+            ⟨multiplicity + 1, y, cRaw.normalization, result, hstep.1⟩
+          rcases ih (Generated.StrictSquarefreeZp.yunStateMeasure nextState)
+              (by simpa [nextState,
+                Generated.StrictSquarefreeZp.yunStateMeasure] using
+                  hstep.2.trans_le (Nat.le_of_eq hmeasureEq))
+              nextState rfl with ⟨finalState, hrecursive⟩
+          refine ⟨finalState, ?_⟩
+          rw [Generated.StrictSquarefreeZp._loop___squarefree_Zp_1_raw_ir_state.eq_1]
+          rw [sqfCertifyBool_eq _ true hguard]
+          simp only [strictSQFRawOps]
+          rw [sqfCertifyRawExec_ok _ y hyRun]
+          simp only
+          rw [sqfCertifyRawExec_ok _ zRaw hzRun]
+          simp only
+          rw [sqfCertifyBool_eq _ false hzGuardFalse]
+          simp only
+          rw [sqfCertifyRawExec_ok _ cRaw hcRun]
+          simp only
+          simpa [nextState] using hrecursive
+      · have hguardFalse : (!w.isEmpty && get_deg w > 0) = false := by
+          exact Bool.eq_false_of_not_eq_true hguard
+        refine ⟨⟨⟨multiplicity, w, c, result, hinvariant⟩,
+          hguardFalse⟩, ?_⟩
+        rw [Generated.StrictSquarefreeZp._loop___squarefree_Zp_1_raw_ir_state.eq_1]
+        rw [sqfCertifyBool_eq _ false hguardFalse]
+
+/-- Successful execution of the generated Yun loop returns exactly the
+deterministic L2 Yun result associated with its top-level SQF source. -/
+theorem generatedYunLoopState_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp)
+    (state : Generated.StrictSquarefreeZp.YunRawState
+      (strictSQFRawOps this hcfg physical) source) :
+    ∃ finalState : Generated.StrictSquarefreeZp.YunRawFinalState
+        (strictSQFRawOps this hcfg physical) source,
+      Generated.StrictSquarefreeZp._loop___squarefree_Zp_1_raw_ir_state
+          (strictSQFRawOps this hcfg physical) state = .ok finalState ∧
+      toPolyList finalState.state.result this._p.toNat =
+        (sourceYunTarget this source).1 ∧
+      SparsePolyZp.toPoly this._p.toNat finalState.state.c =
+        (sourceYunTarget this source).2 := by
+  rcases generatedYunLoopState_executes this hcfg physical source state with
+    ⟨finalState, hrun⟩
+  have hwSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat
+    finalState.state.w finalState.state.valid.wMonic.ne_zero
+  have hwHeadBound : finalState.state.w[0].1.deg < 2 ^ 63 := by
+    have hdense : sparseDenseLength finalState.state.w =
+        finalState.state.w[0].1.deg + 1 := by
+      simp [sparseDenseLength, hwSize]
+    have hwBound := finalState.state.valid.wBound
+    rw [hdense] at hwBound
+    omega
+  have hwNotPositive : ¬ 0 < (SparsePolyZp.toPoly this._p.toNat
+      finalState.state.w).natDegree := by
+    intro hwPositive
+    have hguardTrue := (generated_yun_guard_eq_true_iff this._p.toNat
+      finalState.state.w finalState.state.valid.wCanonical hwSize
+      hwHeadBound).mpr hwPositive
+    rw [finalState.done] at hguardTrue
+    contradiction
+  have hwDegree : (SparsePolyZp.toPoly this._p.toNat
+      finalState.state.w).natDegree = 0 := Nat.eq_zero_of_not_pos hwNotPositive
+  have hsemantic := finalState.state.valid.semanticContinuation
+  rw [yunLoop, dif_pos hwDegree] at hsemantic
+  refine ⟨finalState, hrun, ?_, ?_⟩
+  · exact congrArg Prod.fst hsemantic
+  · exact congrArg Prod.snd hsemantic
 
 @[simp] theorem strict_squarefreeMeasure_eq_generated
     (f : SparsePolyZp) :

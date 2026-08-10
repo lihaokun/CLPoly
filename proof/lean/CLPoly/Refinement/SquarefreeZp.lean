@@ -19914,6 +19914,24 @@ theorem generated_squarefreeMeasure_eq_natDegree_succ (p : Nat)
   simp [Generated.squarefreeMeasure, Array.isEmpty_iff, hne,
     getElem!_pos poly 0 hnonempty, hnatDegree]
 
+/-- On the same valid source states, the dense constructor length, generated
+SQF measure, and L2 degree measure are one and the same quantity. -/
+theorem sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ (p : Nat)
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size) :
+    sparseDenseLength poly = Generated.squarefreeMeasure poly ∧
+      Generated.squarefreeMeasure poly =
+        (SparsePolyZp.toPoly p poly).natDegree + 1 := by
+  have hmeasure := generated_squarefreeMeasure_eq_natDegree_succ p poly
+    hcanonical hnonempty
+  refine ⟨?_, hmeasure⟩
+  rw [hmeasure]
+  have hdegree := sparsePolyZp_toPoly_degree_eq_head p poly hcanonical
+    hnonempty
+  have hnatDegree : (SparsePolyZp.toPoly p poly).natDegree =
+      poly[0].1.deg := Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  simp [sparseDenseLength, hnonempty, hnatDegree]
+
 /-- Under the source's signed-degree bound, its concrete `get_deg > 0` test
 is exactly the L2 positive-degree test. -/
 theorem generated_getDeg_pos_iff_natDegree_pos (p : Nat)
@@ -20460,6 +20478,19 @@ theorem UInt64_toNat_add_one_of_lt (value : UInt64)
   rw [hone]
   exact Nat.mod_eq_of_lt hbound
 
+/-- A strictly decreasing recursion measure pays for one source multiplicity
+increment while preserving the no-wrap budget. -/
+theorem yunMultiplicityBudget_step (value : UInt64) (oldMeasure newMeasure : Nat)
+    (hdecrease : newMeasure < oldMeasure)
+    (hbudget : value.toNat + oldMeasure < UInt64.size) :
+    (value + 1).toNat = value.toNat + 1 ∧
+      (value + 1).toNat + newMeasure < UInt64.size := by
+  have hincrementBound : value.toNat + 1 < UInt64.size := by omega
+  have hincrement := UInt64_toNat_add_one_of_lt value hincrementBound
+  refine ⟨hincrement, ?_⟩
+  rw [hincrement]
+  omega
+
 theorem sparsePolyZp_size_pos_of_toPoly_ne_zero (p : Nat)
     (poly : SparsePolyZp) (hnonzero : SparsePolyZp.toPoly p poly ≠ 0) :
     0 < poly.size := by
@@ -20531,6 +20562,61 @@ theorem yunNext_generatedMeasure_lt
     (SparsePolyZp.toPoly this._p.toNat y)
     (SparsePolyZp.toPoly this._p.toNat cNext) hwPositive hcMonic hyMonic
     hyDvdC hcNextSemantic
+
+/-- Raw dense-constructor bounds are hereditary across a Yun step, so every
+recursive public GCD call remains within the source's signed length limit. -/
+theorem yunNext_sparseDenseLength_bounds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (w c y cNext : SparsePolyZp)
+    (hwCanonical : SparsePolyZp.Canonical this._p.toNat w)
+    (hcCanonical : SparsePolyZp.Canonical this._p.toNat c)
+    (hyCanonical : SparsePolyZp.Canonical this._p.toNat y)
+    (hcNextCanonical : SparsePolyZp.Canonical this._p.toNat cNext)
+    (hwSize : 0 < w.size) (hcSize : 0 < c.size)
+    (hwMonic : (SparsePolyZp.toPoly this._p.toNat w).Monic)
+    (hcMonic : (SparsePolyZp.toPoly this._p.toNat c).Monic)
+    (hyMonic : (SparsePolyZp.toPoly this._p.toNat y).Monic)
+    (hyDvdW : SparsePolyZp.toPoly this._p.toNat y ∣
+      SparsePolyZp.toPoly this._p.toNat w)
+    (hyDvdC : SparsePolyZp.toPoly this._p.toNat y ∣
+      SparsePolyZp.toPoly this._p.toNat c)
+    (hcNextSemantic : SparsePolyZp.toPoly this._p.toNat cNext =
+      SparsePolyZp.toPoly this._p.toNat c /ₘ
+        SparsePolyZp.toPoly this._p.toNat y)
+    (hwBound : sparseDenseLength w ≤ 2 ^ 63)
+    (hcBound : sparseDenseLength c ≤ 2 ^ 63) :
+    sparseDenseLength y ≤ 2 ^ 63 ∧
+      sparseDenseLength cNext ≤ 2 ^ 63 := by
+  have hySize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat y
+    hyMonic.ne_zero
+  have hcNextMonic : (SparsePolyZp.toPoly this._p.toNat cNext).Monic := by
+    rw [hcNextSemantic]
+    exact divByMonic_monic_of_monic_of_dvd
+      (SparsePolyZp.toPoly this._p.toNat c)
+      (SparsePolyZp.toPoly this._p.toNat y) hcMonic hyMonic hyDvdC
+  have hcNextSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat
+    cNext hcNextMonic.ne_zero
+  have hyDegree : (SparsePolyZp.toPoly this._p.toNat y).natDegree ≤
+      (SparsePolyZp.toPoly this._p.toNat w).natDegree :=
+    Polynomial.natDegree_le_of_dvd hyDvdW hwMonic.ne_zero
+  have hcNextDegree :
+      (SparsePolyZp.toPoly this._p.toNat cNext).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat c).natDegree := by
+    rw [hcNextSemantic, Polynomial.natDegree_divByMonic _ hyMonic]
+    exact Nat.sub_le _ _
+  rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat w hwCanonical hwSize with ⟨hwLength, hwMeasure⟩
+  rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat c hcCanonical hcSize with ⟨hcLength, hcMeasure⟩
+  rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat y hyCanonical hySize with ⟨hyLength, hyMeasure⟩
+  rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat cNext hcNextCanonical hcNextSize with
+    ⟨hcNextLength, hcNextMeasure⟩
+  rw [hwLength, hwMeasure] at hwBound
+  rw [hcLength, hcMeasure] at hcBound
+  rw [hyLength, hyMeasure, hcNextLength, hcNextMeasure]
+  constructor <;> omega
 
 /-- Once the strict raw GCD output is supplied, both source `pair_vec_div`
 calls in a Yun body execute successfully through their complete branch tree.

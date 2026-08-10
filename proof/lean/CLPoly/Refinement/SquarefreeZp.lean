@@ -6020,6 +6020,77 @@ theorem pairVecDivVHCNode_advanced_degree_lt (p : Nat)
     node.quotientIndex (node.quotientIndex + 1) hq hadvance (by omega)
   omega
 
+/-- Row-order dominance for the concrete heap cursors.  If the left row uses
+an earlier divisor term and a no-later quotient cursor, its currently stored
+product has strictly larger degree.  This is the semantic reason that only
+the `resetH` row can be the next row to exhaust. -/
+theorem pairVecDivVHCNode_product_degree_gt_of_cursor_le_of_divisor_lt
+    (p : Nat) (quotient divisor : SparsePolyZp)
+    (left right : PairVecDivVHCNode) (leftMono rightMono : UMonomial)
+    (hquotient : SparsePolyZp.Canonical p quotient)
+    (hdivisor : SparsePolyZp.Canonical p divisor)
+    (hleft : PairVecDivVHCNodeDenotes quotient divisor left)
+    (hright : PairVecDivVHCNodeDenotes quotient divisor right)
+    (hleftMono : left.mono = some leftMono)
+    (hrightMono : right.mono = some rightMono)
+    (hq : left.quotientIndex ≤ right.quotientIndex)
+    (hd : left.divisorIndex < right.divisorIndex) :
+    rightMono.deg < leftMono.deg := by
+  rcases hleft with
+    ⟨leftQ, leftD, hleftQ, hleftD, hleftStored⟩
+  rcases hright with
+    ⟨rightQ, rightD, hrightQ, hrightD, hrightStored⟩
+  have hlq : left.quotientIndex < quotient.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hleftQ
+    contradiction
+  have hrq : right.quotientIndex < quotient.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hrightQ
+    contradiction
+  have hld : left.divisorIndex < divisor.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hleftD
+    contradiction
+  have hrd : right.divisorIndex < divisor.size := by
+    by_contra hnot
+    rw [Array.getElem?_eq_none (by omega)] at hrightD
+    contradiction
+  rw [Array.getElem?_eq_getElem hlq] at hleftQ
+  rw [Array.getElem?_eq_getElem hrq] at hrightQ
+  rw [Array.getElem?_eq_getElem hld] at hleftD
+  rw [Array.getElem?_eq_getElem hrd] at hrightD
+  simp only [Option.some.injEq] at hleftQ hrightQ hleftD hrightD
+  subst leftQ
+  subst rightQ
+  subst leftD
+  subst rightD
+  rw [hleftMono] at hleftStored
+  rw [hrightMono] at hrightStored
+  have hleftDegree : leftMono.deg =
+      quotient[left.quotientIndex].1.deg +
+        divisor[left.divisorIndex].1.deg := by
+    simpa using congrArg UMonomial.deg
+      (Option.some.inj hleftStored)
+  have hrightDegree : rightMono.deg =
+      quotient[right.quotientIndex].1.deg +
+        divisor[right.divisorIndex].1.deg := by
+    simpa using congrArg UMonomial.deg
+      (Option.some.inj hrightStored)
+  have hdDegree := canonical_degree_lt_of_index_lt p divisor hdivisor
+    left.divisorIndex right.divisorIndex hld hrd hd
+  by_cases heq : left.quotientIndex = right.quotientIndex
+  · have hqTermEq : quotient[left.quotientIndex] =
+        quotient[right.quotientIndex] := by
+      congr
+    have hqDegreeEq := congrArg (fun term => term.1.deg) hqTermEq
+    change quotient[left.quotientIndex].1.deg =
+      quotient[right.quotientIndex].1.deg at hqDegreeEq
+    omega
+  · have hqDegree := canonical_degree_lt_of_index_lt p quotient hquotient
+      left.quotientIndex right.quotientIndex hlq hrq (by omega)
+    omega
+
 theorem canonical_remaining_below_advanced (p : Nat)
     (dividend : SparsePolyZp)
     (hcanonical : SparsePolyZp.Canonical p dividend)

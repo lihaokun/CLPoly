@@ -1292,3 +1292,12 @@ every generated range-for and recursive loop used by SQF.
   后继项严格降次得到新 monomial 低于 frontier，exhausted 分支则利用当前
   chain 节点不在旧 `lin` 中运输旧成员。该性质用于证明 `resetH` 行不可能
   已被本轮 deferred，从而可在 heap ownership 中找到它并排除越序耗尽。
+- concrete VHC 行序的次数支配性质已闭合。
+  `pairVecDivVHCNode_product_degree_gt_of_cursor_le_of_divisor_lt` 直接从
+  quotient/divisor 两个 canonical 稀疏数组的严格降次顺序，以及两个 active
+  节点各自的真实 denotation，证明：较早 divisor 行若 quotient cursor
+  不更晚，其当前乘积次数必严格更高。该结论不依赖 heap 算法规格结果、
+  预期商、fuel 或 L2 计算；它正是把源码 exhausted 分支的
+  `nodeIndex == reset_h` assertion 从外加前提转化为可证明运行时不变量的
+  数学核心。下一步将它与 `StateCovered`、`LinBelow` 和 selector heap-max
+  组合，分别排除 `resetH` 行位于 lin 与 heap 的两种越序情形。

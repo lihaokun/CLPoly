@@ -312,6 +312,50 @@ theorem strictOddCandidateIR_refines
   · rw [hfactorSemantic, hminusSemantic, hpowSemantic]
     simp only [exponent, hprimeNat]
 
+/-- Recursive-split consequences of the exact odd-characteristic candidate
+pipeline.  The divisor is the actual raw GCD output returned above. -/
+theorem strictOddCandidateIR_factor
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (f : SparsePolyZp) (d : UInt64) (r : SparsePolyZp)
+    (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hrCanonical : SparsePolyZp.Canonical this._p.toNat r)
+    (hfNonempty : 0 < f.size)
+    (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic)
+    (hfDegree : 0 < (SparsePolyZp.toPoly this._p.toNat f).natDegree) :
+    ∃ factor,
+      strictOddCandidateIR this providers f d r = .ok factor ∧
+      SparsePolyZp.Canonical this._p.toNat factor ∧
+      (SparsePolyZp.toPoly this._p.toNat factor).Monic ∧
+      SparsePolyZp.toPoly this._p.toNat factor ∣
+        SparsePolyZp.toPoly this._p.toNat f := by
+  rcases strictOddCandidateIR_refines this providers f d r hfCanonical
+      hrCanonical hfNonempty hfMonic hfDegree with
+    ⟨factor, hrun, hcanonical, hsemantic⟩
+  let candidateBase :=
+    (SparsePolyZp.toPoly this._p.toNat r ^
+        ((this._p.toNat ^ d.toNat - 1) / 2) %ₘ
+          SparsePolyZp.toPoly this._p.toNat f) - 1
+  let gcdResult := EuclideanDomain.gcd candidateBase
+    (SparsePolyZp.toPoly this._p.toNat f)
+  have hgcdDivides : gcdResult ∣ SparsePolyZp.toPoly this._p.toNat f :=
+    EuclideanDomain.gcd_dvd_right candidateBase
+      (SparsePolyZp.toPoly this._p.toNat f)
+  have hgcdNonzero : gcdResult ≠ 0 := by
+    intro hzero
+    have := hgcdDivides
+    rw [hzero, zero_dvd_iff] at this
+    exact hfMonic.ne_zero this
+  have hfactorMonic :
+      (SparsePolyZp.toPoly this._p.toNat factor).Monic := by
+    rw [hsemantic]
+    exact Polynomial.monic_normalize hgcdNonzero
+  have hfactorDivides : SparsePolyZp.toPoly this._p.toNat factor ∣
+      SparsePolyZp.toPoly this._p.toNat f := by
+    rw [hsemantic, normalize_dvd_iff]
+    exact hgcdDivides
+  exact ⟨factor, hrun, hcanonical, hfactorMonic, hfactorDivides⟩
+
 end StrictEDF
 
 -- The public L1→L2 EDF theorem remains deliberately absent until the retry

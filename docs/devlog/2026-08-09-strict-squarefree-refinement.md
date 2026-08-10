@@ -1284,3 +1284,11 @@ every generated range-for and recursive loop used by SQF.
   assertion：当 cursor 恰好到达 quotient 末尾时，唯一剩余前提被明确收敛
   为 `nodeIndex = resetH`。因此后续 chain/root 成功性证明的真正任务已经
   精确定位为 exhausted rows 的顺序不变量，而不是泛化的“不会出错”假设。
+- equal-degree consume 的 deferred-node 次数不变量已建立。
+  新谓词 `PairVecDivVHCLinBelow` 记录本轮已推入 `lin` 的节点均已前进到
+  严格低于当前 frontier 的乘积次数；空 `lin` 初始态直接成立。
+  `pairVecDivVHCConsumeNode_preserves_linBelow` 跟随真实 advance/exhausted
+  分支证明保持：advance 分支通过 node denotation 与 canonical quotient 的
+  后继项严格降次得到新 monomial 低于 frontier，exhausted 分支则利用当前
+  chain 节点不在旧 `lin` 中运输旧成员。该性质用于证明 `resetH` 行不可能
+  已被本轮 deferred，从而可在 heap ownership 中找到它并排除越序耗尽。

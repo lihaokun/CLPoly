@@ -9897,6 +9897,94 @@ def PairVecDivVHCLinReady (lin : Array Nat)
     ∀ nodeIndex ∈ lin.toList,
       ∃ node mono, nodes[nodeIndex]? = some node ∧ node.mono = some mono
 
+/-- Nodes deferred in `lin` during one equal-degree bucket have already
+advanced to products strictly below that bucket's frontier degree. -/
+def PairVecDivVHCLinBelow (degree : Nat) (lin : Array Nat)
+    (nodes : Array PairVecDivVHCNode) : Prop :=
+  ∀ nodeIndex ∈ lin.toList, ∀ node mono,
+    nodes[nodeIndex]? = some node → node.mono = some mono → mono.deg < degree
+
+theorem PairVecDivVHCLinBelow.empty (degree : Nat)
+    (nodes : Array PairVecDivVHCNode) :
+    PairVecDivVHCLinBelow degree #[] nodes := by
+  simp [PairVecDivVHCLinBelow]
+
+theorem pairVecDivVHCConsumeNode_preserves_linBelow
+    (this : DenseUPolyZp) (p degree nodeIndex : Nat) (currentMono : UMonomial)
+    (k k' : UInt64) (nodes nodes' : Array PairVecDivVHCNode)
+    (lin lin' : Array Nat) (resetH resetH' : Nat) (next : Option Nat)
+    (quotient divisor : SparsePolyZp) (node : PairVecDivVHCNode)
+    (hn : nodeIndex < nodes.size)
+    (hget : nodes[nodeIndex]? = some node)
+    (hmono : node.mono = some currentMono)
+    (hdegree : currentMono.deg = degree)
+    (hdenotes : PairVecDivVHCNodeDenotes quotient divisor node)
+    (hcanonical : SparsePolyZp.Canonical p quotient)
+    (houtside : nodeIndex ∉ lin.toList)
+    (hbelow : PairVecDivVHCLinBelow degree lin nodes)
+    (hrun : pairVecDivVHCConsumeNode this nodeIndex k nodes lin resetH
+      quotient divisor = .ok (k', nodes', lin', resetH', next)) :
+    PairVecDivVHCLinBelow degree lin' nodes' := by
+  have hnodeEq : nodes[nodeIndex] = node := by
+    rw [Array.getElem?_eq_getElem hn] at hget
+    exact Option.some.inj hget
+  unfold pairVecDivVHCConsumeNode at hrun
+  simp only [hn, ↓reduceDIte] at hrun
+  split at hrun <;> try contradiction
+  next hq =>
+    split at hrun <;> try contradiction
+    next hd =>
+      split at hrun
+      next hadvance =>
+        simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+        rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+        intro i hi updated updatedMono hupdated hupdatedMono
+        simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hi
+        rcases hi with hold | rfl
+        · rw [Array.getElem?_set_ne hn (by
+              intro heq
+              subst i
+              exact houtside hold)] at hupdated
+          exact hbelow i hold updated updatedMono hupdated hupdatedMono
+        · rw [Array.getElem?_set_self hn] at hupdated
+          simp only [Option.some.injEq] at hupdated
+          subst updated
+          simp only [hnodeEq] at hupdatedMono
+          have hmonoEq := Option.some.inj hupdatedMono
+          subst updatedMono
+          have hlater : node.quotientIndex < node.quotientIndex + 1 := by omega
+          have hqAdvance : node.quotientIndex + 1 < quotient.size := by
+            simpa [hnodeEq] using hadvance
+          have hdBound : node.divisorIndex < divisor.size := by
+            simpa [hnodeEq] using hd
+          have hquotient : quotient[node.quotientIndex + 1]? =
+              some (quotient[node.quotientIndex + 1]'hqAdvance) :=
+            Array.getElem?_eq_getElem hqAdvance
+          have hdivisor : divisor[node.divisorIndex]? =
+              some (divisor[node.divisorIndex]'hdBound) :=
+            Array.getElem?_eq_getElem hdBound
+          have hlower := hdenotes.later_product_degree_lt p quotient divisor
+            node currentMono.deg (node.quotientIndex + 1)
+            (quotient[node.quotientIndex + 1]'hqAdvance)
+            (divisor[node.divisorIndex]'hdBound)
+            hcanonical hmono hlater hquotient hdivisor
+          simpa [hdegree] using hlower
+      next hadvance =>
+        split at hrun
+        next hexhausted =>
+          split at hrun <;> try contradiction
+          next horder =>
+            simp only [Except.ok.injEq, Prod.mk.injEq] at hrun
+            rcases hrun with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            intro i hi updated updatedMono hupdated hupdatedMono
+            rw [Array.getElem?_set_ne hn (by
+              intro heq
+              subst i
+              exact houtside hi)] at hupdated
+            exact hbelow i hi updated updatedMono hupdated hupdatedMono
+        next hnotExhausted =>
+          omega
+
 theorem pairVecDivVHCCursorIndicesBounded_of_state
     (heap : Array Nat) (nodes : Array PairVecDivVHCNode)
     (lin : Array Nat) (resetH : Nat) (quotient divisor : SparsePolyZp)

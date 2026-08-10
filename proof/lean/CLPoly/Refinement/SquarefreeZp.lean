@@ -21347,6 +21347,54 @@ theorem scaleMultiplicityLoop_toPolyList_sqfZp (p : Nat)
   rw [scaleMultiplicityLoop_toPolyList p source prime hprime hnowrap,
     hsemantic]
 
+/-- General accumulator form used by the post-Yun source loop. -/
+theorem scaleMultiplicityLoop_toPolyList_append (p : Nat)
+    (source output : Array (SparsePolyZp × UInt64)) (prime : UInt64)
+    (hprime : prime.toNat = p)
+    (hnowrap : ∀ item ∈ source.toList,
+      item.2.toNat * prime.toNat < UInt64.size) :
+    toPolyList (scaleMultiplicityLoop 0 source output prime) p =
+      toPolyList output p ++
+        (toPolyList source p).map (fun item => (item.1, item.2 * p)) := by
+  unfold toPolyList
+  rw [Array.toList_map, scaleMultiplicityLoop_toList]
+  simp only [List.drop_zero, List.map_append, List.map_map]
+  rw [Array.toList_map, Array.toList_map, List.map_map]
+  congr 1
+  apply List.map_congr_left
+  intro item hitem
+  simp only [Function.comp_apply]
+  congr 2
+  rw [UInt64.toNat_mul, Nat.mod_eq_of_lt (hnowrap item hitem), hprime]
+
+/-- General accumulator scaling specialized to a recursively refined SQF
+array; wraparound is discharged from the L2 exponent bound. -/
+theorem scaleMultiplicityLoop_toPolyList_sqfZp_append (p : Nat)
+    [Fact (Nat.Prime p)]
+    (source output : Array (SparsePolyZp × UInt64)) (prime : UInt64)
+    (g : Polynomial (ZMod p))
+    (hprime : prime.toNat = p)
+    (hsemantic : toPolyList source p = sqfZp g)
+    (hscaledBound : g.natDegree * p < UInt64.size) :
+    toPolyList (scaleMultiplicityLoop 0 source output prime) p =
+      toPolyList output p ++
+        (sqfZp g).map (fun item => (item.1, item.2 * p)) := by
+  have hnowrap : ∀ item ∈ source.toList,
+      item.2.toNat * prime.toNat < UInt64.size := by
+    intro item hitem
+    have hmapped :
+        (SparsePolyZp.toPoly p item.1, item.2.toNat) ∈ toPolyList source p := by
+      unfold toPolyList
+      rw [Array.toList_map]
+      exact List.mem_map.mpr ⟨item, hitem, rfl⟩
+    rw [hsemantic] at hmapped
+    have hexponent := sqfZp_exponent_le_natDegree g
+      (SparsePolyZp.toPoly p item.1, item.2.toNat) hmapped
+    rw [hprime]
+    exact lt_of_le_of_lt (Nat.mul_le_mul_right p hexponent) hscaledBound
+  rw [scaleMultiplicityLoop_toPolyList_append p source output prime hprime
+    hnowrap, hsemantic]
+
 set_option maxHeartbeats 800000 in
 /-- Complete semantic composition of the positive-degree derivative-zero
 branch.  Its only recursive premise is for the concrete, strictly smaller

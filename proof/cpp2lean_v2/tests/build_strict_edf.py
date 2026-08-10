@@ -120,16 +120,6 @@ structure EDFRawOps (State : Type) where
   exactDiv : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
   makeMonic : SparsePolyZp → RawExec SparsePolyZp
   EntryInvariant : SparsePolyZp → UInt64 → Prop
-  splitStep : ∀ (f : SparsePolyZp) (d : UInt64)
-      (g hRaw gMonic hMonic : SparsePolyZp),
-    EntryInvariant f d →
-    get_deg g > 0 ∧ get_deg g < get_deg f →
-    exactDiv f g = .ok hRaw →
-    makeMonic g = .ok gMonic →
-    makeMonic hRaw.normalization = .ok hMonic →
-    EntryInvariant gMonic d ∧ EntryInvariant hMonic d ∧
-      edfMeasure gMonic < edfMeasure f ∧
-      edfMeasure hMonic < edfMeasure f
 
 def traceLoop {State : Type} (ops : EDFRawOps State) (d : UInt64) (f r : SparsePolyZp)
     (i : UInt64) (g : SparsePolyZp)
@@ -175,6 +165,21 @@ def candidateRun {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (d : 
       match certifyRawExec (__upoly_subtract_one_raw_ir hpow.val f[0]!.2.prime) with
       | .error fault => .error fault
       | .ok hminus => ops.gcd hminus.val f
+
+/-- Proof layer for a successful concrete candidate execution and the raw
+division/monic calls that create the two recursive inputs. -/
+structure EDFSplitLaw {State : Type} (ops : EDFRawOps State) where
+  splitStep : ∀ (f : SparsePolyZp) (d : UInt64)
+      (g hRaw gMonic hMonic : SparsePolyZp),
+    ops.EntryInvariant f d →
+    (∃ r hbudget, candidateRun ops f d r hbudget = .ok g) →
+    get_deg g > 0 ∧ get_deg g < get_deg f →
+    ops.exactDiv f g = .ok hRaw →
+    ops.makeMonic g = .ok gMonic →
+    ops.makeMonic hRaw.normalization = .ok hMonic →
+    ops.EntryInvariant gMonic d ∧ ops.EntryInvariant hMonic d ∧
+      edfMeasure gMonic < edfMeasure f ∧
+      edfMeasure hMonic < edfMeasure f
 
 structure SplitState {State : Type} (ops : EDFRawOps State) (f : SparsePolyZp) (d : UInt64) where
   factor : SparsePolyZp
@@ -246,6 +251,7 @@ structure EDFTermination {State : Type} (ops : EDFRawOps State) where
   retryTrace : ∀ f d rng, ops.EntryInvariant f d → RetryTrace ops f d rng
 
 def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State)
+    (splitLaw : EDFSplitLaw ops)
     (termination : EDFTermination ops)
     (state : EDFState ops) :
     RawExec (Array SparsePolyZp × State) :=
@@ -269,14 +275,15 @@ def __edf_Zp_raw_ir_state {State : Type} (ops : EDFRawOps State)
           match certifyRawExec (ops.makeMonic hhRaw.val.normalization) with
           | .error fault => .error fault
           | .ok hhMonic =>
-            have hstep := ops.splitStep state.f state.d split.factor hhRaw.val
-              hgMonic.val hhMonic.val state.valid split.proper hhRaw.property
-              hgMonic.property hhMonic.property
-            match __edf_Zp_raw_ir_state ops termination
+            have hstep := splitLaw.splitStep state.f state.d split.factor
+              hhRaw.val hgMonic.val hhMonic.val state.valid
+              ⟨split.randomPoly, split.candidateRun⟩ split.proper
+              hhRaw.property hgMonic.property hhMonic.property
+            match __edf_Zp_raw_ir_state ops splitLaw termination
                 ⟨state.result, hgMonic.val, state.d, split.rng, hstep.1⟩ with
             | .error fault => .error fault
             | .ok leftRun =>
-              __edf_Zp_raw_ir_state ops termination
+              __edf_Zp_raw_ir_state ops splitLaw termination
                 ⟨leftRun.1, hhMonic.val, state.d, leftRun.2, hstep.2.1⟩
 termination_by edfMeasure state.f
 decreasing_by
@@ -284,11 +291,13 @@ decreasing_by
   · exact hstep.2.2.2
 
 def __edf_Zp_raw_ir {State : Type} (ops : EDFRawOps State)
+    (splitLaw : EDFSplitLaw ops)
     (termination : EDFTermination ops)
     (result : Array SparsePolyZp)
     (f : SparsePolyZp) (d : UInt64) (rng : State)
     (hinitial : ops.EntryInvariant f d) : RawExec (Array SparsePolyZp × State) :=
-  __edf_Zp_raw_ir_state ops termination ⟨result, f, d, rng, hinitial⟩
+  __edf_Zp_raw_ir_state ops splitLaw termination
+    ⟨result, f, d, rng, hinitial⟩
 
 end Generated.StrictEDF
 '''

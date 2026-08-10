@@ -170,11 +170,12 @@ the generated state machine itself and to the concrete `makeMonic` run; it is
 not an L2 execution substitution. -/
 theorem rawState_base_run
     {State : Type} (ops : Generated.StrictEDF.EDFRawOps State)
+    (splitLaw : Generated.StrictEDF.EDFSplitLaw ops)
     (termination : Generated.StrictEDF.EDFTermination ops)
     (state : Generated.StrictEDF.EDFState ops)
     (hdegree : ((get_deg state.f).toUInt64 == state.d) = true)
     (hmonic : ops.makeMonic state.f = .ok state.f) :
-    Generated.StrictEDF.__edf_Zp_raw_ir_state ops termination state =
+    Generated.StrictEDF.__edf_Zp_raw_ir_state ops splitLaw termination state =
       .ok (state.result.push state.f, state.rng) := by
   rw [Generated.StrictEDF.__edf_Zp_raw_ir_state.eq_1]
   simp only [hdegree, ↓reduceIte]

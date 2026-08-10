@@ -21,6 +21,27 @@ noncomputable def toPolyMod (m : Nat) (f : SparsePolyZZ) :
     Polynomial (ZMod m) :=
   Polynomial.map (Int.castRingHom (ZMod m)) (SparsePolyZZ.toPoly f)
 
+/-- L2 invariant represented by a concrete C++ Hensel tree node at modulus
+`m`: its two factors multiply to the target and its stored coefficients form
+a Bézout certificate. Both clauses decode arrays to mathematical
+polynomials; they do not call model implementations of C++ operations. -/
+def HenselNodeInvariant (f : SparsePolyZZ) (m : Nat)
+    (node : HenselNode) : Prop :=
+  toPolyMod m node.g * toPolyMod m node.h = toPolyMod m f ∧
+  toPolyMod m node.s * toPolyMod m node.g +
+      toPolyMod m node.t * toPolyMod m node.h = 1
+
+/-- Precise L2 postcondition of the original C++ `__hensel_step` entry.
+Besides establishing the factor and Bézout invariants at `m²`, all four
+updated polynomials reduce to their concrete input values modulo `m`. -/
+def HenselStepCorrect (f : SparsePolyZZ) (m : Nat)
+    (input output : HenselNode) : Prop :=
+  HenselNodeInvariant f (m ^ 2) output ∧
+  toPolyMod m output.g = toPolyMod m input.g ∧
+  toPolyMod m output.h = toPolyMod m input.h ∧
+  toPolyMod m output.s = toPolyMod m input.s ∧
+  toPolyMod m output.t = toPolyMod m input.t
+
 @[simp] theorem toPolyMod_empty (m : Nat) :
     toPolyMod m (#[] : SparsePolyZZ) = 0 := by
   simp [toPolyMod, SparsePolyZZ.toPoly]

@@ -136,10 +136,32 @@ theorem normalization_canonical_of_chain_allReduced (f : SparsePolyZp)
   refine ⟨?_, ?_, ?_⟩
   · intro x hx
     exact hreduced x (List.mem_of_mem_filter hx)
-  · exact hchain.filter _
+  · exact (hchain.pairwise.filter _).isChain
   · intro x hx
     have hkeep := (List.mem_filter.mp hx).2
     simpa [bne_iff_ne] using hkeep
+
+private lemma zp_sub_reduced (a b : Zp) (ha : Zp.Reduced p a) :
+    Zp.Reduced p (a - b) := by
+  have hp : 0 < p := lt_of_le_of_lt (Nat.zero_le _) ha.2
+  have hmod :
+      (a.val.toNat + a.prime.toNat - b.val.toNat) % a.prime.toNat <
+        a.prime.toNat := Nat.mod_lt _ (ha.1 ▸ hp)
+  have hsize :
+      (a.val.toNat + a.prime.toNat - b.val.toNat) % a.prime.toNat <
+        UInt64.size := hmod.trans a.prime.toNat_lt_size
+  refine ⟨ha.1, ?_⟩
+  change (((a.val.toNat + a.prime.toNat - b.val.toNat) %
+    a.prime.toNat).toUInt64).toNat < p
+  have htoNat :
+      (((a.val.toNat + a.prime.toNat - b.val.toNat) %
+        a.prime.toNat).toUInt64).toNat =
+      (a.val.toNat + a.prime.toNat - b.val.toNat) % a.prime.toNat := by
+    simpa [Nat.mod_eq_of_lt hsize] using
+      (UInt64.toNat_ofNat (n :=
+        (a.val.toNat + a.prime.toNat - b.val.toNat) % a.prime.toNat))
+  rw [htoNat, ← ha.1]
+  exact hmod
 
 private theorem zp_toZMod_sub (h2p : 2 * p ≤ UInt64.size) (a b : Zp)
     (ha_prime : a.prime.toNat = p) (hb_prime : b.prime.toNat = p)
@@ -186,6 +208,12 @@ private lemma strict_make_zp_one_toZMod (q : UInt64) (hq : q.toNat = p) :
   have h := (singleton_one_data (p := p) q hq).2
   simpa [SparsePolyZp.toPoly, listSum,
     Generated.StrictDDF.__make_zp_ir] using congrArg (Polynomial.coeff · 0) h
+
+private lemma strict_make_zp_one_reduced (q : UInt64) (hq : q.toNat = p) :
+    Zp.Reduced p (Generated.StrictDDF.__make_zp_ir (1 : Int64) q) := by
+  have h := (singleton_one_data (p := p) q hq).1.2.2
+    (UMonomial.mk (0 : Int32), Zp.ofInt (1 : Int) q) (by simp)
+  simpa [Generated.StrictDDF.__make_zp_ir] using h
 
 private lemma strict_sub_one_toZMod (h2p : 2 * p ≤ UInt64.size)
     (c : Zp) (q : UInt64) (hc_prime : c.prime.toNat = p)

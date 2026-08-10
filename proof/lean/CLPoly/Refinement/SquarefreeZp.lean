@@ -19889,6 +19889,52 @@ theorem generated_squarefreeMeasure_eq_natDegree_succ (p : Nat)
   simp [Generated.squarefreeMeasure, Array.isEmpty_iff, hne,
     getElem!_pos poly 0 hnonempty, hnatDegree]
 
+/-- Under the source's signed-degree bound, its concrete `get_deg > 0` test
+is exactly the L2 positive-degree test. -/
+theorem generated_getDeg_pos_iff_natDegree_pos (p : Nat)
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size) (hdegreeBound : poly[0].1.deg < 2 ^ 63) :
+    get_deg poly > (0 : Int64) ↔
+      0 < (SparsePolyZp.toPoly p poly).natDegree := by
+  have hne : poly ≠ #[] := by
+    intro hempty
+    subst poly
+    simp at hnonempty
+  have hdegree := sparsePolyZp_toPoly_degree_eq_head p poly hcanonical
+    hnonempty
+  have hnatDegree : (SparsePolyZp.toPoly p poly).natDegree =
+      poly[0].1.deg := Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  have hwordNat : poly[0].1.deg.toUInt64.toNat = poly[0].1.deg := by
+    change (OfNat.ofNat poly[0].1.deg : UInt64).toNat = poly[0].1.deg
+    rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt]
+    omega
+  have hsignedNat : poly[0].1.deg.toUInt64.toInt64.toNatClampNeg =
+      poly[0].1.deg := by
+    rw [UInt64_toInt64_toNatClampNeg_eq_toNat_of_lt (by
+      simpa [hwordNat] using hdegreeBound), hwordNat]
+  have hget : get_deg poly = poly[0].1.deg.toUInt64.toInt64 := by
+    simp [get_deg, Array.isEmpty_iff, hne, getElem!_pos poly 0 hnonempty]
+  rw [hget]
+  change (0 : Int64) < poly[0].1.deg.toUInt64.toInt64 ↔
+    0 < (SparsePolyZp.toPoly p poly).natDegree
+  rw [← Int64.toNatClampNeg_pos_iff, hsignedNat, hnatDegree]
+
+/-- The complete generated Yun loop guard therefore takes the recursive branch
+exactly when the L2 polynomial has positive degree. -/
+theorem generated_yun_guard_eq_true_iff (p : Nat)
+    (poly : SparsePolyZp) (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size) (hdegreeBound : poly[0].1.deg < 2 ^ 63) :
+    ((! Array.isEmpty poly) && decide (get_deg poly > (0 : Int64))) = true ↔
+      0 < (SparsePolyZp.toPoly p poly).natDegree := by
+  have hnotEmpty : Array.isEmpty poly = false := by
+    simpa [Array.isEmpty_iff] using (show poly ≠ #[] by
+      intro hempty
+      subst poly
+      simp at hnonempty)
+  rw [hnotEmpty]
+  simpa using generated_getDeg_pos_iff_natDegree_pos p poly hcanonical
+    hnonempty hdegreeBound
+
 /-- Consequently, strict descent of the generated two-polynomial Yun measure
 is precisely strict descent of the L2 `natDegree` sum whenever all four sparse
 states are canonical and nonempty. -/

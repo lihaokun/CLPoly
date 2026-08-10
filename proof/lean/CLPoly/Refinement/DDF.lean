@@ -408,6 +408,62 @@ theorem strictMulIR_refines_mul
     · subst left
       simp [SparsePolyZp.toPoly]
 
+/-- Physical allocation for repeated reductions by one fixed modulus. -/
+structure RawModWorkspaceProvider (this : DenseUPolyZp)
+    (modulus : SparsePolyZp) where
+  workspace : ∀ dividend : SparsePolyZp,
+    RawModWorkspace this dividend modulus
+
+/-- One actual multiply-then-reduce step. -/
+def strictMulModIR (this : DenseUPolyZp) (left right modulus : SparsePolyZp)
+    (mulProvider : RawMulWorkspaceProvider this)
+    (modProvider : RawModWorkspaceProvider this modulus) :
+    RawExec SparsePolyZp := do
+  let product ← strictMulIR this left right mulProvider
+  strictModIR this product modulus (modProvider.workspace product)
+
+/-- The source binary-powmod loop, expressed as well-founded recursion on the
+natural exponent.  Its only arithmetic calls are the strict raw multiplication
+and raw division/remainder boundaries above. -/
+def strictPowmodLoopIR (this : DenseUPolyZp) (modulus : SparsePolyZp)
+    (mulProvider : RawMulWorkspaceProvider this)
+    (modProvider : RawModWorkspaceProvider this modulus)
+    (e : Nat) (base result : SparsePolyZp) : RawExec SparsePolyZp :=
+  if hzero : e = 0 then
+    .ok result
+  else do
+    let result' ← if e % 2 ≠ 0 then
+        strictMulModIR this result base modulus mulProvider modProvider
+      else
+        .ok result
+    let e' := e / 2
+    let base' ← if 0 < e' then
+        strictMulModIR this base base modulus mulProvider modProvider
+      else
+        .ok base
+    strictPowmodLoopIR this modulus mulProvider modProvider e' base' result'
+termination_by e
+decreasing_by
+  exact Nat.div_lt_self (Nat.pos_of_ne_zero hzero) (by omega)
+
+/-- Actual `__upoly_powmod` entry specialized to a natural exponent, as used
+by DDF.  The singleton one uses the generated `__make_zp` conversion and the
+prime stored in the nonempty source modulus. -/
+def strictPowmodIR (this : DenseUPolyZp) (base : SparsePolyZp) (e : Nat)
+    (modulus : SparsePolyZp) (mulProvider : RawMulWorkspaceProvider this)
+    (modProvider : RawModWorkspaceProvider this modulus) :
+    RawExec SparsePolyZp :=
+  if hmodulus : 0 < modulus.size then
+    let prime := modulus[0].2.prime
+    let one : SparsePolyZp := #[(UMonomial.mk 0,
+      Generated.StrictDDF.__make_zp_ir 1 prime)]
+    match strictModIR this base modulus (modProvider.workspace base) with
+    | .error fault => .error fault
+    | .ok reducedBase => strictPowmodLoopIR this modulus mulProvider
+        modProvider e reducedBase one
+  else
+    .error .assertionFailure
+
 end StrictDDF
 
 end Refinement

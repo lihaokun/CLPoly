@@ -21529,5 +21529,145 @@ theorem strictSquarefreeZpIR_constant_refines
       hmonicRunBang, hnotDecrease, scaleMultiplicityLoop]
   · simp [sqfZp, hdegreeZero]
 
+/-- The complete concrete prefix of the nonzero-derivative SQF branch reaches
+the initial strict Yun state.  Both `c` and `w` are outputs of the actual raw
+GCD/division calls, and all word, shape, and algebraic invariants needed by
+`strictYunLoopIR` are derived here. -/
+theorem sqfNonzeroDerivativeIR_prepares_yun
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (physical : YunRawGCDWorkspaceProvider this hcfg)
+    (source : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat source)
+    (hmonic : (SparsePolyZp.toPoly this._p.toNat source).Monic)
+    (hnonempty : 0 < source.size)
+    (hbound : sparseDenseLength source ≤ 2 ^ 63)
+    (hderivative :
+      Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source) ≠ 0) :
+    let derivative := derivativeIR this source
+    ∃ gcdOut c w,
+      yunRawGCDIR this hcfg source derivative (physical source derivative) =
+        .ok gcdOut ∧
+      gcdOut.output = some c ∧
+      pairVecDivIR this source c = .ok w ∧
+      SparsePolyZp.normalization w = w ∧
+      SparsePolyZp.Canonical this._p.toNat c ∧
+      SparsePolyZp.Canonical this._p.toNat w ∧
+      (SparsePolyZp.toPoly this._p.toNat c).Monic ∧
+      (SparsePolyZp.toPoly this._p.toNat w).Monic ∧
+      sparseDenseLength c ≤ 2 ^ 63 ∧
+      sparseDenseLength w ≤ 2 ^ 63 ∧
+      1 + Generated.squarefreeMeasure w +
+        Generated.squarefreeMeasure c < UInt64.size ∧
+      SparsePolyZp.toPoly this._p.toNat c = normalize
+        (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat source)
+          (Polynomial.derivative
+            (SparsePolyZp.toPoly this._p.toNat source))) ∧
+      SparsePolyZp.toPoly this._p.toNat w = normalize
+        (SparsePolyZp.toPoly this._p.toNat source /ₘ
+          SparsePolyZp.toPoly this._p.toNat c) := by
+  dsimp only
+  let derivative := derivativeIR this source
+  have hdegreeWord : ∀ term ∈ source.toList,
+      term.1.deg < UInt64.size := by
+    intro term hterm
+    obtain ⟨index, hindex, htermEq⟩ := List.mem_iff_getElem.mp hterm
+    have hsourceIndex : index < source.size := by simpa using hindex
+    have harrayEq : source[index] = term := by
+      rw [← Array.getElem_toList hsourceIndex]
+      exact htermEq
+    rw [← harrayEq]
+    have hlt63 := Nat.lt_of_lt_of_le
+      (sparse_degree_lt_denseLength this._p.toNat source hcanonical index
+        hsourceIndex) hbound
+    exact lt_trans hlt63 (by native_decide)
+  have hderivativeSemantic : SparsePolyZp.toPoly this._p.toNat derivative =
+      Polynomial.derivative (SparsePolyZp.toPoly this._p.toNat source) :=
+    derivativeIR_toPoly this source hcfg hcanonical hdegreeWord
+  have hderivativeCanonical : SparsePolyZp.Canonical this._p.toNat derivative :=
+    derivativeIR_canonical this source hcfg hcanonical
+  have hderivativeNonzero :
+      SparsePolyZp.toPoly this._p.toNat derivative ≠ 0 := by
+    rw [hderivativeSemantic]
+    exact hderivative
+  have hderivativeSize : 0 < derivative.size :=
+    sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat derivative
+      hderivativeNonzero
+  have hderivativeBound : sparseDenseLength derivative ≤ 2 ^ 63 := by
+    rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat source hcanonical hnonempty with
+      ⟨hsourceLength, hsourceMeasure⟩
+    rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat derivative hderivativeCanonical hderivativeSize with
+      ⟨hderivativeLength, hderivativeMeasure⟩
+    rw [hsourceLength, hsourceMeasure] at hbound
+    rw [hderivativeLength, hderivativeMeasure, hderivativeSemantic]
+    exact Nat.le_trans (Nat.add_le_add_right
+      ((Polynomial.natDegree_derivative_le _).trans (Nat.sub_le _ _)) 1)
+      hbound
+  rcases yunRawGCDWorkspace_succeeds this hcfg source derivative
+      (physical source derivative) hcanonical hderivativeCanonical
+      hmonic.ne_zero hderivativeNonzero hbound hderivativeBound with
+    ⟨gcdOut, c, hgcdRun, hcOutput, hcCanonical, hcSemanticRaw⟩
+  have hcSemantic : SparsePolyZp.toPoly this._p.toNat c = normalize
+      (EuclideanDomain.gcd (SparsePolyZp.toPoly this._p.toNat source)
+        (Polynomial.derivative
+          (SparsePolyZp.toPoly this._p.toNat source))) := by
+    rw [hcSemanticRaw, hderivativeSemantic]
+  rcases rawGCDOutput_yun_invariants this._p.toNat source derivative c
+      hmonic.ne_zero hcSemanticRaw with ⟨hcSize, hcMonic, hcDvdSource, _⟩
+  rcases pairVecDivIR_refines_divByMonic this source c hcfg hcanonical
+      hcCanonical hcSize hcMonic hcDvdSource with
+    ⟨w, hwRun, hwCanonical, hwSemanticRaw⟩
+  have hwMonic : (SparsePolyZp.toPoly this._p.toNat w).Monic := by
+    rw [hwSemanticRaw]
+    exact divByMonic_monic_of_monic_of_dvd
+      (SparsePolyZp.toPoly this._p.toNat source)
+      (SparsePolyZp.toPoly this._p.toNat c) hmonic hcMonic hcDvdSource
+  have hwSize := sparsePolyZp_size_pos_of_toPoly_ne_zero this._p.toNat w
+    hwMonic.ne_zero
+  have hcBound : sparseDenseLength c ≤ 2 ^ 63 := by
+    have hcDegree : (SparsePolyZp.toPoly this._p.toNat c).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat source).natDegree :=
+      Polynomial.natDegree_le_of_dvd hcDvdSource hmonic.ne_zero
+    rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat source hcanonical hnonempty with ⟨hsourceLength, _⟩
+    rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat c hcCanonical hcSize with ⟨hcLength, hcMeasure⟩
+    rw [hsourceLength] at hbound
+    rw [hcLength, hcMeasure]
+    omega
+  have hwBound := yunQuotient_sparseDenseLength_bound this source c w
+    hcanonical hwCanonical hnonempty hwMonic hcMonic hwSemanticRaw hbound
+  have hwSemantic : SparsePolyZp.toPoly this._p.toNat w = normalize
+      (SparsePolyZp.toPoly this._p.toNat source /ₘ
+        SparsePolyZp.toPoly this._p.toNat c) := by
+    rw [← hwSemanticRaw, hwMonic.normalize_eq_self]
+  have hbudget : 1 + Generated.squarefreeMeasure w +
+      Generated.squarefreeMeasure c < UInt64.size := by
+    have hcDegree : (SparsePolyZp.toPoly this._p.toNat c).natDegree ≤
+        (SparsePolyZp.toPoly this._p.toNat source).natDegree :=
+      Polynomial.natDegree_le_of_dvd hcDvdSource hmonic.ne_zero
+    have hdegreeSum :
+        (SparsePolyZp.toPoly this._p.toNat w).natDegree +
+          (SparsePolyZp.toPoly this._p.toNat c).natDegree =
+        (SparsePolyZp.toPoly this._p.toNat source).natDegree := by
+      rw [hwSemanticRaw, Polynomial.natDegree_divByMonic _ hcMonic]
+      omega
+    rw [generated_squarefreeMeasure_eq_natDegree_succ this._p.toNat w
+        hwCanonical hwSize,
+      generated_squarefreeMeasure_eq_natDegree_succ this._p.toNat c
+        hcCanonical hcSize]
+    rcases sparseDenseLength_eq_squarefreeMeasure_eq_natDegree_succ
+      this._p.toNat source hcanonical hnonempty with ⟨hsourceLength,
+        hsourceMeasure⟩
+    rw [hsourceLength, hsourceMeasure] at hbound
+    have hhalf : 2 ^ 63 + 2 < UInt64.size := by native_decide
+    omega
+  exact ⟨gcdOut, c, w, hgcdRun, hcOutput, hwRun,
+    sparsePolyZp_normalization_eq_of_canonical this._p.toNat w hwCanonical,
+    hcCanonical, hwCanonical, hcMonic, hwMonic, hcBound, hwBound, hbudget,
+    hcSemantic, hwSemantic⟩
+
 end StrictSquarefreeZp
 end Refinement

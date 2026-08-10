@@ -1351,3 +1351,12 @@ every generated range-for and recursive loop used by SQF.
   `pairVecDivVHCConsumeRootBucket_extractChecked_succeeds` 从非 root chain 的
   真实保持定理接通 consume→extract。这避免了错误声称退休 root 仍 active
   的过强不变量。
+- generated `ConsumeEqualDegree` 的完整 raw→safe totality 已闭合。
+  `pairVecDivVHCConsumeEqualDegree_succeeds` 以真实 active heap size 作强归纳：
+  非空同次 root 分支先从 concrete ownership 构造 root mono 与完整 chain，
+  调用已证明的 RootBucket totality，再调用 consumed-root-hole checked extract
+  totality；其余分支直接对应源码返回。递归前逐项运输 chain ownership、
+  protected-lin 分离、total coverage、homogeneous、heap order、active-degree
+  bound、node denotation、固定 divisor 行、`ResetReady`、`LinReady`、
+  `LinBelow` 与精确 selector。extract subtype 携带的 size 等式提供严格下降，
+  没有 fuel、成功 trace 假设或规格结果参与执行构造。

@@ -14132,6 +14132,137 @@ theorem pairVecDivVHCExtractChecked_raw
       exact congrArg Subtype.val (Except.ok.inj hrun)
     simpa [hval] using hraw
 
+/-- Totality of the generated equal-degree heap loop.  The proof constructs
+each root consume and checked extract, then recurses on the exact smaller heap
+size while transporting the complete concrete representation state. -/
+theorem pairVecDivVHCConsumeEqualDegree_succeeds
+    (this : DenseUPolyZp) (p degreeLimit dividendIndex : Nat)
+    (dividend : SparsePolyZp) (sourceHeap : Array Nat)
+    (sourceNodes : Array PairVecDivVHCNode)
+    (frontier : PairVecDivVHCFrontier)
+    (heap : Array Nat) (k : UInt64) (nodes : Array PairVecDivVHCNode)
+    (lin : Array Nat) (resetH : Nat) (owners : Nat → Finset Nat)
+    (quotient divisor : SparsePolyZp)
+    (hsourceSelect : pairVecDivVHCSelectFrontier dividendIndex dividend
+      sourceHeap sourceNodes = .ok frontier)
+    (hownership : PairVecDivVHCHeapChainOwnership heap owners nodes)
+    (hseparated : ∀ (slot head : Nat), heap[slot]? = some head →
+      Disjoint lin.toList.toFinset (owners head) ∧
+        head ∉ lin.toList.toFinset)
+    (hcovered : PairVecDivVHCNodesCovered heap owners lin resetH nodes)
+    (hhomogeneous : PairVecDivVHCHeapChainsHomogeneous heap owners nodes)
+    (hordered : PairVecDivVHCHeapOrdered heap nodes)
+    (hactiveBelow : PairVecDivVHCAllActiveNodesBelow degreeLimit nodes)
+    (hdenotes : ∀ (i : Nat) (record : PairVecDivVHCNode),
+      nodes[i]? = some record → record.mono ≠ none →
+        PairVecDivVHCNodeDenotes quotient divisor record)
+    (hfixed : PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hready : PairVecDivVHCResetReady resetH quotient.size nodes)
+    (hlinReady : PairVecDivVHCLinReady lin nodes)
+    (hlinBelow : PairVecDivVHCLinBelow frontier.degree lin nodes)
+    (hquotient : SparsePolyZp.Canonical p quotient)
+    (hdivisor : SparsePolyZp.Canonical p divisor) :
+    ∃ result, pairVecDivVHCConsumeEqualDegree this frontier.degree heap k nodes
+      lin resetH quotient divisor = .ok result := by
+  induction hsize : heap.size using Nat.strong_induction_on generalizing heap k
+      nodes lin resetH owners with
+  | h size ih =>
+      rw [pairVecDivVHCConsumeEqualDegree]
+      by_cases hheap : 0 < heap.size
+      · simp only [hheap, ↓reduceDIte]
+        rcases hownership.heapPointersValid heap owners nodes 0 hheap with
+          ⟨rootIndex, rootNode, rootMono, hrootIndex, hrootNode, hrootActive⟩
+        have hrootEq : heap[0] = rootIndex := by
+          rw [Array.getElem?_eq_getElem hheap] at hrootIndex
+          exact Option.some.inj hrootIndex
+        have hmono : pairVecDivVHCMono heap[0] nodes = .ok rootMono :=
+          (pairVecDivVHCMono_eq_ok_iff heap[0] nodes rootMono).2 (by
+            rw [hrootEq]
+            exact ⟨rootNode, hrootNode, hrootActive⟩)
+        simp only [hmono]
+        by_cases hequal : rootMono.deg = frontier.degree
+        · simp only [hequal, ↓reduceDIte]
+          have hselect := pairVecDivVHCSelectFrontier_eq_of_root_degree_eq
+            dividendIndex dividend sourceHeap heap sourceNodes nodes frontier
+            rootMono hheap hmono hequal hsourceSelect
+          have hrootOwns :=
+            pairVecDivVHCHeapChainOwnership_root_owns heap owners nodes
+              hownership hheap
+          have hrootDegree := hhomogeneous 0 heap[0] rootMono
+            (Array.getElem?_eq_getElem hheap) hmono
+          have hchainDegree : PairVecDivVHCChainAtDegree (some heap[0])
+              (Finset.range nodes.size) nodes frontier.degree := by
+            rw [← hequal]
+            exact pairVecDivVHCChainAtDegree_mono (some heap[0])
+              (owners heap[0]) (Finset.range nodes.size) nodes rootMono.deg
+              hrootDegree (pairVecDivVHCChainOwns_subset_range _ _ _ hrootOwns)
+          rcases pairVecDivVHCConsumeRootBucket_succeeds this p dividendIndex k
+              dividend heap nodes lin resetH owners quotient divisor frontier
+              hheap ⟨owners, hownership, hcovered⟩ hownership hhomogeneous
+              hordered hready hlinReady hlinBelow hfixed hdenotes hquotient
+              hdivisor hselect hchainDegree with ⟨bucket, hconsume⟩
+          simp only [dif_pos trivial, hconsume]
+          rcases pairVecDivVHCConsumeRootBucket_extractChecked_succeeds this
+              heap k nodes lin resetH quotient divisor bucket owners hheap
+              hownership hconsume with ⟨extracted, hchecked⟩
+          rw [hchecked]
+          have hextract := pairVecDivVHCExtractChecked_raw heap bucket.nodes
+            extracted hchecked
+          have hrootValid := pairVecDivVHCChainOwns_valid (some heap[0])
+            (owners heap[0]) nodes hrootOwns
+          have hchainValid := pairVecDivVHCChainValid_mono (some heap[0])
+            (owners heap[0]) (Finset.range nodes.size) nodes hrootValid
+            (pairVecDivVHCChainOwns_subset_range _ _ _ hrootOwns)
+          rcases pairVecDivVHCConsumeRootBucket_preserves_node_invariants this
+              p degreeLimit heap k nodes lin resetH quotient divisor bucket
+              hheap hquotient hactiveBelow hdenotes hfixed hready hchainValid
+              hconsume with ⟨hactiveBelow', hdenotes', hfixed', hready'⟩
+          have hlinBelow' :=
+            pairVecDivVHCConsumeRootBucket_preserves_linBelow this p
+              frontier.degree heap k nodes lin resetH quotient divisor bucket
+              (owners heap[0]) hheap hrootOwns (by simpa [hequal] using
+                hrootDegree) (hseparated 0 heap[0]
+                  (Array.getElem?_eq_getElem hheap)).1 hlinBelow hdenotes
+              hquotient hconsume
+          have hownershipOld :=
+            pairVecDivVHCConsumeRootExtract_preserves_heapChainOwnership this
+              heap extracted.1 k nodes lin resetH quotient divisor bucket
+              owners hheap hownership hconsume hextract
+          have hcoveredOld :=
+            pairVecDivVHCConsumeRootExtract_preserves_nodesCovered this heap
+              extracted.1 k nodes lin resetH quotient divisor bucket owners
+              hheap hownership hcovered hconsume hextract
+          have hhomogeneousOld :=
+            pairVecDivVHCConsumeRootExtract_preserves_heapChainsHomogeneous
+              this heap extracted.1 k nodes lin resetH quotient divisor bucket
+              owners hheap hownership hhomogeneous hconsume hextract
+          have hordered' :=
+            pairVecDivVHCConsumeRootExtract_preserves_heapOrdered this heap
+              extracted.1 k nodes lin resetH quotient divisor bucket owners
+              hheap hownership hordered hconsume hextract
+          have haway' :=
+            pairVecDivVHCConsumeRootExtract_preserves_away_linReady this heap
+              extracted.1 k nodes lin resetH quotient divisor bucket owners
+              hheap hownership hseparated hlinReady hconsume hextract
+          rcases haway'.1 with ⟨nextOwners, hnextOwnership, hnextSeparated⟩
+          have hnextCovered := hcoveredOld.congr_owners extracted.1 owners
+            nextOwners bucket.lin bucket.resetH bucket.nodes hownershipOld
+            hnextOwnership
+          have hnextHomogeneous := hhomogeneousOld.congr_owners extracted.1
+            owners nextOwners bucket.nodes hownershipOld hnextOwnership
+          have hsmaller : extracted.1.size < size := by
+            omega
+          rcases ih extracted.1.size hsmaller extracted.1 bucket.coefficient
+              bucket.nodes bucket.lin bucket.resetH nextOwners
+              hnextOwnership hnextSeparated hnextCovered hnextHomogeneous
+              hordered' hactiveBelow' hdenotes' hfixed' hready' haway'.2
+              hlinBelow' rfl with ⟨result, hrun⟩
+          exact ⟨result, hrun⟩
+        · simp only [hequal, ↓reduceDIte]
+          exact ⟨_, rfl⟩
+      · simp only [hheap, ↓reduceDIte]
+        exact ⟨_, rfl⟩
+
 /-- The full equal-degree source loop preserves exact heap-chain ownership.
 The induction measure is the real active heap size, strictly decreased by
 the checked execution of `VHC_extract`. -/

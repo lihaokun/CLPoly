@@ -8,6 +8,7 @@
 -/
 import CLPoly.Algorithm.Hensel
 import CLPoly.Generated.StrictHensel
+import CLPoly.Math.Bigint
 import CLPoly.Refinement.Basic
 
 set_option autoImplicit false
@@ -298,6 +299,23 @@ theorem divmodRemainder_eq_sub (m degreeShift : Nat)
   rw [divmodRemainder_toPolyMod, hrPoly, hgPoly, hdegree,
     hcoefficient, shiftedMonomial]
   ring
+
+/-- The coefficient computed by the concrete `fmod(r₀ * inverse, m)` source
+expression cancels the divisor's leading coefficient.  The only premise is
+the success bit returned by the actual `ZZ.invert` implementation. -/
+theorem divmodCoefficient_mul_leading (m : Nat) (r g : SparsePolyZZ)
+    (hinvert : (ZZ.invert 0 g[0]!.2 (m : Int)).1 = true) :
+    (Generated.StrictHensel.divmodCoefficient r
+        (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) : ZMod m) *
+      (g[0]!.2 : ZMod m) = (r[0]!.2 : ZMod m) := by
+  have hinv := CLPoly.Math.ZZ.invert_success_mul_eq_one g[0]!.2 m hinvert
+  rw [Generated.StrictHensel.divmodCoefficient]
+  simp only [ZZ.fdiv_r]
+  rw [intCast_fmod_natCast]
+  simp only [Int.cast_mul]
+  ring_nf at hinv ⊢
+  rw [hinv]
+  simp
 
 /-- The concrete generated `__upoly_mod_coeff` call always succeeds and
 preserves the decoded polynomial modulo the requested modulus. -/

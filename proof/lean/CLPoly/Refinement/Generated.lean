@@ -105,4 +105,22 @@ theorem __hensel_step_raw_ir_refines
       StrictHensel.HenselStepCorrect f m node output := by
   exact Refinement.StrictHensel.__hensel_step_raw_ir_refines termination node f m hinvariant
 
+/-- Generated public contract for the original C++
+`__hensel_lift_recursive` entry.  The executable side performs the exact
+top-down raw tree traversal with structural well-founded recursion; its
+semantic trace proves every concrete node update is a quadratic Hensel step. -/
+theorem __hensel_lift_recursive_raw_ir_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (target : SparsePolyZZ) (m : Nat)
+    (hinvariant : StrictHensel.HenselLiftRecursiveRefinementInvariant
+      termination tree nodes target m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (StrictHensel.strictHenselRawOps termination)
+          tree nodes target (m : Int) = .ok output ∧
+      StrictHensel.HenselLiftRecursiveCorrect termination m tree nodes target
+        output := by
+  exact Refinement.StrictHensel.__hensel_lift_recursive_raw_ir_refines termination tree nodes target m hinvariant
+
 end Refinement

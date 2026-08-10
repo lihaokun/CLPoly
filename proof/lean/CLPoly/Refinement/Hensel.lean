@@ -2419,6 +2419,417 @@ theorem __hensel_step_raw_ir_terminates
   rw [hfactor]
   exact hbezout
 
+def liftChildMatches (field : Int32) :
+    Option Generated.StrictHensel.HenselLiftTree → Prop
+  | none => field = -1
+  | some child => field.toInt = child.rootIndex
+
+/-- Safety invariant for the exact recursive C++ tree traversal.  Its
+recursive premises are universally quantified over the outputs of the
+concrete raw calls, so it cannot select or manufacture an execution result.
+It records only array bounds, source branch agreement, and the safety facts
+needed by the two modular divisions inside each `__hensel_step`. -/
+noncomputable def HenselLiftRecursiveExecutionInvariant
+    (termination : Generated.StrictHensel.DivmodTermination) :
+    (tree : Generated.StrictHensel.HenselLiftTree) →
+      Array HenselNode → SparsePolyZZ → ZZ → Prop :=
+  Generated.StrictHensel.HenselLiftTree.rec
+    (motive_1 := fun _ => Array HenselNode → SparsePolyZZ → ZZ → Prop)
+    (motive_2 := fun _ => Array HenselNode → SparsePolyZZ → ZZ → Prop)
+    (fun index left right leftInvariant rightInvariant nodes target m =>
+      ∃ node,
+        nodes[index]? = some node ∧
+        liftChildMatches node.left left ∧
+        liftChildMatches node.right right ∧
+        HenselStepExecutionInvariant termination node target m ∧
+        ∀ lifted,
+          Generated.StrictHensel.__hensel_step_raw_ir
+              (strictHenselRawOps termination) node target m = .ok lifted →
+          let stored := nodes.set! index lifted
+          leftInvariant stored lifted.g m ∧
+          ∀ nodesAfterLeft,
+            (match left with
+              | none => (.ok stored : RawExec (Array HenselNode))
+              | some child =>
+                  Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+                    (strictHenselRawOps termination) child stored lifted.g m) =
+                .ok nodesAfterLeft →
+            ∃ parent,
+              nodesAfterLeft[index]? = some parent ∧
+              liftChildMatches parent.right right ∧
+              rightInvariant nodesAfterLeft parent.h m)
+    (fun _ _ _ => True)
+    (fun _ childInvariant => childInvariant)
+
+/-- Source-level composition rule for one recursive node.  Splitting the four
+concrete left/right branch combinations keeps the proof independent of any L2
+semantics and exposes exactly the generated monadic control flow. -/
+theorem henselLiftRecursive_run_of_parts
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (index : Nat)
+    (left right : Option Generated.StrictHensel.HenselLiftTree)
+    (nodes nodesAfterLeft output : Array HenselNode)
+    (target : SparsePolyZZ) (m : ZZ) (node lifted parent : HenselNode)
+    (hnode : nodes[index]? = some node)
+    (hstep : Generated.StrictHensel.__hensel_step_raw_ir
+      (strictHenselRawOps termination) node target m = .ok lifted)
+    (hleft :
+      (match left with
+        | none => (.ok (nodes.set! index lifted) : RawExec (Array HenselNode))
+        | some child =>
+            Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+              (strictHenselRawOps termination) child (nodes.set! index lifted)
+                lifted.g m) = .ok nodesAfterLeft)
+    (hparent : nodesAfterLeft[index]? = some parent)
+    (hright :
+      (match right with
+        | none => (.ok nodesAfterLeft : RawExec (Array HenselNode))
+        | some child =>
+            Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+              (strictHenselRawOps termination) child nodesAfterLeft parent.h
+                m) = .ok output) :
+    Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+      (strictHenselRawOps termination) (.node index left right) nodes target m =
+        .ok output := by
+  cases left <;> cases right <;>
+    simp_all [Generated.StrictHensel.__hensel_lift_recursive_raw_ir.eq_1,
+      bind, Except.instMonad, Except.bind]
+
+/-- Genuine raw-to-safe bridge for `__hensel_lift_recursive`.  Termination is
+structural on the finite source tree certificate; there is no fuel parameter.
+Every recursive call is the exact generated call appearing in the C++ order. -/
+private theorem henselLiftRecursiveTerminatesAux
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (m : ZZ) (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (target : SparsePolyZZ) :
+    HenselLiftRecursiveExecutionInvariant termination tree nodes target m →
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (strictHenselRawOps termination) tree nodes target m = .ok output := by
+  intro hinvariant
+  cases tree with
+  | node index left right =>
+      simp only [HenselLiftRecursiveExecutionInvariant] at hinvariant
+      rcases hinvariant with
+        ⟨node, hnode, hleftMatch, hrightMatch, hstepSafe, hchildren⟩
+      rcases __hensel_step_raw_ir_terminates termination node target m
+          hstepSafe with ⟨lifted, hstep⟩
+      have hchildReady := hchildren lifted hstep
+      let stored := nodes.set! index lifted
+      have hleftRun : ∃ nodesAfterLeft,
+          (match left with
+            | none => (.ok stored : RawExec (Array HenselNode))
+            | some child =>
+                Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+                  (strictHenselRawOps termination) child stored lifted.g m) =
+              .ok nodesAfterLeft := by
+        cases left with
+        | none => exact ⟨stored, rfl⟩
+        | some child =>
+            exact henselLiftRecursiveTerminatesAux termination m child stored
+              lifted.g hchildReady.1
+      rcases hleftRun with ⟨nodesAfterLeft, hleftRun⟩
+      have hparentReady : ∃ parent,
+          nodesAfterLeft[index]? = some parent ∧
+          liftChildMatches parent.right right ∧
+          match right with
+          | none => True
+          | some child =>
+              HenselLiftRecursiveExecutionInvariant termination child
+                nodesAfterLeft parent.h m := by
+        cases left <;> cases right <;>
+          simpa [HenselLiftRecursiveExecutionInvariant] using
+            hchildReady.2 nodesAfterLeft hleftRun
+      rcases hparentReady with
+        ⟨parent, hparent, hrightStillMatches, hrightReady⟩
+      have hrightRun : ∃ output,
+          (match right with
+            | none => (.ok nodesAfterLeft : RawExec (Array HenselNode))
+            | some child =>
+                Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+                  (strictHenselRawOps termination) child nodesAfterLeft
+                    parent.h m) = .ok output := by
+        cases right with
+        | none => exact ⟨nodesAfterLeft, rfl⟩
+        | some child =>
+            exact henselLiftRecursiveTerminatesAux termination m child
+              nodesAfterLeft parent.h hrightReady
+      rcases hrightRun with ⟨output, hrightRun⟩
+      refine ⟨output, ?_⟩
+      exact henselLiftRecursive_run_of_parts termination index left right
+        nodes nodesAfterLeft output target m node lifted parent hnode hstep
+        hleftRun hparent hrightRun
+termination_by Generated.StrictHensel.HenselLiftTree.nodeCount tree
+decreasing_by
+  all_goals subst tree
+  all_goals simp_all [Generated.StrictHensel.HenselLiftTree.nodeCount]
+  all_goals omega
+
+theorem __hensel_lift_recursive_raw_ir_terminates
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (target : SparsePolyZZ) (m : ZZ)
+    (hinvariant : HenselLiftRecursiveExecutionInvariant termination tree
+      nodes target m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (strictHenselRawOps termination) tree nodes target m = .ok output :=
+  henselLiftRecursiveTerminatesAux termination m tree nodes target hinvariant
+
+/-- Semantic trace of one complete recursive Hensel tree traversal.  Every
+constructor is anchored to a concrete generated raw-step equation and carries
+its L2 `HenselStepCorrect` proof.  Recursive premises describe the exact left
+and right raw calls, so this relation cannot validate a substituted tree. -/
+inductive HenselLiftRecursiveCorrect
+    (termination : Generated.StrictHensel.DivmodTermination) (m : Nat) :
+    (tree : Generated.StrictHensel.HenselLiftTree) →
+      Array HenselNode → SparsePolyZZ → Array HenselNode → Prop
+  | leaf
+      (index : Nat) (nodes stored : Array HenselNode)
+      (target : SparsePolyZZ) (inputNode lifted parent : HenselNode)
+      (hnode : nodes[index]? = some inputNode)
+      (hstep : Generated.StrictHensel.__hensel_step_raw_ir
+        (strictHenselRawOps termination) inputNode target (m : Int) =
+          .ok lifted)
+      (hstepCorrect : HenselStepCorrect target m inputNode lifted)
+      (hstored : stored = nodes.set! index lifted)
+      (hparent : stored[index]? = some parent) :
+      HenselLiftRecursiveCorrect termination m (.node index none none)
+        nodes target stored
+  | left
+      (index : Nat) (left : Generated.StrictHensel.HenselLiftTree)
+      (nodes stored nodesAfterLeft : Array HenselNode)
+      (target : SparsePolyZZ) (inputNode lifted parent : HenselNode)
+      (hnode : nodes[index]? = some inputNode)
+      (hstep : Generated.StrictHensel.__hensel_step_raw_ir
+        (strictHenselRawOps termination) inputNode target (m : Int) =
+          .ok lifted)
+      (hstepCorrect : HenselStepCorrect target m inputNode lifted)
+      (hstored : stored = nodes.set! index lifted)
+      (hleftRun :
+        Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (strictHenselRawOps termination) left stored lifted.g (m : Int) =
+            .ok nodesAfterLeft)
+      (hleftCorrect : HenselLiftRecursiveCorrect termination m left stored
+        lifted.g nodesAfterLeft)
+      (hparent : nodesAfterLeft[index]? = some parent) :
+      HenselLiftRecursiveCorrect termination m (.node index (some left) none)
+        nodes target nodesAfterLeft
+  | right
+      (index : Nat) (right : Generated.StrictHensel.HenselLiftTree)
+      (nodes stored output : Array HenselNode)
+      (target : SparsePolyZZ) (inputNode lifted parent : HenselNode)
+      (hnode : nodes[index]? = some inputNode)
+      (hstep : Generated.StrictHensel.__hensel_step_raw_ir
+        (strictHenselRawOps termination) inputNode target (m : Int) =
+          .ok lifted)
+      (hstepCorrect : HenselStepCorrect target m inputNode lifted)
+      (hstored : stored = nodes.set! index lifted)
+      (hparent : stored[index]? = some parent)
+      (hrightRun :
+        Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (strictHenselRawOps termination) right stored parent.h (m : Int) =
+            .ok output)
+      (hrightCorrect : HenselLiftRecursiveCorrect termination m right stored
+        parent.h output) :
+      HenselLiftRecursiveCorrect termination m (.node index none (some right))
+        nodes target output
+  | branch
+      (index : Nat)
+      (left right : Generated.StrictHensel.HenselLiftTree)
+      (nodes stored nodesAfterLeft output : Array HenselNode)
+      (target : SparsePolyZZ) (inputNode lifted parent : HenselNode)
+      (hnode : nodes[index]? = some inputNode)
+      (hstep : Generated.StrictHensel.__hensel_step_raw_ir
+        (strictHenselRawOps termination) inputNode target (m : Int) =
+          .ok lifted)
+      (hstepCorrect : HenselStepCorrect target m inputNode lifted)
+      (hstored : stored = nodes.set! index lifted)
+      (hleftRun :
+        Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (strictHenselRawOps termination) left stored lifted.g (m : Int) =
+            .ok nodesAfterLeft)
+      (hleftCorrect : HenselLiftRecursiveCorrect termination m left stored
+        lifted.g nodesAfterLeft)
+      (hparent : nodesAfterLeft[index]? = some parent)
+      (hrightRun :
+        Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (strictHenselRawOps termination) right nodesAfterLeft parent.h
+            (m : Int) = .ok output)
+      (hrightCorrect : HenselLiftRecursiveCorrect termination m right
+        nodesAfterLeft parent.h output) :
+      HenselLiftRecursiveCorrect termination m
+        (.node index (some left) (some right)) nodes target output
+
+/-- Full refinement invariant for a recursive tree traversal.  Like the
+single-step invariant, all descendant premises are universal over uniquely
+determined raw outputs.  The invariant supplies representation/safety facts,
+but never an output polynomial or a replacement L2 computation. -/
+noncomputable def HenselLiftRecursiveRefinementInvariant
+    (termination : Generated.StrictHensel.DivmodTermination) :
+    (tree : Generated.StrictHensel.HenselLiftTree) →
+      Array HenselNode → SparsePolyZZ → Nat → Prop :=
+  Generated.StrictHensel.HenselLiftTree.rec
+    (motive_1 := fun _ => Array HenselNode → SparsePolyZZ → Nat → Prop)
+    (motive_2 := fun _ => Array HenselNode → SparsePolyZZ → Nat → Prop)
+    (fun index left right leftInvariant rightInvariant nodes target m =>
+      ∃ node,
+        nodes[index]? = some node ∧
+        liftChildMatches node.left left ∧
+        liftChildMatches node.right right ∧
+        HenselStepRefinementInvariant termination node target m ∧
+        ∀ lifted,
+          Generated.StrictHensel.__hensel_step_raw_ir
+              (strictHenselRawOps termination) node target (m : Int) =
+                .ok lifted →
+          let stored := nodes.set! index lifted
+          leftInvariant stored lifted.g m ∧
+          ∀ nodesAfterLeft,
+            (match left with
+              | none => (.ok stored : RawExec (Array HenselNode))
+              | some child =>
+                  Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+                    (strictHenselRawOps termination) child stored lifted.g
+                      (m : Int)) = .ok nodesAfterLeft →
+            ∃ parent,
+              nodesAfterLeft[index]? = some parent ∧
+              liftChildMatches parent.right right ∧
+              rightInvariant nodesAfterLeft parent.h m)
+    (fun _ _ _ => True)
+    (fun _ childInvariant => childInvariant)
+
+set_option maxHeartbeats 0 in
+/-- Strict L1→L2 refinement of the original C++
+`__hensel_lift_recursive`.  The returned array is exactly the result of the
+generated tree program, and the semantic trace proves that every concrete
+node update is a quadratic Hensel refinement. -/
+private theorem henselLiftRecursiveRefinesAux
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (m : Nat) (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (target : SparsePolyZZ) :
+    HenselLiftRecursiveRefinementInvariant termination tree nodes target m →
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (strictHenselRawOps termination) tree nodes target (m : Int) =
+            .ok output ∧
+      HenselLiftRecursiveCorrect termination m tree nodes target output := by
+  intro hinvariant
+  cases tree with
+  | node index left right =>
+      simp only [HenselLiftRecursiveRefinementInvariant] at hinvariant
+      rcases hinvariant with
+        ⟨node, hnode, hleftMatch, hrightMatch, hstepInvariant, hchildren⟩
+      rcases __hensel_step_raw_ir_refines termination node target m
+          hstepInvariant with ⟨lifted, hstep, hstepCorrect⟩
+      have hchildReady := hchildren lifted hstep
+      let stored := nodes.set! index lifted
+      have hleftResult : ∃ nodesAfterLeft,
+          (match left with
+            | none => (.ok stored : RawExec (Array HenselNode))
+            | some child =>
+                Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+                  (strictHenselRawOps termination) child stored lifted.g
+                    (m : Int)) = .ok nodesAfterLeft ∧
+          match left with
+          | none => nodesAfterLeft = stored
+          | some child =>
+              HenselLiftRecursiveCorrect termination m child stored lifted.g
+                nodesAfterLeft := by
+        cases left with
+        | none => exact ⟨stored, rfl, rfl⟩
+        | some child =>
+            rcases henselLiftRecursiveRefinesAux termination m child stored
+                lifted.g hchildReady.1 with
+              ⟨nodesAfterLeft, hrun, hcorrect⟩
+            exact ⟨nodesAfterLeft, hrun, hcorrect⟩
+      rcases hleftResult with
+        ⟨nodesAfterLeft, hleftRun, hleftCorrect⟩
+      have hparentReady : ∃ parent,
+          nodesAfterLeft[index]? = some parent ∧
+          liftChildMatches parent.right right ∧
+          match right with
+          | none => True
+          | some child =>
+              HenselLiftRecursiveRefinementInvariant termination child
+                nodesAfterLeft parent.h m := by
+        cases left <;> cases right <;>
+          simpa [HenselLiftRecursiveRefinementInvariant] using
+            hchildReady.2 nodesAfterLeft hleftRun
+      rcases hparentReady with
+        ⟨parent, hparent, hrightStillMatches, hrightReady⟩
+      have hrightResult : ∃ output,
+          (match right with
+            | none => (.ok nodesAfterLeft : RawExec (Array HenselNode))
+            | some child =>
+                Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+                  (strictHenselRawOps termination) child nodesAfterLeft
+                    parent.h (m : Int)) = .ok output ∧
+          match right with
+          | none => output = nodesAfterLeft
+          | some child =>
+              HenselLiftRecursiveCorrect termination m child nodesAfterLeft
+                parent.h output := by
+        cases right with
+        | none => exact ⟨nodesAfterLeft, rfl, rfl⟩
+        | some child =>
+            rcases henselLiftRecursiveRefinesAux termination m child
+                nodesAfterLeft parent.h hrightReady with
+              ⟨output, hrun, hcorrect⟩
+            exact ⟨output, hrun, hcorrect⟩
+      rcases hrightResult with ⟨output, hrightRun, hrightCorrect⟩
+      have hfullRun :
+          Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+            (strictHenselRawOps termination) (.node index left right) nodes
+              target (m : Int) = .ok output := by
+        exact henselLiftRecursive_run_of_parts termination index left right
+          nodes nodesAfterLeft output target (m : Int) node lifted parent hnode
+          hstep hleftRun hparent hrightRun
+      refine ⟨output, hfullRun, ?_⟩
+      cases left with
+      | none =>
+          simp only at hleftCorrect
+          subst nodesAfterLeft
+          cases right with
+          | none =>
+              simp only at hrightCorrect
+              subst output
+              exact .leaf index nodes stored target node lifted parent hnode
+                hstep hstepCorrect rfl hparent
+          | some right =>
+              exact .right index right nodes stored output target node lifted
+                parent hnode hstep hstepCorrect rfl hparent hrightRun
+                hrightCorrect
+      | some left =>
+          cases right with
+          | none =>
+              simp only at hrightCorrect
+              subst output
+              exact .left index left nodes stored nodesAfterLeft target node
+                lifted parent hnode hstep hstepCorrect rfl hleftRun
+                hleftCorrect hparent
+          | some right =>
+              exact .branch index left right nodes stored nodesAfterLeft output
+                target node lifted parent hnode hstep hstepCorrect rfl
+                hleftRun hleftCorrect hparent hrightRun hrightCorrect
+termination_by Generated.StrictHensel.HenselLiftTree.nodeCount tree
+decreasing_by
+  all_goals subst tree
+  all_goals simp_all [Generated.StrictHensel.HenselLiftTree.nodeCount]
+  all_goals omega
+
+theorem __hensel_lift_recursive_raw_ir_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (target : SparsePolyZZ) (m : Nat)
+    (hinvariant : HenselLiftRecursiveRefinementInvariant termination tree
+      nodes target m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (strictHenselRawOps termination) tree nodes target (m : Int) =
+            .ok output ∧
+      HenselLiftRecursiveCorrect termination m tree nodes target output :=
+  henselLiftRecursiveRefinesAux termination m tree nodes target hinvariant
+
 end StrictHensel
 
 -- The discoverable public wrapper for the completed theorem above is emitted

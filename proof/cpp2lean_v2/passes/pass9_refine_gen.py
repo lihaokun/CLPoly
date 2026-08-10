@@ -349,6 +349,25 @@ theorem {theorem_name}
       StrictHensel.HenselStepCorrect f m node output := by
   exact {proof_theorem} termination node f m hinvariant
 """
+    if contract["kind"] == "strict_hensel_lift_recursive":
+        return f"""/-- Generated public contract for the original C++
+`__hensel_lift_recursive` entry.  The executable side performs the exact
+top-down raw tree traversal with structural well-founded recursion; its
+semantic trace proves every concrete node update is a quadratic Hensel step. -/
+theorem {theorem_name}
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (target : SparsePolyZZ) (m : Nat)
+    (hinvariant : StrictHensel.HenselLiftRecursiveRefinementInvariant
+      termination tree nodes target m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_recursive_raw_ir
+          (StrictHensel.strictHenselRawOps termination)
+          tree nodes target (m : Int) = .ok output ∧
+      StrictHensel.HenselLiftRecursiveCorrect termination m tree nodes target
+        output := by
+  exact {proof_theorem} termination tree nodes target m hinvariant
+"""
     raise ValueError(f"unsupported verified contract kind: {contract['kind']}")
 
 

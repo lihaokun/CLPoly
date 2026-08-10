@@ -305,4 +305,64 @@ def __hensel_step_raw_ir (ops : HenselStepRawOps) (node : HenselNode)
   let factorNode ← __hensel_step_factor_phase_raw_ir ops node f m
   __hensel_step_bezout_phase_raw_ir ops factorNode m
 
+/-- Finite topology certificate for the source Hensel tree traversal.  It
+contains only concrete array indices and branching shape: in particular it
+contains neither polynomial values nor expected outputs.  Structural
+recursion on this certificate replaces the partial recursion emitted by the
+legacy translator without introducing a fuel counter. -/
+inductive HenselLiftTree where
+  | node (index : Nat) (left right : Option HenselLiftTree)
+deriving Inhabited
+
+def HenselLiftTree.rootIndex : HenselLiftTree → Nat
+  | .node index _ _ => index
+
+noncomputable def HenselLiftTree.nodeCount : HenselLiftTree → Nat :=
+  HenselLiftTree.rec (fun _ _ _ leftCount rightCount =>
+    1 + leftCount + rightCount) 0 (fun _ childCount => childCount)
+
+theorem HenselLiftTree.left_nodeCount_lt (index : Nat)
+    (child : HenselLiftTree) (right : Option HenselLiftTree) :
+    child.nodeCount <
+      (HenselLiftTree.node index (some child) right).nodeCount := by
+  simp [HenselLiftTree.nodeCount]
+  omega
+
+theorem HenselLiftTree.right_nodeCount_lt (index : Nat)
+    (left : Option HenselLiftTree) (child : HenselLiftTree) :
+    child.nodeCount <
+      (HenselLiftTree.node index left (some child)).nodeCount := by
+  simp [HenselLiftTree.nodeCount]
+  omega
+
+/-- Exact strict lowering of C++ `__hensel_lift_recursive` on a certified
+finite tree.  The program executes and stores the concrete Hensel step before
+visiting the left child.  After the left traversal it re-reads the parent
+node before selecting the right target, matching the two source `nodes[idx]`
+reads rather than retaining a proof-side copy.
+
+Out-of-bounds accesses remain explicit raw faults.  Agreement between the
+certificate and the source `left/right == -1` branches is a refinement
+precondition proved outside this generated program. -/
+def __hensel_lift_recursive_raw_ir (ops : HenselStepRawOps) :
+    HenselLiftTree → Array HenselNode → SparsePolyZZ → ZZ →
+      RawExec (Array HenselNode)
+  | .node index left right, nodes, target, m => do
+      match nodes[index]? with
+      | none => .error (.outOfBounds 0 index)
+      | some node =>
+          let lifted ← __hensel_step_raw_ir ops node target m
+          let nodes := nodes.set! index lifted
+          let nodes ← match left with
+            | none => .ok nodes
+            | some child =>
+                __hensel_lift_recursive_raw_ir ops child nodes lifted.g m
+          match nodes[index]? with
+          | none => .error (.outOfBounds 0 index)
+          | some parent =>
+              match right with
+              | none => .ok nodes
+              | some child =>
+                  __hensel_lift_recursive_raw_ir ops child nodes parent.h m
+
 end Generated.StrictHensel

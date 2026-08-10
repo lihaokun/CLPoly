@@ -3,7 +3,7 @@
 
   The former contents of this module selected an L2 existence witness when a
   bounded generated run failed or when its result did not satisfy
-  `EDFCorrect`.  That construction was a certified specification fallback, not
+  `EDFCorrect`.  That construction substituted a specification witness and was not
   a refinement of the C++ `__edf_Zp` execution, and has therefore been removed.
 
   A future theorem in this module must start from a cpp2lean-generated EDF trace
@@ -60,6 +60,76 @@ theorem EDFEntryInvariant.natDegree_lt
       h.canonical h.monic.ne_zero (2 ^ 62) h.degreeBound)
     (by norm_num)
 
+/-- Pure L2 facts needed after a successful concrete EDF split. -/
+structure EDFPolynomialSplit {p : Nat} [Fact (Nat.Prime p)]
+    (f g h : Polynomial (ZMod p)) (d : Nat) : Prop where
+  product : g * h = f
+  gMonic : g.Monic
+  hMonic : h.Monic
+  gSquarefree : Squarefree g
+  hSquarefree : Squarefree h
+  gDegreePositive : 0 < g.natDegree
+  hDegreePositive : 0 < h.natDegree
+  gDegreeLt : g.natDegree < f.natDegree
+  hDegreeLt : h.natDegree < f.natDegree
+  gEqualDegree : ∀ q, Irreducible q → q ∣ g → q.natDegree = d
+  hEqualDegree : ∀ q, Irreducible q → q ∣ h → q.natDegree = d
+
+/-- A proper monic divisor and the normalized exact quotient inherit every
+mathematical invariant required by the two recursive EDF calls. -/
+theorem edfPolynomialSplit_of_properDivisor
+    {p : Nat} [Fact (Nat.Prime p)]
+    (f g : Polynomial (ZMod p)) (d : Nat)
+    (hfMonic : f.Monic) (hfSquarefree : Squarefree f)
+    (hfEqualDegree : ∀ q, Irreducible q → q ∣ f → q.natDegree = d)
+    (hgMonic : g.Monic) (hgDivides : g ∣ f)
+    (hgPositive : 0 < g.natDegree)
+    (hgProper : g.natDegree < f.natDegree) :
+    EDFPolynomialSplit f g (normalize (f /ₘ g)) d := by
+  let quotient := f /ₘ g
+  have hmod : f %ₘ g = 0 := (modByMonic_eq_zero_iff_dvd hgMonic).mpr hgDivides
+  have hproductRaw : g * quotient = f := by
+    have hdivision := Polynomial.modByMonic_add_div f g
+    rw [hmod, zero_add] at hdivision
+    exact hdivision
+  have hquotientDegree : quotient.natDegree = f.natDegree - g.natDegree :=
+    Polynomial.natDegree_divByMonic f hgMonic
+  have hquotientPositive : 0 < quotient.natDegree := by omega
+  have hquotientNonzero : quotient ≠ 0 := by
+    intro hzero
+    rw [hzero] at hquotientPositive
+    simp at hquotientPositive
+  have hnormalizeMonic : (normalize quotient).Monic :=
+    Polynomial.monic_normalize hquotientNonzero
+  have hquotientMonic : quotient.Monic := by
+    rw [Polynomial.Monic]
+    have hleading := congrArg Polynomial.leadingCoeff hproductRaw
+    rw [Polynomial.leadingCoeff_mul, hgMonic.leadingCoeff,
+      hfMonic.leadingCoeff, one_mul] at hleading
+    exact hleading
+  have hnormalizeEq : normalize quotient = quotient :=
+    hquotientMonic.normalize_eq_self
+  have hnormalizeDegree : (normalize quotient).natDegree = quotient.natDegree := by
+    rw [hnormalizeEq]
+  have hnormalizeDivides : normalize quotient ∣ f := by
+    rw [normalize_dvd_iff]
+    exact ⟨g, by simpa [mul_comm] using hproductRaw.symm⟩
+  have hnormalizeProduct : g * normalize quotient = f := by
+    rw [hnormalizeEq]
+    exact hproductRaw
+  refine ⟨hnormalizeProduct, hgMonic, hnormalizeMonic,
+    Squarefree.squarefree_of_dvd hgDivides hfSquarefree,
+    Squarefree.squarefree_of_dvd hnormalizeDivides hfSquarefree,
+    hgPositive, ?_, hgProper, ?_, ?_, ?_⟩
+  · rw [hnormalizeDegree]
+    exact hquotientPositive
+  · rw [hnormalizeDegree, hquotientDegree]
+    omega
+  · intro q hq hqg
+    exact hfEqualDegree q hq (dvd_trans hqg hgDivides)
+  · intro q hq hqh
+    exact hfEqualDegree q hq (dvd_trans hqh hnormalizeDivides)
+
 /-- Decode the concrete C++ EDF accumulator without manufacturing or replacing
 any factor. -/
 noncomputable def edfResultToL2 (p : Nat) (result : Array SparsePolyZp) :
@@ -97,7 +167,7 @@ private theorem certifyRawExec_ok_eq {α : Type} (run : RawExec α)
 
 /-- Exact execution of the generated C++ base branch.  The theorem refers to
 the generated state machine itself and to the concrete `makeMonic` run; it is
-not an L2 execution fallback. -/
+not an L2 execution substitution. -/
 theorem rawState_base_run
     {State : Type} (ops : Generated.StrictEDF.EDFRawOps State)
     (termination : Generated.StrictEDF.EDFTermination ops)

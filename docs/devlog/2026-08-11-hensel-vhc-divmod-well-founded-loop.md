@@ -325,3 +325,20 @@ or a post-hoc predicate: its polynomial denotation is exactly
 Pass 9 now emits this checked result in the centralized public module as
 `__polynomial_GCD_eea_raw_ir_refines_gcd`, preserving the generated raw entry
 name and delegating only to the proved strict theorem.
+
+## Well-founded Hensel tree construction
+
+The strict generated layer now includes the source tree builder rather than
+calling the partial legacy corpus definition. Each half-interval product is
+computed by repeated raw multiplication with measure `stop - index`. The
+recursive tree builder computes the two products, runs the raw EEA, performs
+the six ordered node writes, appends child nodes, and visits the left child
+before the right child.
+
+Tree recursion uses the interval length `stop - start`. For every interval of
+length at least two, the arithmetic midpoint lies strictly between its
+endpoints, so each requested child call has a strictly smaller measure. This
+is well-founded recursion over the actual source subintervals, not a fuel or
+depth bound. The raw operations contain no expected product, gcd, tree, or L2
+result, and every failed multiplication, EEA call, or indexed node access is
+propagated.

@@ -547,4 +547,128 @@ def henselEEAInitialState (p : UInt64)
   let one : SparsePolyZp := #[(UMonomial.mk 0, Zp.ofUInt64 1 p)]
   { r0 := left, r1 := right, s0 := one, s1 := #[], t0 := #[], t1 := one }
 
+/-- Executable operations used by the source Hensel-tree constructor.  These
+are raw calls only: no field contains an expected product, gcd, tree, or L2
+result. -/
+structure HenselTreeBuildRawOps where
+  mul : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
+  eea : SparsePolyZp → SparsePolyZp →
+    RawExec (SparsePolyZp × SparsePolyZp × SparsePolyZp)
+
+/-- Exact coefficient representation conversion used by `poly_convert` in
+the C++ tree builder. -/
+def henselTreeZpToZZIR (f : SparsePolyZp) : SparsePolyZZ :=
+  f.map fun term => (term.1, (term.2.val.toNat : Int))
+
+/-- The two source product loops, with the current index and accumulator made
+explicit.  The distance to `stop` is the well-founded measure; it is not an
+execution fuel. -/
+def henselTreeProductLoopRawIR (ops : HenselTreeBuildRawOps)
+    (factors : Array SparsePolyZp) (stop : Nat) :
+    Nat → SparsePolyZp → RawExec SparsePolyZp
+  | index, product =>
+      if hmore : index < stop then
+        match factors[index]? with
+        | none => .error (.outOfBounds factors.size index)
+        | some factor => do
+            let next ← ops.mul product factor
+            henselTreeProductLoopRawIR ops factors stop (index + 1) next
+      else .ok product
+termination_by index _ => stop - index
+decreasing_by simp_wf; omega
+
+def henselTreeProductRangeRawIR (ops : HenselTreeBuildRawOps)
+    (factors : Array SparsePolyZp) (start stop : Nat) :
+    RawExec SparsePolyZp :=
+  if hnonempty : start < stop then
+    match factors[start]? with
+    | none => .error (.outOfBounds factors.size start)
+    | some first =>
+        henselTreeProductLoopRawIR ops factors stop (start + 1) first
+  else .error .assertionFailure
+
+def henselTreeSetNodeRawIR (nodes : Array HenselNode) (index : Nat)
+    (update : HenselNode → HenselNode) : RawExec (Array HenselNode) :=
+  match nodes[index]? with
+  | none => .error (.outOfBounds nodes.size index)
+  | some node => .ok (nodes.set! index (update node))
+
+/-- The six consecutive writes to the current C++ tree node. -/
+def henselTreeStoreNodeRawIR (nodes : Array HenselNode) (index : Nat)
+    (g h s t : SparsePolyZp) (start stop : Nat) :
+    RawExec (Array HenselNode) := do
+  let nodes ← henselTreeSetNodeRawIR nodes index fun node =>
+    { node with g := henselTreeZpToZZIR g }
+  let nodes ← henselTreeSetNodeRawIR nodes index fun node =>
+    { node with h := henselTreeZpToZZIR h }
+  let nodes ← henselTreeSetNodeRawIR nodes index fun node =>
+    { node with s := henselTreeZpToZZIR s }
+  let nodes ← henselTreeSetNodeRawIR nodes index fun node =>
+    { node with t := henselTreeZpToZZIR t }
+  let nodes ← henselTreeSetNodeRawIR nodes index fun node =>
+    { node with leaf_start := start.toUInt32.toInt32 }
+  henselTreeSetNodeRawIR nodes index fun node =>
+    { node with leaf_end := stop.toUInt32.toInt32 }
+
+theorem henselTreeMidpoint_gt_start (start stop : Nat)
+    (hlength : 2 ≤ stop - start) :
+    start < (start + stop) / 2 := by omega
+
+theorem henselTreeMidpoint_lt_stop (start stop : Nat)
+    (hlength : 2 ≤ stop - start) :
+    (start + stop) / 2 < stop := by omega
+
+/-- Strict well-founded lowering of `__hensel_tree_build_recursive`.  Every
+recursive call operates on a proper subinterval.  Child nodes are appended
+and visited left before right exactly as in the source. -/
+def __hensel_tree_build_recursive_raw_ir (ops : HenselTreeBuildRawOps)
+    (factors : Array SparsePolyZp) :
+    (nodes : Array HenselNode) → (start stop parent : Nat) →
+      RawExec (Array HenselNode)
+  | nodes, start, stop, parent =>
+      if hlength : 2 ≤ stop - start then do
+        let mid := (start + stop) / 2
+        let g ← henselTreeProductRangeRawIR ops factors start mid
+        let h ← henselTreeProductRangeRawIR ops factors mid stop
+        let eea ← ops.eea g h
+        let nodes ← henselTreeStoreNodeRawIR nodes parent g h eea.2.1
+          eea.2.2 start stop
+        let nodes ←
+          if hleft : 2 ≤ mid - start then do
+            let child := nodes.size
+            let nodes := nodes.push default
+            let nodes ← henselTreeSetNodeRawIR nodes parent fun node =>
+              { node with left := child.toUInt32.toInt32 }
+            __hensel_tree_build_recursive_raw_ir ops factors nodes start mid
+              child
+          else
+            henselTreeSetNodeRawIR nodes parent fun node =>
+              { node with left := -1 }
+        if hright : 2 ≤ stop - mid then do
+          let child := nodes.size
+          let nodes := nodes.push default
+          let nodes ← henselTreeSetNodeRawIR nodes parent fun node =>
+            { node with right := child.toUInt32.toInt32 }
+          __hensel_tree_build_recursive_raw_ir ops factors nodes mid stop child
+        else
+          henselTreeSetNodeRawIR nodes parent fun node =>
+            { node with right := -1 }
+      else .error .assertionFailure
+termination_by _ start stop _ => stop - start
+decreasing_by
+  · have := henselTreeMidpoint_lt_stop start stop hlength
+    omega
+  · have := henselTreeMidpoint_gt_start start stop hlength
+    omega
+
+/-- Strict entry lowering: assert at least two factors, allocate the root,
+then execute the well-founded recursive source builder. -/
+def __hensel_tree_build_raw_ir (ops : HenselTreeBuildRawOps)
+    (factors : Array SparsePolyZp) (p : UInt64) :
+    RawExec (Array HenselNode) :=
+  if 2 ≤ factors.size then
+    __hensel_tree_build_recursive_raw_ir ops factors #[default] 0
+      factors.size 0
+  else .error .assertionFailure
+
 end Generated.StrictHensel

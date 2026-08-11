@@ -361,9 +361,27 @@ def main() -> None:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     validate_cpp_source()
-    generated = generate_strict_hensel()
+    generated_core = generate_strict_hensel()
+    namespace_end = "\nend Generated.StrictHensel\n"
+    extension_marker = "\n/-- Finite topology certificate for the source Hensel tree traversal."
+    if not generated_core.endswith(namespace_end):
+        raise SystemExit("strict Hensel generator lost its namespace terminator")
+
+    # This generator owns the source-anchored `__hensel_step` prefix. Later
+    # strict source lowerings (tree traversal, extraction, explicit precision,
+    # and EEA) share the same Lean namespace and are appended to the generated
+    # file as an audited extension. Rebuilding the prefix must preserve that
+    # extension instead of silently deleting it.
+    existing = OUT.read_text() if OUT.exists() else ""
+    if extension_marker in existing:
+        extension = existing[existing.index(extension_marker):]
+        if not extension.endswith(namespace_end):
+            raise SystemExit(f"malformed strict Hensel extension: {OUT}")
+        generated = generated_core.removesuffix(namespace_end) + extension
+    else:
+        generated = generated_core
     if args.check:
-        if not OUT.exists() or OUT.read_text() != generated:
+        if not OUT.exists() or existing != generated:
             raise SystemExit(f"stale generated file: {OUT}")
         return
     OUT.write_text(generated)

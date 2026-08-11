@@ -3333,6 +3333,36 @@ theorem __hensel_adjust_first_factor_raw_ir_refines
     hsource, hfirst]
   exact ⟨_, rfl, .adjusted leading first _ hsource hfirst rfl⟩
 
+theorem henselExplicitTargetLoop_eq
+    (p : UInt64) (remaining : Nat) (target : ZZ) :
+    Generated.StrictHensel.henselExplicitTargetLoop p remaining target =
+      target * (p.toNat : ZZ) ^ remaining := by
+  induction remaining generalizing target with
+  | zero => simp [Generated.StrictHensel.henselExplicitTargetLoop]
+  | succ remaining ih =>
+      rw [Generated.StrictHensel.henselExplicitTargetLoop, ih]
+      rw [pow_succ]
+      ring
+
+/-- L2 meaning of the explicit-precision source branch. -/
+def HenselExplicitTargetCorrect
+    (p : UInt64) (aTarget : Int32) (target : ZZ) : Prop :=
+  target = (p.toNat : ZZ) ^ aTarget.toNatClampNeg - 1
+
+/-- Exact refinement of the positive-`a_target` precision computation. -/
+theorem __hensel_explicit_target_raw_ir_refines
+    (p : UInt64) (aTarget : Int32) (hpositive : aTarget > 0) :
+    ∃ target,
+      Generated.StrictHensel.__hensel_explicit_target_raw_ir p aTarget =
+        .ok target ∧
+      HenselExplicitTargetCorrect p aTarget target := by
+  refine ⟨Generated.StrictHensel.henselExplicitTargetLoop p
+      aTarget.toNatClampNeg 1 - 1,
+    ?_, ?_⟩
+  · simp [Generated.StrictHensel.__hensel_explicit_target_raw_ir, hpositive]
+  · rw [HenselExplicitTargetCorrect, henselExplicitTargetLoop_eq]
+    simp
+
 end StrictHensel
 
 -- The discoverable public wrapper for the completed theorem above is emitted

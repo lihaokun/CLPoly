@@ -451,4 +451,21 @@ def __hensel_adjust_first_factor_raw_ir
           let adjusted := SparsePolyZp.normalization (scaleZpCoeffs first lcModP)
           .ok (factors.set! 0 adjusted)
 
+/-- Exact finite lowering of the positive-`a_target` source loop.  `remaining`
+is the number of source iterations still required, not an execution fuel:
+each constructor corresponds to one `target *= p; ++i` iteration. -/
+def henselExplicitTargetLoop (p : UInt64) : Nat → ZZ → ZZ
+  | 0, target => target
+  | remaining + 1, target =>
+      henselExplicitTargetLoop p remaining (target * (p.toNat : ZZ))
+
+/-- The `a_target > 0` target branch of C++ `__hensel_lift`, including the
+final subtraction which turns `m < p^a` into `m ≤ target`. -/
+def __hensel_explicit_target_raw_ir (p : UInt64) (aTarget : Int32) :
+    RawExec ZZ :=
+  if aTarget > 0 then
+    .ok (henselExplicitTargetLoop p aTarget.toNatClampNeg 1 - 1)
+  else
+    .error .assertionFailure
+
 end Generated.StrictHensel

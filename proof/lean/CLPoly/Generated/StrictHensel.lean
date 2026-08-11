@@ -468,4 +468,78 @@ def __hensel_explicit_target_raw_ir (p : UInt64) (aTarget : Int32) :
   else
     .error .assertionFailure
 
+/-- Concrete mutable state of the source extended-Euclidean loop used by
+`__hensel_tree_build_recursive`. -/
+structure HenselEEAState where
+  r0 : SparsePolyZp
+  r1 : SparsePolyZp
+  s0 : SparsePolyZp
+  s1 : SparsePolyZp
+  t0 : SparsePolyZp
+  t1 : SparsePolyZp
+
+/-- The one still-unexpanded C++ operation at this boundary is `pair_vec_div`
+with both quotient and remainder outputs.  This interface carries an
+executable raw call only; it contains no expected EEA result or L2 fact. -/
+structure HenselEEARawOps where
+  divmod : SparsePolyZp → SparsePolyZp →
+    RawExec (SparsePolyZp × SparsePolyZp)
+
+def henselEEAScaleNormalize (coefficient : Zp)
+    (f : SparsePolyZp) : SparsePolyZp :=
+  SparsePolyZp.normalization (scaleZpCoeffs f coefficient)
+
+def henselEEANextState (state : HenselEEAState)
+    (quotient remainder : SparsePolyZp) : HenselEEAState :=
+  let s2 := SparsePolyZp.normalization
+    (SparsePolyZp.subImpl state.s0
+      (SparsePolyZp.mulImpl quotient state.s1))
+  let t2 := SparsePolyZp.normalization
+    (SparsePolyZp.subImpl state.t0
+      (SparsePolyZp.mulImpl quotient state.t1))
+  { r0 := state.r1, r1 := remainder
+    s0 := state.s1, s1 := s2
+    t0 := state.t1, t1 := t2 }
+
+/-- Well-founded evidence for the actual EEA state transition.  The decrease
+must hold for every successful result of the concrete raw division call, so
+it cannot select a convenient quotient or remainder. -/
+structure HenselEEATermination (ops : HenselEEARawOps) where
+  measure : HenselEEAState → Nat
+  decreases : ∀ state quotient remainder,
+    ¬ state.r1.isEmpty = true →
+    ops.divmod state.r0 state.r1 = .ok (quotient, remainder) →
+    measure (henselEEANextState state quotient remainder) < measure state
+
+/-- Strict well-founded lowering of C++ `polynomial_GCD(F,G,s,t)` over Zp.
+It executes the concrete quotient/remainder call at each iteration and then
+performs the source `q*s`, subtraction, normalization and six assignments in
+order.  The final three inverse-scalings implement source monicization. -/
+def __polynomial_GCD_eea_raw_ir (ops : HenselEEARawOps)
+    (termination : HenselEEATermination ops) :
+    HenselEEAState → RawExec (SparsePolyZp × SparsePolyZp × SparsePolyZp)
+  | state =>
+      if hdone : state.r1.isEmpty then
+        match state.r0[0]? with
+        | none => .error .assertionFailure
+        | some leading =>
+            let inverse := leading.2.inv
+            .ok (henselEEAScaleNormalize inverse state.r0,
+              henselEEAScaleNormalize inverse state.s0,
+              henselEEAScaleNormalize inverse state.t0)
+      else
+        match hrun : ops.divmod state.r0 state.r1 with
+        | .error fault => .error fault
+        | .ok qr =>
+            __polynomial_GCD_eea_raw_ir ops termination
+              (henselEEANextState state qr.1 qr.2)
+termination_by state => termination.measure state
+decreasing_by
+  exact termination.decreases state qr.1 qr.2 hdone hrun
+
+def henselEEAInitialState (p : UInt64)
+    (left right : SparsePolyZp) : HenselEEAState :=
+  let one : SparsePolyZp := #[(UMonomial.mk 0, Zp.ofUInt64 1 p)]
+  { r0 := left, r1 := right, s0 := one, s1 := #[], t0 := #[], t1 := one }
+
 end Generated.StrictHensel

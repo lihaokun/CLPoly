@@ -3363,6 +3363,102 @@ theorem __hensel_explicit_target_raw_ir_refines
   · rw [HenselExplicitTargetCorrect, henselExplicitTargetLoop_eq]
     simp
 
+/-- Reachability through concrete successful source EEA iterations. -/
+inductive HenselEEAPrefix (ops : Generated.StrictHensel.HenselEEARawOps)
+    (initial : Generated.StrictHensel.HenselEEAState) :
+    Generated.StrictHensel.HenselEEAState → Prop
+  | refl : HenselEEAPrefix ops initial initial
+  | step (state : Generated.StrictHensel.HenselEEAState)
+      (quotient remainder : SparsePolyZp)
+      (hprefix : HenselEEAPrefix ops initial state)
+      (hcontinue : ¬ state.r1.isEmpty = true)
+      (hrun : ops.divmod state.r0 state.r1 = .ok (quotient, remainder)) :
+      HenselEEAPrefix ops initial
+        (Generated.StrictHensel.henselEEANextState state quotient remainder)
+
+/-- Safety assumptions for all states reachable by actual raw EEA division
+results.  Neither field supplies the final GCD or Bézout coefficients. -/
+structure HenselEEAExecutionInvariant
+    (ops : Generated.StrictHensel.HenselEEARawOps)
+    (initial : Generated.StrictHensel.HenselEEAState) : Prop where
+  divisionReady : ∀ state,
+    HenselEEAPrefix ops initial state → ¬ state.r1.isEmpty = true →
+    ∃ quotient remainder,
+      ops.divmod state.r0 state.r1 = .ok (quotient, remainder)
+  finalNonempty : ∀ state,
+    HenselEEAPrefix ops initial state → state.r1.isEmpty = true →
+    ∃ leading, state.r0[0]? = some leading
+
+/-- Exact semantic execution trace of the source extended-Euclidean loop. -/
+inductive HenselEEACorrect
+    (ops : Generated.StrictHensel.HenselEEARawOps) :
+    Generated.StrictHensel.HenselEEAState →
+      (SparsePolyZp × SparsePolyZp × SparsePolyZp) → Prop
+  | done (state : Generated.StrictHensel.HenselEEAState)
+      (leading : UMonomial × Zp) (hdone : state.r1.isEmpty = true)
+      (hleading : state.r0[0]? = some leading) :
+      HenselEEACorrect ops state
+        (Generated.StrictHensel.henselEEAScaleNormalize leading.2.inv state.r0,
+          Generated.StrictHensel.henselEEAScaleNormalize leading.2.inv state.s0,
+          Generated.StrictHensel.henselEEAScaleNormalize leading.2.inv state.t0)
+  | step (state : Generated.StrictHensel.HenselEEAState)
+      (quotient remainder : SparsePolyZp)
+      (output : SparsePolyZp × SparsePolyZp × SparsePolyZp)
+      (hcontinue : ¬ state.r1.isEmpty = true)
+      (hrun : ops.divmod state.r0 state.r1 = .ok (quotient, remainder))
+      (htail : HenselEEACorrect ops
+        (Generated.StrictHensel.henselEEANextState state quotient remainder)
+        output) :
+      HenselEEACorrect ops state output
+
+private theorem henselEEARefinesAux
+    (ops : Generated.StrictHensel.HenselEEARawOps)
+    (termination : Generated.StrictHensel.HenselEEATermination ops)
+    (initial state : Generated.StrictHensel.HenselEEAState)
+    (hinvariant : HenselEEAExecutionInvariant ops initial)
+    (hprefix : HenselEEAPrefix ops initial state) :
+    ∃ output,
+      Generated.StrictHensel.__polynomial_GCD_eea_raw_ir ops termination state =
+        .ok output ∧
+      HenselEEACorrect ops state output := by
+  rw [Generated.StrictHensel.__polynomial_GCD_eea_raw_ir]
+  split
+  · rename_i hdone
+    rcases hinvariant.finalNonempty state hprefix hdone with
+      ⟨leading, hleading⟩
+    rw [hleading]
+    exact ⟨_, rfl, .done state leading hdone hleading⟩
+  · rename_i hcontinue
+    rcases hinvariant.divisionReady state hprefix hcontinue with
+      ⟨quotient, remainder, hrun⟩
+    rw [hrun]
+    rcases henselEEARefinesAux ops termination initial
+        (Generated.StrictHensel.henselEEANextState state quotient remainder)
+        hinvariant (.step state quotient remainder hprefix hcontinue hrun) with
+      ⟨output, htailRun, htailCorrect⟩
+    exact ⟨output, htailRun,
+      .step state quotient remainder output hcontinue hrun htailCorrect⟩
+termination_by termination.measure state
+decreasing_by
+  apply termination.decreases
+  · assumption
+  · assumption
+
+/-- Raw-to-safe semantic bridge for the strict well-founded EEA control flow.
+This theorem is intentionally generic only in the executable raw divmod
+boundary; tree construction will instantiate it with the strict generated
+quotient/remainder implementation before publishing an entry contract. -/
+theorem __polynomial_GCD_eea_raw_ir_refines
+    (ops : Generated.StrictHensel.HenselEEARawOps)
+    (termination : Generated.StrictHensel.HenselEEATermination ops)
+    (initial : Generated.StrictHensel.HenselEEAState)
+    (hinvariant : HenselEEAExecutionInvariant ops initial) :
+    ∃ output,
+      Generated.StrictHensel.__polynomial_GCD_eea_raw_ir ops termination
+          initial = .ok output ∧
+      HenselEEACorrect ops initial output :=
+  henselEEARefinesAux ops termination initial initial hinvariant .refl
+
 end StrictHensel
 
 -- The discoverable public wrapper for the completed theorem above is emitted

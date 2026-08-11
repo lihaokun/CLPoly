@@ -900,6 +900,24 @@ REFINEMENT_MAP = {
             "kind": "strict_edf_zp",
         },
     },
+    "polynomial_GCD_eea": {
+        "l1_name": "__polynomial_GCD_eea_raw_ir",
+        "l2_name": "GCDMonoid.gcd",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial.hh",
+        "doc": "extended Euclidean polynomial GCD used by Hensel tree construction",
+        "verified_contract": {
+            "theorem_name": "__polynomial_GCD_eea_raw_ir_refines_gcd",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "strictHenselEEAEntryIR_refines_gcd"
+            ),
+            "kind": "strict_hensel_eea",
+        },
+    },
     "__hensel_step": {
         "l1_name": "__hensel_step_raw_ir",
         "l2_name": "HenselStepCorrect",

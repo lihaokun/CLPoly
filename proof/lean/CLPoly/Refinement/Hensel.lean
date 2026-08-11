@@ -5945,6 +5945,262 @@ theorem strictHenselEEAPrefix_algebraicInvariant
       exact StrictHenselEEAAlgebraicInvariant.step this._p.toNat left right
         state quotient remainder h2p hp2 hr1 ih houtputCorrect
 
+/-- The three arrays returned by the concrete generated EEA satisfy the
+Bézout equation.  The proof follows the actual successful raw trace; at the
+terminal state it uses the three generated coefficient-scaling executions. -/
+theorem strictHenselEEACorrect_bezout
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (left right : SparsePolyZp)
+    (state : Generated.StrictHensel.HenselEEAState)
+    (output : SparsePolyZp × SparsePolyZp × SparsePolyZp)
+    (hstate : StrictHenselEEAStateInvariant this._p.toNat state)
+    (halgebra : StrictHenselEEAAlgebraicInvariant this._p.toNat left right
+      state)
+    (hcorrect : HenselEEACorrect (strictHenselEEARawOps this) state output) :
+    CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.1 =
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.2.1 *
+          CLPoly.Math.SparsePolyZp.toPoly this._p.toNat left +
+        CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.2.2 *
+          CLPoly.Math.SparsePolyZp.toPoly this._p.toNat right := by
+  induction hcorrect with
+  | done state leading inverse gcd s t hdone hleading hinverse hgcd hs ht =>
+      rcases strictHenselEEAScaleNormalizeIR_refines this hcfg inverse
+          state.r0 hstate.r0Canonical.1 with
+        ⟨gcd', hgcdRun, _, hgcdPoly⟩
+      rcases strictHenselEEAScaleNormalizeIR_refines this hcfg inverse
+          state.s0 halgebra.s0WellFormed with
+        ⟨s', hsRun, _, hsPoly⟩
+      rcases strictHenselEEAScaleNormalizeIR_refines this hcfg inverse
+          state.t0 halgebra.t0WellFormed with
+        ⟨t', htRun, _, htPoly⟩
+      have hgcdEq : gcd' = gcd := Except.ok.inj (hgcdRun.symm.trans (by
+        simpa [strictHenselEEARawOps] using hgcd))
+      have hsEq : s' = s := Except.ok.inj (hsRun.symm.trans (by
+        simpa [strictHenselEEARawOps] using hs))
+      have htEq : t' = t := Except.ok.inj (htRun.symm.trans (by
+        simpa [strictHenselEEARawOps] using ht))
+      subst gcd'
+      subst s'
+      subst t'
+      rw [hgcdPoly, hsPoly, htPoly, halgebra.r0Equation]
+      ring
+  | step state quotient remainder output hcontinue hrun htail ih =>
+      have hr1Ne : state.r1 ≠ #[] := by
+        simpa [Array.isEmpty_iff] using hcontinue
+      have hr1 : 0 < state.r1.size := by
+        have hr1Size : state.r1.size ≠ 0 := by
+          intro hzero
+          apply hr1Ne
+          exact Array.eq_empty_of_size_eq_zero hzero
+        omega
+      rcases henselDivmodVHCIR_refines this state.r0 state.r1 hcfg
+          hstate.r0Canonical hstate.r1Canonical hr1 with
+        ⟨actual, hactualRun, hactualCorrect⟩
+      have hrun' : henselDivmodVHCIR this state.r0 state.r1 =
+          .ok (quotient, remainder) := by
+        simpa [strictHenselEEARawOps] using hrun
+      have hactual : actual = (quotient, remainder) :=
+        Except.ok.inj (hactualRun.symm.trans hrun')
+      subst actual
+      have hnextState : StrictHenselEEAStateInvariant this._p.toNat
+          (Generated.StrictHensel.henselEEANextState state quotient
+            remainder) :=
+        ⟨hstate.r1Canonical, hactualCorrect.remainderCanonical, hr1⟩
+      have hnextAlgebra := StrictHenselEEAAlgebraicInvariant.step
+        this._p.toNat left right state quotient remainder h2p hp2 hr1
+        halgebra hactualCorrect
+      exact ih hnextState hnextAlgebra
+
+theorem henselEEAToPoly_leadingCoeff_eq_head
+    (p : Nat) [Fact (Nat.Prime p)] (f : SparsePolyZp)
+    (hcanonical : CLPoly.Math.SparsePolyZp.Canonical p f)
+    (hnonempty : 0 < f.size) :
+    (CLPoly.Math.SparsePolyZp.toPoly p f).leadingCoeff =
+      CLPoly.Math.Zp.toZMod p f[0].2 := by
+  have hdegree :=
+    Refinement.StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+      p f hcanonical hnonempty
+  have hnatDegree : (CLPoly.Math.SparsePolyZp.toPoly p f).natDegree =
+      f[0].1.deg := Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  have hlistNonempty : f.toList ≠ [] := by
+    intro hempty
+    have hlength := congrArg List.length hempty
+    have hsizeZero : f.size = 0 := by simpa using hlength
+    exact (Nat.ne_of_gt hnonempty) hsizeZero
+  obtain ⟨head, rest, hlist⟩ := List.exists_cons_of_ne_nil hlistNonempty
+  have hheadEq : head = f[0] := by
+    have hget := Array.getElem_toList hnonempty
+    simpa [hlist] using hget
+  have hchain : List.IsChain
+      (fun a b : UMonomial × Zp => a.1.deg > b.1.deg)
+      (head :: rest) := by
+    simpa [hlist] using hcanonical.2.1
+  rw [Polynomial.leadingCoeff, hnatDegree]
+  unfold CLPoly.Math.SparsePolyZp.toPoly
+  rw [hlist, ← hheadEq]
+  exact CLPoly.Math.listSum_coeff_at_head p head rest hchain
+
+/-- The first component returned by the generated EEA is monic.  Its terminal
+leading coefficient is normalized by the actual generated inverse and
+multiplication calls. -/
+theorem strictHenselEEACorrect_monic
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (state : Generated.StrictHensel.HenselEEAState)
+    (output : SparsePolyZp × SparsePolyZp × SparsePolyZp)
+    (hstate : StrictHenselEEAStateInvariant this._p.toNat state)
+    (hcorrect : HenselEEACorrect (strictHenselEEARawOps this) state output) :
+    (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.1).Monic := by
+  induction hcorrect with
+  | done state leading inverse gcd s t hdone hleading hinverse hgcd hs ht =>
+      let head := state.r0[0]'hstate.r0Nonempty
+      have hheadOpt : state.r0[0]? = some head := by
+        simpa [head] using Array.getElem?_eq_getElem hstate.r0Nonempty
+      have hleadingEq : leading = head :=
+        Option.some.inj (hleading.symm.trans hheadOpt)
+      subst leading
+      have hheadMem : head ∈ state.r0.toList := by
+        simpa [head] using Array.getElem_mem_toList state.r0 0
+          hstate.r0Nonempty
+      have hheadReduced := hstate.r0Canonical.1 head hheadMem
+      have hheadNonzero := hstate.r0Canonical.2.2 head hheadMem
+      rcases strictHenselEEARawOps_inverse_refines this head.2
+          hheadReduced hheadNonzero with
+        ⟨inverse', hinverseRun, _, hinverseField⟩
+      have hinverseEq : inverse' = inverse := Except.ok.inj
+        (hinverseRun.symm.trans hinverse)
+      subst inverse'
+      rcases strictHenselEEAScaleNormalizeIR_refines this hcfg inverse
+          state.r0 hstate.r0Canonical.1 with
+        ⟨gcd', hgcdRun, _, hgcdPoly⟩
+      have hgcdEq : gcd' = gcd := Except.ok.inj (hgcdRun.symm.trans (by
+        simpa [strictHenselEEARawOps] using hgcd))
+      subst gcd'
+      rw [hgcdPoly]
+      apply Polynomial.monic_C_mul_of_mul_leadingCoeff_eq_one
+      rw [henselEEAToPoly_leadingCoeff_eq_head this._p.toNat state.r0
+        hstate.r0Canonical hstate.r0Nonempty]
+      exact hinverseField
+  | step state quotient remainder output hcontinue hrun htail ih =>
+      have hr1Ne : state.r1 ≠ #[] := by
+        simpa [Array.isEmpty_iff] using hcontinue
+      have hr1 : 0 < state.r1.size := by
+        have hr1Size : state.r1.size ≠ 0 := by
+          intro hzero
+          apply hr1Ne
+          exact Array.eq_empty_of_size_eq_zero hzero
+        omega
+      rcases henselDivmodVHCIR_refines this state.r0 state.r1 hcfg
+          hstate.r0Canonical hstate.r1Canonical hr1 with
+        ⟨actual, hactualRun, hactualCorrect⟩
+      have hrun' : henselDivmodVHCIR this state.r0 state.r1 =
+          .ok (quotient, remainder) := by
+        simpa [strictHenselEEARawOps] using hrun
+      have hactual : actual = (quotient, remainder) :=
+        Except.ok.inj (hactualRun.symm.trans hrun')
+      subst actual
+      exact ih ⟨hstate.r1Canonical, hactualCorrect.remainderCanonical, hr1⟩
+
+/-- The concrete first EEA result divides both remainder registers of the
+state from which its raw trace started.  The step case reconstructs the old
+dividend from the actual generated quotient/remainder equation. -/
+theorem strictHenselEEACorrect_dvd
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (state : Generated.StrictHensel.HenselEEAState)
+    (output : SparsePolyZp × SparsePolyZp × SparsePolyZp)
+    (hstate : StrictHenselEEAStateInvariant this._p.toNat state)
+    (hcorrect : HenselEEACorrect (strictHenselEEARawOps this) state output) :
+    CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.1 ∣
+        CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.r0 ∧
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.1 ∣
+        CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.r1 := by
+  induction hcorrect with
+  | done state leading inverse gcd s t hdone hleading hinverse hgcd hs ht =>
+      let head := state.r0[0]'hstate.r0Nonempty
+      have hheadOpt : state.r0[0]? = some head := by
+        simpa [head] using Array.getElem?_eq_getElem hstate.r0Nonempty
+      have hleadingEq : leading = head :=
+        Option.some.inj (hleading.symm.trans hheadOpt)
+      subst leading
+      have hheadMem : head ∈ state.r0.toList := by
+        simpa [head] using Array.getElem_mem_toList state.r0 0
+          hstate.r0Nonempty
+      have hheadReduced := hstate.r0Canonical.1 head hheadMem
+      have hheadNonzero := hstate.r0Canonical.2.2 head hheadMem
+      rcases strictHenselEEARawOps_inverse_refines this head.2
+          hheadReduced hheadNonzero with
+        ⟨inverse', hinverseRun, _, hinverseField⟩
+      have hinverseEq : inverse' = inverse := Except.ok.inj
+        (hinverseRun.symm.trans hinverse)
+      subst inverse'
+      rcases strictHenselEEAScaleNormalizeIR_refines this hcfg inverse
+          state.r0 hstate.r0Canonical.1 with
+        ⟨gcd', hgcdRun, _, hgcdPoly⟩
+      have hgcdEq : gcd' = gcd := Except.ok.inj (hgcdRun.symm.trans (by
+        simpa [strictHenselEEARawOps] using hgcd))
+      subst gcd'
+      constructor
+      · refine ⟨Polynomial.C (CLPoly.Math.Zp.toZMod this._p.toNat head.2),
+          ?_⟩
+        rw [hgcdPoly]
+        calc
+          CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.r0 =
+              1 * CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.r0 := by
+                ring
+          _ = Polynomial.C
+                (CLPoly.Math.Zp.toZMod this._p.toNat inverse *
+                  CLPoly.Math.Zp.toZMod this._p.toNat head.2) *
+                CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.r0 := by
+              rw [hinverseField, Polynomial.C_1]
+          _ = (Polynomial.C (CLPoly.Math.Zp.toZMod this._p.toNat inverse) *
+                CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.r0) *
+              Polynomial.C
+                (CLPoly.Math.Zp.toZMod this._p.toNat head.2) := by
+              rw [Polynomial.C_mul]
+              ring
+      · have hr1Empty : state.r1 = #[] := by
+          simpa [Array.isEmpty_iff] using hdone
+        rw [hr1Empty, CLPoly.Math.SparsePolyZp.toPoly_empty]
+        exact dvd_zero _
+  | step state quotient remainder output hcontinue hrun htail ih =>
+      have hr1Ne : state.r1 ≠ #[] := by
+        simpa [Array.isEmpty_iff] using hcontinue
+      have hr1 : 0 < state.r1.size := by
+        have hr1Size : state.r1.size ≠ 0 := by
+          intro hzero
+          apply hr1Ne
+          exact Array.eq_empty_of_size_eq_zero hzero
+        omega
+      rcases henselDivmodVHCIR_refines this state.r0 state.r1 hcfg
+          hstate.r0Canonical hstate.r1Canonical hr1 with
+        ⟨actual, hactualRun, hactualCorrect⟩
+      have hrun' : henselDivmodVHCIR this state.r0 state.r1 =
+          .ok (quotient, remainder) := by
+        simpa [strictHenselEEARawOps] using hrun
+      have hactual : actual = (quotient, remainder) :=
+        Except.ok.inj (hactualRun.symm.trans hrun')
+      subst actual
+      have htailDvd := ih
+        ⟨hstate.r1Canonical, hactualCorrect.remainderCanonical, hr1⟩
+      rcases htailDvd.1 with ⟨rightWitness, hrightWitness⟩
+      rcases htailDvd.2 with ⟨remainderWitness, hremainderWitness⟩
+      change CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.r1 =
+        CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.1 *
+          rightWitness at hrightWitness
+      change CLPoly.Math.SparsePolyZp.toPoly this._p.toNat remainder =
+        CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.1 *
+          remainderWitness at hremainderWitness
+      constructor
+      · refine ⟨CLPoly.Math.SparsePolyZp.toPoly this._p.toNat quotient *
+            rightWitness + remainderWitness, ?_⟩
+        rw [← hactualCorrect.equation, hrightWitness, hremainderWitness]
+        ring
+      · exact ⟨rightWitness, hrightWitness⟩
+
 theorem henselEEAOne_refines (p : UInt64) [Fact (Nat.Prime p.toNat)] :
     CLPoly.Math.SparsePolyZp.Canonical p.toNat
         (#[(UMonomial.mk 0, Zp.ofUInt64 1 p)] : SparsePolyZp) ∧
@@ -6001,6 +6257,109 @@ theorem strictHenselEEAInitialState_invariants
         CLPoly.Math.SparsePolyZp.toPoly_empty, zero_mul, zero_add]
       rw [hone.2]
       simp
+
+theorem polynomial_eq_gcd_of_monic_bezout_dvd
+    {p : Nat} [Fact (Nat.Prime p)]
+    (left right gcd s t : Polynomial (ZMod p))
+    (hleftNonzero : left ≠ 0)
+    (hbezout : gcd = s * left + t * right)
+    (hmonic : gcd.Monic)
+    (hdvdLeft : gcd ∣ left) (hdvdRight : gcd ∣ right) :
+    gcd = GCDMonoid.gcd left right := by
+  let standard := GCDMonoid.gcd left right
+  have hgcdDvd : gcd ∣ standard := by
+    exact GCDMonoid.dvd_gcd hdvdLeft hdvdRight
+  have hstandardDvd : standard ∣ gcd := by
+    rcases GCDMonoid.gcd_dvd_left left right with ⟨leftWitness, hleft⟩
+    rcases GCDMonoid.gcd_dvd_right left right with ⟨rightWitness, hright⟩
+    change left = standard * leftWitness at hleft
+    change right = standard * rightWitness at hright
+    refine ⟨s * leftWitness + t * rightWitness, ?_⟩
+    calc
+      gcd = s * left + t * right := hbezout
+      _ = s * (standard * leftWitness) +
+          t * (standard * rightWitness) :=
+        congrArg₂ (fun a b => s * a + t * b) hleft hright
+      _ = standard * (s * leftWitness + t * rightWitness) := by ring
+  have hstandardNonzero : standard ≠ 0 := by
+    intro hzero
+    have hdvd := GCDMonoid.gcd_dvd_left left right
+    change standard ∣ left at hdvd
+    rw [hzero, zero_dvd_iff] at hdvd
+    exact hleftNonzero hdvd
+  have hstandardMonic : standard.Monic := by
+    change (GCDMonoid.gcd left right).Monic
+    rw [← normalize_gcd left right]
+    exact Polynomial.monic_normalize hstandardNonzero
+  change gcd = standard
+  exact Polynomial.eq_of_monic_of_associated hmonic hstandardMonic
+    (associated_of_dvd_dvd hgcdDvd hstandardDvd)
+
+/-- Entry-level semantic contract for the generated, well-founded EEA.  The
+returned concrete arrays are produced by the raw program and satisfy its
+Bézout identity over `ZMod p`. -/
+theorem strictHenselEEAEntryIR_refines_gcd
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (left right : SparsePolyZp)
+    (hleftCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonempty : 0 < left.size) :
+    ∃ gcd s t,
+      Generated.StrictHensel.__polynomial_GCD_eea_raw_ir
+          (strictHenselEEARawOps this) (strictHenselEEATermination this)
+          (Generated.StrictHensel.henselEEAInitialState this._p left right) =
+        .ok (gcd, s, t) ∧
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat gcd =
+        CLPoly.Math.SparsePolyZp.toPoly this._p.toNat s *
+            CLPoly.Math.SparsePolyZp.toPoly this._p.toNat left +
+          CLPoly.Math.SparsePolyZp.toPoly this._p.toNat t *
+            CLPoly.Math.SparsePolyZp.toPoly this._p.toNat right ∧
+      (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat gcd).Monic ∧
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat gcd ∣
+        CLPoly.Math.SparsePolyZp.toPoly this._p.toNat left ∧
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat gcd ∣
+        CLPoly.Math.SparsePolyZp.toPoly this._p.toNat right ∧
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat gcd =
+        GCDMonoid.gcd
+          (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat left)
+          (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat right) := by
+  let initial :=
+    Generated.StrictHensel.henselEEAInitialState this._p left right
+  have hinitial := strictHenselEEAInitialState_invariants this left right
+    hleftCanonical hrightCanonical hleftNonempty
+  rcases strictHenselEEAIR_refines this hcfg initial hinitial.1 with
+    ⟨⟨gcd, s, t⟩, hrun, hcorrect⟩
+  have hdvd := strictHenselEEACorrect_dvd this hcfg initial (gcd, s, t)
+    hinitial.1 hcorrect
+  have hbezout := strictHenselEEACorrect_bezout this hcfg h2p hp2 left right initial
+      (gcd, s, t) hinitial.1 hinitial.2 hcorrect
+  have hmonic := strictHenselEEACorrect_monic this hcfg initial (gcd, s, t)
+      hinitial.1 hcorrect
+  have hdvdLeft : CLPoly.Math.SparsePolyZp.toPoly this._p.toNat gcd ∣
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat left := by
+    simpa [initial, Generated.StrictHensel.henselEEAInitialState] using hdvd.1
+  have hdvdRight : CLPoly.Math.SparsePolyZp.toPoly this._p.toNat gcd ∣
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat right := by
+    simpa [initial, Generated.StrictHensel.henselEEAInitialState] using hdvd.2
+  have hleftNonzero :
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat left ≠ 0 := by
+    intro hzero
+    have hdegree :=
+      Refinement.StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+        this._p.toNat left hleftCanonical hleftNonempty
+    rw [hzero, Polynomial.degree_zero] at hdegree
+    simp at hdegree
+  refine ⟨gcd, s, t, hrun, hbezout, hmonic, hdvdLeft, hdvdRight, ?_⟩
+  exact polynomial_eq_gcd_of_monic_bezout_dvd
+    (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat left)
+    (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat right)
+    (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat gcd)
+    (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat s)
+    (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat t)
+    hleftNonzero hbezout hmonic hdvdLeft hdvdRight
 
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)

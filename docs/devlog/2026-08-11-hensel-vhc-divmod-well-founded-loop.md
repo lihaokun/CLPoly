@@ -306,3 +306,22 @@ Verification:
 
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.
 - `git diff --check`: successful.
+
+## Closed generated EEA semantics
+
+The well-founded EEA now has an entry-level semantic theorem for its actual
+three returned arrays. Structural induction over the successful raw trace
+proves the terminal Bézout equation after all three generated scaling calls.
+A second backward induction through the same quotient/remainder trace proves
+that the returned first component divides both original inputs.
+
+The generated inverse contract and the concrete leading coefficient prove
+that the first component is monic. Combining monicity, common-divisor
+preservation, and the Bézout equation identifies it uniquely with the L2
+normalized polynomial gcd. Thus the result is not merely an executable trace
+or a post-hoc predicate: its polynomial denotation is exactly
+`GCDMonoid.gcd (toPoly left) (toPoly right)`.
+
+Pass 9 now emits this checked result in the centralized public module as
+`__polynomial_GCD_eea_raw_ir_refines_gcd`, preserving the generated raw entry
+name and delegating only to the proved strict theorem.

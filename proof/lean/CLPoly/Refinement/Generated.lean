@@ -90,6 +90,43 @@ theorem __edf_Zp_raw_ir_refines_edf
   exact Refinement.StrictEDF.strictEDFEntryIR_refines_edf engine this providers termination result f d rng
     hinvariant
 
+/-- Generated public contract for the polynomial extended
+Euclidean entry used by Hensel tree construction. The executable side is the
+strict degree-measured L1 loop, including generated division, inverse, and
+terminal coefficient scaling; its first result is the L2 monic gcd and all
+three concrete results satisfy the Bézout contract. -/
+theorem __polynomial_GCD_eea_raw_ir_refines_gcd
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (left right : SparsePolyZp)
+    (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonempty : 0 < left.size) :
+    ∃ gcd s t,
+      Generated.StrictHensel.__polynomial_GCD_eea_raw_ir
+          (StrictHensel.strictHenselEEARawOps this)
+          (StrictHensel.strictHenselEEATermination this)
+          (Generated.StrictHensel.henselEEAInitialState this._p left right) =
+        .ok (gcd, s, t) ∧
+      SparsePolyZp.toPoly this._p.toNat gcd =
+        SparsePolyZp.toPoly this._p.toNat s *
+            SparsePolyZp.toPoly this._p.toNat left +
+          SparsePolyZp.toPoly this._p.toNat t *
+            SparsePolyZp.toPoly this._p.toNat right ∧
+      (SparsePolyZp.toPoly this._p.toNat gcd).Monic ∧
+      SparsePolyZp.toPoly this._p.toNat gcd ∣
+        SparsePolyZp.toPoly this._p.toNat left ∧
+      SparsePolyZp.toPoly this._p.toNat gcd ∣
+        SparsePolyZp.toPoly this._p.toNat right ∧
+      SparsePolyZp.toPoly this._p.toNat gcd =
+        GCDMonoid.gcd
+          (SparsePolyZp.toPoly this._p.toNat left)
+          (SparsePolyZp.toPoly this._p.toNat right) := by
+  exact Refinement.StrictHensel.strictHenselEEAEntryIR_refines_gcd this hcfg h2p hp2 left right
+    hleftCanonical hrightCanonical hleftNonempty
+
 /-- Generated public contract for the original C++ `__hensel_step` entry.
 The executable side is the exact strict raw L1 program, and its output
 satisfies the L2 quadratic Hensel-step invariant without a model fallback. -/

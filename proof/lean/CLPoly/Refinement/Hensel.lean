@@ -6371,6 +6371,16 @@ def strictHenselTreeBuildRawOps (this : DenseUPolyZp)
       (strictHenselEEARawOps this) (strictHenselEEATermination this)
       (Generated.StrictHensel.henselEEAInitialState this._p left right)
 
+/-- The source `poly_convert` representation change preserves the polynomial
+over the input prime.  This is the bridge from the concrete integer-valued
+tree fields back to the ZMod semantics used by the EEA proof. -/
+theorem henselTreeZpToZZIR_toPolyMod (p : Nat) (f : SparsePolyZp) :
+    toPolyMod p (Generated.StrictHensel.henselTreeZpToZZIR f) =
+      CLPoly.Math.SparsePolyZp.toPoly p f := by
+  simp [toPolyMod, Generated.StrictHensel.henselTreeZpToZZIR,
+    SparsePolyZZ.toPoly, CLPoly.Math.SparsePolyZp.toPoly,
+    CLPoly.Math.listSum, Zp.toZMod]
+
 /-- Mathematical denotation of the same half-open source interval consumed
 by a tree-product loop.  This is used only in the proof layer. -/
 noncomputable def henselFactorRangeProduct (p : Nat)
@@ -6383,6 +6393,31 @@ noncomputable def henselFactorRangeProduct (p : Nat)
       else 1
 termination_by index => stop - index
 decreasing_by simp_wf; omega
+
+/-- Mathematical content stored at one freshly constructed tree node before
+pairwise coprimality specializes its gcd to one. -/
+noncomputable def HenselTreeNodeGCDInvariant (p : Nat)
+    (factors : Array SparsePolyZp) (start stop : Nat)
+    (node : HenselNode) : Prop :=
+  let mid := (start + stop) / 2
+  let left := henselFactorRangeProduct p factors mid start
+  let right := henselFactorRangeProduct p factors stop mid
+  toPolyMod p node.g = left ∧
+  toPolyMod p node.h = right ∧
+  toPolyMod p node.s * left + toPolyMod p node.t * right =
+    GCDMonoid.gcd left right
+
+/-- Initial Hensel invariant at a tree node.  Unlike the gcd form above this
+is the exact certificate consumed by the later lifting pass. -/
+noncomputable def HenselTreeNodeInitialInvariant (p : Nat)
+    (factors : Array SparsePolyZp) (start stop : Nat)
+    (node : HenselNode) : Prop :=
+  let mid := (start + stop) / 2
+  let left := henselFactorRangeProduct p factors mid start
+  let right := henselFactorRangeProduct p factors stop mid
+  toPolyMod p node.g = left ∧
+  toPolyMod p node.h = right ∧
+  toPolyMod p node.s * left + toPolyMod p node.t * right = 1
 
 theorem sparsePolyZpToPoly_ne_zero_of_canonical_nonempty
     (p : Nat) [Fact (Nat.Prime p)] (f : SparsePolyZp)
@@ -6551,6 +6586,112 @@ theorem henselTreeStoreNodeRawIR_succeeds
   refine ⟨output, ?_, by omega⟩
   simp only [Generated.StrictHensel.henselTreeStoreNodeRawIR, hnodes1,
     hnodes2, hnodes3, hnodes4, hnodes5, houtput, bind, Except.bind]
+
+/-- Exact semantic effect of the six checked writes at a tree node. -/
+theorem henselTreeStoreNodeRawIR_refines
+    (nodes : Array HenselNode) (index : Nat)
+    (g h s t : SparsePolyZp) (start stop : Nat)
+    (hindex : index < nodes.size) :
+    ∃ output,
+      Generated.StrictHensel.henselTreeStoreNodeRawIR nodes index g h s t
+          start stop = .ok output ∧
+      output.size = nodes.size ∧
+      output[index].g = Generated.StrictHensel.henselTreeZpToZZIR g ∧
+      output[index].h = Generated.StrictHensel.henselTreeZpToZZIR h ∧
+      output[index].s = Generated.StrictHensel.henselTreeZpToZZIR s ∧
+      output[index].t = Generated.StrictHensel.henselTreeZpToZZIR t ∧
+      output[index].leaf_start = start.toUInt32.toInt32 ∧
+      output[index].leaf_end = stop.toUInt32.toInt32 := by
+  simp [Generated.StrictHensel.henselTreeStoreNodeRawIR,
+    Generated.StrictHensel.henselTreeSetNodeRawIR,
+    Array.getElem?_eq_getElem hindex]
+
+/-- Storing the two concrete range products and the concrete EEA result
+establishes the node's exact gcd semantics. -/
+theorem henselTreeStoreNodeRawIR_refines_gcd
+    (p : Nat) (factors : Array SparsePolyZp) (nodes : Array HenselNode)
+    (index start stop : Nat) (g h gcd s t : SparsePolyZp)
+    (hindex : index < nodes.size)
+    (hg : CLPoly.Math.SparsePolyZp.toPoly p g =
+      henselFactorRangeProduct p factors ((start + stop) / 2) start)
+    (hh : CLPoly.Math.SparsePolyZp.toPoly p h =
+      henselFactorRangeProduct p factors stop ((start + stop) / 2))
+    (hbezout : CLPoly.Math.SparsePolyZp.toPoly p gcd =
+      CLPoly.Math.SparsePolyZp.toPoly p s *
+          CLPoly.Math.SparsePolyZp.toPoly p g +
+        CLPoly.Math.SparsePolyZp.toPoly p t *
+          CLPoly.Math.SparsePolyZp.toPoly p h)
+    (hgcd : CLPoly.Math.SparsePolyZp.toPoly p gcd =
+      GCDMonoid.gcd (CLPoly.Math.SparsePolyZp.toPoly p g)
+        (CLPoly.Math.SparsePolyZp.toPoly p h)) :
+    ∃ output,
+      Generated.StrictHensel.henselTreeStoreNodeRawIR nodes index g h s t
+          start stop = .ok output ∧
+      output.size = nodes.size ∧
+      HenselTreeNodeGCDInvariant p factors start stop output[index] := by
+  rcases henselTreeStoreNodeRawIR_refines nodes index g h s t start stop
+      hindex with
+    ⟨output, hrun, hsize, houtputG, houtputH, houtputS, houtputT,
+      houtputStart, houtputStop⟩
+  refine ⟨output, hrun, hsize, ?_⟩
+  simp only [HenselTreeNodeGCDInvariant]
+  rw [houtputG, houtputH, houtputS, houtputT,
+    henselTreeZpToZZIR_toPolyMod, henselTreeZpToZZIR_toPolyMod,
+    henselTreeZpToZZIR_toPolyMod, henselTreeZpToZZIR_toPolyMod,
+    hg, hh]
+  refine ⟨rfl, rfl, ?_⟩
+  rw [← hgcd, hbezout, hg, hh]
+
+/-- When the two interval products are coprime, the same concrete EEA write
+establishes the exact unit Bézout certificate required by Hensel lifting. -/
+theorem henselTreeStoreNodeRawIR_refines_initial
+    (p : Nat) (factors : Array SparsePolyZp) (nodes : Array HenselNode)
+    (index start stop : Nat) (g h gcd s t : SparsePolyZp)
+    (hindex : index < nodes.size)
+    (hg : CLPoly.Math.SparsePolyZp.toPoly p g =
+      henselFactorRangeProduct p factors ((start + stop) / 2) start)
+    (hh : CLPoly.Math.SparsePolyZp.toPoly p h =
+      henselFactorRangeProduct p factors stop ((start + stop) / 2))
+    (hbezout : CLPoly.Math.SparsePolyZp.toPoly p gcd =
+      CLPoly.Math.SparsePolyZp.toPoly p s *
+          CLPoly.Math.SparsePolyZp.toPoly p g +
+        CLPoly.Math.SparsePolyZp.toPoly p t *
+          CLPoly.Math.SparsePolyZp.toPoly p h)
+    (hmonic : (CLPoly.Math.SparsePolyZp.toPoly p gcd).Monic)
+    (hgcd : CLPoly.Math.SparsePolyZp.toPoly p gcd =
+      GCDMonoid.gcd (CLPoly.Math.SparsePolyZp.toPoly p g)
+        (CLPoly.Math.SparsePolyZp.toPoly p h))
+    (hcoprime : IsCoprime
+      (henselFactorRangeProduct p factors ((start + stop) / 2) start)
+      (henselFactorRangeProduct p factors stop ((start + stop) / 2))) :
+    ∃ output,
+      Generated.StrictHensel.henselTreeStoreNodeRawIR nodes index g h s t
+          start stop = .ok output ∧
+      output.size = nodes.size ∧
+      HenselTreeNodeInitialInvariant p factors start stop output[index] := by
+  rcases henselTreeStoreNodeRawIR_refines_gcd p factors nodes index start stop
+      g h gcd s t hindex hg hh hbezout hgcd with
+    ⟨output, hrun, hsize, hinvariant⟩
+  have hcoprime' : IsCoprime
+      (CLPoly.Math.SparsePolyZp.toPoly p g)
+      (CLPoly.Math.SparsePolyZp.toPoly p h) := by
+    rw [hg, hh]
+    exact hcoprime
+  have hunitGCD : IsUnit
+      (GCDMonoid.gcd (CLPoly.Math.SparsePolyZp.toPoly p g)
+        (CLPoly.Math.SparsePolyZp.toPoly p h)) :=
+    (gcd_isUnit_iff _ _).2 hcoprime'
+  have hunit : IsUnit (CLPoly.Math.SparsePolyZp.toPoly p gcd) := by
+    rw [hgcd]
+    exact hunitGCD
+  have honeRaw : CLPoly.Math.SparsePolyZp.toPoly p gcd = 1 :=
+    hmonic.eq_one_of_isUnit hunit
+  have hone : GCDMonoid.gcd (CLPoly.Math.SparsePolyZp.toPoly p g)
+      (CLPoly.Math.SparsePolyZp.toPoly p h) = 1 := by
+    rw [← hgcd, honeRaw]
+  refine ⟨output, hrun, hsize, ?_⟩
+  simpa [HenselTreeNodeInitialInvariant, HenselTreeNodeGCDInvariant,
+    hone] using hinvariant
 
 /-- Execution-only safety for the concrete well-founded tree builder.  All
 products and EEA calls are the actual strict operations, and recursive calls

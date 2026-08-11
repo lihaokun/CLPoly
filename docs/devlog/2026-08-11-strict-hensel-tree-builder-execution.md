@@ -24,6 +24,13 @@ fallback, or fuel counter.  The next theorem will strengthen the recursive
 postcondition with the stored interval-product and Bezout invariants needed by
 the full Hensel pipeline.
 
+The follow-up node-local bridge now also proves that `poly_convert` preserves
+the represented polynomial, that the six concrete stores record the exact two
+interval products and EEA certificate, and that coprime interval products turn
+the monic EEA gcd into the unit Bezout certificate consumed by lifting.  The
+remaining strengthening is recursive: preserve these algebraic fields while
+child links are installed and establish the invariant at every appended node.
+
 ## Verification
 
 ```text

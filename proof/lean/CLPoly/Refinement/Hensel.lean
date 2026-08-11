@@ -3470,6 +3470,14 @@ structure HenselDivmodVHCState where
   remainder : SparsePolyZp
   resetH : Nat
 
+def HenselDivmodVHCState.quotientState (state : HenselDivmodVHCState) :
+    StrictSquarefreeZp.PairVecDivVHCIterationResult where
+  dividendIndex := state.dividendIndex
+  heap := state.heap
+  nodes := state.nodes
+  quotient := state.quotient
+  resetH := state.resetH
+
 /-- One exact body of the five-argument C++ `pair_vec_div`.  It reuses the
 already strict selector, equal-degree heap consumption, quotient emission,
 reset activation and reverse reinsertion.  The only additional observable
@@ -3573,6 +3581,26 @@ theorem henselDivmodVHCIteration_projects_quotient
                 exact Except.ok.inj hrun
               subst next
               exact ⟨_, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+theorem henselDivmodVHCIteration_projects_quotientState
+    (this : DenseUPolyZp) (state next : HenselDivmodVHCState)
+    (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+      state.dividendIndex dividend state.heap state.nodes = .ok frontier)
+    (hrun : henselDivmodVHCIteration this state frontier dividend divisor
+      hdivisor = .ok next) :
+    StrictSquarefreeZp.pairVecDivVHCOuterIteration this state.dividendIndex
+        state.heap state.nodes state.quotient dividend divisor state.resetH =
+      .ok next.quotientState := by
+  rcases henselDivmodVHCIteration_projects_quotient this state next frontier
+      dividend divisor hdivisor hselect hrun with
+    ⟨projected, hprojected, hindex, hheap, hnodes, hquotient, hreset⟩
+  have heq : projected = next.quotientState := by
+    cases projected
+    cases next
+    simp_all [HenselDivmodVHCState.quotientState]
+  simpa [heq] using hprojected
 
 /-- Conversely, every successful quotient-only body lifts to the exact
 five-argument body by recording the source remainder push.  No operation is
@@ -4694,6 +4722,271 @@ structure HenselDivmodVHCOperationalInvariant (p degreeLimit : Nat)
     degreeLimit divisor[0].1.deg state.quotient
   dividendConsumed : StrictSquarefreeZp.PairVecDivVHCConsumedDividendAbove
     degreeLimit state.dividendIndex dividend
+
+/-- The complete raw representation needed to transport the operational core
+through another concrete body.  The extra facts are heap/frontier bounds, not
+semantic predictions about the output. -/
+structure HenselDivmodVHCFullOperationalInvariant
+    (this : DenseUPolyZp) (globalLimit degreeLimit : Nat)
+    (state : HenselDivmodVHCState) (dividend divisor : SparsePolyZp)
+    (hdivisor : 0 < divisor.size) : Prop where
+  core : HenselDivmodVHCOperationalInvariant this._p.toNat degreeLimit state
+    dividend divisor hdivisor
+  divisorCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat divisor
+  quotientReady : ∀ frontier : StrictSquarefreeZp.PairVecDivVHCFrontier,
+    StrictSquarefreeZp.pairVecDivVHCSelectFrontier state.dividendIndex dividend
+        state.heap state.nodes = .ok frontier →
+      StrictSquarefreeZp.PairVecDivVHCQuotientAbove frontier.degree
+        divisor[0].1.deg state.quotient
+  remaining : StrictSquarefreeZp.PairVecDivVHCRemainingDividendBelow
+    globalLimit state.dividendIndex dividend
+  activeBelow : StrictSquarefreeZp.PairVecDivVHCAllActiveNodesBelow globalLimit
+    state.nodes
+
+theorem HenselDivmodVHCFullOperationalInvariant.step
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (globalLimit degreeLimit : Nat) (state next : HenselDivmodVHCState)
+    (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hinvariant : HenselDivmodVHCFullOperationalInvariant this globalLimit
+      degreeLimit state dividend divisor hdivisor)
+    (hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+      state.dividendIndex dividend state.heap state.nodes = .ok frontier)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hiteration : henselDivmodVHCIteration this state frontier dividend divisor
+      hdivisor = .ok next) :
+    HenselDivmodVHCFullOperationalInvariant this globalLimit frontier.degree
+      next dividend divisor hdivisor := by
+  let projected := next.quotientState
+  have hprojected : StrictSquarefreeZp.pairVecDivVHCOuterIteration this
+      state.dividendIndex state.heap state.nodes state.quotient dividend divisor
+      state.resetH = .ok projected := by
+    exact henselDivmodVHCIteration_projects_quotientState this state next
+      frontier dividend divisor hdivisor hselect hiteration
+  rcases hinvariant.core.heapChains with
+    ⟨owners, hownership, hhomogeneous⟩
+  have hcoveredNodes := hinvariant.core.covered.covered_with state.heap
+    state.nodes #[] state.resetH owners hownership
+  have hnextCore :=
+    StrictSquarefreeZp.pairVecDivVHCOuterIteration_preserves_heapChainsOwned
+      this globalLimit state.dividendIndex state.heap state.nodes
+      state.quotient dividend divisor state.resetH projected owners hdivisor
+      hcfg hinvariant.core.quotientCanonical hdividendCanonical
+      hinvariant.divisorCanonical hinvariant.quotientReady hinvariant.remaining
+      hinvariant.activeBelow hinvariant.core.denotes hinvariant.core.fixed
+      hinvariant.core.resetReady hownership hprojected
+  rcases hnextCore with
+    ⟨hnextCanonical, hnextOwned, hnextRemaining, hnextBelow, hnextDenotes,
+      hnextFixed, hnextReady⟩
+  have hnextState :=
+    StrictSquarefreeZp.pairVecDivVHCOuterIteration_preserves_stateCovered this
+      this._p.toNat globalLimit state.dividendIndex state.heap state.nodes
+      state.quotient dividend divisor state.resetH frontier projected hdivisor
+      hselect hinvariant.core.quotientCanonical hinvariant.activeBelow
+      hinvariant.core.denotes hinvariant.core.fixed hinvariant.core.resetReady
+      hinvariant.core.covered hprojected
+  rcases
+      StrictSquarefreeZp.pairVecDivVHCOuterIteration_preserves_heapChainsHomogeneous
+        this this._p.toNat globalLimit state.dividendIndex state.heap state.nodes
+        state.quotient dividend divisor state.resetH frontier projected owners
+        hdivisor hinvariant.core.quotientCanonical hinvariant.activeBelow
+        hinvariant.core.denotes hinvariant.core.fixed
+        hinvariant.core.resetReady hownership hhomogeneous hselect hprojected
+      with ⟨nextOwners, hnextOwnership, hnextHomogeneous⟩
+  have hnextOrdered :=
+    StrictSquarefreeZp.pairVecDivVHCOuterIteration_preserves_heapOrdered this
+      this._p.toNat globalLimit state.dividendIndex state.heap state.nodes
+      state.quotient dividend divisor state.resetH frontier projected owners
+      hdivisor hinvariant.core.quotientCanonical hinvariant.activeBelow
+      hinvariant.core.denotes hinvariant.core.fixed hinvariant.core.resetReady
+      hownership hinvariant.core.ordered hselect hprojected
+  have hnextStrict :=
+    StrictSquarefreeZp.pairVecDivVHCOuterIteration_frontierBelow this
+      this._p.toNat globalLimit state.dividendIndex state.heap state.nodes
+      state.quotient dividend divisor state.resetH frontier projected owners
+      hdivisor hselect hinvariant.core.quotientCanonical hdividendCanonical
+      hinvariant.divisorCanonical hinvariant.activeBelow
+      hinvariant.core.denotes hinvariant.core.fixed hinvariant.core.resetReady
+      hownership hcoveredNodes hhomogeneous hinvariant.core.ordered hprojected
+  have hnextQuotientReady : ∀ nextFrontier :
+      StrictSquarefreeZp.PairVecDivVHCFrontier,
+      StrictSquarefreeZp.pairVecDivVHCSelectFrontier next.dividendIndex dividend
+          next.heap next.nodes = .ok nextFrontier →
+        StrictSquarefreeZp.PairVecDivVHCQuotientAbove nextFrontier.degree
+          divisor[0].1.deg next.quotient := by
+    intro nextFrontier hnextSelect
+    have hnextDegree :=
+      StrictSquarefreeZp.pairVecDivVHCSelectFrontier_degree_lt frontier.degree
+        next.dividendIndex dividend next.heap next.nodes nextFrontier (by
+          simpa [projected, HenselDivmodVHCState.quotientState] using hnextStrict)
+        hnextSelect
+    have habove :=
+      StrictSquarefreeZp.pairVecDivVHCOuterIteration_preserves_quotientAbove_of_lt
+        this state.dividendIndex nextFrontier.degree state.heap state.nodes
+        state.quotient dividend divisor state.resetH frontier projected
+        hdivisor (hinvariant.quotientReady frontier hselect) hnextDegree hselect
+        hprojected
+    simpa [projected, HenselDivmodVHCState.quotientState] using habove
+  have hnextPrefix :=
+    StrictSquarefreeZp.pairVecDivVHCOuterIteration_preserves_cursorPrefixAbove
+      this this._p.toNat globalLimit degreeLimit state.dividendIndex state.heap
+      state.nodes state.quotient dividend divisor state.resetH frontier
+      projected owners hdivisor hselect hdecrease
+      hinvariant.core.quotientCanonical hinvariant.activeBelow
+      hinvariant.core.denotes hinvariant.core.fixed hinvariant.core.resetReady
+      hinvariant.core.covered hownership hhomogeneous
+      hinvariant.core.cursorPrefix hprojected
+  have hnextProcessed :=
+    StrictSquarefreeZp.pairVecDivVHCOuterIteration_preserves_quotientLeadAbove
+      this degreeLimit state.dividendIndex state.heap state.nodes
+      state.quotient dividend divisor state.resetH frontier projected hdivisor
+      hinvariant.core.quotientProcessed hdecrease hselect hprojected
+  have hnextConsumed :=
+    StrictSquarefreeZp.pairVecDivVHCOuterIteration_preserves_consumed_above this
+      degreeLimit state.dividendIndex state.heap state.nodes state.quotient
+      dividend divisor state.resetH frontier projected hdivisor
+      hinvariant.core.dividendConsumed hdecrease hselect hprojected
+  have hnextSize : next.nodes.size = divisor.size - 1 := by
+    have := StrictSquarefreeZp.pairVecDivVHCOuterIteration_nodes_size this
+      state.dividendIndex state.heap state.nodes state.quotient dividend divisor
+      state.resetH frontier projected hdivisor hselect hprojected
+    simpa [projected, HenselDivmodVHCState.quotientState,
+      hinvariant.core.size] using this
+  refine ⟨⟨?_, hnextSize, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩,
+    hinvariant.divisorCanonical, hnextQuotientReady, ?_, ?_⟩
+  · simpa [projected, HenselDivmodVHCState.quotientState] using
+      hnextCanonical
+  · simpa [projected, HenselDivmodVHCState.quotientState] using hnextFixed
+  · simpa [projected, HenselDivmodVHCState.quotientState] using hnextState
+  · exact ⟨nextOwners, by
+      simpa [projected, HenselDivmodVHCState.quotientState] using
+        hnextOwnership, by
+      simpa [projected, HenselDivmodVHCState.quotientState] using
+        hnextHomogeneous⟩
+  · simpa [projected, HenselDivmodVHCState.quotientState] using hnextOrdered
+  · simpa [projected, HenselDivmodVHCState.quotientState] using hnextDenotes
+  · simpa [projected, HenselDivmodVHCState.quotientState] using hnextReady
+  · simpa [projected, HenselDivmodVHCState.quotientState] using hnextPrefix
+  · simpa [projected, HenselDivmodVHCState.quotientState] using
+      hnextProcessed
+  · simpa [projected, HenselDivmodVHCState.quotientState] using hnextConsumed
+  · simpa [projected, HenselDivmodVHCState.quotientState] using
+      hnextRemaining
+  · simpa [projected, HenselDivmodVHCState.quotientState] using hnextBelow
+
+theorem HenselDivmodVHCPrefix.fullOperationalInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (initialLimit : Nat) (initial : HenselDivmodVHCState)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hinitial : HenselDivmodVHCFullOperationalInvariant this initialLimit
+      initialLimit initial dividend divisor hdivisor)
+    (degreeLimit : Nat) (state : HenselDivmodVHCState)
+    (hprefix : HenselDivmodVHCPrefix this dividend divisor hdivisor initialLimit
+      initial degreeLimit state) :
+    HenselDivmodVHCFullOperationalInvariant this initialLimit degreeLimit state
+      dividend divisor hdivisor := by
+  induction hprefix with
+  | refl => exact hinitial
+  | step limit state next frontier hprefix hnotDone hselect hdecrease
+      hiteration ih =>
+      exact ih.step this initialLimit limit state next frontier dividend divisor
+        hdivisor hcfg hdividendCanonical hselect hdecrease hiteration
+
+theorem henselDivmodVHCFreshFullOperationalInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hdivisorCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      divisor)
+    (hdividend : 0 < dividend.size) (hdivisor : 0 < divisor.size) :
+    let limit := dividend[0].1.deg + 1
+    let nodes := StrictSquarefreeZp.pairVecDivVHCInit divisor
+    let state : HenselDivmodVHCState :=
+      ⟨0, #[], nodes, #[], #[], divisor.size - 1⟩
+    HenselDivmodVHCFullOperationalInvariant this limit limit state dividend
+      divisor hdivisor := by
+  dsimp only
+  let nodes := StrictSquarefreeZp.pairVecDivVHCInit divisor
+  rcases StrictSquarefreeZp.pairVecDivVHCInit_stateCovered divisor with
+    ⟨owners, hownership0, hcovered0⟩
+  have hownership : StrictSquarefreeZp.PairVecDivVHCHeapChainOwnership #[]
+      owners nodes := by simpa [nodes] using hownership0
+  have hstate : StrictSquarefreeZp.PairVecDivVHCStateCovered #[] nodes #[]
+      (divisor.size - 1) := by
+    exact ⟨owners, hownership, by simpa [nodes] using hcovered0⟩
+  have hinactive : ∀ (i : Nat)
+      (node : StrictSquarefreeZp.PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono = none := by
+    intro i node hget
+    have hi : i < divisor.size - 1 := by
+      by_contra hnot
+      rw [Array.getElem?_eq_none (by
+        simpa [nodes, StrictSquarefreeZp.pairVecDivVHCInit_size] using hnot)]
+        at hget
+      contradiction
+    rw [show nodes[i]? = some
+        (StrictSquarefreeZp.pairVecDivVHCInitialNode i) by
+      simpa [nodes] using
+        StrictSquarefreeZp.pairVecDivVHCInit_get divisor i hi] at hget
+    simp only [Option.some.injEq] at hget
+    subst node
+    rfl
+  have hcanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      (#[] : SparsePolyZp) := by
+    rw [CLPoly.Math.SparsePolyZp.Canonical,
+      CLPoly.Math.SparsePolyZp.WellFormed_arr]
+    refine ⟨?_, by simp, ?_⟩
+    · intro term hterm
+      simp at hterm
+    · intro term hterm
+      simp at hterm
+  have hactiveBelow :
+      StrictSquarefreeZp.PairVecDivVHCAllActiveNodesBelow
+        (dividend[0].1.deg + 1) nodes := by
+    intro i node mono hget hmono
+    rw [hinactive i node hget] at hmono
+    contradiction
+  have hdenotes : ∀ (i : Nat)
+      (node : StrictSquarefreeZp.PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        StrictSquarefreeZp.PairVecDivVHCNodeDenotes (#[] : SparsePolyZp)
+          divisor node := by
+    intro i node hget hmono
+    exact (hmono (hinactive i node hget)).elim
+  have hhomogeneous : StrictSquarefreeZp.PairVecDivVHCHeapChainsHomogeneous
+      #[] owners nodes := by
+    intro slot head mono hget
+    simp at hget
+  have hordered : StrictSquarefreeZp.PairVecDivVHCHeapOrdered #[] nodes := by
+    intro child parent hchild
+    simp at hchild
+  refine ⟨⟨hcanonical, ?_, ?_, hstate, ⟨owners, hownership,
+      hhomogeneous⟩, hordered, hdenotes, ?_, ?_, ?_, ?_⟩,
+    hdivisorCanonical, ?_, ?_, hactiveBelow⟩
+  · simpa [nodes] using StrictSquarefreeZp.pairVecDivVHCInit_size divisor
+  · simpa [nodes] using
+      StrictSquarefreeZp.pairVecDivVHCInit_divisorIndicesFixed divisor
+  · simpa [nodes] using
+      StrictSquarefreeZp.pairVecDivVHCInit_resetReady divisor
+  · simpa [nodes] using
+      (StrictSquarefreeZp.pairVecDivVHCInit_cursorPrefixAbove
+        (dividend[0].1.deg + 1) (#[] : SparsePolyZp) divisor)
+  · exact StrictSquarefreeZp.PairVecDivVHCQuotientLeadAbove.empty
+      (dividend[0].1.deg + 1) divisor[0].1.deg
+  · exact StrictSquarefreeZp.pairVecDivVHCConsumedDividendAbove_zero
+      (dividend[0].1.deg + 1) dividend
+  · intro frontier hselect
+    exact StrictSquarefreeZp.PairVecDivVHCQuotientAbove.empty frontier.degree
+      divisor[0].1.deg
+  · exact StrictSquarefreeZp.pairVecDivVHCCanonicalInitialRemainingBelow
+      this._p.toNat dividend hdividendCanonical hdividend
 
 /-- The exact generated VHC trace accumulates every low-degree residual
 coefficient in its concrete remainder array.  The proof is well-founded along

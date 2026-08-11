@@ -150,6 +150,23 @@ termination obligations for the single-term EEA division branch are closed;
 the remaining uniformization work is concentrated in the fresh general VHC
 initial state and its reachable operational invariants.
 
+## Reachable general-state invariants
+
+The general quotient-and-remainder state now has an explicit projection to
+the quotient-only iteration result.  A successful double-output body projects
+to exactly that structure, allowing all existing generated VHC preservation
+theorems to apply to the same concrete selector/consume/emit/reinsert run.
+
+A full operational invariant transports quotient canonicality, divisor-node
+indices, state coverage, heap ownership/homogeneity/order, node denotation,
+reset readiness, cursor prefixes, consumed dividend prefixes, processed
+quotient prefixes, remaining-dividend bounds, active-node bounds, and
+quotient readiness.  It is proved preserved by every actual double-output
+body.  The fresh empty quotient/remainder and generated node array establish
+the invariant initially, and induction over the concrete reachable-prefix
+relation now supplies it for every state used by the semantic trace.  No field
+contains an expected result or L2 division value.
+
 Verification:
 
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.

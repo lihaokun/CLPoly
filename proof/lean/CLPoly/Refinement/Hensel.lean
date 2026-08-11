@@ -5603,6 +5603,169 @@ theorem strictHenselEEAIR_refines
     (strictHenselEEATermination this) initial
     (strictHenselEEAExecutionInvariant this hcfg initial hinitial)
 
+theorem henselEEANormalization_toPoly (p : Nat) (f : SparsePolyZp) :
+    CLPoly.Math.SparsePolyZp.toPoly p (SparsePolyZp.normalization f) =
+      CLPoly.Math.SparsePolyZp.toPoly p f := by
+  unfold SparsePolyZp.normalization CLPoly.Math.SparsePolyZp.toPoly
+  rw [Array.toList_filter]
+  induction f.toList with
+  | nil => simp [CLPoly.Math.listSum]
+  | cons term rest ih =>
+      rcases term with ⟨monomial, coefficient⟩
+      by_cases hzero : coefficient.val = 0
+      · simpa [hzero, CLPoly.Math.listSum, CLPoly.Math.Zp.toZMod] using ih
+      · simp [hzero, CLPoly.Math.listSum, ih]
+
+theorem henselEEANormalization_wellFormed (p : Nat) (f : SparsePolyZp)
+    (hf : CLPoly.Math.SparsePolyZp.WellFormed_arr p f) :
+    CLPoly.Math.SparsePolyZp.WellFormed_arr p
+      (SparsePolyZp.normalization f) := by
+  intro term hterm
+  unfold SparsePolyZp.normalization at hterm
+  rw [Array.toList_filter] at hterm
+  exact hf term (List.mem_of_mem_filter hterm)
+
+/-- The two source remainder registers are represented by the corresponding
+Bézout coefficient registers throughout the actual EEA assignments. -/
+structure StrictHenselEEAAlgebraicInvariant (p : Nat)
+    (left right : SparsePolyZp)
+    (state : Generated.StrictHensel.HenselEEAState) : Prop where
+  s0WellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p state.s0
+  s1WellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p state.s1
+  t0WellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p state.t0
+  t1WellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p state.t1
+  r0Equation :
+    CLPoly.Math.SparsePolyZp.toPoly p state.r0 =
+      CLPoly.Math.SparsePolyZp.toPoly p state.s0 *
+          CLPoly.Math.SparsePolyZp.toPoly p left +
+        CLPoly.Math.SparsePolyZp.toPoly p state.t0 *
+          CLPoly.Math.SparsePolyZp.toPoly p right
+  r1Equation :
+    CLPoly.Math.SparsePolyZp.toPoly p state.r1 =
+      CLPoly.Math.SparsePolyZp.toPoly p state.s1 *
+          CLPoly.Math.SparsePolyZp.toPoly p left +
+        CLPoly.Math.SparsePolyZp.toPoly p state.t1 *
+          CLPoly.Math.SparsePolyZp.toPoly p right
+
+/-- One concrete EEA assignment block preserves the Bézout equations.  The
+new remainder equation uses the quotient and remainder returned by the actual
+VHC call. -/
+theorem StrictHenselEEAAlgebraicInvariant.step
+    (p : Nat) (left right : SparsePolyZp)
+    (state : Generated.StrictHensel.HenselEEAState)
+    (quotient remainder : SparsePolyZp)
+    (h2p : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size)
+    (hr1 : 0 < state.r1.size)
+    (hinvariant : StrictHenselEEAAlgebraicInvariant p left right state)
+    (hdivmod : HenselDivmodVHCResultCorrect p state.r0 state.r1
+      hr1 (quotient, remainder)) :
+    StrictHenselEEAAlgebraicInvariant p left right
+      (Generated.StrictHensel.henselEEANextState state quotient remainder) := by
+  let qs := SparsePolyZp.mulImpl quotient state.s1
+  let qt := SparsePolyZp.mulImpl quotient state.t1
+  let sRaw := SparsePolyZp.subImpl state.s0 qs
+  let tRaw := SparsePolyZp.subImpl state.t0 qt
+  let s2 := SparsePolyZp.normalization sRaw
+  let t2 := SparsePolyZp.normalization tRaw
+  have hqWellFormed := hdivmod.quotientCanonical.1
+  have hqsWellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p qs := by
+    exact CLPoly.Math.SparsePolyZp.WellFormed_arr.mul p hp2 quotient state.s1
+      hqWellFormed hinvariant.s1WellFormed
+  have hqtWellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p qt := by
+    exact CLPoly.Math.SparsePolyZp.WellFormed_arr.mul p hp2 quotient state.t1
+      hqWellFormed hinvariant.t1WellFormed
+  have hsRawWellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p sRaw := by
+    exact CLPoly.Math.SparsePolyZp.WellFormed_arr.sub p state.s0 qs
+      hinvariant.s0WellFormed hqsWellFormed
+  have htRawWellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p tRaw := by
+    exact CLPoly.Math.SparsePolyZp.WellFormed_arr.sub p state.t0 qt
+      hinvariant.t0WellFormed hqtWellFormed
+  have hs2WellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p s2 :=
+    henselEEANormalization_wellFormed p sRaw hsRawWellFormed
+  have ht2WellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p t2 :=
+    henselEEANormalization_wellFormed p tRaw htRawWellFormed
+  have hqsPoly : CLPoly.Math.SparsePolyZp.toPoly p qs =
+      CLPoly.Math.SparsePolyZp.toPoly p quotient *
+        CLPoly.Math.SparsePolyZp.toPoly p state.s1 := by
+    exact CLPoly.Math.SparsePolyZp.toPoly_mul p h2p hp2 quotient state.s1
+      hqWellFormed hinvariant.s1WellFormed
+  have hqtPoly : CLPoly.Math.SparsePolyZp.toPoly p qt =
+      CLPoly.Math.SparsePolyZp.toPoly p quotient *
+        CLPoly.Math.SparsePolyZp.toPoly p state.t1 := by
+    exact CLPoly.Math.SparsePolyZp.toPoly_mul p h2p hp2 quotient state.t1
+      hqWellFormed hinvariant.t1WellFormed
+  have hs2Poly : CLPoly.Math.SparsePolyZp.toPoly p s2 =
+      CLPoly.Math.SparsePolyZp.toPoly p state.s0 -
+        CLPoly.Math.SparsePolyZp.toPoly p quotient *
+          CLPoly.Math.SparsePolyZp.toPoly p state.s1 := by
+    rw [henselEEANormalization_toPoly p sRaw]
+    change CLPoly.Math.SparsePolyZp.toPoly p (state.s0 - qs) = _
+    rw [CLPoly.Math.SparsePolyZp.toPoly_sub p h2p state.s0 qs
+      hinvariant.s0WellFormed hqsWellFormed, hqsPoly]
+  have ht2Poly : CLPoly.Math.SparsePolyZp.toPoly p t2 =
+      CLPoly.Math.SparsePolyZp.toPoly p state.t0 -
+        CLPoly.Math.SparsePolyZp.toPoly p quotient *
+          CLPoly.Math.SparsePolyZp.toPoly p state.t1 := by
+    rw [henselEEANormalization_toPoly p tRaw]
+    change CLPoly.Math.SparsePolyZp.toPoly p (state.t0 - qt) = _
+    rw [CLPoly.Math.SparsePolyZp.toPoly_sub p h2p state.t0 qt
+      hinvariant.t0WellFormed hqtWellFormed, hqtPoly]
+  change StrictHenselEEAAlgebraicInvariant p left right
+    { r0 := state.r1, r1 := remainder, s0 := state.s1, s1 := s2,
+      t0 := state.t1, t1 := t2 }
+  refine ⟨hinvariant.s1WellFormed, hs2WellFormed,
+    hinvariant.t1WellFormed, ht2WellFormed, hinvariant.r1Equation, ?_⟩
+  have hremEquation :
+      CLPoly.Math.SparsePolyZp.toPoly p remainder =
+        CLPoly.Math.SparsePolyZp.toPoly p state.r0 -
+          CLPoly.Math.SparsePolyZp.toPoly p quotient *
+            CLPoly.Math.SparsePolyZp.toPoly p state.r1 := by
+    rw [← hdivmod.equation]
+    ring
+  rw [hremEquation, hinvariant.r0Equation, hinvariant.r1Equation,
+    hs2Poly, ht2Poly]
+  ring
+
+/-- Every state reached by the concrete generated EEA maintains both Bézout
+representations. -/
+theorem strictHenselEEAPrefix_algebraicInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (left right : SparsePolyZp)
+    (initial : Generated.StrictHensel.HenselEEAState)
+    (hexec : StrictHenselEEAStateInvariant this._p.toNat initial)
+    (halgebra : StrictHenselEEAAlgebraicInvariant this._p.toNat left right
+      initial) :
+    ∀ state, HenselEEAPrefix (strictHenselEEARawOps this) initial state →
+      StrictHenselEEAAlgebraicInvariant this._p.toNat left right state := by
+  intro state hprefix
+  induction hprefix with
+  | refl => exact halgebra
+  | step state quotient remainder hprefix hcontinue hrun ih =>
+      have hstate := strictHenselEEAPrefix_stateInvariant this hcfg initial
+        hexec state hprefix
+      have hr1Ne : state.r1 ≠ #[] := by
+        simpa [Array.isEmpty_iff] using hcontinue
+      have hr1 : 0 < state.r1.size := by
+        have hr1Size : state.r1.size ≠ 0 := by
+          intro hzero
+          apply hr1Ne
+          exact Array.eq_empty_of_size_eq_zero hzero
+        omega
+      rcases henselDivmodVHCIR_refines this state.r0 state.r1 hcfg
+          hstate.r0Canonical hstate.r1Canonical hr1 with
+        ⟨output, houtputRun, houtputCorrect⟩
+      have hrun' : henselDivmodVHCIR this state.r0 state.r1 =
+          .ok (quotient, remainder) := by
+        simpa [strictHenselEEARawOps] using hrun
+      have houtput : output = (quotient, remainder) :=
+        Except.ok.inj (houtputRun.symm.trans hrun')
+      subst output
+      exact StrictHenselEEAAlgebraicInvariant.step this._p.toNat left right
+        state quotient remainder h2p hp2 hr1 ih houtputCorrect
+
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
     (hdivisor : 0 < divisor.size) (initialLimit : Nat)

@@ -138,6 +138,28 @@ is the concrete raw-to-safe execution bridge using the degree-based recursion.
 It establishes execution and an exact source trace; the Bézout polynomial
 semantics are intentionally the next obligation and are not claimed here.
 
+## Reachable EEA Bézout invariant
+
+The generated EEA assignment block now carries both algebraic identities
+through every concrete reachable prefix:
+
+- `r0 = s0 * left + t0 * right`;
+- `r1 = s1 * left + t1 * right`.
+
+For a successful source VHC result `(q, remainder)`, the proof uses its exact
+division equation and the actual assignments `s2 = s0 - q*s1` and
+`t2 = t0 - q*t1`.  Normalization is proved polynomial-preserving, and the
+coefficient registers retain their well-formed runtime modulus.  Thus the
+next remainder identity is derived by ring algebra from the concrete output,
+not supplied as an EEA specification oracle.
+
+The current polynomial bridge uses the existing bounded executable `Zp`
+arithmetic lemmas (`2*p` and `p*p` within one limb).  These are arithmetic
+preconditions, not expected-result fields; the tree-entry contract must
+either obtain them from the selected Hensel prime or replace the legacy
+bounded bridge with the newer overflow-safe `Zp` model theorem before the
+public top-level theorem is emitted.
+
 The operational invariant supplied for reachable prefixes contains only
 canonicality and the generated cursor/heap/node-chain facts.  It contains no
 expected output, quotient, remainder, or L2 division result.  A final

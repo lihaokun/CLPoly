@@ -117,6 +117,23 @@ not a wrapper around an L2 quotient or remainder.  Empty-dividend and
 single-term-divisor source branches remain to be composed into the complete
 EEA operation.
 
+## Complete source branch execution
+
+The EEA divmod operation now follows the full five-argument source branch
+order.  It rejects a zero divisor, clears both fresh outputs, returns two empty
+arrays for an empty dividend, executes a well-founded source-order loop for a
+single-term divisor, and otherwise enters the general VHC loop.  In the
+single-term branch, field coefficient division has zero coefficient remainder
+exactly as the C++ `__div(Zp &, Zp &, ...)` specialization specifies; terms
+whose monomials are not divisible are appended unchanged to the polynomial
+remainder.
+
+The resulting concrete function has been installed as
+`strictHenselEEARawOps.divmod`, and totality is proved for canonical inputs
+with a nonempty divisor.  The next proof obligation is the uniform semantic
+contract and strict remainder-degree decrease across these branches, which
+will provide the actual well-founded EEA termination measure.
+
 Verification:
 
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.

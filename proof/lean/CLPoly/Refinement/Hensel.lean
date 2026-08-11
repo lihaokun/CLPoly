@@ -3731,6 +3731,110 @@ theorem henselDivmodVHCGeneralBranchIR_succeeds
   simpa [henselDivmodVHCGeneralBranchIR, hdividend, hdivisor, state, nodes]
     using houtput
 
+/-- Exact source-order single-term-divisor loop for the five-argument
+overload.  Over `Zp`, coefficient division sets its remainder output to zero,
+so only monomials not divisible by the divisor monomial are appended to the
+polynomial remainder. -/
+def henselDivmodVHCSingleLoopIR (this : DenseUPolyZp) (index : Nat)
+    (quotient remainder dividend : SparsePolyZp)
+    (divisor : UMonomial × Zp) : SparsePolyZp × SparsePolyZp :=
+  if h : index < dividend.size then
+    match StrictSquarefreeZp.pairVecDivSingleTermIR this divisor
+        dividend[index] with
+    | some term =>
+        henselDivmodVHCSingleLoopIR this (index + 1)
+          (quotient.push term) remainder dividend divisor
+    | none =>
+        henselDivmodVHCSingleLoopIR this (index + 1) quotient
+          (remainder.push dividend[index]) dividend divisor
+  else
+    (quotient, remainder)
+termination_by dividend.size - index
+decreasing_by all_goals omega
+
+/-- Erasing the separately accumulated remainder gives the already checked
+single-output source loop. -/
+theorem henselDivmodVHCSingleLoopIR_fst
+    (this : DenseUPolyZp) (index : Nat)
+    (quotient remainder dividend : SparsePolyZp)
+    (divisor : UMonomial × Zp) :
+    (henselDivmodVHCSingleLoopIR this index quotient remainder dividend
+      divisor).1 =
+      StrictSquarefreeZp.pairVecDivSingleLoopIR this index quotient dividend
+        divisor := by
+  rw [henselDivmodVHCSingleLoopIR,
+    StrictSquarefreeZp.pairVecDivSingleLoopIR]
+  split
+  next hmore =>
+    cases hterm : StrictSquarefreeZp.pairVecDivSingleTermIR this divisor
+        dividend[index] with
+    | none =>
+        simp only [hterm]
+        exact henselDivmodVHCSingleLoopIR_fst this (index + 1) quotient
+          (remainder.push dividend[index]) dividend divisor
+    | some term =>
+        simp only [hterm]
+        exact henselDivmodVHCSingleLoopIR_fst this (index + 1)
+          (quotient.push term) remainder dividend divisor
+  next hdone => rfl
+termination_by dividend.size - index
+decreasing_by all_goals omega
+
+def henselDivmodVHCSingleBranchIR (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) :
+    RawExec (SparsePolyZp × SparsePolyZp) :=
+  if hone : divisor.size = 1 then
+    .ok (henselDivmodVHCSingleLoopIR this 0 #[] #[] dividend divisor[0])
+  else
+    .error .assertionFailure
+
+/-- Complete non-aliasing five-argument `pair_vec_div` entry in source branch
+order: reject zero divisor, clear both outputs, return for zero dividend,
+execute the one-term loop, otherwise enter the well-founded VHC path. -/
+def henselDivmodVHCIR (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) :
+    RawExec (SparsePolyZp × SparsePolyZp) :=
+  if hdivisorEmpty : divisor.size = 0 then
+    .error .assertionFailure
+  else if hdividendEmpty : dividend.size = 0 then
+    .ok (#[], #[])
+  else if hsingle : divisor.size = 1 then
+    henselDivmodVHCSingleBranchIR this dividend divisor
+  else
+    henselDivmodVHCGeneralBranchIR this dividend divisor
+
+/-- Totality of the complete concrete Hensel EEA division operation on a
+canonical nonzero divisor. -/
+theorem henselDivmodVHCIR_succeeds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hdivisorCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      divisor)
+    (hdivisor : 0 < divisor.size) :
+    ∃ output, henselDivmodVHCIR this dividend divisor = .ok output := by
+  by_cases hdividend : dividend.size = 0
+  · exact ⟨(#[], #[]), by
+      simp [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend]⟩
+  · by_cases hsingle : divisor.size = 1
+    · exact ⟨henselDivmodVHCSingleLoopIR this 0 #[] #[] dividend
+          divisor[0], by
+        simp [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend, hsingle,
+          henselDivmodVHCSingleBranchIR]⟩
+    · have hgeneral : 1 < divisor.size := by omega
+      rcases henselDivmodVHCGeneralBranchIR_succeeds this dividend divisor hcfg
+          hdividendCanonical hdivisorCanonical (Nat.pos_of_ne_zero hdividend)
+          hgeneral with ⟨output, houtput⟩
+      exact ⟨output, by
+        simpa [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend, hsingle]
+          using houtput⟩
+
+def strictHenselEEARawOps (this : DenseUPolyZp) :
+    Generated.StrictHensel.HenselEEARawOps where
+  divmod := henselDivmodVHCIR this
+
 /-- The remainder component of a successful iteration is exactly the source
 push decision at the selected frontier degree. -/
 theorem henselDivmodVHCIteration_remainder

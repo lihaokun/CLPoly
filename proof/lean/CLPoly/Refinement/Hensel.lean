@@ -3393,6 +3393,14 @@ structure HenselEEAExecutionInvariant
     HenselEEAPrefix ops initial state → state.r1.isEmpty = true →
     state.r0[0]? = some leading →
     ∃ inverse, ops.inverse leading.2 = .ok inverse
+  scaleReady : ∀ state leading inverse,
+    HenselEEAPrefix ops initial state → state.r1.isEmpty = true →
+    state.r0[0]? = some leading →
+    ops.inverse leading.2 = .ok inverse →
+    ∃ gcd s t,
+      ops.scaleNormalize inverse state.r0 = .ok gcd ∧
+      ops.scaleNormalize inverse state.s0 = .ok s ∧
+      ops.scaleNormalize inverse state.t0 = .ok t
 
 /-- Exact semantic execution trace of the source extended-Euclidean loop. -/
 inductive HenselEEACorrect
@@ -3401,13 +3409,14 @@ inductive HenselEEACorrect
       (SparsePolyZp × SparsePolyZp × SparsePolyZp) → Prop
   | done (state : Generated.StrictHensel.HenselEEAState)
       (leading : UMonomial × Zp) (inverse : Zp)
+      (gcd s t : SparsePolyZp)
       (hdone : state.r1.isEmpty = true)
       (hleading : state.r0[0]? = some leading)
-      (hinverse : ops.inverse leading.2 = .ok inverse) :
-      HenselEEACorrect ops state
-        (Generated.StrictHensel.henselEEAScaleNormalize inverse state.r0,
-          Generated.StrictHensel.henselEEAScaleNormalize inverse state.s0,
-          Generated.StrictHensel.henselEEAScaleNormalize inverse state.t0)
+      (hinverse : ops.inverse leading.2 = .ok inverse)
+      (hgcd : ops.scaleNormalize inverse state.r0 = .ok gcd)
+      (hs : ops.scaleNormalize inverse state.s0 = .ok s)
+      (ht : ops.scaleNormalize inverse state.t0 = .ok t) :
+      HenselEEACorrect ops state (gcd, s, t)
   | step (state : Generated.StrictHensel.HenselEEAState)
       (quotient remainder : SparsePolyZp)
       (output : SparsePolyZp × SparsePolyZp × SparsePolyZp)
@@ -3435,10 +3444,14 @@ private theorem henselEEARefinesAux
       ⟨leading, hleading⟩
     rcases hinvariant.inverseReady state leading hprefix hdone hleading with
       ⟨inverse, hinverse⟩
+    rcases hinvariant.scaleReady state leading inverse hprefix hdone hleading
+        hinverse with ⟨gcd, s, t, hgcd, hs, ht⟩
     rw [hleading]
     simp only
     rw [hinverse]
-    exact ⟨_, rfl, .done state leading inverse hdone hleading hinverse⟩
+    simp only [hgcd, hs, ht, bind, Except.bind]
+    exact ⟨(gcd, s, t), rfl,
+      .done state leading inverse gcd s t hdone hleading hinverse hgcd hs ht⟩
   · rename_i hcontinue
     rcases hinvariant.divisionReady state hprefix hcontinue with
       ⟨quotient, remainder, hrun⟩
@@ -4041,13 +4054,25 @@ theorem henselDivmodVHCIR_succeeds
         simpa [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend, hsingle]
           using houtput⟩
 
+def strictHenselEEAMulCoefficientIR (this : DenseUPolyZp)
+    (left right : Zp) : Zp :=
+  { val := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+      left.val right.val,
+    prime := this._p }
+
+def strictHenselEEAScaleNormalizeIR (this : DenseUPolyZp)
+    (coefficient : Zp) (f : SparsePolyZp) : RawExec SparsePolyZp :=
+  .ok (SparsePolyZp.normalization (f.map fun term =>
+    (term.1, strictHenselEEAMulCoefficientIR this term.2 coefficient)))
+
 def strictHenselEEARawOps (this : DenseUPolyZp) :
     Generated.StrictHensel.HenselEEARawOps where
   divmod := henselDivmodVHCIR this
   inverse := fun coefficient => .ok
-    { val := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
-        coefficient.val,
-      prime := this._p }
+      { val := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+          coefficient.val,
+        prime := this._p }
+  scaleNormalize := strictHenselEEAScaleNormalizeIR this
 
 /-- The terminal EEA inverse call is the generated C++ `inv_prime` path, and
 its returned runtime coefficient is the field inverse of the concrete
@@ -5635,6 +5660,23 @@ def strictHenselEEAExecutionInvariant
           leading.2.val,
         prime := this._p }
     exact ⟨inverse, rfl⟩
+  scaleReady := by
+    intro state leading inverse _ _ _ _
+    exact ⟨SparsePolyZp.normalization (state.r0.map fun term =>
+        (term.1,
+          { val := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+              term.2.val inverse.val,
+            prime := this._p })),
+      SparsePolyZp.normalization (state.s0.map fun term =>
+        (term.1,
+          { val := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+              term.2.val inverse.val,
+            prime := this._p })),
+      SparsePolyZp.normalization (state.t0.map fun term =>
+        (term.1,
+          { val := Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this
+              term.2.val inverse.val,
+            prime := this._p })), rfl, rfl, rfl⟩
 
 /-- The generated EEA now runs with the concrete VHC divmod implementation
 and its degree-based well-founded recursion. -/
@@ -5673,6 +5715,94 @@ theorem henselEEANormalization_wellFormed (p : Nat) (f : SparsePolyZp)
   unfold SparsePolyZp.normalization at hterm
   rw [Array.toList_filter] at hterm
   exact hf term (List.mem_of_mem_filter hterm)
+
+theorem strictHenselEEAMulCoefficientIR_refines
+    (this : DenseUPolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (left right : Zp)
+    (hleft : CLPoly.Math.Zp.Reduced this._p.toNat left) :
+    CLPoly.Math.Zp.Reduced this._p.toNat
+        (strictHenselEEAMulCoefficientIR this left right) ∧
+      CLPoly.Math.Zp.toZMod this._p.toNat
+          (strictHenselEEAMulCoefficientIR this left right) =
+        CLPoly.Math.Zp.toZMod this._p.toNat left *
+          CLPoly.Math.Zp.toZMod this._p.toNat right := by
+  have hp : 0 < this._p.toNat := by
+    exact lt_of_le_of_lt (Nat.zero_le _) hleft.2
+  have hmul :=
+    CLPoly.Impl.StrictWordArithmetic.nmod_mul_ir_correct_of_configured this
+      left.val right.val hcfg hleft.2
+  have hbound :
+      (Generated.StrictGCD.dense_upoly_zp_nmod_mul_ir this left.val
+          right.val).toNat < this._p.toNat := by
+    rw [hmul]
+    exact Nat.mod_lt _ hp
+  refine ⟨⟨rfl, hbound⟩, ?_⟩
+  unfold strictHenselEEAMulCoefficientIR CLPoly.Math.Zp.toZMod
+  dsimp only
+  rw [hmul, ZMod.natCast_mod]
+  push_cast
+  rfl
+
+private theorem strictHenselEEAScaleList_toPoly
+    (this : DenseUPolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (coefficient : Zp) :
+    ∀ terms : List (UMonomial × Zp),
+      CLPoly.Math.SparsePolyZp.AllReduced this._p.toNat terms →
+      CLPoly.Math.listSum this._p.toNat
+          (terms.map fun term =>
+            (term.1, strictHenselEEAMulCoefficientIR this term.2 coefficient)) =
+        Polynomial.C (CLPoly.Math.Zp.toZMod this._p.toNat coefficient) *
+          CLPoly.Math.listSum this._p.toNat terms := by
+  intro terms hterms
+  induction terms with
+  | nil => simp [CLPoly.Math.listSum]
+  | cons term rest ih =>
+      have hterm := hterms term List.mem_cons_self
+      have hrest : CLPoly.Math.SparsePolyZp.AllReduced this._p.toNat rest :=
+        fun item hitem => hterms item (List.mem_cons_of_mem term hitem)
+      have hcoefficient :=
+        strictHenselEEAMulCoefficientIR_refines this hcfg term.2 coefficient
+          hterm
+      rcases term with ⟨monomial, value⟩
+      simp only [List.map_cons, CLPoly.Math.listSum_cons]
+      rw [hcoefficient.2, ih hrest]
+      rw [mul_add, Polynomial.C_mul_monomial]
+      ring
+
+/-- Exact semantic contract for one of the three terminal source scaling
+loops followed by sparse normalization. -/
+theorem strictHenselEEAScaleNormalizeIR_refines
+    (this : DenseUPolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (coefficient : Zp) (f : SparsePolyZp)
+    (hf : CLPoly.Math.SparsePolyZp.WellFormed_arr this._p.toNat f) :
+    ∃ output,
+      strictHenselEEAScaleNormalizeIR this coefficient f = .ok output ∧
+      CLPoly.Math.SparsePolyZp.WellFormed_arr this._p.toNat output ∧
+      CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output =
+        Polynomial.C (CLPoly.Math.Zp.toZMod this._p.toNat coefficient) *
+          CLPoly.Math.SparsePolyZp.toPoly this._p.toNat f := by
+  let mapped := f.map fun term =>
+    (term.1, strictHenselEEAMulCoefficientIR this term.2 coefficient)
+  let output := SparsePolyZp.normalization mapped
+  have hmapped : CLPoly.Math.SparsePolyZp.WellFormed_arr this._p.toNat
+      mapped := by
+    intro term hterm
+    dsimp only [mapped] at hterm
+    rw [Array.toList_map, List.mem_map] at hterm
+    rcases hterm with ⟨source, hsource, rfl⟩
+    exact (strictHenselEEAMulCoefficientIR_refines this hcfg source.2
+      coefficient (hf source hsource)).1
+  refine ⟨output, rfl,
+    henselEEANormalization_wellFormed this._p.toNat mapped hmapped, ?_⟩
+  rw [henselEEANormalization_toPoly this._p.toNat mapped]
+  unfold CLPoly.Math.SparsePolyZp.toPoly
+  rw [show mapped.toList = f.toList.map (fun term =>
+      (term.1, strictHenselEEAMulCoefficientIR this term.2 coefficient)) by
+    simp [mapped]]
+  exact strictHenselEEAScaleList_toPoly this hcfg coefficient f.toList hf
 
 /-- The two source remainder registers are represented by the corresponding
 Bézout coefficient registers throughout the actual EEA assignments. -/

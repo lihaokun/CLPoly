@@ -84,6 +84,28 @@ Verification:
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.
 - `git diff --check`: successful.
 
+## Generated terminal EEA scaling
+
+The terminal extended-Euclidean branch no longer scales its three result
+polynomials through an in-model helper. `HenselEEARawOps` now exposes the
+actual raw scaling operation, and `__polynomial_GCD_eea_raw_ir` executes that
+operation separately for the gcd, left Bézout coefficient, and right Bézout
+coefficient, propagating every raw failure in source order.
+
+The concrete operation maps every stored coefficient through the generated
+`dense_upoly_zp_nmod_mul_ir` implementation and then performs the same sparse
+normalization as the source representation. Its refinement theorem proves
+reducedness of every emitted coefficient and the exact polynomial identity
+
+`toPoly output = C (toZMod coefficient) * toPoly input`.
+
+Consequently, the EEA execution trace records the three actual raw calls and
+their returned arrays; it no longer manufactures terminal results with an L2
+or model-level multiplication fallback. The remaining EEA work is to combine
+these three scaling identities with the reachable Bézout invariant and prove
+that the normalized terminal gcd is monic and extensionally equal to the L2
+polynomial gcd.
+
 ## Unified divmod contract and concrete EEA termination
 
 The empty-dividend, single-term-divisor, and general VHC paths are now

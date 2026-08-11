@@ -485,6 +485,7 @@ structure HenselEEARawOps where
   divmod : SparsePolyZp → SparsePolyZp →
     RawExec (SparsePolyZp × SparsePolyZp)
   inverse : Zp → RawExec Zp
+  scaleNormalize : Zp → SparsePolyZp → RawExec SparsePolyZp
 
 def henselEEAScaleNormalize (coefficient : Zp)
     (f : SparsePolyZp) : SparsePolyZp :=
@@ -526,10 +527,11 @@ def __polynomial_GCD_eea_raw_ir (ops : HenselEEARawOps)
         | some leading =>
             match ops.inverse leading.2 with
             | .error fault => .error fault
-            | .ok inverse =>
-                .ok (henselEEAScaleNormalize inverse state.r0,
-                  henselEEAScaleNormalize inverse state.s0,
-                  henselEEAScaleNormalize inverse state.t0)
+            | .ok inverse => do
+                let gcd ← ops.scaleNormalize inverse state.r0
+                let s ← ops.scaleNormalize inverse state.s0
+                let t ← ops.scaleNormalize inverse state.t0
+                return (gcd, s, t)
       else
         match hrun : ops.divmod state.r0 state.r1 with
         | .error fault => .error fault

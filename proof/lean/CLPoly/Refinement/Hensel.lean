@@ -3779,10 +3779,145 @@ def HenselDivmodVHCRemainderBelow (leadDegree : Nat)
     (remainder : SparsePolyZp) : Prop :=
   ∀ term ∈ remainder.toList, term.1.deg < leadDegree
 
+/-- Remainder terms already emitted by a descending VHC prefix are at or
+above the next strict frontier bound. -/
+def HenselDivmodVHCRemainderAbove (degreeLimit : Nat)
+    (remainder : SparsePolyZp) : Prop :=
+  ∀ term ∈ remainder.toList, degreeLimit ≤ term.1.deg
+
+/-- Coefficient agreement for the processed low-degree interval. -/
+def HenselDivmodVHCRemainderAgreesAbove (p degreeLimit leadDegree : Nat)
+    (remainder quotient dividend divisor : SparsePolyZp) : Prop :=
+  ∀ degree, degreeLimit ≤ degree → degree < leadDegree →
+    (CLPoly.Math.SparsePolyZp.toPoly p remainder).coeff degree =
+      (CLPoly.Math.SparsePolyZp.toPoly p dividend -
+        CLPoly.Math.SparsePolyZp.toPoly p quotient *
+          CLPoly.Math.SparsePolyZp.toPoly p divisor).coeff degree
+
 theorem HenselDivmodVHCRemainderBelow.empty (leadDegree : Nat) :
     HenselDivmodVHCRemainderBelow leadDegree #[] := by
   intro term hterm
   simp at hterm
+
+theorem HenselDivmodVHCRemainderAbove.empty (degreeLimit : Nat) :
+    HenselDivmodVHCRemainderAbove degreeLimit #[] := by
+  intro term hterm
+  simp at hterm
+
+theorem HenselDivmodVHCRemainderAbove.push
+    (degreeLimit frontierDegree : Nat) (remainder : SparsePolyZp)
+    (coefficient : Zp)
+    (habove : HenselDivmodVHCRemainderAbove degreeLimit remainder)
+    (hdecrease : frontierDegree < degreeLimit) :
+    HenselDivmodVHCRemainderAbove frontierDegree
+      (remainder.push (UMonomial.mk frontierDegree, coefficient)) := by
+  intro term hterm
+  simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hterm
+  rcases hterm with hold | hnew
+  · exact Nat.le_trans (Nat.le_of_lt hdecrease) (habove term hold)
+  · subst term
+    exact Nat.le_refl _
+
+theorem HenselDivmodVHCRemainderAbove.coeff_eq_zero_below
+    (p degreeLimit degree : Nat) (remainder : SparsePolyZp)
+    (habove : HenselDivmodVHCRemainderAbove degreeLimit remainder)
+    (hdegree : degree < degreeLimit) :
+    (CLPoly.Math.SparsePolyZp.toPoly p remainder).coeff degree = 0 := by
+  unfold CLPoly.Math.SparsePolyZp.toPoly
+  apply StrictSquarefreeZp.listSum_coeff_zero_of_degree_absent
+  intro term hterm hequal
+  have := habove term hterm
+  omega
+
+theorem henselDivmodRemainderPush_coeff
+    (p degree : Nat) (remainder : SparsePolyZp) (coefficient : Zp)
+    (habsent :
+      (CLPoly.Math.SparsePolyZp.toPoly p remainder).coeff degree = 0) :
+    (CLPoly.Math.SparsePolyZp.toPoly p
+      (remainder.push (UMonomial.mk degree, coefficient))).coeff degree =
+        CLPoly.Math.Zp.toZMod p coefficient := by
+  unfold CLPoly.Math.SparsePolyZp.toPoly at habsent ⊢
+  rw [Array.toList_push, CLPoly.Math.listSum_append,
+    Polynomial.coeff_add, habsent]
+  simp [CLPoly.Math.listSum, CLPoly.Math.Zp.toZMod]
+
+theorem henselDivmodRemainderPush_coeff_ne
+    (p degree frontierDegree : Nat) (remainder : SparsePolyZp)
+    (coefficient : Zp) (hne : degree ≠ frontierDegree) :
+    (CLPoly.Math.SparsePolyZp.toPoly p
+      (remainder.push (UMonomial.mk frontierDegree, coefficient))).coeff
+        degree =
+      (CLPoly.Math.SparsePolyZp.toPoly p remainder).coeff degree := by
+  unfold CLPoly.Math.SparsePolyZp.toPoly
+  rw [Array.toList_push, CLPoly.Math.listSum_append,
+    Polynomial.coeff_add]
+  simp [CLPoly.Math.listSum, Polynomial.coeff_monomial, Ne.symm hne]
+
+/-- Pure interval-extension step used by the below-leading-degree phase.  It
+combines the exact source push decision with a selected residual coefficient
+and the zero residual gap above the selected frontier. -/
+theorem henselDivmodRemainderStep_preserves
+    (p degreeLimit frontierDegree leadDegree : Nat)
+    (remainder nextRemainder quotient dividend divisor : SparsePolyZp)
+    (coefficient : UInt64) (prime : UInt64)
+    (hdecrease : frontierDegree < degreeLimit)
+    (hbelowLead : frontierDegree < leadDegree)
+    (habove : HenselDivmodVHCRemainderAbove degreeLimit remainder)
+    (hagrees : HenselDivmodVHCRemainderAgreesAbove p degreeLimit leadDegree
+      remainder quotient dividend divisor)
+    (hfrontierResidual : (coefficient.toNat : ZMod p) =
+      (CLPoly.Math.SparsePolyZp.toPoly p dividend -
+        CLPoly.Math.SparsePolyZp.toPoly p quotient *
+          CLPoly.Math.SparsePolyZp.toPoly p divisor).coeff frontierDegree)
+    (hgap : ∀ degree, frontierDegree < degree → degree < degreeLimit →
+      (CLPoly.Math.SparsePolyZp.toPoly p dividend -
+        CLPoly.Math.SparsePolyZp.toPoly p quotient *
+          CLPoly.Math.SparsePolyZp.toPoly p divisor).coeff degree = 0)
+    (hnext : nextRemainder =
+      if coefficient ≠ 0 then
+        remainder.push
+          (UMonomial.mk frontierDegree, ⟨coefficient, prime⟩)
+      else remainder) :
+    HenselDivmodVHCRemainderAbove frontierDegree nextRemainder ∧
+      HenselDivmodVHCRemainderAgreesAbove p frontierDegree leadDegree
+        nextRemainder quotient dividend divisor := by
+  by_cases hcoefficient : coefficient ≠ 0
+  · rw [hnext, if_pos hcoefficient]
+    refine ⟨HenselDivmodVHCRemainderAbove.push degreeLimit frontierDegree
+      remainder ⟨coefficient, prime⟩ habove hdecrease, ?_⟩
+    intro degree hfrontier hlead
+    by_cases hequal : degree = frontierDegree
+    · subst degree
+      rw [henselDivmodRemainderPush_coeff p frontierDegree remainder
+        ⟨coefficient, prime⟩
+        (HenselDivmodVHCRemainderAbove.coeff_eq_zero_below p degreeLimit
+          frontierDegree remainder habove hdecrease)]
+      exact hfrontierResidual
+    · rw [henselDivmodRemainderPush_coeff_ne p degree frontierDegree remainder
+        ⟨coefficient, prime⟩ hequal]
+      by_cases hold : degreeLimit ≤ degree
+      · exact hagrees degree hold hlead
+      · rw [HenselDivmodVHCRemainderAbove.coeff_eq_zero_below p degreeLimit
+            degree remainder habove (by omega),
+          hgap degree (by omega) (by omega)]
+  · have hzero : coefficient = 0 := by
+      simpa only [not_ne_iff] using hcoefficient
+    subst coefficient
+    rw [hnext, if_neg (by simp)]
+    refine ⟨?_, ?_⟩
+    · intro term hterm
+      exact Nat.le_trans (Nat.le_of_lt hdecrease) (habove term hterm)
+    · intro degree hfrontier hlead
+      by_cases hequal : degree = frontierDegree
+      · subst degree
+        rw [HenselDivmodVHCRemainderAbove.coeff_eq_zero_below p degreeLimit
+          frontierDegree remainder habove hdecrease]
+        simpa using hfrontierResidual
+      · by_cases hold : degreeLimit ≤ degree
+        · exact hagrees degree hold hlead
+        · rw [HenselDivmodVHCRemainderAbove.coeff_eq_zero_below p degreeLimit
+              degree remainder habove (by omega),
+            hgap degree (by omega) (by omega)]
 
 /-- Exact trace of the double-output VHC source loop. -/
 inductive HenselDivmodVHCCorrect (this : DenseUPolyZp)

@@ -61,3 +61,11 @@ coefficient theorem from the quotient-only VHC development and separately
 proves that `quotient * leadingMonomial(divisor)` cannot contribute below the
 leading degree.  It also identifies the source conditional remainder push
 with precisely that consumed coefficient.
+
+The descending remainder invariant is now explicit.  Stored remainder terms
+are tracked above the next frontier bound, while their polynomial coefficients
+are tracked against the residual on the already processed interval.  A proved
+interval-extension lemma combines one exact conditional push, the selected
+residual coefficient, and a zero-coefficient frontier gap to extend agreement
+from the old bound down to the newly selected degree.  This is the induction
+step needed by the complete below-leading-degree loop proof.

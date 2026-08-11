@@ -388,4 +388,23 @@ decreasing_by
   have hgrow : m < m * m := by omega
   omega
 
+/-- Exact strict lowering of C++ `__hensel_extract_factors`.  A missing child
+pushes the corresponding concrete `g`/`h`; a present child is traversed before
+the right branch, preserving source order. -/
+def __hensel_extract_factors_raw_ir :
+    HenselLiftTree → Array HenselNode → Array SparsePolyZZ →
+      RawExec (Array SparsePolyZZ)
+  | .node index left right, nodes, factors => do
+      match nodes[index]? with
+      | none => .error (.outOfBounds 0 index)
+      | some node =>
+          let factors ← match left with
+            | none => .ok (factors.push node.g)
+            | some child =>
+                __hensel_extract_factors_raw_ir child nodes factors
+          match right with
+          | none => .ok (factors.push node.h)
+          | some child =>
+              __hensel_extract_factors_raw_ir child nodes factors
+
 end Generated.StrictHensel

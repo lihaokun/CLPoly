@@ -123,4 +123,18 @@ theorem __hensel_lift_recursive_raw_ir_refines
         output := by
   exact Refinement.StrictHensel.__hensel_lift_recursive_raw_ir_refines termination tree nodes target m hinvariant
 
+/-- Generated public contract for the original C++
+`__hensel_extract_factors` entry.  The executable side performs the exact
+left-before-right traversal of the concrete Hensel tree; its semantic trace
+records precisely which leaf factors are appended to the input array. -/
+theorem __hensel_extract_factors_raw_ir_refines
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (factors : Array SparsePolyZZ)
+    (hinvariant : StrictHensel.HenselExtractInvariant tree nodes) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_extract_factors_raw_ir
+          tree nodes factors = .ok output ∧
+      StrictHensel.HenselExtractCorrect tree nodes factors output := by
+  exact Refinement.StrictHensel.__hensel_extract_factors_raw_ir_refines tree nodes factors hinvariant
+
 end Refinement

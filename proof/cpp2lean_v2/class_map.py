@@ -939,6 +939,25 @@ REFINEMENT_MAP = {
             "kind": "strict_hensel_lift_recursive",
         },
     },
+    "__hensel_extract_factors": {
+        "l1_name": "__hensel_extract_factors_raw_ir",
+        "l2_name": "HenselExtractCorrect",
+        "l2_call": "HenselExtractCorrect tree nodes factors output",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "从 Hensel 树按左后右顺序提取叶子因子",
+        "verified_contract": {
+            "theorem_name": "__hensel_extract_factors_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "__hensel_extract_factors_raw_ir_refines"
+            ),
+            "kind": "strict_hensel_extract_factors",
+        },
+    },
     "__make_zp": {
         "l1_name": "__make_zp_ir",
         "l2_name": "Zp.ofInt",

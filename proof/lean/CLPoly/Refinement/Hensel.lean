@@ -3000,6 +3000,233 @@ theorem __hensel_lift_loop_raw_ir_refines
   henselLiftLoopRefinesAux termination tree f target initialM initialNodes
     hinvariant initialM hinvariant.initialM_ge_two initialNodes .refl
 
+/-- Bounds and branch-shape invariant for the exact factor-extraction walk. -/
+noncomputable def HenselExtractInvariant :
+    Generated.StrictHensel.HenselLiftTree → Array HenselNode → Prop :=
+  Generated.StrictHensel.HenselLiftTree.rec
+    (motive_1 := fun _ => Array HenselNode → Prop)
+    (motive_2 := fun _ => Array HenselNode → Prop)
+    (fun index left right leftInvariant rightInvariant nodes =>
+      ∃ node,
+        nodes[index]? = some node ∧
+        liftChildMatches node.left left ∧
+        liftChildMatches node.right right ∧
+        leftInvariant nodes ∧ rightInvariant nodes)
+    (fun _ => True)
+    (fun _ childInvariant => childInvariant)
+
+theorem henselExtract_run_of_parts
+    (index : Nat)
+    (left right : Option Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode)
+    (factors factorsAfterLeft output : Array SparsePolyZZ)
+    (node : HenselNode) (hnode : nodes[index]? = some node)
+    (hleft :
+      (match left with
+        | none => (.ok (factors.push node.g) : RawExec (Array SparsePolyZZ))
+        | some child =>
+            Generated.StrictHensel.__hensel_extract_factors_raw_ir child nodes
+              factors) = .ok factorsAfterLeft)
+    (hright :
+      (match right with
+        | none =>
+            (.ok (factorsAfterLeft.push node.h) :
+              RawExec (Array SparsePolyZZ))
+        | some child =>
+            Generated.StrictHensel.__hensel_extract_factors_raw_ir child nodes
+              factorsAfterLeft) = .ok output) :
+    Generated.StrictHensel.__hensel_extract_factors_raw_ir
+      (.node index left right) nodes factors = .ok output := by
+  cases left <;> cases right <;>
+    simp_all [Generated.StrictHensel.__hensel_extract_factors_raw_ir.eq_1,
+      bind, Except.bind]
+
+private theorem henselExtractTerminatesAux
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (factors : Array SparsePolyZZ) :
+    HenselExtractInvariant tree nodes →
+    ∃ output,
+      Generated.StrictHensel.__hensel_extract_factors_raw_ir tree nodes
+        factors = .ok output := by
+  intro hinvariant
+  cases tree with
+  | node index left right =>
+      simp only [HenselExtractInvariant] at hinvariant
+      rcases hinvariant with
+        ⟨node, hnode, hleftMatch, hrightMatch, hleftReady, hrightReady⟩
+      have hleftRun : ∃ factorsAfterLeft,
+          (match left with
+            | none =>
+                (.ok (factors.push node.g) : RawExec (Array SparsePolyZZ))
+            | some child =>
+                Generated.StrictHensel.__hensel_extract_factors_raw_ir child
+                  nodes factors) = .ok factorsAfterLeft := by
+        cases left with
+        | none => exact ⟨factors.push node.g, rfl⟩
+        | some child =>
+            exact henselExtractTerminatesAux child nodes factors hleftReady
+      rcases hleftRun with ⟨factorsAfterLeft, hleftRun⟩
+      have hrightRun : ∃ output,
+          (match right with
+            | none =>
+                (.ok (factorsAfterLeft.push node.h) :
+                  RawExec (Array SparsePolyZZ))
+            | some child =>
+                Generated.StrictHensel.__hensel_extract_factors_raw_ir child
+                  nodes factorsAfterLeft) = .ok output := by
+        cases right with
+        | none => exact ⟨factorsAfterLeft.push node.h, rfl⟩
+        | some child =>
+            exact henselExtractTerminatesAux child nodes factorsAfterLeft
+              hrightReady
+      rcases hrightRun with ⟨output, hrightRun⟩
+      exact ⟨output, henselExtract_run_of_parts index left right nodes factors
+        factorsAfterLeft output node hnode hleftRun hrightRun⟩
+termination_by Generated.StrictHensel.HenselLiftTree.nodeCount tree
+decreasing_by
+  all_goals subst tree
+  all_goals simp_all [Generated.StrictHensel.HenselLiftTree.nodeCount]
+  all_goals omega
+
+theorem __hensel_extract_factors_raw_ir_terminates
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (factors : Array SparsePolyZZ)
+    (hinvariant : HenselExtractInvariant tree nodes) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_extract_factors_raw_ir tree nodes
+        factors = .ok output :=
+  henselExtractTerminatesAux tree nodes factors hinvariant
+
+/-- Exact semantic trace of leaf extraction.  Constructors distinguish all
+four source branch combinations and retain the concrete generated child runs. -/
+inductive HenselExtractCorrect :
+    Generated.StrictHensel.HenselLiftTree → Array HenselNode →
+      Array SparsePolyZZ → Array SparsePolyZZ → Prop
+  | leaf
+      (index : Nat) (nodes : Array HenselNode)
+      (input output : Array SparsePolyZZ) (node : HenselNode)
+      (hnode : nodes[index]? = some node)
+      (houtput : output = (input.push node.g).push node.h) :
+      HenselExtractCorrect (.node index none none) nodes input output
+  | left
+      (index : Nat) (left : Generated.StrictHensel.HenselLiftTree)
+      (nodes : Array HenselNode) (input afterLeft output : Array SparsePolyZZ)
+      (node : HenselNode) (hnode : nodes[index]? = some node)
+      (hleftRun : Generated.StrictHensel.__hensel_extract_factors_raw_ir left
+        nodes input = .ok afterLeft)
+      (hleftCorrect : HenselExtractCorrect left nodes input afterLeft)
+      (houtput : output = afterLeft.push node.h) :
+      HenselExtractCorrect (.node index (some left) none) nodes input output
+  | right
+      (index : Nat) (right : Generated.StrictHensel.HenselLiftTree)
+      (nodes : Array HenselNode) (input afterLeft output : Array SparsePolyZZ)
+      (node : HenselNode) (hnode : nodes[index]? = some node)
+      (hafterLeft : afterLeft = input.push node.g)
+      (hrightRun : Generated.StrictHensel.__hensel_extract_factors_raw_ir right
+        nodes afterLeft = .ok output)
+      (hrightCorrect : HenselExtractCorrect right nodes afterLeft output) :
+      HenselExtractCorrect (.node index none (some right)) nodes input output
+  | branch
+      (index : Nat) (left right : Generated.StrictHensel.HenselLiftTree)
+      (nodes : Array HenselNode) (input afterLeft output : Array SparsePolyZZ)
+      (node : HenselNode) (hnode : nodes[index]? = some node)
+      (hleftRun : Generated.StrictHensel.__hensel_extract_factors_raw_ir left
+        nodes input = .ok afterLeft)
+      (hleftCorrect : HenselExtractCorrect left nodes input afterLeft)
+      (hrightRun : Generated.StrictHensel.__hensel_extract_factors_raw_ir right
+        nodes afterLeft = .ok output)
+      (hrightCorrect : HenselExtractCorrect right nodes afterLeft output) :
+      HenselExtractCorrect (.node index (some left) (some right)) nodes input
+        output
+
+private theorem henselExtractRefinesAux
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (factors : Array SparsePolyZZ) :
+    HenselExtractInvariant tree nodes →
+    ∃ output,
+      Generated.StrictHensel.__hensel_extract_factors_raw_ir tree nodes
+          factors = .ok output ∧
+      HenselExtractCorrect tree nodes factors output := by
+  intro hinvariant
+  cases tree with
+  | node index left right =>
+      simp only [HenselExtractInvariant] at hinvariant
+      rcases hinvariant with
+        ⟨node, hnode, hleftMatch, hrightMatch, hleftReady, hrightReady⟩
+      have hleftResult : ∃ afterLeft,
+          (match left with
+            | none =>
+                (.ok (factors.push node.g) : RawExec (Array SparsePolyZZ))
+            | some child =>
+                Generated.StrictHensel.__hensel_extract_factors_raw_ir child
+                  nodes factors) = .ok afterLeft ∧
+          match left with
+          | none => afterLeft = factors.push node.g
+          | some child => HenselExtractCorrect child nodes factors afterLeft := by
+        cases left with
+        | none => exact ⟨factors.push node.g, rfl, rfl⟩
+        | some child =>
+            rcases henselExtractRefinesAux child nodes factors hleftReady with
+              ⟨afterLeft, hrun, hcorrect⟩
+            exact ⟨afterLeft, hrun, hcorrect⟩
+      rcases hleftResult with ⟨afterLeft, hleftRun, hleftCorrect⟩
+      have hrightResult : ∃ output,
+          (match right with
+            | none =>
+                (.ok (afterLeft.push node.h) : RawExec (Array SparsePolyZZ))
+            | some child =>
+                Generated.StrictHensel.__hensel_extract_factors_raw_ir child
+                  nodes afterLeft) = .ok output ∧
+          match right with
+          | none => output = afterLeft.push node.h
+          | some child => HenselExtractCorrect child nodes afterLeft output := by
+        cases right with
+        | none => exact ⟨afterLeft.push node.h, rfl, rfl⟩
+        | some child =>
+            rcases henselExtractRefinesAux child nodes afterLeft hrightReady with
+              ⟨output, hrun, hcorrect⟩
+            exact ⟨output, hrun, hcorrect⟩
+      rcases hrightResult with ⟨output, hrightRun, hrightCorrect⟩
+      have hfullRun := henselExtract_run_of_parts index left right nodes factors
+        afterLeft output node hnode hleftRun hrightRun
+      refine ⟨output, hfullRun, ?_⟩
+      cases left with
+      | none =>
+          simp only at hleftCorrect
+          subst afterLeft
+          cases right with
+          | none =>
+              simp only at hrightCorrect
+              exact .leaf index nodes factors output node hnode
+                hrightCorrect
+          | some right =>
+              exact .right index right nodes factors (factors.push node.g)
+                output node hnode rfl hrightRun hrightCorrect
+      | some left =>
+          cases right with
+          | none =>
+              simp only at hrightCorrect
+              exact .left index left nodes factors afterLeft output node hnode
+                hleftRun hleftCorrect hrightCorrect
+          | some right =>
+              exact .branch index left right nodes factors afterLeft output node
+                hnode hleftRun hleftCorrect hrightRun hrightCorrect
+termination_by Generated.StrictHensel.HenselLiftTree.nodeCount tree
+decreasing_by
+  all_goals subst tree
+  all_goals simp_all [Generated.StrictHensel.HenselLiftTree.nodeCount]
+  all_goals omega
+
+theorem __hensel_extract_factors_raw_ir_refines
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (factors : Array SparsePolyZZ)
+    (hinvariant : HenselExtractInvariant tree nodes) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_extract_factors_raw_ir tree nodes
+          factors = .ok output ∧
+      HenselExtractCorrect tree nodes factors output :=
+  henselExtractRefinesAux tree nodes factors hinvariant
+
 end StrictHensel
 
 -- The discoverable public wrapper for the completed theorem above is emitted

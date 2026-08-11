@@ -368,6 +368,21 @@ theorem {theorem_name}
         output := by
   exact {proof_theorem} termination tree nodes target m hinvariant
 """
+    if contract["kind"] == "strict_hensel_extract_factors":
+        return f"""/-- Generated public contract for the original C++
+`__hensel_extract_factors` entry.  The executable side performs the exact
+left-before-right traversal of the concrete Hensel tree; its semantic trace
+records precisely which leaf factors are appended to the input array. -/
+theorem {theorem_name}
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) (factors : Array SparsePolyZZ)
+    (hinvariant : StrictHensel.HenselExtractInvariant tree nodes) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_extract_factors_raw_ir
+          tree nodes factors = .ok output ∧
+      StrictHensel.HenselExtractCorrect tree nodes factors output := by
+  exact {proof_theorem} tree nodes factors hinvariant
+"""
     raise ValueError(f"unsupported verified contract kind: {contract['kind']}")
 
 

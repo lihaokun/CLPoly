@@ -122,6 +122,22 @@ the consumed source coefficient with the residual and extend the processed
 interval.  The terminal branch closes all degrees left below the final bound
 from actual cursor and heap exhaustion.
 
+## Concrete EEA raw-to-safe execution
+
+The concrete VHC operation and its well-founded termination instance are now
+fed into the generated `__polynomial_GCD_eea_raw_ir` recursion.  A reachable
+state invariant proves that both remainder registers stay canonical and that
+the previous remainder remains nonempty.  Its induction step consumes the
+actual raw divmod result and the unified divmod contract; it does not choose a
+quotient or remainder independently.
+
+Consequently every nonterminal generated EEA state has an executable division
+call, and every terminal state has the concrete leading term required by the
+source monicization branch.  The resulting `strictHenselEEAIR_refines` theorem
+is the concrete raw-to-safe execution bridge using the degree-based recursion.
+It establishes execution and an exact source trace; the Bézout polynomial
+semantics are intentionally the next obligation and are not claimed here.
+
 The operational invariant supplied for reachable prefixes contains only
 canonicality and the generated cursor/heap/node-chain facts.  It contains no
 expected output, quotient, remainder, or L2 division result.  A final

@@ -5517,6 +5517,92 @@ def strictHenselEEATermination (this : DenseUPolyZp) :
       rw [dif_pos hrem, dif_pos hr1]
       omega
 
+/-- Canonicality and nonemptiness facts transported by the actual EEA
+quotient/remainder calls. -/
+structure StrictHenselEEAStateInvariant (p : Nat)
+    (state : Generated.StrictHensel.HenselEEAState) : Prop where
+  r0Canonical : CLPoly.Math.SparsePolyZp.Canonical p state.r0
+  r1Canonical : CLPoly.Math.SparsePolyZp.Canonical p state.r1
+  r0Nonempty : 0 < state.r0.size
+
+theorem strictHenselEEAPrefix_stateInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (initial : Generated.StrictHensel.HenselEEAState)
+    (hinitial : StrictHenselEEAStateInvariant this._p.toNat initial) :
+    ∀ state, HenselEEAPrefix (strictHenselEEARawOps this) initial state →
+      StrictHenselEEAStateInvariant this._p.toNat state := by
+  intro state hprefix
+  induction hprefix with
+  | refl => exact hinitial
+  | step state quotient remainder hprefix hcontinue hrun ih =>
+      have hr1Ne : state.r1 ≠ #[] := by
+        simpa [Array.isEmpty_iff] using hcontinue
+      have hr1 : 0 < state.r1.size := by
+        have hr1Size : state.r1.size ≠ 0 := by
+          intro hzero
+          apply hr1Ne
+          exact Array.eq_empty_of_size_eq_zero hzero
+        omega
+      rcases henselDivmodVHCIR_refines this state.r0 state.r1 hcfg
+          ih.r0Canonical ih.r1Canonical hr1 with
+        ⟨output, houtputRun, houtputCorrect⟩
+      have hrun' : henselDivmodVHCIR this state.r0 state.r1 =
+          .ok (quotient, remainder) := by
+        simpa [strictHenselEEARawOps] using hrun
+      have houtput : output = (quotient, remainder) :=
+        Except.ok.inj (houtputRun.symm.trans hrun')
+      subst output
+      exact ⟨ih.r1Canonical, houtputCorrect.remainderCanonical, hr1⟩
+
+/-- Concrete raw-to-safe readiness for the well-founded Hensel EEA.  The
+invariant is derived along actual successful VHC calls. -/
+def strictHenselEEAExecutionInvariant
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (initial : Generated.StrictHensel.HenselEEAState)
+    (hinitial : StrictHenselEEAStateInvariant this._p.toNat initial) :
+    HenselEEAExecutionInvariant (strictHenselEEARawOps this) initial where
+  divisionReady := by
+    intro state hprefix hcontinue
+    have hstate := strictHenselEEAPrefix_stateInvariant this hcfg initial
+      hinitial state hprefix
+    have hr1Ne : state.r1 ≠ #[] := by
+      simpa [Array.isEmpty_iff] using hcontinue
+    have hr1 : 0 < state.r1.size := by
+      have hr1Size : state.r1.size ≠ 0 := by
+        intro hzero
+        apply hr1Ne
+        exact Array.eq_empty_of_size_eq_zero hzero
+      omega
+    rcases henselDivmodVHCIR_refines this state.r0 state.r1 hcfg
+        hstate.r0Canonical hstate.r1Canonical hr1 with
+      ⟨⟨quotient, remainder⟩, hrun, _⟩
+    exact ⟨quotient, remainder, by
+      simpa [strictHenselEEARawOps] using hrun⟩
+  finalNonempty := by
+    intro state hprefix _
+    have hstate := strictHenselEEAPrefix_stateInvariant this hcfg initial
+      hinitial state hprefix
+    exact ⟨state.r0[0]'hstate.r0Nonempty,
+      Array.getElem?_eq_getElem hstate.r0Nonempty⟩
+
+/-- The generated EEA now runs with the concrete VHC divmod implementation
+and its degree-based well-founded recursion. -/
+theorem strictHenselEEAIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (initial : Generated.StrictHensel.HenselEEAState)
+    (hinitial : StrictHenselEEAStateInvariant this._p.toNat initial) :
+    ∃ output,
+      Generated.StrictHensel.__polynomial_GCD_eea_raw_ir
+          (strictHenselEEARawOps this) (strictHenselEEATermination this)
+          initial = .ok output ∧
+      HenselEEACorrect (strictHenselEEARawOps this) initial output :=
+  __polynomial_GCD_eea_raw_ir_refines (strictHenselEEARawOps this)
+    (strictHenselEEATermination this) initial
+    (strictHenselEEAExecutionInvariant this hcfg initial hinitial)
+
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
     (hdivisor : 0 < divisor.size) (initialLimit : Nat)

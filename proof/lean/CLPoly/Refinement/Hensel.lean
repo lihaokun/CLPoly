@@ -3799,6 +3799,17 @@ theorem HenselDivmodVHCRemainderBelow.empty (leadDegree : Nat) :
   intro term hterm
   simp at hterm
 
+theorem HenselDivmodVHCRemainderBelow.coeff_eq_zero_at_or_above
+    (p leadDegree degree : Nat) (remainder : SparsePolyZp)
+    (hbelow : HenselDivmodVHCRemainderBelow leadDegree remainder)
+    (hdegree : leadDegree ≤ degree) :
+    (CLPoly.Math.SparsePolyZp.toPoly p remainder).coeff degree = 0 := by
+  unfold CLPoly.Math.SparsePolyZp.toPoly
+  apply StrictSquarefreeZp.listSum_coeff_zero_of_degree_absent
+  intro term hterm hequal
+  have := hbelow term hterm
+  omega
+
 theorem HenselDivmodVHCRemainderAbove.empty (degreeLimit : Nat) :
     HenselDivmodVHCRemainderAbove degreeLimit #[] := by
   intro term hterm
@@ -4169,6 +4180,175 @@ theorem henselDivmodVHCIteration_below_lead_residual
     by_cases hcoefficient : consumed.coefficient ≠ 0
     · simp [hcoefficient, hbelowLead]
     · simp [hcoefficient]
+
+/-- Operational facts carried by a reachable state of the concrete
+quotient-and-remainder VHC loop.  Every field describes the generated cursor,
+heap, node chains, or quotient prefix; the structure contains no expected
+result and no semantic division oracle. -/
+structure HenselDivmodVHCOperationalInvariant (p degreeLimit : Nat)
+    (state : HenselDivmodVHCState) (dividend divisor : SparsePolyZp)
+    (hdivisor : 0 < divisor.size) : Prop where
+  quotientCanonical : CLPoly.Math.SparsePolyZp.Canonical p state.quotient
+  size : state.nodes.size = divisor.size - 1
+  fixed : StrictSquarefreeZp.PairVecDivVHCNodeDivisorIndicesFixed state.nodes
+  covered : StrictSquarefreeZp.PairVecDivVHCStateCovered state.heap state.nodes
+    #[] state.resetH
+  heapChains : ∃ owners : Nat → Finset Nat,
+    StrictSquarefreeZp.PairVecDivVHCHeapChainOwnership state.heap owners
+        state.nodes ∧
+      StrictSquarefreeZp.PairVecDivVHCHeapChainsHomogeneous state.heap owners
+        state.nodes
+  ordered : StrictSquarefreeZp.PairVecDivVHCHeapOrdered state.heap state.nodes
+  denotes : ∀ (i : Nat) (node : StrictSquarefreeZp.PairVecDivVHCNode),
+    state.nodes[i]? = some node → node.mono ≠ none →
+      StrictSquarefreeZp.PairVecDivVHCNodeDenotes state.quotient divisor node
+  resetReady : StrictSquarefreeZp.PairVecDivVHCResetReady state.resetH
+    state.quotient.size state.nodes
+  cursorPrefix : StrictSquarefreeZp.PairVecDivVHCCursorPrefixAbove degreeLimit
+    state.nodes state.quotient divisor
+  quotientProcessed : StrictSquarefreeZp.PairVecDivVHCQuotientLeadAbove
+    degreeLimit divisor[0].1.deg state.quotient
+  dividendConsumed : StrictSquarefreeZp.PairVecDivVHCConsumedDividendAbove
+    degreeLimit state.dividendIndex dividend
+
+/-- The exact generated VHC trace accumulates every low-degree residual
+coefficient in its concrete remainder array.  The proof is well-founded along
+the trace's selected frontier degrees.  Operational invariants are required
+only for actually reachable prefixes and contain no expected quotient or
+remainder. -/
+theorem HenselDivmodVHCCorrect.remainderAgreesBelow
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (initialLimit : Nat) (initial : HenselDivmodVHCState)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hraw : ∀ limit state,
+      HenselDivmodVHCPrefix this dividend divisor hdivisor initialLimit initial
+          limit state →
+        HenselDivmodVHCOperationalInvariant this._p.toNat limit state dividend
+          divisor hdivisor)
+    (limit : Nat) (state : HenselDivmodVHCState)
+    (output : SparsePolyZp × SparsePolyZp)
+    (hcorrect : HenselDivmodVHCCorrect this dividend divisor hdivisor limit
+      state output)
+    (hreachable : HenselDivmodVHCPrefix this dividend divisor hdivisor
+      initialLimit initial limit state)
+    (habove : HenselDivmodVHCRemainderAbove limit state.remainder)
+    (hagrees : HenselDivmodVHCRemainderAgreesAbove this._p.toNat limit
+      divisor[0].1.deg state.remainder state.quotient dividend divisor) :
+    ∀ degree, degree < divisor[0].1.deg →
+      (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.2).coeff degree =
+        (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat dividend -
+          CLPoly.Math.SparsePolyZp.toPoly this._p.toNat output.1 *
+            CLPoly.Math.SparsePolyZp.toPoly this._p.toNat divisor).coeff
+              degree := by
+  induction hcorrect with
+  | done limit state hdone =>
+      have hstate := hraw limit state hreachable
+      rcases hstate.heapChains with ⟨owners, hownership, hhomogeneous⟩
+      have hheapEmpty : state.heap = #[] :=
+        Array.eq_empty_of_size_eq_zero hdone.2
+      intro degree hlead
+      by_cases hold : limit ≤ degree
+      · exact hagrees degree hold hlead
+      · rw [HenselDivmodVHCRemainderAbove.coeff_eq_zero_below
+          this._p.toNat limit degree state.remainder habove (by omega),
+        henselDivmodVHCResidual_coeff_eq_zero_of_done this._p.toNat limit
+          degree state.dividendIndex state.resetH dividend state.quotient
+          divisor state.nodes owners hdivisor hstate.size hstate.fixed
+          (by simpa [hheapEmpty] using hstate.covered)
+          (by simpa [hheapEmpty] using hownership) hstate.resetReady
+          hstate.cursorPrefix hstate.quotientProcessed hdividendCanonical
+          hstate.dividendConsumed hdone.1 (by omega)]
+  | step limit state next frontier output hnotDone hselect hdecrease
+      hiteration htail ih =>
+      have hstate := hraw limit state hreachable
+      have hnextReachable : HenselDivmodVHCPrefix this dividend divisor
+          hdivisor initialLimit initial frontier.degree next :=
+        .step limit state next frontier hreachable hnotDone hselect hdecrease
+          hiteration
+      rcases hstate.heapChains with ⟨owners, hownership, hhomogeneous⟩
+      by_cases hbelowLead : frontier.degree < divisor[0].1.deg
+      · rcases henselDivmodVHCIteration_below_lead_residual this limit state
+            next frontier dividend divisor owners hdivisor hstate.size
+            hstate.covered hownership hhomogeneous hstate.ordered hstate.denotes
+            hstate.fixed hstate.resetReady hstate.cursorPrefix hcfg
+            hstate.quotientCanonical hdividendCanonical
+            hstate.dividendConsumed hdecrease hbelowLead hselect hiteration with
+          ⟨consumed, hconsume, hresidual, hnextRemainder⟩
+        have hgap : ∀ degree, frontier.degree < degree → degree < limit →
+            (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat dividend -
+              CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.quotient *
+                CLPoly.Math.SparsePolyZp.toPoly this._p.toNat divisor).coeff
+                  degree = 0 := by
+          intro degree hfrontier hlimit
+          exact henselDivmodVHCResidual_coeff_eq_zero_of_gap
+            this._p.toNat limit degree state.dividendIndex state.resetH dividend
+            state.quotient divisor state.heap state.nodes owners frontier
+            hdivisor hstate.size hstate.fixed hstate.covered hownership
+            hhomogeneous hstate.resetReady hstate.ordered hstate.denotes
+            hdividendCanonical hstate.dividendConsumed
+            hstate.quotientCanonical hstate.cursorPrefix
+            hstate.quotientProcessed hfrontier hlimit hselect
+        rcases henselDivmodRemainderStep_preserves this._p.toNat limit
+            frontier.degree divisor[0].1.deg state.remainder next.remainder
+            state.quotient dividend divisor consumed.coefficient this._p
+            hdecrease hbelowLead habove hagrees (by
+              simpa [Polynomial.coeff_sub] using hresidual) hgap
+            hnextRemainder with ⟨hnextAbove, hnextAgrees⟩
+        rcases henselDivmodVHCIteration_projects_quotient this state next
+            frontier dividend divisor hdivisor hselect hiteration with
+          ⟨projected, hprojected, hindex, hheap, hnodes, hquotient, hreset⟩
+        have hprojectedEq :=
+          StrictSquarefreeZp.pairVecDivVHCOuterIteration_quotient_eq_of_frontier_lt_lead
+            this state.dividendIndex state.heap state.nodes state.quotient
+            dividend divisor state.resetH frontier projected hdivisor
+            hbelowLead hselect hprojected
+        have hnextQuotient : next.quotient = state.quotient := by
+          rw [← hquotient]
+          exact hprojectedEq
+        apply ih hnextReachable hnextAbove
+        simpa [hnextQuotient] using hnextAgrees
+      · rcases henselDivmodVHCIteration_remainder this state next frontier
+            dividend divisor hdivisor hiteration with
+          ⟨consumed, hconsume, hnextRemainder⟩
+        have hnextRemainderEq : next.remainder = state.remainder := by
+          rw [hnextRemainder]
+          simp [hbelowLead]
+        apply ih hnextReachable
+        · rw [hnextRemainderEq]
+          intro term hterm
+          exact Nat.le_trans (Nat.le_of_lt hdecrease) (habove term hterm)
+        · intro degree hfrontier hlead
+          omega
+
+/-- High-degree quotient agreement and the exact accumulated low-degree
+remainder together give the standard polynomial division equation. -/
+theorem henselDivmodVHCDivisionEquation
+    (p leadDegree : Nat)
+    (quotient remainder dividend divisor : SparsePolyZp)
+    (hproduct : StrictSquarefreeZp.PairVecDivVHCProductAgreesAbove p
+      leadDegree quotient dividend divisor)
+    (hremainderBelow : HenselDivmodVHCRemainderBelow leadDegree remainder)
+    (hremainderAgrees : ∀ degree, degree < leadDegree →
+      (CLPoly.Math.SparsePolyZp.toPoly p remainder).coeff degree =
+        (CLPoly.Math.SparsePolyZp.toPoly p dividend -
+          CLPoly.Math.SparsePolyZp.toPoly p quotient *
+            CLPoly.Math.SparsePolyZp.toPoly p divisor).coeff degree) :
+    CLPoly.Math.SparsePolyZp.toPoly p dividend =
+      CLPoly.Math.SparsePolyZp.toPoly p quotient *
+          CLPoly.Math.SparsePolyZp.toPoly p divisor +
+        CLPoly.Math.SparsePolyZp.toPoly p remainder := by
+  ext degree
+  rw [Polynomial.coeff_add]
+  by_cases hdegree : leadDegree ≤ degree
+  · rw [HenselDivmodVHCRemainderBelow.coeff_eq_zero_at_or_above p
+      leadDegree degree remainder hremainderBelow hdegree, add_zero]
+    exact (hproduct degree hdegree).symm
+  · have hbelow : degree < leadDegree := by omega
+    rw [hremainderAgrees degree hbelow, Polynomial.coeff_sub]
+    abel
 
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)

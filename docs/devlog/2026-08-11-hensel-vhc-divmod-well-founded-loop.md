@@ -83,3 +83,26 @@ Verification:
 
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.
 - `git diff --check`: successful.
+
+## Complete remainder trace semantics
+
+The exact quotient-and-remainder execution trace now proves coefficient
+agreement for the entire final low-degree remainder.  The induction follows
+the concrete selected frontier degree: iterations at or above the divisor
+lead leave the remainder unchanged, while iterations below the lead identify
+the consumed source coefficient with the residual and extend the processed
+interval.  The terminal branch closes all degrees left below the final bound
+from actual cursor and heap exhaustion.
+
+The operational invariant supplied for reachable prefixes contains only
+canonicality and the generated cursor/heap/node-chain facts.  It contains no
+expected output, quotient, remainder, or L2 division result.  A final
+coefficient-extensional theorem combines this low-degree remainder result
+with the already proved high-degree quotient product agreement and strict
+remainder degree bound to obtain
+`dividend = quotient * divisor + remainder`.
+
+Verification:
+
+- `lake env lean CLPoly/Refinement/Hensel.lean`: successful.
+- `git diff --check`: successful.

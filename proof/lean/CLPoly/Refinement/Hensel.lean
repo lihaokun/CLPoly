@@ -3574,6 +3574,163 @@ theorem henselDivmodVHCIteration_projects_quotient
               subst next
               exact ⟨_, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
+/-- Conversely, every successful quotient-only body lifts to the exact
+five-argument body by recording the source remainder push.  No operation is
+re-executed semantically: the proof unfolds the shared consume, emit, and
+reinsertion calls. -/
+theorem henselDivmodVHCIteration_succeeds_of_quotient
+    (this : DenseUPolyZp) (state : HenselDivmodVHCState)
+    (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (projected : StrictSquarefreeZp.PairVecDivVHCIterationResult)
+    (hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+      state.dividendIndex dividend state.heap state.nodes = .ok frontier)
+    (hrun : StrictSquarefreeZp.pairVecDivVHCOuterIteration this
+      state.dividendIndex state.heap state.nodes state.quotient dividend
+      divisor state.resetH = .ok projected) :
+    ∃ next,
+      henselDivmodVHCIteration this state frontier dividend divisor hdivisor =
+          .ok next ∧
+      projected.dividendIndex = next.dividendIndex ∧
+      projected.heap = next.heap ∧ projected.nodes = next.nodes ∧
+      projected.quotient = next.quotient ∧ projected.resetH = next.resetH := by
+  unfold StrictSquarefreeZp.pairVecDivVHCOuterIteration at hrun
+  simp only [hdivisor, ↓reduceDIte, hselect, bind, Except.bind] at hrun
+  cases hconsume : StrictSquarefreeZp.pairVecDivVHCConsumeEqualDegree this
+          frontier.degree state.heap frontier.coefficient state.nodes #[]
+          state.resetH state.quotient divisor with
+  | error fault => simp [hconsume, bind, Except.bind] at hrun
+  | ok consumed =>
+      simp only [hconsume, bind, Except.bind] at hrun
+      cases hemit : StrictSquarefreeZp.pairVecDivVHCEmit this frontier
+          consumed state.quotient divisor hdivisor with
+      | error fault => simp [hemit, bind, Except.bind] at hrun
+      | ok emitted =>
+          simp only [hemit, bind, Except.bind] at hrun
+          cases hreinsert : StrictSquarefreeZp.pairVecDivVHCReinsertLin
+              emitted.2.1.heap emitted.2.1.nodes consumed.lin with
+          | error fault => simp [hreinsert, bind, Except.bind] at hrun
+          | ok reinserted =>
+              simp only [hreinsert, bind, Except.bind] at hrun
+              rw [← Except.ok.inj hrun]
+              refine ⟨⟨frontier.dividendIndex, reinserted.heap,
+                reinserted.nodes, emitted.1,
+                if consumed.coefficient ≠ 0 ∧
+                    frontier.degree < divisor[0].1.deg then
+                  state.remainder.push (UMonomial.mk frontier.degree,
+                    ⟨consumed.coefficient, this._p⟩)
+                else state.remainder,
+                emitted.2.2⟩, ?_, rfl, rfl, rfl, rfl, rfl⟩
+              simp [henselDivmodVHCIteration, hconsume, hemit, hreinsert,
+                bind, Except.bind]
+              rfl
+
+/-- A complete successful quotient-only VHC run lifts to a successful
+five-argument quotient-and-remainder run with the identical concrete quotient.
+The induction follows the same selected frontier and the same well-founded
+degree decrease. -/
+theorem henselDivmodVHCOuterLoop_succeeds_of_quotient
+    (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
+    (hdivisor : 0 < divisor.size) (limit : Nat)
+    (state : HenselDivmodVHCState) (quotient : SparsePolyZp)
+    (hrun : StrictSquarefreeZp.pairVecDivVHCOuterLoop this limit
+      state.dividendIndex state.heap state.nodes state.quotient dividend
+      divisor state.resetH = .ok quotient) :
+    ∃ output,
+      henselDivmodVHCOuterLoop this limit state dividend divisor hdivisor =
+          .ok output ∧
+      output.1 = quotient := by
+  induction limit using Nat.strong_induction_on generalizing state quotient with
+  | h limit ih =>
+      rw [StrictSquarefreeZp.pairVecDivVHCOuterLoop] at hrun
+      rw [henselDivmodVHCOuterLoop]
+      by_cases hdone : dividend.size ≤ state.dividendIndex ∧
+          state.heap.size = 0
+      · rw [dif_pos hdone] at hrun ⊢
+        have hquotient : state.quotient = quotient := Except.ok.inj hrun
+        exact ⟨(state.quotient, state.remainder), rfl, hquotient⟩
+      · rw [dif_neg hdone] at hrun ⊢
+        cases hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+            state.dividendIndex dividend state.heap state.nodes with
+        | error fault => simp [hselect] at hrun
+        | ok frontier =>
+            rw [hselect] at hrun
+            simp only at hrun ⊢
+            by_cases hdecrease : frontier.degree < limit
+            · rw [dif_pos hdecrease] at hrun ⊢
+              cases hiteration :
+                  StrictSquarefreeZp.pairVecDivVHCOuterIteration this
+                    state.dividendIndex state.heap state.nodes state.quotient
+                    dividend divisor state.resetH with
+              | error fault => simp [hiteration] at hrun
+              | ok projected =>
+                  rw [hiteration] at hrun
+                  simp only at hrun
+                  rcases henselDivmodVHCIteration_succeeds_of_quotient this
+                      state frontier dividend divisor hdivisor projected hselect
+                      hiteration with
+                    ⟨next, hnextRun, hindex, hheap, hnodes, hquotient,
+                      hreset⟩
+                  rw [hnextRun]
+                  simp only
+                  rw [hindex, hheap, hnodes, hquotient, hreset] at hrun
+                  rcases ih frontier.degree hdecrease next quotient hrun with
+                    ⟨output, houtput, houtputQuotient⟩
+                  exact ⟨output, houtput, houtputQuotient⟩
+            · rw [dif_neg hdecrease] at hrun
+              contradiction
+
+/-- Fresh-output general branch of the C++ five-argument `pair_vec_div`
+overload used by Hensel EEA. -/
+def henselDivmodVHCGeneralBranchIR (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) :
+    RawExec (SparsePolyZp × SparsePolyZp) :=
+  if hdividend : 0 < dividend.size then
+    if hdivisor : 1 < divisor.size then
+      let nodes := StrictSquarefreeZp.pairVecDivVHCInit divisor
+      let state : HenselDivmodVHCState :=
+        ⟨0, #[], nodes, #[], #[], divisor.size - 1⟩
+      henselDivmodVHCOuterLoop this (dividend[0].1.deg + 1) state dividend
+        divisor (by omega)
+    else
+      .error .assertionFailure
+  else
+    .error .assertionFailure
+
+/-- The concrete general five-argument entry is total on canonical nonempty
+inputs with a genuine divisor tail.  Its quotient execution is exactly the
+already verified source VHC path; the additional output is accumulated by the
+same bodies. -/
+theorem henselDivmodVHCGeneralBranchIR_succeeds
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hdivisorCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      divisor)
+    (hdividend : 0 < dividend.size) (hdivisor : 1 < divisor.size) :
+    ∃ output, henselDivmodVHCGeneralBranchIR this dividend divisor =
+      .ok output := by
+  rcases StrictSquarefreeZp.pairVecDivGeneralBranchIR_succeeds this dividend
+      divisor hcfg hdividendCanonical hdivisorCanonical hdividend hdivisor with
+    ⟨quotient, hquotient⟩
+  let nodes := StrictSquarefreeZp.pairVecDivVHCInit divisor
+  let state : HenselDivmodVHCState :=
+    ⟨0, #[], nodes, #[], #[], divisor.size - 1⟩
+  have hquotientRun : StrictSquarefreeZp.pairVecDivVHCOuterLoop this
+      (dividend[0].1.deg + 1) 0 #[] nodes #[] dividend divisor
+        (divisor.size - 1) = .ok quotient := by
+    simpa [StrictSquarefreeZp.pairVecDivGeneralBranchIR, hdividend, hdivisor,
+      nodes] using hquotient
+  rcases henselDivmodVHCOuterLoop_succeeds_of_quotient this dividend divisor
+      (by omega) (dividend[0].1.deg + 1) state quotient (by
+        simpa [state] using hquotientRun) with
+    ⟨output, houtput, houtputQuotient⟩
+  refine ⟨output, ?_⟩
+  simpa [henselDivmodVHCGeneralBranchIR, hdividend, hdivisor, state, nodes]
+    using houtput
+
 /-- The remainder component of a successful iteration is exactly the source
 push decision at the selected frontier degree. -/
 theorem henselDivmodVHCIteration_remainder

@@ -102,6 +102,21 @@ with the already proved high-degree quotient product agreement and strict
 remainder degree bound to obtain
 `dividend = quotient * divisor + remainder`.
 
+## Concrete general entry execution
+
+The fresh-output general branch of the five-argument Hensel `pair_vec_div`
+overload is now executable and proved total for canonical nonempty dividends
+and divisors with a genuine tail.  Each successful quotient-only source body
+lifts to the quotient-and-remainder body by unfolding the identical selector,
+consume, emit, and reverse-reinsertion calls; the only additional state is the
+conditional source remainder push.  Strong induction then lifts the complete
+well-founded VHC run while proving that its concrete quotient is unchanged.
+
+This establishes the actual general divmod execution boundary needed by EEA,
+not a wrapper around an L2 quotient or remainder.  Empty-dividend and
+single-term-divisor source branches remain to be composed into the complete
+EEA operation.
+
 Verification:
 
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.

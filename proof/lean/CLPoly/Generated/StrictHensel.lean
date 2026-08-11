@@ -407,4 +407,48 @@ def __hensel_extract_factors_raw_ir :
           | some child =>
               __hensel_extract_factors_raw_ir child nodes factors
 
+/-- Exact lowering of the final leading-coefficient normalization block in
+C++ `__hensel_lift`.  Empty output takes the short-circuit branch.  A
+nonempty output with an empty first polynomial exposes the source `front()`
+precondition as a raw bounds fault, and a failed modular inverse exposes the
+source assertion. -/
+def __hensel_normalize_result_raw_ir
+    (result : Array SparsePolyZZ) (m : ZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  match result[0]? with
+  | none => .ok result
+  | some first =>
+      match first[0]? with
+      | none => .error (.outOfBounds 0 0)
+      | some leading =>
+          if leading.2 != 1 then
+            let inverseRun := ZZ.invert 0 leading.2 m
+            if inverseRun.1 then do
+              let scaled := scaleCoeffs first inverseRun.2
+              let normalized ← __upoly_mod_coeff_raw_ir scaled m
+              .ok (result.set! 0 normalized)
+            else
+              .error .assertionFailure
+          else
+            .ok result
+
+/-- Exact lowering of the leading-coefficient baking block at the start of
+C++ `__hensel_lift`: read `lc(f)`, multiply every coefficient of factor zero
+by its residue modulo `p`, normalize that factor, and write it back. -/
+def scaleZpCoeffs (f : SparsePolyZp) (coefficient : Zp) : SparsePolyZp :=
+  f.map fun term => (term.1, term.2 * coefficient)
+
+def __hensel_adjust_first_factor_raw_ir
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64) :
+    RawExec (Array SparsePolyZp) :=
+  match f[0]? with
+  | none => .error (.outOfBounds 0 0)
+  | some leading =>
+      match factors[0]? with
+      | none => .error (.outOfBounds 1 0)
+      | some first =>
+          let lcModP := Zp.ofInt leading.2 p
+          let adjusted := SparsePolyZp.normalization (scaleZpCoeffs first lcModP)
+          .ok (factors.set! 0 adjusted)
+
 end Generated.StrictHensel

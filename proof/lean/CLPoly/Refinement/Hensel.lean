@@ -3227,6 +3227,112 @@ theorem __hensel_extract_factors_raw_ir_refines
       HenselExtractCorrect tree nodes factors output :=
   henselExtractRefinesAux tree nodes factors hinvariant
 
+/-- Safety premises for the final normalization block of `__hensel_lift`.
+They state only that the source `front()` and `ZZ::invert` assertions are
+valid on the branch where they execute. -/
+structure HenselNormalizeExecutionInvariant
+    (result : Array SparsePolyZZ) (m : ZZ) : Prop where
+  firstNonempty : ∀ first, result[0]? = some first → ∃ leading,
+    first[0]? = some leading
+  inverseSucceeds : ∀ first leading,
+    result[0]? = some first → first[0]? = some leading → leading.2 != 1 →
+    (ZZ.invert 0 leading.2 m).1 = true
+
+/-- Exact semantic trace of the source normalization branch. -/
+inductive HenselNormalizeCorrect
+    (result : Array SparsePolyZZ) (m : ZZ) :
+    Array SparsePolyZZ → Prop
+  | empty (hresult : result[0]? = none) :
+      HenselNormalizeCorrect result m result
+  | alreadyOne (first : SparsePolyZZ) (leading : UMonomial × ZZ)
+      (hresult : result[0]? = some first)
+      (hfirst : first[0]? = some leading)
+      (hone : ¬ (leading.2 != 1) = true) :
+      HenselNormalizeCorrect result m result
+  | normalized (first : SparsePolyZZ) (leading : UMonomial × ZZ)
+      (inverse : ZZ) (scaled normalized : SparsePolyZZ)
+      (hresult : result[0]? = some first)
+      (hfirst : first[0]? = some leading) (hnotOne : (leading.2 != 1) = true)
+      (hinverse : ZZ.invert 0 leading.2 m = (true, inverse))
+      (hscaled : scaled = Generated.StrictHensel.scaleCoeffs first inverse)
+      (hnormalized : Generated.StrictHensel.__upoly_mod_coeff_raw_ir scaled m =
+        .ok normalized) :
+      HenselNormalizeCorrect result m (result.set! 0 normalized)
+
+/-- Genuine raw-to-safe and semantic refinement bridge for the final source
+normalization block.  The output is obtained only by executing the strict raw
+program; the invariant cannot supply an output polynomial. -/
+theorem __hensel_normalize_result_raw_ir_refines
+    (result : Array SparsePolyZZ) (m : ZZ)
+    (hinvariant : HenselNormalizeExecutionInvariant result m) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_normalize_result_raw_ir result m =
+        .ok output ∧
+      HenselNormalizeCorrect result m output := by
+  rw [Generated.StrictHensel.__hensel_normalize_result_raw_ir]
+  generalize hresult : result[0]? = firstOption
+  cases firstOption with
+  | none =>
+      exact ⟨result, rfl, .empty hresult⟩
+  | some first =>
+      rcases hinvariant.firstNonempty first hresult with ⟨leading, hfirst⟩
+      simp only
+      rw [hfirst]
+      simp only
+      split
+      · rename_i hnotOne
+        have hinverseTrue :=
+          hinvariant.inverseSucceeds first leading hresult hfirst hnotOne
+        generalize hinverse : ZZ.invert 0 leading.2 m = inverseRun at hinverseTrue ⊢
+        cases inverseRun with
+        | mk succeeded inverse =>
+            simp only at hinverseTrue
+            subst succeeded
+            simp only [ite_true, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+              bind, Except.bind]
+            exact ⟨_, rfl, .normalized first leading inverse
+              (Generated.StrictHensel.scaleCoeffs first inverse)
+              (Generated.StrictHensel.modCoeffOutput
+                (Generated.StrictHensel.scaleCoeffs first inverse) m)
+              hresult hfirst hnotOne hinverse rfl rfl⟩
+      · rename_i hone
+        exact ⟨result, rfl, .alreadyOne first leading hresult hfirst hone⟩
+
+/-- Bounds premises for the two source reads in the leading-coefficient
+baking block. -/
+structure HenselAdjustFirstFactorInvariant
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) : Prop where
+  sourceLeading : ∃ leading, f[0]? = some leading
+  firstFactor : ∃ first, factors[0]? = some first
+
+/-- Exact trace of multiplying factor zero by `lc(f) mod p`, normalizing it,
+and writing it back. -/
+inductive HenselAdjustFirstFactorCorrect
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64) :
+    Array SparsePolyZp → Prop
+  | adjusted (leading : UMonomial × ZZ) (first adjusted : SparsePolyZp)
+      (hsource : f[0]? = some leading)
+      (hfirst : factors[0]? = some first)
+      (hadjusted : adjusted = SparsePolyZp.normalization
+        (Generated.StrictHensel.scaleZpCoeffs first
+          (Zp.ofInt leading.2 p))) :
+      HenselAdjustFirstFactorCorrect f factors p
+        (factors.set! 0 adjusted)
+
+/-- Raw-to-safe semantic refinement for the exact coefficient-baking block. -/
+theorem __hensel_adjust_first_factor_raw_ir_refines
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    (hinvariant : HenselAdjustFirstFactorInvariant f factors) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_adjust_first_factor_raw_ir
+          f factors p = .ok output ∧
+      HenselAdjustFirstFactorCorrect f factors p output := by
+  rcases hinvariant.sourceLeading with ⟨leading, hsource⟩
+  rcases hinvariant.firstFactor with ⟨first, hfirst⟩
+  rw [Generated.StrictHensel.__hensel_adjust_first_factor_raw_ir,
+    hsource, hfirst]
+  exact ⟨_, rfl, .adjusted leading first _ hsource hfirst rfl⟩
+
 end StrictHensel
 
 -- The discoverable public wrapper for the completed theorem above is emitted

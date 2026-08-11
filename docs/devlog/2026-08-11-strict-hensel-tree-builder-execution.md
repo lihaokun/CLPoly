@@ -41,6 +41,13 @@ remaining step is to collect the recursively established child certificates
 into the complete generated tree topology invariant, rather than exposing only
 the root certificate.
 
+The coprimality premise is also no longer required separately for each split.
+Two additional `stop - index` well-founded proofs show first that one factor
+is coprime to a later interval product, and then that products over any two
+adjacent intervals are coprime.  Therefore an index-level pairwise-coprime
+property of the concrete factor array supplies the unit-gcd fact at the root
+and, in the forthcoming recursive topology theorem, at every child split.
+
 ## Verification
 
 ```text

@@ -6394,6 +6394,55 @@ noncomputable def henselFactorRangeProduct (p : Nat)
 termination_by index => stop - index
 decreasing_by simp_wf; omega
 
+/-- One factor is coprime to a product over a later half-open interval when
+it is coprime to every concrete factor in that interval. -/
+private theorem henselFactor_coprime_rangeProduct
+    (p : Nat) (factors : Array SparsePolyZp)
+    (hpairwise : ∀ i j, i < j → j < factors.size →
+      IsCoprime (CLPoly.Math.SparsePolyZp.toPoly p factors[i])
+        (CLPoly.Math.SparsePolyZp.toPoly p factors[j]))
+    (source start stop : Nat) (hsource : source < start)
+    (hstop : stop ≤ factors.size) :
+    IsCoprime (CLPoly.Math.SparsePolyZp.toPoly p factors[source]!)
+      (henselFactorRangeProduct p factors stop start) := by
+  rw [henselFactorRangeProduct]
+  by_cases hmore : start < stop
+  · rw [if_pos hmore]
+    have hstartSize : start < factors.size := lt_of_lt_of_le hmore hstop
+    rw [getElem!_pos factors start hstartSize]
+    exact (hpairwise source start hsource hstartSize).mul_right
+      (henselFactor_coprime_rangeProduct p factors hpairwise source
+        (start + 1) stop (by omega) hstop)
+  · rw [if_neg hmore]
+    exact isCoprime_one_right
+termination_by stop - start
+decreasing_by simp_wf; omega
+
+/-- Pairwise coprimality of the concrete input array implies coprimality of
+the products on every two adjacent half-open intervals. -/
+theorem henselFactorRangeProducts_isCoprime
+    (p : Nat) (factors : Array SparsePolyZp)
+    (hpairwise : ∀ i j, i < j → j < factors.size →
+      IsCoprime (CLPoly.Math.SparsePolyZp.toPoly p factors[i])
+        (CLPoly.Math.SparsePolyZp.toPoly p factors[j]))
+    (start mid stop : Nat) (hstartMid : start ≤ mid)
+    (hmidStop : mid ≤ stop) (hstop : stop ≤ factors.size) :
+    IsCoprime (henselFactorRangeProduct p factors mid start)
+      (henselFactorRangeProduct p factors stop mid) := by
+  rw [henselFactorRangeProduct]
+  by_cases hmore : start < mid
+  · rw [if_pos hmore]
+    have hstartSize : start < factors.size := by omega
+    rw [getElem!_pos factors start hstartSize]
+    exact (henselFactor_coprime_rangeProduct p factors hpairwise start mid
+      stop hmore hstop).mul_left
+        (henselFactorRangeProducts_isCoprime p factors hpairwise
+          (start + 1) mid stop (by omega) hmidStop hstop)
+  · rw [if_neg hmore]
+    exact isCoprime_one_left
+termination_by mid - start
+decreasing_by simp_wf; omega
+
 /-- Mathematical content stored at one freshly constructed tree node before
 pairwise coprimality specializes its gcd to one. -/
 noncomputable def HenselTreeNodeGCDInvariant (p : Nat)
@@ -7196,6 +7245,36 @@ theorem strictHenselTreeBuildRawIR_refines_initial_root
       factors hfactors hfactorsNonempty htwo with
     ⟨output, hrun, hsize, hinvariant⟩
   exact ⟨output, hrun, hsize, hinvariant.toInitial (by simpa using hcoprime)⟩
+
+/-- The root's unit Bézout certificate follows solely from pairwise
+coprimality of the concrete input factors; no per-node coprimality oracle is
+required. -/
+theorem strictHenselTreeBuildRawIR_refines_initial_root_of_pairwise
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
+    (factors : Array SparsePolyZp)
+    (hfactors : ∀ factor ∈ factors.toList,
+      CLPoly.Math.SparsePolyZp.Canonical this._p.toNat factor)
+    (hfactorsNonempty : ∀ factor ∈ factors.toList, 0 < factor.size)
+    (hpairwise : ∀ i j, i < j → j < factors.size →
+      IsCoprime
+        (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat factors[i])
+        (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat factors[j]))
+    (htwo : 2 ≤ factors.size) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_tree_build_raw_ir
+          (strictHenselTreeBuildRawOps this mulProvider) factors this._p =
+        .ok output ∧
+      1 ≤ output.size ∧
+      HenselTreeNodeInitialInvariant this._p.toNat factors 0 factors.size
+        output[0] := by
+  apply strictHenselTreeBuildRawIR_refines_initial_root this hcfg h2p hp2
+    mulProvider factors hfactors hfactorsNonempty htwo
+  exact henselFactorRangeProducts_isCoprime this._p.toNat factors hpairwise
+    0 (factors.size / 2) factors.size (by omega) (by omega) (by simp)
 
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)

@@ -3837,6 +3837,113 @@ theorem HenselDivmodVHCCorrect.remainderBelow
       · rw [if_neg hpush]
         exact hbelow
 
+/-- No product with the divisor leading monomial can contribute below its
+degree, independently of the current quotient contents. -/
+theorem henselQuotient_mul_lead_coeff_eq_zero_below
+    (p degree leadDegree : Nat) (quotient : SparsePolyZp)
+    (leadCoefficient : Zp) (hbelow : degree < leadDegree) :
+    (CLPoly.Math.SparsePolyZp.toPoly p quotient *
+      Polynomial.monomial leadDegree
+        (CLPoly.Math.Zp.toZMod p leadCoefficient)).coeff degree = 0 := by
+  unfold CLPoly.Math.SparsePolyZp.toPoly
+  rw [show Polynomial.monomial leadDegree
+        (CLPoly.Math.Zp.toZMod p leadCoefficient) =
+      CLPoly.Math.listSum p [(⟨leadDegree⟩, leadCoefficient)] by
+    simp [CLPoly.Math.listSum, CLPoly.Math.Zp.toZMod]]
+  rw [← StrictSquarefreeZp.pairVecDivVHCListProductCoeffValue_eq_coeff p
+    degree quotient.toList [(⟨leadDegree⟩, leadCoefficient)]]
+  induction quotient.toList with
+  | nil => simp [StrictSquarefreeZp.pairVecDivVHCListProductCoeffValue]
+  | cons term terms ih =>
+      have hdegree : term.1.deg + leadDegree ≠ degree := by omega
+      simp [StrictSquarefreeZp.pairVecDivVHCListProductCoeffValue, hdegree, ih]
+
+/-- At a below-leading-degree frontier, the coefficient physically consumed
+by the five-argument loop is the full polynomial residual coefficient, and
+the next remainder is exactly the source's conditional push of that value. -/
+theorem henselDivmodVHCIteration_below_lead_residual
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (degreeLimit : Nat) (state next : HenselDivmodVHCState)
+    (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+    (dividend divisor : SparsePolyZp)
+    (owners : Nat → Finset Nat) (hdivisor : 0 < divisor.size)
+    (hsize : state.nodes.size = divisor.size - 1)
+    (hstate : StrictSquarefreeZp.PairVecDivVHCStateCovered state.heap
+      state.nodes #[] state.resetH)
+    (hownership : StrictSquarefreeZp.PairVecDivVHCHeapChainOwnership
+      state.heap owners state.nodes)
+    (hhomogeneous : StrictSquarefreeZp.PairVecDivVHCHeapChainsHomogeneous
+      state.heap owners state.nodes)
+    (hordered : StrictSquarefreeZp.PairVecDivVHCHeapOrdered state.heap
+      state.nodes)
+    (hdenotes : ∀ (i : Nat)
+        (node : StrictSquarefreeZp.PairVecDivVHCNode),
+      state.nodes[i]? = some node → node.mono ≠ none →
+        StrictSquarefreeZp.PairVecDivVHCNodeDenotes state.quotient divisor node)
+    (hfixed : StrictSquarefreeZp.PairVecDivVHCNodeDivisorIndicesFixed
+      state.nodes)
+    (hresetReady : StrictSquarefreeZp.PairVecDivVHCResetReady state.resetH
+      state.quotient.size state.nodes)
+    (hprefix : StrictSquarefreeZp.PairVecDivVHCCursorPrefixAbove degreeLimit
+      state.nodes state.quotient divisor)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hquotientCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      state.quotient)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hconsumed : StrictSquarefreeZp.PairVecDivVHCConsumedDividendAbove
+      degreeLimit state.dividendIndex dividend)
+    (hdecrease : frontier.degree < degreeLimit)
+    (hbelowLead : frontier.degree < divisor[0].1.deg)
+    (hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+      state.dividendIndex dividend state.heap state.nodes = .ok frontier)
+    (hrun : henselDivmodVHCIteration this state frontier dividend divisor
+      hdivisor = .ok next) :
+    ∃ consumed,
+      StrictSquarefreeZp.pairVecDivVHCConsumeEqualDegree this frontier.degree
+          state.heap frontier.coefficient state.nodes #[] state.resetH
+          state.quotient divisor = .ok consumed ∧
+      (consumed.coefficient.toNat : ZMod this._p.toNat) =
+        (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat dividend).coeff
+            frontier.degree -
+          (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat state.quotient *
+            CLPoly.Math.SparsePolyZp.toPoly this._p.toNat divisor).coeff
+              frontier.degree ∧
+      next.remainder =
+        if consumed.coefficient ≠ 0 then
+          state.remainder.push
+            (UMonomial.mk frontier.degree,
+              ⟨consumed.coefficient, this._p⟩)
+        else state.remainder := by
+  rcases henselDivmodVHCIteration_remainder this state next frontier dividend
+      divisor hdivisor hrun with ⟨consumed, hconsume, hremainder⟩
+  rcases henselDivmodVHCIteration_projects_quotient this state next frontier
+      dividend divisor hdivisor hselect hrun with
+    ⟨projected, hprojected, hindex, hheap, hnodes, hquotient, hreset⟩
+  rcases StrictSquarefreeZp.pairVecDivVHCOuterIteration_residual_coefficient_toPoly
+      this degreeLimit state.dividendIndex state.heap state.nodes
+      state.quotient dividend divisor state.resetH frontier projected owners
+      hdivisor hsize hstate hownership hhomogeneous hordered hdenotes hfixed
+      hresetReady hprefix hcfg hquotientCanonical hdividendCanonical hconsumed
+      hdecrease hselect hprojected with
+    ⟨residualConsumed, hresidualConsume, hresidual⟩
+  have hconsumedEq : residualConsumed = consumed := by
+    rw [hconsume] at hresidualConsume
+    exact (Except.ok.inj hresidualConsume).symm
+  subst residualConsumed
+  have hdivisorPoly :=
+    StrictSquarefreeZp.sparsePolyZp_toPoly_eq_head_add_tail this._p.toNat
+      divisor hdivisor
+  have hleadZero := henselQuotient_mul_lead_coeff_eq_zero_below this._p.toNat
+    frontier.degree divisor[0].1.deg state.quotient divisor[0].2 hbelowLead
+  refine ⟨consumed, hconsume, ?_, ?_⟩
+  · rw [hdivisorPoly, mul_add, Polynomial.coeff_add, hleadZero, zero_add]
+    exact hresidual
+  · rw [hremainder]
+    by_cases hcoefficient : consumed.coefficient ≠ 0
+    · simp [hcoefficient, hbelowLead]
+    · simp [hcoefficient]
+
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
     (hdivisor : 0 < divisor.size) (initialLimit : Nat)

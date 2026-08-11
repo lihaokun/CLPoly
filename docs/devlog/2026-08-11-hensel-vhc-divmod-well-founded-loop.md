@@ -52,3 +52,12 @@ that, from an empty initial remainder, every emitted remainder term has degree
 strictly below the divisor's leading degree.  This discharges the Euclidean
 degree-bound half of the remainder contract; coefficient equality with the
 low-degree residual remains to be proved.
+
+The first coefficient-level residual bridge is now closed.  At every selected
+frontier below the divisor leading degree, the coefficient consumed by the
+actual heap loop is proved equal to the corresponding coefficient of
+`dividend - quotient * divisor`.  The proof reuses the exact heap-owner
+coefficient theorem from the quotient-only VHC development and separately
+proves that `quotient * leadingMonomial(divisor)` cannot contribute below the
+leading degree.  It also identifies the source conditional remainder push
+with precisely that consumed coefficient.

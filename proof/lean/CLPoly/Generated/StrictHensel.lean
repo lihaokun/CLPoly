@@ -484,6 +484,7 @@ executable raw call only; it contains no expected EEA result or L2 fact. -/
 structure HenselEEARawOps where
   divmod : SparsePolyZp → SparsePolyZp →
     RawExec (SparsePolyZp × SparsePolyZp)
+  inverse : Zp → RawExec Zp
 
 def henselEEAScaleNormalize (coefficient : Zp)
     (f : SparsePolyZp) : SparsePolyZp :=
@@ -523,10 +524,12 @@ def __polynomial_GCD_eea_raw_ir (ops : HenselEEARawOps)
         match state.r0[0]? with
         | none => .error .assertionFailure
         | some leading =>
-            let inverse := leading.2.inv
-            .ok (henselEEAScaleNormalize inverse state.r0,
-              henselEEAScaleNormalize inverse state.s0,
-              henselEEAScaleNormalize inverse state.t0)
+            match ops.inverse leading.2 with
+            | .error fault => .error fault
+            | .ok inverse =>
+                .ok (henselEEAScaleNormalize inverse state.r0,
+                  henselEEAScaleNormalize inverse state.s0,
+                  henselEEAScaleNormalize inverse state.t0)
       else
         match hrun : ops.divmod state.r0 state.r1 with
         | .error fault => .error fault

@@ -3389,6 +3389,10 @@ structure HenselEEAExecutionInvariant
   finalNonempty : ∀ state,
     HenselEEAPrefix ops initial state → state.r1.isEmpty = true →
     ∃ leading, state.r0[0]? = some leading
+  inverseReady : ∀ state leading,
+    HenselEEAPrefix ops initial state → state.r1.isEmpty = true →
+    state.r0[0]? = some leading →
+    ∃ inverse, ops.inverse leading.2 = .ok inverse
 
 /-- Exact semantic execution trace of the source extended-Euclidean loop. -/
 inductive HenselEEACorrect
@@ -3396,12 +3400,14 @@ inductive HenselEEACorrect
     Generated.StrictHensel.HenselEEAState →
       (SparsePolyZp × SparsePolyZp × SparsePolyZp) → Prop
   | done (state : Generated.StrictHensel.HenselEEAState)
-      (leading : UMonomial × Zp) (hdone : state.r1.isEmpty = true)
-      (hleading : state.r0[0]? = some leading) :
+      (leading : UMonomial × Zp) (inverse : Zp)
+      (hdone : state.r1.isEmpty = true)
+      (hleading : state.r0[0]? = some leading)
+      (hinverse : ops.inverse leading.2 = .ok inverse) :
       HenselEEACorrect ops state
-        (Generated.StrictHensel.henselEEAScaleNormalize leading.2.inv state.r0,
-          Generated.StrictHensel.henselEEAScaleNormalize leading.2.inv state.s0,
-          Generated.StrictHensel.henselEEAScaleNormalize leading.2.inv state.t0)
+        (Generated.StrictHensel.henselEEAScaleNormalize inverse state.r0,
+          Generated.StrictHensel.henselEEAScaleNormalize inverse state.s0,
+          Generated.StrictHensel.henselEEAScaleNormalize inverse state.t0)
   | step (state : Generated.StrictHensel.HenselEEAState)
       (quotient remainder : SparsePolyZp)
       (output : SparsePolyZp × SparsePolyZp × SparsePolyZp)
@@ -3427,8 +3433,12 @@ private theorem henselEEARefinesAux
   · rename_i hdone
     rcases hinvariant.finalNonempty state hprefix hdone with
       ⟨leading, hleading⟩
+    rcases hinvariant.inverseReady state leading hprefix hdone hleading with
+      ⟨inverse, hinverse⟩
     rw [hleading]
-    exact ⟨_, rfl, .done state leading hdone hleading⟩
+    simp only
+    rw [hinverse]
+    exact ⟨_, rfl, .done state leading inverse hdone hleading hinverse⟩
   · rename_i hcontinue
     rcases hinvariant.divisionReady state hprefix hcontinue with
       ⟨quotient, remainder, hrun⟩
@@ -4034,6 +4044,38 @@ theorem henselDivmodVHCIR_succeeds
 def strictHenselEEARawOps (this : DenseUPolyZp) :
     Generated.StrictHensel.HenselEEARawOps where
   divmod := henselDivmodVHCIR this
+  inverse := fun coefficient => .ok
+    { val := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        coefficient.val,
+      prime := this._p }
+
+/-- The terminal EEA inverse call is the generated C++ `inv_prime` path, and
+its returned runtime coefficient is the field inverse of the concrete
+nonzero leading coefficient. -/
+theorem strictHenselEEARawOps_inverse_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (coefficient : Zp)
+    (hreduced : CLPoly.Math.Zp.Reduced this._p.toNat coefficient)
+    (hnonzero : coefficient.val ≠ 0) :
+    ∃ inverse,
+      (strictHenselEEARawOps this).inverse coefficient = .ok inverse ∧
+      CLPoly.Math.Zp.Reduced this._p.toNat inverse ∧
+      CLPoly.Math.Zp.toZMod this._p.toNat inverse *
+          CLPoly.Math.Zp.toZMod this._p.toNat coefficient = 1 := by
+  let inverse : Zp :=
+    { val := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+        coefficient.val,
+      prime := this._p }
+  have hpositive : 0 < coefficient.val.toNat := by
+    exact Nat.pos_of_ne_zero (fun hzero => hnonzero
+      (UInt64.toNat_inj.mp (by simpa using hzero)))
+  have hcorrect :=
+    CLPoly.Impl.StrictWordArithmetic.dense_upoly_zp_nmod_inv_ir_correct this
+      coefficient.val (Fact.out : Nat.Prime this._p.toNat) hpositive
+      hreduced.2
+  dsimp only at hcorrect
+  refine ⟨inverse, rfl, ⟨rfl, hcorrect.1⟩, ?_⟩
+  simpa [inverse, CLPoly.Math.Zp.toZMod, hreduced.1] using hcorrect.2
 
 /-- The remainder component of a successful iteration is exactly the source
 push decision at the selected frontier degree. -/
@@ -5586,6 +5628,13 @@ def strictHenselEEAExecutionInvariant
       hinitial state hprefix
     exact ⟨state.r0[0]'hstate.r0Nonempty,
       Array.getElem?_eq_getElem hstate.r0Nonempty⟩
+  inverseReady := by
+    intro state leading _ _ _
+    let inverse : Zp :=
+      { val := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this
+          leading.2.val,
+        prime := this._p }
+    exact ⟨inverse, rfl⟩
 
 /-- The generated EEA now runs with the concrete VHC divmod implementation
 and its degree-based well-founded recursion. -/

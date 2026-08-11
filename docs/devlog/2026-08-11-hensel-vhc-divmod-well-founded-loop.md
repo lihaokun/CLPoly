@@ -175,6 +175,21 @@ needs to be connected explicitly to the already verified generated C++
 an L2 polynomial fallback or result oracle, but that primitive-level bridge is
 required before publishing the final strict EEA contract.
 
+## Generated terminal inverse execution
+
+The EEA raw-operation interface now exposes the terminal inverse call instead
+of evaluating `Zp.inv` invisibly inside the recursion.  The concrete Hensel
+instance executes `Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir`, i.e. the
+generated C++ `inv_prime` control flow already verified by the strict word
+arithmetic development.  The raw-to-safe trace records that exact successful
+call and the inverse value used by all three source monicization loops.
+
+For every reduced nonzero concrete leading coefficient, the new inverse
+contract proves that the returned runtime coefficient is reduced modulo `p`
+and that its `ZMod p` value multiplied by the actual leading coefficient is
+one.  Thus terminal EEA normalization no longer relies on the unconnected
+`Model.Zp.inv` implementation.
+
 The operational invariant supplied for reachable prefixes contains only
 canonicality and the generated cursor/heap/node-chain facts.  It contains no
 expected output, quotient, remainder, or L2 division result.  A final

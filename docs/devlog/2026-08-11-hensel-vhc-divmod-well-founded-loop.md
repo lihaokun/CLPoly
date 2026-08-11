@@ -167,6 +167,23 @@ the invariant initially, and induction over the concrete reachable-prefix
 relation now supplies it for every state used by the semantic trace.  No field
 contains an expected result or L2 division value.
 
+## Entry-level general divmod contract
+
+The fresh general five-argument entry now has its complete semantic contract.
+A successful well-founded execution is converted directly into the exact
+source trace; fresh-prefix operational invariants then prove every low-degree
+remainder coefficient, while the quotient projection supplies the previously
+verified high-degree product agreement.  Coefficient extensionality closes
+`quotient * divisor + remainder = dividend`.
+
+Both concrete outputs are canonical.  Quotient canonicality follows the same
+generated VHC body projection.  Remainder canonicality is proved separately
+along the actual trace: every source push uses the consumed strict-word
+coefficient, its reducedness comes from the real modular consume operation,
+the push condition supplies nonzeroness, and the selected frontier decrease
+places the new term strictly below all prior remainder terms.  The final
+remainder also retains the strict degree bound below the divisor lead.
+
 Verification:
 
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.

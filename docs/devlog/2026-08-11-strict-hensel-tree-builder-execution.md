@@ -31,6 +31,16 @@ the monic EEA gcd into the unit Bezout certificate consumed by lifting.  The
 remaining strengthening is recursive: preserve these algebraic fields while
 child links are installed and establish the invariant at every appended node.
 
+The recursive frame strengthening is now proved as well.  A child build may
+change its own root and append descendants, but it leaves every other
+pre-existing array entry identical.  Consequently the root's concrete
+interval-product and monic-gcd certificate survives both recursive calls.  A
+semantic entry theorem exposes that certificate, and a coprime-root corollary
+turns it into the unit Bezout invariant required by the first lift.  The next
+remaining step is to collect the recursively established child certificates
+into the complete generated tree topology invariant, rather than exposing only
+the root certificate.
+
 ## Verification
 
 ```text

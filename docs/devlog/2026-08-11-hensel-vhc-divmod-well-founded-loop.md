@@ -69,3 +69,17 @@ interval-extension lemma combines one exact conditional push, the selected
 residual coefficient, and a zero-coefficient frontier gap to extend agreement
 from the old bound down to the newly selected degree.  This is the induction
 step needed by the complete below-leading-degree loop proof.
+
+The residual gap is now discharged directly from the concrete VHC state in
+both control-flow branches needed by the well-founded proof.  At a selected
+frontier, the generated dividend cursor and product heap independently prove
+that every skipped coefficient is zero; at loop termination, exhaustion of
+the cursor and heap proves the same fact below the final degree bound.  Taking
+their polynomial difference yields the required zero residual coefficients.
+Neither theorem assumes an expected quotient/remainder nor invokes an L2
+division operation.
+
+Verification:
+
+- `lake env lean CLPoly/Refinement/Hensel.lean`: successful.
+- `git diff --check`: successful.

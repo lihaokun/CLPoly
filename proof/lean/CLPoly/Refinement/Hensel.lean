@@ -3829,6 +3829,97 @@ theorem HenselDivmodVHCRemainderAbove.coeff_eq_zero_below
   have := habove term hterm
   omega
 
+/-- A degree skipped by the concrete VHC frontier selector is also absent
+from the actual division residual.  Both zero coefficients come from the
+generated dividend cursor and heap/product invariants; no division
+specification is consulted. -/
+theorem henselDivmodVHCResidual_coeff_eq_zero_of_gap
+    (p degreeLimit targetDegree dividendIndex resetH : Nat)
+    (dividend quotient divisor : SparsePolyZp)
+    (heap : Array Nat)
+    (nodes : Array StrictSquarefreeZp.PairVecDivVHCNode)
+    (owners : Nat → Finset Nat)
+    (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+    (hdivisor : 0 < divisor.size)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : StrictSquarefreeZp.PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : StrictSquarefreeZp.PairVecDivVHCStateCovered heap nodes #[]
+      resetH)
+    (hownership : StrictSquarefreeZp.PairVecDivVHCHeapChainOwnership heap
+      owners nodes)
+    (hhomogeneous : StrictSquarefreeZp.PairVecDivVHCHeapChainsHomogeneous heap
+      owners nodes)
+    (hresetReady : StrictSquarefreeZp.PairVecDivVHCResetReady resetH
+      quotient.size nodes)
+    (hordered : StrictSquarefreeZp.PairVecDivVHCHeapOrdered heap nodes)
+    (hdenotes : ∀ (i : Nat)
+      (node : StrictSquarefreeZp.PairVecDivVHCNode),
+      nodes[i]? = some node → node.mono ≠ none →
+        StrictSquarefreeZp.PairVecDivVHCNodeDenotes quotient divisor node)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical p dividend)
+    (hconsumed : StrictSquarefreeZp.PairVecDivVHCConsumedDividendAbove
+      degreeLimit dividendIndex dividend)
+    (hquotientCanonical : CLPoly.Math.SparsePolyZp.Canonical p quotient)
+    (hprefix : StrictSquarefreeZp.PairVecDivVHCCursorPrefixAbove degreeLimit
+      nodes quotient divisor)
+    (hprocessed : StrictSquarefreeZp.PairVecDivVHCQuotientLeadAbove
+      degreeLimit divisor[0].1.deg quotient)
+    (hfrontier : frontier.degree < targetDegree)
+    (htarget : targetDegree < degreeLimit)
+    (hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier dividendIndex
+      dividend heap nodes = .ok frontier) :
+    (CLPoly.Math.SparsePolyZp.toPoly p dividend -
+      CLPoly.Math.SparsePolyZp.toPoly p quotient *
+        CLPoly.Math.SparsePolyZp.toPoly p divisor).coeff targetDegree = 0 := by
+  rw [Polynomial.coeff_sub,
+    StrictSquarefreeZp.pairVecDivVHCDividend_coeff_eq_zero_of_gap p
+      degreeLimit targetDegree dividendIndex dividend heap nodes frontier
+      hdividendCanonical hconsumed hfrontier htarget hselect,
+    StrictSquarefreeZp.pairVecDivVHCProduct_coeff_eq_zero_of_gap p
+      degreeLimit targetDegree dividendIndex resetH dividend quotient divisor
+      heap nodes owners frontier hdivisor hsize hfixed hstate hownership
+      hhomogeneous hresetReady hordered hdenotes hquotientCanonical hprefix
+      hprocessed hfrontier htarget hselect]
+  simp
+
+/-- At a concrete terminal VHC state the residual vanishes at every degree
+below the current well-founded bound.  This combines exhaustion of the real
+dividend cursor with exhaustion of the real product heap. -/
+theorem henselDivmodVHCResidual_coeff_eq_zero_of_done
+    (p degreeLimit targetDegree dividendIndex resetH : Nat)
+    (dividend quotient divisor : SparsePolyZp)
+    (nodes : Array StrictSquarefreeZp.PairVecDivVHCNode)
+    (owners : Nat → Finset Nat)
+    (hdivisor : 0 < divisor.size)
+    (hsize : nodes.size = divisor.size - 1)
+    (hfixed : StrictSquarefreeZp.PairVecDivVHCNodeDivisorIndicesFixed nodes)
+    (hstate : StrictSquarefreeZp.PairVecDivVHCStateCovered #[] nodes #[]
+      resetH)
+    (hownership : StrictSquarefreeZp.PairVecDivVHCHeapChainOwnership #[]
+      owners nodes)
+    (hresetReady : StrictSquarefreeZp.PairVecDivVHCResetReady resetH
+      quotient.size nodes)
+    (hprefix : StrictSquarefreeZp.PairVecDivVHCCursorPrefixAbove degreeLimit
+      nodes quotient divisor)
+    (hprocessed : StrictSquarefreeZp.PairVecDivVHCQuotientLeadAbove
+      degreeLimit divisor[0].1.deg quotient)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical p dividend)
+    (hconsumed : StrictSquarefreeZp.PairVecDivVHCConsumedDividendAbove
+      degreeLimit dividendIndex dividend)
+    (hdone : dividend.size ≤ dividendIndex)
+    (htarget : targetDegree < degreeLimit) :
+    (CLPoly.Math.SparsePolyZp.toPoly p dividend -
+      CLPoly.Math.SparsePolyZp.toPoly p quotient *
+        CLPoly.Math.SparsePolyZp.toPoly p divisor).coeff targetDegree = 0 := by
+  rw [Polynomial.coeff_sub,
+    StrictSquarefreeZp.pairVecDivVHCDividend_coeff_eq_zero_of_done p
+      degreeLimit targetDegree dividendIndex dividend hdividendCanonical
+      hconsumed hdone htarget,
+    StrictSquarefreeZp.pairVecDivVHCProduct_coeff_eq_zero_of_done p
+      degreeLimit targetDegree resetH quotient divisor nodes owners hdivisor
+      hsize hfixed hstate hownership hresetReady hprefix hprocessed htarget]
+  simp
+
 theorem henselDivmodRemainderPush_coeff
     (p degree : Nat) (remainder : SparsePolyZp) (coefficient : Zp)
     (habsent :

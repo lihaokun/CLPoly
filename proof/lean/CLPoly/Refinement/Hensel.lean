@@ -10,6 +10,7 @@ import CLPoly.Algorithm.Hensel
 import CLPoly.Generated.StrictHensel
 import CLPoly.Math.Bigint
 import CLPoly.Refinement.Basic
+import CLPoly.Refinement.SquarefreeZp
 
 set_option autoImplicit false
 
@@ -3458,6 +3459,182 @@ theorem __polynomial_GCD_eea_raw_ir_refines
           initial = .ok output ∧
       HenselEEACorrect ops initial output :=
   henselEEARefinesAux ops termination initial initial hinvariant .refl
+
+/-- State of the quotient+remainder form of the current generated VHC
+`pair_vec_div` loop. -/
+structure HenselDivmodVHCState where
+  dividendIndex : Nat
+  heap : Array Nat
+  nodes : Array StrictSquarefreeZp.PairVecDivVHCNode
+  quotient : SparsePolyZp
+  remainder : SparsePolyZp
+  resetH : Nat
+
+/-- One exact body of the five-argument C++ `pair_vec_div`.  It reuses the
+already strict selector, equal-degree heap consumption, quotient emission,
+reset activation and reverse reinsertion.  The only additional observable
+action is the source remainder push when the net frontier degree is below the
+divisor leading degree. -/
+def henselDivmodVHCIteration (this : DenseUPolyZp)
+    (state : HenselDivmodVHCState)
+    (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size) :
+    RawExec HenselDivmodVHCState := do
+  let consumed ← StrictSquarefreeZp.pairVecDivVHCConsumeEqualDegree this
+    frontier.degree state.heap frontier.coefficient state.nodes #[]
+    state.resetH state.quotient divisor
+  let remainder :=
+    if consumed.coefficient ≠ 0 ∧ frontier.degree < divisor[0].1.deg then
+      state.remainder.push
+        (UMonomial.mk frontier.degree, ⟨consumed.coefficient, this._p⟩)
+    else state.remainder
+  let emitted ← StrictSquarefreeZp.pairVecDivVHCEmit this frontier consumed
+    state.quotient divisor hdivisor
+  let reinserted ← StrictSquarefreeZp.pairVecDivVHCReinsertLin emitted.2.1.heap
+    emitted.2.1.nodes consumed.lin
+  return ⟨frontier.dividendIndex, reinserted.heap, reinserted.nodes,
+    emitted.1, remainder, emitted.2.2⟩
+
+/-- Strict well-founded general VHC loop for the quotient+remainder overload.
+The recursive degree bound is the degree actually selected from the concrete
+dividend/heap frontier, exactly as for the already verified quotient-only
+entry. -/
+def henselDivmodVHCOuterLoop (this : DenseUPolyZp)
+    (degreeLimit : Nat) (state : HenselDivmodVHCState)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size) :
+    RawExec (SparsePolyZp × SparsePolyZp) :=
+  if hdone : dividend.size ≤ state.dividendIndex ∧ state.heap.size = 0 then
+    .ok (state.quotient, state.remainder)
+  else
+    match StrictSquarefreeZp.pairVecDivVHCSelectFrontier state.dividendIndex
+        dividend state.heap state.nodes with
+    | .error fault => .error fault
+    | .ok frontier =>
+        if hdecrease : frontier.degree < degreeLimit then
+          match henselDivmodVHCIteration this state frontier dividend divisor
+              hdivisor with
+          | .error fault => .error fault
+          | .ok next =>
+              henselDivmodVHCOuterLoop this frontier.degree next dividend
+                divisor hdivisor
+        else .error .assertionFailure
+termination_by degreeLimit
+decreasing_by exact hdecrease
+
+/-- Concrete reachable prefixes of the double-output VHC loop. -/
+inductive HenselDivmodVHCPrefix (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (initialLimit : Nat) (initial : HenselDivmodVHCState) :
+    Nat → HenselDivmodVHCState → Prop
+  | refl : HenselDivmodVHCPrefix this dividend divisor hdivisor initialLimit
+      initial initialLimit initial
+  | step (limit : Nat) (state next : HenselDivmodVHCState)
+      (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+      (hprefix : HenselDivmodVHCPrefix this dividend divisor hdivisor
+        initialLimit initial limit state)
+      (hnotDone : ¬ (dividend.size ≤ state.dividendIndex ∧
+        state.heap.size = 0))
+      (hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+        state.dividendIndex dividend state.heap state.nodes = .ok frontier)
+      (hdecrease : frontier.degree < limit)
+      (hiteration : henselDivmodVHCIteration this state frontier dividend
+        divisor hdivisor = .ok next) :
+      HenselDivmodVHCPrefix this dividend divisor hdivisor initialLimit initial
+        frontier.degree next
+
+/-- Raw safety for every state reached by successful concrete VHC bodies. -/
+structure HenselDivmodVHCExecutionInvariant (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (initialLimit : Nat) (initial : HenselDivmodVHCState) : Prop where
+  frontierReady : ∀ limit state,
+    HenselDivmodVHCPrefix this dividend divisor hdivisor initialLimit initial
+      limit state →
+    ¬ (dividend.size ≤ state.dividendIndex ∧ state.heap.size = 0) →
+    ∃ frontier,
+      StrictSquarefreeZp.pairVecDivVHCSelectFrontier state.dividendIndex
+        dividend state.heap state.nodes = .ok frontier ∧
+      frontier.degree < limit
+  iterationReady : ∀ limit state frontier,
+    HenselDivmodVHCPrefix this dividend divisor hdivisor initialLimit initial
+      limit state →
+    StrictSquarefreeZp.pairVecDivVHCSelectFrontier state.dividendIndex
+        dividend state.heap state.nodes = .ok frontier →
+    frontier.degree < limit →
+    ∃ next, henselDivmodVHCIteration this state frontier dividend divisor
+      hdivisor = .ok next
+
+/-- Exact trace of the double-output VHC source loop. -/
+inductive HenselDivmodVHCCorrect (this : DenseUPolyZp)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size) :
+    Nat → HenselDivmodVHCState → SparsePolyZp × SparsePolyZp → Prop
+  | done (limit : Nat) (state : HenselDivmodVHCState)
+      (hdone : dividend.size ≤ state.dividendIndex ∧ state.heap.size = 0) :
+      HenselDivmodVHCCorrect this dividend divisor hdivisor limit state
+        (state.quotient, state.remainder)
+  | step (limit : Nat) (state next : HenselDivmodVHCState)
+      (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+      (output : SparsePolyZp × SparsePolyZp)
+      (hnotDone : ¬ (dividend.size ≤ state.dividendIndex ∧
+        state.heap.size = 0))
+      (hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+        state.dividendIndex dividend state.heap state.nodes = .ok frontier)
+      (hdecrease : frontier.degree < limit)
+      (hiteration : henselDivmodVHCIteration this state frontier dividend
+        divisor hdivisor = .ok next)
+      (htail : HenselDivmodVHCCorrect this dividend divisor hdivisor
+        frontier.degree next output) :
+      HenselDivmodVHCCorrect this dividend divisor hdivisor limit state output
+
+private theorem henselDivmodVHCRefinesAux
+    (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
+    (hdivisor : 0 < divisor.size) (initialLimit : Nat)
+    (initial : HenselDivmodVHCState)
+    (hinvariant : HenselDivmodVHCExecutionInvariant this dividend divisor
+      hdivisor initialLimit initial)
+    (limit : Nat) (state : HenselDivmodVHCState)
+    (hprefix : HenselDivmodVHCPrefix this dividend divisor hdivisor
+      initialLimit initial limit state) :
+    ∃ output,
+      henselDivmodVHCOuterLoop this limit state dividend divisor hdivisor =
+        .ok output ∧
+      HenselDivmodVHCCorrect this dividend divisor hdivisor limit state
+        output := by
+  rw [henselDivmodVHCOuterLoop]
+  split
+  · rename_i hdone
+    exact ⟨_, rfl, .done limit state hdone⟩
+  · rename_i hnotDone
+    rcases hinvariant.frontierReady limit state hprefix hnotDone with
+      ⟨frontier, hselect, hdecrease⟩
+    rw [hselect]
+    simp only
+    rw [dif_pos hdecrease]
+    rcases hinvariant.iterationReady limit state frontier hprefix hselect
+        hdecrease with ⟨next, hiteration⟩
+    rw [hiteration]
+    rcases henselDivmodVHCRefinesAux this dividend divisor hdivisor
+        initialLimit initial hinvariant frontier.degree next
+        (.step limit state next frontier hprefix hnotDone hselect hdecrease
+          hiteration) with ⟨output, htailRun, htailCorrect⟩
+    exact ⟨output, htailRun,
+      .step limit state next frontier output hnotDone hselect hdecrease
+        hiteration htailCorrect⟩
+termination_by limit
+decreasing_by assumption
+
+theorem henselDivmodVHCOuterLoop_refines
+    (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
+    (hdivisor : 0 < divisor.size) (initialLimit : Nat)
+    (initial : HenselDivmodVHCState)
+    (hinvariant : HenselDivmodVHCExecutionInvariant this dividend divisor
+      hdivisor initialLimit initial) :
+    ∃ output,
+      henselDivmodVHCOuterLoop this initialLimit initial dividend divisor
+          hdivisor = .ok output ∧
+      HenselDivmodVHCCorrect this dividend divisor hdivisor initialLimit
+        initial output :=
+  henselDivmodVHCRefinesAux this dividend divisor hdivisor initialLimit initial
+    hinvariant initialLimit initial .refl
 
 end StrictHensel
 

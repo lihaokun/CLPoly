@@ -160,6 +160,21 @@ either obtain them from the selected Hensel prime or replace the legacy
 bounded bridge with the newer overflow-safe `Zp` model theorem before the
 public top-level theorem is emitted.
 
+## EEA source initialization
+
+The exact six-register initialization emitted for the source extended GCD is
+now proved to establish both the execution invariant and the algebraic
+invariant.  The singleton runtime polynomial created with `Zp.ofUInt64 1 p`
+is proved canonical and denotes polynomial one, while the two empty arrays
+denote zero.  Therefore the initial equations reduce definitionally to
+`left = 1*left + 0*right` and `right = 0*left + 1*right`.
+
+Before closing terminal monicization, the coefficient inverse boundary still
+needs to be connected explicitly to the already verified generated C++
+`inv_prime` implementation.  The current executable `Zp.inv` primitive is not
+an L2 polynomial fallback or result oracle, but that primitive-level bridge is
+required before publishing the final strict EEA contract.
+
 The operational invariant supplied for reachable prefixes contains only
 canonicality and the generated cursor/heap/node-chain facts.  It contains no
 expected output, quotient, remainder, or L2 division result.  A final

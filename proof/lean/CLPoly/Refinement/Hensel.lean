@@ -5766,6 +5766,63 @@ theorem strictHenselEEAPrefix_algebraicInvariant
       exact StrictHenselEEAAlgebraicInvariant.step this._p.toNat left right
         state quotient remainder h2p hp2 hr1 ih houtputCorrect
 
+theorem henselEEAOne_refines (p : UInt64) [Fact (Nat.Prime p.toNat)] :
+    CLPoly.Math.SparsePolyZp.Canonical p.toNat
+        (#[(UMonomial.mk 0, Zp.ofUInt64 1 p)] : SparsePolyZp) ∧
+      CLPoly.Math.SparsePolyZp.toPoly p.toNat
+        (#[(UMonomial.mk 0, Zp.ofUInt64 1 p)] : SparsePolyZp) = 1 := by
+  have hp : 1 < p.toNat := (Fact.out : Nat.Prime p.toNat).one_lt
+  have hpWord : p ≠ 0 := by
+    intro hzero
+    subst p
+    norm_num at hp
+  have hmodNat : 1 % p.toNat = 1 := Nat.mod_eq_of_lt hp
+  have hpWordLt : (1 : UInt64) < p := by exact_mod_cast hp
+  have hmodWord : (1 : UInt64) % p = 1 := by
+    exact UInt64.mod_eq_of_lt hpWordLt
+  simp [CLPoly.Math.SparsePolyZp.Canonical,
+    CLPoly.Math.SparsePolyZp.WellFormed_arr,
+    CLPoly.Math.SparsePolyZp.AllReduced,
+    CLPoly.Math.SparsePolyZp.toPoly, CLPoly.Math.listSum,
+    CLPoly.Math.Zp.Reduced, Zp.ofUInt64, CLPoly.Math.Zp.toZMod,
+    hp, hmodNat, hmodWord]
+
+/-- The six source initial assignments establish both execution safety and
+the two base Bézout identities. -/
+theorem strictHenselEEAInitialState_invariants
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (left right : SparsePolyZp)
+    (hleftCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat left)
+    (hrightCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat right)
+    (hleftNonempty : 0 < left.size) :
+    StrictHenselEEAStateInvariant this._p.toNat
+        (Generated.StrictHensel.henselEEAInitialState this._p left right) ∧
+      StrictHenselEEAAlgebraicInvariant this._p.toNat left right
+        (Generated.StrictHensel.henselEEAInitialState this._p left right) := by
+  have hone := henselEEAOne_refines this._p
+  constructor
+  · exact ⟨hleftCanonical, hrightCanonical, hleftNonempty⟩
+  · dsimp [Generated.StrictHensel.henselEEAInitialState]
+    refine ⟨hone.1.1, ?_, ?_, hone.1.1, ?_, ?_⟩
+    · intro term hterm
+      dsimp [Generated.StrictHensel.henselEEAInitialState] at hterm
+      simp at hterm
+    · intro term hterm
+      dsimp [Generated.StrictHensel.henselEEAInitialState] at hterm
+      simp at hterm
+    · simp only [Generated.StrictHensel.HenselEEAState.r0,
+        Generated.StrictHensel.HenselEEAState.s0,
+        Generated.StrictHensel.HenselEEAState.t0,
+        CLPoly.Math.SparsePolyZp.toPoly_empty, zero_mul, add_zero]
+      rw [hone.2]
+      simp
+    · simp only [Generated.StrictHensel.HenselEEAState.r1,
+        Generated.StrictHensel.HenselEEAState.s1,
+        Generated.StrictHensel.HenselEEAState.t1,
+        CLPoly.Math.SparsePolyZp.toPoly_empty, zero_mul, zero_add]
+      rw [hone.2]
+      simp
+
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
     (hdivisor : 0 < divisor.size) (initialLimit : Nat)

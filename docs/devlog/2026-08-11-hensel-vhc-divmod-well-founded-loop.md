@@ -134,6 +134,22 @@ with a nonempty divisor.  The next proof obligation is the uniform semantic
 contract and strict remainder-degree decrease across these branches, which
 will provide the actual well-founded EEA termination measure.
 
+## Single-term branch semantics
+
+The source-order single-term loop now has an exact quotient/remainder
+partition theorem.  Its quotient projection is the existing checked
+single-output loop; its remainder list is precisely the original input terms
+whose monomials fail `is_divexact`.  A termwise proof using the actual strict
+word inverse/multiply coefficient implementation establishes the full
+polynomial equation
+`quotient * divisor + remainder = dividend`.
+
+The concrete remainder is also proved canonical and every stored term has
+degree strictly below the divisor monomial.  Thus the complete semantic and
+termination obligations for the single-term EEA division branch are closed;
+the remaining uniformization work is concentrated in the fresh general VHC
+initial state and its reachable operational invariants.
+
 Verification:
 
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.

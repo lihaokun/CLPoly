@@ -56,6 +56,14 @@ array size—not merely a lower bound—and proves it equals this topology's
 nor introduces an extra node.  Pointer-field agreement with these exact
 indices is the remaining topology obligation.
 
+The root pointer fields are now connected as well.  The proof retains the
+exact raw `Nat → UInt32 → Int32` values written by the generated program and
+then interprets them only under the source `h_fits_int32` requirement
+(`nodeCount < 2^31`).  Under that explicit bound, both `left` and `right`
+satisfy `liftChildMatches` for the canonical topology, while the same concrete
+root carries the pairwise-derived unit Bezout invariant.  Recursive
+whole-tree pointer agreement remains to be collected.
+
 ## Verification
 
 ```text

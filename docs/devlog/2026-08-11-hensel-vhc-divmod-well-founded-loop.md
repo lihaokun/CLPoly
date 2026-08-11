@@ -32,3 +32,16 @@ Verification:
   occurrence; the remaining `fuel` matches are explanatory statements that
   explicitly reject fuel-based recursion.
 - `git diff --check`: successful.
+
+## Quotient semantic projection
+
+The quotient-and-remainder iteration and its complete well-founded loop now
+project definitionally onto the already verified quotient-only VHC execution.
+The projection follows each successful concrete selector, consume, emit, and
+reinsertion call; it does not recompute or predict a quotient.
+
+As a result, the five-argument loop inherits the existing theorem that the
+computed quotient times the divisor agrees with the dividend at every degree
+at or above the divisor's leading degree.  The remaining semantic obligation
+is now isolated to the concrete low-degree terms accumulated in the remainder
+array.

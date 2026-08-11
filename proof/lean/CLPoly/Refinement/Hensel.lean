@@ -3521,6 +3521,169 @@ def henselDivmodVHCOuterLoop (this : DenseUPolyZp)
 termination_by degreeLimit
 decreasing_by exact hdecrease
 
+/-- Erasing the accumulated remainder from one five-argument source
+iteration gives exactly the already verified quotient-only VHC iteration.
+This is a control-flow projection, not a semantic replacement: both sides
+execute the same selector-independent heap body and use the same concrete
+quotient emission result. -/
+theorem henselDivmodVHCIteration_projects_quotient
+    (this : DenseUPolyZp) (state next : HenselDivmodVHCState)
+    (frontier : StrictSquarefreeZp.PairVecDivVHCFrontier)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+      state.dividendIndex dividend state.heap state.nodes = .ok frontier)
+    (hrun : henselDivmodVHCIteration this state frontier dividend divisor
+      hdivisor = .ok next) :
+    ∃ projected,
+      StrictSquarefreeZp.pairVecDivVHCOuterIteration this
+          state.dividendIndex state.heap state.nodes state.quotient dividend
+          divisor state.resetH = .ok projected ∧
+      projected.dividendIndex = next.dividendIndex ∧
+      projected.heap = next.heap ∧ projected.nodes = next.nodes ∧
+      projected.quotient = next.quotient ∧ projected.resetH = next.resetH := by
+  unfold henselDivmodVHCIteration at hrun
+  unfold StrictSquarefreeZp.pairVecDivVHCOuterIteration
+  simp only [hdivisor, ↓reduceDIte, hselect, Bind.bind, Except.bind]
+  cases hconsume : StrictSquarefreeZp.pairVecDivVHCConsumeEqualDegree this
+      frontier.degree state.heap frontier.coefficient state.nodes #[]
+      state.resetH state.quotient divisor with
+  | error fault => simp [hconsume, bind, Except.bind] at hrun
+  | ok consumed =>
+      simp only [hconsume, bind, Except.bind] at hrun ⊢
+      cases hemit : StrictSquarefreeZp.pairVecDivVHCEmit this frontier consumed
+          state.quotient divisor hdivisor with
+      | error fault => simp [hemit, bind, Except.bind] at hrun
+      | ok emitted =>
+          simp only [hemit, bind, Except.bind] at hrun ⊢
+          cases hreinsert : StrictSquarefreeZp.pairVecDivVHCReinsertLin
+              emitted.2.1.heap emitted.2.1.nodes consumed.lin with
+          | error fault => simp [hreinsert, bind, Except.bind] at hrun
+          | ok reinserted =>
+              simp only [hreinsert, bind, Except.bind] at hrun ⊢
+              have hnext :
+                  HenselDivmodVHCState.mk frontier.dividendIndex
+                    reinserted.heap reinserted.nodes emitted.1
+                    (if consumed.coefficient ≠ 0 ∧
+                        frontier.degree < divisor[0].1.deg then
+                      state.remainder.push
+                        (UMonomial.mk frontier.degree,
+                          ⟨consumed.coefficient, this._p⟩)
+                    else state.remainder)
+                    emitted.2.2 = next := by
+                exact Except.ok.inj hrun
+              subst next
+              exact ⟨_, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- A successful quotient-and-remainder VHC run has exactly the quotient of
+the already verified quotient-only source loop.  The proof follows the actual
+well-founded calls and erases only the separately accumulated remainder. -/
+theorem henselDivmodVHCOuterLoop_projects_quotient
+    (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
+    (hdivisor : 0 < divisor.size) (limit : Nat)
+    (state : HenselDivmodVHCState) (output : SparsePolyZp × SparsePolyZp)
+    (hrun : henselDivmodVHCOuterLoop this limit state dividend divisor
+      hdivisor = .ok output) :
+    StrictSquarefreeZp.pairVecDivVHCOuterLoop this limit
+        state.dividendIndex state.heap state.nodes state.quotient dividend
+        divisor state.resetH = .ok output.1 := by
+  induction limit using Nat.strong_induction_on generalizing state output with
+  | h limit ih =>
+      rw [henselDivmodVHCOuterLoop] at hrun
+      rw [StrictSquarefreeZp.pairVecDivVHCOuterLoop]
+      by_cases hdone : dividend.size ≤ state.dividendIndex ∧
+          state.heap.size = 0
+      · rw [dif_pos hdone] at hrun ⊢
+        exact congrArg Except.ok (congrArg Prod.fst (Except.ok.inj hrun))
+      · rw [dif_neg hdone] at hrun ⊢
+        cases hselect : StrictSquarefreeZp.pairVecDivVHCSelectFrontier
+            state.dividendIndex dividend state.heap state.nodes with
+        | error fault => simp [hselect] at hrun
+        | ok frontier =>
+            rw [hselect] at hrun
+            simp only at hrun ⊢
+            by_cases hdecrease : frontier.degree < limit
+            · rw [dif_pos hdecrease] at hrun ⊢
+              cases hiteration : henselDivmodVHCIteration this state frontier
+                  dividend divisor hdivisor with
+              | error fault => simp [hiteration] at hrun
+              | ok next =>
+                  rw [hiteration] at hrun
+                  simp only at hrun
+                  rcases henselDivmodVHCIteration_projects_quotient this state
+                      next frontier dividend divisor hdivisor hselect hiteration
+                      with ⟨projected, hprojected, hindex, hheap, hnodes,
+                        hquotient, hreset⟩
+                  rw [hprojected]
+                  simp only
+                  rw [hindex, hheap, hnodes, hquotient, hreset]
+                  exact ih frontier.degree hdecrease next output hrun
+            · rw [dif_neg hdecrease] at hrun
+              contradiction
+
+/-- The quotient produced by the five-argument loop inherits the proved
+high-coefficient product semantics of the same concrete VHC execution.  No
+quotient is supplied to the program: it is projected from the successful
+quotient-and-remainder run. -/
+theorem henselDivmodVHCOuterLoop_productAgreesAbove_lead_of_success
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (globalLimit degreeLimit : Nat) (state : HenselDivmodVHCState)
+    (dividend divisor : SparsePolyZp) (output : SparsePolyZp × SparsePolyZp)
+    (owners : Nat → Finset Nat) (hdivisor : 0 < divisor.size)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hcanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      state.quotient)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hdivisorCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      divisor)
+    (hquotientReady : ∀ frontier :
+        StrictSquarefreeZp.PairVecDivVHCFrontier,
+      StrictSquarefreeZp.pairVecDivVHCSelectFrontier state.dividendIndex
+          dividend state.heap state.nodes = .ok frontier →
+      StrictSquarefreeZp.PairVecDivVHCQuotientAbove frontier.degree
+        divisor[0].1.deg state.quotient)
+    (hremaining : StrictSquarefreeZp.PairVecDivVHCRemainingDividendBelow
+      globalLimit state.dividendIndex dividend)
+    (hbelow : StrictSquarefreeZp.PairVecDivVHCAllActiveNodesBelow globalLimit
+      state.nodes)
+    (hdenotes : ∀ (i : Nat)
+        (node : StrictSquarefreeZp.PairVecDivVHCNode),
+      state.nodes[i]? = some node → node.mono ≠ none →
+        StrictSquarefreeZp.PairVecDivVHCNodeDenotes state.quotient divisor node)
+    (hfixed : StrictSquarefreeZp.PairVecDivVHCNodeDivisorIndicesFixed
+      state.nodes)
+    (hready : StrictSquarefreeZp.PairVecDivVHCResetReady state.resetH
+      state.quotient.size state.nodes)
+    (hownership : StrictSquarefreeZp.PairVecDivVHCHeapChainOwnership
+      state.heap owners state.nodes)
+    (hcovered : StrictSquarefreeZp.PairVecDivVHCStateCovered state.heap
+      state.nodes #[] state.resetH)
+    (hsize : state.nodes.size = divisor.size - 1)
+    (hhomogeneous : StrictSquarefreeZp.PairVecDivVHCHeapChainsHomogeneous
+      state.heap owners state.nodes)
+    (hordered : StrictSquarefreeZp.PairVecDivVHCHeapOrdered state.heap
+      state.nodes)
+    (hprefix : StrictSquarefreeZp.PairVecDivVHCCursorPrefixAbove degreeLimit
+      state.nodes state.quotient divisor)
+    (hprocessed : StrictSquarefreeZp.PairVecDivVHCQuotientLeadAbove degreeLimit
+      divisor[0].1.deg state.quotient)
+    (hconsumed : StrictSquarefreeZp.PairVecDivVHCConsumedDividendAbove
+      degreeLimit state.dividendIndex dividend)
+    (hagrees : StrictSquarefreeZp.PairVecDivVHCProductAgreesAbove
+      this._p.toNat degreeLimit state.quotient dividend divisor)
+    (hrun : henselDivmodVHCOuterLoop this degreeLimit state dividend divisor
+      hdivisor = .ok output) :
+    StrictSquarefreeZp.PairVecDivVHCProductAgreesAbove this._p.toNat
+      divisor[0].1.deg output.1 dividend divisor := by
+  have hquotientRun := henselDivmodVHCOuterLoop_projects_quotient this dividend
+    divisor hdivisor degreeLimit state output hrun
+  exact StrictSquarefreeZp.pairVecDivVHCOuterLoop_productAgreesAbove_lead_of_success
+    this globalLimit degreeLimit state.dividendIndex state.heap state.nodes
+    state.quotient dividend divisor output.1 state.resetH owners hdivisor hcfg
+    hcanonical hdividendCanonical hdivisorCanonical hquotientReady hremaining
+    hbelow hdenotes hfixed hready hownership hcovered hsize hhomogeneous
+    hordered hprefix hprocessed hconsumed hagrees hquotientRun
+
 /-- Concrete reachable prefixes of the double-output VHC loop. -/
 inductive HenselDivmodVHCPrefix (this : DenseUPolyZp)
     (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)

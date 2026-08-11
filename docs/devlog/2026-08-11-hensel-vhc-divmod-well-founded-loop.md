@@ -45,3 +45,10 @@ computed quotient times the divisor agrees with the dividend at every degree
 at or above the divisor's leading degree.  The remaining semantic obligation
 is now isolated to the concrete low-degree terms accumulated in the remainder
 array.
+
+The remainder push has also been exposed as an exact theorem about every
+successful iteration.  Induction over the concrete execution trace now proves
+that, from an empty initial remainder, every emitted remainder term has degree
+strictly below the divisor's leading degree.  This discharges the Euclidean
+degree-bound half of the remainder contract; coefficient equality with the
+low-degree residual remains to be proved.

@@ -84,6 +84,34 @@ Verification:
 - `lake env lean CLPoly/Refinement/Hensel.lean`: successful.
 - `git diff --check`: successful.
 
+## Unified divmod contract and concrete EEA termination
+
+The empty-dividend, single-term-divisor, and general VHC paths are now
+combined into one total contract for the complete source-order
+`henselDivmodVHCIR` entry.  For canonical inputs and a nonempty divisor, the
+actual raw call returns canonical quotient and remainder arrays, bounds every
+remainder term strictly below the divisor lead, and proves
+`quotient * divisor + remainder = dividend`.
+
+A second execution-only theorem derives the strict remainder bound from every
+successful call without assuming input canonicality or any semantic oracle.
+This is exactly the universally quantified fact required by the generated EEA
+termination interface.
+
+The concrete `strictHenselEEARawOps` is therefore equipped with a genuine
+well-founded measure: zero for an empty current second remainder and one plus
+its leading degree otherwise.  Each successful recursive EEA transition
+strictly decreases this measure because its next second remainder is the
+remainder returned by the actual VHC division call.  There is no fuel counter,
+expected remainder, L2 division fallback, or caller-supplied decrease proof.
+
+Verification:
+
+- `lake env lean CLPoly/Refinement/Hensel.lean`: successful.
+- `git diff --check`: successful.
+- placeholder and axiom scan of the strict Hensel generated/refinement/public
+  modules: no `sorry`, `admit`, or `axiom` declaration.
+
 ## Complete remainder trace semantics
 
 The exact quotient-and-remainder execution trace now proves coefficient

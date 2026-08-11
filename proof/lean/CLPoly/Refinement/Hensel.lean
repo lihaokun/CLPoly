@@ -3954,8 +3954,10 @@ theorem henselDivmodVHCSingleLoopIR_remainderCanonical
   · intro output houtput
     rw [List.mem_filterMap] at houtput
     rcases houtput with ⟨term, hterm, hrun⟩
-    rcases henselDivmodVHCSingleRemainderTermIR_some_degree_lt this divisor
-        term output hrun with ⟨rfl, hdegree⟩
+    have houtputEq :=
+      (henselDivmodVHCSingleRemainderTermIR_some_degree_lt this divisor
+        term output hrun).1
+    rw [houtputEq]
     exact hdividendCanonical.1 term hterm
   · rw [List.isChain_iff_pairwise]
     apply List.Pairwise.filterMap
@@ -3972,8 +3974,10 @@ theorem henselDivmodVHCSingleLoopIR_remainderCanonical
   · intro output houtput
     rw [List.mem_filterMap] at houtput
     rcases houtput with ⟨term, hterm, hrun⟩
-    rcases henselDivmodVHCSingleRemainderTermIR_some_degree_lt this divisor
-        term output hrun with ⟨rfl, hdegree⟩
+    have houtputEq :=
+      (henselDivmodVHCSingleRemainderTermIR_some_degree_lt this divisor
+        term output hrun).1
+    rw [houtputEq]
     exact hdividendCanonical.2.2 term hterm
 
 def henselDivmodVHCSingleBranchIR (this : DenseUPolyZp)
@@ -5377,6 +5381,141 @@ theorem henselDivmodVHCGeneralBranchIR_refines
     (henselDivmodVHCDivisionEquation this._p.toNat divisor[0].1.deg output.1
       output.2 dividend divisor hproduct hremainderBelow
       hremainderAgrees).symm⟩
+
+structure HenselDivmodVHCResultCorrect (p : Nat)
+    (dividend divisor : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (output : SparsePolyZp × SparsePolyZp) : Prop where
+  quotientCanonical : CLPoly.Math.SparsePolyZp.Canonical p output.1
+  remainderCanonical : CLPoly.Math.SparsePolyZp.Canonical p output.2
+  remainderBelow : HenselDivmodVHCRemainderBelow divisor[0].1.deg output.2
+  equation : CLPoly.Math.SparsePolyZp.toPoly p output.1 *
+        CLPoly.Math.SparsePolyZp.toPoly p divisor +
+      CLPoly.Math.SparsePolyZp.toPoly p output.2 =
+    CLPoly.Math.SparsePolyZp.toPoly p dividend
+
+/-- Unified total semantic contract for the exact complete five-argument
+source entry. -/
+theorem henselDivmodVHCIR_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (dividend divisor : SparsePolyZp)
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (hdividendCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      dividend)
+    (hdivisorCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat
+      divisor)
+    (hdivisor : 0 < divisor.size) :
+    ∃ output, henselDivmodVHCIR this dividend divisor = .ok output ∧
+      HenselDivmodVHCResultCorrect this._p.toNat dividend divisor hdivisor
+        output := by
+  by_cases hdividend : dividend.size = 0
+  · have hempty : dividend = #[] := Array.size_eq_zero_iff.mp hdividend
+    subst dividend
+    refine ⟨(#[], #[]), by
+      simp [henselDivmodVHCIR, Nat.ne_of_gt hdivisor], ?_⟩
+    exact ⟨hdividendCanonical, hdividendCanonical,
+      HenselDivmodVHCRemainderBelow.empty divisor[0].1.deg, by
+        simp [CLPoly.Math.SparsePolyZp.toPoly, CLPoly.Math.listSum]⟩
+  · by_cases hsingle : divisor.size = 1
+    · rcases henselDivmodVHCSingleBranchIR_refines this dividend divisor hcfg
+          hdividendCanonical hdivisorCanonical hsingle with
+        ⟨output, hrun, hquotientCanonical, hremainderCanonical,
+          hremainderBelow, hequation⟩
+      refine ⟨output, ?_, ⟨hquotientCanonical, hremainderCanonical,
+        hremainderBelow, hequation⟩⟩
+      simpa [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend, hsingle]
+        using hrun
+    · have hgeneral : 1 < divisor.size := by omega
+      rcases henselDivmodVHCGeneralBranchIR_succeeds this dividend divisor hcfg
+          hdividendCanonical hdivisorCanonical (Nat.pos_of_ne_zero hdividend)
+          hgeneral with ⟨output, hrun⟩
+      rcases henselDivmodVHCGeneralBranchIR_refines this dividend divisor output
+          hcfg hdividendCanonical hdivisorCanonical
+          (Nat.pos_of_ne_zero hdividend) hgeneral hrun with
+        ⟨hquotientCanonical, hremainderCanonical, hremainderBelow,
+          hequation⟩
+      refine ⟨output, ?_, ⟨hquotientCanonical, hremainderCanonical,
+        hremainderBelow, hequation⟩⟩
+      simpa [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend, hsingle]
+        using hrun
+
+/-- Remainder degree is an execution property, independent of canonicality:
+every successful complete source call strictly bounds stored remainder terms
+below the nonempty divisor lead. -/
+theorem henselDivmodVHCIR_remainderBelow_of_success
+    (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)
+    (quotient remainder : SparsePolyZp) (hdivisor : 0 < divisor.size)
+    (hrun : henselDivmodVHCIR this dividend divisor =
+      .ok (quotient, remainder)) :
+    HenselDivmodVHCRemainderBelow divisor[0].1.deg remainder := by
+  by_cases hdividend : dividend.size = 0
+  · simp [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend] at hrun
+    rcases hrun with ⟨rfl, rfl⟩
+    exact HenselDivmodVHCRemainderBelow.empty divisor[0].1.deg
+  · by_cases hsingle : divisor.size = 1
+    · simp only [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend,
+        hsingle, henselDivmodVHCSingleBranchIR, ↓reduceDIte] at hrun
+      have houtput := Except.ok.inj hrun
+      have hbelow := henselDivmodVHCSingleLoopIR_remainderBelow this dividend
+        divisor[0]
+      rw [houtput] at hbelow
+      exact hbelow
+    · have hgeneral : 1 < divisor.size := by omega
+      have hdividendPos : 0 < dividend.size := Nat.pos_of_ne_zero hdividend
+      have houter :
+          let nodes := StrictSquarefreeZp.pairVecDivVHCInit divisor
+          let state : HenselDivmodVHCState :=
+            ⟨0, #[], nodes, #[], #[], divisor.size - 1⟩
+          henselDivmodVHCOuterLoop this (dividend[0].1.deg + 1) state dividend
+            divisor (by omega) = .ok (quotient, remainder) := by
+        simpa [henselDivmodVHCIR, Nat.ne_of_gt hdivisor, hdividend, hsingle,
+          henselDivmodVHCGeneralBranchIR, hdividendPos, hgeneral] using hrun
+      dsimp only at houter
+      let nodes := StrictSquarefreeZp.pairVecDivVHCInit divisor
+      let state : HenselDivmodVHCState :=
+        ⟨0, #[], nodes, #[], #[], divisor.size - 1⟩
+      have hcorrect := henselDivmodVHCOuterLoop_correct_of_success this dividend
+        divisor (by omega) (dividend[0].1.deg + 1) state
+        (quotient, remainder) (by simpa [state, nodes] using houter)
+      exact hcorrect.remainderBelow this dividend divisor (by omega)
+        (dividend[0].1.deg + 1) state (quotient, remainder)
+        (HenselDivmodVHCRemainderBelow.empty divisor[0].1.deg)
+
+/-- The actual source EEA decreases by the leading degree of its current
+second remainder.  Empty remainders receive measure zero. -/
+def henselEEAMeasure
+    (state : Generated.StrictHensel.HenselEEAState) : Nat :=
+  if h : 0 < state.r1.size then state.r1[0].1.deg + 1 else 0
+
+/-- Well-founded evidence for the concrete Hensel EEA division operation.
+The decrease is derived from every successful raw VHC remainder, rather than
+from a fuel counter or a separately supplied specification result. -/
+def strictHenselEEATermination (this : DenseUPolyZp) :
+    Generated.StrictHensel.HenselEEATermination
+      (strictHenselEEARawOps this) where
+  measure := henselEEAMeasure
+  decreases := by
+    intro state quotient remainder hcontinue hrun
+    have hr1Ne : state.r1 ≠ #[] := by
+      simpa [Array.isEmpty_iff] using hcontinue
+    have hr1 : 0 < state.r1.size := by
+      have hr1Size : state.r1.size ≠ 0 := by
+        intro hzero
+        apply hr1Ne
+        exact Array.eq_empty_of_size_eq_zero hzero
+      omega
+    have hbelow := henselDivmodVHCIR_remainderBelow_of_success this state.r0
+      state.r1 quotient remainder hr1 (by
+        simpa [strictHenselEEARawOps] using hrun)
+    by_cases hremZero : remainder.size = 0
+    · simp [henselEEAMeasure,
+        Generated.StrictHensel.henselEEANextState, hr1, hremZero]
+    · have hrem : 0 < remainder.size := Nat.pos_of_ne_zero hremZero
+      have hleadLt : remainder[0].1.deg < state.r1[0].1.deg :=
+        hbelow remainder[0] (Array.getElem_mem_toList hrem)
+      simp only [henselEEAMeasure,
+        Generated.StrictHensel.henselEEANextState]
+      rw [dif_pos hrem, dif_pos hr1]
+      omega
 
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)

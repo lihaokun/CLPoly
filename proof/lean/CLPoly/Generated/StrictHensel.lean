@@ -335,6 +335,35 @@ theorem HenselLiftTree.right_nodeCount_lt (index : Nat)
   simp [HenselLiftTree.nodeCount]
   omega
 
+/-- Number of internal nodes allocated by the source interval splitter. -/
+def henselTreeInternalNodeCountRawIR : Nat → Nat → Nat
+  | start, stop =>
+      if hlength : 2 ≤ stop - start then
+        let mid := (start + stop) / 2
+        1 + henselTreeInternalNodeCountRawIR start mid +
+          henselTreeInternalNodeCountRawIR mid stop
+      else 0
+termination_by start stop => stop - start
+decreasing_by
+  all_goals omega
+
+/-- Canonical finite traversal topology computed solely from the same source
+interval splits and preorder allocation indices as the tree builder. -/
+def henselTreeBuildTopologyRawIR : Nat → Nat → Nat → HenselLiftTree
+  | start, stop, root =>
+      let mid := (start + stop) / 2
+      let leftCount := henselTreeInternalNodeCountRawIR start mid
+      let left := if 2 ≤ mid - start then
+        some (henselTreeBuildTopologyRawIR start mid (root + 1))
+      else none
+      let right := if 2 ≤ stop - mid then
+        some (henselTreeBuildTopologyRawIR mid stop (root + 1 + leftCount))
+      else none
+      .node root left right
+termination_by start stop root => stop - start
+decreasing_by
+  all_goals omega
+
 /-- Exact strict lowering of C++ `__hensel_lift_recursive` on a certified
 finite tree.  The program executes and stores the concrete Hensel step before
 visiting the left child.  After the left traversal it re-reads the parent
@@ -728,5 +757,44 @@ def __hensel_tree_build_raw_ir (ops : HenselTreeBuildRawOps)
     __hensel_tree_build_recursive_raw_ir ops factors #[default] 0
       factors.size 0
   else .error .assertionFailure
+
+/-- Exact source selection of the lifting threshold.  The zero exponent uses
+the Mignotte bound and absolute leading coefficient; a positive exponent uses
+the explicit `p^a - 1` loop.  Negative exponents violate the source contract
+and are exposed as a raw assertion fault. -/
+def __hensel_lift_target_raw_ir (f : SparsePolyZZ) (p : UInt64)
+    (aTarget : Int32) : RawExec ZZ :=
+  if aTarget = 0 then do
+    let bound ← __mignotte_bound_upoly_raw_ir f
+    match f[0]? with
+    | none => .error (.outOfBounds 0 0)
+    | some leading => .ok (2 * Int.natAbs leading.2 * bound)
+  else
+    __hensel_explicit_target_raw_ir p aTarget
+
+/-- Strict end-to-end lowering of C++ `__hensel_lift_upoly_ir`.  The finite
+control tree is computed internally from the same interval split and preorder
+allocation scheme as the preceding builder; callers cannot supply an oracle.
+All observable outputs are obtained by executing, in source order, target
+selection, leading-coefficient adjustment, tree construction, quadratic
+lifting, leaf extraction, and final normalization. -/
+def __hensel_lift_upoly_raw_ir (stepOps : HenselStepRawOps)
+    (treeOps : HenselTreeBuildRawOps)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    (aTarget : Int32) (hp : 2 ≤ p.toNat) :
+    RawExec (Array SparsePolyZZ × ZZ) := do
+  if 2 ≤ factors.size then pure () else .error .assertionFailure
+  let tree := henselTreeBuildTopologyRawIR 0 factors.size 0
+  let targetZZ ← __hensel_lift_target_raw_ir f p aTarget
+  if htarget : 0 ≤ targetZZ then
+    let adjusted ← __hensel_adjust_first_factor_raw_ir f factors p
+    let nodes ← __hensel_tree_build_raw_ir treeOps adjusted p
+    let lifted ← __hensel_lift_loop_raw_ir stepOps tree f
+      targetZZ.toNat p.toNat hp nodes
+    let extracted ← __hensel_extract_factors_raw_ir tree lifted.1 #[]
+    let normalized ← __hensel_normalize_result_raw_ir extracted lifted.2
+    .ok (normalized, lifted.2)
+  else
+    .error .assertionFailure
 
 end Generated.StrictHensel

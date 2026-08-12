@@ -7282,6 +7282,161 @@ theorem HenselTreeArrayFrame.trans_fresh
   exact (hsecond.2 index hchild hsecondIndex hthirdIndex).trans
     (hfirst.2 index hne hfirstIndex hsecondIndex)
 
+theorem HenselTreeArrayFrame.preservesFrom
+    {before after : Array HenselNode} {current lower : Nat}
+    (hframe : HenselTreeArrayFrame before after current)
+    (hcurrent : current < lower) :
+    HenselTreePreservesFrom lower before after := by
+  refine ⟨hframe.1, ?_⟩
+  intro index hlower hbefore
+  have hafter : index < after.size := lt_of_lt_of_le hbefore hframe.1
+  rw [Array.getElem?_eq_getElem hafter,
+    Array.getElem?_eq_getElem hbefore]
+  exact congrArg some (hframe.2 index (by omega) hbefore hafter)
+
+theorem HenselTreePreservesFrom.trans
+    {lower : Nat} {first second third : Array HenselNode}
+    (hfirst : HenselTreePreservesFrom lower first second)
+    (hsecond : HenselTreePreservesFrom lower second third) :
+    HenselTreePreservesFrom lower first third := by
+  refine ⟨le_trans hfirst.1 hsecond.1, ?_⟩
+  intro index hlower hindex
+  exact (hsecond.2 index hlower (lt_of_lt_of_le hindex hfirst.1)).trans
+    (hfirst.2 index hlower hindex)
+
+/-- Constructor-shaped certificate emitted alongside the concrete preorder
+builder.  It records raw source pointers; their signed interpretation is
+deliberately postponed until the entry-level `h_fits_int32` premise. -/
+inductive HenselTreeRawBuildCertificate (lower : Nat) :
+    Nat → Nat → Nat → Array HenselNode → Prop
+  | node
+      (start stop parent : Nat) (nodes : Array HenselNode)
+      (value : HenselNode)
+      (hlower : lower ≤ parent)
+      (hnode : nodes[parent]? = some value)
+      (htopology : HenselTreeNodeRawTopologyMatches start stop parent value)
+      (hleft : 2 ≤ (start + stop) / 2 - start →
+        HenselTreeRawBuildCertificate lower start ((start + stop) / 2)
+          (parent + 1) nodes)
+      (hright : 2 ≤ stop - (start + stop) / 2 →
+        HenselTreeRawBuildCertificate lower ((start + stop) / 2) stop
+          (parent + 1 + henselTreeInternalNodeCount start
+            ((start + stop) / 2)) nodes) :
+      HenselTreeRawBuildCertificate lower start stop parent nodes
+
+theorem HenselTreeRawBuildCertificate.lower_mono
+    {lower lower' start stop parent : Nat} {nodes : Array HenselNode}
+    (hlower : lower' ≤ lower)
+    (hcertificate : HenselTreeRawBuildCertificate lower start stop parent nodes) :
+    HenselTreeRawBuildCertificate lower' start stop parent nodes := by
+  induction hcertificate with
+  | node start stop parent nodes value hparent hnode htopology hleft hright
+      leftIH rightIH =>
+      exact .node start stop parent nodes value (by omega) hnode htopology
+        (fun h => leftIH h) (fun h => rightIH h)
+
+theorem HenselTreeRawBuildCertificate.of_preservesFrom
+    {lower start stop parent : Nat} {before after : Array HenselNode}
+    (hpreserves : HenselTreePreservesFrom lower before after)
+    (hcertificate :
+      HenselTreeRawBuildCertificate lower start stop parent before) :
+    HenselTreeRawBuildCertificate lower start stop parent after := by
+  induction hcertificate with
+  | node start stop parent nodes value hlower hnode htopology hleft hright
+      leftIH rightIH =>
+      have hparent : parent < nodes.size := by
+        by_contra hnot
+        have : nodes[parent]? = none := Array.getElem?_eq_none (by omega)
+        rw [this] at hnode
+        contradiction
+      exact .node start stop parent after value hlower
+        ((hpreserves.2 parent hlower hparent).trans hnode) htopology
+        (fun h => leftIH h hpreserves) (fun h => rightIH h hpreserves)
+
+set_option maxHeartbeats 0 in
+/-- Interpreting every raw pointer is valid once the whole preorder allocation
+fits in signed `Int32`; the result is exactly the certificate consumed by the
+generated extraction traversal. -/
+theorem HenselTreeRawBuildCertificate.toExtractCertificate
+    {lower start stop parent : Nat} {nodes : Array HenselNode}
+    (hlength : 2 ≤ stop - start)
+    (hbound : parent + henselTreeInternalNodeCount start stop < 2 ^ 31)
+    (hcertificate :
+      HenselTreeRawBuildCertificate lower start stop parent nodes) :
+    HenselExtractCertificate lower
+      (henselTreeBuildTopology start stop parent) nodes := by
+  cases hcertificate with
+  | node _ _ _ _ value hlower hnode htopology hleft hright =>
+      have hchildren := htopology.liftChildMatches hlength hbound
+      let mid := (start + stop) / 2
+      by_cases hleftBranch : 2 ≤ mid - start
+      · have hleftCount := henselTreeInternalNodeCount_eq start mid hleftBranch
+        by_cases hrightBranch : 2 ≤ stop - mid
+        · have hrightCount := henselTreeInternalNodeCount_eq mid stop hrightBranch
+          dsimp [mid] at hleftBranch hrightBranch
+          rw [henselTreeBuildTopology] at hchildren ⊢
+          dsimp only at hchildren ⊢
+          rw [if_pos hleftBranch, if_pos hrightBranch] at hchildren ⊢
+          refine .node parent _ _ nodes value hlower hnode hchildren.1
+            hchildren.2 ?_ ?_
+          · intro child hchild
+            injection hchild with hchildEq
+            subst child
+            exact (hleft hleftBranch).toExtractCertificate hleftBranch (by
+              have htotal := henselTreeInternalNodeCount_eq start stop hlength
+              dsimp [mid] at htotal hbound ⊢
+              omega)
+          · intro child hchild
+            injection hchild with hchildEq
+            subst child
+            exact (hright hrightBranch).toExtractCertificate hrightBranch (by
+              have htotal := henselTreeInternalNodeCount_eq start stop hlength
+              dsimp [mid] at htotal hbound ⊢
+              omega)
+        · dsimp [mid] at hleftBranch hrightBranch
+          rw [henselTreeBuildTopology] at hchildren ⊢
+          dsimp only at hchildren ⊢
+          rw [if_pos hleftBranch, if_neg hrightBranch] at hchildren ⊢
+          refine .node parent _ _ nodes value hlower hnode hchildren.1
+            hchildren.2 ?_ ?_
+          · intro child hchild
+            injection hchild with hchildEq
+            subst child
+            exact (hleft hleftBranch).toExtractCertificate hleftBranch (by
+              have htotal := henselTreeInternalNodeCount_eq start stop hlength
+              dsimp [mid] at htotal hbound ⊢
+              omega)
+          · intro child hchild
+            contradiction
+      · by_cases hrightBranch : 2 ≤ stop - mid
+        · dsimp [mid] at hleftBranch hrightBranch
+          rw [henselTreeBuildTopology] at hchildren ⊢
+          dsimp only at hchildren ⊢
+          rw [if_neg hleftBranch, if_pos hrightBranch] at hchildren ⊢
+          refine .node parent _ _ nodes value hlower hnode hchildren.1
+            hchildren.2 ?_ ?_
+          · intro child hchild
+            contradiction
+          · intro child hchild
+            injection hchild with hchildEq
+            subst child
+            exact (hright hrightBranch).toExtractCertificate hrightBranch (by
+              have htotal := henselTreeInternalNodeCount_eq start stop hlength
+              have hleftZero : henselTreeInternalNodeCount start mid = 0 := by
+                rw [henselTreeInternalNodeCount, dif_neg hleftBranch]
+              dsimp [mid] at htotal hleftZero hbound ⊢
+              omega)
+        · dsimp [mid] at hleftBranch hrightBranch
+          rw [henselTreeBuildTopology] at hchildren ⊢
+          dsimp only at hchildren ⊢
+          rw [if_neg hleftBranch, if_neg hrightBranch] at hchildren ⊢
+          refine .node parent _ _ nodes value hlower hnode hchildren.1
+            hchildren.2 ?_ ?_
+          · intro child hchild
+            contradiction
+          · intro child hchild
+            contradiction
+
 theorem henselTreeSetNodeRawIR_frame_current
     (nodes : Array HenselNode) (index : Nat)
     (update : HenselNode → HenselNode) (hindex : index < nodes.size) :
@@ -7364,7 +7519,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
         HenselTreeNodeRawTopologyMatches start stop parent
           (getElem output parent hparentOutput) ∧
         HenselTreeNodeGCDInvariant this._p.toNat factors start stop
-          (getElem output parent hparentOutput) := by
+          (getElem output parent hparentOutput) ∧
+        HenselTreeRawBuildCertificate parent start stop parent output := by
   intro nodes start stop parent hlength hstop hparent hparentLast
   rw [Generated.StrictHensel.__hensel_tree_build_recursive_raw_ir]
   rw [dif_pos hlength]
@@ -7431,7 +7587,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           simp [child, pushed] at hleftReadySize ⊢
           omega) with
       ⟨afterLeft, hafterLeftRun, hafterLeftFrame, hparentAfterLeft,
-        hafterLeftSizeExact, hafterLeftTopology, hafterLeftInvariant⟩
+        hafterLeftSizeExact, hafterLeftTopology, hafterLeftInvariant,
+        hafterLeftCertificate⟩
     have hframeAfterLeft : HenselTreeArrayFrame nodes afterLeft parent :=
       hframeLeftReady.trans_fresh hafterLeftFrame (by
         dsimp [child]
@@ -7498,7 +7655,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             simp [rightChild, rightPushed] at hrightReadySize ⊢
             omega) with
         ⟨output, houtputRun, houtputFrame, hparentOutputBound,
-          houtputSizeExact, houtputTopology, houtputInvariant⟩
+          houtputSizeExact, houtputTopology, houtputInvariant,
+          houtputCertificate⟩
       have hrightCountEq := henselTreeInternalNodeCount_eq mid stop hright
       have hparentNeRightChild : parent ≠ rightChild := by
         dsimp [rightChild]
@@ -7529,7 +7687,38 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             houtputParent, hrightReadySelected, hrightPushedParent,
             hafterLeftParent, hleftReadySelected, hchildEq, hrightChildEq],
         hstoredInvariant.of_algebraEq (by
-          simpa [houtputParent] using hrightReadyStored)⟩
+          simpa [houtputParent] using hrightReadyStored),
+        by
+          have hafterLeftOutputFrame :
+              HenselTreeArrayFrame afterLeft output parent :=
+            ((henselTreeArrayFrame_push afterLeft parent).trans
+              hrightReadyFrame).trans_fresh houtputFrame (by
+                dsimp [rightChild]
+                omega)
+          have hleftFinal := hafterLeftCertificate.of_preservesFrom
+            (hafterLeftOutputFrame.preservesFrom (by
+              dsimp [child]
+              omega))
+          have hchildEq : child = parent + 1 := by
+            dsimp [child]
+            omega
+          have hrightChildEq : rightChild = parent + 1 +
+              henselTreeInternalNodeCount start ((start + stop) / 2) := by
+            dsimp [rightChild, mid] at hleftCountEq hafterLeftSizeExact ⊢
+            simp [pushed] at hleftReadySize
+            omega
+          have hleftFinal' := hleftFinal.lower_mono (by omega : parent ≤ child)
+          have hrightFinal := houtputCertificate.lower_mono
+            (by omega : parent ≤ rightChild)
+          exact .node start stop parent output output[parent] (by omega)
+            (@Array.getElem?_eq_getElem _ output parent (by omega))
+            (by
+              simp [HenselTreeNodeRawTopologyMatches, hleft, hright,
+                houtputParent, hrightReadySelected, hrightPushedParent,
+                hafterLeftParent, hleftReadySelected, hchildEq,
+                hrightChildEq])
+            (fun _ => by simpa [hchildEq] using hleftFinal')
+            (fun _ => by simpa [hrightChildEq] using hrightFinal)⟩
     · rw [dif_neg hright]
       have hparentAfterLeft : parent < afterLeft.size := by omega
       rcases henselTreeSetNodeRawIR_preserves_algebra afterLeft parent
@@ -7554,7 +7743,28 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           dsimp [child, mid] at *
           omega,
         hstoredInvariant.of_algebraEq
-          (houtputAlgebra.trans hafterLeftStored)⟩
+          (houtputAlgebra.trans hafterLeftStored),
+        by
+          have hleftFinal := hafterLeftCertificate.of_preservesFrom
+            (houtputFrame.preservesFrom (by
+              dsimp [child]
+              omega))
+          have hchildEq : child = parent + 1 := by
+            dsimp [child]
+            omega
+          have hleftFinal' := hleftFinal.lower_mono (by omega : parent ≤ child)
+          exact .node start stop parent output output[parent] (by omega)
+            (Array.getElem?_eq_getElem houtputParentBound)
+            (by
+              simpa using (show HenselTreeNodeRawTopologyMatches start stop parent
+                output[parent] from by
+                  simp [HenselTreeNodeRawTopologyMatches, hleft, hright,
+                    houtputSelected, hafterLeftParent, hleftReadySelected]
+                  congr
+                  dsimp [child, mid] at *
+                  omega))
+            (fun _ => by simpa [hchildEq] using hleftFinal')
+            (fun h => False.elim (hright h))⟩
   · rw [dif_neg hleft]
     have hparentStored : parent < stored.size := by omega
     rcases henselTreeSetNodeRawIR_preserves_algebra stored parent
@@ -7611,7 +7821,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             simp [child, pushed] at hrightReadySizeEq ⊢
             omega) with
         ⟨output, houtputRun, houtputFrame, hparentOutputBound,
-          houtputSizeExact, houtputTopology, houtputInvariant⟩
+          houtputSizeExact, houtputTopology, houtputInvariant,
+          houtputCertificate⟩
       have hrightCountEq := henselTreeInternalNodeCount_eq mid stop hright
       have hparentNeChild : parent ≠ child := by
         dsimp [child]
@@ -7643,7 +7854,28 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             houtputParent, hrightReadySelected, hpushedParent,
             hafterLeftSelected, hchildEq],
         hstoredInvariant.of_algebraEq (by
-          simpa [houtputParent] using hrightReadyStored)⟩
+          simpa [houtputParent] using hrightReadyStored),
+        by
+          have hrightFinal := houtputCertificate.lower_mono (by
+            dsimp [child]
+            omega : parent ≤ child)
+          have hchildEq : child = parent + 1 +
+              henselTreeInternalNodeCount start ((start + stop) / 2) := by
+            dsimp [child, mid]
+            have hleftCount : henselTreeInternalNodeCount start
+                ((start + stop) / 2) = 0 := by
+              rw [henselTreeInternalNodeCount, dif_neg hleft]
+            omega
+          exact .node start stop parent output output[parent] (by omega)
+            (@Array.getElem?_eq_getElem _ output parent (by omega))
+            (by
+              simpa using (show HenselTreeNodeRawTopologyMatches start stop parent
+                output[parent] from by
+                  simp [HenselTreeNodeRawTopologyMatches, hleft, hright,
+                    houtputParent, hrightReadySelected, hpushedParent,
+                    hafterLeftSelected, hchildEq]))
+            (fun h => False.elim (hleft h))
+            (fun _ => by simpa [hchildEq] using hrightFinal)⟩
     · rw [dif_neg hright]
       have hparentAfterLeft : parent < afterLeft.size := by omega
       rcases henselTreeSetNodeRawIR_preserves_algebra afterLeft parent
@@ -7667,7 +7899,17 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           simp [HenselTreeNodeRawTopologyMatches, hleft, hright,
             houtputSelected, hafterLeftSelected],
         hstoredInvariant.of_algebraEq
-          (houtputAlgebra.trans hafterLeftStored)⟩
+          (houtputAlgebra.trans hafterLeftStored),
+        by
+          exact .node start stop parent output output[parent] (by omega)
+            (Array.getElem?_eq_getElem houtputParentBound)
+            (by
+              simpa using (show HenselTreeNodeRawTopologyMatches start stop parent
+                output[parent] from by
+                  simp [HenselTreeNodeRawTopologyMatches, hleft, hright,
+                    houtputSelected, hafterLeftSelected]))
+            (fun h => False.elim (hleft h))
+            (fun h => False.elim (hright h))⟩
 termination_by nodes start stop parent _ _ _ => stop - start
 decreasing_by all_goals omega
 
@@ -7726,7 +7968,7 @@ theorem strictHenselTreeBuildRawIR_refines_gcd
   have hroot : 0 < output.size := by simpa using hframe.1
   exact ⟨output, by
     simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun,
-    hroot, hinvariant⟩
+    hroot, hinvariant.1⟩
 
 /-- The actual number of allocated nodes is exactly the node count of the
 canonical source-derived finite topology.  This rules out both skipped and
@@ -7762,7 +8004,7 @@ theorem strictHenselTreeBuildRawIR_refines_topology_size
   have htopologyCount := henselTreeBuildTopology_nodeCount 0 factors.size 0
     (by simpa using htwo)
   have hroot : 0 < output.size := by simpa using hframe.1
-  refine ⟨output, ?_, hroot, ?_, by simp, hinvariant⟩
+  refine ⟨output, ?_, hroot, ?_, by simp, hinvariant.1⟩
   · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
   · rw [htopologyCount, hcount]
     simpa using hsizeExact
@@ -7858,6 +8100,7 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
           (match tree with | .node _ left _ => left) ∧
       liftChildMatches (getElem output 0 hroot).right
           (match tree with | .node _ _ right => right) ∧
+      HenselExtractInvariant tree output ∧
       HenselTreeNodeInitialInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
   dsimp only
@@ -7872,16 +8115,20 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
     (by simpa using htwo)
   have hchildren := hrawTopology.liftChildMatches
     (by simpa using htwo) (by simpa using hfitsInt32)
+  have hextract : HenselExtractInvariant
+      (henselTreeBuildTopology 0 factors.size 0) output :=
+    (hgcdInvariant.2.toExtractCertificate (by simpa using htwo) (by
+      simpa using hfitsInt32)).toInvariant
   have hcoprime := henselFactorRangeProducts_isCoprime this._p.toNat factors
     hpairwise 0 (factors.size / 2) factors.size (by omega) (by omega) (by simp)
   have hroot : 0 < output.size := by simpa using hframe.1
-  refine ⟨output, ?_, hroot, ?_, by simp, ?_, ?_, ?_⟩
+  refine ⟨output, ?_, hroot, ?_, by simp, ?_, ?_, hextract, ?_⟩
   · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
   · rw [htopologyCount, hcount]
     simpa using hsizeExact
   · exact hchildren.1
   · exact hchildren.2
-  · exact hgcdInvariant.toInitial (by simpa using hcoprime)
+  · exact hgcdInvariant.1.toInitial (by simpa using hcoprime)
 
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)

@@ -568,6 +568,46 @@ theorem strictHenselStepStage
   exact Refinement.__hensel_step_raw_ir_refines termination node f m
     hinvariant
 
+/-- Pipeline boundary for the exact generated C++ `__hensel_tree_build`
+entry.  Its concrete output supplies both the initial algebraic root invariant
+and the whole-tree topology required by the later raw lift/extraction stages. -/
+theorem strictHenselTreeBuildStage
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (mulProvider : Refinement.StrictDDF.RawMulWorkspaceProvider this)
+    (factors : Array SparsePolyZp)
+    (hfactors : ∀ factor ∈ factors.toList,
+      SparsePolyZp.Canonical this._p.toNat factor)
+    (hfactorsNonempty : ∀ factor ∈ factors.toList, 0 < factor.size)
+    (hpairwise : ∀ i j (hi : i < factors.size) (hj : j < factors.size),
+      i < j → IsCoprime
+        (SparsePolyZp.toPoly this._p.toNat (getElem factors i hi))
+        (SparsePolyZp.toPoly this._p.toNat (getElem factors j hj)))
+    (htwo : 2 ≤ factors.size)
+    (hfitsInt32 : Refinement.StrictHensel.henselTreeInternalNodeCount
+      0 factors.size < 2 ^ 31) :
+    let tree := Refinement.StrictHensel.henselTreeBuildTopology
+      0 factors.size 0
+    ∃ output,
+      Generated.StrictHensel.__hensel_tree_build_raw_ir
+          (Refinement.StrictHensel.strictHenselTreeBuildRawOps
+            this mulProvider) factors this._p = .ok output ∧
+      ∃ hroot : 0 < output.size,
+      output.size = tree.nodeCount ∧ tree.rootIndex = 0 ∧
+      Refinement.StrictHensel.liftChildMatches
+        (getElem output 0 hroot).left
+        (match tree with | .node _ left _ => left) ∧
+      Refinement.StrictHensel.liftChildMatches
+        (getElem output 0 hroot).right
+        (match tree with | .node _ _ right => right) ∧
+      Refinement.StrictHensel.HenselExtractInvariant tree output ∧
+      Refinement.StrictHensel.HenselTreeNodeInitialInvariant
+        this._p.toNat factors 0 factors.size (getElem output 0 hroot) := by
+  exact Refinement.__hensel_tree_build_raw_ir_refines this hcfg h2p hp2
+    mulProvider factors hfactors hfactorsNonempty hpairwise htwo hfitsInt32
+
 /- The next end-to-end wrapper must compose these concrete stage executions.
 It is deliberately not reconstructed from the L2-only existence functions in
 `FactorZpInstantiate` or `FactorZZInstantiate`. -/

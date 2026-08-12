@@ -421,6 +421,46 @@ theorem {theorem_name}
       StrictHensel.HenselExtractCorrect tree nodes factors output := by
   exact {proof_theorem} tree nodes factors hinvariant
 """
+    if contract["kind"] == "strict_hensel_tree_build":
+        return f"""/-- Generated public contract for the original C++
+`__hensel_tree_build` entry. The actual strict raw builder allocates exactly
+the canonical preorder topology and produces the invariant consumed by the
+generated extraction traversal; no mathematical tree is supplied as an
+oracle. -/
+theorem {theorem_name}
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
+    (factors : Array SparsePolyZp)
+    (hfactors : ∀ factor ∈ factors.toList,
+      SparsePolyZp.Canonical this._p.toNat factor)
+    (hfactorsNonempty : ∀ factor ∈ factors.toList, 0 < factor.size)
+    (hpairwise : ∀ i j (hi : i < factors.size) (hj : j < factors.size),
+      i < j → IsCoprime
+        (SparsePolyZp.toPoly this._p.toNat (getElem factors i hi))
+        (SparsePolyZp.toPoly this._p.toNat (getElem factors j hj)))
+    (htwo : 2 ≤ factors.size)
+    (hfitsInt32 : StrictHensel.henselTreeInternalNodeCount
+      0 factors.size < 2 ^ 31) :
+    let tree := StrictHensel.henselTreeBuildTopology 0 factors.size 0
+    ∃ output,
+      Generated.StrictHensel.__hensel_tree_build_raw_ir
+          (StrictHensel.strictHenselTreeBuildRawOps this mulProvider)
+          factors this._p = .ok output ∧
+      ∃ hroot : 0 < output.size,
+      output.size = tree.nodeCount ∧ tree.rootIndex = 0 ∧
+      StrictHensel.liftChildMatches (getElem output 0 hroot).left
+        (match tree with | .node _ left _ => left) ∧
+      StrictHensel.liftChildMatches (getElem output 0 hroot).right
+        (match tree with | .node _ _ right => right) ∧
+      StrictHensel.HenselExtractInvariant tree output ∧
+      StrictHensel.HenselTreeNodeInitialInvariant this._p.toNat factors
+        0 factors.size (getElem output 0 hroot) := by
+  exact {proof_theorem} this hcfg h2p hp2 mulProvider factors hfactors
+    hfactorsNonempty hpairwise htwo hfitsInt32
+"""
     raise ValueError(f"unsupported verified contract kind: {contract['kind']}")
 
 

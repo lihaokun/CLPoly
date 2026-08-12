@@ -976,6 +976,24 @@ REFINEMENT_MAP = {
             "kind": "strict_hensel_extract_factors",
         },
     },
+    "__hensel_tree_build": {
+        "l1_name": "__hensel_tree_build_raw_ir",
+        "l2_name": "HenselExtractInvariant",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "construct the concrete Hensel tree in preorder",
+        "verified_contract": {
+            "theorem_name": "__hensel_tree_build_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "strictHenselTreeBuildRawIR_refines_topology_root"
+            ),
+            "kind": "strict_hensel_tree_build",
+        },
+    },
     "__make_zp": {
         "l1_name": "__make_zp_ir",
         "l2_name": "Zp.ofInt",

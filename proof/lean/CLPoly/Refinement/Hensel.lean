@@ -3740,6 +3740,49 @@ theorem __hensel_explicit_target_raw_ir_refines
   · rw [HenselExplicitTargetCorrect, henselExplicitTargetLoop_eq]
     simp
 
+/-- Semantic value selected by the two source target branches.  The default
+branch names the concrete generated Mignotte computation, rather than an L2
+oracle for the desired precision. -/
+inductive HenselLiftTargetCorrect (f : SparsePolyZZ) (p : UInt64)
+    (aTarget : Int32) : ZZ → Prop
+  | mignotte (leading : UMonomial × ZZ)
+      (hzero : aTarget = 0) (hleading : f[0]? = some leading) :
+      HenselLiftTargetCorrect f p aTarget
+        (2 * Int.natAbs leading.2 *
+          (Generated.StrictHensel.__binomial_raw_ir
+            (Int64.ofInt leading.1.deg)
+            (Int64.ofInt leading.1.deg / 2) *
+           Generated.StrictHensel.__isqrt_ceil_raw_ir
+            (Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir f)))
+  | explicit (hpositive : 0 < aTarget) :
+      HenselLiftTargetCorrect f p aTarget
+        ((p.toNat : ZZ) ^ aTarget.toNatClampNeg - 1)
+
+/-- Raw-to-safe refinement for the complete target-selection conditional. -/
+theorem __hensel_lift_target_raw_ir_refines
+    (f : SparsePolyZZ) (p : UInt64) (aTarget : Int32)
+    (hleading : ∃ leading, f[0]? = some leading)
+    (hexponent : aTarget = 0 ∨ aTarget > 0) :
+    ∃ target,
+      Generated.StrictHensel.__hensel_lift_target_raw_ir f p aTarget =
+        .ok target ∧
+      HenselLiftTargetCorrect f p aTarget target := by
+  rcases hleading with ⟨leading, hleading⟩
+  by_cases hzero : aTarget = 0
+  · subst aTarget
+    rw [Generated.StrictHensel.__hensel_lift_target_raw_ir]
+    simp only [ite_true, Generated.StrictHensel.__mignotte_bound_upoly_raw_ir,
+      hleading, bind, Except.bind]
+    exact ⟨_, rfl, .mignotte leading rfl hleading⟩
+  · have hpositive : aTarget > 0 := hexponent.resolve_left hzero
+    rcases __hensel_explicit_target_raw_ir_refines p aTarget hpositive with
+      ⟨target, hrun, hcorrect⟩
+    refine ⟨target, ?_, ?_⟩
+    · simp [Generated.StrictHensel.__hensel_lift_target_raw_ir, hzero, hrun]
+    · rw [HenselExplicitTargetCorrect] at hcorrect
+      subst target
+      exact .explicit hpositive
+
 /-- Reachability through concrete successful source EEA iterations. -/
 inductive HenselEEAPrefix (ops : Generated.StrictHensel.HenselEEARawOps)
     (initial : Generated.StrictHensel.HenselEEAState) :
@@ -6880,6 +6923,41 @@ decreasing_by
   · have hlength : 2 ≤ stop - start := by omega
     have := Generated.StrictHensel.henselTreeMidpoint_gt_start start stop hlength
     omega
+
+theorem henselTreeInternalNodeCountRawIR_eq
+    (start stop : Nat) :
+    Generated.StrictHensel.henselTreeInternalNodeCountRawIR start stop =
+      henselTreeInternalNodeCount start stop := by
+  rw [Generated.StrictHensel.henselTreeInternalNodeCountRawIR,
+    henselTreeInternalNodeCount]
+  split
+  · dsimp only
+    rw [henselTreeInternalNodeCountRawIR_eq start ((start + stop) / 2),
+      henselTreeInternalNodeCountRawIR_eq ((start + stop) / 2) stop]
+  · rfl
+termination_by stop - start
+decreasing_by all_goals omega
+
+theorem henselTreeBuildTopologyRawIR_eq
+    (start stop root : Nat) :
+    Generated.StrictHensel.henselTreeBuildTopologyRawIR start stop root =
+      henselTreeBuildTopology start stop root := by
+  rw [Generated.StrictHensel.henselTreeBuildTopologyRawIR,
+    henselTreeBuildTopology]
+  rw [henselTreeInternalNodeCountRawIR_eq]
+  congr 1
+  · split <;> rename_i hbranch
+    · congr 1
+      exact henselTreeBuildTopologyRawIR_eq start ((start + stop) / 2)
+        (root + 1)
+    · rfl
+  · split <;> rename_i hbranch
+    · congr 1
+      exact henselTreeBuildTopologyRawIR_eq ((start + stop) / 2) stop
+        (root + 1 + henselTreeInternalNodeCount start ((start + stop) / 2))
+    · rfl
+termination_by stop - start
+decreasing_by all_goals omega
 
 @[simp] theorem henselTreeBuildTopology_rootIndex
     (start stop root : Nat) :

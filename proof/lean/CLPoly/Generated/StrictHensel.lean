@@ -468,6 +468,64 @@ def __hensel_explicit_target_raw_ir (p : UInt64) (aTarget : Int32) :
   else
     .error .assertionFailure
 
+/-- Exact finite lowering of the source range-for computing the squared L2
+coefficient norm. -/
+def __upoly_norm_l2_sq_upoly_raw_ir (f : SparsePolyZZ) : ZZ :=
+  f.foldl (fun sum term => sum + term.2 * term.2) 0
+
+/-- Exact source recurrence for `__binomial`.  The remaining-distance measure
+is erased termination evidence and is not an execution fuel parameter. -/
+def __binomial_loop_raw_ir (n k : Nat) : Nat → ZZ → ZZ
+  | i, result =>
+      if i < k then
+        __binomial_loop_raw_ir n k (i + 1)
+          (result * ((n : ZZ) - i) / ((i : ZZ) + 1))
+      else result
+termination_by i _ => k - i
+decreasing_by simp_wf; omega
+
+def __binomial_raw_ir (n k : Int64) : ZZ :=
+  if k < 0 || k > n then 0
+  else if k = 0 || k = n then 1
+  else
+    let k := if k > n - k then n - k else k
+    __binomial_loop_raw_ir n.toNatClampNeg k.toNatClampNeg 0 1
+
+/-- One-to-one well-founded lowering of the source Newton loop.  Recursive
+calls occur exactly on the `next < current` branch, so `current.natAbs` is a
+strictly decreasing measure for the positive states reached from the source
+initial estimate. -/
+def __isqrt_ceil_loop_raw_ir (n : Nat) : (current : Nat) → Nat
+  | current =>
+      if hzero : current = 0 then 0
+      else
+        let next := (current + n / current) / 2
+        if hnext : next < current then __isqrt_ceil_loop_raw_ir n next
+        else current
+termination_by current => current
+decreasing_by
+  exact hnext
+
+def __isqrt_ceil_raw_ir (n : ZZ) : ZZ :=
+  if hn : n ≤ 0 then 0
+  else
+    let bits := ZZ.sizeinbase_nat n 2
+    let initial : Nat := 2 ^ ((bits + 1) / 2)
+    let root : ZZ := __isqrt_ceil_loop_raw_ir n.natAbs initial
+    if root * root < n then root + 1 else root
+
+/-- Strict composition of the three helpers called by C++
+`__mignotte_bound`. -/
+def __mignotte_bound_upoly_raw_ir (f : SparsePolyZZ) : RawExec ZZ :=
+  match f[0]? with
+  | none => .error .assertionFailure
+  | some leading =>
+      let n : Int64 := Int64.ofInt leading.1.deg
+      let binomial := __binomial_raw_ir n (n / 2)
+      let normSquare := __upoly_norm_l2_sq_upoly_raw_ir f
+      let norm := __isqrt_ceil_raw_ir normSquare
+      .ok (binomial * norm)
+
 /-- Concrete mutable state of the source extended-Euclidean loop used by
 `__hensel_tree_build_recursive`. -/
 structure HenselEEAState where

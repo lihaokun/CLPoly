@@ -2426,6 +2426,116 @@ def liftChildMatches (field : Int32) :
   | none => field = -1
   | some child => field.toInt = child.rootIndex
 
+/-- The exact generated Hensel step updates only `g`, `h`, `s`, and `t`.
+Consequently every successful raw execution preserves the two source child
+indices and leaf interval fields. -/
+theorem __hensel_step_raw_ir_preserves_topology
+    (ops : Generated.StrictHensel.HenselStepRawOps)
+    (node output : HenselNode) (f : SparsePolyZZ) (m : ZZ)
+    (hrun : Generated.StrictHensel.__hensel_step_raw_ir ops node f m =
+      .ok output) :
+    output.left = node.left ∧ output.right = node.right ∧
+      output.leaf_start = node.leaf_start ∧ output.leaf_end = node.leaf_end := by
+  have bind_ok {α β : Type} {value : Except RawFault α}
+      {next : α → Except RawFault β} {result : β}
+      (h : value >>= next = .ok result) :
+      ∃ intermediate, value = .ok intermediate ∧
+        next intermediate = .ok result := by
+    cases value with
+    | error fault =>
+        change (.error fault : Except RawFault β) = .ok result at h
+        contradiction
+    | ok intermediate => exact ⟨intermediate, rfl, h⟩
+  rw [Generated.StrictHensel.__hensel_step_raw_ir] at hrun
+  rcases bind_ok hrun with ⟨factorNode, hfactor, hbezout⟩
+  have hfactorTopology :
+      factorNode.left = node.left ∧ factorNode.right = node.right ∧
+      factorNode.leaf_start = node.leaf_start ∧
+      factorNode.leaf_end = node.leaf_end := by
+    simp only [Generated.StrictHensel.__hensel_step_factor_phase_raw_ir,
+      bind, Except.bind] at hfactor
+    repeat' split at hfactor <;> simp_all
+    injection hfactor with hfactorEq
+    subst factorNode
+    simp
+  have hbezoutTopology :
+      output.left = factorNode.left ∧ output.right = factorNode.right ∧
+      output.leaf_start = factorNode.leaf_start ∧
+      output.leaf_end = factorNode.leaf_end := by
+    simp only [Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir,
+      bind, Except.bind] at hbezout
+    repeat' split at hbezout <;> simp_all
+    injection hbezout with hbezoutEq
+    subst output
+    simp
+  exact ⟨hbezoutTopology.1.trans hfactorTopology.1,
+    hbezoutTopology.2.1.trans hfactorTopology.2.1,
+    hbezoutTopology.2.2.1.trans hfactorTopology.2.2.1,
+    hbezoutTopology.2.2.2.trans hfactorTopology.2.2.2⟩
+
+def HenselNodeTopologyEq (left right : HenselNode) : Prop :=
+  left.left = right.left ∧ left.right = right.right ∧
+    left.leaf_start = right.leaf_start ∧ left.leaf_end = right.leaf_end
+
+def HenselArrayTopologyEq
+    (left right : Array HenselNode) : Prop :=
+  left.size = right.size ∧
+    ∀ index (hleft : index < left.size) (hright : index < right.size),
+      HenselNodeTopologyEq left[index] right[index]
+
+theorem HenselNodeTopologyEq.refl (node : HenselNode) :
+    HenselNodeTopologyEq node node := by
+  simp [HenselNodeTopologyEq]
+
+theorem HenselNodeTopologyEq.of_eq {left right : HenselNode}
+    (h : left = right) : HenselNodeTopologyEq left right := by
+  subst right
+  exact .refl _
+
+theorem HenselNodeTopologyEq.trans {first second third : HenselNode}
+    (hfirst : HenselNodeTopologyEq first second)
+    (hsecond : HenselNodeTopologyEq second third) :
+    HenselNodeTopologyEq first third := by
+  simp only [HenselNodeTopologyEq] at hfirst hsecond ⊢
+  exact ⟨hfirst.1.trans hsecond.1,
+    hfirst.2.1.trans hsecond.2.1,
+    hfirst.2.2.1.trans hsecond.2.2.1,
+    hfirst.2.2.2.trans hsecond.2.2.2⟩
+
+theorem HenselNodeTopologyEq.symm {left right : HenselNode}
+    (h : HenselNodeTopologyEq left right) :
+    HenselNodeTopologyEq right left := by
+  simp only [HenselNodeTopologyEq] at h ⊢
+  exact ⟨h.1.symm, h.2.1.symm, h.2.2.1.symm, h.2.2.2.symm⟩
+
+theorem HenselArrayTopologyEq.refl (nodes : Array HenselNode) :
+    HenselArrayTopologyEq nodes nodes := by
+  exact ⟨rfl, fun index hleft hright => .refl _⟩
+
+theorem HenselArrayTopologyEq.trans {first second third : Array HenselNode}
+    (hfirst : HenselArrayTopologyEq first second)
+    (hsecond : HenselArrayTopologyEq second third) :
+    HenselArrayTopologyEq first third := by
+  refine ⟨hfirst.1.trans hsecond.1, ?_⟩
+  intro index hfirstIndex hthirdIndex
+  have hsecondIndex : index < second.size := by simpa [← hfirst.1]
+  exact (hfirst.2 index hfirstIndex hsecondIndex).trans
+    (hsecond.2 index hsecondIndex hthirdIndex)
+
+theorem henselArrayTopologyEq_set
+    (nodes : Array HenselNode) (index : Nat) (value : HenselNode)
+    (hindex : index < nodes.size)
+    (hvalue : HenselNodeTopologyEq nodes[index]! value) :
+    HenselArrayTopologyEq nodes (nodes.set! index value) := by
+  refine ⟨by simp, ?_⟩
+  intro other hbefore hafter
+  by_cases heq : other = index
+  · subst other
+    simpa [Array.getElem_set, hindex] using hvalue
+  · simpa only [Array.set!_eq_setIfInBounds, Array.setIfInBounds_def,
+      dif_pos hindex, Array.getElem_set_ne hindex hbefore (Ne.symm heq)] using
+      HenselNodeTopologyEq.refl nodes[other]
+
 /-- Safety invariant for the exact recursive C++ tree traversal.  Its
 recursive premises are universally quantified over the outputs of the
 concrete raw calls, so it cannot select or manufacture an execution result.
@@ -2662,6 +2772,89 @@ inductive HenselLiftRecursiveCorrect
         nodesAfterLeft parent.h output) :
       HenselLiftRecursiveCorrect termination m
         (.node index (some left) (some right)) nodes target output
+
+theorem HenselLiftRecursiveCorrect.topologyEq
+    {termination : Generated.StrictHensel.DivmodTermination} {m : Nat}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes output : Array HenselNode} {target : SparsePolyZZ}
+    (hcorrect : HenselLiftRecursiveCorrect termination m tree nodes target
+      output) :
+    HenselArrayTopologyEq nodes output := by
+  induction hcorrect with
+  | leaf index nodes stored target inputNode lifted parent hnode hstep
+      hstepCorrect hstored hparent =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index]! = inputNode := by
+        have heq : nodes[index] = inputNode := by
+          exact Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans
+            hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      have htopology := __hensel_step_raw_ir_preserves_topology
+        (strictHenselRawOps termination) inputNode lifted target (m : Int)
+        hstep
+      apply henselArrayTopologyEq_set nodes index lifted hindex
+      rw [hinput]
+      exact (show HenselNodeTopologyEq lifted inputNode from htopology).symm
+  | left index left nodes stored nodesAfterLeft target inputNode lifted parent
+      hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index]! = inputNode := by
+        have heq : nodes[index] = inputNode := by
+          exact Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans
+            hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      have htopology := __hensel_step_raw_ir_preserves_topology
+        (strictHenselRawOps termination) inputNode lifted target (m : Int)
+        hstep
+      exact (henselArrayTopologyEq_set nodes index lifted hindex (by
+        rw [hinput]
+        exact (show HenselNodeTopologyEq lifted inputNode from htopology).symm)).trans ih
+  | right index right nodes stored output target inputNode lifted parent hnode
+      hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index]! = inputNode := by
+        have heq : nodes[index] = inputNode := by
+          exact Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans
+            hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      have htopology := __hensel_step_raw_ir_preserves_topology
+        (strictHenselRawOps termination) inputNode lifted target (m : Int)
+        hstep
+      exact (henselArrayTopologyEq_set nodes index lifted hindex (by
+        rw [hinput]
+        exact (show HenselNodeTopologyEq lifted inputNode from htopology).symm)).trans ih
+  | branch index left right nodes stored nodesAfterLeft output target inputNode
+      lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
+      hparent hrightRun hrightCorrect leftIH rightIH =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index]! = inputNode := by
+        have heq : nodes[index] = inputNode := by
+          exact Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans
+            hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      have htopology := __hensel_step_raw_ir_preserves_topology
+        (strictHenselRawOps termination) inputNode lifted target (m : Int)
+        hstep
+      exact ((henselArrayTopologyEq_set nodes index lifted hindex (by
+        rw [hinput]
+        exact (show HenselNodeTopologyEq lifted inputNode from htopology).symm)).trans
+          leftIH).trans rightIH
 
 /-- Full refinement invariant for a recursive tree traversal.  Like the
 single-step invariant, all descendant premises are universal over uniquely
@@ -2935,6 +3128,20 @@ inductive HenselLiftLoopCorrect
       HenselLiftLoopCorrect termination tree f target m nodes outputNodes
         outputM
 
+theorem HenselLiftLoopCorrect.topologyEq
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM) :
+    HenselArrayTopologyEq initialNodes outputNodes := by
+  induction hcorrect with
+  | done => exact .refl _
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      exact hiteration.topologyEq.trans ih
+
 structure HenselLiftLoopRefinementInvariant
     (termination : Generated.StrictHensel.DivmodTermination)
     (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
@@ -3068,6 +3275,38 @@ theorem HenselExtractCertificate.toInvariant
       · cases right with
         | none => trivial
         | some child => exact rightIH child rfl
+
+/-- A constructor-shaped extraction certificate survives every array update
+that preserves the structural fields at each concrete index. -/
+theorem HenselExtractCertificate.of_topologyEq
+    {lower : Nat} {tree : Generated.StrictHensel.HenselLiftTree}
+    {before after : Array HenselNode}
+    (htopology : HenselArrayTopologyEq before after)
+    (hcertificate : HenselExtractCertificate lower tree before) :
+    HenselExtractCertificate lower tree after := by
+  induction hcertificate with
+  | node index left right nodes value hlower hnode hleft hright
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      have hbefore : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hafter : index < after.size := by simpa [← htopology.1]
+      have hbeforeValue : nodes[index] = value :=
+        Option.some.inj ((Array.getElem?_eq_getElem hbefore).symm.trans hnode)
+      have hnodeTopology := htopology.2 index hbefore hafter
+      refine .node index left right after after[index] hlower
+        (Array.getElem?_eq_getElem hafter) ?_ ?_ ?_ ?_
+      · have hfield : after[index].left = value.left := by
+          simpa [hbeforeValue] using hnodeTopology.1.symm
+        simpa [hfield] using hleft
+      · have hfield : after[index].right = value.right := by
+          simpa [hbeforeValue] using hnodeTopology.2.1.symm
+        simpa [hfield] using hright
+      · intro child hchild
+        exact leftIH child hchild htopology
+      · intro child hchild
+        exact rightIH child hchild htopology
 
 /-- Prefix preservation relation used by the generated append-only tree
 builder: every lookup that succeeded before has the identical result after. -/
@@ -3343,6 +3582,27 @@ theorem __hensel_extract_factors_raw_ir_refines
           factors = .ok output ∧
       HenselExtractCorrect tree nodes factors output :=
   henselExtractRefinesAux tree nodes factors hinvariant
+
+/-- Genuine composition of the actual well-founded lift-loop result with the
+actual generated extraction traversal.  The builder certificate is transported
+through the concrete loop trace using structural-field preservation; no tree
+or extracted factor array is supplied by a specification oracle. -/
+theorem henselLiftLoopThenExtractRawIR_refines
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
+    (target initialM : Nat) (initialNodes liftedNodes : Array HenselNode)
+    (outputM : Nat) (factors : Array SparsePolyZZ)
+    (hloop : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes liftedNodes outputM)
+    (hcertificate : HenselExtractCertificate 0 tree initialNodes) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_extract_factors_raw_ir tree liftedNodes
+          factors = .ok output ∧
+      HenselExtractCorrect tree liftedNodes factors output := by
+  have hliftedCertificate :=
+    hcertificate.of_topologyEq hloop.topologyEq
+  exact __hensel_extract_factors_raw_ir_refines tree liftedNodes factors
+    hliftedCertificate.toInvariant
 
 /-- Safety premises for the final normalization block of `__hensel_lift`.
 They state only that the source `front()` and `ZZ::invert` assertions are

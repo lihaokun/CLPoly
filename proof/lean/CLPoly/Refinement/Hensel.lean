@@ -3017,6 +3017,83 @@ noncomputable def HenselExtractInvariant :
     (fun _ => True)
     (fun _ childInvariant => childInvariant)
 
+/-- Extraction safety depends only on concrete node lookup results.  This
+allows a certificate produced while constructing one subtree to be transported
+across later array growth and disjoint node updates. -/
+theorem HenselExtractInvariant.of_getElem?_eq
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (before after : Array HenselNode)
+    (hlookup : ∀ index : Nat, after[index]? = before[index]?)
+    (hinvariant : HenselExtractInvariant tree before) :
+    HenselExtractInvariant tree after := by
+  have harray : after = before := by
+    apply Array.toList_inj.mp
+    apply List.ext_getElem?
+    intro index
+    simpa only [Array.getElem?_toList] using hlookup index
+  simpa [harray] using hinvariant
+
+/-- An explicit, constructor-shaped extraction certificate.  Unlike the
+recursor-normal form above, this relation supports ordinary induction and is
+therefore convenient for proving preservation across array-prefix growth. -/
+inductive HenselExtractCertificate :
+    Generated.StrictHensel.HenselLiftTree → Array HenselNode → Prop
+  | node
+      (index : Nat)
+      (left right : Option Generated.StrictHensel.HenselLiftTree)
+      (nodes : Array HenselNode) (value : HenselNode)
+      (hnode : nodes[index]? = some value)
+      (hleft : liftChildMatches value.left left)
+      (hright : liftChildMatches value.right right)
+      (hleftCertificate : ∀ child, left = some child →
+        HenselExtractCertificate child nodes)
+      (hrightCertificate : ∀ child, right = some child →
+        HenselExtractCertificate child nodes) :
+      HenselExtractCertificate (.node index left right) nodes
+
+theorem HenselExtractCertificate.toInvariant
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode}
+    (hcertificate : HenselExtractCertificate tree nodes) :
+    HenselExtractInvariant tree nodes := by
+  induction hcertificate with
+  | node index left right nodes value hnode hleft hright
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      simp only [HenselExtractInvariant]
+      refine ⟨value, hnode, hleft, hright, ?_, ?_⟩
+      · cases left with
+        | none => trivial
+        | some child => exact leftIH child rfl
+      · cases right with
+        | none => trivial
+        | some child => exact rightIH child rfl
+
+/-- Prefix preservation relation used by the generated append-only tree
+builder: every lookup that succeeded before has the identical result after. -/
+def HenselTreePrefix (before after : Array HenselNode) : Prop :=
+  before.size ≤ after.size ∧
+  ∀ index (hindex : index < before.size), after[index]? = before[index]?
+
+theorem HenselExtractCertificate.of_prefix
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {before after : Array HenselNode}
+    (hprefix : HenselTreePrefix before after)
+    (hcertificate : HenselExtractCertificate tree before) :
+    HenselExtractCertificate tree after := by
+  induction hcertificate with
+  | node index left right nodes value hnode hleft hright
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        have : nodes[index]? = none :=
+          Array.getElem?_eq_none (by omega)
+        rw [this] at hnode
+        contradiction
+      exact .node index left right after value
+        ((hprefix.2 index hindex).trans hnode) hleft hright
+        (fun child hchild => leftIH child hchild hprefix)
+        (fun child hchild => rightIH child hchild hprefix)
+
 theorem henselExtract_run_of_parts
     (index : Nat)
     (left right : Option Generated.StrictHensel.HenselLiftTree)

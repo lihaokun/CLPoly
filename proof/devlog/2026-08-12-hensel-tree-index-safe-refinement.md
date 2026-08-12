@@ -33,3 +33,17 @@ Verification:
 The remaining Hensel work is the semantic topology bridge from the constructed
 array to the lift/extraction traversal, followed by composition of the complete
 generated Hensel entry theorem and its Pipeline contract.
+
+## Follow-up: constructor-shaped extraction certificates
+
+The topology bridge now has an explicit inductive certificate whose node
+constructor records the actual `nodes[index]?` result, both raw child-pointer
+matches, and certificates for every present child.  It converts directly to
+the existing `HenselExtractInvariant` and is preserved only across genuine
+array-prefix growth that leaves every old successful lookup unchanged.  This
+is the transport mechanism needed when the generated builder finishes a left
+subtree and then appends the disjoint right subtree.
+
+The module again passes `lake build CLPoly.Refinement.Hensel`.  The certificate
+conversion is axiom-free; prefix transport uses only `propext` and
+`Quot.sound` and introduces no project axiom or placeholder.

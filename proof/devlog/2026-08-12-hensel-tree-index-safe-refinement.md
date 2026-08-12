@@ -47,3 +47,11 @@ subtree and then appends the disjoint right subtree.
 The module again passes `lake build CLPoly.Refinement.Hensel`.  The certificate
 conversion is axiom-free; prefix transport uses only `propext` and
 `Quot.sound` and introduces no project axiom or placeholder.
+
+The certificate is additionally indexed by the least node index belonging to
+its subtree.  A `HenselTreePreservesFrom` transport theorem therefore permits
+the generated builder to update a smaller parent index while preserving every
+lookup in the already-built child subtree.  This matches the source preorder
+allocation discipline and rules out transporting a certificate across a write
+to any node that the certificate actually covers.  The strengthened module
+passes the same full Hensel build.

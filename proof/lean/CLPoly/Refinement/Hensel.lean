@@ -3036,28 +3036,29 @@ theorem HenselExtractInvariant.of_getElem?_eq
 /-- An explicit, constructor-shaped extraction certificate.  Unlike the
 recursor-normal form above, this relation supports ordinary induction and is
 therefore convenient for proving preservation across array-prefix growth. -/
-inductive HenselExtractCertificate :
+inductive HenselExtractCertificate (lower : Nat) :
     Generated.StrictHensel.HenselLiftTree → Array HenselNode → Prop
   | node
       (index : Nat)
       (left right : Option Generated.StrictHensel.HenselLiftTree)
       (nodes : Array HenselNode) (value : HenselNode)
+      (hlower : lower ≤ index)
       (hnode : nodes[index]? = some value)
       (hleft : liftChildMatches value.left left)
       (hright : liftChildMatches value.right right)
       (hleftCertificate : ∀ child, left = some child →
-        HenselExtractCertificate child nodes)
+        HenselExtractCertificate lower child nodes)
       (hrightCertificate : ∀ child, right = some child →
-        HenselExtractCertificate child nodes) :
-      HenselExtractCertificate (.node index left right) nodes
+        HenselExtractCertificate lower child nodes) :
+      HenselExtractCertificate lower (.node index left right) nodes
 
 theorem HenselExtractCertificate.toInvariant
     {tree : Generated.StrictHensel.HenselLiftTree}
     {nodes : Array HenselNode}
-    (hcertificate : HenselExtractCertificate tree nodes) :
+    {lower : Nat} (hcertificate : HenselExtractCertificate lower tree nodes) :
     HenselExtractInvariant tree nodes := by
   induction hcertificate with
-  | node index left right nodes value hnode hleft hright
+  | node index left right nodes value hlower hnode hleft hright
       hleftCertificate hrightCertificate leftIH rightIH =>
       simp only [HenselExtractInvariant]
       refine ⟨value, hnode, hleft, hright, ?_, ?_⟩
@@ -3074,14 +3075,20 @@ def HenselTreePrefix (before after : Array HenselNode) : Prop :=
   before.size ≤ after.size ∧
   ∀ index (hindex : index < before.size), after[index]? = before[index]?
 
+def HenselTreePreservesFrom (lower : Nat)
+    (before after : Array HenselNode) : Prop :=
+  before.size ≤ after.size ∧
+  ∀ index, lower ≤ index → index < before.size →
+    after[index]? = before[index]?
+
 theorem HenselExtractCertificate.of_prefix
     {tree : Generated.StrictHensel.HenselLiftTree}
     {before after : Array HenselNode}
     (hprefix : HenselTreePrefix before after)
-    (hcertificate : HenselExtractCertificate tree before) :
-    HenselExtractCertificate tree after := by
+    {lower : Nat} (hcertificate : HenselExtractCertificate lower tree before) :
+    HenselExtractCertificate lower tree after := by
   induction hcertificate with
-  | node index left right nodes value hnode hleft hright
+  | node index left right nodes value hlower hnode hleft hright
       hleftCertificate hrightCertificate leftIH rightIH =>
       have hindex : index < nodes.size := by
         by_contra hnot
@@ -3089,10 +3096,41 @@ theorem HenselExtractCertificate.of_prefix
           Array.getElem?_eq_none (by omega)
         rw [this] at hnode
         contradiction
-      exact .node index left right after value
+      exact .node index left right after value hlower
         ((hprefix.2 index hindex).trans hnode) hleft hright
         (fun child hchild => leftIH child hchild hprefix)
         (fun child hchild => rightIH child hchild hprefix)
+
+theorem HenselExtractCertificate.of_preservesFrom
+    {lower : Nat} {tree : Generated.StrictHensel.HenselLiftTree}
+    {before after : Array HenselNode}
+    (hpreserves : HenselTreePreservesFrom lower before after)
+    (hcertificate : HenselExtractCertificate lower tree before) :
+    HenselExtractCertificate lower tree after := by
+  induction hcertificate with
+  | node index left right nodes value hlower hnode hleft hright
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        have : nodes[index]? = none := Array.getElem?_eq_none (by omega)
+        rw [this] at hnode
+        contradiction
+      exact .node index left right after value hlower
+        ((hpreserves.2 index hlower hindex).trans hnode) hleft hright
+        (fun child hchild => leftIH child hchild hpreserves)
+        (fun child hchild => rightIH child hchild hpreserves)
+
+theorem HenselExtractCertificate.lower_mono
+    {lower lower' : Nat} {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode} (hlower : lower' ≤ lower)
+    (hcertificate : HenselExtractCertificate lower tree nodes) :
+    HenselExtractCertificate lower' tree nodes := by
+  induction hcertificate with
+  | node index left right nodes value hindexLower hnode hleft hright
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      exact .node index left right nodes value (by omega) hnode hleft hright
+        (fun child hchild => leftIH child hchild)
+        (fun child hchild => rightIH child hchild)
 
 theorem henselExtract_run_of_parts
     (index : Nat)

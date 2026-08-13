@@ -57,6 +57,21 @@ composition boundary.  Unlike the older function-parametric theorem, it takes
 the concrete SQF list and a dependent list of concrete DDF/EDF expansions;
 its conclusion refers to exactly their flattened output.
 
+## End-to-end composition finding
+
+While proving the middle DDF-to-EDF loop, the proof detected that the first
+strict generator revision attached the DDF degree `gk_dk.second` to final
+factors.  The C++ source attaches the outer SQF multiplicity `sj_ej.second`.
+The generated middle loop now carries that outer multiplicity explicitly and
+uses it in the innermost append loop.  This is a semantic correction, not a
+proof-only rewrite.
+
+The refinement layer now also contains proof-erased DDF/EDF call adapters and
+a proved `factorLoop1_refines` theorem.  Every factor in its result originates
+from a successful strict EDF execution for an element of the actual strict DDF
+output, and the theorem proves both exact decoding and product/irreducibility
+properties.
+
 ## Files
 
 - `proof/cpp2lean_v2/tests/build_strict_factor_zp.py`

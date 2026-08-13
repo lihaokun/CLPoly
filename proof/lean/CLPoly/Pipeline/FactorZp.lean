@@ -37,7 +37,7 @@ private lemma poly_unit_eq_C
   exact eq_C_of_natDegree_eq_zero (natDegree_coe_units u)
 
 /-- 首一多项式的 Associated 即相等 -/
-private lemma eq_of_associated_monic
+lemma eq_of_associated_monic
     (a b : Polynomial (ZMod p)) (ha : Monic a) (hb : Monic b)
     (h : Associated a b) : a = b := by
   -- Associated a b → ∃ u, a * ↑u = b
@@ -55,7 +55,7 @@ private lemma eq_of_associated_monic
   exact hu
 
 /-- 首一多项式列表的积是首一 -/
-private lemma monic_list_prod
+lemma monic_list_prod
     (l : List (Polynomial (ZMod p))) (h : ∀ q ∈ l, Monic q) :
     Monic l.prod := by
   induction l with

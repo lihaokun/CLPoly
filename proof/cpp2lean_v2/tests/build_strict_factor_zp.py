@@ -57,7 +57,8 @@ decreasing_by omega
 
 /-- Exact lowering of the DDF-component loop. -/
 def _loop___factor_Zp_1_raw_ir {State : Type} (ops : FactorZpRawOps State)
-    (components : Array (SparsePolyZp × UInt64)) (index : Nat) (rng : State)
+    (components : Array (SparsePolyZp × UInt64)) (multiplicity : UInt64)
+    (index : Nat) (rng : State)
     (result : Array (SparsePolyZp × UInt64)) :
     RawExec (Array (SparsePolyZp × UInt64) × State) :=
   if hindex : index < components.size then
@@ -65,8 +66,8 @@ def _loop___factor_Zp_1_raw_ir {State : Type} (ops : FactorZpRawOps State)
     match ops.edf #[] component.1 component.2 rng with
     | .error fault => .error fault
     | .ok (factors, rng') =>
-      _loop___factor_Zp_1_raw_ir ops components (index + 1) rng'
-        (_loop___factor_Zp_0_raw_ir factors component.2 0 result)
+      _loop___factor_Zp_1_raw_ir ops components multiplicity (index + 1) rng'
+        (_loop___factor_Zp_0_raw_ir factors multiplicity 0 result)
   else
     .ok (result, rng)
 termination_by components.size - index
@@ -82,7 +83,7 @@ def _loop___factor_Zp_2_raw_ir {State : Type} (ops : FactorZpRawOps State)
     match ops.ddf factor.1 with
     | .error fault => .error fault
     | .ok components =>
-      match _loop___factor_Zp_1_raw_ir ops components 0 rng result with
+      match _loop___factor_Zp_1_raw_ir ops components factor.2 0 rng result with
       | .error fault => .error fault
       | .ok (result', rng') =>
         _loop___factor_Zp_2_raw_ir ops squarefreeFactors (index + 1) rng'

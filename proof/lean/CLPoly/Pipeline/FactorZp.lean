@@ -87,7 +87,7 @@ private lemma list_prod_flatMap {α : Type*}
 
 /-- 对单个首一无平方多项式，DDF + EDF 给出完整不可约分解。
     关键步骤：DDF 输出首一 + EDF 输出首一 → Associated 即相等 → 乘积精确匹配 -/
-private lemma ddf_edf_combine
+lemma ddf_edf_combine
     (g : Polynomial (ZMod p)) (hm : Monic g) (hsq : Squarefree g)
     (ddf : Polynomial (ZMod p) → List (Polynomial (ZMod p) × ℕ))
     (hddf : Monic g → Squarefree g → DDFCorrect g (ddf g))
@@ -146,6 +146,61 @@ private lemma ddf_edf_combine
 -- ============================================================
 -- 主定理：SQF + DDF + EDF → FactorZpCorrect
 -- ============================================================
+
+/-- Concrete-list form of the Zp pipeline theorem.  This is the composition
+boundary used by strict L1 refinement: `expanded ge` is the list returned by
+the actual DDF/EDF executions for the concrete SQF component `ge`, rather than
+an abstract factorization function or an existence witness. -/
+theorem factor_Zp_correct_of_concrete_components
+    (f : Polynomial (ZMod p))
+    (sqfResult : List (Polynomial (ZMod p) × ℕ))
+    (hsqf : SquarefreeDecomp f sqfResult)
+    (expanded : (ge : Polynomial (ZMod p) × ℕ) →
+      ge ∈ sqfResult → List (Polynomial (ZMod p)))
+    (hexpanded : ∀ ge hge,
+      ge.1 = (expanded ge hge).prod ∧
+      ∀ q ∈ expanded ge hge, Irreducible q ∧ Monic q) :
+    ∃ lc : ZMod p,
+      FactorZpCorrect f lc
+        (sqfResult.attach.flatMap fun tagged =>
+          (expanded tagged.1 tagged.2).map fun q => (q, tagged.1.2)) := by
+  obtain ⟨sqfAssoc, _, sqfMultiplicity, _⟩ := hsqf
+  let factors := sqfResult.attach.flatMap fun tagged =>
+    (expanded tagged.1 tagged.2).map fun q => (q, tagged.1.2)
+  have key : (factors.map (fun pr => pr.1 ^ pr.2)).prod =
+      (sqfResult.map (fun pr => pr.1 ^ pr.2)).prod := by
+    simp only [factors, List.map_flatMap, List.map_map, Function.comp_def,
+      list_prod_flatMap]
+    rw [show sqfResult.map (fun pr => pr.1 ^ pr.2) =
+        sqfResult.attach.map (fun tagged => tagged.1.1 ^ tagged.1.2) by
+      exact (List.attach_map_val
+        (l := sqfResult) (f := fun pr => pr.1 ^ pr.2)).symm]
+    congr 1
+    apply List.map_congr_left
+    intro tagged htagged
+    rw [← list_prod_pow, ← (hexpanded tagged.1 tagged.2).1]
+  have hassociated : Associated f
+      (factors.map (fun pr => pr.1 ^ pr.2)).prod := by
+    rw [key]
+    exact sqfAssoc
+  obtain ⟨unit, hunit⟩ := hassociated
+  obtain ⟨lc, _, hlc⟩ := poly_unit_eq_C unit⁻¹
+  refine ⟨lc, ?_, ?_⟩
+  · change f = C lc * (factors.map (fun pr => pr.1 ^ pr.2)).prod
+    calc
+      f = f * 1 := (mul_one f).symm
+      _ = f * ((↑unit : Polynomial (ZMod p)) * ↑(unit⁻¹)) := by simp
+      _ = f * ↑unit * ↑(unit⁻¹) := (mul_assoc _ _ _).symm
+      _ = (factors.map (fun pr => pr.1 ^ pr.2)).prod * ↑(unit⁻¹) := by
+        rw [hunit]
+      _ = (factors.map (fun pr => pr.1 ^ pr.2)).prod * C lc := by rw [hlc]
+      _ = C lc * (factors.map (fun pr => pr.1 ^ pr.2)).prod := mul_comm _ _
+  · intro pr hpr
+    change pr ∈ factors at hpr
+    simp only [factors, List.mem_flatMap, List.mem_map] at hpr
+    obtain ⟨tagged, _, q, hq, rfl⟩ := hpr
+    have hquality := (hexpanded tagged.1 tagged.2).2 q hq
+    exact ⟨hquality.1, hquality.2, sqfMultiplicity tagged.1 tagged.2⟩
 
 /-- Zp[x] 因式分解的顶层正确性：
     假设 SQF、DDF、EDF 各自正确，则组合结果是完整因式分解。

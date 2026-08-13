@@ -52,8 +52,14 @@ predicate cannot produce or alter execution results.  This permits the next
 step to instantiate the predicate with product and irreducibility facts while
 keeping every executable output tied to a strict L1 run equation.
 
+`factor_Zp_correct_of_concrete_components` provides the matching L2 algebraic
+composition boundary.  Unlike the older function-parametric theorem, it takes
+the concrete SQF list and a dependent list of concrete DDF/EDF expansions;
+its conclusion refers to exactly their flattened output.
+
 ## Files
 
 - `proof/cpp2lean_v2/tests/build_strict_factor_zp.py`
 - `proof/lean/CLPoly/Generated/StrictFactorZp.lean`
 - `proof/lean/CLPoly/Refinement/FactorZp.lean`
+- `proof/lean/CLPoly/Pipeline/FactorZp.lean`

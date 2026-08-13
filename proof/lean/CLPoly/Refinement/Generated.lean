@@ -213,4 +213,31 @@ theorem __hensel_tree_build_raw_ir_refines
   exact Refinement.StrictHensel.strictHenselTreeBuildRawIR_refines_topology_root this hcfg h2p hp2 mulProvider factors hfactors
     hfactorsNonempty hpairwise htwo hfitsInt32
 
+/-- Generated public contract for the original C++
+`__hensel_lift_upoly` entry.  The strict generated L1 program executes target
+selection, coefficient adjustment, tree construction, quadratic lifting,
+leaf extraction, and normalization; the L2 trace records every actual stage
+result without an oracle, fallback, or fuel parameter. -/
+theorem __hensel_lift_upoly_raw_ir_refines
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (aTarget : Int32)
+    (hinvariant : StrictHensel.HenselLiftEntryInvariant this termination
+      mulProvider f factors aTarget) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_upoly_raw_ir
+          (StrictHensel.strictHenselRawOps termination)
+          (StrictHensel.strictHenselTreeBuildRawOps this mulProvider)
+          f factors this._p aTarget
+            (Nat.Prime.two_le (Fact.out : Nat.Prime this._p.toNat)) =
+              .ok output ∧
+      StrictHensel.HenselLiftEntryCorrect termination f factors this._p
+        aTarget output := by
+  exact Refinement.StrictHensel.__hensel_lift_upoly_raw_ir_refines this hcfg h2p hp2 termination mulProvider f factors
+    aTarget hinvariant
+
 end Refinement

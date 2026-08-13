@@ -994,6 +994,24 @@ REFINEMENT_MAP = {
             "kind": "strict_hensel_tree_build",
         },
     },
+    "__hensel_lift_upoly": {
+        "l1_name": "__hensel_lift_upoly_raw_ir",
+        "l2_name": "HenselLiftEntryCorrect",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "complete quadratic Hensel lift over integer polynomials",
+        "verified_contract": {
+            "theorem_name": "__hensel_lift_upoly_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "__hensel_lift_upoly_raw_ir_refines"
+            ),
+            "kind": "strict_hensel_lift_upoly",
+        },
+    },
     "__make_zp": {
         "l1_name": "__make_zp_ir",
         "l2_name": "Zp.ofInt",

@@ -8578,6 +8578,45 @@ def HenselLiftEntryCorrect
     HenselNormalizeCorrect extracted outputM output.1 ∧
     output.2 = outputM
 
+private theorem henselLiftUpolyRawIR_run_of_stages
+    (stepOps : Generated.StrictHensel.HenselStepRawOps)
+    (treeOps : Generated.StrictHensel.HenselTreeBuildRawOps)
+    (f : SparsePolyZZ) (factors adjusted : Array SparsePolyZp)
+    (p : UInt64) (aTarget : Int32) (hp : 2 ≤ p.toNat)
+    (target : ZZ) (nodes liftedNodes : Array HenselNode)
+    (outputM : Nat) (extracted normalized : Array SparsePolyZZ)
+    (hcount : 2 ≤ factors.size)
+    (htarget : Generated.StrictHensel.__hensel_lift_target_raw_ir
+      f p aTarget = .ok target)
+    (htargetNonnegative : 0 ≤ target)
+    (hadjust : Generated.StrictHensel.__hensel_adjust_first_factor_raw_ir
+      f factors p = .ok adjusted)
+    (hbuild : Generated.StrictHensel.__hensel_tree_build_raw_ir
+      treeOps adjusted p = .ok nodes)
+    (hlift : Generated.StrictHensel.__hensel_lift_loop_raw_ir stepOps
+      (Generated.StrictHensel.henselTreeBuildTopologyRawIR 0 factors.size 0)
+      f target.toNat p.toNat hp nodes = .ok (liftedNodes, outputM))
+    (hextract : Generated.StrictHensel.__hensel_extract_factors_raw_ir
+      (Generated.StrictHensel.henselTreeBuildTopologyRawIR 0 factors.size 0)
+      liftedNodes #[] = .ok extracted)
+    (hnormalize : Generated.StrictHensel.__hensel_normalize_result_raw_ir
+      extracted outputM = .ok normalized) :
+    Generated.StrictHensel.__hensel_lift_upoly_raw_ir stepOps treeOps
+      f factors p aTarget hp = .ok (normalized, outputM) := by
+  rw [Generated.StrictHensel.__hensel_lift_upoly_raw_ir]
+  simp only [hcount, ↓reduceIte, pure, Except.pure, htarget, bind,
+    Except.bind]
+  split
+  · simp only [hadjust, Except.bind]
+    rw [hbuild]
+    simp only [Except.bind]
+    rw [hlift]
+    simp only [Except.bind]
+    rw [hextract]
+    simp only [Except.bind]
+    rw [hnormalize]
+  · contradiction
+
 /-- Genuine raw-to-safe and L1-to-L2 composition theorem for the full C++
 Hensel entry.  Every intermediate is obtained from the strict generated raw
 program before its invariant is instantiated. -/
@@ -8616,7 +8655,7 @@ theorem __hensel_lift_upoly_raw_ir_refines
           by_contra hnot
           rw [Array.getElem?_eq_none (by omega)] at hfirst
           contradiction
-        exact Array.size_set! factors 0 value
+        simp [Array.set!, hindex]
   let tree := henselTreeBuildTopology 0 factors.size 0
   rcases strictHenselTreeBuildRawIR_refines_topology_root this hcfg h2p hp2
       mulProvider adjusted (hinvariant.adjustedCanonical adjusted hadjustCorrect)
@@ -8648,20 +8687,13 @@ theorem __hensel_lift_upoly_raw_ir_refines
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
       htargetCorrect, hadjustCorrect, hliftCorrect, hextractCorrect,
       hnormalizeCorrect, rfl⟩⟩
-  unfold Generated.StrictHensel.__hensel_lift_upoly_raw_ir
-  simp only [hinvariant.factorCount, ↓reduceIte, pure, Except.pure,
-    htargetRun, bind, Except.bind]
-  split
-  · rename_i hnonnegative
-    change (match Generated.StrictHensel.__hensel_adjust_first_factor_raw_ir
-      f factors this._p with
-      | .error fault => .error fault
-      | .ok adjusted => _) = .ok (normalized, outputM)
-    rw [hadjustRun]
-    dsimp only
-    rw [htreeEq, hnodesRun, hliftRun, hextractRun, hnormalizeRun]
-  · rename_i hnegative
-    contradiction
+  apply henselLiftUpolyRawIR_run_of_stages
+    (hcount := hinvariant.factorCount) (htarget := htargetRun)
+    (htargetNonnegative := htargetNonnegative) (hadjust := hadjustRun)
+    (hbuild := hnodesRun)
+  · simpa [htreeEq] using hliftRun
+  · simpa [htreeEq] using hextractRun
+  · exact hnormalizeRun
 
 private theorem henselDivmodVHCRefinesAux
     (this : DenseUPolyZp) (dividend divisor : SparsePolyZp)

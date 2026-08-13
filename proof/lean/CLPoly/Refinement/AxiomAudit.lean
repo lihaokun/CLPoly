@@ -1,0 +1,6 @@
+import CLPoly.Refinement.Generated
+
+#print axioms Refinement.__squarefree_Zp_raw_ir_refines_sqfZp
+#print axioms Refinement.__ddf_Zp_raw_ir_refines_ddf
+#print axioms Refinement.__edf_Zp_raw_ir_refines_edf
+#print axioms Refinement.__hensel_lift_upoly_raw_ir_refines

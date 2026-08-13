@@ -608,6 +608,32 @@ theorem strictHenselTreeBuildStage
   exact Refinement.__hensel_tree_build_raw_ir_refines this hcfg h2p hp2
     mulProvider factors hfactors hfactorsNonempty hpairwise htwo hfitsInt32
 
+/-- Pipeline boundary for the complete generated C++
+`__hensel_lift_upoly` entry.  It exposes the actual strict L1 execution and
+the full target/adjust/build/lift/extract/normalize L2 trace. -/
+theorem strictHenselLiftUpolyStage
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (h2p : 2 * this._p.toNat ≤ UInt64.size)
+    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (mulProvider : Refinement.StrictDDF.RawMulWorkspaceProvider this)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (aTarget : Int32)
+    (hinvariant : Refinement.StrictHensel.HenselLiftEntryInvariant this
+      termination mulProvider f factors aTarget) :
+    ∃ output,
+      Generated.StrictHensel.__hensel_lift_upoly_raw_ir
+          (Refinement.StrictHensel.strictHenselRawOps termination)
+          (Refinement.StrictHensel.strictHenselTreeBuildRawOps
+            this mulProvider)
+          f factors this._p aTarget
+            (Nat.Prime.two_le (Fact.out : Nat.Prime this._p.toNat)) =
+              .ok output ∧
+      Refinement.StrictHensel.HenselLiftEntryCorrect termination f factors
+        this._p aTarget output := by
+  exact Refinement.__hensel_lift_upoly_raw_ir_refines this hcfg h2p hp2
+    termination mulProvider f factors aTarget hinvariant
+
 /- The next end-to-end wrapper must compose these concrete stage executions.
 It is deliberately not reconstructed from the L2-only existence functions in
 `FactorZpInstantiate` or `FactorZZInstantiate`. -/

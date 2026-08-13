@@ -37,7 +37,23 @@ side of a genuine end-to-end C++ L1-to-L2 refinement theorem.
 - `python3 cpp2lean_v2/tests/build_strict_factor_zp.py --check`
 - `lake env lean CLPoly/Generated/StrictFactorZp.lean`
 
+## Follow-up refinement infrastructure
+
+`CLPoly.Refinement.FactorZp` now proves directly over the generated loops:
+
+- the innermost loop appends exactly the concrete EDF factors with the SQF
+  multiplicity attached;
+- the DDF-component loop can advance only from an actual successful EDF run;
+- the SQF-component loop can advance only from actual successful DDF and
+  nested EDF-loop runs.
+
+The latter two theorems are parametric in an accumulator predicate, but that
+predicate cannot produce or alter execution results.  This permits the next
+step to instantiate the predicate with product and irreducibility facts while
+keeping every executable output tied to a strict L1 run equation.
+
 ## Files
 
 - `proof/cpp2lean_v2/tests/build_strict_factor_zp.py`
 - `proof/lean/CLPoly/Generated/StrictFactorZp.lean`
+- `proof/lean/CLPoly/Refinement/FactorZp.lean`

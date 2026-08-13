@@ -4,6 +4,7 @@ import CLPoly.Generated.StrictPrimeEnumeration
 import CLPoly.Refinement.FactorZp
 import CLPoly.Refinement.PolynomialMod
 import Mathlib.FieldTheory.Separable
+import Mathlib.Tactic.NormNum.Prime
 
 set_option autoImplicit false
 
@@ -73,6 +74,18 @@ but receives no polynomial and therefore cannot encode a factorization. -/
 structure CandidatePhysicalProvider where
   atPrime : (p : UInt64) → Nat.Prime p.toNat → CandidatePhysical p
 
+/-- Concrete per-prime workspaces and well-founded EDF certificate used by the
+runtime callback.  They are indexed only by the machine prime, never by an L2
+factorization witness. -/
+structure CandidateRuntimeProvider {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State) where
+  physical : (p : UInt64) → Nat.Prime p.toNat → CandidatePhysical p
+  termination : ∀ p hp,
+    let candidate := physical p hp
+    letI : Fact (Nat.Prime candidate.dense._p.toNat) := ⟨candidate.prime⟩
+    Generated.StrictEDF.EDFTermination
+      (StrictEDF.strictEDFRawOps engine candidate.dense candidate.providers)
+
 instance candidateFact {p : UInt64} (physical : CandidatePhysical p) :
     Fact (Nat.Prime physical.dense._p.toNat) := by
   exact ⟨physical.prime⟩
@@ -96,6 +109,22 @@ noncomputable def strictCandidateRawOps {State : Type}
   ddf := StrictFactorZp.strictDDFCall physical.dense physical.providers
   edf := StrictFactorZp.strictEDFCall engine physical.dense
     physical.providers edfTermination }
+
+/-- Actual runtime callback: reject a non-prime machine word and otherwise
+execute the complete strict candidate body at that very word. -/
+noncomputable def concreteTryCandidate {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : CandidateRuntimeProvider engine) :
+    SparsePolyZZ → Int64 → ZZ → UInt64 → State →
+      RawExec (Generated.StrictSelectPrime.CandidateResult State) :=
+  fun f degF lcF p rng =>
+    if hp : Nat.Prime p.toNat then
+      let candidate := provider.physical p hp
+      letI : Fact (Nat.Prime candidate.dense._p.toNat) := ⟨candidate.prime⟩
+      Generated.StrictSelectPrime.tryCandidateRaw
+        (strictCandidateRawOps engine candidate (provider.termination p hp))
+        f degF lcF p rng
+    else .error .assertionFailure
 
 noncomputable def factorArrayToL2 (p : Nat) (factors : Array SparsePolyZp) :
     List (Polynomial (ZMod p)) :=
@@ -730,5 +759,67 @@ theorem tryCandidateRaw_factored_refines {State : Type}
                     (SparsePolyZp.toPoly p.toNat rawMod).natDegree := by
                 simpa using hmonicDegree
               exact lt_trans (hmonicDegreeP.trans_lt hrawDegree) (by norm_num))
+
+/-- The concrete runtime callback satisfies the outer loop's execution
+contract by running the already-refined strict candidate body at the prime
+proved by the generated iterator. -/
+theorem concreteTryCandidate_correct {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : CandidateRuntimeProvider engine)
+    (f : SparsePolyZZ) (degF : Int64) (lcF : ZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hdegreeBound : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hlcSemantic : ∀ p : UInt64, Nat.Prime p.toNat →
+      (lcF : ZMod p.toNat) =
+        ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat)) :
+    CandidateExecutionCorrect (concreteTryCandidate engine provider)
+      f degF lcF := by
+  intro p rng fp factors rng' hp hrun
+  unfold concreteTryCandidate at hrun
+  simp only [dif_pos hp] at hrun
+  let candidate := provider.physical p hp
+  letI : Fact (Nat.Prime candidate.dense._p.toNat) := ⟨candidate.prime⟩
+  exact tryCandidateRaw_factored_refines engine candidate
+    (provider.termination p hp) f degF lcF rng rng' hcanonical
+    hdegreeBound (hlcSemantic p hp) fp factors hrun
+
+/-- Genuine L1→L2 refinement of the generated original C++
+`__select_prime` entry, instantiated with the concrete modular
+reduction/GCD/DDF/EDF callback. -/
+theorem __select_prime_raw_ir_refines {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : CandidateRuntimeProvider engine) (initialRng : State)
+    (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegreeBound : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hlcSemantic : ∀ p : UInt64, Nat.Prime p.toNat →
+      ((SparsePolyZZ.front! f).2 : ZMod p.toNat) =
+        ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat))
+    (result : PrimeSelectionResult)
+    (hrun : Generated.StrictSelectPrime.__select_prime_raw_ir
+      (selectPrimeRawOps (concreteTryCandidate engine provider))
+      (selectPrimeTermination (concreteTryCandidate engine provider))
+      initialRng useLargePrime f = .ok result) :
+    SelectionCorrect (SparsePolyZZ.toPoly f) result := by
+  unfold Generated.StrictSelectPrime.__select_prime_raw_ir at hrun
+  split at hrun
+  next hguard => contradiction
+  next hguard =>
+    let initialPrime : UInt64 :=
+      if useLargePrime then (18446744073709551615 : UInt64) - 58 else 2
+    have hinitialPrime : Nat.Prime initialPrime.toNat := by
+      cases useLargePrime <;> native_decide
+    apply selectPrimeLoop_refines
+      (tryCandidate := concreteTryCandidate engine provider)
+      f (get_deg f) (SparsePolyZZ.front! f).2 useLargePrime 3 (by omega)
+      (concreteTryCandidate_correct engine provider f (get_deg f)
+        (SparsePolyZZ.front! f).2 hcanonical hdegreeBound hlcSemantic)
+      hdegree
+      { tried := 0, p := initialPrime, rng := initialRng,
+        bestCount := 18446744073709551615, best := default }
+      hinitialPrime (by left; exact ⟨rfl, rfl⟩) result
+    simpa [initialPrime] using hrun
 
 end Refinement.StrictSelectPrime

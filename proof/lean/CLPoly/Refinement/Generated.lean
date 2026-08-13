@@ -5,6 +5,7 @@ import CLPoly.Refinement.DDF
 import CLPoly.Refinement.EDF
 import CLPoly.Refinement.FactorZp
 import CLPoly.Refinement.Hensel
+import CLPoly.Refinement.SelectPrime
 import CLPoly.Refinement.StrictSquarefreeGenerated
 
 set_option autoImplicit false
@@ -14,6 +15,32 @@ open Polynomial
 open CLPoly.Math
 
 namespace Refinement
+
+/-- Generated public contract for the original C++
+`__select_prime` entry.  The strict L1 program uses well-founded machine-prime
+enumeration and executes modular reduction, derivative/GCD, make-monic, DDF,
+and EDF for every accepted candidate. -/
+theorem __select_prime_raw_ir_refines_SelectionCorrect
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegreeBound : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hlcSemantic : ∀ p : UInt64, Nat.Prime p.toNat →
+      ((SparsePolyZZ.front! f).2 : ZMod p.toNat) =
+        ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat))
+    (result : PrimeSelectionResult)
+    (hrun : Generated.StrictSelectPrime.__select_prime_raw_ir
+      (StrictSelectPrime.selectPrimeRawOps
+        (StrictSelectPrime.concreteTryCandidate engine provider))
+      (StrictSelectPrime.selectPrimeTermination
+        (StrictSelectPrime.concreteTryCandidate engine provider))
+      initialRng useLargePrime f = .ok result) :
+    StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) result := by
+  exact Refinement.StrictSelectPrime.__select_prime_raw_ir_refines engine provider initialRng useLargePrime f
+    hcanonical hnonempty hdegree hdegreeBound hlcSemantic result hrun
 
 /-- Generated public end-to-end contract for the original C++ `__factor_Zp`
 entry.  Its executable side is the source-shaped strict L1 entry, including

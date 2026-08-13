@@ -254,6 +254,33 @@ def _emit_verified_contract(info: dict) -> str:
     contract = info["verified_contract"]
     theorem_name = contract["theorem_name"]
     proof_theorem = contract["proof_theorem"]
+    if contract["kind"] == "strict_select_prime":
+        return f'''/-- Generated public contract for the original C++
+`__select_prime` entry.  The strict L1 program uses well-founded machine-prime
+enumeration and executes modular reduction, derivative/GCD, make-monic, DDF,
+and EDF for every accepted candidate. -/
+theorem {theorem_name}
+    {{State : Type}} (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegreeBound : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hlcSemantic : ∀ p : UInt64, Nat.Prime p.toNat →
+      ((SparsePolyZZ.front! f).2 : ZMod p.toNat) =
+        ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat))
+    (result : PrimeSelectionResult)
+    (hrun : Generated.StrictSelectPrime.__select_prime_raw_ir
+      (StrictSelectPrime.selectPrimeRawOps
+        (StrictSelectPrime.concreteTryCandidate engine provider))
+      (StrictSelectPrime.selectPrimeTermination
+        (StrictSelectPrime.concreteTryCandidate engine provider))
+      initialRng useLargePrime f = .ok result) :
+    StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) result := by
+  exact {proof_theorem} engine provider initialRng useLargePrime f
+    hcanonical hnonempty hdegree hdegreeBound hlcSemantic result hrun
+'''
     if contract["kind"] == "strict_factor_zp":
         return f"""/-- Generated public end-to-end contract for the original C++ `__factor_Zp`
 entry.  Its executable side is the source-shaped strict L1 entry, including

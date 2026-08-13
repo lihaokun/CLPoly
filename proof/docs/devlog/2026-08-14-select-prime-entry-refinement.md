@@ -19,3 +19,12 @@ No factor witness or `GoodPrime` proposition is present in the runtime
 provider.  No fuel, partial recursion, semantic oracle, or unproved axiom is
 used.  A subsequent representation lemma will derive the currently explicit
 `front!`/L2-leading-coefficient premise from sparse ZZ canonicality.
+
+Pass 9 now emits the public theorem
+`__select_prime_raw_ir_refines_SelectionCorrect` in the centralized
+`Refinement/Generated.lean` module.  The checked output is derived from the
+`REFINEMENT_MAP` entry and is reproducible with
+`check_verified_refinements.py`; it is not a manually maintained wrapper.
+The strict-boundary audit was also corrected to strip nested Lean comments
+before looking for banned constructs, so documentation saying that an
+implementation has no execution counter no longer creates a false failure.

@@ -845,6 +845,24 @@ def is_callee_nonvoid(callee: str, num_args: int) -> bool:
 # ============================================================
 
 REFINEMENT_MAP = {
+    "__select_prime": {
+        "l1_name": "__select_prime_upoly_ir",
+        "l2_name": "SelectionCorrect",
+        "l2_import": "CLPoly.Spec",
+        "refinement_file": "SelectPrime",
+        "result_kind": "conditional",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "为整数多项式选择模素数并完成模分解",
+        "verified_contract": {
+            "theorem_name": "__select_prime_raw_ir_refines_SelectionCorrect",
+            "proof_import": "CLPoly.Refinement.SelectPrime",
+            "proof_theorem": (
+                "Refinement.StrictSelectPrime."
+                "__select_prime_raw_ir_refines"
+            ),
+            "kind": "strict_select_prime",
+        },
+    },
     "__factor_Zp": {
         "l1_name": "__factor_Zp_ir",
         "l2_name": "FactorZpCorrect",

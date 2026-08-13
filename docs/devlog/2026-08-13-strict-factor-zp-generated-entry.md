@@ -72,6 +72,12 @@ from a successful strict EDF execution for an element of the actual strict DDF
 output, and the theorem proves both exact decoding and product/irreducibility
 properties.
 
+`factorLoop2_refines` closes the generated outer SQF loop.  For every concrete
+SQF array element it executes the strict DDF adapter and the proved middle EDF
+loop, preserves the original SQF multiplicity, and proves that the exact
+flattened output has the same powered product as the unvisited SQF suffix with
+irreducible monic factors.
+
 ## Files
 
 - `proof/cpp2lean_v2/tests/build_strict_factor_zp.py`

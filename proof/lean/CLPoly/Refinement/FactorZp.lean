@@ -27,6 +27,14 @@ private theorem monicListProd {p : Nat} [Fact (Nat.Prime p)]
       exact (hmonic head (by simp)).mul
         (ih fun factor hfactor => hmonic factor (by simp [hfactor]))
 
+private theorem listProdPow {p : Nat} [Fact (Nat.Prime p)]
+    (factors : List (Polynomial (ZMod p))) (multiplicity : Nat) :
+    factors.prod ^ multiplicity =
+      (factors.map fun factor => factor ^ multiplicity).prod := by
+  induction factors with
+  | nil => simp
+  | cons head tail ih => simp [mul_pow, ih]
+
 /-- Representation facts established for every concrete SQF output before it
 is passed to the source DDF call. -/
 structure DDFReady (this : DenseUPolyZp) (factor : SparsePolyZp) : Prop where
@@ -447,5 +455,145 @@ theorem factorLoop1_refines {State : Type}
           exact List.drop_eq_nil_iff.mpr (by simpa using hle)
         refine ⟨result, rng, [], rfl, by simp, ?_, by simp⟩
         simp [componentSuffixProduct, hdrop]
+
+/-- A concrete SQF component together with exactly the representation facts
+needed by the strict DDF entry. -/
+structure SQFOutputReady (this : DenseUPolyZp)
+    (item : SparsePolyZp × UInt64) : Prop extends DDFReady this item.1
+
+/-- Product represented by the unvisited suffix of the concrete SQF array. -/
+noncomputable def squarefreeSuffixProduct (p : Nat)
+    (squarefreeFactors : Array (SparsePolyZp × UInt64)) (index : Nat) :
+    Polynomial (ZMod p) :=
+  ((squarefreeFactors.toList.drop index).map fun item =>
+    SparsePolyZp.toPoly p item.1 ^ item.2.toNat).prod
+
+/-- Genuine refinement of the generated outer SQF loop.  The returned list is
+the exact flattening of strict DDF/EDF executions for the concrete unvisited
+SQF suffix, with each original SQF multiplicity preserved. -/
+theorem factorLoop2_refines {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (providers : StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (StrictEDF.strictEDFRawOps engine this providers))
+    (squarefreeFactors : Array (SparsePolyZp × UInt64))
+    (hready : ∀ item ∈ squarefreeFactors.toList,
+      SQFOutputReady this item)
+    (index : Nat) (rng : State)
+    (result : Array (SparsePolyZp × UInt64)) :
+    let ops : Generated.StrictFactorZp.FactorZpRawOps State := {
+      makeMonic := fun _ => .error .assertionFailure
+      squarefree := fun _ => .error .assertionFailure
+      ddf := strictDDFCall this providers
+      edf := strictEDFCall engine this providers termination
+      sortByDegree := fun _ => .error .assertionFailure }
+    ∃ (output : Array (SparsePolyZp × UInt64))
+        (factors : List (Polynomial (ZMod this._p.toNat) × Nat)),
+      Generated.StrictFactorZp._loop___factor_Zp_2_raw_ir
+          ops squarefreeFactors index rng result = .ok output ∧
+      factorResultToL2 this._p.toNat output =
+        factorResultToL2 this._p.toNat result ++ factors ∧
+      squarefreeSuffixProduct this._p.toNat squarefreeFactors index =
+        (factors.map fun item => item.1 ^ item.2).prod ∧
+      ∀ item ∈ factors, Irreducible item.1 ∧ Monic item.1 := by
+  dsimp only
+  induction hmeasure : squarefreeFactors.size - index using
+    Nat.strong_induction_on generalizing index rng result with
+  | h measure ih =>
+      rw [Generated.StrictFactorZp._loop___factor_Zp_2_raw_ir]
+      split
+      next hindex =>
+        let sqfItem := squarefreeFactors[index]
+        have hsqfMem : sqfItem ∈ squarefreeFactors.toList := by
+          exact List.getElem_mem (by simpa using hindex)
+        have hsqfReady := hready sqfItem hsqfMem
+        rcases strictDDFCall_refines this providers sqfItem.1 hsqfReady.toDDFReady with
+          ⟨components, hddfRun, hddfDecode, hedfReady⟩
+        change ∃ output factors,
+          (match strictDDFCall this providers sqfItem.1 with
+            | Except.error fault => Except.error fault
+            | Except.ok components =>
+              match Generated.StrictFactorZp._loop___factor_Zp_1_raw_ir
+                  { makeMonic := fun _ => .error .assertionFailure
+                    squarefree := fun _ => .error .assertionFailure
+                    ddf := strictDDFCall this providers
+                    edf := strictEDFCall engine this providers termination
+                    sortByDegree := fun _ => .error .assertionFailure }
+                  components sqfItem.2 0 rng result with
+              | Except.error fault => Except.error fault
+              | Except.ok (result', rng') =>
+                Generated.StrictFactorZp._loop___factor_Zp_2_raw_ir
+                  { makeMonic := fun _ => .error .assertionFailure
+                    squarefree := fun _ => .error .assertionFailure
+                    ddf := strictDDFCall this providers
+                    edf := strictEDFCall engine this providers termination
+                    sortByDegree := fun _ => .error .assertionFailure }
+                  squarefreeFactors (index + 1) rng' result') =
+              Except.ok output ∧
+          factorResultToL2 this._p.toNat output =
+            factorResultToL2 this._p.toNat result ++ factors ∧
+          squarefreeSuffixProduct this._p.toNat squarefreeFactors index =
+            (factors.map fun item => item.1 ^ item.2).prod ∧
+          ∀ item ∈ factors, Irreducible item.1 ∧ Monic item.1
+        rw [hddfRun]
+        rcases factorLoop1_refines engine this providers termination components
+            hedfReady sqfItem.2 0 rng result with
+          ⟨middleOutput, rngNext, componentFactors, hmiddleRun,
+            hmiddleDecode, hmiddleProduct, hmiddleQuality⟩
+        simp only
+        rw [hmiddleRun]
+        rcases ih (squarefreeFactors.size - (index + 1)) (by omega)
+            (index + 1) rngNext middleOutput rfl with
+          ⟨output, tailFactors, htailRun, htailDecode,
+            htailProduct, htailQuality⟩
+        let currentFactors := componentFactors.map fun q =>
+          (q, sqfItem.2.toNat)
+        refine ⟨output, currentFactors ++ tailFactors, htailRun, ?_, ?_, ?_⟩
+        · rw [htailDecode, hmiddleDecode, List.append_assoc]
+        · have hsuffix : squarefreeFactors.toList.drop index =
+              sqfItem :: squarefreeFactors.toList.drop (index + 1) := by
+            simpa [sqfItem] using (List.drop_eq_getElem_cons
+              (l := squarefreeFactors.toList) (i := index)
+              (by simpa using hindex))
+          rw [squarefreeSuffixProduct, hsuffix, List.map_cons, List.prod_cons,
+            List.map_append, List.prod_append, ← htailProduct]
+          have hcomponentProduct :
+              SparsePolyZp.toPoly this._p.toNat sqfItem.1 =
+                componentFactors.prod := by
+            have hddfCorrect := ddf_correct
+              (SparsePolyZp.toPoly this._p.toNat sqfItem.1)
+              hsqfReady.monic hsqfReady.squarefree
+            rw [← hddfDecode] at hddfCorrect
+            have hddfAssociated := hddfCorrect.2.2.2.1
+            have hddfMonic := monicListProd
+              ((StrictDDF.ddfResultToL2 this._p.toNat components).map
+                Prod.fst) (by
+                  intro polynomial hpolynomial
+                  rcases List.mem_map.mp hpolynomial with ⟨item, hitem, rfl⟩
+                  exact hddfCorrect.2.2.2.2 item hitem)
+            have hddfEq := _root_.eq_of_associated_monic _ _
+              hsqfReady.monic hddfMonic hddfAssociated
+            have hdecodedProduct :
+                ((StrictDDF.ddfResultToL2 this._p.toNat components).map
+                    Prod.fst).prod = componentFactors.prod := by
+              simpa [componentSuffixProduct, StrictDDF.ddfResultToL2,
+                List.map_map, Function.comp_def] using hmiddleProduct
+            exact hddfEq.trans hdecodedProduct
+          simp only [currentFactors, List.map_map, Function.comp_def]
+          have hpow := listProdPow componentFactors sqfItem.2.toNat
+          rw [← hpow, ← hcomponentProduct]
+          rfl
+        · intro item hitem
+          rcases List.mem_append.mp hitem with hitem | hitem
+          · rcases List.mem_map.mp hitem with ⟨q, hq, rfl⟩
+            exact hmiddleQuality q hq
+          · exact htailQuality item hitem
+      next hindex =>
+        have hle : squarefreeFactors.size ≤ index := Nat.le_of_not_gt hindex
+        have hdrop : squarefreeFactors.toList.drop index = [] := by
+          exact List.drop_eq_nil_iff.mpr (by simpa using hle)
+        refine ⟨result, [], rfl, by simp, ?_, by simp⟩
+        simp [squarefreeSuffixProduct, hdrop]
 
 end Refinement.StrictFactorZp

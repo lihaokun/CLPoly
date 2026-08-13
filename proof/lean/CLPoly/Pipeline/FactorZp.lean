@@ -66,7 +66,7 @@ lemma monic_list_prod
       (ih (fun q hq => h q (List.mem_cons.mpr (.inr hq))))
 
 /-- (∏ aᵢ)^n = ∏(aᵢ^n) 在交换幺半群中成立 -/
-private lemma list_prod_pow
+lemma list_prod_pow
     (l : List (Polynomial (ZMod p))) (n : ℕ) :
     l.prod ^ n = (l.map (· ^ n)).prod := by
   induction l with

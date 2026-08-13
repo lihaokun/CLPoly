@@ -67,4 +67,42 @@ def removeConsumed (active : Array Int32) (consumed : Array Bool) :
     removeConsumedLoop consumed active.size active
   else .error .assertionFailure
 
+inductive PrecisionAction where
+  | retry (target : Nat)
+  | fallback
+deriving DecidableEq
+
+/-- Exact no-factor branch of the source precision schedule. -/
+def nextPrecision (target initial maximum : Nat) : PrecisionAction :=
+  let next := if target = 0 then initial else target * 2
+  if maximum < next then .fallback else .retry next
+
+/-- Number of remaining strict target increases before fallback.  It is
+termination evidence derived from the bounded precision state, not an
+execution counter passed to the source loop. -/
+def precisionRank (target _initial maximum : Nat) : Nat :=
+  if target = 0 then maximum + 2
+  else maximum + 1 - target
+
+theorem nextPrecision_retry_decreases (target initial maximum next : Nat)
+    (hinitial : 0 < initial)
+    (haction : nextPrecision target initial maximum = .retry next) :
+    precisionRank next initial maximum < precisionRank target initial maximum := by
+  unfold nextPrecision at haction
+  split at haction <;> rename_i htarget
+  · dsimp at haction
+    split at haction
+    next hover => contradiction
+    next hfits =>
+      cases PrecisionAction.retry.inj haction
+      simp [precisionRank, htarget, Nat.ne_of_gt hinitial]
+      omega
+  · dsimp at haction
+    split at haction
+    next hover => contradiction
+    next hfits =>
+      cases PrecisionAction.retry.inj haction
+      simp [precisionRank, htarget]
+      omega
+
 end Generated.StrictRecombine

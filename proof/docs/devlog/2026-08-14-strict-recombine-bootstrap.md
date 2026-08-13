@@ -32,3 +32,10 @@ an array with strictly smaller size.  The proof follows the same reverse
 recursion, separating deletion of the current last index from preservation of
 a marked bit in the remaining prefix.  This is the successful-extraction arm
 of the outer van-Hoeij well-founded measure.
+
+The no-factor arm now has an exact `nextPrecision` transition and a derived
+`precisionRank`.  A retry (`0 → J0`, then `J → 2J`) strictly decreases this
+rank while the source bound `J ≤ J_max` holds; exceeding the bound returns the
+fallback action.  The rank is erased termination evidence computed from the
+real precision state, not an execution parameter or counter supplied to the
+algorithm.

@@ -1,5 +1,6 @@
 /- Genuine refinement of the generated `__select_prime` candidate pipeline. -/
 import CLPoly.Generated.StrictSelectPrime
+import CLPoly.Generated.StrictPrimeEnumeration
 import CLPoly.Refinement.FactorZp
 import CLPoly.Refinement.PolynomialMod
 import Mathlib.FieldTheory.Separable
@@ -10,6 +11,27 @@ open Polynomial
 open CLPoly.Math
 
 namespace Refinement.StrictSelectPrime
+
+/-- Actual prime-enumeration half of the C++ `__select_prime` operation
+bundle.  The candidate callback remains explicit because it also carries the
+RNG and dense arithmetic workspaces for the current prime. -/
+def selectPrimeRawOps {State : Type}
+    (tryCandidate : SparsePolyZZ → Int64 → ZZ → UInt64 → State →
+      RawExec (Generated.StrictSelectPrime.CandidateResult State)) :
+    Generated.StrictSelectPrime.SelectPrimeRawOps State := {
+  nextPrime := Generated.StrictPrimeEnumeration.nextPrimeRaw
+  tryCandidate := tryCandidate }
+
+def selectPrimeTermination {State : Type}
+    (tryCandidate : SparsePolyZZ → Int64 → ZZ → UInt64 → State →
+      RawExec (Generated.StrictSelectPrime.CandidateResult State)) :
+    Generated.StrictSelectPrime.PrimeEnumerationTermination
+      (selectPrimeRawOps tryCandidate) := {
+  rank := Generated.StrictPrimeEnumeration.rank
+  next_decreases := by
+    intro useLargePrime p p' hrun
+    exact Generated.StrictPrimeEnumeration.nextPrimeRaw_decreases
+      useLargePrime p p' hrun }
 
 /-- Raw storage of the C++ dense arithmetic object, indexed by its modulus.
 The reconstructed object's `_p` field is definitionally `p`; refinement

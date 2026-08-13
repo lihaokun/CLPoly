@@ -85,7 +85,7 @@ def tryCandidateRaw {State : Type} (ops : CandidateRawOps State)
 separately through modular reduction, GCD, make-monic, strict DDF and strict
 EDF; it is not permitted to return an L2 proposition or witness. -/
 structure SelectPrimeRawOps (State : Type) where
-  nextPrime : Bool → UInt64 → UInt64
+  nextPrime : Bool → UInt64 → RawExec UInt64
   tryCandidate : SparsePolyZZ → Int64 → ZZ → UInt64 → State →
     RawExec (CandidateResult State)
 
@@ -94,9 +94,9 @@ well-founded relation on successive machine primes, not a fuel counter. -/
 structure PrimeEnumerationTermination {State : Type}
     (ops : SelectPrimeRawOps State) where
   rank : Bool → UInt64 → Nat
-  next_decreases : ∀ useLargePrime p,
-    rank useLargePrime (ops.nextPrime useLargePrime p) <
-      rank useLargePrime p
+  next_decreases : ∀ useLargePrime p p',
+    ops.nextPrime useLargePrime p = .ok p' →
+      rank useLargePrime p' < rank useLargePrime p
 
 /-- Concrete mutable variables carried by the generated prime-search loop.
 This is public so the refinement proof can state its prime and best-candidate
@@ -121,8 +121,10 @@ def selectPrimeLoop {State : Type} (ops : SelectPrimeRawOps State)
     match ops.tryCandidate f degF lcF state.p state.rng with
     | .error fault => .error fault
     | .ok (.skip rng') =>
-      selectPrimeLoop ops termination f degF lcF useLargePrime maxTries
-        { state with p := ops.nextPrime useLargePrime state.p, rng := rng' }
+      match hnext : ops.nextPrime useLargePrime state.p with
+      | .error fault => .error fault
+      | .ok p' => selectPrimeLoop ops termination f degF lcF useLargePrime maxTries
+          { state with p := p', rng := rng' }
     | .ok (.factored fp factors rng') =>
       if factors.size ≤ 1 then
         let factors' := if factors.isEmpty then factors.push fp else factors
@@ -132,16 +134,18 @@ def selectPrimeLoop {State : Type} (ops : SelectPrimeRawOps State)
           { state.best with prime := state.p, factors := factors }
         else state.best
         let bestCount := Nat.min state.bestCount factors.size
-        selectPrimeLoop ops termination f degF lcF useLargePrime maxTries
-          { tried := state.tried + 1
-            p := ops.nextPrime useLargePrime state.p
-            rng := rng'
-            bestCount := bestCount
-            best := best }
+        match hnext : ops.nextPrime useLargePrime state.p with
+        | .error fault => .error fault
+        | .ok p' => selectPrimeLoop ops termination f degF lcF useLargePrime maxTries
+            { tried := state.tried + 1
+              p := p'
+              rng := rng'
+              bestCount := bestCount
+              best := best }
 termination_by (maxTries - state.tried,
   termination.rank useLargePrime state.p)
 decreasing_by
-  · exact Prod.Lex.right _ (termination.next_decreases _ _)
+  · exact Prod.Lex.right _ (termination.next_decreases _ _ _ hnext)
   · exact Prod.Lex.left _ _ (by omega)
 
 /-- Strict generated entry for original C++ `__select_prime`. -/

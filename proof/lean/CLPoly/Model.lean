@@ -1,3 +1,5 @@
+import Mathlib.Data.Nat.Prime.Basic
+
 /-
   CLPoly 可信基类 Lean 模型
 
@@ -8,8 +10,9 @@
 
 -- Model.lean 来自 v1 cpp2lean/clpoly_model.lean，借用其隐式变量风格。
 -- proof/lean lakefile 全局禁用 autoImplicit，本文件局部启用。
--- 不 import Mathlib：Mathlib 的 `Nat.log` 与 cpp2lean Pass 5 emit 的 `Nat.log`
--- 冲突（已弃用，改 emit `Float.log`）。需要的数学引理见 CLPoly.Math.Bigint。
+-- The former generated `Nat.log` collision was removed when Pass 5 switched
+-- to `Float.log`; the focused prime import above supplies the proved
+-- `Nat.Prime` predicate used by uint64 prime enumeration.
 set_option autoImplicit true
 
 -- ============================================================
@@ -277,6 +280,8 @@ inductive RawFault where
   | invalidPointer
   | invalidRegion (region : Nat)
   | outOfBounds (region limbOffset : Nat)
+  | arithmeticOverflow
+  | arithmeticDomain
 deriving Repr, Inhabited, BEq
 
 abbrev RawExec (α : Type) := Except RawFault α
@@ -2662,27 +2667,30 @@ def gcd (a b : Int) : Int := Int.gcd a b
 -- polynomial_mod: SparsePolyZZ + p → SparsePolyZp（实现移到 abbrev SparsePolyZZ 之后）
 -- 见下方 §5c 末尾
 
--- next_prime_64: 返回 > n 的最小素数（C++ clpoly/number/ZZ.hh:1036, GMP mpz_nextprime 包装）
--- Lean 端用 trial division（O(√n) 单次），足够 B2B 测试小素数场景
-def Nat.isPrime64 (n : Nat) : Bool :=
-  if n < 2 then false
-  else if n = 2 then true
-  else if n % 2 = 0 then false
-  else
-    let rec loop (d : Nat) (fuel : Nat) : Bool :=
-      match fuel with
-      | 0 => true
-      | fuel'+1 => if d * d > n then true
-                   else if n % d = 0 then false
-                   else loop (d + 2) fuel'
-    loop 3 n
+-- Compatibility denotations for the generated corpus.  The verified strict
+-- path uses `Generated.StrictPrimeEnumeration`, which preserves the C++
+-- exceptions.  These total functions select from the finite uint64 interval
+-- and contain no fuel-bounded primality approximation.
+def next_prime_64_scan (fallback : UInt64) (candidate : Nat) : UInt64 :=
+  if hbound : candidate < UInt64.size then
+    if Nat.Prime candidate then candidate.toUInt64
+    else next_prime_64_scan fallback (candidate + 1)
+  else fallback
+termination_by UInt64.size - candidate
+decreasing_by omega
+
 def next_prime_64 (p : UInt64) : UInt64 :=
-  let rec scan (cand : Nat) (fuel : Nat) : Nat :=
-    match fuel with
-    | 0 => cand
-    | fuel'+1 => if Nat.isPrime64 cand then cand else scan (cand + 1) fuel'
-  (scan (p.toNat + 1) 100000).toUInt64
-def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
+  next_prime_64_scan p (p.toNat + 1)
+
+def prev_prime_64_scan (fallback : UInt64) (candidate : Nat) : UInt64 :=
+  if Nat.Prime candidate then candidate.toUInt64
+  else if candidate = 0 then fallback
+  else prev_prime_64_scan fallback (candidate - 1)
+termination_by candidate
+decreasing_by omega
+
+def prev_prime_64 (p : UInt64) : UInt64 :=
+  if p.toNat ≤ 2 then p else prev_prime_64_scan p (p.toNat - 1)
 -- leadcoeff: 1-arg / 2-arg overload (Pass 5 emit 都用同一名)
 -- 1-arg `leadcoeff p` 返回 ZZ；2-arg `leadcoeff p var` 返回 Poly
 -- Lean 端：2-arg 版本（多变量主用），1-arg 用 leadcoeff1 区分

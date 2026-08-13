@@ -212,6 +212,46 @@ theorem squarefree_of_normalized_gcd_degree_zero
   exact (Polynomial.Separable.squarefree
     ((Polynomial.separable_def f).2 (hderivative ▸ hcoprime)))
 
+private theorem length_le_sum_map {α : Type} (degree : α → Nat)
+    (items : List α) (hpositive : ∀ item ∈ items, 1 ≤ degree item) :
+    items.length ≤ (items.map degree).sum := by
+  induction items with
+  | nil => simp
+  | cons item tail ih =>
+      have hhead := hpositive item (by simp)
+      have htail : ∀ x ∈ tail, 1 ≤ degree x := by
+        intro x hx
+        exact hpositive x (by simp [hx])
+      have hi := ih htail
+      simp only [List.length_cons, List.map_cons, List.sum_cons]
+      omega
+
+private theorem monic_list_prod_generic {R : Type} [Semiring R]
+    (items : List (Polynomial R)) (hmonic : ∀ q ∈ items, q.Monic) :
+    items.prod.Monic := by
+  induction items with
+  | nil => exact Polynomial.monic_one
+  | cons q tail ih =>
+      rw [List.prod_cons]
+      exact (hmonic q (by simp)).mul (ih (by
+        intro r hr
+        exact hmonic r (by simp [hr])))
+
+private theorem natDegree_list_prod_of_monic {R : Type} [Semiring R]
+    [Nontrivial R] [NoZeroDivisors R]
+    (items : List (Polynomial R)) (hmonic : ∀ q ∈ items, q.Monic) :
+    items.prod.natDegree = (items.map Polynomial.natDegree).sum := by
+  induction items with
+  | nil => simp
+  | cons q tail ih =>
+      have hq : q.Monic := hmonic q (by simp)
+      have ht : ∀ r ∈ tail, r.Monic := by
+        intro r hr
+        exact hmonic r (by simp [hr])
+      have htprod : tail.prod.Monic := monic_list_prod_generic tail ht
+      rw [List.prod_cons, Polynomial.natDegree_mul hq.ne_zero
+        htprod.ne_zero, List.map_cons, List.sum_cons, ih ht]
+
 /-- Mathematical payload proved for an actual successful candidate. -/
 structure CandidateCorrect (f : Polynomial Int) (p : Nat)
     (factors : List (Polynomial (ZMod p))) : Prop where
@@ -219,6 +259,7 @@ structure CandidateCorrect (f : Polynomial Int) (p : Nat)
   productAssociated : Associated
     (Polynomial.map (Int.castRingHom (ZMod p)) f) factors.prod
   quality : ∀ q ∈ factors, Irreducible q ∧ Monic q
+  sizeFits : factors.length < UInt64.size
 
 private theorem canonical_prime_word_eq
     (p : UInt64) (f : SparsePolyZp)
@@ -250,7 +291,8 @@ theorem tryCandidateRaw_factored_refines {State : Type}
     (f : SparsePolyZZ) (degF : Int64) (lcF : ZZ) (rng rng' : State)
     (hcanonicalZZ : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hdegreeBound : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
-    (hlcF : ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat) ≠ 0)
+    (hlcSemantic : (lcF : ZMod p.toNat) =
+      ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat))
     (fp : SparsePolyZp) (factors : Array SparsePolyZp)
     (hrun : Generated.StrictSelectPrime.tryCandidateRaw
       (strictCandidateRawOps engine physical edfTermination)
@@ -463,8 +505,17 @@ theorem tryCandidateRaw_factored_refines {State : Type}
                 StrictDDF.ddfResultToL2, Function.comp_def]
             exact Associated.trans hddfProduct (by
               rw [← hcomponentAll, hcomponentProductP])
-          refine ⟨?_, ?_, ?_⟩
-          · exact ⟨physical.prime, hlcF, by
+          refine ⟨?_, ?_, ?_, ?_⟩
+          · have hlcModNonzero : (lcF : ZMod p.toNat) ≠ 0 := by
+              intro hlcZero
+              apply hlcNonzero
+              have hdiv : (p.toNat : Int) ∣ lcF :=
+                (ZMod.intCast_zmod_eq_zero_iff_dvd lcF p.toNat).mp hlcZero
+              have hfmod : Int.fmod lcF p.toNat = 0 := by
+                rw [Int.fmod_eq_emod]
+                simp [Int.emod_eq_zero_of_dvd hdiv]
+              simp [ZZ.fdiv_r, hfmod, ZZ.toBool]
+            exact ⟨physical.prime, hlcSemantic ▸ hlcModNonzero, by
               rw [← hrawSemantic]
               exact hsquarefreeRaw⟩
           · rw [← hrawSemantic]
@@ -488,5 +539,32 @@ theorem tryCandidateRaw_factored_refines {State : Type}
               rw [hdecoded]
               exact hproductDecoded)
           · simpa [hdecoded] using hquality
+          · have hfactorMonic : ∀ q ∈ decoded, q.Monic :=
+              fun q hq => (hquality q hq).2
+            have hfactorDegree : ∀ q ∈ decoded, 1 ≤ q.natDegree := by
+              intro q hq
+              have hirr := (hquality q hq).1
+              by_contra hzero
+              have hdegree : q.natDegree = 0 := by omega
+              have hqOne : q = 1 := eq_one_of_monic_natDegree_zero
+                (hfactorMonic q hq) hdegree
+              exact hirr.not_isUnit (hqOne ▸ isUnit_one)
+            have hprodMonic := monic_list_prod decoded hfactorMonic
+            have hproductEq : SparsePolyZp.toPoly p.toNat monic = decoded.prod :=
+              eq_of_associated_monic _ _ hmonic hprodMonic hproductDecoded
+            have hdegreeSum : decoded.prod.natDegree =
+                (decoded.map Polynomial.natDegree).sum := by
+              exact natDegree_list_prod_of_monic decoded hfactorMonic
+            have hlengthLe : decoded.length ≤
+                (decoded.map Polynomial.natDegree).sum := by
+              exact length_le_sum_map Polynomial.natDegree decoded hfactorDegree
+            rw [hdecoded]
+            exact lt_of_le_of_lt hlengthLe (by
+              rw [← hdegreeSum, ← hproductEq]
+              have hmonicDegreeP :
+                  (SparsePolyZp.toPoly p.toNat monic).natDegree =
+                    (SparsePolyZp.toPoly p.toNat rawMod).natDegree := by
+                simpa using hmonicDegree
+              exact lt_trans (hmonicDegreeP.trans_lt hrawDegree) (by decide))
 
 end Refinement.StrictSelectPrime

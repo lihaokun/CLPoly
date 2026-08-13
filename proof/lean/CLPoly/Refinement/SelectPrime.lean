@@ -22,11 +22,11 @@ structure CandidatePhysical (p : UInt64) where
   twicePrimeFits : 2 * p.toNat ≤ UInt64.size
   providers : @StrictDDF.DDFRawProviders dense ⟨primeField ▸ prime⟩
 
-/-- Physical candidate service for every prime word visited by the concrete
+/-- Physical candidate service for a word already proved prime by the concrete
 iterator.  `atPrime` is data-independent: it may allocate arithmetic buffers
 but receives no polynomial and therefore cannot encode a factorization. -/
 structure CandidatePhysicalProvider where
-  atPrime : (p : UInt64) → CandidatePhysical p
+  atPrime : (p : UInt64) → Nat.Prime p.toNat → CandidatePhysical p
 
 instance candidateFact {p : UInt64} (physical : CandidatePhysical p) :
     Fact (Nat.Prime physical.dense._p.toNat) := by

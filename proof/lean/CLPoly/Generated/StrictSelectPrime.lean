@@ -98,7 +98,10 @@ structure PrimeEnumerationTermination {State : Type}
     rank useLargePrime (ops.nextPrime useLargePrime p) <
       rank useLargePrime p
 
-private structure LoopState (State : Type) where
+/-- Concrete mutable variables carried by the generated prime-search loop.
+This is public so the refinement proof can state its prime and best-candidate
+invariants without replacing the generated control flow. -/
+structure LoopState (State : Type) where
   tried : Nat
   p : UInt64
   rng : State

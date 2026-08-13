@@ -17,3 +17,10 @@ actual execution result, rather than assumed as a callback contract:
 This closes the fact needed to prove that the first accepted candidate really
 updates C++ `best`, whose initial count is `UINT64_MAX`.  No fuel, partial
 definition, semantic oracle, or abstract factor witness was introduced.
+
+The same payload now also proves that the decoded factor list cannot be empty
+when the integer input has degree at least two.  The proof uses the preserved
+leading coefficient to show that reduction modulo the selected prime preserves
+degree; an empty product would instead make that reduction a unit of degree
+zero.  This discharges the source branch that pushes `fp` only for an empty
+factor array without assuming that EDF happens to return a nonempty array.

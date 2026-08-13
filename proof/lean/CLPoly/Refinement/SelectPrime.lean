@@ -261,6 +261,24 @@ structure CandidateCorrect (f : Polynomial Int) (p : Nat)
   quality : ∀ q ∈ factors, Irreducible q ∧ Monic q
   sizeFits : factors.length < UInt64.size
 
+theorem CandidateCorrect.factors_nonempty {f : Polynomial Int} {p : Nat}
+    {factors : List (Polynomial (ZMod p))}
+    (correct : CandidateCorrect f p factors) (hdegree : 2 ≤ f.natDegree) :
+    factors ≠ [] := by
+  letI : Fact (Nat.Prime p) := ⟨correct.goodPrime.prime⟩
+  intro hempty
+  subst factors
+  have hmapDegree :
+      (Polynomial.map (Int.castRingHom (ZMod p)) f).natDegree = f.natDegree := by
+    exact Polynomial.natDegree_map_of_leadingCoeff_ne_zero
+      (Int.castRingHom (ZMod p)) correct.goodPrime.lc_nonzero
+  have hunit : IsUnit (Polynomial.map (Int.castRingHom (ZMod p)) f) :=
+    correct.productAssociated.isUnit_iff.mpr (by simp)
+  have hdegreeZero :
+      (Polynomial.map (Int.castRingHom (ZMod p)) f).natDegree = 0 := by
+    exact Polynomial.natDegree_eq_zero_of_isUnit hunit
+  omega
+
 private theorem canonical_prime_word_eq
     (p : UInt64) (f : SparsePolyZp)
     (hcanonical : SparsePolyZp.Canonical p.toNat f)

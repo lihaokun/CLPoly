@@ -142,6 +142,49 @@ private theorem removeConsumedLoop_refines_prefix
         rcases ih active (by omega) (by omega) with ⟨output, hrun, hsize⟩
         exact ⟨output, hrun, hsize⟩
 
+private theorem removeConsumedLoop_strict_of_marked
+    (consumed : Array Bool) (remaining : Nat) (active output : Array Int32)
+    (hremaining : remaining ≤ consumed.size)
+    (hactiveRemaining : remaining ≤ active.size)
+    (hmarked : ∃ index, ∃ hindex : index < remaining,
+      consumed[index] = true)
+    (hrun : Generated.StrictRecombine.removeConsumedLoop consumed remaining active =
+      .ok output) :
+    output.size < active.size := by
+  induction remaining generalizing active output with
+  | zero =>
+      rcases hmarked with ⟨index, hindex, _⟩
+      omega
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.removeConsumedLoop] at hrun
+      have hindexBound : remaining < consumed.size := by omega
+      rw [dif_pos hindexBound] at hrun
+      by_cases hlast : consumed[remaining] = true
+      · rw [if_pos hlast] at hrun
+        have hactive : remaining < active.size := by omega
+        rw [dif_pos hactive] at hrun
+        have htailLe : output.size ≤
+            (active.eraseIdxIfInBounds remaining).size := by
+          rcases removeConsumedLoop_refines_prefix consumed remaining
+              (active.eraseIdxIfInBounds remaining) (by omega) (by
+                simp [hactive]; omega) with ⟨tail, htailRun, htailSize⟩
+          rw [hrun] at htailRun
+          exact Except.ok.inj htailRun ▸ htailSize
+        simpa [hactive] using lt_of_le_of_lt htailLe (by
+          simp [hactive]
+          omega)
+      · rw [if_neg hlast] at hrun
+        have hmarkedPrefix : ∃ index, ∃ hindex : index < remaining,
+            consumed[index] = true := by
+          rcases hmarked with ⟨index, hindex, hvalue⟩
+          refine ⟨index, ?_, hvalue⟩
+          have hne : index ≠ remaining := by
+            intro heq
+            subst index
+            exact hlast hvalue
+          omega
+        exact ih active output (by omega) (by omega) hmarkedPrefix hrun
+
 theorem removeConsumed_succeeds (active : Array Int32)
     (consumed : Array Bool) (hsizes : consumed.size = active.size) :
     ∃ output,
@@ -151,5 +194,18 @@ theorem removeConsumed_succeeds (active : Array Int32)
   rw [dif_pos hsizes]
   exact removeConsumedLoop_refines_prefix consumed active.size active
     (by omega) (Nat.le_refl _)
+
+theorem removeConsumed_strict_of_marked (active : Array Int32)
+    (consumed : Array Bool) (hsizes : consumed.size = active.size)
+    (hmarked : ∃ index, ∃ hindex : index < consumed.size,
+      consumed[index] = true)
+    (output : Array Int32)
+    (hrun : Generated.StrictRecombine.removeConsumed active consumed =
+      .ok output) :
+    output.size < active.size := by
+  unfold Generated.StrictRecombine.removeConsumed at hrun
+  rw [dif_pos hsizes] at hrun
+  apply removeConsumedLoop_strict_of_marked consumed active.size active output
+    (by omega) (Nat.le_refl _) (by simpa [hsizes] using hmarked) hrun
 
 end Refinement.StrictRecombine

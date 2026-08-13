@@ -25,3 +25,10 @@ prefix length.  The refinement proof shows that equal active/consumed sizes
 make every access safe, successful execution exists, and the resulting active
 array cannot grow.  The next strengthening will use `found_any` to prove the
 strict size decrease needed by the outer loop measure.
+
+That strengthening is now proved: if at least one in-range consumed bit is
+true, every successful execution of the actual reverse-erasure loop returns
+an array with strictly smaller size.  The proof follows the same reverse
+recursion, separating deletion of the current last index from preservation of
+a marked bit in the remaining prefix.  This is the successful-extraction arm
+of the outer van-Hoeij well-founded measure.

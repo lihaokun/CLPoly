@@ -186,6 +186,32 @@ def trialProductLoop (ops : TrialProductRawOps)
 termination_by candidate.size - index
 decreasing_by omega
 
+/-- Inner source multiplication loop for one left sparse term. -/
+def multiplyRowLoop (left : UMonomial × Int) (right : SparsePolyZZ)
+    (rightIndex : Nat) (terms : SparsePolyZZ) : SparsePolyZZ :=
+  if hright : rightIndex < right.size then
+    let rightTerm := right[rightIndex]
+    multiplyRowLoop left right (rightIndex + 1)
+      (terms.push (⟨left.1.deg + rightTerm.1.deg⟩,
+        left.2 * rightTerm.2))
+  else terms
+termination_by right.size - rightIndex
+decreasing_by omega
+
+/-- Exact double range-for producing every monomial product before the C++
+normalization pass merges equal degrees. -/
+def multiplyTermsLoop (left right : SparsePolyZZ) (leftIndex : Nat)
+    (terms : SparsePolyZZ) : SparsePolyZZ :=
+  if hleft : leftIndex < left.size then
+    multiplyTermsLoop left right (leftIndex + 1)
+      (multiplyRowLoop left[leftIndex] right 0 terms)
+  else terms
+termination_by left.size - leftIndex
+decreasing_by omega
+
+def multiplyNormalizeRaw (left right : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  .ok (SparsePolyZZ.normalization (multiplyTermsLoop left right 0 #[]))
+
 /-- Erased termination certificate for the successful-extraction branch.
 It refers only to concrete successful raw executions and the consumed bits
 they returned. -/

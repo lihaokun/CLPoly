@@ -67,3 +67,12 @@ run decodes modulo `m` to the starting product times the ordered product of
 the selected active lifted factors.  The remaining single-step contract must
 now be discharged by strict integer polynomial multiplication together with
 the existing strict coefficient-reduction theorem.
+
+Strict integer sparse multiplication is now expanded into its real nested
+term loops.  The inner loop emits the products of one left monomial with all
+right monomials; the outer loop runs it for every left monomial before the
+source normalization pass.  Direct induction over both generated
+`array.size - index` measures proves that the polynomial sum of the emitted
+term array is exactly `toPoly left * toPoly right`.  The remaining bridge for
+the raw multiplication step is now isolated to showing that the existing
+group/drop-zero/sort normalization preserves this polynomial sum.

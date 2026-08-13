@@ -346,4 +346,64 @@ theorem trialProductLoop_refines
         subst output
         simp [SelectedProductMod, List.drop_eq_nil_iff.mpr hle]
 
+private noncomputable def intTermsToPoly (terms : List (UMonomial × Int)) :
+    Polynomial Int :=
+  (terms.map fun term => Polynomial.monomial term.1.deg term.2).sum
+
+theorem multiplyRowLoop_toPoly (left : UMonomial × Int)
+    (right : SparsePolyZZ) (rightIndex : Nat) (terms : SparsePolyZZ) :
+    intTermsToPoly (Generated.StrictRecombine.multiplyRowLoop
+      left right rightIndex terms).toList =
+      intTermsToPoly terms.toList +
+        Polynomial.monomial left.1.deg left.2 *
+          intTermsToPoly (right.toList.drop rightIndex) := by
+  induction hmeasure : right.size - rightIndex using Nat.strong_induction_on
+      generalizing rightIndex terms with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.multiplyRowLoop]
+      split
+      next hright =>
+        rw [ih (right.size - (rightIndex + 1)) (by omega)
+          (rightIndex + 1) (terms.push
+            (⟨left.1.deg + right[rightIndex].1.deg⟩,
+              left.2 * right[rightIndex].2)) rfl]
+        have hsuffix : right.toList.drop rightIndex = right[rightIndex] ::
+            right.toList.drop (rightIndex + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := right.toList) (i := rightIndex) (by simpa using hright)
+        simp [intTermsToPoly, hsuffix, add_comm, add_left_comm,
+          mul_add]
+        exact (Polynomial.monomial_mul_monomial _ _ _ _).symm
+      next hright =>
+        have hle : right.size ≤ rightIndex := Nat.le_of_not_gt hright
+        simp [intTermsToPoly, List.drop_eq_nil_iff.mpr hle]
+
+theorem multiplyTermsLoop_toPoly (left right : SparsePolyZZ)
+    (leftIndex : Nat) (terms : SparsePolyZZ) :
+    intTermsToPoly (Generated.StrictRecombine.multiplyTermsLoop
+      left right leftIndex terms).toList =
+      intTermsToPoly terms.toList +
+        intTermsToPoly (left.toList.drop leftIndex) *
+          intTermsToPoly right.toList := by
+  induction hmeasure : left.size - leftIndex using Nat.strong_induction_on
+      generalizing leftIndex terms with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.multiplyTermsLoop]
+      split
+      next hleft =>
+        rw [ih (left.size - (leftIndex + 1)) (by omega)
+          (leftIndex + 1)
+          (Generated.StrictRecombine.multiplyRowLoop left[leftIndex]
+            right 0 terms) rfl]
+        rw [multiplyRowLoop_toPoly]
+        have hsuffix : left.toList.drop leftIndex = left[leftIndex] ::
+            left.toList.drop (leftIndex + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := left.toList) (i := leftIndex) (by simpa using hleft)
+        simp [intTermsToPoly, hsuffix]
+        ring
+      next hleft =>
+        have hle : left.size ≤ leftIndex := Nat.le_of_not_gt hleft
+        simp [intTermsToPoly, List.drop_eq_nil_iff.mpr hle]
+
 end Refinement.StrictRecombine

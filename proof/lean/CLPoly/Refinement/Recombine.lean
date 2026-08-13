@@ -224,6 +224,60 @@ def removalTermination (ops : Generated.StrictRecombine.VanHoeijRawOps)
       hvalidate hfound hremove
     exact removeConsumed_strict_of_marked state.active consumed
       (hconsumedSize modulus state activeLifted candidates fStar' result'
-        consumed hvalidate) hfound active' hremove }
+      consumed hvalidate) hfound active' hremove }
+
+def CandidateIndicesValid (candidate : Array Int32)
+    (consumed : Array Bool) : Prop :=
+  ∀ index (hindex : index < candidate.size),
+    0 ≤ candidate[index] ∧
+      candidate[index].toInt64.toNat < consumed.size
+
+theorem candidateAvailableLoop_succeeds (candidate : Array Int32)
+    (consumed : Array Bool) (index : Nat)
+    (hvalid : CandidateIndicesValid candidate consumed) :
+    ∃ available,
+      Generated.StrictRecombine.candidateAvailableLoop candidate consumed index =
+        .ok available := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.candidateAvailableLoop]
+      split
+      next hindex =>
+        have hentry := hvalid index hindex
+        rw [dif_pos hentry.1, dif_pos hentry.2]
+        split
+        next hconsumed => exact ⟨false, rfl⟩
+        next hfree =>
+          exact ih (candidate.size - (index + 1)) (by omega)
+            (index + 1) rfl
+      next hindex => exact ⟨true, rfl⟩
+
+theorem markConsumedLoop_succeeds_size (candidate : Array Int32)
+    (consumed : Array Bool) (index : Nat)
+    (hvalid : CandidateIndicesValid candidate consumed) :
+    ∃ output,
+      Generated.StrictRecombine.markConsumedLoop candidate index consumed =
+        .ok output ∧ output.size = consumed.size := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index consumed with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.markConsumedLoop]
+      split
+      next hindex =>
+        have hentry := hvalid index hindex
+        let activeNat := candidate[index].toInt64.toNat
+        rw [dif_pos hentry.1, dif_pos hentry.2]
+        have hvalidSet : CandidateIndicesValid candidate
+            (consumed.set activeNat true) := by
+          intro next hnext
+          have hv := hvalid next hnext
+          exact ⟨hv.1, by simpa using hv.2⟩
+        rcases ih (candidate.size - (index + 1)) (by omega)
+            (consumed.set activeNat true) (index + 1) hvalidSet rfl with
+          ⟨output, hrun, hsize⟩
+        refine ⟨output, hrun, ?_⟩
+        simpa using hsize
+      next hindex => exact ⟨consumed, rfl, rfl⟩
 
 end Refinement.StrictRecombine

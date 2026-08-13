@@ -138,6 +138,41 @@ structure VanHoeijRawOps where
   zassenhaus : SparsePolyZZ → Array SparsePolyZZ → ZZ →
     RawExec (Array SparsePolyZZ)
 
+/-- Check one candidate's active-relative indices exactly as the source inner
+loop does before constructing its trial product. -/
+def candidateAvailableLoop (candidate : Array Int32) (consumed : Array Bool)
+    (index : Nat) : RawExec Bool :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hnonnegative : 0 ≤ activeIndex then
+      let activeNat := activeIndex.toInt64.toNat
+      if hactive : activeNat < consumed.size then
+        if consumed[activeNat] then .ok false
+        else candidateAvailableLoop candidate consumed (index + 1)
+      else .error (.outOfBounds activeNat consumed.size)
+    else .error .arithmeticDomain
+  else .ok true
+termination_by candidate.size - index
+decreasing_by omega
+
+def candidateAvailable (candidate : Array Int32) (consumed : Array Bool) :
+    RawExec Bool := candidateAvailableLoop candidate consumed 0
+
+/-- Concrete mutation performed after a successful trial division. -/
+def markConsumedLoop (candidate : Array Int32) (index : Nat)
+    (consumed : Array Bool) : RawExec (Array Bool) :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hnonnegative : 0 ≤ activeIndex then
+      let activeNat := activeIndex.toInt64.toNat
+      if hactive : activeNat < consumed.size then
+        markConsumedLoop candidate (index + 1) (consumed.set activeNat true)
+      else .error (.outOfBounds activeNat consumed.size)
+    else .error .arithmeticDomain
+  else .ok consumed
+termination_by candidate.size - index
+decreasing_by omega
+
 /-- Erased termination certificate for the successful-extraction branch.
 It refers only to concrete successful raw executions and the consumed bits
 they returned. -/

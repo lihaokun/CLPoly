@@ -49,3 +49,12 @@ proof data around the very same `removeConsumed` result; no extra runtime
 assertion was added to the C++ semantics.  `removalTermination` derives this
 certificate from the concrete validator's one-consumed-bit-per-active-entry
 size invariant and the already proved strict removal theorem.
+
+Candidate validation now contains generated strict loops for its two index
+scans.  `candidateAvailableLoop` rejects a candidate as soon as one of its
+active-relative indices was consumed by an earlier successful candidate;
+negative or out-of-range indices are raw faults.  `markConsumedLoop` performs
+the actual indexed Boolean updates after successful trial division.  Their
+refinement proofs establish successful execution for valid candidate indices
+and preservation of the consumed-array size, which is the representation
+fact needed to instantiate the main-loop removal certificate.

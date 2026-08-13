@@ -2933,7 +2933,7 @@ def SparsePolyZZ.normalization (f : SparsePolyZZ) : SparsePolyZZ :=
   -- step 2: drop zero coefficients
   let nonZero : SparsePolyZZ := grouped.filter (fun t => t.snd ≠ 0)
   -- step 3: sort descending by deg
-  nonZero.qsort (fun a b => a.fst.deg > b.fst.deg)
+  (nonZero.toList.mergeSort (fun a b => a.fst.deg > b.fst.deg)).toArray
 
 -- polynomial_mod: SparsePolyZZ + p → SparsePolyZp
 -- 数学定义：每个系数 mod p（用 Zp.ofInt 折回 [0, p)），剔除 0 系数

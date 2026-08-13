@@ -406,4 +406,127 @@ theorem multiplyTermsLoop_toPoly (left right : SparsePolyZZ)
         have hle : left.size ≤ leftIndex := Nat.le_of_not_gt hleft
         simp [intTermsToPoly, List.drop_eq_nil_iff.mpr hle]
 
+private theorem intTermsToPoly_modify_add (terms : List (UMonomial × Int))
+    (index : Nat) (term : UMonomial × Int) (hindex : index < terms.length)
+    (hdegree : terms[index].1.deg = term.1.deg) :
+    intTermsToPoly (terms.modify index
+      (fun existing => (existing.1, existing.2 + term.2))) =
+      intTermsToPoly terms + Polynomial.monomial term.1.deg term.2 := by
+  induction terms generalizing index with
+  | nil => simp at hindex
+  | cons head tail ih =>
+      cases index with
+      | zero =>
+          simp [intTermsToPoly] at hdegree ⊢
+          rw [hdegree]
+          abel
+      | succ index =>
+          have htail : index < tail.length := by simpa using hindex
+          have hdegree' : tail[index].1.deg = term.1.deg := by
+            simpa using hdegree
+          simp only [List.modify_succ_cons, intTermsToPoly, List.map_cons,
+            List.sum_cons]
+          change Polynomial.monomial head.1.deg head.2 +
+              intTermsToPoly (tail.modify index
+                (fun existing => (existing.1, existing.2 + term.2))) = _
+          rw [ih index htail hdegree']
+          change _ + (intTermsToPoly tail + _) =
+            _ + intTermsToPoly tail + _
+          abel
+
+private theorem groupTermsStep_toPoly (acc : SparsePolyZZ)
+    (term : UMonomial × Int) :
+    intTermsToPoly
+      ((match acc.findIdx? (fun t : UMonomial × Int =>
+          t.fst.deg = term.fst.deg) with
+        | some index => acc.modify index
+            (fun existing => (existing.1, existing.2 + term.2))
+        | none => acc.push term).toList) =
+      intTermsToPoly acc.toList + Polynomial.monomial term.1.deg term.2 := by
+  split
+  next index hfind =>
+    obtain ⟨hindex, hdegree, _⟩ :=
+      Array.findIdx?_eq_some_iff_getElem.mp hfind
+    simpa using intTermsToPoly_modify_add acc.toList index term
+      (by simpa using hindex) (by simpa using hdegree)
+  next hfind =>
+    simp [intTermsToPoly]
+
+private theorem groupTerms_toPoly_aux (source : List (UMonomial × Int))
+    (acc : SparsePolyZZ) :
+    intTermsToPoly
+      (source.foldl (fun acc term =>
+        match acc.findIdx? (fun t => t.fst.deg = term.fst.deg) with
+        | some index => acc.modify index
+            (fun existing => (existing.1, existing.2 + term.2))
+        | none => acc.push term) acc).toList =
+      intTermsToPoly acc.toList + intTermsToPoly source := by
+  induction source generalizing acc with
+  | nil => simp [intTermsToPoly]
+  | cons head tail ih =>
+      simp only [List.foldl_cons]
+      rw [ih]
+      rw [groupTermsStep_toPoly]
+      simp [intTermsToPoly]
+      abel
+
+private theorem groupTerms_toPoly (terms : SparsePolyZZ) :
+    intTermsToPoly
+      (terms.foldl (fun acc term =>
+        match acc.findIdx? (fun t => t.fst.deg = term.fst.deg) with
+        | some index => acc.modify index
+            (fun existing => (existing.1, existing.2 + term.2))
+        | none => acc.push term) #[]).toList =
+      intTermsToPoly terms.toList := by
+  rw [← Array.foldl_toList]
+  simpa [intTermsToPoly] using groupTerms_toPoly_aux terms.toList #[]
+
+private theorem filterNonzero_toPoly (terms : SparsePolyZZ) :
+    intTermsToPoly (terms.filter (fun term => term.2 ≠ 0)).toList =
+      intTermsToPoly terms.toList := by
+  rw [Array.toList_filter]
+  induction terms.toList with
+  | nil => simp [intTermsToPoly]
+  | cons head tail ih =>
+      rcases head with ⟨monomial, coefficient⟩
+      by_cases hzero : coefficient = 0
+      · simpa [hzero, intTermsToPoly] using ih
+      · simpa [hzero, intTermsToPoly] using ih
+
+private theorem mergeSort_toPoly (terms : List (UMonomial × Int)) :
+    intTermsToPoly
+        (terms.mergeSort (fun a b => a.fst.deg > b.fst.deg)) =
+      intTermsToPoly terms := by
+  exact ((List.mergeSort_perm terms _).map
+    (fun term => Polynomial.monomial term.1.deg term.2)).sum_eq
+
+theorem normalization_toPoly (terms : SparsePolyZZ) :
+    SparsePolyZZ.toPoly (SparsePolyZZ.normalization terms) =
+      SparsePolyZZ.toPoly terms := by
+  unfold SparsePolyZZ.normalization SparsePolyZZ.toPoly
+  rw [List.toList_toArray]
+  change intTermsToPoly
+      (((terms.foldl (fun acc term =>
+          match acc.findIdx? (fun t => t.fst.deg = term.fst.deg) with
+          | some index => acc.modify index
+              (fun existing => (existing.1, existing.2 + term.2))
+          | none => acc.push term) #[]).filter
+        (fun term => term.2 ≠ 0)).toList.mergeSort
+          (fun a b => a.fst.deg > b.fst.deg)) = intTermsToPoly terms.toList
+  rw [mergeSort_toPoly, filterNonzero_toPoly, groupTerms_toPoly]
+
+theorem multiplyNormalizeRaw_toPoly (left right output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.multiplyNormalizeRaw left right =
+      .ok output) :
+    SparsePolyZZ.toPoly output =
+      SparsePolyZZ.toPoly left * SparsePolyZZ.toPoly right := by
+  unfold Generated.StrictRecombine.multiplyNormalizeRaw at hrun
+  have houtput := Except.ok.inj hrun
+  subst output
+  rw [normalization_toPoly]
+  change intTermsToPoly
+      (Generated.StrictRecombine.multiplyTermsLoop left right 0 #[]).toList = _
+  rw [multiplyTermsLoop_toPoly]
+  simp [intTermsToPoly, SparsePolyZZ.toPoly]
+
 end Refinement.StrictRecombine

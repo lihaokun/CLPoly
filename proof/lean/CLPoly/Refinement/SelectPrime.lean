@@ -259,7 +259,7 @@ structure CandidateCorrect (f : Polynomial Int) (p : Nat)
   productAssociated : Associated
     (Polynomial.map (Int.castRingHom (ZMod p)) f) factors.prod
   quality : ∀ q ∈ factors, Irreducible q ∧ Monic q
-  sizeFits : factors.length < UInt64.size
+  sizeFits : factors.length < 18446744073709551615
 
 theorem CandidateCorrect.factors_nonempty {f : Polynomial Int} {p : Nat}
     {factors : List (Polynomial (ZMod p))}
@@ -278,6 +278,152 @@ theorem CandidateCorrect.factors_nonempty {f : Polynomial Int} {p : Nat}
       (Polynomial.map (Int.castRingHom (ZMod p)) f).natDegree = 0 := by
     exact Polynomial.natDegree_eq_zero_of_isUnit hunit
   omega
+
+/-- L2 meaning of a concrete C++ prime-selection result. -/
+def SelectionCorrect (f : Polynomial Int) (result : PrimeSelectionResult) : Prop :=
+  CandidateCorrect f result.prime.toNat
+    (factorArrayToL2 result.prime.toNat result.factors)
+
+/-- The mutable `best` fields are either still at their exact C++ initial
+state, or contain a genuinely refined candidate whose stored count agrees
+with the concrete array. -/
+def BestInvariant {State : Type} (f : Polynomial Int)
+    (state : Generated.StrictSelectPrime.LoopState State) : Prop :=
+  (state.tried = 0 ∧ state.bestCount = 18446744073709551615) ∨
+  (0 < state.tried ∧ SelectionCorrect f state.best ∧
+    state.bestCount = state.best.factors.size)
+
+/-- Execution-only contract used by the outer generated loop.  It speaks
+solely about successful runs of the concrete callback; the strict candidate
+pipeline theorem below is what discharges it. -/
+def CandidateExecutionCorrect {State : Type}
+    (tryCandidate : SparsePolyZZ → Int64 → ZZ → UInt64 → State →
+      RawExec (Generated.StrictSelectPrime.CandidateResult State))
+    (f : SparsePolyZZ) (degF : Int64) (lcF : ZZ) : Prop :=
+  ∀ p rng fp factors rng', Nat.Prime p.toNat →
+    tryCandidate f degF lcF p rng = .ok (.factored fp factors rng') →
+    CandidateCorrect (SparsePolyZZ.toPoly f) p.toNat
+      (factorArrayToL2 p.toNat factors)
+
+theorem selectPrimeLoop_refines {State : Type}
+    (tryCandidate : SparsePolyZZ → Int64 → ZZ → UInt64 → State →
+      RawExec (Generated.StrictSelectPrime.CandidateResult State))
+    (f : SparsePolyZZ) (degF : Int64) (lcF : ZZ)
+    (useLargePrime : Bool) (maxTries : Nat)
+    (hmaxTries : 0 < maxTries)
+    (hcandidate : CandidateExecutionCorrect tryCandidate f degF lcF)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (state : Generated.StrictSelectPrime.LoopState State)
+    (hprime : Nat.Prime state.p.toNat)
+    (hinvariant : BestInvariant (SparsePolyZZ.toPoly f) state)
+    (result : PrimeSelectionResult)
+    (hrun : Generated.StrictSelectPrime.selectPrimeLoop
+      (selectPrimeRawOps tryCandidate) (selectPrimeTermination tryCandidate)
+      f degF lcF useLargePrime maxTries state = .ok result) :
+    SelectionCorrect (SparsePolyZZ.toPoly f) result := by
+  let motive : Generated.StrictSelectPrime.LoopState State → Prop := fun state =>
+    Nat.Prime state.p.toNat → BestInvariant (SparsePolyZZ.toPoly f) state →
+      ∀ result, Generated.StrictSelectPrime.selectPrimeLoop
+        (selectPrimeRawOps tryCandidate) (selectPrimeTermination tryCandidate)
+        f degF lcF useLargePrime maxTries state = .ok result →
+        SelectionCorrect (SparsePolyZZ.toPoly f) result
+  have hall : ∀ state, motive state := by
+    apply Generated.StrictSelectPrime.selectPrimeLoop.induct
+      (ops := selectPrimeRawOps tryCandidate)
+      (termination := selectPrimeTermination tryCandidate)
+      (f := f) (degF := degF) (lcF := lcF)
+      (useLargePrime := useLargePrime) (maxTries := maxTries)
+      (motive := motive)
+    · intro state hdone _ hinvariant result hrun
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1, dif_pos hdone] at hrun
+      have hresult := Except.ok.inj hrun
+      clear hrun
+      cases hresult
+      rcases hinvariant with hinitial | hbest
+      · omega
+      · simpa [SelectionCorrect] using hbest.2.1
+    · intro state hnotdone fault hcandError _ _ result hrun
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone, hcandError] at hrun
+      contradiction
+    · intro state hnotdone rng' hcand fault hnextError _ _ result hrun
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone, hcand, hnextError] at hrun
+      contradiction
+    · intro state hnotdone rng' hcand p' hnext ih _ hinvariant result hrun
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone, hcand, hnext] at hrun
+      exact ih (Generated.StrictPrimeEnumeration.nextPrimeRaw_prime
+        useLargePrime state.p p' hnext) (by simpa [BestInvariant] using hinvariant)
+        result hrun
+    · intro state hnotdone fp factors rng' hcand hsmall hprime _ result hrun
+      have hcorrect := hcandidate state.p state.rng fp factors rng' hprime hcand
+      have hnonempty := hcorrect.factors_nonempty hdegree
+      have harrayNonempty : factors.isEmpty = false := by
+        apply Bool.eq_false_of_not_eq_true
+        intro hempty
+        apply hnonempty
+        simpa [factorArrayToL2, Array.isEmpty] using hempty
+      simp [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        hnotdone, hcand, hsmall, harrayNonempty] at hrun
+      subst result
+      simpa [SelectionCorrect] using hcorrect
+    · intro state hnotdone fp factors rng' hcand hlarge fault hnextError
+        _ _ result hrun
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone] at hrun
+      simp only [hcand] at hrun
+      rw [if_neg hlarge] at hrun
+      split at hrun
+      next fault' hcase =>
+        rw [hnextError] at hcase
+        cases hrun
+      next p'' hcase =>
+        rw [hnextError] at hcase
+        contradiction
+    · intro state hnotdone fp factors rng' hcand hlarge best bestCount p' hnext ih
+        hprime hinvariant result hrun
+      have hcorrect := hcandidate state.p state.rng fp factors rng' hprime hcand
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone] at hrun
+      simp only [hcand] at hrun
+      rw [if_neg hlarge] at hrun
+      split at hrun
+      next fault hcase =>
+        rw [hnext] at hcase
+        contradiction
+      next p'' hcase =>
+        have hp' : p'' = p' := Except.ok.inj (hcase.symm.trans hnext)
+        subst p''
+        apply ih (Generated.StrictPrimeEnumeration.nextPrimeRaw_prime
+          useLargePrime state.p p' hnext)
+        · dsimp [best, bestCount]
+          unfold BestInvariant
+          right
+          dsimp only
+          refine ⟨by omega, ?_, ?_⟩
+          · dsimp [best]
+            split
+            next hbetter => simpa [SelectionCorrect] using hcorrect
+            next hnotBetter =>
+              rcases hinvariant with hinitial | hbest
+              · exact False.elim (hnotBetter (by
+                  rw [hinitial.2]
+                  simpa [factorArrayToL2] using hcorrect.sizeFits))
+              · exact hbest.2.1
+          · dsimp [best, bestCount]
+            split
+            next hbetter => simp [Nat.min_eq_right (Nat.le_of_lt hbetter)]
+            next hnotBetter =>
+              rcases hinvariant with hinitial | hbest
+              · exact False.elim (hnotBetter (by
+                  rw [hinitial.2]
+                  simpa [factorArrayToL2] using hcorrect.sizeFits))
+              · rw [hbest.2.2]
+                exact Nat.min_eq_left (Nat.le_of_not_gt
+                  (hbest.2.2 ▸ hnotBetter))
+        · exact hrun
+  exact hall state hprime hinvariant result hrun
 
 private theorem canonical_prime_word_eq
     (p : UInt64) (f : SparsePolyZp)
@@ -583,6 +729,6 @@ theorem tryCandidateRaw_factored_refines {State : Type}
                   (SparsePolyZp.toPoly p.toNat monic).natDegree =
                     (SparsePolyZp.toPoly p.toNat rawMod).natDegree := by
                 simpa using hmonicDegree
-              exact lt_trans (hmonicDegreeP.trans_lt hrawDegree) (by decide))
+              exact lt_trans (hmonicDegreeP.trans_lt hrawDegree) (by norm_num))
 
 end Refinement.StrictSelectPrime

@@ -11,16 +11,39 @@ open CLPoly.Math
 
 namespace Refinement.StrictSelectPrime
 
+/-- Raw storage of the C++ dense arithmetic object, indexed by its modulus.
+The reconstructed object's `_p` field is definitionally `p`; refinement
+proofs therefore never transport polynomials between propositionally equal
+`ZMod` types. -/
+structure CandidateArithmetic (p : UInt64) where
+  coeffs : Array UInt64
+  ninv : UInt64
+  norm : UInt32
+
+def CandidateArithmetic.dense {p : UInt64}
+    (arithmetic : CandidateArithmetic p) : DenseUPolyZp :=
+  { _coeffs := arithmetic.coeffs
+    _p := p
+    _ninv := arithmetic.ninv
+    _norm := arithmetic.norm }
+
 /-- Physical arithmetic state for one machine prime returned by the source
 prime iterator.  It contains only primality/configuration/workspace data; no
 field states that the input polynomial is squarefree or supplies factors. -/
 structure CandidatePhysical (p : UInt64) where
   prime : Nat.Prime p.toNat
-  dense : DenseUPolyZp
-  primeField : dense._p = p
-  configured : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured dense
+  arithmetic : CandidateArithmetic p
+  configured : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured
+    arithmetic.dense
   twicePrimeFits : 2 * p.toNat ≤ UInt64.size
-  providers : @StrictDDF.DDFRawProviders dense ⟨primeField ▸ prime⟩
+  providers : @StrictDDF.DDFRawProviders arithmetic.dense ⟨prime⟩
+
+abbrev CandidatePhysical.dense {p : UInt64}
+    (physical : CandidatePhysical p) : DenseUPolyZp :=
+  physical.arithmetic.dense
+
+@[simp] theorem CandidatePhysical.dense_prime {p : UInt64}
+    (physical : CandidatePhysical p) : physical.dense._p = p := rfl
 
 /-- Physical candidate service for a word already proved prime by the concrete
 iterator.  `atPrime` is data-independent: it may allocate arithmetic buffers
@@ -30,8 +53,7 @@ structure CandidatePhysicalProvider where
 
 instance candidateFact {p : UInt64} (physical : CandidatePhysical p) :
     Fact (Nat.Prime physical.dense._p.toNat) := by
-  constructor
-  simpa [physical.primeField] using physical.prime
+  exact ⟨physical.prime⟩
 
 /-- Actual strict candidate operation bundle at one runtime prime. -/
 noncomputable def strictCandidateRawOps {State : Type}
@@ -89,25 +111,20 @@ theorem factorComponentsLoop_refines {State : Type}
     (providers : StrictDDF.DDFRawProviders this)
     (termination : Generated.StrictEDF.EDFTermination
       (StrictEDF.strictEDFRawOps engine this providers))
+    (ops : Generated.StrictSelectPrime.CandidateRawOps State)
+    (hedf : ops.edf = StrictFactorZp.strictEDFCall engine this providers termination)
     (components : Array (SparsePolyZp × UInt64))
     (hready : ∀ item ∈ components.toList,
       StrictEDF.EDFEntryInvariant this item.1 item.2)
     (index : Nat) (rng : State) (result : Array SparsePolyZp) :
-    let ops : Generated.StrictSelectPrime.CandidateRawOps State := {
-      lcMod := fun _ _ => .error .assertionFailure
-      polynomialMod := fun _ _ => .error .assertionFailure
-      derivative := fun _ => .error .assertionFailure
-      gcd := fun _ _ => .error .assertionFailure
-      makeMonic := fun _ => .error .assertionFailure
-      ddf := fun _ => .error .assertionFailure
-      edf := StrictFactorZp.strictEDFCall engine this providers termination }
     ∃ output rng' factors,
       Generated.StrictSelectPrime.factorComponentsLoop ops components index
           rng result = .ok (output, rng') ∧
       factorArrayToL2 this._p.toNat output =
         factorArrayToL2 this._p.toNat result ++ factors ∧
+      StrictFactorZp.componentSuffixProduct this._p.toNat components index =
+        factors.prod ∧
       ∀ q ∈ factors, Irreducible q ∧ Monic q := by
-  dsimp only
   induction hmeasure : components.size - index using Nat.strong_induction_on
       generalizing index rng result with
   | h measure ih =>
@@ -122,20 +139,39 @@ theorem factorComponentsLoop_refines {State : Type}
             termination component.1 component.2 rng hinvariant with
           ⟨edfOutput, rngNext, edfFactors, hedfRun, hedfDecode, hedfCorrect⟩
         simp only
+        rw [hedf]
         rw [hedfRun]
         rcases ih (components.size - (index + 1)) (by omega)
             (index + 1) rngNext
             (Generated.StrictSelectPrime.appendFactorsLoop edfOutput 0 result)
-            rfl with ⟨output, rng', tail, htailRun, htailDecode, htailQuality⟩
-        refine ⟨output, rng', edfFactors ++ tail, htailRun, ?_, ?_⟩
+            rfl with ⟨output, rng', tail, htailRun, htailDecode,
+              htailProduct, htailQuality⟩
+        refine ⟨output, rng', edfFactors ++ tail, htailRun, ?_, ?_, ?_⟩
         · rw [htailDecode, appendFactorsLoop_refines]
           simpa [factorArrayToL2, hedfDecode, List.append_assoc]
+        · have hsuffix : components.toList.drop index =
+              component :: components.toList.drop (index + 1) := by
+            simpa [component] using List.drop_eq_getElem_cons
+              (l := components.toList) (i := index) (by simpa using hindex)
+          rw [StrictFactorZp.componentSuffixProduct, hsuffix, List.map_cons,
+            List.prod_cons, List.prod_append, ← htailProduct]
+          have hcomponentEq : SparsePolyZp.toPoly this._p.toNat component.1 =
+              edfFactors.prod :=
+            _root_.eq_of_associated_monic _ _ hinvariant.monic
+              (monic_list_prod edfFactors
+                (fun q hq => (hedfCorrect.2 q hq).2.1)) hedfCorrect.1
+          rw [hcomponentEq]
+          simpa [StrictFactorZp.componentSuffixProduct] using
+            congrArg (edfFactors.prod * ·) htailProduct
         · intro q hq
           rcases List.mem_append.mp hq with hq | hq
           · exact ⟨(hedfCorrect.2 q hq).1, (hedfCorrect.2 q hq).2.1⟩
           · exact htailQuality q hq
       next hindex =>
-        exact ⟨result, rng, [], rfl, by simp, by simp⟩
+        have hdrop : components.toList.drop index = [] :=
+          List.drop_eq_nil_iff.mpr (Nat.le_of_not_gt hindex)
+        exact ⟨result, rng, [], rfl, by simp, by
+          simp [StrictFactorZp.componentSuffixProduct, hdrop], by simp⟩
 
 /-- A normalized GCD of degree zero is a unit, hence the source polynomial
 and its derivative are coprime and the polynomial is squarefree. -/
@@ -192,6 +228,7 @@ theorem tryCandidateRaw_factored_refines {State : Type}
     (f : SparsePolyZZ) (degF : Int64) (lcF : ZZ) (rng rng' : State)
     (hcanonicalZZ : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hdegreeBound : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hlcF : ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat) ≠ 0)
     (fp : SparsePolyZp) (factors : Array SparsePolyZp)
     (hrun : Generated.StrictSelectPrime.tryCandidateRaw
       (strictCandidateRawOps engine physical edfTermination)
@@ -199,6 +236,7 @@ theorem tryCandidateRaw_factored_refines {State : Type}
     CandidateCorrect (SparsePolyZZ.toPoly f) p.toNat
       (factorArrayToL2 p.toNat factors) := by
   let rawMod := polynomial_mod f p
+  letI : Fact (Nat.Prime p.toNat) := ⟨physical.prime⟩
   have hp : 0 < p.toNat := physical.prime.pos
   have hmodRun : Generated.StrictPolynomialMod.polynomial_mod_raw_ir f p =
       .ok rawMod := by
@@ -212,30 +250,41 @@ theorem tryCandidateRaw_factored_refines {State : Type}
     StrictPolynomialMod.polynomial_mod_toPoly f p hp
   unfold Generated.StrictSelectPrime.tryCandidateRaw at hrun
   simp only [strictCandidateRawOps] at hrun
-  split at hrun <;> try contradiction
+  split at hrun
+  · simp_all
   next hlcNonzero =>
     rw [hmodRun] at hrun
     simp only at hrun
-    split at hrun <;> try contradiction
+    split at hrun
+    · simp_all
     next hvalidRaw =>
       let derivative := StrictSquarefreeZp.derivativeIR physical.dense rawMod
-      simp only at hrun
-      split at hrun <;> try contradiction
+      split at hrun
+      · simp_all
       next hderivativeNonempty =>
         let workspace := physical.providers.gcd rawMod derivative
         have hrawNonempty : 0 < rawMod.size := by
           apply Nat.pos_of_ne_zero
-          simpa [Array.isEmpty] using And.left (Bool.or_eq_false.mp hvalidRaw)
+          have hguard : (rawMod.isEmpty || get_deg rawMod != degF) = false := by
+            simpa [Bool.not_eq_true] using hvalidRaw
+          have hempty : rawMod.isEmpty = false := by
+            exact (Bool.or_eq_false_iff.mp hguard).1
+          simpa [Array.isEmpty] using hempty
         have hderivativeCanonical : SparsePolyZp.Canonical p.toNat derivative := by
-          simpa [physical.primeField] using
-            StrictSquarefreeZp.derivativeIR_canonical physical.dense rawMod
-              physical.configured (physical.primeField ▸ hrawCanonical)
+          exact StrictSquarefreeZp.derivativeIR_canonical physical.dense rawMod
+            physical.configured hrawCanonical
+        have hrawCanonicalDense :
+            SparsePolyZp.Canonical physical.dense._p.toNat rawMod := by
+          exact hrawCanonical
+        have hderivativeCanonicalDense :
+            SparsePolyZp.Canonical physical.dense._p.toNat derivative := by
+          exact hderivativeCanonical
         have hderivativeNonzero : SparsePolyZp.toPoly p.toNat derivative ≠ 0 := by
           intro hzero
           have hempty := StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
             p.toNat derivative
           have : derivative.isEmpty = false :=
-            And.right (Bool.or_eq_false.mp hderivativeNonempty)
+            Bool.eq_false_of_not_eq_true hderivativeNonempty
           have hpos : 0 < derivative.size := by
             apply Nat.pos_of_ne_zero
             simpa [Array.isEmpty] using this
@@ -249,81 +298,107 @@ theorem tryCandidateRaw_factored_refines {State : Type}
                 rw [hzero] at hd
                 simp at hd))
         rcases StrictDDF.strictGCDIR_refines physical.dense rawMod derivative
-            workspace (physical.primeField ▸ hrawCanonical)
-            hderivativeCanonical
+            workspace hrawCanonicalDense hderivativeCanonicalDense
             (by
-              intro hzero
-              have hpos : 0 < rawMod.size := hrawNonempty
-              have hd := StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
-                p.toNat rawMod hrawCanonical hpos
-              rw [hzero] at hd
-              simp at hd)
-            (physical.primeField ▸ hderivativeNonzero) with
+              simpa using (show SparsePolyZp.toPoly p.toNat rawMod ≠ 0 from by
+                intro hzero
+                have hd := StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+                  p.toNat rawMod hrawCanonical hrawNonempty
+                rw [hzero] at hd
+                simp at hd))
+            hderivativeNonzero with
           ⟨gcd, hgcdRun, hgcdCanonical, hgcdSemantic⟩
         rw [hgcdRun] at hrun
         simp only at hrun
-        split at hrun <;> try contradiction
+        split at hrun
+        · simp_all
         next hgcdDegree =>
           rcases StrictFactorZp.upolyMakeMonicIR_refines physical.dense rawMod
-              (physical.primeField ▸ hrawCanonical) hrawNonempty with
+              hrawCanonical hrawNonempty with
             ⟨lc, monic, hmonicRun, hmonicCanonical, hmonic,
-              hreconstruct, _, hmonicDegree⟩
+              hreconstruct, hmonicSize, hmonicDegree⟩
           rw [hmonicRun] at hrun
           simp only at hrun
           have hrawDegree : (SparsePolyZp.toPoly p.toNat rawMod).natDegree <
               2 ^ 62 := by
             rw [hrawSemantic]
-            exact lt_of_le_of_lt (Polynomial.natDegree_map_le _) hdegreeBound
+            exact lt_of_le_of_lt Polynomial.natDegree_map_le hdegreeBound
+          have hrawNonzero : SparsePolyZp.toPoly p.toNat rawMod ≠ 0 := by
+            intro hzero
+            have hd := StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+              p.toNat rawMod hrawCanonical hrawNonempty
+            rw [hzero] at hd
+            simp at hd
           have hsquarefreeRaw : Squarefree
               (SparsePolyZp.toPoly p.toNat rawMod) := by
-            have hgcdNonzero := EuclideanDomain.gcd_ne_zero_of_left
-              (show SparsePolyZp.toPoly p.toNat rawMod ≠ 0 from by
-                intro hzero
-                have hd := StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
-                  p.toNat rawMod hrawCanonical hrawNonempty
-                rw [hzero] at hd
-                simp at hd)
+            have hgcdNonzero : EuclideanDomain.gcd
+                (SparsePolyZp.toPoly p.toNat rawMod)
+                (SparsePolyZp.toPoly p.toNat derivative) ≠ 0 := by
+              intro hzero
+              exact hrawNonzero (EuclideanDomain.gcd_eq_zero_iff.mp hzero).1
             have hgcdMonic : (SparsePolyZp.toPoly p.toNat gcd).Monic := by
-              rw [physical.primeField] at hgcdSemantic
-              rw [hgcdSemantic]
+              rw [show SparsePolyZp.toPoly p.toNat gcd =
+                  normalize (EuclideanDomain.gcd
+                    (SparsePolyZp.toPoly p.toNat rawMod)
+                    (SparsePolyZp.toPoly p.toNat derivative)) by
+                simpa using hgcdSemantic]
               exact Polynomial.monic_normalize hgcdNonzero
             have hgcdNatDegree :
                 (SparsePolyZp.toPoly p.toNat gcd).natDegree = 0 := by
+              have hgcdCanonicalP : SparsePolyZp.Canonical p.toNat gcd := by
+                simpa using hgcdCanonical
+              have hgcdDvd : SparsePolyZp.toPoly p.toNat gcd ∣
+                  SparsePolyZp.toPoly p.toNat rawMod := by
+                rw [show SparsePolyZp.toPoly p.toNat gcd =
+                    normalize (EuclideanDomain.gcd
+                      (SparsePolyZp.toPoly p.toNat rawMod)
+                      (SparsePolyZp.toPoly p.toNat derivative)) by
+                  simpa using hgcdSemantic, normalize_dvd_iff]
+                exact EuclideanDomain.gcd_dvd_left _ _
+              have hgcdDegreeLe := Polynomial.natDegree_le_of_dvd hgcdDvd
+                hrawNonzero
               have hdegree63 := StrictDDF.canonical_natDegree_lt_of_terms_lt
-                p.toNat gcd hgcdCanonical hgcdMonic.ne_zero (2 ^ 62)
-                (canonical_degree_bound p.toNat gcd hgcdCanonical
-                  (by omega))
+                p.toNat gcd hgcdCanonicalP hgcdMonic.ne_zero (2 ^ 62)
+                (canonical_degree_bound p.toNat gcd hgcdCanonicalP
+                  (lt_of_le_of_lt hgcdDegreeLe hrawDegree))
               have hnonempty := StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
                 p.toNat gcd hgcdMonic.ne_zero
               have hiff := StrictDDF.strict_get_deg_pos_iff_natDegree_pos
-                p.toNat gcd hgcdCanonical (lt_trans hdegree63 (by omega))
+                p.toNat gcd hgcdCanonicalP (lt_trans hdegree63 (by omega))
               by_contra hne
               have hpos : 0 < (SparsePolyZp.toPoly p.toNat gcd).natDegree :=
                 Nat.pos_of_ne_zero hne
-              have := hiff.mpr hpos
-              omega
+              exact hgcdDegree (hiff.mpr hpos)
             exact squarefree_of_normalized_gcd_degree_zero
               (SparsePolyZp.toPoly p.toNat rawMod)
               (SparsePolyZp.toPoly p.toNat derivative)
               (SparsePolyZp.toPoly p.toNat gcd)
-              (by
-                rw [physical.primeField]
-                exact StrictSquarefreeZp.derivativeIR_toPoly physical.dense
-                  rawMod physical.configured (physical.primeField ▸ hrawCanonical)
-                  (canonical_degree_bound p.toNat rawMod hrawCanonical hrawDegree))
-              (by simpa [physical.primeField] using hgcdSemantic)
+              (StrictSquarefreeZp.derivativeIR_toPoly physical.dense
+                rawMod physical.configured hrawCanonical
+                (fun term hterm => lt_trans
+                  (canonical_degree_bound p.toNat rawMod hrawCanonical hrawDegree
+                    term hterm) (by norm_num [UInt64.size])))
+              (by simpa using hgcdSemantic)
               hgcdMonic hgcdNatDegree
           have hsquarefreeMonic : Squarefree
-              (SparsePolyZp.toPoly p.toNat monic) := by
-            rw [physical.primeField] at hreconstruct hmonic
-            exact hsquarefreeRaw.squarefree_of_dvd
-              ⟨Polynomial.C (Zp.toZMod p.toNat lc), hreconstruct.symm⟩
+              (SparsePolyZp.toPoly physical.dense._p.toNat monic) := by
+            have hsquarefreeRawDense : Squarefree
+                (SparsePolyZp.toPoly physical.dense._p.toNat rawMod) := by
+              exact hsquarefreeRaw
+            exact hsquarefreeRawDense.squarefree_of_dvd
+              ⟨Polynomial.C (Zp.toZMod physical.dense._p.toNat lc), by
+                rw [mul_comm]
+                exact hreconstruct⟩
+          have hrawDegreeDense :
+              (SparsePolyZp.toPoly physical.dense._p.toNat rawMod).natDegree <
+                2 ^ 62 := by
+            exact hrawDegree
           let ready : StrictFactorZp.DDFReady physical.dense monic :=
-            ⟨canonical_prime_word_eq p monic hmonicCanonical
-                (by simpa using hrawNonempty),
+            ⟨canonical_prime_word_eq physical.dense._p monic hmonicCanonical
+                (by simpa [hmonicSize] using hrawNonempty),
               hmonicCanonical,
-              canonical_degree_bound p.toNat monic hmonicCanonical
-                (by simpa [physical.primeField] using hmonicDegree.trans_lt hrawDegree),
+              canonical_degree_bound physical.dense._p.toNat monic hmonicCanonical
+                (hmonicDegree.trans_lt hrawDegreeDense),
               hmonic, hsquarefreeMonic⟩
           rcases StrictFactorZp.strictDDFCall_refines physical.dense
               physical.providers monic ready with
@@ -331,40 +406,65 @@ theorem tryCandidateRaw_factored_refines {State : Type}
           rw [hddfRun] at hrun
           simp only at hrun
           rcases factorComponentsLoop_refines engine physical.dense
-              physical.providers edfTermination components hedfReady 0 rng #[] with
-            ⟨output, rngOut, decoded, hloops, hdecode, hquality⟩
-          rw [hloops] at hrun
+              physical.providers edfTermination
+              (strictCandidateRawOps engine physical edfTermination) rfl
+              components hedfReady 0 rng #[] with
+            ⟨output, rngOut, decoded, hloops, hdecode, hcomponentProduct,
+              hquality⟩
+          have hloops' := hloops
+          simp only [strictCandidateRawOps] at hloops'
+          rw [hloops'] at hrun
           simp only at hrun
-          have hout : output = factors ∧ rngOut = rng' := by
-            exact Prod.mk.inj (Except.ok.inj hrun)
-          subst output
-          subst rngOut
-          have hdecoded : factorArrayToL2 p.toNat factors = decoded := by
+          have hout : monic = fp ∧ output = factors ∧ rngOut = rng' := by
+            exact Generated.StrictSelectPrime.CandidateResult.factored.inj
+              (Except.ok.inj hrun)
+          rcases hout with ⟨rfl, rfl, rfl⟩
+          have hdecoded : factorArrayToL2 p.toNat output = decoded := by
             simpa using hdecode
           have hddfCorrect := ddf_correct
             (SparsePolyZp.toPoly p.toNat monic) hmonic hsquarefreeMonic
-          rw [physical.primeField] at hddfDecode
-          rw [← hddfDecode] at hddfCorrect
+          have hddfDecodeP : StrictDDF.ddfResultToL2 p.toNat components =
+              ddf (SparsePolyZp.toPoly p.toNat monic) := by
+            simpa using hddfDecode
+          rw [← hddfDecodeP] at hddfCorrect
           have hproductMonic := hmonic
           have hproductDecoded : Associated
               (SparsePolyZp.toPoly p.toNat monic) decoded.prod := by
-            -- concrete DDF/EDF multiplication equality is supplied by the
-            -- already proved component pipeline theorem.
-            exact (ddf_edf_combine _ hmonic hsquarefreeMonic
-              (fun g => StrictDDF.ddfResultToL2 p.toNat components)
-              (fun _ _ => hddfCorrect)
-              (fun _ _ => decoded)
-              (fun _ _ _ _ _ => by
-                simpa [hdecoded] using hquality)).1.associated
+            have hddfProduct := hddfCorrect.2.2.2.1
+            have hcomponentProductP :
+                StrictFactorZp.componentSuffixProduct p.toNat components 0 =
+                  decoded.prod := by simpa using hcomponentProduct
+            have hcomponentAll :
+                StrictFactorZp.componentSuffixProduct p.toNat components 0 =
+                  ((StrictDDF.ddfResultToL2 p.toNat components).map Prod.fst).prod := by
+              simp [StrictFactorZp.componentSuffixProduct,
+                StrictDDF.ddfResultToL2, Function.comp_def]
+            exact Associated.trans hddfProduct (by
+              rw [← hcomponentAll, hcomponentProductP])
           refine ⟨?_, ?_, ?_⟩
-          · exact ⟨physical.prime, ?_, hsquarefreeRaw⟩
-            intro hlcZero
-            exact hlcNonzero (by simpa [hrawSemantic] using hlcZero)
+          · exact ⟨physical.prime, hlcF, by
+              rw [← hrawSemantic]
+              exact hsquarefreeRaw⟩
           · rw [← hrawSemantic]
-            exact Associated.trans (associated_of_dvd_dvd
-              ⟨_, hreconstruct⟩ ⟨_, by
-                rw [hreconstruct]
-                exact dvd_mul_left _ _⟩) hproductDecoded
+            have hreconstructP : SparsePolyZp.toPoly p.toNat rawMod =
+                Polynomial.C (Zp.toZMod p.toNat lc) *
+                  SparsePolyZp.toPoly p.toNat monic := by
+              simpa using hreconstruct
+            have hrawMonicAssociated : Associated
+                (SparsePolyZp.toPoly p.toNat rawMod)
+                (SparsePolyZp.toPoly p.toNat monic) := by
+              have hlcField : Zp.toZMod p.toNat lc ≠ 0 := by
+                intro hlcZero
+                simp [hlcZero] at hreconstructP
+                exact hrawNonzero hreconstructP
+              rw [hreconstructP, mul_comm]
+              exact associated_mul_unit_left
+                (SparsePolyZp.toPoly p.toNat monic)
+                (Polynomial.C (Zp.toZMod p.toNat lc)) (by
+                  simpa [Polynomial.isUnit_C] using hlcField)
+            exact Associated.trans hrawMonicAssociated (by
+              rw [hdecoded]
+              exact hproductDecoded)
           · simpa [hdecoded] using hquality
 
 end Refinement.StrictSelectPrime

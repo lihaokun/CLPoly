@@ -10,6 +10,77 @@ inductive CandidateResult (State : Type) where
   | skip (rng : State)
   | factored (fp : SparsePolyZp) (factors : Array SparsePolyZp) (rng : State)
 
+/-- Concrete callees in one C++ candidate attempt. -/
+structure CandidateRawOps (State : Type) where
+  lcMod : ZZ → UInt64 → RawExec ZZ
+  polynomialMod : SparsePolyZZ → UInt64 → RawExec SparsePolyZp
+  derivative : SparsePolyZp → RawExec SparsePolyZp
+  gcd : SparsePolyZp → SparsePolyZp → RawExec SparsePolyZp
+  makeMonic : SparsePolyZp → RawExec (Zp × SparsePolyZp)
+  ddf : SparsePolyZp → RawExec (Array (SparsePolyZp × UInt64))
+  edf : Array SparsePolyZp → SparsePolyZp → UInt64 → State →
+    RawExec (Array SparsePolyZp × State)
+
+/-- Append one concrete EDF output array, preserving the source range-for. -/
+def appendFactorsLoop (source : Array SparsePolyZp) (index : Nat)
+    (result : Array SparsePolyZp) : Array SparsePolyZp :=
+  if h : index < source.size then
+    appendFactorsLoop source (index + 1) (result.push source[index])
+  else result
+termination_by source.size - index
+decreasing_by omega
+
+/-- Execute EDF for every concrete DDF component. -/
+def factorComponentsLoop {State : Type} (ops : CandidateRawOps State)
+    (components : Array (SparsePolyZp × UInt64)) (index : Nat)
+    (rng : State) (result : Array SparsePolyZp) :
+    RawExec (Array SparsePolyZp × State) :=
+  if h : index < components.size then
+    let component := components[index]
+    match ops.edf #[] component.1 component.2 rng with
+    | .error fault => .error fault
+    | .ok (edfOutput, rng') =>
+      factorComponentsLoop ops components (index + 1) rng'
+        (appendFactorsLoop edfOutput 0 result)
+  else .ok (result, rng)
+termination_by components.size - index
+decreasing_by omega
+
+/-- Exact candidate body: coefficient reduction, polynomial reduction,
+degree preservation, derivative/GCD squarefree test, make-monic, DDF and EDF. -/
+def tryCandidateRaw {State : Type} (ops : CandidateRawOps State)
+    (f : SparsePolyZZ) (degF : Int64) (lcF : ZZ) (p : UInt64)
+    (rng : State) : RawExec (CandidateResult State) :=
+  match ops.lcMod lcF p with
+  | .error fault => .error fault
+  | .ok lcMod =>
+    if !ZZ.toBool lcMod then .ok (.skip rng)
+    else
+      match ops.polynomialMod f p with
+      | .error fault => .error fault
+      | .ok fp =>
+        if fp.isEmpty || get_deg fp != degF then .ok (.skip rng)
+        else
+          match ops.derivative fp with
+          | .error fault => .error fault
+          | .ok fpDerivative =>
+            if fpDerivative.isEmpty then .ok (.skip rng)
+            else
+              match ops.gcd fp fpDerivative with
+              | .error fault => .error fault
+              | .ok gcd =>
+                if get_deg gcd > 0 then .ok (.skip rng)
+                else
+                  match ops.makeMonic fp with
+                  | .error fault => .error fault
+                  | .ok (_, monic) =>
+                    match ops.ddf monic with
+                    | .error fault => .error fault
+                    | .ok components =>
+                      match factorComponentsLoop ops components 0 rng #[] with
+                      | .error fault => .error fault
+                      | .ok (factors, rng') => .ok (.factored monic factors rng')
+
 /-- Raw C++ boundaries used by prime enumeration.  `tryCandidate` is refined
 separately through modular reduction, GCD, make-monic, strict DDF and strict
 EDF; it is not permitted to return an L2 proposition or witness. -/

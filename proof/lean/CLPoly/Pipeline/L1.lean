@@ -634,8 +634,46 @@ theorem strictHenselLiftUpolyStage
   exact Refinement.__hensel_lift_upoly_raw_ir_refines this hcfg h2p hp2
     termination mulProvider f factors aTarget hinvariant
 
-/- The next end-to-end wrapper must compose these concrete stage executions.
-It is deliberately not reconstructed from the L2-only existence functions in
-`FactorZpInstantiate` or `FactorZZInstantiate`. -/
+/-- End-to-end pipeline boundary for the original generated C++ `__factor_Zp`
+entry.  This is a direct re-export of the centralized generated contract, not
+an L2-only reconstruction from `FactorZpInstantiate`. -/
+theorem strictFactorZpStage
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (sqfPhysical : Refinement.StrictSquarefreeZp.YunRawGCDWorkspaceProvider
+      this hcfg)
+    (providers : Refinement.StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (Refinement.StrictEDF.strictEDFRawOps engine this providers))
+    (sort : Refinement.StrictFactorZp.SortByDegreeProvider)
+    (initialRng : State) (f : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hnonempty : 0 < f.size)
+    (hdegreePositive :
+      0 < (SparsePolyZp.toPoly this._p.toNat f).natDegree)
+    (hdegreeBound :
+      (SparsePolyZp.toPoly this._p.toNat f).natDegree < 2 ^ 62) :
+    let ops : Generated.StrictFactorZp.FactorZpRawOps State := {
+      makeMonic := Refinement.StrictSquarefreeZp.upolyMakeMonicIR this
+      squarefree := Refinement.StrictFactorZp.strictSQFCall
+        this hcfg sqfPhysical
+      ddf := Refinement.StrictFactorZp.strictDDFCall this providers
+      edf := Refinement.StrictFactorZp.strictEDFCall
+        engine this providers termination
+      sortByDegree := sort.run }
+    ∃ lc output,
+      Generated.StrictFactorZp.__factor_Zp_raw_ir ops initialRng f =
+        .ok (lc, output) ∧
+      FactorZpCorrect (SparsePolyZp.toPoly this._p.toNat f)
+        (Zp.toZMod this._p.toNat lc)
+        (Refinement.StrictFactorZp.factorResultToL2
+          this._p.toNat output) := by
+  exact Refinement.__factor_Zp_raw_ir_refines_FactorZpCorrect engine this
+    hcfg sqfPhysical providers termination sort initialRng f hcanonical
+    hnonempty hdegreePositive hdegreeBound
+
+/- The ZZ end-to-end wrapper must compose the concrete prime-selection,
+Zp-factorization, Hensel and recombination executions. -/
 
 end L1Pipeline

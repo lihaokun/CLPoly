@@ -254,6 +254,42 @@ def _emit_verified_contract(info: dict) -> str:
     contract = info["verified_contract"]
     theorem_name = contract["theorem_name"]
     proof_theorem = contract["proof_theorem"]
+    if contract["kind"] == "strict_factor_zp":
+        return f"""/-- Generated public end-to-end contract for the original C++ `__factor_Zp`
+entry.  Its executable side is the source-shaped strict L1 entry, including
+make-monic, SQF, DDF, EDF, multiplicity attachment, RNG threading and the
+`std::sort` permutation boundary. -/
+theorem {theorem_name}
+    {{State : Type}} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (sqfPhysical : StrictSquarefreeZp.YunRawGCDWorkspaceProvider this hcfg)
+    (providers : StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (StrictEDF.strictEDFRawOps engine this providers))
+    (sort : StrictFactorZp.SortByDegreeProvider) (initialRng : State)
+    (f : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hnonempty : 0 < f.size)
+    (hdegreePositive :
+      0 < (SparsePolyZp.toPoly this._p.toNat f).natDegree)
+    (hdegreeBound :
+      (SparsePolyZp.toPoly this._p.toNat f).natDegree < 2 ^ 62) :
+    let ops : Generated.StrictFactorZp.FactorZpRawOps State := {{
+      makeMonic := StrictSquarefreeZp.upolyMakeMonicIR this
+      squarefree := StrictFactorZp.strictSQFCall this hcfg sqfPhysical
+      ddf := StrictFactorZp.strictDDFCall this providers
+      edf := StrictFactorZp.strictEDFCall engine this providers termination
+      sortByDegree := sort.run }}
+    ∃ lc output,
+      Generated.StrictFactorZp.__factor_Zp_raw_ir ops initialRng f =
+        .ok (lc, output) ∧
+      FactorZpCorrect (SparsePolyZp.toPoly this._p.toNat f)
+        (Zp.toZMod this._p.toNat lc)
+        (StrictFactorZp.factorResultToL2 this._p.toNat output) := by
+  exact {proof_theorem} engine this hcfg sqfPhysical providers termination
+    sort initialRng f hcanonical hnonempty hdegreePositive hdegreeBound
+"""
     if contract["kind"] == "strict_squarefree_zp":
         return f"""/-- Generated public contract for the original C++ `__squarefree_Zp` entry.
 The executable side is the strict, well-founded L1 semantics; the result is

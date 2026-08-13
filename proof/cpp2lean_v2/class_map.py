@@ -845,6 +845,24 @@ def is_callee_nonvoid(callee: str, num_args: int) -> bool:
 # ============================================================
 
 REFINEMENT_MAP = {
+    "__factor_Zp": {
+        "l1_name": "__factor_Zp_ir",
+        "l2_name": "FactorZpCorrect",
+        "l2_import": "CLPoly.Spec",
+        "refinement_file": "FactorZp",
+        "result_kind": "factor_zp_correct",
+        "cpp_source": "clpoly/polynomial_factorize_zp.hh",
+        "doc": "Zp 上完整因式分解",
+        "verified_contract": {
+            "theorem_name": "__factor_Zp_raw_ir_refines_FactorZpCorrect",
+            "proof_import": "CLPoly.Refinement.FactorZp",
+            "proof_theorem": (
+                "Refinement.StrictFactorZp."
+                "__factor_Zp_raw_ir_refines_FactorZpCorrect"
+            ),
+            "kind": "strict_factor_zp",
+        },
+    },
     "__squarefree_Zp": {
         "l1_name": "__squarefree_Zp_ir",
         "l2_name": "sqfZp",

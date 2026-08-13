@@ -7,7 +7,9 @@
   an executable fallback.
 -/
 import CLPoly.Generated.StrictFactorZp
-import CLPoly.Refinement.Generated
+import CLPoly.Refinement.StrictSquarefreeGenerated
+import CLPoly.Refinement.DDF
+import CLPoly.Refinement.EDF
 import CLPoly.Pipeline.FactorZp
 
 set_option autoImplicit false
@@ -47,7 +49,8 @@ structure DDFReady (this : DenseUPolyZp) (factor : SparsePolyZp) : Prop where
 /-- A concrete SQF component together with exactly the representation facts
 needed by the strict DDF entry. -/
 structure SQFOutputReady (this : DenseUPolyZp)
-    (item : SparsePolyZp × UInt64) : Prop extends DDFReady this item.1
+    (item : SparsePolyZp × UInt64) : Prop extends DDFReady this item.1 where
+  multiplicityPositive : 1 ≤ item.2.toNat
 
 /-- Erased-proof adapter for the C++ DDF call site.  On the verified pipeline
 path this reduces to the exact strict DDF entry; the negative branch only
@@ -128,7 +131,7 @@ theorem strictDDFCall_refines
         ddf (SparsePolyZp.toPoly this._p.toNat f) ∧
       ∀ item ∈ output.toList,
         StrictEDF.EDFEntryInvariant this item.1 item.2 := by
-  rcases Refinement.__ddf_Zp_raw_ir_refines_ddf this providers f
+  rcases StrictDDF.strictDDFEntryIR_refines_ddf this providers f
       hready.primeMatches hready.canonical hready.degreeBound hready.monic
       hready.squarefree with
     ⟨output, hrun, hsemantic, hcanonical, hdegreePositive,
@@ -195,7 +198,7 @@ theorem strictEDFCall_refines {State : Type}
         .ok (output, rng') ∧
       StrictEDF.edfResultToL2 this._p.toNat output = factors ∧
       EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
-  rcases Refinement.__edf_Zp_raw_ir_refines_edf engine this providers
+  rcases StrictEDF.strictEDFEntryIR_refines_edf engine this providers
       termination #[] f d rng hinvariant with
     ⟨output, rng', factors, hrun, hdecode, hcorrect⟩
   refine ⟨output, rng', factors, ?_, ?_, hcorrect⟩
@@ -217,7 +220,10 @@ theorem upolyMakeMonicIR_refines
       (SparsePolyZp.toPoly this._p.toNat monic).Monic ∧
       SparsePolyZp.toPoly this._p.toNat f =
         Polynomial.C (Zp.toZMod this._p.toNat lc) *
-          SparsePolyZp.toPoly this._p.toNat monic := by
+          SparsePolyZp.toPoly this._p.toNat monic ∧
+      monic.size = f.size ∧
+      (SparsePolyZp.toPoly this._p.toNat monic).natDegree =
+        (SparsePolyZp.toPoly this._p.toNat f).natDegree := by
   let lc := f[0].2
   have hlcMem : lc ∈ f.toList.map Prod.snd := by
     apply List.mem_map.mpr
@@ -248,7 +254,7 @@ theorem upolyMakeMonicIR_refines
       rw [StrictSquarefreeZp.listSum_coeff_of_mem_chain this._p.toNat
         f.toList f[0] hcanonical.2.1 hheadMem]
       exact hleadField
-    refine ⟨lc, f, hrun, hcanonical, hleading, ?_⟩
+    refine ⟨lc, f, hrun, hcanonical, hleading, ?_, rfl, rfl⟩
     simp [hleadField]
   · let inverse := CLPoly.Impl.StrictPolynomialGCDRefinement.generatedZpInvIR
         this lc
@@ -315,7 +321,14 @@ theorem upolyMakeMonicIR_refines
           Zp.toZMod this._p.toNat inverse = 1 := by
         simpa [mul_comm] using hlcInverse
       rw [hcomm, map_one, one_mul]
-    exact ⟨lc, monic, hrun, hcanonicalMonic, hmonic, hreconstruct⟩
+    have hsize : monic.size = f.size := by
+      exact CLPoly.Impl.StrictPolynomialGCDRefinement.sparseMonicLoop_size
+        0 f inverse
+    have hfNatDegree :
+        (SparsePolyZp.toPoly this._p.toNat f).natDegree = f[0].1.deg :=
+      Polynomial.natDegree_eq_of_degree_eq_some hfDegree
+    exact ⟨lc, monic, hrun, hcanonicalMonic, hmonic, hreconstruct, hsize,
+      hmonicNatDegree.trans hfNatDegree.symm⟩
 
 /-- Entry facts for the strict SQF call made by the top-level factorization. -/
 structure SQFReady (this : DenseUPolyZp) (source : SparsePolyZp) : Prop where
@@ -351,7 +364,8 @@ theorem strictSQFCall_refines
       toPolyList output this._p.toNat =
         sqfZp (SparsePolyZp.toPoly this._p.toNat source) ∧
       ∀ item ∈ output.toList, SQFOutputReady this item := by
-  rcases Refinement.__squarefree_Zp_raw_ir_refines_sqfZp this hcfg physical
+  rcases StrictSquarefreeGenerated.__squarefree_Zp_raw_ir_refines_sqfZp
+      this hcfg physical
       source hready.canonical hready.monic hready.nonempty
       hready.degreePositive hready.denseBound with
     ⟨output, hrun, hdecode, hcanonical⟩
@@ -375,9 +389,9 @@ theorem strictSQFCall_refines
         sqfZp (SparsePolyZp.toPoly this._p.toNat source) := hdecoded
     have hmonicItem := (hsquarefreeCorrect.2.1 decodedItem hdecoded').2
     have hsquarefreeItem := (hsquarefreeCorrect.2.1 decodedItem hdecoded').1
+    have hmultPositive := hsquarefreeCorrect.2.2.1 decodedItem hdecoded'
     have hitemDvd : SparsePolyZp.toPoly this._p.toNat item.1 ∣
         SparsePolyZp.toPoly this._p.toNat source := by
-      have hmultPositive := hsquarefreeCorrect.2.2.1 decodedItem hdecoded'
       have hpowMem : (SparsePolyZp.toPoly this._p.toNat item.1) ^
             item.2.toNat ∈
           (sqfZp (SparsePolyZp.toPoly this._p.toNat source)).map
@@ -398,7 +412,8 @@ theorem strictSQFCall_refines
     have hhead : item.1[0]! = item.1[0] := by
       rw [getElem!_def, getElem?_def]
       simp [hnonemptyItem]
-    refine ⟨⟨?_, hcanonicalItem, ?_, hmonicItem, hsquarefreeItem⟩⟩
+    refine ⟨⟨?_, hcanonicalItem, ?_, hmonicItem, hsquarefreeItem⟩,
+      hmultPositive⟩
     · rw [hhead]
       exact UInt64.toNat_inj.mp (hcanonicalItem.1 item.1[0] hheadMem).1
     · intro term hterm
@@ -412,6 +427,46 @@ noncomputable def factorResultToL2 (p : Nat)
     List (Polynomial (ZMod p) × Nat) :=
   result.toList.map fun item =>
     (SparsePolyZp.toPoly p item.1, item.2.toNat)
+
+/-- Physical contract of the C++ `std::sort` library call used by
+`__factor_Zp`.  It may choose any concrete sorting implementation, but its
+returned buffer must be a permutation of the input buffer.  No factorization
+result or polynomial property is supplied by this boundary. -/
+structure SortByDegreeProvider where
+  run : Array (SparsePolyZp × UInt64) →
+    RawExec (Array (SparsePolyZp × UInt64))
+  permutation : ∀ input, ∃ output,
+    run input = .ok output ∧ output.toList.Perm input.toList
+
+theorem factorResultToL2_perm {p : Nat}
+    {left right : Array (SparsePolyZp × UInt64)}
+    (hperm : left.toList.Perm right.toList) :
+    (factorResultToL2 p left).Perm (factorResultToL2 p right) := by
+  exact hperm.map (fun item =>
+    (SparsePolyZp.toPoly p item.1, item.2.toNat))
+
+theorem factorZpCorrect_perm {p : Nat} [Fact (Nat.Prime p)]
+    {f : Polynomial (ZMod p)} {lc : ZMod p}
+    {left right : List (Polynomial (ZMod p) × Nat)}
+    (hcorrect : FactorZpCorrect f lc left) (hperm : right.Perm left) :
+    FactorZpCorrect f lc right := by
+  refine ⟨?_, ?_⟩
+  · rw [hcorrect.1]
+    rw [(hperm.map fun item => item.1 ^ item.2).prod_eq]
+  · intro item hitem
+    exact hcorrect.2 item (hperm.mem_iff.mp hitem)
+
+theorem sparseDenseLength_eq_natDegree_add_one
+    (p : Nat) [Fact (Nat.Prime p)] (poly : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical p poly)
+    (hnonempty : 0 < poly.size) :
+    CLPoly.Impl.StrictPolynomialGCDRefinement.sparseDenseLength poly =
+      (SparsePolyZp.toPoly p poly).natDegree + 1 := by
+  rw [CLPoly.Impl.StrictPolynomialGCDRefinement.sparseDenseLength,
+    dif_pos hnonempty]
+  have hdegree := StrictSquarefreeZp.sparsePolyZp_toPoly_degree_eq_head
+    p poly hcanonical hnonempty
+  rw [Polynomial.natDegree_eq_of_degree_eq_some hdegree]
 
 /-- Decode an EDF factor array after the C++ innermost loop has attached one
 SQF multiplicity to every element. -/
@@ -706,7 +761,8 @@ theorem factorLoop2_refines {State : Type}
         factorResultToL2 this._p.toNat result ++ factors ∧
       squarefreeSuffixProduct this._p.toNat squarefreeFactors index =
         (factors.map fun item => item.1 ^ item.2).prod ∧
-      ∀ item ∈ factors, Irreducible item.1 ∧ Monic item.1 := by
+      ∀ item ∈ factors,
+        Irreducible item.1 ∧ Monic item.1 ∧ 1 ≤ item.2 := by
   dsimp only
   induction hmeasure : squarefreeFactors.size - index using
     Nat.strong_induction_on generalizing index rng result with
@@ -745,7 +801,8 @@ theorem factorLoop2_refines {State : Type}
             factorResultToL2 this._p.toNat result ++ factors ∧
           squarefreeSuffixProduct this._p.toNat squarefreeFactors index =
             (factors.map fun item => item.1 ^ item.2).prod ∧
-          ∀ item ∈ factors, Irreducible item.1 ∧ Monic item.1
+          ∀ item ∈ factors,
+            Irreducible item.1 ∧ Monic item.1 ∧ 1 ≤ item.2
         rw [hddfRun]
         rcases factorLoop1_refines engine this providers termination makeMonic
             squarefree sortByDegree components hedfReady sqfItem.2 0 rng result with
@@ -797,7 +854,8 @@ theorem factorLoop2_refines {State : Type}
         · intro item hitem
           rcases List.mem_append.mp hitem with hitem | hitem
           · rcases List.mem_map.mp hitem with ⟨q, hq, rfl⟩
-            exact hmiddleQuality q hq
+            exact ⟨(hmiddleQuality q hq).1, (hmiddleQuality q hq).2,
+              hsqfReady.multiplicityPositive⟩
           · exact htailQuality item hitem
       next hindex =>
         have hle : squarefreeFactors.size ≤ index := Nat.le_of_not_gt hindex
@@ -805,5 +863,128 @@ theorem factorLoop2_refines {State : Type}
           exact List.drop_eq_nil_iff.mpr (by simpa using hle)
         refine ⟨result, [], rfl, by simp, ?_, by simp⟩
         simp [squarefreeSuffixProduct, hdrop]
+
+/-- End-to-end refinement of the exact generated C++ `__factor_Zp` control
+flow.  Every executable component is a strict L1 entry; the only library
+boundary is `std::sort`, whose contract exposes only buffer permutation. -/
+theorem __factor_Zp_raw_ir_refines_FactorZpCorrect
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
+    (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
+    (sqfPhysical : StrictSquarefreeZp.YunRawGCDWorkspaceProvider this hcfg)
+    (providers : StrictDDF.DDFRawProviders this)
+    (termination : Generated.StrictEDF.EDFTermination
+      (StrictEDF.strictEDFRawOps engine this providers))
+    (sort : SortByDegreeProvider) (initialRng : State)
+    (f : SparsePolyZp)
+    (hcanonical : SparsePolyZp.Canonical this._p.toNat f)
+    (hnonempty : 0 < f.size)
+    (hdegreePositive :
+      0 < (SparsePolyZp.toPoly this._p.toNat f).natDegree)
+    (hdegreeBound :
+      (SparsePolyZp.toPoly this._p.toNat f).natDegree < 2 ^ 62) :
+    let ops : Generated.StrictFactorZp.FactorZpRawOps State := {
+      makeMonic := StrictSquarefreeZp.upolyMakeMonicIR this
+      squarefree := strictSQFCall this hcfg sqfPhysical
+      ddf := strictDDFCall this providers
+      edf := strictEDFCall engine this providers termination
+      sortByDegree := sort.run }
+    ∃ lc output,
+      Generated.StrictFactorZp.__factor_Zp_raw_ir ops initialRng f =
+        .ok (lc, output) ∧
+      FactorZpCorrect (SparsePolyZp.toPoly this._p.toNat f)
+        (Zp.toZMod this._p.toNat lc)
+        (factorResultToL2 this._p.toNat output) := by
+  dsimp only
+  have hempty : f.isEmpty = false := by
+    simpa [Array.isEmpty] using (Nat.ne_of_gt hnonempty)
+  have hgetDeg : get_deg f > 0 :=
+    (StrictDDF.strict_get_deg_pos_iff_natDegree_pos this._p.toNat f
+      hcanonical (lt_trans hdegreeBound (by omega))).2 hdegreePositive
+  rcases upolyMakeMonicIR_refines this f hcanonical hnonempty with
+    ⟨lc, monic, hmonicRun, hmonicCanonical, hmonic, hreconstruct,
+      hmonicSize, hmonicDegree⟩
+  have hmonicNonempty : 0 < monic.size := by omega
+  have hmonicDenseBound :
+      CLPoly.Impl.StrictPolynomialGCDRefinement.sparseDenseLength monic ≤
+        2 ^ 63 := by
+    rw [sparseDenseLength_eq_natDegree_add_one this._p.toNat monic
+      hmonicCanonical hmonicNonempty, hmonicDegree]
+    omega
+  have hsqfReady : SQFReady this monic :=
+    ⟨hmonicCanonical, hmonic, hmonicNonempty,
+      hmonicDegree ▸ hdegreePositive, hmonicDenseBound,
+      hmonicDegree ▸ hdegreeBound⟩
+  rcases strictSQFCall_refines this hcfg sqfPhysical monic hsqfReady with
+    ⟨sqfOutput, hsqfRun, hsqfDecode, hsqfOutputReady⟩
+  rcases factorLoop2_refines engine this providers termination
+      (StrictSquarefreeZp.upolyMakeMonicIR this)
+      (strictSQFCall this hcfg sqfPhysical) sort.run sqfOutput
+      hsqfOutputReady 0 initialRng #[] with
+    ⟨unsorted, factors, hloops, hdecode, hproduct, hquality⟩
+  rcases sort.permutation unsorted with ⟨sorted, hsort, hpermRaw⟩
+  have hunsortedDecode :
+      factorResultToL2 this._p.toNat unsorted = factors := by
+    simpa using hdecode
+  have hpermDecoded :
+      (factorResultToL2 this._p.toNat sorted).Perm factors := by
+    have hp := factorResultToL2_perm (p := this._p.toNat) hpermRaw
+    rw [hunsortedDecode] at hp
+    exact hp
+  have hcorrectUnsorted :
+      FactorZpCorrect (SparsePolyZp.toPoly this._p.toNat f)
+        (Zp.toZMod this._p.toNat lc) factors := by
+    refine ⟨?_, ?_⟩
+    · rw [hreconstruct]
+      congr 1
+      have hsqfCorrect := sqf_correct
+        (SparsePolyZp.toPoly this._p.toNat monic) hmonic.ne_zero
+      let powered : Polynomial (ZMod this._p.toNat) × Nat →
+          Polynomial (ZMod this._p.toNat) := fun item => item.1 ^ item.2
+      have hsqfProductMonic :
+          ((sqfZp (SparsePolyZp.toPoly this._p.toNat monic)).map
+            powered).prod.Monic := by
+        exact monicListProd _ (by
+          intro q hq
+          rcases List.mem_map.mp hq with
+            ⟨item : Polynomial (ZMod this._p.toNat) × Nat, hitem, rfl⟩
+          exact (hsqfCorrect.2.1 item hitem).2.pow item.2)
+      have hrawProduct :
+          ((sqfZp (SparsePolyZp.toPoly this._p.toNat monic)).map
+            (fun item => item.1 ^ item.2)).prod =
+          (factors.map fun item => item.1 ^ item.2).prod := by
+        have hraw := hproduct
+        rw [squarefreeSuffixProduct, List.drop_zero] at hraw
+        have hdecodedMap :
+            sqfOutput.toList.map (fun item =>
+              SparsePolyZp.toPoly this._p.toNat item.1 ^ item.2.toNat) =
+            (toPolyList sqfOutput this._p.toNat).map
+              (fun item => item.1 ^ item.2) := by
+          simp [toPolyList, Array.toList_map, List.map_map,
+            Function.comp_def]
+        rw [hdecodedMap, hsqfDecode] at hraw
+        exact hraw
+      have hsqfEq := _root_.eq_of_associated_monic _ _ hmonic
+        hsqfProductMonic hsqfCorrect.1
+      exact hsqfEq.trans hrawProduct
+    · exact hquality
+  refine ⟨lc, sorted, ?_,
+    factorZpCorrect_perm hcorrectUnsorted hpermDecoded⟩
+  simp only [Generated.StrictFactorZp.__factor_Zp_raw_ir, hempty,
+    Bool.false_eq_true, ↓reduceIte]
+  have hnotConstant : ¬get_deg f ≤ 0 := by
+    intro hle
+    have hltInt : (0 : Int) < (get_deg f).toInt := by
+      simpa only [Int64.lt_iff_toInt_lt] using hgetDeg
+    have hleInt : (get_deg f).toInt ≤ (0 : Int) := by
+      simpa only [Int64.le_iff_toInt_le] using hle
+    omega
+  rw [if_neg hnotConstant, hmonicRun]
+  simp only
+  rw [hsqfRun]
+  simp only
+  rw [hloops]
+  simp only
+  rw [hsort]
 
 end Refinement.StrictFactorZp

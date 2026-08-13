@@ -15,6 +15,8 @@ structure FactorZpRawOps (State : Type) where
   ddf : SparsePolyZp → RawExec (Array (SparsePolyZp × UInt64))
   edf : Array SparsePolyZp → SparsePolyZp → UInt64 → State →
     RawExec (Array SparsePolyZp × State)
+  sortByDegree : Array (SparsePolyZp × UInt64) →
+    RawExec (Array (SparsePolyZp × UInt64))
 
 /-- Exact lowering of the innermost C++ range-for which attaches the SQF
 multiplicity to every EDF factor. -/
@@ -87,7 +89,8 @@ def __factor_Zp_raw_ir {State : Type} (ops : FactorZpRawOps State)
         match _loop___factor_Zp_2_raw_ir ops squarefreeFactors 0 initialRng #[] with
         | .error fault => .error fault
         | .ok result =>
-          .ok (leadingCoefficient,
-            result.qsort (fun a b => get_deg a.1 < get_deg b.1))
+          match ops.sortByDegree result with
+          | .error fault => .error fault
+          | .ok sorted => .ok (leadingCoefficient, sorted)
 
 end Generated.StrictFactorZp

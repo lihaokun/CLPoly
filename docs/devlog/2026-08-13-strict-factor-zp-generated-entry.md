@@ -7,7 +7,8 @@ Date: 2026-08-13
 - Added a reproducible generator for the strict L1 translation of the C++
   `__factor_Zp` entry.
 - Generated the source-shaped make-monic/SQF/DDF/EDF control flow, including
-  all three nested range-for loops and the final degree sort.
+  all three nested range-for loops and an explicit effectful boundary for the
+  final `std::sort` call.
 - Replaced translated `partial def` loops with structural well-founded
   recursion measured by the number of unvisited array elements.
 
@@ -22,6 +23,10 @@ side of a genuine end-to-end C++ L1-to-L2 refinement theorem.
 - Component calls remain explicit `RawExec` operations.  The later refinement
   layer must instantiate them with the already verified strict SQF, DDF and
   EDF executions; the generated L1 contains no L2 factorization oracle.
+- `std::sort` is likewise an explicit L1 operation.  Its refinement provider
+  must prove that the returned array is a permutation ordered by source degree;
+  Lean's executable `Array.qsort` has no public permutation theorem and is not
+  silently assumed correct.
 - No fuel parameter is introduced.  Each finite C++ range-for loop uses
   `array.size - index` as its termination measure.
 - The generator supports `--check`, making the checked-in Lean artifact

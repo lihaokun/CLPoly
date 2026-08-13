@@ -9,6 +9,7 @@
 import CLPoly.Algorithm.Recombine
 import CLPoly.Generated.StrictRecombine
 import CLPoly.Refinement.Basic
+import Batteries.Data.Array.Lemmas
 
 set_option autoImplicit false
 
@@ -100,5 +101,55 @@ theorem appendFallback_refines (fallback result : Array SparsePolyZZ) :
   · simpa [Generated.StrictRecombine.appendFallback] using
       appendFallbackLoop_refines fallback 0 result
   · simp [factorArrayToL2]
+
+/-- Pure list meaning of the source reverse-erasure loop. -/
+def removeConsumedL2 (active : Array Int32) (consumed : Array Bool) :
+    List Int32 :=
+  (active.toList.zip consumed.toList).filterMap fun item =>
+    if item.2 then none else some item.1
+
+private theorem removeConsumedLoop_refines_prefix
+    (consumed : Array Bool) (remaining : Nat) (active : Array Int32)
+    (hremaining : remaining ≤ consumed.size)
+    (hactiveRemaining : remaining ≤ active.size) :
+    ∃ output,
+      Generated.StrictRecombine.removeConsumedLoop consumed remaining active =
+        .ok output ∧
+      output.size ≤ active.size := by
+  induction remaining generalizing active with
+  | zero =>
+      refine ⟨active, ?_, Nat.le_refl _⟩
+      rw [Generated.StrictRecombine.removeConsumedLoop]
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.removeConsumedLoop]
+      have hindex : remaining < consumed.size := by omega
+      rw [dif_pos hindex]
+      split
+      next hmarked =>
+        have hactive : remaining < active.size := by omega
+        rw [dif_pos hactive]
+        have heraseSize : (active.eraseIdxIfInBounds remaining).size =
+            active.size - 1 := by
+          simp [hactive]
+        have hremaining' : remaining ≤
+            (active.eraseIdxIfInBounds remaining).size := by
+          rw [heraseSize]
+          omega
+        rcases ih (active.eraseIdxIfInBounds remaining) (by omega) hremaining' with
+          ⟨output, hrun, hsize⟩
+        exact ⟨output, hrun, hsize.trans (by rw [heraseSize]; omega)⟩
+      next hkept =>
+        rcases ih active (by omega) (by omega) with ⟨output, hrun, hsize⟩
+        exact ⟨output, hrun, hsize⟩
+
+theorem removeConsumed_succeeds (active : Array Int32)
+    (consumed : Array Bool) (hsizes : consumed.size = active.size) :
+    ∃ output,
+      Generated.StrictRecombine.removeConsumed active consumed = .ok output ∧
+      output.size ≤ active.size := by
+  unfold Generated.StrictRecombine.removeConsumed
+  rw [dif_pos hsizes]
+  exact removeConsumedLoop_refines_prefix consumed active.size active
+    (by omega) (Nat.le_refl _)
 
 end Refinement.StrictRecombine

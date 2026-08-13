@@ -55,6 +55,30 @@ def appendFallback (fallback result : Array SparsePolyZZ) :
     RawExec (Array SparsePolyZZ) :=
   appendFallbackLoop fallback 0 result
 
+/-- Reverse source loop removing every active entry marked consumed.  The
+reverse direction is semantically relevant: erasing a larger index preserves
+all still-to-be-tested smaller indices. -/
+def removeConsumedLoop (consumed : Array Bool) :
+    (remaining : Nat) → Array Int32 → RawExec (Array Int32)
+  | 0, active => .ok active
+  | remaining + 1, active =>
+      let index := remaining
+      if hconsumed : index < consumed.size then
+        if consumed[index] then
+          if hactive : index < active.size then
+            removeConsumedLoop consumed remaining
+              (active.eraseIdxIfInBounds index)
+          else .error (.outOfBounds index active.size)
+        else removeConsumedLoop consumed remaining active
+      else .error (.outOfBounds index consumed.size)
+termination_by remaining _ => remaining
+
+def removeConsumed (active : Array Int32) (consumed : Array Bool) :
+    RawExec (Array Int32) :=
+  if _hsizes : consumed.size = active.size then
+    removeConsumedLoop consumed active.size active
+  else .error .assertionFailure
+
 end Generated.StrictRecombine
 '''
 

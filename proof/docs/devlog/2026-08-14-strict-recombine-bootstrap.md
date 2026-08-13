@@ -16,3 +16,12 @@ They do not assume a recombination result, irreducibility, or an abstract UFD
 factor witness.  The remaining work is the candidate-validation loop,
 reverse active deletion, precision escalation, and the surrounding main
 loop.
+
+The reverse active-deletion loop is now generated as
+`removeConsumedLoop`.  It follows the source order from `active.size - 1`
+down to zero and performs the actual `eraseIdxIfInBounds` mutation whenever
+the matching consumed bit is true.  Its recursion measure is the remaining
+prefix length.  The refinement proof shows that equal active/consumed sizes
+make every access safe, successful execution exists, and the resulting active
+array cannot grow.  The next strengthening will use `found_any` to prove the
+strict size decrease needed by the outer loop measure.

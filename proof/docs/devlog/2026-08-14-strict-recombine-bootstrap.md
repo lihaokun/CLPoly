@@ -58,3 +58,12 @@ the actual indexed Boolean updates after successful trial division.  Their
 refinement proofs establish successful execution for valid candidate indices
 and preservation of the consumed-array size, which is the representation
 fact needed to instantiate the main-loop removal certificate.
+
+The source trial-product range loop is also generated.  For each candidate
+index it calls a raw multiply/normalize/mod operation and threads the concrete
+sparse product into the next iteration.  Its refinement theorem proves, by
+the generated loop's `candidate.size - index` measure, that every successful
+run decodes modulo `m` to the starting product times the ordered product of
+the selected active lifted factors.  The remaining single-step contract must
+now be discharged by strict integer polynomial multiplication together with
+the existing strict coefficient-reduction theorem.

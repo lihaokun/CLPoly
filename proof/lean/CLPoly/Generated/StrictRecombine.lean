@@ -161,6 +161,31 @@ def markConsumedLoop (candidate : Array Int32) (index : Nat)
 termination_by candidate.size - index
 decreasing_by omega
 
+structure TrialProductRawOps where
+  multiplyNormalizeMod : SparsePolyZZ → SparsePolyZZ → ZZ →
+    RawExec SparsePolyZZ
+
+/-- Source candidate-product loop: multiply by every selected active lifted
+factor, normalize, and reduce coefficients after each multiplication. -/
+def trialProductLoop (ops : TrialProductRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) (index : Nat) (product : SparsePolyZZ) :
+    RawExec SparsePolyZZ :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hnonnegative : 0 ≤ activeIndex then
+      let activeNat := activeIndex.toInt64.toNat
+      if hactive : activeNat < activeLifted.size then
+        match ops.multiplyNormalizeMod product activeLifted[activeNat] modulus with
+        | .error fault => .error fault
+        | .ok product' => trialProductLoop ops candidate activeLifted modulus
+            (index + 1) product'
+      else .error (.outOfBounds activeNat activeLifted.size)
+    else .error .arithmeticDomain
+  else .ok product
+termination_by candidate.size - index
+decreasing_by omega
+
 /-- Erased termination certificate for the successful-extraction branch.
 It refers only to concrete successful raw executions and the consumed bits
 they returned. -/

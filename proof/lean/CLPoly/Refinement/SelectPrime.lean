@@ -11,6 +11,48 @@ open CLPoly.Math
 
 namespace Refinement.StrictSelectPrime
 
+/-- Physical arithmetic state for one machine prime returned by the source
+prime iterator.  It contains only primality/configuration/workspace data; no
+field states that the input polynomial is squarefree or supplies factors. -/
+structure CandidatePhysical (p : UInt64) where
+  prime : Nat.Prime p.toNat
+  dense : DenseUPolyZp
+  primeField : dense._p = p
+  configured : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured dense
+  twicePrimeFits : 2 * p.toNat ≤ UInt64.size
+  providers : @StrictDDF.DDFRawProviders dense ⟨primeField ▸ prime⟩
+
+/-- Physical candidate service for every prime word visited by the concrete
+iterator.  `atPrime` is data-independent: it may allocate arithmetic buffers
+but receives no polynomial and therefore cannot encode a factorization. -/
+structure CandidatePhysicalProvider where
+  atPrime : (p : UInt64) → CandidatePhysical p
+
+instance candidateFact {p : UInt64} (physical : CandidatePhysical p) :
+    Fact (Nat.Prime physical.dense._p.toNat) := by
+  constructor
+  simpa [physical.primeField] using physical.prime
+
+/-- Actual strict candidate operation bundle at one runtime prime. -/
+noncomputable def strictCandidateRawOps {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    {p : UInt64} (physical : CandidatePhysical p)
+    (edfTermination : Generated.StrictEDF.EDFTermination
+      (StrictEDF.strictEDFRawOps engine physical.dense physical.providers)) :
+    Generated.StrictSelectPrime.CandidateRawOps State := {
+  lcMod := fun coefficient modulus =>
+    .ok (ZZ.fdiv_r 0 coefficient modulus.toNat)
+  polynomialMod := Generated.StrictPolynomialMod.polynomial_mod_raw_ir
+  derivative := fun source => .ok
+    (StrictSquarefreeZp.derivativeIR physical.dense source)
+  gcd := fun left right =>
+    StrictDDF.strictDDFGCDIR physical.dense left right
+      (physical.providers.gcd left right)
+  makeMonic := StrictSquarefreeZp.upolyMakeMonicIR physical.dense
+  ddf := StrictFactorZp.strictDDFCall physical.dense physical.providers
+  edf := StrictFactorZp.strictEDFCall engine physical.dense
+    physical.providers edfTermination }
+
 noncomputable def factorArrayToL2 (p : Nat) (factors : Array SparsePolyZp) :
     List (Polynomial (ZMod p)) :=
   factors.toList.map (SparsePolyZp.toPoly p)

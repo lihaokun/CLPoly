@@ -10,6 +10,11 @@ open CLPoly.Math
 
 namespace Refinement.StrictPolynomialMod
 
+/-- Representation invariant of the C++ sparse integer polynomial input. -/
+def SparsePolyZZCanonical (f : SparsePolyZZ) : Prop :=
+  List.IsChain (fun a b : UMonomial × Int => a.1.deg > b.1.deg) f.toList ∧
+  ∀ term ∈ f.toList, term.2 ≠ 0
+
 private def reduceTerm (p : UInt64) (term : UMonomial × Int) :
     Option (UMonomial × Zp) :=
   let coefficient := Zp.ofInt term.2 p
@@ -100,6 +105,78 @@ theorem polynomial_mod_toPoly (f : SparsePolyZZ) (p : UInt64)
           simp [zp, hz, Zp.toZMod]
         simp [zp, hz, hcastZero, ih]
       · simp [zp, hz, zmod_intCast_ofInt coefficient p hp, ih]
+
+theorem polynomial_mod_canonical (f : SparsePolyZZ) (p : UInt64)
+    (hp : 0 < p.toNat) (hcanonical : SparsePolyZZCanonical f) :
+    SparsePolyZp.Canonical p.toNat (polynomial_mod f p) := by
+  unfold polynomial_mod SparsePolyZp.Canonical SparsePolyZp.WellFormed_arr
+  rw [Array.toList_filterMap]
+  refine ⟨?_, ?_, ?_⟩
+  · intro output houtput
+    rw [List.mem_filterMap] at houtput
+    rcases houtput with ⟨term, hterm, hreduce⟩
+    dsimp only at hreduce
+    let coefficient := Zp.ofInt term.2 p
+    split at hreduce
+    next hz => contradiction
+    next hz =>
+      simp only [Option.some.injEq] at hreduce
+      subst output
+      refine ⟨rfl, ?_⟩
+      simp only [Prod.snd]
+      unfold Zp.ofInt
+      have hpInt : (0 : Int) < p.toNat := by exact_mod_cast hp
+      have hnonneg : 0 ≤ term.2.emod p.toNat :=
+        Int.emod_nonneg _ (by omega)
+      have hlt : term.2.emod p.toNat < p.toNat :=
+        Int.emod_lt_of_pos _ hpInt
+      have hremNonneg : ¬term.2 % (p.toNat : Int) < 0 :=
+        not_lt_of_ge hnonneg
+      simp only [hremNonneg, ↓reduceIte]
+      have hltNatP : (term.2.emod p.toNat).toNat < p.toNat :=
+        (Int.toNat_lt hnonneg).2 hlt
+      have hltWord : (term.2.emod p.toNat).toNat < UInt64.size :=
+        lt_trans hltNatP (UInt64.toNat_lt_size p)
+      have hword : ((term.2.emod p.toNat).toNat.toUInt64).toNat =
+          (term.2.emod p.toNat).toNat :=
+        UInt64.toNat_ofNat_of_lt hltWord
+      change ((term.2 % (p.toNat : Int)).toNat.toUInt64).toNat < p.toNat
+      change ((term.2.emod p.toNat).toNat.toUInt64).toNat < p.toNat
+      rw [hword]
+      exact hltNatP
+  · apply List.isChain_iff_pairwise.mpr
+    let degreeGreater : (UMonomial × Int) → (UMonomial × Int) → Prop :=
+      fun a b => a.1.deg > b.1.deg
+    letI : Trans degreeGreater degreeGreater degreeGreater :=
+      ⟨by
+        intro a b c hab hbc
+        dsimp [degreeGreater] at hab hbc ⊢
+        omega⟩
+    apply List.Pairwise.filterMap (R := fun a b : UMonomial × Int =>
+        a.1.deg > b.1.deg)
+      (S := fun a b : UMonomial × Zp => a.1.deg > b.1.deg)
+      (fun term =>
+        let coefficient := Zp.ofInt term.2 p
+        if coefficient.val = 0 then none else some (term.1, coefficient))
+      (fun a b hab outputA ha outputB hb => by
+        dsimp only at ha hb
+        split at ha <;> try contradiction
+        split at hb <;> try contradiction
+        simp only [Option.some.injEq] at ha hb
+        subst outputA
+        subst outputB
+        exact hab)
+    exact List.isChain_iff_pairwise.mp hcanonical.1
+  · intro output houtput
+    rw [List.mem_filterMap] at houtput
+    rcases houtput with ⟨term, _, hreduce⟩
+    dsimp only at hreduce
+    split at hreduce
+    next hz => contradiction
+    next hz =>
+      simp only [Option.some.injEq] at hreduce
+      subst output
+      exact hz
 
 theorem polynomial_mod_raw_ir_refines (f : SparsePolyZZ) (p : UInt64)
     (hp : 0 < p.toNat) :

@@ -117,6 +117,105 @@ theorem nextPrecision_retry_decreases (target initial maximum next : Nat)
       simp [precisionRank, htarget]
       omega
 
+/-- Mutable source variables relevant to control flow.  Matrix contents and
+candidate construction stay behind raw operation boundaries until their own
+strict loops are refined. -/
+structure VanHoeijState where
+  active : Array Int32
+  fStar : SparsePolyZZ
+  result : Array SparsePolyZZ
+  target : Nat
+
+/-- Raw C++ callees for one van-Hoeij iteration.  `validateCandidates`
+returns only concrete mutations and consumed bits; it cannot return an L2
+factorization proposition. -/
+structure VanHoeijRawOps where
+  prepareCandidates : SparsePolyZZ → Array SparsePolyZZ → ZZ → Nat →
+    RawExec (Array (Array Int32))
+  validateCandidates : SparsePolyZZ → Array SparsePolyZZ → ZZ →
+    Array (Array Int32) → Array SparsePolyZZ →
+    RawExec (SparsePolyZZ × Array SparsePolyZZ × Array Bool)
+  zassenhaus : SparsePolyZZ → Array SparsePolyZZ → ZZ →
+    RawExec (Array SparsePolyZZ)
+
+/-- Erased termination certificate for the successful-extraction branch.
+It refers only to concrete successful raw executions and the consumed bits
+they returned. -/
+structure VanHoeijTermination (ops : VanHoeijRawOps) where
+  extraction_decreases : ∀ (modulus : ZZ) (state : VanHoeijState)
+      activeLifted candidates fStar' result'
+      consumed active',
+    ops.validateCandidates state.fStar activeLifted modulus candidates state.result =
+      .ok (fStar', result', consumed) →
+    (∃ index, ∃ hindex : index < consumed.size, consumed[index] = true) →
+    removeConsumed state.active consumed = .ok active' →
+    active'.size < state.active.size
+
+def removeConsumedDecreasing (ops : VanHoeijRawOps)
+    (termination : VanHoeijTermination ops) (modulus : ZZ)
+    (state : VanHoeijState) (activeLifted : Array SparsePolyZZ)
+    (candidates : Array (Array Int32)) (fStar' : SparsePolyZZ)
+    (result' : Array SparsePolyZZ) (consumed : Array Bool)
+    (hvalidate : ops.validateCandidates state.fStar activeLifted modulus
+      candidates state.result = .ok (fStar', result', consumed))
+    (hfound : ∃ index, ∃ hindex : index < consumed.size,
+      consumed[index] = true) :
+    RawExec { active' : Array Int32 // active'.size < state.active.size } :=
+  match hremove : removeConsumed state.active consumed with
+  | .error fault => .error fault
+  | .ok active' => .ok ⟨active', termination.extraction_decreases modulus
+      state activeLifted candidates fStar' result' consumed active'
+      hvalidate hfound hremove⟩
+
+/-- Source-shaped van-Hoeij main loop.  Successful extraction decreases the
+active set; an unsuccessful round strictly advances bounded precision; an
+overflowing precision target executes the actual Zassenhaus fallback. -/
+def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
+    (lifted : Array SparsePolyZZ)
+    (modulus : ZZ) (initial maximum : Nat) (hinitial : 0 < initial) :
+    VanHoeijState → RawExec (SparsePolyZZ × Array SparsePolyZZ)
+  | state =>
+    if hdone : state.active.size ≤ 1 then .ok (state.fStar, state.result)
+    else
+      match gatherActive state.active lifted with
+      | .error fault => .error fault
+      | .ok activeLifted =>
+        match ops.prepareCandidates state.fStar activeLifted modulus state.target with
+        | .error fault => .error fault
+        | .ok candidates =>
+          match hvalidate : ops.validateCandidates state.fStar activeLifted modulus candidates
+              state.result with
+          | .error fault => .error fault
+          | .ok (fStar', result', consumed) =>
+            if hfound : ∃ index, ∃ hindex : index < consumed.size,
+                consumed[index] = true then
+              match removeConsumedDecreasing ops termination modulus state
+                  activeLifted candidates fStar' result' consumed hvalidate hfound with
+              | .error fault => .error fault
+              | .ok activeNext =>
+                vanHoeijLoop ops termination lifted modulus initial maximum hinitial
+                  { active := activeNext.1, fStar := fStar', result := result',
+                    target := 0 }
+            else
+              match hprecision : nextPrecision state.target initial maximum with
+              | .retry target' =>
+                vanHoeijLoop ops termination lifted modulus initial maximum hinitial
+                  { state with target := target' }
+              | .fallback =>
+                match ops.zassenhaus state.fStar activeLifted modulus with
+                | .error fault => .error fault
+                | .ok fallback =>
+                  match appendFallback fallback state.result with
+                  | .error fault => .error fault
+                  | .ok output => .ok (#[], output)
+termination_by state =>
+  (state.active.size, precisionRank state.target initial maximum)
+decreasing_by
+  · exact Prod.Lex.left _ _ activeNext.2
+  · exact Prod.Lex.right _
+      (nextPrecision_retry_decreases state.target initial maximum target'
+        hinitial hprecision)
+
 end Generated.StrictRecombine
 '''
 

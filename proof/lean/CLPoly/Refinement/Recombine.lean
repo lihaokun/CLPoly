@@ -208,4 +208,22 @@ theorem removeConsumed_strict_of_marked (active : Array Int32)
   apply removeConsumedLoop_strict_of_marked consumed active.size active output
     (by omega) (Nat.le_refl _) (by simpa [hsizes] using hmarked) hrun
 
+/-- The concrete removal loop discharges the generated main-loop termination
+certificate whenever candidate validation returns one bit per active entry. -/
+def removalTermination (ops : Generated.StrictRecombine.VanHoeijRawOps)
+    (hconsumedSize : ∀ (modulus : ZZ)
+      (state : Generated.StrictRecombine.VanHoeijState)
+      activeLifted candidates fStar' result'
+      consumed,
+      ops.validateCandidates state.fStar activeLifted modulus candidates
+          state.result = .ok (fStar', result', consumed) →
+      consumed.size = state.active.size) :
+    Generated.StrictRecombine.VanHoeijTermination ops := {
+  extraction_decreases := by
+    intro modulus state activeLifted candidates fStar' result' consumed active'
+      hvalidate hfound hremove
+    exact removeConsumed_strict_of_marked state.active consumed
+      (hconsumedSize modulus state activeLifted candidates fStar' result'
+        consumed hvalidate) hfound active' hremove }
+
 end Refinement.StrictRecombine

@@ -39,3 +39,13 @@ rank while the source bound `J ≤ J_max` holds; exceeding the bound returns the
 fallback action.  The rank is erased termination evidence computed from the
 real precision state, not an execution parameter or counter supplied to the
 algorithm.
+
+The two decreasing arms are now combined in generated `vanHoeijLoop`, whose
+measure is `(active.size, precisionRank target initial maximum)`.  The loop
+executes the real active gather, raw candidate preparation and validation,
+reverse removal, precision transition, Zassenhaus fallback, and fallback
+append operations.  The successful-extraction decrease is carried as erased
+proof data around the very same `removeConsumed` result; no extra runtime
+assertion was added to the C++ semantics.  `removalTermination` derives this
+certificate from the concrete validator's one-consumed-bit-per-active-entry
+size invariant and the already proved strict removal theorem.

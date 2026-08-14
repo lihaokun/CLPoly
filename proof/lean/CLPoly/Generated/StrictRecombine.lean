@@ -525,6 +525,72 @@ def buildCldMatrix (matrix : LLLMatrix) (cld : Array SparsePolyZZ)
     (current target : Nat) : RawExec (LLLMatrix × Nat) :=
   buildCldMatrixLoop cld current target (cldSpiralWidth cld) 0 matrix
 
+/-- Exact integer dot-product lambda used throughout `__lll_reduce`. -/
+def dotRowsLoop (left right : Array ZZ) (index : Nat) (sum : ZZ) :
+    RawExec ZZ :=
+  if hindex : index < left.size then
+    if hright : index < right.size then
+      dotRowsLoop left right (index + 1) (sum + left[index] * right[index])
+    else .error (.outOfBounds index right.size)
+  else .ok sum
+termination_by left.size - index
+decreasing_by omega
+
+def dotRows (left right : Array ZZ) : RawExec ZZ :=
+  dotRowsLoop left right 0 0
+
+/-- C++ `round_qq`: floor(q + 1/2), with ties toward positive infinity. -/
+def roundQQ (value : QQ) : RawExec ZZ :=
+  let numerator := QQ.num value * 2 + QQ.den value
+  let denominator := QQ.den value * 2
+  if hdenominator : denominator ≠ 0 then
+    .ok (ZZ.fdiv_q 0 numerator denominator)
+  else .error .arithmeticDomain
+
+/-- Pointwise source row operation for both M and its unimodular transform U. -/
+def subtractRowsLoop (targetM sourceM targetU sourceU : Array ZZ)
+    (coefficient : ZZ) (size index : Nat)
+    (resultM resultU : Array ZZ) : RawExec (Array ZZ × Array ZZ) :=
+  if hindex : index < size then
+    if htM : index < targetM.size then
+      if hsM : index < sourceM.size then
+        if htU : index < targetU.size then
+          if hsU : index < sourceU.size then
+            subtractRowsLoop targetM sourceM targetU sourceU coefficient size
+              (index + 1)
+              (resultM.push (targetM[index] - coefficient * sourceM[index]))
+              (resultU.push (targetU[index] - coefficient * sourceU[index]))
+          else .error (.outOfBounds index sourceU.size)
+        else .error (.outOfBounds index targetU.size)
+      else .error (.outOfBounds index sourceM.size)
+    else .error (.outOfBounds index targetM.size)
+  else .ok (resultM, resultU)
+termination_by size - index
+decreasing_by omega
+
+def subtractMatrixRows (matrix transform : LLLMatrix) (target source : Nat)
+    (coefficient : ZZ) : RawExec (LLLMatrix × LLLMatrix) :=
+  if htM : target < matrix.size then
+    if hsM : source < matrix.size then
+      if htU : target < transform.size then
+        if hsU : source < transform.size then
+          match subtractRowsLoop matrix[target] matrix[source]
+              transform[target] transform[source] coefficient matrix.size 0 #[] #[] with
+          | .error fault => .error fault
+          | .ok (rowM, rowU) =>
+            .ok (matrix.set target rowM, transform.set target rowU)
+        else .error (.outOfBounds source transform.size)
+      else .error (.outOfBounds target transform.size)
+    else .error (.outOfBounds source matrix.size)
+  else .error (.outOfBounds target matrix.size)
+
+def swapMatrixRows (matrix : LLLMatrix) (left right : Nat) : RawExec LLLMatrix :=
+  if hleft : left < matrix.size then
+    if hright : right < matrix.size then
+      .ok ((matrix.set left matrix[right]).set right matrix[left] (by simpa))
+    else .error (.outOfBounds right matrix.size)
+  else .error (.outOfBounds left matrix.size)
+
 def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
   if hindex : index < input.size then
     contentLoop input (index + 1) (Nat.gcd acc input[index].2.natAbs)

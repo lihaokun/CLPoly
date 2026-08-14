@@ -1059,12 +1059,16 @@ theorem swapQQRows_output_eq
     ⟨hleft, hright, rfl⟩
   simp [swapRowsArray, Array.setIfInBounds, hleft, hright]
 
+def lovaszSwapCorrectedMu (mu : Generated.StrictRecombine.QQMatrix)
+    (k : Nat) (muNew : QQ) : Generated.StrictRecombine.QQMatrix :=
+  let swapped := swapRowsArray mu k (k - 1)
+  swapped.setIfInBounds k
+    (swapped[k]!.setIfInBounds (k - 1) muNew)
+
 def lovaszSwapMuResult (mu : Generated.StrictRecombine.QQMatrix)
     (k : Nat) (muOld muNew : QQ) : Generated.StrictRecombine.QQMatrix :=
-  let swapped := swapRowsArray mu k (k - 1)
-  let corrected := swapped.setIfInBounds k
-    (swapped[k]!.setIfInBounds (k - 1) muNew)
-  updateMuAfterSwapArray corrected k muOld muNew (k + 1)
+  updateMuAfterSwapArray (lovaszSwapCorrectedMu mu k muNew)
+    k muOld muNew (k + 1)
 
 theorem lovaszSwapMuResult_of_generated
     (mu swappedMu finalMu : Generated.StrictRecombine.QQMatrix)
@@ -1092,9 +1096,148 @@ theorem lovaszSwapMuResult_of_generated
     (swappedMu.set k (swappedMu[k].set (k - 1) muNew)) finalMu
     k muOld muNew (k + 1) hrowsK hrowsPred hloop
   rw [hloopExact]
-  unfold lovaszSwapMuResult
+  unfold lovaszSwapMuResult lovaszSwapCorrectedMu
   rw [← hswapExact]
   simp [Array.setIfInBounds, hkSwapped, hpredSwapped]
+
+theorem lovaszSwapCorrectedMu_size
+    (mu : Generated.StrictRecombine.QQMatrix) (k : Nat) (muNew : QQ) :
+    (lovaszSwapCorrectedMu mu k muNew).size = mu.size := by
+  simp [lovaszSwapCorrectedMu, swapRowsArray_size]
+
+theorem lovaszSwapCorrectedMu_get
+    (mu : Generated.StrictRecombine.QQMatrix) (k row : Nat) (muNew : QQ)
+    (hkPositive : 0 < k) (hk : k < mu.size) (hrow : row < mu.size) :
+    (lovaszSwapCorrectedMu mu k muNew)[row]! =
+      if row = k then
+        mu[k - 1]!.setIfInBounds (k - 1) muNew
+      else if row = k - 1 then mu[k]!
+      else mu[row]! := by
+  have hkPred : k - 1 < mu.size := by omega
+  have hkSwapped : k < (swapRowsArray mu k (k - 1)).size := by
+    simpa [swapRowsArray_size] using hk
+  have hrowSwapped : row < (swapRowsArray mu k (k - 1)).size := by
+    simpa [swapRowsArray_size] using hrow
+  unfold lovaszSwapCorrectedMu
+  simp only [Array.setIfInBounds, dif_pos hkSwapped]
+  rw [getElem!_pos _ row (by simpa [swapRowsArray_size] using hrow),
+    Array.getElem_set]
+  by_cases hrowK : row = k
+  · subst row
+    simp only [if_pos]
+    rw [swapRowsArray_get mu k (k - 1) k hk hkPred hk]
+    have hkNePred : k - 1 ≠ k := by omega
+    simp [hkNePred]
+  · rw [if_neg hrowK]
+    rw [← getElem!_pos (swapRowsArray mu k (k - 1)) row hrowSwapped]
+    rw [swapRowsArray_get mu k (k - 1) row hk hkPred hrow]
+    by_cases hrowPred : row = k - 1
+    · subst row
+      have hkNePred : k - 1 ≠ k := by omega
+      have hkPredNe : k ≠ k - 1 := by omega
+      simp [hkNePred, hkPredNe]
+    · have hpredNeRow : k - 1 ≠ row := Ne.symm hrowPred
+      have hkNeRow : k ≠ row := Ne.symm hrowK
+      simp [hrowPred, hpredNeRow, hkNeRow]
+
+theorem lovaszSwapMuResult_get
+    (mu : Generated.StrictRecombine.QQMatrix) (k row : Nat)
+    (muOld muNew : QQ) (hkPositive : 0 < k) (hk : k < mu.size)
+    (hrow : row < mu.size) :
+    (lovaszSwapMuResult mu k muOld muNew)[row]! =
+      if row = k then
+        mu[k - 1]!.setIfInBounds (k - 1) muNew
+      else if row = k - 1 then mu[k]!
+      else if k < row then
+        updateMuAfterSwapRow mu[row]! k muOld muNew
+      else mu[row]! := by
+  have hcorrectedRow : row < (lovaszSwapCorrectedMu mu k muNew).size := by
+    simpa [lovaszSwapCorrectedMu_size] using hrow
+  unfold lovaszSwapMuResult
+  by_cases hafter : k < row
+  · rw [updateMuAfterSwapArray_get_at
+      (lovaszSwapCorrectedMu mu k muNew) k row muOld muNew (k + 1)
+      hcorrectedRow (by omega)]
+    have hcorrected := lovaszSwapCorrectedMu_get mu k row muNew
+      hkPositive hk hrow
+    have hrowK : row ≠ k := by omega
+    have hrowPred : row ≠ k - 1 := by omega
+    simp only [hrowK, hrowPred, if_false] at hcorrected ⊢
+    rw [hcorrected]
+    simp [hafter]
+  · rw [updateMuAfterSwapArray_get_before
+      (lovaszSwapCorrectedMu mu k muNew) k row muOld muNew (k + 1)
+      hcorrectedRow (by omega)]
+    rw [lovaszSwapCorrectedMu_get mu k row muNew hkPositive hk hrow]
+    simp [hafter]
+
+theorem lovaszSwapMuResult_size
+    (mu : Generated.StrictRecombine.QQMatrix) (k : Nat)
+    (muOld muNew : QQ) :
+    (lovaszSwapMuResult mu k muOld muNew).size = mu.size := by
+  unfold lovaszSwapMuResult
+  rw [updateMuAfterSwapArray_size, lovaszSwapCorrectedMu_size]
+
+theorem lovaszSwapMuResult_entry
+    (mu : Generated.StrictRecombine.QQMatrix) (k row column : Nat)
+    (muOld muNew : QQ) (hkPositive : 0 < k) (hk : k < mu.size)
+    (hrow : row < mu.size) (hcolumn : column < mu.size)
+    (hrowsSquare : ∀ index (hindex : index < mu.size),
+      mu[index]!.size = mu.size) :
+    ((lovaszSwapMuResult mu k muOld muNew)[row]!)[column]! =
+      if row = k then
+        if column = k - 1 then muNew else (mu[k - 1]!)[column]!
+      else if row = k - 1 then (mu[k]!)[column]!
+      else if k < row then
+        if column = k - 1 then
+          (mu[row]!)[k]! + muNew *
+            ((mu[row]!)[k - 1]! - muOld * (mu[row]!)[k]!)
+        else if column = k then
+          (mu[row]!)[k - 1]! - muOld * (mu[row]!)[k]!
+        else (mu[row]!)[column]!
+      else (mu[row]!)[column]! := by
+  have hkPred : k - 1 < mu.size := by omega
+  have hresult := lovaszSwapMuResult_get mu k row muOld muNew
+    hkPositive hk hrow
+  by_cases hrowK : row = k
+  · subst row
+    simp only [if_pos] at hresult ⊢
+    rw [hresult]
+    have hpredInRow : k - 1 < mu[k - 1]!.size := by
+      rw [hrowsSquare (k - 1) hkPred]
+      exact hkPred
+    have hcolumnInRow : column < mu[k - 1]!.size := by
+      rw [hrowsSquare (k - 1) hkPred]
+      exact hcolumn
+    simp only [Array.setIfInBounds, dif_pos hpredInRow]
+    rw [getElem!_pos _ column (by simpa using hcolumnInRow),
+      Array.getElem_set]
+    by_cases hcolumnPred : column = k - 1
+    · simp [hcolumnPred]
+    · rw [if_neg (Ne.symm hcolumnPred)]
+      rw [if_neg hcolumnPred]
+      exact (getElem!_pos mu[k - 1]! column hcolumnInRow).symm
+  · simp only [hrowK, if_false] at hresult ⊢
+    by_cases hrowPred : row = k - 1
+    · simp [hrowPred] at hresult ⊢
+      rw [hresult]
+    · simp only [hrowPred, if_false] at hresult ⊢
+      by_cases hafter : k < row
+      · rw [if_pos hafter] at hresult ⊢
+        rw [hresult]
+        have hkInRow : k < mu[row]!.size := by
+          rw [hrowsSquare row hrow]
+          exact hk
+        have hpredInRow : k - 1 < mu[row]!.size := by
+          rw [hrowsSquare row hrow]
+          exact hkPred
+        have hcolumnInRow : column < mu[row]!.size := by
+          rw [hrowsSquare row hrow]
+          exact hcolumn
+        exact updateMuAfterSwapRow_get mu[row]! k column muOld muNew
+          hkInRow hpredInRow hkPositive hcolumnInRow
+      · rw [if_neg hafter] at hresult ⊢
+        rw [hresult]
 
 /-- Exact mu array produced by one generated size-reduction coefficient. -/
 def sizeReduceMuResult (mu : Generated.StrictRecombine.QQMatrix)

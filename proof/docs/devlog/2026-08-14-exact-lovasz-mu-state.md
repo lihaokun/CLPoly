@@ -17,3 +17,10 @@ This layer does not assert an abstract LLL result or use an existence oracle;
 it records the array computed by the generated C++ control flow.  The next
 step uses these equations to prove preservation of the concrete
 Gram--Schmidt factorization.
+
+The follow-up lookup layer separates the intermediate corrected swap from the
+tail loop and proves the complete entry formula.  In particular, it exposes
+the exchanged rows, the new boundary coefficient, and both corrected
+coefficients in every row strictly after `k`.  Array and row sizes are
+preserved throughout, so later matrix proofs can rewrite generated storage
+without any unchecked read.

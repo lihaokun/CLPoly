@@ -977,6 +977,125 @@ theorem updateMuAfterSwapLoop_get_at
   exact updateMuAfterSwapArray_get_at mu k target muOld muNew row
     htarget hrowTarget
 
+theorem swapQQRows_ok
+    (matrix output : Generated.StrictRecombine.QQMatrix) (left right : Nat)
+    (hrun : Generated.StrictRecombine.swapQQRows matrix left right =
+      .ok output) :
+    ∃ (hleft : left < matrix.size) (hright : right < matrix.size),
+      output = (matrix.set left matrix[right]).set right matrix[left] (by
+        simpa) := by
+  unfold Generated.StrictRecombine.swapQQRows at hrun
+  split at hrun
+  next hleft =>
+    split at hrun
+    next hright => exact ⟨hleft, hright, (Except.ok.inj hrun).symm⟩
+    next hright => contradiction
+  next hleft => contradiction
+
+theorem swapQQRows_size
+    (matrix output : Generated.StrictRecombine.QQMatrix) (left right : Nat)
+    (hrun : Generated.StrictRecombine.swapQQRows matrix left right =
+      .ok output) :
+    output.size = matrix.size := by
+  rcases swapQQRows_ok matrix output left right hrun with
+    ⟨hleft, hright, rfl⟩
+  simp
+
+theorem swapQQRows_get
+    (matrix output : Generated.StrictRecombine.QQMatrix)
+    (left right row : Nat)
+    (hrun : Generated.StrictRecombine.swapQQRows matrix left right =
+      .ok output) (hrow : row < matrix.size) :
+    output[row]! =
+      if right = row then matrix[left]!
+      else if left = row then matrix[right]!
+      else matrix[row]! := by
+  rcases swapQQRows_ok matrix output left right hrun with
+    ⟨hleft, hright, rfl⟩
+  rw [getElem!_pos _ row (by simp; exact hrow)]
+  simp only [Array.getElem_set]
+  rw [getElem!_pos matrix left hleft, getElem!_pos matrix right hright,
+    getElem!_pos matrix row hrow]
+
+def swapRowsArray {element : Type}
+    (matrix : Array (Array element)) (left right : Nat) :
+    Array (Array element) :=
+  matrix.setIfInBounds left matrix[right]! |>.setIfInBounds right matrix[left]!
+
+theorem swapRowsArray_size {element : Type}
+    (matrix : Array (Array element)) (left right : Nat) :
+    (swapRowsArray matrix left right).size = matrix.size := by
+  simp [swapRowsArray]
+
+theorem swapRowsArray_get {element : Type} [Inhabited element]
+    (matrix : Array (Array element)) (left right row : Nat)
+    (hleft : left < matrix.size) (hright : right < matrix.size)
+    (hrow : row < matrix.size) :
+    (swapRowsArray matrix left right)[row]! =
+      if right = row then matrix[left]!
+      else if left = row then matrix[right]!
+      else matrix[row]! := by
+  unfold swapRowsArray
+  simp only [Array.setIfInBounds, dif_pos hleft]
+  rw [dif_pos (show right < (matrix.set left matrix[right]! hleft).size by
+    simpa using hright)]
+  rw [getElem!_pos _ row (by simp; exact hrow), Array.getElem_set]
+  rw [getElem!_pos matrix left hleft, getElem!_pos matrix right hright,
+    getElem!_pos matrix row hrow]
+  by_cases hrightRow : right = row
+  · simp [hrightRow]
+  · by_cases hleftRow : left = row
+    · simp [hrightRow, hleftRow]
+    · simp only [hrightRow, hleftRow, if_false]
+      rw [Array.getElem_set]
+      simp [hleftRow]
+
+theorem swapQQRows_output_eq
+    (matrix output : Generated.StrictRecombine.QQMatrix) (left right : Nat)
+    (hrun : Generated.StrictRecombine.swapQQRows matrix left right =
+      .ok output) :
+    output = swapRowsArray matrix left right := by
+  rcases swapQQRows_ok matrix output left right hrun with
+    ⟨hleft, hright, rfl⟩
+  simp [swapRowsArray, Array.setIfInBounds, hleft, hright]
+
+def lovaszSwapMuResult (mu : Generated.StrictRecombine.QQMatrix)
+    (k : Nat) (muOld muNew : QQ) : Generated.StrictRecombine.QQMatrix :=
+  let swapped := swapRowsArray mu k (k - 1)
+  let corrected := swapped.setIfInBounds k
+    (swapped[k]!.setIfInBounds (k - 1) muNew)
+  updateMuAfterSwapArray corrected k muOld muNew (k + 1)
+
+theorem lovaszSwapMuResult_of_generated
+    (mu swappedMu finalMu : Generated.StrictRecombine.QQMatrix)
+    (k : Nat) (muOld muNew : QQ)
+    (hswap : Generated.StrictRecombine.swapQQRows mu k (k - 1) =
+      .ok swappedMu)
+    (hkSwapped : k < swappedMu.size)
+    (hpredSwapped : k - 1 < swappedMu[k].size)
+    (hrowsK : ∀ row (hrow : row <
+      (swappedMu.set k
+        (swappedMu[k].set (k - 1) muNew)).size),
+      k < (swappedMu.set k
+        (swappedMu[k].set (k - 1) muNew))[row].size)
+    (hrowsPred : ∀ row (hrow : row <
+      (swappedMu.set k
+        (swappedMu[k].set (k - 1) muNew)).size),
+      k - 1 < (swappedMu.set k
+        (swappedMu[k].set (k - 1) muNew))[row].size)
+    (hloop : Generated.StrictRecombine.updateMuAfterSwapLoop
+      (swappedMu.set k (swappedMu[k].set (k - 1) muNew))
+      k muOld muNew (k + 1) = .ok finalMu) :
+    finalMu = lovaszSwapMuResult mu k muOld muNew := by
+  have hswapExact := swapQQRows_output_eq mu swappedMu k (k - 1) hswap
+  have hloopExact := updateMuAfterSwapLoop_output_eq
+    (swappedMu.set k (swappedMu[k].set (k - 1) muNew)) finalMu
+    k muOld muNew (k + 1) hrowsK hrowsPred hloop
+  rw [hloopExact]
+  unfold lovaszSwapMuResult
+  rw [← hswapExact]
+  simp [Array.setIfInBounds, hkSwapped, hpredSwapped]
+
 /-- Exact mu array produced by one generated size-reduction coefficient. -/
 def sizeReduceMuResult (mu : Generated.StrictRecombine.QQMatrix)
     (k source : Nat) (q : ZZ) : Generated.StrictRecombine.QQMatrix :=

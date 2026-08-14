@@ -1000,4 +1000,19 @@ theorem exactDivmodRaw_toPoly (dividend divisor quotient remainder : SparsePolyZ
     remainder hrun
   simpa [SparsePolyZZ.toPoly] using hsemantic.symm
 
+theorem successfulTrialExtraction_toPoly
+    (fStar factor quotient quotientPrimitive : SparsePolyZZ)
+    (quotientContent : Int)
+    (hdivide : Generated.StrictRecombine.exactDivmodRaw fStar factor =
+      .ok (quotient, #[]))
+    (hprimitive : Generated.StrictRecombine.primitiveRaw quotient =
+      .ok (quotientContent, quotientPrimitive)) :
+    SparsePolyZZ.toPoly fStar =
+      Polynomial.C quotientContent *
+        (SparsePolyZZ.toPoly factor * SparsePolyZZ.toPoly quotientPrimitive) := by
+  rw [exactDivmodRaw_toPoly fStar factor quotient #[] hdivide]
+  rw [primitiveRaw_toPoly quotient quotientPrimitive quotientContent hprimitive]
+  simp [SparsePolyZZ.toPoly]
+  ring
+
 end Refinement.StrictRecombine

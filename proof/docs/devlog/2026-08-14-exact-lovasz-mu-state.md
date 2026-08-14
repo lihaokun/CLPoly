@@ -57,3 +57,12 @@ the complete executable invariant: the swapped integer matrix remains square,
 the exact generated μ array remains square with the same dimension, the
 generated norm array keeps its size and strict positivity, and every prefix
 retains the concrete Gram--Schmidt factorization.
+
+The proof now directly inverts the generated `lllStep` failed-Lovász branch.
+It follows the successful size reduction, both integer-matrix swaps, the μ-row
+swap, correction, and `updateMuAfterSwapLoop`, and identifies the returned
+state with the concrete swap state above.  Together with the already proved
+advanced branch, `concreteLLLTermination` instantiates the generated
+`LLLTermination` interface using `ConcreteLLLExecutionValid` and the concrete
+determinant/index lexicographic rank.  Thus the generated `lllMainLoop` is now
+justified by genuine well-founded recursion, not fuel or a termination oracle.

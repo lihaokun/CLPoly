@@ -187,3 +187,30 @@ row-by-row semantic extension without an existence witness or semantic oracle.
 - Lean 新增/修改行数：约 205 行
 - 对应 C++ 行数：约 12 行零矩阵与首行 norm 初始化
 - 放弃的方案：把初始 μ 视为数学零矩阵直接化简；改为逐个证明生成循环的 size/get 语义，确保基例仍来自真实 C++ lowering
+
+## Generated μ-row write semantics
+
+The no-fault μ-row theorem now carries exact frame information through every
+recursive source iteration.  Every row other than the current target row is
+unchanged, and every target-row column preceding the loop's starting index is
+unchanged.  These are proved by following the nested `Array.set` operations:
+the outer write selects only row `i`, the inner write selects only column `j`,
+and the recursive theorem transports both frames through all later writes.
+
+`sourceGramCoefficient` names the closed form of exactly the scalar operations
+performed by one generated iteration: the integer row dot product, the
+generated `l < j` numerator subtraction, and the source zero-norm conditional
+division.  It does not compute a specification result or choose an output.
+`gramMuRowLoop_written_coefficient` inverts the actual generated execution at
+column `j`, applies the already proved exact dot/numerator loops, and then uses
+the recursive prefix frame to show that no later iteration overwrites the
+cell.  Thus the final returned array's `μ[i,j]` is now identified with the
+actual source computation.
+
+## 度量（μ-row write semantics）
+
+- 耗时：约 1.5 小时（双重数组帧、当前写入识别与依赖索引调试）
+- 迭代：约 7 轮编译-修复循环
+- Lean 新增/修改行数：约 145 行
+- 对应 C++ 行数：约 11 行 μ-row 内层循环
+- 放弃的方案：直接把整行结果声明为数学 Gram--Schmidt 系数；改为先证明每个生成写入的闭式值和后续不覆盖性质，再由逐列不变量推出 LDLᵀ

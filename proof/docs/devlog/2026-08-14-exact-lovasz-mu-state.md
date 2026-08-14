@@ -31,3 +31,10 @@ block used by the swap.  `lovaszLocalTransform_diagonal` proves that
 conjugating the old diagonal norms by this block gives precisely the two
 generated replacement norms, while `mul_lovaszLocalTransform_apply` exposes
 the corresponding right-multiplication formula for every matrix entry.
+
+`gsLowerPrefix_lovaszSwapMuResult_mul` now connects that algebra to generated
+storage.  It proves entry by entry that the lower factor built from the exact
+post-loop μ array, followed by the local column transform, equals the old
+lower factor with the two adjacent basis rows exchanged.  The proof covers
+the two exchanged rows and every earlier/later row separately and uses the
+generated lookup equations for both corrected columns.

@@ -1880,7 +1880,7 @@ theorem finSumIteThree {dimension : Nat}
         simp [hfirstSecond, hthirdFirst, Ne.symm hthirdFirst]
       · by_cases hsecond : index = second
         · subst index
-          simp [hfirstSecond, hthirdSecond, Ne.symm hthirdSecond]
+          simp [hfirst, hthirdSecond, Ne.symm hthirdSecond]
         · simp [hfirst, hsecond]
     _ = _ := by simp [Finset.sum_add_distrib]
 
@@ -1940,12 +1940,14 @@ theorem lovaszLocalTransform_diagonal
     · subst column
       simp [lovaszLocalTransform, hne, hne.symm, ha, hb, halgebra.1,
         finSumIteTwo]
+      convert halgebra.1 using 1 <;> ring
     · by_cases hcolumnCurrent : column = current
       · subst column
         simp [lovaszLocalTransform, hne, hne.symm, ha, hb, halgebra.2.1,
           finSumIteTwo]
+        convert halgebra.2.1 using 1 <;> ring
       · simp [lovaszLocalTransform, hne, hne.symm, hcolumnPrevious,
-          hcolumnPrevious.symm, hcolumnCurrent, hcolumnCurrent.symm,
+          Ne.symm hcolumnPrevious, hcolumnCurrent, Ne.symm hcolumnCurrent,
           finSumIteTwo]
   · by_cases hrowCurrent : row = current
     · subst row
@@ -1953,33 +1955,35 @@ theorem lovaszLocalTransform_diagonal
       · subst column
         simp [lovaszLocalTransform, hne, hne.symm, ha, hb, halgebra.2.2.1,
           finSumIteTwo]
+        convert halgebra.2.2.1 using 1 <;> ring
       · by_cases hcolumnCurrent : column = current
         · subst column
           simp [lovaszLocalTransform, hne, hne.symm, ha, hb, halgebra.2.2.2,
             finSumIteTwo]
+          convert halgebra.2.2.2 using 1 <;> ring
         · simp [lovaszLocalTransform, hne, hne.symm, hcolumnPrevious,
-            hcolumnPrevious.symm, hcolumnCurrent, hcolumnCurrent.symm,
+            Ne.symm hcolumnPrevious, hcolumnCurrent, Ne.symm hcolumnCurrent,
             finSumIteTwo]
     · by_cases hcolumnPrevious : column = previous
       · subst column
         simp [lovaszLocalTransform, hne, hne.symm, hrowPrevious,
-          hrowPrevious.symm, hrowCurrent, hrowCurrent.symm,
+          Ne.symm hrowPrevious, hrowCurrent, Ne.symm hrowCurrent,
           finSumIteTwo]
       · by_cases hcolumnCurrent : column = current
         · subst column
           simp [lovaszLocalTransform, hne, hne.symm, hrowPrevious,
-            hrowPrevious.symm, hrowCurrent, hrowCurrent.symm,
+            Ne.symm hrowPrevious, hrowCurrent, Ne.symm hrowCurrent,
             finSumIteTwo]
         · by_cases hrowColumn : row = column
           · subst column
             simp [lovaszLocalTransform, hne, hne.symm, hrowPrevious,
-              hrowPrevious.symm, hrowCurrent, hrowCurrent.symm,
-              hcolumnPrevious, hcolumnPrevious.symm, hcolumnCurrent,
-              hcolumnCurrent.symm, finSumIteTwo]
+              Ne.symm hrowPrevious, hrowCurrent, Ne.symm hrowCurrent,
+              hcolumnPrevious, Ne.symm hcolumnPrevious, hcolumnCurrent,
+              Ne.symm hcolumnCurrent, finSumIteTwo]
           · simp [lovaszLocalTransform, hne, hne.symm, hrowPrevious,
-              hrowPrevious.symm, hrowCurrent, hrowCurrent.symm,
-              hcolumnPrevious, hcolumnPrevious.symm, hcolumnCurrent,
-              hcolumnCurrent.symm, hrowColumn, hrowColumn.symm,
+              Ne.symm hrowPrevious, hrowCurrent, Ne.symm hrowCurrent,
+              hcolumnPrevious, Ne.symm hcolumnPrevious, hcolumnCurrent,
+              Ne.symm hcolumnCurrent, hrowColumn, Ne.symm hrowColumn,
               finSumIteTwo]
 
 noncomputable def gramPrefixMatrixQQ
@@ -2103,6 +2107,128 @@ theorem ConcreteLLLExecutionValid.withK
     intro rowCount hrowCount
     simpa [ConcreteGramSchmidt, gsLowerPrefix, gsNormDiagonal] using
       hvalid.gram_schmidt rowCount hrowCount
+
+/-- The generated μ update is exactly the lower factor required after
+swapping adjacent basis rows.  The left side swaps the two old rows; the
+right side is the generated new lower factor followed by the concrete local
+column basis change. -/
+theorem gsLowerPrefix_lovaszSwapMuResult_mul
+    (state : Generated.StrictRecombine.LLLState) (k rowCount : Nat)
+    (muNew : QQ) (hvalid : ConcreteLLLExecutionValid state)
+    (hkPositive : 0 < k) (hkCount : k < rowCount)
+    (hrowCount : rowCount ≤ state.matrix.size) :
+    (fun row column => gsLowerPrefix state rowCount
+      ((Equiv.swap
+        (⟨k - 1, by omega⟩ : Fin rowCount)
+        (⟨k, hkCount⟩ : Fin rowCount)) row) column) =
+      gsLowerPrefix
+          { state with mu := (lovaszSwapMuResult state.mu k
+              ((state.mu[k]!)[k - 1]!) muNew) }
+          rowCount *
+        lovaszLocalTransform
+          (⟨k - 1, by omega⟩ : Fin rowCount)
+          (⟨k, hkCount⟩ : Fin rowCount)
+          ((state.mu[k]!)[k - 1]!) muNew := by
+  have hpreviousCurrent :
+      (⟨k - 1, by omega⟩ : Fin rowCount) ≠ ⟨k, hkCount⟩ := by
+    intro heq
+    injection heq
+    omega
+  have hkMu : k < state.mu.size := by
+    rw [hvalid.mu_size]
+    exact lt_of_lt_of_le hkCount hrowCount
+  have hrowsSquare : ∀ index (hindex : index < state.mu.size),
+      state.mu[index]!.size = state.mu.size := by
+    intro index hindex
+    rw [getElem!_pos state.mu index hindex]
+    rw [hvalid.mu_rows_square index hindex, hvalid.mu_size]
+  funext row column
+  rw [mul_lovaszLocalTransform_apply _
+    (⟨k - 1, by omega⟩ : Fin rowCount) (⟨k, hkCount⟩ : Fin rowCount)
+    ((state.mu[k]!)[k - 1]!) muNew hpreviousCurrent row column]
+  have hrowMu : row.val < state.mu.size := by
+    rw [hvalid.mu_size]
+    exact lt_of_lt_of_le row.isLt hrowCount
+  have hcolumnMu : column.val < state.mu.size := by
+    rw [hvalid.mu_size]
+    exact lt_of_lt_of_le column.isLt hrowCount
+  have hentry := lovaszSwapMuResult_entry state.mu k row.val column.val
+    ((state.mu[k]!)[k - 1]!) muNew hkPositive hkMu hrowMu hcolumnMu
+    hrowsSquare
+  have hpredMu : k - 1 < state.mu.size := by omega
+  have hentryPrevious := lovaszSwapMuResult_entry state.mu k row.val (k - 1)
+    ((state.mu[k]!)[k - 1]!) muNew hkPositive hkMu hrowMu hpredMu
+    hrowsSquare
+  have hentryCurrent := lovaszSwapMuResult_entry state.mu k row.val k
+    ((state.mu[k]!)[k - 1]!) muNew hkPositive hkMu hrowMu hkMu
+    hrowsSquare
+  unfold gsLowerPrefix
+  rw [hentry]
+  by_cases hrowPrevious : row = (⟨k - 1, by omega⟩ : Fin rowCount)
+  · rw [hrowPrevious] at hentry ⊢
+    rw [Equiv.swap_apply_left]
+    by_cases hcolumnPrevious :
+        column = (⟨k - 1, by omega⟩ : Fin rowCount)
+    · rw [hcolumnPrevious] at hentry ⊢
+      simp [show ¬ k < k - 1 by omega] at *
+      simp_all [Fin.ext_iff] <;> ring
+    · by_cases hcolumnCurrent : column = (⟨k, hkCount⟩ : Fin rowCount)
+      · rw [hcolumnCurrent] at hentry ⊢
+        simp [show ¬ k < k - 1 by omega] at *
+        simp_all [Fin.ext_iff] <;> ring
+      · simp_all [Fin.ext_iff]
+        split_ifs <;> simp_all [Fin.ext_iff] <;> try omega <;> ring
+  · by_cases hrowCurrent : row = (⟨k, hkCount⟩ : Fin rowCount)
+    · rw [hrowCurrent] at hentry ⊢
+      rw [Equiv.swap_apply_right]
+      by_cases hcolumnPrevious :
+          column = (⟨k - 1, by omega⟩ : Fin rowCount)
+      · rw [hcolumnPrevious] at hentry ⊢
+        simp [show ¬ k < k - 1 by omega] at *
+        simp_all [Fin.ext_iff] <;> ring
+      · by_cases hcolumnCurrent : column = (⟨k, hkCount⟩ : Fin rowCount)
+        · rw [hcolumnCurrent] at hentry ⊢
+          simp [show ¬ k < k - 1 by omega] at *
+          simp_all [Fin.ext_iff] <;> ring
+        · simp_all [Fin.ext_iff]
+          split_ifs <;> simp_all [Fin.ext_iff] <;> try omega <;> ring
+    · rw [Equiv.swap_apply_of_ne_of_ne hrowPrevious hrowCurrent]
+      have hrowPreviousVal : row.val ≠ k - 1 := by
+        intro heq
+        apply hrowPrevious
+        exact Fin.ext heq
+      have hrowCurrentVal : row.val ≠ k := by
+        intro heq
+        apply hrowCurrent
+        exact Fin.ext heq
+      have hpredLtRow : k - 1 < row.val ↔ k < row.val := by omega
+      have hkPrevious : k ≠ k - 1 := by omega
+      by_cases hcolumnPrevious :
+          column = (⟨k - 1, by omega⟩ : Fin rowCount)
+      · rw [hcolumnPrevious] at hentry ⊢
+        by_cases hrowAfter : k < row.val
+        · simp [hrowAfter, hkPrevious, hrowPreviousVal, hrowCurrentVal,
+            hpredLtRow] at hentry hentryPrevious hentryCurrent ⊢
+          rw [hentryPrevious, hentryCurrent]
+          ring
+        · simp [hrowAfter, hkPrevious, hrowPreviousVal, hrowCurrentVal,
+            hpredLtRow, hrowPrevious, hrowCurrent]
+      · by_cases hcolumnCurrent : column = (⟨k, hkCount⟩ : Fin rowCount)
+        · rw [hcolumnCurrent] at hentry ⊢
+          by_cases hrowAfter : k < row.val
+          · simp [hrowAfter, hkPrevious, hrowPreviousVal, hrowCurrentVal,
+              hpredLtRow] at hentry hentryPrevious hentryCurrent ⊢
+            rw [hentryPrevious, hentryCurrent]
+            ring
+          · simp [hrowAfter, hkPrevious, hrowPreviousVal, hrowCurrentVal,
+              hpredLtRow, hrowPrevious, hrowCurrent]
+        · by_cases hrowAfter : k < row.val
+          · simp [hrowAfter, hkPrevious, hrowPreviousVal, hrowCurrentVal,
+              hpredLtRow] at hentry hentryPrevious hentryCurrent ⊢
+            split_ifs <;> simp_all [Fin.ext_iff] <;> try omega <;> ring
+          · simp [hrowAfter, hkPrevious, hrowPreviousVal, hrowCurrentVal,
+              hpredLtRow, hrowPrevious, hrowCurrent, hcolumnPrevious,
+              hcolumnCurrent]
 
 theorem sizeReduceAt_mu_eq
     (state output : Generated.StrictRecombine.LLLState) (source : Nat)

@@ -1163,4 +1163,33 @@ theorem validateCandidates_product
     fStar fStar' result result' (Array.replicate activeLifted.size false)
     consumed activeLifted.size hrun
 
+/-- A successful concrete validation run cannot hide a non-unit integer
+content factor when its incoming accumulated product is primitive.  This is
+the content bridge needed to turn `validateCandidates_product` into an
+associated-product statement, without assuming that the generated primitive
+normalization returned a semantically convenient result. -/
+theorem validateCandidates_product_unit_scalar
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidates : Array (Array Int32)) (result : Array SparsePolyZZ)
+    (fStar' : SparsePolyZZ) (result' : Array SparsePolyZZ)
+    (consumed : Array Bool)
+    (hprimitive :
+      (SparsePolyZZ.toPoly fStar * factorArrayProduct result).IsPrimitive)
+    (hrun : Generated.StrictRecombine.validateCandidates ops fStar activeLifted
+      modulus candidates result = .ok (fStar', result', consumed)) :
+    ∃ scalar : Int, IsUnit scalar ∧
+      SparsePolyZZ.toPoly fStar * factorArrayProduct result =
+        Polynomial.C scalar *
+          (SparsePolyZZ.toPoly fStar' * factorArrayProduct result') := by
+  rcases validateCandidates_product ops fStar activeLifted modulus candidates
+      result fStar' result' consumed hrun with ⟨scalar, hproduct⟩
+  have hcontent := congrArg Polynomial.content hproduct
+  rw [hprimitive.content_eq_one, Polynomial.content_C_mul] at hcontent
+  have hnormalizeUnit : IsUnit (normalize scalar) :=
+    IsUnit.of_mul_eq_one _ hcontent.symm
+  have hscalarUnit : IsUnit scalar :=
+    (associated_normalize scalar).isUnit_iff.mpr hnormalizeUnit
+  exact ⟨scalar, hscalarUnit, hproduct⟩
+
 end Refinement.StrictRecombine

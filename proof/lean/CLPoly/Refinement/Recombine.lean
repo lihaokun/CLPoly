@@ -765,6 +765,118 @@ theorem reduceMuPrefixLoop_target_get
   exact reduceMuPrefixArray_target_get mu k source q limit index column
     hk hsource hlimitK hlimitSource hcolumn hne
 
+/-- Exact mu array produced by one generated size-reduction coefficient. -/
+def sizeReduceMuResult (mu : Generated.StrictRecombine.QQMatrix)
+    (k source : Nat) (q : ZZ) : Generated.StrictRecombine.QQMatrix :=
+  if q = 0 then mu
+  else
+    let muPrefix := reduceMuPrefixArray mu k source q source 0
+    muPrefix.setIfInBounds k
+      (muPrefix[k]!.setIfInBounds source
+        ((muPrefix[k]!)[source]! - (q : QQ)))
+
+theorem sizeReduceMuResult_target_get
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source column : Nat) (q : ZZ)
+    (hk : k < mu.size) (hsource : source < mu.size)
+    (hsourceKRow : source < mu[k].size)
+    (hlimitSource : source ≤ mu[source].size)
+    (hcolumn : column < mu[k].size) (hne : k ≠ source) :
+    ((sizeReduceMuResult mu k source q)[k]!)[column]! =
+      if column < source then
+        (mu[k]!)[column]! - (q : QQ) * (mu[source]!)[column]!
+      else if column = source then
+        (mu[k]!)[column]! - (q : QQ)
+      else (mu[k]!)[column]! := by
+  by_cases hq : q = 0
+  · subst q
+    simp [sizeReduceMuResult]
+  · let muPrefix := reduceMuPrefixArray mu k source q source 0
+    have hkPrefix : k < muPrefix.size := by
+      simpa [muPrefix, reduceMuPrefixArray_size] using hk
+    have hsourcePrefix : source < muPrefix[k]!.size := by
+      have hsize := reduceMuPrefixArray_row_size mu k source k q source 0 hk
+      simpa [muPrefix, getElem!_pos mu k hk] using
+        (show source < (reduceMuPrefixArray mu k source q source 0)[k]!.size by
+          rw [hsize, getElem!_pos mu k hk]
+          exact hsourceKRow)
+    have hcolumnPrefix : column < muPrefix[k]!.size := by
+      have hsize := reduceMuPrefixArray_row_size mu k source k q source 0 hk
+      simpa [muPrefix, getElem!_pos mu k hk] using
+        (show column < (reduceMuPrefixArray mu k source q source 0)[k]!.size by
+          rw [hsize, getElem!_pos mu k hk]
+          exact hcolumn)
+    have hsourcePrefix' : source < muPrefix[k].size := by
+      simpa [getElem!_pos muPrefix k hkPrefix] using hsourcePrefix
+    have hcolumnPrefix' : column < muPrefix[k].size := by
+      simpa [getElem!_pos muPrefix k hkPrefix] using hcolumnPrefix
+    unfold sizeReduceMuResult
+    rw [if_neg hq]
+    change (((muPrefix.setIfInBounds k
+      (muPrefix[k]!.setIfInBounds source
+        ((muPrefix[k]!)[source]! - (q : QQ))))[k]!)[column]!) = _
+    simp only [Array.setIfInBounds, dif_pos hkPrefix,
+      getElem!_pos muPrefix k hkPrefix, dif_pos hsourcePrefix']
+    rw [getElem!_pos _ k (by simpa), Array.getElem_set]
+    simp only [if_pos]
+    rw [getElem!_pos _ column (by simpa), Array.getElem_set]
+    by_cases hcolumnSource : column = source
+    · subst column
+      rw [if_pos rfl]
+      have hprefixGet := reduceMuPrefixArray_target_get mu k source q
+        source 0 source hk hsource (Nat.le_of_lt hsourceKRow)
+        hlimitSource hsourceKRow hne
+      simp only [Nat.zero_le, true_and, Nat.lt_irrefl, if_false] at hprefixGet
+      have hprefixGet' : muPrefix[k][source]! = (mu[k]!)[source]! := by
+        simpa [muPrefix, getElem!_pos muPrefix k hkPrefix] using hprefixGet
+      rw [hprefixGet']
+      simp
+    · rw [if_neg hcolumnSource]
+      have hprefixGet := reduceMuPrefixArray_target_get mu k source q
+        source 0 column hk hsource (Nat.le_of_lt hsourceKRow)
+        hlimitSource hcolumn hne
+      simp only [Nat.zero_le, true_and] at hprefixGet
+      rw [if_neg (Ne.symm hcolumnSource)]
+      have hprefixGet' : muPrefix[k][column]! =
+          if column < source then
+            (mu[k]!)[column]! - (q : QQ) * (mu[source]!)[column]!
+          else (mu[k]!)[column]! := by
+        simpa [muPrefix, getElem!_pos muPrefix k hkPrefix] using hprefixGet
+      have hprefixGet'' : muPrefix[k][column] =
+          if column < source then
+            (mu[k]!)[column]! - (q : QQ) * (mu[source]!)[column]!
+          else (mu[k]!)[column]! := by
+        simpa only [getElem!_pos muPrefix[k] column hcolumnPrefix'] using
+          hprefixGet'
+      rw [hprefixGet'']
+
+theorem sizeReduceMuResult_get_of_ne
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source row : Nat) (q : ZZ)
+    (hrow : row < mu.size) (hrowK : row ≠ k) :
+    (sizeReduceMuResult mu k source q)[row]! = mu[row]! := by
+  by_cases hq : q = 0
+  · subst q
+    simp [sizeReduceMuResult]
+  · let muPrefix := reduceMuPrefixArray mu k source q source 0
+    have hprefixSize : muPrefix.size = mu.size := by
+      exact reduceMuPrefixArray_size mu k source q source 0
+    have hrowPrefix : row < muPrefix.size := by simpa [hprefixSize]
+    have hprefixRow : muPrefix[row]! = mu[row]! := by
+      simpa [muPrefix] using reduceMuPrefixArray_get_of_ne
+        mu k source row q source 0 hrow hrowK
+    unfold sizeReduceMuResult
+    rw [if_neg hq]
+    change (muPrefix.setIfInBounds k
+      (muPrefix[k]!.setIfInBounds source
+        ((muPrefix[k]!)[source]! - (q : QQ))))[row]! = mu[row]!
+    by_cases hkPrefix : k < muPrefix.size
+    · simp only [Array.setIfInBounds, dif_pos hkPrefix]
+      rw [getElem!_pos _ row (by simpa [hprefixSize]), Array.getElem_set]
+      rw [if_neg (Ne.symm hrowK)]
+      exact (getElem!_pos muPrefix row hrowPrefix).symm.trans hprefixRow
+    · simp [Array.setIfInBounds, hkPrefix, hprefixRow]
+
 theorem sizeReduceAt_preserves_norms_k
     (state output : Generated.StrictRecombine.LLLState) (j : Nat)
     (hrun : Generated.StrictRecombine.sizeReduceAt state j = .ok output) :
@@ -1264,6 +1376,220 @@ theorem ConcreteLLLExecutionValid.withK
     intro rowCount hrowCount
     simpa [ConcreteGramSchmidt, gsLowerPrefix, gsNormDiagonal] using
       hvalid.gram_schmidt rowCount hrowCount
+
+theorem sizeReduceAt_mu_eq
+    (state output : Generated.StrictRecombine.LLLState) (source : Nat)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hsourceK : source < state.k)
+    (hrun : Generated.StrictRecombine.sizeReduceAt state source = .ok output) :
+    ∃ q : ZZ,
+      Generated.StrictRecombine.roundQQ
+        ((state.mu[state.k]!)[source]!) = .ok q ∧
+      output.mu = sizeReduceMuResult state.mu state.k source q := by
+  unfold Generated.StrictRecombine.sizeReduceAt at hrun
+  split at hrun
+  next hk =>
+    split at hrun
+    next hsource =>
+      cases hround : Generated.StrictRecombine.roundQQ
+          state.mu[state.k][source] with
+      | error fault => simp [hround] at hrun
+      | ok q =>
+        simp only [hround] at hrun
+        split at hrun
+        next hzero =>
+          have hout := Except.ok.inj hrun
+          subst output
+          refine ⟨q, ?_, by simp [sizeReduceMuResult, hzero]⟩
+          simpa [getElem!_pos state.mu state.k hk,
+            getElem!_pos state.mu[state.k] source hsource] using hround
+        next hnonzero =>
+          cases hsubtract : Generated.StrictRecombine.subtractMatrixRows
+              state.matrix state.transform state.k source q with
+          | error fault => simp [hsubtract] at hrun
+          | ok matrices =>
+            rcases matrices with ⟨matrix', transform'⟩
+            simp only [hsubtract] at hrun
+            cases hmu : Generated.StrictRecombine.reduceMuPrefixLoop
+                state.mu state.k source q source 0 with
+            | error fault => simp [hmu] at hrun
+            | ok mu' =>
+              simp only [hmu] at hrun
+              split at hrun
+              next hk' =>
+                split at hrun
+                next hsource' =>
+                  have hout := Except.ok.inj hrun
+                  subst output
+                  have hsourceMu : source < state.mu.size := by omega
+                  have hlimitK : source ≤ state.mu[state.k].size := by
+                    rw [hvalid.mu_rows_square state.k hk]
+                    rw [← hvalid.mu_size]
+                    omega
+                  have hlimitSource : source ≤ state.mu[source].size := by
+                    rw [hvalid.mu_rows_square source hsourceMu]
+                    rw [← hvalid.mu_size]
+                    omega
+                  have hmuExact := reduceMuPrefixLoop_output_eq
+                    state.mu mu' state.k source q source 0 hk hsourceMu
+                    hlimitK hlimitSource (by omega) hmu
+                  subst mu'
+                  refine ⟨q, ?_, ?_⟩
+                  · simpa [getElem!_pos state.mu state.k hk,
+                      getElem!_pos state.mu[state.k] source hsource] using hround
+                  · simp only [sizeReduceMuResult, if_neg hnonzero]
+                    simp [Array.setIfInBounds, hk', hsource']
+                next hsource' => contradiction
+              next hk' => contradiction
+    next hsource => contradiction
+  next hk => contradiction
+
+theorem gsLowerPrefix_sizeReduceMuResult
+    (state : Generated.StrictRecombine.LLLState)
+    (source rowCount : Nat) (q : ZZ)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hsourceK : source < state.k)
+    (hkCount : state.k < rowCount)
+    (hrowCount : rowCount ≤ state.matrix.size) :
+    gsLowerPrefix
+        { state with mu := sizeReduceMuResult state.mu state.k source q }
+        rowCount =
+      Matrix.transvection
+          (⟨state.k, hkCount⟩ : Fin rowCount)
+          (⟨source, lt_trans hsourceK hkCount⟩ : Fin rowCount)
+          (-(q : QQ)) * gsLowerPrefix state rowCount := by
+  rw [Matrix.transvection, Matrix.add_mul, Matrix.one_mul]
+  funext row column
+  by_cases hrowK : row = (⟨state.k, hkCount⟩ : Fin rowCount)
+  · subst row
+    have hkMu : state.k < state.mu.size := by
+      rw [hvalid.mu_size]
+      exact lt_of_lt_of_le hkCount hrowCount
+    have hsourceMu : source < state.mu.size := lt_trans hsourceK hkMu
+    have hkRowSize := hvalid.mu_rows_square state.k hkMu
+    have hsourceRowSize := hvalid.mu_rows_square source hsourceMu
+    have hsourceKRow : source < state.mu[state.k].size := by
+      rw [hkRowSize]
+      exact lt_of_lt_of_le hsourceK
+        (lt_of_lt_of_le hkCount hrowCount).le
+    have hlimitSource : source ≤ state.mu[source].size := by
+      rw [hsourceRowSize]
+      exact (lt_of_lt_of_le hsourceK
+        (lt_of_lt_of_le hkCount hrowCount).le).le
+    have hcolumnKRow : column.val < state.mu[state.k].size := by
+      rw [hkRowSize]
+      exact lt_of_lt_of_le column.isLt hrowCount
+    have hmuGet := sizeReduceMuResult_target_get state.mu state.k
+      source column.val q hkMu hsourceMu hsourceKRow hlimitSource
+      hcolumnKRow (by omega)
+    unfold gsLowerPrefix
+    rw [Matrix.add_apply]
+    rw [Matrix.single_mul_apply_same]
+    by_cases hcolumnSource : column.val < source
+    · have hcolumnK : column.val < state.k := lt_trans hcolumnSource hsourceK
+      rw [if_pos hcolumnK, hmuGet]
+      simp [hcolumnSource, hcolumnK]
+      ring
+    · by_cases hcolumnSourceEq : column.val = source
+      · have hcolumnK : column.val < state.k := by omega
+        rw [if_pos hcolumnK, hmuGet]
+        have hsourceFin : column =
+            (⟨source, lt_trans hsourceK hkCount⟩ : Fin rowCount) :=
+          Fin.ext hcolumnSourceEq
+        simp [hcolumnSource, hcolumnSourceEq, hsourceFin, hsourceK]
+        ring
+      · by_cases hcolumnK : column.val < state.k
+        · have hsourceColumn : source < column.val := by omega
+          rw [if_pos hcolumnK, hmuGet]
+          have hkFinNe :
+              (⟨state.k, hkCount⟩ : Fin rowCount) ≠ column := by
+            intro heq
+            have heqVal := congrArg Fin.val heq
+            simp only [Fin.val_mk] at heqVal
+            omega
+          have hsourceFinNe :
+              (⟨source, lt_trans hsourceK hkCount⟩ : Fin rowCount) ≠
+                column := by
+            intro heq
+            have heqVal := congrArg Fin.val heq
+            simp only [Fin.val_mk] at heqVal
+            omega
+          simp [hcolumnSource, hcolumnSourceEq, hcolumnK,
+            hkFinNe, hsourceFinNe]
+        · by_cases hcolumnKEq : column.val = state.k
+          · have hcolumnFin : column =
+                (⟨state.k, hkCount⟩ : Fin rowCount) :=
+              Fin.ext hcolumnKEq
+            rw [hcolumnFin]
+            have hnotKSource : ¬ state.k < source := by omega
+            have hsourceFinNe :
+                (⟨source, lt_trans hsourceK hkCount⟩ : Fin rowCount) ≠
+                  ⟨state.k, hkCount⟩ := by
+              intro heq
+              have heqVal := congrArg Fin.val heq
+              simp only [Fin.val_mk] at heqVal
+              omega
+            simp [hnotKSource, hsourceFinNe]
+          · have hkColumn : state.k < column.val := by omega
+            have hsourceColumn : source < column.val := lt_trans hsourceK hkColumn
+            have hkFinNe :
+                (⟨state.k, hkCount⟩ : Fin rowCount) ≠ column := by
+              intro heq
+              have heqVal := congrArg Fin.val heq
+              simp only [Fin.val_mk] at heqVal
+              omega
+            have hsourceFinNe :
+                (⟨source, lt_trans hsourceK hkCount⟩ : Fin rowCount) ≠
+                  column := by
+              intro heq
+              have heqVal := congrArg Fin.val heq
+              simp only [Fin.val_mk] at heqVal
+              omega
+            simp [hcolumnK, hcolumnKEq, Nat.not_lt.mpr hsourceColumn.le,
+              hkColumn.ne, hkColumn.ne', hsourceColumn.ne, hsourceColumn.ne',
+              hkFinNe, hsourceFinNe]
+  · unfold gsLowerPrefix
+    rw [Matrix.add_apply]
+    have hsingle := Matrix.single_mul_apply_of_ne (-(q : QQ))
+      (⟨state.k, hkCount⟩ : Fin rowCount)
+      (⟨source, lt_trans hsourceK hkCount⟩ : Fin rowCount)
+      row column hrowK (gsLowerPrefix state rowCount)
+    unfold gsLowerPrefix at hsingle
+    rw [hsingle, add_zero]
+    by_cases hcolumnRow : column.val < row.val
+    · rw [if_pos hcolumnRow, if_pos hcolumnRow]
+      have hrowMu : row.val < state.mu.size := by
+        rw [hvalid.mu_size]
+        exact lt_of_lt_of_le row.isLt hrowCount
+      have hrowNe : row.val ≠ state.k := by
+        intro heq
+        apply hrowK
+        exact Fin.ext heq
+      rw [sizeReduceMuResult_get_of_ne state.mu state.k source row.val q
+        hrowMu hrowNe]
+    · rw [if_neg hcolumnRow, if_neg hcolumnRow]
+
+theorem gsLowerPrefix_sizeReduceMuResult_before
+    (state : Generated.StrictRecombine.LLLState)
+    (source rowCount : Nat) (q : ZZ)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrowCount : rowCount ≤ state.k)
+    (hkMatrix : state.k ≤ state.matrix.size) :
+    gsLowerPrefix
+        { state with mu := sizeReduceMuResult state.mu state.k source q }
+        rowCount = gsLowerPrefix state rowCount := by
+  funext row column
+  unfold gsLowerPrefix
+  by_cases hcolumnRow : column.val < row.val
+  · rw [if_pos hcolumnRow, if_pos hcolumnRow]
+    have hrowMatrix : row.val < state.matrix.size := by omega
+    have hrowMu : row.val < state.mu.size := by
+      rw [hvalid.mu_size]
+      exact hrowMatrix
+    have hrowNe : row.val ≠ state.k := by omega
+    rw [sizeReduceMuResult_get_of_ne state.mu state.k source row.val q
+      hrowMu hrowNe]
+  · rw [if_neg hcolumnRow, if_neg hcolumnRow]
 
 theorem ConcreteLLLValid.withK
     {state : Generated.StrictRecombine.LLLState}

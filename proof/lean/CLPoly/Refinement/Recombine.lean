@@ -712,6 +712,95 @@ theorem lllStep_swapped_norms
   · rw [dif_neg hkPositive] at hrun
     simp [hkPositive] at hrun
 
+/-- The classical LLL potential, evaluated on the exact Gram–Schmidt norm
+array carried by the generated C++ state. -/
+noncomputable def arrayLLLPotential (norms : Array QQ) : QQ :=
+  ∏ i : Fin norms.size, norms[i] ^ (norms.size - i.val)
+
+theorem arrayLLLPotential_pos (norms : Array QQ)
+    (hpositive : ∀ i (hi : i < norms.size), 0 < norms[i]'hi) :
+    0 < arrayLLLPotential norms := by
+  unfold arrayLLLPotential
+  apply Finset.prod_pos
+  intro i _
+  exact pow_pos (hpositive i i.isLt) _
+
+/-- View an operational array state as the finite-function state used by the
+pure L2 LLL potential theorem.  Matrix and μ reads are total only because this
+view is used for the termination algebra; the execution theorem separately
+establishes every source-level bound before a read. -/
+noncomputable def toPotentialState
+    (state : Generated.StrictRecombine.LLLState) :
+    LLLState state.norms.size state.matrix.size where
+  basis := fun i j => (state.matrix[i.val]!)[j.val]!
+  mu := fun i j => (state.mu[i.val]!)[j.val]!
+  gs_norm_sq := fun i => state.norms[i]
+  k := state.k
+
+theorem toPotentialState_potential
+    (state : Generated.StrictRecombine.LLLState) :
+    lllPotential' (toPotentialState state) = arrayLLLPotential state.norms := by
+  rfl
+
+theorem normsAfterLovaszSwap_size (norms : Array QQ) (k : Nat) (mu : QQ) :
+    (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu).size =
+      norms.size := by
+  unfold Generated.StrictRecombine.normsAfterLovaszSwap
+  dsimp
+  split <;> simp
+
+/-- Once the determinant potential is converted to a natural number, this is
+the concrete scalar rank used by the generated while-loop: an advancing step
+spends the low-order progress component, while a swap must lower the dominant
+lattice component. -/
+def lllLexRank (latticePotential dimension index : Nat) : Nat :=
+  latticePotential * (dimension + 1) + (dimension - index)
+
+theorem lllLexRank_advanced (potential dimension index : Nat)
+    (hindex : index < dimension) :
+    lllLexRank potential dimension (index + 1) <
+      lllLexRank potential dimension index := by
+  unfold lllLexRank
+  omega
+
+theorem lllLexRank_swap (oldPotential newPotential dimension oldIndex newIndex : Nat)
+    (hpotential : newPotential < oldPotential) :
+    lllLexRank newPotential dimension newIndex <
+      lllLexRank oldPotential dimension oldIndex := by
+  unfold lllLexRank
+  calc
+    newPotential * (dimension + 1) + (dimension - newIndex) ≤
+        newPotential * (dimension + 1) + dimension :=
+      Nat.add_le_add_left (Nat.sub_le dimension newIndex) _
+    _ < newPotential * (dimension + 1) + (dimension + 1) := by omega
+    _ = (newPotential + 1) * (dimension + 1) := by
+      rw [Nat.add_mul, one_mul]
+    _ ≤ oldPotential * (dimension + 1) :=
+      Nat.mul_le_mul_right _ (Nat.succ_le_iff.mpr hpotential)
+    _ ≤ oldPotential * (dimension + 1) + (dimension - oldIndex) :=
+      Nat.le_add_right _ _
+
+/-- Integer Gram matrix of the first `prefix` rows of the current C++ lattice
+basis.  Total reads make the definition available on every raw state; the
+operational validity invariant later states that the basis is square. -/
+noncomputable def gramPrefixMatrix
+    (matrix : Generated.StrictRecombine.LLLMatrix) (rowCount : Nat) :
+    Matrix (Fin rowCount) (Fin rowCount) Int :=
+  fun i j => ∑ c : Fin matrix.size,
+    (matrix[i.val]!)[c.val]! * (matrix[j.val]!)[c.val]!
+
+/-- Each prefix Gram determinant is a nonnegative integer.  Their product is
+the discrete version of the rational LLL potential
+`∏ᵢ Bᵢ^(n-i)`: Gram–Schmidt identifies the determinant of prefix `r`
+with `∏ i<r, Bᵢ`. -/
+noncomputable def lllDeterminantPotential
+    (matrix : Generated.StrictRecombine.LLLMatrix) : Nat :=
+  ∏ i : Fin matrix.size, (Matrix.det (gramPrefixMatrix matrix (i.val + 1))).natAbs
+
+noncomputable def concreteLLLRank
+    (state : Generated.StrictRecombine.LLLState) : Nat :=
+  lllLexRank (lllDeterminantPotential state.matrix) state.matrix.size state.k
+
 noncomputable def factorArrayToL2 (factors : Array SparsePolyZZ) :
     List (Polynomial Int) :=
   factors.toList.map SparsePolyZZ.toPoly

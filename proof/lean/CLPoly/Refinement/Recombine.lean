@@ -1192,4 +1192,26 @@ theorem validateCandidates_product_unit_scalar
     (associated_normalize scalar).isUnit_iff.mpr hnormalizeUnit
   exact ⟨scalar, hscalarUnit, hproduct⟩
 
+/-- The concrete extraction loop preserves primitivity of the whole live
+product.  This is the induction invariant used by the source-shaped van-Hoeij
+loop after it removes the consumed lifted factors. -/
+theorem validateCandidates_preserves_primitive
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidates : Array (Array Int32)) (result : Array SparsePolyZZ)
+    (fStar' : SparsePolyZZ) (result' : Array SparsePolyZZ)
+    (consumed : Array Bool)
+    (hprimitive :
+      (SparsePolyZZ.toPoly fStar * factorArrayProduct result).IsPrimitive)
+    (hrun : Generated.StrictRecombine.validateCandidates ops fStar activeLifted
+      modulus candidates result = .ok (fStar', result', consumed)) :
+    (SparsePolyZZ.toPoly fStar' * factorArrayProduct result').IsPrimitive := by
+  rcases validateCandidates_product_unit_scalar ops fStar activeLifted modulus
+      candidates result fStar' result' consumed hprimitive hrun with
+    ⟨scalar, hscalarUnit, hproduct⟩
+  have hcontent := congrArg Polynomial.content hproduct
+  rw [hprimitive.content_eq_one, Polynomial.content_C_mul,
+    normalize_eq_one.mpr hscalarUnit, one_mul] at hcontent
+  exact Polynomial.isPrimitive_iff_content_eq_one.mpr hcontent.symm
+
 end Refinement.StrictRecombine

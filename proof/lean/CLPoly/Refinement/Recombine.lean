@@ -1437,16 +1437,17 @@ theorem zassenhausAttempt_extracted_unit_scalar
   exact ⟨scalar, hscalarUnit, hproduct⟩
 
 theorem scanZassenhausCombinations_extracted_unit_scalar
-    {upper : Nat}
-    (termination : Generated.StrictRecombine.CombinationTermination upper)
+    {upper count : Nat}
+    (termination : Generated.StrictRecombine.CombinationTermination upper count)
     (fStar factor quotientPrimitive : SparsePolyZZ)
     (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
     (start candidate : Array Nat)
+    (hcandidateSize : candidate.size = count)
     (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
     (hvalidStart : termination.valid start)
     (hrun : Generated.StrictRecombine.scanZassenhausCombinations termination
       fStar activeLifted modulus start hvalidStart = .ok
-        (.extracted factor quotientPrimitive candidate)) :
+        (.extracted factor quotientPrimitive candidate hcandidateSize)) :
     ∃ scalar : Int, IsUnit scalar ∧
       SparsePolyZZ.toPoly fStar = Polynomial.C scalar *
         (SparsePolyZZ.toPoly factor *

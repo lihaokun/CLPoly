@@ -459,9 +459,10 @@ inductive ZassenhausAttemptResult where
   | rejected
   | extracted (factor quotient : SparsePolyZZ)
 
-inductive ZassenhausScanResult where
+inductive ZassenhausScanResult (count : Nat) where
   | exhausted
   | extracted (factor quotient : SparsePolyZZ) (candidate : Array Nat)
+      (candidateSize : candidate.size = count)
 
 /-- One complete C++ Zassenhaus candidate attempt, including both scalar
 pruning tests and the actual sparse exact division. -/
@@ -514,8 +515,9 @@ def zassenhausAttempt (fStar : SparsePolyZZ)
 /-- Erased well-founded metric for the concrete lexicographic
 `next_combination` execution.  The refinement layer constructs this
 certificate from the generated combination arithmetic. -/
-structure CombinationTermination (upper : Nat) where
+structure CombinationTermination (upper count : Nat) where
   valid : Array Nat → Prop
+  valid_size : ∀ current, valid current → current.size = count
   rank : Array Nat → Nat
   next_valid : ∀ current next, valid current →
     nextCombination current upper = (true, next) → valid next
@@ -523,16 +525,17 @@ structure CombinationTermination (upper : Nat) where
     nextCombination current upper = (true, next) → rank next < rank current
 
 /-- Exact source do-while over all fixed-size combinations. -/
-def scanZassenhausCombinations {upper : Nat}
-    (termination : CombinationTermination upper)
+def scanZassenhausCombinations {upper count : Nat}
+    (termination : CombinationTermination upper count)
     (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ)
     (modulus : ZZ) : (candidate : Array Nat) → termination.valid candidate →
-      RawExec ZassenhausScanResult
+      RawExec (ZassenhausScanResult count)
   | candidate, hvalid =>
       match zassenhausAttempt fStar activeLifted modulus candidate with
       | .error fault => .error fault
       | .ok (.extracted factor quotient) =>
-          .ok (.extracted factor quotient candidate)
+          .ok (.extracted factor quotient candidate
+            (termination.valid_size candidate hvalid))
       | .ok .rejected =>
           match hnext : nextCombination candidate upper with
           | (false, _) => .ok .exhausted
@@ -541,6 +544,69 @@ def scanZassenhausCombinations {upper : Nat}
                 modulus next (termination.next_valid candidate next hvalid hnext)
 termination_by candidate _ => termination.rank candidate
 decreasing_by exact termination.next_decreases candidate next hvalid hnext
+
+structure ZassenhausTermination where
+  combinations : ∀ upper count, CombinationTermination upper count
+  initial_valid : ∀ upper count, count ≤ upper →
+    (combinations upper count).valid (initialCombination count)
+  removal_decreases : ∀ active candidate output,
+    0 < candidate.size → removeCombination candidate active = .ok output →
+      output.size < active.size
+
+def sortFactorsByDegree (factors : Array SparsePolyZZ) : Array SparsePolyZZ :=
+  (factors.toList.mergeSort fun left right =>
+    left[0]!.1.deg < right[0]!.1.deg).toArray
+
+def finishZassenhaus (fStar : SparsePolyZZ)
+    (result : Array SparsePolyZZ) : Array SparsePolyZZ :=
+  let completed :=
+    if hnonempty : 0 < fStar.size then
+      if 0 < fStar[0].1.deg then result.push fStar else result
+    else result
+  sortFactorsByDegree completed
+
+/-- Complete source-shaped Zassenhaus outer loop.  Successful extraction
+strictly shrinks the active factor array and restarts at subset size one;
+exhaustion advances the bounded subset size. -/
+def zassenhausLoop (termination : ZassenhausTermination) (modulus : ZZ) :
+    (active : Array SparsePolyZZ) → SparsePolyZZ → Array SparsePolyZZ →
+      (subsetSize : Nat) → 0 < subsetSize → RawExec (Array SparsePolyZZ)
+  | active, fStar, result, subsetSize, hsubsetPositive =>
+      if hcontinue : 2 * subsetSize ≤ active.size then
+        let combinationTermination :=
+          termination.combinations active.size subsetSize
+        let initial := initialCombination subsetSize
+        let hinitial := termination.initial_valid active.size subsetSize
+          (by omega)
+        match scanZassenhausCombinations combinationTermination fStar active
+            modulus initial hinitial with
+        | .error fault => .error fault
+        | .ok .exhausted =>
+            zassenhausLoop termination modulus active fStar result
+              (subsetSize + 1) (by omega)
+        | .ok (.extracted factor quotient candidate candidateSize) =>
+            match hremove : removeCombination candidate active with
+            | .error fault => .error fault
+            | .ok active' =>
+                zassenhausLoop termination modulus active' quotient
+                  (result.push factor) 1 (by omega)
+      else .ok (finishZassenhaus fStar result)
+termination_by active _ _ subsetSize _ =>
+  (active.size, active.size + 1 - subsetSize)
+decreasing_by
+  · exact Prod.Lex.right _ (by omega)
+  · exact Prod.Lex.left _ _
+      (termination.removal_decreases active candidate active'
+        (by rw [candidateSize]; exact hsubsetPositive) hremove)
+
+def zassenhausRecombine (termination : ZassenhausTermination)
+    (f : SparsePolyZZ) (lifted : Array SparsePolyZZ) (modulus : ZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  if lifted.size ≤ 1 then
+    if hnonempty : 0 < f.size then
+      if 0 < f[0].1.deg then .ok #[f] else .ok #[]
+    else .ok #[]
+  else zassenhausLoop termination modulus lifted f #[] 1 (by omega)
 
 /-- Concrete C++ callees used inside candidate validation.  Each field returns
 only computed polynomial data; no field may return a semantic proposition or

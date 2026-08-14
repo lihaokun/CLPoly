@@ -218,12 +218,45 @@ def symmetricModRaw (input : SparsePolyZZ) (modulus : ZZ) :
   if hmodulus : 0 < modulus then symmetricModLoop input modulus 0 #[]
   else .error .arithmeticDomain
 
+def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
+  if hindex : index < input.size then
+    contentLoop input (index + 1) (Nat.gcd acc input[index].2.natAbs)
+  else acc
+termination_by input.size - index
+decreasing_by omega
+
+def primitiveDivideLoop (input : SparsePolyZZ) (divisor : ZZ) (index : Nat)
+    (result : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  if hindex : index < input.size then
+    if hdivisor : divisor ≠ 0 then
+      if hdivides : divisor ∣ input[index].2 then
+        primitiveDivideLoop input divisor (index + 1)
+          (result.push (input[index].1, input[index].2 / divisor))
+      else .error .arithmeticDomain
+    else .error .arithmeticDomain
+  else .ok result
+termination_by input.size - index
+decreasing_by omega
+
+/-- Exact C++ `__upoly_primitive`: content gcd, leading-sign adjustment,
+and coefficient-wise exact division. -/
+def primitiveRaw (input : SparsePolyZZ) : RawExec (ZZ × SparsePolyZZ) :=
+  if hempty : input.isEmpty then .ok (1, input)
+  else
+    let content : ZZ := contentLoop input 0 0
+    let divisor := if (input[0]'(by
+      have : input.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+      omega)).2 < 0
+      then -content else content
+    match primitiveDivideLoop input divisor 0 #[] with
+    | .error fault => .error fault
+    | .ok primitive => .ok (divisor, primitive)
+
 /-- Concrete C++ callees used inside candidate validation.  Each field returns
 only computed polynomial data; no field may return a semantic proposition or
 choose an L2 factorization witness. -/
 structure CandidateValidationRawOps where
   product : TrialProductRawOps
-  primitive : SparsePolyZZ → RawExec (ZZ × SparsePolyZZ)
   divmod : SparsePolyZZ → SparsePolyZZ → RawExec (SparsePolyZZ × SparsePolyZZ)
 
 /-- Exact source `for (auto& cand : candidates)` validation loop: reject empty,
@@ -258,14 +291,14 @@ def validateCandidatesLoop (ops : CandidateValidationRawOps)
                 match symmetricModRaw product modulus with
                 | .error fault => .error fault
                 | .ok symmetric =>
-                  match ops.primitive symmetric with
+                  match primitiveRaw symmetric with
                   | .error fault => .error fault
                   | .ok (_, factor) =>
                     match ops.divmod fStar factor with
                     | .error fault => .error fault
                     | .ok (quotient, remainder) =>
                       if hremainder : remainder.isEmpty then
-                        match ops.primitive quotient with
+                        match primitiveRaw quotient with
                         | .error fault => .error fault
                         | .ok (_, quotientPrimitive) =>
                           match markConsumedLoop candidate 0 consumed with

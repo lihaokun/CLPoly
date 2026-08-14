@@ -381,7 +381,7 @@ theorem validateCandidatesLoop_consumed_size
                     | error fault => simp [hsymmetric] at hrun
                     | ok symmetric =>
                       simp only [hsymmetric] at hrun
-                      cases hprimitive : ops.primitive symmetric with
+                      cases hprimitive : Generated.StrictRecombine.primitiveRaw symmetric with
                       | error fault => simp [hprimitive] at hrun
                       | ok primitiveResult =>
                         rcases primitiveResult with ⟨content, factor⟩
@@ -393,7 +393,8 @@ theorem validateCandidatesLoop_consumed_size
                           simp only [hdivmod] at hrun
                           by_cases hremainder : remainder.isEmpty = true
                           · simp only [hremainder, if_true] at hrun
-                            cases hquotientPrimitive : ops.primitive quotient with
+                            cases hquotientPrimitive :
+                                Generated.StrictRecombine.primitiveRaw quotient with
                             | error fault => simp [hquotientPrimitive] at hrun
                             | ok quotientResult =>
                               rcases quotientResult with ⟨quotientContent,
@@ -790,5 +791,96 @@ theorem symmetricModRaw_toPolyMod (input output : SparsePolyZZ)
   rw [dif_pos (by exact_mod_cast hmodulus)] at hrun
   simpa [Refinement.StrictHensel.toPolyMod_eq_termsToPolyMod] using
     symmetricModLoop_toPolyMod input modulus hmodulus 0 #[] output hrun
+
+theorem primitiveDivideLoop_toPoly (input : SparsePolyZZ) (divisor : Int)
+    (index : Nat) (result output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.primitiveDivideLoop input divisor index
+      result = .ok output) :
+    Polynomial.C divisor * SparsePolyZZ.toPoly output =
+      Polynomial.C divisor * SparsePolyZZ.toPoly result +
+        intTermsToPoly (input.toList.drop index) := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.primitiveDivideLoop] at hrun
+      split at hrun
+      next hindex =>
+        split at hrun
+        next hdivisor =>
+          split at hrun
+          next hdivides =>
+            rw [ih (input.size - (index + 1)) (by omega)
+              (index + 1)
+              (result.push (input[index].1, input[index].2 / divisor))
+              output hrun rfl]
+            rw [SparsePolyZZ.toPoly]
+            simp only [Array.toList_push, List.map_append, List.map_singleton,
+              List.sum_append, List.sum_singleton]
+            have hsuffix : input.toList.drop index = input[index] ::
+                input.toList.drop (index + 1) := by
+              simpa using List.drop_eq_getElem_cons
+                (l := input.toList) (i := index) (by simpa using hindex)
+            rw [hsuffix]
+            simp only [intTermsToPoly, List.map_cons, List.sum_cons]
+            rw [mul_add, Polynomial.C_mul_monomial]
+            have hcancel : divisor * (input[index].2 / divisor) =
+                input[index].2 := by
+              exact Int.mul_ediv_cancel_of_dvd hdivides
+            rw [hcancel]
+            change Polynomial.C divisor * SparsePolyZZ.toPoly result + _ + _ =
+              Polynomial.C divisor * SparsePolyZZ.toPoly result + (_ + _)
+            abel
+          next hdivides => contradiction
+        next hdivisor => contradiction
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [intTermsToPoly, List.drop_eq_nil_iff.mpr hle]
+
+theorem primitiveRaw_toPoly (input primitive : SparsePolyZZ) (content : Int)
+    (hrun : Generated.StrictRecombine.primitiveRaw input =
+      .ok (content, primitive)) :
+    SparsePolyZZ.toPoly input =
+      Polynomial.C content * SparsePolyZZ.toPoly primitive := by
+  unfold Generated.StrictRecombine.primitiveRaw at hrun
+  split at hrun
+  next hempty =>
+    have hinput : input = #[] := Array.isEmpty_iff.mp hempty
+    subst input
+    have hout := Except.ok.inj hrun
+    cases hout
+    simp [SparsePolyZZ.toPoly]
+  next hempty =>
+    dsimp at hrun
+    split at hrun
+    next fault hdivide => contradiction
+    next primitive' hdivide =>
+      have hout : (content, primitive) =
+          (if (input[0]'(by
+              have : input.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+              omega)).2 < 0 then
+            -(Generated.StrictRecombine.contentLoop input 0 0 : Int)
+          else (Generated.StrictRecombine.contentLoop input 0 0 : Int), primitive') :=
+        (Except.ok.inj hrun).symm
+      have hcontent := congrArg Prod.fst hout
+      have hprimitive := congrArg Prod.snd hout
+      have hsemantic := primitiveDivideLoop_toPoly input
+        (if (input[0]'(by
+            have : input.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+            omega)).2 < 0 then
+          -(Generated.StrictRecombine.contentLoop input 0 0 : Int)
+        else (Generated.StrictRecombine.contentLoop input 0 0 : Int)) 0 #[]
+        primitive' hdivide
+      have hcontent' : content =
+          (if (input[0]'(by
+              have : input.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+              omega)).2 < 0 then
+            -(Generated.StrictRecombine.contentLoop input 0 0 : Int)
+          else (Generated.StrictRecombine.contentLoop input 0 0 : Int)) := hcontent
+      rw [← hcontent'] at hsemantic
+      have hprimitive' : primitive = primitive' := hprimitive
+      rw [← hprimitive'] at hsemantic
+      simpa [SparsePolyZZ.toPoly, intTermsToPoly] using hsemantic.symm
 
 end Refinement.StrictRecombine

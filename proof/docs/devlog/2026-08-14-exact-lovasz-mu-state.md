@@ -435,3 +435,37 @@ primitive normalization, exact division, and consumed-bit mutation chain.
 - Lean 净变化：删除 1 个 Prop 合同，增加 1 个无回调 concrete ops 值
 - C++ 变化：无
 - 下一步：证明 CLD lattice extension/reset 保持 concrete LLL 满秩输入，并构造完整 `VanHoeijRawOps`
+
+## Van-Hoeij lattice dimension invariant exposed
+
+The old generated `cld_extension_valid` field required every successful CLD
+extension to preserve a square full-rank LLL input, but did not state the
+source precondition `matrix.size = cld.size + currentColumns`.  Consequently
+the field quantified over dimension-mismatched arrays for which the generated
+append operation is not square; no honest concrete implementation of that
+contract could exist.
+
+The generated interface and its generator now carry the actual C++ lattice
+dimension invariant.  `VanHoeijStateValid` combines concrete LLL full rank
+with `matrix.size = active.size + currentColumns`.  Successful gather and CLD
+executions carry exact output-size facts, CLD extension returns both full rank
+and its new dimension, reset returns the exact factor-count dimension, and
+LLL reduction now proves it preserves matrix size.  Both recursive branches
+of `vanHoeijLoop` transport this invariant through their actual generated
+outputs.
+
+On the refinement side, the gather and complete nested CLD loops now have
+direct successful-execution size theorems.  The LLL main loop also has a
+well-founded execution proof that every advanced or swapped step preserves
+matrix size.  Finally, `det_append_unit_lower` establishes the determinant
+identity for the block-lower-triangular matrix shape produced by one CLD
+column append; it is the algebraic core of the next full-rank extension proof.
+
+## 度量（van-Hoeij dimension invariant）
+
+- 耗时：约 1.25 小时（识别不可满足接口、生成器同步、递归 size 证明与 block determinant 引理）
+- 迭代：约 5 轮生成/Lean 编译
+- 生成层变化：状态新增真实 lattice dimension invariant；LLL 输出新增 size preservation
+- 删除的退化风险：不再允许用过宽且事实上不可构造的 `cld_extension_valid` 掩盖维度前提
+- C++ 变化：无
+- 下一步：把 `appendZeroColumn`/`appendCldColumn` 的实际数组条目映射到 block determinant 引理，完成 CLD full-rank preservation

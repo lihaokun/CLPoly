@@ -933,6 +933,9 @@ structure LLLExecution where
   output_input_valid : ∀ initial output hvalid,
     lllMainLoop termination initial hvalid = .ok output →
     inputValid output.matrix
+  output_size : ∀ initial output hvalid,
+    lllMainLoop termination initial hvalid = .ok output →
+    output.matrix.size = initial.matrix.size
 
 /-- Insert one short-row index into the already norm-sorted prefix.  This is
 the deterministic strict model of the source `std::sort` comparator. -/
@@ -981,7 +984,7 @@ Gram–Schmidt data, run the well-founded main loop, then collect short rows. -/
 def lllReduce (execution : LLLExecution) (matrix : LLLMatrix)
     (hinput : execution.inputValid matrix) (bound : ZZ) :
     RawExec { output : LLLMatrix × LLLMatrix × Array Nat //
-      execution.inputValid output.1 } :=
+      execution.inputValid output.1 ∧ output.1.size = matrix.size } :=
   match hinitialize : initializeLLL matrix with
   | .error fault => .error fault
   | .ok (mu, norms, transform) =>
@@ -994,6 +997,9 @@ def lllReduce (execution : LLLExecution) (matrix : LLLMatrix)
       | .error fault => .error fault
       | .ok rows => .ok ⟨(reduced.matrix, reduced.transform, rows),
           execution.output_input_valid state reduced
+            (execution.initialized_valid matrix mu norms transform hinput hinitialize)
+            hrun,
+          execution.output_size state reduced
             (execution.initialized_valid matrix mu norms transform hinput hinitialize)
             hrun⟩
 
@@ -1448,25 +1454,45 @@ There is deliberately no callback capable of supplying candidate subsets. -/
 structure VanHoeijRawOps where
   cld : CldRawOps
   lll : LLLExecution
+  gather_size : ∀ active lifted activeLifted,
+    gatherActive active lifted = .ok activeLifted →
+    activeLifted.size = active.size
+  cld_size : ∀ fStar activeFactors modulus cldOutput,
+    cldPolys cld fStar activeFactors modulus = .ok cldOutput →
+    cldOutput.size = activeFactors.size
   cld_extension_valid : ∀ matrix cld current target matrix' added,
     lll.inputValid matrix →
+    matrix.size = cld.size + current →
     buildCldMatrix matrix cld current target = .ok (matrix', added) →
-    lll.inputValid matrix'
+    lll.inputValid matrix' ∧ matrix'.size = cld.size + current + added
   reset_valid : ∀ factorCount matrix bound,
     resetVanHoeijLattice factorCount = .ok (matrix, bound) →
-    lll.inputValid matrix
+    lll.inputValid matrix ∧ matrix.size = factorCount
   validation : CandidateValidationRawOps
   zassenhausTermination : ZassenhausTermination
+
+/-- The source lattice always has one row/column per active lifted factor plus
+one coordinate for every retained CLD column.  Keeping this equality beside
+the full-rank LLL premise prevents an impossible over-broad extension
+contract on dimension-mismatched raw arrays. -/
+structure VanHoeijStateValid (ops : VanHoeijRawOps)
+    (state : VanHoeijState) : Prop where
+  input : ops.lll.inputValid state.matrix
+  dimension : state.matrix.size = state.active.size + state.currentColumns
 
 /-- Concrete M1–M4 execution of one source iteration.  The returned matrix
 and column count are retained if validation finds no factor. -/
 def prepareCandidates (ops : VanHoeijRawOps) (state : VanHoeijState)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
     (hinput : ops.lll.inputValid state.matrix)
-    (activeLifted : Array SparsePolyZZ) (modulus : ZZ) :
+    (hdimension : state.matrix.size = activeLifted.size + state.currentColumns)
+    :
     RawExec { output : LLLMatrix × Nat × Array (Array Int32) //
-      ops.lll.inputValid output.1 } :=
+      ops.lll.inputValid output.1 ∧
+        output.1.size = activeLifted.size + output.2.1 } :=
   let finish (matrix : LLLMatrix) (columns : Nat)
-      (hmatrix : ops.lll.inputValid matrix) :=
+      (hmatrix : ops.lll.inputValid matrix)
+      (hmatrixSize : matrix.size = activeLifted.size + columns) :=
     match lllReduce ops.lll matrix hmatrix state.shortBound with
     | .error fault => .error fault
     | .ok reducedOutput =>
@@ -1475,17 +1501,28 @@ def prepareCandidates (ops : VanHoeijRawOps) (state : VanHoeijState)
       let shortRows := reducedOutput.1.2.2
       match extractCandidates shortRows transform activeLifted.size with
       | .error fault => .error fault
-      | .ok candidates => .ok ⟨(reduced, columns, candidates), reducedOutput.2⟩
+      | .ok candidates => .ok ⟨(reduced, columns, candidates),
+          reducedOutput.2.1, reducedOutput.2.2.trans hmatrixSize⟩
   if state.target = 0 then finish state.matrix state.currentColumns hinput
+      hdimension
   else
-    match cldPolys ops.cld state.fStar activeLifted modulus with
+    match hcld : cldPolys ops.cld state.fStar activeLifted modulus with
     | .error fault => .error fault
     | .ok cld =>
       match hbuild : buildCldMatrix state.matrix cld state.currentColumns state.target with
       | .error fault => .error fault
       | .ok (matrix', added) => finish matrix' (state.currentColumns + added)
           (ops.cld_extension_valid state.matrix cld state.currentColumns
-            state.target matrix' added hinput hbuild)
+            state.target matrix' added hinput (by
+              rw [ops.cld_size state.fStar activeLifted modulus cld hcld]
+              exact hdimension) hbuild).1
+          (by
+            rw [(ops.cld_extension_valid state.matrix cld state.currentColumns
+              state.target matrix' added hinput (by
+                rw [ops.cld_size state.fStar activeLifted modulus cld hcld]
+                exact hdimension) hbuild).2]
+            rw [ops.cld_size state.fStar activeLifted modulus cld hcld]
+            omega)
 
 /-- Erased termination certificate for the successful-extraction branch.
 It refers only to concrete successful raw executions and the consumed bits
@@ -1525,15 +1562,17 @@ overflowing precision target executes the actual Zassenhaus fallback. -/
 def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
     (lifted : Array SparsePolyZZ)
     (modulus : ZZ) (initial maximum : Nat) (hinitial : 0 < initial) :
-    (state : VanHoeijState) → ops.lll.inputValid state.matrix →
+    (state : VanHoeijState) → VanHoeijStateValid ops state →
       RawExec (SparsePolyZZ × Array SparsePolyZZ)
-  | state, hmatrix =>
+  | state, hstate =>
     if hdone : state.active.size ≤ 1 then .ok (state.fStar, state.result)
     else
       match hgather : gatherActive state.active lifted with
       | .error fault => .error fault
       | .ok activeLifted =>
-        match prepareCandidates ops state hmatrix activeLifted modulus with
+        match prepareCandidates ops state activeLifted modulus hstate.input (by
+            rw [ops.gather_size state.active lifted activeLifted hgather]
+            exact hstate.dimension) with
         | .error fault => .error fault
         | .ok prepared =>
           let matrix' := prepared.1.1
@@ -1556,8 +1595,11 @@ def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
                     { active := activeNext.1, fStar := fStar', result := result',
                       matrix := resetMatrix, currentColumns := 0,
                       shortBound := resetBound, target := 0 }
-                    (ops.reset_valid activeNext.1.size resetMatrix resetBound
-                      hreset)
+                    ⟨(ops.reset_valid activeNext.1.size resetMatrix resetBound
+                        hreset).1,
+                      by simpa using
+                        (ops.reset_valid activeNext.1.size resetMatrix resetBound
+                          hreset).2⟩
             else
               match hprecision : nextPrecision state.target initial maximum with
               | .retry target' =>
@@ -1565,7 +1607,11 @@ def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
                   { active := state.active, fStar := state.fStar,
                     result := state.result, matrix := matrix',
                     currentColumns := currentColumns', shortBound := state.shortBound,
-                    target := target' } prepared.2
+                    target := target' } ⟨prepared.2.1, by
+                      have hactiveSize :=
+                        ops.gather_size state.active lifted activeLifted hgather
+                      dsimp only
+                      exact prepared.2.2.trans (by omega)⟩
               | .fallback =>
                 match zassenhausRecombine ops.zassenhausTermination
                     state.fStar activeLifted modulus with

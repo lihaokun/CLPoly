@@ -2809,6 +2809,31 @@ noncomputable def basisPrefixMatrix
     (rowCount columnCount : Nat) : Matrix (Fin rowCount) (Fin columnCount) Int :=
   fun i j => (matrix[i.val]!)[j.val]!
 
+/-- Appending a zero coordinate to every old row and then a final row with
+last coordinate one preserves the determinant.  This is exactly the block
+lower-triangular shape of one generated CLD lattice-column extension. -/
+theorem det_append_unit_lower {R : Type*} [CommRing R] (n : Nat)
+    (A : Matrix (Fin n) (Fin n) R) (c : Fin n → R)
+    (E : Matrix (Fin (n + 1)) (Fin (n + 1)) R)
+    (hold : ∀ i j : Fin n, E i.castSucc j.castSucc = A i j)
+    (hzero : ∀ i : Fin n, E i.castSucc (Fin.last n) = 0)
+    (hlower : ∀ j : Fin n, E (Fin.last n) j.castSucc = c j)
+    (hone : E (Fin.last n) (Fin.last n) = 1) :
+    Matrix.det E = Matrix.det A := by
+  let block : Matrix (Fin n ⊕ Fin 1) (Fin n ⊕ Fin 1) R :=
+    Matrix.fromBlocks A 0 (fun _ j => c j) 1
+  have hextension :
+      E = block.submatrix finSumFinEquiv.symm finSumFinEquiv.symm := by
+    ext i j
+    refine Fin.lastCases ?_ (fun i => ?_) i <;>
+      refine Fin.lastCases ?_ (fun j => ?_) j
+    · simp [block, hone]
+    · simp [block, hlower]
+    · simp [block, hzero]
+    · simp [block, hold]
+  rw [hextension, Matrix.det_submatrix_equiv_self]
+  simp [block]
+
 theorem gramPrefixMatrix_eq_mul_transpose
     (matrix : Generated.StrictRecombine.LLLMatrix) (rowCount : Nat) :
     gramPrefixMatrix matrix rowCount =
@@ -6723,6 +6748,53 @@ theorem concreteLLLMainLoop_preserves_execution_valid
         subst output
         exact hvalid
 
+theorem lllStep_preserves_matrix_size
+    (state : Generated.StrictRecombine.LLLState)
+    (branch : Generated.StrictRecombine.LLLStepResult)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok branch) :
+    branch.state.matrix.size = state.matrix.size := by
+  have houtput := lllStep_preserves_execution_valid state branch hvalid hrun
+  cases branch with
+  | advanced output =>
+      have hcontrol := lllStep_advanced_control state output hrun
+      calc
+        output.matrix.size = output.norms.size := houtput.norms_size.symm
+        _ = state.norms.size := congrArg Array.size hcontrol.1
+        _ = state.matrix.size := hvalid.norms_size
+  | swapped output =>
+      exact lllStep_swapped_matrix_size state output hvalid.toConcreteLLLValid
+        houtput.toConcreteLLLValid hrun
+
+theorem concreteLLLMainLoop_preserves_matrix_size
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrun : Generated.StrictRecombine.lllMainLoop concreteLLLTermination
+      state hvalid = .ok output) :
+    output.matrix.size = state.matrix.size := by
+  induction hmeasure : concreteLLLRank state using Nat.strong_induction_on
+      generalizing state output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.lllMainLoop] at hrun
+      split at hrun
+      next hk =>
+        split at hrun
+        next hstep => contradiction
+        next branch hstep =>
+          have hnextValid := lllStep_preserves_execution_valid state branch
+            hvalid hstep
+          have hdecrease := lllStep_concreteRank_lt_of_valid state branch
+            hvalid.toConcreteLLLValid hnextValid.toConcreteLLLValid hstep
+          have htail := ih (concreteLLLRank branch.state) (by
+              simpa [hmeasure] using hdecrease) branch.state output hnextValid
+            hrun rfl
+          exact htail.trans
+            (lllStep_preserves_matrix_size state branch hvalid hstep)
+      next hk =>
+        have hout := Except.ok.inj hrun
+        subst output
+        rfl
+
 theorem initializeLLL_concrete_valid
     (matrix : Generated.StrictRecombine.LLLMatrix)
     (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
@@ -6802,6 +6874,9 @@ noncomputable def concreteLLLExecution :
     intro initial output hvalid hrun
     exact (concreteLLLMainLoop_preserves_execution_valid initial output
       hvalid hrun).toInputValid
+  output_size := by
+    intro initial output hvalid hrun
+    exact concreteLLLMainLoop_preserves_matrix_size initial output hvalid hrun
 
 theorem gramPrefixDet_swap_preserved_of_before
     (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)
@@ -6901,6 +6976,72 @@ theorem gatherActive_size_of_success (active : Array Int32)
           have : measure = 0 := by omega
           simp [this]
   simpa using (loopSize 0 #[] hrun)
+
+theorem cldPolysLoop_size_of_success
+    (ops : Generated.StrictRecombine.CldRawOps)
+    (fStar : SparsePolyZZ) (activeFactors : Array SparsePolyZZ)
+    (modulus : ZZ) (index : Nat) (result output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.cldPolysLoop ops fStar activeFactors
+      modulus index result = .ok output) :
+    output.size = result.size + (activeFactors.size - index) := by
+  induction hmeasure : activeFactors.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.cldPolysLoop] at hrun
+      split at hrun
+      next hindex =>
+        cases hdivmod : Generated.StrictHensel.__upoly_divmod_mod_raw_ir
+            ops.divmodTermination fStar activeFactors[index] modulus with
+        | error fault => simp [hdivmod] at hrun
+        | ok division =>
+            rcases division with ⟨quotient, remainder⟩
+            simp only [hdivmod] at hrun
+            split at hrun
+            next hremainder =>
+              cases hderivative : Generated.StrictRecombine.derivativeZZRaw
+                  activeFactors[index] with
+              | error fault => simp [hderivative] at hrun
+              | ok derivativeRaw =>
+                  simp only [hderivative] at hrun
+                  cases hmod : Generated.StrictRecombine.modCoeffLoop
+                      derivativeRaw modulus 0 #[] with
+                  | error fault => simp [hmod] at hrun
+                  | ok derivativeMod =>
+                      simp only [hmod] at hrun
+                      cases hproduct :
+                          Generated.StrictRecombine.multiplyNormalizeModRaw
+                            quotient derivativeMod modulus with
+                      | error fault => simp [hproduct] at hrun
+                      | ok product =>
+                          simp only [hproduct] at hrun
+                          cases hsymmetric :
+                              Generated.StrictRecombine.symmetricModRaw product
+                                modulus with
+                          | error fault => simp [hsymmetric] at hrun
+                          | ok cld =>
+                              simp only [hsymmetric] at hrun
+                              have htail := ih
+                                (activeFactors.size - (index + 1)) (by omega)
+                                (index + 1) (result.push cld) hrun rfl
+                              simp only [Array.size_push] at htail
+                              omega
+            next hremainder => contradiction
+      next hindex =>
+        have hle : activeFactors.size ≤ index := Nat.le_of_not_gt hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        omega
+
+theorem cldPolys_size_of_success
+    (ops : Generated.StrictRecombine.CldRawOps)
+    (fStar : SparsePolyZZ) (activeFactors output : Array SparsePolyZZ)
+    (modulus : ZZ)
+    (hrun : Generated.StrictRecombine.cldPolys ops fStar activeFactors
+      modulus = .ok output) :
+    output.size = activeFactors.size := by
+  unfold Generated.StrictRecombine.cldPolys at hrun
+  simpa using cldPolysLoop_size_of_success ops fStar activeFactors modulus 0
+    #[] output hrun
 
 theorem appendFallbackLoop_refines (fallback : Array SparsePolyZZ)
     (index : Nat) (result : Array SparsePolyZZ) :

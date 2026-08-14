@@ -438,6 +438,10 @@ inductive ZassenhausAttemptResult where
   | rejected
   | extracted (factor quotient : SparsePolyZZ)
 
+inductive ZassenhausScanResult where
+  | exhausted
+  | extracted (factor quotient : SparsePolyZZ) (candidate : Array Nat)
+
 /-- One complete C++ Zassenhaus candidate attempt, including both scalar
 pruning tests and the actual sparse exact division. -/
 def zassenhausAttempt (fStar : SparsePolyZZ)
@@ -485,6 +489,33 @@ def zassenhausAttempt (fStar : SparsePolyZZ)
                           .ok (.extracted factor quotientPrimitive)
                       else .ok .rejected
   else .error .assertionFailure
+
+/-- Erased well-founded metric for the concrete lexicographic
+`next_combination` execution.  The refinement layer constructs this
+certificate from the generated combination arithmetic. -/
+structure CombinationTermination (upper : Nat) where
+  rank : Array Nat → Nat
+  next_decreases : ∀ current next,
+    nextCombination current upper = (true, next) → rank next < rank current
+
+/-- Exact source do-while over all fixed-size combinations. -/
+def scanZassenhausCombinations {upper : Nat}
+    (termination : CombinationTermination upper)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) : Array Nat → RawExec ZassenhausScanResult
+  | candidate =>
+      match zassenhausAttempt fStar activeLifted modulus candidate with
+      | .error fault => .error fault
+      | .ok (.extracted factor quotient) =>
+          .ok (.extracted factor quotient candidate)
+      | .ok .rejected =>
+          match hnext : nextCombination candidate upper with
+          | (false, _) => .ok .exhausted
+          | (true, next) =>
+              scanZassenhausCombinations termination fStar activeLifted
+                modulus next
+termination_by candidate => termination.rank candidate
+decreasing_by exact termination.next_decreases candidate next hnext
 
 /-- Concrete C++ callees used inside candidate validation.  Each field returns
 only computed polynomial data; no field may return a semantic proposition or

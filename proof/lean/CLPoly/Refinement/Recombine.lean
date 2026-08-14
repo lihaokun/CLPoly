@@ -1263,6 +1263,47 @@ theorem zassenhausAttempt_extracted_unit_scalar
     (associated_normalize scalar).isUnit_iff.mpr hnormalizeUnit
   exact ⟨scalar, hscalarUnit, hproduct⟩
 
+theorem scanZassenhausCombinations_extracted_unit_scalar
+    {upper : Nat}
+    (termination : Generated.StrictRecombine.CombinationTermination upper)
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (start candidate : Array Nat)
+    (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations termination
+      fStar activeLifted modulus start = .ok
+        (.extracted factor quotientPrimitive candidate)) :
+    ∃ scalar : Int, IsUnit scalar ∧
+      SparsePolyZZ.toPoly fStar = Polynomial.C scalar *
+        (SparsePolyZZ.toPoly factor *
+          SparsePolyZZ.toPoly quotientPrimitive) := by
+  induction hmeasure : termination.rank start using Nat.strong_induction_on
+      generalizing start with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.scanZassenhausCombinations] at hrun
+      cases hattempt : Generated.StrictRecombine.zassenhausAttempt fStar
+          activeLifted modulus start with
+      | error fault => simp [hattempt] at hrun
+      | ok attempt =>
+        cases attempt with
+        | extracted extractedFactor extractedQuotient =>
+          simp only [hattempt] at hrun
+          have hout := Except.ok.inj hrun
+          injection hout with hfactor hquotient hcandidate
+          subst factor
+          subst quotientPrimitive
+          exact zassenhausAttempt_extracted_unit_scalar fStar extractedFactor
+            extractedQuotient activeLifted modulus start hprimitive hattempt
+        | rejected =>
+          simp only [hattempt] at hrun
+          split at hrun
+          next next hnext => simp at hrun
+          next next hnext =>
+            have hdecrease := termination.next_decreases start next hnext
+            rw [hmeasure] at hdecrease
+            exact ih (termination.rank next)
+              hdecrease next hrun rfl
+
 private noncomputable def factorArrayProduct (factors : Array SparsePolyZZ) :
     Polynomial Int :=
   (factors.toList.map SparsePolyZZ.toPoly).prod

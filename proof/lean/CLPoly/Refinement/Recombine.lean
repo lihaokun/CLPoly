@@ -822,6 +822,12 @@ noncomputable def concreteLLLRank
 noncomputable def prefixNormProduct (norms : Array QQ) (rowCount : Nat) : QQ :=
   ∏ i : Fin rowCount, norms[i.val]!
 
+noncomputable def prefixProductPotential (norms : Array QQ) (dimension : Nat) : QQ :=
+  ∏ i : Fin dimension, prefixNormProduct norms (i.val + 1)
+
+noncomputable def weightedNormPotential (norms : Array QQ) (dimension : Nat) : QQ :=
+  ∏ i : Fin dimension, norms[i.val]! ^ (dimension - i.val)
+
 /-- Concrete semantic invariant carried by the generated LLL execution.  It
 states square integer storage, positive Gram–Schmidt norms, and the exact
 Gram determinant identity for every prefix.  No result or termination trace
@@ -854,6 +860,54 @@ theorem prefixNormProduct_succ (norms : Array QQ) (rowCount : Nat) :
   unfold prefixNormProduct
   rw [Fin.prod_univ_castSucc]
   rfl
+
+theorem weightedNormPotential_succ (norms : Array QQ) (dimension : Nat) :
+    weightedNormPotential norms (dimension + 1) =
+      weightedNormPotential norms dimension *
+        prefixNormProduct norms (dimension + 1) := by
+  unfold weightedNormPotential
+  rw [Fin.prod_univ_castSucc]
+  rw [prefixNormProduct_succ]
+  simp only [Fin.val_castSucc, Fin.val_last]
+  have hlast : dimension + 1 - dimension = 1 := by omega
+  rw [hlast, pow_one]
+  change (∏ i : Fin dimension,
+      norms[i.val]! ^ (dimension + 1 - i.val)) * norms[dimension]! =
+    (∏ i : Fin dimension, norms[i.val]! ^ (dimension - i.val)) *
+      (prefixNormProduct norms dimension * norms[dimension]!)
+  have hpowers : (∏ i : Fin dimension,
+      norms[i.val]! ^ (dimension + 1 - i.val)) =
+      (∏ i : Fin dimension,
+        norms[i.val]! ^ (dimension - i.val) * norms[i.val]!) := by
+    apply Finset.prod_congr rfl
+    intro i _
+    have hexponent : dimension + 1 - i.val = (dimension - i.val) + 1 := by
+      omega
+    rw [hexponent, pow_succ]
+  rw [hpowers, Finset.prod_mul_distrib]
+  unfold prefixNormProduct
+  ring
+
+theorem prefixProductPotential_eq_weightedNormPotential
+    (norms : Array QQ) (dimension : Nat) :
+    prefixProductPotential norms dimension =
+      weightedNormPotential norms dimension := by
+  induction dimension with
+  | zero => rfl
+  | succ dimension ih =>
+    unfold prefixProductPotential
+    rw [Fin.prod_univ_castSucc]
+    change prefixProductPotential norms dimension *
+        prefixNormProduct norms (dimension + 1) = _
+    rw [ih, weightedNormPotential_succ]
+
+theorem weightedNormPotential_size_eq_arrayLLLPotential (norms : Array QQ) :
+    weightedNormPotential norms norms.size = arrayLLLPotential norms := by
+  unfold weightedNormPotential arrayLLLPotential
+  apply Finset.prod_congr rfl
+  intro i _
+  rw [getElem!_pos norms i.val i.isLt]
+  congr
 
 theorem prefixNormProduct_normsAfterLovaszSwap
     (norms : Array QQ) (k : Nat) (mu : QQ)
@@ -1062,6 +1116,281 @@ theorem ConcreteLLLValid.gram_prefix_natAbs
       Matrix.det (gramPrefixMatrix state.matrix rowCount) :=
   Int.natAbs_of_nonneg
     (Int.le_of_lt (hvalid.gram_prefix_pos rowCount hrowCount))
+
+theorem ConcreteLLLValid.determinantPotential_cast
+    {state : Generated.StrictRecombine.LLLState}
+    (hvalid : ConcreteLLLValid state) :
+    (lllDeterminantPotential state.matrix : QQ) =
+      prefixProductPotential state.norms state.matrix.size := by
+  unfold lllDeterminantPotential prefixProductPotential
+  push_cast
+  apply Finset.prod_congr rfl
+  intro i _
+  have hrowCount : i.val + 1 ≤ state.matrix.size := i.isLt
+  rw [← hvalid.gram_prefix (i.val + 1) hrowCount]
+  have hnatAbs := hvalid.gram_prefix_natAbs (i.val + 1) hrowCount
+  have hcast := congrArg (fun value : Int => (value : QQ)) hnatAbs
+  simpa using hcast
+
+theorem ConcreteLLLValid.determinantPotential_cast_weighted
+    {state : Generated.StrictRecombine.LLLState}
+    (hvalid : ConcreteLLLValid state) :
+    (lllDeterminantPotential state.matrix : QQ) =
+      weightedNormPotential state.norms state.matrix.size := by
+  rw [hvalid.determinantPotential_cast,
+    prefixProductPotential_eq_weightedNormPotential]
+
+theorem lllStep_advanced_determinantPotential_eq
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLValid state)
+    (houtputValid : ConcreteLLLValid output)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    lllDeterminantPotential output.matrix =
+      lllDeterminantPotential state.matrix := by
+  have hcontrol := lllStep_advanced_control state output hrun
+  have hsize : output.matrix.size = state.matrix.size := by
+    calc
+      output.matrix.size = output.norms.size := houtputValid.norms_size.symm
+      _ = state.norms.size := congrArg Array.size hcontrol.1
+      _ = state.matrix.size := hvalid.norms_size
+  have hcastOut := houtputValid.determinantPotential_cast_weighted
+  have hcastIn := hvalid.determinantPotential_cast_weighted
+  have hcast : (lllDeterminantPotential output.matrix : QQ) =
+      (lllDeterminantPotential state.matrix : QQ) := by
+    rw [hcastOut, hcastIn, hsize, hcontrol.1]
+  exact_mod_cast hcast
+
+theorem weightedNormPotential_normsAfterLovaszSwap_eq
+    (state : Generated.StrictRecombine.LLLState) (k : Nat)
+    (hkNorm : k < state.norms.size)
+    (hpredNorm : k - 1 < state.norms.size)
+    (hkMu : k < state.mu.size)
+    (hpredMu : k - 1 < state.mu[k].size)
+    (hkPositive : 0 < k)
+    (hnew : state.norms[k] +
+      state.mu[k][k - 1] * state.mu[k][k - 1] * state.norms[k - 1] ≠ 0) :
+    weightedNormPotential
+        (Generated.StrictRecombine.normsAfterLovaszSwap state.norms k
+          state.mu[k][k - 1]) state.norms.size =
+      lllPotential' (lllSwapStep' (toPotentialState state)
+        (⟨k, hkNorm⟩ : Fin state.norms.size)
+        (⟨k - 1, hpredNorm⟩ : Fin state.norms.size)) := by
+  unfold weightedNormPotential lllPotential'
+  apply Finset.prod_congr rfl
+  intro i _
+  congr 1
+  rw [normsAfterLovaszSwap_get state.norms k state.mu[k][k - 1]
+    hkNorm hpredNorm hnew i.val i.isLt]
+  simp only [lllSwapStep', toPotentialState]
+  rw [getElem!_pos state.mu k hkMu,
+    getElem!_pos state.mu[k] (k - 1) hpredMu]
+  by_cases hpredI : (⟨k - 1, hpredNorm⟩ : Fin state.norms.size) = i
+  · subst i
+    simp [pow_two]
+  · by_cases hkI : (⟨k, hkNorm⟩ : Fin state.norms.size) = i
+    · subst i
+      have hkPred : k ≠ k - 1 := by omega
+      have hpredK : k - 1 ≠ k := Ne.symm hkPred
+      simp [hkPred, hpredK, pow_two]
+      ring
+    · have hpredVal : k - 1 ≠ i.val := by
+        intro heq
+        apply hpredI
+        exact Fin.ext heq
+      have hkVal : k ≠ i.val := by
+        intro heq
+        apply hkI
+        exact Fin.ext heq
+      have hiPred : i ≠ (⟨k - 1, hpredNorm⟩ : Fin state.norms.size) :=
+        Ne.symm hpredI
+      have hiK : i ≠ (⟨k, hkNorm⟩ : Fin state.norms.size) :=
+        Ne.symm hkI
+      simp [hpredI, hkI, hiPred, hiK, hpredVal, hkVal,
+        getElem!_pos state.norms i.val i.isLt]
+
+theorem lllStep_swapped_weightedNormPotential_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLValid state)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    weightedNormPotential output.norms output.norms.size <
+      weightedNormPotential state.norms state.norms.size := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hcontrol := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        repeat' first | split at hrun | simp_all
+        all_goals cases hrun
+        all_goals
+          have hreducedPositive : ∀ index (hindex : index < reduced.norms.size),
+              0 < reduced.norms[index] := by
+            intro index hindex
+            have hindexState : index < state.norms.size := by
+              simpa only [hcontrol.1] using hindex
+            have hpositiveState := hvalid.norms_positive index hindexState
+            simpa only [← hcontrol.1] using hpositiveState
+          have hfail : reduced.norms[reduced.k] <
+              ((3 : QQ) / 4 -
+                reduced.mu[reduced.k][reduced.k - 1] ^ 2) *
+                reduced.norms[reduced.k - 1] := by
+            have hkStateNorm : state.k < state.norms.size := by
+              simpa only [← hcontrol.1, ← hcontrol.2] using
+                (‹reduced.k < reduced.norms.size›)
+            have hpredStateNorm : state.k - 1 < state.norms.size := by
+              simpa only [← hcontrol.1, ← hcontrol.2] using
+                (‹reduced.k - 1 < reduced.norms.size›)
+            have hkStateMu : state.k < reduced.mu.size := by
+              simpa only [← hcontrol.2] using (‹reduced.k < reduced.mu.size›)
+            have hpredStateMu : state.k - 1 < reduced.mu[state.k].size := by
+              simpa only [← hcontrol.2] using
+                (‹reduced.k - 1 < reduced.mu[reduced.k].size›)
+            have hfailState :
+                state.norms[state.k]'hkStateNorm <
+                  ((3 : QQ) / 4 -
+                    (reduced.mu[state.k]'hkStateMu)[state.k - 1]'hpredStateMu *
+                      (reduced.mu[state.k]'hkStateMu)[state.k - 1]'hpredStateMu) *
+                    state.norms[state.k - 1]'hpredStateNorm := by assumption
+            simpa only [pow_two, ← hcontrol.1, ← hcontrol.2] using hfailState
+          let ki : Fin reduced.norms.size := ⟨reduced.k, by assumption⟩
+          let kp : Fin reduced.norms.size := ⟨reduced.k - 1, by assumption⟩
+          have hne : ki ≠ kp := by
+            intro heq
+            have := Fin.ext_iff.mp heq
+            dsimp [ki, kp] at this
+            omega
+          have hadj : ki.val = kp.val + 1 := by
+            dsimp [ki, kp]
+            omega
+          have hfailAbstract : (toPotentialState reduced).gs_norm_sq ki <
+              ((3 : QQ) / 4 - (toPotentialState reduced).mu ki kp ^ 2) *
+                (toPotentialState reduced).gs_norm_sq kp := by
+            dsimp [toPotentialState, ki, kp]
+            rw [getElem!_pos reduced.mu reduced.k (by assumption),
+              getElem!_pos reduced.mu[reduced.k] (reduced.k - 1) (by assumption)]
+            exact hfail
+          have habstract := lll_swap_potential_decrease'
+            (toPotentialState reduced) ki kp hfailAbstract hne hadj
+            (hreducedPositive kp.val kp.isLt)
+            (hreducedPositive ki.val ki.isLt)
+            (fun i => hreducedPositive i.val i.isLt)
+          have hnewPos : 0 < reduced.norms[reduced.k] +
+              reduced.mu[reduced.k][reduced.k - 1] *
+                reduced.mu[reduced.k][reduced.k - 1] *
+                  reduced.norms[reduced.k - 1] := by
+            have hkNormPos := hreducedPositive reduced.k (by assumption)
+            have hpredNormPos := hreducedPositive (reduced.k - 1) (by assumption)
+            nlinarith [sq_nonneg (reduced.mu[reduced.k][reduced.k - 1])]
+          have hhelper := weightedNormPotential_normsAfterLovaszSwap_eq
+            reduced reduced.k (by assumption) (by assumption)
+            (by assumption) (by assumption) (by simpa [hcontrol.2] using hkPositive)
+            (ne_of_gt hnewPos)
+          have hweighted : weightedNormPotential
+                (Generated.StrictRecombine.normsAfterLovaszSwap reduced.norms
+                  reduced.k reduced.mu[reduced.k][reduced.k - 1])
+                reduced.norms.size <
+              weightedNormPotential reduced.norms reduced.norms.size := by
+            calc
+              _ = lllPotential' (lllSwapStep' (toPotentialState reduced) ki kp) :=
+                hhelper
+              _ < lllPotential' (toPotentialState reduced) := habstract
+              _ = arrayLLLPotential reduced.norms :=
+                toPotentialState_potential reduced
+              _ = weightedNormPotential reduced.norms reduced.norms.size :=
+                (weightedNormPotential_size_eq_arrayLLLPotential reduced.norms).symm
+          simpa only [normsAfterLovaszSwap_size, hcontrol.1, hcontrol.2] using hweighted
+    · rw [dif_neg hkMatrix] at hrun
+      simp at hrun
+  · rw [dif_neg hkPositive] at hrun
+    simp at hrun
+
+theorem lllStep_swapped_determinantPotential_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLValid state)
+    (houtputValid : ConcreteLLLValid output)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    lllDeterminantPotential output.matrix <
+      lllDeterminantPotential state.matrix := by
+  have hweighted := lllStep_swapped_weightedNormPotential_lt
+    state output hvalid hrun
+  have hcastOut := houtputValid.determinantPotential_cast_weighted
+  have hcastIn := hvalid.determinantPotential_cast_weighted
+  have hcast : (lllDeterminantPotential output.matrix : QQ) <
+      (lllDeterminantPotential state.matrix : QQ) := by
+    rw [hcastOut, hcastIn]
+    simpa only [houtputValid.norms_size, hvalid.norms_size] using hweighted
+  exact_mod_cast hcast
+
+theorem lllStep_advanced_source_index_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    state.k < state.matrix.size := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · exact hkMatrix
+    · rw [dif_neg hkMatrix] at hrun
+      contradiction
+  · rw [dif_neg hkPositive] at hrun
+    contradiction
+
+theorem lllStep_advanced_concreteRank_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLValid state)
+    (houtputValid : ConcreteLLLValid output)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    concreteLLLRank output < concreteLLLRank state := by
+  have hcontrol := lllStep_advanced_control state output hrun
+  have hpotential := lllStep_advanced_determinantPotential_eq
+    state output hvalid houtputValid hrun
+  have hsize : output.matrix.size = state.matrix.size := by
+    calc
+      output.matrix.size = output.norms.size := houtputValid.norms_size.symm
+      _ = state.norms.size := congrArg Array.size hcontrol.1
+      _ = state.matrix.size := hvalid.norms_size
+  unfold concreteLLLRank
+  rw [hpotential, hsize, hcontrol.2]
+  exact lllLexRank_advanced _ _ _
+    (lllStep_advanced_source_index_lt state output hrun)
+
+theorem lllStep_swapped_concreteRank_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLValid state)
+    (houtputValid : ConcreteLLLValid output)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    concreteLLLRank output < concreteLLLRank state := by
+  have hpotential := lllStep_swapped_determinantPotential_lt
+    state output hvalid houtputValid hrun
+  have hsize := lllStep_swapped_matrix_size state output hvalid houtputValid hrun
+  unfold concreteLLLRank
+  rw [hsize]
+  exact lllLexRank_swap _ _ _ _ _ hpotential
+
+theorem lllStep_concreteRank_lt_of_valid
+    (state : Generated.StrictRecombine.LLLState)
+    (branch : Generated.StrictRecombine.LLLStepResult)
+    (hvalid : ConcreteLLLValid state)
+    (houtputValid : ConcreteLLLValid branch.state)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok branch) :
+    concreteLLLRank branch.state < concreteLLLRank state := by
+  cases branch with
+  | advanced output =>
+      exact lllStep_advanced_concreteRank_lt state output hvalid houtputValid hrun
+  | swapped output =>
+      exact lllStep_swapped_concreteRank_lt state output hvalid houtputValid hrun
 
 theorem swapMatrixRows_ok
     (matrix output : Generated.StrictRecombine.LLLMatrix) (left right : Nat)

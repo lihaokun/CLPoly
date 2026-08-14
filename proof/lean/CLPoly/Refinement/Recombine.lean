@@ -11,6 +11,10 @@ import CLPoly.Generated.StrictRecombine
 import CLPoly.Refinement.Basic
 import CLPoly.Refinement.Hensel
 import Batteries.Data.Array.Lemmas
+import Mathlib.Analysis.Matrix.PosDef
+import Mathlib.Data.Rat.Star
+import Mathlib.Data.Real.StarOrdered
+import Mathlib.LinearAlgebra.LinearIndependent.BaseChange
 import Mathlib.LinearAlgebra.Matrix.Block
 
 set_option autoImplicit false
@@ -2742,6 +2746,25 @@ noncomputable def gramPrefixMatrixQQ
     Matrix (Fin rowCount) (Fin rowCount) QQ :=
   (gramPrefixMatrix matrix rowCount).map fun value : Int => (value : QQ)
 
+/-- The first `rowCount` integer basis rows, cast to rationals but retaining
+all source columns.  This is the rectangular matrix whose Gram matrix is the
+prefix used by generated Gram--Schmidt. -/
+noncomputable def basisPrefixMatrixQQ
+    (matrix : Generated.StrictRecombine.LLLMatrix) (rowCount : Nat) :
+    Matrix (Fin rowCount) (Fin matrix.size) QQ :=
+  (basisPrefixMatrix matrix rowCount matrix.size).map
+    fun value : Int => (value : QQ)
+
+theorem gramPrefixMatrixQQ_eq_mul_transpose
+    (matrix : Generated.StrictRecombine.LLLMatrix) (rowCount : Nat) :
+    gramPrefixMatrixQQ matrix rowCount =
+      basisPrefixMatrixQQ matrix rowCount *
+        (basisPrefixMatrixQQ matrix rowCount).transpose := by
+  funext row column
+  simp [gramPrefixMatrixQQ, gramPrefixMatrix, basisPrefixMatrixQQ,
+    basisPrefixMatrix, Matrix.mul_apply, Matrix.transpose_apply,
+    Int.cast_sum]
+
 /-- Exact, checkable `G = L D Lᵀ` meaning of the generated `matrix`, `mu`,
 and `norms` arrays.  This is execution state, not an existence witness and not
 a semantic result oracle. -/
@@ -2913,6 +2936,82 @@ structure ConcreteLLLInputValid
     matrix[row].size = matrix.size
   determinant_ne : Matrix.det
     (basisPrefixMatrix matrix matrix.size matrix.size) ≠ 0
+
+set_option maxHeartbeats 800000 in
+theorem ConcreteLLLInputValid.rational_prefix_rows_linearIndependent
+    {matrix : Generated.StrictRecombine.LLLMatrix}
+    (hinput : ConcreteLLLInputValid matrix) (rowCount : Nat)
+    (hrowCount : rowCount ≤ matrix.size) :
+    LinearIndependent QQ (basisPrefixMatrixQQ matrix rowCount).row := by
+  have hrowsInt : LinearIndependent ZZ
+      (basisPrefixMatrix matrix matrix.size matrix.size).row :=
+    Matrix.linearIndependent_rows_of_det_ne_zero hinput.determinant_ne
+  have hrowsQQ : LinearIndependent QQ
+      (basisPrefixMatrixQQ matrix matrix.size).row := by
+    change LinearIndependent QQ
+      (fun row : Fin matrix.size => fun column : Fin matrix.size =>
+        ((basisPrefixMatrix matrix matrix.size matrix.size row column : ZZ) : QQ))
+    have hcast :=
+      (linearIndependent_algebraMap_comp_iff (R := ZZ) (S := QQ)).2 hrowsInt
+    simpa [Function.comp_def] using hcast
+  let embed : Fin rowCount → Fin matrix.size :=
+    fun row => ⟨row.val, lt_of_lt_of_le row.isLt hrowCount⟩
+  have hembed : Function.Injective embed := by
+    intro left right hequal
+    have hvalues : left.val = right.val :=
+      congrArg (fun value : Fin matrix.size => value.val) hequal
+    exact Fin.ext hvalues
+  have hprefix := hrowsQQ.comp embed hembed
+  have hrowEq : (basisPrefixMatrixQQ matrix rowCount).row =
+      fun row => (basisPrefixMatrixQQ matrix matrix.size).row (embed row) := by
+    funext row column
+    simp [basisPrefixMatrixQQ, basisPrefixMatrix, embed,
+      getElem!_pos matrix row.val (lt_of_lt_of_le row.isLt hrowCount)]
+  rw [hrowEq]
+  exact hprefix
+
+theorem ConcreteLLLInputValid.gramPrefixMatrixQQ_posDef
+    {matrix : Generated.StrictRecombine.LLLMatrix}
+    (hinput : ConcreteLLLInputValid matrix) (rowCount : Nat)
+    (hrowCount : rowCount ≤ matrix.size) :
+    Matrix.PosDef (gramPrefixMatrixQQ matrix rowCount) := by
+  rw [gramPrefixMatrixQQ_eq_mul_transpose]
+  apply Matrix.PosDef.mul_conjTranspose_self
+  rw [Matrix.vecMul_injective_iff]
+  exact hinput.rational_prefix_rows_linearIndependent rowCount hrowCount
+
+set_option maxHeartbeats 800000 in
+theorem ConcreteLLLInputValid.gramPrefixMatrixQQ_det_pos
+    {matrix : Generated.StrictRecombine.LLLMatrix}
+    (hinput : ConcreteLLLInputValid matrix) (rowCount : Nat)
+    (hrowCount : rowCount ≤ matrix.size) :
+    0 < Matrix.det (gramPrefixMatrixQQ matrix rowCount) := by
+  let rationalBasis := basisPrefixMatrixQQ matrix rowCount
+  let realBasis : Matrix (Fin rowCount) (Fin matrix.size) ℝ :=
+    rationalBasis.map fun value : QQ => (value : ℝ)
+  have hrowsQQ := hinput.rational_prefix_rows_linearIndependent
+    rowCount hrowCount
+  have hrowsReal : LinearIndependent ℝ realBasis.row := by
+    change LinearIndependent ℝ
+      (fun row column => ((rationalBasis row column : QQ) : ℝ))
+    have hcast :=
+      (linearIndependent_algebraMap_comp_iff (R := QQ) (S := ℝ)).2 hrowsQQ
+    simpa [Function.comp_def, rationalBasis] using hcast
+  have hrealPos : Matrix.PosDef (realBasis * realBasis.transpose) := by
+    apply Matrix.PosDef.mul_conjTranspose_self
+    rw [Matrix.vecMul_injective_iff]
+    exact hrowsReal
+  have hcastGram :
+      (gramPrefixMatrixQQ matrix rowCount).map (fun value : QQ => (value : ℝ)) =
+        realBasis * realBasis.transpose := by
+    rw [gramPrefixMatrixQQ_eq_mul_transpose]
+    funext row column
+    simp [realBasis, rationalBasis, Matrix.mul_apply, Matrix.transpose_apply,
+      Rat.cast_sum]
+  apply (Rat.cast_pos (K := ℝ)).mp
+  rw [Rat.cast_det]
+  rw [hcastGram]
+  exact hrealPos.det_pos
 
 theorem ConcreteLLLInputValid.first_norm_positive
     {matrix : Generated.StrictRecombine.LLLMatrix}

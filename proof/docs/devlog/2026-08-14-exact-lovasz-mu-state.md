@@ -214,3 +214,35 @@ actual source computation.
 - Lean 新增/修改行数：约 145 行
 - 对应 C++ 行数：约 11 行 μ-row 内层循环
 - 放弃的方案：直接把整行结果声明为数学 Gram--Schmidt 系数；改为先证明每个生成写入的闭式值和后续不覆盖性质，再由逐列不变量推出 LDLᵀ
+
+## Full-rank prefixes have positive Gram determinant
+
+The positivity argument has now been generalized from the first generated
+norm to every source row prefix.  `basisPrefixMatrixQQ` is the rectangular
+matrix containing the first `r` actual integer basis rows, cast cell-by-cell
+to `QQ` while retaining all source columns.  Its product with its transpose is
+proved entrywise equal to the exact generated prefix Gram matrix.
+
+The input determinant certificate first gives linear independence of all
+integer rows.  Faithful base change transports this fact to `QQ`, and
+restriction along the concrete `Fin r -> Fin n` row embedding proves that
+every prefix remains linearly independent.  A second faithful base change to
+the reals permits use of positive-definite Gram-matrix theory: the mapped
+matrix `B * B^T` is positive definite, so its determinant is strictly
+positive.  `Rat.cast_det` and order reflection then return the result to the
+project's executable `QQ` values.  No orthogonal basis, pivot, or output is
+selected existentially.
+
+This is the positivity source needed by the next row-extension theorem: after
+the generated coefficient and norm loops establish the next exact
+`G = L D L^T` prefix, determinant multiplicativity will force the newly
+written pivot to be positive from this theorem and the already-positive
+earlier pivots.
+
+## 度量（prefix Gram positivity）
+
+- 耗时：约 1 小时（整基换标量、前缀限制、Gram 正定性与 `QQ`/`Real` 桥）
+- 迭代：约 6 轮编译-修复循环
+- Lean 新增/修改行数：约 99 行
+- 对应 C++ 行数：约 8 行 LLL 满秩输入前置条件与 Gram--Schmidt norm 更新所依赖的数学边界
+- 放弃的方案：只由完整整基行列式非零直接断言各 pivot 正；改为显式证明每个实际行前缀的 Gram 行列式严格为正

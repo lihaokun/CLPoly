@@ -69,3 +69,26 @@ justified by genuine well-founded recursion, not fuel or a termination oracle.
 `concreteLLLMainLoop_preserves_execution_valid` then follows the generated
 recursive execution itself and proves that every successful final state still
 carries the same concrete invariant.
+
+The generated recombination layer now exposes the complete executable wrapper
+around that main loop.  `lllReduce` runs the source Gram--Schmidt
+initialization, enters the well-founded LLL loop, scans every reduced row for
+the concrete squared-norm bound, and deterministically orders the accepted row
+indices by the source strict norm comparator.  `extractCandidates` then runs
+the actual nested column-equivalence loops over the unimodular transform and
+collects the resulting factor-index classes.  The former
+`VanHoeijRawOps.prepareCandidates` result callback has been removed, so no
+operation field can choose candidate subsets.
+
+This audit also found that the earlier generated `VanHoeijState` omitted the
+source variables `M` and `J_cur`.  That would have discarded previously added
+CLD columns after an unsuccessful round.  The state now stores the lattice,
+current CLD-column count, and short-vector bound.  An unsuccessful round keeps
+the reduced lattice and accumulated columns; a successful extraction rebuilds
+the scaled diagonal lattice and resets the column count, exactly as the C++
+loop does.  The remaining proof-only `LLLExecution.inputValid` interface is
+explicitly restricted to admissible source lattices, with separate preservation
+obligations for CLD extension, LLL output, and lattice reset.  These obligations
+cannot return executable data and replace the invalid earlier requirement that
+Gram--Schmidt initialization succeed with positive norms for every arbitrary
+integer matrix.

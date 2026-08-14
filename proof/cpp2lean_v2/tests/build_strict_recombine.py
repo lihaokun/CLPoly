@@ -186,13 +186,15 @@ theorem nextPrecision_retry_decreases (target initial maximum next : Nat)
       simp [precisionRank, htarget]
       omega
 
-/-- Mutable source variables relevant to control flow.  Matrix contents and
-candidate construction stay behind raw operation boundaries until their own
-strict loops are refined. -/
+/-- Mutable source variables of `__vanhoeij_recombine`, including the lattice
+that C++ retains across unsuccessful precision rounds. -/
 structure VanHoeijState where
   active : Array Int32
   fStar : SparsePolyZZ
   result : Array SparsePolyZZ
+  matrix : LLLMatrix
+  currentColumns : Nat
+  shortBound : ZZ
   target : Nat
 
 /-- The source `iota` constructing the first lexicographic subset
@@ -919,6 +921,174 @@ termination_by state _ => termination.rank state
 decreasing_by
   exact termination.step_decreases state branch hvalid hstep
 
+/-- Erased initialization fact needed to enter the well-founded LLL loop.
+It cannot choose any executable state: that state is fixed by `initializeLLL`. -/
+structure LLLExecution where
+  inputValid : LLLMatrix → Prop
+  termination : LLLTermination
+  initialized_valid : ∀ matrix mu norms transform,
+    inputValid matrix →
+    initializeLLL matrix = .ok (mu, norms, transform) →
+    termination.valid (LLLState.mk matrix transform mu norms 1)
+  output_input_valid : ∀ initial output hvalid,
+    lllMainLoop termination initial hvalid = .ok output →
+    inputValid output.matrix
+
+/-- Insert one short-row index into the already norm-sorted prefix.  This is
+the deterministic strict model of the source `std::sort` comparator. -/
+def insertShortRow (matrix : LLLMatrix) (row : Nat) :
+    Array Nat → Nat → RawExec (Array Nat)
+  | sorted, position =>
+      if hposition : position < sorted.size then
+        if hrow : row < matrix.size then
+          if hexisting : sorted[position] < matrix.size then
+            match dotRows matrix[row] matrix[row] with
+            | .error fault => .error fault
+            | .ok rowNorm =>
+              match dotRows matrix[sorted[position]] matrix[sorted[position]] with
+              | .error fault => .error fault
+              | .ok existingNorm =>
+                if rowNorm < existingNorm then
+                  .ok (sorted.extract 0 position ++ #[row] ++
+                    sorted.extract position sorted.size)
+                else insertShortRow matrix row sorted (position + 1)
+          else .error (.outOfBounds sorted[position] matrix.size)
+        else .error (.outOfBounds row matrix.size)
+      else .ok (sorted.push row)
+termination_by sorted position => sorted.size - position
+decreasing_by omega
+
+/-- Collect exactly the rows satisfying the C++ squared-norm bound, keeping
+them sorted by the same strict norm comparator. -/
+def collectShortRows (matrix : LLLMatrix) (bound : ZZ) :
+    Nat → Array Nat → RawExec (Array Nat)
+  | row, result =>
+      if hrow : row < matrix.size then
+        match dotRows matrix[row] matrix[row] with
+        | .error fault => .error fault
+        | .ok norm =>
+          if norm ≤ bound then
+            match insertShortRow matrix row result 0 with
+            | .error fault => .error fault
+            | .ok result' => collectShortRows matrix bound (row + 1) result'
+          else collectShortRows matrix bound (row + 1) result
+      else .ok result
+termination_by row _ => matrix.size - row
+decreasing_by all_goals omega
+
+/-- Complete concrete execution of C++ `__lll_reduce`: initialize exact
+Gram–Schmidt data, run the well-founded main loop, then collect short rows. -/
+def lllReduce (execution : LLLExecution) (matrix : LLLMatrix)
+    (hinput : execution.inputValid matrix) (bound : ZZ) :
+    RawExec { output : LLLMatrix × LLLMatrix × Array Nat //
+      execution.inputValid output.1 } :=
+  match hinitialize : initializeLLL matrix with
+  | .error fault => .error fault
+  | .ok (mu, norms, transform) =>
+    let state := LLLState.mk matrix transform mu norms 1
+    match hrun : lllMainLoop execution.termination state
+        (execution.initialized_valid matrix mu norms transform hinput hinitialize) with
+    | .error fault => .error fault
+    | .ok reduced =>
+      match collectShortRows reduced.matrix bound 0 #[] with
+      | .error fault => .error fault
+      | .ok rows => .ok ⟨(reduced.matrix, reduced.transform, rows),
+          execution.output_input_valid state reduced
+            (execution.initialized_valid matrix mu norms transform hinput hinitialize)
+            hrun⟩
+
+/-- Test equality of two columns on every selected short row. -/
+def candidateColumnsEqual (transform : LLLMatrix) (shortRows : Array Nat)
+    (left right : Nat) : Nat → RawExec Bool
+  | index =>
+      if hindex : index < shortRows.size then
+        let row := shortRows[index]
+        if hrow : row < transform.size then
+          if hleft : left < transform[row].size then
+            if hright : right < transform[row].size then
+              if transform[row][left] = transform[row][right] then
+                candidateColumnsEqual transform shortRows left right (index + 1)
+              else .ok false
+            else .error (.outOfBounds right transform[row].size)
+          else .error (.outOfBounds left transform[row].size)
+        else .error (.outOfBounds row transform.size)
+      else .ok true
+termination_by index => shortRows.size - index
+decreasing_by omega
+
+/-- Inner `j2 = j+1 .. r-1` equivalence-class assignment loop. -/
+def assignCandidateClass (transform : LLLMatrix) (shortRows : Array Nat)
+    (left factorCount classId : Nat) : Nat → Array (Option Nat) →
+      RawExec (Array (Option Nat))
+  | right, classes =>
+      if hright : right < factorCount then
+        if hclass : right < classes.size then
+          match classes[right] with
+          | some _ => assignCandidateClass transform shortRows left factorCount
+              classId (right + 1) classes
+          | none =>
+            match candidateColumnsEqual transform shortRows left right 0 with
+            | .error fault => .error fault
+            | .ok equal =>
+              let classes' := if equal then classes.set right (some classId)
+                else classes
+              assignCandidateClass transform shortRows left factorCount classId
+                (right + 1) classes'
+        else .error (.outOfBounds right classes.size)
+      else .ok classes
+termination_by right _ => factorCount - right
+decreasing_by all_goals omega
+
+/-- Outer source loop assigning consecutive candidate class identifiers. -/
+def partitionCandidateColumns (transform : LLLMatrix) (shortRows : Array Nat)
+    (factorCount : Nat) : Nat → Nat → Array (Option Nat) →
+      RawExec (Array (Option Nat) × Nat)
+  | column, classCount, classes =>
+      if hcolumn : column < factorCount then
+        if hclass : column < classes.size then
+          match classes[column] with
+          | some _ => partitionCandidateColumns transform shortRows factorCount
+              (column + 1) classCount classes
+          | none =>
+            let classes' := classes.set column (some classCount)
+            match assignCandidateClass transform shortRows column factorCount
+                classCount (column + 1) classes' with
+            | .error fault => .error fault
+            | .ok assigned => partitionCandidateColumns transform shortRows
+                factorCount (column + 1) (classCount + 1) assigned
+        else .error (.outOfBounds column classes.size)
+      else .ok (classes, classCount)
+termination_by column _ _ => factorCount - column
+decreasing_by all_goals omega
+
+def collectCandidateClasses (classes : Array (Option Nat)) :
+    Nat → Array (Array Int32) → RawExec (Array (Array Int32))
+  | column, result =>
+      if hcolumn : column < classes.size then
+        match classes[column] with
+        | none => .error .assertionFailure
+        | some classId =>
+          if hclass : classId < result.size then
+            let candidate := result[classId].push column.toUInt32.toInt32
+            collectCandidateClasses classes (column + 1)
+              (result.set classId candidate)
+          else .error (.outOfBounds classId result.size)
+      else .ok result
+termination_by column _ => classes.size - column
+decreasing_by omega
+
+/-- Concrete C++ `__extract_candidates`, including the empty-short-row case,
+column equivalence classes, and class-ordered collection. -/
+def extractCandidates (shortRows : Array Nat) (transform : LLLMatrix)
+    (factorCount : Nat) : RawExec (Array (Array Int32)) :=
+  if shortRows.isEmpty then .ok #[]
+  else
+    match partitionCandidateColumns transform shortRows factorCount 0 0
+        (Array.replicate factorCount none) with
+    | .error fault => .error fault
+    | .ok (classes, classCount) =>
+      collectCandidateClasses classes 0 (Array.replicate classCount #[])
+
 def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
   if hindex : index < input.size then
     contentLoop input (index + 1) (Nat.gcd acc input[index].2.natAbs)
@@ -1261,13 +1431,61 @@ def validateCandidates (ops : CandidateValidationRawOps)
   validateCandidatesLoop ops candidates 0 activeLifted modulus fStar result
     (Array.replicate activeLifted.size false) activeLifted.size
 
-/-- Raw C++ callees for one van-Hoeij iteration.  Candidate validation itself
-is generated above and is no longer hidden behind a semantic callback. -/
+def vanHoeijExponent (factorCount : Nat) : Nat :=
+  Nat.log2 (Nat.max factorCount 20) + 1
+
+def vanHoeijBound (factorCount : Nat) : ZZ :=
+  ((factorCount + 1 : Nat) : ZZ) * (2 : ZZ) ^ (2 * vanHoeijExponent factorCount)
+
+def resetVanHoeijLattice (factorCount : Nat) : RawExec (LLLMatrix × ZZ) :=
+  let exponent := vanHoeijExponent factorCount
+  match makeInitialMatrix factorCount ((2 : ZZ) ^ exponent) with
+  | .error fault => .error fault
+  | .ok matrix => .ok (matrix, vanHoeijBound factorCount)
+
+/-- Only proof-bearing/arithmetic callees used by one van-Hoeij iteration.
+There is deliberately no callback capable of supplying candidate subsets. -/
 structure VanHoeijRawOps where
-  prepareCandidates : SparsePolyZZ → Array SparsePolyZZ → ZZ → Nat →
-    RawExec (Array (Array Int32))
+  cld : CldRawOps
+  lll : LLLExecution
+  cld_extension_valid : ∀ matrix cld current target matrix' added,
+    lll.inputValid matrix →
+    buildCldMatrix matrix cld current target = .ok (matrix', added) →
+    lll.inputValid matrix'
+  reset_valid : ∀ factorCount matrix bound,
+    resetVanHoeijLattice factorCount = .ok (matrix, bound) →
+    lll.inputValid matrix
   validation : CandidateValidationRawOps
   zassenhausTermination : ZassenhausTermination
+
+/-- Concrete M1–M4 execution of one source iteration.  The returned matrix
+and column count are retained if validation finds no factor. -/
+def prepareCandidates (ops : VanHoeijRawOps) (state : VanHoeijState)
+    (hinput : ops.lll.inputValid state.matrix)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ) :
+    RawExec { output : LLLMatrix × Nat × Array (Array Int32) //
+      ops.lll.inputValid output.1 } :=
+  let finish (matrix : LLLMatrix) (columns : Nat)
+      (hmatrix : ops.lll.inputValid matrix) :=
+    match lllReduce ops.lll matrix hmatrix state.shortBound with
+    | .error fault => .error fault
+    | .ok reducedOutput =>
+      let reduced := reducedOutput.1.1
+      let transform := reducedOutput.1.2.1
+      let shortRows := reducedOutput.1.2.2
+      match extractCandidates shortRows transform activeLifted.size with
+      | .error fault => .error fault
+      | .ok candidates => .ok ⟨(reduced, columns, candidates), reducedOutput.2⟩
+  if state.target = 0 then finish state.matrix state.currentColumns hinput
+  else
+    match cldPolys ops.cld state.fStar activeLifted modulus with
+    | .error fault => .error fault
+    | .ok cld =>
+      match hbuild : buildCldMatrix state.matrix cld state.currentColumns state.target with
+      | .error fault => .error fault
+      | .ok (matrix', added) => finish matrix' (state.currentColumns + added)
+          (ops.cld_extension_valid state.matrix cld state.currentColumns
+            state.target matrix' added hinput hbuild)
 
 /-- Erased termination certificate for the successful-extraction branch.
 It refers only to concrete successful raw executions and the consumed bits
@@ -1307,16 +1525,20 @@ overflowing precision target executes the actual Zassenhaus fallback. -/
 def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
     (lifted : Array SparsePolyZZ)
     (modulus : ZZ) (initial maximum : Nat) (hinitial : 0 < initial) :
-    VanHoeijState → RawExec (SparsePolyZZ × Array SparsePolyZZ)
-  | state =>
+    (state : VanHoeijState) → ops.lll.inputValid state.matrix →
+      RawExec (SparsePolyZZ × Array SparsePolyZZ)
+  | state, hmatrix =>
     if hdone : state.active.size ≤ 1 then .ok (state.fStar, state.result)
     else
       match hgather : gatherActive state.active lifted with
       | .error fault => .error fault
       | .ok activeLifted =>
-        match ops.prepareCandidates state.fStar activeLifted modulus state.target with
+        match prepareCandidates ops state hmatrix activeLifted modulus with
         | .error fault => .error fault
-        | .ok candidates =>
+        | .ok prepared =>
+          let matrix' := prepared.1.1
+          let currentColumns' := prepared.1.2.1
+          let candidates := prepared.1.2.2
           match hvalidate : validateCandidates ops.validation state.fStar activeLifted modulus candidates
               state.result with
           | .error fault => .error fault
@@ -1327,14 +1549,23 @@ def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
                   activeLifted candidates fStar' result' consumed hgather hvalidate hfound with
               | .error fault => .error fault
               | .ok activeNext =>
-                vanHoeijLoop ops termination lifted modulus initial maximum hinitial
-                  { active := activeNext.1, fStar := fStar', result := result',
-                    target := 0 }
+                match hreset : resetVanHoeijLattice activeNext.1.size with
+                | .error fault => .error fault
+                | .ok (resetMatrix, resetBound) =>
+                  vanHoeijLoop ops termination lifted modulus initial maximum hinitial
+                    { active := activeNext.1, fStar := fStar', result := result',
+                      matrix := resetMatrix, currentColumns := 0,
+                      shortBound := resetBound, target := 0 }
+                    (ops.reset_valid activeNext.1.size resetMatrix resetBound
+                      hreset)
             else
               match hprecision : nextPrecision state.target initial maximum with
               | .retry target' =>
                 vanHoeijLoop ops termination lifted modulus initial maximum hinitial
-                  { state with target := target' }
+                  { active := state.active, fStar := state.fStar,
+                    result := state.result, matrix := matrix',
+                    currentColumns := currentColumns', shortBound := state.shortBound,
+                    target := target' } prepared.2
               | .fallback =>
                 match zassenhausRecombine ops.zassenhausTermination
                     state.fStar activeLifted modulus with
@@ -1343,7 +1574,7 @@ def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
                   match appendFallback fallback state.result with
                   | .error fault => .error fault
                   | .ok output => .ok (#[], output)
-termination_by state =>
+termination_by state _ =>
   (state.active.size, precisionRank state.target initial maximum)
 decreasing_by
   · exact Prod.Lex.left _ _ activeNext.2

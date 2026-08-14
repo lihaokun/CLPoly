@@ -3184,6 +3184,355 @@ theorem gsLowerNormMul_apply
   congr 1
   simp [Matrix.mul_apply, gsNormDiagonal, Matrix.diagonal_apply]
 
+theorem gsLowerPrefix_eq_of_mu_prefix
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (mu beforeMu : Generated.StrictRecombine.QQMatrix)
+    (norms : Array QQ) (k processed rowCount : Nat)
+    (hrowCount : rowCount ≤ processed)
+    (hmu : ∀ row, row < processed → mu[row]! = beforeMu[row]!) :
+    gsLowerPrefix
+        (Generated.StrictRecombine.LLLState.mk matrix transform mu norms k)
+        rowCount =
+      gsLowerPrefix
+        (Generated.StrictRecombine.LLLState.mk matrix transform beforeMu norms k)
+        rowCount := by
+  funext row column
+  unfold gsLowerPrefix
+  split
+  next hbelow =>
+    rw [hmu row.val (lt_of_lt_of_le row.isLt hrowCount)]
+  next hbelow => rfl
+
+theorem gsNormDiagonal_eq_of_norm_prefix
+    (matrix transform : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (norms beforeNorms : Array QQ) (k processed rowCount : Nat)
+    (hrowCount : rowCount ≤ processed)
+    (hnorms : ∀ index, index < processed →
+      norms[index]! = beforeNorms[index]!) :
+    gsNormDiagonal
+        (Generated.StrictRecombine.LLLState.mk matrix transform mu norms k)
+        rowCount =
+      gsNormDiagonal
+        (Generated.StrictRecombine.LLLState.mk matrix transform mu beforeNorms k)
+        rowCount := by
+  unfold gsNormDiagonal
+  congr 1
+  funext index
+  exact hnorms index.val (lt_of_lt_of_le index.isLt hrowCount)
+
+theorem concreteGramSchmidtUpTo_of_prefix_frames
+    (matrix transform : Generated.StrictRecombine.LLLMatrix)
+    (mu beforeMu : Generated.StrictRecombine.QQMatrix)
+    (norms beforeNorms : Array QQ) (k processed : Nat)
+    (hbefore : ConcreteGramSchmidtUpTo
+      (Generated.StrictRecombine.LLLState.mk matrix transform beforeMu
+        beforeNorms k) processed)
+    (hmu : ∀ row, row < processed → mu[row]! = beforeMu[row]!)
+    (hnorms : ∀ index, index < processed →
+      norms[index]! = beforeNorms[index]!) :
+    ConcreteGramSchmidtUpTo
+      (Generated.StrictRecombine.LLLState.mk matrix transform mu norms k)
+      processed := by
+  intro rowCount hprocessed hmatrix
+  have hfactor := hbefore rowCount hprocessed hmatrix
+  have hlower := gsLowerPrefix_eq_of_mu_prefix matrix transform mu beforeMu
+    norms k processed rowCount hprocessed hmu
+  have hdiagonal := gsNormDiagonal_eq_of_norm_prefix matrix transform mu
+    norms beforeNorms k processed rowCount hprocessed hnorms
+  rw [hlower, hdiagonal]
+  simpa [gsLowerPrefix, gsNormDiagonal] using hfactor
+
+theorem finSum_eq_prefix_add_at_of_zero_after
+    {size : Nat} (values : Fin size → QQ) (index : Nat)
+    (hindex : index < size)
+    (hzero : ∀ position : Fin size, index < position.val →
+      values position = 0) :
+    (∑ position : Fin size, values position) =
+      (∑ position : Fin index,
+        values ⟨position.val, lt_trans position.isLt hindex⟩) +
+        values ⟨index, hindex⟩ := by
+  let natValues : Nat → QQ := fun position =>
+    if hposition : position < size then values ⟨position, hposition⟩ else 0
+  have hfull : (∑ position : Fin size, values position) =
+      ∑ position ∈ Finset.range size, natValues position := by
+    rw [← Fin.sum_univ_eq_sum_range natValues size]
+    apply Fintype.sum_congr
+    intro position
+    simp [natValues]
+  have hprefix : (∑ position : Fin index,
+      values ⟨position.val, lt_trans position.isLt hindex⟩) =
+      ∑ position ∈ Finset.range index, natValues position := by
+    rw [← Fin.sum_univ_eq_sum_range natValues index]
+    apply Fintype.sum_congr
+    intro position
+    simp only [natValues, dif_pos (lt_trans position.isLt hindex)]
+  have hat : natValues index = values ⟨index, hindex⟩ := by
+    simp [natValues, hindex]
+  rw [hfull, hprefix, ← hat, ← Finset.sum_range_succ]
+  symm
+  apply Finset.sum_subset (Finset.range_mono (by omega))
+  intro position hposition hnotPrefix
+  have hpositionSize : position < size := Finset.mem_range.mp hposition
+  have hafter : index < position := by
+    have := Finset.not_mem_range.mp hnotPrefix
+    omega
+  simp only [natValues, dif_pos hpositionSize]
+  exact hzero ⟨position, hpositionSize⟩ hafter
+
+theorem gsLowerNormSum_new_row
+    (state : Generated.StrictRecombine.LLLState) (i j : Nat) (hj : j < i) :
+    (∑ index : Fin (i + 1),
+      gsLowerPrefix state (i + 1) ⟨i, by omega⟩ index *
+        state.norms[index.val]! *
+        gsLowerPrefix state (i + 1) ⟨j, by omega⟩ index) =
+      (∑ index : Fin j,
+        (state.mu[i]!)[index.val]! * (state.mu[j]!)[index.val]! *
+          state.norms[index.val]!) +
+        (state.mu[i]!)[j]! * state.norms[j]! := by
+  let values : Fin (i + 1) → QQ := fun index =>
+    gsLowerPrefix state (i + 1) ⟨i, by omega⟩ index *
+      state.norms[index.val]! *
+      gsLowerPrefix state (i + 1) ⟨j, by omega⟩ index
+  rw [show (∑ index : Fin (i + 1),
+      gsLowerPrefix state (i + 1) ⟨i, by omega⟩ index *
+        state.norms[index.val]! *
+        gsLowerPrefix state (i + 1) ⟨j, by omega⟩ index) =
+      ∑ index, values index by rfl]
+  rw [finSum_eq_prefix_add_at_of_zero_after values j (by omega)]
+  · congr 1
+    · apply Fintype.sum_congr
+      intro index
+      simp [values, gsLowerPrefix, hj, index.isLt,
+        show index.val < i by omega]
+      ring
+    · simp [values, gsLowerPrefix, hj]
+  · intro position hafter
+    have hne : (⟨j, by omega⟩ : Fin (i + 1)) ≠ position := by
+      intro heq
+      have hvalues : j = position.val :=
+        congrArg (fun value : Fin (i + 1) => value.val) heq
+      omega
+    simp [values, gsLowerPrefix, hafter, show ¬position.val < j by omega,
+      hne]
+
+theorem gsLowerNormSum_new_diagonal
+    (state : Generated.StrictRecombine.LLLState) (i : Nat) :
+    (∑ index : Fin (i + 1),
+      gsLowerPrefix state (i + 1) ⟨i, by omega⟩ index *
+        state.norms[index.val]! *
+        gsLowerPrefix state (i + 1) ⟨i, by omega⟩ index) =
+      (∑ index : Fin i,
+        (state.mu[i]!)[index.val]! * (state.mu[i]!)[index.val]! *
+          state.norms[index.val]!) + state.norms[i]! := by
+  rw [Fin.sum_univ_castSucc]
+  congr 1
+  · apply Fintype.sum_congr
+    intro index
+    simp [gsLowerPrefix, index.isLt]
+    ring
+  · have hlast : (⟨i, by omega⟩ : Fin (i + 1)) = Fin.last i := Fin.ext rfl
+    simp [gsLowerPrefix, hlast]
+
+theorem gsLowerNormSum_old_entry
+    (state : Generated.StrictRecombine.LLLState) (i : Nat)
+    (row column : Fin i) :
+    (∑ index : Fin (i + 1),
+      gsLowerPrefix state (i + 1) ⟨row.val, by omega⟩ index *
+        state.norms[index.val]! *
+        gsLowerPrefix state (i + 1) ⟨column.val, by omega⟩ index) =
+      ∑ index : Fin i,
+        gsLowerPrefix state i row index * state.norms[index.val]! *
+          gsLowerPrefix state i column index := by
+  rw [Fin.sum_univ_castSucc]
+  have hrowNe : (⟨row.val, by omega⟩ : Fin (i + 1)) ≠ Fin.last i := by
+    intro heq
+    have := congrArg Fin.val heq
+    simp only [Fin.val_last] at this
+    omega
+  have hlastZero :
+      gsLowerPrefix state (i + 1) ⟨row.val, by omega⟩ (Fin.last i) *
+          state.norms[(Fin.last i).val]! *
+          gsLowerPrefix state (i + 1) ⟨column.val, by omega⟩ (Fin.last i) = 0 := by
+    have hleft :
+        gsLowerPrefix state (i + 1) ⟨row.val, by omega⟩ (Fin.last i) = 0 := by
+      unfold gsLowerPrefix
+      have hnotBelow : ¬(Fin.last i).val < row.val := by
+        simp only [Fin.val_last]
+        omega
+      rw [if_neg hnotBelow, if_neg hrowNe]
+    simp [hleft]
+  rw [hlastZero, add_zero]
+  apply Fintype.sum_congr
+  intro index
+  have hrowEq :
+      gsLowerPrefix state (i + 1) ⟨row.val, by omega⟩ index.castSucc =
+        gsLowerPrefix state i row index := by
+    unfold gsLowerPrefix
+    simp only [Fin.val_castSucc]
+    by_cases hbelow : index.val < row.val
+    · simp [hbelow]
+    · by_cases heq : row = index
+      · subst row
+        have hcastEq : (⟨index.val, by omega⟩ : Fin (i + 1)) =
+            index.castSucc := Fin.ext rfl
+        simp [hbelow, hcastEq]
+      · have hbigNe : (⟨row.val, by omega⟩ : Fin (i + 1)) ≠
+            index.castSucc := by
+          intro hbig
+          apply heq
+          apply Fin.ext
+          exact congrArg (fun value : Fin (i + 1) => value.val) hbig
+        simp [hbelow, heq, hbigNe]
+  have hcolumnEq :
+      gsLowerPrefix state (i + 1) ⟨column.val, by omega⟩ index.castSucc =
+        gsLowerPrefix state i column index := by
+    unfold gsLowerPrefix
+    simp only [Fin.val_castSucc]
+    by_cases hbelow : index.val < column.val
+    · simp [hbelow]
+    · by_cases heq : column = index
+      · subst column
+        have hcastEq : (⟨index.val, by omega⟩ : Fin (i + 1)) =
+            index.castSucc := Fin.ext rfl
+        simp [hbelow, hcastEq]
+      · have hbigNe : (⟨column.val, by omega⟩ : Fin (i + 1)) ≠
+            index.castSucc := by
+          intro hbig
+          apply heq
+          apply Fin.ext
+          exact congrArg (fun value : Fin (i + 1) => value.val) hbig
+        simp [hbelow, heq, hbigNe]
+  rw [hrowEq, hcolumnEq]
+  simp only [Fin.val_castSucc]
+
+theorem gramPrefixMatrixQQ_apply_eq_sourceRowDot
+    (matrix : Generated.StrictRecombine.LLLMatrix) (rowCount : Nat)
+    (row column : Fin rowCount)
+    (hrow : row.val < matrix.size)
+    (hcolumn : column.val < matrix.size)
+    (hrowSize : matrix[row.val].size = matrix.size)
+    (hcolumnSize : matrix[column.val].size = matrix.size) :
+    gramPrefixMatrixQQ matrix rowCount row column =
+      sourceRowDot matrix row.val column.val matrix[row.val]!.size := by
+  unfold gramPrefixMatrixQQ gramPrefixMatrix sourceRowDot
+  simp only [Matrix.map_apply]
+  rw [getElem!_pos matrix row.val hrow, getElem!_pos matrix column.val hcolumn,
+    hrowSize]
+
+theorem concreteGramSchmidtUpTo_extend_one
+    (state : Generated.StrictRecombine.LLLState) (i : Nat)
+    (hi : i < state.matrix.size)
+    (hrowsSquare : ∀ row (hrow : row < state.matrix.size),
+      state.matrix[row].size = state.matrix.size)
+    (hprefix : ConcreteGramSchmidtUpTo state i)
+    (hrow : GramMuPrefixCorrect state.matrix state.mu state.norms i i)
+    (hdiagonal : sourceRowDot state.matrix i i state.matrix[i]!.size =
+      (∑ index : Fin i,
+        (state.mu[i]!)[index.val]! * (state.mu[i]!)[index.val]! *
+          state.norms[index.val]!) + state.norms[i]!) :
+    ConcreteGramSchmidtUpTo state (i + 1) := by
+  intro rowCount hprocessed hmatrix
+  by_cases hold : rowCount ≤ i
+  · exact hprefix rowCount hold hmatrix
+  have hrowCount : rowCount = i + 1 := by omega
+  subst rowCount
+  funext row column
+  rw [gsLowerNormMul_apply]
+  let last : Fin (i + 1) := ⟨i, by omega⟩
+  have hlastVal : last.val = i := rfl
+  have hnewRow : ∀ position : Fin (i + 1), position.val < i →
+      gramPrefixMatrixQQ state.matrix (i + 1) last position =
+        ∑ index : Fin (i + 1),
+          gsLowerPrefix state (i + 1) last index *
+            state.norms[index.val]! *
+            gsLowerPrefix state (i + 1) position index := by
+    intro position hposition
+    calc
+      gramPrefixMatrixQQ state.matrix (i + 1) last position =
+          sourceRowDot state.matrix i position.val state.matrix[i]!.size := by
+        exact gramPrefixMatrixQQ_apply_eq_sourceRowDot state.matrix (i + 1)
+          last position hi (lt_trans hposition hi)
+          (hrowsSquare i hi) (hrowsSquare position.val (lt_trans hposition hi))
+      _ = (∑ index : Fin position.val,
+            (state.mu[i]!)[index.val]! *
+              (state.mu[position.val]!)[index.val]! *
+              state.norms[index.val]!) +
+            (state.mu[i]!)[position.val]! * state.norms[position.val]! :=
+        hrow position.val hposition
+      _ = ∑ index : Fin (i + 1),
+          gsLowerPrefix state (i + 1) last index *
+            state.norms[index.val]! *
+            gsLowerPrefix state (i + 1) position index := by
+        simpa [last] using (gsLowerNormSum_new_row state i position.val hposition).symm
+  by_cases hrowLast : row.val = i
+  · have hrowEq : row = last := by apply Fin.ext; exact hrowLast
+    subst row
+    by_cases hcolumnLast : column.val = i
+    · have hcolumnEq : column = last := by apply Fin.ext; exact hcolumnLast
+      subst column
+      calc
+        gramPrefixMatrixQQ state.matrix (i + 1) last last =
+            sourceRowDot state.matrix i i state.matrix[i]!.size := by
+          exact gramPrefixMatrixQQ_apply_eq_sourceRowDot state.matrix (i + 1)
+            last last hi hi (hrowsSquare i hi) (hrowsSquare i hi)
+        _ = (∑ index : Fin i,
+              (state.mu[i]!)[index.val]! * (state.mu[i]!)[index.val]! *
+                state.norms[index.val]!) + state.norms[i]! := hdiagonal
+        _ = ∑ index : Fin (i + 1),
+            gsLowerPrefix state (i + 1) last index *
+              state.norms[index.val]! *
+              gsLowerPrefix state (i + 1) last index := by
+          simpa [last] using (gsLowerNormSum_new_diagonal state i).symm
+    · exact hnewRow column (by omega)
+  · have hrowBefore : row.val < i := by omega
+    by_cases hcolumnLast : column.val = i
+    · have hcolumnEq : column = last := by apply Fin.ext; exact hcolumnLast
+      subst column
+      calc
+        gramPrefixMatrixQQ state.matrix (i + 1) row last =
+            gramPrefixMatrixQQ state.matrix (i + 1) last row := by
+          unfold gramPrefixMatrixQQ gramPrefixMatrix
+          simp only [Matrix.map_apply]
+          congr 1
+          apply Fintype.sum_congr
+          intro index
+          ring
+        _ = ∑ index : Fin (i + 1),
+            gsLowerPrefix state (i + 1) last index *
+              state.norms[index.val]! *
+              gsLowerPrefix state (i + 1) row index :=
+          hnewRow row hrowBefore
+        _ = ∑ index : Fin (i + 1),
+            gsLowerPrefix state (i + 1) row index *
+              state.norms[index.val]! *
+              gsLowerPrefix state (i + 1) last index := by
+          apply Fintype.sum_congr
+          intro index
+          ring
+    · have hcolumnBefore : column.val < i := by omega
+      let oldRow : Fin i := ⟨row.val, hrowBefore⟩
+      let oldColumn : Fin i := ⟨column.val, hcolumnBefore⟩
+      have holdFactor := hprefix i le_rfl (by omega)
+      have holdEntry := congrArg
+        (fun matrix => matrix oldRow oldColumn) holdFactor
+      dsimp only at holdEntry
+      rw [gsLowerNormMul_apply] at holdEntry
+      calc
+        gramPrefixMatrixQQ state.matrix (i + 1) row column =
+            gramPrefixMatrixQQ state.matrix i oldRow oldColumn := by
+          rfl
+        _ = ∑ index : Fin i,
+            gsLowerPrefix state i oldRow index * state.norms[index.val]! *
+              gsLowerPrefix state i oldColumn index := holdEntry
+        _ = ∑ index : Fin (i + 1),
+            gsLowerPrefix state (i + 1) row index *
+              state.norms[index.val]! *
+              gsLowerPrefix state (i + 1) column index := by
+          simpa [oldRow, oldColumn] using
+            (gsLowerNormSum_old_entry state i oldRow oldColumn).symm
+
 theorem ConcreteGramSchmidt.gram_prefix
     {state : Generated.StrictRecombine.LLLState}
     (hgs : ConcreteGramSchmidt state)

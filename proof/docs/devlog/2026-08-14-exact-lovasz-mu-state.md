@@ -320,3 +320,29 @@ matrix-extensional row-extension proof.
 - Lean 新增/修改行数：约 75 行
 - 对应 C++ 行数：约 7 行 `gramNormLoop` 与 norm 写回前的标量计算
 - 下一步：按旧前缀、非对角新行和新对角三类矩阵元素组装 `G = L D L^T`
+
+## One-row LDL matrix extension
+
+The scalar equations are now assembled into the next full matrix prefix.
+Exact μ/norm frame lemmas show that a generated row iteration leaves every
+already processed `L` and `D` prefix entry unchanged.  The finite-sum support
+lemmas then prove three concrete facts about the stored lower-triangular
+matrix: an old entry receives no contribution from the new last column, a new
+off-diagonal row entry reduces exactly to the generated row recurrence, and
+the new diagonal reduces exactly to the generated norm recurrence.
+
+`concreteGramSchmidtUpTo_extend_one` combines these facts extensionally.  It
+handles old-prefix entries using the prior executable invariant, the new row
+using `GramMuPrefixCorrect`, the new column by symmetry of the actual integer
+Gram sum, and the final diagonal using the exact norm-loop equation.  The
+result is `ConcreteGramSchmidtUpTo state (i + 1)`, i.e. the complete next
+`G = L * D * L^T` prefix for the arrays produced by execution.  No alternate
+orthogonalization, choice function, or existence certificate is involved.
+
+## 度量（one-row LDL extension）
+
+- 耗时：约 2 小时（前缀帧、有限和支撑、四类矩阵元素与依赖索引）
+- 迭代：约 11 轮编译-修复循环
+- Lean 新增/修改行数：约 280 行
+- 对应 C++ 行数：约 18 行 μ/norm 两个内层循环及外层单行写回
+- 下一步：将该扩展定理嵌入生成的外层初始化循环，并由前缀 Gram 行列式正性推出每个新 pivot 严格为正

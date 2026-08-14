@@ -498,3 +498,31 @@ factor.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 验证：`lake build CLPoly.Refinement.Recombine`、生成器 stale check、strict refinement boundary 和 `git diff --check` 通过
 - 下一步：从模多项式长除的实际次数下降构造 `DivmodTermination`，然后组装无抽象字段的 `VanHoeijRawOps`
+
+## Modular-divmod representation invariant established
+
+The remaining `DivmodTermination.trace` field was audited before attempting
+to instantiate it.  Its old universal domain includes arbitrary arrays, but
+the C++ `upolynomial_` loop relies on its representation invariant: stored
+terms have nonzero coefficients and strictly descending degrees.  For a
+malformed divisor whose tail degree exceeds its head, the source update need
+not decrease the remainder degree, so a universal trace would be an invalid
+termination oracle rather than a proof of the C++ execution.
+
+The refinement layer now begins the concrete repair from the actual sparse
+representation.  `modCoeffOutput_canonical` proves that the generated
+coefficient-reduction `filterMap` preserves strict degree order and removes
+all zero coefficients.  `eraseLeading_canonical` and
+`eraseLeading_size_lt` validate the exact zero-coefficient branch, while
+`canonical_tail_degree_lt_head` extracts the strict head/tail inequality
+needed for the nonzero merge branch.  These lemmas use the existing public
+`SparsePolyZZCanonical` invariant rather than introducing a second weaker
+notion of validity.
+
+## 度量（divmod canonical foundation）
+
+- 耗时：约 1.0 小时（终止接口反例审计、filterMap/erase 规范性证明）
+- Lean 新增：约 80 行
+- C++ 变化：无
+- 验证：单文件 Lean 内核检查与 `lake build CLPoly.Refinement.Hensel` 通过
+- 下一步：对 `divmodMergeLoop` 的六个实际游标分支证明严格降序保持与新首项次数下降

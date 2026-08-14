@@ -11,6 +11,7 @@ import CLPoly.Generated.StrictHensel
 import CLPoly.Math.Bigint
 import CLPoly.Refinement.Basic
 import CLPoly.Refinement.DDF
+import CLPoly.Refinement.PolynomialMod
 import CLPoly.Refinement.SquarefreeZp
 
 set_option autoImplicit false
@@ -1164,6 +1165,86 @@ theorem modCoeffOutput_degreesBound (f : SparsePolyZZ) (m : Int)
     subst term
     exact hf source (by simpa using hsource)
   · simp_all
+
+/-- Coefficient reduction only filters terms and leaves every retained
+degree untouched, so it preserves the source `upolynomial_` representation
+invariant needed by modular long division. -/
+theorem modCoeffOutput_canonical (f : SparsePolyZZ) (m : Int)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.modCoeffOutput f m) := by
+  unfold StrictPolynomialMod.SparsePolyZZCanonical
+  constructor
+  · let degreeGreater : (UMonomial × Int) → (UMonomial × Int) → Prop :=
+      fun a b => a.1.deg > b.1.deg
+    letI : Trans degreeGreater degreeGreater degreeGreater :=
+      ⟨by
+        intro a b c hab hbc
+        dsimp [degreeGreater] at hab hbc ⊢
+        omega⟩
+    apply List.isChain_iff_pairwise.mpr
+    rw [Generated.StrictHensel.modCoeffOutput, Array.toList_filterMap]
+    apply List.Pairwise.filterMap (R := degreeGreater) (S := degreeGreater)
+      (fun term =>
+        let coefficient := ZZ.fdiv_r term.2 term.2 m
+        if coefficient != 0 then some (term.1, coefficient) else none)
+      (fun a b hab outputA ha outputB hb => by
+        dsimp only at ha hb
+        split at ha <;> try contradiction
+        split at hb <;> try contradiction
+        simp only [Option.some.injEq] at ha hb
+        subst outputA
+        subst outputB
+        exact hab)
+    exact List.isChain_iff_pairwise.mp hf.1
+  · intro term hterm
+    rw [Generated.StrictHensel.modCoeffOutput,
+      Array.toList_filterMap, List.mem_filterMap] at hterm
+    rcases hterm with ⟨source, _, hsource⟩
+    dsimp only at hsource
+    split at hsource
+    next hnonzero =>
+      simp only [Option.some.injEq] at hsource
+      subst term
+      simpa using hnonzero
+    next hzero => contradiction
+
+/-- Removing the leading array cell preserves strict degree order and all
+remaining nonzero coefficients. -/
+theorem eraseLeading_canonical (f : SparsePolyZZ) (hfsize : 0 < f.size)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f) :
+    StrictPolynomialMod.SparsePolyZZCanonical (f.eraseIdxIfInBounds 0) := by
+  unfold StrictPolynomialMod.SparsePolyZZCanonical at hf ⊢
+  rw [Array.toList_eraseIdxIfInBounds, List.eraseIdx_zero]
+  exact ⟨hf.1.tail, fun term hterm => hf.2 term (List.mem_of_mem_tail hterm)⟩
+
+/-- In a nonempty canonical sparse polynomial, every stored term after the
+front cell has strictly smaller degree than the front cell. -/
+theorem canonical_tail_degree_lt_head (f : SparsePolyZZ) (hfsize : 0 < f.size)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f) :
+    ∀ term ∈ f.toList.drop 1, term.1.deg < f[0]!.1.deg := by
+  have hfull : f.toList = f[0]! :: f.toList.drop 1 := by
+    rw [getElem!_pos f 0 hfsize]
+    simpa using List.drop_eq_getElem_cons
+      (l := f.toList) (i := 0) (by simpa using hfsize)
+  have hpairwise : List.Pairwise
+      (fun a b : UMonomial × Int => a.1.deg > b.1.deg) f.toList := by
+    let degreeGreater : (UMonomial × Int) → (UMonomial × Int) → Prop :=
+      fun a b => a.1.deg > b.1.deg
+    letI : Trans degreeGreater degreeGreater degreeGreater :=
+      ⟨by
+        intro a b c hab hbc
+        dsimp [degreeGreater] at hab hbc ⊢
+        omega⟩
+    exact List.isChain_iff_pairwise.mp hf.1
+  rw [hfull, List.pairwise_cons] at hpairwise
+  exact hpairwise.1
+
+theorem eraseLeading_size_lt (f : SparsePolyZZ) (hfsize : 0 < f.size) :
+    (f.eraseIdxIfInBounds 0).size < f.size := by
+  unfold Array.eraseIdxIfInBounds
+  rw [dif_pos hfsize, Array.size_eraseIdx]
+  omega
 
 /-- Representation facts needed at every active state of the exact generated
 division trace.  This predicate contains no result polynomial: it certifies

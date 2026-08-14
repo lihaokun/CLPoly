@@ -376,7 +376,8 @@ theorem validateCandidatesLoop_consumed_size
                   | error fault => simp [hproduct] at hrun
                   | ok product =>
                     simp only [hproduct] at hrun
-                    cases hsymmetric : ops.symmetricMod product modulus with
+                    cases hsymmetric : Generated.StrictRecombine.symmetricModRaw
+                        product modulus with
                     | error fault => simp [hsymmetric] at hrun
                     | ok symmetric =>
                       simp only [hsymmetric] at hrun
@@ -704,5 +705,90 @@ theorem multiplyNormalizeRaw_toPoly (left right output : SparsePolyZZ)
       (Generated.StrictRecombine.multiplyTermsLoop left right 0 #[]).toList = _
   rw [multiplyTermsLoop_toPoly]
   simp [intTermsToPoly, SparsePolyZZ.toPoly]
+
+private theorem symmetricMod_cast (modulus : Nat) (hmodulus : 0 < modulus)
+    (coefficient : Int) :
+    (ZZ.symmetricMod coefficient (modulus : ZZ) : ZMod modulus) =
+      (coefficient : ZMod modulus) := by
+  unfold ZZ.symmetricMod
+  have hfmod : ((Int.fmod coefficient (modulus : Int) : Int) : ZMod modulus) =
+      (coefficient : ZMod modulus) := by
+    rw [Int.fmod_eq_emod_of_nonneg coefficient (by omega)]
+    rw [ZMod.intCast_eq_intCast_iff]
+    refine Int.modEq_iff_dvd.mpr ?_
+    use coefficient / (modulus : Int)
+    have h := Int.mul_ediv_add_emod coefficient (modulus : Int)
+    omega
+  dsimp [ZZ.symmetricMod]
+  split
+  next hsmall => exact hfmod
+  next hlarge =>
+    rw [Int.cast_sub, hfmod]
+    simp
+
+theorem symmetricModLoop_toPolyMod (input : SparsePolyZZ)
+    (modulus : Nat) (hmodulus : 0 < modulus) (index : Nat)
+    (result output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.symmetricModLoop input (modulus : ZZ)
+      index result = .ok output) :
+    Refinement.StrictHensel.toPolyMod modulus output =
+      Refinement.StrictHensel.toPolyMod modulus result +
+        Refinement.StrictHensel.termsToPolyMod modulus
+          (input.toList.drop index) := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.symmetricModLoop] at hrun
+      split at hrun
+      next hindex =>
+        dsimp at hrun
+        let coefficient := ZZ.symmetricMod input[index].2 (modulus : ZZ)
+        by_cases hzero : coefficient = 0
+        · change ZZ.symmetricMod input[index].2 (modulus : ZZ) = 0 at hzero
+          simp only [hzero, if_true] at hrun
+          rw [ih (input.size - (index + 1)) (by omega)
+            (index + 1) result output hrun rfl]
+          have hsuffix : input.toList.drop index = input[index] ::
+              input.toList.drop (index + 1) := by
+            simpa using List.drop_eq_getElem_cons
+              (l := input.toList) (i := index) (by simpa using hindex)
+          have hcast := symmetricMod_cast modulus hmodulus input[index].2
+          change (ZZ.symmetricMod input[index].2 (modulus : ZZ) : ZMod modulus) =
+            (input[index].2 : ZMod modulus) at hcast
+          rw [hzero] at hcast
+          rw [hsuffix, Refinement.StrictHensel.termsToPolyMod_cons]
+          rw [← hcast]
+          simp
+        · change ZZ.symmetricMod input[index].2 (modulus : ZZ) ≠ 0 at hzero
+          simp only [hzero, if_false] at hrun
+          rw [ih (input.size - (index + 1)) (by omega)
+            (index + 1) (result.push (input[index].1,
+              ZZ.symmetricMod input[index].2 (modulus : ZZ))) output
+            hrun rfl]
+          rw [Refinement.StrictHensel.toPolyMod_push]
+          have hsuffix : input.toList.drop index = input[index] ::
+              input.toList.drop (index + 1) := by
+            simpa using List.drop_eq_getElem_cons
+              (l := input.toList) (i := index) (by simpa using hindex)
+          rw [symmetricMod_cast modulus hmodulus input[index].2]
+          rw [hsuffix, Refinement.StrictHensel.termsToPolyMod_cons]
+          abel
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [Refinement.StrictHensel.termsToPolyMod,
+          List.drop_eq_nil_iff.mpr hle]
+
+theorem symmetricModRaw_toPolyMod (input output : SparsePolyZZ)
+    (modulus : Nat) (hmodulus : 0 < modulus)
+    (hrun : Generated.StrictRecombine.symmetricModRaw input (modulus : ZZ) =
+      .ok output) :
+    Refinement.StrictHensel.toPolyMod modulus output =
+      Refinement.StrictHensel.toPolyMod modulus input := by
+  unfold Generated.StrictRecombine.symmetricModRaw at hrun
+  rw [dif_pos (by exact_mod_cast hmodulus)] at hrun
+  simpa [Refinement.StrictHensel.toPolyMod_eq_termsToPolyMod] using
+    symmetricModLoop_toPolyMod input modulus hmodulus 0 #[] output hrun
 
 end Refinement.StrictRecombine

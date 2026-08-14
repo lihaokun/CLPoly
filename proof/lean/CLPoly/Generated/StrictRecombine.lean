@@ -200,12 +200,29 @@ decreasing_by omega
 def multiplyNormalizeRaw (left right : SparsePolyZZ) : RawExec SparsePolyZZ :=
   .ok (SparsePolyZZ.normalization (multiplyTermsLoop left right 0 #[]))
 
+/-- Exact range-for in C++ `__upoly_symmetric_mod`: symmetrically reduce each
+coefficient and omit concrete zero coefficients. -/
+def symmetricModLoop (input : SparsePolyZZ) (modulus : ZZ) (index : Nat)
+    (result : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  if hindex : index < input.size then
+    let term := input[index]
+    let coefficient := ZZ.symmetricMod term.2 modulus
+    symmetricModLoop input modulus (index + 1)
+      (if coefficient = 0 then result else result.push (term.1, coefficient))
+  else .ok result
+termination_by input.size - index
+decreasing_by omega
+
+def symmetricModRaw (input : SparsePolyZZ) (modulus : ZZ) :
+    RawExec SparsePolyZZ :=
+  if hmodulus : 0 < modulus then symmetricModLoop input modulus 0 #[]
+  else .error .arithmeticDomain
+
 /-- Concrete C++ callees used inside candidate validation.  Each field returns
 only computed polynomial data; no field may return a semantic proposition or
 choose an L2 factorization witness. -/
 structure CandidateValidationRawOps where
   product : TrialProductRawOps
-  symmetricMod : SparsePolyZZ → ZZ → RawExec SparsePolyZZ
   primitive : SparsePolyZZ → RawExec (ZZ × SparsePolyZZ)
   divmod : SparsePolyZZ → SparsePolyZZ → RawExec (SparsePolyZZ × SparsePolyZZ)
 
@@ -238,7 +255,7 @@ def validateCandidatesLoop (ops : CandidateValidationRawOps)
               match trialProductLoop ops.product candidate activeLifted modulus 0 initial with
               | .error fault => .error fault
               | .ok product =>
-                match ops.symmetricMod product modulus with
+                match symmetricModRaw product modulus with
                 | .error fault => .error fault
                 | .ok symmetric =>
                   match ops.primitive symmetric with

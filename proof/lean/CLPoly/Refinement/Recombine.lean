@@ -19,6 +19,96 @@ open CLPoly.Math
 
 namespace Refinement.StrictRecombine
 
+private def positionalCode (base : Nat) : List Nat → Nat
+  | [] => 0
+  | digit :: rest => digit * base ^ rest.length + positionalCode base rest
+
+private theorem positionalCode_lt_pow (base : Nat) (hbase : 0 < base)
+    (digits : List Nat) (hdigits : ∀ digit ∈ digits, digit < base) :
+    positionalCode base digits < base ^ digits.length := by
+  induction digits with
+  | nil => simp [positionalCode, hbase]
+  | cons digit rest ih =>
+      have hdigit := hdigits digit (by simp)
+      have hrest : ∀ value ∈ rest, value < base := by
+        intro value hvalue
+        exact hdigits value (by simp [hvalue])
+      have htail := ih hrest
+      simp only [positionalCode, List.length_cons, pow_succ]
+      have hpow : 0 < base ^ rest.length := Nat.pow_pos hbase
+      nlinarith
+
+private theorem positionalCode_append (base : Nat) (leading suffix : List Nat) :
+    positionalCode base (leading ++ suffix) =
+      positionalCode base leading * base ^ suffix.length +
+        positionalCode base suffix := by
+  induction leading with
+  | nil => simp [positionalCode]
+  | cons digit rest ih =>
+      simp only [List.cons_append, positionalCode, List.length_append,
+        List.length_cons]
+      rw [ih, pow_add]
+      ring
+
+private theorem positionalCode_pivot_lt (base : Nat) (hbase : 0 < base)
+    (leading leftSuffix rightSuffix : List Nat) (leftPivot rightPivot : Nat)
+    (hlength : leftSuffix.length = rightSuffix.length)
+    (hpivot : leftPivot < rightPivot)
+    (hleftDigits : ∀ digit ∈ leftSuffix, digit < base)
+    (hrightDigits : ∀ digit ∈ rightSuffix, digit < base) :
+    positionalCode base (leading ++ leftPivot :: leftSuffix) <
+      positionalCode base (leading ++ rightPivot :: rightSuffix) := by
+  rw [positionalCode_append, positionalCode_append]
+  simp only [positionalCode, List.length_cons, hlength]
+  have hleftTail := positionalCode_lt_pow base hbase leftSuffix hleftDigits
+  have hleftTail' : positionalCode base leftSuffix < base ^ rightSuffix.length := by
+    simpa [hlength] using hleftTail
+  apply Nat.add_lt_add_left
+  calc
+    leftPivot * base ^ rightSuffix.length + positionalCode base leftSuffix <
+        leftPivot * base ^ rightSuffix.length + base ^ rightSuffix.length :=
+      Nat.add_lt_add_left hleftTail' _
+    _ = (leftPivot + 1) * base ^ rightSuffix.length := by ring
+    _ ≤ rightPivot * base ^ rightSuffix.length :=
+      Nat.mul_le_mul_right _ (by omega)
+    _ ≤ rightPivot * base ^ rightSuffix.length + positionalCode base rightSuffix :=
+      Nat.le_add_right _ _
+
+private theorem array_toList_pivot (values : Array Nat) (pivot : Nat)
+    (hpivot : pivot < values.size) :
+    values.toList = values.toList.take pivot ++ values[pivot]! ::
+      values.toList.drop (pivot + 1) := by
+  calc
+    values.toList = values.toList.take pivot ++ values.toList.drop pivot :=
+      (List.take_append_drop pivot values.toList).symm
+    _ = values.toList.take pivot ++ values.toList[pivot] ::
+        values.toList.drop (pivot + 1) := by
+      rw [List.drop_eq_getElem_cons (by simpa using hpivot)]
+    _ = values.toList.take pivot ++ values[pivot]! ::
+        values.toList.drop (pivot + 1) := by
+      congr 2
+      rw [getElem!_pos values pivot hpivot]
+      exact Array.getElem_toList hpivot
+
+private theorem positionalCode_array_pivot_lt (base : Nat) (hbase : 0 < base)
+    (left right : Array Nat) (pivot : Nat)
+    (hpivotLeft : pivot < left.size) (hpivotRight : pivot < right.size)
+    (hsize : left.size = right.size)
+    (hprefix : left.toList.take pivot = right.toList.take pivot)
+    (hpivot : left[pivot]! < right[pivot]!)
+    (hleftDigits : ∀ digit ∈ left.toList, digit < base)
+    (hrightDigits : ∀ digit ∈ right.toList, digit < base) :
+    positionalCode base left.toList < positionalCode base right.toList := by
+  rw [array_toList_pivot left pivot hpivotLeft,
+    array_toList_pivot right pivot hpivotRight, hprefix]
+  apply positionalCode_pivot_lt base hbase
+  · simp [hsize]
+  · exact hpivot
+  · intro digit hdigit
+    exact hleftDigits digit (List.mem_of_mem_drop hdigit)
+  · intro digit hdigit
+    exact hrightDigits digit (List.mem_of_mem_drop hdigit)
+
 theorem initialCombinationLoop_toList (count index : Nat)
     (result : Array Nat) :
     (Generated.StrictRecombine.initialCombinationLoop count index result).toList =
@@ -78,6 +168,41 @@ theorem resetCombinationSuffix_getElem_le (indices : Array Nat)
     rw [Array.getElem_set]
     rw [if_neg (by omega)]
   next hposition => rfl
+termination_by indices.size - (pivot + 1 + offset)
+decreasing_by simp only [Array.size_set]; omega
+
+private def ValidCombination (upper count : Nat) (indices : Array Nat) : Prop :=
+  indices.size = count ∧
+    ∀ index (hindex : index < indices.size),
+      indices[index]! ≤ upper - count + index
+
+private theorem resetCombinationSuffix_preserves_bounds (indices : Array Nat)
+    (upper count pivot offset : Nat)
+    (hbound : ∀ index (hindex : index < indices.size),
+      indices[index]! ≤ upper - count + index) :
+    ∀ index (hindex : index <
+      (Generated.StrictRecombine.resetCombinationSuffix indices pivot offset).size),
+      (Generated.StrictRecombine.resetCombinationSuffix indices pivot offset)[index]! ≤
+        upper - count + index := by
+  rw [Generated.StrictRecombine.resetCombinationSuffix]
+  split
+  next hposition =>
+    apply resetCombinationSuffix_preserves_bounds
+    intro index hindex
+    rw [getElem!_pos _ index hindex, Array.getElem_set]
+    split
+    next heq =>
+      subst index
+      have hprevious : pivot + offset < indices.size := by omega
+      have := hbound (pivot + offset) hprevious
+      rw [getElem!_pos indices (pivot + offset) hprevious] at this
+      omega
+    next hne =>
+      have hi : index < indices.size := by simpa using hindex
+      have hb := hbound index hi
+      rw [getElem!_pos indices index hi] at hb
+      exact hb
+  next hposition => exact hbound
 termination_by indices.size - (pivot + 1 + offset)
 decreasing_by simp only [Array.size_set]; omega
 
@@ -216,6 +341,148 @@ theorem nextCombination_true_pivot (indices next : Array Nat) (upper : Nat)
       next hpivotBounds => simp at hrun
   next hfits => simp at hrun
 
+private theorem nextCombination_valid (upper count : Nat)
+    (indices next : Array Nat) (hvalid : ValidCombination upper count indices)
+    (hrun : Generated.StrictRecombine.nextCombination indices upper =
+      (true, next)) :
+    ValidCombination upper count next := by
+  rcases hvalid with ⟨hsize, hbound⟩
+  unfold Generated.StrictRecombine.nextCombination at hrun
+  split at hrun
+  next hfits =>
+    split at hrun
+    next hpivotNone => simp at hrun
+    next pivot hpivotSome =>
+      split at hrun
+      next hpivotBounds =>
+        have hout := Prod.mk.inj hrun
+        rw [← hout.2]
+        constructor
+        · simpa [resetCombinationSuffix_size, hsize]
+        · apply resetCombinationSuffix_preserves_bounds
+          intro index hindex
+          rw [getElem!_pos _ index hindex, Array.getElem_set]
+          split
+          next heq =>
+            subst index
+            have hpivotLt := nextCombinationPivot_some_lt indices upper 0 pivot
+              hpivotSome
+            have hne := nextCombinationPivot_some_ne indices upper 0 pivot
+              hpivotSome
+            have hb := hbound pivot hpivotLt
+            rw [getElem!_pos indices pivot hpivotLt] at hb
+            rw [hsize] at hne
+            omega
+          next heq =>
+            have hi : index < indices.size := by simpa using hindex
+            have hb := hbound index hi
+            rw [getElem!_pos indices index hi] at hb
+            exact hb
+      next hpivotBounds => simp at hrun
+  next hfits => simp at hrun
+
+private theorem validCombination_digits (upper count : Nat)
+    (indices : Array Nat) (hvalid : ValidCombination upper count indices)
+    (hfits : count ≤ upper) :
+    ∀ digit ∈ indices.toList, digit < upper + 1 := by
+  intro digit hdigit
+  obtain ⟨index, hindex, hvalue⟩ := List.mem_iff_getElem.mp hdigit
+  rcases hvalid with ⟨hsize, hbound⟩
+  have hi : index < indices.size := by simpa using hindex
+  have hb := hbound index hi
+  rw [getElem!_pos indices index hi] at hb
+  have harray := Array.getElem_toList (xs := indices) hi
+  rw [hvalue] at harray
+  rw [← harray] at hb
+  omega
+
+private theorem nextCombination_code_increases (upper count : Nat)
+    (indices next : Array Nat) (hvalid : ValidCombination upper count indices)
+    (hrun : Generated.StrictRecombine.nextCombination indices upper =
+      (true, next)) :
+    positionalCode (upper + 1) indices.toList <
+      positionalCode (upper + 1) next.toList := by
+  have hfits : count ≤ upper := by
+    have hcopy := hrun
+    unfold Generated.StrictRecombine.nextCombination at hcopy
+    split at hcopy
+    next hsizeFits => exact hvalid.1 ▸ hsizeFits
+    next hsizeFits => simp at hcopy
+  have hnextValid := nextCombination_valid upper count indices next hvalid hrun
+  obtain ⟨pivot, hpivot, hpivotValue, hprefixValues⟩ :=
+    nextCombination_true_pivot indices next upper hrun
+  have hnextSize := nextCombination_size indices upper
+  rw [hrun] at hnextSize
+  have hnextSize' : next.size = indices.size := by simpa using hnextSize
+  have hpivotNext : pivot < next.size := by omega
+  apply positionalCode_array_pivot_lt (upper + 1) (by omega) indices next pivot
+    hpivot hpivotNext hnextSize'.symm
+  · apply List.ext_getElem
+    · simp [List.length_take]
+      omega
+    · intro index hleft hright
+      have hi : index < pivot := by
+        simp [List.length_take] at hleft
+        exact hleft.1
+      rw [List.getElem_take, List.getElem_take,
+        Array.getElem_toList (xs := indices) (by omega),
+        Array.getElem_toList (xs := next) (by omega)]
+      have heq := hprefixValues index hi
+      rw [getElem!_pos indices index (by omega),
+        getElem!_pos next index (by omega)] at heq
+      exact heq.symm
+  · omega
+  · exact validCombination_digits upper count indices hvalid hfits
+  · exact validCombination_digits upper count next hnextValid hfits
+
+private theorem initialCombination_valid (upper count : Nat)
+    (hfits : count ≤ upper) :
+    ValidCombination upper count
+      (Generated.StrictRecombine.initialCombination count) := by
+  constructor
+  · exact initialCombination_size count
+  · intro index hindex
+    have hindexCount : index < count := by
+      simpa [initialCombination_size] using hindex
+    have harrayList :
+        (Generated.StrictRecombine.initialCombination count)[index]! =
+          (Generated.StrictRecombine.initialCombination count).toList[index]! := by
+      rw [getElem!_pos _ index hindex,
+        getElem!_pos _ index (by simpa using hindex)]
+      exact (Array.getElem_toList hindex).symm
+    have htoList := congrArg (fun values : List Nat => values[index]!)
+      (initialCombination_toList count)
+    dsimp at htoList
+    have hrange : (List.range count)[index]! = index := by
+      rw [getElem!_pos _ index (by simpa using hindexCount)]
+      simp
+    rw [harrayList, htoList, hrange]
+    omega
+
+private def concreteCombinationTermination (upper count : Nat) :
+    Generated.StrictRecombine.CombinationTermination upper count where
+  valid := ValidCombination upper count
+  valid_size := fun _ hvalid => hvalid.1
+  rank := fun current =>
+    (upper + 1) ^ count - positionalCode (upper + 1) current.toList
+  next_valid := fun current next hvalid hrun =>
+    nextCombination_valid upper count current next hvalid hrun
+  next_decreases := by
+    intro current next hvalid hrun
+    have hfits : count ≤ upper := by
+      have hcopy := hrun
+      unfold Generated.StrictRecombine.nextCombination at hcopy
+      split at hcopy
+      next hsizeFits => exact hvalid.1 ▸ hsizeFits
+      next hsizeFits => simp at hcopy
+    have hnextValid := nextCombination_valid upper count current next hvalid hrun
+    have hcode := nextCombination_code_increases upper count current next hvalid hrun
+    apply Nat.sub_lt_sub_left
+    · have hdigits := validCombination_digits upper count current hvalid hfits
+      simpa [hvalid.1] using
+        positionalCode_lt_pow (upper + 1) (by omega) current.toList hdigits
+    · exact hcode
+
 theorem removeCombinationLoop_size (candidate : Array Nat)
     (remaining : Nat) (active output : Array SparsePolyZZ)
     (hrun : Generated.StrictRecombine.removeCombinationLoop candidate remaining
@@ -250,6 +517,17 @@ theorem removeCombination_strict (candidate : Array Nat)
   have hsize := removeCombinationLoop_size candidate candidate.size active
     output hrun
   omega
+
+/-- The concrete termination package for the source Zassenhaus loops.  Its
+combination rank is the complement of the base-`upper+1` positional code;
+the outer rank is discharged by the actual successful subset removal. -/
+def concreteZassenhausTermination :
+    Generated.StrictRecombine.ZassenhausTermination where
+  combinations := concreteCombinationTermination
+  initial_valid := fun upper count hfits =>
+    initialCombination_valid upper count hfits
+  removal_decreases := fun active candidate output hnonempty hrun =>
+    removeCombination_strict candidate active output hnonempty hrun
 
 noncomputable def factorArrayToL2 (factors : Array SparsePolyZZ) :
     List (Polynomial Int) :=

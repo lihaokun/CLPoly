@@ -121,3 +121,10 @@ from square μ storage and norm-size invariants, and
 `gramNumeratorLoop_exact` packages the result as the finite sum indexed by
 `Fin j`.  Thus the generated numerator is fixed by executable storage; no
 abstract Gram--Schmidt coefficient is selected by the proof.
+
+The analogous norm pass is closed too.  The three
+`gramNormLoop_*` theorems follow the generated checked reads, prove totality
+under the square-storage invariant, and identify the final value with
+`⟨b_i,b_i⟩ - Σ j<i, μ[i,j]^2 B[j]`.  Both scalar inner loops used by C++
+Gram--Schmidt initialization are therefore now concrete finite-sum
+computations.

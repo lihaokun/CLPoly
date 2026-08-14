@@ -184,6 +184,90 @@ theorem gramNumeratorLoop_exact
     getElem!_pos norms index.val
       (lt_of_lt_of_le (lt_trans index.isLt hj) hnorms)]
 
+theorem gramNormLoop_eq_Ico_sum
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i j : Nat) (norm output : QQ)
+    (hrun : Generated.StrictRecombine.gramNormLoop mu norms i j norm =
+      .ok output) :
+    output = norm - ∑ k ∈ Finset.Ico j i,
+      (mu[i]!)[k]! * (mu[i]!)[k]! * norms[k]! := by
+  induction hremaining : i - j using Nat.strong_induction_on
+      generalizing j norm output with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.gramNormLoop] at hrun
+      split at hrun
+      next hj =>
+        split at hrun
+        next hi =>
+          split at hrun
+          next hij =>
+            split at hrun
+            next hn =>
+              have hdecrease : i - (j + 1) < remaining := by omega
+              have htail := ih (i - (j + 1)) hdecrease (j + 1)
+                (norm - mu[i][j] * mu[i][j] * norms[j]) output hrun rfl
+              rw [htail]
+              rw [Finset.sum_eq_sum_Ico_succ_bot hj]
+              simp only [getElem!_pos mu i hi, getElem!_pos mu[i] j hij,
+                getElem!_pos norms j hn]
+              ring
+            next hn => contradiction
+          next hij => contradiction
+        next hi => contradiction
+      next hj =>
+        have hempty : Finset.Ico j i = ∅ := Finset.Ico_eq_empty hj
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [hempty]
+
+theorem gramNormLoop_succeeds
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i j : Nat) (norm : QQ)
+    (hi : i < mu.size)
+    (hmuRows : ∀ row (hrow : row < mu.size), mu[row].size = mu.size)
+    (hnorms : mu.size ≤ norms.size) (hj : j ≤ i) :
+    ∃ output, Generated.StrictRecombine.gramNormLoop mu norms i j norm =
+      .ok output := by
+  induction hremaining : i - j using Nat.strong_induction_on
+      generalizing j norm with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.gramNormLoop]
+      split
+      next hmore =>
+        have hij : j < mu[i].size := by rw [hmuRows i hi]; omega
+        have hn : j < norms.size := lt_of_lt_of_le (by omega) hnorms
+        rw [dif_pos hij, dif_pos hn]
+        have hdecrease : i - (j + 1) < remaining := by omega
+        exact ih (i - (j + 1)) hdecrease (j + 1)
+          (norm - mu[i][j] * mu[i][j] * norms[j]) (by omega) rfl
+      next hmore => exact ⟨norm, rfl⟩
+
+theorem gramNormLoop_exact
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i : Nat) (norm : QQ)
+    (hi : i < mu.size)
+    (hmuRows : ∀ row (hrow : row < mu.size), mu[row].size = mu.size)
+    (hnorms : mu.size ≤ norms.size) :
+    Generated.StrictRecombine.gramNormLoop mu norms i 0 norm =
+      .ok (norm - ∑ k : Fin i,
+        (mu[i][k.val]'(by rw [hmuRows i hi]; exact lt_trans k.isLt hi)) ^ 2 *
+        norms[k.val]'(lt_of_lt_of_le (lt_trans k.isLt hi) hnorms)) := by
+  obtain ⟨output, houtput⟩ := gramNormLoop_succeeds mu norms i 0 norm hi
+    hmuRows hnorms (by omega)
+  have hexact := gramNormLoop_eq_Ico_sum mu norms i 0 norm output houtput
+  rw [houtput, Except.ok.injEq, hexact]
+  congr 1
+  rw [show Finset.Ico 0 i = Finset.range i by ext value; simp]
+  rw [← Fin.sum_univ_eq_sum_range]
+  apply Finset.sum_congr rfl
+  intro index _
+  have hindex : index.val < mu[i].size := by
+    rw [hmuRows i hi]
+    exact lt_trans index.isLt hi
+  simp [pow_two, getElem!_pos mu i hi, getElem!_pos mu[i] index.val hindex,
+    getElem!_pos norms index.val
+      (lt_of_lt_of_le (lt_trans index.isLt hi) hnorms)]
+
 private def positionalCode (base : Nat) : List Nat → Nat
   | [] => 0
   | digit :: rest => digit * base ^ rest.length + positionalCode base rest

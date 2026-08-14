@@ -877,6 +877,47 @@ theorem sizeReduceMuResult_get_of_ne
       exact (getElem!_pos muPrefix row hrowPrefix).symm.trans hprefixRow
     · simp [Array.setIfInBounds, hkPrefix, hprefixRow]
 
+theorem sizeReduceMuResult_size
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source : Nat) (q : ZZ) :
+    (sizeReduceMuResult mu k source q).size = mu.size := by
+  by_cases hq : q = 0
+  · subst q
+    simp [sizeReduceMuResult]
+  · unfold sizeReduceMuResult
+    rw [if_neg hq]
+    simp [reduceMuPrefixArray_size]
+
+theorem sizeReduceMuResult_row_size
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source row : Nat) (q : ZZ)
+    (hrow : row < mu.size) :
+    (sizeReduceMuResult mu k source q)[row]!.size = mu[row]!.size := by
+  by_cases hrowK : row = k
+  · subst row
+    by_cases hq : q = 0
+    · subst q
+      simp [sizeReduceMuResult]
+    · let muPrefix := reduceMuPrefixArray mu k source q source 0
+      have hkPrefix : k < muPrefix.size := by
+        simpa [muPrefix, reduceMuPrefixArray_size] using hrow
+      have hprefixRowSize := reduceMuPrefixArray_row_size
+        mu k source k q source 0 hrow
+      unfold sizeReduceMuResult
+      rw [if_neg hq]
+      change (muPrefix.setIfInBounds k
+        (muPrefix[k]!.setIfInBounds source
+          ((muPrefix[k]!)[source]! - (q : QQ))))[k]!.size = mu[k]!.size
+      simp only [Array.setIfInBounds, dif_pos hkPrefix]
+      rw [getElem!_pos _ k (by simpa using hkPrefix), Array.getElem_set]
+      simp only [if_pos]
+      split
+      next hsource =>
+        simp only [Array.size_set]
+        simpa [muPrefix] using hprefixRowSize
+      next hsource => simpa [muPrefix] using hprefixRowSize
+  · rw [sizeReduceMuResult_get_of_ne mu k source row q hrow hrowK]
+
 theorem sizeReduceAt_preserves_norms_k
     (state output : Generated.StrictRecombine.LLLState) (j : Nat)
     (hrun : Generated.StrictRecombine.sizeReduceAt state j = .ok output) :
@@ -2395,6 +2436,74 @@ theorem basisPrefixMatrix_subtractMatrixRows
       (⟨target, htarget⟩ : Fin rowCount) (⟨source, hsource⟩ : Fin rowCount)
       i column hi (basisPrefixMatrix matrix rowCount matrix.size)
 
+theorem gramPrefixMatrix_subtractMatrixRows
+    (matrix transform outputMatrix outputTransform : Generated.StrictRecombine.LLLMatrix)
+    (target source rowCount : Nat) (coefficient : ZZ)
+    (hrun : Generated.StrictRecombine.subtractMatrixRows matrix transform
+      target source coefficient = .ok (outputMatrix, outputTransform))
+    (htarget : target < rowCount) (hsource : source < rowCount)
+    (hrowCount : rowCount ≤ matrix.size) :
+    gramPrefixMatrix outputMatrix rowCount =
+      Matrix.transvection (⟨target, htarget⟩ : Fin rowCount)
+          (⟨source, hsource⟩ : Fin rowCount) (-coefficient) *
+        gramPrefixMatrix matrix rowCount *
+          (Matrix.transvection (⟨target, htarget⟩ : Fin rowCount)
+            (⟨source, hsource⟩ : Fin rowCount) (-coefficient)).transpose := by
+  have hsize := subtractMatrixRows_matrix_size matrix transform outputMatrix
+    outputTransform target source coefficient hrun
+  rw [gramPrefixMatrix_eq_mul_transpose,
+    gramPrefixMatrix_eq_mul_transpose, hsize]
+  rw [basisPrefixMatrix_subtractMatrixRows matrix transform outputMatrix
+    outputTransform target source rowCount coefficient hrun htarget hsource
+    hrowCount]
+  rw [Matrix.transpose_mul]
+  simp only [Matrix.mul_assoc]
+
+theorem map_transvection_intCast
+    {dimension : Nat} (target source : Fin dimension) (coefficient : ZZ) :
+    (Matrix.transvection target source (-coefficient) :
+        Matrix (Fin dimension) (Fin dimension) Int).map
+          (fun value : Int => (value : QQ)) =
+      Matrix.transvection target source (-(coefficient : QQ)) := by
+  ext row column
+  by_cases hrowColumn : row = column <;>
+    simp [Matrix.transvection, Matrix.single, hrowColumn]
+
+theorem map_mul_intCast_local
+    {dimension : Nat}
+    (left right : Matrix (Fin dimension) (Fin dimension) Int) :
+    (left * right).map (fun value : Int => (value : QQ)) =
+      left.map (fun value : Int => (value : QQ)) *
+        right.map (fun value : Int => (value : QQ)) := by
+  exact Matrix.map_mul (f := Int.castRingHom QQ)
+
+theorem gramPrefixMatrixQQ_subtractMatrixRows
+    (matrix transform outputMatrix outputTransform : Generated.StrictRecombine.LLLMatrix)
+    (target source rowCount : Nat) (coefficient : ZZ)
+    (hrun : Generated.StrictRecombine.subtractMatrixRows matrix transform
+      target source coefficient = .ok (outputMatrix, outputTransform))
+    (htarget : target < rowCount) (hsource : source < rowCount)
+    (hrowCount : rowCount ≤ matrix.size) :
+    gramPrefixMatrixQQ outputMatrix rowCount =
+      Matrix.transvection (⟨target, htarget⟩ : Fin rowCount)
+          (⟨source, hsource⟩ : Fin rowCount) (-(coefficient : QQ)) *
+        gramPrefixMatrixQQ matrix rowCount *
+          (Matrix.transvection (⟨target, htarget⟩ : Fin rowCount)
+            (⟨source, hsource⟩ : Fin rowCount)
+            (-(coefficient : QQ))).transpose := by
+  have hgram := gramPrefixMatrix_subtractMatrixRows matrix transform
+    outputMatrix outputTransform target source rowCount coefficient hrun
+    htarget hsource hrowCount
+  unfold gramPrefixMatrixQQ
+  rw [hgram, map_mul_intCast_local, map_mul_intCast_local]
+  rw [map_transvection_intCast]
+  congr 2
+  ext row column
+  have hmap := map_transvection_intCast
+    (⟨target, htarget⟩ : Fin rowCount)
+    (⟨source, hsource⟩ : Fin rowCount) coefficient
+  exact congrArg (fun matrix => matrix column row) hmap
+
 theorem gramPrefixDet_subtractMatrixRows_preserved
     (matrix transform outputMatrix outputTransform : Generated.StrictRecombine.LLLMatrix)
     (target source rowCount : Nat) (coefficient : ZZ)
@@ -2429,15 +2538,14 @@ theorem gramPrefixDet_subtractMatrixRows_preserved
       hfinNe (-coefficient)]
   simp
 
-theorem gramPrefixDet_subtractMatrixRows_preserved_before
+theorem gramPrefixMatrix_subtractMatrixRows_preserved_before
     (matrix transform outputMatrix outputTransform : Generated.StrictRecombine.LLLMatrix)
     (target source rowCount : Nat) (coefficient : ZZ)
     (hrun : Generated.StrictRecombine.subtractMatrixRows matrix transform
       target source coefficient = .ok (outputMatrix, outputTransform))
     (hrowCount : rowCount ≤ matrix.size) (hbefore : rowCount ≤ target) :
-    Matrix.det (gramPrefixMatrix outputMatrix rowCount) =
-      Matrix.det (gramPrefixMatrix matrix rowCount) := by
-  congr 1
+    gramPrefixMatrix outputMatrix rowCount =
+      gramPrefixMatrix matrix rowCount := by
   funext i j
   unfold gramPrefixMatrix
   have hsize := subtractMatrixRows_matrix_size matrix transform outputMatrix
@@ -2455,6 +2563,74 @@ theorem gramPrefixDet_subtractMatrixRows_preserved_before
   have htargetJ : target ≠ j.val := by omega
   simp [htargetI, htargetJ, getElem!_pos matrix i.val hiMatrix,
     getElem!_pos matrix j.val hjMatrix]
+
+theorem gramPrefixDet_subtractMatrixRows_preserved_before
+    (matrix transform outputMatrix outputTransform : Generated.StrictRecombine.LLLMatrix)
+    (target source rowCount : Nat) (coefficient : ZZ)
+    (hrun : Generated.StrictRecombine.subtractMatrixRows matrix transform
+      target source coefficient = .ok (outputMatrix, outputTransform))
+    (hrowCount : rowCount ≤ matrix.size) (hbefore : rowCount ≤ target) :
+    Matrix.det (gramPrefixMatrix outputMatrix rowCount) =
+      Matrix.det (gramPrefixMatrix matrix rowCount) := by
+  rw [gramPrefixMatrix_subtractMatrixRows_preserved_before matrix transform
+    outputMatrix outputTransform target source rowCount coefficient hrun
+    hrowCount hbefore]
+
+theorem concreteGramSchmidt_subtractMatrixRows
+    (state : Generated.StrictRecombine.LLLState)
+    (outputMatrix outputTransform : Generated.StrictRecombine.LLLMatrix)
+    (source : Nat) (coefficient : ZZ)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hsourceK : source < state.k)
+    (hrun : Generated.StrictRecombine.subtractMatrixRows
+      state.matrix state.transform state.k source coefficient =
+        .ok (outputMatrix, outputTransform)) :
+    ConcreteGramSchmidt
+      { state with
+        matrix := outputMatrix
+        transform := outputTransform
+        mu := sizeReduceMuResult state.mu state.k source coefficient } := by
+  intro rowCount hrowCountOutput
+  have hmatrixSize := subtractMatrixRows_matrix_size state.matrix
+    state.transform outputMatrix outputTransform state.k source coefficient hrun
+  have hrowCount : rowCount ≤ state.matrix.size := by
+    simpa [hmatrixSize] using hrowCountOutput
+  have hkMatrix : state.k < state.matrix.size := by
+    rcases subtractMatrixRows_ok state.matrix state.transform outputMatrix
+      outputTransform state.k source coefficient hrun with
+      ⟨hk, hsource, htargetTransform, hsourceTransform, hmatrix, htransform⟩
+    exact hk
+  change gramPrefixMatrixQQ outputMatrix rowCount =
+    gsLowerPrefix { state with
+        mu := sizeReduceMuResult state.mu state.k source coefficient }
+        rowCount *
+      gsNormDiagonal state rowCount *
+        (gsLowerPrefix { state with
+          mu := sizeReduceMuResult state.mu state.k source coefficient }
+          rowCount).transpose
+  by_cases hbefore : rowCount ≤ state.k
+  · have hgram := gramPrefixMatrix_subtractMatrixRows_preserved_before
+      state.matrix state.transform outputMatrix outputTransform state.k source
+      rowCount coefficient hrun hrowCount hbefore
+    have hlower := gsLowerPrefix_sizeReduceMuResult_before state source
+      rowCount coefficient hvalid hbefore hkMatrix.le
+    have hfactor := hvalid.gram_schmidt rowCount hrowCount
+    unfold gramPrefixMatrixQQ
+    rw [hgram]
+    change gramPrefixMatrixQQ state.matrix rowCount = _
+    rw [hlower]
+    exact hfactor
+  · have hkCount : state.k < rowCount := by omega
+    have hsourceCount : source < rowCount := lt_trans hsourceK hkCount
+    have hgram := gramPrefixMatrixQQ_subtractMatrixRows state.matrix
+      state.transform outputMatrix outputTransform state.k source rowCount
+      coefficient hrun hkCount hsourceCount hrowCount
+    have hlower := gsLowerPrefix_sizeReduceMuResult state source rowCount
+      coefficient hvalid hsourceK hkCount hrowCount
+    have hfactor := hvalid.gram_schmidt rowCount hrowCount
+    rw [hgram, hlower, hfactor]
+    rw [Matrix.transpose_mul]
+    simp only [Matrix.mul_assoc]
 
 theorem sizeReduceAt_preserves_valid
     (state output : Generated.StrictRecombine.LLLState) (j : Nat)
@@ -2550,6 +2726,118 @@ theorem sizeReduceAt_preserves_valid
     next hjMu => contradiction
   next hkMu => contradiction
 
+theorem sizeReduceAt_preserves_execution_valid
+    (state output : Generated.StrictRecombine.LLLState) (source : Nat)
+    (hvalid : ConcreteLLLExecutionValid state) (hsourceK : source < state.k)
+    (hrun : Generated.StrictRecombine.sizeReduceAt state source = .ok output) :
+    ConcreteLLLExecutionValid output := by
+  have hbasic := sizeReduceAt_preserves_valid state output source
+    hvalid.toConcreteLLLValid hsourceK hrun
+  rcases sizeReduceAt_mu_eq state output source hvalid hsourceK hrun with
+    ⟨coefficient, hround, hmuOutput⟩
+  refine {
+    norms_size := hbasic.norms_size
+    mu_size := ?_
+    rows_square := hbasic.rows_square
+    mu_rows_square := ?_
+    norms_positive := hbasic.norms_positive
+    gram_schmidt := ?_ }
+  · rw [hmuOutput, sizeReduceMuResult_size]
+    exact hvalid.mu_size.trans (by
+      rw [← hbasic.norms_size, ← hvalid.norms_size]
+      exact congrArg Array.size (sizeReduceAt_preserves_norms_k
+        state output source hrun).1.symm)
+  · intro row hrow
+    have hrowState : row < state.mu.size := by
+      rw [hmuOutput, sizeReduceMuResult_size] at hrow
+      exact hrow
+    rw [← getElem!_pos output.mu row hrow, hmuOutput]
+    rw [sizeReduceMuResult_row_size state.mu state.k source row coefficient
+      hrowState]
+    rw [getElem!_pos state.mu row hrowState]
+    rw [hvalid.mu_rows_square row hrowState]
+    have hmatrixSize : output.matrix.size = state.matrix.size := by
+      calc
+        output.matrix.size = output.norms.size := hbasic.norms_size.symm
+        _ = state.norms.size := congrArg Array.size
+          (sizeReduceAt_preserves_norms_k state output source hrun).1
+        _ = state.matrix.size := hvalid.norms_size
+    exact hmatrixSize.symm
+  · have hrun' := hrun
+    unfold Generated.StrictRecombine.sizeReduceAt at hrun'
+    split at hrun'
+    next hk =>
+      split at hrun'
+      next hsource =>
+        cases hroundCase : Generated.StrictRecombine.roundQQ
+            state.mu[state.k][source] with
+        | error fault => simp [hroundCase] at hrun'
+        | ok q =>
+          simp only [hroundCase] at hrun'
+          split at hrun'
+          next hzero =>
+            have hout := Except.ok.inj hrun'
+            subst output
+            exact hvalid.gram_schmidt
+          next hnonzero =>
+            cases hsubtract : Generated.StrictRecombine.subtractMatrixRows
+                state.matrix state.transform state.k source q with
+            | error fault => simp [hsubtract] at hrun'
+            | ok matrices =>
+              rcases matrices with ⟨matrix', transform'⟩
+              simp only [hsubtract] at hrun'
+              cases hmu : Generated.StrictRecombine.reduceMuPrefixLoop
+                  state.mu state.k source q source 0 with
+              | error fault => simp [hmu] at hrun'
+              | ok mu' =>
+                simp only [hmu] at hrun'
+                split at hrun'
+                next hk' =>
+                  split at hrun'
+                  next hsource' =>
+                    have hout := Except.ok.inj hrun'
+                    subst output
+                    have hsourceMu : source < state.mu.size := by omega
+                    have hlimitK : source ≤ state.mu[state.k].size := by
+                      rw [hvalid.mu_rows_square state.k hk]
+                      rw [← hvalid.mu_size]
+                      omega
+                    have hlimitSource : source ≤ state.mu[source].size := by
+                      rw [hvalid.mu_rows_square source hsourceMu]
+                      rw [← hvalid.mu_size]
+                      omega
+                    have hmuExact := reduceMuPrefixLoop_output_eq state.mu mu'
+                      state.k source q source 0 hk hsourceMu hlimitK
+                      hlimitSource (by omega) hmu
+                    subst mu'
+                    change ConcreteGramSchmidt
+                      { state with
+                        matrix := matrix'
+                        transform := transform'
+                        mu := ((reduceMuPrefixArray state.mu state.k source q
+                          source 0).set state.k
+                          ((reduceMuPrefixArray state.mu state.k source q
+                            source 0)[state.k].set source
+                            ((reduceMuPrefixArray state.mu state.k source q
+                              source 0)[state.k][source] - (q : QQ)))) }
+                    have hmuFinal :
+                        ((reduceMuPrefixArray state.mu state.k source q source 0).set
+                          state.k
+                          ((reduceMuPrefixArray state.mu state.k source q source 0)[state.k].set
+                            source
+                            ((reduceMuPrefixArray state.mu state.k source q source 0)[state.k][source] -
+                              (q : QQ)))) =
+                          sizeReduceMuResult state.mu state.k source q := by
+                      simp [sizeReduceMuResult, hnonzero, Array.setIfInBounds,
+                        hk', hsource']
+                    rw [hmuFinal]
+                    exact concreteGramSchmidt_subtractMatrixRows state matrix'
+                      transform' source q hvalid hsourceK hsubtract
+                  next hsource' => contradiction
+                next hk' => contradiction
+      next hsource => contradiction
+    next hk => contradiction
+
 theorem extraSizeReduceLoop_preserves_valid
     (remaining : Nat) (state output : Generated.StrictRecombine.LLLState)
     (hvalid : ConcreteLLLValid state) (hremaining : remaining < state.k)
@@ -2572,6 +2860,28 @@ theorem extraSizeReduceLoop_preserves_valid
         have hcontrol := sizeReduceAt_preserves_norms_k state next remaining hstep
         exact ih next output hnextValid (by rw [hcontrol.2]; omega)
           hrun
+
+theorem extraSizeReduceLoop_preserves_execution_valid
+    (remaining : Nat) (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state) (hremaining : remaining < state.k)
+    (hrun : Generated.StrictRecombine.extraSizeReduceLoop remaining state =
+      .ok output) :
+    ConcreteLLLExecutionValid output := by
+  induction remaining generalizing state output with
+  | zero =>
+      simp [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      subst output
+      exact hvalid
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      cases hstep : Generated.StrictRecombine.sizeReduceAt state remaining with
+      | error fault => simp [hstep] at hrun
+      | ok next =>
+        simp only [hstep] at hrun
+        have hnextValid := sizeReduceAt_preserves_execution_valid state next
+          remaining hvalid (by omega) hstep
+        have hcontrol := sizeReduceAt_preserves_norms_k state next remaining hstep
+        exact ih next output hnextValid (by rw [hcontrol.2]; omega) hrun
 
 theorem lllStep_advanced_preserves_valid
     (state output : Generated.StrictRecombine.LLLState)
@@ -2612,6 +2922,61 @@ theorem lllStep_advanced_preserves_valid
                     have hfullyValid := extraSizeReduceLoop_preserves_valid
                       (reduced.k - 1) reduced fullyReduced hreducedValid
                       (by omega) hextra
+                    have hout := Except.ok.inj hrun
+                    injection hout with hstate
+                    subst output
+                    exact hfullyValid.withK (fullyReduced.k + 1)
+                next hlovasz =>
+                  repeat' first | split at hrun | simp_all
+              next hpredMu => contradiction
+            next hkMu => contradiction
+          next hpredNorm => contradiction
+        next hkNorm => contradiction
+    · rw [dif_neg hkMatrix] at hrun
+      contradiction
+  · rw [dif_neg hkPositive] at hrun
+    contradiction
+
+theorem lllStep_advanced_preserves_execution_valid
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    ConcreteLLLExecutionValid output := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hreducedValid := sizeReduceAt_preserves_execution_valid state
+          reduced (state.k - 1) hvalid (by omega) hreduce
+        have hcontrol := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        split at hrun
+        next hkNorm =>
+          split at hrun
+          next hpredNorm =>
+            split at hrun
+            next hkMu =>
+              split at hrun
+              next hpredMu =>
+                dsimp at hrun
+                split at hrun
+                next hlovasz =>
+                  cases hextra : Generated.StrictRecombine.extraSizeReduceLoop
+                      (reduced.k - 1) reduced with
+                  | error fault => simp [hextra] at hrun
+                  | ok fullyReduced =>
+                    simp only [hextra] at hrun
+                    have hfullyValid :=
+                      extraSizeReduceLoop_preserves_execution_valid
+                        (reduced.k - 1) reduced fullyReduced hreducedValid
+                        (by omega) hextra
                     have hout := Except.ok.inj hrun
                     injection hout with hstate
                     subst output

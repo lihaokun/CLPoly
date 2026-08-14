@@ -15,6 +15,12 @@ Lifted those array results to the finite-matrix identity
 same transvection used by the actual integer basis-row subtraction.  Prefixes
 before row `k` are proved unchanged.
 
+Completed the corresponding Gram identity `G' = E * G * Eᵀ`, including
+the integer-to-rational matrix cast.  Combining it with `L' = E * L` proves
+that the full concrete `G = L D Lᵀ` execution invariant is preserved by
+`sizeReduceAt`, the descending `extraSizeReduceLoop`, and the advanced branch
+of the generated `lllStep`.
+
 ## Why
 
 The generated LLL loop may be used in a well-founded recursion only after the

@@ -268,6 +268,84 @@ theorem gramNormLoop_exact
     getElem!_pos norms index.val
       (lt_of_lt_of_le (lt_trans index.isLt hi) hnorms)]
 
+/-- Array-shape invariant carried by the generated Gram--Schmidt
+initialization loops. -/
+structure GramStorageShape (mu : Generated.StrictRecombine.QQMatrix)
+    (norms : Array QQ) (size : Nat) : Prop where
+  mu_size : mu.size = size
+  mu_rows : ∀ row (hrow : row < mu.size), mu[row].size = size
+  norms_size : norms.size = size
+
+theorem GramStorageShape.setMu
+    {mu : Generated.StrictRecombine.QQMatrix} {norms : Array QQ} {size : Nat}
+    (hshape : GramStorageShape mu norms size)
+    (row column : Nat) (value : QQ)
+    (hrow : row < mu.size) (hcolumn : column < mu[row].size) :
+    GramStorageShape (mu.set row (mu[row].set column value)) norms size := by
+  refine ⟨by simp [hshape.mu_size], ?_, hshape.norms_size⟩
+  intro other hother
+  by_cases heq : other = row
+  · subst other
+    simp [hshape.mu_rows row hrow]
+  · have hotherOld : other < mu.size := by simpa using hother
+    rw [Array.getElem_set_ne hrow hotherOld (Ne.symm heq)]
+    exact hshape.mu_rows other hotherOld
+
+theorem gramMuRowLoop_succeeds
+    (matrix : Generated.StrictRecombine.LLLMatrix) (i j size : Nat)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (hmatrixSize : matrix.size = size)
+    (hmatrixRows : ∀ row (hrow : row < matrix.size),
+      matrix[row].size = size)
+    (hshape : GramStorageShape mu norms size)
+    (hi : i < size) (hj : j ≤ i) :
+    ∃ output,
+      Generated.StrictRecombine.gramMuRowLoop matrix i j mu norms = .ok output ∧
+      GramStorageShape output.1 output.2 size ∧ output.2 = norms := by
+  induction hremaining : i - j using Nat.strong_induction_on
+      generalizing j mu norms with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.gramMuRowLoop]
+      split
+      next hmore =>
+        have hiM : i < matrix.size := by omega
+        have hjM : j < matrix.size := by omega
+        rw [dif_pos hiM, dif_pos hjM]
+        have hrowI : matrix[i].size = size := hmatrixRows i hiM
+        have hrowJ : matrix[j].size = size := hmatrixRows j hjM
+        have hdotSize : matrix[i].size ≤ matrix[j].size := by
+          rw [hrowI, hrowJ]
+        rw [dotRows_eq_fin_sum matrix[i] matrix[j] hdotSize]
+        have hiMu : i < mu.size := by rw [hshape.mu_size]; exact hi
+        have hjMu : j < mu.size := by rw [hshape.mu_size]; omega
+        have hmuRows : ∀ row (hrow : row < mu.size),
+            mu[row].size = mu.size := by
+          intro row hrow
+          rw [hshape.mu_rows row hrow, hshape.mu_size]
+        have hnorms : mu.size ≤ norms.size := by
+          rw [hshape.mu_size, hshape.norms_size]
+        obtain ⟨numerator, hnumerator⟩ := gramNumeratorLoop_succeeds mu norms
+          i j 0 ((∑ k : Fin matrix[i].size,
+            matrix[i][k.val] * matrix[j][k.val] : ZZ) : QQ)
+          hiMu hjMu hmuRows hnorms (by omega)
+        simp only [hnumerator]
+        have hjMuRow : j < mu[i].size := by
+          rw [hshape.mu_rows i hiMu]
+          omega
+        have hjNorm : j < norms.size := by omega
+        rw [dif_pos hiMu, dif_pos hjMuRow, dif_pos hjNorm]
+        let coefficient := if norms[j] = 0 then 0 else numerator / norms[j]
+        let mu' := mu.set i (mu[i].set j coefficient)
+        have hshape' : GramStorageShape mu' norms size :=
+          hshape.setMu i j coefficient hiMu hjMuRow
+        have hdecrease : i - (j + 1) < remaining := by omega
+        obtain ⟨output, hrun, houtShape, houtNorms⟩ :=
+          ih (i - (j + 1)) hdecrease (j + 1) mu' norms hshape'
+            (by omega) rfl
+        exact ⟨output, hrun, houtShape, houtNorms⟩
+      next hmore =>
+        exact ⟨(mu, norms), rfl, hshape, rfl⟩
+
 private def positionalCode (base : Nat) : List Nat → Nat
   | [] => 0
   | digit :: rest => digit * base ^ rest.length + positionalCode base rest
@@ -2381,7 +2459,10 @@ theorem ConcreteLLLExecutionValid.toInputValid
     unfold prefixNormProduct
     apply Finset.prod_pos
     intro index _
-    exact hvalid.norms_positive index.val (by simpa [hvalid.norms_size] using index.isLt)
+    have hindex : index.val < state.norms.size := by
+      simpa [hvalid.norms_size] using index.isLt
+    simpa [getElem!_pos state.norms index.val hindex] using
+      hvalid.norms_positive index.val hindex
   linarith
 
 theorem ConcreteLLLExecutionValid.toConcreteLLLValid

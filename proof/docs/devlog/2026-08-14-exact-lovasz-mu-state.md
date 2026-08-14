@@ -128,3 +128,12 @@ under the square-storage invariant, and identify the final value with
 `⟨b_i,b_i⟩ - Σ j<i, μ[i,j]^2 B[j]`.  Both scalar inner loops used by C++
 Gram--Schmidt initialization are therefore now concrete finite-sum
 computations.
+
+`GramStorageShape` now records the exact square μ-array and norm-array sizes
+used by the generated outer loops, and `GramStorageShape.setMu` proves that the
+source's nested `Array.set` preserves them.  Using the already proved dot and
+numerator executions, `gramMuRowLoop_succeeds` follows every branch of the
+actual `j < i` loop, proves it cannot fault on a square lattice, and shows that
+the returned norm array is unchanged while the μ storage remains square.  The
+next refinement step strengthens this execution theorem with the lookup
+formula for every coefficient written in row `i`.

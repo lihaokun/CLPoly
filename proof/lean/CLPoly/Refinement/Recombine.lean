@@ -70,7 +70,7 @@ theorem resetCombinationSuffix_getElem_le (indices : Array Nat)
   split
   next hposition =>
     rw [resetCombinationSuffix_getElem_le
-      (indices.set (pivot + 1 + offset) (indices[pivot] + 1)) pivot
+      (indices.set (pivot + 1 + offset) (indices[pivot + offset] + 1)) pivot
       (offset + 1) index (by simpa using hindex) hle]
     have hne : index ≠ pivot + 1 + offset := by omega
     rw [getElem!_pos _ index (by simpa using hindex),

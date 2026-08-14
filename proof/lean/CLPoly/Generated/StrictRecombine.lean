@@ -148,7 +148,8 @@ def resetCombinationSuffix (indices : Array Nat) (pivot offset : Nat) :
   let position := pivot + 1 + offset
   if hposition : position < indices.size then
     resetCombinationSuffix
-      (indices.set position (indices[pivot]'(by omega) + 1)) pivot (offset + 1)
+      (indices.set position (indices[pivot + offset]'(by omega) + 1))
+      pivot (offset + 1)
   else indices
 termination_by indices.size - (pivot + 1 + offset)
 decreasing_by simp only [Array.size_set]; omega

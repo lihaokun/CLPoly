@@ -20,6 +20,75 @@ open CLPoly.Math
 
 namespace Refinement.StrictRecombine
 
+theorem dotRowsLoop_eq_Ico_sum (left right : Array ZZ)
+    (index : Nat) (acc output : ZZ)
+    (hrun : Generated.StrictRecombine.dotRowsLoop left right index acc =
+      .ok output) :
+    output = acc + ∑ k ∈ Finset.Ico index left.size, left[k]! * right[k]! := by
+  induction hremaining : left.size - index using Nat.strong_induction_on
+      generalizing index acc output with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.dotRowsLoop] at hrun
+      split at hrun
+      next hindex =>
+        split at hrun
+        next hrightIndex =>
+          have hdecrease : left.size - (index + 1) < remaining := by omega
+          have htail := ih (left.size - (index + 1)) hdecrease (index + 1)
+            (acc + left[index] * right[index]) output hrun rfl
+          rw [htail]
+          rw [Finset.sum_eq_sum_Ico_succ_bot (by omega : index < left.size)]
+          simp only [getElem!_pos left index hindex,
+            getElem!_pos right index hrightIndex]
+          ring
+        next hrightIndex => contradiction
+      next hindex =>
+        have hempty : Finset.Ico index left.size = ∅ := by
+          exact Finset.Ico_eq_empty hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [hempty]
+
+theorem dotRows_eq_fin_sum (left right : Array ZZ)
+    (hright : left.size ≤ right.size) :
+    Generated.StrictRecombine.dotRows left right =
+      .ok (∑ k : Fin left.size, left[k.val] * right[k.val]) := by
+  unfold Generated.StrictRecombine.dotRows
+  have hsucceeds : ∃ output,
+      Generated.StrictRecombine.dotRowsLoop left right 0 0 = .ok output := by
+    have hloop : ∀ index acc, index ≤ left.size →
+        ∃ output, Generated.StrictRecombine.dotRowsLoop left right index acc =
+          .ok output := by
+      intro index acc hindex
+      induction hremaining : left.size - index using Nat.strong_induction_on
+          generalizing index acc with
+      | h remaining ih =>
+          rw [Generated.StrictRecombine.dotRowsLoop]
+          split
+          next hmore =>
+            split
+            next hrightIndex =>
+              have hdecrease : left.size - (index + 1) < remaining := by omega
+              exact ih (left.size - (index + 1)) hdecrease (index + 1)
+                (acc + left[index] * right[index]) (by omega) rfl
+            next hrightIndex => omega
+          next hmore => exact ⟨acc, rfl⟩
+    exact hloop 0 0 (by omega)
+  obtain ⟨output, houtput⟩ := hsucceeds
+  have hrun := dotRowsLoop_eq_Ico_sum left right 0 0 output houtput
+  rw [houtput, Except.ok.injEq]
+  rw [hrun]
+  congr 1
+  simp only [zero_add]
+  rw [show Finset.Ico 0 left.size = Finset.range left.size by
+    ext value
+    simp]
+  rw [← Fin.sum_univ_eq_sum_range]
+  apply Finset.sum_congr rfl
+  intro index _
+  simp [getElem!_pos left index.val index.isLt,
+    getElem!_pos right index.val (lt_of_lt_of_le index.isLt hright)]
+
 private def positionalCode (base : Nat) : List Nat → Nat
   | [] => 0
   | digit :: rest => digit * base ^ rest.length + positionalCode base rest

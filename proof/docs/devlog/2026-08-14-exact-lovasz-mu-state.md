@@ -104,3 +104,11 @@ the next C++ call reinitializes Gram--Schmidt.  `concreteLLLExecution` now
 instantiates the generated wrapper modulo one sharply isolated theorem,
 `LLLInitializationCorrect`, asserting correctness of the concrete generated
 initialization loops on a square full-rank basis.
+
+The initialization proof has now entered the generated code at its innermost
+operation.  `dotRowsLoop_eq_Ico_sum` follows every checked array read of the
+well-founded C++ dot-product loop and identifies its accumulator with the
+remaining interval sum.  `dotRows_eq_fin_sum` also proves that the loop cannot
+fault when the right row is at least as long as the left row and returns the
+exact finite inner product used by the Gram matrix.  This removes the first raw
+execution boundary needed by the μ-row and norm initialization invariants.

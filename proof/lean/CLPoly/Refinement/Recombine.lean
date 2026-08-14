@@ -1234,8 +1234,11 @@ which the determinant field is derived. -/
 structure ConcreteLLLExecutionValid
     (state : Generated.StrictRecombine.LLLState) : Prop where
   norms_size : state.norms.size = state.matrix.size
+  mu_size : state.mu.size = state.matrix.size
   rows_square : ∀ row (hrow : row < state.matrix.size),
     state.matrix[row].size = state.matrix.size
+  mu_rows_square : ∀ row (hrow : row < state.mu.size),
+    state.mu[row].size = state.matrix.size
   norms_positive : ∀ index (hindex : index < state.norms.size),
     0 < state.norms[index]
   gram_schmidt : ConcreteGramSchmidt state
@@ -1253,7 +1256,9 @@ theorem ConcreteLLLExecutionValid.withK
     (hvalid : ConcreteLLLExecutionValid state) (k : Nat) :
     ConcreteLLLExecutionValid { state with k := k } where
   norms_size := hvalid.norms_size
+  mu_size := hvalid.mu_size
   rows_square := hvalid.rows_square
+  mu_rows_square := hvalid.mu_rows_square
   norms_positive := hvalid.norms_positive
   gram_schmidt := by
     intro rowCount hrowCount

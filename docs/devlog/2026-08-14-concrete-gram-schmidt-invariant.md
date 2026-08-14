@@ -20,6 +20,11 @@ the older determinant-validity view through
 `toConcreteLLLValid`.  Changing only the loop index is proved to preserve this
 full invariant.
 
+The execution invariant now also records that the generated `mu` storage is
+exactly square with the basis dimension.  This reflects `zeroQQMatrix size
+size` in `initializeLLL` and supplies every source bound needed by the concrete
+size-reduction loop; no bounds are inferred from an abstract successful result.
+
 ## Why
 
 Prefix determinants alone do not determine the boundary prefix created by an

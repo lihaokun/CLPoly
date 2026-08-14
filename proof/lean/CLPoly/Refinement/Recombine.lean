@@ -4373,6 +4373,97 @@ theorem concreteGramSchmidt_lovaszSwap
       exact concreteGramSchmidt_lovaszSwap_at_boundary state swappedMatrix k
         muNew hvalid hkPositive hkMatrix hswap hmuNew
 
+theorem lovaszSwapMuResult_row_size
+    (mu : Generated.StrictRecombine.QQMatrix) (k row : Nat)
+    (muOld muNew : QQ) (hkPositive : 0 < k) (hk : k < mu.size)
+    (hrow : row < mu.size)
+    (hrowsSquare : ∀ index (hindex : index < mu.size),
+      mu[index]!.size = mu.size) :
+    (lovaszSwapMuResult mu k muOld muNew)[row]!.size = mu.size := by
+  rw [lovaszSwapMuResult_get mu k row muOld muNew hkPositive hk hrow]
+  by_cases hrowK : row = k
+  · subst row
+    simp only [if_pos]
+    simp [hrowsSquare (k - 1) (by omega)]
+  · rw [if_neg hrowK]
+    by_cases hrowPred : row = k - 1
+    · rw [if_pos hrowPred]
+      exact hrowsSquare k hk
+    · rw [if_neg hrowPred]
+      by_cases hafter : k < row
+      · rw [if_pos hafter, updateMuAfterSwapRow_size]
+        exact hrowsSquare row hrow
+      · rw [if_neg hafter]
+        exact hrowsSquare row hrow
+
+theorem concreteLLLExecutionValid_lovaszSwap
+    (state : Generated.StrictRecombine.LLLState)
+    (swappedMatrix : Generated.StrictRecombine.LLLMatrix)
+    (k : Nat) (muNew : QQ)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hkPositive : 0 < k) (hkMatrix : k < state.matrix.size)
+    (hswap : Generated.StrictRecombine.swapMatrixRows state.matrix k (k - 1) =
+      .ok swappedMatrix)
+    (hmuNew : muNew =
+      ((state.mu[k]!)[k - 1]!) * state.norms[k - 1]! /
+        (state.norms[k]! + ((state.mu[k]!)[k - 1]!) *
+          ((state.mu[k]!)[k - 1]!) * state.norms[k - 1]!)) :
+    ConcreteLLLExecutionValid
+      { state with
+        matrix := swappedMatrix
+        mu := lovaszSwapMuResult state.mu k
+          ((state.mu[k]!)[k - 1]!) muNew
+        norms := Generated.StrictRecombine.normsAfterLovaszSwap
+          state.norms k ((state.mu[k]!)[k - 1]!) } := by
+  have hsize := swapMatrixRows_size state.matrix swappedMatrix k (k - 1) hswap
+  have hkNorm : k < state.norms.size := by simpa [hvalid.norms_size] using hkMatrix
+  have hpredNorm : k - 1 < state.norms.size := by omega
+  have hkMu : k < state.mu.size := by simpa [hvalid.mu_size] using hkMatrix
+  have hmuRows : ∀ index (hindex : index < state.mu.size),
+      state.mu[index]!.size = state.mu.size := by
+    intro index hindex
+    rw [getElem!_pos state.mu index hindex]
+    rw [hvalid.mu_rows_square index (by simpa [hvalid.mu_size] using hindex)]
+    exact hvalid.mu_size.symm
+  constructor
+  · rw [normsAfterLovaszSwap_size, hvalid.norms_size, hsize]
+  · rw [lovaszSwapMuResult_size, hvalid.mu_size, hsize]
+  · intro row hrow
+    change row < swappedMatrix.size at hrow
+    have hrowOld : row < state.matrix.size := by simpa [hsize] using hrow
+    have hget := swapMatrixRows_get state.matrix swappedMatrix k (k - 1)
+      row hswap hrowOld
+    rw [hget, hsize]
+    split
+    next hright =>
+      simpa only [getElem!_pos state.matrix k hkMatrix] using
+        hvalid.rows_square k hkMatrix
+    next hright =>
+      split
+      next hleft =>
+        have hpredMatrix : k - 1 < state.matrix.size := by omega
+        simpa only [getElem!_pos state.matrix (k - 1) hpredMatrix] using
+          hvalid.rows_square (k - 1) hpredMatrix
+      next hleft => exact hvalid.rows_square row hrowOld
+  · intro row hrow
+    change row < (lovaszSwapMuResult state.mu k
+      ((state.mu[k]!)[k - 1]!) muNew).size at hrow
+    have hrowOld : row < state.mu.size := by
+      simpa [lovaszSwapMuResult_size] using hrow
+    rw [show (lovaszSwapMuResult state.mu k
+        ((state.mu[k]!)[k - 1]!) muNew)[row] =
+      (lovaszSwapMuResult state.mu k
+        ((state.mu[k]!)[k - 1]!) muNew)[row]! by
+          rw [getElem!_pos _ row hrow]]
+    rw [lovaszSwapMuResult_row_size state.mu k row
+      ((state.mu[k]!)[k - 1]!) muNew hkPositive hkMu hrowOld hmuRows]
+    exact hvalid.mu_size.trans hsize.symm
+  · exact normsAfterLovaszSwap_positive state.norms k
+      ((state.mu[k]!)[k - 1]!) hkNorm hpredNorm hkPositive
+      hvalid.norms_positive
+  · exact concreteGramSchmidt_lovaszSwap state swappedMatrix k muNew hvalid
+      hkPositive hkMatrix hswap hmuNew
+
 theorem gramPrefixDet_swap_preserved_of_before
     (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)
     (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =

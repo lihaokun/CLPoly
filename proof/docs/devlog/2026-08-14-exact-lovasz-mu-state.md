@@ -51,3 +51,9 @@ contains the new row `k - 1` but not row `k` is obtained by restricting the
 proved `(k + 1)`-dimensional factorization and eliminating the final triangular
 summand.  `concreteGramSchmidt_lovaszSwap` combines these cases into the full
 executable Gram--Schmidt invariant for the exact generated swap state.
+
+Finally, `concreteLLLExecutionValid_lovaszSwap` lifts this matrix identity to
+the complete executable invariant: the swapped integer matrix remains square,
+the exact generated μ array remains square with the same dimension, the
+generated norm array keeps its size and strict positivity, and every prefix
+retains the concrete Gram--Schmidt factorization.

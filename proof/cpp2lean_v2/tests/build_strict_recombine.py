@@ -733,6 +733,85 @@ def initializeLLL (matrix : LLLMatrix) :
           (fun state => (state.1, state.2, transform))
   else .error .assertionFailure
 
+structure LLLState where
+  matrix : LLLMatrix
+  transform : LLLMatrix
+  mu : QQMatrix
+  norms : Array QQ
+  k : Nat
+
+/-- Update `mu[k][l] -= q * mu[source][l]` for `l < limit`. -/
+def reduceMuPrefixLoop (mu : QQMatrix) (k source : Nat) (q : ZZ)
+    (limit index : Nat) : RawExec QQMatrix :=
+  if hindex : index < limit then
+    if hk : k < mu.size then
+      if hs : source < mu.size then
+        if hki : index < mu[k].size then
+          if hsi : index < mu[source].size then
+            let value := mu[k][index] - (q : QQ) * mu[source][index]
+            reduceMuPrefixLoop (mu.set k (mu[k].set index value))
+              k source q limit (index + 1)
+          else .error (.outOfBounds index mu[source].size)
+        else .error (.outOfBounds index mu[k].size)
+      else .error (.outOfBounds source mu.size)
+    else .error (.outOfBounds k mu.size)
+  else .ok mu
+termination_by limit - index
+decreasing_by omega
+
+/-- One concrete C++ size-reduction at row `k` against row `j`. -/
+def sizeReduceAt (state : LLLState) (j : Nat) : RawExec LLLState :=
+  if hk : state.k < state.mu.size then
+    if hj : j < state.mu[state.k].size then
+      match roundQQ state.mu[state.k][j] with
+      | .error fault => .error fault
+      | .ok q =>
+        if hzero : q = 0 then .ok state
+        else
+          match subtractMatrixRows state.matrix state.transform state.k j q with
+          | .error fault => .error fault
+          | .ok (matrix', transform') =>
+            match reduceMuPrefixLoop state.mu state.k j q j 0 with
+            | .error fault => .error fault
+            | .ok mu' =>
+              if hk' : state.k < mu'.size then
+                if hj' : j < mu'[state.k].size then
+                  .ok (LLLState.mk matrix' transform'
+                    (mu'.set state.k
+                      (mu'[state.k].set j (mu'[state.k][j] - (q : QQ))))
+                    state.norms state.k)
+                else .error (.outOfBounds j mu'[state.k].size)
+              else .error (.outOfBounds state.k mu'.size)
+    else .error (.outOfBounds j state.mu[state.k].size)
+  else .error (.outOfBounds state.k state.mu.size)
+
+/-- Descending source loop `j = k-2 .. 0` after a successful Lovász test. -/
+def extraSizeReduceLoop : Nat → LLLState → RawExec LLLState
+  | 0, state => .ok state
+  | remaining + 1, state =>
+      match sizeReduceAt state remaining with
+      | .error fault => .error fault
+      | .ok state' => extraSizeReduceLoop remaining state'
+termination_by remaining _ => remaining
+
+/-- Correct `mu[j][k]` and `mu[j][k-1]` for every row below a swapped pair. -/
+def updateMuAfterSwapLoop (mu : QQMatrix) (k : Nat) (muOld muNew : QQ)
+    (row : Nat) : RawExec QQMatrix :=
+  if hrow : row < mu.size then
+    if hk : k < mu[row].size then
+      if hpred : k - 1 < mu[row].size then
+        let oldAtK := mu[row][k]
+        let newAtK := mu[row][k - 1] - muOld * oldAtK
+        let updated := mu[row].set k newAtK
+        let updated := updated.set (k - 1) (oldAtK + muNew * newAtK)
+          (by rw [Array.size_set]; exact hpred)
+        updateMuAfterSwapLoop (mu.set row updated) k muOld muNew (row + 1)
+      else .error (.outOfBounds (k - 1) mu[row].size)
+    else .error (.outOfBounds k mu[row].size)
+  else .ok mu
+termination_by mu.size - row
+decreasing_by simp only [Array.size_set]; omega
+
 def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
   if hindex : index < input.size then
     contentLoop input (index + 1) (Nat.gcd acc input[index].2.natAbs)

@@ -295,3 +295,28 @@ the generated execution, not by an assumed Gram--Schmidt result.
 - Lean 新增/修改行数：约 205 行
 - 对应 C++ 行数：约 11 行完整 `j < i` μ-row 循环
 - 下一步：证明实际 `gramNormLoop` 写入闭合 `(i,i)` 对角方程，并将整行方程组装为 `G = L D L^T`
+
+## Generated diagonal norm equation
+
+The diagonal computation is now identified with the actual generated
+`gramNormLoop`.  `gramNormLoop_closes_diagonal` starts from the concrete
+integer self-dot product returned by `dotRows`, applies the exact
+well-founded norm-loop theorem, and reconciles every bounded regular source
+read with the total reads used by the semantic invariant.  Its conclusion is
+the exact diagonal LDL equation
+
+`dot(b_i,b_i) = Σ k<i, mu[i,k]^2 * norm[k] + norm[i]`.
+
+No positivity or Gram--Schmidt output is assumed by this equation.  The proof
+only identifies the scalar returned by the generated subtraction loop.
+`gsLowerNormMul_apply` additionally exposes every entry of the stored
+`L * D * L^T` product as the corresponding finite sum, preparing the next
+matrix-extensional row-extension proof.
+
+## 度量（generated diagonal）
+
+- 耗时：约 0.75 小时（norm-loop 反演、数组读一致性与矩阵乘积展开）
+- 迭代：约 3 轮编译-修复循环
+- Lean 新增/修改行数：约 75 行
+- 对应 C++ 行数：约 7 行 `gramNormLoop` 与 norm 写回前的标量计算
+- 下一步：按旧前缀、非对角新行和新对角三类矩阵元素组装 `G = L D L^T`

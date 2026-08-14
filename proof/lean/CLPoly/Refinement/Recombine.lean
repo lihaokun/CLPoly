@@ -927,6 +927,66 @@ theorem gramMuRowLoop_prefix_correct
         intro column hcolumn
         exact hprefix column (by omega)
 
+/-- Exact diagonal equation produced by the generated `gramNormLoop` after
+the μ row has been completed. -/
+theorem gramNormLoop_closes_diagonal
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i size : Nat) (norm : QQ)
+    (hmatrixSize : matrix.size = size)
+    (hmatrixRows : ∀ row (hrow : row < matrix.size),
+      matrix[row].size = size)
+    (hshape : GramStorageShape mu norms size) (hi : i < size)
+    (hrun : Generated.StrictRecombine.gramNormLoop mu norms i 0
+      (((∑ k : Fin matrix[i].size,
+        matrix[i][k.val] * matrix[i][k.val] : ZZ) : QQ)) = .ok norm) :
+    sourceRowDot matrix i i matrix[i]!.size =
+      (∑ k : Fin i,
+        (mu[i]!)[k.val]! * (mu[i]!)[k.val]! * norms[k.val]!) + norm := by
+  have hiM : i < matrix.size := by omega
+  have hiMu : i < mu.size := by rw [hshape.mu_size]; exact hi
+  have hmuRows : ∀ row (hrow : row < mu.size),
+      mu[row].size = mu.size := by
+    intro row hrow
+    rw [hshape.mu_rows row hrow, hshape.mu_size]
+  have hnorms : mu.size ≤ norms.size := by
+    rw [hshape.mu_size, hshape.norms_size]
+  have hexact := gramNormLoop_exact mu norms i
+    (((∑ k : Fin matrix[i].size,
+      matrix[i][k.val] * matrix[i][k.val] : ZZ) : QQ))
+    hiMu hmuRows hnorms
+  rw [hexact] at hrun
+  have hnorm := Except.ok.inj hrun
+  subst norm
+  have hdotEq :
+      ((∑ k : Fin matrix[i].size,
+        matrix[i][k.val] * matrix[i][k.val] : ZZ) : QQ) =
+      sourceRowDot matrix i i matrix[i]!.size := by
+    unfold sourceRowDot
+    rw [getElem!_pos matrix i hiM]
+    congr 1
+    apply Fintype.sum_congr
+    intro index
+    simp [getElem!_pos matrix[i] index.val index.isLt]
+  have hsumEq :
+      (∑ k : Fin i,
+        mu[i][k.val]'(by rw [hmuRows i hiMu]; exact lt_trans k.isLt hiMu) ^ 2 *
+          norms[k.val]'(lt_of_lt_of_le (lt_trans k.isLt hiMu) hnorms)) =
+      ∑ k : Fin i,
+        (mu[i]!)[k.val]! * (mu[i]!)[k.val]! * norms[k.val]! := by
+    apply Fintype.sum_congr
+    intro index
+    have hki : index.val < mu[i].size := by
+      rw [hmuRows i hiMu]
+      exact lt_trans index.isLt hiMu
+    have hkn : index.val < norms.size :=
+      lt_of_lt_of_le (lt_trans index.isLt hiMu) hnorms
+    simp [pow_two, getElem!_pos mu i hiMu,
+      getElem!_pos mu[i] index.val hki,
+      getElem!_pos norms index.val hkn]
+  rw [← hdotEq, ← hsumEq]
+  ring
+
 theorem initializeGramSchmidtLoop_succeeds
     (matrix : Generated.StrictRecombine.LLLMatrix) (i size : Nat)
     (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
@@ -3108,6 +3168,21 @@ theorem gsLowerPrefix_det
   apply Finset.prod_eq_one
   intro i _
   simp [gsLowerPrefix]
+
+theorem gsLowerNormMul_apply
+    (state : Generated.StrictRecombine.LLLState) (rowCount : Nat)
+    (row column : Fin rowCount) :
+    (gsLowerPrefix state rowCount * gsNormDiagonal state rowCount *
+        (gsLowerPrefix state rowCount).transpose) row column =
+      ∑ index : Fin rowCount,
+        gsLowerPrefix state rowCount row index * state.norms[index.val]! *
+          gsLowerPrefix state rowCount column index := by
+  rw [Matrix.mul_apply]
+  apply Fintype.sum_congr
+  intro index
+  rw [Matrix.transpose_apply]
+  congr 1
+  simp [Matrix.mul_apply, gsNormDiagonal, Matrix.diagonal_apply]
 
 theorem ConcreteGramSchmidt.gram_prefix
     {state : Generated.StrictRecombine.LLLState}

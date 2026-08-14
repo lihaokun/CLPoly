@@ -112,3 +112,12 @@ remaining interval sum.  `dotRows_eq_fin_sum` also proves that the loop cannot
 fault when the right row is at least as long as the left row and returns the
 exact finite inner product used by the Gram matrix.  This removes the first raw
 execution boundary needed by the μ-row and norm initialization invariants.
+
+`gramNumeratorLoop_eq_Ico_sum` now follows the next generated loop and proves
+that every successful execution subtracts exactly
+`Σ l<j, μ[i,l] μ[j,l] B[l]` from the raw row inner product.
+`gramNumeratorLoop_succeeds` discharges each of its six checked array accesses
+from square μ storage and norm-size invariants, and
+`gramNumeratorLoop_exact` packages the result as the finite sum indexed by
+`Fin j`.  Thus the generated numerator is fixed by executable storage; no
+abstract Gram--Schmidt coefficient is selected by the proof.

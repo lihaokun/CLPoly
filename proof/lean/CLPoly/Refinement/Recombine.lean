@@ -89,6 +89,101 @@ theorem dotRows_eq_fin_sum (left right : Array ZZ)
   simp [getElem!_pos left index.val index.isLt,
     getElem!_pos right index.val (lt_of_lt_of_le index.isLt hright)]
 
+theorem gramNumeratorLoop_eq_Ico_sum
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i j l : Nat) (numerator output : QQ)
+    (hrun : Generated.StrictRecombine.gramNumeratorLoop mu norms i j l
+      numerator = .ok output) :
+    output = numerator - ∑ k ∈ Finset.Ico l j,
+      (mu[i]!)[k]! * (mu[j]!)[k]! * norms[k]! := by
+  induction hremaining : j - l using Nat.strong_induction_on
+      generalizing l numerator output with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.gramNumeratorLoop] at hrun
+      split at hrun
+      next hl =>
+        split at hrun
+        next hi =>
+          split at hrun
+          next hj =>
+            split at hrun
+            next hil =>
+              split at hrun
+              next hjl =>
+                split at hrun
+                next hn =>
+                  have hdecrease : j - (l + 1) < remaining := by omega
+                  have htail := ih (j - (l + 1)) hdecrease (l + 1)
+                    (numerator - mu[i][l] * mu[j][l] * norms[l]) output
+                    hrun rfl
+                  rw [htail]
+                  rw [Finset.sum_eq_sum_Ico_succ_bot hl]
+                  simp only [getElem!_pos mu i hi, getElem!_pos mu j hj,
+                    getElem!_pos mu[i] l hil, getElem!_pos mu[j] l hjl,
+                    getElem!_pos norms l hn]
+                  ring
+                next hn => contradiction
+              next hjl => contradiction
+            next hil => contradiction
+          next hj => contradiction
+        next hi => contradiction
+      next hl =>
+        have hempty : Finset.Ico l j = ∅ := Finset.Ico_eq_empty hl
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [hempty]
+
+theorem gramNumeratorLoop_succeeds
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i j l : Nat) (numerator : QQ)
+    (hi : i < mu.size) (hj : j < mu.size)
+    (hmuRows : ∀ row (hrow : row < mu.size), mu[row].size = mu.size)
+    (hnorms : mu.size ≤ norms.size) (hl : l ≤ j) :
+    ∃ output, Generated.StrictRecombine.gramNumeratorLoop mu norms i j l
+      numerator = .ok output := by
+  induction hremaining : j - l using Nat.strong_induction_on
+      generalizing l numerator with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.gramNumeratorLoop]
+      split
+      next hmore =>
+        have hil : l < mu[i].size := by rw [hmuRows i hi]; omega
+        have hjl : l < mu[j].size := by rw [hmuRows j hj]; omega
+        have hn : l < norms.size := lt_of_lt_of_le (by omega) hnorms
+        rw [dif_pos hil, dif_pos hjl, dif_pos hn]
+        have hdecrease : j - (l + 1) < remaining := by omega
+        exact ih (j - (l + 1)) hdecrease (l + 1)
+          (numerator - mu[i][l] * mu[j][l] * norms[l]) (by omega) rfl
+      next hmore => exact ⟨numerator, rfl⟩
+
+theorem gramNumeratorLoop_exact
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i j : Nat) (numerator : QQ)
+    (hi : i < mu.size) (hj : j < mu.size)
+    (hmuRows : ∀ row (hrow : row < mu.size), mu[row].size = mu.size)
+    (hnorms : mu.size ≤ norms.size) :
+    Generated.StrictRecombine.gramNumeratorLoop mu norms i j 0 numerator =
+      .ok (numerator - ∑ k : Fin j,
+        (mu[i][k.val]'(by rw [hmuRows i hi]; exact lt_trans k.isLt hj)) *
+        (mu[j][k.val]'(by rw [hmuRows j hj]; exact lt_trans k.isLt hj)) *
+        norms[k.val]'(lt_of_lt_of_le (lt_trans k.isLt hj) hnorms)) := by
+  obtain ⟨output, houtput⟩ := gramNumeratorLoop_succeeds mu norms i j 0
+    numerator hi hj hmuRows hnorms (by omega)
+  have hexact := gramNumeratorLoop_eq_Ico_sum mu norms i j 0 numerator output
+    houtput
+  rw [houtput, Except.ok.injEq]
+  rw [hexact]
+  congr 1
+  rw [show Finset.Ico 0 j = Finset.range j by ext value; simp]
+  rw [← Fin.sum_univ_eq_sum_range]
+  apply Finset.sum_congr rfl
+  intro index _
+  simp [getElem!_pos mu i hi, getElem!_pos mu j hj,
+    getElem!_pos mu[i] index.val (by rw [hmuRows i hi]; exact lt_trans index.isLt hj),
+    getElem!_pos mu[j] index.val (by rw [hmuRows j hj]; exact lt_trans index.isLt hj),
+    getElem!_pos norms index.val
+      (lt_of_lt_of_le (lt_trans index.isLt hj) hnorms)]
+
 private def positionalCode (base : Nat) : List Nat → Nat
   | [] => 0
   | digit :: rest => digit * base ^ rest.length + positionalCode base rest

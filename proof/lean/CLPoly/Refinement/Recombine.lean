@@ -767,6 +767,62 @@ theorem normsAfterLovaszSwap_get (norms : Array QQ) (k : Nat) (mu : QQ)
   rw [Array.getElem_setIfInBounds (by simpa using hi)]
   rw [Array.getElem_setIfInBounds hi]
 
+theorem normsAfterLovaszSwap_positive (norms : Array QQ) (k : Nat) (mu : QQ)
+    (hk : k < norms.size) (hpred : k - 1 < norms.size)
+    (hpositiveK : 0 < k)
+    (hpositive : ∀ i (hi : i < norms.size), 0 < norms[i]) :
+    ∀ i (hi : i <
+      (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu).size),
+      0 < (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu)[i] := by
+  intro i hi
+  have hiOld : i < norms.size := by
+    simpa [normsAfterLovaszSwap_size] using hi
+  have hkPos := hpositive k hk
+  have hpredPos := hpositive (k - 1) hpred
+  have hnewPos : 0 < norms[k] + mu * mu * norms[k - 1] := by
+    nlinarith [sq_nonneg mu]
+  have hvalue :
+      (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu)[i] =
+        (if k - 1 = i then norms[k] + mu * mu * norms[k - 1]
+        else if k = i then
+          norms[k] * norms[k - 1] /
+            (norms[k] + mu * mu * norms[k - 1])
+        else norms[i]) := by
+    simpa only [getElem!_pos _ i hi] using
+      normsAfterLovaszSwap_get norms k mu hk hpred
+        (ne_of_gt hnewPos) i hiOld
+  rw [hvalue]
+  split
+  next hpredI => exact hnewPos
+  next hpredI =>
+    split
+    next hkI => positivity
+    next hkI => exact hpositive i hiOld
+
+theorem normsAfterLovaszSwap_pair_product (norms : Array QQ)
+    (k : Nat) (mu : QQ)
+    (hk : k < norms.size) (hpred : k - 1 < norms.size)
+    (hpositiveK : 0 < k)
+    (hpositive : ∀ i (hi : i < norms.size), 0 < norms[i]) :
+    (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu)[k - 1]! *
+        (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu)[k]! =
+      norms[k - 1] * norms[k] := by
+  have hnewPos : 0 < norms[k] + mu * mu * norms[k - 1] := by
+    have hkPos := hpositive k hk
+    have hpredPos := hpositive (k - 1) hpred
+    nlinarith [sq_nonneg mu]
+  rw [normsAfterLovaszSwap_get norms k mu hk hpred
+      (ne_of_gt hnewPos) (k - 1) hpred,
+    normsAfterLovaszSwap_get norms k mu hk hpred
+      (ne_of_gt hnewPos) k hk]
+  have hkNe : k ≠ k - 1 := by omega
+  have hpredNe : k - 1 ≠ k := hkNe.symm
+  simp only [if_pos, hpredNe, if_false, hkNe]
+  have hdenom : norms[k] + norms[k - 1] * mu ^ 2 ≠ 0 := by
+    nlinarith [sq_nonneg mu]
+  apply (mul_left_cancel₀ hdenom)
+  field_simp [hdenom]
+
 /-- Once the determinant potential is converted to a natural number, this is
 the concrete scalar rank used by the generated while-loop: an advancing step
 spends the low-order progress component, while a swap must lower the dominant

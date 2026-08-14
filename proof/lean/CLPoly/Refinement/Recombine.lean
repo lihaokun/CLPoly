@@ -801,6 +801,157 @@ noncomputable def concreteLLLRank
     (state : Generated.StrictRecombine.LLLState) : Nat :=
   lllLexRank (lllDeterminantPotential state.matrix) state.matrix.size state.k
 
+theorem swapMatrixRows_ok
+    (matrix output : Generated.StrictRecombine.LLLMatrix) (left right : Nat)
+    (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =
+      .ok output) :
+    ∃ (hleft : left < matrix.size) (hright : right < matrix.size),
+      output = (matrix.set left matrix[right]).set right matrix[left] (by
+        simpa) := by
+  unfold Generated.StrictRecombine.swapMatrixRows at hrun
+  split at hrun
+  next hleft =>
+    split at hrun
+    next hright =>
+      exact ⟨hleft, hright, (Except.ok.inj hrun).symm⟩
+    next hright => contradiction
+  next hleft => contradiction
+
+theorem swapMatrixRows_size
+    (matrix output : Generated.StrictRecombine.LLLMatrix) (left right : Nat)
+    (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =
+      .ok output) :
+    output.size = matrix.size := by
+  rcases swapMatrixRows_ok matrix output left right hrun with
+    ⟨hleft, hright, rfl⟩
+  simp
+
+theorem swapMatrixRows_get
+    (matrix output : Generated.StrictRecombine.LLLMatrix) (left right row : Nat)
+    (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =
+      .ok output)
+    (hrow : row < matrix.size) :
+    output[row]'(by simpa [swapMatrixRows_size matrix output left right hrun]) =
+      if right = row then matrix[left]!
+      else if left = row then matrix[right]!
+      else matrix[row] := by
+  rcases swapMatrixRows_ok matrix output left right hrun with
+    ⟨hleft, hright, rfl⟩
+  simp only [getElem!_pos matrix left hleft,
+    getElem!_pos matrix right hright, Array.getElem_set]
+
+theorem swapMatrixRows_get_fin
+    (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)
+    (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =
+      .ok output)
+    (hleftCount : left < rowCount) (hrightCount : right < rowCount)
+    (hrowCount : rowCount ≤ matrix.size) (row : Fin rowCount) :
+    output[row.val]! = matrix[((Equiv.swap
+      (⟨left, hleftCount⟩ : Fin rowCount)
+      (⟨right, hrightCount⟩ : Fin rowCount)) row).val]! := by
+  have hrow : row.val < matrix.size := lt_of_lt_of_le row.isLt hrowCount
+  have houtSize := swapMatrixRows_size matrix output left right hrun
+  rw [getElem!_pos output row.val (by simpa [houtSize])]
+  rw [swapMatrixRows_get matrix output left right row hrun hrow]
+  by_cases hrightRow : row = ⟨right, hrightCount⟩
+  · subst row
+    simp only [Equiv.swap_apply_right]
+    rw [getElem!_pos matrix left (lt_of_lt_of_le hleftCount hrowCount)]
+    simp
+  · by_cases hleftRow : row = ⟨left, hleftCount⟩
+    · subst row
+      simp only [Equiv.swap_apply_left]
+      rw [getElem!_pos matrix right (lt_of_lt_of_le hrightCount hrowCount)]
+      have hrightLeft : right ≠ left := by
+        intro heq
+        apply hrightRow
+        exact Fin.ext heq.symm
+      simp [hrightLeft]
+    · have hrightVal : right ≠ row.val := by
+        intro heq
+        apply hrightRow
+        exact Fin.ext heq.symm
+      have hleftVal : left ≠ row.val := by
+        intro heq
+        apply hleftRow
+        exact Fin.ext heq.symm
+      rw [Equiv.swap_apply_of_ne_of_ne hleftRow hrightRow]
+      rw [getElem!_pos matrix row.val hrow]
+      simp [hrightVal, hleftVal]
+
+theorem gramPrefixMatrix_swap_reindex
+    (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)
+    (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =
+      .ok output)
+    (hleftCount : left < rowCount) (hrightCount : right < rowCount)
+    (hrowCount : rowCount ≤ matrix.size) :
+    gramPrefixMatrix output rowCount = Matrix.reindex
+      (Equiv.swap (⟨left, hleftCount⟩ : Fin rowCount)
+        (⟨right, hrightCount⟩ : Fin rowCount))
+      (Equiv.swap (⟨left, hleftCount⟩ : Fin rowCount)
+        (⟨right, hrightCount⟩ : Fin rowCount))
+      (gramPrefixMatrix matrix rowCount) := by
+  funext i j
+  unfold gramPrefixMatrix Matrix.reindex
+  simp only [Equiv.coe_fn_mk]
+  have hsize := swapMatrixRows_size matrix output left right hrun
+  rw [hsize]
+  apply Finset.sum_congr rfl
+  intro c _
+  rw [swapMatrixRows_get_fin matrix output left right rowCount hrun
+    hleftCount hrightCount hrowCount i]
+  rw [swapMatrixRows_get_fin matrix output left right rowCount hrun
+    hleftCount hrightCount hrowCount j]
+  simp
+
+theorem gramPrefixDet_swap_preserved_of_both
+    (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)
+    (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =
+      .ok output)
+    (hleftCount : left < rowCount) (hrightCount : right < rowCount)
+    (hrowCount : rowCount ≤ matrix.size) :
+    Matrix.det (gramPrefixMatrix output rowCount) =
+      Matrix.det (gramPrefixMatrix matrix rowCount) := by
+  rw [gramPrefixMatrix_swap_reindex matrix output left right rowCount hrun
+    hleftCount hrightCount hrowCount]
+  exact Matrix.det_reindex_self _ _
+
+theorem swapMatrixRows_get_before
+    (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)
+    (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =
+      .ok output)
+    (hrowCount : rowCount ≤ matrix.size)
+    (hbeforeLeft : rowCount ≤ left) (hbeforeRight : rowCount ≤ right)
+    (row : Fin rowCount) :
+    output[row.val]! = matrix[row.val]! := by
+  have hrow : row.val < matrix.size := lt_of_lt_of_le row.isLt hrowCount
+  have houtSize := swapMatrixRows_size matrix output left right hrun
+  rw [getElem!_pos output row.val (by simpa [houtSize])]
+  rw [swapMatrixRows_get matrix output left right row hrun hrow]
+  have hleft : left ≠ row.val := by omega
+  have hright : right ≠ row.val := by omega
+  simp [hleft, hright, getElem!_pos matrix row.val hrow]
+
+theorem gramPrefixDet_swap_preserved_of_before
+    (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)
+    (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =
+      .ok output)
+    (hrowCount : rowCount ≤ matrix.size)
+    (hbeforeLeft : rowCount ≤ left) (hbeforeRight : rowCount ≤ right) :
+    Matrix.det (gramPrefixMatrix output rowCount) =
+      Matrix.det (gramPrefixMatrix matrix rowCount) := by
+  congr 1
+  funext i j
+  unfold gramPrefixMatrix
+  have hsize := swapMatrixRows_size matrix output left right hrun
+  rw [hsize]
+  apply Finset.sum_congr rfl
+  intro c _
+  rw [swapMatrixRows_get_before matrix output left right rowCount hrun
+    hrowCount hbeforeLeft hbeforeRight i]
+  rw [swapMatrixRows_get_before matrix output left right rowCount hrun
+    hrowCount hbeforeLeft hbeforeRight j]
+
 noncomputable def factorArrayToL2 (factors : Array SparsePolyZZ) :
     List (Polynomial Int) :=
   factors.toList.map SparsePolyZZ.toPoly

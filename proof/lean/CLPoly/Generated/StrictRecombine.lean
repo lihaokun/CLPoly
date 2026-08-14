@@ -1,6 +1,7 @@
 -- Auto-generated strict raw C++ control flow for recombination helpers in
 -- `__vanhoeij_recombine`.
 import CLPoly.Model
+import CLPoly.Generated.StrictHensel
 
 set_option autoImplicit false
 
@@ -380,6 +381,149 @@ def symmetricModRaw (input : SparsePolyZZ) (modulus : ZZ) :
     RawExec SparsePolyZZ :=
   if hmodulus : 0 < modulus then symmetricModLoop input modulus 0 #[]
   else .error .arithmeticDomain
+
+/-- Exact range-for lowering of the integer-polynomial derivative used by
+`__cld_polys`; zero derivative terms are omitted as in the C++ sparse
+normalization invariant. -/
+def derivativeZZLoop (input : SparsePolyZZ) (index : Nat)
+    (result : SparsePolyZZ) : SparsePolyZZ :=
+  if hindex : index < input.size then
+    let term := input[index]
+    if term.1.deg = 0 then
+      derivativeZZLoop input (index + 1) result
+    else
+      let coefficient := term.2 * term.1.deg
+      derivativeZZLoop input (index + 1)
+        (if coefficient = 0 then result
+         else result.push (⟨term.1.deg - 1⟩, coefficient))
+  else result
+termination_by input.size - index
+decreasing_by all_goals omega
+
+def derivativeZZRaw (input : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  .ok (derivativeZZLoop input 0 #[])
+
+/-- Concrete raw dependencies of `__cld_polys`.  The sole field is an erased
+well-founded trace for the already-generated modular long division; it cannot
+choose or replace any result. -/
+structure CldRawOps where
+  divmodTermination : Generated.StrictHensel.DivmodTermination
+
+/-- Exact outer range-for of C++ `__cld_polys`: modular division, derivative,
+modular multiplication, and symmetric recovery are all executed here. -/
+def cldPolysLoop (ops : CldRawOps) (fStar : SparsePolyZZ)
+    (activeFactors : Array SparsePolyZZ) (modulus : ZZ) (index : Nat)
+    (result : Array SparsePolyZZ) : RawExec (Array SparsePolyZZ) :=
+  if hindex : index < activeFactors.size then
+    match Generated.StrictHensel.__upoly_divmod_mod_raw_ir
+        ops.divmodTermination fStar activeFactors[index] modulus with
+    | .error fault => .error fault
+    | .ok (quotient, remainder) =>
+      if hremainder : remainder.isEmpty then
+        match derivativeZZRaw activeFactors[index] with
+        | .error fault => .error fault
+        | .ok derivativeRaw =>
+          match modCoeffLoop derivativeRaw modulus 0 #[] with
+          | .error fault => .error fault
+          | .ok derivativeMod =>
+            match multiplyNormalizeModRaw quotient derivativeMod modulus with
+            | .error fault => .error fault
+            | .ok product =>
+              match symmetricModRaw product modulus with
+              | .error fault => .error fault
+              | .ok cld => cldPolysLoop ops fStar activeFactors modulus
+                  (index + 1) (result.push cld)
+      else .error .assertionFailure
+  else .ok result
+termination_by activeFactors.size - index
+decreasing_by omega
+
+def cldPolys (ops : CldRawOps) (fStar : SparsePolyZZ)
+    (activeFactors : Array SparsePolyZZ) (modulus : ZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  cldPolysLoop ops fStar activeFactors modulus 0 #[]
+
+/-- Linear sparse coefficient lookup used by the C++ `upoly_coeff` lambda. -/
+def sparseCoeffLoop (input : SparsePolyZZ) (degree index : Nat) : ZZ :=
+  if hindex : index < input.size then
+    if input[index].1.deg = degree then input[index].2
+    else sparseCoeffLoop input degree (index + 1)
+  else 0
+termination_by input.size - index
+decreasing_by omega
+
+def sparseCoeff (input : SparsePolyZZ) (degree : Nat) : ZZ :=
+  sparseCoeffLoop input degree 0
+
+/-- Maximum `front.degree + 1` scan that computes the source spiral width N. -/
+def cldSpiralWidthLoop (cld : Array SparsePolyZZ) (index maximum : Nat) : Nat :=
+  if hindex : index < cld.size then
+    let width := if cld[index].isEmpty then 0 else cld[index][0]!.1.deg + 1
+    cldSpiralWidthLoop cld (index + 1) (Nat.max maximum width)
+  else maximum
+termination_by cld.size - index
+decreasing_by omega
+
+def cldSpiralWidth (cld : Array SparsePolyZZ) : Nat :=
+  cldSpiralWidthLoop cld 0 0
+
+/-- C++ loop appending one zero coordinate to every existing lattice row. -/
+def appendZeroColumnLoop (matrix : LLLMatrix) (index : Nat)
+    (result : LLLMatrix) : RawExec LLLMatrix :=
+  if hindex : index < matrix.size then
+    appendZeroColumnLoop matrix (index + 1)
+      (result.push (matrix[index].push 0))
+  else .ok result
+termination_by matrix.size - index
+decreasing_by omega
+
+def appendZeroColumn (matrix : LLLMatrix) : RawExec LLLMatrix :=
+  appendZeroColumnLoop matrix 0 #[]
+
+/-- Fill the first `r` coordinates of a freshly zeroed CLD data row. -/
+def fillCldDataRowLoop (cld : Array SparsePolyZZ) (degree index : Nat)
+    (row : Array ZZ) : RawExec (Array ZZ) :=
+  if hindex : index < cld.size then
+    if hrow : index < row.size then
+      fillCldDataRowLoop cld degree (index + 1)
+        (row.set index (sparseCoeff cld[index] degree))
+    else .error (.outOfBounds index row.size)
+  else .ok row
+termination_by cld.size - index
+decreasing_by omega
+
+/-- One source iteration of `__build_cld_matrix`, including row extension,
+spiral coefficient selection, and the new identity coordinate. -/
+def appendCldColumn (matrix : LLLMatrix) (cld : Array SparsePolyZZ)
+    (existingColumns : Nat) (spiralDegree : Nat) : RawExec LLLMatrix := do
+  let extended ← appendZeroColumn matrix
+  let rowLength := cld.size + existingColumns + 1
+  let row ← fillCldDataRowLoop cld spiralDegree 0 (zeroMatrixRow rowLength)
+  if hidentity : cld.size + existingColumns < row.size then
+    .ok (extended.push (row.set (cld.size + existingColumns) 1))
+  else .error (.outOfBounds (cld.size + existingColumns) row.size)
+
+/-- Exact bounded source loop of `__build_cld_matrix`. -/
+def buildCldMatrixLoop (cld : Array SparsePolyZZ) (current target width : Nat) :
+    (added : Nat) → LLLMatrix → RawExec (LLLMatrix × Nat)
+  | added, matrix =>
+      if htarget : added < target then
+        let k := current + added
+        if hwidth : k < width then
+          let degree := if k % 2 = 0 then k / 2
+            else width - 1 - (k - 1) / 2
+          match appendCldColumn matrix cld (current + added) degree with
+          | .error fault => .error fault
+          | .ok matrix' => buildCldMatrixLoop cld current target width
+              (added + 1) matrix'
+        else .ok (matrix, added)
+      else .ok (matrix, added)
+termination_by added _ => target - added
+decreasing_by omega
+
+def buildCldMatrix (matrix : LLLMatrix) (cld : Array SparsePolyZZ)
+    (current target : Nat) : RawExec (LLLMatrix × Nat) :=
+  buildCldMatrixLoop cld current target (cldSpiralWidth cld) 0 matrix
 
 def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
   if hindex : index < input.size then

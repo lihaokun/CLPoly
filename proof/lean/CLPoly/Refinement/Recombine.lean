@@ -78,6 +78,41 @@ theorem nextCombination_size (indices : Array Nat) (upper : Nat) :
       next hpivotBounds => rfl
   next hfits => rfl
 
+theorem removeCombinationLoop_size (candidate : Array Nat)
+    (remaining : Nat) (active output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.removeCombinationLoop candidate remaining
+      active = .ok output) :
+    output.size + remaining = active.size := by
+  induction remaining generalizing active output with
+  | zero =>
+      rw [Generated.StrictRecombine.removeCombinationLoop] at hrun
+      have hout := Except.ok.inj hrun
+      subst output
+      simp
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.removeCombinationLoop] at hrun
+      split at hrun
+      next hcand =>
+        dsimp at hrun
+        split at hrun
+        next hactive =>
+          have htail := ih (active.eraseIdxIfInBounds candidate[remaining])
+            output hrun
+          simp only [Array.size_eraseIdxIfInBounds, if_pos hactive] at htail
+          omega
+        next hactive => contradiction
+      next hcand => contradiction
+
+theorem removeCombination_strict (candidate : Array Nat)
+    (active output : Array SparsePolyZZ) (hnonempty : 0 < candidate.size)
+    (hrun : Generated.StrictRecombine.removeCombination candidate active =
+      .ok output) :
+    output.size < active.size := by
+  unfold Generated.StrictRecombine.removeCombination at hrun
+  have hsize := removeCombinationLoop_size candidate candidate.size active
+    output hrun
+  omega
+
 noncomputable def factorArrayToL2 (factors : Array SparsePolyZZ) :
     List (Polynomial Int) :=
   factors.toList.map SparsePolyZZ.toPoly

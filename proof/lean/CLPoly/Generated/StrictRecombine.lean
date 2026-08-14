@@ -434,6 +434,26 @@ decreasing_by omega
 def combinationToInt32 (indices : Array Nat) : RawExec (Array Int32) :=
   combinationToInt32Loop indices 0 #[]
 
+/-- Reverse erase of the selected active positions after one successful
+Zassenhaus extraction. -/
+def removeCombinationLoop (candidate : Array Nat) :
+    (remaining : Nat) → Array SparsePolyZZ → RawExec (Array SparsePolyZZ)
+  | 0, active => .ok active
+  | remaining + 1, active =>
+      let candidateIndex := remaining
+      if hcand : candidateIndex < candidate.size then
+        let activeIndex := candidate[candidateIndex]
+        if hactive : activeIndex < active.size then
+          removeCombinationLoop candidate remaining
+            (active.eraseIdxIfInBounds activeIndex)
+        else .error (.outOfBounds activeIndex active.size)
+      else .error (.outOfBounds candidateIndex candidate.size)
+termination_by remaining _ => remaining
+
+def removeCombination (candidate : Array Nat)
+    (active : Array SparsePolyZZ) : RawExec (Array SparsePolyZZ) :=
+  removeCombinationLoop candidate candidate.size active
+
 inductive ZassenhausAttemptResult where
   | rejected
   | extracted (factor quotient : SparsePolyZZ)

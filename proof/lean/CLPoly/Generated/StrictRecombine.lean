@@ -114,6 +114,57 @@ structure VanHoeijState where
   result : Array SparsePolyZZ
   target : Nat
 
+/-- The source `iota` constructing the first lexicographic subset
+`[0, ..., count - 1]`. -/
+def initialCombinationLoop (count index : Nat) (result : Array Nat) :
+    Array Nat :=
+  if hindex : index < count then
+    initialCombinationLoop count (index + 1) (result.push index)
+  else result
+termination_by count - index
+decreasing_by omega
+
+def initialCombination (count : Nat) : Array Nat :=
+  initialCombinationLoop count 0 #[]
+
+/-- Exact right-to-left search in C++ `next_combination`.  `inspected`
+counts positions already rejected at the right edge, avoiding signed-loop
+indices while preserving the source comparisons. -/
+def nextCombinationPivot (indices : Array Nat) (upper inspected : Nat) :
+    Option Nat :=
+  if hinspected : inspected < indices.size then
+    let position := indices.size - 1 - inspected
+    if indices[position] = upper - indices.size + position then
+      nextCombinationPivot indices upper (inspected + 1)
+    else some position
+  else none
+termination_by indices.size - inspected
+decreasing_by omega
+
+/-- Source suffix reset `idx[j] = idx[j-1] + 1` after incrementing the
+pivot. -/
+def resetCombinationSuffix (indices : Array Nat) (pivot offset : Nat) :
+    Array Nat :=
+  let position := pivot + 1 + offset
+  if hposition : position < indices.size then
+    resetCombinationSuffix
+      (indices.set position (indices[pivot]'(by omega) + 1)) pivot (offset + 1)
+  else indices
+termination_by indices.size - (pivot + 1 + offset)
+decreasing_by simp only [Array.size_set]; omega
+
+/-- Fuel-free lowering of the complete C++ `next_combination` lambda. -/
+def nextCombination (indices : Array Nat) (upper : Nat) : Bool × Array Nat :=
+  if hfits : indices.size ≤ upper then
+    match hpivot : nextCombinationPivot indices upper 0 with
+    | none => (false, indices)
+    | some pivot =>
+        if hpivotBounds : pivot < indices.size then
+          let incremented := indices.set pivot (indices[pivot] + 1)
+          (true, resetCombinationSuffix incremented pivot 0)
+        else (false, indices)
+  else (false, indices)
+
 /-- Check one candidate's active-relative indices exactly as the source inner
 loop does before constructing its trial product. -/
 def candidateAvailableLoop (candidate : Array Int32) (consumed : Array Bool)

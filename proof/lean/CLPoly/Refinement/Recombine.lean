@@ -529,6 +529,142 @@ def concreteZassenhausTermination :
   removal_decreases := fun active candidate output hnonempty hrun =>
     removeCombination_strict candidate active output hnonempty hrun
 
+theorem sizeReduceAt_preserves_norms_k
+    (state output : Generated.StrictRecombine.LLLState) (j : Nat)
+    (hrun : Generated.StrictRecombine.sizeReduceAt state j = .ok output) :
+    output.norms = state.norms ∧ output.k = state.k := by
+  unfold Generated.StrictRecombine.sizeReduceAt at hrun
+  split at hrun
+  next hk =>
+    split at hrun
+    next hj =>
+      cases hround : Generated.StrictRecombine.roundQQ state.mu[state.k][j] with
+      | error fault => simp [hround] at hrun
+      | ok q =>
+        simp only [hround] at hrun
+        split at hrun
+        next hzero =>
+          have hout := Except.ok.inj hrun
+          subst output
+          exact ⟨rfl, rfl⟩
+        next hnonzero =>
+          cases hsubtract : Generated.StrictRecombine.subtractMatrixRows
+              state.matrix state.transform state.k j q with
+          | error fault => simp [hsubtract] at hrun
+          | ok matrices =>
+            rcases matrices with ⟨matrix', transform'⟩
+            simp only [hsubtract] at hrun
+            cases hmu : Generated.StrictRecombine.reduceMuPrefixLoop
+                state.mu state.k j q j 0 with
+            | error fault => simp [hmu] at hrun
+            | ok mu' =>
+              simp only [hmu] at hrun
+              split at hrun
+              next hk' =>
+                split at hrun
+                next hj' =>
+                  have hout := Except.ok.inj hrun
+                  subst output
+                  exact ⟨rfl, rfl⟩
+                next hj' => contradiction
+              next hk' => contradiction
+    next hj => contradiction
+  next hk => contradiction
+
+theorem extraSizeReduceLoop_preserves_norms_k
+    (remaining : Nat) (state output : Generated.StrictRecombine.LLLState)
+    (hrun : Generated.StrictRecombine.extraSizeReduceLoop remaining state =
+      .ok output) :
+    output.norms = state.norms ∧ output.k = state.k := by
+  induction remaining generalizing state output with
+  | zero =>
+      simp [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      subst output
+      exact ⟨rfl, rfl⟩
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      cases hstep : Generated.StrictRecombine.sizeReduceAt state remaining with
+      | error fault => simp [hstep] at hrun
+      | ok next =>
+        simp only [hstep] at hrun
+        have hhead := sizeReduceAt_preserves_norms_k state next remaining hstep
+        have htail := ih next output hrun
+        exact ⟨htail.1.trans hhead.1, htail.2.trans hhead.2⟩
+
+theorem lllStep_advanced_control
+    (state output : Generated.StrictRecombine.LLLState)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    output.norms = state.norms ∧ output.k = state.k + 1 := by
+  unfold Generated.StrictRecombine.lllStep at hrun
+  split at hrun
+  next hkPositive =>
+    split at hrun
+    next hkMatrix =>
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hreduceControl := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        split at hrun
+        next hkNorm =>
+          split at hrun
+          next hpredNorm =>
+            split at hrun
+            next hkMu =>
+              split at hrun
+              next hpredMu =>
+                dsimp at hrun
+                split at hrun
+                next hlovasz =>
+                  cases hextra : Generated.StrictRecombine.extraSizeReduceLoop
+                      (reduced.k - 1) reduced with
+                  | error fault => simp [hextra] at hrun
+                  | ok fullyReduced =>
+                    simp only [hextra] at hrun
+                    have hextraControl :=
+                      extraSizeReduceLoop_preserves_norms_k
+                        (reduced.k - 1) reduced fullyReduced hextra
+                    have hout := Except.ok.inj hrun
+                    injection hout with hstate
+                    subst output
+                    constructor
+                    · exact hextraControl.1.trans hreduceControl.1
+                    · simp only
+                      rw [hextraControl.2, hreduceControl.2]
+                next hlovasz =>
+                  repeat' first | split at hrun | simp_all
+              next hpredMu => contradiction
+            next hkMu => contradiction
+          next hpredNorm => contradiction
+        next hkNorm => contradiction
+    next hkMatrix => contradiction
+  next hkPositive => contradiction
+
+theorem lllStep_swapped_k
+    (state output : Generated.StrictRecombine.LLLState)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    output.k = Nat.max (state.k - 1) 1 := by
+  unfold Generated.StrictRecombine.lllStep at hrun
+  split at hrun
+  next hkPositive =>
+    split at hrun
+    next hkMatrix =>
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hcontrol := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        repeat' first | split at hrun | simp_all
+        all_goals cases hrun; rfl
+    next hkMatrix => contradiction
+  next hkPositive => contradiction
+
 noncomputable def factorArrayToL2 (factors : Array SparsePolyZZ) :
     List (Polynomial Int) :=
   factors.toList.map SparsePolyZZ.toPoly

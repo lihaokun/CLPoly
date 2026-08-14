@@ -24,6 +24,279 @@ open CLPoly.Math
 
 namespace Refinement.StrictRecombine
 
+private def appendZeroSuffix
+    (matrix : Generated.StrictRecombine.LLLMatrix) (index : Nat) :
+    Generated.StrictRecombine.LLLMatrix :=
+  ((matrix.toList.drop index).map fun row => row.push 0).toArray
+
+theorem zeroMatrixRowLoop_size (columns index : Nat) (row : Array ZZ)
+    (hindex : index ≤ columns) :
+    (Generated.StrictRecombine.zeroMatrixRowLoop columns index row).size =
+      row.size + (columns - index) := by
+  induction hremaining : columns - index using Nat.strong_induction_on
+      generalizing index row with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroMatrixRowLoop]
+      split
+      next hmore =>
+        rw [ih (columns - (index + 1)) (by omega) (index + 1)
+          (row.push 0) (by omega) rfl]
+        simp only [Array.size_push]
+        omega
+      next hdone => omega
+
+theorem zeroMatrixRow_size (columns : Nat) :
+    (Generated.StrictRecombine.zeroMatrixRow columns).size = columns := by
+  unfold Generated.StrictRecombine.zeroMatrixRow
+  simpa using zeroMatrixRowLoop_size columns 0 (#[] : Array ZZ) (by omega)
+
+theorem zeroMatrixRowLoop_get_of_lt (columns index : Nat) (row : Array ZZ)
+    (position : Nat) (hposition : position < row.size) :
+    (Generated.StrictRecombine.zeroMatrixRowLoop columns index row)[position]! =
+      row[position] := by
+  induction hremaining : columns - index using Nat.strong_induction_on
+      generalizing index row with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroMatrixRowLoop]
+      split
+      next hmore =>
+        have hdecrease : columns - (index + 1) < remaining := by omega
+        rw [ih (columns - (index + 1)) hdecrease (index + 1)
+          (row.push 0) (by simp only [Array.size_push]; omega) rfl]
+        simpa only [Array.getElem_push_lt hposition]
+      next hdone =>
+        simpa only [getElem!_pos row position hposition]
+
+theorem zeroMatrixRowLoop_suffix_get (columns index : Nat) (row : Array ZZ)
+    (hindex : index ≤ columns) (offset : Nat)
+    (hoffset : offset < columns - index) :
+    (Generated.StrictRecombine.zeroMatrixRowLoop columns index row)[row.size + offset]! =
+      0 := by
+  induction offset generalizing index row with
+  | zero =>
+      rw [Generated.StrictRecombine.zeroMatrixRowLoop]
+      split
+      next hmore =>
+        simp only [Nat.add_zero]
+        rw [zeroMatrixRowLoop_get_of_lt columns (index + 1) (row.push 0)
+          row.size (by simp)]
+        simp
+      next hdone => omega
+  | succ offset ih =>
+      rw [Generated.StrictRecombine.zeroMatrixRowLoop]
+      split
+      next hmore =>
+        have htail := ih (index + 1) (row.push 0) (by omega) (by omega)
+        simpa only [Array.size_push, Nat.add_assoc, Nat.add_left_comm,
+          Nat.add_comm] using htail
+      next hdone => omega
+
+theorem zeroMatrixRow_get (columns position : Nat)
+    (hposition : position < columns) :
+    (Generated.StrictRecombine.zeroMatrixRow columns)[position]! = 0 := by
+  unfold Generated.StrictRecombine.zeroMatrixRow
+  simpa using zeroMatrixRowLoop_suffix_get columns 0 (#[] : Array ZZ)
+    (by omega) position (by omega)
+
+theorem zeroMatrixLoop_size (rows columns index : Nat)
+    (matrix : Generated.StrictRecombine.LLLMatrix) (hindex : index ≤ rows) :
+    (Generated.StrictRecombine.zeroMatrixLoop rows columns index matrix).size =
+      matrix.size + (rows - index) := by
+  induction hremaining : rows - index using Nat.strong_induction_on
+      generalizing index matrix with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroMatrixLoop]
+      split
+      next hmore =>
+        rw [ih (rows - (index + 1)) (by omega) (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroMatrixRow columns))
+          (by omega) rfl]
+        simp only [Array.size_push]
+        omega
+      next hdone => omega
+
+theorem zeroMatrix_size (rows columns : Nat) :
+    (Generated.StrictRecombine.zeroMatrix rows columns).size = rows := by
+  unfold Generated.StrictRecombine.zeroMatrix
+  simpa using zeroMatrixLoop_size rows columns 0
+    (#[] : Generated.StrictRecombine.LLLMatrix) (by omega)
+
+theorem zeroMatrixLoop_get_of_lt (rows columns index : Nat)
+    (matrix : Generated.StrictRecombine.LLLMatrix) (position : Nat)
+    (hposition : position < matrix.size) :
+    (Generated.StrictRecombine.zeroMatrixLoop rows columns index matrix)[position]! =
+      matrix[position] := by
+  induction hremaining : rows - index using Nat.strong_induction_on
+      generalizing index matrix with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroMatrixLoop]
+      split
+      next hmore =>
+        have hdecrease : rows - (index + 1) < remaining := by omega
+        rw [ih (rows - (index + 1)) hdecrease (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroMatrixRow columns))
+          (by simp only [Array.size_push]; omega) rfl]
+        simpa only [Array.getElem_push_lt hposition]
+      next hdone =>
+        simpa only [getElem!_pos matrix position hposition]
+
+theorem zeroMatrixLoop_suffix_get (rows columns index : Nat)
+    (matrix : Generated.StrictRecombine.LLLMatrix) (hindex : index ≤ rows)
+    (offset : Nat) (hoffset : offset < rows - index) :
+    (Generated.StrictRecombine.zeroMatrixLoop rows columns index matrix)[matrix.size + offset]! =
+      Generated.StrictRecombine.zeroMatrixRow columns := by
+  induction offset generalizing index matrix with
+  | zero =>
+      rw [Generated.StrictRecombine.zeroMatrixLoop]
+      split
+      next hmore =>
+        simp only [Nat.add_zero]
+        rw [zeroMatrixLoop_get_of_lt rows columns (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroMatrixRow columns))
+          matrix.size (by simp)]
+        simp
+      next hdone => omega
+  | succ offset ih =>
+      rw [Generated.StrictRecombine.zeroMatrixLoop]
+      split
+      next hmore =>
+        have htail := ih (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroMatrixRow columns))
+          (by omega) (by omega)
+        simpa only [Array.size_push, Nat.add_assoc, Nat.add_left_comm,
+          Nat.add_comm] using htail
+      next hdone => omega
+
+theorem zeroMatrix_get (rows columns row : Nat) (hrow : row < rows) :
+    (Generated.StrictRecombine.zeroMatrix rows columns)[row]! =
+      Generated.StrictRecombine.zeroMatrixRow columns := by
+  unfold Generated.StrictRecombine.zeroMatrix
+  simpa using zeroMatrixLoop_suffix_get rows columns 0
+    (#[] : Generated.StrictRecombine.LLLMatrix) (by omega) row (by omega)
+
+theorem zeroMatrix_entry (rows columns row column : Nat)
+    (hrow : row < rows) (hcolumn : column < columns) :
+    ((Generated.StrictRecombine.zeroMatrix rows columns)[row]!)[column]! = 0 := by
+  rw [zeroMatrix_get rows columns row hrow,
+    zeroMatrixRow_get columns column hcolumn]
+
+theorem appendZeroColumnLoop_eq
+    (matrix : Generated.StrictRecombine.LLLMatrix) (index : Nat)
+    (result : Generated.StrictRecombine.LLLMatrix) :
+    Generated.StrictRecombine.appendZeroColumnLoop matrix index result =
+      .ok (result ++ appendZeroSuffix matrix index) := by
+  induction hmeasure : matrix.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.appendZeroColumnLoop]
+      split
+      next hindex =>
+        rw [ih (matrix.size - (index + 1)) (by omega)
+          (index + 1) (result.push (matrix[index].push 0)) rfl]
+        have hsuffix : matrix.toList.drop index = matrix[index] ::
+            matrix.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := matrix.toList) (i := index) (by simpa using hindex)
+        simp [appendZeroSuffix, hsuffix, Array.push]
+      next hindex =>
+        have hle : matrix.size ≤ index := Nat.le_of_not_gt hindex
+        simp [appendZeroSuffix, List.drop_eq_nil_iff.mpr hle]
+
+theorem appendZeroColumn_eq
+    (matrix : Generated.StrictRecombine.LLLMatrix) :
+    Generated.StrictRecombine.appendZeroColumn matrix =
+      .ok (appendZeroSuffix matrix 0) := by
+  simpa [Generated.StrictRecombine.appendZeroColumn] using
+    appendZeroColumnLoop_eq matrix 0 #[]
+
+theorem appendZeroSuffix_size
+    (matrix : Generated.StrictRecombine.LLLMatrix) :
+    (appendZeroSuffix matrix 0).size = matrix.size := by
+  simp [appendZeroSuffix]
+
+theorem appendZeroSuffix_row
+    (matrix : Generated.StrictRecombine.LLLMatrix) (row : Nat)
+    (hrow : row < matrix.size) :
+    (appendZeroSuffix matrix 0)[row]! = matrix[row]!.push 0 := by
+  simp [appendZeroSuffix, hrow]
+
+theorem arrayPush_getElem!_lt {α : Type*} [Inhabited α]
+    (input : Array α) (value : α) (index : Nat) (hindex : index < input.size) :
+    (input.push value)[index]! = input[index]! := by
+  rw [getElem!_pos _ index (by simp only [Array.size_push]; omega),
+    Array.getElem_push_lt hindex, ← getElem!_pos _ index hindex]
+
+theorem arrayPush_getElem!_last {α : Type*} [Inhabited α]
+    (input : Array α) (value : α) :
+    (input.push value)[input.size]! = value := by
+  rw [getElem!_pos _ input.size (by simp), Array.getElem_push_eq]
+
+theorem fillCldDataRowLoop_size
+    (cld : Array SparsePolyZZ) (degree index : Nat) (row output : Array ZZ)
+    (hrun : Generated.StrictRecombine.fillCldDataRowLoop cld degree index row =
+      .ok output) :
+    output.size = row.size := by
+  induction hmeasure : cld.size - index using Nat.strong_induction_on
+      generalizing index row with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.fillCldDataRowLoop] at hrun
+      split at hrun
+      next hindex =>
+        split at hrun
+        next hrow =>
+          have htail := ih (cld.size - (index + 1)) (by omega)
+            (index + 1)
+            (row.set index
+              (Generated.StrictRecombine.sparseCoeff cld[index] degree))
+            hrun rfl
+          simpa using htail
+        next hrow => contradiction
+      next hindex =>
+        exact congrArg Array.size (Except.ok.inj hrun).symm
+
+theorem appendCldColumn_shape
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (cld : Array SparsePolyZZ) (existingColumns spiralDegree : Nat)
+    (hdimension : matrix.size = cld.size + existingColumns)
+    (hrun : Generated.StrictRecombine.appendCldColumn matrix cld
+      existingColumns spiralDegree = .ok output) :
+    ∃ finalRow : Array ZZ,
+      finalRow.size = matrix.size + 1 ∧
+      finalRow[matrix.size]! = 1 ∧
+      output = (appendZeroSuffix matrix 0).push finalRow := by
+  unfold Generated.StrictRecombine.appendCldColumn at hrun
+  rw [appendZeroColumn_eq] at hrun
+  simp only [Except.bind] at hrun
+  cases hfill : Generated.StrictRecombine.fillCldDataRowLoop cld spiralDegree
+      0 (Generated.StrictRecombine.zeroMatrixRow
+        (cld.size + existingColumns + 1)) with
+  | error fault =>
+      rw [hfill] at hrun
+      change (Except.error fault : RawExec
+        Generated.StrictRecombine.LLLMatrix) = .ok output at hrun
+      contradiction
+  | ok row =>
+      rw [hfill] at hrun
+      change (if hidentity : cld.size + existingColumns < row.size then
+          (Except.ok ((appendZeroSuffix matrix 0).push
+            (row.set (cld.size + existingColumns) 1 hidentity)) :
+              RawExec Generated.StrictRecombine.LLLMatrix)
+        else Except.error (RawFault.outOfBounds
+          (cld.size + existingColumns) row.size)) =
+          Except.ok output at hrun
+      split at hrun
+      next hidentity =>
+        have hout := Except.ok.inj hrun
+        have hrowSize := fillCldDataRowLoop_size cld spiralDegree 0
+          (Generated.StrictRecombine.zeroMatrixRow
+            (cld.size + existingColumns + 1)) row hfill
+        rw [zeroMatrixRow_size, ← hdimension] at hrowSize
+        let finalRow := row.set (cld.size + existingColumns) 1 hidentity
+        refine ⟨finalRow, by simpa [finalRow] using hrowSize,
+          ?_, hout.symm⟩
+        simp [finalRow, hdimension, hrowSize]
+      next hidentity => contradiction
+
 theorem zeroQQRowLoop_size (columns index : Nat) (row : Array QQ)
     (hindex : index ≤ columns) :
     (Generated.StrictRecombine.zeroQQRowLoop columns index row).size =
@@ -3663,6 +3936,363 @@ structure ConcreteLLLInputValid
     matrix[row].size = matrix.size
   determinant_ne : Matrix.det
     (basisPrefixMatrix matrix matrix.size matrix.size) ≠ 0
+
+private structure InitialMatrixPrefix (scale : ZZ) (size index : Nat)
+    (matrix : Generated.StrictRecombine.LLLMatrix) : Prop where
+  matrix_size : matrix.size = size
+  rows_square : ∀ row (hrow : row < size), matrix[row]!.size = size
+  entry : ∀ row column (hrow : row < size) (hcolumn : column < size),
+    (matrix[row]!)[column]! = if row = column ∧ row < index then scale else 0
+
+private theorem zeroMatrix_initial_prefix (scale : ZZ) (size : Nat) :
+    InitialMatrixPrefix scale size 0
+      (Generated.StrictRecombine.zeroMatrix size size) := by
+  refine ⟨zeroMatrix_size size size, ?_, ?_⟩
+  · intro row hrow
+    rw [zeroMatrix_get size size row hrow, zeroMatrixRow_size]
+  · intro row column hrow hcolumn
+    rw [zeroMatrix_entry size size row column hrow hcolumn]
+    simp
+
+private theorem InitialMatrixPrefix.set_next
+    {scale : ZZ} {size index : Nat}
+    {matrix : Generated.StrictRecombine.LLLMatrix}
+    (hprefix : InitialMatrixPrefix scale size index matrix)
+    (hindex : index < size)
+    (hmatrixIndex : index < matrix.size)
+    (hrowIndex : index < matrix[index].size) :
+    InitialMatrixPrefix scale size (index + 1)
+      (matrix.set index (matrix[index].set index scale hrowIndex)
+        hmatrixIndex) := by
+  refine ⟨by simp [hprefix.matrix_size], ?_, ?_⟩
+  · intro row hrow
+    have hrowMatrix : row < matrix.size := by
+      rw [hprefix.matrix_size]
+      exact hrow
+    have hnewRow : row <
+        (matrix.set index (matrix[index].set index scale hrowIndex)
+          hmatrixIndex).size := by simp [hprefix.matrix_size, hrow]
+    by_cases heq : index = row
+    · subst row
+      rw [getElem!_pos _ index hnewRow, Array.getElem_set_self,
+        Array.size_set]
+      simpa [getElem!_pos matrix index hmatrixIndex] using
+        hprefix.rows_square index hindex
+    · rw [getElem!_pos _ row hnewRow,
+        Array.getElem_set_ne hmatrixIndex hrowMatrix heq]
+      have hold := hprefix.rows_square row hrow
+      rw [getElem!_pos matrix row hrowMatrix] at hold
+      exact hold
+  · intro row column hrow hcolumn
+    have hrowMatrix : row < matrix.size := by
+      rw [hprefix.matrix_size]
+      exact hrow
+    have hnewRow : row <
+        (matrix.set index (matrix[index].set index scale hrowIndex)
+          hmatrixIndex).size := by simp [hprefix.matrix_size, hrow]
+    by_cases hrowEq : index = row
+    · subst row
+      have hcolumnOld : column < matrix[index].size := by
+        have hsize := hprefix.rows_square index hindex
+        rw [getElem!_pos matrix index hmatrixIndex] at hsize
+        omega
+      by_cases hcolumnEq : index = column
+      · subst column
+        rw [getElem!_pos
+          (matrix.set index (matrix[index].set index scale hrowIndex)
+            hmatrixIndex) index hnewRow]
+        rw [Array.getElem_set_self]
+        rw [getElem!_pos _ index (by simp [hrowIndex]),
+          Array.getElem_set_self]
+        simp [hindex]
+      · rw [getElem!_pos _ index hnewRow, Array.getElem_set_self,
+          getElem!_pos _ column (by simp [Array.size_set, hcolumnOld])]
+        rw [Array.getElem_set_ne hrowIndex hcolumnOld hcolumnEq]
+        have hold := hprefix.entry index column hindex hcolumn
+        rw [getElem!_pos matrix index hmatrixIndex,
+          getElem!_pos matrix[index] column hcolumnOld] at hold
+        rw [hold]
+        simp [hcolumnEq]
+    · rw [getElem!_pos _ row hnewRow,
+        Array.getElem_set_ne hmatrixIndex hrowMatrix hrowEq]
+      have hcolumnOld : column < matrix[row].size := by
+        have hsize := hprefix.rows_square row hrow
+        rw [getElem!_pos matrix row hrowMatrix] at hsize
+        omega
+      rw [getElem!_pos matrix[row] column hcolumnOld]
+      have hold := hprefix.entry row column hrow hcolumn
+      rw [getElem!_pos matrix row hrowMatrix,
+        getElem!_pos matrix[row] column hcolumnOld] at hold
+      rw [hold]
+      by_cases hdiag : row = column
+      · subst column
+        simp only [true_and]
+        have : row ≠ index := by exact fun h => hrowEq h.symm
+        have hLt : row < index + 1 ↔ row < index := by omega
+        by_cases hri : row < index
+        · have hrnext : row < index + 1 := hLt.mpr hri
+          simp [hri, hrnext]
+        · have hrnext : ¬ row < index + 1 := by rwa [hLt]
+          simp [hri, hrnext]
+      · simp [hdiag]
+
+private theorem setInitialDiagonalLoop_prefix
+    (scale : ZZ) (size index : Nat)
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (hprefix : InitialMatrixPrefix scale size index matrix)
+    (hindexLe : index ≤ size)
+    (hrun : Generated.StrictRecombine.setInitialDiagonalLoop scale size index
+      matrix = .ok output) :
+    InitialMatrixPrefix scale size size output := by
+  induction hmeasure : size - index using Nat.strong_induction_on
+      generalizing index matrix output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.setInitialDiagonalLoop] at hrun
+      by_cases hindex : index < size
+      · rw [dif_pos hindex] at hrun
+        have hmatrixIndex : index < matrix.size := by
+          rw [hprefix.matrix_size]
+          exact hindex
+        rw [dif_pos hmatrixIndex] at hrun
+        have hrowIndex : index < matrix[index].size := by
+          simpa [getElem!_pos matrix index hmatrixIndex] using
+            (show index < matrix[index]!.size by
+              rw [hprefix.rows_square index hindex]
+              exact hindex)
+        rw [dif_pos hrowIndex] at hrun
+        exact ih (size - (index + 1)) (by omega) (index + 1)
+          (matrix.set index (matrix[index].set index scale)) output
+          (hprefix.set_next hindex hmatrixIndex hrowIndex) (by omega) hrun rfl
+      · rw [dif_neg hindex] at hrun
+        have hout := Except.ok.inj hrun
+        subst output
+        have hsize : index = size := by omega
+        simpa [hsize] using hprefix
+
+theorem makeInitialMatrix_prefix (size : Nat) (scale : ZZ)
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (hrun : Generated.StrictRecombine.makeInitialMatrix size scale = .ok matrix) :
+    InitialMatrixPrefix scale size size matrix := by
+  unfold Generated.StrictRecombine.makeInitialMatrix at hrun
+  exact setInitialDiagonalLoop_prefix scale size 0
+    (Generated.StrictRecombine.zeroMatrix size size) matrix
+    (zeroMatrix_initial_prefix scale size) (by omega) hrun
+
+theorem makeInitialMatrix_input_valid (size : Nat) (scale : ZZ)
+    (matrix : Generated.StrictRecombine.LLLMatrix) (hscale : scale ≠ 0)
+    (hrun : Generated.StrictRecombine.makeInitialMatrix size scale = .ok matrix) :
+    ConcreteLLLInputValid matrix ∧ matrix.size = size := by
+  have hprefix := makeInitialMatrix_prefix size scale matrix hrun
+  have hmatrixSize := hprefix.matrix_size
+  refine ⟨⟨?_, ?_⟩, hmatrixSize⟩
+  · intro row hrow
+    have hrowSize := hprefix.rows_square row (by omega)
+    rw [getElem!_pos matrix row hrow] at hrowSize
+    exact hrowSize.trans hmatrixSize.symm
+  · have hbasis : basisPrefixMatrix matrix matrix.size matrix.size =
+        Matrix.diagonal (fun _ : Fin matrix.size => scale) := by
+      apply Matrix.ext
+      intro row column
+      simp only [basisPrefixMatrix, Matrix.diagonal_apply]
+      have hentry := hprefix.entry row.val column.val (by omega) (by omega)
+      by_cases heq : row = column
+      · subst column
+        have hrowSize : row.val < size := by omega
+        simpa [hrowSize] using hentry
+      · have hval : row.val ≠ column.val := by
+          exact fun h => heq (Fin.ext h)
+        simpa [heq, hval] using hentry
+    rw [hbasis, Matrix.det_diagonal]
+    exact Finset.prod_ne_zero_iff.mpr (by
+      intro index _
+      exact hscale)
+
+theorem resetVanHoeijLattice_input_valid (factorCount : Nat)
+    (matrix : Generated.StrictRecombine.LLLMatrix) (bound : ZZ)
+    (hrun : Generated.StrictRecombine.resetVanHoeijLattice factorCount =
+      .ok (matrix, bound)) :
+    ConcreteLLLInputValid matrix ∧ matrix.size = factorCount := by
+  unfold Generated.StrictRecombine.resetVanHoeijLattice at hrun
+  let exponent := Generated.StrictRecombine.vanHoeijExponent factorCount
+  change (match Generated.StrictRecombine.makeInitialMatrix factorCount
+      ((2 : ZZ) ^ exponent) with
+    | Except.error fault => (Except.error fault :
+        RawExec (Generated.StrictRecombine.LLLMatrix × ZZ))
+    | Except.ok initial => Except.ok
+        (initial, Generated.StrictRecombine.vanHoeijBound factorCount)) =
+      Except.ok (matrix, bound) at hrun
+  cases hmake : Generated.StrictRecombine.makeInitialMatrix factorCount
+      ((2 : ZZ) ^ exponent) with
+  | error fault =>
+      rw [hmake] at hrun
+      contradiction
+  | ok initial =>
+      rw [hmake] at hrun
+      have hout := Except.ok.inj hrun
+      injection hout with hmatrix hbound
+      subst matrix
+      exact makeInitialMatrix_input_valid factorCount
+        ((2 : ZZ) ^ exponent)
+        initial (Int.pow_ne_zero (by norm_num)) hmake
+
+theorem appendCldColumn_input_valid
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (cld : Array SparsePolyZZ) (existingColumns spiralDegree : Nat)
+    (hinput : ConcreteLLLInputValid matrix)
+    (hdimension : matrix.size = cld.size + existingColumns)
+    (hrun : Generated.StrictRecombine.appendCldColumn matrix cld
+      existingColumns spiralDegree = .ok output) :
+    ConcreteLLLInputValid output ∧ output.size = matrix.size + 1 := by
+  rcases appendCldColumn_shape matrix output cld existingColumns spiralDegree
+      hdimension hrun with ⟨finalRow, hfinalSize, hfinalLast, rfl⟩
+  have houtputSize :
+      ((appendZeroSuffix matrix 0).push finalRow).size = matrix.size + 1 := by
+    rw [Array.size_push, appendZeroSuffix_size]
+  refine ⟨?_, houtputSize⟩
+  constructor
+  · intro row hrow
+    by_cases hold : row < matrix.size
+    · have hrowSize : matrix[row]!.size = matrix.size := by
+        rw [getElem!_pos _ row hold]
+        exact hinput.rows_square row hold
+      rw [← getElem!_pos _ row hrow,
+        arrayPush_getElem!_lt _ _ row (by
+          simpa [appendZeroSuffix_size] using hold),
+        appendZeroSuffix_row matrix row hold, Array.size_push,
+        hrowSize, houtputSize]
+    · have hrowLast : row = matrix.size := by
+        rw [houtputSize] at hrow
+        omega
+      subst row
+      rw [← getElem!_pos _ matrix.size hrow,
+        show matrix.size = (appendZeroSuffix matrix 0).size by
+          rw [appendZeroSuffix_size], arrayPush_getElem!_last]
+      exact hfinalSize.trans houtputSize.symm
+  · rw [houtputSize]
+    have hdet : Matrix.det
+        (basisPrefixMatrix ((appendZeroSuffix matrix 0).push finalRow)
+          (matrix.size + 1) (matrix.size + 1)) =
+        Matrix.det (basisPrefixMatrix matrix matrix.size matrix.size) := by
+      apply det_append_unit_lower matrix.size
+        (basisPrefixMatrix matrix matrix.size matrix.size)
+        (fun column => finalRow[column.val]!)
+      · intro i j
+        simp only [basisPrefixMatrix]
+        have houter :
+            ((appendZeroSuffix matrix 0).push finalRow)[i.val]! =
+              matrix[i.val]!.push 0 := by
+          rw [arrayPush_getElem!_lt _ _ i.val (by
+            simpa [appendZeroSuffix_size] using i.isLt),
+            appendZeroSuffix_row matrix i.val i.isLt]
+        simp only [Fin.val_castSucc]
+        rw [houter]
+        have hrowSize : matrix[i.val]!.size = matrix.size := by
+          rw [getElem!_pos _ i.val i.isLt]
+          exact hinput.rows_square i.val i.isLt
+        have hcolumn : j.val < matrix[i.val]!.size := by
+          rw [hrowSize]
+          exact j.isLt
+        exact arrayPush_getElem!_lt _ _ j.val hcolumn
+      · intro i
+        simp only [basisPrefixMatrix]
+        have houter :
+            ((appendZeroSuffix matrix 0).push finalRow)[i.val]! =
+              matrix[i.val]!.push 0 := by
+          rw [arrayPush_getElem!_lt _ _ i.val (by
+            simpa [appendZeroSuffix_size] using i.isLt),
+            appendZeroSuffix_row matrix i.val i.isLt]
+        simp only [Fin.val_castSucc, Fin.val_last]
+        rw [houter]
+        have hrowSize : matrix[i.val]!.size = matrix.size := by
+          rw [getElem!_pos _ i.val i.isLt]
+          exact hinput.rows_square i.val i.isLt
+        have hlast := arrayPush_getElem!_last matrix[i.val]! (0 : ZZ)
+        rw [hrowSize] at hlast
+        exact hlast
+      · intro j
+        simp only [basisPrefixMatrix]
+        have houter :
+            ((appendZeroSuffix matrix 0).push finalRow)[matrix.size]! =
+              finalRow := by
+          rw [show matrix.size = (appendZeroSuffix matrix 0).size by
+            rw [appendZeroSuffix_size], arrayPush_getElem!_last]
+        simp only [Fin.val_last, Fin.val_castSucc]
+        rw [houter]
+      · simp only [basisPrefixMatrix]
+        have houter :
+            ((appendZeroSuffix matrix 0).push finalRow)[matrix.size]! =
+              finalRow := by
+          rw [show matrix.size = (appendZeroSuffix matrix 0).size by
+            rw [appendZeroSuffix_size], arrayPush_getElem!_last]
+        simp only [Fin.val_last]
+        rw [houter]
+        exact hfinalLast
+    rw [hdet]
+    exact hinput.determinant_ne
+
+theorem buildCldMatrixLoop_input_valid
+    (cld : Array SparsePolyZZ) (current target width added : Nat)
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (finalAdded : Nat) (hinput : ConcreteLLLInputValid matrix)
+    (hdimension : matrix.size = cld.size + current + added)
+    (hrun : Generated.StrictRecombine.buildCldMatrixLoop cld current target
+      width added matrix = .ok (output, finalAdded)) :
+    ConcreteLLLInputValid output ∧
+      output.size = cld.size + current + finalAdded := by
+  induction hmeasure : target - added using Nat.strong_induction_on
+      generalizing added matrix output finalAdded with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.buildCldMatrixLoop] at hrun
+      by_cases htarget : added < target
+      · rw [dif_pos htarget] at hrun
+        dsimp only at hrun
+        by_cases hwidth : current + added < width
+        · rw [dif_pos hwidth] at hrun
+          let degree := if (current + added) % 2 = 0 then
+              (current + added) / 2
+            else width - 1 - (current + added - 1) / 2
+          cases happend : Generated.StrictRecombine.appendCldColumn matrix cld
+              (current + added) degree with
+          | error fault =>
+              rw [happend] at hrun
+              change (Except.error fault : RawExec
+                (Generated.StrictRecombine.LLLMatrix × Nat)) =
+                  .ok (output, finalAdded) at hrun
+              contradiction
+          | ok next =>
+              rw [happend] at hrun
+              change Generated.StrictRecombine.buildCldMatrixLoop cld current
+                target width (added + 1) next = .ok (output, finalAdded) at hrun
+              have hstep := appendCldColumn_input_valid matrix next cld
+                (current + added) degree hinput (by omega) happend
+              exact ih (target - (added + 1)) (by omega) (added + 1) next
+                output finalAdded hstep.1 (by omega) hrun rfl
+        · rw [dif_neg hwidth] at hrun
+          have hout := Except.ok.inj hrun
+          injection hout with hmatrix hadd
+          subst output
+          subst finalAdded
+          exact ⟨hinput, hdimension⟩
+      · rw [dif_neg htarget] at hrun
+        have hout := Except.ok.inj hrun
+        injection hout with hmatrix hadd
+        subst output
+        subst finalAdded
+        exact ⟨hinput, hdimension⟩
+
+theorem buildCldMatrix_input_valid
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (cld : Array SparsePolyZZ) (current target added : Nat)
+    (hinput : ConcreteLLLInputValid matrix)
+    (hdimension : matrix.size = cld.size + current)
+    (hrun : Generated.StrictRecombine.buildCldMatrix matrix cld current target =
+      .ok (output, added)) :
+    ConcreteLLLInputValid output ∧
+      output.size = cld.size + current + added := by
+  unfold Generated.StrictRecombine.buildCldMatrix at hrun
+  exact buildCldMatrixLoop_input_valid cld current target
+    (Generated.StrictRecombine.cldSpiralWidth cld) 0 matrix output added
+    hinput (by simpa using hdimension) hrun
 
 set_option maxHeartbeats 800000 in
 theorem ConcreteLLLInputValid.rational_prefix_rows_linearIndependent

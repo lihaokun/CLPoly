@@ -469,3 +469,32 @@ column append; it is the algebraic core of the next full-rank extension proof.
 - 删除的退化风险：不再允许用过宽且事实上不可构造的 `cld_extension_valid` 掩盖维度前提
 - C++ 变化：无
 - 下一步：把 `appendZeroColumn`/`appendCldColumn` 的实际数组条目映射到 block determinant 引理，完成 CLD full-rank preservation
+
+## Concrete CLD extension and lattice reset validated
+
+The generated CLD-extension path is now proved against its exact array
+execution.  The proof follows `appendZeroColumnLoop`,
+`fillCldDataRowLoop`, the identity-coordinate write, and the final row push.
+It identifies the resulting matrix as a unit lower block extension and applies
+the block determinant theorem, so every successful `appendCldColumn` preserves
+nonzero determinant.  A well-founded proof over `target - added` lifts this
+fact through the complete generated `buildCldMatrixLoop`, while also retaining
+the exact source dimension.
+
+The retry reset has likewise been discharged from execution rather than an
+assumption.  `InitialMatrixPrefix` tracks the exact entries written by
+`setInitialDiagonalLoop`; induction on `size - index` proves that
+`makeInitialMatrix size scale` returns the scaled identity matrix.  Its
+determinant is nonzero whenever `scale` is nonzero.  In particular,
+`resetVanHoeijLattice` uses `scale = 2 ^ vanHoeijExponent`, so its returned
+matrix is a concrete full-rank LLL input with exactly one row per active
+factor.
+
+## 度量（CLD extension and reset）
+
+- 耗时：约 2.0 小时（数组轨迹、block determinant、缩放单位阵与 codegen 检查）
+- 迭代：约 14 轮 Lean 编译/构建修正
+- Lean 新增：约 620 行直接执行精化与数组引理
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`lake build CLPoly.Refinement.Recombine`、生成器 stale check、strict refinement boundary 和 `git diff --check` 通过
+- 下一步：从模多项式长除的实际次数下降构造 `DivmodTermination`，然后组装无抽象字段的 `VanHoeijRawOps`

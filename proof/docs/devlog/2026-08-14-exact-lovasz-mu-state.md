@@ -44,3 +44,10 @@ The same local transform is now connected to the generated norm array, and
 actual integer row swap.  For every prefix containing both adjacent rows it
 proves the full rational Gram matrix equality `G' = L' D' L'ᵀ`, rather than
 only determinant or potential preservation.
+
+The remaining prefix cases are now closed as well.  Prefixes strictly before
+the exchanged pair are unchanged entry by entry.  The boundary prefix that
+contains the new row `k - 1` but not row `k` is obtained by restricting the
+proved `(k + 1)`-dimensional factorization and eliminating the final triangular
+summand.  `concreteGramSchmidt_lovaszSwap` combines these cases into the full
+executable Gram--Schmidt invariant for the exact generated swap state.

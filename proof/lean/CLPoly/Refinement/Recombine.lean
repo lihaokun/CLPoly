@@ -1688,6 +1688,36 @@ theorem normsAfterLovaszSwap_pair_product (norms : Array QQ)
   apply (mul_left_cancel₀ hdenom)
   field_simp [hdenom]
 
+/-- The exact `2 × 2` rational identity behind the generated adjacent
+Lovász swap.  These are the four entries of `S · diag(a,b) · Sᵀ`, where
+`S = [[mu, 1], [1 - muNew*mu, -muNew]]`. -/
+theorem lovaszLocalLDLAlgebra (a b mu muNew delta : QQ)
+    (hdelta : delta = b + mu * mu * a)
+    (hdeltaNe : delta ≠ 0)
+    (hmuNew : muNew = mu * a / delta) :
+    mu * mu * a + b = delta ∧
+      mu * a * (1 - muNew * mu) - b * muNew = 0 ∧
+      (1 - muNew * mu) * a * mu - muNew * b = 0 ∧
+      (1 - muNew * mu) * (1 - muNew * mu) * a +
+          muNew * muNew * b = a * b / delta := by
+  constructor
+  · rw [hdelta]
+    ring
+  constructor
+  · rw [hmuNew]
+    field_simp [hdeltaNe]
+    rw [hdelta]
+    ring
+  constructor
+  · rw [hmuNew]
+    field_simp [hdeltaNe]
+    rw [hdelta]
+    ring
+  · rw [hmuNew]
+    field_simp [hdeltaNe]
+    rw [hdelta]
+    ring
+
 /-- Once the determinant potential is converted to a natural number, this is
 the concrete scalar rank used by the generated while-loop: an advancing step
 spends the low-order progress component, while a swap must lower the dominant
@@ -1769,6 +1799,188 @@ noncomputable def gsNormDiagonal
     (state : Generated.StrictRecombine.LLLState) (rowCount : Nat) :
     Matrix (Fin rowCount) (Fin rowCount) QQ :=
   Matrix.diagonal fun i => state.norms[i.val]!
+
+/-- Column basis change used by an adjacent Lovász swap.  It is the identity
+outside the two affected Gram--Schmidt columns. -/
+noncomputable def lovaszLocalTransform {dimension : Nat}
+    (previous current : Fin dimension) (mu muNew : QQ) :
+    Matrix (Fin dimension) (Fin dimension) QQ :=
+  fun row column =>
+    if row = previous then
+      if column = previous then mu else if column = current then 1 else 0
+    else if row = current then
+      if column = previous then 1 - muNew * mu
+      else if column = current then -muNew else 0
+    else if row = column then 1 else 0
+
+theorem finSumIteTwo {dimension : Nat} (previous current : Fin dimension)
+    (hne : previous ≠ current) (left right : Fin dimension → QQ) :
+    (∑ index, if index = previous then left index
+      else if index = current then right index else 0) =
+      left previous + right current := by
+  calc
+    (∑ index, if index = previous then left index
+        else if index = current then right index else 0) =
+        ∑ index, ((if index = previous then left index else 0) +
+          (if index = current then right index else 0)) := by
+      apply Finset.sum_congr rfl
+      intro index _
+      by_cases hprevious : index = previous
+      · subst index
+        simp [hne]
+      · simp [hprevious]
+    _ = (∑ index, if index = previous then left index else 0) +
+          ∑ index, if index = current then right index else 0 := by
+      rw [Finset.sum_add_distrib]
+    _ = left previous + right current := by simp
+
+theorem finSumIteTwoRedundantLeft {dimension : Nat}
+    (previous current : Fin dimension) (hne : previous ≠ current)
+    (left right redundant : Fin dimension → QQ) :
+    (∑ index, if index = previous then left index
+      else if index = current then right index
+      else if index = previous then redundant index else 0) =
+      left previous + right current := by
+  rw [← finSumIteTwo previous current hne left right]
+  apply Finset.sum_congr rfl
+  intro index _
+  by_cases hprevious : index = previous <;> simp [hprevious]
+
+theorem finSumIteTwoRedundantRight {dimension : Nat}
+    (previous current : Fin dimension) (hne : previous ≠ current)
+    (left right redundant : Fin dimension → QQ) :
+    (∑ index, if index = previous then left index
+      else if index = current then right index
+      else if index = current then redundant index else 0) =
+      left previous + right current := by
+  rw [← finSumIteTwo previous current hne left right]
+  apply Finset.sum_congr rfl
+  intro index _
+  by_cases hprevious : index = previous
+  · simp [hprevious]
+  · by_cases hcurrent : index = current <;> simp [hprevious, hcurrent]
+
+theorem finSumIteThree {dimension : Nat}
+    (first second third : Fin dimension)
+    (hfirstSecond : first ≠ second) (hthirdFirst : third ≠ first)
+    (hthirdSecond : third ≠ second)
+    (one two three : Fin dimension → QQ) :
+    (∑ index, if index = first then one index
+      else if index = second then two index
+      else if index = third then three index else 0) =
+      one first + two second + three third := by
+  calc
+    _ = ∑ index, ((if index = first then one index else 0) +
+        (if index = second then two index else 0) +
+        (if index = third then three index else 0)) := by
+      apply Finset.sum_congr rfl
+      intro index _
+      by_cases hfirst : index = first
+      · subst index
+        simp [hfirstSecond, hthirdFirst, Ne.symm hthirdFirst]
+      · by_cases hsecond : index = second
+        · subst index
+          simp [hfirstSecond, hthirdSecond, Ne.symm hthirdSecond]
+        · simp [hfirst, hsecond]
+    _ = _ := by simp [Finset.sum_add_distrib]
+
+theorem mul_lovaszLocalTransform_apply {dimension : Nat}
+    (matrix : Matrix (Fin dimension) (Fin dimension) QQ)
+    (previous current : Fin dimension) (mu muNew : QQ)
+    (hne : previous ≠ current) (row column : Fin dimension) :
+    (matrix * lovaszLocalTransform previous current mu muNew) row column =
+      if column = previous then
+        matrix row previous * mu +
+          matrix row current * (1 - muNew * mu)
+      else if column = current then
+        matrix row previous - matrix row current * muNew
+      else matrix row column := by
+  rw [Matrix.mul_apply]
+  by_cases hcolumnPrevious : column = previous
+  · subst column
+    simp only [lovaszLocalTransform, if_pos, Matrix.transpose_apply]
+    simp only [mul_ite, mul_zero]
+    rw [finSumIteTwoRedundantLeft previous current hne]
+  · by_cases hcolumnCurrent : column = current
+    · subst column
+      simp only [lovaszLocalTransform, if_pos, if_neg hcolumnPrevious,
+        Matrix.transpose_apply]
+      simp only [mul_ite, mul_zero]
+      rw [finSumIteTwoRedundantRight previous current hne]
+      ring
+    · simp only [lovaszLocalTransform, if_neg hcolumnPrevious,
+        if_neg hcolumnCurrent, Matrix.transpose_apply]
+      simp only [mul_ite, mul_zero]
+      rw [finSumIteThree previous current column hne
+        hcolumnPrevious hcolumnCurrent]
+      ring
+
+theorem lovaszLocalTransform_diagonal
+    {dimension : Nat} (previous current : Fin dimension)
+    (diagonal : Fin dimension → QQ) (a b mu muNew delta : QQ)
+    (hne : previous ≠ current) (ha : diagonal previous = a)
+    (hb : diagonal current = b)
+    (hdelta : delta = b + mu * mu * a) (hdeltaNe : delta ≠ 0)
+    (hmuNew : muNew = mu * a / delta) :
+    lovaszLocalTransform previous current mu muNew *
+          Matrix.diagonal diagonal *
+          (lovaszLocalTransform previous current mu muNew).transpose =
+      Matrix.diagonal (fun index =>
+        if index = previous then delta
+        else if index = current then a * b / delta
+        else diagonal index) := by
+  have halgebra := lovaszLocalLDLAlgebra a b mu muNew delta
+    hdelta hdeltaNe hmuNew
+  funext row column
+  simp only [Matrix.mul_apply, Matrix.mul_diagonal, Matrix.transpose_apply,
+    Matrix.diagonal_apply]
+  by_cases hrowPrevious : row = previous
+  · subst row
+    by_cases hcolumnPrevious : column = previous
+    · subst column
+      simp [lovaszLocalTransform, hne, hne.symm, ha, hb, halgebra.1,
+        finSumIteTwo]
+    · by_cases hcolumnCurrent : column = current
+      · subst column
+        simp [lovaszLocalTransform, hne, hne.symm, ha, hb, halgebra.2.1,
+          finSumIteTwo]
+      · simp [lovaszLocalTransform, hne, hne.symm, hcolumnPrevious,
+          hcolumnPrevious.symm, hcolumnCurrent, hcolumnCurrent.symm,
+          finSumIteTwo]
+  · by_cases hrowCurrent : row = current
+    · subst row
+      by_cases hcolumnPrevious : column = previous
+      · subst column
+        simp [lovaszLocalTransform, hne, hne.symm, ha, hb, halgebra.2.2.1,
+          finSumIteTwo]
+      · by_cases hcolumnCurrent : column = current
+        · subst column
+          simp [lovaszLocalTransform, hne, hne.symm, ha, hb, halgebra.2.2.2,
+            finSumIteTwo]
+        · simp [lovaszLocalTransform, hne, hne.symm, hcolumnPrevious,
+            hcolumnPrevious.symm, hcolumnCurrent, hcolumnCurrent.symm,
+            finSumIteTwo]
+    · by_cases hcolumnPrevious : column = previous
+      · subst column
+        simp [lovaszLocalTransform, hne, hne.symm, hrowPrevious,
+          hrowPrevious.symm, hrowCurrent, hrowCurrent.symm,
+          finSumIteTwo]
+      · by_cases hcolumnCurrent : column = current
+        · subst column
+          simp [lovaszLocalTransform, hne, hne.symm, hrowPrevious,
+            hrowPrevious.symm, hrowCurrent, hrowCurrent.symm,
+            finSumIteTwo]
+        · by_cases hrowColumn : row = column
+          · subst column
+            simp [lovaszLocalTransform, hne, hne.symm, hrowPrevious,
+              hrowPrevious.symm, hrowCurrent, hrowCurrent.symm,
+              hcolumnPrevious, hcolumnPrevious.symm, hcolumnCurrent,
+              hcolumnCurrent.symm, finSumIteTwo]
+          · simp [lovaszLocalTransform, hne, hne.symm, hrowPrevious,
+              hrowPrevious.symm, hrowCurrent, hrowCurrent.symm,
+              hcolumnPrevious, hcolumnPrevious.symm, hcolumnCurrent,
+              hcolumnCurrent.symm, hrowColumn, hrowColumn.symm,
+              finSumIteTwo]
 
 noncomputable def gramPrefixMatrixQQ
     (matrix : Generated.StrictRecombine.LLLMatrix) (rowCount : Nat) :

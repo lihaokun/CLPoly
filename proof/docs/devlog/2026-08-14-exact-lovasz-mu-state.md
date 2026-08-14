@@ -24,3 +24,10 @@ the exchanged rows, the new boundary coefficient, and both corrected
 coefficients in every row strictly after `k`.  Array and row sizes are
 preserved throughout, so later matrix proofs can rewrite generated storage
 without any unchecked read.
+
+The local rational algebra is now closed as well.  `lovaszLocalTransform`
+defines the identity column transformation with the exact adjacent `2 × 2`
+block used by the swap.  `lovaszLocalTransform_diagonal` proves that
+conjugating the old diagonal norms by this block gives precisely the two
+generated replacement norms, while `mul_lovaszLocalTransform_apply` exposes
+the corresponding right-multiplication formula for every matrix entry.

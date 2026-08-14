@@ -92,3 +92,15 @@ obligations for CLD extension, LLL output, and lattice reset.  These obligations
 cannot return executable data and replace the invalid earlier requirement that
 Gram--Schmidt initialization succeed with positive norms for every arbitrary
 integer matrix.
+
+The proof layer now fixes that admissibility predicate concretely:
+`ConcreteLLLInputValid` means that the raw array is square and its full integer
+basis determinant is nonzero.  Any state satisfying the already established
+executable Gram--Schmidt invariant yields this input condition: the determinant
+of its full Gram matrix is the product of its strictly positive generated
+norms, while the same Gram determinant is the square of the basis determinant.
+Consequently a completed LLL round supplies the exact precondition needed when
+the next C++ call reinitializes Gram--Schmidt.  `concreteLLLExecution` now
+instantiates the generated wrapper modulo one sharply isolated theorem,
+`LLLInitializationCorrect`, asserting correctness of the concrete generated
+initialization loops on a square full-rank basis.

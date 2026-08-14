@@ -22,6 +22,7 @@ FORBIDDEN = (
     "ops.multiplyNormalizeMod",
     "  zassenhaus :",
     "ops.zassenhaus ",
+    "  prepareCandidates :",
 )
 
 

@@ -2103,6 +2103,39 @@ structure ConcreteLLLExecutionValid
     0 < state.norms[index]
   gram_schmidt : ConcreteGramSchmidt state
 
+/-- The source precondition of `__lll_reduce`: a square integer basis of full
+row rank.  Unlike the execution invariant, this mentions no preselected
+Gram--Schmidt output and therefore can be reused when C++ reinitializes LLL on
+the matrix retained from a previous van-Hoeij round. -/
+structure ConcreteLLLInputValid
+    (matrix : Generated.StrictRecombine.LLLMatrix) : Prop where
+  rows_square : ∀ row (hrow : row < matrix.size),
+    matrix[row].size = matrix.size
+  determinant_ne : Matrix.det
+    (basisPrefixMatrix matrix matrix.size matrix.size) ≠ 0
+
+theorem ConcreteLLLExecutionValid.toInputValid
+    {state : Generated.StrictRecombine.LLLState}
+    (hvalid : ConcreteLLLExecutionValid state) :
+    ConcreteLLLInputValid state.matrix := by
+  refine ⟨hvalid.rows_square, ?_⟩
+  intro hdet
+  have hgramMatrix := gramPrefixMatrix_eq_mul_transpose state.matrix
+    state.matrix.size
+  have hgramDet : Matrix.det
+      (gramPrefixMatrix state.matrix state.matrix.size) = 0 := by
+    rw [hgramMatrix, Matrix.det_mul, Matrix.det_transpose, hdet, zero_mul]
+  have hgramDetQQ :
+      ((Matrix.det (gramPrefixMatrix state.matrix state.matrix.size) : Int) : QQ) =
+        0 := by rw [hgramDet]; norm_num
+  rw [hvalid.gram_schmidt.gram_prefix state.matrix.size le_rfl] at hgramDetQQ
+  have hpositive : 0 < prefixNormProduct state.norms state.matrix.size := by
+    unfold prefixNormProduct
+    apply Finset.prod_pos
+    intro index _
+    exact hvalid.norms_positive index.val (by simpa [hvalid.norms_size] using index.isLt)
+  linarith
+
 theorem ConcreteLLLExecutionValid.toConcreteLLLValid
     {state : Generated.StrictRecombine.LLLState}
     (hvalid : ConcreteLLLExecutionValid state) : ConcreteLLLValid state where
@@ -4815,6 +4848,29 @@ theorem concreteLLLMainLoop_preserves_execution_valid
         have hout := Except.ok.inj hrun
         subst output
         exact hvalid
+
+/-- The one remaining initialization lemma is stated only over the concrete
+full-rank source precondition.  Supplying it instantiates every proof field of
+the generated LLL wrapper; no executable matrix or branch is supplied here. -/
+def LLLInitializationCorrect : Prop :=
+  ∀ matrix mu norms transform,
+    ConcreteLLLInputValid matrix →
+    Generated.StrictRecombine.initializeLLL matrix = .ok (mu, norms, transform) →
+    ConcreteLLLExecutionValid
+      (Generated.StrictRecombine.LLLState.mk matrix transform mu norms 1)
+
+noncomputable def concreteLLLExecution
+    (hinitialize : LLLInitializationCorrect) :
+    Generated.StrictRecombine.LLLExecution where
+  inputValid := ConcreteLLLInputValid
+  termination := concreteLLLTermination
+  initialized_valid := by
+    intro matrix mu norms transform hinput hrun
+    exact hinitialize matrix mu norms transform hinput hrun
+  output_input_valid := by
+    intro initial output hvalid hrun
+    exact (concreteLLLMainLoop_preserves_execution_valid initial output
+      hvalid hrun).toInputValid
 
 theorem gramPrefixDet_swap_preserved_of_before
     (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)

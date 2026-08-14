@@ -126,18 +126,6 @@ structure VanHoeijState where
   result : Array SparsePolyZZ
   target : Nat
 
-/-- Raw C++ callees for one van-Hoeij iteration.  `validateCandidates`
-returns only concrete mutations and consumed bits; it cannot return an L2
-factorization proposition. -/
-structure VanHoeijRawOps where
-  prepareCandidates : SparsePolyZZ → Array SparsePolyZZ → ZZ → Nat →
-    RawExec (Array (Array Int32))
-  validateCandidates : SparsePolyZZ → Array SparsePolyZZ → ZZ →
-    Array (Array Int32) → Array SparsePolyZZ →
-    RawExec (SparsePolyZZ × Array SparsePolyZZ × Array Bool)
-  zassenhaus : SparsePolyZZ → Array SparsePolyZZ → ZZ →
-    RawExec (Array SparsePolyZZ)
-
 /-- Check one candidate's active-relative indices exactly as the source inner
 loop does before constructing its trial product. -/
 def candidateAvailableLoop (candidate : Array Int32) (consumed : Array Bool)
@@ -224,34 +212,119 @@ decreasing_by omega
 def multiplyNormalizeRaw (left right : SparsePolyZZ) : RawExec SparsePolyZZ :=
   .ok (SparsePolyZZ.normalization (multiplyTermsLoop left right 0 #[]))
 
+/-- Concrete C++ callees used inside candidate validation.  Each field returns
+only computed polynomial data; no field may return a semantic proposition or
+choose an L2 factorization witness. -/
+structure CandidateValidationRawOps where
+  product : TrialProductRawOps
+  symmetricMod : SparsePolyZZ → ZZ → RawExec SparsePolyZZ
+  primitive : SparsePolyZZ → RawExec (ZZ × SparsePolyZZ)
+  divmod : SparsePolyZZ → SparsePolyZZ → RawExec (SparsePolyZZ × SparsePolyZZ)
+
+/-- Exact source `for (auto& cand : candidates)` validation loop: reject empty,
+trivial, or already-consumed candidates; build the modular product; recover a
+primitive integer polynomial; run actual trial division; and mutate `fStar`,
+`result`, and `consumed` only when the concrete remainder is empty. -/
+def validateCandidatesLoop (ops : CandidateValidationRawOps)
+    (candidates : Array (Array Int32)) (candidateIndex : Nat)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ) :
+    SparsePolyZZ → Array SparsePolyZZ → Array Bool → Nat →
+      RawExec (SparsePolyZZ × Array SparsePolyZZ × Array Bool)
+  | fStar, result, consumed, remaining =>
+      if hcandidates : candidateIndex < candidates.size then
+        let candidate := candidates[candidateIndex]
+        if hempty : candidate.isEmpty then
+          validateCandidatesLoop ops candidates (candidateIndex + 1)
+            activeLifted modulus fStar result consumed remaining
+        else if htrivial : remaining ≤ candidate.size then
+          validateCandidatesLoop ops candidates (candidateIndex + 1)
+            activeLifted modulus fStar result consumed remaining
+        else
+          match candidateAvailable candidate consumed with
+          | .error fault => .error fault
+          | .ok false => validateCandidatesLoop ops candidates
+              (candidateIndex + 1) activeLifted modulus fStar result consumed remaining
+          | .ok true =>
+            if hfstar : 0 < fStar.size then
+              let initial : SparsePolyZZ := #[(⟨0⟩, fStar[0].2)]
+              match trialProductLoop ops.product candidate activeLifted modulus 0 initial with
+              | .error fault => .error fault
+              | .ok product =>
+                match ops.symmetricMod product modulus with
+                | .error fault => .error fault
+                | .ok symmetric =>
+                  match ops.primitive symmetric with
+                  | .error fault => .error fault
+                  | .ok (_, factor) =>
+                    match ops.divmod fStar factor with
+                    | .error fault => .error fault
+                    | .ok (quotient, remainder) =>
+                      if hremainder : remainder.isEmpty then
+                        match ops.primitive quotient with
+                        | .error fault => .error fault
+                        | .ok (_, quotientPrimitive) =>
+                          match markConsumedLoop candidate 0 consumed with
+                          | .error fault => .error fault
+                          | .ok consumed' =>
+                            validateCandidatesLoop ops candidates
+                              (candidateIndex + 1) activeLifted modulus
+                              quotientPrimitive (result.push factor) consumed'
+                              (remaining - candidate.size)
+                      else validateCandidatesLoop ops candidates
+                        (candidateIndex + 1) activeLifted modulus
+                        fStar result consumed remaining
+            else .error (.outOfBounds 0 fStar.size)
+      else .ok (fStar, result, consumed)
+termination_by fStar result consumed remaining => candidates.size - candidateIndex
+decreasing_by all_goals omega
+
+def validateCandidates (ops : CandidateValidationRawOps)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidates : Array (Array Int32)) (result : Array SparsePolyZZ) :
+    RawExec (SparsePolyZZ × Array SparsePolyZZ × Array Bool) :=
+  validateCandidatesLoop ops candidates 0 activeLifted modulus fStar result
+    (Array.replicate activeLifted.size false) activeLifted.size
+
+/-- Raw C++ callees for one van-Hoeij iteration.  Candidate validation itself
+is generated above and is no longer hidden behind a semantic callback. -/
+structure VanHoeijRawOps where
+  prepareCandidates : SparsePolyZZ → Array SparsePolyZZ → ZZ → Nat →
+    RawExec (Array (Array Int32))
+  validation : CandidateValidationRawOps
+  zassenhaus : SparsePolyZZ → Array SparsePolyZZ → ZZ →
+    RawExec (Array SparsePolyZZ)
+
 /-- Erased termination certificate for the successful-extraction branch.
 It refers only to concrete successful raw executions and the consumed bits
 they returned. -/
 structure VanHoeijTermination (ops : VanHoeijRawOps) where
-  extraction_decreases : ∀ (modulus : ZZ) (state : VanHoeijState)
-      activeLifted candidates fStar' result'
+  extraction_decreases : ∀ (lifted : Array SparsePolyZZ) (modulus : ZZ)
+      (state : VanHoeijState) activeLifted candidates fStar' result'
       consumed active',
-    ops.validateCandidates state.fStar activeLifted modulus candidates state.result =
+    gatherActive state.active lifted = .ok activeLifted →
+    validateCandidates ops.validation state.fStar activeLifted modulus candidates state.result =
       .ok (fStar', result', consumed) →
     (∃ index, ∃ hindex : index < consumed.size, consumed[index] = true) →
     removeConsumed state.active consumed = .ok active' →
     active'.size < state.active.size
 
 def removeConsumedDecreasing (ops : VanHoeijRawOps)
-    (termination : VanHoeijTermination ops) (modulus : ZZ)
+    (termination : VanHoeijTermination ops) (lifted : Array SparsePolyZZ)
+    (modulus : ZZ)
     (state : VanHoeijState) (activeLifted : Array SparsePolyZZ)
     (candidates : Array (Array Int32)) (fStar' : SparsePolyZZ)
     (result' : Array SparsePolyZZ) (consumed : Array Bool)
-    (hvalidate : ops.validateCandidates state.fStar activeLifted modulus
+    (hgather : gatherActive state.active lifted = .ok activeLifted)
+    (hvalidate : validateCandidates ops.validation state.fStar activeLifted modulus
       candidates state.result = .ok (fStar', result', consumed))
     (hfound : ∃ index, ∃ hindex : index < consumed.size,
       consumed[index] = true) :
     RawExec { active' : Array Int32 // active'.size < state.active.size } :=
   match hremove : removeConsumed state.active consumed with
   | .error fault => .error fault
-  | .ok active' => .ok ⟨active', termination.extraction_decreases modulus
+  | .ok active' => .ok ⟨active', termination.extraction_decreases lifted modulus
       state activeLifted candidates fStar' result' consumed active'
-      hvalidate hfound hremove⟩
+      hgather hvalidate hfound hremove⟩
 
 /-- Source-shaped van-Hoeij main loop.  Successful extraction decreases the
 active set; an unsuccessful round strictly advances bounded precision; an
@@ -263,20 +336,20 @@ def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
   | state =>
     if hdone : state.active.size ≤ 1 then .ok (state.fStar, state.result)
     else
-      match gatherActive state.active lifted with
+      match hgather : gatherActive state.active lifted with
       | .error fault => .error fault
       | .ok activeLifted =>
         match ops.prepareCandidates state.fStar activeLifted modulus state.target with
         | .error fault => .error fault
         | .ok candidates =>
-          match hvalidate : ops.validateCandidates state.fStar activeLifted modulus candidates
+          match hvalidate : validateCandidates ops.validation state.fStar activeLifted modulus candidates
               state.result with
           | .error fault => .error fault
           | .ok (fStar', result', consumed) =>
             if hfound : ∃ index, ∃ hindex : index < consumed.size,
                 consumed[index] = true then
-              match removeConsumedDecreasing ops termination modulus state
-                  activeLifted candidates fStar' result' consumed hvalidate hfound with
+              match removeConsumedDecreasing ops termination lifted modulus state
+                  activeLifted candidates fStar' result' consumed hgather hvalidate hfound with
               | .error fault => .error fault
               | .ok activeNext =>
                 vanHoeijLoop ops termination lifted modulus initial maximum hinitial

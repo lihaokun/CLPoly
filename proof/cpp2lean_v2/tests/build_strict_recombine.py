@@ -20,6 +20,7 @@ set_option autoImplicit false
 namespace Generated.StrictRecombine
 
 abbrev LLLMatrix := Array (Array ZZ)
+abbrev QQMatrix := Array (Array QQ)
 
 /-- Source `vector<ZZ>(columns, 0)` constructor. -/
 def zeroMatrixRowLoop (columns index : Nat) (row : Array ZZ) : Array ZZ :=
@@ -44,6 +45,28 @@ decreasing_by omega
 
 def zeroMatrix (rows columns : Nat) : LLLMatrix :=
   zeroMatrixLoop rows columns 0 #[]
+
+def zeroQQRowLoop (columns index : Nat) (row : Array QQ) : Array QQ :=
+  if hindex : index < columns then
+    zeroQQRowLoop columns (index + 1) (row.push 0)
+  else row
+termination_by columns - index
+decreasing_by omega
+
+def zeroQQRow (columns : Nat) : Array QQ :=
+  zeroQQRowLoop columns 0 #[]
+
+def zeroQQMatrixLoop (rows columns index : Nat) (matrix : QQMatrix) :
+    QQMatrix :=
+  if hindex : index < rows then
+    zeroQQMatrixLoop rows columns (index + 1)
+      (matrix.push (zeroQQRow columns))
+  else matrix
+termination_by rows - index
+decreasing_by omega
+
+def zeroQQMatrix (rows columns : Nat) : QQMatrix :=
+  zeroQQMatrixLoop rows columns 0 #[]
 
 /-- Exact diagonal assignment loop in C++ `make_initial_M`. -/
 def setInitialDiagonalLoop (scale : ZZ) (size index : Nat)
@@ -602,6 +625,113 @@ def swapMatrixRows (matrix : LLLMatrix) (left right : Nat) : RawExec LLLMatrix :
       .ok ((matrix.set left matrix[right]).set right matrix[left] (by simpa))
     else .error (.outOfBounds right matrix.size)
   else .error (.outOfBounds left matrix.size)
+
+/-- Inner `l < j` subtraction in the Gram–Schmidt numerator. -/
+def gramNumeratorLoop (mu : QQMatrix) (norms : Array QQ) (i j : Nat) :
+    (l : Nat) → QQ → RawExec QQ
+  | l, numerator =>
+      if hl : l < j then
+        if hi : i < mu.size then
+          if hj : j < mu.size then
+            if hil : l < mu[i].size then
+              if hjl : l < mu[j].size then
+                if hn : l < norms.size then
+                  gramNumeratorLoop mu norms i j (l + 1)
+                    (numerator - mu[i][l] * mu[j][l] * norms[l])
+                else .error (.outOfBounds l norms.size)
+              else .error (.outOfBounds l mu[j].size)
+            else .error (.outOfBounds l mu[i].size)
+          else .error (.outOfBounds j mu.size)
+        else .error (.outOfBounds i mu.size)
+      else .ok numerator
+termination_by l _ => j - l
+decreasing_by omega
+
+/-- Source `j < i` loop computing one complete row of Gram–Schmidt μ. -/
+def gramMuRowLoop (matrix : LLLMatrix) (i : Nat) :
+    (j : Nat) → QQMatrix → Array QQ → RawExec (QQMatrix × Array QQ)
+  | j, mu, norms =>
+      if hj : j < i then
+        if hiM : i < matrix.size then
+          if hjM : j < matrix.size then
+            match dotRows matrix[i] matrix[j] with
+            | .error fault => .error fault
+            | .ok dot =>
+              match gramNumeratorLoop mu norms i j 0 (dot : QQ) with
+              | .error fault => .error fault
+              | .ok numerator =>
+                if hiMu : i < mu.size then
+                  if hjMu : j < mu[i].size then
+                    if hjNorm : j < norms.size then
+                      let coefficient :=
+                        if norms[j] = 0 then 0 else numerator / norms[j]
+                      gramMuRowLoop matrix i (j + 1)
+                        (mu.set i (mu[i].set j coefficient)) norms
+                    else .error (.outOfBounds j norms.size)
+                  else .error (.outOfBounds j mu[i].size)
+                else .error (.outOfBounds i mu.size)
+          else .error (.outOfBounds j matrix.size)
+        else .error (.outOfBounds i matrix.size)
+      else .ok (mu, norms)
+termination_by j _ _ => i - j
+decreasing_by omega
+
+/-- Source `j < i` loop subtracting μ²B from the raw row norm. -/
+def gramNormLoop (mu : QQMatrix) (norms : Array QQ) (i : Nat) :
+    (j : Nat) → QQ → RawExec QQ
+  | j, norm =>
+      if hj : j < i then
+        if hi : i < mu.size then
+          if hij : j < mu[i].size then
+            if hn : j < norms.size then
+              gramNormLoop mu norms i (j + 1)
+                (norm - mu[i][j] * mu[i][j] * norms[j])
+            else .error (.outOfBounds j norms.size)
+          else .error (.outOfBounds j mu[i].size)
+        else .error (.outOfBounds i mu.size)
+      else .ok norm
+termination_by j _ => i - j
+decreasing_by omega
+
+/-- Outer Gram–Schmidt initialization loop for rows `i = 1 .. n-1`. -/
+def initializeGramSchmidtLoop (matrix : LLLMatrix) :
+    (i : Nat) → QQMatrix → Array QQ → RawExec (QQMatrix × Array QQ)
+  | i, mu, norms =>
+      if hi : i < matrix.size then
+        match gramMuRowLoop matrix i 0 mu norms with
+        | .error fault => .error fault
+        | .ok (mu', norms') =>
+          match dotRows matrix[i] matrix[i] with
+          | .error fault => .error fault
+          | .ok dot =>
+            match gramNormLoop mu' norms' i 0 (dot : QQ) with
+            | .error fault => .error fault
+            | .ok norm =>
+              if hn : i < norms'.size then
+                initializeGramSchmidtLoop matrix (i + 1) mu'
+                  (norms'.set i norm)
+              else .error (.outOfBounds i norms'.size)
+      else .ok (mu, norms)
+termination_by i _ _ => matrix.size - i
+decreasing_by omega
+
+/-- Exact C++ initialization of μ, B_gs, and the identity transform U. -/
+def initializeLLL (matrix : LLLMatrix) :
+    RawExec (QQMatrix × Array QQ × LLLMatrix) :=
+  let size := matrix.size
+  if hsize : 0 < size then
+    match makeInitialMatrix size 1 with
+    | .error fault => .error fault
+    | .ok transform =>
+      let mu := zeroQQMatrix size size
+      let norms := Array.replicate size (0 : QQ)
+      match dotRows matrix[0] matrix[0] with
+      | .error fault => .error fault
+      | .ok dot =>
+        initializeGramSchmidtLoop matrix 1 mu
+          (norms.set 0 (dot : QQ) (by simp [norms, hsize])) |>.map
+          (fun state => (state.1, state.2, transform))
+  else .error .assertionFailure
 
 def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
   if hindex : index < input.size then

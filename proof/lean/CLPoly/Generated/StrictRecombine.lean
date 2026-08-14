@@ -815,6 +815,15 @@ def LLLStepResult.state : LLLStepResult → LLLState
   | .advanced state => state
   | .swapped state => state
 
+/-- The two adjacent `B_gs` assignments in the failed-Lovász branch.  The
+caller has already checked both indices; `set!` only packages those erased
+proofs independently of the recursive state. -/
+def normsAfterLovaszSwap (norms : Array QQ) (k : Nat) (muOld : QQ) : Array QQ :=
+  let newNorm := norms[k]! + muOld * muOld * norms[k - 1]!
+  if hnew : newNorm ≠ 0 then
+    (norms.set! k (norms[k]! * norms[k - 1]! / newNorm)).set! (k - 1) newNorm
+  else norms
+
 /-- One complete body execution of the C++ LLL `while (k < n)` loop. -/
 def lllStep (state : LLLState) : RawExec LLLStepResult :=
   if hkPositive : 0 < state.k then
@@ -841,13 +850,7 @@ def lllStep (state : LLLState) : RawExec LLLStepResult :=
                     muOld * muOld * reduced.norms[reduced.k - 1]
                   let muNew := if newNorm ≠ 0 then
                     muOld * reduced.norms[reduced.k - 1] / newNorm else 0
-                  let norms' := if hnew : newNorm ≠ 0 then
-                    (reduced.norms.set reduced.k
-                      (reduced.norms[reduced.k] *
-                        reduced.norms[reduced.k - 1] / newNorm)).set
-                      (reduced.k - 1) newNorm
-                        (by rw [Array.size_set]; exact hpredNorm)
-                    else reduced.norms
+                  let norms' := normsAfterLovaszSwap reduced.norms reduced.k muOld
                   match swapMatrixRows reduced.matrix reduced.k (reduced.k - 1) with
                   | .error fault => .error fault
                   | .ok matrix' =>

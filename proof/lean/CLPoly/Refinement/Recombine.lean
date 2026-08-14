@@ -596,11 +596,11 @@ theorem lllStep_advanced_control
     (hrun : Generated.StrictRecombine.lllStep state =
       .ok (.advanced output)) :
     output.norms = state.norms ∧ output.k = state.k + 1 := by
-  unfold Generated.StrictRecombine.lllStep at hrun
-  split at hrun
-  next hkPositive =>
-    split at hrun
-    next hkMatrix =>
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
       cases hreduce : Generated.StrictRecombine.sizeReduceAt state
           (state.k - 1) with
       | error fault => simp [hreduce] at hrun
@@ -640,19 +640,21 @@ theorem lllStep_advanced_control
             next hkMu => contradiction
           next hpredNorm => contradiction
         next hkNorm => contradiction
-    next hkMatrix => contradiction
-  next hkPositive => contradiction
+    · rw [dif_neg hkMatrix] at hrun
+      simp [hkMatrix] at hrun
+  · rw [dif_neg hkPositive] at hrun
+    simp [hkPositive] at hrun
 
 theorem lllStep_swapped_k
     (state output : Generated.StrictRecombine.LLLState)
     (hrun : Generated.StrictRecombine.lllStep state =
       .ok (.swapped output)) :
     output.k = Nat.max (state.k - 1) 1 := by
-  unfold Generated.StrictRecombine.lllStep at hrun
-  split at hrun
-  next hkPositive =>
-    split at hrun
-    next hkMatrix =>
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
       cases hreduce : Generated.StrictRecombine.sizeReduceAt state
           (state.k - 1) with
       | error fault => simp [hreduce] at hrun
@@ -662,8 +664,53 @@ theorem lllStep_swapped_k
           (state.k - 1) hreduce
         repeat' first | split at hrun | simp_all
         all_goals cases hrun; rfl
-    next hkMatrix => contradiction
-  next hkPositive => contradiction
+    · rw [dif_neg hkMatrix] at hrun
+      contradiction
+  · rw [dif_neg hkPositive] at hrun
+    contradiction
+
+theorem lllStep_swapped_norms
+    (state output : Generated.StrictRecombine.LLLState)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    ∃ reduced,
+      Generated.StrictRecombine.sizeReduceAt state (state.k - 1) = .ok reduced ∧
+      reduced.norms = state.norms ∧ reduced.k = state.k ∧
+      output.norms = Generated.StrictRecombine.normsAfterLovaszSwap
+        reduced.norms reduced.k
+          ((reduced.mu[reduced.k]!)[reduced.k - 1]!) := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hcontrol := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        repeat' first | split at hrun | simp_all
+        all_goals cases hrun
+        all_goals
+          have hkMuState : state.k < reduced.mu.size := by
+            rw [← hcontrol.2]
+            assumption
+          have hpredMuState : state.k - 1 < reduced.mu[state.k].size := by
+            simpa only [hcontrol.2] using
+              (‹reduced.k - 1 < reduced.mu[reduced.k].size›)
+          change Generated.StrictRecombine.normsAfterLovaszSwap state.norms
+              state.k ((reduced.mu[state.k]'hkMuState)[state.k - 1]'hpredMuState) =
+            Generated.StrictRecombine.normsAfterLovaszSwap state.norms
+              state.k ((reduced.mu[state.k]!)[state.k - 1]!)
+          congr 1
+          rw [getElem!_pos reduced.mu state.k hkMuState]
+          rw [getElem!_pos (reduced.mu[state.k]) (state.k - 1) hpredMuState]
+    · rw [dif_neg hkMatrix] at hrun
+      simp [hkMatrix] at hrun
+  · rw [dif_neg hkPositive] at hrun
+    simp [hkPositive] at hrun
 
 noncomputable def factorArrayToL2 (factors : Array SparsePolyZZ) :
     List (Polynomial Int) :=

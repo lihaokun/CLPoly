@@ -6,6 +6,51 @@ set_option autoImplicit false
 
 namespace Generated.StrictRecombine
 
+abbrev LLLMatrix := Array (Array ZZ)
+
+/-- Source `vector<ZZ>(columns, 0)` constructor. -/
+def zeroMatrixRowLoop (columns index : Nat) (row : Array ZZ) : Array ZZ :=
+  if hindex : index < columns then
+    zeroMatrixRowLoop columns (index + 1) (row.push 0)
+  else row
+termination_by columns - index
+decreasing_by omega
+
+def zeroMatrixRow (columns : Nat) : Array ZZ :=
+  zeroMatrixRowLoop columns 0 #[]
+
+/-- Source `LLLMatrix(rows, vector<ZZ>(columns, 0))` constructor. -/
+def zeroMatrixLoop (rows columns index : Nat) (matrix : LLLMatrix) :
+    LLLMatrix :=
+  if hindex : index < rows then
+    zeroMatrixLoop rows columns (index + 1)
+      (matrix.push (zeroMatrixRow columns))
+  else matrix
+termination_by rows - index
+decreasing_by omega
+
+def zeroMatrix (rows columns : Nat) : LLLMatrix :=
+  zeroMatrixLoop rows columns 0 #[]
+
+/-- Exact diagonal assignment loop in C++ `make_initial_M`. -/
+def setInitialDiagonalLoop (scale : ZZ) (size index : Nat)
+    (matrix : LLLMatrix) : RawExec LLLMatrix :=
+  if hindex : index < size then
+    if hrow : index < matrix.size then
+      if hcolumn : index < matrix[index].size then
+        setInitialDiagonalLoop scale size (index + 1)
+          (matrix.set index (matrix[index].set index scale))
+      else .error (.outOfBounds index matrix[index].size)
+    else .error (.outOfBounds index matrix.size)
+  else .ok matrix
+termination_by size - index
+decreasing_by omega
+
+/-- Source `make_initial_M(rr, U_exp_)`, with the shift already evaluated by
+the caller as `scale`. -/
+def makeInitialMatrix (size : Nat) (scale : ZZ) : RawExec LLLMatrix :=
+  setInitialDiagonalLoop scale size 0 (zeroMatrix size size)
+
 /-- Exact lowering of the range-for that maps active indices back to the
 original Hensel-lifted factor array.  Invalid source indices are observable
 raw faults instead of `get!` defaults. -/

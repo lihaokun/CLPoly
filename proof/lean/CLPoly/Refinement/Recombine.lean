@@ -530,6 +530,60 @@ def concreteZassenhausTermination :
   removal_decreases := fun active candidate output hnonempty hrun =>
     removeCombination_strict candidate active output hnonempty hrun
 
+/-- Pure array value computed by the generated source-shaped μ prefix loop.
+This is used only to state its exact execution theorem; it is itself strictly
+well-founded on the same remaining-prefix measure. -/
+def reduceMuPrefixArray (mu : Generated.StrictRecombine.QQMatrix)
+    (k source : Nat) (q : ZZ) (limit index : Nat) :
+    Generated.StrictRecombine.QQMatrix :=
+  if hindex : index < limit then
+    let value := (mu[k]!)[index]! - (q : QQ) * (mu[source]!)[index]!
+    reduceMuPrefixArray
+      (mu.setIfInBounds k (mu[k]!.setIfInBounds index value))
+      k source q limit (index + 1)
+  else mu
+termination_by limit - index
+decreasing_by omega
+
+theorem reduceMuPrefixLoop_eq_array
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source : Nat) (q : ZZ) (limit index : Nat)
+    (hk : k < mu.size) (hsource : source < mu.size)
+    (hlimitK : limit ≤ mu[k].size)
+    (hlimitSource : limit ≤ mu[source].size)
+    (hne : k ≠ source) :
+    Generated.StrictRecombine.reduceMuPrefixLoop mu k source q limit index =
+      .ok (reduceMuPrefixArray mu k source q limit index) := by
+  induction hmeasure : limit - index using Nat.strong_induction_on
+      generalizing mu index with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.reduceMuPrefixLoop, reduceMuPrefixArray]
+      by_cases hindex : index < limit
+      · rw [dif_pos hindex, dif_pos hk, dif_pos hsource]
+        have hindexK : index < mu[k].size := lt_of_lt_of_le hindex hlimitK
+        have hindexSource : index < mu[source].size :=
+          lt_of_lt_of_le hindex hlimitSource
+        rw [dif_pos hindexK, dif_pos hindexSource]
+        dsimp only
+        rw [getElem!_pos mu k hk, getElem!_pos mu source hsource,
+          getElem!_pos mu[k] index hindexK,
+          getElem!_pos mu[source] index hindexSource]
+        let value := mu[k][index] - (q : QQ) * mu[source][index]
+        let nextMu := mu.set k (mu[k].set index value)
+        have hnextSize : nextMu.size = mu.size := by simp [nextMu]
+        have hkNext : k < nextMu.size := by simpa [hnextSize]
+        have hsourceNext : source < nextMu.size := by simpa [hnextSize]
+        have hkRowNext : nextMu[k].size = mu[k].size := by
+          simp [nextMu, hk, value]
+        have hsourceRowNext : nextMu[source].size = mu[source].size := by
+          simp [nextMu, hk, hsource, hne, value]
+        have htail := ih (limit - (index + 1)) (by omega)
+          nextMu (index + 1) hkNext hsourceNext
+          (by simpa [hkRowNext]) (by simpa [hsourceRowNext]) rfl
+        simpa [dif_pos hindex, nextMu, value, Array.setIfInBounds,
+          hk, hindexK] using htail
+      · rw [dif_neg hindex, dif_neg hindex]
+
 theorem sizeReduceAt_preserves_norms_k
     (state output : Generated.StrictRecombine.LLLState) (j : Nat)
     (hrun : Generated.StrictRecombine.sizeReduceAt state j = .ok output) :

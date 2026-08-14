@@ -346,3 +346,31 @@ orthogonalization, choice function, or existence certificate is involved.
 - Lean 新增/修改行数：约 280 行
 - 对应 C++ 行数：约 18 行 μ/norm 两个内层循环及外层单行写回
 - 下一步：将该扩展定理嵌入生成的外层初始化循环，并由前缀 Gram 行列式正性推出每个新 pivot 严格为正
+
+## Generated pivot positivity
+
+The row-extension invariant now also yields positivity of the newly written
+Gram--Schmidt norm.  `ConcreteGramSchmidtUpTo.gram_prefix` derives the exact
+prefix determinant/product identity from any processed executable prefix,
+not only from a completed LLL state.  `generatedGramPivot_positive` combines
+that identity at prefix `i+1` with the previously proved strict positivity of
+the actual prefix Gram determinant.
+
+Expanding `prefixNormProduct (i+1)` gives the product of all prior generated
+norms times the newly stored norm.  The processed invariant makes the prior
+product strictly positive, while the Gram determinant makes the total product
+strictly positive; ordered-field arithmetic therefore forces the new norm to
+be strictly positive.  This derives positivity after execution and does not
+assume a nonzero divisor branch or a precomputed orthogonal basis.
+
+The supporting prefix-frame and finite-sum lemmas were compiled together with
+the complete one-row LDL extension, so the next outer-loop theorem can carry
+both matrix semantics and positivity through each concrete source iteration.
+
+## 度量（pivot positivity）
+
+- 耗时：约 0.75 小时（前缀 determinant/product 桥与严格正性代数）
+- 迭代：约 3 轮编译-修复循环
+- Lean 新增/修改行数：约 65 行（含通用 processed-prefix determinant 引理）
+- 对应 C++ 行数：不新增执行代码；闭合 norm 写回所需的满秩输入数学义务
+- 下一步：沿 `size - i` 外层良基递归组合 row、diagonal、LDL 与 positivity，并删除 `LLLInitializationCorrect`

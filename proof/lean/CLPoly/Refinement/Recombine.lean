@@ -3533,6 +3533,35 @@ theorem concreteGramSchmidtUpTo_extend_one
           simpa [oldRow, oldColumn] using
             (gsLowerNormSum_old_entry state i oldRow oldColumn).symm
 
+theorem ConcreteGramSchmidtUpTo.gram_prefix
+    {state : Generated.StrictRecombine.LLLState} {processed : Nat}
+    (hgs : ConcreteGramSchmidtUpTo state processed)
+    (rowCount : Nat) (hprocessed : rowCount ≤ processed)
+    (hrowCount : rowCount ≤ state.matrix.size) :
+    ((Matrix.det (gramPrefixMatrix state.matrix rowCount) : Int) : QQ) =
+      prefixNormProduct state.norms rowCount := by
+  have hfactor := hgs rowCount hprocessed hrowCount
+  calc
+    ((Matrix.det (gramPrefixMatrix state.matrix rowCount) : Int) : QQ) =
+        Matrix.det (gramPrefixMatrixQQ state.matrix rowCount) := by
+      exact Int.cast_det _
+    _ = Matrix.det (gsLowerPrefix state rowCount *
+          gsNormDiagonal state rowCount *
+            (gsLowerPrefix state rowCount).transpose) := by rw [hfactor]
+    _ = Matrix.det (gsLowerPrefix state rowCount) *
+          Matrix.det (gsNormDiagonal state rowCount) *
+            Matrix.det (gsLowerPrefix state rowCount) := by
+      rw [Matrix.det_mul, Matrix.det_mul, Matrix.det_transpose]
+    _ = prefixNormProduct state.norms rowCount := by
+      rw [gsLowerPrefix_det]
+      simp only [one_mul, mul_one]
+      unfold gsNormDiagonal
+      rw [Matrix.det_diagonal]
+      unfold prefixNormProduct
+      apply Finset.prod_congr rfl
+      intro index _
+      rfl
+
 theorem ConcreteGramSchmidt.gram_prefix
     {state : Generated.StrictRecombine.LLLState}
     (hgs : ConcreteGramSchmidt state)
@@ -4228,6 +4257,35 @@ theorem prefixNormProduct_succ (norms : Array QQ) (rowCount : Nat) :
   unfold prefixNormProduct
   rw [Fin.prod_univ_castSucc]
   rfl
+
+theorem generatedGramPivot_positive
+    (state : Generated.StrictRecombine.LLLState) (i : Nat)
+    (hinput : ConcreteLLLInputValid state.matrix)
+    (hi : i < state.matrix.size)
+    (hnormsSize : state.norms.size = state.matrix.size)
+    (hgs : ConcreteGramSchmidtUpTo state (i + 1))
+    (hprevious : ∀ index, index < i → 0 < state.norms[index]!) :
+    0 < state.norms[i]! := by
+  have hdetPositive := hinput.gramPrefixMatrixQQ_det_pos (i + 1) (by omega)
+  have hproduct := hgs.gram_prefix (i + 1) le_rfl (by omega)
+  have hproductEq : Matrix.det
+      (gramPrefixMatrixQQ state.matrix (i + 1)) =
+      prefixNormProduct state.norms (i + 1) := by
+    calc
+      Matrix.det (gramPrefixMatrixQQ state.matrix (i + 1)) =
+          ((Matrix.det (gramPrefixMatrix state.matrix (i + 1)) : Int) : QQ) := by
+        exact (Int.cast_det _).symm
+      _ = prefixNormProduct state.norms (i + 1) := hproduct
+  have hproductPositive : 0 < prefixNormProduct state.norms (i + 1) := by
+    rw [← hproductEq]
+    exact hdetPositive
+  have hpreviousProduct : 0 < prefixNormProduct state.norms i := by
+    unfold prefixNormProduct
+    apply Finset.prod_pos
+    intro index _
+    exact hprevious index.val index.isLt
+  rw [prefixNormProduct_succ] at hproductPositive
+  nlinarith
 
 theorem weightedNormPotential_succ (norms : Array QQ) (dimension : Nat) :
     weightedNormPotential norms (dimension + 1) =

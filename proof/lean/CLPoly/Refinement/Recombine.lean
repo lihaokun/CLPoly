@@ -11,6 +11,7 @@ import CLPoly.Generated.StrictRecombine
 import CLPoly.Refinement.Basic
 import CLPoly.Refinement.Hensel
 import Batteries.Data.Array.Lemmas
+import Mathlib.LinearAlgebra.Matrix.Block
 
 set_option autoImplicit false
 
@@ -788,9 +789,11 @@ theorem normsAfterLovaszSwap_positive (norms : Array QQ) (k : Nat) (mu : QQ)
           norms[k] * norms[k - 1] /
             (norms[k] + mu * mu * norms[k - 1])
         else norms[i]) := by
-    simpa only [getElem!_pos _ i hi] using
-      normsAfterLovaszSwap_get norms k mu hk hpred
-        (ne_of_gt hnewPos) i hiOld
+    have hraw := normsAfterLovaszSwap_get norms k mu hk hpred
+      (ne_of_gt hnewPos) i hiOld
+    rw [getElem!_pos
+      (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu) i hi] at hraw
+    exact hraw
   rw [hvalue]
   split
   next hpredI => exact hnewPos
@@ -890,6 +893,36 @@ noncomputable def concreteLLLRank
 noncomputable def prefixNormProduct (norms : Array QQ) (rowCount : Nat) : QQ :=
   ∏ i : Fin rowCount, norms[i.val]!
 
+/-- Unit lower-triangular Gram–Schmidt coefficient matrix carried by the
+generated C++ arrays.  Reads are total here; the execution invariant below
+will separately establish the source bounds that make them meaningful. -/
+noncomputable def gsLowerPrefix
+    (state : Generated.StrictRecombine.LLLState) (rowCount : Nat) :
+    Matrix (Fin rowCount) (Fin rowCount) QQ :=
+  fun i j =>
+    if j.val < i.val then (state.mu[i.val]!)[j.val]!
+    else if i = j then 1 else 0
+
+noncomputable def gsNormDiagonal
+    (state : Generated.StrictRecombine.LLLState) (rowCount : Nat) :
+    Matrix (Fin rowCount) (Fin rowCount) QQ :=
+  Matrix.diagonal fun i => state.norms[i.val]!
+
+noncomputable def gramPrefixMatrixQQ
+    (matrix : Generated.StrictRecombine.LLLMatrix) (rowCount : Nat) :
+    Matrix (Fin rowCount) (Fin rowCount) QQ :=
+  (gramPrefixMatrix matrix rowCount).map fun value : Int => (value : QQ)
+
+/-- Exact, checkable `G = L D Lᵀ` meaning of the generated `matrix`, `mu`,
+and `norms` arrays.  This is execution state, not an existence witness and not
+a semantic result oracle. -/
+def ConcreteGramSchmidt
+    (state : Generated.StrictRecombine.LLLState) : Prop :=
+  ∀ rowCount, rowCount ≤ state.matrix.size →
+    gramPrefixMatrixQQ state.matrix rowCount =
+      gsLowerPrefix state rowCount * gsNormDiagonal state rowCount *
+        (gsLowerPrefix state rowCount).transpose
+
 noncomputable def prefixProductPotential (norms : Array QQ) (dimension : Nat) : QQ :=
   ∏ i : Fin dimension, prefixNormProduct norms (i.val + 1)
 
@@ -910,6 +943,55 @@ structure ConcreteLLLValid
   gram_prefix : ∀ rowCount, rowCount ≤ state.matrix.size →
     ((Matrix.det (gramPrefixMatrix state.matrix rowCount) : Int) : QQ) =
       prefixNormProduct state.norms rowCount
+
+theorem gsLowerPrefix_blockTriangular
+    (state : Generated.StrictRecombine.LLLState) (rowCount : Nat) :
+    (gsLowerPrefix state rowCount).BlockTriangular OrderDual.toDual := by
+  intro i j hij
+  unfold gsLowerPrefix
+  have hij' : i.val < j.val := hij
+  have hne : i ≠ j := by
+    intro heq
+    subst j
+    omega
+  rw [if_neg (by omega), if_neg hne]
+
+theorem gsLowerPrefix_det
+    (state : Generated.StrictRecombine.LLLState) (rowCount : Nat) :
+    Matrix.det (gsLowerPrefix state rowCount) = 1 := by
+  rw [Matrix.det_of_lowerTriangular _
+    (gsLowerPrefix_blockTriangular state rowCount)]
+  apply Finset.prod_eq_one
+  intro i _
+  simp [gsLowerPrefix]
+
+theorem ConcreteGramSchmidt.gram_prefix
+    {state : Generated.StrictRecombine.LLLState}
+    (hgs : ConcreteGramSchmidt state)
+    (rowCount : Nat) (hrowCount : rowCount ≤ state.matrix.size) :
+    ((Matrix.det (gramPrefixMatrix state.matrix rowCount) : Int) : QQ) =
+      prefixNormProduct state.norms rowCount := by
+  have hfactor := hgs rowCount hrowCount
+  calc
+    ((Matrix.det (gramPrefixMatrix state.matrix rowCount) : Int) : QQ) =
+        Matrix.det (gramPrefixMatrixQQ state.matrix rowCount) := by
+      exact Int.cast_det _
+    _ = Matrix.det (gsLowerPrefix state rowCount *
+          gsNormDiagonal state rowCount *
+            (gsLowerPrefix state rowCount).transpose) := by rw [hfactor]
+    _ = Matrix.det (gsLowerPrefix state rowCount) *
+          Matrix.det (gsNormDiagonal state rowCount) *
+            Matrix.det (gsLowerPrefix state rowCount) := by
+      rw [Matrix.det_mul, Matrix.det_mul, Matrix.det_transpose]
+    _ = prefixNormProduct state.norms rowCount := by
+      rw [gsLowerPrefix_det]
+      simp only [one_mul, mul_one]
+      unfold gsNormDiagonal
+      rw [Matrix.det_diagonal]
+      unfold prefixNormProduct
+      apply Finset.prod_congr rfl
+      intro i _
+      rfl
 
 theorem ConcreteLLLValid.withK
     {state : Generated.StrictRecombine.LLLState}

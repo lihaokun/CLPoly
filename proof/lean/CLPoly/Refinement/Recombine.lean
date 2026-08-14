@@ -1156,6 +1156,113 @@ theorem successfulTrialExtraction_toPoly
   simp [SparsePolyZZ.toPoly]
   ring
 
+theorem zassenhausAttempt_extracted_toPoly
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidate : Array Nat)
+    (hrun : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      modulus candidate = .ok
+        (.extracted factor quotientPrimitive)) :
+    ∃ scalar : Int,
+      SparsePolyZZ.toPoly fStar = Polynomial.C scalar *
+        (SparsePolyZZ.toPoly factor *
+          SparsePolyZZ.toPoly quotientPrimitive) := by
+  unfold Generated.StrictRecombine.zassenhausAttempt at hrun
+  split at hrun
+  next hfstar =>
+    dsimp at hrun
+    cases hleading : Generated.StrictRecombine.selectedLeadingProductLoop
+        candidate activeLifted 0 fStar[0].2 with
+    | error fault => simp [hleading] at hrun
+    | ok leadingProduct =>
+      simp only [hleading] at hrun
+      split at hrun
+      next hpruned => simp at hrun
+      next hleadingAccepted =>
+        cases hconstant :
+            Generated.StrictRecombine.selectedConstantProductLoop candidate
+              activeLifted 0 fStar[0].2 with
+        | error fault => simp [hconstant] at hrun
+        | ok constantProduct =>
+          simp only [hconstant] at hrun
+          split at hrun
+          next hpruned => simp at hrun
+          next hconstantAccepted =>
+            cases hconvert : Generated.StrictRecombine.combinationToInt32
+                candidate with
+            | error fault => simp [hconvert] at hrun
+            | ok candidate32 =>
+              simp only [hconvert] at hrun
+              cases hproduct : Generated.StrictRecombine.trialProductLoop
+                  ⟨()⟩ candidate32 activeLifted modulus 0
+                  #[(⟨0⟩, fStar[0].2)] with
+              | error fault => simp [hproduct] at hrun
+              | ok product =>
+                simp only [hproduct] at hrun
+                cases hsymmetric : Generated.StrictRecombine.symmetricModRaw
+                    product modulus with
+                | error fault => simp [hsymmetric] at hrun
+                | ok symmetric =>
+                  simp only [hsymmetric] at hrun
+                  cases hprimitive : Generated.StrictRecombine.primitiveRaw
+                      symmetric with
+                  | error fault => simp [hprimitive] at hrun
+                  | ok primitiveResult =>
+                    rcases primitiveResult with ⟨symmetricContent,
+                      recoveredFactor⟩
+                    simp only [hprimitive] at hrun
+                    cases hdivmod : Generated.StrictRecombine.exactDivmodRaw
+                        fStar recoveredFactor with
+                    | error fault => simp [hdivmod] at hrun
+                    | ok divResult =>
+                      rcases divResult with ⟨quotient, remainder⟩
+                      simp only [hdivmod] at hrun
+                      by_cases hremainder : remainder.isEmpty = true
+                      · simp only [hremainder, if_true] at hrun
+                        have hremainderEmpty : remainder = #[] :=
+                          Array.isEmpty_iff.mp hremainder
+                        subst remainder
+                        cases hquotientPrimitive :
+                            Generated.StrictRecombine.primitiveRaw quotient with
+                        | error fault => simp [hquotientPrimitive] at hrun
+                        | ok quotientResult =>
+                          rcases quotientResult with ⟨quotientContent,
+                            recoveredQuotient⟩
+                          simp only [hquotientPrimitive] at hrun
+                          have hout := Except.ok.inj hrun
+                          injection hout with hfactor hquotient
+                          subst factor
+                          subst quotientPrimitive
+                          exact ⟨quotientContent,
+                            successfulTrialExtraction_toPoly fStar
+                              recoveredFactor quotient recoveredQuotient
+                              quotientContent hdivmod hquotientPrimitive⟩
+                      · simp only [hremainder, if_false] at hrun
+                        simp at hrun
+  next hfstar => contradiction
+
+theorem zassenhausAttempt_extracted_unit_scalar
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidate : Array Nat)
+    (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hrun : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      modulus candidate = .ok
+        (.extracted factor quotientPrimitive)) :
+    ∃ scalar : Int, IsUnit scalar ∧
+      SparsePolyZZ.toPoly fStar = Polynomial.C scalar *
+        (SparsePolyZZ.toPoly factor *
+          SparsePolyZZ.toPoly quotientPrimitive) := by
+  rcases zassenhausAttempt_extracted_toPoly fStar factor quotientPrimitive
+      activeLifted modulus candidate hrun with ⟨scalar, hproduct⟩
+  have hcontent := congrArg Polynomial.content hproduct
+  rw [hprimitive.content_eq_one, Polynomial.content_C_mul] at hcontent
+  have hnormalizeUnit : IsUnit (normalize scalar) :=
+    IsUnit.of_mul_eq_one _ hcontent.symm
+  have hscalarUnit : IsUnit scalar :=
+    (associated_normalize scalar).isUnit_iff.mpr hnormalizeUnit
+  exact ⟨scalar, hscalarUnit, hproduct⟩
+
 private noncomputable def factorArrayProduct (factors : Array SparsePolyZZ) :
     Polynomial Int :=
   (factors.toList.map SparsePolyZZ.toPoly).prod

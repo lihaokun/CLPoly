@@ -431,6 +431,73 @@ def exactDivmodRaw (dividend divisor : SparsePolyZZ) :
     RawExec (SparsePolyZZ × SparsePolyZZ) :=
   exactDivmodLoop divisor dividend #[]
 
+/-- Checked lowering of the source `vector<int>` combination indices. -/
+def combinationToInt32Loop (indices : Array Nat) (index : Nat)
+    (result : Array Int32) : RawExec (Array Int32) :=
+  if hindex : index < indices.size then
+    if hfits : indices[index] < 2 ^ 31 then
+      combinationToInt32Loop indices (index + 1)
+        (result.push indices[index].toUInt32.toInt32)
+    else .error .arithmeticDomain
+  else .ok result
+termination_by indices.size - index
+decreasing_by omega
+
+def combinationToInt32 (indices : Array Nat) : RawExec (Array Int32) :=
+  combinationToInt32Loop indices 0 #[]
+
+inductive ZassenhausAttemptResult where
+  | rejected
+  | extracted (factor quotient : SparsePolyZZ)
+
+/-- One complete C++ Zassenhaus candidate attempt, including both scalar
+pruning tests and the actual sparse exact division. -/
+def zassenhausAttempt (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidate : Array Nat) : RawExec ZassenhausAttemptResult :=
+  if hfstar : 0 < fStar.size then
+    let leading := fStar[0].2
+    match selectedLeadingProductLoop candidate activeLifted 0 leading with
+    | .error fault => .error fault
+    | .ok leadingProduct =>
+      let recoveredLeading := ZZ.symmetricMod leadingProduct modulus
+      let leadingSquare := leading * leading
+      if recoveredLeading ≠ 0 ∧ ZZ.fdiv_r 0 leadingSquare recoveredLeading ≠ 0 then
+        .ok .rejected
+      else
+        match selectedConstantProductLoop candidate activeLifted 0 leading with
+        | .error fault => .error fault
+        | .ok constantProduct =>
+          let recoveredConstant := ZZ.symmetricMod constantProduct modulus
+          let targetConstant := leading * constantTerm fStar
+          if recoveredConstant ≠ 0 ∧
+              ZZ.fdiv_r 0 targetConstant recoveredConstant ≠ 0 then
+            .ok .rejected
+          else
+            match combinationToInt32 candidate with
+            | .error fault => .error fault
+            | .ok candidate32 =>
+              match trialProductLoop ⟨()⟩ candidate32 activeLifted modulus 0
+                  #[(⟨0⟩, leading)] with
+              | .error fault => .error fault
+              | .ok product =>
+                match symmetricModRaw product modulus with
+                | .error fault => .error fault
+                | .ok symmetric =>
+                  match primitiveRaw symmetric with
+                  | .error fault => .error fault
+                  | .ok (_, factor) =>
+                    match exactDivmodRaw fStar factor with
+                    | .error fault => .error fault
+                    | .ok (quotient, remainder) =>
+                      if remainder.isEmpty then
+                        match primitiveRaw quotient with
+                        | .error fault => .error fault
+                        | .ok (_, quotientPrimitive) =>
+                          .ok (.extracted factor quotientPrimitive)
+                      else .ok .rejected
+  else .error .assertionFailure
+
 /-- Concrete C++ callees used inside candidate validation.  Each field returns
 only computed polynomial data; no field may return a semantic proposition or
 choose an L2 factorization witness. -/

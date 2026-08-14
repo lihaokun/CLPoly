@@ -66,3 +66,6 @@ advanced branch, `concreteLLLTermination` instantiates the generated
 `LLLTermination` interface using `ConcreteLLLExecutionValid` and the concrete
 determinant/index lexicographic rank.  Thus the generated `lllMainLoop` is now
 justified by genuine well-founded recursion, not fuel or a termination oracle.
+`concreteLLLMainLoop_preserves_execution_valid` then follows the generated
+recursive execution itself and proves that every successful final state still
+carries the same concrete invariant.

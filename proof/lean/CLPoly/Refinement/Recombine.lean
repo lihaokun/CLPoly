@@ -4789,6 +4789,33 @@ noncomputable def concreteLLLTermination :
     exact lllStep_concreteRank_lt_of_valid current branch
       hvalid.toConcreteLLLValid houtput.toConcreteLLLValid hrun
 
+theorem concreteLLLMainLoop_preserves_execution_valid
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrun : Generated.StrictRecombine.lllMainLoop concreteLLLTermination
+      state hvalid = .ok output) :
+    ConcreteLLLExecutionValid output := by
+  induction hmeasure : concreteLLLRank state using Nat.strong_induction_on
+      generalizing state output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.lllMainLoop] at hrun
+      split at hrun
+      next hk =>
+        split at hrun
+        next hstep => contradiction
+        next branch hstep =>
+          have hnextValid := lllStep_preserves_execution_valid state branch
+            hvalid hstep
+          have hdecrease := lllStep_concreteRank_lt_of_valid state branch
+            hvalid.toConcreteLLLValid hnextValid.toConcreteLLLValid hstep
+          rw [hmeasure] at hdecrease
+          exact ih (concreteLLLRank branch.state) hdecrease branch.state output
+            hnextValid hrun rfl
+      next hk =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hvalid
+
 theorem gramPrefixDet_swap_preserved_of_before
     (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)
     (hrun : Generated.StrictRecombine.swapMatrixRows matrix left right =

@@ -584,6 +584,187 @@ theorem reduceMuPrefixLoop_eq_array
           hk, hindexK] using htail
       · rw [dif_neg hindex, dif_neg hindex]
 
+theorem reduceMuPrefixArray_size
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source : Nat) (q : ZZ) (limit index : Nat) :
+    (reduceMuPrefixArray mu k source q limit index).size = mu.size := by
+  induction hmeasure : limit - index using Nat.strong_induction_on
+      generalizing mu index with
+  | h measure ih =>
+      rw [reduceMuPrefixArray]
+      split
+      next hindex =>
+        dsimp only
+        rw [ih (limit - (index + 1)) (by omega) _ (index + 1) rfl]
+        simp
+      next hindex => rfl
+
+theorem reduceMuPrefixArray_get_of_ne
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source row : Nat) (q : ZZ) (limit index : Nat)
+    (hrowBound : row < mu.size) (hrow : row ≠ k) :
+    (reduceMuPrefixArray mu k source q limit index)[row]! = mu[row]! := by
+  induction hmeasure : limit - index using Nat.strong_induction_on
+      generalizing mu index with
+  | h measure ih =>
+      rw [reduceMuPrefixArray]
+      split
+      next hindex =>
+        dsimp only
+        rw [ih (limit - (index + 1)) (by omega) _ (index + 1)
+          (by simpa) rfl]
+        by_cases hk : k < mu.size
+        · rw [getElem!_pos _ row (by simpa),
+            getElem!_pos mu row hrowBound]
+          simp only [Array.setIfInBounds, dif_pos hk]
+          rw [Array.getElem_set]
+          simp [Ne.symm hrow]
+        · simp [Array.setIfInBounds, hk]
+      next hindex => rfl
+
+theorem reduceMuPrefixArray_row_size
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source row : Nat) (q : ZZ) (limit index : Nat) :
+    row < mu.size →
+    (reduceMuPrefixArray mu k source q limit index)[row]!.size =
+      mu[row]!.size := by
+  intro hrowBound
+  by_cases hrow : row = k
+  · subst row
+    induction hmeasure : limit - index using Nat.strong_induction_on
+        generalizing mu index with
+    | h measure ih =>
+        rw [reduceMuPrefixArray]
+        split
+        next hindex =>
+          dsimp only
+          rw [ih (limit - (index + 1)) (by omega) _ (index + 1)
+            (by simpa) rfl]
+          by_cases hk : k < mu.size
+          · by_cases hi : index < mu[k].size
+            · simp [Array.setIfInBounds, hk, hi]
+            · simp [Array.setIfInBounds, hk, hi]
+          · simp [Array.setIfInBounds, hk]
+        next hindex => rfl
+  · rw [reduceMuPrefixArray_get_of_ne mu k source row q limit index
+      hrowBound hrow]
+
+theorem reduceMuPrefixArray_target_get
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k source : Nat) (q : ZZ) (limit index column : Nat)
+    (hk : k < mu.size) (hsource : source < mu.size)
+    (hlimitK : limit ≤ mu[k].size)
+    (hlimitSource : limit ≤ mu[source].size)
+    (hcolumn : column < mu[k].size) (hne : k ≠ source) :
+    ((reduceMuPrefixArray mu k source q limit index)[k]!)[column]! =
+      if index ≤ column ∧ column < limit then
+        (mu[k]!)[column]! - (q : QQ) * (mu[source]!)[column]!
+      else (mu[k]!)[column]! := by
+  induction hmeasure : limit - index using Nat.strong_induction_on
+      generalizing mu index with
+  | h measure ih =>
+      rw [reduceMuPrefixArray]
+      by_cases hindex : index < limit
+      · rw [dif_pos hindex]
+        dsimp only
+        have hindexK : index < mu[k].size := lt_of_lt_of_le hindex hlimitK
+        have hindexSource : index < mu[source].size :=
+          lt_of_lt_of_le hindex hlimitSource
+        let value := mu[k][index] - (q : QQ) * mu[source][index]
+        let nextMu := mu.set k (mu[k].set index value)
+        have hnextSize : nextMu.size = mu.size := by simp [nextMu]
+        have hkNext : k < nextMu.size := by simpa [hnextSize]
+        have hsourceNext : source < nextMu.size := by simpa [hnextSize]
+        have hkRowNext : nextMu[k].size = mu[k].size := by
+          simp [nextMu, value]
+        have hsourceRowNext : nextMu[source].size = mu[source].size := by
+          simp [nextMu, hsource, hne, value]
+        have htail := ih (limit - (index + 1)) (by omega)
+          nextMu (index + 1) hkNext hsourceNext
+          (by simpa [hkRowNext]) (by simpa [hsourceRowNext])
+          (by simpa [hkRowNext]) rfl
+        simp only [Array.setIfInBounds, dif_pos hk, getElem!_pos mu k hk,
+          dif_pos hindexK, getElem!_pos mu[k] index hindexK,
+          getElem!_pos mu source hsource,
+          getElem!_pos mu[source] index hindexSource] at ⊢
+        dsimp only [nextMu, value] at htail
+        have houterK :
+            (mu.set k (mu[k].set index value))[k]! =
+              mu[k].set index value := by
+          rw [getElem!_pos _ k (by simpa using hk), Array.getElem_set]
+          simp
+        have houterSource :
+            (mu.set k (mu[k].set index value))[source]! = mu[source] := by
+          rw [getElem!_pos _ source (by simp [hsource]), Array.getElem_set]
+          simp only [if_neg hne]
+        by_cases hcolumnIndex : column = index
+        · subst column
+          simp only [Nat.not_succ_le_self, false_and, if_false] at htail
+          rw [htail]
+          simp [nextMu, value, hk, hindexK, hindex, hindexSource]
+        · by_cases hindexColumn : index < column
+          · have hsuccColumn : index + 1 ≤ column := by omega
+            rw [htail]
+            simp only [hsuccColumn, true_and]
+            rw [houterK, houterSource]
+            have hsetGet :
+                (mu[k].set index value)[column]! = mu[k][column]! := by
+              rw [getElem!_pos _ column (by simpa), Array.getElem_set]
+              rw [if_neg (Ne.symm hcolumnIndex)]
+              exact (getElem!_pos mu[k] column hcolumn).symm
+            rw [hsetGet]
+            by_cases hcolumnLimit : column < limit
+            · rw [if_pos hcolumnLimit,
+                if_pos ⟨Nat.le_of_lt hindexColumn, hcolumnLimit⟩]
+            · rw [if_neg hcolumnLimit,
+                if_neg (fun condition => hcolumnLimit condition.2)]
+          · have hcolumnIndexLt : column < index := by omega
+            rw [htail]
+            rw [houterK, houterSource]
+            have hsetGet :
+                (mu[k].set index value)[column]! = mu[k][column]! := by
+              rw [getElem!_pos _ column (by simpa), Array.getElem_set]
+              rw [if_neg (Ne.symm hcolumnIndex)]
+              exact (getElem!_pos mu[k] column hcolumn).symm
+            rw [hsetGet]
+            rw [if_neg (by omega), if_neg (by omega)]
+      · rw [dif_neg hindex]
+        have hcond : ¬(index ≤ column ∧ column < limit) := by omega
+        simp [hcond]
+
+theorem reduceMuPrefixLoop_output_eq
+    (mu output : Generated.StrictRecombine.QQMatrix)
+    (k source : Nat) (q : ZZ) (limit index : Nat)
+    (hk : k < mu.size) (hsource : source < mu.size)
+    (hlimitK : limit ≤ mu[k].size)
+    (hlimitSource : limit ≤ mu[source].size)
+    (hne : k ≠ source)
+    (hrun : Generated.StrictRecombine.reduceMuPrefixLoop
+      mu k source q limit index = .ok output) :
+    output = reduceMuPrefixArray mu k source q limit index := by
+  have hexact := reduceMuPrefixLoop_eq_array mu k source q limit index
+    hk hsource hlimitK hlimitSource hne
+  rw [hrun] at hexact
+  exact Except.ok.inj hexact
+
+theorem reduceMuPrefixLoop_target_get
+    (mu output : Generated.StrictRecombine.QQMatrix)
+    (k source : Nat) (q : ZZ) (limit index column : Nat)
+    (hk : k < mu.size) (hsource : source < mu.size)
+    (hlimitK : limit ≤ mu[k].size)
+    (hlimitSource : limit ≤ mu[source].size)
+    (hcolumn : column < mu[k].size) (hne : k ≠ source)
+    (hrun : Generated.StrictRecombine.reduceMuPrefixLoop
+      mu k source q limit index = .ok output) :
+    (output[k]!)[column]! =
+      if index ≤ column ∧ column < limit then
+        (mu[k]!)[column]! - (q : QQ) * (mu[source]!)[column]!
+      else (mu[k]!)[column]! := by
+  rw [reduceMuPrefixLoop_output_eq mu output k source q limit index
+    hk hsource hlimitK hlimitSource hne hrun]
+  exact reduceMuPrefixArray_target_get mu k source q limit index column
+    hk hsource hlimitK hlimitSource hcolumn hne
+
 theorem sizeReduceAt_preserves_norms_k
     (state output : Generated.StrictRecombine.LLLState) (j : Nat)
     (hrun : Generated.StrictRecombine.sizeReduceAt state j = .ok output) :

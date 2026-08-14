@@ -10,6 +10,11 @@ Defined the pure array value produced by the generated
 `reduceMuPrefixLoop` and proved that the generated `RawExec` loop returns
 exactly that value whenever its concrete source bounds hold.
 
+Also proved its closed elementwise behavior: outer and row sizes are
+preserved, all non-target rows are unchanged, and the target row is updated
+exactly on `[index, limit)` by `mu[k,l] -= q * mu[source,l]`.  A direct
+corollary exposes this formula for every successful generated execution.
+
 ## Why
 
 `sizeReduceAt` changes an integer basis row and the corresponding row of the

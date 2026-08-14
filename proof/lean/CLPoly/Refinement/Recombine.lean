@@ -749,6 +749,24 @@ theorem normsAfterLovaszSwap_size (norms : Array QQ) (k : Nat) (mu : QQ) :
   dsimp
   split <;> simp
 
+theorem normsAfterLovaszSwap_get (norms : Array QQ) (k : Nat) (mu : QQ)
+    (hk : k < norms.size) (hpred : k - 1 < norms.size)
+    (hnew : norms[k] + mu * mu * norms[k - 1] ≠ 0)
+    (i : Nat) (hi : i < norms.size) :
+    (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu)[i]! =
+      if k - 1 = i then norms[k] + mu * mu * norms[k - 1]
+      else if k = i then
+        norms[k] * norms[k - 1] /
+          (norms[k] + mu * mu * norms[k - 1])
+      else norms[i] := by
+  unfold Generated.StrictRecombine.normsAfterLovaszSwap
+  dsimp
+  rw [getElem!_pos norms k hk, getElem!_pos norms (k - 1) hpred]
+  rw [if_pos hnew]
+  rw [getElem!_pos _ i (by simpa using hi)]
+  rw [Array.getElem_setIfInBounds (by simpa using hi)]
+  rw [Array.getElem_setIfInBounds hi]
+
 /-- Once the determinant potential is converted to a natural number, this is
 the concrete scalar rank used by the generated while-loop: an advancing step
 spends the low-order progress component, while a swap must lower the dominant
@@ -800,6 +818,250 @@ noncomputable def lllDeterminantPotential
 noncomputable def concreteLLLRank
     (state : Generated.StrictRecombine.LLLState) : Nat :=
   lllLexRank (lllDeterminantPotential state.matrix) state.matrix.size state.k
+
+noncomputable def prefixNormProduct (norms : Array QQ) (rowCount : Nat) : QQ :=
+  ∏ i : Fin rowCount, norms[i.val]!
+
+/-- Concrete semantic invariant carried by the generated LLL execution.  It
+states square integer storage, positive Gram–Schmidt norms, and the exact
+Gram determinant identity for every prefix.  No result or termination trace
+is stored here. -/
+structure ConcreteLLLValid
+    (state : Generated.StrictRecombine.LLLState) : Prop where
+  norms_size : state.norms.size = state.matrix.size
+  rows_square : ∀ row (hrow : row < state.matrix.size),
+    state.matrix[row].size = state.matrix.size
+  norms_positive : ∀ index (hindex : index < state.norms.size),
+    0 < state.norms[index]
+  gram_prefix : ∀ rowCount, rowCount ≤ state.matrix.size →
+    ((Matrix.det (gramPrefixMatrix state.matrix rowCount) : Int) : QQ) =
+      prefixNormProduct state.norms rowCount
+
+theorem prefixNormProduct_pos
+    (norms : Array QQ) (rowCount : Nat)
+    (hrowCount : rowCount ≤ norms.size)
+    (hpositive : ∀ index (hindex : index < norms.size), 0 < norms[index]) :
+    0 < prefixNormProduct norms rowCount := by
+  unfold prefixNormProduct
+  apply Finset.prod_pos
+  intro i _
+  rw [getElem!_pos norms i.val (lt_of_lt_of_le i.isLt hrowCount)]
+  exact hpositive i.val (lt_of_lt_of_le i.isLt hrowCount)
+
+theorem prefixNormProduct_succ (norms : Array QQ) (rowCount : Nat) :
+    prefixNormProduct norms (rowCount + 1) =
+      prefixNormProduct norms rowCount * norms[rowCount]! := by
+  unfold prefixNormProduct
+  rw [Fin.prod_univ_castSucc]
+  rfl
+
+theorem prefixNormProduct_normsAfterLovaszSwap
+    (norms : Array QQ) (k : Nat) (mu : QQ)
+    (hk : k < norms.size) (hpred : k - 1 < norms.size)
+    (hpositive : 0 < k)
+    (hnew : norms[k] + mu * mu * norms[k - 1] ≠ 0) :
+    prefixNormProduct
+        (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu) k =
+      prefixNormProduct norms (k - 1) *
+        (norms[k] + mu * mu * norms[k - 1]) := by
+  have hkSplit : k - 1 + 1 = k := Nat.sub_add_cancel (by omega)
+  calc
+    prefixNormProduct
+        (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu) k =
+        prefixNormProduct
+          (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu) (k - 1) *
+          (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu)[k - 1]! := by
+      simpa only [hkSplit] using
+        (prefixNormProduct_succ
+          (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu) (k - 1))
+    _ = prefixNormProduct norms (k - 1) *
+        (norms[k] + mu * mu * norms[k - 1]) := by
+      congr 1
+      · unfold prefixNormProduct
+        apply Finset.prod_congr rfl
+        intro i _
+        rw [normsAfterLovaszSwap_get norms k mu hk hpred hnew
+          i.val (lt_trans i.isLt hpred)]
+        have hpredNe : k - 1 ≠ i.val := by omega
+        have hkNe : k ≠ i.val := by omega
+        simp [hpredNe, hkNe, getElem!_pos norms i.val (lt_trans i.isLt hpred)]
+      · rw [normsAfterLovaszSwap_get norms k mu hk hpred hnew
+          (k - 1) hpred]
+        simp
+
+theorem prefixNormProduct_normsAfterLovaszSwap_lt
+    (norms : Array QQ) (k : Nat) (mu : QQ)
+    (hk : k < norms.size) (hpred : k - 1 < norms.size)
+    (hpositiveK : 0 < k)
+    (hnormsPositive : ∀ index (hindex : index < norms.size), 0 < norms[index])
+    (hfail : norms[k] < ((3 : QQ) / 4 - mu * mu) * norms[k - 1]) :
+    prefixNormProduct
+        (Generated.StrictRecombine.normsAfterLovaszSwap norms k mu) k <
+      prefixNormProduct norms k := by
+  have hkNormPos := hnormsPositive k hk
+  have hpredNormPos := hnormsPositive (k - 1) hpred
+  have hnewPos : 0 < norms[k] + mu * mu * norms[k - 1] := by
+    nlinarith [sq_nonneg mu]
+  have hnewLt : norms[k] + mu * mu * norms[k - 1] < norms[k - 1] := by
+    nlinarith
+  have hprefixPos : 0 < prefixNormProduct norms (k - 1) :=
+    prefixNormProduct_pos norms (k - 1) (Nat.le_of_lt hpred) hnormsPositive
+  have hkSplit : k - 1 + 1 = k := Nat.sub_add_cancel (by omega)
+  rw [prefixNormProduct_normsAfterLovaszSwap norms k mu hk hpred hpositiveK
+    (ne_of_gt hnewPos)]
+  calc
+    prefixNormProduct norms (k - 1) *
+        (norms[k] + mu * mu * norms[k - 1]) <
+        prefixNormProduct norms (k - 1) * norms[k - 1] :=
+      mul_lt_mul_of_pos_left hnewLt hprefixPos
+    _ = prefixNormProduct norms k := by
+      simpa only [hkSplit, getElem!_pos norms (k - 1) hpred] using
+        (prefixNormProduct_succ norms (k - 1)).symm
+
+theorem lllStep_swapped_prefixNormProduct_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLValid state)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    prefixNormProduct output.norms state.k <
+      prefixNormProduct state.norms state.k := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hcontrol := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        repeat' first | split at hrun | simp_all
+        all_goals cases hrun
+        all_goals
+          have hreducedPositive : ∀ index (hindex : index < reduced.norms.size),
+              0 < reduced.norms[index] := by
+            intro index hindex
+            have hindexState : index < state.norms.size := by
+              simpa only [hcontrol.1] using hindex
+            have hpositiveState := hvalid.norms_positive index hindexState
+            simpa only [← hcontrol.1] using hpositiveState
+          have hkStateNorm : state.k < state.norms.size := by
+            simpa only [← hcontrol.1, ← hcontrol.2] using
+              (‹reduced.k < reduced.norms.size›)
+          have hpredStateNorm : state.k - 1 < state.norms.size := by
+            simpa only [← hcontrol.1, ← hcontrol.2] using
+              (‹reduced.k - 1 < reduced.norms.size›)
+          have hkStateMu : state.k < reduced.mu.size := by
+            simpa only [← hcontrol.2] using (‹reduced.k < reduced.mu.size›)
+          have hpredStateMu : state.k - 1 < reduced.mu[state.k].size := by
+            simpa only [← hcontrol.2] using
+              (‹reduced.k - 1 < reduced.mu[reduced.k].size›)
+          have hfail : reduced.norms[reduced.k] <
+              ((3 : QQ) / 4 -
+                reduced.mu[reduced.k][reduced.k - 1] *
+                  reduced.mu[reduced.k][reduced.k - 1]) *
+                reduced.norms[reduced.k - 1] := by
+            have hfailState :
+                state.norms[state.k]'hkStateNorm <
+                  ((3 : QQ) / 4 -
+                    (reduced.mu[state.k]'hkStateMu)[state.k - 1]'hpredStateMu *
+                      (reduced.mu[state.k]'hkStateMu)[state.k - 1]'hpredStateMu) *
+                    state.norms[state.k - 1]'hpredStateNorm := by assumption
+            simpa only [← hcontrol.1, ← hcontrol.2] using hfailState
+          have hdecrease := prefixNormProduct_normsAfterLovaszSwap_lt
+            reduced.norms reduced.k reduced.mu[reduced.k][reduced.k - 1]
+            (by assumption) (by assumption) (by simpa [hcontrol.2] using hkPositive)
+            hreducedPositive hfail
+          simpa only [hcontrol.1, hcontrol.2] using hdecrease
+    · rw [dif_neg hkMatrix] at hrun
+      simp at hrun
+  · rw [dif_neg hkPositive] at hrun
+    simp at hrun
+
+theorem lllStep_swapped_source_index_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    state.k < state.matrix.size := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · exact hkMatrix
+    · rw [dif_neg hkMatrix] at hrun
+      contradiction
+  · rw [dif_neg hkPositive] at hrun
+    contradiction
+
+theorem lllStep_swapped_matrix_size
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLValid state)
+    (houtputValid : ConcreteLLLValid output)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    output.matrix.size = state.matrix.size := by
+  rcases lllStep_swapped_norms state output hrun with
+    ⟨reduced, hreduce, hnorms, hk, hout⟩
+  calc
+    output.matrix.size = output.norms.size := houtputValid.norms_size.symm
+    _ = reduced.norms.size := by
+      rw [hout, normsAfterLovaszSwap_size]
+    _ = state.norms.size := congrArg Array.size hnorms
+    _ = state.matrix.size := hvalid.norms_size
+
+theorem lllStep_swapped_boundaryGramDet_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLValid state)
+    (houtputValid : ConcreteLLLValid output)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    (Matrix.det (gramPrefixMatrix output.matrix state.k)).natAbs <
+      (Matrix.det (gramPrefixMatrix state.matrix state.k)).natAbs := by
+  have hkMatrix := lllStep_swapped_source_index_lt state output hrun
+  have hsize := lllStep_swapped_matrix_size state output hvalid houtputValid hrun
+  have hkOutput : state.k ≤ output.matrix.size := by omega
+  have hprefix := lllStep_swapped_prefixNormProduct_lt state output hvalid hrun
+  have houtGram := houtputValid.gram_prefix state.k hkOutput
+  have hinGram := hvalid.gram_prefix state.k (Nat.le_of_lt hkMatrix)
+  rw [← houtGram, ← hinGram] at hprefix
+  have hdet : Matrix.det (gramPrefixMatrix output.matrix state.k) <
+      Matrix.det (gramPrefixMatrix state.matrix state.k) := by
+    exact_mod_cast hprefix
+  have houtProductPos := prefixNormProduct_pos output.norms state.k
+    (by rw [houtputValid.norms_size]; exact hkOutput)
+    houtputValid.norms_positive
+  have houtDetPos : 0 < Matrix.det
+      (gramPrefixMatrix output.matrix state.k) := by
+    exact_mod_cast (show (0 : QQ) <
+      ((Matrix.det (gramPrefixMatrix output.matrix state.k) : Int) : QQ) by
+        rw [houtGram]
+        exact houtProductPos)
+  exact Int.natAbs_lt_natAbs_of_nonneg_of_lt
+    (Int.le_of_lt houtDetPos) hdet
+
+theorem ConcreteLLLValid.gram_prefix_pos
+    {state : Generated.StrictRecombine.LLLState}
+    (hvalid : ConcreteLLLValid state) (rowCount : Nat)
+    (hrowCount : rowCount ≤ state.matrix.size) :
+    0 < Matrix.det (gramPrefixMatrix state.matrix rowCount) := by
+  have hproduct := prefixNormProduct_pos state.norms rowCount
+    (by rw [hvalid.norms_size]; exact hrowCount) hvalid.norms_positive
+  have heq := hvalid.gram_prefix rowCount hrowCount
+  exact_mod_cast (show (0 : QQ) <
+    ((Matrix.det (gramPrefixMatrix state.matrix rowCount) : Int) : QQ) by
+      rw [heq]
+      exact hproduct)
+
+theorem ConcreteLLLValid.gram_prefix_natAbs
+    {state : Generated.StrictRecombine.LLLState}
+    (hvalid : ConcreteLLLValid state) (rowCount : Nat)
+    (hrowCount : rowCount ≤ state.matrix.size) :
+    ((Matrix.det (gramPrefixMatrix state.matrix rowCount)).natAbs : Int) =
+      Matrix.det (gramPrefixMatrix state.matrix rowCount) :=
+  Int.natAbs_of_nonneg
+    (Int.le_of_lt (hvalid.gram_prefix_pos rowCount hrowCount))
 
 theorem swapMatrixRows_ok
     (matrix output : Generated.StrictRecombine.LLLMatrix) (left right : Nat)

@@ -765,6 +765,218 @@ theorem reduceMuPrefixLoop_target_get
   exact reduceMuPrefixArray_target_get mu k source q limit index column
     hk hsource hlimitK hlimitSource hcolumn hne
 
+/-- One exact row update used by the generated post-swap mu loop. -/
+def updateMuAfterSwapRow (input : Array QQ) (k : Nat)
+    (muOld muNew : QQ) : Array QQ :=
+  let oldAtK := input[k]!
+  let newAtK := input[k - 1]! - muOld * oldAtK
+  let updated := input.setIfInBounds k newAtK
+  updated.setIfInBounds (k - 1) (oldAtK + muNew * newAtK)
+
+theorem updateMuAfterSwapRow_size (input : Array QQ) (k : Nat)
+    (muOld muNew : QQ) :
+    (updateMuAfterSwapRow input k muOld muNew).size = input.size := by
+  unfold updateMuAfterSwapRow
+  simp [Array.size_setIfInBounds]
+
+theorem updateMuAfterSwapRow_get (input : Array QQ) (k column : Nat)
+    (muOld muNew : QQ) (hk : k < input.size)
+    (hpred : k - 1 < input.size) (hkPositive : 0 < k)
+    (hcolumn : column < input.size) :
+    (updateMuAfterSwapRow input k muOld muNew)[column]! =
+      if column = k - 1 then
+        input[k]! + muNew * (input[k - 1]! - muOld * input[k]!)
+      else if column = k then input[k - 1]! - muOld * input[k]!
+      else input[column]! := by
+  unfold updateMuAfterSwapRow
+  simp only [Array.setIfInBounds, dif_pos hk]
+  rw [dif_pos (show k - 1 <
+    (input.set k (input[k - 1]! - muOld * input[k]!) hk).size by
+      simpa using hpred)]
+  rw [getElem!_pos _ column (by simpa), Array.getElem_set]
+  by_cases hcolumnPred : column = k - 1
+  · subst column
+    have hkPred : k ≠ k - 1 := by omega
+    simp [hkPred, hkPred.symm]
+  ·
+    rw [getElem!_pos _ column (by simpa), Array.getElem_set]
+    by_cases hcolumnK : column = k
+    · subst column
+      have hkPred : k ≠ k - 1 := by omega
+      simp [hkPred, hkPred.symm]
+    · have hpredColumn : k - 1 ≠ column := Ne.symm hcolumnPred
+      have hkColumn : k ≠ column := Ne.symm hcolumnK
+      simp [hcolumnPred, hcolumnK, hpredColumn, hkColumn]
+
+/-- Pure array value computed by the generated post-swap mu correction loop. -/
+def updateMuAfterSwapArray (mu : Generated.StrictRecombine.QQMatrix)
+    (k : Nat) (muOld muNew : QQ) (row : Nat) :
+    Generated.StrictRecombine.QQMatrix :=
+  if hrow : row < mu.size then
+    updateMuAfterSwapArray (mu.setIfInBounds row
+      (updateMuAfterSwapRow mu[row]! k muOld muNew))
+      k muOld muNew (row + 1)
+  else mu
+termination_by mu.size - row
+decreasing_by
+  simp [Array.size_setIfInBounds]
+  omega
+
+theorem updateMuAfterSwapLoop_eq_array
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k : Nat) (muOld muNew : QQ) (row : Nat)
+    (hk : ∀ index (hindex : index < mu.size), k < mu[index].size)
+    (hpred : ∀ index (hindex : index < mu.size),
+      k - 1 < mu[index].size) :
+    Generated.StrictRecombine.updateMuAfterSwapLoop
+      mu k muOld muNew row =
+        .ok (updateMuAfterSwapArray mu k muOld muNew row) := by
+  induction hmeasure : mu.size - row using Nat.strong_induction_on
+      generalizing mu row with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.updateMuAfterSwapLoop,
+        updateMuAfterSwapArray]
+      by_cases hrow : row < mu.size
+      · rw [dif_pos hrow, dif_pos (hk row hrow), dif_pos (hpred row hrow)]
+        dsimp only
+        rw [getElem!_pos mu row hrow]
+        let oldAtK := (mu[row]'hrow)[k]'(hk row hrow)
+        let newAtK := (mu[row]'hrow)[k - 1]'(hpred row hrow) -
+          muOld * oldAtK
+        let updated := ((mu[row]'hrow).set k newAtK (hk row hrow)).set (k - 1)
+          (oldAtK + muNew * newAtK) (by
+            rw [Array.size_set]
+            exact hpred row hrow)
+        let nextMu := mu.set row updated
+        have hnextSize : nextMu.size = mu.size := by simp [nextMu]
+        have hnextRows : ∀ index (hindex : index < nextMu.size),
+            nextMu[index].size = mu[index].size := by
+          intro index hindex
+          by_cases hindexRow : index = row
+          · subst index
+            simp [nextMu, updated]
+          · have hindexMu : index < mu.size := by simpa [hnextSize] using hindex
+            simp [nextMu, hindexMu, Ne.symm hindexRow]
+        have hkNext : ∀ index (hindex : index < nextMu.size),
+            k < nextMu[index].size := by
+          intro index hindex
+          rw [hnextRows index hindex]
+          exact hk index (by simpa [hnextSize] using hindex)
+        have hpredNext : ∀ index (hindex : index < nextMu.size),
+            k - 1 < nextMu[index].size := by
+          intro index hindex
+          rw [hnextRows index hindex]
+          exact hpred index (by simpa [hnextSize] using hindex)
+        have htail := ih (nextMu.size - (row + 1)) (by
+          rw [hnextSize]
+          omega) nextMu (row + 1) hkNext hpredNext rfl
+        simpa [nextMu, updated, newAtK, oldAtK, updateMuAfterSwapRow,
+          Array.setIfInBounds,
+          hrow, hk row hrow, hpred row hrow] using htail
+      · rw [dif_neg hrow, dif_neg hrow]
+
+theorem updateMuAfterSwapArray_size
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k : Nat) (muOld muNew : QQ) (row : Nat) :
+    (updateMuAfterSwapArray mu k muOld muNew row).size = mu.size := by
+  induction hmeasure : mu.size - row using Nat.strong_induction_on
+      generalizing mu row with
+  | h measure ih =>
+      rw [updateMuAfterSwapArray]
+      split
+      next hrow =>
+        rw [ih _ (by simp; omega) _ (row + 1) rfl]
+        simp
+      next hrow => rfl
+
+theorem updateMuAfterSwapArray_get_before
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k target : Nat) (muOld muNew : QQ) (row : Nat)
+    (htarget : target < mu.size) (hbefore : target < row) :
+    (updateMuAfterSwapArray mu k muOld muNew row)[target]! = mu[target]! := by
+  induction hmeasure : mu.size - row using Nat.strong_induction_on
+      generalizing mu row with
+  | h measure ih =>
+      rw [updateMuAfterSwapArray]
+      split
+      next hrow =>
+        have hnextSize :
+            (mu.setIfInBounds row
+              (updateMuAfterSwapRow mu[row]! k muOld muNew)).size = mu.size := by
+          simp
+        rw [ih _ (by simp [hnextSize]; omega) _ (row + 1)
+          (by simpa [hnextSize]) (by omega) rfl]
+        simp only [Array.setIfInBounds, dif_pos hrow]
+        rw [getElem!_pos _ target (by simpa), Array.getElem_set]
+        rw [if_neg (by omega)]
+        exact (getElem!_pos mu target htarget).symm
+      next hrow => rfl
+
+theorem updateMuAfterSwapArray_get_at
+    (mu : Generated.StrictRecombine.QQMatrix)
+    (k target : Nat) (muOld muNew : QQ) (row : Nat)
+    (htarget : target < mu.size) (hrowTarget : row ≤ target) :
+    (updateMuAfterSwapArray mu k muOld muNew row)[target]! =
+      updateMuAfterSwapRow mu[target]! k muOld muNew := by
+  induction hmeasure : mu.size - row using Nat.strong_induction_on
+      generalizing mu row with
+  | h measure ih =>
+      rw [updateMuAfterSwapArray]
+      have hrow : row < mu.size := lt_of_le_of_lt hrowTarget htarget
+      rw [dif_pos hrow]
+      let nextMu := mu.set row
+        (updateMuAfterSwapRow mu[row] k muOld muNew)
+      have hnextSize : nextMu.size = mu.size := by simp [nextMu]
+      have htargetNext : target < nextMu.size := by simpa [hnextSize]
+      simp only [Array.setIfInBounds, dif_pos hrow,
+        getElem!_pos mu row hrow] at ⊢
+      change (updateMuAfterSwapArray nextMu k muOld muNew
+        (row + 1))[target]! = updateMuAfterSwapRow mu[target]! k muOld muNew
+      by_cases htargetRow : target = row
+      · subst target
+        have htail := updateMuAfterSwapArray_get_before nextMu k row
+          muOld muNew (row + 1) htargetNext (by omega)
+        rw [htail]
+        rw [getElem!_pos nextMu row htargetNext]
+        simp [nextMu]
+        rw [getElem!_pos mu row hrow]
+      · have hrowTarget' : row + 1 ≤ target := by omega
+        have htail := ih (nextMu.size - (row + 1)) (by
+          rw [hnextSize]
+          omega) nextMu (row + 1) htargetNext hrowTarget' rfl
+        rw [htail]
+        have hnextTarget : nextMu[target]! = mu[target]! := by
+          rw [getElem!_pos nextMu target htargetNext]
+          simp [nextMu, htarget, Ne.symm htargetRow]
+        rw [hnextTarget]
+
+theorem updateMuAfterSwapLoop_output_eq
+    (mu output : Generated.StrictRecombine.QQMatrix)
+    (k : Nat) (muOld muNew : QQ) (row : Nat)
+    (hk : ∀ index (hindex : index < mu.size), k < mu[index].size)
+    (hpred : ∀ index (hindex : index < mu.size),
+      k - 1 < mu[index].size)
+    (hrun : Generated.StrictRecombine.updateMuAfterSwapLoop
+      mu k muOld muNew row = .ok output) :
+    output = updateMuAfterSwapArray mu k muOld muNew row := by
+  have hexact := updateMuAfterSwapLoop_eq_array mu k muOld muNew row hk hpred
+  rw [hrun] at hexact
+  exact Except.ok.inj hexact
+
+theorem updateMuAfterSwapLoop_get_at
+    (mu output : Generated.StrictRecombine.QQMatrix)
+    (k target : Nat) (muOld muNew : QQ) (row : Nat)
+    (hk : ∀ index (hindex : index < mu.size), k < mu[index].size)
+    (hpred : ∀ index (hindex : index < mu.size),
+      k - 1 < mu[index].size)
+    (htarget : target < mu.size) (hrowTarget : row ≤ target)
+    (hrun : Generated.StrictRecombine.updateMuAfterSwapLoop
+      mu k muOld muNew row = .ok output) :
+    output[target]! = updateMuAfterSwapRow mu[target]! k muOld muNew := by
+  rw [updateMuAfterSwapLoop_output_eq mu output k muOld muNew row hk hpred hrun]
+  exact updateMuAfterSwapArray_get_at mu k target muOld muNew row
+    htarget hrowTarget
+
 /-- Exact mu array produced by one generated size-reduction coefficient. -/
 def sizeReduceMuResult (mu : Generated.StrictRecombine.QQMatrix)
     (k source : Nat) (q : ZZ) : Generated.StrictRecombine.QQMatrix :=

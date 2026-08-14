@@ -1915,6 +1915,23 @@ theorem mul_lovaszLocalTransform_apply {dimension : Nat}
         hcolumnPrevious hcolumnCurrent]
       ring
 
+noncomputable def rowReindexMatrix {dimension : Nat}
+    (equivalence : Fin dimension ≃ Fin dimension)
+    (matrix : Matrix (Fin dimension) (Fin dimension) QQ) :
+    Matrix (Fin dimension) (Fin dimension) QQ :=
+  fun row column => matrix (equivalence.symm row) column
+
+theorem reindex_ldl_eq_rowReindex {dimension : Nat}
+    (equivalence : Fin dimension ≃ Fin dimension)
+    (lower diagonal : Matrix (Fin dimension) (Fin dimension) QQ) :
+    Matrix.reindex equivalence equivalence
+        (lower * diagonal * lower.transpose) =
+      rowReindexMatrix equivalence lower * diagonal *
+        (rowReindexMatrix equivalence lower).transpose := by
+  funext row column
+  simp only [rowReindexMatrix, Matrix.reindex_apply, Matrix.submatrix_apply,
+    Equiv.symm_symm, Matrix.mul_apply, Matrix.transpose_apply]
+
 theorem lovaszLocalTransform_diagonal
     {dimension : Nat} (previous current : Fin dimension)
     (diagonal : Fin dimension → QQ) (a b mu muNew delta : QQ)
@@ -2229,6 +2246,80 @@ theorem gsLowerPrefix_lovaszSwapMuResult_mul
           · simp [hrowAfter, hkPrevious, hrowPreviousVal, hrowCurrentVal,
               hpredLtRow, hrowPrevious, hrowCurrent, hcolumnPrevious,
               hcolumnCurrent]
+
+theorem gsNormDiagonal_normsAfterLovaszSwap
+    (state : Generated.StrictRecombine.LLLState) (k rowCount : Nat)
+    (muNew : QQ) (hvalid : ConcreteLLLExecutionValid state)
+    (hkPositive : 0 < k) (hkCount : k < rowCount)
+    (hrowCount : rowCount ≤ state.matrix.size)
+    (hmuNew : muNew =
+      ((state.mu[k]!)[k - 1]!) * state.norms[k - 1]! /
+        (state.norms[k]! + ((state.mu[k]!)[k - 1]!) *
+          ((state.mu[k]!)[k - 1]!) * state.norms[k - 1]!)) :
+    lovaszLocalTransform
+          (⟨k - 1, by omega⟩ : Fin rowCount)
+          (⟨k, hkCount⟩ : Fin rowCount)
+          ((state.mu[k]!)[k - 1]!) muNew *
+        gsNormDiagonal state rowCount *
+        (lovaszLocalTransform
+          (⟨k - 1, by omega⟩ : Fin rowCount)
+          (⟨k, hkCount⟩ : Fin rowCount)
+          ((state.mu[k]!)[k - 1]!) muNew).transpose =
+      gsNormDiagonal
+        { state with norms := (Generated.StrictRecombine.normsAfterLovaszSwap
+            state.norms k ((state.mu[k]!)[k - 1]!)) }
+        rowCount := by
+  have hkNorm : k < state.norms.size := by
+    rw [hvalid.norms_size]
+    exact lt_of_lt_of_le hkCount hrowCount
+  have hpredNorm : k - 1 < state.norms.size := by omega
+  have hdeltaPos : 0 < state.norms[k]! +
+      ((state.mu[k]!)[k - 1]!) * ((state.mu[k]!)[k - 1]!) *
+        state.norms[k - 1]! := by
+    have hkPos := hvalid.norms_positive k hkNorm
+    have hpPos := hvalid.norms_positive (k - 1) hpredNorm
+    have hkPos' : 0 < state.norms[k]! := by
+      simpa only [getElem!_pos state.norms k hkNorm] using hkPos
+    have hpPos' : 0 < state.norms[k - 1]! := by
+      simpa only [getElem!_pos state.norms (k - 1) hpredNorm] using hpPos
+    nlinarith [sq_nonneg ((state.mu[k]!)[k - 1]!)]
+  have hlocal := lovaszLocalTransform_diagonal
+    (⟨k - 1, by omega⟩ : Fin rowCount)
+    (⟨k, hkCount⟩ : Fin rowCount)
+    (fun index : Fin rowCount => state.norms[index.val]!)
+    state.norms[k - 1]! state.norms[k]!
+    ((state.mu[k]!)[k - 1]!) muNew
+    (state.norms[k]! + ((state.mu[k]!)[k - 1]!) *
+      ((state.mu[k]!)[k - 1]!) * state.norms[k - 1]!)
+    (by intro heq; injection heq; omega) rfl rfl rfl
+    (ne_of_gt hdeltaPos) hmuNew
+  unfold gsNormDiagonal
+  rw [hlocal]
+  congr 1
+  funext index
+  have hindexNorm : index.val < state.norms.size := by
+    rw [hvalid.norms_size]
+    exact lt_of_lt_of_le index.isLt hrowCount
+  rw [normsAfterLovaszSwap_get state.norms k
+    ((state.mu[k]!)[k - 1]!) hkNorm hpredNorm (by
+      have := ne_of_gt hdeltaPos
+      simpa only [getElem!_pos state.norms k hkNorm,
+        getElem!_pos state.norms (k - 1) hpredNorm] using this)
+    index.val hindexNorm]
+  have hkNePrevious : k ≠ k - 1 := by omega
+  by_cases hindexPrevious : index.val = k - 1
+  · simp [hindexPrevious, hkNePrevious, hkNePrevious.symm, Fin.ext_iff,
+      getElem!_pos state.norms k hkNorm,
+      getElem!_pos state.norms (k - 1) hpredNorm]
+  · by_cases hindexCurrent : index.val = k
+    · simp [hindexPrevious, hindexCurrent, hkNePrevious,
+        hkNePrevious.symm, Fin.ext_iff,
+        getElem!_pos state.norms k hkNorm,
+        getElem!_pos state.norms (k - 1) hpredNorm]
+      ring
+    · simp [hindexPrevious, Ne.symm hindexPrevious, hindexCurrent,
+        Ne.symm hindexCurrent, hkNePrevious, hkNePrevious.symm, Fin.ext_iff,
+        getElem!_pos state.norms index.val hindexNorm]
 
 theorem sizeReduceAt_mu_eq
     (state output : Generated.StrictRecombine.LLLState) (source : Nat)
@@ -3906,6 +3997,111 @@ theorem gramPrefixMatrix_swap_reindex
   rw [swapMatrixRows_get_fin matrix output left right rowCount hrun
     hleftCount hrightCount hrowCount j]
   simp
+
+theorem concreteGramSchmidt_lovaszSwap_of_above
+    (state : Generated.StrictRecombine.LLLState)
+    (swappedMatrix : Generated.StrictRecombine.LLLMatrix)
+    (k rowCount : Nat) (muNew : QQ)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hkPositive : 0 < k) (hkCount : k < rowCount)
+    (hrowCount : rowCount ≤ state.matrix.size)
+    (hswap : Generated.StrictRecombine.swapMatrixRows state.matrix k (k - 1) =
+      .ok swappedMatrix)
+    (hmuNew : muNew =
+      ((state.mu[k]!)[k - 1]!) * state.norms[k - 1]! /
+        (state.norms[k]! + ((state.mu[k]!)[k - 1]!) *
+          ((state.mu[k]!)[k - 1]!) * state.norms[k - 1]!)) :
+    gramPrefixMatrixQQ swappedMatrix rowCount =
+      gsLowerPrefix
+          { state with
+            matrix := swappedMatrix
+            mu := (lovaszSwapMuResult state.mu k
+              ((state.mu[k]!)[k - 1]!) muNew)
+            norms := (Generated.StrictRecombine.normsAfterLovaszSwap
+              state.norms k ((state.mu[k]!)[k - 1]!)) }
+          rowCount *
+        gsNormDiagonal
+          { state with
+            matrix := swappedMatrix
+            mu := (lovaszSwapMuResult state.mu k
+              ((state.mu[k]!)[k - 1]!) muNew)
+            norms := (Generated.StrictRecombine.normsAfterLovaszSwap
+              state.norms k ((state.mu[k]!)[k - 1]!)) }
+          rowCount *
+        (gsLowerPrefix
+          { state with
+            matrix := swappedMatrix
+            mu := (lovaszSwapMuResult state.mu k
+              ((state.mu[k]!)[k - 1]!) muNew)
+            norms := (Generated.StrictRecombine.normsAfterLovaszSwap
+              state.norms k ((state.mu[k]!)[k - 1]!)) }
+          rowCount).transpose := by
+  let previous : Fin rowCount := ⟨k - 1, by omega⟩
+  let current : Fin rowCount := ⟨k, hkCount⟩
+  let permutation := Equiv.swap previous current
+  have hgram := gramPrefixMatrix_swap_reindex state.matrix swappedMatrix
+    k (k - 1) rowCount hswap hkCount (by omega) hrowCount
+  have hold := hvalid.gram_schmidt rowCount hrowCount
+  have hlower := gsLowerPrefix_lovaszSwapMuResult_mul state k rowCount
+    muNew hvalid hkPositive hkCount hrowCount
+  have hdiagonal := gsNormDiagonal_normsAfterLovaszSwap state k rowCount
+    muNew hvalid hkPositive hkCount hrowCount hmuNew
+  unfold gramPrefixMatrixQQ
+  rw [hgram]
+  rw [Equiv.swap_comm (⟨k, hkCount⟩ : Fin rowCount)
+    (⟨k - 1, by omega⟩ : Fin rowCount)]
+  change Matrix.reindex permutation permutation
+      (gramPrefixMatrixQQ state.matrix rowCount) = _
+  rw [hold]
+  rw [reindex_ldl_eq_rowReindex permutation]
+  change
+    rowReindexMatrix permutation (gsLowerPrefix state rowCount) *
+        gsNormDiagonal state rowCount *
+      (rowReindexMatrix permutation
+        (gsLowerPrefix state rowCount)).transpose = _
+  unfold rowReindexMatrix
+  dsimp [permutation, previous, current]
+  rw [hlower]
+  change
+    (gsLowerPrefix
+        { state with mu := (lovaszSwapMuResult state.mu k
+          ((state.mu[k]!)[k - 1]!) muNew) } rowCount *
+      lovaszLocalTransform (⟨k - 1, by omega⟩ : Fin rowCount)
+        (⟨k, hkCount⟩ : Fin rowCount) ((state.mu[k]!)[k - 1]!) muNew) *
+      gsNormDiagonal state rowCount *
+      (gsLowerPrefix
+        { state with mu := (lovaszSwapMuResult state.mu k
+          ((state.mu[k]!)[k - 1]!) muNew) } rowCount *
+      lovaszLocalTransform (⟨k - 1, by omega⟩ : Fin rowCount)
+        (⟨k, hkCount⟩ : Fin rowCount) ((state.mu[k]!)[k - 1]!) muNew).transpose = _
+  rw [Matrix.transpose_mul]
+  calc
+    _ = gsLowerPrefix
+          { state with mu := (lovaszSwapMuResult state.mu k
+            ((state.mu[k]!)[k - 1]!) muNew) } rowCount *
+        (lovaszLocalTransform (⟨k - 1, by omega⟩ : Fin rowCount)
+            (⟨k, hkCount⟩ : Fin rowCount) ((state.mu[k]!)[k - 1]!) muNew *
+          gsNormDiagonal state rowCount *
+          (lovaszLocalTransform (⟨k - 1, by omega⟩ : Fin rowCount)
+            (⟨k, hkCount⟩ : Fin rowCount)
+            ((state.mu[k]!)[k - 1]!) muNew).transpose) *
+        (gsLowerPrefix
+          { state with mu := (lovaszSwapMuResult state.mu k
+            ((state.mu[k]!)[k - 1]!) muNew) } rowCount).transpose := by
+          simp only [Matrix.mul_assoc]
+    _ = gsLowerPrefix
+          { state with mu := (lovaszSwapMuResult state.mu k
+            ((state.mu[k]!)[k - 1]!) muNew) } rowCount *
+        gsNormDiagonal
+          { state with norms :=
+            (Generated.StrictRecombine.normsAfterLovaszSwap state.norms k
+              ((state.mu[k]!)[k - 1]!)) } rowCount *
+        (gsLowerPrefix
+          { state with mu := (lovaszSwapMuResult state.mu k
+            ((state.mu[k]!)[k - 1]!) muNew) } rowCount).transpose := by
+          rw [hdiagonal]
+    _ = _ := by
+      rfl
 
 theorem gramPrefixDet_swap_preserved_of_both
     (matrix output : Generated.StrictRecombine.LLLMatrix) (left right rowCount : Nat)

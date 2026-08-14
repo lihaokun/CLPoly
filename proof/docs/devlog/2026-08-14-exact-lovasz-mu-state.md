@@ -38,3 +38,9 @@ post-loop μ array, followed by the local column transform, equals the old
 lower factor with the two adjacent basis rows exchanged.  The proof covers
 the two exchanged rows and every earlier/later row separately and uses the
 generated lookup equations for both corrected columns.
+
+The same local transform is now connected to the generated norm array, and
+`concreteGramSchmidt_lovaszSwap_of_above` composes both identities with the
+actual integer row swap.  For every prefix containing both adjacent rows it
+proves the full rational Gram matrix equality `G' = L' D' L'ᵀ`, rather than
+only determinant or potential preservation.

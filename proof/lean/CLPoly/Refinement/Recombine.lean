@@ -993,6 +993,38 @@ theorem ConcreteGramSchmidt.gram_prefix
       intro i _
       rfl
 
+/-- Full invariant intended for the generated well-founded loop.  Unlike
+`ConcreteLLLValid`, this stores the executable Gram–Schmidt relationship from
+which the determinant field is derived. -/
+structure ConcreteLLLExecutionValid
+    (state : Generated.StrictRecombine.LLLState) : Prop where
+  norms_size : state.norms.size = state.matrix.size
+  rows_square : ∀ row (hrow : row < state.matrix.size),
+    state.matrix[row].size = state.matrix.size
+  norms_positive : ∀ index (hindex : index < state.norms.size),
+    0 < state.norms[index]
+  gram_schmidt : ConcreteGramSchmidt state
+
+theorem ConcreteLLLExecutionValid.toConcreteLLLValid
+    {state : Generated.StrictRecombine.LLLState}
+    (hvalid : ConcreteLLLExecutionValid state) : ConcreteLLLValid state where
+  norms_size := hvalid.norms_size
+  rows_square := hvalid.rows_square
+  norms_positive := hvalid.norms_positive
+  gram_prefix := hvalid.gram_schmidt.gram_prefix
+
+theorem ConcreteLLLExecutionValid.withK
+    {state : Generated.StrictRecombine.LLLState}
+    (hvalid : ConcreteLLLExecutionValid state) (k : Nat) :
+    ConcreteLLLExecutionValid { state with k := k } where
+  norms_size := hvalid.norms_size
+  rows_square := hvalid.rows_square
+  norms_positive := hvalid.norms_positive
+  gram_schmidt := by
+    intro rowCount hrowCount
+    simpa [ConcreteGramSchmidt, gsLowerPrefix, gsNormDiagonal] using
+      hvalid.gram_schmidt rowCount hrowCount
+
 theorem ConcreteLLLValid.withK
     {state : Generated.StrictRecombine.LLLState}
     (hvalid : ConcreteLLLValid state) (k : Nat) :

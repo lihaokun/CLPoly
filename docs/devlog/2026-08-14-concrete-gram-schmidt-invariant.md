@@ -14,6 +14,12 @@ diagonal matrix read from the generated squared norms.
 Proved that this invariant implies the exact prefix Gram determinant identity
 used by the natural-number LLL termination rank.
 
+Added `ConcreteLLLExecutionValid` as the loop-facing invariant.  It combines
+the concrete storage/positivity conditions with the factorization and derives
+the older determinant-validity view through
+`toConcreteLLLValid`.  Changing only the loop index is proved to preserve this
+full invariant.
+
 ## Why
 
 Prefix determinants alone do not determine the boundary prefix created by an

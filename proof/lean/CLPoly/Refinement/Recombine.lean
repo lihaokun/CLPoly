@@ -1443,8 +1443,9 @@ theorem scanZassenhausCombinations_extracted_unit_scalar
     (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
     (start candidate : Array Nat)
     (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hvalidStart : termination.valid start)
     (hrun : Generated.StrictRecombine.scanZassenhausCombinations termination
-      fStar activeLifted modulus start = .ok
+      fStar activeLifted modulus start hvalidStart = .ok
         (.extracted factor quotientPrimitive candidate)) :
     ∃ scalar : Int, IsUnit scalar ∧
       SparsePolyZZ.toPoly fStar = Polynomial.C scalar *
@@ -1472,10 +1473,12 @@ theorem scanZassenhausCombinations_extracted_unit_scalar
           split at hrun
           next next hnext => simp at hrun
           next next hnext =>
-            have hdecrease := termination.next_decreases start next hnext
+            have hdecrease := termination.next_decreases start next hvalidStart
+              hnext
+            have hvalidNext := termination.next_valid start next hvalidStart hnext
             rw [hmeasure] at hdecrease
             exact ih (termination.rank next)
-              hdecrease next hrun rfl
+              hdecrease next hvalidNext hrun rfl
 
 private noncomputable def factorArrayProduct (factors : Array SparsePolyZZ) :
     Polynomial Int :=

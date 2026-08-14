@@ -61,6 +61,26 @@ theorem resetCombinationSuffix_size (indices : Array Nat)
 termination_by indices.size - (pivot + 1 + offset)
 decreasing_by simp only [Array.size_set]; omega
 
+theorem resetCombinationSuffix_getElem_le (indices : Array Nat)
+    (pivot offset index : Nat) (hindex : index < indices.size)
+    (hle : index ≤ pivot) :
+    (Generated.StrictRecombine.resetCombinationSuffix indices pivot offset)[index]! =
+      indices[index]! := by
+  rw [Generated.StrictRecombine.resetCombinationSuffix]
+  split
+  next hposition =>
+    rw [resetCombinationSuffix_getElem_le
+      (indices.set (pivot + 1 + offset) (indices[pivot] + 1)) pivot
+      (offset + 1) index (by simpa using hindex) hle]
+    have hne : index ≠ pivot + 1 + offset := by omega
+    rw [getElem!_pos _ index (by simpa using hindex),
+      getElem!_pos indices index hindex]
+    rw [Array.getElem_set]
+    rw [if_neg (by omega)]
+  next hposition => rfl
+termination_by indices.size - (pivot + 1 + offset)
+decreasing_by simp only [Array.size_set]; omega
+
 theorem nextCombination_size (indices : Array Nat) (upper : Nat) :
     (Generated.StrictRecombine.nextCombination indices upper).2.size =
       indices.size := by
@@ -77,6 +97,124 @@ theorem nextCombination_size (indices : Array Nat) (upper : Nat) :
         simp
       next hpivotBounds => rfl
   next hfits => rfl
+
+theorem nextCombinationPivot_some_lt (indices : Array Nat)
+    (upper inspected pivot : Nat)
+    (hresult : Generated.StrictRecombine.nextCombinationPivot indices upper
+      inspected = some pivot) :
+    pivot < indices.size := by
+  induction hmeasure : indices.size - inspected using Nat.strong_induction_on
+      generalizing inspected with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.nextCombinationPivot] at hresult
+      split at hresult
+      next hinspected =>
+        dsimp at hresult
+        split at hresult
+        next hmaximal =>
+          exact ih (indices.size - (inspected + 1)) (by omega)
+            (inspected + 1) hresult rfl
+        next havailable =>
+          have hpivot := Option.some.inj hresult
+          subst pivot
+          omega
+      next hinspected => contradiction
+
+theorem nextCombinationPivot_some_suffix (indices : Array Nat)
+    (upper inspected pivot : Nat)
+    (hresult : Generated.StrictRecombine.nextCombinationPivot indices upper
+    inspected = some pivot) :
+    ∀ position (hpivot : pivot < position) (hposition : position < indices.size)
+      (hunscanned : inspected ≤ indices.size - 1 - position),
+      indices[position] = upper - indices.size + position := by
+  induction hmeasure : indices.size - inspected using Nat.strong_induction_on
+      generalizing inspected with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.nextCombinationPivot] at hresult
+      split at hresult
+      next hinspected =>
+        dsimp at hresult
+        split at hresult
+        next hmaximal =>
+          intro position hpivot hposition hunscanned
+          by_cases hcurrent : position = indices.size - 1 - inspected
+          · subst position
+            exact hmaximal
+          · exact ih (indices.size - (inspected + 1)) (by omega)
+              (inspected + 1) hresult rfl position hpivot hposition (by omega)
+        next havailable =>
+          intro position hpivot hposition hunscanned
+          have hpivotValue := Option.some.inj hresult
+          subst pivot
+          omega
+      next hinspected => contradiction
+
+theorem nextCombinationPivot_some_suffix_zero (indices : Array Nat)
+    (upper pivot : Nat)
+    (hresult : Generated.StrictRecombine.nextCombinationPivot indices upper 0 =
+      some pivot) :
+    ∀ position (hpivot : pivot < position) (hposition : position < indices.size),
+      indices[position] = upper - indices.size + position := by
+  intro position hpivot hposition
+  exact nextCombinationPivot_some_suffix indices upper 0 pivot hresult
+    position hpivot hposition (by omega)
+
+theorem nextCombinationPivot_some_ne (indices : Array Nat)
+    (upper inspected pivot : Nat)
+    (hresult : Generated.StrictRecombine.nextCombinationPivot indices upper
+      inspected = some pivot) :
+    indices[pivot]'(nextCombinationPivot_some_lt indices upper inspected pivot
+      hresult) ≠ upper - indices.size + pivot := by
+  induction hmeasure : indices.size - inspected using Nat.strong_induction_on
+      generalizing inspected with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.nextCombinationPivot] at hresult
+      split at hresult
+      next hinspected =>
+        dsimp at hresult
+        split at hresult
+        next hmaximal =>
+          exact ih (indices.size - (inspected + 1)) (by omega)
+            (inspected + 1) hresult rfl
+        next havailable =>
+          have hpivotValue := Option.some.inj hresult
+          subst pivot
+          exact havailable
+      next hinspected => contradiction
+
+theorem nextCombination_true_pivot (indices next : Array Nat) (upper : Nat)
+    (hrun : Generated.StrictRecombine.nextCombination indices upper =
+      (true, next)) :
+    ∃ pivot, ∃ hpivot : pivot < indices.size,
+      next[pivot]! = indices[pivot]! + 1 ∧
+        ∀ index, index < pivot → next[index]! = indices[index]! := by
+  unfold Generated.StrictRecombine.nextCombination at hrun
+  split at hrun
+  next hfits =>
+    split at hrun
+    next hpivotNone => simp at hrun
+    next pivot hpivotSome =>
+      split at hrun
+      next hpivotBounds =>
+        have hpivotLt := nextCombinationPivot_some_lt indices upper 0 pivot
+          hpivotSome
+        have hout := Prod.mk.inj hrun
+        have hnext := hout.2
+        subst next
+        refine ⟨pivot, hpivotLt, ?_, ?_⟩
+        · rw [resetCombinationSuffix_getElem_le _ pivot 0 pivot
+            (by simpa using hpivotLt) (Nat.le_refl _)]
+          simp [getElem!_pos, hpivotBounds]
+        · intro index hindex
+          have hindexBounds : index < indices.size := by omega
+          rw [resetCombinationSuffix_getElem_le _ pivot 0 index
+            (by simpa using hindexBounds) (Nat.le_of_lt hindex)]
+          rw [getElem!_pos _ index (by simpa using hindexBounds),
+            getElem!_pos indices index hindexBounds]
+          rw [Array.getElem_set]
+          rw [if_neg (by omega)]
+      next hpivotBounds => simp at hrun
+  next hfits => simp at hrun
 
 theorem removeCombinationLoop_size (candidate : Array Nat)
     (remaining : Nat) (active output : Array SparsePolyZZ)

@@ -523,9 +523,10 @@ def removalTermination (ops : Generated.StrictRecombine.VanHoeijRawOps) :
 It relates concrete successful output modulo `m`; it does not supply or choose
 a factorization. -/
 def TrialProductStepCorrect
-    (ops : Generated.StrictRecombine.TrialProductRawOps) : Prop :=
+    : Prop :=
   ∀ left right (modulus : Nat) output, 0 < modulus →
-    ops.multiplyNormalizeMod left right (modulus : ZZ) = .ok output →
+    Generated.StrictRecombine.multiplyNormalizeModRaw left right
+      (modulus : ZZ) = .ok output →
     Refinement.StrictHensel.toPolyMod modulus output =
       Refinement.StrictHensel.toPolyMod modulus left *
         Refinement.StrictHensel.toPolyMod modulus right
@@ -536,53 +537,6 @@ noncomputable def SelectedProductMod (modulus : Nat) (candidate : Array Int32)
   ((candidate.toList.drop index).map fun activeIndex =>
     Refinement.StrictHensel.toPolyMod modulus
       activeLifted[activeIndex.toInt64.toNat]!).prod
-
-theorem trialProductLoop_refines
-    (ops : Generated.StrictRecombine.TrialProductRawOps)
-    (hstep : TrialProductStepCorrect ops)
-    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
-    (modulus : Nat) (hmodulus : 0 < modulus) (index : Nat)
-    (product output : SparsePolyZZ)
-    (hvalid : CandidateIndicesValid candidate
-      (Array.replicate activeLifted.size false))
-    (hrun : Generated.StrictRecombine.trialProductLoop ops candidate
-      activeLifted (modulus : ZZ) index product = .ok output) :
-    Refinement.StrictHensel.toPolyMod modulus output =
-      Refinement.StrictHensel.toPolyMod modulus product *
-        SelectedProductMod modulus candidate activeLifted index := by
-  induction hmeasure : candidate.size - index using Nat.strong_induction_on
-      generalizing index product output with
-  | h measure ih =>
-      rw [Generated.StrictRecombine.trialProductLoop] at hrun
-      split at hrun
-      next hindex =>
-        have hentry := hvalid index hindex
-        have hactive : candidate[index].toInt64.toNat < activeLifted.size := by
-          simpa using hentry.2
-        rw [dif_pos hentry.1, dif_pos hactive] at hrun
-        split at hrun
-        next fault hcall => contradiction
-        next product' hcall =>
-          let selected := activeLifted[candidate[index].toInt64.toNat]
-          have htail := ih (candidate.size - (index + 1)) (by omega)
-            (index + 1) product' output hrun rfl
-          have hsuffix : candidate.toList.drop index = candidate[index] ::
-              candidate.toList.drop (index + 1) := by
-            simpa using List.drop_eq_getElem_cons
-              (l := candidate.toList) (i := index) (by simpa using hindex)
-          have hstep' := hstep product selected modulus product'
-            hmodulus hcall
-          rw [htail, hstep']
-          have hselected : selected =
-              activeLifted[candidate[index].toInt64.toNat]! := by
-            simp [selected, hactive]
-          rw [hselected]
-          simp [SelectedProductMod, hsuffix, mul_assoc]
-      next hindex =>
-        have hle : candidate.size ≤ index := Nat.le_of_not_gt hindex
-        have hout := Except.ok.inj hrun
-        subst output
-        simp [SelectedProductMod, List.drop_eq_nil_iff.mpr hle]
 
 private noncomputable def intTermsToPoly (terms : List (UMonomial × Int)) :
     Polynomial Int :=
@@ -766,6 +720,134 @@ theorem multiplyNormalizeRaw_toPoly (left right output : SparsePolyZZ)
       (Generated.StrictRecombine.multiplyTermsLoop left right 0 #[]).toList = _
   rw [multiplyTermsLoop_toPoly]
   simp [intTermsToPoly, SparsePolyZZ.toPoly]
+
+private theorem emod_cast (modulus : Nat) (hmodulus : 0 < modulus)
+    (coefficient : Int) :
+    ((coefficient % (modulus : Int) : Int) : ZMod modulus) =
+      (coefficient : ZMod modulus) := by
+  rw [ZMod.intCast_eq_intCast_iff]
+  refine Int.modEq_iff_dvd.mpr ?_
+  use coefficient / (modulus : Int)
+  have h := Int.mul_ediv_add_emod coefficient (modulus : Int)
+  omega
+
+theorem modCoeffLoop_toPolyMod (input : SparsePolyZZ)
+    (modulus : Nat) (hmodulus : 0 < modulus) (index : Nat)
+    (result output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.modCoeffLoop input (modulus : ZZ)
+      index result = .ok output) :
+    Refinement.StrictHensel.toPolyMod modulus output =
+      Refinement.StrictHensel.toPolyMod modulus result +
+        Refinement.StrictHensel.termsToPolyMod modulus
+          (input.toList.drop index) := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.modCoeffLoop] at hrun
+      split at hrun
+      next hindex =>
+        split at hrun
+        next hmodulus' =>
+          let coefficient := input[index].2 % (modulus : Int)
+          by_cases hzero : coefficient = 0
+          · change input[index].2 % (modulus : Int) = 0 at hzero
+            simp only [hzero, if_true] at hrun
+            rw [ih (input.size - (index + 1)) (by omega)
+              (index + 1) result output hrun rfl]
+            have hsuffix : input.toList.drop index = input[index] ::
+                input.toList.drop (index + 1) := by
+              simpa using List.drop_eq_getElem_cons
+                (l := input.toList) (i := index) (by simpa using hindex)
+            have hcast := emod_cast modulus hmodulus input[index].2
+            change (coefficient : ZMod modulus) =
+              (input[index].2 : ZMod modulus) at hcast
+            dsimp [coefficient] at hcast
+            rw [hzero] at hcast
+            rw [hsuffix, Refinement.StrictHensel.termsToPolyMod_cons]
+            rw [← hcast]
+            simp
+          · change input[index].2 % (modulus : Int) ≠ 0 at hzero
+            simp only [hzero, if_false] at hrun
+            rw [ih (input.size - (index + 1)) (by omega)
+              (index + 1) (result.push (input[index].1, coefficient))
+              output hrun rfl]
+            rw [Refinement.StrictHensel.toPolyMod_push]
+            have hsuffix : input.toList.drop index = input[index] ::
+                input.toList.drop (index + 1) := by
+              simpa using List.drop_eq_getElem_cons
+                (l := input.toList) (i := index) (by simpa using hindex)
+            rw [emod_cast modulus hmodulus input[index].2]
+            rw [hsuffix, Refinement.StrictHensel.termsToPolyMod_cons]
+            abel
+        next hmodulus' => contradiction
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [Refinement.StrictHensel.termsToPolyMod,
+          List.drop_eq_nil_iff.mpr hle]
+
+theorem multiplyNormalizeModRaw_correct : TrialProductStepCorrect := by
+  intro left right modulus output hmodulus hrun
+  unfold Generated.StrictRecombine.multiplyNormalizeModRaw at hrun
+  split at hrun
+  next fault hmultiply => contradiction
+  next product hmultiply =>
+    have hmod := modCoeffLoop_toPolyMod product modulus hmodulus 0 #[]
+      output hrun
+    have hmul := multiplyNormalizeRaw_toPoly left right product hmultiply
+    have hmod' : Refinement.StrictHensel.toPolyMod modulus output =
+        Refinement.StrictHensel.toPolyMod modulus product := by
+      simpa [Refinement.StrictHensel.toPolyMod_eq_termsToPolyMod] using hmod
+    rw [hmod']
+    simpa [Refinement.StrictHensel.toPolyMod] using
+      congrArg (Polynomial.map (Int.castRingHom (ZMod modulus))) hmul
+
+theorem trialProductLoop_refines
+    (ops : Generated.StrictRecombine.TrialProductRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : Nat) (hmodulus : 0 < modulus) (index : Nat)
+    (product output : SparsePolyZZ)
+    (hvalid : CandidateIndicesValid candidate
+      (Array.replicate activeLifted.size false))
+    (hrun : Generated.StrictRecombine.trialProductLoop ops candidate
+      activeLifted (modulus : ZZ) index product = .ok output) :
+    Refinement.StrictHensel.toPolyMod modulus output =
+      Refinement.StrictHensel.toPolyMod modulus product *
+        SelectedProductMod modulus candidate activeLifted index := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index product output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.trialProductLoop] at hrun
+      split at hrun
+      next hindex =>
+        have hentry := hvalid index hindex
+        have hactive : candidate[index].toInt64.toNat < activeLifted.size := by
+          simpa using hentry.2
+        rw [dif_pos hentry.1, dif_pos hactive] at hrun
+        split at hrun
+        next fault hcall => contradiction
+        next product' hcall =>
+          let selected := activeLifted[candidate[index].toInt64.toNat]
+          have htail := ih (candidate.size - (index + 1)) (by omega)
+            (index + 1) product' output hrun rfl
+          have hsuffix : candidate.toList.drop index = candidate[index] ::
+              candidate.toList.drop (index + 1) := by
+            simpa using List.drop_eq_getElem_cons
+              (l := candidate.toList) (i := index) (by simpa using hindex)
+          have hstep' := multiplyNormalizeModRaw_correct product selected
+            modulus product' hmodulus hcall
+          rw [htail, hstep']
+          have hselected : selected =
+              activeLifted[candidate[index].toInt64.toNat]! := by
+            simp [selected, hactive]
+          rw [hselected]
+          simp [SelectedProductMod, hsuffix, mul_assoc]
+      next hindex =>
+        have hle : candidate.size ≤ index := Nat.le_of_not_gt hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [SelectedProductMod, List.drop_eq_nil_iff.mpr hle]
 
 private theorem symmetricMod_cast (modulus : Nat) (hmodulus : 0 < modulus)
     (coefficient : Int) :

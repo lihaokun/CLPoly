@@ -18,6 +18,8 @@ FORBIDDEN = (
     "fuel",
     "def henselGeneratedCandidate",
     "def henselCandidateToPk",
+    "multiplyNormalizeMod :",
+    "ops.multiplyNormalizeMod",
 )
 
 

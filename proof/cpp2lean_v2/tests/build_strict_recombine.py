@@ -255,31 +255,6 @@ def markConsumedLoop (candidate : Array Int32) (index : Nat)
 termination_by candidate.size - index
 decreasing_by omega
 
-structure TrialProductRawOps where
-  multiplyNormalizeMod : SparsePolyZZ → SparsePolyZZ → ZZ →
-    RawExec SparsePolyZZ
-
-/-- Source candidate-product loop: multiply by every selected active lifted
-factor, normalize, and reduce coefficients after each multiplication. -/
-def trialProductLoop (ops : TrialProductRawOps)
-    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
-    (modulus : ZZ) (index : Nat) (product : SparsePolyZZ) :
-    RawExec SparsePolyZZ :=
-  if hindex : index < candidate.size then
-    let activeIndex := candidate[index]
-    if hnonnegative : 0 ≤ activeIndex then
-      let activeNat := activeIndex.toInt64.toNat
-      if hactive : activeNat < activeLifted.size then
-        match ops.multiplyNormalizeMod product activeLifted[activeNat] modulus with
-        | .error fault => .error fault
-        | .ok product' => trialProductLoop ops candidate activeLifted modulus
-            (index + 1) product'
-      else .error (.outOfBounds activeNat activeLifted.size)
-    else .error .arithmeticDomain
-  else .ok product
-termination_by candidate.size - index
-decreasing_by omega
-
 /-- Inner source multiplication loop for one left sparse term. -/
 def multiplyRowLoop (left : UMonomial × Int) (right : SparsePolyZZ)
     (rightIndex : Nat) (terms : SparsePolyZZ) : SparsePolyZZ :=
@@ -305,6 +280,54 @@ decreasing_by omega
 
 def multiplyNormalizeRaw (left right : SparsePolyZZ) : RawExec SparsePolyZZ :=
   .ok (SparsePolyZZ.normalization (multiplyTermsLoop left right 0 #[]))
+
+/-- Exact coefficient reduction performed after every Zassenhaus subset
+product multiplication. -/
+def modCoeffLoop (input : SparsePolyZZ) (modulus : ZZ) (index : Nat)
+    (result : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  if hindex : index < input.size then
+    if hmodulus : modulus ≠ 0 then
+      let coefficient := input[index].2 % modulus
+      modCoeffLoop input modulus (index + 1)
+        (if coefficient = 0 then result
+         else result.push (input[index].1, coefficient))
+    else .error .arithmeticDomain
+  else .ok result
+termination_by input.size - index
+decreasing_by omega
+
+def multiplyNormalizeModRaw (left right : SparsePolyZZ) (modulus : ZZ) :
+    RawExec SparsePolyZZ :=
+  match multiplyNormalizeRaw left right with
+  | .error fault => .error fault
+  | .ok product => modCoeffLoop product modulus 0 #[]
+
+/-- This operation record is deliberately data-free.  Earlier revisions
+stored a semantic multiplication callback here; the strict boundary now
+always executes `multiplyNormalizeModRaw`. -/
+structure TrialProductRawOps where
+  marker : Unit := ()
+
+/-- Source candidate-product loop: multiply by every selected active lifted
+factor, normalize, and reduce coefficients after each multiplication. -/
+def trialProductLoop (_ops : TrialProductRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) (index : Nat) (product : SparsePolyZZ) :
+    RawExec SparsePolyZZ :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hnonnegative : 0 ≤ activeIndex then
+      let activeNat := activeIndex.toInt64.toNat
+      if hactive : activeNat < activeLifted.size then
+        match multiplyNormalizeModRaw product activeLifted[activeNat] modulus with
+        | .error fault => .error fault
+        | .ok product' => trialProductLoop _ops candidate activeLifted modulus
+            (index + 1) product'
+      else .error (.outOfBounds activeNat activeLifted.size)
+    else .error .arithmeticDomain
+  else .ok product
+termination_by candidate.size - index
+decreasing_by omega
 
 /-- Exact range-for in C++ `__upoly_symmetric_mod`: symmetrically reduce each
 coefficient and omit concrete zero coefficients. -/

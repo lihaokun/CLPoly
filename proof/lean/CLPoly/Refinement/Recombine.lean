@@ -20,6 +20,212 @@ open CLPoly.Math
 
 namespace Refinement.StrictRecombine
 
+theorem zeroQQRowLoop_size (columns index : Nat) (row : Array QQ)
+    (hindex : index ≤ columns) :
+    (Generated.StrictRecombine.zeroQQRowLoop columns index row).size =
+      row.size + (columns - index) := by
+  induction hremaining : columns - index using Nat.strong_induction_on
+      generalizing index row with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroQQRowLoop]
+      split
+      next hmore =>
+        have hdecrease : columns - (index + 1) < remaining := by omega
+        rw [ih (columns - (index + 1)) hdecrease (index + 1) (row.push 0)
+          (by omega) rfl]
+        simp only [Array.size_push]
+        omega
+      next hdone => omega
+
+theorem zeroQQRow_size (columns : Nat) :
+    (Generated.StrictRecombine.zeroQQRow columns).size = columns := by
+  unfold Generated.StrictRecombine.zeroQQRow
+  simpa using zeroQQRowLoop_size columns 0 (#[] : Array QQ) (by omega)
+
+theorem zeroQQRowLoop_get_of_lt (columns index : Nat) (row : Array QQ)
+    (position : Nat) (hposition : position < row.size) :
+    (Generated.StrictRecombine.zeroQQRowLoop columns index row)[position]! =
+      row[position] := by
+  induction hremaining : columns - index using Nat.strong_induction_on
+      generalizing index row with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroQQRowLoop]
+      split
+      next hmore =>
+        have hdecrease : columns - (index + 1) < remaining := by omega
+        rw [ih (columns - (index + 1)) hdecrease (index + 1) (row.push 0)
+          (by simp only [Array.size_push]; omega) rfl]
+        simpa only [Array.getElem_push_lt hposition]
+      next hdone =>
+        simpa only [getElem!_pos row position hposition]
+
+theorem zeroQQRowLoop_suffix_get (columns index : Nat) (row : Array QQ)
+    (hindex : index ≤ columns) (offset : Nat)
+    (hoffset : offset < columns - index) :
+    (Generated.StrictRecombine.zeroQQRowLoop columns index row)[row.size + offset]! =
+      0 := by
+  induction offset generalizing index row with
+  | zero =>
+      rw [Generated.StrictRecombine.zeroQQRowLoop]
+      split
+      next hmore =>
+        have hposition : row.size < (row.push (0 : QQ)).size := by simp
+        simp only [Nat.add_zero]
+        rw [zeroQQRowLoop_get_of_lt columns (index + 1) (row.push 0)
+          row.size hposition]
+        simp
+      next hdone => omega
+  | succ offset ih =>
+      rw [Generated.StrictRecombine.zeroQQRowLoop]
+      split
+      next hmore =>
+        have hoffset' : offset < columns - (index + 1) := by omega
+        have htail := ih (index + 1) (row.push 0) (by omega) hoffset'
+        simpa only [Array.size_push, Nat.add_assoc, Nat.add_left_comm,
+          Nat.add_comm] using htail
+      next hdone => omega
+
+theorem zeroQQRow_get (columns position : Nat) (hposition : position < columns) :
+    (Generated.StrictRecombine.zeroQQRow columns)[position]! = 0 := by
+  unfold Generated.StrictRecombine.zeroQQRow
+  simpa using zeroQQRowLoop_suffix_get columns 0 (#[] : Array QQ)
+    (by omega) position (by omega)
+
+theorem zeroQQMatrixLoop_size (rows columns index : Nat)
+    (matrix : Generated.StrictRecombine.QQMatrix) (hindex : index ≤ rows) :
+    (Generated.StrictRecombine.zeroQQMatrixLoop rows columns index matrix).size =
+      matrix.size + (rows - index) := by
+  induction hremaining : rows - index using Nat.strong_induction_on
+      generalizing index matrix with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroQQMatrixLoop]
+      split
+      next hmore =>
+        have hdecrease : rows - (index + 1) < remaining := by omega
+        rw [ih (rows - (index + 1)) hdecrease (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroQQRow columns))
+          (by omega) rfl]
+        simp only [Array.size_push]
+        omega
+      next hdone => omega
+
+theorem zeroQQMatrix_size (rows columns : Nat) :
+    (Generated.StrictRecombine.zeroQQMatrix rows columns).size = rows := by
+  unfold Generated.StrictRecombine.zeroQQMatrix
+  simpa using zeroQQMatrixLoop_size rows columns 0
+    (#[] : Generated.StrictRecombine.QQMatrix) (by omega)
+
+theorem zeroQQMatrixLoop_get_of_lt (rows columns index : Nat)
+    (matrix : Generated.StrictRecombine.QQMatrix) (position : Nat)
+    (hposition : position < matrix.size) :
+    (Generated.StrictRecombine.zeroQQMatrixLoop rows columns index matrix)[position]! =
+      matrix[position] := by
+  induction hremaining : rows - index using Nat.strong_induction_on
+      generalizing index matrix with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroQQMatrixLoop]
+      split
+      next hmore =>
+        have hdecrease : rows - (index + 1) < remaining := by omega
+        rw [ih (rows - (index + 1)) hdecrease (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroQQRow columns))
+          (by simp only [Array.size_push]; omega) rfl]
+        simpa only [Array.getElem_push_lt hposition]
+      next hdone =>
+        simpa only [getElem!_pos matrix position hposition]
+
+theorem zeroQQMatrixLoop_suffix_get (rows columns index : Nat)
+    (matrix : Generated.StrictRecombine.QQMatrix) (hindex : index ≤ rows)
+    (offset : Nat) (hoffset : offset < rows - index) :
+    (Generated.StrictRecombine.zeroQQMatrixLoop rows columns index matrix)[matrix.size + offset]! =
+      Generated.StrictRecombine.zeroQQRow columns := by
+  induction offset generalizing index matrix with
+  | zero =>
+      rw [Generated.StrictRecombine.zeroQQMatrixLoop]
+      split
+      next hmore =>
+        have hposition : matrix.size <
+            (matrix.push (Generated.StrictRecombine.zeroQQRow columns)).size := by simp
+        simp only [Nat.add_zero]
+        rw [zeroQQMatrixLoop_get_of_lt rows columns (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroQQRow columns))
+          matrix.size hposition]
+        simp
+      next hdone => omega
+  | succ offset ih =>
+      rw [Generated.StrictRecombine.zeroQQMatrixLoop]
+      split
+      next hmore =>
+        have hoffset' : offset < rows - (index + 1) := by omega
+        have htail := ih (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroQQRow columns))
+          (by omega) hoffset'
+        simpa only [Array.size_push, Nat.add_assoc, Nat.add_left_comm,
+          Nat.add_comm] using htail
+      next hdone => omega
+
+theorem zeroQQMatrix_get (rows columns row : Nat) (hrow : row < rows) :
+    (Generated.StrictRecombine.zeroQQMatrix rows columns)[row]! =
+      Generated.StrictRecombine.zeroQQRow columns := by
+  unfold Generated.StrictRecombine.zeroQQMatrix
+  simpa using zeroQQMatrixLoop_suffix_get rows columns 0
+    (#[] : Generated.StrictRecombine.QQMatrix) (by omega) row (by omega)
+
+theorem zeroQQMatrix_entry (rows columns row column : Nat)
+    (hrow : row < rows) (hcolumn : column < columns) :
+    ((Generated.StrictRecombine.zeroQQMatrix rows columns)[row]!)[column]! = 0 := by
+  rw [zeroQQMatrix_get rows columns row hrow]
+  exact zeroQQRow_get columns column hcolumn
+
+theorem zeroQQMatrixLoop_rows (rows columns index : Nat)
+    (matrix : Generated.StrictRecombine.QQMatrix) (hindex : index ≤ rows)
+    (hmatrixRows : ∀ row (hrow : row < matrix.size),
+      matrix[row].size = columns) :
+    ∀ row
+      (hrow : row <
+        (Generated.StrictRecombine.zeroQQMatrixLoop rows columns index matrix).size),
+      (Generated.StrictRecombine.zeroQQMatrixLoop rows columns index matrix)[row].size =
+        columns := by
+  induction hremaining : rows - index using Nat.strong_induction_on
+      generalizing index matrix with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.zeroQQMatrixLoop]
+      split
+      next hmore =>
+        have hdecrease : rows - (index + 1) < remaining := by omega
+        have hpushRows : ∀ row
+            (hrow : row <
+              (matrix.push (Generated.StrictRecombine.zeroQQRow columns)).size),
+            (matrix.push
+              (Generated.StrictRecombine.zeroQQRow columns))[row].size = columns := by
+          intro row hrow
+          by_cases hlast : row = matrix.size
+          · subst row
+            simp [zeroQQRow_size]
+          · have hrowOld : row < matrix.size := by
+              have hrow' : row < matrix.size + 1 := by
+                simpa only [Array.size_push] using hrow
+              omega
+            simpa only [Array.getElem_push_lt hrowOld] using
+              hmatrixRows row hrowOld
+        exact ih (rows - (index + 1)) hdecrease (index + 1)
+          (matrix.push (Generated.StrictRecombine.zeroQQRow columns))
+          (by omega) hpushRows rfl
+      next hdone => exact hmatrixRows
+
+theorem zeroQQMatrix_rows (rows columns : Nat) (row : Nat)
+    (hrow : row < rows) :
+    (Generated.StrictRecombine.zeroQQMatrix rows columns)[row]!.size = columns := by
+  have hshape := zeroQQMatrixLoop_rows rows columns 0
+    (#[] : Generated.StrictRecombine.QQMatrix) (by omega)
+    (by intro row hrow; simp at hrow)
+  have hbound : row <
+      (Generated.StrictRecombine.zeroQQMatrix rows columns).size := by
+    simpa only [zeroQQMatrix_size] using hrow
+  rw [getElem!_pos (Generated.StrictRecombine.zeroQQMatrix rows columns)
+    row hbound]
+  exact hshape row hbound
+
 theorem dotRowsLoop_eq_Ico_sum (left right : Array ZZ)
     (index : Nat) (acc output : ZZ)
     (hrun : Generated.StrictRecombine.dotRowsLoop left right index acc =
@@ -2408,6 +2614,72 @@ def ConcreteGramSchmidt
       gsLowerPrefix state rowCount * gsNormDiagonal state rowCount *
         (gsLowerPrefix state rowCount).transpose
 
+/-- Exact generated Gram--Schmidt semantics restricted to the rows already
+processed by the source initialization loop. -/
+def ConcreteGramSchmidtUpTo
+    (state : Generated.StrictRecombine.LLLState) (processed : Nat) : Prop :=
+  ∀ rowCount, rowCount ≤ processed → rowCount ≤ state.matrix.size →
+    gramPrefixMatrixQQ state.matrix rowCount =
+      gsLowerPrefix state rowCount * gsNormDiagonal state rowCount *
+        (gsLowerPrefix state rowCount).transpose
+
+/-- The induction invariant at the head of the generated outer initialization
+loop.  All data are the actual mutable arrays returned by the preceding source
+iterations. -/
+structure ProcessedGramSchmidtValid
+    (state : Generated.StrictRecombine.LLLState) (processed : Nat) : Prop where
+  shape : GramStorageShape state.mu state.norms state.matrix.size
+  processed_le : processed ≤ state.matrix.size
+  gram_schmidt : ConcreteGramSchmidtUpTo state processed
+  norms_positive : ∀ index, index < processed → 0 < state.norms[index]!
+
+theorem concreteGramSchmidtUpTo_zero
+    (state : Generated.StrictRecombine.LLLState) :
+    ConcreteGramSchmidtUpTo state 0 := by
+  intro rowCount hprocessed hmatrix
+  have hzero : rowCount = 0 := by omega
+  subst rowCount
+  ext row
+  exact Fin.elim0 row
+
+theorem concreteGramSchmidtUpTo_one_initial
+    (matrix : Generated.StrictRecombine.LLLMatrix) (hsize : 0 < matrix.size)
+    (hrowZero : matrix[0].size = matrix.size) :
+    let mu := Generated.StrictRecombine.zeroQQMatrix matrix.size matrix.size
+    let dot : QQ :=
+      ((∑ k : Fin matrix.size,
+        (matrix[0]!)[k.val]! * (matrix[0]!)[k.val]! : ZZ) : QQ)
+    let norms := (Array.replicate matrix.size (0 : QQ)).set 0 dot (by simp [hsize])
+    ConcreteGramSchmidtUpTo
+      (Generated.StrictRecombine.LLLState.mk matrix #[] mu norms 1) 1 := by
+  dsimp only
+  intro rowCount hprocessed hmatrix
+  by_cases hzero : rowCount = 0
+  · subst rowCount
+    ext row
+    exact Fin.elim0 row
+  have hone : rowCount = 1 := by omega
+  subst rowCount
+  funext row column
+  have hrowFin : row = (0 : Fin 1) := Subsingleton.elim _ _
+  have hcolumnFin : column = (0 : Fin 1) := Subsingleton.elim _ _
+  subst row
+  subst column
+  simp [gramPrefixMatrixQQ, gramPrefixMatrix,
+    Int.cast_sum, Matrix.mul_apply, Matrix.transpose_apply,
+    Fin.sum_univ_one, gsLowerPrefix, gsNormDiagonal, Matrix.diagonal_apply,
+    zeroQQMatrix_entry, getElem!_pos matrix 0 hsize, hrowZero]
+  let actualDot : QQ := ∑ k : Fin matrix.size,
+    (matrix[0][k.val]'(lt_of_lt_of_eq k.isLt hrowZero.symm) : QQ) *
+      (matrix[0][k.val]'(lt_of_lt_of_eq k.isLt hrowZero.symm) : QQ)
+  let actualNorms := (Array.replicate matrix.size (0 : QQ)).set 0 actualDot
+    (by simp [hsize])
+  have hactual : 0 < actualNorms.size := by simp [actualNorms, hsize]
+  have hget : actualNorms[0]! = actualDot := by
+    rw [getElem!_pos actualNorms 0 hactual]
+    simp [actualNorms]
+  simpa [actualDot, actualNorms] using hget.symm
+
 noncomputable def prefixProductPotential (norms : Array QQ) (dimension : Nat) : QQ :=
   ∏ i : Fin dimension, prefixNormProduct norms (i.val + 1)
 
@@ -2503,6 +2775,73 @@ structure ConcreteLLLInputValid
     matrix[row].size = matrix.size
   determinant_ne : Matrix.det
     (basisPrefixMatrix matrix matrix.size matrix.size) ≠ 0
+
+theorem ConcreteLLLInputValid.first_norm_positive
+    {matrix : Generated.StrictRecombine.LLLMatrix}
+    (hinput : ConcreteLLLInputValid matrix) (hsize : 0 < matrix.size) :
+    0 < (((∑ k : Fin matrix.size,
+      (matrix[0]!)[k.val]! * (matrix[0]!)[k.val]!) : ZZ) : QQ) := by
+  have hrowsLI : LinearIndependent ZZ
+      (fun row : Fin matrix.size =>
+        basisPrefixMatrix matrix matrix.size matrix.size row) :=
+    Matrix.linearIndependent_rows_of_det_ne_zero hinput.determinant_ne
+  have hrowNe := LinearIndependent.ne_zero (⟨0, hsize⟩ : Fin matrix.size) hrowsLI
+  have hentry : ∃ column : Fin matrix.size,
+      (matrix[0]!)[column.val]! ≠ 0 := by
+    by_contra hnone
+    push_neg at hnone
+    apply hrowNe
+    funext column
+    unfold basisPrefixMatrix
+    simpa using hnone column
+  have hsum : (0 : ZZ) < ∑ k : Fin matrix.size,
+      (matrix[0]!)[k.val]! * (matrix[0]!)[k.val]! := by
+    have hnonnegative : (0 : ZZ) ≤ ∑ k : Fin matrix.size,
+        (matrix[0]!)[k.val]! * (matrix[0]!)[k.val]! := by
+      apply Finset.sum_nonneg
+      intro column hcolumn
+      show (0 : ZZ) ≤ (matrix[0]!)[column.val]! * (matrix[0]!)[column.val]!
+      exact mul_self_nonneg _
+    have hnonzero : (∑ k : Fin matrix.size,
+        (matrix[0]!)[k.val]! * (matrix[0]!)[k.val]! : ZZ) ≠ 0 := by
+      intro hzero
+      have hall := (Finset.sum_mul_self_eq_zero_iff Finset.univ
+        (fun k : Fin matrix.size => (matrix[0]!)[k.val]!)).mp hzero
+      obtain ⟨column, hcolumn⟩ := hentry
+      exact hcolumn (hall column (Finset.mem_univ column))
+    rcases lt_or_eq_of_le hnonnegative with hpositive | hzero
+    · exact hpositive
+    · exact (hnonzero hzero.symm).elim
+  exact Int.cast_pos.mpr hsum
+
+theorem initialProcessedGramSchmidtValid
+    {matrix : Generated.StrictRecombine.LLLMatrix}
+    (hinput : ConcreteLLLInputValid matrix) (hsize : 0 < matrix.size) :
+    let mu := Generated.StrictRecombine.zeroQQMatrix matrix.size matrix.size
+    let dot : QQ :=
+      ((∑ k : Fin matrix.size,
+        (matrix[0]!)[k.val]! * (matrix[0]!)[k.val]! : ZZ) : QQ)
+    let norms := (Array.replicate matrix.size (0 : QQ)).set 0 dot (by simp [hsize])
+    ProcessedGramSchmidtValid
+      (Generated.StrictRecombine.LLLState.mk matrix #[] mu norms 1) 1 := by
+  dsimp only
+  have hrowZero := hinput.rows_square 0 hsize
+  refine ⟨?_, hsize,
+    concreteGramSchmidtUpTo_one_initial matrix hsize hrowZero, ?_⟩
+  · refine ⟨zeroQQMatrix_size matrix.size matrix.size, ?_, by simp⟩
+    intro row hrow
+    have hrow' : row < matrix.size := by
+      simpa only [zeroQQMatrix_size] using hrow
+    have hzeroRow := zeroQQMatrix_rows matrix.size matrix.size row hrow'
+    rw [getElem!_pos _ row (by simpa only [zeroQQMatrix_size] using hrow')] at hzeroRow
+    exact hzeroRow
+  · intro index hindex
+    have hindexZero : index = 0 := by omega
+    subst index
+    rw [getElem!_pos _ 0 (by simp [hsize])]
+    rw [Array.getElem_set]
+    simp only [if_pos, hrowZero]
+    exact hinput.first_norm_positive hsize
 
 theorem ConcreteLLLExecutionValid.toInputValid
     {state : Generated.StrictRecombine.LLLState}

@@ -156,3 +156,34 @@ next semantic invariant must derive from these concrete computations.
 - Lean 新增/修改行数：约 64 行
 - 对应 C++ 行数：约 15 行 Gram--Schmidt 外层初始化控制流
 - 放弃的方案：直接在外层定理中同时闭合 LDLᵀ 语义；拆分无故障/形状与数学语义后，循环边界义务更清晰，且不会引入抽象执行接口
+
+## Generated initialization semantic base
+
+The semantic induction now starts from the actual generated storage rather
+than an assumed Gram--Schmidt result.  Well-founded proofs for
+`zeroQQRowLoop` and `zeroQQMatrixLoop` establish their exact sizes, preserve
+pre-existing prefixes, and identify every appended cell as zero.  Consequently
+the concrete μ array used by `initializeLLL` is proved square and pointwise
+zero directly from the generated loops.
+
+`ConcreteGramSchmidtUpTo` restricts the exact `G = L D Lᵀ` equation to the
+prefix already processed by the source outer loop, while
+`ProcessedGramSchmidtValid` combines that equation with exact array shape and
+positivity of every completed norm.  The initial state is proved valid through
+prefix one: the zero μ row makes the lower factor the one-by-one identity and
+the source `dotRows matrix[0] matrix[0]` value is exactly its diagonal norm.
+
+Positivity is not assumed.  A nonzero determinant of the full integer input
+basis gives linear independence of its actual rows, hence row zero contains a
+nonzero stored coefficient.  Its finite sum of integer squares is therefore
+strictly positive, and casting this concrete sum to `QQ` proves positivity of
+the first generated norm.  This supplies the base case required for the
+row-by-row semantic extension without an existence witness or semantic oracle.
+
+## 度量（semantic base）
+
+- 耗时：约 2 小时（零数组执行证明、前缀不变量设计、首行正性与编译调试）
+- 迭代：约 9 轮编译-修复循环
+- Lean 新增/修改行数：约 205 行
+- 对应 C++ 行数：约 12 行零矩阵与首行 norm 初始化
+- 放弃的方案：把初始 μ 视为数学零矩阵直接化简；改为逐个证明生成循环的 size/get 语义，确保基例仍来自真实 C++ lowering

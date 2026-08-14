@@ -165,6 +165,49 @@ def nextCombination (indices : Array Nat) (upper : Nat) : Bool × Array Nat :=
         else (false, indices)
   else (false, indices)
 
+/-- Exact C++ `__upoly_const_term`: canonical sparse inputs store a constant
+term at the back when one exists. -/
+def constantTerm (input : SparsePolyZZ) : ZZ :=
+  if hempty : input.isEmpty then 0
+  else
+    let term := input[input.size - 1]'(by
+      have : input.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+      omega)
+    if term.1.deg = 0 then term.2 else 0
+
+/-- Leading-coefficient pruning product over one active-relative subset. -/
+def selectedLeadingProductLoop (candidate : Array Nat)
+    (activeLifted : Array SparsePolyZZ) (index : Nat) (acc : ZZ) :
+    RawExec ZZ :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hactive : activeIndex < activeLifted.size then
+      let factor := activeLifted[activeIndex]
+      if hempty : factor.isEmpty then .error .assertionFailure
+      else
+        selectedLeadingProductLoop candidate activeLifted (index + 1)
+          (acc * (factor[0]'(by
+            have : factor.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+            omega)).2)
+    else .error (.outOfBounds activeIndex activeLifted.size)
+  else .ok acc
+termination_by candidate.size - index
+decreasing_by omega
+
+/-- Constant-coefficient pruning product over the same concrete subset. -/
+def selectedConstantProductLoop (candidate : Array Nat)
+    (activeLifted : Array SparsePolyZZ) (index : Nat) (acc : ZZ) :
+    RawExec ZZ :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hactive : activeIndex < activeLifted.size then
+      selectedConstantProductLoop candidate activeLifted (index + 1)
+        (acc * constantTerm activeLifted[activeIndex])
+    else .error (.outOfBounds activeIndex activeLifted.size)
+  else .ok acc
+termination_by candidate.size - index
+decreasing_by omega
+
 /-- Check one candidate's active-relative indices exactly as the source inner
 loop does before constructing its trial product. -/
 def candidateAvailableLoop (candidate : Array Int32) (consumed : Array Bool)

@@ -44,6 +44,40 @@ theorem initialCombination_toList (count : Nat) :
   simp [Generated.StrictRecombine.initialCombination,
     initialCombinationLoop_toList, List.range_eq_range']
 
+theorem initialCombination_size (count : Nat) :
+    (Generated.StrictRecombine.initialCombination count).size = count := by
+  simpa using congrArg List.length (initialCombination_toList count)
+
+theorem resetCombinationSuffix_size (indices : Array Nat)
+    (pivot offset : Nat) :
+    (Generated.StrictRecombine.resetCombinationSuffix indices pivot offset).size =
+      indices.size := by
+  rw [Generated.StrictRecombine.resetCombinationSuffix]
+  split
+  next hposition =>
+    rw [resetCombinationSuffix_size]
+    simp
+  next hposition => rfl
+termination_by indices.size - (pivot + 1 + offset)
+decreasing_by simp only [Array.size_set]; omega
+
+theorem nextCombination_size (indices : Array Nat) (upper : Nat) :
+    (Generated.StrictRecombine.nextCombination indices upper).2.size =
+      indices.size := by
+  unfold Generated.StrictRecombine.nextCombination
+  split
+  next hfits =>
+    split
+    next hpivot => rfl
+    next pivot hpivot =>
+      split
+      next hpivotBounds =>
+        dsimp
+        rw [resetCombinationSuffix_size]
+        simp
+      next hpivotBounds => rfl
+  next hfits => rfl
+
 noncomputable def factorArrayToL2 (factors : Array SparsePolyZZ) :
     List (Polynomial Int) :=
   factors.toList.map SparsePolyZZ.toPoly

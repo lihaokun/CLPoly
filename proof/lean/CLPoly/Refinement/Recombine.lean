@@ -19,6 +19,31 @@ open CLPoly.Math
 
 namespace Refinement.StrictRecombine
 
+theorem initialCombinationLoop_toList (count index : Nat)
+    (result : Array Nat) :
+    (Generated.StrictRecombine.initialCombinationLoop count index result).toList =
+      result.toList ++ List.range' index (count - index) := by
+  rw [Generated.StrictRecombine.initialCombinationLoop]
+  split
+  next hmore =>
+    rw [initialCombinationLoop_toList]
+    rw [Array.toList_push, List.append_assoc]
+    congr 1
+    rw [show count - index = (count - (index + 1)) + 1 by omega,
+      List.range'_succ]
+    simp
+  next hdone =>
+    have hzero : count - index = 0 := Nat.sub_eq_zero_of_le (by omega)
+    simp [hzero]
+termination_by count - index
+decreasing_by omega
+
+theorem initialCombination_toList (count : Nat) :
+    (Generated.StrictRecombine.initialCombination count).toList =
+      List.range count := by
+  simp [Generated.StrictRecombine.initialCombination,
+    initialCombinationLoop_toList, List.range_eq_range']
+
 noncomputable def factorArrayToL2 (factors : Array SparsePolyZZ) :
     List (Polynomial Int) :=
   factors.toList.map SparsePolyZZ.toPoly

@@ -551,3 +551,32 @@ mathematical polynomial remainder replaces the source execution.
 - C++ 变化：无
 - 验证：单文件 Lean 内核检查与 `lake build CLPoly.Refinement.Hensel` 通过
 - 下一步：在同一游标归纳上证明所有输出次数低于被消去的首项，构造余式次数良基 trace
+
+## Concrete well-founded modular-divmod trace constructed
+
+The exact merge proof now also carries an arbitrary strict degree bound over
+the two live cursor suffixes.  Instantiating that bound with the current
+remainder head, and using the exact signed shift identity, proves every term
+emitted by `divmodRemainder` is strictly below the head that the C++ step
+cancels.  This yields a source-state rank: zero for the empty remainder and
+`headDegree + 1` otherwise.  Both concrete source branches strictly decrease
+it: erasing a vanished leading coefficient and executing the complete
+nonzero merge.
+
+`concreteDivmodTrace` is consequently a genuine well-founded constructor for
+the generated `DivmodTrace`.  It tests the exact source while condition and
+coefficient, emits the corresponding `done`, `vanished`, or `subtract`
+constructor, and recurses only on the actual updated remainder.  Canonicality
+and machine-degree bounds are transported to the recursive state; they do not
+supply a quotient, remainder, or semantic result.  The recursion uses
+`termination_by divmodDegreeRank r`, with both decrease obligations discharged
+by the concrete array proofs above.
+
+## 度量（concrete modular-divmod trace）
+
+- 耗时：约 2.0 小时（后缀 degree bound、两条 rank 下降、trace 良基构造）
+- Lean 新增：约 315 行
+- 度量：空余式 `0`，非空余式 `headDegree + 1`；不是 fuel 或执行上限
+- C++ 变化：无
+- 验证：单文件 Lean 内核检查与 `lake build CLPoly.Refinement.Hensel` 通过
+- 下一步：收紧生成 `DivmodTermination` 的过宽全称域，将规范输入唯一接到 `concreteDivmodTrace`，删除可注入 trace 的抽象边界

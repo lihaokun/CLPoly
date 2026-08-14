@@ -386,7 +386,8 @@ theorem validateCandidatesLoop_consumed_size
                       | ok primitiveResult =>
                         rcases primitiveResult with ⟨content, factor⟩
                         simp only [hprimitive] at hrun
-                        cases hdivmod : ops.divmod fStar factor with
+                        cases hdivmod : Generated.StrictRecombine.exactDivmodRaw
+                            fStar factor with
                         | error fault => simp [hdivmod] at hrun
                         | ok divResult =>
                           rcases divResult with ⟨quotient, remainder⟩
@@ -882,5 +883,121 @@ theorem primitiveRaw_toPoly (input primitive : SparsePolyZZ) (content : Int)
       have hprimitive' : primitive = primitive' := hprimitive
       rw [← hprimitive'] at hsemantic
       simpa [SparsePolyZZ.toPoly, intTermsToPoly] using hsemantic.symm
+
+theorem subtractScaledTermsLoop_toPoly (divisor : SparsePolyZZ)
+    (scale : Int) (degreeShift index : Nat) (terms : SparsePolyZZ) :
+    intTermsToPoly
+        (Generated.StrictRecombine.subtractScaledTermsLoop divisor scale
+          degreeShift index terms).toList =
+      intTermsToPoly terms.toList -
+        Polynomial.monomial degreeShift scale *
+          intTermsToPoly (divisor.toList.drop index) := by
+  induction hmeasure : divisor.size - index using Nat.strong_induction_on
+      generalizing index terms with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.subtractScaledTermsLoop]
+      split
+      next hindex =>
+        rw [ih (divisor.size - (index + 1)) (by omega)
+          (index + 1)
+          (terms.push (⟨divisor[index].1.deg + degreeShift⟩,
+            -(scale * divisor[index].2))) rfl]
+        have hsuffix : divisor.toList.drop index = divisor[index] ::
+            divisor.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := divisor.toList) (i := index) (by simpa using hindex)
+        simp [intTermsToPoly, hsuffix]
+        rw [mul_add, Polynomial.monomial_mul_monomial]
+        rw [add_comm divisor[index].1.deg degreeShift]
+        abel
+      next hindex =>
+        have hle : divisor.size ≤ index := Nat.le_of_not_gt hindex
+        simp [intTermsToPoly, List.drop_eq_nil_iff.mpr hle]
+
+theorem subtractScaledNormalize_toPoly (remainder divisor : SparsePolyZZ)
+    (scale : Int) (degreeShift : Nat) :
+    SparsePolyZZ.toPoly
+        (Generated.StrictRecombine.subtractScaledNormalize remainder divisor
+          scale degreeShift) =
+      SparsePolyZZ.toPoly remainder -
+        Polynomial.monomial degreeShift scale * SparsePolyZZ.toPoly divisor := by
+  unfold Generated.StrictRecombine.subtractScaledNormalize
+  rw [normalization_toPoly]
+  change intTermsToPoly
+      (Generated.StrictRecombine.subtractScaledTermsLoop divisor scale
+        degreeShift 0 remainder).toList = _
+  rw [subtractScaledTermsLoop_toPoly]
+  simp [intTermsToPoly, SparsePolyZZ.toPoly]
+
+theorem exactDivmodLoop_toPoly (divisor remainder quotient q r : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.exactDivmodLoop divisor remainder quotient =
+      .ok (q, r)) :
+    SparsePolyZZ.toPoly divisor * SparsePolyZZ.toPoly q +
+        SparsePolyZZ.toPoly r =
+      SparsePolyZZ.toPoly divisor * SparsePolyZZ.toPoly quotient +
+        SparsePolyZZ.toPoly remainder := by
+  induction hmeasure : Generated.StrictRecombine.divisionRank remainder using
+      Nat.strong_induction_on generalizing remainder quotient q r with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.exactDivmodLoop] at hrun
+      split at hrun
+      next hremainder =>
+        split at hrun
+        next hdivisor =>
+          dsimp at hrun
+          split at hrun
+          next hdegree =>
+            split at hrun
+            next hnonzero =>
+              split at hrun
+              next hdivides =>
+                split at hrun
+                next hdecrease =>
+                  let degreeShift := remainder[0].1.deg - divisor[0].1.deg
+                  let scale := remainder[0].2 / divisor[0].2
+                  let remainder' :=
+                    Generated.StrictRecombine.subtractScaledNormalize remainder
+                      divisor scale degreeShift
+                  let quotient' := quotient.push (⟨degreeShift⟩, scale)
+                  have hdec : Generated.StrictRecombine.divisionRank remainder' <
+                      measure := by
+                    rw [← hmeasure]
+                    exact hdecrease
+                  have htail := ih
+                    (Generated.StrictRecombine.divisionRank remainder')
+                    hdec remainder' quotient' q r hrun rfl
+                  rw [htail, subtractScaledNormalize_toPoly]
+                  simp only [quotient', SparsePolyZZ.toPoly, Array.toList_push,
+                    List.map_append, List.map_singleton, List.sum_append,
+                    List.sum_singleton]
+                  change _ * (_ + Polynomial.monomial degreeShift scale) +
+                      (_ - Polynomial.monomial degreeShift scale * _) = _
+                  ring
+                next hdecrease => contradiction
+              next hdivides =>
+                have hout := Except.ok.inj hrun
+                cases hout
+                rfl
+            next hnonzero => contradiction
+          next hdegree =>
+            have hout := Except.ok.inj hrun
+            cases hout
+            rfl
+        next hdivisor => contradiction
+      next hremainder =>
+        have hout := Except.ok.inj hrun
+        cases hout
+        rfl
+
+theorem exactDivmodRaw_toPoly (dividend divisor quotient remainder : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.exactDivmodRaw dividend divisor =
+      .ok (quotient, remainder)) :
+    SparsePolyZZ.toPoly dividend =
+      SparsePolyZZ.toPoly divisor * SparsePolyZZ.toPoly quotient +
+        SparsePolyZZ.toPoly remainder := by
+  unfold Generated.StrictRecombine.exactDivmodRaw at hrun
+  have hsemantic := exactDivmodLoop_toPoly divisor dividend #[] quotient
+    remainder hrun
+  simpa [SparsePolyZZ.toPoly] using hsemantic.symm
 
 end Refinement.StrictRecombine

@@ -252,12 +252,61 @@ def primitiveRaw (input : SparsePolyZZ) : RawExec (ZZ × SparsePolyZZ) :=
     | .error fault => .error fault
     | .ok primitive => .ok (divisor, primitive)
 
+def subtractScaledTermsLoop (divisor : SparsePolyZZ) (scale : ZZ)
+    (degreeShift index : Nat) (terms : SparsePolyZZ) : SparsePolyZZ :=
+  if hindex : index < divisor.size then
+    subtractScaledTermsLoop divisor scale degreeShift (index + 1)
+      (terms.push
+        (⟨divisor[index].1.deg + degreeShift⟩, -(scale * divisor[index].2)))
+  else terms
+termination_by divisor.size - index
+decreasing_by omega
+
+def subtractScaledNormalize (remainder divisor : SparsePolyZZ) (scale : ZZ)
+    (degreeShift : Nat) : SparsePolyZZ :=
+  SparsePolyZZ.normalization
+    (subtractScaledTermsLoop divisor scale degreeShift 0 remainder)
+
+def divisionRank (remainder : SparsePolyZZ) : Nat :=
+  if h : 0 < remainder.size then remainder[0].1.deg + 1 else 0
+
+/-- Checked exact sparse long division used by the C++ trial-division call.
+The degree guard is a runtime validation of the mathematical decrease, not a
+fuel counter: a malformed/noncanonical intermediate produces a raw fault. -/
+def exactDivmodLoop (divisor : SparsePolyZZ) :
+    SparsePolyZZ → SparsePolyZZ → RawExec (SparsePolyZZ × SparsePolyZZ)
+  | remainder, quotient =>
+      if hremainder : 0 < remainder.size then
+        if hdivisor : 0 < divisor.size then
+          let remainderLead := remainder[0]
+          let divisorLead := divisor[0]
+          if hdegree : divisorLead.1.deg ≤ remainderLead.1.deg then
+            if hnonzero : divisorLead.2 ≠ 0 then
+              if hdivides : divisorLead.2 ∣ remainderLead.2 then
+                let degreeShift := remainderLead.1.deg - divisorLead.1.deg
+                let scale := remainderLead.2 / divisorLead.2
+                let remainder' := subtractScaledNormalize remainder divisor scale degreeShift
+                let quotient' := quotient.push (⟨degreeShift⟩, scale)
+                if hdecrease : divisionRank remainder' < divisionRank remainder then
+                  exactDivmodLoop divisor remainder' quotient'
+                else .error .arithmeticDomain
+              else .ok (quotient, remainder)
+            else .error .arithmeticDomain
+          else .ok (quotient, remainder)
+        else .error .arithmeticDomain
+      else .ok (quotient, remainder)
+termination_by remainder quotient => divisionRank remainder
+decreasing_by exact hdecrease
+
+def exactDivmodRaw (dividend divisor : SparsePolyZZ) :
+    RawExec (SparsePolyZZ × SparsePolyZZ) :=
+  exactDivmodLoop divisor dividend #[]
+
 /-- Concrete C++ callees used inside candidate validation.  Each field returns
 only computed polynomial data; no field may return a semantic proposition or
 choose an L2 factorization witness. -/
 structure CandidateValidationRawOps where
   product : TrialProductRawOps
-  divmod : SparsePolyZZ → SparsePolyZZ → RawExec (SparsePolyZZ × SparsePolyZZ)
 
 /-- Exact source `for (auto& cand : candidates)` validation loop: reject empty,
 trivial, or already-consumed candidates; build the modular product; recover a
@@ -294,7 +343,7 @@ def validateCandidatesLoop (ops : CandidateValidationRawOps)
                   match primitiveRaw symmetric with
                   | .error fault => .error fault
                   | .ok (_, factor) =>
-                    match ops.divmod fStar factor with
+                    match exactDivmodRaw fStar factor with
                     | .error fault => .error fault
                     | .ok (quotient, remainder) =>
                       if hremainder : remainder.isEmpty then

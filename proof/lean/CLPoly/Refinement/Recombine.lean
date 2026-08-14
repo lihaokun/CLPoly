@@ -632,6 +632,28 @@ theorem gramMuPrefixCorrect_set_next
     · rw [hmuI]
       rw [hchangedPrefix column hprevious]
 
+theorem gramMuPrefixCorrect_set_norm_at_end
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i columns : Nat) (value : QQ)
+    (hcolumns : columns ≤ i) (hiNorm : i < norms.size)
+    (hprefix : GramMuPrefixCorrect matrix mu norms i columns) :
+    GramMuPrefixCorrect matrix mu (norms.set i value hiNorm) i columns := by
+  have hframe : ∀ index, index < i →
+      (norms.set i value hiNorm)[index]! = norms[index]! := by
+    intro index hindex
+    rw [getElem!_pos (norms.set i value hiNorm) index (by simpa using
+      (lt_trans hindex hiNorm))]
+    rw [Array.getElem_set_ne hiNorm (lt_trans hindex hiNorm) (by omega)]
+    exact (getElem!_pos norms index (lt_trans hindex hiNorm)).symm
+  intro column hcolumn
+  rw [hprefix column hcolumn]
+  congr 1
+  · apply Fintype.sum_congr
+    intro index
+    rw [hframe index.val (by omega)]
+  · rw [hframe column (lt_of_lt_of_le hcolumn hcolumns)]
+
 theorem gramMuRowLoop_succeeds
     (matrix : Generated.StrictRecombine.LLLMatrix) (i j size : Nat)
     (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
@@ -3276,7 +3298,8 @@ theorem finSum_eq_prefix_add_at_of_zero_after
   intro position hposition hnotPrefix
   have hpositionSize : position < size := Finset.mem_range.mp hposition
   have hafter : index < position := by
-    have := Finset.not_mem_range.mp hnotPrefix
+    have hnot : ¬position < index + 1 := by
+      simpa only [Finset.mem_range] using hnotPrefix
     omega
   simp only [natValues, dif_pos hpositionSize]
   exact hzero ⟨position, hpositionSize⟩ hafter
@@ -4286,6 +4309,180 @@ theorem generatedGramPivot_positive
     exact hprevious index.val index.isLt
   rw [prefixNormProduct_succ] at hproductPositive
   nlinarith
+
+theorem processedGramSchmidtValid_step
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i : Nat) (muResult : Generated.StrictRecombine.QQMatrix × Array QQ)
+    (norm : QQ)
+    (hinput : ConcreteLLLInputValid matrix)
+    (hvalid : ProcessedGramSchmidtValid
+      (Generated.StrictRecombine.LLLState.mk matrix #[] mu norms 1) i)
+    (hi : i < matrix.size)
+    (hmuRun : Generated.StrictRecombine.gramMuRowLoop matrix i 0 mu norms =
+      .ok muResult)
+    (hiResultNorm : i < muResult.2.size)
+    (hnormRun : Generated.StrictRecombine.gramNormLoop
+      muResult.1 muResult.2 i 0
+        (((∑ k : Fin matrix[i].size,
+          matrix[i][k.val] * matrix[i][k.val] : ZZ) : QQ)) = .ok norm) :
+    let norms' := muResult.2.set i norm hiResultNorm
+    ProcessedGramSchmidtValid
+      (Generated.StrictRecombine.LLLState.mk matrix #[] muResult.1 norms' 1)
+      (i + 1) := by
+  dsimp only
+  have hmatrixRows := hinput.rows_square
+  obtain ⟨known, hknown, hresultShape, hresultNorms, hresultRows,
+      hresultPrefix⟩ :=
+    gramMuRowLoop_succeeds matrix i 0 matrix.size mu norms rfl
+      hmatrixRows hvalid.shape hi (by omega)
+  rw [hmuRun] at hknown
+  have hknownEq := Except.ok.inj hknown
+  subst known
+  have hiNorm : i < muResult.2.size := by
+    exact hiResultNorm
+  let norms' := muResult.2.set i norm hiNorm
+  have hshape' : GramStorageShape muResult.1 norms' matrix.size :=
+    hresultShape.setNorm i norm hiNorm
+  have hrowCorrect : GramMuPrefixCorrect matrix muResult.1 muResult.2 i i := by
+    exact gramMuRowLoop_prefix_correct matrix i 0 matrix.size mu norms
+      muResult rfl hmatrixRows hvalid.shape hi (by omega)
+      (fun column hcolumn => by
+        exact hvalid.norms_positive column hcolumn)
+      (gramMuPrefixCorrect_zero matrix mu norms i) hmuRun
+  have hprefixAfterMu : ConcreteGramSchmidtUpTo
+      (Generated.StrictRecombine.LLLState.mk matrix #[] muResult.1
+        muResult.2 1) i := by
+    apply concreteGramSchmidtUpTo_of_prefix_frames matrix #[] muResult.1 mu
+      muResult.2 norms 1 i hvalid.gram_schmidt
+    · intro row hrow
+      have hrowMu : row < mu.size := by
+        rw [hvalid.shape.mu_size]
+        exact lt_trans hrow hi
+      rw [hresultRows row hrowMu (by omega)]
+      exact (getElem!_pos mu row hrowMu).symm
+    · intro index hindex
+      rw [hresultNorms]
+  have hprefixFinal : ConcreteGramSchmidtUpTo
+      (Generated.StrictRecombine.LLLState.mk matrix #[] muResult.1 norms' 1) i := by
+    apply concreteGramSchmidtUpTo_of_prefix_frames matrix #[] muResult.1
+      muResult.1 norms' muResult.2 1 i hprefixAfterMu
+    · intro row hrow
+      rfl
+    · intro index hindex
+      rw [getElem!_pos norms' index (by simpa [norms'] using
+        (lt_trans hindex hiNorm))]
+      rw [Array.getElem_set_ne hiNorm (lt_trans hindex hiNorm) (by omega)]
+      exact (getElem!_pos muResult.2 index (lt_trans hindex hiNorm)).symm
+  have hrowFinal : GramMuPrefixCorrect matrix muResult.1 norms' i i := by
+    exact gramMuPrefixCorrect_set_norm_at_end matrix muResult.1 muResult.2
+      i i norm le_rfl hiNorm hrowCorrect
+  have hdiagonalOld := gramNormLoop_closes_diagonal matrix muResult.1
+    muResult.2 i matrix.size norm rfl hmatrixRows hresultShape hi hnormRun
+  have hdiagonalFinal : sourceRowDot matrix i i matrix[i]!.size =
+      (∑ index : Fin i,
+        (muResult.1[i]!)[index.val]! * (muResult.1[i]!)[index.val]! *
+          norms'[index.val]!) + norms'[i]! := by
+    rw [hdiagonalOld]
+    congr 1
+    · apply Fintype.sum_congr
+      intro index
+      have hindex : index.val < muResult.2.size := lt_trans index.isLt hiNorm
+      rw [getElem!_pos norms' index.val (by simpa [norms'] using hindex)]
+      rw [Array.getElem_set_ne hiNorm hindex (by omega)]
+      rw [getElem!_pos muResult.2 index.val hindex]
+    · rw [getElem!_pos norms' i (by simpa [norms'] using hiNorm)]
+      simp [norms']
+  have hnormsOld : ∀ index, index < i →
+      norms'[index]! = norms[index]! := by
+    intro index hindex
+    have hindexResult : index < muResult.2.size := lt_trans hindex hiNorm
+    rw [getElem!_pos norms' index (by simpa [norms'] using hindexResult)]
+    rw [Array.getElem_set_ne hiNorm hindexResult (by omega)]
+    have hindexNorms : index < norms.size := by
+      rw [hvalid.shape.norms_size]
+      exact lt_trans hindex hi
+    calc
+      muResult.2[index] = muResult.2[index]! :=
+        (getElem!_pos muResult.2 index hindexResult).symm
+      _ = norms[index]! := congrArg (fun values : Array QQ => values[index]!)
+        hresultNorms
+  have hgsFinal : ConcreteGramSchmidtUpTo
+      (Generated.StrictRecombine.LLLState.mk matrix #[] muResult.1 norms' 1)
+      (i + 1) := by
+    exact concreteGramSchmidtUpTo_extend_one
+      (Generated.StrictRecombine.LLLState.mk matrix #[] muResult.1 norms' 1)
+      i hi hmatrixRows hprefixFinal hrowFinal hdiagonalFinal
+  have hpivot : 0 < norms'[i]! := by
+    apply generatedGramPivot_positive
+      (Generated.StrictRecombine.LLLState.mk matrix #[] muResult.1 norms' 1)
+      i hinput hi hshape'.norms_size hgsFinal
+    intro index hindex
+    rw [hnormsOld index hindex]
+    exact hvalid.norms_positive index hindex
+  refine ⟨hshape', Nat.succ_le_iff.mpr hi, hgsFinal, ?_⟩
+  intro index hindex
+  by_cases hcurrent : index = i
+  · subst index
+    exact hpivot
+  · have hbefore : index < i := by omega
+    rw [hnormsOld index hbefore]
+    exact hvalid.norms_positive index hbefore
+
+theorem initializeGramSchmidtLoop_processed_valid
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (i : Nat) (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (output : Generated.StrictRecombine.QQMatrix × Array QQ)
+    (hinput : ConcreteLLLInputValid matrix)
+    (hvalid : ProcessedGramSchmidtValid
+      (Generated.StrictRecombine.LLLState.mk matrix #[] mu norms 1) i)
+    (hrun : Generated.StrictRecombine.initializeGramSchmidtLoop matrix i
+      mu norms = .ok output) :
+    ProcessedGramSchmidtValid
+      (Generated.StrictRecombine.LLLState.mk matrix #[] output.1 output.2 1)
+      matrix.size := by
+  induction hremaining : matrix.size - i using Nat.strong_induction_on
+      generalizing i mu norms output with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.initializeGramSchmidtLoop] at hrun
+      by_cases hi : i < matrix.size
+      · rw [dif_pos hi] at hrun
+        cases hmu : Generated.StrictRecombine.gramMuRowLoop matrix i 0 mu norms with
+        | error fault => simp [hmu] at hrun
+        | ok muResult =>
+          simp only [hmu] at hrun
+          have hrowSize := hinput.rows_square i hi
+          rw [dotRows_eq_fin_sum matrix[i] matrix[i] (by omega)] at hrun
+          simp only at hrun
+          cases hnorm : Generated.StrictRecombine.gramNormLoop
+              muResult.1 muResult.2 i 0
+              (((∑ k : Fin matrix[i].size,
+                matrix[i][k.val] * matrix[i][k.val] : ZZ) : QQ)) with
+          | error fault =>
+            rw [hnorm] at hrun
+            simp only at hrun
+            contradiction
+          | ok norm =>
+            rw [hnorm] at hrun
+            simp only at hrun
+            by_cases hiNorm : i < muResult.2.size
+            · rw [dif_pos hiNorm] at hrun
+              let norms' := muResult.2.set i norm hiNorm
+              have hnext := processedGramSchmidtValid_step matrix mu norms i
+                muResult norm hinput hvalid hi hmu hiNorm hnorm
+              have hdecrease : matrix.size - (i + 1) < remaining := by omega
+              exact ih (matrix.size - (i + 1)) hdecrease (i + 1)
+                muResult.1 norms' output (by simpa [norms'] using hnext)
+                hrun rfl
+            · rw [dif_neg hiNorm] at hrun
+              contradiction
+      · rw [dif_neg hi] at hrun
+        have houtput := Except.ok.inj hrun
+        subst output
+        have hiEq : i = matrix.size := by
+          have hle : i ≤ matrix.size := by simpa using hvalid.processed_le
+          omega
+        simpa [hiEq] using hvalid
 
 theorem weightedNormPotential_succ (norms : Array QQ) (dimension : Nat) :
     weightedNormPotential norms (dimension + 1) =
@@ -6526,24 +6723,81 @@ theorem concreteLLLMainLoop_preserves_execution_valid
         subst output
         exact hvalid
 
-/-- The one remaining initialization lemma is stated only over the concrete
-full-rank source precondition.  Supplying it instantiates every proof field of
-the generated LLL wrapper; no executable matrix or branch is supplied here. -/
-def LLLInitializationCorrect : Prop :=
-  ∀ matrix mu norms transform,
-    ConcreteLLLInputValid matrix →
-    Generated.StrictRecombine.initializeLLL matrix = .ok (mu, norms, transform) →
+theorem initializeLLL_concrete_valid
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid matrix)
+    (hrun : Generated.StrictRecombine.initializeLLL matrix =
+      .ok (mu, norms, transform)) :
     ConcreteLLLExecutionValid
-      (Generated.StrictRecombine.LLLState.mk matrix transform mu norms 1)
+      (Generated.StrictRecombine.LLLState.mk matrix transform mu norms 1) := by
+  rw [Generated.StrictRecombine.initializeLLL] at hrun
+  by_cases hsize : 0 < matrix.size
+  · rw [dif_pos hsize] at hrun
+    cases htransform : Generated.StrictRecombine.makeInitialMatrix matrix.size 1 with
+    | error fault => simp [htransform] at hrun
+    | ok initialTransform =>
+      simp only [htransform] at hrun
+      let initialMu := Generated.StrictRecombine.zeroQQMatrix
+        matrix.size matrix.size
+      let initialNorms := Array.replicate matrix.size (0 : QQ)
+      have hrowZero := hinput.rows_square 0 hsize
+      rw [dotRows_eq_fin_sum matrix[0] matrix[0] (by omega)] at hrun
+      simp only at hrun
+      let firstNorm : QQ :=
+        ((∑ k : Fin matrix.size,
+          (matrix[0]!)[k.val]! * (matrix[0]!)[k.val]! : ZZ) : QQ)
+      have hfirstNorm :
+          ((∑ k : Fin matrix[0].size,
+            matrix[0][k.val] * matrix[0][k.val] : ZZ) : QQ) = firstNorm := by
+        unfold firstNorm
+        congr 1
+        apply Fintype.sum_equiv (finCongr hrowZero)
+        intro index
+        simp [getElem!_pos matrix 0 hsize,
+          getElem!_pos matrix[0] index.val index.isLt]
+      rw [hfirstNorm] at hrun
+      let seededNorms := initialNorms.set 0 firstNorm (by
+        simp [initialNorms, hsize])
+      cases hloop : Generated.StrictRecombine.initializeGramSchmidtLoop
+          matrix 1 initialMu seededNorms with
+      | error fault =>
+        rw [hloop] at hrun
+        contradiction
+      | ok loopOutput =>
+        rw [hloop] at hrun
+        have hresult := Except.ok.inj hrun
+        simp only at hresult
+        rcases hresult with ⟨rfl, rfl, rfl⟩
+        have hinitial : ProcessedGramSchmidtValid
+            (Generated.StrictRecombine.LLLState.mk matrix #[] initialMu
+              seededNorms 1) 1 := by
+          simpa [initialMu, initialNorms, seededNorms, firstNorm,
+            getElem!_pos matrix 0 hsize] using
+            initialProcessedGramSchmidtValid hinput hsize
+        have hfinal := initializeGramSchmidtLoop_processed_valid matrix 1
+          initialMu seededNorms loopOutput hinput hinitial hloop
+        refine ⟨hfinal.shape.norms_size, hfinal.shape.mu_size,
+          hinput.rows_square, hfinal.shape.mu_rows, ?_, ?_⟩
+        · intro index hindex
+          have hpositive := hfinal.norms_positive index (by
+            rw [hfinal.shape.norms_size] at hindex
+            exact hindex)
+          rw [getElem!_pos loopOutput.2 index hindex] at hpositive
+          exact hpositive
+        · intro rowCount hrowCount
+          exact hfinal.gram_schmidt rowCount hrowCount hrowCount
+  · rw [dif_neg hsize] at hrun
+    contradiction
 
-noncomputable def concreteLLLExecution
-    (hinitialize : LLLInitializationCorrect) :
+noncomputable def concreteLLLExecution :
     Generated.StrictRecombine.LLLExecution where
   inputValid := ConcreteLLLInputValid
   termination := concreteLLLTermination
   initialized_valid := by
     intro matrix mu norms transform hinput hrun
-    exact hinitialize matrix mu norms transform hinput hrun
+    exact initializeLLL_concrete_valid matrix mu norms transform hinput hrun
   output_input_valid := by
     intro initial output hvalid hrun
     exact (concreteLLLMainLoop_preserves_execution_valid initial output

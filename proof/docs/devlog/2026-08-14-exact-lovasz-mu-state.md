@@ -374,3 +374,41 @@ both matrix semantics and positivity through each concrete source iteration.
 - Lean 新增/修改行数：约 65 行（含通用 processed-prefix determinant 引理）
 - 对应 C++ 行数：不新增执行代码；闭合 norm 写回所需的满秩输入数学义务
 - 下一步：沿 `size - i` 外层良基递归组合 row、diagonal、LDL 与 positivity，并删除 `LLLInitializationCorrect`
+
+## Generated LLL initialization completed
+
+The actual outer initialization recursion is now fully validated.
+`processedGramSchmidtValid_step` combines one successful generated μ-row,
+self-dot, norm loop, and norm array write.  It transports the old prefix
+through the exact array frames, extends `G = L * D * L^T` by one row, derives
+the new pivot's positivity from the full-rank input, and returns the complete
+processed-state invariant at `i+1`.
+
+`initializeGramSchmidtLoop_processed_valid` follows the generated outer loop
+with its source measure `matrix.size - i`.  Its recursive branch invokes the
+single-step theorem on the exact values returned by both inner loops; its
+terminal branch proves the source index has reached the matrix size.  Hence a
+successful generated outer execution carries exact LDL semantics and strict
+positivity for every row.
+
+Finally, `initializeLLL_concrete_valid` directly inverts the generated
+`initializeLLL`: it follows the actual `makeInitialMatrix` result, exact row-0
+dot product, seeded norm write, and generated outer loop.  The resulting
+arrays satisfy `ConcreteLLLExecutionValid`; the transform value is precisely
+the one returned by source execution and is not replaced or chosen by the
+proof.
+
+The former proposition `LLLInitializationCorrect` and the corresponding
+argument to `concreteLLLExecution` have been deleted.  The concrete LLL
+execution object now supplies its `initialized_valid` field exclusively from
+`initializeLLL_concrete_valid`, eliminating the last abstract initialization
+assumption.
+
+## 度量（complete generated initialization）
+
+- 耗时：约 2.5 小时（单步组合、外层良基递归、入口反演与首行索引换元）
+- 迭代：约 12 轮编译-修复循环
+- Lean 新增/修改行数：约 260 行
+- 对应 C++ 行数：约 25 行完整 Gram--Schmidt/LLL 初始化控制流
+- 删除的抽象边界：`LLLInitializationCorrect` Prop 参数及其注入点
+- 下一步：将无参数 `concreteLLLExecution` 接入 concrete CLD/van-Hoeij 状态递归，闭合最终 recombination 合同

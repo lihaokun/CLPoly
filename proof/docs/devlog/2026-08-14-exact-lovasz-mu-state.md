@@ -412,3 +412,26 @@ assumption.
 - 对应 C++ 行数：约 25 行完整 Gram--Schmidt/LLL 初始化控制流
 - 删除的抽象边界：`LLLInitializationCorrect` Prop 参数及其注入点
 - 下一步：将无参数 `concreteLLLExecution` 接入 concrete CLD/van-Hoeij 状态递归，闭合最终 recombination 合同
+
+## Candidate-validation boundary made concrete
+
+The candidate product path no longer exposes the intermediate proposition
+alias `TrialProductStepCorrect`.  Although that proposition had already been
+proved solely from the generated `multiplyNormalizeModRaw` execution, its
+shape resembled an injectable correctness contract.  The replacement theorem
+now quantifies directly over a successful raw execution and proves its exact
+polynomial product modulo the concrete modulus.
+
+The concrete candidate-validation dependency value has also been defined.
+Both generated operation records are data-free: they contain neither a
+callback nor candidate/product data, so the only possible execution is the
+generated candidate availability, modular multiplication, symmetric recovery,
+primitive normalization, exact division, and consumed-bit mutation chain.
+
+## 度量（candidate validation boundary）
+
+- 耗时：约 0.25 小时（抽象边界复查、直接定理改写与编译）
+- 迭代：1 轮 Lean 编译
+- Lean 净变化：删除 1 个 Prop 合同，增加 1 个无回调 concrete ops 值
+- C++ 变化：无
+- 下一步：证明 CLD lattice extension/reset 保持 concrete LLL 满秩输入，并构造完整 `VanHoeijRawOps`

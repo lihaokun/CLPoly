@@ -7255,18 +7255,6 @@ def removalTermination (ops : Generated.StrictRecombine.VanHoeijRawOps) :
         (gatherActive_size_of_success state.active lifted activeLifted hgather))
       hfound active' hremove }
 
-/-- Algebraic execution contract for one actual multiply/normalize/mod step.
-It relates concrete successful output modulo `m`; it does not supply or choose
-a factorization. -/
-def TrialProductStepCorrect
-    : Prop :=
-  ∀ left right (modulus : Nat) output, 0 < modulus →
-    Generated.StrictRecombine.multiplyNormalizeModRaw left right
-      (modulus : ZZ) = .ok output →
-    Refinement.StrictHensel.toPolyMod modulus output =
-      Refinement.StrictHensel.toPolyMod modulus left *
-        Refinement.StrictHensel.toPolyMod modulus right
-
 noncomputable def SelectedProductMod (modulus : Nat) (candidate : Array Int32)
     (activeLifted : Array SparsePolyZZ) (index : Nat) :
     Polynomial (ZMod modulus) :=
@@ -7523,8 +7511,14 @@ theorem modCoeffLoop_toPolyMod (input : SparsePolyZZ)
         simp [Refinement.StrictHensel.termsToPolyMod,
           List.drop_eq_nil_iff.mpr hle]
 
-theorem multiplyNormalizeModRaw_correct : TrialProductStepCorrect := by
-  intro left right modulus output hmodulus hrun
+theorem multiplyNormalizeModRaw_correct
+    (left right : SparsePolyZZ) (modulus : Nat) (output : SparsePolyZZ)
+    (hmodulus : 0 < modulus)
+    (hrun : Generated.StrictRecombine.multiplyNormalizeModRaw left right
+      (modulus : ZZ) = .ok output) :
+    Refinement.StrictHensel.toPolyMod modulus output =
+      Refinement.StrictHensel.toPolyMod modulus left *
+        Refinement.StrictHensel.toPolyMod modulus right := by
   unfold Generated.StrictRecombine.multiplyNormalizeModRaw at hrun
   split at hrun
   next fault hmultiply => contradiction
@@ -7538,6 +7532,13 @@ theorem multiplyNormalizeModRaw_correct : TrialProductStepCorrect := by
     rw [hmod']
     simpa [Refinement.StrictHensel.toPolyMod] using
       congrArg (Polynomial.map (Int.castRingHom (ZMod modulus))) hmul
+
+/-- Concrete candidate-validation dependencies.  Both generated operation
+records are data-free, so this value cannot choose candidates, products, or
+factorization witnesses: validation executes only the generated raw loops. -/
+def concreteCandidateValidationRawOps :
+    Generated.StrictRecombine.CandidateValidationRawOps where
+  product := {}
 
 theorem trialProductLoop_refines
     (ops : Generated.StrictRecombine.TrialProductRawOps)

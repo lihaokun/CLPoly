@@ -684,8 +684,7 @@ structure VanHoeijRawOps where
   prepareCandidates : SparsePolyZZ → Array SparsePolyZZ → ZZ → Nat →
     RawExec (Array (Array Int32))
   validation : CandidateValidationRawOps
-  zassenhaus : SparsePolyZZ → Array SparsePolyZZ → ZZ →
-    RawExec (Array SparsePolyZZ)
+  zassenhausTermination : ZassenhausTermination
 
 /-- Erased termination certificate for the successful-extraction branch.
 It refers only to concrete successful raw executions and the consumed bits
@@ -754,7 +753,8 @@ def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
                 vanHoeijLoop ops termination lifted modulus initial maximum hinitial
                   { state with target := target' }
               | .fallback =>
-                match ops.zassenhaus state.fStar activeLifted modulus with
+                match zassenhausRecombine ops.zassenhausTermination
+                    state.fStar activeLifted modulus with
                 | .error fault => .error fault
                 | .ok fallback =>
                   match appendFallback fallback state.result with

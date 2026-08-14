@@ -20,6 +20,8 @@ FORBIDDEN = (
     "def henselCandidateToPk",
     "multiplyNormalizeMod :",
     "ops.multiplyNormalizeMod",
+    "  zassenhaus :",
+    "ops.zassenhaus ",
 )
 
 

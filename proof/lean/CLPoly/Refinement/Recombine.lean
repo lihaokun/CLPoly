@@ -521,6 +521,47 @@ noncomputable def sourceGramCoefficient
     (mu[i]!)[k.val]! * (mu[j]!)[k.val]! * norms[k.val]!
   if norms[j]! = 0 then 0 else numerator / norms[j]!
 
+/-- Exact rational dot product of two rows as read by the generated source.
+The left row fixes the loop bound, matching `dotRows`. -/
+noncomputable def sourceRowDot
+    (matrix : Generated.StrictRecombine.LLLMatrix) (i j rowSize : Nat) : QQ :=
+  ((∑ k : Fin rowSize,
+    (matrix[i]!)[k.val]! * (matrix[j]!)[k.val]! : ZZ) : QQ)
+
+/-- The recurrence already established for the written prefix of source row
+`i`.  Column `j` states the exact lower-triangular LDL equation for the
+`(i,j)` Gram entry; it talks only about cells in the generated arrays. -/
+def GramMuPrefixCorrect
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i columns : Nat) : Prop :=
+  ∀ j, j < columns →
+    sourceRowDot matrix i j matrix[i]!.size =
+      (∑ k : Fin j,
+        (mu[i]!)[k.val]! * (mu[j]!)[k.val]! * norms[k.val]!) +
+        (mu[i]!)[j]! * norms[j]!
+
+theorem gramMuPrefixCorrect_zero
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ) (i : Nat) :
+    GramMuPrefixCorrect matrix mu norms i 0 := by
+  intro j hj
+  omega
+
+theorem sourceGramCoefficient_closes_column
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i j rowSize : Nat)
+    (hnorm : norms[j]! ≠ 0) :
+    sourceRowDot matrix i j rowSize =
+      (∑ k : Fin j,
+        (mu[i]!)[k.val]! * (mu[j]!)[k.val]! * norms[k.val]!) +
+        sourceGramCoefficient matrix mu norms i j rowSize * norms[j]! := by
+  unfold sourceRowDot sourceGramCoefficient
+  rw [if_neg hnorm]
+  field_simp [hnorm]
+  ring
+
 theorem gramMuRowLoop_succeeds
     (matrix : Generated.StrictRecombine.LLLMatrix) (i j size : Nat)
     (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)

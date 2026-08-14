@@ -246,3 +246,27 @@ earlier pivots.
 - Lean 新增/修改行数：约 99 行
 - 对应 C++ 行数：约 8 行 LLL 满秩输入前置条件与 Gram--Schmidt norm 更新所依赖的数学边界
 - 放弃的方案：只由完整整基行列式非零直接断言各 pivot 正；改为显式证明每个实际行前缀的 Gram 行列式严格为正
+
+## Executable row-prefix recurrence
+
+`sourceRowDot` now names the exact cast of the generated integer dot-product
+loop at an explicit source row length.  `GramMuPrefixCorrect` records, for
+each column already visited by `gramMuRowLoop`, the concrete LDL row equation
+using only the stored `mu` and `norms` cells.  Its empty-prefix base is
+immediate and contains no guessed coefficient array.
+
+`sourceGramCoefficient_closes_column` proves the local algebraic step used by
+the forthcoming loop induction.  When the previously generated norm is
+nonzero, the exact source numerator/division expression written at column
+`j` makes the next LDL row equation hold.  This theorem retains the source
+zero-norm branch in `sourceGramCoefficient`; positivity established by the
+processed-state invariant is what rules that branch out, rather than erasing
+it from the generated execution.
+
+## 度量（row-prefix recurrence）
+
+- 耗时：约 0.5 小时（可执行逐列不变量与局部除法代数）
+- 迭代：约 2 轮编译-修复循环
+- Lean 新增/修改行数：约 47 行
+- 对应 C++ 行数：约 6 行 Gram--Schmidt numerator/division 更新
+- 下一步：沿实际 `j < i` 良基循环保持该不变量，再由 norm loop 闭合对角项

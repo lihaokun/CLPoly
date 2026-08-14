@@ -526,3 +526,28 @@ notion of validity.
 - C++ 变化：无
 - 验证：单文件 Lean 内核检查与 `lake build CLPoly.Refinement.Hensel` 通过
 - 下一步：对 `divmodMergeLoop` 的六个实际游标分支证明严格降序保持与新首项次数下降
+
+## Exact divmod merge preserves canonical sparse order
+
+The nonzero-coefficient remainder update is now validated branch for branch.
+`DivmodMergeCursorValid` records that the already emitted array is canonical
+and that every emitted degree is above both unprocessed cursor suffixes (with
+the divisor suffix shifted exactly as in C++).  Its common push theorem covers
+both concrete outcomes of `pushNonzero`: retaining the array when the reduced
+coefficient vanishes and appending a new nonzero term otherwise.
+
+Three cursor transitions correspond to the source merge actions: consume the
+remainder cursor, consume the shifted-divisor cursor, or consume both equal
+degrees.  `divmodMergeLoop_canonical` invokes those transitions through all
+six branches of the generated well-founded iterator, including each exhausted
+cursor case and the terminal case.  Consequently the actual generated
+`divmodRemainder` preserves `SparsePolyZZCanonical`; no list-sort operation or
+mathematical polynomial remainder replaces the source execution.
+
+## 度量（exact divmod merge canonicality）
+
+- 耗时：约 2.0 小时（游标不变量、Bool `pushNonzero` 分支、六分支生成归纳器）
+- Lean 新增：约 290 行
+- C++ 变化：无
+- 验证：单文件 Lean 内核检查与 `lake build CLPoly.Refinement.Hensel` 通过
+- 下一步：在同一游标归纳上证明所有输出次数低于被消去的首项，构造余式次数良基 trace

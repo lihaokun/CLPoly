@@ -1246,6 +1246,297 @@ theorem eraseLeading_size_lt (f : SparsePolyZZ) (hfsize : 0 < f.size) :
   rw [dif_pos hfsize, Array.size_eraseIdx]
   omega
 
+private theorem pushNonzero_canonical (result : SparsePolyZZ) (degree : Nat)
+    (coefficient : Int)
+    (hresult : StrictPolynomialMod.SparsePolyZZCanonical result)
+    (habove : ∀ term ∈ result.toList, degree < term.1.deg) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.pushNonzero result degree coefficient) := by
+  by_cases hzero : coefficient = 0
+  · subst coefficient
+    simpa [Generated.StrictHensel.pushNonzero] using hresult
+  · unfold Generated.StrictHensel.pushNonzero
+    simp only [bne_iff_ne]
+    rw [if_pos hzero]
+    unfold StrictPolynomialMod.SparsePolyZZCanonical at hresult ⊢
+    rw [Array.toList_push]
+    constructor
+    · let degreeGreater : (UMonomial × Int) → (UMonomial × Int) → Prop :=
+        fun a b => a.1.deg > b.1.deg
+      letI : Trans degreeGreater degreeGreater degreeGreater :=
+        ⟨by
+          intro a b c hab hbc
+          dsimp [degreeGreater] at hab hbc ⊢
+          omega⟩
+      apply List.isChain_iff_pairwise.mpr
+      rw [List.pairwise_append]
+      refine ⟨List.isChain_iff_pairwise.mp hresult.1, by simp, ?_⟩
+      intro term hterm added hadd
+      simp only [List.mem_singleton] at hadd
+      subst added
+      exact habove term hterm
+    · intro term hterm
+      simp only [List.mem_append, List.mem_singleton] at hterm
+      rcases hterm with hold | rfl
+      · exact hresult.2 term hold
+      · exact hzero
+
+private theorem canonical_pairwise_drop (f : SparsePolyZZ) (index : Nat)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f) :
+    (f.toList.drop index).Pairwise
+      (fun a b : UMonomial × Int => b.1.deg < a.1.deg) := by
+  let degreeGreater : (UMonomial × Int) → (UMonomial × Int) → Prop :=
+    fun a b => a.1.deg > b.1.deg
+  letI : Trans degreeGreater degreeGreater degreeGreater :=
+    ⟨by
+      intro a b c hab hbc
+      dsimp [degreeGreater] at hab hbc ⊢
+      omega⟩
+  exact (List.isChain_iff_pairwise.mp hf.1).drop
+
+private theorem sparseDrop_eq_getElem_cons (f : SparsePolyZZ) (index : Nat)
+    (hindex : index < f.size) :
+    f.toList.drop index = f[index]! :: f.toList.drop (index + 1) := by
+  have hlength : index < f.toList.length := by simpa using hindex
+  have hdrop := List.drop_eq_getElem_cons
+    (l := f.toList) (i := index) hlength
+  rw [getElem!_pos f index hindex]
+  simpa using hdrop
+
+private theorem canonical_cursor_tail_lt (f : SparsePolyZZ) (index : Nat)
+    (hindex : index < f.size)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f) :
+    ∀ term ∈ f.toList.drop (index + 1),
+      term.1.deg < f[index]!.1.deg := by
+  have hordered := canonical_pairwise_drop f index hf
+  rw [sparseDrop_eq_getElem_cons f index hindex,
+    List.pairwise_cons] at hordered
+  exact hordered.1
+
+private theorem canonical_cursor_degree_le (f : SparsePolyZZ) (index : Nat)
+    (hindex : index < f.size)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f) :
+    ∀ term ∈ f.toList.drop index, term.1.deg ≤ f[index]!.1.deg := by
+  rw [sparseDrop_eq_getElem_cons f index hindex]
+  intro term hterm
+  simp only [List.mem_cons] at hterm
+  rcases hterm with rfl | htail
+  · exact le_rfl
+  · exact (canonical_cursor_tail_lt f index hindex hf term htail).le
+
+private structure DivmodMergeCursorValid (r g : SparsePolyZZ)
+    (degreeShift rIndex gIndex : Nat) (result : SparsePolyZZ) : Prop where
+  result_canonical : StrictPolynomialMod.SparsePolyZZCanonical result
+  result_above_r : ∀ output ∈ result.toList,
+    ∀ term ∈ r.toList.drop rIndex, term.1.deg < output.1.deg
+  result_above_g : ∀ output ∈ result.toList,
+    ∀ term ∈ g.toList.drop gIndex,
+      term.1.deg + degreeShift < output.1.deg
+
+private theorem DivmodMergeCursorValid.push
+    (r g : SparsePolyZZ) (degreeShift rIndex gIndex : Nat)
+    (result : SparsePolyZZ) (degree : Nat) (coefficient : Int)
+    (hresult : StrictPolynomialMod.SparsePolyZZCanonical result)
+    (habove : ∀ output ∈ result.toList, degree < output.1.deg)
+    (hrBelow : ∀ term ∈ r.toList.drop rIndex, term.1.deg < degree)
+    (hgBelow : ∀ term ∈ g.toList.drop gIndex,
+      term.1.deg + degreeShift < degree) :
+    DivmodMergeCursorValid r g degreeShift rIndex gIndex
+      (Generated.StrictHensel.pushNonzero result degree coefficient) := by
+  refine ⟨pushNonzero_canonical result degree coefficient hresult habove,
+    ?_, ?_⟩
+  · intro output houtput term hterm
+    by_cases hzero : coefficient = 0
+    · subst coefficient
+      have hout : output ∈ result.toList := by
+        simpa [Generated.StrictHensel.pushNonzero] using houtput
+      exact lt_trans (hrBelow term hterm) (habove output hout)
+    · unfold Generated.StrictHensel.pushNonzero at houtput
+      simp only [bne_iff_ne] at houtput
+      rw [if_pos hzero, Array.toList_push] at houtput
+      simp only [List.mem_append, List.mem_singleton] at houtput
+      rcases houtput with hold | rfl
+      · exact lt_trans (hrBelow term hterm) (habove output hold)
+      · exact hrBelow term hterm
+  · intro output houtput term hterm
+    by_cases hzero : coefficient = 0
+    · subst coefficient
+      have hout : output ∈ result.toList := by
+        simpa [Generated.StrictHensel.pushNonzero] using houtput
+      exact lt_trans (hgBelow term hterm) (habove output hout)
+    · unfold Generated.StrictHensel.pushNonzero at houtput
+      simp only [bne_iff_ne] at houtput
+      rw [if_pos hzero, Array.toList_push] at houtput
+      simp only [List.mem_append, List.mem_singleton] at houtput
+      rcases houtput with hold | rfl
+      · exact lt_trans (hgBelow term hterm) (habove output hold)
+      · exact hgBelow term hterm
+
+private theorem DivmodMergeCursorValid.takeR
+    (r g : SparsePolyZZ) (degreeShift rIndex gIndex : Nat)
+    (result : SparsePolyZZ) (coefficient : Int)
+    (hr : StrictPolynomialMod.SparsePolyZZCanonical r)
+    (hrIndex : rIndex < r.size)
+    (hcursor : DivmodMergeCursorValid r g degreeShift rIndex gIndex result)
+    (hgBelow : ∀ term ∈ g.toList.drop gIndex,
+      term.1.deg + degreeShift < r[rIndex]!.1.deg) :
+    DivmodMergeCursorValid r g degreeShift (rIndex + 1) gIndex
+      (Generated.StrictHensel.pushNonzero result r[rIndex]!.1.deg
+        coefficient) := by
+  apply DivmodMergeCursorValid.push r g degreeShift (rIndex + 1) gIndex
+    result r[rIndex]!.1.deg coefficient hcursor.result_canonical
+  · intro output houtput
+    apply hcursor.result_above_r output houtput r[rIndex]!
+    rw [sparseDrop_eq_getElem_cons r rIndex hrIndex]
+    simp
+  · exact canonical_cursor_tail_lt r rIndex hrIndex hr
+  · exact hgBelow
+
+private theorem DivmodMergeCursorValid.takeG
+    (r g : SparsePolyZZ) (degreeShift rIndex gIndex : Nat)
+    (result : SparsePolyZZ) (coefficient : Int)
+    (hg : StrictPolynomialMod.SparsePolyZZCanonical g)
+    (hgIndex : gIndex < g.size)
+    (hcursor : DivmodMergeCursorValid r g degreeShift rIndex gIndex result)
+    (hrBelow : ∀ term ∈ r.toList.drop rIndex,
+      term.1.deg < g[gIndex]!.1.deg + degreeShift) :
+    DivmodMergeCursorValid r g degreeShift rIndex (gIndex + 1)
+      (Generated.StrictHensel.pushNonzero result
+        (g[gIndex]!.1.deg + degreeShift) coefficient) := by
+  apply DivmodMergeCursorValid.push r g degreeShift rIndex (gIndex + 1)
+    result (g[gIndex]!.1.deg + degreeShift) coefficient
+    hcursor.result_canonical
+  · intro output houtput
+    apply hcursor.result_above_g output houtput g[gIndex]!
+    rw [sparseDrop_eq_getElem_cons g gIndex hgIndex]
+    simp
+  · exact hrBelow
+  · intro term hterm
+    have hlt := canonical_cursor_tail_lt g gIndex hgIndex hg term hterm
+    omega
+
+private theorem DivmodMergeCursorValid.takeBoth
+    (r g : SparsePolyZZ) (degreeShift rIndex gIndex : Nat)
+    (result : SparsePolyZZ) (coefficient : Int)
+    (hr : StrictPolynomialMod.SparsePolyZZCanonical r)
+    (hg : StrictPolynomialMod.SparsePolyZZCanonical g)
+    (hrIndex : rIndex < r.size) (hgIndex : gIndex < g.size)
+    (hcursor : DivmodMergeCursorValid r g degreeShift rIndex gIndex result)
+    (hdegree : r[rIndex]!.1.deg = g[gIndex]!.1.deg + degreeShift) :
+    DivmodMergeCursorValid r g degreeShift (rIndex + 1) (gIndex + 1)
+      (Generated.StrictHensel.pushNonzero result r[rIndex]!.1.deg
+        coefficient) := by
+  apply DivmodMergeCursorValid.push r g degreeShift (rIndex + 1)
+    (gIndex + 1) result r[rIndex]!.1.deg coefficient
+    hcursor.result_canonical
+  · intro output houtput
+    apply hcursor.result_above_r output houtput r[rIndex]!
+    rw [sparseDrop_eq_getElem_cons r rIndex hrIndex]
+    simp
+  · exact canonical_cursor_tail_lt r rIndex hrIndex hr
+  · intro term hterm
+    have hlt := canonical_cursor_tail_lt g gIndex hgIndex hg term hterm
+    omega
+
+theorem divmodMergeLoop_canonical (r g : SparsePolyZZ)
+    (coefficient m : Int) (degreeShift rIndex gIndex : Nat)
+    (result : SparsePolyZZ)
+    (hr : StrictPolynomialMod.SparsePolyZZCanonical r)
+    (hg : StrictPolynomialMod.SparsePolyZZCanonical g)
+    (hcursor : DivmodMergeCursorValid r g degreeShift rIndex gIndex result) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.divmodMergeLoop r g coefficient m degreeShift
+        rIndex gIndex result) := by
+  refine Generated.StrictHensel.divmodMergeLoop.induct r g coefficient m
+    degreeShift
+    (motive := fun ri gi acc =>
+      DivmodMergeCursorValid r g degreeShift ri gi acc →
+        StrictPolynomialMod.SparsePolyZZCanonical
+          (Generated.StrictHensel.divmodMergeLoop r g coefficient m
+            degreeShift ri gi acc)) ?_ ?_ ?_ ?_ ?_ ?_ rIndex gIndex result
+    hcursor
+  · intro ri gi acc hmore hgDone
+    dsimp only
+    intro ih hvalid
+    have hri : ri < r.size := by omega
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp only [hmore, hgDone, ↓reduceDIte, ↓reduceIte]
+    apply ih
+    apply DivmodMergeCursorValid.takeR r g degreeShift ri gi acc _ hr hri
+      hvalid
+    intro term hterm
+    have hgNil : g.toList.drop gi = [] :=
+      List.drop_eq_nil_iff.mpr (by simpa using hgDone)
+    rw [hgNil] at hterm
+    contradiction
+  · intro ri gi acc hmore hgMore hrDone
+    dsimp only
+    intro ih hvalid
+    have hgi : gi < g.size := by omega
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp only [hmore, hgMore, hrDone, ↓reduceDIte, ↓reduceIte]
+    apply ih
+    apply DivmodMergeCursorValid.takeG r g degreeShift ri gi acc _ hg hgi
+      hvalid
+    intro term hterm
+    have hrNil : r.toList.drop ri = [] :=
+      List.drop_eq_nil_iff.mpr (by simpa using hrDone)
+    rw [hrNil] at hterm
+    contradiction
+  · intro ri gi acc hmore hgMore hrMore
+    dsimp only
+    intro hdegree ih hvalid
+    have hri : ri < r.size := by omega
+    have hgi : gi < g.size := by omega
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp only [hmore, hgMore, hrMore, hdegree, ↓reduceDIte, ↓reduceIte]
+    apply ih
+    apply DivmodMergeCursorValid.takeR r g degreeShift ri gi acc _ hr hri
+      hvalid
+    intro term hterm
+    have hle := canonical_cursor_degree_le g gi hgi hg term hterm
+    omega
+  · intro ri gi acc hmore hgMore hrMore
+    dsimp only
+    intro hnotGreater hless ih hvalid
+    have hri : ri < r.size := by omega
+    have hgi : gi < g.size := by omega
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp only [hmore, hgMore, hrMore, hnotGreater, hless, ↓reduceDIte,
+      ↓reduceIte]
+    apply ih
+    apply DivmodMergeCursorValid.takeG r g degreeShift ri gi acc _ hg hgi
+      hvalid
+    intro term hterm
+    have hle := canonical_cursor_degree_le r ri hri hr term hterm
+    omega
+  · intro ri gi acc hmore hgMore hrMore
+    dsimp only
+    intro hnotGreater hnotLess ih hvalid
+    have hri : ri < r.size := by omega
+    have hgi : gi < g.size := by omega
+    have hequal : r[ri]!.1.deg = g[gi]!.1.deg + degreeShift := by omega
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simp only [hmore, hgMore, hrMore, hnotGreater, hnotLess, ↓reduceDIte,
+      ↓reduceIte]
+    apply ih
+    exact DivmodMergeCursorValid.takeBoth r g degreeShift ri gi acc _ hr hg
+      hri hgi hvalid hequal
+  · intro ri gi acc hdone hvalid
+    rw [Generated.StrictHensel.divmodMergeLoop.eq_1]
+    simpa [hdone] using hvalid.result_canonical
+
+theorem divmodRemainder_canonical (r g : SparsePolyZZ)
+    (coefficient m : Int) (degreeShift : Nat)
+    (hr : StrictPolynomialMod.SparsePolyZZCanonical r)
+    (hg : StrictPolynomialMod.SparsePolyZZCanonical g) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.divmodRemainder r g coefficient m degreeShift) := by
+  unfold Generated.StrictHensel.divmodRemainder
+  apply divmodMergeLoop_canonical r g coefficient m degreeShift 1 1 #[] hr hg
+  exact ⟨by simp [StrictPolynomialMod.SparsePolyZZCanonical], by simp,
+    by simp⟩
+
 /-- Representation facts needed at every active state of the exact generated
 division trace.  This predicate contains no result polynomial: it certifies
 only that the source's signed degree arithmetic is within range. -/

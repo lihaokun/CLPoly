@@ -137,3 +137,22 @@ actual `j < i` loop, proves it cannot fault on a square lattice, and shows that
 the returned norm array is unchanged while the μ storage remains square.  The
 next refinement step strengthens this execution theorem with the lookup
 formula for every coefficient written in row `i`.
+
+The generated outer initialization loop is now executable under exactly the
+same storage conditions.  `GramStorageShape.setNorm` records that the source
+norm write preserves the array dimensions.  `initializeGramSchmidtLoop_succeeds`
+then follows each concrete row through `gramMuRowLoop`, the checked integer dot
+product, `gramNormLoop`, the actual norm `Array.set`, and the recursive call on
+the next row.  Its well-founded induction measure is the number of unprocessed
+rows, `size - i`; every source step changes it to `size - (i + 1)`.  The theorem
+proves no-fault execution and shape preservation only—it does not assume the
+Gram--Schmidt coefficients, norm values, positivity, or LDLᵀ identity that the
+next semantic invariant must derive from these concrete computations.
+
+## 度量
+
+- 耗时：约 1.5 小时（外层控制流组合、数组边界调试与单文件复验）
+- 迭代：约 8 轮编译-修复循环
+- Lean 新增/修改行数：约 64 行
+- 对应 C++ 行数：约 15 行 Gram--Schmidt 外层初始化控制流
+- 放弃的方案：直接在外层定理中同时闭合 LDLᵀ 语义；拆分无故障/形状与数学语义后，循环边界义务更清晰，且不会引入抽象执行接口

@@ -291,6 +291,14 @@ theorem GramStorageShape.setMu
     rw [Array.getElem_set_ne hrow hotherOld (Ne.symm heq)]
     exact hshape.mu_rows other hotherOld
 
+theorem GramStorageShape.setNorm
+    {mu : Generated.StrictRecombine.QQMatrix} {norms : Array QQ} {size : Nat}
+    (hshape : GramStorageShape mu norms size)
+    (index : Nat) (value : QQ) (hindex : index < norms.size) :
+    GramStorageShape mu (norms.set index value) size := by
+  refine ⟨hshape.mu_size, hshape.mu_rows, ?_⟩
+  simp [hshape.norms_size]
+
 theorem gramMuRowLoop_succeeds
     (matrix : Generated.StrictRecombine.LLLMatrix) (i j size : Nat)
     (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
@@ -345,6 +353,62 @@ theorem gramMuRowLoop_succeeds
         exact ⟨output, hrun, houtShape, houtNorms⟩
       next hmore =>
         exact ⟨(mu, norms), rfl, hshape, rfl⟩
+
+theorem initializeGramSchmidtLoop_succeeds
+    (matrix : Generated.StrictRecombine.LLLMatrix) (i size : Nat)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (hmatrixSize : matrix.size = size)
+    (hmatrixRows : ∀ row (hrow : row < matrix.size),
+      matrix[row].size = size)
+    (hshape : GramStorageShape mu norms size) (hi : i ≤ size) :
+    ∃ output,
+      Generated.StrictRecombine.initializeGramSchmidtLoop matrix i mu norms =
+        .ok output ∧
+      GramStorageShape output.1 output.2 size := by
+  induction hremaining : size - i using Nat.strong_induction_on
+      generalizing i mu norms with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.initializeGramSchmidtLoop]
+      split
+      next hiMatrix =>
+        have hiSize : i < size := by omega
+        obtain ⟨muOutput, hmuRun, hmuShape, hnormsUnchanged⟩ :=
+          gramMuRowLoop_succeeds matrix i 0 size mu norms hmatrixSize
+            hmatrixRows hshape hiSize (by omega)
+        rw [hmuRun]
+        simp only
+        subst hnormsUnchanged
+        have hrowSize := hmatrixRows i hiMatrix
+        rw [dotRows_eq_fin_sum matrix[i] matrix[i] (by omega)]
+        simp only
+        have hiMu : i < muOutput.1.size := by
+          rw [hmuShape.mu_size]
+          exact hiSize
+        have hmuRows : ∀ row (hrow : row < muOutput.1.size),
+            muOutput.1[row].size = muOutput.1.size := by
+          intro row hrow
+          rw [hmuShape.mu_rows row hrow, hmuShape.mu_size]
+        have hnormsSize : muOutput.1.size ≤ muOutput.2.size := by
+          rw [hmuShape.mu_size, hmuShape.norms_size]
+        obtain ⟨normOutput, hnormRun⟩ := gramNormLoop_succeeds muOutput.1
+          muOutput.2 i 0
+          ((∑ k : Fin matrix[i].size,
+            matrix[i][k.val] * matrix[i][k.val] : ZZ) : QQ)
+          hiMu hmuRows hnormsSize (by omega)
+        simp only [hnormRun]
+        have hiNorm : i < muOutput.2.size := by
+          rw [hmuShape.norms_size]
+          exact hiSize
+        rw [dif_pos hiNorm]
+        let norms' := muOutput.2.set i normOutput
+        have hshape' : GramStorageShape muOutput.1 norms' size :=
+          hmuShape.setNorm i normOutput hiNorm
+        have hdecrease : size - (i + 1) < remaining := by omega
+        obtain ⟨output, hrun, houtShape⟩ := ih (size - (i + 1)) hdecrease
+          (i + 1) muOutput.1 norms' hshape' (by omega) rfl
+        exact ⟨output, hrun, houtShape⟩
+      next hiMatrix =>
+        exact ⟨(mu, norms), rfl, hshape⟩
 
 private def positionalCode (base : Nat) : List Nat → Nat
   | [] => 0

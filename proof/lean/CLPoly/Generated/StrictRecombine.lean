@@ -800,6 +800,80 @@ def updateMuAfterSwapLoop (mu : QQMatrix) (k : Nat) (muOld muNew : QQ)
 termination_by mu.size - row
 decreasing_by simp only [Array.size_set]; omega
 
+def swapQQRows (matrix : QQMatrix) (left right : Nat) : RawExec QQMatrix :=
+  if hleft : left < matrix.size then
+    if hright : right < matrix.size then
+      .ok ((matrix.set left matrix[right]).set right matrix[left] (by simpa))
+    else .error (.outOfBounds right matrix.size)
+  else .error (.outOfBounds left matrix.size)
+
+inductive LLLStepResult where
+  | advanced (state : LLLState)
+  | swapped (state : LLLState)
+
+/-- One complete body execution of the C++ LLL `while (k < n)` loop. -/
+def lllStep (state : LLLState) : RawExec LLLStepResult :=
+  if hkPositive : 0 < state.k then
+    if hkMatrix : state.k < state.matrix.size then
+      match sizeReduceAt state (state.k - 1) with
+      | .error fault => .error fault
+      | .ok reduced =>
+        if hkNorm : reduced.k < reduced.norms.size then
+          if hpredNorm : reduced.k - 1 < reduced.norms.size then
+            if hkMu : reduced.k < reduced.mu.size then
+              if hpredMu : reduced.k - 1 < reduced.mu[reduced.k].size then
+                let muValue := reduced.mu[reduced.k][reduced.k - 1]
+                let lhs := reduced.norms[reduced.k]
+                let rhs := ((3 : QQ) / 4 - muValue * muValue) *
+                  reduced.norms[reduced.k - 1]
+                if hlovasz : rhs ≤ lhs then
+                  match extraSizeReduceLoop (reduced.k - 1) reduced with
+                  | .error fault => .error fault
+                  | .ok fullyReduced =>
+                    .ok (.advanced { fullyReduced with k := fullyReduced.k + 1 })
+                else
+                  let muOld := muValue
+                  let newNorm := reduced.norms[reduced.k] +
+                    muOld * muOld * reduced.norms[reduced.k - 1]
+                  let muNew := if newNorm ≠ 0 then
+                    muOld * reduced.norms[reduced.k - 1] / newNorm else 0
+                  let norms' := if hnew : newNorm ≠ 0 then
+                    (reduced.norms.set reduced.k
+                      (reduced.norms[reduced.k] *
+                        reduced.norms[reduced.k - 1] / newNorm)).set
+                      (reduced.k - 1) newNorm
+                        (by rw [Array.size_set]; exact hpredNorm)
+                    else reduced.norms
+                  match swapMatrixRows reduced.matrix reduced.k (reduced.k - 1) with
+                  | .error fault => .error fault
+                  | .ok matrix' =>
+                    match swapMatrixRows reduced.transform reduced.k
+                        (reduced.k - 1) with
+                    | .error fault => .error fault
+                    | .ok transform' =>
+                      match swapQQRows reduced.mu reduced.k (reduced.k - 1) with
+                      | .error fault => .error fault
+                      | .ok swappedMu =>
+                        if hkSwapped : reduced.k < swappedMu.size then
+                          if hpredSwapped : reduced.k - 1 < swappedMu[reduced.k].size then
+                            let correctedMu := swappedMu.set reduced.k
+                              (swappedMu[reduced.k].set (reduced.k - 1) muNew)
+                            match updateMuAfterSwapLoop correctedMu reduced.k
+                                muOld muNew (reduced.k + 1) with
+                            | .error fault => .error fault
+                            | .ok finalMu =>
+                              .ok (.swapped (LLLState.mk matrix' transform' finalMu
+                                norms' (Nat.max (reduced.k - 1) 1)))
+                          else .error (.outOfBounds (reduced.k - 1)
+                            swappedMu[reduced.k].size)
+                        else .error (.outOfBounds reduced.k swappedMu.size)
+              else .error (.outOfBounds (reduced.k - 1) reduced.mu[reduced.k].size)
+            else .error (.outOfBounds reduced.k reduced.mu.size)
+          else .error (.outOfBounds (reduced.k - 1) reduced.norms.size)
+        else .error (.outOfBounds reduced.k reduced.norms.size)
+    else .error (.outOfBounds state.k state.matrix.size)
+  else .error .assertionFailure
+
 def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
   if hindex : index < input.size then
     contentLoop input (index + 1) (Nat.gcd acc input[index].2.natAbs)

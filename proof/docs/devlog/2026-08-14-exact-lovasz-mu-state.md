@@ -270,3 +270,28 @@ it from the generated execution.
 - Lean 新增/修改行数：约 47 行
 - 对应 C++ 行数：约 6 行 Gram--Schmidt numerator/division 更新
 - 下一步：沿实际 `j < i` 良基循环保持该不变量，再由 norm loop 闭合对角项
+
+## Generated μ-row recurrence completed
+
+The executable row invariant is now preserved by the actual generated
+`gramMuRowLoop`.  `gramMuPrefixCorrect_set_next` proves the precise mutable
+array step: the nested source writes replace only `mu[i][j]`, preserve every
+earlier target-row cell and every non-target row, and extend the LDL row
+equation by one column using the generated coefficient.
+
+`gramMuRowLoop_prefix_correct` then follows the source recursion with measure
+`i - j`.  At each recursive call it expands the real integer dot loop and
+rational numerator loop, proves the written conditional quotient is exactly
+`sourceGramCoefficient`, rules out the source zero-norm branch from the
+already processed positive norms, and invokes the one-column update theorem.
+The terminal branch restricts the accumulated prefix invariant to all
+columns below `i`.  Thus the entire returned μ row is now characterized by
+the generated execution, not by an assumed Gram--Schmidt result.
+
+## 度量（complete μ row）
+
+- 耗时：约 1.5 小时（嵌套数组写帧、逐列递归、dot/numerator 精确值复用）
+- 迭代：约 6 轮编译-修复循环
+- Lean 新增/修改行数：约 205 行
+- 对应 C++ 行数：约 11 行完整 `j < i` μ-row 循环
+- 下一步：证明实际 `gramNormLoop` 写入闭合 `(i,i)` 对角方程，并将整行方程组装为 `G = L D L^T`

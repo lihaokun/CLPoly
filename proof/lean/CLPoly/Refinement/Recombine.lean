@@ -562,6 +562,76 @@ theorem sourceGramCoefficient_closes_column
   field_simp [hnorm]
   ring
 
+theorem gramMuPrefixCorrect_set_next
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (i j : Nat) (coefficient : QQ)
+    (hshape : GramStorageShape mu norms matrix.size)
+    (hi : i < matrix.size) (hj : j < i)
+    (hiMu : i < mu.size) (hjMu : j < mu.size)
+    (hjRow : j < mu[i].size)
+    (hprefix : GramMuPrefixCorrect matrix mu norms i j)
+    (hcolumn : sourceRowDot matrix i j matrix[i]!.size =
+      (∑ k : Fin j,
+        (mu[i]!)[k.val]! * (mu[j]!)[k.val]! * norms[k.val]!) +
+        coefficient * norms[j]!) :
+    let mu' := mu.set i (mu[i].set j coefficient hjRow) hiMu
+    GramMuPrefixCorrect matrix mu' norms i (j + 1) := by
+  dsimp only
+  let changedRow := mu[i].set j coefficient hjRow
+  let mu' := mu.set i changedRow hiMu
+  have hmuI : mu'[i]! = changedRow := by
+    rw [getElem!_pos mu' i (by simp [mu', hiMu])]
+    simp [mu']
+  have hmuOther : ∀ row, row < mu.size → row ≠ i → mu'[row]! = mu[row]! := by
+    intro row hrow hne
+    rw [getElem!_pos mu' row (by simpa [mu'] using hrow)]
+    rw [Array.getElem_set_ne hiMu hrow (Ne.symm hne)]
+    exact (getElem!_pos mu row hrow).symm
+  have hchangedPrefix : ∀ column, column < j →
+      changedRow[column]! = (mu[i]!)[column]! := by
+    intro column hcolumn
+    have hcolumnRow : column < mu[i].size := lt_trans hcolumn hjRow
+    rw [getElem!_pos changedRow column (by simpa [changedRow] using hcolumnRow)]
+    rw [Array.getElem_set_ne hjRow hcolumnRow (by omega)]
+    rw [getElem!_pos mu i hiMu]
+    exact (getElem!_pos mu[i] column hcolumnRow).symm
+  intro column hcolumnBound
+  by_cases hcurrent : column = j
+  · subst column
+    rw [hcolumn]
+    congr 1
+    · apply Fintype.sum_congr
+      intro k
+      have hkI : k.val < mu[i].size := lt_trans k.isLt hjRow
+      have hkJ : k.val < mu[j].size := by
+        rw [hshape.mu_rows j hjMu]
+        omega
+      rw [hmuI]
+      rw [hmuOther j hjMu (by omega)]
+      rw [hchangedPrefix k.val k.isLt]
+    · rw [hmuI]
+      simp [changedRow, getElem!_pos, hjRow]
+  · have hprevious : column < j := by omega
+    rw [hprefix column hprevious]
+    have hcolumnMu : column < mu.size := lt_trans hprevious hjMu
+    have hcolumnRow : column < mu[i].size := lt_trans hprevious hjRow
+    have hcolumnNorm : column < norms.size := by
+      rw [hshape.norms_size]
+      omega
+    congr 1
+    · apply Fintype.sum_congr
+      intro k
+      have hkI : k.val < mu[i].size := lt_trans k.isLt hcolumnRow
+      have hkColumn : k.val < mu[column].size := by
+        rw [hshape.mu_rows column hcolumnMu]
+        omega
+      rw [hmuI]
+      rw [hmuOther column hcolumnMu (by omega)]
+      rw [hchangedPrefix k.val (lt_trans k.isLt hprevious)]
+    · rw [hmuI]
+      rw [hchangedPrefix column hprevious]
+
 theorem gramMuRowLoop_succeeds
     (matrix : Generated.StrictRecombine.LLLMatrix) (i j size : Nat)
     (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
@@ -741,6 +811,121 @@ theorem gramMuRowLoop_written_coefficient
   simp only [coefficient, numerator]
   rw [getElem!_pos norms j hjNorm]
   rw [hdotEq, hmuSumEq]
+
+theorem gramMuRowLoop_prefix_correct
+    (matrix : Generated.StrictRecombine.LLLMatrix) (i j size : Nat)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (output : Generated.StrictRecombine.QQMatrix × Array QQ)
+    (hmatrixSize : matrix.size = size)
+    (hmatrixRows : ∀ row (hrow : row < matrix.size),
+      matrix[row].size = size)
+    (hshape : GramStorageShape mu norms size)
+    (hi : i < size) (hj : j ≤ i)
+    (hpositive : ∀ column, column < i → 0 < norms[column]!)
+    (hprefix : GramMuPrefixCorrect matrix mu norms i j)
+    (hrun : Generated.StrictRecombine.gramMuRowLoop matrix i j mu norms =
+      .ok output) :
+    GramMuPrefixCorrect matrix output.1 output.2 i i := by
+  induction hremaining : i - j using Nat.strong_induction_on
+      generalizing j mu norms with
+  | h remaining ih =>
+      rw [Generated.StrictRecombine.gramMuRowLoop] at hrun
+      split at hrun
+      next hmore =>
+        have hiM : i < matrix.size := by omega
+        have hjM : j < matrix.size := by omega
+        rw [dif_pos hiM, dif_pos hjM] at hrun
+        have hrowI : matrix[i].size = size := hmatrixRows i hiM
+        have hrowJ : matrix[j].size = size := hmatrixRows j hjM
+        have hdotSize : matrix[i].size ≤ matrix[j].size := by
+          rw [hrowI, hrowJ]
+        rw [dotRows_eq_fin_sum matrix[i] matrix[j] hdotSize] at hrun
+        simp only at hrun
+        have hiMu : i < mu.size := by rw [hshape.mu_size]; exact hi
+        have hjMu : j < mu.size := by rw [hshape.mu_size]; omega
+        have hmuRows : ∀ row (hrow : row < mu.size),
+            mu[row].size = mu.size := by
+          intro row hrow
+          rw [hshape.mu_rows row hrow, hshape.mu_size]
+        have hnorms : mu.size ≤ norms.size := by
+          rw [hshape.mu_size, hshape.norms_size]
+        rw [gramNumeratorLoop_exact mu norms i j
+          ((∑ k : Fin matrix[i].size,
+            matrix[i][k.val] * matrix[j][k.val] : ZZ) : QQ)
+          hiMu hjMu hmuRows hnorms] at hrun
+        simp only at hrun
+        have hjMuRow : j < mu[i].size := by
+          rw [hshape.mu_rows i hiMu]
+          omega
+        have hjNorm : j < norms.size := by omega
+        rw [dif_pos hiMu, dif_pos hjMuRow, dif_pos hjNorm] at hrun
+        let numerator : QQ :=
+          ((∑ k : Fin matrix[i].size,
+            matrix[i][k.val] * matrix[j][k.val] : ZZ) : QQ) -
+            ∑ k : Fin j,
+              mu[i][k.val]'(by rw [hmuRows i hiMu]; exact lt_trans k.isLt hjMu) *
+              mu[j][k.val]'(by rw [hmuRows j hjMu]; exact lt_trans k.isLt hjMu) *
+              norms[k.val]'(lt_of_lt_of_le (lt_trans k.isLt hjMu) hnorms)
+        let coefficient := if norms[j] = 0 then 0 else numerator / norms[j]
+        let mu' := mu.set i (mu[i].set j coefficient)
+        have hshape' : GramStorageShape mu' norms size :=
+          hshape.setMu i j coefficient hiMu hjMuRow
+        have hdotEq :
+            ((∑ k : Fin matrix[i].size,
+              matrix[i][k.val] * matrix[j][k.val] : ZZ) : QQ) =
+            ((∑ k : Fin matrix[i].size,
+              (matrix[i]!)[k.val]! * (matrix[j]!)[k.val]! : ZZ) : QQ) := by
+          simp only [getElem!_pos matrix i hiM, getElem!_pos matrix j hjM]
+          congr 1
+          apply Fintype.sum_congr
+          intro index
+          simp [getElem!_pos matrix[i] index.val index.isLt,
+            getElem!_pos matrix[j] index.val
+              (lt_of_lt_of_le index.isLt hdotSize)]
+        have hmuSumEq :
+            (∑ k : Fin j,
+              mu[i][k.val]'(by rw [hmuRows i hiMu]; exact lt_trans k.isLt hjMu) *
+              mu[j][k.val]'(by rw [hmuRows j hjMu]; exact lt_trans k.isLt hjMu) *
+              norms[k.val]'(lt_of_lt_of_le (lt_trans k.isLt hjMu) hnorms)) =
+            ∑ k : Fin j,
+              (mu[i]!)[k.val]! * (mu[j]!)[k.val]! * norms[k.val]! := by
+          apply Fintype.sum_congr
+          intro index
+          have hki : index.val < mu[i].size := by
+            rw [hmuRows i hiMu]
+            exact lt_trans index.isLt hjMu
+          have hkj : index.val < mu[j].size := by
+            rw [hmuRows j hjMu]
+            exact lt_trans index.isLt hjMu
+          have hkn : index.val < norms.size :=
+            lt_of_lt_of_le (lt_trans index.isLt hjMu) hnorms
+          simp [getElem!_pos mu i hiMu, getElem!_pos mu j hjMu,
+            getElem!_pos mu[i] index.val hki,
+            getElem!_pos mu[j] index.val hkj,
+            getElem!_pos norms index.val hkn]
+        have hcoefficient : coefficient =
+            sourceGramCoefficient matrix mu norms i j matrix[i].size := by
+          unfold coefficient sourceGramCoefficient numerator
+          rw [getElem!_pos norms j hjNorm]
+          rw [hdotEq, hmuSumEq]
+        have hnormNe : norms[j]! ≠ 0 :=
+          ne_of_gt (hpositive j (by omega))
+        have hcolumn := sourceGramCoefficient_closes_column matrix mu norms
+          i j matrix[i].size hnormNe
+        rw [← hcoefficient] at hcolumn
+        have hprefix' : GramMuPrefixCorrect matrix mu' norms i (j + 1) := by
+          exact gramMuPrefixCorrect_set_next matrix mu norms i j coefficient
+            (by simpa [hmatrixSize] using hshape) (by omega) (by omega)
+            hiMu hjMu hjMuRow hprefix (by
+              simpa [getElem!_pos matrix i hiM] using hcolumn)
+        have hdecrease : i - (j + 1) < remaining := by omega
+        exact ih (i - (j + 1)) hdecrease (j + 1) mu' norms hshape'
+          (by omega) hpositive hprefix' hrun rfl
+      next hmore =>
+        have houtput := Except.ok.inj hrun
+        subst output
+        intro column hcolumn
+        exact hprefix column (by omega)
 
 theorem initializeGramSchmidtLoop_succeeds
     (matrix : Generated.StrictRecombine.LLLMatrix) (i size : Nat)

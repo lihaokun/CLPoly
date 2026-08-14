@@ -811,6 +811,10 @@ inductive LLLStepResult where
   | advanced (state : LLLState)
   | swapped (state : LLLState)
 
+def LLLStepResult.state : LLLStepResult → LLLState
+  | .advanced state => state
+  | .swapped state => state
+
 /-- One complete body execution of the C++ LLL `while (k < n)` loop. -/
 def lllStep (state : LLLState) : RawExec LLLStepResult :=
   if hkPositive : 0 < state.k then
@@ -873,6 +877,32 @@ def lllStep (state : LLLState) : RawExec LLLStepResult :=
         else .error (.outOfBounds reduced.k reduced.norms.size)
     else .error (.outOfBounds state.k state.matrix.size)
   else .error .assertionFailure
+
+/-- Erased well-founded certificate for the concrete LLL transition.  It
+cannot supply a matrix, branch, or result: every recursive state must be the
+output of `lllStep` above. -/
+structure LLLTermination where
+  valid : LLLState → Prop
+  rank : LLLState → Nat
+  step_valid : ∀ current branch, valid current →
+    lllStep current = .ok branch → valid branch.state
+  step_decreases : ∀ current branch, valid current →
+    lllStep current = .ok branch → rank branch.state < rank current
+
+/-- Strict well-founded C++ `while (k < n)` loop. -/
+def lllMainLoop (termination : LLLTermination) :
+    (state : LLLState) → termination.valid state → RawExec LLLState
+  | state, hvalid =>
+      if hk : state.k < state.matrix.size then
+        match hstep : lllStep state with
+        | .error fault => .error fault
+        | .ok branch =>
+          lllMainLoop termination branch.state
+            (termination.step_valid state branch hvalid hstep)
+      else .ok state
+termination_by state _ => termination.rank state
+decreasing_by
+  exact termination.step_decreases state branch hvalid hstep
 
 def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
   if hindex : index < input.size then

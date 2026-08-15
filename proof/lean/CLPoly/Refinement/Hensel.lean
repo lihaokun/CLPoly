@@ -4039,6 +4039,24 @@ theorem HenselLiftLoopCorrect.topologyEq
       htail ih =>
       exact hiteration.topologyEq.trans ih
 
+/-- The modulus returned by the concrete quadratic Hensel loop is strictly
+larger than the source target.  This is the precision fact consumed by
+recombination; it follows from the actual stopping test rather than from an
+independently supplied bound. -/
+theorem HenselLiftLoopCorrect.outputM_gt_target
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM) :
+    target < outputM := by
+  induction hcorrect with
+  | done m nodes hstop => omega
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      exact ih
+
 structure HenselLiftLoopRefinementInvariant
     (termination : Generated.StrictHensel.DivmodTermination)
     (tree : Generated.StrictHensel.HenselLiftTree) (f : SparsePolyZZ)
@@ -9474,6 +9492,30 @@ def HenselLiftEntryCorrect
       liftedNodes #[] extracted ∧
     HenselNormalizeCorrect extracted outputM output.1 ∧
     output.2 = outputM
+
+/-- A successful full generated Hensel entry exposes the precision reached by
+its own well-founded loop.  In particular, the returned modulus is not an
+oracle-provided value: it strictly exceeds the concrete target computed by
+`__hensel_lift_target_raw_ir`. -/
+theorem HenselLiftEntryCorrect.outputModulus_gt_target
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (htargetNonnegative : ∀ target,
+      HenselLiftTargetCorrect f p aTarget target → 0 ≤ target)
+    (hcorrect : HenselLiftEntryCorrect termination f factors p aTarget output) :
+    ∃ target : ZZ,
+      HenselLiftTargetCorrect f p aTarget target ∧ target < output.2 := by
+  rcases hcorrect with
+    ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
+      htarget, hadjust, hlift, hextract, hnormalize, houtputM⟩
+  refine ⟨target, htarget, ?_⟩
+  rw [houtputM]
+  have htargetNonnegative' := htargetNonnegative target htarget
+  have hprecision := hlift.outputM_gt_target
+  calc
+    target = (target.toNat : Int) := (Int.toNat_of_nonneg htargetNonnegative').symm
+    _ < (outputM : Int) := by exact_mod_cast hprecision
 
 private theorem henselLiftUpolyRawIR_run_of_stages
     (stepOps : Generated.StrictHensel.HenselStepRawOps)

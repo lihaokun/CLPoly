@@ -674,3 +674,26 @@ callback.
 - 数学审计发现：严格重组目前仅闭合 trial-division 的乘积保持；最终
   `RecombineCorrect` 所需不可约性仍必须从满 Mignotte 精度、模素不可约因子和
   Zassenhaus 最小子集穷举推出，不能复用算法层接收 `h_irred` 参数的包装定理
+
+## Concrete Hensel output exceeds its computed precision target
+
+`HenselLiftLoopCorrect.outputM_gt_target` now proves that the modulus returned
+by the generated quadratic Hensel loop is strictly larger than its input
+target.  The proof follows the exact semantic trace: the terminal constructor
+carries the negated source test `¬m ≤ target`, while recursive constructors
+transport the terminal modulus unchanged.  No independently selected modulus
+or precision certificate is involved.
+
+The entry-level theorem
+`HenselLiftEntryCorrect.outputModulus_gt_target` connects that loop fact to the
+actual pair returned by `__hensel_lift_upoly_raw_ir` and to the target selected
+by the generated Mignotte/explicit-precision branch.  This supplies the first
+required premise for symmetric factor recovery in strict recombination.
+
+## 度量（Hensel reached precision）
+
+- 耗时：约 0.75 小时（循环后置条件、入口 witness 解包、整数转换）
+- 新语义证据：实际 `outputM > target`，而不是仅有执行终止
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：从同一个具体 Hensel trace 导出提升叶因子逐项模 p 还原到输入的关系

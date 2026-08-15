@@ -8850,8 +8850,39 @@ theorem scanZassenhausCombinations_extracted_unit_scalar
               hdecrease next hvalidNext hrun rfl
 
 private noncomputable def factorArrayProduct (factors : Array SparsePolyZZ) :
-    Polynomial Int :=
+  Polynomial Int :=
   (factors.toList.map SparsePolyZZ.toPoly).prod
+
+/-- Degree sorting at either concrete recombination exit changes only factor
+order and therefore preserves the represented product exactly. -/
+private theorem factorArrayProduct_sortFactorsByDegree
+    (factors : Array SparsePolyZZ) :
+    factorArrayProduct
+        (Generated.StrictRecombine.sortFactorsByDegree factors) =
+      factorArrayProduct factors := by
+  unfold factorArrayProduct Generated.StrictRecombine.sortFactorsByDegree
+  simpa using ((List.mergeSort_perm factors.toList fun left right =>
+    left[0]!.1.deg < right[0]!.1.deg).map SparsePolyZZ.toPoly).prod_eq
+
+/-- Exact product effect of the common source finishing block, including its
+conditional append of the remaining positive-degree factor. -/
+private theorem factorArrayProduct_finishZassenhaus
+    (fStar : SparsePolyZZ) (result : Array SparsePolyZZ) :
+    factorArrayProduct
+        (Generated.StrictRecombine.finishZassenhaus fStar result) =
+      if hnonempty : 0 < fStar.size then
+        if 0 < fStar[0].1.deg then
+          factorArrayProduct result * SparsePolyZZ.toPoly fStar
+        else factorArrayProduct result
+      else factorArrayProduct result := by
+  unfold Generated.StrictRecombine.finishZassenhaus
+  rw [factorArrayProduct_sortFactorsByDegree]
+  split
+  next hnonempty =>
+    split
+    next hdegree => simp [factorArrayProduct]
+    next hdegree => rfl
+  next hnonempty => rfl
 
 theorem validateCandidatesLoop_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)

@@ -997,3 +997,25 @@ for pointwise provenance.
   targets 均完整构建通过
 - 下一步：把这项逐因子质量接入完整精度的真实 Zassenhaus/van Hoeij 重组，
   证明输出乘积与整数不可约性
+
+## Concrete recombination finishing preserves factor products
+
+The proof layer now decodes the common `finishZassenhaus` block used by both
+the Zassenhaus fallback and the normal van-Hoeij exit.  The degree sort is
+proved to preserve the polynomial product through the actual `mergeSort`
+permutation.  The finishing theorem then records the exact remaining effect:
+the live `fStar` is appended precisely when its source front degree is
+positive, followed by the same concrete degree sort.
+
+This is deliberately an exact execution fact rather than a semantic
+factorization assumption.  It supplies the terminal case needed for the
+source-shaped outer-loop product invariant; the constant `fStar` case will be
+discharged from primitivity instead of silently dropping an arbitrary scalar.
+
+## 度量（recombination finish product）
+
+- 耗时：约 0.5 小时（排序 permutation、数组 push/product、分支精确化）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
+- 下一步：以 live product 的 primitivity 为循环不变量，证明 Zassenhaus
+  extraction/restart/exhaustion 的完整乘积保持

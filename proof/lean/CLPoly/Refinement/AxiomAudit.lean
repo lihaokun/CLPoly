@@ -16,3 +16,6 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.isqrtCeilLoopRaw_eq_sqrtIter
 #print axioms Refinement.StrictRecombine.isqrtCeilRaw_nonnegative_and_square_ge
 #print axioms Refinement.StrictRecombine.mignotteBoundRaw_eq_choose_isqrt
+#print axioms Refinement.StrictRecombine.upolyNormL2SqRaw_eq_coeff_range_sum
+#print axioms Refinement.StrictRecombine.divisor_coeff_le_generated_mignotte_norm
+#print axioms Refinement.StrictRecombine.mignotteBoundRaw_bounds_divisor

@@ -2134,3 +2134,32 @@ No C++ files changed, so this step has no new C++ b2b change surface.
 coefficient inequality must be instantiated for a hypothetical primitive
 factor and linked to this concrete stored norm before the actual exhaustive
 candidate scan can recover it.
+
+## Actual generated Mignotte value bounds every true divisor coefficient
+
+The mathematical coefficient bound is now connected to the exact sparse
+execution value.
+
+- A structural induction over the canonical strictly descending sparse list
+  proves that the source-order sum of stored coefficient squares equals the
+  sum of all mathematical coefficient squares over any containing degree
+  range.  The proof handles the head degree explicitly and proves the tail
+  coefficient there is zero, so duplicate-degree cancellation cannot be
+  hidden in the bridge.
+- The canonical head cell is proved to carry the exact mathematical
+  `natDegree`.  This aligns the central `choose` parameter used by C++ with
+  the degree used by `mignotte_bound_l2`.
+- The real Mahler/L2 Mignotte inequality is instantiated for an arbitrary
+  genuine integer divisor.  The generated Newton theorem turns its real
+  square root into the concrete integer norm, and the result is cast back to
+  an exact integer coefficient inequality.
+- The final theorem includes the raw execution equation for
+  `__mignotte_bound_upoly_raw_ir`: the very integer returned by that call is
+  nonnegative and bounds every coefficient of the supplied true divisor.
+  It does not choose an abstract bound or execute an L2 factorization.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+next step multiplies this bound by the actual leading-coefficient scale used
+by `__hensel_lift`, derives the strict modulus inequality from its concrete
+target loop, and feeds it into symmetric recovery for the enumerated lifted
+subproduct.

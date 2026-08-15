@@ -10949,6 +10949,69 @@ private theorem intTermsToPoly_coeff_eq_zero_of_degrees_ne
       rw [Polynomial.coeff_monomial, if_neg hhead, ih htail]
       simp
 
+/-- A strictly degree-ordered sparse list has exactly the same coefficient
+square sum as its mathematical polynomial over any range containing every
+stored degree.  This is the representation bridge needed by the concrete
+Mignotte norm fold. -/
+private theorem intTerms_square_sum_eq_range
+    (terms : List (UMonomial × Int)) (limit : Nat)
+    (hchain : List.IsChain
+      (fun left right : UMonomial × Int => left.1.deg > right.1.deg) terms)
+    (hdegrees : ∀ term ∈ terms, term.1.deg ≤ limit) :
+    (terms.map fun term => term.2 * term.2).sum =
+      (Finset.range (limit + 1)).sum fun degree =>
+        (intTermsToPoly terms).coeff degree *
+          (intTermsToPoly terms).coeff degree := by
+  induction terms with
+  | nil => simp [intTermsToPoly]
+  | cons head tail ih =>
+      have htailChain := List.IsChain.tail hchain
+      have htailDegrees : ∀ term ∈ tail, term.1.deg ≤ limit := by
+        intro term hterm
+        exact hdegrees term (by simp [hterm])
+      have hheadDegree : head.1.deg ≤ limit :=
+        hdegrees head (by simp)
+      have htailBelow : ∀ term ∈ tail, term.1.deg < head.1.deg :=
+        sparseZZ_chain_head_gt_all head tail hchain
+      have htailAtHead :
+          (intTermsToPoly tail).coeff head.1.deg = 0 := by
+        apply intTermsToPoly_coeff_eq_zero_of_degrees_ne
+        intro term hterm
+        exact Nat.ne_of_lt (htailBelow term hterm)
+      rw [List.map_cons, List.sum_cons, ih htailChain htailDegrees]
+      symm
+      calc
+        (Finset.range (limit + 1)).sum (fun degree =>
+            (intTermsToPoly (head :: tail)).coeff degree *
+              (intTermsToPoly (head :: tail)).coeff degree) =
+            (Finset.range (limit + 1)).sum (fun degree =>
+              (if degree = head.1.deg then head.2 * head.2 else 0) +
+                (intTermsToPoly tail).coeff degree *
+                  (intTermsToPoly tail).coeff degree) := by
+              apply Finset.sum_congr rfl
+              intro degree hdegree
+              change ((Polynomial.monomial head.1.deg head.2 +
+                intTermsToPoly tail).coeff degree) *
+                  ((Polynomial.monomial head.1.deg head.2 +
+                    intTermsToPoly tail).coeff degree) = _
+              rw [Polynomial.coeff_add, Polynomial.coeff_monomial]
+              by_cases heq : head.1.deg = degree
+              · subst degree
+                simp [htailAtHead]
+              · simp [heq, Ne.symm heq]
+        _ = (Finset.range (limit + 1)).sum (fun degree =>
+              if degree = head.1.deg then head.2 * head.2 else 0) +
+            (Finset.range (limit + 1)).sum (fun degree =>
+              (intTermsToPoly tail).coeff degree *
+                (intTermsToPoly tail).coeff degree) :=
+              Finset.sum_add_distrib
+        _ = head.2 * head.2 +
+            (Finset.range (limit + 1)).sum (fun degree =>
+              (intTermsToPoly tail).coeff degree *
+                (intTermsToPoly tail).coeff degree) := by
+              rw [Finset.sum_ite_eq']
+              simp [hheadDegree]
+
 theorem symmetricModRaw_toPolyMod_of_dvd (input output : SparsePolyZZ)
     (modulus base : Nat) (hmodulus : 0 < modulus) (hbase : 0 < base)
     (hdivides : base ∣ modulus)
@@ -11066,6 +11129,153 @@ theorem sparsePolyZZ_toPoly_coeff_of_mem
     (SparsePolyZZ.toPoly input).coeff term.1.deg = term.2 := by
   unfold SparsePolyZZ.toPoly
   exact sparseZZ_sum_coeff_of_mem input.toList hcanonical.1 term hterm
+
+/-- The first physical sparse term carries the exact mathematical degree. -/
+theorem sparsePolyZZ_natDegree_eq_head (poly : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical poly)
+    (hnonempty : 0 < poly.size) :
+    (SparsePolyZZ.toPoly poly).natDegree = poly[0].1.deg := by
+  have hheadMem : poly[0] ∈ poly.toList := by
+    exact Array.getElem_mem_toList hnonempty
+  have hheadCoeff :
+      (SparsePolyZZ.toPoly poly).coeff poly[0].1.deg = poly[0].2 :=
+    sparsePolyZZ_toPoly_coeff_of_mem poly hcanonical poly[0] hheadMem
+  have hheadNonzero : poly[0].2 ≠ 0 := hcanonical.2 poly[0] hheadMem
+  apply Polynomial.natDegree_eq_of_le_of_coeff_ne_zero
+  · rw [Polynomial.natDegree_le_iff_coeff_eq_zero]
+    intro degree hdegree
+    apply intTermsToPoly_coeff_eq_zero_of_degrees_ne
+    intro term hterm heq
+    have htermLe : term.1.deg ≤ poly[0].1.deg := by
+      have hlistNonempty : poly.toList ≠ [] := by
+        intro hempty
+        have hlength := congrArg List.length hempty
+        have hsizeZero : poly.size = 0 := by simpa using hlength
+        omega
+      have hhead : poly.toList.head hlistNonempty = poly[0] := by
+        rw [List.head_eq_getElem]
+        simpa using Array.getElem_toList hnonempty
+      have hheadFirst : poly.toList = poly[0] :: poly.toList.tail := by
+        rw [← hhead]
+        exact (List.cons_head_tail hlistNonempty).symm
+      have hchain : List.IsChain
+          (fun left right : UMonomial × Int => left.1.deg > right.1.deg)
+          (poly[0] :: poly.toList.tail) := by
+        rw [← hheadFirst]
+        exact hcanonical.1
+      rw [hheadFirst] at hterm
+      rcases List.mem_cons.mp hterm with heqHead | htail
+      · simpa [heqHead]
+      · exact (sparseZZ_chain_head_gt_all poly[0] poly.toList.tail hchain
+          term htail).le
+    omega
+  · rw [hheadCoeff]
+    exact hheadNonzero
+
+/-- For a canonical sparse integer polynomial, the exact source-order norm
+fold equals the mathematical L2 coefficient-square sum over its degree
+range.  Strict stored degree order prevents duplicate coefficients. -/
+theorem upolyNormL2SqRaw_eq_coeff_range_sum (poly : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical poly) :
+    Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir poly =
+      (Finset.range ((SparsePolyZZ.toPoly poly).natDegree + 1)).sum
+        (fun degree =>
+          (SparsePolyZZ.toPoly poly).coeff degree *
+            (SparsePolyZZ.toPoly poly).coeff degree) := by
+  rw [upolyNormL2SqRaw_eq_stored_sum]
+  have hdegrees : ∀ term ∈ poly.toList,
+      term.1.deg ≤ (SparsePolyZZ.toPoly poly).natDegree := by
+    intro term hterm
+    apply Polynomial.le_natDegree_of_ne_zero
+    rw [sparsePolyZZ_toPoly_coeff_of_mem poly hcanonical term hterm]
+    exact hcanonical.2 term hterm
+  simpa [SparsePolyZZ.toPoly, intTermsToPoly] using
+    intTerms_square_sum_eq_range poly.toList
+      (SparsePolyZZ.toPoly poly).natDegree hcanonical.1 hdegrees
+
+/-- Every coefficient of a genuine integer divisor is bounded by the exact
+central binomial and Newton norm computed by the generated C++ Mignotte
+helper.  This converts the existing real L2 theorem back to an integer
+inequality using the canonical sparse storage equality above. -/
+theorem divisor_coeff_le_generated_mignotte_norm (f : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (g : Polynomial Int) (hf : SparsePolyZZ.toPoly f ≠ 0)
+    (hg : g ∣ SparsePolyZZ.toPoly f) :
+    let norm := Generated.StrictHensel.__isqrt_ceil_raw_ir
+      (Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir f)
+    ∀ degree,
+      ((g.coeff degree).natAbs : Int) ≤
+        ((SparsePolyZZ.toPoly f).natDegree.choose
+          ((SparsePolyZZ.toPoly f).natDegree / 2) : Int) * norm := by
+  let source := SparsePolyZZ.toPoly f
+  let squareSum := Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir f
+  let norm := Generated.StrictHensel.__isqrt_ceil_raw_ir squareSum
+  have hnorm := mignotteNormRaw_nonnegative_and_square_ge f
+  have hnorm' : 0 ≤ norm ∧ squareSum ≤ norm * norm := by
+    simpa [squareSum, norm] using hnorm
+  have hsquareSum : squareSum =
+      (Finset.range (source.natDegree + 1)).sum
+        (fun degree => source.coeff degree * source.coeff degree) := by
+    simpa [source, squareSum] using
+      upolyNormL2SqRaw_eq_coeff_range_sum f hcanonical
+  have hrealSum :
+      (Finset.range (source.natDegree + 1)).sum
+          (fun degree => ((source.coeff degree).natAbs : Real) ^ 2) =
+        (squareSum : Real) := by
+    rw [hsquareSum]
+    push_cast
+    apply Finset.sum_congr rfl
+    intro degree hdegree
+    norm_num [sq]
+  have hsqrt :
+      Real.sqrt ((Finset.range (source.natDegree + 1)).sum
+        (fun degree => ((source.coeff degree).natAbs : Real) ^ 2)) ≤
+          (norm : Real) := by
+    rw [hrealSum, Real.sqrt_le_left (by exact_mod_cast hnorm'.1)]
+    have hpow : squareSum ≤ norm ^ 2 := by simpa [pow_two] using hnorm'.2
+    exact_mod_cast hpow
+  change ∀ degree : Nat, ((g.coeff degree).natAbs : Int) ≤
+    ((source.natDegree.choose (source.natDegree / 2) : Nat) : Int) * norm
+  intro degree
+  have hbound := mignotte_bound_l2 source g (by simpa [source] using hf)
+    (by simpa [source] using hg) degree
+  have hreal : ((g.coeff degree).natAbs : Real) ≤
+      ((source.natDegree.choose (source.natDegree / 2) : Nat) : Real) *
+        (norm : Real) := hbound.trans (by gcongr)
+  rw [Nat.cast_natAbs (α := Real), Int.cast_abs] at hreal
+  apply (@Int.cast_le Real _ _ _).mp
+  norm_num
+  exact hreal
+
+/-- The actual successful generated Mignotte call returns one concrete
+nonnegative integer that bounds every coefficient of every genuine divisor
+of the represented source polynomial. -/
+theorem mignotteBoundRaw_bounds_divisor (f : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (g : Polynomial Int) (hf : SparsePolyZZ.toPoly f ≠ 0)
+    (hg : g ∣ SparsePolyZZ.toPoly f) :
+    ∃ bound,
+      Generated.StrictHensel.__mignotte_bound_upoly_raw_ir f = .ok bound ∧
+      0 ≤ bound ∧ ∀ degree, ((g.coeff degree).natAbs : Int) ≤ bound := by
+  let norm := Generated.StrictHensel.__isqrt_ceil_raw_ir
+    (Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir f)
+  let bound : Int :=
+    (f[0].1.deg.choose (f[0].1.deg / 2) : Int) * norm
+  have hleading : f[0]? = some f[0] := Array.getElem?_eq_getElem hnonempty
+  have hrun := mignotteBoundRaw_eq_choose_isqrt f f[0] hleading hdegree
+  have hnatDegree := sparsePolyZZ_natDegree_eq_head f hcanonical hnonempty
+  have hnorm := mignotteNormRaw_nonnegative_and_square_ge f
+  have hnormNonnegative : 0 ≤ norm := by simpa [norm] using hnorm.1
+  have hboundNonnegative : 0 ≤ bound := by
+    dsimp [bound]
+    exact mul_nonneg (by positivity) hnormNonnegative
+  refine ⟨bound, by simpa [bound, norm] using hrun,
+    hboundNonnegative, ?_⟩
+  intro degree
+  have hcoefficient := divisor_coeff_le_generated_mignotte_norm
+    f hcanonical g hf hg degree
+  simpa [bound, norm, hnatDegree] using hcoefficient
 
 /-- A bound on every physically stored coefficient of a canonical sparse
 polynomial extends to every mathematical coefficient. -/

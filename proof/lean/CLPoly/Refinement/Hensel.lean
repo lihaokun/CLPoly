@@ -1613,6 +1613,97 @@ theorem pairVecAdd_canonical (a b : SparsePolyZZ)
   exact ⟨by simp [StrictPolynomialMod.SparsePolyZZCanonical], by simp,
     by simp⟩
 
+/-- The generated sparse merge only appends to its explicit result cursor.
+This frame fact follows the actual six-way source recursion and is used to
+retain a leading term after the first merge step emits it. -/
+theorem pairVecAddLoop_result_prefix (a b : SparsePolyZZ) :
+    ∀ aIndex bIndex result,
+      ∃ suffix,
+        (Generated.StrictHensel.pairVecAddLoop a b aIndex bIndex result).toList =
+          result.toList ++ suffix := by
+  intro aIndex bIndex result
+  refine Generated.StrictHensel.pairVecAddLoop.induct a b
+    (motive := fun aIndex bIndex result => ∃ suffix,
+      (Generated.StrictHensel.pairVecAddLoop a b aIndex bIndex result).toList =
+        result.toList ++ suffix)
+    ?_ ?_ ?_ ?_ ?_ ?_ aIndex bIndex result
+  · intro ai bi acc hmore haDone ih
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haDone]
+    rcases ih with ⟨suffix, hsuffix⟩
+    refine ⟨b[bi]! :: suffix, ?_⟩
+    rw [hsuffix, Array.toList_push]
+    simp
+  · intro ai bi acc hmore haMore hbDone ih
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haMore, hbDone]
+    rcases ih with ⟨suffix, hsuffix⟩
+    refine ⟨a[ai]! :: suffix, ?_⟩
+    rw [hsuffix, Array.toList_push]
+    simp
+  · intro ai bi acc hmore haMore hbMore hdegree ih
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haMore, hbMore, hdegree]
+    rcases ih with ⟨suffix, hsuffix⟩
+    refine ⟨b[bi]! :: suffix, ?_⟩
+    rw [hsuffix, Array.toList_push]
+    simp
+  · intro ai bi acc hmore haMore hbMore hnotGreater hequal ih
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    by_cases hcoefficient : b[bi]!.2 + a[ai]!.2 != 0
+    · simp [hmore, haMore, hbMore, hnotGreater, hequal,
+        Generated.StrictHensel.pushNonzero, hcoefficient] at ih ⊢
+      rcases ih with ⟨suffix, hsuffix⟩
+      refine ⟨(a[ai]!.1, b[bi]!.2 + a[ai]!.2) :: suffix, ?_⟩
+      simpa using hsuffix
+    · simpa [hmore, haMore, hbMore, hnotGreater, hequal,
+        Generated.StrictHensel.pushNonzero, hcoefficient] using ih
+  · intro ai bi acc hmore haMore hbMore hnotGreater hnotEqual ih
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    simp [hmore, haMore, hbMore, hnotGreater, hnotEqual]
+    rcases ih with ⟨suffix, hsuffix⟩
+    refine ⟨a[ai]! :: suffix, ?_⟩
+    rw [hsuffix, Array.toList_push]
+    simp
+  · intro ai bi acc hdone
+    rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+    exact ⟨[], by simp [hdone]⟩
+
+/-- If every term on the right is below the concrete left head, the actual
+merge emits that left head first and the recursive frame keeps it there. -/
+theorem pairVecAddLoop_preserves_left_head
+    (a b : SparsePolyZZ) (ha : 0 < a.size)
+    (hbelow : ∀ term ∈ b.toList, term.1.deg < a[0].1.deg) :
+    ∃ suffix,
+      (Generated.StrictHensel.pairVecAddLoop a b 0 0 #[]).toList =
+        a[0] :: suffix := by
+  rw [Generated.StrictHensel.pairVecAddLoop.eq_1]
+  have hmore : 0 < a.size ∨ 0 < b.size := Or.inl ha
+  have haMore : ¬0 ≥ a.size := by omega
+  simp only [hmore, haMore, ↓reduceDIte, ↓reduceIte]
+  by_cases hb : 0 < b.size
+  · have hbDone : ¬0 ≥ b.size := by omega
+    have hbmem : b[0] ∈ b.toList := Array.getElem_mem_toList hb
+    have hdegree : ¬b[0]!.1.deg > a[0]!.1.deg := by
+      rw [getElem!_pos b 0 hb, getElem!_pos a 0 ha]
+      exact Nat.not_lt.mpr (Nat.le_of_lt (hbelow b[0] hbmem))
+    have hequal : ¬b[0]!.1.deg = a[0]!.1.deg := by
+      rw [getElem!_pos b 0 hb, getElem!_pos a 0 ha]
+      exact Nat.ne_of_lt (hbelow b[0] hbmem)
+    simp only [hbDone, hdegree, hequal, ↓reduceIte]
+    rcases pairVecAddLoop_result_prefix a b 1 0
+        ((#[] : SparsePolyZZ).push a[0]!) with
+      ⟨suffix, hsuffix⟩
+    refine ⟨suffix, ?_⟩
+    simpa [getElem!_pos a 0 ha] using hsuffix
+  · have hbDone : 0 ≥ b.size := by omega
+    simp only [hbDone, ↓reduceIte]
+    rcases pairVecAddLoop_result_prefix a b 1 0
+        ((#[] : SparsePolyZZ).push a[0]!) with
+      ⟨suffix, hsuffix⟩
+    refine ⟨suffix, ?_⟩
+    simpa [getElem!_pos a 0 ha] using hsuffix
+
 set_option maxHeartbeats 0 in
 /-- The exact generated `pair_vec_sub` merge preserves the canonical sparse
 integer representation under the same emitted-prefix frontier invariant. -/

@@ -2439,3 +2439,23 @@ boundary.
 No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the strict degree result is propagated through the concrete scale/add/mod
 operations and then through the recursive Hensel tree.
+
+## Frame the concrete Hensel correction merge
+
+The actual sparse addition loop now exposes the frame property needed to
+carry a factor's leading term through a Hensel correction.
+
+- `pairVecAddLoop_result_prefix` follows all six generated merge branches and
+  proves that recursion only appends after the explicit result cursor.  Its
+  equal-degree branch separately handles `pushNonzero` appending a sum and
+  omitting an exact cancellation.
+- `pairVecAddLoop_preserves_left_head` executes the first source iteration
+  when every right-hand correction degree is below the concrete left head.
+  It proves that the left head is emitted first, then uses the recursive frame
+  theorem to show it cannot be overwritten.
+- The proof explicitly reconciles generated `getElem!` reads with bounded
+  `getElem` reads; no unchecked array identity is assumed.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+the modular-divmod degree stop is transported through `scaleCoeffs`, this
+merge theorem, and the exact coefficient-reduction loop.

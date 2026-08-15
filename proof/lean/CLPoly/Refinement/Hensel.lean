@@ -1704,6 +1704,90 @@ theorem pairVecAddLoop_preserves_left_head
     refine ⟨suffix, ?_⟩
     simpa [getElem!_pos a 0 ha] using hsuffix
 
+/-- The generated coefficient-scaling range-for changes only coefficients;
+every emitted correction term retains its source degree. -/
+theorem scaleCoeffs_degrees_below (input : SparsePolyZZ) (scale : Int)
+    (bound : Nat) (hbelow : ∀ term ∈ input.toList, term.1.deg < bound) :
+    ∀ term ∈ (Generated.StrictHensel.scaleCoeffs input scale).toList,
+      term.1.deg < bound := by
+  intro term hterm
+  rw [Generated.StrictHensel.scaleCoeffs, Array.toList_map,
+    List.mem_map] at hterm
+  rcases hterm with ⟨source, hsource, rfl⟩
+  exact hbelow source hsource
+
+/-- The generated coefficient-reduction/filter loop retains a concrete head
+whose floor remainder is itself and whose coefficient is nonzero.  The
+statement records the physical output-list head, not merely a modular
+polynomial equality. -/
+theorem modCoeffOutput_preserves_head
+    (input : SparsePolyZZ) (modulus : Int) (head : UMonomial × Int)
+    (tail : List (UMonomial × Int))
+    (hinput : input.toList = head :: tail)
+    (hremainder : ZZ.fdiv_r head.2 head.2 modulus = head.2)
+    (hcoefficient : head.2 ≠ 0) :
+    ∃ suffix,
+      (Generated.StrictHensel.modCoeffOutput input modulus).toList =
+        head :: suffix := by
+  rw [Generated.StrictHensel.modCoeffOutput, Array.toList_filterMap, hinput]
+  simp only [List.filterMap_cons]
+  rw [hremainder]
+  simp [hcoefficient]
+
+/-- In particular, reduction modulo a positive modulus greater than one
+physically retains a leading coefficient equal to one. -/
+theorem modCoeffOutput_preserves_one_head
+    (input : SparsePolyZZ) (modulus : Nat) (head : UMonomial)
+    (tail : List (UMonomial × Int))
+    (hinput : input.toList = (head, 1) :: tail)
+    (hmodulus : 1 < modulus) :
+    ∃ suffix,
+      (Generated.StrictHensel.modCoeffOutput input (modulus : Int)).toList =
+        (head, 1) :: suffix := by
+  apply modCoeffOutput_preserves_head input (modulus : Int) (head, 1) tail
+    hinput
+  · unfold ZZ.fdiv_r
+    change (1 : Int).fmod (modulus : Int) = 1
+    exact Int.fmod_eq_of_lt (by omega) (by exact_mod_cast hmodulus)
+  · norm_num
+
+/-- The complete concrete `h` correction fragment from `__hensel_step`
+preserves a coefficient-one head whenever the actual modular-division
+remainder lies below it.  This composes the generated scale, merge, and
+coefficient-reduction traversals in source order. -/
+theorem henselHCorrection_preserves_one_head
+    (h remainder : SparsePolyZZ) (m : Nat) (head : UMonomial)
+    (tail : List (UMonomial × Int))
+    (hh : h.toList = (head, 1) :: tail)
+    (hremainderBelow : ∀ term ∈ remainder.toList,
+      term.1.deg < head.deg)
+    (hm : 1 < m) :
+    ∃ suffix,
+      (Generated.StrictHensel.modCoeffOutput
+        (Generated.StrictHensel.pairVecAddLoop h
+          (Generated.StrictHensel.scaleCoeffs remainder (m : Int))
+          0 0 #[]) (m ^ 2 : Int)).toList = (head, 1) :: suffix := by
+  have hhsize : 0 < h.size := by
+    have hlength := congrArg List.length hh
+    have hsizeEq : h.size = tail.length + 1 := by simpa using hlength
+    omega
+  have hhhead : h[0] = (head, 1) := by
+    have hheadList := congrArg List.head? hh
+    have hheadOption : h[0]? = some (head, 1) := by
+      rw [List.head?_eq_getElem?, Array.getElem?_toList] at hheadList
+      exact hheadList
+    exact Option.some.inj
+      ((Array.getElem?_eq_getElem hhsize).symm.trans hheadOption)
+  have hscaledBelow := scaleCoeffs_degrees_below remainder (m : Int)
+    head.deg hremainderBelow
+  have hadd := pairVecAddLoop_preserves_left_head h
+    (Generated.StrictHensel.scaleCoeffs remainder (m : Int)) hhsize (by
+      simpa [hhhead] using hscaledBelow)
+  rcases hadd with ⟨mergedTail, hmerged⟩
+  rw [hhhead] at hmerged
+  apply modCoeffOutput_preserves_one_head _ (m ^ 2) head mergedTail hmerged
+  nlinarith
+
 set_option maxHeartbeats 0 in
 /-- The exact generated `pair_vec_sub` merge preserves the canonical sparse
 integer representation under the same emitted-prefix frontier invariant. -/

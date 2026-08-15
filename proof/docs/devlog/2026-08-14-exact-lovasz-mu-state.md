@@ -2459,3 +2459,23 @@ carry a factor's leading term through a Hensel correction.
 No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the modular-divmod degree stop is transported through `scaleCoeffs`, this
 merge theorem, and the exact coefficient-reduction loop.
+
+## Preserve a Hensel factor head through its concrete correction
+
+The complete generated `h`-field correction fragment now retains a physical
+coefficient-one head under the strict remainder-degree premise.
+
+- `scaleCoeffs_degrees_below` proves directly from the generated array map
+  that multiplying the correction by `m` changes no stored exponent.
+- `modCoeffOutput_preserves_head` follows the generated filter-map and keeps
+  a concrete head when its floor remainder is unchanged and nonzero;
+  `modCoeffOutput_preserves_one_head` discharges those arithmetic checks for
+  coefficient one and every modulus greater than one.
+- `henselHCorrection_preserves_one_head` composes the exact scale, merge, and
+  `m^2` coefficient-reduction operations in source order.  Its conclusion is
+  an equality of the returned sparse array's physical list head, not only a
+  congruence of decoded polynomials.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+the actual modular-divmod stopping theorem supplies the remainder-degree
+premise, closing leading-term preservation for one generated Hensel step.

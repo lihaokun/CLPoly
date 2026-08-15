@@ -721,3 +721,27 @@ original finite-field factors.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：组合初始树叶布局、最终提取遍历与 normalization，导出输出数组逐项模 p 对应
+
+## Generated leaf extraction order is now explicit
+
+`henselExtractedFactors` gives a pure denotation of the exact generated leaf
+walk: a missing left/right child emits the current node's `g`/`h`, while a
+present child recursively emits that subtree.  It therefore follows the same
+left-to-right source order and reads the actual node array; it does not accept
+an expected factor list.
+
+`HenselExtractCorrect.toList_eq` proves that every concrete extraction trace
+returns precisely its original prefix followed by this denotation.
+`HenselExtractCertificate.extractedFactors_forall₂` then combines the builder's
+constructor-shaped bounds certificate with `HenselArrayReduces`: reading the
+same topology from pre-lift and post-lift arrays yields pointwise factors that
+are equal modulo the selected prime.
+
+## 度量（exact Hensel leaf extraction）
+
+- 耗时：约 1.0 小时（提取 denotation、四分支 trace 归纳、逐项模 p 关系）
+- 覆盖执行：实际 `g/h` 叶分支和实际左右递归顺序
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 新发现的剩余边界：builder 当前只公开根区间乘积；还需沿实际递归 builder
+  导出所有初始叶子按顺序对应 adjusted 输入因子，不能由根证书替代

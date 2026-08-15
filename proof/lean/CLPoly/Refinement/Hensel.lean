@@ -4625,6 +4625,104 @@ inductive HenselExtractCorrect :
       HenselExtractCorrect (.node index (some left) (some right)) nodes input
         output
 
+/-- Pure denotation of the exact leaf order used by the generated extraction
+walk.  It reads the same node `g`/`h` fields selected by the source branches;
+it does not construct or normalize any factor. -/
+def henselExtractedFactors :
+    Generated.StrictHensel.HenselLiftTree → Array HenselNode →
+      List SparsePolyZZ
+  | .node index left right, nodes =>
+      (match left with
+        | none => [nodes[index]!.g]
+        | some child => henselExtractedFactors child nodes) ++
+      (match right with
+        | none => [nodes[index]!.h]
+        | some child => henselExtractedFactors child nodes)
+termination_by tree _ => tree.nodeCount
+decreasing_by
+  all_goals simp_all [Generated.StrictHensel.HenselLiftTree.nodeCount]
+
+/-- The semantic extraction trace returns the input prefix followed by exactly
+the node fields named by `henselExtractedFactors`, in source left-to-right
+order. -/
+theorem HenselExtractCorrect.toList_eq
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode} {input output : Array SparsePolyZZ}
+    (hcorrect : HenselExtractCorrect tree nodes input output) :
+    output.toList = input.toList ++ henselExtractedFactors tree nodes := by
+  induction hcorrect with
+  | leaf index nodes input output node hnode houtput =>
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlookup : nodes[index]! = node := by
+        have heq : nodes[index] = node :=
+          Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      subst output
+      simp [henselExtractedFactors, hlookup, List.append_assoc]
+  | left index left nodes input afterLeft output node hnode hleftRun
+      hleftCorrect houtput ih =>
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlookup : nodes[index]! = node := by
+        have heq : nodes[index] = node :=
+          Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      subst output
+      simp [henselExtractedFactors, hlookup, ih, List.append_assoc]
+  | right index right nodes input afterLeft output node hnode hafterLeft
+      hrightRun hrightCorrect ih =>
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlookup : nodes[index]! = node := by
+        have heq : nodes[index] = node :=
+          Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      subst afterLeft
+      simpa [henselExtractedFactors, hlookup, List.append_assoc] using ih
+  | branch index left right nodes input afterLeft output node hnode hleftRun
+      hleftCorrect hrightRun hrightCorrect leftIH rightIH =>
+      rw [rightIH, leftIH]
+      simp [henselExtractedFactors, List.append_assoc]
+
+/-- Reading the same extraction topology from two node arrays related by
+`HenselArrayReduces` produces pointwise congruent factor lists. -/
+theorem HenselExtractCertificate.extractedFactors_forall₂
+    {lower p : Nat} {tree : Generated.StrictHensel.HenselLiftTree}
+    {before after : Array HenselNode}
+    (hcertificate : HenselExtractCertificate lower tree before)
+    (hreduce : HenselArrayReduces p before after) :
+    List.Forall₂ (fun old new => toPolyMod p new = toPolyMod p old)
+      (henselExtractedFactors tree before)
+      (henselExtractedFactors tree after) := by
+  induction hcertificate with
+  | node index left right nodes value hlower hnode hleft hright
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hafterIndex : index < after.size := by omega
+      have hnodeReduce := hreduce.2 index hindex hafterIndex
+      simp only [henselExtractedFactors]
+      apply List.Forall₂.append
+      · cases left with
+        | none =>
+            exact .cons hnodeReduce.1 .nil
+        | some child =>
+            exact leftIH child rfl hreduce
+      · cases right with
+        | none =>
+            exact .cons hnodeReduce.2.1 .nil
+        | some child =>
+            exact rightIH child rfl hreduce
+
 private theorem henselExtractRefinesAux
     (tree : Generated.StrictHensel.HenselLiftTree)
     (nodes : Array HenselNode) (factors : Array SparsePolyZZ) :

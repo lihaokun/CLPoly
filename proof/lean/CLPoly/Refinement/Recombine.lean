@@ -1774,7 +1774,7 @@ theorem nextCombinationPivot_some_ne (indices : Array Nat)
       next hinspected => contradiction
 
 theorem nextCombination_true_pivot (indices next : Array Nat) (upper : Nat)
-    (hrun : Generated.StrictRecombine.nextCombination indices upper =
+  (hrun : Generated.StrictRecombine.nextCombination indices upper =
       (true, next)) :
     ∃ pivot, ∃ hpivot : pivot < indices.size,
       next[pivot]! = indices[pivot]! + 1 ∧
@@ -1815,8 +1815,11 @@ theorem nextCombination_true_minimal_suffix (indices next : Array Nat)
     (hrun : Generated.StrictRecombine.nextCombination indices upper =
       (true, next)) :
     ∃ pivot, ∃ hpivot : pivot < indices.size,
+      indices[pivot]! ≠ upper - indices.size + pivot ∧
       next[pivot]! = indices[pivot]! + 1 ∧
       (∀ index, index < pivot → next[index]! = indices[index]!) ∧
+      (∀ index (hindex : index < indices.size), pivot < index →
+        indices[index] = upper - indices.size + index) ∧
       (∀ index (hindex : index < indices.size), pivot < index →
         next[index]! = indices[pivot]! + 1 + (index - pivot)) := by
   unfold Generated.StrictRecombine.nextCombination at hrun
@@ -1832,7 +1835,9 @@ theorem nextCombination_true_minimal_suffix (indices next : Array Nat)
         have hout := Prod.mk.inj hrun
         have hnext := hout.2
         subst next
-        refine ⟨pivot, hpivotLt, ?_, ?_, ?_⟩
+        refine ⟨pivot, hpivotLt, ?_, ?_, ?_, ?_, ?_⟩
+        · rw [getElem!_pos indices pivot hpivotLt]
+          exact nextCombinationPivot_some_ne indices upper 0 pivot hpivotSome
         · rw [resetCombinationSuffix_getElem_le _ pivot 0 pivot
             (by simpa using hpivotLt) (Nat.le_refl _)]
           simp [getElem!_pos, hpivotBounds]
@@ -1844,6 +1849,9 @@ theorem nextCombination_true_minimal_suffix (indices next : Array Nat)
             getElem!_pos indices index hindexBounds, Array.getElem_set]
           rw [if_neg (by omega)]
         · intro index hindex hafter
+          exact nextCombinationPivot_some_suffix_zero indices upper pivot
+            hpivotSome index hafter hindex
+        · intro index hindex hafter
           rw [resetCombinationSuffix_getElem_after_pivot _ pivot index
             (by simpa using hpivotLt) (by simpa using hindex) hafter]
           rw [getElem!_pos _ pivot (by simpa using hpivotLt),
@@ -1851,6 +1859,209 @@ theorem nextCombination_true_minimal_suffix (indices next : Array Nat)
             getElem!_pos indices pivot hpivotLt]
       next hpivotBounds => simp at hrun
   next hfits => simp at hrun
+
+/-- The actual fixed-size subset representation consumed by recombination:
+the array has the requested size, its entries are strictly increasing (the
+`gap` form also records the accumulated distance), and every entry is below
+`upper`. -/
+private def LegalCombination (upper count : Nat) (indices : Array Nat) : Prop :=
+  indices.size = count ∧
+  (∀ left right (hleft : left < indices.size) (hright : right < indices.size),
+    left < right → indices[left]! + (right - left) ≤ indices[right]!) ∧
+  ∀ index (hindex : index < indices.size), indices[index]! < upper
+
+/-- Lexicographic order on equal-size source arrays, stated at the concrete
+first differing position.  This avoids assigning an order to arrays of
+different lengths, which never occur in the C++ combination scan. -/
+private def ArrayLexLT (left right : Array Nat) : Prop :=
+  left.size = right.size ∧ ∃ pivot, pivot < left.size ∧
+    (∀ index, index < pivot → left[index]! = right[index]!) ∧
+    left[pivot]! < right[pivot]!
+
+private theorem legalCombination_positional_bound (upper count : Nat)
+    (indices : Array Nat) (hlegal : LegalCombination upper count indices) :
+    ∀ index (hindex : index < indices.size),
+      indices[index]! ≤ upper - count + index := by
+  intro index hindex
+  rcases hlegal with ⟨hsize, hgap, hupper⟩
+  have hlast : indices.size - 1 < indices.size := by omega
+  have hlastUpper := hupper (indices.size - 1) hlast
+  by_cases hindexLast : index = indices.size - 1
+  · subst index
+    omega
+  · have htoLast := hgap index (indices.size - 1) hindex hlast (by omega)
+    omega
+
+private theorem legalCombination_valid (upper count : Nat)
+    (indices : Array Nat) (hlegal : LegalCombination upper count indices) :
+    ValidCombination upper count indices :=
+  ⟨hlegal.1, legalCombination_positional_bound upper count indices hlegal⟩
+
+/-- A successful generated successor is immediate among all legal
+fixed-size combinations: no legal array lies strictly between the input and
+output.  The proof uses the real rightmost-pivot state, including maximal old
+suffix digits, and the real reset loop's exact minimal new suffix. -/
+theorem nextCombination_true_no_legal_between (indices next middle : Array Nat)
+    (upper count : Nat) (hlegal : LegalCombination upper count middle)
+    (hrun : Generated.StrictRecombine.nextCombination indices upper =
+      (true, next))
+    (hleft : ArrayLexLT indices middle) (hright : ArrayLexLT middle next) :
+    False := by
+  obtain ⟨pivot, hpivot, hpivotNotMax, hpivotNext, hprefixNext, hmaxSuffix,
+    hminSuffix⟩ :=
+    nextCombination_true_minimal_suffix indices next upper hrun
+  rcases hleft with ⟨hsizeMiddle, leftPivot, hleftPivot,
+    hprefixMiddle, hleftValue⟩
+  rcases hright with ⟨hsizeNext, rightPivot, hrightPivot,
+    hmiddleNextPrefix, hrightValue⟩
+  rcases hlegal with ⟨hmiddleCount, hmiddleGap, hmiddleUpper⟩
+  have hpivotMiddle : pivot < middle.size := by omega
+  have hpivotNextBounds : pivot < next.size := by omega
+  by_cases hleftBefore : leftPivot < pivot
+  · have hmiddleAtLeft : middle[leftPivot]! > next[leftPivot]! := by
+      rw [hprefixNext leftPivot hleftBefore]
+      exact hleftValue
+    by_cases hrightBefore : rightPivot < leftPivot
+    · have hindicesMiddleAtRight := hprefixMiddle rightPivot hrightBefore
+      have hnextIndicesAtRight := hprefixNext rightPivot (by omega)
+      omega
+    · by_cases hsame : rightPivot = leftPivot
+      · subst rightPivot
+        omega
+      · have hmiddleNextAtLeft := hmiddleNextPrefix leftPivot (by omega)
+        omega
+  · by_cases hpivotBefore : pivot < leftPivot
+    · have hmaxCurrent := hmaxSuffix leftPivot (by omega) hpivotBefore
+      have hlast : middle.size - 1 < middle.size := by omega
+      have hlastUpper := hmiddleUpper (middle.size - 1) hlast
+      rw [getElem!_pos indices leftPivot hleftPivot, hmaxCurrent] at hleftValue
+      rw [hsizeMiddle, hmiddleCount] at hleftValue
+      by_cases hleftLast : leftPivot = middle.size - 1
+      · subst leftPivot
+        omega
+      · have hgapToLast := hmiddleGap leftPivot (middle.size - 1)
+          (by omega) hlast (by omega)
+        omega
+    · have hleftEq : leftPivot = pivot := by omega
+      subst leftPivot
+      have hmiddlePivotLower : indices[pivot]! + 1 ≤ middle[pivot]! := by omega
+      by_cases hrightBefore : rightPivot < pivot
+      · have hindicesMiddleAtRight := hprefixMiddle rightPivot hrightBefore
+        have hnextIndicesAtRight := hprefixNext rightPivot hrightBefore
+        omega
+      · by_cases hpivotRight : pivot < rightPivot
+        · have hmiddleNextAtPivot := hmiddleNextPrefix pivot hpivotRight
+          rw [hpivotNext] at hmiddleNextAtPivot
+          have hmiddlePivotEq : middle[pivot]! = indices[pivot]! + 1 := by omega
+          have hrightAfterPivot : pivot < rightPivot := hpivotRight
+          have hmiddleLower := hmiddleGap pivot rightPivot hpivotMiddle
+            (by omega) hrightAfterPivot
+          have hnextExact := hminSuffix rightPivot (by omega) hrightAfterPivot
+          rw [hmiddlePivotEq] at hmiddleLower
+          rw [hnextExact] at hrightValue
+          omega
+        · have hrightEq : rightPivot = pivot := by omega
+          subst rightPivot
+          rw [hpivotNext] at hrightValue
+          omega
+
+private theorem initialCombination_legal (upper count : Nat)
+    (hfits : count ≤ upper) :
+    LegalCombination upper count
+      (Generated.StrictRecombine.initialCombination count) := by
+  refine ⟨initialCombination_size count, ?_, ?_⟩
+  · intro left right hleft hright hlr
+    have hleftCount : left < count := by
+      simpa [initialCombination_size] using hleft
+    have hrightCount : right < count := by
+      simpa [initialCombination_size] using hright
+    have hleftArray :
+        (Generated.StrictRecombine.initialCombination count)[left]! =
+          (Generated.StrictRecombine.initialCombination count).toList[left]! := by
+      rw [getElem!_pos _ left hleft,
+        getElem!_pos _ left (by simpa using hleft)]
+      exact (Array.getElem_toList hleft).symm
+    have hrightArray :
+        (Generated.StrictRecombine.initialCombination count)[right]! =
+          (Generated.StrictRecombine.initialCombination count).toList[right]! := by
+      rw [getElem!_pos _ right hright,
+        getElem!_pos _ right (by simpa using hright)]
+      exact (Array.getElem_toList hright).symm
+    rw [hleftArray, hrightArray, initialCombination_toList]
+    simp [getElem!_pos, hleftCount, hrightCount]
+    omega
+  · intro index hindex
+    have hindexCount : index < count := by
+      simpa [initialCombination_size] using hindex
+    have harray :
+        (Generated.StrictRecombine.initialCombination count)[index]! =
+          (Generated.StrictRecombine.initialCombination count).toList[index]! := by
+      rw [getElem!_pos _ index hindex,
+        getElem!_pos _ index (by simpa using hindex)]
+      exact (Array.getElem_toList hindex).symm
+    rw [harray, initialCombination_toList]
+    simp [getElem!_pos, hindexCount]
+    omega
+
+private theorem nextCombination_preserves_legal (upper count : Nat)
+    (indices next : Array Nat) (hlegal : LegalCombination upper count indices)
+    (hrun : Generated.StrictRecombine.nextCombination indices upper =
+      (true, next)) : LegalCombination upper count next := by
+  obtain ⟨pivot, hpivot, hpivotNotMax, hpivotNext, hprefixNext, hmaxSuffix,
+    hminSuffix⟩ :=
+    nextCombination_true_minimal_suffix indices next upper hrun
+  rcases hlegal with ⟨hsize, hgap, hupper⟩
+  have hnextSizeRaw := nextCombination_size indices upper
+  rw [hrun] at hnextSizeRaw
+  have hnextSize : next.size = indices.size := by simpa using hnextSizeRaw
+  have hfits : indices.size ≤ upper := by
+    have hcopy := hrun
+    unfold Generated.StrictRecombine.nextCombination at hcopy
+    split at hcopy
+    next hsizeFits => exact hsizeFits
+    next hsizeFits => simp at hcopy
+  have hpivotNextBounds : pivot < next.size := by omega
+  have hpivotBound := legalCombination_positional_bound upper count indices
+    ⟨hsize, hgap, hupper⟩ pivot hpivot
+  refine ⟨hnextSize.trans hsize, ?_, ?_⟩
+  · intro left right hleft hright hlr
+    have hleftOld : left < indices.size := by omega
+    have hrightOld : right < indices.size := by omega
+    by_cases hrightPrefix : right < pivot
+    · rw [hprefixNext left (by omega), hprefixNext right hrightPrefix]
+      exact hgap left right hleftOld hrightOld hlr
+    · by_cases hleftPrefix : left < pivot
+      · rw [hprefixNext left hleftPrefix]
+        by_cases hrightPivot : right = pivot
+        · subst right
+          rw [hpivotNext]
+          have := hgap left pivot hleftOld hpivot hleftPrefix
+          omega
+        · rw [hminSuffix right hrightOld (by omega)]
+          have := hgap left pivot hleftOld hpivot hleftPrefix
+          omega
+      · have hpivotLeLeft : pivot ≤ left := by omega
+        by_cases hleftPivot : left = pivot
+        · subst left
+          rw [hpivotNext, hminSuffix right hrightOld hlr]
+        · rw [hminSuffix left hleftOld (by omega),
+            hminSuffix right hrightOld (by omega)]
+          omega
+  · intro index hindex
+    have hindexOld : index < indices.size := by omega
+    by_cases hprefix : index < pivot
+    · rw [hprefixNext index hprefix]
+      exact hupper index hindexOld
+    · by_cases hpivotIndex : index = pivot
+      · subst index
+        rw [hpivotNext]
+        rw [hsize] at hpivotNotMax
+        have hpivotCount : pivot < count := by omega
+        omega
+      · rw [hminSuffix index hindexOld (by omega)]
+        rw [hsize] at hpivotNotMax
+        have hindexCount : index < count := by omega
+        omega
 
 private theorem nextCombination_valid (upper count : Nat)
     (indices next : Array Nat) (hvalid : ValidCombination upper count indices)
@@ -1972,12 +2183,12 @@ private theorem initialCombination_valid (upper count : Nat)
 
 private def concreteCombinationTermination (upper count : Nat) :
     Generated.StrictRecombine.CombinationTermination upper count where
-  valid := ValidCombination upper count
+  valid := LegalCombination upper count
   valid_size := fun _ hvalid => hvalid.1
   rank := fun current =>
     (upper + 1) ^ count - positionalCode (upper + 1) current.toList
   next_valid := fun current next hvalid hrun =>
-    nextCombination_valid upper count current next hvalid hrun
+    nextCombination_preserves_legal upper count current next hvalid hrun
   next_decreases := by
     intro current next hvalid hrun
     have hfits : count ≤ upper := by
@@ -1986,11 +2197,15 @@ private def concreteCombinationTermination (upper count : Nat) :
       split at hcopy
       next hsizeFits => exact hvalid.1 ▸ hsizeFits
       next hsizeFits => simp at hcopy
-    have hnextValid := nextCombination_valid upper count current next hvalid hrun
-    have hcode := nextCombination_code_increases upper count current next hvalid hrun
+    have hvalidWeak := legalCombination_valid upper count current hvalid
+    have hnextLegal := nextCombination_preserves_legal upper count current next
+      hvalid hrun
+    have hnextValid := legalCombination_valid upper count next hnextLegal
+    have hcode := nextCombination_code_increases upper count current next
+      hvalidWeak hrun
     apply Nat.sub_lt_sub_left
-    · have hdigits := validCombination_digits upper count current hvalid hfits
-      simpa [hvalid.1] using
+    · have hdigits := validCombination_digits upper count current hvalidWeak hfits
+      simpa [hvalidWeak.1] using
         positionalCode_lt_pow (upper + 1) (by omega) current.toList hdigits
     · exact hcode
 
@@ -2036,7 +2251,7 @@ def concreteZassenhausTermination :
     Generated.StrictRecombine.ZassenhausTermination where
   combinations := concreteCombinationTermination
   initial_valid := fun upper count hfits =>
-    initialCombination_valid upper count hfits
+    initialCombination_legal upper count hfits
   removal_decreases := fun active candidate output hnonempty hrun =>
     removeCombination_strict candidate active output hnonempty hrun
 

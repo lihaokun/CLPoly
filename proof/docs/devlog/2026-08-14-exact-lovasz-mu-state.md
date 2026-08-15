@@ -1304,3 +1304,32 @@ not reason through an alternative list-combination implementation.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：定义固定大小严格递增组合的 lex 顺序，证明不存在
   介于当前数组与该最小后缀结果之间的合法组合
+
+## Immediate legal successor and strict scan invariant
+
+The concrete combination certificate no longer tracks only array size and a
+per-position upper bound.  Its invariant is now the actual C++ subset
+representation: fixed size, strictly increasing entries (in accumulated-gap
+form), and every entry below `upper`.  The generated initial iota array
+establishes this invariant, and every successful generated
+`nextCombination` preserves it.
+
+`nextCombination_true_no_legal_between` proves that no legal fixed-size
+combination lies lexicographically between an input and its successful source
+successor.  The proof distinguishes the concrete first differing positions.
+A difference to the right of the generated pivot contradicts the old
+rightmost-maximal suffix; a difference at the pivot is bounded below by the
+new pivot and its minimal consecutive suffix; and a difference to the left
+contradicts the unchanged prefix.  Thus the well-founded generated scan now
+carries the strong legality invariant needed for a genuine no-omission
+argument, rather than an unrelated list enumerator or an assumed coverage
+oracle.
+
+## 度量（immediate legal successor）
+
+- 耗时：约 1.5 小时（合法组合不变量、位置上界、直接后继、闭包）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：从初始最小组合和直接后继推出 generated scan 对每个合法
+  固定大小候选的可达性，再连接 rejected/extracted 结果

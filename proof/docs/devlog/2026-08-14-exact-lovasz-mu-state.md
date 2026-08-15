@@ -2029,3 +2029,22 @@ single-file formal check passes without error or `sorry`.  The next obligation
 is to carry these invariants through successful active-array removal and the
 outer subset-size loop, retaining the rejection history for all smaller
 candidate sizes needed to rule out proper factors.
+
+## Active-factor erasure preserves concrete origins
+
+The successful outer-loop transition removes the selected active positions by
+executing `removeCombinationLoop` from the candidate tail toward its head.
+That exact reverse-erasure recursion is now proved origin preserving: every
+factor in the returned active array is a member of the input array.
+
+The resulting `removeCombination_preserves_pointwise` theorem transports any
+pointwise invariant through the actual successful removal, and will be
+instantiated with irreducibility of each lifted factor modulo the selected
+prime.  It neither reconstructs an abstract complement nor assumes that the
+candidate has no duplicates; successful bounds checks and the concrete array
+erasures provide the whole proof.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+single-file check passes without error or `sorry`.  The next proof combines
+this origin preservation with the scan certificate and the accumulated
+smaller-subset rejection history in the outer Zassenhaus loop.

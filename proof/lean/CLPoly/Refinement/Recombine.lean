@@ -2945,6 +2945,67 @@ theorem removeCombination_strict (candidate : Array Nat)
     output hrun
   omega
 
+private theorem mem_toList_of_mem_eraseIdxIfInBounds_toList
+    {α : Type*} (value : α) (active : Array α) (index : Nat)
+    (hmember : value ∈ (active.eraseIdxIfInBounds index).toList) :
+    value ∈ active.toList := by
+  grind
+
+/-- Reverse erasure in the generated successful-candidate path only removes
+source occurrences; every surviving active factor is an actual member of the
+input active array. -/
+theorem removeCombinationLoop_member
+    (candidate : Array Nat) (remaining : Nat)
+    (active output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.removeCombinationLoop candidate
+      remaining active = .ok output) :
+    ∀ factor ∈ output.toList, factor ∈ active.toList := by
+  induction remaining generalizing active output with
+  | zero =>
+      rw [Generated.StrictRecombine.removeCombinationLoop] at hrun
+      have hout := Except.ok.inj hrun
+      subst output
+      exact fun factor hfactor => hfactor
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.removeCombinationLoop] at hrun
+      split at hrun
+      next hcand =>
+        dsimp at hrun
+        split at hrun
+        next hactive =>
+          intro factor hfactor
+          exact mem_toList_of_mem_eraseIdxIfInBounds_toList factor active
+            candidate[remaining] (ih _ _ hrun factor hfactor)
+        next hactive => contradiction
+      next hcand => contradiction
+
+theorem removeCombination_member
+    (candidate : Array Nat) (active output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.removeCombination candidate active =
+      .ok output) :
+    ∀ factor ∈ output.toList, factor ∈ active.toList := by
+  exact removeCombinationLoop_member candidate candidate.size active output hrun
+
+/-- Pointwise properties, in particular selected-prime irreducibility, survive
+the actual generated reverse-erasure execution. -/
+theorem removeCombination_preserves_pointwise
+    (candidate : Array Nat) (active output : Array SparsePolyZZ)
+    (property : SparsePolyZZ → Prop)
+    (hproperty : ∀ index (hindex : index < active.size),
+      property active[index])
+    (hrun : Generated.StrictRecombine.removeCombination candidate active =
+      .ok output) :
+    ∀ index (hindex : index < output.size), property output[index] := by
+  intro index hindex
+  have hmember := removeCombination_member candidate active output hrun
+    output[index] (Array.getElem_mem_toList hindex)
+  rcases List.mem_iff_getElem.mp hmember with
+    ⟨sourceIndex, hsourceIndex, hvalue⟩
+  have hsourceArray : sourceIndex < active.size := by simpa using hsourceIndex
+  rw [Array.getElem_toList hsourceArray] at hvalue
+  rw [← hvalue]
+  exact hproperty sourceIndex hsourceArray
+
 /-- The concrete termination package for the source Zassenhaus loops.  Its
 combination rank is the complement of the base-`upper+1` positional code;
 the outer rank is discharged by the actual successful subset removal. -/

@@ -8521,6 +8521,80 @@ theorem primitiveDivideLoop_toPoly (input : SparsePolyZZ) (divisor : Int)
         subst output
         simp [intTermsToPoly, List.drop_eq_nil_iff.mpr hle]
 
+/-- Exact list produced by the source coefficient-wise primitive division
+loop.  The successful trace itself certifies every checked divisibility. -/
+theorem primitiveDivideLoop_toList (input : SparsePolyZZ) (divisor : Int)
+    (index : Nat) (result output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.primitiveDivideLoop input divisor index
+      result = .ok output) :
+    output.toList = result.toList ++
+      (input.toList.drop index).map
+        (fun term => (term.1, term.2 / divisor)) := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.primitiveDivideLoop] at hrun
+      split at hrun
+      next hindex =>
+        split at hrun
+        next hdivisor =>
+          split at hrun
+          next hdivides =>
+            rw [ih (input.size - (index + 1)) (by omega)
+              (index + 1)
+              (result.push (input[index].1, input[index].2 / divisor))
+              output hrun rfl]
+            have hsuffix : input.toList.drop index = input[index] ::
+                input.toList.drop (index + 1) := by
+              simpa using List.drop_eq_getElem_cons
+                (l := input.toList) (i := index) (by simpa using hindex)
+            simp [hsuffix, List.append_assoc]
+          next hdivides => contradiction
+        next hdivisor => contradiction
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [List.drop_eq_nil_iff.mpr hle]
+
+/-- Every coefficient copied by a successful primitive-division loop is an
+exact quotient by a nonzero divisor. -/
+theorem primitiveDivideLoop_constraints (input : SparsePolyZZ) (divisor : Int)
+    (index : Nat) (result output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.primitiveDivideLoop input divisor index
+      result = .ok output) :
+    ∀ term ∈ input.toList.drop index, divisor ≠ 0 ∧ divisor ∣ term.2 := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.primitiveDivideLoop] at hrun
+      split at hrun
+      next hindex =>
+        split at hrun
+        next hdivisor =>
+          split at hrun
+          next hdivides =>
+            have htail := ih (input.size - (index + 1)) (by omega)
+              (index + 1)
+              (result.push (input[index].1, input[index].2 / divisor))
+              output hrun rfl
+            have hsuffix : input.toList.drop index = input[index] ::
+                input.toList.drop (index + 1) := by
+              simpa using List.drop_eq_getElem_cons
+                (l := input.toList) (i := index) (by simpa using hindex)
+            intro term hterm
+            rw [hsuffix] at hterm
+            rcases List.mem_cons.mp hterm with rfl | htailMember
+            · exact ⟨hdivisor, hdivides⟩
+            · exact htail term htailMember
+          next hdivides => contradiction
+        next hdivisor => contradiction
+      next hindex =>
+        intro term hterm
+        exact False.elim (by
+          rw [List.drop_eq_nil_iff.mpr (Nat.le_of_not_gt hindex)] at hterm
+          simp at hterm)
+
 theorem primitiveRaw_toPoly (input primitive : SparsePolyZZ) (content : Int)
     (hrun : Generated.StrictRecombine.primitiveRaw input =
       .ok (content, primitive)) :
@@ -8565,6 +8639,58 @@ theorem primitiveRaw_toPoly (input primitive : SparsePolyZZ) (content : Int)
       have hprimitive' : primitive = primitive' := hprimitive
       rw [← hprimitive'] at hsemantic
       simpa [SparsePolyZZ.toPoly, intTermsToPoly] using hsemantic.symm
+
+/-- The actual primitive-part routine preserves the canonical sparse degree
+order and cannot create a zero coefficient. -/
+theorem primitiveRaw_canonical (input primitive : SparsePolyZZ) (content : Int)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (hrun : Generated.StrictRecombine.primitiveRaw input =
+      .ok (content, primitive)) :
+    StrictPolynomialMod.SparsePolyZZCanonical primitive := by
+  unfold Generated.StrictRecombine.primitiveRaw at hrun
+  split at hrun
+  next hempty =>
+    have hout := Except.ok.inj hrun
+    injection hout with hcontent hprimitive
+    subst primitive
+    exact hcanonical
+  next hempty =>
+    dsimp at hrun
+    let divisor : Int := if (input[0]'(by
+      have : input.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+      omega)).2 < 0 then
+        -(Generated.StrictRecombine.contentLoop input 0 0 : Int)
+      else Generated.StrictRecombine.contentLoop input 0 0
+    cases hdivide : Generated.StrictRecombine.primitiveDivideLoop input
+        divisor 0 #[] with
+    | error fault => simp [divisor, hdivide] at hrun
+    | ok primitive' =>
+        simp only [divisor, hdivide] at hrun
+        have hout := Except.ok.inj hrun
+        injection hout with hcontent hprimitive
+        subst primitive
+        have hlist := primitiveDivideLoop_toList input divisor 0 #[]
+          primitive' hdivide
+        simp only [Array.toList_empty, List.nil_append, List.drop_zero] at hlist
+        have hconstraints := primitiveDivideLoop_constraints input divisor 0 #[]
+          primitive' hdivide
+        simp only [List.drop_zero] at hconstraints
+        unfold StrictPolynomialMod.SparsePolyZZCanonical
+        rw [hlist]
+        constructor
+        · rw [List.isChain_map]
+          simpa using hcanonical.1
+        · intro output houtput
+          rcases List.mem_map.mp houtput with ⟨term, hterm, rfl⟩
+          have hinputNonzero := hcanonical.2 term hterm
+          rcases hconstraints term hterm with ⟨hdivisor, hdivides⟩
+          simp only [Prod.snd]
+          intro hquotient
+          have hcancel : divisor * (term.2 / divisor) = term.2 :=
+            Int.mul_ediv_cancel_of_dvd hdivides
+          rw [hquotient] at hcancel
+          simp at hcancel
+          exact hinputNonzero hcancel.symm
 
 theorem subtractScaledTermsLoop_toPoly (divisor : SparsePolyZZ)
     (scale : Int) (degreeShift index : Nat) (terms : SparsePolyZZ) :

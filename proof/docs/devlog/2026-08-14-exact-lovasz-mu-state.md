@@ -1043,3 +1043,28 @@ the same primitivity invariant.  No scalar is discarded by convention.
 - 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
 - 下一步：证明 successful Zassenhaus extraction 的 quotient primitive
   继续满足 canonical 表示，并闭合整个外层循环的不变量
+
+## Primitive quotient normalization preserves canonical sparse form
+
+`primitiveDivideLoop_toList` now identifies the exact backing list emitted by
+the source coefficient-division loop: the existing accumulator followed by
+the input suffix with every coefficient divided by the concrete divisor.
+`primitiveDivideLoop_constraints` separately extracts the runtime facts that
+the divisor is nonzero and divides every copied coefficient from the same
+successful execution trace.
+
+Using those facts, `primitiveRaw_canonical` proves that the actual
+`__upoly_primitive` lowering preserves the strict descending degree chain and
+cannot introduce a zero coefficient.  Degree order is preserved because the
+loop copies each monomial unchanged; quotient nonzeroness follows by exact
+division from the original canonical nonzero coefficient.  This applies
+directly to the `quotientPrimitive` installed after successful Zassenhaus and
+candidate-validation extraction.
+
+## 度量（primitive quotient canonicality）
+
+- 耗时：约 1.0 小时（精确输出列表、运行时整除约束、canonical 运输）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
+- 下一步：把 quotient 的 canonicality、已有 product/unit-scalar 和
+  primitivity 保持组合进 Zassenhaus 良基外层递归

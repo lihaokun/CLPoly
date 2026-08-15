@@ -9362,6 +9362,23 @@ private noncomputable def factorArrayProduct (factors : Array SparsePolyZZ) :
   Polynomial Int :=
   (factors.toList.map SparsePolyZZ.toPoly).prod
 
+private noncomputable def vanHoeijOutputProduct
+    (output : SparsePolyZZ × Array SparsePolyZZ) : Polynomial Int :=
+  if output.1.isEmpty then factorArrayProduct output.2
+  else SparsePolyZZ.toPoly output.1 * factorArrayProduct output.2
+
+private theorem appendFallback_product
+    (fallback result output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.appendFallback fallback result =
+      .ok output) :
+    factorArrayProduct output =
+      factorArrayProduct result * factorArrayProduct fallback := by
+  unfold Generated.StrictRecombine.appendFallback at hrun
+  rw [appendFallbackLoop_refines] at hrun
+  have hout := Except.ok.inj hrun
+  subst output
+  simp [factorArrayProduct]
+
 /-- Degree sorting at either concrete recombination exit changes only factor
 order and therefore preserves the represented product exactly. -/
 private theorem factorArrayProduct_sortFactorsByDegree
@@ -9935,5 +9952,242 @@ theorem validateCandidates_preserves_primitive
   rw [hprimitive.content_eq_one, Polynomial.content_C_mul,
     normalize_eq_one.mpr hscalarUnit, one_mul] at hcontent
   exact Polynomial.isPrimitive_iff_content_eq_one.mpr hcontent.symm
+
+/-- The source-shaped van-Hoeij loop preserves the complete live product up
+to a unit across validation extraction, precision retry, and the concrete
+Zassenhaus fallback. -/
+theorem vanHoeijLoop_product_associated
+    (ops : Generated.StrictRecombine.VanHoeijRawOps)
+    (termination : Generated.StrictRecombine.VanHoeijTermination ops)
+    (lifted : Array SparsePolyZZ) (modulus : ZZ)
+    (initial maximum : Nat) (hinitial : 0 < initial)
+    (state : Generated.StrictRecombine.VanHoeijState)
+    (hstate : Generated.StrictRecombine.VanHoeijStateValid ops state)
+    (hnonempty : 0 < state.fStar.size)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical state.fStar)
+    (hprimitive :
+      (SparsePolyZZ.toPoly state.fStar *
+        factorArrayProduct state.result).IsPrimitive)
+    (output : SparsePolyZZ × Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.vanHoeijLoop ops termination lifted
+      modulus initial maximum hinitial state hstate = .ok output) :
+    Associated
+      (SparsePolyZZ.toPoly state.fStar * factorArrayProduct state.result)
+      (vanHoeijOutputProduct output) ∧
+    (∀ houtputNonempty : 0 < output.1.size,
+      StrictPolynomialMod.SparsePolyZZCanonical output.1 ∧
+      (SparsePolyZZ.toPoly output.1 *
+        factorArrayProduct output.2).IsPrimitive) := by
+  rw [Generated.StrictRecombine.vanHoeijLoop] at hrun
+  split at hrun
+  next hdone =>
+    have hout := Except.ok.inj hrun
+    subst output
+    have hfStarNe : state.fStar ≠ #[] := by
+      intro hempty
+      have hsize : state.fStar.size = 0 := by
+        simpa using congrArg Array.size hempty
+      omega
+    constructor
+    · simp [vanHoeijOutputProduct, hfStarNe]
+    · intro houtputNonempty
+      simpa using And.intro hcanonical hprimitive
+  next hdone =>
+    split at hrun
+    next fault hgather => contradiction
+    next activeLifted hgather =>
+      let hdimension : state.matrix.size =
+          activeLifted.size + state.currentColumns := by
+        rw [ops.gather_size state.active lifted activeLifted hgather]
+        exact hstate.dimension
+      split at hrun
+      next fault hprepare => contradiction
+      next prepared hprepare =>
+        let matrix' := prepared.1.1
+        let currentColumns' := prepared.1.2.1
+        let candidates := prepared.1.2.2
+        dsimp only at hrun
+        split at hrun
+        next fault hvalidate => contradiction
+        next fStar' result' consumed hvalidate =>
+          by_cases hfound : ∃ index, ∃ hindex : index < consumed.size,
+              consumed[index] = true
+          · rw [dif_pos hfound] at hrun
+            split at hrun
+            next fault hremove => contradiction
+            next activeNext hremove =>
+              split at hrun
+              next fault hreset => contradiction
+              next resetMatrix resetBound hreset =>
+                have hcanonical' := validateCandidates_fStar_canonical
+                  ops.validation state.fStar activeLifted modulus candidates
+                  state.result fStar' result' consumed hcanonical hvalidate
+                have hprimitive' := validateCandidates_preserves_primitive
+                  ops.validation state.fStar activeLifted modulus candidates
+                  state.result fStar' result' consumed hprimitive hvalidate
+                have hnonempty' : 0 < fStar'.size := by
+                  by_contra hnot
+                  have hempty : fStar' = #[] := by
+                    have hsize : fStar'.size = 0 := Nat.eq_zero_of_not_pos hnot
+                    apply Array.ext (by simpa using hsize)
+                    intro index hindex hindexEmpty
+                    simp at hindexEmpty
+                  subst fStar'
+                  have hcontent :=
+                    Polynomial.isPrimitive_iff_content_eq_one.mp hprimitive'
+                  simp [SparsePolyZZ.toPoly] at hcontent
+                rcases validateCandidates_product_unit_scalar ops.validation
+                    state.fStar activeLifted modulus candidates state.result
+                    fStar' result' consumed hprimitive hvalidate with
+                  ⟨scalar, hscalar, hlive⟩
+                let nextState : Generated.StrictRecombine.VanHoeijState :=
+                  { active := activeNext.1, fStar := fStar', result := result',
+                    matrix := resetMatrix, currentColumns := 0,
+                    shortBound := resetBound, target := 0 }
+                have hnextValid :
+                    Generated.StrictRecombine.VanHoeijStateValid ops nextState :=
+                  ⟨(ops.reset_valid activeNext.1.size resetMatrix resetBound
+                      hreset).1,
+                    by simpa [nextState] using
+                      (ops.reset_valid activeNext.1.size resetMatrix resetBound
+                        hreset).2⟩
+                have htail := vanHoeijLoop_product_associated ops termination
+                  lifted modulus initial maximum hinitial nextState hnextValid
+                  (by simpa [nextState] using hnonempty')
+                  (by simpa [nextState] using hcanonical')
+                  (by simpa [nextState] using hprimitive') output hrun
+                have hconstantUnit :
+                    IsUnit (Polynomial.C scalar : Polynomial Int) :=
+                  Polynomial.isUnit_C.mpr hscalar
+                constructor
+                · exact (Associated.of_eq hlive).trans
+                    ((associated_isUnit_mul_left_iff hconstantUnit).mpr htail.1)
+                · exact htail.2
+          · rw [dif_neg hfound] at hrun
+            split at hrun
+            next target' hprecision =>
+              let nextState : Generated.StrictRecombine.VanHoeijState :=
+                { active := state.active, fStar := state.fStar,
+                  result := state.result, matrix := matrix',
+                  currentColumns := currentColumns',
+                  shortBound := state.shortBound, target := target' }
+              have hnextValid :
+                  Generated.StrictRecombine.VanHoeijStateValid ops nextState :=
+                ⟨prepared.2.1, by
+                  have hactiveSize :=
+                    ops.gather_size state.active lifted activeLifted hgather
+                  dsimp [nextState]
+                  exact prepared.2.2.trans (by omega)⟩
+              exact vanHoeijLoop_product_associated ops termination lifted modulus
+                initial maximum hinitial nextState hnextValid
+                (by simpa [nextState] using hnonempty)
+                (by simpa [nextState] using hcanonical)
+                (by simpa [nextState] using hprimitive) output hrun
+            next hprecision =>
+              split at hrun
+              next fault hfallback => contradiction
+              next fallback hfallback =>
+                split at hrun
+                next fault happend => contradiction
+                next appended happend =>
+                  have hout := Except.ok.inj hrun
+                  subst output
+                  have hfStarPrimitive :
+                      (SparsePolyZZ.toPoly state.fStar).IsPrimitive :=
+                    isPrimitive_left_of_mul hprimitive
+                  have hzassenhaus := zassenhausRecombine_product_associated
+                    ops.zassenhausTermination state.fStar activeLifted fallback
+                    modulus hcanonical hfStarPrimitive hfallback
+                  have happendProduct := appendFallback_product fallback
+                    state.result appended happend
+                  unfold vanHoeijOutputProduct
+                  simp only [Array.isEmpty_empty, Bool.true_eq, if_true]
+                  rw [happendProduct]
+                  constructor
+                  · exact (hzassenhaus.mul_right
+                      (factorArrayProduct state.result)).trans
+                      (Associated.of_eq (mul_comm _ _))
+                  · intro houtputNonempty
+                    simp at houtputNonempty
+termination_by
+  (state.active.size,
+    Generated.StrictRecombine.precisionRank state.target initial maximum)
+decreasing_by
+  · decreasing_tactic
+  · exact Prod.Lex.right _
+      (Generated.StrictRecombine.nextPrecision_retry_decreases state.target
+        initial maximum _ hinitial (by assumption))
+
+/-- Product refinement of the complete generated C++
+`__vanhoeij_recombine` entry.  Initialization, the lexicographically
+well-founded main loop, the concrete Zassenhaus fallback, and the final
+positive-degree append/sort block are all the generated execution path. -/
+theorem __vanhoeij_recombine_raw_ir_product_associated
+    (ops : Generated.StrictRecombine.VanHoeijRawOps)
+    (termination : Generated.StrictRecombine.VanHoeijTermination ops)
+    (f : SparsePolyZZ) (lifted : Array SparsePolyZZ) (modulus : ZZ)
+    (hdegree : 2 ≤ (get_deg f).toNatClampNeg)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.__vanhoeij_recombine_raw_ir ops
+      termination f lifted modulus hdegree = .ok output) :
+    Associated (SparsePolyZZ.toPoly f) (factorArrayProduct output) := by
+  rw [Generated.StrictRecombine.__vanhoeij_recombine_raw_ir] at hrun
+  dsimp only at hrun
+  split at hrun
+  next fault hreset => contradiction
+  next matrix bound hreset =>
+    split at hrun
+    next fault hloop => contradiction
+    next fStar result hloop =>
+      have hout := Except.ok.inj hrun
+      subst output
+      have hfNonempty : 0 < f.size := by
+        by_contra hnot
+        have hsize : f.size = 0 := Nat.eq_zero_of_not_pos hnot
+        have hempty : f = #[] := by
+          apply Array.ext (by simpa using hsize)
+          intro index hindex hindexEmpty
+          simp at hindexEmpty
+        subst f
+        simp [get_deg] at hdegree
+      have hloopInvariant := vanHoeijLoop_product_associated ops termination
+        lifted modulus
+        (min (if 3 * lifted.size > (get_deg f).toNatClampNeg + 1 then 30 else 10)
+          (((get_deg f).toNatClampNeg + 1) / 2))
+        (((get_deg f).toNatClampNeg + 1) / 2)
+        (by
+          apply lt_min
+          · split <;> omega
+          · apply Nat.div_pos <;> omega)
+        { active := (Array.range lifted.size).map
+            (fun index => index.toUInt32.toInt32),
+          fStar := f, result := #[], matrix := matrix,
+          currentColumns := 0, shortBound := bound, target := 0 }
+        ⟨(ops.reset_valid lifted.size matrix bound hreset).1, by
+          rw [(ops.reset_valid lifted.size matrix bound hreset).2]
+          simp⟩ hfNonempty hcanonical (by simpa [factorArrayProduct] using hprimitive)
+        (fStar, result) hloop
+      by_cases hfStarNonempty : 0 < fStar.size
+      · rcases hloopInvariant.2 hfStarNonempty with
+          ⟨hfStarCanonical, hlivePrimitive⟩
+        have hfinish := finishZassenhaus_product_associated fStar result
+          hfStarCanonical hlivePrimitive
+        have hfStarNe : fStar ≠ #[] := by
+          intro hempty
+          subst fStar
+          simp at hfStarNonempty
+        simpa [factorArrayProduct] using hloopInvariant.1.trans (by
+          simpa [vanHoeijOutputProduct, hfStarNe] using hfinish)
+      · have hfStarEmpty : fStar = #[] := by
+          have hsize : fStar.size = 0 := Nat.eq_zero_of_not_pos hfStarNonempty
+          apply Array.ext (by simpa using hsize)
+          intro index hindex hindexEmpty
+          simp at hindexEmpty
+        subst fStar
+        rw [factorArrayProduct_finishZassenhaus]
+        simp only [Array.size_empty, lt_self_iff_false, dite_false]
+        simpa [factorArrayProduct, vanHoeijOutputProduct] using hloopInvariant.1
 
 end Refinement.StrictRecombine

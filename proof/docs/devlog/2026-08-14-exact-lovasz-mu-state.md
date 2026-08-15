@@ -1195,3 +1195,38 @@ returned `fStar'` needed by the van-Hoeij state transition.
 - 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
 - 下一步：使用 validation 的 product/primitivity/canonical 三个结论闭合
   van-Hoeij 主循环的 extraction、retry、fallback 与 normal exit
+
+## Complete well-founded van-Hoeij product refinement
+
+`vanHoeijLoop_product_associated` now follows every branch of the generated
+C++ main loop and preserves the complete live product up to a unit.  A
+successful candidate-validation round uses the concrete unit-scalar product
+trace, canonical quotient trace, and primitivity transport before recursively
+resetting the actual lattice.  A round without extraction either advances the
+bounded precision target or executes the already refined concrete Zassenhaus
+fallback and appends its factors to the accumulated result.
+
+The proof uses exactly the generated lexicographic termination measure
+`(active.size, precisionRank target initial maximum)`: extraction strictly
+shrinks the active array; retry strictly decreases the remaining precision
+rank.  There is no fuel counter, partial definition, semantic oracle, or L2
+replacement branch.  The theorem additionally returns canonicality and
+primitivity of every nonempty live output remainder, which is needed to
+justify the source finishing block rather than assuming that a dropped
+degree-zero remainder is harmless.
+
+`__vanhoeij_recombine_raw_ir_product_associated` lifts the loop result through
+the complete generated C++ entry: reset lattice, construct the active index
+array, choose the source starting precision, execute the well-founded loop,
+conditionally append the remaining positive-degree factor, and sort by
+degree.  Thus its actual returned sparse array has product associated to the
+input primitive polynomial.
+
+## 度量（complete van-Hoeij product refinement）
+
+- 耗时：约 1.5 小时（双分量 WF 循环、validation 输出不变量、entry finish）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：从 lifted Zp 因子的不可约来源与真实重组候选性质，
+  闭合重组输出的 ZZ 不可约性，再接入 FactorZZ 顶层组合

@@ -1143,3 +1143,31 @@ install its recursive `fStar` with a proved representation invariant.
 - 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
 - 下一步：闭合 Zassenhaus outer loop 的 product、primitivity、canonical
   三项联合不变量
+
+## Complete source-shaped Zassenhaus product refinement
+
+The full generated Zassenhaus outer loop now preserves its live product up to
+a unit.  The theorem recurses on exactly the source pair
+`(active.size, active.size + 1 - subsetSize)`: exhausted scans advance the
+subset size, while successful extraction uses the concrete removal proof to
+strictly shrink the active lifted array and restart at subset size one.
+
+In the extraction branch, whole-live-product primitivity yields primitivity of
+the current `fStar`.  The scan's unit-scalar product trace, canonical returned
+quotient, and pushed result factor are combined into the next live product;
+content transport proves that product primitive before the recursive call.
+At termination, the previously proved finishing theorem handles the positive
+degree append and proves any omitted constant remainder is a unit.
+
+`zassenhausRecombine_product_associated` closes the concrete entry, including
+its zero/one lifted-factor shortcut and the full outer-loop branch.  It proves
+association with the actual sorted output array, not with an abstract list of
+factors.
+
+## 度量（complete Zassenhaus product refinement）
+
+- 耗时：约 1.5 小时（联合不变量、双分量 WF 递归、entry shortcuts）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
+- 下一步：把该定理接入 van-Hoeij fallback，并沿 successful validation、
+  precision retry 和 normal exit 闭合 van-Hoeij 主循环

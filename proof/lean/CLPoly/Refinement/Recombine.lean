@@ -9463,6 +9463,144 @@ private theorem finishZassenhaus_product_associated
     have hcontent := Polynomial.isPrimitive_iff_content_eq_one.mp hprimitive
     simp [SparsePolyZZ.toPoly] at hcontent
 
+private theorem isPrimitive_left_of_mul {left right : Polynomial Int}
+    (hprimitive : (left * right).IsPrimitive) : left.IsPrimitive := by
+  have hcontent := Polynomial.isPrimitive_iff_content_eq_one.mp hprimitive
+  rw [Polynomial.content_mul] at hcontent
+  have hunit : IsUnit left.content := IsUnit.of_mul_eq_one _ hcontent
+  apply Polynomial.isPrimitive_iff_content_eq_one.mpr
+  calc
+    left.content = normalize left.content := Polynomial.normalize_content.symm
+    _ = 1 := normalize_eq_one.mpr hunit
+
+private theorem isPrimitive_of_unit_scalar_product
+    {before after : Polynomial Int} {scalar : Int}
+    (hscalar : IsUnit scalar) (hbefore : before.IsPrimitive)
+    (heq : before = Polynomial.C scalar * after) : after.IsPrimitive := by
+  have hcontent := congrArg Polynomial.content heq
+  rw [hbefore.content_eq_one, Polynomial.content_C_mul,
+    normalize_eq_one.mpr hscalar, one_mul] at hcontent
+  exact Polynomial.isPrimitive_iff_content_eq_one.mpr hcontent.symm
+
+/-- The complete source-shaped Zassenhaus outer loop preserves the live
+product up to a unit.  Successful extraction recursively installs the exact
+primitive quotient returned by the candidate scan; exhaustion and subset-size
+advancement follow the generated control flow unchanged. -/
+theorem zassenhausLoop_product_associated
+    (termination : Generated.StrictRecombine.ZassenhausTermination)
+    (modulus : ZZ) (active : Array SparsePolyZZ) (fStar : SparsePolyZZ)
+    (result : Array SparsePolyZZ) (subsetSize : Nat)
+    (hsubsetPositive : 0 < subsetSize)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hprimitive :
+      (SparsePolyZZ.toPoly fStar * factorArrayProduct result).IsPrimitive)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.zassenhausLoop termination modulus active
+      fStar result subsetSize hsubsetPositive = .ok output) :
+    Associated (SparsePolyZZ.toPoly fStar * factorArrayProduct result)
+      (factorArrayProduct output) := by
+  rw [Generated.StrictRecombine.zassenhausLoop] at hrun
+  split at hrun
+  next hcontinue =>
+    let combinationTermination :=
+      termination.combinations active.size subsetSize
+    let initial := Generated.StrictRecombine.initialCombination subsetSize
+    let hinitial := termination.initial_valid active.size subsetSize (by omega)
+    cases hscan : Generated.StrictRecombine.scanZassenhausCombinations
+        combinationTermination fStar active modulus initial hinitial with
+    | error fault => simp [combinationTermination, initial, hinitial, hscan] at hrun
+    | ok scanResult =>
+      cases scanResult with
+      | exhausted =>
+        simp only [combinationTermination, initial, hinitial, hscan] at hrun
+        exact zassenhausLoop_product_associated termination modulus active fStar
+          result (subsetSize + 1) (by omega) hcanonical hprimitive output hrun
+      | extracted factor quotient candidate candidateSize =>
+        simp only [combinationTermination, initial, hinitial, hscan] at hrun
+        cases hremove : Generated.StrictRecombine.removeCombination candidate active with
+        | error fault =>
+          rw [hremove] at hrun
+          contradiction
+        | ok active' =>
+          rw [hremove] at hrun
+          have hfStarPrimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive :=
+            isPrimitive_left_of_mul hprimitive
+          rcases scanZassenhausCombinations_extracted_unit_scalar
+              combinationTermination fStar factor quotient active modulus initial
+              candidate candidateSize hfStarPrimitive hinitial hscan with
+            ⟨scalar, hscalar, hextraction⟩
+          have hquotientCanonical :=
+            scanZassenhausCombinations_extracted_quotient_canonical
+              combinationTermination fStar factor quotient active modulus initial
+              candidate candidateSize hcanonical hinitial hscan
+          have hlive : SparsePolyZZ.toPoly fStar * factorArrayProduct result =
+              Polynomial.C scalar *
+                (SparsePolyZZ.toPoly quotient *
+                  factorArrayProduct (result.push factor)) := by
+            rw [hextraction]
+            simp [factorArrayProduct]
+            ring
+          have hnextPrimitive :
+              (SparsePolyZZ.toPoly quotient *
+                factorArrayProduct (result.push factor)).IsPrimitive :=
+            isPrimitive_of_unit_scalar_product hscalar hprimitive hlive
+          have htail := zassenhausLoop_product_associated termination modulus
+            active' quotient (result.push factor) 1 (by omega)
+            hquotientCanonical hnextPrimitive output hrun
+          have hconstantUnit : IsUnit (Polynomial.C scalar : Polynomial Int) :=
+            Polynomial.isUnit_C.mpr hscalar
+          exact (Associated.of_eq hlive).trans
+            ((associated_isUnit_mul_left_iff hconstantUnit).mpr htail)
+  next hcontinue =>
+    have hout := Except.ok.inj hrun
+    subst output
+    exact finishZassenhaus_product_associated fStar result hcanonical hprimitive
+termination_by (active.size, active.size + 1 - subsetSize)
+decreasing_by
+  · exact Prod.Lex.right _ (by omega)
+  · exact Prod.Lex.left _ _
+      (termination.removal_decreases active candidate active'
+        (by rw [candidateSize]; exact hsubsetPositive) hremove)
+
+theorem zassenhausRecombine_product_associated
+    (termination : Generated.StrictRecombine.ZassenhausTermination)
+    (f : SparsePolyZZ) (lifted output : Array SparsePolyZZ) (modulus : ZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hrun : Generated.StrictRecombine.zassenhausRecombine termination f lifted
+      modulus = .ok output) :
+    Associated (SparsePolyZZ.toPoly f) (factorArrayProduct output) := by
+  unfold Generated.StrictRecombine.zassenhausRecombine at hrun
+  split at hrun
+  next hlifted =>
+    split at hrun
+    next hnonempty =>
+      split at hrun
+      next hdegree =>
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [factorArrayProduct]
+      next hdegree =>
+        have hout := Except.ok.inj hrun
+        subst output
+        have hfinish := finishZassenhaus_product_associated f #[] hcanonical
+          (by simpa [factorArrayProduct] using hprimitive)
+        rw [factorArrayProduct_finishZassenhaus, dif_pos hnonempty,
+          if_neg hdegree] at hfinish
+        simpa [factorArrayProduct] using hfinish
+    next hnonempty =>
+      have hout := Except.ok.inj hrun
+      subst output
+      have hfinish := finishZassenhaus_product_associated f #[] hcanonical
+        (by simpa [factorArrayProduct] using hprimitive)
+      rw [factorArrayProduct_finishZassenhaus, dif_neg hnonempty] at hfinish
+      simpa [factorArrayProduct] using hfinish
+  next hlifted =>
+    have hloop := zassenhausLoop_product_associated termination modulus lifted f
+      #[] 1 (by omega) hcanonical
+      (by simpa [factorArrayProduct] using hprimitive) output hrun
+    simpa [factorArrayProduct] using hloop
+
 theorem validateCandidatesLoop_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (candidates : Array (Array Int32)) (candidateIndex : Nat)

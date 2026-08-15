@@ -1872,3 +1872,28 @@ The remaining input to this chain is a builder theorem establishing
 - 放弃的方案：同时证明 quotient canonical；当前 Hensel `g/h` 链只消费 remainder，且 multiplication heap 对任意输入已证明 canonical
 - 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
 - 下一步：从 successful concrete divmod run 提取该 remainder 定理并组合 Hensel factor phase
+
+## The complete generated Hensel entry returns canonical factors
+
+The canonical certificate produced by the concrete tree builder is now
+consumed by the full generated `__hensel_lift_upoly` refinement theorem.
+
+- The actual quadratic lift-loop trace transfers `HenselArrayCanonical` from
+  the builder output to the concrete lifted node array.
+- The actual extraction traversal starts from the source's empty result array
+  and appends only canonical `g`/`h` fields read from those lifted nodes.
+- `HenselNormalizeCorrect.outputCanonical` lifts the existing pointwise
+  normalization theorem to the array contract used by recombination.  It
+  covers the unchanged branches and the exact source rewrite of slot zero.
+- `HenselLiftEntryCorrect` now includes
+  `HenselFactorArrayCanonical output.1`; the property therefore constrains the
+  factors returned by the successful generated entry, rather than remaining
+  an unconnected collection of helper lemmas.
+
+No fuel, partial definition, semantic oracle, or L2 fallback is introduced.
+Every certificate is transported along the intermediate arrays returned by
+the corresponding strict raw stage.
+
+- C++ changes: none, so there is no new C++ b2b change surface in this step.
+- Verification: `lake env lean CLPoly/Refinement/Hensel.lean` passes with no
+  error or `sorry` warning.

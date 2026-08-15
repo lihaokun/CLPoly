@@ -5967,6 +5967,23 @@ theorem HenselNormalizeCorrect.canonical
         rw [hget]
         exact hbefore index hbeforeIndex
 
+/-- Array-level form of `HenselNormalizeCorrect.canonical`, matching the
+canonicality contract carried by extraction and consumed by recombination. -/
+theorem HenselNormalizeCorrect.outputCanonical
+    {before after : Array SparsePolyZZ} {m : ZZ}
+    (hcorrect : HenselNormalizeCorrect before m after)
+    (hbefore : HenselFactorArrayCanonical before) :
+    HenselFactorArrayCanonical after := by
+  intro factor hfactor
+  rcases List.mem_iff_get.mp hfactor with ⟨index, hget⟩
+  have hindex : index.1 < after.size := by simpa using index.2
+  have hget' : after[index.1] = factor := by simpa using hget
+  rw [← hget']
+  exact hcorrect.canonical
+    (fun beforeIndex hbeforeIndex =>
+      hbefore before[beforeIndex] (Array.getElem_mem_toList hbeforeIndex))
+    index.1 hindex
+
 /-- Genuine raw-to-safe and semantic refinement bridge for the final source
 normalization block.  The output is obtained only by executing the strict raw
 program; the invariant cannot supply an output polynomial. -/
@@ -11616,7 +11633,8 @@ def HenselLiftEntryCorrect
     HenselExtractCorrect (henselTreeBuildTopology 0 factors.size 0)
       liftedNodes #[] extracted ∧
     HenselNormalizeCorrect extracted outputM output.1 ∧
-    output.2 = outputM
+    output.2 = outputM ∧
+    HenselFactorArrayCanonical output.1
 
 private theorem henselLeafOrigins_trans
     {p : Nat} {inputs : List SparsePolyZp} {initial final : List SparsePolyZZ}
@@ -11658,7 +11676,8 @@ theorem HenselLiftEntryCorrect.preNormalizationOrigins
       HenselNormalizeUnitRel p.toNat extracted output.1 := by
   rcases hcorrect with
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
-      htarget, hadjust, hsemantic, hlift, hextract, hnormalize, houtputM⟩
+      htarget, hadjust, hsemantic, hlift, hextract, hnormalize, houtputM,
+      _houtputCanonical⟩
   have hinitial := hsemantic.extractedFactors_forall₂ hcount
   have harray := hlift.arrayReduces_of_dvd (dvd_refl p.toNat)
   have hlifted := hsemantic.extractedFactors_forall₂_of_reduces harray
@@ -11688,7 +11707,8 @@ theorem HenselLiftEntryCorrect.outputModulus_gt_target
       HenselLiftTargetCorrect f p aTarget target ∧ target < output.2 := by
   rcases hcorrect with
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
-      htarget, hadjust, _hsemantic, hlift, hextract, hnormalize, houtputM⟩
+      htarget, hadjust, _hsemantic, hlift, hextract, hnormalize, houtputM,
+      _houtputCanonical⟩
   refine ⟨target, htarget, ?_⟩
   rw [houtputM]
   have htargetNonnegative' := htargetNonnegative target htarget
@@ -11783,7 +11803,8 @@ theorem __hensel_lift_upoly_raw_ir_refines
       (by rw [hadjustSize]; exact hinvariant.factorCount)
       (by rw [hadjustSize]; exact hinvariant.topologyFits) with
     ⟨nodes, hnodesRun, hroot, hsize, hrootIndex, hleft, hright,
-      hextractInvariant, hsemanticInvariant, hrootInvariant⟩
+      hextractInvariant, hsemanticInvariant, hrootInvariant,
+      hnodesCanonical⟩
   have htreeEq : Generated.StrictHensel.henselTreeBuildTopologyRawIR
       0 factors.size 0 = tree := henselTreeBuildTopologyRawIR_eq 0 factors.size 0
   have hsemanticInvariant' :
@@ -11801,16 +11822,25 @@ theorem __hensel_lift_upoly_raw_ir_refines
     hextractInvariant'.of_topologyEq hliftCorrect.topologyEq
   rcases __hensel_extract_factors_raw_ir_refines tree liftedNodes #[]
       hliftedExtract with ⟨extracted, hextractRun, hextractCorrect⟩
+  have hliftedCanonical : HenselArrayCanonical liftedNodes :=
+    hliftCorrect.arrayCanonical hnodesCanonical
+  have hemptyCanonical : HenselFactorArrayCanonical (#[] : Array SparsePolyZZ) := by
+    intro factor hfactor
+    simp at hfactor
+  have hextractedCanonical : HenselFactorArrayCanonical extracted :=
+    hextractCorrect.outputCanonical hliftedCanonical hemptyCanonical
   rcases __hensel_normalize_result_raw_ir_refines extracted outputM
       (hinvariant.normalizeReady target adjusted nodes liftedNodes outputM
         extracted htargetCorrect hadjustCorrect
         hnodesRun hliftCorrect hextractCorrect) with
     ⟨normalized, hnormalizeRun, hnormalizeCorrect⟩
+  have hnormalizedCanonical : HenselFactorArrayCanonical normalized :=
+    hnormalizeCorrect.outputCanonical hextractedCanonical
   refine ⟨(normalized, outputM), ?_,
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
       htargetCorrect, hadjustCorrect, hsemanticInvariant', hliftCorrect,
       hextractCorrect,
-      hnormalizeCorrect, rfl⟩⟩
+      hnormalizeCorrect, rfl, hnormalizedCanonical⟩⟩
   apply henselLiftUpolyRawIR_run_of_stages
     (hcount := hinvariant.factorCount) (htarget := htargetRun)
     (htargetNonnegative := htargetNonnegative) (hadjust := hadjustRun)

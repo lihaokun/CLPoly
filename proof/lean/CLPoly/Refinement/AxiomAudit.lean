@@ -38,3 +38,4 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.preNormalizationProduct
 #print axioms Refinement.StrictFactorZZ.selectionAdjustedFactors_product_eq_source
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_preNormalization_product
+#print axioms Refinement.StrictFactorZZ.selectionHenselFactors_normalized_product_eq_unit_mul_source

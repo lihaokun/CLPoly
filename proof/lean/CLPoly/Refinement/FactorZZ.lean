@@ -296,6 +296,39 @@ theorem selectionHenselFactors_preNormalization_product
     hleadingSemantic hselection hadjust
   simpa [StrictHensel.toPolyMod] using hexact
 
+/-- Product invariant of the public normalized Hensel output.  The only
+remaining discrepancy from the source is the concrete unit computed by the
+generated normalization branch; both the modulus and the output array are the
+ones returned by the actual C++-shaped entry execution. -/
+theorem selectionHenselFactors_normalized_product_eq_unit_mul_source
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output) :
+    ∃ outputM : Nat, ∃ scale : ZMod outputM,
+      output.2 = (outputM : Int) ∧ IsUnit scale ∧
+      (output.1.toList.map (StrictHensel.toPolyMod outputM)).prod =
+        Polynomial.C scale * StrictHensel.toPolyMod outputM f := by
+  rcases selectionHenselFactors_preNormalization_product hcount hp2 hfactors
+      hleadingSemantic hselection hentry with
+    ⟨_adjusted, extracted, outputM, _hadjust, hnormalize, houtputM,
+      hpreProduct⟩
+  rcases hnormalize.product_eq_unit_mul with
+    ⟨scale, hscaleUnit, hnormalizedProduct⟩
+  refine ⟨outputM, scale, houtputM, hscaleUnit, ?_⟩
+  rw [hnormalizedProduct, hpreProduct]
+
 private theorem origins_preserve_irreducible
     {p : Nat} {inputs : List SparsePolyZp} {outputs : List SparsePolyZZ}
     (horigins : List.Forall₂

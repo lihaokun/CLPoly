@@ -2338,6 +2338,10 @@ factor adjustment.
 - `HenselNormalizeCorrect.product_eq_unit_mul` records the exact unit scaling
   performed by the subsequent generated normalization block, ready for the
   recombination boundary.
+- `selectionHenselFactors_normalized_product_eq_unit_mul_source` composes that
+  literal normalization trace with the pre-normalized product.  The public
+  Hensel output array therefore multiplies to the source modulo its actual
+  returned modulus, up to precisely the unit computed by C++ normalization.
 
 No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the normalization unit and the actual exact-divmod combination scan are used

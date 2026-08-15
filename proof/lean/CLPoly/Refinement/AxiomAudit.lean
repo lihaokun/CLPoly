@@ -6,3 +6,4 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.__edf_Zp_raw_ir_refines_edf
 #print axioms Refinement.__hensel_lift_upoly_raw_ir_refines
 #print axioms Refinement.StrictRecombine.zassenhausAttempt_extracted_factor_mod_eq_selected
+#print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracted_mod_certificate

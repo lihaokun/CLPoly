@@ -11541,6 +11541,96 @@ theorem zassenhausAttempt_extracted_factor_mod_eq_selected
   rw [hsymmetricMod, htrial, hinitial] at hprimitiveMod'
   exact hprimitiveMod'.symm
 
+private theorem selectedSourceProduct_ne_zero_of_irreducible
+    (base : Nat) [Fact (Nat.Prime base)]
+    (activeLifted : Array SparsePolyZZ) (candidate : Array Nat)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index])) :
+    ((selectSourceIndices activeLifted.toList candidate.toList).map
+      (Refinement.StrictHensel.toPolyMod base)).prod ≠ 0 := by
+  apply List.prod_ne_zero
+  intro hzero
+  rw [List.mem_map] at hzero
+  rcases hzero with ⟨source, hsource, hsourceZero⟩
+  unfold selectSourceIndices at hsource
+  rw [List.mem_map] at hsource
+  rcases hsource with ⟨index, hindex, hsourceEq⟩
+  rcases List.mem_iff_getElem.mp hindex with ⟨position, hposition, hindexEq⟩
+  have hpositionArray : position < candidate.size := by simpa using hposition
+  have hcandidate : candidate[position] = index := by
+    rw [← Array.getElem_toList hpositionArray]
+    exact hindexEq
+  have hactive := hbound position hpositionArray
+  subst source
+  rw [← hcandidate, getElem!_pos activeLifted.toList candidate[position]
+    (by simpa using hactive), Array.getElem_toList hactive] at hsourceZero
+  exact (hirreducible candidate[position] hactive).ne_zero hsourceZero
+
+/-- Under the live selected-prime invariants, the factor returned by the
+actual successful attempt is associated modulo `base` to the exact candidate
+subproduct.  Both scalar units are derived from the concrete execution
+equation and nonzeroness; no unit or association witness is supplied by an
+oracle. -/
+theorem zassenhausAttempt_extracted_factor_mod_associated_selected
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)]
+    (candidate : Array Nat)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hleading : (fStar[0]!.2 : ZMod base) ≠ 0)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index]))
+    (hrun : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      (modulus : ZZ) candidate =
+        .ok (.extracted factor quotientPrimitive)) :
+    Associated (Refinement.StrictHensel.toPolyMod base factor)
+      ((selectSourceIndices activeLifted.toList candidate.toList).map
+        (Refinement.StrictHensel.toPolyMod base)).prod := by
+  rcases zassenhausAttempt_extracted_factor_mod_eq_selected fStar factor
+      quotientPrimitive activeLifted modulus base candidate hmodulus hbase
+      hdivides hbound hactiveFits hrun with ⟨content, heq⟩
+  let selected :=
+    ((selectSourceIndices activeLifted.toList candidate.toList).map
+      (Refinement.StrictHensel.toPolyMod base)).prod
+  have hselected : selected ≠ 0 :=
+    selectedSourceProduct_ne_zero_of_irreducible base activeLifted candidate
+      hbound hirreducible
+  have hleadingC : Polynomial.C (fStar[0]!.2 : ZMod base) ≠ 0 := by
+    exact Polynomial.C_ne_zero.mpr hleading
+  have hrhs : Polynomial.C (fStar[0]!.2 : ZMod base) * selected ≠ 0 :=
+    mul_ne_zero hleadingC hselected
+  have hlhs : Polynomial.C (content : ZMod base) *
+      Refinement.StrictHensel.toPolyMod base factor ≠ 0 := by
+    rw [heq]
+    exact hrhs
+  have hcontent : (content : ZMod base) ≠ 0 := by
+    intro hzero
+    apply hlhs
+    simp [hzero]
+  have hcontentUnit : IsUnit
+      (Polynomial.C (content : ZMod base)) :=
+    Polynomial.isUnit_C.mpr (isUnit_iff_ne_zero.mpr hcontent)
+  have hleadingUnit : IsUnit
+      (Polynomial.C (fStar[0]!.2 : ZMod base)) :=
+    Polynomial.isUnit_C.mpr (isUnit_iff_ne_zero.mpr hleading)
+  have hleft : Associated
+      (Polynomial.C (content : ZMod base) *
+        Refinement.StrictHensel.toPolyMod base factor)
+      (Refinement.StrictHensel.toPolyMod base factor) :=
+    (associated_isUnit_mul_left_iff hcontentUnit).mpr (Associated.refl _)
+  have hright : Associated
+      (Polynomial.C (fStar[0]!.2 : ZMod base) * selected) selected :=
+    (associated_isUnit_mul_left_iff hleadingUnit).mpr (Associated.refl _)
+  exact hleft.symm.trans ((Associated.of_eq heq).trans hright)
+
 /-- The factor returned by a successful generated Zassenhaus attempt is the
 actual primitive result built from the canonical trial-product and
 symmetric-mod traces. -/
@@ -11833,6 +11923,38 @@ theorem zassenhausAttempt_extracted_unit_scalar
     (associated_normalize scalar).isUnit_iff.mpr hnormalizeUnit
   exact ⟨scalar, hscalarUnit, hproduct⟩
 
+/-- Successful concrete extraction preserves the selected-prime
+leading-coefficient invariant in the primitive quotient installed by the
+outer loop.  The proof uses the actual exact-division/primitive trace and the
+unit scalar forced by primitivity. -/
+theorem zassenhausAttempt_extracted_quotient_leading_mod_ne_zero
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidate : Array Nat) (base : Nat) [Fact (Nat.Prime base)]
+    (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hrun : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      modulus candidate = .ok (.extracted factor quotientPrimitive)) :
+    ((SparsePolyZZ.toPoly quotientPrimitive).leadingCoeff : ZMod base) ≠ 0 := by
+  rcases zassenhausAttempt_extracted_unit_scalar fStar factor
+      quotientPrimitive activeLifted modulus candidate hprimitive hrun with
+    ⟨scalar, hscalar, heq⟩
+  have hleadingEq := congrArg Polynomial.leadingCoeff heq
+  rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_mul] at hleadingEq
+  have hconstantLeading : (Polynomial.C scalar).leadingCoeff = scalar := by
+    exact Polynomial.leadingCoeff_C scalar
+  rw [hconstantLeading] at hleadingEq
+  have hleadingCast := congrArg (fun coefficient : Int =>
+    (coefficient : ZMod base)) hleadingEq
+  intro hquotientZero
+  apply hleading
+  change ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) =
+    ((scalar * ((SparsePolyZZ.toPoly factor).leadingCoeff *
+      (SparsePolyZZ.toPoly quotientPrimitive).leadingCoeff) : Int) :
+        ZMod base) at hleadingCast
+  rw [Int.cast_mul, Int.cast_mul, hquotientZero, mul_zero, mul_zero] at hleadingCast
+  exact hleadingCast
+
 theorem scanZassenhausCombinations_extracted_unit_scalar
     {upper count : Nat}
     (termination : Generated.StrictRecombine.CombinationTermination upper count)
@@ -11957,6 +12079,82 @@ theorem scanZassenhausCombinations_extracted_canonical_primitive
             zassenhausAttempt_extracted_quotient_canonical_primitive fStar
               extractedFactor extractedQuotient activeLifted modulus start
               hcanonical hnonempty hattempt⟩
+        | rejected =>
+          simp only [hattempt] at hrun
+          split at hrun
+          next next hnext => simp at hrun
+          next next hnext =>
+            have hdecrease := termination.next_decreases start next hvalidStart
+              hnext
+            have hvalidNext := termination.next_valid start next hvalidStart hnext
+            rw [hmeasure] at hdecrease
+            exact ih (termination.rank next) hdecrease next hvalidNext hrun rfl
+
+/-- The concrete fixed-size scan preserves the successful candidate's exact
+modular association certificate and the leading-coefficient invariant of the
+primitive quotient, regardless of how many preceding candidates execute and
+reject. -/
+theorem scanZassenhausCombinations_extracted_mod_certificate
+    {count : Nat}
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)]
+    (start candidate : Array Nat)
+    (hcandidateSize : candidate.size = count)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index]))
+    (hvalidStart : LegalCombination activeLifted.size count start)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations
+      (concreteCombinationTermination activeLifted.size count)
+      fStar activeLifted (modulus : ZZ) start hvalidStart = .ok
+        (.extracted factor quotientPrimitive candidate hcandidateSize)) :
+    Associated (Refinement.StrictHensel.toPolyMod base factor)
+        ((selectSourceIndices activeLifted.toList candidate.toList).map
+          (Refinement.StrictHensel.toPolyMod base)).prod ∧
+      ((SparsePolyZZ.toPoly quotientPrimitive).leadingCoeff : ZMod base) ≠ 0 := by
+  let termination := concreteCombinationTermination activeLifted.size count
+  induction hmeasure : termination.rank start using Nat.strong_induction_on
+      generalizing start with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.scanZassenhausCombinations] at hrun
+      cases hattempt : Generated.StrictRecombine.zassenhausAttempt fStar
+          activeLifted (modulus : ZZ) start with
+      | error fault => simp [hattempt] at hrun
+      | ok attempt =>
+        cases attempt with
+        | extracted extractedFactor extractedQuotient =>
+          simp only [hattempt] at hrun
+          have hout := Except.ok.inj hrun
+          injection hout with hfactor hquotient hcandidate
+          subst factor
+          subst quotientPrimitive
+          subst candidate
+          have hbound : ∀ position (hposition : position < start.size),
+              start[position] < activeLifted.size := by
+            intro position hposition
+            simpa [getElem!_pos start position hposition] using
+              hvalidStart.2.2 position hposition
+          have hfront : (fStar[0]!.2 : ZMod base) ≠ 0 := by
+            intro hzero
+            apply hleading
+            rw [sparsePolyZZ_leadingCoeff_eq_head fStar hcanonical hnonempty]
+            simpa [getElem!_pos fStar 0 hnonempty] using hzero
+          exact ⟨
+            zassenhausAttempt_extracted_factor_mod_associated_selected fStar
+              extractedFactor extractedQuotient activeLifted modulus base
+              start hmodulus hbase hdivides hbound hactiveFits hfront
+              hirreducible hattempt,
+            zassenhausAttempt_extracted_quotient_leading_mod_ne_zero fStar
+              extractedFactor extractedQuotient activeLifted (modulus : ZZ)
+              start base hprimitive hleading hattempt⟩
         | rejected =>
           simp only [hattempt] at hrun
           split at hrun

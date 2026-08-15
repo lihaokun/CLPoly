@@ -2004,3 +2004,28 @@ candidate theorem and reports only `propext`, `Classical.choice`, and
 `Quot.sound`.  The next step is to prove both concrete scalars are nonzero
 modulo the selected prime and convert this equality to `Associated`, then
 combine it with the earlier exhaustive-scan rejection theorem.
+
+## Successful scans retain exact selected-prime certificates
+
+The concrete successful-candidate equation is now upgraded to a modular
+association certificate under the live selected-prime invariants.
+
+- Every selected lifted factor is irreducible and hence nonzero modulo `p`,
+  so the exact occurrence-sensitive candidate subproduct is nonzero.
+- The current polynomial's surviving leading coefficient makes the concrete
+  right-hand scalar nonzero.  The successful execution equation therefore
+  forces the content scalar computed by `primitiveRaw` to be nonzero as well;
+  both scalars are units in `ZMod p`, yielding `Associated` for the returned
+  factor and exact selected subproduct.
+- The actual exact-division and primitive-quotient trace proves that a
+  successful extraction preserves nonzeroness of the quotient's leading
+  coefficient modulo `p`.
+- `scanZassenhausCombinations_extracted_mod_certificate` follows every
+  generated rejected/next-candidate branch by the concrete combination rank
+  and returns both facts for the actual successful candidate.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+single-file formal check passes without error or `sorry`.  The next obligation
+is to carry these invariants through successful active-array removal and the
+outer subset-size loop, retaining the rejection history for all smaller
+candidate sizes needed to rule out proper factors.

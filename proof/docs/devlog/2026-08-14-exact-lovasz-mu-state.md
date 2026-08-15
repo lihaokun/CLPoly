@@ -2163,3 +2163,28 @@ next step multiplies this bound by the actual leading-coefficient scale used
 by `__hensel_lift`, derives the strict modulus inequality from its concrete
 target loop, and feeds it into symmetric recovery for the enumerated lifted
 subproduct.
+
+## Concrete Hensel precision reaches the unique recovery interval
+
+The generated Mignotte coefficient bound is now carried through the actual
+default-precision Hensel execution.
+
+- `hensel_output_modulus_bounds_scaled_divisor` consumes a genuine
+  `HenselLiftEntryCorrect` trace.  It identifies the zero-exponent target with
+  the exact generated Mignotte return value, then uses the well-founded
+  lifting loop's own `outputM_gt_target` certificate.  Thus every coefficient
+  of `leadingCoeff * g`, for any genuine divisor `g`, lies strictly inside
+  half of the returned modulus.
+- The proof rules out the positive-exponent constructor at the literal
+  `Int32` zero boundary and identifies the source leading cell through its
+  actual successful array lookup.  It does not accept a caller-supplied
+  modulus or coefficient bound.
+- `symmetricModRaw_recovers_strictly_bounded_target` combines the generated
+  symmetric-remainder execution, its closed half-interval output bound, and
+  congruence modulo that same modulus.  The asymmetric strict bound on the
+  true target supplies uniqueness even when the modulus is even.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+next step instantiates the congruence premise with the actual selected Hensel
+subproduct and then proves that the generated exact-division attempt accepts
+the recovered true factor.

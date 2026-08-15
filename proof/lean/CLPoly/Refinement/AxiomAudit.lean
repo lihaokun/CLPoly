@@ -19,3 +19,5 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.upolyNormL2SqRaw_eq_coeff_range_sum
 #print axioms Refinement.StrictRecombine.divisor_coeff_le_generated_mignotte_norm
 #print axioms Refinement.StrictRecombine.mignotteBoundRaw_bounds_divisor
+#print axioms Refinement.StrictRecombine.hensel_output_modulus_bounds_scaled_divisor
+#print axioms Refinement.StrictRecombine.symmetricModRaw_recovers_strictly_bounded_target

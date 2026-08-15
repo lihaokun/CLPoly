@@ -11277,6 +11277,76 @@ theorem mignotteBoundRaw_bounds_divisor (f : SparsePolyZZ)
     f hcanonical g hf hg degree
   simpa [bound, norm, hnatDegree] using hcoefficient
 
+/-- When the actual generated Hensel entry uses its default (`aTarget = 0`)
+precision, the modulus returned by its well-founded lifting loop is already
+strictly large enough to recover every coefficient of the leading-coefficient
+scaled genuine divisor.  Both the coefficient bound and the final modulus are
+values computed by the generated C++ lowering. -/
+theorem hensel_output_modulus_bounds_scaled_divisor
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hcorrect : Refinement.StrictHensel.HenselLiftEntryCorrect termination
+      f factors p aTarget output)
+    (hzero : aTarget = 0)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (g : Polynomial Int) (hf : SparsePolyZZ.toPoly f ≠ 0)
+    (hg : g ∣ SparsePolyZZ.toPoly f) :
+    0 < output.2 ∧ ∀ degree,
+      ((leading.2 * g.coeff degree).natAbs : Int) * 2 < output.2 := by
+  subst aTarget
+  rcases mignotteBoundRaw_bounds_divisor f hcanonical hnonempty hdegree g hf hg
+    with ⟨bound, hboundRun, hboundNonnegative, hbound⟩
+  have htargetNonnegative : ∀ target,
+      Refinement.StrictHensel.HenselLiftTargetCorrect f p 0 target →
+        0 ≤ target := by
+    intro target htarget
+    cases htarget with
+    | mignotte sourceLeading htargetZero hsourceLeading =>
+        have hsame : sourceLeading = leading := by
+          rw [hleading] at hsourceLeading
+          exact Option.some.inj hsourceLeading.symm
+        subst sourceLeading
+        rw [Generated.StrictHensel.__mignotte_bound_upoly_raw_ir,
+          hleading] at hboundRun
+        have hboundValue := Except.ok.inj hboundRun
+        rw [hboundValue]
+        exact mul_nonneg
+          (mul_nonneg (by norm_num) (Int.ofNat_zero_le leading.2.natAbs))
+          hboundNonnegative
+    | explicit hpositive =>
+        exact False.elim ((by decide : ¬ (0 : Int32) > 0) hpositive)
+  rcases hcorrect.outputModulus_gt_target htargetNonnegative with
+    ⟨target, htarget, htargetLt⟩
+  have htargetNonnegative' := htargetNonnegative target htarget
+  constructor
+  · exact lt_of_le_of_lt htargetNonnegative' htargetLt
+  · intro degree
+    cases htarget with
+    | mignotte sourceLeading htargetZero hsourceLeading =>
+        have hsame : sourceLeading = leading := by
+          rw [hleading] at hsourceLeading
+          exact Option.some.inj hsourceLeading.symm
+        subst sourceLeading
+        rw [Generated.StrictHensel.__mignotte_bound_upoly_raw_ir,
+          hleading] at hboundRun
+        have hboundValue := Except.ok.inj hboundRun
+        rw [hboundValue] at htargetLt
+        have hcoefficient := hbound degree
+        rw [Int.natAbs_mul]
+        norm_num only [Nat.cast_mul]
+        have hscaled :
+            (leading.2.natAbs : Int) * (g.coeff degree).natAbs ≤
+              (leading.2.natAbs : Int) * bound :=
+          mul_le_mul_of_nonneg_left hcoefficient
+            (Int.ofNat_zero_le leading.2.natAbs)
+        nlinarith
+    | explicit hpositive =>
+        exact False.elim ((by decide : ¬ (0 : Int32) > 0) hpositive)
+
 /-- A bound on every physically stored coefficient of a canonical sparse
 polynomial extends to every mathematical coefficient. -/
 theorem sparsePolyZZ_coefficients_bounded_of_stored
@@ -11315,6 +11385,36 @@ theorem symmetricModRaw_toPoly_coefficients_bounded
   exact sparsePolyZZ_coefficients_bounded_of_stored output houtputCanonical
     modulus (symmetricModRaw_coefficients_bounded input output modulus
       hmodulus hrun)
+
+/-- The concrete generated `symmetricModRaw` execution recovers a unique
+integer target whenever its input is congruent to that target and the target
+lies strictly inside the half-modulus interval.  This is the executable
+recovery lemma used after the generated Hensel precision proof. -/
+theorem symmetricModRaw_recovers_strictly_bounded_target
+    (input output : SparsePolyZZ) (target : Polynomial Int)
+    (modulus : Nat) (hmodulus : 0 < modulus)
+    (hinputCanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (hrun : Generated.StrictRecombine.symmetricModRaw input (modulus : ZZ) =
+      .ok output)
+    (hcongruent : Polynomial.map (Int.castRingHom (ZMod modulus))
+        (SparsePolyZZ.toPoly input) =
+      Polynomial.map (Int.castRingHom (ZMod modulus)) target)
+    (htarget : ∀ degree,
+      (target.coeff degree).natAbs * 2 < modulus) :
+    SparsePolyZZ.toPoly output = target := by
+  apply symmetric_recovery_closed_left (SparsePolyZZ.toPoly output) target
+    modulus hmodulus
+  · calc
+      Polynomial.map (Int.castRingHom (ZMod modulus))
+          (SparsePolyZZ.toPoly output) =
+          Polynomial.map (Int.castRingHom (ZMod modulus))
+            (SparsePolyZZ.toPoly input) := by
+              simpa [Refinement.StrictHensel.toPolyMod] using
+                symmetricModRaw_toPolyMod input output modulus hmodulus hrun
+      _ = Polynomial.map (Int.castRingHom (ZMod modulus)) target := hcongruent
+  · exact symmetricModRaw_toPoly_coefficients_bounded input output modulus
+      hmodulus hinputCanonical hrun
+  · exact htarget
 
 private theorem sparseZZ_sum_coeff_dvd
     (terms : List (UMonomial × Int)) (divisor : Int)

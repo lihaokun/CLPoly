@@ -2188,3 +2188,31 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 next step instantiates the congruence premise with the actual selected Hensel
 subproduct and then proves that the generated exact-division attempt accepts
 the recovered true factor.
+
+## Every true divisor has a legal candidate in the actual Hensel array
+
+The cross-stage SelectPrime-to-Hensel completeness bridge now retains exact
+array order and occurrences.
+
+- `selectionHenselFactors_pointwise_associated` follows the generated first
+  factor adjustment, lifted leaf-origin `Forall₂` trace, and final generated
+  normalization.  At each concrete array index, the selected-prime factor and
+  returned Hensel factor differ only by the two unit scalars actually produced
+  by those stages.
+- The pointwise trace is lifted to the product of the concrete arrays.  The
+  selected-prime factorization certificate therefore makes the reduction of
+  any genuine integer divisor divide the product of the actual normalized
+  Hensel output.
+- Recursive divisibility through that concrete list of irreducibles produces
+  an occurrence-sensitive `List.Sublist`; `sublist_map_iff` brings the witness
+  back from modular polynomials to the actual sparse output objects.
+- `integer_divisor_mod_has_legal_hensel_candidate` converts that sublist to the
+  exact strictly increasing natural-index array accepted by the generated
+  Zassenhaus scanner.  Selecting those indices from the source array recovers
+  the same sublist exactly, so no reordered set or semantic factor oracle is
+  substituted at the enumeration boundary.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+the selected product's congruence at the full Hensel modulus is combined with
+the concrete recovery bound, after which the generated pruning and exact
+division branches can be shown to accept this legal candidate.

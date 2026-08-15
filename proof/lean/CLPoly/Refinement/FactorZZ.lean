@@ -246,6 +246,235 @@ theorem selectionHenselFactors_mod_irreducible
       (Array.getElem_mem_toList hindex)
   exact hnormalizeRel.irreducible hextracted
 
+/-- The actual Hensel output array is pointwise associated, in the same
+source order, with the factor array returned by the concrete selected-prime
+execution.  The association is assembled from the generated first-factor
+adjustment, exact lifted-leaf origins, and generated final normalization. -/
+theorem selectionHenselFactors_pointwise_associated
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output) :
+    selection.factors.size = output.1.size ∧
+      ∀ index (hinput : index < selection.factors.size)
+        (houtput : index < output.1.size),
+        Associated
+          (SparsePolyZp.toPoly selection.prime.toNat
+            selection.factors[index])
+          (StrictHensel.toPolyMod selection.prime.toNat output.1[index]) := by
+  have hleadingNonzero : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) ≠ 0 := by
+    intro leading hleading
+    rw [hleadingSemantic leading hleading]
+    exact hselection.goodPrime.lc_nonzero
+  rcases hentry.preNormalizationOrigins hcount with
+    ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
+      horigins, hnormalizeRel⟩
+  have hadjustRel := hadjust.unitRel hp2 hfactors hleadingNonzero
+  have hadjustSize : adjusted.size = selection.factors.size := hadjustRel.1.symm
+  have hfull : StrictHensel.henselFactorRangeList adjusted
+      selection.factors.size 0 = adjusted.toList := by
+    rw [← hadjustSize]
+    exact StrictHensel.henselFactorRangeList_full adjusted
+  rw [hfull] at horigins
+  have horiginSize : adjusted.size = extracted.size := by
+    simpa using horigins.length_eq
+  have hsize : selection.factors.size = output.1.size := by
+    rw [hadjustRel.1, horiginSize, hnormalizeRel.1]
+  refine ⟨hsize, ?_⟩
+  intro index hinput houtput
+  have hadjusted : index < adjusted.size := by
+    rw [← hadjustRel.1]
+    exact hinput
+  have hextracted : index < extracted.size := by omega
+  rcases hadjustRel.2 index hinput hadjusted with
+    ⟨adjustScale, hadjustScale, hadjustEq⟩
+  have horigin := horigins.get (by simpa using hadjusted)
+    (by simpa using hextracted)
+  have horiginEq : StrictHensel.toPolyMod selection.prime.toNat
+      extracted[index] = SparsePolyZp.toPoly selection.prime.toNat
+        adjusted[index] := by
+    simpa [Array.getElem_toList] using horigin
+  rcases hnormalizeRel.2 index hextracted houtput with
+    ⟨normalizeScale, hnormalizeScale, hnormalizeEq⟩
+  have hadjustAssociated : Associated
+      (SparsePolyZp.toPoly selection.prime.toNat selection.factors[index])
+      (SparsePolyZp.toPoly selection.prime.toNat adjusted[index]) := by
+    rw [hadjustEq]
+    exact associated_unit_mul_right _ _
+      (Polynomial.isUnit_C.mpr hadjustScale)
+  have horiginAssociated : Associated
+      (SparsePolyZp.toPoly selection.prime.toNat adjusted[index])
+      (StrictHensel.toPolyMod selection.prime.toNat extracted[index]) :=
+    Associated.of_eq horiginEq.symm
+  have hnormalizeAssociated : Associated
+      (StrictHensel.toPolyMod selection.prime.toNat extracted[index])
+      (StrictHensel.toPolyMod selection.prime.toNat output.1[index]) := by
+    rw [hnormalizeEq]
+    exact associated_unit_mul_right _ _
+      (Polynomial.isUnit_C.mpr hnormalizeScale)
+  exact hadjustAssociated.trans
+    (horiginAssociated.trans hnormalizeAssociated)
+
+private theorem associated_prod_of_forall₂ {R : Type*} [CommMonoid R]
+    {left right : List R} (hrel : List.Forall₂ Associated left right) :
+    Associated left.prod right.prod := by
+  induction hrel with
+  | nil => exact Associated.refl 1
+  | cons hhead htail ih =>
+      simpa only [List.prod_cons] using hhead.mul_mul ih
+
+/-- Product form of `selectionHenselFactors_pointwise_associated`: the
+modular product of the concrete selected-prime array is associated with the
+modular product of the concrete normalized Hensel output array. -/
+theorem selectionHenselFactors_product_associated
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output) :
+    Associated
+      (StrictSelectPrime.factorArrayToL2 selection.prime.toNat
+        selection.factors).prod
+      ((output.1.toList.map
+        (StrictHensel.toPolyMod selection.prime.toNat)).prod) := by
+  have hpointwise := selectionHenselFactors_pointwise_associated hcount hp2
+    hfactors hleadingSemantic hselection hentry
+  apply associated_prod_of_forall₂
+  rw [List.forall₂_iff_get]
+  constructor
+  · simpa [StrictSelectPrime.factorArrayToL2] using hpointwise.1
+  · intro index hleft hright
+    have hinput : index < selection.factors.size := by
+      simpa [StrictSelectPrime.factorArrayToL2] using hleft
+    have houtput : index < output.1.size := by simpa using hright
+    simpa [StrictSelectPrime.factorArrayToL2, Array.getElem_toList] using
+      hpointwise.2 index hinput houtput
+
+/-- Every genuine integer divisor reduces, at the actually selected prime,
+to the product of an occurrence-sensitive sublist of the actual normalized
+Hensel output array, up to a modular unit.  The sublist comes from recursive
+irreducible divisibility over that concrete finite list; no semantic factor
+oracle chooses it. -/
+theorem integer_divisor_mod_associated_hensel_sublist
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output)
+    (g : Polynomial Int) (hg : g ∣ SparsePolyZZ.toPoly f) :
+    ∃ chosen : List SparsePolyZZ,
+      chosen.Sublist output.1.toList ∧
+      Associated
+        (Polynomial.map
+          (Int.castRingHom (ZMod selection.prime.toNat)) g)
+        ((chosen.map
+          (StrictHensel.toPolyMod selection.prime.toNat)).prod) := by
+  let atoms := output.1.toList.map
+    (StrictHensel.toPolyMod selection.prime.toNat)
+  have hirreducible : ∀ atom ∈ atoms, Irreducible atom := by
+    intro atom hatom
+    rcases List.mem_map.mp hatom with ⟨lifted, hlifted, rfl⟩
+    rcases List.mem_iff_getElem.mp hlifted with ⟨index, hindex, rfl⟩
+    have hindexArray : index < output.1.size := by simpa using hindex
+    simpa [Array.getElem_toList] using
+      selectionHenselFactors_mod_irreducible hcount hp2 hfactors
+        hleadingSemantic hselection hentry index hindexArray
+  have hmapDvd : Polynomial.map
+      (Int.castRingHom (ZMod selection.prime.toNat)) g ∣
+      Polynomial.map (Int.castRingHom (ZMod selection.prime.toNat))
+        (SparsePolyZZ.toPoly f) := by
+    rcases hg with ⟨quotient, hfactor⟩
+    refine ⟨Polynomial.map
+      (Int.castRingHom (ZMod selection.prime.toNat)) quotient, ?_⟩
+    rw [hfactor, Polynomial.map_mul]
+  have hselectedDvd : Polynomial.map
+      (Int.castRingHom (ZMod selection.prime.toNat)) g ∣
+      (StrictSelectPrime.factorArrayToL2 selection.prime.toNat
+        selection.factors).prod :=
+    dvd_trans hmapDvd hselection.productAssociated.dvd
+  have hproductAssociated := selectionHenselFactors_product_associated hcount
+    hp2 hfactors hleadingSemantic hselection hentry
+  have hatomsDvd : Polynomial.map
+      (Int.castRingHom (ZMod selection.prime.toNat)) g ∣ atoms.prod :=
+    dvd_trans hselectedDvd hproductAssociated.dvd
+  rcases divisor_associated_sublist_product atoms hirreducible _ hatomsDvd with
+    ⟨chosenMod, hchosenMod, hassociated⟩
+  rcases List.sublist_map_iff.mp hchosenMod with
+    ⟨chosen, hchosen, rfl⟩
+  exact ⟨chosen, hchosen, hassociated⟩
+
+/-- Array-index form consumed by the generated Zassenhaus scanner.  Every
+genuine divisor supplies a legal strictly increasing candidate over the
+actual Hensel output array, and the selected occurrence-sensitive product is
+associated with that divisor modulo the selected prime. -/
+theorem integer_divisor_mod_has_legal_hensel_candidate
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output)
+    (g : Polynomial Int) (hg : g ∣ SparsePolyZZ.toPoly f) :
+    ∃ indices : Array Nat,
+      StrictRecombine.LegalCombination output.1.size indices.size indices ∧
+      Associated
+        (Polynomial.map
+          (Int.castRingHom (ZMod selection.prime.toNat)) g)
+        (((StrictRecombine.selectSourceIndices output.1.toList indices.toList).map
+          (StrictHensel.toPolyMod selection.prime.toNat)).prod) := by
+  rcases integer_divisor_mod_associated_hensel_sublist hcount hp2 hfactors
+      hleadingSemantic hselection hentry g hg with
+    ⟨chosen, hchosen, hassociated⟩
+  rcases StrictRecombine.sublist_exists_legal_combination hchosen with
+    ⟨indices, hlegal, hselected⟩
+  have hlegal' : StrictRecombine.LegalCombination output.1.size
+      indices.size indices := by
+    simpa [hlegal.1] using hlegal
+  refine ⟨indices, hlegal', ?_⟩
+  rw [hselected]
+  exact hassociated
+
 /-- Pairwise coprimality supplied for the concrete adjusted input array is
 transported through the actual Hensel leaf origins, lift extraction, and
 final source normalization to the returned lifted-factor array. -/

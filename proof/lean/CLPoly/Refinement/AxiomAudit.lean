@@ -1,4 +1,5 @@
 import CLPoly.Refinement.Generated
+import CLPoly.Refinement.FactorZZ
 import CLPoly.Refinement.Recombine
 
 #print axioms Refinement.__squarefree_Zp_raw_ir_refines_sqfZp
@@ -21,3 +22,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.mignotteBoundRaw_bounds_divisor
 #print axioms Refinement.StrictRecombine.hensel_output_modulus_bounds_scaled_divisor
 #print axioms Refinement.StrictRecombine.symmetricModRaw_recovers_strictly_bounded_target
+#print axioms Refinement.StrictFactorZZ.selectionHenselFactors_pointwise_associated
+#print axioms Refinement.StrictFactorZZ.selectionHenselFactors_product_associated
+#print axioms Refinement.StrictFactorZZ.integer_divisor_mod_associated_hensel_sublist
+#print axioms Refinement.StrictFactorZZ.integer_divisor_mod_has_legal_hensel_candidate

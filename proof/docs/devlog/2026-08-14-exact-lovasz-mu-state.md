@@ -2312,3 +2312,33 @@ leaf-product equation through the generated quadratic-precision loop.
 No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 extraction and normalization transport this concrete output-node equation to
 the public Hensel entry result.
+
+## Selected-prime factors seed the exact Hensel product
+
+The explicit source-product premise of the Hensel loop has now been
+discharged from the actual selected-prime result and the generated first
+factor adjustment.
+
+- `HenselAdjustFirstFactorCorrect.product_eq` unfolds the successful source
+  trace, reads the concrete first factor, executes the generated coefficient
+  scaling and normalization semantics, and proves the product effect of the
+  literal `set! 0` write.  The scalar is exactly `lc(f) mod p`.
+- `polynomial_eq_C_leadingCoeff_mul_of_associated_monic` recovers an exact
+  finite-field equation from the selected candidate's associatedness.  Its
+  unit is determined by the actual mapped leading coefficient and by the
+  fact that every selected factor is monic.
+- `selectionAdjustedFactors_product_eq_source` combines those facts, so the
+  complete adjusted array multiplies exactly to the integer source reduced
+  modulo the selected prime.  It does not choose a replacement factor list or
+  assume a semantic factorization oracle.
+- `selectionHenselFactors_preNormalization_product` supplies that equation to
+  `HenselLiftEntryCorrect.preNormalizationProduct`.  Hence the factors read
+  from the actual generated tree multiply to the source at the exact modulus
+  returned by the well-founded quadratic lift loop.
+- `HenselNormalizeCorrect.product_eq_unit_mul` records the exact unit scaling
+  performed by the subsequent generated normalization block, ready for the
+  recombination boundary.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+the normalization unit and the actual exact-divmod combination scan are used
+to complete the occurrence-sensitive Zassenhaus recombination argument.

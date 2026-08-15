@@ -6238,6 +6238,56 @@ theorem HenselNormalizeCorrect.unitRel
         rw [hget]
         simp
 
+/-- Product-level form of the exact generated normalization trace.  The
+source block either leaves the array unchanged or scales only its first
+factor by the concrete modular inverse that it computed. -/
+theorem HenselNormalizeCorrect.product_eq_unit_mul
+    {m : Nat} {before after : Array SparsePolyZZ}
+    (hcorrect : HenselNormalizeCorrect before (m : Int) after) :
+    ∃ scale : ZMod m, IsUnit scale ∧
+      (after.toList.map (toPolyMod m)).prod =
+        Polynomial.C scale * (before.toList.map (toPolyMod m)).prod := by
+  cases hcorrect with
+  | empty hresult =>
+      exact ⟨1, isUnit_one, by simp⟩
+  | alreadyOne first leading hresult hfirst hone =>
+      exact ⟨1, isUnit_one, by simp⟩
+  | normalized first leading inverse scaled normalized hresult hfirst hnotOne
+      hinverse hscaled hnormalized =>
+      have hzero : 0 < before.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hresult
+        contradiction
+      have hfirstGet : before[0] = first :=
+        Option.some.inj ((Array.getElem?_eq_getElem hzero).symm.trans hresult)
+      have hinverseSuccess :
+          (ZZ.invert 0 leading.2 (m : Int)).1 = true := by
+        rw [hinverse]
+      have hinverseM :
+          (leading.2 : ZMod m) * (inverse : ZMod m) = 1 := by
+        simpa [hinverse] using
+          (CLPoly.Math.ZZ.invert_success_mul_eq_one leading.2 m
+            hinverseSuccess)
+      have hinverseUnit : IsUnit (inverse : ZMod m) :=
+        isUnit_iff_exists_inv.mpr ⟨(leading.2 : ZMod m), by
+          simpa [mul_comm] using hinverseM⟩
+      have hnormalizedSemantic :=
+        __upoly_mod_coeff_raw_ir_preserves_divisor_of_run (dvd_refl m)
+          scaled normalized hnormalized
+      rw [hscaled, scaleCoeffs_toPolyMod] at hnormalizedSemantic
+      refine ⟨(inverse : ZMod m), hinverseUnit, ?_⟩
+      change (List.map (toPolyMod m)
+        (before.setIfInBounds 0 normalized).toList).prod = _
+      rw [Array.toList_setIfInBounds]
+      have hlist : before.toList = first :: before.toList.drop 1 := by
+        rw [← hfirstGet]
+        simpa using (List.getElem_cons_drop (as := before.toList) (i := 0)
+          (by simpa using hzero)).symm
+      rw [hlist]
+      simp only [List.set_cons_zero, List.map_cons, List.prod_cons]
+      rw [hnormalizedSemantic]
+      ring
+
 /-- The exact generated final-normalization branch preserves the sparse
 integer representation invariant pointwise.  Only index zero can be
 rewritten, and its replacement is the concrete scale/filter output. -/
@@ -6561,6 +6611,59 @@ theorem HenselAdjustFirstFactorCorrect.unitRel
             (factors.setIfInBounds 0 value)[index] = _
         rw [hget]
         simp
+
+/-- Exact product effect of the source leading-coefficient baking block.
+Unlike `unitRel`, this theorem retains the concrete scalar written by the
+generated C++ execution and is therefore strong enough to seed the Hensel
+tree product invariant without an associatedness oracle. -/
+theorem HenselAdjustFirstFactorCorrect.product_eq
+    {f : SparsePolyZZ} {factors adjusted : Array SparsePolyZp}
+    {p : UInt64} [Fact (Nat.Prime p.toNat)]
+    (hp2 : p.toNat * p.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ factors.toList,
+      CLPoly.Math.SparsePolyZp.Canonical p.toNat factor)
+    (hcorrect : HenselAdjustFirstFactorCorrect f factors p adjusted) :
+    ∃ leading, f[0]? = some leading ∧
+      (adjusted.toList.map
+        (CLPoly.Math.SparsePolyZp.toPoly p.toNat)).prod =
+        Polynomial.C (leading.2 : ZMod p.toNat) *
+          (factors.toList.map
+            (CLPoly.Math.SparsePolyZp.toPoly p.toNat)).prod := by
+  cases hcorrect with
+  | adjusted leading first value hsource hfirst hvalue =>
+      have hp : 0 < p.toNat := Nat.Prime.pos Fact.out
+      have hsize : 0 < factors.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hfirst
+        contradiction
+      have hfirstGet : factors[0] = first :=
+        Option.some.inj ((Array.getElem?_eq_getElem hsize).symm.trans hfirst)
+      have hfirstMem : first ∈ factors.toList := by
+        rw [← hfirstGet]
+        exact Array.getElem_mem_toList hsize
+      have hfirstCanonical := hfactors first hfirstMem
+      let coefficient := Zp.ofInt leading.2 p
+      have hcoefficient : CLPoly.Math.Zp.Reduced p.toNat coefficient :=
+        zpOfInt_reduced leading.2 p hp
+      have hvaluePoly :
+          CLPoly.Math.SparsePolyZp.toPoly p.toNat value =
+            Polynomial.C (leading.2 : ZMod p.toNat) *
+              CLPoly.Math.SparsePolyZp.toPoly p.toNat first := by
+        rw [hvalue, henselAdjustNormalization_toPoly,
+          scaleZpCoeffs_toPoly p.toNat hp2 coefficient hcoefficient first
+            hfirstCanonical.1,
+          zpOfInt_toZMod leading.2 p hp]
+      have hlist : factors.toList = first :: factors.toList.drop 1 := by
+        rw [← hfirstGet]
+        simpa using (List.getElem_cons_drop (as := factors.toList) (i := 0)
+          (by simpa using hsize)).symm
+      refine ⟨leading, hsource, ?_⟩
+      change (List.map (CLPoly.Math.SparsePolyZp.toPoly p.toNat)
+        (factors.setIfInBounds 0 value).toList).prod = _
+      rw [Array.toList_setIfInBounds, hlist]
+      simp only [List.set_cons_zero, List.map_cons, List.prod_cons]
+      rw [hvaluePoly]
+      ring
 
 /-- Raw-to-safe semantic refinement for the exact coefficient-baking block. -/
 theorem __hensel_adjust_first_factor_raw_ir_refines
@@ -12158,6 +12261,47 @@ theorem HenselLiftEntryCorrect.preNormalizationOrigins
   rw [← hextracted] at horigins
   exact ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
     horigins, hnormalizeRel⟩
+
+/-- Before the source normalization block, the factors extracted by the
+actual generated Hensel entry multiply to the input polynomial at the exact
+modulus returned by the well-founded lift loop.  The finite-field source
+equation remains an explicit premise and is supplied by the preceding Zp
+factorization refinement; Hensel lifting does not assume a semantic oracle. -/
+theorem HenselLiftEntryCorrect.preNormalizationProduct
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hcount : 2 ≤ factors.size)
+    (hsource : ∀ adjusted,
+      HenselAdjustFirstFactorCorrect f factors p adjusted →
+      ((henselFactorRangeList adjusted factors.size 0).map
+        (CLPoly.Math.SparsePolyZp.toPoly p.toNat)).prod =
+          toPolyMod p.toNat f)
+    (hcorrect : HenselLiftEntryCorrect termination f factors p aTarget output) :
+    ∃ adjusted, ∃ extracted, ∃ outputM : Nat,
+      HenselAdjustFirstFactorCorrect f factors p adjusted ∧
+      HenselNormalizeCorrect extracted (outputM : Int) output.1 ∧
+      output.2 = (outputM : Int) ∧
+      (extracted.toList.map (toPolyMod outputM)).prod =
+        toPolyMod outputM f := by
+  rcases hcorrect with
+    ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
+      _htarget, hadjust, hsemantic, hlift, hextract, hnormalize, houtputM,
+      _houtputCanonical⟩
+  have hproduct := hsemantic.liftLoop_extractedFactors_product hlift hcount
+    (hsource adjusted hadjust)
+  have hextracted : extracted.toList =
+      henselExtractedFactors
+        (henselTreeBuildTopology 0 factors.size 0) liftedNodes := by
+    simpa using hextract.toList_eq
+  have hproduct' :
+      (extracted.toList.map (toPolyMod outputM)).prod =
+        toPolyMod outputM f := by
+    rw [hextracted]
+    exact hproduct
+  exact ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
+    hproduct'⟩
 
 /-- A successful full generated Hensel entry exposes the precision reached by
 its own well-founded loop.  In particular, the returned modulus is not an

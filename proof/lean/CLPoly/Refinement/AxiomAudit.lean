@@ -33,3 +33,8 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselLiftLoopCorrect.extractedFactors_product
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.extractedFactors_product
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.liftLoop_extractedFactors_product
+#print axioms Refinement.StrictHensel.HenselNormalizeCorrect.product_eq_unit_mul
+#print axioms Refinement.StrictHensel.HenselAdjustFirstFactorCorrect.product_eq
+#print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.preNormalizationProduct
+#print axioms Refinement.StrictFactorZZ.selectionAdjustedFactors_product_eq_source
+#print axioms Refinement.StrictFactorZZ.selectionHenselFactors_preNormalization_product

@@ -19,6 +19,38 @@ namespace StrictFactorZZ
 
 open CLPoly.Math
 
+private theorem polynomial_eq_C_leadingCoeff_mul_of_associated_monic
+    {K : Type*} [Field K] {f g : Polynomial K}
+    (hf : f ≠ 0) (hg : g.Monic) (hassociated : Associated f g) :
+    f = Polynomial.C f.leadingCoeff * g := by
+  rcases hassociated with ⟨unit, hunit⟩
+  rcases Polynomial.isUnit_iff.mp unit.isUnit with
+    ⟨coefficient, _hcoefficientUnit, hcoefficient⟩
+  have hproduct : f * Polynomial.C coefficient = g := by
+    rw [hcoefficient]
+    exact hunit
+  have hleading := congrArg Polynomial.leadingCoeff hproduct
+  rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C,
+    hg.leadingCoeff] at hleading
+  symm
+  rw [← hproduct]
+  calc
+    Polynomial.C f.leadingCoeff *
+          (f * Polynomial.C coefficient) =
+        f * Polynomial.C (f.leadingCoeff * coefficient) := by
+      rw [Polynomial.C_mul]
+      ring
+    _ = f := by rw [hleading]; simp
+
+private theorem monic_list_product {K : Type*} [Semiring K]
+    (factors : List (Polynomial K))
+    (hmonic : ∀ factor ∈ factors, factor.Monic) : factors.prod.Monic := by
+  induction factors with
+  | nil => exact Polynomial.monic_one
+  | cons factor tail ih =>
+      exact (hmonic factor (by simp)).mul
+        (ih fun candidate hcandidate => hmonic candidate (by simp [hcandidate]))
+
 /-- Every divisor of a concrete finite product of irreducibles is associated
 to the product of an actual sublist.  The proof recursively follows the
 source-order list: if the head atom divides the divisor it is cancelled from
@@ -172,6 +204,97 @@ theorem selectionFactors_adjusted_irreducible
   have hrel := hadjust.unitRel hp2 hfactors hleadingNonzero
   intro index hindex
   exact hrel.irreducible (selectionFactors_irreducible hselection) index hindex
+
+/-- The actual first-factor adjustment turns the monic finite-field factors
+returned by the selected `__factor_Zp` execution into an *exact* factorization
+of the integer source reduced modulo the selected prime.  This recovers the
+leading unit from the concrete C++ write instead of weakening the Hensel input
+to associatedness. -/
+theorem selectionAdjustedFactors_product_eq_source
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {adjusted : Array SparsePolyZp}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hadjust : StrictHensel.HenselAdjustFirstFactorCorrect f
+      selection.factors selection.prime adjusted) :
+    (adjusted.toList.map
+        (SparsePolyZp.toPoly selection.prime.toNat)).prod =
+      Polynomial.map (Int.castRingHom (ZMod selection.prime.toNat))
+        (SparsePolyZZ.toPoly f) := by
+  let sourceMod := Polynomial.map
+    (Int.castRingHom (ZMod selection.prime.toNat)) (SparsePolyZZ.toPoly f)
+  let selected := StrictSelectPrime.factorArrayToL2
+    selection.prime.toNat selection.factors
+  have hselectedMonic : selected.prod.Monic := by
+    apply monic_list_product
+    intro factor hfactor
+    exact (hselection.quality factor hfactor).2
+  have hsourceLeading : sourceMod.leadingCoeff =
+      ((SparsePolyZZ.toPoly f).leadingCoeff :
+        ZMod selection.prime.toNat) := by
+    exact Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero _
+      hselection.goodPrime.lc_nonzero
+  have hsourceNonzero : sourceMod ≠ 0 := by
+    intro hzero
+    have := congrArg Polynomial.leadingCoeff hzero
+    rw [hsourceLeading] at this
+    exact hselection.goodPrime.lc_nonzero (by simpa using this)
+  have hselectedExact :
+      sourceMod = Polynomial.C sourceMod.leadingCoeff * selected.prod :=
+    polynomial_eq_C_leadingCoeff_mul_of_associated_monic hsourceNonzero
+      hselectedMonic hselection.productAssociated
+  rcases hadjust.product_eq hp2 hfactors with
+    ⟨leading, hleading, hadjustedProduct⟩
+  rw [hadjustedProduct]
+  change Polynomial.C (leading.2 : ZMod selection.prime.toNat) *
+      selected.prod = sourceMod
+  rw [hleadingSemantic leading hleading, ← hsourceLeading]
+  exact hselectedExact.symm
+
+/-- The exact selected-prime factorization now discharges the formerly
+explicit source-product premise of the real Hensel loop.  Consequently the
+pre-normalized factors extracted from the generated C++ tree multiply to the
+integer source at the exact modulus returned by that loop. -/
+theorem selectionHenselFactors_preNormalization_product
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output) :
+    ∃ adjusted, ∃ extracted, ∃ outputM : Nat,
+      StrictHensel.HenselAdjustFirstFactorCorrect f selection.factors
+        selection.prime adjusted ∧
+      StrictHensel.HenselNormalizeCorrect extracted (outputM : Int) output.1 ∧
+      output.2 = (outputM : Int) ∧
+      (extracted.toList.map (StrictHensel.toPolyMod outputM)).prod =
+        StrictHensel.toPolyMod outputM f := by
+  apply hentry.preNormalizationProduct hcount
+  intro adjusted hadjust
+  have hadjustSize : adjusted.size = selection.factors.size := by
+    cases hadjust
+    simp [Array.set!]
+  rw [← hadjustSize]
+  rw [StrictHensel.henselFactorRangeList_full]
+  have hexact := selectionAdjustedFactors_product_eq_source hp2 hfactors
+    hleadingSemantic hselection hadjust
+  simpa [StrictHensel.toPolyMod] using hexact
 
 private theorem origins_preserve_irreducible
     {p : Nat} {inputs : List SparsePolyZp} {outputs : List SparsePolyZZ}

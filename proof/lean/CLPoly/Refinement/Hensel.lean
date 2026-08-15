@@ -1209,6 +1209,24 @@ theorem modCoeffOutput_canonical (f : SparsePolyZZ) (m : Int)
       simpa using hnonzero
     next hzero => contradiction
 
+/-- The generated coefficient-scaling range-for preserves the canonical
+sparse representation when its integer scalar is nonzero. -/
+theorem scaleCoeffs_canonical (f : SparsePolyZZ) (scale : Int)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hscale : scale ≠ 0) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.scaleCoeffs f scale) := by
+  unfold StrictPolynomialMod.SparsePolyZZCanonical
+  constructor
+  · rw [Generated.StrictHensel.scaleCoeffs, Array.toList_map,
+      List.isChain_map]
+    simpa using hf.1
+  · intro term hterm
+    rw [Generated.StrictHensel.scaleCoeffs, Array.toList_map,
+      List.mem_map] at hterm
+    rcases hterm with ⟨source, hsource, rfl⟩
+    exact mul_ne_zero (hf.2 source hsource) hscale
+
 /-- The exact composition used by the final Hensel normalization is canonical
 whenever its source factor is canonical.  This is proved directly for the
 generated map/filter traversal: the intermediate scaled array may contain
@@ -1548,6 +1566,242 @@ theorem pairVecAdd_canonical (a b : SparsePolyZZ)
   apply pairVecAddLoop_canonical a b ha hb 0 0 #[]
   exact ⟨by simp [StrictPolynomialMod.SparsePolyZZCanonical], by simp,
     by simp⟩
+
+set_option maxHeartbeats 0 in
+/-- The exact generated `pair_vec_sub` merge preserves the canonical sparse
+integer representation under the same emitted-prefix frontier invariant. -/
+theorem pairVecSubLoop_canonical (a b : SparsePolyZZ)
+    (ha : StrictPolynomialMod.SparsePolyZZCanonical a)
+    (hb : StrictPolynomialMod.SparsePolyZZCanonical b) :
+    ∀ aIndex bIndex result,
+      PairVecAddCursorValid a b aIndex bIndex result →
+      StrictPolynomialMod.SparsePolyZZCanonical
+        (Generated.StrictHensel.pairVecSubLoop a b aIndex bIndex result) := by
+  intro aIndex bIndex result hvalid
+  refine Generated.StrictHensel.pairVecSubLoop.induct a b
+    (motive := fun aIndex bIndex result =>
+      PairVecAddCursorValid a b aIndex bIndex result →
+      StrictPolynomialMod.SparsePolyZZCanonical
+        (Generated.StrictHensel.pairVecSubLoop a b aIndex bIndex result))
+    ?_ ?_ ?_ ?_ ?_ ?_ aIndex bIndex result hvalid
+  · intro ai bi acc hmore haDone ih hcursor
+    have hbi : bi < b.size := by omega
+    have hbmem : b[bi]! ∈ b.toList := by
+      rw [getElem!_pos b bi hbi]
+      exact Array.getElem_mem_toList hbi
+    have hcoeff : -b[bi]!.2 ≠ 0 := neg_ne_zero.mpr (hb.2 b[bi]! hbmem)
+    have haDrop : a.toList.drop ai = [] := List.drop_eq_nil_of_le (by
+      simpa using haDone)
+    have hnext := hcursor.push a b ai bi ai (bi + 1) acc b[bi]!.1.deg
+      (-b[bi]!.2) hcoeff
+      (fun output houtput => hcursor.result_above_b output houtput b[bi]!
+        (by rw [drop_eq_getElem_cons b bi hbi]; simp))
+      (by simp [haDrop])
+      (canonical_cursor_tail_lt b bi hbi hb)
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp only [hmore, haDone, ↓reduceIte]
+    exact ih hnext
+  · intro ai bi acc hmore haMore hbDone ih hcursor
+    have hai : ai < a.size := by omega
+    have hamem : a[ai]! ∈ a.toList := by
+      rw [getElem!_pos a ai hai]
+      exact Array.getElem_mem_toList hai
+    have hcoeff : a[ai]!.2 ≠ 0 := ha.2 a[ai]! hamem
+    have hbDrop : b.toList.drop bi = [] := List.drop_eq_nil_of_le (by
+      simpa using hbDone)
+    have hnext := hcursor.push a b ai bi (ai + 1) bi acc a[ai]!.1.deg
+      a[ai]!.2 hcoeff
+      (fun output houtput => hcursor.result_above_a output houtput a[ai]!
+        (by rw [drop_eq_getElem_cons a ai hai]; simp))
+      (canonical_cursor_tail_lt a ai hai ha)
+      (by simp [hbDrop])
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp only [hmore, haMore, hbDone, ↓reduceIte]
+    exact ih hnext
+  · intro ai bi acc hmore haMore hbMore hdegree ih hcursor
+    have hai : ai < a.size := by omega
+    have hbi : bi < b.size := by omega
+    have hbmem : b[bi]! ∈ b.toList := by
+      rw [getElem!_pos b bi hbi]
+      exact Array.getElem_mem_toList hbi
+    have hcoeff : -b[bi]!.2 ≠ 0 := neg_ne_zero.mpr (hb.2 b[bi]! hbmem)
+    have hnext := hcursor.push a b ai bi ai (bi + 1) acc b[bi]!.1.deg
+      (-b[bi]!.2) hcoeff
+      (fun output houtput => hcursor.result_above_b output houtput b[bi]!
+        (by rw [drop_eq_getElem_cons b bi hbi]; simp))
+      (fun term hterm => lt_of_le_of_lt
+        (canonical_cursor_degree_le a ai hai ha term hterm) hdegree)
+      (canonical_cursor_tail_lt b bi hbi hb)
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp only [hmore, haMore, hbMore, hdegree, ↓reduceIte]
+    exact ih hnext
+  · intro ai bi acc hmore haMore hbMore hnotGreater hequal ih hcursor
+    have hai : ai < a.size := by omega
+    have hbi : bi < b.size := by omega
+    have habove : ∀ output ∈ acc.toList,
+        a[ai]!.1.deg < output.1.deg := by
+      intro output houtput
+      exact hcursor.result_above_a output houtput a[ai]!
+        (by rw [drop_eq_getElem_cons a ai hai]; simp)
+    have hnext := hcursor.pushNonzero a b ai bi (ai + 1) (bi + 1) acc
+      a[ai]!.1.deg (a[ai]!.2 - b[bi]!.2) habove
+      (canonical_cursor_tail_lt a ai hai ha)
+      (fun term hterm => by
+        have hlt := canonical_cursor_tail_lt b bi hbi hb term hterm
+        omega)
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp [hmore, haMore, hbMore, hnotGreater, hequal]
+    exact ih hnext
+  · intro ai bi acc hmore haMore hbMore hnotGreater hnotEqual ih hcursor
+    have hai : ai < a.size := by omega
+    have hbi : bi < b.size := by omega
+    have hless : a[ai]!.1.deg > b[bi]!.1.deg := by omega
+    have hamem : a[ai]! ∈ a.toList := by
+      rw [getElem!_pos a ai hai]
+      exact Array.getElem_mem_toList hai
+    have hcoeff : a[ai]!.2 ≠ 0 := ha.2 a[ai]! hamem
+    have hnext := hcursor.push a b ai bi (ai + 1) bi acc a[ai]!.1.deg
+      a[ai]!.2 hcoeff
+      (fun output houtput => hcursor.result_above_a output houtput a[ai]!
+        (by rw [drop_eq_getElem_cons a ai hai]; simp))
+      (canonical_cursor_tail_lt a ai hai ha)
+      (fun term hterm => lt_of_le_of_lt
+        (canonical_cursor_degree_le b bi hbi hb term hterm) hless)
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simp only [hmore, haMore, hbMore, hnotGreater, hnotEqual, ↓reduceIte]
+    exact ih hnext
+  · intro ai bi acc hdone hcursor
+    rw [Generated.StrictHensel.pairVecSubLoop.eq_1]
+    simpa [hdone] using hcursor.result_canonical
+
+/-- Canonicality of the public generated sparse-subtraction entry. -/
+theorem pairVecSub_canonical (a b : SparsePolyZZ)
+    (ha : StrictPolynomialMod.SparsePolyZZCanonical a)
+    (hb : StrictPolynomialMod.SparsePolyZZCanonical b) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.pairVecSubLoop a b 0 0 #[]) := by
+  apply pairVecSubLoop_canonical a b ha hb 0 0 #[]
+  exact ⟨by simp [StrictPolynomialMod.SparsePolyZZCanonical], by simp,
+    by simp⟩
+
+private theorem mulMaxDegree_spec
+    (products : List Generated.StrictHensel.MulProduct)
+    (hnonempty : products ≠ []) :
+    (∃ product ∈ products,
+      product.degree = Generated.StrictHensel.mulMaxDegree products) ∧
+    ∀ product ∈ products,
+      product.degree ≤ Generated.StrictHensel.mulMaxDegree products := by
+  have hsome :
+      (products.map (fun product => product.degree)).max? =
+        some (Generated.StrictHensel.mulMaxDegree products) := by
+    unfold Generated.StrictHensel.mulMaxDegree
+    cases hmax : (products.map (fun product => product.degree)).max? with
+    | none =>
+        have hempty := List.max?_eq_none_iff.mp hmax
+        simp at hempty
+        contradiction
+    | some maximum => simp [hmax]
+  have hspec := hsome
+  rw [List.max?_eq_some_iff] at hspec
+  constructor
+  · rcases List.mem_map.mp hspec.1 with ⟨product, hproduct, heq⟩
+    exact ⟨product, hproduct, heq⟩
+  · intro product hproduct
+    exact hspec.2 product.degree (List.mem_map.mpr ⟨product, hproduct, rfl⟩)
+
+private structure PairVecMulHeapCursorValid
+    (products : List Generated.StrictHensel.MulProduct)
+    (result : SparsePolyZZ) : Prop where
+  result_canonical : StrictPolynomialMod.SparsePolyZZCanonical result
+  result_above_products : ∀ output ∈ result.toList,
+    ∀ product ∈ products, product.degree < output.1.deg
+
+private theorem PairVecMulHeapCursorValid.next
+    (products : List Generated.StrictHensel.MulProduct)
+    (result : SparsePolyZZ) (hnonempty : products ≠ [])
+    (hvalid : PairVecMulHeapCursorValid products result) :
+    let degree := Generated.StrictHensel.mulMaxDegree products
+    let coefficient := Generated.StrictHensel.mulDegreeCoefficient degree products
+    let remaining := products.filter fun product => product.degree != degree
+    PairVecMulHeapCursorValid remaining
+      (Generated.StrictHensel.pushNonzero result degree coefficient) := by
+  dsimp only
+  have hspec := mulMaxDegree_spec products hnonempty
+  let degree := Generated.StrictHensel.mulMaxDegree products
+  let coefficient := Generated.StrictHensel.mulDegreeCoefficient degree products
+  let remaining := products.filter fun product => product.degree != degree
+  have habove : ∀ output ∈ result.toList, degree < output.1.deg := by
+    intro output houtput
+    rcases hspec.1 with ⟨product, hproduct, hdegree⟩
+    have hlt := hvalid.result_above_products output houtput product hproduct
+    simpa [degree, hdegree] using hlt
+  refine ⟨pushNonzero_canonical result degree coefficient
+      hvalid.result_canonical habove, ?_⟩
+  intro output houtput product hproduct
+  have hproductSource : product ∈ products := by
+    exact List.mem_of_mem_filter hproduct
+  have hproductNe : product.degree ≠ degree := by
+    simpa [degree] using List.of_mem_filter hproduct
+  have hproductLt : product.degree < degree :=
+    lt_of_le_of_ne (hspec.2 product hproductSource) hproductNe
+  by_cases hzero : coefficient = 0
+  · have hzero' : Generated.StrictHensel.mulDegreeCoefficient
+        (Generated.StrictHensel.mulMaxDegree products) products = 0 := by
+      simpa [coefficient, degree] using hzero
+    have hold : output ∈ result.toList := by
+      simpa [Generated.StrictHensel.pushNonzero, hzero'] using houtput
+    exact lt_trans hproductLt (habove output hold)
+  · have hzero' : Generated.StrictHensel.mulDegreeCoefficient
+        (Generated.StrictHensel.mulMaxDegree products) products ≠ 0 := by
+      simpa [coefficient, degree] using hzero
+    rw [Generated.StrictHensel.pushNonzero, if_pos (by simpa using hzero'),
+      Array.toList_push] at houtput
+    simp only [List.mem_append, List.mem_singleton] at houtput
+    rcases houtput with hold | rfl
+    · exact lt_trans hproductLt (habove output hold)
+    · exact hproductLt
+
+set_option maxHeartbeats 0 in
+/-- The exact generated multiplication heap traversal emits a canonical
+sparse integer polynomial from every valid emitted-prefix frontier. -/
+theorem pairVecMulHeapLoop_canonical :
+    ∀ (products : List Generated.StrictHensel.MulProduct)
+      (result : SparsePolyZZ),
+      PairVecMulHeapCursorValid products result →
+      StrictPolynomialMod.SparsePolyZZCanonical
+        (Generated.StrictHensel.pairVecMulHeapLoop products result) := by
+  intro products result hvalid
+  refine Generated.StrictHensel.pairVecMulHeapLoop.induct
+    (motive := fun products result =>
+      PairVecMulHeapCursorValid products result →
+      StrictPolynomialMod.SparsePolyZZCanonical
+        (Generated.StrictHensel.pairVecMulHeapLoop products result))
+    ?_ ?_ products result hvalid
+  · intro result hcursor
+    rw [Generated.StrictHensel.pairVecMulHeapLoop.eq_1]
+    simpa using hcursor.result_canonical
+  · intro products result hempty
+    dsimp only
+    intro ih hcursor
+    have hnext := PairVecMulHeapCursorValid.next products result hempty hcursor
+    have hremaining :
+        (products.attach.filter fun product =>
+          product.1.degree != Generated.StrictHensel.mulMaxDegree products).unattach =
+          products.filter fun product =>
+            product.degree != Generated.StrictHensel.mulMaxDegree products := by
+      simp
+    rw [hremaining] at ih
+    rw [Generated.StrictHensel.pairVecMulHeapLoop.eq_1]
+    simp only [hempty, ↓reduceDIte]
+    exact ih hnext
+
+/-- Canonicality of the public generated sparse-multiplication entry. -/
+theorem pairVecMul_canonical (a b : SparsePolyZZ) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts a b) #[]) := by
+  apply pairVecMulHeapLoop_canonical _ #[]
+  exact ⟨by simp [StrictPolynomialMod.SparsePolyZZCanonical], by simp⟩
 
 private structure DivmodMergeCursorValid (r g : SparsePolyZZ)
     (degreeShift rIndex gIndex : Nat) (result : SparsePolyZZ) : Prop where

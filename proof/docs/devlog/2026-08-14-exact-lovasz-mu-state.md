@@ -1692,3 +1692,54 @@ arithmetic.
 - 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
 - 下一步：证明 generated scale/mul/sub 的 canonical preservation，组合出
   每个真实 Hensel step 的 `g/h` canonicality
+
+## Natural-language proof: canonical generated coefficient scaling
+
+The generated `scaleCoeffs` is the source range-for loop represented as an
+array map.  Mapping retains every monomial and therefore preserves the exact
+strict degree chain.  If the input coefficients and the scalar are nonzero,
+integer multiplication has no zero divisors, so every mapped coefficient is
+also nonzero.  This proves canonicality directly for the generated array; the
+Hensel caller supplies scalar nonzeroness from its positive modulus.
+
+## Natural-language proof: canonical generated pair-vector subtraction
+
+Subtraction uses the same two-cursor ordering decisions and emitted-prefix
+frontier as addition.  A term selected only from the right input is emitted
+with its coefficient negated; integer negation preserves nonzeroness.  Equal
+degrees advance both cursors and call the same `pushNonzero` compactor on the
+coefficient difference.  Therefore the addition cursor invariant and generic
+push lemmas apply branch-for-branch to the actual `pairVecSubLoop`, with only
+the right-only coefficient proof changed from `c ≠ 0` to `-c ≠ 0`.
+
+## Natural-language proof: canonical generated multiplication heap
+
+The generated multiplication heap loop does not rely on product-list order.
+At each nonempty frontier it computes the actual maximum pending degree,
+sums every contribution at that degree, filters all of them out, and calls
+`pushNonzero`.  Track that every pending degree is below every already emitted
+term.  The list maximum theorem makes the chosen degree no larger than no
+pending degree and at least every pending degree.  After filtering equality,
+every remaining degree is therefore strictly smaller than the chosen degree.
+`pushNonzero` either appends the summed coefficient or drops a zero sum, so it
+preserves both canonicality and the strict frontier.  Well-founded functional
+induction is exactly on the generated filtered-list length; the empty-prefix
+entry makes the initial frontier condition vacuous.  This proof applies to
+all generated product lists and hence to the concrete `pairVecMulProducts`.
+
+`scaleCoeffs_canonical`, `pairVecSubLoop_canonical`, and
+`pairVecMulHeapLoop_canonical` now close all three generated arithmetic
+representation primitives needed by a Hensel step.  The multiplication result
+is canonical even without canonical input arrays because its concrete heap
+always groups a maximal degree before emitting it.
+
+## 度量（generated scale/sub/mul canonicality）
+
+- 耗时：约 2 小时（scale map、subtraction five-way merge、heap maximum/filter induction）
+- 迭代：1 轮 scale/sub 与 5 轮 multiplication 单文件编译-修复
+- Lean 新增/修改行数：约 310 行（含三段证明草稿）
+- 对应 C++ 行数：约 55 行 scale/sub/multiplication heap lowering；C++ 变化为无，因此无新的 C++ b2b 变更面
+- 放弃的方案：要求 multiplication product list 预排序；实际 heap 输入是 flatMap，证明改为使用每轮真实 max/filter 语义
+- 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
+- 下一步：由实际 divmod trace 取得 remainder canonicality，组合完整
+  `__hensel_step_raw_ir` 的 `g/h` canonical preservation

@@ -2346,3 +2346,30 @@ factor adjustment.
 No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the normalization unit and the actual exact-divmod combination scan are used
 to complete the occurrence-sensitive Zassenhaus recombination argument.
+
+## Occurrence-sensitive divisors reach the concrete scan
+
+The selected-prime/Hensel divisor witness is now connected to the actual
+generated fixed-size Zassenhaus enumerator.
+
+- `FixedSizeScanExhausted` names the literal generated scan from its concrete
+  iota initial combination while keeping the private well-founded rank
+  implementation encapsulated.
+- `FixedSizeScanExhausted.rejects` proves that exhaustion means every legal
+  occurrence-index array was actually visited and rejected.
+- `integer_divisor_candidate_rejected_of_scan_exhausted` combines this with
+  the genuine divisor-to-sublist theorem.  For every integer divisor it
+  retains a strictly increasing array of positions in the actual normalized
+  Hensel array, its modular product association, and the concrete rejected
+  execution.  Repeated equal factors remain distinct occurrences.
+- `exactDivmodRaw_remainder_eq_empty_of_dvd_of_degree_lt` closes the algebraic
+  end of actual sparse long division: for a concrete canonical returned
+  remainder below the divisor degree, true divisibility forces that physical
+  remainder array to be empty.  The remaining execution lemma must establish
+  the degree bound and exclude the checked fault branches from canonical
+  divisible inputs.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+remaining completeness boundary is now sharply localized: use the generated
+precision/symmetric-recovery facts and exact long division to contradict this
+rejection for a genuine bounded divisor.

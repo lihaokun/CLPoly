@@ -8,6 +8,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.__hensel_lift_upoly_raw_ir_refines
 #print axioms Refinement.StrictRecombine.zassenhausAttempt_extracted_factor_mod_eq_selected
 #print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracted_mod_certificate
+#print axioms Refinement.StrictRecombine.exactDivmodRaw_remainder_eq_empty_of_dvd_of_degree_lt
 #print axioms Refinement.StrictRecombine.removeCombination_preserves_pointwise
 #print axioms Refinement.StrictRecombine.symmetricModRaw_toPoly_coefficients_bounded
 #print axioms Refinement.StrictRecombine.symmetric_recovery_closed_left
@@ -39,3 +40,5 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.selectionAdjustedFactors_product_eq_source
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_preNormalization_product
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_normalized_product_eq_unit_mul_source
+#print axioms Refinement.StrictRecombine.FixedSizeScanExhausted.rejects
+#print axioms Refinement.StrictFactorZZ.integer_divisor_candidate_rejected_of_scan_exhausted

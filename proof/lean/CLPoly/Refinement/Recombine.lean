@@ -3096,6 +3096,30 @@ theorem scanZassenhausCombinations_exhausted_rejects_all
     (initialCombination_legal upper count hfits) htarget
     (initialCombination_lex_le upper count target htarget) hrun
 
+/-- The literal execution proposition for an exhausted generated fixed-size
+Zassenhaus scan from its source iota initial combination. -/
+def FixedSizeScanExhausted (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ) (count : Nat) : Prop :=
+  ∃ hfits : count ≤ activeLifted.size,
+    Generated.StrictRecombine.scanZassenhausCombinations
+      (concreteCombinationTermination activeLifted.size count)
+      fStar activeLifted modulus
+      (Generated.StrictRecombine.initialCombination count)
+      (initialCombination_legal activeLifted.size count hfits) = .ok .exhausted
+
+/-- Public wrapper exposing the no-omission consequence of the literal
+fixed-size generated scan without exporting its private rank construction. -/
+theorem FixedSizeScanExhausted.rejects
+    {fStar : SparsePolyZZ} {activeLifted : Array SparsePolyZZ}
+    {modulus : ZZ} {count : Nat}
+    (hrun : FixedSizeScanExhausted fStar activeLifted modulus count) :
+    ∀ target, LegalCombination activeLifted.size count target →
+      Generated.StrictRecombine.zassenhausAttempt fStar activeLifted modulus
+        target = .ok .rejected := by
+  rcases hrun with ⟨hfits, hscan⟩
+  exact scanZassenhausCombinations_exhausted_rejects_all fStar activeLifted
+    modulus hfits hscan
+
 /-- Pure array value computed by the generated source-shaped μ prefix loop.
 This is used only to state its exact execution theorem; it is itself strictly
 well-founded on the same remaining-prefix measure. -/
@@ -12077,6 +12101,58 @@ theorem exactDivmodRaw_toPoly (dividend divisor quotient remainder : SparsePolyZ
   have hsemantic := exactDivmodLoop_toPoly divisor dividend #[] quotient
     remainder hrun
   simpa [SparsePolyZZ.toPoly] using hsemantic.symm
+
+/-- Algebraic closure step for completeness of the actual exact-division
+loop.  If its concrete canonical remainder is below the divisor degree, then
+a genuine divisibility hypothesis forces that remainder array to be empty.
+The quotient and remainder are the values returned by `exactDivmodRaw`; no
+mathematical quotient is substituted for the generated execution. -/
+theorem exactDivmodRaw_remainder_eq_empty_of_dvd_of_degree_lt
+    (dividend divisor quotient remainder : SparsePolyZZ)
+    (hdivisorNe : SparsePolyZZ.toPoly divisor ≠ 0)
+    (hremainderCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical remainder)
+    (hdegree : SparsePolyZZ.toPoly remainder = 0 ∨
+      (SparsePolyZZ.toPoly remainder).natDegree <
+        (SparsePolyZZ.toPoly divisor).natDegree)
+    (hdivides : SparsePolyZZ.toPoly divisor ∣
+      SparsePolyZZ.toPoly dividend)
+    (hrun : Generated.StrictRecombine.exactDivmodRaw dividend divisor =
+      .ok (quotient, remainder)) :
+    remainder = #[] := by
+  have hsemantic := exactDivmodRaw_toPoly dividend divisor quotient remainder
+    hrun
+  rcases hdivides with ⟨mathematicalQuotient, hdividend⟩
+  have hremainderDivides : SparsePolyZZ.toPoly divisor ∣
+      SparsePolyZZ.toPoly remainder := by
+    refine ⟨mathematicalQuotient - SparsePolyZZ.toPoly quotient, ?_⟩
+    calc
+      SparsePolyZZ.toPoly remainder =
+          SparsePolyZZ.toPoly dividend -
+            SparsePolyZZ.toPoly divisor * SparsePolyZZ.toPoly quotient := by
+        rw [hsemantic]
+        ring
+      _ = SparsePolyZZ.toPoly divisor *
+          (mathematicalQuotient - SparsePolyZZ.toPoly quotient) := by
+        rw [hdividend]
+        ring
+  have hremainderZero : SparsePolyZZ.toPoly remainder = 0 := by
+    rcases hdegree with hzero | hdegree
+    · exact hzero
+    · by_contra hnonzero
+      have hdegreeLe := Polynomial.natDegree_le_of_dvd hremainderDivides
+        hnonzero
+      omega
+  have hsizeZero : remainder.size = 0 := by
+    by_contra hnot
+    have hnonempty : 0 < remainder.size := Nat.pos_of_ne_zero hnot
+    have hleading := sparsePolyZZ_leadingCoeff_eq_head remainder
+      hremainderCanonical hnonempty
+    rw [hremainderZero] at hleading
+    have hheadNonzero := hremainderCanonical.2 remainder[0]
+      (Array.getElem_mem_toList hnonempty)
+    exact hheadNonzero (by simpa using hleading.symm)
+  exact Array.size_eq_zero_iff.mp hsizeZero
 
 theorem exactDivmodRaw_quotient_canonical
     (dividend divisor quotient remainder : SparsePolyZZ)

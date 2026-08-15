@@ -631,6 +631,48 @@ theorem integer_divisor_mod_has_legal_hensel_candidate
   rw [hselected]
   exact hassociated
 
+/-- If the actual generated fixed-size Zassenhaus scan exhausts, then the
+occurrence-sensitive candidate supplied by any genuine integer divisor was
+not omitted: that exact index array was executed and rejected.  This is the
+bridge from divisor existence to the concrete combination enumerator; the
+next completeness step rules out the rejection using symmetric recovery and
+exact division. -/
+theorem integer_divisor_candidate_rejected_of_scan_exhausted
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f fStar : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output)
+    (g : Polynomial Int) (hg : g ∣ SparsePolyZZ.toPoly f)
+    (hrun : StrictRecombine.FixedSizeScanExhausted fStar output.1 output.2
+      (integer_divisor_mod_has_legal_hensel_candidate hcount hp2 hfactors
+        hleadingSemantic hselection hentry g hg).choose.size) :
+    ∃ indices : Array Nat,
+      StrictRecombine.LegalCombination output.1.size indices.size indices ∧
+      Associated
+        (Polynomial.map
+          (Int.castRingHom (ZMod selection.prime.toNat)) g)
+        (((StrictRecombine.selectSourceIndices output.1.toList indices.toList).map
+          (StrictHensel.toPolyMod selection.prime.toNat)).prod) ∧
+      Generated.StrictRecombine.zassenhausAttempt fStar output.1 output.2
+        indices = .ok .rejected := by
+  let witness := integer_divisor_mod_has_legal_hensel_candidate hcount hp2
+    hfactors hleadingSemantic hselection hentry g hg
+  let indices := witness.choose
+  have hspec := witness.choose_spec
+  have hrejected := hrun.rejects indices hspec.1
+  exact ⟨indices, hspec.1, hspec.2, hrejected⟩
+
 /-- Pairwise coprimality supplied for the concrete adjusted input array is
 transported through the actual Hensel leaf origins, lift extraction, and
 final source normalization to the returned lifted-factor array. -/

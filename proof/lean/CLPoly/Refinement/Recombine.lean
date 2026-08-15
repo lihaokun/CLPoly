@@ -8202,6 +8202,25 @@ theorem normalization_toPoly (terms : SparsePolyZZ) :
           (fun a b => a.fst.deg > b.fst.deg)) = intTermsToPoly terms.toList
   rw [mergeSort_toPoly, filterNonzero_toPoly, groupTerms_toPoly]
 
+/-- Every coefficient retained by the concrete sparse normalization is
+nonzero.  This is the exact property needed by the checked long-division
+loop; degree descent is supplied separately by its runtime rank check. -/
+theorem normalization_coefficients_nonzero (terms : SparsePolyZZ) :
+    ∀ term ∈ (SparsePolyZZ.normalization terms).toList, term.2 ≠ 0 := by
+  intro term hterm
+  unfold SparsePolyZZ.normalization at hterm
+  simp only [List.toList_toArray] at hterm
+  have hfiltered : term ∈
+      ((terms.foldl (fun acc term =>
+        match acc.findIdx? (fun t => t.fst.deg = term.fst.deg) with
+        | some index => acc.modify index
+            (fun existing => (existing.1, existing.2 + term.2))
+        | none => acc.push term) #[]).filter
+          (fun term => term.2 ≠ 0)).toList := by
+    exact (List.Perm.mem_iff (List.mergeSort_perm _ _)).mp hterm
+  rw [Array.toList_filter, List.mem_filter] at hfiltered
+  simpa using hfiltered.2
+
 theorem multiplyNormalizeRaw_toPoly (left right output : SparsePolyZZ)
     (hrun : Generated.StrictRecombine.multiplyNormalizeRaw left right =
       .ok output) :
@@ -8796,6 +8815,66 @@ theorem exactDivmodLoop_toPoly (divisor remainder quotient q r : SparsePolyZZ)
         have hout := Except.ok.inj hrun
         cases hout
         rfl
+
+/-- Recursive remainders used and returned by the checked exact-division loop
+have nonzero stored coefficients.  Every recursive step obtains the property
+from the concrete sparse normalization. -/
+theorem exactDivmodLoop_remainder_coefficients_nonzero
+    (divisor remainder quotient q r : SparsePolyZZ)
+    (hremainderNonzero : ∀ term ∈ remainder.toList, term.2 ≠ 0)
+    (hrun : Generated.StrictRecombine.exactDivmodLoop divisor remainder quotient =
+      .ok (q, r)) :
+    ∀ term ∈ r.toList, term.2 ≠ 0 := by
+  induction hmeasure : Generated.StrictRecombine.divisionRank remainder using
+      Nat.strong_induction_on generalizing remainder quotient q r with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.exactDivmodLoop] at hrun
+      split at hrun
+      next hremainder =>
+        split at hrun
+        next hdivisor =>
+          dsimp at hrun
+          split at hrun
+          next hdegree =>
+            split at hrun
+            next hnonzero =>
+              split at hrun
+              next hdivides =>
+                split at hrun
+                next hdecrease =>
+                  let degreeShift := remainder[0].1.deg - divisor[0].1.deg
+                  let scale := remainder[0].2 / divisor[0].2
+                  let remainder' :=
+                    Generated.StrictRecombine.subtractScaledNormalize remainder
+                      divisor scale degreeShift
+                  have hdec : Generated.StrictRecombine.divisionRank remainder' <
+                      measure := by
+                    rw [← hmeasure]
+                    simpa [remainder', scale, degreeShift] using hdecrease
+                  exact ih (Generated.StrictRecombine.divisionRank remainder')
+                    hdec remainder'
+                    (quotient.push (⟨degreeShift⟩, scale)) q r
+                    (normalization_coefficients_nonzero
+                      (Generated.StrictRecombine.subtractScaledTermsLoop divisor
+                        scale degreeShift 0 remainder)) hrun rfl
+                next hdecrease => contradiction
+              next hdivides =>
+                have hout := Except.ok.inj hrun
+                injection hout with hq hr
+                subst r
+                exact hremainderNonzero
+            next hnonzero => contradiction
+          next hdegree =>
+            have hout := Except.ok.inj hrun
+            injection hout with hq hr
+            subst r
+            exact hremainderNonzero
+        next hdivisor => contradiction
+      next hremainder =>
+        have hout := Except.ok.inj hrun
+        injection hout with hq hr
+        subst r
+        exact hremainderNonzero
 
 theorem exactDivmodRaw_toPoly (dividend divisor quotient remainder : SparsePolyZZ)
     (hrun : Generated.StrictRecombine.exactDivmodRaw dividend divisor =

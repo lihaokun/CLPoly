@@ -1068,3 +1068,26 @@ candidate-validation extraction.
 - 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
 - 下一步：把 quotient 的 canonicality、已有 product/unit-scalar 和
   primitivity 保持组合进 Zassenhaus 良基外层递归
+
+## Exact-division remainders retain nonzero stored coefficients
+
+The concrete sparse normalization used after each subtraction is now proved
+to retain only nonzero coefficients.  The proof follows the actual grouping,
+zero-filter, and merge-sort representation: merge-sort membership is carried
+back through its permutation to the filtered array, whose Boolean predicate
+decodes to coefficient nonzeroness.
+
+`exactDivmodLoop_remainder_coefficients_nonzero` transports this property
+through the real well-founded long-division recursion.  Terminal branches
+return the current remainder unchanged; recursive branches use the concrete
+`subtractScaledNormalize` result and the checked `divisionRank` decrease.
+This supplies the nonzero leading coefficient needed to show that every
+quotient term pushed by an exact division is itself nonzero.
+
+## 度量（exact-division remainder nonzeroness）
+
+- 耗时：约 0.75 小时（normalization filter、permutation membership、WF 递归）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
+- 下一步：利用 remainder nonzero 与 rank decrease 证明 quotient 的 pushed
+  degree shifts 严格递减，闭合 exact quotient canonicality

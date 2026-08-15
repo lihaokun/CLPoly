@@ -273,6 +273,8 @@ theorem __hensel_tree_build_raw_ir_refines
       StrictHensel.liftChildMatches (getElem output 0 hroot).right
         (match tree with | .node _ _ right => right) ∧
       StrictHensel.HenselExtractInvariant tree output ∧
+      StrictHensel.HenselTreeSemanticBuildCertificate this._p.toNat factors 0
+        0 factors.size tree output ∧
       StrictHensel.HenselTreeNodeInitialInvariant this._p.toNat factors
         0 factors.size (getElem output 0 hroot) := by
   exact Refinement.StrictHensel.strictHenselTreeBuildRawIR_refines_topology_root this hcfg h2p hp2 mulProvider factors hfactors

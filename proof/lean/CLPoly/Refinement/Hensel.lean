@@ -43,7 +43,9 @@ def HenselStepCorrect (f : SparsePolyZZ) (m : Nat)
   toPolyMod m output.g = toPolyMod m input.g ∧
   toPolyMod m output.h = toPolyMod m input.h ∧
   toPolyMod m output.s = toPolyMod m input.s ∧
-  toPolyMod m output.t = toPolyMod m input.t
+  toPolyMod m output.t = toPolyMod m input.t ∧
+  StrictPolynomialMod.SparsePolyZZCanonical output.g ∧
+  StrictPolynomialMod.SparsePolyZZCanonical output.h
 
 @[simp] theorem toPolyMod_empty (m : Nat) :
     toPolyMod m (#[] : SparsePolyZZ) = 0 := by
@@ -1227,6 +1229,50 @@ theorem scaleCoeffs_canonical (f : SparsePolyZZ) (scale : Int)
     rcases hterm with ⟨source, hsource, rfl⟩
     exact mul_ne_zero (hf.2 source hsource) hscale
 
+/-- The generated divide/reduce coefficient loop preserves strict degree
+order and removes every zero coefficient it creates. -/
+theorem divideThenReduceCoeffs_canonical (f : SparsePolyZZ) (modulus : Int)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.divideThenReduceCoeffs f modulus) := by
+  unfold StrictPolynomialMod.SparsePolyZZCanonical
+  constructor
+  · let degreeGreater : (UMonomial × Int) → (UMonomial × Int) → Prop :=
+      fun a b => a.1.deg > b.1.deg
+    letI : Trans degreeGreater degreeGreater degreeGreater :=
+      ⟨by
+        intro a b c hab hbc
+        dsimp [degreeGreater] at hab hbc ⊢
+        omega⟩
+    apply List.isChain_iff_pairwise.mpr
+    rw [Generated.StrictHensel.divideThenReduceCoeffs,
+      Array.toList_filterMap]
+    apply List.Pairwise.filterMap (R := degreeGreater) (S := degreeGreater)
+      (fun term =>
+        let quotient := ZZ.fdiv_q term.2 term.2 modulus
+        let coefficient := ZZ.fdiv_r quotient quotient modulus
+        if coefficient != 0 then some (term.1, coefficient) else none)
+      (fun a b hab outputA ha outputB hb => by
+        dsimp only at ha hb
+        split at ha <;> try contradiction
+        split at hb <;> try contradiction
+        simp only [Option.some.injEq] at ha hb
+        subst outputA
+        subst outputB
+        exact hab)
+    exact List.isChain_iff_pairwise.mp hf.1
+  · intro term hterm
+    rw [Generated.StrictHensel.divideThenReduceCoeffs,
+      Array.toList_filterMap, List.mem_filterMap] at hterm
+    rcases hterm with ⟨source, _, hsource⟩
+    dsimp only at hsource
+    split at hsource
+    next hnonzero =>
+      simp only [Option.some.injEq] at hsource
+      subst term
+      simpa using hnonzero
+    next hzero => contradiction
+
 /-- The exact composition used by the final Hensel normalization is canonical
 whenever its source factor is canonical.  This is proved directly for the
 generated map/filter traversal: the intermediate scaled array may contain
@@ -1802,6 +1848,54 @@ theorem pairVecMul_canonical (a b : SparsePolyZZ) :
         (Generated.StrictHensel.pairVecMulProducts a b) #[]) := by
   apply pairVecMulHeapLoop_canonical _ #[]
   exact ⟨by simp [StrictPolynomialMod.SparsePolyZZCanonical], by simp⟩
+
+theorem strictHenselRawOps_mul_canonical_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (a b output : SparsePolyZZ)
+    (hrun : (strictHenselRawOps termination).mul a b = .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  simp only [strictHenselRawOps,
+    Generated.StrictHensel.__upoly_mul_raw_ir] at hrun
+  injection hrun with houtput
+  subst output
+  exact pairVecMul_canonical a b
+
+theorem strictHenselRawOps_add_canonical_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (a b output : SparsePolyZZ)
+    (ha : StrictPolynomialMod.SparsePolyZZCanonical a)
+    (hb : StrictPolynomialMod.SparsePolyZZCanonical b)
+    (hrun : (strictHenselRawOps termination).add a b = .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  simp only [strictHenselRawOps,
+    Generated.StrictHensel.__upoly_add_raw_ir] at hrun
+  injection hrun with houtput
+  subst output
+  exact pairVecAdd_canonical a b ha hb
+
+theorem strictHenselRawOps_sub_canonical_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (a b output : SparsePolyZZ)
+    (ha : StrictPolynomialMod.SparsePolyZZCanonical a)
+    (hb : StrictPolynomialMod.SparsePolyZZCanonical b)
+    (hrun : (strictHenselRawOps termination).sub a b = .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  simp only [strictHenselRawOps,
+    Generated.StrictHensel.__upoly_sub_raw_ir] at hrun
+  injection hrun with houtput
+  subst output
+  exact pairVecSub_canonical a b ha hb
+
+theorem modCoeffOutput_canonical_of_run
+    (f output : SparsePolyZZ) (m : Int)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hrun : Generated.StrictHensel.__upoly_mod_coeff_raw_ir f m =
+      .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  simp only [Generated.StrictHensel.__upoly_mod_coeff_raw_ir] at hrun
+  injection hrun with houtput
+  subst output
+  exact modCoeffOutput_canonical f m hf
 
 private structure DivmodMergeCursorValid (r g : SparsePolyZZ)
     (degreeShift rIndex gIndex : Nat) (result : SparsePolyZZ) : Prop where
@@ -2729,6 +2823,56 @@ theorem __upoly_divmod_mod_raw_ir_refines_of_run
   cases hactual
   exact hsemantic
 
+/-- A successful generated modular-divmod call returns the remainder of its
+actual finite trace.  Canonicality follows from that trace, not from a
+specification-level quotient/remainder oracle. -/
+theorem __upoly_divmod_mod_raw_ir_remainder_canonical_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f g q r : SparsePolyZZ) (m : Int)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hg : StrictPolynomialMod.SparsePolyZZCanonical g)
+    (hrun : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      f g m = .ok (q, r)) :
+    StrictPolynomialMod.SparsePolyZZCanonical r := by
+  have hgFalse : g.isEmpty = false := by
+    simp only [Generated.StrictHensel.__upoly_divmod_mod_raw_ir,
+      Generated.StrictHensel.__upoly_mod_coeff_raw_ir] at hrun
+    split at hrun
+    · contradiction
+    · rename_i hnotEmpty
+      exact Bool.eq_false_of_not_eq_true hnotEmpty
+  have hvalid : termination.inputValid g
+      (Generated.StrictHensel.modCoeffOutput f m) := by
+    simp only [Generated.StrictHensel.__upoly_divmod_mod_raw_ir,
+      Generated.StrictHensel.__upoly_mod_coeff_raw_ir] at hrun
+    split at hrun <;> try contradiction
+    split at hrun <;> try contradiction
+    next h => exact h
+  have hinvert : (ZZ.invert 0 g[0]!.2 m).1 = true := by
+    by_contra hinvert
+    have hinvertFalse : (ZZ.invert 0 g[0]!.2 m).1 = false :=
+      Bool.eq_false_of_not_eq_true hinvert
+    simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hgFalse,
+      hvalid, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+      hinvertFalse] at hrun
+  let reduced := Generated.StrictHensel.modCoeffOutput f m
+  let trace := termination.trace f g reduced m (by rfl) hvalid
+  let actual := Generated.StrictHensel.divmodLoop g
+    (ZZ.invert 0 g[0]!.2 m).2 m trace
+  have hactual :
+      Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination f g m =
+        .ok (actual.1, actual.2) := by
+    simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hgFalse,
+      hvalid, hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+      reduced, trace, actual]
+  have hcanonical : StrictPolynomialMod.SparsePolyZZCanonical actual.2 := by
+    exact Refinement.StrictHensel.Generated.StrictHensel.DivmodTrace.remainder_canonical
+      trace
+      (modCoeffOutput_canonical f m hf) hg
+  rw [hrun] at hactual
+  cases hactual
+  exact hcanonical
+
 /-- The generated divide/reduce/compact loop represents the exact coefficient
 quotient modulo `m`; removing coefficients whose residues are zero does not
 change the decoded `ZMod m` polynomial. -/
@@ -3225,6 +3369,76 @@ theorem henselFactorCorrection_from_raw_runs
         strictHenselRawOps_add_refines_of_run termination m node.h _ hRaw hhRaw
       _ = toPolyMod m node.h := by rw [scaleCoeffs_toPolyMod]; simp
 
+/-- The two factors produced by the first concrete Hensel phase remain strict
+sparse representations.  Every intermediate below is fixed by a successful
+generated raw operation; in particular the modular remainder is obtained from
+the actual well-founded division trace. -/
+theorem henselFactorCorrection_canonical_from_raw_runs
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (f : SparsePolyZZ) (m : Nat) (hm : 0 < m)
+    (gh difference se q r te qg tauRaw tau gRaw gNew hRaw hNew :
+      SparsePolyZZ)
+    (hfCanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hgCanonical : StrictPolynomialMod.SparsePolyZZCanonical node.g)
+    (hhCanonical : StrictPolynomialMod.SparsePolyZZCanonical node.h)
+    (hgh : (strictHenselRawOps termination).mul node.g node.h = .ok gh)
+    (hdifference :
+      (strictHenselRawOps termination).sub f gh = .ok difference)
+    (hse : (strictHenselRawOps termination).mul node.s
+      (Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)) =
+        .ok se)
+    (hdivmod : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      se node.h (m : Int) = .ok (q, r))
+    (hte : (strictHenselRawOps termination).mul node.t
+      (Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)) =
+        .ok te)
+    (hqg : (strictHenselRawOps termination).mul q node.g = .ok qg)
+    (htauRaw : (strictHenselRawOps termination).add te qg = .ok tauRaw)
+    (htau : Generated.StrictHensel.__upoly_mod_coeff_raw_ir tauRaw
+      (m : Int) = .ok tau)
+    (hgRaw : (strictHenselRawOps termination).add node.g
+      (Generated.StrictHensel.scaleCoeffs tau (m : Int)) = .ok gRaw)
+    (hgNew : Generated.StrictHensel.__upoly_mod_coeff_raw_ir gRaw
+      (m ^ 2 : Int) = .ok gNew)
+    (hhRaw : (strictHenselRawOps termination).add node.h
+      (Generated.StrictHensel.scaleCoeffs r (m : Int)) = .ok hRaw)
+    (hhNew : Generated.StrictHensel.__upoly_mod_coeff_raw_ir hRaw
+      (m ^ 2 : Int) = .ok hNew) :
+    StrictPolynomialMod.SparsePolyZZCanonical gNew ∧
+      StrictPolynomialMod.SparsePolyZZCanonical hNew := by
+  have hmInt : (m : Int) ≠ 0 := by omega
+  have hghCanonical := strictHenselRawOps_mul_canonical_of_run
+    termination node.g node.h gh hgh
+  have hdifferenceCanonical := strictHenselRawOps_sub_canonical_of_run
+    termination f gh difference hfCanonical hghCanonical hdifference
+  have heCanonical := divideThenReduceCoeffs_canonical difference (m : Int)
+    hdifferenceCanonical
+  have hseCanonical := strictHenselRawOps_mul_canonical_of_run
+    termination node.s _ se hse
+  have hrCanonical := __upoly_divmod_mod_raw_ir_remainder_canonical_of_run
+    termination se node.h q r (m : Int) hseCanonical hhCanonical hdivmod
+  have hteCanonical := strictHenselRawOps_mul_canonical_of_run
+    termination node.t _ te hte
+  have hqgCanonical := strictHenselRawOps_mul_canonical_of_run
+    termination q node.g qg hqg
+  have htauRawCanonical := strictHenselRawOps_add_canonical_of_run
+    termination te qg tauRaw hteCanonical hqgCanonical htauRaw
+  have htauCanonical := modCoeffOutput_canonical_of_run tauRaw tau (m : Int)
+    htauRawCanonical htau
+  have hscaledTauCanonical := scaleCoeffs_canonical tau (m : Int)
+    htauCanonical hmInt
+  have hgRawCanonical := strictHenselRawOps_add_canonical_of_run
+    termination node.g _ gRaw hgCanonical hscaledTauCanonical hgRaw
+  have hgNewCanonical := modCoeffOutput_canonical_of_run gRaw gNew
+    (m ^ 2 : Int) hgRawCanonical hgNew
+  have hscaledRCanonical := scaleCoeffs_canonical r (m : Int)
+    hrCanonical hmInt
+  have hhRawCanonical := strictHenselRawOps_add_canonical_of_run
+    termination node.h _ hRaw hhCanonical hscaledRCanonical hhRaw
+  have hhNewCanonical := modCoeffOutput_canonical_of_run hRaw hNew
+    (m ^ 2 : Int) hhRawCanonical hhNew
+  exact ⟨hgNewCanonical, hhNewCanonical⟩
+
 set_option maxHeartbeats 0 in
 /-- The complete generated factor phase refines its L2 factor invariant.
 All local values below are definitionally the outputs of the concrete
@@ -3233,6 +3447,9 @@ division trace. -/
 theorem __hensel_step_factor_phase_raw_ir_refines
     (termination : Generated.StrictHensel.DivmodTermination)
     (node : HenselNode) (f : SparsePolyZZ) (m : Nat) (hm : 0 < m)
+    (hfCanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hgCanonical : StrictPolynomialMod.SparsePolyZZCanonical node.g)
+    (hhCanonical : StrictPolynomialMod.SparsePolyZZCanonical node.h)
     (hh : 0 < node.h.size) (hhDegree : node.h[0]!.1.deg < 2 ^ 63)
     (hhHead : HeadDominates node.h)
     (hinvert : (ZZ.invert 0 node.h[0]!.2 (m : Int)).1 = true)
@@ -3268,7 +3485,9 @@ theorem __hensel_step_factor_phase_raw_ir_refines
           toPolyMod (m ^ 2) factorNode.h = toPolyMod (m ^ 2) f ∧
       toPolyMod m factorNode.g = toPolyMod m node.g ∧
       toPolyMod m factorNode.h = toPolyMod m node.h ∧
-      factorNode.s = node.s ∧ factorNode.t = node.t := by
+      factorNode.s = node.s ∧ factorNode.t = node.t ∧
+      StrictPolynomialMod.SparsePolyZZCanonical factorNode.g ∧
+      StrictPolynomialMod.SparsePolyZZCanonical factorNode.h := by
   let gh := Generated.StrictHensel.pairVecMulHeapLoop
     (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
   let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
@@ -3331,6 +3550,11 @@ theorem __hensel_step_factor_phase_raw_ir_refines
       simpa [gh, difference, e, se] using hseBound) hinvert hdivmodRun
     hteRun hqgRun htauRawRun htauRun hgRawRun hgNewRun hhRawRun hhNewRun
     hinvariant
+  have hcanonical := henselFactorCorrection_canonical_from_raw_runs
+    termination node f m hm gh difference se qr.1 qr.2 te qg tauRaw tau gRaw
+    gNew hRaw hNew hfCanonical hgCanonical hhCanonical hghRun hdifferenceRun
+    hseRun hdivmodRun hteRun hqgRun htauRawRun htauRun hgRawRun hgNewRun
+    hhRawRun hhNewRun
   refine ⟨factorNode, ?_, ?_⟩
   · have hm2 : (m : Int) * (m : Int) = (m ^ 2 : Int) := by
       norm_num [pow_two]
@@ -3366,7 +3590,8 @@ theorem __hensel_step_factor_phase_raw_ir_refines
           (Generated.StrictHensel.scaleCoeffs qr.2 (m : Int)) 0 0 #[])
         (m ^ 2 : Int) = .ok hNew by simpa [hRaw] using hhNewRun]
     rfl
-  · exact ⟨hsemantic.1, hsemantic.2.1, hsemantic.2.2, rfl, rfl⟩
+  · exact ⟨hsemantic.1, hsemantic.2.1, hsemantic.2.2, rfl, rfl,
+      hcanonical.1, hcanonical.2⟩
 
 set_option maxHeartbeats 0 in
 /-- The complete generated Bezout phase refines its L2 certificate invariant.
@@ -3598,6 +3823,9 @@ structure HenselStepRefinementInvariant
     (node : HenselNode) (f : SparsePolyZZ) (m : Nat) : Prop where
   positiveModulus : 0 < m
   inputInvariant : HenselNodeInvariant f m node
+  targetCanonical : StrictPolynomialMod.SparsePolyZZCanonical f
+  gCanonical : StrictPolynomialMod.SparsePolyZZCanonical node.g
+  hCanonical : StrictPolynomialMod.SparsePolyZZCanonical node.h
   hNonempty : 0 < node.h.size
   hDegree : node.h[0]!.1.deg < 2 ^ 63
   hHead : HeadDominates node.h
@@ -3641,13 +3869,15 @@ theorem __hensel_step_raw_ir_refines
           (strictHenselRawOps termination) node f (m : Int) = .ok output ∧
       HenselStepCorrect f m node output := by
   rcases __hensel_step_factor_phase_raw_ir_refines termination node f m
-      hinvariant.positiveModulus hinvariant.hNonempty hinvariant.hDegree
+      hinvariant.positiveModulus hinvariant.targetCanonical
+      hinvariant.gCanonical hinvariant.hCanonical
+      hinvariant.hNonempty hinvariant.hDegree
       hinvariant.hHead hinvariant.hInvertible
       hinvariant.factorDifferenceDivisible hinvariant.factorSeBound
       hinvariant.factorDivmodValid
       hinvariant.inputInvariant with
     ⟨factorNode, hfactorRun, hfactorProduct, hgPreserved, hhPreserved,
-      hsUnchanged, htUnchanged⟩
+      hsUnchanged, htUnchanged, hgCanonical, hhCanonical⟩
   have hready := hinvariant.bezoutReady factorNode hfactorRun
   have hfactorBezout :
       toPolyMod m factorNode.s * toPolyMod m factorNode.g +
@@ -3683,9 +3913,15 @@ theorem __hensel_step_raw_ir_refines
     · calc
         toPolyMod m output.s = toPolyMod m factorNode.s := hsPreserved
         _ = toPolyMod m node.s := by rw [hsUnchanged]
+    constructor
     · calc
         toPolyMod m output.t = toPolyMod m factorNode.t := htPreserved
         _ = toPolyMod m node.t := by rw [htUnchanged]
+    constructor
+    · rw [hgUnchanged]
+      exact hgCanonical
+    · rw [hhUnchanged]
+      exact hhCanonical
 
 /-- The first contiguous source phase has a genuine raw-to-safe execution
 bridge.  Its only possible source assertion is the modular division by `h`;
@@ -4371,7 +4607,7 @@ theorem HenselLiftRecursiveCorrect.arrayReduces
       apply henselArrayReduces_set m nodes index lifted hindex
       rw [hinput]
       exact ⟨hstepCorrect.2.1, hstepCorrect.2.2.1,
-        hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2⟩
+        hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2.1⟩
   | left index left nodes stored nodesAfterLeft target inputNode lifted parent
       hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
       subst stored
@@ -4386,7 +4622,7 @@ theorem HenselLiftRecursiveCorrect.arrayReduces
       exact (henselArrayReduces_set m nodes index lifted hindex (by
         rw [hinput]
         exact ⟨hstepCorrect.2.1, hstepCorrect.2.2.1,
-          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2⟩)).trans ih
+          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2.1⟩)).trans ih
   | right index right nodes stored output target inputNode lifted parent hnode
       hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
       subst stored
@@ -4401,7 +4637,7 @@ theorem HenselLiftRecursiveCorrect.arrayReduces
       exact (henselArrayReduces_set m nodes index lifted hindex (by
         rw [hinput]
         exact ⟨hstepCorrect.2.1, hstepCorrect.2.2.1,
-          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2⟩)).trans ih
+          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2.1⟩)).trans ih
   | branch index left right nodes stored nodesAfterLeft output target inputNode
       lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
       hparent hrightRun hrightCorrect leftIH rightIH =>
@@ -4417,7 +4653,7 @@ theorem HenselLiftRecursiveCorrect.arrayReduces
       exact (((henselArrayReduces_set m nodes index lifted hindex (by
         rw [hinput]
         exact ⟨hstepCorrect.2.1, hstepCorrect.2.2.1,
-          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2⟩)).trans leftIH).trans
+          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2.1⟩)).trans leftIH).trans
             rightIH)
 
 /-- Full refinement invariant for a recursive tree traversal.  Like the

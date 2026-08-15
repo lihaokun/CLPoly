@@ -602,6 +602,8 @@ theorem strictHenselTreeBuildStage
         (getElem output 0 hroot).right
         (match tree with | .node _ _ right => right) ∧
       Refinement.StrictHensel.HenselExtractInvariant tree output ∧
+      Refinement.StrictHensel.HenselTreeSemanticBuildCertificate
+        this._p.toNat factors 0 0 factors.size tree output ∧
       Refinement.StrictHensel.HenselTreeNodeInitialInvariant
         this._p.toNat factors 0 factors.size (getElem output 0 hroot) := by
   exact Refinement.__hensel_tree_build_raw_ir_refines this hcfg h2p hp2

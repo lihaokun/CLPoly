@@ -1766,6 +1766,42 @@ successful generated divmod call.
 - 迭代：1 轮单文件编译
 - Lean 新增/修改行数：约 45 行（含证明草稿）
 - 对应 C++ 行数：约 12 行 modular long-division while branches；C++ 变化为无，因此无新的 C++ b2b 变更面
+
+## Successful raw Hensel operations preserve canonical sparse form
+
+The next Hensel composition step needs representation facts about the exact
+values returned by generated raw execution, rather than facts about an
+independent specification-level operation.
+
+- `divideThenReduceCoeffs` is the generated C++ coefficient traversal.  Its
+  `filterMap` leaves monomial degrees unchanged, so strict descending order is
+  inherited from the source array, and its guard removes every coefficient
+  equal to zero.
+- A successful generated multiplication, addition, or subtraction equation
+  fixes the returned value to the output of the already verified concrete
+  heap/merge loop.  Canonicality therefore transfers by injection of the
+  actual `RawExec.ok` equation; no semantic arithmetic oracle is introduced.
+- A successful generated modular-divmod entry excludes, in the same source
+  branch order, an empty divisor, an invalid termination input, and a failed
+  modular inverse.  These facts reconstruct the exact finite `DivmodTrace`.
+  The previously proved trace invariant then gives canonicality of the actual
+  remainder, and equality of successful `RawExec` results identifies it with
+  the caller-visible remainder.
+
+These bridges are intended for direct composition through the generated
+Hensel factor phase.  They neither add fuel nor replace the C++ execution with
+an existential quotient/remainder result.
+
+The composition is now explicit in
+`henselFactorCorrection_canonical_from_raw_runs`: it follows the generated
+sequence `gh`, `difference`, `e`, `se`, concrete divmod, `tau`, and the final
+`gNew`/`hNew` reductions.  The complete factor-phase theorem exports these two
+canonicality facts.  `HenselStepRefinementInvariant` consequently requires
+canonical target and input factors, while `HenselStepCorrect` guarantees that
+the full two-phase C++ step returns canonical `g` and `h`; the second phase
+changes only `s` and `t`, as recorded by its generated execution proof.
+
+- C++ changes: none, so there is no new C++ b2b change surface in this step.
 - 放弃的方案：同时证明 quotient canonical；当前 Hensel `g/h` 链只消费 remainder，且 multiplication heap 对任意输入已证明 canonical
 - 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
 - 下一步：从 successful concrete divmod run 提取该 remainder 定理并组合 Hensel factor phase

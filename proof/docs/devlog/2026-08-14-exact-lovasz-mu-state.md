@@ -817,3 +817,28 @@ introduce lifted outputs or expected factor values.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：组合 canonical topology 与 builder semantic certificate，得到初始叶子
   和 adjusted 输入的逐项对应
+
+## Canonical builder leaves have exact modular origins
+
+`HenselTreeSemanticBuildCertificate.extractedFactors_forall₂` now proves the
+pointwise, ordered relation between the adjusted finite-field factor interval
+and the leaves read from the actual canonical builder array.  The proof
+follows all four concrete topology shapes.  Recursive sides consume the child
+certificate; direct-leaf sides reduce the node's proved interval product to
+the unique source array element using
+`henselFactorRangeProduct_singleton`.
+
+The theorem keeps the certificate allocation lower bound independent from
+each subtree root.  This is essential because child certificates retain the
+original builder boundary while their actual node indices increase.  No
+expected lifted list, permutation witness, or irreducibility oracle is an
+input to the theorem.
+
+## 度量（exact modular leaf origins）
+
+- 耗时：约 1.0 小时（四拓扑分支、singleton product、实际数组读取桥接）
+- 结论强度：按源顺序逐项 `Forall₂`，不是仅证明总乘积或集合相等
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：与 lift-loop 的 `HenselArrayReduces` 及精确 extraction trace 合成，
+  得到 normalization 前的最终提升因子逐项模 p 来源

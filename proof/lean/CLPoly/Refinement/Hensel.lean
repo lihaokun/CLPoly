@@ -8998,6 +8998,128 @@ theorem HenselTreeSemanticBuildCertificate.lower_mono
         hinvariant (fun child hchild => leftIH child hchild)
         (fun child hchild => rightIH child hchild)
 
+theorem henselFactorRangeProduct_singleton
+    (p : Nat) (factors : Array SparsePolyZp) (start stop : Nat)
+    (hlength : stop - start = 1) :
+    henselFactorRangeProduct p factors stop start =
+      CLPoly.Math.SparsePolyZp.toPoly p factors[start]! := by
+  have hstop : stop = start + 1 := by omega
+  subst stop
+  rw [henselFactorRangeProduct, if_pos (by omega),
+    henselFactorRangeProduct, if_neg (by omega)]
+  simp
+
+/-- Every leaf read from the concrete canonical builder array comes from the
+corresponding adjusted finite-field input factor, in exact source order. -/
+theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
+    {p lower start stop root : Nat} [Fact (Nat.Prime p)]
+    {factors : Array SparsePolyZp} {nodes : Array HenselNode}
+    (hcertificate : HenselTreeSemanticBuildCertificate p factors lower
+      start stop (henselTreeBuildTopology start stop root) nodes)
+    (hlength : 2 ≤ stop - start) :
+    List.Forall₂
+      (fun input lifted => toPolyMod p lifted =
+        CLPoly.Math.SparsePolyZp.toPoly p input)
+      (henselFactorRangeList factors stop start)
+      (henselExtractedFactors
+        (henselTreeBuildTopology start stop root) nodes) := by
+  let mid := (start + stop) / 2
+  have hstartMid : start < mid := by
+    dsimp [mid]
+    exact Generated.StrictHensel.henselTreeMidpoint_gt_start start stop hlength
+  have hmidStop : mid < stop := by
+    dsimp [mid]
+    exact Generated.StrictHensel.henselTreeMidpoint_lt_stop start stop hlength
+  have hsplit := henselFactorRangeList_split factors start mid stop
+    (by omega) (by omega)
+  by_cases hleft : 2 ≤ mid - start
+  · by_cases hright : 2 ≤ stop - mid
+    · rw [henselTreeBuildTopology] at hcertificate ⊢
+      rw [if_pos hleft, if_pos hright] at hcertificate ⊢
+      cases hcertificate with
+      | node _ _ index _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
+          rw [henselExtractedFactors.eq_def]
+          rw [hsplit]
+          apply List.rel_append
+          · exact extractedFactors_forall₂ (hleftCert _ rfl) hleft
+          · exact extractedFactors_forall₂ (hrightCert _ rfl) hright
+    · have hrightLength : stop - mid = 1 := by omega
+      rw [henselTreeBuildTopology] at hcertificate ⊢
+      rw [if_pos hleft, if_neg hright] at hcertificate ⊢
+      cases hcertificate with
+      | node _ _ index _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
+          have hindex : index < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hlookup : nodes[index]! = value := by
+            have heq : nodes[index] = value :=
+              Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+            simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+          rw [henselExtractedFactors.eq_def]
+          rw [hsplit, henselFactorRangeList_singleton factors mid stop
+            hrightLength]
+          apply List.rel_append
+          · exact extractedFactors_forall₂ (hleftCert _ rfl) hleft
+          · exact .cons (by
+              rw [hlookup]
+              exact hinvariant.2.1.trans
+                (henselFactorRangeProduct_singleton p factors mid stop
+                  hrightLength)) .nil
+  · have hleftLength : mid - start = 1 := by omega
+    by_cases hright : 2 ≤ stop - mid
+    · rw [henselTreeBuildTopology] at hcertificate ⊢
+      rw [if_neg hleft, if_pos hright] at hcertificate ⊢
+      cases hcertificate with
+      | node _ _ index _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
+          have hindex : index < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hlookup : nodes[index]! = value := by
+            have heq : nodes[index] = value :=
+              Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+            simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+          rw [henselExtractedFactors.eq_def]
+          rw [hsplit, henselFactorRangeList_singleton factors start mid
+            hleftLength]
+          apply List.rel_append
+          · exact .cons (by
+              rw [hlookup]
+              exact hinvariant.1.trans
+                (henselFactorRangeProduct_singleton p factors start mid
+                  hleftLength)) .nil
+          · exact extractedFactors_forall₂ (hrightCert _ rfl) hright
+    · have hrightLength : stop - mid = 1 := by omega
+      rw [henselTreeBuildTopology] at hcertificate ⊢
+      rw [if_neg hleft, if_neg hright] at hcertificate ⊢
+      cases hcertificate with
+      | node _ _ index _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
+          have hindex : index < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hlookup : nodes[index]! = value := by
+            have heq : nodes[index] = value :=
+              Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+            simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+          rw [henselExtractedFactors.eq_def]
+          rw [hsplit,
+            henselFactorRangeList_singleton factors start mid hleftLength,
+            henselFactorRangeList_singleton factors mid stop hrightLength]
+          exact .cons (by
+              rw [hlookup]
+              exact hinvariant.1.trans
+                (henselFactorRangeProduct_singleton p factors start mid
+                  hleftLength))
+            (.cons (by
+              rw [hlookup]
+              exact hinvariant.2.1.trans
+                (henselFactorRangeProduct_singleton p factors mid stop
+                  hrightLength)) .nil)
+termination_by stop - start
+decreasing_by all_goals omega
+
 theorem HenselTreeSemanticBuildCertificate.of_preservesFrom
     {p lower start stop : Nat} [Fact (Nat.Prime p)]
     {factors : Array SparsePolyZp}

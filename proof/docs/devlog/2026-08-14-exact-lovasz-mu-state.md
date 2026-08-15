@@ -1119,3 +1119,27 @@ provide a canonical `quotientPrimitive` without any semantic replacement.
 - 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
 - 下一步：在 Zassenhaus successful-extraction 分支组合 quotient canonical、
   primitive canonical、unit-scalar product 和 primitivity，闭合外层递归
+
+## Canonical quotient provenance crosses attempt and combination scan
+
+`zassenhausAttempt_extracted_quotient_trace` exposes the exact successful
+`exactDivmodRaw` and following `primitiveRaw` calls that produced the quotient
+returned by a successful source attempt.  The trace is recovered by following
+all concrete pruning, index conversion, modular product, symmetric recovery,
+primitive-factor, trial-division, empty-remainder, and quotient-primitive
+branches; it introduces no alternative quotient witness.
+
+The trace composes the exact quotient canonicality theorem with primitive-part
+canonical preservation.  A second well-founded theorem transports this result
+through `scanZassenhausCombinations`: rejected candidates advance via the
+concrete combination rank, while the successful candidate returns the same
+canonical quotient.  The Zassenhaus outer extraction branch can therefore
+install its recursive `fStar` with a proved representation invariant.
+
+## 度量（attempt/scan quotient provenance）
+
+- 耗时：约 1.0 小时（完整 attempt trace、两段 canonical 合成、scan WF 运输）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
+- 下一步：闭合 Zassenhaus outer loop 的 product、primitivity、canonical
+  三项联合不变量

@@ -2260,3 +2260,27 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 next proof combines these exact blocks with
 `HenselLiftRecursiveCorrect.preserves_not_mem` to retain parent and completed
 left-subtree values across the actual source-order recursive mutations.
+
+## Actual recursive Hensel leaves multiply to the round target
+
+The algebraic product invariant is now carried through the exact generated
+left-then-right mutable traversal, rather than through an abstract Hensel
+existence result.
+
+- `henselExtractedFactors_eq_of_lookups` proves that the pure source-order
+  extraction reads identically from two arrays whenever every concrete tree
+  index has the same `getElem?` result.  Its recursion decreases by the actual
+  generated tree `nodeCount`.
+- `HenselLiftRecursiveCorrect.extractedFactors_product` inducts over the four
+  constructors anchored to successful generated recursive calls.  At each
+  node it uses the concrete `set!` result and the real `HenselStepCorrect`
+  product at `m^2`.
+- In the two-child case, topology `Nodup` splits into root exclusion and
+  left/right disjointness.  The right traversal's exact frame theorem then
+  transports the completed left extraction into the final array before the
+  two induction products are combined.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+the canonical topology theorem instantiates this round result inside the
+actual well-founded Hensel lift loop, yielding the leaf product at its returned
+full recovery modulus.

@@ -5694,10 +5694,13 @@ theorem henselExtractedFactors_eq_of_lookups
       after[index]? = before[index]?) :
     henselExtractedFactors tree after =
       henselExtractedFactors tree before := by
-  cases tree with
+  cases htree : tree with
   | node index left right =>
+      rw [htree] at hlookup
       have hroot : after[index]? = before[index]? :=
-        hlookup index (by simp [henselLiftTreeIndices])
+        hlookup index (by
+          cases left <;> cases right <;>
+            simp [henselLiftTreeIndices])
       have hrootBang : after[index]! = before[index]! := by
         rw [getElem!_def, getElem!_def, hroot]
       rw [henselExtractedFactors.eq_def, henselExtractedFactors.eq_def]
@@ -5710,31 +5713,154 @@ theorem henselExtractedFactors_eq_of_lookups
                 before after (by
                   intro childIndex hchildIndex
                   exact hlookup childIndex (by
-                    simp [henselLiftTreeIndices, hchildIndex]))
+                    rw [henselLiftTreeIndices.eq_def]
+                    simp [hchildIndex]))
               simp [hrootBang, hright]
       | some child =>
-          have hleft := henselExtractedFactors_eq_of_lookups child
-            before after (by
-              intro childIndex hchildIndex
-              exact hlookup childIndex (by
-                simp [henselLiftTreeIndices, hchildIndex]))
           cases right with
-          | none => simp [hrootBang, hleft]
+          | none =>
+              have hleft := henselExtractedFactors_eq_of_lookups child
+                before after (by
+                  intro childIndex hchildIndex
+                  exact hlookup childIndex (by
+                    rw [henselLiftTreeIndices.eq_def]
+                    simp [hchildIndex]))
+              simp [hrootBang, hleft]
           | some rightChild =>
+              have hleft := henselExtractedFactors_eq_of_lookups child
+                before after (by
+                  intro childIndex hchildIndex
+                  exact hlookup childIndex (by
+                    rw [henselLiftTreeIndices.eq_def]
+                    simp [hchildIndex]))
               have hright := henselExtractedFactors_eq_of_lookups rightChild
                 before after (by
                   intro childIndex hchildIndex
                   exact hlookup childIndex (by
-                    simp [henselLiftTreeIndices, hchildIndex]))
+                    rw [henselLiftTreeIndices.eq_def]
+                    simp [hchildIndex]))
               simp [hleft, hright]
 termination_by tree.nodeCount
 decreasing_by
-  · exact Generated.StrictHensel.HenselLiftTree.right_nodeCount_lt
-      index none child
-  · exact Generated.StrictHensel.HenselLiftTree.left_nodeCount_lt
-      index child right
-  · exact Generated.StrictHensel.HenselLiftTree.right_nodeCount_lt
-      index (some child) rightChild
+  all_goals subst tree
+  all_goals simp_all [Generated.StrictHensel.HenselLiftTree.nodeCount]
+  all_goals omega
+
+/-- The product of the leaves left by one actual recursive Hensel traversal is
+the traversal target modulo the exact squared source modulus.  The `Nodup`
+premise is discharged for the generated canonical tree by
+`henselTreeBuildTopology_indices_nodup_bounded`; it is used here to justify
+the real mutable-array frames between the source-order child calls. -/
+theorem HenselLiftRecursiveCorrect.extractedFactors_product
+    {termination : Generated.StrictHensel.DivmodTermination} {m : Nat}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes output : Array HenselNode} {target : SparsePolyZZ}
+    (hcorrect : HenselLiftRecursiveCorrect termination m tree nodes target
+      output)
+    (hnodup : (henselLiftTreeIndices tree).Nodup) :
+    ((henselExtractedFactors tree output).map
+      (toPolyMod (m ^ 2))).prod = toPolyMod (m ^ 2) target := by
+  induction hcorrect with
+  | leaf index nodes stored target inputNode lifted parent hnode hstep
+      hstepCorrect hstored hparent =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlifted : (nodes.set! index lifted)[index]? = some lifted := by
+        simp [Array.set!, hindex]
+      have hparentEq : parent = lifted :=
+        Option.some.inj (hparent.symm.trans hlifted)
+      subst parent
+      have hbang : (nodes.set! index lifted)[index]! = lifted := by
+        simp [Array.set!, hindex]
+      have hbang' : (nodes.setIfInBounds index lifted)[index]! = lifted := by
+        simpa only [Array.set!_eq_setIfInBounds] using hbang
+      simpa [henselExtractedFactors, hbang'] using hstepCorrect.1.1
+  | left index left nodes stored nodesAfterLeft target inputNode lifted parent
+      hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
+      subst stored
+      have hparts : index ∉ henselLiftTreeIndices left ∧
+          (henselLiftTreeIndices left).Nodup := by
+        simpa [henselLiftTreeIndices] using hnodup
+      have hrootPreserved := hleftCorrect.preserves_not_mem index hparts.1
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlifted : (nodes.set! index lifted)[index]? = some lifted := by
+        simp [Array.set!, hindex]
+      have hparentEq : parent = lifted :=
+        Option.some.inj (hparent.symm.trans (hrootPreserved.trans hlifted))
+      subst parent
+      have hbang : nodesAfterLeft[index]! = lifted := by
+        rw [getElem!_def, hparent]
+      have hleftProduct := ih hparts.2
+      simpa [henselExtractedFactors, hbang, hleftProduct] using
+        hstepCorrect.1.1
+  | right index right nodes stored output target inputNode lifted parent hnode
+      hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
+      subst stored
+      have hparts : index ∉ henselLiftTreeIndices right ∧
+          (henselLiftTreeIndices right).Nodup := by
+        simpa [henselLiftTreeIndices] using hnodup
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlifted : (nodes.set! index lifted)[index]? = some lifted := by
+        simp [Array.set!, hindex]
+      have hparentEq : parent = lifted :=
+        Option.some.inj (hparent.symm.trans hlifted)
+      subst parent
+      have hrootPreserved := hrightCorrect.preserves_not_mem index hparts.1
+      have hbang : output[index]! = lifted := by
+        rw [getElem!_def, hrootPreserved, hlifted]
+      have hrightProduct := ih hparts.2
+      simpa [henselExtractedFactors, hbang, hrightProduct] using
+        hstepCorrect.1.1
+  | branch index left right nodes stored nodesAfterLeft output target inputNode
+      lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
+      hparent hrightRun hrightCorrect leftIH rightIH =>
+      subst stored
+      have hparts : index ∉ henselLiftTreeIndices left ∧
+          index ∉ henselLiftTreeIndices right ∧
+          (henselLiftTreeIndices left).Nodup ∧
+          (henselLiftTreeIndices right).Nodup ∧
+          List.Disjoint (henselLiftTreeIndices left)
+            (henselLiftTreeIndices right) := by
+        have hparts :
+            (index ∉ henselLiftTreeIndices left ∧
+              index ∉ henselLiftTreeIndices right) ∧
+            (henselLiftTreeIndices left).Nodup ∧
+            (henselLiftTreeIndices right).Nodup ∧
+            ∀ a ∈ henselLiftTreeIndices left,
+              ∀ b ∈ henselLiftTreeIndices right, ¬a = b := by
+          simpa [henselLiftTreeIndices, List.nodup_append] using hnodup
+        exact ⟨hparts.1.1, hparts.1.2, hparts.2.1, hparts.2.2.1,
+          by simpa [List.disjoint_iff_ne] using hparts.2.2.2⟩
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlifted : (nodes.set! index lifted)[index]? = some lifted := by
+        simp [Array.set!, hindex]
+      have hrootAfterLeft := hleftCorrect.preserves_not_mem index hparts.1
+      have hparentEq : parent = lifted :=
+        Option.some.inj (hparent.symm.trans (hrootAfterLeft.trans hlifted))
+      subst parent
+      have hleftFinal : henselExtractedFactors left output =
+          henselExtractedFactors left nodesAfterLeft := by
+        apply henselExtractedFactors_eq_of_lookups
+        intro childIndex hchild
+        exact hrightCorrect.preserves_not_mem childIndex (by
+          intro hright
+          exact hparts.2.2.2.2 hchild hright)
+      have hleftProduct := leftIH hparts.2.2.1
+      have hrightProduct := rightIH hparts.2.2.2.1
+      simpa [henselExtractedFactors, hleftFinal, hleftProduct,
+        hrightProduct] using hstepCorrect.1.1
 
 /-- The semantic extraction trace returns the input prefix followed by exactly
 the node fields named by `henselExtractedFactors`, in source left-to-right

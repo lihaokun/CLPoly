@@ -5862,6 +5862,30 @@ theorem HenselLiftRecursiveCorrect.extractedFactors_product
       simpa [henselExtractedFactors, hleftFinal, hleftProduct,
         hrightProduct] using hstepCorrect.1.1
 
+/-- The actual quadratic-precision loop carries the concrete leaf-product
+invariant from its initial modulus to the exact modulus returned by the
+generated well-founded loop.  Each recursive edge is justified by the
+corresponding generated tree traversal at the current modulus. -/
+theorem HenselLiftLoopCorrect.extractedFactors_product
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM)
+    (hnodup : (henselLiftTreeIndices tree).Nodup)
+    (hinitial : ((henselExtractedFactors tree initialNodes).map
+      (toPolyMod initialM)).prod = toPolyMod initialM f) :
+    ((henselExtractedFactors tree outputNodes).map
+      (toPolyMod outputM)).prod = toPolyMod outputM f := by
+  induction hcorrect with
+  | done => exact hinitial
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      apply ih
+      rw [← Nat.pow_two]
+      exact hiteration.extractedFactors_product hnodup
+
 /-- The semantic extraction trace returns the input prefix followed by exactly
 the node fields named by `henselExtractedFactors`, in source left-to-right
 order. -/
@@ -10936,6 +10960,61 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
                   hrightLength)) .nil)
 termination_by stop - start
 decreasing_by all_goals omega
+
+/-- Pointwise leaf origins preserve the ordered product.  This merely folds
+the exact `Forall₂` correspondence; it does not factor or reconstruct a
+polynomial. -/
+private theorem henselLeafOrigins_product
+    {p : Nat} {inputs : List SparsePolyZp} {lifted : List SparsePolyZZ}
+    (horigins : List.Forall₂
+      (fun input output => toPolyMod p output =
+        CLPoly.Math.SparsePolyZp.toPoly p input) inputs lifted) :
+    (lifted.map (toPolyMod p)).prod =
+      (inputs.map (CLPoly.Math.SparsePolyZp.toPoly p)).prod := by
+  induction horigins with
+  | nil => simp
+  | cons hhead htail ih => simp [hhead, ih]
+
+/-- The leaves stored by the actual generated builder multiply to the product
+of the exact source factor interval, in source order. -/
+theorem HenselTreeSemanticBuildCertificate.extractedFactors_product
+    {p lower start stop root : Nat} [Fact (Nat.Prime p)]
+    {factors : Array SparsePolyZp} {nodes : Array HenselNode}
+    (hcertificate : HenselTreeSemanticBuildCertificate p factors lower
+      start stop (henselTreeBuildTopology start stop root) nodes)
+    (hlength : 2 ≤ stop - start) :
+    ((henselExtractedFactors (henselTreeBuildTopology start stop root)
+      nodes).map (toPolyMod p)).prod =
+      ((henselFactorRangeList factors stop start).map
+        (CLPoly.Math.SparsePolyZp.toPoly p)).prod := by
+  exact henselLeafOrigins_product
+    (hcertificate.extractedFactors_forall₂ hlength)
+
+/-- Combining the concrete builder certificate with the concrete
+well-founded quadratic loop transports a supplied source-factor product
+equation to the exact modulus and node array returned by that loop.  The
+source equation is deliberately explicit: it is discharged by the preceding
+finite-field factorization refinement, not postulated by Hensel lifting. -/
+theorem HenselTreeSemanticBuildCertificate.liftLoop_extractedFactors_product
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {p lower start stop root target outputM : Nat} [Fact (Nat.Prime p)]
+    {factors : Array SparsePolyZp} {f : SparsePolyZZ}
+    {nodes outputNodes : Array HenselNode}
+    (hcertificate : HenselTreeSemanticBuildCertificate p factors lower
+      start stop (henselTreeBuildTopology start stop root) nodes)
+    (hloop : HenselLiftLoopCorrect termination
+      (henselTreeBuildTopology start stop root) f target p nodes outputNodes
+      outputM)
+    (hlength : 2 ≤ stop - start)
+    (hsource : ((henselFactorRangeList factors stop start).map
+      (CLPoly.Math.SparsePolyZp.toPoly p)).prod = toPolyMod p f) :
+    ((henselExtractedFactors (henselTreeBuildTopology start stop root)
+      outputNodes).map (toPolyMod outputM)).prod =
+        toPolyMod outputM f := by
+  apply hloop.extractedFactors_product
+  · exact (henselTreeBuildTopology_indices_nodup_bounded start stop root
+      hlength).1
+  · exact (hcertificate.extractedFactors_product hlength).trans hsource
 
 /-- Reading a certified builder topology before and after the actual Hensel
 lift produces pointwise congruent leaf lists modulo every divisor tracked by

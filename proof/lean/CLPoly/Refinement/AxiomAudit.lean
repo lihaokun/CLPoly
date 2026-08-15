@@ -30,3 +30,6 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.henselTreeBuildTopology_indices_nodup_bounded
 #print axioms Refinement.StrictHensel.henselExtractedFactors_eq_of_lookups
 #print axioms Refinement.StrictHensel.HenselLiftRecursiveCorrect.extractedFactors_product
+#print axioms Refinement.StrictHensel.HenselLiftLoopCorrect.extractedFactors_product
+#print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.extractedFactors_product
+#print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.liftLoop_extractedFactors_product

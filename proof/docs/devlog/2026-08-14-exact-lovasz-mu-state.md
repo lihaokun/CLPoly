@@ -2284,3 +2284,31 @@ No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the canonical topology theorem instantiates this round result inside the
 actual well-founded Hensel lift loop, yielding the leaf product at its returned
 full recovery modulus.
+
+## Actual Hensel loop preserves the leaf product to its returned modulus
+
+`HenselLiftLoopCorrect.extractedFactors_product` now carries the complete
+leaf-product equation through the generated quadratic-precision loop.
+
+- The done constructor returns the supplied equation at the literal current
+  modulus and unchanged node array.
+- The step constructor obtains the next equation solely from the actual
+  recursive traversal's `extractedFactors_product` theorem at `m^2`, rewrites
+  the source loop's literal `m * m`, and passes that equation into the real
+  recursive tail.
+- The proof inducts over `HenselLiftLoopCorrect`, whose construction is tied
+  to successful `__hensel_lift_loop_raw_ir` calls and whose termination uses
+  the strictly increasing modulus measure.  It introduces no fuel and no
+  alternate semantic Hensel execution.
+- `HenselTreeSemanticBuildCertificate.extractedFactors_product` folds the
+  builder's exact occurrence-preserving leaf-origin trace into the product of
+  the actual adjusted finite-field input interval.
+- `liftLoop_extractedFactors_product` then instantiates canonical topology
+  `Nodup`, combines that builder product with an explicit upstream source
+  factorization equation, and returns the product at the loop's concrete
+  `outputM`.  The upstream equation remains visible rather than becoming a
+  hidden Hensel oracle.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+extraction and normalization transport this concrete output-node equation to
+the public Hensel entry result.

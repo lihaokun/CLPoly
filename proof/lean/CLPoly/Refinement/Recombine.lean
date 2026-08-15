@@ -10695,6 +10695,62 @@ theorem symmetric_recovery_closed_left
     exact hmultiple
   exact Int.eq_of_sub_eq_zero hdifference
 
+private theorem foldl_int_coefficient_squares
+    (terms : List (UMonomial × Int)) (accumulator : Int) :
+    terms.foldl (fun sum term => sum + term.2 * term.2) accumulator =
+      accumulator + (terms.map fun term => term.2 * term.2).sum := by
+  induction terms generalizing accumulator with
+  | nil => simp
+  | cons head tail ih =>
+      rw [List.foldl_cons, ih]
+      simp
+      ring
+
+/-- The generated range-for L2-square helper is exactly the source-order sum
+of the squares of the physically stored integer coefficients. -/
+theorem upolyNormL2SqRaw_eq_stored_sum (poly : SparsePolyZZ) :
+    Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir poly =
+      (poly.toList.map fun term => term.2 * term.2).sum := by
+  unfold Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir
+  rw [← Array.foldl_toList]
+  simpa using foldl_int_coefficient_squares poly.toList 0
+
+theorem upolyNormL2SqRaw_nonnegative (poly : SparsePolyZZ) :
+    0 ≤ Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir poly := by
+  rw [upolyNormL2SqRaw_eq_stored_sum]
+  apply List.sum_nonneg
+  intro value hvalue
+  rw [List.mem_map] at hvalue
+  rcases hvalue with ⟨term, hterm, rfl⟩
+  exact mul_self_nonneg term.2
+
+/-- Exact source recurrence for the generated multiplicative binomial loop.
+The checked integer division is justified at each iteration by the standard
+binomial successor identity. -/
+theorem binomialLoopRaw_eq_choose (n k i : Nat)
+    (hi : i ≤ k) (hk : k ≤ n) :
+    Generated.StrictHensel.__binomial_loop_raw_ir n k i (n.choose i : Int) =
+      (n.choose k : Int) := by
+  induction hmeasure : k - i using Nat.strong_induction_on generalizing i with
+  | h measure ih =>
+      rw [Generated.StrictHensel.__binomial_loop_raw_ir]
+      split
+      next hcontinue =>
+        have hiN : i ≤ n := hi.trans hk
+        have hchoose := Nat.choose_succ_right_eq n i
+        have hstep : (n.choose i : Int) * ((n : Int) - i) =
+            ((i : Int) + 1) * (n.choose (i + 1) : Int) := by
+          have hcast : (n.choose i : Int) * ((n : Int) - i) =
+              (n.choose (i + 1) : Int) * ((i : Int) + 1) := by
+            exact_mod_cast hchoose.symm
+          simpa [mul_comm] using hcast
+        rw [hstep, Int.mul_ediv_cancel_left _ (by omega)]
+        exact ih (k - (i + 1)) (by omega) (i + 1) (by omega) rfl
+      next hstop =>
+        have hieq : i = k := by omega
+        subst i
+        rfl
+
 private theorem intTermsToPoly_coeff_eq_zero_of_degrees_ne
     (terms : List (UMonomial × Int)) (degree : Nat)
     (hne : ∀ term ∈ terms, term.1.deg ≠ degree) :

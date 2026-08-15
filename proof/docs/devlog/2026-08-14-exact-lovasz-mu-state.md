@@ -2071,3 +2071,21 @@ single-file check passes without error or `sorry`.  Next, the generated
 binomial, L2-square norm, and integer-square-root target helpers must be tied
 to the strict scaled-factor coefficient bound before recovery is applied to
 the actual candidate trace.
+
+## Generated Mignotte arithmetic executes exact square and choose folds
+
+Two executable cores of the concrete Mignotte target are now identified.
+
+- The generated `Array.foldl` for `__upoly_norm_l2_sq_upoly_raw_ir` equals
+  the source-order integer sum of every physically stored coefficient square;
+  its result is nonnegative.
+- The well-founded multiplicative `__binomial_loop_raw_ir` is proved equal to
+  `Nat.choose` from every reachable `(i, choose n i)` state.  At each source
+  iteration, `Nat.choose_succ_right_eq` proves the exact divisibility of
+  `choose(n,i) * (n-i)` by `i+1`, so the generated integer division is not
+  treated as an arithmetic oracle.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+single-file check passes without error or `sorry`.  The next boundary proves
+the actual `Int64.ofInt(degree)` and `n/2` call reaches this Nat recurrence,
+then establishes the generated Newton square-root upper bound.

@@ -10,3 +10,5 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.removeCombination_preserves_pointwise
 #print axioms Refinement.StrictRecombine.symmetricModRaw_toPoly_coefficients_bounded
 #print axioms Refinement.StrictRecombine.symmetric_recovery_closed_left
+#print axioms Refinement.StrictRecombine.upolyNormL2SqRaw_eq_stored_sum
+#print axioms Refinement.StrictRecombine.binomialLoopRaw_eq_choose

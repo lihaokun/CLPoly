@@ -30,6 +30,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_product_associated
 #print axioms Refinement.StrictFactorZZ.integer_divisor_mod_associated_hensel_sublist
 #print axioms Refinement.StrictFactorZZ.integer_divisor_mod_has_legal_hensel_candidate
+#print axioms Refinement.StrictFactorZZ.leading_scaled_monic_associated_divisor
 #print axioms Refinement.StrictHensel.HenselLiftRecursiveCorrect.preserves_not_mem
 #print axioms Refinement.StrictHensel.henselTreeBuildTopology_indices_nodup_bounded
 #print axioms Refinement.StrictHensel.henselExtractedFactors_eq_of_lookups

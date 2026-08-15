@@ -2397,3 +2397,22 @@ completeness theorem.
 No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the concrete symmetric-recovery theorem supplies the recovered true divisor
 to this exact-division result, ruling out rejection at its legal candidate.
+
+## Resolve the non-monic Zassenhaus scaling exactly
+
+The modular unit hidden by the divisor/subset `Associated` statement is now
+identified algebraically instead of being carried as an arbitrary unit.
+
+- `leading_scaled_monic_associated_divisor` proves that, for an actual
+  factorization `source = divisor * quotient`, scaling the monic modular
+  candidate by `source.leadingCoeff` gives exactly the reduction of
+  `C quotient.leadingCoeff * divisor`.
+- The quotient leading coefficient is essential: using
+  `C source.leadingCoeff * divisor` would be false for a general non-monic
+  integer factor and would not match the concrete C++ trial product.
+- This lemma establishes the precise mod-`p` base equation required by
+  `hensel_unique`.  The remaining step is to prove monicity/leading-term
+  preservation for the factors returned by the actual generated Hensel tree,
+  then lift this equality to its returned `p^k` modulus.
+
+No C++ files changed, so this step has no new C++ b2b change surface.

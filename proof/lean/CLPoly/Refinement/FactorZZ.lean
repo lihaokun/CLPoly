@@ -42,6 +42,45 @@ private theorem polynomial_eq_C_leadingCoeff_mul_of_associated_monic
       ring
     _ = f := by rw [hleading]; simp
 
+/-- Resolve the unit ambiguity of a modular subproduct using the leading
+coefficient that the concrete Zassenhaus trial places in front of it.
+
+If `source = divisor * quotient`, the monic modular representative associated
+with `divisor` becomes exactly `C quotient.leadingCoeff * divisor` after it is
+scaled by `source.leadingCoeff`.  This is the normalization needed by the
+generated trial product; keeping the quotient's leading coefficient here is
+essential for non-monic integer factors. -/
+theorem leading_scaled_monic_associated_divisor
+    (p : Nat) [Fact (Nat.Prime p)]
+    (source divisor quotient : Polynomial Int)
+    (candidate : Polynomial (ZMod p))
+    (hfactor : source = divisor * quotient)
+    (hdivisorModNonzero : Polynomial.map
+      (Int.castRingHom (ZMod p)) divisor ≠ 0)
+    (hdivisorLeading :
+      (Polynomial.map (Int.castRingHom (ZMod p)) divisor).leadingCoeff =
+        (divisor.leadingCoeff : ZMod p))
+    (hcandidateMonic : candidate.Monic)
+    (hassociated : Associated
+      (Polynomial.map (Int.castRingHom (ZMod p)) divisor) candidate) :
+    Polynomial.C (source.leadingCoeff : ZMod p) * candidate =
+      Polynomial.map (Int.castRingHom (ZMod p))
+        (Polynomial.C quotient.leadingCoeff * divisor) := by
+  have hexact := polynomial_eq_C_leadingCoeff_mul_of_associated_monic
+    hdivisorModNonzero hcandidateMonic hassociated
+  rw [hdivisorLeading] at hexact
+  have hsourceLeading :
+      source.leadingCoeff = divisor.leadingCoeff * quotient.leadingCoeff := by
+    rw [hfactor, Polynomial.leadingCoeff_mul]
+  rw [hsourceLeading, Int.cast_mul, Polynomial.C_mul,
+    Polynomial.map_mul, Polynomial.map_C]
+  rw [hexact]
+  change Polynomial.C (divisor.leadingCoeff : ZMod p) *
+      Polynomial.C (quotient.leadingCoeff : ZMod p) * candidate =
+    Polynomial.C (quotient.leadingCoeff : ZMod p) *
+      (Polynomial.C (divisor.leadingCoeff : ZMod p) * candidate)
+  ring
+
 private theorem monic_list_product {K : Type*} [Semiring K]
     (factors : List (Polynomial K))
     (hmonic : ∀ factor ∈ factors, factor.Monic) : factors.prod.Monic := by

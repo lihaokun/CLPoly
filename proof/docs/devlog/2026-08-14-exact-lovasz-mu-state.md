@@ -1551,3 +1551,26 @@ condition can hold.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：把两个 generated loop 的具体返回值与 recovered divisor 的
   leading/constant coefficient 建立 associated 关系，完成 pruning 分支组合
+
+## Pruning products are candidate-polynomial boundary coefficients
+
+`leadingCoeff_list_prod` and `coeff_zero_list_prod` record the two boundary
+coefficients of an ordered list product over integer polynomials.
+`selectedLeadingValues_prod_eq_leadingCoeff` then transports the actual
+source-array head coefficients selected by the generated candidate to the
+leading coefficient of the exact occurrence-sensitive sublist product.
+
+`selectedConstantValues_prod_eq_coeff_zero` provides the constant analogue
+using the generated `constantTerm` values.  Both proofs preserve the selected
+source positions rather than replacing the factor list extensionally.  The
+remaining per-factor head/constant premises will be supplied from the Hensel
+canonical/origin invariant before these lemmas are used by the final entry.
+
+## 度量（candidate boundary coefficients）
+
+- 耗时：约 0.75 小时（list product 边界系数、source occurrence lookup）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：由最终 Hensel array 的 canonical/origin 证明每个选中因子的
+  head/constant 表示定理，并组合两个 pruning accept 分支

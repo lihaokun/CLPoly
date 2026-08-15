@@ -2203,6 +2203,78 @@ theorem zassenhaus_constant_prune_accepts_associated_divisor
   have hboundary := (polynomial_divisor_boundary_coefficients hdivides).2
   exact dvd_mul_of_dvd_right (dvd_trans hassociated.dvd hboundary) _
 
+theorem leadingCoeff_list_prod (factors : List (Polynomial Int)) :
+    factors.prod.leadingCoeff = (factors.map Polynomial.leadingCoeff).prod := by
+  induction factors with
+  | nil => simp
+  | cons factor factors ih => simp [ih]
+
+theorem coeff_zero_list_prod (factors : List (Polynomial Int)) :
+    factors.prod.coeff 0 = (factors.map fun factor => factor.coeff 0).prod := by
+  induction factors with
+  | nil => simp
+  | cons factor factors ih => simp [ih]
+
+/-- Once the canonical sparse representation identifies each selected head
+coefficient, the concrete leading-pruning product is the leading coefficient
+of the exact source-sublist polynomial product. -/
+theorem selectedLeadingValues_prod_eq_leadingCoeff
+    (candidate : Array Nat) (activeLifted : Array SparsePolyZZ)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size)
+    (hheads : ∀ position (hposition : position < candidate.size),
+      (SparsePolyZZ.toPoly activeLifted[candidate[position]]!).leadingCoeff =
+        ((activeLifted[candidate[position]]!)[0]!).2) :
+    (selectedLeadingValues candidate activeLifted 0).prod =
+      ((selectSourceIndices activeLifted.toList candidate.toList).map
+        SparsePolyZZ.toPoly).prod.leadingCoeff := by
+  rw [leadingCoeff_list_prod]
+  unfold selectedLeadingValues selectSourceIndices
+  simp only [List.drop_zero, List.map_map]
+  congr 1
+  apply List.map_congr_left
+  intro activeIndex hactiveIndex
+  rcases List.mem_iff_getElem.mp hactiveIndex with
+    ⟨position, hposition, rfl⟩
+  have hpositionArray : position < candidate.size := by simpa using hposition
+  have hactive := hbound position hpositionArray
+  simp only [Function.comp_apply]
+  simp only [Array.getElem_toList]
+  rw [getElem!_pos activeLifted.toList candidate[position] (by simpa using hactive),
+    Array.getElem_toList hactive]
+  simpa [getElem!_pos activeLifted candidate[position] hactive] using
+    (hheads position hpositionArray).symm
+
+/-- Constant-coefficient analogue of
+`selectedLeadingValues_prod_eq_leadingCoeff`. -/
+theorem selectedConstantValues_prod_eq_coeff_zero
+    (candidate : Array Nat) (activeLifted : Array SparsePolyZZ)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size)
+    (hconstants : ∀ position (hposition : position < candidate.size),
+      (SparsePolyZZ.toPoly activeLifted[candidate[position]]!).coeff 0 =
+        Generated.StrictRecombine.constantTerm
+          activeLifted[candidate[position]]!) :
+    (selectedConstantValues candidate activeLifted 0).prod =
+      ((selectSourceIndices activeLifted.toList candidate.toList).map
+        SparsePolyZZ.toPoly).prod.coeff 0 := by
+  rw [coeff_zero_list_prod]
+  unfold selectedConstantValues selectSourceIndices
+  simp only [List.drop_zero, List.map_map]
+  congr 1
+  apply List.map_congr_left
+  intro activeIndex hactiveIndex
+  rcases List.mem_iff_getElem.mp hactiveIndex with
+    ⟨position, hposition, rfl⟩
+  have hpositionArray : position < candidate.size := by simpa using hposition
+  have hactive := hbound position hpositionArray
+  simp only [Function.comp_apply]
+  simp only [Array.getElem_toList]
+  rw [getElem!_pos activeLifted.toList candidate[position] (by simpa using hactive),
+    Array.getElem_toList hactive]
+  simpa [getElem!_pos activeLifted candidate[position] hactive] using
+    (hconstants position hpositionArray).symm
+
 /-- Lexicographic order on equal-size source arrays, stated at the concrete
 first differing position.  This avoids assigning an order to arrays of
 different lengths, which never occur in the C++ combination scan. -/

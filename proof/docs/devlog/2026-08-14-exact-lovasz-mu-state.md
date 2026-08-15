@@ -842,3 +842,28 @@ input to the theorem.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：与 lift-loop 的 `HenselArrayReduces` 及精确 extraction trace 合成，
   得到 normalization 前的最终提升因子逐项模 p 来源
+
+## Lifted extracted factors retain their modular origins
+
+The builder semantic certificate now transports its concrete leaf reads
+through `HenselArrayReduces`, using every actual node position and the proved
+array-size equality.  `HenselLiftEntryCorrect.preNormalizationOrigins`
+composes this transport with the canonical initial leaf-origin theorem and
+`HenselExtractCorrect.toList_eq`.  Its conclusion is therefore about the
+actual `extracted.toList` produced immediately before the source normalization
+block.
+
+`HenselLiftEntryCorrect` now also exposes its genuine prime-modulus dependency
+as an explicit typeclass parameter.  This dependency was already required by
+the stored builder certificate; making it explicit prevents later consumers
+from treating a composite or unproved modulus as if it carried the same
+finite-field semantics.
+
+## 度量（pre-normalization modular origins）
+
+- 耗时：约 0.75 小时（数组约化运输、两段 `Forall₂` 合成、extraction 接线）
+- 覆盖执行：builder 初始数组 → 实际 lift loop → 实际 extraction 输出
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：证明 normalization 只对首因子施加可逆单位缩放，并把模不可约性
+  从 adjusted 输入运输到最终 Hensel 输出

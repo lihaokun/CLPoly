@@ -9120,6 +9120,44 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
 termination_by stop - start
 decreasing_by all_goals omega
 
+/-- Reading a certified builder topology before and after the actual Hensel
+lift produces pointwise congruent leaf lists modulo every divisor tracked by
+`HenselArrayReduces`. -/
+theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂_of_reduces
+    {p lower start stop : Nat} [Fact (Nat.Prime p)]
+    {factors : Array SparsePolyZp}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {before after : Array HenselNode}
+    (hcertificate : HenselTreeSemanticBuildCertificate p factors lower
+      start stop tree before)
+    (hreduce : HenselArrayReduces p before after) :
+    List.Forall₂ (fun old new => toPolyMod p new = toPolyMod p old)
+      (henselExtractedFactors tree before)
+      (henselExtractedFactors tree after) := by
+  induction hcertificate with
+  | node start stop index left right nodes value hlower hnode hinvariant
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hafterIndex : index < after.size := by
+        rw [← hreduce.1]
+        exact hindex
+      have hnodeReduce := hreduce.2 index hindex hafterIndex
+      have hnodeReduceBang :
+          HenselNodeReduces p nodes[index]! after[index]! := by
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex,
+          Array.getElem?_eq_getElem hafterIndex] using hnodeReduce
+      rw [henselExtractedFactors.eq_def, henselExtractedFactors.eq_def]
+      apply List.rel_append
+      · cases left with
+        | none => exact .cons hnodeReduceBang.1 .nil
+        | some child => exact leftIH child rfl hreduce
+      · cases right with
+        | none => exact .cons hnodeReduceBang.2.1 .nil
+        | some child => exact rightIH child rfl hreduce
+
 theorem HenselTreeSemanticBuildCertificate.of_preservesFrom
     {p lower start stop : Nat} [Fact (Nat.Prime p)]
     {factors : Array SparsePolyZp}
@@ -10100,6 +10138,7 @@ entry, retaining the correctness evidence for every executed stage. -/
 def HenselLiftEntryCorrect
     (termination : Generated.StrictHensel.DivmodTermination)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    [Fact (Nat.Prime p.toNat)]
     (aTarget : Int32) (output : Array SparsePolyZZ × ZZ) : Prop :=
   ∃ target adjusted nodes liftedNodes outputM extracted,
     HenselLiftTargetCorrect f p aTarget target ∧
@@ -10114,6 +10153,58 @@ def HenselLiftEntryCorrect
     HenselNormalizeCorrect extracted outputM output.1 ∧
     output.2 = outputM
 
+private theorem henselLeafOrigins_trans
+    {p : Nat} {inputs : List SparsePolyZp} {initial final : List SparsePolyZZ}
+    (horigins : List.Forall₂
+      (fun input lifted => toPolyMod p lifted =
+        CLPoly.Math.SparsePolyZp.toPoly p input) inputs initial)
+    (hreduces : List.Forall₂
+      (fun old new => toPolyMod p new = toPolyMod p old) initial final) :
+    List.Forall₂
+      (fun input lifted => toPolyMod p lifted =
+        CLPoly.Math.SparsePolyZp.toPoly p input) inputs final := by
+  induction horigins generalizing final with
+  | nil =>
+      cases hreduces
+      exact .nil
+  | cons horigin horigins ih =>
+      cases hreduces with
+      | cons hreduce hreduces =>
+          exact .cons (hreduce.trans horigin) (ih hreduces)
+
+/-- Before the source normalization block, every factor extracted by the
+actual Hensel entry still reduces to its concrete adjusted finite-field input
+factor, pointwise and in source order. -/
+theorem HenselLiftEntryCorrect.preNormalizationOrigins
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hcount : 2 ≤ factors.size)
+    (hcorrect : HenselLiftEntryCorrect termination f factors p aTarget output) :
+    ∃ adjusted extracted outputM,
+      HenselAdjustFirstFactorCorrect f factors p adjusted ∧
+      HenselNormalizeCorrect extracted outputM output.1 ∧
+      output.2 = outputM ∧
+      List.Forall₂
+        (fun input lifted => toPolyMod p.toNat lifted =
+          CLPoly.Math.SparsePolyZp.toPoly p.toNat input)
+        (henselFactorRangeList adjusted factors.size 0) extracted.toList := by
+  rcases hcorrect with
+    ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
+      htarget, hadjust, hsemantic, hlift, hextract, hnormalize, houtputM⟩
+  have hinitial := hsemantic.extractedFactors_forall₂ hcount
+  have harray := hlift.arrayReduces_of_dvd (dvd_refl p.toNat)
+  have hlifted := hsemantic.extractedFactors_forall₂_of_reduces harray
+  have horigins := henselLeafOrigins_trans hinitial hlifted
+  have hextracted : extracted.toList =
+      henselExtractedFactors
+        (henselTreeBuildTopology 0 factors.size 0) liftedNodes := by
+    simpa using hextract.toList_eq
+  rw [← hextracted] at horigins
+  exact ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
+    horigins⟩
+
 /-- A successful full generated Hensel entry exposes the precision reached by
 its own well-founded loop.  In particular, the returned modulus is not an
 oracle-provided value: it strictly exceeds the concrete target computed by
@@ -10121,6 +10212,7 @@ oracle-provided value: it strictly exceeds the concrete target computed by
 theorem HenselLiftEntryCorrect.outputModulus_gt_target
     {termination : Generated.StrictHensel.DivmodTermination}
     {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     (htargetNonnegative : ∀ target,
       HenselLiftTargetCorrect f p aTarget target → 0 ≤ target)

@@ -4214,6 +4214,22 @@ theorem HenselLiftLoopCorrect.arrayReduces_of_dvd
       have hnextDiv : base ∣ m * m := dvd_mul_of_dvd_left hdiv m
       exact hhead.trans (ih hnextDiv)
 
+/-- The concrete quadratic loop only replaces its modulus by its square, so
+the initial modulus divides the modulus returned by every actual execution. -/
+theorem HenselLiftLoopCorrect.initialM_dvd_outputM
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM) :
+    initialM ∣ outputM := by
+  induction hcorrect with
+  | done => exact dvd_refl _
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      exact dvd_trans ⟨m, by simp⟩ ih
+
 /-- The modulus returned by the concrete quadratic Hensel loop is strictly
 larger than the source target.  This is the precision fact consumed by
 recombination; it follows from the actual stopping test rather than from an
@@ -4872,6 +4888,72 @@ inductive HenselNormalizeCorrect
       (hnormalized : Generated.StrictHensel.__upoly_mod_coeff_raw_ir scaled m =
         .ok normalized) :
       HenselNormalizeCorrect result m (result.set! 0 normalized)
+
+/-- Pointwise semantic effect of the final source normalization: each output
+factor differs from the corresponding input by a unit scalar modulo `p`. -/
+def HenselNormalizeUnitRel (p : Nat)
+    (before after : Array SparsePolyZZ) : Prop :=
+  before.size = after.size ∧
+  ∀ index (hbefore : index < before.size) (hafter : index < after.size),
+    ∃ scale : ZMod p, IsUnit scale ∧
+      toPolyMod p after[index] =
+        Polynomial.C scale * toPolyMod p before[index]
+
+theorem HenselNormalizeCorrect.unitRel
+    {p m : Nat} {before after : Array SparsePolyZZ}
+    (hdiv : p ∣ m)
+    (hcorrect : HenselNormalizeCorrect before (m : Int) after) :
+    HenselNormalizeUnitRel p before after := by
+  cases hcorrect with
+  | empty hresult =>
+      exact ⟨rfl, fun index hbefore hafter =>
+        ⟨1, isUnit_one, by simp⟩⟩
+  | alreadyOne first leading hresult hfirst hone =>
+      exact ⟨rfl, fun index hbefore hafter =>
+        ⟨1, isUnit_one, by simp⟩⟩
+  | normalized first leading inverse scaled normalized hresult hfirst hnotOne
+      hinverse hscaled hnormalized =>
+      have hzero : 0 < before.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hresult
+        contradiction
+      have hfirstGet : before[0] = first :=
+        Option.some.inj ((Array.getElem?_eq_getElem hzero).symm.trans hresult)
+      have hinverseSuccess :
+          (ZZ.invert 0 leading.2 (m : Int)).1 = true := by
+        rw [hinverse]
+      have hinverseM :
+          (leading.2 : ZMod m) * (inverse : ZMod m) = 1 := by
+        simpa [hinverse] using
+          (CLPoly.Math.ZZ.invert_success_mul_eq_one leading.2 m
+            hinverseSuccess)
+      have hinverseP : (leading.2 : ZMod p) * (inverse : ZMod p) = 1 := by
+        have hprojected := congrArg
+          (ZMod.castHom hdiv (ZMod p)) hinverseM
+        simpa only [map_mul, map_one, ZMod.castHom_apply,
+          ZMod.cast_intCast hdiv] using hprojected
+      have hinverseUnit : IsUnit (inverse : ZMod p) :=
+        isUnit_iff_exists_inv.mpr ⟨(leading.2 : ZMod p), by
+          simpa [mul_comm] using hinverseP⟩
+      have hnormalizedSemantic :=
+        __upoly_mod_coeff_raw_ir_preserves_divisor_of_run hdiv scaled
+          normalized hnormalized
+      rw [hscaled, scaleCoeffs_toPolyMod] at hnormalizedSemantic
+      refine ⟨by simp [Array.set!, hzero], ?_⟩
+      intro index hbefore hafter
+      by_cases hindex : index = 0
+      · subst index
+        refine ⟨(inverse : ZMod p), hinverseUnit, ?_⟩
+        simpa [Array.set!, hzero, hfirstGet] using hnormalizedSemantic
+      · refine ⟨1, isUnit_one, ?_⟩
+        change toPolyMod p (before.setIfInBounds 0 normalized)[index] = _
+        have hzeroIndex : 0 ≠ index := by omega
+        have hget : (before.setIfInBounds 0 normalized)[index] =
+            before[index] := by
+          simpa [hzeroIndex] using
+            (@Array.getElem_setIfInBounds _ before 0 normalized index hbefore)
+        rw [hget]
+        simp
 
 /-- Genuine raw-to-safe and semantic refinement bridge for the final source
 normalization block.  The output is obtained only by executing the strict raw
@@ -10189,7 +10271,8 @@ theorem HenselLiftEntryCorrect.preNormalizationOrigins
       List.Forall₂
         (fun input lifted => toPolyMod p.toNat lifted =
           CLPoly.Math.SparsePolyZp.toPoly p.toNat input)
-        (henselFactorRangeList adjusted factors.size 0) extracted.toList := by
+        (henselFactorRangeList adjusted factors.size 0) extracted.toList ∧
+      HenselNormalizeUnitRel p.toNat extracted output.1 := by
   rcases hcorrect with
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
       htarget, hadjust, hsemantic, hlift, hextract, hnormalize, houtputM⟩
@@ -10197,13 +10280,14 @@ theorem HenselLiftEntryCorrect.preNormalizationOrigins
   have harray := hlift.arrayReduces_of_dvd (dvd_refl p.toNat)
   have hlifted := hsemantic.extractedFactors_forall₂_of_reduces harray
   have horigins := henselLeafOrigins_trans hinitial hlifted
+  have hnormalizeRel := hnormalize.unitRel hlift.initialM_dvd_outputM
   have hextracted : extracted.toList =
       henselExtractedFactors
         (henselTreeBuildTopology 0 factors.size 0) liftedNodes := by
     simpa using hextract.toList_eq
   rw [← hextracted] at horigins
   exact ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
-    horigins⟩
+    horigins, hnormalizeRel⟩
 
 /-- A successful full generated Hensel entry exposes the precision reached by
 its own well-founded loop.  In particular, the returned modulus is not an

@@ -867,3 +867,32 @@ finite-field semantics.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：证明 normalization 只对首因子施加可逆单位缩放，并把模不可约性
   从 adjusted 输入运输到最终 Hensel 输出
+
+## Final Hensel normalization is pointwise unit scaling
+
+`HenselLiftLoopCorrect.initialM_dvd_outputM` derives divisibility of the final
+modulus from the concrete quadratic loop: each recursive source step changes
+`m` only to `m * m`.  This makes the selected prime a divisor of the actual
+normalization modulus without a separate precision assumption.
+
+`HenselNormalizeCorrect.unitRel` follows every generated normalization branch.
+The empty and already-normalized branches use unit one.  In the scaling branch,
+the successful concrete `ZZ.invert` call yields an inverse in `ZMod outputM`;
+the divisibility map projects it to a unit in `ZMod p`.  The proved
+`__upoly_mod_coeff_raw_ir` divisor semantics then identifies the normalized
+first factor with that unit scalar times the extracted first factor.  Every
+other array position is proved unchanged through the actual bounded `set!`.
+
+The entry-level origin theorem now returns this unit relation together with
+the pre-normalization `Forall₂` fact from the same existential execution
+trace, so downstream irreducibility transport cannot accidentally mix
+different witnesses.
+
+## 度量（Hensel normalization unit semantics）
+
+- 耗时：约 1.25 小时（最终模数整除、逆元投影、首元素更新、入口合成）
+- 结论强度：最终数组每个位置等于对应 extracted 因子的模 p 单位倍
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：把 adjusted 首因子的单位关系与 Zp 输出不可约性合成，导出最终
+  Hensel 数组每个模 p 像不可约

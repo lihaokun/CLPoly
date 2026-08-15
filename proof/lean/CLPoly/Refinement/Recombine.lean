@@ -8311,6 +8311,39 @@ def concreteCandidateValidationRawOps :
     Generated.StrictRecombine.CandidateValidationRawOps where
   product := {}
 
+/-- The sole concrete operation bundle for the generated van-Hoeij loop.
+Every field is discharged by the generated raw execution proved above: CLD
+uses the concrete well-founded modular division, LLL uses its determinant
+rank, lattice extension/reset use the actual matrix constructors, candidate
+validation executes the generated loops, and fallback uses the concrete
+combination rank. -/
+noncomputable def concreteVanHoeijRawOps :
+    Generated.StrictRecombine.VanHoeijRawOps where
+  cld := { divmodTermination := StrictHensel.concreteDivmodTermination }
+  lll := concreteLLLExecution
+  gather_size := by
+    intro active lifted activeLifted hrun
+    exact gatherActive_size_of_success active lifted activeLifted hrun
+  cld_size := by
+    intro fStar activeFactors modulus cldOutput hrun
+    exact cldPolys_size_of_success
+      { divmodTermination := StrictHensel.concreteDivmodTermination }
+      fStar activeFactors cldOutput modulus hrun
+  cld_extension_valid := by
+    intro matrix cld current target matrix' added hinput hdimension hrun
+    exact buildCldMatrix_input_valid matrix matrix' cld current target added
+      hinput hdimension hrun
+  reset_valid := by
+    intro factorCount matrix bound hrun
+    exact resetVanHoeijLattice_input_valid factorCount matrix bound hrun
+  validation := concreteCandidateValidationRawOps
+  zassenhausTermination := concreteZassenhausTermination
+
+/-- Genuine active-set termination for the sole concrete van-Hoeij bundle. -/
+noncomputable def concreteVanHoeijTermination :
+    Generated.StrictRecombine.VanHoeijTermination concreteVanHoeijRawOps :=
+  removalTermination concreteVanHoeijRawOps
+
 theorem trialProductLoop_refines
     (ops : Generated.StrictRecombine.TrialProductRawOps)
     (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)

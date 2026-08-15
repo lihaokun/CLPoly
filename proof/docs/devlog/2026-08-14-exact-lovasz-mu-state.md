@@ -618,3 +618,32 @@ inject an arbitrary `DivmodTermination` at those boundaries.
   200k heartbeat；需以提高 heartbeat 的单文件检查复核本次公共 wrapper 修改
 - 下一步：从 Hensel tree 的 canonical 不变量直接构造 concrete entry invariant，
   再接入 FactorZZ 的 Hensel/recombine raw ops
+
+## Concrete van-Hoeij entry assembled
+
+The generated recombination layer now includes the missing source entry
+`__vanhoeij_recombine_raw_ir`.  It computes the source factor count, degree,
+maximum CLD precision and initial precision, constructs the scaled diagonal
+lattice through `resetVanHoeijLattice`, initializes the active indices, and
+calls the existing lexicographically well-founded `vanHoeijLoop`.  After the
+loop it executes the same remaining-factor append and degree sort as the C++
+function via `finishZassenhaus`.
+
+`concreteVanHoeijRawOps` fixes every dependency of that entry: concrete CLD
+division, determinant-ranked LLL, proved CLD matrix extension, scaled-identity
+reset, generated candidate validation, and well-founded Zassenhaus fallback.
+`concreteVanHoeijTermination` is derived from the actual consumed-bit output
+and reverse-erasure loop, so successful extraction decreases the active array
+and cannot be supplied by a caller.
+
+## 度量（concrete van-Hoeij entry）
+
+- 耗时：约 0.75 小时（入口恢复、初始化证明、concrete ops 组装与 codegen）
+- 生成层变化：新增完整 `__vanhoeij_recombine_raw_ir` 入口及生成器同步
+- 良基度量：主循环仍为 `(active.size, precisionRank ...)` 的字典序；fallback
+  使用 combination rank，LLL 使用 determinant/index rank
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：recombine 生成器 stale check、生成模块 codegen、Refinement/Recombine
+  无限 heartbeat 内核检查通过
+- 下一步：建立 van-Hoeij loop 的 live-product invariant并证明入口输出满足
+  `RecombineCorrect`，随后接入 `FactorZZRawOps`

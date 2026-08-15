@@ -1628,6 +1628,43 @@ decreasing_by
       (nextPrecision_retry_decreases state.target initial maximum target'
         hinitial hprecision)
 
+/-- Exact source-shaped entry for C++ `__vanhoeij_recombine`.  Initialization
+builds the scaled diagonal lattice and the active index array, the main loop
+uses its genuine lexicographic well-founded recursion, and the final source
+step appends the remaining positive-degree factor before sorting by degree. -/
+def __vanhoeij_recombine_raw_ir (ops : VanHoeijRawOps)
+    (termination : VanHoeijTermination ops) (f : SparsePolyZZ)
+    (lifted : Array SparsePolyZZ) (modulus : ZZ)
+    (hdegree : 2 ≤ (get_deg f).toNatClampNeg) :
+    RawExec (Array SparsePolyZZ) :=
+  let factorCount := lifted.size
+  let degree := (get_deg f).toNatClampNeg
+  let maximum := (degree + 1) / 2
+  let starting := if 3 * factorCount > degree + 1 then 30 else 10
+  let initial := min starting maximum
+  match hreset : resetVanHoeijLattice factorCount with
+  | .error fault => .error fault
+  | .ok (matrix, bound) =>
+    let active := (Array.range factorCount).map
+      (fun index => index.toUInt32.toInt32)
+    let state : VanHoeijState :=
+      { active := active, fStar := f, result := #[], matrix := matrix,
+        currentColumns := 0, shortBound := bound, target := 0 }
+    match vanHoeijLoop ops termination lifted modulus initial maximum (by
+        have hmaximum : 0 < maximum := by
+          dsimp [maximum, degree]
+          apply Nat.div_pos <;> omega
+        have hstarting : 0 < starting := by
+          dsimp [starting]
+          split <;> omega
+        exact lt_min hstarting hmaximum) state
+      ⟨(ops.reset_valid factorCount matrix bound hreset).1, by
+          dsimp [state, active, factorCount]
+          rw [(ops.reset_valid lifted.size matrix bound hreset).2]
+          simp⟩ with
+    | .error fault => .error fault
+    | .ok (fStar, result) => .ok (finishZassenhaus fStar result)
+
 end Generated.StrictRecombine
 '''
 

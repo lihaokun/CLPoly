@@ -4526,6 +4526,121 @@ inductive HenselLiftRecursiveCorrect
       HenselLiftRecursiveCorrect termination m
         (.node index (some left) (some right)) nodes target output
 
+/-- Concrete array indices visited by a finite generated Hensel topology, in
+preorder.  This contains no polynomial semantics; it is used to state exact
+mutable-array frame properties of the real recursive execution. -/
+def henselLiftTreeIndices : Generated.StrictHensel.HenselLiftTree → List Nat
+  | .node index none none => [index]
+  | .node index (some left) none => index :: henselLiftTreeIndices left
+  | .node index none (some right) => index :: henselLiftTreeIndices right
+  | .node index (some left) (some right) =>
+      index :: henselLiftTreeIndices left ++ henselLiftTreeIndices right
+
+private theorem array_getElem?_setBang_ne {α : Type*}
+    (items : Array α) (source target : Nat) (value : α)
+    (hsource : source < items.size) (hne : target ≠ source) :
+    (items.set! source value)[target]? = items[target]? := by
+  exact Array.getElem?_setIfInBounds_ne hne.symm
+
+/-- A successful generated recursive Hensel traversal leaves every array
+cell whose index is absent from its concrete finite topology unchanged. -/
+theorem HenselLiftRecursiveCorrect.preserves_not_mem
+    {termination : Generated.StrictHensel.DivmodTermination} {m : Nat}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes output : Array HenselNode} {target : SparsePolyZZ}
+    (hcorrect : HenselLiftRecursiveCorrect termination m tree nodes target
+      output) :
+    ∀ index, index ∉ henselLiftTreeIndices tree →
+      output[index]? = nodes[index]? := by
+  induction hcorrect with
+  | leaf root nodes stored target inputNode lifted parent hnode hstep
+      hstepCorrect hstored hparent =>
+      subst stored
+      intro index houtside
+      have hroot : root < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hne : index ≠ root := by
+        simpa [henselLiftTreeIndices] using houtside
+      exact array_getElem?_setBang_ne nodes root index lifted hroot hne
+  | left root left nodes stored nodesAfterLeft target inputNode lifted parent
+      hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
+      subst stored
+      intro index houtside
+      have hroot : root < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hne : index ≠ root := by
+        intro heq
+        subst index
+        exact houtside (by simp [henselLiftTreeIndices])
+      have houtsideLeft : index ∉ henselLiftTreeIndices left := by
+        have hparts : index ≠ root ∧
+            index ∉ henselLiftTreeIndices left := by
+          simpa [henselLiftTreeIndices] using houtside
+        exact hparts.2
+      calc
+        nodesAfterLeft[index]? = (nodes.set! root lifted)[index]? :=
+          ih index houtsideLeft
+        _ = nodes[index]? :=
+          array_getElem?_setBang_ne nodes root index lifted hroot hne
+  | right root right nodes stored output target inputNode lifted parent hnode
+      hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
+      subst stored
+      intro index houtside
+      have hroot : root < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hne : index ≠ root := by
+        intro heq
+        subst index
+        exact houtside (by simp [henselLiftTreeIndices])
+      have houtsideRight : index ∉ henselLiftTreeIndices right := by
+        have hparts : index ≠ root ∧
+            index ∉ henselLiftTreeIndices right := by
+          simpa [henselLiftTreeIndices] using houtside
+        exact hparts.2
+      calc
+        output[index]? = (nodes.set! root lifted)[index]? :=
+          ih index houtsideRight
+        _ = nodes[index]? :=
+          array_getElem?_setBang_ne nodes root index lifted hroot hne
+  | branch root left right nodes stored nodesAfterLeft output target inputNode
+      lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
+      hparent hrightRun hrightCorrect leftIH rightIH =>
+      subst stored
+      intro index houtside
+      have hroot : root < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hne : index ≠ root := by
+        intro heq
+        subst index
+        exact houtside (by simp [henselLiftTreeIndices])
+      have houtsideLeft : index ∉ henselLiftTreeIndices left := by
+        have hparts : index ≠ root ∧
+            index ∉ henselLiftTreeIndices left ∧
+              index ∉ henselLiftTreeIndices right := by
+          simpa [henselLiftTreeIndices] using houtside
+        exact hparts.2.1
+      have houtsideRight : index ∉ henselLiftTreeIndices right := by
+        have hparts : index ≠ root ∧
+            index ∉ henselLiftTreeIndices left ∧
+              index ∉ henselLiftTreeIndices right := by
+          simpa [henselLiftTreeIndices] using houtside
+        exact hparts.2.2
+      calc
+        output[index]? = nodesAfterLeft[index]? :=
+          rightIH index houtsideRight
+        _ = (nodes.set! root lifted)[index]? :=
+          leftIH index houtsideLeft
+        _ = nodes[index]? :=
+          array_getElem?_setBang_ne nodes root index lifted hroot hne
+
 theorem HenselLiftRecursiveCorrect.topologyEq
     {termination : Generated.StrictHensel.DivmodTermination} {m : Nat}
     {tree : Generated.StrictHensel.HenselLiftTree}

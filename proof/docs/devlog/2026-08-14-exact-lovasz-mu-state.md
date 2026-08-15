@@ -2216,3 +2216,25 @@ No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the selected product's congruence at the full Hensel modulus is combined with
 the concrete recovery bound, after which the generated pruning and exact
 division branches can be shown to accept this legal candidate.
+
+## Exact mutable-array frame for recursive Hensel traversal
+
+The first structural prerequisite for the full-precision leaf-product proof
+is now discharged directly from the generated recursive execution trace.
+
+- `henselLiftTreeIndices` records, in preorder, the exact finite node indices
+  visited by a generated `HenselLiftTree`; it carries no polynomial values or
+  semantic outputs.
+- `HenselLiftRecursiveCorrect.preserves_not_mem` inducts over the constructors
+  anchored to successful `__hensel_lift_recursive_raw_ir` calls.  The only
+  local mutation is the actual `set!` at the current root, and the two
+  recursive hypotheses compose in source left-then-right order.
+- Consequently every lookup outside the concrete traversal topology is
+  exactly unchanged, not merely congruent modulo a number.  This will prove
+  that child traversal cannot alter its parent and that the right traversal
+  cannot invalidate the already established left-subtree product.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+canonical preorder topology disjointness is combined with this frame theorem
+to prove that the actual extracted leaf product equals the round target
+modulo `m^2`, then inductively modulo the returned `outputM`.

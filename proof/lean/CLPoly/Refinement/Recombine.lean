@@ -1604,6 +1604,78 @@ theorem nextCombinationPivot_some_suffix_zero (indices : Array Nat)
   exact nextCombinationPivot_some_suffix indices upper 0 pivot hresult
     position hpivot hposition (by omega)
 
+/-- If the generated right-to-left pivot search finds no incrementable
+position, every fixed-size combination digit is at its unique maximal value.
+This identifies the concrete terminal state of the C++ enumerator. -/
+theorem nextCombinationPivot_none_all_maximal (indices : Array Nat)
+    (upper inspected : Nat)
+    (hresult : Generated.StrictRecombine.nextCombinationPivot indices upper
+      inspected = none) :
+    ∀ position (hposition : position < indices.size)
+      (hunscanned : inspected ≤ indices.size - 1 - position),
+      indices[position] = upper - indices.size + position := by
+  induction hmeasure : indices.size - inspected using Nat.strong_induction_on
+      generalizing inspected with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.nextCombinationPivot] at hresult
+      split at hresult
+      next hinspected =>
+        dsimp at hresult
+        split at hresult
+        next hmaximal =>
+          intro position hposition hunscanned
+          by_cases hcurrent : position = indices.size - 1 - inspected
+          · subst position
+            exact hmaximal
+          · exact ih (indices.size - (inspected + 1)) (by omega)
+              (inspected + 1) hresult rfl position hposition (by omega)
+        next havailable => contradiction
+      next hinspected =>
+        intro position hposition hunscanned
+        omega
+
+theorem nextCombinationPivot_none_all_maximal_zero (indices : Array Nat)
+    (upper : Nat)
+    (hresult : Generated.StrictRecombine.nextCombinationPivot indices upper 0 =
+      none) :
+    ∀ position (hposition : position < indices.size),
+      indices[position] = upper - indices.size + position := by
+  intro position hposition
+  exact nextCombinationPivot_none_all_maximal indices upper 0 hresult
+    position hposition (by omega)
+
+/-- A successful `false` return is exactly the last fixed-size combination;
+the generated enumerator cannot stop at an interior array. -/
+theorem nextCombination_false_is_final (indices next : Array Nat)
+    (upper count : Nat) (hsize : indices.size = count)
+    (hfits : count ≤ upper)
+    (hrun : Generated.StrictRecombine.nextCombination indices upper =
+      (false, next)) :
+    next = indices ∧
+      ∀ position (hposition : position < indices.size),
+        indices[position] = upper - count + position := by
+  unfold Generated.StrictRecombine.nextCombination at hrun
+  split at hrun
+  next harrayFits =>
+    split at hrun
+    next hpivotNone =>
+      have hout := Prod.mk.inj hrun
+      constructor
+      · exact hout.2.symm
+      · intro position hposition
+        rw [← hsize]
+        exact nextCombinationPivot_none_all_maximal_zero indices upper
+          hpivotNone position hposition
+    next pivot hpivotSome =>
+      split at hrun
+      next hpivotBounds => simp at hrun
+      next hpivotBounds =>
+        exact absurd
+          (nextCombinationPivot_some_lt indices upper 0 pivot hpivotSome)
+          hpivotBounds
+  next harrayFits =>
+    exact absurd (hsize.trans_le hfits) harrayFits
+
 theorem nextCombinationPivot_some_ne (indices : Array Nat)
     (upper inspected pivot : Nat)
     (hresult : Generated.StrictRecombine.nextCombinationPivot indices upper

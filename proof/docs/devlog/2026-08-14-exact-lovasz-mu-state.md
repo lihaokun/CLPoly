@@ -1255,3 +1255,27 @@ factorization witness or semantic recombination premise is introduced.
   正式 `lake build CLPoly.Refinement.FactorZZ` 通过（3545 jobs）
 - 下一步：证明真实 Zassenhaus 组合枚举无遗漏，并将 Hensel
   的模素数不可约来源输送到每个成功恢复的 primitive 块
+
+## Concrete combination terminal-state completeness
+
+The generated right-to-left pivot search now has an exact terminal theorem.
+If it returns no pivot, every array position equals its unique maximal
+fixed-size-combination digit `upper - count + position`.  The proof follows
+the actual inspected-suffix recursion and establishes maximality one source
+comparison at a time.
+
+`nextCombination_false_is_final` lifts this through the complete generated
+C++ helper.  Under the real size precondition, a `false` return preserves the
+input array and can occur only at the final combination.  In particular, the
+Zassenhaus scan cannot terminate at an interior subset.  This is one half of
+the no-omission proof; the remaining half is to show that every `true` step is
+the immediate successor among strictly increasing bounded arrays.
+
+## 度量（combination terminal state）
+
+- 耗时：约 0.5 小时（none-pivot WF 归纳、false 分支、最大组合唯一性）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：证明 `resetCombinationSuffix` 构造严格递增的最小后缀，
+  然后得到 `nextCombination` 的直接后继与 scan 全覆盖

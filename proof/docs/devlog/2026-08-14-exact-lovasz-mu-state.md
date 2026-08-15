@@ -2089,3 +2089,23 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 single-file check passes without error or `sorry`.  The next boundary proves
 the actual `Int64.ofInt(degree)` and `n/2` call reaches this Nat recurrence,
 then establishes the generated Newton square-root upper bound.
+
+## Actual Mignotte machine-degree call reaches the choose recurrence
+
+The exact machine boundary around the generated binomial helper is now
+closed.  For every sparse degree below the signed 64-bit limit,
+`Int64.ofInt degree` is proved to preserve the degree, the actual signed
+`n / 2` instruction is proved to equal the natural floor half, and both
+`toNatClampNeg` conversions recover those same natural values.  The proof
+also follows the generated negative/out-of-range guard, the zero/end-point
+fast path, and the concrete `min(k, n-k)` branch before invoking the already
+verified well-founded multiplicative loop.  Consequently the literal call
+made by `__mignotte_bound_upoly_raw_ir` returns `choose degree (degree/2)`;
+there is no wraparound, truncation, clamp, or mathematical replacement of
+the C++ helper hidden at this boundary.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+single-file check passes without error or `sorry`.  Next, the generated
+Newton loop and its final correction branch must be proved to return the
+least integer upper square root of the concrete stored coefficient-square
+sum.

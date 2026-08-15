@@ -12,3 +12,4 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.symmetric_recovery_closed_left
 #print axioms Refinement.StrictRecombine.upolyNormL2SqRaw_eq_stored_sum
 #print axioms Refinement.StrictRecombine.binomialLoopRaw_eq_choose
+#print axioms Refinement.StrictRecombine.binomialRaw_degree_half_eq_choose

@@ -10751,6 +10751,80 @@ theorem binomialLoopRaw_eq_choose (n k i : Nat)
         subst i
         rfl
 
+/-- The exact machine-integer call made by `__mignotte_bound` reaches the
+well-founded natural-number binomial loop without signed wraparound,
+truncation, or negative clamping. -/
+theorem binomialRaw_degree_half_eq_choose (degree : Nat)
+    (hdegree : degree < 2 ^ 63) :
+    Generated.StrictHensel.__binomial_raw_ir
+        (Int64.ofInt (degree : Int))
+        (Int64.ofInt (degree : Int) / 2) =
+      (degree.choose (degree / 2) : Int) := by
+  have htwo : 2 < 2 ^ 63 := by norm_num
+  have hhalf : degree / 2 < 2 ^ 63 :=
+    (Nat.div_le_self degree 2).trans_lt hdegree
+  have hdivision : Int64.ofNat degree / (2 : Int64) =
+      Int64.ofNat (degree / 2) := by
+    simpa using (Int64.ofNat_div hdegree htwo).symm
+  rw [Int64.ofInt_eq_ofNat, hdivision]
+  let n : Int64 := Int64.ofNat degree
+  let k : Int64 := Int64.ofNat (degree / 2)
+  have hnInt : n.toInt = degree := by
+    exact Int64.toInt_ofNat_of_lt hdegree
+  have hkInt : k.toInt = degree / 2 := by
+    exact Int64.toInt_ofNat_of_lt hhalf
+  have hnNonnegative : ¬(n < 0) := by
+    rw [Int64.lt_iff_toInt_lt, hnInt, Int64.toInt_zero]
+    omega
+  have hkNonnegative : ¬(k < 0) := by
+    rw [Int64.lt_iff_toInt_lt, hkInt, Int64.toInt_zero]
+    omega
+  have hkLeN : ¬(n < k) := by
+    intro hlt
+    rw [Int64.lt_iff_toInt_lt, hnInt, hkInt] at hlt
+    omega
+  have hnClamp : n.toNatClampNeg = degree := by
+    exact Int64.toNatClampNeg_ofNat_of_lt hdegree
+  have hkClamp : k.toNatClampNeg = degree / 2 := by
+    exact Int64.toNatClampNeg_ofNat_of_lt hhalf
+  change Generated.StrictHensel.__binomial_raw_ir n k = _
+  unfold Generated.StrictHensel.__binomial_raw_ir
+  rw [if_neg (by simp [hkNonnegative, hkLeN])]
+  by_cases hkZero : degree / 2 = 0
+  · have hkEqZero : k = 0 := by
+      apply Int64.toInt.inj
+      rw [hkInt, Int64.toInt_zero]
+      exact_mod_cast hkZero
+    rw [if_pos (by simp [hkEqZero])]
+    simp [hkZero]
+  · have hkNeZero : k ≠ 0 := by
+      intro heq
+      have := congrArg Int64.toInt heq
+      rw [hkInt, Int64.toInt_zero] at this
+      exact hkZero (by exact_mod_cast this)
+    have hkLtDegree : degree / 2 < degree := by omega
+    have hkNeN : k ≠ n := by
+      intro heq
+      have := congrArg Int64.toInt heq
+      rw [hkInt, hnInt] at this
+      omega
+    rw [if_neg (by simp [hkNeZero, hkNeN])]
+    have hkNatLe : degree / 2 ≤ degree := Nat.div_le_self degree 2
+    have hsub : n - k = Int64.ofNat (degree - degree / 2) := by
+      simpa [n, k] using (Int64.ofNat_sub degree (degree / 2) hkNatLe).symm
+    have hnotSymmetric : ¬(n - k < k) := by
+      rw [hsub]
+      intro hlt
+      rw [Int64.lt_iff_toInt_lt, hkInt,
+        Int64.toInt_ofNat_of_lt (Nat.sub_lt_of_lt hdegree)] at hlt
+      omega
+    rw [if_neg hnotSymmetric]
+    change Generated.StrictHensel.__binomial_loop_raw_ir
+      n.toNatClampNeg k.toNatClampNeg 0 1 = _
+    rw [hnClamp, hkClamp]
+    simpa using
+      (binomialLoopRaw_eq_choose degree (degree / 2) 0 (by omega) hkNatLe)
+
 private theorem intTermsToPoly_coeff_eq_zero_of_degrees_ne
     (terms : List (UMonomial × Int)) (degree : Nat)
     (hne : ∀ term ∈ terms, term.1.deg ≠ degree) :

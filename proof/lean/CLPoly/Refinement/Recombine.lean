@@ -8884,6 +8884,76 @@ private theorem factorArrayProduct_finishZassenhaus
     next hdegree => rfl
   next hnonempty => rfl
 
+/-- A canonical sparse integer polynomial whose concrete front degree is zero
+contains exactly that one constant term. -/
+private theorem sparsePolyZZ_toPoly_eq_C_of_front_degree_zero
+    (f : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg = 0) :
+    SparsePolyZZ.toPoly f = Polynomial.C f[0].2 := by
+  cases hlist : f.toList with
+  | nil =>
+      have : f = #[] := by simpa using hlist
+      subst f
+      simp at hnonempty
+  | cons head tail =>
+      have hhead : head = f[0] := by
+        have hoption := congrArg (fun list => list[0]?) hlist
+        have hheadOption : f.toList[0]? = some f[0] := by simp
+        exact Option.some.inj (hoption.symm.trans hheadOption)
+      cases tail with
+      | nil =>
+          unfold SparsePolyZZ.toPoly
+          rw [hlist]
+          simp [hhead, hdegree]
+      | cons second rest =>
+          have hchain := hcanonical.1
+          rw [hlist, List.isChain_cons_cons] at hchain
+          rw [hhead, hdegree] at hchain
+          omega
+
+/-- The common concrete finish block represents the whole live product up to
+a unit.  In the source branch that drops a degree-zero `fStar`, canonicality
+identifies it as a constant and primitivity proves that constant is a unit. -/
+private theorem finishZassenhaus_product_associated
+    (fStar : SparsePolyZZ) (result : Array SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hprimitive :
+      (SparsePolyZZ.toPoly fStar * factorArrayProduct result).IsPrimitive) :
+    Associated (SparsePolyZZ.toPoly fStar * factorArrayProduct result)
+      (factorArrayProduct
+        (Generated.StrictRecombine.finishZassenhaus fStar result)) := by
+  rw [factorArrayProduct_finishZassenhaus]
+  by_cases hnonempty : 0 < fStar.size
+  · rw [dif_pos hnonempty]
+    by_cases hdegree : 0 < fStar[0].1.deg
+    · rw [if_pos hdegree]
+      exact Associated.of_eq (mul_comm _ _)
+    · rw [if_neg hdegree]
+      have hdegreeZero : fStar[0].1.deg = 0 := by omega
+      have hconstant := sparsePolyZZ_toPoly_eq_C_of_front_degree_zero
+        fStar hcanonical hnonempty hdegreeZero
+      have hcontent := Polynomial.isPrimitive_iff_content_eq_one.mp hprimitive
+      rw [hconstant, Polynomial.content_mul, Polynomial.content_C] at hcontent
+      have hnormalizeUnit : IsUnit (normalize fStar[0].2) :=
+        IsUnit.of_mul_eq_one _ hcontent
+      have hcoefficientUnit : IsUnit fStar[0].2 :=
+        (associated_normalize fStar[0].2).isUnit_iff.mpr hnormalizeUnit
+      have hconstantUnit : IsUnit (SparsePolyZZ.toPoly fStar) := by
+        rw [hconstant]
+        exact Polynomial.isUnit_C.mpr hcoefficientUnit
+      exact (associated_isUnit_mul_left_iff hconstantUnit).mpr
+        (Associated.refl _)
+  · rw [dif_neg hnonempty]
+    have hempty : fStar = #[] := by
+      have hsize : fStar.size = 0 := Nat.eq_zero_of_not_pos hnonempty
+      apply Array.ext (by simpa using hsize)
+      intro index hindex hindexEmpty
+      simp at hindexEmpty
+    subst fStar
+    have hcontent := Polynomial.isPrimitive_iff_content_eq_one.mp hprimitive
+    simp [SparsePolyZZ.toPoly] at hcontent
+
 theorem validateCandidatesLoop_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (candidates : Array (Array Int32)) (candidateIndex : Nat)

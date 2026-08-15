@@ -1019,3 +1019,27 @@ discharged from primitivity instead of silently dropping an arbitrary scalar.
 - 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
 - 下一步：以 live product 的 primitivity 为循环不变量，证明 Zassenhaus
   extraction/restart/exhaustion 的完整乘积保持
+
+## The dropped constant remainder is proved to be a unit
+
+The terminal product theorem is strengthened from a branch description to an
+`Associated` result for the complete live product.  For a canonical sparse
+integer polynomial, a concrete front degree of zero forces the backing array
+to contain exactly one term: a second term would need a natural-number degree
+strictly below zero.  Thus the source branch that omits `fStar` omits only a
+constant polynomial.
+
+The live-product primitivity invariant then forces that constant coefficient
+to be a unit: taking polynomial content gives
+`normalize coefficient * content(result product) = 1`.  The proof transports
+the resulting integer unit through `Polynomial.C` and concludes association
+with the emitted product.  The empty-`fStar` branch is shown impossible under
+the same primitivity invariant.  No scalar is discarded by convention.
+
+## 度量（terminal constant/unit bridge）
+
+- 耗时：约 0.75 小时（canonical chain、常数识别、content/unit 运输）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
+- 下一步：证明 successful Zassenhaus extraction 的 quotient primitive
+  继续满足 canonical 表示，并闭合整个外层循环的不变量

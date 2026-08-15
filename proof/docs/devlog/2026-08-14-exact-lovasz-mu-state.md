@@ -1802,6 +1802,30 @@ the full two-phase C++ step returns canonical `g` and `h`; the second phase
 changes only `s` and `t`, as recorded by its generated execution proof.
 
 - C++ changes: none, so there is no new C++ b2b change surface in this step.
+
+## Canonical factor fields survive recursive lifting and extraction
+
+Canonicality is now carried above a single Hensel step without assuming that
+recursive children leave unrelated slots untouched.
+
+- `HenselArrayCanonical` quantifies over every allocated node slot.  Its
+  checked-`set!` frame theorem replaces the selected slot with the canonical
+  `g`/`h` returned by the concrete step and reuses the prior invariant at all
+  other indices.
+- `HenselLiftRecursiveCorrect.arrayCanonical` follows the exact well-founded
+  tree trace.  The left and right recursive certificates consume the array
+  produced by the preceding source call, so the proof matches the generated
+  mutation order rather than reasoning about a mathematical replacement tree.
+- `HenselLiftLoopCorrect.arrayCanonical` iterates that result along the actual
+  quadratic-precision loop trace.
+- `HenselExtractCorrect.outputCanonical` follows all four generated extraction
+  branch shapes and proves that each concrete `push` appends only a canonical
+  `g` or `h` read from the lifted node array.
+
+The remaining input to this chain is a builder theorem establishing
+`HenselArrayCanonical` for the array returned by the concrete tree builder.
+
+- C++ changes: none, so there is no new C++ b2b change surface in this step.
 - 放弃的方案：同时证明 quotient canonical；当前 Hensel `g/h` 链只消费 remainder，且 multiplication heap 对任意输入已证明 canonical
 - 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
 - 下一步：从 successful concrete divmod run 提取该 remainder 定理并组合 Hensel factor phase

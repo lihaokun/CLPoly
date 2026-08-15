@@ -4196,6 +4196,32 @@ def HenselArrayReduces (m : Nat)
   ∀ index (hbefore : index < before.size) (hafter : index < after.size),
     HenselNodeReduces m before[index] after[index]
 
+/-- Representation invariant for the two factor fields stored at a concrete
+C++ Hensel node. -/
+def HenselNodeCanonical (node : HenselNode) : Prop :=
+  StrictPolynomialMod.SparsePolyZZCanonical node.g ∧
+  StrictPolynomialMod.SparsePolyZZCanonical node.h
+
+/-- Every allocated node in the concrete Hensel array stores canonical sparse
+factor fields. -/
+def HenselArrayCanonical (nodes : Array HenselNode) : Prop :=
+  ∀ index (hindex : index < nodes.size), HenselNodeCanonical nodes[index]
+
+theorem henselArrayCanonical_set
+    (nodes : Array HenselNode) (index : Nat) (value : HenselNode)
+    (hindex : index < nodes.size) (hnodes : HenselArrayCanonical nodes)
+    (hvalue : HenselNodeCanonical value) :
+    HenselArrayCanonical (nodes.set! index value) := by
+  intro other hother
+  have hotherBefore : other < nodes.size := by simpa using hother
+  by_cases heq : other = index
+  · subst other
+    simpa [Array.getElem_set, hindex] using hvalue
+  · simpa only [Array.set!_eq_setIfInBounds, Array.setIfInBounds_def,
+      dif_pos hindex,
+      Array.getElem_set_ne hindex hotherBefore (Ne.symm heq)] using
+      hnodes other hotherBefore
+
 theorem HenselNodeReduces.refl (m : Nat) (node : HenselNode) :
     HenselNodeReduces m node node := by
   simp [HenselNodeReduces]
@@ -4656,6 +4682,57 @@ theorem HenselLiftRecursiveCorrect.arrayReduces
           hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2.1⟩)).trans leftIH).trans
             rightIH)
 
+/-- The actual well-founded tree traversal preserves canonical sparse factor
+representations at every array slot.  Each selected slot is replaced by the
+canonical `g`/`h` returned by its concrete Hensel step; recursive calls then
+apply the same frame argument to the updated array. -/
+theorem HenselLiftRecursiveCorrect.arrayCanonical
+    {termination : Generated.StrictHensel.DivmodTermination} {m : Nat}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes output : Array HenselNode} {target : SparsePolyZZ}
+    (hcorrect : HenselLiftRecursiveCorrect termination m tree nodes target
+      output)
+    (hnodes : HenselArrayCanonical nodes) :
+    HenselArrayCanonical output := by
+  induction hcorrect with
+  | leaf index nodes stored target inputNode lifted parent hnode hstep
+      hstepCorrect hstored hparent =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      exact henselArrayCanonical_set nodes index lifted hindex hnodes
+        hstepCorrect.2.2.2.2.2
+  | left index left nodes stored nodesAfterLeft target inputNode lifted parent
+      hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      exact ih (henselArrayCanonical_set nodes index lifted hindex hnodes
+        hstepCorrect.2.2.2.2.2)
+  | right index right nodes stored output target inputNode lifted parent hnode
+      hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      exact ih (henselArrayCanonical_set nodes index lifted hindex hnodes
+        hstepCorrect.2.2.2.2.2)
+  | branch index left right nodes stored nodesAfterLeft output target inputNode
+      lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
+      hparent hrightRun hrightCorrect leftIH rightIH =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      exact rightIH (leftIH (henselArrayCanonical_set nodes index lifted
+        hindex hnodes hstepCorrect.2.2.2.2.2))
+
 /-- Full refinement invariant for a recursive tree traversal.  Like the
 single-step invariant, all descendant premises are universal over uniquely
 determined raw outputs.  The invariant supplies representation/safety facts,
@@ -4961,6 +5038,23 @@ theorem HenselLiftLoopCorrect.arrayReduces_of_dvd
       have hhead := hiteration.arrayReduces.of_dvd hdiv
       have hnextDiv : base ∣ m * m := dvd_mul_of_dvd_left hdiv m
       exact hhead.trans (ih hnextDiv)
+
+/-- Every concrete quadratic lifting round preserves canonical factor fields
+through the actual recursive tree execution recorded at that round. -/
+theorem HenselLiftLoopCorrect.arrayCanonical
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM)
+    (hinitial : HenselArrayCanonical initialNodes) :
+    HenselArrayCanonical outputNodes := by
+  induction hcorrect with
+  | done => exact hinitial
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      exact ih (hiteration.arrayCanonical hinitial)
 
 /-- The concrete quadratic loop only replaces its modulus by its square, so
 the initial modulus divides the modulus returned by every actual execution. -/
@@ -5388,6 +5482,71 @@ inductive HenselExtractCorrect :
       (hrightCorrect : HenselExtractCorrect right nodes afterLeft output) :
       HenselExtractCorrect (.node index (some left) (some right)) nodes input
         output
+
+def HenselFactorArrayCanonical (factors : Array SparsePolyZZ) : Prop :=
+  ∀ factor ∈ factors.toList,
+    StrictPolynomialMod.SparsePolyZZCanonical factor
+
+theorem HenselFactorArrayCanonical.push
+    {factors : Array SparsePolyZZ} {factor : SparsePolyZZ}
+    (hfactors : HenselFactorArrayCanonical factors)
+    (hfactor : StrictPolynomialMod.SparsePolyZZCanonical factor) :
+    HenselFactorArrayCanonical (factors.push factor) := by
+  intro candidate hcandidate
+  simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hcandidate
+  rcases hcandidate with hcandidate | rfl
+  · exact hfactors candidate hcandidate
+  · exact hfactor
+
+/-- The exact extraction traversal appends only `g`/`h` fields read from the
+canonical lifted node array, so it preserves canonicality of the input prefix
+and establishes it for every newly extracted factor. -/
+theorem HenselExtractCorrect.outputCanonical
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode} {input output : Array SparsePolyZZ}
+    (hcorrect : HenselExtractCorrect tree nodes input output)
+    (hnodes : HenselArrayCanonical nodes)
+    (hinput : HenselFactorArrayCanonical input) :
+    HenselFactorArrayCanonical output := by
+  induction hcorrect with
+  | leaf index nodes input output node hnode houtput =>
+      subst output
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlookup : nodes[index] = node :=
+        Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+      have hnodeCanonical : HenselNodeCanonical node := by
+        simpa [hlookup] using hnodes index hindex
+      exact (hinput.push hnodeCanonical.1).push hnodeCanonical.2
+  | left index left nodes input afterLeft output node hnode hleftRun
+      hleftCorrect houtput ih =>
+      subst output
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlookup : nodes[index] = node :=
+        Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+      have hnodeCanonical : HenselNodeCanonical node := by
+        simpa [hlookup] using hnodes index hindex
+      exact (ih hnodes hinput).push hnodeCanonical.2
+  | right index right nodes input afterLeft output node hnode hafterLeft
+      hrightRun hrightCorrect ih =>
+      subst afterLeft
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hlookup : nodes[index] = node :=
+        Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+      have hnodeCanonical : HenselNodeCanonical node := by
+        simpa [hlookup] using hnodes index hindex
+      exact ih hnodes (hinput.push hnodeCanonical.1)
+  | branch index left right nodes input afterLeft output node hnode hleftRun
+      hleftCorrect hrightRun hrightCorrect leftIH rightIH =>
+      exact rightIH hnodes (leftIH hnodes hinput)
 
 /-- Pure denotation of the exact leaf order used by the generated extraction
 walk.  It reads the same node `g`/`h` fields selected by the source branches;

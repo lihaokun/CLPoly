@@ -1864,11 +1864,145 @@ theorem nextCombination_true_minimal_suffix (indices next : Array Nat)
 the array has the requested size, its entries are strictly increasing (the
 `gap` form also records the accumulated distance), and every entry is below
 `upper`. -/
-private def LegalCombination (upper count : Nat) (indices : Array Nat) : Prop :=
+def LegalCombination (upper count : Nat) (indices : Array Nat) : Prop :=
   indices.size = count ∧
   (∀ left right (hleft : left < indices.size) (hright : right < indices.size),
     left < right → indices[left]! + (right - left) ≤ indices[right]!) ∧
   ∀ index (hindex : index < indices.size), indices[index]! < upper
+
+/-- Read the source occurrences named by a concrete list of natural-number
+indices.  Bounds are kept as a separate proposition so this definition has
+the same total lookup behaviour as the generated array code. -/
+def selectSourceIndices {α : Type*} [Inhabited α]
+    (source : List α) (indices : List Nat) : List α :=
+  indices.map fun index => source[index]!
+
+private theorem getElem!_map_of_lt {α β : Type*} [Inhabited α] [Inhabited β]
+    (function : α → β) (values : List α) (position : Nat)
+    (hposition : position < values.length) :
+    (values.map function)[position]! = function values[position]! := by
+  rw [getElem!_pos _ position (by simpa using hposition),
+    getElem!_pos values position hposition]
+  simp
+
+/-- A source-order sublist has concrete, strictly increasing occurrence
+indices.  The accumulated-gap form is exactly the legality invariant used by
+the generated C++ combination enumerator; duplicates in `source` therefore
+retain their occurrence identity. -/
+theorem sublist_exists_legal_source_indices {α : Type*} [Inhabited α]
+    {chosen source : List α} (hsublist : chosen.Sublist source) :
+    ∃ indices : List Nat,
+      indices.length = chosen.length ∧
+      (∀ position (hposition : position < indices.length),
+        position ≤ indices[position]!) ∧
+      (∀ left right (hleft : left < indices.length)
+          (hright : right < indices.length), left < right →
+        indices[left]! + (right - left) ≤ indices[right]!) ∧
+      (∀ position (hposition : position < indices.length),
+        indices[position]! < source.length) ∧
+      selectSourceIndices source indices = chosen := by
+  induction hsublist with
+  | slnil => exact ⟨[], rfl, by simp, by simp, by simp, rfl⟩
+  | cons element hsublist ih =>
+      rcases ih with ⟨indices, hlength, hposition, hgaps, hbounds, hselect⟩
+      refine ⟨indices.map Nat.succ, by simp [hlength], ?_, ?_, ?_, ?_⟩
+      · intro position hposition'
+        simp only [List.length_map] at hposition'
+        rw [getElem!_map_of_lt Nat.succ indices position hposition']
+        exact Nat.le_trans (hposition position hposition') (Nat.le_succ _)
+      · intro left right hleft hright hlt
+        simp only [List.length_map] at hleft hright
+        rw [getElem!_map_of_lt Nat.succ indices left hleft,
+          getElem!_map_of_lt Nat.succ indices right hright]
+        have := hgaps left right hleft hright hlt
+        omega
+      · intro position hposition'
+        simp only [List.length_map] at hposition'
+        rw [getElem!_map_of_lt Nat.succ indices position hposition']
+        have := hbounds position hposition'
+        simp only [List.length_cons]
+        omega
+      · simpa [selectSourceIndices] using hselect
+  | cons₂ element hsublist ih =>
+      rcases ih with ⟨indices, hlength, hposition, hgaps, hbounds, hselect⟩
+      let shifted := indices.map Nat.succ
+      refine ⟨0 :: shifted, by simp [shifted, hlength], ?_, ?_, ?_, ?_⟩
+      · intro position hposition'
+        cases position with
+        | zero => simp
+        | succ position =>
+            simp only [List.length_cons, Nat.succ_lt_succ_iff] at hposition'
+            have hposition'' : position < indices.length := by
+              simpa [shifted] using hposition'
+            simp only [List.getElem!_cons_succ, shifted]
+            rw [getElem!_map_of_lt Nat.succ indices position hposition'']
+            have := hposition position hposition''
+            omega
+      · intro left right hleft hright hlt
+        cases left with
+        | zero =>
+            cases right with
+            | zero => omega
+            | succ right =>
+                have hright' : right < indices.length := by
+                  simpa [shifted] using hright
+                simp only [List.getElem!_cons_zero, List.getElem!_cons_succ,
+                  shifted]
+                rw [getElem!_map_of_lt Nat.succ indices right hright']
+                have := hposition right hright'
+                omega
+        | succ left =>
+            cases right with
+            | zero => omega
+            | succ right =>
+                simp only [List.length_cons, Nat.succ_lt_succ_iff] at hleft hright
+                have hleft' : left < indices.length := by
+                  simpa [shifted] using hleft
+                have hright' : right < indices.length := by
+                  simpa [shifted] using hright
+                simp only [List.getElem!_cons_succ, shifted]
+                rw [getElem!_map_of_lt Nat.succ indices left hleft',
+                  getElem!_map_of_lt Nat.succ indices right hright']
+                have := hgaps left right hleft' hright' (by omega)
+                omega
+      · intro position hposition'
+        cases position with
+        | zero => simp
+        | succ position =>
+            simp only [List.length_cons, Nat.succ_lt_succ_iff] at hposition'
+            have hposition'' : position < indices.length := by
+              simpa [shifted] using hposition'
+            simp only [List.getElem!_cons_succ, shifted, List.length_cons]
+            rw [getElem!_map_of_lt Nat.succ indices position hposition'']
+            have := hbounds position hposition''
+            omega
+      · simpa [selectSourceIndices, shifted] using congrArg (List.cons element) hselect
+
+/-- Array form consumed directly by `scanZassenhausCombinations`: every
+source sublist supplies a legal candidate of exactly the same cardinality,
+and selecting its array entries recovers that very sublist. -/
+theorem sublist_exists_legal_combination {α : Type*} [Inhabited α]
+    {chosen source : List α} (hsublist : chosen.Sublist source) :
+    ∃ indices : Array Nat,
+      LegalCombination source.length chosen.length indices ∧
+      selectSourceIndices source indices.toList = chosen := by
+  rcases sublist_exists_legal_source_indices hsublist with
+    ⟨indices, hlength, _hposition, hgaps, hbounds, hselect⟩
+  refine ⟨indices.toArray, ?_, by simpa using hselect⟩
+  refine ⟨by simpa using hlength, ?_, ?_⟩
+  · intro left right hleft hright hlt
+    have hleft' : left < indices.length := by simpa using hleft
+    have hright' : right < indices.length := by simpa using hright
+    rw [getElem!_pos (indices.toArray) left hleft,
+      getElem!_pos (indices.toArray) right hright]
+    simpa [getElem!_pos indices left hleft',
+      getElem!_pos indices right hright'] using
+      hgaps left right hleft' hright' hlt
+  · intro position hposition'
+    have hposition : position < indices.length := by simpa using hposition'
+    rw [getElem!_pos (indices.toArray) position hposition']
+    simpa [getElem!_pos indices position hposition] using
+      hbounds position hposition
 
 /-- Lexicographic order on equal-size source arrays, stated at the concrete
 first differing position.  This avoids assigning an order to arrays of

@@ -1432,3 +1432,27 @@ attempt.
   正式 `lake build CLPoly.Refinement.FactorZZ` 通过（3545 jobs）
 - 下一步：把 `List.Sublist` 证明转成合法严格递增 source indices，并证明
   generated `trialProductLoop` 对该 candidate 计算同一模乘积
+
+## Source sublists become actual generated scan candidates
+
+`sublist_exists_legal_source_indices` follows the concrete `List.Sublist`
+derivation and constructs occurrence indices in source order.  Skipping a
+source head increments every retained index; selecting it prepends zero and
+increments the tail.  This deliberately avoids `indexOf`, so equal atom
+values at distinct positions retain their occurrence identity.
+
+The construction proves the same accumulated strict-gap and upper-bound
+invariant used by the generated C++ combination enumerator.  Its array
+wrapper `sublist_exists_legal_combination` therefore supplies a genuine
+`LegalCombination source.length chosen.length`, while selecting those source
+positions recovers exactly `chosen`.  Together with scan no-omission, this
+turns the algebraic sublist witness into an actually attempted candidate.
+
+## 度量（sublist-to-generated-candidate）
+
+- 耗时：约 1 小时（occurrence-preserving index recursion、累计 gap、数组桥接）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：证明 `combinationToInt32` 与 generated `trialProductLoop` 对该
+  candidate 成功执行并计算对应 Hensel 原子乘积

@@ -1975,3 +1975,32 @@ or `sorry` warning.  The axiom audit reports only `propext`,
 `Classical.choice`, and `Quot.sound`, with no project axiom or `sorryAx`.  The
 next obligation is irreducibility: use exhaustion of all smaller source
 subsets to contradict any proper factor of an extracted primitive candidate.
+
+## Observe the concrete Hensel-modulus candidate at the selected prime
+
+The successful Zassenhaus trace now remains exact when the Hensel modulus
+`M` is reduced further at every positive divisor `p`.  This is the bridge
+needed to use the selected-prime irreducibility certificates after lifting.
+
+- The generated `% M` coefficient loop, normalized modular multiplication,
+  and complete `trialProductLoop` are proved to preserve their polynomial
+  value in `ZMod p` whenever `p ∣ M`.
+- The generated `symmetricModLoop` and `symmetricModRaw` receive the analogous
+  divisor theorem: the concrete symmetric representative modulo `M` reduces
+  to the original polynomial modulo `p`.
+- `zassenhausAttempt_extracted_candidate_trace` exposes the actual successful
+  `combinationToInt32`, trial product, symmetric representative, and
+  `primitiveRaw` result.  No intermediate value is chosen by a specification.
+- Combining those exact executions proves that the returned factor, scaled by
+  the content computed by the concrete primitive loop, equals modulo `p` the
+  leading coefficient times the exact occurrence-sensitive selected sublist
+  product.
+
+No C++ files changed, so this step has no new C++ b2b change surface.
+Verification: `lake env lean CLPoly/Refinement/Recombine.lean` and
+`lake build CLPoly.Refinement.Recombine CLPoly.Pipeline.L1` pass with no error
+or `sorry` warning.  The permanent axiom audit now includes the new concrete
+candidate theorem and reports only `propext`, `Classical.choice`, and
+`Quot.sound`.  The next step is to prove both concrete scalars are nonzero
+modulo the selected prime and convert this equality to `Associated`, then
+combine it with the earlier exhaustive-scan rejection theorem.

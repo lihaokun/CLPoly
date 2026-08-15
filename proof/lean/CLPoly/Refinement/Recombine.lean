@@ -9457,6 +9457,179 @@ private theorem groupTerms_toPoly (terms : SparsePolyZZ) :
   rw [← Array.foldl_toList]
   simpa [intTermsToPoly] using groupTerms_toPoly_aux terms.toList #[]
 
+private def sparseZZDegrees (terms : SparsePolyZZ) : List Nat :=
+  terms.toList.map (fun term => term.1.deg)
+
+private theorem map_modify_degree_preserved
+    (terms : List (UMonomial × Int)) (index : Nat)
+    (update : UMonomial × Int → UMonomial × Int)
+    (hupdate : ∀ term, (update term).1.deg = term.1.deg) :
+    (terms.modify index update).map (fun term => term.1.deg) =
+      terms.map (fun term => term.1.deg) := by
+  induction terms generalizing index with
+  | nil => simp
+  | cons head tail ih =>
+      cases index with
+      | zero => simp [hupdate]
+      | succ index => simp [ih index]
+
+private theorem groupTermsStep_degrees_nodup (acc : SparsePolyZZ)
+    (term : UMonomial × Int) (hacc : (sparseZZDegrees acc).Nodup) :
+    (sparseZZDegrees
+      (match acc.findIdx? (fun t => t.1.deg = term.1.deg) with
+      | some index => acc.modify index
+          (fun existing => (existing.1, existing.2 + term.2))
+      | none => acc.push term)).Nodup := by
+  split
+  next index hfind =>
+    unfold sparseZZDegrees at hacc ⊢
+    rw [Array.toList_modify]
+    rw [map_modify_degree_preserved acc.toList index _ (by simp)]
+    exact hacc
+  next hfind =>
+    have hnone := Array.findIdx?_eq_none_iff.mp hfind
+    unfold sparseZZDegrees at hacc ⊢
+    simp only [Array.toList_push, List.map_append, List.map_cons, List.map_nil,
+      List.nodup_append, List.nodup_singleton]
+    refine ⟨hacc, trivial, ?_⟩
+    intro degree hdegreeMem singleton hsingleton
+    simp only [List.mem_singleton] at hsingleton
+    subst singleton
+    rw [List.mem_map] at hdegreeMem
+    obtain ⟨existing, hexisting, hdegree⟩ := hdegreeMem
+    have hnot := hnone existing (by simpa using hexisting)
+    simpa [hdegree] using hnot
+
+private theorem groupTermsFold_degrees_nodup
+    (source : List (UMonomial × Int)) (acc : SparsePolyZZ)
+    (hacc : (sparseZZDegrees acc).Nodup) :
+    (sparseZZDegrees (source.foldl (fun acc term =>
+      match acc.findIdx? (fun t => t.1.deg = term.1.deg) with
+      | some index => acc.modify index
+          (fun existing => (existing.1, existing.2 + term.2))
+      | none => acc.push term) acc)).Nodup := by
+  induction source generalizing acc with
+  | nil => simpa
+  | cons head tail ih =>
+      simp only [List.foldl_cons]
+      exact ih _ (groupTermsStep_degrees_nodup acc head hacc)
+
+/-- The concrete grouping fold used by integer sparse normalization retains
+exactly one cell for every encountered degree. -/
+theorem groupedTerms_degrees_nodup (terms : SparsePolyZZ) :
+    (sparseZZDegrees (terms.foldl (fun acc term =>
+      match acc.findIdx? (fun t => t.1.deg = term.1.deg) with
+      | some index => acc.modify index
+          (fun existing => (existing.1, existing.2 + term.2))
+      | none => acc.push term) #[])).Nodup := by
+  rw [← Array.foldl_toList]
+  apply groupTermsFold_degrees_nodup
+  simp [sparseZZDegrees]
+
+private def sparseZZDegreeGT (left right : UMonomial × Int) : Prop :=
+  left.1.deg > right.1.deg
+
+private theorem pairwise_merge_sparseZZDegreeGT
+    (left right : List (UMonomial × Int))
+    (hleft : left.Pairwise sparseZZDegreeGT)
+    (hright : right.Pairwise sparseZZDegreeGT)
+    (hcross : ∀ a ∈ left, ∀ b ∈ right, a.1.deg ≠ b.1.deg) :
+    (List.merge left right
+      (fun a b => a.1.deg > b.1.deg)).Pairwise sparseZZDegreeGT := by
+  induction left generalizing right with
+  | nil => simpa only [List.merge]
+  | cons x xs ihLeft =>
+      induction right with
+      | nil => simpa only [List.merge]
+      | cons y ys ihRight =>
+          simp only [List.merge]
+          split <;> rename_i hcompare
+          · apply List.Pairwise.cons
+            have hxy : x.1.deg > y.1.deg := of_decide_eq_true hcompare
+            · intro z hz
+              rw [List.mem_merge, List.mem_cons] at hz
+              rcases hz with (hz | rfl | hz)
+              · exact List.rel_of_pairwise_cons hleft hz
+              · exact hxy
+              · unfold sparseZZDegreeGT
+                exact Nat.lt_trans
+                  (List.rel_of_pairwise_cons hright hz) hxy
+            · exact ihLeft _ hleft.tail hright (fun a ha b hb =>
+                hcross a (List.mem_cons_of_mem x ha) b hb)
+          · apply List.Pairwise.cons
+            · intro z hz
+              rw [List.mem_merge, List.mem_cons] at hz
+              simp only [Bool.not_eq_true] at hcompare
+              have hyx : y.1.deg > x.1.deg := by
+                have hne := hcross x List.mem_cons_self y List.mem_cons_self
+                have hnxy : ¬ x.1.deg > y.1.deg :=
+                  of_decide_eq_false hcompare
+                omega
+              rcases hz with (⟨rfl | hz⟩ | hz)
+              · exact hyx
+              · unfold sparseZZDegreeGT
+                exact Nat.lt_trans
+                  (List.rel_of_pairwise_cons hleft hz) hyx
+              · exact List.rel_of_pairwise_cons hright hz
+            · exact ihRight hright.tail (fun a ha b hb =>
+                hcross a ha b (List.mem_cons_of_mem y hb))
+
+/-- Strict `deg >` is not a total comparator on duplicate degrees.  The
+actual grouping pass removes precisely that obstruction, so the source's
+strict-comparison merge sort is nevertheless a strict descending chain. -/
+theorem pairwise_mergeSort_sparseZZDegreeGT
+    (terms : List (UMonomial × Int))
+    (hnodup : (terms.map fun term => term.1.deg).Nodup) :
+    (terms.mergeSort
+      (fun a b => a.1.deg > b.1.deg)).Pairwise sparseZZDegreeGT := by
+  induction hlength : terms.length using Nat.strong_induction_on
+      generalizing terms with
+  | h length ih =>
+    cases terms with
+    | nil => simp
+    | cons a tail =>
+      cases tail with
+      | nil => simp
+      | cons b xs =>
+      rw [List.mergeSort]
+      let leftTerms :=
+        (List.MergeSort.Internal.splitInTwo ⟨a :: b :: xs, rfl⟩).1.1
+      let rightTerms :=
+        (List.MergeSort.Internal.splitInTwo ⟨a :: b :: xs, rfl⟩).2.1
+      have hleftLength : leftTerms.length < length := by
+        rw [← hlength]
+        simp [leftTerms, List.MergeSort.Internal.splitInTwo_fst]
+        omega
+      have hrightLength : rightTerms.length < length := by
+        rw [← hlength]
+        simp [rightTerms, List.MergeSort.Internal.splitInTwo_snd]
+        omega
+      have happend : leftTerms ++ rightTerms = a :: b :: xs :=
+        List.MergeSort.Internal.splitInTwo_fst_append_splitInTwo_snd _
+      have hdegreeAppend :
+          ((leftTerms.map fun term => term.1.deg) ++
+            (rightTerms.map fun term => term.1.deg)).Nodup := by
+        rw [← List.map_append, happend]
+        exact hnodup
+      have hparts := List.nodup_append.mp hdegreeAppend
+      apply pairwise_merge_sparseZZDegreeGT
+      · exact ih leftTerms.length hleftLength leftTerms hparts.1 rfl
+      · exact ih rightTerms.length hrightLength rightTerms hparts.2.1 rfl
+      · intro x hx y hy hxy
+        have hx' : x ∈ leftTerms := List.mem_mergeSort.mp hx
+        have hy' : y ∈ rightTerms := List.mem_mergeSort.mp hy
+        have hxdeg : x.1.deg ∈
+            leftTerms.map (fun term => term.1.deg) :=
+          List.mem_map.mpr ⟨x, hx', rfl⟩
+        have hydeg : y.1.deg ∈
+            rightTerms.map (fun term => term.1.deg) :=
+          List.mem_map.mpr ⟨y, hy', rfl⟩
+        have hxdegRight : x.1.deg ∈
+            rightTerms.map (fun term => term.1.deg) := by
+          rw [hxy]
+          exact hydeg
+        exact (hparts.2.2 x.1.deg hxdeg x.1.deg hxdegRight) rfl
+
 private theorem filterNonzero_toPoly (terms : SparsePolyZZ) :
     intTermsToPoly (terms.filter (fun term => term.2 ≠ 0)).toList =
       intTermsToPoly terms.toList := by
@@ -9510,6 +9683,38 @@ theorem normalization_coefficients_nonzero (terms : SparsePolyZZ) :
   rw [Array.toList_filter, List.mem_filter] at hfiltered
   simpa using hfiltered.2
 
+/-- The exact group/filter/strict-merge-sort normalization used by C++ always
+produces the canonical sparse integer representation.  In particular, this
+does not replace the generated sort by a mathematical sorting oracle. -/
+theorem normalization_canonical (terms : SparsePolyZZ) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (SparsePolyZZ.normalization terms) := by
+  let grouped : SparsePolyZZ := terms.foldl (fun acc term =>
+    match acc.findIdx? (fun t => t.1.deg = term.1.deg) with
+    | some index => acc.modify index
+        (fun existing => (existing.1, existing.2 + term.2))
+    | none => acc.push term) #[]
+  let nonzero : SparsePolyZZ := grouped.filter (fun term => term.2 ≠ 0)
+  have hgrouped : (sparseZZDegrees grouped).Nodup := by
+    exact groupedTerms_degrees_nodup terms
+  have hsub : List.Sublist nonzero.toList grouped.toList := by
+    dsimp [nonzero]
+    rw [Array.toList_filter]
+    exact List.filter_sublist
+  have hnonzeroDegrees :
+      (nonzero.toList.map (fun term => term.1.deg)).Nodup := by
+    exact hgrouped.sublist (hsub.map (fun term => term.1.deg))
+  unfold StrictPolynomialMod.SparsePolyZZCanonical
+  constructor
+  · unfold SparsePolyZZ.normalization
+    change List.IsChain (fun left right : UMonomial × Int =>
+        left.1.deg > right.1.deg)
+      (nonzero.toList.mergeSort (fun left right =>
+        left.1.deg > right.1.deg))
+    exact (pairwise_mergeSort_sparseZZDegreeGT nonzero.toList
+      hnonzeroDegrees).isChain
+  · exact normalization_coefficients_nonzero terms
+
 theorem multiplyNormalizeRaw_toPoly (left right output : SparsePolyZZ)
     (hrun : Generated.StrictRecombine.multiplyNormalizeRaw left right =
       .ok output) :
@@ -9524,6 +9729,15 @@ theorem multiplyNormalizeRaw_toPoly (left right output : SparsePolyZZ)
   rw [multiplyTermsLoop_toPoly]
   simp [intTermsToPoly, SparsePolyZZ.toPoly]
 
+theorem multiplyNormalizeRaw_canonical (left right output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.multiplyNormalizeRaw left right =
+      .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  unfold Generated.StrictRecombine.multiplyNormalizeRaw at hrun
+  have hout := Except.ok.inj hrun
+  subst output
+  exact normalization_canonical _
+
 private theorem emod_cast (modulus : Nat) (hmodulus : 0 < modulus)
     (coefficient : Int) :
     ((coefficient % (modulus : Int) : Int) : ZMod modulus) =
@@ -9533,6 +9747,103 @@ private theorem emod_cast (modulus : Nat) (hmodulus : 0 < modulus)
   use coefficient / (modulus : Int)
   have h := Int.mul_ediv_add_emod coefficient (modulus : Int)
   omega
+
+/-- Exact coefficient cells emitted by the generated modular-reduction loop,
+in source order. -/
+theorem modCoeffLoop_toList (input : SparsePolyZZ) (modulus : ZZ)
+    (index : Nat) (result output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.modCoeffLoop input modulus index result =
+      .ok output) :
+    output.toList = result.toList ++
+      (input.toList.drop index).filterMap (fun term =>
+        let coefficient := term.2 % modulus
+        if coefficient = 0 then none else some (term.1, coefficient)) := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.modCoeffLoop] at hrun
+      split at hrun
+      next hindex =>
+        split at hrun
+        next hmodulus =>
+          let coefficient := input[index].2 % modulus
+          by_cases hzero : coefficient = 0
+          · change input[index].2 % modulus = 0 at hzero
+            simp only [hzero, if_true] at hrun
+            rw [ih (input.size - (index + 1)) (by omega)
+              (index + 1) result output hrun rfl]
+            have hsuffix : input.toList.drop index = input[index] ::
+                input.toList.drop (index + 1) := by
+              simpa using List.drop_eq_getElem_cons
+                (l := input.toList) (i := index) (by simpa using hindex)
+            rw [hsuffix, List.filterMap_cons]
+            dsimp only
+            rw [if_pos hzero]
+          · change input[index].2 % modulus ≠ 0 at hzero
+            simp only [hzero, if_false] at hrun
+            rw [ih (input.size - (index + 1)) (by omega)
+              (index + 1)
+              (result.push (input[index].1, input[index].2 % modulus))
+              output hrun rfl]
+            have hsuffix : input.toList.drop index = input[index] ::
+                input.toList.drop (index + 1) := by
+              simpa using List.drop_eq_getElem_cons
+                (l := input.toList) (i := index) (by simpa using hindex)
+            rw [hsuffix, List.filterMap_cons]
+            dsimp only
+            rw [if_neg hzero, Array.toList_push, List.append_assoc]
+            rfl
+        next hmodulus => contradiction
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [List.drop_eq_nil_iff.mpr hle]
+
+/-- Starting from the source's empty accumulator, modular coefficient
+reduction preserves strict sparse order and omits every zero residue. -/
+theorem modCoeffLoop_canonical (input output : SparsePolyZZ)
+    (modulus : ZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (hrun : Generated.StrictRecombine.modCoeffLoop input modulus 0 #[] =
+      .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  let reduceTerm : UMonomial × Int → Option (UMonomial × Int) :=
+    fun term =>
+      let coefficient := term.2 % modulus
+      if coefficient = 0 then none else some (term.1, coefficient)
+  have hlist := modCoeffLoop_toList input modulus 0 #[] output hrun
+  have houtput : output.toList = input.toList.filterMap reduceTerm := by
+    simpa [reduceTerm] using hlist
+  unfold StrictPolynomialMod.SparsePolyZZCanonical
+  rw [houtput]
+  constructor
+  · letI : Trans
+        (fun left right : UMonomial × Int => left.1.deg > right.1.deg)
+        (fun left right : UMonomial × Int => left.1.deg > right.1.deg)
+        (fun left right : UMonomial × Int => left.1.deg > right.1.deg) :=
+      ⟨by intro left middle right hleft hright
+          exact Nat.lt_trans hright hleft⟩
+    exact (hcanonical.1.pairwise.filterMap reduceTerm (by
+      intro left right hdegree left' hleft right' hright
+      dsimp [reduceTerm] at hleft hright
+      split at hleft <;> try contradiction
+      split at hright <;> try contradiction
+      injection hleft with hleft
+      injection hright with hright
+      subst left'
+      subst right'
+      exact hdegree)).isChain
+  · intro term hterm
+    rw [List.mem_filterMap] at hterm
+    obtain ⟨source, hsource, hreduce⟩ := hterm
+    dsimp [reduceTerm] at hreduce
+    split at hreduce
+    next hzero => contradiction
+    next hzero =>
+      injection hreduce with heq
+      subst term
+      exact hzero
 
 theorem modCoeffLoop_toPolyMod (input : SparsePolyZZ)
     (modulus : Nat) (hmodulus : 0 < modulus) (index : Nat)
@@ -9611,6 +9922,18 @@ theorem multiplyNormalizeModRaw_correct
     rw [hmod']
     simpa [Refinement.StrictHensel.toPolyMod] using
       congrArg (Polynomial.map (Int.castRingHom (ZMod modulus))) hmul
+
+theorem multiplyNormalizeModRaw_canonical
+    (left right output : SparsePolyZZ) (modulus : ZZ)
+    (hrun : Generated.StrictRecombine.multiplyNormalizeModRaw left right
+      modulus = .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  unfold Generated.StrictRecombine.multiplyNormalizeModRaw at hrun
+  split at hrun
+  next fault hmultiply => contradiction
+  next product hmultiply =>
+    exact modCoeffLoop_canonical product output modulus
+      (multiplyNormalizeRaw_canonical left right product hmultiply) hrun
 
 /-- Concrete candidate-validation dependencies.  Both generated operation
 records are data-free, so this value cannot choose candidates, products, or
@@ -9699,6 +10022,42 @@ theorem trialProductLoop_refines
         subst output
         simp [SelectedProductMod, List.drop_eq_nil_iff.mpr hle]
 
+/-- Canonicality follows the exact successful multiplication/reduction trace;
+no validity oracle is needed because every checked source branch is retained. -/
+theorem trialProductLoop_canonical
+    (ops : Generated.StrictRecombine.TrialProductRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) (index : Nat) (product output : SparsePolyZZ)
+    (hproduct : StrictPolynomialMod.SparsePolyZZCanonical product)
+    (hrun : Generated.StrictRecombine.trialProductLoop ops candidate
+      activeLifted modulus index product = .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index product output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.trialProductLoop] at hrun
+      split at hrun
+      next hindex =>
+        dsimp at hrun
+        split at hrun
+        next hnonnegative =>
+          split at hrun
+          next hactive =>
+            split at hrun
+            next fault hmultiply => contradiction
+            next product' hmultiply =>
+              exact ih (candidate.size - (index + 1)) (by omega)
+                (index + 1) product' output
+                (multiplyNormalizeModRaw_canonical product
+                  activeLifted[candidate[index].toInt64.toNat]
+                  product' modulus hmultiply) hrun rfl
+          next hactive => contradiction
+        next hnonnegative => contradiction
+      next hindex =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hproduct
+
 /-- End-to-end product statement for the candidate path used by
 `zassenhausAttempt`: checked lowering followed by the generated multiplication
 loop computes the product of the exact occurrence-sensitive source sublist. -/
@@ -9744,6 +10103,99 @@ private theorem symmetricMod_cast (modulus : Nat) (hmodulus : 0 < modulus)
   next hlarge =>
     rw [Int.cast_sub, hfmod]
     simp
+
+/-- Exact coefficient cells emitted by the generated symmetric-mod loop. -/
+theorem symmetricModLoop_toList (input : SparsePolyZZ) (modulus : ZZ)
+    (index : Nat) (result output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.symmetricModLoop input modulus index
+      result = .ok output) :
+    output.toList = result.toList ++
+      (input.toList.drop index).filterMap (fun term =>
+        let coefficient := ZZ.symmetricMod term.2 modulus
+        if coefficient = 0 then none else some (term.1, coefficient)) := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.symmetricModLoop] at hrun
+      split at hrun
+      next hindex =>
+        dsimp at hrun
+        let coefficient := ZZ.symmetricMod input[index].2 modulus
+        by_cases hzero : coefficient = 0
+        · change ZZ.symmetricMod input[index].2 modulus = 0 at hzero
+          simp only [hzero, if_true] at hrun
+          rw [ih (input.size - (index + 1)) (by omega)
+            (index + 1) result output hrun rfl]
+          have hsuffix : input.toList.drop index = input[index] ::
+              input.toList.drop (index + 1) := by
+            simpa using List.drop_eq_getElem_cons
+              (l := input.toList) (i := index) (by simpa using hindex)
+          rw [hsuffix, List.filterMap_cons]
+          dsimp only
+          rw [if_pos hzero]
+        · change ZZ.symmetricMod input[index].2 modulus ≠ 0 at hzero
+          simp only [hzero, if_false] at hrun
+          rw [ih (input.size - (index + 1)) (by omega)
+            (index + 1)
+            (result.push
+              (input[index].1, ZZ.symmetricMod input[index].2 modulus))
+            output hrun rfl]
+          have hsuffix : input.toList.drop index = input[index] ::
+              input.toList.drop (index + 1) := by
+            simpa using List.drop_eq_getElem_cons
+              (l := input.toList) (i := index) (by simpa using hindex)
+          rw [hsuffix, List.filterMap_cons]
+          dsimp only
+          rw [if_neg hzero, Array.toList_push, List.append_assoc]
+          rfl
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        have hout := Except.ok.inj hrun
+        subst output
+        simp [List.drop_eq_nil_iff.mpr hle]
+
+theorem symmetricModLoop_canonical (input output : SparsePolyZZ)
+    (modulus : ZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (hrun : Generated.StrictRecombine.symmetricModLoop input modulus 0 #[] =
+      .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  let reduceTerm : UMonomial × Int → Option (UMonomial × Int) :=
+    fun term =>
+      let coefficient := ZZ.symmetricMod term.2 modulus
+      if coefficient = 0 then none else some (term.1, coefficient)
+  have hlist := symmetricModLoop_toList input modulus 0 #[] output hrun
+  have houtput : output.toList = input.toList.filterMap reduceTerm := by
+    simpa [reduceTerm] using hlist
+  unfold StrictPolynomialMod.SparsePolyZZCanonical
+  rw [houtput]
+  constructor
+  · letI : Trans
+        (fun left right : UMonomial × Int => left.1.deg > right.1.deg)
+        (fun left right : UMonomial × Int => left.1.deg > right.1.deg)
+        (fun left right : UMonomial × Int => left.1.deg > right.1.deg) :=
+      ⟨by intro left middle right hleft hright
+          exact Nat.lt_trans hright hleft⟩
+    exact (hcanonical.1.pairwise.filterMap reduceTerm (by
+      intro left right hdegree left' hleft right' hright
+      dsimp [reduceTerm] at hleft hright
+      split at hleft <;> try contradiction
+      split at hright <;> try contradiction
+      injection hleft with hleft
+      injection hright with hright
+      subst left'
+      subst right'
+      exact hdegree)).isChain
+  · intro term hterm
+    rw [List.mem_filterMap] at hterm
+    obtain ⟨source, hsource, hreduce⟩ := hterm
+    dsimp [reduceTerm] at hreduce
+    split at hreduce
+    next hzero => contradiction
+    next hzero =>
+      injection hreduce with heq
+      subst term
+      exact hzero
 
 theorem symmetricModLoop_toPolyMod (input : SparsePolyZZ)
     (modulus : Nat) (hmodulus : 0 < modulus) (index : Nat)
@@ -9809,6 +10261,16 @@ theorem symmetricModRaw_toPolyMod (input output : SparsePolyZZ)
   rw [dif_pos (by exact_mod_cast hmodulus)] at hrun
   simpa [Refinement.StrictHensel.toPolyMod_eq_termsToPolyMod] using
     symmetricModLoop_toPolyMod input modulus hmodulus 0 #[] output hrun
+
+theorem symmetricModRaw_canonical (input output : SparsePolyZZ)
+    (modulus : Nat) (hmodulus : 0 < modulus)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (hrun : Generated.StrictRecombine.symmetricModRaw input (modulus : ZZ) =
+      .ok output) :
+    StrictPolynomialMod.SparsePolyZZCanonical output := by
+  unfold Generated.StrictRecombine.symmetricModRaw at hrun
+  rw [dif_pos (by exact_mod_cast hmodulus)] at hrun
+  exact symmetricModLoop_canonical input output (modulus : ZZ) hcanonical hrun
 
 /-- The generated content loop is exactly the source-order gcd fold over the
 remaining concrete coefficient cells.  This is the executable basis for
@@ -10678,6 +11140,139 @@ theorem zassenhausAttempt_extracted_quotient_trace
                         simp at hrun
   next hfstar => contradiction
 
+/-- The factor returned by a successful generated Zassenhaus attempt is the
+actual primitive result built from the canonical trial-product and
+symmetric-mod traces. -/
+theorem zassenhausAttempt_extracted_factor_canonical_primitive
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidate : Array Nat)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hrun : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      modulus candidate = .ok (.extracted factor quotientPrimitive)) :
+    StrictPolynomialMod.SparsePolyZZCanonical factor ∧
+      (SparsePolyZZ.toPoly factor).IsPrimitive := by
+  unfold Generated.StrictRecombine.zassenhausAttempt at hrun
+  split at hrun
+  next hfstar =>
+    dsimp at hrun
+    cases hleading : Generated.StrictRecombine.selectedLeadingProductLoop
+        candidate activeLifted 0 fStar[0].2 with
+    | error fault => simp [hleading] at hrun
+    | ok leadingProduct =>
+      simp only [hleading] at hrun
+      split at hrun
+      next hpruned => simp at hrun
+      next hleadingAccepted =>
+        cases hconstant : Generated.StrictRecombine.selectedConstantProductLoop
+            candidate activeLifted 0 fStar[0].2 with
+        | error fault => simp [hconstant] at hrun
+        | ok constantProduct =>
+          simp only [hconstant] at hrun
+          split at hrun
+          next hpruned => simp at hrun
+          next hconstantAccepted =>
+            cases hconvert : Generated.StrictRecombine.combinationToInt32
+                candidate with
+            | error fault => simp [hconvert] at hrun
+            | ok candidate32 =>
+              simp only [hconvert] at hrun
+              cases hproduct : Generated.StrictRecombine.trialProductLoop
+                  ⟨()⟩ candidate32 activeLifted modulus 0
+                  #[(⟨0⟩, fStar[0].2)] with
+              | error fault => simp [hproduct] at hrun
+              | ok product =>
+                simp only [hproduct] at hrun
+                cases hsymmetric : Generated.StrictRecombine.symmetricModRaw
+                    product modulus with
+                | error fault => simp [hsymmetric] at hrun
+                | ok symmetric =>
+                  simp only [hsymmetric] at hrun
+                  cases hprimitive : Generated.StrictRecombine.primitiveRaw
+                      symmetric with
+                  | error fault => simp [hprimitive] at hrun
+                  | ok primitiveResult =>
+                    rcases primitiveResult with
+                      ⟨symmetricContent, recoveredFactor⟩
+                    simp only [hprimitive] at hrun
+                    cases hdivmod : Generated.StrictRecombine.exactDivmodRaw
+                        fStar recoveredFactor with
+                    | error fault => simp [hdivmod] at hrun
+                    | ok divResult =>
+                      rcases divResult with ⟨quotient, remainder⟩
+                      simp only [hdivmod] at hrun
+                      by_cases hremainder : remainder.isEmpty = true
+                      · simp only [hremainder, if_true] at hrun
+                        cases hquotientPrimitive :
+                            Generated.StrictRecombine.primitiveRaw quotient with
+                        | error fault => simp [hquotientPrimitive] at hrun
+                        | ok quotientResult =>
+                          rcases quotientResult with
+                            ⟨quotientContent, recoveredQuotient⟩
+                          simp only [hquotientPrimitive] at hrun
+                          have hinitial :
+                              StrictPolynomialMod.SparsePolyZZCanonical
+                                #[(⟨0⟩, fStar[0].2)] := by
+                            unfold StrictPolynomialMod.SparsePolyZZCanonical
+                            constructor
+                            · simp
+                            · intro term hterm
+                              simp at hterm
+                              subst term
+                              exact hcanonical.2 fStar[0]
+                                (Array.getElem_mem_toList hfstar)
+                          have hproductCanonical :=
+                            trialProductLoop_canonical ⟨()⟩ candidate32
+                              activeLifted modulus 0
+                              #[(⟨0⟩, fStar[0].2)] product hinitial hproduct
+                          have hmodulus : 0 < modulus := by
+                            unfold Generated.StrictRecombine.symmetricModRaw at hsymmetric
+                            split at hsymmetric
+                            next hpositive => exact hpositive
+                            next hpositive => contradiction
+                          have hsymmetricCanonical :=
+                            symmetricModRaw_canonical product symmetric
+                              modulus.toNat (Int.pos_iff_toNat_pos.mp hmodulus)
+                              hproductCanonical (by
+                                simpa [Int.toNat_of_nonneg hmodulus.le] using
+                                  hsymmetric)
+                          have hfactorCanonical :=
+                            primitiveRaw_canonical symmetric recoveredFactor
+                              symmetricContent hsymmetricCanonical hprimitive
+                          have hfactorNonempty : 0 < recoveredFactor.size := by
+                            unfold Generated.StrictRecombine.exactDivmodRaw at hdivmod
+                            rw [Generated.StrictRecombine.exactDivmodLoop] at hdivmod
+                            rw [dif_pos hfstar] at hdivmod
+                            split at hdivmod
+                            next hpositive => exact hpositive
+                            next hpositive => contradiction
+                          have hsymmetricNonempty : 0 < symmetric.size := by
+                            by_contra hnot
+                            have hzero : symmetric.size = 0 :=
+                              Nat.eq_zero_of_not_pos hnot
+                            have hempty : symmetric.isEmpty = true := by
+                              simpa [Array.isEmpty, hzero]
+                            rw [Generated.StrictRecombine.primitiveRaw,
+                              dif_pos hempty] at hprimitive
+                            have hout := Except.ok.inj hprimitive
+                            have hsame := congrArg Prod.snd hout
+                            simp only [Prod.snd] at hsame
+                            have : recoveredFactor.size = 0 := by
+                              rw [← hsame]
+                              exact hzero
+                            omega
+                          have hfactorPrimitive :=
+                            primitiveRaw_isPrimitive symmetric recoveredFactor
+                              symmetricContent hsymmetricNonempty
+                              hsymmetricCanonical hprimitive
+                          have hout := Except.ok.inj hrun
+                          injection hout with hfactor hquotient
+                          subst factor
+                          exact ⟨hfactorCanonical, hfactorPrimitive⟩
+                      · simp only [hremainder, if_false] at hrun
+                        simp at hrun
+  next hfstar => contradiction
+
 theorem zassenhausAttempt_extracted_quotient_canonical
     (fStar factor quotientPrimitive : SparsePolyZZ)
     (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
@@ -10693,6 +11288,42 @@ theorem zassenhausAttempt_extracted_quotient_canonical
     hcanonical.2 hdivide
   exact primitiveRaw_canonical quotient quotientPrimitive quotientContent
     hquotient hprimitive
+
+theorem zassenhausAttempt_extracted_quotient_canonical_primitive
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidate : Array Nat)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hrun : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      modulus candidate = .ok (.extracted factor quotientPrimitive)) :
+    StrictPolynomialMod.SparsePolyZZCanonical quotientPrimitive ∧
+      (SparsePolyZZ.toPoly quotientPrimitive).IsPrimitive := by
+  rcases zassenhausAttempt_extracted_quotient_trace fStar factor
+      quotientPrimitive activeLifted modulus candidate hrun with
+    ⟨quotient, quotientContent, hdivide, hprimitive⟩
+  have hquotientCanonical := exactDivmodRaw_quotient_canonical fStar factor
+    quotient #[] hcanonical.2 hdivide
+  have hfStarNe : SparsePolyZZ.toPoly fStar ≠ 0 := by
+    intro hzeroPoly
+    have hleading := sparsePolyZZ_leadingCoeff_eq_head fStar hcanonical
+      hnonempty
+    rw [hzeroPoly] at hleading
+    have hheadNonzero := hcanonical.2 fStar[0]
+      (Array.getElem_mem_toList hnonempty)
+    exact hheadNonzero (by simpa using hleading.symm)
+  have hquotientNonempty : 0 < quotient.size := by
+    by_contra hnot
+    have hzero : quotient.size = 0 := Nat.eq_zero_of_not_pos hnot
+    have hempty : quotient = #[] := Array.size_eq_zero_iff.mp hzero
+    have hsemantic := exactDivmodRaw_toPoly fStar factor quotient #[] hdivide
+    rw [hempty] at hsemantic
+    simp [SparsePolyZZ.toPoly] at hsemantic
+    exact hfStarNe hsemantic
+  exact ⟨primitiveRaw_canonical quotient quotientPrimitive quotientContent
+      hquotientCanonical hprimitive,
+    primitiveRaw_isPrimitive quotient quotientPrimitive quotientContent
+      hquotientNonempty hquotientCanonical hprimitive⟩
 
 theorem zassenhausAttempt_extracted_toPoly
     (fStar factor quotientPrimitive : SparsePolyZZ)
@@ -10876,6 +11507,55 @@ theorem scanZassenhausCombinations_extracted_quotient_canonical
           exact zassenhausAttempt_extracted_quotient_canonical fStar
             extractedFactor extractedQuotient activeLifted modulus start
             hcanonical hattempt
+        | rejected =>
+          simp only [hattempt] at hrun
+          split at hrun
+          next next hnext => simp at hrun
+          next next hnext =>
+            have hdecrease := termination.next_decreases start next hvalidStart
+              hnext
+            have hvalidNext := termination.next_valid start next hvalidStart hnext
+            rw [hmeasure] at hdecrease
+            exact ih (termination.rank next) hdecrease next hvalidNext hrun rfl
+
+theorem scanZassenhausCombinations_extracted_canonical_primitive
+    {upper count : Nat}
+    (termination : Generated.StrictRecombine.CombinationTermination upper count)
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (start candidate : Array Nat)
+    (hcandidateSize : candidate.size = count)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hvalidStart : termination.valid start)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations termination
+      fStar activeLifted modulus start hvalidStart = .ok
+        (.extracted factor quotientPrimitive candidate hcandidateSize)) :
+    (StrictPolynomialMod.SparsePolyZZCanonical factor ∧
+        (SparsePolyZZ.toPoly factor).IsPrimitive) ∧
+      (StrictPolynomialMod.SparsePolyZZCanonical quotientPrimitive ∧
+        (SparsePolyZZ.toPoly quotientPrimitive).IsPrimitive) := by
+  induction hmeasure : termination.rank start using Nat.strong_induction_on
+      generalizing start with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.scanZassenhausCombinations] at hrun
+      cases hattempt : Generated.StrictRecombine.zassenhausAttempt fStar
+          activeLifted modulus start with
+      | error fault => simp [hattempt] at hrun
+      | ok attempt =>
+        cases attempt with
+        | extracted extractedFactor extractedQuotient =>
+          simp only [hattempt] at hrun
+          have hout := Except.ok.inj hrun
+          injection hout with hfactor hquotient hcandidate
+          subst factor
+          subst quotientPrimitive
+          exact ⟨zassenhausAttempt_extracted_factor_canonical_primitive fStar
+              extractedFactor extractedQuotient activeLifted modulus start
+              hcanonical hattempt,
+            zassenhausAttempt_extracted_quotient_canonical_primitive fStar
+              extractedFactor extractedQuotient activeLifted modulus start
+              hcanonical hnonempty hattempt⟩
         | rejected =>
           simp only [hattempt] at hrun
           split at hrun

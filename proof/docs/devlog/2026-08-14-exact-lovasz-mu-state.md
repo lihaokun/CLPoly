@@ -1945,3 +1945,33 @@ the array returned by the generated C++ control flow.
   formal `lake build CLPoly.Refinement.Recombine CLPoly.Pipeline.L1` pass with
   no error or `sorry` warning.  The axiom audit reports only `propext`,
   `Classical.choice`, and `Quot.sound` (no project axiom or `sorryAx`).
+
+## Concrete Zassenhaus candidates are canonical and primitive
+
+The generated candidate path now carries a complete representation and
+primitive-content certificate through its actual sparse operations.
+
+- The integer normalization grouping fold is proved to retain one cell per
+  degree.  A source-shaped proof of the strict `deg >` merge sort then uses
+  that uniqueness to rule out the comparator's non-total equality case;
+  `normalization_canonical` therefore certifies the actual C++ sort rather
+  than replacing it with a mathematical sorting oracle.
+- Exact list traces for `modCoeffLoop` and `symmetricModLoop` show that they
+  preserve source order and omit precisely the concrete zero residues.
+  Canonicality is transported through `multiplyNormalizeRaw`,
+  `multiplyNormalizeModRaw`, `trialProductLoop`, and `symmetricModRaw`.
+- A successful `zassenhausAttempt` returns the factor produced by the real
+  symmetric-content division and the quotient produced by the real checked
+  long division.  Both returned polynomials are now proved canonical and
+  `IsPrimitive`; nonemptiness is derived from the successful division trace,
+  not assumed.
+- The same pair of certificates is propagated through the generated
+  fixed-size combination scan by induction on its concrete termination rank.
+
+No C++ files changed, so this step has no new C++ b2b change surface.
+Verification: `lake env lean CLPoly/Refinement/Recombine.lean` and
+`lake build CLPoly.Refinement.Recombine CLPoly.Pipeline.L1` pass with no error
+or `sorry` warning.  The axiom audit reports only `propext`,
+`Classical.choice`, and `Quot.sound`, with no project axiom or `sorryAx`.  The
+next obligation is irreducibility: use exhaustion of all smaller source
+subsets to contradict any proper factor of an extracted primitive candidate.

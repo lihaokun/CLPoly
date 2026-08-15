@@ -10361,6 +10361,44 @@ private theorem symmetricMod_cast_of_dvd (base modulus : Nat)
       exact_mod_cast hdivides
     rw [hmodulusZero, sub_zero]
 
+/-- The exact representative selected by `ZZ.symmetricMod` lies in the closed
+half-modulus interval.  The inequality is intentionally non-strict: for even
+moduli the source keeps the positive midpoint. -/
+private theorem symmetricMod_natAbs_mul_two_le (coefficient : Int)
+    (modulus : Nat) (hmodulus : 0 < modulus) :
+    (ZZ.symmetricMod coefficient (modulus : Int)).natAbs * 2 ≤ modulus := by
+  unfold ZZ.symmetricMod
+  rw [Int.fmod_eq_emod_of_nonneg coefficient (by omega)]
+  let residue := coefficient % (modulus : Int)
+  have hresidueNonnegative : 0 ≤ residue := by
+    exact Int.emod_nonneg coefficient (by omega)
+  have hresidueLt : residue < (modulus : Int) := by
+    exact Int.emod_lt_of_pos coefficient (by omega)
+  change (if residue * 2 ≤ (modulus : Int) then residue
+    else residue - (modulus : Int)).natAbs * 2 ≤ modulus
+  split
+  next hhalf =>
+    have habs : (residue.natAbs : Int) = residue :=
+      Int.natAbs_of_nonneg hresidueNonnegative
+    rw [← habs] at hhalf
+    exact_mod_cast hhalf
+  next hhalf =>
+    have hdifferenceNonpositive : residue - (modulus : Int) ≤ 0 := by omega
+    have hstrict : 2 * ((modulus : Int) - residue) < modulus := by omega
+    have habs : ((residue - (modulus : Int)).natAbs : Int) =
+        (modulus : Int) - residue := by
+      calc
+        ((residue - (modulus : Int)).natAbs : Int) =
+            ((-(residue - (modulus : Int))).natAbs : Int) := by
+              rw [Int.natAbs_neg]
+        _ = -(residue - (modulus : Int)) :=
+          Int.natAbs_of_nonneg (neg_nonneg.mpr hdifferenceNonpositive)
+        _ = (modulus : Int) - residue := by ring
+    rw [← habs] at hstrict
+    have hcast : 2 * (residue - (modulus : Int)).natAbs ≤ modulus := by
+      exact_mod_cast (le_of_lt hstrict)
+    simpa [Nat.mul_comm] using hcast
+
 /-- Exact coefficient cells emitted by the generated symmetric-mod loop. -/
 theorem symmetricModLoop_toList (input : SparsePolyZZ) (modulus : ZZ)
     (index : Nat) (result output : SparsePolyZZ)
@@ -10410,6 +10448,28 @@ theorem symmetricModLoop_toList (input : SparsePolyZZ) (modulus : ZZ)
         have hout := Except.ok.inj hrun
         subst output
         simp [List.drop_eq_nil_iff.mpr hle]
+
+/-- Every coefficient physically emitted by the generated symmetric-mod loop
+satisfies the source's closed half-modulus bound. -/
+theorem symmetricModLoop_coefficients_bounded
+    (input output : SparsePolyZZ) (modulus : Nat) (hmodulus : 0 < modulus)
+    (hrun : Generated.StrictRecombine.symmetricModLoop input (modulus : ZZ)
+      0 #[] = .ok output) :
+    ∀ term ∈ output.toList, term.2.natAbs * 2 ≤ modulus := by
+  have hlist := symmetricModLoop_toList input (modulus : ZZ) 0 #[] output hrun
+  simp only [Array.toList_empty, List.nil_append, List.drop_zero] at hlist
+  intro term hterm
+  rw [hlist, List.mem_filterMap] at hterm
+  rcases hterm with ⟨source, hsource, houtput⟩
+  change (if ZZ.symmetricMod source.2 (modulus : ZZ) = 0 then none
+    else some (source.1, ZZ.symmetricMod source.2 (modulus : ZZ))) =
+      some term at houtput
+  split at houtput
+  next hzero => contradiction
+  next hzero =>
+    injection houtput with htermEq
+    subst term
+    exact symmetricMod_natAbs_mul_two_le source.2 modulus hmodulus
 
 theorem symmetricModLoop_canonical (input output : SparsePolyZZ)
     (modulus : ZZ)
@@ -10578,6 +10638,79 @@ theorem symmetricModRaw_toPolyMod (input output : SparsePolyZZ)
   simpa [Refinement.StrictHensel.toPolyMod_eq_termsToPolyMod] using
     symmetricModLoop_toPolyMod input modulus hmodulus 0 #[] output hrun
 
+theorem symmetricModRaw_coefficients_bounded
+    (input output : SparsePolyZZ) (modulus : Nat) (hmodulus : 0 < modulus)
+    (hrun : Generated.StrictRecombine.symmetricModRaw input (modulus : ZZ) =
+      .ok output) :
+    ∀ term ∈ output.toList, term.2.natAbs * 2 ≤ modulus := by
+  unfold Generated.StrictRecombine.symmetricModRaw at hrun
+  rw [dif_pos (by exact_mod_cast hmodulus)] at hrun
+  exact symmetricModLoop_coefficients_bounded input output modulus hmodulus hrun
+
+/-- Recovery with the exact boundary asymmetry produced by the C++ path:
+the symmetric representative may attain `m/2`, while the true scaled factor
+is strictly inside the half interval.  One strict side is sufficient for
+uniqueness modulo `m`, including even moduli. -/
+theorem symmetric_recovery_closed_left
+    (representative target : Polynomial Int) (modulus : Nat)
+    (hmodulus : 0 < modulus)
+    (hmod : Polynomial.map (Int.castRingHom (ZMod modulus)) representative =
+      Polynomial.map (Int.castRingHom (ZMod modulus)) target)
+    (hrepresentative : ∀ degree,
+      (representative.coeff degree).natAbs * 2 ≤ modulus)
+    (htarget : ∀ degree,
+      (target.coeff degree).natAbs * 2 < modulus) :
+    representative = target := by
+  ext degree
+  let left := representative.coeff degree
+  let right := target.coeff degree
+  have hcoefficient : (left : ZMod modulus) = (right : ZMod modulus) := by
+    have hcoefficient' := congrArg (fun polynomial => polynomial.coeff degree)
+      hmod
+    simpa only [Polynomial.coeff_map] using hcoefficient'
+  have hdivides : (modulus : Int) ∣ left - right := by
+    rw [← ZMod.intCast_zmod_eq_zero_iff_dvd]
+    push_cast
+    rw [sub_eq_zero]
+    exact hcoefficient
+  have habs : (left - right).natAbs < modulus := by
+    calc
+      (left - right).natAbs ≤ left.natAbs + right.natAbs :=
+        Int.natAbs_sub_le left right
+      _ < modulus := by
+        have hleft := hrepresentative degree
+        have hright := htarget degree
+        omega
+  obtain ⟨multiple, hmultiple⟩ := hdivides
+  have habsProduct : (left - right).natAbs =
+      modulus * multiple.natAbs := by
+    rw [hmultiple, Int.natAbs_mul, Int.natAbs_natCast]
+  rw [habsProduct] at habs
+  have hmultipleZero : multiple.natAbs = 0 := by
+    by_contra hnonzero
+    exact Nat.not_lt.mpr
+      (Nat.le_mul_of_pos_right modulus (Nat.pos_of_ne_zero hnonzero)) habs
+  have hdifference : left - right = 0 := by
+    rw [Int.natAbs_eq_zero.mp hmultipleZero, mul_zero] at hmultiple
+    exact hmultiple
+  exact Int.eq_of_sub_eq_zero hdifference
+
+private theorem intTermsToPoly_coeff_eq_zero_of_degrees_ne
+    (terms : List (UMonomial × Int)) (degree : Nat)
+    (hne : ∀ term ∈ terms, term.1.deg ≠ degree) :
+    (intTermsToPoly terms).coeff degree = 0 := by
+  induction terms with
+  | nil => simp [intTermsToPoly]
+  | cons head tail ih =>
+      have hhead := hne head (by simp)
+      have htail : ∀ term ∈ tail, term.1.deg ≠ degree := by
+        intro term hterm
+        exact hne term (by simp [hterm])
+      change (Polynomial.monomial head.1.deg head.2).coeff degree +
+        (intTermsToPoly tail).coeff degree = 0
+      rw [Polynomial.coeff_monomial, if_neg hhead, ih htail]
+      simp
+
 theorem symmetricModRaw_toPolyMod_of_dvd (input output : SparsePolyZZ)
     (modulus base : Nat) (hmodulus : 0 < modulus) (hbase : 0 < base)
     (hdivides : base ∣ modulus)
@@ -10695,6 +10828,45 @@ theorem sparsePolyZZ_toPoly_coeff_of_mem
     (SparsePolyZZ.toPoly input).coeff term.1.deg = term.2 := by
   unfold SparsePolyZZ.toPoly
   exact sparseZZ_sum_coeff_of_mem input.toList hcanonical.1 term hterm
+
+/-- A bound on every physically stored coefficient of a canonical sparse
+polynomial extends to every mathematical coefficient. -/
+theorem sparsePolyZZ_coefficients_bounded_of_stored
+    (poly : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical poly)
+    (bound : Nat)
+    (hstored : ∀ term ∈ poly.toList, term.2.natAbs * 2 ≤ bound) :
+    ∀ degree, ((SparsePolyZZ.toPoly poly).coeff degree).natAbs * 2 ≤ bound := by
+  intro degree
+  by_cases hzero : (SparsePolyZZ.toPoly poly).coeff degree = 0
+  · simp [hzero]
+  · have hexists : ∃ term ∈ poly.toList, term.1.deg = degree := by
+      by_contra hnone
+      push Not at hnone
+      apply hzero
+      simpa [SparsePolyZZ.toPoly, intTermsToPoly] using
+        intTermsToPoly_coeff_eq_zero_of_degrees_ne poly.toList degree hnone
+    rcases hexists with ⟨term, hterm, hdegree⟩
+    have hcoefficient := sparsePolyZZ_toPoly_coeff_of_mem poly hcanonical
+      term hterm
+    rw [hdegree] at hcoefficient
+    rw [hcoefficient]
+    exact hstored term hterm
+
+/-- Polynomial-level closed half-modulus bound for the exact generated
+`symmetricModRaw` result. -/
+theorem symmetricModRaw_toPoly_coefficients_bounded
+    (input output : SparsePolyZZ) (modulus : Nat) (hmodulus : 0 < modulus)
+    (hinputCanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (hrun : Generated.StrictRecombine.symmetricModRaw input (modulus : ZZ) =
+      .ok output) :
+    ∀ degree,
+      ((SparsePolyZZ.toPoly output).coeff degree).natAbs * 2 ≤ modulus := by
+  have houtputCanonical := symmetricModRaw_canonical input output modulus
+    hmodulus hinputCanonical hrun
+  exact sparsePolyZZ_coefficients_bounded_of_stored output houtputCanonical
+    modulus (symmetricModRaw_coefficients_bounded input output modulus
+      hmodulus hrun)
 
 private theorem sparseZZ_sum_coeff_dvd
     (terms : List (UMonomial × Int)) (divisor : Int)

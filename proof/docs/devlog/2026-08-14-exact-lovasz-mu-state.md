@@ -2048,3 +2048,26 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 single-file check passes without error or `sorry`.  The next proof combines
 this origin preservation with the scan certificate and the accumulated
 smaller-subset rejection history in the outer Zassenhaus loop.
+
+## Exact symmetric reconstruction uses the correct closed boundary
+
+The generated symmetric-remainder execution now carries the coefficient
+bound required by the later precision argument.
+
+- For positive `M`, `ZZ.symmetricMod` returns a representative satisfying
+  `2 * |coefficient| ≤ M`.  The proof follows both source branches after
+  identifying positive-modulus `fmod` with `emod`; it deliberately retains
+  equality at the positive midpoint for even `M`.
+- The exact generated loop/list trace transports this bound to every emitted
+  sparse cell.  Canonicality then promotes it to every mathematical
+  coefficient of `SparsePolyZZ.toPoly`, including absent zero coefficients.
+- A new recovery theorem proves uniqueness when the concrete representative
+  has the closed bound and the true scaled factor has the strict bound.  This
+  is the boundary actually supplied by `M > 2 * |lc| * B`; it avoids the
+  unsound shortcut of demanding a strict symmetric bound at even moduli.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+single-file check passes without error or `sorry`.  Next, the generated
+binomial, L2-square norm, and integer-square-root target helpers must be tied
+to the strict scaled-factor coefficient bound before recovery is applied to
+the actual candidate trace.

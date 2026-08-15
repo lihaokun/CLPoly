@@ -745,3 +745,26 @@ are equal modulo the selected prime.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 新发现的剩余边界：builder 当前只公开根区间乘积；还需沿实际递归 builder
   导出所有初始叶子按顺序对应 adjusted 输入因子，不能由根证书替代
+
+## Recursive builder semantic certificate introduced
+
+`HenselTreeSemanticBuildCertificate` is now the algebraic companion to the
+existing raw topology certificate.  At every concrete node it records the
+proved `HenselTreeNodeGCDInvariant` for that node's exact `[start, stop)` input
+interval, and its child constructors recurse over the same midpoint halves as
+the generated builder.
+
+The certificate supports lowering its allocation-index boundary and transport
+through later disjoint array updates.  Transport uses the builder's exact
+`HenselTreePreservesFrom` equations, so the stored interval semantics remain
+tied to the same concrete nodes.  The certificate contains neither a result
+factor list nor a recombination witness.
+
+## 度量（builder semantic certificate）
+
+- 耗时：约 0.75 小时（递归证书、索引单调性、数组 frame 运输）
+- 新证据形状：每个实际节点对应其实际输入半开区间乘积
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：让现有 `strictHenselTreeBuildRecursiveRawIR_succeeds` 在四种子树分支中
+  同时产出该证书，再归纳得到叶子与 adjusted 输入逐项对应

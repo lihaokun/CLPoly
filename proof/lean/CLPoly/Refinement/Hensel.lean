@@ -8890,6 +8890,67 @@ inductive HenselTreeRawBuildCertificate (lower : Nat) :
             ((start + stop) / 2)) nodes) :
       HenselTreeRawBuildCertificate lower start stop parent nodes
 
+/-- Constructor-shaped algebraic companion to the raw topology certificate.
+Every node is tied to the interval products computed by the actual builder,
+and recursive premises use exactly the two source half-intervals. -/
+inductive HenselTreeSemanticBuildCertificate (p : Nat) [Fact (Nat.Prime p)]
+    (factors : Array SparsePolyZp) (lower : Nat) :
+    (start stop : Nat) → Generated.StrictHensel.HenselLiftTree →
+      Array HenselNode → Prop
+  | node
+      (start stop index : Nat)
+      (left right : Option Generated.StrictHensel.HenselLiftTree)
+      (nodes : Array HenselNode) (value : HenselNode)
+      (hlower : lower ≤ index)
+      (hnode : nodes[index]? = some value)
+      (hinvariant : HenselTreeNodeGCDInvariant p factors start stop value)
+      (hleftCertificate : ∀ child, left = some child →
+        HenselTreeSemanticBuildCertificate p factors lower start
+          ((start + stop) / 2) child nodes)
+      (hrightCertificate : ∀ child, right = some child →
+        HenselTreeSemanticBuildCertificate p factors lower
+          ((start + stop) / 2) stop child nodes) :
+      HenselTreeSemanticBuildCertificate p factors lower start stop
+        (.node index left right) nodes
+
+theorem HenselTreeSemanticBuildCertificate.lower_mono
+    {p lower lower' start stop : Nat} [Fact (Nat.Prime p)]
+    {factors : Array SparsePolyZp}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode} (hlower : lower' ≤ lower)
+    (hcertificate : HenselTreeSemanticBuildCertificate p factors lower
+      start stop tree nodes) :
+    HenselTreeSemanticBuildCertificate p factors lower' start stop tree
+      nodes := by
+  induction hcertificate with
+  | node start stop index left right nodes value hindex hnode hinvariant
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      exact .node start stop index left right nodes value (by omega) hnode
+        hinvariant (fun child hchild => leftIH child hchild)
+        (fun child hchild => rightIH child hchild)
+
+theorem HenselTreeSemanticBuildCertificate.of_preservesFrom
+    {p lower start stop : Nat} [Fact (Nat.Prime p)]
+    {factors : Array SparsePolyZp}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {before after : Array HenselNode}
+    (hpreserves : HenselTreePreservesFrom lower before after)
+    (hcertificate : HenselTreeSemanticBuildCertificate p factors lower
+      start stop tree before) :
+    HenselTreeSemanticBuildCertificate p factors lower start stop tree
+      after := by
+  induction hcertificate with
+  | node start stop index left right nodes value hindex hnode hinvariant
+      hleftCertificate hrightCertificate leftIH rightIH =>
+      have hbound : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      exact .node start stop index left right after value hindex
+        ((hpreserves.2 index hindex hbound).trans hnode) hinvariant
+        (fun child hchild => leftIH child hchild hpreserves)
+        (fun child hchild => rightIH child hchild hpreserves)
+
 theorem HenselTreeRawBuildCertificate.lower_mono
     {lower lower' start stop parent : Nat} {nodes : Array HenselNode}
     (hlower : lower' ≤ lower)

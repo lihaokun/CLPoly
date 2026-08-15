@@ -2159,6 +2159,50 @@ theorem selectedConstantProductLoop_succeeds
           List.drop_eq_nil_iff.mpr (by simpa using Nat.le_of_not_gt hindex)
         simp [selectedConstantValues, hdrop]
 
+/-- The exact arithmetic test used by both generated Zassenhaus pruning
+branches cannot reject an integer that divides its target. -/
+theorem zassenhaus_prune_condition_false_of_dvd
+    (target recovered : ZZ) (hdivides : recovered ∣ target) :
+    ¬(recovered ≠ 0 ∧ ZZ.fdiv_r 0 target recovered ≠ 0) := by
+  intro hreject
+  exact hreject.2 (by
+    unfold ZZ.fdiv_r
+    exact Int.fmod_eq_zero_of_dvd hdivides)
+
+/-- Divisibility of integer polynomials reaches both boundary
+coefficients.  These are precisely the two coefficients inspected by the
+generated pruning code. -/
+theorem polynomial_divisor_boundary_coefficients
+    {divisor dividend : Polynomial Int} (hdivides : divisor ∣ dividend) :
+    divisor.leadingCoeff ∣ dividend.leadingCoeff ∧
+      divisor.coeff 0 ∣ dividend.coeff 0 := by
+  constructor
+  · exact Polynomial.leadingCoeff_dvd_leadingCoeff hdivides
+  · rcases hdivides with ⟨quotient, rfl⟩
+    refine ⟨quotient.coeff 0, ?_⟩
+    simp
+
+theorem zassenhaus_leading_prune_accepts_associated_divisor
+    {divisor dividend : Polynomial Int} (recovered : ZZ)
+    (hdivides : divisor ∣ dividend)
+    (hassociated : Associated recovered divisor.leadingCoeff) :
+    ¬(recovered ≠ 0 ∧
+      ZZ.fdiv_r 0 (dividend.leadingCoeff * dividend.leadingCoeff)
+        recovered ≠ 0) := by
+  apply zassenhaus_prune_condition_false_of_dvd
+  have hboundary := (polynomial_divisor_boundary_coefficients hdivides).1
+  exact dvd_mul_of_dvd_left (dvd_trans hassociated.dvd hboundary) _
+
+theorem zassenhaus_constant_prune_accepts_associated_divisor
+    {divisor dividend : Polynomial Int} (leading recovered : ZZ)
+    (hdivides : divisor ∣ dividend)
+    (hassociated : Associated recovered (divisor.coeff 0)) :
+    ¬(recovered ≠ 0 ∧
+      ZZ.fdiv_r 0 (leading * dividend.coeff 0) recovered ≠ 0) := by
+  apply zassenhaus_prune_condition_false_of_dvd
+  have hboundary := (polynomial_divisor_boundary_coefficients hdivides).2
+  exact dvd_mul_of_dvd_right (dvd_trans hassociated.dvd hboundary) _
+
 /-- Lexicographic order on equal-size source arrays, stated at the concrete
 first differing position.  This avoids assigning an order to arrays of
 different lengths, which never occur in the C++ combination scan. -/

@@ -1527,3 +1527,27 @@ both remainder tests zero rather than assuming that pruning accepts it.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：证明这两个实际整数乘积对应候选多项式的 leading/constant
   coefficient，并由整数真因子关系推出两个 pruning remainder 均为零
+
+## Polynomial divisors cannot be falsely rejected by boundary pruning
+
+`polynomial_divisor_boundary_coefficients` transports an actual integer
+polynomial divisibility proof to divisibility of both the leading and
+constant coefficients.  The leading result uses the polynomial
+`leadingCoeff` monoid homomorphism; the constant result expands the real
+quotient product at coefficient zero.
+
+`zassenhaus_prune_condition_false_of_dvd` unfolds the generated arithmetic
+model `ZZ.fdiv_r = Int.fmod` and proves directly that a divisor makes the
+tested remainder zero.  Its leading and constant specializations allow the
+concrete recovered integer to differ by a unit, matching the primitive and
+normalization steps, while still proving that neither generated rejection
+condition can hold.
+
+## 度量（boundary-pruning soundness）
+
+- 耗时：约 0.5 小时（多项式边界系数整除、associated 传递、fmod 零余数）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：把两个 generated loop 的具体返回值与 recovered divisor 的
+  leading/constant coefficient 建立 associated 关系，完成 pruning 分支组合

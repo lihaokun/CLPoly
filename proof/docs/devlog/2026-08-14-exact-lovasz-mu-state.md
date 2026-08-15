@@ -1574,3 +1574,26 @@ canonical/origin invariant before these lemmas are used by the final entry.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：由最终 Hensel array 的 canonical/origin 证明每个选中因子的
   head/constant 表示定理，并组合两个 pruning accept 分支
+
+## Canonical sparse integer heads are mathematical leading coefficients
+
+`sparsePolyZZ_leadingCoeff_eq_head` proves directly for the integer sparse
+representation that a nonempty canonical array stores the mathematical
+leading coefficient in its first cell.  A dedicated integer-chain lemma
+shows every tail degree is strictly below the head, and a coefficient lemma
+shows the complete tail vanishes at the head degree.  Head coefficient
+nonzeroness then identifies the exact polynomial degree and leading
+coefficient.
+
+This removes the per-factor head premise from the leading-pruning bridge once
+the already-traced Hensel output canonicality is supplied.  It does not reuse
+the finite-field result or assume an ordered semantic polynomial.
+
+## 度量（canonical ZZ leading coefficient）
+
+- 耗时：约 0.75 小时（整数 strict chain、tail coefficient、degree/head）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：沿 canonical array 的实际末项证明 generated `constantTerm`
+  等于 `SparsePolyZZ.toPoly.coeff 0`，再组合完整 pruning accept 控制流

@@ -2215,6 +2215,82 @@ theorem coeff_zero_list_prod (factors : List (Polynomial Int)) :
   | nil => simp
   | cons factor factors ih => simp [ih]
 
+private theorem sparseZZTail_coeff_zero_above
+    (limit : Nat) (terms : List (UMonomial × Int))
+    (hbelow : ∀ term ∈ terms, term.1.deg < limit) :
+    ((terms.map fun term =>
+      Polynomial.monomial term.1.deg term.2).sum).coeff limit = 0 := by
+  induction terms with
+  | nil => simp
+  | cons term terms ih =>
+      have hterm := hbelow term (by simp)
+      have htail : ∀ item ∈ terms, item.1.deg < limit := by
+        intro item hitem
+        exact hbelow item (by simp [hitem])
+      simp [Polynomial.coeff_monomial, ne_of_lt hterm, ih htail]
+
+private theorem sparseZZ_chain_head_gt_all
+    (head : UMonomial × Int) (rest : List (UMonomial × Int))
+    (hchain : List.IsChain
+      (fun a b : UMonomial × Int => a.1.deg > b.1.deg) (head :: rest)) :
+    ∀ item ∈ rest, item.1.deg < head.1.deg := by
+  induction rest generalizing head with
+  | nil => simp
+  | cons next rest ih =>
+      rw [List.isChain_cons_cons] at hchain
+      intro item hitem
+      rcases List.mem_cons.mp hitem with rfl | htail
+      · exact hchain.1
+      · exact Nat.lt_trans (ih next hchain.2 item htail) hchain.1
+
+/-- The first stored coefficient of a nonempty canonical sparse integer
+polynomial is exactly its mathematical leading coefficient. -/
+theorem sparsePolyZZ_leadingCoeff_eq_head (poly : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical poly)
+    (hnonempty : 0 < poly.size) :
+    (SparsePolyZZ.toPoly poly).leadingCoeff = poly[0].2 := by
+  have hlistNonempty : poly.toList ≠ [] := by
+    intro hempty
+    have hlength := congrArg List.length hempty
+    have hsizeZero : poly.size = 0 := by simpa using hlength
+    omega
+  obtain ⟨head, rest, hlist⟩ := List.exists_cons_of_ne_nil hlistNonempty
+  have hheadEq : head = poly[0] := by
+    have hget := Array.getElem_toList hnonempty
+    simpa [hlist] using hget
+  have hheadMem : head ∈ poly.toList := by simp [hlist]
+  have hheadNonzero : head.2 ≠ 0 := hcanonical.2 head hheadMem
+  have hchain : List.IsChain
+      (fun a b : UMonomial × Int => a.1.deg > b.1.deg)
+      (head :: rest) := by
+    simpa [hlist] using hcanonical.1
+  have hrestLt : ∀ item ∈ rest, item.1.deg < head.1.deg :=
+    sparseZZ_chain_head_gt_all head rest hchain
+  have hrestDegree :
+      ((rest.map fun term =>
+        Polynomial.monomial term.1.deg term.2).sum).degree < head.1.deg := by
+    rw [Polynomial.degree_lt_iff_coeff_zero]
+    intro degree hdegree
+    apply sparseZZTail_coeff_zero_above
+    intro item hitem
+    exact Nat.lt_of_lt_of_le (hrestLt item hitem) hdegree
+  have hheadDegree :
+      (Polynomial.monomial head.1.deg head.2).degree = head.1.deg :=
+    Polynomial.degree_monomial _ hheadNonzero
+  have hdegree : (SparsePolyZZ.toPoly poly).degree = head.1.deg := by
+    unfold SparsePolyZZ.toPoly
+    rw [hlist, List.map_cons, List.sum_cons,
+      Polynomial.degree_add_eq_left_of_degree_lt (by
+        simpa [hheadDegree] using hrestDegree), hheadDegree]
+  have hnatDegree : (SparsePolyZZ.toPoly poly).natDegree = head.1.deg :=
+    Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  rw [Polynomial.leadingCoeff, hnatDegree]
+  unfold SparsePolyZZ.toPoly
+  rw [hlist, List.map_cons, List.sum_cons, Polynomial.coeff_add,
+    Polynomial.coeff_monomial, if_pos rfl,
+    sparseZZTail_coeff_zero_above head.1.deg rest hrestLt, add_zero,
+    hheadEq]
+
 /-- Once the canonical sparse representation identifies each selected head
 coefficient, the concrete leading-pruning product is the leading coefficient
 of the exact source-sublist polynomial product. -/

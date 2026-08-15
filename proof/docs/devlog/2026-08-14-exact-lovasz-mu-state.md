@@ -1406,3 +1406,29 @@ output or encode a factorization witness.
   正式 `lake build CLPoly.Refinement.FactorZZ` 通过（3545 jobs）
 - 下一步：用最终 Hensel 模因子的 irreducibility + pairwise coprimality
   证明任意非平凡整数因子唯一对应一个合法 active subset
+
+## Every modular divisor is a concrete atom sublist product
+
+`divisor_associated_sublist_product` proves constructively, by recursion over
+the actual ordered atom list, that every divisor of its product is associated
+to the product of a genuine `List.Sublist`.  At each head irreducible, the
+proof either cancels that atom from both sides when it divides the candidate,
+or obtains coprimality from non-divisibility and cancels the atom from the
+ambient product.  The resulting sublist retains source order and occurrence
+identity, including lists that might contain equal values at different
+positions.
+
+This is the algebraic half of the integer-factor-to-C++-candidate bridge.  It
+uses neither `WfDvdMonoid.exists_factors` to invent a replacement output nor
+an assumed subset correspondence.  The remaining half is to encode this
+sublist as the strictly increasing index array consumed by the generated
+attempt.
+
+## 度量（modular divisor sublist）
+
+- 耗时：约 0.5 小时（不可约首项二分、domain cancellation、Sublist 递归）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`lake env lean CLPoly/Refinement/FactorZZ.lean` 通过；
+  正式 `lake build CLPoly.Refinement.FactorZZ` 通过（3545 jobs）
+- 下一步：把 `List.Sublist` 证明转成合法严格递增 source indices，并证明
+  generated `trialProductLoop` 对该 candidate 计算同一模乘积

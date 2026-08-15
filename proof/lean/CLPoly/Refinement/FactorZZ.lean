@@ -19,6 +19,46 @@ namespace StrictFactorZZ
 
 open CLPoly.Math
 
+/-- Every divisor of a concrete finite product of irreducibles is associated
+to the product of an actual sublist.  The proof recursively follows the
+source-order list: if the head atom divides the divisor it is cancelled from
+both sides; otherwise irreducibility makes it coprime to the divisor and it
+is cancelled from the ambient product. -/
+theorem divisor_associated_sublist_product
+    {R : Type*} [CommRing R] [IsDomain R] [IsBezout R]
+    (atoms : List R) (hirreducible : ∀ atom ∈ atoms, Irreducible atom)
+    (divisor : R) (hdivisor : divisor ∣ atoms.prod) :
+    ∃ chosen : List R, List.Sublist chosen atoms ∧
+      Associated divisor chosen.prod := by
+  induction atoms generalizing divisor with
+  | nil =>
+      refine ⟨[], List.Sublist.refl [], associated_one_iff_isUnit.mpr ?_⟩
+      simpa using isUnit_of_dvd_one hdivisor
+  | cons atom atoms ih =>
+      have hatom := hirreducible atom (by simp)
+      have htail : ∀ candidate ∈ atoms, Irreducible candidate := by
+        intro candidate hcandidate
+        exact hirreducible candidate (by simp [hcandidate])
+      by_cases hheadDivisor : atom ∣ divisor
+      · rcases hheadDivisor with ⟨quotient, hquotient⟩
+        subst divisor
+        have hquotientDivides : quotient ∣ atoms.prod := by
+          exact (mul_dvd_mul_iff_left hatom.ne_zero).mp (by
+            simpa [List.prod_cons] using hdivisor)
+        rcases ih htail quotient hquotientDivides with
+          ⟨chosen, hchosen, hassociated⟩
+        refine ⟨atom :: chosen, hchosen.cons_cons atom, ?_⟩
+        simpa [List.prod_cons] using
+          Associated.mul_mul (Associated.refl atom) hassociated
+      · have hcoprime : IsCoprime divisor atom :=
+          (hatom.coprime_iff_not_dvd.mpr hheadDivisor).symm
+        have hdivisorTail : divisor ∣ atoms.prod := by
+          exact hcoprime.dvd_of_dvd_mul_left (by
+            simpa [List.prod_cons] using hdivisor)
+        rcases ih htail divisor hdivisorTail with
+          ⟨chosen, hchosen, hassociated⟩
+        exact ⟨chosen, hchosen.cons atom, hassociated⟩
+
 /-- A primitive integer polynomial is irreducible when its reduction at a
 prime is irreducible and the leading coefficient survives reduction.  This is
 the non-monic form needed for the actual primitive factors emitted by C++

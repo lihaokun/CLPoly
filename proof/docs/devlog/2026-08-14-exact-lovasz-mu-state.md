@@ -1091,3 +1091,31 @@ quotient term pushed by an exact division is itself nonzero.
 - 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
 - 下一步：利用 remainder nonzero 与 rank decrease 证明 quotient 的 pushed
   degree shifts 严格递减，闭合 exact quotient canonicality
+
+## Checked exact division returns a canonical quotient
+
+`ExactDivmodQuotientInvariant` records the source accumulator property: the
+stored quotient is canonical, and every existing quotient degree is strictly
+above the next shift whenever another division step is available.  Pushing a
+new term preserves the strict chain because the current shift is below the
+entire existing prefix.
+
+`exactDivmodLoop_quotient_canonical` follows every branch of the actual
+well-founded long-division loop.  The pushed coefficient is nonzero by exact
+division of the current nonzero remainder lead.  On recursion, the checked
+`divisionRank` decrease makes the next remainder front degree—and hence its
+next quotient shift—strictly smaller.  Terminal nondivisibility and degree
+branches return the already canonical accumulator unchanged.
+
+The raw-entry theorem initializes this invariant at the actual empty quotient
+and proves that every successful `exactDivmodRaw` call returns a canonical
+quotient.  Consequently the subsequent concrete `primitiveRaw` call can now
+provide a canonical `quotientPrimitive` without any semantic replacement.
+
+## 度量（exact quotient canonicality）
+
+- 耗时：约 1.25 小时（accumulator invariant、push、rank/shift decrease、raw entry）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
+- 下一步：在 Zassenhaus successful-extraction 分支组合 quotient canonical、
+  primitive canonical、unit-scalar product 和 primitivity，闭合外层递归

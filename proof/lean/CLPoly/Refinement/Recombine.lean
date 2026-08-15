@@ -8876,6 +8876,157 @@ theorem exactDivmodLoop_remainder_coefficients_nonzero
         subst r
         exact hremainderNonzero
 
+/-- Accumulator invariant for the source long-division quotient.  Existing
+terms are canonical and lie strictly above the next degree shift whenever the
+current remainder can take another division step. -/
+def ExactDivmodQuotientInvariant (divisor remainder quotient : SparsePolyZZ) :
+    Prop :=
+  StrictPolynomialMod.SparsePolyZZCanonical quotient ∧
+  ∀ (hremainder : 0 < remainder.size) (hdivisor : 0 < divisor.size),
+    divisor[0].1.deg ≤ remainder[0].1.deg →
+    ∀ term ∈ quotient.toList,
+      remainder[0].1.deg - divisor[0].1.deg < term.1.deg
+
+private theorem sparsePolyZZCanonical_push
+    (quotient : SparsePolyZZ) (term : UMonomial × Int)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical quotient)
+    (habove : ∀ existing ∈ quotient.toList,
+      term.1.deg < existing.1.deg)
+    (hnonzero : term.2 ≠ 0) :
+    StrictPolynomialMod.SparsePolyZZCanonical (quotient.push term) := by
+  unfold StrictPolynomialMod.SparsePolyZZCanonical at hcanonical ⊢
+  rw [Array.toList_push]
+  constructor
+  · rw [List.isChain_append]
+    refine ⟨hcanonical.1, by simp, ?_⟩
+    intro existing hexisting candidate hcandidate
+    have hcandidateEq : candidate = term := by simpa using hcandidate.symm
+    subst candidate
+    exact habove existing (List.mem_of_mem_getLast? hexisting)
+  · intro candidate hcandidate
+    rcases List.mem_append.mp hcandidate with hprefix | hlast
+    · exact hcanonical.2 candidate hprefix
+    · have : candidate = term := by simpa using hlast
+      subst candidate
+      exact hnonzero
+
+theorem exactDivmodQuotientInvariant_empty
+    (divisor remainder : SparsePolyZZ) :
+    ExactDivmodQuotientInvariant divisor remainder #[] := by
+  constructor
+  · simp [StrictPolynomialMod.SparsePolyZZCanonical]
+  · simp
+
+/-- The quotient returned by the actual checked long-division recursion is a
+canonical sparse polynomial.  Its pushed degree shifts strictly decrease by
+the source `divisionRank` check, and its pushed coefficients are nonzero by
+exact division of the nonzero current leading coefficient. -/
+theorem exactDivmodLoop_quotient_canonical
+    (divisor remainder quotient q r : SparsePolyZZ)
+    (hremainderNonzero : ∀ term ∈ remainder.toList, term.2 ≠ 0)
+    (hinvariant : ExactDivmodQuotientInvariant divisor remainder quotient)
+    (hrun : Generated.StrictRecombine.exactDivmodLoop divisor remainder quotient =
+      .ok (q, r)) :
+    StrictPolynomialMod.SparsePolyZZCanonical q := by
+  induction hmeasure : Generated.StrictRecombine.divisionRank remainder using
+      Nat.strong_induction_on generalizing remainder quotient q r with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.exactDivmodLoop] at hrun
+      split at hrun
+      next hremainder =>
+        split at hrun
+        next hdivisor =>
+          dsimp at hrun
+          split at hrun
+          next hdegree =>
+            split at hrun
+            next hnonzero =>
+              split at hrun
+              next hdivides =>
+                split at hrun
+                next hdecrease =>
+                  let degreeShift := remainder[0].1.deg - divisor[0].1.deg
+                  let scale := remainder[0].2 / divisor[0].2
+                  let remainder' :=
+                    Generated.StrictRecombine.subtractScaledNormalize remainder
+                      divisor scale degreeShift
+                  let quotient' := quotient.push (⟨degreeShift⟩, scale)
+                  have hscaleNonzero : scale ≠ 0 := by
+                    have hleadNonzero := hremainderNonzero remainder[0]
+                      (Array.getElem_mem_toList hremainder)
+                    intro hscale
+                    have hcancel : divisor[0].2 *
+                        (remainder[0].2 / divisor[0].2) = remainder[0].2 :=
+                      Int.mul_ediv_cancel_of_dvd hdivides
+                    change remainder[0].2 / divisor[0].2 = 0 at hscale
+                    rw [hscale] at hcancel
+                    simp at hcancel
+                    exact hleadNonzero hcancel.symm
+                  have hquotientCanonical :
+                      StrictPolynomialMod.SparsePolyZZCanonical quotient' := by
+                    apply sparsePolyZZCanonical_push quotient
+                      (⟨degreeShift⟩, scale) hinvariant.1
+                    · intro existing hexisting
+                      exact hinvariant.2 hremainder hdivisor hdegree existing
+                        hexisting
+                    · exact hscaleNonzero
+                  have hremainder'Nonzero : ∀ term ∈ remainder'.toList,
+                      term.2 ≠ 0 :=
+                    normalization_coefficients_nonzero
+                      (Generated.StrictRecombine.subtractScaledTermsLoop divisor
+                        scale degreeShift 0 remainder)
+                  have hinvariant' : ExactDivmodQuotientInvariant divisor
+                      remainder' quotient' := by
+                    refine ⟨hquotientCanonical, ?_⟩
+                    intro hremainder' hdivisor' hdegree' term hterm
+                    have hfrontDecrease : remainder'[0].1.deg <
+                        remainder[0].1.deg := by
+                      change Generated.StrictRecombine.divisionRank remainder' <
+                        Generated.StrictRecombine.divisionRank remainder at hdecrease
+                      rw [Generated.StrictRecombine.divisionRank,
+                        dif_pos hremainder',
+                        Generated.StrictRecombine.divisionRank,
+                        dif_pos hremainder] at hdecrease
+                      omega
+                    have hshiftDecrease :
+                        remainder'[0].1.deg - divisor[0].1.deg < degreeShift := by
+                      dsimp [degreeShift]
+                      omega
+                    dsimp [quotient'] at hterm
+                    rw [Array.toList_push] at hterm
+                    rcases List.mem_append.mp hterm with hprefix | hlast
+                    · exact lt_trans hshiftDecrease
+                        (hinvariant.2 hremainder hdivisor hdegree term hprefix)
+                    · have htermEq : term = (⟨degreeShift⟩, scale) := by
+                        simpa using hlast
+                      subst term
+                      exact hshiftDecrease
+                  have hdec : Generated.StrictRecombine.divisionRank remainder' <
+                      measure := by
+                    rw [← hmeasure]
+                    simpa [remainder', scale, degreeShift] using hdecrease
+                  exact ih (Generated.StrictRecombine.divisionRank remainder')
+                    hdec remainder' quotient' q r hremainder'Nonzero hinvariant'
+                    hrun rfl
+                next hdecrease => contradiction
+              next hdivides =>
+                have hout := Except.ok.inj hrun
+                injection hout with hq hr
+                subst q
+                exact hinvariant.1
+            next hnonzero => contradiction
+          next hdegree =>
+            have hout := Except.ok.inj hrun
+            injection hout with hq hr
+            subst q
+            exact hinvariant.1
+        next hdivisor => contradiction
+      next hremainder =>
+        have hout := Except.ok.inj hrun
+        injection hout with hq hr
+        subst q
+        exact hinvariant.1
+
 theorem exactDivmodRaw_toPoly (dividend divisor quotient remainder : SparsePolyZZ)
     (hrun : Generated.StrictRecombine.exactDivmodRaw dividend divisor =
       .ok (quotient, remainder)) :
@@ -8886,6 +9037,17 @@ theorem exactDivmodRaw_toPoly (dividend divisor quotient remainder : SparsePolyZ
   have hsemantic := exactDivmodLoop_toPoly divisor dividend #[] quotient
     remainder hrun
   simpa [SparsePolyZZ.toPoly] using hsemantic.symm
+
+theorem exactDivmodRaw_quotient_canonical
+    (dividend divisor quotient remainder : SparsePolyZZ)
+    (hdividendNonzero : ∀ term ∈ dividend.toList, term.2 ≠ 0)
+    (hrun : Generated.StrictRecombine.exactDivmodRaw dividend divisor =
+      .ok (quotient, remainder)) :
+    StrictPolynomialMod.SparsePolyZZCanonical quotient := by
+  unfold Generated.StrictRecombine.exactDivmodRaw at hrun
+  exact exactDivmodLoop_quotient_canonical divisor dividend #[] quotient
+    remainder hdividendNonzero
+    (exactDivmodQuotientInvariant_empty divisor dividend) hrun
 
 theorem successfulTrialExtraction_toPoly
     (fStar factor quotient quotientPrimitive : SparsePolyZZ)

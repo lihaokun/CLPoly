@@ -3433,6 +3433,88 @@ theorem henselArrayTopologyEq_set
       dif_pos hindex, Array.getElem_set_ne hindex hbefore (Ne.symm heq)] using
       HenselNodeTopologyEq.refl nodes[other]
 
+/-- Algebraic fields of `after` reduce to the corresponding fields of
+`before` modulo `m`.  Pointer/topology fields are deliberately excluded: they
+are tracked independently by `HenselNodeTopologyEq`. -/
+def HenselNodeReduces (m : Nat) (before after : HenselNode) : Prop :=
+  toPolyMod m after.g = toPolyMod m before.g ∧
+  toPolyMod m after.h = toPolyMod m before.h ∧
+  toPolyMod m after.s = toPolyMod m before.s ∧
+  toPolyMod m after.t = toPolyMod m before.t
+
+def HenselArrayReduces (m : Nat)
+    (before after : Array HenselNode) : Prop :=
+  before.size = after.size ∧
+  ∀ index (hbefore : index < before.size) (hafter : index < after.size),
+    HenselNodeReduces m before[index] after[index]
+
+theorem HenselNodeReduces.refl (m : Nat) (node : HenselNode) :
+    HenselNodeReduces m node node := by
+  simp [HenselNodeReduces]
+
+theorem HenselNodeReduces.trans {m : Nat} {first second third : HenselNode}
+    (hfirst : HenselNodeReduces m first second)
+    (hsecond : HenselNodeReduces m second third) :
+    HenselNodeReduces m first third := by
+  simp only [HenselNodeReduces] at hfirst hsecond ⊢
+  exact ⟨hsecond.1.trans hfirst.1,
+    hsecond.2.1.trans hfirst.2.1,
+    hsecond.2.2.1.trans hfirst.2.2.1,
+    hsecond.2.2.2.trans hfirst.2.2.2⟩
+
+theorem HenselArrayReduces.refl (m : Nat) (nodes : Array HenselNode) :
+    HenselArrayReduces m nodes nodes := by
+  exact ⟨rfl, fun _ _ _ => HenselNodeReduces.refl m _⟩
+
+theorem HenselArrayReduces.trans {m : Nat}
+    {first second third : Array HenselNode}
+    (hfirst : HenselArrayReduces m first second)
+    (hsecond : HenselArrayReduces m second third) :
+    HenselArrayReduces m first third := by
+  refine ⟨hfirst.1.trans hsecond.1, ?_⟩
+  intro index hfirstIndex hthirdIndex
+  have hsecondIndex : index < second.size := by simpa [← hfirst.1]
+  exact (hfirst.2 index hfirstIndex hsecondIndex).trans
+    (hsecond.2 index hsecondIndex hthirdIndex)
+
+theorem HenselNodeReduces.of_dvd {smaller larger : Nat}
+    (hdiv : smaller ∣ larger) {before after : HenselNode}
+    (hreduce : HenselNodeReduces larger before after) :
+    HenselNodeReduces smaller before after := by
+  simp only [HenselNodeReduces] at hreduce ⊢
+  have project (left right : SparsePolyZZ)
+      (h : toPolyMod larger left = toPolyMod larger right) :
+      toPolyMod smaller left = toPolyMod smaller right := by
+    have hmapped := congrArg
+      (Polynomial.map (ZMod.castHom hdiv (ZMod smaller))) h
+    simpa only [map_toPolyMod_of_dvd hdiv] using hmapped
+  exact ⟨project after.g before.g hreduce.1,
+    project after.h before.h hreduce.2.1,
+    project after.s before.s hreduce.2.2.1,
+    project after.t before.t hreduce.2.2.2⟩
+
+theorem HenselArrayReduces.of_dvd {smaller larger : Nat}
+    (hdiv : smaller ∣ larger) {before after : Array HenselNode}
+    (hreduce : HenselArrayReduces larger before after) :
+    HenselArrayReduces smaller before after := by
+  refine ⟨hreduce.1, ?_⟩
+  intro index hbefore hafter
+  exact (hreduce.2 index hbefore hafter).of_dvd hdiv
+
+theorem henselArrayReduces_set
+    (m : Nat) (nodes : Array HenselNode) (index : Nat) (value : HenselNode)
+    (hindex : index < nodes.size)
+    (hvalue : HenselNodeReduces m nodes[index]! value) :
+    HenselArrayReduces m nodes (nodes.set! index value) := by
+  refine ⟨by simp, ?_⟩
+  intro other hbefore hafter
+  by_cases heq : other = index
+  · subst other
+    simpa [Array.getElem_set, hindex] using hvalue
+  · simpa only [Array.set!_eq_setIfInBounds, Array.setIfInBounds_def,
+      dif_pos hindex, Array.getElem_set_ne hindex hbefore (Ne.symm heq)] using
+      HenselNodeReduces.refl m nodes[other]
+
 /-- Safety invariant for the exact recursive C++ tree traversal.  Its
 recursive premises are universally quantified over the outputs of the
 concrete raw calls, so it cannot select or manufacture an execution result.
@@ -3753,6 +3835,79 @@ theorem HenselLiftRecursiveCorrect.topologyEq
         exact (show HenselNodeTopologyEq lifted inputNode from htopology).symm)).trans
           leftIH).trans rightIH
 
+/-- Every algebraic node field produced by the concrete recursive tree walk
+reduces modulo the input modulus to the field stored before that walk. -/
+theorem HenselLiftRecursiveCorrect.arrayReduces
+    {termination : Generated.StrictHensel.DivmodTermination} {m : Nat}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes output : Array HenselNode} {target : SparsePolyZZ}
+    (hcorrect : HenselLiftRecursiveCorrect termination m tree nodes target
+      output) :
+    HenselArrayReduces m nodes output := by
+  induction hcorrect with
+  | leaf index nodes stored target inputNode lifted parent hnode hstep
+      hstepCorrect hstored hparent =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index]! = inputNode := by
+        have heq : nodes[index] = inputNode :=
+          Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      apply henselArrayReduces_set m nodes index lifted hindex
+      rw [hinput]
+      exact ⟨hstepCorrect.2.1, hstepCorrect.2.2.1,
+        hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2⟩
+  | left index left nodes stored nodesAfterLeft target inputNode lifted parent
+      hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index]! = inputNode := by
+        have heq : nodes[index] = inputNode :=
+          Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      exact (henselArrayReduces_set m nodes index lifted hindex (by
+        rw [hinput]
+        exact ⟨hstepCorrect.2.1, hstepCorrect.2.2.1,
+          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2⟩)).trans ih
+  | right index right nodes stored output target inputNode lifted parent hnode
+      hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index]! = inputNode := by
+        have heq : nodes[index] = inputNode :=
+          Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      exact (henselArrayReduces_set m nodes index lifted hindex (by
+        rw [hinput]
+        exact ⟨hstepCorrect.2.1, hstepCorrect.2.2.1,
+          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2⟩)).trans ih
+  | branch index left right nodes stored nodesAfterLeft output target inputNode
+      lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
+      hparent hrightRun hrightCorrect leftIH rightIH =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index]! = inputNode := by
+        have heq : nodes[index] = inputNode :=
+          Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
+      exact (((henselArrayReduces_set m nodes index lifted hindex (by
+        rw [hinput]
+        exact ⟨hstepCorrect.2.1, hstepCorrect.2.2.1,
+          hstepCorrect.2.2.2.1, hstepCorrect.2.2.2.2⟩)).trans leftIH).trans
+            rightIH)
+
 /-- Full refinement invariant for a recursive tree traversal.  Like the
 single-step invariant, all descendant premises are universal over uniquely
 determined raw outputs.  The invariant supplies representation/safety facts,
@@ -4038,6 +4193,26 @@ theorem HenselLiftLoopCorrect.topologyEq
   | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
       htail ih =>
       exact hiteration.topologyEq.trans ih
+
+/-- All quadratic rounds preserve every node modulo any divisor of the
+initial modulus.  Instantiating `base = initialM = p` is the exact bridge from
+the extracted lifted leaves back to the source finite-field factors. -/
+theorem HenselLiftLoopCorrect.arrayReduces_of_dvd
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM base : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM)
+    (hdiv : base ∣ initialM) :
+    HenselArrayReduces base initialNodes outputNodes := by
+  induction hcorrect generalizing base with
+  | done m nodes hstop => exact HenselArrayReduces.refl base nodes
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      have hhead := hiteration.arrayReduces.of_dvd hdiv
+      have hnextDiv : base ∣ m * m := dvd_mul_of_dvd_left hdiv m
+      exact hhead.trans (ih hnextDiv)
 
 /-- The modulus returned by the concrete quadratic Hensel loop is strictly
 larger than the source target.  This is the precision fact consumed by

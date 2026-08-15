@@ -697,3 +697,27 @@ required premise for symmetric factor recovery in strict recombination.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：从同一个具体 Hensel trace 导出提升叶因子逐项模 p 还原到输入的关系
+
+## Hensel tree algebra reduces through every concrete lift round
+
+`HenselNodeReduces` and `HenselArrayReduces` now track all four algebraic
+fields (`g`, `h`, `s`, `t`) of every concrete tree node.  The array relation
+has proved reflexive/transitive rules, an exact `Array.set!` update rule, and
+a modulus-projection rule along divisibility.
+
+`HenselLiftRecursiveCorrect.arrayReduces` follows all four generated recursive
+tree shapes.  At the current node it uses the already proved semantic result
+of the actual `__hensel_step_raw_ir`; it then composes the exact left and right
+recursive executions.  `HenselLiftLoopCorrect.arrayReduces_of_dvd` carries the
+relation through every quadratic precision round and projects each round back
+to any divisor of the initial modulus.  Taking that divisor to be the selected
+prime gives the array-level fact needed to relate final lifted leaves to their
+original finite-field factors.
+
+## 度量（Hensel modular ancestry）
+
+- 耗时：约 1.25 小时（节点/数组关系、set 更新、模数投影、递归和外层循环归纳）
+- 覆盖执行：实际节点更新以及实际左/右子树调用，不是列表级替代算法
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：组合初始树叶布局、最终提取遍历与 normalization，导出输出数组逐项模 p 对应

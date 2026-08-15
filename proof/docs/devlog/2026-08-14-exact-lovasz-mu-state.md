@@ -1456,3 +1456,27 @@ turns the algebraic sublist witness into an actually attempted candidate.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：证明 `combinationToInt32` 与 generated `trialProductLoop` 对该
   candidate 成功执行并计算对应 Hensel 原子乘积
+
+## Checked candidate lowering preserves every source index
+
+`combinationToInt32Loop_toList` now executes the generated checked lowering
+loop and identifies its exact output as the already-emitted prefix followed
+by the converted source suffix.  The proof traverses the real recursion and
+must discharge the concrete `index < 2^31` branch at every emitted cell.
+
+The fixed-width bridge proves that a checked `Nat.toUInt32.toInt32` is
+nonnegative and round-trips through the exact `Int32.toInt64.toNat` lookup
+path.  Consequently `combinationToInt32_candidate_valid` derives the
+`CandidateIndicesValid` premise consumed by `trialProductLoop_refines`; its
+legal-combination wrapper connects this directly to generated scan
+candidates.  Overflow is not idealized away: success depends on the same
+source check, and the theorem proves its exact consequence.
+
+## 度量（checked candidate lowering）
+
+- 耗时：约 1 小时（递归输出、Int32 符号边界、逐项 round-trip）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：把 converted candidate 的 `SelectedProductMod` 精确改写为前一
+  步恢复的 sublist product，并接到 `zassenhausAttempt` 的执行分支

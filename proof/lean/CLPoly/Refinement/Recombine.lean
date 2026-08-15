@@ -2004,6 +2004,71 @@ theorem sublist_exists_legal_combination {α : Type*} [Inhabited α]
     simpa [getElem!_pos indices position hposition] using
       hbounds position hposition
 
+/-- Exact successful output of the generated checked `Nat` to `Int32`
+candidate lowering loop.  The theorem follows the actual source recursion
+and records every emitted element in order. -/
+theorem combinationToInt32Loop_toList (indices : Array Nat) (index : Nat)
+    (result : Array Int32)
+    (hfits : ∀ position (hposition : position < indices.size),
+      indices[position] < 2 ^ 31) :
+    ∃ output,
+      Generated.StrictRecombine.combinationToInt32Loop indices index result =
+        .ok output ∧
+      output.toList = result.toList ++
+        (indices.toList.drop index).map
+          (fun value => value.toUInt32.toInt32) := by
+  induction hmeasure : indices.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.combinationToInt32Loop]
+      split
+      next hindex =>
+        rw [dif_pos (hfits index hindex)]
+        rcases ih (indices.size - (index + 1)) (by omega) (index + 1)
+            (result.push indices[index].toUInt32.toInt32) rfl with
+          ⟨output, hrun, houtput⟩
+        refine ⟨output, hrun, ?_⟩
+        rw [houtput, Array.toList_push, List.append_assoc]
+        have hdrop : indices.toList.drop index = indices[index] ::
+            indices.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := indices.toList) (i := index) (by simpa using hindex)
+        rw [hdrop]
+        rfl
+      next hindex =>
+        refine ⟨result, rfl, ?_⟩
+        have hdrop : indices.toList.drop index = [] :=
+          List.drop_eq_nil_iff.mpr (by simpa using Nat.not_lt.mp hindex)
+        simp [hdrop]
+
+/-- Exact top-level checked conversion used by `zassenhausAttempt`. -/
+theorem combinationToInt32_toList (indices : Array Nat)
+    (hfits : ∀ position (hposition : position < indices.size),
+      indices[position] < 2 ^ 31) :
+    ∃ output,
+      Generated.StrictRecombine.combinationToInt32 indices = .ok output ∧
+      output.toList = indices.toList.map
+        (fun value => value.toUInt32.toInt32) := by
+  simpa [Generated.StrictRecombine.combinationToInt32] using
+    combinationToInt32Loop_toList indices 0 #[] hfits
+
+theorem nat_toUInt32_toInt32_nonnegative_and_toNat (value : Nat)
+    (hfits : value < 2 ^ 31) :
+    0 ≤ value.toUInt32.toInt32 ∧
+      value.toUInt32.toInt32.toInt64.toNat = value := by
+  have htoInt : value.toUInt32.toInt32.toInt = (value : Int) := by
+    change value.toInt32.toInt = (value : Int)
+    exact Int32.toInt_ofNat_of_lt hfits
+  have hnonnegative : 0 ≤ value.toUInt32.toInt32 := by
+    rw [Int32.le_iff_toInt_le, Int32.toInt_zero, htoInt]
+    omega
+  refine ⟨hnonnegative, ?_⟩
+  change value.toUInt32.toInt32.toInt64.toNatClampNeg = value
+  rw [Int32.toNatClampNeg_toInt64]
+  unfold Int32.toNatClampNeg
+  rw [htoInt]
+  simp
+
 /-- Lexicographic order on equal-size source arrays, stated at the concrete
 first differing position.  This avoids assigning an order to arrays of
 different lengths, which never occur in the C++ combination scan. -/
@@ -8534,6 +8599,65 @@ def CandidateIndicesValid (candidate : Array Int32)
   ∀ index (hindex : index < candidate.size),
     0 ≤ candidate[index] ∧
       candidate[index].toInt64.toNat < consumed.size
+
+/-- The checked conversion used by the generated Zassenhaus attempt produces
+valid `Int32` lookup indices whenever the natural candidate is bounded by the
+active array.  Both nonnegativity and round-trip equality are proved from the
+actual `2^31` check. -/
+theorem combinationToInt32_candidate_valid (indices : Array Nat)
+    (activeSize : Nat) (output : Array Int32)
+    (hbound : ∀ position (hposition : position < indices.size),
+      indices[position] < activeSize)
+    (hactiveFits : activeSize ≤ 2 ^ 31)
+    (hrun : Generated.StrictRecombine.combinationToInt32 indices =
+      .ok output) :
+    CandidateIndicesValid output (Array.replicate activeSize false) := by
+  have hfits : ∀ position (hposition : position < indices.size),
+      indices[position] < 2 ^ 31 := by
+    intro position hposition
+    exact lt_of_lt_of_le (hbound position hposition) hactiveFits
+  rcases combinationToInt32_toList indices hfits with
+    ⟨expected, hexpected, hlist⟩
+  have houtput : output = expected := by
+    exact Except.ok.inj (hrun.symm.trans hexpected)
+  subst expected
+  have hsize : output.size = indices.size := by
+    simpa using congrArg List.length hlist
+  intro position hposition
+  have hpositionIndices : position < indices.size := by omega
+  have hentryDependent : output[position] =
+      indices[position].toUInt32.toInt32 := by
+    have hget := congrArg (fun values : List Int32 => values[position]!) hlist
+    change output.toList[position]! =
+      (indices.toList.map fun value => value.toUInt32.toInt32)[position]! at hget
+    rw [getElem!_pos output.toList position (by simpa using hposition),
+      Array.getElem_toList] at hget
+    have hmap := getElem!_map_of_lt
+      (fun value : Nat => value.toUInt32.toInt32) indices.toList position
+      (by simpa using hpositionIndices)
+    rw [hmap] at hget
+    simpa [getElem!_pos indices.toList position (by simpa using hpositionIndices),
+      Array.getElem_toList] using hget
+  rw [hentryDependent]
+  have hroundtrip := nat_toUInt32_toInt32_nonnegative_and_toNat
+    indices[position] (hfits position hpositionIndices)
+  refine ⟨hroundtrip.1, ?_⟩
+  rw [hroundtrip.2]
+  simpa using hbound position hpositionIndices
+
+theorem legal_combination_toInt32_candidate_valid {upper count : Nat}
+    (indices : Array Nat) (output : Array Int32)
+    (hlegal : LegalCombination upper count indices)
+    (hupperFits : upper ≤ 2 ^ 31)
+    (hrun : Generated.StrictRecombine.combinationToInt32 indices =
+      .ok output) :
+    CandidateIndicesValid output (Array.replicate upper false) := by
+  apply combinationToInt32_candidate_valid indices upper output
+  · intro position hposition
+    rw [← getElem!_pos indices position hposition]
+    exact hlegal.2.2 position hposition
+  · exact hupperFits
+  · exact hrun
 
 theorem candidateAvailableLoop_succeeds (candidate : Array Int32)
     (consumed : Array Bool) (index : Nat)

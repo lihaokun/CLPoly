@@ -1803,6 +1803,24 @@ changes only `s` and `t`, as recorded by its generated execution proof.
 
 - C++ changes: none, so there is no new C++ b2b change surface in this step.
 
+## Canonical fields written by the concrete tree builder
+
+The tree builder converts finite-field range products to integer sparse arrays
+before storing them in each Hensel node.  The generated
+`henselTreeZpToZZIR` is now proved to preserve strict descending degree order
+and nonzero coefficients directly through its array `map`.  Nonzero transfer
+uses the injectivity of `UInt64.toNat` followed by the exact `Nat → Int`
+embedding; it is not inferred from polynomial denotation.
+
+`henselTreeStoreNodeRawIR_canonical` then follows the same six checked writes
+as the C++ node-store helper.  Its successful raw equation identifies the
+stored `g` and `h` with the two converted product-loop outputs, whose source
+canonicality is available from the concrete finite-field multiplication
+trace.  This is the local write fact needed by the recursive builder array
+frame.
+
+- C++ changes: none, so there is no new C++ b2b change surface in this step.
+
 ## Canonical factor fields survive recursive lifting and extraction
 
 Canonicality is now carried above a single Hensel step without assuming that

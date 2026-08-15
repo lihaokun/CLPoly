@@ -9346,6 +9346,27 @@ theorem henselTreeZpToZZIR_toPolyMod (p : Nat) (f : SparsePolyZp) :
           (CLPoly.Math.Zp.toZMod p coefficient) + tail) ih'
       simpa [List.map_map, Function.comp_def, CLPoly.Math.Zp.toZMod] using htail
 
+/-- The generated coefficient representation conversion used by the C++ tree
+builder preserves strict degree order and nonzero coefficients. -/
+theorem henselTreeZpToZZIR_canonical (p : Nat) (f : SparsePolyZp)
+    (hf : CLPoly.Math.SparsePolyZp.Canonical p f) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.henselTreeZpToZZIR f) := by
+  unfold StrictPolynomialMod.SparsePolyZZCanonical
+  constructor
+  · rw [Generated.StrictHensel.henselTreeZpToZZIR, Array.toList_map,
+      List.isChain_map]
+    simpa using hf.2.1
+  · intro output houtput
+    rw [Generated.StrictHensel.henselTreeZpToZZIR, Array.toList_map,
+      List.mem_map] at houtput
+    rcases houtput with ⟨source, hsource, rfl⟩
+    have hnonzero := hf.2.2 source hsource
+    simp only [Prod.snd]
+    apply Int.ofNat_ne_zero.mpr
+    intro hzero
+    exact hnonzero (UInt64.toNat_inj.mp (by simp [hzero]))
+
 /-- Mathematical denotation of the same half-open source interval consumed
 by a tree-product loop.  This is used only in the proof layer. -/
 noncomputable def henselFactorRangeProduct (p : Nat)
@@ -10046,6 +10067,30 @@ theorem henselTreeStoreNodeRawIR_refines
       hrun2, hrun3, hrun4, hrun5, hrun6, bind, Except.bind]
   simp [hselected6, hselected5, hselected4, hselected3, hselected2,
     hselected1]
+
+/-- The six checked writes of the concrete tree builder store canonical
+integer `g`/`h` fields whenever their generated finite-field sources are
+canonical. -/
+theorem henselTreeStoreNodeRawIR_canonical
+    (p : Nat) (nodes : Array HenselNode) (index : Nat)
+    (g h s t : SparsePolyZp) (start stop : Nat)
+    (hindex : index < nodes.size)
+    (hgCanonical : CLPoly.Math.SparsePolyZp.Canonical p g)
+    (hhCanonical : CLPoly.Math.SparsePolyZp.Canonical p h) :
+    ∃ output,
+      Generated.StrictHensel.henselTreeStoreNodeRawIR nodes index g h s t
+          start stop = .ok output ∧
+      output.size = nodes.size ∧
+      ∃ houtput : index < output.size,
+        HenselNodeCanonical (getElem output index houtput) := by
+  rcases henselTreeStoreNodeRawIR_refines nodes index g h s t start stop
+      hindex with
+    ⟨output, hrun, hsize, houtput, houtputG, houtputH, _⟩
+  refine ⟨output, hrun, hsize, houtput, ?_⟩
+  unfold HenselNodeCanonical
+  rw [houtputG, houtputH]
+  exact ⟨henselTreeZpToZZIR_canonical p g hgCanonical,
+    henselTreeZpToZZIR_canonical p h hhCanonical⟩
 
 /-- Storing the two concrete range products and the concrete EEA result
 establishes the node's exact gcd semantics. -/

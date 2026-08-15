@@ -9792,6 +9792,101 @@ decreasing_by
   · omega
   · omega
 
+/-- The canonical preorder topology uses each mutable-array index exactly
+once, and its indices occupy the half-open block beginning at `root`.  This
+is the concrete separation fact needed to compose left and right generated
+Hensel traversals. -/
+theorem henselTreeBuildTopology_indices_nodup_bounded
+    (start stop root : Nat) (hlength : 2 ≤ stop - start) :
+    let indices := henselLiftTreeIndices
+      (henselTreeBuildTopology start stop root)
+    indices.Nodup ∧ ∀ index ∈ indices,
+      root ≤ index ∧
+        index < root + henselTreeInternalNodeCount start stop := by
+  let mid := (start + stop) / 2
+  have hcount := henselTreeInternalNodeCount_eq start stop hlength
+  have hstartMid :=
+    Generated.StrictHensel.henselTreeMidpoint_gt_start start stop hlength
+  have hmidStop :=
+    Generated.StrictHensel.henselTreeMidpoint_lt_stop start stop hlength
+  by_cases hleft : 2 ≤ mid - start
+  · have hleftIH := henselTreeBuildTopology_indices_nodup_bounded start mid
+      (root + 1) hleft
+    by_cases hright : 2 ≤ stop - mid
+    · have hrightIH := henselTreeBuildTopology_indices_nodup_bounded mid stop
+        (root + 1 + henselTreeInternalNodeCount start mid) hright
+      rw [henselTreeBuildTopology]
+      dsimp [mid] at hleft hright hleftIH hrightIH hcount ⊢
+      simp only [hleft, hright, ↓reduceIte, henselLiftTreeIndices]
+      constructor
+      · apply List.nodup_cons.mpr
+        constructor
+        · intro hrootMem
+          rcases List.mem_append.mp hrootMem with hrootLeft | hrootRight
+          · have := hleftIH.2 root hrootLeft
+            omega
+          · have := hrightIH.2 root hrootRight
+            omega
+        · exact hleftIH.1.append hrightIH.1 (by
+            intro index hindexLeft hindexRight
+            have hleftBound := hleftIH.2 index hindexLeft
+            have hrightBound := hrightIH.2 index hindexRight
+            omega)
+      · intro index hindex
+        rcases List.mem_cons.mp hindex with rfl | htail
+        · omega
+        · rcases List.mem_append.mp htail with hindexLeft | hindexRight
+          · have := hleftIH.2 index hindexLeft
+            omega
+          · have := hrightIH.2 index hindexRight
+            omega
+    · have hrightCount : henselTreeInternalNodeCount mid stop = 0 := by
+        rw [henselTreeInternalNodeCount, dif_neg hright]
+      rw [henselTreeBuildTopology]
+      dsimp [mid] at hleft hright hleftIH hrightCount hcount ⊢
+      simp only [hleft, hright, ↓reduceIte, henselLiftTreeIndices]
+      constructor
+      · rw [List.nodup_cons]
+        exact ⟨fun hrootMem => by
+          have := hleftIH.2 root hrootMem
+          omega, hleftIH.1⟩
+      · intro index hindex
+        rcases List.mem_cons.mp hindex with rfl | htail
+        · omega
+        · have := hleftIH.2 index htail
+          omega
+  · have hleftCount : henselTreeInternalNodeCount start mid = 0 := by
+      rw [henselTreeInternalNodeCount, dif_neg hleft]
+    by_cases hright : 2 ≤ stop - mid
+    · have hrightIH := henselTreeBuildTopology_indices_nodup_bounded mid stop
+        (root + 1 + henselTreeInternalNodeCount start mid) hright
+      rw [henselTreeBuildTopology]
+      dsimp [mid] at hleft hright hrightIH hleftCount hcount ⊢
+      simp only [hleft, hright, ↓reduceIte, henselLiftTreeIndices]
+      constructor
+      · rw [List.nodup_cons]
+        exact ⟨fun hrootMem => by
+          have := hrightIH.2 root hrootMem
+          omega, hrightIH.1⟩
+      · intro index hindex
+        rcases List.mem_cons.mp hindex with rfl | htail
+        · omega
+        · have := hrightIH.2 index htail
+          omega
+    · have hrightCount : henselTreeInternalNodeCount mid stop = 0 := by
+        rw [henselTreeInternalNodeCount, dif_neg hright]
+      rw [henselTreeBuildTopology]
+      dsimp [mid] at hleft hright hleftCount hrightCount hcount ⊢
+      simp only [hleft, hright, ↓reduceIte, henselLiftTreeIndices]
+      constructor
+      · simp
+      · intro index hindex
+        have hindexEq : index = root := by simpa using hindex
+        rw [hindexEq]
+        omega
+termination_by stop - start
+decreasing_by all_goals omega
+
 theorem nat_toUInt32_toInt32_toInt_eq (n : Nat) (hbound : n < 2 ^ 31) :
     n.toUInt32.toInt32.toInt = (n : Int) := by
   change (Int32.ofNat n).toInt = (n : Int)

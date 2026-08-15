@@ -2238,3 +2238,25 @@ No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 canonical preorder topology disjointness is combined with this frame theorem
 to prove that the actual extracted leaf product equals the round target
 modulo `m^2`, then inductively modulo the returned `outputM`.
+
+## Canonical Hensel topology indices are disjoint contiguous blocks
+
+The generated tree builder now has the exact index-separation theorem needed
+to compose mutable left and right traversals.
+
+- `henselTreeBuildTopology_indices_nodup_bounded` follows the same midpoint
+  split and four optional-child branches as `henselTreeBuildTopology`; its
+  recursion decreases only by the source interval length `stop - start`.
+- The preorder list `henselLiftTreeIndices` is proved duplicate-free.  When
+  both children exist, the proof uses the concrete left interval ending at
+  `root + 1 + leftCount` and the right interval beginning at that exact value,
+  rather than assuming abstract tree disjointness.
+- Every visited index lies in the half-open block
+  `[root, root + henselTreeInternalNodeCount start stop)`.  Empty-child cases
+  use the generated internal-node count equations, so singleton topologies
+  are covered without inventing placeholder nodes.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+next proof combines these exact blocks with
+`HenselLiftRecursiveCorrect.preserves_not_mem` to retain parent and completed
+left-subtree values across the actual source-order recursive mutations.

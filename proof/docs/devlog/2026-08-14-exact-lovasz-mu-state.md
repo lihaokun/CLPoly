@@ -1743,3 +1743,29 @@ always groups a maximal degree before emitting it.
 - 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
 - 下一步：由实际 divmod trace 取得 remainder canonicality，组合完整
   `__hensel_step_raw_ir` 的 `g/h` canonical preservation
+
+## Natural-language proof: canonical concrete divmod remainder
+
+Induct on the exact finite `DivmodTrace` consumed by the generated while-loop.
+The done constructor returns its current remainder.  The vanished constructor
+removes the current leading cell; its active guard proves the array is
+nonempty, so erasing index zero preserves the strict chain and nonzero tail.
+The subtract constructor replaces the remainder with the actual generated
+`divmodRemainder`; its two-cursor merge canonicality theorem applies to the
+current remainder and fixed divisor.  In both recursive constructors, apply
+the induction hypothesis to the exact next trace.  The quotient accumulator
+is irrelevant to this remainder property and is never replaced by an oracle.
+
+`Generated.StrictHensel.DivmodTrace.remainder_canonical` now implements this
+constructor induction and applies directly to the exact trace stored in a
+successful generated divmod call.
+
+## 度量（divmod trace remainder canonicality）
+
+- 耗时：约 0.5 小时（trace induction、active/nonempty bridge）
+- 迭代：1 轮单文件编译
+- Lean 新增/修改行数：约 45 行（含证明草稿）
+- 对应 C++ 行数：约 12 行 modular long-division while branches；C++ 变化为无，因此无新的 C++ b2b 变更面
+- 放弃的方案：同时证明 quotient canonical；当前 Hensel `g/h` 链只消费 remainder，且 multiplication heap 对任意输入已证明 canonical
+- 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
+- 下一步：从 successful concrete divmod run 提取该 remainder 定理并组合 Hensel factor phase

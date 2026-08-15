@@ -2016,6 +2016,39 @@ theorem divmodRemainder_canonical (r g : SparsePolyZZ)
   exact ⟨by simp [StrictPolynomialMod.SparsePolyZZCanonical], by simp,
     by simp⟩
 
+/-- Every exact finite trace consumed by the generated modular long-division
+loop returns a canonical remainder when its current remainder and fixed
+divisor are canonical. -/
+theorem Generated.StrictHensel.DivmodTrace.remainder_canonical
+    {g : SparsePolyZZ} {inverse m : ZZ} {r q : SparsePolyZZ}
+    (trace : Generated.StrictHensel.DivmodTrace g inverse m r q)
+    (hr : StrictPolynomialMod.SparsePolyZZCanonical r)
+    (hg : StrictPolynomialMod.SparsePolyZZCanonical g) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.divmodLoop g inverse m trace).2 := by
+  induction trace with
+  | done r q inactive =>
+      simpa [Generated.StrictHensel.divmodLoop] using hr
+  | vanished r q active zero next ih =>
+      have hparts : r.isEmpty = false ∧ get_deg r ≥ get_deg g := by
+        simpa using active
+      have hrsize : 0 < r.size := by
+        have hne : r ≠ #[] := by
+          intro hempty
+          subst r
+          simp at hparts
+        have hsizeNe : r.size ≠ 0 := by
+          intro hzero
+          exact hne (Array.eq_empty_of_size_eq_zero hzero)
+        omega
+      rw [Generated.StrictHensel.divmodLoop]
+      exact ih (eraseLeading_canonical r hrsize hr)
+  | subtract r q active nonzero next ih =>
+      rw [Generated.StrictHensel.divmodLoop]
+      exact ih (divmodRemainder_canonical r g
+        (Generated.StrictHensel.divmodCoefficient r inverse m) m
+        (get_deg r - get_deg g).toNatClampNeg hr hg)
+
 private def DegreesBelow (bound : Nat) (f : SparsePolyZZ) : Prop :=
   ∀ term ∈ f.toList, term.1.deg < bound
 

@@ -4913,6 +4913,50 @@ theorem HenselNormalizeUnitRel.irreducible
   exact (irreducible_isUnit_mul (Polynomial.isUnit_C.mpr hscale)).2
     (hirreducible index hbefore)
 
+private theorem isCoprime_unit_mul_unit_mul {R : Type*} [CommRing R]
+    {left right leftUnit rightUnit : R}
+    (hleftUnit : IsUnit leftUnit) (hrightUnit : IsUnit rightUnit)
+    (hcoprime : IsCoprime left right) :
+    IsCoprime (leftUnit * left) (rightUnit * right) := by
+  rcases hleftUnit with ⟨leftUnit, rfl⟩
+  rcases hrightUnit with ⟨rightUnit, rfl⟩
+  rcases hcoprime with ⟨a, b, hab⟩
+  refine ⟨(↑leftUnit⁻¹ : R) * a, (↑rightUnit⁻¹ : R) * b, ?_⟩
+  calc
+    (↑leftUnit⁻¹ : R) * a * (↑leftUnit * left) +
+        (↑rightUnit⁻¹ : R) * b * (↑rightUnit * right) =
+      ((↑leftUnit⁻¹ : R) * ↑leftUnit) * (a * left) +
+        ((↑rightUnit⁻¹ : R) * ↑rightUnit) * (b * right) := by ring
+    _ = a * left + b * right := by simp
+    _ = 1 := hab
+
+/-- Pairwise coprimality is invariant under the exact pointwise unit scaling
+performed by the generated final Hensel normalization block. -/
+theorem HenselNormalizeUnitRel.isCoprime
+    {p : Nat} {before after : Array SparsePolyZZ}
+    (hrel : HenselNormalizeUnitRel p before after)
+    {left right : Nat} (hleft : left < after.size)
+    (hright : right < after.size)
+    (hcoprime : IsCoprime (toPolyMod p before[left]!)
+      (toPolyMod p before[right]!)) :
+    IsCoprime (toPolyMod p after[left]!) (toPolyMod p after[right]!) := by
+  have hleftBefore : left < before.size := by rw [hrel.1]; exact hleft
+  have hrightBefore : right < before.size := by rw [hrel.1]; exact hright
+  rcases hrel.2 left hleftBefore hleft with
+    ⟨leftScale, hleftScale, hleftEq⟩
+  rcases hrel.2 right hrightBefore hright with
+    ⟨rightScale, hrightScale, hrightEq⟩
+  rw [getElem!_pos after left hleft,
+    getElem!_pos after right hright]
+  rw [hleftEq, hrightEq]
+  have hcoprime' : IsCoprime (toPolyMod p before[left])
+      (toPolyMod p before[right]) := by
+    simpa [getElem!_pos before left hleftBefore,
+      getElem!_pos before right hrightBefore] using hcoprime
+  exact isCoprime_unit_mul_unit_mul
+    (Polynomial.isUnit_C.mpr hleftScale)
+    (Polynomial.isUnit_C.mpr hrightScale) hcoprime'
+
 theorem HenselNormalizeCorrect.unitRel
     {p m : Nat} {before after : Array SparsePolyZZ}
     (hdiv : p ∣ m)

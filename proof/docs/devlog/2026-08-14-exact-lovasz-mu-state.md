@@ -1360,3 +1360,26 @@ premise is used.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：把所有固定大小 scan 的拒绝结论穿过 Zassenhaus outer loop，
   证明 finish 留下的 primitive 块不存在任何由 Hensel 原子组成的真因子
+
+## Hensel normalization preserves pairwise coprimality
+
+The exact pointwise unit relation already emitted by the generated Hensel
+normalization proof now transports `IsCoprime` for any two output positions.
+The proof constructs the transformed Bézout identity using the inverses of
+the two concrete unit scales.  Consequently the final normalization cannot
+merge, duplicate, or create a common modular factor between distinct Hensel
+leaves.
+
+This is a necessary uniqueness premise for converting a nontrivial integer
+divisor into a unique subset of the irreducible modular leaves.  It adds no
+new certificate field or semantic assumption: both scales and their unit
+proofs come from the already executed normalization relation.
+
+## 度量（Hensel pairwise normalization）
+
+- 耗时：约 1 小时（单位缩放 Bézout 恒等式、数组位置传递）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`lake env lean CLPoly/Refinement/Hensel.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Hensel` 通过（3328 jobs）
+- 下一步：把 adjustment 的 pairwise 证书沿 leaf origins 和 lift 输出传到
+  最终 Hensel factor array

@@ -1503,3 +1503,27 @@ candidate-product callback or post-hoc witness in this bridge.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：进入 `zassenhausAttempt`，证明对应整数真因子的 candidate 不会
   被 leading/constant pruning 拒绝，并由 symmetric recovery 恢复该因子
+
+## Exact execution of both Zassenhaus pruning products
+
+`selectedLeadingProductLoop_succeeds` executes the generated leading-product
+recursion for a bounded candidate whose selected active factors are nonempty.
+It proves that the returned integer is the incoming accumulator times the
+ordered product of the concrete coefficient stored at position zero of every
+selected factor.  The out-of-bounds and empty-factor errors are discharged
+at their actual source branches.
+
+`selectedConstantProductLoop_succeeds` gives the analogous exact execution
+for the generated `constantTerm` pruning product.  These results expose the
+two integers tested by `zassenhausAttempt`; the next algebraic step can now
+prove that the recovered divisor's leading and constant coefficients make
+both remainder tests zero rather than assuming that pruning accepts it.
+
+## 度量（Zassenhaus pruning loops）
+
+- 耗时：约 0.75 小时（两个良基循环、越界/空数组分支、累积乘积）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：证明这两个实际整数乘积对应候选多项式的 leading/constant
+  coefficient，并由整数真因子关系推出两个 pruning remainder 均为零

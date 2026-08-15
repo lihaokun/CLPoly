@@ -2069,6 +2069,96 @@ theorem nat_toUInt32_toInt32_nonnegative_and_toNat (value : Nat)
   rw [htoInt]
   simp
 
+def selectedLeadingValues (candidate : Array Nat)
+    (activeLifted : Array SparsePolyZZ) (index : Nat) : List ZZ :=
+  (candidate.toList.drop index).map fun activeIndex =>
+    (activeLifted[activeIndex]!)[0]!.2
+
+def selectedConstantValues (candidate : Array Nat)
+    (activeLifted : Array SparsePolyZZ) (index : Nat) : List ZZ :=
+  (candidate.toList.drop index).map fun activeIndex =>
+    Generated.StrictRecombine.constantTerm activeLifted[activeIndex]!
+
+/-- Exact execution and value of the generated leading-coefficient pruning
+loop for a bounded candidate of nonempty active factors. -/
+theorem selectedLeadingProductLoop_succeeds
+    (candidate : Array Nat) (activeLifted : Array SparsePolyZZ)
+    (index : Nat) (acc : ZZ)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size)
+    (hnonempty : ∀ position (hposition : position < candidate.size),
+      activeLifted[candidate[position]]!.isEmpty = false) :
+    Generated.StrictRecombine.selectedLeadingProductLoop candidate
+      activeLifted index acc =
+        .ok (acc * (selectedLeadingValues candidate activeLifted index).prod) := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index acc with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.selectedLeadingProductLoop]
+      split
+      next hindex =>
+        have hactive := hbound index hindex
+        rw [dif_pos hactive]
+        have hfactor : activeLifted[candidate[index]].isEmpty = false := by
+          rw [← getElem!_pos activeLifted candidate[index] hactive]
+          exact hnonempty index hindex
+        have hfactorFalse : ¬ activeLifted[candidate[index]].isEmpty := by
+          simp [hfactor]
+        have hnonemptySize : 0 < activeLifted[candidate[index]].size := by
+          have hsizeNe : activeLifted[candidate[index]].size ≠ 0 := by
+            intro hsize
+            apply hfactorFalse
+            simp [Array.isEmpty, hsize]
+          omega
+        rw [dif_neg hfactorFalse]
+        rw [ih (candidate.size - (index + 1)) (by omega) (index + 1)
+          (acc * ((activeLifted[candidate[index]]'hactive)[0]'hnonemptySize).2) rfl]
+        have hdrop : candidate.toList.drop index = candidate[index] ::
+            candidate.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := candidate.toList) (i := index) (by simpa using hindex)
+        simp only [selectedLeadingValues, hdrop, List.map_cons, List.prod_cons]
+        rw [getElem!_pos activeLifted candidate[index] hactive,
+          getElem!_pos activeLifted[candidate[index]] 0 hnonemptySize]
+        ring
+      next hindex =>
+        have hdrop : candidate.toList.drop index = [] :=
+          List.drop_eq_nil_iff.mpr (by simpa using Nat.le_of_not_gt hindex)
+        simp [selectedLeadingValues, hdrop]
+
+/-- Exact execution and value of the generated constant-coefficient pruning
+loop for every bounded candidate. -/
+theorem selectedConstantProductLoop_succeeds
+    (candidate : Array Nat) (activeLifted : Array SparsePolyZZ)
+    (index : Nat) (acc : ZZ)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size) :
+    Generated.StrictRecombine.selectedConstantProductLoop candidate
+      activeLifted index acc =
+        .ok (acc * (selectedConstantValues candidate activeLifted index).prod) := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index acc with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.selectedConstantProductLoop]
+      split
+      next hindex =>
+        have hactive := hbound index hindex
+        rw [dif_pos hactive]
+        rw [ih (candidate.size - (index + 1)) (by omega) (index + 1)
+          (acc * Generated.StrictRecombine.constantTerm
+            (activeLifted[candidate[index]]'hactive)) rfl]
+        have hdrop : candidate.toList.drop index = candidate[index] ::
+            candidate.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := candidate.toList) (i := index) (by simpa using hindex)
+        simp only [selectedConstantValues, hdrop, List.map_cons, List.prod_cons]
+        rw [getElem!_pos activeLifted candidate[index] hactive]
+        ring
+      next hindex =>
+        have hdrop : candidate.toList.drop index = [] :=
+          List.drop_eq_nil_iff.mpr (by simpa using Nat.le_of_not_gt hindex)
+        simp [selectedConstantValues, hdrop]
+
 /-- Lexicographic order on equal-size source arrays, stated at the concrete
 first differing position.  This avoids assigning an order to arrays of
 different lengths, which never occur in the C++ combination scan. -/

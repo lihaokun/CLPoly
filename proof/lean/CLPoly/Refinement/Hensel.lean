@@ -2660,6 +2660,69 @@ theorem divmodLoop_preserves_of_bounds (m : Nat) (g : SparsePolyZZ)
   exact divmodLoop_preserves m g hg hgDegree hinvert trace
     (divmodTrace_degreeSafe m g hg hgDegree hgHead trace hrBound)
 
+/-- The remainder returned by the concrete finite division trace is exactly
+the state at which the source while-condition became false.  This executable
+fact is stronger than the quotient equation alone and is needed to show that
+the Hensel correction cannot change a lifted factor's leading term. -/
+theorem Generated.StrictHensel.DivmodTrace.output_inactive
+    (g : SparsePolyZZ) (inverse m : Int) :
+    ∀ {r q : SparsePolyZZ}
+      (trace : Generated.StrictHensel.DivmodTrace g inverse m r q),
+      let output := Generated.StrictHensel.divmodLoop g inverse m trace
+      ¬(!output.2.isEmpty && get_deg output.2 ≥ get_deg g) := by
+  intro r q trace
+  induction trace with
+  | done r q inactive => exact inactive
+  | vanished r q active zero next ih => exact ih
+  | subtract r q active nonzero next ih => exact ih
+
+/-- Explicit-output form of the actual modular long-division stopping
+condition.  No Euclidean-division oracle is used: the result is obtained by
+inverting the generated raw call and following its stored finite trace. -/
+theorem __upoly_divmod_mod_raw_ir_remainder_inactive_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f g q r : SparsePolyZZ) (m : Int)
+    (hrun : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      f g m = .ok (q, r)) :
+    ¬(!r.isEmpty && get_deg r ≥ get_deg g) := by
+  simp only [Generated.StrictHensel.__upoly_divmod_mod_raw_ir,
+    Generated.StrictHensel.__upoly_mod_coeff_raw_ir] at hrun
+  split at hrun <;> try contradiction
+  next hnotEmpty =>
+    split at hrun <;> try contradiction
+    next hvalid =>
+      split at hrun <;> try contradiction
+      next hinvertible =>
+        have houtput := Generated.StrictHensel.DivmodTrace.output_inactive
+          g (ZZ.invert 0 g[0]!.2 m).2 m
+          (termination.trace f g
+            (Generated.StrictHensel.modCoeffOutput f m) m rfl hvalid)
+        have heq := Except.ok.inj hrun
+        rw [heq] at houtput
+        exact houtput
+
+/-- On the nonempty branch, the concrete stopping condition is the strict
+source-degree inequality used by Hensel correction. -/
+theorem __upoly_divmod_mod_raw_ir_remainder_get_deg_lt_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f g q r : SparsePolyZZ) (m : Int)
+    (hrun : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      f g m = .ok (q, r)) (hr : 0 < r.size) :
+    get_deg r < get_deg g := by
+  have hinactive :=
+    __upoly_divmod_mod_raw_ir_remainder_inactive_of_run termination
+      f g q r m hrun
+  by_contra hnot
+  have hnotInt : ¬(get_deg r).toInt < (get_deg g).toInt := by
+    simpa only [Int64.lt_iff_toInt_lt] using hnot
+  have hgeInt : (get_deg g).toInt ≤ (get_deg r).toInt :=
+    le_of_not_gt hnotInt
+  have hge : get_deg r ≥ get_deg g := by
+    simpa only [Int64.le_iff_toInt_le] using hgeInt
+  apply hinactive
+  simp only [Bool.and_eq_true]
+  exact ⟨by simp [Array.isEmpty, Nat.ne_of_gt hr], decide_eq_true hge⟩
+
 /-- The concrete generated `__upoly_mod_coeff` call always succeeds and
 preserves the decoded polynomial modulo the requested modulus. -/
 theorem __upoly_mod_coeff_raw_ir_refines (f : SparsePolyZZ) (m : Nat) :

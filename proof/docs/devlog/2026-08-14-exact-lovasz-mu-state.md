@@ -1969,6 +1969,7 @@ primitive-content certificate through its actual sparse operations.
   fixed-size combination scan by induction on its concrete termination rank.
 
 No C++ files changed, so this step has no new C++ b2b change surface.
+
 Verification: `lake env lean CLPoly/Refinement/Recombine.lean` and
 `lake build CLPoly.Refinement.Recombine CLPoly.Pipeline.L1` pass with no error
 or `sorry` warning.  The axiom audit reports only `propext`,
@@ -2416,3 +2417,25 @@ identified algebraically instead of being carried as an arbitrary unit.
   then lift this equality to its returned `p^k` modulus.
 
 No C++ files changed, so this step has no new C++ b2b change surface.
+
+## Preserve the generated modular-division stopping condition
+
+The concrete modular long division used inside each Hensel correction now
+exports the source-level fact that was previously lost at its semantic
+boundary.
+
+- `DivmodTrace.output_inactive` follows the actual finite generated trace to
+  its `done` constructor and proves that the returned remainder is precisely
+  a state where the C++ loop condition is false.
+- `__upoly_divmod_mod_raw_ir_remainder_inactive_of_run` recovers that fact
+  from a successful public raw execution; it inverts all checked source
+  branches and uses the exact trace stored by the termination certificate.
+- `__upoly_divmod_mod_raw_ir_remainder_get_deg_lt_of_run` specializes the
+  stopping condition: every nonempty returned remainder has strictly smaller
+  source degree than the divisor.  This is the missing executable premise for
+  proving that the `h + m * remainder` Hensel update preserves its leading
+  term.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+the strict degree result is propagated through the concrete scale/add/mod
+operations and then through the recursive Hensel tree.

@@ -918,3 +918,26 @@ Zp factor; all other positions are unchanged by the source `set!`.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：结合 `GoodPrime.lc_nonzero` 和实际首项读取，证明 adjusted 因子
   保留不可约性
+
+## First-factor adjustment is pointwise unit scaling
+
+The concrete `Zp.ofInt` residue used by the adjustment now has proved
+`Reduced` and exact `ZMod` decoding lemmas.  Using those facts,
+`HenselAdjustFirstFactorCorrect.unitRel` follows the actual source read,
+coefficient map, sparse normalization, and `set! 0`.  Under the selected
+leading coefficient's nonzero premise, factor zero is multiplied by a field
+unit and every other array position is unchanged.
+
+Both `HenselAdjustUnitRel.irreducible` and
+`HenselNormalizeUnitRel.irreducible` transport irreducibility pointwise through
+their respective unit scalings.  They use the polynomial constant-unit
+theorem and do not infer factor quality from a product identity.
+
+## 度量（adjusted-factor unit and irreducibility transport）
+
+- 耗时：约 1.0 小时（`Zp.ofInt` 解码、首位置语义、数组 frame、不可约性运输）
+- 结论强度：adjusted 与最终 normalized 数组均按下标保留不可约性
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：从严格 SelectPrime 的 `CandidateCorrect.quality` 构造原始 factors
+  数组逐项不可约前提，并组合整条 Hensel 链

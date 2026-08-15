@@ -4899,6 +4899,20 @@ def HenselNormalizeUnitRel (p : Nat)
       toPolyMod p after[index] =
         Polynomial.C scale * toPolyMod p before[index]
 
+theorem HenselNormalizeUnitRel.irreducible
+    {p : Nat} {before after : Array SparsePolyZZ}
+    (hrel : HenselNormalizeUnitRel p before after)
+    (hirreducible : ∀ index (hindex : index < before.size),
+      Irreducible (toPolyMod p before[index])) :
+    ∀ index (hindex : index < after.size),
+      Irreducible (toPolyMod p after[index]) := by
+  intro index hafter
+  have hbefore : index < before.size := by rw [hrel.1]; exact hafter
+  rcases hrel.2 index hbefore hafter with ⟨scale, hscale, heq⟩
+  rw [heq]
+  exact (irreducible_isUnit_mul (Polynomial.isUnit_C.mpr hscale)).2
+    (hirreducible index hbefore)
+
 theorem HenselNormalizeCorrect.unitRel
     {p m : Nat} {before after : Array SparsePolyZZ}
     (hdiv : p ∣ m)
@@ -5062,6 +5076,144 @@ theorem scaleZpCoeffs_toPoly
   rw [Array.toList_map]
   exact scaleZpCoeffsList_toPoly p hp2 coefficient hcoefficient
     factor.toList hfactor
+
+theorem zpOfInt_reduced (coefficient : Int) (p : UInt64)
+    (hp : 0 < p.toNat) :
+    CLPoly.Math.Zp.Reduced p.toNat (Zp.ofInt coefficient p) := by
+  constructor
+  · simp [Zp.ofInt]
+  · unfold Zp.ofInt
+    have hpInt : (0 : Int) < p.toNat := by exact_mod_cast hp
+    have hnonneg : 0 ≤ coefficient.emod p.toNat :=
+      Int.emod_nonneg _ (by omega)
+    have hltInt : coefficient.emod p.toNat < p.toNat :=
+      Int.emod_lt_of_pos _ hpInt
+    have hltNatP : (coefficient.emod p.toNat).toNat < p.toNat :=
+      (Int.toNat_lt hnonneg).2 hltInt
+    have hltSize : (coefficient.emod p.toNat).toNat < UInt64.size :=
+      lt_trans hltNatP (UInt64.toNat_lt_size p)
+    have hword : ((coefficient.emod p.toNat).toNat.toUInt64).toNat =
+        (coefficient.emod p.toNat).toNat :=
+      UInt64.toNat_ofNat_of_lt hltSize
+    have hremNonneg : ¬coefficient % (p.toNat : Int) < 0 :=
+      not_lt_of_ge hnonneg
+    simp only [hremNonneg, ↓reduceIte]
+    change ((coefficient.emod p.toNat).toNat.toUInt64).toNat < p.toNat
+    rw [hword]
+    exact hltNatP
+
+theorem zpOfInt_toZMod (coefficient : Int) (p : UInt64)
+    (hp : 0 < p.toNat) :
+    CLPoly.Math.Zp.toZMod p.toNat (Zp.ofInt coefficient p) =
+      (coefficient : ZMod p.toNat) := by
+  unfold CLPoly.Math.Zp.toZMod Zp.ofInt
+  have hpInt : (0 : Int) < p.toNat := by exact_mod_cast hp
+  have hnonneg : 0 ≤ coefficient.emod p.toNat :=
+    Int.emod_nonneg _ (by omega)
+  have hltInt : coefficient.emod p.toNat < p.toNat :=
+    Int.emod_lt_of_pos _ hpInt
+  have hltNatP : (coefficient.emod p.toNat).toNat < p.toNat :=
+    (Int.toNat_lt hnonneg).2 hltInt
+  have hltSize : (coefficient.emod p.toNat).toNat < UInt64.size :=
+    lt_trans hltNatP (UInt64.toNat_lt_size p)
+  have hword : ((coefficient.emod p.toNat).toNat.toUInt64).toNat =
+      (coefficient.emod p.toNat).toNat :=
+    UInt64.toNat_ofNat_of_lt hltSize
+  have hremNonneg : ¬coefficient % (p.toNat : Int) < 0 :=
+    not_lt_of_ge hnonneg
+  simp only [hremNonneg, ↓reduceIte]
+  change (((coefficient.emod p.toNat).toNat.toUInt64).toNat :
+      ZMod p.toNat) = (coefficient : ZMod p.toNat)
+  rw [hword]
+  have htoInt : ((coefficient.emod p.toNat).toNat : Int) =
+      coefficient.emod p.toNat := Int.toNat_of_nonneg hnonneg
+  calc
+    ((coefficient.emod p.toNat).toNat : ZMod p.toNat) =
+        (((coefficient.emod p.toNat).toNat : Int) : ZMod p.toNat) := by
+          exact_mod_cast rfl
+    _ = (coefficient.emod p.toNat : Int) := by rw [htoInt]
+    _ = (coefficient : ZMod p.toNat) :=
+      ZMod.intCast_mod coefficient p.toNat
+
+/-- Pointwise effect of the source leading-coefficient baking block. -/
+def HenselAdjustUnitRel (p : Nat)
+    (before after : Array SparsePolyZp) : Prop :=
+  before.size = after.size ∧
+  ∀ index (hbefore : index < before.size) (hafter : index < after.size),
+    ∃ scale : ZMod p, IsUnit scale ∧
+      CLPoly.Math.SparsePolyZp.toPoly p after[index] =
+        Polynomial.C scale *
+          CLPoly.Math.SparsePolyZp.toPoly p before[index]
+
+theorem HenselAdjustUnitRel.irreducible
+    {p : Nat} {before after : Array SparsePolyZp}
+    (hrel : HenselAdjustUnitRel p before after)
+    (hirreducible : ∀ index (hindex : index < before.size),
+      Irreducible (CLPoly.Math.SparsePolyZp.toPoly p before[index])) :
+    ∀ index (hindex : index < after.size),
+      Irreducible (CLPoly.Math.SparsePolyZp.toPoly p after[index]) := by
+  intro index hafter
+  have hbefore : index < before.size := by rw [hrel.1]; exact hafter
+  rcases hrel.2 index hbefore hafter with ⟨scale, hscale, heq⟩
+  rw [heq]
+  exact (irreducible_isUnit_mul (Polynomial.isUnit_C.mpr hscale)).2
+    (hirreducible index hbefore)
+
+theorem HenselAdjustFirstFactorCorrect.unitRel
+    {f : SparsePolyZZ} {factors adjusted : Array SparsePolyZp}
+    {p : UInt64} [Fact (Nat.Prime p.toNat)]
+    (hp2 : p.toNat * p.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ factors.toList,
+      CLPoly.Math.SparsePolyZp.Canonical p.toNat factor)
+    (hleadingNonzero : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod p.toNat) ≠ 0)
+    (hcorrect : HenselAdjustFirstFactorCorrect f factors p adjusted) :
+    HenselAdjustUnitRel p.toNat factors adjusted := by
+  cases hcorrect with
+  | adjusted leading first value hsource hfirst hvalue =>
+      have hp : 0 < p.toNat := Nat.Prime.pos Fact.out
+      have hzero : 0 < factors.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hfirst
+        contradiction
+      have hfirstGet : factors[0] = first :=
+        Option.some.inj ((Array.getElem?_eq_getElem hzero).symm.trans hfirst)
+      have hfirstMem : first ∈ factors.toList := by
+        rw [← hfirstGet]
+        exact Array.getElem_mem_toList hzero
+      have hfirstCanonical := hfactors first hfirstMem
+      let coefficient := Zp.ofInt leading.2 p
+      have hcoefficient : CLPoly.Math.Zp.Reduced p.toNat coefficient :=
+        zpOfInt_reduced leading.2 p hp
+      have hcoefficientValue :
+          CLPoly.Math.Zp.toZMod p.toNat coefficient =
+            (leading.2 : ZMod p.toNat) :=
+        zpOfInt_toZMod leading.2 p hp
+      have hadjustedPoly :
+          CLPoly.Math.SparsePolyZp.toPoly p.toNat value =
+            Polynomial.C (leading.2 : ZMod p.toNat) *
+              CLPoly.Math.SparsePolyZp.toPoly p.toNat first := by
+        rw [hvalue, henselEEANormalization_toPoly,
+          scaleZpCoeffs_toPoly p.toNat hp2 coefficient hcoefficient first
+            hfirstCanonical.1, hcoefficientValue]
+      have hscaleUnit : IsUnit (leading.2 : ZMod p.toNat) :=
+        isUnit_iff_ne_zero.mpr (hleadingNonzero leading hsource)
+      refine ⟨by simp [Array.set!, hzero], ?_⟩
+      intro index hbefore hafter
+      by_cases hindex : index = 0
+      · subst index
+        refine ⟨(leading.2 : ZMod p.toNat), hscaleUnit, ?_⟩
+        simpa [Array.set!, hzero, hfirstGet] using hadjustedPoly
+      · refine ⟨1, isUnit_one, ?_⟩
+        have hzeroIndex : 0 ≠ index := by omega
+        have hget : (factors.setIfInBounds 0 value)[index] =
+            factors[index] := by
+          simpa [hzeroIndex] using
+            (@Array.getElem_setIfInBounds _ factors 0 value index hbefore)
+        change CLPoly.Math.SparsePolyZp.toPoly p.toNat
+            (factors.setIfInBounds 0 value)[index] = _
+        rw [hget]
+        simp
 
 /-- Raw-to-safe semantic refinement for the exact coefficient-baking block. -/
 theorem __hensel_adjust_first_factor_raw_ir_refines

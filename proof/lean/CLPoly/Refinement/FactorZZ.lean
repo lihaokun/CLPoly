@@ -71,6 +71,79 @@ theorem selectionFactors_adjusted_irreducible
   intro index hindex
   exact hrel.irreducible (selectionFactors_irreducible hselection) index hindex
 
+private theorem origins_preserve_irreducible
+    {p : Nat} {inputs : List SparsePolyZp} {outputs : List SparsePolyZZ}
+    (horigins : List.Forall₂
+      (fun input output => StrictHensel.toPolyMod p output =
+        SparsePolyZp.toPoly p input) inputs outputs)
+    (hirreducible : ∀ input ∈ inputs,
+      Irreducible (SparsePolyZp.toPoly p input)) :
+    ∀ output ∈ outputs, Irreducible (StrictHensel.toPolyMod p output) := by
+  induction horigins with
+  | nil => simp
+  | @cons input output inputs outputs horigin horigins ih =>
+      intro candidate hcandidate
+      rcases List.mem_cons.mp hcandidate with rfl | htail
+      · rw [horigin]
+        exact hirreducible input (List.mem_cons_self)
+      · exact ih
+          (fun factor hfactor =>
+            hirreducible factor (List.mem_cons_of_mem input hfactor))
+          candidate htail
+
+/-- The factors returned by the actual generated Hensel entry remain
+irreducible after reduction modulo the selected prime.  The proof follows the
+concrete adjustment, tree leaves, lift extraction, and final normalization in
+source order. -/
+theorem selectionHenselFactors_mod_irreducible
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output) :
+    ∀ index (hindex : index < output.1.size),
+      Irreducible (StrictHensel.toPolyMod selection.prime.toNat
+        output.1[index]) := by
+  rcases hentry.preNormalizationOrigins hcount with
+    ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
+      horigins, hnormalizeRel⟩
+  have hadjusted := selectionFactors_adjusted_irreducible
+    hp2 hfactors hleadingSemantic hselection hadjust
+  have hadjustSize : adjusted.size = selection.factors.size := by
+    cases hadjust with
+    | adjusted leading first adjusted hsource hfirst hadjustedEq =>
+        have hzero : 0 < selection.factors.size := by omega
+        simp [Array.set!, hzero]
+  have hfull : StrictHensel.henselFactorRangeList adjusted
+      selection.factors.size 0 = adjusted.toList := by
+    rw [← hadjustSize]
+    exact StrictHensel.henselFactorRangeList_full adjusted
+  rw [hfull] at horigins
+  have hadjustedList : ∀ factor ∈ adjusted.toList,
+      Irreducible (SparsePolyZp.toPoly selection.prime.toNat factor) := by
+    intro factor hfactor
+    obtain ⟨index, hindex, hfactorEq⟩ := List.mem_iff_getElem.mp hfactor
+    subst factor
+    simpa using hadjusted index (by simpa using hindex)
+  have hextractedList := origins_preserve_irreducible horigins hadjustedList
+  have hextracted : ∀ index (hindex : index < extracted.size),
+      Irreducible (StrictHensel.toPolyMod selection.prime.toNat
+        extracted[index]) := by
+    intro index hindex
+    exact hextractedList extracted[index]
+      (Array.getElem_mem_toList hindex)
+  exact hnormalizeRel.irreducible hextracted
+
 end StrictFactorZZ
 
 end Refinement

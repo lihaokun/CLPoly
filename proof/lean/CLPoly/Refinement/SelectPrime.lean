@@ -7,6 +7,7 @@ import Mathlib.FieldTheory.Separable
 import Mathlib.Tactic.NormNum.Prime
 
 set_option autoImplicit false
+set_option maxHeartbeats 0
 
 open Polynomial
 open CLPoly.Math

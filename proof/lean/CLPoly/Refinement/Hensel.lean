@@ -8380,6 +8380,30 @@ decreasing_by simp_wf; omega
   rw [henselFactorRangeList]
   simp
 
+/-- The source interval ending at the array size is its concrete list suffix. -/
+theorem henselFactorRangeList_suffix (factors : Array SparsePolyZp)
+    (index : Nat) :
+    henselFactorRangeList factors factors.size index =
+      factors.toList.drop index := by
+  rw [henselFactorRangeList]
+  by_cases hindex : index < factors.size
+  · rw [if_pos hindex]
+    have hdrop := List.drop_eq_getElem_cons
+      (l := factors.toList) (i := index) (by simpa using hindex)
+    rw [henselFactorRangeList_suffix factors (index + 1)]
+    simpa [getElem!_pos factors index hindex] using hdrop.symm
+  · rw [if_neg hindex]
+    exact (List.drop_eq_nil_iff.mpr
+      (by simpa using Nat.le_of_not_gt hindex)).symm
+termination_by factors.size - index
+decreasing_by simp_wf; omega
+
+/-- Reading the full source-array interval from zero yields exactly the
+array's concrete list, not merely a list with the same product. -/
+theorem henselFactorRangeList_full (factors : Array SparsePolyZp) :
+    henselFactorRangeList factors factors.size 0 = factors.toList := by
+  simpa using henselFactorRangeList_suffix factors 0
+
 theorem henselFactorRangeList_split
     (factors : Array SparsePolyZp) (start mid stop : Nat)
     (hstartMid : start ≤ mid) (hmidStop : mid ≤ stop) :

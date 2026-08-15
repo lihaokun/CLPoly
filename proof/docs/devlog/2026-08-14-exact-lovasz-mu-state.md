@@ -967,3 +967,33 @@ and the new FactorZZ module checks against that artifact.
 - 验证：正式 Hensel lake target 构建通过；`FactorZZ.lean` 内核检查通过
 - 下一步：把 adjusted 不可约性与 entry-level leaf origins、最终 normalization
   unit relation合成，导出最终 lifted array 的逐项模 p 不可约性
+
+## Selected irreducibility reaches the concrete Hensel output array
+
+`henselFactorRangeList_suffix` identifies the leaf interval used by the actual
+tree builder with the corresponding suffix of the adjusted source array.  In
+particular, the full interval starting at zero is definitionally tied to
+`adjusted.toList`; this removes the last list/array ordering ambiguity from the
+entry-level origin certificate.
+
+`selectionHenselFactors_mod_irreducible` now composes the successful concrete
+SelectPrime certificate with the actual first-factor adjustment, builder leaf
+order, lifted-node extraction, and final normalization.  A structural
+`Forall₂` induction transports irreducibility across the exact pointwise
+mod-p equalities, after which the already proved normalization unit relation
+transports it to every position of the returned Hensel array.  No factor is
+introduced existentially and no product-only argument is used as a substitute
+for pointwise provenance.
+
+## 度量（SelectPrime → final Hensel output quality）
+
+- 耗时：约 1.0 小时（完整 interval/list 身份、`Forall₂` 运输、数组下标合成）
+- 结论强度：实际 Hensel 返回数组的每个因子模选定素数后不可约
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Hensel` lake target 构建通过；
+  `FactorZZ.lean` 内核检查通过；正式 FactorZZ target 首次重放还暴露出
+  `SelectPrime.lean` 最终组合在默认 200k heartbeat 下超时，因此该大型真实
+  精化模块已显式使用无限 heartbeat；随后 SelectPrime 与 FactorZZ 正式
+  targets 均完整构建通过
+- 下一步：把这项逐因子质量接入完整精度的真实 Zassenhaus/van Hoeij 重组，
+  证明输出乘积与整数不可约性

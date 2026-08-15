@@ -796,3 +796,24 @@ array-read bridge.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：在 canonical topology 上归纳，证明提取叶列表与 adjusted 模因子列表
   逐项对应，再穿过 lift 与 normalization
+
+## Ordered source interval list for leaf correspondence
+
+`henselFactorRangeList` now denotes the exact source-array order over the same
+half-open interval used by the generated Hensel product loop.  Its recursion
+uses the concrete `index + 1` progression and the well-founded measure
+`stop - index`.  `henselFactorRangeList_split` proves that an interval is the
+ordered concatenation of its two midpoint halves, and the singleton theorem
+identifies a one-element interval with the actual array read.
+
+These lemmas provide the input side of the forthcoming pointwise `Forall₂`
+theorem between modular factors and concrete builder leaves; they do not
+introduce lifted outputs or expected factor values.
+
+## 度量（ordered Hensel input intervals）
+
+- 耗时：约 0.5 小时（良基列表 denotation、区间拆分、singleton 边界）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：组合 canonical topology 与 builder semantic certificate，得到初始叶子
+  和 adjusted 输入的逐项对应

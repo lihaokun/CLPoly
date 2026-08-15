@@ -8065,6 +8065,66 @@ noncomputable def henselFactorRangeProduct (p : Nat)
 termination_by index => stop - index
 decreasing_by simp_wf; omega
 
+/-- Ordered list denoted by the same half-open factor interval as
+`henselFactorRangeProduct`.  This retains the source array order and is used
+to state the pointwise leaf-origin theorem; it does not predict any lifted
+factor values. -/
+def henselFactorRangeList (factors : Array SparsePolyZp) (stop : Nat) :
+    Nat → List SparsePolyZp
+  | index =>
+      if index < stop then
+        factors[index]! :: henselFactorRangeList factors stop (index + 1)
+      else []
+termination_by index => stop - index
+decreasing_by simp_wf; omega
+
+@[simp] theorem henselFactorRangeList_self
+    (factors : Array SparsePolyZp) (stop : Nat) :
+    henselFactorRangeList factors stop stop = [] := by
+  rw [henselFactorRangeList]
+  simp
+
+theorem henselFactorRangeList_split
+    (factors : Array SparsePolyZp) (start mid stop : Nat)
+    (hstartMid : start ≤ mid) (hmidStop : mid ≤ stop) :
+    henselFactorRangeList factors stop start =
+      henselFactorRangeList factors mid start ++
+        henselFactorRangeList factors stop mid := by
+  rw [henselFactorRangeList]
+  by_cases hstartStop : start < stop
+  · rw [if_pos hstartStop]
+    by_cases hstartMidStrict : start < mid
+    · have hmidRange : henselFactorRangeList factors mid start =
+          factors[start]! :: henselFactorRangeList factors mid (start + 1) := by
+        rw [henselFactorRangeList, if_pos hstartMidStrict]
+      rw [hmidRange, List.cons_append]
+      congr 1
+      exact henselFactorRangeList_split factors (start + 1) mid stop
+        (by omega) hmidStop
+    · have hstartEqMid : start = mid := by omega
+      subst mid
+      have hstopRange : henselFactorRangeList factors stop start =
+          factors[start]! :: henselFactorRangeList factors stop (start + 1) := by
+        rw [henselFactorRangeList, if_pos hstartStop]
+      rw [henselFactorRangeList_self, List.nil_append]
+      exact hstopRange.symm
+  · have hstartEqStop : start = stop := by omega
+    subst stop
+    have hmidEq : mid = start := by omega
+    subst mid
+    simp
+termination_by stop - start
+decreasing_by simp_wf; omega
+
+theorem henselFactorRangeList_singleton
+    (factors : Array SparsePolyZp) (start stop : Nat)
+    (hlength : stop - start = 1) :
+    henselFactorRangeList factors stop start = [factors[start]!] := by
+  have hstop : stop = start + 1 := by omega
+  subst stop
+  rw [henselFactorRangeList, if_pos (by omega)]
+  simp
+
 /-- One factor is coprime to a product over a later half-open interval when
 it is coprime to every concrete factor in that interval. -/
 private theorem henselFactor_coprime_rangeProduct

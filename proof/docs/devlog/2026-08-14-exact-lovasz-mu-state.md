@@ -647,3 +647,30 @@ and cannot be supplied by a caller.
   无限 heartbeat 内核检查通过
 - 下一步：建立 van-Hoeij loop 的 live-product invariant并证明入口输出满足
   `RecombineCorrect`，随后接入 `FactorZZRawOps`
+
+## Generated heuristic precision is now concrete and well-founded
+
+The strict `FactorZZRawOps` boundary no longer accepts an injectable
+`heuristicStartingPrecision` implementation.  The generated FactorZZ module
+now executes the same floating-point FLINT estimate, the generated concrete
+Mignotte-bound routine, and the source power loop that finds the least
+exponent with `p^a > 2 |lc(f)| B_mig`.
+
+The power loop is total under the source prime precondition `p ≥ 2`.  Its
+well-founded measure is the remaining natural-number distance
+`target + 1 - pa`; on the source loop branch `pa ≤ target`, multiplication by
+the prime strictly increases `pa`.  Invalid non-prime inputs and an exponent
+that cannot fit the source 32-bit result are reported as raw execution faults,
+rather than being hidden by fuel, `partial`, or an assumed termination
+callback.
+
+## 度量（concrete heuristic precision）
+
+- 耗时：约 0.5 小时（生成入口、乘方循环度量、机器整数边界）
+- 删除的退化风险：`FactorZZRawOps` 不再允许调用者替换启发式精度执行
+- 良基度量：`target + 1 - pa`，递归分支由 `p ≥ 2` 与 `pa > 0` 严格下降
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：FactorZZ 生成器 stale check、生成 Lean 模块内核检查和 diff check 通过
+- 数学审计发现：严格重组目前仅闭合 trial-division 的乘积保持；最终
+  `RecombineCorrect` 所需不可约性仍必须从满 Mignotte 精度、模素不可约因子和
+  Zassenhaus 最小子集穷举推出，不能复用算法层接收 `h_irred` 参数的包装定理

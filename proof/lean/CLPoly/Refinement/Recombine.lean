@@ -9810,6 +9810,32 @@ theorem symmetricModRaw_toPolyMod (input output : SparsePolyZZ)
   simpa [Refinement.StrictHensel.toPolyMod_eq_termsToPolyMod] using
     symmetricModLoop_toPolyMod input modulus hmodulus 0 #[] output hrun
 
+/-- The generated content loop is exactly the source-order gcd fold over the
+remaining concrete coefficient cells.  This is the executable basis for
+proving that `primitiveRaw` really returns a primitive polynomial; no
+primitive-part specification is used to choose its result. -/
+theorem contentLoop_eq_foldl (input : SparsePolyZZ) (index acc : Nat) :
+    Generated.StrictRecombine.contentLoop input index acc =
+      (input.toList.drop index).foldl
+        (fun current term => Nat.gcd current term.2.natAbs) acc := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index acc with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.contentLoop]
+      split
+      next hindex =>
+        have hsuffix : input.toList.drop index = input[index] ::
+            input.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := input.toList) (i := index) (by simpa using hindex)
+        rw [hsuffix, List.foldl_cons]
+        exact ih (input.size - (index + 1)) (by omega)
+          (index + 1) (Nat.gcd acc input[index].2.natAbs) rfl
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        rw [List.drop_eq_nil_iff.mpr (by simpa using hle)]
+        rfl
+
 theorem primitiveDivideLoop_toPoly (input : SparsePolyZZ) (divisor : Int)
     (index : Nat) (result output : SparsePolyZZ)
     (hrun : Generated.StrictRecombine.primitiveDivideLoop input divisor index

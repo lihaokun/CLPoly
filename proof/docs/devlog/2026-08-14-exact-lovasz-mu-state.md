@@ -1897,3 +1897,21 @@ the corresponding strict raw stage.
 - C++ changes: none, so there is no new C++ b2b change surface in this step.
 - Verification: `lake env lean CLPoly/Refinement/Hensel.lean` passes with no
   error or `sorry` warning.
+
+## The concrete primitive-content loop is an exact gcd fold
+
+The next irreducibility obligation starts inside the generated
+`primitiveRaw` used by every successful Zassenhaus candidate.  Its recursive
+`contentLoop` is now identified with a source-order `List.foldl Nat.gcd` over
+the remaining concrete coefficient cells.
+
+The proof unfolds the generated well-founded loop at each array index, aligns
+`Array.getElem` with the corresponding `toList.drop` head, and recurses on
+`input.size - index`.  This supplies the executable gcd characterization
+needed to prove that coefficient-wise exact division returns an actually
+primitive polynomial; it does not assume a mathematical primitive-part
+oracle.
+
+- C++ changes: none, so there is no new C++ b2b change surface in this step.
+- Verification: `lake env lean CLPoly/Refinement/Recombine.lean` passes with
+  no error or `sorry` warning.

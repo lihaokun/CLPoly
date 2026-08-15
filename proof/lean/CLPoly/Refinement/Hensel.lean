@@ -4640,7 +4640,10 @@ def henselExtractedFactors :
         | some child => henselExtractedFactors child nodes)
 termination_by tree _ => tree.nodeCount
 decreasing_by
-  all_goals simp_all [Generated.StrictHensel.HenselLiftTree.nodeCount]
+  · exact Generated.StrictHensel.HenselLiftTree.left_nodeCount_lt
+      index child right
+  · exact Generated.StrictHensel.HenselLiftTree.right_nodeCount_lt
+      index left child
 
 /-- The semantic extraction trace returns the input prefix followed by exactly
 the node fields named by `henselExtractedFactors`, in source left-to-right
@@ -4708,18 +4711,24 @@ theorem HenselExtractCertificate.extractedFactors_forall₂
         by_contra hnot
         rw [Array.getElem?_eq_none (by omega)] at hnode
         contradiction
-      have hafterIndex : index < after.size := by omega
+      have hafterIndex : index < after.size := by
+        rw [← hreduce.1]
+        exact hindex
       have hnodeReduce := hreduce.2 index hindex hafterIndex
-      simp only [henselExtractedFactors]
-      apply List.Forall₂.append
+      have hnodeReduceBang :
+          HenselNodeReduces p nodes[index]! after[index]! := by
+        simpa [getElem!_def, Array.getElem?_eq_getElem hindex,
+          Array.getElem?_eq_getElem hafterIndex] using hnodeReduce
+      rw [henselExtractedFactors.eq_def, henselExtractedFactors.eq_def]
+      apply List.rel_append
       · cases left with
         | none =>
-            exact .cons hnodeReduce.1 .nil
+            exact .cons hnodeReduceBang.1 .nil
         | some child =>
             exact leftIH child rfl hreduce
       · cases right with
         | none =>
-            exact .cons hnodeReduce.2.1 .nil
+            exact .cons hnodeReduceBang.2.1 .nil
         | some child =>
             exact rightIH child rfl hreduce
 
@@ -9147,7 +9156,9 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           (getElem output parent hparentOutput) ∧
         HenselTreeNodeGCDInvariant this._p.toNat factors start stop
           (getElem output parent hparentOutput) ∧
-        HenselTreeRawBuildCertificate parent start stop parent output := by
+        HenselTreeRawBuildCertificate parent start stop parent output ∧
+        HenselTreeSemanticBuildCertificate this._p.toNat factors parent
+          start stop (henselTreeBuildTopology start stop parent) output := by
   intro nodes start stop parent hlength hstop hparent hparentLast
   rw [Generated.StrictHensel.__hensel_tree_build_recursive_raw_ir]
   rw [dif_pos hlength]
@@ -9215,7 +9226,7 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           omega) with
       ⟨afterLeft, hafterLeftRun, hafterLeftFrame, hparentAfterLeft,
         hafterLeftSizeExact, hafterLeftTopology, hafterLeftInvariant,
-        hafterLeftCertificate⟩
+        hafterLeftCertificate, hafterLeftSemantic⟩
     have hframeAfterLeft : HenselTreeArrayFrame nodes afterLeft parent :=
       hframeLeftReady.trans_fresh hafterLeftFrame (by
         dsimp [child]
@@ -9283,7 +9294,7 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             omega) with
         ⟨output, houtputRun, houtputFrame, hparentOutputBound,
           houtputSizeExact, houtputTopology, houtputInvariant,
-          houtputCertificate⟩
+          houtputCertificate, houtputSemantic⟩
       have hrightCountEq := henselTreeInternalNodeCount_eq mid stop hright
       have hparentNeRightChild : parent ≠ rightChild := by
         dsimp [rightChild]
@@ -9345,7 +9356,44 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
                 hafterLeftParent, hleftReadySelected, hchildEq,
                 hrightChildEq])
             (fun _ => by simpa [hchildEq] using hleftFinal')
-            (fun _ => by simpa [hrightChildEq] using hrightFinal)⟩
+            (fun _ => by simpa [hrightChildEq] using hrightFinal),
+        by
+          have hafterLeftOutputFrame :
+              HenselTreeArrayFrame afterLeft output parent :=
+            ((henselTreeArrayFrame_push afterLeft parent).trans
+              hrightReadyFrame).trans_fresh houtputFrame (by
+                dsimp [rightChild]
+                omega)
+          have hleftFinal := hafterLeftSemantic.of_preservesFrom
+            (hafterLeftOutputFrame.preservesFrom (by
+              dsimp [child]
+              omega))
+          have hchildEq : child = parent + 1 := by
+            dsimp [child]
+            omega
+          have hrightChildEq : rightChild = parent + 1 +
+              henselTreeInternalNodeCount start ((start + stop) / 2) := by
+            dsimp [rightChild, mid] at hleftCountEq hafterLeftSizeExact ⊢
+            simp [pushed] at hleftReadySize
+            omega
+          have hleftFinal' := hleftFinal.lower_mono
+            (by omega : parent ≤ child)
+          have hrightFinal := houtputSemantic.lower_mono
+            (by omega : parent ≤ rightChild)
+          rw [henselTreeBuildTopology]
+          rw [if_pos hleft, if_pos hright]
+          exact .node start stop parent _ _ output output[parent] (by omega)
+            (@Array.getElem?_eq_getElem _ output parent (by omega))
+            (hstoredInvariant.of_algebraEq (by
+              simpa [houtputParent] using hrightReadyStored))
+            (fun childTree hchildTree => by
+              injection hchildTree with htree
+              subst childTree
+              simpa [hchildEq] using hleftFinal')
+            (fun childTree hchildTree => by
+              injection hchildTree with htree
+              subst childTree
+              simpa [hrightChildEq] using hrightFinal)⟩
     · rw [dif_neg hright]
       have hparentAfterLeft : parent < afterLeft.size := by omega
       rcases henselTreeSetNodeRawIR_preserves_algebra afterLeft parent
@@ -9391,7 +9439,28 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
                   dsimp [child, mid] at *
                   omega))
             (fun _ => by simpa [hchildEq] using hleftFinal')
-            (fun h => False.elim (hright h))⟩
+            (fun h => False.elim (hright h)),
+        by
+          have hleftFinal := hafterLeftSemantic.of_preservesFrom
+            (houtputFrame.preservesFrom (by
+              dsimp [child]
+              omega))
+          have hchildEq : child = parent + 1 := by
+            dsimp [child]
+            omega
+          have hleftFinal' := hleftFinal.lower_mono
+            (by omega : parent ≤ child)
+          rw [henselTreeBuildTopology]
+          rw [if_pos hleft, if_neg hright]
+          exact .node start stop parent _ _ output output[parent] (by omega)
+            (Array.getElem?_eq_getElem houtputParentBound)
+            (hstoredInvariant.of_algebraEq
+              (houtputAlgebra.trans hafterLeftStored))
+            (fun childTree hchildTree => by
+              injection hchildTree with htree
+              subst childTree
+              simpa [hchildEq] using hleftFinal')
+            (fun childTree hchildTree => by contradiction)⟩
   · rw [dif_neg hleft]
     have hparentStored : parent < stored.size := by omega
     rcases henselTreeSetNodeRawIR_preserves_algebra stored parent
@@ -9449,7 +9518,7 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             omega) with
         ⟨output, houtputRun, houtputFrame, hparentOutputBound,
           houtputSizeExact, houtputTopology, houtputInvariant,
-          houtputCertificate⟩
+          houtputCertificate, houtputSemantic⟩
       have hrightCountEq := henselTreeInternalNodeCount_eq mid stop hright
       have hparentNeChild : parent ≠ child := by
         dsimp [child]
@@ -9502,7 +9571,29 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
                     houtputParent, hrightReadySelected, hpushedParent,
                     hafterLeftSelected, hchildEq]))
             (fun h => False.elim (hleft h))
-            (fun _ => by simpa [hchildEq] using hrightFinal)⟩
+            (fun _ => by simpa [hchildEq] using hrightFinal),
+        by
+          have hrightFinal := houtputSemantic.lower_mono (by
+            dsimp [child]
+            omega : parent ≤ child)
+          have hchildEq : child = parent + 1 +
+              henselTreeInternalNodeCount start ((start + stop) / 2) := by
+            dsimp [child, mid]
+            have hleftCount : henselTreeInternalNodeCount start
+                ((start + stop) / 2) = 0 := by
+              rw [henselTreeInternalNodeCount, dif_neg hleft]
+            omega
+          rw [henselTreeBuildTopology]
+          rw [if_neg hleft, if_pos hright]
+          exact .node start stop parent _ _ output output[parent] (by omega)
+            (@Array.getElem?_eq_getElem _ output parent (by omega))
+            (hstoredInvariant.of_algebraEq (by
+              simpa [houtputParent] using hrightReadyStored))
+            (fun childTree hchildTree => by contradiction)
+            (fun childTree hchildTree => by
+              injection hchildTree with htree
+              subst childTree
+              simpa [hchildEq] using hrightFinal)⟩
     · rw [dif_neg hright]
       have hparentAfterLeft : parent < afterLeft.size := by omega
       rcases henselTreeSetNodeRawIR_preserves_algebra afterLeft parent
@@ -9536,7 +9627,16 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
                   simp [HenselTreeNodeRawTopologyMatches, hleft, hright,
                     houtputSelected, hafterLeftSelected]))
             (fun h => False.elim (hleft h))
-            (fun h => False.elim (hright h))⟩
+            (fun h => False.elim (hright h)),
+        by
+          rw [henselTreeBuildTopology]
+          rw [if_neg hleft, if_neg hright]
+          exact .node start stop parent _ _ output output[parent] (by omega)
+            (Array.getElem?_eq_getElem houtputParentBound)
+            (hstoredInvariant.of_algebraEq
+              (houtputAlgebra.trans hafterLeftStored))
+            (fun childTree hchildTree => by contradiction)
+            (fun childTree hchildTree => by contradiction)⟩
 termination_by nodes start stop parent _ _ _ => stop - start
 decreasing_by all_goals omega
 
@@ -9728,6 +9828,8 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
       liftChildMatches (getElem output 0 hroot).right
           (match tree with | .node _ _ right => right) ∧
       HenselExtractInvariant tree output ∧
+      HenselTreeSemanticBuildCertificate this._p.toNat factors 0
+        0 factors.size tree output ∧
       HenselTreeNodeInitialInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
   dsimp only
@@ -9744,12 +9846,13 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
     (by simpa using htwo) (by simpa using hfitsInt32)
   have hextract : HenselExtractInvariant
       (henselTreeBuildTopology 0 factors.size 0) output :=
-    (hgcdInvariant.2.toExtractCertificate (by simpa using htwo) (by
+    (hgcdInvariant.2.1.toExtractCertificate (by simpa using htwo) (by
       simpa using hfitsInt32)).toInvariant
   have hcoprime := henselFactorRangeProducts_isCoprime this._p.toNat factors
     hpairwise 0 (factors.size / 2) factors.size (by omega) (by omega) (by simp)
   have hroot : 0 < output.size := by simpa using hframe.1
-  refine ⟨output, ?_, hroot, ?_, by simp, ?_, ?_, hextract, ?_⟩
+  refine ⟨output, ?_, hroot, ?_, by simp, ?_, ?_, hextract,
+    hgcdInvariant.2.2, ?_⟩
   · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
   · rw [htopologyCount, hcount]
     simpa using hsizeExact
@@ -9819,6 +9922,8 @@ def HenselLiftEntryCorrect
   ∃ target adjusted nodes liftedNodes outputM extracted,
     HenselLiftTargetCorrect f p aTarget target ∧
     HenselAdjustFirstFactorCorrect f factors p adjusted ∧
+    HenselTreeSemanticBuildCertificate p.toNat adjusted 0
+      0 factors.size (henselTreeBuildTopology 0 factors.size 0) nodes ∧
     HenselLiftLoopCorrect termination
       (henselTreeBuildTopology 0 factors.size 0) f target.toNat p.toNat nodes
         liftedNodes outputM ∧
@@ -9842,7 +9947,7 @@ theorem HenselLiftEntryCorrect.outputModulus_gt_target
       HenselLiftTargetCorrect f p aTarget target ∧ target < output.2 := by
   rcases hcorrect with
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
-      htarget, hadjust, hlift, hextract, hnormalize, houtputM⟩
+      htarget, hadjust, _hsemantic, hlift, hextract, hnormalize, houtputM⟩
   refine ⟨target, htarget, ?_⟩
   rw [houtputM]
   have htargetNonnegative' := htargetNonnegative target htarget
@@ -9937,9 +10042,13 @@ theorem __hensel_lift_upoly_raw_ir_refines
       (by rw [hadjustSize]; exact hinvariant.factorCount)
       (by rw [hadjustSize]; exact hinvariant.topologyFits) with
     ⟨nodes, hnodesRun, hroot, hsize, hrootIndex, hleft, hright,
-      hextractInvariant, hrootInvariant⟩
+      hextractInvariant, hsemanticInvariant, hrootInvariant⟩
   have htreeEq : Generated.StrictHensel.henselTreeBuildTopologyRawIR
       0 factors.size 0 = tree := henselTreeBuildTopologyRawIR_eq 0 factors.size 0
+  have hsemanticInvariant' :
+      HenselTreeSemanticBuildCertificate this._p.toNat adjusted 0
+        0 factors.size tree nodes := by
+    simpa [tree, hadjustSize] using hsemanticInvariant
   rcases __hensel_lift_loop_raw_ir_refines termination tree f target.toNat
       this._p.toNat nodes
       (hinvariant.liftReady target adjusted nodes htargetCorrect hadjustCorrect
@@ -9958,7 +10067,8 @@ theorem __hensel_lift_upoly_raw_ir_refines
     ⟨normalized, hnormalizeRun, hnormalizeCorrect⟩
   refine ⟨(normalized, outputM), ?_,
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
-      htargetCorrect, hadjustCorrect, hliftCorrect, hextractCorrect,
+      htargetCorrect, hadjustCorrect, hsemanticInvariant', hliftCorrect,
+      hextractCorrect,
       hnormalizeCorrect, rfl⟩⟩
   apply henselLiftUpolyRawIR_run_of_stages
     (hcount := hinvariant.factorCount) (htarget := htargetRun)

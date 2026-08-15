@@ -768,3 +768,31 @@ factor list nor a recombination witness.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：让现有 `strictHenselTreeBuildRecursiveRawIR_succeeds` 在四种子树分支中
   同时产出该证书，再归纳得到叶子与 adjusted 输入逐项对应
+
+## Actual Hensel builder now emits the semantic trace
+
+`strictHenselTreeBuildRecursiveRawIR_succeeds` now constructs a
+`HenselTreeSemanticBuildCertificate` along the generated builder execution.
+All four source shapes are covered: both recursive children, only the left
+child, only the right child, and two direct leaves.  Recursive certificates
+are transported through the actual intervening array writes using their
+proved frames, so every retained node still denotes its concrete input
+interval in the final builder array.
+
+`strictHenselTreeBuildRawIR_refines_topology_root` exposes this certificate for
+the canonical root topology, and `HenselLiftEntryCorrect` retains it beside
+the real lift-loop, extraction, and normalization traces.  Thus downstream
+proofs can recover the modular origin of each output factor without adding an
+existence witness or semantic oracle.  The leaf extraction helper also now
+uses explicit left/right `nodeCount` decrease lemmas and an explicit bounded
+array-read bridge.
+
+## 度量（builder semantic trace emission）
+
+- 耗时：约 1.25 小时（四分支组合、frame 运输、入口证书接线、完整检查）
+- 新证据形状：实际 builder 输出数组中每个节点保留对应输入区间语义
+- 良基性：叶提取分别使用左右子树 `nodeCount` 严格下降定理，无 fuel/partial
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：在 canonical topology 上归纳，证明提取叶列表与 adjusted 模因子列表
+  逐项对应，再穿过 lift 与 normalization

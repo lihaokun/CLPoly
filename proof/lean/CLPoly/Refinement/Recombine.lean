@@ -10825,6 +10825,114 @@ theorem binomialRaw_degree_half_eq_choose (degree : Nat)
     simpa using
       (binomialLoopRaw_eq_choose degree (degree / 2) 0 (by omega) hkNatLe)
 
+/-- The generated well-founded Newton loop is extensionally the kernel's
+verified natural square-root iterator.  This theorem compares the two real
+recurrences; it does not replace the generated execution. -/
+theorem isqrtCeilLoopRaw_eq_sqrtIter (n current : Nat) :
+    Generated.StrictHensel.__isqrt_ceil_loop_raw_ir n current =
+      Nat.sqrt.iter n current := by
+  induction current using Nat.strong_induction_on with
+  | h current ih =>
+      rw [Generated.StrictHensel.__isqrt_ceil_loop_raw_ir]
+      unfold Nat.sqrt.iter
+      by_cases hzero : current = 0
+      · subst current
+        simp
+      · rw [dif_neg hzero]
+        let next := (current + n / current) / 2
+        by_cases hnext : next < current
+        · simp only [next, dif_pos hnext]
+          exact ih next hnext
+        · simp only [next, dif_neg hnext]
+
+/-- The concrete generated Newton loop returns the floor square root whenever
+its actual starting estimate has the standard one-step upper bound. -/
+theorem isqrtCeilLoopRaw_floor_bounds (n initial : Nat)
+    (hinitial : n < (initial + 1) * (initial + 1)) :
+    let root := Generated.StrictHensel.__isqrt_ceil_loop_raw_ir n initial
+    root * root ≤ n ∧ n < (root + 1) * (root + 1) := by
+  rw [isqrtCeilLoopRaw_eq_sqrtIter]
+  exact ⟨Nat.sqrt.iter_sq_le n initial,
+    Nat.sqrt.lt_iter_succ_sq n initial hinitial⟩
+
+/-- The complete generated integer square-root helper is nonnegative and its
+square bounds the actual integer input from above.  The proof executes its
+bit-length initialisation, Newton recurrence, and final correction branch. -/
+theorem isqrtCeilRaw_nonnegative_and_square_ge (value : Int) :
+    0 ≤ Generated.StrictHensel.__isqrt_ceil_raw_ir value ∧
+      value ≤ Generated.StrictHensel.__isqrt_ceil_raw_ir value *
+        Generated.StrictHensel.__isqrt_ceil_raw_ir value := by
+  rw [Generated.StrictHensel.__isqrt_ceil_raw_ir]
+  by_cases hnonpositive : value ≤ 0
+  · rw [dif_pos hnonpositive]
+    simp [hnonpositive]
+  · rw [dif_neg hnonpositive]
+    have hpositive : 0 < value := lt_of_not_ge hnonpositive
+    have hnonzero : value ≠ 0 := ne_of_gt hpositive
+    let bits := ZZ.sizeinbase_nat value 2
+    let initial : Nat := 2 ^ ((bits + 1) / 2)
+    let root := Generated.StrictHensel.__isqrt_ceil_loop_raw_ir
+      value.natAbs initial
+    have hbits : value.natAbs < 2 ^ bits := by
+      exact ZZ.lt_pow_sizeinbase_nat hnonzero (by decide)
+    have hexponent : bits ≤ 2 * ((bits + 1) / 2) := by omega
+    have hpow : 2 ^ bits ≤ initial * initial := by
+      calc
+        2 ^ bits ≤ 2 ^ (2 * ((bits + 1) / 2)) :=
+          Nat.pow_le_pow_right (by decide) hexponent
+        _ = initial * initial := by
+          rw [show 2 * ((bits + 1) / 2) =
+            (bits + 1) / 2 + (bits + 1) / 2 by omega, pow_add]
+    have hinitial : value.natAbs < (initial + 1) * (initial + 1) := by
+      have hinitialPositive : 0 < initial := by positivity
+      exact lt_of_lt_of_le hbits (hpow.trans (by nlinarith))
+    have hroot := isqrtCeilLoopRaw_floor_bounds value.natAbs initial hinitial
+    change 0 ≤ (if (root : Int) * (root : Int) < value then
+        (root : Int) + 1 else (root : Int)) ∧
+      value ≤ (if (root : Int) * (root : Int) < value then
+          (root : Int) + 1 else (root : Int)) *
+        (if (root : Int) * (root : Int) < value then
+          (root : Int) + 1 else (root : Int))
+    have habs : (value.natAbs : Int) = value := by
+      rw [Int.natAbs_of_nonneg hpositive.le]
+    by_cases hbelow : (root : Int) * root < value
+    · rw [if_pos hbelow]
+      constructor
+      · positivity
+      · have hupper : value < ((root + 1 : Nat) : Int) * (root + 1) := by
+          rw [← habs]
+          exact_mod_cast hroot.2
+        norm_num at hupper ⊢
+        omega
+    · rw [if_neg hbelow]
+      constructor
+      · positivity
+      · exact le_of_not_gt hbelow
+
+/-- The complete successful generated Mignotte helper exposes the exact
+central binomial coefficient computed by its machine call, while retaining
+the generated norm fold and generated Newton square root verbatim. -/
+theorem mignotteBoundRaw_eq_choose_isqrt (f : SparsePolyZZ)
+    (leading : UMonomial × Int) (hleading : f[0]? = some leading)
+    (hdegree : leading.1.deg < 2 ^ 63) :
+    Generated.StrictHensel.__mignotte_bound_upoly_raw_ir f = .ok
+      ((leading.1.deg.choose (leading.1.deg / 2) : Int) *
+        Generated.StrictHensel.__isqrt_ceil_raw_ir
+          (Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir f)) := by
+  rw [Generated.StrictHensel.__mignotte_bound_upoly_raw_ir]
+  simp only [hleading]
+  rw [binomialRaw_degree_half_eq_choose leading.1.deg hdegree]
+
+/-- The concrete generated square-root component used in the Mignotte bound
+is a nonnegative upper square root of the concrete stored-coefficient fold. -/
+theorem mignotteNormRaw_nonnegative_and_square_ge (f : SparsePolyZZ) :
+    let norm := Generated.StrictHensel.__isqrt_ceil_raw_ir
+      (Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir f)
+    0 ≤ norm ∧
+      Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir f ≤ norm * norm :=
+  isqrtCeilRaw_nonnegative_and_square_ge
+    (Generated.StrictHensel.__upoly_norm_l2_sq_upoly_raw_ir f)
+
 private theorem intTermsToPoly_coeff_eq_zero_of_degrees_ne
     (terms : List (UMonomial × Int)) (degree : Nat)
     (hne : ∀ term ∈ terms, term.1.deg ≠ degree) :

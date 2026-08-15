@@ -13,3 +13,6 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.upolyNormL2SqRaw_eq_stored_sum
 #print axioms Refinement.StrictRecombine.binomialLoopRaw_eq_choose
 #print axioms Refinement.StrictRecombine.binomialRaw_degree_half_eq_choose
+#print axioms Refinement.StrictRecombine.isqrtCeilLoopRaw_eq_sqrtIter
+#print axioms Refinement.StrictRecombine.isqrtCeilRaw_nonnegative_and_square_ge
+#print axioms Refinement.StrictRecombine.mignotteBoundRaw_eq_choose_isqrt

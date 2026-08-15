@@ -2109,3 +2109,28 @@ single-file check passes without error or `sorry`.  Next, the generated
 Newton loop and its final correction branch must be proved to return the
 least integer upper square root of the concrete stored coefficient-square
 sum.
+
+## Generated Newton square root supplies the concrete norm upper bound
+
+The remaining executable Mignotte helpers are now composed through their
+actual generated control flow.
+
+- The well-founded `__isqrt_ceil_loop_raw_ir` is proved extensionally equal
+  to `Nat.sqrt.iter` by comparing the two recurrences at every current
+  estimate.  The generated loop remains the executed term; the library
+  iterator supplies its already verified floor-square-root bounds.
+- The source bit-length estimate `2^((bits+1)/2)` is proved large enough from
+  `ZZ.lt_pow_sizeinbase_nat`.  This discharges the exact initial condition
+  needed by the Newton recurrence.
+- The complete generated helper follows its nonpositive branch and its final
+  `root*root < n ? root+1 : root` correction, proving a nonnegative result
+  whose square is at least the original integer input.
+- `__mignotte_bound_upoly_raw_ir` is now exposed as the product of the exact
+  central `Nat.choose` result and that exact generated Newton norm, under the
+  real signed-degree bound at its stored leading term.
+
+No C++ files changed, so this step has no new C++ b2b change surface.
+`Recombine` checks without errors or `sorry`.  Next, the classical Mignotte
+coefficient inequality must be instantiated for a hypothetical primitive
+factor and linked to this concrete stored norm before the actual exhaustive
+candidate scan can recover it.

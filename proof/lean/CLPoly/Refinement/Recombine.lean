@@ -11820,6 +11820,249 @@ theorem subtractScaledNormalize_toPoly (remainder divisor : SparsePolyZZ)
   rw [subtractScaledTermsLoop_toPoly]
   simp [intTermsToPoly, SparsePolyZZ.toPoly]
 
+/-- For canonical nonempty sparse inputs, genuine polynomial divisibility
+forces the exact C++ head-coefficient divisibility test to succeed. -/
+theorem canonical_head_coefficient_dvd_of_poly_dvd
+    (divisor remainder : SparsePolyZZ)
+    (hdivisorCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical divisor)
+    (hremainderCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical remainder)
+    (hdivisor : 0 < divisor.size) (hremainder : 0 < remainder.size)
+    (hdivides : SparsePolyZZ.toPoly divisor ∣
+      SparsePolyZZ.toPoly remainder) :
+    divisor[0].2 ∣ remainder[0].2 := by
+  have hdivisorLeading := sparsePolyZZ_leadingCoeff_eq_head divisor
+    hdivisorCanonical hdivisor
+  have hremainderLeading := sparsePolyZZ_leadingCoeff_eq_head remainder
+    hremainderCanonical hremainder
+  have hremainderNe : SparsePolyZZ.toPoly remainder ≠ 0 := by
+    intro hzero
+    rw [hzero] at hremainderLeading
+    exact (hremainderCanonical.2 remainder[0]
+      (Array.getElem_mem_toList hremainder)) (by
+        simpa using hremainderLeading.symm)
+  rcases hdivides with ⟨mathematicalQuotient, hfactor⟩
+  have hquotientNe : mathematicalQuotient ≠ 0 := by
+    intro hzero
+    rw [hzero, mul_zero] at hfactor
+    exact hremainderNe hfactor
+  have hleading := congrArg Polynomial.leadingCoeff hfactor
+  rw [Polynomial.leadingCoeff_mul] at hleading
+  rw [hdivisorLeading, hremainderLeading] at hleading
+  exact ⟨mathematicalQuotient.leadingCoeff, hleading⟩
+
+/-- The checked decrease guard in one concrete exact-division iteration is
+true on canonical inputs whenever the current leading coefficient is exactly
+divisible.  This is the literal rank used by the generated well-founded
+recursion, not a fuel counter. -/
+theorem subtractScaledNormalize_divisionRank_lt
+    (divisor remainder : SparsePolyZZ)
+    (hdivisorCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical divisor)
+    (hremainderCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical remainder)
+    (hdivisor : 0 < divisor.size) (hremainder : 0 < remainder.size)
+    (hdegree : divisor[0].1.deg ≤ remainder[0].1.deg)
+    (hdivides : divisor[0].2 ∣ remainder[0].2) :
+    Generated.StrictRecombine.divisionRank
+        (Generated.StrictRecombine.subtractScaledNormalize remainder divisor
+          (remainder[0].2 / divisor[0].2)
+          (remainder[0].1.deg - divisor[0].1.deg)) <
+      Generated.StrictRecombine.divisionRank remainder := by
+  let degreeShift := remainder[0].1.deg - divisor[0].1.deg
+  let scale := remainder[0].2 / divisor[0].2
+  let next := Generated.StrictRecombine.subtractScaledNormalize remainder
+    divisor scale degreeShift
+  have hdivisorLeading := sparsePolyZZ_leadingCoeff_eq_head divisor
+    hdivisorCanonical hdivisor
+  have hremainderLeading := sparsePolyZZ_leadingCoeff_eq_head remainder
+    hremainderCanonical hremainder
+  have hdivisorNe : SparsePolyZZ.toPoly divisor ≠ 0 := by
+    intro hzero
+    rw [hzero] at hdivisorLeading
+    exact (hdivisorCanonical.2 divisor[0]
+      (Array.getElem_mem_toList hdivisor)) (by
+        simpa using hdivisorLeading.symm)
+  have hremainderNe : SparsePolyZZ.toPoly remainder ≠ 0 := by
+    intro hzero
+    rw [hzero] at hremainderLeading
+    exact (hremainderCanonical.2 remainder[0]
+      (Array.getElem_mem_toList hremainder)) (by
+        simpa using hremainderLeading.symm)
+  have hcancel : divisor[0].2 * scale = remainder[0].2 := by
+    exact Int.mul_ediv_cancel_of_dvd hdivides
+  have hscaleNe : scale ≠ 0 := by
+    intro hzero
+    rw [hzero, mul_zero] at hcancel
+    exact (hremainderCanonical.2 remainder[0]
+      (Array.getElem_mem_toList hremainder)) hcancel.symm
+  let leadTerm := Polynomial.monomial degreeShift scale *
+    SparsePolyZZ.toPoly divisor
+  have hmonomialNe : Polynomial.monomial degreeShift scale ≠ 0 := by
+    intro hzero
+    have hcoeff := congrArg
+      (fun poly : Polynomial Int => poly.coeff degreeShift) hzero
+    simp [hscaleNe] at hcoeff
+  have hleadTermNe : leadTerm ≠ 0 := by
+    exact mul_ne_zero hmonomialNe hdivisorNe
+  have hdivisorNatDegree := sparsePolyZZ_natDegree_eq_head divisor
+    hdivisorCanonical hdivisor
+  have hremainderNatDegree := sparsePolyZZ_natDegree_eq_head remainder
+    hremainderCanonical hremainder
+  have hleadTermNatDegree : leadTerm.natDegree =
+      (SparsePolyZZ.toPoly remainder).natDegree := by
+    rw [Polynomial.natDegree_mul
+      hmonomialNe hdivisorNe,
+      Polynomial.natDegree_monomial_eq degreeShift hscaleNe,
+      hdivisorNatDegree, hremainderNatDegree]
+    dsimp [degreeShift]
+    omega
+  have hleadTermLeading : leadTerm.leadingCoeff =
+      (SparsePolyZZ.toPoly remainder).leadingCoeff := by
+    rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_monomial,
+      hdivisorLeading, hremainderLeading]
+    simpa [scale, mul_comm] using hcancel
+  have hdegreeEq : (SparsePolyZZ.toPoly remainder).degree =
+      leadTerm.degree := by
+    rw [Polynomial.degree_eq_natDegree hremainderNe,
+      Polynomial.degree_eq_natDegree hleadTermNe, hleadTermNatDegree]
+  have hnextDegree : (SparsePolyZZ.toPoly next).degree <
+      (SparsePolyZZ.toPoly remainder).degree := by
+    rw [show SparsePolyZZ.toPoly next = SparsePolyZZ.toPoly remainder -
+        leadTerm by
+      exact subtractScaledNormalize_toPoly remainder divisor scale
+        degreeShift]
+    exact Polynomial.degree_sub_lt hdegreeEq hremainderNe
+      hleadTermLeading.symm
+  have hnextCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical next :=
+    normalization_canonical _
+  unfold Generated.StrictRecombine.divisionRank
+  rw [dif_pos hremainder]
+  by_cases hnext : 0 < next.size
+  · rw [dif_pos hnext]
+    have hnextNe : SparsePolyZZ.toPoly next ≠ 0 := by
+      intro hzero
+      have hnextLeading := sparsePolyZZ_leadingCoeff_eq_head next
+        hnextCanonical hnext
+      rw [hzero] at hnextLeading
+      exact (hnextCanonical.2 next[0] (Array.getElem_mem_toList hnext)) (by
+        simpa using hnextLeading.symm)
+    have hnatDegreeLt : (SparsePolyZZ.toPoly next).natDegree <
+        (SparsePolyZZ.toPoly remainder).natDegree :=
+      (Polynomial.natDegree_lt_natDegree_iff hnextNe).2 hnextDegree
+    rw [sparsePolyZZ_natDegree_eq_head next hnextCanonical hnext,
+      hremainderNatDegree] at hnatDegreeLt
+    simpa [Nat.succ_eq_add_one] using Nat.succ_lt_succ hnatDegreeLt
+  · rw [dif_neg hnext]
+    exact Nat.zero_lt_succ _
+
+/-- Completeness of the actual well-founded sparse exact-division loop on a
+canonical divisible remainder.  Every branch condition is discharged from
+the concrete representation and divisibility invariants, and recursion uses
+the generated `divisionRank` decrease proved above. -/
+theorem exactDivmodLoop_complete_of_dvd
+    (divisor remainder quotient : SparsePolyZZ)
+    (hdivisorCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical divisor)
+    (hremainderCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical remainder)
+    (hdivisor : 0 < divisor.size)
+    (hdivides : SparsePolyZZ.toPoly divisor ∣
+      SparsePolyZZ.toPoly remainder) :
+    ∃ outputQuotient,
+      Generated.StrictRecombine.exactDivmodLoop divisor remainder quotient =
+        .ok (outputQuotient, #[]) := by
+  induction hmeasure : Generated.StrictRecombine.divisionRank remainder using
+      Nat.strong_induction_on generalizing remainder quotient with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.exactDivmodLoop]
+      by_cases hremainder : 0 < remainder.size
+      · rw [dif_pos hremainder, dif_pos hdivisor]
+        dsimp only
+        have hdivisorHeadNonzero : divisor[0].2 ≠ 0 :=
+          hdivisorCanonical.2 divisor[0]
+            (Array.getElem_mem_toList hdivisor)
+        have hremainderNe : SparsePolyZZ.toPoly remainder ≠ 0 := by
+          intro hzero
+          have hleading := sparsePolyZZ_leadingCoeff_eq_head remainder
+            hremainderCanonical hremainder
+          rw [hzero] at hleading
+          exact (hremainderCanonical.2 remainder[0]
+            (Array.getElem_mem_toList hremainder)) (by
+              simpa using hleading.symm)
+        have hdegreePoly : (SparsePolyZZ.toPoly divisor).natDegree ≤
+            (SparsePolyZZ.toPoly remainder).natDegree :=
+          Polynomial.natDegree_le_of_dvd hdivides hremainderNe
+        have hdegree : divisor[0].1.deg ≤ remainder[0].1.deg := by
+          rw [sparsePolyZZ_natDegree_eq_head divisor hdivisorCanonical
+              hdivisor,
+            sparsePolyZZ_natDegree_eq_head remainder hremainderCanonical
+              hremainder] at hdegreePoly
+          exact hdegreePoly
+        rw [dif_pos hdegree, dif_pos hdivisorHeadNonzero]
+        have hcoeffDivides := canonical_head_coefficient_dvd_of_poly_dvd
+          divisor remainder hdivisorCanonical hremainderCanonical hdivisor
+          hremainder hdivides
+        rw [dif_pos hcoeffDivides]
+        let degreeShift := remainder[0].1.deg - divisor[0].1.deg
+        let scale := remainder[0].2 / divisor[0].2
+        let remainder' :=
+          Generated.StrictRecombine.subtractScaledNormalize remainder divisor
+            scale degreeShift
+        let quotient' := quotient.push (⟨degreeShift⟩, scale)
+        have hdecrease : Generated.StrictRecombine.divisionRank remainder' <
+            Generated.StrictRecombine.divisionRank remainder := by
+          exact subtractScaledNormalize_divisionRank_lt divisor remainder
+            hdivisorCanonical hremainderCanonical hdivisor hremainder hdegree
+            hcoeffDivides
+        rw [dif_pos hdecrease]
+        have hremainder'Canonical :
+            StrictPolynomialMod.SparsePolyZZCanonical remainder' :=
+          normalization_canonical _
+        have hremainder'Divides : SparsePolyZZ.toPoly divisor ∣
+            SparsePolyZZ.toPoly remainder' := by
+          rcases hdivides with ⟨mathematicalQuotient, hfactor⟩
+          refine ⟨mathematicalQuotient -
+            Polynomial.monomial degreeShift scale, ?_⟩
+          rw [show SparsePolyZZ.toPoly remainder' =
+              SparsePolyZZ.toPoly remainder -
+                Polynomial.monomial degreeShift scale *
+                  SparsePolyZZ.toPoly divisor by
+            exact subtractScaledNormalize_toPoly remainder divisor scale
+              degreeShift]
+          rw [hfactor]
+          ring
+        exact ih (Generated.StrictRecombine.divisionRank remainder')
+          (by simpa [hmeasure] using hdecrease) remainder' quotient'
+          hremainder'Canonical hremainder'Divides rfl
+      · rw [dif_neg hremainder]
+        have hempty : remainder = #[] :=
+          Array.size_eq_zero_iff.mp (Nat.eq_zero_of_not_pos hremainder)
+        subst remainder
+        exact ⟨quotient, rfl⟩
+
+/-- Public exact-division completeness theorem for the literal generated
+entry.  A canonical nonempty divisor that truly divides a canonical dividend
+causes the concrete recursion to return an actual quotient and the physical
+empty sparse remainder. -/
+theorem exactDivmodRaw_complete_of_dvd
+    (dividend divisor : SparsePolyZZ)
+    (hdividendCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical dividend)
+    (hdivisorCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical divisor)
+    (hdivisor : 0 < divisor.size)
+    (hdivides : SparsePolyZZ.toPoly divisor ∣
+      SparsePolyZZ.toPoly dividend) :
+    ∃ quotient,
+      Generated.StrictRecombine.exactDivmodRaw dividend divisor =
+        .ok (quotient, #[]) := by
+  unfold Generated.StrictRecombine.exactDivmodRaw
+  exact exactDivmodLoop_complete_of_dvd divisor dividend #[]
+    hdivisorCanonical hdividendCanonical hdivisor hdivides
+
 theorem exactDivmodLoop_toPoly (divisor remainder quotient q r : SparsePolyZZ)
     (hrun : Generated.StrictRecombine.exactDivmodLoop divisor remainder quotient =
       .ok (q, r)) :

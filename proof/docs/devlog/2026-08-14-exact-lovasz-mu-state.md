@@ -2373,3 +2373,27 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 remaining completeness boundary is now sharply localized: use the generated
 precision/symmetric-recovery facts and exact long division to contradict this
 rejection for a genuine bounded divisor.
+
+## Actual exact division is complete on canonical divisible inputs
+
+The generated sparse integer long-division recursion now has its missing
+completeness theorem.
+
+- `canonical_head_coefficient_dvd_of_poly_dvd` derives the literal C++
+  leading-coefficient divisibility branch from polynomial divisibility and
+  canonical nonempty sparse representations.
+- `subtractScaledNormalize_divisionRank_lt` proves that the exact generated
+  subtraction and normalization cancel the current leading term.  Its proof
+  uses the concrete head degrees and integer quotient, then establishes the
+  strict decrease of the same `divisionRank` used by generated well-founded
+  recursion.  No fuel or alternate division implementation is introduced.
+- `exactDivmodLoop_complete_of_dvd` inducts on that rank, discharges the
+  nonempty, degree, nonzero-leading, divisibility, and decrease checks, and
+  preserves divisibility through the actual recursive remainder update.
+- `exactDivmodRaw_complete_of_dvd` therefore returns an actual generated
+  quotient together with the physical empty sparse remainder for every
+  canonical nonempty divisor that genuinely divides the canonical dividend.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+the concrete symmetric-recovery theorem supplies the recovered true divisor
+to this exact-division result, ruling out rejection at its legal candidate.

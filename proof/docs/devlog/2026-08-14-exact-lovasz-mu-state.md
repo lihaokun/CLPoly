@@ -1383,3 +1383,26 @@ proofs come from the already executed normalization relation.
   正式 `lake build CLPoly.Refinement.Hensel` 通过（3328 jobs）
 - 下一步：把 adjustment 的 pairwise 证书沿 leaf origins 和 lift 输出传到
   最终 Hensel factor array
+
+## Pairwise coprimality reaches the final Hensel array
+
+`henselFactors_mod_pairwise_coprime` now follows the actual successful Hensel
+entry trace.  It rewrites the full leaf range to the adjusted input array,
+uses the pointwise `Forall₂` leaf-origin relation to transport each selected
+pair through the lift, and finally applies the proved normalization-unit
+coprimality theorem.  Thus distinct positions of the returned Hensel factor
+array remain coprime modulo the selected prime whenever the concrete
+adjustment invariant supplies pairwise coprimality.
+
+The premise is exactly the universally quantified `adjustedPairwise` field
+already required by the real Hensel entry invariant; it cannot prescribe an
+output or encode a factorization witness.
+
+## 度量（end-to-end Hensel pairwise trace）
+
+- 耗时：约 0.5 小时（Forall₂ 位置来源、normalization 组合）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`lake env lean CLPoly/Refinement/FactorZZ.lean` 通过；
+  正式 `lake build CLPoly.Refinement.FactorZZ` 通过（3545 jobs）
+- 下一步：用最终 Hensel 模因子的 irreducibility + pairwise coprimality
+  证明任意非平凡整数因子唯一对应一个合法 active subset

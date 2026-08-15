@@ -206,6 +206,69 @@ theorem selectionHenselFactors_mod_irreducible
       (Array.getElem_mem_toList hindex)
   exact hnormalizeRel.irreducible hextracted
 
+/-- Pairwise coprimality supplied for the concrete adjusted input array is
+transported through the actual Hensel leaf origins, lift extraction, and
+final source normalization to the returned lifted-factor array. -/
+theorem henselFactors_mod_pairwise_coprime
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime p.toNat)]
+    (hcount : 2 ≤ factors.size)
+    (hpairwise : ∀ adjusted,
+      StrictHensel.HenselAdjustFirstFactorCorrect f factors p adjusted →
+      ∀ i j (hi : i < adjusted.size) (hj : j < adjusted.size), i < j →
+        IsCoprime
+          (SparsePolyZp.toPoly p.toNat adjusted[i])
+          (SparsePolyZp.toPoly p.toNat adjusted[j]))
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f factors p
+      aTarget output) :
+    ∀ i j (hi : i < output.1.size) (hj : j < output.1.size), i < j →
+      IsCoprime (StrictHensel.toPolyMod p.toNat output.1[i])
+        (StrictHensel.toPolyMod p.toNat output.1[j]) := by
+  rcases hentry.preNormalizationOrigins hcount with
+    ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
+      horigins, hnormalizeRel⟩
+  have hadjustSize : adjusted.size = factors.size := by
+    cases hadjust with
+    | adjusted leading first adjusted hsource hfirst hadjustedEq =>
+        have hzero : 0 < factors.size := by omega
+        simp [Array.set!, hzero]
+  have hfull : StrictHensel.henselFactorRangeList adjusted factors.size 0 =
+      adjusted.toList := by
+    rw [← hadjustSize]
+    exact StrictHensel.henselFactorRangeList_full adjusted
+  rw [hfull] at horigins
+  have hlength : adjusted.size = extracted.size := by
+    simpa using horigins.length_eq
+  intro i j hi hj hij
+  have hiExtracted : i < extracted.size := by rw [hnormalizeRel.1]; exact hi
+  have hjExtracted : j < extracted.size := by rw [hnormalizeRel.1]; exact hj
+  have hiAdjusted : i < adjusted.size := by omega
+  have hjAdjusted : j < adjusted.size := by omega
+  have hiOrigin := horigins.get (by simpa using hiAdjusted)
+    (by simpa using hiExtracted)
+  have hjOrigin := horigins.get (by simpa using hjAdjusted)
+    (by simpa using hjExtracted)
+  have hiOrigin' : StrictHensel.toPolyMod p.toNat extracted[i] =
+      SparsePolyZp.toPoly p.toNat adjusted[i] := by
+    simpa using hiOrigin
+  have hjOrigin' : StrictHensel.toPolyMod p.toNat extracted[j] =
+      SparsePolyZp.toPoly p.toNat adjusted[j] := by
+    simpa using hjOrigin
+  have hadjustedCoprime := hpairwise adjusted hadjust i j hiAdjusted
+    hjAdjusted hij
+  have hextractedCoprime : IsCoprime
+      (StrictHensel.toPolyMod p.toNat extracted[i]!)
+      (StrictHensel.toPolyMod p.toNat extracted[j]!) := by
+    rw [getElem!_pos extracted i hiExtracted,
+      getElem!_pos extracted j hjExtracted]
+    rw [hiOrigin', hjOrigin']
+    simpa [getElem!_pos adjusted i hiAdjusted,
+      getElem!_pos adjusted j hjAdjusted] using hadjustedCoprime
+  simpa [getElem!_pos output.1 i hi, getElem!_pos output.1 j hj] using
+    hnormalizeRel.isCoprime hi hj hextractedCoprime
+
 end StrictFactorZZ
 
 end Refinement

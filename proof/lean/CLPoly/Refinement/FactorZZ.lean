@@ -19,6 +19,68 @@ namespace StrictFactorZZ
 
 open CLPoly.Math
 
+/-- A primitive integer polynomial is irreducible when its reduction at a
+prime is irreducible and the leading coefficient survives reduction.  This is
+the non-monic form needed for the actual primitive factors emitted by C++
+recombination.  The leading-coefficient hypothesis prevents a factor from
+becoming a constant merely through degree loss modulo `p`. -/
+theorem primitive_irreducible_of_irreducible_mod
+    (p : Nat) [Fact (Nat.Prime p)] (g : Polynomial Int)
+    (hprimitive : g.IsPrimitive)
+    (hleading : (g.leadingCoeff : ZMod p) ≠ 0)
+    (hmodIrreducible :
+      Irreducible (g.map (Int.castRingHom (ZMod p)))) :
+    Irreducible g := by
+  refine ⟨fun hunit => hmodIrreducible.not_isUnit
+      (hunit.map (Polynomial.mapRingHom (Int.castRingHom (ZMod p)))), ?_⟩
+  intro left right hfactor
+  have hleadingProduct :
+      (left.leadingCoeff : ZMod p) * (right.leadingCoeff : ZMod p) =
+        (g.leadingCoeff : ZMod p) := by
+    rw [← Int.cast_mul]
+    congr 1
+    rw [← Polynomial.leadingCoeff_mul, hfactor]
+  have hleftLeading : (left.leadingCoeff : ZMod p) ≠ 0 := by
+    intro hzero
+    rw [hzero, zero_mul] at hleadingProduct
+    exact hleading hleadingProduct.symm
+  have hrightLeading : (right.leadingCoeff : ZMod p) ≠ 0 := by
+    intro hzero
+    rw [hzero, mul_zero] at hleadingProduct
+    exact hleading hleadingProduct.symm
+  have hmapped :
+      g.map (Int.castRingHom (ZMod p)) =
+        left.map (Int.castRingHom (ZMod p)) *
+          right.map (Int.castRingHom (ZMod p)) := by
+    rw [← Polynomial.map_mul, hfactor]
+  rcases hmodIrreducible.isUnit_or_isUnit hmapped with hleft | hright
+  · have hleftPrimitive : left.IsPrimitive :=
+      Polynomial.isPrimitive_of_dvd hprimitive
+        (Dvd.intro right hfactor.symm)
+    have hdegreeMapped :
+        (left.map (Int.castRingHom (ZMod p))).degree = left.degree :=
+      Polynomial.degree_map_eq_of_leadingCoeff_ne_zero _ hleftLeading
+    have hdegreeZero : left.degree = 0 := by
+      rw [← hdegreeMapped]
+      exact Polynomial.isUnit_iff_degree_eq_zero.mp hleft
+    rw [Polynomial.eq_C_of_degree_eq_zero hdegreeZero] at hleftPrimitive ⊢
+    exact Or.inl (Polynomial.isUnit_C.mpr
+      (Polynomial.isPrimitive_iff_isUnit_of_C_dvd.mp hleftPrimitive
+        (left.coeff 0) dvd_rfl))
+  · have hrightPrimitive : right.IsPrimitive :=
+      Polynomial.isPrimitive_of_dvd hprimitive
+        (Dvd.intro_left left hfactor.symm)
+    have hdegreeMapped :
+        (right.map (Int.castRingHom (ZMod p))).degree = right.degree :=
+      Polynomial.degree_map_eq_of_leadingCoeff_ne_zero _ hrightLeading
+    have hdegreeZero : right.degree = 0 := by
+      rw [← hdegreeMapped]
+      exact Polynomial.isUnit_iff_degree_eq_zero.mp hright
+    rw [Polynomial.eq_C_of_degree_eq_zero hdegreeZero] at hrightPrimitive ⊢
+    exact Or.inr (Polynomial.isUnit_C.mpr
+      (Polynomial.isPrimitive_iff_isUnit_of_C_dvd.mp hrightPrimitive
+        (right.coeff 0) dvd_rfl))
+
 /-- The sparse factor array returned by a genuinely refined successful prime
 selection consists pointwise of the irreducible factors recorded by that
 selection's concrete candidate certificate. -/

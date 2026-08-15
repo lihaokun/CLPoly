@@ -1230,3 +1230,28 @@ input primitive polynomial.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：从 lifted Zp 因子的不可约来源与真实重组候选性质，
   闭合重组输出的 ZZ 不可约性，再接入 FactorZZ 顶层组合
+
+## Primitive modular irreducibility bridge
+
+`primitive_irreducible_of_irreducible_mod` supplies the non-monic reduction
+criterion required by the concrete C++ recombination output.  If a primitive
+integer polynomial has irreducible reduction at the selected prime and its
+leading coefficient survives reduction, then it is irreducible over the
+integers.
+
+The proof analyzes an arbitrary actual product decomposition.  Survival of
+the product leading coefficient forces both factor leading coefficients to
+survive modulo the prime, so neither mapped factor can become constant by
+degree loss.  Modular irreducibility makes one mapped factor a unit; its
+preserved degree is therefore zero.  Since each divisor of the primitive
+product is primitive, that constant integer factor is a unit.  No abstract
+factorization witness or semantic recombination premise is introduced.
+
+## 度量（primitive modular irreducibility）
+
+- 耗时：约 0.5 小时（非首一 Gauss 桥、次数保持、primitive 常数单位）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`lake env lean CLPoly/Refinement/FactorZZ.lean` 通过；
+  正式 `lake build CLPoly.Refinement.FactorZZ` 通过（3545 jobs）
+- 下一步：证明真实 Zassenhaus 组合枚举无遗漏，并将 Hensel
+  的模素数不可约来源输送到每个成功恢复的 primitive 块

@@ -1659,3 +1659,36 @@ normalization trace constructors and proves every output index canonical.
 - 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
 - 下一步：沿实际 builder/step/lift/extract trace 传递叶因子的 canonicality，
   再由 modular irreducibility 推出逐项 nonempty
+
+## Natural-language proof: canonical generated pair-vector addition
+
+Track the actual two source cursors and the generated output prefix.  The
+cursor invariant states that the prefix is canonical and every term remaining
+in either input suffix has degree strictly below every emitted prefix term.
+At a source step, canonicality of an input says its cursor tail is strictly
+below its current term.  The generated comparison selects the larger current
+degree; therefore the other complete suffix is also below the selected term.
+For equal degrees both cursors advance and `pushNonzero` either appends their
+coefficient sum or emits nothing, exactly matching the C++ zero-compaction.
+
+A generic cursor-push lemma preserves all three invariant clauses.  Functional
+induction on `pairVecAddLoop` then follows its five advancing branches and its
+terminal branch.  At the public `0,0,#[]` entry, the prefix clauses are
+vacuous, yielding canonicality of the exact generated sparse addition result.
+No semantic polynomial equality is used to infer a representation property.
+
+`PairVecAddCursorValid`, its two concrete push lemmas, and
+`pairVecAddLoop_canonical` now implement this proof.  `pairVecAdd_canonical`
+specializes it to the exact empty-prefix entry invoked by generated Hensel
+arithmetic.
+
+## 度量（generated sparse addition canonicality）
+
+- 耗时：约 1 小时（frontier invariant、五个 source branches、数组 cursor API）
+- 迭代：2 轮单文件编译-修复
+- Lean 新增/修改行数：约 215 行（含证明草稿）
+- 对应 C++ 行数：约 25 行 `pair_vec_add` iterator merge；C++ 变化为无，因此无新的 C++ b2b 变更面
+- 放弃的方案：从多项式语义等式反推 canonical；表示不唯一，无法成立
+- 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
+- 下一步：证明 generated scale/mul/sub 的 canonical preservation，组合出
+  每个真实 Hensel step 的 `g/h` canonicality

@@ -955,6 +955,20 @@ theorem get_deg_toNatClampNeg_eq_head (f : SparsePolyZZ)
     simp [get_deg, Array.isEmpty_iff, hne, getElem!_pos f 0 hnonempty]
   rw [hget, hsignedNat]
 
+/-- Signed-integer view of the same exact source degree read. -/
+theorem get_deg_toInt_eq_head (f : SparsePolyZZ)
+    (hnonempty : 0 < f.size) (hdegree : f[0]!.1.deg < 2 ^ 63) :
+    (get_deg f).toInt = (f[0]!.1.deg : Int) := by
+  have hne : f ≠ #[] := by
+    intro hempty
+    subst f
+    simp at hnonempty
+  have hget : get_deg f = f[0]!.1.deg.toUInt64.toInt64 := by
+    simp [get_deg, Array.isEmpty_iff, hne, getElem!_pos f 0 hnonempty]
+  rw [hget]
+  change f[0]!.1.deg.toInt64.toInt = (f[0]!.1.deg : Int)
+  exact Int64.toInt_ofNat_of_lt hdegree
+
 private theorem int64_sub_toNatClampNeg (a b : Int64)
     (hb : (0 : Int64) ≤ b) (hba : b ≤ a) :
     (a - b).toNatClampNeg = a.toNatClampNeg - b.toNatClampNeg := by
@@ -2897,6 +2911,40 @@ theorem __upoly_divmod_mod_raw_ir_remainder_get_deg_lt_of_run
   apply hinactive
   simp only [Bool.and_eq_true]
   exact ⟨by simp [Array.isEmpty, Nat.ne_of_gt hr], decide_eq_true hge⟩
+
+/-- Every concrete term returned in the generated modular remainder lies
+strictly below the divisor's physical head.  This combines the actual loop
+stop with canonical sparse ordering and exact signed machine-degree reads. -/
+theorem __upoly_divmod_mod_raw_ir_remainder_terms_below_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f g q r : SparsePolyZZ) (m : Int)
+    (hrun : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      f g m = .ok (q, r))
+    (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hrCanonical : StrictPolynomialMod.SparsePolyZZCanonical r)
+    (hrDegrees : DegreesBound r) :
+    ∀ term ∈ r.toList, term.1.deg < g[0]!.1.deg := by
+  intro term hterm
+  have hr : 0 < r.size := by
+    have hlength : 0 < r.toList.length := List.length_pos_iff.mpr
+      (List.ne_nil_of_mem hterm)
+    simpa using hlength
+  have hrHeadMem : r[0]! ∈ r.toList := by
+    rw [getElem!_pos r 0 hr]
+    exact Array.getElem_mem_toList hr
+  have hrDegree : r[0]!.1.deg < 2 ^ 63 := hrDegrees r[0]! hrHeadMem
+  have hgetLt :=
+    __upoly_divmod_mod_raw_ir_remainder_get_deg_lt_of_run termination
+      f g q r m hrun hr
+  have hheadLt : r[0]!.1.deg < g[0]!.1.deg := by
+    have hgetLtInt : (get_deg r).toInt < (get_deg g).toInt := by
+      simpa only [Int64.lt_iff_toInt_lt] using hgetLt
+    rw [get_deg_toInt_eq_head r hr hrDegree,
+      get_deg_toInt_eq_head g hg hgDegree] at hgetLtInt
+    exact_mod_cast hgetLtInt
+  exact lt_of_le_of_lt
+    (canonical_cursor_degree_le r 0 hr hrCanonical term (by
+      simpa using hterm)) hheadLt
 
 /-- The concrete generated `__upoly_mod_coeff` call always succeeds and
 preserves the decoded polynomial modulo the requested modulus. -/

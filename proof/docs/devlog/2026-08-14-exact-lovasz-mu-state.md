@@ -2479,3 +2479,23 @@ coefficient-one head under the strict remainder-degree premise.
 No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the actual modular-divmod stopping theorem supplies the remainder-degree
 premise, closing leading-term preservation for one generated Hensel step.
+
+## Convert the concrete division stop to every sparse term
+
+The generated modular-divmod stopping condition now supplies exactly the
+termwise premise consumed by the concrete Hensel correction theorem.
+
+- `get_deg_toInt_eq_head` identifies the signed `Int64` value returned by the
+  source `get_deg` helper with the mathematical natural exponent stored in a
+  bounded nonempty sparse head.
+- `__upoly_divmod_mod_raw_ir_remainder_terms_below_of_run` combines that
+  identity with the actual trace stop, the returned remainder's canonical
+  ordering, and its machine-degree bounds.  Every physically stored
+  remainder term is therefore strictly below the divisor's physical head.
+- The result is derived from the exact raw call and its finite trace; no
+  abstract Euclidean remainder is substituted for the generated output.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Next,
+the trace is shown to preserve machine-degree bounds to its returned
+remainder, after which the theorem instantiates directly inside the generated
+Hensel factor phase.

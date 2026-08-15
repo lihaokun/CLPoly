@@ -1491,6 +1491,80 @@ theorem resetCombinationSuffix_getElem_le (indices : Array Nat)
 termination_by indices.size - (pivot + 1 + offset)
 decreasing_by simp only [Array.size_set]; omega
 
+/-- Cells already lying before the next suffix-write position are preserved
+by all later source writes. -/
+theorem resetCombinationSuffix_getElem_before_position (indices : Array Nat)
+    (pivot offset index : Nat) (hindex : index < indices.size)
+    (hbefore : index < pivot + 1 + offset) :
+    (Generated.StrictRecombine.resetCombinationSuffix
+      indices pivot offset)[index]! = indices[index]! := by
+  rw [Generated.StrictRecombine.resetCombinationSuffix]
+  split
+  next hposition =>
+    rw [resetCombinationSuffix_getElem_before_position
+      (indices.set (pivot + 1 + offset)
+        (indices[pivot + offset]'(by omega) + 1))
+      pivot (offset + 1) index (by simpa using hindex) (by omega)]
+    rw [getElem!_pos _ index (by simpa using hindex), Array.getElem_set]
+    rw [if_neg (by omega)]
+    rw [getElem!_pos indices index hindex]
+  next hposition => rfl
+termination_by indices.size - (pivot + 1 + offset)
+decreasing_by simp only [Array.size_set]; omega
+
+/-- Every not-yet-reset suffix cell receives the exact smallest value allowed
+after the pivot: the previous reset cell plus one.  This is the source-level
+minimal-suffix fact needed to identify `nextCombination` as an immediate
+lexicographic successor. -/
+theorem resetCombinationSuffix_getElem_suffix (indices : Array Nat)
+    (pivot offset index : Nat)
+    (hpivotOffset : pivot + offset < indices.size)
+    (hindex : index < indices.size)
+    (hsuffix : pivot + 1 + offset ≤ index) :
+    (Generated.StrictRecombine.resetCombinationSuffix
+      indices pivot offset)[index]! =
+      indices[pivot + offset]! + (index - (pivot + offset)) := by
+  rw [Generated.StrictRecombine.resetCombinationSuffix]
+  split
+  next hposition =>
+    let updated := indices.set (pivot + 1 + offset)
+      (indices[pivot + offset]'(by omega) + 1)
+    have hupdated :
+        updated[pivot + offset + 1]! = indices[pivot + offset]! + 1 := by
+      rw [getElem!_pos updated (pivot + offset + 1) (by
+        dsimp only [updated]
+        simp only [Array.size_set]
+        omega)]
+      simp only [updated, Array.getElem_set]
+      rw [if_pos (by omega)]
+      rw [getElem!_pos indices (pivot + offset) hpivotOffset]
+    by_cases hcurrent : index = pivot + 1 + offset
+    · subst index
+      rw [resetCombinationSuffix_getElem_before_position updated pivot
+        (offset + 1) (pivot + 1 + offset)
+        (by
+          dsimp only [updated]
+          simpa only [Array.size_set] using hposition)
+        (by omega)]
+      rw [show pivot + 1 + offset = pivot + offset + 1 by omega, hupdated]
+      omega
+    · rw [resetCombinationSuffix_getElem_suffix updated pivot (offset + 1)
+        index (by dsimp only [updated]; simp only [Array.size_set]; omega)
+        (by simpa only [updated, Array.size_set] using hindex) (by omega)]
+      rw [show pivot + (offset + 1) = pivot + offset + 1 by omega, hupdated]
+      omega
+  next hposition => omega
+termination_by indices.size - (pivot + 1 + offset)
+decreasing_by simp only [Array.size_set]; omega
+
+theorem resetCombinationSuffix_getElem_after_pivot (indices : Array Nat)
+    (pivot index : Nat) (hpivot : pivot < indices.size)
+    (hindex : index < indices.size) (hafter : pivot < index) :
+    (Generated.StrictRecombine.resetCombinationSuffix indices pivot 0)[index]! =
+      indices[pivot]! + (index - pivot) := by
+  exact resetCombinationSuffix_getElem_suffix indices pivot 0 index hpivot
+    hindex (by omega)
+
 private def ValidCombination (upper count : Nat) (indices : Array Nat) : Prop :=
   indices.size = count ∧
     ∀ index (hindex : index < indices.size),
@@ -1730,6 +1804,51 @@ theorem nextCombination_true_pivot (indices next : Array Nat) (upper : Nat)
             getElem!_pos indices index hindexBounds]
           rw [Array.getElem_set]
           rw [if_neg (by omega)]
+      next hpivotBounds => simp at hrun
+  next hfits => simp at hrun
+
+/-- The complete value-level shape of a successful source successor: prefix
+cells are unchanged, the rightmost available pivot is incremented once, and
+every suffix cell is reset to the unique consecutive minimum. -/
+theorem nextCombination_true_minimal_suffix (indices next : Array Nat)
+    (upper : Nat)
+    (hrun : Generated.StrictRecombine.nextCombination indices upper =
+      (true, next)) :
+    ∃ pivot, ∃ hpivot : pivot < indices.size,
+      next[pivot]! = indices[pivot]! + 1 ∧
+      (∀ index, index < pivot → next[index]! = indices[index]!) ∧
+      (∀ index (hindex : index < indices.size), pivot < index →
+        next[index]! = indices[pivot]! + 1 + (index - pivot)) := by
+  unfold Generated.StrictRecombine.nextCombination at hrun
+  split at hrun
+  next hfits =>
+    split at hrun
+    next hpivotNone => simp at hrun
+    next pivot hpivotSome =>
+      split at hrun
+      next hpivotBounds =>
+        have hpivotLt := nextCombinationPivot_some_lt indices upper 0 pivot
+          hpivotSome
+        have hout := Prod.mk.inj hrun
+        have hnext := hout.2
+        subst next
+        refine ⟨pivot, hpivotLt, ?_, ?_, ?_⟩
+        · rw [resetCombinationSuffix_getElem_le _ pivot 0 pivot
+            (by simpa using hpivotLt) (Nat.le_refl _)]
+          simp [getElem!_pos, hpivotBounds]
+        · intro index hindex
+          have hindexBounds : index < indices.size := by omega
+          rw [resetCombinationSuffix_getElem_le _ pivot 0 index
+            (by simpa using hindexBounds) (Nat.le_of_lt hindex)]
+          rw [getElem!_pos _ index (by simpa using hindexBounds),
+            getElem!_pos indices index hindexBounds, Array.getElem_set]
+          rw [if_neg (by omega)]
+        · intro index hindex hafter
+          rw [resetCombinationSuffix_getElem_after_pivot _ pivot index
+            (by simpa using hpivotLt) (by simpa using hindex) hafter]
+          rw [getElem!_pos _ pivot (by simpa using hpivotLt),
+            Array.getElem_set, if_pos rfl,
+            getElem!_pos indices pivot hpivotLt]
       next hpivotBounds => simp at hrun
   next hfits => simp at hrun
 

@@ -1279,3 +1279,28 @@ the immediate successor among strictly increasing bounded arrays.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：证明 `resetCombinationSuffix` 构造严格递增的最小后缀，
   然后得到 `nextCombination` 的直接后继与 scan 全覆盖
+
+## Exact minimal suffix of every combination successor
+
+Two well-founded frame/value theorems now characterize the generated
+`resetCombinationSuffix` recursion.  Cells before the next write position are
+preserved by every later write, while each cell at or after that position is
+exactly the prior reset value plus its distance.  At offset zero, every cell
+right of the pivot is therefore the pivot value plus `index - pivot`.
+
+`nextCombination_true_minimal_suffix` lifts these facts through the complete
+generated C++ helper.  Every `true` result has a concrete pivot such that the
+left prefix is unchanged, the pivot increases by exactly one, and the entire
+right suffix is the unique consecutive minimum beginning at the new pivot.
+Together with the already proved rightmost-pivot/maximal-old-suffix theorem,
+this supplies both value halves of the immediate-successor argument; it does
+not reason through an alternative list-combination implementation.
+
+## 度量（combination minimal successor suffix）
+
+- 耗时：约 0.75 小时（processed-prefix frame、suffix 精确值、true 入口组合）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：定义固定大小严格递增组合的 lex 顺序，证明不存在
+  介于当前数组与该最小后缀结果之间的合法组合

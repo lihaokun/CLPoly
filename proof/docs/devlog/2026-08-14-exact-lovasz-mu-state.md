@@ -1619,3 +1619,43 @@ selected factors, all already present in the Hensel execution invariants.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：从 Hensel output invariant 实例化两个 canonical boundary
   wrappers，并在 `zassenhausAttempt` 中关闭 leading/constant accept 分支
+
+## Natural-language proof: canonical final Hensel normalization
+
+The generated normalization block either leaves the extracted array unchanged
+or replaces exactly index zero by
+`modCoeffOutput (scaleCoeffs first inverse) m`.  For the changed factor, unfold
+the two concrete generated traversals as a single `filterMap` over the original
+term list.  Every retained term has the same monomial degree as its source, so
+the strict descending chain follows from the source chain by `Pairwise.filterMap`;
+the generated guard supplies the retained coefficient's nonzeroness.  This
+direct argument is important because `scaleCoeffs first inverse` itself need
+not be canonical when a scaled coefficient is zero.
+
+For an arbitrary output index, split on whether it is zero.  At zero, use the
+actual `HenselNormalizeCorrect.normalized` run equation and the direct
+filter-map theorem above.  At every other index, `Array.set!` reads the exact
+unchanged input cell.  The empty and already-one source branches are identities.
+Thus pointwise canonicality is transported through the real generated branch,
+without adding an output field to an execution invariant.
+
+Nonemptiness will be derived separately from the already-proved modular origin
+and unit-scaling relation: an adjusted irreducible finite-field factor is
+nonzero; multiplication by the normalization unit remains nonzero; an empty
+sparse array decodes to the zero polynomial, contradiction.  This avoids an
+extra representation oracle and covers both normalized and untouched factors.
+
+`modCoeffOutput_scaleCoeffs_canonical` now implements the direct traversal
+argument.  `HenselNormalizeCorrect.canonical` lifts it through all three exact
+normalization trace constructors and proves every output index canonical.
+
+## 度量（Hensel final-normalization canonicality）
+
+- 耗时：约 0.75 小时（natural-language proof、filterMap chain、dependent array index）
+- 迭代：3 轮单文件编译-修复
+- Lean 新增/修改行数：约 95 行（含证明草稿）
+- 对应 C++ 行数：约 12 行最终 normalization 分支；C++ 变化为无，因此无新的 C++ b2b 变更面
+- 放弃的方案：先证明中间 `scaleCoeffs` canonical；当缩放产生零系数时该命题为假，改为直接证明后续过滤结果
+- 验证：单文件 `lake env lean CLPoly/Refinement/Hensel.lean` 通过
+- 下一步：沿实际 builder/step/lift/extract trace 传递叶因子的 canonicality，
+  再由 modular irreducibility 推出逐项 nonempty

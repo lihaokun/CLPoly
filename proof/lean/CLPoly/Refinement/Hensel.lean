@@ -1209,6 +1209,55 @@ theorem modCoeffOutput_canonical (f : SparsePolyZZ) (m : Int)
       simpa using hnonzero
     next hzero => contradiction
 
+/-- The exact composition used by the final Hensel normalization is canonical
+whenever its source factor is canonical.  This is proved directly for the
+generated map/filter traversal: the intermediate scaled array may contain
+zero coefficients and therefore need not itself satisfy the invariant. -/
+theorem modCoeffOutput_scaleCoeffs_canonical (f : SparsePolyZZ)
+    (scale modulus : Int)
+    (hf : StrictPolynomialMod.SparsePolyZZCanonical f) :
+    StrictPolynomialMod.SparsePolyZZCanonical
+      (Generated.StrictHensel.modCoeffOutput
+        (Generated.StrictHensel.scaleCoeffs f scale) modulus) := by
+  unfold StrictPolynomialMod.SparsePolyZZCanonical
+  constructor
+  · let degreeGreater : (UMonomial × Int) → (UMonomial × Int) → Prop :=
+      fun a b => a.1.deg > b.1.deg
+    letI : Trans degreeGreater degreeGreater degreeGreater :=
+      ⟨by
+        intro a b c hab hbc
+        dsimp [degreeGreater] at hab hbc ⊢
+        omega⟩
+    apply List.isChain_iff_pairwise.mpr
+    rw [Generated.StrictHensel.modCoeffOutput, Array.toList_filterMap,
+      Generated.StrictHensel.scaleCoeffs, Array.toList_map]
+    apply List.Pairwise.filterMap (R := degreeGreater) (S := degreeGreater)
+      (fun term =>
+        let coefficient := ZZ.fdiv_r term.2 term.2 modulus
+        if coefficient != 0 then some (term.1, coefficient) else none)
+      (fun a b hab outputA ha outputB hb => by
+        dsimp only at ha hb
+        split at ha <;> try contradiction
+        split at hb <;> try contradiction
+        simp only [Option.some.injEq] at ha hb
+        subst outputA
+        subst outputB
+        exact hab)
+    rw [List.pairwise_map]
+    simpa [degreeGreater] using List.isChain_iff_pairwise.mp hf.1
+  · intro term hterm
+    rw [Generated.StrictHensel.modCoeffOutput, Array.toList_filterMap,
+      Generated.StrictHensel.scaleCoeffs, Array.toList_map,
+      List.mem_filterMap] at hterm
+    rcases hterm with ⟨source, _, hsource⟩
+    dsimp only at hsource
+    split at hsource
+    next hnonzero =>
+      simp only [Option.some.injEq] at hsource
+      subst term
+      simpa using hnonzero
+    next hzero => contradiction
+
 /-- Removing the leading array cell preserves strict degree order and all
 remaining nonzero coefficients. -/
 theorem eraseLeading_canonical (f : SparsePolyZZ) (hfsize : 0 < f.size)
@@ -5012,6 +5061,53 @@ theorem HenselNormalizeCorrect.unitRel
             (@Array.getElem_setIfInBounds _ before 0 normalized index hbefore)
         rw [hget]
         simp
+
+/-- The exact generated final-normalization branch preserves the sparse
+integer representation invariant pointwise.  Only index zero can be
+rewritten, and its replacement is the concrete scale/filter output. -/
+theorem HenselNormalizeCorrect.canonical
+    {before after : Array SparsePolyZZ} {m : ZZ}
+    (hcorrect : HenselNormalizeCorrect before m after)
+    (hbefore : ∀ index (hindex : index < before.size),
+      StrictPolynomialMod.SparsePolyZZCanonical before[index]) :
+    ∀ index (hindex : index < after.size),
+      StrictPolynomialMod.SparsePolyZZCanonical after[index] := by
+  cases hcorrect with
+  | empty hresult => exact hbefore
+  | alreadyOne first leading hresult hfirst hone => exact hbefore
+  | normalized first leading inverse scaled normalized hresult hfirst hnotOne
+      hinverse hscaled hnormalized =>
+      intro index hafter
+      have hzero : 0 < before.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hresult
+        contradiction
+      have hbeforeIndex : index < before.size := by simpa using hafter
+      by_cases hindex : index = 0
+      · subst index
+        have hfirstGet : before[0] = first :=
+          Option.some.inj
+            ((Array.getElem?_eq_getElem hzero).symm.trans hresult)
+        have hfirstCanonical := hbefore 0 hzero
+        rw [hfirstGet] at hfirstCanonical
+        have hnormalizedCanonical :=
+          modCoeffOutput_scaleCoeffs_canonical first inverse m hfirstCanonical
+        have hnormalizedEq : normalized =
+            Generated.StrictHensel.modCoeffOutput
+              (Generated.StrictHensel.scaleCoeffs first inverse) m := by
+          rw [hscaled] at hnormalized
+          simpa [Generated.StrictHensel.__upoly_mod_coeff_raw_ir] using
+            (Except.ok.inj hnormalized).symm
+        simpa [Array.set!, hzero, hnormalizedEq] using hnormalizedCanonical
+      · change StrictPolynomialMod.SparsePolyZZCanonical
+          (before.setIfInBounds 0 normalized)[index]
+        have hget : (before.setIfInBounds 0 normalized)[index] =
+            before[index] := by
+          simpa [Ne.symm hindex] using
+            (@Array.getElem_setIfInBounds _ before 0 normalized index
+              hbeforeIndex)
+        rw [hget]
+        exact hbefore index hbeforeIndex
 
 /-- Genuine raw-to-safe and semantic refinement bridge for the final source
 normalization block.  The output is obtained only by executing the strict raw

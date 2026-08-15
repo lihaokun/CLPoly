@@ -1480,3 +1480,26 @@ source check, and the theorem proves its exact consequence.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：把 converted candidate 的 `SelectedProductMod` 精确改写为前一
   步恢复的 sublist product，并接到 `zassenhausAttempt` 的执行分支
+
+## Generated trial multiplication computes the recovered sublist product
+
+`selectedProductMod_combinationToInt32` identifies every lookup performed by
+the converted `Int32` candidate with the same occurrence in the original
+active Hensel array.  It combines the exact conversion output list with the
+proved fixed-width round trip, then rewrites the generated semantic product
+to the occurrence-sensitive `selectSourceIndices` list product.
+
+`trialProductLoop_source_indices_refines` composes that identity with the
+existing execution proof for the generated multiplication-and-reduction
+loop.  Thus a successful concrete run computes the initial product times the
+exact modular product of the recovered atom sublist.  There is no abstract
+candidate-product callback or post-hoc witness in this bridge.
+
+## 度量（generated candidate product bridge）
+
+- 耗时：约 0.75 小时（转换数组逐项对应、source lookup、乘积组合）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：进入 `zassenhausAttempt`，证明对应整数真因子的 candidate 不会
+  被 leading/constant pruning 拒绝，并由 symmetric recovery 恢复该因子

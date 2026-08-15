@@ -8876,6 +8876,50 @@ noncomputable def SelectedProductMod (modulus : Nat) (candidate : Array Int32)
     Refinement.StrictHensel.toPolyMod modulus
       activeLifted[activeIndex.toInt64.toNat]!).prod
 
+/-- The semantic product read by the generated `Int32` trial loop is exactly
+the source-order sublist product named by the pre-conversion natural
+candidate.  This is occurrence-sensitive and uses the checked conversion's
+actual round trip for every source position. -/
+theorem selectedProductMod_combinationToInt32
+    (modulus : Nat) (indices : Array Nat)
+    (activeLifted : Array SparsePolyZZ) (candidate : Array Int32)
+    (hbound : ∀ position (hposition : position < indices.size),
+      indices[position] < activeLifted.size)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hrun : Generated.StrictRecombine.combinationToInt32 indices =
+      .ok candidate) :
+    SelectedProductMod modulus candidate activeLifted 0 =
+      ((selectSourceIndices activeLifted.toList indices.toList).map
+        (Refinement.StrictHensel.toPolyMod modulus)).prod := by
+  have hfits : ∀ position (hposition : position < indices.size),
+      indices[position] < 2 ^ 31 := by
+    intro position hposition
+    exact lt_of_lt_of_le (hbound position hposition) hactiveFits
+  rcases combinationToInt32_toList indices hfits with
+    ⟨expected, hexpected, hlist⟩
+  have hcand : candidate = expected :=
+    Except.ok.inj (hrun.symm.trans hexpected)
+  subst expected
+  unfold SelectedProductMod selectSourceIndices
+  rw [List.drop_zero, hlist]
+  simp only [List.map_map]
+  congr 1
+  apply List.map_congr_left
+  intro value hvalue
+  rcases List.mem_iff_getElem.mp hvalue with ⟨position, hposition, rfl⟩
+  have hpositionArray : position < indices.size := by simpa using hposition
+  have hroundtrip := nat_toUInt32_toInt32_nonnegative_and_toNat
+    indices.toList[position] (by
+      simpa [Array.getElem_toList] using hfits position hpositionArray)
+  simp only [Function.comp_apply]
+  rw [hroundtrip.2]
+  congr 1
+  have hactive : indices.toList[position] < activeLifted.size := by
+    simpa [Array.getElem_toList] using hbound position hpositionArray
+  rw [getElem!_pos activeLifted indices.toList[position] hactive,
+    getElem!_pos activeLifted.toList indices.toList[position] (by simpa using hactive)]
+  exact Array.getElem_toList hactive
+
 private noncomputable def intTermsToPoly (terms : List (UMonomial × Int)) :
     Polynomial Int :=
   (terms.map fun term => Polynomial.monomial term.1.deg term.2).sum
@@ -9246,11 +9290,38 @@ theorem trialProductLoop_refines
             simp [selected, hactive]
           rw [hselected]
           simp [SelectedProductMod, hsuffix, mul_assoc]
+
       next hindex =>
         have hle : candidate.size ≤ index := Nat.le_of_not_gt hindex
         have hout := Except.ok.inj hrun
         subst output
         simp [SelectedProductMod, List.drop_eq_nil_iff.mpr hle]
+
+/-- End-to-end product statement for the candidate path used by
+`zassenhausAttempt`: checked lowering followed by the generated multiplication
+loop computes the product of the exact occurrence-sensitive source sublist. -/
+theorem trialProductLoop_source_indices_refines
+    (modulus : Nat) (hmodulus : 0 < modulus)
+    (indices : Array Nat) (activeLifted : Array SparsePolyZZ)
+    (candidate : Array Int32) (product output : SparsePolyZZ)
+    (hbound : ∀ position (hposition : position < indices.size),
+      indices[position] < activeLifted.size)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hconvert : Generated.StrictRecombine.combinationToInt32 indices =
+      .ok candidate)
+    (hrun : Generated.StrictRecombine.trialProductLoop ⟨()⟩ candidate
+      activeLifted (modulus : ZZ) 0 product = .ok output) :
+    Refinement.StrictHensel.toPolyMod modulus output =
+      Refinement.StrictHensel.toPolyMod modulus product *
+        ((selectSourceIndices activeLifted.toList indices.toList).map
+          (Refinement.StrictHensel.toPolyMod modulus)).prod := by
+  have hvalid := combinationToInt32_candidate_valid indices activeLifted.size
+    candidate hbound hactiveFits hconvert
+  have hrefines := trialProductLoop_refines ⟨()⟩ candidate activeLifted modulus
+    hmodulus 0 product output hvalid hrun
+  rw [selectedProductMod_combinationToInt32 modulus indices activeLifted
+    candidate hbound hactiveFits hconvert] at hrefines
+  exact hrefines
 
 private theorem symmetricMod_cast (modulus : Nat) (hmodulus : 0 < modulus)
     (coefficient : Int) :

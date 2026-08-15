@@ -9836,6 +9836,143 @@ theorem contentLoop_eq_foldl (input : SparsePolyZZ) (index acc : Nat) :
         rw [List.drop_eq_nil_iff.mpr (by simpa using hle)]
         rfl
 
+private theorem dvd_foldl_coefficient_gcd_iff
+    (divisor accumulator : Nat) (terms : List (UMonomial × Int)) :
+    divisor ∣ terms.foldl
+        (fun current term => Nat.gcd current term.2.natAbs) accumulator ↔
+      divisor ∣ accumulator ∧ ∀ term ∈ terms, divisor ∣ term.2.natAbs := by
+  induction terms generalizing accumulator with
+  | nil => simp
+  | cons head tail ih =>
+      rw [List.foldl_cons, ih]
+      constructor
+      · rintro ⟨hhead, htail⟩
+        exact ⟨(Nat.dvd_gcd_iff.mp hhead).1, fun term hterm => by
+          rcases List.mem_cons.mp hterm with rfl | htailMember
+          · exact (Nat.dvd_gcd_iff.mp hhead).2
+          · exact htail term htailMember⟩
+      · rintro ⟨haccumulator, hall⟩
+        exact ⟨Nat.dvd_gcd_iff.mpr
+            ⟨haccumulator, hall head (List.mem_cons_self)⟩,
+          fun term hterm => hall term (List.mem_cons_of_mem head hterm)⟩
+
+/-- Divisibility characterization of the actual generated content loop.  It
+states both halves of the gcd contract over the exact remaining source cells. -/
+theorem contentLoop_dvd_iff (input : SparsePolyZZ) (index accumulator divisor : Nat) :
+    divisor ∣ Generated.StrictRecombine.contentLoop input index accumulator ↔
+      divisor ∣ accumulator ∧
+        ∀ term ∈ input.toList.drop index, divisor ∣ term.2.natAbs := by
+  rw [contentLoop_eq_foldl]
+  exact dvd_foldl_coefficient_gcd_iff divisor accumulator
+    (input.toList.drop index)
+
+private theorem sparseZZ_sum_coeff_of_mem
+    (terms : List (UMonomial × Int))
+    (hchain : List.IsChain
+      (fun left right : UMonomial × Int => left.1.deg > right.1.deg) terms)
+    (term : UMonomial × Int) (hterm : term ∈ terms) :
+    ((terms.map fun entry =>
+      Polynomial.monomial entry.1.deg entry.2).sum).coeff term.1.deg =
+        term.2 := by
+  induction terms with
+  | nil => simp at hterm
+  | cons head tail ih =>
+      have htailChain : List.IsChain
+          (fun left right : UMonomial × Int =>
+            left.1.deg > right.1.deg) tail :=
+        List.IsChain.tail hchain
+      have htailBelow : ∀ entry ∈ tail, entry.1.deg < head.1.deg :=
+        sparseZZ_chain_head_gt_all head tail hchain
+      rcases List.mem_cons.mp hterm with rfl | htailMember
+      · simp only [List.map_cons, List.sum_cons, Polynomial.coeff_add,
+          Polynomial.coeff_monomial, if_pos rfl]
+        rw [sparseZZTail_coeff_zero_above term.1.deg tail (by
+          simpa using htailBelow), add_zero]
+        simp
+      · have hdegrees : head.1.deg ≠ term.1.deg := by
+          exact Nat.ne_of_gt (htailBelow term htailMember)
+        simp only [List.map_cons, List.sum_cons, Polynomial.coeff_add,
+          Polynomial.coeff_monomial, if_neg hdegrees, zero_add]
+        exact ih htailChain htailMember
+
+/-- Canonical sparse storage has no duplicate degree, so every concrete
+stored coefficient is exactly the mathematical coefficient at that degree. -/
+theorem sparsePolyZZ_toPoly_coeff_of_mem
+    (input : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (term : UMonomial × Int) (hterm : term ∈ input.toList) :
+    (SparsePolyZZ.toPoly input).coeff term.1.deg = term.2 := by
+  unfold SparsePolyZZ.toPoly
+  exact sparseZZ_sum_coeff_of_mem input.toList hcanonical.1 term hterm
+
+private theorem sparseZZ_sum_coeff_dvd
+    (terms : List (UMonomial × Int)) (divisor : Int)
+    (hall : ∀ term ∈ terms, divisor ∣ term.2) (degree : Nat) :
+    divisor ∣ ((terms.map fun entry =>
+      Polynomial.monomial entry.1.deg entry.2).sum).coeff degree := by
+  induction terms with
+  | nil => simp
+  | cons head tail ih =>
+      simp only [List.map_cons, List.sum_cons, Polynomial.coeff_add,
+        Polynomial.coeff_monomial]
+      apply dvd_add
+      · split
+        · exact hall head List.mem_cons_self
+        · exact dvd_zero divisor
+      · exact ih (fun term hterm =>
+          hall term (List.mem_cons_of_mem head hterm))
+
+private theorem sparsePolyZZ_toPoly_coeff_dvd
+    (input : SparsePolyZZ) (divisor : Int)
+    (hall : ∀ term ∈ input.toList, divisor ∣ term.2) (degree : Nat) :
+    divisor ∣ (SparsePolyZZ.toPoly input).coeff degree := by
+  unfold SparsePolyZZ.toPoly
+  exact sparseZZ_sum_coeff_dvd input.toList divisor hall degree
+
+/-- The nonnegative gcd returned by the exact generated content loop is the
+normalized mathematical content of the canonical sparse polynomial. -/
+theorem contentLoop_zero_eq_content
+    (input : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input) :
+    (Generated.StrictRecombine.contentLoop input 0 0 : Int) =
+      (SparsePolyZZ.toPoly input).content := by
+  let divisor := Generated.StrictRecombine.contentLoop input 0 0
+  have hloopSelf : divisor ∣ divisor := dvd_refl divisor
+  have hdividesStoredNat : ∀ term ∈ input.toList,
+      divisor ∣ term.2.natAbs := by
+    have hcharacterization :=
+      (contentLoop_dvd_iff input 0 0 divisor).mp hloopSelf
+    simpa using hcharacterization.2
+  have hdividesStoredInt : ∀ term ∈ input.toList,
+      (divisor : Int) ∣ term.2 := by
+    intro term hterm
+    rw [← Int.natAbs_dvd_natAbs]
+    simpa using hdividesStoredNat term hterm
+  have hdivisorContent : (divisor : Int) ∣
+      (SparsePolyZZ.toPoly input).content := by
+    rw [Polynomial.content, Finset.dvd_gcd_iff]
+    intro degree hdegree
+    exact sparsePolyZZ_toPoly_coeff_dvd input (divisor : Int)
+      hdividesStoredInt degree
+  have hcontentDividesStored : ∀ term ∈ input.toList,
+      (SparsePolyZZ.toPoly input).content.natAbs ∣ term.2.natAbs := by
+    intro term hterm
+    rw [Int.natAbs_dvd_natAbs]
+    rw [← sparsePolyZZ_toPoly_coeff_of_mem input hcanonical term hterm]
+    exact Polynomial.content_dvd_coeff term.1.deg
+  have hcontentNatDivisor :
+      (SparsePolyZZ.toPoly input).content.natAbs ∣ divisor := by
+    apply (contentLoop_dvd_iff input 0 0
+      (SparsePolyZZ.toPoly input).content.natAbs).mpr
+    exact ⟨dvd_zero _, by simpa using hcontentDividesStored⟩
+  have hcontentDivisor : (SparsePolyZZ.toPoly input).content ∣
+      (divisor : Int) := by
+    rw [← Int.natAbs_dvd_natAbs]
+    simpa using hcontentNatDivisor
+  exact dvd_antisymm_of_normalize_eq
+    (Int.normalize_coe_nat divisor) Polynomial.normalize_content
+      hdivisorContent hcontentDivisor
+
 theorem primitiveDivideLoop_toPoly (input : SparsePolyZZ) (divisor : Int)
     (index : Nat) (result output : SparsePolyZZ)
     (hrun : Generated.StrictRecombine.primitiveDivideLoop input divisor index
@@ -10052,6 +10189,56 @@ theorem primitiveRaw_canonical (input primitive : SparsePolyZZ) (content : Int)
           rw [hquotient] at hcancel
           simp at hcancel
           exact hinputNonzero hcancel.symm
+
+/-- On every nonempty canonical input, the exact generated content-gcd and
+coefficient-division execution returns a mathematically primitive polynomial. -/
+theorem primitiveRaw_isPrimitive
+    (input primitive : SparsePolyZZ) (content : Int)
+    (hnonempty : 0 < input.size)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (hrun : Generated.StrictRecombine.primitiveRaw input =
+      .ok (content, primitive)) :
+    (SparsePolyZZ.toPoly primitive).IsPrimitive := by
+  have hsemantic := primitiveRaw_toPoly input primitive content hrun
+  have hloopContent := contentLoop_zero_eq_content input hcanonical
+  have hinputNe : SparsePolyZZ.toPoly input ≠ 0 := by
+    intro hzero
+    have hleading := sparsePolyZZ_leadingCoeff_eq_head input hcanonical hnonempty
+    rw [hzero] at hleading
+    have hheadNonzero := hcanonical.2 input[0]
+      (Array.getElem_mem_toList hnonempty)
+    exact hheadNonzero (by simpa using hleading.symm)
+  have hcontentNonzero : (SparsePolyZZ.toPoly input).content ≠ 0 :=
+    fun hzero => hinputNe (Polynomial.content_eq_zero_iff.mp hzero)
+  have hnormalizeContent : normalize content =
+      (SparsePolyZZ.toPoly input).content := by
+    rw [Generated.StrictRecombine.primitiveRaw] at hrun
+    split at hrun
+    next hempty =>
+      have hsizeZero : input.size = 0 := by
+        simpa [Array.isEmpty] using hempty
+      omega
+    next hempty =>
+      dsimp at hrun
+      split at hrun
+      next fault hdivide => contradiction
+      next primitive' hdivide =>
+        have hout := Except.ok.inj hrun
+        have hcontent := congrArg Prod.fst hout
+        simp only [Prod.fst] at hcontent
+        rw [← hcontent]
+        split
+        next hnegative =>
+          rw [Int.normalize_of_nonpos (by
+            exact neg_nonpos.mpr (Int.natCast_nonneg _))]
+          rw [neg_neg, hloopContent]
+        next hnonnegative =>
+          rw [Int.normalize_coe_nat, hloopContent]
+  have hcontentEquation := congrArg Polynomial.content hsemantic
+  rw [Polynomial.content_C_mul, hnormalizeContent] at hcontentEquation
+  apply Polynomial.isPrimitive_iff_content_eq_one.mpr
+  apply mul_left_cancel₀ hcontentNonzero
+  simpa using hcontentEquation.symm
 
 theorem subtractScaledTermsLoop_toPoly (divisor : SparsePolyZZ)
     (scale : Int) (degreeShift index : Nat) (terms : SparsePolyZZ) :

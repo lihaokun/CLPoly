@@ -1913,5 +1913,35 @@ primitive polynomial; it does not assume a mathematical primitive-part
 oracle.
 
 - C++ changes: none, so there is no new C++ b2b change surface in this step.
-- Verification: `lake env lean CLPoly/Refinement/Recombine.lean` passes with
-  no error or `sorry` warning.
+- Verification: both `lake env lean CLPoly/Refinement/Recombine.lean` and the
+  formal `lake build CLPoly.Refinement.Recombine CLPoly.Pipeline.L1` pass with
+  no error or `sorry` warning.  The axiom audit reports only `propext`,
+  `Classical.choice`, and `Quot.sound` (no project axiom or `sorryAx`).
+
+## The generated primitive routine returns a primitive polynomial
+
+The complete successful `primitiveRaw` execution is now proved to return an
+`IsPrimitive` polynomial on every nonempty canonical sparse input.
+
+- `contentLoop_dvd_iff` proves that the loop result has the exact universal
+  divisibility property of the gcd of all remaining concrete coefficient
+  cells.
+- Canonical sparse degree order proves each stored coefficient is the
+  corresponding coefficient of `SparsePolyZZ.toPoly`; conversely, divisibility
+  of all stored coefficients transfers through the actual monomial sum to
+  every mathematical coefficient.
+- The two directions identify the nonnegative loop result with
+  `Polynomial.content` by normalized gcd antisymmetry.
+- The successful raw trace chooses either that gcd or its negation according
+  to the actual leading-sign branch, then executes the checked coefficient
+  division loop.  Taking content of its proved product equation and cancelling
+  the nonzero input content yields output content one.
+
+The proof never executes or assumes `Polynomial.primPart`; the output remains
+the array returned by the generated C++ control flow.
+
+- C++ changes: none, so there is no new C++ b2b change surface in this step.
+- Verification: both `lake env lean CLPoly/Refinement/Recombine.lean` and the
+  formal `lake build CLPoly.Refinement.Recombine CLPoly.Pipeline.L1` pass with
+  no error or `sorry` warning.  The axiom audit reports only `propext`,
+  `Classical.choice`, and `Quot.sound` (no project axiom or `sorryAx`).

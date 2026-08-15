@@ -5029,6 +5029,20 @@ inductive HenselAdjustFirstFactorCorrect
       HenselAdjustFirstFactorCorrect f factors p
         (factors.set! 0 adjusted)
 
+private theorem henselAdjustNormalization_toPoly
+    (p : Nat) (factor : SparsePolyZp) :
+    CLPoly.Math.SparsePolyZp.toPoly p (SparsePolyZp.normalization factor) =
+      CLPoly.Math.SparsePolyZp.toPoly p factor := by
+  unfold SparsePolyZp.normalization CLPoly.Math.SparsePolyZp.toPoly
+  rw [Array.toList_filter]
+  induction factor.toList with
+  | nil => simp [CLPoly.Math.listSum]
+  | cons term rest ih =>
+      rcases term with ⟨monomial, coefficient⟩
+      by_cases hzero : coefficient.val = 0
+      · simpa [hzero, CLPoly.Math.listSum, CLPoly.Math.Zp.toZMod] using ih
+      · simp [hzero, CLPoly.Math.listSum, ih]
+
 private theorem scaleZpCoeffsList_toPoly
     (p : Nat) (hp2 : p * p ≤ UInt64.size) (coefficient : Zp)
     (hcoefficient : CLPoly.Math.Zp.Reduced p coefficient) :
@@ -5193,7 +5207,7 @@ theorem HenselAdjustFirstFactorCorrect.unitRel
           CLPoly.Math.SparsePolyZp.toPoly p.toNat value =
             Polynomial.C (leading.2 : ZMod p.toNat) *
               CLPoly.Math.SparsePolyZp.toPoly p.toNat first := by
-        rw [hvalue, henselEEANormalization_toPoly,
+        rw [hvalue, henselAdjustNormalization_toPoly,
           scaleZpCoeffs_toPoly p.toNat hp2 coefficient hcoefficient first
             hfirstCanonical.1, hcoefficientValue]
       have hscaleUnit : IsUnit (leading.2 : ZMod p.toNat) :=
@@ -9319,7 +9333,7 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
     · rw [henselTreeBuildTopology] at hcertificate ⊢
       rw [if_pos hleft, if_pos hright] at hcertificate ⊢
       cases hcertificate with
-      | node _ _ index _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
+      | node _ _ _ _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
           rw [henselExtractedFactors.eq_def]
           rw [hsplit]
           apply List.rel_append
@@ -9329,13 +9343,13 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
       rw [henselTreeBuildTopology] at hcertificate ⊢
       rw [if_pos hleft, if_neg hright] at hcertificate ⊢
       cases hcertificate with
-      | node _ _ index _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
-          have hindex : index < nodes.size := by
+      | node _ _ _ _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
+          have hindex : root < nodes.size := by
             by_contra hnot
             rw [Array.getElem?_eq_none (by omega)] at hnode
             contradiction
-          have hlookup : nodes[index]! = value := by
-            have heq : nodes[index] = value :=
+          have hlookup : nodes[root]! = value := by
+            have heq : nodes[root] = value :=
               Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
             simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
           rw [henselExtractedFactors.eq_def]
@@ -9353,13 +9367,13 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
     · rw [henselTreeBuildTopology] at hcertificate ⊢
       rw [if_neg hleft, if_pos hright] at hcertificate ⊢
       cases hcertificate with
-      | node _ _ index _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
-          have hindex : index < nodes.size := by
+      | node _ _ _ _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
+          have hindex : root < nodes.size := by
             by_contra hnot
             rw [Array.getElem?_eq_none (by omega)] at hnode
             contradiction
-          have hlookup : nodes[index]! = value := by
-            have heq : nodes[index] = value :=
+          have hlookup : nodes[root]! = value := by
+            have heq : nodes[root] = value :=
               Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
             simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
           rw [henselExtractedFactors.eq_def]
@@ -9376,13 +9390,13 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
       rw [henselTreeBuildTopology] at hcertificate ⊢
       rw [if_neg hleft, if_neg hright] at hcertificate ⊢
       cases hcertificate with
-      | node _ _ index _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
-          have hindex : index < nodes.size := by
+      | node _ _ _ _ _ _ value _ hnode hinvariant hleftCert hrightCert =>
+          have hindex : root < nodes.size := by
             by_contra hnot
             rw [Array.getElem?_eq_none (by omega)] at hnode
             contradiction
-          have hlookup : nodes[index]! = value := by
-            have heq : nodes[index] = value :=
+          have hlookup : nodes[root]! = value := by
+            have heq : nodes[root] = value :=
               Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
             simpa [getElem!_def, Array.getElem?_eq_getElem hindex] using heq
           rw [henselExtractedFactors.eq_def]

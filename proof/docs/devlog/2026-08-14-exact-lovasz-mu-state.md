@@ -941,3 +941,29 @@ theorem and do not infer factor quality from a product identity.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：从严格 SelectPrime 的 `CandidateCorrect.quality` 构造原始 factors
   数组逐项不可约前提，并组合整条 Hensel 链
+
+## Strict SelectPrime quality reaches adjusted Hensel factors
+
+The new downstream module `Refinement/FactorZZ.lean` begins the genuine
+cross-stage assembly without introducing an import cycle.  Its
+`selectionFactors_irreducible` theorem decodes each concrete array position
+from the successful `SelectionCorrect/CandidateCorrect.quality` certificate.
+`selectionFactors_adjusted_irreducible` then supplies the actual selected
+prime, machine-word bound, canonical sparse inputs, and source leading-term
+semantics to the Hensel adjustment unit theorem.
+
+The result states irreducibility of every concrete adjusted array element.
+It neither reruns FactorZp nor replaces the selection array with an abstract
+list.  A formal `lake build CLPoly.Refinement.Hensel` also exposed and removed
+two stale-olean hazards: a forward helper reference and inaccessible names in
+a dependent constructor pattern.  The importable Hensel artifact now builds,
+and the new FactorZZ module checks against that artifact.
+
+## 度量（SelectPrime → adjusted Hensel quality）
+
+- 耗时：约 1.0 小时（跨模块组合、正式 olean 构建修复、逐数组元素质量）
+- 新模块：`CLPoly.Refinement.FactorZZ`
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 Hensel lake target 构建通过；`FactorZZ.lean` 内核检查通过
+- 下一步：把 adjusted 不可约性与 entry-level leaf origins、最终 normalization
+  unit relation合成，导出最终 lifted array 的逐项模 p 不可约性

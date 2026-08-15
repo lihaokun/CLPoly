@@ -1171,3 +1171,27 @@ factors.
 - 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
 - 下一步：把该定理接入 van-Hoeij fallback，并沿 successful validation、
   precision retry 和 normal exit 闭合 van-Hoeij 主循环
+
+## Candidate validation preserves the live canonical remainder
+
+`validateCandidatesLoop_fStar_canonical` follows the full concrete validation
+loop over candidate rows.  Empty, trivial, unavailable, rejected, and
+nondividing candidates retain the current canonical `fStar`.  Every successful
+candidate follows the actual modular product, symmetric recovery, primitive
+factor, exact division, empty-remainder test, quotient primitive conversion,
+and consumed-bit marking before recursion.
+
+For each such extraction, exact division returns a canonical quotient and the
+subsequent primitive conversion preserves it.  The well-founded candidate
+index recursion therefore carries canonicality through arbitrarily many
+successful candidates in one validation pass.  The entry theorem initializes
+the actual replicated consumed array and exposes canonicality of the concrete
+returned `fStar'` needed by the van-Hoeij state transition.
+
+## 度量（validation live canonicality）
+
+- 耗时：约 1.25 小时（完整 candidate loop、连续 extraction、entry composition）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：正式 `CLPoly.Refinement.Recombine` lake target 构建通过
+- 下一步：使用 validation 的 product/primitivity/canonical 三个结论闭合
+  van-Hoeij 主循环的 extraction、retry、fallback 与 normal exit

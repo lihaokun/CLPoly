@@ -1333,3 +1333,30 @@ oracle.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：从初始最小组合和直接后继推出 generated scan 对每个合法
   固定大小候选的可达性，再连接 rejected/extracted 结果
+
+## Generated scan exhaustion has no omitted subset
+
+The concrete first-difference array order now has a proved trichotomy.  The
+source iota state is minimal among legal fixed-size combinations, while the
+state returned by a `false` successor is maximal.  These boundary facts and
+the immediate-successor theorem are consumed by a well-founded induction on
+the generated scan's existing rank.
+
+`scanZassenhausCombinations_exhausted_rejects_legal` follows the actual
+`zassenhausAttempt`/`nextCombination` recursion.  At the target state it
+extracts the observed rejected result directly.  Before the target, a false
+successor contradicts maximality; a true successor cannot jump over the
+target and recurses with the generated rank decrease.  Its initial-state
+corollary `scanZassenhausCombinations_exhausted_rejects_all` therefore proves
+that `.exhausted` means every legal fixed-size subset was actually attempted
+and rejected.  No alternative enumerator, fuel bound, or semantic coverage
+premise is used.
+
+## 度量（generated scan no omission）
+
+- 耗时：约 1.5 小时（首差三歧性、初始/终态边界、scan 良基归纳）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：把所有固定大小 scan 的拒绝结论穿过 Zassenhaus outer loop，
+  证明 finish 留下的 primitive 块不存在任何由 Hensel 原子组成的真因子

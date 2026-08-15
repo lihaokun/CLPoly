@@ -1878,6 +1878,36 @@ private def ArrayLexLT (left right : Array Nat) : Prop :=
     (∀ index, index < pivot → left[index]! = right[index]!) ∧
     left[pivot]! < right[pivot]!
 
+private theorem arrayLex_trichotomy (left right : Array Nat)
+    (hsize : left.size = right.size) :
+    left = right ∨ ArrayLexLT left right ∨ ArrayLexLT right left := by
+  by_cases heq : left = right
+  · exact Or.inl heq
+  · have hexists : ∃ index, index < left.size ∧
+        left[index]! ≠ right[index]! := by
+      by_contra hall
+      push Not at hall
+      apply heq
+      apply Array.ext hsize
+      intro index hleft hright
+      have heqBang := hall index hleft
+      rw [getElem!_pos left index hleft,
+        getElem!_pos right index (by omega)] at heqBang
+      exact heqBang
+    let pivot := Nat.find hexists
+    have hpivotSpec := Nat.find_spec hexists
+    have hprefix : ∀ index, index < pivot →
+        left[index]! = right[index]! := by
+      intro index hindex
+      by_contra hne
+      exact (Nat.find_min hexists hindex) ⟨by omega, hne⟩
+    rcases lt_or_gt_of_ne hpivotSpec.2 with hpivotValue | hpivotValue
+    · exact Or.inr (Or.inl
+        ⟨hsize, pivot, hpivotSpec.1, hprefix, hpivotValue⟩)
+    · exact Or.inr (Or.inr
+        ⟨hsize.symm, pivot, by omega, fun index hindex =>
+          (hprefix index hindex).symm, hpivotValue⟩)
+
 private theorem legalCombination_positional_bound (upper count : Nat)
     (indices : Array Nat) (hlegal : LegalCombination upper count indices) :
     ∀ index (hindex : index < indices.size),
@@ -1896,6 +1926,76 @@ private theorem legalCombination_valid (upper count : Nat)
     (indices : Array Nat) (hlegal : LegalCombination upper count indices) :
     ValidCombination upper count indices :=
   ⟨hlegal.1, legalCombination_positional_bound upper count indices hlegal⟩
+
+private theorem legalCombination_lower_bound (upper count : Nat)
+    (indices : Array Nat) (hlegal : LegalCombination upper count indices) :
+    ∀ index (hindex : index < indices.size), index ≤ indices[index]! := by
+  intro index hindex
+  rcases hlegal with ⟨hsize, hgap, hupper⟩
+  by_cases hzero : index = 0
+  · subst index
+    omega
+  · have hzeroBounds : 0 < indices.size := by omega
+    have hfromZero := hgap 0 index hzeroBounds hindex (by omega)
+    omega
+
+private theorem legalCombination_count_le (upper count : Nat)
+    (indices : Array Nat) (hlegal : LegalCombination upper count indices) :
+    count ≤ upper := by
+  by_cases hzero : count = 0
+  · omega
+  · have hlast : count - 1 < indices.size := by rw [hlegal.1]; omega
+    have hlower := legalCombination_lower_bound upper count indices hlegal
+      (count - 1) hlast
+    have hupper := hlegal.2.2 (count - 1) hlast
+    omega
+
+private theorem initialCombination_lex_le (upper count : Nat)
+    (target : Array Nat) (hlegal : LegalCombination upper count target) :
+    Generated.StrictRecombine.initialCombination count = target ∨
+      ArrayLexLT (Generated.StrictRecombine.initialCombination count) target := by
+  have hsize : (Generated.StrictRecombine.initialCombination count).size =
+      target.size := by rw [initialCombination_size, hlegal.1]
+  rcases arrayLex_trichotomy
+      (Generated.StrictRecombine.initialCombination count) target hsize with
+    heq | hforward | hbackward
+  · exact Or.inl heq
+  · exact Or.inr hforward
+  · exfalso
+    rcases hbackward with ⟨_, pivot, hpivot, hprefix, hpivotValue⟩
+    have hpivotTarget : pivot < target.size := hpivot
+    have hpivotInitial :
+        pivot < (Generated.StrictRecombine.initialCombination count).size := by
+      omega
+    have hlower := legalCombination_lower_bound upper count target hlegal
+      pivot hpivotTarget
+    have hpivotCount : pivot < count := by
+      simpa [initialCombination_size] using hpivotInitial
+    have hinitialValue :
+        (Generated.StrictRecombine.initialCombination count)[pivot]! = pivot := by
+      have harrayList :
+          (Generated.StrictRecombine.initialCombination count)[pivot]! =
+            (Generated.StrictRecombine.initialCombination count).toList[pivot]! := by
+        rw [getElem!_pos _ pivot hpivotInitial,
+          getElem!_pos _ pivot (by simpa using hpivotInitial)]
+        exact (Array.getElem_toList hpivotInitial).symm
+      rw [harrayList, initialCombination_toList]
+      simp [getElem!_pos, hpivotCount]
+    rw [hinitialValue] at hpivotValue
+    omega
+
+private theorem finalCombination_not_lt_legal (indices target : Array Nat)
+    (upper count : Nat) (hlegal : LegalCombination upper count target)
+    (hsize : indices.size = count)
+    (hfinal : ∀ position (hposition : position < indices.size),
+      indices[position] = upper - count + position) :
+    ¬ ArrayLexLT indices target := by
+  rintro ⟨hsizes, pivot, hpivot, hprefix, hpivotValue⟩
+  have hpivotTarget : pivot < target.size := by omega
+  have hbound := legalCombination_positional_bound upper count target hlegal
+    pivot hpivotTarget
+  rw [getElem!_pos indices pivot hpivot, hfinal pivot hpivot] at hpivotValue
+  omega
 
 /-- A successful generated successor is immediate among all legal
 fixed-size combinations: no legal array lies strictly between the input and
@@ -2254,6 +2354,85 @@ def concreteZassenhausTermination :
     initialCombination_legal upper count hfits
   removal_decreases := fun active candidate output hnonempty hrun =>
     removeCombination_strict candidate active output hnonempty hrun
+
+/-- Exhaustion of the actual generated fixed-size scan means that every
+legal candidate at or after the supplied current candidate was executed and
+rejected.  This follows the source recursion and its concrete legality/rank
+certificate; it does not quantify over an abstract successful-factor oracle. -/
+theorem scanZassenhausCombinations_exhausted_rejects_legal
+    {upper count : Nat} (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (current target : Array Nat)
+    (hcurrent : LegalCombination upper count current)
+    (htarget : LegalCombination upper count target)
+    (hle : current = target ∨ ArrayLexLT current target)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations
+      (concreteCombinationTermination upper count) fStar activeLifted modulus
+      current hcurrent = .ok .exhausted) :
+    Generated.StrictRecombine.zassenhausAttempt fStar activeLifted modulus
+      target = .ok .rejected := by
+  let termination := concreteCombinationTermination upper count
+  induction hmeasure : termination.rank current using Nat.strong_induction_on
+      generalizing current with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.scanZassenhausCombinations] at hrun
+      cases hattempt : Generated.StrictRecombine.zassenhausAttempt fStar
+          activeLifted modulus current with
+      | error fault =>
+          rw [hattempt] at hrun
+          contradiction
+      | ok attemptResult =>
+          cases attemptResult with
+          | extracted factor quotient =>
+              simp [hattempt] at hrun
+          | rejected =>
+              simp only [hattempt] at hrun
+              rcases hle with rfl | hbefore
+              · exact hattempt
+              · split at hrun
+                next next hnext =>
+                  have hfits := legalCombination_count_le upper count current
+                    hcurrent
+                  have hfinal := nextCombination_false_is_final current next
+                    upper count hcurrent.1 hfits hnext
+                  exact (finalCombination_not_lt_legal current target upper
+                    count htarget hcurrent.1 hfinal.2 hbefore).elim
+                next next hnext =>
+                  have hnextLegal := nextCombination_preserves_legal upper
+                    count current next hcurrent hnext
+                  have hnextLe : next = target ∨ ArrayLexLT next target := by
+                    rcases arrayLex_trichotomy next target
+                        (hnextLegal.1.trans htarget.1.symm) with
+                      heq | hforward | hbackward
+                    · exact Or.inl heq
+                    · exact Or.inr hforward
+                    · exact (nextCombination_true_no_legal_between current
+                        next target upper count htarget hnext hbefore
+                        hbackward).elim
+                  exact ih (termination.rank next) (by
+                    rw [← hmeasure]
+                    exact termination.next_decreases current next hcurrent
+                      hnext) next hnextLegal hnextLe hrun rfl
+
+/-- Public no-omission form for the generated scan from its real iota
+initial state: an exhausted run has executed and rejected every legal
+fixed-size subset candidate. -/
+theorem scanZassenhausCombinations_exhausted_rejects_all
+    {upper count : Nat} (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (hfits : count ≤ upper)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations
+      (concreteCombinationTermination upper count) fStar activeLifted modulus
+      (Generated.StrictRecombine.initialCombination count)
+      (initialCombination_legal upper count hfits) = .ok .exhausted) :
+    ∀ target, LegalCombination upper count target →
+      Generated.StrictRecombine.zassenhausAttempt fStar activeLifted modulus
+        target = .ok .rejected := by
+  intro target htarget
+  exact scanZassenhausCombinations_exhausted_rejects_legal fStar activeLifted
+    modulus (Generated.StrictRecombine.initialCombination count) target
+    (initialCombination_legal upper count hfits) htarget
+    (initialCombination_lex_le upper count target htarget) hrun
 
 /-- Pure array value computed by the generated source-shaped μ prefix loop.
 This is used only to state its exact execution theorem; it is itself strictly

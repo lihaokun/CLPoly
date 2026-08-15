@@ -2499,3 +2499,25 @@ No C++ files changed, so this step has no new C++ b2b change surface.  Next,
 the trace is shown to preserve machine-degree bounds to its returned
 remainder, after which the theorem instantiates directly inside the generated
 Hensel factor phase.
+
+## Preserve the physical right-factor head through raw Hensel execution
+
+The generated Hensel factor phase now has the executable bridge needed to
+show that a monic right factor remains physically monic after one correction.
+
+- `divmodLoop_remainder_degreesBound` proves by induction over the supplied
+  well-founded `DivmodTrace` that every concrete division transition
+  preserves the machine exponent bound.
+- `__upoly_divmod_mod_raw_ir_remainder_degreesBound_of_run` inverts a
+  successful generated raw call and transports that bound to its actual
+  returned remainder; no abstract division result is introduced.
+- `henselFactorCorrection_preserves_h_one_head_from_raw_runs` combines the
+  raw multiplication canonicality, actual remainder bounds, physical degree
+  stop, and the exact scale/add/mod run equations.  Its conclusion identifies
+  the coefficient-one head in the returned sparse array itself.
+
+No C++ files changed, so this step has no new C++ b2b change surface.
+`lake build CLPoly.Refinement.Hensel` completed successfully (3328 jobs).
+Next, this property is threaded through the generated step, recursive tree,
+and extraction order so full-modulus Hensel uniqueness can be applied to the
+real candidate subset.

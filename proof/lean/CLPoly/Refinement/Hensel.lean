@@ -2791,6 +2791,43 @@ theorem divmodTrace_degreeSafe (m : Nat) (g : SparsePolyZZ)
           (Generated.StrictHensel.divmodCoefficient r
             (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int))
           (m : Int) hr hg hrBound hgHead hrDegree hgDegree hactive.2)⟩
+
+/-- Every transition of the exact generated division trace preserves the
+machine exponent bound, so the physical remainder returned by `divmodLoop`
+inherits it from the concrete reduced input. -/
+theorem divmodLoop_remainder_degreesBound (m : Nat) (g : SparsePolyZZ)
+    (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hgHead : HeadDominates g) :
+    ∀ {r q : SparsePolyZZ}
+      (trace : Generated.StrictHensel.DivmodTrace g
+        (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) r q),
+      DegreesBound r →
+      DegreesBound (Generated.StrictHensel.divmodLoop g
+        (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) trace).2 := by
+  intro r q trace hrBound
+  induction trace with
+  | done r q inactive => exact hrBound
+  | vanished r q active zero next ih =>
+      exact ih (degreesBound_eraseIdxIfInBounds r 0 hrBound)
+  | subtract r q active nonzero next ih =>
+      have hactive : r.isEmpty = false ∧ get_deg r ≥ get_deg g := by
+        simpa using active
+      have hr : 0 < r.size := by
+        have hrne : r ≠ #[] := by
+          simpa [Array.isEmpty_iff] using hactive.1
+        have hrsize : r.size ≠ 0 := by
+          intro hzero
+          exact hrne (Array.eq_empty_of_size_eq_zero hzero)
+        omega
+      have hrDegree : r[0]!.1.deg < 2 ^ 63 := by
+        apply hrBound r[0]!
+        rw [getElem!_pos r 0 hr]
+        exact Array.getElem_mem_toList hr
+      exact ih (divmodRemainder_degreesBound r g
+        (Generated.StrictHensel.divmodCoefficient r
+          (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int))
+        (m : Int) hr hg hrBound hgHead hrDegree hgDegree hactive.2)
+
 /-- Induction over the exact finite C++ long-division trace preserves the
 decoded equation `remainder + quotient * divisor`.  Both recursive branches
 use their concrete array updates. -/
@@ -2889,6 +2926,35 @@ theorem __upoly_divmod_mod_raw_ir_remainder_inactive_of_run
         have heq := Except.ok.inj hrun
         rw [heq] at houtput
         exact houtput
+
+/-- The remainder of a successful generated modular-division call preserves
+the concrete machine-exponent bound of its input.  This follows the supplied
+well-founded trace; it does not replace the generated execution by an
+abstract Euclidean remainder. -/
+theorem __upoly_divmod_mod_raw_ir_remainder_degreesBound_of_run
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f g q r : SparsePolyZZ) (m : Nat)
+    (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
+    (hgHead : HeadDominates g) (hfBound : DegreesBound f)
+    (hrun : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      f g (m : Int) = .ok (q, r)) :
+    DegreesBound r := by
+  simp only [Generated.StrictHensel.__upoly_divmod_mod_raw_ir,
+    Generated.StrictHensel.__upoly_mod_coeff_raw_ir] at hrun
+  split at hrun <;> try contradiction
+  next hnotEmpty =>
+    split at hrun <;> try contradiction
+    next hvalid =>
+      split at hrun <;> try contradiction
+      next hinvertible =>
+        let trace := termination.trace f g
+          (Generated.StrictHensel.modCoeffOutput f (m : Int)) (m : Int)
+          rfl hvalid
+        have hbound := divmodLoop_remainder_degreesBound m g hg hgDegree
+          hgHead trace (modCoeffOutput_degreesBound f (m : Int) hfBound)
+        have heq := Except.ok.inj hrun
+        rw [heq] at hbound
+        exact hbound
 
 /-- On the nonempty branch, the concrete stopping condition is the strict
 source-degree inequality used by Hensel correction. -/
@@ -3724,6 +3790,62 @@ theorem henselFactorCorrection_canonical_from_raw_runs
   have hhNewCanonical := modCoeffOutput_canonical_of_run hRaw hNew
     (m ^ 2 : Int) hhRawCanonical hhNew
   exact ⟨hgNewCanonical, hhNewCanonical⟩
+
+/-- The physical coefficient-one head of the right factor survives one
+successful generated Hensel factor phase.  The proof follows the actual
+modular division remainder and the actual scale/merge/reduce calls. -/
+theorem henselFactorCorrection_preserves_h_one_head_from_raw_runs
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (node : HenselNode) (m : Nat) (hm : 1 < m)
+    (e se q r hRaw hNew : SparsePolyZZ) (head : UMonomial)
+    (tail : List (UMonomial × Int))
+    (hhList : node.h.toList = (head, 1) :: tail)
+    (hhCanonical : StrictPolynomialMod.SparsePolyZZCanonical node.h)
+    (hh : 0 < node.h.size) (hhDegree : node.h[0]!.1.deg < 2 ^ 63)
+    (hhHead : HeadDominates node.h) (hseBound : DegreesBound se)
+    (hseRun : (strictHenselRawOps termination).mul node.s
+      e = .ok se)
+    (hdivmod : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      se node.h (m : Int) = .ok (q, r))
+    (hhRaw : (strictHenselRawOps termination).add node.h
+      (Generated.StrictHensel.scaleCoeffs r (m : Int)) = .ok hRaw)
+    (hhNew : Generated.StrictHensel.__upoly_mod_coeff_raw_ir hRaw
+      (m ^ 2 : Int) = .ok hNew) :
+    ∃ suffix, hNew.toList = (head, 1) :: suffix := by
+  have hseCanonical := strictHenselRawOps_mul_canonical_of_run
+    termination node.s e se hseRun
+  have hrCanonical := __upoly_divmod_mod_raw_ir_remainder_canonical_of_run
+    termination se node.h q r (m : Int) hseCanonical hhCanonical hdivmod
+  have hrDegrees :=
+    __upoly_divmod_mod_raw_ir_remainder_degreesBound_of_run termination
+      se node.h q r m hh hhDegree hhHead hseBound hdivmod
+  have hrBelow := __upoly_divmod_mod_raw_ir_remainder_terms_below_of_run
+    termination se node.h q r (m : Int) hdivmod hh hhDegree hrCanonical
+      hrDegrees
+  have hhHeadEq : node.h[0]!.1.deg = head.deg := by
+    have hhead := congrArg List.head? hhList
+    have hget : node.h[0]? = some (head, 1) := by
+      rw [List.head?_eq_getElem?, Array.getElem?_toList] at hhead
+      exact hhead
+    have hzero : node.h[0]! = (head, 1) := by
+      rw [getElem!_pos node.h 0 hh]
+      exact Option.some.inj ((Array.getElem?_eq_getElem hh).symm.trans hget)
+    simpa [hzero]
+  have hrBelowHead : ∀ term ∈ r.toList, term.1.deg < head.deg := by
+    simpa [hhHeadEq] using hrBelow
+  have hphysical := henselHCorrection_preserves_one_head node.h r m head tail
+    hhList hrBelowHead hm
+  have hhRawEq : hRaw = Generated.StrictHensel.pairVecAddLoop node.h
+      (Generated.StrictHensel.scaleCoeffs r (m : Int)) 0 0 #[] := by
+    simpa only [strictHenselRawOps,
+      Generated.StrictHensel.__upoly_add_raw_ir] using
+        (Except.ok.inj hhRaw).symm
+  have hhNewEq : hNew = Generated.StrictHensel.modCoeffOutput hRaw
+      (m ^ 2 : Int) := by
+    simpa only [Generated.StrictHensel.__upoly_mod_coeff_raw_ir] using
+      (Except.ok.inj hhNew).symm
+  rw [hhNewEq, hhRawEq]
+  exact hphysical
 
 set_option maxHeartbeats 0 in
 /-- The complete generated factor phase refines its L2 factor invariant.

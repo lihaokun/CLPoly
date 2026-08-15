@@ -5683,6 +5683,59 @@ decreasing_by
   · exact Generated.StrictHensel.HenselLiftTree.right_nodeCount_lt
       index left child
 
+/-- The pure extraction denotation depends only on the concrete array cells
+visited by its topology.  This is the exact transport lemma used when the
+source-order right traversal preserves all indices of the completed left
+subtree. -/
+theorem henselExtractedFactors_eq_of_lookups
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (before after : Array HenselNode)
+    (hlookup : ∀ index ∈ henselLiftTreeIndices tree,
+      after[index]? = before[index]?) :
+    henselExtractedFactors tree after =
+      henselExtractedFactors tree before := by
+  cases tree with
+  | node index left right =>
+      have hroot : after[index]? = before[index]? :=
+        hlookup index (by simp [henselLiftTreeIndices])
+      have hrootBang : after[index]! = before[index]! := by
+        rw [getElem!_def, getElem!_def, hroot]
+      rw [henselExtractedFactors.eq_def, henselExtractedFactors.eq_def]
+      cases left with
+      | none =>
+          cases right with
+          | none => simp [hrootBang]
+          | some child =>
+              have hright := henselExtractedFactors_eq_of_lookups child
+                before after (by
+                  intro childIndex hchildIndex
+                  exact hlookup childIndex (by
+                    simp [henselLiftTreeIndices, hchildIndex]))
+              simp [hrootBang, hright]
+      | some child =>
+          have hleft := henselExtractedFactors_eq_of_lookups child
+            before after (by
+              intro childIndex hchildIndex
+              exact hlookup childIndex (by
+                simp [henselLiftTreeIndices, hchildIndex]))
+          cases right with
+          | none => simp [hrootBang, hleft]
+          | some rightChild =>
+              have hright := henselExtractedFactors_eq_of_lookups rightChild
+                before after (by
+                  intro childIndex hchildIndex
+                  exact hlookup childIndex (by
+                    simp [henselLiftTreeIndices, hchildIndex]))
+              simp [hleft, hright]
+termination_by tree.nodeCount
+decreasing_by
+  · exact Generated.StrictHensel.HenselLiftTree.right_nodeCount_lt
+      index none child
+  · exact Generated.StrictHensel.HenselLiftTree.left_nodeCount_lt
+      index child right
+  · exact Generated.StrictHensel.HenselLiftTree.right_nodeCount_lt
+      index (some child) rightChild
+
 /-- The semantic extraction trace returns the input prefix followed by exactly
 the node fields named by `henselExtractedFactors`, in source left-to-right
 order. -/

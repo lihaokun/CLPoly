@@ -556,17 +556,16 @@ theorem strictDDFStage_runsEDF
 /-- Pipeline boundary for the exact generated C++ quadratic
 `__hensel_step` entry. -/
 theorem strictHenselStepStage
-    (termination : Generated.StrictHensel.DivmodTermination)
     (node : HenselNode) (f : SparsePolyZZ) (m : Nat)
     (hinvariant : Refinement.StrictHensel.HenselStepRefinementInvariant
-      termination node f m) :
+      Refinement.StrictHensel.concreteDivmodTermination node f m) :
     ∃ output,
       Generated.StrictHensel.__hensel_step_raw_ir
-          (Refinement.StrictHensel.strictHenselRawOps termination)
+          (Refinement.StrictHensel.strictHenselRawOps
+            Refinement.StrictHensel.concreteDivmodTermination)
           node f (m : Int) = .ok output ∧
       Refinement.StrictHensel.HenselStepCorrect f m node output := by
-  exact Refinement.__hensel_step_raw_ir_refines termination node f m
-    hinvariant
+  exact Refinement.__hensel_step_raw_ir_refines node f m hinvariant
 
 /-- Pipeline boundary for the exact generated C++ `__hensel_tree_build`
 entry.  Its concrete output supplies both the initial algebraic root invariant
@@ -616,23 +615,25 @@ theorem strictHenselLiftUpolyStage
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
     (h2p : 2 * this._p.toNat ≤ UInt64.size)
     (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
-    (termination : Generated.StrictHensel.DivmodTermination)
     (mulProvider : Refinement.StrictDDF.RawMulWorkspaceProvider this)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (aTarget : Int32)
     (hinvariant : Refinement.StrictHensel.HenselLiftEntryInvariant this
-      termination mulProvider f factors aTarget) :
+      Refinement.StrictHensel.concreteDivmodTermination mulProvider f factors
+      aTarget) :
     ∃ output,
       Generated.StrictHensel.__hensel_lift_upoly_raw_ir
-          (Refinement.StrictHensel.strictHenselRawOps termination)
+          (Refinement.StrictHensel.strictHenselRawOps
+            Refinement.StrictHensel.concreteDivmodTermination)
           (Refinement.StrictHensel.strictHenselTreeBuildRawOps
             this mulProvider)
           f factors this._p aTarget
             (Nat.Prime.two_le (Fact.out : Nat.Prime this._p.toNat)) =
               .ok output ∧
-      Refinement.StrictHensel.HenselLiftEntryCorrect termination f factors
-        this._p aTarget output := by
+      Refinement.StrictHensel.HenselLiftEntryCorrect
+        Refinement.StrictHensel.concreteDivmodTermination f factors this._p
+        aTarget output := by
   exact Refinement.__hensel_lift_upoly_raw_ir_refines this hcfg h2p hp2
-    termination mulProvider f factors aTarget hinvariant
+    mulProvider f factors aTarget hinvariant
 
 /-- End-to-end pipeline boundary for the original generated C++ `__factor_Zp`
 entry.  This is a direct re-export of the centralized generated contract, not

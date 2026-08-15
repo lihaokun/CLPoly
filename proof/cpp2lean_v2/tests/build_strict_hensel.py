@@ -272,8 +272,11 @@ def divmodLoop (g : SparsePolyZZ) (inverse m : ZZ) {r q : SparsePolyZZ}
   | .subtract _ _ _ _ next => divmodLoop g inverse m next
 
 structure DivmodTermination where
+  inputValid : SparsePolyZZ → SparsePolyZZ → Prop
+  inputValidDecidable : ∀ g r, Decidable (inputValid g r)
   trace : ∀ (f g reduced : SparsePolyZZ) (m : ZZ),
     __upoly_mod_coeff_raw_ir f m = .ok reduced →
+    inputValid g reduced →
     let inverse := (ZZ.invert 0 g[0]!.2 m).2
     DivmodTrace g inverse m reduced #[]
 
@@ -286,11 +289,14 @@ def __upoly_divmod_mod_raw_ir (termination : DivmodTermination)
     match hreduce : __upoly_mod_coeff_raw_ir f m with
     | .error fault => .error fault
     | .ok reduced =>
-      let inverseRun := ZZ.invert 0 g[0]!.2 m
-      if inverseRun.1 then
-        .ok (divmodLoop g inverseRun.2 m
-          (termination.trace f g reduced m hreduce))
-      else .error .assertionFailure
+      letI := termination.inputValidDecidable g reduced
+      if hvalid : termination.inputValid g reduced then
+        let inverseRun := ZZ.invert 0 g[0]!.2 m
+        if inverseRun.1 then
+          .ok (divmodLoop g inverseRun.2 m
+            (termination.trace f g reduced m hreduce hvalid))
+        else .error .assertionFailure
+      else .error .arithmeticDomain
 
 structure HenselStepRawOps where
   mul : SparsePolyZZ → SparsePolyZZ → RawExec SparsePolyZZ

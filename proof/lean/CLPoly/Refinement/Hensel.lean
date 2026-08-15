@@ -1854,6 +1854,79 @@ decreasing_by
     · exact hgDegree
     · exact hparts.2
 
+private def sparseCanonicalCheck : List (UMonomial × Int) → Bool
+  | [] => true
+  | term :: [] => term.2 != 0
+  | term :: next :: rest =>
+      term.2 != 0 && term.1.deg > next.1.deg &&
+        sparseCanonicalCheck (next :: rest)
+
+private theorem sparseCanonicalCheck_eq_true (xs : List (UMonomial × Int)) :
+    sparseCanonicalCheck xs = true ↔
+      List.IsChain (fun a b : UMonomial × Int => a.1.deg > b.1.deg) xs ∧
+      ∀ term ∈ xs, term.2 ≠ 0 := by
+  induction xs with
+  | nil => simp [sparseCanonicalCheck]
+  | cons term xs ih =>
+      cases xs with
+      | nil => simp [sparseCanonicalCheck]
+      | cons next rest =>
+          simp [sparseCanonicalCheck, ih, and_assoc, and_left_comm, and_comm]
+
+private def degreesBoundCheck (xs : List (UMonomial × Int)) : Bool :=
+  xs.all fun term => decide (term.1.deg < 2 ^ 63)
+
+private theorem degreesBoundCheck_eq_true (xs : List (UMonomial × Int)) :
+    degreesBoundCheck xs = true ↔
+      ∀ term ∈ xs, term.1.deg < 2 ^ 63 := by
+  simp [degreesBoundCheck]
+
+/-- Executable check of exactly the source representation domain on which
+modular long division is called.  It checks a nonempty canonical divisor and
+a canonical reduced dividend, with all exponents representable by the signed
+C++ degree type.  It contains no quotient, remainder, trace, or semantic
+polynomial result. -/
+def concreteDivmodInputValidCheck (g r : SparsePolyZZ) : Bool :=
+  decide (0 < g.size) &&
+  sparseCanonicalCheck g.toList && degreesBoundCheck g.toList &&
+  sparseCanonicalCheck r.toList && degreesBoundCheck r.toList
+
+def ConcreteDivmodInputValid (g r : SparsePolyZZ) : Prop :=
+  concreteDivmodInputValidCheck g r = true
+
+theorem concreteDivmodInputValid_iff (g r : SparsePolyZZ) :
+    ConcreteDivmodInputValid g r ↔
+      0 < g.size ∧
+      StrictPolynomialMod.SparsePolyZZCanonical g ∧
+      DegreesBound g ∧
+      StrictPolynomialMod.SparsePolyZZCanonical r ∧
+      DegreesBound r := by
+  simp [ConcreteDivmodInputValid, concreteDivmodInputValidCheck,
+    sparseCanonicalCheck_eq_true, degreesBoundCheck_eq_true,
+    StrictPolynomialMod.SparsePolyZZCanonical, DegreesBound]
+  tauto
+
+/-- The unique concrete termination provider used by the strict Hensel and
+recombination executions.  Its trace is constructed by well-founded recursion
+over the actual generated C++ remainder update. -/
+def concreteDivmodTermination : Generated.StrictHensel.DivmodTermination where
+  inputValid := ConcreteDivmodInputValid
+  inputValidDecidable := by
+    intro g r
+    unfold ConcreteDivmodInputValid
+    infer_instance
+  trace := by
+    intro f g reduced m _ hvalid
+    rw [concreteDivmodInputValid_iff] at hvalid
+    rcases hvalid with
+      ⟨hgsize, hgCanonical, hgBound, hrCanonical, hrBound⟩
+    have hgDegree : g[0]!.1.deg < 2 ^ 63 := by
+      apply hgBound g[0]!
+      rw [getElem!_pos g 0 hgsize]
+      exact Array.getElem_mem_toList hgsize
+    exact concreteDivmodTrace g (ZZ.invert 0 g[0]!.2 m).2 m
+      hgsize hgCanonical hgDegree reduced #[] hrCanonical hrBound
+
 /-- Representation facts needed at every active state of the exact generated
 division trace.  This predicate contains no result polynomial: it certifies
 only that the source's signed degree arithmetic is within range. -/
@@ -2063,6 +2136,8 @@ theorem __upoly_divmod_mod_raw_ir_terminates
     (termination : Generated.StrictHensel.DivmodTermination)
     (f g : SparsePolyZZ) (m : ZZ)
     (hg : g.isEmpty = false)
+    (hvalid : termination.inputValid g
+      (Generated.StrictHensel.modCoeffOutput f m))
     (hinvert : (ZZ.invert 0 g[0]!.2 m).1 = true) :
     ∃ q r,
       Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination f g m =
@@ -2070,9 +2145,9 @@ theorem __upoly_divmod_mod_raw_ir_terminates
   let reduced := Generated.StrictHensel.modCoeffOutput f m
   let output := Generated.StrictHensel.divmodLoop g
     (ZZ.invert 0 g[0]!.2 m).2 m
-      (termination.trace f g reduced m (by rfl))
+      (termination.trace f g reduced m (by rfl) hvalid)
   refine ⟨output.1, output.2, ?_⟩
-  simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hg, hinvert,
+  simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hg, hvalid, hinvert,
     Generated.StrictHensel.__upoly_mod_coeff_raw_ir, reduced, output]
 
 /-- Full semantic refinement of the generated C++ modular long-division
@@ -2083,13 +2158,15 @@ theorem __upoly_divmod_mod_raw_ir_refines
     (f g : SparsePolyZZ) (m : Nat)
     (hg : 0 < g.size) (hgDegree : g[0]!.1.deg < 2 ^ 63)
     (hgHead : HeadDominates g) (hfBound : DegreesBound f)
+    (hvalid : termination.inputValid g
+      (Generated.StrictHensel.modCoeffOutput f (m : Int)))
     (hinvert : (ZZ.invert 0 g[0]!.2 (m : Int)).1 = true) :
     ∃ q r,
       Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination f g
           (m : Int) = .ok (q, r) ∧
       toPolyMod m r + toPolyMod m q * toPolyMod m g = toPolyMod m f := by
   let reduced := Generated.StrictHensel.modCoeffOutput f (m : Int)
-  let trace := termination.trace f g reduced (m : Int) (by rfl)
+  let trace := termination.trace f g reduced (m : Int) (by rfl) hvalid
   let output := Generated.StrictHensel.divmodLoop g
     (ZZ.invert 0 g[0]!.2 (m : Int)).2 (m : Int) trace
   have hgFalse : g.isEmpty = false := by
@@ -2101,7 +2178,7 @@ theorem __upoly_divmod_mod_raw_ir_refines
       Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination f g
           (m : Int) = .ok (output.1, output.2) := by
     simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hgFalse,
-      hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+      hvalid, hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
       reduced, trace, output]
   have hpreserve := divmodLoop_preserves_of_bounds m g hg hgDegree hgHead
     hinvert trace (modCoeffOutput_degreesBound f (m : Int) hfBound)
@@ -2126,8 +2203,16 @@ theorem __upoly_divmod_mod_raw_ir_refines_of_run
     (hrun : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
       f g (m : Int) = .ok (q, r)) :
     toPolyMod m r + toPolyMod m q * toPolyMod m g = toPolyMod m f := by
+  have hvalid : termination.inputValid g
+      (Generated.StrictHensel.modCoeffOutput f (m : Int)) := by
+    simp only [Generated.StrictHensel.__upoly_divmod_mod_raw_ir,
+      Generated.StrictHensel.__upoly_mod_coeff_raw_ir] at hrun
+    split at hrun <;> try contradiction
+    split at hrun <;> try contradiction
+    next h => exact h
   rcases __upoly_divmod_mod_raw_ir_refines termination f g m hg hgDegree
-      hgHead hfBound hinvert with ⟨actualQ, actualR, hactual, hsemantic⟩
+      hgHead hfBound hvalid hinvert with
+    ⟨actualQ, actualR, hactual, hsemantic⟩
   rw [hrun] at hactual
   cases hactual
   exact hsemantic
@@ -2653,6 +2738,16 @@ theorem __hensel_step_factor_phase_raw_ir_refines
       let se := Generated.StrictHensel.pairVecMulHeapLoop
         (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
       DegreesBound se)
+    (hdivmodValid :
+      let gh := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
+      let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
+      let e := Generated.StrictHensel.divideThenReduceCoeffs
+        difference (m : Int)
+      let se := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
+      termination.inputValid node.h
+        (Generated.StrictHensel.modCoeffOutput se (m : Int)))
     (hinvariant : HenselNodeInvariant f m node) :
     ∃ factorNode,
       Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
@@ -2670,6 +2765,7 @@ theorem __hensel_step_factor_phase_raw_ir_refines
     (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
   let reduced := Generated.StrictHensel.modCoeffOutput se (m : Int)
   let trace := termination.trace se node.h reduced (m : Int) (by rfl)
+    hdivmodValid
   let qr := Generated.StrictHensel.divmodLoop node.h
     (ZZ.invert 0 node.h[0]!.2 (m : Int)).2 (m : Int) trace
   let te := Generated.StrictHensel.pairVecMulHeapLoop
@@ -2699,8 +2795,9 @@ theorem __hensel_step_factor_phase_raw_ir_refines
       Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
         se node.h (m : Int) = .ok qr := by
     simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hhFalse,
-      hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+      hdivmodValid, hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
       reduced, trace, qr]
+    rw [dif_pos hdivmodValid]
   have hteRun : (strictHenselRawOps termination).mul node.t e = .ok te := rfl
   have hqgRun : (strictHenselRawOps termination).mul qr.1 node.g = .ok qg := rfl
   have htauRawRun : (strictHenselRawOps termination).add te qg =
@@ -2798,6 +2895,23 @@ theorem __hensel_step_bezout_phase_raw_ir_refines
       let sep := Generated.StrictHensel.pairVecMulHeapLoop
         (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
       DegreesBound sep)
+    (hdivmodValid :
+      let sg := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g)
+        #[]
+      let th := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h)
+        #[]
+      let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+        (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+      let difference := Generated.StrictHensel.pairVecSubLoop
+        oneMinusSg th 0 0 #[]
+      let ep := Generated.StrictHensel.divideThenReduceCoeffs
+        difference (m : Int)
+      let sep := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
+      termination.inputValid factorNode.h
+        (Generated.StrictHensel.modCoeffOutput sep (m : Int)))
     (hbezoutInput :
       toPolyMod m factorNode.s * toPolyMod m factorNode.g +
         toPolyMod m factorNode.t * toPolyMod m factorNode.h = 1) :
@@ -2821,6 +2935,7 @@ theorem __hensel_step_bezout_phase_raw_ir_refines
     (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
   let reduced := Generated.StrictHensel.modCoeffOutput sep (m : Int)
   let trace := termination.trace sep factorNode.h reduced (m : Int) (by rfl)
+    hdivmodValid
   let qr := Generated.StrictHensel.divmodLoop factorNode.h
     (ZZ.invert 0 factorNode.h[0]!.2 (m : Int)).2 (m : Int) trace
   let sRaw := Generated.StrictHensel.pairVecAddLoop factorNode.s
@@ -2855,8 +2970,9 @@ theorem __hensel_step_bezout_phase_raw_ir_refines
       Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination sep
         factorNode.h (m : Int) = .ok qr := by
     simp [Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hhFalse,
-      hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+      hdivmodValid, hinvert, Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
       reduced, trace, qr]
+    rw [dif_pos hdivmodValid]
   have hsRawRun : (strictHenselRawOps termination).add factorNode.s
       (Generated.StrictHensel.scaleCoeffs qr.2 (m : Int)) = .ok sRaw := rfl
   have hsNewRun : Generated.StrictHensel.__upoly_mod_coeff_raw_ir sRaw
@@ -2947,6 +3063,19 @@ structure BezoutPhasePreconditions
     let sep := Generated.StrictHensel.pairVecMulHeapLoop
       (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
     DegreesBound sep
+  divmodValid :
+    let sg := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g) #[]
+    let th := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h) #[]
+    let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+      (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+    let difference := Generated.StrictHensel.pairVecSubLoop oneMinusSg th 0 0 #[]
+    let ep := Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)
+    let sep := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
+    termination.inputValid factorNode.h
+      (Generated.StrictHensel.modCoeffOutput sep (m : Int))
 
 /-- Complete algorithm invariant for the generated quadratic Hensel step.
 It records only source safety, representation bounds, exact divisibility, and
@@ -2974,6 +3103,15 @@ structure HenselStepRefinementInvariant
     let se := Generated.StrictHensel.pairVecMulHeapLoop
       (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
     DegreesBound se
+  factorDivmodValid :
+    let gh := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
+    let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
+    let e := Generated.StrictHensel.divideThenReduceCoeffs difference (m : Int)
+    let se := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
+    termination.inputValid node.h
+      (Generated.StrictHensel.modCoeffOutput se (m : Int))
   bezoutReady : ∀ factorNode,
     Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
         (strictHenselRawOps termination) node f (m : Int) = .ok factorNode →
@@ -2994,6 +3132,7 @@ theorem __hensel_step_raw_ir_refines
       hinvariant.positiveModulus hinvariant.hNonempty hinvariant.hDegree
       hinvariant.hHead hinvariant.hInvertible
       hinvariant.factorDifferenceDivisible hinvariant.factorSeBound
+      hinvariant.factorDivmodValid
       hinvariant.inputInvariant with
     ⟨factorNode, hfactorRun, hfactorProduct, hgPreserved, hhPreserved,
       hsUnchanged, htUnchanged⟩
@@ -3006,6 +3145,7 @@ theorem __hensel_step_raw_ir_refines
   rcases __hensel_step_bezout_phase_raw_ir_refines termination factorNode m
       hinvariant.positiveModulus hready.hNonempty hready.hDegree hready.hHead
       hready.hInvertible hready.differenceDivisible hready.sepBound
+      hready.divmodValid
       hfactorBezout with
     ⟨output, hbezoutRun, hbezout, hsPreserved, htPreserved,
       hgUnchanged, hhUnchanged⟩
@@ -3042,16 +3182,35 @@ theorem __hensel_step_factor_phase_raw_ir_terminates
     (termination : Generated.StrictHensel.DivmodTermination)
     (node : HenselNode) (f : SparsePolyZZ) (m : ZZ)
     (hh : node.h.isEmpty = false)
+    (hvalid :
+      let gh := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
+      let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
+      let e := Generated.StrictHensel.divideThenReduceCoeffs difference m
+      let se := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
+      termination.inputValid node.h
+        (Generated.StrictHensel.modCoeffOutput se m))
     (hinvert : (ZZ.invert 0 node.h[0]!.2 m).1 = true) :
     ∃ output,
       Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
           (strictHenselRawOps termination) node f m = .ok output := by
-  simp [Generated.StrictHensel.__hensel_step_factor_phase_raw_ir,
-    strictHenselRawOps, Generated.StrictHensel.__upoly_mul_raw_ir,
-    Generated.StrictHensel.__upoly_add_raw_ir,
-    Generated.StrictHensel.__upoly_sub_raw_ir,
-    Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hh, hinvert,
-    Generated.StrictHensel.__upoly_mod_coeff_raw_ir]
+  let gh := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
+  let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
+  let e := Generated.StrictHensel.divideThenReduceCoeffs difference m
+  let se := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
+  rcases __upoly_divmod_mod_raw_ir_terminates termination se node.h m hh
+      hvalid hinvert with ⟨q, r, hdivmod⟩
+  unfold Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
+    strictHenselRawOps Generated.StrictHensel.__upoly_mul_raw_ir
+    Generated.StrictHensel.__upoly_add_raw_ir
+    Generated.StrictHensel.__upoly_sub_raw_ir
+  simp only [Bind.bind, Except.bind]
+  dsimp [se, e, difference, gh] at hdivmod
+  rw [hdivmod]
+  simp only [Bind.bind, Except.bind]
   exact ⟨_, rfl⟩
 
 /-- Matching raw-to-safe bridge for the second contiguous source phase. -/
@@ -3059,16 +3218,43 @@ theorem __hensel_step_bezout_phase_raw_ir_terminates
     (termination : Generated.StrictHensel.DivmodTermination)
     (factorNode : HenselNode) (m : ZZ)
     (hh : factorNode.h.isEmpty = false)
+    (hvalid :
+      let sg := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g) #[]
+      let th := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h) #[]
+      let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+        (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+      let difference := Generated.StrictHensel.pairVecSubLoop oneMinusSg th 0 0 #[]
+      let ep := Generated.StrictHensel.divideThenReduceCoeffs difference m
+      let sep := Generated.StrictHensel.pairVecMulHeapLoop
+        (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
+      termination.inputValid factorNode.h
+        (Generated.StrictHensel.modCoeffOutput sep m))
     (hinvert : (ZZ.invert 0 factorNode.h[0]!.2 m).1 = true) :
     ∃ output,
       Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir
           (strictHenselRawOps termination) factorNode m = .ok output := by
-  simp [Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir,
-    strictHenselRawOps, Generated.StrictHensel.__upoly_mul_raw_ir,
-    Generated.StrictHensel.__upoly_add_raw_ir,
-    Generated.StrictHensel.__upoly_sub_raw_ir,
-    Generated.StrictHensel.__upoly_divmod_mod_raw_ir, hh, hinvert,
-    Generated.StrictHensel.__upoly_mod_coeff_raw_ir]
+  let sg := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g) #[]
+  let th := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h) #[]
+  let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+    (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+  let difference := Generated.StrictHensel.pairVecSubLoop oneMinusSg th 0 0 #[]
+  let ep := Generated.StrictHensel.divideThenReduceCoeffs difference m
+  let sep := Generated.StrictHensel.pairVecMulHeapLoop
+    (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
+  rcases __upoly_divmod_mod_raw_ir_terminates termination sep factorNode.h m
+      hh hvalid hinvert with ⟨q, r, hdivmod⟩
+  unfold Generated.StrictHensel.__hensel_step_bezout_phase_raw_ir
+    strictHenselRawOps Generated.StrictHensel.__upoly_mul_raw_ir
+    Generated.StrictHensel.__upoly_add_raw_ir
+    Generated.StrictHensel.__upoly_sub_raw_ir
+  simp only [Bind.bind, Except.bind]
+  dsimp [sep, ep, difference, oneMinusSg, th, sg] at hdivmod
+  rw [hdivmod]
+  simp only [Bind.bind, Except.bind]
   exact ⟨_, rfl⟩
 
 /-- Safety-only invariant at the proof-visible boundary between the two
@@ -3080,11 +3266,32 @@ structure HenselStepExecutionInvariant
     (node : HenselNode) (f : SparsePolyZZ) (m : ZZ) : Prop where
   inputHNonempty : node.h.isEmpty = false
   inputHInvertible : (ZZ.invert 0 node.h[0]!.2 m).1 = true
+  factorDivmodValid :
+    let gh := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
+    let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
+    let e := Generated.StrictHensel.divideThenReduceCoeffs difference m
+    let se := Generated.StrictHensel.pairVecMulHeapLoop
+      (Generated.StrictHensel.pairVecMulProducts node.s e) #[]
+    termination.inputValid node.h
+      (Generated.StrictHensel.modCoeffOutput se m)
   factorHReady : ∀ factorNode,
     Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
         (strictHenselRawOps termination) node f m = .ok factorNode →
     factorNode.h.isEmpty = false ∧
-      (ZZ.invert 0 factorNode.h[0]!.2 m).1 = true
+      (ZZ.invert 0 factorNode.h[0]!.2 m).1 = true ∧
+      (let sg := Generated.StrictHensel.pairVecMulHeapLoop
+          (Generated.StrictHensel.pairVecMulProducts factorNode.s factorNode.g) #[]
+       let th := Generated.StrictHensel.pairVecMulHeapLoop
+          (Generated.StrictHensel.pairVecMulProducts factorNode.t factorNode.h) #[]
+       let oneMinusSg := Generated.StrictHensel.pairVecSubLoop
+          (#[(UMonomial.mk 0, 1)] : SparsePolyZZ) sg 0 0 #[]
+       let difference := Generated.StrictHensel.pairVecSubLoop oneMinusSg th 0 0 #[]
+       let ep := Generated.StrictHensel.divideThenReduceCoeffs difference m
+       let sep := Generated.StrictHensel.pairVecMulHeapLoop
+          (Generated.StrictHensel.pairVecMulProducts factorNode.s ep) #[]
+       termination.inputValid factorNode.h
+          (Generated.StrictHensel.modCoeffOutput sep m))
 
 set_option maxHeartbeats 0 in
 /-- Complete raw-to-safe bridge for the generated `__hensel_step` entry.
@@ -3097,11 +3304,12 @@ theorem __hensel_step_raw_ir_terminates
       Generated.StrictHensel.__hensel_step_raw_ir
           (strictHenselRawOps termination) node f m = .ok output := by
   rcases __hensel_step_factor_phase_raw_ir_terminates termination node f m
-      hinvariant.inputHNonempty hinvariant.inputHInvertible with
+      hinvariant.inputHNonempty hinvariant.factorDivmodValid
+      hinvariant.inputHInvertible with
     ⟨factorNode, hfactor⟩
   have hready := hinvariant.factorHReady factorNode hfactor
   rcases __hensel_step_bezout_phase_raw_ir_terminates termination factorNode m
-      hready.1 hready.2 with ⟨output, hbezout⟩
+      hready.1 hready.2.2 hready.2.1 with ⟨output, hbezout⟩
   refine ⟨output, ?_⟩
   change (Generated.StrictHensel.__hensel_step_factor_phase_raw_ir
       (strictHenselRawOps termination) node f m >>= fun factorNode =>

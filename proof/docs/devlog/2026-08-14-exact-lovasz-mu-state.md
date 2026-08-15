@@ -580,3 +580,41 @@ by the concrete array proofs above.
 - C++ 变化：无
 - 验证：单文件 Lean 内核检查与 `lake build CLPoly.Refinement.Hensel` 通过
 - 下一步：收紧生成 `DivmodTermination` 的过宽全称域，将规范输入唯一接到 `concreteDivmodTrace`，删除可注入 trace 的抽象边界
+
+## Concrete modular-divmod termination boundary
+
+The generated division entry no longer asks a termination provider for a
+trace on every arbitrary array.  `DivmodTermination` now exposes an explicit,
+decidable source-input domain, and the raw entry faults before entering the
+loop when that domain is violated.  This models the representation contract
+of C++ `upolynomial_` instead of postulating termination for malformed sparse
+arrays on which the source degree update need not decrease.
+
+The sole production provider is `concreteDivmodTermination`.  Its domain is
+checked by executable Boolean traversals: the divisor must be nonempty, both
+arrays must have nonzero stored coefficients in strictly descending degree
+order, and every degree must fit the signed 64-bit source arithmetic.  The
+checker is proved equivalent to the existing canonicality and degree-bound
+predicates.  Its trace field is exactly `concreteDivmodTrace`, so it contains
+no semantic quotient/remainder witness and uses the previously proved
+well-founded head-degree rank.
+
+Both generated Hensel phases now transport this validity fact through their
+actual raw execution.  Successful modular division implies validity, which
+lets the semantic `_of_run` theorem recover the fact rather than demand an
+independent oracle.  The centralized public Hensel theorems and `Pipeline/L1`
+have also been specialized to the concrete provider; callers can no longer
+inject an arbitrary `DivmodTermination` at those boundaries.
+
+## 度量（concrete divmod boundary）
+
+- 耗时：约 3.0 小时（生成接口、可执行 checker、phase 传播与 codegen 构建）
+- 生成层变化：`DivmodTermination` 增加可判定输入域，raw entry 显式拒绝非法表示
+- 删除的退化风险：公共 Hensel/流水线边界不再接受任意 trace provider
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：生成器 stale check、strict refinement boundary、`git diff --check`、
+  `lake build CLPoly.Refinement.Hensel` 与 `lake build CLPoly.Refinement.Recombine` 通过
+- 已知无关构建问题：公共层联合构建在未修改的 `SelectPrime.lean:823` 触发默认
+  200k heartbeat；需以提高 heartbeat 的单文件检查复核本次公共 wrapper 修改
+- 下一步：从 Hensel tree 的 canonical 不变量直接构造 concrete entry invariant，
+  再接入 FactorZZ 的 Hensel/recombine raw ops

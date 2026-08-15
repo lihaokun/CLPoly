@@ -194,34 +194,36 @@ theorem __polynomial_GCD_eea_raw_ir_refines_gcd
 The executable side is the exact strict raw L1 program, and its output
 satisfies the L2 quadratic Hensel-step invariant without a model fallback. -/
 theorem __hensel_step_raw_ir_refines
-    (termination : Generated.StrictHensel.DivmodTermination)
     (node : HenselNode) (f : SparsePolyZZ) (m : Nat)
     (hinvariant : StrictHensel.HenselStepRefinementInvariant
-      termination node f m) :
+      StrictHensel.concreteDivmodTermination node f m) :
     ∃ output,
       Generated.StrictHensel.__hensel_step_raw_ir
-          (StrictHensel.strictHenselRawOps termination)
+          (StrictHensel.strictHenselRawOps
+            StrictHensel.concreteDivmodTermination)
           node f (m : Int) = .ok output ∧
       StrictHensel.HenselStepCorrect f m node output := by
-  exact Refinement.StrictHensel.__hensel_step_raw_ir_refines termination node f m hinvariant
+  exact Refinement.StrictHensel.__hensel_step_raw_ir_refines
+    StrictHensel.concreteDivmodTermination node f m hinvariant
 
 /-- Generated public contract for the original C++
 `__hensel_lift_recursive` entry.  The executable side performs the exact
 top-down raw tree traversal with structural well-founded recursion; its
 semantic trace proves every concrete node update is a quadratic Hensel step. -/
 theorem __hensel_lift_recursive_raw_ir_refines
-    (termination : Generated.StrictHensel.DivmodTermination)
     (tree : Generated.StrictHensel.HenselLiftTree)
     (nodes : Array HenselNode) (target : SparsePolyZZ) (m : Nat)
     (hinvariant : StrictHensel.HenselLiftRecursiveRefinementInvariant
-      termination tree nodes target m) :
+      StrictHensel.concreteDivmodTermination tree nodes target m) :
     ∃ output,
       Generated.StrictHensel.__hensel_lift_recursive_raw_ir
-          (StrictHensel.strictHenselRawOps termination)
+          (StrictHensel.strictHenselRawOps
+            StrictHensel.concreteDivmodTermination)
           tree nodes target (m : Int) = .ok output ∧
-      StrictHensel.HenselLiftRecursiveCorrect termination m tree nodes target
-        output := by
-  exact Refinement.StrictHensel.__hensel_lift_recursive_raw_ir_refines termination tree nodes target m hinvariant
+      StrictHensel.HenselLiftRecursiveCorrect
+        StrictHensel.concreteDivmodTermination m tree nodes target output := by
+  exact Refinement.StrictHensel.__hensel_lift_recursive_raw_ir_refines
+    StrictHensel.concreteDivmodTermination tree nodes target m hinvariant
 
 /-- Generated public contract for the original C++
 `__hensel_extract_factors` entry.  The executable side performs the exact
@@ -286,21 +288,23 @@ theorem __hensel_lift_upoly_raw_ir_refines
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
     (h2p : 2 * this._p.toNat ≤ UInt64.size)
     (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
-    (termination : Generated.StrictHensel.DivmodTermination)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (aTarget : Int32)
-    (hinvariant : StrictHensel.HenselLiftEntryInvariant this termination
-      mulProvider f factors aTarget) :
+    (hinvariant : StrictHensel.HenselLiftEntryInvariant this
+      StrictHensel.concreteDivmodTermination mulProvider f factors aTarget) :
     ∃ output,
       Generated.StrictHensel.__hensel_lift_upoly_raw_ir
-          (StrictHensel.strictHenselRawOps termination)
+          (StrictHensel.strictHenselRawOps
+            StrictHensel.concreteDivmodTermination)
           (StrictHensel.strictHenselTreeBuildRawOps this mulProvider)
           f factors this._p aTarget
             (Nat.Prime.two_le (Fact.out : Nat.Prime this._p.toNat)) =
               .ok output ∧
-      StrictHensel.HenselLiftEntryCorrect termination f factors this._p
-        aTarget output := by
-  exact Refinement.StrictHensel.__hensel_lift_upoly_raw_ir_refines this hcfg h2p hp2 termination mulProvider f factors
+      StrictHensel.HenselLiftEntryCorrect
+        StrictHensel.concreteDivmodTermination f factors this._p aTarget
+        output := by
+  exact Refinement.StrictHensel.__hensel_lift_upoly_raw_ir_refines this hcfg
+    h2p hp2 StrictHensel.concreteDivmodTermination mulProvider f factors
     aTarget hinvariant
 
 end Refinement

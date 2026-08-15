@@ -1597,3 +1597,25 @@ the finite-field result or assume an ordered semantic polynomial.
   正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
 - 下一步：沿 canonical array 的实际末项证明 generated `constantTerm`
   等于 `SparsePolyZZ.toPoly.coeff 0`，再组合完整 pruning accept 控制流
+
+## Canonical sparse integer tails are the generated constant term
+
+`sparseZZLastConstant` mirrors the source last-element lookup on lists.
+`sparseZZ_coeff_zero_eq_lastConstant` proves by strict-chain recursion that
+all earlier terms have positive degree, leaving exactly the last stored term
+when its degree is zero.  `sparsePolyZZ_constantTerm_eq_coeff_zero` then
+identifies this list result with the generated array access at `size - 1`.
+
+The canonical wrappers for both selected boundary products now derive their
+per-factor head and constant facts internally.  Their remaining premises are
+only concrete array bounds, canonicality, and (for leading access) nonempty
+selected factors, all already present in the Hensel execution invariants.
+
+## 度量（canonical ZZ constant coefficient）
+
+- 耗时：约 1 小时（末项递归、strict-chain coeff 0、array/list last lookup）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：单文件 `lake env lean CLPoly/Refinement/Recombine.lean` 通过；
+  正式 `lake build CLPoly.Refinement.Recombine` 通过（3531 jobs）
+- 下一步：从 Hensel output invariant 实例化两个 canonical boundary
+  wrappers，并在 `zassenhausAttempt` 中关闭 leading/constant accept 分支

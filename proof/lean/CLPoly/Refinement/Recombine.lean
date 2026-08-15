@@ -2291,6 +2291,85 @@ theorem sparsePolyZZ_leadingCoeff_eq_head (poly : SparsePolyZZ)
     sparseZZTail_coeff_zero_above head.1.deg rest hrestLt, add_zero,
     hheadEq]
 
+private def sparseZZLastConstant : List (UMonomial × Int) → Int
+  | [] => 0
+  | term :: [] => if term.1.deg = 0 then term.2 else 0
+  | _ :: next :: rest => sparseZZLastConstant (next :: rest)
+
+private theorem sparseZZLastConstant_eq_last
+    (head : UMonomial × Int) (rest : List (UMonomial × Int)) :
+    sparseZZLastConstant (head :: rest) =
+      let last := (head :: rest)[(head :: rest).length - 1]!
+      if last.1.deg = 0 then last.2 else 0 := by
+  induction rest generalizing head with
+  | nil => simp [sparseZZLastConstant]
+  | cons next rest ih =>
+      rw [sparseZZLastConstant]
+      simpa using ih next
+
+private theorem sparseZZ_coeff_zero_eq_lastConstant
+    (terms : List (UMonomial × Int))
+    (hchain : List.IsChain
+      (fun a b : UMonomial × Int => a.1.deg > b.1.deg) terms) :
+    ((terms.map fun term =>
+      Polynomial.monomial term.1.deg term.2).sum).coeff 0 =
+        sparseZZLastConstant terms := by
+  induction terms with
+  | nil => simp [sparseZZLastConstant]
+  | cons head terms ih =>
+      cases terms with
+      | nil => simp [sparseZZLastConstant, Polynomial.coeff_monomial]
+      | cons next rest =>
+          rw [List.isChain_cons_cons] at hchain
+          have hheadDegree : head.1.deg ≠ 0 := by omega
+          simp only [List.map_cons, List.sum_cons, Polynomial.coeff_add,
+            Polynomial.coeff_monomial, if_neg hheadDegree, zero_add,
+            sparseZZLastConstant]
+          simpa [Polynomial.coeff_monomial] using ih hchain.2
+
+/-- The generated sparse-array last-term lookup computes exactly the
+mathematical constant coefficient on every canonical integer polynomial. -/
+theorem sparsePolyZZ_constantTerm_eq_coeff_zero (poly : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical poly) :
+    Generated.StrictRecombine.constantTerm poly =
+      (SparsePolyZZ.toPoly poly).coeff 0 := by
+  by_cases hempty : poly.isEmpty
+  · have hpoly : poly = #[] := Array.isEmpty_iff.mp hempty
+    subst poly
+    simp [Generated.StrictRecombine.constantTerm, SparsePolyZZ.toPoly]
+  · have hsize : 0 < poly.size := by
+      have hsizeNe : poly.size ≠ 0 := by
+        intro hzero
+        apply hempty
+        simp [Array.isEmpty, hzero]
+      omega
+    have hlastModel := sparseZZLastConstant_eq_last poly[0]!
+      poly.toList.tail
+    have hlistNonempty : poly.toList ≠ [] := by
+      intro hnil
+      have hlengthZero : poly.toList.length = 0 := by
+        simpa using congrArg List.length hnil
+      have hsizeZero : poly.size = 0 := by simpa using hlengthZero
+      omega
+    have hhead : poly.toList.head hlistNonempty = poly[0]! := by
+      rw [List.head_eq_getElem]
+      simpa [getElem!_pos poly 0 hsize] using Array.getElem_toList hsize
+    have hfull : poly[0]! :: poly.toList.tail = poly.toList := by
+      rw [← hhead]
+      exact List.cons_head_tail hlistNonempty
+    rw [hfull] at hlastModel
+    have hcoeff := sparseZZ_coeff_zero_eq_lastConstant poly.toList hcanonical.1
+    unfold Generated.StrictRecombine.constantTerm
+    rw [dif_neg hempty]
+    symm
+    unfold SparsePolyZZ.toPoly
+    rw [hcoeff, hlastModel]
+    congr 1
+    have hlast : poly.size - 1 < poly.size := by omega
+    rw [getElem!_pos poly.toList (poly.toList.length - 1) (by simpa using hlast)]
+    exact congrArg (fun term : UMonomial × Int =>
+      if term.1.deg = 0 then term.2 else 0) (Array.getElem_toList hlast)
+
 /-- Once the canonical sparse representation identifies each selected head
 coefficient, the concrete leading-pruning product is the leading coefficient
 of the exact source-sublist polynomial product. -/
@@ -2350,6 +2429,47 @@ theorem selectedConstantValues_prod_eq_coeff_zero
     Array.getElem_toList hactive]
   simpa [getElem!_pos activeLifted candidate[position] hactive] using
     (hconstants position hpositionArray).symm
+
+theorem selectedLeadingValues_prod_eq_leadingCoeff_of_canonical
+    (candidate : Array Nat) (activeLifted : Array SparsePolyZZ)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size)
+    (hcanonical : ∀ position (hposition : position < candidate.size),
+      StrictPolynomialMod.SparsePolyZZCanonical
+        activeLifted[candidate[position]]!)
+    (hnonempty : ∀ position (hposition : position < candidate.size),
+      activeLifted[candidate[position]]!.isEmpty = false) :
+    (selectedLeadingValues candidate activeLifted 0).prod =
+      ((selectSourceIndices activeLifted.toList candidate.toList).map
+        SparsePolyZZ.toPoly).prod.leadingCoeff := by
+  apply selectedLeadingValues_prod_eq_leadingCoeff candidate activeLifted hbound
+  intro position hposition
+  have hsize : 0 < activeLifted[candidate[position]]!.size := by
+    have hsizeNe : activeLifted[candidate[position]]!.size ≠ 0 := by
+      intro hzero
+      have hempty : activeLifted[candidate[position]]!.isEmpty = true := by
+        simp [Array.isEmpty, hzero]
+      rw [hnonempty position hposition] at hempty
+      contradiction
+    omega
+  simpa [getElem!_pos activeLifted[candidate[position]]! 0 hsize] using
+    sparsePolyZZ_leadingCoeff_eq_head activeLifted[candidate[position]]!
+      (hcanonical position hposition) hsize
+
+theorem selectedConstantValues_prod_eq_coeff_zero_of_canonical
+    (candidate : Array Nat) (activeLifted : Array SparsePolyZZ)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size)
+    (hcanonical : ∀ position (hposition : position < candidate.size),
+      StrictPolynomialMod.SparsePolyZZCanonical
+        activeLifted[candidate[position]]!) :
+    (selectedConstantValues candidate activeLifted 0).prod =
+      ((selectSourceIndices activeLifted.toList candidate.toList).map
+        SparsePolyZZ.toPoly).prod.coeff 0 := by
+  apply selectedConstantValues_prod_eq_coeff_zero candidate activeLifted hbound
+  intro position hposition
+  exact (sparsePolyZZ_constantTerm_eq_coeff_zero
+    activeLifted[candidate[position]]! (hcanonical position hposition)).symm
 
 /-- Lexicographic order on equal-size source arrays, stated at the concrete
 first differing position.  This avoids assigning an order to arrays of

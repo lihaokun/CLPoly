@@ -896,3 +896,25 @@ different witnesses.
 - 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
 - 下一步：把 adjusted 首因子的单位关系与 Zp 输出不可约性合成，导出最终
   Hensel 数组每个模 p 像不可约
+
+## Exact semantics of the first-factor coefficient map
+
+`scaleZpCoeffs_toPoly` proves that the generated array `map` used by
+`__hensel_adjust_first_factor_raw_ir` denotes multiplication by the concrete
+field constant.  The proof traverses the actual term list, applies the
+verified `Zp` multiplication semantics at every coefficient, and discharges
+the machine-word product bound from `p * p ≤ UInt64.size` and the concrete
+reduced-coefficient bounds.
+
+This closes the executable scaling part of the adjustment.  Combined with the
+already proved sparse normalization semantics, it will identify adjusted
+factor zero as the leading-coefficient unit multiple of the actual selected
+Zp factor; all other positions are unchanged by the source `set!`.
+
+## 度量（adjust-first scaling semantics）
+
+- 耗时：约 0.5 小时（term-map 归纳、Zp 乘法、word overflow 上界）
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 验证：`Hensel.lean` 以无限 heartbeat 完整内核检查通过
+- 下一步：结合 `GoodPrime.lc_nonzero` 和实际首项读取，证明 adjusted 因子
+  保留不可约性

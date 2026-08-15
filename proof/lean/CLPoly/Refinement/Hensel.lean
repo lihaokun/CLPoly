@@ -5015,6 +5015,54 @@ inductive HenselAdjustFirstFactorCorrect
       HenselAdjustFirstFactorCorrect f factors p
         (factors.set! 0 adjusted)
 
+private theorem scaleZpCoeffsList_toPoly
+    (p : Nat) (hp2 : p * p ≤ UInt64.size) (coefficient : Zp)
+    (hcoefficient : CLPoly.Math.Zp.Reduced p coefficient) :
+    ∀ terms : List (UMonomial × Zp),
+      CLPoly.Math.SparsePolyZp.AllReduced p terms →
+      CLPoly.Math.listSum p
+          (terms.map fun term => (term.1, term.2 * coefficient)) =
+        Polynomial.C (CLPoly.Math.Zp.toZMod p coefficient) *
+          CLPoly.Math.listSum p terms := by
+  intro terms hterms
+  induction terms with
+  | nil => simp [CLPoly.Math.listSum]
+  | cons term rest ih =>
+      have hterm := hterms term List.mem_cons_self
+      have hrest : CLPoly.Math.SparsePolyZp.AllReduced p rest :=
+        fun item hitem => hterms item (List.mem_cons_of_mem term hitem)
+      have hp : 0 < p := Nat.zero_lt_of_lt hterm.2
+      have hnoOverflow :
+          term.2.val.toNat * coefficient.val.toNat < UInt64.size := by
+        calc
+          term.2.val.toNat * coefficient.val.toNat < p * p :=
+            Nat.mul_lt_mul_of_lt_of_le hterm.2
+              (Nat.le_of_lt hcoefficient.2) hp
+          _ ≤ UInt64.size := hp2
+      have hmul := CLPoly.Math.Zp.toZMod_mul p term.2 coefficient
+        hterm.1 hcoefficient.1 hnoOverflow
+      rcases term with ⟨monomial, value⟩
+      simp only [List.map_cons, CLPoly.Math.listSum_cons]
+      rw [hmul, ih hrest, mul_add, Polynomial.C_mul_monomial]
+      ring
+
+/-- The exact coefficient map used by the source first-factor adjustment is
+multiplication by the represented field constant. -/
+theorem scaleZpCoeffs_toPoly
+    (p : Nat) (hp2 : p * p ≤ UInt64.size) (coefficient : Zp)
+    (hcoefficient : CLPoly.Math.Zp.Reduced p coefficient)
+    (factor : SparsePolyZp)
+    (hfactor : CLPoly.Math.SparsePolyZp.AllReduced p factor.toList) :
+    CLPoly.Math.SparsePolyZp.toPoly p
+        (Generated.StrictHensel.scaleZpCoeffs factor coefficient) =
+      Polynomial.C (CLPoly.Math.Zp.toZMod p coefficient) *
+        CLPoly.Math.SparsePolyZp.toPoly p factor := by
+  unfold Generated.StrictHensel.scaleZpCoeffs
+    CLPoly.Math.SparsePolyZp.toPoly
+  rw [Array.toList_map]
+  exact scaleZpCoeffsList_toPoly p hp2 coefficient hcoefficient
+    factor.toList hfactor
+
 /-- Raw-to-safe semantic refinement for the exact coefficient-baking block. -/
 theorem __hensel_adjust_first_factor_raw_ir_refines
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)

@@ -276,7 +276,8 @@ theorem __hensel_tree_build_raw_ir_refines
       StrictHensel.HenselTreeSemanticBuildCertificate this._p.toNat factors 0
         0 factors.size tree output ∧
       StrictHensel.HenselTreeNodeInitialInvariant this._p.toNat factors
-        0 factors.size (getElem output 0 hroot) := by
+        0 factors.size (getElem output 0 hroot) ∧
+      StrictHensel.HenselArrayCanonical output := by
   exact Refinement.StrictHensel.strictHenselTreeBuildRawIR_refines_topology_root this hcfg h2p hp2 mulProvider factors hfactors
     hfactorsNonempty hpairwise htwo hfitsInt32
 

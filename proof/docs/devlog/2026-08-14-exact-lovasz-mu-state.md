@@ -1803,6 +1803,31 @@ changes only `s` and `t`, as recorded by its generated execution proof.
 
 - C++ changes: none, so there is no new C++ b2b change surface in this step.
 
+## The recursive tree builder returns a canonical node array
+
+The local node-write theorem is now threaded through the complete generated
+well-founded tree builder.
+
+- Algebra-only pointer updates preserve `HenselNodeCanonical` because they do
+  not change `g` or `h`.
+- A same-size `HenselTreeArrayFrame` transfers the global array invariant by
+  using the new canonical value at the selected source slot and exact equality
+  at every other existing slot.
+- Each source `push default` preserves the invariant: the new allocation has
+  empty canonical `g`/`h` fields before the recursive call fills it.
+- The left recursion consumes the concrete left-ready array; the optional
+  right allocation and recursion consume the actual array returned by the
+  left call.  All four source branch combinations return
+  `HenselArrayCanonical output` together with their existing raw, topology,
+  gcd, and semantic certificates.
+
+The strongest tree-build theorem, its generated public contract, and the
+`Pipeline/L1` boundary now expose this array certificate.  It is therefore a
+direct input to the previously proved lift-loop and extraction canonicality
+chain.
+
+- C++ changes: none, so there is no new C++ b2b change surface in this step.
+
 ## Canonical fields written by the concrete tree builder
 
 The tree builder converts finite-field range products to integer sparse arrays

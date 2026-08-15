@@ -10220,6 +10220,54 @@ theorem HenselTreeNodeAlgebraEq.trans {first second third : HenselNode}
     hfirst.2.2.1.trans hsecond.2.2.1,
     hfirst.2.2.2.trans hsecond.2.2.2⟩
 
+theorem HenselNodeCanonical.of_algebraEq
+    {source target : HenselNode} (hsource : HenselNodeCanonical source)
+    (heq : HenselTreeNodeAlgebraEq target source) :
+    HenselNodeCanonical target := by
+  rcases heq with ⟨hg, hh, _, _⟩
+  simpa [HenselNodeCanonical, hg, hh] using hsource
+
+theorem HenselTreeArrayFrame.canonical_of_size_eq
+    {before after : Array HenselNode} {current : Nat}
+    (hframe : HenselTreeArrayFrame before after current)
+    (hsize : after.size = before.size)
+    (hbefore : HenselArrayCanonical before)
+    (hcurrent : current < after.size)
+    (hvalue : HenselNodeCanonical after[current]) :
+    HenselArrayCanonical after := by
+  intro index hindex
+  by_cases heq : index = current
+  · subst index
+    exact hvalue
+  · have hindexBefore : index < before.size := by omega
+    have hsame := hframe.2 index heq hindexBefore hindex
+    rw [hsame]
+    exact hbefore index hindexBefore
+
+theorem HenselArrayCanonical.push_default
+    {nodes : Array HenselNode} (hnodes : HenselArrayCanonical nodes) :
+    HenselArrayCanonical (nodes.push default) := by
+  intro index hindex
+  by_cases hbefore : index < nodes.size
+  · simpa only [Array.getElem_push, hbefore, ↓reduceDIte] using
+      hnodes index hbefore
+  · have hindex' : index < nodes.size + 1 := by simpa using hindex
+    have heq : index = nodes.size := by omega
+    subst index
+    simp only [Array.getElem_push, lt_self_iff_false, ↓reduceDIte]
+    change StrictPolynomialMod.SparsePolyZZCanonical (#[] : SparsePolyZZ) ∧
+      StrictPolynomialMod.SparsePolyZZCanonical (#[] : SparsePolyZZ)
+    simp [StrictPolynomialMod.SparsePolyZZCanonical]
+
+theorem HenselArrayCanonical.singleton_default :
+    HenselArrayCanonical #[default] := by
+  intro index hindex
+  have heq : index = 0 := by simpa using hindex
+  subst index
+  change StrictPolynomialMod.SparsePolyZZCanonical (#[] : SparsePolyZZ) ∧
+    StrictPolynomialMod.SparsePolyZZCanonical (#[] : SparsePolyZZ)
+  simp [StrictPolynomialMod.SparsePolyZZCanonical]
+
 theorem HenselTreeNodeGCDInvariant.of_algebraEq
     {p : Nat} [Fact (Nat.Prime p)] {factors : Array SparsePolyZp}
     {start stop : Nat}
@@ -10725,7 +10773,7 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
     (hfactorsNonempty : ∀ factor ∈ factors.toList, 0 < factor.size) :
     ∀ nodes start stop parent,
       2 ≤ stop - start → stop ≤ factors.size → parent < nodes.size →
-      nodes.size = parent + 1 →
+      nodes.size = parent + 1 → HenselArrayCanonical nodes →
       ∃ output,
         Generated.StrictHensel.__hensel_tree_build_recursive_raw_ir
             (strictHenselTreeBuildRawOps this mulProvider) factors nodes start
@@ -10741,8 +10789,9 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           (getElem output parent hparentOutput) ∧
         HenselTreeRawBuildCertificate parent start stop parent output ∧
         HenselTreeSemanticBuildCertificate this._p.toNat factors parent
-          start stop (henselTreeBuildTopology start stop parent) output := by
-  intro nodes start stop parent hlength hstop hparent hparentLast
+          start stop (henselTreeBuildTopology start stop parent) output ∧
+        HenselArrayCanonical output := by
+  intro nodes start stop parent hlength hstop hparent hparentLast hnodesCanonical
   rw [Generated.StrictHensel.__hensel_tree_build_recursive_raw_ir]
   rw [dif_pos hlength]
   let mid := (start + stop) / 2
@@ -10771,6 +10820,16 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
   rw [hstoredRun] at hstoredRun'
   injection hstoredRun' with hstoredEq
   subst stored'
+  rcases henselTreeStoreNodeRawIR_canonical this._p.toNat nodes parent
+      g h s t start stop hparent hgCanonical hhCanonical with
+    ⟨stored', hstoredCanonicalRun, hstoredCanonicalSize,
+      hparentStored', hstoredCanonical⟩
+  rw [hstoredRun] at hstoredCanonicalRun
+  injection hstoredCanonicalRun with hstoredCanonicalEq
+  subst stored'
+  have hstoredArrayCanonical : HenselArrayCanonical stored :=
+    hstoredFrame.canonical_of_size_eq hstoredCanonicalSize
+      hnodesCanonical hparentStored' hstoredCanonical
   simp only [hstoredRun, bind, Except.bind]
   by_cases hleft : 2 ≤ (start + stop) / 2 - start
   · rw [dif_pos hleft]
@@ -10797,6 +10856,11 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
         HenselTreeNodeAlgebraEq leftReady[parent] stored[parent] :=
       hleftReadyAlgebra.trans (by simpa [hpushedParent] using
         (HenselTreeNodeAlgebraEq.refl stored[parent]))
+    have hpushedCanonical : HenselArrayCanonical pushed :=
+      hstoredArrayCanonical.push_default
+    have hleftReadyCanonical : HenselArrayCanonical leftReady :=
+      hleftReadyFrame.canonical_of_size_eq hleftReadySize hpushedCanonical
+        hleftReadyParent (hstoredCanonical.of_algebraEq hleftReadyStored)
     dsimp [pushed, child] at hleftReadyRun
     rw [hleftReadyRun]
     have hchildLeftReady : child < leftReady.size := by
@@ -10806,10 +10870,10 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
         mulProvider factors hfactors hfactorsNonempty leftReady start mid child
         hleft (by omega) hchildLeftReady (by
           simp [child, pushed] at hleftReadySize ⊢
-          omega) with
+          omega) hleftReadyCanonical with
       ⟨afterLeft, hafterLeftRun, hafterLeftFrame, hparentAfterLeft,
         hafterLeftSizeExact, hafterLeftTopology, hafterLeftInvariant,
-        hafterLeftCertificate, hafterLeftSemantic⟩
+        hafterLeftCertificate, hafterLeftSemantic, hafterLeftCanonical⟩
     have hframeAfterLeft : HenselTreeArrayFrame nodes afterLeft parent :=
       hframeLeftReady.trans_fresh hafterLeftFrame (by
         dsimp [child]
@@ -10865,6 +10929,12 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
         hrightReadyAlgebra.trans
           ((HenselTreeNodeAlgebraEq.of_eq hrightPushedParent).trans
             hafterLeftStored)
+      have hrightPushedCanonical : HenselArrayCanonical rightPushed :=
+        hafterLeftCanonical.push_default
+      have hrightReadyCanonical : HenselArrayCanonical rightReady :=
+        hrightReadyFrame.canonical_of_size_eq hrightReadySize
+          hrightPushedCanonical hrightReadyParent
+          (hstoredCanonical.of_algebraEq hrightReadyStored)
       dsimp [rightPushed, rightChild] at hrightReadyRun
       rw [hrightReadyRun]
       have hrightChildReady : rightChild < rightReady.size := by
@@ -10874,10 +10944,10 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           mulProvider factors hfactors hfactorsNonempty rightReady mid stop
           rightChild hright hstop hrightChildReady (by
             simp [rightChild, rightPushed] at hrightReadySize ⊢
-            omega) with
+            omega) hrightReadyCanonical with
         ⟨output, houtputRun, houtputFrame, hparentOutputBound,
           houtputSizeExact, houtputTopology, houtputInvariant,
-          houtputCertificate, houtputSemantic⟩
+          houtputCertificate, houtputSemantic, houtputCanonical⟩
       have hrightCountEq := henselTreeInternalNodeCount_eq mid stop hright
       have hparentNeRightChild : parent ≠ rightChild := by
         dsimp [rightChild]
@@ -10976,7 +11046,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             (fun childTree hchildTree => by
               injection hchildTree with htree
               subst childTree
-              simpa [hrightChildEq] using hrightFinal)⟩
+              simpa [hrightChildEq] using hrightFinal),
+        houtputCanonical⟩
     · rw [dif_neg hright]
       have hparentAfterLeft : parent < afterLeft.size := by omega
       rcases henselTreeSetNodeRawIR_preserves_algebra afterLeft parent
@@ -10985,6 +11056,11 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
         ⟨output, houtputRun, houtputSizeFromRun, houtputFrame,
           houtputParentBound,
           houtputAlgebra, houtputSelected⟩
+      have houtputCanonical : HenselArrayCanonical output :=
+        houtputFrame.canonical_of_size_eq houtputSizeFromRun
+          hafterLeftCanonical houtputParentBound
+          (hstoredCanonical.of_algebraEq
+            (houtputAlgebra.trans hafterLeftStored))
       exact ⟨output, houtputRun, hframeAfterLeft.trans houtputFrame,
         by omega,
         by
@@ -11043,7 +11119,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
               injection hchildTree with htree
               subst childTree
               simpa [hchildEq] using hleftFinal')
-            (fun childTree hchildTree => by contradiction)⟩
+            (fun childTree hchildTree => by contradiction),
+        houtputCanonical⟩
   · rw [dif_neg hleft]
     have hparentStored : parent < stored.size := by omega
     rcases henselTreeSetNodeRawIR_preserves_algebra stored parent
@@ -11059,6 +11136,10 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
       hafterLeftAlgebra
     have hafterLeftSize : afterLeft.size = stored.size :=
       hafterLeftSizeFromRun
+    have hafterLeftCanonical : HenselArrayCanonical afterLeft :=
+      hafterLeftFrame.canonical_of_size_eq hafterLeftSize
+        hstoredArrayCanonical hparentAfterLeft
+        (hstoredCanonical.of_algebraEq hafterLeftStored)
     rw [hafterLeftRun]
     simp only [bind, Except.bind]
     by_cases hright : 2 ≤ stop - (start + stop) / 2
@@ -11089,6 +11170,12 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
         hrightReadyAlgebra.trans
           ((HenselTreeNodeAlgebraEq.of_eq hpushedParent).trans
             hafterLeftStored)
+      have hpushedCanonical : HenselArrayCanonical pushed :=
+        hafterLeftCanonical.push_default
+      have hrightReadyCanonical : HenselArrayCanonical rightReady :=
+        hrightReadyFrame.canonical_of_size_eq hrightReadySizeEq
+          hpushedCanonical hrightReadyParent
+          (hstoredCanonical.of_algebraEq hrightReadyStored)
       dsimp [pushed, child] at hrightReadyRun
       rw [hrightReadyRun]
       have hchildReady : child < rightReady.size := by
@@ -11098,10 +11185,10 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           mulProvider factors hfactors hfactorsNonempty rightReady mid stop
           child hright hstop hchildReady (by
             simp [child, pushed] at hrightReadySizeEq ⊢
-            omega) with
+            omega) hrightReadyCanonical with
         ⟨output, houtputRun, houtputFrame, hparentOutputBound,
           houtputSizeExact, houtputTopology, houtputInvariant,
-          houtputCertificate, houtputSemantic⟩
+          houtputCertificate, houtputSemantic, houtputCanonical⟩
       have hrightCountEq := henselTreeInternalNodeCount_eq mid stop hright
       have hparentNeChild : parent ≠ child := by
         dsimp [child]
@@ -11176,7 +11263,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             (fun childTree hchildTree => by
               injection hchildTree with htree
               subst childTree
-              simpa [hchildEq] using hrightFinal)⟩
+              simpa [hchildEq] using hrightFinal),
+        houtputCanonical⟩
     · rw [dif_neg hright]
       have hparentAfterLeft : parent < afterLeft.size := by omega
       rcases henselTreeSetNodeRawIR_preserves_algebra afterLeft parent
@@ -11185,6 +11273,11 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
         ⟨output, houtputRun, houtputSizeFromRun, houtputFrame,
           houtputParentBound,
           houtputAlgebra, houtputSelected⟩
+      have houtputCanonical : HenselArrayCanonical output :=
+        houtputFrame.canonical_of_size_eq houtputSizeFromRun
+          hafterLeftCanonical houtputParentBound
+          (hstoredCanonical.of_algebraEq
+            (houtputAlgebra.trans hafterLeftStored))
       exact ⟨output, houtputRun, hframeAfterLeft.trans houtputFrame,
         by omega,
         by
@@ -11219,7 +11312,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             (hstoredInvariant.of_algebraEq
               (houtputAlgebra.trans hafterLeftStored))
             (fun childTree hchildTree => by contradiction)
-            (fun childTree hchildTree => by contradiction)⟩
+            (fun childTree hchildTree => by contradiction),
+        houtputCanonical⟩
 termination_by nodes start stop parent _ _ _ => stop - start
 decreasing_by all_goals omega
 
@@ -11244,9 +11338,10 @@ theorem strictHenselTreeBuildRawIR_succeeds
       1 ≤ output.size := by
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
       mulProvider factors hfactors hfactorsNonempty #[default] 0 factors.size
-      0 (by simpa using htwo) (by simp) (by simp) (by simp) with
+      0 (by simpa using htwo) (by simp) (by simp) (by simp)
+      HenselArrayCanonical.singleton_default with
     ⟨output, hrun, hframe, hrootBound, hsizeExact, hrootTopology,
-      hrootInvariant⟩
+      hrootInvariant, hrawCertificate, hsemanticCertificate, hcanonical⟩
   refine ⟨output, ?_, by simpa using hframe.1⟩
   simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
 
@@ -11273,12 +11368,14 @@ theorem strictHenselTreeBuildRawIR_refines_gcd
         (getElem output 0 hroot) := by
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
       mulProvider factors hfactors hfactorsNonempty #[default] 0 factors.size
-      0 (by simpa using htwo) (by simp) (by simp) (by simp) with
-    ⟨output, hrun, hframe, hrootBound, hsizeExact, htopology, hinvariant⟩
+      0 (by simpa using htwo) (by simp) (by simp) (by simp)
+      HenselArrayCanonical.singleton_default with
+    ⟨output, hrun, hframe, hrootBound, hsizeExact, htopology, hinvariant,
+      hrawCertificate, hsemanticCertificate, hcanonical⟩
   have hroot : 0 < output.size := by simpa using hframe.1
   exact ⟨output, by
     simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun,
-    hroot, hinvariant.1⟩
+    hroot, hinvariant⟩
 
 /-- The actual number of allocated nodes is exactly the node count of the
 canonical source-derived finite topology.  This rules out both skipped and
@@ -11307,14 +11404,16 @@ theorem strictHenselTreeBuildRawIR_refines_topology_size
   dsimp only
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
       mulProvider factors hfactors hfactorsNonempty #[default] 0 factors.size
-      0 (by simpa using htwo) (by simp) (by simp) (by simp) with
-    ⟨output, hrun, hframe, hrootBound, hsizeExact, hrawTopology, hinvariant⟩
+      0 (by simpa using htwo) (by simp) (by simp) (by simp)
+      HenselArrayCanonical.singleton_default with
+    ⟨output, hrun, hframe, hrootBound, hsizeExact, hrawTopology, hinvariant,
+      hrawCertificate, hsemanticCertificate, hcanonical⟩
   have hcount := henselTreeInternalNodeCount_eq 0 factors.size
     (by simpa using htwo)
   have htopologyCount := henselTreeBuildTopology_nodeCount 0 factors.size 0
     (by simpa using htwo)
   have hroot : 0 < output.size := by simpa using hframe.1
-  refine ⟨output, ?_, hroot, ?_, by simp, hinvariant.1⟩
+  refine ⟨output, ?_, hroot, ?_, by simp, hinvariant⟩
   · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
   · rw [htopologyCount, hcount]
     simpa using hsizeExact
@@ -11414,13 +11513,16 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
       HenselTreeSemanticBuildCertificate this._p.toNat factors 0
         0 factors.size tree output ∧
       HenselTreeNodeInitialInvariant this._p.toNat factors 0 factors.size
-        (getElem output 0 hroot) := by
+        (getElem output 0 hroot) ∧
+      HenselArrayCanonical output := by
   dsimp only
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
       mulProvider factors hfactors hfactorsNonempty #[default] 0 factors.size
-      0 (by simpa using htwo) (by simp) (by simp) (by simp) with
+      0 (by simpa using htwo) (by simp) (by simp) (by simp)
+      HenselArrayCanonical.singleton_default with
     ⟨output, hrun, hframe, hrootBound, hsizeExact, hrawTopology,
-      hgcdInvariant⟩
+      hgcdInvariant, hrawCertificate, hsemanticCertificate,
+      hbuilderCanonical⟩
   have hcount := henselTreeInternalNodeCount_eq 0 factors.size
     (by simpa using htwo)
   have htopologyCount := henselTreeBuildTopology_nodeCount 0 factors.size 0
@@ -11429,19 +11531,19 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
     (by simpa using htwo) (by simpa using hfitsInt32)
   have hextract : HenselExtractInvariant
       (henselTreeBuildTopology 0 factors.size 0) output :=
-    (hgcdInvariant.2.1.toExtractCertificate (by simpa using htwo) (by
+    (hrawCertificate.toExtractCertificate (by simpa using htwo) (by
       simpa using hfitsInt32)).toInvariant
   have hcoprime := henselFactorRangeProducts_isCoprime this._p.toNat factors
     hpairwise 0 (factors.size / 2) factors.size (by omega) (by omega) (by simp)
   have hroot : 0 < output.size := by simpa using hframe.1
   refine ⟨output, ?_, hroot, ?_, by simp, ?_, ?_, hextract,
-    hgcdInvariant.2.2, ?_⟩
+    hsemanticCertificate, ?_, hbuilderCanonical⟩
   · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
   · rw [htopologyCount, hcount]
     simpa using hsizeExact
   · exact hchildren.1
   · exact hchildren.2
-  · exact hgcdInvariant.1.toInitial (by simpa using hcoprime)
+  · exact hgcdInvariant.toInitial (by simpa using hcoprime)
 
 /-- Safety and inductive premises for the complete generated C++ Hensel
 entry.  Every premise is universally quantified over the intermediate value

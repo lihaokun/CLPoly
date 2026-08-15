@@ -605,7 +605,8 @@ theorem strictHenselTreeBuildStage
       Refinement.StrictHensel.HenselTreeSemanticBuildCertificate
         this._p.toNat factors 0 0 factors.size tree output ∧
       Refinement.StrictHensel.HenselTreeNodeInitialInvariant
-        this._p.toNat factors 0 factors.size (getElem output 0 hroot) := by
+        this._p.toNat factors 0 factors.size (getElem output 0 hroot) ∧
+      Refinement.StrictHensel.HenselArrayCanonical output := by
   exact Refinement.__hensel_tree_build_raw_ir_refines this hcfg h2p hp2
     mulProvider factors hfactors hfactorsNonempty hpairwise htwo hfitsInt32
 

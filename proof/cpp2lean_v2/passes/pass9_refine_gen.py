@@ -439,16 +439,16 @@ theorem {theorem_name}
 The executable side is the exact strict raw L1 program, and its output
 satisfies the L2 quadratic Hensel-step invariant without a model fallback. -/
 theorem {theorem_name}
-    (termination : Generated.StrictHensel.DivmodTermination)
     (node : HenselNode) (f : SparsePolyZZ) (m : Nat)
     (hinvariant : StrictHensel.HenselStepRefinementInvariant
-      termination node f m) :
+      StrictHensel.concreteDivmodTermination node f m) :
     ∃ output,
       Generated.StrictHensel.__hensel_step_raw_ir
-          (StrictHensel.strictHenselRawOps termination)
+          (StrictHensel.strictHenselRawOps
+            StrictHensel.concreteDivmodTermination)
           node f (m : Int) = .ok output ∧
       StrictHensel.HenselStepCorrect f m node output := by
-  exact {proof_theorem} termination node f m hinvariant
+  exact {proof_theorem} StrictHensel.concreteDivmodTermination node f m hinvariant
 """
     if contract["kind"] == "strict_hensel_lift_recursive":
         return f"""/-- Generated public contract for the original C++
@@ -456,18 +456,18 @@ theorem {theorem_name}
 top-down raw tree traversal with structural well-founded recursion; its
 semantic trace proves every concrete node update is a quadratic Hensel step. -/
 theorem {theorem_name}
-    (termination : Generated.StrictHensel.DivmodTermination)
     (tree : Generated.StrictHensel.HenselLiftTree)
     (nodes : Array HenselNode) (target : SparsePolyZZ) (m : Nat)
     (hinvariant : StrictHensel.HenselLiftRecursiveRefinementInvariant
-      termination tree nodes target m) :
+      StrictHensel.concreteDivmodTermination tree nodes target m) :
     ∃ output,
       Generated.StrictHensel.__hensel_lift_recursive_raw_ir
-          (StrictHensel.strictHenselRawOps termination)
+          (StrictHensel.strictHenselRawOps
+            StrictHensel.concreteDivmodTermination)
           tree nodes target (m : Int) = .ok output ∧
-      StrictHensel.HenselLiftRecursiveCorrect termination m tree nodes target
-        output := by
-  exact {proof_theorem} termination tree nodes target m hinvariant
+      StrictHensel.HenselLiftRecursiveCorrect
+        StrictHensel.concreteDivmodTermination m tree nodes target output := by
+  exact {proof_theorem} StrictHensel.concreteDivmodTermination tree nodes target m hinvariant
 """
     if contract["kind"] == "strict_hensel_extract_factors":
         return f"""/-- Generated public contract for the original C++
@@ -500,6 +500,9 @@ theorem {theorem_name}
     (hfactors : ∀ factor ∈ factors.toList,
       SparsePolyZp.Canonical this._p.toNat factor)
     (hfactorsNonempty : ∀ factor ∈ factors.toList, 0 < factor.size)
+    (hfactorsMonicAfterZero : ∀ index (hindex : index < factors.size),
+      0 < index → (SparsePolyZp.toPoly this._p.toNat
+        (getElem factors index hindex)).Monic)
     (hpairwise : ∀ i j (hi : i < factors.size) (hj : j < factors.size),
       i < j → IsCoprime
         (SparsePolyZp.toPoly this._p.toNat (getElem factors i hi))
@@ -519,10 +522,13 @@ theorem {theorem_name}
       StrictHensel.liftChildMatches (getElem output 0 hroot).right
         (match tree with | .node _ _ right => right) ∧
       StrictHensel.HenselExtractInvariant tree output ∧
+      StrictHensel.HenselTreeSemanticBuildCertificate this._p.toNat factors 0
+        0 factors.size tree output ∧
       StrictHensel.HenselTreeNodeInitialInvariant this._p.toNat factors
-        0 factors.size (getElem output 0 hroot) := by
+        0 factors.size (getElem output 0 hroot) ∧
+      StrictHensel.HenselArrayCanonical output := by
   exact {proof_theorem} this hcfg h2p hp2 mulProvider factors hfactors
-    hfactorsNonempty hpairwise htwo hfitsInt32
+    hfactorsNonempty hfactorsMonicAfterZero hpairwise htwo hfitsInt32
 """
     if contract["kind"] == "strict_hensel_lift_upoly":
         return f"""/-- Generated public contract for the original C++
@@ -535,22 +541,23 @@ theorem {theorem_name}
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
     (h2p : 2 * this._p.toNat ≤ UInt64.size)
     (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
-    (termination : Generated.StrictHensel.DivmodTermination)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (aTarget : Int32)
-    (hinvariant : StrictHensel.HenselLiftEntryInvariant this termination
-      mulProvider f factors aTarget) :
+    (hinvariant : StrictHensel.HenselLiftEntryInvariant this
+      StrictHensel.concreteDivmodTermination mulProvider f factors aTarget) :
     ∃ output,
       Generated.StrictHensel.__hensel_lift_upoly_raw_ir
-          (StrictHensel.strictHenselRawOps termination)
+          (StrictHensel.strictHenselRawOps
+            StrictHensel.concreteDivmodTermination)
           (StrictHensel.strictHenselTreeBuildRawOps this mulProvider)
           f factors this._p aTarget
             (Nat.Prime.two_le (Fact.out : Nat.Prime this._p.toNat)) =
               .ok output ∧
-      StrictHensel.HenselLiftEntryCorrect termination f factors this._p
-        aTarget output := by
-  exact {proof_theorem} this hcfg h2p hp2 termination mulProvider f factors
-    aTarget hinvariant
+      StrictHensel.HenselLiftEntryCorrect
+        StrictHensel.concreteDivmodTermination f factors this._p aTarget
+        output := by
+  exact {proof_theorem} this hcfg h2p hp2
+    StrictHensel.concreteDivmodTermination mulProvider f factors aTarget hinvariant
 """
     raise ValueError(f"unsupported verified contract kind: {contract['kind']}")
 

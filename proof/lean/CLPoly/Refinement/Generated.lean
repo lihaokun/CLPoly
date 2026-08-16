@@ -203,8 +203,7 @@ theorem __hensel_step_raw_ir_refines
             StrictHensel.concreteDivmodTermination)
           node f (m : Int) = .ok output ∧
       StrictHensel.HenselStepCorrect f m node output := by
-  exact Refinement.StrictHensel.__hensel_step_raw_ir_refines
-    StrictHensel.concreteDivmodTermination node f m hinvariant
+  exact Refinement.StrictHensel.__hensel_step_raw_ir_refines StrictHensel.concreteDivmodTermination node f m hinvariant
 
 /-- Generated public contract for the original C++
 `__hensel_lift_recursive` entry.  The executable side performs the exact
@@ -222,8 +221,7 @@ theorem __hensel_lift_recursive_raw_ir_refines
           tree nodes target (m : Int) = .ok output ∧
       StrictHensel.HenselLiftRecursiveCorrect
         StrictHensel.concreteDivmodTermination m tree nodes target output := by
-  exact Refinement.StrictHensel.__hensel_lift_recursive_raw_ir_refines
-    StrictHensel.concreteDivmodTermination tree nodes target m hinvariant
+  exact Refinement.StrictHensel.__hensel_lift_recursive_raw_ir_refines StrictHensel.concreteDivmodTermination tree nodes target m hinvariant
 
 /-- Generated public contract for the original C++
 `__hensel_extract_factors` entry.  The executable side performs the exact
@@ -254,6 +252,9 @@ theorem __hensel_tree_build_raw_ir_refines
     (hfactors : ∀ factor ∈ factors.toList,
       SparsePolyZp.Canonical this._p.toNat factor)
     (hfactorsNonempty : ∀ factor ∈ factors.toList, 0 < factor.size)
+    (hfactorsMonicAfterZero : ∀ index (hindex : index < factors.size),
+      0 < index → (SparsePolyZp.toPoly this._p.toNat
+        (getElem factors index hindex)).Monic)
     (hpairwise : ∀ i j (hi : i < factors.size) (hj : j < factors.size),
       i < j → IsCoprime
         (SparsePolyZp.toPoly this._p.toNat (getElem factors i hi))
@@ -279,7 +280,7 @@ theorem __hensel_tree_build_raw_ir_refines
         0 factors.size (getElem output 0 hroot) ∧
       StrictHensel.HenselArrayCanonical output := by
   exact Refinement.StrictHensel.strictHenselTreeBuildRawIR_refines_topology_root this hcfg h2p hp2 mulProvider factors hfactors
-    hfactorsNonempty hpairwise htwo hfitsInt32
+    hfactorsNonempty hfactorsMonicAfterZero hpairwise htwo hfitsInt32
 
 /-- Generated public contract for the original C++
 `__hensel_lift_upoly` entry.  The strict generated L1 program executes target
@@ -306,8 +307,7 @@ theorem __hensel_lift_upoly_raw_ir_refines
       StrictHensel.HenselLiftEntryCorrect
         StrictHensel.concreteDivmodTermination f factors this._p aTarget
         output := by
-  exact Refinement.StrictHensel.__hensel_lift_upoly_raw_ir_refines this hcfg
-    h2p hp2 StrictHensel.concreteDivmodTermination mulProvider f factors
-    aTarget hinvariant
+  exact Refinement.StrictHensel.__hensel_lift_upoly_raw_ir_refines this hcfg h2p hp2
+    StrictHensel.concreteDivmodTermination mulProvider f factors aTarget hinvariant
 
 end Refinement

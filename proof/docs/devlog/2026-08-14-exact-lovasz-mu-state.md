@@ -2619,3 +2619,30 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 complete Hensel source passed direct Lean checking.  Next, these positional
 facts are supplied to the recursive raw builder and recorded at every stored
 node.
+
+## Carry physical right-factor heads through the recursive builder
+
+`HenselTreeSemanticBuildCertificate.node` now records
+`HasPhysicalOneHead value.h` for the concrete node found by its array lookup.
+Both certificate transport operations retain this representation fact:
+lower-bound weakening leaves the node untouched, while array-prefix
+preservation carries the exact lookup equality.
+
+The well-founded `strictHenselTreeBuildRecursiveRawIR_succeeds` proof now
+requires monicity only for positive factor indices.  At each real source
+recursive call it proves the right-half product monic with
+`henselFactorRangeProduct_monic`; the midpoint is positive, so the adjusted
+slot zero is never used by that product.  The same successful six-write store
+then yields `hstoredOneHead`.  All four source branch shapes (both children,
+left only, right only, neither) transport this fact through their actual
+child-pointer writes and install it in the emitted semantic node.
+
+The full Hensel entry supplies the new builder premise through the concrete
+slot-zero adjustment theorem and a pointwise monicity field originating at
+the selected `__factor_Zp` result.  No final Hensel output, tree, or semantic
+factor is prescribed by this premise.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+complete Hensel source passed direct Lean checking.  Next, topology coverage
+turns these per-node certificates into `HenselArrayHOneHead` for the exact
+builder output.

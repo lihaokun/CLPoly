@@ -14044,6 +14044,67 @@ theorem scanZassenhausCombinations_extracted_canonical_primitive
             rw [hmeasure] at hdecrease
             exact ih (termination.rank next) hdecrease next hvalidNext hrun rfl
 
+/-- A candidate returned by the generated fixed-size scan is one of the
+concrete legal combinations reached by `nextCombination`.  This is execution
+provenance, not a postulated property of a successful result. -/
+theorem scanZassenhausCombinations_extracted_legal
+    {upper count : Nat}
+    (termination : Generated.StrictRecombine.CombinationTermination upper count)
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (start candidate : Array Nat) (candidateSize : candidate.size = count)
+    (hvalidStart : termination.valid start)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations termination
+      fStar activeLifted modulus start hvalidStart = .ok
+        (.extracted factor quotientPrimitive candidate candidateSize)) :
+    termination.valid candidate := by
+  induction hmeasure : termination.rank start using Nat.strong_induction_on
+      generalizing start with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.scanZassenhausCombinations] at hrun
+      cases hattempt : Generated.StrictRecombine.zassenhausAttempt fStar
+          activeLifted modulus start with
+      | error fault => simp [hattempt] at hrun
+      | ok attempt =>
+        cases attempt with
+        | extracted extractedFactor extractedQuotient =>
+          simp only [hattempt] at hrun
+          have hout := Except.ok.inj hrun
+          injection hout with _ _ hcandidate
+          subst candidate
+          exact hvalidStart
+        | rejected =>
+          simp only [hattempt] at hrun
+          split at hrun
+          next next hnext => simp at hrun
+          next next hnext =>
+            have hdecrease := termination.next_decreases start next hvalidStart
+              hnext
+            have hvalidNext := termination.next_valid start next hvalidStart hnext
+            rw [hmeasure] at hdecrease
+            exact ih (termination.rank next) hdecrease next hvalidNext hrun rfl
+
+/-- Concrete specialization: every candidate physically returned by the
+generated scan is sorted, duplicate-free, in bounds, and has the requested
+size. -/
+theorem concreteScan_extracted_legal
+    {count : Nat} (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidate : Array Nat) (candidateSize : candidate.size = count)
+    (hfits : count ≤ activeLifted.size)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations
+      (concreteCombinationTermination activeLifted.size count)
+      fStar activeLifted modulus
+      (Generated.StrictRecombine.initialCombination count)
+      (initialCombination_legal activeLifted.size count hfits) = .ok
+        (.extracted factor quotientPrimitive candidate candidateSize)) :
+    LegalCombination activeLifted.size count candidate := by
+  exact scanZassenhausCombinations_extracted_legal
+    (concreteCombinationTermination activeLifted.size count) fStar factor
+    quotientPrimitive activeLifted modulus
+    (Generated.StrictRecombine.initialCombination count) candidate
+    candidateSize (initialCombination_legal activeLifted.size count hfits) hrun
+
 /-- The concrete fixed-size scan preserves the successful candidate's exact
 modular association certificate and the leading-coefficient invariant of the
 primitive quotient, regardless of how many preceding candidates execute and

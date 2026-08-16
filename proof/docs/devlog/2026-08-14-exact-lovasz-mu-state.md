@@ -3219,3 +3219,19 @@ that the fixed-size scan started at the source iota array returns a concrete
 - 下一步：执行该 scan result 的 `removeCombination`，建立 quotient 与
   occurrence-sensitive active complement 的新 live-state invariant，并闭合
   `zassenhausLoop` 的提取递归分支
+
+## Preserve the provenance of the physically returned combination
+
+`scanZassenhausCombinations_extracted_legal` follows the generated
+well-founded scan recursion and proves that an extracted candidate satisfies
+the termination package's validity predicate.  Its concrete specialization
+`concreteScan_extracted_legal` therefore recovers the exact
+`LegalCombination` certificate—requested size, strict ordering, and physical
+array bounds—for the candidate actually returned by execution.  This closes
+the missing precondition for running the real reverse-erasure
+`removeCombination`; no candidate or legality witness is reconstructed from a
+semantic factorization.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：利用返回候选的真实性执行 removal，保持余因子 canonical、primitive、
+  非零首项以及 active 模 `p` 不可约性，证明完整外层循环无 raw fault

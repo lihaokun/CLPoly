@@ -3107,3 +3107,28 @@ No C++ files changed, so this step has no new C++ regression or b2b change
 surface.  Next, the same prime-power polynomial equality will drive the
 physical trial-product, `symmetricModRaw`, primitive extraction, and exact
 division to an `.extracted` result.
+
+## Execute the post-prune normalization pipeline
+
+The post-prune proof no longer assumes that the generated arithmetic calls
+return successfully.  `modCoeffLoop_complete` follows the literal
+coefficient traversal at every nonzero modulus, which makes
+`multiplyNormalizeModRaw_complete` and `trialProductLoop_complete` execute the
+actual normalized candidate product for every checked valid index array.
+Likewise, `symmetricModLoop_complete` and `symmetricModRaw_complete` execute
+the source symmetric-representative loop at every positive modulus.
+
+The primitive-part boundary is now executable as well.
+`primitiveDivideLoop_complete` traverses the physical sparse suffix using
+proved nonzero-divisor and per-cell divisibility facts.  On canonical input,
+`primitiveRaw_complete` identifies the generated gcd accumulator with the
+mathematical content, proves it is nonzero for a nonempty physical array,
+proves that its sign-adjusted value divides every stored coefficient, and
+runs the exact generated division loop.  Empty input follows the literal C++
+branch.  These theorems contain no fuel, partial definition, semantic callback,
+or result oracle; every witness is the output of the generated well-founded
+recursion.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：用 Hensel `p^k` 等式和 Mignotte 界识别 trial/symmetric 的物理输出，
+  再调用已有 `exactDivmodRaw_complete_of_dvd` 得到实际 `.extracted`

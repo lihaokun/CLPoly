@@ -10380,6 +10380,96 @@ theorem multiplyNormalizeModRaw_canonical
     exact modCoeffLoop_canonical product output modulus
       (multiplyNormalizeRaw_canonical left right product hmultiply) hrun
 
+/-- The literal coefficient-reduction loop cannot fail at a nonzero modulus.
+This is an execution theorem for the generated loop, not a semantic
+replacement for its result. -/
+theorem modCoeffLoop_complete (input : SparsePolyZZ) (modulus : ZZ)
+    (index : Nat) (result : SparsePolyZZ) (hmodulus : modulus ≠ 0) :
+    ∃ output, Generated.StrictRecombine.modCoeffLoop input modulus index result =
+      .ok output := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.modCoeffLoop]
+      split
+      next hindex =>
+        exact ih (input.size - (index + 1)) (by omega) (index + 1)
+          (if input[index].2 % modulus = 0 then result
+           else result.push (input[index].1, input[index].2 % modulus)) rfl
+      next hindex => exact ⟨result, rfl⟩
+
+/-- Multiplication followed by the generated modular normalization always
+returns a physical sparse array when the modulus is nonzero. -/
+theorem multiplyNormalizeModRaw_complete (left right : SparsePolyZZ)
+    (modulus : ZZ) (hmodulus : modulus ≠ 0) :
+    ∃ output,
+      Generated.StrictRecombine.multiplyNormalizeModRaw left right modulus =
+        .ok output := by
+  unfold Generated.StrictRecombine.multiplyNormalizeModRaw
+  simp only [Generated.StrictRecombine.multiplyNormalizeRaw]
+  exact modCoeffLoop_complete
+    (SparsePolyZZ.normalization
+      (Generated.StrictRecombine.multiplyTermsLoop left right 0 #[]))
+    modulus 0 #[] hmodulus
+
+/-- Every valid candidate executes the complete generated trial-product loop.
+The witness is the array computed by the loop itself; no product oracle is
+present in `TrialProductRawOps`. -/
+theorem trialProductLoop_complete
+    (ops : Generated.StrictRecombine.TrialProductRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) (index : Nat) (product : SparsePolyZZ)
+    (hmodulus : modulus ≠ 0)
+    (hvalid : CandidateIndicesValid candidate
+      (Array.replicate activeLifted.size false)) :
+    ∃ output, Generated.StrictRecombine.trialProductLoop ops candidate
+      activeLifted modulus index product = .ok output := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index product with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.trialProductLoop]
+      split
+      next hindex =>
+        have hentry := hvalid index hindex
+        have hactive : candidate[index].toInt64.toNat < activeLifted.size := by
+          simpa using hentry.2
+        rw [dif_pos hentry.1, dif_pos hactive]
+        rcases multiplyNormalizeModRaw_complete product
+            (activeLifted[candidate[index].toInt64.toNat]'hactive) modulus
+            hmodulus with
+          ⟨product', hproduct'⟩
+        rw [hproduct']
+        exact ih (candidate.size - (index + 1)) (by omega) (index + 1)
+          product' rfl
+      next hindex => exact ⟨product, rfl⟩
+
+/-- The generated symmetric-coefficient traversal is total. -/
+theorem symmetricModLoop_complete (input : SparsePolyZZ) (modulus : ZZ)
+    (index : Nat) (result : SparsePolyZZ) :
+    ∃ output, Generated.StrictRecombine.symmetricModLoop input modulus index
+      result = .ok output := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.symmetricModLoop]
+      split
+      next hindex =>
+        exact ih (input.size - (index + 1)) (by omega) (index + 1)
+          (if ZZ.symmetricMod input[index].2 modulus = 0 then result
+           else result.push
+             (input[index].1, ZZ.symmetricMod input[index].2 modulus)) rfl
+      next hindex => exact ⟨result, rfl⟩
+
+/-- A positive modulus forces the literal generated symmetric-mod entry down
+its successful branch. -/
+theorem symmetricModRaw_complete (input : SparsePolyZZ) (modulus : ZZ)
+    (hmodulus : 0 < modulus) :
+    ∃ output,
+      Generated.StrictRecombine.symmetricModRaw input modulus = .ok output := by
+  unfold Generated.StrictRecombine.symmetricModRaw
+  rw [dif_pos hmodulus]
+  exact symmetricModLoop_complete input modulus 0 #[]
+
 /-- Concrete candidate-validation dependencies.  Both generated operation
 records are data-free, so this value cannot choose candidates, products, or
 factorization witnesses: validation executes only the generated raw loops. -/
@@ -11965,6 +12055,77 @@ theorem primitiveDivideLoop_constraints (input : SparsePolyZZ) (divisor : Int)
         exact False.elim (by
           rw [List.drop_eq_nil_iff.mpr (Nat.le_of_not_gt hindex)] at hterm
           simp at hterm)
+
+/-- Coefficient-wise primitive division executes whenever its concrete
+nonzero divisor divides every remaining stored coefficient. -/
+theorem primitiveDivideLoop_complete (input : SparsePolyZZ) (divisor : Int)
+    (index : Nat) (result : SparsePolyZZ) (hdivisor : divisor ≠ 0)
+    (hdivides : ∀ term ∈ input.toList.drop index, divisor ∣ term.2) :
+    ∃ output, Generated.StrictRecombine.primitiveDivideLoop input divisor
+      index result = .ok output := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.primitiveDivideLoop]
+      split
+      next hindex =>
+        have hsuffix : input.toList.drop index = input[index] ::
+            input.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := input.toList) (i := index) (by simpa using hindex)
+        have hhead : divisor ∣ input[index].2 := by
+          exact hdivides input[index] (by simp [hsuffix])
+        rw [dif_pos hhead]
+        exact ih (input.size - (index + 1)) (by omega) (index + 1)
+          (result.push (input[index].1, input[index].2 / divisor))
+          (fun term hterm => hdivides term (by simp [hsuffix, hterm])) rfl
+      next hindex => exact ⟨result, rfl⟩
+
+/-- The exact generated primitive-part entry succeeds on every canonical
+sparse polynomial.  In the nonempty branch its content is proved nonzero and
+to divide every physical coefficient before the source loop is executed. -/
+theorem primitiveRaw_complete (input : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input) :
+    ∃ content primitive,
+      Generated.StrictRecombine.primitiveRaw input = .ok (content, primitive) := by
+  by_cases hempty : input.isEmpty = true
+  · exact ⟨1, input, by simp [Generated.StrictRecombine.primitiveRaw, hempty]⟩
+  · have hnonempty : 0 < input.size := by
+      have hsize : input.size ≠ 0 := by
+        simpa [Array.isEmpty] using hempty
+      omega
+    let content : Int := Generated.StrictRecombine.contentLoop input 0 0
+    let divisor : Int := if input[0].2 < 0 then -content else content
+    have hpolyNe : SparsePolyZZ.toPoly input ≠ 0 := by
+      intro hzero
+      have hleading := sparsePolyZZ_leadingCoeff_eq_head input hcanonical
+        hnonempty
+      rw [hzero] at hleading
+      exact (hcanonical.2 input[0]
+        (Array.getElem_mem_toList hnonempty)) (by simpa using hleading.symm)
+    have hcontentEq : content = (SparsePolyZZ.toPoly input).content := by
+      exact contentLoop_zero_eq_content input hcanonical
+    have hcontentNe : content ≠ 0 := by
+      rw [hcontentEq]
+      exact fun hzero => hpolyNe (Polynomial.content_eq_zero_iff.mp hzero)
+    have hdivisorNe : divisor ≠ 0 := by
+      simp only [divisor]
+      split <;> simp_all
+    have hdivides : ∀ term ∈ input.toList, divisor ∣ term.2 := by
+      intro term hterm
+      have hcoeff := Polynomial.content_dvd_coeff
+        (p := SparsePolyZZ.toPoly input) term.1.deg
+      rw [sparsePolyZZ_toPoly_coeff_of_mem input hcanonical term hterm] at hcoeff
+      simp only [divisor]
+      split
+      · rw [hcontentEq]
+        exact neg_dvd.mpr hcoeff
+      · simpa [hcontentEq] using hcoeff
+    rcases primitiveDivideLoop_complete input divisor 0 #[] hdivisorNe
+        (by simpa using hdivides) with ⟨primitive, hprimitive⟩
+    refine ⟨divisor, primitive, ?_⟩
+    simp only [Generated.StrictRecombine.primitiveRaw, hempty, ↓reduceDIte]
+    simpa [content, divisor, hprimitive]
 
 theorem primitiveRaw_toPoly (input primitive : SparsePolyZZ) (content : Int)
     (hrun : Generated.StrictRecombine.primitiveRaw input =

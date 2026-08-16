@@ -1000,3 +1000,29 @@ introduced.
 - Next: transport the reconstructed initial-basis vector across the proved
   equal matrix dimensions, then combine this lower bound with the physical
   Lovasz chain and size-reduction bounds.
+
+## Connect the original vector and propagate the physical Lovasz chain
+
+The Gram--Schmidt lower bound now reaches the original integer lattice vector
+without dependent-index gaps:
+
+- the preceding quadratic-form lemmas were generalized to every proved
+  physical prefix dimension;
+- `exists_gramSchmidt_norm_le_original_vector` transports the integral inverse
+  coordinates through the exact `LLLTransformRel` reconstruction and produces
+  a concrete final norm cell bounded by the original vector's squared norm;
+- `adjacent_norm_le_two_mul` derives
+  `B*[i-1] <= 2 * B*[i]` directly from the generated `delta = 3/4` Lovasz
+  comparison, the generated nearest-integer half bound, and positivity of the
+  actual norm array; and
+- `norm_le_pow_two_mul_later` iterates that physical adjacent inequality by
+  strong induction on the real index distance.
+
+No library-level LLL correctness theorem supplies either bound.  Both are
+derived from the arrays and inequalities proved for the generated C++ loop.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: use full size reduction to bound each returned physical row by its
+  Gram--Schmidt prefix, compare that bound with the literal C++ short-row
+  threshold, and establish the transform-row span/separation theorem.

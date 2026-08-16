@@ -6215,18 +6215,18 @@ theorem exists_last_nonzero {n : Nat} (values : Fin n → ZZ)
 nonzero integer reduced-basis coordinate survives unchanged. -/
 theorem vecMul_gsLowerPrefix_last_nonzero
     (state : Generated.StrictRecombine.LLLState)
-    (coordinates : Fin state.matrix.size → ZZ)
-    (index : Fin state.matrix.size)
+    (rowCount : Nat) (coordinates : Fin rowCount → ZZ)
+    (index : Fin rowCount)
     (hzero : ∀ later, index < later → coordinates later = 0) :
     Matrix.vecMul (fun position => (coordinates position : QQ))
-        (gsLowerPrefix state state.matrix.size) index =
+        (gsLowerPrefix state rowCount) index =
       (coordinates index : QQ) := by
   rw [Matrix.vecMul_apply]
-  let values : Fin state.matrix.size → QQ := fun position =>
+  let values : Fin rowCount → QQ := fun position =>
     (coordinates position : QQ) *
-      gsLowerPrefix state state.matrix.size position index
+      gsLowerPrefix state rowCount position index
   rw [show (∑ position, (coordinates position : QQ) *
-      gsLowerPrefix state state.matrix.size position index) =
+      gsLowerPrefix state rowCount position index) =
       ∑ position, values position by rfl]
   rw [finSum_eq_prefix_add_at_of_zero_after values index.val index.isLt]
   · have hprefix : (∑ position : Fin index.val,
@@ -6235,7 +6235,7 @@ theorem vecMul_gsLowerPrefix_last_nonzero
       intro position _
       simp [values, gsLowerPrefix, show ¬index.val < position.val by omega,
         show (⟨position.val, lt_trans position.isLt index.isLt⟩ :
-          Fin state.matrix.size) ≠ index by
+          Fin rowCount) ≠ index by
             intro heq
             have := congrArg Fin.val heq
             omega]
@@ -6249,14 +6249,15 @@ the weighted sum of squared Gram--Schmidt coordinates. -/
 theorem gramSchmidt_quadratic_eq
     (state : Generated.StrictRecombine.LLLState)
     (hvalid : ConcreteLLLExecutionValid state)
-    (coordinates : Fin state.matrix.size → QQ) :
+    (rowCount : Nat) (hrowCount : rowCount ≤ state.matrix.size)
+    (coordinates : Fin rowCount → QQ) :
     dotProduct coordinates
-        (gramPrefixMatrixQQ state.matrix state.matrix.size *ᵥ coordinates) =
-      ∑ index : Fin state.matrix.size,
+        (gramPrefixMatrixQQ state.matrix rowCount *ᵥ coordinates) =
+      ∑ index : Fin rowCount,
         (Matrix.vecMul coordinates
-          (gsLowerPrefix state state.matrix.size) index) ^ 2 *
+          (gsLowerPrefix state rowCount) index) ^ 2 *
           state.norms[index.val]! := by
-  rw [hvalid.gram_schmidt state.matrix.size (le_refl _) ]
+  rw [hvalid.gram_schmidt rowCount hrowCount]
   simp only [Matrix.mul_assoc]
   simp [dotProduct, Matrix.mulVec, Matrix.vecMul, Matrix.mul_apply,
     gsNormDiagonal, Matrix.diagonal_apply, Finset.mul_sum, Finset.sum_mul]
@@ -6267,15 +6268,16 @@ Gram--Schmidt diagonal term to the represented vector's squared norm. -/
 theorem last_nonzero_gramSchmidt_term_le
     (state : Generated.StrictRecombine.LLLState)
     (hvalid : ConcreteLLLExecutionValid state)
-    (coordinates : Fin state.matrix.size → ZZ)
-    (index : Fin state.matrix.size)
+    (rowCount : Nat) (hrowCount : rowCount ≤ state.matrix.size)
+    (coordinates : Fin rowCount → ZZ)
+    (index : Fin rowCount)
     (hzero : ∀ later, index < later → coordinates later = 0) :
     (coordinates index : QQ) ^ 2 * state.norms[index.val]! ≤
       dotProduct (fun position => (coordinates position : QQ))
-        (gramPrefixMatrixQQ state.matrix state.matrix.size *ᵥ
+        (gramPrefixMatrixQQ state.matrix rowCount *ᵥ
           fun position => (coordinates position : QQ)) := by
-  rw [gramSchmidt_quadratic_eq state hvalid]
-  have hcoordinate := vecMul_gsLowerPrefix_last_nonzero state coordinates
+  rw [gramSchmidt_quadratic_eq state hvalid rowCount hrowCount]
+  have hcoordinate := vecMul_gsLowerPrefix_last_nonzero state rowCount coordinates
     index hzero
   rw [hcoordinate]
   apply Finset.single_le_sum
@@ -6283,7 +6285,7 @@ theorem last_nonzero_gramSchmidt_term_le
     exact mul_nonneg (sq_nonneg _) (le_of_lt
       (hvalid.norms_positive position.val (by
         rw [hvalid.norms_size]
-        exact position.isLt)))
+        exact lt_of_lt_of_le position.isLt hrowCount)))
   · exact Finset.mem_univ index
 
 /-- Because the surviving coordinate is a nonzero integer, its square is at
@@ -6292,13 +6294,14 @@ physical Gram--Schmidt vector. -/
 theorem gramSchmidt_norm_le_of_last_nonzero
     (state : Generated.StrictRecombine.LLLState)
     (hvalid : ConcreteLLLExecutionValid state)
-    (coordinates : Fin state.matrix.size → ZZ)
-    (index : Fin state.matrix.size)
+    (rowCount : Nat) (hrowCount : rowCount ≤ state.matrix.size)
+    (coordinates : Fin rowCount → ZZ)
+    (index : Fin rowCount)
     (hne : coordinates index ≠ 0)
     (hzero : ∀ later, index < later → coordinates later = 0) :
     state.norms[index.val]! ≤
       dotProduct (fun position => (coordinates position : QQ))
-        (gramPrefixMatrixQQ state.matrix state.matrix.size *ᵥ
+        (gramPrefixMatrixQQ state.matrix rowCount *ᵥ
           fun position => (coordinates position : QQ)) := by
   have hsquareInt : (1 : ZZ) ≤ coordinates index ^ 2 :=
     (one_le_sq_iff_one_le_abs (coordinates index)).2 (Int.one_le_abs hne)
@@ -6307,29 +6310,147 @@ theorem gramSchmidt_norm_le_of_last_nonzero
   have hnormNonnegative : 0 ≤ state.norms[index.val]! := le_of_lt
     (hvalid.norms_positive index.val (by
       rw [hvalid.norms_size]
-      exact index.isLt))
+      exact lt_of_lt_of_le index.isLt hrowCount))
   exact (le_mul_of_one_le_left hnormNonnegative hsquare).trans
-    (last_nonzero_gramSchmidt_term_le state hvalid coordinates index hzero)
+    (last_nonzero_gramSchmidt_term_le state hvalid rowCount hrowCount
+      coordinates index hzero)
 
 /-- The concrete integer Gram matrix quadratic form is exactly the squared
 Euclidean norm of the lattice row combination it represents. -/
 theorem gramPrefix_quadratic_eq_vecMul_norm
     (matrix : Generated.StrictRecombine.LLLMatrix)
-    (coordinates : Fin matrix.size → ZZ) :
+    (rowCount : Nat) (coordinates : Fin rowCount → ZZ) :
     dotProduct (fun position => (coordinates position : QQ))
-        (gramPrefixMatrixQQ matrix matrix.size *ᵥ
+        (gramPrefixMatrixQQ matrix rowCount *ᵥ
           fun position => (coordinates position : QQ)) =
       dotProduct
         (fun column =>
           ((Matrix.vecMul coordinates
-            (basisPrefixMatrix matrix matrix.size matrix.size) column : ZZ) : QQ))
+            (basisPrefixMatrix matrix rowCount rowCount) column : ZZ) : QQ))
         (fun column =>
           ((Matrix.vecMul coordinates
-            (basisPrefixMatrix matrix matrix.size matrix.size) column : ZZ) : QQ)) := by
+            (basisPrefixMatrix matrix rowCount rowCount) column : ZZ) : QQ)) := by
   simp [gramPrefixMatrixQQ, gramPrefixMatrix, basisPrefixMatrix, dotProduct,
     Matrix.mulVec, Matrix.vecMul, Matrix.mul_apply, Int.cast_sum,
     Finset.mul_sum, Finset.sum_mul]
   ring
+
+/-- Every nonzero vector expressed in the original physical integer basis
+controls one concrete Gram--Schmidt norm of the basis returned by generated
+LLL.  The vector on the right is reconstructed through the actual integral
+transform, not through an abstract lattice-membership hypothesis. -/
+theorem exists_gramSchmidt_norm_le_original_vector
+    (initial transform : Generated.StrictRecombine.LLLMatrix)
+    (state : Generated.StrictRecombine.LLLState)
+    (hinput : ConcreteLLLInputValid initial)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrel : LLLTransformRel initial state.matrix transform)
+    (hunimodular : LLLTransformUnimodular transform)
+    (coefficients : Fin initial.size → ZZ) (hne : coefficients ≠ 0) :
+    ∃ index : Fin initial.size,
+      state.norms[index.val]! ≤
+        dotProduct
+          (fun column =>
+            ((Matrix.vecMul coefficients
+              (basisPrefixMatrix initial initial.size initial.size) column : ZZ) : QQ))
+          (fun column =>
+            ((Matrix.vecMul coefficients
+              (basisPrefixMatrix initial initial.size initial.size) column : ZZ) : QQ)) := by
+  let reduced := integerReducedCoordinates initial transform coefficients
+  have hreduced : reduced ≠ 0 := integerReducedCoordinates_ne_zero initial
+    state.matrix transform hinput hrel hunimodular coefficients hne
+  rcases exists_last_nonzero reduced hreduced with ⟨index, hindex, hzero⟩
+  refine ⟨index, ?_⟩
+  have hrowCount : initial.size ≤ state.matrix.size := by
+    rw [hrel.1]
+  have hbound := gramSchmidt_norm_le_of_last_nonzero state hvalid
+    initial.size hrowCount reduced index hindex hzero
+  rw [gramPrefix_quadratic_eq_vecMul_norm state.matrix initial.size reduced]
+    at hbound
+  have hreconstruct := integerReducedCoordinates_reconstruct initial state.matrix
+    transform hrel hunimodular coefficients
+  change Matrix.vecMul reduced
+      (basisPrefixMatrix state.matrix initial.size initial.size) =
+    Matrix.vecMul coefficients
+      (basisPrefixMatrix initial initial.size initial.size) at hreconstruct
+  rw [hreconstruct] at hbound
+  exact hbound
+
+/-- The exact generated `δ = 3/4` Lovasz test together with the exact
+nearest-integer size reduction implies the standard adjacent GS-norm bound. -/
+theorem adjacent_norm_le_two_mul
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (index : Nat) (hpositive : 0 < index)
+    (hindex : index < state.matrix.size)
+    (hsizeReduced :
+      |((state.mu[index]!)[index - 1]!)| ≤ (1 : QQ) / 2)
+    (hlovasz :
+      ((3 : QQ) / 4 -
+          ((state.mu[index]!)[index - 1]!) *
+            ((state.mu[index]!)[index - 1]!)) *
+          state.norms[index - 1]! ≤ state.norms[index]!) :
+    state.norms[index - 1]! ≤ 2 * state.norms[index]! := by
+  let mu := (state.mu[index]!)[index - 1]!
+  have hhalfNonnegative : (0 : QQ) ≤ 1 / 2 := by norm_num
+  have hmuSquare : mu ^ 2 ≤ ((1 : QQ) / 2) ^ 2 := by
+    rw [← sq_abs]
+    exact (sq_le_sq₀ (abs_nonneg mu) hhalfNonnegative).2 hsizeReduced
+  have hcoefficient : (1 : QQ) / 2 ≤ (3 : QQ) / 4 - mu ^ 2 := by
+    norm_num at hmuSquare ⊢
+    linarith
+  have hnormNonnegative : 0 ≤ state.norms[index - 1]! := le_of_lt
+    (hvalid.norms_positive (index - 1) (by
+      rw [hvalid.norms_size]
+      omega))
+  have hscaled := mul_le_mul_of_nonneg_right hcoefficient hnormNonnegative
+  change ((3 : QQ) / 4 - mu ^ 2) * state.norms[index - 1]! ≤
+    state.norms[index]! at hlovasz
+  nlinarith
+
+/-- Iteration of the physical adjacent Lovasz/size-reduction estimate along
+the returned Gram--Schmidt norm array. -/
+theorem norm_le_pow_two_mul_later
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hsizeReduced : ∀ row, row < state.matrix.size →
+      ∀ column, column < row →
+        |((state.mu[row]!)[column]!)| ≤ (1 : QQ) / 2)
+    (hlovasz : ∀ index, 0 < index → index < state.matrix.size →
+      ((3 : QQ) / 4 -
+          ((state.mu[index]!)[index - 1]!) *
+            ((state.mu[index]!)[index - 1]!)) *
+          state.norms[index - 1]! ≤ state.norms[index]!)
+    (left right : Nat) (hle : left ≤ right)
+    (hright : right < state.matrix.size) :
+    state.norms[left]! ≤
+      (2 : QQ) ^ (right - left) * state.norms[right]! := by
+  induction hdistance : right - left using Nat.strong_induction_on
+      generalizing left right with
+  | h distance ih =>
+      by_cases heq : left = right
+      · subst right
+        simp
+      · have hleftPred : left ≤ right - 1 := by omega
+        have hpredRight : right - 1 < state.matrix.size := by omega
+        have hpredDistance : (right - 1) - left < distance := by omega
+        have hprefix := ih ((right - 1) - left) hpredDistance left
+          (right - 1) hleftPred hpredRight rfl
+        have hadjacent := adjacent_norm_le_two_mul state hvalid right
+          (by omega) hright (hsizeReduced right hright (right - 1) (by omega))
+          (hlovasz right (by omega) hright)
+        have hscaled := mul_le_mul_of_nonneg_left hadjacent
+          (pow_nonneg (by norm_num : (0 : QQ) ≤ 2) _)
+        calc
+          state.norms[left]! ≤
+              (2 : QQ) ^ ((right - 1) - left) *
+                state.norms[right - 1]! := hprefix
+          _ ≤ (2 : QQ) ^ ((right - 1) - left) *
+                (2 * state.norms[right]!) := hscaled
+          _ = (2 : QQ) ^ (right - left) * state.norms[right]! := by
+            rw [show right - left = ((right - 1) - left) + 1 by omega,
+              pow_succ]
+            ring
 
 theorem makeInitialMatrix_input_valid (size : Nat) (scale : ZZ)
     (matrix : Generated.StrictRecombine.LLLMatrix) (hscale : scale ≠ 0)

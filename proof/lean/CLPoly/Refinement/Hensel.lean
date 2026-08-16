@@ -4880,6 +4880,27 @@ theorem HenselStepCorrect.gOneHead_of_target
   exact hasPhysicalOneHead_of_reduced_monic (by nlinarith)
     hcorrect.2.2.2.2.2.1 hcorrect.2.2.2.2.2.2.2.2 hgMonic
 
+/-- Representation result of one actual Hensel step for a concrete tree
+interval.  The right factor is always physically monic; the left factor is
+physically monic exactly away from the distinguished first interval. -/
+theorem HenselStepCorrect.intervalPhysicalHeads
+    {target : SparsePolyZZ} {m start : Nat} {input output : HenselNode}
+    (hcorrect : HenselStepCorrect target m input output)
+    (hm : 1 < m)
+    (htargetCanonical : StrictPolynomialMod.SparsePolyZZCanonical target)
+    (htargetHead : 0 < start → HasPhysicalOneHead target)
+    (hinputH : HasPhysicalOneHead input.h) :
+    (0 < start → HasPhysicalOneHead output.g) ∧
+      HasPhysicalOneHead output.h := by
+  constructor
+  · intro hstart
+    exact hcorrect.gOneHead_of_target hm htargetCanonical
+      (htargetHead hstart) hinputH
+  · rcases hinputH with ⟨head, tail, hhead⟩
+    rcases hcorrect.2.2.2.2.2.2.2.1 head tail hhead hm with
+      ⟨suffix, hsuffix⟩
+    exact ⟨head, suffix, hsuffix⟩
+
 def HenselArrayHOneHead (nodes : Array HenselNode) : Prop :=
   ∀ index (hindex : index < nodes.size), HasPhysicalOneHead nodes[index].h
 
@@ -12154,6 +12175,48 @@ theorem HenselTreePhysicalHeads.of_recursive_disjoint
   intro index hindex
   exact hcorrect.preserves_not_mem index (fun hother =>
     (List.disjoint_left.mp hdisjoint) hindex hother)
+
+/-- Base case of interval-head preservation for the real recursive traversal.
+The generated leaf executes one concrete Hensel step and stores that exact
+result at its concrete array index. -/
+theorem HenselLiftRecursiveCorrect.physicalHeads_leaf
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {m start stop index : Nat} {nodes output : Array HenselNode}
+    {target : SparsePolyZZ}
+    (hcorrect : HenselLiftRecursiveCorrect termination m
+      (.node index none none) nodes target output)
+    (hheads : HenselTreePhysicalHeads start stop
+      (.node index none none) nodes)
+    (hm : 1 < m)
+    (htargetCanonical : StrictPolynomialMod.SparsePolyZZCanonical target)
+    (htargetHead : 0 < start → HasPhysicalOneHead target) :
+    HenselTreePhysicalHeads start stop (.node index none none) output := by
+  cases hcorrect with
+  | leaf _ _ stored _ inputNode lifted parent hnode hstep hstepCorrect
+      hstored hparent =>
+      cases hheads with
+      | cert _ _ _ _ _ _ value hvalue hGOneHead hHOneHead hleft hright =>
+          have hinputEq : inputNode = value :=
+            Option.some.inj (hnode.symm.trans hvalue)
+          have hinputH : HasPhysicalOneHead inputNode.h := by
+            simpa [hinputEq] using hHOneHead
+          have hliftedHeads := hstepCorrect.intervalPhysicalHeads hm
+            htargetCanonical htargetHead hinputH
+          subst output
+          have hindex : index < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hliftedLookup :
+              (nodes.set! index lifted)[index]? = some lifted := by
+            simp [Array.set!, hindex]
+          have hparentEq : parent = lifted :=
+            Option.some.inj (hparent.symm.trans hliftedLookup)
+          subst parent
+          exact .cert start stop index none none _ lifted hparent
+            hliftedHeads.1 hliftedHeads.2
+            (fun child hchild => by cases hchild)
+            (fun child hchild => by cases hchild)
 
 theorem HenselTreeSemanticBuildCertificate.lower_mono
     {p lower lower' start stop : Nat} [Fact (Nat.Prime p)]

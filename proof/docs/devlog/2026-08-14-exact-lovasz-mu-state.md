@@ -2803,3 +2803,22 @@ the C++ mutable-array behavior by a semantic oracle.
 so this step has no new C++ b2b change surface.  Next, the four constructors of
 the real recursive lift trace compose the root step, these exact frames, and
 the interval certificate induction.
+
+## Preserve interval heads at a real lifting leaf
+
+`HenselStepCorrect.intervalPhysicalHeads` packages the already-proved concrete
+single-step facts in the interval form used by the tree certificate: the
+actual output `h` is always physically one-headed, and the actual output `g`
+is physically one-headed when the interval start is positive.
+
+`HenselLiftRecursiveCorrect.physicalHeads_leaf` closes the base constructor of
+the real recursive traversal.  It aligns the input node through the concrete
+array lookup, applies the exact generated Hensel-step trace, follows the source
+`Array.set!`, and proves from the final root lookup that the stored node is the
+same `lifted` value.  It does not introduce a replacement leaf or an abstract
+existence witness.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ b2b change surface.  Next, the left-only and
+right-only constructors add one recursive call each using the strict frames;
+the branch constructor then composes both calls under index disjointness.

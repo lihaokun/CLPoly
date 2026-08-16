@@ -56,6 +56,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HasPhysicalOneHead.g_of_algebraEq
 #print axioms Refinement.StrictHensel.hasPhysicalOneHead_of_reduced_monic
 #print axioms Refinement.StrictHensel.HenselStepCorrect.gOneHead_of_target
+#print axioms Refinement.StrictHensel.HenselStepCorrect.intervalPhysicalHeads
 #print axioms Refinement.StrictHensel.HenselAdjustFirstFactorCorrect.getElem_eq_of_pos
 #print axioms Refinement.StrictHensel.HenselAdjustFirstFactorCorrect.monic_of_pos
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.lower_mono
@@ -63,6 +64,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.of_lookups
 #print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.of_setBang_not_mem
 #print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.of_recursive_disjoint
+#print axioms Refinement.StrictHensel.HenselLiftRecursiveCorrect.physicalHeads_leaf
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.of_preservesFrom
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.oneHead_of_mem
 #print axioms Refinement.StrictHensel.henselTreeBuildTopology_indices_complete

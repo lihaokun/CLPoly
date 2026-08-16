@@ -147,3 +147,23 @@ over the generated `RawExec` control flow.
   van-Hoeij iteration, combine nonzero/nonunit output membership with exact
   output cardinality and associated products, and close irreducibility through
   the literal retry loop.
+
+## Associate every recovered factor with its checked modular subset
+
+`validationRecoveredFactor_mod_associated_selected` strengthens the existing
+modular equation for one physical validation success.  It proves that mapping
+the returned primitive integer factor to the selected prime is associated to
+the exact `SelectedProductMod` traversed by `trialProductLoop`.  The proof
+derives nonzeroness of that selected product from the actual checked indices
+and pointwise modular irreducibility, then proves both scalar constants in the
+generated recovery equation are units.
+
+`validationRecoveredFactor_not_isUnit` now consumes this association rather
+than reconstructing it internally.  This exposes precisely the relation needed
+to turn consumed-subset cardinality into memberwise irreducibility later.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: preserve these modular subset associations across all validation
+  pushes, together with the consumed partition, and apply the equal-cardinality
+  UFD bridge on the accepted `__lll_factorize` branch.

@@ -180,6 +180,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.candidateAvailable_true_valid
 #print axioms Refinement.StrictRecombine.selectedProductMod_not_isUnit_of_nonempty_irreducible
 #print axioms Refinement.StrictRecombine.validationRecoveredFactor_mod_eq_selected
+#print axioms Refinement.StrictRecombine.validationRecoveredFactor_mod_associated_selected
 #print axioms Refinement.StrictRecombine.validationRecoveredFactor_not_isUnit
 #print axioms Refinement.StrictRecombine.validationQuotient_leading_mod_ne_zero
 #print axioms Refinement.StrictRecombine.validateCandidatesLoop_result_nonunit

@@ -15702,10 +15702,10 @@ theorem validationRecoveredFactor_mod_eq_selected
   rw [hsymmetricMod, htrial, hinitial] at hprimitiveMod'
   exact hprimitiveMod'.symm
 
-/-- A successful validation factor obtained from a nonempty candidate of
-irreducible lifted factors cannot be a unit.  The proof uses the same physical
-trial/symmetric/primitive trace that produced the factor. -/
-theorem validationRecoveredFactor_not_isUnit
+/-- The physical factor recovered by one successful validation attempt maps
+modulo the selected prime to an associate of the exact nonempty product named
+by the checked candidate indices. -/
+theorem validationRecoveredFactor_mod_associated_selected
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
     (modulus base : Nat) (fStar product symmetric factor : SparsePolyZZ)
@@ -15713,7 +15713,6 @@ theorem validationRecoveredFactor_not_isUnit
     (hmodulus : 0 < modulus) (hdivides : base ∣ modulus)
     (hvalid : CandidateIndicesValid candidate
       (Array.replicate activeLifted.size false))
-    (hcandidateNonempty : 0 < candidate.size)
     (hirreducible : ∀ activeIndex (hactive : activeIndex < activeLifted.size),
       Irreducible (Refinement.StrictHensel.toPolyMod base
         activeLifted[activeIndex]))
@@ -15726,16 +15725,13 @@ theorem validationRecoveredFactor_not_isUnit
       (modulus : ZZ) = .ok symmetric)
     (hprimitive : Generated.StrictRecombine.primitiveRaw symmetric =
       .ok (content, factor)) :
-    ¬ IsUnit (SparsePolyZZ.toPoly factor) := by
+    Associated (Refinement.StrictHensel.toPolyMod base factor)
+      (SelectedProductMod base candidate activeLifted 0) := by
   have hbase : 0 < base := (Fact.out : Nat.Prime base).pos
   have hequation := validationRecoveredFactor_mod_eq_selected ops candidate
     activeLifted modulus base fStar product symmetric factor content hmodulus
     hbase hdivides hvalid hfStarNonempty hproduct hsymmetric hprimitive
   let selected := SelectedProductMod base candidate activeLifted 0
-  have hselectedNonunit : ¬ IsUnit selected := by
-    simpa [selected, SelectedProductMod] using
-      (selectedProductMod_not_isUnit_of_nonempty_irreducible base candidate
-        activeLifted hcandidateNonempty hvalid hirreducible)
   have hselectedNe : selected ≠ 0 := by
     unfold selected SelectedProductMod
     rw [List.drop_zero]
@@ -15776,9 +15772,44 @@ theorem validationRecoveredFactor_not_isUnit
   have hright : Associated
       (Polynomial.C (fStar[0].2 : ZMod base) * selected) selected :=
     (associated_isUnit_mul_left_iff hleadingUnit).mpr (Associated.refl _)
+  exact hleft.symm.trans ((Associated.of_eq hequation).trans hright)
+
+/-- A successful validation factor obtained from a nonempty candidate of
+irreducible lifted factors cannot be a unit.  The proof uses the same physical
+trial/symmetric/primitive trace that produced the factor. -/
+theorem validationRecoveredFactor_not_isUnit
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus base : Nat) (fStar product symmetric factor : SparsePolyZZ)
+    (content : ZZ) [Fact (Nat.Prime base)]
+    (hmodulus : 0 < modulus) (hdivides : base ∣ modulus)
+    (hvalid : CandidateIndicesValid candidate
+      (Array.replicate activeLifted.size false))
+    (hcandidateNonempty : 0 < candidate.size)
+    (hirreducible : ∀ activeIndex (hactive : activeIndex < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[activeIndex]))
+    (hfStarNonempty : 0 < fStar.size)
+    (hleading : (fStar[0].2 : ZMod base) ≠ 0)
+    (hproduct : Generated.StrictRecombine.trialProductLoop ops.product
+      candidate activeLifted (modulus : ZZ) 0
+        #[(⟨0⟩, fStar[0].2)] = .ok product)
+    (hsymmetric : Generated.StrictRecombine.symmetricModRaw product
+      (modulus : ZZ) = .ok symmetric)
+    (hprimitive : Generated.StrictRecombine.primitiveRaw symmetric =
+      .ok (content, factor)) :
+    ¬ IsUnit (SparsePolyZZ.toPoly factor) := by
+  let selected := SelectedProductMod base candidate activeLifted 0
+  have hselectedNonunit : ¬ IsUnit selected := by
+    simpa [selected, SelectedProductMod] using
+      (selectedProductMod_not_isUnit_of_nonempty_irreducible base candidate
+        activeLifted hcandidateNonempty hvalid hirreducible)
   have hassociated : Associated
       (Refinement.StrictHensel.toPolyMod base factor) selected :=
-    hleft.symm.trans ((Associated.of_eq hequation).trans hright)
+    validationRecoveredFactor_mod_associated_selected ops candidate
+      activeLifted modulus base fStar product symmetric factor content
+      hmodulus hdivides hvalid hirreducible hfStarNonempty
+      hleading hproduct hsymmetric hprimitive
   intro hfactorUnit
   have hmappedUnit : IsUnit (Refinement.StrictHensel.toPolyMod base factor) := by
     exact hfactorUnit.map (Polynomial.mapRingHom

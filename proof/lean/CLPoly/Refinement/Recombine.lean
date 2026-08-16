@@ -14322,6 +14322,110 @@ private theorem isPrimitive_of_unit_scalar_product
     normalize_eq_one.mpr hscalar, one_mul] at hcontent
   exact Polynomial.isPrimitive_iff_content_eq_one.mpr hcontent.symm
 
+/-- Under the live Hensel invariants, the complete generated Zassenhaus outer
+loop cannot take a raw-fault branch.  Each fixed-size scan is executed by its
+concrete well-founded recursion; a returned legal candidate is physically
+removed, and the quotient/remnant invariants are obtained from that same run. -/
+theorem zassenhausLoop_complete
+    (modulus base : Nat) [Fact (Nat.Prime base)]
+    (active : Array SparsePolyZZ) (fStar : SparsePolyZZ)
+    (result : Array SparsePolyZZ) (subsetSize : Nat)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hsubsetPositive : 0 < subsetSize)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hleading : (fStar[0].2 : ZMod base) ≠ 0)
+    (hactiveFits : active.size ≤ 2 ^ 31)
+    (hirreducible : ∀ index (hindex : index < active.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base active[index])) :
+    ∃ output,
+      Generated.StrictRecombine.zassenhausLoop concreteZassenhausTermination
+        (modulus : ZZ) active fStar result subsetSize hsubsetPositive =
+          .ok output := by
+  rw [Generated.StrictRecombine.zassenhausLoop]
+  split
+  next hcontinue =>
+    let count := subsetSize
+    let initial := Generated.StrictRecombine.initialCombination count
+    have hfits : count ≤ active.size := by omega
+    let hinitial := initialCombination_legal active.size count hfits
+    have hscanComplete := scanZassenhausCombinations_complete fStar active
+      modulus base initial hmodulus hbase hdivides hcanonical hnonempty
+      hsubsetPositive hactiveFits hleading hirreducible hinitial
+    rcases hscanComplete with ⟨scanResult, hscan⟩
+    cases scanResult with
+    | exhausted =>
+        simp only [concreteZassenhausTermination, count, initial, hinitial,
+          hscan]
+        exact zassenhausLoop_complete modulus base active fStar result
+          (subsetSize + 1) hmodulus hbase hdivides (by omega) hcanonical
+          hnonempty hprimitive hleading hactiveFits hirreducible
+    | extracted factor quotient candidate candidateSize =>
+        have hcandidate : LegalCombination active.size count candidate :=
+          concreteScan_extracted_legal fStar factor quotient active
+            (modulus : ZZ) candidate candidateSize hfits hscan
+        rcases removeCombination_succeeds candidate active
+            (by simpa [count, candidateSize] using hcandidate) with
+          ⟨active', hremove⟩
+        have hfactorQuotient :=
+          scanZassenhausCombinations_extracted_canonical_primitive
+            (concreteCombinationTermination active.size count) fStar factor
+            quotient active (modulus : ZZ) initial candidate candidateSize
+            hcanonical hnonempty hinitial hscan
+        have hleadingPoly :
+            ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0 := by
+          rw [sparsePolyZZ_leadingCoeff_eq_head fStar hcanonical hnonempty]
+          exact hleading
+        have hmodCertificate :=
+          scanZassenhausCombinations_extracted_mod_certificate fStar factor
+            quotient active modulus base initial candidate candidateSize
+            hmodulus hbase hdivides hactiveFits hcanonical hnonempty hprimitive
+            hleadingPoly hirreducible hinitial hscan
+        have hquotientNe : SparsePolyZZ.toPoly quotient ≠ 0 := by
+          intro hzero
+          apply hmodCertificate.2
+          rw [hzero]
+          simp
+        have hquotientNonempty : 0 < quotient.size := by
+          by_contra hnot
+          have hempty : quotient = #[] := Array.size_eq_zero_iff.mp
+            (Nat.eq_zero_of_not_pos hnot)
+          apply hquotientNe
+          simp [hempty, SparsePolyZZ.toPoly]
+        have hquotientLeading : (quotient[0].2 : ZMod base) ≠ 0 := by
+          rw [← sparsePolyZZ_leadingCoeff_eq_head quotient
+            hfactorQuotient.2.1 hquotientNonempty]
+          exact hmodCertificate.2
+        have hirreducible' : ∀ index (hindex : index < active'.size),
+            Irreducible
+              (Refinement.StrictHensel.toPolyMod base active'[index]) :=
+          removeCombination_preserves_pointwise candidate active active'
+            (fun poly => Irreducible
+              (Refinement.StrictHensel.toPolyMod base poly))
+            hirreducible hremove
+        have hactiveFits' : active'.size ≤ 2 ^ 31 := by
+          have hdecrease := concreteZassenhausTermination.removal_decreases
+            active candidate active' (by rw [candidateSize]; exact hsubsetPositive)
+            hremove
+          omega
+        simp only [concreteZassenhausTermination, count, initial, hinitial,
+          hscan]
+        rw [hremove]
+        exact zassenhausLoop_complete modulus base active' quotient
+          (result.push factor) 1 hmodulus hbase hdivides (by omega)
+          hfactorQuotient.2.1 hquotientNonempty hfactorQuotient.2.2
+          hquotientLeading hactiveFits' hirreducible'
+  next hcontinue =>
+    exact ⟨Generated.StrictRecombine.finishZassenhaus fStar result, rfl⟩
+termination_by (active.size, active.size + 1 - subsetSize)
+decreasing_by
+  · exact Prod.Lex.right _ (by omega)
+  · exact Prod.Lex.left _ _
+      (concreteZassenhausTermination.removal_decreases active candidate active'
+        (by rw [candidateSize]; exact hsubsetPositive) hremove)
+
 /-- The complete source-shaped Zassenhaus outer loop preserves the live
 product up to a unit.  Successful extraction recursively installs the exact
 primitive quotient returned by the candidate scan; exhaustion and subset-size

@@ -3235,3 +3235,20 @@ semantic factorization.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：利用返回候选的真实性执行 removal，保持余因子 canonical、primitive、
   非零首项以及 active 模 `p` 不可约性，证明完整外层循环无 raw fault
+
+## Execute the complete generated Zassenhaus outer loop
+
+`zassenhausLoop_complete` proves totality of the literal generated outer loop
+under the live Hensel invariants.  Every fixed-size pass invokes the already
+proved total concrete scan.  Exhaustion advances the subset size along the
+second component of the generated lexicographic measure.  Extraction uses the
+returned candidate's execution provenance to run the physical reverse-erasure,
+then transports canonicality, primitivity, nonemptiness, nonzero leading
+coefficient modulo `p`, active-factor irreducibility, and the `Int32` size bound
+to the recursive quotient state.  Successful removal strictly decreases the
+first component of the same well-founded measure.  Consequently no raw-fault
+branch remains reachable in this source-shaped loop.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：给外层状态加入“所有更小子集已真实穷尽拒绝”的历史，证明每个被
+  push 的整数因子不可约，而不只证明输出乘积正确

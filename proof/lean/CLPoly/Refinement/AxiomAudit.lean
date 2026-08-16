@@ -135,4 +135,5 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.FixedSizeScanExhausted.rejects
 #print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracted_legal
 #print axioms Refinement.StrictRecombine.concreteScan_extracted_legal
+#print axioms Refinement.StrictRecombine.zassenhausLoop_complete
 #print axioms Refinement.StrictFactorZZ.integer_divisor_candidate_rejected_of_scan_exhausted

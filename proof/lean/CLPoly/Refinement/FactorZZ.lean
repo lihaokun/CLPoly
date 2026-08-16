@@ -1534,6 +1534,131 @@ theorem zassenhausAttempt_extracted_quotient_squarefree
     ring
   exact hsquarefree.squarefree_of_dvd hdivides
 
+/-- A hypothetical nontrivial factorization of the literal extracted factor
+is re-encoded as a smaller physical candidate together with every premise
+needed by the later generated-attempt execution theorem. -/
+theorem zassenhausAttempt_reducible_has_smaller_candidate
+    (prime exponent : Nat) [Fact (Nat.Prime prime)]
+    (source factor quotientSparse : SparsePolyZZ)
+    (active : Array SparsePolyZZ) (outer : Array Nat)
+    (subsetSize : Nat)
+    (state : LiveHenselProduct prime exponent source active)
+    (activeState : StrictRecombine.LiveActiveFactors prime active)
+    (houter : StrictRecombine.LegalCombination active.size outer.size outer)
+    (houterSize : outer.size = subsetSize)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical source)
+    (hnonempty : 0 < source.size)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hsquarefree : Squarefree
+      (Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly source)))
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (hrecovery : ∀ divisor quotient,
+      SparsePolyZZ.toPoly source = divisor * quotient → divisor ≠ 0 →
+      ∀ degree,
+        ((Polynomial.C quotient.leadingCoeff * divisor).coeff degree).natAbs *
+          2 < prime ^ exponent)
+    (left right : Polynomial Int)
+    (hfactorization : SparsePolyZZ.toPoly factor = left * right)
+    (hleftUnit : ¬IsUnit left) (hrightUnit : ¬IsUnit right)
+    (hattempt : Generated.StrictRecombine.zassenhausAttempt source active
+      (((prime ^ exponent : Nat) : ZZ)) outer =
+        .ok (.extracted factor quotientSparse)) :
+    ∃ inner : Array Nat, ∃ innerQuotient : Polynomial Int,
+      StrictRecombine.LegalCombination active.size inner.size inner ∧
+      0 < inner.size ∧ inner.size < subsetSize ∧
+      left.IsPrimitive ∧ left ≠ 0 ∧ innerQuotient ≠ 0 ∧
+      SparsePolyZZ.toPoly source = left * innerQuotient ∧
+      Polynomial.map (Int.castRingHom (ZMod (prime ^ exponent)))
+          (Polynomial.C (SparsePolyZZ.toPoly source).leadingCoeff *
+            ((StrictRecombine.selectSourceIndices active.toList
+              inner.toList).map SparsePolyZZ.toPoly).prod) =
+        Polynomial.map (Int.castRingHom (ZMod (prime ^ exponent)))
+          (Polynomial.C innerQuotient.leadingCoeff * left) ∧
+      ∀ degree,
+        ((Polynomial.C innerQuotient.leadingCoeff * left).coeff degree).natAbs *
+          2 < prime ^ exponent := by
+  let modulus := prime ^ exponent
+  have hmodulus : 0 < modulus :=
+    pow_pos (Fact.out : Nat.Prime prime).pos exponent
+  have hdivides : prime ∣ modulus :=
+    dvd_pow_self prime (Nat.ne_of_gt state.exponentPositive)
+  have hfactorProperties :=
+    StrictRecombine.zassenhausAttempt_extracted_factor_canonical_primitive
+      source factor quotientSparse active (((modulus : Nat) : ZZ)) outer
+      hcanonical (by simpa [modulus] using hattempt)
+  have hfactorAssociated :=
+    StrictRecombine.zassenhausAttempt_extracted_factor_mod_associated_selected
+      source factor quotientSparse active modulus prime outer hmodulus
+      (Fact.out : Nat.Prime prime).pos hdivides
+      (fun position hposition => by
+        simpa [getElem!_pos outer position hposition] using
+          houter.2.2 position hposition)
+      activeState.fitsInt32
+      (by
+        have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head source
+          hcanonical hnonempty
+        simpa [getElem!_pos source 0 hnonempty] using (hhead ▸ hleading))
+      activeState.irreducible (by simpa [modulus] using hattempt)
+  rcases StrictRecombine.zassenhausAttempt_extracted_unit_scalar source factor
+      quotientSparse active (((modulus : Nat) : ZZ)) outer hprimitive
+      (by simpa [modulus] using hattempt) with
+    ⟨scalar, hscalar, hextraction⟩
+  have hfactorLeading :
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod prime) ≠ 0 := by
+    have hlc := congrArg Polynomial.leadingCoeff hextraction
+    simp only [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C] at hlc
+    have hlcMod := congrArg (fun value : Int => (value : ZMod prime)) hlc
+    simp only [Int.cast_mul] at hlcMod
+    intro hzero
+    apply hleading
+    rw [hlcMod, hzero]
+    simp
+  rcases smaller_active_candidate_of_reducible_primitive_factor prime active
+      outer houter activeState.irreducible (SparsePolyZZ.toPoly factor) left
+      right hfactorProperties.2 hfactorLeading hfactorization hleftUnit
+      hrightUnit hfactorAssociated with
+    ⟨inner, hinner, hinnerPositive, hinnerSmall, hleftPrimitive,
+      hleftLeading, hinnerAssociated⟩
+  let quotientPoly := SparsePolyZZ.toPoly quotientSparse
+  let innerQuotient := Polynomial.C scalar * (right * quotientPoly)
+  have hsourceFactorization : SparsePolyZZ.toPoly source =
+      left * innerQuotient := by
+    dsimp [innerQuotient, quotientPoly]
+    rw [hextraction, hfactorization]
+    ring
+  have hleftNe : left ≠ 0 := by
+    intro hzero
+    apply hleftLeading
+    simp [hzero]
+  have hinnerQuotientNe : innerQuotient ≠ 0 := by
+    intro hzero
+    have hsourceZero : SparsePolyZZ.toPoly source = 0 := by
+      rw [hsourceFactorization, hzero, mul_zero]
+    apply hleading
+    rw [hsourceZero]
+    simp
+  have hleftMapNe : Polynomial.map (Int.castRingHom (ZMod prime)) left ≠ 0 := by
+    intro hzero
+    apply hleftLeading
+    have hdegree := Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero
+      (Int.castRingHom (ZMod prime)) hleftLeading
+    rw [hzero] at hdegree
+    simpa using hdegree.symm
+  have hleftLeadingMap :
+      (Polynomial.map (Int.castRingHom (ZMod prime)) left).leadingCoeff =
+        (left.leadingCoeff : ZMod prime) :=
+    Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero _ hleftLeading
+  have hcongruent := state.selectedCongruent activeState hsquarefree hleading
+    left innerQuotient hsourceFactorization hleftMapNe hleftLeadingMap inner
+    hinner hinnerAssociated
+  have htargetBound := hrecovery left innerQuotient hsourceFactorization
+    hleftNe
+  exact ⟨inner, innerQuotient, hinner, hinnerPositive,
+    by simpa [houterSize] using hinnerSmall, hleftPrimitive, hleftNe,
+    hinnerQuotientNe, hsourceFactorization, by simpa [modulus] using hcongruent,
+    by simpa [modulus] using htargetBound⟩
+
 /-- The normalized factors returned by the literal Hensel entry initialize a
 `LiveHenselProduct` at the exact prime power returned by that execution. -/
 theorem selectionHenselFactors_liveProduct
@@ -3271,6 +3396,121 @@ theorem zassenhausAttempt_extracts_live_divisor_candidate
   rw [if_neg hconstantAccept]
   simp only [hconvert, hproduct, hsymmetric, hprimitive, hdivmod]
   simp only [Array.isEmpty_empty, if_true, hquotientPrimitive]
+
+/-- Every factor returned by the literal successful attempt is irreducible
+once the generated scans of all smaller positive subset sizes have physically
+returned `exhausted`. -/
+theorem zassenhausAttempt_extracted_irreducible
+    (prime exponent : Nat) [Fact (Nat.Prime prime)]
+    (source factor quotientSparse : SparsePolyZZ)
+    (active : Array SparsePolyZZ) (outer : Array Nat)
+    (subsetSize : Nat)
+    (state : LiveHenselProduct prime exponent source active)
+    (activeState : StrictRecombine.LiveActiveFactors prime active)
+    (hhistory : StrictRecombine.SmallerZassenhausScansExhausted source active
+      (((prime ^ exponent : Nat) : ZZ)) subsetSize)
+    (hsubsetPositive : 0 < subsetSize)
+    (houter : StrictRecombine.LegalCombination active.size outer.size outer)
+    (houterSize : outer.size = subsetSize)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical source)
+    (hnonempty : 0 < source.size)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hsquarefree : Squarefree
+      (Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly source)))
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (leading : UMonomial × ZZ) (hleadingCell : source[0]? = some leading)
+    (hleadingBound : leading.2.natAbs * 2 < prime ^ exponent)
+    (hrecovery : ∀ divisor quotient,
+      SparsePolyZZ.toPoly source = divisor * quotient → divisor ≠ 0 →
+      ∀ degree,
+        ((Polynomial.C quotient.leadingCoeff * divisor).coeff degree).natAbs *
+          2 < prime ^ exponent)
+    (hattempt : Generated.StrictRecombine.zassenhausAttempt source active
+      (((prime ^ exponent : Nat) : ZZ)) outer =
+        .ok (.extracted factor quotientSparse)) :
+    Irreducible (SparsePolyZZ.toPoly factor) := by
+  have hfactorProperties :=
+    StrictRecombine.zassenhausAttempt_extracted_factor_canonical_primitive
+      source factor quotientSparse active
+      (((prime ^ exponent : Nat) : ZZ)) outer hcanonical hattempt
+  have hfactorLeading :
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod prime) ≠ 0 := by
+    rcases StrictRecombine.zassenhausAttempt_extracted_unit_scalar source factor
+        quotientSparse active (((prime ^ exponent : Nat) : ZZ)) outer
+        hprimitive hattempt with ⟨scalar, _hscalar, hextraction⟩
+    have hlc := congrArg Polynomial.leadingCoeff hextraction
+    simp only [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C] at hlc
+    have hlcMod := congrArg (fun value : Int => (value : ZMod prime)) hlc
+    simp only [Int.cast_mul] at hlcMod
+    intro hzero
+    apply hleading
+    rw [hlcMod, hzero]
+    simp
+  have hfactorAssociated :=
+    StrictRecombine.zassenhausAttempt_extracted_factor_mod_associated_selected
+      source factor quotientSparse active (prime ^ exponent) prime outer
+      (pow_pos (Fact.out : Nat.Prime prime).pos exponent)
+      (Fact.out : Nat.Prime prime).pos
+      (dvd_pow_self prime (Nat.ne_of_gt state.exponentPositive))
+      (fun position hposition => by
+        simpa [getElem!_pos outer position hposition] using
+          houter.2.2 position hposition)
+      activeState.fitsInt32
+      (by
+        have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head source
+          hcanonical hnonempty
+        simpa [getElem!_pos source 0 hnonempty] using (hhead ▸ hleading))
+      activeState.irreducible hattempt
+  have houterPositive : 0 < outer.size := by
+    simpa [houterSize] using hsubsetPositive
+  have hfactorNonunit : ¬IsUnit (SparsePolyZZ.toPoly factor) := by
+    intro hunit
+    have hmappedUnit := hunit.map
+      (Polynomial.mapRingHom (Int.castRingHom (ZMod prime)))
+    have hselectedUnit := hfactorAssociated.isUnit_iff.mp hmappedUnit
+    let selected :=
+      (StrictRecombine.selectSourceIndices active.toList outer.toList).map
+        (StrictHensel.toPolyMod prime)
+    have houterZero : outer[0] < active.size := by
+      simpa [getElem!_pos outer 0 houterPositive] using
+        houter.2.2 0 houterPositive
+    have hsourceMem : active[outer[0]] ∈
+        StrictRecombine.selectSourceIndices active.toList outer.toList := by
+      unfold StrictRecombine.selectSourceIndices
+      apply List.mem_map.mpr
+      refine ⟨outer[0], Array.getElem_mem_toList houterPositive, ?_⟩
+      simpa [getElem!_pos active.toList outer[0] (by simpa using houterZero),
+        Array.getElem_toList houterZero]
+    have hmappedMem : StrictHensel.toPolyMod prime active[outer[0]] ∈
+        selected := List.mem_map.mpr ⟨active[outer[0]], hsourceMem, rfl⟩
+    have hcellUnit := List.prod_isUnit_iff.mp
+      (by simpa [selected] using hselectedUnit) _ hmappedMem
+    exact (activeState.irreducible outer[0] houterZero).not_isUnit hcellUnit
+  refine ⟨hfactorNonunit, ?_⟩
+  intro left right hfactorization
+  by_cases hleftUnit : IsUnit left
+  · exact Or.inl hleftUnit
+  by_cases hrightUnit : IsUnit right
+  · exact Or.inr hrightUnit
+  rcases zassenhausAttempt_reducible_has_smaller_candidate prime exponent
+      source factor quotientSparse active outer subsetSize state activeState
+      houter houterSize hcanonical hnonempty hprimitive hsquarefree hleading
+      hrecovery left right hfactorization hleftUnit hrightUnit hattempt with
+    ⟨inner, innerQuotient, hinner, hinnerPositive, hinnerSmall,
+      hleftPrimitive, hleftNe, hinnerQuotientNe, hsourceFactorization,
+      hcongruent, htargetBound⟩
+  rcases zassenhausAttempt_extracts_live_divisor_candidate hcanonical hnonempty
+      leading hleadingCell left innerQuotient hsourceFactorization
+      hleftPrimitive hleftNe hinnerQuotientNe inner hinner
+      activeState.fitsInt32 activeState.canonical activeState.nonempty
+      activeState.monic (prime ^ exponent)
+      (pow_pos (Fact.out : Nat.Prime prime).pos exponent) rfl hleadingBound
+      hcongruent htargetBound with
+    ⟨recoveredFactor, recoveredQuotient, hinnerAttempt⟩
+  have hrejected := hhistory.rejects inner hinnerPositive hinnerSmall hinner
+  rw [hinnerAttempt] at hrejected
+  simp at hrejected
 
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source

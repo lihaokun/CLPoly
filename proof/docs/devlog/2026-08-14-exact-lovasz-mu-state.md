@@ -3503,3 +3503,30 @@ recursive-state facts needed by the smaller-scan rejection contradiction.
 - Next: package the contradiction as irreducibility of the factor returned by
   the real successful scan, and thread it with live-state preservation through
   the generated outer recursion.
+
+## Prove each physically extracted factor irreducible
+
+`zassenhausAttempt_reducible_has_smaller_candidate` turns a hypothetical
+nontrivial factorization of the literal returned factor into a strictly
+smaller, nonempty, legal candidate over the current physical active array.  It
+also constructs the exact current-source factorization, the full `p^k`
+congruence supplied by live-state Hensel uniqueness, and every coefficient
+bound needed by symmetric recovery.
+
+After the generated live-candidate execution theorem is in scope,
+`zassenhausAttempt_extracted_irreducible` runs that smaller candidate through
+the actual leading prune, constant prune, trial product, symmetric recovery,
+primitive normalization, exact division, and quotient normalization.  The
+result is a literal `.ok (.extracted ...)` equation.  The carried
+`SmallerZassenhausScansExhausted` history yields `.ok .rejected` for the same
+candidate and the same current source/array/modulus, so constructor
+disjointness closes the contradiction.  The actual factor returned by the
+original successful attempt is therefore irreducible; no minimal-factor or
+semantic extraction oracle is assumed.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: derive and preserve the recovery-precision package from the original
+  generated Mignotte/Hensel execution, then thread irreducibility, squarefree
+  quotient, active/product state, and exhaustion history through the complete
+  generated outer loop.

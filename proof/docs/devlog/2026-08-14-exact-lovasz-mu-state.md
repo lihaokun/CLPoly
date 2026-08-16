@@ -3297,3 +3297,17 @@ encoding that fact as an abstract minimality assumption.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：从可约 extraction factor 的较小整数因子构造 live candidate，证明
   该 candidate 的真实 attempt 必提取，与 history 的真实 rejection 冲突
+
+## Turn a nontrivial factorization into a strictly smaller occurrence set
+
+`divisor_associated_proper_sublist_product` strengthens the existing concrete
+irreducible-product divisor theorem.  If an atom product factors as
+`left * right` with both sides nonunits, the recursively selected occurrence
+sublist associated with `left` cannot be the whole list: otherwise cancelling
+the proved nonzero `left` would make `right` a unit.  The selected sublist is
+therefore proper and has strictly smaller length.  This supplies the exact
+cardinality decrease needed to query `SmallerZassenhausScansExhausted`.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：把该 proper sublist 重新编码为当前 active 数组的合法 candidate，
+  并完成 smaller attempt 的真实成功/拒绝矛盾

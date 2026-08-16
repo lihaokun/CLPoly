@@ -130,6 +130,43 @@ theorem divisor_associated_sublist_product
           ⟨chosen, hchosen, hassociated⟩
         exact ⟨chosen, hchosen.cons atom, hassociated⟩
 
+/-- If both sides of a factorization of a concrete irreducible product are
+nonunits, the occurrence-sensitive sublist representing the left factor is
+proper.  Hence its cardinality is strictly smaller than the full atom list.
+This is the counting fact used by the Zassenhaus minimal-subset argument. -/
+theorem divisor_associated_proper_sublist_product
+    {R : Type*} [CommRing R] [IsDomain R] [IsBezout R]
+    (atoms : List R) (hirreducible : ∀ atom ∈ atoms, Irreducible atom)
+    (left right : R) (hfactor : atoms.prod = left * right)
+    (hleftNonunit : ¬IsUnit left) (hrightNonunit : ¬IsUnit right) :
+    ∃ chosen : List R, List.Sublist chosen atoms ∧
+      Associated left chosen.prod ∧ chosen.length < atoms.length := by
+  have hatomsNe : atoms.prod ≠ 0 := by
+    apply List.prod_ne_zero
+    intro hzero
+    exact (hirreducible 0 hzero).ne_zero rfl
+  have hleftNe : left ≠ 0 := by
+    intro hzero
+    apply hatomsNe
+    rw [hfactor, hzero, zero_mul]
+  have hleftDvd : left ∣ atoms.prod := by
+    exact ⟨right, hfactor⟩
+  rcases divisor_associated_sublist_product atoms hirreducible left
+      hleftDvd with ⟨chosen, hchosen, hassociated⟩
+  refine ⟨chosen, hchosen, hassociated, ?_⟩
+  have hlengthLe := List.Sublist.length_le hchosen
+  apply lt_of_le_of_ne hlengthLe
+  intro hlength
+  have hchosenEq : chosen = atoms :=
+    List.Sublist.eq_of_length hchosen hlength
+  have hleftAtoms : Associated left atoms.prod := by
+    simpa [hchosenEq] using hassociated
+  have hcancel : Associated (left * 1) (left * right) := by
+    simpa [hfactor] using hleftAtoms
+  have honeRight : Associated (1 : R) right :=
+    Associated.of_mul_left hcancel (Associated.refl left) hleftNe
+  exact hrightNonunit (associated_one_iff_isUnit.mp honeRight.symm)
+
 /-- A primitive integer polynomial is irreducible when its reduction at a
 prime is irreducible and the leading coefficient survives reduction.  This is
 the non-monic form needed for the actual primitive factors emitted by C++

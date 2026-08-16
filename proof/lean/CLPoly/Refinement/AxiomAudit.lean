@@ -52,6 +52,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.integer_divisor_mod_associated_hensel_sublist
 #print axioms Refinement.StrictFactorZZ.integer_divisor_mod_has_legal_hensel_candidate
 #print axioms Refinement.StrictFactorZZ.live_divisor_mod_has_legal_candidate
+#print axioms Refinement.StrictFactorZZ.divisor_associated_proper_sublist_product
 #print axioms Refinement.StrictFactorZZ.henselSelectedProduct_monic
 #print axioms Refinement.StrictFactorZZ.henselSelectedIntegerProduct_monic
 #print axioms Refinement.StrictFactorZZ.zassenhausLeadingPrune_accepts_hensel_candidate

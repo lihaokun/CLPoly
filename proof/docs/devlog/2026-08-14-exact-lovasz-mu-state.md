@@ -3644,3 +3644,26 @@ factorization existence is used.
   surface.
 - Next: combine this physical irreducibility certificate with the existing
   generated recombination product theorem at the concrete FactorZZ entry.
+
+## Close full-precision Hensel plus generated Zassenhaus correctness
+
+`selectionHensel_zassenhausRecombine_refines_FactorZZCorrect` now combines the
+selected-prime certificate, the actual full-precision (`aTarget = 0`) Hensel
+entry, and the literal generated `zassenhausRecombine` execution.  The Hensel
+output size equality forces the real `lifted.size > 1` branch.  Its exact
+prime-power modulus initializes the live product, active-cell, squarefree and
+recovery invariants, after which `zassenhausLoop_live_terminal` identifies the
+same returned array by determinism.
+
+The public product theorem and the new physical terminal irreducibility
+certificate are then paired directly into `FactorZZCorrect`; membership in
+the mapped L2 result list is traced back to the corresponding physical array
+cell.  Thus this is a complete strict refinement of the full-precision
+Hensel→Zassenhaus component, rather than independent product and existence
+claims.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: lift the same physical-factor invariant across the van-Hoeij
+  validation path and use the `__lll_factorize` retry guard to distinguish the
+  singleton-count heuristic success from the mandatory full-precision pass.

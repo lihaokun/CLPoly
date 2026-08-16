@@ -4181,6 +4181,73 @@ theorem ZassenhausTerminalCertificate.output_irreducible
   exact certificate.resultIrreducible.finishZassenhaus
     (fun _hnonempty hdegree => certificate.source_irreducible hdegree)
 
+/-- End-to-end correctness of the concrete full-precision Hensel followed by
+the literal generated Zassenhaus recombination entry.  Both product recovery
+and irreducibility refer to the same returned physical array. -/
+theorem selectionHensel_zassenhausRecombine_refines_FactorZZCorrect
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {henselOutput : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime 0 henselOutput)
+    (hfits : henselOutput.1.size ≤ 2 ^ 31)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.zassenhausRecombine
+      StrictRecombine.concreteZassenhausTermination f henselOutput.1
+        henselOutput.2 = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  have hsize := selectionHenselFactors_pointwise_associated hcount hp2
+    hfactors hleadingSemantic hselection hentry
+  have hlifted : ¬henselOutput.1.size ≤ 1 := by omega
+  rcases selectionHenselFactors_liveProduct hcount hp2 hfactors
+      hleadingSemantic hselection hentry with
+    ⟨exponent, hmodulus, productState⟩
+  have activeState := selectionHenselFactors_liveActive hcount hp2 hfactors
+    hleadingSemantic hselection hentry hfits
+  have precision := selectionHenselFactors_liveRecoveryPrecision hentry
+    hcanonical hnonempty hdegree leading hleading exponent hmodulus
+  have hloopRun : Generated.StrictRecombine.zassenhausLoop
+      StrictRecombine.concreteZassenhausTermination
+      (((selection.prime.toNat ^ exponent : Nat) : ZZ)) henselOutput.1 f #[] 1
+      (by omega) = .ok output := by
+    unfold Generated.StrictRecombine.zassenhausRecombine at hrun
+    rw [if_neg hlifted] at hrun
+    simpa [hmodulus] using hrun
+  rcases zassenhausLoop_live_terminal selection.prime.toNat exponent
+      henselOutput.1 f #[] 1 (by omega) hcanonical hnonempty
+      hprimitive hselection.goodPrime.lc_nonzero
+      hselection.goodPrime.sqfree activeState productState precision
+      FactorArrayIrreducible.empty
+      (StrictRecombine.SmallerZassenhausScansExhausted.one f henselOutput.1
+        (((selection.prime.toNat ^ exponent : Nat) : ZZ))) with
+    ⟨terminalOutput, hterminalRun, hterminalCertificate⟩
+  have houtputEq : output = terminalOutput :=
+    Except.ok.inj (hloopRun.symm.trans hterminalRun)
+  subst terminalOutput
+  rcases hterminalCertificate with ⟨certificate⟩
+  refine ⟨?_, ?_⟩
+  · exact StrictRecombine.zassenhausRecombine_toPoly_product_associated
+      StrictRecombine.concreteZassenhausTermination f henselOutput.1 output
+      henselOutput.2 hcanonical hprimitive hrun
+  · intro factor hfactor
+    rcases List.mem_map.mp hfactor with ⟨physical, hphysical, rfl⟩
+    exact certificate.output_irreducible physical hphysical
+
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source
 execution theorems above, including exact long division and quotient

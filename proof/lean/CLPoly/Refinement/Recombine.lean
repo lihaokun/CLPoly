@@ -15067,6 +15067,20 @@ theorem zassenhausRecombine_product_associated
       (by simpa [factorArrayProduct] using hprimitive) output hrun
     simpa [factorArrayProduct] using hloop
 
+/-- Public product form for consumers of the generated Zassenhaus entry. -/
+theorem zassenhausRecombine_toPoly_product_associated
+    (termination : Generated.StrictRecombine.ZassenhausTermination)
+    (f : SparsePolyZZ) (lifted output : Array SparsePolyZZ) (modulus : ZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hrun : Generated.StrictRecombine.zassenhausRecombine termination f lifted
+      modulus = .ok output) :
+    Associated (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly).prod := by
+  simpa [factorArrayProduct] using
+    zassenhausRecombine_product_associated termination f lifted output modulus
+      hcanonical hprimitive hrun
+
 theorem validateCandidatesLoop_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (candidates : Array (Array Int32)) (candidateIndex : Nat)

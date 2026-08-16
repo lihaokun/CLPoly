@@ -6960,6 +6960,43 @@ inductive HenselAdjustFirstFactorCorrect
       HenselAdjustFirstFactorCorrect f factors p
         (factors.set! 0 adjusted)
 
+/-- The generated leading-coefficient baking write changes only array slot
+zero, so every positive-index factor is definitionally the original one. -/
+theorem HenselAdjustFirstFactorCorrect.getElem_eq_of_pos
+    {f : SparsePolyZZ} {factors adjusted : Array SparsePolyZp} {p : UInt64}
+    (hcorrect : HenselAdjustFirstFactorCorrect f factors p adjusted)
+    (index : Nat) (hindex : index < adjusted.size) (hpos : 0 < index) :
+    ∃ hsource : index < factors.size,
+      getElem adjusted index hindex = getElem factors index hsource := by
+  cases hcorrect with
+  | adjusted leading first value hsource hfirst hvalue =>
+      have hzero : 0 < factors.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hfirst
+        contradiction
+      have hsourceIndex : index < factors.size := by
+        simpa using hindex
+      refine ⟨hsourceIndex, ?_⟩
+      simpa only [Array.set!_eq_setIfInBounds] using
+        (Array.getElem_setIfInBounds_ne (xs := factors) (i := 0)
+          (a := value) (j := index) hsourceIndex (by omega))
+
+/-- Hence monicity of the finite-field factors produced by `__factor_Zp` is
+preserved at every positive slot of the concrete adjusted array. -/
+theorem HenselAdjustFirstFactorCorrect.monic_of_pos
+    {f : SparsePolyZZ} {factors adjusted : Array SparsePolyZp} {p : UInt64}
+    (hcorrect : HenselAdjustFirstFactorCorrect f factors p adjusted)
+    (hmonic : ∀ index (hindex : index < factors.size),
+      (CLPoly.Math.SparsePolyZp.toPoly p.toNat
+        (getElem factors index hindex)).Monic)
+    (index : Nat) (hindex : index < adjusted.size) (hpos : 0 < index) :
+    (CLPoly.Math.SparsePolyZp.toPoly p.toNat
+      (getElem adjusted index hindex)).Monic := by
+  rcases hcorrect.getElem_eq_of_pos index hindex hpos with
+    ⟨hsource, heq⟩
+  rw [heq]
+  exact hmonic index hsource
+
 private theorem henselAdjustNormalization_toPoly
     (p : Nat) (factor : SparsePolyZp) :
     CLPoly.Math.SparsePolyZp.toPoly p (SparsePolyZp.normalization factor) =

@@ -2599,3 +2599,23 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 complete Hensel source passed direct Lean checking.  Next, the store result is
 installed in `HenselTreeSemanticBuildCertificate` and recursively propagated
 to every concrete topology node.
+
+## Preserve selected-factor monicity after the concrete slot-zero write
+
+The generated Hensel entry bakes the source leading coefficient into exactly
+slot zero.  `HenselAdjustFirstFactorCorrect.getElem_eq_of_pos` now proves by
+unfolding that actual `Array.set! 0` that every positive-index read is the
+same read from the original selected-factor array.  The proof retains the
+source bound used by that read; it does not weaken the claim to membership or
+permutation.
+
+`HenselAdjustFirstFactorCorrect.monic_of_pos` transports the monicity supplied
+by the genuine `__factor_Zp`/SelectPrime certificate through this positional
+equality.  Every right-half interval in the concrete Hensel builder starts at
+a positive midpoint, so this is precisely the input needed by the interval
+product theorem.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+complete Hensel source passed direct Lean checking.  Next, these positional
+facts are supplied to the recursive raw builder and recorded at every stored
+node.

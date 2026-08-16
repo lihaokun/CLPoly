@@ -796,3 +796,31 @@ the LLL output and introduces no fuel, partial definition, termination oracle,
   surface.
 - Next: define and preserve the exact size-reduced/Lovasz prefix processed by
   the C++ `k` cursor, then specialize it to all rows using this exit theorem.
+
+## Preserve the generated Lovasz witness through full size reduction
+
+The advancing branch of the generated LLL step now carries a literal
+post-state certificate for the Lovasz comparison it executed:
+
+- `sizeReduceAt_preserves_mu_entry_of_source_lt` proves directly from the
+  generated `sizeReduceAt` result that reducing against a lower source column
+  cannot modify any higher Gram--Schmidt coefficient;
+- `extraSizeReduceLoop_preserves_mu_entry_above` follows the genuine
+  descending well-founded source loop and preserves the selected higher
+  coefficient through every successful physical reduction; and
+- `lllStep_advanced_lovasz_at_previous` combines that preservation with the
+  exact successful C++ branch test and the unchanged norm array.  Thus the
+  returned advanced state satisfies the same Lovasz inequality at the row
+  just processed by the C++ `k` cursor.
+
+This closes a subtle execution gap: using the branch proposition alone would
+not certify the returned state unless the later `k-2 .. 0` reductions were
+proved not to change `mu[k][k-1]`.  The proof uses the generated recursion and
+physical arrays, with no fuel, partial definition, semantic LLL oracle,
+`sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: preserve the accumulated reduced-prefix predicate across both the
+  advancing and swapping branches, then use the proved main-loop exit guard
+  to obtain the complete final LLL certificate.

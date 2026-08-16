@@ -217,6 +217,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.swapMatrixRows_pair_preserves_transform_rel
 #print axioms Refinement.StrictRecombine.lllStep_preserves_transform_rel
 #print axioms Refinement.StrictRecombine.concreteLLLMainLoop_finished
+#print axioms Refinement.StrictRecombine.sizeReduceAt_preserves_mu_entry_of_source_lt
+#print axioms Refinement.StrictRecombine.extraSizeReduceLoop_preserves_mu_entry_above
+#print axioms Refinement.StrictRecombine.lllStep_advanced_lovasz_at_previous
 #print axioms Refinement.StrictRecombine.concreteLLLMainLoop_preserves_transform_rel
 #print axioms Refinement.StrictRecombine.concreteLLLReduce_transform_rel
 #print axioms Refinement.StrictRecombine.insertShortRow_indices_valid

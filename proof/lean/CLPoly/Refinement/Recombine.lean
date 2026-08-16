@@ -6877,6 +6877,38 @@ theorem sizeReduceAt_mu_eq
     next hsource => contradiction
   next hk => contradiction
 
+/-- A generated size-reduction only changes Gram--Schmidt coefficients at and
+below its source column.  In particular, later descending reductions cannot
+destroy the adjacent coefficient established before the Lovasz test. -/
+theorem sizeReduceAt_preserves_mu_entry_of_source_lt
+    (state output : Generated.StrictRecombine.LLLState)
+    (source column : Nat)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hkMu : state.k < state.mu.size)
+    (hsourceK : source < state.k)
+    (hcolumn : column < state.mu[state.k]!.size)
+    (hsourceColumn : source < column)
+    (hrun : Generated.StrictRecombine.sizeReduceAt state source = .ok output) :
+    ((output.mu[output.k]!)[column]!) =
+      ((state.mu[state.k]!)[column]!) := by
+  rcases sizeReduceAt_mu_eq state output source hvalid hsourceK hrun with
+    ⟨coefficient, _hround, hmu⟩
+  have hcontrol := sizeReduceAt_preserves_norms_k state output source hrun
+  have hsourceMu : source < state.mu.size := lt_trans hsourceK hkMu
+  have hsourceKRow : source < state.mu[state.k]!.size :=
+    lt_trans hsourceColumn hcolumn
+  have hlimitSource : source ≤ state.mu[source].size := by
+    rw [hvalid.mu_rows_square source hsourceMu, ← hvalid.mu_size]
+    exact Nat.le_of_lt hsourceMu
+  have hentry := sizeReduceMuResult_target_get state.mu state.k source column
+    coefficient hkMu hsourceMu
+    (by simpa [getElem!_pos state.mu state.k hkMu] using hsourceKRow)
+    hlimitSource
+    (by simpa [getElem!_pos state.mu state.k hkMu] using hcolumn)
+    (Nat.ne_of_gt hsourceK)
+  rw [hmu, hcontrol.2]
+  simpa [Nat.not_lt.mpr hsourceColumn.le, ne_of_gt hsourceColumn] using hentry
+
 theorem gsLowerPrefix_sizeReduceMuResult
     (state : Generated.StrictRecombine.LLLState)
     (source rowCount : Nat) (q : ZZ)
@@ -8625,6 +8657,128 @@ theorem extraSizeReduceLoop_preserves_execution_valid
           remaining hvalid (by omega) hstep
         have hcontrol := sizeReduceAt_preserves_norms_k state next remaining hstep
         exact ih next output hnextValid (by rw [hcontrol.2]; omega) hrun
+
+theorem extraSizeReduceLoop_preserves_mu_entry_above
+    (remaining : Nat) (state output : Generated.StrictRecombine.LLLState)
+    (column : Nat)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hkMu : state.k < state.mu.size)
+    (hremaining : remaining ≤ column)
+    (hcolumnK : column < state.k)
+    (hrun : Generated.StrictRecombine.extraSizeReduceLoop remaining state =
+      .ok output) :
+    ((output.mu[output.k]!)[column]!) =
+      ((state.mu[state.k]!)[column]!) := by
+  induction remaining generalizing state output with
+  | zero =>
+      simp [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      subst output
+      rfl
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      cases hstep : Generated.StrictRecombine.sizeReduceAt state remaining with
+      | error fault => simp [hstep] at hrun
+      | ok next =>
+        simp only [hstep] at hrun
+        have hsourceColumn : remaining < column := by omega
+        have hsourceK : remaining < state.k := lt_trans hsourceColumn hcolumnK
+        have hhead := sizeReduceAt_preserves_mu_entry_of_source_lt state next
+          remaining column hvalid hkMu hsourceK
+          (by
+            simpa [getElem!_pos state.mu state.k hkMu,
+              hvalid.mu_rows_square state.k hkMu, ← hvalid.mu_size] using
+              (lt_trans hcolumnK hkMu))
+          hsourceColumn hstep
+        have hnextValid := sizeReduceAt_preserves_execution_valid state next
+          remaining hvalid hsourceK hstep
+        have hcontrol := sizeReduceAt_preserves_norms_k state next remaining hstep
+        have hnextMuSize : next.mu.size = state.mu.size := by
+          rw [hnextValid.mu_size, hvalid.mu_size]
+          have hnorms := congrArg Array.size hcontrol.1
+          simpa [hvalid.norms_size, hnextValid.norms_size] using hnorms
+        have hkMuNext : next.k < next.mu.size := by
+          rw [hcontrol.2, hnextMuSize]
+          exact hkMu
+        have htail := ih next output hnextValid hkMuNext
+          (by omega) (by simpa [hcontrol.2]) hrun
+        exact htail.trans hhead
+
+/-- On the advancing branch, the literal adjacent coefficient tested by the
+generated C++ body survives the subsequent descending reductions, so the
+returned state carries the successful Lovasz inequality at that index. -/
+theorem lllStep_advanced_lovasz_at_previous
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    ((3 : QQ) / 4 -
+        ((output.mu[state.k]!)[state.k - 1]!) *
+          ((output.mu[state.k]!)[state.k - 1]!)) *
+        output.norms[state.k - 1]! ≤ output.norms[state.k]! := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hsourceK : state.k - 1 < state.k := by omega
+        have hreduceValid := sizeReduceAt_preserves_execution_valid state
+          reduced (state.k - 1) hvalid hsourceK hreduce
+        have hreduceControl := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        split at hrun
+        next hkNorm =>
+          split at hrun
+          next hpredNorm =>
+            split at hrun
+            next hkMu =>
+              split at hrun
+              next hpredMu =>
+                dsimp at hrun
+                split at hrun
+                next hlovasz =>
+                  cases hextra : Generated.StrictRecombine.extraSizeReduceLoop
+                      (reduced.k - 1) reduced with
+                  | error fault => simp [hextra] at hrun
+                  | ok fullyReduced =>
+                    simp only [hextra] at hrun
+                    have hentry :=
+                      extraSizeReduceLoop_preserves_mu_entry_above
+                        (reduced.k - 1) reduced fullyReduced
+                        (reduced.k - 1) hreduceValid hkMu (by rfl)
+                        (by omega) hextra
+                    have hextraControl :=
+                      extraSizeReduceLoop_preserves_norms_k
+                        (reduced.k - 1) reduced fullyReduced hextra
+                    have hentryState :
+                        ((fullyReduced.mu[state.k]!)[state.k - 1]!) =
+                          ((reduced.mu[state.k]!)[state.k - 1]!) := by
+                      simpa only [hextraControl.2, hreduceControl.2] using hentry
+                    have hout := Except.ok.inj hrun
+                    injection hout with hstate
+                    subst output
+                    rw [hentryState, hextraControl.1]
+                    rw [← hreduceControl.2]
+                    simpa [getElem!_pos reduced.mu reduced.k hkMu,
+                      getElem!_pos reduced.mu[reduced.k]
+                        (reduced.k - 1) hpredMu,
+                      getElem!_pos reduced.norms reduced.k hkNorm,
+                      getElem!_pos reduced.norms (reduced.k - 1) hpredNorm] using
+                      hlovasz
+                next hlovasz =>
+                  repeat' first | split at hrun | simp_all
+              next hpredMu => contradiction
+            next hkMu => contradiction
+          next hpredNorm => contradiction
+        next hkNorm => contradiction
+    · rw [dif_neg hkMatrix] at hrun
+      simp at hrun
+  · rw [dif_neg hkPositive] at hrun
+    simp at hrun
 
 theorem lllStep_advanced_preserves_valid
     (state output : Generated.StrictRecombine.LLLState)

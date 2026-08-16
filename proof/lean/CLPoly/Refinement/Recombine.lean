@@ -12,6 +12,7 @@ import CLPoly.Refinement.Basic
 import CLPoly.Refinement.Hensel
 import Batteries.Data.Array.Lemmas
 import Mathlib.Analysis.Matrix.PosDef
+import Mathlib.Algebra.Order.Round
 import Mathlib.Data.Rat.Star
 import Mathlib.Data.Real.StarOrdered
 import Mathlib.LinearAlgebra.LinearIndependent.BaseChange
@@ -23,6 +24,50 @@ open Polynomial
 open CLPoly.Math
 
 namespace Refinement.StrictRecombine
+
+/-- The generated GMP-style implementation computes the library's genuine
+nearest-integer operation; this is an arithmetic theorem about the literal
+`2*num + den` and `2*den` operands, not a replacement rounding oracle. -/
+theorem roundQQ_eq_round (value : QQ) :
+    Generated.StrictRecombine.roundQQ value =
+      (Except.ok (round value) : RawExec ZZ) := by
+  have hdenPos : 0 < QQ.den value := by
+    simpa [QQ.den] using Rat.pos value
+  have hdenNonzero : QQ.den value * 2 ≠ 0 := by omega
+  have hvalue : value =
+      ((QQ.num value : ZZ) : QQ) / ((QQ.den value : ZZ) : QQ) := by
+    simp only [QQ.num, QQ.den]
+    exact (Rat.num_div_den value).symm
+  have hquotient : value + (1 : QQ) / 2 =
+      (((QQ.num value * 2 + QQ.den value : ZZ) : QQ) /
+        ((QQ.den value * 2 : ZZ) : QQ)) := by
+    have hdenCast : (((QQ.den value * 2 : ZZ) : QQ)) ≠ 0 := by
+      exact_mod_cast hdenNonzero
+    apply (eq_div_iff hdenCast).2
+    nth_rewrite 1 [hvalue]
+    push_cast
+    field_simp [ne_of_gt hdenPos]
+    <;> ring
+  unfold Generated.StrictRecombine.roundQQ
+  rw [dif_pos hdenNonzero]
+  change (Except.ok (Int.fdiv (QQ.num value * 2 + QQ.den value)
+    (QQ.den value * 2)) : RawExec ZZ) = _
+  rw [Int.fdiv_eq_ediv_of_nonneg _ (by omega)]
+  congr 1
+  rw [round_eq, hquotient,
+    Int.floor_div_cast_of_nonneg (by omega)]
+  rw [Int.floor_intCast]
+
+/-- Consequently, the literal generated quotient leaves a residual of absolute
+value at most one half. -/
+theorem roundQQ_residual_abs_le_half (value : QQ) (q : ZZ)
+    (hrun : Generated.StrictRecombine.roundQQ value =
+      (Except.ok q : RawExec ZZ)) :
+    |value - (q : QQ)| ≤ (1 : QQ) / 2 := by
+  rw [roundQQ_eq_round] at hrun
+  have hq : q = round value := (Except.ok.inj hrun).symm
+  subst q
+  exact abs_sub_round value
 
 /-- Project an integer-polynomial congruence from a larger modulus to any
 divisor modulus.  This is the transport used to compare the actual `p^k`
@@ -6877,6 +6922,34 @@ theorem sizeReduceAt_mu_eq
     next hsource => contradiction
   next hk => contradiction
 
+/-- One literal generated size-reduction establishes the standard half-unit
+bound at the coefficient it processes. -/
+theorem sizeReduceAt_source_abs_le_half
+    (state output : Generated.StrictRecombine.LLLState) (source : Nat)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hkMu : state.k < state.mu.size)
+    (hsourceK : source < state.k)
+    (hrun : Generated.StrictRecombine.sizeReduceAt state source = .ok output) :
+    |((output.mu[output.k]!)[source]!)| ≤ (1 : QQ) / 2 := by
+  rcases sizeReduceAt_mu_eq state output source hvalid hsourceK hrun with
+    ⟨q, hround, hmu⟩
+  have hresidual := roundQQ_residual_abs_le_half
+    ((state.mu[state.k]!)[source]!) q hround
+  have hsourceMu : source < state.mu.size := lt_trans hsourceK hkMu
+  have hsourceKRow : source < state.mu[state.k].size := by
+    rw [hvalid.mu_rows_square state.k hkMu, ← hvalid.mu_size]
+    exact hsourceMu
+  have hlimitSource : source ≤ state.mu[source].size := by
+    rw [hvalid.mu_rows_square source hsourceMu, ← hvalid.mu_size]
+    exact hsourceMu.le
+  have hentry := sizeReduceMuResult_target_get state.mu state.k source source q
+    hkMu hsourceMu hsourceKRow hlimitSource hsourceKRow
+    (Nat.ne_of_gt hsourceK)
+  have hk := (sizeReduceAt_preserves_norms_k state output source hrun).2
+  rw [hmu, hk]
+  rw [hentry]
+  simpa using hresidual
+
 /-- A generated size-reduction only changes Gram--Schmidt coefficients at and
 below its source column.  In particular, later descending reductions cannot
 destroy the adjacent coefficient established before the Lovasz test. -/
@@ -8756,6 +8829,136 @@ theorem extraSizeReduceLoop_preserves_mu_entry_above
           (by omega) (by simpa [hcontrol.2]) hrun
         exact htail.trans hhead
 
+/-- The descending generated loop establishes the half-unit bound at every
+source column it actually visits. -/
+theorem extraSizeReduceLoop_abs_le_half
+    (remaining : Nat) (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hkMu : state.k < state.mu.size)
+    (hremaining : remaining < state.k)
+    (hrun : Generated.StrictRecombine.extraSizeReduceLoop remaining state =
+      .ok output) :
+    ∀ column, column < remaining →
+      |((output.mu[output.k]!)[column]!)| ≤ (1 : QQ) / 2 := by
+  induction remaining generalizing state output with
+  | zero =>
+      intro column hcolumn
+      omega
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      cases hstep : Generated.StrictRecombine.sizeReduceAt state remaining with
+      | error fault => simp [hstep] at hrun
+      | ok next =>
+          simp only [hstep] at hrun
+          have hsourceK : remaining < state.k := by omega
+          have hhead := sizeReduceAt_source_abs_le_half state next remaining
+            hvalid hkMu hsourceK hstep
+          have hnextValid := sizeReduceAt_preserves_execution_valid state next
+            remaining hvalid hsourceK hstep
+          have hcontrol := sizeReduceAt_preserves_norms_k state next remaining hstep
+          have hnextMuSize : next.mu.size = state.mu.size := by
+            rw [hnextValid.mu_size, hvalid.mu_size]
+            have hnorms := congrArg Array.size hcontrol.1
+            simpa [hvalid.norms_size, hnextValid.norms_size] using hnorms
+          have hkMuNext : next.k < next.mu.size := by
+            rw [hcontrol.2, hnextMuSize]
+            exact hkMu
+          intro column hcolumn
+          by_cases hcurrent : column = remaining
+          · subst column
+            have hpreserve := extraSizeReduceLoop_preserves_mu_entry_above
+              remaining next output remaining hnextValid hkMuNext
+              (by rfl) (by rw [hcontrol.2]; omega) hrun
+            rw [hpreserve]
+            exact hhead
+          · exact ih next output hnextValid hkMuNext
+              (by rw [hcontrol.2]; omega) hrun column (by omega)
+
+/-- The advancing generated LLL body has size-reduced every coefficient of
+the current row before it increments the cursor. -/
+theorem lllStep_advanced_size_reduced_current
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    ∀ column, column < state.k →
+      |((output.mu[state.k]!)[column]!)| ≤ (1 : QQ) / 2 := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hkMuState : state.k < state.mu.size := by
+          rw [hvalid.mu_size]
+          simpa [hvalid.norms_size] using hkMatrix
+        have hsourceK : state.k - 1 < state.k := by omega
+        have hadjacent := sizeReduceAt_source_abs_le_half state reduced
+          (state.k - 1) hvalid hkMuState hsourceK hreduce
+        have hreduceValid := sizeReduceAt_preserves_execution_valid state
+          reduced (state.k - 1) hvalid hsourceK hreduce
+        have hreduceControl := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        split at hrun
+        next hkNorm =>
+          split at hrun
+          next hpredNorm =>
+            split at hrun
+            next hkMu =>
+              split at hrun
+              next hpredMu =>
+                dsimp at hrun
+                split at hrun
+                next hlovasz =>
+                  cases hextra : Generated.StrictRecombine.extraSizeReduceLoop
+                      (reduced.k - 1) reduced with
+                  | error fault => simp [hextra] at hrun
+                  | ok fullyReduced =>
+                    simp only [hextra] at hrun
+                    have hextraControl :=
+                      extraSizeReduceLoop_preserves_norms_k
+                        (reduced.k - 1) reduced fullyReduced hextra
+                    have hkFully : fullyReduced.k = state.k :=
+                      hextraControl.2.trans hreduceControl.2
+                    have hbelow := extraSizeReduceLoop_abs_le_half
+                      (reduced.k - 1) reduced fullyReduced hreduceValid hkMu
+                      (by omega) hextra
+                    have hout := Except.ok.inj hrun
+                    injection hout with hstate
+                    subst output
+                    intro column hcolumn
+                    by_cases hadj : column = state.k - 1
+                    · subst column
+                      have hpreserve :=
+                        extraSizeReduceLoop_preserves_mu_entry_above
+                          (reduced.k - 1) reduced fullyReduced
+                          (state.k - 1) hreduceValid hkMu (by
+                            rw [hreduceControl.2]) (by
+                            rw [hreduceControl.2]
+                            omega) hextra
+                      have hpreserve' :
+                          ((fullyReduced.mu[state.k]!)[state.k - 1]!) =
+                            ((reduced.mu[reduced.k]!)[state.k - 1]!) := by
+                        simpa [hkFully] using hpreserve
+                      rw [hpreserve']
+                      simpa [hreduceControl.2] using hadjacent
+                    · simpa [hkFully] using
+                        hbelow column (by rw [hreduceControl.2]; omega)
+                next hlovasz =>
+                  repeat' first | split at hrun | simp_all
+              next hpredMu => contradiction
+            next hkMu => contradiction
+          next hpredNorm => contradiction
+        next hkNorm => contradiction
+    · rw [dif_neg hkMatrix] at hrun
+      contradiction
+  · rw [dif_neg hkPositive] at hrun
+    contradiction
+
 /-- On the advancing branch, the literal adjacent coefficient tested by the
 generated C++ body survives the subsequent descending reductions, so the
 returned state carries the successful Lovasz inequality at that index. -/
@@ -9028,6 +9231,52 @@ def LovaszPrefix (state : Generated.StrictRecombine.LLLState) : Prop :=
         ((state.mu[index]!)[index - 1]!) *
           ((state.mu[index]!)[index - 1]!)) *
         state.norms[index - 1]! ≤ state.norms[index]!
+
+/-- Size-reduction inequalities for every row already passed by the exact
+generated C++ cursor. -/
+def SizeReducedPrefix (state : Generated.StrictRecombine.LLLState) : Prop :=
+  ∀ row, row < state.k → row < state.matrix.size →
+    ∀ column, column < row →
+      |((state.mu[row]!)[column]!)| ≤ (1 : QQ) / 2
+
+theorem lllStep_success_bounds
+    (state : Generated.StrictRecombine.LLLState)
+    (branch : Generated.StrictRecombine.LLLStepResult)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok branch) :
+    0 < state.k ∧ state.k < state.matrix.size := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · exact ⟨hkPositive, hkMatrix⟩
+    · rw [dif_neg hkMatrix] at hrun
+      contradiction
+  · rw [dif_neg hkPositive] at hrun
+    contradiction
+
+theorem lllStep_advanced_preserves_sizeReducedPrefix
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : SizeReducedPrefix state)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    SizeReducedPrefix output := by
+  have hcontrol := lllStep_advanced_control state output hrun
+  have houtputValid := lllStep_advanced_preserves_execution_valid state output
+    hvalid hrun
+  have hmatrixSize : output.matrix.size = state.matrix.size := by
+    rw [← houtputValid.norms_size, hcontrol.1, hvalid.norms_size]
+  intro row hrowK hrowMatrix column hcolumn
+  by_cases hcurrent : row = state.k
+  · subst row
+    exact lllStep_advanced_size_reduced_current state output hvalid hrun
+      column hcolumn
+  · have hbefore : row < state.k := by rw [hcontrol.2] at hrowK; omega
+    have hrow := lllStep_advanced_preserves_mu_row_before state output row
+      hvalid hbefore hrun
+    rw [hrow]
+    exact hprefix row hbefore (by simpa [hmatrixSize] using hrowMatrix)
+      column hcolumn
 
 theorem lllStep_advanced_preserves_lovaszPrefix
     (state output : Generated.StrictRecombine.LLLState)
@@ -10100,6 +10349,75 @@ theorem lllStep_swapped_array_witness
   · rw [dif_neg hkPositive] at hrun
     contradiction
 
+theorem lllStep_swapped_preserves_sizeReducedPrefix
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : SizeReducedPrefix state)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.swapped output)) :
+    SizeReducedPrefix output := by
+  have hbounds := lllStep_success_bounds state (.swapped output) hrun
+  have hkOutput := lllStep_swapped_k state output hrun
+  have houtputValid := lllStep_swapped_preserves_execution_valid state output
+    hvalid hrun
+  have hmatrixSize := lllStep_swapped_matrix_size state output
+    hvalid.toConcreteLLLValid houtputValid.toConcreteLLLValid hrun
+  rcases lllStep_swapped_array_witness state output hvalid hrun with
+    ⟨reduced, muNew, hreduce, hkReduced, hmuOutput, _hnormOutput⟩
+  have hreduceControl := sizeReduceAt_preserves_norms_k state reduced
+    (state.k - 1) hreduce
+  have hsourceK : state.k - 1 < state.k := by omega
+  have hreducedValid := sizeReduceAt_preserves_execution_valid state reduced
+    (state.k - 1) hvalid hsourceK hreduce
+  have hreduceMatrixSize : reduced.matrix.size = state.matrix.size := by
+    calc
+      reduced.matrix.size = reduced.norms.size := hreducedValid.norms_size.symm
+      _ = state.norms.size := congrArg Array.size hreduceControl.1
+      _ = state.matrix.size := hvalid.norms_size
+  intro row hrowK hrowMatrix column hcolumn
+  have hrowBefore : row < state.k - 1 := by
+    rw [hkOutput] at hrowK
+    by_cases hkSmall : state.k ≤ 1
+    · have hkOne : state.k = 1 := by omega
+      simp [hkOne] at hrowK
+      omega
+    · have hmax : Nat.max (state.k - 1) 1 = state.k - 1 :=
+        Nat.max_eq_left (by omega)
+      rw [hmax] at hrowK
+      exact hrowK
+  have hrowStateMu : row < state.mu.size := by
+    rw [hvalid.mu_size]
+    exact lt_trans (lt_trans hrowBefore (by omega)) (by
+      simpa [hvalid.norms_size] using hbounds.2)
+  have hrowReducedMu : row < reduced.mu.size := by
+    rw [hreducedValid.mu_size, hreduceMatrixSize]
+    rw [hvalid.mu_size] at hrowStateMu
+    exact hrowStateMu
+  have hcolumnReduced : column < reduced.mu.size :=
+    lt_trans hcolumn hrowReducedMu
+  have hrowsSquare : ∀ index (hindex : index < reduced.mu.size),
+      reduced.mu[index]!.size = reduced.mu.size := by
+    intro index hindex
+    rw [getElem!_pos reduced.mu index hindex]
+    rw [hreducedValid.mu_rows_square index (by
+      simpa [hreducedValid.mu_size] using hindex)]
+    exact hreducedValid.mu_size.symm
+  have hentry := lovaszSwapMuResult_entry reduced.mu reduced.k row column
+    ((reduced.mu[reduced.k]!)[reduced.k - 1]!) muNew
+    (by rw [hkReduced]; exact hbounds.1)
+    (by rw [hreducedValid.mu_size, hreduceMatrixSize, hkReduced]
+        exact hbounds.2)
+    hrowReducedMu hcolumnReduced hrowsSquare
+  have hrowState := sizeReduceAt_preserves_mu_row_of_ne state reduced
+    (state.k - 1) row hvalid hsourceK hrowStateMu (by omega) hreduce
+  have hrowBeforeState : row < state.k := by omega
+  rw [hmuOutput, hentry, hrowState]
+  simp only [hkReduced]
+  simp only [show row ≠ state.k by omega, show row ≠ state.k - 1 by omega,
+    show ¬ state.k < row by omega, if_false]
+  exact hprefix row hrowBeforeState (by simpa [hmatrixSize] using hrowMatrix)
+    column hcolumn
+
 theorem lllStep_swapped_preserves_lovaszPrefix
     (state output : Generated.StrictRecombine.LLLState)
     (hvalid : ConcreteLLLExecutionValid state)
@@ -10424,6 +10742,21 @@ theorem lllStep_preserves_lovaszPrefix
       exact lllStep_swapped_preserves_lovaszPrefix state output hvalid hprefix
         hrun
 
+theorem lllStep_preserves_sizeReducedPrefix
+    (state : Generated.StrictRecombine.LLLState)
+    (branch : Generated.StrictRecombine.LLLStepResult)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : SizeReducedPrefix state)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok branch) :
+    SizeReducedPrefix branch.state := by
+  cases branch with
+  | advanced output =>
+      exact lllStep_advanced_preserves_sizeReducedPrefix state output hvalid
+        hprefix hrun
+  | swapped output =>
+      exact lllStep_swapped_preserves_sizeReducedPrefix state output hvalid
+        hprefix hrun
+
 /-- The genuine well-founded certificate for the generated C++ LLL loop.
 Its validity predicate is the executable `G = L D Lᵀ` invariant, and its
 rank is the concrete determinant/index lexicographic rank. -/
@@ -10525,6 +10858,50 @@ theorem concreteLLLMainLoop_preserves_lovaszPrefix
         have hout := Except.ok.inj hrun
         subst output
         exact hprefix
+
+theorem concreteLLLMainLoop_preserves_sizeReducedPrefix
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : SizeReducedPrefix state)
+    (hrun : Generated.StrictRecombine.lllMainLoop concreteLLLTermination
+      state hvalid = .ok output) :
+    SizeReducedPrefix output := by
+  induction hmeasure : concreteLLLRank state using Nat.strong_induction_on
+      generalizing state output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.lllMainLoop] at hrun
+      split at hrun
+      next hk =>
+        split at hrun
+        next hstep => contradiction
+        next branch hstep =>
+          have hnextValid := lllStep_preserves_execution_valid state branch
+            hvalid hstep
+          have hnextPrefix := lllStep_preserves_sizeReducedPrefix state branch
+            hvalid hprefix hstep
+          have hdecrease := lllStep_concreteRank_lt_of_valid state branch
+            hvalid.toConcreteLLLValid hnextValid.toConcreteLLLValid hstep
+          rw [hmeasure] at hdecrease
+          exact ih (concreteLLLRank branch.state) hdecrease branch.state output
+            hnextValid hnextPrefix hrun rfl
+      next hk =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hprefix
+
+theorem concreteLLLMainLoop_size_reduced_all
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : SizeReducedPrefix state)
+    (hrun : Generated.StrictRecombine.lllMainLoop concreteLLLTermination
+      state hvalid = .ok output) :
+    ∀ row, row < output.matrix.size → ∀ column, column < row →
+      |((output.mu[row]!)[column]!)| ≤ (1 : QQ) / 2 := by
+  have hfinished := concreteLLLMainLoop_finished state output hvalid hrun
+  have hfinalPrefix := concreteLLLMainLoop_preserves_sizeReducedPrefix
+    state output hvalid hprefix hrun
+  intro row hrow column hcolumn
+  exact hfinalPrefix row (lt_of_lt_of_le hrow hfinished) hrow column hcolumn
 
 theorem concreteLLLMainLoop_lovasz_all
     (state output : Generated.StrictRecombine.LLLState)

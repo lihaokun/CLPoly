@@ -879,3 +879,34 @@ the physical post-swap mu update must succeed before the witness exists.
 - Next: construct the analogous generated size-reduction prefix (including
   the exact `roundQQ` residual bound), expose both final certificates through
   `lllReduce`, and prove the required short-vector span result.
+
+## Complete the generated LLL size-reduction certificate
+
+The second half of the physical LLL postcondition is now proved through the
+same generated execution:
+
+- `roundQQ_eq_round` unfolds the generated `2*num + den`, `2*den`, and
+  `Int.fdiv` computation and identifies it with nearest-integer rounding;
+- `roundQQ_residual_abs_le_half` obtains the exact half-unit residual bound;
+- `sizeReduceAt_source_abs_le_half` transfers that bound to the physical
+  updated `mu[k][j]` cell;
+- `extraSizeReduceLoop_abs_le_half` follows the generated descending loop and
+  covers every lower source column;
+- the advanced and swapped branch theorems preserve `SizeReducedPrefix` on
+  the actual returned arrays; and
+- `concreteLLLMainLoop_size_reduced_all` follows the determinant-ranked
+  well-founded main loop and combines the accumulated prefix with its literal
+  exit guard to prove `|mu[i][j]| <= 1/2` for every `j < i` in the final
+  generated state.
+
+This proof does not replace source rounding with an executable oracle: the
+source quotient must run successfully and is then proved equal to the
+mathematical round.  There is no fuel, partial definition, semantic LLL
+oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: retain the internal final `mu`/norm certificate at the complete
+  `lllReduce` boundary and use the genuine reduced-basis inequalities to prove
+  that every sufficiently short true factor-indicator vector is represented
+  by the physically collected transform rows.

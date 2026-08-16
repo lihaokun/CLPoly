@@ -139,6 +139,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_eq_divisor_mod_prime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_leadingCoeff
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_eq_divisor_mod_primePower
+#print axioms Refinement.StrictFactorZZ.zassenhausLeadingPrune_accepts_live_candidate
 #print axioms Refinement.StrictFactorZZ.zassenhausCandidate_executes_through_primitive_of_live
 #print axioms Refinement.StrictRecombine.FixedSizeScanExhausted.rejects
 #print axioms Refinement.StrictRecombine.SmallerZassenhausScansExhausted.one

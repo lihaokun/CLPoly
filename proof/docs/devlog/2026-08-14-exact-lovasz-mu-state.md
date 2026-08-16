@@ -1972,6 +1972,11 @@ No C++ files changed, so this step has no new C++ b2b change surface.
 
 ## Live-state Zassenhaus candidate execution
 
+- Added `zassenhausLeadingPrune_accepts_live_candidate`.  For an arbitrary
+  current active array, pointwise canonical/nonempty/monic cells make the
+  literal generated `selectedLeadingProductLoop` accumulate exactly the live
+  source leading coefficient.  A concrete strict modulus bound then proves
+  that the first generated scalar prune accepts.
 - Added `zassenhausCandidate_executes_through_primitive_of_live`, separating
   the literal generated candidate execution from the initial Hensel-array
   specialization.

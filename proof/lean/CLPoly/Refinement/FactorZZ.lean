@@ -1558,6 +1558,80 @@ reject a bounded candidate drawn from the actual normalized Hensel output.
 Every selected physical head is one, so the generated accumulator is exactly
 the source leading coefficient; the generated Mignotte precision then makes
 `ZZ.symmetricMod` recover that coefficient literally. -/
+theorem zassenhausLeadingPrune_accepts_live_candidate
+    {active : Array SparsePolyZZ} {outputM : ZZ}
+    (leading : UMonomial × ZZ)
+    (indices : Array Nat)
+    (hbound : ∀ position (hposition : position < indices.size),
+      indices[position] < active.size)
+    (hactiveCanonical : ∀ index (hindex : index < active.size),
+      StrictPolynomialMod.SparsePolyZZCanonical active[index])
+    (hactiveNonempty : ∀ index (hindex : index < active.size),
+      0 < active[index].size)
+    (hactiveMonic : ∀ index (hindex : index < active.size),
+      (SparsePolyZZ.toPoly active[index]).Monic)
+    (modulus : Nat) (hmodulus : 0 < modulus)
+    (houtput : outputM = (modulus : Int))
+    (hleadingBound : leading.2.natAbs * 2 < modulus) :
+    ∃ leadingProduct,
+      Generated.StrictRecombine.selectedLeadingProductLoop indices active
+        0 leading.2 = .ok leadingProduct ∧
+      ¬(ZZ.symmetricMod leadingProduct outputM ≠ 0 ∧
+        ZZ.fdiv_r 0 (leading.2 * leading.2)
+          (ZZ.symmetricMod leadingProduct outputM) ≠ 0) := by
+  have hselectedCanonical : ∀ position
+      (hposition : position < indices.size),
+      StrictPolynomialMod.SparsePolyZZCanonical
+        active[indices[position]]! := by
+    intro position hposition
+    have hactive := hbound position hposition
+    simpa [getElem!_pos active indices[position] hactive] using
+      hactiveCanonical indices[position] hactive
+  have hselectedNonempty : ∀ position
+      (hposition : position < indices.size),
+      active[indices[position]]!.isEmpty = false := by
+    intro position hposition
+    have hactive := hbound position hposition
+    have hsize := hactiveNonempty indices[position] hactive
+    simpa [getElem!_pos active indices[position] hactive,
+      Array.isEmpty, Nat.ne_of_gt hsize]
+  have hselectedMonic :
+      ((StrictRecombine.selectSourceIndices active.toList indices.toList).map
+        SparsePolyZZ.toPoly).prod.Monic := by
+    apply monic_list_product
+    intro candidate hcandidate
+    rcases List.mem_map.mp hcandidate with ⟨lifted, hlifted, rfl⟩
+    unfold StrictRecombine.selectSourceIndices at hlifted
+    rcases List.mem_map.mp hlifted with ⟨index, hindex, rfl⟩
+    rcases List.mem_iff_getElem.mp hindex with
+      ⟨position, hposition, hindexEq⟩
+    have hpositionArray : position < indices.size := by simpa using hposition
+    have hactive := hbound position hpositionArray
+    have hselected : indices[position] = index := by
+      rw [← Array.getElem_toList hpositionArray]
+      exact hindexEq
+    rw [← hselected, getElem!_pos active.toList indices[position]
+      (by simpa using hactive), Array.getElem_toList hactive]
+    exact hactiveMonic indices[position] hactive
+  have hleadingValues :=
+    StrictRecombine.selectedLeadingValues_prod_eq_leadingCoeff_of_canonical
+      indices active hbound hselectedCanonical hselectedNonempty
+  have hvaluesOne :
+      (StrictRecombine.selectedLeadingValues indices active 0).prod = 1 := by
+    rw [hleadingValues, hselectedMonic.leadingCoeff]
+  have hloop := StrictRecombine.selectedLeadingProductLoop_succeeds indices
+    active 0 leading.2 hbound hselectedNonempty
+  rw [hvaluesOne, mul_one] at hloop
+  refine ⟨leading.2, hloop, ?_⟩
+  have hrecovered : ZZ.symmetricMod leading.2 outputM = leading.2 := by
+    rw [houtput]
+    exact StrictRecombine.symmetricMod_eq_of_strict_bound leading.2 modulus
+      hmodulus hleadingBound
+  rw [hrecovered]
+  exact StrictRecombine.zassenhaus_prune_condition_false_of_dvd
+    (leading.2 * leading.2) leading.2 (dvd_mul_right _ _)
+
+/-- Initial-Hensel specialization of the live leading-prune theorem. -/
 theorem zassenhausLeadingPrune_accepts_hensel_candidate
     {termination : Generated.StrictHensel.DivmodTermination}
     {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}

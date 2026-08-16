@@ -866,6 +866,40 @@ theorem selectionHenselFactors_mod_irreducible
       (Array.getElem_mem_toList hindex)
   exact hnormalizeRel.irreducible hextracted
 
+/-- The normalized array returned by the real Hensel entry establishes every
+physical active-factor invariant needed by later live Zassenhaus attempts.
+The size bound is the concrete bound already proved at the entry call site. -/
+theorem selectionHenselFactors_liveActive
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output)
+    (hfits : output.1.size ≤ 2 ^ 31) :
+    StrictRecombine.LiveActiveFactors selection.prime.toNat output.1 := by
+  refine {
+    fitsInt32 := hfits
+    canonical := hentry.outputCanonical
+    nonempty := ?_
+    monic := hentry.outputToPolyMonic
+    irreducible := selectionHenselFactors_mod_irreducible hcount hp2 hfactors
+      hleadingSemantic hselection hentry }
+  intro index hindex
+  rcases hentry.outputOneHead index hindex with ⟨head, tail, hlist⟩
+  have hlength := congrArg List.length hlist
+  simp at hlength
+  omega
+
 /-- The actual Hensel output array is pointwise associated, in the same
 source order, with the factor array returned by the concrete selected-prime
 execution.  The association is assembled from the generated first-factor

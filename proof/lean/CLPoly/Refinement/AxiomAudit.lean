@@ -28,6 +28,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracts_of_candidate
 #print axioms Refinement.StrictRecombine.zassenhausFixedSizeScan_extracts_of_candidate
 #print axioms Refinement.StrictRecombine.removeCombination_preserves_pointwise
+#print axioms Refinement.StrictRecombine.LiveActiveFactors.removeCombination
 #print axioms Refinement.StrictRecombine.selectSourceIndices_sublist
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_product_partition
 #print axioms Refinement.StrictRecombine.removeCombination_product_partition
@@ -135,6 +136,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_normalized_product_eq_unit_mul_source
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_primePower_product_eq_unit_mul_source
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_prime_product_eq_unit_mul_source
+#print axioms Refinement.StrictFactorZZ.selectionHenselFactors_liveActive
 #print axioms Refinement.StrictFactorZZ.henselCandidate_physicalComplement_coprime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_eq_divisor_mod_prime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_leadingCoeff

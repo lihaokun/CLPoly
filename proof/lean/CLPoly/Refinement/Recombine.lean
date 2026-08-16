@@ -3318,6 +3318,50 @@ theorem removeCombination_preserves_pointwise
   rw [← hvalue]
   exact hproperty sourceIndex hsourceArray
 
+/-- Representation and selected-prime facts carried by the physical active
+array throughout the generated Zassenhaus outer loop.  This contains only
+properties of actual array cells, not a semantic recombination result. -/
+structure LiveActiveFactors (base : Nat) (active : Array SparsePolyZZ) : Prop where
+  fitsInt32 : active.size ≤ 2 ^ 31
+  canonical : ∀ index (hindex : index < active.size),
+    StrictPolynomialMod.SparsePolyZZCanonical active[index]
+  nonempty : ∀ index (hindex : index < active.size), 0 < active[index].size
+  monic : ∀ index (hindex : index < active.size),
+    (SparsePolyZZ.toPoly active[index]).Monic
+  irreducible : ∀ index (hindex : index < active.size),
+    Irreducible (Refinement.StrictHensel.toPolyMod base active[index])
+
+/-- The literal reverse erasure used after an extraction preserves every
+field of `LiveActiveFactors`; the size bound follows from the exact generated
+array-size equation. -/
+theorem LiveActiveFactors.removeCombination
+    {base : Nat} {active output : Array SparsePolyZZ}
+    (state : LiveActiveFactors base active) (candidate : Array Nat)
+    (hrun : Generated.StrictRecombine.removeCombination candidate active =
+      .ok output) :
+    LiveActiveFactors base output := by
+  have hpointwise (property : SparsePolyZZ → Prop)
+      (hproperty : ∀ index (hindex : index < active.size),
+        property active[index]) :
+      ∀ index (hindex : index < output.size), property output[index] :=
+    removeCombination_preserves_pointwise candidate active output property
+      hproperty hrun
+  have hloop := hrun
+  unfold Generated.StrictRecombine.removeCombination at hloop
+  have hsize := removeCombinationLoop_size candidate candidate.size active
+    output hloop
+  have houtputLe : output.size ≤ active.size := by omega
+  exact {
+    fitsInt32 := houtputLe.trans state.fitsInt32
+    canonical := hpointwise
+      StrictPolynomialMod.SparsePolyZZCanonical state.canonical
+    nonempty := hpointwise (fun factor => 0 < factor.size) state.nonempty
+    monic := hpointwise (fun factor => (SparsePolyZZ.toPoly factor).Monic)
+      state.monic
+    irreducible := hpointwise
+      (fun factor => Irreducible
+        (Refinement.StrictHensel.toPolyMod base factor)) state.irreducible }
+
 /-- The concrete termination package for the source Zassenhaus loops.  Its
 combination rank is the complement of the base-`upper+1` positional code;
 the outer rank is discharged by the actual successful subset removal. -/

@@ -1972,6 +1972,13 @@ No C++ files changed, so this step has no new C++ b2b change surface.
 
 ## Live-state Zassenhaus candidate execution
 
+- Introduced `LiveActiveFactors`, the concrete pointwise state needed by every
+  recursive attempt: Int32 index fit, canonical/nonempty integer cells, monic
+  physical factors, and selected-prime irreducibility.
+- `selectionHenselFactors_liveActive` constructs this state from the actual
+  generated Hensel entry.  `LiveActiveFactors.removeCombination` proves that
+  the actual generated reverse erasure preserves it, using the exact output
+  size equation and occurrence membership rather than an abstract subarray.
 - Added `zassenhausLeadingPrune_accepts_live_candidate`.  For an arbitrary
   current active array, pointwise canonical/nonempty/monic cells make the
   literal generated `selectedLeadingProductLoop` accumulate exactly the live

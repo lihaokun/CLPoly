@@ -670,6 +670,38 @@ theorem integer_divisor_mod_has_legal_hensel_candidate
   rw [hselected]
   exact hassociated
 
+/-- Every occurrence-sensitive subproduct selected from the actual normalized
+Hensel output is monic.  The proof reads the literal coefficient-one head and
+canonical sparse representation carried by `HenselLiftEntryCorrect` for each
+selected array cell. -/
+theorem henselSelectedProduct_monic
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f factors p
+      aTarget output)
+    (modulus : Nat) (indices : Array Nat)
+    (hbound : ∀ position (hposition : position < indices.size),
+      indices[position] < output.1.size) :
+    ((StrictRecombine.selectSourceIndices output.1.toList indices.toList).map
+      (StrictHensel.toPolyMod modulus)).prod.Monic := by
+  apply monic_list_product
+  intro candidate hcandidate
+  rcases List.mem_map.mp hcandidate with ⟨lifted, hlifted, rfl⟩
+  unfold StrictRecombine.selectSourceIndices at hlifted
+  rcases List.mem_map.mp hlifted with ⟨index, hindex, rfl⟩
+  rcases List.mem_iff_getElem.mp hindex with
+    ⟨position, hposition, hindexEq⟩
+  have hpositionArray : position < indices.size := by simpa using hposition
+  have hactive := hbound position hpositionArray
+  have hselected : indices[position] = index := by
+    rw [← Array.getElem_toList hpositionArray]
+    exact hindexEq
+  rw [← hselected, getElem!_pos output.1.toList indices[position]
+    (by simpa using hactive), Array.getElem_toList hactive]
+  exact hentry.outputToPolyModMonic modulus indices[position] hactive
+
 /-- If the actual generated fixed-size Zassenhaus scan exhausts, then the
 occurrence-sensitive candidate supplied by any genuine integer divisor was
 not omitted: that exact index array was executed and rejected.  This is the

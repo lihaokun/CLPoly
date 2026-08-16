@@ -2905,3 +2905,25 @@ the complete C++ entry receives no artificial canonicality premise for `f`.
 so this step has no new C++ b2b change surface.  This closes the physical
 monicity prerequisite used by exact Hensel subset reconstruction in the ZZ
 recombination proof.
+
+## Expose monicity of every concrete Hensel candidate subproduct
+
+`HenselLiftEntryCorrect` now has public projection theorems for the canonical
+sparse representation, literal coefficient-one head, and modular monicity of
+every factor returned by the generated Hensel entry.  These facts are read
+directly from the already established extraction and normalization execution
+certificate; they do not select replacement representatives.
+
+`henselSelectedProduct_monic` follows the exact occurrence-sensitive index
+array used by the generated Zassenhaus scanner.  For every bounded candidate
+index it reads the corresponding physical Hensel output cell and proves the
+selected modular product monic.  This is the normalization fact needed to use
+`leading_scaled_monic_associated_divisor` and identify the integer polynomial
+that the real trial-product/symmetric-recovery path must reconstruct.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs) and
+`lake build CLPoly.Refinement.FactorZZ` passes (3545 jobs).  No C++ files
+changed, so this step has no new C++ regression or b2b change surface.  Next,
+the exact candidate execution will combine this monicity with the generated
+Mignotte precision, both pruning loops, symmetric recovery, and sparse exact
+division completeness to rule out `.rejected`.

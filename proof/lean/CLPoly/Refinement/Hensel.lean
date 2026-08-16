@@ -14088,6 +14088,54 @@ def HenselLiftEntryCorrect
     HenselFactorArrayCanonical output.1 ∧
     HenselFactorArrayOneHeadFrom 0 output.1
 
+/-- Every factor returned by the literal generated Hensel entry retains the
+canonical sparse representation established by extraction and normalization.
+This is a projection of the concrete execution certificate, not a separately
+chosen semantic representative. -/
+theorem HenselLiftEntryCorrect.outputCanonical
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hcorrect : HenselLiftEntryCorrect termination f factors p aTarget output)
+    (index : Nat) (hindex : index < output.1.size) :
+    StrictPolynomialMod.SparsePolyZZCanonical output.1[index] := by
+  rcases hcorrect with
+    ⟨_target, _adjusted, _nodes, _liftedNodes, _outputM, _extracted,
+      _htarget, _hadjust, _hsemantic, _hlift, _hliftedOneHead, _hextract,
+      _hnormalize, _houtputM, hcanonical, _honeHead⟩
+  exact hcanonical output.1[index] (Array.getElem_mem_toList hindex)
+
+/-- Every concrete normalized Hensel factor literally stores coefficient one
+at its first array cell. -/
+theorem HenselLiftEntryCorrect.outputOneHead
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hcorrect : HenselLiftEntryCorrect termination f factors p aTarget output)
+    (index : Nat) (hindex : index < output.1.size) :
+    HasPhysicalOneHead output.1[index] := by
+  rcases hcorrect with
+    ⟨_target, _adjusted, _nodes, _liftedNodes, _outputM, _extracted,
+      _htarget, _hadjust, _hsemantic, _hlift, _hliftedOneHead, _hextract,
+      _hnormalize, _houtputM, _hcanonical, honeHead⟩
+  exact honeHead index (Nat.zero_le index) hindex
+
+/-- Representation-level heads from the actual Hensel output imply that every
+returned factor is monic modulo any observation modulus. -/
+theorem HenselLiftEntryCorrect.outputToPolyModMonic
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hcorrect : HenselLiftEntryCorrect termination f factors p aTarget output)
+    (modulus index : Nat) (hindex : index < output.1.size) :
+    (toPolyMod modulus output.1[index]).Monic := by
+  exact HasPhysicalOneHead.toPolyMod_monic
+    (hcorrect.outputOneHead index hindex)
+    (hcorrect.outputCanonical index hindex)
+
 private theorem henselLeafOrigins_trans
     {p : Nat} {inputs : List SparsePolyZp} {initial final : List SparsePolyZZ}
     (horigins : List.Forall₂

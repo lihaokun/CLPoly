@@ -30,6 +30,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_product_associated
 #print axioms Refinement.StrictFactorZZ.integer_divisor_mod_associated_hensel_sublist
 #print axioms Refinement.StrictFactorZZ.integer_divisor_mod_has_legal_hensel_candidate
+#print axioms Refinement.StrictFactorZZ.henselSelectedProduct_monic
 #print axioms Refinement.StrictFactorZZ.leading_scaled_monic_associated_divisor
 #print axioms Refinement.StrictHensel.HenselLiftRecursiveCorrect.preserves_not_mem
 #print axioms Refinement.StrictHensel.Generated.StrictHensel.DivmodTrace.output_inactive
@@ -89,6 +90,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselNormalizeCorrect.outputOneHead
 #print axioms Refinement.StrictHensel.HenselAdjustFirstFactorCorrect.product_eq
 #print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.preNormalizationProduct
+#print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.outputCanonical
+#print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.outputOneHead
+#print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.outputToPolyModMonic
 #print axioms Refinement.StrictFactorZZ.selectionAdjustedFactors_product_eq_source
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_preNormalization_product
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_normalized_product_eq_unit_mul_source

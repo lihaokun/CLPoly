@@ -2956,6 +2956,52 @@ private theorem selectSourceIndices_eraseIdx_of_lt {α : Type*} [Inhabited α]
   simp [List.getElem!_eq_getElem?_getD, List.getElem?_eraseIdx,
     hlt index hindex]
 
+/-- Every legal prefix makes the literal reverse-erasure loop succeed.  The
+returned array is obtained by executing the generated function; it is not an
+independently chosen complement. -/
+theorem removeCombinationLoop_succeeds (candidate : Array Nat)
+    (remaining : Nat) (active : Array SparsePolyZZ)
+    (hremaining : remaining ≤ candidate.size)
+    (hgaps : ∀ left right (hleft : left < remaining)
+      (hright : right < remaining), left < right →
+        candidate[left] < candidate[right])
+    (hbound : ∀ position (hposition : position < remaining),
+      candidate[position] < active.size) :
+    ∃ output, Generated.StrictRecombine.removeCombinationLoop candidate
+      remaining active = .ok output := by
+  induction remaining generalizing active with
+  | zero =>
+      refine ⟨active, ?_⟩
+      simp [Generated.StrictRecombine.removeCombinationLoop]
+  | succ remaining ih =>
+      have hcand : remaining < candidate.size := by omega
+      have hcurrent : candidate[remaining] < active.size :=
+        hbound remaining (by omega)
+      let erased := active.eraseIdxIfInBounds candidate[remaining]
+      have hlower : ∀ position (hposition : position < remaining),
+          candidate[position] < candidate[remaining] := by
+        intro position hposition
+        exact hgaps position remaining (by omega) (by omega) hposition
+      have herasedSize : erased.size + 1 = active.size := by
+        have : 0 < active.size := by omega
+        simp only [erased, Array.size_eraseIdxIfInBounds, if_pos hcurrent]
+        exact Nat.sub_add_cancel (by omega)
+      have hbound' : ∀ position (hposition : position < remaining),
+          candidate[position] < erased.size := by
+        intro position hposition
+        have := hlower position hposition
+        omega
+      have hgaps' : ∀ left right (hleft : left < remaining)
+          (hright : right < remaining), left < right →
+            candidate[left] < candidate[right] := by
+        intro left right hleft hright hlt
+        exact hgaps left right (by omega) (by omega) hlt
+      rcases ih erased (by omega) hgaps' hbound' with ⟨output, houtput⟩
+      refine ⟨output, ?_⟩
+      rw [Generated.StrictRecombine.removeCombinationLoop]
+      simp only [hcand, hcurrent, ↓reduceDIte, erased]
+      exact houtput
+
 /-- The literal reverse-erasure loop partitions the physical active array:
 the occurrence-sensitive product named by the still-live candidate prefix,
 times the product of the returned array, is exactly the input product.  The
@@ -3105,6 +3151,29 @@ theorem removeCombination_product_partition (candidate : Array Nat)
   rw [show candidate.size = candidate.toList.length by simp,
     List.take_length] at hpartition
   exact hpartition
+
+/-- Full legal-candidate entry form of `removeCombinationLoop_succeeds`. -/
+theorem removeCombination_succeeds (candidate : Array Nat)
+    (active : Array SparsePolyZZ)
+    (hlegal : LegalCombination active.size candidate.size candidate) :
+    ∃ output, Generated.StrictRecombine.removeCombination candidate active =
+      .ok output := by
+  have hgaps : ∀ left right (hleft : left < candidate.size)
+      (hright : right < candidate.size), left < right →
+        candidate[left] < candidate[right] := by
+    intro left right hleft hright hlt
+    have hgap := hlegal.2.1 left right hleft hright hlt
+    rw [getElem!_pos candidate left hleft,
+      getElem!_pos candidate right hright] at hgap
+    omega
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < active.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  simpa [Generated.StrictRecombine.removeCombination] using
+    removeCombinationLoop_succeeds candidate candidate.size active
+      (Nat.le_refl _) hgaps hbound
 
 private theorem mem_toList_of_mem_eraseIdxIfInBounds_toList
     {α : Type*} (value : α) (active : Array α) (index : Nat)

@@ -2993,3 +2993,10 @@ occurrence-sensitive even when two lifted factors have equal values.
 step has no new C++ regression or b2b change surface.  Next, the selected and
 physical-complement products will be mapped at the certified prime power and
 compared to the genuine integer divisor decomposition via `hensel_unique`.
+
+The companion theorem `removeCombination_succeeds` additionally proves that
+every full legal candidate executes this generated reverse-erasure entry to an
+actual `.ok output`.  Thus a proof about a candidate that is rejected before
+the source removal branch may still compute its unique physical complement by
+running the same generated function; no semantic complement witness is added
+to the refinement interface.

@@ -15,6 +15,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.removeCombination_preserves_pointwise
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_product_partition
 #print axioms Refinement.StrictRecombine.removeCombination_product_partition
+#print axioms Refinement.StrictRecombine.removeCombination_succeeds
 #print axioms Refinement.StrictRecombine.symmetricModRaw_toPoly_coefficients_bounded
 #print axioms Refinement.StrictRecombine.symmetric_recovery_closed_left
 #print axioms Refinement.StrictRecombine.symmetricMod_eq_of_strict_bound

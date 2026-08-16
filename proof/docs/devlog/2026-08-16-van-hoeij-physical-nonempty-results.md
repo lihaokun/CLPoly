@@ -607,3 +607,30 @@ partial definition, collection oracle, `sorry`, or custom axiom.
 - Next: prove the converse member soundness and representative equality for
   each collected class, then combine it with the CLD/LLL short-vector
   separation theorem.
+
+## Prove generated extracted-member soundness
+
+Candidate collection now has the converse execution guarantee as well:
+
+- `candidateMember_set_push_provenance` analyzes the exact nested
+  `Array.set`/`Array.push` mutation: a visible member was either preserved from
+  the old candidate matrix or is precisely the newly appended value;
+- `collectCandidateClasses_member_provenance` lifts that local fact through
+  the full generated collector and returns the concrete scanned source column,
+  its physical class lookup, and its exact `Int32` conversion;
+- `collectCandidateClasses_from_empty_member_source` removes the impossible
+  initial-member case for the actual replicated-empty entry state; and
+- `extractCandidates_members_sound` proves that every member of every
+  candidate returned by the nonempty-short-row branch is the conversion of a
+  real source column strictly below `factorCount`.
+
+Together with the previous coverage theorem this excludes both dropped source
+columns and fabricated candidate members.  All recursion is the generated
+well-founded suffix recursion; there is no fuel, partial definition, semantic
+collection oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: carry representative-comparison certificates through the outer
+  partition so members of each returned candidate class are proven equal on
+  the concrete short rows, then apply CLD/LLL separation.

@@ -10747,6 +10747,52 @@ def CandidateMember (candidates : Array (Array Int32))
     ∃ position, position < candidates[classId]!.size ∧
       (candidates[classId]!)[position]! = value
 
+theorem candidateMember_set_push_provenance
+    (result : Array (Array Int32)) (updatedClass classId : Nat)
+    (added value : Int32) (hupdatedClass : updatedClass < result.size)
+    (hmember : CandidateMember
+      (result.set updatedClass (result[updatedClass].push added))
+      classId value) :
+    CandidateMember result classId value ∨
+      (classId = updatedClass ∧ value = added) := by
+  rcases hmember with ⟨hclassId, position, hposition, hvalue⟩
+  have hclassIdResult : classId < result.size := by simpa using hclassId
+  by_cases heq : classId = updatedClass
+  · subst updatedClass
+    have hrowUpdated :
+        (result.set classId (result[classId].push added))[classId]! =
+          result[classId].push added := by
+      rw [getElem!_pos _ classId (by simpa using hclassIdResult),
+        Array.getElem_set_self]
+    rw [hrowUpdated] at hposition hvalue
+    have hpositionPush : position < (result[classId].push added).size := hposition
+    by_cases hold : position < result[classId].size
+    · apply Or.inl
+      refine ⟨hclassIdResult, position, ?_, ?_⟩
+      · simpa [getElem!_pos result classId hclassIdResult] using hold
+      · have hvalue' := hvalue
+        rw [arrayPush_getElem!_lt _ _ position hold] at hvalue'
+        simpa [getElem!_pos result classId hclassIdResult] using hvalue'
+    · have hlast : position = result[classId].size := by
+        simp only [Array.size_push] at hpositionPush
+        omega
+      subst position
+      refine Or.inr ⟨rfl, ?_⟩
+      have hvalue' := hvalue
+      rw [arrayPush_getElem!_last] at hvalue'
+      exact hvalue'.symm
+  · left
+    have hrowUpdated :
+        (result.set updatedClass (result[updatedClass].push added))[classId]! =
+          result[classId]! := by
+      rw [getElem!_pos _ classId (by simpa using hclassIdResult),
+        Array.getElem_set_ne hupdatedClass hclassIdResult (Ne.symm heq),
+        ← getElem!_pos result classId hclassIdResult]
+    rw [hrowUpdated] at hposition hvalue
+    refine ⟨hclassIdResult, position, ?_, ?_⟩
+    · exact hposition
+    · exact hvalue
+
 theorem collectCandidateClasses_preserves_member
     (classes : Array (Option Nat)) (column : Nat)
     (result output : Array (Array Int32))
@@ -10850,6 +10896,99 @@ theorem collectCandidateClasses_includes_source
                 updated output hrun (by omega) rfl
           next hclass => contradiction
       next hcolumn => omega
+
+theorem collectCandidateClasses_member_provenance
+    (classes : Array (Option Nat)) (column : Nat)
+    (result output : Array (Array Int32))
+    (hrun : Generated.StrictRecombine.collectCandidateClasses classes column
+      result = .ok output)
+    (classId : Nat) (value : Int32)
+    (hmember : CandidateMember output classId value) :
+    CandidateMember result classId value ∨
+      ∃ source, column ≤ source ∧ source < classes.size ∧
+        classes[source]! = some classId ∧
+        value = source.toUInt32.toInt32 := by
+  induction hmeasure : classes.size - column using Nat.strong_induction_on
+      generalizing column result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.collectCandidateClasses] at hrun
+      split at hrun
+      next hcolumn =>
+        split at hrun
+        next hnone => contradiction
+        next currentClass hcurrentClass =>
+          split at hrun
+          next hclass =>
+            let updated := result.set currentClass
+              (result[currentClass].push column.toUInt32.toInt32)
+            have htail := ih (classes.size - (column + 1)) (by omega)
+              (column + 1) updated output hrun hmember rfl
+            rcases htail with hupdated | hlater
+            · rcases candidateMember_set_push_provenance result currentClass
+                classId column.toUInt32.toInt32 value hclass hupdated with
+                hold | hnew
+              · exact Or.inl hold
+              · rcases hnew with ⟨rfl, rfl⟩
+                apply Or.inr
+                refine ⟨column, Nat.le_refl _, hcolumn, ?_, rfl⟩
+                simpa [getElem!_pos classes column hcolumn] using hcurrentClass
+            · rcases hlater with ⟨source, hsourceStart, hsource,
+                hsourceClass, hvalue⟩
+              exact Or.inr ⟨source, by omega, hsource, hsourceClass, hvalue⟩
+          next hclass => contradiction
+      next hcolumn =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact Or.inl hmember
+
+theorem collectCandidateClasses_from_empty_member_source
+    (classes : Array (Option Nat)) (classCount : Nat)
+    (output : Array (Array Int32))
+    (hrun : Generated.StrictRecombine.collectCandidateClasses classes 0
+      (Array.replicate classCount #[]) = .ok output)
+    (classId : Nat) (value : Int32)
+    (hmember : CandidateMember output classId value) :
+    ∃ source, source < classes.size ∧ classes[source]! = some classId ∧
+      value = source.toUInt32.toInt32 := by
+  rcases collectCandidateClasses_member_provenance classes 0
+      (Array.replicate classCount #[]) output hrun classId value hmember with
+      hinitial | hsource
+  · rcases hinitial with ⟨hclass, position, hposition, hvalue⟩
+    have hrow :
+        (Array.replicate classCount (#[] : Array Int32))[classId]! = #[] := by
+      rw [getElem!_pos _ classId hclass]
+      simp
+    rw [hrow] at hposition
+    simp at hposition
+  · rcases hsource with ⟨source, hstart, hsource, hsourceClass, hvalue⟩
+    exact ⟨source, hsource, hsourceClass, hvalue⟩
+
+theorem extractCandidates_members_sound
+    (shortRows : Array Nat)
+    (transform : Generated.StrictRecombine.LLLMatrix) (factorCount : Nat)
+    (output : Array (Array Int32)) (hnonempty : shortRows.isEmpty = false)
+    (hrun : Generated.StrictRecombine.extractCandidates shortRows transform
+      factorCount = .ok output)
+    (classId : Nat) (value : Int32)
+    (hmember : CandidateMember output classId value) :
+    ∃ source, source < factorCount ∧ value = source.toUInt32.toInt32 := by
+  simp only [Generated.StrictRecombine.extractCandidates, hnonempty,
+    Bool.false_eq_true, ↓reduceIte] at hrun
+  cases hpartition : Generated.StrictRecombine.partitionCandidateColumns
+      transform shortRows factorCount 0 0
+        (Array.replicate factorCount none) with
+  | error fault =>
+      rw [hpartition] at hrun
+      contradiction
+  | ok partition =>
+      rcases partition with ⟨classes, classCount⟩
+      rw [hpartition] at hrun
+      have hclassesSize := (partitionCandidateColumns_from_empty_all_assigned
+        transform shortRows factorCount classes classCount hpartition).1
+      rcases collectCandidateClasses_from_empty_member_source classes classCount
+          output hrun classId value hmember with
+        ⟨source, hsource, hsourceClass, hvalue⟩
+      exact ⟨source, by omega, hvalue⟩
 
 /-- During the generated outer partition loop, at most one new class is
 created per unprocessed physical column. -/

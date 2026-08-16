@@ -9861,6 +9861,85 @@ theorem candidateAvailableLoop_succeeds (candidate : Array Int32)
             (index + 1) rfl
       next hindex => exact ⟨true, rfl⟩
 
+/-- Returning `true` from the literal availability scan certifies every
+remaining checked candidate index, not merely absence from `consumed`. -/
+theorem candidateAvailableLoop_true_valid_suffix
+    (candidate : Array Int32) (consumed : Array Bool) (index : Nat)
+    (hrun : Generated.StrictRecombine.candidateAvailableLoop candidate
+      consumed index = .ok true) :
+    ∀ position, index ≤ position →
+      (hposition : position < candidate.size) →
+      0 ≤ candidate[position] ∧
+        candidate[position].toInt64.toNat < consumed.size := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.candidateAvailableLoop] at hrun
+      split at hrun
+      next hindex =>
+        dsimp at hrun
+        split at hrun
+        next hnonnegative =>
+          split at hrun
+          next hactive =>
+            split at hrun
+            next hconsumed => simp at hrun
+            next hfree =>
+              intro position hindexPosition hposition
+              by_cases hsame : position = index
+              · subst position
+                exact ⟨hnonnegative, hactive⟩
+              · exact ih (candidate.size - (index + 1)) (by omega)
+                  (index + 1) hrun rfl position (by omega) hposition
+          next hactive => contradiction
+        next hnonnegative => contradiction
+      next hindex =>
+        intro position hindexPosition hposition
+        omega
+
+theorem candidateAvailable_true_valid
+    (candidate : Array Int32) (consumed : Array Bool)
+    (hrun : Generated.StrictRecombine.candidateAvailable candidate consumed =
+      .ok true) :
+    CandidateIndicesValid candidate consumed := by
+  unfold Generated.StrictRecombine.candidateAvailable at hrun
+  intro position hposition
+  exact candidateAvailableLoop_true_valid_suffix candidate consumed 0 hrun
+    position (by omega) hposition
+
+/-- A nonempty checked candidate selects a product containing at least one
+actual irreducible lifted factor, so that exact selected product is nonunit. -/
+theorem selectedProductMod_not_isUnit_of_nonempty_irreducible
+    (base : Nat) (candidate : Array Int32)
+    (activeLifted : Array SparsePolyZZ)
+    (hnonempty : 0 < candidate.size)
+    (hvalid : CandidateIndicesValid candidate
+      (Array.replicate activeLifted.size false))
+    (hirreducible : ∀ activeIndex (hactive : activeIndex < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[activeIndex])) :
+    ¬ IsUnit ((candidate.toList.map fun index =>
+      Refinement.StrictHensel.toPolyMod base
+        activeLifted[index.toInt64.toNat]!).prod) := by
+  have hentry := hvalid 0 hnonempty
+  let activeIndex := candidate[0].toInt64.toNat
+  have hactive : activeIndex < activeLifted.size := by
+    simpa [activeIndex] using hentry.2
+  let selected := Refinement.StrictHensel.toPolyMod base
+    activeLifted[activeIndex]
+  have hselectedIrreducible : Irreducible selected := by
+    exact hirreducible activeIndex hactive
+  have hselectedMem : selected ∈
+      (candidate.toList.map fun index =>
+        Refinement.StrictHensel.toPolyMod base
+          activeLifted[index.toInt64.toNat]!) := by
+    apply List.mem_map.mpr
+    refine ⟨candidate[0], Array.getElem_mem_toList hnonempty, ?_⟩
+    simp only [selected, activeIndex]
+    rw [getElem!_pos activeLifted candidate[0].toInt64.toNat hactive]
+  exact not_isUnit_of_not_isUnit_dvd hselectedIrreducible.not_isUnit
+    (List.dvd_prod hselectedMem)
+
 theorem markConsumedLoop_succeeds_size (candidate : Array Int32)
     (consumed : Array Bool) (index : Nat)
     (hvalid : CandidateIndicesValid candidate consumed) :
@@ -15579,6 +15658,132 @@ theorem validationRecoveredFactor_ne_zero
       hproduct hsymmetric hprimitive)
     (exactDivmodRaw_divisor_nonempty_of_success fStar factor quotient remainder
       hfStarNonempty hdivmod)
+
+/-- Modulo any positive divisor of the actual validation modulus, the exact
+recovered factor is related by its physical primitive content to the exact
+checked `Int32` candidate product. -/
+theorem validationRecoveredFactor_mod_eq_selected
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus base : Nat) (fStar product symmetric factor : SparsePolyZZ)
+    (content : ZZ)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hvalid : CandidateIndicesValid candidate
+      (Array.replicate activeLifted.size false))
+    (hfStarNonempty : 0 < fStar.size)
+    (hproduct : Generated.StrictRecombine.trialProductLoop ops.product
+      candidate activeLifted (modulus : ZZ) 0
+        #[(⟨0⟩, fStar[0].2)] = .ok product)
+    (hsymmetric : Generated.StrictRecombine.symmetricModRaw product
+      (modulus : ZZ) = .ok symmetric)
+    (hprimitive : Generated.StrictRecombine.primitiveRaw symmetric =
+      .ok (content, factor)) :
+    Polynomial.C (content : ZMod base) *
+        Refinement.StrictHensel.toPolyMod base factor =
+      Polynomial.C (fStar[0].2 : ZMod base) *
+        SelectedProductMod base candidate activeLifted 0 := by
+  have htrial := trialProductLoop_refines_of_dvd ops.product candidate
+    activeLifted modulus base hmodulus hbase hdivides 0
+    #[(⟨0⟩, fStar[0].2)] product hvalid hproduct
+  have hsymmetricMod := symmetricModRaw_toPolyMod_of_dvd product symmetric
+    modulus base hmodulus hbase hdivides hsymmetric
+  have hprimitivePoly := primitiveRaw_toPoly symmetric factor content hprimitive
+  have hprimitiveMod := congrArg
+    (Polynomial.map (Int.castRingHom (ZMod base))) hprimitivePoly
+  have hprimitiveMod' : Refinement.StrictHensel.toPolyMod base symmetric =
+      Polynomial.C (content : ZMod base) *
+        Refinement.StrictHensel.toPolyMod base factor := by
+    simpa [Refinement.StrictHensel.toPolyMod] using hprimitiveMod
+  have hinitial : Refinement.StrictHensel.toPolyMod base
+      #[(⟨0⟩, fStar[0].2)] =
+        Polynomial.C (fStar[0].2 : ZMod base) := by
+    simp [Refinement.StrictHensel.toPolyMod, SparsePolyZZ.toPoly]
+  rw [hsymmetricMod, htrial, hinitial] at hprimitiveMod'
+  exact hprimitiveMod'.symm
+
+/-- A successful validation factor obtained from a nonempty candidate of
+irreducible lifted factors cannot be a unit.  The proof uses the same physical
+trial/symmetric/primitive trace that produced the factor. -/
+theorem validationRecoveredFactor_not_isUnit
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus base : Nat) (fStar product symmetric factor : SparsePolyZZ)
+    (content : ZZ) [Fact (Nat.Prime base)]
+    (hmodulus : 0 < modulus) (hdivides : base ∣ modulus)
+    (hvalid : CandidateIndicesValid candidate
+      (Array.replicate activeLifted.size false))
+    (hcandidateNonempty : 0 < candidate.size)
+    (hirreducible : ∀ activeIndex (hactive : activeIndex < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[activeIndex]))
+    (hfStarNonempty : 0 < fStar.size)
+    (hleading : (fStar[0].2 : ZMod base) ≠ 0)
+    (hproduct : Generated.StrictRecombine.trialProductLoop ops.product
+      candidate activeLifted (modulus : ZZ) 0
+        #[(⟨0⟩, fStar[0].2)] = .ok product)
+    (hsymmetric : Generated.StrictRecombine.symmetricModRaw product
+      (modulus : ZZ) = .ok symmetric)
+    (hprimitive : Generated.StrictRecombine.primitiveRaw symmetric =
+      .ok (content, factor)) :
+    ¬ IsUnit (SparsePolyZZ.toPoly factor) := by
+  have hbase : 0 < base := (Fact.out : Nat.Prime base).pos
+  have hequation := validationRecoveredFactor_mod_eq_selected ops candidate
+    activeLifted modulus base fStar product symmetric factor content hmodulus
+    hbase hdivides hvalid hfStarNonempty hproduct hsymmetric hprimitive
+  let selected := SelectedProductMod base candidate activeLifted 0
+  have hselectedNonunit : ¬ IsUnit selected := by
+    simpa [selected, SelectedProductMod] using
+      (selectedProductMod_not_isUnit_of_nonempty_irreducible base candidate
+        activeLifted hcandidateNonempty hvalid hirreducible)
+  have hselectedNe : selected ≠ 0 := by
+    unfold selected SelectedProductMod
+    rw [List.drop_zero]
+    apply List.prod_ne_zero
+    intro hzero
+    rcases List.mem_map.mp hzero with ⟨activeIndex32, hactiveIndex, heq⟩
+    rcases List.mem_iff_getElem.mp hactiveIndex with
+      ⟨position, hposition, hentry⟩
+    have hpositionArray : position < candidate.size := by simpa using hposition
+    have hvalidEntry := hvalid position hpositionArray
+    have hentry' : candidate[position] = activeIndex32 := by
+      rw [← Array.getElem_toList hpositionArray]
+      exact hentry
+    have hactive : activeIndex32.toInt64.toNat < activeLifted.size := by
+      simpa [hentry'] using hvalidEntry.2
+    have hirr := hirreducible activeIndex32.toInt64.toNat hactive
+    apply hirr.ne_zero
+    rw [getElem!_pos activeLifted activeIndex32.toInt64.toNat hactive] at heq
+    exact heq
+  have hrightNe : Polynomial.C (fStar[0].2 : ZMod base) * selected ≠ 0 :=
+    mul_ne_zero (Polynomial.C_ne_zero.mpr hleading) hselectedNe
+  have hcontent : (content : ZMod base) ≠ 0 := by
+    intro hzero
+    apply hrightNe
+    rw [← hequation]
+    simp [hzero]
+  have hcontentUnit : IsUnit
+      (Polynomial.C (content : ZMod base)) :=
+    Polynomial.isUnit_C.mpr (isUnit_iff_ne_zero.mpr hcontent)
+  have hleadingUnit : IsUnit
+      (Polynomial.C (fStar[0].2 : ZMod base)) :=
+    Polynomial.isUnit_C.mpr (isUnit_iff_ne_zero.mpr hleading)
+  have hleft : Associated
+      (Polynomial.C (content : ZMod base) *
+        Refinement.StrictHensel.toPolyMod base factor)
+      (Refinement.StrictHensel.toPolyMod base factor) :=
+    (associated_isUnit_mul_left_iff hcontentUnit).mpr (Associated.refl _)
+  have hright : Associated
+      (Polynomial.C (fStar[0].2 : ZMod base) * selected) selected :=
+    (associated_isUnit_mul_left_iff hleadingUnit).mpr (Associated.refl _)
+  have hassociated : Associated
+      (Refinement.StrictHensel.toPolyMod base factor) selected :=
+    hleft.symm.trans ((Associated.of_eq hequation).trans hright)
+  intro hfactorUnit
+  have hmappedUnit : IsUnit (Refinement.StrictHensel.toPolyMod base factor) := by
+    exact hfactorUnit.map (Polynomial.mapRingHom
+      (Int.castRingHom (ZMod base)))
+  exact hselectedNonunit (hassociated.isUnit_iff.mp hmappedUnit)
 
 theorem validateCandidatesLoop_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)

@@ -73,3 +73,30 @@ therefore has a direct execution-derived nonzero certificate for every member.
   surface.
 - Next: establish nonunit status using the positive degree of nonempty products
   of the selected modular irreducible factors.
+
+## Prove an accepted physical validation factor is nonunit
+
+`candidateAvailableLoop_true_valid_suffix` reverses the literal checked-index
+scan: a `true` result proves that every remaining `Int32` index passed both
+nonnegativity and physical-array bounds.  Its entry specialization produces
+the exact `CandidateIndicesValid` certificate consumed by the trial-product
+refinement.
+
+For a nonempty candidate, `selectedProductMod_not_isUnit_of_nonempty_irreducible`
+uses the actual first checked array occurrence.  That occurrence denotes an
+irreducible modular factor and divides the exact selected list product, so the
+product cannot be a unit.  `validationRecoveredFactor_mod_eq_selected` then
+follows the same trial-product, symmetric-recovery, and primitive-content
+trace at the prime divisor of the Hensel modulus.
+
+Finally, `validationRecoveredFactor_not_isUnit` proves the physical recovered
+integer factor is nonunit.  Nonzero source leading coefficient and the
+nonzero selected irreducible product force the actual primitive content to be
+nonzero modulo the prime.  Removing the two resulting constant units gives an
+association between the mapped recovered factor and exact selected product;
+an integer unit would map to a modular unit, contradicting that association.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: thread this nonunit invariant through all successful validation pushes
+  and combine it with the result-count equality theorem.

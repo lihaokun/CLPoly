@@ -6140,6 +6140,77 @@ def LLLTransformUnimodular
     IsUnit (Matrix.det
       (basisPrefixMatrix transform transform.size transform.size))
 
+/-- Explicit integer coordinates obtained from the nonsingular inverse of the
+physical unit-determinant transform. -/
+noncomputable def integerReducedCoordinates
+    (initial transform : Generated.StrictRecombine.LLLMatrix)
+    (coefficients : Fin initial.size → ZZ) : Fin initial.size → ZZ :=
+  Matrix.vecMul coefficients
+    (basisPrefixMatrix transform initial.size initial.size)⁻¹
+
+theorem integerReducedCoordinates_reconstruct
+    (initial matrix transform : Generated.StrictRecombine.LLLMatrix)
+    (hrel : LLLTransformRel initial matrix transform)
+    (hunimodular : LLLTransformUnimodular transform)
+    (coefficients : Fin initial.size → ZZ) :
+    Matrix.vecMul (integerReducedCoordinates initial transform coefficients)
+        (basisPrefixMatrix matrix initial.size initial.size) =
+      Matrix.vecMul coefficients
+        (basisPrefixMatrix initial initial.size initial.size) := by
+  have hunit : IsUnit (Matrix.det
+      (basisPrefixMatrix transform initial.size initial.size)) := by
+    have h := hunimodular.2
+    rw [hrel.2.1] at h
+    exact h
+  unfold integerReducedCoordinates
+  rw [Matrix.vecMul_vecMul, hrel.2.2.2]
+  rw [← Matrix.mul_assoc, Matrix.nonsing_inv_mul _ hunit,
+    Matrix.one_mul]
+
+theorem integerReducedCoordinates_ne_zero
+    (initial matrix transform : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid initial)
+    (hrel : LLLTransformRel initial matrix transform)
+    (hunimodular : LLLTransformUnimodular transform)
+    (coefficients : Fin initial.size → ZZ) (hne : coefficients ≠ 0) :
+    integerReducedCoordinates initial transform coefficients ≠ 0 := by
+  intro hzero
+  have hreconstruct := integerReducedCoordinates_reconstruct initial matrix
+    transform hrel hunimodular coefficients
+  rw [hzero, Matrix.zero_vecMul] at hreconstruct
+  have hrows : LinearIndependent ZZ
+      (basisPrefixMatrix initial initial.size initial.size).row :=
+    Matrix.linearIndependent_rows_of_det_ne_zero hinput.determinant_ne
+  have hinjective : Function.Injective (fun values : Fin initial.size → ZZ =>
+      Matrix.vecMul values
+        (basisPrefixMatrix initial initial.size initial.size)) := by
+    rw [Matrix.vecMul_injective_iff]
+    exact hrows
+  apply hne
+  apply hinjective
+  simpa using hreconstruct.symm
+
+theorem exists_last_nonzero {n : Nat} (values : Fin n → ZZ)
+    (hne : values ≠ 0) :
+    ∃ index, values index ≠ 0 ∧ ∀ later, index < later → values later = 0 := by
+  let support : Finset (Fin n) := Finset.univ.filter fun index => values index ≠ 0
+  have hsupport : support.Nonempty := by
+    by_contra hempty
+    rw [Finset.not_nonempty_iff_eq_empty] at hempty
+    apply hne
+    funext index
+    have hnotMem : index ∉ support := by rw [hempty]; simp
+    simpa [support] using hnotMem
+  let index := support.max' hsupport
+  refine ⟨index, ?_, ?_⟩
+  · have hmem := support.max'_mem hsupport
+    simpa [support] using hmem
+  · intro later hlater
+    by_contra hnonzero
+    have hlaterMem : later ∈ support := by simp [support, hnonzero]
+    have := support.le_max' later hlaterMem
+    exact (not_le_of_gt hlater) this
+
 theorem makeInitialMatrix_input_valid (size : Nat) (scale : ZZ)
     (matrix : Generated.StrictRecombine.LLLMatrix) (hscale : scale ≠ 0)
     (hrun : Generated.StrictRecombine.makeInitialMatrix size scale = .ok matrix) :

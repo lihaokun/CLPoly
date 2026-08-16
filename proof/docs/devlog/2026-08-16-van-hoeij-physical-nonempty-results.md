@@ -941,3 +941,34 @@ abstract unimodular-transform oracle.
 - Next: construct the integral inverse-coordinate witness and combine it with
   the physical Gram--Schmidt, Lovasz, size-reduction, and collection
   certificates to prove the short-vector span theorem.
+
+## Construct integral reduced-basis coordinates
+
+The short-vector proof now has an explicit integer coordinate witness through
+the exact transform returned by generated LLL:
+
+- `integerReducedCoordinates` multiplies an original-basis coefficient row by
+  the inverse of the physical transform matrix;
+- `integerReducedCoordinates_reconstruct` uses the generated transform
+  equation and its proved unit determinant to reconstruct exactly the same
+  integer lattice vector in the returned basis;
+- `integerReducedCoordinates_ne_zero` uses the original physical basis's
+  nonzero determinant, rather than an abstract lattice injectivity premise, to
+  show that a nonzero original coefficient vector remains nonzero; and
+- `exists_last_nonzero` selects the greatest nonzero returned-basis
+  coordinate.  This is the coordinate whose Gram--Schmidt component cannot be
+  cancelled by later rows and whose nonzero integer square is at least one.
+
+The proof also audited the role of the source short-row bound.  The concrete
+Zassenhaus fallback guarantees completeness if LLL finds no accepted
+candidate, but it does not by itself exclude an accepted candidate that is a
+union of multiple true factors.  Consequently the remaining short-row
+separation theorem is a genuine correctness obligation and is not being
+discarded in favour of the fallback.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: identify the last coordinate in the physical lower-triangular
+  Gram--Schmidt factor, obtain its norm lower bound, and derive the row-span
+  separation needed to prevent candidate classes from crossing true
+  irreducible blocks.

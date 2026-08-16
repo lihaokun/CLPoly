@@ -15503,6 +15503,83 @@ theorem zassenhausRecombine_toPoly_product_associated
     zassenhausRecombine_product_associated termination f lifted output modulus
       hcanonical hprimitive hrun
 
+/-- The factor physically produced by the validation branch's literal trial
+product, symmetric recovery, and primitive normalization is canonical. -/
+theorem validationRecoveredFactor_canonical
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) (fStar product symmetric factor : SparsePolyZZ)
+    (content : ZZ)
+    (hfStarNonempty : 0 < fStar.size)
+    (hfStarCanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hproduct : Generated.StrictRecombine.trialProductLoop ops.product
+      candidate activeLifted modulus 0 #[(⟨0⟩, fStar[0].2)] = .ok product)
+    (hsymmetric : Generated.StrictRecombine.symmetricModRaw product modulus =
+      .ok symmetric)
+    (hprimitive : Generated.StrictRecombine.primitiveRaw symmetric =
+      .ok (content, factor)) :
+    StrictPolynomialMod.SparsePolyZZCanonical factor := by
+  have hinitial : StrictPolynomialMod.SparsePolyZZCanonical
+      #[(⟨0⟩, fStar[0].2)] := by
+    constructor
+    · simp
+    · intro term hterm
+      simp at hterm
+      subst term
+      exact hfStarCanonical.2 fStar[0]
+        (Array.getElem_mem_toList hfStarNonempty)
+  have hproductCanonical := trialProductLoop_canonical ops.product candidate
+    activeLifted modulus 0 #[(⟨0⟩, fStar[0].2)] product hinitial hproduct
+  have hmodulus : 0 < modulus := by
+    unfold Generated.StrictRecombine.symmetricModRaw at hsymmetric
+    split at hsymmetric
+    next hpositive => exact hpositive
+    next hpositive => contradiction
+  have hsymmetricCanonical := symmetricModRaw_canonical product symmetric
+    modulus.toNat (Int.pos_iff_toNat_pos.mp hmodulus) hproductCanonical (by
+      simpa [Int.toNat_of_nonneg hmodulus.le] using hsymmetric)
+  exact primitiveRaw_canonical symmetric factor content hsymmetricCanonical
+    hprimitive
+
+/-- A nonempty canonical sparse integer polynomial denotes a nonzero L2
+polynomial. -/
+theorem sparsePolyZZ_toPoly_ne_zero_of_canonical_nonempty
+    (poly : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical poly)
+    (hnonempty : 0 < poly.size) :
+    SparsePolyZZ.toPoly poly ≠ 0 := by
+  intro hzero
+  have hleading := sparsePolyZZ_leadingCoeff_eq_head poly hcanonical hnonempty
+  rw [hzero] at hleading
+  exact hcanonical.2 poly[0] (Array.getElem_mem_toList hnonempty)
+    (by simpa using hleading.symm)
+
+/-- The exact factor accepted and pushed by a successful validation branch is
+nonzero at the L2 polynomial level. -/
+theorem validationRecoveredFactor_ne_zero
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ)
+    (fStar product symmetric factor quotient remainder : SparsePolyZZ)
+    (content : ZZ)
+    (hfStarNonempty : 0 < fStar.size)
+    (hfStarCanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hproduct : Generated.StrictRecombine.trialProductLoop ops.product
+      candidate activeLifted modulus 0 #[(⟨0⟩, fStar[0].2)] = .ok product)
+    (hsymmetric : Generated.StrictRecombine.symmetricModRaw product modulus =
+      .ok symmetric)
+    (hprimitive : Generated.StrictRecombine.primitiveRaw symmetric =
+      .ok (content, factor))
+    (hdivmod : Generated.StrictRecombine.exactDivmodRaw fStar factor =
+      .ok (quotient, remainder)) :
+    SparsePolyZZ.toPoly factor ≠ 0 := by
+  exact sparsePolyZZ_toPoly_ne_zero_of_canonical_nonempty factor
+    (validationRecoveredFactor_canonical ops candidate activeLifted modulus
+      fStar product symmetric factor content hfStarNonempty hfStarCanonical
+      hproduct hsymmetric hprimitive)
+    (exactDivmodRaw_divisor_nonempty_of_success fStar factor quotient remainder
+      hfStarNonempty hdivmod)
+
 theorem validateCandidatesLoop_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (candidates : Array (Array Int32)) (candidateIndex : Nat)

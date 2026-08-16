@@ -32,3 +32,24 @@ an abstract factorization witness.
 - Next: preserve canonicality for every pushed factor, derive polynomial
   nonzeroness, and use the nonempty candidate's positive modular degree to
   rule out units.
+
+## Recover canonical and nonzero L2 factors
+
+`validationRecoveredFactor_canonical` now packages the exact successful
+validation prefix.  Starting from the current canonical nonempty `fStar`, it
+proves the physical leading-coefficient singleton canonical, transports this
+through the actual trial-product loop, obtains positivity from the successful
+`symmetricModRaw` branch, and then follows symmetric recovery and the literal
+primitive call to the returned factor.
+
+`sparsePolyZZ_toPoly_ne_zero_of_canonical_nonempty` proves the general sparse
+representation bridge by comparing the physical head with the L2 leading
+coefficient.  `validationRecoveredFactor_ne_zero` combines it with the actual
+successful exact-division trace, whose divisor-size check supplies physical
+nonemptiness.  Thus the precise candidate factor that the generated loop can
+push is nonzero as an L2 polynomial.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: thread this certificate through the complete result array and prove
+  positive modular degree/nonunit status.

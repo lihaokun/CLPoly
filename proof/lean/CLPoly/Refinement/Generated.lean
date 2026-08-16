@@ -24,6 +24,10 @@ theorem __select_prime_raw_ir_refines_SelectionCorrect
     {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
     (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
     (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hinitialPrimeCorrect : Nat.Prime
+      (if useLargePrime then
+        ((18446744073709551615 : UInt64) - 58).toNat
+      else (2 : UInt64).toNat))
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hnonempty : 0 < f.size)
     (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
@@ -39,7 +43,7 @@ theorem __select_prime_raw_ir_refines_SelectionCorrect
         (StrictSelectPrime.concreteTryCandidate engine provider))
       initialRng useLargePrime f = .ok result) :
     StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) result := by
-  exact Refinement.StrictSelectPrime.__select_prime_raw_ir_refines engine provider initialRng useLargePrime f
+  exact Refinement.StrictSelectPrime.__select_prime_raw_ir_refines engine provider initialRng useLargePrime f hinitialPrimeCorrect
     hcanonical hnonempty hdegree hdegreeBound hlcSemantic result hrun
 
 /-- Generated public end-to-end contract for the original C++ `__factor_Zp`

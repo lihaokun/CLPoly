@@ -791,6 +791,10 @@ theorem __select_prime_raw_ir_refines {State : Type}
     (engine : Generated.StrictEDF.RandomEngine State)
     (provider : CandidateRuntimeProvider engine) (initialRng : State)
     (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hinitialPrimeCorrect : Nat.Prime
+      (if useLargePrime then
+        ((18446744073709551615 : UInt64) - 58).toNat
+      else (2 : UInt64).toNat))
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hnonempty : 0 < f.size)
     (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
@@ -811,7 +815,7 @@ theorem __select_prime_raw_ir_refines {State : Type}
     let initialPrime : UInt64 :=
       if useLargePrime then (18446744073709551615 : UInt64) - 58 else 2
     have hinitialPrime : Nat.Prime initialPrime.toNat := by
-      cases useLargePrime <;> native_decide
+      cases useLargePrime <;> simpa [initialPrime] using hinitialPrimeCorrect
     apply selectPrimeLoop_refines
       (tryCandidate := concreteTryCandidate engine provider)
       f (get_deg f) (SparsePolyZZ.front! f).2 useLargePrime 3 (by omega)

@@ -18,6 +18,45 @@ namespace Refinement
 
 namespace StrictFactorZZ
 
+/-- The actual generated select-prime entry with its concrete modular
+candidate callback and machine-prime iterator.  The RNG state is the local
+source state supplied at entry (the C++ caller uses its fixed seed here). -/
+noncomputable def concreteSelectPrime {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State) :
+    SparsePolyZZ → Bool → RawExec PrimeSelectionResult :=
+  fun f useLargePrime =>
+    Generated.StrictSelectPrime.__select_prime_raw_ir
+      (StrictSelectPrime.selectPrimeRawOps
+        (StrictSelectPrime.concreteTryCandidate engine provider))
+      (StrictSelectPrime.selectPrimeTermination
+        (StrictSelectPrime.concreteTryCandidate engine provider))
+      initialRng useLargePrime f
+
+theorem concreteSelectPrime_success {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hinitialPrimeCorrect : Nat.Prime
+      (if useLargePrime then
+        ((18446744073709551615 : UInt64) - 58).toNat
+      else (2 : UInt64).toNat))
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegreeBound : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hlcSemantic : ∀ p : UInt64, Nat.Prime p.toNat →
+      ((SparsePolyZZ.front! f).2 : ZMod p.toNat) =
+        ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat))
+    (selection : PrimeSelectionResult)
+    (hrun : concreteSelectPrime engine provider initialRng f useLargePrime =
+      .ok selection) :
+    StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) selection := by
+  exact StrictSelectPrime.__select_prime_raw_ir_refines engine provider
+    initialRng useLargePrime f hinitialPrimeCorrect hcanonical hnonempty hdegree hdegreeBound
+      hlcSemantic selection hrun
+
 /-- Concrete adapter for the generated C++ van-Hoeij callee.  The proof-only
 degree guard exposes the source precondition required by the strict raw entry;
 on every valid `__lll_factorize` call it erases to that exact execution. -/
@@ -735,6 +774,55 @@ theorem selectionFactors_irreducible
     simp only [StrictSelectPrime.factorArrayToL2, List.mem_map]
     exact ⟨selection.factors[index], Array.getElem_mem_toList hindex, rfl⟩
   exact (hselection.quality _ hmember).1
+
+/-- The literal singleton/irreducible return branch of
+`__factor_squarefree_primitive_ZZ` is sound.  Prime selection has executed the
+real modular factorization; if its nonempty factor list has at most one
+member, that member is associated to the complete reduction of the source
+and is irreducible.  Gauss reduction then proves the primitive integer source
+itself irreducible. -/
+theorem selection_atMostOne_refines_singleton_FactorZZCorrect
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hcount : selection.factors.size ≤ 1) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f) [SparsePolyZZ.toPoly f] := by
+  let decoded := StrictSelectPrime.factorArrayToL2 selection.prime.toNat
+    selection.factors
+  have hdecodedNonempty : decoded ≠ [] :=
+    hselection.factors_nonempty hdegree
+  have hdecodedLength : decoded.length = selection.factors.size := by
+    simp [decoded, StrictSelectPrime.factorArrayToL2]
+  have hlengthOne : decoded.length = 1 := by
+    have hpositive : 0 < decoded.length := by
+      apply Nat.pos_of_ne_zero
+      intro hzero
+      exact hdecodedNonempty (List.length_eq_zero_iff.mp hzero)
+    omega
+  rcases List.length_eq_one_iff.mp hlengthOne with ⟨factor, hdecoded⟩
+  have hfactorIrreducible : Irreducible factor := by
+    exact (hselection.quality factor (by simp [decoded, hdecoded])).1
+  have hmappedAssociated : Associated
+      (Polynomial.map (Int.castRingHom (ZMod selection.prime.toNat))
+        (SparsePolyZZ.toPoly f)) factor := by
+    simpa [decoded, hdecoded] using hselection.productAssociated
+  letI : Fact (Nat.Prime selection.prime.toNat) :=
+    ⟨hselection.goodPrime.prime⟩
+  have hmappedIrreducible : Irreducible
+      (Polynomial.map (Int.castRingHom (ZMod selection.prime.toNat))
+        (SparsePolyZZ.toPoly f)) :=
+    hmappedAssociated.symm.irreducible hfactorIrreducible
+  have hsourceIrreducible := primitive_irreducible_of_irreducible_mod
+    selection.prime.toNat (SparsePolyZZ.toPoly f) hprimitive
+      hselection.goodPrime.lc_nonzero hmappedIrreducible
+  refine ⟨?_, ?_⟩
+  · simpa using Associated.refl (SparsePolyZZ.toPoly f)
+  · intro candidate hcandidate
+    simp only [List.mem_singleton] at hcandidate
+    subst candidate
+    exact hsourceIrreducible
 
 /-- The exact first-factor adjustment performed by Hensel preserves the
 pointwise irreducibility supplied by the actual SelectPrime result. -/
@@ -5164,6 +5252,171 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
                   simp [Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir,
                     hfull, hless])
             exact vanCorrect aH (liftedH, mH) result hlift hvan (by omega)
+
+/-- Representation and machine-range facts retained from the concrete
+prime-selection execution for the downstream Hensel call.  These fields do
+not state a factorization result: that semantic fact is supplied separately
+by `SelectionCorrect` from the generated select-prime refinement. -/
+structure SelectedPrimePhysical
+    (selection : PrimeSelectionResult) : Prop where
+  factorsCanonical : ∀ factor ∈ selection.factors.toList,
+    SparsePolyZp.Canonical selection.prime.toNat factor
+  primeSquareFits :
+    selection.prime.toNat * selection.prime.toNat ≤ UInt64.size
+  factorCountFits : selection.factors.size < 2 ^ 31
+  irreducibleCount : selection.irreducible = true →
+    selection.factors.size ≤ 1
+
+/-- Exact outer control-flow composition for the original C++
+`__factor_squarefree_primitive_ZZ` entry.  The selected value and every
+Hensel value are constrained only after they have been returned by their raw
+executions; no premise can choose the final factor array. -/
+theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
+    (selectPrime : SparsePolyZZ → Bool → RawExec PrimeSelectionResult)
+    (henselLift : SparsePolyZZ → Array SparsePolyZp → UInt64 → Int32 →
+      RawExec (Array SparsePolyZZ × ZZ))
+    (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hselect : ∀ selection,
+      selectPrime f useLargePrime = .ok selection →
+      StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) selection)
+    (hphysical : ∀ selection,
+      selectPrime f useLargePrime = .ok selection →
+      SelectedPrimePhysical selection)
+    (hhensel : ∀ (selection : PrimeSelectionResult)
+      (hprime : Nat.Prime selection.prime.toNat),
+      ∀ aTarget henselOutput,
+        henselLift f selection.factors selection.prime aTarget =
+            .ok henselOutput →
+          @StrictHensel.HenselLiftEntryCorrect
+            StrictHensel.concreteDivmodTermination f selection.factors
+            selection.prime ⟨hprime⟩
+            aTarget henselOutput)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegreeBound : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
+      (concreteRecombineFactorZZRawOps selectPrime henselLift)
+      useLargePrime f = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  unfold Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir at hrun
+  have hguard : ¬(f.isEmpty || get_deg f < 2) := by
+    intro hbad
+    rw [if_pos hbad] at hrun
+    contradiction
+  rw [if_neg hguard] at hrun
+  simp only [concreteRecombineFactorZZRawOps] at hrun
+  cases hselectionRun : selectPrime f useLargePrime with
+  | error fault => rw [hselectionRun] at hrun; contradiction
+  | ok selection =>
+    rw [hselectionRun] at hrun
+    simp only at hrun
+    have hselection := hselect selection hselectionRun
+    have hselectedPhysical := hphysical selection hselectionRun
+    letI : Fact (Nat.Prime selection.prime.toNat) :=
+      ⟨hselection.goodPrime.prime⟩
+    by_cases hsingle : selection.irreducible || selection.factors.size ≤ 1
+    · rw [if_pos hsingle] at hrun
+      have houtput : output = #[f] := Except.ok.inj hrun |>.symm
+      subst output
+      have hcount : selection.factors.size ≤ 1 := by
+        have hsingleProp : selection.irreducible = true ∨
+            selection.factors.size ≤ 1 := by
+          simpa [Bool.or_eq_true] using hsingle
+        rcases hsingleProp with hirreducible | hcount
+        · exact hselectedPhysical.irreducibleCount hirreducible
+        · exact hcount
+      simpa using selection_atMostOne_refines_singleton_FactorZZCorrect
+        hselection hprimitive hdegree hcount
+    · rw [if_neg hsingle] at hrun
+      have hcount : 2 ≤ selection.factors.size := by
+        have hnot : ¬ selection.factors.size ≤ 1 := by
+          intro hle
+          apply hsingle
+          simp [hle]
+        omega
+      have hleadingSemantic : ∀ sourceLeading, f[0]? = some sourceLeading →
+          (sourceLeading.2 : ZMod selection.prime.toNat) =
+            (SparsePolyZZ.toPoly f).leadingCoeff := by
+        intro sourceLeading hsourceLeading
+        have hfront : f[0] = sourceLeading := by
+          rw [Array.getElem?_eq_getElem hnonempty] at hsourceLeading
+          exact Option.some.inj hsourceLeading
+        rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
+          hnonempty, hfront]
+      apply __lll_factorize_raw_ir_refines_FactorZZCorrect henselLift f
+        selection hcount hselectedPhysical.primeSquareFits
+        hselectedPhysical.factorsCanonical hleadingSemantic hselection
+        (fun aTarget henselOutput hh =>
+          hhensel selection hselection.goodPrime.prime aTarget henselOutput hh)
+        hselectedPhysical.factorCountFits hcanonical hprimitive hnonempty
+        hdegreeBound leading hleading output
+      exact hrun
+
+/-- Outer refinement with the select-prime field instantiated by the actual
+generated prime iterator, polynomial reduction, GCD, DDF and EDF execution.
+Only downstream physical Hensel readiness remains explicit. -/
+theorem concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State)
+    (henselLift : SparsePolyZZ → Array SparsePolyZp → UInt64 → Int32 →
+      RawExec (Array SparsePolyZZ × ZZ))
+    (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hinitialPrimeCorrect : Nat.Prime
+      (if useLargePrime then
+        ((18446744073709551615 : UInt64) - 58).toNat
+      else (2 : UInt64).toNat))
+    (hphysical : ∀ selection,
+      concreteSelectPrime engine provider initialRng f useLargePrime =
+          .ok selection →
+        SelectedPrimePhysical selection)
+    (hhensel : ∀ (selection : PrimeSelectionResult)
+      (hprime : Nat.Prime selection.prime.toNat),
+      ∀ aTarget henselOutput,
+        henselLift f selection.factors selection.prime aTarget =
+            .ok henselOutput →
+          @StrictHensel.HenselLiftEntryCorrect
+            StrictHensel.concreteDivmodTermination f selection.factors
+            selection.prime ⟨hprime⟩ aTarget henselOutput)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegree62 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hdegree63 : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
+      (concreteRecombineFactorZZRawOps
+        (concreteSelectPrime engine provider initialRng) henselLift)
+      useLargePrime f = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  have hlcSemantic : ∀ p : UInt64, Nat.Prime p.toNat →
+      ((SparsePolyZZ.front! f).2 : ZMod p.toNat) =
+        ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod p.toNat) := by
+    intro p hp
+    have hvalue : f[0] = leading := by
+      rw [Array.getElem?_eq_getElem hnonempty] at hleading
+      exact Option.some.inj hleading
+    have hfront : SparsePolyZZ.front! f = leading := by
+      rw [SparsePolyZZ.front!, getElem!_pos f 0 hnonempty]
+      exact hvalue
+    rw [hfront, StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f
+      hcanonical hnonempty, hvalue]
+  apply __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
+    (concreteSelectPrime engine provider initialRng) henselLift useLargePrime f
+    (fun selection hselectionRun =>
+      concreteSelectPrime_success engine provider initialRng useLargePrime f
+        hinitialPrimeCorrect hcanonical hnonempty hdegree hdegree62 hlcSemantic selection
+          hselectionRun)
+    hphysical hhensel hcanonical hprimitive hnonempty hdegree hdegree63
+      leading hleading output hrun
 
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source

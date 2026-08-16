@@ -28,6 +28,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracts_of_candidate
 #print axioms Refinement.StrictRecombine.zassenhausFixedSizeScan_extracts_of_candidate
 #print axioms Refinement.StrictRecombine.removeCombination_preserves_pointwise
+#print axioms Refinement.StrictRecombine.selectSourceIndices_sublist
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_product_partition
 #print axioms Refinement.StrictRecombine.removeCombination_product_partition
 #print axioms Refinement.StrictRecombine.removeCombination_toPolyMod_product_partition
@@ -53,6 +54,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.integer_divisor_mod_has_legal_hensel_candidate
 #print axioms Refinement.StrictFactorZZ.live_divisor_mod_has_legal_candidate
 #print axioms Refinement.StrictFactorZZ.divisor_associated_proper_sublist_product
+#print axioms Refinement.StrictFactorZZ.smaller_active_candidate_of_reducible_selected_product
 #print axioms Refinement.StrictFactorZZ.henselSelectedProduct_monic
 #print axioms Refinement.StrictFactorZZ.henselSelectedIntegerProduct_monic
 #print axioms Refinement.StrictFactorZZ.zassenhausLeadingPrune_accepts_hensel_candidate

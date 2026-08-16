@@ -1894,6 +1894,48 @@ def selectSourceIndices {α : Type*} [Inhabited α]
     (source : List α) (indices : List Nat) : List α :=
   indices.map fun index => source[index]!
 
+/-- A legal physical combination selects an occurrence-sensitive sublist of
+the source.  Strictly increasing array indices form the finite order
+embedding witnessing the sublist relation, so duplicate source values retain
+their distinct positions. -/
+theorem selectSourceIndices_sublist {α : Type*} [Inhabited α]
+    (source : List α) (indices : Array Nat)
+    (hlegal : LegalCombination source.length indices.size indices) :
+    (selectSourceIndices source indices.toList).Sublist source := by
+  rw [List.sublist_iff_exists_fin_orderEmbedding_get_eq]
+  let embedding : Fin (selectSourceIndices source indices.toList).length ↪o
+      Fin source.length :=
+    OrderEmbedding.ofStrictMono
+      (fun position =>
+        ⟨indices[position.val]!, hlegal.2.2 position.val (by
+          simpa [selectSourceIndices] using position.isLt)⟩)
+      (by
+        intro left right hlt
+        have hleft : left.val < indices.size := by
+          simpa [selectSourceIndices] using left.isLt
+        have hright : right.val < indices.size := by
+          simpa [selectSourceIndices] using right.isLt
+        have hgap := hlegal.2.1 left.val right.val hleft hright hlt
+        have hltVal : left.val < right.val := hlt
+        exact Fin.mk_lt_mk.mpr (by omega))
+  refine ⟨embedding, ?_⟩
+  intro position
+  have hposition : position.val < indices.size := by
+    simpa [selectSourceIndices] using position.isLt
+  simp only [selectSourceIndices, List.length_map, List.get_eq_getElem,
+    List.getElem_map]
+  rw [Array.getElem_toList hposition]
+  have hembedding : (embedding position).val = indices[position.val] := by
+    change indices[position.val]! = indices[position.val]
+    rw [getElem!_pos indices position.val hposition]
+  have hbound : indices[position.val] < source.length := by
+    simpa [getElem!_pos indices position.val hposition] using
+      hlegal.2.2 position.val hposition
+  rw [getElem!_pos source indices[position.val]
+    hbound]
+  congr 1
+  exact hembedding.symm
+
 private theorem getElem!_map_of_lt {α β : Type*} [Inhabited α] [Inhabited β]
     (function : α → β) (values : List α) (position : Nat)
     (hposition : position < values.length) :

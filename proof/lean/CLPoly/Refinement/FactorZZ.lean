@@ -137,7 +137,7 @@ This is the counting fact used by the Zassenhaus minimal-subset argument. -/
 theorem divisor_associated_proper_sublist_product
     {R : Type*} [CommRing R] [IsDomain R] [IsBezout R]
     (atoms : List R) (hirreducible : ∀ atom ∈ atoms, Irreducible atom)
-    (left right : R) (hfactor : atoms.prod = left * right)
+    (left right : R) (hfactor : Associated (left * right) atoms.prod)
     (hleftNonunit : ¬IsUnit left) (hrightNonunit : ¬IsUnit right) :
     ∃ chosen : List R, List.Sublist chosen atoms ∧
       Associated left chosen.prod ∧ chosen.length < atoms.length := by
@@ -148,9 +148,9 @@ theorem divisor_associated_proper_sublist_product
   have hleftNe : left ≠ 0 := by
     intro hzero
     apply hatomsNe
-    rw [hfactor, hzero, zero_mul]
+    exact hfactor.eq_zero_iff.mp (by simp [hzero])
   have hleftDvd : left ∣ atoms.prod := by
-    exact ⟨right, hfactor⟩
+    exact dvd_trans (dvd_mul_right left right) hfactor.dvd
   rcases divisor_associated_sublist_product atoms hirreducible left
       hleftDvd with ⟨chosen, hchosen, hassociated⟩
   refine ⟨chosen, hchosen, hassociated, ?_⟩
@@ -162,10 +162,66 @@ theorem divisor_associated_proper_sublist_product
   have hleftAtoms : Associated left atoms.prod := by
     simpa [hchosenEq] using hassociated
   have hcancel : Associated (left * 1) (left * right) := by
-    simpa [hfactor] using hleftAtoms
+    simpa using hleftAtoms.trans hfactor.symm
   have honeRight : Associated (1 : R) right :=
     Associated.of_mul_left hcancel (Associated.refl left) hleftNe
   exact hrightNonunit (associated_one_iff_isUnit.mp honeRight.symm)
+
+/-- Array-level occurrence form of the proper-sublist theorem.  A nontrivial
+factorization of the modular image of an extracted candidate yields a legal
+candidate over the same physical active array whose size is strictly smaller
+than the extracted candidate's size. -/
+theorem smaller_active_candidate_of_reducible_selected_product
+    (base : Nat) [Fact (Nat.Prime base)]
+    (active : Array SparsePolyZZ) (outer : Array Nat)
+    (houter : StrictRecombine.LegalCombination active.size outer.size outer)
+    (hirreducible : ∀ index (hindex : index < active.size),
+      Irreducible (StrictHensel.toPolyMod base active[index]))
+    (factor left right : Polynomial (ZMod base))
+    (hfactor : factor = left * right)
+    (hleftNonunit : ¬IsUnit left) (hrightNonunit : ¬IsUnit right)
+    (hassociated : Associated factor
+      (((StrictRecombine.selectSourceIndices active.toList outer.toList).map
+        (StrictHensel.toPolyMod base)).prod)) :
+    ∃ inner : Array Nat,
+      StrictRecombine.LegalCombination active.size inner.size inner ∧
+      inner.size < outer.size ∧
+      Associated left
+        (((StrictRecombine.selectSourceIndices active.toList inner.toList).map
+          (StrictHensel.toPolyMod base)).prod) := by
+  let selected := StrictRecombine.selectSourceIndices active.toList outer.toList
+  let atoms := selected.map (StrictHensel.toPolyMod base)
+  have hselectedSublist : selected.Sublist active.toList :=
+    StrictRecombine.selectSourceIndices_sublist active.toList outer
+      (by simpa using houter)
+  have hirreducibleAtoms : ∀ atom ∈ atoms, Irreducible atom := by
+    intro atom hatom
+    rcases List.mem_map.mp hatom with ⟨lifted, hlifted, rfl⟩
+    have hliftedActive : lifted ∈ active.toList :=
+      hselectedSublist.subset hlifted
+    rcases List.mem_iff_getElem.mp hliftedActive with
+      ⟨index, hindex, rfl⟩
+    have hindexArray : index < active.size := by simpa using hindex
+    simpa [Array.getElem_toList] using hirreducible index hindexArray
+  have hfactorAtoms : Associated (left * right) atoms.prod :=
+    (Associated.of_eq hfactor.symm).trans (by simpa [atoms, selected] using
+      hassociated)
+  rcases divisor_associated_proper_sublist_product atoms hirreducibleAtoms
+      left right hfactorAtoms hleftNonunit hrightNonunit with
+    ⟨chosenMod, hchosenMod, hleftChosen, hlength⟩
+  rcases List.sublist_map_iff.mp hchosenMod with
+    ⟨chosen, hchosenSelected, rfl⟩
+  have hchosenActive : chosen.Sublist active.toList :=
+    hchosenSelected.trans hselectedSublist
+  rcases StrictRecombine.sublist_exists_legal_combination hchosenActive with
+    ⟨inner, hinner, hselect⟩
+  have hinner' : StrictRecombine.LegalCombination active.size inner.size
+      inner := by simpa [hinner.1] using hinner
+  refine ⟨inner, hinner', ?_, ?_⟩
+  · simpa [atoms, selected, hinner.1,
+      StrictRecombine.selectSourceIndices] using hlength
+  · rw [hselect]
+    exact hleftChosen
 
 /-- A primitive integer polynomial is irreducible when its reduction at a
 prime is irreducible and the leading coefficient survives reduction.  This is

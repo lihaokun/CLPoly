@@ -3311,3 +3311,20 @@ cardinality decrease needed to query `SmallerZassenhausScansExhausted`.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：把该 proper sublist 重新编码为当前 active 数组的合法 candidate，
   并完成 smaller attempt 的真实成功/拒绝矛盾
+
+## Re-encode the proper modular occurrences in the physical active array
+
+`selectSourceIndices_sublist` proves that every legal generated combination
+really selects a source-order sublist, using its strictly increasing physical
+indices as a finite order embedding.  Building on it,
+`smaller_active_candidate_of_reducible_selected_product` takes a nontrivial
+factorization of the modular image of an extracted factor, finds the proper
+irreducible occurrence sublist inside that extraction's exact selected list,
+transports it back through the physical active array, and invokes the concrete
+sublist encoder.  The result is an in-bounds, strictly increasing active-array
+candidate whose size is strictly smaller than the extraction size and whose
+selected modular product is associated with the chosen proper factor.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：证明该 candidate 在当前 full-precision live Hensel state 的
+  `zassenhausAttempt` 中真实返回 `.extracted`，与 recorded rejection 冲突

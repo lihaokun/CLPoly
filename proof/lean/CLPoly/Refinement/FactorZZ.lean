@@ -1196,6 +1196,299 @@ theorem LiveHenselProduct.extractScan
   exact state.extract activeState hcanonical hnonempty hprimitive hleading
     hlegal hattempt hremove
 
+/-- Hensel uniqueness at an arbitrary recursive Zassenhaus state.  Both
+factorizations are built from the current physical active array and the two
+product equations carried by `LiveHenselProduct`; this is the recursive-state
+counterpart of the initial-entry uniqueness theorem. -/
+theorem LiveHenselProduct.selectedCongruent
+    {prime exponent : Nat} [Fact (Nat.Prime prime)]
+    {source : SparsePolyZZ} {active : Array SparsePolyZZ}
+    (state : LiveHenselProduct prime exponent source active)
+    (activeState : StrictRecombine.LiveActiveFactors prime active)
+    (hsquarefree : Squarefree
+      (Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly source)))
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly source = divisor * quotient)
+    (hdivisorModNonzero : Polynomial.map
+      (Int.castRingHom (ZMod prime)) divisor ≠ 0)
+    (hdivisorLeading :
+      (Polynomial.map (Int.castRingHom (ZMod prime)) divisor).leadingCoeff =
+        (divisor.leadingCoeff : ZMod prime))
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination active.size candidate.size
+      candidate)
+    (hassociated : Associated
+      (Polynomial.map (Int.castRingHom (ZMod prime)) divisor)
+      (((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+        (StrictHensel.toPolyMod prime)).prod)) :
+    Polynomial.map (Int.castRingHom (ZMod (prime ^ exponent)))
+        (Polynomial.C (SparsePolyZZ.toPoly source).leadingCoeff *
+          ((StrictRecombine.selectSourceIndices active.toList
+            candidate.toList).map SparsePolyZZ.toPoly).prod) =
+      Polynomial.map (Int.castRingHom (ZMod (prime ^ exponent)))
+        (Polynomial.C quotient.leadingCoeff * divisor) := by
+  let modulus := prime ^ exponent
+  let sourcePoly := SparsePolyZZ.toPoly source
+  let selectedInteger :=
+    ((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+      SparsePolyZZ.toPoly).prod
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < active.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  rcases StrictRecombine.removeCombination_succeeds candidate active hlegal with
+    ⟨complement, hremove⟩
+  rcases state.certificate with
+    ⟨scale, scalePrime, hscaleUnit, hscalePrimeUnit,
+      hfullLarge, hfullPrime⟩
+  let complementInteger :=
+    (complement.toList.map SparsePolyZZ.toPoly).prod
+  let liftedScaled := Polynomial.C sourcePoly.leadingCoeff * selectedInteger
+  let divisorScaled := Polynomial.C quotient.leadingCoeff * divisor
+  let scaleInt : Int := Int.ofNat scale.val
+  let complementScaled :=
+    Polynomial.C (scaleInt * divisor.leadingCoeff) * quotient
+  let commonSource :=
+    Polynomial.C scaleInt * Polynomial.C sourcePoly.leadingCoeff * sourcePoly
+  have hprime : Nat.Prime prime := Fact.out
+  have hmodulusNe : modulus ≠ 0 := pow_ne_zero exponent hprime.ne_zero
+  letI : NeZero modulus := ⟨hmodulusNe⟩
+  have hdivides : prime ∣ modulus :=
+    dvd_pow_self prime (Nat.ne_of_gt state.exponentPositive)
+  have hscaleLarge : (scaleInt : ZMod modulus) = scale := by
+    simp [scaleInt, modulus]
+  have hsourceLeading : sourcePoly.leadingCoeff =
+      divisor.leadingCoeff * quotient.leadingCoeff := by
+    dsimp [sourcePoly]
+    rw [hfactor, Polynomial.leadingCoeff_mul]
+  have hselectedMonic := activeState.selectedToPolyMonic candidate hbound
+  have hliftedLeading : liftedScaled.leadingCoeff = sourcePoly.leadingCoeff := by
+    dsimp [liftedScaled, selectedInteger]
+    rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C,
+      hselectedMonic.leadingCoeff, mul_one]
+  have hdivisorLeadingInt : divisorScaled.leadingCoeff =
+      sourcePoly.leadingCoeff := by
+    dsimp [divisorScaled]
+    rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C,
+      hsourceLeading]
+    ring
+  have hleadingEqual : liftedScaled.leadingCoeff = divisorScaled.leadingCoeff :=
+    hliftedLeading.trans hdivisorLeadingInt.symm
+  have hleadingCoprime : ¬((prime : Int) ∣ liftedScaled.leadingCoeff) := by
+    rw [hliftedLeading]
+    intro hdivisor
+    apply hleading
+    rw [ZMod.intCast_zmod_eq_zero_iff_dvd]
+    exact hdivisor
+  have hpartitionLarge :=
+    StrictRecombine.removeCombination_toPolyMod_product_partition modulus
+      candidate active complement hlegal hremove
+  have hselectedMapLarge : Polynomial.map
+        (Int.castRingHom (ZMod modulus)) selectedInteger =
+      ((StrictRecombine.selectSourceIndices active.toList
+        candidate.toList).map (StrictHensel.toPolyMod modulus)).prod := by
+    dsimp [selectedInteger]
+    rw [Polynomial.map_list_prod, List.map_map]
+    apply congrArg List.prod
+    apply List.map_congr_left
+    intro factor hfactorMem
+    rfl
+  have hcomplementMapLarge : Polynomial.map
+        (Int.castRingHom (ZMod modulus)) complementInteger =
+      (complement.toList.map (StrictHensel.toPolyMod modulus)).prod := by
+    dsimp [complementInteger]
+    rw [Polynomial.map_list_prod, List.map_map]
+    apply congrArg List.prod
+    apply List.map_congr_left
+    intro factor hfactorMem
+    rfl
+  have hproductLifted : Polynomial.map
+        (Int.castRingHom (ZMod modulus))
+        (complementInteger * liftedScaled) =
+      Polynomial.map (Int.castRingHom (ZMod modulus)) commonSource := by
+    simp only [Polynomial.map_mul, liftedScaled, commonSource,
+      Polynomial.map_C]
+    rw [hselectedMapLarge, hcomplementMapLarge]
+    change _ * (Polynomial.C (sourcePoly.leadingCoeff : ZMod modulus) * _) = _
+    calc
+      _ = Polynomial.C (sourcePoly.leadingCoeff : ZMod modulus) *
+          (((StrictRecombine.selectSourceIndices active.toList
+            candidate.toList).map (StrictHensel.toPolyMod modulus)).prod *
+            (complement.toList.map
+              (StrictHensel.toPolyMod modulus)).prod) := by ring
+      _ = Polynomial.C (sourcePoly.leadingCoeff : ZMod modulus) *
+          (active.toList.map (StrictHensel.toPolyMod modulus)).prod := by
+            rw [hpartitionLarge]
+      _ = Polynomial.C (sourcePoly.leadingCoeff : ZMod modulus) *
+          (Polynomial.C scale * StrictHensel.toPolyMod modulus source) := by
+            rw [hfullLarge]
+      _ = Polynomial.C (scaleInt : ZMod modulus) *
+          Polynomial.C (sourcePoly.leadingCoeff : ZMod modulus) *
+          Polynomial.map (Int.castRingHom (ZMod modulus)) sourcePoly := by
+            rw [hscaleLarge]
+            change _ = _ * _ * StrictHensel.toPolyMod modulus source
+            ring
+  have hfactorMapLarge := congrArg
+    (Polynomial.map (Int.castRingHom (ZMod modulus))) hfactor
+  have hproductDivisor : Polynomial.map
+        (Int.castRingHom (ZMod modulus))
+        (complementScaled * divisorScaled) =
+      Polynomial.map (Int.castRingHom (ZMod modulus)) commonSource := by
+    simp only [complementScaled, divisorScaled, commonSource,
+      Polynomial.map_mul, Polynomial.map_C]
+    rw [Polynomial.map_mul] at hfactorMapLarge
+    change (Polynomial.C ((scaleInt * divisor.leadingCoeff : Int) : ZMod modulus) *
+        Polynomial.map (Int.castRingHom (ZMod modulus)) quotient) *
+      (Polynomial.C (quotient.leadingCoeff : ZMod modulus) *
+        Polynomial.map (Int.castRingHom (ZMod modulus)) divisor) = _
+    rw [Int.cast_mul, Polynomial.C_mul]
+    rw [hsourceLeading]
+    simp only [map_mul]
+    change _ = _ * Polynomial.map (Int.castRingHom (ZMod modulus)) sourcePoly
+    have hfactorMapLarge' :
+        Polynomial.map (Int.castRingHom (ZMod modulus)) sourcePoly =
+          Polynomial.map (Int.castRingHom (ZMod modulus)) divisor *
+            Polynomial.map (Int.castRingHom (ZMod modulus)) quotient := by
+      simpa [sourcePoly] using hfactorMapLarge
+    rw [hfactorMapLarge']
+    have hcast (value : Int) :
+        (Int.castRingHom (ZMod modulus)) value =
+          (value : ZMod modulus) := rfl
+    rw [hcast scaleInt, hcast divisor.leadingCoeff,
+      hcast quotient.leadingCoeff]
+    ring
+  have hselectedPrimeMonic :=
+    activeState.selectedToPolyModMonic candidate hbound (modulus := prime)
+  have hbaseB := leading_scaled_monic_associated_divisor prime sourcePoly
+    divisor quotient
+    (((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+      (StrictHensel.toPolyMod prime)).prod)
+    (by simpa [sourcePoly] using hfactor) hdivisorModNonzero hdivisorLeading
+    hselectedPrimeMonic hassociated
+  have hbaseB' : Polynomial.map (Int.castRingHom (ZMod prime)) liftedScaled =
+      Polynomial.map (Int.castRingHom (ZMod prime)) divisorScaled := by
+    simpa [liftedScaled, divisorScaled, selectedInteger,
+      Polynomial.map_mul, Polynomial.map_C, Polynomial.map_list_prod,
+      List.map_map, StrictHensel.toPolyMod] using hbaseB
+  have hpartitionPrime :=
+    StrictRecombine.removeCombination_toPolyMod_product_partition prime
+      candidate active complement hlegal hremove
+  have hcop : IsCoprime
+      (complement.toList.map (StrictHensel.toPolyMod prime)).prod
+      (Polynomial.C (sourcePoly.leadingCoeff : ZMod prime) *
+        ((StrictRecombine.selectSourceIndices active.toList
+          candidate.toList).map (StrictHensel.toPolyMod prime)).prod) := by
+    let selected :=
+      ((StrictRecombine.selectSourceIndices active.toList
+        candidate.toList).map (StrictHensel.toPolyMod prime)).prod
+    let remainder :=
+      (complement.toList.map (StrictHensel.toPolyMod prime)).prod
+    let sourceMod :=
+      Polynomial.map (Int.castRingHom (ZMod prime)) sourcePoly
+    have hproduct : remainder *
+          (Polynomial.C (sourcePoly.leadingCoeff : ZMod prime) * selected) =
+        Polynomial.C ((sourcePoly.leadingCoeff : ZMod prime) * scalePrime) *
+          sourceMod := by
+      dsimp [selected, remainder, sourceMod]
+      calc
+        _ = Polynomial.C (sourcePoly.leadingCoeff : ZMod prime) *
+            (((StrictRecombine.selectSourceIndices active.toList
+              candidate.toList).map (StrictHensel.toPolyMod prime)).prod *
+              (complement.toList.map
+                (StrictHensel.toPolyMod prime)).prod) := by ring
+        _ = Polynomial.C (sourcePoly.leadingCoeff : ZMod prime) *
+            (active.toList.map (StrictHensel.toPolyMod prime)).prod := by
+              rw [hpartitionPrime]
+        _ = Polynomial.C (sourcePoly.leadingCoeff : ZMod prime) *
+            (Polynomial.C scalePrime * StrictHensel.toPolyMod prime source) := by
+              rw [hfullPrime]
+        _ = _ := by
+          have hsourcePrime : StrictHensel.toPolyMod prime source =
+              Polynomial.map (Int.castRingHom (ZMod prime)) sourcePoly := rfl
+          rw [hsourcePrime]
+          rw [Polynomial.C_mul]
+          ring
+    have hscalarUnit : IsUnit
+        (Polynomial.C ((sourcePoly.leadingCoeff : ZMod prime) * scalePrime)) :=
+      Polynomial.isUnit_C.mpr
+        ((isUnit_iff_ne_zero.mpr hleading).mul hscalePrimeUnit)
+    have hassociatedProduct : Associated
+        (remainder *
+          (Polynomial.C (sourcePoly.leadingCoeff : ZMod prime) * selected))
+        sourceMod := by
+      rw [hproduct]
+      exact (associated_isUnit_mul_left_iff hscalarUnit).mpr
+        (Associated.refl sourceMod)
+    have hproductSquarefree : Squarefree
+        (remainder *
+          (Polynomial.C (sourcePoly.leadingCoeff : ZMod prime) * selected)) :=
+      hassociatedProduct.squarefree_iff.mpr (by simpa [sourcePoly] using hsquarefree)
+    exact (IsRelPrime.of_squarefree_mul hproductSquarefree).isCoprime
+  have hselectedMapPrime : Polynomial.map
+        (Int.castRingHom (ZMod prime)) selectedInteger =
+      ((StrictRecombine.selectSourceIndices active.toList
+        candidate.toList).map (StrictHensel.toPolyMod prime)).prod := by
+    dsimp [selectedInteger]
+    rw [Polynomial.map_list_prod, List.map_map]
+    apply congrArg List.prod
+    apply List.map_congr_left
+    intro factor hfactorMem
+    rfl
+  have hcomplementMapPrime : Polynomial.map
+        (Int.castRingHom (ZMod prime)) complementInteger =
+      (complement.toList.map (StrictHensel.toPolyMod prime)).prod := by
+    dsimp [complementInteger]
+    rw [Polynomial.map_list_prod, List.map_map]
+    apply congrArg List.prod
+    apply List.map_congr_left
+    intro factor hfactorMem
+    rfl
+  have hcop' : IsCoprime
+      (Polynomial.map (Int.castRingHom (ZMod prime)) complementInteger)
+      (Polynomial.map (Int.castRingHom (ZMod prime)) liftedScaled) := by
+    simpa [liftedScaled, hselectedMapPrime, hcomplementMapPrime] using hcop
+  have hproductLiftedPrime := StrictRecombine.polynomialMap_eq_of_modulus_dvd
+    prime modulus hdivides (complementInteger * liftedScaled) commonSource
+    hproductLifted
+  have hproductDivisorPrime := StrictRecombine.polynomialMap_eq_of_modulus_dvd
+    prime modulus hdivides (complementScaled * divisorScaled) commonSource
+    hproductDivisor
+  have hbaseBNonzero :
+      Polynomial.map (Int.castRingHom (ZMod prime)) divisorScaled ≠ 0 := by
+    rw [← hbaseB']
+    simp only [liftedScaled, Polynomial.map_mul, Polynomial.map_C]
+    rw [hselectedMapPrime]
+    exact mul_ne_zero (Polynomial.C_ne_zero.mpr hleading)
+      hselectedPrimeMonic.ne_zero
+  have hbaseA :
+      Polynomial.map (Int.castRingHom (ZMod prime)) complementInteger =
+        Polynomial.map (Int.castRingHom (ZMod prime)) complementScaled := by
+    have heq :
+        Polynomial.map (Int.castRingHom (ZMod prime)) complementInteger *
+            Polynomial.map (Int.castRingHom (ZMod prime)) liftedScaled =
+          Polynomial.map (Int.castRingHom (ZMod prime)) complementScaled *
+            Polynomial.map (Int.castRingHom (ZMod prime)) divisorScaled := by
+      calc
+        _ = Polynomial.map (Int.castRingHom (ZMod prime))
+              (complementInteger * liftedScaled) := by
+                exact (Polynomial.map_mul
+                  (Int.castRingHom (ZMod prime))).symm
+        _ = Polynomial.map (Int.castRingHom (ZMod prime)) commonSource :=
+              hproductLiftedPrime
+        _ = Polynomial.map (Int.castRingHom (ZMod prime))
+              (complementScaled * divisorScaled) := hproductDivisorPrime.symm
+        _ = _ := by rw [Polynomial.map_mul]
+    rw [hbaseB'] at heq
+    exact mul_right_cancel₀ hbaseBNonzero heq
+  have hunique := hensel_unique prime hprime exponent state.exponentPositive
+    commonSource complementInteger liftedScaled complementScaled divisorScaled
+    hproductLifted hproductDivisor hbaseA hbaseB' hcop' hleadingEqual
+    hleadingCoprime
+  simpa [modulus, liftedScaled, divisorScaled] using hunique.2
+
 /-- The normalized factors returned by the literal Hensel entry initialize a
 `LiveHenselProduct` at the exact prime power returned by that execution. -/
 theorem selectionHenselFactors_liveProduct

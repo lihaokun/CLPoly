@@ -3466,3 +3466,23 @@ than from a separately chosen subset with the same semantic product.
 - Next: carry this certificate and the smaller-scan execution history through
   the complete generated outer loop, proving irreducibility of every factor
   appended by the real extraction branch.
+
+## Generalize Hensel uniqueness to every recursive live state
+
+`LiveActiveFactors.selectedToPolyMonic` lifts the physical one-head invariant
+to the exact occurrence-sensitive integer trial product.  Building on it,
+`LiveHenselProduct.selectedCongruent` generalizes the former initial-entry-only
+Hensel uniqueness argument to an arbitrary state reached after real
+extractions.  It executes `removeCombination` for the candidate, constructs
+both full-precision factorizations from the current `p^k` product certificate,
+derives coprimality from the current squarefree mod-`p` source and the current
+mod-`p` product certificate, and invokes `hensel_unique` with the literal
+integer leading coefficients.  The result is the exact full-precision
+congruence needed to execute a smaller divisor candidate in the current state;
+no reference to the original Hensel array or a semantic lift oracle remains.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: prove squarefreeness is preserved by the actual extracted quotient,
+  then combine this congruence with the physical rejection history to prove
+  every returned factor irreducible.

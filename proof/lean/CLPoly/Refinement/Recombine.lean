@@ -3372,6 +3372,45 @@ theorem LiveActiveFactors.selectedToPolyModMonic
             hlist polynomial (List.mem_cons_of_mem head hpolynomial)))
   exact prodMonic selected hall
 
+/-- Every physical occurrence-sensitive selection from a live active array is
+monic as an integer polynomial. -/
+theorem LiveActiveFactors.selectedToPolyMonic
+    {base : Nat} {active : Array SparsePolyZZ}
+    (state : LiveActiveFactors base active) (candidate : Array Nat)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < active.size) :
+    ((selectSourceIndices active.toList candidate.toList).map
+      SparsePolyZZ.toPoly).prod.Monic := by
+  let selected := (selectSourceIndices active.toList candidate.toList).map
+    SparsePolyZZ.toPoly
+  have hall : ∀ mapped ∈ selected, mapped.Monic := by
+    intro mapped hmapped
+    rcases List.mem_map.mp hmapped with ⟨factor, hfactor, rfl⟩
+    unfold selectSourceIndices at hfactor
+    rcases List.mem_map.mp hfactor with ⟨index, hindex, rfl⟩
+    rcases List.mem_iff_getElem.mp hindex with
+      ⟨position, hposition, hindexEq⟩
+    have hpositionArray : position < candidate.size := by simpa using hposition
+    have hactive := hbound position hpositionArray
+    have hselected : candidate[position] = index := by
+      rw [← Array.getElem_toList hpositionArray]
+      exact hindexEq
+    rw [← hselected, getElem!_pos active.toList candidate[position]
+      (by simpa using hactive), Array.getElem_toList hactive]
+    exact state.monic candidate[position] hactive
+  change selected.prod.Monic
+  have prodMonic : ∀ list : List (Polynomial Int),
+      (∀ polynomial ∈ list, polynomial.Monic) → list.prod.Monic := by
+    intro list hlist
+    induction list with
+    | nil => simp
+    | cons head tail ih =>
+        rw [List.prod_cons]
+        exact (hlist head (List.mem_cons_self)).mul
+          (ih (fun polynomial hpolynomial =>
+            hlist polynomial (List.mem_cons_of_mem head hpolynomial)))
+  exact prodMonic selected hall
+
 /-- The literal reverse erasure used after an extraction preserves every
 field of `LiveActiveFactors`; the size bound follows from the exact generated
 array-size equation. -/

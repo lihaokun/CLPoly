@@ -2521,3 +2521,26 @@ No C++ files changed, so this step has no new C++ b2b change surface.
 Next, this property is threaded through the generated step, recursive tree,
 and extraction order so full-modulus Hensel uniqueness can be applied to the
 real candidate subset.
+
+## Carry physical monicity through the Hensel tree and precision loop
+
+Physical right-factor monicity is now part of the strict step postcondition
+and is propagated through both generated recursive control structures.
+
+- `HenselStepCorrect` now records that every coefficient-one input `h` head
+  survives the exact factor and Bézout phases.  The latter changes only `s`
+  and `t`, so the physical factor-phase result is retained verbatim.
+- `HasPhysicalOneHead` and `HenselArrayHOneHead` state the representation
+  invariant directly on sparse arrays.  `henselArrayHOneHead_set` proves the
+  exact mutable-array frame rule.
+- `HenselLiftRecursiveCorrect.arrayHOneHead` follows all four finite tree
+  constructors and applies the generated single-step theorem at the written
+  node before each real child traversal.
+- `HenselLiftLoopCorrect.arrayHOneHead` carries the invariant through every
+  actual quadratic-precision iteration, deriving `1 < m` from the source
+  loop's `2 ≤ m` measure and preserving it under `m := m * m`.
+
+No C++ files changed, so this step has no new C++ b2b change surface.
+`lake build CLPoly.Refinement.Hensel` completed successfully (3328 jobs).
+Next, the canonical builder's initial right factors are proved physically
+monic and the property is transferred through exact leaf extraction.

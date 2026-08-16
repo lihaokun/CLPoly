@@ -44,6 +44,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.__upoly_divmod_mod_raw_ir_remainder_degreesBound_of_run
 #print axioms Refinement.StrictHensel.__upoly_divmod_mod_raw_ir_remainder_terms_below_of_run
 #print axioms Refinement.StrictHensel.henselFactorCorrection_preserves_h_one_head_from_raw_runs
+#print axioms Refinement.StrictHensel.__hensel_step_raw_ir_refines
+#print axioms Refinement.StrictHensel.HenselLiftRecursiveCorrect.arrayHOneHead
+#print axioms Refinement.StrictHensel.HenselLiftLoopCorrect.arrayHOneHead
 #print axioms Refinement.StrictHensel.henselTreeBuildTopology_indices_nodup_bounded
 #print axioms Refinement.StrictHensel.henselExtractedFactors_eq_of_lookups
 #print axioms Refinement.StrictHensel.HenselLiftRecursiveCorrect.extractedFactors_product

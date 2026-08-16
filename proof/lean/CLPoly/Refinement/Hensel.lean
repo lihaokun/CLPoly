@@ -45,7 +45,9 @@ def HenselStepCorrect (f : SparsePolyZZ) (m : Nat)
   toPolyMod m output.s = toPolyMod m input.s ∧
   toPolyMod m output.t = toPolyMod m input.t ∧
   StrictPolynomialMod.SparsePolyZZCanonical output.g ∧
-  StrictPolynomialMod.SparsePolyZZCanonical output.h
+  StrictPolynomialMod.SparsePolyZZCanonical output.h ∧
+  ∀ head tail, input.h.toList = (head, 1) :: tail → 1 < m →
+    ∃ suffix, output.h.toList = (head, 1) :: suffix
 
 @[simp] theorem toPolyMod_empty (m : Nat) :
     toPolyMod m (#[] : SparsePolyZZ) = 0 := by
@@ -3895,7 +3897,9 @@ theorem __hensel_step_factor_phase_raw_ir_refines
       toPolyMod m factorNode.h = toPolyMod m node.h ∧
       factorNode.s = node.s ∧ factorNode.t = node.t ∧
       StrictPolynomialMod.SparsePolyZZCanonical factorNode.g ∧
-      StrictPolynomialMod.SparsePolyZZCanonical factorNode.h := by
+      StrictPolynomialMod.SparsePolyZZCanonical factorNode.h ∧
+      ∀ head tail, node.h.toList = (head, 1) :: tail → 1 < m →
+        ∃ suffix, factorNode.h.toList = (head, 1) :: suffix := by
   let gh := Generated.StrictHensel.pairVecMulHeapLoop
     (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
   let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
@@ -3963,6 +3967,15 @@ theorem __hensel_step_factor_phase_raw_ir_refines
     gNew hRaw hNew hfCanonical hgCanonical hhCanonical hghRun hdifferenceRun
     hseRun hdivmodRun hteRun hqgRun htauRawRun htauRun hgRawRun hgNewRun
     hhRawRun hhNewRun
+  have hhPhysical : ∀ head tail,
+      node.h.toList = (head, 1) :: tail → 1 < m →
+      ∃ suffix, factorNode.h.toList = (head, 1) :: suffix := by
+    intro head tail hhList hmOne
+    exact henselFactorCorrection_preserves_h_one_head_from_raw_runs
+      termination node m hmOne e se qr.1 qr.2 hRaw hNew head tail hhList
+      hhCanonical hh hhDegree hhHead
+      (by simpa [gh, difference, e, se] using hseBound) hseRun hdivmodRun
+      hhRawRun hhNewRun
   refine ⟨factorNode, ?_, ?_⟩
   · have hm2 : (m : Int) * (m : Int) = (m ^ 2 : Int) := by
       norm_num [pow_two]
@@ -3999,7 +4012,7 @@ theorem __hensel_step_factor_phase_raw_ir_refines
         (m ^ 2 : Int) = .ok hNew by simpa [hRaw] using hhNewRun]
     rfl
   · exact ⟨hsemantic.1, hsemantic.2.1, hsemantic.2.2, rfl, rfl,
-      hcanonical.1, hcanonical.2⟩
+      hcanonical.1, hcanonical.2, hhPhysical⟩
 
 set_option maxHeartbeats 0 in
 /-- The complete generated Bezout phase refines its L2 certificate invariant.
@@ -4285,7 +4298,7 @@ theorem __hensel_step_raw_ir_refines
       hinvariant.factorDivmodValid
       hinvariant.inputInvariant with
     ⟨factorNode, hfactorRun, hfactorProduct, hgPreserved, hhPreserved,
-      hsUnchanged, htUnchanged, hgCanonical, hhCanonical⟩
+      hsUnchanged, htUnchanged, hgCanonical, hhCanonical, hhPhysical⟩
   have hready := hinvariant.bezoutReady factorNode hfactorRun
   have hfactorBezout :
       toPolyMod m factorNode.s * toPolyMod m factorNode.g +
@@ -4328,8 +4341,12 @@ theorem __hensel_step_raw_ir_refines
     constructor
     · rw [hgUnchanged]
       exact hgCanonical
+    constructor
     · rw [hhUnchanged]
       exact hhCanonical
+    · intro head tail hhList hmOne
+      rw [hhUnchanged]
+      exact hhPhysical head tail hhList hmOne
 
 /-- The first contiguous source phase has a genuine raw-to-safe execution
 bridge.  Its only possible source assertion is the modular division by `h`;
@@ -4614,6 +4631,30 @@ def HenselNodeCanonical (node : HenselNode) : Prop :=
 factor fields. -/
 def HenselArrayCanonical (nodes : Array HenselNode) : Prop :=
   ∀ index (hindex : index < nodes.size), HenselNodeCanonical nodes[index]
+
+/-- A physical sparse factor is monic when coefficient one is stored at its
+first array position.  This representation-level property is intentionally
+stronger than mathematical monicity of its decoded polynomial. -/
+def HasPhysicalOneHead (factor : SparsePolyZZ) : Prop :=
+  ∃ head tail, factor.toList = (head, 1) :: tail
+
+def HenselArrayHOneHead (nodes : Array HenselNode) : Prop :=
+  ∀ index (hindex : index < nodes.size), HasPhysicalOneHead nodes[index].h
+
+theorem henselArrayHOneHead_set
+    (nodes : Array HenselNode) (index : Nat) (value : HenselNode)
+    (hindex : index < nodes.size) (hnodes : HenselArrayHOneHead nodes)
+    (hvalue : HasPhysicalOneHead value.h) :
+    HenselArrayHOneHead (nodes.set! index value) := by
+  intro other hother
+  have hotherBefore : other < nodes.size := by simpa using hother
+  by_cases heq : other = index
+  · subst other
+    simpa [Array.getElem_set, hindex] using hvalue
+  · simpa only [Array.set!_eq_setIfInBounds, Array.setIfInBounds_def,
+      dif_pos hindex,
+      Array.getElem_set_ne hindex hotherBefore (Ne.symm heq)] using
+      hnodes other hotherBefore
 
 theorem henselArrayCanonical_set
     (nodes : Array HenselNode) (index : Nat) (value : HenselNode)
@@ -5226,7 +5267,7 @@ theorem HenselLiftRecursiveCorrect.arrayCanonical
         rw [Array.getElem?_eq_none (by omega)] at hnode
         contradiction
       exact henselArrayCanonical_set nodes index lifted hindex hnodes
-        hstepCorrect.2.2.2.2.2
+        ⟨hstepCorrect.2.2.2.2.2.1, hstepCorrect.2.2.2.2.2.2.1⟩
   | left index left nodes stored nodesAfterLeft target inputNode lifted parent
       hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
       subst stored
@@ -5235,7 +5276,7 @@ theorem HenselLiftRecursiveCorrect.arrayCanonical
         rw [Array.getElem?_eq_none (by omega)] at hnode
         contradiction
       exact ih (henselArrayCanonical_set nodes index lifted hindex hnodes
-        hstepCorrect.2.2.2.2.2)
+        ⟨hstepCorrect.2.2.2.2.2.1, hstepCorrect.2.2.2.2.2.2.1⟩)
   | right index right nodes stored output target inputNode lifted parent hnode
       hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
       subst stored
@@ -5244,7 +5285,7 @@ theorem HenselLiftRecursiveCorrect.arrayCanonical
         rw [Array.getElem?_eq_none (by omega)] at hnode
         contradiction
       exact ih (henselArrayCanonical_set nodes index lifted hindex hnodes
-        hstepCorrect.2.2.2.2.2)
+        ⟨hstepCorrect.2.2.2.2.2.1, hstepCorrect.2.2.2.2.2.2.1⟩)
   | branch index left right nodes stored nodesAfterLeft output target inputNode
       lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
       hparent hrightRun hrightCorrect leftIH rightIH =>
@@ -5254,7 +5295,86 @@ theorem HenselLiftRecursiveCorrect.arrayCanonical
         rw [Array.getElem?_eq_none (by omega)] at hnode
         contradiction
       exact rightIH (leftIH (henselArrayCanonical_set nodes index lifted
-        hindex hnodes hstepCorrect.2.2.2.2.2))
+        hindex hnodes
+          ⟨hstepCorrect.2.2.2.2.2.1,
+            hstepCorrect.2.2.2.2.2.2.1⟩))
+
+/-- One complete execution of the generated recursive tree preserves a
+physical coefficient-one head in every node's right factor.  Each updated
+slot uses the concrete single-step head theorem; all other slots are framed
+by the exact array write. -/
+theorem HenselLiftRecursiveCorrect.arrayHOneHead
+    {termination : Generated.StrictHensel.DivmodTermination} {m : Nat}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes output : Array HenselNode} {target : SparsePolyZZ}
+    (hcorrect : HenselLiftRecursiveCorrect termination m tree nodes target
+      output) (hm : 1 < m) (hnodes : HenselArrayHOneHead nodes) :
+    HenselArrayHOneHead output := by
+  induction hcorrect with
+  | leaf index nodes stored target inputNode lifted parent hnode hstep
+      hstepCorrect hstored hparent =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index] = inputNode :=
+        Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+      rcases hnodes index hindex with ⟨head, tail, hhead⟩
+      have hlifted : HasPhysicalOneHead lifted.h := by
+        rcases hstepCorrect.2.2.2.2.2.2.2 head tail (by
+          simpa [hinput] using hhead) hm with ⟨suffix, hsuffix⟩
+        exact ⟨head, suffix, hsuffix⟩
+      exact henselArrayHOneHead_set nodes index lifted hindex hnodes hlifted
+  | left index left nodes stored nodesAfterLeft target inputNode lifted parent
+      hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index] = inputNode :=
+        Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+      rcases hnodes index hindex with ⟨head, tail, hhead⟩
+      have hlifted : HasPhysicalOneHead lifted.h := by
+        rcases hstepCorrect.2.2.2.2.2.2.2 head tail (by
+          simpa [hinput] using hhead) hm with ⟨suffix, hsuffix⟩
+        exact ⟨head, suffix, hsuffix⟩
+      exact ih
+        (henselArrayHOneHead_set nodes index lifted hindex hnodes hlifted)
+  | right index right nodes stored output target inputNode lifted parent hnode
+      hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index] = inputNode :=
+        Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+      rcases hnodes index hindex with ⟨head, tail, hhead⟩
+      have hlifted : HasPhysicalOneHead lifted.h := by
+        rcases hstepCorrect.2.2.2.2.2.2.2 head tail (by
+          simpa [hinput] using hhead) hm with ⟨suffix, hsuffix⟩
+        exact ⟨head, suffix, hsuffix⟩
+      exact ih
+        (henselArrayHOneHead_set nodes index lifted hindex hnodes hlifted)
+  | branch index left right nodes stored nodesAfterLeft output target inputNode
+      lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
+      hparent hrightRun hrightCorrect leftIH rightIH =>
+      subst stored
+      have hindex : index < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hinput : nodes[index] = inputNode :=
+        Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
+      rcases hnodes index hindex with ⟨head, tail, hhead⟩
+      have hlifted : HasPhysicalOneHead lifted.h := by
+        rcases hstepCorrect.2.2.2.2.2.2.2 head tail (by
+          simpa [hinput] using hhead) hm with ⟨suffix, hsuffix⟩
+        exact ⟨head, suffix, hsuffix⟩
+      exact rightIH (leftIH
+        (henselArrayHOneHead_set nodes index lifted hindex hnodes hlifted))
 
 /-- Full refinement invariant for a recursive tree traversal.  Like the
 single-step invariant, all descendant premises are universal over uniquely
@@ -5578,6 +5698,26 @@ theorem HenselLiftLoopCorrect.arrayCanonical
   | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
       htail ih =>
       exact ih (hiteration.arrayCanonical hinitial)
+
+/-- Every actual quadratic round preserves physical monicity of all stored
+right factors.  The lower bound on the initial modulus is propagated through
+the source update `m := m * m`. -/
+theorem HenselLiftLoopCorrect.arrayHOneHead
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM)
+    (hm : 2 ≤ initialM) (hinitial : HenselArrayHOneHead initialNodes) :
+    HenselArrayHOneHead outputNodes := by
+  induction hcorrect with
+  | done => exact hinitial
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      have hmOne : 1 < m := by omega
+      have hnext : 2 ≤ m * m := by nlinarith
+      exact ih hnext (hiteration.arrayHOneHead hmOne hinitial)
 
 /-- The concrete quadratic loop only replaces its modulus by its square, so
 the initial modulus divides the modulus returned by every actual execution. -/

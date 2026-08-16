@@ -846,6 +846,54 @@ theorem integer_divisor_mod_associated_hensel_sublist
     ⟨chosen, hchosen, rfl⟩
   exact ⟨chosen, hchosen, hassociated⟩
 
+/-- Live-state form of the divisor-to-combination theorem.  It applies after
+successful Zassenhaus removals: if the current integer remainder reduces to
+the product of the current physical active array, every genuine divisor of
+that remainder is represented by a legal occurrence-sensitive combination
+of that same array. -/
+theorem live_divisor_mod_has_legal_candidate
+    (base : Nat) [Fact (Nat.Prime base)]
+    (fStar : SparsePolyZZ) (active : Array SparsePolyZZ)
+    (hproduct : Associated
+      (Polynomial.map (Int.castRingHom (ZMod base))
+        (SparsePolyZZ.toPoly fStar))
+      ((active.toList.map (StrictHensel.toPolyMod base)).prod))
+    (hirreducible : ∀ index (hindex : index < active.size),
+      Irreducible (StrictHensel.toPolyMod base active[index]))
+    (g : Polynomial Int) (hg : g ∣ SparsePolyZZ.toPoly fStar) :
+    ∃ indices : Array Nat,
+      StrictRecombine.LegalCombination active.size indices.size indices ∧
+      Associated
+        (Polynomial.map (Int.castRingHom (ZMod base)) g)
+        (((StrictRecombine.selectSourceIndices active.toList indices.toList).map
+          (StrictHensel.toPolyMod base)).prod) := by
+  let atoms := active.toList.map (StrictHensel.toPolyMod base)
+  have hirreducibleAtoms : ∀ atom ∈ atoms, Irreducible atom := by
+    intro atom hatom
+    rcases List.mem_map.mp hatom with ⟨lifted, hlifted, rfl⟩
+    rcases List.mem_iff_getElem.mp hlifted with ⟨index, hindex, rfl⟩
+    have hindexArray : index < active.size := by simpa using hindex
+    simpa [Array.getElem_toList] using hirreducible index hindexArray
+  have hmapDvd : Polynomial.map (Int.castRingHom (ZMod base)) g ∣
+      Polynomial.map (Int.castRingHom (ZMod base))
+        (SparsePolyZZ.toPoly fStar) := by
+    rcases hg with ⟨quotient, hfactor⟩
+    refine ⟨Polynomial.map (Int.castRingHom (ZMod base)) quotient, ?_⟩
+    rw [hfactor, Polynomial.map_mul]
+  have hatomsDvd : Polynomial.map (Int.castRingHom (ZMod base)) g ∣
+      atoms.prod := dvd_trans hmapDvd hproduct.dvd
+  rcases divisor_associated_sublist_product atoms hirreducibleAtoms _
+      hatomsDvd with ⟨chosenMod, hchosenMod, hassociated⟩
+  rcases List.sublist_map_iff.mp hchosenMod with ⟨chosen, hchosen, rfl⟩
+  rcases StrictRecombine.sublist_exists_legal_combination hchosen with
+    ⟨indices, hlegal, hselected⟩
+  have hlegal' : StrictRecombine.LegalCombination active.size
+      indices.size indices := by
+    simpa [hlegal.1] using hlegal
+  refine ⟨indices, hlegal', ?_⟩
+  rw [hselected]
+  exact hassociated
+
 /-- Array-index form consumed by the generated Zassenhaus scanner.  Every
 genuine divisor supplies a legal strictly increasing candidate over the
 actual Hensel output array, and the selected occurrence-sensitive product is

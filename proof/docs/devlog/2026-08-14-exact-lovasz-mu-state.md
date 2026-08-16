@@ -3252,3 +3252,18 @@ branch remains reachable in this source-shaped loop.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：给外层状态加入“所有更小子集已真实穷尽拒绝”的历史，证明每个被
   push 的整数因子不可约，而不只证明输出乘积正确
+
+## Rebuild divisor candidates from each live recursive state
+
+`live_divisor_mod_has_legal_candidate` removes the former dependence on the
+original, pre-removal Hensel array.  Given the invariant that the current
+`fStar mod p` is associated with the product of the current physical active
+array, it maps any actual integer divisor into that product, recursively
+selects the irreducible modular occurrences which divide it, and converts the
+resulting concrete sublist back into a sorted in-bounds index array.  This is
+the candidate needed after every successful extraction; it is derived from
+the current array and real divisibility, not from a factorization oracle.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：证明 scan extraction + physical removal 保持 live modular-product
+  invariant，然后用 exhausted histories 排除被提取因子的所有真因子

@@ -3046,3 +3046,11 @@ No C++ files changed, so this step has no new C++ regression or b2b change
 surface.  The remaining uniqueness assembly now consists of the two explicit
 `p^k` product equations, leading-coefficient equality, and cancellation of the
 shared nonzero base factor.
+
+`henselCandidate_scaled_leadingCoeff` discharges the remaining normalization
+side condition.  Physical integer monicity makes the generated
+source-leading-scaled candidate's leading coefficient literally the source
+leading coefficient; the genuine quotient-leading-scaled divisor has the same
+coefficient by the concrete divisor equation.  The selected-prime
+`GoodPrime.lc_nonzero` guard proves that this integer is not divisible by `p`.
+These are precisely the final two scalar premises of `hensel_unique`.

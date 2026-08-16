@@ -994,6 +994,62 @@ theorem henselCandidate_scaled_eq_divisor_mod_prime
     Polynomial.map_list_prod, List.map_map, StrictHensel.toPolyMod] using
       hscaled
 
+/-- The two scaled factors compared by Hensel uniqueness have literally equal
+integer leading coefficients, and that coefficient is prime to the selected
+prime.  The first equality uses physical candidate monicity; the second is
+exactly the `GoodPrime` leading-coefficient guard. -/
+theorem henselCandidate_scaled_leadingCoeff
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly f = divisor * quotient)
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination output.1.size candidate.size
+      candidate) :
+    let selectedInteger :=
+      ((StrictRecombine.selectSourceIndices output.1.toList candidate.toList).map
+        SparsePolyZZ.toPoly).prod
+    let liftedScaled :=
+      Polynomial.C (SparsePolyZZ.toPoly f).leadingCoeff * selectedInteger
+    let divisorScaled := Polynomial.C quotient.leadingCoeff * divisor
+    liftedScaled.leadingCoeff = divisorScaled.leadingCoeff ∧
+      ¬((selection.prime.toNat : Int) ∣ liftedScaled.leadingCoeff) := by
+  dsimp
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < output.1.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  have hmonic := henselSelectedIntegerProduct_monic hentry candidate hbound
+  have hsourceLeading : (SparsePolyZZ.toPoly f).leadingCoeff =
+      divisor.leadingCoeff * quotient.leadingCoeff := by
+    rw [hfactor, Polynomial.leadingCoeff_mul]
+  have hlifted :
+      (Polynomial.C (SparsePolyZZ.toPoly f).leadingCoeff *
+        ((StrictRecombine.selectSourceIndices output.1.toList
+          candidate.toList).map SparsePolyZZ.toPoly).prod).leadingCoeff =
+        (SparsePolyZZ.toPoly f).leadingCoeff := by
+    rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C,
+      hmonic.leadingCoeff, mul_one]
+  have hdivisor :
+      (Polynomial.C quotient.leadingCoeff * divisor).leadingCoeff =
+        (SparsePolyZZ.toPoly f).leadingCoeff := by
+    rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C,
+      hsourceLeading]
+    ring
+  refine ⟨hlifted.trans hdivisor.symm, ?_⟩
+  rw [hlifted]
+  intro hdivides
+  apply hselection.goodPrime.lc_nonzero
+  rw [ZMod.intCast_zmod_eq_zero_iff_dvd]
+  exact hdivides
+
 /-- The first scalar-pruning branch of the literal `zassenhausAttempt` cannot
 reject a bounded candidate drawn from the actual normalized Hensel output.
 Every selected physical head is one, so the generated accumulator is exactly

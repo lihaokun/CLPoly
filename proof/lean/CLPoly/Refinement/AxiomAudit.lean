@@ -226,6 +226,10 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.cldPolys_toPolyMod
 #print axioms Refinement.StrictRecombine.fillCldDataRowLoop_entry
 #print axioms Refinement.StrictRecombine.appendCldColumn_data_entry
+#print axioms Refinement.StrictRecombine.appendCldColumn_old_entry
+#print axioms Refinement.StrictRecombine.appendCldColumn_preserves_data_rows
+#print axioms Refinement.StrictRecombine.buildCldMatrixLoop_data_rows
+#print axioms Refinement.StrictRecombine.buildCldMatrix_data_rows
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

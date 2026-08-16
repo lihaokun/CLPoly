@@ -476,3 +476,33 @@ oracle, `sorry`, or custom axiom.
 - Next: lift the one-column result through `buildCldMatrixLoop`, preserving
   old columns and identifying every spiral-selected degree in the complete
   physical lattice.
+
+## Refine the complete generated CLD matrix build
+
+The single-column coefficient theorem is now lifted through the complete
+generated bounded matrix builder:
+
+- `appendCldColumn_old_entry` proves that extending the square lattice by one
+  row and column preserves every pre-existing physical matrix entry;
+- `CldMatrixDataRows` records the exact correspondence between each appended
+  physical row, its spiral-selected polynomial degree, and every CLD factor
+  coordinate;
+- `appendCldColumn_preserves_data_rows` extends that invariant by one genuine
+  generated column-building step;
+- `buildCldMatrixLoop_data_rows` follows both generated stopping branches and
+  every successful append through the well-founded `target - added` loop; and
+- `buildCldMatrix_data_rows` exposes the invariant at the public generated
+  matrix-builder entry point.
+
+Thus the lattice consumed by generated LLL is no longer known merely to be a
+nonsingular square matrix of the expected size: all CLD data coordinates of
+all appended rows are tied to the actual generated sparse coefficient
+lookups at the exact alternating low/high spiral degrees selected by C++.
+There is no fuel, partial definition, semantic matrix oracle, `sorry`, or
+custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: combine the full matrix data invariant with `cldPolys_toPolyMod`,
+  symmetric coefficient bounds, `concreteLLLReduce_transform_rel`, and the
+  short-row filter to obtain the candidate-partition separation theorem.

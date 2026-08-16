@@ -414,6 +414,21 @@ theorem appendCldColumn_data_entry
           (by rw [zeroMatrixRow_size]; omega) hfill position hposition
       next hidentity => contradiction
 
+theorem appendCldColumn_old_entry
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (cld : Array SparsePolyZZ) (existingColumns spiralDegree row column : Nat)
+    (hdimension : matrix.size = cld.size + existingColumns)
+    (hrow : row < matrix.size) (hcolumn : column < matrix[row]!.size)
+    (hrun : Generated.StrictRecombine.appendCldColumn matrix cld
+      existingColumns spiralDegree = .ok output) :
+    (output[row]!)[column]! = (matrix[row]!)[column]! := by
+  rcases appendCldColumn_shape matrix output cld existingColumns spiralDegree
+      hdimension hrun with ⟨finalRow, _, _, rfl⟩
+  rw [arrayPush_getElem!_lt _ _ row (by
+      simpa [appendZeroSuffix_size] using hrow),
+    appendZeroSuffix_row matrix row hrow,
+    arrayPush_getElem!_lt _ _ column hcolumn]
+
 theorem zeroQQRowLoop_size (columns index : Nat) (row : Array QQ)
     (hindex : index ≤ columns) :
     (Generated.StrictRecombine.zeroQQRowLoop columns index row).size =
@@ -6220,6 +6235,97 @@ theorem appendCldColumn_input_valid
     rw [hdet]
     exact hinput.determinant_ne
 
+def cldSpiralDegree (width index : Nat) : Nat :=
+  if index % 2 = 0 then index / 2
+  else width - 1 - (index - 1) / 2
+
+def CldMatrixDataRows (cld : Array SparsePolyZZ) (current width added : Nat)
+    (matrix : Generated.StrictRecombine.LLLMatrix) : Prop :=
+  ∀ offset, offset < added → ∀ position, position < cld.size →
+    (matrix[cld.size + current + offset]!)[position]! =
+      Generated.StrictRecombine.sparseCoeff cld[position]!
+        (cldSpiralDegree width (current + offset))
+
+theorem appendCldColumn_preserves_data_rows
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (cld : Array SparsePolyZZ) (current width added : Nat)
+    (hinput : ConcreteLLLInputValid matrix)
+    (hdimension : matrix.size = cld.size + current + added)
+    (hdata : CldMatrixDataRows cld current width added matrix)
+    (hrun : Generated.StrictRecombine.appendCldColumn matrix cld
+      (current + added) (cldSpiralDegree width (current + added)) =
+        .ok output) :
+    CldMatrixDataRows cld current width (added + 1) output := by
+  intro offset hoffset position hposition
+  by_cases hold : offset < added
+  · have hrow : cld.size + current + offset < matrix.size := by omega
+    have hrowSize := hinput.rows_square
+      (cld.size + current + offset) hrow
+    have hcolumn : position <
+        matrix[cld.size + current + offset]!.size := by
+      rw [getElem!_pos matrix (cld.size + current + offset) hrow]
+      rw [hrowSize]
+      omega
+    rw [appendCldColumn_old_entry matrix output cld (current + added)
+      (cldSpiralDegree width (current + added))
+      (cld.size + current + offset) position (by omega) hrow hcolumn hrun]
+    exact hdata offset hold position hposition
+  · have hoffsetEq : offset = added := by omega
+    subst offset
+    simpa [hdimension, Nat.add_assoc] using
+      appendCldColumn_data_entry matrix output cld (current + added)
+        (cldSpiralDegree width (current + added)) position (by omega)
+        hposition hrun
+
+theorem buildCldMatrixLoop_data_rows
+    (cld : Array SparsePolyZZ) (current target width added : Nat)
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (finalAdded : Nat) (hinput : ConcreteLLLInputValid matrix)
+    (hdimension : matrix.size = cld.size + current + added)
+    (hdata : CldMatrixDataRows cld current width added matrix)
+    (hrun : Generated.StrictRecombine.buildCldMatrixLoop cld current target
+      width added matrix = .ok (output, finalAdded)) :
+    CldMatrixDataRows cld current width finalAdded output := by
+  induction hmeasure : target - added using Nat.strong_induction_on
+      generalizing added matrix output finalAdded with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.buildCldMatrixLoop] at hrun
+      by_cases htarget : added < target
+      · rw [dif_pos htarget] at hrun
+        dsimp only at hrun
+        by_cases hwidth : current + added < width
+        · rw [dif_pos hwidth] at hrun
+          cases happend : Generated.StrictRecombine.appendCldColumn matrix cld
+              (current + added) (cldSpiralDegree width (current + added)) with
+          | error fault =>
+              unfold cldSpiralDegree at happend
+              rw [happend] at hrun
+              contradiction
+          | ok next =>
+              unfold cldSpiralDegree at happend
+              rw [happend] at hrun
+              change Generated.StrictRecombine.buildCldMatrixLoop cld current
+                target width (added + 1) next = .ok (output, finalAdded) at hrun
+              have hstep := appendCldColumn_input_valid matrix next cld
+                (current + added) (cldSpiralDegree width (current + added))
+                hinput (by omega) happend
+              exact ih (target - (added + 1)) (by omega) (added + 1) next
+                output finalAdded hstep.1 (by omega)
+                (appendCldColumn_preserves_data_rows matrix next cld current
+                  width added hinput hdimension hdata happend) hrun rfl
+        · rw [dif_neg hwidth] at hrun
+          have hout := Except.ok.inj hrun
+          injection hout with hmatrix hadd
+          subst output
+          subst finalAdded
+          exact hdata
+      · rw [dif_neg htarget] at hrun
+        have hout := Except.ok.inj hrun
+        injection hout with hmatrix hadd
+        subst output
+        subst finalAdded
+        exact hdata
+
 theorem buildCldMatrixLoop_input_valid
     (cld : Array SparsePolyZZ) (current target width added : Nat)
     (matrix output : Generated.StrictRecombine.LLLMatrix)
@@ -6283,6 +6389,23 @@ theorem buildCldMatrix_input_valid
   exact buildCldMatrixLoop_input_valid cld current target
     (Generated.StrictRecombine.cldSpiralWidth cld) 0 matrix output added
     hinput (by simpa using hdimension) hrun
+
+theorem buildCldMatrix_data_rows
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (cld : Array SparsePolyZZ) (current target added : Nat)
+    (hinput : ConcreteLLLInputValid matrix)
+    (hdimension : matrix.size = cld.size + current)
+    (hrun : Generated.StrictRecombine.buildCldMatrix matrix cld current target =
+      .ok (output, added)) :
+    CldMatrixDataRows cld current
+      (Generated.StrictRecombine.cldSpiralWidth cld) added output := by
+  unfold Generated.StrictRecombine.buildCldMatrix at hrun
+  apply buildCldMatrixLoop_data_rows cld current target
+    (Generated.StrictRecombine.cldSpiralWidth cld) 0 matrix output added
+    hinput (by simpa using hdimension)
+  · intro offset hoffset
+    omega
+  · exact hrun
 
 set_option maxHeartbeats 800000 in
 theorem ConcreteLLLInputValid.rational_prefix_rows_linearIndependent

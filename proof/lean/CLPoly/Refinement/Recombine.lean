@@ -9532,6 +9532,112 @@ theorem cldPolys_size_of_success
   simpa using cldPolysLoop_size_of_success ops fStar activeFactors modulus 0
     #[] output hrun
 
+/-- The generated class collector only updates existing result slots, so its
+physical outer array size is invariant. -/
+theorem collectCandidateClasses_size
+    (classes : Array (Option Nat)) (column : Nat)
+    (result output : Array (Array Int32))
+    (hrun : Generated.StrictRecombine.collectCandidateClasses classes column
+      result = .ok output) :
+    output.size = result.size := by
+  induction hmeasure : classes.size - column using Nat.strong_induction_on
+      generalizing column result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.collectCandidateClasses] at hrun
+      split at hrun
+      next hcolumn =>
+        split at hrun
+        next hnone => contradiction
+        next classId hclassId =>
+          split at hrun
+          next hclass =>
+            have htail := ih (classes.size - (column + 1)) (by omega)
+              (column := column + 1)
+              (result := result.set classId
+                (result[classId].push column.toUInt32.toInt32))
+              (output := output) hrun rfl
+            simpa using htail
+          next hclass => contradiction
+      next hcolumn =>
+        exact congrArg Array.size (Except.ok.inj hrun.symm)
+
+/-- During the generated outer partition loop, at most one new class is
+created per unprocessed physical column. -/
+theorem partitionCandidateColumns_classCount_bound
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (factorCount column classCount : Nat)
+    (classes outputClasses : Array (Option Nat)) (outputCount : Nat)
+    (hcolumn : column ≤ factorCount)
+    (hrun : Generated.StrictRecombine.partitionCandidateColumns transform
+      shortRows factorCount column classCount classes =
+        .ok (outputClasses, outputCount)) :
+    outputCount ≤ classCount + (factorCount - column) := by
+  induction hmeasure : factorCount - column using Nat.strong_induction_on
+      generalizing column classCount classes outputClasses outputCount with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.partitionCandidateColumns] at hrun
+      split at hrun
+      next hnext =>
+        split at hrun
+        next hclass =>
+          split at hrun
+          next existing =>
+            have htail := ih (factorCount - (column + 1)) (by omega)
+              (column := column + 1) (classCount := classCount)
+              (classes := classes) (outputClasses := outputClasses)
+              (outputCount := outputCount) (by omega) hrun rfl
+            omega
+          next hnone =>
+            cases hassign : Generated.StrictRecombine.assignCandidateClass
+                transform shortRows column factorCount classCount (column + 1)
+                (classes.set column (some classCount)) with
+            | error fault =>
+              simp [hassign] at hrun
+            | ok assigned =>
+              simp only [hassign] at hrun
+              have htail := ih (factorCount - (column + 1)) (by omega)
+                (column := column + 1) (classCount := classCount + 1)
+                (classes := assigned) (outputClasses := outputClasses)
+                (outputCount := outputCount) (by omega) hrun rfl
+              omega
+        next hclass => contradiction
+      next hnext =>
+        have hout := Except.ok.inj hrun
+        cases hout
+        omega
+
+/-- Every successful literal `__extract_candidates` execution returns no
+more candidate classes than there are physical active-factor columns. -/
+theorem extractCandidates_size_le
+    (shortRows : Array Nat)
+    (transform : Generated.StrictRecombine.LLLMatrix) (factorCount : Nat)
+    (output : Array (Array Int32))
+    (hrun : Generated.StrictRecombine.extractCandidates shortRows transform
+      factorCount = .ok output) :
+    output.size ≤ factorCount := by
+  by_cases hempty : shortRows.isEmpty
+  · simp [Generated.StrictRecombine.extractCandidates, hempty] at hrun
+    subst output
+    simp
+  · cases hpartition : Generated.StrictRecombine.partitionCandidateColumns
+        transform shortRows factorCount 0 0
+          (Array.replicate factorCount none) with
+    | error fault =>
+      simp [Generated.StrictRecombine.extractCandidates, hempty,
+        hpartition] at hrun
+    | ok partition =>
+      rcases partition with ⟨classes, classCount⟩
+      simp only [Generated.StrictRecombine.extractCandidates, hempty,
+        hpartition] at hrun
+      have hcount := partitionCandidateColumns_classCount_bound transform
+        shortRows factorCount 0 0 (Array.replicate factorCount none) classes
+        classCount (by omega) hpartition
+      have hsize := collectCandidateClasses_size classes 0
+        (Array.replicate classCount #[]) output hrun
+      simp at hsize
+      simp at hcount
+      exact hsize.le.trans hcount
+
 theorem appendFallbackLoop_refines (fallback : Array SparsePolyZZ)
     (index : Nat) (result : Array SparsePolyZZ) :
     Generated.StrictRecombine.appendFallbackLoop fallback index result =

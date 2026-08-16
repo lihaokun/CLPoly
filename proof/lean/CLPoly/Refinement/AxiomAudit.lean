@@ -162,6 +162,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.ZassenhausTerminalCertificate.output_irreducible
 #print axioms Refinement.StrictFactorZZ.selectionHensel_zassenhausRecombine_refines_FactorZZCorrect
 #print axioms Refinement.StrictRecombine.zassenhausRecombine_toPoly_product_associated
+#print axioms Refinement.StrictRecombine.collectCandidateClasses_size
+#print axioms Refinement.StrictRecombine.partitionCandidateColumns_classCount_bound
+#print axioms Refinement.StrictRecombine.extractCandidates_size_le
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

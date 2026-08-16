@@ -3667,3 +3667,23 @@ claims.
 - Next: lift the same physical-factor invariant across the van-Hoeij
   validation path and use the `__lll_factorize` retry guard to distinguish the
   singleton-count heuristic success from the mandatory full-precision pass.
+
+## Bound physical van-Hoeij candidate classes
+
+The proof now follows the three literal generated `__extract_candidates`
+loops.  `collectCandidateClasses_size` proves that collection only updates
+existing class slots.  `partitionCandidateColumns_classCount_bound` follows
+the outer column loop and shows that at most one new class is created per
+unprocessed physical column, including the actual inner assignment result.
+Together, `extractCandidates_size_le` proves every successful generated
+extraction returns no more candidate classes than the live modular-factor
+count.
+
+This is the first cardinality half needed by the top-level retry argument: a
+heuristic result can reach the original modular-factor count only if no class
+aggregation was hidden.  The next step strengthens collection from the outer
+array count to occurrence-sensitive coverage and nonempty classes, then
+threads consumed-class cardinality through successful validation.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.

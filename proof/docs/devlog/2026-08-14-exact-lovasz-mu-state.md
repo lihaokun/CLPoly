@@ -2544,3 +2544,22 @@ No C++ files changed, so this step has no new C++ b2b change surface.
 `lake build CLPoly.Refinement.Hensel` completed successfully (3328 jobs).
 Next, the canonical builder's initial right factors are proved physically
 monic and the property is transferred through exact leaf extraction.
+
+## Recover a literal monic head from generated field conversion
+
+The generated tree builder's `Zp`-to-`ZZ` conversion now has the exact
+representation theorem required to initialize the physical Hensel invariant.
+
+- `henselTreeZpToZZIR_hasPhysicalOneHead_of_monic` starts from a canonical,
+  nonempty sparse finite-field polynomial whose decoded polynomial is monic.
+- It identifies the decoded leading coefficient with the actual array head,
+  uses reduced-representative injectivity to prove that the stored `UInt64`
+  value is literally one, and then follows the generated array `map` used by
+  `poly_convert`.
+- The conclusion is `HasPhysicalOneHead` for the concrete integer sparse
+  array, rather than a modular equality or a postulated monic output.
+
+No C++ files changed, so this step has no new C++ b2b change surface.
+`lake build CLPoly.Refinement.Hensel` completed successfully (3328 jobs).
+Next, monicity of the actual right-half product is established and this
+conversion theorem is threaded through the recursive builder certificate.

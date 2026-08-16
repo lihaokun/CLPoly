@@ -10353,6 +10353,37 @@ theorem henselTreeZpToZZIR_canonical (p : Nat) (f : SparsePolyZp)
     intro hzero
     exact hnonzero (UInt64.toNat_inj.mp (by simp [hzero]))
 
+/-- A canonical nonempty finite-field polynomial whose decoded polynomial is
+monic converts to an integer sparse array with a literal coefficient-one
+head.  This is a representation theorem about the generated `poly_convert`,
+not merely a modular polynomial equality. -/
+theorem henselTreeZpToZZIR_hasPhysicalOneHead_of_monic
+    (p : Nat) [Fact (Nat.Prime p)] (f : SparsePolyZp)
+    (hf : CLPoly.Math.SparsePolyZp.Canonical p f)
+    (hnonempty : 0 < f.size)
+    (hmonic : (CLPoly.Math.SparsePolyZp.toPoly p f).Monic) :
+    HasPhysicalOneHead
+      (Generated.StrictHensel.henselTreeZpToZZIR f) := by
+  have hleading := henselEEAToPoly_leadingCoeff_eq_head p f hf hnonempty
+  rw [hmonic.leadingCoeff] at hleading
+  have hheadMem : f[0] ∈ f.toList := Array.getElem_mem_toList hnonempty
+  have hheadReduced := hf.1 f[0] hheadMem
+  have hvalNat : f[0].2.val.toNat = 1 := by
+    have hval := congrArg ZMod.val hleading
+    unfold CLPoly.Math.Zp.toZMod at hval
+    rw [ZMod.val_natCast, Nat.mod_eq_of_lt hheadReduced.2] at hval
+    have hp : 1 < p := (Fact.out : Nat.Prime p).one_lt
+    simpa [ZMod.val_one, Nat.mod_eq_of_lt hp] using hval.symm
+  have hlist : f.toList = f[0] :: f.toList.drop 1 := by
+    simpa using (List.getElem_cons_drop (as := f.toList) (i := 0)
+      (by simpa using hnonempty)).symm
+  refine ⟨f[0].1,
+    (f.toList.drop 1).map fun term =>
+      (term.1, (term.2.val.toNat : Int)), ?_⟩
+  rw [Generated.StrictHensel.henselTreeZpToZZIR, Array.toList_map, hlist,
+    List.map_cons]
+  simp [hvalNat]
+
 /-- Mathematical denotation of the same half-open source interval consumed
 by a tree-product loop.  This is used only in the proof layer. -/
 noncomputable def henselFactorRangeProduct (p : Nat)

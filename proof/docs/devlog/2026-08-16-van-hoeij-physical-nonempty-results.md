@@ -268,3 +268,26 @@ factorization assumption.
   surface.
 - Next: prove validation's source `remaining` guard leaves at least one active
   index, then lift the common size budget through `vanHoeijLoop`.
+
+## Preserve one physical active factor through validation
+
+`markConsumedLoop_count_le` follows the exact generated marker recursion and
+bounds the number of newly true bitmap positions by the unprocessed candidate
+suffix.  `validateCandidatesLoop_consumed_count_lt` then follows every branch
+of the real validation loop.  Its successful-factor branch uses the source
+guard `candidate.size < remaining`, charges the concrete marker update, and
+recurses with the literal subtraction `remaining - candidate.size`.
+
+At the public entry, the initial bitmap is physically all false and
+`remaining = activeLifted.size`, giving a strict bound on the final true-bit
+count.  Combining that bound with the exact reverse-erasure equation proves
+`validateRemove_active_nonempty`: a successful extraction round cannot erase
+the last active factor.  This is execution-derived state needed by the next
+well-founded van-Hoeij call, not an external termination or semantic oracle.
+
+- Termination measures: candidate suffix length for both generated recursive
+  loops; no fuel is used.
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: carry `result.size + active.size` through every constructor of the
+  generated lexicographic `vanHoeijLoop` and its literal fallback.

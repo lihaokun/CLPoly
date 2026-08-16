@@ -323,3 +323,5 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.zassenhausAttempt_extracted_factor_mod_eq_selected_pair
 #print axioms Refinement.StrictRecombine.zassenhausLoop_complete
 #print axioms Refinement.StrictFactorZZ.integer_divisor_candidate_rejected_of_scan_exhausted
+#print axioms Refinement.StrictRecombine.gatherActive_members_source
+#print axioms Refinement.StrictRecombine.gatherActive_irreducible

@@ -12198,6 +12198,71 @@ theorem gatherActive_size_of_success (active : Array Int32)
           simp [this]
   simpa using (loopSize 0 #[] hrun)
 
+/-- Every physical factor returned by the generated active-index gather is an
+actual member of the original lifted array.  The statement follows the raw
+loop, including both checked index guards; it does not use `get!` defaults or
+an abstract subarray operation. -/
+theorem gatherActive_members_source (active : Array Int32)
+    (lifted output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.gatherActive active lifted = .ok output) :
+    ∀ factor ∈ output.toList, factor ∈ lifted.toList := by
+  unfold Generated.StrictRecombine.gatherActive at hrun
+  have loopMembers : ∀ index result,
+      Generated.StrictRecombine.gatherActiveLoop active lifted index result =
+          .ok output →
+        (∀ factor ∈ result.toList, factor ∈ lifted.toList) →
+        ∀ factor ∈ output.toList, factor ∈ lifted.toList := by
+    intro index result hloop hresult
+    induction hmeasure : active.size - index using Nat.strong_induction_on
+        generalizing index result with
+    | h measure ih =>
+        rw [Generated.StrictRecombine.gatherActiveLoop] at hloop
+        split at hloop
+        next hindex =>
+          dsimp only at hloop
+          split at hloop
+          next hnonnegative =>
+            split at hloop
+            next hsource =>
+              refine ih (active.size - (index + 1)) (by omega)
+                (index + 1)
+                (result.push lifted[active[index].toInt64.toNat]) hloop ?_ rfl
+              intro factor hfactor
+              rw [Array.toList_push] at hfactor
+              rcases List.mem_append.mp hfactor with hprefix | hlast
+              · exact hresult factor hprefix
+              · have heq : factor = lifted[active[index].toInt64.toNat] := by
+                  simpa using hlast
+                subst factor
+                exact Array.getElem_mem_toList hsource
+            next hsource => contradiction
+          next hnonnegative => contradiction
+        next hindex =>
+          have hout := Except.ok.inj hloop
+          subst output
+          exact hresult
+  exact loopMembers 0 #[] hrun (by simp)
+
+/-- Modular irreducibility of the original Hensel array is inherited by the
+exact physical subarray produced by `gatherActive`. -/
+theorem gatherActive_irreducible
+    (base : Nat) [Fact (Nat.Prime base)]
+    (active : Array Int32) (lifted output : Array SparsePolyZZ)
+    (hirreducible : ∀ index (hindex : index < lifted.size),
+      Irreducible (StrictHensel.toPolyMod base lifted[index]))
+    (hrun : Generated.StrictRecombine.gatherActive active lifted = .ok output) :
+    ∀ index (hindex : index < output.size),
+      Irreducible (StrictHensel.toPolyMod base output[index]) := by
+  intro index hindex
+  have hmember : output[index] ∈ output.toList :=
+    Array.getElem_mem_toList hindex
+  have hsource := gatherActive_members_source active lifted output hrun
+    output[index] hmember
+  rcases List.mem_iff_getElem.mp hsource with ⟨sourceIndex, hsourceIndex, heq⟩
+  have hsourceIndex' : sourceIndex < lifted.size := by simpa using hsourceIndex
+  rw [← heq]
+  exact hirreducible sourceIndex hsourceIndex'
+
 theorem cldPolysLoop_size_of_success
     (ops : Generated.StrictRecombine.CldRawOps)
     (fStar : SparsePolyZZ) (activeFactors : Array SparsePolyZZ)

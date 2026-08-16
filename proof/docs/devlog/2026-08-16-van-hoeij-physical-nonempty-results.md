@@ -824,3 +824,29 @@ physical arrays, with no fuel, partial definition, semantic LLL oracle,
 - Next: preserve the accumulated reduced-prefix predicate across both the
   advancing and swapping branches, then use the proved main-loop exit guard
   to obtain the complete final LLL certificate.
+
+## Accumulate the generated Lovasz prefix on advancing steps
+
+The generated C++ cursor now has an explicit processed-prefix invariant:
+
+- `sizeReduceAt_preserves_mu_row_of_ne` proves a physical reduction changes
+  only its current target row;
+- `extraSizeReduceLoop_preserves_mu_row_before` propagates unchanged earlier
+  rows through the actual descending well-founded loop;
+- `lllStep_advanced_preserves_mu_row_before` composes the adjacent reduction,
+  the later reductions, and the final cursor increment; and
+- `lllStep_advanced_preserves_lovaszPrefix` extends `LovaszPrefix` by exactly
+  the pair checked in the successful generated branch while preserving every
+  previously checked pair.
+
+The invariant is stated on the returned physical `mu` and norm arrays, not on
+an abstract L2 LLL execution.  It therefore prevents a successful comparison
+from being reused after a later array update has invalidated its operands.
+No fuel, partial definition, semantic LLL oracle, `sorry`, or custom axiom is
+introduced.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: show a failed-Lovasz swap preserves the strictly earlier prefix; then
+  lift the invariant through the complete well-founded main loop and its
+  concrete exit condition.

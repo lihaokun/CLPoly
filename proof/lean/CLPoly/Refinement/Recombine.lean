@@ -6909,6 +6909,20 @@ theorem sizeReduceAt_preserves_mu_entry_of_source_lt
   rw [hmu, hcontrol.2]
   simpa [Nat.not_lt.mpr hsourceColumn.le, ne_of_gt hsourceColumn] using hentry
 
+theorem sizeReduceAt_preserves_mu_row_of_ne
+    (state output : Generated.StrictRecombine.LLLState)
+    (source row : Nat)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hsourceK : source < state.k)
+    (hrow : row < state.mu.size)
+    (hrowK : row ≠ state.k)
+    (hrun : Generated.StrictRecombine.sizeReduceAt state source = .ok output) :
+    output.mu[row]! = state.mu[row]! := by
+  rcases sizeReduceAt_mu_eq state output source hvalid hsourceK hrun with
+    ⟨coefficient, _hround, hmu⟩
+  rw [hmu, sizeReduceMuResult_get_of_ne state.mu state.k source row
+    coefficient hrow hrowK]
+
 theorem gsLowerPrefix_sizeReduceMuResult
     (state : Generated.StrictRecombine.LLLState)
     (source rowCount : Nat) (q : ZZ)
@@ -8658,6 +8672,45 @@ theorem extraSizeReduceLoop_preserves_execution_valid
         have hcontrol := sizeReduceAt_preserves_norms_k state next remaining hstep
         exact ih next output hnextValid (by rw [hcontrol.2]; omega) hrun
 
+theorem extraSizeReduceLoop_preserves_mu_row_before
+    (remaining : Nat) (state output : Generated.StrictRecombine.LLLState)
+    (row : Nat)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hkMu : state.k < state.mu.size)
+    (hremaining : remaining < state.k)
+    (hrow : row < state.k)
+    (hrun : Generated.StrictRecombine.extraSizeReduceLoop remaining state =
+      .ok output) :
+    output.mu[row]! = state.mu[row]! := by
+  induction remaining generalizing state output with
+  | zero =>
+      simp [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      subst output
+      rfl
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      cases hstep : Generated.StrictRecombine.sizeReduceAt state remaining with
+      | error fault => simp [hstep] at hrun
+      | ok next =>
+        simp only [hstep] at hrun
+        have hcontrol := sizeReduceAt_preserves_norms_k state next remaining hstep
+        have hnextValid := sizeReduceAt_preserves_execution_valid state next
+          remaining hvalid (by omega) hstep
+        have hrowMu : row < state.mu.size := lt_trans hrow hkMu
+        have hhead := sizeReduceAt_preserves_mu_row_of_ne state next
+          remaining row hvalid (by omega) hrowMu (by omega) hstep
+        have hnextMuSize : next.mu.size = state.mu.size := by
+          rw [hnextValid.mu_size, hvalid.mu_size]
+          have hnorms := congrArg Array.size hcontrol.1
+          simpa [hvalid.norms_size, hnextValid.norms_size] using hnorms
+        have hkMuNext : next.k < next.mu.size := by
+          rw [hcontrol.2, hnextMuSize]
+          exact hkMu
+        have htail := ih next output hnextValid hkMuNext
+          (by rw [hcontrol.2]; omega)
+          (by simpa [hcontrol.2] using hrow) hrun
+        exact htail.trans hhead
+
 theorem extraSizeReduceLoop_preserves_mu_entry_above
     (remaining : Nat) (state output : Generated.StrictRecombine.LLLState)
     (column : Nat)
@@ -8769,6 +8822,68 @@ theorem lllStep_advanced_lovasz_at_previous
                       getElem!_pos reduced.norms reduced.k hkNorm,
                       getElem!_pos reduced.norms (reduced.k - 1) hpredNorm] using
                       hlovasz
+                next hlovasz =>
+                  repeat' first | split at hrun | simp_all
+              next hpredMu => contradiction
+            next hkMu => contradiction
+          next hpredNorm => contradiction
+        next hkNorm => contradiction
+    · rw [dif_neg hkMatrix] at hrun
+      simp at hrun
+  · rw [dif_neg hkPositive] at hrun
+    simp at hrun
+
+theorem lllStep_advanced_preserves_mu_row_before
+    (state output : Generated.StrictRecombine.LLLState)
+    (row : Nat)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrow : row < state.k)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    output.mu[row]! = state.mu[row]! := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hreduceControl := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        have hreduceValid := sizeReduceAt_preserves_execution_valid state reduced
+          (state.k - 1) hvalid (by omega) hreduce
+        have hkMuState : state.k < state.mu.size := by
+          rw [hvalid.mu_size]
+          simpa [hvalid.norms_size] using hkMatrix
+        have hfirst := sizeReduceAt_preserves_mu_row_of_ne state reduced
+          (state.k - 1) row hvalid (by omega) (lt_trans hrow hkMuState)
+          (by omega) hreduce
+        split at hrun
+        next hkNorm =>
+          split at hrun
+          next hpredNorm =>
+            split at hrun
+            next hkMu =>
+              split at hrun
+              next hpredMu =>
+                dsimp at hrun
+                split at hrun
+                next hlovasz =>
+                  cases hextra : Generated.StrictRecombine.extraSizeReduceLoop
+                      (reduced.k - 1) reduced with
+                  | error fault => simp [hextra] at hrun
+                  | ok fullyReduced =>
+                    simp only [hextra] at hrun
+                    have htail := extraSizeReduceLoop_preserves_mu_row_before
+                      (reduced.k - 1) reduced fullyReduced row hreduceValid hkMu
+                      (by omega) (by simpa [hreduceControl.2] using hrow) hextra
+                    have hout := Except.ok.inj hrun
+                    injection hout with hstate
+                    subst output
+                    exact htail.trans hfirst
                 next hlovasz =>
                   repeat' first | split at hrun | simp_all
               next hpredMu => contradiction
@@ -8904,6 +9019,38 @@ theorem swapMatrixRows_ok
       exact ⟨hleft, hright, (Except.ok.inj hrun).symm⟩
     next hright => contradiction
   next hleft => contradiction
+
+/-- Lovasz inequalities for every adjacent pair already passed by the exact
+generated C++ `k` cursor. -/
+def LovaszPrefix (state : Generated.StrictRecombine.LLLState) : Prop :=
+  ∀ index, 0 < index → index < state.k → index < state.matrix.size →
+    ((3 : QQ) / 4 -
+        ((state.mu[index]!)[index - 1]!) *
+          ((state.mu[index]!)[index - 1]!)) *
+        state.norms[index - 1]! ≤ state.norms[index]!
+
+theorem lllStep_advanced_preserves_lovaszPrefix
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : LovaszPrefix state)
+    (hrun : Generated.StrictRecombine.lllStep state =
+      .ok (.advanced output)) :
+    LovaszPrefix output := by
+  have hcontrol := lllStep_advanced_control state output hrun
+  have houtputValid := lllStep_advanced_preserves_execution_valid state output
+    hvalid hrun
+  have hmatrixSize : output.matrix.size = state.matrix.size := by
+    rw [← houtputValid.norms_size, hcontrol.1, hvalid.norms_size]
+  intro index hpositive hindexK hindexMatrix
+  have hindexLe : index ≤ state.k := by omega
+  by_cases hcurrent : index = state.k
+  · subst index
+    exact lllStep_advanced_lovasz_at_previous state output hvalid hrun
+  · have hbefore : index < state.k := by omega
+    have hrow := lllStep_advanced_preserves_mu_row_before state output index
+      hvalid hbefore hrun
+    rw [hcontrol.1, hrow]
+    exact hprefix index hpositive hbefore (by simpa [hmatrixSize] using hindexMatrix)
 
 theorem swapMatrixRows_size
     (matrix output : Generated.StrictRecombine.LLLMatrix) (left right : Nat)

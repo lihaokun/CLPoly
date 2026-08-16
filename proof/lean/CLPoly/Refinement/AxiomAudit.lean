@@ -153,6 +153,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.zassenhausAttempt_extracted_irreducible
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_liveRecoveryPrecision
 #print axioms Refinement.StrictFactorZZ.LiveRecoveryPrecision.extract
+#print axioms Refinement.StrictFactorZZ.FactorArrayIrreducible.push
+#print axioms Refinement.StrictFactorZZ.FactorArrayIrreducible.sortFactorsByDegree
+#print axioms Refinement.StrictFactorZZ.FactorArrayIrreducible.finishZassenhaus
 #print axioms Refinement.StrictFactorZZ.henselCandidate_physicalComplement_coprime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_eq_divisor_mod_prime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_leadingCoeff

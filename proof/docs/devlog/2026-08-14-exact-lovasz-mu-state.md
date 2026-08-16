@@ -3554,3 +3554,18 @@ factorizations.
 - Next: combine all live packages in one well-founded outer-loop correctness
   theorem and prove its actual output satisfies irreducibility and product
   correctness.
+
+## Track irreducibility in the physical result array
+
+`FactorArrayIrreducible` states irreducibility directly for every member of
+the generated loop's physical result array.  Its `push` theorem extends the
+invariant with the exact factor returned by a successful scan.
+`sortFactorsByDegree` transports it through the literal final merge sort using
+the sort permutation, so no semantic replacement list is introduced.
+`finishZassenhaus` follows both source guards and requires irreducibility of
+the final `fStar` only in the actual branch that physically pushes it.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: package a successful scan/removal as one live extraction step, then
+  use it in the complete outer-loop terminal-state recursion.

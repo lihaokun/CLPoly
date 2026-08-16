@@ -765,6 +765,58 @@ structure LiveRecoveryPrecision (modulus : Nat)
       ((Polynomial.C quotient.leadingCoeff * divisor).coeff degree).natAbs *
         2 < modulus
 
+/-- Member-level correctness of the physical result array accumulated by the
+generated Zassenhaus loop. -/
+def FactorArrayIrreducible (result : Array SparsePolyZZ) : Prop :=
+  ∀ factor ∈ result.toList, Irreducible (SparsePolyZZ.toPoly factor)
+
+theorem FactorArrayIrreducible.empty : FactorArrayIrreducible #[] := by
+  simp [FactorArrayIrreducible]
+
+theorem FactorArrayIrreducible.push
+    {result : Array SparsePolyZZ} {factor : SparsePolyZZ}
+    (hresult : FactorArrayIrreducible result)
+    (hfactor : Irreducible (SparsePolyZZ.toPoly factor)) :
+    FactorArrayIrreducible (result.push factor) := by
+  intro candidate hcandidate
+  rw [Array.toList_push] at hcandidate
+  rcases List.mem_append.mp hcandidate with hmember | hlast
+  · exact hresult candidate hmember
+  · have heq : candidate = factor := by simpa using hlast
+    subst candidate
+    exact hfactor
+
+theorem FactorArrayIrreducible.sortFactorsByDegree
+    {result : Array SparsePolyZZ}
+    (hresult : FactorArrayIrreducible result) :
+    FactorArrayIrreducible
+      (Generated.StrictRecombine.sortFactorsByDegree result) := by
+  intro factor hfactor
+  unfold Generated.StrictRecombine.sortFactorsByDegree at hfactor
+  have hsorted : factor ∈ result.toList.mergeSort (fun left right =>
+      left[0]!.1.deg < right[0]!.1.deg) := by simpa using hfactor
+  have horiginal : factor ∈ result.toList :=
+    (List.Perm.mem_iff (List.mergeSort_perm _ _)).mp hsorted
+  exact hresult factor horiginal
+
+theorem FactorArrayIrreducible.finishZassenhaus
+    {fStar : SparsePolyZZ} {result : Array SparsePolyZZ}
+    (hresult : FactorArrayIrreducible result)
+    (hfStar : 0 < fStar.size → 0 < fStar[0]!.1.deg →
+      Irreducible (SparsePolyZZ.toPoly fStar)) :
+    FactorArrayIrreducible
+      (Generated.StrictRecombine.finishZassenhaus fStar result) := by
+  unfold Generated.StrictRecombine.finishZassenhaus
+  apply FactorArrayIrreducible.sortFactorsByDegree
+  split
+  next hnonempty =>
+    split
+    next hdegree =>
+      exact hresult.push (hfStar hnonempty (by
+        simpa [getElem!_pos fStar 0 hnonempty] using hdegree))
+    next hdegree => exact hresult
+  next hnonempty => exact hresult
+
 /-- The selected-prime product relation exposed in the orientation used by
 the live divisor-to-subset theorem. -/
 theorem LiveHenselProduct.primeProductAssociated

@@ -1379,6 +1379,161 @@ theorem zassenhausLeadingPrune_accepts_hensel_candidate
   exact StrictRecombine.zassenhaus_prune_condition_false_of_dvd
     (leading.2 * leading.2) leading.2 (dvd_mul_right _ _)
 
+/-- The literal constant-coefficient pruning branch accepts the genuine
+divisor candidate.  Hensel uniqueness identifies the generated accumulator
+with the quotient-leading-scaled divisor at the full returned modulus; the
+generated Mignotte precision then recovers its constant coefficient exactly. -/
+theorem zassenhausConstantPrune_accepts_hensel_divisor_candidate
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime 0 output)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly f = divisor * quotient)
+    (hdivisorModNonzero : Polynomial.map
+      (Int.castRingHom (ZMod selection.prime.toNat)) divisor ≠ 0)
+    (hdivisorLeading :
+      (Polynomial.map
+        (Int.castRingHom (ZMod selection.prime.toNat)) divisor).leadingCoeff =
+          (divisor.leadingCoeff : ZMod selection.prime.toNat))
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination output.1.size candidate.size
+      candidate)
+    (hassociated : Associated
+      (Polynomial.map
+        (Int.castRingHom (ZMod selection.prime.toNat)) divisor)
+      (((StrictRecombine.selectSourceIndices output.1.toList
+        candidate.toList).map
+          (StrictHensel.toPolyMod selection.prime.toNat)).prod)) :
+    ∃ constantProduct,
+      Generated.StrictRecombine.selectedConstantProductLoop candidate output.1
+        0 leading.2 = .ok constantProduct ∧
+      ZZ.symmetricMod constantProduct output.2 =
+        (Polynomial.C quotient.leadingCoeff * divisor).coeff 0 ∧
+      ¬(ZZ.symmetricMod constantProduct output.2 ≠ 0 ∧
+        ZZ.fdiv_r 0 (leading.2 *
+          Generated.StrictRecombine.constantTerm f)
+          (ZZ.symmetricMod constantProduct output.2) ≠ 0) := by
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < output.1.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  have hselectedCanonical : ∀ position
+      (hposition : position < candidate.size),
+      StrictPolynomialMod.SparsePolyZZCanonical
+        output.1[candidate[position]]! := by
+    intro position hposition
+    have hactive := hbound position hposition
+    simpa [getElem!_pos output.1 candidate[position] hactive] using
+      hentry.outputCanonical candidate[position] hactive
+  have hconstantValues :=
+    StrictRecombine.selectedConstantValues_prod_eq_coeff_zero_of_canonical
+      candidate output.1 hbound hselectedCanonical
+  let selectedInteger :=
+    ((StrictRecombine.selectSourceIndices output.1.toList candidate.toList).map
+      SparsePolyZZ.toPoly).prod
+  have hloop := StrictRecombine.selectedConstantProductLoop_succeeds candidate
+    output.1 0 leading.2 hbound
+  rw [hconstantValues] at hloop
+  change Generated.StrictRecombine.selectedConstantProductLoop candidate
+      output.1 0 leading.2 =
+    .ok (leading.2 * selectedInteger.coeff 0) at hloop
+  rcases henselCandidate_scaled_eq_divisor_mod_primePower hcount hp2 hfactors
+      hleadingSemantic hselection hentry divisor quotient hfactor
+      hdivisorModNonzero hdivisorLeading candidate hlegal hassociated with
+    ⟨exponent, hexponent, houtput, hunique⟩
+  let modulus := selection.prime.toNat ^ exponent
+  let target := Polynomial.C quotient.leadingCoeff * divisor
+  have hmodulus : 0 < modulus := by
+    exact pow_pos (Fact.out : Nat.Prime selection.prime.toNat).pos exponent
+  have hsourceLeading : (SparsePolyZZ.toPoly f).leadingCoeff = leading.2 := by
+    have hfront : f[0] = leading := by
+      rw [Array.getElem?_eq_getElem hnonempty] at hleading
+      exact Option.some.inj hleading
+    rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
+      hnonempty, hfront]
+  have hcoefficientCongruence :
+      ((leading.2 * selectedInteger.coeff 0 : Int) : ZMod modulus) =
+        (target.coeff 0 : ZMod modulus) := by
+    have hcoeff := congrArg
+      (fun polynomial : Polynomial (ZMod modulus) => polynomial.coeff 0)
+      hunique
+    simpa [selectedInteger, target, Polynomial.map_mul, Polynomial.map_C,
+      Polynomial.coeff_map, hsourceLeading] using hcoeff
+  have hsourceNe : SparsePolyZZ.toPoly f ≠ 0 := by
+    intro hzero
+    apply hselection.goodPrime.lc_nonzero
+    rw [hzero]
+    simp
+  have hprecision := StrictRecombine.hensel_output_modulus_bounds_scaled_divisor
+    hentry rfl hcanonical hnonempty hdegree leading hleading divisor
+      hsourceNe (hfactor ▸ dvd_mul_right divisor quotient)
+  have hdivisorNe : divisor ≠ 0 := by
+    intro hzero
+    apply hdivisorModNonzero
+    simp [hzero]
+  have hdivisorLeadingNe : divisor.leadingCoeff ≠ 0 := by
+    exact Polynomial.leadingCoeff_ne_zero.mpr hdivisorNe
+  have hsourceLeadingFactor : leading.2 =
+      divisor.leadingCoeff * quotient.leadingCoeff := by
+    rw [← hsourceLeading, hfactor, Polynomial.leadingCoeff_mul]
+  have htargetBound : (target.coeff 0).natAbs * 2 < modulus := by
+    have hlargeInt := hprecision.2 0
+    rw [houtput] at hlargeInt
+    have hlarge : (leading.2 * divisor.coeff 0).natAbs * 2 < modulus := by
+      exact_mod_cast hlargeInt
+    have hdivisorAbs : 0 < divisor.leadingCoeff.natAbs :=
+      Int.natAbs_pos.mpr hdivisorLeadingNe
+    have hle : (quotient.leadingCoeff * divisor.coeff 0).natAbs * 2 ≤
+        (leading.2 * divisor.coeff 0).natAbs * 2 := by
+      rw [hsourceLeadingFactor, Int.natAbs_mul, Int.natAbs_mul,
+        Int.natAbs_mul]
+      have hbase := Nat.le_mul_of_pos_left
+        (quotient.leadingCoeff.natAbs * (divisor.coeff 0).natAbs)
+        hdivisorAbs
+      have hscaled := Nat.mul_le_mul_right 2 hbase
+      simpa [Nat.mul_assoc, Nat.mul_left_comm, Nat.mul_comm] using hscaled
+    have htargetCoeff : target.coeff 0 =
+        quotient.leadingCoeff * divisor.coeff 0 := by
+      simp [target]
+    rw [htargetCoeff]
+    exact lt_of_le_of_lt hle hlarge
+  have hrecovered := StrictRecombine.symmetricMod_eq_of_congruent_strict_bound
+    (leading.2 * selectedInteger.coeff 0) (target.coeff 0) modulus hmodulus
+    hcoefficientCongruence htargetBound
+  have hmodulusInt : (modulus : Int) = output.2 := by
+    simpa [modulus] using houtput.symm
+  rw [hmodulusInt] at hrecovered
+  refine ⟨leading.2 * selectedInteger.coeff 0, hloop, hrecovered, ?_⟩
+  rw [hrecovered]
+  apply StrictRecombine.zassenhaus_prune_condition_false_of_dvd
+  have hsourceConstant : (SparsePolyZZ.toPoly f).coeff 0 =
+      divisor.coeff 0 * quotient.coeff 0 := by
+    rw [hfactor]
+    simp
+  have hfConstant : Generated.StrictRecombine.constantTerm f =
+      (SparsePolyZZ.toPoly f).coeff 0 :=
+    StrictRecombine.sparsePolyZZ_constantTerm_eq_coeff_zero f hcanonical
+  rw [hfConstant, hsourceConstant, hsourceLeadingFactor]
+  refine ⟨divisor.leadingCoeff * quotient.coeff 0, ?_⟩
+  simp [target]
+  ring
+
 /-- If the actual generated fixed-size Zassenhaus scan exhausts, then the
 occurrence-sensitive candidate supplied by any genuine integer divisor was
 not omitted: that exact index array was executed and rejected.  This is the

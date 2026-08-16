@@ -3085,3 +3085,25 @@ It proves literal recovery with the same closed-left representative argument
 as the polynomial theorem.  The prime-power candidate theorem now also exports
 the equality identifying that modulus with the integer returned by the Hensel
 entry, so subsequent source control-flow rewrites do not assume a modulus.
+
+## Close the generated constant-coefficient pruning branch
+
+`zassenhausConstantPrune_accepts_hensel_divisor_candidate` executes the literal
+`selectedConstantProductLoop` over the legal occurrence-sensitive candidate.
+Canonicality of every physical Hensel cell identifies its accumulated value
+with the constant coefficient of the integer selected product.  The full
+prime-power uniqueness theorem supplies its congruence with the genuine
+quotient-leading-scaled divisor.
+
+The new congruent scalar recovery lemma and the generated Mignotte precision
+then recover that target constant literally.  Its bound follows from the
+source-leading-scaled divisor bound and the exact equality
+`source.lc = divisor.lc * quotient.lc`; nonzeroness of the true divisor makes
+the latter bound no smaller.  Finally the recovered constant divides the
+actual pruning target `source.lc * source.coeff 0`, so the generated remainder
+test cannot reject this candidate.
+
+No C++ files changed, so this step has no new C++ regression or b2b change
+surface.  Next, the same prime-power polynomial equality will drive the
+physical trial-product, `symmetricModRaw`, primitive extraction, and exact
+division to an `.extracted` result.

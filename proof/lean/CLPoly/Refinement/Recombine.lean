@@ -15522,6 +15522,140 @@ theorem validateCandidates_preserves_primitive
     normalize_eq_one.mpr hscalarUnit, one_mul] at hcontent
   exact Polynomial.isPrimitive_iff_content_eq_one.mpr hcontent.symm
 
+private theorem natList_all_eq_one_of_pos_of_sum_eq_length
+    (values : List Nat) (hpos : ∀ value ∈ values, 0 < value)
+    (hsum : values.sum = values.length) :
+    ∀ value ∈ values, value = 1 := by
+  induction values with
+  | nil => simp
+  | cons head tail ih =>
+      have hhead : 0 < head := hpos head (by simp)
+      have htailPos : ∀ value ∈ tail, 0 < value := by
+        intro value hvalue
+        exact hpos value (by simp [hvalue])
+      have lower : ∀ values : List Nat,
+          (∀ value ∈ values, 0 < value) → values.length ≤ values.sum := by
+        intro values hvalues
+        induction values with
+        | nil => simp
+        | cons next rest restIH =>
+            have hnext := hvalues next (by simp)
+            have hrest : ∀ value ∈ rest, 0 < value := by
+              intro value hvalue
+              exact hvalues value (by simp [hvalue])
+            have hrestLower := restIH hrest
+            simp only [List.length_cons, List.sum_cons]
+            omega
+      have htailLower : tail.length ≤ tail.sum := lower tail htailPos
+      have hheadOne : head = 1 := by
+        simp only [List.sum_cons, List.length_cons] at hsum
+        omega
+      have htailSum : tail.sum = tail.length := by
+        simp only [List.sum_cons, List.length_cons, hheadOne] at hsum
+        omega
+      intro value hvalue
+      simp only [List.mem_cons] at hvalue
+      rcases hvalue with rfl | hvalue
+      · exact hheadOne
+      · exact ih htailPos htailSum value hvalue
+
+/-- In a UFD, a successful product decomposition with exactly as many
+nonzero nonunit outputs as irreducible source atoms cannot have merged two
+atoms into one output: every physical output has exactly one normalized
+factor and is therefore irreducible.  This cardinality bridge is used by the
+literal van-Hoeij validation/retry path; it does not replace that execution
+with a semantic factorization oracle. -/
+theorem irreducible_members_of_associated_products_and_equal_length
+    {M : Type*} [CommMonoidWithZero M] [NormalizationMonoid M]
+    [UniqueFactorizationMonoid M]
+    (atoms outputs : List M)
+    (hatoms : ∀ atom ∈ atoms, Irreducible atom)
+    (houtputsNe : ∀ output ∈ outputs, output ≠ 0)
+    (houtputsNonunit : ∀ output ∈ outputs, ¬ IsUnit output)
+    (hproduct : Associated outputs.prod atoms.prod)
+    (hlength : outputs.length = atoms.length) :
+    ∀ output ∈ outputs, Irreducible output := by
+  have normalizedFactors_list_prod : ∀ (values : List M),
+      (∀ value ∈ values, value ≠ 0) →
+      UniqueFactorizationMonoid.normalizedFactors values.prod =
+        (values.map UniqueFactorizationMonoid.normalizedFactors).foldr
+          (.+.) 0 := by
+    intro values hvalues
+    induction values with
+    | nil => simp
+    | cons head tail ih =>
+        have hhead := hvalues head (by simp)
+        have htail : ∀ value ∈ tail, value ≠ 0 := by
+          intro value hvalue
+          exact hvalues value (by simp [hvalue])
+        letI := nontrivial_of_ne head 0 hhead
+        have htailZero : (0 : M) ∉ tail := by
+          intro hzero
+          exact htail 0 hzero rfl
+        rw [List.prod_cons,
+          UniqueFactorizationMonoid.normalizedFactors_mul hhead
+            (List.prod_ne_zero htailZero), ih htail]
+        simp
+  have hnormalizedProduct := hproduct.normalizedFactors_eq
+  rw [normalizedFactors_list_prod outputs houtputsNe,
+    normalizedFactors_list_prod atoms (fun atom hatom =>
+      (hatoms atom hatom).ne_zero)] at hnormalizedProduct
+  have card_normalizedFactors_fold : ∀ values : List M,
+      ((values.map UniqueFactorizationMonoid.normalizedFactors).foldr
+          (.+.) 0).card =
+        (values.map fun value =>
+          (UniqueFactorizationMonoid.normalizedFactors value).card).sum := by
+    intro values
+    induction values with
+    | nil => simp
+    | cons head tail ih => simp [ih, Multiset.card_add]
+  have hcard :
+      (outputs.map (fun output =>
+        (UniqueFactorizationMonoid.normalizedFactors output).card)).sum =
+        outputs.length := by
+    have hcards := congrArg Multiset.card hnormalizedProduct
+    rw [card_normalizedFactors_fold outputs,
+      card_normalizedFactors_fold atoms] at hcards
+    have hatomCards : atoms.map (fun atom =>
+        (UniqueFactorizationMonoid.normalizedFactors atom).card) =
+        atoms.map (fun _ => 1) := by
+      apply List.map_congr_left
+      intro atom hatom
+      rw [UniqueFactorizationMonoid.normalizedFactors_irreducible
+        (hatoms atom hatom)]
+      simp
+    simpa [hatomCards, hlength] using hcards
+  have hpositive : ∀ count ∈ outputs.map (fun output =>
+      (UniqueFactorizationMonoid.normalizedFactors output).card),
+      0 < count := by
+    intro count hcount
+    rcases List.mem_map.mp hcount with ⟨output, houtput, rfl⟩
+    exact Multiset.card_pos.mpr (ne_of_gt
+      ((UniqueFactorizationMonoid.normalizedFactors_pos output
+        (houtputsNe output houtput)).2 (houtputsNonunit output houtput)))
+  have hone := natList_all_eq_one_of_pos_of_sum_eq_length
+    (outputs.map fun output =>
+      (UniqueFactorizationMonoid.normalizedFactors output).card)
+    hpositive (by simpa using hcard)
+  intro output houtput
+  have houtputCard :
+      (UniqueFactorizationMonoid.normalizedFactors output).card = 1 :=
+    hone _ (List.mem_map.mpr ⟨output, houtput, rfl⟩)
+  rcases Multiset.card_eq_one.mp houtputCard with ⟨factor, hfactor⟩
+  have hfactorMem : factor ∈
+      UniqueFactorizationMonoid.normalizedFactors output := by
+    rw [hfactor]
+    simp
+  have hfactorIrreducible :=
+    UniqueFactorizationMonoid.irreducible_of_normalized_factor factor
+      hfactorMem
+  have hassociated : Associated factor output := by
+    have hnormalized := UniqueFactorizationMonoid.prod_normalizedFactors
+      (houtputsNe output houtput)
+    rw [hfactor] at hnormalized
+    simpa using hnormalized
+  exact hassociated.irreducible hfactorIrreducible
+
 /-- The source-shaped van-Hoeij loop preserves the complete live product up
 to a unit across validation extraction, precision retry, and the concrete
 Zassenhaus fallback. -/

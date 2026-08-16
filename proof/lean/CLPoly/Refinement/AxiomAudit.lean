@@ -165,6 +165,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.collectCandidateClasses_size
 #print axioms Refinement.StrictRecombine.partitionCandidateColumns_classCount_bound
 #print axioms Refinement.StrictRecombine.extractCandidates_size_le
+#print axioms Refinement.StrictRecombine.irreducible_members_of_associated_products_and_equal_length
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

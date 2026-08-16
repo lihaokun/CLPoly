@@ -3687,3 +3687,27 @@ threads consumed-class cardinality through successful validation.
 
 - C++ changes: none, so this step has no new C++ regression or b2b change
   surface.
+
+## Close the UFD cardinality bridge for van-Hoeij outputs
+
+`irreducible_members_of_associated_products_and_equal_length` proves the
+algebraic cardinality step needed by the literal van-Hoeij retry guard.  For a
+physical output list whose product is associated to a list of irreducible
+modular atoms, if every output is nonzero and nonunit and the two lists have
+the same length, normalized-factor uniqueness forces every output to contain
+exactly one irreducible factor.  Association then transports irreducibility
+back to that actual output element.
+
+The proof expands normalized factors across the real list product, counts
+every nonempty normalized-factor multiset, and uses equality of total count to
+exclude merged classes.  It introduces no semantic factorization witness and
+does not bypass candidate validation.  The remaining task is to derive its
+nonzero/nonunit, product, and length premises from the generated
+`validateCandidates` execution and the `__lll_factorize` result-size retry
+condition.
+
+- Verification: `CLPoly/Refinement/Recombine.lean` and the complete 3548-job
+  `CLPoly.Refinement.AxiomAudit` target pass.  The theorem uses only the
+  standard `propext`, `Classical.choice`, and `Quot.sound` foundations.
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.

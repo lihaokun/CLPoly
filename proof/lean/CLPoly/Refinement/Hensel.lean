@@ -6004,6 +6004,27 @@ theorem HenselLiftLoopCorrect.initialM_dvd_outputM
       htail ih =>
       exact dvd_trans ⟨m, by simp⟩ ih
 
+/-- The source loop changes its modulus only by `m := m * m`; consequently
+the modulus returned by every concrete execution is a positive power of the
+entry modulus.  The exponent records the actually traversed loop trace and is
+not a fuel parameter. -/
+theorem HenselLiftLoopCorrect.outputM_eq_initialM_pow
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM) :
+    ∃ exponent : Nat, 0 < exponent ∧ outputM = initialM ^ exponent := by
+  induction hcorrect with
+  | done m nodes hstop => exact ⟨1, by omega, by simp⟩
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      rcases ih with ⟨exponent, hexponent, houtput⟩
+      refine ⟨2 * exponent, Nat.mul_pos (by omega) hexponent, ?_⟩
+      rw [houtput, pow_mul]
+      simp [pow_two]
+
 /-- The modulus returned by the concrete quadratic Hensel loop is strictly
 larger than the source target.  This is the precision fact consumed by
 recombination; it follows from the actual stopping test rather than from an
@@ -14278,6 +14299,24 @@ theorem HenselLiftEntryCorrect.outputModulus_gt_target
   calc
     target = (target.toNat : Int) := (Int.toNat_of_nonneg htargetNonnegative').symm
     _ < (outputM : Int) := by exact_mod_cast hprecision
+
+/-- Entry-level form of the concrete quadratic-loop modulus certificate. -/
+theorem HenselLiftEntryCorrect.outputModulus_eq_prime_pow
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hcorrect : HenselLiftEntryCorrect termination f factors p aTarget output) :
+    ∃ exponent : Nat, 0 < exponent ∧
+      output.2 = ((p.toNat ^ exponent : Nat) : Int) := by
+  rcases hcorrect with
+    ⟨_target, _adjusted, _nodes, _liftedNodes, outputM, _extracted,
+      _htarget, _hadjust, _hsemantic, hlift, _hliftedOneHead, _hextract,
+      _hnormalize, houtputM, _hcanonical, _honeHead⟩
+  rcases hlift.outputM_eq_initialM_pow with
+    ⟨exponent, hexponent, hpower⟩
+  refine ⟨exponent, hexponent, ?_⟩
+  rw [houtputM, hpower]
 
 private theorem henselLiftUpolyRawIR_run_of_stages
     (stepOps : Generated.StrictHensel.HenselStepRawOps)

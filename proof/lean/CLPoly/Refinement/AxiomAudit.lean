@@ -79,6 +79,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselFactorArrayOneHeadFrom.of_tail_forall
 #print axioms Refinement.StrictHensel.HenselExtractCorrect.outputOneHeadFrom_empty
 #print axioms Refinement.StrictHensel.HenselLiftLoopCorrect.outputM_ge_two
+#print axioms Refinement.StrictHensel.HenselLiftLoopCorrect.outputM_eq_initialM_pow
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.of_preservesFrom
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.oneHead_of_mem
 #print axioms Refinement.StrictHensel.henselTreeBuildTopology_indices_complete
@@ -97,6 +98,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.outputOneHead
 #print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.outputToPolyModMonic
 #print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.outputToPolyMonic
+#print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.outputModulus_eq_prime_pow
 #print axioms Refinement.StrictFactorZZ.selectionAdjustedFactors_product_eq_source
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_preNormalization_product
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_normalized_product_eq_unit_mul_source

@@ -2952,3 +2952,24 @@ supplied by an oracle.
 No C++ files changed, so this step has no new C++ regression or b2b change
 surface.  The remaining rejection branch starts at the constant-coefficient
 prune and requires the full-modulus Hensel subset uniqueness bridge.
+
+## Certify the exact prime-power shape of the returned Hensel modulus
+
+`HenselLiftLoopCorrect.outputM_eq_initialM_pow` follows the actual
+well-founded quadratic-precision trace.  The done constructor returns the
+entry modulus (positive exponent one); every executed step is the generated
+source update `m := m * m`, so induction doubles a positive exponent.  The
+exponent is evidence extracted from an existing execution trace, not fuel and
+not an independently supplied iteration count.
+
+`HenselLiftEntryCorrect.outputModulus_eq_prime_pow` projects this result through
+the complete generated entry and proves that the returned integer modulus is
+the selected prime raised to a positive natural exponent.  This supplies the
+exact modulus form required by the mathematical `hensel_unique` theorem for
+the candidate/complement reconstruction.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ regression or b2b change surface.  Next, the legal
+candidate indices will be partitioned from their concrete output list and the
+two product decompositions will instantiate Hensel uniqueness at this exact
+prime power.

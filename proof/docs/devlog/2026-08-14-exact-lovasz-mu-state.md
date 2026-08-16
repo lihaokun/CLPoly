@@ -3328,3 +3328,19 @@ selected modular product is associated with the chosen proper factor.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：证明该 candidate 在当前 full-precision live Hensel state 的
   `zassenhausAttempt` 中真实返回 `.extracted`，与 recorded rejection 冲突
+
+## Transport integer reducibility to a smaller physical candidate
+
+`primitive_factorization_maps_nonunits` proves that a nontrivial integer
+factorization of a primitive polynomial whose leading coefficient survives
+modulo `p` remains nontrivial after reduction: both integer factors are
+primitive, both leading coefficients survive, and neither modular image is a
+unit.  `smaller_active_candidate_of_reducible_primitive_factor` composes this
+with the occurrence-sensitive proper-sublist encoder.  Thus any hypothetical
+nontrivial factorization of the actual extracted primitive factor supplies a
+strictly smaller legal active-array candidate, together with the primitive
+integer divisor and its exact modular association certificate.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：用 live `p^k`/precision certificate 执行这个 smaller candidate 的
+  两个 prune、trial、symmetric、primitive 和 exact-division 路径

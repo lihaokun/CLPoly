@@ -285,6 +285,122 @@ theorem primitive_irreducible_of_irreducible_mod
       (Polynomial.isPrimitive_iff_isUnit_of_C_dvd.mp hrightPrimitive
         (right.coeff 0) dvd_rfl))
 
+/-- A nontrivial factorization of a primitive integer polynomial whose leading
+coefficient survives modulo `p` remains nontrivial after reduction.  This is
+the converse direction needed to feed integer reducibility into the concrete
+smaller-candidate construction. -/
+theorem primitive_factorization_maps_nonunits
+    (p : Nat) [Fact (Nat.Prime p)]
+    (factor left right : Polynomial Int)
+    (hprimitive : factor.IsPrimitive)
+    (hleading : (factor.leadingCoeff : ZMod p) ≠ 0)
+    (hfactor : factor = left * right)
+    (hleftNonunit : ¬IsUnit left) (hrightNonunit : ¬IsUnit right) :
+    left.IsPrimitive ∧ right.IsPrimitive ∧
+      (left.leadingCoeff : ZMod p) ≠ 0 ∧
+      (right.leadingCoeff : ZMod p) ≠ 0 ∧
+      ¬IsUnit (left.map (Int.castRingHom (ZMod p))) ∧
+      ¬IsUnit (right.map (Int.castRingHom (ZMod p))) := by
+  have hleftPrimitive : left.IsPrimitive :=
+    Polynomial.isPrimitive_of_dvd hprimitive
+      (Dvd.intro right hfactor.symm)
+  have hrightPrimitive : right.IsPrimitive :=
+    Polynomial.isPrimitive_of_dvd hprimitive
+      (Dvd.intro_left left hfactor.symm)
+  have hleadingProduct :
+      (left.leadingCoeff : ZMod p) * (right.leadingCoeff : ZMod p) =
+        (factor.leadingCoeff : ZMod p) := by
+    rw [← Int.cast_mul]
+    congr 1
+    rw [← Polynomial.leadingCoeff_mul, hfactor]
+  have hleftLeading : (left.leadingCoeff : ZMod p) ≠ 0 := by
+    intro hzero
+    rw [hzero, zero_mul] at hleadingProduct
+    exact hleading hleadingProduct.symm
+  have hrightLeading : (right.leadingCoeff : ZMod p) ≠ 0 := by
+    intro hzero
+    rw [hzero, mul_zero] at hleadingProduct
+    exact hleading hleadingProduct.symm
+  have hleftMapNonunit :
+      ¬IsUnit (left.map (Int.castRingHom (ZMod p))) := by
+    intro hunit
+    have hdegreeMapped :
+        (left.map (Int.castRingHom (ZMod p))).degree = left.degree :=
+      Polynomial.degree_map_eq_of_leadingCoeff_ne_zero _ hleftLeading
+    have hdegreeZero : left.degree = 0 := by
+      rw [← hdegreeMapped]
+      exact Polynomial.isUnit_iff_degree_eq_zero.mp hunit
+    have hleftEq := Polynomial.eq_C_of_degree_eq_zero hdegreeZero
+    have hconstantPrimitive := hleftPrimitive
+    rw [hleftEq] at hconstantPrimitive
+    apply hleftNonunit
+    rw [hleftEq]
+    exact Polynomial.isUnit_C.mpr
+      (Polynomial.isPrimitive_iff_isUnit_of_C_dvd.mp hconstantPrimitive
+        (left.coeff 0) dvd_rfl)
+  have hrightMapNonunit :
+      ¬IsUnit (right.map (Int.castRingHom (ZMod p))) := by
+    intro hunit
+    have hdegreeMapped :
+        (right.map (Int.castRingHom (ZMod p))).degree = right.degree :=
+      Polynomial.degree_map_eq_of_leadingCoeff_ne_zero _ hrightLeading
+    have hdegreeZero : right.degree = 0 := by
+      rw [← hdegreeMapped]
+      exact Polynomial.isUnit_iff_degree_eq_zero.mp hunit
+    have hrightEq := Polynomial.eq_C_of_degree_eq_zero hdegreeZero
+    have hconstantPrimitive := hrightPrimitive
+    rw [hrightEq] at hconstantPrimitive
+    apply hrightNonunit
+    rw [hrightEq]
+    exact Polynomial.isUnit_C.mpr
+      (Polynomial.isPrimitive_iff_isUnit_of_C_dvd.mp hconstantPrimitive
+        (right.coeff 0) dvd_rfl)
+  exact ⟨hleftPrimitive, hrightPrimitive, hleftLeading, hrightLeading,
+    hleftMapNonunit, hrightMapNonunit⟩
+
+/-- Integer reducibility of an actually extracted primitive factor produces a
+strictly smaller legal candidate over the same physical active array. -/
+theorem smaller_active_candidate_of_reducible_primitive_factor
+    (base : Nat) [Fact (Nat.Prime base)]
+    (active : Array SparsePolyZZ) (outer : Array Nat)
+    (houter : StrictRecombine.LegalCombination active.size outer.size outer)
+    (hirreducible : ∀ index (hindex : index < active.size),
+      Irreducible (StrictHensel.toPolyMod base active[index]))
+    (factor left right : Polynomial Int)
+    (hprimitive : factor.IsPrimitive)
+    (hleading : (factor.leadingCoeff : ZMod base) ≠ 0)
+    (hfactor : factor = left * right)
+    (hleftNonunit : ¬IsUnit left) (hrightNonunit : ¬IsUnit right)
+    (hassociated : Associated
+      (factor.map (Int.castRingHom (ZMod base)))
+      (((StrictRecombine.selectSourceIndices active.toList outer.toList).map
+        (StrictHensel.toPolyMod base)).prod)) :
+    ∃ inner : Array Nat,
+      StrictRecombine.LegalCombination active.size inner.size inner ∧
+      inner.size < outer.size ∧
+      left.IsPrimitive ∧
+      (left.leadingCoeff : ZMod base) ≠ 0 ∧
+      Associated (left.map (Int.castRingHom (ZMod base)))
+        (((StrictRecombine.selectSourceIndices active.toList inner.toList).map
+          (StrictHensel.toPolyMod base)).prod) := by
+  rcases primitive_factorization_maps_nonunits base factor left right
+      hprimitive hleading hfactor hleftNonunit hrightNonunit with
+    ⟨hleftPrimitive, _hrightPrimitive, hleftLeading, _hrightLeading,
+      hleftMapNonunit, hrightMapNonunit⟩
+  have hmapped : factor.map (Int.castRingHom (ZMod base)) =
+      left.map (Int.castRingHom (ZMod base)) *
+        right.map (Int.castRingHom (ZMod base)) := by
+    rw [hfactor, Polynomial.map_mul]
+  rcases smaller_active_candidate_of_reducible_selected_product base active
+      outer houter hirreducible
+      (factor.map (Int.castRingHom (ZMod base)))
+      (left.map (Int.castRingHom (ZMod base)))
+      (right.map (Int.castRingHom (ZMod base))) hmapped hleftMapNonunit
+      hrightMapNonunit hassociated with
+    ⟨inner, hinner, hsmall, hinnerAssociated⟩
+  exact ⟨inner, hinner, hsmall, hleftPrimitive, hleftLeading,
+    hinnerAssociated⟩
+
 /-- The sparse factor array returned by a genuinely refined successful prime
 selection consists pointwise of the irreducible factors recorded by that
 selection's concrete candidate certificate. -/

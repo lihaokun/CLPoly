@@ -13,6 +13,8 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.canonical_head_coefficient_dvd_of_poly_dvd
 #print axioms Refinement.StrictRecombine.subtractScaledNormalize_divisionRank_lt
 #print axioms Refinement.StrictRecombine.exactDivmodRaw_complete_of_dvd
+#print axioms Refinement.StrictRecombine.exactDivmodLoop_complete
+#print axioms Refinement.StrictRecombine.exactDivmodRaw_complete
 #print axioms Refinement.StrictRecombine.modCoeffLoop_complete
 #print axioms Refinement.StrictRecombine.multiplyNormalizeModRaw_complete
 #print axioms Refinement.StrictRecombine.trialProductLoop_complete
@@ -20,6 +22,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.symmetricModRaw_complete
 #print axioms Refinement.StrictRecombine.primitiveDivideLoop_complete
 #print axioms Refinement.StrictRecombine.primitiveRaw_complete
+#print axioms Refinement.StrictRecombine.zassenhausAttempt_complete
+#print axioms Refinement.StrictRecombine.scanZassenhausCombinations_complete
+#print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracts_of_candidate
 #print axioms Refinement.StrictRecombine.removeCombination_preserves_pointwise
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_product_partition
 #print axioms Refinement.StrictRecombine.removeCombination_product_partition

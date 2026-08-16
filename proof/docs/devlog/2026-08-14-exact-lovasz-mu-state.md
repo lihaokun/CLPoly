@@ -3170,3 +3170,32 @@ operation record or semantic oracle.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：把本次成功提取提升到固定大小组合扫描，并维持更新后的
   `fStar`/active 数组不变量，闭合外层 Zassenhaus 重组
+
+## Make every preceding scan attempt executable
+
+`exactDivmodLoop_complete` proves totality of the generated checked sparse
+long division on every canonical dividend and canonical nonempty divisor.
+When the next head coefficient or degree is unsuitable, the source returns the
+current physical remainder; when it is divisible, the previously proved
+`divisionRank` decrease drives the real recursive call.  Thus
+`exactDivmodRaw_complete` does not require a mathematical divisibility premise.
+
+Using this fact, `zassenhausAttempt_complete` eliminates every raw-fault branch
+for an arbitrary nonempty legal candidate under the live selected-prime
+invariants.  Irreducibility of the selected physical Hensel cells proves the
+trial product nonzero modulo `p`; symmetric recovery therefore cannot produce
+the zero polynomial, and the concrete primitive divisor passed to long
+division is physically nonempty.  A non-factor returns `.rejected` with its
+actual remainder, while a factor follows the actual quotient primitive call.
+
+`scanZassenhausCombinations_complete` lifts that totality through the generated
+well-founded next-combination recursion.  Finally,
+`scanZassenhausCombinations_extracts_of_candidate` starts at the literal iota
+combination and proves an actual extraction exists: the exhausted result would,
+by the existing no-omission theorem, say that the already executed genuine
+candidate was rejected, contradicting its concrete `.extracted` equation.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：实例化该扫描定理到 FactorZZ genuine divisor candidate，并把
+  scan extraction/removeCombination 后的 quotient 与 active complement
+  不变量送入外层 `zassenhausLoop`

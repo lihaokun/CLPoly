@@ -12461,6 +12461,69 @@ theorem subtractScaledNormalize_divisionRank_lt
 canonical divisible remainder.  Every branch condition is discharged from
 the concrete representation and divisibility invariants, and recursion uses
 the generated `divisionRank` decrease proved above. -/
+theorem exactDivmodLoop_complete
+    (divisor remainder quotient : SparsePolyZZ)
+    (hdivisorCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical divisor)
+    (hremainderCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical remainder)
+    (hdivisor : 0 < divisor.size) :
+    ∃ outputQuotient outputRemainder,
+      Generated.StrictRecombine.exactDivmodLoop divisor remainder quotient =
+        .ok (outputQuotient, outputRemainder) := by
+  induction hmeasure : Generated.StrictRecombine.divisionRank remainder using
+      Nat.strong_induction_on generalizing remainder quotient with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.exactDivmodLoop]
+      by_cases hremainder : 0 < remainder.size
+      · rw [dif_pos hremainder, dif_pos hdivisor]
+        dsimp only
+        have hdivisorHeadNonzero : divisor[0].2 ≠ 0 :=
+          hdivisorCanonical.2 divisor[0]
+            (Array.getElem_mem_toList hdivisor)
+        by_cases hdegree : divisor[0].1.deg ≤ remainder[0].1.deg
+        · rw [dif_pos hdegree, dif_pos hdivisorHeadNonzero]
+          by_cases hdivides : divisor[0].2 ∣ remainder[0].2
+          · rw [dif_pos hdivides]
+            let degreeShift := remainder[0].1.deg - divisor[0].1.deg
+            let scale := remainder[0].2 / divisor[0].2
+            let remainder' :=
+              Generated.StrictRecombine.subtractScaledNormalize remainder
+                divisor scale degreeShift
+            let quotient' := quotient.push (⟨degreeShift⟩, scale)
+            have hdecrease : Generated.StrictRecombine.divisionRank remainder' <
+                Generated.StrictRecombine.divisionRank remainder := by
+              exact subtractScaledNormalize_divisionRank_lt divisor remainder
+                hdivisorCanonical hremainderCanonical hdivisor hremainder
+                hdegree hdivides
+            rw [dif_pos hdecrease]
+            exact ih (Generated.StrictRecombine.divisionRank remainder')
+              (by simpa [hmeasure] using hdecrease) remainder' quotient'
+              (normalization_canonical _) rfl
+          · rw [dif_neg hdivides]
+            exact ⟨quotient, remainder, rfl⟩
+        · rw [dif_neg hdegree]
+          exact ⟨quotient, remainder, rfl⟩
+      · rw [dif_neg hremainder]
+        exact ⟨quotient, remainder, rfl⟩
+
+/-- The public checked long-division entry never faults on a canonical
+dividend and a canonical nonempty divisor.  Nondivisibility is represented by
+the physical remainder, exactly as in C++, rather than by an error. -/
+theorem exactDivmodRaw_complete
+    (dividend divisor : SparsePolyZZ)
+    (hdividendCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical dividend)
+    (hdivisorCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical divisor)
+    (hdivisor : 0 < divisor.size) :
+    ∃ quotient remainder,
+      Generated.StrictRecombine.exactDivmodRaw dividend divisor =
+        .ok (quotient, remainder) := by
+  unfold Generated.StrictRecombine.exactDivmodRaw
+  exact exactDivmodLoop_complete divisor dividend #[] hdivisorCanonical
+    hdividendCanonical hdivisor
+
 theorem exactDivmodLoop_complete_of_dvd
     (divisor remainder quotient : SparsePolyZZ)
     (hdivisorCanonical :
@@ -13167,6 +13230,261 @@ private theorem selectedSourceProduct_ne_zero_of_irreducible
   rw [← hcandidate, getElem!_pos activeLifted.toList candidate[position]
     (by simpa using hactive), Array.getElem_toList hactive] at hsourceZero
   exact (hirreducible candidate[position] hactive).ne_zero hsourceZero
+
+/-- Every nonempty legal candidate over the live Hensel array executes the
+complete generated attempt without a raw fault.  A non-factor returns
+`.rejected`; a factor returns `.extracted`.  Nonzeroness of the physical trial
+and primitive divisor is derived modulo the selected prime from the actual
+candidate product. -/
+theorem zassenhausAttempt_complete
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ)
+    (modulus base : Nat) [Fact (Nat.Prime base)] (candidate : Array Nat)
+    (hmodulus : 0 < modulus) (hbase : 0 < base) (hdivides : base ∣ modulus)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hlegal : LegalCombination activeLifted.size candidate.size candidate)
+    (hcandidate : 0 < candidate.size)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hleading : (fStar[0].2 : ZMod base) ≠ 0)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index])) :
+    ∃ result,
+      Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+        (modulus : ZZ) candidate = .ok result := by
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  have hactiveNonempty : ∀ position (hposition : position < candidate.size),
+      activeLifted[candidate[position]]!.isEmpty = false := by
+    intro position hposition
+    have hactive := hbound position hposition
+    have hfactorNe := (hirreducible candidate[position] hactive).ne_zero
+    by_contra hempty
+    have harrayEmpty : activeLifted[candidate[position]]! = #[] := by
+      apply Array.isEmpty_iff.mp
+      simpa using hempty
+    apply hfactorNe
+    have hsame : activeLifted[candidate[position]] = #[] := by
+      simpa [getElem!_pos activeLifted candidate[position] hactive] using
+        harrayEmpty
+    rw [hsame]
+    simp [Refinement.StrictHensel.toPolyMod, SparsePolyZZ.toPoly]
+  have hleadingRun := selectedLeadingProductLoop_succeeds candidate
+    activeLifted 0 fStar[0].2 hbound hactiveNonempty
+  let leadingProduct := fStar[0].2 *
+    (selectedLeadingValues candidate activeLifted 0).prod
+  change Generated.StrictRecombine.selectedLeadingProductLoop candidate
+      activeLifted 0 fStar[0].2 = .ok leadingProduct at hleadingRun
+  by_cases hleadingPrune :
+      ZZ.symmetricMod leadingProduct (modulus : ZZ) ≠ 0 ∧
+        ZZ.fdiv_r 0 (fStar[0].2 * fStar[0].2)
+          (ZZ.symmetricMod leadingProduct (modulus : ZZ)) ≠ 0
+  · refine ⟨.rejected, ?_⟩
+    unfold Generated.StrictRecombine.zassenhausAttempt
+    rw [dif_pos hnonempty]
+    simp only [hleadingRun]
+    rw [if_pos hleadingPrune]
+  · have hconstantRun := selectedConstantProductLoop_succeeds candidate
+      activeLifted 0 fStar[0].2 hbound
+    let constantProduct := fStar[0].2 *
+      (selectedConstantValues candidate activeLifted 0).prod
+    change Generated.StrictRecombine.selectedConstantProductLoop candidate
+        activeLifted 0 fStar[0].2 = .ok constantProduct at hconstantRun
+    by_cases hconstantPrune :
+        ZZ.symmetricMod constantProduct (modulus : ZZ) ≠ 0 ∧
+          ZZ.fdiv_r 0 (fStar[0].2 *
+            Generated.StrictRecombine.constantTerm fStar)
+            (ZZ.symmetricMod constantProduct (modulus : ZZ)) ≠ 0
+    · refine ⟨.rejected, ?_⟩
+      unfold Generated.StrictRecombine.zassenhausAttempt
+      rw [dif_pos hnonempty]
+      simp only [hleadingRun]
+      rw [if_neg hleadingPrune]
+      simp only [hconstantRun]
+      rw [if_pos hconstantPrune]
+    · have hfits : ∀ position (hposition : position < candidate.size),
+          candidate[position] < 2 ^ 31 := by
+        intro position hposition
+        exact lt_of_lt_of_le (hbound position hposition) hactiveFits
+      rcases combinationToInt32_toList candidate hfits with
+        ⟨candidate32, hconvert, _⟩
+      have hvalid := combinationToInt32_candidate_valid candidate
+        activeLifted.size candidate32 hbound hactiveFits hconvert
+      rcases trialProductLoop_complete ⟨()⟩ candidate32 activeLifted
+          (modulus : ZZ) 0 #[(⟨0⟩, fStar[0].2)]
+          (by exact_mod_cast hmodulus.ne') hvalid with
+        ⟨product, hproduct⟩
+      have hinitialCanonical : StrictPolynomialMod.SparsePolyZZCanonical
+          #[(⟨0⟩, fStar[0].2)] := by
+        constructor
+        · simp
+        · intro term hterm
+          simp at hterm
+          subst term
+          exact hcanonical.2 fStar[0]
+            (Array.getElem_mem_toList hnonempty)
+      have hproductCanonical := trialProductLoop_canonical ⟨()⟩ candidate32
+        activeLifted (modulus : ZZ) 0 #[(⟨0⟩, fStar[0].2)] product
+        hinitialCanonical hproduct
+      rcases symmetricModRaw_complete product (modulus : ZZ)
+          (by exact_mod_cast hmodulus) with ⟨symmetric, hsymmetric⟩
+      have hsymmetricCanonical := symmetricModRaw_canonical product symmetric
+        modulus hmodulus hproductCanonical hsymmetric
+      rcases primitiveRaw_complete symmetric hsymmetricCanonical with
+        ⟨content, factor, hprimitive⟩
+      have hselectedNe := selectedSourceProduct_ne_zero_of_irreducible base
+        activeLifted candidate hbound hirreducible
+      have hinitialMod : Refinement.StrictHensel.toPolyMod base
+          #[(⟨0⟩, fStar[0].2)] = Polynomial.C (fStar[0].2 : ZMod base) := by
+        simp [Refinement.StrictHensel.toPolyMod, SparsePolyZZ.toPoly]
+      have htrialMod := trialProductLoop_source_indices_refines_of_dvd
+        modulus base hmodulus hbase hdivides candidate activeLifted candidate32
+        #[(⟨0⟩, fStar[0].2)] product hbound hactiveFits hconvert hproduct
+      have hproductModNe : Refinement.StrictHensel.toPolyMod base product ≠ 0 := by
+        rw [htrialMod, hinitialMod]
+        exact mul_ne_zero (Polynomial.C_ne_zero.mpr hleading) hselectedNe
+      have hsymmetricMod := symmetricModRaw_toPolyMod_of_dvd product symmetric
+        modulus base hmodulus hbase hdivides hsymmetric
+      have hsymmetricNe : SparsePolyZZ.toPoly symmetric ≠ 0 := by
+        intro hzero
+        apply hproductModNe
+        rw [← hsymmetricMod]
+        simp [Refinement.StrictHensel.toPolyMod, hzero]
+      have hfactorNe : SparsePolyZZ.toPoly factor ≠ 0 := by
+        intro hzero
+        apply hsymmetricNe
+        rw [primitiveRaw_toPoly symmetric factor content hprimitive, hzero]
+        simp
+      have hfactorCanonical := primitiveRaw_canonical symmetric factor content
+        hsymmetricCanonical hprimitive
+      have hfactorNonempty : 0 < factor.size := by
+        by_contra hnot
+        have hzero : factor.size = 0 := Nat.eq_zero_of_not_pos hnot
+        have hempty : factor = #[] := Array.size_eq_zero_iff.mp hzero
+        apply hfactorNe
+        simp [hempty, SparsePolyZZ.toPoly]
+      rcases exactDivmodRaw_complete fStar factor hcanonical hfactorCanonical
+          hfactorNonempty with ⟨quotient, remainder, hdivmod⟩
+      by_cases hremainder : remainder.isEmpty = true
+      · have hquotientCanonical := exactDivmodRaw_quotient_canonical fStar
+          factor quotient remainder hcanonical.2 hdivmod
+        rcases primitiveRaw_complete quotient hquotientCanonical with
+          ⟨quotientContent, quotientPrimitive, hquotientPrimitive⟩
+        refine ⟨.extracted factor quotientPrimitive, ?_⟩
+        unfold Generated.StrictRecombine.zassenhausAttempt
+        rw [dif_pos hnonempty]
+        simp only [hleadingRun]
+        rw [if_neg hleadingPrune]
+        simp only [hconstantRun]
+        rw [if_neg hconstantPrune]
+        simp only [hconvert, hproduct, hsymmetric, hprimitive, hdivmod]
+        rw [if_pos hremainder]
+        simp only [hquotientPrimitive]
+      · refine ⟨.rejected, ?_⟩
+        unfold Generated.StrictRecombine.zassenhausAttempt
+        rw [dif_pos hnonempty]
+        simp only [hleadingRun]
+        rw [if_neg hleadingPrune]
+        simp only [hconstantRun]
+        rw [if_neg hconstantPrune]
+        simp only [hconvert, hproduct, hsymmetric, hprimitive, hdivmod]
+        rw [if_neg hremainder]
+
+/-- The concrete fixed-size scan is total under the live Hensel invariants.
+Every visited legal candidate runs the actual attempt above; recursion follows
+the generated next-combination rank. -/
+theorem scanZassenhausCombinations_complete
+    {count : Nat} (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)] (start : Array Nat)
+    (hmodulus : 0 < modulus) (hbase : 0 < base) (hdivides : base ∣ modulus)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size) (hcount : 0 < count)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hleading : (fStar[0].2 : ZMod base) ≠ 0)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index]))
+    (hvalidStart : LegalCombination activeLifted.size count start) :
+    ∃ result,
+      Generated.StrictRecombine.scanZassenhausCombinations
+        (concreteCombinationTermination activeLifted.size count)
+        fStar activeLifted (modulus : ZZ) start hvalidStart = .ok result := by
+  let termination := concreteCombinationTermination activeLifted.size count
+  induction hmeasure : termination.rank start using Nat.strong_induction_on
+      generalizing start with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.scanZassenhausCombinations]
+      have hstartPositive : 0 < start.size := by rw [hvalidStart.1]; exact hcount
+      have hvalidAttempt : LegalCombination activeLifted.size start.size
+          start := by
+        simpa [hvalidStart.1] using hvalidStart
+      rcases zassenhausAttempt_complete fStar activeLifted modulus base start
+          hmodulus hbase hdivides hcanonical hnonempty hvalidAttempt
+          hstartPositive hactiveFits hleading hirreducible with
+        ⟨attempt, hattempt⟩
+      cases attempt with
+      | extracted factor quotient =>
+          simp only [hattempt]
+          exact ⟨.extracted factor quotient start hvalidStart.1, rfl⟩
+      | rejected =>
+          simp only [hattempt]
+          split
+          next next hnext => exact ⟨.exhausted, rfl⟩
+          next next hnext =>
+            have hnextValid := termination.next_valid start next
+              hvalidStart hnext
+            exact ih (termination.rank next)
+              (by
+                rw [← hmeasure]
+                exact termination.next_decreases start next hvalidStart hnext)
+              next hnextValid rfl
+
+/-- If one legal fixed-size candidate is proved to extract, the literal scan
+from the generated initial combination returns an actual extraction.  The
+exhausted alternative is ruled out by the previously proved no-omission
+theorem, not by choosing a scan result. -/
+theorem scanZassenhausCombinations_extracts_of_candidate
+    {count : Nat} (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)] (target : Array Nat)
+    (hmodulus : 0 < modulus) (hbase : 0 < base) (hdivides : base ∣ modulus)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size) (hcount : 0 < count)
+    (hfits : count ≤ activeLifted.size)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hleading : (fStar[0].2 : ZMod base) ≠ 0)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index]))
+    (htarget : LegalCombination activeLifted.size count target)
+    (factor quotient : SparsePolyZZ)
+    (hattempt : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      (modulus : ZZ) target = .ok (.extracted factor quotient)) :
+    ∃ extractedFactor extractedQuotient candidate candidateSize,
+      Generated.StrictRecombine.scanZassenhausCombinations
+        (concreteCombinationTermination activeLifted.size count)
+        fStar activeLifted (modulus : ZZ)
+        (Generated.StrictRecombine.initialCombination count)
+        (initialCombination_legal activeLifted.size count hfits) =
+          .ok (.extracted extractedFactor extractedQuotient candidate
+            candidateSize) := by
+  let initial := Generated.StrictRecombine.initialCombination count
+  let hinitial := initialCombination_legal activeLifted.size count hfits
+  rcases scanZassenhausCombinations_complete fStar activeLifted modulus base
+      initial hmodulus hbase hdivides hcanonical hnonempty hcount hactiveFits
+      hleading hirreducible hinitial with ⟨result, hscan⟩
+  cases result with
+  | extracted extractedFactor extractedQuotient candidate candidateSize =>
+      exact ⟨extractedFactor, extractedQuotient, candidate, candidateSize,
+        hscan⟩
+  | exhausted =>
+      have hrejected := scanZassenhausCombinations_exhausted_rejects_all
+        fStar activeLifted (modulus : ZZ) hfits hscan target htarget
+      simp [hattempt] at hrejected
 
 /-- Under the live selected-prime invariants, the factor returned by the
 actual successful attempt is associated modulo `base` to the exact candidate

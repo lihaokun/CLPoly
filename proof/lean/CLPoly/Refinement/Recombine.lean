@@ -271,6 +271,54 @@ theorem fillCldDataRowLoop_size
       next hindex =>
         exact congrArg Array.size (Except.ok.inj hrun).symm
 
+theorem fillCldDataRowLoop_entry
+    (cld : Array SparsePolyZZ) (degree index : Nat) (row output : Array ZZ)
+    (hindex : index ≤ cld.size) (hcapacity : cld.size ≤ row.size)
+    (hrun : Generated.StrictRecombine.fillCldDataRowLoop cld degree index row =
+      .ok output) (position : Nat) (hposition : position < cld.size) :
+    output[position]! =
+      if position < index then row[position]!
+      else Generated.StrictRecombine.sparseCoeff cld[position]! degree := by
+  induction hmeasure : cld.size - index using Nat.strong_induction_on
+      generalizing index row with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.fillCldDataRowLoop] at hrun
+      split at hrun
+      next hmore =>
+        split at hrun
+        next hrow =>
+          have htail := ih (cld.size - (index + 1)) (by omega)
+            (index + 1)
+            (row.set index
+              (Generated.StrictRecombine.sparseCoeff cld[index] degree))
+            (by omega) (by simpa using hcapacity) hrun rfl
+          rw [htail]
+          split
+          next hpositionNext =>
+            by_cases heq : position = index
+            · subst position
+              simp only [lt_self_iff_false, ↓reduceIte]
+              rw [getElem!_pos _ index (by simpa using hrow),
+                Array.getElem_set_self,
+                getElem!_pos cld index hmore]
+            · have hpositionOld : position < index := by omega
+              simp only [hpositionOld, ↓reduceIte]
+              rw [getElem!_pos _ position (by simpa using
+                (lt_of_lt_of_le hposition hcapacity)),
+                Array.getElem_set_ne hrow
+                  (lt_of_lt_of_le hposition hcapacity) (Ne.symm heq)]
+              rw [← getElem!_pos row position
+                (lt_of_lt_of_le hposition hcapacity)]
+          next hpositionNext =>
+            have hpositionOld : ¬ position < index := by omega
+            simp only [hpositionOld, ↓reduceIte]
+        next hrow => contradiction
+      next hdone =>
+        have hout := Except.ok.inj hrun
+        have hpositionIndex : position < index := by omega
+        rw [if_pos hpositionIndex]
+        exact (congrArg (fun value : Array ZZ => value[position]!) hout).symm
+
 theorem appendCldColumn_shape
     (matrix output : Generated.StrictRecombine.LLLMatrix)
     (cld : Array SparsePolyZZ) (existingColumns spiralDegree : Nat)
@@ -312,6 +360,58 @@ theorem appendCldColumn_shape
         refine ⟨finalRow, by simpa [finalRow] using hrowSize,
           ?_, hout.symm⟩
         simp [finalRow, hdimension, hrowSize]
+      next hidentity => contradiction
+
+theorem appendCldColumn_data_entry
+    (matrix output : Generated.StrictRecombine.LLLMatrix)
+    (cld : Array SparsePolyZZ) (existingColumns spiralDegree position : Nat)
+    (hdimension : matrix.size = cld.size + existingColumns)
+    (hposition : position < cld.size)
+    (hrun : Generated.StrictRecombine.appendCldColumn matrix cld
+      existingColumns spiralDegree = .ok output) :
+    (output[matrix.size]!)[position]! =
+      Generated.StrictRecombine.sparseCoeff cld[position]! spiralDegree := by
+  unfold Generated.StrictRecombine.appendCldColumn at hrun
+  rw [appendZeroColumn_eq] at hrun
+  simp only [Except.bind] at hrun
+  cases hfill : Generated.StrictRecombine.fillCldDataRowLoop cld spiralDegree
+      0 (Generated.StrictRecombine.zeroMatrixRow
+        (cld.size + existingColumns + 1)) with
+  | error fault =>
+      rw [hfill] at hrun
+      contradiction
+  | ok row =>
+      rw [hfill] at hrun
+      change (if hidentity : cld.size + existingColumns < row.size then
+          (Except.ok ((appendZeroSuffix matrix 0).push
+            (row.set (cld.size + existingColumns) 1 hidentity)) :
+              RawExec Generated.StrictRecombine.LLLMatrix)
+        else Except.error (RawFault.outOfBounds
+          (cld.size + existingColumns) row.size)) =
+          Except.ok output at hrun
+      split at hrun
+      next hidentity =>
+        have hout := Except.ok.inj hrun
+        subst output
+        rw [← appendZeroSuffix_size matrix, arrayPush_getElem!_last]
+        have hrowSize := fillCldDataRowLoop_size cld spiralDegree 0
+          (Generated.StrictRecombine.zeroMatrixRow
+            (cld.size + existingColumns + 1)) row hfill
+        rw [zeroMatrixRow_size] at hrowSize
+        have hpositionRow : position < row.size := by
+          rw [hrowSize]
+          omega
+        have hpositionSet :
+            position < (row.set (cld.size + existingColumns) 1 hidentity).size := by
+          simpa using hpositionRow
+        rw [getElem!_pos _ position hpositionSet,
+          Array.getElem_set_ne hidentity hpositionRow
+            (by omega),
+          ← getElem!_pos row position hpositionRow]
+        exact fillCldDataRowLoop_entry cld spiralDegree 0
+          (Generated.StrictRecombine.zeroMatrixRow
+            (cld.size + existingColumns + 1)) row (by omega)
+          (by rw [zeroMatrixRow_size]; omega) hfill position hposition
       next hidentity => contradiction
 
 theorem zeroQQRowLoop_size (columns index : Nat) (row : Array QQ)

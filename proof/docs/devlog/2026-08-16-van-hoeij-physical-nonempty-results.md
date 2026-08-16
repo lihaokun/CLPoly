@@ -453,3 +453,26 @@ semantic oracle, `sorry`, or custom axiom.
 - Next: prove that the generated CLD data-row and matrix builders store these
   exact coefficients, then combine that matrix semantics with the concrete
   LLL transform equation and short-row bound.
+
+## Refine generated CLD data-row entries
+
+The first matrix-construction layer now has value semantics, not only shape
+semantics:
+
+- `fillCldDataRowLoop_entry` follows the generated indexed `Array.set` loop
+  and proves that every populated coordinate is exactly the generated sparse
+  coefficient lookup for the corresponding physical CLD polynomial; and
+- `appendCldColumn_data_entry` follows zero-column extension, row filling,
+  identity-coordinate insertion, and the final physical matrix push, proving
+  that every CLD coordinate of the newly appended row contains that exact
+  coefficient.
+
+The proof uses the generated loop's well-founded measure
+`cld.size - index`; it uses no fuel, partial definition, semantic matrix
+oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: lift the one-column result through `buildCldMatrixLoop`, preserving
+  old columns and identifying every spiral-selected degree in the complete
+  physical lattice.

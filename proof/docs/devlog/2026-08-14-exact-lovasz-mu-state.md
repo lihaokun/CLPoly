@@ -3025,3 +3025,24 @@ in the exact two rings required by `hensel_unique`.
 No C++ files changed, so this step has no new C++ regression or b2b change
 surface.  Next, source/divisor leading-coefficient scaling will instantiate
 the two Hensel factorizations and rule out the remaining candidate rejection.
+
+## Discharge the physical candidate coprimality and base congruence
+
+`henselCandidate_physicalComplement_coprime` combines the generated removal
+partition with the selected-prime full-product identity.  After multiplying
+the selected product by the source leading coefficient, its product with the
+actual returned complement differs from the squarefree modular source only by
+the concrete prime-selection and normalization units.  Squarefreeness then
+proves these two physical products coprime, exactly in the orientation required
+by `hensel_unique`.
+
+`henselCandidate_scaled_eq_divisor_mod_prime` proves the second base condition:
+the integer trial polynomial constructed from the literal candidate indices,
+when reduced at `p`, equals the quotient-leading-scaled genuine divisor.  Its
+monicity comes from the physical one-head Hensel outputs, and its association
+is the occurrence-sensitive candidate certificate produced by the real scan.
+
+No C++ files changed, so this step has no new C++ regression or b2b change
+surface.  The remaining uniqueness assembly now consists of the two explicit
+`p^k` product equations, leading-coefficient equality, and cancellation of the
+shared nonzero base factor.

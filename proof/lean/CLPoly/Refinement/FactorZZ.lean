@@ -516,6 +516,74 @@ theorem selectionHenselFactors_prime_product_eq_unit_mul_source
   exact ⟨exponent, hexponent, scale, scaleAtPrime, houtput, hscaleUnit,
     hscaleAtPrimeUnit, rfl, hlargeProduct, hprimeProduct⟩
 
+/-- The exact selected product and the exact physical complement computed by
+`removeCombination` are coprime at the selected prime after the source-leading
+scaling used by Zassenhaus.  Their product differs from the squarefree source
+only by the two concrete units supplied by prime selection and Hensel
+normalization. -/
+theorem henselCandidate_physicalComplement_coprime
+    (p : Nat) [Fact (Nat.Prime p)]
+    (source : Polynomial Int) (active complement : Array SparsePolyZZ)
+    (candidate : Array Nat) (scale : ZMod p)
+    (hlegal : StrictRecombine.LegalCombination active.size candidate.size
+      candidate)
+    (hremove : Generated.StrictRecombine.removeCombination candidate active =
+      .ok complement)
+    (hfull : (active.toList.map (StrictHensel.toPolyMod p)).prod =
+      Polynomial.C scale *
+        Polynomial.map (Int.castRingHom (ZMod p)) source)
+    (hscaleUnit : IsUnit scale)
+    (hleadingNonzero : (source.leadingCoeff : ZMod p) ≠ 0)
+    (hsquarefree : Squarefree
+      (Polynomial.map (Int.castRingHom (ZMod p)) source)) :
+    IsCoprime
+      (complement.toList.map (StrictHensel.toPolyMod p)).prod
+      (Polynomial.C (source.leadingCoeff : ZMod p) *
+        ((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+          (StrictHensel.toPolyMod p)).prod) := by
+  let selected :=
+    ((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+      (StrictHensel.toPolyMod p)).prod
+  let remainder :=
+    (complement.toList.map (StrictHensel.toPolyMod p)).prod
+  let sourceMod := Polynomial.map (Int.castRingHom (ZMod p)) source
+  have hpartition := StrictRecombine.removeCombination_toPolyMod_product_partition
+    p candidate active complement hlegal hremove
+  have hproduct : remainder *
+        (Polynomial.C (source.leadingCoeff : ZMod p) * selected) =
+      Polynomial.C ((source.leadingCoeff : ZMod p) * scale) * sourceMod := by
+    dsimp [selected, remainder, sourceMod]
+    calc
+      _ = Polynomial.C (source.leadingCoeff : ZMod p) *
+          (((StrictRecombine.selectSourceIndices active.toList
+            candidate.toList).map (StrictHensel.toPolyMod p)).prod *
+            (complement.toList.map (StrictHensel.toPolyMod p)).prod) := by
+              ring
+      _ = Polynomial.C (source.leadingCoeff : ZMod p) *
+          (active.toList.map (StrictHensel.toPolyMod p)).prod := by
+            rw [hpartition]
+      _ = Polynomial.C (source.leadingCoeff : ZMod p) *
+          (Polynomial.C scale *
+            Polynomial.map (Int.castRingHom (ZMod p)) source) := by
+              rw [hfull]
+      _ = _ := by rw [Polynomial.C_mul]; ring
+  have hleadingUnit : IsUnit (source.leadingCoeff : ZMod p) :=
+    isUnit_iff_ne_zero.mpr hleadingNonzero
+  have hscalarUnit : IsUnit
+      (Polynomial.C ((source.leadingCoeff : ZMod p) * scale)) :=
+    Polynomial.isUnit_C.mpr (hleadingUnit.mul hscaleUnit)
+  have hassociated : Associated
+      (remainder * (Polynomial.C (source.leadingCoeff : ZMod p) * selected))
+      sourceMod := by
+    rw [hproduct]
+    exact (associated_isUnit_mul_left_iff hscalarUnit).mpr
+      (Associated.refl sourceMod)
+  have hproductSquarefree : Squarefree
+      (remainder *
+        (Polynomial.C (source.leadingCoeff : ZMod p) * selected)) :=
+    hassociated.squarefree_iff.mpr hsquarefree
+  exact (IsRelPrime.of_squarefree_mul hproductSquarefree).isCoprime
+
 private theorem origins_preserve_irreducible
     {p : Nat} {inputs : List SparsePolyZp} {outputs : List SparsePolyZZ}
     (horigins : List.Forall₂
@@ -878,6 +946,53 @@ theorem henselSelectedIntegerProduct_monic
   rw [← hselected, getElem!_pos output.1.toList indices[position]
     (by simpa using hactive), Array.getElem_toList hactive]
   exact hentry.outputToPolyMonic indices[position] hactive
+
+/-- At the selected prime, the exact integer trial polynomial built from a
+legal physical Hensel candidate is the quotient-leading-scaled genuine
+divisor.  This is the base congruence supplied to `hensel_unique`. -/
+theorem henselCandidate_scaled_eq_divisor_mod_prime
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f factors p
+      aTarget output)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly f = divisor * quotient)
+    (hdivisorModNonzero : Polynomial.map
+      (Int.castRingHom (ZMod p.toNat)) divisor ≠ 0)
+    (hdivisorLeading :
+      (Polynomial.map
+        (Int.castRingHom (ZMod p.toNat)) divisor).leadingCoeff =
+          (divisor.leadingCoeff : ZMod p.toNat))
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination output.1.size candidate.size
+      candidate)
+    (hassociated : Associated
+      (Polynomial.map (Int.castRingHom (ZMod p.toNat)) divisor)
+      (((StrictRecombine.selectSourceIndices output.1.toList
+        candidate.toList).map
+          (StrictHensel.toPolyMod p.toNat)).prod)) :
+    Polynomial.map (Int.castRingHom (ZMod p.toNat))
+        (Polynomial.C (SparsePolyZZ.toPoly f).leadingCoeff *
+          ((StrictRecombine.selectSourceIndices output.1.toList
+            candidate.toList).map SparsePolyZZ.toPoly).prod) =
+      Polynomial.map (Int.castRingHom (ZMod p.toNat))
+        (Polynomial.C quotient.leadingCoeff * divisor) := by
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < output.1.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  have hmonic := henselSelectedProduct_monic hentry p.toNat candidate hbound
+  have hscaled := leading_scaled_monic_associated_divisor p.toNat
+    (SparsePolyZZ.toPoly f) divisor quotient
+    (((StrictRecombine.selectSourceIndices output.1.toList candidate.toList).map
+      (StrictHensel.toPolyMod p.toNat)).prod)
+    hfactor hdivisorModNonzero hdivisorLeading hmonic hassociated
+  simpa [Polynomial.map_mul, Polynomial.map_C,
+    Polynomial.map_list_prod, List.map_map, StrictHensel.toPolyMod] using
+      hscaled
 
 /-- The first scalar-pruning branch of the literal `zassenhausAttempt` cannot
 reject a bounded candidate drawn from the actual normalized Hensel output.

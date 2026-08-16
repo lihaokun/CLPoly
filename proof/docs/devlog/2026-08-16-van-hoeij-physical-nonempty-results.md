@@ -778,3 +778,21 @@ oracle, `sorry`, or custom axiom.
 - Next: prove the final generated LLL state satisfies its completed
   size-reduction/Lovasz conditions, then derive that every sufficiently short
   lattice vector lies in the span of the collected rows.
+
+## Expose the genuine LLL loop exit condition
+
+`concreteLLLMainLoop_finished` now follows the same determinant-ranked
+well-founded recursion as the generated main loop and proves that every
+successful returned state satisfies `matrix.size <= k`.  The only base case
+is the literal negation of the C++ `k < matrix.size` guard; recursive results
+must come from an actual successful `lllStep` and its proved rank decrease.
+
+This is the exit fact needed to turn a preserved reduced-prefix invariant into
+a reduced property for every adjacent basis pair.  It is not postulated on
+the LLL output and introduces no fuel, partial definition, termination oracle,
+`sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: define and preserve the exact size-reduced/Lovasz prefix processed by
+  the C++ `k` cursor, then specialize it to all rows using this exit theorem.

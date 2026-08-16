@@ -12118,6 +12118,43 @@ theorem HenselTreePhysicalHeads.of_lookups
           subst right
           cases left <;> simp [henselLiftTreeIndices, hindex])
 
+/-- Writing the current root leaves a disjoint child certificate literally
+unchanged.  This follows the generated `Array.set!` update, including its
+in-bounds proof; no semantic array abstraction is used. -/
+theorem HenselTreePhysicalHeads.of_setBang_not_mem
+    {start stop root : Nat}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode} {value : HenselNode}
+    (hcertificate : HenselTreePhysicalHeads start stop tree nodes)
+    (hroot : root < nodes.size)
+    (hnotmem : root ∉ henselLiftTreeIndices tree) :
+    HenselTreePhysicalHeads start stop tree (nodes.set! root value) := by
+  apply hcertificate.of_lookups
+  intro index hindex
+  exact array_getElem?_setBang_ne nodes root index value hroot (by
+    intro heq
+    subst index
+    exact hnotmem hindex)
+
+/-- A successful concrete recursive traversal transports a physical-head
+certificate for a disjoint subtree by its exact mutable-array frame theorem. -/
+theorem HenselTreePhysicalHeads.of_recursive_disjoint
+    {start stop : Nat}
+    {tree other : Generated.StrictHensel.HenselLiftTree}
+    {before after : Array HenselNode}
+    {termination : Generated.StrictHensel.DivmodTermination} {m : Nat}
+    {target : SparsePolyZZ}
+    (hcertificate : HenselTreePhysicalHeads start stop tree before)
+    (hcorrect : HenselLiftRecursiveCorrect termination m other before target
+      after)
+    (hdisjoint : List.Disjoint (henselLiftTreeIndices tree)
+      (henselLiftTreeIndices other)) :
+    HenselTreePhysicalHeads start stop tree after := by
+  apply hcertificate.of_lookups
+  intro index hindex
+  exact hcorrect.preserves_not_mem index (fun hother =>
+    (List.disjoint_left.mp hdisjoint) hindex hother)
+
 theorem HenselTreeSemanticBuildCertificate.lower_mono
     {p lower lower' start stop : Nat} [Fact (Nat.Prime p)]
     {factors : Array SparsePolyZp}

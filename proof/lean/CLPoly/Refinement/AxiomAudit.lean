@@ -61,6 +61,8 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.lower_mono
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.toPhysicalHeads
 #print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.of_lookups
+#print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.of_setBang_not_mem
+#print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.of_recursive_disjoint
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.of_preservesFrom
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.oneHead_of_mem
 #print axioms Refinement.StrictHensel.henselTreeBuildTopology_indices_complete

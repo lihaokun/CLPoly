@@ -2784,3 +2784,22 @@ so this step has no new C++ b2b change surface.  Next, each constructor of the
 real `HenselLiftRecursiveCorrect` trace will rebuild this certificate after
 its concrete `__hensel_step_raw_ir` call and use exact subtree frames between
 the left and right calls.
+
+## Add exact frames for physical-head subtrees
+
+Two concrete frame lemmas prepare the interval certificate for the real
+source-ordered lift traversal.  `of_setBang_not_mem` follows the actual root
+`Array.set!` and preserves a child certificate only after proving the root is
+absent from that child's enumerated topology.  `of_recursive_disjoint` follows
+an actual `HenselLiftRecursiveCorrect` trace and reuses its exact
+`preserves_not_mem` theorem; it requires the preserved and executed subtree
+index lists to be disjoint.
+
+These lemmas preserve literal sparse arrays, not only polynomial denotations.
+They therefore support physical coefficient-one conclusions without replacing
+the C++ mutable-array behavior by a semantic oracle.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ b2b change surface.  Next, the four constructors of
+the real recursive lift trace compose the root step, these exact frames, and
+the interval certificate induction.

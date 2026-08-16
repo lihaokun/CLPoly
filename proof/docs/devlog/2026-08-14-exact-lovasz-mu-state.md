@@ -1987,6 +1987,12 @@ No C++ files changed, so this step has no new C++ b2b change surface.
 - `selectionHenselFactors_liveProduct` initializes this certificate from the
   literal Hensel entry, while `primeProductAssociated` exposes exactly the
   current mod-`p` relation consumed by the live divisor/subset construction.
+- Proved that an integer coefficient nonzero modulo the selected prime becomes
+  a unit modulo every `p^k`, and lifted this to the leading coefficient of the
+  mapped polynomial.  Added explicit polynomial cancellation from a unit
+  leading coefficient.  This is the sound cancellation principle needed by
+  full-precision state preservation: it deliberately does not treat the
+  composite-modulus ring `ZMod (p^k)` as a field or integral domain.
 - Added `zassenhausLeadingPrune_accepts_live_candidate`.  For an arbitrary
   current active array, pointwise canonical/nonempty/monic cells make the
   literal generated `selectedLeadingProductLoop` accumulate exactly the live

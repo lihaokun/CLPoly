@@ -10,6 +10,7 @@ import CLPoly.Generated.StrictFactorZZ
 import CLPoly.Refinement.Hensel
 import CLPoly.Refinement.Recombine
 import CLPoly.Refinement.SelectPrime
+import Mathlib.Data.ZMod.Coprime
 
 set_option autoImplicit false
 
@@ -760,6 +761,52 @@ theorem LiveHenselProduct.primeProductAssociated
   exact ((associated_isUnit_mul_left_iff
     (Polynomial.isUnit_C.mpr hscaleAtPrimeUnit)).mpr
       (Associated.refl _)).symm
+
+/-- A concrete integer coefficient surviving reduction modulo the selected
+prime is a unit at every positive prime-power precision. -/
+theorem intCast_isUnit_primePower_of_ne_zero_prime
+    (prime exponent : Nat) [Fact (Nat.Prime prime)] (coefficient : Int)
+    (hnonzero : (coefficient : ZMod prime) ≠ 0) :
+    IsUnit (coefficient : ZMod (prime ^ exponent)) := by
+  have hprimeUnit : IsUnit (coefficient : ZMod prime) :=
+    isUnit_iff_ne_zero.mpr hnonzero
+  have hcoprime : IsCoprime (prime : Int) coefficient :=
+    (ZMod.coe_int_isUnit_iff_isCoprime coefficient prime).mp hprimeUnit
+  have hpowerCoprime : IsCoprime ((prime : Int) ^ exponent) coefficient :=
+    hcoprime.pow_left
+  apply (ZMod.coe_int_isUnit_iff_isCoprime coefficient
+    (prime ^ exponent)).mpr
+  simpa using hpowerCoprime
+
+/-- Cancellation in the prime-power polynomial ring is justified by a unit
+leading coefficient, not by a false field/domain instance for `ZMod (p^k)`. -/
+theorem polynomial_mul_right_cancel_of_isUnit_leadingCoeff
+    {R : Type*} [CommRing R] (factor left right : Polynomial R)
+    (hleading : IsUnit factor.leadingCoeff)
+    (heq : factor * left = factor * right) : left = right := by
+  have hzero : factor * (left - right) = 0 := by
+    rw [mul_sub, heq, sub_self]
+  have hdiff : left - right = 0 :=
+    (Polynomial.isUnit_leadingCoeff_mul_right_eq_zero_iff hleading).mp hzero
+  exact sub_eq_zero.mp hdiff
+
+/-- The mapped integer polynomial itself has a unit leading coefficient at
+full Hensel precision whenever its leading coefficient survives mod `p`. -/
+theorem mapped_leadingCoeff_isUnit_primePower
+    (prime exponent : Nat) [Fact (Nat.Prime prime)]
+    (factor : Polynomial Int) (hexponent : 0 < exponent)
+    (hleading : (factor.leadingCoeff : ZMod prime) ≠ 0) :
+    IsUnit ((factor.map
+      (Int.castRingHom (ZMod (prime ^ exponent)))).leadingCoeff) := by
+  have hcoefficientUnit := intCast_isUnit_primePower_of_ne_zero_prime prime
+    exponent factor.leadingCoeff hleading
+  letI : Fact (1 < prime ^ exponent) :=
+    ⟨Nat.one_lt_pow hexponent.ne' (Fact.out : Nat.Prime prime).one_lt⟩
+  have hcoefficientNe :
+      (factor.leadingCoeff : ZMod (prime ^ exponent)) ≠ 0 :=
+    hcoefficientUnit.ne_zero
+  rw [Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero _ hcoefficientNe]
+  exact hcoefficientUnit
 
 /-- The normalized factors returned by the literal Hensel entry initialize a
 `LiveHenselProduct` at the exact prime power returned by that execution. -/

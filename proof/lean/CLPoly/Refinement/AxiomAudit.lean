@@ -139,6 +139,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_liveActive
 #print axioms Refinement.StrictFactorZZ.LiveHenselProduct.primeProductAssociated
 #print axioms Refinement.StrictFactorZZ.selectionHenselFactors_liveProduct
+#print axioms Refinement.StrictFactorZZ.intCast_isUnit_primePower_of_ne_zero_prime
+#print axioms Refinement.StrictFactorZZ.polynomial_mul_right_cancel_of_isUnit_leadingCoeff
+#print axioms Refinement.StrictFactorZZ.mapped_leadingCoeff_isUnit_primePower
 #print axioms Refinement.StrictFactorZZ.henselCandidate_physicalComplement_coprime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_eq_divisor_mod_prime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_leadingCoeff

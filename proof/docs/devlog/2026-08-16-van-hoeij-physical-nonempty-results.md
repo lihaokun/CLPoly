@@ -972,3 +972,31 @@ discarded in favour of the fallback.
   Gram--Schmidt factor, obtain its norm lower bound, and derive the row-span
   separation needed to prevent candidate classes from crossing true
   irreducible blocks.
+
+## Lower-bound the physical Gram--Schmidt component
+
+The integral inverse-coordinate witness is now connected to the exact
+Gram--Schmidt data retained from generated LLL execution:
+
+- `vecMul_gsLowerPrefix_last_nonzero` proves that multiplication by the
+  physical unit-lower-triangular `mu` matrix leaves the greatest nonzero
+  reduced-basis coordinate unchanged;
+- `gramSchmidt_quadratic_eq` evaluates the concrete Gram matrix quadratic form
+  through the proved physical factorization `G = L D L^T`;
+- `last_nonzero_gramSchmidt_term_le` uses positivity of every generated norm
+  cell to retain the selected diagonal summand;
+- `gramSchmidt_norm_le_of_last_nonzero` uses integrality and nonzeroness of the
+  coordinate to prove that its square is at least one; and
+- `gramPrefix_quadratic_eq_vecMul_norm` identifies the same quadratic form
+  with the actual squared Euclidean norm of the represented integer lattice
+  vector.
+
+All equalities use the physical matrix, `mu`, and norm arrays certified by the
+generated execution.  No abstract reduced basis or semantic norm oracle is
+introduced.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: transport the reconstructed initial-basis vector across the proved
+  equal matrix dimensions, then combine this lower bound with the physical
+  Lovasz chain and size-reduction bounds.

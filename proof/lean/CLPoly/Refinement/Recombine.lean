@@ -6211,6 +6211,126 @@ theorem exists_last_nonzero {n : Nat} (values : Fin n → ZZ)
     have := support.le_max' later hlaterMem
     exact (not_le_of_gt hlater) this
 
+/-- In the physical unit-lower-triangular Gram--Schmidt factor, the last
+nonzero integer reduced-basis coordinate survives unchanged. -/
+theorem vecMul_gsLowerPrefix_last_nonzero
+    (state : Generated.StrictRecombine.LLLState)
+    (coordinates : Fin state.matrix.size → ZZ)
+    (index : Fin state.matrix.size)
+    (hzero : ∀ later, index < later → coordinates later = 0) :
+    Matrix.vecMul (fun position => (coordinates position : QQ))
+        (gsLowerPrefix state state.matrix.size) index =
+      (coordinates index : QQ) := by
+  rw [Matrix.vecMul_apply]
+  let values : Fin state.matrix.size → QQ := fun position =>
+    (coordinates position : QQ) *
+      gsLowerPrefix state state.matrix.size position index
+  rw [show (∑ position, (coordinates position : QQ) *
+      gsLowerPrefix state state.matrix.size position index) =
+      ∑ position, values position by rfl]
+  rw [finSum_eq_prefix_add_at_of_zero_after values index.val index.isLt]
+  · have hprefix : (∑ position : Fin index.val,
+        values ⟨position.val, lt_trans position.isLt index.isLt⟩) = 0 := by
+      apply Finset.sum_eq_zero
+      intro position _
+      simp [values, gsLowerPrefix, show ¬index.val < position.val by omega,
+        show (⟨position.val, lt_trans position.isLt index.isLt⟩ :
+          Fin state.matrix.size) ≠ index by
+            intro heq
+            have := congrArg Fin.val heq
+            omega]
+    rw [hprefix, zero_add]
+    simp [values, gsLowerPrefix]
+  · intro later hlater
+    simp [values, hzero later hlater]
+
+/-- The physical Gram matrix factorization evaluates its quadratic form as
+the weighted sum of squared Gram--Schmidt coordinates. -/
+theorem gramSchmidt_quadratic_eq
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (coordinates : Fin state.matrix.size → QQ) :
+    dotProduct coordinates
+        (gramPrefixMatrixQQ state.matrix state.matrix.size *ᵥ coordinates) =
+      ∑ index : Fin state.matrix.size,
+        (Matrix.vecMul coordinates
+          (gsLowerPrefix state state.matrix.size) index) ^ 2 *
+          state.norms[index.val]! := by
+  rw [hvalid.gram_schmidt state.matrix.size (le_refl _) ]
+  simp only [Matrix.mul_assoc]
+  simp [dotProduct, Matrix.mulVec, Matrix.vecMul, Matrix.mul_apply,
+    gsNormDiagonal, Matrix.diagonal_apply, Finset.mul_sum, Finset.sum_mul]
+  ring
+
+/-- A last nonzero integral coordinate contributes its full positive
+Gram--Schmidt diagonal term to the represented vector's squared norm. -/
+theorem last_nonzero_gramSchmidt_term_le
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (coordinates : Fin state.matrix.size → ZZ)
+    (index : Fin state.matrix.size)
+    (hzero : ∀ later, index < later → coordinates later = 0) :
+    (coordinates index : QQ) ^ 2 * state.norms[index.val]! ≤
+      dotProduct (fun position => (coordinates position : QQ))
+        (gramPrefixMatrixQQ state.matrix state.matrix.size *ᵥ
+          fun position => (coordinates position : QQ)) := by
+  rw [gramSchmidt_quadratic_eq state hvalid]
+  have hcoordinate := vecMul_gsLowerPrefix_last_nonzero state coordinates
+    index hzero
+  rw [hcoordinate]
+  apply Finset.single_le_sum
+  · intro position _
+    exact mul_nonneg (sq_nonneg _) (le_of_lt
+      (hvalid.norms_positive position.val (by
+        rw [hvalid.norms_size]
+        exact position.isLt)))
+  · exact Finset.mem_univ index
+
+/-- Because the surviving coordinate is a nonzero integer, its square is at
+least one; hence the represented vector is no shorter than the corresponding
+physical Gram--Schmidt vector. -/
+theorem gramSchmidt_norm_le_of_last_nonzero
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (coordinates : Fin state.matrix.size → ZZ)
+    (index : Fin state.matrix.size)
+    (hne : coordinates index ≠ 0)
+    (hzero : ∀ later, index < later → coordinates later = 0) :
+    state.norms[index.val]! ≤
+      dotProduct (fun position => (coordinates position : QQ))
+        (gramPrefixMatrixQQ state.matrix state.matrix.size *ᵥ
+          fun position => (coordinates position : QQ)) := by
+  have hsquareInt : (1 : ZZ) ≤ coordinates index ^ 2 :=
+    (one_le_sq_iff_one_le_abs (coordinates index)).2 (Int.one_le_abs hne)
+  have hsquare : (1 : QQ) ≤ (coordinates index : QQ) ^ 2 := by
+    exact_mod_cast hsquareInt
+  have hnormNonnegative : 0 ≤ state.norms[index.val]! := le_of_lt
+    (hvalid.norms_positive index.val (by
+      rw [hvalid.norms_size]
+      exact index.isLt))
+  exact (le_mul_of_one_le_left hnormNonnegative hsquare).trans
+    (last_nonzero_gramSchmidt_term_le state hvalid coordinates index hzero)
+
+/-- The concrete integer Gram matrix quadratic form is exactly the squared
+Euclidean norm of the lattice row combination it represents. -/
+theorem gramPrefix_quadratic_eq_vecMul_norm
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (coordinates : Fin matrix.size → ZZ) :
+    dotProduct (fun position => (coordinates position : QQ))
+        (gramPrefixMatrixQQ matrix matrix.size *ᵥ
+          fun position => (coordinates position : QQ)) =
+      dotProduct
+        (fun column =>
+          ((Matrix.vecMul coordinates
+            (basisPrefixMatrix matrix matrix.size matrix.size) column : ZZ) : QQ))
+        (fun column =>
+          ((Matrix.vecMul coordinates
+            (basisPrefixMatrix matrix matrix.size matrix.size) column : ZZ) : QQ)) := by
+  simp [gramPrefixMatrixQQ, gramPrefixMatrix, basisPrefixMatrix, dotProduct,
+    Matrix.mulVec, Matrix.vecMul, Matrix.mul_apply, Int.cast_sum,
+    Finset.mul_sum, Finset.sum_mul]
+  ring
+
 theorem makeInitialMatrix_input_valid (size : Nat) (scale : ZZ)
     (matrix : Generated.StrictRecombine.LLLMatrix) (hscale : scale ≠ 0)
     (hrun : Generated.StrictRecombine.makeInitialMatrix size scale = .ok matrix) :

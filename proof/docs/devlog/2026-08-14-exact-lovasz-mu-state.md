@@ -2762,3 +2762,25 @@ changes no definition, premise, theorem statement, or trusted axiom.
 so this step has no new C++ b2b change surface.  Next, the same interval-aware
 fact will be preserved by every genuine Hensel lifting round and transferred
 to the extracted factor-array tail consumed by final normalization.
+
+## Isolate the interval-indexed physical-head certificate
+
+`HenselTreePhysicalHeads start stop tree nodes` is the representation-only
+certificate used for the next lifting invariant.  It follows the concrete
+tree and actual array lookups.  At each node it records a literal one-head for
+`h`, and records the same for `g` precisely under the real condition
+`0 < start`; its children use the exact midpoint half-intervals.
+
+The actual builder semantic certificate forgets directly to this new
+certificate by structural induction.  No topology is reconstructed and no
+new source premise is introduced.  A separate `of_lookups` frame theorem
+transports the certificate only when every concrete index enumerated by that
+subtree has exactly the same array lookup.  In particular, algebraic equality
+or modular congruence is intentionally insufficient for transporting a
+physical representation fact.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ b2b change surface.  Next, each constructor of the
+real `HenselLiftRecursiveCorrect` trace will rebuild this certificate after
+its concrete `__hensel_step_raw_ir` call and use exact subtree frames between
+the left and right calls.

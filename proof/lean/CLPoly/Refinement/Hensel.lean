@@ -12048,6 +12048,76 @@ inductive HenselTreeSemanticBuildCertificate (p : Nat) [Fact (Nat.Prime p)]
       HenselTreeSemanticBuildCertificate p factors lower start stop
         (.node index left right) nodes
 
+/-- Representation-only interval certificate used by the lifting traversal.
+It mirrors the concrete builder topology but retains only literal sparse-array
+head facts.  The first interval may have a non-monic `g`; every interval whose
+actual start is positive has a physical coefficient-one `g` head. -/
+inductive HenselTreePhysicalHeads :
+    Nat → Nat → Generated.StrictHensel.HenselLiftTree →
+      Array HenselNode → Prop
+  | cert
+      (start stop index : Nat)
+      (left right : Option Generated.StrictHensel.HenselLiftTree)
+      (nodes : Array HenselNode) (value : HenselNode)
+      (hnode : nodes[index]? = some value)
+      (hGOneHead : 0 < start → HasPhysicalOneHead value.g)
+      (hHOneHead : HasPhysicalOneHead value.h)
+      (hleft : ∀ child, left = some child →
+        HenselTreePhysicalHeads start ((start + stop) / 2) child nodes)
+      (hright : ∀ child, right = some child →
+        HenselTreePhysicalHeads ((start + stop) / 2) stop child nodes) :
+      HenselTreePhysicalHeads start stop (.node index left right) nodes
+
+/-- Forgetting the algebraic fields of the actual builder certificate leaves
+the exact interval-indexed physical-head certificate needed by lifting. -/
+theorem HenselTreeSemanticBuildCertificate.toPhysicalHeads
+    {p lower start stop : Nat} [Fact (Nat.Prime p)]
+    {factors : Array SparsePolyZp}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode}
+    (hcertificate : HenselTreeSemanticBuildCertificate p factors lower
+      start stop tree nodes) :
+    HenselTreePhysicalHeads start stop tree nodes := by
+  induction hcertificate with
+  | node start stop index left right nodes value hlower hnode hinvariant
+      hGOneHead hHOneHead hleftCertificate hrightCertificate leftIH rightIH =>
+      exact .cert start stop index left right nodes value hnode hGOneHead
+        hHOneHead (fun child hchild => leftIH child hchild)
+        (fun child hchild => rightIH child hchild)
+
+/-- Physical-head evidence is transported by exact lookups on the concrete
+finite topology.  This is the frame rule used between the source-ordered left
+and right recursive calls; it does not permit algebraically equivalent
+replacement values. -/
+theorem HenselTreePhysicalHeads.of_lookups
+    {start stop : Nat} {tree : Generated.StrictHensel.HenselLiftTree}
+    {before after : Array HenselNode}
+    (hcertificate : HenselTreePhysicalHeads start stop tree before)
+    (hlookup : ∀ index ∈ henselLiftTreeIndices tree,
+      after[index]? = before[index]?) :
+    HenselTreePhysicalHeads start stop tree after := by
+  induction hcertificate with
+  | cert start stop root left right nodes value hnode hGOneHead hHOneHead
+      hleft hright leftIH rightIH =>
+      have hroot : after[root]? = some value := by
+        rw [hlookup root (by
+          cases left <;> cases right <;> simp [henselLiftTreeIndices])]
+        exact hnode
+      refine .cert start stop root left right after value hroot hGOneHead
+        hHOneHead ?_ ?_
+      · intro child hchild
+        exact leftIH child hchild (by
+          intro index hindex
+          apply hlookup index
+          subst left
+          cases right <;> simp [henselLiftTreeIndices, hindex])
+      · intro child hchild
+        exact rightIH child hchild (by
+          intro index hindex
+          apply hlookup index
+          subst right
+          cases left <;> simp [henselLiftTreeIndices, hindex])
+
 theorem HenselTreeSemanticBuildCertificate.lower_mono
     {p lower lower' start stop : Nat} [Fact (Nat.Prime p)]
     {factors : Array SparsePolyZp}

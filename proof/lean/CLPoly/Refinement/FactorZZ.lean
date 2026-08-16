@@ -3982,6 +3982,205 @@ decreasing_by
         candidate remaining (by rw [candidateSize]; exact hsubsetPositive)
         hremove)
 
+set_option maxHeartbeats 1000000 in
+/-- The polynomial left in the literal terminal Zassenhaus state is
+irreducible whenever it has positive degree.  A hypothetical factorization is
+first represented by a legal candidate over the physical live Hensel array.
+The generated reverse-erasure loop supplies the occurrence-sensitive
+complement candidate.  One of these two candidates has size at most half of
+the active array, hence is covered by the recorded literal scan history; full
+recovery precision says that same generated attempt extracts it, a
+contradiction. -/
+theorem ZassenhausTerminalCertificate.source_irreducible
+    {prime exponent : Nat} [Fact (Nat.Prime prime)]
+    {output : Array SparsePolyZZ}
+    (certificate : ZassenhausTerminalCertificate prime exponent output)
+    (hdegree : 0 < certificate.source[0]!.1.deg) :
+    Irreducible (SparsePolyZZ.toPoly certificate.source) := by
+  let source := certificate.source
+  let active := certificate.active
+  let sourcePoly := SparsePolyZZ.toPoly source
+  have hsourceNonempty : 0 < source.size := by
+    simpa [source] using certificate.nonempty
+  have hsourceNonunit : ¬IsUnit sourcePoly := by
+    have hpolyDegree : (SparsePolyZZ.toPoly source).degree =
+        some source[0]!.1.deg := by
+      exact StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head source
+        certificate.canonical hsourceNonempty
+    apply Polynomial.not_isUnit_of_degree_pos sourcePoly
+    change 0 < (SparsePolyZZ.toPoly source).degree
+    rw [hpolyDegree]
+    exact WithBot.coe_lt_coe.mpr (by simpa [source] using hdegree)
+  refine ⟨hsourceNonunit, ?_⟩
+  intro left right hfactorization
+  by_cases hleftUnit : IsUnit left
+  · exact Or.inl hleftUnit
+  by_cases hrightUnit : IsUnit right
+  · exact Or.inr hrightUnit
+  exfalso
+  rcases primitive_factorization_maps_nonunits prime sourcePoly left right
+      certificate.primitive certificate.leading hfactorization hleftUnit
+      hrightUnit with
+    ⟨hleftPrimitive, hrightPrimitive, hleftLeading, hrightLeading,
+      hleftMapNonunit, hrightMapNonunit⟩
+  have hleftNe : left ≠ 0 := Polynomial.leadingCoeff_ne_zero.mp
+    (fun hzero => hleftLeading (by simpa [hzero]))
+  have hrightNe : right ≠ 0 := Polynomial.leadingCoeff_ne_zero.mp
+    (fun hzero => hrightLeading (by simpa [hzero]))
+  have hleftMapNe : left.map (Int.castRingHom (ZMod prime)) ≠ 0 := by
+    intro hzero
+    apply hleftLeading
+    have hlead := Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero
+      (Int.castRingHom (ZMod prime)) hleftLeading
+    rw [hzero] at hlead
+    simpa using hlead.symm
+  have hrightMapNe : right.map (Int.castRingHom (ZMod prime)) ≠ 0 := by
+    intro hzero
+    apply hrightLeading
+    have hlead := Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero
+      (Int.castRingHom (ZMod prime)) hrightLeading
+    rw [hzero] at hlead
+    simpa using hlead.symm
+  rcases live_divisor_mod_has_legal_candidate prime source active
+      certificate.productState.primeProductAssociated
+      certificate.activeState.irreducible left
+      ⟨right, hfactorization⟩ with
+    ⟨leftCandidate, hleftLegal, hleftAssociated⟩
+  rcases StrictRecombine.removeCombination_complement_candidate leftCandidate
+      active hleftLegal with
+    ⟨remaining, rightCandidate, hremove, hrightLegal, hrightSelected,
+      hsize⟩
+  have hpartition :=
+    StrictRecombine.removeCombination_toPolyMod_product_partition prime
+      leftCandidate active remaining hleftLegal hremove
+  have hrightLegal' : StrictRecombine.LegalCombination active.size
+      rightCandidate.size rightCandidate := by
+    simpa [hrightLegal.1] using hrightLegal
+  have hrightAssociated : Associated
+      (right.map (Int.castRingHom (ZMod prime)))
+      (((StrictRecombine.selectSourceIndices active.toList
+        rightCandidate.toList).map (StrictHensel.toPolyMod prime)).prod) := by
+    have hsourceMapped :
+        sourcePoly.map (Int.castRingHom (ZMod prime)) =
+          left.map (Int.castRingHom (ZMod prime)) *
+            right.map (Int.castRingHom (ZMod prime)) := by
+      simpa [sourcePoly, source, Polynomial.map_mul] using
+        congrArg (Polynomial.map (Int.castRingHom (ZMod prime)))
+          hfactorization
+    have htotal : Associated
+        (left.map (Int.castRingHom (ZMod prime)) *
+          right.map (Int.castRingHom (ZMod prime)))
+        (((StrictRecombine.selectSourceIndices active.toList
+          leftCandidate.toList).map (StrictHensel.toPolyMod prime)).prod *
+          (remaining.toList.map (StrictHensel.toPolyMod prime)).prod) :=
+      (Associated.of_eq hsourceMapped.symm).trans
+        (certificate.productState.primeProductAssociated.trans
+          (Associated.of_eq hpartition.symm))
+    have hremainingAssociated : Associated
+        (right.map (Int.castRingHom (ZMod prime)))
+        ((remaining.toList.map (StrictHensel.toPolyMod prime)).prod) :=
+      Associated.of_mul_left htotal hleftAssociated hleftMapNe
+    simpa [hrightSelected] using hremainingAssociated
+  have hleftPositive : 0 < leftCandidate.size := by
+    by_contra hnot
+    have hempty := Array.size_eq_zero_iff.mp (Nat.eq_zero_of_not_pos hnot)
+    subst leftCandidate
+    apply hleftMapNonunit
+    simpa [StrictRecombine.selectSourceIndices] using
+      hleftAssociated.isUnit_iff.mpr isUnit_one
+  have hrightPositive : 0 < rightCandidate.size := by
+    by_contra hnot
+    have hempty := Array.size_eq_zero_iff.mp (Nat.eq_zero_of_not_pos hnot)
+    subst rightCandidate
+    apply hrightMapNonunit
+    simpa [StrictRecombine.selectSourceIndices] using
+      hrightAssociated.isUnit_iff.mpr isUnit_one
+  let leading := source[0]!
+  have hleadingCell : source[0]? = some leading := by
+    rw [Array.getElem?_eq_getElem hsourceNonempty]
+    simp [leading, getElem!_pos source 0 hsourceNonempty]
+  have hleadingEq : leading.2 = sourcePoly.leadingCoeff := by
+    have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head source
+      certificate.canonical hsourceNonempty
+    simpa [leading, getElem!_pos source 0 hsourceNonempty] using hhead.symm
+  have hleadingBound : leading.2.natAbs * 2 < prime ^ exponent := by
+    simpa [hleadingEq] using certificate.precision.leadingBound
+  by_cases hleftSmall : 2 * leftCandidate.size ≤ active.size
+  · have hscanSmall : leftCandidate.size < certificate.subsetSize := by
+      have hstopped : active.size < 2 * certificate.subsetSize := by
+        simpa [active] using Nat.lt_of_not_ge certificate.stopped
+      omega
+    have hleftLeadingMap :
+        (left.map (Int.castRingHom (ZMod prime))).leadingCoeff =
+          (left.leadingCoeff : ZMod prime) :=
+      Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero _ hleftLeading
+    have hcongruent := certificate.productState.selectedCongruent
+      certificate.activeState certificate.squarefree certificate.leading
+      left right hfactorization hleftMapNe hleftLeadingMap leftCandidate
+      hleftLegal hleftAssociated
+    rcases zassenhausAttempt_extracts_live_divisor_candidate
+        certificate.canonical certificate.nonempty leading hleadingCell left
+        right hfactorization hleftPrimitive hleftNe hrightNe leftCandidate
+        hleftLegal certificate.activeState.fitsInt32
+        certificate.activeState.canonical certificate.activeState.nonempty
+        certificate.activeState.monic (prime ^ exponent)
+        (pow_pos (Fact.out : Nat.Prime prime).pos exponent) rfl hleadingBound
+        hcongruent
+        (certificate.precision.scaledFactorBound left right hfactorization
+          hleftNe) with
+      ⟨factor, quotient, hextracted⟩
+    have hrejected := certificate.history.rejects leftCandidate hleftPositive
+      hscanSmall hleftLegal
+    rw [hextracted] at hrejected
+    simp at hrejected
+  · have hrightSmallBound : 2 * rightCandidate.size ≤ active.size := by
+      have hremainingSize : remaining.size = rightCandidate.size :=
+        hrightLegal.1.symm
+      rw [← hremainingSize]
+      omega
+    have hscanSmall : rightCandidate.size < certificate.subsetSize := by
+      have hstopped : active.size < 2 * certificate.subsetSize := by
+        simpa [active] using Nat.lt_of_not_ge certificate.stopped
+      omega
+    have hrightLeadingMap :
+        (right.map (Int.castRingHom (ZMod prime))).leadingCoeff =
+          (right.leadingCoeff : ZMod prime) :=
+      Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero _ hrightLeading
+    have hfactorization' : sourcePoly = right * left := by
+      simpa [sourcePoly, source, mul_comm] using hfactorization
+    have hcongruent := certificate.productState.selectedCongruent
+      certificate.activeState certificate.squarefree certificate.leading
+      right left hfactorization' hrightMapNe hrightLeadingMap rightCandidate
+      hrightLegal' hrightAssociated
+    rcases zassenhausAttempt_extracts_live_divisor_candidate
+        certificate.canonical certificate.nonempty leading hleadingCell right
+        left hfactorization' hrightPrimitive hrightNe hleftNe rightCandidate
+        hrightLegal' certificate.activeState.fitsInt32
+        certificate.activeState.canonical certificate.activeState.nonempty
+        certificate.activeState.monic (prime ^ exponent)
+        (pow_pos (Fact.out : Nat.Prime prime).pos exponent) rfl hleadingBound
+        hcongruent
+        (certificate.precision.scaledFactorBound right left hfactorization'
+          hrightNe) with
+      ⟨factor, quotient, hextracted⟩
+    have hrejected := certificate.history.rejects rightCandidate
+      hrightPositive hscanSmall hrightLegal'
+    rw [hextracted] at hrejected
+    simp at hrejected
+
+/-- Every physical factor returned by the literal terminal finish block is
+irreducible: previously extracted factors use the accumulated execution
+invariant, and the positive-degree remainder uses
+`source_irreducible`. -/
+theorem ZassenhausTerminalCertificate.output_irreducible
+    {prime exponent : Nat} [Fact (Nat.Prime prime)]
+    {output : Array SparsePolyZZ}
+    (certificate : ZassenhausTerminalCertificate prime exponent output) :
+    FactorArrayIrreducible output := by
+  rw [certificate.output_eq]
+  exact certificate.resultIrreducible.finishZassenhaus
+    (fun _hnonempty hdegree => certificate.source_irreducible hdegree)
+
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source
 execution theorems above, including exact long division and quotient

@@ -158,6 +158,12 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.FactorArrayIrreducible.finishZassenhaus
 #print axioms Refinement.StrictFactorZZ.scanExtraction_liveStep
 #print axioms Refinement.StrictFactorZZ.zassenhausLoop_live_terminal
+#print axioms Refinement.StrictFactorZZ.ZassenhausTerminalCertificate.source_irreducible
+#print axioms Refinement.StrictFactorZZ.ZassenhausTerminalCertificate.output_irreducible
+#print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
+#print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
+#print axioms Refinement.StrictRecombine.removeCombination_sublist
+#print axioms Refinement.StrictRecombine.removeCombination_complement_candidate
 #print axioms Refinement.StrictFactorZZ.henselCandidate_physicalComplement_coprime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_eq_divisor_mod_prime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_leadingCoeff

@@ -2302,6 +2302,46 @@ private theorem sparseZZ_chain_head_gt_all
       · exact hchain.1
       · exact Nat.lt_trans (ih next hchain.2 item htail) hchain.1
 
+/-- A nonempty canonical sparse integer polynomial has mathematical degree
+equal to the degree stored in its physical first cell. -/
+theorem sparsePolyZZ_toPoly_degree_eq_head (poly : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical poly)
+    (hnonempty : 0 < poly.size) :
+    (SparsePolyZZ.toPoly poly).degree = poly[0]!.1.deg := by
+  have hlistNonempty : poly.toList ≠ [] := by
+    intro hempty
+    have hlength := congrArg List.length hempty
+    have hsizeZero : poly.size = 0 := by simpa using hlength
+    omega
+  obtain ⟨head, rest, hlist⟩ := List.exists_cons_of_ne_nil hlistNonempty
+  have hheadEq : head = poly[0] := by
+    have hget := Array.getElem_toList hnonempty
+    simpa [hlist] using hget
+  have hheadMem : head ∈ poly.toList := by simp [hlist]
+  have hheadNonzero : head.2 ≠ 0 := hcanonical.2 head hheadMem
+  have hchain : List.IsChain
+      (fun a b : UMonomial × Int => a.1.deg > b.1.deg)
+      (head :: rest) := by
+    simpa [hlist] using hcanonical.1
+  have hrestLt : ∀ item ∈ rest, item.1.deg < head.1.deg :=
+    sparseZZ_chain_head_gt_all head rest hchain
+  have hrestDegree :
+      ((rest.map fun term =>
+        Polynomial.monomial term.1.deg term.2).sum).degree < head.1.deg := by
+    rw [Polynomial.degree_lt_iff_coeff_zero]
+    intro degree hdegree
+    apply sparseZZTail_coeff_zero_above
+    intro item hitem
+    exact Nat.lt_of_lt_of_le (hrestLt item hitem) hdegree
+  have hheadDegree :
+      (Polynomial.monomial head.1.deg head.2).degree = head.1.deg :=
+    Polynomial.degree_monomial _ hheadNonzero
+  unfold SparsePolyZZ.toPoly
+  rw [hlist, List.map_cons, List.sum_cons,
+    Polynomial.degree_add_eq_left_of_degree_lt (by
+      simpa [hheadDegree] using hrestDegree), hheadDegree]
+  simp [hheadEq, getElem!_pos poly 0 hnonempty]
+
 /-- The first stored coefficient of a nonempty canonical sparse integer
 polynomial is exactly its mathematical leading coefficient. -/
 theorem sparsePolyZZ_leadingCoeff_eq_head (poly : SparsePolyZZ)
@@ -3297,6 +3337,71 @@ theorem removeCombination_member
       .ok output) :
     ∀ factor ∈ output.toList, factor ∈ active.toList := by
   exact removeCombinationLoop_member candidate candidate.size active output hrun
+
+/-- The physical array returned by the generated reverse-erasure loop is an
+occurrence-sensitive sublist of its input.  Unlike `removeCombination_member`,
+this retains multiplicity and order, which are needed to re-encode the literal
+complement as another legal scan candidate. -/
+theorem removeCombinationLoop_sublist
+    (candidate : Array Nat) (remaining : Nat)
+    (active output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.removeCombinationLoop candidate
+      remaining active = .ok output) :
+    output.toList.Sublist active.toList := by
+  induction remaining generalizing active output with
+  | zero =>
+      rw [Generated.StrictRecombine.removeCombinationLoop] at hrun
+      have hout := Except.ok.inj hrun
+      subst output
+      exact List.Sublist.refl _
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.removeCombinationLoop] at hrun
+      split at hrun
+      next hcand =>
+        dsimp at hrun
+        split at hrun
+        next hactive =>
+          exact (ih _ _ hrun).trans (by
+            rw [Array.toList_eraseIdxIfInBounds]
+            exact List.eraseIdx_sublist _ _)
+        next hactive => contradiction
+      next hcand => contradiction
+
+/-- Full generated removal preserves the exact occurrence order of the
+surviving complement. -/
+theorem removeCombination_sublist
+    (candidate : Array Nat) (active output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.removeCombination candidate active =
+      .ok output) :
+    output.toList.Sublist active.toList := by
+  exact removeCombinationLoop_sublist candidate candidate.size active output
+    hrun
+
+/-- Executing removal for a legal candidate produces a physical complement
+which can itself be encoded as a legal candidate over the original array.
+The returned size equation is the exact reverse-erasure accounting, so one of
+the selected candidate and this complement has size at most half of `active`.
+-/
+theorem removeCombination_complement_candidate
+    (candidate : Array Nat) (active : Array SparsePolyZZ)
+    (hlegal : LegalCombination active.size candidate.size candidate) :
+    ∃ output complement,
+      Generated.StrictRecombine.removeCombination candidate active =
+        .ok output ∧
+      LegalCombination active.size output.size complement ∧
+      selectSourceIndices active.toList complement.toList = output.toList ∧
+      output.size + candidate.size = active.size := by
+  rcases removeCombination_succeeds candidate active hlegal with
+    ⟨output, houtput⟩
+  have hsublist := removeCombination_sublist candidate active output houtput
+  rcases sublist_exists_legal_combination hsublist with
+    ⟨complement, hcomplement, hselected⟩
+  have hsize : output.size + candidate.size = active.size := by
+    unfold Generated.StrictRecombine.removeCombination at houtput
+    simpa using removeCombinationLoop_size candidate candidate.size active
+      output houtput
+  exact ⟨output, complement, houtput, by simpa using hcomplement,
+    hselected, hsize⟩
 
 /-- Pointwise properties, in particular selected-prime irreducibility, survive
 the actual generated reverse-erasure execution. -/

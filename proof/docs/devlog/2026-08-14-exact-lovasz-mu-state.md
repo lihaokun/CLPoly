@@ -3610,3 +3610,37 @@ same physical state.
 - Next: prove the positive-degree terminal source irreducible from its stopped
   condition and recorded physical scan history, then discharge
   `FactorArrayIrreducible.finishZassenhaus`.
+
+## Prove the physical terminal remainder irreducible
+
+The generated reverse-erasure path now exposes an occurrence-sensitive
+`Sublist` theorem, not merely member preservation.  Consequently its exact
+physical output can be re-encoded as a legal candidate over the original
+active array, with the exact accounting equation
+`complement.size + selected.size = active.size`.  The integer sparse
+representation layer also exports the already-computed fact that the
+mathematical degree of a nonempty canonical polynomial equals the degree in
+its first physical cell.
+
+`ZassenhausTerminalCertificate.source_irreducible` uses these facts to rule
+out a nontrivial factorization of the actual terminal source.  A divisor is
+encoded as a live legal candidate; executing the literal removal produces
+the complementary factor candidate, whose modular association follows by
+cancellation from the live product and the physical selected/complement
+partition.  At least one side has at most half the live array size.  The
+terminal stop guard therefore places it in the recorded smaller-scan history,
+while the live recovery margin makes the same generated `zassenhausAttempt`
+return `.extracted`, contradicting its recorded `.rejected` result.
+
+`ZassenhausTerminalCertificate.output_irreducible` then applies the exact
+`finishZassenhaus` branches: accumulated physical results retain their proven
+irreducibility and the positive-degree live remainder is irreducible by the
+new theorem.  No replacement result list, semantic oracle, fuel, or abstract
+factorization existence is used.
+
+- Verification: `CLPoly/Refinement/Recombine.lean` and
+  `CLPoly/Refinement/FactorZZ.lean` both compile directly.
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: combine this physical irreducibility certificate with the existing
+  generated recombination product theorem at the concrete FactorZZ entry.

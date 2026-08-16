@@ -736,7 +736,6 @@ structure LiveHenselProduct (prime exponent : Nat) (source : SparsePolyZZ)
   certificate :
     ∃ scale : ZMod (prime ^ exponent), ∃ scaleAtPrime : ZMod prime,
       IsUnit scale ∧ IsUnit scaleAtPrime ∧
-      scaleAtPrime = (scale.val : ZMod prime) ∧
       (active.toList.map
         (StrictHensel.toPolyMod (prime ^ exponent))).prod =
           Polynomial.C scale *
@@ -756,7 +755,7 @@ theorem LiveHenselProduct.primeProductAssociated
       (active.toList.map (StrictHensel.toPolyMod prime)).prod := by
   rcases state.certificate with
     ⟨_scale, scaleAtPrime, _hscaleUnit, hscaleAtPrimeUnit,
-      _hscaleAtPrime, _hlargeProduct, hprimeProduct⟩
+      _hlargeProduct, hprimeProduct⟩
   rw [hprimeProduct]
   exact ((associated_isUnit_mul_left_iff
     (Polynomial.isUnit_C.mpr hscaleAtPrimeUnit)).mpr
@@ -857,6 +856,80 @@ theorem remaining_product_eq_unit_mul_quotient
       simp only [Polynomial.C_mul]
       ring
 
+/-- Variant used by the physical Zassenhaus state: cancel the selected lifted
+subproduct, whose leading coefficient is a unit because every active Hensel
+cell is monic.  No leading-coefficient premise is needed for the recovered
+integer factor. -/
+theorem remaining_product_eq_unit_mul_quotient_cancel_selected
+    {R : Type*} [CommRing R]
+    (selected remaining source factor quotient : Polynomial R)
+    (scale leading content scalar : R)
+    (hscale : IsUnit scale) (hleading : IsUnit leading)
+    (hcontent : IsUnit content) (hscalar : IsUnit scalar)
+    (hselectedLeading : IsUnit selected.leadingCoeff)
+    (hactive : selected * remaining = Polynomial.C scale * source)
+    (hextraction : source =
+      Polynomial.C scalar * (factor * quotient))
+    (hfactor : Polynomial.C content * factor =
+      Polynomial.C leading * selected) :
+    ∃ nextScale : R, IsUnit nextScale ∧
+      remaining = Polynomial.C nextScale * quotient := by
+  have hcancelEquation :
+      selected * (Polynomial.C content * remaining) =
+        selected * (Polynomial.C (scale * scalar * leading) * quotient) := by
+    calc
+      selected * (Polynomial.C content * remaining) =
+          Polynomial.C content * (selected * remaining) := by ring
+      _ = Polynomial.C content * (Polynomial.C scale * source) := by
+        rw [hactive]
+      _ = Polynomial.C content *
+          (Polynomial.C scale *
+            (Polynomial.C scalar * (factor * quotient))) := by
+        rw [hextraction]
+      _ = (Polynomial.C content * factor) *
+          (Polynomial.C (scale * scalar) * quotient) := by
+        simp only [Polynomial.C_mul]
+        ring
+      _ = (Polynomial.C leading * selected) *
+          (Polynomial.C (scale * scalar) * quotient) := by rw [hfactor]
+      _ = selected *
+          (Polynomial.C (scale * scalar * leading) * quotient) := by
+        simp only [Polynomial.C_mul]
+        ring
+  have hcancelled : Polynomial.C content * remaining =
+      Polynomial.C (scale * scalar * leading) * quotient :=
+    polynomial_mul_right_cancel_of_isUnit_leadingCoeff selected _ _
+      hselectedLeading hcancelEquation
+  let contentInv : R := ↑(hcontent.unit⁻¹)
+  have hcontentInv : contentInv * content = 1 := by
+    have hspec : (↑hcontent.unit : R) = content := hcontent.unit_spec
+    calc
+      contentInv * content = contentInv * (↑hcontent.unit : R) := by
+        exact congrArg (contentInv * ·) hspec.symm
+      _ = 1 := by simp [contentInv]
+  let nextUnit : Rˣ := hcontent.unit⁻¹ * hscale.unit * hscalar.unit *
+    hleading.unit
+  let nextScale : R := ↑nextUnit
+  have hnextUnit : IsUnit nextScale := nextUnit.isUnit
+  have hnextScale : nextScale = contentInv * scale * scalar * leading := by
+    simp [nextScale, nextUnit, contentInv, hscale.unit_spec,
+      hscalar.unit_spec, hleading.unit_spec]
+  refine ⟨nextScale, hnextUnit, ?_⟩
+  calc
+    remaining = Polynomial.C (contentInv * content) * remaining := by
+      rw [hcontentInv]
+      simp
+    _ = Polynomial.C contentInv * (Polynomial.C content * remaining) := by
+      rw [Polynomial.C_mul]
+      ring
+    _ = Polynomial.C contentInv *
+        (Polynomial.C (scale * scalar * leading) * quotient) := by
+      rw [hcancelled]
+    _ = Polynomial.C nextScale * quotient := by
+      rw [hnextScale]
+      simp only [Polynomial.C_mul]
+      ring
+
 /-- The mapped integer polynomial itself has a unit leading coefficient at
 full Hensel precision whenever its leading coefficient survives mod `p`. -/
 theorem mapped_leadingCoeff_isUnit_primePower
@@ -903,7 +976,7 @@ theorem selectionHenselFactors_liveProduct
   exact ⟨exponent, houtput, {
     exponentPositive := hexponent
     certificate := ⟨scale, scaleAtPrime, hscaleUnit, hscaleAtPrimeUnit,
-      hscaleAtPrime, hlargeProduct, hprimeProduct⟩ }⟩
+      hlargeProduct, hprimeProduct⟩ }⟩
 
 /-- The exact selected product and the exact physical complement computed by
 `removeCombination` are coprime at the selected prime after the source-leading

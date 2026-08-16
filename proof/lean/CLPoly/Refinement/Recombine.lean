@@ -14238,6 +14238,52 @@ theorem concreteScan_extracted_legal
     (Generated.StrictRecombine.initialCombination count) candidate
     candidateSize (initialCombination_legal activeLifted.size count hfits) hrun
 
+/-- A successful fixed-size scan returns the exact candidate whose literal
+`zassenhausAttempt` produced the reported factor and quotient.  This follows
+the generated scan recursion; the returned candidate is not reconstructed
+from its semantic result. -/
+theorem scanZassenhausCombinations_extracted_attempt
+    {upper count : Nat}
+    (termination : Generated.StrictRecombine.CombinationTermination upper count)
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (start candidate : Array Nat)
+    (hcandidateSize : candidate.size = count)
+    (hvalidStart : termination.valid start)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations termination
+      fStar activeLifted modulus start hvalidStart = .ok
+        (.extracted factor quotientPrimitive candidate hcandidateSize)) :
+    Generated.StrictRecombine.zassenhausAttempt fStar activeLifted modulus
+      candidate = .ok (.extracted factor quotientPrimitive) := by
+  induction hmeasure : termination.rank start using Nat.strong_induction_on
+      generalizing start with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.scanZassenhausCombinations] at hrun
+      cases hattempt : Generated.StrictRecombine.zassenhausAttempt fStar
+          activeLifted modulus start with
+      | error fault => simp [hattempt] at hrun
+      | ok attempt =>
+        cases attempt with
+        | extracted extractedFactor extractedQuotient =>
+          simp only [hattempt] at hrun
+          have hout := Except.ok.inj hrun
+          injection hout with hfactor hquotient hcandidate
+          subst factor
+          subst quotientPrimitive
+          subst candidate
+          exact hattempt
+        | rejected =>
+          simp only [hattempt] at hrun
+          split at hrun
+          next next hnext => simp at hrun
+          next next hnext =>
+            have hdecrease := termination.next_decreases start next
+              hvalidStart hnext
+            have hvalidNext := termination.next_valid start next hvalidStart
+              hnext
+            rw [hmeasure] at hdecrease
+            exact ih (termination.rank next) hdecrease next hvalidNext hrun rfl
+
 /-- The concrete fixed-size scan preserves the successful candidate's exact
 modular association certificate and the leading-coefficient invariant of the
 primitive quotient, regardless of how many preceding candidates execute and

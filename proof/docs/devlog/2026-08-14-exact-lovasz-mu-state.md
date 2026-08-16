@@ -1980,10 +1980,12 @@ No C++ files changed, so this step has no new C++ b2b change surface.
   the actual generated reverse erasure preserves it, using the exact output
   size equation and occurrence membership rather than an abstract subarray.
 - Introduced `LiveHenselProduct`, recording the actual positive exponent, the
-  concrete normalization unit at `p^k`, its concrete reduction at `p`, and
-  both physical active-array product equations.  The units remain existential
-  proof witnesses inside a `Prop`; they are obtained from execution and cannot
-  be used as computational oracles.
+  concrete normalization units at `p^k` and `p`, and both physical active-array
+  product equations.  The full-precision equation itself can be reduced to
+  `p` whenever a common representative is needed, so the recursive state does
+  not store a redundant equality between arbitrary unit witnesses.  The units
+  remain existential proof witnesses inside a `Prop`; they are obtained from
+  execution and cannot be used as computational oracles.
 - `selectionHenselFactors_liveProduct` initializes this certificate from the
   literal Hensel entry, while `primeProductAssociated` exposes exactly the
   current mod-`p` relation consumed by the live divisor/subset construction.
@@ -2000,6 +2002,16 @@ No C++ files changed, so this step has no new C++ b2b change surface.
   times the installed primitive quotient.  Cancellation uses only the unit
   leading coefficient proved above, so the lemma applies unchanged at `p^k`
   and at `p`.
+- Added the stronger physical-array variant
+  `remaining_product_eq_unit_mul_quotient_cancel_selected`: it cancels the
+  selected product, which is monic because it is built from actual Hensel
+  cells, rather than assuming anything extra about the recovered factor's
+  highest integer coefficient.
+- `scanZassenhausCombinations_extracted_attempt` follows the generated scan
+  recursion and proves that its returned physical candidate is exactly the one
+  whose literal `zassenhausAttempt` returned the reported factor and quotient.
+  This makes the candidate-level full-precision equation available after an
+  arbitrary number of preceding rejections.
 - Added `zassenhausLeadingPrune_accepts_live_candidate`.  For an arbitrary
   current active array, pointwise canonical/nonempty/monic cells make the
   literal generated `selectedLeadingProductLoop` accumulate exactly the live

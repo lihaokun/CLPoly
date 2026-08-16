@@ -142,6 +142,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.intCast_isUnit_primePower_of_ne_zero_prime
 #print axioms Refinement.StrictFactorZZ.polynomial_mul_right_cancel_of_isUnit_leadingCoeff
 #print axioms Refinement.StrictFactorZZ.remaining_product_eq_unit_mul_quotient
+#print axioms Refinement.StrictFactorZZ.remaining_product_eq_unit_mul_quotient_cancel_selected
 #print axioms Refinement.StrictFactorZZ.mapped_leadingCoeff_isUnit_primePower
 #print axioms Refinement.StrictFactorZZ.henselCandidate_physicalComplement_coprime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_eq_divisor_mod_prime
@@ -157,5 +158,6 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.SmallerZassenhausScansExhausted.rejects
 #print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracted_legal
 #print axioms Refinement.StrictRecombine.concreteScan_extracted_legal
+#print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracted_attempt
 #print axioms Refinement.StrictRecombine.zassenhausLoop_complete
 #print axioms Refinement.StrictFactorZZ.integer_divisor_candidate_rejected_of_scan_exhausted

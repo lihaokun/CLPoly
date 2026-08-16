@@ -1714,6 +1714,102 @@ theorem zassenhausLeadingPrune_accepts_hensel_candidate
 divisor candidate.  Hensel uniqueness identifies the generated accumulator
 with the quotient-leading-scaled divisor at the full returned modulus; the
 generated Mignotte precision then recovers its constant coefficient exactly. -/
+theorem zassenhausConstantPrune_accepts_live_divisor_candidate
+    {f : SparsePolyZZ} {active : Array SparsePolyZZ} {outputM : ZZ}
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly f = divisor * quotient)
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination active.size candidate.size
+      candidate)
+    (hactiveCanonical : ∀ index (hindex : index < active.size),
+      StrictPolynomialMod.SparsePolyZZCanonical active[index])
+    (modulus : Nat) (hmodulus : 0 < modulus)
+    (houtput : outputM = (modulus : Int))
+    (hselectedCongruent :
+      Polynomial.map (Int.castRingHom (ZMod modulus))
+          (Polynomial.C (SparsePolyZZ.toPoly f).leadingCoeff *
+            ((StrictRecombine.selectSourceIndices active.toList
+              candidate.toList).map SparsePolyZZ.toPoly).prod) =
+        Polynomial.map (Int.castRingHom (ZMod modulus))
+          (Polynomial.C quotient.leadingCoeff * divisor))
+    (htargetBound :
+      ((Polynomial.C quotient.leadingCoeff * divisor).coeff 0).natAbs * 2 <
+        modulus) :
+    ∃ constantProduct,
+      Generated.StrictRecombine.selectedConstantProductLoop candidate active
+        0 leading.2 = .ok constantProduct ∧
+      ZZ.symmetricMod constantProduct outputM =
+        (Polynomial.C quotient.leadingCoeff * divisor).coeff 0 ∧
+      ¬(ZZ.symmetricMod constantProduct outputM ≠ 0 ∧
+        ZZ.fdiv_r 0 (leading.2 *
+          Generated.StrictRecombine.constantTerm f)
+          (ZZ.symmetricMod constantProduct outputM) ≠ 0) := by
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < active.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  have hselectedCanonical : ∀ position
+      (hposition : position < candidate.size),
+      StrictPolynomialMod.SparsePolyZZCanonical
+        active[candidate[position]]! := by
+    intro position hposition
+    have hactive := hbound position hposition
+    simpa [getElem!_pos active candidate[position] hactive] using
+      hactiveCanonical candidate[position] hactive
+  have hconstantValues :=
+    StrictRecombine.selectedConstantValues_prod_eq_coeff_zero_of_canonical
+      candidate active hbound hselectedCanonical
+  let selectedInteger :=
+    ((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+      SparsePolyZZ.toPoly).prod
+  let target := Polynomial.C quotient.leadingCoeff * divisor
+  have hloop := StrictRecombine.selectedConstantProductLoop_succeeds candidate
+    active 0 leading.2 hbound
+  rw [hconstantValues] at hloop
+  change Generated.StrictRecombine.selectedConstantProductLoop candidate
+      active 0 leading.2 =
+    .ok (leading.2 * selectedInteger.coeff 0) at hloop
+  have hfront : f[0] = leading := by
+    rw [Array.getElem?_eq_getElem hnonempty] at hleading
+    exact Option.some.inj hleading
+  have hsourceLeading : (SparsePolyZZ.toPoly f).leadingCoeff = leading.2 := by
+    rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
+      hnonempty, hfront]
+  have hcoefficientCongruence :
+      ((leading.2 * selectedInteger.coeff 0 : Int) : ZMod modulus) =
+        (target.coeff 0 : ZMod modulus) := by
+    have hcoeff := congrArg
+      (fun polynomial : Polynomial (ZMod modulus) => polynomial.coeff 0)
+      hselectedCongruent
+    simpa [selectedInteger, target, Polynomial.map_mul, Polynomial.map_C,
+      Polynomial.coeff_map, hsourceLeading] using hcoeff
+  have hrecovered := StrictRecombine.symmetricMod_eq_of_congruent_strict_bound
+    (leading.2 * selectedInteger.coeff 0) (target.coeff 0) modulus hmodulus
+    hcoefficientCongruence htargetBound
+  rw [← houtput] at hrecovered
+  refine ⟨leading.2 * selectedInteger.coeff 0, hloop, hrecovered, ?_⟩
+  rw [hrecovered]
+  apply StrictRecombine.zassenhaus_prune_condition_false_of_dvd
+  have hsourceLeadingFactor : leading.2 =
+      divisor.leadingCoeff * quotient.leadingCoeff := by
+    rw [← hsourceLeading, hfactor, Polynomial.leadingCoeff_mul]
+  have hsourceConstant : (SparsePolyZZ.toPoly f).coeff 0 =
+      divisor.coeff 0 * quotient.coeff 0 := by
+    rw [hfactor]
+    simp
+  have hfConstant : Generated.StrictRecombine.constantTerm f =
+      (SparsePolyZZ.toPoly f).coeff 0 :=
+    StrictRecombine.sparsePolyZZ_constantTerm_eq_coeff_zero f hcanonical
+  rw [hfConstant, hsourceConstant, hsourceLeadingFactor]
+  refine ⟨divisor.leadingCoeff * quotient.coeff 0, ?_⟩
+  simp [target]
+  ring
+
+/-- Initial-Hensel specialization of the live constant-prune theorem. -/
 theorem zassenhausConstantPrune_accepts_hensel_divisor_candidate
     {termination : Generated.StrictHensel.DivmodTermination}
     {f : SparsePolyZZ} {selection : PrimeSelectionResult}
@@ -2202,6 +2298,106 @@ theorem primitiveRaw_factor_dvd_scaled_primitive_divisor
     (SparsePolyZZ.toPoly recoveredFactor) divisor hrecoveredPrimitive
       hdivisorPrimitive).mpr
   exact hassociated.dvd
+
+/-- A legal divisor candidate in an arbitrary live Zassenhaus state makes the
+literal generated attempt return `extracted`.  The hypotheses are precisely
+the representation, full-modulus congruence, and strict precision facts that
+the outer loop must preserve; every computational stage below is the generated
+C++-shaped operation. -/
+theorem zassenhausAttempt_extracts_live_divisor_candidate
+    {f : SparsePolyZZ} {active : Array SparsePolyZZ} {outputM : ZZ}
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly f = divisor * quotient)
+    (hdivisorPrimitive : divisor.IsPrimitive)
+    (hdivisorNe : divisor ≠ 0) (hquotientNe : quotient ≠ 0)
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination active.size candidate.size
+      candidate)
+    (hactiveFits : active.size ≤ 2 ^ 31)
+    (hactiveCanonical : ∀ index (hindex : index < active.size),
+      StrictPolynomialMod.SparsePolyZZCanonical active[index])
+    (hactiveNonempty : ∀ index (hindex : index < active.size),
+      0 < active[index].size)
+    (hactiveMonic : ∀ index (hindex : index < active.size),
+      (SparsePolyZZ.toPoly active[index]).Monic)
+    (modulus : Nat) (hmodulus : 0 < modulus)
+    (houtput : outputM = (modulus : Int))
+    (hleadingBound : leading.2.natAbs * 2 < modulus)
+    (hselectedCongruent :
+      Polynomial.map (Int.castRingHom (ZMod modulus))
+          (Polynomial.C (SparsePolyZZ.toPoly f).leadingCoeff *
+            ((StrictRecombine.selectSourceIndices active.toList
+              candidate.toList).map SparsePolyZZ.toPoly).prod) =
+        Polynomial.map (Int.castRingHom (ZMod modulus))
+          (Polynomial.C quotient.leadingCoeff * divisor))
+    (htargetBound : ∀ degree,
+      ((Polynomial.C quotient.leadingCoeff * divisor).coeff degree).natAbs * 2 <
+        modulus) :
+    ∃ recoveredFactor recoveredQuotient,
+      Generated.StrictRecombine.zassenhausAttempt f active outputM candidate =
+        .ok (.extracted recoveredFactor recoveredQuotient) := by
+  have hfront : f[0] = leading := by
+    rw [Array.getElem?_eq_getElem hnonempty] at hleading
+    exact Option.some.inj hleading
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < active.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  rcases zassenhausLeadingPrune_accepts_live_candidate leading candidate hbound
+      hactiveCanonical hactiveNonempty hactiveMonic modulus hmodulus houtput
+      hleadingBound with
+    ⟨leadingProduct, hleadingRun, hleadingAccept⟩
+  rcases zassenhausConstantPrune_accepts_live_divisor_candidate hcanonical
+      hnonempty leading hleading divisor quotient hfactor candidate hlegal
+      hactiveCanonical modulus hmodulus houtput hselectedCongruent
+      (htargetBound 0) with
+    ⟨constantProduct, hconstantRun, _hconstantRecovered, hconstantAccept⟩
+  rcases zassenhausCandidate_executes_through_primitive_of_live hcanonical
+      hnonempty leading hleading divisor quotient candidate hlegal hactiveFits
+      modulus hmodulus houtput hselectedCongruent htargetBound with
+    ⟨candidate32, product, symmetric, content, recoveredFactor, hconvert,
+      hproduct, hsymmetric, hsymmetricPoly, hsymmetricCanonical, hprimitive⟩
+  have hrecoveredDvdDivisor :=
+    primitiveRaw_factor_dvd_scaled_primitive_divisor symmetric recoveredFactor
+      content divisor quotient hsymmetricPoly hsymmetricCanonical hprimitive
+      hdivisorPrimitive hdivisorNe hquotientNe
+  have hrecoveredDvdSource : SparsePolyZZ.toPoly recoveredFactor ∣
+      SparsePolyZZ.toPoly f := by
+    exact dvd_trans hrecoveredDvdDivisor
+      (hfactor ▸ dvd_mul_right divisor quotient)
+  have hrecoveredCanonical := StrictRecombine.primitiveRaw_canonical symmetric
+    recoveredFactor content hsymmetricCanonical hprimitive
+  have hrecoveredNonempty : 0 < recoveredFactor.size := by
+    by_contra hnot
+    have hzero : recoveredFactor.size = 0 := Nat.eq_zero_of_not_pos hnot
+    have hempty : recoveredFactor = #[] := Array.size_eq_zero_iff.mp hzero
+    rw [hempty] at hrecoveredDvdDivisor
+    simp [SparsePolyZZ.toPoly] at hrecoveredDvdDivisor
+    exact hdivisorNe hrecoveredDvdDivisor
+  rcases StrictRecombine.exactDivmodRaw_complete_of_dvd f recoveredFactor
+      hcanonical hrecoveredCanonical hrecoveredNonempty hrecoveredDvdSource with
+    ⟨rawQuotient, hdivmod⟩
+  have hrawQuotientCanonical :=
+    StrictRecombine.exactDivmodRaw_quotient_canonical f recoveredFactor
+      rawQuotient #[] hcanonical.2 hdivmod
+  rcases StrictRecombine.primitiveRaw_complete rawQuotient
+      hrawQuotientCanonical with
+    ⟨quotientContent, recoveredQuotient, hquotientPrimitive⟩
+  refine ⟨recoveredFactor, recoveredQuotient, ?_⟩
+  unfold Generated.StrictRecombine.zassenhausAttempt
+  rw [dif_pos hnonempty]
+  dsimp only
+  rw [hfront]
+  simp only [hleadingRun]
+  rw [if_neg hleadingAccept]
+  simp only [hconstantRun]
+  rw [if_neg hconstantAccept]
+  simp only [hconvert, hproduct, hsymmetric, hprimitive, hdivmod]
+  simp only [Array.isEmpty_empty, if_true, hquotientPrimitive]
 
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source

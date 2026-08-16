@@ -1977,6 +1977,17 @@ No C++ files changed, so this step has no new C++ b2b change surface.
   literal generated `selectedLeadingProductLoop` accumulate exactly the live
   source leading coefficient.  A concrete strict modulus bound then proves
   that the first generated scalar prune accepts.
+- Added `zassenhausConstantPrune_accepts_live_divisor_candidate`.  The actual
+  selected-constant loop is identified with coefficient zero of the physical
+  selected product; the live prime-power congruence and coefficient bound make
+  symmetric recovery literal, and the current factorization equation proves
+  the generated divisibility prune accepts.
+- Composed both prunes with conversion, trial multiplication, symmetric
+  normalization, primitive part, exact long division, and quotient primitive
+  normalization in `zassenhausAttempt_extracts_live_divisor_candidate`.
+  Consequently an arbitrary live state satisfying the preserved concrete
+  Hensel facts now makes the literal generated `zassenhausAttempt` return an
+  actual `.extracted` result.
 - Added `zassenhausCandidate_executes_through_primitive_of_live`, separating
   the literal generated candidate execution from the initial Hensel-array
   specialization.

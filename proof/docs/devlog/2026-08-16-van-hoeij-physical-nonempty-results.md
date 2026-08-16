@@ -850,3 +850,32 @@ introduced.
 - Next: show a failed-Lovasz swap preserves the strictly earlier prefix; then
   lift the invariant through the complete well-founded main loop and its
   concrete exit condition.
+
+## Complete the generated LLL Lovasz certificate
+
+The accumulated Lovasz invariant now covers the other concrete branch and
+the entire generated main loop:
+
+- `lllStep_swapped_array_witness` reconstructs the exact final `mu` and norm
+  arrays from the successful generated swap, correction, and
+  `updateMuAfterSwapLoop` executions;
+- `lllStep_swapped_preserves_lovaszPrefix` uses those physical array
+  equalities to prove every pair strictly before the swapped pair is
+  unchanged;
+- `lllStep_preserves_lovaszPrefix` combines the advancing and swapping cases;
+- `concreteLLLMainLoop_preserves_lovaszPrefix` follows the same determinant-
+  ranked well-founded recursion as generated C++; and
+- `concreteLLLMainLoop_lovasz_all` combines the preserved cursor prefix with
+  the literal `k >= matrix.size` exit theorem, yielding the Lovasz inequality
+  for every adjacent pair in the returned basis.
+
+No abstract LLL result, alternate recursion, fuel, partial definition,
+`sorry`, or custom axiom is used.  In particular, the failed comparison is
+not treated as a mathematical swap oracle: all three generated row swaps and
+the physical post-swap mu update must succeed before the witness exists.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: construct the analogous generated size-reduction prefix (including
+  the exact `roundQQ` residual bound), expose both final certificates through
+  `lllReduce`, and prove the required short-vector span result.

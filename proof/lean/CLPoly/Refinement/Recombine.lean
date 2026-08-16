@@ -9941,6 +9941,292 @@ theorem lllStep_swapped_preserves_execution_valid
   · rw [dif_neg hkPositive] at hrun
     contradiction
 
+/-- Recover the literal mu/norm arrays returned by the failed-Lovasz branch.
+The existential `muNew` is the quotient computed by the generated body; its
+value is irrelevant for entries strictly before the swapped pair. -/
+theorem lllStep_swapped_array_witness
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok (.swapped output)) :
+    ∃ reduced muNew,
+      Generated.StrictRecombine.sizeReduceAt state (state.k - 1) = .ok reduced ∧
+      reduced.k = state.k ∧
+      output.mu = lovaszSwapMuResult reduced.mu reduced.k
+        ((reduced.mu[reduced.k]!)[reduced.k - 1]!) muNew ∧
+      output.norms = Generated.StrictRecombine.normsAfterLovaszSwap
+        reduced.norms reduced.k
+          ((reduced.mu[reduced.k]!)[reduced.k - 1]!) := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hcontrol := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        have hreducedValid := sizeReduceAt_preserves_execution_valid state
+          reduced (state.k - 1) hvalid (by omega) hreduce
+        split at hrun
+        next hkNorm =>
+          split at hrun
+          next hpredNorm =>
+            split at hrun
+            next hkMu =>
+              split at hrun
+              next hpredMu =>
+                dsimp at hrun
+                split at hrun
+                next hlovasz =>
+                  cases hextra : Generated.StrictRecombine.extraSizeReduceLoop
+                      (reduced.k - 1) reduced with
+                  | error fault => simp [hextra] at hrun
+                  | ok fullyReduced =>
+                    simp only [hextra] at hrun
+                    cases hrun
+                next hlovasz =>
+                  have hnewPos : 0 < reduced.norms[reduced.k] +
+                      reduced.mu[reduced.k][reduced.k - 1] *
+                        reduced.mu[reduced.k][reduced.k - 1] *
+                          reduced.norms[reduced.k - 1] := by
+                    have hkPos := hreducedValid.norms_positive reduced.k hkNorm
+                    have hpPos := hreducedValid.norms_positive
+                      (reduced.k - 1) hpredNorm
+                    nlinarith [sq_nonneg reduced.mu[reduced.k][reduced.k - 1]]
+                  have hnewNe := ne_of_gt hnewPos
+                  simp only [if_pos hnewNe] at hrun
+                  cases hswapMatrix : Generated.StrictRecombine.swapMatrixRows
+                      reduced.matrix reduced.k (reduced.k - 1) with
+                  | error fault => simp [hswapMatrix] at hrun
+                  | ok matrix' =>
+                    simp only [hswapMatrix] at hrun
+                    cases hswapTransform : Generated.StrictRecombine.swapMatrixRows
+                        reduced.transform reduced.k (reduced.k - 1) with
+                    | error fault => simp [hswapTransform] at hrun
+                    | ok transform' =>
+                      simp only [hswapTransform] at hrun
+                      cases hswapMu : Generated.StrictRecombine.swapQQRows
+                          reduced.mu reduced.k (reduced.k - 1) with
+                      | error fault => simp [hswapMu] at hrun
+                      | ok swappedMu =>
+                        simp only [hswapMu] at hrun
+                        split at hrun
+                        next hkSwapped =>
+                          split at hrun
+                          next hpredSwapped =>
+                            let muOld := reduced.mu[reduced.k][reduced.k - 1]
+                            let newNorm := reduced.norms[reduced.k] +
+                              muOld * muOld * reduced.norms[reduced.k - 1]
+                            let muNew := muOld * reduced.norms[reduced.k - 1] /
+                              newNorm
+                            let correctedMu := swappedMu.set reduced.k
+                              (swappedMu[reduced.k].set (reduced.k - 1) muNew)
+                            cases hupdate :
+                                Generated.StrictRecombine.updateMuAfterSwapLoop
+                                  correctedMu reduced.k muOld muNew
+                                    (reduced.k + 1) with
+                            | error fault => simp [correctedMu, muNew, newNorm,
+                                muOld, hupdate] at hrun
+                            | ok finalMu =>
+                              simp only [correctedMu, muNew, newNorm, muOld,
+                                hupdate] at hrun
+                              have hkPositiveReduced : 0 < reduced.k := by
+                                simpa [hcontrol.2] using hkPositive
+                              have hrowsSquare : ∀ row
+                                  (hrow : row < reduced.mu.size),
+                                  reduced.mu[row]!.size = reduced.mu.size := by
+                                intro row hrow
+                                rw [getElem!_pos reduced.mu row hrow]
+                                rw [hreducedValid.mu_rows_square row (by
+                                  simpa [hreducedValid.mu_size] using hrow)]
+                                exact hreducedValid.mu_size.symm
+                              have hcorrected : correctedMu =
+                                  lovaszSwapCorrectedMu reduced.mu reduced.k
+                                    muNew := by
+                                unfold correctedMu lovaszSwapCorrectedMu
+                                rw [← swapQQRows_output_eq reduced.mu swappedMu
+                                  reduced.k (reduced.k - 1) hswapMu]
+                                simp [Array.setIfInBounds, hkSwapped,
+                                  hpredSwapped]
+                              have hcorrectedSize : correctedMu.size =
+                                  reduced.mu.size := by
+                                rw [hcorrected, lovaszSwapCorrectedMu_size]
+                              have hrowsK : ∀ row (hrow : row < correctedMu.size),
+                                  reduced.k < correctedMu[row].size := by
+                                intro row hrow
+                                have hrowOld : row < reduced.mu.size := by
+                                  simpa [hcorrectedSize] using hrow
+                                have hrowSize : correctedMu[row]!.size =
+                                    reduced.mu.size := by
+                                  rw [show correctedMu[row]! =
+                                    (lovaszSwapCorrectedMu reduced.mu reduced.k
+                                      muNew)[row]! by rw [hcorrected]]
+                                  exact lovaszSwapCorrectedMu_row_size reduced.mu
+                                    reduced.k row muNew hkPositiveReduced hkMu
+                                    hrowOld hrowsSquare
+                                rw [← getElem!_pos correctedMu row hrow, hrowSize]
+                                exact hkMu
+                              have hrowsPred : ∀ row
+                                  (hrow : row < correctedMu.size),
+                                  reduced.k - 1 < correctedMu[row].size := by
+                                intro row hrow
+                                exact lt_trans (by omega) (hrowsK row hrow)
+                              have hfinal := lovaszSwapMuResult_of_generated
+                                reduced.mu swappedMu finalMu reduced.k muOld muNew
+                                hswapMu hkSwapped hpredSwapped hrowsK hrowsPred
+                                hupdate
+                              have hout := Except.ok.inj hrun
+                              injection hout with hstate
+                              subst output
+                              refine ⟨reduced, muNew, rfl, hcontrol.2, ?_, ?_⟩
+                              · simpa [muOld,
+                                  getElem!_pos reduced.mu reduced.k hkMu,
+                                  getElem!_pos reduced.mu[reduced.k]
+                                    (reduced.k - 1) hpredMu] using hfinal
+                              · simp [getElem!_pos reduced.mu reduced.k hkMu,
+                                  getElem!_pos reduced.mu[reduced.k]
+                                    (reduced.k - 1) hpredMu]
+                          next hpredSwapped => contradiction
+                        next hkSwapped => contradiction
+              next hpredMu => contradiction
+            next hkMu => contradiction
+          next hpredNorm => contradiction
+        next hkNorm => contradiction
+    · rw [dif_neg hkMatrix] at hrun
+      contradiction
+  · rw [dif_neg hkPositive] at hrun
+    contradiction
+
+theorem lllStep_swapped_preserves_lovaszPrefix
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : LovaszPrefix state)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok (.swapped output)) :
+    LovaszPrefix output := by
+  rcases lllStep_swapped_array_witness state output hvalid hrun with
+    ⟨reduced, muNew, hreduce, hkReduced, hmuOutput, hnormOutput⟩
+  have hkMatrix := lllStep_swapped_source_index_lt state output hrun
+  have hkPositive : 0 < state.k := by
+    have hrun' := hrun
+    rw [Generated.StrictRecombine.lllStep] at hrun'
+    by_cases hk : 0 < state.k
+    · exact hk
+    · rw [dif_neg hk] at hrun'
+      contradiction
+  have hsourceK : state.k - 1 < state.k := by omega
+  have hreducedValid := sizeReduceAt_preserves_execution_valid state reduced
+    (state.k - 1) hvalid hsourceK hreduce
+  have hreduceControl := sizeReduceAt_preserves_norms_k state reduced
+    (state.k - 1) hreduce
+  have hmatrixReduced : reduced.matrix.size = state.matrix.size := by
+    rw [← hreducedValid.norms_size, hreduceControl.1, hvalid.norms_size]
+  have hkMu : reduced.k < reduced.mu.size := by
+    rw [hreducedValid.mu_size, hmatrixReduced, hkReduced]
+    exact hkMatrix
+  have hkNorm : reduced.k < reduced.norms.size := by
+    rw [hreducedValid.norms_size, hmatrixReduced, hkReduced]
+    exact hkMatrix
+  have hpredNorm : reduced.k - 1 < reduced.norms.size := by omega
+  have hnewNe : reduced.norms[reduced.k] +
+      ((reduced.mu[reduced.k]!)[reduced.k - 1]!) *
+        ((reduced.mu[reduced.k]!)[reduced.k - 1]!) *
+          reduced.norms[reduced.k - 1] ≠ 0 := by
+    have hkPos := hreducedValid.norms_positive reduced.k hkNorm
+    have hpPos := hreducedValid.norms_positive (reduced.k - 1) hpredNorm
+    have hpredMu : reduced.k - 1 < reduced.mu[reduced.k].size := by
+      rw [hreducedValid.mu_rows_square reduced.k (by
+        simpa [hreducedValid.mu_size] using hkMu)]
+      simpa [hreducedValid.norms_size] using hpredNorm
+    simpa [getElem!_pos reduced.mu reduced.k hkMu,
+      getElem!_pos reduced.mu[reduced.k] (reduced.k - 1) hpredMu,
+      getElem!_pos reduced.norms reduced.k hkNorm,
+      getElem!_pos reduced.norms (reduced.k - 1) hpredNorm] using
+      (ne_of_gt (show 0 < reduced.norms[reduced.k] +
+          reduced.mu[reduced.k][reduced.k - 1] *
+            reduced.mu[reduced.k][reduced.k - 1] *
+              reduced.norms[reduced.k - 1] by
+        nlinarith [sq_nonneg reduced.mu[reduced.k][reduced.k - 1]]))
+  have hrowsSquare : ∀ row (hrow : row < reduced.mu.size),
+      reduced.mu[row]!.size = reduced.mu.size := by
+    intro row hrow
+    rw [getElem!_pos reduced.mu row hrow]
+    rw [hreducedValid.mu_rows_square row (by
+      simpa [hreducedValid.mu_size] using hrow)]
+    exact hreducedValid.mu_size.symm
+  have hkOutput := lllStep_swapped_k state output hrun
+  intro index hpositive hindexK hindexMatrix
+  have hindexPred : index < state.k - 1 := by
+    rw [hkOutput] at hindexK
+    by_cases hkOne : state.k = 1
+    · simp [hkOne] at hindexK
+      omega
+    · have hkTwo : 2 ≤ state.k := by omega
+      have hmax : Nat.max (state.k - 1) 1 = state.k - 1 :=
+        Nat.max_eq_left (by omega)
+      rw [hmax] at hindexK
+      exact hindexK
+  have hindexReduced : index < reduced.mu.size :=
+    lt_trans (lt_trans hindexPred (by omega)) hkMu
+  have hcolumnReduced : index - 1 < reduced.mu.size := by omega
+  have hswapMu := lovaszSwapMuResult_entry reduced.mu reduced.k index
+    (index - 1) ((reduced.mu[reduced.k]!)[reduced.k - 1]!) muNew
+    (by simpa [hkReduced] using hkPositive) hkMu hindexReduced hcolumnReduced
+    hrowsSquare
+  have hindexNeK : index ≠ reduced.k := by omega
+  have hindexNePred : index ≠ reduced.k - 1 := by omega
+  have hnotAfter : ¬ reduced.k < index := by omega
+  simp only [hindexNeK, hindexNePred, hnotAfter, if_false] at hswapMu
+  have hswapNormIndex := normsAfterLovaszSwap_get reduced.norms reduced.k
+    ((reduced.mu[reduced.k]!)[reduced.k - 1]!) hkNorm hpredNorm hnewNe
+    index (by
+      rw [hreducedValid.norms_size, ← hreducedValid.mu_size]
+      exact hindexReduced)
+  have hswapNormPred := normsAfterLovaszSwap_get reduced.norms reduced.k
+    ((reduced.mu[reduced.k]!)[reduced.k - 1]!) hkNorm hpredNorm hnewNe
+    (index - 1) (by omega)
+  have hpredNe : reduced.k - 1 ≠ index := by omega
+  have hkNe : reduced.k ≠ index := by omega
+  have hpredPredNe : reduced.k - 1 ≠ index - 1 := by omega
+  have hkPredNe : reduced.k ≠ index - 1 := by omega
+  simp only [hpredNe, hkNe, hpredPredNe, hkPredNe, if_false] at hswapNormIndex
+  simp only [hpredNe, hkNe, hpredPredNe, hkPredNe, if_false] at hswapNormPred
+  have hindexNorm : index < reduced.norms.size := by
+    rw [hreducedValid.norms_size, ← hreducedValid.mu_size]
+    exact hindexReduced
+  have hindexPredNorm : index - 1 < reduced.norms.size := by omega
+  have hrowState := sizeReduceAt_preserves_mu_row_of_ne state reduced
+    (state.k - 1) index hvalid hsourceK
+    (by rw [hvalid.mu_size]; exact lt_trans (by omega) hkMatrix)
+    (by omega) hreduce
+  have hnormIndex : output.norms[index]! = state.norms[index]! := calc
+    _ = (Generated.StrictRecombine.normsAfterLovaszSwap reduced.norms
+        reduced.k ((reduced.mu[reduced.k]!)[reduced.k - 1]!))[index]! :=
+      congrArg (fun values => values[index]!) hnormOutput
+    _ = reduced.norms[index]! := by
+      simpa [getElem!_pos reduced.norms index hindexNorm] using hswapNormIndex
+    _ = state.norms[index]! :=
+      congrArg (fun values => values[index]!) hreduceControl.1
+  have hnormPred : output.norms[index - 1]! =
+      state.norms[index - 1]! := calc
+    _ = (Generated.StrictRecombine.normsAfterLovaszSwap reduced.norms
+        reduced.k ((reduced.mu[reduced.k]!)[reduced.k - 1]!))[index - 1]! :=
+      congrArg (fun values => values[index - 1]!) hnormOutput
+    _ = reduced.norms[index - 1]! := by
+      simpa [getElem!_pos reduced.norms (index - 1) hindexPredNorm] using
+        hswapNormPred
+    _ = state.norms[index - 1]! :=
+      congrArg (fun values => values[index - 1]!) hreduceControl.1
+  rw [hmuOutput, hswapMu, hrowState, hnormIndex, hnormPred]
+  exact hprefix index hpositive (by omega) (by
+    have hmatrixSize := lllStep_swapped_matrix_size state output
+      hvalid.toConcreteLLLValid
+      (lllStep_swapped_preserves_execution_valid state output hvalid hrun).toConcreteLLLValid
+      hrun
+    simpa [hmatrixSize] using hindexMatrix)
+
 theorem lllStep_advanced_preserves_transform_rel
     (initial : Generated.StrictRecombine.LLLMatrix)
     (state output : Generated.StrictRecombine.LLLState)
@@ -10123,6 +10409,21 @@ theorem lllStep_preserves_execution_valid
   | swapped output =>
       exact lllStep_swapped_preserves_execution_valid state output hvalid hrun
 
+theorem lllStep_preserves_lovaszPrefix
+    (state : Generated.StrictRecombine.LLLState)
+    (branch : Generated.StrictRecombine.LLLStepResult)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : LovaszPrefix state)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok branch) :
+    LovaszPrefix branch.state := by
+  cases branch with
+  | advanced output =>
+      exact lllStep_advanced_preserves_lovaszPrefix state output hvalid hprefix
+        hrun
+  | swapped output =>
+      exact lllStep_swapped_preserves_lovaszPrefix state output hvalid hprefix
+        hrun
+
 /-- The genuine well-founded certificate for the generated C++ LLL loop.
 Its validity predicate is the executable `G = L D Lᵀ` invariant, and its
 rank is the concrete determinant/index lexicographic rank. -/
@@ -10194,6 +10495,53 @@ theorem concreteLLLMainLoop_finished
         have hout := Except.ok.inj hrun
         subst output
         exact Nat.le_of_not_gt hk
+
+theorem concreteLLLMainLoop_preserves_lovaszPrefix
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : LovaszPrefix state)
+    (hrun : Generated.StrictRecombine.lllMainLoop concreteLLLTermination
+      state hvalid = .ok output) :
+    LovaszPrefix output := by
+  induction hmeasure : concreteLLLRank state using Nat.strong_induction_on
+      generalizing state output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.lllMainLoop] at hrun
+      split at hrun
+      next hk =>
+        split at hrun
+        next hstep => contradiction
+        next branch hstep =>
+          have hnextValid := lllStep_preserves_execution_valid state branch
+            hvalid hstep
+          have hnextPrefix := lllStep_preserves_lovaszPrefix state branch hvalid
+            hprefix hstep
+          have hdecrease := lllStep_concreteRank_lt_of_valid state branch
+            hvalid.toConcreteLLLValid hnextValid.toConcreteLLLValid hstep
+          rw [hmeasure] at hdecrease
+          exact ih (concreteLLLRank branch.state) hdecrease branch.state output
+            hnextValid hnextPrefix hrun rfl
+      next hk =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hprefix
+
+theorem concreteLLLMainLoop_lovasz_all
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hprefix : LovaszPrefix state)
+    (hrun : Generated.StrictRecombine.lllMainLoop concreteLLLTermination
+      state hvalid = .ok output) :
+    ∀ index, 0 < index → index < output.matrix.size →
+      ((3 : QQ) / 4 -
+          ((output.mu[index]!)[index - 1]!) *
+            ((output.mu[index]!)[index - 1]!)) *
+          output.norms[index - 1]! ≤ output.norms[index]! := by
+  have hfinished := concreteLLLMainLoop_finished state output hvalid hrun
+  have hfinalPrefix := concreteLLLMainLoop_preserves_lovaszPrefix state output
+    hvalid hprefix hrun
+  intro index hpositive hindex
+  exact hfinalPrefix index hpositive (lt_of_lt_of_le hindex hfinished) hindex
 
 /-- The genuine well-founded generated LLL main loop preserves the integer
 transform equation, not merely matrix dimensions or Gram data. -/

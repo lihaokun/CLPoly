@@ -64,3 +64,28 @@ The full outer branch structure and real select-prime execution are connected.
 Overall goal progress is approximately 99.87%; estimated remaining time is
 1.5--3 full working days, dominated by concrete Hensel readiness, removal of
 the stale word-product bounds, generated public export, and final gates.
+
+## Concrete generated Hensel adapter
+
+The outer controller no longer needs an abstract `henselLift` implementation.
+`concreteHenselLift` selects the dense arithmetic object and multiplication
+workspace at the prime physically returned by `__select_prime`, then executes
+the generated `__hensel_lift_upoly_raw_ir` entry with its strict tree builder,
+well-founded quadratic lift loop, extraction, and normalization.
+
+`concreteHenselLift_success` identifies a successful returned value with the
+output of the existing full Hensel refinement theorem.  The composed
+`concreteSelectHensel___factor_squarefree_primitive_ZZ_raw_ir_refines` theorem
+therefore has no abstract select-prime or Hensel function and no caller-chosen
+Hensel result.  It still retains the universally quantified Hensel execution
+readiness invariant and the stale prime-square bound; both must be derived or
+removed before the final public theorem is generated.
+
+Verification:
+
+- `lake env lean CLPoly/Refinement/FactorZZ.lean`: passed.
+- Production C++ changes: none; no new native/B2B change surface.
+
+Progress is approximately 99.89%; the remaining estimate stays 1.5--3 full
+working days because removing the obsolete word-product bounds is now the
+critical path rather than merely connecting the generated Hensel call.

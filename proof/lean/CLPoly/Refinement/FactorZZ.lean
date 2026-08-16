@@ -57,6 +57,76 @@ theorem concreteSelectPrime_success {State : Type}
     initialRng useLargePrime f hinitialPrimeCorrect hcanonical hnonempty hdegree hdegreeBound
       hlcSemantic selection hrun
 
+/-- Actual generated Hensel entry selected at the runtime prime returned by
+`__select_prime`.  The dense arithmetic object and multiplication workspace
+come from the same prime-indexed provider used by the modular factorization;
+no Hensel output is supplied by the caller. -/
+noncomputable def concreteHenselLift {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine) :
+    SparsePolyZZ → Array SparsePolyZp → UInt64 → Int32 →
+      RawExec (Array SparsePolyZZ × ZZ) :=
+  fun f factors p aTarget =>
+    if hp : Nat.Prime p.toNat then
+      let candidate := provider.physical p hp
+      letI : Fact (Nat.Prime candidate.dense._p.toNat) := ⟨candidate.prime⟩
+      Generated.StrictHensel.__hensel_lift_upoly_raw_ir
+        (StrictHensel.strictHenselRawOps
+          StrictHensel.concreteDivmodTermination)
+        (StrictHensel.strictHenselTreeBuildRawOps candidate.dense
+          candidate.providers.mul)
+        f factors p aTarget candidate.prime.two_le
+    else .error .assertionFailure
+
+/-- A successful call of `concreteHenselLift` is the literal generated
+Hensel execution and therefore carries `HenselLiftEntryCorrect`.  The
+remaining invariant is stage readiness quantified over actual intermediate
+executions; it cannot prescribe the returned factor array. -/
+theorem concreteHenselLift_success {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    (aTarget : Int32) (hp : Nat.Prime p.toNat)
+    (hp2 : p.toNat * p.toNat ≤ UInt64.size)
+    (hinvariant :
+      let candidate := provider.physical p hp
+      @StrictHensel.HenselLiftEntryInvariant candidate.dense
+        StrictHensel.concreteDivmodTermination
+        candidate.providers.mul f factors aTarget)
+    (output : Array SparsePolyZZ × ZZ)
+    (hrun : concreteHenselLift engine provider f factors p aTarget =
+      .ok output) :
+    @StrictHensel.HenselLiftEntryCorrect
+      StrictHensel.concreteDivmodTermination f factors p ⟨hp⟩ aTarget
+      output := by
+  let candidate := provider.physical p hp
+  letI : Fact (Nat.Prime candidate.dense._p.toNat) := ⟨candidate.prime⟩
+  have hrun' :
+      Generated.StrictHensel.__hensel_lift_upoly_raw_ir
+        (StrictHensel.strictHenselRawOps
+          StrictHensel.concreteDivmodTermination)
+        (StrictHensel.strictHenselTreeBuildRawOps candidate.dense
+          candidate.providers.mul)
+        f factors p aTarget candidate.prime.two_le = .ok output := by
+    simpa [concreteHenselLift, hp, candidate] using hrun
+  rcases StrictHensel.__hensel_lift_upoly_raw_ir_refines candidate.dense
+      candidate.configured candidate.twicePrimeFits hp2
+      StrictHensel.concreteDivmodTermination candidate.providers.mul
+      f factors aTarget hinvariant with ⟨actual, hactualRun, hcorrect⟩
+  have houtput : actual = output := by
+    have hactualRun' :
+        Generated.StrictHensel.__hensel_lift_upoly_raw_ir
+          (StrictHensel.strictHenselRawOps
+            StrictHensel.concreteDivmodTermination)
+          (StrictHensel.strictHenselTreeBuildRawOps candidate.dense
+            candidate.providers.mul)
+          f factors p aTarget candidate.prime.two_le = .ok actual := by
+      simpa [candidate] using hactualRun
+    rw [hactualRun'] at hrun'
+    exact Except.ok.inj hrun'
+  subst output
+  simpa [candidate] using hcorrect
+
 /-- Concrete adapter for the generated C++ van-Hoeij callee.  The proof-only
 degree guard exposes the source precondition required by the strict raw entry;
 on every valid `__lll_factorize` call it erases to that exact execution. -/
@@ -5284,6 +5354,7 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
       SelectedPrimePhysical selection)
     (hhensel : ∀ (selection : PrimeSelectionResult)
       (hprime : Nat.Prime selection.prime.toNat),
+      SelectedPrimePhysical selection →
       ∀ aTarget henselOutput,
         henselLift f selection.factors selection.prime aTarget =
             .ok henselOutput →
@@ -5352,7 +5423,8 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
         selection hcount hselectedPhysical.primeSquareFits
         hselectedPhysical.factorsCanonical hleadingSemantic hselection
         (fun aTarget henselOutput hh =>
-          hhensel selection hselection.goodPrime.prime aTarget henselOutput hh)
+          hhensel selection hselection.goodPrime.prime hselectedPhysical
+            aTarget henselOutput hh)
         hselectedPhysical.factorCountFits hcanonical hprimitive hnonempty
         hdegreeBound leading hleading output
       exact hrun
@@ -5377,6 +5449,7 @@ theorem concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
         SelectedPrimePhysical selection)
     (hhensel : ∀ (selection : PrimeSelectionResult)
       (hprime : Nat.Prime selection.prime.toNat),
+      SelectedPrimePhysical selection →
       ∀ aTarget henselOutput,
         henselLift f selection.factors selection.prime aTarget =
             .ok henselOutput →
@@ -5417,6 +5490,55 @@ theorem concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
           hselectionRun)
     hphysical hhensel hcanonical hprimitive hnonempty hdegree hdegree63
       leading hleading output hrun
+
+/-- Outer refinement with both source callees instantiated: prime selection
+executes the generated modular pipeline and Hensel lifting executes the
+generated tree-build/quadratic-lift/extract/normalize pipeline.  The only
+Hensel premise left here is its execution-readiness invariant over actual
+intermediate results; no abstract Hensel function or result oracle remains. -/
+theorem concreteSelectHensel___factor_squarefree_primitive_ZZ_raw_ir_refines
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hinitialPrimeCorrect : Nat.Prime
+      (if useLargePrime then
+        ((18446744073709551615 : UInt64) - 58).toNat
+      else (2 : UInt64).toNat))
+    (hphysical : ∀ selection,
+      concreteSelectPrime engine provider initialRng f useLargePrime =
+          .ok selection →
+        SelectedPrimePhysical selection)
+    (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
+      (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
+      let candidate := provider.physical selection.prime hp
+      @StrictHensel.HenselLiftEntryInvariant candidate.dense
+        StrictHensel.concreteDivmodTermination candidate.providers.mul
+        f selection.factors aTarget)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegree62 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hdegree63 : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
+      (concreteRecombineFactorZZRawOps
+        (concreteSelectPrime engine provider initialRng)
+        (concreteHenselLift engine provider))
+      useLargePrime f = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  exact concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
+    engine provider initialRng (concreteHenselLift engine provider)
+    useLargePrime f hinitialPrimeCorrect hphysical
+    (by
+      intro selection hp hselected aTarget henselOutput hhenselRun
+      exact concreteHenselLift_success engine provider f selection.factors
+        selection.prime aTarget hp hselected.primeSquareFits
+        (hhenselInvariant selection hp aTarget) henselOutput hhenselRun)
+    hcanonical hprimitive hnonempty hdegree hdegree62 hdegree63 leading
+    hleading output hrun
 
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source

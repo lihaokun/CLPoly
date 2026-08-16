@@ -218,6 +218,8 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.lllStep_preserves_transform_rel
 #print axioms Refinement.StrictRecombine.concreteLLLMainLoop_preserves_transform_rel
 #print axioms Refinement.StrictRecombine.concreteLLLReduce_transform_rel
+#print axioms Refinement.StrictRecombine.derivativeZZRaw_toPoly
+#print axioms Refinement.StrictRecombine.sparseCoeff_eq_coeff
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

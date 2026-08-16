@@ -395,3 +395,28 @@ existence witness, semantic LLL oracle, `sorry`, or custom axiom is used.
   lattice construction to prove that the generated candidate equivalence
   classes cannot merge distinct integer irreducible factors at sufficient
   precision.
+
+## Identify generated CLD derivative and coefficient observations
+
+The first two semantic observations used by the physical CLD lattice are now
+connected directly to their generated loops:
+
+- `derivativeZZRaw_toPoly` follows the decreasing source-array suffix of
+  `derivativeZZLoop`, including the constant-term skip and zero-coefficient
+  compaction branches, and proves that its concrete sparse output denotes the
+  mathematical polynomial derivative;
+- `sparseCoeff_eq_coeff` follows the generated linear lookup and uses strict
+  canonical degree order to prove that every value inserted into a CLD matrix
+  row is the corresponding mathematical polynomial coefficient.
+
+These results prevent the later lattice argument from silently replacing the
+generated sparse derivative or coefficient accessor with specification-level
+operations.  Both executable loops are well-founded on the remaining array
+suffix; no fuel, partial definition, semantic oracle, `sorry`, or custom axiom
+is introduced.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: combine generated modular division, derivative, modular
+  multiplication, and symmetric recovery into a pointwise semantic theorem
+  for every physical element returned by `cldPolys`.

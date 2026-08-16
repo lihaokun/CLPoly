@@ -11468,6 +11468,63 @@ private noncomputable def intTermsToPoly (terms : List (UMonomial × Int)) :
     Polynomial Int :=
   (terms.map fun term => Polynomial.monomial term.1.deg term.2).sum
 
+/-- The literal sparse derivative loop represents the mathematical
+derivative of the unprocessed suffix, in addition to its concrete accumulator.
+Zero-degree and zero-coefficient branches are both followed exactly. -/
+theorem derivativeZZLoop_toPoly (input : SparsePolyZZ) (index : Nat)
+    (result : SparsePolyZZ) :
+    SparsePolyZZ.toPoly
+        (Generated.StrictRecombine.derivativeZZLoop input index result) =
+      SparsePolyZZ.toPoly result +
+        Polynomial.derivative (intTermsToPoly (input.toList.drop index)) := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.derivativeZZLoop]
+      split
+      next hindex =>
+        have hsuffix : input.toList.drop index = input[index] ::
+            input.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := input.toList) (i := index) (by simpa using hindex)
+        by_cases hdegree : input[index].1.deg = 0
+        · rw [if_pos hdegree]
+          rw [ih (input.size - (index + 1)) (by omega)
+            (index + 1) result rfl]
+          simp [intTermsToPoly, hsuffix, hdegree]
+        · rw [if_neg hdegree]
+          let coefficient := input[index].2 * input[index].1.deg
+          by_cases hcoefficient : coefficient = 0
+          · change input[index].2 * input[index].1.deg = 0 at hcoefficient
+            simp only [hcoefficient, if_true]
+            rw [ih (input.size - (index + 1)) (by omega)
+              (index + 1) result rfl]
+            simp [intTermsToPoly, hsuffix, hdegree,
+              Polynomial.derivative_monomial, hcoefficient]
+          · change input[index].2 * input[index].1.deg ≠ 0 at hcoefficient
+            simp only [hcoefficient, if_false]
+            rw [ih (input.size - (index + 1)) (by omega)
+              (index + 1) (result.push
+                (⟨input[index].1.deg - 1⟩, coefficient)) rfl]
+            simp [SparsePolyZZ.toPoly, intTermsToPoly, hsuffix, hdegree,
+              Polynomial.derivative_monomial, coefficient, Array.toList_push,
+              add_assoc]
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        simp [intTermsToPoly, List.drop_eq_nil_iff.mpr hle]
+
+theorem derivativeZZRaw_toPoly (input output : SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.derivativeZZRaw input = .ok output) :
+    SparsePolyZZ.toPoly output =
+      Polynomial.derivative (SparsePolyZZ.toPoly input) := by
+  have houtput : output =
+      Generated.StrictRecombine.derivativeZZLoop input 0 #[] := by
+    simpa [Generated.StrictRecombine.derivativeZZRaw] using
+      (Except.ok.inj hrun).symm
+  subst output
+  simpa [SparsePolyZZ.toPoly, intTermsToPoly] using
+    derivativeZZLoop_toPoly input 0 #[]
+
 theorem multiplyRowLoop_toPoly (left : UMonomial × Int)
     (right : SparsePolyZZ) (rightIndex : Nat) (terms : SparsePolyZZ) :
     intTermsToPoly (Generated.StrictRecombine.multiplyRowLoop
@@ -13373,6 +13430,52 @@ theorem sparsePolyZZ_toPoly_coeff_of_mem
     (SparsePolyZZ.toPoly input).coeff term.1.deg = term.2 := by
   unfold SparsePolyZZ.toPoly
   exact sparseZZ_sum_coeff_of_mem input.toList hcanonical.1 term hterm
+
+/-- The generated linear sparse-coefficient lookup agrees with the
+mathematical coefficient on every suffix of canonical storage. -/
+theorem sparseCoeffLoop_eq_coeff (input : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (degree index : Nat) :
+    Generated.StrictRecombine.sparseCoeffLoop input degree index =
+      (intTermsToPoly (input.toList.drop index)).coeff degree := by
+  induction hmeasure : input.size - index using Nat.strong_induction_on
+      generalizing index with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.sparseCoeffLoop]
+      split
+      next hindex =>
+        have hsuffix : input.toList.drop index = input[index] ::
+            input.toList.drop (index + 1) := by
+          simpa using List.drop_eq_getElem_cons
+            (l := input.toList) (i := index) (by simpa using hindex)
+        by_cases hdegree : input[index].1.deg = degree
+        · rw [if_pos hdegree]
+          have hmember : input[index] ∈ input.toList.drop index := by
+            rw [hsuffix]
+            simp
+          have hcoefficient := sparseZZ_sum_coeff_of_mem
+            (input.toList.drop index) (hcanonical.1.drop index)
+            input[index] hmember
+          rw [hdegree] at hcoefficient
+          simpa [intTermsToPoly] using hcoefficient.symm
+        · rw [if_neg hdegree]
+          rw [ih (input.size - (index + 1)) (by omega) (index + 1) rfl]
+          rw [hsuffix]
+          simp only [intTermsToPoly, List.map_cons, List.sum_cons,
+            Polynomial.coeff_add, Polynomial.coeff_monomial]
+          rw [if_neg hdegree, zero_add]
+      next hindex =>
+        have hle : input.size ≤ index := Nat.le_of_not_gt hindex
+        simp [intTermsToPoly, List.drop_eq_nil_iff.mpr hle]
+
+theorem sparseCoeff_eq_coeff (input : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical input)
+    (degree : Nat) :
+    Generated.StrictRecombine.sparseCoeff input degree =
+      (SparsePolyZZ.toPoly input).coeff degree := by
+  unfold Generated.StrictRecombine.sparseCoeff SparsePolyZZ.toPoly
+  simpa [intTermsToPoly] using
+    sparseCoeffLoop_eq_coeff input hcanonical degree 0
 
 /-- The first physical sparse term carries the exact mathematical degree. -/
 theorem sparsePolyZZ_natDegree_eq_head (poly : SparsePolyZZ)

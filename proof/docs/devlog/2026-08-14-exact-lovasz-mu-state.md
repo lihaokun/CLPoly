@@ -1993,6 +1993,13 @@ No C++ files changed, so this step has no new C++ b2b change surface.
   leading coefficient.  This is the sound cancellation principle needed by
   full-precision state preservation: it deliberately does not treat the
   composite-modulus ring `ZMod (p^k)` as a field or integral domain.
+- Added `remaining_product_eq_unit_mul_quotient`.  From the old physical
+  selected/complement product, the actual primitive extraction equation, and
+  the actual candidate-factor equation, it constructs the next normalization
+  unit explicitly and proves the remaining active product equals that unit
+  times the installed primitive quotient.  Cancellation uses only the unit
+  leading coefficient proved above, so the lemma applies unchanged at `p^k`
+  and at `p`.
 - Added `zassenhausLeadingPrune_accepts_live_candidate`.  For an arbitrary
   current active array, pointwise canonical/nonempty/monic cells make the
   literal generated `selectedLeadingProductLoop` accumulate exactly the live

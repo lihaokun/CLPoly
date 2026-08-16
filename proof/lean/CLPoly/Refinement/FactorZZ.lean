@@ -790,6 +790,73 @@ theorem polynomial_mul_right_cancel_of_isUnit_leadingCoeff
     (Polynomial.isUnit_leadingCoeff_mul_right_eq_zero_iff hleading).mp hzero
   exact sub_eq_zero.mp hdiff
 
+/-- Algebraic update used after a physical candidate removal.  It constructs
+the next normalization unit from the four concrete units in the execution
+trace and cancels the extracted factor only through its unit leading
+coefficient. -/
+theorem remaining_product_eq_unit_mul_quotient
+    {R : Type*} [CommRing R]
+    (selected remaining source factor quotient : Polynomial R)
+    (scale leading content scalar : R)
+    (hscale : IsUnit scale) (hleading : IsUnit leading)
+    (hcontent : IsUnit content) (hscalar : IsUnit scalar)
+    (hfactorLeading : IsUnit factor.leadingCoeff)
+    (hactive : selected * remaining = Polynomial.C scale * source)
+    (hextraction : source =
+      Polynomial.C scalar * (factor * quotient))
+    (hfactor : Polynomial.C content * factor =
+      Polynomial.C leading * selected) :
+    ∃ nextScale : R, IsUnit nextScale ∧
+      remaining = Polynomial.C nextScale * quotient := by
+  have hcancelEquation :
+      factor * (Polynomial.C content * remaining) =
+        factor * (Polynomial.C (leading * scale * scalar) * quotient) := by
+    calc
+      factor * (Polynomial.C content * remaining) =
+          (Polynomial.C content * factor) * remaining := by ring
+      _ = (Polynomial.C leading * selected) * remaining := by rw [hfactor]
+      _ = Polynomial.C leading * (selected * remaining) := by ring
+      _ = Polynomial.C leading * (Polynomial.C scale * source) := by
+        rw [hactive]
+      _ = factor *
+          (Polynomial.C (leading * scale * scalar) * quotient) := by
+        rw [hextraction]
+        simp only [Polynomial.C_mul]
+        ring
+  have hcancelled : Polynomial.C content * remaining =
+      Polynomial.C (leading * scale * scalar) * quotient :=
+    polynomial_mul_right_cancel_of_isUnit_leadingCoeff factor _ _
+      hfactorLeading hcancelEquation
+  let contentInv : R := ↑(hcontent.unit⁻¹)
+  have hcontentInv : contentInv * content = 1 := by
+    have hspec : (↑hcontent.unit : R) = content := hcontent.unit_spec
+    calc
+      contentInv * content = contentInv * (↑hcontent.unit : R) := by
+        exact congrArg (contentInv * ·) hspec.symm
+      _ = 1 := by simp [contentInv]
+  let nextUnit : Rˣ := hcontent.unit⁻¹ * hleading.unit * hscale.unit *
+    hscalar.unit
+  let nextScale : R := ↑nextUnit
+  have hnextUnit : IsUnit nextScale := nextUnit.isUnit
+  have hnextScale : nextScale = contentInv * leading * scale * scalar := by
+    simp [nextScale, nextUnit, contentInv, hleading.unit_spec,
+      hscale.unit_spec, hscalar.unit_spec]
+  refine ⟨nextScale, hnextUnit, ?_⟩
+  calc
+    remaining = Polynomial.C (contentInv * content) * remaining := by
+      rw [hcontentInv]
+      simp
+    _ = Polynomial.C contentInv * (Polynomial.C content * remaining) := by
+      rw [Polynomial.C_mul]
+      ring
+    _ = Polynomial.C contentInv *
+        (Polynomial.C (leading * scale * scalar) * quotient) := by
+      rw [hcancelled]
+    _ = Polynomial.C nextScale * quotient := by
+      rw [hnextScale]
+      simp only [Polynomial.C_mul]
+      ring
+
 /-- The mapped integer polynomial itself has a unit leading coefficient at
 full Hensel precision whenever its leading coefficient survives mod `p`. -/
 theorem mapped_leadingCoeff_isUnit_primePower

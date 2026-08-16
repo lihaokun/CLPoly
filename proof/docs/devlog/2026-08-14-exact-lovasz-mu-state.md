@@ -3530,3 +3530,27 @@ semantic extraction oracle is assumed.
   generated Mignotte/Hensel execution, then thread irreducibility, squarefree
   quotient, active/product state, and exhaustion history through the complete
   generated outer loop.
+
+## Initialize and preserve the live recovery margin
+
+`LiveRecoveryPrecision` records exactly the two strict inequalities consumed
+by the generated Zassenhaus branches: recovery of the current source leading
+coefficient and recovery of every quotient-leading-scaled genuine divisor.
+`selectionHenselFactors_liveRecoveryPrecision` derives the package from the
+literal generated Mignotte bound and the modulus returned by the actual
+well-founded Hensel execution.  Its scaled-factor proof uses the concrete
+divisor bound and the exact leading-coefficient factorization; it does not
+postulate a sufficiently large modulus.
+
+`LiveRecoveryPrecision.extract` replays the successful attempt's integer
+equation.  The primitive-normalization scalar has integer absolute value one,
+while the nonzero extracted factor has positive leading-coefficient absolute
+value.  These facts transport both strict bounds to the literal primitive
+quotient installed by the outer loop, including every one of its later
+factorizations.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: combine all live packages in one well-founded outer-loop correctness
+  theorem and prove its actual output satisfies irreducibility and product
+  correctness.

@@ -752,6 +752,19 @@ structure LiveHenselProduct (prime exponent : Nat) (source : SparsePolyZZ)
       (active.toList.map (StrictHensel.toPolyMod prime)).prod =
         Polynomial.C scaleAtPrime * StrictHensel.toPolyMod prime source
 
+/-- The concrete coefficient-recovery margin carried by the real Zassenhaus
+loop.  It states exactly the bounds consumed by the generated leading and
+symmetric-recovery branches for every genuine factorization of the current
+source. -/
+structure LiveRecoveryPrecision (modulus : Nat)
+    (source : SparsePolyZZ) : Prop where
+  leadingBound : (SparsePolyZZ.toPoly source).leadingCoeff.natAbs * 2 < modulus
+  scaledFactorBound : ∀ divisor quotient,
+    SparsePolyZZ.toPoly source = divisor * quotient → divisor ≠ 0 →
+    ∀ degree,
+      ((Polynomial.C quotient.leadingCoeff * divisor).coeff degree).natAbs *
+        2 < modulus
+
 /-- The selected-prime product relation exposed in the orientation used by
 the live divisor-to-subset theorem. -/
 theorem LiveHenselProduct.primeProductAssociated
@@ -1534,6 +1547,90 @@ theorem zassenhausAttempt_extracted_quotient_squarefree
     ring
   exact hsquarefree.squarefree_of_dvd hdivides
 
+/-- The coefficient-recovery margin survives installation of the literal
+primitive quotient returned by a successful attempt. -/
+theorem LiveRecoveryPrecision.extract
+    {modulus : Nat} {source factor quotient : SparsePolyZZ}
+    {active : Array SparsePolyZZ} {candidate : Array Nat}
+    (state : LiveRecoveryPrecision modulus source)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hfactorNe : SparsePolyZZ.toPoly factor ≠ 0)
+    (hquotientNe : SparsePolyZZ.toPoly quotient ≠ 0)
+    (hrun : Generated.StrictRecombine.zassenhausAttempt source active
+      (modulus : ZZ) candidate = .ok (.extracted factor quotient)) :
+    LiveRecoveryPrecision modulus quotient := by
+  rcases StrictRecombine.zassenhausAttempt_extracted_unit_scalar source factor
+      quotient active (modulus : ZZ) candidate hprimitive hrun with
+    ⟨scalar, hscalar, hextraction⟩
+  have hscalarAbs : scalar.natAbs = 1 := Int.natAbs_of_isUnit hscalar
+  let factorPoly := SparsePolyZZ.toPoly factor
+  let quotientPoly := SparsePolyZZ.toPoly quotient
+  have hfactorLeadingAbs : 0 < factorPoly.leadingCoeff.natAbs :=
+    Int.natAbs_pos.mpr (Polynomial.leadingCoeff_ne_zero.mpr hfactorNe)
+  have hquotientLeadingAbs : 0 < quotientPoly.leadingCoeff.natAbs :=
+    Int.natAbs_pos.mpr (Polynomial.leadingCoeff_ne_zero.mpr hquotientNe)
+  have hsourceLeading : (SparsePolyZZ.toPoly source).leadingCoeff =
+      scalar * (factorPoly.leadingCoeff * quotientPoly.leadingCoeff) := by
+    have hlc := congrArg Polynomial.leadingCoeff hextraction
+    rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C,
+      Polynomial.leadingCoeff_mul] at hlc
+    simpa [factorPoly, quotientPoly] using hlc
+  have hquotientLeadingLe : quotientPoly.leadingCoeff.natAbs ≤
+      (SparsePolyZZ.toPoly source).leadingCoeff.natAbs := by
+    rw [hsourceLeading, Int.natAbs_mul, Int.natAbs_mul, hscalarAbs,
+      one_mul]
+    exact Nat.le_mul_of_pos_left _ hfactorLeadingAbs
+  have hleadingScaled := Nat.mul_le_mul_right 2 hquotientLeadingLe
+  have hleadingBound : quotientPoly.leadingCoeff.natAbs * 2 < modulus :=
+    lt_of_le_of_lt hleadingScaled state.leadingBound
+  refine ⟨by simpa [quotientPoly] using hleadingBound, ?_⟩
+  intro divisor nextQuotient hnext hdivisorNe degree
+  have hnextQuotientNe : nextQuotient ≠ 0 := by
+    intro hzero
+    apply hquotientNe
+    change SparsePolyZZ.toPoly quotient = divisor * nextQuotient at hnext
+    rw [hnext, hzero, mul_zero]
+  let sourceQuotient := Polynomial.C scalar * (factorPoly * nextQuotient)
+  have hsourceFactorization : SparsePolyZZ.toPoly source =
+      divisor * sourceQuotient := by
+    dsimp [sourceQuotient]
+    rw [hextraction, hnext]
+    change Polynomial.C scalar *
+      (factorPoly * (divisor * nextQuotient)) = _
+    ring
+  have holdBound := state.scaledFactorBound divisor sourceQuotient
+    hsourceFactorization hdivisorNe degree
+  have hsourceQuotientLeading : sourceQuotient.leadingCoeff =
+      scalar * (factorPoly.leadingCoeff * nextQuotient.leadingCoeff) := by
+    dsimp [sourceQuotient]
+    rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_C,
+      Polynomial.leadingCoeff_mul]
+  have htargetCoeff :
+      (Polynomial.C sourceQuotient.leadingCoeff * divisor).coeff degree =
+        scalar * factorPoly.leadingCoeff *
+          ((Polynomial.C nextQuotient.leadingCoeff * divisor).coeff degree) := by
+    rw [hsourceQuotientLeading]
+    change (Polynomial.C
+      (scalar * (factorPoly.leadingCoeff * nextQuotient.leadingCoeff)) *
+        divisor).coeff degree = _
+    rw [Polynomial.coeff_C_mul]
+    rw [Polynomial.coeff_C_mul]
+    ring
+  rw [htargetCoeff, Int.natAbs_mul, Int.natAbs_mul,
+    hscalarAbs, one_mul] at holdBound
+  have hdesiredLe :
+      ((Polynomial.C nextQuotient.leadingCoeff * divisor).coeff degree).natAbs *
+          2 ≤
+        (factorPoly.leadingCoeff.natAbs *
+          ((Polynomial.C nextQuotient.leadingCoeff * divisor).coeff degree).natAbs) *
+            2 := by
+    have hbase := Nat.le_mul_of_pos_left
+      ((Polynomial.C nextQuotient.leadingCoeff * divisor).coeff degree).natAbs
+      hfactorLeadingAbs
+    exact Nat.mul_le_mul_right 2 hbase
+  exact lt_of_le_of_lt hdesiredLe (by
+    simpa [Nat.mul_assoc] using holdBound)
+
 /-- A hypothetical nontrivial factorization of the literal extracted factor
 is re-encoded as a smaller physical candidate together with every premise
 needed by the later generated-attempt execution theorem. -/
@@ -1688,6 +1785,77 @@ theorem selectionHenselFactors_liveProduct
     exponentPositive := hexponent
     certificate := ⟨scale, scaleAtPrime, hscaleUnit, hscaleAtPrimeUnit,
       hlargeProduct, hprimeProduct⟩ }⟩
+
+/-- The default generated Mignotte/Hensel execution initializes the exact
+recovery margin required by every later Zassenhaus candidate. -/
+theorem selectionHenselFactors_liveRecoveryPrecision
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime p.toNat)]
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f factors p 0
+      output)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (exponent : Nat)
+    (houtput : output.2 = ((p.toNat ^ exponent : Nat) : Int)) :
+    LiveRecoveryPrecision (p.toNat ^ exponent) f := by
+  let modulus := p.toNat ^ exponent
+  have hsourceNe : SparsePolyZZ.toPoly f ≠ 0 := by
+    intro hzero
+    have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f
+      hcanonical hnonempty
+    rw [hzero] at hhead
+    exact hcanonical.2 f[0] (Array.getElem_mem_toList hnonempty)
+      (by simpa using hhead.symm)
+  have hsourceLeading : (SparsePolyZZ.toPoly f).leadingCoeff = leading.2 := by
+    have hfront : f[0] = leading := by
+      rw [Array.getElem?_eq_getElem hnonempty] at hleading
+      exact Option.some.inj hleading
+    rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
+      hnonempty, hfront]
+  have honePrecision :=
+    StrictRecombine.hensel_output_modulus_bounds_scaled_divisor hentry rfl
+      hcanonical hnonempty hdegree leading hleading (1 : Polynomial Int)
+      hsourceNe (one_dvd _)
+  have hleadingLargeInt := honePrecision.2 0
+  rw [houtput] at hleadingLargeInt
+  have hleadingLargeInt' : (leading.2.natAbs : Int) * 2 <
+      (modulus : Int) := by
+    simpa [modulus] using hleadingLargeInt
+  have hleadingBound : (SparsePolyZZ.toPoly f).leadingCoeff.natAbs * 2 <
+      modulus := by
+    rw [hsourceLeading]
+    exact_mod_cast hleadingLargeInt'
+  refine ⟨hleadingBound, ?_⟩
+  intro divisor quotient hfactor hdivisorNe degree
+  have hprecision :=
+    StrictRecombine.hensel_output_modulus_bounds_scaled_divisor hentry rfl
+      hcanonical hnonempty hdegree leading hleading divisor hsourceNe
+      (hfactor ▸ dvd_mul_right divisor quotient)
+  have hlargeInt := hprecision.2 degree
+  rw [houtput] at hlargeInt
+  have hlarge : (leading.2 * divisor.coeff degree).natAbs * 2 < modulus := by
+    exact_mod_cast hlargeInt
+  have hsourceLeadingFactor : leading.2 =
+      divisor.leadingCoeff * quotient.leadingCoeff := by
+    rw [← hsourceLeading, hfactor, Polynomial.leadingCoeff_mul]
+  have hdivisorLeadingAbs : 0 < divisor.leadingCoeff.natAbs :=
+    Int.natAbs_pos.mpr (Polynomial.leadingCoeff_ne_zero.mpr hdivisorNe)
+  have hle : (quotient.leadingCoeff * divisor.coeff degree).natAbs * 2 ≤
+      (leading.2 * divisor.coeff degree).natAbs * 2 := by
+    rw [hsourceLeadingFactor, Int.natAbs_mul, Int.natAbs_mul, Int.natAbs_mul]
+    have hbase := Nat.le_mul_of_pos_left
+      (quotient.leadingCoeff.natAbs * (divisor.coeff degree).natAbs)
+      hdivisorLeadingAbs
+    have hscaled := Nat.mul_le_mul_right 2 hbase
+    simpa [Nat.mul_assoc, Nat.mul_left_comm, Nat.mul_comm] using hscaled
+  have htargetCoeff :
+      (Polynomial.C quotient.leadingCoeff * divisor).coeff degree =
+        quotient.leadingCoeff * divisor.coeff degree := by simp
+  rw [htargetCoeff]
+  exact lt_of_le_of_lt hle hlarge
 
 /-- The exact selected product and the exact physical complement computed by
 `removeCombination` are coprime at the selected prime after the source-leading

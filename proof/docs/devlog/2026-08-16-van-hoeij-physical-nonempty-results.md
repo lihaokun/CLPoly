@@ -528,3 +528,30 @@ custom axiom is used.
 - Next: lift this exact comparator meaning through class assignment and the
   outer candidate-column partition, then use the CLD/LLL separation result to
   show that each produced class corresponds to one integer factor block.
+
+## Refine generated candidate-class assignment
+
+The exact comparator meaning is now carried through the generated inner class
+assignment loop:
+
+- `CandidateClassRepresentativeSound` states that every physical array slot
+  carrying a given class identifier has passed the generated comparator
+  against that class's representative column;
+- `assignCandidateClass_preserves_representative_sound` proves this invariant
+  across occupied slots, unequal comparisons, successful equal comparisons,
+  and the terminating branch;
+- `assignCandidateClass_size` proves the physical class array is never resized;
+  and
+- `assignCandidateClass_member_provenance` proves that every member visible in
+  the returned class either already had that identifier or was inserted only
+  after an actual `candidateColumnsEqual = .ok true` execution.
+
+The proof follows the literal `factorCount - right` well-founded recursion and
+every generated error/bounds branch.  It uses no fuel, abstract partition
+oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: establish the corresponding provenance and representative invariant
+  for `partitionCandidateColumns`, starting from its concrete replicated
+  `none` array.

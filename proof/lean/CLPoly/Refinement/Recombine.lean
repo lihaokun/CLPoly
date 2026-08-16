@@ -10338,6 +10338,173 @@ theorem candidateColumnsEqual_true_complete
         · rfl
       · rw [dif_neg hindex]
 
+def CandidateClassRepresentativeSound
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (representative classId : Nat)
+    (classes : Array (Option Nat)) : Prop :=
+  ∀ column, column < classes.size → classes[column]! = some classId →
+    Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      representative column 0 = .ok true
+
+theorem assignCandidateClass_preserves_representative_sound
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (representative factorCount classId right : Nat)
+    (classes output : Array (Option Nat))
+    (hsound : CandidateClassRepresentativeSound transform shortRows
+      representative classId classes)
+    (hrun : Generated.StrictRecombine.assignCandidateClass transform shortRows
+      representative factorCount classId right classes = .ok output) :
+    CandidateClassRepresentativeSound transform shortRows representative
+      classId output := by
+  induction hmeasure : factorCount - right using Nat.strong_induction_on
+      generalizing right classes output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.assignCandidateClass] at hrun
+      split at hrun
+      next hright =>
+        split at hrun
+        next hclass =>
+          split at hrun
+          next existing =>
+            exact ih (factorCount - (right + 1)) (by omega) (right + 1)
+              classes output hsound hrun rfl
+          next hnone =>
+            cases hequal : Generated.StrictRecombine.candidateColumnsEqual
+                transform shortRows representative right 0 with
+            | error fault =>
+                simp [hequal] at hrun
+            | ok equal =>
+                simp only [hequal] at hrun
+                by_cases hequalTrue : equal = true
+                · subst equal
+                  have hnextSound : CandidateClassRepresentativeSound transform
+                      shortRows representative classId
+                      (classes.set right (some classId)) := by
+                    intro column hcolumn hmember
+                    by_cases hcolumnEq : column = right
+                    · subst column
+                      exact hequal
+                    · apply hsound column (by simpa using hcolumn)
+                      rw [getElem!_pos _ column hcolumn,
+                        Array.getElem_set_ne hclass (by simpa using hcolumn)
+                          (Ne.symm hcolumnEq)] at hmember
+                      simpa [getElem!_pos classes column (by simpa using hcolumn)]
+                        using hmember
+                  exact ih (factorCount - (right + 1)) (by omega) (right + 1)
+                    (classes.set right (some classId)) output hnextSound hrun rfl
+                · have hequalFalse : equal = false := Bool.eq_false_of_not_eq_true
+                    hequalTrue
+                  rw [hequalFalse] at hrun
+                  exact ih (factorCount - (right + 1)) (by omega) (right + 1)
+                    classes output hsound hrun rfl
+        next hclass => contradiction
+      next hright =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hsound
+
+theorem assignCandidateClass_size
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (representative factorCount classId right : Nat)
+    (classes output : Array (Option Nat))
+    (hrun : Generated.StrictRecombine.assignCandidateClass transform shortRows
+      representative factorCount classId right classes = .ok output) :
+    output.size = classes.size := by
+  induction hmeasure : factorCount - right using Nat.strong_induction_on
+      generalizing right classes output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.assignCandidateClass] at hrun
+      split at hrun
+      next hright =>
+        split at hrun
+        next hclass =>
+          split at hrun
+          next existing =>
+            exact ih (factorCount - (right + 1)) (by omega) (right + 1)
+              classes output hrun rfl
+          next hnone =>
+            cases hequal : Generated.StrictRecombine.candidateColumnsEqual
+                transform shortRows representative right 0 with
+            | error fault => simp [hequal] at hrun
+            | ok equal =>
+                simp only [hequal] at hrun
+                split at hrun
+                next hequalTrue =>
+                  have htail := ih (factorCount - (right + 1)) (by omega)
+                    (right + 1) (classes.set right (some classId)) output hrun rfl
+                  simpa using htail
+                next hequalFalse =>
+                  exact ih (factorCount - (right + 1)) (by omega)
+                    (right + 1) classes output hrun rfl
+        next hclass => contradiction
+      next hright =>
+        exact congrArg Array.size (Except.ok.inj hrun).symm
+
+/-- Every newly visible member of the assigned class either already carried
+that class identifier in the input array or was added only after the literal
+generated comparator returned `true` against the representative column. -/
+theorem assignCandidateClass_member_provenance
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (representative factorCount classId right : Nat)
+    (classes output : Array (Option Nat))
+    (hrun : Generated.StrictRecombine.assignCandidateClass transform shortRows
+      representative factorCount classId right classes = .ok output)
+    (column : Nat) (hcolumn : column < output.size)
+    (hmember : output[column]! = some classId) :
+    classes[column]! = some classId ∨
+      Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+        representative column 0 = .ok true := by
+  induction hmeasure : factorCount - right using Nat.strong_induction_on
+      generalizing right classes output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.assignCandidateClass] at hrun
+      split at hrun
+      next hright =>
+        split at hrun
+        next hclass =>
+          split at hrun
+          next existing =>
+            exact ih (factorCount - (right + 1)) (by omega) (right + 1)
+              classes output hrun hcolumn hmember rfl
+          next hnone =>
+            cases hequal : Generated.StrictRecombine.candidateColumnsEqual
+                transform shortRows representative right 0 with
+            | error fault => simp [hequal] at hrun
+            | ok equal =>
+                simp only [hequal] at hrun
+                by_cases hequalTrue : equal = true
+                · subst equal
+                  have htail := ih (factorCount - (right + 1)) (by omega)
+                    (right + 1) (classes.set right (some classId)) output hrun
+                    hcolumn hmember rfl
+                  rcases htail with hsetMember | hcomp
+                  · by_cases hcolumnEq : column = right
+                    · subst column
+                      exact Or.inr hequal
+                    · left
+                      have hsetSize : (classes.set right (some classId)).size =
+                          classes.size := by simp
+                      have hcolumnClasses : column < classes.size := by
+                        have houtSize := assignCandidateClass_size transform
+                          shortRows representative factorCount classId
+                          (right + 1) (classes.set right (some classId)) output hrun
+                        omega
+                      rw [getElem!_pos _ column (by simpa using hcolumnClasses),
+                        Array.getElem_set_ne hclass hcolumnClasses
+                          (Ne.symm hcolumnEq)] at hsetMember
+                      simpa [getElem!_pos classes column hcolumnClasses] using
+                        hsetMember
+                  · exact Or.inr hcomp
+                · have hequalFalse := Bool.eq_false_of_not_eq_true hequalTrue
+                  rw [hequalFalse] at hrun
+                  exact ih (factorCount - (right + 1)) (by omega) (right + 1)
+                    classes output hrun hcolumn hmember rfl
+        next hclass => contradiction
+      next hright =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact Or.inl hmember
+
 /-- The generated class collector only updates existing result slots, so its
 physical outer array size is invariant. -/
 theorem collectCandidateClasses_size

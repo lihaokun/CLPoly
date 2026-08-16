@@ -239,6 +239,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.partitionCandidateColumns_all_assigned
 #print axioms Refinement.StrictRecombine.partitionCandidateColumns_size
 #print axioms Refinement.StrictRecombine.partitionCandidateColumns_from_empty_all_assigned
+#print axioms Refinement.StrictRecombine.collectCandidateClasses_preserves_member
+#print axioms Refinement.StrictRecombine.collectCandidateClasses_includes_source
+#print axioms Refinement.StrictRecombine.extractCandidates_covers_columns
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

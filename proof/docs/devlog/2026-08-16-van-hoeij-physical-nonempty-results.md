@@ -580,3 +580,30 @@ partial definition, abstract partition oracle, `sorry`, or custom axiom.
 - Next: attach representative-comparison provenance to every outer class and
   carry it through `collectCandidateClasses`/`extractCandidates`, then apply
   CLD/LLL separation to identify the resulting integer factor blocks.
+
+## Prove generated candidate collection coverage
+
+The assigned physical class array is now connected to the concrete candidate
+arrays returned by `extractCandidates`:
+
+- `CandidateMember` records an actual physical position and `Int32` value in
+  a returned candidate class;
+- `collectCandidateClasses_preserves_member` proves that all later generated
+  `Array.set`/`push` iterations preserve existing members;
+- `collectCandidateClasses_includes_source` follows the exact collector until
+  a requested source column, proves its class lookup and append, and carries
+  that member through the remaining well-founded suffix; and
+- `extractCandidates_covers_columns` combines outer partition coverage with
+  the literal collector to prove that, in the nonempty-short-row branch, every
+  physical factor column is materialized as its exact
+  `source.toUInt32.toInt32` value in some returned candidate array.
+
+This is execution provenance, not merely a returned-size estimate.  The proof
+uses the generated `classes.size - column` recursion and introduces no fuel,
+partial definition, collection oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: prove the converse member soundness and representative equality for
+  each collected class, then combine it with the CLD/LLL short-vector
+  separation theorem.

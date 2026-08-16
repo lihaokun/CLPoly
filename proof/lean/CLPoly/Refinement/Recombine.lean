@@ -10741,6 +10741,116 @@ theorem collectCandidateClasses_size
       next hcolumn =>
         exact congrArg Array.size (Except.ok.inj hrun.symm)
 
+def CandidateMember (candidates : Array (Array Int32))
+    (classId : Nat) (value : Int32) : Prop :=
+  classId < candidates.size ∧
+    ∃ position, position < candidates[classId]!.size ∧
+      (candidates[classId]!)[position]! = value
+
+theorem collectCandidateClasses_preserves_member
+    (classes : Array (Option Nat)) (column : Nat)
+    (result output : Array (Array Int32))
+    (hrun : Generated.StrictRecombine.collectCandidateClasses classes column
+      result = .ok output)
+    (classId : Nat) (value : Int32)
+    (hmember : CandidateMember result classId value) :
+    CandidateMember output classId value := by
+  induction hmeasure : classes.size - column using Nat.strong_induction_on
+      generalizing column result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.collectCandidateClasses] at hrun
+      split at hrun
+      next hcolumn =>
+        split at hrun
+        next hnone => contradiction
+        next sourceClass hsourceClass =>
+          split at hrun
+          next hclass =>
+            let updated := result.set sourceClass
+              (result[sourceClass].push column.toUInt32.toInt32)
+            have hmemberUpdated : CandidateMember updated classId value := by
+              rcases hmember with ⟨hclassId, position, hposition, hvalue⟩
+              have hposition' : position < result[classId].size := by
+                simpa [getElem!_pos result classId hclassId] using hposition
+              refine ⟨by simpa [updated] using hclassId, position, ?_, ?_⟩
+              · by_cases heq : classId = sourceClass
+                · subst sourceClass
+                  simp only [updated]
+                  rw [getElem!_pos _ classId (by simpa using hclassId),
+                    Array.getElem_set_self, Array.size_push]
+                  exact Nat.lt_succ_of_lt hposition'
+                · simp only [updated]
+                  rw [getElem!_pos _ classId (by simpa using hclassId),
+                    Array.getElem_set_ne hclass hclassId (Ne.symm heq)]
+                  simpa [getElem!_pos result classId hclassId] using hposition
+              · by_cases heq : classId = sourceClass
+                · subst sourceClass
+                  simp only [updated]
+                  rw [getElem!_pos _ classId (by simpa using hclassId),
+                    Array.getElem_set_self,
+                    arrayPush_getElem!_lt _ _ position hposition']
+                  simpa [getElem!_pos result classId hclassId] using hvalue
+                · simp only [updated]
+                  rw [getElem!_pos _ classId (by simpa using hclassId),
+                    Array.getElem_set_ne hclass hclassId (Ne.symm heq),
+                    ← getElem!_pos result classId hclassId]
+                  exact hvalue
+            exact ih (classes.size - (column + 1)) (by omega) (column + 1)
+              updated output hrun hmemberUpdated rfl
+          next hclass => contradiction
+      next hcolumn =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hmember
+
+theorem collectCandidateClasses_includes_source
+    (classes : Array (Option Nat)) (column : Nat)
+    (result output : Array (Array Int32))
+    (hrun : Generated.StrictRecombine.collectCandidateClasses classes column
+      result = .ok output)
+    (source classId : Nat) (hsourceStart : column ≤ source)
+    (hsource : source < classes.size)
+    (hsourceClass : classes[source]! = some classId) :
+    CandidateMember output classId source.toUInt32.toInt32 := by
+  induction hmeasure : classes.size - column using Nat.strong_induction_on
+      generalizing column result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.collectCandidateClasses] at hrun
+      split at hrun
+      next hcolumn =>
+        split at hrun
+        next hnone => contradiction
+        next currentClass hcurrentClass =>
+          split at hrun
+          next hclass =>
+            let updated := result.set currentClass
+              (result[currentClass].push column.toUInt32.toInt32)
+            by_cases hsourceEq : source = column
+            · subst source
+              have hclassEq : classId = currentClass := by
+                rw [getElem!_pos classes column hcolumn] at hsourceClass
+                rw [hcurrentClass] at hsourceClass
+                exact Option.some.inj hsourceClass.symm
+              subst classId
+              have hupdatedMember : CandidateMember updated currentClass
+                  column.toUInt32.toInt32 := by
+                refine ⟨by simpa [updated] using hclass,
+                  result[currentClass].size, ?_, ?_⟩
+                · simp only [updated]
+                  rw [getElem!_pos _ currentClass (by simpa using hclass),
+                    Array.getElem_set_self, Array.size_push]
+                  omega
+                · simp only [updated]
+                  rw [getElem!_pos _ currentClass (by simpa using hclass),
+                    Array.getElem_set_self, arrayPush_getElem!_last]
+              exact collectCandidateClasses_preserves_member classes
+                (column + 1) updated output hrun currentClass
+                column.toUInt32.toInt32 hupdatedMember
+            · exact ih (classes.size - (column + 1)) (by omega) (column + 1)
+                updated output hrun (by omega) rfl
+          next hclass => contradiction
+      next hcolumn => omega
+
 /-- During the generated outer partition loop, at most one new class is
 created per unprocessed physical column. -/
 theorem partitionCandidateColumns_classCount_bound
@@ -10817,6 +10927,40 @@ theorem extractCandidates_size_le
       simp at hsize
       simp at hcount
       exact hsize.le.trans hcount
+
+/-- In the nonempty-short-row branch, every physical active-factor column is
+materialized in one of the candidate arrays returned by the exact generated
+partition-and-collection pipeline. -/
+theorem extractCandidates_covers_columns
+    (shortRows : Array Nat)
+    (transform : Generated.StrictRecombine.LLLMatrix) (factorCount : Nat)
+    (output : Array (Array Int32)) (hnonempty : shortRows.isEmpty = false)
+    (hrun : Generated.StrictRecombine.extractCandidates shortRows transform
+      factorCount = .ok output) :
+    ∀ source, source < factorCount →
+      ∃ classId, CandidateMember output classId source.toUInt32.toInt32 := by
+  simp only [Generated.StrictRecombine.extractCandidates, hnonempty,
+    Bool.false_eq_true, ↓reduceIte] at hrun
+  cases hpartition : Generated.StrictRecombine.partitionCandidateColumns
+      transform shortRows factorCount 0 0
+        (Array.replicate factorCount none) with
+  | error fault =>
+      rw [hpartition] at hrun
+      contradiction
+  | ok partition =>
+      rcases partition with ⟨classes, classCount⟩
+      rw [hpartition] at hrun
+      have hcovered := partitionCandidateColumns_from_empty_all_assigned
+        transform shortRows factorCount classes classCount hpartition
+      intro source hsource
+      have hsourceClasses : source < classes.size := by omega
+      cases hclass : classes[source]! with
+      | none => exact (hcovered.2 source hsource hclass).elim
+      | some classId =>
+          refine ⟨classId, ?_⟩
+          exact collectCandidateClasses_includes_source classes 0
+            (Array.replicate classCount #[]) output hrun source classId
+            (by omega) hsourceClasses hclass
 
 theorem appendFallbackLoop_refines (fallback : Array SparsePolyZZ)
     (index : Nat) (result : Array SparsePolyZZ) :

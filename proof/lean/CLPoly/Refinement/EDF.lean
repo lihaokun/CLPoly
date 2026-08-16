@@ -390,7 +390,8 @@ theorem strictSquareAddModIR_refines
   have hsumSemantic : SparsePolyZp.toPoly this._p.toNat sum =
       SparsePolyZp.toPoly this._p.toNat square +
         SparsePolyZp.toPoly this._p.toNat r := by
-    exact SparsePolyZp.toPoly_add this._p.toNat providers.h2p square r
+    exact SparsePolyZp.toPoly_add this._p.toNat
+      (Fact.out : Nat.Prime this._p.toNat).pos square r
       hsquareCanonical.1 hrCanonical.1
   rcases StrictDDF.strictModIR_refines_modByMonic this providers.hcfg sum f
       ((providers.mod f).workspace sum) hsumCanonical hfCanonical hfNonempty

@@ -7505,7 +7505,7 @@ private theorem henselAdjustNormalization_toPoly
       · simp [hzero, CLPoly.Math.listSum, ih]
 
 private theorem scaleZpCoeffsList_toPoly
-    (p : Nat) (hp2 : p * p ≤ UInt64.size) (coefficient : Zp)
+    (p : Nat) (coefficient : Zp)
     (hcoefficient : CLPoly.Math.Zp.Reduced p coefficient) :
     ∀ terms : List (UMonomial × Zp),
       CLPoly.Math.SparsePolyZp.AllReduced p terms →
@@ -7521,15 +7521,12 @@ private theorem scaleZpCoeffsList_toPoly
       have hrest : CLPoly.Math.SparsePolyZp.AllReduced p rest :=
         fun item hitem => hterms item (List.mem_cons_of_mem term hitem)
       have hp : 0 < p := Nat.zero_lt_of_lt hterm.2
-      have hnoOverflow :
-          term.2.val.toNat * coefficient.val.toNat < UInt64.size := by
-        calc
-          term.2.val.toNat * coefficient.val.toNat < p * p :=
-            Nat.mul_lt_mul_of_lt_of_le hterm.2
-              (Nat.le_of_lt hcoefficient.2) hp
-          _ ≤ UInt64.size := hp2
-      have hmul := CLPoly.Math.Zp.toZMod_mul p term.2 coefficient
-        hterm.1 hcoefficient.1 hnoOverflow
+      have hpWord : p < UInt64.size := by
+        rw [← hcoefficient.1]
+        exact UInt64.toNat_lt_size coefficient.prime
+      have hmul :=
+        CLPoly.Impl.StrictPolynomialGCDRefinement.zp_toZMod_mul_same_prime
+          p term.2 coefficient hterm.1 hcoefficient.1 hp hpWord
       rcases term with ⟨monomial, value⟩
       simp only [List.map_cons, CLPoly.Math.listSum_cons]
       rw [hmul, ih hrest, mul_add, Polynomial.C_mul_monomial]
@@ -7538,7 +7535,7 @@ private theorem scaleZpCoeffsList_toPoly
 /-- The exact coefficient map used by the source first-factor adjustment is
 multiplication by the represented field constant. -/
 theorem scaleZpCoeffs_toPoly
-    (p : Nat) (hp2 : p * p ≤ UInt64.size) (coefficient : Zp)
+    (p : Nat) (coefficient : Zp)
     (hcoefficient : CLPoly.Math.Zp.Reduced p coefficient)
     (factor : SparsePolyZp)
     (hfactor : CLPoly.Math.SparsePolyZp.AllReduced p factor.toList) :
@@ -7549,7 +7546,7 @@ theorem scaleZpCoeffs_toPoly
   unfold Generated.StrictHensel.scaleZpCoeffs
     CLPoly.Math.SparsePolyZp.toPoly
   rw [Array.toList_map]
-  exact scaleZpCoeffsList_toPoly p hp2 coefficient hcoefficient
+  exact scaleZpCoeffsList_toPoly p coefficient hcoefficient
     factor.toList hfactor
 
 theorem zpOfInt_reduced (coefficient : Int) (p : UInt64)
@@ -7637,7 +7634,6 @@ theorem HenselAdjustUnitRel.irreducible
 theorem HenselAdjustFirstFactorCorrect.unitRel
     {f : SparsePolyZZ} {factors adjusted : Array SparsePolyZp}
     {p : UInt64} [Fact (Nat.Prime p.toNat)]
-    (hp2 : p.toNat * p.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ factors.toList,
       CLPoly.Math.SparsePolyZp.Canonical p.toNat factor)
     (hleadingNonzero : ∀ leading, f[0]? = some leading →
@@ -7669,7 +7665,7 @@ theorem HenselAdjustFirstFactorCorrect.unitRel
             Polynomial.C (leading.2 : ZMod p.toNat) *
               CLPoly.Math.SparsePolyZp.toPoly p.toNat first := by
         rw [hvalue, henselAdjustNormalization_toPoly,
-          scaleZpCoeffs_toPoly p.toNat hp2 coefficient hcoefficient first
+          scaleZpCoeffs_toPoly p.toNat coefficient hcoefficient first
             hfirstCanonical.1, hcoefficientValue]
       have hscaleUnit : IsUnit (leading.2 : ZMod p.toNat) :=
         isUnit_iff_ne_zero.mpr (hleadingNonzero leading hsource)
@@ -7697,7 +7693,6 @@ tree product invariant without an associatedness oracle. -/
 theorem HenselAdjustFirstFactorCorrect.product_eq
     {f : SparsePolyZZ} {factors adjusted : Array SparsePolyZp}
     {p : UInt64} [Fact (Nat.Prime p.toNat)]
-    (hp2 : p.toNat * p.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ factors.toList,
       CLPoly.Math.SparsePolyZp.Canonical p.toNat factor)
     (hcorrect : HenselAdjustFirstFactorCorrect f factors p adjusted) :
@@ -7728,7 +7723,7 @@ theorem HenselAdjustFirstFactorCorrect.product_eq
             Polynomial.C (leading.2 : ZMod p.toNat) *
               CLPoly.Math.SparsePolyZp.toPoly p.toNat first := by
         rw [hvalue, henselAdjustNormalization_toPoly,
-          scaleZpCoeffs_toPoly p.toNat hp2 coefficient hcoefficient first
+          scaleZpCoeffs_toPoly p.toNat coefficient hcoefficient first
             hfirstCanonical.1,
           zpOfInt_toZMod leading.2 p hp]
       have hlist : factors.toList = first :: factors.toList.drop 1 := by
@@ -10299,7 +10294,7 @@ theorem StrictHenselEEAAlgebraicInvariant.step
     (p : Nat) (left right : SparsePolyZp)
     (state : Generated.StrictHensel.HenselEEAState)
     (quotient remainder : SparsePolyZp)
-    (h2p : 2 * p ≤ UInt64.size) (hp2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (hr1 : 0 < state.r1.size)
     (hinvariant : StrictHenselEEAAlgebraicInvariant p left right state)
     (hdivmod : HenselDivmodVHCResultCorrect p state.r0 state.r1
@@ -10314,10 +10309,10 @@ theorem StrictHenselEEAAlgebraicInvariant.step
   let t2 := SparsePolyZp.normalization tRaw
   have hqWellFormed := hdivmod.quotientCanonical.1
   have hqsWellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p qs := by
-    exact CLPoly.Math.SparsePolyZp.WellFormed_arr.mul p hp2 quotient state.s1
+    exact CLPoly.Math.SparsePolyZp.WellFormed_arr.mul p hp quotient state.s1
       hqWellFormed hinvariant.s1WellFormed
   have hqtWellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p qt := by
-    exact CLPoly.Math.SparsePolyZp.WellFormed_arr.mul p hp2 quotient state.t1
+    exact CLPoly.Math.SparsePolyZp.WellFormed_arr.mul p hp quotient state.t1
       hqWellFormed hinvariant.t1WellFormed
   have hsRawWellFormed : CLPoly.Math.SparsePolyZp.WellFormed_arr p sRaw := by
     exact CLPoly.Math.SparsePolyZp.WellFormed_arr.sub p state.s0 qs
@@ -10332,12 +10327,12 @@ theorem StrictHenselEEAAlgebraicInvariant.step
   have hqsPoly : CLPoly.Math.SparsePolyZp.toPoly p qs =
       CLPoly.Math.SparsePolyZp.toPoly p quotient *
         CLPoly.Math.SparsePolyZp.toPoly p state.s1 := by
-    exact CLPoly.Math.SparsePolyZp.toPoly_mul p h2p hp2 quotient state.s1
+    exact CLPoly.Math.SparsePolyZp.toPoly_mul p hp quotient state.s1
       hqWellFormed hinvariant.s1WellFormed
   have hqtPoly : CLPoly.Math.SparsePolyZp.toPoly p qt =
       CLPoly.Math.SparsePolyZp.toPoly p quotient *
         CLPoly.Math.SparsePolyZp.toPoly p state.t1 := by
-    exact CLPoly.Math.SparsePolyZp.toPoly_mul p h2p hp2 quotient state.t1
+    exact CLPoly.Math.SparsePolyZp.toPoly_mul p hp quotient state.t1
       hqWellFormed hinvariant.t1WellFormed
   have hs2Poly : CLPoly.Math.SparsePolyZp.toPoly p s2 =
       CLPoly.Math.SparsePolyZp.toPoly p state.s0 -
@@ -10345,7 +10340,7 @@ theorem StrictHenselEEAAlgebraicInvariant.step
           CLPoly.Math.SparsePolyZp.toPoly p state.s1 := by
     rw [henselEEANormalization_toPoly p sRaw]
     change CLPoly.Math.SparsePolyZp.toPoly p (state.s0 - qs) = _
-    rw [CLPoly.Math.SparsePolyZp.toPoly_sub p h2p state.s0 qs
+    rw [CLPoly.Math.SparsePolyZp.toPoly_sub p hp state.s0 qs
       hinvariant.s0WellFormed hqsWellFormed, hqsPoly]
   have ht2Poly : CLPoly.Math.SparsePolyZp.toPoly p t2 =
       CLPoly.Math.SparsePolyZp.toPoly p state.t0 -
@@ -10353,7 +10348,7 @@ theorem StrictHenselEEAAlgebraicInvariant.step
           CLPoly.Math.SparsePolyZp.toPoly p state.t1 := by
     rw [henselEEANormalization_toPoly p tRaw]
     change CLPoly.Math.SparsePolyZp.toPoly p (state.t0 - qt) = _
-    rw [CLPoly.Math.SparsePolyZp.toPoly_sub p h2p state.t0 qt
+    rw [CLPoly.Math.SparsePolyZp.toPoly_sub p hp state.t0 qt
       hinvariant.t0WellFormed hqtWellFormed, hqtPoly]
   change StrictHenselEEAAlgebraicInvariant p left right
     { r0 := state.r1, r1 := remainder, s0 := state.s1, s1 := s2,
@@ -10376,8 +10371,6 @@ representations. -/
 theorem strictHenselEEAPrefix_algebraicInvariant
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (left right : SparsePolyZp)
     (initial : Generated.StrictHensel.HenselEEAState)
     (hexec : StrictHenselEEAStateInvariant this._p.toNat initial)
@@ -10409,7 +10402,8 @@ theorem strictHenselEEAPrefix_algebraicInvariant
         Except.ok.inj (houtputRun.symm.trans hrun')
       subst output
       exact StrictHenselEEAAlgebraicInvariant.step this._p.toNat left right
-        state quotient remainder h2p hp2 hr1 ih houtputCorrect
+        state quotient remainder (Fact.out : Nat.Prime this._p.toNat).pos
+          hr1 ih houtputCorrect
 
 /-- The three arrays returned by the concrete generated EEA satisfy the
 Bézout equation.  The proof follows the actual successful raw trace; at the
@@ -10417,8 +10411,6 @@ terminal state it uses the three generated coefficient-scaling executions. -/
 theorem strictHenselEEACorrect_bezout
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (left right : SparsePolyZp)
     (state : Generated.StrictHensel.HenselEEAState)
     (output : SparsePolyZp × SparsePolyZp × SparsePolyZp)
@@ -10476,7 +10468,8 @@ theorem strictHenselEEACorrect_bezout
             remainder) :=
         ⟨hstate.r1Canonical, hactualCorrect.remainderCanonical, hr1⟩
       have hnextAlgebra := StrictHenselEEAAlgebraicInvariant.step
-        this._p.toNat left right state quotient remainder h2p hp2 hr1
+        this._p.toNat left right state quotient remainder
+          (Fact.out : Nat.Prime this._p.toNat).pos hr1
         halgebra hactualCorrect
       exact ih hnextState hnextAlgebra
 
@@ -10767,8 +10760,6 @@ Bézout identity over `ZMod p`. -/
 theorem strictHenselEEAEntryIR_refines_gcd
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (left right : SparsePolyZp)
     (hleftCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat left)
     (hrightCanonical : CLPoly.Math.SparsePolyZp.Canonical this._p.toNat right)
@@ -10800,7 +10791,7 @@ theorem strictHenselEEAEntryIR_refines_gcd
     ⟨⟨gcd, s, t⟩, hrun, hcorrect⟩
   have hdvd := strictHenselEEACorrect_dvd this hcfg initial (gcd, s, t)
     hinitial.1 hcorrect
-  have hbezout := strictHenselEEACorrect_bezout this hcfg h2p hp2 left right initial
+  have hbezout := strictHenselEEACorrect_bezout this hcfg left right initial
       (gcd, s, t) hinitial.1 hinitial.2 hcorrect
   have hmonic := strictHenselEEACorrect_monic this hcfg initial (gcd, s, t)
       hinitial.1 hcorrect
@@ -13176,8 +13167,6 @@ can only append nodes. -/
 theorem strictHenselTreeBuildRecursiveRawIR_succeeds
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (factors : Array SparsePolyZp)
     (hfactors : ∀ factor ∈ factors.toList,
@@ -13237,7 +13226,7 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
         intro index hindex hstartIndex hindexMid
         exact hfactorsMonicAfterZero index hindex (by omega))
   rw [hgRun, hhRun]
-  rcases strictHenselEEAEntryIR_refines_gcd this hcfg h2p hp2 g h
+  rcases strictHenselEEAEntryIR_refines_gcd this hcfg g h
       hgCanonical hhCanonical hgNonempty with
     ⟨gcd, s, t, heeaRun, hbezout, hmonic, hdvdG, hdvdH, hgcd⟩
   simp only [strictHenselTreeBuildRawOps, heeaRun, bind, Except.bind]
@@ -13297,7 +13286,7 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
     have hchildLeftReady : child < leftReady.size := by
       simp [child, pushed] at hleftReadySize ⊢
       omega
-    rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
+    rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
         mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
         leftReady start mid child
         hleft (by omega) hchildLeftReady (by
@@ -13372,7 +13361,7 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
       have hrightChildReady : rightChild < rightReady.size := by
         simp [rightChild, rightPushed] at hrightReadySize ⊢
         omega
-      rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
+      rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
           mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
           rightReady mid stop
           rightChild hright hstop hrightChildReady (by
@@ -13622,7 +13611,7 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
       have hchildReady : child < rightReady.size := by
         simp [child, pushed] at hrightReadySizeEq ⊢
         omega
-      rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
+      rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
           mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
           rightReady mid stop
           child hright hstop hchildReady (by
@@ -13773,8 +13762,6 @@ the generated L1 entry; no mathematical tree is supplied as an oracle. -/
 theorem strictHenselTreeBuildRawIR_succeeds
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (factors : Array SparsePolyZp)
     (hfactors : ∀ factor ∈ factors.toList,
@@ -13789,7 +13776,7 @@ theorem strictHenselTreeBuildRawIR_succeeds
           (strictHenselTreeBuildRawOps this mulProvider) factors this._p =
         .ok output ∧
       1 ≤ output.size := by
-  rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
+  rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
       #[default] 0 factors.size
       0 (by simpa using htwo) (by simp) (by simp) (by simp)
@@ -13805,8 +13792,6 @@ the exact interval-product gcd certificate stored at the concrete root. -/
 theorem strictHenselTreeBuildRawIR_refines_gcd
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (factors : Array SparsePolyZp)
     (hfactors : ∀ factor ∈ factors.toList,
@@ -13823,7 +13808,7 @@ theorem strictHenselTreeBuildRawIR_refines_gcd
       ∃ hroot : 0 < output.size,
       HenselTreeNodeGCDInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
-  rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
+  rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
       #[default] 0 factors.size
       0 (by simpa using htwo) (by simp) (by simp) (by simp)
@@ -13841,8 +13826,6 @@ extra recursive allocations. -/
 theorem strictHenselTreeBuildRawIR_refines_topology_size
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (factors : Array SparsePolyZp)
     (hfactors : ∀ factor ∈ factors.toList,
@@ -13863,7 +13846,7 @@ theorem strictHenselTreeBuildRawIR_refines_topology_size
       HenselTreeNodeGCDInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
   dsimp only
-  rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
+  rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
       #[default] 0 factors.size
       0 (by simpa using htwo) (by simp) (by simp) (by simp)
@@ -13885,8 +13868,6 @@ the unit Bézout invariant required by the first Hensel lifting iteration. -/
 theorem strictHenselTreeBuildRawIR_refines_initial_root
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (factors : Array SparsePolyZp)
     (hfactors : ∀ factor ∈ factors.toList,
@@ -13908,7 +13889,7 @@ theorem strictHenselTreeBuildRawIR_refines_initial_root
       ∃ hroot : 0 < output.size,
       HenselTreeNodeInitialInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
-  rcases strictHenselTreeBuildRawIR_refines_gcd this hcfg h2p hp2 mulProvider
+  rcases strictHenselTreeBuildRawIR_refines_gcd this hcfg mulProvider
       factors hfactors hfactorsNonempty hfactorsMonicAfterZero htwo with
     ⟨output, hrun, hroot, hinvariant⟩
   exact ⟨output, hrun, hroot,
@@ -13920,8 +13901,6 @@ required. -/
 theorem strictHenselTreeBuildRawIR_refines_initial_root_of_pairwise
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (factors : Array SparsePolyZp)
     (hfactors : ∀ factor ∈ factors.toList,
@@ -13942,7 +13921,7 @@ theorem strictHenselTreeBuildRawIR_refines_initial_root_of_pairwise
       ∃ hroot : 0 < output.size,
       HenselTreeNodeInitialInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
-  apply strictHenselTreeBuildRawIR_refines_initial_root this hcfg h2p hp2
+  apply strictHenselTreeBuildRawIR_refines_initial_root this hcfg
     mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero htwo
   exact henselFactorRangeProducts_isCoprime this._p.toNat factors hpairwise
     0 (factors.size / 2) factors.size (by omega) (by omega) (by simp)
@@ -13952,8 +13931,6 @@ The signed-index bound is precisely the source `h_fits_int32` requirement. -/
 theorem strictHenselTreeBuildRawIR_refines_topology_root
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (factors : Array SparsePolyZp)
     (hfactors : ∀ factor ∈ factors.toList,
@@ -13988,7 +13965,7 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
       HenselArrayCanonical output ∧
       HenselArrayHOneHead output := by
   dsimp only
-  rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
+  rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
       #[default] 0 factors.size
       0 (by simpa using htwo) (by simp) (by simp) (by simp)
@@ -14363,8 +14340,6 @@ program before its invariant is instantiated. -/
 theorem __hensel_lift_upoly_raw_ir_refines
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (termination : Generated.StrictHensel.DivmodTermination)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (aTarget : Int32)
@@ -14397,7 +14372,7 @@ theorem __hensel_lift_upoly_raw_ir_refines
           contradiction
         simp [Array.set!, hindex]
   let tree := henselTreeBuildTopology 0 factors.size 0
-  rcases strictHenselTreeBuildRawIR_refines_topology_root this hcfg h2p hp2
+  rcases strictHenselTreeBuildRawIR_refines_topology_root this hcfg
       mulProvider adjusted (hinvariant.adjustedCanonical adjusted hadjustCorrect)
       (hinvariant.adjustedNonempty adjusted hadjustCorrect)
       (hadjustCorrect.monic_of_pos hinvariant.factorsMonic)

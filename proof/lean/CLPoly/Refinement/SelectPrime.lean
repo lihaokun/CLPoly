@@ -59,7 +59,6 @@ structure CandidatePhysical (p : UInt64) where
   arithmetic : CandidateArithmetic p
   configured : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured
     arithmetic.dense
-  twicePrimeFits : 2 * p.toNat ≤ UInt64.size
   providers : @StrictDDF.DDFRawProviders arithmetic.dense ⟨prime⟩
 
 abbrev CandidatePhysical.dense {p : UInt64}

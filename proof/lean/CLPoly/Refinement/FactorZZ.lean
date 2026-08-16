@@ -87,7 +87,6 @@ theorem concreteHenselLift_success {State : Type}
     (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
     (aTarget : Int32) (hp : Nat.Prime p.toNat)
-    (hp2 : p.toNat * p.toNat ≤ UInt64.size)
     (hinvariant :
       let candidate := provider.physical p hp
       @StrictHensel.HenselLiftEntryInvariant candidate.dense
@@ -110,7 +109,7 @@ theorem concreteHenselLift_success {State : Type}
         f factors p aTarget candidate.prime.two_le = .ok output := by
     simpa [concreteHenselLift, hp, candidate] using hrun
   rcases StrictHensel.__hensel_lift_upoly_raw_ir_refines candidate.dense
-      candidate.configured candidate.twicePrimeFits hp2
+      candidate.configured
       StrictHensel.concreteDivmodTermination candidate.providers.mul
       f factors aTarget hinvariant with ⟨actual, hactualRun, hcorrect⟩
   have houtput : actual = output := by
@@ -899,7 +898,6 @@ pointwise irreducibility supplied by the actual SelectPrime result. -/
 theorem selectionFactors_adjusted_irreducible
     {f : SparsePolyZZ} {selection : PrimeSelectionResult}
     {adjusted : Array SparsePolyZp}
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -923,7 +921,7 @@ theorem selectionFactors_adjusted_irreducible
     intro leading hleading
     rw [hleadingSemantic leading hleading]
     exact hcandidate.goodPrime.lc_nonzero
-  have hrel := hadjust.unitRel hp2 hfactors hleadingNonzero
+  have hrel := hadjust.unitRel hfactors hleadingNonzero
   intro index hindex
   exact hrel.irreducible (selectionFactors_irreducible hselection) index hindex
 
@@ -936,7 +934,6 @@ theorem selectionAdjustedFactors_product_eq_source
     {f : SparsePolyZZ} {selection : PrimeSelectionResult}
     {adjusted : Array SparsePolyZp}
     [Fact (Nat.Prime selection.prime.toNat)]
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -972,7 +969,7 @@ theorem selectionAdjustedFactors_product_eq_source
       sourceMod = Polynomial.C sourceMod.leadingCoeff * selected.prod :=
     polynomial_eq_C_leadingCoeff_mul_of_associated_monic hsourceNonzero
       hselectedMonic hselection.productAssociated
-  rcases hadjust.product_eq hp2 hfactors with
+  rcases hadjust.product_eq hfactors with
     ⟨leading, hleading, hadjustedProduct⟩
   rw [hadjustedProduct]
   change Polynomial.C (leading.2 : ZMod selection.prime.toNat) *
@@ -990,7 +987,6 @@ theorem selectionHenselFactors_preNormalization_product
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -1014,7 +1010,7 @@ theorem selectionHenselFactors_preNormalization_product
     simp [Array.set!]
   rw [← hadjustSize]
   rw [StrictHensel.henselFactorRangeList_full]
-  have hexact := selectionAdjustedFactors_product_eq_source hp2 hfactors
+  have hexact := selectionAdjustedFactors_product_eq_source hfactors
     hleadingSemantic hselection hadjust
   simpa [StrictHensel.toPolyMod] using hexact
 
@@ -1028,7 +1024,6 @@ theorem selectionHenselFactors_normalized_product_eq_unit_mul_source
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -1042,7 +1037,7 @@ theorem selectionHenselFactors_normalized_product_eq_unit_mul_source
       output.2 = (outputM : Int) ∧ IsUnit scale ∧
       (output.1.toList.map (StrictHensel.toPolyMod outputM)).prod =
         Polynomial.C scale * StrictHensel.toPolyMod outputM f := by
-  rcases selectionHenselFactors_preNormalization_product hcount hp2 hfactors
+  rcases selectionHenselFactors_preNormalization_product hcount hfactors
       hleadingSemantic hselection hentry with
     ⟨_adjusted, extracted, outputM, _hadjust, hnormalize, houtputM,
       hpreProduct⟩
@@ -1060,7 +1055,6 @@ theorem selectionHenselFactors_primePower_product_eq_unit_mul_source
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -1081,7 +1075,7 @@ theorem selectionHenselFactors_primePower_product_eq_unit_mul_source
             StrictHensel.toPolyMod
               (selection.prime.toNat ^ exponent) f := by
   rcases selectionHenselFactors_normalized_product_eq_unit_mul_source
-      hcount hp2 hfactors hleadingSemantic hselection hentry with
+      hcount hfactors hleadingSemantic hselection hentry with
     ⟨outputM, scale, houtputM, hscaleUnit, hproduct⟩
   rcases hentry.outputModulus_eq_prime_pow with
     ⟨exponent, hexponent, hprimePower⟩
@@ -1099,7 +1093,6 @@ theorem selectionHenselFactors_prime_product_eq_unit_mul_source
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -1125,7 +1118,7 @@ theorem selectionHenselFactors_prime_product_eq_unit_mul_source
           Polynomial.C scaleAtPrime *
             StrictHensel.toPolyMod selection.prime.toNat f := by
   rcases selectionHenselFactors_primePower_product_eq_unit_mul_source
-      hcount hp2 hfactors hleadingSemantic hselection hentry with
+      hcount hfactors hleadingSemantic hselection hentry with
     ⟨exponent, hexponent, scale, houtput, hscaleUnit, hlargeProduct⟩
   let prime := selection.prime.toNat
   have hprime : Nat.Prime prime := Fact.out
@@ -2399,7 +2392,6 @@ theorem selectionHenselFactors_liveProduct
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -2412,7 +2404,7 @@ theorem selectionHenselFactors_liveProduct
     ∃ exponent : Nat,
       output.2 = ((selection.prime.toNat ^ exponent : Nat) : Int) ∧
         LiveHenselProduct selection.prime.toNat exponent f output.1 := by
-  rcases selectionHenselFactors_prime_product_eq_unit_mul_source hcount hp2
+  rcases selectionHenselFactors_prime_product_eq_unit_mul_source hcount
       hfactors hleadingSemantic hselection hentry with
     ⟨exponent, hexponent, scale, scaleAtPrime, houtput, hscaleUnit,
       hscaleAtPrimeUnit, hscaleAtPrime, hlargeProduct, hprimeProduct⟩
@@ -2687,7 +2679,6 @@ theorem selectionHenselFactors_mod_irreducible
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -2704,7 +2695,7 @@ theorem selectionHenselFactors_mod_irreducible
     ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
       horigins, hnormalizeRel⟩
   have hadjusted := selectionFactors_adjusted_irreducible
-    hp2 hfactors hleadingSemantic hselection hadjust
+    hfactors hleadingSemantic hselection hadjust
   have hadjustSize : adjusted.size = selection.factors.size := by
     cases hadjust with
     | adjusted leading first adjusted hsource hfirst hadjustedEq =>
@@ -2739,7 +2730,6 @@ theorem selectionHenselFactors_liveActive
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -2756,7 +2746,7 @@ theorem selectionHenselFactors_liveActive
     canonical := hentry.outputCanonical
     nonempty := ?_
     monic := hentry.outputToPolyMonic
-    irreducible := selectionHenselFactors_mod_irreducible hcount hp2 hfactors
+    irreducible := selectionHenselFactors_mod_irreducible hcount hfactors
       hleadingSemantic hselection hentry }
   intro index hindex
   rcases hentry.outputOneHead index hindex with ⟨head, tail, hlist⟩
@@ -2774,7 +2764,6 @@ theorem selectionHenselFactors_pointwise_associated
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -2799,7 +2788,7 @@ theorem selectionHenselFactors_pointwise_associated
   rcases hentry.preNormalizationOrigins hcount with
     ⟨adjusted, extracted, outputM, hadjust, hnormalize, houtputM,
       horigins, hnormalizeRel⟩
-  have hadjustRel := hadjust.unitRel hp2 hfactors hleadingNonzero
+  have hadjustRel := hadjust.unitRel hfactors hleadingNonzero
   have hadjustSize : adjusted.size = selection.factors.size := hadjustRel.1.symm
   have hfull : StrictHensel.henselFactorRangeList adjusted
       selection.factors.size 0 = adjusted.toList := by
@@ -2862,7 +2851,6 @@ theorem selectionHenselFactors_product_associated
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -2877,7 +2865,7 @@ theorem selectionHenselFactors_product_associated
         selection.factors).prod
       ((output.1.toList.map
         (StrictHensel.toPolyMod selection.prime.toNat)).prod) := by
-  have hpointwise := selectionHenselFactors_pointwise_associated hcount hp2
+  have hpointwise := selectionHenselFactors_pointwise_associated hcount
     hfactors hleadingSemantic hselection hentry
   apply associated_prod_of_forall₂
   rw [List.forall₂_iff_get]
@@ -2901,7 +2889,6 @@ theorem integer_divisor_mod_associated_hensel_sublist
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -2927,7 +2914,7 @@ theorem integer_divisor_mod_associated_hensel_sublist
     rcases List.mem_iff_getElem.mp hlifted with ⟨index, hindex, rfl⟩
     have hindexArray : index < output.1.size := by simpa using hindex
     simpa [Array.getElem_toList] using
-      selectionHenselFactors_mod_irreducible hcount hp2 hfactors
+      selectionHenselFactors_mod_irreducible hcount hfactors
         hleadingSemantic hselection hentry index hindexArray
   have hmapDvd : Polynomial.map
       (Int.castRingHom (ZMod selection.prime.toNat)) g ∣
@@ -2943,7 +2930,7 @@ theorem integer_divisor_mod_associated_hensel_sublist
         selection.factors).prod :=
     dvd_trans hmapDvd hselection.productAssociated.dvd
   have hproductAssociated := selectionHenselFactors_product_associated hcount
-    hp2 hfactors hleadingSemantic hselection hentry
+    hfactors hleadingSemantic hselection hentry
   have hatomsDvd : Polynomial.map
       (Int.castRingHom (ZMod selection.prime.toNat)) g ∣ atoms.prod :=
     dvd_trans hselectedDvd hproductAssociated.dvd
@@ -3011,7 +2998,6 @@ theorem integer_divisor_mod_has_legal_hensel_candidate
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -3029,7 +3015,7 @@ theorem integer_divisor_mod_has_legal_hensel_candidate
           (Int.castRingHom (ZMod selection.prime.toNat)) g)
         (((StrictRecombine.selectSourceIndices output.1.toList indices.toList).map
           (StrictHensel.toPolyMod selection.prime.toNat)).prod) := by
-  rcases integer_divisor_mod_associated_hensel_sublist hcount hp2 hfactors
+  rcases integer_divisor_mod_associated_hensel_sublist hcount hfactors
       hleadingSemantic hselection hentry g hg with
     ⟨chosen, hchosen, hassociated⟩
   rcases StrictRecombine.sublist_exists_legal_combination hchosen with
@@ -3216,7 +3202,6 @@ theorem henselCandidate_scaled_eq_divisor_mod_primePower
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -3256,7 +3241,7 @@ theorem henselCandidate_scaled_eq_divisor_mod_primePower
           (ZMod (selection.prime.toNat ^ exponent)))
         (Polynomial.C quotient.leadingCoeff * divisor) := by
   rcases selectionHenselFactors_prime_product_eq_unit_mul_source
-      hcount hp2 hfactors hleadingSemantic hselection hentry with
+      hcount hfactors hleadingSemantic hselection hentry with
     ⟨exponent, hexponent, scale, scaleAtPrime, houtput, hscaleUnit,
       hscaleAtPrimeUnit, hscaleAtPrime, hfullLarge, hfullPrime⟩
   rcases StrictRecombine.removeCombination_succeeds candidate output.1 hlegal with
@@ -3714,7 +3699,6 @@ theorem zassenhausConstantPrune_accepts_hensel_divisor_candidate
     {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -3778,7 +3762,7 @@ theorem zassenhausConstantPrune_accepts_hensel_divisor_candidate
   change Generated.StrictRecombine.selectedConstantProductLoop candidate
       output.1 0 leading.2 =
     .ok (leading.2 * selectedInteger.coeff 0) at hloop
-  rcases henselCandidate_scaled_eq_divisor_mod_primePower hcount hp2 hfactors
+  rcases henselCandidate_scaled_eq_divisor_mod_primePower hcount hfactors
       hleadingSemantic hselection hentry divisor quotient hfactor
       hdivisorModNonzero hdivisorLeading candidate hlegal hassociated with
     ⟨exponent, hexponent, houtput, hunique⟩
@@ -3970,7 +3954,6 @@ theorem zassenhausCandidate_executes_through_primitive
     {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -4036,7 +4019,7 @@ theorem zassenhausCandidate_executes_through_primitive
   rcases StrictRecombine.trialProductLoop_complete ⟨()⟩ candidate32 output.1
       output.2 0 #[(⟨0⟩, leading.2)] houtputPositive.ne' hvalid with
     ⟨product, hproduct⟩
-  rcases henselCandidate_scaled_eq_divisor_mod_primePower hcount hp2 hfactors
+  rcases henselCandidate_scaled_eq_divisor_mod_primePower hcount hfactors
       hleadingSemantic hselection hentry divisor quotient hfactor
       hdivisorModNonzero hdivisorLeading candidate hlegal hassociated with
     ⟨exponent, hexponent, houtput, hunique⟩
@@ -4871,7 +4854,6 @@ theorem selectionHensel_vanHoeij_equal_cardinality_refines_FactorZZCorrect
     {output : Array SparsePolyZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -4893,10 +4875,10 @@ theorem selectionHensel_vanHoeij_equal_cardinality_refines_FactorZZCorrect
       henselOutput.2 hdegree = .ok output) :
     FactorZZCorrect (SparsePolyZZ.toPoly f)
       (output.toList.map SparsePolyZZ.toPoly) := by
-  rcases selectionHenselFactors_liveProduct hcount hp2 hfactors
+  rcases selectionHenselFactors_liveProduct hcount hfactors
       hleadingSemantic hselection hentry with
     ⟨exponent, hmodulus, productState⟩
-  have hirreducible := selectionHenselFactors_mod_irreducible hcount hp2
+  have hirreducible := selectionHenselFactors_mod_irreducible hcount
     hfactors hleadingSemantic hselection hentry
   have hleading := hselection.goodPrime.lc_nonzero
   have hrun' : Generated.StrictRecombine.__vanhoeij_recombine_raw_ir
@@ -4930,7 +4912,6 @@ theorem selectionHensel_zassenhausRecombine_refines_FactorZZCorrect_of_recovery
     {henselOutput : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -4955,13 +4936,13 @@ theorem selectionHensel_zassenhausRecombine_refines_FactorZZCorrect_of_recovery
         henselOutput.2 = .ok output) :
     FactorZZCorrect (SparsePolyZZ.toPoly f)
       (output.toList.map SparsePolyZZ.toPoly) := by
-  have hsize := selectionHenselFactors_pointwise_associated hcount hp2
+  have hsize := selectionHenselFactors_pointwise_associated hcount
     hfactors hleadingSemantic hselection hentry
   have hlifted : ¬henselOutput.1.size ≤ 1 := by omega
-  rcases selectionHenselFactors_liveProduct hcount hp2 hfactors
+  rcases selectionHenselFactors_liveProduct hcount hfactors
       hleadingSemantic hselection hentry with
     ⟨exponent, hmodulus, productState⟩
-  have activeState := selectionHenselFactors_liveActive hcount hp2 hfactors
+  have activeState := selectionHenselFactors_liveActive hcount hfactors
     hleadingSemantic hselection hentry hfits
   have precision := hrecovery exponent hmodulus
   have hloopRun : Generated.StrictRecombine.zassenhausLoop
@@ -4999,7 +4980,6 @@ theorem selectionHensel_zassenhausRecombine_refines_FactorZZCorrect
     {henselOutput : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -5021,7 +5001,7 @@ theorem selectionHensel_zassenhausRecombine_refines_FactorZZCorrect
     FactorZZCorrect (SparsePolyZZ.toPoly f)
       (output.toList.map SparsePolyZZ.toPoly) := by
   apply selectionHensel_zassenhausRecombine_refines_FactorZZCorrect_of_recovery
-    hcount hp2 hfactors hleadingSemantic hselection hentry
+    hcount hfactors hleadingSemantic hselection hentry
     (fun exponent hmodulus =>
       selectionHenselFactors_liveRecoveryPrecision hentry hcanonical
     hnonempty hdegree leading hleading exponent hmodulus)
@@ -5143,7 +5123,6 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
     (f : SparsePolyZZ) (selection : PrimeSelectionResult)
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -5173,7 +5152,7 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
           .ok henselOutput →
         henselOutput.1.size = selection.factors.size := by
     intro aTarget henselOutput hh
-    exact (selectionHenselFactors_pointwise_associated hcount hp2 hfactors
+    exact (selectionHenselFactors_pointwise_associated hcount hfactors
       hleadingSemantic hselection (hentry aTarget henselOutput hh)).1.symm
   have vanSize : ∀ lifted modulus result,
       concreteVanHoeijRecombine f lifted modulus = .ok result →
@@ -5196,7 +5175,7 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
     rcases concreteVanHoeijRecombine_success f henselOutput.1 result
         henselOutput.2 hv with ⟨hdegree, hraw⟩
     apply selectionHensel_vanHoeij_equal_cardinality_refines_FactorZZCorrect
-      hcount hp2 hfactors hleadingSemantic hselection
+      hcount hfactors hleadingSemantic hselection
       (hentry aTarget henselOutput hh) (by rw [henselSize aTarget henselOutput hh]; omega)
       hcanonical hprimitive hnonempty hdegree
       (by rw [henselSize aTarget henselOutput hh]; exact hsize) hraw
@@ -5211,7 +5190,7 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
         (result.toList.map SparsePolyZZ.toPoly) := by
     intro aTarget henselOutput result hh hrecovery hz
     apply selectionHensel_zassenhausRecombine_refines_FactorZZCorrect_of_recovery
-      hcount hp2 hfactors hleadingSemantic hselection
+      hcount hfactors hleadingSemantic hselection
       (hentry aTarget henselOutput hh) hrecovery
       (by rw [henselSize aTarget henselOutput hh]; omega) hcanonical hprimitive
       hnonempty hcellDegree leading hleading result
@@ -5331,8 +5310,6 @@ structure SelectedPrimePhysical
     (selection : PrimeSelectionResult) : Prop where
   factorsCanonical : ∀ factor ∈ selection.factors.toList,
     SparsePolyZp.Canonical selection.prime.toNat factor
-  primeSquareFits :
-    selection.prime.toNat * selection.prime.toNat ≤ UInt64.size
   factorCountFits : selection.factors.size < 2 ^ 31
   irreducibleCount : selection.irreducible = true →
     selection.factors.size ≤ 1
@@ -5420,8 +5397,7 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
         rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
           hnonempty, hfront]
       apply __lll_factorize_raw_ir_refines_FactorZZCorrect henselLift f
-        selection hcount hselectedPhysical.primeSquareFits
-        hselectedPhysical.factorsCanonical hleadingSemantic hselection
+        selection hcount hselectedPhysical.factorsCanonical hleadingSemantic hselection
         (fun aTarget henselOutput hh =>
           hhensel selection hselection.goodPrime.prime hselectedPhysical
             aTarget henselOutput hh)
@@ -5535,7 +5511,7 @@ theorem concreteSelectHensel___factor_squarefree_primitive_ZZ_raw_ir_refines
     (by
       intro selection hp hselected aTarget henselOutput hhenselRun
       exact concreteHenselLift_success engine provider f selection.factors
-        selection.prime aTarget hp hselected.primeSquareFits
+        selection.prime aTarget hp
         (hhenselInvariant selection hp aTarget) henselOutput hhenselRun)
     hcanonical hprimitive hnonempty hdegree hdegree62 hdegree63 leading
     hleading output hrun
@@ -5550,7 +5526,6 @@ theorem zassenhausAttempt_extracts_hensel_divisor_candidate
     {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -5610,12 +5585,12 @@ theorem zassenhausAttempt_extracts_hensel_divisor_candidate
   rcases zassenhausLeadingPrune_accepts_hensel_candidate hentry hcanonical
       hnonempty hdegree leading hleading candidate hbound with
     ⟨leadingProduct, hleadingRun, hleadingAccept⟩
-  rcases zassenhausConstantPrune_accepts_hensel_divisor_candidate hcount hp2
+  rcases zassenhausConstantPrune_accepts_hensel_divisor_candidate hcount
       hfactors hleadingSemantic hselection hentry hcanonical hnonempty hdegree
       leading hleading divisor quotient hfactor hdivisorModNonzero
       hdivisorLeading candidate hlegal hassociated with
     ⟨constantProduct, hconstantRun, _hconstantRecovered, hconstantAccept⟩
-  rcases zassenhausCandidate_executes_through_primitive hcount hp2 hfactors
+  rcases zassenhausCandidate_executes_through_primitive hcount hfactors
       hleadingSemantic hselection hentry hcanonical hnonempty hdegree leading
       hleading divisor quotient hfactor hdivisorModNonzero hdivisorLeading
       candidate hlegal hactiveFits hassociated with
@@ -5669,7 +5644,6 @@ theorem zassenhausScan_extracts_hensel_divisor_candidate
     {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -5728,9 +5702,9 @@ theorem zassenhausScan_extracts_hensel_divisor_candidate
   have hleadingMod : (f[0].2 : ZMod selection.prime.toNat) ≠ 0 := by
     rw [hfront, hleadingSemantic leading hleading]
     exact hselection.goodPrime.lc_nonzero
-  have hirreducible := selectionHenselFactors_mod_irreducible hcount hp2
+  have hirreducible := selectionHenselFactors_mod_irreducible hcount
     hfactors hleadingSemantic hselection hentry
-  rcases zassenhausAttempt_extracts_hensel_divisor_candidate hcount hp2
+  rcases zassenhausAttempt_extracts_hensel_divisor_candidate hcount
       hfactors hleadingSemantic hselection hentry hcanonical hnonempty hdegree
       leading hleading divisor quotient hfactor hdivisorPrimitive
       hdivisorModNonzero hdivisorLeading candidate hlegal hactiveFits
@@ -5759,7 +5733,6 @@ theorem integer_divisor_candidate_rejected_of_scan_exhausted
     {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
     [Fact (Nat.Prime selection.prime.toNat)]
     (hcount : 2 ≤ selection.factors.size)
-    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
     (hfactors : ∀ factor ∈ selection.factors.toList,
       SparsePolyZp.Canonical selection.prime.toNat factor)
     (hleadingSemantic : ∀ leading, f[0]? = some leading →
@@ -5771,7 +5744,7 @@ theorem integer_divisor_candidate_rejected_of_scan_exhausted
       selection.factors selection.prime aTarget output)
     (g : Polynomial Int) (hg : g ∣ SparsePolyZZ.toPoly f)
     (hrun : StrictRecombine.FixedSizeScanExhausted fStar output.1 output.2
-      (integer_divisor_mod_has_legal_hensel_candidate hcount hp2 hfactors
+      (integer_divisor_mod_has_legal_hensel_candidate hcount hfactors
         hleadingSemantic hselection hentry g hg).choose.size) :
     ∃ indices : Array Nat,
       StrictRecombine.LegalCombination output.1.size indices.size indices ∧
@@ -5782,7 +5755,7 @@ theorem integer_divisor_candidate_rejected_of_scan_exhausted
           (StrictHensel.toPolyMod selection.prime.toNat)).prod) ∧
       Generated.StrictRecombine.zassenhausAttempt fStar output.1 output.2
         indices = .ok .rejected := by
-  let witness := integer_divisor_mod_has_legal_hensel_candidate hcount hp2
+  let witness := integer_divisor_mod_has_legal_hensel_candidate hcount
     hfactors hleadingSemantic hselection hentry g hg
   let indices := witness.choose
   have hspec := witness.choose_spec

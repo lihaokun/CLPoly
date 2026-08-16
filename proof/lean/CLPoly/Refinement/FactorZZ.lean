@@ -859,6 +859,52 @@ theorem LiveHenselProduct.primeProductAssociated
     (Polynomial.isUnit_C.mpr hscaleAtPrimeUnit)).mpr
       (Associated.refl _)).symm
 
+/-- Equal-cardinality output of a concrete recombination run is irreducible
+when it preserves the primitive integer product and the validation facts for
+every physical member.  The modular product relation is derived from the
+actual Hensel certificate and the actual integer recombination product. -/
+theorem factorArrayIrreducible_of_hensel_cardinality
+    {prime exponent : Nat} [Fact (Nat.Prime prime)]
+    {source : SparsePolyZZ} {lifted output : Array SparsePolyZZ}
+    (productState : LiveHenselProduct prime exponent source lifted)
+    (hsourceProduct : Associated (SparsePolyZZ.toPoly source)
+      (output.toList.map SparsePolyZZ.toPoly).prod)
+    (hprimitive :
+      (output.toList.map SparsePolyZZ.toPoly).prod.IsPrimitive)
+    (hleading : ∀ factor ∈ output.toList,
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod prime) ≠ 0)
+    (hnonunit : ∀ factor ∈ output.toList,
+      ¬ IsUnit (StrictHensel.toPolyMod prime factor))
+    (hirreducible : ∀ index (hindex : index < lifted.size),
+      Irreducible (StrictHensel.toPolyMod prime lifted[index]))
+    (hlength : output.size = lifted.size) :
+    FactorArrayIrreducible output := by
+  let atoms := lifted.toList.map (StrictHensel.toPolyMod prime)
+  have hatoms : ∀ atom ∈ atoms, Irreducible atom := by
+    intro atom hatom
+    rcases List.mem_map.mp hatom with ⟨factor, hfactor, rfl⟩
+    rcases List.mem_iff_getElem.mp hfactor with ⟨index, hindex, rfl⟩
+    exact hirreducible index (by simpa using hindex)
+  have hsourceMapped := hsourceProduct.map
+    (Polynomial.mapRingHom (Int.castRingHom (ZMod prime)))
+  have houtputProduct : Associated
+      ((output.toList.map (StrictHensel.toPolyMod prime)).prod)
+      atoms.prod := by
+    have hmapped : Associated
+        (Polynomial.map (Int.castRingHom (ZMod prime))
+          (SparsePolyZZ.toPoly source))
+        ((output.toList.map (StrictHensel.toPolyMod prime)).prod) := by
+      simpa [StrictHensel.toPolyMod, Polynomial.map_list_prod] using
+        hsourceMapped
+    exact hmapped.symm.trans (by
+      simpa [atoms] using productState.primeProductAssociated)
+  have hmodIrreducible :=
+    StrictRecombine.modular_irreducible_members_of_equal_length_associated_product
+      prime output atoms hatoms hleading hnonunit houtputProduct (by
+        simpa [atoms] using hlength)
+  exact factorArrayIrreducible_of_modular prime output hprimitive hleading
+    hmodIrreducible
+
 /-- A concrete integer coefficient surviving reduction modulo the selected
 prime is a unit at every positive prime-power precision. -/
 theorem intCast_isUnit_primePower_of_ne_zero_prime

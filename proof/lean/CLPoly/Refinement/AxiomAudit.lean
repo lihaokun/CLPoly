@@ -189,6 +189,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.irreducible_members_of_associated_products_and_equal_length
 #print axioms Refinement.StrictRecombine.modular_irreducible_members_of_equal_length_associated_product
 #print axioms Refinement.StrictFactorZZ.factorArrayIrreducible_of_modular
+#print axioms Refinement.StrictFactorZZ.factorArrayIrreducible_of_hensel_cardinality
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

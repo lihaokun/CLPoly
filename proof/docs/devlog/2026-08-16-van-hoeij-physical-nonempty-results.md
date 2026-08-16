@@ -197,3 +197,23 @@ prime.
 - Next: preserve the global modular product and output-cardinality equations
   through `vanHoeijLoop`, then discharge the accepted first-pass branch of the
   generated `__lll_factorize_raw_ir`.
+
+## Combine the Hensel certificate with equal-cardinality recombination
+
+`factorArrayIrreducible_of_hensel_cardinality` is the cross-stage bridge for
+an accepted `__lll_factorize` result.  It maps the actual integer recombination
+product association to `ZMod p[X]`, composes it with the concrete
+`LiveHenselProduct.primeProductAssociated` certificate for the same lifted
+array, and obtains an associated product between physical output reductions
+and the original irreducible modular atoms.
+
+When the physical output size equals the lifted array size, the modular UFD
+cardinality theorem makes every mapped output irreducible.  The theorem then
+uses the primitive accumulated integer product and surviving leading
+coefficients to lift that conclusion back to `FactorArrayIrreducible` for the
+same returned array.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: derive this theorem's memberwise and cardinality premises from the
+  literal `vanHoeijLoop` result and the first-pass acceptance guard.

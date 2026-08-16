@@ -9775,6 +9775,63 @@ theorem removeConsumed_strict_of_marked (active : Array Int32)
   apply removeConsumedLoop_strict_of_marked consumed active.size active output
     (by omega) (Nat.le_refl _) (by simpa [hsizes] using hmarked) hrun
 
+/-- Exact physical size accounting for the reverse erase loop: one active
+entry is removed for every true consumed bit in the processed prefix. -/
+theorem removeConsumedLoop_size_add_count
+    (consumed : Array Bool) (remaining : Nat)
+    (active output : Array Int32)
+    (hremaining : remaining ≤ consumed.size)
+    (hactiveRemaining : remaining ≤ active.size)
+    (hrun : Generated.StrictRecombine.removeConsumedLoop consumed remaining
+      active = .ok output) :
+    output.size + (consumed.toList.take remaining).count true = active.size := by
+  induction remaining generalizing active output with
+  | zero =>
+      rw [Generated.StrictRecombine.removeConsumedLoop] at hrun
+      have hout := Except.ok.inj hrun
+      subst output
+      simp
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.removeConsumedLoop] at hrun
+      have hindex : remaining < consumed.size := by omega
+      rw [dif_pos hindex] at hrun
+      have hactive : remaining < active.size := by omega
+      have htake :
+          (consumed.toList.take (remaining + 1)).count true =
+            (consumed.toList.take remaining).count true +
+              (if consumed[remaining] = true then 1 else 0) := by
+        rw [List.take_succ]
+        simp [List.getElem?_eq_getElem, hindex, Array.getElem_toList]
+        cases hvalue : consumed[remaining] <;> simp [hvalue]
+      by_cases hmarked : consumed[remaining] = true
+      · rw [if_pos hmarked, dif_pos hactive] at hrun
+        have htail := ih (active.eraseIdxIfInBounds remaining) output
+          (by omega) (by simp [hactive]; omega) hrun
+        rw [htake, if_pos hmarked]
+        simp [hactive] at htail ⊢
+        omega
+      · rw [if_neg hmarked] at hrun
+        have htail := ih active output (by omega) (by omega) hrun
+        rw [htake, if_neg hmarked]
+        simp only [add_zero]
+        exact htail
+
+theorem removeConsumed_size_add_count
+    (active : Array Int32) (consumed : Array Bool) (output : Array Int32)
+    (hsizes : consumed.size = active.size)
+    (hrun : Generated.StrictRecombine.removeConsumed active consumed =
+      .ok output) :
+    output.size + consumed.count true = active.size := by
+  unfold Generated.StrictRecombine.removeConsumed at hrun
+  rw [dif_pos hsizes] at hrun
+  have hsize := removeConsumedLoop_size_add_count consumed active.size active
+    output (by omega) (Nat.le_refl _) hrun
+  rw [← hsizes] at hsize
+  have htakeFull : consumed.toList.take consumed.size = consumed.toList := by
+    simpa using List.take_length consumed.toList
+  rw [htakeFull, Array.count_toList] at hsize
+  exact hsize.trans hsizes
+
 def CandidateIndicesValid (candidate : Array Int32)
     (consumed : Array Bool) : Prop :=
   ∀ index (hindex : index < candidate.size),
@@ -9991,6 +10048,61 @@ theorem markConsumedLoop_size_of_success (candidate : Array Int32)
           next hactive => contradiction
         next hnonnegative => contradiction
       next hindex => exact Except.ok.inj hrun ▸ rfl
+
+/-- Marking candidate indices never clears an already-set consumed bit. -/
+theorem markConsumedLoop_count_mono (candidate : Array Int32) (index : Nat)
+    (consumed output : Array Bool)
+    (hrun : Generated.StrictRecombine.markConsumedLoop candidate index consumed =
+      .ok output) :
+    consumed.count true ≤ output.count true := by
+  induction hmeasure : candidate.size - index using Nat.strong_induction_on
+      generalizing index consumed output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.markConsumedLoop] at hrun
+      split at hrun
+      next hindex =>
+        dsimp at hrun
+        split at hrun
+        next hnonnegative =>
+          split at hrun
+          next hactive =>
+            have htail := ih (candidate.size - (index + 1)) (by omega)
+              (index + 1)
+              (consumed.set candidate[index].toInt64.toNat true) output
+              hrun rfl
+            rw [Array.count_set hactive] at htail
+            split at htail <;> simp_all <;> omega
+          next hactive => contradiction
+        next hnonnegative => contradiction
+      next hindex =>
+        exact le_of_eq (congrArg (Array.count true) (Except.ok.inj hrun))
+
+/-- A successful validation candidate that was checked available and is
+physically nonempty marks at least one previously-false consumed bit. -/
+theorem markConsumedLoop_count_lt_of_available
+    (candidate : Array Int32) (consumed output : Array Bool)
+    (hnonempty : 0 < candidate.size)
+    (havailable : Generated.StrictRecombine.candidateAvailable candidate consumed =
+      .ok true)
+    (hrun : Generated.StrictRecombine.markConsumedLoop candidate 0 consumed =
+      .ok output) :
+    consumed.count true < output.count true := by
+  have hvalid := candidateAvailable_true_valid candidate consumed havailable
+  have hentry := hvalid 0 hnonempty
+  have hfree : consumed[candidate[0].toInt64.toNat] = false := by
+    unfold Generated.StrictRecombine.candidateAvailable at havailable
+    rw [Generated.StrictRecombine.candidateAvailableLoop,
+      dif_pos hnonempty, dif_pos hentry.1, dif_pos hentry.2] at havailable
+    by_cases hused : consumed[candidate[0].toInt64.toNat] = true
+    · simp [hused] at havailable
+    · exact Bool.eq_false_of_not_eq_true hused
+  rw [Generated.StrictRecombine.markConsumedLoop, dif_pos hnonempty,
+    dif_pos hentry.1, dif_pos hentry.2] at hrun
+  have htail := markConsumedLoop_count_mono candidate 1
+    (consumed.set candidate[0].toInt64.toNat true) output hrun
+  rw [Array.count_set hentry.2, hfree] at htail
+  simp at htail
+  omega
 
 theorem validateCandidatesLoop_consumed_size
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
@@ -10236,6 +10348,148 @@ theorem validateCandidates_result_size_le
     activeLifted modulus fStar fStar' result result'
     (Array.replicate activeLifted.size false) consumed activeLifted.size hrun
 
+/-- Every physical validation push is paid for by at least one newly marked
+consumed bit.  This is stronger than the candidate-count bound and composes
+across repeated van-Hoeij rounds. -/
+theorem validateCandidatesLoop_result_count_le_consumed
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (candidates : Array (Array Int32)) (candidateIndex : Nat)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (fStar fStar' : SparsePolyZZ) (result result' : Array SparsePolyZZ)
+    (consumed consumed' : Array Bool) (remaining : Nat)
+    (hrun : Generated.StrictRecombine.validateCandidatesLoop ops candidates
+      candidateIndex activeLifted modulus fStar result consumed remaining =
+        .ok (fStar', result', consumed')) :
+    result'.size + consumed.count true ≤
+      result.size + consumed'.count true := by
+  induction hmeasure : candidates.size - candidateIndex using Nat.strong_induction_on
+      generalizing candidateIndex fStar result consumed remaining fStar' result' consumed' with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.validateCandidatesLoop] at hrun
+      split at hrun
+      next hcandidates =>
+        dsimp at hrun
+        split at hrun
+        next hempty =>
+          exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+            (candidateIndex := candidateIndex + 1) (fStar := fStar)
+            (result := result) (consumed := consumed) (remaining := remaining)
+            (fStar' := fStar') (result' := result') (consumed' := consumed')
+            hrun rfl
+        next hempty =>
+          split at hrun
+          next htrivial =>
+            exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+              (candidateIndex := candidateIndex + 1) (fStar := fStar)
+              (result := result) (consumed := consumed) (remaining := remaining)
+              (fStar' := fStar') (result' := result') (consumed' := consumed')
+              hrun rfl
+          next hnontrivial =>
+            cases havailable : Generated.StrictRecombine.candidateAvailable
+                candidates[candidateIndex] consumed with
+            | error fault => simp [havailable] at hrun
+            | ok available =>
+              cases available with
+              | false =>
+                simp only [havailable] at hrun
+                exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+                  (candidateIndex := candidateIndex + 1) (fStar := fStar)
+                  (result := result) (consumed := consumed)
+                  (remaining := remaining) (fStar' := fStar')
+                  (result' := result') (consumed' := consumed') hrun rfl
+              | true =>
+                simp only [havailable] at hrun
+                split at hrun
+                next hfstar =>
+                  cases hproduct : Generated.StrictRecombine.trialProductLoop
+                      ops.product candidates[candidateIndex] activeLifted modulus 0
+                      #[(⟨0⟩, fStar[0].2)] with
+                  | error fault => simp [hproduct] at hrun
+                  | ok product =>
+                    simp only [hproduct] at hrun
+                    cases hsymmetric : Generated.StrictRecombine.symmetricModRaw
+                        product modulus with
+                    | error fault => simp [hsymmetric] at hrun
+                    | ok symmetric =>
+                      simp only [hsymmetric] at hrun
+                      cases hprimitive : Generated.StrictRecombine.primitiveRaw
+                          symmetric with
+                      | error fault => simp [hprimitive] at hrun
+                      | ok primitiveResult =>
+                        rcases primitiveResult with ⟨content, factor⟩
+                        simp only [hprimitive] at hrun
+                        cases hdivmod : Generated.StrictRecombine.exactDivmodRaw
+                            fStar factor with
+                        | error fault => simp [hdivmod] at hrun
+                        | ok divResult =>
+                          rcases divResult with ⟨quotient, remainder⟩
+                          simp only [hdivmod] at hrun
+                          by_cases hremainder : remainder.isEmpty = true
+                          · simp only [hremainder, if_true] at hrun
+                            cases hquotientPrimitive :
+                                Generated.StrictRecombine.primitiveRaw quotient with
+                            | error fault => simp [hquotientPrimitive] at hrun
+                            | ok quotientResult =>
+                              rcases quotientResult with ⟨quotientContent,
+                                quotientPrimitive⟩
+                              simp only [hquotientPrimitive] at hrun
+                              cases hmark : Generated.StrictRecombine.markConsumedLoop
+                                  candidates[candidateIndex] 0 consumed with
+                              | error fault => simp [hmark] at hrun
+                              | ok consumedNext =>
+                                simp only [hmark] at hrun
+                                have hcandidateNonempty :
+                                    0 < candidates[candidateIndex].size := by
+                                  by_contra hnot
+                                  have hzero :
+                                      candidates[candidateIndex].size = 0 :=
+                                    Nat.eq_zero_of_not_pos hnot
+                                  apply hempty
+                                  simp [Array.isEmpty, hzero]
+                                have hcountStrict :=
+                                  markConsumedLoop_count_lt_of_available
+                                    candidates[candidateIndex] consumed consumedNext
+                                    hcandidateNonempty havailable hmark
+                                have htail := ih
+                                  (candidates.size - (candidateIndex + 1))
+                                  (by omega) (candidateIndex := candidateIndex + 1)
+                                  (fStar := quotientPrimitive)
+                                  (result := result.push factor)
+                                  (consumed := consumedNext)
+                                  (remaining := remaining -
+                                    candidates[candidateIndex].size)
+                                  (fStar' := fStar') (result' := result')
+                                  (consumed' := consumed') hrun rfl
+                                simp only [Array.size_push] at htail
+                                omega
+                          · simp only [hremainder, if_false] at hrun
+                            exact ih (candidates.size - (candidateIndex + 1))
+                              (by omega) (candidateIndex := candidateIndex + 1)
+                              (fStar := fStar) (result := result)
+                              (consumed := consumed) (remaining := remaining)
+                              (fStar' := fStar') (result' := result')
+                              (consumed' := consumed') hrun rfl
+                next hfstar => contradiction
+      next hcandidates =>
+        have hout := Except.ok.inj hrun
+        cases hout
+        exact le_rfl
+
+theorem validateCandidates_result_count_le_consumed
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidates : Array (Array Int32)) (result : Array SparsePolyZZ)
+    (fStar' : SparsePolyZZ) (result' : Array SparsePolyZZ)
+    (consumed : Array Bool)
+    (hrun : Generated.StrictRecombine.validateCandidates ops fStar activeLifted
+      modulus candidates result = .ok (fStar', result', consumed)) :
+    result'.size ≤ result.size + consumed.count true := by
+  unfold Generated.StrictRecombine.validateCandidates at hrun
+  have hbound := validateCandidatesLoop_result_count_le_consumed ops candidates 0
+    activeLifted modulus fStar fStar' result result'
+    (Array.replicate activeLifted.size false) consumed activeLifted.size hrun
+  simpa [Array.count_replicate] using hbound
+
 /-- Candidate extraction followed by the literal validation loop can append
 no more factors than the number of physical active-factor columns. -/
 theorem extractAndValidate_result_size_le
@@ -10430,6 +10684,29 @@ theorem validateCandidates_consumed_size
     modulus fStar fStar' result result'
     (Array.replicate activeLifted.size false) consumed activeLifted.size hrun).trans
       (by simp)
+
+/-- One complete successful extraction round cannot increase the sum of
+accumulated physical results and remaining active indices. -/
+theorem validateRemove_result_active_size_le
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (active : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) (candidates : Array (Array Int32))
+    (fStar fStar' : SparsePolyZZ) (result result' : Array SparsePolyZZ)
+    (consumed : Array Bool) (active' : Array Int32)
+    (hactiveSize : activeLifted.size = active.size)
+    (hvalidate : Generated.StrictRecombine.validateCandidates ops fStar
+      activeLifted modulus candidates result =
+        .ok (fStar', result', consumed))
+    (hremove : Generated.StrictRecombine.removeConsumed active consumed =
+      .ok active') :
+    result'.size + active'.size ≤ result.size + active.size := by
+  have hresultCount := validateCandidates_result_count_le_consumed ops fStar
+    activeLifted modulus candidates result fStar' result' consumed hvalidate
+  have hconsumedSize := validateCandidates_consumed_size ops fStar activeLifted
+    modulus candidates result fStar' result' consumed hvalidate
+  have hremoveCount := removeConsumed_size_add_count active consumed active'
+    (hconsumedSize.trans hactiveSize) hremove
+  omega
 
 /-- The concrete gather and validation loops themselves prove that every
 successful extraction removes at least one active entry.  No external length

@@ -217,3 +217,31 @@ same returned array.
   surface.
 - Next: derive this theorem's memberwise and cardinality premises from the
   literal `vanHoeijLoop` result and the first-pass acceptance guard.
+
+## Account exactly for validation pushes and active removal
+
+`markConsumedLoop_count_mono` proves that the literal generated marker loop
+never clears a true bit.  Its strict companion uses the actual successful
+`candidateAvailable` scan and a physical nonempty candidate to show that at
+least one previously-false bit becomes true.
+
+Threading that fact through every branch of the generated validation recursion
+gives `validateCandidatesLoop_result_count_le_consumed`: the number of physical
+result pushes is bounded by the increase in true consumed bits.  The public
+entry specializes the initial false bitmap, so every newly returned factor is
+charged to a concrete consumed position.
+
+Independently, `removeConsumedLoop_size_add_count` follows the real reverse
+erase loop and proves the exact equation between output active size and true
+bits in the processed prefix.  At the public entry the whole bitmap is
+processed.  Combining both sides yields
+`validateRemove_result_active_size_le`: one successful van-Hoeij extraction
+round cannot increase `result.size + active.size`.
+
+- Termination measures: candidate suffix length for marking and validation;
+  processed-prefix length for reverse removal.  No fuel is used.
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: lift this per-round conservation law through the lexicographically
+  well-founded `vanHoeijLoop`, including the literal Zassenhaus fallback size
+  bound.

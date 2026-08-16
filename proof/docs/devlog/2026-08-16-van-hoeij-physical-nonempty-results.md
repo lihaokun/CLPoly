@@ -100,3 +100,23 @@ an integer unit would map to a modular unit, contradicting that association.
   surface.
 - Next: thread this nonunit invariant through all successful validation pushes
   and combine it with the result-count equality theorem.
+
+## Preserve the selected-prime leading coefficient after validation
+
+`validationQuotient_leading_mod_ne_zero` proves that the exact primitive
+quotient installed after a successful validation extraction retains a nonzero
+leading coefficient modulo the selected prime.  It uses
+`successfulTrialExtraction_toPoly`, hence the same returned exact quotient and
+the same literal quotient-primitive call.  Taking leading coefficients and
+mapping the resulting integer equality modulo the prime shows that a zero next
+leading coefficient would force the prior live leading coefficient to zero.
+
+This closes the recursive state premise needed to reapply
+`validationRecoveredFactor_not_isUnit` at every later successful candidate,
+rather than only at the first validation push.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: package canonicality, nonempty live quotient, nonzero modular leading
+  coefficient, consumed-array size, and pointwise nonunit results into the
+  complete generated validation-loop invariant.

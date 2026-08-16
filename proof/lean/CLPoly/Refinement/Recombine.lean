@@ -15785,6 +15785,39 @@ theorem validationRecoveredFactor_not_isUnit
       (Int.castRingHom (ZMod base)))
   exact hselectedNonunit (hassociated.isUnit_iff.mp hmappedUnit)
 
+/-- The primitive quotient installed after one successful validation keeps a
+nonzero leading coefficient modulo the selected prime.  This is forced by the
+literal exact-division and quotient-primitive equation. -/
+theorem validationQuotient_leading_mod_ne_zero
+    (base : Nat) [Fact (Nat.Prime base)]
+    (fStar factor quotient quotientPrimitive : SparsePolyZZ)
+    (quotientContent : ZZ)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hdivide : Generated.StrictRecombine.exactDivmodRaw fStar factor =
+      .ok (quotient, #[]))
+    (hprimitive : Generated.StrictRecombine.primitiveRaw quotient =
+      .ok (quotientContent, quotientPrimitive)) :
+    ((SparsePolyZZ.toPoly quotientPrimitive).leadingCoeff : ZMod base) ≠ 0 := by
+  have hproduct := successfulTrialExtraction_toPoly fStar factor quotient
+    quotientPrimitive quotientContent hdivide hprimitive
+  have hleadingEq := congrArg Polynomial.leadingCoeff hproduct
+  rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_mul] at hleadingEq
+  have hconstantLeading :
+      (Polynomial.C quotientContent).leadingCoeff = quotientContent :=
+    Polynomial.leadingCoeff_C quotientContent
+  rw [hconstantLeading] at hleadingEq
+  have hleadingCast := congrArg (fun coefficient : Int =>
+    (coefficient : ZMod base)) hleadingEq
+  intro hquotientZero
+  apply hleading
+  change ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) =
+    ((quotientContent * ((SparsePolyZZ.toPoly factor).leadingCoeff *
+      (SparsePolyZZ.toPoly quotientPrimitive).leadingCoeff) : Int) :
+        ZMod base) at hleadingCast
+  rw [Int.cast_mul, Int.cast_mul, hquotientZero, mul_zero, mul_zero]
+    at hleadingCast
+  exact hleadingCast
+
 theorem validateCandidatesLoop_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (candidates : Array (Array Int32)) (candidateIndex : Nat)

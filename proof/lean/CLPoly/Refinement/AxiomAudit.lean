@@ -218,6 +218,11 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.lllStep_preserves_transform_rel
 #print axioms Refinement.StrictRecombine.concreteLLLMainLoop_preserves_transform_rel
 #print axioms Refinement.StrictRecombine.concreteLLLReduce_transform_rel
+#print axioms Refinement.StrictRecombine.insertShortRow_indices_valid
+#print axioms Refinement.StrictRecombine.collectShortRows_indices_valid
+#print axioms Refinement.StrictRecombine.collectShortRows_from_empty_indices_valid
+#print axioms Refinement.StrictRecombine.concreteLLLReduce_short_rows_valid
+#print axioms Refinement.StrictRecombine.concreteLLLReduce_candidate_columns_valid
 #print axioms Refinement.StrictRecombine.derivativeZZRaw_toPoly
 #print axioms Refinement.StrictRecombine.sparseCoeff_eq_coeff
 #print axioms Refinement.StrictRecombine.generatedModularQuotient_eq_divByMonic

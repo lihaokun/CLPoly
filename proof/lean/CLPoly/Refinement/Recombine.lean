@@ -6079,6 +6079,8 @@ def LLLTransformRel (initial matrix transform :
     Generated.StrictRecombine.LLLMatrix) : Prop :=
   matrix.size = initial.size ∧
     transform.size = initial.size ∧
+    (∀ row (hrow : row < transform.size),
+      transform[row].size = initial.size) ∧
     basisPrefixMatrix matrix initial.size initial.size =
       basisPrefixMatrix transform initial.size initial.size *
         basisPrefixMatrix initial initial.size initial.size
@@ -8077,7 +8079,7 @@ theorem subtractMatrixRows_preserves_transform_rel
     (hrun : Generated.StrictRecombine.subtractMatrixRows matrix transform
       target source coefficient = .ok (outputMatrix, outputTransform)) :
     LLLTransformRel initial outputMatrix outputTransform := by
-  rcases hrel with ⟨hmatrixSize, htransformSize, hrelation⟩
+  rcases hrel with ⟨hmatrixSize, htransformSize, htransformRows, hrelation⟩
   rcases subtractMatrixRows_ok matrix transform outputMatrix outputTransform
       target source coefficient hrun with
     ⟨htM, hsM, htU, hsU, hmatrix, htransform⟩
@@ -8086,7 +8088,15 @@ theorem subtractMatrixRows_preserves_transform_rel
   subst outputTransform
   have htarget : target < initial.size := by omega
   have hsource : source < initial.size := by omega
-  refine ⟨by simp [hmatrixSize], by simp [htransformSize], ?_⟩
+  refine ⟨by simp [hmatrixSize], by simp [htransformSize], ?_, ?_⟩
+  · intro row hrow
+    simp only [Array.getElem_set]
+    split
+    next htargetRow =>
+      exact subtractRowArray_size transform[target] transform[source]
+        coefficient initial.size
+    next htargetRow =>
+      exact htransformRows row (by simpa [htransformSize] using hrow)
   rw [basisPrefixMatrix_set_subtractRowArray matrix target source initial.size
     coefficient hmatrixSize htarget hsource]
   rw [basisPrefixMatrix_set_subtractRowArray transform target source initial.size
@@ -8817,7 +8827,7 @@ theorem swapMatrixRows_pair_preserves_transform_rel
     (hrunTransform : Generated.StrictRecombine.swapMatrixRows transform left right =
       .ok outputTransform) :
     LLLTransformRel initial outputMatrix outputTransform := by
-  rcases hrel with ⟨hmatrixSize, htransformSize, hrelation⟩
+  rcases hrel with ⟨hmatrixSize, htransformSize, htransformRows, hrelation⟩
   have houtputMatrixSize := swapMatrixRows_size matrix outputMatrix left right
     hrunMatrix
   have houtputTransformSize := swapMatrixRows_size transform outputTransform
@@ -8826,7 +8836,23 @@ theorem swapMatrixRows_pair_preserves_transform_rel
     ⟨hleftMatrix, hrightMatrix, hmatrixExact⟩
   have hleft : left < initial.size := by omega
   have hright : right < initial.size := by omega
-  refine ⟨by omega, by omega, ?_⟩
+  refine ⟨by omega, by omega, ?_, ?_⟩
+  · intro row hrow
+    rw [swapMatrixRows_get transform outputTransform left right row
+      hrunTransform (by omega)]
+    split
+    next hrightRow =>
+      have hleftTransform : left < transform.size := by omega
+      simpa only [getElem!_pos transform left hleftTransform] using
+        htransformRows left hleftTransform
+    next hrightRow =>
+      split
+      next hleftRow =>
+        have hrightTransform : right < transform.size := by omega
+        simpa only [getElem!_pos transform right hrightTransform] using
+          htransformRows right hrightTransform
+      next hleftRow =>
+        exact htransformRows row (by omega)
   funext row column
   let permutation := Equiv.swap
     (⟨left, hleft⟩ : Fin initial.size)
@@ -10023,9 +10049,14 @@ theorem initializeLLL_transform_rel
           simp only [initialMu, initialNorms, hgram, Except.map] at hrun
           have hbasis := makeInitialMatrix_basisPrefix matrix.size 1
             initialTransform htransform
+          have hprefix := makeInitialMatrix_prefix matrix.size 1
+            initialTransform htransform
           have hout := Except.ok.inj hrun
           cases hout
-          refine ⟨rfl, hbasis.1, ?_⟩
+          refine ⟨rfl, hbasis.1, ?_, ?_⟩
+          · intro row hrow
+            simpa only [getElem!_pos transform row hrow] using
+              hprefix.rows_square row (by simpa [hbasis.1] using hrow)
           rw [hbasis.2]
           simp
   next hsize => contradiction
@@ -10344,6 +10375,172 @@ def CandidateColumnsValid
   ∀ position, position < shortRows.size →
     let row := shortRows[position]!
     row < transform.size ∧ factorCount ≤ transform[row]!.size
+
+def ShortRowIndicesValid
+    (matrix : Generated.StrictRecombine.LLLMatrix) (rows : Array Nat) : Prop :=
+  ∀ row, row ∈ rows.toList → row < matrix.size
+
+theorem insertShortRow_indices_valid
+    (matrix : Generated.StrictRecombine.LLLMatrix) (row : Nat)
+    (sorted output : Array Nat) (position : Nat)
+    (hrow : row < matrix.size)
+    (hsorted : ShortRowIndicesValid matrix sorted)
+    (hrun : Generated.StrictRecombine.insertShortRow matrix row sorted position =
+      .ok output) :
+    ShortRowIndicesValid matrix output := by
+  induction hmeasure : sorted.size - position using Nat.strong_induction_on
+      generalizing position sorted output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.insertShortRow] at hrun
+      split at hrun
+      next hposition =>
+        split at hrun
+        next hexisting =>
+          cases hrowNorm : Generated.StrictRecombine.dotRows matrix[row]
+              matrix[row] with
+          | error fault => simp [hrowNorm] at hrun
+          | ok rowNorm =>
+              simp only [hrowNorm] at hrun
+              cases hexistingNorm : Generated.StrictRecombine.dotRows
+                  matrix[sorted[position]] matrix[sorted[position]] with
+              | error fault => simp [hexistingNorm] at hrun
+              | ok existingNorm =>
+                  simp only [hexistingNorm] at hrun
+                  by_cases hlt : rowNorm < existingNorm
+                  · rw [if_pos hlt] at hrun
+                    have hout := Except.ok.inj hrun
+                    subst output
+                    intro value hvalue
+                    simp only [Array.toList_append] at hvalue
+                    simp only [List.mem_append, List.mem_singleton] at hvalue
+                    rcases hvalue with (hprefix | rfl) | hsuffix
+                    · rw [Array.toList_extract] at hprefix
+                      exact hsorted value (by
+                        simpa using List.mem_of_mem_take hprefix)
+                    · exact hrow
+                    · rw [Array.toList_extract] at hsuffix
+                      exact hsorted value (List.mem_of_mem_drop
+                        (List.mem_of_mem_take hsuffix))
+                  · rw [if_neg hlt] at hrun
+                    exact ih (sorted.size - (position + 1)) (by omega)
+                      sorted output (position + 1) hsorted hrun rfl
+        next hexisting => contradiction
+      next hposition =>
+        have hout := Except.ok.inj hrun
+        subst output
+        intro value hvalue
+        simp only [Array.toList_push, List.mem_append, List.mem_cons,
+          List.mem_nil_iff, or_false] at hvalue
+        rcases hvalue with hold | hnew
+        · exact hsorted value hold
+        · exact hnew ▸ hrow
+
+theorem collectShortRows_indices_valid
+    (matrix : Generated.StrictRecombine.LLLMatrix) (bound : ZZ)
+    (row : Nat) (result output : Array Nat)
+    (hresult : ShortRowIndicesValid matrix result)
+    (hrun : Generated.StrictRecombine.collectShortRows matrix bound row result =
+      .ok output) :
+    ShortRowIndicesValid matrix output := by
+  induction hmeasure : matrix.size - row using Nat.strong_induction_on
+      generalizing row result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.collectShortRows] at hrun
+      split at hrun
+      next hrow =>
+        cases hnorm : Generated.StrictRecombine.dotRows matrix[row] matrix[row] with
+        | error fault => simp [hnorm] at hrun
+        | ok norm =>
+            simp only [hnorm] at hrun
+            by_cases hshort : norm ≤ bound
+            · rw [if_pos hshort] at hrun
+              cases hinsert : Generated.StrictRecombine.insertShortRow matrix row
+                  result 0 with
+              | error fault => simp [hinsert] at hrun
+              | ok next =>
+                  rw [hinsert] at hrun
+                  exact ih (matrix.size - (row + 1)) (by omega) (row + 1)
+                    next output
+                    (insertShortRow_indices_valid matrix row result next 0 hrow
+                      hresult hinsert) hrun rfl
+            · rw [if_neg hshort] at hrun
+              exact ih (matrix.size - (row + 1)) (by omega) (row + 1)
+                result output hresult hrun rfl
+      next hrow =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hresult
+
+theorem collectShortRows_from_empty_indices_valid
+    (matrix : Generated.StrictRecombine.LLLMatrix) (bound : ZZ)
+    (output : Array Nat)
+    (hrun : Generated.StrictRecombine.collectShortRows matrix bound 0 #[] =
+      .ok output) :
+    ShortRowIndicesValid matrix output := by
+  exact collectShortRows_indices_valid matrix bound 0 #[] output
+    (by intro row hrow; simp at hrow) hrun
+
+/-- The short-row indices returned by the literal generated `__lll_reduce`
+are physical rows of the reduced matrix. -/
+theorem concreteLLLReduce_short_rows_valid
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid matrix) (bound : ZZ)
+    (output : { value : Generated.StrictRecombine.LLLMatrix ×
+        Generated.StrictRecombine.LLLMatrix × Array Nat //
+      concreteLLLExecution.inputValid value.1 ∧ value.1.size = matrix.size })
+    (hrun : Generated.StrictRecombine.lllReduce concreteLLLExecution matrix
+      hinput bound = .ok output) :
+    ShortRowIndicesValid output.val.1 output.val.2.2 := by
+  rw [Generated.StrictRecombine.lllReduce] at hrun
+  split at hrun
+  next fault hinitialize => contradiction
+  next mu norms transform hinitialize =>
+    let state := Generated.StrictRecombine.LLLState.mk matrix transform mu norms 1
+    let hvalid := concreteLLLExecution.initialized_valid matrix mu norms transform
+      hinput hinitialize
+    dsimp only at hrun
+    split at hrun
+    next fault hmain => contradiction
+    next reduced hmain =>
+      split at hrun
+      next fault hrows => contradiction
+      next rows hrows =>
+        have hresult := Except.ok.inj hrun
+        subst output
+        exact collectShortRows_from_empty_indices_valid reduced.matrix bound rows
+          hrows
+
+/-- The actual transform and short-row array returned by generated
+`__lll_reduce` are safe inputs to the generated candidate-column loops.  This
+combines the synchronized transform shape with the physical row provenance of
+`collectShortRows`; neither fact is supplied as an external oracle. -/
+theorem concreteLLLReduce_candidate_columns_valid
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid matrix) (bound : ZZ) (factorCount : Nat)
+    (hfactorCount : factorCount ≤ matrix.size)
+    (output : { value : Generated.StrictRecombine.LLLMatrix ×
+        Generated.StrictRecombine.LLLMatrix × Array Nat //
+      concreteLLLExecution.inputValid value.1 ∧ value.1.size = matrix.size })
+    (hrun : Generated.StrictRecombine.lllReduce concreteLLLExecution matrix
+      hinput bound = .ok output) :
+    CandidateColumnsValid output.val.2.1 output.val.2.2 factorCount := by
+  have hrel := concreteLLLReduce_transform_rel matrix hinput bound output hrun
+  have hrows := concreteLLLReduce_short_rows_valid matrix hinput bound output hrun
+  rcases hrel with ⟨hreducedSize, htransformSize, htransformRows, hrelation⟩
+  intro position hposition
+  let row := output.val.2.2[position]!
+  have hrowMember : row ∈ output.val.2.2.toList := by
+    simpa only [row, getElem!_pos output.val.2.2 position hposition] using
+      Array.getElem_mem_toList hposition
+  have hrowReduced : row < output.val.1.size := hrows row hrowMember
+  have hrowTransform : row < output.val.2.1.size := by omega
+  change row < output.val.2.1.size ∧
+    factorCount ≤ output.val.2.1[row]!.size
+  refine ⟨hrowTransform, ?_⟩
+  have hrowSize := htransformRows row hrowTransform
+  have hrowSizeBang : output.val.2.1[row]!.size = matrix.size := by
+    simpa only [getElem!_pos output.val.2.1 row hrowTransform] using hrowSize
+  omega
 
 theorem candidateColumnsEqual_refl
     (transform : Generated.StrictRecombine.LLLMatrix)

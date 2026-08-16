@@ -692,3 +692,33 @@ or custom axiom is used.
 - Next: derive `CandidateColumnsValid` from the concrete LLL return and short
   row collector, then combine pairwise transform-column equality with the CLD
   lattice semantics and sufficient-precision separation theorem.
+
+## Validate generated LLL candidate columns end to end
+
+The candidate-column safety hypothesis is now discharged by the literal
+generated `__lll_reduce` execution:
+
+- `LLLTransformRel` has been strengthened to retain the physical row length
+  of every transform row in addition to the exact basis equation;
+- initialization obtains that shape from the generated identity matrix, while
+  the literal synchronized subtraction and Lovasz row-swap branches preserve
+  it through every well-founded LLL step and the complete main loop;
+- `insertShortRow_indices_valid` and `collectShortRows_indices_valid` prove
+  directly from the generated array loops that every returned short-row index
+  names a physical reduced-matrix row; and
+- `concreteLLLReduce_candidate_columns_valid` combines both results for the
+  actual transform and short-row array returned by `lllReduce`, proving all
+  row and factor-column accesses needed by candidate partitioning are in
+  bounds.
+
+The added row-shape field is essential: the matrix equation alone uses
+`getElem!` and therefore could not rule out a physically short transform row
+whose missing entries observationally default to zero.  The proof now rules
+that case out from the generated execution itself.  It introduces no fuel,
+partial definition, shape oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: combine the certified physical candidate classes with the CLD lattice
+  observations and the sufficient-precision separation argument, then close
+  the generated van-Hoeij result theorem.

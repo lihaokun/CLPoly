@@ -53,6 +53,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.henselFactorRangeProduct_monic
 #print axioms Refinement.StrictHensel.henselTreeStoreNodeRawIR_canonical_oneHead
 #print axioms Refinement.StrictHensel.HasPhysicalOneHead.of_algebraEq
+#print axioms Refinement.StrictHensel.HasPhysicalOneHead.g_of_algebraEq
 #print axioms Refinement.StrictHensel.hasPhysicalOneHead_of_reduced_monic
 #print axioms Refinement.StrictHensel.HenselStepCorrect.gOneHead_of_target
 #print axioms Refinement.StrictHensel.HenselAdjustFirstFactorCorrect.getElem_eq_of_pos

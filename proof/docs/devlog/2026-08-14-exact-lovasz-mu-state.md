@@ -2739,3 +2739,26 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 complete Hensel source passed direct Lean checking.  Next, builder topology
 and the concrete parent-to-child targets propagate this local bridge exactly
 to nodes whose stored `leaf_start` is positive.
+
+## Certify physical `g` heads in the concrete Hensel builder
+
+The semantic certificate emitted by the actual well-founded tree builder now
+records both representation facts needed by source-order extraction.  Its
+right interval `h` still has a literal coefficient-one head at every node; in
+addition, its left interval `g` has a literal coefficient-one head whenever
+the concrete interval starts after factor zero.  This is exactly the intended
+asymmetry: the first adjusted factor may carry the input leading coefficient,
+while every later finite-field factor is monic.
+
+The new `g` fact is obtained from the real range-product execution and the
+real `henselTreeZpToZZIR` store.  It uses canonicality, nonemptiness, and the
+monicity of every source factor after index zero.  All four concrete builder
+topologies transport it through their actual node writes and recursive array
+frames.  The large recursive theorem needs a local 400000-heartbeat
+elaboration allowance after strengthening its constructor-shaped result; this
+changes no definition, premise, theorem statement, or trusted axiom.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ b2b change surface.  Next, the same interval-aware
+fact will be preserved by every genuine Hensel lifting round and transferred
+to the extracted factor-array tail consumed by final normalization.

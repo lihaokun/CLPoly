@@ -11705,6 +11705,8 @@ theorem henselTreeStoreNodeRawIR_canonical_oneHead
     (hindex : index < nodes.size)
     (hgCanonical : CLPoly.Math.SparsePolyZp.Canonical p g)
     (hhCanonical : CLPoly.Math.SparsePolyZp.Canonical p h)
+    (hgNonempty : 0 < g.size)
+    (hgMonic : 0 < start → (CLPoly.Math.SparsePolyZp.toPoly p g).Monic)
     (hhNonempty : 0 < h.size)
     (hhMonic : (CLPoly.Math.SparsePolyZp.toPoly p h).Monic) :
     ∃ output,
@@ -11713,15 +11715,20 @@ theorem henselTreeStoreNodeRawIR_canonical_oneHead
       output.size = nodes.size ∧
       ∃ houtput : index < output.size,
         HenselNodeCanonical (getElem output index houtput) ∧
+        (0 < start → HasPhysicalOneHead (getElem output index houtput).g) ∧
         HasPhysicalOneHead (getElem output index houtput).h := by
   rcases henselTreeStoreNodeRawIR_refines nodes index g h s t start stop
       hindex with
     ⟨output, hrun, hsize, houtput, houtputG, houtputH, _⟩
-  refine ⟨output, hrun, hsize, houtput, ?_, ?_⟩
+  refine ⟨output, hrun, hsize, houtput, ?_, ?_, ?_⟩
   · unfold HenselNodeCanonical
     rw [houtputG, houtputH]
     exact ⟨henselTreeZpToZZIR_canonical p g hgCanonical,
       henselTreeZpToZZIR_canonical p h hhCanonical⟩
+  · rw [houtputG]
+    intro hstart
+    exact henselTreeZpToZZIR_hasPhysicalOneHead_of_monic p g hgCanonical
+      hgNonempty (hgMonic hstart)
   · rw [houtputH]
     exact henselTreeZpToZZIR_hasPhysicalOneHead_of_monic p h hhCanonical
       hhNonempty hhMonic
@@ -11866,6 +11873,12 @@ theorem HasPhysicalOneHead.of_algebraEq
     (heq : HenselTreeNodeAlgebraEq target source) :
     HasPhysicalOneHead target.h := by
   simpa [heq.2.1] using hsource
+
+theorem HasPhysicalOneHead.g_of_algebraEq
+    {source target : HenselNode} (hsource : HasPhysicalOneHead source.g)
+    (heq : HenselTreeNodeAlgebraEq target source) :
+    HasPhysicalOneHead target.g := by
+  simpa [heq.1] using hsource
 
 theorem HenselTreeArrayFrame.canonical_of_size_eq
     {before after : Array HenselNode} {current : Nat}
@@ -12024,6 +12037,7 @@ inductive HenselTreeSemanticBuildCertificate (p : Nat) [Fact (Nat.Prime p)]
       (hlower : lower ≤ index)
       (hnode : nodes[index]? = some value)
       (hinvariant : HenselTreeNodeGCDInvariant p factors start stop value)
+      (hGOneHead : 0 < start → HasPhysicalOneHead value.g)
       (hOneHead : HasPhysicalOneHead value.h)
       (hleftCertificate : ∀ child, left = some child →
         HenselTreeSemanticBuildCertificate p factors lower start
@@ -12044,10 +12058,10 @@ theorem HenselTreeSemanticBuildCertificate.lower_mono
     HenselTreeSemanticBuildCertificate p factors lower' start stop tree
       nodes := by
   induction hcertificate with
-  | node start stop index left right nodes value hindex hnode hinvariant hOneHead
+  | node start stop index left right nodes value hindex hnode hinvariant hGOneHead hOneHead
       hleftCertificate hrightCertificate leftIH rightIH =>
       exact .node start stop index left right nodes value (by omega) hnode
-        hinvariant hOneHead (fun child hchild => leftIH child hchild)
+        hinvariant hGOneHead hOneHead (fun child hchild => leftIH child hchild)
         (fun child hchild => rightIH child hchild)
 
 /-- Every index enumerated by the exact source-derived topology has a
@@ -12064,7 +12078,7 @@ theorem HenselTreeSemanticBuildCertificate.oneHead_of_mem
     ∃ value, nodes[index]? = some value ∧ HasPhysicalOneHead value.h := by
   induction hcertificate with
   | node start stop root left right nodes value hlower hnode hinvariant
-      hOneHead hleftCertificate hrightCertificate leftIH rightIH =>
+      hGOneHead hOneHead hleftCertificate hrightCertificate leftIH rightIH =>
       cases left with
       | none =>
           cases right with
@@ -12135,7 +12149,7 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
     · rw [henselTreeBuildTopology] at hcertificate ⊢
       rw [if_pos hleft, if_pos hright] at hcertificate ⊢
       cases hcertificate with
-      | node _ _ _ _ _ _ value _ hnode hinvariant _ hleftCert hrightCert =>
+      | node _ _ _ _ _ _ value _ hnode hinvariant _ _ hleftCert hrightCert =>
           rw [henselExtractedFactors.eq_def]
           rw [hsplit]
           apply List.rel_append
@@ -12145,7 +12159,7 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
       rw [henselTreeBuildTopology] at hcertificate ⊢
       rw [if_pos hleft, if_neg hright] at hcertificate ⊢
       cases hcertificate with
-      | node _ _ _ _ _ _ value _ hnode hinvariant _ hleftCert hrightCert =>
+      | node _ _ _ _ _ _ value _ hnode hinvariant _ _ hleftCert hrightCert =>
           have hindex : root < nodes.size := by
             by_contra hnot
             rw [Array.getElem?_eq_none (by omega)] at hnode
@@ -12169,7 +12183,7 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
     · rw [henselTreeBuildTopology] at hcertificate ⊢
       rw [if_neg hleft, if_pos hright] at hcertificate ⊢
       cases hcertificate with
-      | node _ _ _ _ _ _ value _ hnode hinvariant _ hleftCert hrightCert =>
+      | node _ _ _ _ _ _ value _ hnode hinvariant _ _ hleftCert hrightCert =>
           have hindex : root < nodes.size := by
             by_contra hnot
             rw [Array.getElem?_eq_none (by omega)] at hnode
@@ -12192,7 +12206,7 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂
       rw [henselTreeBuildTopology] at hcertificate ⊢
       rw [if_neg hleft, if_neg hright] at hcertificate ⊢
       cases hcertificate with
-      | node _ _ _ _ _ _ value _ hnode hinvariant _ hleftCert hrightCert =>
+      | node _ _ _ _ _ _ value _ hnode hinvariant _ _ hleftCert hrightCert =>
           have hindex : root < nodes.size := by
             by_contra hnot
             rw [Array.getElem?_eq_none (by omega)] at hnode
@@ -12288,7 +12302,7 @@ theorem HenselTreeSemanticBuildCertificate.extractedFactors_forall₂_of_reduces
       (henselExtractedFactors tree before)
       (henselExtractedFactors tree after) := by
   induction hcertificate with
-  | node start stop index left right nodes value hlower hnode hinvariant hOneHead
+  | node start stop index left right nodes value hlower hnode hinvariant hGOneHead hOneHead
       hleftCertificate hrightCertificate leftIH rightIH =>
       have hindex : index < nodes.size := by
         by_contra hnot
@@ -12322,14 +12336,14 @@ theorem HenselTreeSemanticBuildCertificate.of_preservesFrom
     HenselTreeSemanticBuildCertificate p factors lower start stop tree
       after := by
   induction hcertificate with
-  | node start stop index left right nodes value hindex hnode hinvariant hOneHead
+  | node start stop index left right nodes value hindex hnode hinvariant hGOneHead hOneHead
       hleftCertificate hrightCertificate leftIH rightIH =>
       have hbound : index < nodes.size := by
         by_contra hnot
         rw [Array.getElem?_eq_none (by omega)] at hnode
         contradiction
       exact .node start stop index left right after value hindex
-        ((hpreserves.2 index hindex hbound).trans hnode) hinvariant hOneHead
+        ((hpreserves.2 index hindex hbound).trans hnode) hinvariant hGOneHead hOneHead
         (fun child hchild => leftIH child hchild hpreserves)
         (fun child hchild => rightIH child hchild hpreserves)
 
@@ -12500,6 +12514,7 @@ theorem henselTreeArrayFrame_push (nodes : Array HenselNode)
   intro index hne hbefore hafter
   simp only [Array.getElem_push, hbefore, ↓reduceDIte]
 
+set_option maxHeartbeats 400000 in
 /-- Execution-only safety for the concrete well-founded tree builder.  All
 products and EEA calls are the actual strict operations, and recursive calls
 can only append nodes. -/
@@ -12558,6 +12573,14 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
       (by
         intro index hindex hmidIndex hindexStop
         exact hfactorsMonicAfterZero index hindex (by omega))
+  have hgMonic : 0 < start →
+      (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat g).Monic := by
+    intro hstart
+    rw [hgPoly]
+    exact henselFactorRangeProduct_monic this._p.toNat factors start mid
+      (by omega) (by
+        intro index hindex hstartIndex hindexMid
+        exact hfactorsMonicAfterZero index hindex (by omega))
   rw [hgRun, hhRun]
   rcases strictHenselEEAEntryIR_refines_gcd this hcfg h2p hp2 g h
       hgCanonical hhCanonical hgNonempty with
@@ -12573,9 +12596,10 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
   injection hstoredRun' with hstoredEq
   subst stored'
   rcases henselTreeStoreNodeRawIR_canonical_oneHead this._p.toNat nodes parent
-      g h s t start stop hparent hgCanonical hhCanonical hhNonempty hhMonic with
+      g h s t start stop hparent hgCanonical hhCanonical hgNonempty hgMonic
+      hhNonempty hhMonic with
     ⟨stored', hstoredCanonicalRun, hstoredCanonicalSize,
-      hparentStored', hstoredCanonical, hstoredOneHead⟩
+      hparentStored', hstoredCanonical, hstoredGOneHead, hstoredOneHead⟩
   rw [hstoredRun] at hstoredCanonicalRun
   injection hstoredCanonicalRun with hstoredCanonicalEq
   subst stored'
@@ -12793,6 +12817,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             (@Array.getElem?_eq_getElem _ output parent (by omega))
             (hstoredInvariant.of_algebraEq (by
               simpa [houtputParent] using hrightReadyStored))
+            (fun hstart => (hstoredGOneHead hstart).g_of_algebraEq (by
+              simpa [houtputParent] using hrightReadyStored))
             (hstoredOneHead.of_algebraEq (by
               simpa [houtputParent] using hrightReadyStored))
             (fun childTree hchildTree => by
@@ -12870,6 +12896,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           exact .node start stop parent _ _ output output[parent] (by omega)
             (Array.getElem?_eq_getElem houtputParentBound)
             (hstoredInvariant.of_algebraEq
+              (houtputAlgebra.trans hafterLeftStored))
+            (fun hstart => (hstoredGOneHead hstart).g_of_algebraEq
               (houtputAlgebra.trans hafterLeftStored))
             (hstoredOneHead.of_algebraEq
               (houtputAlgebra.trans hafterLeftStored))
@@ -13018,6 +13046,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
             (@Array.getElem?_eq_getElem _ output parent (by omega))
             (hstoredInvariant.of_algebraEq (by
               simpa [houtputParent] using hrightReadyStored))
+            (fun hstart => (hstoredGOneHead hstart).g_of_algebraEq (by
+              simpa [houtputParent] using hrightReadyStored))
             (hstoredOneHead.of_algebraEq (by
               simpa [houtputParent] using hrightReadyStored))
             (fun childTree hchildTree => by contradiction)
@@ -13071,6 +13101,8 @@ theorem strictHenselTreeBuildRecursiveRawIR_succeeds
           exact .node start stop parent _ _ output output[parent] (by omega)
             (Array.getElem?_eq_getElem houtputParentBound)
             (hstoredInvariant.of_algebraEq
+              (houtputAlgebra.trans hafterLeftStored))
+            (fun hstart => (hstoredGOneHead hstart).g_of_algebraEq
               (houtputAlgebra.trans hafterLeftStored))
             (hstoredOneHead.of_algebraEq
               (houtputAlgebra.trans hafterLeftStored))

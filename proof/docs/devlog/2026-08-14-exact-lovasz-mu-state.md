@@ -3054,3 +3054,26 @@ leading coefficient; the genuine quotient-leading-scaled divisor has the same
 coefficient by the concrete divisor equation.  The selected-prime
 `GoodPrime.lc_nonzero` guard proves that this integer is not divisible by `p`.
 These are precisely the final two scalar premises of `hensel_unique`.
+
+## Instantiate Hensel uniqueness for the literal Zassenhaus candidate
+
+`henselCandidate_scaled_eq_divisor_mod_primePower` now performs the complete
+uniqueness assembly.  Its first integer factorization is the literal selected
+Hensel subproduct paired with the exact array returned by generated
+`removeCombination`.  Its second factorization is the genuine integer
+`divisor * quotient`, scaled by the quotient and divisor leading coefficients.
+The common normalization multiplier is the integer representative of the
+actual Hensel `ZMod (p^k)` unit.
+
+The proof supplies `hensel_unique` with the two concrete product congruences,
+the base congruences at `p` (the complement one is derived by cancellation of
+the shared nonzero trial factor), physical candidate/complement coprimality,
+literal leading-coefficient equality, and nondivisibility by `p`.  It concludes
+that the generated source-leading-scaled trial product equals the genuine
+quotient-leading-scaled divisor at the full returned prime-power modulus.
+There is no fuel, semantic factor oracle, or existential replacement array.
+
+No C++ files changed, so this step has no new C++ regression or b2b change
+surface.  Next, the generated symmetric representative is recovered
+coefficientwise from this exact congruence and the existing Mignotte bounds,
+closing the constant prune and exact-division rejection branches.

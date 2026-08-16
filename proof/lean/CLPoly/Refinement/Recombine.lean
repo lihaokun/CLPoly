@@ -6130,6 +6130,16 @@ def LLLTransformRel (initial matrix transform :
       basisPrefixMatrix transform initial.size initial.size *
         basisPrefixMatrix initial initial.size initial.size
 
+/-- The physical integer transform is square and has unit determinant.  This
+is the execution property that makes reduced-basis coordinates integral,
+rather than merely rational. -/
+def LLLTransformUnimodular
+    (transform : Generated.StrictRecombine.LLLMatrix) : Prop :=
+  (∀ row (hrow : row < transform.size),
+      transform[row].size = transform.size) ∧
+    IsUnit (Matrix.det
+      (basisPrefixMatrix transform transform.size transform.size))
+
 theorem makeInitialMatrix_input_valid (size : Nat) (scale : ZZ)
     (matrix : Generated.StrictRecombine.LLLMatrix) (hscale : scale ≠ 0)
     (hrun : Generated.StrictRecombine.makeInitialMatrix size scale = .ok matrix) :
@@ -8223,6 +8233,59 @@ theorem subtractMatrixRows_preserves_transform_rel
   rw [hrelation]
   simp only [Matrix.mul_assoc]
 
+theorem subtractMatrixRows_preserves_transform_unimodular
+    (matrix transform outputMatrix outputTransform :
+      Generated.StrictRecombine.LLLMatrix)
+    (target source : Nat) (coefficient : ZZ)
+    (hunimodular : LLLTransformUnimodular transform)
+    (hsameSize : transform.size = matrix.size)
+    (hne : target ≠ source)
+    (hrun : Generated.StrictRecombine.subtractMatrixRows matrix transform
+      target source coefficient = .ok (outputMatrix, outputTransform)) :
+    LLLTransformUnimodular outputTransform := by
+  rcases subtractMatrixRows_ok matrix transform outputMatrix outputTransform
+      target source coefficient hrun with
+    ⟨_htM, _hsM, htU, hsU, _hmatrix, htransform⟩
+  subst outputTransform
+  have htarget : target < transform.size := htU
+  have hsource : source < transform.size := hsU
+  refine ⟨?_, ?_⟩
+  · intro row hrow
+    simp only [Array.size_set] at hrow ⊢
+    rw [Array.getElem_set]
+    split
+    next htargetRow =>
+      simpa [hsameSize] using
+        subtractRowArray_size transform[target] transform[source]
+          coefficient matrix.size
+    next htargetRow => exact hunimodular.1 row hrow
+  · have htargetMatrix : target < matrix.size := by
+      rw [← hsameSize]
+      exact htarget
+    have hsourceMatrix : source < matrix.size := by
+      rw [← hsameSize]
+      exact hsource
+    have hbasis := basisPrefixMatrix_set_subtractRowArray transform target
+      source matrix.size coefficient hsameSize htargetMatrix hsourceMatrix
+    have hdet := congrArg Matrix.det hbasis
+    rw [Matrix.det_mul,
+      Matrix.det_transvection_of_ne
+        (⟨target, htargetMatrix⟩ : Fin matrix.size)
+        (⟨source, hsourceMatrix⟩ : Fin matrix.size)
+        (show (⟨target, htargetMatrix⟩ : Fin matrix.size) ≠
+            ⟨source, hsourceMatrix⟩ by
+          exact fun heq => hne (Fin.ext_iff.mp heq)) (-coefficient)] at hdet
+    simp only [one_mul] at hdet
+    rw [Array.size_set]
+    change IsUnit (Matrix.det (basisPrefixMatrix
+      (transform.set target
+        (subtractRowArray transform[target] transform[source]
+          coefficient matrix.size) htU) transform.size transform.size))
+    have hold := hunimodular.2
+    rw [hsameSize] at hold
+    rw [hsameSize, hdet]
+    exact hold
+
 /-- One literal generated C++ size-reduction preserves the transform equation.
 The zero-rounded branch is physically unchanged; the nonzero branch delegates
 to the synchronized row operation above, while the remaining generated loops
@@ -8274,6 +8337,57 @@ theorem sizeReduceAt_preserves_transform_rel
     next hsource => contradiction
   next hk => contradiction
 
+theorem sizeReduceAt_preserves_transform_unimodular
+    (initial : Generated.StrictRecombine.LLLMatrix)
+    (state output : Generated.StrictRecombine.LLLState) (source : Nat)
+    (hrel : LLLTransformRel initial state.matrix state.transform)
+    (hunimodular : LLLTransformUnimodular state.transform)
+    (hsourceK : source < state.k)
+    (hrun : Generated.StrictRecombine.sizeReduceAt state source = .ok output) :
+    LLLTransformUnimodular output.transform := by
+  unfold Generated.StrictRecombine.sizeReduceAt at hrun
+  split at hrun
+  next hk =>
+    split at hrun
+    next hsource =>
+      cases hround : Generated.StrictRecombine.roundQQ
+          state.mu[state.k][source] with
+      | error fault => simp [hround] at hrun
+      | ok coefficient =>
+        simp only [hround] at hrun
+        split at hrun
+        next hzero =>
+          have hout := Except.ok.inj hrun
+          subst output
+          exact hunimodular
+        next hnonzero =>
+          cases hsubtract : Generated.StrictRecombine.subtractMatrixRows
+              state.matrix state.transform state.k source coefficient with
+          | error fault => simp [hsubtract] at hrun
+          | ok matrices =>
+            rcases matrices with ⟨matrix', transform'⟩
+            simp only [hsubtract] at hrun
+            cases hmu : Generated.StrictRecombine.reduceMuPrefixLoop
+                state.mu state.k source coefficient source 0 with
+            | error fault => simp [hmu] at hrun
+            | ok mu' =>
+              simp only [hmu] at hrun
+              split at hrun
+              next hk' =>
+                split at hrun
+                next hsource' =>
+                  have hout := Except.ok.inj hrun
+                  subst output
+                  exact subtractMatrixRows_preserves_transform_unimodular
+                    state.matrix state.transform matrix' transform' state.k
+                    source coefficient hunimodular
+                    (hrel.2.1.trans hrel.1.symm) (Nat.ne_of_gt hsourceK)
+                    hsubtract
+                next hsource' => contradiction
+              next hk' => contradiction
+    next hsource => contradiction
+  next hk => contradiction
+
 /-- The exact descending generated size-reduction loop preserves the transform
 equation at every recursive call. -/
 theorem extraSizeReduceLoop_preserves_transform_rel
@@ -8297,6 +8411,33 @@ theorem extraSizeReduceLoop_preserves_transform_rel
         exact ih next output
           (sizeReduceAt_preserves_transform_rel initial state next remaining
             hrel hstep) hrun
+
+theorem extraSizeReduceLoop_preserves_transform_unimodular
+    (initial : Generated.StrictRecombine.LLLMatrix) (remaining : Nat)
+    (state output : Generated.StrictRecombine.LLLState)
+    (hrel : LLLTransformRel initial state.matrix state.transform)
+    (hunimodular : LLLTransformUnimodular state.transform)
+    (hremaining : remaining < state.k)
+    (hrun : Generated.StrictRecombine.extraSizeReduceLoop remaining state =
+      .ok output) :
+    LLLTransformUnimodular output.transform := by
+  induction remaining generalizing state output with
+  | zero =>
+      simp [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      subst output
+      exact hunimodular
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.extraSizeReduceLoop] at hrun
+      cases hstep : Generated.StrictRecombine.sizeReduceAt state remaining with
+      | error fault => simp [hstep] at hrun
+      | ok next =>
+        simp only [hstep] at hrun
+        have hnextRel := sizeReduceAt_preserves_transform_rel initial state next
+          remaining hrel hstep
+        have hnextUni := sizeReduceAt_preserves_transform_unimodular initial
+          state next remaining hrel hunimodular (by omega) hstep
+        have hcontrol := sizeReduceAt_preserves_norms_k state next remaining hstep
+        exact ih next output hnextRel hnextUni (by rw [hcontrol.2]; omega) hrun
 
 theorem gramPrefixMatrix_subtractMatrixRows
     (matrix transform outputMatrix outputTransform : Generated.StrictRecombine.LLLMatrix)
@@ -9363,6 +9504,47 @@ theorem swapMatrixRows_get_fin
       rw [getElem!_pos matrix row.val hrow]
       simp [hrightVal, hleftVal]
 
+theorem swapMatrixRows_preserves_transform_unimodular
+    (transform output : Generated.StrictRecombine.LLLMatrix)
+    (left right : Nat)
+    (hunimodular : LLLTransformUnimodular transform)
+    (hrun : Generated.StrictRecombine.swapMatrixRows transform left right =
+      .ok output) :
+    LLLTransformUnimodular output := by
+  rcases swapMatrixRows_ok transform output left right hrun with
+    ⟨hleft, hright, houtput⟩
+  have hsize := swapMatrixRows_size transform output left right hrun
+  refine ⟨?_, ?_⟩
+  · intro row hrow
+    rw [swapMatrixRows_get transform output left right row hrun (by
+      simpa [hsize] using hrow)]
+    split
+    next hrightRow =>
+      rw [getElem!_pos transform left hleft]
+      exact (hunimodular.1 left hleft).trans hsize.symm
+    next hrightRow =>
+      split
+      next hleftRow =>
+        rw [getElem!_pos transform right hright]
+        exact (hunimodular.1 right hright).trans hsize.symm
+      next hleftRow =>
+        exact (hunimodular.1 row (by simpa [hsize] using hrow)).trans hsize.symm
+  · let permutation : Equiv.Perm (Fin transform.size) := Equiv.swap
+      ⟨left, hleft⟩ ⟨right, hright⟩
+    have hbasis : basisPrefixMatrix output transform.size transform.size =
+        (basisPrefixMatrix transform transform.size transform.size).submatrix
+          permutation id := by
+      funext row column
+      unfold basisPrefixMatrix
+      rw [swapMatrixRows_get_fin transform output left right transform.size
+        hrun hleft hright (by rfl) row]
+      rfl
+    have hdet := congrArg Matrix.det hbasis
+    rw [Matrix.det_permute] at hdet
+    rw [hsize]
+    rw [hdet]
+    exact (Units.isUnit (Equiv.Perm.sign permutation)).mul hunimodular.2
+
 /-- Swapping the same two rows of the live basis and its integer transform
 preserves the exact equation with the original basis.  This is stated for two
 literal calls because the generated C++ Lovász branch performs those calls
@@ -10204,7 +10386,13 @@ theorem lllStep_swapped_array_witness
         ((reduced.mu[reduced.k]!)[reduced.k - 1]!) muNew ∧
       output.norms = Generated.StrictRecombine.normsAfterLovaszSwap
         reduced.norms reduced.k
-          ((reduced.mu[reduced.k]!)[reduced.k - 1]!) := by
+          ((reduced.mu[reduced.k]!)[reduced.k - 1]!) ∧
+      ∃ matrix' transform',
+        Generated.StrictRecombine.swapMatrixRows reduced.matrix reduced.k
+          (reduced.k - 1) = .ok matrix' ∧
+        Generated.StrictRecombine.swapMatrixRows reduced.transform reduced.k
+          (reduced.k - 1) = .ok transform' ∧
+        output.transform = transform' := by
   rw [Generated.StrictRecombine.lllStep] at hrun
   by_cases hkPositive : 0 < state.k
   · rw [dif_pos hkPositive] at hrun
@@ -10330,7 +10518,7 @@ theorem lllStep_swapped_array_witness
                               have hout := Except.ok.inj hrun
                               injection hout with hstate
                               subst output
-                              refine ⟨reduced, muNew, rfl, hcontrol.2, ?_, ?_⟩
+                              refine ⟨reduced, muNew, rfl, hcontrol.2, ?_, ?_, ?_⟩
                               · simpa [muOld,
                                   getElem!_pos reduced.mu reduced.k hkMu,
                                   getElem!_pos reduced.mu[reduced.k]
@@ -10338,6 +10526,8 @@ theorem lllStep_swapped_array_witness
                               · simp [getElem!_pos reduced.mu reduced.k hkMu,
                                   getElem!_pos reduced.mu[reduced.k]
                                     (reduced.k - 1) hpredMu]
+                              · exact ⟨matrix', transform', hswapMatrix,
+                                  hswapTransform, rfl⟩
                           next hpredSwapped => contradiction
                         next hkSwapped => contradiction
               next hpredMu => contradiction
@@ -10348,6 +10538,100 @@ theorem lllStep_swapped_array_witness
       contradiction
   · rw [dif_neg hkPositive] at hrun
     contradiction
+
+theorem lllStep_advanced_transform_witness
+    (state output : Generated.StrictRecombine.LLLState)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok (.advanced output)) :
+    ∃ reduced fullyReduced,
+      Generated.StrictRecombine.sizeReduceAt state (state.k - 1) = .ok reduced ∧
+      reduced.k = state.k ∧
+      Generated.StrictRecombine.extraSizeReduceLoop (reduced.k - 1) reduced =
+        .ok fullyReduced ∧
+      output.transform = fullyReduced.transform := by
+  rw [Generated.StrictRecombine.lllStep] at hrun
+  by_cases hkPositive : 0 < state.k
+  · rw [dif_pos hkPositive] at hrun
+    by_cases hkMatrix : state.k < state.matrix.size
+    · rw [dif_pos hkMatrix] at hrun
+      cases hreduce : Generated.StrictRecombine.sizeReduceAt state
+          (state.k - 1) with
+      | error fault => simp [hreduce] at hrun
+      | ok reduced =>
+        simp only [hreduce] at hrun
+        have hcontrol := sizeReduceAt_preserves_norms_k state reduced
+          (state.k - 1) hreduce
+        split at hrun
+        next hkNorm =>
+          split at hrun
+          next hpredNorm =>
+            split at hrun
+            next hkMu =>
+              split at hrun
+              next hpredMu =>
+                dsimp at hrun
+                split at hrun
+                next hlovasz =>
+                  cases hextra : Generated.StrictRecombine.extraSizeReduceLoop
+                      (reduced.k - 1) reduced with
+                  | error fault => simp [hextra] at hrun
+                  | ok fullyReduced =>
+                    simp only [hextra] at hrun
+                    have hout := Except.ok.inj hrun
+                    injection hout with hstate
+                    subst output
+                    exact ⟨reduced, fullyReduced, rfl, hcontrol.2,
+                      hextra, rfl⟩
+                next hlovasz =>
+                  repeat' first | split at hrun | simp_all
+              next hpredMu => contradiction
+            next hkMu => contradiction
+          next hpredNorm => contradiction
+        next hkNorm => contradiction
+    · rw [dif_neg hkMatrix] at hrun
+      contradiction
+  · rw [dif_neg hkPositive] at hrun
+    contradiction
+
+theorem lllStep_advanced_preserves_transform_unimodular
+    (initial : Generated.StrictRecombine.LLLMatrix)
+    (state output : Generated.StrictRecombine.LLLState)
+    (hrel : LLLTransformRel initial state.matrix state.transform)
+    (hunimodular : LLLTransformUnimodular state.transform)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok (.advanced output)) :
+    LLLTransformUnimodular output.transform := by
+  have hbounds := lllStep_success_bounds state (.advanced output) hrun
+  rcases lllStep_advanced_transform_witness state output hrun with
+    ⟨reduced, fullyReduced, hreduce, hkReduced, hextra, houtput⟩
+  have hsourceK : state.k - 1 < state.k := by omega
+  have hreducedRel := sizeReduceAt_preserves_transform_rel initial state reduced
+    (state.k - 1) hrel hreduce
+  have hreducedUni := sizeReduceAt_preserves_transform_unimodular initial state
+    reduced (state.k - 1) hrel hunimodular hsourceK hreduce
+  have hfullyUni := extraSizeReduceLoop_preserves_transform_unimodular initial
+    (reduced.k - 1) reduced fullyReduced hreducedRel hreducedUni (by
+      rw [hkReduced]
+      omega) hextra
+  rw [houtput]
+  exact hfullyUni
+
+theorem lllStep_swapped_preserves_transform_unimodular
+    (initial : Generated.StrictRecombine.LLLMatrix)
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrel : LLLTransformRel initial state.matrix state.transform)
+    (hunimodular : LLLTransformUnimodular state.transform)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok (.swapped output)) :
+    LLLTransformUnimodular output.transform := by
+  have hbounds := lllStep_success_bounds state (.swapped output) hrun
+  rcases lllStep_swapped_array_witness state output hvalid hrun with
+    ⟨reduced, muNew, hreduce, hkReduced, hmu, hnorms,
+      matrix', transform', hswapMatrix, hswapTransform, houtput⟩
+  have hsourceK : state.k - 1 < state.k := by omega
+  have hreducedUni := sizeReduceAt_preserves_transform_unimodular initial state
+    reduced (state.k - 1) hrel hunimodular hsourceK hreduce
+  rw [houtput]
+  exact swapMatrixRows_preserves_transform_unimodular reduced.transform
+    transform' reduced.k (reduced.k - 1) hreducedUni hswapTransform
 
 theorem lllStep_swapped_preserves_sizeReducedPrefix
     (state output : Generated.StrictRecombine.LLLState)
@@ -10363,7 +10647,7 @@ theorem lllStep_swapped_preserves_sizeReducedPrefix
   have hmatrixSize := lllStep_swapped_matrix_size state output
     hvalid.toConcreteLLLValid houtputValid.toConcreteLLLValid hrun
   rcases lllStep_swapped_array_witness state output hvalid hrun with
-    ⟨reduced, muNew, hreduce, hkReduced, hmuOutput, _hnormOutput⟩
+    ⟨reduced, muNew, hreduce, hkReduced, hmuOutput, _hnormOutput, _hswaps⟩
   have hreduceControl := sizeReduceAt_preserves_norms_k state reduced
     (state.k - 1) hreduce
   have hsourceK : state.k - 1 < state.k := by omega
@@ -10425,7 +10709,7 @@ theorem lllStep_swapped_preserves_lovaszPrefix
     (hrun : Generated.StrictRecombine.lllStep state = .ok (.swapped output)) :
     LovaszPrefix output := by
   rcases lllStep_swapped_array_witness state output hvalid hrun with
-    ⟨reduced, muNew, hreduce, hkReduced, hmuOutput, hnormOutput⟩
+    ⟨reduced, muNew, hreduce, hkReduced, hmuOutput, hnormOutput, _hswaps⟩
   have hkMatrix := lllStep_swapped_source_index_lt state output hrun
   have hkPositive : 0 < state.k := by
     have hrun' := hrun
@@ -10715,6 +10999,23 @@ theorem lllStep_preserves_transform_rel
       exact lllStep_swapped_preserves_transform_rel initial state output hvalid
         hrel hrun
 
+theorem lllStep_preserves_transform_unimodular
+    (initial : Generated.StrictRecombine.LLLMatrix)
+    (state : Generated.StrictRecombine.LLLState)
+    (branch : Generated.StrictRecombine.LLLStepResult)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrel : LLLTransformRel initial state.matrix state.transform)
+    (hunimodular : LLLTransformUnimodular state.transform)
+    (hrun : Generated.StrictRecombine.lllStep state = .ok branch) :
+    LLLTransformUnimodular branch.state.transform := by
+  cases branch with
+  | advanced output =>
+      exact lllStep_advanced_preserves_transform_unimodular initial state output
+        hrel hunimodular hrun
+  | swapped output =>
+      exact lllStep_swapped_preserves_transform_unimodular initial state output
+        hvalid hrel hunimodular hrun
+
 theorem lllStep_preserves_execution_valid
     (state : Generated.StrictRecombine.LLLState)
     (branch : Generated.StrictRecombine.LLLStepResult)
@@ -10953,6 +11254,40 @@ theorem concreteLLLMainLoop_preserves_transform_rel
         subst output
         exact hrel
 
+theorem concreteLLLMainLoop_preserves_transform_unimodular
+    (initial : Generated.StrictRecombine.LLLMatrix)
+    (state output : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hrel : LLLTransformRel initial state.matrix state.transform)
+    (hunimodular : LLLTransformUnimodular state.transform)
+    (hrun : Generated.StrictRecombine.lllMainLoop concreteLLLTermination
+      state hvalid = .ok output) :
+    LLLTransformUnimodular output.transform := by
+  induction hmeasure : concreteLLLRank state using Nat.strong_induction_on
+      generalizing state output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.lllMainLoop] at hrun
+      split at hrun
+      next hk =>
+        split at hrun
+        next hstep => contradiction
+        next branch hstep =>
+          have hnextValid := lllStep_preserves_execution_valid state branch
+            hvalid hstep
+          have hnextRel := lllStep_preserves_transform_rel initial state branch
+            hvalid hrel hstep
+          have hnextUni := lllStep_preserves_transform_unimodular initial state
+            branch hvalid hrel hunimodular hstep
+          have hdecrease := lllStep_concreteRank_lt_of_valid state branch
+            hvalid.toConcreteLLLValid hnextValid.toConcreteLLLValid hstep
+          rw [hmeasure] at hdecrease
+          exact ih (concreteLLLRank branch.state) hdecrease branch.state output
+            hnextValid hnextRel hnextUni hrun rfl
+      next hk =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hunimodular
+
 theorem lllStep_preserves_matrix_size
     (state : Generated.StrictRecombine.LLLState)
     (branch : Generated.StrictRecombine.LLLStepResult)
@@ -11116,6 +11451,32 @@ theorem initializeLLL_transform_rel
           simp
   next hsize => contradiction
 
+/-- The transform physically returned by initialization is unimodular.  The
+proof cancels the nonzero input determinant from the already established
+literal identity `matrix = transform * matrix`. -/
+theorem initializeLLL_transform_unimodular
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (mu : Generated.StrictRecombine.QQMatrix) (norms : Array QQ)
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid matrix)
+    (hrun : Generated.StrictRecombine.initializeLLL matrix =
+      .ok (mu, norms, transform)) :
+    LLLTransformUnimodular transform := by
+  have hrel := initializeLLL_transform_rel matrix mu norms transform hrun
+  rcases hrel with ⟨_hmatrixSize, htransformSize, htransformRows, hrelation⟩
+  refine ⟨?_, ?_⟩
+  · intro row hrow
+    simpa [htransformSize] using htransformRows row hrow
+  · have hdetEq := congrArg Matrix.det hrelation
+    rw [Matrix.det_mul] at hdetEq
+    have hunit : Matrix.det
+        (basisPrefixMatrix transform matrix.size matrix.size) = 1 := by
+      apply mul_right_cancel₀ hinput.determinant_ne
+      simpa using hdetEq.symm
+    rw [htransformSize]
+    rw [hunit]
+    exact isUnit_one
+
 noncomputable def concreteLLLExecution :
     Generated.StrictRecombine.LLLExecution where
   inputValid := ConcreteLLLInputValid
@@ -11162,6 +11523,39 @@ theorem concreteLLLReduce_transform_rel
         subst output
         exact concreteLLLMainLoop_preserves_transform_rel matrix state reduced
           hvalid (initializeLLL_transform_rel matrix mu norms transform
+            hinitialize) hmain
+
+/-- The transform returned by the complete generated `__lll_reduce` remains
+unimodular over the integers. -/
+theorem concreteLLLReduce_transform_unimodular
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid matrix) (bound : ZZ)
+    (output : { value : Generated.StrictRecombine.LLLMatrix ×
+        Generated.StrictRecombine.LLLMatrix × Array Nat //
+      concreteLLLExecution.inputValid value.1 ∧ value.1.size = matrix.size })
+    (hrun : Generated.StrictRecombine.lllReduce concreteLLLExecution matrix
+      hinput bound = .ok output) :
+    LLLTransformUnimodular output.val.2.1 := by
+  rw [Generated.StrictRecombine.lllReduce] at hrun
+  split at hrun
+  next fault hinitialize => contradiction
+  next mu norms transform hinitialize =>
+    let state := Generated.StrictRecombine.LLLState.mk matrix transform mu norms 1
+    let hvalid := concreteLLLExecution.initialized_valid matrix mu norms transform
+      hinput hinitialize
+    dsimp only at hrun
+    split at hrun
+    next fault hmain => contradiction
+    next reduced hmain =>
+      split at hrun
+      next fault hrows => contradiction
+      next rows hrows =>
+        have hresult := Except.ok.inj hrun
+        subst output
+        exact concreteLLLMainLoop_preserves_transform_unimodular matrix state
+          reduced hvalid
+          (initializeLLL_transform_rel matrix mu norms transform hinitialize)
+          (initializeLLL_transform_unimodular matrix mu norms transform hinput
             hinitialize) hmain
 
 theorem gramPrefixDet_swap_preserved_of_before

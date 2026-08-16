@@ -910,3 +910,34 @@ oracle, `sorry`, or custom axiom.
   `lllReduce` boundary and use the genuine reduced-basis inequalities to prove
   that every sufficiently short true factor-indicator vector is represented
   by the physically collected transform rows.
+
+## Prove the generated LLL transform is integrally unimodular
+
+The synchronized integer transform now carries the missing lattice, rather
+than merely rational-vector-space, invariant:
+
+- `LLLTransformUnimodular` records the physical square shape and unit
+  determinant of the generated transform array;
+- initialization derives determinant one by cancelling the nonzero input
+  basis determinant from the already proved physical transform equation;
+- a generated size reduction is identified with an integer transvection,
+  whose determinant is one;
+- a generated swap is identified with the literal row permutation, whose
+  determinant is a unit;
+- both LLL branches and the determinant-ranked well-founded main loop preserve
+  this invariant; and
+- `concreteLLLReduce_transform_unimodular` exposes it on the exact transform
+  returned after short-row collection.
+
+This closes an important soundness gap for the forthcoming short-vector
+argument.  The transform equation alone only supplies rational coordinates;
+unit determinant supplies an integer inverse, so a final nonzero reduced-basis
+coordinate has absolute value at least one.  Every preservation theorem is
+derived from the generated row operations and swap executions, not from an
+abstract unimodular-transform oracle.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: construct the integral inverse-coordinate witness and combine it with
+  the physical Gram--Schmidt, Lovasz, size-reduction, and collection
+  certificates to prove the short-vector span theorem.

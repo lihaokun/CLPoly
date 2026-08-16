@@ -555,3 +555,28 @@ oracle, `sorry`, or custom axiom.
 - Next: establish the corresponding provenance and representative invariant
   for `partitionCandidateColumns`, starting from its concrete replicated
   `none` array.
+
+## Prove generated outer candidate partition coverage
+
+The outer physical candidate partition now has its first complete execution
+invariant:
+
+- `assignCandidateClass_preserves_some` proves that the inner loop never
+  overwrites a class identifier already present in the physical array;
+- `partitionCandidateColumns_all_assigned` carries an assigned-prefix
+  invariant through the occupied-column and new-class branches of the exact
+  generated outer loop;
+- `partitionCandidateColumns_size` proves that neither the outer loop nor any
+  nested assignment changes the class-array cardinality; and
+- `partitionCandidateColumns_from_empty_all_assigned` specializes the result
+  to the actual `Array.replicate factorCount none` entry state and proves that
+  every factor column in the successful output has a concrete class.
+
+Both loops use their literal decreasing suffix measures.  There is no fuel,
+partial definition, abstract partition oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: attach representative-comparison provenance to every outer class and
+  carry it through `collectCandidateClasses`/`extractCandidates`, then apply
+  CLD/LLL separation to identify the resulting integer factor blocks.

@@ -1890,6 +1890,94 @@ theorem zassenhausAttempt_extracts_hensel_divisor_candidate
   simp only [hconvert, hproduct, hsymmetric, hprimitive, hdivmod]
   simp only [Array.isEmpty_empty, if_true, hquotientPrimitive]
 
+/-- The fixed-size source scan, started from its literal iota candidate,
+reaches an actual extraction once a genuine primitive divisor supplies the
+legal Hensel subset above.  All live scan invariants are projected from the
+selected-prime and generated Hensel certificates. -/
+theorem zassenhausScan_extracts_hensel_divisor_candidate
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime 0 output)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly f = divisor * quotient)
+    (hdivisorPrimitive : divisor.IsPrimitive)
+    (hdivisorModNonzero : Polynomial.map
+      (Int.castRingHom (ZMod selection.prime.toNat)) divisor ≠ 0)
+    (hdivisorLeading :
+      (Polynomial.map
+        (Int.castRingHom (ZMod selection.prime.toNat)) divisor).leadingCoeff =
+          (divisor.leadingCoeff : ZMod selection.prime.toNat))
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination output.1.size candidate.size
+      candidate)
+    (hcandidate : 0 < candidate.size)
+    (hactiveFits : output.1.size ≤ 2 ^ 31)
+    (hassociated : Associated
+      (Polynomial.map
+        (Int.castRingHom (ZMod selection.prime.toNat)) divisor)
+      (((StrictRecombine.selectSourceIndices output.1.toList
+        candidate.toList).map
+          (StrictHensel.toPolyMod selection.prime.toNat)).prod)) :
+    ∃ extractedFactor extractedQuotient extractedCandidate candidateSize,
+      Generated.StrictRecombine.scanZassenhausCombinations
+        (StrictRecombine.concreteZassenhausTermination.combinations
+          output.1.size candidate.size)
+        f output.1 output.2
+        (Generated.StrictRecombine.initialCombination candidate.size)
+        (StrictRecombine.concreteZassenhausTermination.initial_valid
+          output.1.size candidate.size
+          hlegal.count_le) =
+          .ok (.extracted extractedFactor extractedQuotient extractedCandidate
+            candidateSize) := by
+  rcases hentry.outputModulus_eq_prime_pow with
+    ⟨exponent, hexponent, houtputModulus⟩
+  let modulus := selection.prime.toNat ^ exponent
+  have hmodulus : 0 < modulus :=
+    pow_pos (Fact.out : Nat.Prime selection.prime.toNat).pos exponent
+  have hbase : 0 < selection.prime.toNat :=
+    (Fact.out : Nat.Prime selection.prime.toNat).pos
+  have hdivides : selection.prime.toNat ∣ modulus := by
+    exact dvd_pow_self _ hexponent.ne'
+  have hfront : f[0] = leading := by
+    rw [Array.getElem?_eq_getElem hnonempty] at hleading
+    exact Option.some.inj hleading
+  have hleadingMod : (f[0].2 : ZMod selection.prime.toNat) ≠ 0 := by
+    rw [hfront, hleadingSemantic leading hleading]
+    exact hselection.goodPrime.lc_nonzero
+  have hirreducible := selectionHenselFactors_mod_irreducible hcount hp2
+    hfactors hleadingSemantic hselection hentry
+  rcases zassenhausAttempt_extracts_hensel_divisor_candidate hcount hp2
+      hfactors hleadingSemantic hselection hentry hcanonical hnonempty hdegree
+      leading hleading divisor quotient hfactor hdivisorPrimitive
+      hdivisorModNonzero hdivisorLeading candidate hlegal hactiveFits
+      hassociated with ⟨factor, recoveredQuotient, hattempt⟩
+  have hfits := hlegal.count_le
+  rcases StrictRecombine.zassenhausFixedSizeScan_extracts_of_candidate f
+      output.1 modulus selection.prime.toNat candidate hmodulus hbase hdivides
+      hcanonical hnonempty hcandidate hfits hactiveFits hleadingMod
+      hirreducible hlegal factor recoveredQuotient
+      (by simpa [modulus, houtputModulus] using hattempt) with
+    ⟨extractedFactor, extractedQuotient, extractedCandidate, candidateSize,
+      hscan⟩
+  refine ⟨extractedFactor, extractedQuotient, extractedCandidate,
+    candidateSize, ?_⟩
+  simpa [modulus, houtputModulus] using hscan
+
 /-- If the actual generated fixed-size Zassenhaus scan exhausts, then the
 occurrence-sensitive candidate supplied by any genuine integer divisor was
 not omitted: that exact index array was executed and rejected.  This is the

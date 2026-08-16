@@ -3199,3 +3199,23 @@ candidate was rejected, contradicting its concrete `.extracted` equation.
 - 下一步：实例化该扫描定理到 FactorZZ genuine divisor candidate，并把
   scan extraction/removeCombination 后的 quotient 与 active complement
   不变量送入外层 `zassenhausLoop`
+
+## Instantiate the real scan at the FactorZZ boundary
+
+`zassenhausFixedSizeScan_extracts_of_candidate` exposes the total/no-omission
+scan theorem through the sole public `concreteZassenhausTermination` bundle,
+so downstream composition does not mention the private positional rank.
+
+`zassenhausScan_extracts_hensel_divisor_candidate` now instantiates it with the
+actual FactorZZ state.  The modulus and divisibility facts come from the
+physical Hensel equation `output.2 = p^k`; nonzero source leading coefficient
+comes from `SelectionCorrect.goodPrime`; and every active cell's irreducibility
+comes from the generated adjustment/tree/extraction/normalization certificate.
+Together with the literal genuine-candidate attempt equation, these facts prove
+that the fixed-size scan started at the source iota array returns a concrete
+`.extracted` result.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：执行该 scan result 的 `removeCombination`，建立 quotient 与
+  occurrence-sensitive active complement 的新 live-state invariant，并闭合
+  `zassenhausLoop` 的提取递归分支

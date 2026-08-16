@@ -2568,6 +2568,11 @@ private theorem legalCombination_count_le (upper count : Nat)
     have hupper := hlegal.2.2 (count - 1) hlast
     omega
 
+/-- Public cardinality bound carried by every concrete legal combination. -/
+theorem LegalCombination.count_le {upper count : Nat} {indices : Array Nat}
+    (hlegal : LegalCombination upper count indices) : count ≤ upper :=
+  legalCombination_count_le upper count indices hlegal
+
 private theorem initialCombination_lex_le (upper count : Nat)
     (target : Array Nat) (hlegal : LegalCombination upper count target) :
     Generated.StrictRecombine.initialCombination count = target ∨
@@ -13485,6 +13490,38 @@ theorem scanZassenhausCombinations_extracts_of_candidate
       have hrejected := scanZassenhausCombinations_exhausted_rejects_all
         fStar activeLifted (modulus : ZZ) hfits hscan target htarget
       simp [hattempt] at hrejected
+
+/-- Public form of the preceding scan theorem through the sole concrete
+Zassenhaus termination bundle, without exposing the private rank definition. -/
+theorem zassenhausFixedSizeScan_extracts_of_candidate
+    {count : Nat} (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)] (target : Array Nat)
+    (hmodulus : 0 < modulus) (hbase : 0 < base) (hdivides : base ∣ modulus)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size) (hcount : 0 < count)
+    (hfits : count ≤ activeLifted.size)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hleading : (fStar[0].2 : ZMod base) ≠ 0)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index]))
+    (htarget : LegalCombination activeLifted.size count target)
+    (factor quotient : SparsePolyZZ)
+    (hattempt : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      (modulus : ZZ) target = .ok (.extracted factor quotient)) :
+    ∃ extractedFactor extractedQuotient candidate candidateSize,
+      Generated.StrictRecombine.scanZassenhausCombinations
+        (concreteZassenhausTermination.combinations activeLifted.size count)
+        fStar activeLifted (modulus : ZZ)
+        (Generated.StrictRecombine.initialCombination count)
+        (concreteZassenhausTermination.initial_valid activeLifted.size count
+          hfits) = .ok (.extracted extractedFactor extractedQuotient candidate
+            candidateSize) := by
+  simpa [concreteZassenhausTermination] using
+    scanZassenhausCombinations_extracts_of_candidate fStar activeLifted modulus
+      base target hmodulus hbase hdivides hcanonical hnonempty hcount hfits
+      hactiveFits hleading hirreducible htarget factor quotient hattempt
 
 /-- Under the live selected-prime invariants, the factor returned by the
 actual successful attempt is associated modulo `base` to the exact candidate

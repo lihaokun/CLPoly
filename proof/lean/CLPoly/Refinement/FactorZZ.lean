@@ -18,6 +18,50 @@ namespace Refinement
 
 namespace StrictFactorZZ
 
+/-- Concrete adapter for the generated C++ van-Hoeij callee.  The proof-only
+degree guard exposes the source precondition required by the strict raw entry;
+on every valid `__lll_factorize` call it erases to that exact execution. -/
+def concreteVanHoeijRecombine (f : SparsePolyZZ)
+    (lifted : Array SparsePolyZZ) (modulus : ZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  if hdegree : 2 ≤ (get_deg f).toNatClampNeg then
+    Generated.StrictRecombine.__vanhoeij_recombine_raw_ir
+      StrictRecombine.concreteVanHoeijRawOps
+      StrictRecombine.concreteVanHoeijTermination f lifted modulus hdegree
+  else .error .assertionFailure
+
+def concreteZassenhausRecombine (f : SparsePolyZZ)
+    (lifted : Array SparsePolyZZ) (modulus : ZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  Generated.StrictRecombine.zassenhausRecombine
+    StrictRecombine.concreteZassenhausTermination f lifted modulus
+
+/-- Concrete recombination fields plus the still-explicit generated
+selection/Hensel callees.  Those two functions return only raw data; their
+execution certificates are supplied separately and cannot choose results. -/
+def concreteRecombineFactorZZRawOps
+    (selectPrime : SparsePolyZZ → Bool → RawExec PrimeSelectionResult)
+    (henselLift : SparsePolyZZ → Array SparsePolyZp → UInt64 → Int32 →
+      RawExec (Array SparsePolyZZ × ZZ)) :
+    Generated.StrictFactorZZ.FactorZZRawOps where
+  selectPrime := selectPrime
+  henselLift := henselLift
+  vanHoeijRecombine := concreteVanHoeijRecombine
+  zassenhausRecombine := concreteZassenhausRecombine
+
+theorem concreteVanHoeijRecombine_success
+    (f : SparsePolyZZ) (lifted output : Array SparsePolyZZ) (modulus : ZZ)
+    (hrun : concreteVanHoeijRecombine f lifted modulus = .ok output) :
+    ∃ hdegree : 2 ≤ (get_deg f).toNatClampNeg,
+      Generated.StrictRecombine.__vanhoeij_recombine_raw_ir
+        StrictRecombine.concreteVanHoeijRawOps
+        StrictRecombine.concreteVanHoeijTermination f lifted modulus hdegree =
+          .ok output := by
+  unfold concreteVanHoeijRecombine at hrun
+  split at hrun
+  next hdegree => exact ⟨hdegree, hrun⟩
+  next hdegree => contradiction
+
 /-- Below the signed 32-bit boundary, the exact C++ size conversion used by
 `__lll_factorize` reflects the natural-number strict comparison. -/
 theorem size_toUInt32_toInt32_lt_iff (left right : Nat)
@@ -71,6 +115,7 @@ theorem __lll_factorize_raw_ir_low_precision_cases
         (output = resultMig ∨
           ops.zassenhausRecombine f liftedMig mMig = .ok output) := by
   unfold Generated.StrictFactorZZ.__lll_factorize_raw_ir at hrun
+  dsimp only at hrun
   simp only [hheuristic, hlift, hrecombine] at hrun
   by_cases hless : Int32.ofNat result.size < Int32.ofNat factors.size
   · rw [if_pos (by simp [hless, hprecision])] at hrun
@@ -157,6 +202,127 @@ theorem heuristic_starting_precision_first_le_second
               omega
           next hfit => contradiction
   next hp => contradiction
+
+/-- The exact well-founded precision loop stops only after the represented
+prime power has crossed the concrete recovery target.  The invariant
+`pa = p ^ exponent` is the literal arithmetic state of the C++ loop. -/
+theorem heuristicPrecisionLoop_pow_gt
+    (p target : Nat) (hp : 2 ≤ p) (pa : Nat) (hpa : 0 < pa)
+    (exponent : Nat) (hpower : pa = p ^ exponent) :
+    target < p ^
+      Generated.StrictFactorZZ.heuristicPrecisionLoop p target hp pa hpa
+        exponent := by
+  rw [Generated.StrictFactorZZ.heuristicPrecisionLoop]
+  split
+  next hcontinue =>
+    apply heuristicPrecisionLoop_pow_gt p target hp (pa * p)
+      (Nat.mul_pos hpa (by omega)) (exponent + 1)
+    rw [Nat.pow_succ, ← hpower, Nat.mul_comm]
+  next hstop =>
+    rw [← hpower]
+    omega
+termination_by target + 1 - pa
+decreasing_by
+  have hdouble : pa + pa ≤ pa * p := by
+    calc
+      pa + pa = 2 * pa := by omega
+      _ ≤ p * pa := Nat.mul_le_mul_right pa hp
+      _ = pa * p := Nat.mul_comm _ _
+  have hgrow : pa < pa * p := by omega
+  omega
+
+theorem nat_toUInt32_toInt32_nonnegative_implies_fits (value : Nat)
+    (hfit : value ≤ UInt32.size - 1)
+    (hnonnegative : 0 ≤ value.toUInt32.toInt32) : value < 2 ^ 31 := by
+  have h32 : value < 2 ^ 32 := by
+    norm_num [UInt32.size] at hfit ⊢
+    omega
+  rw [Int32.le_iff_toInt_le] at hnonnegative
+  simp only [Int32.toInt_zero] at hnonnegative
+  change 0 ≤ (BitVec.ofNat 32 value).toInt at hnonnegative
+  rw [BitVec.toInt_eq_toNat_cond] at hnonnegative
+  have hnat : (BitVec.ofNat 32 value).toNat = value := by
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h32]
+  split at hnonnegative
+  · rw [hnat] at *
+    omega
+  · rw [hnat] at *
+    norm_num at hnonnegative
+    omega
+
+/-- A successful generated heuristic run exposes its exact full exponent and
+the fact that the corresponding prime power crosses the concrete Mignotte
+target computed by the same run. -/
+theorem heuristic_starting_precision_full_pow_gt
+    (f : SparsePolyZZ) (r : Int32) (p : UInt64) (aH aMig : Int32)
+    (leading : UMonomial × ZZ) (bound : ZZ)
+    (hleading : f[0]? = some leading)
+    (hbound : Generated.StrictHensel.__mignotte_bound_upoly_raw_ir f =
+      .ok bound)
+    (hrun : Generated.StrictFactorZZ.__heuristic_starting_precision_raw_ir
+      f r p = .ok (aH, aMig))
+    (hnonnegative : 0 ≤ aMig) :
+    (2 * (if leading.2 < 0 then -leading.2 else leading.2) * bound).natAbs <
+      p.toNat ^ aMig.toNatClampNeg := by
+  unfold Generated.StrictFactorZZ.__heuristic_starting_precision_raw_ir at hrun
+  split at hrun
+  next hp =>
+    rw [hleading, hbound] at hrun
+    dsimp only at hrun
+    split at hrun
+    next hsign =>
+      split at hrun
+      next hfit =>
+        have hout := Except.ok.inj hrun
+        cases hout
+        have hfullNonnegative :
+            0 ≤ (Generated.StrictFactorZZ.heuristicPrecisionLoop p.toNat
+              (2 * -leading.2 * bound).natAbs hp 1 (by omega) 0).toUInt32.toInt32 :=
+          hnonnegative
+        have hfullFits := nat_toUInt32_toInt32_nonnegative_implies_fits _ hfit
+          hfullNonnegative
+        have hroundtrip :=
+          StrictRecombine.nat_toUInt32_toInt32_nonnegative_and_toNat _ hfullFits
+        have hexponent :
+            (Generated.StrictFactorZZ.heuristicPrecisionLoop p.toNat
+              (2 * -leading.2 * bound).natAbs hp 1 (by omega) 0).toUInt32.toInt32.toNatClampNeg =
+              Generated.StrictFactorZZ.heuristicPrecisionLoop p.toNat
+                (2 * -leading.2 * bound).natAbs hp 1 (by omega) 0 := by
+          rw [← Int32.toNatClampNeg_toInt64]
+          exact hroundtrip.2
+        rw [show (2 * (if leading.2 < 0 then -leading.2 else leading.2) *
+            bound).natAbs = (2 * -leading.2 * bound).natAbs by simp [hsign]]
+        rw [hexponent]
+        exact heuristicPrecisionLoop_pow_gt p.toNat
+          (2 * -leading.2 * bound).natAbs hp 1 (by omega) 0 (by simp)
+      next => contradiction
+    next hsign =>
+      split at hrun
+      next hfit =>
+        have hout := Except.ok.inj hrun
+        cases hout
+        have hfullNonnegative :
+            0 ≤ (Generated.StrictFactorZZ.heuristicPrecisionLoop p.toNat
+              (2 * leading.2 * bound).natAbs hp 1 (by omega) 0).toUInt32.toInt32 :=
+          hnonnegative
+        have hfullFits := nat_toUInt32_toInt32_nonnegative_implies_fits _ hfit
+          hfullNonnegative
+        have hroundtrip :=
+          StrictRecombine.nat_toUInt32_toInt32_nonnegative_and_toNat _ hfullFits
+        have hexponent :
+            (Generated.StrictFactorZZ.heuristicPrecisionLoop p.toNat
+              (2 * leading.2 * bound).natAbs hp 1 (by omega) 0).toUInt32.toInt32.toNatClampNeg =
+              Generated.StrictFactorZZ.heuristicPrecisionLoop p.toNat
+                (2 * leading.2 * bound).natAbs hp 1 (by omega) 0 := by
+          rw [← Int32.toNatClampNeg_toInt64]
+          exact hroundtrip.2
+        rw [show (2 * (if leading.2 < 0 then -leading.2 else leading.2) *
+            bound).natAbs = (2 * leading.2 * bound).natAbs by simp [hsign]]
+        rw [hexponent]
+        exact heuristicPrecisionLoop_pow_gt p.toNat
+          (2 * leading.2 * bound).natAbs hp 1 (by omega) 0 (by simp)
+      next => contradiction
+  next => contradiction
 
 open CLPoly.Math
 
@@ -2167,6 +2333,103 @@ theorem selectionHenselFactors_liveRecoveryPrecision
         quotient.leadingCoeff * divisor.coeff degree := by simp
   rw [htargetCoeff]
   exact lt_of_le_of_lt hle hlarge
+
+/-- Any concrete modulus that exceeds the Mignotte target computed by the
+generated helper supplies the same live coefficient-recovery margin.  This
+form is used for the positive explicit-exponent branch of `__lll_factorize`.-/
+theorem liveRecoveryPrecision_of_generated_mignotte_lt
+    (f : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (modulus : Nat)
+    (hlarge : ∀ bound,
+      Generated.StrictHensel.__mignotte_bound_upoly_raw_ir f = .ok bound →
+      (2 * (if leading.2 < 0 then -leading.2 else leading.2) * bound).natAbs <
+        modulus) :
+    LiveRecoveryPrecision modulus f := by
+  have hsourceNe : SparsePolyZZ.toPoly f ≠ 0 := by
+    intro hzero
+    have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f
+      hcanonical hnonempty
+    rw [hzero] at hhead
+    exact hcanonical.2 f[0] (Array.getElem_mem_toList hnonempty)
+      (by simpa using hhead.symm)
+  have hsourceLeading : (SparsePolyZZ.toPoly f).leadingCoeff = leading.2 := by
+    have hfront : f[0] = leading := by
+      rw [Array.getElem?_eq_getElem hnonempty] at hleading
+      exact Option.some.inj hleading
+    rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
+      hnonempty, hfront]
+  rcases StrictRecombine.mignotteBoundRaw_bounds_divisor f hcanonical
+      hnonempty hdegree (1 : Polynomial Int) hsourceNe (one_dvd _) with
+    ⟨bound, hboundRun, hboundNonnegative, hboundOne⟩
+  have hboundPositive : 1 ≤ bound := by
+    have hone := hboundOne 0
+    simpa using hone
+  have htarget := hlarge bound hboundRun
+  have htargetForm : leading.2.natAbs * 2 * bound.natAbs < modulus := by
+    have habs : (if leading.2 < 0 then -leading.2 else leading.2).natAbs =
+        leading.2.natAbs := by
+      split <;> simp_all [Int.natAbs_neg]
+    rw [Int.natAbs_mul, Int.natAbs_mul, habs] at htarget
+    norm_num at htarget
+    simpa [Nat.mul_assoc, Nat.mul_left_comm, Nat.mul_comm] using htarget
+  have hleadingBound :
+      (SparsePolyZZ.toPoly f).leadingCoeff.natAbs * 2 < modulus := by
+    rw [hsourceLeading]
+    have hscale : leading.2.natAbs * 2 ≤
+        leading.2.natAbs * 2 * bound.natAbs := by
+      have hboundNat : 1 ≤ bound.natAbs := by
+        have habsInt : (bound.natAbs : Int) = bound := by
+          exact Int.natAbs_of_nonneg hboundNonnegative
+        rw [← habsInt] at hboundPositive
+        exact_mod_cast hboundPositive
+      simpa using Nat.mul_le_mul_left (leading.2.natAbs * 2) hboundNat
+    exact lt_of_le_of_lt hscale htargetForm
+  refine ⟨hleadingBound, ?_⟩
+  intro divisor quotient hfactor hdivisorNe degree
+  rcases StrictRecombine.mignotteBoundRaw_bounds_divisor f hcanonical
+      hnonempty hdegree divisor hsourceNe
+      (hfactor ▸ dvd_mul_right divisor quotient) with
+    ⟨divisorBound, hdivisorBoundRun, hdivisorBoundNonnegative,
+      hdivisorBound⟩
+  have hsameBound : divisorBound = bound := by
+    rw [hboundRun] at hdivisorBoundRun
+    exact (Except.ok.inj hdivisorBoundRun).symm
+  subst divisorBound
+  have hcoefficient := hdivisorBound degree
+  have hleadingScaled :
+      (leading.2 * divisor.coeff degree).natAbs * 2 < modulus := by
+    rw [Int.natAbs_mul]
+    have hcoefficientNat : (divisor.coeff degree).natAbs ≤ bound.natAbs := by
+      have habsInt : (bound.natAbs : Int) = bound := by
+        exact Int.natAbs_of_nonneg hboundNonnegative
+      rw [← habsInt] at hcoefficient
+      exact_mod_cast hcoefficient
+    have hle : leading.2.natAbs * (divisor.coeff degree).natAbs * 2 ≤
+        leading.2.natAbs * 2 * bound.natAbs := by
+      simpa [Nat.mul_assoc, Nat.mul_left_comm, Nat.mul_comm] using
+        Nat.mul_le_mul_left (leading.2.natAbs * 2) hcoefficientNat
+    exact lt_of_le_of_lt hle htargetForm
+  have hsourceLeadingFactor : leading.2 =
+      divisor.leadingCoeff * quotient.leadingCoeff := by
+    rw [← hsourceLeading, hfactor, Polynomial.leadingCoeff_mul]
+  have hdivisorLeadingAbs : 0 < divisor.leadingCoeff.natAbs :=
+    Int.natAbs_pos.mpr (Polynomial.leadingCoeff_ne_zero.mpr hdivisorNe)
+  have hle : (quotient.leadingCoeff * divisor.coeff degree).natAbs * 2 ≤
+      (leading.2 * divisor.coeff degree).natAbs * 2 := by
+    rw [hsourceLeadingFactor, Int.natAbs_mul, Int.natAbs_mul, Int.natAbs_mul]
+    have hbase := Nat.le_mul_of_pos_left
+      (quotient.leadingCoeff.natAbs * (divisor.coeff degree).natAbs)
+      hdivisorLeadingAbs
+    have hscaled := Nat.mul_le_mul_right 2 hbase
+    simpa [Nat.mul_assoc, Nat.mul_left_comm, Nat.mul_comm] using hscaled
+  have htargetCoeff :
+      (Polynomial.C quotient.leadingCoeff * divisor).coeff degree =
+        quotient.leadingCoeff * divisor.coeff degree := by simp
+  rw [htargetCoeff]
+  exact lt_of_le_of_lt hle hleadingScaled
 
 /-- The exact selected product and the exact physical complement computed by
 `removeCombination` are coprime at the selected prime after the source-leading
@@ -4440,9 +4703,138 @@ theorem ZassenhausTerminalCertificate.output_irreducible
   exact certificate.resultIrreducible.finishZassenhaus
     (fun _hnonempty hdegree => certificate.source_irreducible hdegree)
 
+/-- End-to-end correctness of one concrete Hensel execution followed by an
+accepted full-cardinality concrete van-Hoeij execution.  This is the exact
+non-safety-net branch used by `__lll_factorize_raw_ir`. -/
+theorem selectionHensel_vanHoeij_equal_cardinality_refines_FactorZZCorrect
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {henselOutput : Array SparsePolyZZ × ZZ}
+    {output : Array SparsePolyZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget henselOutput)
+    (hfits : henselOutput.1.size ≤ 2 ^ 31)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (get_deg f).toNatClampNeg)
+    (hlength : output.size = henselOutput.1.size)
+    (hrun : Generated.StrictRecombine.__vanhoeij_recombine_raw_ir
+      StrictRecombine.concreteVanHoeijRawOps
+      StrictRecombine.concreteVanHoeijTermination f henselOutput.1
+      henselOutput.2 hdegree = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  rcases selectionHenselFactors_liveProduct hcount hp2 hfactors
+      hleadingSemantic hselection hentry with
+    ⟨exponent, hmodulus, productState⟩
+  have hirreducible := selectionHenselFactors_mod_irreducible hcount hp2
+    hfactors hleadingSemantic hselection hentry
+  have hleading := hselection.goodPrime.lc_nonzero
+  have hrun' : Generated.StrictRecombine.__vanhoeij_recombine_raw_ir
+      StrictRecombine.concreteVanHoeijRawOps
+      StrictRecombine.concreteVanHoeijTermination f henselOutput.1
+      (((selection.prime.toNat ^ exponent : Nat) : ZZ)) hdegree =
+        .ok output := by
+    simpa [hmodulus] using hrun
+  have harrayIrreducible :=
+    concreteVanHoeij_equal_cardinality_factorArrayIrreducible productState
+      hdegree hcanonical hnonempty hprimitive hleading hfits hirreducible
+      hlength hrun'
+  have hproduct :=
+    StrictRecombine.__vanhoeij_recombine_raw_ir_product_associated
+      StrictRecombine.concreteVanHoeijRawOps
+      StrictRecombine.concreteVanHoeijTermination f henselOutput.1
+      henselOutput.2 hdegree hcanonical hprimitive output hrun
+  constructor
+  · simpa [StrictRecombine.factorArrayProduct] using hproduct
+  · intro factor hfactor
+    rcases List.mem_map.mp hfactor with ⟨physical, hphysical, rfl⟩
+    exact harrayIrreducible physical hphysical
+
 /-- End-to-end correctness of the concrete full-precision Hensel followed by
 the literal generated Zassenhaus recombination entry.  Both product recovery
 and irreducibility refer to the same returned physical array. -/
+theorem selectionHensel_zassenhausRecombine_refines_FactorZZCorrect_of_recovery
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32}
+    {henselOutput : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget henselOutput)
+    (hrecovery : ∀ exponent,
+      henselOutput.2 =
+          ((selection.prime.toNat ^ exponent : Nat) : Int) →
+        LiveRecoveryPrecision (selection.prime.toNat ^ exponent) f)
+    (hfits : henselOutput.1.size ≤ 2 ^ 31)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.zassenhausRecombine
+      StrictRecombine.concreteZassenhausTermination f henselOutput.1
+        henselOutput.2 = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  have hsize := selectionHenselFactors_pointwise_associated hcount hp2
+    hfactors hleadingSemantic hselection hentry
+  have hlifted : ¬henselOutput.1.size ≤ 1 := by omega
+  rcases selectionHenselFactors_liveProduct hcount hp2 hfactors
+      hleadingSemantic hselection hentry with
+    ⟨exponent, hmodulus, productState⟩
+  have activeState := selectionHenselFactors_liveActive hcount hp2 hfactors
+    hleadingSemantic hselection hentry hfits
+  have precision := hrecovery exponent hmodulus
+  have hloopRun : Generated.StrictRecombine.zassenhausLoop
+      StrictRecombine.concreteZassenhausTermination
+      (((selection.prime.toNat ^ exponent : Nat) : ZZ)) henselOutput.1 f #[] 1
+      (by omega) = .ok output := by
+    unfold Generated.StrictRecombine.zassenhausRecombine at hrun
+    rw [if_neg hlifted] at hrun
+    simpa [hmodulus] using hrun
+  rcases zassenhausLoop_live_terminal selection.prime.toNat exponent
+      henselOutput.1 f #[] 1 (by omega) hcanonical hnonempty
+      hprimitive hselection.goodPrime.lc_nonzero
+      hselection.goodPrime.sqfree activeState productState precision
+      FactorArrayIrreducible.empty
+      (StrictRecombine.SmallerZassenhausScansExhausted.one f henselOutput.1
+        (((selection.prime.toNat ^ exponent : Nat) : ZZ))) with
+    ⟨terminalOutput, hterminalRun, hterminalCertificate⟩
+  have houtputEq : output = terminalOutput :=
+    Except.ok.inj (hloopRun.symm.trans hterminalRun)
+  subst terminalOutput
+  rcases hterminalCertificate with ⟨certificate⟩
+  refine ⟨?_, ?_⟩
+  · exact StrictRecombine.zassenhausRecombine_toPoly_product_associated
+      StrictRecombine.concreteZassenhausTermination f henselOutput.1 output
+      henselOutput.2 hcanonical hprimitive hrun
+  · intro factor hfactor
+    rcases List.mem_map.mp hfactor with ⟨physical, hphysical, rfl⟩
+    exact certificate.output_irreducible physical hphysical
+
+/-- Default-Mignotte specialization used by the literal second Hensel call
+whose source argument is zero. -/
 theorem selectionHensel_zassenhausRecombine_refines_FactorZZCorrect
     {termination : Generated.StrictHensel.DivmodTermination}
     {f : SparsePolyZZ} {selection : PrimeSelectionResult}
@@ -4470,42 +4862,308 @@ theorem selectionHensel_zassenhausRecombine_refines_FactorZZCorrect
         henselOutput.2 = .ok output) :
     FactorZZCorrect (SparsePolyZZ.toPoly f)
       (output.toList.map SparsePolyZZ.toPoly) := by
-  have hsize := selectionHenselFactors_pointwise_associated hcount hp2
-    hfactors hleadingSemantic hselection hentry
-  have hlifted : ¬henselOutput.1.size ≤ 1 := by omega
-  rcases selectionHenselFactors_liveProduct hcount hp2 hfactors
-      hleadingSemantic hselection hentry with
-    ⟨exponent, hmodulus, productState⟩
-  have activeState := selectionHenselFactors_liveActive hcount hp2 hfactors
-    hleadingSemantic hselection hentry hfits
-  have precision := selectionHenselFactors_liveRecoveryPrecision hentry
-    hcanonical hnonempty hdegree leading hleading exponent hmodulus
-  have hloopRun : Generated.StrictRecombine.zassenhausLoop
-      StrictRecombine.concreteZassenhausTermination
-      (((selection.prime.toNat ^ exponent : Nat) : ZZ)) henselOutput.1 f #[] 1
-      (by omega) = .ok output := by
-    unfold Generated.StrictRecombine.zassenhausRecombine at hrun
-    rw [if_neg hlifted] at hrun
-    simpa [hmodulus] using hrun
-  rcases zassenhausLoop_live_terminal selection.prime.toNat exponent
-      henselOutput.1 f #[] 1 (by omega) hcanonical hnonempty
-      hprimitive hselection.goodPrime.lc_nonzero
-      hselection.goodPrime.sqfree activeState productState precision
-      FactorArrayIrreducible.empty
-      (StrictRecombine.SmallerZassenhausScansExhausted.one f henselOutput.1
-        (((selection.prime.toNat ^ exponent : Nat) : ZZ))) with
-    ⟨terminalOutput, hterminalRun, hterminalCertificate⟩
-  have houtputEq : output = terminalOutput :=
-    Except.ok.inj (hloopRun.symm.trans hterminalRun)
-  subst terminalOutput
-  rcases hterminalCertificate with ⟨certificate⟩
-  refine ⟨?_, ?_⟩
-  · exact StrictRecombine.zassenhausRecombine_toPoly_product_associated
-      StrictRecombine.concreteZassenhausTermination f henselOutput.1 output
-      henselOutput.2 hcanonical hprimitive hrun
-  · intro factor hfactor
-    rcases List.mem_map.mp hfactor with ⟨physical, hphysical, rfl⟩
-    exact certificate.output_irreducible physical hphysical
+  apply selectionHensel_zassenhausRecombine_refines_FactorZZCorrect_of_recovery
+    hcount hp2 hfactors hleadingSemantic hselection hentry
+    (fun exponent hmodulus =>
+      selectionHenselFactors_liveRecoveryPrecision hentry hcanonical
+    hnonempty hdegree leading hleading exponent hmodulus)
+    hfits hcanonical hprimitive hnonempty hdegree leading hleading output hrun
+
+/-- The full-precision first-pass branch needs no semantic recovery oracle:
+the generated heuristic loop crosses its own Mignotte target, and the actual
+generated Hensel loop returns a prime power beyond the corresponding explicit
+target. -/
+theorem heuristic_full_hensel_liveRecoveryPrecision
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aH aMig : Int32} {output : Array SparsePolyZZ × ZZ}
+    (r : Int32)
+    (hheuristic :
+      Generated.StrictFactorZZ.__heuristic_starting_precision_raw_ir f r p =
+        .ok (aH, aMig))
+    (hfull : aMig ≤ aH)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f factors p aH
+      output)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (exponent : Nat)
+    (houtput : output.2 = ((p.toNat ^ exponent : Nat) : Int)) :
+    LiveRecoveryPrecision (p.toNat ^ exponent) f := by
+  have hequal : aH = aMig := by
+    have hle := heuristic_starting_precision_first_le_second f r p aH aMig
+      hheuristic
+    cases aH with
+    | ofUInt32 aHUnsigned =>
+      cases aMig with
+      | ofUInt32 aMigUnsigned =>
+        cases aHUnsigned with
+        | ofBitVec aHBits =>
+          cases aMigUnsigned with
+          | ofBitVec aMigBits =>
+            congr 3
+            apply BitVec.eq_of_toInt_eq
+            rw [Int32.le_iff_toInt_le] at hle hfull
+            exact le_antisymm hle hfull
+  by_cases hzero : aH = 0
+  · have hentryZero : StrictHensel.HenselLiftEntryCorrect termination f
+        factors p 0 output := by simpa [hzero] using hentry
+    exact selectionHenselFactors_liveRecoveryPrecision hentryZero hcanonical
+      hnonempty hdegree leading hleading exponent houtput
+  · have hpositive : 0 < aH := by
+      rcases hentry with
+        ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
+          htarget, hadjust, hsemantic, hlift, hliftedOneHead, hextract,
+          hnormalize, houtputM, houtputCanonical, houtputOneHead⟩
+      cases htarget with
+      | mignotte sourceLeading htargetZero hsourceLeading =>
+          exact False.elim (hzero htargetZero)
+      | explicit htargetPositive => exact htargetPositive
+    have hnonnegativeMig : 0 ≤ aMig := by
+      rw [← hequal]
+      exact Int32.le_of_lt hpositive
+    have hsourceNe : SparsePolyZZ.toPoly f ≠ 0 := by
+      intro hsourceZero
+      have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f
+        hcanonical hnonempty
+      rw [hsourceZero] at hhead
+      exact hcanonical.2 f[0] (Array.getElem_mem_toList hnonempty)
+        (by simpa using hhead.symm)
+    rcases StrictRecombine.mignotteBoundRaw_bounds_divisor f hcanonical
+        hnonempty hdegree (1 : Polynomial Int) hsourceNe (one_dvd _) with
+      ⟨bound, hboundRun, _hboundNonnegative, _hboundOne⟩
+    have hheuristicLarge := heuristic_starting_precision_full_pow_gt
+      f r p aH aMig leading bound hleading hboundRun hheuristic
+        hnonnegativeMig
+    have htargetNonnegative : ∀ target,
+        StrictHensel.HenselLiftTargetCorrect f p aH target → 0 ≤ target := by
+      intro target htarget
+      cases htarget with
+      | mignotte sourceLeading htargetZero hsourceLeading =>
+          exact False.elim (hzero htargetZero)
+      | explicit htargetPositive =>
+          have honeNat : 1 ≤ p.toNat ^ aH.toNatClampNeg :=
+            Nat.one_le_pow _ p.toNat (Fact.out : Nat.Prime p.toNat).pos
+          have honeInt : (1 : Int) ≤
+              ((p.toNat ^ aH.toNatClampNeg : Nat) : Int) := by
+            exact_mod_cast honeNat
+          change 0 ≤ ((p.toNat ^ aH.toNatClampNeg : Nat) : Int) - 1
+          omega
+    rcases hentry.outputModulus_gt_target htargetNonnegative with
+      ⟨target, htarget, htargetLt⟩
+    have hpowerLeOutput :
+        ((p.toNat ^ aH.toNatClampNeg : Nat) : Int) ≤ output.2 := by
+      cases htarget with
+      | mignotte sourceLeading htargetZero hsourceLeading =>
+          exact False.elim (hzero htargetZero)
+      | explicit htargetPositive =>
+          change ((p.toNat ^ aH.toNatClampNeg : Nat) : Int) - 1 <
+            output.2 at htargetLt
+          omega
+    have hpowerLe : p.toNat ^ aMig.toNatClampNeg ≤ p.toNat ^ exponent := by
+      rw [← hequal]
+      rw [houtput] at hpowerLeOutput
+      exact_mod_cast hpowerLeOutput
+    apply liveRecoveryPrecision_of_generated_mignotte_lt f hcanonical hnonempty
+      hdegree leading hleading (p.toNat ^ exponent)
+    intro candidateBound hcandidateBoundRun
+    have hsame : candidateBound = bound := by
+      rw [hboundRun] at hcandidateBoundRun
+      exact (Except.ok.inj hcandidateBoundRun).symm
+    subst candidateBound
+    exact hheuristicLarge.trans_le hpowerLe
+
+/-- Correctness of the literal generated `__lll_factorize_raw_ir` controller
+with concrete recombination callees.  The Hensel premises certify only arrays
+actually returned by the supplied raw Hensel function.  Full-precision
+coefficient recovery is derived from the generated heuristic and Hensel
+executions rather than supplied as a semantic premise. -/
+theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
+    (henselLift : SparsePolyZZ → Array SparsePolyZp → UInt64 → Int32 →
+      RawExec (Array SparsePolyZZ × ZZ))
+    (f : SparsePolyZZ) (selection : PrimeSelectionResult)
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : ∀ aTarget henselOutput,
+      henselLift f selection.factors selection.prime aTarget =
+          .ok henselOutput →
+        StrictHensel.HenselLiftEntryCorrect
+          StrictHensel.concreteDivmodTermination f selection.factors
+          selection.prime aTarget henselOutput)
+    (hfactorFits : selection.factors.size < 2 ^ 31)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size) (hcellDegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictFactorZZ.__lll_factorize_raw_ir
+      (concreteRecombineFactorZZRawOps (fun _ _ => .error .assertionFailure)
+        henselLift) f selection.factors selection.prime = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  have henselSize : ∀ aTarget henselOutput,
+      henselLift f selection.factors selection.prime aTarget =
+          .ok henselOutput →
+        henselOutput.1.size = selection.factors.size := by
+    intro aTarget henselOutput hh
+    exact (selectionHenselFactors_pointwise_associated hcount hp2 hfactors
+      hleadingSemantic hselection (hentry aTarget henselOutput hh)).1.symm
+  have vanSize : ∀ lifted modulus result,
+      concreteVanHoeijRecombine f lifted modulus = .ok result →
+      0 < lifted.size → result.size ≤ lifted.size := by
+    intro lifted modulus result hv hlifted
+    rcases concreteVanHoeijRecombine_success f lifted result modulus hv with
+      ⟨hdegree, hraw⟩
+    exact StrictRecombine.__vanhoeij_recombine_raw_ir_size_le
+      StrictRecombine.concreteVanHoeijRawOps
+      StrictRecombine.concreteVanHoeijTermination f lifted modulus hdegree
+      hlifted result hraw
+  have vanCorrect : ∀ aTarget henselOutput result,
+      henselLift f selection.factors selection.prime aTarget =
+          .ok henselOutput →
+      concreteVanHoeijRecombine f henselOutput.1 henselOutput.2 = .ok result →
+      result.size = selection.factors.size →
+      FactorZZCorrect (SparsePolyZZ.toPoly f)
+        (result.toList.map SparsePolyZZ.toPoly) := by
+    intro aTarget henselOutput result hh hv hsize
+    rcases concreteVanHoeijRecombine_success f henselOutput.1 result
+        henselOutput.2 hv with ⟨hdegree, hraw⟩
+    apply selectionHensel_vanHoeij_equal_cardinality_refines_FactorZZCorrect
+      hcount hp2 hfactors hleadingSemantic hselection
+      (hentry aTarget henselOutput hh) (by rw [henselSize aTarget henselOutput hh]; omega)
+      hcanonical hprimitive hnonempty hdegree
+      (by rw [henselSize aTarget henselOutput hh]; exact hsize) hraw
+  have zassenhausCorrect : ∀ aTarget henselOutput result,
+      henselLift f selection.factors selection.prime aTarget =
+          .ok henselOutput →
+      (∀ exponent, henselOutput.2 =
+          ((selection.prime.toNat ^ exponent : Nat) : Int) →
+        LiveRecoveryPrecision (selection.prime.toNat ^ exponent) f) →
+      concreteZassenhausRecombine f henselOutput.1 henselOutput.2 = .ok result →
+      FactorZZCorrect (SparsePolyZZ.toPoly f)
+        (result.toList.map SparsePolyZZ.toPoly) := by
+    intro aTarget henselOutput result hh hrecovery hz
+    apply selectionHensel_zassenhausRecombine_refines_FactorZZCorrect_of_recovery
+      hcount hp2 hfactors hleadingSemantic hselection
+      (hentry aTarget henselOutput hh) hrecovery
+      (by rw [henselSize aTarget henselOutput hh]; omega) hcanonical hprimitive
+      hnonempty hcellDegree leading hleading result
+    exact hz
+  unfold Generated.StrictFactorZZ.__lll_factorize_raw_ir at hrun
+  simp only [concreteRecombineFactorZZRawOps] at hrun
+  cases hheuristic :
+      Generated.StrictFactorZZ.__heuristic_starting_precision_raw_ir f
+        selection.factors.size.toUInt32.toInt32 selection.prime with
+  | error fault => rw [hheuristic] at hrun; contradiction
+  | ok precision =>
+    rcases precision with ⟨aH, aMig⟩
+    rw [hheuristic] at hrun
+    cases hlift : henselLift f selection.factors selection.prime aH with
+    | error fault => simp [hlift] at hrun
+    | ok henselH =>
+      rcases henselH with ⟨liftedH, mH⟩
+      simp only [hlift] at hrun
+      cases hvan : concreteVanHoeijRecombine f liftedH mH with
+      | error fault => simp [hvan] at hrun
+      | ok result =>
+        simp only [hvan] at hrun
+        by_cases hlow :
+            (decide (result.size.toUInt32.toInt32 <
+                selection.factors.size.toUInt32.toInt32) &&
+              decide (aH < aMig)) = true
+        ·
+          rw [if_pos hlow] at hrun
+          cases hliftMig : henselLift f selection.factors selection.prime 0 with
+          | error fault => simp [hliftMig] at hrun
+          | ok henselMig =>
+            rcases henselMig with ⟨liftedMig, mMig⟩
+            simp only [hliftMig] at hrun
+            cases hvanMig : concreteVanHoeijRecombine f liftedMig mMig with
+            | error fault => simp [hvanMig] at hrun
+            | ok resultMig =>
+              simp only [hvanMig] at hrun
+              by_cases hsafety :
+                  Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir
+                    resultMig.size selection.factors.size true = true
+              · rw [if_pos hsafety] at hrun
+                exact zassenhausCorrect 0 (liftedMig, mMig) output hliftMig
+                  (fun exponent hmodulus =>
+                    selectionHenselFactors_liveRecoveryPrecision
+                      (hentry 0 (liftedMig, mMig) hliftMig) hcanonical
+                      hnonempty hcellDegree leading hleading exponent hmodulus)
+                  hrun
+              · rw [if_neg hsafety] at hrun
+                have hout := Except.ok.inj hrun
+                subst output
+                have hliftedSize := henselSize 0 (liftedMig, mMig) hliftMig
+                have hliftedSize' : liftedMig.size = selection.factors.size := by
+                  simpa using hliftedSize
+                have hle := vanSize liftedMig mMig resultMig hvanMig (by
+                  rw [hliftedSize']
+                  omega)
+                have hleFactors : resultMig.size ≤ selection.factors.size :=
+                  hle.trans_eq hliftedSize'
+                have hnotLess : ¬ resultMig.size < selection.factors.size := by
+                  simpa [Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir]
+                    using hsafety
+                exact vanCorrect 0 (liftedMig, mMig) resultMig hliftMig hvanMig
+                  (by omega)
+        · rw [if_neg hlow] at hrun
+          by_cases hsafety :
+              Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir
+                result.size selection.factors.size (aMig ≤ aH) = true
+          · rw [if_pos hsafety] at hrun
+            exact zassenhausCorrect aH (liftedH, mH) output hlift
+              (fun exponent hmodulus =>
+                heuristic_full_hensel_liveRecoveryPrecision
+                  selection.factors.size.toUInt32.toInt32 hheuristic
+                  (by
+                    simp [Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir]
+                      at hsafety
+                    exact hsafety.1)
+                  (hentry aH (liftedH, mH) hlift) hcanonical hnonempty
+                  hcellDegree leading hleading exponent hmodulus) hrun
+          · rw [if_neg hsafety] at hrun
+            have hout := Except.ok.inj hrun
+            subst output
+            have hliftedSize := henselSize aH (liftedH, mH) hlift
+            have hliftedSize' : liftedH.size = selection.factors.size := by
+              simpa using hliftedSize
+            have hle := vanSize liftedH mH result hvan (by
+              rw [hliftedSize']
+              omega)
+            have hleFactors : result.size ≤ selection.factors.size :=
+              hle.trans_eq hliftedSize'
+            have hnotLess : ¬ result.size < selection.factors.size := by
+              by_contra hless
+              have hmachine : result.size.toUInt32.toInt32 <
+                  selection.factors.size.toUInt32.toInt32 := by
+                rw [size_toUInt32_toInt32_lt_iff result.size
+                  selection.factors.size (by omega) hfactorFits]
+                exact hless
+              have hprecision := heuristic_starting_precision_first_le_second
+                f selection.factors.size.toUInt32.toInt32 selection.prime aH
+                aMig hheuristic
+              by_cases hstrict : aH < aMig
+              · have hmachine' : Int32.ofNat result.size <
+                    Int32.ofNat selection.factors.size := by
+                  simpa using hmachine
+                apply hlow
+                simpa [hmachine, hmachine', hstrict]
+              · have hfull : aMig ≤ aH := Int32.not_lt.mp hstrict
+                exact hsafety (by
+                  simp [Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir,
+                    hfull, hless])
+            exact vanCorrect aH (liftedH, mH) result hlift hvan (by omega)
 
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source

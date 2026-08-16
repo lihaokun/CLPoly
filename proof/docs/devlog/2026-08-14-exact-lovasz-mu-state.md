@@ -1979,6 +1979,14 @@ No C++ files changed, so this step has no new C++ b2b change surface.
   generated Hensel entry.  `LiveActiveFactors.removeCombination` proves that
   the actual generated reverse erasure preserves it, using the exact output
   size equation and occurrence membership rather than an abstract subarray.
+- Introduced `LiveHenselProduct`, recording the actual positive exponent, the
+  concrete normalization unit at `p^k`, its concrete reduction at `p`, and
+  both physical active-array product equations.  The units remain existential
+  proof witnesses inside a `Prop`; they are obtained from execution and cannot
+  be used as computational oracles.
+- `selectionHenselFactors_liveProduct` initializes this certificate from the
+  literal Hensel entry, while `primeProductAssociated` exposes exactly the
+  current mod-`p` relation consumed by the live divisor/subset construction.
 - Added `zassenhausLeadingPrune_accepts_live_candidate`.  For an arbitrary
   current active array, pointwise canonical/nonempty/monic cells make the
   literal generated `selectedLeadingProductLoop` accumulate exactly the live

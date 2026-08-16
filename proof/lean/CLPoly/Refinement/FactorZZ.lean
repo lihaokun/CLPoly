@@ -725,6 +725,72 @@ theorem selectionHenselFactors_prime_product_eq_unit_mul_source
   exact ⟨exponent, hexponent, scale, scaleAtPrime, houtput, hscaleUnit,
     hscaleAtPrimeUnit, rfl, hlargeProduct, hprimeProduct⟩
 
+/-- The full-precision algebraic state carried by the real Zassenhaus loop.
+Both product equations refer to the current physical active array.  The two
+scalars are the concrete Hensel normalization unit and its reduction, so this
+certificate does not assert that recombination succeeds. -/
+structure LiveHenselProduct (prime exponent : Nat) (source : SparsePolyZZ)
+    (active : Array SparsePolyZZ) : Prop where
+  exponentPositive : 0 < exponent
+  certificate :
+    ∃ scale : ZMod (prime ^ exponent), ∃ scaleAtPrime : ZMod prime,
+      IsUnit scale ∧ IsUnit scaleAtPrime ∧
+      scaleAtPrime = (scale.val : ZMod prime) ∧
+      (active.toList.map
+        (StrictHensel.toPolyMod (prime ^ exponent))).prod =
+          Polynomial.C scale *
+            StrictHensel.toPolyMod (prime ^ exponent) source ∧
+      (active.toList.map (StrictHensel.toPolyMod prime)).prod =
+        Polynomial.C scaleAtPrime * StrictHensel.toPolyMod prime source
+
+/-- The selected-prime product relation exposed in the orientation used by
+the live divisor-to-subset theorem. -/
+theorem LiveHenselProduct.primeProductAssociated
+    {prime exponent : Nat} {source : SparsePolyZZ}
+    {active : Array SparsePolyZZ}
+    (state : LiveHenselProduct prime exponent source active) :
+    Associated
+      (Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly source))
+      (active.toList.map (StrictHensel.toPolyMod prime)).prod := by
+  rcases state.certificate with
+    ⟨_scale, scaleAtPrime, _hscaleUnit, hscaleAtPrimeUnit,
+      _hscaleAtPrime, _hlargeProduct, hprimeProduct⟩
+  rw [hprimeProduct]
+  exact ((associated_isUnit_mul_left_iff
+    (Polynomial.isUnit_C.mpr hscaleAtPrimeUnit)).mpr
+      (Associated.refl _)).symm
+
+/-- The normalized factors returned by the literal Hensel entry initialize a
+`LiveHenselProduct` at the exact prime power returned by that execution. -/
+theorem selectionHenselFactors_liveProduct
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output) :
+    ∃ exponent : Nat,
+      output.2 = ((selection.prime.toNat ^ exponent : Nat) : Int) ∧
+        LiveHenselProduct selection.prime.toNat exponent f output.1 := by
+  rcases selectionHenselFactors_prime_product_eq_unit_mul_source hcount hp2
+      hfactors hleadingSemantic hselection hentry with
+    ⟨exponent, hexponent, scale, scaleAtPrime, houtput, hscaleUnit,
+      hscaleAtPrimeUnit, hscaleAtPrime, hlargeProduct, hprimeProduct⟩
+  exact ⟨exponent, houtput, {
+    exponentPositive := hexponent
+    certificate := ⟨scale, scaleAtPrime, hscaleUnit, hscaleAtPrimeUnit,
+      hscaleAtPrime, hlargeProduct, hprimeProduct⟩ }⟩
+
 /-- The exact selected product and the exact physical complement computed by
 `removeCombination` are coprime at the selected prime after the source-leading
 scaling used by Zassenhaus.  Their product differs from the squarefree source

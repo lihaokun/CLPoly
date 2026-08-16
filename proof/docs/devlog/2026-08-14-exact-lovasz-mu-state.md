@@ -3077,3 +3077,11 @@ No C++ files changed, so this step has no new C++ regression or b2b change
 surface.  Next, the generated symmetric representative is recovered
 coefficientwise from this exact congruence and the existing Mignotte bounds,
 closing the constant prune and exact-division rejection branches.
+
+`symmetricMod_eq_of_congruent_strict_bound` extends the scalar recovery bridge
+to the situation produced by Hensel uniqueness: the generated scalar input
+need only be congruent to the intended bounded integer at the actual modulus.
+It proves literal recovery with the same closed-left representative argument
+as the polynomial theorem.  The prime-power candidate theorem now also exports
+the equality identifying that modulus with the integer returned by the Hensel
+entry, so subsequent source control-flow rewrites do not assume a modulus.

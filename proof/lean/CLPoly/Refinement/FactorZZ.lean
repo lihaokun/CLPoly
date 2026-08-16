@@ -1089,6 +1089,7 @@ theorem henselCandidate_scaled_eq_divisor_mod_primePower
         candidate.toList).map
           (StrictHensel.toPolyMod selection.prime.toNat)).prod)) :
     ∃ exponent : Nat, 0 < exponent ∧
+      output.2 = ((selection.prime.toNat ^ exponent : Nat) : Int) ∧
       Polynomial.map
         (Int.castRingHom
           (ZMod (selection.prime.toNat ^ exponent)))
@@ -1293,7 +1294,7 @@ theorem henselCandidate_scaled_eq_divisor_mod_primePower
     complementInteger liftedScaled complementScaled divisorScaled
     hproductLifted hproductDivisor hbaseA hbaseB' hcop'
     hleading.1 hleading.2
-  exact ⟨exponent, hexponent, hunique.2⟩
+  exact ⟨exponent, hexponent, houtput, hunique.2⟩
 
 /-- The first scalar-pruning branch of the literal `zassenhausAttempt` cannot
 reject a bounded candidate drawn from the actual normalized Hensel output.

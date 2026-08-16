@@ -11020,6 +11020,43 @@ theorem symmetricMod_eq_of_strict_bound
     polynomial.coeff 0) hpolynomial
   simpa using hcoefficient
 
+/-- Congruent-input form of scalar symmetric recovery.  The generated
+representative is taken from `input`, while the strict half-modulus bound is
+proved for the intended integer `target`. -/
+theorem symmetricMod_eq_of_congruent_strict_bound
+    (input target : Int) (modulus : Nat) (hmodulus : 0 < modulus)
+    (hcongruent : (input : ZMod modulus) = (target : ZMod modulus))
+    (hbound : target.natAbs * 2 < modulus) :
+    ZZ.symmetricMod input (modulus : Int) = target := by
+  have hpolynomial := symmetric_recovery_closed_left
+    (Polynomial.C (ZZ.symmetricMod input (modulus : Int)))
+    (Polynomial.C target) modulus hmodulus
+    (by
+      ext degree
+      by_cases hdegree : degree = 0
+      · subst degree
+        simp only [Polynomial.map_C, Polynomial.coeff_C_zero]
+        exact (symmetricMod_cast modulus hmodulus input).trans hcongruent
+      · rw [Polynomial.map_C, Polynomial.map_C,
+          Polynomial.coeff_C_ne_zero hdegree,
+          Polynomial.coeff_C_ne_zero hdegree])
+    (by
+      intro degree
+      by_cases hdegree : degree = 0
+      · subst degree
+        simpa using symmetricMod_natAbs_mul_two_le input modulus hmodulus
+      · rw [Polynomial.coeff_C_ne_zero hdegree]
+        simp)
+    (by
+      intro degree
+      by_cases hdegree : degree = 0
+      · simpa [hdegree] using hbound
+      · rw [Polynomial.coeff_C_ne_zero hdegree]
+        simpa using hmodulus)
+  have hcoefficient := congrArg
+    (fun polynomial : Polynomial Int => polynomial.coeff 0) hpolynomial
+  simpa using hcoefficient
+
 private theorem foldl_int_coefficient_squares
     (terms : List (UMonomial × Int)) (accumulator : Int) :
     terms.foldl (fun sum term => sum + term.2 * term.2) accumulator =

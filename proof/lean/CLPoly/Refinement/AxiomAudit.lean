@@ -232,6 +232,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.buildCldMatrix_data_rows
 #print axioms Refinement.StrictRecombine.candidateColumnsEqual_true_sound
 #print axioms Refinement.StrictRecombine.candidateColumnsEqual_true_complete
+#print axioms Refinement.StrictRecombine.candidateColumnsEqual_refl
+#print axioms Refinement.StrictRecombine.candidateColumnsEqual_symm
+#print axioms Refinement.StrictRecombine.candidateColumnsEqual_trans
 #print axioms Refinement.StrictRecombine.assignCandidateClass_preserves_representative_sound
 #print axioms Refinement.StrictRecombine.assignCandidateClass_size
 #print axioms Refinement.StrictRecombine.assignCandidateClass_member_provenance

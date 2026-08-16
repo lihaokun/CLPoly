@@ -634,3 +634,28 @@ collection oracle, `sorry`, or custom axiom.
 - Next: carry representative-comparison certificates through the outer
   partition so members of each returned candidate class are proven equal on
   the concrete short rows, then apply CLD/LLL separation.
+
+## Prove generated candidate-column equivalence laws
+
+The executable column comparator now supports the equivalence reasoning needed
+for whole candidate classes:
+
+- `CandidateColumnsValid` records the actual selected-row and factor-column
+  bounds required by the generated array accesses;
+- `candidateColumnsEqual_refl` executes the comparator on one physical column
+  and proves a successful `true` result;
+- `candidateColumnsEqual_symm` derives the reversed generated execution from
+  the exact pointwise meaning of a successful comparison; and
+- `candidateColumnsEqual_trans` composes two successful generated comparisons
+  pointwise and executes the comparator for the outer pair.
+
+These are theorems about the literal generated comparator, not an independently
+postulated equivalence relation.  They use its well-founded short-row suffix
+traversal and introduce no fuel, semantic equivalence oracle, `sorry`, or
+custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: use these laws with class-member provenance to prove pairwise equality
+  for every generated candidate class, then connect that fact to CLD/LLL
+  separation.

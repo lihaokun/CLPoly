@@ -10338,6 +10338,61 @@ theorem candidateColumnsEqual_true_complete
         · rfl
       · rw [dif_neg hindex]
 
+def CandidateColumnsValid
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (factorCount : Nat) : Prop :=
+  ∀ position, position < shortRows.size →
+    let row := shortRows[position]!
+    row < transform.size ∧ factorCount ≤ transform[row]!.size
+
+theorem candidateColumnsEqual_refl
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (factorCount column : Nat)
+    (hvalid : CandidateColumnsValid transform shortRows factorCount)
+    (hcolumn : column < factorCount) :
+    Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      column column 0 = .ok true := by
+  apply candidateColumnsEqual_true_complete
+  intro position hstart hposition
+  rcases hvalid position hposition with ⟨hrow, hrowSize⟩
+  exact ⟨hrow, by omega, by omega, rfl⟩
+
+theorem candidateColumnsEqual_symm
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (left right : Nat)
+    (hrun : Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      left right 0 = .ok true) :
+    Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      right left 0 = .ok true := by
+  have hsound := candidateColumnsEqual_true_sound transform shortRows
+    left right 0 hrun
+  apply candidateColumnsEqual_true_complete
+  intro position hstart hposition
+  rcases hsound position hstart hposition with
+    ⟨hrow, hleft, hright, hequal⟩
+  exact ⟨hrow, hright, hleft, hequal.symm⟩
+
+theorem candidateColumnsEqual_trans
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (left middle right : Nat)
+    (hleft : Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      left middle 0 = .ok true)
+    (hright : Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      middle right 0 = .ok true) :
+    Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      left right 0 = .ok true := by
+  have hleftSound := candidateColumnsEqual_true_sound transform shortRows
+    left middle 0 hleft
+  have hrightSound := candidateColumnsEqual_true_sound transform shortRows
+    middle right 0 hright
+  apply candidateColumnsEqual_true_complete
+  intro position hstart hposition
+  rcases hleftSound position hstart hposition with
+    ⟨hrow, hleftBound, hmiddleBound, hleftEq⟩
+  rcases hrightSound position hstart hposition with
+    ⟨_, _, hrightBound, hrightEq⟩
+  exact ⟨hrow, hleftBound, hrightBound, hleftEq.trans hrightEq⟩
+
 def CandidateClassRepresentativeSound
     (transform : Generated.StrictRecombine.LLLMatrix)
     (shortRows : Array Nat) (representative classId : Nat)

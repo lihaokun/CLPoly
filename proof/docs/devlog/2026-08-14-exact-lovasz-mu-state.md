@@ -3446,6 +3446,7 @@ full Hensel state required by subsequent real candidate executions.
 
 - C++ changes: none, so this step has no new C++ regression or b2b change
   surface.
+
 - Next: lift this preservation theorem through the returned fixed-size scan and
   thread it through the generated Zassenhaus outer recursion; use the recorded
   smaller-scan rejection history to prove every physically pushed factor
@@ -3463,6 +3464,7 @@ than from a separately chosen subset with the same semantic product.
 
 - C++ changes: none, so this step has no new C++ regression or b2b change
   surface.
+
 - Next: carry this certificate and the smaller-scan execution history through
   the complete generated outer loop, proving irreducibility of every factor
   appended by the real extraction branch.
@@ -3709,5 +3711,25 @@ condition.
 - Verification: `CLPoly/Refinement/Recombine.lean` and the complete 3548-job
   `CLPoly.Refinement.AxiomAudit` target pass.  The theorem uses only the
   standard `propext`, `Classical.choice`, and `Quot.sound` foundations.
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+
+## Bound literal candidate-validation output growth
+
+`validateCandidatesLoop_result_size_le` follows every generated validation
+branch and proves that scanning each remaining physical candidate slot can
+append at most one factor.  The successful branch includes the actual modular
+trial product, symmetric recovery, primitive normalization, exact division,
+quotient normalization, consumed marking, and recursive call; rejected,
+unavailable, empty, and trivial candidates append nothing.
+
+`validateCandidates_result_size_le` specializes the bound to the complete
+entry, and `extractAndValidate_result_size_le` composes it with
+`extractCandidates_size_le`.  Consequently, one concrete extraction plus
+validation pass can append no more factors than the number of active lifted
+columns.  This is the execution-level upper bound needed to turn equality in
+the top-level `result.size < r` retry test into a no-aggregation certificate.
+
+- Verification: `CLPoly/Refinement/Recombine.lean` compiles directly.
 - C++ changes: none, so this step has no new C++ regression or b2b change
   surface.

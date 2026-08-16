@@ -39,6 +39,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.scaleCoeffs_degrees_below
 #print axioms Refinement.StrictHensel.modCoeffOutput_preserves_one_head
 #print axioms Refinement.StrictHensel.modCoeffOutput_maps_head
+#print axioms Refinement.StrictHensel.modCoeffOutput_coefficientsReduced
 #print axioms Refinement.StrictHensel.henselHCorrection_preserves_one_head
 #print axioms Refinement.StrictHensel.get_deg_toInt_eq_head
 #print axioms Refinement.StrictHensel.divmodLoop_remainder_degreesBound
@@ -52,6 +53,8 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.henselFactorRangeProduct_monic
 #print axioms Refinement.StrictHensel.henselTreeStoreNodeRawIR_canonical_oneHead
 #print axioms Refinement.StrictHensel.HasPhysicalOneHead.of_algebraEq
+#print axioms Refinement.StrictHensel.hasPhysicalOneHead_of_reduced_monic
+#print axioms Refinement.StrictHensel.HenselStepCorrect.gOneHead_of_target
 #print axioms Refinement.StrictHensel.HenselAdjustFirstFactorCorrect.getElem_eq_of_pos
 #print axioms Refinement.StrictHensel.HenselAdjustFirstFactorCorrect.monic_of_pos
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.lower_mono

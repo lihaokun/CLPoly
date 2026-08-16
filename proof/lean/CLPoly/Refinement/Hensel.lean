@@ -24,6 +24,11 @@ noncomputable def toPolyMod (m : Nat) (f : SparsePolyZZ) :
     Polynomial (ZMod m) :=
   Polynomial.map (Int.castRingHom (ZMod m)) (SparsePolyZZ.toPoly f)
 
+/-- Every stored integer coefficient is the canonical nonnegative floor
+remainder for a positive modulus. -/
+def CoefficientsReduced (m : Nat) (f : SparsePolyZZ) : Prop :=
+  ∀ term ∈ f.toList, 0 ≤ term.2 ∧ term.2 < (m : Int)
+
 /-- L2 invariant represented by a concrete C++ Hensel tree node at modulus
 `m`: its two factors multiply to the target and its stored coefficients form
 a Bézout certificate. Both clauses decode arrays to mathematical
@@ -46,8 +51,9 @@ def HenselStepCorrect (f : SparsePolyZZ) (m : Nat)
   toPolyMod m output.t = toPolyMod m input.t ∧
   StrictPolynomialMod.SparsePolyZZCanonical output.g ∧
   StrictPolynomialMod.SparsePolyZZCanonical output.h ∧
-  ∀ head tail, input.h.toList = (head, 1) :: tail → 1 < m →
-    ∃ suffix, output.h.toList = (head, 1) :: suffix
+  (∀ head tail, input.h.toList = (head, 1) :: tail → 1 < m →
+    ∃ suffix, output.h.toList = (head, 1) :: suffix) ∧
+  CoefficientsReduced (m ^ 2) output.g
 
 @[simp] theorem toPolyMod_empty (m : Nat) :
     toPolyMod m (#[] : SparsePolyZZ) = 0 := by
@@ -1226,6 +1232,26 @@ theorem modCoeffOutput_canonical (f : SparsePolyZZ) (m : Int)
       subst term
       simpa using hnonzero
     next hzero => contradiction
+
+/-- Every coefficient retained by the generated floor-remainder/filter loop
+lies in the exact canonical interval of its positive natural modulus. -/
+theorem modCoeffOutput_coefficientsReduced
+    (f : SparsePolyZZ) (m : Nat) (hm : 0 < m) :
+    CoefficientsReduced m
+      (Generated.StrictHensel.modCoeffOutput f (m : Int)) := by
+  intro term hterm
+  rw [Generated.StrictHensel.modCoeffOutput, Array.toList_filterMap,
+    List.mem_filterMap] at hterm
+  rcases hterm with ⟨source, _hsource, houtput⟩
+  dsimp only at houtput
+  split at houtput
+  next hnonzero =>
+    simp only [Option.some.injEq] at houtput
+    subst term
+    exact ⟨ZZ.fdiv_r_nonneg source.2 source.2 (m : Int)
+        (by exact_mod_cast hm),
+      ZZ.fdiv_r_lt source.2 source.2 (m : Int) (by exact_mod_cast hm)⟩
+  next hzero => contradiction
 
 /-- The generated coefficient-scaling range-for preserves the canonical
 sparse representation when its integer scalar is nonzero. -/
@@ -3914,8 +3940,9 @@ theorem __hensel_step_factor_phase_raw_ir_refines
       factorNode.s = node.s ∧ factorNode.t = node.t ∧
       StrictPolynomialMod.SparsePolyZZCanonical factorNode.g ∧
       StrictPolynomialMod.SparsePolyZZCanonical factorNode.h ∧
-      ∀ head tail, node.h.toList = (head, 1) :: tail → 1 < m →
-        ∃ suffix, factorNode.h.toList = (head, 1) :: suffix := by
+      (∀ head tail, node.h.toList = (head, 1) :: tail → 1 < m →
+        ∃ suffix, factorNode.h.toList = (head, 1) :: suffix) ∧
+      CoefficientsReduced (m ^ 2) factorNode.g := by
   let gh := Generated.StrictHensel.pairVecMulHeapLoop
     (Generated.StrictHensel.pairVecMulProducts node.g node.h) #[]
   let difference := Generated.StrictHensel.pairVecSubLoop f gh 0 0 #[]
@@ -4027,8 +4054,15 @@ theorem __hensel_step_factor_phase_raw_ir_refines
           (Generated.StrictHensel.scaleCoeffs qr.2 (m : Int)) 0 0 #[])
         (m ^ 2 : Int) = .ok hNew by simpa [hRaw] using hhNewRun]
     rfl
-  · exact ⟨hsemantic.1, hsemantic.2.1, hsemantic.2.2, rfl, rfl,
-      hcanonical.1, hcanonical.2, hhPhysical⟩
+  · have hgNewEq : gNew = Generated.StrictHensel.modCoeffOutput gRaw
+        (m ^ 2 : Int) := by
+      simpa only [Generated.StrictHensel.__upoly_mod_coeff_raw_ir] using
+        (Except.ok.inj hgNewRun).symm
+    have hgReduced : CoefficientsReduced (m ^ 2) gNew := by
+      rw [hgNewEq]
+      exact modCoeffOutput_coefficientsReduced gRaw (m ^ 2) (pow_pos hm 2)
+    exact ⟨hsemantic.1, hsemantic.2.1, hsemantic.2.2, rfl, rfl,
+      hcanonical.1, hcanonical.2, hhPhysical, hgReduced⟩
 
 set_option maxHeartbeats 0 in
 /-- The complete generated Bezout phase refines its L2 certificate invariant.
@@ -4314,7 +4348,8 @@ theorem __hensel_step_raw_ir_refines
       hinvariant.factorDivmodValid
       hinvariant.inputInvariant with
     ⟨factorNode, hfactorRun, hfactorProduct, hgPreserved, hhPreserved,
-      hsUnchanged, htUnchanged, hgCanonical, hhCanonical, hhPhysical⟩
+      hsUnchanged, htUnchanged, hgCanonical, hhCanonical, hhPhysical,
+      hgReduced⟩
   have hready := hinvariant.bezoutReady factorNode hfactorRun
   have hfactorBezout :
       toPolyMod m factorNode.s * toPolyMod m factorNode.g +
@@ -4360,9 +4395,12 @@ theorem __hensel_step_raw_ir_refines
     constructor
     · rw [hhUnchanged]
       exact hhCanonical
-    · intro head tail hhList hmOne
-      rw [hhUnchanged]
-      exact hhPhysical head tail hhList hmOne
+    · constructor
+      · intro head tail hhList hmOne
+        rw [hhUnchanged]
+        exact hhPhysical head tail hhList hmOne
+      · rw [hgUnchanged]
+        exact hgReduced
 
 /-- The first contiguous source phase has a genuine raw-to-safe execution
 bridge.  Its only possible source assertion is the modular division by `h`;
@@ -4653,6 +4691,194 @@ first array position.  This representation-level property is intentionally
 stronger than mathematical monicity of its decoded polynomial. -/
 def HasPhysicalOneHead (factor : SparsePolyZZ) : Prop :=
   ∃ head tail, factor.toList = (head, 1) :: tail
+
+private theorem henselSparseZZTail_coeff_zero_above
+    (degree : Nat) (terms : List (UMonomial × Int))
+    (hbelow : ∀ term ∈ terms, term.1.deg < degree) :
+    ((terms.map fun term =>
+      Polynomial.monomial term.1.deg term.2).sum).coeff degree = 0 := by
+  induction terms with
+  | nil => simp
+  | cons term terms ih =>
+      have hterm := hbelow term (by simp)
+      have htail : ∀ item ∈ terms, item.1.deg < degree := by
+        intro item hitem
+        exact hbelow item (by simp [hitem])
+      simp [Polynomial.coeff_monomial, ne_of_lt hterm, ih htail]
+
+private theorem henselSparseZZ_chain_head_gt_all
+    (head : UMonomial × Int) (rest : List (UMonomial × Int))
+    (hchain : List.IsChain
+      (fun a b : UMonomial × Int => a.1.deg > b.1.deg) (head :: rest)) :
+    ∀ item ∈ rest, item.1.deg < head.1.deg := by
+  induction rest generalizing head with
+  | nil => simp
+  | cons next rest ih =>
+      rw [List.isChain_cons_cons] at hchain
+      intro item hitem
+      rcases List.mem_cons.mp hitem with rfl | htail
+      · exact hchain.1
+      · exact Nat.lt_trans (ih next hchain.2 item htail) hchain.1
+
+/-- The first stored coefficient of a nonempty canonical sparse integer
+factor is its mathematical leading coefficient. -/
+theorem henselSparsePolyZZ_leadingCoeff_eq_head (poly : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical poly)
+    (hnonempty : 0 < poly.size) :
+    (SparsePolyZZ.toPoly poly).leadingCoeff = poly[0].2 := by
+  have hlistNonempty : poly.toList ≠ [] := by
+    intro hempty
+    have hlength := congrArg List.length hempty
+    have hsizeZero : poly.size = 0 := by simpa using hlength
+    omega
+  obtain ⟨head, rest, hlist⟩ := List.exists_cons_of_ne_nil hlistNonempty
+  have hheadEq : head = poly[0] := by
+    have hget := Array.getElem_toList hnonempty
+    simpa [hlist] using hget
+  have hheadMem : head ∈ poly.toList := by simp [hlist]
+  have hheadNonzero : head.2 ≠ 0 := hcanonical.2 head hheadMem
+  have hchain : List.IsChain
+      (fun a b : UMonomial × Int => a.1.deg > b.1.deg)
+      (head :: rest) := by
+    simpa [hlist] using hcanonical.1
+  have hrestLt : ∀ item ∈ rest, item.1.deg < head.1.deg :=
+    henselSparseZZ_chain_head_gt_all head rest hchain
+  have hrestDegree :
+      ((rest.map fun term =>
+        Polynomial.monomial term.1.deg term.2).sum).degree < head.1.deg := by
+    rw [Polynomial.degree_lt_iff_coeff_zero]
+    intro degree hdegree
+    apply henselSparseZZTail_coeff_zero_above
+    intro item hitem
+    exact Nat.lt_of_lt_of_le (hrestLt item hitem) hdegree
+  have hheadDegree :
+      (Polynomial.monomial head.1.deg head.2).degree = head.1.deg :=
+    Polynomial.degree_monomial _ hheadNonzero
+  have hdegree : (SparsePolyZZ.toPoly poly).degree = head.1.deg := by
+    unfold SparsePolyZZ.toPoly
+    rw [hlist, List.map_cons, List.sum_cons,
+      Polynomial.degree_add_eq_left_of_degree_lt (by
+        simpa [hheadDegree] using hrestDegree), hheadDegree]
+  have hnatDegree : (SparsePolyZZ.toPoly poly).natDegree = head.1.deg :=
+    Polynomial.natDegree_eq_of_degree_eq_some hdegree
+  rw [Polynomial.leadingCoeff, hnatDegree]
+  unfold SparsePolyZZ.toPoly
+  rw [hlist, List.map_cons, List.sum_cons, Polynomial.coeff_add,
+    Polynomial.coeff_monomial, if_pos rfl,
+    henselSparseZZTail_coeff_zero_above head.1.deg rest hrestLt, add_zero,
+    hheadEq]
+
+theorem HasPhysicalOneHead.toPolyMod_monic
+    {m : Nat} {factor : SparsePolyZZ}
+    (hhead : HasPhysicalOneHead factor)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical factor) :
+    (toPolyMod m factor).Monic := by
+  rcases hhead with ⟨head, tail, hlist⟩
+  have hsize : 0 < factor.size := by
+    have hlength := congrArg List.length hlist
+    have hsizeEq : factor.size = tail.length + 1 := by simpa using hlength
+    omega
+  have hfirst : factor[0].2 = 1 := by
+    have hget := Array.getElem_toList hsize
+    simpa [hlist] using (congrArg Prod.snd hget).symm
+  have hmonicInt : (SparsePolyZZ.toPoly factor).Monic := by
+    rw [Polynomial.Monic,
+      henselSparsePolyZZ_leadingCoeff_eq_head factor hcanonical hsize,
+      hfirst]
+  exact hmonicInt.map (Int.castRingHom (ZMod m))
+
+/-- A canonical, fully reduced concrete factor whose decoded modular
+polynomial is monic must literally store coefficient one at its head. -/
+theorem hasPhysicalOneHead_of_reduced_monic
+    {m : Nat} {factor : SparsePolyZZ} (hm : 1 < m)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical factor)
+    (hreduced : CoefficientsReduced m factor)
+    (hmonic : (toPolyMod m factor).Monic) :
+    HasPhysicalOneHead factor := by
+  letI : Fact (1 < m) := ⟨hm⟩
+  letI : NeZero m := ⟨by omega⟩
+  have hsize : 0 < factor.size := by
+    by_contra hnot
+    have hzero : factor.size = 0 := by omega
+    have hempty : factor = #[] := Array.size_eq_zero_iff.mp hzero
+    subst factor
+    exact hmonic.ne_zero (toPolyMod_empty m)
+  have hheadMem : factor[0] ∈ factor.toList :=
+    Array.getElem_mem_toList hsize
+  have hheadBounds := hreduced factor[0] hheadMem
+  have hheadNonzeroInt : factor[0].2 ≠ 0 :=
+    hcanonical.2 factor[0] hheadMem
+  have hheadCastNonzero : (factor[0].2 : ZMod m) ≠ 0 := by
+    intro hzero
+    have hdvd : (m : Int) ∣ factor[0].2 :=
+      (ZMod.intCast_zmod_eq_zero_iff_dvd factor[0].2 m).mp hzero
+    have hemodZero := Int.emod_eq_zero_of_dvd hdvd
+    have hemodSelf : factor[0].2 % (m : Int) = factor[0].2 :=
+      Int.emod_eq_of_lt hheadBounds.1 hheadBounds.2
+    exact hheadNonzeroInt (by omega)
+  have hleadingMap : (toPolyMod m factor).leadingCoeff =
+      (factor[0].2 : ZMod m) := by
+    unfold toPolyMod
+    rw [Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero]
+    · rw [henselSparsePolyZZ_leadingCoeff_eq_head factor hcanonical hsize]
+      rfl
+    · rw [henselSparsePolyZZ_leadingCoeff_eq_head factor hcanonical hsize]
+      exact hheadCastNonzero
+  have hcast : (factor[0].2 : ZMod m) = ((1 : Int) : ZMod m) := by
+    rw [← hleadingMap]
+    simpa using hmonic.leadingCoeff
+  rw [ZMod.intCast_eq_intCast_iff] at hcast
+  have hdvdDifference : (m : Int) ∣ factor[0].2 - 1 := by
+    have : (m : Int) ∣ 1 - factor[0].2 := Int.modEq_iff_dvd.mp hcast
+    simpa only [neg_sub] using dvd_neg.mpr this
+  have hemodEq : factor[0].2 % (m : Int) = (1 : Int) % (m : Int) := by
+    rw [Int.emod_eq_emod_iff_emod_sub_eq_zero]
+    exact Int.emod_eq_zero_of_dvd hdvdDifference
+  have hheadOne : factor[0].2 = 1 := by
+    rw [Int.emod_eq_of_lt hheadBounds.1 hheadBounds.2,
+      Int.emod_eq_of_lt (by omega) (by omega)] at hemodEq
+    exact hemodEq
+  have hheadList : factor.toList.head? = some factor[0] := by
+    rw [List.head?_eq_getElem?, Array.getElem?_toList,
+      Array.getElem?_eq_getElem hsize]
+  rcases List.head?_eq_some_iff.mp hheadList with ⟨tail, htail⟩
+  have hpair : factor[0] = (factor[0].1, 1) := by
+    apply Prod.ext
+    · rfl
+    · exact hheadOne
+  rw [hpair] at htail
+  exact ⟨factor[0].1, tail, htail⟩
+
+/-- A real generated Hensel step preserves physical monicity of `g` whenever
+the concrete target and the input `h` are physically monic.  The proof uses
+the step's actual product equation and actual reduced output coefficients. -/
+theorem HenselStepCorrect.gOneHead_of_target
+    {f : SparsePolyZZ} {m : Nat} {input output : HenselNode}
+    (hcorrect : HenselStepCorrect f m input output) (hm : 1 < m)
+    (hfCanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hfHead : HasPhysicalOneHead f)
+    (hinputH : HasPhysicalOneHead input.h) :
+    HasPhysicalOneHead output.g := by
+  have houtputH : HasPhysicalOneHead output.h := by
+    rcases hinputH with ⟨head, tail, htail⟩
+    rcases hcorrect.2.2.2.2.2.2.2.1 head tail htail hm with
+      ⟨suffix, hsuffix⟩
+    exact ⟨head, suffix, hsuffix⟩
+  have hfMonic := hfHead.toPolyMod_monic hfCanonical (m := m ^ 2)
+  have hhMonic := houtputH.toPolyMod_monic
+    hcorrect.2.2.2.2.2.2.1 (m := m ^ 2)
+  have hgMonic : (toPolyMod (m ^ 2) output.g).Monic := by
+    rw [Polynomial.Monic]
+    calc
+      (toPolyMod (m ^ 2) output.g).leadingCoeff =
+          (toPolyMod (m ^ 2) output.g *
+            toPolyMod (m ^ 2) output.h).leadingCoeff :=
+        (Polynomial.leadingCoeff_mul_monic hhMonic).symm
+      _ = (toPolyMod (m ^ 2) f).leadingCoeff := by
+        rw [hcorrect.1.1]
+      _ = 1 := hfMonic.leadingCoeff
+  exact hasPhysicalOneHead_of_reduced_monic (by nlinarith)
+    hcorrect.2.2.2.2.2.1 hcorrect.2.2.2.2.2.2.2.2 hgMonic
 
 def HenselArrayHOneHead (nodes : Array HenselNode) : Prop :=
   ∀ index (hindex : index < nodes.size), HasPhysicalOneHead nodes[index].h
@@ -5338,7 +5564,7 @@ theorem HenselLiftRecursiveCorrect.arrayHOneHead
         Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
       rcases hnodes index hindex with ⟨head, tail, hhead⟩
       have hlifted : HasPhysicalOneHead lifted.h := by
-        rcases hstepCorrect.2.2.2.2.2.2.2 head tail (by
+        rcases hstepCorrect.2.2.2.2.2.2.2.1 head tail (by
           simpa [hinput] using hhead) hm with ⟨suffix, hsuffix⟩
         exact ⟨head, suffix, hsuffix⟩
       exact henselArrayHOneHead_set nodes index lifted hindex hnodes hlifted
@@ -5353,7 +5579,7 @@ theorem HenselLiftRecursiveCorrect.arrayHOneHead
         Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
       rcases hnodes index hindex with ⟨head, tail, hhead⟩
       have hlifted : HasPhysicalOneHead lifted.h := by
-        rcases hstepCorrect.2.2.2.2.2.2.2 head tail (by
+        rcases hstepCorrect.2.2.2.2.2.2.2.1 head tail (by
           simpa [hinput] using hhead) hm with ⟨suffix, hsuffix⟩
         exact ⟨head, suffix, hsuffix⟩
       exact ih
@@ -5369,7 +5595,7 @@ theorem HenselLiftRecursiveCorrect.arrayHOneHead
         Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
       rcases hnodes index hindex with ⟨head, tail, hhead⟩
       have hlifted : HasPhysicalOneHead lifted.h := by
-        rcases hstepCorrect.2.2.2.2.2.2.2 head tail (by
+        rcases hstepCorrect.2.2.2.2.2.2.2.1 head tail (by
           simpa [hinput] using hhead) hm with ⟨suffix, hsuffix⟩
         exact ⟨head, suffix, hsuffix⟩
       exact ih
@@ -5386,7 +5612,7 @@ theorem HenselLiftRecursiveCorrect.arrayHOneHead
         Option.some.inj ((Array.getElem?_eq_getElem hindex).symm.trans hnode)
       rcases hnodes index hindex with ⟨head, tail, hhead⟩
       have hlifted : HasPhysicalOneHead lifted.h := by
-        rcases hstepCorrect.2.2.2.2.2.2.2 head tail (by
+        rcases hstepCorrect.2.2.2.2.2.2.2.1 head tail (by
           simpa [hinput] using hhead) hm with ⟨suffix, hsuffix⟩
         exact ⟨head, suffix, hsuffix⟩
       exact rightIH (leftIH

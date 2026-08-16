@@ -2713,3 +2713,29 @@ invariant for `g` whenever the node's concrete `leaf_start` is positive.
 
 No C++ files changed, so this step has no new C++ b2b change surface.  The
 complete Hensel source passed direct Lean checking.
+
+## Recover a physical `g` head from the real Hensel step
+
+`CoefficientsReduced` records the exact nonnegative floor-remainder interval
+of a concrete sparse integer array.  The generated factor-phase refinement now
+proves this property for `gNew` directly from its actual `modCoeffOutput` run,
+and `HenselStepCorrect` retains it across the real Bezout phase where `g` is
+unchanged.
+
+The sparse representation bridge proves that a canonical physical one-head
+array decodes to a monic modular polynomial, and conversely that a canonical,
+fully reduced array with monic modular denotation must literally store integer
+coefficient one at its head.  The converse explicitly uses the interval
+`0 ≤ coefficient < modulus`; it does not collapse modular equality into integer
+equality without a representative bound.
+
+`HenselStepCorrect.gOneHead_of_target` combines those bridges with the exact
+step product equation.  When the concrete target and input `h` have physical
+one heads, the real step preserves the `h` head, multiplication by that monic
+factor exposes `g`'s leading coefficient, and the actual reduced output range
+turns it into a physical one head for `g`.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+complete Hensel source passed direct Lean checking.  Next, builder topology
+and the concrete parent-to-child targets propagate this local bridge exactly
+to nodes whose stored `leaf_start` is positive.
